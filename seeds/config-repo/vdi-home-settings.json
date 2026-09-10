@@ -1,0 +1,19 @@
+{
+  "model": "opus",
+  "theme": "dark",
+  "agentPushNotifEnabled": true,
+  "inputNeededNotifEnabled": true,
+  "env": {
+    "ENABLE_TOOL_SEARCH": "true"
+  },
+  "permissions": {
+    "defaultMode": "auto",
+    "allow": [
+      "PowerShell(& .\\deploy.ps1)",
+      "PowerShell(& .\\deploy.ps1 -Yes)",
+      "PowerShell(& .\\deploy.ps1 -ShowUnchanged)",
+      "PowerShell(& .\\deploy.ps1 -Prune)",
+      "PowerShell(& .\\deploy.ps1 -Prune -Yes)"
+    ]
+  }
+}
