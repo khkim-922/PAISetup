@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" lang="ko" role="img" viewBox="0 0 1688 1084" width="1688" height="1084" aria-labelledby="flow-title">
+<title id="flow-title">Claude Code 사내 설치 흐름</title>
+<style>/*<![CDATA[*/
+text { font-family: Pretendard, "Pretendard Variable", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+.bx { fill: #eef4fb; stroke: #5c7f9f; stroke-width: 1.2; }
+.lb { fill: #14242f; font-size: 13px; font-weight: 600; text-anchor: middle; }
+.sub { fill: #b0242c; font-size: 10px; text-anchor: middle; }
+.ar { fill: none; stroke: #8a9cac; stroke-width: 1.4; }
+.ed { fill: #5d7183; font-size: 10px; text-anchor: middle; }
+.edl { fill: #5d7183; font-size: 10px; text-anchor: start; }
+.bd { fill: #f7fafc; stroke: #d6e0e8; stroke-width: 1; stroke-dasharray: 5 4; }
+.bl { fill: #6b7f90; font-size: 11px; font-weight: 600; }
+.rb { fill: #fdf5f5; stroke: #e6bfbf; stroke-width: 1; }
+.rl { fill: #a3323a; font-size: 11px; font-weight: 600; }
+.rt { fill: #8f2f36; font-size: 10px; }
+.ai .bx { fill: #fff3e0; stroke: #d9822b; }
+.tg { fill: #d9822b; }
+.tt { fill: #ffffff; font-size: 10px; font-weight: 700; text-anchor: middle; letter-spacing: .04em; }
+.open .bx { fill: #ffffff; stroke: #9aacbb; stroke-dasharray: 6 4; }
+.open .lb { fill: #6b7f90; font-weight: 500; }
+/*]]>*/</style>
+<defs><marker id="tip" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8a9cac"/></marker></defs>
+<g><rect class="bd" x="8" y="971" width="1672" height="95" rx="8"/><text class="bl" x="20" y="987">설치 몸통</text></g>
+<g><rect class="bd" x="8" y="853" width="1672" height="113" rx="8"/><text class="bl" x="20" y="869">내 저장소</text></g>
+<g><rect class="bd" x="8" y="735" width="1672" height="113" rx="8"/><text class="bl" x="20" y="751">사람</text></g>
+<g><rect class="bd" x="8" y="587" width="1672" height="113" rx="8"/><text class="bl" x="20" y="603">설치 몸통</text></g>
+<g><rect class="bd" x="8" y="425" width="1672" height="127" rx="8"/><text class="bl" x="20" y="441">설치 몸통</text></g>
+<g><rect class="bd" x="8" y="295" width="1672" height="95" rx="8"/><text class="bl" x="20" y="311">설치 창</text></g>
+<g><rect class="bd" x="8" y="145" width="1672" height="145" rx="8"/><text class="bl" x="20" y="161">내 저장소</text></g>
+<g><rect class="bd" x="8" y="13" width="1672" height="127" rx="8"/><text class="bl" x="20" y="29">사람</text></g>
+<g><rect class="bx" x="18" y="40" width="236" height="58" rx="7"/>
+<text class="lb" x="136.0" y="64">1. zip 을 폴더째 풀어 아무</text>
+<text class="lb" x="136.0" y="82">데나 둔다</text>
+</g>
+<g><rect class="bx" x="490" y="40" width="236" height="90" rx="7"/>
+<text class="lb" x="608.0" y="64">2. install.cmd 를</text>
+<text class="lb" x="608.0" y="82">더블클릭한다</text>
+<text class="sub" x="608.0" y="101">⚠ 경고창을 닫아 버리면 아무 일도 안</text>
+<text class="sub" x="608.0" y="115">일어난다</text>
+</g>
+<g><rect class="bx" x="1434" y="40" width="236" height="76" rx="7"/>
+<text class="lb" x="1552.0" y="64">5. API 키를 넣는다 · 제</text>
+<text class="lb" x="1552.0" y="82">저장소가 있으면 그 주소도</text>
+<text class="lb" x="1552.0" y="100">넣는다</text>
+</g>
+<g><rect class="bx" x="18" y="172" width="236" height="108" rx="7"/>
+<text class="lb" x="136.0" y="196">3. 골든 샘플을 복사해 제</text>
+<text class="lb" x="136.0" y="214">설정 저장소를 만든다 — 안</text>
+<text class="lb" x="136.0" y="232">만들면 이 띠는 안 돈다</text>
+<text class="sub" x="136.0" y="251">⚠ 그 이름의 파일이 없으면 설치가</text>
+<text class="sub" x="136.0" y="265">실패로 찍는다</text>
+</g>
+<g><rect class="bx" x="962" y="322" width="236" height="58" rx="7"/>
+<text class="lb" x="1080.0" y="346">4. 설치 창이 뜬다 — 주소와</text>
+<text class="lb" x="1080.0" y="364">모델은 채워져 있다</text>
+</g>
+<g><rect class="bx" x="18" y="452" width="236" height="90" rx="7"/>
+<text class="lb" x="136.0" y="476">6. [1/8] 프로그램 — VS Code</text>
+<text class="lb" x="136.0" y="494">· Node · Git · Python · gh</text>
+<text class="sub" x="136.0" y="513">⚠ winget 이 정책에 막히면 여기서</text>
+<text class="sub" x="136.0" y="527">진다</text>
+</g>
+<g><rect class="bx" x="490" y="452" width="236" height="58" rx="7"/>
+<text class="lb" x="608.0" y="476">7. [2/8] VS Code 클로드</text>
+<text class="lb" x="608.0" y="494">확장</text>
+</g>
+<g><rect class="bx" x="962" y="452" width="236" height="40" rx="7"/>
+<text class="lb" x="1080.0" y="476">8. [3/8] Claude Code CLI</text>
+</g>
+<g><rect class="bx" x="1434" y="452" width="236" height="58" rx="7"/>
+<text class="lb" x="1552.0" y="476">9. [4/8] 키와 주소 — 사용자</text>
+<text class="lb" x="1552.0" y="494">환경변수로 심는다</text>
+</g>
+<g><rect class="bx" x="18" y="614" width="236" height="40" rx="7"/>
+<text class="lb" x="136.0" y="638">10. [5/8] 홈 설정</text>
+</g>
+<g><rect class="bx" x="490" y="614" width="236" height="58" rx="7"/>
+<text class="lb" x="608.0" y="638">11. [6/8] 개인 규범 · 룰 ·</text>
+<text class="lb" x="608.0" y="656">스킬 — 켠 사람만</text>
+</g>
+<g><rect class="bx" x="962" y="614" width="236" height="76" rx="7"/>
+<text class="lb" x="1080.0" y="638">12. [7/8] 사내 환경 문서 ·</text>
+<text class="lb" x="1080.0" y="656">씨앗 둘 — 배관 · 설정</text>
+<text class="lb" x="1080.0" y="674">저장소</text>
+</g>
+<g><rect class="bx" x="1434" y="614" width="236" height="76" rx="7"/>
+<text class="lb" x="1552.0" y="638">13. [8/8] 주소를 넣었으면 —</text>
+<text class="lb" x="1552.0" y="656">저장소를 clone 하고</text>
+<text class="lb" x="1552.0" y="674">bootstrap-vdi.sh 로 넘긴다</text>
+</g>
+<g><rect class="bx" x="962" y="762" width="236" height="76" rx="7"/>
+<text class="lb" x="1080.0" y="786">16. 열려 있는 VS Code 를</text>
+<text class="lb" x="1080.0" y="804">전부 닫고 새로 연다</text>
+<text class="sub" x="1080.0" y="823">⚠ 낡은 창은 방금 심은 키를 못 본다</text>
+</g>
+<g><rect class="bx" x="18" y="880" width="236" height="76" rx="7"/>
+<text class="lb" x="136.0" y="904">14. 부트스트랩이 든다 — git</text>
+<text class="lb" x="136.0" y="922">신원 · 형제 저장소 · 자리 ·</text>
+<text class="lb" x="136.0" y="940">키 · 배포</text>
+</g>
+<g><rect class="bx" x="490" y="998" width="236" height="58" rx="7"/>
+<text class="lb" x="608.0" y="1022">15. 검증 — [O] / [X] 를</text>
+<text class="lb" x="608.0" y="1040">찍는다</text>
+</g>
+<path class="ar" d="M 254 69.0 L 372.0 69.0 L 372.0 85.0 L 483 85.0" marker-end="url(#tip)"/><text class="ed" x="372.0" y="63.0">install.cmd 를 찾는다</text>
+<path class="ar" d="M 726 85.0 L 844.0 85.0 L 844.0 351.0 L 955 351.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="79.0">경고창 → 추가 정보 → 실행</text>
+<path class="ar" d="M 254 226.0 L 844.0 226.0 L 844.0 78.0 L 1427 78.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="220.0">뿌리에 bootstrap-vdi.sh 가 있어야 한다</text>
+<path class="ar" d="M 1198 351.0 L 1316.0 351.0 L 1316.0 78.0 L 1427 78.0" marker-end="url(#tip)"/><text class="ed" x="1316.0" y="345.0">빈 칸 둘</text>
+<path class="ar" d="M 1670 78.0 L 1688.0 78.0 L 1688.0 410.0 L 9.0 410.0 L 9.0 497.0 L 11 497.0" marker-end="url(#tip)"/><text class="edl" x="1692.0" y="83.0">[설치 시작] 을 누른다</text>
+<path class="ar" d="M 254 497.0 L 372.0 497.0 L 372.0 481.0 L 483 481.0" marker-end="url(#tip)"/><text class="ed" x="372.0" y="491.0">깔린 뒤</text>
+<path class="ar" d="M 726 481.0 L 844.0 481.0 L 844.0 472.0 L 955 472.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="475.0">확장은 CLI 를 부른다</text>
+<path class="ar" d="M 1198 472.0 L 1316.0 472.0 L 1316.0 481.0 L 1427 481.0" marker-end="url(#tip)"/><text class="ed" x="1316.0" y="466.0">둘이 짝이다</text>
+<path class="ar" d="M 1670 481.0 L 1688.0 481.0 L 1688.0 572.0 L 9.0 572.0 L 9.0 634.0 L 11 634.0" marker-end="url(#tip)"/><text class="edl" x="1692.0" y="486.0">새 창이 볼 자리에</text>
+<path class="ar" d="M 254 634.0 L 372.0 634.0 L 372.0 643.0 L 483 643.0" marker-end="url(#tip)"/><text class="ed" x="372.0" y="628.0">~/.claude/settings.json</text>
+<path class="ar" d="M 726 643.0 L 844.0 643.0 L 844.0 652.0 L 955 652.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="637.0">안 켜도 설치는 완전하다</text>
+<path class="ar" d="M 1198 652.0 L 1427 652.0" marker-end="url(#tip)"/><text class="ed" x="1316.0" y="646.0">~/.claude/ 로</text>
+<path class="ar" d="M 1670 652.0 L 1688.0 652.0 L 1688.0 720.0 L 9.0 720.0 L 9.0 918.0 L 11 918.0" marker-end="url(#tip)"/><text class="edl" x="1692.0" y="657.0">Git Bash 로 부른다</text>
+<path class="ar" d="M 254 918.0 L 372.0 918.0 L 372.0 1027.0 L 483 1027.0" marker-end="url(#tip)"/><text class="ed" x="372.0" y="912.0">넘긴 뒤는 저쪽 몫</text>
+<path class="ar" d="M 726 1027.0 L 844.0 1027.0 L 844.0 800.0 L 955 800.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="1021.0">하나라도 [X] 면 안 선 것</text>
+</svg>

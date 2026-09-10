@@ -998,9 +998,9 @@ if (-not $WithPersonalConfig) {
   }
 }
 
-# ── 7. 사내 환경 문서 · 게이트웨이 씨앗 ─────────────────────────────────────────
+# ── 7. 사내 환경 문서 · 씨앗 둘 ─────────────────────────────────────────────────
 # ⚠ **이건 고를 것이 아니라 환경이다.** 그래서 위 칸과 달리 스위치가 없다 — 사내 게이트웨이의
-#   배선·실측·오류 명세와, 새 프로젝트가 복사해 출발하는 배관 씨앗은 **누가 받아도 쓴다.**
+#   배선·실측·오류 명세와, 복사해 출발하는 씨앗 둘(배관 · 설정 저장소)은 **누가 받아도 쓴다.**
 # ⚠ 옛 판은 이것을 안 깔고 **경로만 찍었다.** 그런데 그 경로는 이 zip 이 풀린 자리였다 —
 #   설정 저장소를 안 넣은 사람에게는 그것이 유일한 사본이고, 바탕화면 폴더를 지우면 사라진다.
 #   게다가 스킬과 형제 저장소 문서가 가리키는 자리는 `claude-config/posco/` 인데, 저장소가
@@ -1009,12 +1009,17 @@ if (-not $WithPersonalConfig) {
 #   저장소를 든 사람은 `deploy.ps1` 이 이 자리를 갱신하고 `check-global-copies.sh` 가
 #   바이트로 잰다. 사본이 하나 더 늘지만, **재는 자가 붙은 사본**이라 조용히 안 낡는다.
 Write-Host ''
-Write-Host '[7/8] 사내 환경 문서 · 게이트웨이 씨앗' -ForegroundColor Cyan
+Write-Host '[7/8] 사내 환경 문서 · 씨앗 둘' -ForegroundColor Cyan
 $envAssets = @(
   @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'
      Name = '사내 환경 문서'; Desc = '게이트웨이·API·오류 기록 — 붙이기 전에 읽는다' }
   @{ From = Join-Path $Here 'seeds\gateway'; To = Join-Path $homeDir 'seeds\gateway'
      Name = '게이트웨이 씨앗'; Desc = '새 프로젝트가 복사해서 출발한다' }
+  # ⚠ **이것도 스위치를 안 둔다.** 「설정 저장소」 칸을 쓸 사람만 보지만, **볼지 말지를 고르는
+  #   때가 이 설치보다 뒤다** — 칸을 채우려면 저장소가 이미 있어야 하고, 그 저장소를 만드는
+  #   골든이 이것이다. 켜는 칸으로 두면 안 켠 사람은 그 칸을 채울 길을 못 찾는다.
+  @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'
+     Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
 )
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없다"; continue }

@@ -21,8 +21,22 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $Here   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Engine = Join-Path $Here 'install.ps1'
+
+# ── 콘솔에 남은 글을 사람이 읽을 틈 ────────────────────────────────────────────
+# ⚠ **`install.cmd` 에는 `pause` 가 없다** — 설치 창의 [닫기] 를 누르면 뒤에 선 콘솔까지
+#   같이 닫혀야 하기 때문이다. 그래서 「읽을 것이 있는 갈래」가 제 멈춤을 직접 든다.
+#   여기서 안 들면 저 아래 갈래들은 **한 줄 찍고 창째로 사라진다** — 부재가 통과로
+#   읽히는 것과 같은 자리다: 사람은 아무 일도 안 일어난 줄 안다.
+# ⚠ **화면이 선 갈래에서는 안 부른다.** 그 판의 결과는 창 안에 찍혀 있고, 사람이 창을
+#   닫는 것이 곧 끝내는 동작이다. 거기서 멈추면 닫아도 안 닫히는 콘솔이 남는다.
+function Hold-Console([string]$Said = '끝났습니다 — Enter 를 누르면 닫힙니다') {
+  try { Read-Host $Said | Out-Null } catch { }
+}
+
 if (-not (Test-Path -LiteralPath $Engine)) {
   Write-Host "install.ps1 이 옆에 없다: $Here" -ForegroundColor Red
+  Write-Host '폴더를 통째로 풀었는지 본다 — 압축 안에서 바로 누르면 옆 파일을 못 찾는다.'
+  Hold-Console
   exit 1
 }
 
@@ -39,7 +53,11 @@ try {
 if (-not $uiOk) {
   Write-Host '화면을 못 띄운다 — 콘솔로 진행한다.' -ForegroundColor Yellow
   & $Engine -NoDevTools:$NoDevTools -WithPersonalConfig:$WithPersonalConfig -NoUpgrade:$NoUpgrade
-  exit $LASTEXITCODE
+  # ⚠ **판정을 먼저 집는다.** `Hold-Console` 뒤에 읽으면 그 사이에 도는 것이 `$LASTEXITCODE`
+  #   를 갈아치울 수 있고, 그러면 **몸통이 진 판이 0 으로 보고된다.**
+  $rc = $LASTEXITCODE
+  Hold-Console
+  exit $rc
 }
 
 # ── 옆에 온 값 파일 — 회사 공통값은 이미 채워져 온다 ────────────────────────────

@@ -22,9 +22,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
+rem  No pause after this line - pressing [Close] in the setup window must close
+rem  this console with it. Nothing may run between the call and exit /b, or
+rem  %ERRORLEVEL% stops being PowerShell's.
+rem
+rem  The pause that used to live here carried two jobs. When the GUI cannot be
+rem  created, install.ui.ps1 falls back to running in this console, and that
+rem  branch needs the window to stay readable. That pause now lives in install.ui.ps1
+rem  inside the fallback branch itself - the only branch with output to read here.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ui.ps1" %*
-set RC=%ERRORLEVEL%
-echo.
-rem  A window opened by double-click closes on exit - leave the result readable.
-pause
-exit /b %RC%
+exit /b %ERRORLEVEL%
