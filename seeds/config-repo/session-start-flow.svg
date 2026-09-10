@@ -107,18 +107,18 @@
           <text x="436.40000000000003" y="564" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">재료는 claude-config 한 자리 · core.hooksPath 도 건다</text>
         </g>
 
-        <g id="node-n6" tabindex="0" role="button" aria-label="Focus 6. 홈에 SessionStart 훅을 심는다, 작업 루트 아래 모든 저장소의 이 훅을 부른다, 세션을 열면 도는 순서 — 위에서 아래로 › 홈" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">6. 홈에 SessionStart 훅을 심는다 · 작업 루트 아래 모든 저장소의 이 훅을 부른다 · 세션을 열면 도는 순서 — 위에서 아래로 › 홈 · ⚠ 저장소를 옮기면 낡은 항목이 남는다 — 루트로 물어야 걸린다</title>
-          <rect x="308.40000000000003" y="626" width="256" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="308.40000000000003" y="626" width="256" height="68" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(314.40000000000003 632) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n6" tabindex="0" role="button" aria-label="Focus 6. 홈에 SessionStart 훅을 심는다, 저장소 밖에서 연 세션만 쓸어 돈다 — 안에서 열면 빠진다, 세션을 열면 도는 순서 — 위에서 아래로 › 홈" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">6. 홈에 SessionStart 훅을 심는다 · 저장소 밖에서 연 세션만 쓸어 돈다 — 안에서 열면 빠진다 · 세션을 열면 도는 순서 — 위에서 아래로 › 홈 · ⚠ 저장소를 옮기면 낡은 항목이 남는다 — 루트로 물어야 걸린다</title>
+          <rect x="302.40000000000003" y="626" width="268" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="302.40000000000003" y="626" width="268" height="68" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(308.40000000000003 632) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <rect x="2" y="3" width="12" height="10" rx="2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
             <path d="M2 6.5h12" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
             <circle cx="4.1" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
             <circle cx="6.3" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
           </g>
           <text x="436.40000000000003" y="647" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">6. 홈에 SessionStart 훅을 심는다</text>
-          <text x="436.40000000000003" y="664" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">작업 루트 아래 모든 저장소의 이 훅을 부른다</text>
+          <text x="436.40000000000003" y="664" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">저장소 밖에서 연 세션만 쓸어 돈다 — 안에서 열면 빠진다</text>
         <text x="436.40000000000003" y="682" font-size="7px" text-anchor="middle" fill="rgb(8, 145, 178)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 저장소를 옮기면 낡은 항목이 남는다 — 루트로 물어야 걸린다</text>
         </g>
 
@@ -340,8 +340,8 @@
           <text x="627.4000000000001" y="568" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">홈 층이 최신이 된다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <rect x="573.0000000000001" y="674" width="110.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <text x="628.4000000000001" y="684" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">밖에서 연 세션도 선다</text>
+          <rect x="579.0000000000001" y="674" width="110.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="634.4000000000001" y="684" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">밖에서 연 세션도 선다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
           <rect x="557.0000000000001" y="782" width="110.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>

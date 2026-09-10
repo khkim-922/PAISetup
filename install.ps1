@@ -571,6 +571,38 @@ if ($probe) {
   Write-Host ''
 }
 
+# ── 올릴 것이 있는 앱을 **한 번에** 묻는다 ─────────────────────────────────────
+# ⚠ 옛 판은 앱마다 `winget upgrade --id` 를 불렀다. 그 명령은 이미 최신이면 아무것도 안 하지만
+#   **winget 은 뜰 때마다 원본을 새로 훑는다** — 앱 수만큼 그 값을 낸다. `list
+#   --upgrade-available` 은 그 훑기를 한 번에 끝낸다.
+# ⚠ **못 읽으면 옛 길로 물러선다.** 이 출력은 표라서 로케일·콘솔 너비·잘린 Id 에 흔들린다.
+#   못 읽은 것을 「올릴 것 없음」으로 읽으면 **판이 낡은 채로 초록이 된다** — 부재보다 나쁘다.
+#   그래서 `$null` 은 「못 쟀다」이고, 그때는 앱마다 묻는 옛 길로 간다.
+# ⚠ **기울기를 한쪽으로만 준다.** Id 가 표에서 잘릴 수 있어 **Id 든 이름이든 걸리면 올린다** —
+#   헛되게 한 번 더 묻는 값은 시간뿐이고, 안 물어 낡은 판이 서는 값은 고장이다.
+$upgradable = $null
+if (-not ($NoUpgrade -or $noWinget)) {
+  $ulog = [System.IO.Path]::GetTempFileName()
+  $urc = Invoke-Logged 'winget' @('list','--upgrade-available','--accept-source-agreements','--disable-interactivity') $ulog
+  $utxt = ''
+  if (Test-Path $ulog) { $utxt = (Get-Content $ulog -Raw -ErrorAction SilentlyContinue) }
+  Remove-Item $ulog -ErrorAction SilentlyContinue
+  if ($urc -eq 0 -and $utxt -and $utxt.Length -gt 40) {
+    $hits = @()
+    foreach ($a in $Apps) {
+      if (($utxt -like "*$($a.Id)*") -or ($utxt -like "*$($a.Name)*")) { $hits += $a.Id }
+    }
+    $upgradable = $hits
+    if ($hits.Count) {
+      Write-Host ('  올릴 것 ' + $hits.Count + '개 — ' + ($hits -join ' · '))
+    } else {
+      Write-Host '  올릴 것 없음 — 판 대조를 한 번에 끝냈다'
+    }
+  } else {
+    Write-Host '  (올릴 목록을 한 번에 못 받았다 — 앱마다 묻는다)'
+  }
+}
+
 Write-Host '[1/8] 프로그램' -ForegroundColor Cyan
 foreach ($app in $Apps) {
   if ($NoDevTools -and $app.Need -eq 'dev') {
@@ -585,6 +617,11 @@ foreach ($app in $Apps) {
     }
     # ⚠ **판정은 winget 의 종료코드가 아니라 판 번호다.** 올릴 것이 없으면 winget 은 0 이 아닌
     #   값을 내는데, 그걸 실패로 읽으면 최신인 PC 가 매번 빨갛게 보고된다.
+    # 한 번에 받은 목록에 없으면 안 묻는다. **`$null`(못 쟀다)일 때는 물어본다.**
+    if (($null -ne $upgradable) -and ($upgradable -notcontains $app.Id)) {
+      Write-Host "  $($app.Name) — 최신  ($before)"
+      continue
+    }
     $log = [System.IO.Path]::GetTempFileName()
     Invoke-Logged 'winget' (@('upgrade','--id',$app.Id) + $WG) $log | Out-Null
     Remove-Item $log -ErrorAction SilentlyContinue

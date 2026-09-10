@@ -185,8 +185,11 @@ deploy_home_norms() {
 # ── 전역 SessionStart 훅을 홈에 심는다 (claude-config 0010 · 0028) ──────────────
 #    **저장소 훅은 세션 루트가 그 저장소일 때만 걸린다.** 그 밖에서 연 세션 — 저장소들을
 #    담은 폴더(전역 층 · deploy 가 `[memory:global]` 로 슬러그까지 두는 자리)나 홈 — 은
-#    아무 훅도 안 건다. 세션마다 auto 를 다시 걸 자는 홈 훅뿐이다. 심는 명령은 익명이다:
-#    작업 루트 아래 모든 저장소의 이 훅을 부른다 (0004 와 같은 결 — 저장소 이름을 모른다).
+#    아무 훅도 안 건다. 세션마다 auto 를 다시 걸 자는 홈 훅뿐이다. 심는 명령은 익명이다 —
+#    저장소 이름을 모르고 작업 루트만 든다 (0004 와 같은 결).
+#    ⚠ **그 명령은 저장소 안에서 연 세션이면 빠진다** (결정 0036). 쓸기는 저장소 **밖에서**
+#      연 세션에만 남는다 — 안에서 열면 그 저장소의 제 설정이 이미 훅을 걸기 때문이다.
+#      옛 판은 조건 없이 쓸어, 저장소 하나를 열면 형제 전부가 돌고 연 저장소는 두 번 돌았다.
 # ⚠ **자리가 여기인 까닭** — 옛 판은 설치 갈래 ②′ 안에 있었다. 그런데 지문이 맞는 세션은
 #   설치를 통째로 건너뛰고(auto 의 침묵 갈래), deploy.ps1 도 `--check` 가 꺼진 검사를 낼
 #   때만 `--install` 을 계획한다. 그래서 **도구가 멀쩡한 기계에서 훅만 걷히면 다시 심을
@@ -219,34 +222,125 @@ home_hook_root() {   # 작업 루트 — 굳힌 꼴. 명령도 진단 문구도 
   printf '%s' "$_hr"
 }
 home_hook_cmd() {
-  printf 'for h in "%s"/*/.claude/hooks/session-start.sh; do [ -f "$h" ] && bash "$h"; done' \
+  # ⚠ **저장소 안에서 연 세션이면 이 훅은 빠진다.** 옛 꼴은 조건 없이 작업 루트를 쓸어, 저장소
+  #   하나를 열면 형제 전부의 훅이 돌았다 — 게다가 연 저장소는 **제 설정과 이 고리가 겹쳐 두 번**
+  #   돌았다. 0010 이 잰 값은 「저장소 둘을 2.2초」(리모트 컨테이너)였고 0028 이 윈도우로 넓힐 때
+  #   **개수(넷)는 다시 셌으나 시간은 안 쟀다** — 컨테이너 둘의 값이 PC 다섯으로 그대로 넘어왔다.
+  #   붙인 것만 있는 컨테이너에서는 곱셈이 안 보이고 **PC 에서만 보인다.**
+  # ⚠ **쓸기는 지우지 않고 조건을 얻는다** — 저장소 밖에서 연 세션(홈·전역 층)은 0028 이 산
+  #   값이라 그대로 남는다. 그때만 쓴다.
+  # ⚠ **제 설정이 거는지 물어본다.** 「걸 것이다」로 가정하면 설정 없는 저장소가 아무것도 안 도는데
+  #   그 부재는 조용하다 — 물어보고, 안 걸면 여기서 직접 부른다.
+  printf 'p="$CLAUDE_PROJECT_DIR"; if [ -f "$p/.claude/hooks/session-start.sh" ]; then grep -q session-start.sh "$p/.claude/settings.json" 2>/dev/null || bash "$p/.claude/hooks/session-start.sh"; else for h in "%s"/*/.claude/hooks/session-start.sh; do [ -f "$h" ] && bash "$h"; done; fi' \
     "$(home_hook_root)"
 }
 
-plant_home_hook() {
-  if [ -z "$(py_num "$PY_CMD")" ]; then
-    echo "$PROJECT_NAME: ⚠ 홈 SessionStart 훅을 못 심는다 — $PY_CMD 를 못 부른다(윈도우면 스토어 껍데기다). 저장소 밖에서 연 세션은 아무 훅도 안 건다."
-    return 0
-  fi
-  if ! "$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" <<'PLANTEOF'
-import json, os, sys
-path, cmd = sys.argv[1], sys.argv[2]
+# ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
+#   드는 것: ① 홈 SessionStart 훅 ② 이 저장소의 신뢰.
+# ⚠ **옛 판은 프로세스를 넷 띄웠다** — 판을 묻는 `py_num` · 훅 심기 · 껍데기 판별하는 `-c ''` ·
+#   신뢰 심기. 저장소마다 넷이라 형제 다섯이면 **한 세션에 스물**이었고, 윈도우에서는 프로세스
+#   뜨는 값이 일 자체보다 컸다. 파이썬을 한 번만 띄우고 그 안에서 둘을 다 한다.
+# ⚠ **해석기가 못 뜨는 것은 종료코드로 안다** — 윈도우의 `python3` 는 스토어로 보내는 껍데기라
+#   부르면 49 로 죽는다. 그래서 존재로 묻지 않고 **불러 보고 지면** 말한다(가드를 따로 띄우지
+#   않는 것이 이 합침의 요점이다).
+# ⚠ **옛 항목을 지운다.** 심기는 여태 「없으면 붙인다」뿐이라, 명령 글자가 바뀌면 옛 항목이
+#   남아 **옛 고리가 같이 돌았다** — 위 가드가 무효가 되는 자리다. 우리 꼴(`session-start.sh`
+#   를 든 명령)만 걷고, 무엇을 걷었는지 화면에 댄다.
+plant_session_state() {
+  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" <<'PSSEOF' 2>/dev/null
+import json, os, sys, tempfile
+
+settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+msgs = []
+
+
+def save(path, cfg):
+    d = os.path.dirname(path) or "."
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return False
+
+
+# ① 홈 SessionStart 훅 — 우리 옛 꼴은 걷고 지금 꼴만 남긴다
 try:
-    with open(path, encoding="utf-8") as f:
+    with open(settings, encoding="utf-8") as f:
         cfg = json.load(f)
 except (OSError, ValueError):
     cfg = {}
 entries = cfg.setdefault("hooks", {}).setdefault("SessionStart", [])
-if not any(h.get("command") == cmd for e in entries for h in e.get("hooks", [])):
+have, dropped = False, []
+for e in entries:
+    keep = []
+    for h in e.get("hooks", []):
+        c = h.get("command", "")
+        if c == cmd:
+            have = True
+            keep.append(h)
+        elif "session-start.sh" in c:
+            dropped.append(c)
+        else:
+            keep.append(h)
+    e["hooks"] = keep
+entries[:] = [e for e in entries if e.get("hooks")]
+if not have:
     entries.append({"hooks": [{"type": "command", "command": cmd, "timeout": 600}]})
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-PLANTEOF
-  then
-    echo "$PROJECT_NAME: ⚠ 홈 SessionStart 훅 심기가 실패했다 — ~/.claude/settings.json 을 손으로 본다."
+if not have or dropped:
+    if save(settings, cfg):
+        if not have:
+            msgs.append("  홈 SessionStart 훅 — 심었다")
+        for c in dropped:
+            msgs.append("  홈 SessionStart 훅 — 옛 항목을 걷었다: %s" % c[:70])
+    else:
+        msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
+
+# ② 신뢰 — 없거나 깨진 파일은 손대지 않는다
+# ⚠ **작업 루트의 저장소 전부에 건다.** 옛 판은 제 저장소만 걸고 「홈 훅이 어차피 전부
+#   부른다」를 근거로 삼았는데, 그 고리에 가드가 붙어 그 근거가 사라졌다. 안 넓히면 저장소를
+#   처음 열 때마다 신뢰 창이 뜨고, 프로필이 매 로그인 날아가는 PC 에서는 **매번** 뜬다.
+#   같은 파일 쓰기 한 번에 담으니 값은 0 이고, 거는 대상은 옛 고리가 걸던 것과 같은 집합이다
+#   (훅을 든 저장소만) — posture 를 넓히는 것이 아니라 하던 일을 한 자리로 옮기는 것이다.
+BS = chr(92)
+import glob as _glob
+targets = [proj]
+for h in _glob.glob(os.path.join(root, "*", ".claude", "hooks", "session-start.sh")):
+    targets.append(os.path.dirname(os.path.dirname(os.path.dirname(h))))
+forms = sorted({t.replace("/", BS) for t in targets} | {t.replace(BS, "/") for t in targets})
+tp = os.path.join(os.path.expanduser("~"), ".claude.json")
+try:
+    with open(tp, encoding="utf-8") as f:
+        tcfg = json.load(f)
+except (OSError, ValueError):
+    tcfg = None
+if tcfg is not None:
+    pr = tcfg.setdefault("projects", {})
+    todo = [k for k in forms if not (pr.get(k) or {}).get("hasTrustDialogAccepted")]
+    if todo:
+        for k in todo:
+            pr.setdefault(k, {})["hasTrustDialogAccepted"] = True
+        if save(tp, tcfg):
+            msgs.append("  신뢰 — %d 자리에 걸었다 (다음 세션부터 안 묻는다)" % len(todo))
+
+for m in msgs:
+    print(m)
+PSSEOF
+)"
+  if [ $? -ne 0 ]; then
+    echo "$PROJECT_NAME: ⚠ 홈 SessionStart 훅·신뢰를 못 심는다 — $PY_CMD 를 못 부른다(윈도우면 스토어 껍데기다). 저장소 밖에서 연 세션은 아무 훅도 안 건다."
+    return 0
   fi
+  [ -n "$_pss" ] && printf '%s\n' "$_pss"
+  return 0
 }
 
 # ── 심겼나 — **판정도 문구도 진단 절 한 자리가 낸다.** 여기는 재기만 한다.
@@ -312,43 +406,11 @@ HOOKEOF
 #   경합한다. **아무것도 안 하는 것이 이 함수의 정상**이고, 쓸 때도 옆에 쓰고 옮긴다.
 # ⚠ **이 세션에는 안 먹을 수 있다** — CLI 가 제 메모리 판으로 나중에 덮으면 다음 세션부터
 #   선다. 막을 자리가 없어 아는 채로 둔다.
-# ⚠ 몸통은 저장소 이름을 모른다 — 제 자리만 넣는다. 목록을 박으면 저장소가 늘 때마다 이
-#   파일을 고쳐야 하는데, 홈 훅이 어차피 작업 루트 아래 모든 저장소의 이 훅을 부른다.
+# ⚠ 몸통은 저장소 이름을 모른다 — 목록을 박지 않고 **작업 루트를 훑어** 훅을 든 저장소를
+#   찾는다. 옛 근거는 「홈 훅이 어차피 전부 부른다」였는데 그 고리에 가드가 붙어(결정 0036)
+#   근거가 사라졌다 — 그래서 거는 자리를 이 함수가 직접 든다.
 # ⚠ **역슬래시를 글자로 안 적는다** — MSYS heredoc 이 삼켜 조용히 어긋난다(#14 가 쟀다).
 #   파이썬 쪽에서 `chr(92)` 로 짓는다.
-plant_trust() {
-  "$PY_CMD" -c '' >/dev/null 2>&1 || return 0   # 존재가 아니라 불러 본다 (스토어 껍데기)
-  "$PY_CMD" - "$PROJECT_DIR" <<'PYTRUST'
-import json, os, sys, tempfile
-BS = chr(92)
-d = sys.argv[1]
-forms = sorted({d.replace('/', BS), d.replace(BS, '/')})
-p = os.path.join(os.path.expanduser('~'), '.claude.json')
-try:
-    with open(p, encoding='utf-8') as f:
-        cfg = json.load(f)
-except (OSError, ValueError):
-    raise SystemExit(0)                  # 없거나 깨졌으면 손대지 않는다
-pr = cfg.setdefault('projects', {})
-todo = [k for k in forms if not (pr.get(k) or {}).get('hasTrustDialogAccepted')]
-if not todo:
-    raise SystemExit(0)                  # 정상 — 거의 늘 여기서 끝난다
-for k in todo:
-    pr.setdefault(k, {})['hasTrustDialogAccepted'] = True
-fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p) or '.')
-try:
-    with os.fdopen(fd, 'w', encoding='utf-8') as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, p)
-    print('  신뢰 — %d 자리에 걸었다 (다음 세션부터 안 묻는다)' % len(todo))
-except Exception:
-    try:
-        os.unlink(tmp)
-    except OSError:
-        pass
-PYTRUST
-  return 0
-}
 
 wire_python_path() {
   [ -x "$VENV_BIN/python" ] || [ -x "$VENV_BIN/python.exe" ] || return 0
@@ -446,8 +508,7 @@ if [ "$MODE" = auto ]; then
   pull_ff "$PROJECT_DIR"
   [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" != "$PROJECT_DIR" ] && pull_ff "$CONFIG_ROOT"
   deploy_home_norms
-  plant_home_hook    # 지문 게이트 앞이다 — 심겼나는 선언 지문과 무관한 명제다
-  plant_trust        # 같은 자리다 — 신뢰도 설치의 사건이 아니라 세션의 상태다
+  plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
   wire_python_path   # 지문 게이트 앞이다 — 배선은 설치의 사건이 아니라 세션의 상태다 (0011)
   # ── 낡음 게이트 — **선언이 그대로여도 도구는 낡는다** ────────────────────────
   # ⚠ 지문은 「선언이 바뀌었나」를 재지 「도구가 낡았나」를 안 잰다. 그래서 선언을 안 고치는
@@ -524,12 +585,11 @@ if [ "$MODE" = install ]; then
   #      몸통은 deploy_home_norms 한 벌이다 — PC 매 세션 갈래(auto)와 같은 것을 민다 ──
   deploy_home_norms
 
-  # ── ②′ 전역 SessionStart 훅 — 몸통은 위 plant_home_hook 한 벌이다.
+  # ── ②′ 전역 SessionStart 훅 · 신뢰 — 몸통은 위 plant_session_state 한 벌이다.
   #    auto 가 지문 게이트 앞에서 이미 부르지만, `--install` 로 곧장 들어온 갈래
   #    (deploy.ps1 · bootstrap-vdi.sh)는 그 자리를 안 지나므로 여기서도 부른다.
   #    멱등이라 겹쳐 불려도 항목은 하나다 (0028 이 쟀다).
-  plant_home_hook
-  plant_trust
+  plant_session_state
 
   # ── ③ 파이썬 축 — requirements.txt 의 존재가 곧 선언이다. venv 에 깐다 ──
   if [ -f "$PROJECT_DIR/requirements.txt" ]; then
