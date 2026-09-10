@@ -1,111 +1,346 @@
-<svg xmlns="http://www.w3.org/2000/svg" lang="ko" role="img" viewBox="0 0 1688 934" width="1688" height="934" aria-labelledby="flow-title">
-<title id="flow-title">Claude Code 사내 설치 흐름</title>
-<style>/*<![CDATA[*/
-text { font-family: Pretendard, "Pretendard Variable", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
-.bx { fill: #eef4fb; stroke: #5c7f9f; stroke-width: 1.2; }
-.lb { fill: #14242f; font-size: 13px; font-weight: 600; text-anchor: middle; }
-.sub { fill: #b0242c; font-size: 10px; text-anchor: middle; }
-.ar { fill: none; stroke: #8a9cac; stroke-width: 1.4; }
-.ed { fill: #5d7183; font-size: 10px; text-anchor: middle; }
-.edl { fill: #5d7183; font-size: 10px; text-anchor: start; }
-.bd { fill: #f7fafc; stroke: #d6e0e8; stroke-width: 1; stroke-dasharray: 5 4; }
-.bl { fill: #6b7f90; font-size: 11px; font-weight: 600; }
-.rb { fill: #fdf5f5; stroke: #e6bfbf; stroke-width: 1; }
-.rl { fill: #a3323a; font-size: 11px; font-weight: 600; }
-.rt { fill: #8f2f36; font-size: 10px; }
-.ai .bx { fill: #fff3e0; stroke: #d9822b; }
-.tg { fill: #d9822b; }
-.tt { fill: #ffffff; font-size: 10px; font-weight: 700; text-anchor: middle; letter-spacing: .04em; }
-.open .bx { fill: #ffffff; stroke: #9aacbb; stroke-dasharray: 6 4; }
-.open .lb { fill: #6b7f90; font-weight: 500; }
-/*]]>*/</style>
-<defs><marker id="tip" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8a9cac"/></marker></defs>
-<g><rect class="bd" x="8" y="803" width="1672" height="113" rx="8"/><text class="bl" x="20" y="819">내 저장소</text></g>
-<g><rect class="bd" x="8" y="703" width="1672" height="95" rx="8"/><text class="bl" x="20" y="719">설치 몸통</text></g>
-<g><rect class="bd" x="8" y="585" width="1672" height="113" rx="8"/><text class="bl" x="20" y="601">사람</text></g>
-<g><rect class="bd" x="8" y="437" width="1672" height="113" rx="8"/><text class="bl" x="20" y="453">설치 몸통</text></g>
-<g><rect class="bd" x="8" y="275" width="1672" height="127" rx="8"/><text class="bl" x="20" y="291">설치 몸통</text></g>
-<g><rect class="bd" x="8" y="145" width="1672" height="95" rx="8"/><text class="bl" x="20" y="161">설치 창</text></g>
-<g><rect class="bd" x="8" y="13" width="1672" height="127" rx="8"/><text class="bl" x="20" y="29">사람</text></g>
-<g><rect class="bx" x="18" y="40" width="236" height="58" rx="7"/>
-<text class="lb" x="136.0" y="64">1. zip 을 폴더째 풀어 아무</text>
-<text class="lb" x="136.0" y="82">데나 둔다</text>
-</g>
-<g><rect class="bx" x="490" y="40" width="236" height="90" rx="7"/>
-<text class="lb" x="608.0" y="64">2. install.cmd 를</text>
-<text class="lb" x="608.0" y="82">더블클릭한다</text>
-<text class="sub" x="608.0" y="101">⚠ 경고창을 닫아 버리면 아무 일도 안</text>
-<text class="sub" x="608.0" y="115">일어난다</text>
-</g>
-<g><rect class="bx" x="1434" y="40" width="236" height="76" rx="7"/>
-<text class="lb" x="1552.0" y="64">5. API 키를 넣는다 · 제</text>
-<text class="lb" x="1552.0" y="82">저장소가 있으면 그 주소도</text>
-<text class="lb" x="1552.0" y="100">넣는다</text>
-</g>
-<g><rect class="bx" x="962" y="172" width="236" height="58" rx="7"/>
-<text class="lb" x="1080.0" y="196">4. 설치 창이 뜬다 — 주소와</text>
-<text class="lb" x="1080.0" y="214">모델은 채워져 있다</text>
-</g>
-<g><rect class="bx" x="18" y="302" width="236" height="90" rx="7"/>
-<text class="lb" x="136.0" y="326">6. [1/8] 프로그램 — VS Code</text>
-<text class="lb" x="136.0" y="344">· Node · Git · Python · gh</text>
-<text class="sub" x="136.0" y="363">⚠ winget 이 정책에 막히면 여기서</text>
-<text class="sub" x="136.0" y="377">진다</text>
-</g>
-<g><rect class="bx" x="490" y="302" width="236" height="58" rx="7"/>
-<text class="lb" x="608.0" y="326">7. [2/8] VS Code 클로드</text>
-<text class="lb" x="608.0" y="344">확장</text>
-</g>
-<g><rect class="bx" x="962" y="302" width="236" height="40" rx="7"/>
-<text class="lb" x="1080.0" y="326">8. [3/8] Claude Code CLI</text>
-</g>
-<g><rect class="bx" x="1434" y="302" width="236" height="58" rx="7"/>
-<text class="lb" x="1552.0" y="326">9. [4/8] 키와 주소 — 사용자</text>
-<text class="lb" x="1552.0" y="344">환경변수로 심는다</text>
-</g>
-<g><rect class="bx" x="18" y="464" width="236" height="40" rx="7"/>
-<text class="lb" x="136.0" y="488">10. [5/8] 홈 설정</text>
-</g>
-<g><rect class="bx" x="490" y="464" width="236" height="58" rx="7"/>
-<text class="lb" x="608.0" y="488">11. [6/8] 개인 규범·룰·스킬</text>
-<text class="lb" x="608.0" y="506">— 켠 사람만</text>
-</g>
-<g><rect class="bx" x="962" y="464" width="236" height="76" rx="7"/>
-<text class="lb" x="1080.0" y="488">12. [7/8] 사내 환경 문서 ·</text>
-<text class="lb" x="1080.0" y="506">씨앗 둘 — 배관 · 설정</text>
-<text class="lb" x="1080.0" y="524">저장소</text>
-</g>
-<g><rect class="bx" x="1434" y="464" width="236" height="76" rx="7"/>
-<text class="lb" x="1552.0" y="488">13. [8/8] 개인 값 저장소 —</text>
-<text class="lb" x="1552.0" y="506">주소를 넣었으면 clone 하고</text>
-<text class="lb" x="1552.0" y="524">넘긴다</text>
-</g>
-<g><rect class="bx" x="962" y="612" width="236" height="76" rx="7"/>
-<text class="lb" x="1080.0" y="636">16. 열려 있는 VS Code 를</text>
-<text class="lb" x="1080.0" y="654">전부 닫고 새로 연다</text>
-<text class="sub" x="1080.0" y="673">⚠ 낡은 창은 방금 심은 키를 못 본다</text>
-</g>
-<g><rect class="bx" x="490" y="730" width="236" height="58" rx="7"/>
-<text class="lb" x="608.0" y="754">15. 검증 — [O] / [X] 를</text>
-<text class="lb" x="608.0" y="772">찍는다</text>
-</g>
-<g><rect class="bx" x="18" y="830" width="236" height="76" rx="7"/>
-<text class="lb" x="136.0" y="854">14. 부트스트랩이 든다 — git</text>
-<text class="lb" x="136.0" y="872">신원 · 형제 저장소 · 자리 ·</text>
-<text class="lb" x="136.0" y="890">키 · 로그인 · 배포</text>
-</g>
-<path class="ar" d="M 254 69.0 L 372.0 69.0 L 372.0 85.0 L 483 85.0" marker-end="url(#tip)"/><text class="ed" x="372.0" y="63.0">install.cmd 를 찾는다</text>
-<path class="ar" d="M 726 85.0 L 844.0 85.0 L 844.0 201.0 L 955 201.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="79.0">경고창 → 추가 정보 → 실행</text>
-<path class="ar" d="M 1198 201.0 L 1316.0 201.0 L 1316.0 78.0 L 1427 78.0" marker-end="url(#tip)"/><text class="ed" x="1316.0" y="195.0">빈 칸 둘</text>
-<path class="ar" d="M 1670 78.0 L 1688.0 78.0 L 1688.0 260.0 L 9.0 260.0 L 9.0 347.0 L 11 347.0" marker-end="url(#tip)"/><text class="edl" x="1692.0" y="83.0">[설치 시작] 을 누른다</text>
-<path class="ar" d="M 254 347.0 L 372.0 347.0 L 372.0 331.0 L 483 331.0" marker-end="url(#tip)"/><text class="ed" x="372.0" y="341.0">깔린 뒤</text>
-<path class="ar" d="M 726 331.0 L 844.0 331.0 L 844.0 322.0 L 955 322.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="325.0">확장은 CLI 를 부른다</text>
-<path class="ar" d="M 1198 322.0 L 1316.0 322.0 L 1316.0 331.0 L 1427 331.0" marker-end="url(#tip)"/><text class="ed" x="1316.0" y="316.0">둘이 짝이다</text>
-<path class="ar" d="M 1670 331.0 L 1688.0 331.0 L 1688.0 422.0 L 9.0 422.0 L 9.0 484.0 L 11 484.0" marker-end="url(#tip)"/><text class="edl" x="1692.0" y="336.0">새 창이 볼 자리에</text>
-<path class="ar" d="M 254 484.0 L 372.0 484.0 L 372.0 493.0 L 483 493.0" marker-end="url(#tip)"/><text class="ed" x="372.0" y="478.0">~/.claude/settings.json</text>
-<path class="ar" d="M 726 493.0 L 844.0 493.0 L 844.0 502.0 L 955 502.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="487.0">안 켜도 설치는 완전하다</text>
-<path class="ar" d="M 1198 502.0 L 1427 502.0" marker-end="url(#tip)"/><text class="ed" x="1316.0" y="496.0">~/.claude/ 로</text>
-<path class="ar" d="M 1670 502.0 L 1688.0 502.0 L 1688.0 570.0 L 9.0 570.0 L 9.0 868.0 L 11 868.0" marker-end="url(#tip)"/><text class="edl" x="1692.0" y="507.0">Git Bash 로 부른다</text>
-<path class="ar" d="M 254 868.0 L 372.0 868.0 L 372.0 759.0 L 483 759.0" marker-end="url(#tip)"/><text class="ed" x="372.0" y="862.0">넘긴 뒤는 저쪽 몫</text>
-<path class="ar" d="M 726 759.0 L 844.0 759.0 L 844.0 650.0 L 955 650.0" marker-end="url(#tip)"/><text class="ed" x="844.0" y="753.0">하나라도 [X] 면 안 선 것</text>
-</svg>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 진본은 install-flow.steps.json + 갈래 겹침이다. 이 파일은 flow-to-archify.mjs → archify → svg-extract.mjs 로 굽는 파생물이라 손으로 고치지 않는다. -->
+<svg viewBox="0 0 1062 2010" role="img" lang="ko" aria-labelledby="archify-diagram-title archify-diagram-description" fill="rgb(0, 0, 0)" fill-opacity="1" fill-rule="nonzero" stroke="none" stroke-width="1px" stroke-opacity="1" stroke-dashoffset="0px" stroke-linecap="butt" stroke-linejoin="miter" opacity="1" font-family="'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Noto Sans CJK KR', 'Segoe UI', system-ui, sans-serif" font-size="16px" font-weight="400" text-anchor="start" display="block" visibility="visible" xmlns="http://www.w3.org/2000/svg" width="1062" height="2010">
+        <title id="archify-diagram-title" stroke-width="1px" opacity="1" display="inline" visibility="visible">Claude Code 사내 설치 흐름</title>
+        <desc id="archify-diagram-description" stroke-width="1px" opacity="1" display="inline" visibility="visible">A workflow diagram generated by Archify.</desc>
+        
+        <defs stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+            <polygon points="0 0, 10 3.5, 0 7" fill="rgb(148, 163, 184)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></polygon>
+          </marker>
+          <marker id="arrowhead-emphasis" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+            <polygon points="0 0, 10 3.5, 0 7" fill="rgb(5, 150, 105)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></polygon>
+          </marker>
+          <marker id="arrowhead-security" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+            <polygon points="0 0, 10 3.5, 0 7" fill="rgb(225, 29, 72)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></polygon>
+          </marker>
+          <marker id="arrowhead-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+            <polygon points="0 0, 10 3.5, 0 7" fill="rgb(124, 58, 237)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></polygon>
+          </marker>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+            <path d="M 40 0 L 0 0 0 40" stroke-width="0.5px" fill="none" stroke="rgb(226, 232, 240)" opacity="1" display="inline" visibility="visible"></path>
+          </pattern>
+        </defs>
+
+        
+        <rect width="100%" height="100%" fill="url(&quot;#grid&quot;)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+
+        
+        <rect x="40" y="52" width="1006" height="1834" rx="10" stroke-width="1px" fill="rgba(248, 250, 252, 0.65)" stroke="rgb(203, 213, 225)" stroke-dasharray="6px, 6px" opacity="1" display="inline" visibility="visible"></rect>
+        <text x="54" y="74" font-size="10px" font-weight="600" fill="rgb(148, 163, 184)" stroke-width="1px" opacity="1" display="block" visibility="visible">01 / 설치가 도는 순서 — 위에서 아래로</text>
+
+        
+        <line x1="239.39999999999998" y1="35" x2="331.4" y2="35" stroke-width="1.1px" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></line>
+        <rect x="239.39999999999998" y="27" width="92" height="16" rx="4" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+        <text x="285.4" y="39" font-size="8px" font-weight="600" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">사람</text>
+        <line x1="359.4" y1="35" x2="451.4" y2="35" stroke-width="1.1px" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></line>
+        <rect x="359.4" y="27" width="92" height="16" rx="4" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+        <text x="405.4" y="39" font-size="8px" font-weight="600" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">설치 창</text>
+        <line x1="479.4" y1="35" x2="571.4" y2="35" stroke-width="1.1px" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></line>
+        <rect x="479.4" y="27" width="92" height="16" rx="4" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+        <text x="525.4" y="39" font-size="8px" font-weight="600" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">설치 몸통</text>
+        <line x1="701.9" y1="35" x2="793.9" y2="35" stroke-width="1.1px" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></line>
+        <rect x="701.9" y="27" width="92" height="16" rx="4" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+        <text x="747.9" y="39" font-size="8px" font-weight="600" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">내 저장소</text>
+
+        
+
+
+        
+        <path d="M 285.4 146 L 285.4 194" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 1010 L 525.4 1066" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 1118 L 525.4 1174" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 1226 L 525.4 1282" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 1334 L 525.4 1390" stroke-width="1.4px" marker-end="url(#arrowhead-security)" fill="none" stroke="rgb(225, 29, 72)" stroke-dasharray="5px, 5px" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 747.9 1658 L 747.9 1674 L 636.65 1674 L 636.65 1698 L 525.4 1698 L 525.4 1714" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 1766 L 525.4 1782 L 405.4 1782 L 405.4 1798 L 285.4 1798 L 285.4 1814" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 285.4 262 L 285.4 278 L 345.4 278 L 345.4 294 L 405.4 294 L 405.4 310" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 405.4 362 L 405.4 378 L 345.4 378 L 345.4 402 L 285.4 402 L 285.4 418" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 285.4 470 L 285.4 486 L 405.4 486 L 405.4 502 L 525.4 502 L 525.4 518" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 586 L 525.4 634" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 686 L 525.4 742" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 794 L 525.4 850" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 902 L 525.4 958" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 1442 L 525.4 1490" stroke-width="1.4px" marker-end="url(#arrowhead-security)" fill="none" stroke="rgb(225, 29, 72)" stroke-dasharray="5px, 5px" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 600.4 1416 L 747.9 1416 L 747.9 1498" stroke-width="1.4px" marker-end="url(#arrowhead-security)" fill="none" stroke="rgb(225, 29, 72)" stroke-dasharray="5px, 5px" opacity="1" display="inline" visibility="visible"></path>
+        <path d="M 525.4 1558 L 525.4 1574 L 636.65 1574 L 636.65 1590 L 747.9 1590 L 747.9 1606" stroke-width="1.4px" marker-end="url(#arrowhead)" fill="none" stroke="rgb(148, 163, 184)" opacity="1" display="inline" visibility="visible"></path>
+
+        
+        <g role="group" aria-label="Direct relationship explorer" stroke-width="1px" opacity="1" display="inline" visibility="visible"><desc id="archify-relationship-help" stroke-width="1px" opacity="1" display="inline" visibility="visible">Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.</desc><g role="button" tabindex="0" aria-pressed="false" aria-label="Inspect relationship 1 of 17: 1. zip 을 폴더째 풀어 아무 데나 둔다 to 2. install.cmd 를 더블클릭한다, install.cmd 를 찾는다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">1. zip 을 폴더째 풀어 아무 데나 둔다 → 2. install.cmd 를 더블클릭한다 · install.cmd 를 찾는다</title><path d="M 285.4 146 L 285.4 194" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 285.4 146 L 285.4 194" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 2 of 17: 10. [5/8] 홈 설정 to 11. [6/8] 개인 규범·룰·스킬, ~/.claude/settings.json. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">10. [5/8] 홈 설정 → 11. [6/8] 개인 규범·룰·스킬 · ~/.claude/settings.json</title><path d="M 525.4 1010 L 525.4 1066" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 1010 L 525.4 1066" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 3 of 17: 11. [6/8] 개인 규범·룰·스킬 to 12. [7/8] 사내 환경 문서 · 씨앗 둘, 안 켜도 설치는 완전하다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">11. [6/8] 개인 규범·룰·스킬 → 12. [7/8] 사내 환경 문서 · 씨앗 둘 · 안 켜도 설치는 완전하다</title><path d="M 525.4 1118 L 525.4 1174" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 1118 L 525.4 1174" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 4 of 17: 12. [7/8] 사내 환경 문서 · 씨앗 둘 to 13. [8/8] 개인 값 저장소, ~/.claude/ 로. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">12. [7/8] 사내 환경 문서 · 씨앗 둘 → 13. [8/8] 개인 값 저장소 · ~/.claude/ 로</title><path d="M 525.4 1226 L 525.4 1282" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 1226 L 525.4 1282" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 5 of 17: 13. [8/8] 개인 값 저장소 to 저장소를 clone 한다, 주소를 넣었다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">13. [8/8] 개인 값 저장소 → 저장소를 clone 한다 · 주소를 넣었다</title><path d="M 525.4 1334 L 525.4 1390" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 1334 L 525.4 1390" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 6 of 17: 14. 부트스트랩이 든다 to 15. 검증, 넘긴 뒤는 저쪽 몫. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">14. 부트스트랩이 든다 → 15. 검증 · 넘긴 뒤는 저쪽 몫</title><path d="M 747.9 1658 L 747.9 1674 L 636.65 1674 L 636.65 1698 L 525.4 1698 L 525.4 1714" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 747.9 1658 L 747.9 1674 L 636.65 1674 L 636.65 1698 L 525.4 1698 L 525.4 1714" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 7 of 17: 15. 검증 to 16. 열려 있는 VS Code 를 전부 닫고 새로 연다, 하나라도 [X] 면 안 선 것. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">15. 검증 → 16. 열려 있는 VS Code 를 전부 닫고 새로 연다 · 하나라도 [X] 면 안 선 것</title><path d="M 525.4 1766 L 525.4 1782 L 405.4 1782 L 405.4 1798 L 285.4 1798 L 285.4 1814" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 1766 L 525.4 1782 L 405.4 1782 L 405.4 1798 L 285.4 1798 L 285.4 1814" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 8 of 17: 2. install.cmd 를 더블클릭한다 to 4. 설치 창이 뜬다, 경고창 → 추가 정보 → 실행. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">2. install.cmd 를 더블클릭한다 → 4. 설치 창이 뜬다 · 경고창 → 추가 정보 → 실행</title><path d="M 285.4 262 L 285.4 278 L 345.4 278 L 345.4 294 L 405.4 294 L 405.4 310" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 285.4 262 L 285.4 278 L 345.4 278 L 345.4 294 L 405.4 294 L 405.4 310" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 9 of 17: 4. 설치 창이 뜬다 to 5. API 키를 넣는다, 빈 칸 둘. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">4. 설치 창이 뜬다 → 5. API 키를 넣는다 · 빈 칸 둘</title><path d="M 405.4 362 L 405.4 378 L 345.4 378 L 345.4 402 L 285.4 402 L 285.4 418" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 405.4 362 L 405.4 378 L 345.4 378 L 345.4 402 L 285.4 402 L 285.4 418" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 10 of 17: 5. API 키를 넣는다 to 6. [1/8] 프로그램, [설치 시작] 을 누른다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">5. API 키를 넣는다 → 6. [1/8] 프로그램 · [설치 시작] 을 누른다</title><path d="M 285.4 470 L 285.4 486 L 405.4 486 L 405.4 502 L 525.4 502 L 525.4 518" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 285.4 470 L 285.4 486 L 405.4 486 L 405.4 502 L 525.4 502 L 525.4 518" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 11 of 17: 6. [1/8] 프로그램 to 7. [2/8] VS Code 클로드 확장, 깔린 뒤. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">6. [1/8] 프로그램 → 7. [2/8] VS Code 클로드 확장 · 깔린 뒤</title><path d="M 525.4 586 L 525.4 634" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 586 L 525.4 634" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 12 of 17: 7. [2/8] VS Code 클로드 확장 to 8. [3/8] Claude Code CLI, 확장은 CLI 를 부른다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">7. [2/8] VS Code 클로드 확장 → 8. [3/8] Claude Code CLI · 확장은 CLI 를 부른다</title><path d="M 525.4 686 L 525.4 742" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 686 L 525.4 742" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 13 of 17: 8. [3/8] Claude Code CLI to 9. [4/8] 키와 주소, 둘이 짝이다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">8. [3/8] Claude Code CLI → 9. [4/8] 키와 주소 · 둘이 짝이다</title><path d="M 525.4 794 L 525.4 850" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 794 L 525.4 850" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 14 of 17: 9. [4/8] 키와 주소 to 10. [5/8] 홈 설정, 새 창이 볼 자리에. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">9. [4/8] 키와 주소 → 10. [5/8] 홈 설정 · 새 창이 볼 자리에</title><path d="M 525.4 902 L 525.4 958" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 902 L 525.4 958" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 15 of 17: 저장소를 clone 한다 to Git Bash 로 부트스트랩을 부른다, 뿌리에 bootstrap-vdi.sh 가 있다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">저장소를 clone 한다 → Git Bash 로 부트스트랩을 부른다 · 뿌리에 bootstrap-vdi.sh 가 있다</title><path d="M 525.4 1442 L 525.4 1490" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 1442 L 525.4 1490" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 16 of 17: 저장소를 clone 한다 to 저장소만 받아 두고 끝난다, 없다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">저장소를 clone 한다 → 저장소만 받아 두고 끝난다 · 없다</title><path d="M 600.4 1416 L 747.9 1416 L 747.9 1498" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 600.4 1416 L 747.9 1416 L 747.9 1498" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g><g role="button" tabindex="-1" aria-pressed="false" aria-label="Inspect relationship 17 of 17: Git Bash 로 부트스트랩을 부른다 to 14. 부트스트랩이 든다, 넘긴다. Press Enter for details." stroke-width="1px" opacity="1" display="inline" visibility="visible"><title stroke-width="1px" opacity="1" display="inline" visibility="visible">Git Bash 로 부트스트랩을 부른다 → 14. 부트스트랩이 든다 · 넘긴다</title><path d="M 525.4 1558 L 525.4 1574 L 636.65 1574 L 636.65 1590 L 747.9 1590 L 747.9 1606" stroke-width="24px" fill="none" stroke="rgba(0, 0, 0, 0)" stroke-linecap="round" stroke-linejoin="round" opacity="1" display="inline" visibility="visible"></path><path d="M 525.4 1558 L 525.4 1574 L 636.65 1574 L 636.65 1590 L 747.9 1590 L 747.9 1606" stroke-width="6px" fill="none" stroke="color(srgb 0.0313726 0.568627 0.698039 / 0.34)" stroke-dasharray="2px, 4px" stroke-linecap="round" stroke-linejoin="round" opacity="0" display="inline" visibility="visible"></path></g></g><g id="node-n1" tabindex="0" role="button" aria-label="Focus 1. zip 을 폴더째 풀어 아무 데나 둔다, 설치가 도는 순서 — 위에서 아래로 › 사람" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">1. zip 을 폴더째 풀어 아무 데나 둔다 · 설치가 도는 순서 — 위에서 아래로 › 사람</title>
+          <rect x="165.89999999999998" y="94" width="239" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="165.89999999999998" y="94" width="239" height="52" rx="6" stroke-width="1.5px" fill="rgba(148, 163, 184, 0.18)" stroke="rgb(100, 116, 139)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(171.89999999999998 100) scale(0.6875)" fill="none" stroke="rgb(100, 116, 139)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="285.4" y="115" font-size="10.6px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">1. zip 을 폴더째 풀어 아무 데나 둔다</text>
+        </g>
+
+        <g id="node-n16" tabindex="0" role="button" aria-label="Focus 16. 열려 있는 VS Code 를 전부 닫고 새로 연다, 설치가 도는 순서 — 위에서 아래로 › 사람" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">16. 열려 있는 VS Code 를 전부 닫고 새로 연다 · 설치가 도는 순서 — 위에서 아래로 › 사람 · ⚠ 낡은 창은 방금 심은 키를 못 본다</title>
+          <rect x="138.39999999999998" y="1814" width="294" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="138.39999999999998" y="1814" width="294" height="68" rx="6" stroke-width="1.5px" fill="rgba(148, 163, 184, 0.18)" stroke="rgb(100, 116, 139)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(144.39999999999998 1820) scale(0.6875)" fill="none" stroke="rgb(100, 116, 139)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="285.4" y="1835" font-size="10.8px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">16. 열려 있는 VS Code 를 전부 닫고 새로 연다</text>
+        <text x="285.4" y="1870" font-size="7px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 낡은 창은 방금 심은 키를 못 본다</text>
+        </g>
+
+        <g id="node-n2" tabindex="0" role="button" aria-label="Focus 2. install.cmd 를 더블클릭한다, 설치가 도는 순서 — 위에서 아래로 › 사람" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">2. install.cmd 를 더블클릭한다 · 설치가 도는 순서 — 위에서 아래로 › 사람 · ⚠ 경고창을 닫아 버리면 아무 일도 안 일어난다</title>
+          <rect x="186.39999999999998" y="194" width="198" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="186.39999999999998" y="194" width="198" height="68" rx="6" stroke-width="1.5px" fill="rgba(148, 163, 184, 0.18)" stroke="rgb(100, 116, 139)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(192.39999999999998 200) scale(0.6875)" fill="none" stroke="rgb(100, 116, 139)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="285.4" y="215" font-size="10.5px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">2. install.cmd 를 더블클릭한다</text>
+        <text x="285.4" y="250" font-size="7px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 경고창을 닫아 버리면 아무 일도 안 일어난다</text>
+        </g>
+
+        <g id="node-n5" tabindex="0" role="button" aria-label="Focus 5. API 키를 넣는다, 제 저장소가 있으면 그 주소도 — 아래 [8/8] 이 든다, 설치가 도는 순서 — 위에서 아래로 › 사람" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">5. API 키를 넣는다 · 제 저장소가 있으면 그 주소도 — 아래 [8/8] 이 든다 · 설치가 도는 순서 — 위에서 아래로 › 사람</title>
+          <rect x="163.39999999999998" y="418" width="244" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="163.39999999999998" y="418" width="244" height="52" rx="6" stroke-width="1.5px" fill="rgba(148, 163, 184, 0.18)" stroke="rgb(100, 116, 139)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(169.39999999999998 424) scale(0.6875)" fill="none" stroke="rgb(100, 116, 139)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="285.4" y="439" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">5. API 키를 넣는다</text>
+          <text x="285.4" y="456" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">제 저장소가 있으면 그 주소도 — 아래 [8/8] 이 든다</text>
+        </g>
+
+        <g id="node-n4" tabindex="0" role="button" aria-label="Focus 4. 설치 창이 뜬다, 주소와 모델은 채워져 있다, 설치가 도는 순서 — 위에서 아래로 › 설치 창" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">4. 설치 창이 뜬다 · 주소와 모델은 채워져 있다 · 설치가 도는 순서 — 위에서 아래로 › 설치 창</title>
+          <rect x="330.4" y="310" width="150" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="330.4" y="310" width="150" height="52" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(336.4 316) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <rect x="2" y="3" width="12" height="10" rx="2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
+            <path d="M2 6.5h12" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+            <circle cx="4.1" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
+            <circle cx="6.3" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
+          </g>
+          <text x="405.4" y="331" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">4. 설치 창이 뜬다</text>
+          <text x="405.4" y="348" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">주소와 모델은 채워져 있다</text>
+        </g>
+
+        <g id="node-n10" tabindex="0" role="button" aria-label="Focus 10. [5/8] 홈 설정, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">10. [5/8] 홈 설정 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="450.4" y="958" width="150" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="450.4" y="958" width="150" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(456.4 964) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="979" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">10. [5/8] 홈 설정</text>
+        </g>
+
+        <g id="node-n11" tabindex="0" role="button" aria-label="Focus 11. [6/8] 개인 규범·룰·스킬, 켠 사람만, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">11. [6/8] 개인 규범·룰·스킬 · 켠 사람만 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="436.4" y="1066" width="178" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="436.4" y="1066" width="178" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(442.4 1072) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="1087" font-size="10.4px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">11. [6/8] 개인 규범·룰·스킬</text>
+          <text x="525.4" y="1104" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">켠 사람만</text>
+        </g>
+
+        <g id="node-n12" tabindex="0" role="button" aria-label="Focus 12. [7/8] 사내 환경 문서 · 씨앗 둘, 배관 · 설정 저장소, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">12. [7/8] 사내 환경 문서 · 씨앗 둘 · 배관 · 설정 저장소 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="412.4" y="1174" width="226" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="412.4" y="1174" width="226" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(418.4 1180) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="1195" font-size="10.6px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">12. [7/8] 사내 환경 문서 · 씨앗 둘</text>
+          <text x="525.4" y="1212" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">배관 · 설정 저장소</text>
+        </g>
+
+        <g id="node-n13" tabindex="0" role="button" aria-label="Focus 13. [8/8] 개인 값 저장소, 안 넣었으면 건너뜀 — 빈 칸이 기본이다, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">13. [8/8] 개인 값 저장소 · 안 넣었으면 건너뜀 — 빈 칸이 기본이다 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="432.4" y="1282" width="186" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="432.4" y="1282" width="186" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(438.4 1288) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="1303" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">13. [8/8] 개인 값 저장소</text>
+          <text x="525.4" y="1320" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">안 넣었으면 건너뜀 — 빈 칸이 기본이다</text>
+        </g>
+
+        <g id="node-n15" tabindex="0" role="button" aria-label="Focus 15. 검증, [O] / [X] 를 찍는다, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">15. 검증 · [O] / [X] 를 찍는다 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="450.4" y="1714" width="150" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="450.4" y="1714" width="150" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(456.4 1720) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="1735" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">15. 검증</text>
+          <text x="525.4" y="1752" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">[O] / [X] 를 찍는다</text>
+        </g>
+
+        <g id="node-n6" tabindex="0" role="button" aria-label="Focus 6. [1/8] 프로그램, VS Code · Node · Git · Python · gh, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">6. [1/8] 프로그램 · VS Code · Node · Git · Python · gh · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통 · ⚠ winget 이 정책에 막히면 여기서 진다</title>
+          <rect x="439.4" y="518" width="172" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="439.4" y="518" width="172" height="68" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(445.4 524) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="539" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">6. [1/8] 프로그램</text>
+          <text x="525.4" y="556" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">VS Code · Node · Git · Python · gh</text>
+        <text x="525.4" y="574" font-size="7px" text-anchor="middle" fill="rgb(5, 150, 105)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ winget 이 정책에 막히면 여기서 진다</text>
+        </g>
+
+        <g id="node-n7" tabindex="0" role="button" aria-label="Focus 7. [2/8] VS Code 클로드 확장, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">7. [2/8] VS Code 클로드 확장 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="432.9" y="634" width="185" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="432.9" y="634" width="185" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(438.9 640) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="655" font-size="10.5px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">7. [2/8] VS Code 클로드 확장</text>
+        </g>
+
+        <g id="node-n8" tabindex="0" role="button" aria-label="Focus 8. [3/8] Claude Code CLI, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">8. [3/8] Claude Code CLI · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="446.4" y="742" width="158" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="446.4" y="742" width="158" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(452.4 748) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="763" font-size="10.4px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">8. [3/8] Claude Code CLI</text>
+        </g>
+
+        <g id="node-n9" tabindex="0" role="button" aria-label="Focus 9. [4/8] 키와 주소, 사용자 환경변수로 심는다, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">9. [4/8] 키와 주소 · 사용자 환경변수로 심는다 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="450.4" y="850" width="150" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="450.4" y="850" width="150" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(456.4 856) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="871" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">9. [4/8] 키와 주소</text>
+          <text x="525.4" y="888" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">사용자 환경변수로 심는다</text>
+        </g>
+
+        <g id="node-nclone" tabindex="0" role="button" aria-label="Focus 저장소를 clone 한다, ~/repos/&lt;저장소 이름&gt;, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">저장소를 clone 한다 · ~/repos/&lt;저장소 이름&gt; · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="450.4" y="1390" width="150" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="450.4" y="1390" width="150" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(456.4 1396) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="1411" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">저장소를 clone 한다</text>
+          <text x="525.4" y="1428" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">~/repos/&lt;저장소 이름&gt;</text>
+        </g>
+
+        <g id="node-nhandoff" tabindex="0" role="button" aria-label="Focus Git Bash 로 부트스트랩을 부른다, 골든 샘플로 저장소 뿌리에 만들어 둔 파일이다, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">Git Bash 로 부트스트랩을 부른다 · 골든 샘플로 저장소 뿌리에 만들어 둔 파일이다 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통 · ⚠ 파일 이름이 이것이어야 불린다 — 다르면 clone 만 되고 끝난다</title>
+          <rect x="392.9" y="1490" width="265" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="392.9" y="1490" width="265" height="68" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(398.9 1496) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="525.4" y="1511" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">Git Bash 로 부트스트랩을 부른다</text>
+          <text x="525.4" y="1528" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">골든 샘플로 저장소 뿌리에 만들어 둔 파일이다</text>
+        <text x="525.4" y="1546" font-size="7px" text-anchor="middle" fill="rgb(5, 150, 105)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 파일 이름이 이것이어야 불린다 — 다르면 clone 만 되고 끝난다</text>
+        </g>
+
+        <g id="node-n14" tabindex="0" role="button" aria-label="Focus 14. 부트스트랩이 든다, git 신원 · 형제 저장소 · 자리 · 키 · 로그인 · 배포, 설치가 도는 순서 — 위에서 아래로 › 내 저장소" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">14. 부트스트랩이 든다 · git 신원 · 형제 저장소 · 자리 · 키 · 로그인 · 배포 · 설치가 도는 순서 — 위에서 아래로 › 내 저장소</title>
+          <rect x="623.9" y="1606" width="248" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="623.9" y="1606" width="248" height="52" rx="6" stroke-width="1.5px" fill="rgba(167, 139, 250, 0.2)" stroke="rgb(124, 58, 237)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(629.9 1612) scale(0.6875)" fill="none" stroke="rgb(124, 58, 237)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <ellipse cx="8" cy="4" rx="5" ry="2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></ellipse>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="747.9" y="1627" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">14. 부트스트랩이 든다</text>
+          <text x="747.9" y="1644" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">git 신원 · 형제 저장소 · 자리 · 키 · 로그인 · 배포</text>
+        </g>
+
+        <g id="node-nonlyClone" tabindex="0" role="button" aria-label="Focus 저장소만 받아 두고 끝난다, 정당한 결과 — 설치는 선 것, 설치가 도는 순서 — 위에서 아래로 › 내 저장소" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">저장소만 받아 두고 끝난다 · 정당한 결과 — 설치는 선 것 · 설치가 도는 순서 — 위에서 아래로 › 내 저장소</title>
+          <rect x="665.9" y="1498" width="164" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="665.9" y="1498" width="164" height="52" rx="6" stroke-width="1.5px" fill="rgba(167, 139, 250, 0.2)" stroke="rgb(124, 58, 237)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(671.9 1504) scale(0.6875)" fill="none" stroke="rgb(124, 58, 237)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+            <ellipse cx="8" cy="4" rx="5" ry="2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></ellipse>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
+          </g>
+          <text x="747.9" y="1519" font-size="10.4px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">저장소만 받아 두고 끝난다</text>
+          <text x="747.9" y="1536" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">정당한 결과 — 설치는 선 것</text>
+        </g>
+
+        
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="413" y="126" width="110.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="468.4" y="136" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">install.cmd 를 찾는다</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="609.1999999999999" y="990" width="120.39999999999999" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="669.4" y="1000" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">~/.claude/settings.json</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="623.1999999999999" y="1098" width="120.39999999999999" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="683.4" y="1108" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">안 켜도 설치는 완전하다</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="647.1999999999999" y="1206" width="72.4" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="683.4" y="1216" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">~/.claude/ 로</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="627.1999999999999" y="1314" width="72.4" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="663.4" y="1324" font-size="8px" text-anchor="middle" fill="rgb(225, 29, 72)" stroke-width="1px" opacity="1" display="block" visibility="visible">주소를 넣었다</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="880.1" y="1646" width="91.6" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="925.9" y="1656" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">넘긴 뒤는 저쪽 몫</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="608.8" y="1754" width="125.19999999999999" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="671.4" y="1764" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">하나라도 [X] 면 안 선 것</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="48.39999999999998" y="250" width="130" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="113.39999999999998" y="260" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">경고창 → 추가 정보 → 실행</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="489.2" y="350" width="48.4" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="513.4" y="360" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">빈 칸 둘</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="43.99999999999998" y="458" width="110.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="99.39999999999998" y="468" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">[설치 시작] 을 누른다</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="619.6" y="566" width="43.6" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="641.4" y="576" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">깔린 뒤</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="626.4" y="666" width="106" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="679.4" y="676" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">확장은 CLI 를 부른다</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="613" y="774" width="62.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="644.4" y="784" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">둘이 짝이다</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="608.6" y="882" width="91.6" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="654.4" y="892" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">새 창이 볼 자리에</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="283" y="1446" width="158.79999999999998" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="362.4" y="1456" font-size="8px" text-anchor="middle" fill="rgb(225, 29, 72)" stroke-width="1px" opacity="1" display="block" visibility="visible">뿌리에 bootstrap-vdi.sh 가 있다</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="659.15" y="1396" width="30" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="674.15" y="1406" font-size="8px" text-anchor="middle" fill="rgb(225, 29, 72)" stroke-width="1px" opacity="1" display="block" visibility="visible">없다</text>
+        </g>
+        <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <rect x="346" y="1546" width="38.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="365.4" y="1556" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">넘긴다</text>
+        </g>
+
+        
+
+      </svg>
