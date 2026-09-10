@@ -1047,6 +1047,9 @@ foreach ($a in $envAssets) {
 #   저쪽 런타임 칸은 **확인만** 하고, 무엇을 깔지는 이 파일 하나가 든다.
 Write-Host ''
 Write-Host '[8/8] 개인 값 저장소' -ForegroundColor Cyan
+# ⚠ **밖에서 선언한다.** 이 칸이 통째로 안 도는 갈래(git 이 없다 · 주소가 없다)가 있고,
+#   아래 검증이 이 값을 읽는다 — 안 선언하면 그 자리에서 「없는 변수」가 거짓으로 읽힌다.
+$handedOff = $false
 $repoUrl = Read-Directive $EnvFile 'config-repo'
 if (-not $repoUrl) {
   Write-Host '  건너뜀 — install.env 에 #config-repo 가 없다'
@@ -1062,8 +1065,13 @@ if (-not $repoUrl) {
   #   문서에도 없어서 아무도 모르는 채로 있었다.
   #   자리를 바꿔야 하면 고칠 자리는 둘이다: 여기와 저쪽 `ROOT`. 한쪽만 고치면 안 선다.
   $root = Join-Path $env:USERPROFILE 'repos'
-  $dest = Join-Path $root ([IO.Path]::GetFileNameWithoutExtension($repoUrl))
   New-Item -ItemType Directory -Path $root -Force | Out-Null
+
+  # ⚠ **여러 개를 빈칸으로 가른다.** 옛 판은 하나만 받았고, 그 까닭은 「나머지는 그 저장소의
+  #   부트스트랩이 데려온다」였다 — 그런데 그건 **만든 사람의 부트스트랩 사정**이지 받는
+  #   사람의 사정이 아니다. 남은 목록의 진본이 제 저장소에 없으면 여기 적을 수밖에 없다.
+  #   주소에는 빈칸이 없으므로 가르는 자로 빈칸이 안전하다.
+  $repoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
 
   # ⚠ **받은 것과 넘길 자리가 있는 것은 다른 명제다.** 옛 판은 clone 의 실패를 `2>$null` 과
   #   빈 `catch` 로 삼키고, 그 결과를 아래에서 **「저장소에 bootstrap-vdi.sh 가 없다」**로 냈다.
@@ -1072,58 +1080,85 @@ if (-not $repoUrl) {
   #   이름으로 보고하는 자리라 걷었다.
   # ⚠ 까닭은 git 이 이미 말하고 있었다. 버리지 말고 **파일에 잡아 실패할 때만 편다** —
   #   위 규율 그대로다(합치면 `Stop` 이 던지고, 버리면 단서가 사라진다).
-  $log = [IO.Path]::GetTempFileName()
-  $got = $false
-  if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
-    Write-Host "  있음 — pull ($dest)"
-    $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
-    # ⚠ **pull 이 져도 실패로 세지 않는다.** 저장소는 이미 있어 넘길 자리가 살아 있다 —
-    #   망이 끊긴 VDI 에서 옛 판으로라도 부트스트랩이 도는 것이 안 도는 것보다 낫다.
-    #   다만 조용히 넘어가지는 않는다: 옛 판으로 간다는 사실을 말한다.
-    $got = $true
-    if ($rc -ne 0) {
-      Write-Host '  ! pull 이 졌다 — 이미 받아 둔 판으로 넘긴다' -ForegroundColor Yellow
-      Show-Log $log
+  # ⚠ **하나가 져도 나머지를 계속 받는다.** 여럿을 준 사람에게 첫 실패로 멈추면, 성한
+  #   저장소까지 못 받고 까닭도 하나만 본다.
+  $got = @()
+  foreach ($u in $repoUrls) {
+    $dest = Join-Path $root ([IO.Path]::GetFileNameWithoutExtension($u))
+    $log = [IO.Path]::GetTempFileName()
+    if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
+      Write-Host "  있음 — pull ($dest)"
+      $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
+      # ⚠ **pull 이 져도 실패로 세지 않는다.** 저장소는 이미 있어 넘길 자리가 살아 있다 —
+      #   망이 끊긴 VDI 에서 옛 판으로라도 부트스트랩이 도는 것이 안 도는 것보다 낫다.
+      #   다만 조용히 넘어가지는 않는다: 옛 판으로 간다는 사실을 말한다.
+      $got += $dest
+      if ($rc -ne 0) {
+        Write-Host '  ! pull 이 졌다 — 이미 받아 둔 판으로 넘긴다' -ForegroundColor Yellow
+        Show-Log $log
+      }
+    } else {
+      Write-Host "  clone ($dest)"
+      # ⚠ **이 안내를 우리가 찍는다.** 자격 관리자가 뱉는 「브라우저에서 마치라」는 줄은 위
+      #   `Invoke-Logged` 가 파일로 잡아 화면에 안 나온다 — 안 찍으면 사람은 창이 왜 떴는지
+      #   모른 채 기다리고, 그 사이 설치가 멈춘 것처럼 보인다.
+      Write-Host '    GitHub 로그인 창이 뜰 수 있습니다 — 브라우저에서 눌러 주세요' -ForegroundColor Yellow
+      $rc = Invoke-Logged 'git' @('clone', $u, $dest) $log
+      # ⚠ **종료코드만 믿지 않는다.** 0 으로 끝났는데 자리가 안 선 판을 재는 자가 여기다.
+      if ($rc -eq 0 -and (Test-Path -LiteralPath (Join-Path $dest '.git'))) {
+        $got += $dest
+      } else {
+        Write-Host "  ! 못 받았다 — 주소 · 계정 · 망을 본다  ($u)" -ForegroundColor Red
+        Show-Log $log
+        $Fails.Add("개인 값 저장소 (못 받았다: $u)")
+      }
     }
-  } else {
-    Write-Host "  clone ($dest)"
-    # ⚠ **이 안내를 우리가 찍는다.** 자격 관리자가 뱉는 「브라우저에서 마치라」는 줄은 위
-    #   `Invoke-Logged` 가 파일로 잡아 화면에 안 나온다 — 안 찍으면 사람은 창이 왜 떴는지
-    #   모른 채 기다리고, 그 사이 설치가 멈춘 것처럼 보인다.
-    Write-Host '    GitHub 로그인 창이 한 번 뜹니다 — 브라우저에서 눌러 주세요' -ForegroundColor Yellow
-    $rc = Invoke-Logged 'git' @('clone', $repoUrl, $dest) $log
-    # ⚠ **종료코드만 믿지 않는다.** 0 으로 끝났는데 자리가 안 선 판을 재는 자가 여기다.
-    $got = ($rc -eq 0 -and (Test-Path -LiteralPath (Join-Path $dest '.git')))
-    if (-not $got) {
-      Write-Host '  ! 저장소를 못 받았다 — 주소 · 계정 · 망을 본다' -ForegroundColor Red
-      Show-Log $log
-      $Fails.Add('개인 값 저장소 (못 받았다)')
-    }
+    Remove-Item $log -ErrorAction SilentlyContinue
   }
-  Remove-Item $log -ErrorAction SilentlyContinue
 
   # ⚠ **Git Bash 로 부른다.** 저쪽은 bash 몸통이고, PowerShell 에서 직접 못 부른다.
-  $boot = Join-Path $dest 'bootstrap-vdi.sh'
   $bash = @("$env:ProgramFiles\Git\bin\bash.exe",
             "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe") |
           Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+
+  # ⚠ **넘길 자리를 순서로 정하지 않고 찾는다.** 「첫째가 설정 저장소」 같은 규칙을 두면
+  #   사람이 그 순서를 기억해야 하고, 기억해야 하는 것은 그 순간에 안 걸린다. 받아 온
+  #   것들 중 **그 이름의 파일을 든 첫 저장소**가 넘길 자리다.
+  # ⚠ **여럿이 들고 있으면 하나만 부르고 나머지를 이름으로 말한다.** 둘을 잇달아 부르면
+  #   뒤엣것이 앞엣것의 키·설정을 덮는데 그 순서는 사람이 정한 것이 아니다.
+  $bootRepos = @($got | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'bootstrap-vdi.sh') })
+  $dest = $bootRepos | Select-Object -First 1
+  $boot = if ($dest) { Join-Path $dest 'bootstrap-vdi.sh' } else { $null }
+
   if (-not $got) {
     # ⚠ 실패는 위에서 까닭을 대고 이미 셌다 — 여기서 또 세면 **한 사고가 둘로 보고된다.**
     #   대신 사슬이 왜 끊겼는지는 말한다: 안 말하면 부트스트랩이 돈 줄 알 수 있다.
     Write-Host '  넘길 자리가 없어 부트스트랩을 안 부른다'
-  } elseif (-not (Test-Path -LiteralPath $boot)) {
+  } elseif (-not $boot) {
     # ⚠ **실패가 아니다.** 저장소는 왔고(위에서 재고 왔다) 그것이 목적인 사람이 있다.
     #   대신 **안 돈 것을 이름으로 말한다** — 부트스트랩을 기대한 사람이 조용히 속지 않게.
-    Write-Host "  받아 뒀다 — $dest" -ForegroundColor Green
-    Write-Host '    뿌리에 bootstrap-vdi.sh 가 없어 부트스트랩은 안 돌았다.'
+    Write-Host "  받아 뒀다 — $($got.Count)개" -ForegroundColor Green
+    $got | ForEach-Object { Write-Host "     $_" }
+    Write-Host '    어느 뿌리에도 bootstrap-vdi.sh 가 없어 부트스트랩은 안 돌았다.'
     Write-Host '    자동화까지 원하면 ~/.claude/seeds/config-repo/ 를 복사해 그 이름으로 둔다.'
   } elseif (-not $bash) {
     Write-Host '  ! Git Bash 를 못 찾았다' -ForegroundColor Red
     $Fails.Add('개인 값 저장소 (Git Bash 가 없다)')
   } else {
-    Write-Host '  부트스트랩으로 넘긴다 —' -ForegroundColor Green
+    if ($got.Count -gt 1) {
+      Write-Host "  받아 뒀다 — $($got.Count)개" -ForegroundColor Green
+      $got | ForEach-Object { Write-Host "     $_" }
+    }
+    if ($bootRepos.Count -gt 1) {
+      Write-Host "  ! bootstrap-vdi.sh 를 든 저장소가 $($bootRepos.Count)개다 — 첫 것만 부른다" -ForegroundColor Yellow
+      $bootRepos | Select-Object -Skip 1 | ForEach-Object { Write-Host "     안 부른 것: $_" }
+    }
+    Write-Host "  부트스트랩으로 넘긴다 — $dest" -ForegroundColor Green
     Write-Host ''
     & $bash ($boot -replace '\\','/')
+    # ⚠ **판정을 여기서 세운다.** 아래 검증이 「키를 저쪽이 든다」로 넘어가려면 저쪽이
+    #   실제로 돌았어야 한다 — 주소를 넣었다는 사실만으로는 아무것도 안 선다.
+    $handedOff = $true
     if ($LASTEXITCODE -ne 0) { $Fails.Add("부트스트랩 (exit $LASTEXITCODE)") }
   }
 }
@@ -1155,8 +1190,17 @@ foreach ($a in $envAssets) {
 }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
-if ($handsOff) {
-  Write-Host '  (키와 주소는 #config-repo 가 가리키는 저장소가 든다 — 여기서 안 잰다)'
+# ⚠ **「넘겼다」가 아니라 「넘어갔다」로 가른다.** 옛 판은 `$handsOff`(= 주소를 넣었나)만 보고
+#   키 검사를 통째로 건너뛰었다. 그런데 저장소 뿌리에 부트스트랩이 없으면 **아무것도 안 넘어가고**
+#   위 칸도 키를 안 물어, **키가 어디에도 안 심긴 채 초록으로 끝난다** — 부재가 통과로 읽히는
+#   바로 그 자리다. 「받아 두기만 하는 것도 정당한 결과」로 갈래를 넓히면서 난 구멍이다.
+#   그래서 **부트스트랩이 실제로 돌았을 때만** 저쪽에 맡긴다.
+if ($handsOff -and $handedOff) {
+  Write-Host '  (키와 주소는 넘겨받은 저장소가 든다 — 여기서 안 잰다)'
+} elseif ($handsOff -and -not $handedOff) {
+  Write-Host '  ! 저장소를 넣었지만 부트스트랩이 안 돌아, 키를 심은 자가 없다' -ForegroundColor Red
+  Write-Host '    저장소 뿌리에 bootstrap-vdi.sh 를 두거나, 칸을 비우고 다시 눌러 키를 직접 넣는다.'
+  $Fails.Add('키 (넘겨받을 자가 없었다)')
 } elseif ($useGateway) {
   foreach ($v in $Vars) {
     if (-not $v.Gateway) { continue }
