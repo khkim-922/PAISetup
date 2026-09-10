@@ -47,7 +47,8 @@
 │
 ├─ README.md                 이 글
 ├─ LICENSE                   MIT
-└─ .gitattributes            줄끝을 못박는다 — 저장소 사정이라 안 봐도 된다
+├─ .gitattributes            줄끝을 못박는다 — 저장소 사정이라 안 봐도 된다
+└─ .githooks/                만든 사람이 커밋할 때 인코딩을 재는 문지기 — 안 봐도 된다
 ```
 
 `posco/` 와 `seeds/` 는 **고를 것이 아니라 환경**이라 스위치가 없다 — 누가 받아도 홈에 깔린다.

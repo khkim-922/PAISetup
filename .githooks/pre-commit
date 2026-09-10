@@ -1,0 +1,55 @@
+#!/bin/sh
+# 인코딩 게이트 — **파워셸은 BOM 이 있어야 하고, cmd 는 없어야 한다.** 그 둘만 막는다.
+#
+# 왜 이것 둘인가 — 둘 다 **파일은 멀쩡히 커밋되고 남의 PC 에서만 깨진다.**
+#
+#   · `*.ps1` — Windows PowerShell 5.1 은 **BOM 없는 스크립트를 시스템 ANSI 코드페이지로
+#     읽는다**(한국어 윈도우는 cp949). UTF-8 로 저장한 한글이 그 자리에서 깨지고, 따옴표가
+#     안 닫혀 파서가 죽는다. 콘솔 코드페이지(`chcp 65001`)는 다른 자리라 고쳐도 안 낫는다.
+#   · `*.cmd` — 반대다. cmd.exe 는 배치 파일을 콘솔 OEM 코드페이지로 읽으므로 **BOM 이 붙으면
+#     첫 줄이 깨진다.** `@echo off` 가 명령으로 안 읽혀 창에 그대로 찍히고 그 뒤가 어긋난다.
+#     (그래서 `install.cmd` 는 ASCII 만 두는 규율도 함께 진다 — 그 까닭은 그 파일 머리글에.)
+#
+# ⚠ **고쳐 주지 않고 막는다.** 커밋 훅이 스테이지한 파일을 조용히 바꾸면, 사람이 본 것과
+#   커밋된 것이 달라진다. 무엇을 어떻게 고칠지 대고 물러난다.
+#
+# 알면서 통과시켜야 할 때는:  git commit --no-verify
+#
+# ⚠ 이 훅이 걸리려면 `core.hooksPath` 가 이 폴더를 가리켜야 한다 — `.git/hooks/` 는 clone 을
+#   안 따라온다. 설정 저장소의 `deploy.ps1` 이 그것을 맞춘다(`.githooks/` 를 든 저장소면 자동).
+#   안 걸린 PC 에서는 훅 파일만 있고 아무것도 안 돈다 — **걸린 줄 알고 있으면 게이트가 없는
+#   것보다 나쁘다.** 손으로 걸려면:  git config core.hooksPath .githooks
+set -u
+
+BOM="$(printf '\357\273\277')"
+FAIL=0
+
+# 스테이지된 것만 잰다 — 손대지 않은 파일로 커밋을 막지 않는다.
+STAGED="$(git diff --cached --name-only --diff-filter=ACM)"
+[ -n "$STAGED" ] || exit 0
+
+for f in $STAGED; do
+  [ -f "$f" ] || continue
+  head3="$(head -c 3 "$f" 2>/dev/null || true)"
+  case "$f" in
+    *.ps1|*.psm1|*.psd1)
+      if [ "$head3" != "$BOM" ]; then
+        echo "! BOM 이 없다 — 한국어 윈도우에서 한글이 깨진다:  $f"
+        # ⚠ **`echo` 로 찍지 않는다.** 역슬래시를 먹는 셸이 있어 안내가 BOM 글자 자체로
+        #   찍혔다(실측) — 그대로 복사하면 안 듣는다. `printf %s` 는 안 먹는다.
+        printf '%s\n' "    고치는 법:  printf '\\357\\273\\277' | cat - '$f' > t && mv t '$f'"
+        FAIL=1
+      fi
+      ;;
+    *.cmd|*.bat)
+      if [ "$head3" = "$BOM" ]; then
+        echo "! BOM 이 붙었다 — cmd.exe 가 첫 줄을 못 읽는다:  $f"
+        echo "    고치는 법:  tail -c +4 '$f' > t && mv t '$f'"
+        FAIL=1
+      fi
+      ;;
+  esac
+done
+
+[ "$FAIL" = 0 ] || { echo; echo "  파일은 멀쩡히 커밋되고 **남의 PC 에서만** 깨지는 자리다."; exit 1; }
+exit 0
