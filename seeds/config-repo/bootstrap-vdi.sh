@@ -39,7 +39,7 @@ ROOT="$(_conf ROOT)"; ROOT="$(printf '%s' "$ROOT" | sed "s|\$HOME|$HOME|g;s|^~|$
 
 FAILS=""
 
-echo "== 1/3  git 전역 설정 =="
+echo "== 1/4  git 전역 설정 =="
 # ⚠ **빈 값을 심지 않는다.** 선언에서 이름을 빼먹었는데 그대로 심으면 `user.name` 이 빈
 #   문자열로 굳고, 커밋이 「누가 했는지 없는」 채로 선다 — git 은 그걸 막지 않는다.
 if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
@@ -57,7 +57,7 @@ git config --global core.longpaths true     # 260자 벽 — 깊은 나무에서
 git config --global credential.helper manager
 git config --global pull.rebase false
 
-echo "== 2/3  저장소 =="
+echo "== 2/4  저장소 =="
 if [ -z "$REPOS" ]; then
     echo "  선언에 REPOS 가 없다 — 건너뜀"
 elif [ -z "$REPO_URL" ]; then
@@ -79,7 +79,7 @@ else
     done
 fi
 
-echo "== 3/3  런타임 확인 =="
+echo "== 3/4  런타임 확인 =="
 # ⚠ **배선이 먼저다.** 이 셸은 `install.ps1` 이 깐 **뒤에** 떠도 그 PATH 를 못 물려받는다 —
 #   창은 뜰 때 환경을 한 번 복사하고, 이 창을 띄운 부모가 그것들보다 먼저 떴다. 배선 없이
 #   물으면 이미 깔린 것도 「없음」이 나와 판정이 통째로 뒤집힌다.
@@ -136,8 +136,60 @@ done
 IFS="$_ifs_was"
 [ -n "$MISSING" ] && echo "  ⚠ install.cmd 를 먼저 돌린다 — 그것이 깐다:$MISSING"
 
+echo "== 4/4  로그인 =="
+# ⚠ **재고 나서 세운다.** 「로그인하라」고만 적으면 이미 선 PC 에서도 매번 뜨고, 그러면
+#   읽는 사람이 이 칸을 통째로 넘기기 시작한다 — 진짜로 필요한 날에도.
+# ⚠ **데스크탑 앱을 쓰는 PC 는 이 칸이 대개 안 걸린다** — 앱 로그인이 CLI 까지 세운다
+#   (둘이 `~/.claude` 를 같이 쓴다). 그래서 「안 서 있을 때만」이다.
+# ⚠ **토큰을 저장소에 두지 않는다.** 장기 토큰이면 손이 아예 안 가지만, 그것은 갱신 토큰을
+#   낀 OAuth 라 **돌고**(만료·회전) 커밋해 두면 낡은 뒤에도 「설정된 것처럼 보인다」 —
+#   부재보다 나쁘다. 게다가 그 값은 구독 계정 그 자체다. 그래서 값을 안 두고 **사람이
+#   브라우저에서 누르게 한다.**
+_logged=""
+_login_probe() {
+    command -v claude >/dev/null 2>&1 || return 0
+    claude auth status 2>/dev/null |
+        sed -n 's/.*"loggedIn"[[:space:]]*:[[:space:]]*\([a-z]*\).*/\1/p' | head -1
+}
+_logged="$(_login_probe)"
+
+# ⚠ **로그인을 끝내는 것은 stdin 이 아니라 브라우저 콜백이다.** tty 가 없다고 건너뛰고 사람에게
+#   미뤄 봐야 그 사람도 새 창을 열어 같은 명령을 칠 뿐이고, 낡은 창에서 치면 PATH 가 잘려 또
+#   진다. 띄우는 것 자체는 tty 없이도 되므로 **배경으로 띄우고 콜백을 기다린다.**
+# ⚠ 다만 무한정 기다리지 않는다 — **안 누르는 것도 정당한 선택**이라 시간을 끊는다.
+_login_wait=180
+if [ "$_logged" != "true" ] && command -v claude >/dev/null 2>&1; then
+    echo "  브라우저가 뜹니다 — 눌러 주세요. (최대 ${_login_wait}초 기다린다)"
+    if [ -t 0 ]; then
+        claude auth login
+    else
+        claude auth login >/dev/null 2>&1 &
+        _pid=$!
+        _waited=0
+        while [ "$_waited" -lt "$_login_wait" ]; do
+            kill -0 "$_pid" 2>/dev/null || break
+            sleep 5; _waited=$((_waited + 5))
+        done
+        kill -0 "$_pid" 2>/dev/null &&
+            echo "  (${_login_wait}초 안에 안 눌렸다 — 브라우저는 열려 있다. 눌러도 되고 나중에 해도 된다)"
+    fi
+    # ⚠ **띄우고 재고 나서 말한다.** 안 재고 「떴다」로 끝내면 사람이 안 누른 기계도 성공으로
+    #   보고된다 — 부재가 통과로 읽히는 것을 막는 것이 이 몸통의 규율이다.
+    _logged="$(_login_probe)"
+fi
+if [ "$_logged" = "true" ]; then
+    echo "  섰다 (loggedIn=true)"
+elif ! command -v claude >/dev/null 2>&1; then
+    # ⚠ **CLI 가 없는 판에 「로그인해라」고 하지 않는다.** 없는 명령을 치라는 안내는 사람을
+    #   엉뚱한 데로 보낸다 — 모자란 것은 위 칸이 이미 이름을 대며 말했다.
+    echo "  건너뜀 — CLI 가 안 닿아 로그인을 잴 수가 없다"
+else
+    echo "  ! 안 섰다 — 새 창에서:  claude auth login"
+    echo "    확인:  claude auth status   (loggedIn 이 true 로 바뀐다)"
+fi
+
 # ── 여기부터가 당신 자리다 ────────────────────────────────────────────────────
-# 위 셋은 누구에게나 같다. 아래는 사람마다 갈리므로 씨앗이 지어 주지 않는다 —
+# 위 넷은 누구에게나 같다. 아래는 사람마다 갈리므로 씨앗이 지어 주지 않는다 —
 # 필요한 것만 골라 여기 잇는다:
 #
 #   · 키를 심는다 — `setx` 로 사용자 환경변수에. **화면에 찍지 않는다**
@@ -160,9 +212,14 @@ fi
 # ⚠ **초록 옆에 「안 닿는 것」을 찍는다.** 런타임이 모자란 것은 이 스크립트의 실패가
 #   아니지만(깔 자는 `install.ps1` 이다), 그 사실을 안 적으면 「됐다」가 **전부 됐다**로
 #   읽힌다. 판정과 경계를 한자리에서 낸다.
-if [ -n "$MISSING" ]; then
-    echo "됐다 — 다만 안 닿는 것이 있다:$MISSING"
-    echo '  install.cmd 를 먼저 돌린다. 이 칸이 깔지는 않는다.'
+_edge=""
+[ -n "$MISSING" ] && _edge="$_edge 안 닿는 것(${MISSING# })"
+[ "$_logged" != "true" ] && _edge="$_edge 로그인"
+if [ -n "$_edge" ]; then
+    # ⚠ **실패가 아니라 경계다.** 런타임을 깔 자는 `install.ps1` 이고 로그인을 누를 자는
+    #   사람이라, 둘 다 이 몸통이 질 일이 아니다. 그렇다고 안 적으면 「됐다」가 **전부
+    #   됐다**로 읽힌다 — 판정과 경계를 한자리에서 낸다.
+    echo "됐다 — 다만 안 선 것이 있다:$_edge"
     exit 0
 fi
 echo '됐다 — 열려 있는 VS Code 를 전부 닫고 새로 연다.'

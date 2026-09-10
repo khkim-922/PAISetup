@@ -96,7 +96,7 @@ text { font-family: Pretendard, "Pretendard Variable", "Malgun Gothic", "Apple S
 <g><rect class="bx" x="18" y="880" width="236" height="76" rx="7"/>
 <text class="lb" x="136.0" y="904">14. 부트스트랩이 든다 — git</text>
 <text class="lb" x="136.0" y="922">신원 · 형제 저장소 · 자리 ·</text>
-<text class="lb" x="136.0" y="940">키 · 배포</text>
+<text class="lb" x="136.0" y="940">키 · 로그인 · 배포</text>
 </g>
 <g><rect class="bx" x="490" y="998" width="236" height="58" rx="7"/>
 <text class="lb" x="608.0" y="1022">15. 검증 — [O] / [X] 를</text>

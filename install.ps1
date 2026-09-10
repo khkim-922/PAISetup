@@ -1057,22 +1057,55 @@ if (-not $repoUrl) {
   $dest = Join-Path $root ([IO.Path]::GetFileNameWithoutExtension($repoUrl))
   New-Item -ItemType Directory -Path $root -Force | Out-Null
 
+  # ⚠ **받은 것과 넘길 자리가 있는 것은 다른 명제다.** 옛 판은 clone 의 실패를 `2>$null` 과
+  #   빈 `catch` 로 삼키고, 그 결과를 아래에서 **「저장소에 bootstrap-vdi.sh 가 없다」**로 냈다.
+  #   그런데 계정이 없거나 인증이 거부됐거나 주소가 틀렸어도 같은 문구가 나온다 — 저장소는
+  #   받아진 적조차 없는데 **사람은 없는 파일을 찾아 그 저장소를 뒤진다.** 부재를 엉뚱한
+  #   이름으로 보고하는 자리라 걷었다.
+  # ⚠ 까닭은 git 이 이미 말하고 있었다. 버리지 말고 **파일에 잡아 실패할 때만 편다** —
+  #   위 규율 그대로다(합치면 `Stop` 이 던지고, 버리면 단서가 사라진다).
+  $log = [IO.Path]::GetTempFileName()
+  $got = $false
   if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
     Write-Host "  있음 — pull ($dest)"
-    try { & git -C $dest pull --ff-only 2>$null | Out-Null } catch { }
+    $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
+    # ⚠ **pull 이 져도 실패로 세지 않는다.** 저장소는 이미 있어 넘길 자리가 살아 있다 —
+    #   망이 끊긴 VDI 에서 옛 판으로라도 부트스트랩이 도는 것이 안 도는 것보다 낫다.
+    #   다만 조용히 넘어가지는 않는다: 옛 판으로 간다는 사실을 말한다.
+    $got = $true
+    if ($rc -ne 0) {
+      Write-Host '  ! pull 이 졌다 — 이미 받아 둔 판으로 넘긴다' -ForegroundColor Yellow
+      Show-Log $log
+    }
   } else {
     Write-Host "  clone ($dest)"
-    # GitHub 로그인 창이 한 번 뜬다
-    try { & git clone $repoUrl $dest 2>$null | Out-Null } catch { }
+    # ⚠ **이 안내를 우리가 찍는다.** 자격 관리자가 뱉는 「브라우저에서 마치라」는 줄은 위
+    #   `Invoke-Logged` 가 파일로 잡아 화면에 안 나온다 — 안 찍으면 사람은 창이 왜 떴는지
+    #   모른 채 기다리고, 그 사이 설치가 멈춘 것처럼 보인다.
+    Write-Host '    GitHub 로그인 창이 한 번 뜹니다 — 브라우저에서 눌러 주세요' -ForegroundColor Yellow
+    $rc = Invoke-Logged 'git' @('clone', $repoUrl, $dest) $log
+    # ⚠ **종료코드만 믿지 않는다.** 0 으로 끝났는데 자리가 안 선 판을 재는 자가 여기다.
+    $got = ($rc -eq 0 -and (Test-Path -LiteralPath (Join-Path $dest '.git')))
+    if (-not $got) {
+      Write-Host '  ! 저장소를 못 받았다 — 주소 · 계정 · 망을 본다' -ForegroundColor Red
+      Show-Log $log
+      $Fails.Add('개인 값 저장소 (못 받았다)')
+    }
   }
+  Remove-Item $log -ErrorAction SilentlyContinue
 
   # ⚠ **Git Bash 로 부른다.** 저쪽은 bash 몸통이고, PowerShell 에서 직접 못 부른다.
   $boot = Join-Path $dest 'bootstrap-vdi.sh'
   $bash = @("$env:ProgramFiles\Git\bin\bash.exe",
             "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe") |
           Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-  if (-not (Test-Path -LiteralPath $boot)) {
-    Write-Host '  ! 저장소에 bootstrap-vdi.sh 가 없다' -ForegroundColor Red
+  if (-not $got) {
+    # ⚠ 실패는 위에서 까닭을 대고 이미 셌다 — 여기서 또 세면 **한 사고가 둘로 보고된다.**
+    #   대신 사슬이 왜 끊겼는지는 말한다: 안 말하면 부트스트랩이 돈 줄 알 수 있다.
+    Write-Host '  넘길 자리가 없어 부트스트랩을 안 부른다'
+  } elseif (-not (Test-Path -LiteralPath $boot)) {
+    # ⚠ **이제 이 문구는 참이다** — 저장소가 받아진 것을 위에서 재고 왔다.
+    Write-Host '  ! 저장소는 받았는데 뿌리에 bootstrap-vdi.sh 가 없다' -ForegroundColor Red
     $Fails.Add('개인 값 저장소 (부트스트랩이 없다)')
   } elseif (-not $bash) {
     Write-Host '  ! Git Bash 를 못 찾았다' -ForegroundColor Red
