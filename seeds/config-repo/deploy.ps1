@@ -56,6 +56,9 @@ $todo    = @()   # 사람이 해야 할 것
 #   이쪽은 **실행 환경이 안 선 것**이고, 이 목록이 비지 않으면 이 스크립트는 0 으로 안 끝난다.
 $envDown = @()   # 실행 환경이 안 선 것 — 종료코드를 가른다
 $prunable = @()  # 제거 후보 (-Prune 없이는 세기만 한다)
+# ⚠ **초록도 편다.** 통과가 화면에서 침묵하면 「재서 다 살아 있다」와 「아예 안 쟀다」가
+#   같아진다 — 그 침묵은 아무것도 안 말한 것과 같다. 문구는 훅이 든다, 여기는 나르기만 한다.
+$gateReport = @()  # 게이트 진단 — 무엇을 쟀고 무엇이 사는가
 
 # 배포 대상은 코드가 아니라 선언이 든다 — deploy.targets.d/*.conf.
 # 사람·PC·프로젝트 구성마다 다른 값이라 스크립트에 박지 않는다. 새 PC·새 저장소·
@@ -405,7 +408,8 @@ foreach ($repoRoot in $hookTargets) {
 # 여기 없고, 저장소가 늘어도 이 파일은 안 고친다.
 #
 # 계획 단계에서는 `--check` 로 **재기만** 한다(아무것도 안 바꾼다). 꺼진 검사가 있을
-# 때만 실행 목록에 올린다 — 다 살아 있으면 매번 승인을 묻지 않는다.
+# 때만 실행 목록에 올린다 — 다 살아 있으면 매번 승인을 묻지 않는다. **다만 잰 것은
+# 초록이어도 화면에 낸다** — 안 묻는 것과 안 재는 것은 다른 명제다(아래 ⚠).
 foreach ($repoRoot in $globalRuleTargets) {
     $boot = Join-Path $repoRoot '.claude\hooks\session-start.sh'
     if (-not (Test-Path $boot)) { continue }
@@ -413,10 +417,16 @@ foreach ($repoRoot in $globalRuleTargets) {
         $todo += "Git Bash 를 못 찾음. 직접 실행:  bash '$boot' --install"
         continue
     }
-    & $bash ($boot -replace '\\', '/') --check | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        $same += "= 게이트 도구 갖춤  $repoRoot"
-    } else {
+    # ⚠ **훅이 찍은 진단을 안 버린다.** 훅은 무엇을 쟀고 무엇이 사는지 stdout 으로 다 내는데,
+    #   옛 판은 그것을 `Out-Null` 로 버리고 종료코드만 받아 「= 게이트 도구 갖춤」 한 줄로
+    #   접었다. 그 한 줄마저 파일 목록과 같은 통(`$same`)에 들어가 개수에만 잡혀, **다 초록인
+    #   기계에서는 화면에 자국이 하나도 안 남았다** — 「안 쟀다」와 구별이 안 된다 (실측
+    #   2026-09-11 · 사내 PC: 저장소 다섯이 다 초록이라 이 칸이 통째로 안 보였다).
+    $gate   = & $bash ($boot -replace '\\', '/') --check
+    $gateRc = $LASTEXITCODE
+    if ($gate) { $gateReport += $gate }
+    # ⚠ 초록이어도 `$same` 에 한 줄을 또 두지 않는다 — 위 블록이 이미 그 말을 했다.
+    if ($gateRc -ne 0) {
         $plan += @{
             Kind = 'bootstrap'; Repo = $repoRoot; Script = $boot
             Text = "+ 부트스트랩  $repoRoot  (꺼진 검사가 있다 — 도구를 깐다)"
@@ -541,6 +551,13 @@ if ((-not $Prune) -and $prunable.Count -gt 0) {
     Write-Host "`n제거 후보 $($prunable.Count)개 있음 (이번 실행에서는 건드리지 않음)" -ForegroundColor Yellow
     $prunable | ForEach-Object { Write-Host "  $($_.Text)" -ForegroundColor Yellow }
     Write-Host "  → 정리하려면:  .\deploy.ps1 -Prune" -ForegroundColor Yellow
+}
+
+# 게이트 진단 — **「바꿀 것이 없습니다」 앞이다.** 뒤에 두면 다 초록인 기계에서 그 return 에
+# 걸려 영영 안 보인다 — 이 칸이 가장 필요한 자리가 바로 거기다. 줄은 훅이 쓴 그대로 낸다.
+if ($gateReport.Count -gt 0) {
+    Write-Host ''
+    $gateReport | ForEach-Object { Write-Host $_ }
 }
 
 if ($plan.Count -eq 0) {
