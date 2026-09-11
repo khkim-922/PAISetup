@@ -39,10 +39,11 @@
 | `.claude/get-browser.sh` | 브라우저를 받아 오는 **뒷길**. 도구 선언의 `browsers-fallback` 이 저장소 기준 경로로 가리킨다 |
 | `.githooks/pre-commit` · `commit-msg` | **커밋 게이트 몸통.** 익명이다 — 무엇을 재는지 모른다 |
 | `.githooks/gates-run.sh` | 몸통 둘이 같이 쓰는 러너. 선언을 읽어 조각을 부른다 |
-| `.githooks/gates.d/` | **검사 조각** 다섯 — 인코딩 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 |
+| `.githooks/gates.d/` | **검사 조각** 여섯 — 인코딩 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 · 파이썬 결함 |
 | `.githooks/claude-config-path.sh` | 설정 저장소가 이 기계 어디 붙었나를 **한 자리에서** 잰다 |
 | `.claude/markdownlint.global.jsonc` | 우리 글 문체가 낳는 마크다운 오탐 |
 | `.claude/commitlint.global.mjs` | 같은 축 — 커밋 제목 문체가 낳는 오탐 |
+| `.claude/ruff.global.toml` | 파이썬 **결함** 판정 — 규칙은 결함 부류만(정의 안 된 이름 · 안 쓰는 import · 루프 변수 · `from` 없는 되던짐). 뿌리에 `ruff.toml` 을 두면 그쪽이 이긴다 |
 | `bootstrap-flow.svg` | **그림** — 몸통이 도는 일곱 칸을 위에서 아래로 |
 | `session-start-flow.svg` | **그림** — 세션을 열면 무엇이 저절로 도나 |
 | `deploy-flow.svg` | **그림** — 돌리면 무엇이 어디로 가나 |
@@ -99,6 +100,7 @@ encoding      # .ps1 에 BOM 이 있나 · .cmd 에 없나 — 남의 PC 에서�
 markdown      # 담긴 .md 만 잰다
 links         # 깨진 링크·앵커 (--offline)
 adr-index     # 결정 목록이 결정 기록의 머리말과 어긋났나
+python        # 담긴 .py 만 — 결함 부류만 잰다. 파이썬이 없는 저장소는 안 켠다
 
 [commit-msg]
 commit-format # Conventional Commits + 제목 BOM
