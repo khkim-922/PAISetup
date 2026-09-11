@@ -118,6 +118,11 @@ commit-format # Conventional Commits + 제목 BOM
 git config core.hooksPath .githooks
 ```
 
+⚠ **`node_modules/` 를 무시 목록에 넣는다 — node 축을 안 지는 저장소도 그렇다.** 커밋 형식
+검사의 규칙 파일(`extends`)이 **저장소 기준으로** 풀려서, 전역 설치만으로는 안 선다. 그래서
+세션 훅이 전역 패키지를 저장소 안으로 링크하고(도구 선언의 `wiring = node-link`) 그 폴더가
+실제로 생긴다. **그 안은 전역 설치를 가리키는 심링크라 커밋하면 남의 기계에서 깨진다.**
+
 ⚠ **제외 목록은 조각에 안 적는다.** 어디를 빼나는 저장소마다 다르므로 그 도구의 표준 자리가
 든다 — 마크다운은 `.markdownlint-cli2.jsonc` 의 `ignores`, 링크는 `lychee.toml` 의
 `exclude_path`. 조각에 적으면 저장소마다 조각이 갈리고, 그 순간 손사본이 된다.
