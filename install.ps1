@@ -425,6 +425,57 @@ function Say-Get($Asset) {
   else           { Write-Host ('      · 받는다 — {0}' -f $Asset.name) }
 }
 
+# 큰 것을 받는 자 — **흘려 쓰고, 가면서 말하고, 두 시계를 다 못박는다.**
+# ⚠ **`Invoke-WebRequest` 를 여기서 안 쓰는 까닭 셋.** 작은 것에는 그것이 맞지만 이 자리는
+#   실측 300 MB 다(본체 206.7 · 딸린 것 93.2 — v1.29.290):
+#   · **몸통을 메모리에 물고 있다가 쓴다**(5.1). 200 MB 를 그렇게 받으면 그 자체로 느리다
+#   · **진행을 말할 자리가 없다.** 막대를 켜면 몇 배 느려지고, 끄면 몇 분이 통째로 조용하다 —
+#     조용한 몇 분은 사람이 창을 닫는 시간이다
+#   · **`ReadWriteTimeout` 손잡이가 없다.** `-TimeoutSec` 는 「응답 머리가 오기까지」만 들어서,
+#     몸통을 읽는 사이가 느린 링크에서 기본 300초를 넘기면 거기서 진다
+# ⚠ **두 시계가 재는 자리가 다르다** — `Timeout` 은 프록시가 파일을 통째로 받아 검사하고
+#   머리를 내주기까지, `ReadWriteTimeout` 은 그다음 한 번 읽는 사이. 둘 다 못박는다.
+function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
+  $req = [Net.HttpWebRequest]::Create($Url)
+  $req.Timeout          = $WaitSec * 1000
+  $req.ReadWriteTimeout = $WaitSec * 1000
+  $req.UserAgent        = 'PAISetup'
+  $res = $req.GetResponse()
+  try {
+    $total = 0.0
+    try { $total = [double]$res.ContentLength } catch { }
+    $in  = $res.GetResponseStream()
+    $out = [IO.File]::Create($OutFile)
+    try {
+      # ⚠ **줄로 말한다 — 막대가 아니라.** 화면 껍데기가 stdout 을 **줄 단위로** 읽으므로,
+      #   한 줄 안에서 덮어쓰는 꼴은 그쪽에 한 글자도 안 닿는다.
+      $buf = New-Object byte[] 1048576
+      $got = 0.0
+      $mark = 0
+      while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) {
+        $out.Write($buf, 0, $n)
+        $got += $n
+        if ($total -gt 0) {
+          # ⚠ `[int]` 는 **반올림**한다 — 99.6% 가 100% 로 찍히면서 곁의 MB 와 안 맞았다
+          #   (실측: `100% · 92.8 / 93.2 MB`). 내림으로 간다.
+          $pct = [Math]::Floor(($got / $total) * 100)
+          if ($pct -ge ($mark + 10)) {
+            $mark = $pct - ($pct % 10)
+            Write-Host ('        {0}% · {1:N1} / {2:N1} MB' -f $mark, ($got / 1MB), ($total / 1MB))
+          }
+        } elseif ($got -ge ($mark + 1) * 25MB) {
+          # 크기를 안 주는 자리 — 몇 퍼센트인지는 못 말해도 **움직이고 있다**는 말은 한다.
+          $mark++
+          Write-Host ('        {0:N1} MB 받았다' -f ($got / 1MB))
+        }
+      }
+    } finally { $out.Close(); $in.Close() }
+    # ⚠ **끝난 줄을 따로 댄다.** 몫을 내림으로 세니 마지막 토막에서는 100% 가 안 뜬다 —
+    #   그러면 **끝나는 것을 아무도 못 본다.** 마지막 줄은 몫이 아니라 받은 양으로 말한다.
+    Write-Host ('        다 받았다 — {0:N1} MB' -f ($got / 1MB))
+  } finally { $res.Close() }
+}
+
 function Test-Runs([string]$Cmd, [string]$Arg) {
   if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) { return $false }
   try { & $Cmd $Arg 2>$null | Out-Null; return ($LASTEXITCODE -eq 0) } catch { return $false }
@@ -599,21 +650,17 @@ function Restore-Winget {
     $work = Join-Path ([IO.Path]::GetTempPath()) "winget-$PID"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
+    # ⚠ **밖에서 선언한다.** 딸린 것 갈래가 통째로 안 도는 자리가 있고(그 자산이 릴리스에
+    #   없다), 아래 본체 설치가 이 값을 읽는다 — 안 선언하면 그 자리에서 「없는 변수」가 된다.
+    $depPaths = @()
+
     # 딸린 것이 먼저다 — 없으면 본체 설치가 그 자리에서 진다
     $dep = $rel.assets | Where-Object { $_.name -like '*Dependencies.zip' } | Select-Object -First 1
     if ($dep) {
       $z = Join-Path $work 'dep.zip'
       $step = '딸린 것 zip 을 못 받았다'
       Say-Get $dep
-      # ⚠ **`-TimeoutSec` 가 드는 것은 「몸통을 다 받기까지」가 아니라 「응답이 오기까지」다**
-      #   (Windows PowerShell 5.1 에서 `HttpWebRequest.Timeout` 으로 간다 — 기본 100초).
-      #   그게 여기서 짧은 까닭은 **사내 프록시가 파일을 통째로 받아 검사한 뒤에야 첫 바이트를
-      #   내주는** 자리가 있어서다. 수십 MB 를 검사하는 동안 100초는 안 버틴다.
-      #   ⚠ **몸통을 읽는 동안은 이 값이 안 든다** — 그쪽은 `ReadWriteTimeout`(기본 300초/읽기)
-      #     이고 `Invoke-WebRequest` 로는 못 건드린다. 그 한도는 그대로 두는 것이 지금 판이다.
-      #   ⚠ **안 쟀다** — 5.1 을 돌릴 기계가 없어 이 셋은 .NET 문서에서 온 값이다.
-      Invoke-WebRequest $dep.browser_download_url -OutFile $z -UseBasicParsing `
-        -TimeoutSec 600 -ErrorAction Stop
+      Get-Download $dep.browser_download_url $z
       $step = '딸린 것 zip 을 못 풀었다'
       Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $work 'dep') -Force
       $step = '딸린 것을 못 깔았다'
@@ -638,6 +685,7 @@ function Restore-Winget {
         try { Add-AppxPackage -Path $d.FullName -ErrorAction Stop }
         catch { Write-Host "        ($($d.Name) — $(Say-Why $_))" }
       }
+      $depPaths = @($deps | ForEach-Object { $_.FullName })
     }
 
     $pkg = $rel.assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -First 1
@@ -645,13 +693,17 @@ function Restore-Winget {
     $b = Join-Path $work $pkg.name
     $step = '본체를 못 받았다'
     Say-Get $pkg
-    Invoke-WebRequest $pkg.browser_download_url -OutFile $b -UseBasicParsing `
-      -TimeoutSec 600 -ErrorAction Stop
+    Get-Download $pkg.browser_download_url $b
     # ⚠ **여기도 조용한 자리다** — 206 MB 를 푸는 동안 한 글자도 안 나온다. 받기와 깔기가
     #   잇달아 조용하면 사람은 멎은 줄 알고 창을 닫는다. 들어가기 전에 말한다.
     Write-Host '      · 깐다 — 몇 분 걸린다. 멎은 것이 아니다'
     $step = '본체를 못 깔았다'
-    Add-AppxPackage -Path $b -ErrorAction Stop
+    # ⚠ **딸린 것을 같이 넘긴다 — 마이크로소프트가 적어 둔 꼴이다.** 위에서 하나씩 깐 뒤에도
+    #   같이 넘기는 까닭은 **판 맞추기를 윈도우가 스스로 하게** 하려는 것이다: 따로 깔면
+    #   순서와 판이 어긋날 여지가 남고, 그 어긋남은 「딸린 것을 못 찾는다」 한 줄로만 보인다.
+    #   위 걸음이 다 져도 여기서 한 번 더 서는 자리이기도 하다.
+    if ($depPaths.Count) { Add-AppxPackage -Path $b -DependencyPath $depPaths -ErrorAction Stop }
+    else                 { Add-AppxPackage -Path $b -ErrorAction Stop }
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 
     if (& $reach) {
