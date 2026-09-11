@@ -22,9 +22,22 @@ command -v lychee >/dev/null 2>&1 || {
 set -- --offline --no-progress
 [ -f lychee.toml ] && set -- "$@" --config lychee.toml
 
-out="$(lychee "$@" . 2>&1)" || {
-    printf '✖ 깨진 링크·경로가 있다.\n' >&2
-    printf '%s\n' "$out" | grep '^\[ERROR\]' >&2 || printf '%s\n' "$out" | tail -n 20 >&2
-    exit 1
-}
+# ⚠ **도구가 제 사유로 지는 것과 링크가 깨진 것은 다른 명제다** — 설정 파싱 실패가 그 자리다.
+#   깨진 링크로 세면 「깨진 링크가 있다」는 거짓 문장과 러스트 백트레이스가 같이 나간다.
+out="$(lychee "$@" . 2>&1)"; rc=$?
+case "$rc" in
+    0) ;;
+    1) # lychee 는 깨진 링크를 1 로 낸다 — 우리가 무는 자리다
+       if printf '%s\n' "$out" | grep -q '^\[ERROR\]'; then
+           printf '✖ 깨진 링크·경로가 있다.\n' >&2
+           printf '%s\n' "$out" | grep '^\[ERROR\]' >&2
+           exit 1
+       fi
+       printf '· lychee 가 1 로 졌는데 깨진 링크 줄이 없다 — **못 쟀다**(설정·입력 문제).\n' >&2
+       printf '%s\n' "$out" | tail -n 5 >&2
+       exit 2 ;;
+    *) printf '· lychee 가 %s 로 졌다 — 링크가 깨진 게 아니라 **못 쟀다**.\n' "$rc" >&2
+       printf '%s\n' "$out" | tail -n 5 >&2
+       exit 2 ;;
+esac
 exit 0

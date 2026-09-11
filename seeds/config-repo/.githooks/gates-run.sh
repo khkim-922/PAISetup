@@ -24,17 +24,27 @@
 # ⚠ **선언에 있는데 파일이 없으면 어긋남이다.** 배포가 안 닿은 저장소에서 검사가
 #   조용히 빠지는 자리를 여기서 막는다 — 부재가 통과로 읽히는 바로 그 자리다.
 
-# gate_list <절> <선언파일> — 절 안의 이름을 한 줄에 하나씩. '#' 주석·빈 줄·CRLF 방어.
+# gate_list <절> <선언파일> — 절 안의 이름을 한 줄에 하나씩. '#' 주석·빈 줄·CRLF·BOM 방어.
+#
+# ⚠ **절 머리도 이름 줄과 똑같이 다듬고 나서 판정한다.** 옛 판은 머리만 줄 맨 앞부터 시작하는
+#   `[` 로 물어서, 한 칸 들여쓰거나 꼬리 주석을 달면 **그 절을 통째로 못 알아봤다** — 안의
+#   이름이 어느 절에도 안 속해 빠지고, 그 단계의 게이트가 다 꺼진다. 셋 다 이 저장소들의
+#   문체에서 자연스럽다(선언에 주석이 빼곡하고, 파워셸의 `>` 는 BOM 을 붙인다).
 gate_list() {
     [ -f "$2" ] || return 0
-    sed 's/\r$//' "$2" | awk -v sec="$1" '
-        /^\[[^]]*\][[:space:]]*$/ {
-            s = $0; gsub(/[][]/, "", s); gsub(/[[:space:]]+$/, "", s)
+    # BOM 은 awk 에 넣기 전에 걷는다 — 8진 이스케이프 해석이 awk 구현마다 달라서다.
+    sed -e "1s/^$(printf '\357\273\277')//" -e 's/\r$//' "$2" | awk -v sec="$1" '
+        {
+            line = $0
+            sub(/[[:space:]]*#.*$/, "", line)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        }
+        line ~ /^\[[^]]*\]$/ {
+            s = line; gsub(/[][]/, "", s)
             insec = (s == sec); next
         }
         !insec { next }
-        { sub(/[[:space:]]*#.*$/, ""); gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-          if ($0 != "") print }
+        line != "" { print line }
     '
 }
 
@@ -56,7 +66,14 @@ run_gates() {
     export PROJECT_DIR
 
     _fail=0; _cant=''; _ran=0
-    for _g in $(gate_list "$_stage" "$_conf"); do
+
+    # ⚠ **목록을 인용 없는 확장으로 펴지 않는다.** `for _g in $(…)` 는 낱말 분리와 파일 이름
+    #   확장을 같이 받아, 이름에 공백이 들면 두 조각을 찾다 막고 `*` 한 줄은 저장소 뿌리의
+    #   파일 이름으로 부푼다 — 오타가 「조각이 없다」로 나와 배포 사고처럼 보인다.
+    _list="$(mktemp)" || return 1
+    gate_list "$_stage" "$_conf" > "$_list"
+    while IFS= read -r _g; do
+        [ -n "$_g" ] || continue
         _f="$PROJECT_DIR/.githooks/gates.d/$_g.sh"
         if [ ! -f "$_f" ]; then
             printf '✖ 선언에 [%s] 가 있는데 조각이 없다: .githooks/gates.d/%s.sh\n' "$_g" "$_g" >&2
@@ -71,7 +88,8 @@ run_gates() {
             2) _cant="$_cant $_g" ;;
             *) _fail=1 ;;
         esac
-    done
+    done < "$_list"
+    rm -f "$_list"
 
     # 못 잰 것은 초록 옆에 찍는다 — 줄이려고 두는 목록이지 채우려고 두는 것이 아니다.
     [ -z "$_cant" ] || printf '· 못 쟀다:%s — 도구가 없어 건너뛴 검사다. 세션을 열면 훅이 깐다.\n' "$_cant" >&2

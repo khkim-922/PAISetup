@@ -177,6 +177,11 @@ probe_decl() {  # probe_decl <선언파일> <이름> — 선언에서 갈래·�
     *) return 0 ;;
   esac
   [ -n "$_pn" ] && [ -n "$_pv" ] || return 0
+  # ⚠ **정확한 판이 아니면 안 잰다.** 비교가 문자열 일치라 `^21.0.0`·`latest` 를 적으면 어떤
+  #   판이 깔려도 다르고, 안내는 「다시 깔면 선언한 판을 받는다」인데 다시 깔아도 안 바뀐다 —
+  #   영원한 ❌ 다. 재려면 semver 해석기가 필요하고 그건 매핑 레이어다(규범 [Determinism First]).
+  #   안 재는 것은 `pin_mismatch` 가 진단에서 말한다.
+  case "$_pv" in ''|*[!0-9.]*) return 0 ;; esac
   [ "$(npm_global_version "$_pn" || true)" = "$_pv" ]
 }
 
@@ -949,16 +954,67 @@ fi
 if [ -d "$PROJECT_DIR/.githooks" ]; then
   if [ "$(git -C "$PROJECT_DIR" config core.hooksPath 2>/dev/null)" = ".githooks" ]; then
     gate "커밋 훅 배선" ok "core.hooksPath=.githooks"
-    [ -f "$PROJECT_DIR/.githooks/commit-msg" ] && [ ! -x "$PROJECT_DIR/.githooks/commit-msg" ] &&
-      gate "커밋: 형식" off "commit-msg 에 실행권한이 없어 git 이 무시한다"
-    if [ -f "$PROJECT_DIR/.githooks/adr-index.sh" ]; then
-      if [ -n "$ADR_GEN" ]; then gate "커밋: 색인 대조" ok "생성기로 다시 만들어 견준다"
-      else gate "커밋: 색인 대조" off "claude-config 를 못 찾아 생성기가 없다"; fi
+
+    # ⚠ **몸통 둘 다 본다.** 옛 판은 `commit-msg` 만 물어서, `pre-commit` 에 실행권한이 없으면
+    #   **조각이 통째로 안 도는데 진단은 ✅ 였다.** 가드의 부재지 고장이 아니다.
+    for _b in pre-commit commit-msg; do
+      [ -f "$PROJECT_DIR/.githooks/$_b" ] && [ ! -x "$PROJECT_DIR/.githooks/$_b" ] &&
+        gate "커밋 게이트($_b)" off "실행권한이 없어 git 이 무시한다 — 조각이 다 멀쩡해도 안 돈다"
+    done
+
+    # ⚠ **선언을 연다.** 옛 판은 폴더 존재와 `core.hooksPath` 둘만 보고 `gates.conf` 를 **한 번도
+    #   안 읽었다** — 선언을 치워도 ✅ 였고, 커밋 때 러너는 *"아무것도 안 잰다"* 고 말했다.
+    #   「훅이 걸렸나」와 「무엇을 재나」는 다른 명제다.
+    # ⚠ 파서를 여기 두 벌 두지 않는다 — 러너를 그대로 부른다(`gate_list`).
+    _gc="$PROJECT_DIR/.githooks/gates.conf"
+    _gr="$PROJECT_DIR/.githooks/gates-run.sh"
+    if [ ! -f "$_gc" ]; then
+      gate "커밋 게이트" off "선언이 없다(.githooks/gates.conf) — 훅은 걸렸는데 **아무것도 안 잰다**"
+    elif [ ! -f "$_gr" ]; then
+      gate "커밋 게이트" off "선언은 있는데 러너가 없다(.githooks/gates-run.sh) — 배포가 반쪽만 닿았다"
+    else
+      # shellcheck source=/dev/null
+      . "$_gr"
+      _on=""; _gone=""
+      for _stage in pre-commit commit-msg; do
+        for _g in $(gate_list "$_stage" "$_gc"); do
+          if [ -f "$PROJECT_DIR/.githooks/gates.d/$_g.sh" ]; then _on="$_on $_g"
+          else _gone="$_gone $_g"; fi
+        done
+      done
+      if [ -n "$_gone" ]; then
+        gate "커밋 게이트" off "선언에 있는데 조각이 없다:$_gone — 배포가 안 닿았다. 커밋이 막힌다"
+      elif [ -z "$_on" ]; then
+        gate "커밋 게이트" off "선언은 있는데 켠 검사가 없다 — **아무것도 안 잰다**"
+      else
+        gate "커밋 게이트" ok "켜진 검사:$_on"
+      fi
+      # ⚠ **자리가 아니라 해석기로 묻는다.** 옛 판은 `.githooks/adr-index.sh`(생성기의 한 자리)가
+      #   있나로 물어서, 그 사본을 안 든 저장소에서는 `adr-index` 를 켰는데도 **한 줄도 안 났다**.
+      case " $_on " in
+        *" adr-index "*)
+          [ -n "$ADR_GEN" ] ||
+            gate "커밋: 색인 대조" off "생성기를 못 찾아 **약한 검사로 갈음한다** — 머리말이 바뀐 것만 본다" ;;
+      esac
     fi
   else
     gate "커밋 게이트" off "core.hooksPath 가 안 걸려 **못 잼** — 훅 자체가 안 돈다"
   fi
 fi
+
+# 선언의 판이 **잴 수 있는 꼴인가** — 선언만 읽는다(npm 을 안 부르므로 통과 갈래에서도 싸다).
+# ⚠ **범위·딱지는 안 잰 것이다.** 통과 옆에 그 사실이 안 찍히면 「전부 통과」가 「판까지 봤다」로
+#   읽힌다 — 초록의 폭을 검사가 스스로 말하게 한다(규범 [Goal-Driven Execution]).
+pin_shape() {  # pin_shape <선언파일> <이름> — 안 잰 까닭 한 줄, 잴 수 있으면 빈 값
+  [ "$(decl_get "$1" "$2" install)" = npm-global ] || return 0
+  _sk="$(decl_get "$1" "$2" package)"
+  case "$_sk" in ?*@*) ;; *) return 0 ;; esac   # 판을 안 박은 선언은 애초에 안 잰다고 적혀 있다
+  _sv="${_sk##*@}"
+  case "$_sv" in ''|*[!0-9.]*)
+    printf '판 「%s」 는 정확한 판이 아니라 **판은 안 쟀다**(`이름@1.2.3` 꼴이어야 잰다)' "$_sv" ;;
+  esac
+  return 0
+}
 
 # 선언이 판을 박았는데 깔린 판이 다른가 — **「안 깔렸다」와 「판이 다르다」는 고칠 자리가
 # 다르다.** 둘 다 ❌ 로 나오는데 사유가 「안 닿는다」 하나면, 다음 사람은 npm 이 없나부터
@@ -968,9 +1024,12 @@ pin_mismatch() {  # pin_mismatch <선언파일> <이름> — 어긋나면 읽을
   _mk="$(decl_get "$1" "$2" package)"
   # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
   case "$_mk" in ?*@*) ;; *) return 0 ;; esac
+  _mv="${_mk##*@}"
+  # 꼴 판정은 `pin_shape` 한 자리가 든다 — 여기서도 말하면 같은 문장이 두 벌이 된다.
+  case "$_mv" in ''|*[!0-9.]*) return 0 ;; esac
   _mh="$(npm_global_version "${_mk%@*}" || true)"
-  [ -n "$_mh" ] && [ "$_mh" != "${_mk##*@}" ] &&
-    printf '깔린 판이 다르다: %s (선언은 %s) — 다시 깔면 선언한 판을 받는다' "$_mh" "${_mk##*@}"
+  [ -n "$_mh" ] && [ "$_mh" != "$_mv" ] &&
+    printf '깔린 판이 다르다: %s (선언은 %s) — 다시 깔면 선언한 판을 받는다' "$_mh" "$_mv"
   return 0
 }
 
@@ -987,10 +1046,13 @@ render_decl() {  # render_decl <선언파일> <층라벨>
       python-importable) _step="파이썬 의존성" ;;
       *)                 _step="" ;;
     esac
-    _pin="$(pin_mismatch "$1" "$_name")"
+    # ⚠ **판정 앞에서 부르지 않는다.** `pin_mismatch` 안에서 `npm root -g` + `node` 가 도는데,
+    #   통과할 도구에도 그 쌍이 돌면 세션마다 도구 수만큼 곱해진다(npm 은 시작만으로 수백 ms 다).
     if probe_decl "$1" "$_name"; then
-      gate "$_name" ok "$_by ($2)"
-    elif [ -n "$_pin" ]; then
+      _shape="$(pin_shape "$1" "$_name")"
+      if [ -n "$_shape" ]; then gate "$_name" ok "$_by ($2) — $_shape"
+      else                      gate "$_name" ok "$_by ($2)"; fi
+    elif _pin="$(pin_mismatch "$1" "$_name")"; [ -n "$_pin" ]; then
       gate "$_name" off "$_by ($2) — $_pin$(why "$_name" "$_step")"
     elif [ "$_probe" = node-resolvable ] && [ -d "$(npm root -g 2>/dev/null)/$_target" ]; then
       gate "$_name" off "$_by ($2) — 깔렸는데 프로브가 못 찾는다: 배선이 끊겼다$(why "$_name" "$_step")"

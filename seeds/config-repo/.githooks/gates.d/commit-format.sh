@@ -10,7 +10,9 @@
 #   아닌데 원인을 못 짚어서 같은 실수를 또 하게 된다. 형제 저장소 이력 314건 중 10건이
 #   그 상태였다 (실측 · atelier).
 #
-# 낱말 목록(type-enum)은 여기 안 적는다 — 명세가 든다(규범 [Conventional Commits]).
+# ⚠ **낱말 목록(type-enum)은 여기 안 적는다** — 명세가 든다(규범 [Conventional Commits]).
+#   commitlint 이 없는 기계의 열화 갈래도 **꼴만** 보고 낱말은 안 본다: 목록을 적으면 명세와
+#   어긋나는 날 아무도 모르고, 그 갈래는 애초에 「안 쟀다」고 말하는 자리다.
 # 규칙 파일은 저장소가 `commitlint.config.mjs` 로 든다.
 set -u
 
@@ -68,23 +70,38 @@ if [ ! -f commitlint.config.mjs ] && [ ! -f commitlint.config.js ] && [ ! -f .co
 fi
 
 if [ -n "$CL" ]; then
-    if [ -n "$CFG" ]; then out="$("$CL" --edit "$lintfile" --config "$CFG" 2>&1)" || out_rc=1
-    else                   out="$("$CL" --edit "$lintfile" 2>&1)"              || out_rc=1
+    # ⚠ **초기화한다.** `${out_rc:-0}` 만 두면 환경에 그 이름이 실려 올 때 **멀쩡한 메시지를
+    #   빈 줄과 함께 막는다** — 사유 없는 빨강이 이 집에서 가장 나쁜 모양이다.
+    out_rc=0
+    if [ -n "$CFG" ]; then out="$("$CL" --edit "$lintfile" --config "$CFG" 2>&1)" || out_rc=$?
+    else                   out="$("$CL" --edit "$lintfile" 2>&1)"                 || out_rc=$?
     fi
-    if [ "${out_rc:-0}" = 1 ]; then
+    # ⚠ **commitlint 은 「위반」과 「제 오류」를 종료코드로 안 가른다** — 설정 문법 오류도,
+    #   `extends` 를 못 푸는 것도, 규칙 위반도 전부 1 이다(실측 2026-09-11 · 21.2.2). 그래서
+    #   여기서 「못 쟀다」(2)로 가를 수단이 없다. 대신 **출력을 통째로 낸다** — 스택이 보이면
+    #   사람이 「메시지가 아니라 설정이 문제구나」를 그 자리에서 안다.
+    #   markdownlint·lychee 는 제 오류에 2 이상을 내서 그쪽 조각은 갈래를 든다.
+    if [ "$out_rc" != 0 ]; then
         printf '%s\n' "$out" >&2
         fail=1
     fi
 else
-    printf '· commitlint 이 없어 첫 줄 형식만 대충 본다 — 본문·꼬리는 안 쟀다.\n' >&2
-    types='feat|fix|docs|refactor|test|chore|style|perf|build|ci|revert'
+    # ⚠ **낱말 목록을 여기 안 적는다** — 머리글이 그렇게 말하고, 명세를 옮겨 적으면 명세와
+    #   어긋나는 날 아무도 모른다. 그래서 이 갈래는 **꼴만** 본다: `<type>(범위)!: 요약`.
+    #   어느 낱말이 정당한가는 commitlint 가 있는 자리가 든다.
     check="$(grep -v '^#' "$lintfile" | sed '/^[[:space:]]*$/d' | head -n 1)"
-    if ! printf '%s' "$check" | grep -qE "^($types)(\([^)]+\))?!?: .+"; then
-        printf '✖ 커밋 제목이 Conventional Commits 형식이 아니다.\n' >&2
+    if ! printf '%s' "$check" | grep -qE '^[a-z][a-z]*(\([^)]+\))?!?: .+'; then
+        printf '✖ 커밋 제목이 Conventional Commits 꼴이 아니다.\n' >&2
         printf '  받은 것: %s\n' "$check" >&2
-        printf '  형식:    <type>[(범위)][!]: <한 줄 요약>\n' >&2
-        printf '  type:    %s\n' "$(printf '%s' "$types" | tr '|' ' ')" >&2
-        fail=1
+        printf '  꼴:      <type>[(범위)][!]: <한 줄 요약>\n' >&2
+        printf '  낱말 목록은 명세가 든다 — https://www.conventionalcommits.org\n' >&2
+        exit 1
     fi
+    # ⚠ **꼴만 봤다는 것은 안 쟀다는 것이다.** 통과시키되 판정 옆에 찍히게 2 로 끝낸다 —
+    #   본문·꼬리·낱말은 한 자도 안 봤고, 「전부 통과」로 읽히면 안 된다.
+    [ "$fail" -eq 0 ] && {
+        printf '· commitlint 이 없어 **제목의 꼴만** 봤다 — 본문·꼬리·낱말은 안 쟀다.\n' >&2
+        exit 2
+    }
 fi
 exit "$fail"

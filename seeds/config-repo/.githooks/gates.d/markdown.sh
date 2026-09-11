@@ -42,9 +42,23 @@ for f in $staged_md; do [ -f "$f" ] && set -- "$@" "$f"; done
 IFS=$oldifs
 [ "$#" -gt 0 ] || exit 0
 
-out="$(markdownlint-cli2 --no-globs "$@" 2>&1)" || {
-    printf '✖ 마크다운 서식이 어긋났다.\n' >&2
-    printf '%s\n' "$out" | grep -E ':[0-9]+' >&2 || printf '%s\n' "$out" | tail -n 20 >&2
-    exit 1
-}
+# ⚠ **도구가 「못 쟀다」로 지는 것과 문서가 어긋난 것은 다른 명제다.** markdownlint-cli2 는
+#   위반에 1, **제 오류에 2 이상**을 낸다(설정을 못 읽는 자리가 그렇다 — 배포가 반쪽만 닿으면
+#   난다). 둘을 같이 1 로 세면 **「마크다운 서식이 어긋났다」는 거짓 문장**과 함께 막고,
+#   다음 사람이 엉뚱한 파일을 뒤진다.
+out="$(markdownlint-cli2 --no-globs "$@" 2>&1)"; rc=$?
+case "$rc" in
+    0) ;;
+    1) printf '✖ 마크다운 서식이 어긋났다.\n' >&2
+       printf '%s\n' "$out" | grep -E ':[0-9]+' >&2 || printf '%s\n' "$out" | tail -n 20 >&2
+       exit 1 ;;
+    *) printf '· markdownlint 가 %s 로 졌다 — 서식이 어긋난 게 아니라 **못 쟀다**.\n' "$rc" >&2
+       printf '%s\n' "$out" | tail -n 5 >&2
+       exit 2 ;;
+esac
+
+# ⚠ **담긴 것이 전부 제외 목록에 들면 한 장도 안 잰다** — 그 0 이 「전부 통과」로 읽히면
+#   안 된다. 결정 기록만 담은 커밋이 이 저장소들의 일상 커밋 꼴이라 드물지 않다.
+printf '%s\n' "$out" | grep -q 'Linting: 0 files' &&
+    printf '· 담긴 .md 가 전부 제외 목록에 들어 **한 장도 안 쟀다**.\n' >&2
 exit 0
