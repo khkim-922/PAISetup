@@ -470,7 +470,10 @@ foreach ($repoRoot in $globalRuleTargets) {
         if ($ci) {
             $verdict = if ($ci.conclusion) { $ci.conclusion } else { $ci.status }
             $ciLine  = "마지막 CI $verdict · $($ci.headSha.Substring(0, 7)) · $($ci.createdAt.Substring(0, 10))"
+            # 결론이 아직 없으면(돌고 있다·줄 서 있다) 초록도 빨강도 아니다 — 남은 작업에 안 올린다.
+            # 첫 판이 in_progress 를 빨강으로 찍어 「CI 빨강」을 거짓으로 남겼다(실측 2026-09-12).
             if ($verdict -eq 'success') { $gateReport += "  ✅ $ciLine" }
+            elseif (-not $ci.conclusion) { $gateReport += "  · $ciLine — 아직 결론이 없다" }
             else {
                 $gateReport += "  ❌ $ciLine — 왜인지는:  gh run view --repo $slug --log-failed"
                 $todo += "CI 빨강 — $slug $($ci.headSha.Substring(0, 7)):  gh run view --repo $slug --log-failed"
