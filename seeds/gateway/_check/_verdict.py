@@ -1,13 +1,14 @@
 """판정 한 벌 — 검사마다 사본을 뜨던 `report`·`show`·`edge` 와 종료코드 계약을 모은다.
 
-좌표 — 이슈 #52 ① · 결정 0029(종료코드) · 아뜰리에 `_check/_verdict.py`.
+좌표 — AI-prompt-helper 이슈 #52 ① · AI-prompt-helper 결정 0029(종료코드) · 아뜰리에 `_check/_verdict.py`.
 
 세 방언은 축이 달라 셋 다 산다:
 
   report(이름, ok, 상세=())  상세는 **실패에만** 찍힌다 (계약 판정)
   show(라벨, 실측, 기대)     실측값을 **늘** 찍는다 (값 대조)
   edge(문구)                 **통과할 때도 보여야 하는 경계.** 실패 상세에 실으면 정작
-                             경고가 필요한 통과 화면에서 안 보인다
+                             경고가 필요한 통과 화면에서 안 보인다 — 한 도구 호출 프로브의
+                             「부름이 하나뿐이면 미측정」이 그렇게 묻힌 것이 이 손의 실측이다
   unmeasured(이름, 까닭)     **판정이 아니다** — 아예 안 잰 자리. 초록에도 빨강에도 안 든다
 
 계수는 이 모듈이 든다 — 부르는 쪽은 `fails()`·`passes()`·`unmeasureds()` 로 읽는다. 요약
@@ -79,12 +80,12 @@ def show(label, got, want):
     """값 대조 — 실측값을 늘 찍는다. 초록이어도 무엇을 봤는지가 남는다."""
     ok = got == want
     (PASSES if ok else FAILS).append(label)
-    print(f"  {'O' if ok else 'X'} {label}: {got!r}" + ("" if ok else f"  <- 기대 {want!r}"))
+    print(f"  {'✅' if ok else '❌'} {label}: {got!r}" + ("" if ok else f"  ← 기대 {want!r}"))
 
 
 def edge(text):
     """통과할 때도 보여야 하는 경계 문구 — 판정이 아니라 범위의 고지다."""
-    print(f"  ! {text}")
+    print(f"  ⚠ {text}")
 
 
 def unmeasured(name, why):
