@@ -44,7 +44,7 @@ python -X utf8 _check/cli_pipe_check.py      # 로컬 CLI 파이프 — 가짜 �
 값을 치르는 자라 검사 묶음에 안 든다:
 
 ```bash
-python -X utf8 _check/live_probe.py all                 # 셋 다 · 검체는 이 저장소 agents/lean.md · 숫자는 _check/log/ 에
+python -X utf8 _check/live_probe.py all <글 파일>       # 셋 다 · 검체를 안 주면 「안 잼」으로 물러난다 · 숫자는 _check/log/ 에
 python -X utf8 _check/live_probe.py ratio <글 파일>     # 제 봉투의 결(HTML 섞임 등)로 환산비만
 ```
 
