@@ -206,13 +206,30 @@ if (Test-Path $memSrc) {
     }
 }
 
+# 이 저장소에서만 쓰는 스킬 — 홈으로 안 민다. **목록의 진본은 선언이고, 재는 자도 같은 줄을
+# 본다**(`scripts/check-global-copies.sh`). 손사본 둘로 두면 한쪽만 고쳐지고, 그러면 재는 자가
+# 빠진 자산을 안 재면서 초록을 낸다 (`docs/decisions/0021`).
+# ⚠ **이 저장소는 역할이 둘이다** — 전역 자산의 진본이면서 공개 배포본을 뽑는 자다(0035).
+#   뽑기 절차를 든 스킬은 다른 프로젝트를 여는 세션마다 따라붙을 것이 아니다. 도구 선언은
+#   이미 둘로 갈려 있었는데(`tools.global.conf` ↔ `tools.conf`) 스킬만 한 벌이었다.
+$localSkillsConf = Join-Path $src 'deploy.skills.local.conf'
+$localSkills = @()
+if (Test-Path $localSkillsConf) {
+    $localSkills = @(Get-Content $localSkillsConf -Encoding UTF8 |
+        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+        Where-Object   { $_ })
+}
+
 # 스킬: .claude/skills/** -> ~/.claude/skills/**
 # 폴더를 통째로 미러링한다. SKILL.md만 집어오지 않는 것은 스킬이 references·scripts 같은
 # 딸린 파일을 갖기 때문이다. 목록을 여기 적지 않으므로 스킬이 새로 생겨도 이 파일은 그대로 둔다.
+# ⚠ **빠지는 것은 홈으로 미는 것뿐이다** — 위 선언이 든 스킬도 이 저장소를 붙인 세션에서는
+#   `.claude/skills/` 에서 그대로 로드된다. 「홈에 안 깐다」와 「안 쓴다」는 다른 명제다.
 $skillSrc = Join-Path $src '.claude\skills'
 if (Test-Path $skillSrc) {
     foreach ($f in (Get-ChildItem $skillSrc -Recurse -File)) {
         $rel = $f.FullName.Substring($skillSrc.Length + 1)
+        if ($localSkills -contains ($rel -split '\\')[0]) { continue }
         $targets += @{ From = $f.FullName; To = Join-Path $dst "skills\$rel" }
     }
 }
@@ -461,8 +478,12 @@ if (Test-Path $memSrc) {
 # 배포한 줄 알았던 것과 실제가 어긋난다.
 $skillDst = Join-Path $dst 'skills'
 if ((Test-Path $skillSrc) -and (Test-Path $skillDst)) {
+    # ⚠ **이 저장소 전용 스킬은 여기서도 뺀다.** 그래야 전에 깔려 있던 홈 사본이 제거 후보로
+    #   올라온다 — 선언에 이름을 더한 날 홈에서 저절로 걷히는 길이 이것이다. 안 빼면 「밀지도
+    #   않고 걷지도 않는」 자리가 되어, 옛 사본이 계속 로드되면서 아무도 모른다.
     $keep = @(Get-ChildItem $skillSrc -Recurse -File |
-        ForEach-Object { $_.FullName.Substring($skillSrc.Length + 1) })
+        ForEach-Object { $_.FullName.Substring($skillSrc.Length + 1) } |
+        Where-Object { $localSkills -notcontains ($_ -split '\\')[0] })
     Get-ChildItem $skillDst -Recurse -File |
         Where-Object { $keep -notcontains $_.FullName.Substring($skillDst.Length + 1) } |
         ForEach-Object {

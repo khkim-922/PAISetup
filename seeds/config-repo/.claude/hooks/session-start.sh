@@ -736,13 +736,16 @@ if [ "$MODE" = install ]; then
         _skipname="$(decl_get "$_f" "$_t" skip-browsers-env)"
         _skipval=""; [ -n "$_skipname" ] && _skipval="${!_skipname:-}"
         if [ -n "$_br" ] && [ -z "$_skipval" ] && command -v "$_pkg" >/dev/null 2>&1; then
-          # ⚠ 뒷길(browsers-fallback)이 선언돼 있으면 이 걸음은 **첫 시도**지 약속이 아니다.
-          #   제 CDN 이 막힌 자리에서는 실패가 정상이고 판정은 browsers_ready 의 뒷길이
-          #   든다 — 여기서 실패를 적으면 뒷길이 성공해도 기록이 남아, 매 세션 「다시
-          #   깔라」는 **고칠 수 없는 경고**만 울린다. 뒷길이 없을 때만 이 실패가 사유다.
-          if [ -n "$(decl_get "$_f" "$_t" browsers-fallback)" ]; then
-            "$_pkg" install $_br >/dev/null 2>&1 || true
-          else
+          # ⚠ **뒷길(browsers-fallback)이 선언돼 있으면 제 CDN 을 아예 안 부른다.**
+          #   옛 판은 「첫 시도」로 한 번 불렀다. 그런데 그 명령은 받기 전에 **제 판과 안 맞는
+          #   브라우저를 「쓸모없다」며 먼저 지운다** — 받는 길이 막힌 자리에서는 지우기만 하고
+          #   못 받아 **멀쩡히 있던 것까지 없어진다.** 실측 2026-09-11(리모트 컨테이너):
+          #   이미지가 미리 들고 온 크로미움이 그 한 번에 사라졌고, 새 판은 403 이라 못 받아
+          #   그림 굽기가 그 세션 내내 죽었다.
+          #   **뒷길이 선언돼 있다는 것은 받는 길이 따로 서 있다는 뜻이다** — 여기서 헛되이 걸
+          #   값이 없고, 판을 맞추는 값도 없다(뒷길로 받은 것은 실행 파일을 직접 가리켜 쓰므로
+          #   playwright 의 판과 어긋나도 된다). 그래서 **뒷길이 없을 때만** 이 길로 간다.
+          if [ -z "$(decl_get "$_f" "$_t" browsers-fallback)" ]; then
             try "$_t" "$_pkg" install $_br || true
           fi
         fi ;;
