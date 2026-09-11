@@ -229,7 +229,7 @@ show("자식이 흘린 말이 사유에 실린다",
      "모델 이름을 못 찾겠다" in str(err) if kind == "예외" else str(err), True)
 show("  종료 코드도 함께 실린다", "3 로 끝났다" in str(err) if kind == "예외" else "", True)
 
-print(f"\n[6] 시계는 침묵을 잰다 — 생각 신호가 오는 동안은 안 끊긴다")
+print("\n[6] 시계는 침묵을 잰다 — 생각 신호가 오는 동안은 안 끊긴다")
 kind, (got, _) = call("think", layers=["안녕"])
 show(f"생각 7초 > 시계 {gateway.TIMEOUT_S}초 — 그래도 돌아온다", kind, "돌아옴")
 show("생각 끝의 글자가 산다", got[0] if kind == "돌아옴" else got, "생각 끝에 나온 글")

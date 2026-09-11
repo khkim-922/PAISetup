@@ -252,7 +252,10 @@ foreach ($pair in @(
         @{ Src = 'seeds\gateway';     Dst = 'seeds\gateway' })) {
     $aSrc = Join-Path $src $pair.Src
     if (-not (Test-Path $aSrc)) { continue }
-    foreach ($f in (Get-ChildItem $aSrc -Recurse -File)) {
+    # ⚠ **파이썬이 남긴 캐시는 안 민다.** 씨앗의 검사를 돌리면 `__pycache__\` 가 생기는데 git 은
+    #   무시해도 이 복사는 모른다 — 실측 2026-09-12: 프로브를 돌린 직후 배포가 `.pyc` 일곱을 홈에
+    #   깔았다. 그것은 자산이 아니라 그 PC 의 부산물이다.
+    foreach ($f in (Get-ChildItem $aSrc -Recurse -File | Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
         $rel = $f.FullName.Substring($aSrc.Length + 1)
         $targets += @{ From = $f.FullName; To = Join-Path $dst "$($pair.Dst)\$rel" }
     }
@@ -443,10 +446,18 @@ foreach ($repoRoot in $globalRuleTargets) {
     $gateRc = $LASTEXITCODE
     if ($gate) { $gateReport += $gate }
     # ⚠ 초록이어도 `$same` 에 한 줄을 또 두지 않는다 — 위 블록이 이미 그 말을 했다.
-    if ($gateRc -ne 0) {
+    # ⚠ **진단은 그 저장소에 지금 있는 선언으로 잰다 — 복사는 아직 안 됐다.** 도구 선언
+    #   (`tools.global.conf`)이 이번 배포에서 바뀌면 새 도구는 이 진단에 아예 안 나와 초록이
+    #   서고, 부트스트랩이 안 올라 **배포를 두 번 돌려야 깔렸다**(실측 2026-09-12 · ruff: 첫 판은
+    #   그 줄이 없었고 둘째 판이 깔았다). 그래서 선언을 덮는 복사가 계획에 있으면 진단과 무관하게
+    #   올린다 — 실행은 계획 순서라 복사(앞)가 부트스트랩(여기)보다 먼저 돈다.
+    $declChanges = @($plan | Where-Object {
+        $_.Kind -eq 'copy' -and $_.Repo -eq $repoRoot -and $_.To -like '*\.claude\tools.global.conf' })
+    if ($gateRc -ne 0 -or $declChanges.Count -gt 0) {
+        $why = if ($gateRc -ne 0) { '꺼진 검사가 있다 — 도구를 깐다' } else { '도구 선언이 바뀐다 — 새 선언으로 깐다' }
         $plan += @{
             Kind = 'bootstrap'; Repo = $repoRoot; Script = $boot
-            Text = "+ 부트스트랩  $repoRoot  (꺼진 검사가 있다 — 도구를 깐다)"
+            Text = "+ 부트스트랩  $repoRoot  ($why)"
         }
     }
 }

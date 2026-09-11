@@ -98,7 +98,7 @@ def _call(c, system, ask):
                                            on_think=thinks.append)
     except RuntimeError as exc:
         print(f"[거절] {exc}")
-        raise SystemExit(2)
+        raise SystemExit(2) from exc
     return text, stop, (used[-1] if used else None), first[0], round(time.monotonic() - t0, 1), thinks
 
 
