@@ -107,6 +107,12 @@ $TlsHosts = @(
 #   자리를 가르는 자는 `bootstrap-vdi.sh` 이고 그것은 이 설치 뒤에 온다. 그래서 여기서는
 #   **주소가 있으면 쓰는 것, 없으면 안 쓰는 것**으로 판정한다 — 자리 판별을 여기 옮겨 적으면
 #   같은 규칙이 두 자리에 살고 한쪽만 낡는다.
+# ── 데스크탑 앱 — **이름은 여기 한 자리다.** 아래 2′ 칸이 깔 때도, 마지막 「연다」 칸이
+#    띄울 것을 찾을 때도 이 값에서 판다. 옛 판은 세 자리에 박혀 있었다.
+# ⚠ **띄울 이름은 여기서 파생한다** — winget 의 id 는 `<만든 이>.<앱>` 꼴이라 뒷칸이 곧
+#   시작 메뉴에 뜨는 이름이다. 둘을 따로 적으면 한쪽만 낡는다.
+$DesktopApp = 'Anthropic.Claude'
+
 $Vars = @(
   @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 끝에 /v1 을 붙이지 않는다 (CLI 가 붙인다)'; Gateway=$true }
   @{ Name='ANTHROPIC_AUTH_TOKEN'; Desc='게이트웨이 API 키';                                          Gateway=$true; Secret=$true }
@@ -681,20 +687,20 @@ if ($wantApp -eq 'yes' -or ($wantApp -eq 'offsite' -and $offsite)) {
   } else {
     $there = {
       $tl = [IO.Path]::GetTempFileName()
-      $rc = Invoke-Logged 'winget' @('list','--id','Anthropic.Claude','--source','winget') $tl
+      $rc = Invoke-Logged 'winget' @('list','--id',$DesktopApp,'--source','winget') $tl
       Remove-Item $tl -ErrorAction SilentlyContinue
       $rc -eq 0
     }
     if (& $there) {
       if (-not $NoUpgrade) {
         $al = [IO.Path]::GetTempFileName()
-        Invoke-Logged 'winget' (@('upgrade','--id','Anthropic.Claude') + $WG) $al | Out-Null
+        Invoke-Logged 'winget' (@('upgrade','--id',$DesktopApp) + $WG) $al | Out-Null
         Remove-Item $al -ErrorAction SilentlyContinue
       }
       Write-Host '  있음'
     } else {
       $al = [IO.Path]::GetTempFileName()
-      Invoke-Logged 'winget' (@('install','--id','Anthropic.Claude') + $WG) $al | Out-Null
+      Invoke-Logged 'winget' (@('install','--id',$DesktopApp) + $WG) $al | Out-Null
       if (& $there) {
         Write-Host '  깔았다' -ForegroundColor Green
       } else {
@@ -1297,56 +1303,57 @@ if (-not $WithPersonalConfig) {
 # ⚠ **못 열어도 실패로 안 센다.** 설치는 이미 선 것이고 창은 사람이 손으로도 연다. 여기서
 #   `$Fails` 를 불리면 멀쩡히 깔린 기계가 빨갛게 보고된다.
 
-# VS Code 의 실행 파일. PATH 에 걸린 `code` 는 `…\bin\code.cmd` 라 그것을 띄우면 콘솔이 한 번
-# 번쩍인다. **자리를 새로 적지 않고** 이미 걸린 것에서 한 층 올라가 판다 — 적으면 위 배선
-# (`Update-RuntimePath`)과 사본이 둘 되고, 한쪽만 낡는다.
+# ⚠ **찾는 자는 「무엇을」이 아니라 「어떻게 띄우나」를 돌려준다.** 둘이 진짜로 다른 기전이라
+#   그렇다 — VS Code 는 실행 파일을 직접 띄워야 **이 창이 방금 심은 값을 물고** 뜨고, 데스크탑은
+#   띄울 실행 파일이 아예 없다. 그래서 `Exe` 를 든 것과 `AppId` 를 든 것이 갈려 나온다.
+#   `Proc` 는 「이미 떠 있나」를 재는 이름이고, **둘 다 제가 든 손잡이에서 판다.**
+
+# VS Code — PATH 에 걸린 `code` 는 `…\bin\code.cmd` 라 그것을 띄우면 콘솔이 한 번 번쩍인다.
+# 한 층 올라가 실행 파일을 판다.
+# ⚠ **자리를 여기 안 적는다.** 적으면 위 배선(`Update-RuntimePath`)이 든 목록과 사본이 둘
+#   되고 한쪽만 낡는다. 부르는 쪽이 `$hasCode`(= `code` 가 실제로 돌더라)일 때만 여기 오므로,
+#   PATH 에서 못 파는 갈래는 **도달할 수 없는 길**이다 — 옛 판이 그 자리에 박아 두었던 경로 둘을
+#   걷었다.
 function Find-VSCode {
   $c = Get-Command code -ErrorAction SilentlyContinue
-  if ($c -and $c.Source) {
-    # ⚠ **빈 것을 `Join-Path` 에 넘기지 않는다** — 위 `Stop` 이 그 자리에서 던지는데, 여기는
-    #   설치의 마지막 칸이라 **종료코드째 날아간다.** 멀쩡히 끝난 설치가 실패로 보고된다.
-    $vsRoot = Split-Path (Split-Path $c.Source -Parent) -Parent
-    if ($vsRoot) {
-      $exe = Join-Path $vsRoot 'Code.exe'
-      if (Test-Path -LiteralPath $exe) { return $exe }
-    }
-  }
-  foreach ($p in @("$env:ProgramFiles\Microsoft VS Code\Code.exe",
-                   "$env:LOCALAPPDATA\Programs\Microsoft VS Code\Code.exe")) {
-    if (Test-Path -LiteralPath $p) { return $p }
-  }
-  return $null
+  if (-not $c -or -not $c.Source) { return $null }
+  # ⚠ **빈 것을 `Join-Path` 에 넘기지 않는다** — 위 `Stop` 이 그 자리에서 던지는데, 여기는
+  #   설치의 마지막 칸이라 **종료코드째 날아간다.** 멀쩡히 끝난 설치가 실패로 보고된다.
+  $vsRoot = Split-Path (Split-Path $c.Source -Parent) -Parent
+  if (-not $vsRoot) { return $null }
+  $exe = Join-Path $vsRoot 'Code.exe'
+  if (-not (Test-Path -LiteralPath $exe)) { return $null }
+  return @{ Name = 'VS Code'; Exe = $exe
+            Proc = [IO.Path]::GetFileNameWithoutExtension($exe) }
 }
 
-# 데스크탑 앱 — **PATH 로 못 찾는다.** GUI 앱이라 부를 이름이 안 생기는 것은 위 2′ 칸이 이미
-# 적어 둔 사실이고 여는 자리에서도 같다. 그래서 자리를 훑는다.
-# ⚠ **판 번호를 박지 않는다.** 앱이 올라가면 `app-1.2.3` 꼴 폴더가 새로 나므로, 이름을 박으면
-#   **다음 판에서 조용히 못 찾는다.** 박는 대신 찾고, 그래도 없으면 시작 메뉴 바로가기로 간다 —
-#   그것은 설치 자리가 달라져도 선다.
+# 데스크탑 앱 — **자리를 묻지 않고 윈도우에 앱을 묻는다.**
+# ⚠ **경로로 찾는 길은 막혀 있다.** 이 앱은 스토어 꼴(MSIX)로 깔릴 수 있고, 그러면 실행 파일도
+#   `Uninstall` 등록 정보도 시작 메뉴 `.lnk` 도 **하나도 안 생긴다.** 실측 2026-09-11(집 PC):
+#   그 셋이 다 빈손인데 winget 은 「있음」이었고, 경로를 훑던 옛 판이 빈손으로 돌아와 **말없이
+#   VS Code 를 열었다.** 실물은 `Program Files\WindowsApps\...` 인데 그 자리는 권한으로 막혀
+#   훑어도 못 본다.
+# ⚠ **그러니 자리를 하나 더 박는 것은 답이 아니다** — 꼴이 바뀌면 또 어긋난다. `Get-StartApps`
+#   는 **띄울 수 있는 앱과 그 손잡이**를 돌려주고, 스토어 꼴이든 예전 꼴이든 같은 답을 낸다.
+# ⚠ **찾을 이름도 안 박는다** — 위 `$DesktopApp` 에서 판다.
 function Find-ClaudeApp {
-  $root = Join-Path $env:LOCALAPPDATA 'AnthropicClaude'
-  $stub = Join-Path $root 'claude.exe'
-  if (Test-Path -LiteralPath $stub) { return $stub }
-  if (Test-Path -LiteralPath $root) {
-    $f = Get-ChildItem -LiteralPath $root -Filter 'claude.exe' -Recurse -ErrorAction SilentlyContinue |
-         Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($f) { return $f.FullName }
-  }
-  foreach ($d in @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs",
-                   "$env:ProgramData\Microsoft\Windows\Start Menu\Programs")) {
-    if (-not (Test-Path -LiteralPath $d)) { continue }
-    $l = Get-ChildItem -LiteralPath $d -Filter 'Claude.lnk' -Recurse -ErrorAction SilentlyContinue |
-         Select-Object -First 1
-    if ($l) { return $l.FullName }
-  }
-  return $null
+  $want = ($DesktopApp -split '\.')[-1]        # `만든이.앱` → `앱`
+  try {
+    $a = @(Get-StartApps -ErrorAction Stop |
+           Where-Object { $_.Name -like "*$want*" })[0]
+  } catch { return $null }                      # 이 윈도우에 그 물음이 없다
+  if (-not $a -or -not $a.AppID) { return $null }
+  # 프로세스 이름도 손잡이에서 판다. 스토어 꼴은 `앱_해시!앱` 이라 `_` 앞이 이름이고,
+  # 예전 꼴은 바로가기 경로라 파일 이름이 그 자리다.
+  $proc = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
+          else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
+  return @{ Name = 'Claude 데스크탑'; AppId = $a.AppID; Proc = $proc }
 }
 
-# 그 이름의 프로세스가 이미 도나. 바로가기로 찾았어도 이름은 실행 파일과 같다.
-function Test-AppUp([string]$Path) {
-  if (-not $Path) { return $false }
-  $n = [IO.Path]::GetFileNameWithoutExtension($Path)
-  return [bool](Get-Process -Name $n -ErrorAction SilentlyContinue)
+# 그 앱이 이미 도나 — 이름은 찾는 자가 제 손잡이에서 판 것을 그대로 쓴다.
+function Test-AppUp($App) {
+  if (-not $App -or -not $App.Proc) { return $false }
+  return [bool](Get-Process -Name $App.Proc -ErrorAction SilentlyContinue)
 }
 
 # 끌지 사람에게 묻는다.
@@ -1373,20 +1380,20 @@ function Ask-Restart([string]$AppName) {
 #   나간다. 처음부터 죽이면 그 물음이 안 뜬다.
 # ⚠ **세게가 있는 까닭** — 데스크탑은 창을 닫아도 **트레이로 내려갈 뿐 안 나간다.**
 #   곱게만 두면 「껐다」가 거짓이 되고, 그 위에서 「새로 띄웠다」가 또 거짓이 된다.
-# ⚠ **이름이 같은 자식들까지 다 든다** — VS Code 는 창·확장·GPU 가 다 `Code.exe` 다.
+# ⚠ **이름이 같은 자식들까지 다 든다.** 둘 다 여럿으로 돈다 — VS Code 는 창·확장·GPU 가
+#   다 `Code.exe` 이고, 데스크탑도 프로세스 셋이 같은 이름으로 떠 있었다(실측 2026-09-11).
 #   하나만 닫으면 남은 것이 살아 「아직 돈다」로 읽힌다.
-function Stop-App([string]$Path) {
-  $n = [IO.Path]::GetFileNameWithoutExtension($Path)
-  foreach ($p in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+function Stop-App($App) {
+  foreach ($p in @(Get-Process -Name $App.Proc -ErrorAction SilentlyContinue)) {
     if ($p.MainWindowHandle -ne 0) { $null = $p.CloseMainWindow() }
   }
   # 5초까지 기다리되 나가면 바로 넘어간다 — 안 기다려도 될 때 기다리지 않는다.
-  for ($i = 0; $i -lt 10 -and (Test-AppUp $Path); $i++) { Start-Sleep -Milliseconds 500 }
-  foreach ($p in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+  for ($i = 0; $i -lt 10 -and (Test-AppUp $App); $i++) { Start-Sleep -Milliseconds 500 }
+  foreach ($p in @(Get-Process -Name $App.Proc -ErrorAction SilentlyContinue)) {
     try { $p.Kill() } catch { }
   }
-  for ($i = 0; $i -lt 6 -and (Test-AppUp $Path); $i++) { Start-Sleep -Milliseconds 500 }
-  return (-not (Test-AppUp $Path))
+  for ($i = 0; $i -lt 6 -and (Test-AppUp $App); $i++) { Start-Sleep -Milliseconds 500 }
+  return (-not (Test-AppUp $App))
 }
 
 # ⚠ **마지막 한 줄은 `=== 끝 ===` 이 든다.** 화면 껍데기의 완료 문구가 이 줄에서 난다 — 저쪽에
@@ -1419,17 +1426,23 @@ if ($NoLaunch) {
     [Environment]::SetEnvironmentVariable($k, $planted[$k], 'Process')
   }
 
-  $open = $null; $name = $null
+  $app = $null
   if (-not $useGateway) {
-    $open = Find-ClaudeApp
-    if ($open) { $name = 'Claude 데스크탑' }
+    $app = Find-ClaudeApp
+    # ⚠ **못 찾은 것을 말없이 딴 것으로 갈음하지 않는다.** 사외에서 앞문은 데스크탑이다 —
+    #   못 찾았다고 조용히 VS Code 를 열면 사람은 「왜 VS Code 가 뜨지」를 혼자 헤맨다.
+    #   실측 2026-09-11(집 PC): 한 줄도 안 찍힌 채 VS Code 가 떴고, 까닭을 찾는 데 몇 판이 들었다.
+    #   **떨어지더라도 왜 떨어졌는지 찍고 떨어진다.**
+    if (-not $app) {
+      Write-Host '  ! Claude 데스크탑을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
+    }
   }
-  if (-not $open -and $hasCode) { $open = Find-VSCode; $name = 'VS Code' }
+  if (-not $app -and $hasCode) { $app = Find-VSCode }
 
   $go = $false
-  if (-not $open) {
+  if (-not $app) {
     Write-Host '  ! 열 것을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
-  } elseif (Test-AppUp $open) {
+  } elseif (Test-AppUp $app) {
     # ⚠ **떠 있으면 안 띄운다 — 둘 다.** 까닭이 둘이고, 둘 다 「돌던 것은 뒤에 온 것을
     #   모른다」다.
     #   · **환경** — 창은 뜰 때 환경을 한 번 복사하고 그 뒤에 바뀐 것은 안 따라온다.
@@ -1445,17 +1458,17 @@ if ($NoLaunch) {
     #   새로 뜬 것처럼 보이는데 **안에 든 것은 그대로다** — 재시작한 것처럼 보이는 것이
     #   재시작 안 한 것보다 나쁘다. 안 띄우는 대신 **어떻게 끄는지를 댄다.**
     # ⚠ **떠 있는 것을 설치가 죽이지 않는다** — 저장 안 한 것이 날아간다. 끄는 것은 사람이 든다.
-    Write-Host "  $name — 이미 떠 있다. 끌지 묻는다"
+    Write-Host "  $($app.Name) — 이미 떠 있다. 끌지 묻는다"
     # 사람이 아니라고 했거나 안 꺼졌을 때 낼 말. 한 번 세워 두고 두 갈래가 나눠 쓴다.
-    $tail = if ($name -eq 'VS Code') {
+    $tail = if ($app.Name -eq 'VS Code') {
       '열려 있는 VS Code 를 전부 닫고 새로 여세요 — 돌던 창은 방금 깔린 것을 모릅니다'
     } else {
-      "${name}을 트레이(시계 옆)에서 완전히 끄고 새로 여세요 — 창만 닫으면 안 꺼집니다"
+      "$($app.Name)을 트레이(시계 옆)에서 완전히 끄고 새로 여세요 — 창만 닫으면 안 꺼집니다"
     }
-    if (Ask-Restart $name) {
+    if (Ask-Restart $app.Name) {
       Write-Host '  끈다 — 창을 닫으라고 보내고, 안 나가면 세게 끝낸다'
-      if (Stop-App $open) {
-        Write-Host "  $name — 껐다" -ForegroundColor Green
+      if (Stop-App $app) {
+        Write-Host "  $($app.Name) — 껐다" -ForegroundColor Green
         $go = $true
       } else {
         # ⚠ **못 껐으면 「껐다」로 안 넘어간다.** 안 끄고 띄우면 돌던 그 프로세스가 창을
@@ -1479,19 +1492,23 @@ if ($NoLaunch) {
     #   `Start-Process` 는 껍데기 실행이라 손잡이를 안 물려주고 **환경은 물려준다** — 방금 심은
     #   값이 그 길로 간다. `-Wait` 는 안 건다: 걸면 사람이 그 창을 닫을 때까지 설치가 안 끝난다.
     try {
-      Start-Process -FilePath $open | Out-Null
-      Write-Host "  $name — 띄웠다" -ForegroundColor Green
+      # ⚠ **띄우는 길이 둘이다.** 실행 파일이 있으면 **이 창의 자식으로** 띄운다 — 그래야
+      #   방금 심은 값을 물고 뜬다. 없으면(스토어 꼴) 앱 손잡이로 껍데기에 맡긴다. 그 길은
+      #   이 창의 환경이 안 가지만, 그렇게 뜨는 앱은 그 값을 안 읽으므로 잃는 것이 없다.
+      if ($app.Exe) { Start-Process -FilePath $app.Exe | Out-Null }
+      else          { Start-Process "shell:AppsFolder\$($app.AppId)" | Out-Null }
+      Write-Host "  $($app.Name) — 띄웠다" -ForegroundColor Green
       # ⚠ **이름 뒤에 조사를 붙일 때 갈래를 본다.** 「데스크탑이」는 붙여 쓰고 「VS Code 를」은
       #   띄어 쓴다 — 받침도 띄어쓰기도 이름마다 갈린다. 한 틀에 두 이름을 밀어 넣으면 둘 중
       #   하나가 반드시 어긋나고, 그 어긋남은 사람이 마지막에 읽는 한 줄에서 난다.
-      $tail = if ($name -eq 'VS Code') {
+      $tail = if ($app.Name -eq 'VS Code') {
         'VS Code 를 열었습니다 — Ctrl+Shift+P → Claude 로 확장을 엽니다'
       } else {
-        "${name}을 열었습니다 — 처음이면 구독 계정으로 로그인합니다"
+        "$($app.Name)을 열었습니다 — 처음이면 구독 계정으로 로그인합니다"
       }
     } catch {
       # 조사를 안 붙인다 — 여기는 이름 둘이 다 지나는 자리다.
-      Write-Host "  ! 못 띄웠다 ($name) — $($_.Exception.Message)" -ForegroundColor Yellow
+      Write-Host "  ! 못 띄웠다 ($($app.Name)) — $($_.Exception.Message)" -ForegroundColor Yellow
     }
   }
 }
