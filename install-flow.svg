@@ -182,16 +182,16 @@
           <text x="525.4" y="1744" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">[O] / [X] 를 찍는다</text>
         </g>
 
-        <g id="node-n16" tabindex="0" role="button" aria-label="Focus 16. 자리가 정한 것을 연다, 사내면 VS Code · 사외면 Claude 데스크탑, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">16. 자리가 정한 것을 연다 · 사내면 VS Code · 사외면 Claude 데스크탑 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통 · ⚠ 이미 떠 있으면 안 띄운다 — 낡은 창은 방금 심은 키를 못 본다</title>
-          <rect x="392.9" y="1806" width="265" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="392.9" y="1806" width="265" height="68" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(398.9 1812) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n16" tabindex="0" role="button" aria-label="Focus 16. 자리가 정한 것을 연다, 3초 뒤 — 사내면 VS Code · 사외면 Claude 데스크탑, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">16. 자리가 정한 것을 연다 · 3초 뒤 — 사내면 VS Code · 사외면 Claude 데스크탑 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통 · ⚠ 이미 돌고 있으면 먼저 묻는다 — 돌던 것은 뒤에 온 것을 모른다</title>
+          <rect x="390.9" y="1806" width="269" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="390.9" y="1806" width="269" height="68" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(396.9 1812) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
           </g>
           <text x="525.4" y="1827" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">16. 자리가 정한 것을 연다</text>
-          <text x="525.4" y="1844" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">사내면 VS Code · 사외면 Claude 데스크탑</text>
-        <text x="525.4" y="1862" font-size="7px" text-anchor="middle" fill="rgb(5, 150, 105)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 이미 떠 있으면 안 띄운다 — 낡은 창은 방금 심은 키를 못 본다</text>
+          <text x="525.4" y="1844" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">3초 뒤 — 사내면 VS Code · 사외면 Claude 데스크탑</text>
+        <text x="525.4" y="1862" font-size="7px" text-anchor="middle" fill="rgb(5, 150, 105)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 이미 돌고 있으면 먼저 묻는다 — 돌던 것은 뒤에 온 것을 모른다</text>
         </g>
 
         <g id="node-n6" tabindex="0" role="button" aria-label="Focus 6. [1/8] 프로그램, VS Code · Node · Git · Python · gh, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
@@ -314,8 +314,8 @@
           <text x="671.4" y="1748" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">하나라도 [X] 면 안 선 것</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <rect x="666.8" y="1862" width="53.199999999999996" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <text x="693.4" y="1872" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">뜬 창으로</text>
+          <rect x="668.8" y="1862" width="53.199999999999996" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="695.4" y="1872" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">뜬 창으로</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
           <rect x="48.39999999999998" y="242" width="130" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>

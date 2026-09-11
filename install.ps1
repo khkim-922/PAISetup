@@ -44,7 +44,9 @@
 #   그 한 손이 안 가면 방금 심은 값은 **아무 데도 안 걸린 채**로 남는다 — 깔기는 다 됐는데 쓸
 #   수는 없는 자리다. 그러니 마지막 손은 설치가 든다.
 #   끄는 칸을 그래도 두는 까닭은 **화면 없이 부르는 갈래**가 있어서다(머리글의 쓰임 목록).
-#   자동화가 도는 자리에 GUI 가 뜨면 그것은 아무도 안 닫는 창이 된다.
+#   ⚠ **자동화로 돌릴 때는 이 칸을 꼭 준다.** 이미 떠 있는 것이 있으면 여는 자리가 **끌지
+#   묻는 창**을 띄우는데, 아무도 안 보는 자리에서 그것은 영영 안 눌리는 창이다 — 설치가
+#   거기서 선 채로 끝나지 않는다.
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile)
 
@@ -1347,6 +1349,46 @@ function Test-AppUp([string]$Path) {
   return [bool](Get-Process -Name $n -ErrorAction SilentlyContinue)
 }
 
+# 끌지 사람에게 묻는다.
+# ⚠ **이 창에는 콘솔이 없다.** 화면 껍데기가 `CreateNoWindow` 로 띄우고 표준입력을 NUL 로
+#   돌리므로 `Read-Host` 가 못 선다 — 물어도 아무도 못 답한다. 그래서 GUI 로 묻는다.
+# ⚠ **임자를 세워 준다.** 임자 없는 물음창은 설치 창 **뒤로 갈 수 있고**, 그러면 설치가
+#   멈춘 것처럼 보인다 — 안 보이는 창을 아무도 안 눌러 영영 안 끝난다.
+function Ask-Restart([string]$AppName) {
+  Add-Type -AssemblyName System.Windows.Forms
+  $owner = New-Object Windows.Forms.Form
+  $owner.TopMost = $true
+  try {
+    $msg = "$AppName — 이미 돌고 있습니다.`n`n" +
+           "지금 껐다 새로 열까요?`n" +
+           "돌던 것은 방금 깔린 것(키 · MCP 서버 · 세션 훅)을 모릅니다.`n`n" +
+           "저장 안 한 것이 있으면 먼저 저장하고 눌러 주세요."
+    return ([Windows.Forms.MessageBox]::Show(
+      $owner, $msg, 'Claude Code 설치', 'YesNo', 'Warning') -eq 'Yes')
+  } finally { $owner.Dispose() }
+}
+
+# 끈다 — **곱게 먼저, 안 나가면 세게.**
+# ⚠ **곱게가 먼저인 까닭** — VS Code 는 창을 닫으라 하면 저장을 묻고, 사람이 답하면 스스로
+#   나간다. 처음부터 죽이면 그 물음이 안 뜬다.
+# ⚠ **세게가 있는 까닭** — 데스크탑은 창을 닫아도 **트레이로 내려갈 뿐 안 나간다.**
+#   곱게만 두면 「껐다」가 거짓이 되고, 그 위에서 「새로 띄웠다」가 또 거짓이 된다.
+# ⚠ **이름이 같은 자식들까지 다 든다** — VS Code 는 창·확장·GPU 가 다 `Code.exe` 다.
+#   하나만 닫으면 남은 것이 살아 「아직 돈다」로 읽힌다.
+function Stop-App([string]$Path) {
+  $n = [IO.Path]::GetFileNameWithoutExtension($Path)
+  foreach ($p in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+    if ($p.MainWindowHandle -ne 0) { $null = $p.CloseMainWindow() }
+  }
+  # 5초까지 기다리되 나가면 바로 넘어간다 — 안 기다려도 될 때 기다리지 않는다.
+  for ($i = 0; $i -lt 10 -and (Test-AppUp $Path); $i++) { Start-Sleep -Milliseconds 500 }
+  foreach ($p in @(Get-Process -Name $n -ErrorAction SilentlyContinue)) {
+    try { $p.Kill() } catch { }
+  }
+  for ($i = 0; $i -lt 6 -and (Test-AppUp $Path); $i++) { Start-Sleep -Milliseconds 500 }
+  return (-not (Test-AppUp $Path))
+}
+
 # ⚠ **마지막 한 줄은 `=== 끝 ===` 이 든다.** 화면 껍데기의 완료 문구가 이 줄에서 난다 — 저쪽에
 #   같은 문장을 또 적으면 갈래가 늘 때마다 한쪽만 낡는다. 갈래마다 할 말이 다른 자리라 더 그렇다.
 # ⚠ **이 줄만 사람에게 건네는 말이다.** 위는 다 기록이라 「…했다」로 적혔지만, 여기는 끝에서
@@ -1384,33 +1426,68 @@ if ($NoLaunch) {
   }
   if (-not $open -and $hasCode) { $open = Find-VSCode; $name = 'VS Code' }
 
+  $go = $false
   if (-not $open) {
     Write-Host '  ! 열 것을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
   } elseif (Test-AppUp $open) {
-    # ⚠ **떠 있는 데 창을 하나 더 내지 않는다.** `code` 를 다시 불러도 **새 프로세스가 아니라
-    #   떠 있던 그 프로세스**가 창을 낸다 — 그 창은 낡은 환경을 그대로 물어 방금 심은 키를 못
-    #   보는데, 화면에는 「열어 줬다」로 보인다. 부재가 통과로 읽히는 바로 그 자리라, 여기서는
-    #   안 열고 사람에게 닫으라고 말한다.
-    # ⚠ **떠 있는 것을 죽이지 않는다** — 저장 안 한 것이 날아간다. 닫는 것은 사람이 든다.
-    # ⚠ **데스크탑은 닫으라고 안 한다.** 그 앱은 `ANTHROPIC_BASE_URL` 을 안 읽으므로(위 2′ 칸)
-    #   낡은 환경이 물릴 것이 없다 — 안 겪는 일을 겪으라고 하지 않는다.
-    Write-Host "  $name — 이미 떠 있다. 안 띄운다"
-    if ($name -ne 'VS Code') { $tail = "${name}이 이미 떠 있습니다 — 그 창에서 이어 쓰세요" }
+    # ⚠ **떠 있으면 안 띄운다 — 둘 다.** 까닭이 둘이고, 둘 다 「돌던 것은 뒤에 온 것을
+    #   모른다」다.
+    #   · **환경** — 창은 뜰 때 환경을 한 번 복사하고 그 뒤에 바뀐 것은 안 따라온다.
+    #     VS Code 는 `code` 를 다시 불러도 **돌던 그 프로세스**가 창을 내므로 방금 심은 키를
+    #     못 본다. `--new-window` 도 창만 새로 낼 뿐 프로세스를 안 가르고, 가르는 레버인
+    #     `--user-data-dir` 는 설정·상태가 통째로 딴 자리가 되어 처음 깐 것처럼 뜬다 —
+    #     키 하나 물리자고 치를 값이 아니다.
+    #   · **선언** — **이 설치가 끝이 아니다.** 뒤이어 부트스트랩이 `deploy.ps1` 을 부르고
+    #     거기서 MCP 서버가 등록되고 세션 훅이 심긴다. 돌던 앱은 그 선언을 **뜰 때 한 번 읽고
+    #     말았다.** 그래서 데스크탑도 닫을 까닭이 선다 — 게이트웨이 주소를 안 읽는 것과는
+    #     다른 축이다.
+    # ⚠ **그래서 창을 앞으로 불러 주지도 않는다.** 트레이에 내려간 것을 다시 띄우면 창이
+    #   새로 뜬 것처럼 보이는데 **안에 든 것은 그대로다** — 재시작한 것처럼 보이는 것이
+    #   재시작 안 한 것보다 나쁘다. 안 띄우는 대신 **어떻게 끄는지를 댄다.**
+    # ⚠ **떠 있는 것을 설치가 죽이지 않는다** — 저장 안 한 것이 날아간다. 끄는 것은 사람이 든다.
+    Write-Host "  $name — 이미 떠 있다. 끌지 묻는다"
+    # 사람이 아니라고 했거나 안 꺼졌을 때 낼 말. 한 번 세워 두고 두 갈래가 나눠 쓴다.
+    $tail = if ($name -eq 'VS Code') {
+      '열려 있는 VS Code 를 전부 닫고 새로 여세요 — 돌던 창은 방금 깔린 것을 모릅니다'
+    } else {
+      "${name}을 트레이(시계 옆)에서 완전히 끄고 새로 여세요 — 창만 닫으면 안 꺼집니다"
+    }
+    if (Ask-Restart $name) {
+      Write-Host '  끈다 — 창을 닫으라고 보내고, 안 나가면 세게 끝낸다'
+      if (Stop-App $open) {
+        Write-Host "  $name — 껐다" -ForegroundColor Green
+        $go = $true
+      } else {
+        # ⚠ **못 껐으면 「껐다」로 안 넘어간다.** 안 끄고 띄우면 돌던 그 프로세스가 창을
+        #   내므로, 사람은 재시작한 줄 알고 낡은 것을 그대로 쓰게 된다.
+        Write-Host "  ! 안 꺼졌다 — 직접 끄고 연다" -ForegroundColor Yellow
+      }
+    } else {
+      Write-Host '  안 끈다고 했다 — 안 띄운다'
+    }
   } else {
+    $go = $true
+  }
+
+  if ($go) {
+    # ⚠ **띄우기 전에 한 박자 둔다.** 새 창은 설치 창을 덮으므로, 바로 띄우면 위 검증 칸의
+    #   `[O]/[X]` 를 아무도 못 읽고 지나간다 — 그 판정이 이 설치의 결론인데 그렇다.
+    Write-Host '  3초 뒤에 엽니다 — 위 검증 칸을 먼저 읽는다' -ForegroundColor Yellow
+    Start-Sleep -Seconds 3
     # ⚠ **`Start-Process` 로 띄운다.** 이 창의 나가는 손잡이는 화면 껍데기가 따라 읽는 파일로
     #   돌려져 있어, 그것을 물려주면 자식이 그 파일을 붙들고 껍데기의 뒷정리가 막힌다.
     #   `Start-Process` 는 껍데기 실행이라 손잡이를 안 물려주고 **환경은 물려준다** — 방금 심은
     #   값이 그 길로 간다. `-Wait` 는 안 건다: 걸면 사람이 그 창을 닫을 때까지 설치가 안 끝난다.
     try {
       Start-Process -FilePath $open | Out-Null
-      Write-Host "  $name — 열었다" -ForegroundColor Green
-      # ⚠ **이름 뒤에 조사를 붙일 때 갈래를 본다.** 「데스크탑을」은 붙여 쓰고 「VS Code 를」은
+      Write-Host "  $name — 띄웠다" -ForegroundColor Green
+      # ⚠ **이름 뒤에 조사를 붙일 때 갈래를 본다.** 「데스크탑이」는 붙여 쓰고 「VS Code 를」은
       #   띄어 쓴다 — 받침도 띄어쓰기도 이름마다 갈린다. 한 틀에 두 이름을 밀어 넣으면 둘 중
       #   하나가 반드시 어긋나고, 그 어긋남은 사람이 마지막에 읽는 한 줄에서 난다.
       $tail = if ($name -eq 'VS Code') {
         'VS Code 를 열었습니다 — Ctrl+Shift+P → Claude 로 확장을 엽니다'
       } else {
-        "${name}을 열었습니다 — 구독 계정으로 로그인합니다"
+        "${name}을 열었습니다 — 처음이면 구독 계정으로 로그인합니다"
       }
     } catch {
       # 조사를 안 붙인다 — 여기는 이름 둘이 다 지나는 자리다.
