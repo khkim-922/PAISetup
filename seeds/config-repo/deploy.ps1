@@ -445,6 +445,42 @@ foreach ($repoRoot in $globalRuleTargets) {
     $gate   = & $bash ($boot -replace '\\', '/') --check
     $gateRc = $LASTEXITCODE
     if ($gate) { $gateReport += $gate }
+    # --- 마지막 CI — 읽는 자를 세운다 ---
+    # main 에 바로 커밋하는 이 집에서 CI 는 PR 도 자동머지도 없이 GitHub 페이지에만 빨강을 남긴다.
+    # 읽는 자가 없어 저장소 둘이 사흘을 빨갛게 살았다(실측 2026-09-12). 배포가 도는 자리가 곧
+    # 사람이 보는 자리라 여기서 한 줄 읽는다. 세밀 토큰(GH_TOKEN)에는 Actions 읽기가 없어 403 이
+    # 나면 키링(gh auth login)으로 한 번 더 묻고, 그것도 없으면 「못 쟀다」로 남긴다 — 이 줄로
+    # 배포를 막지 않는다. 빨강이면 남은 수동 작업에 올린다.
+    $slug = $null
+    try { $remote = & git -C $repoRoot remote get-url origin 2>$null } catch { $remote = '' }
+    if ($remote -match 'github\.com[:/]([^/\s]+/[^/\s]+?)(\.git)?$') { $slug = $Matches[1] }
+    if ($slug -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+        $ciArgs = @('run', 'list', '--repo', $slug, '--branch', 'main', '--limit', '1',
+                    '--json', 'conclusion,status,headSha,createdAt')
+        # ⚠ `2>$null` 은 방패가 아니다(`Sync-RepoOnce` 머리) — 403 한 줄이 배포를 통째로 죽였다
+        #   (실측 2026-09-12). 잡아서 넘긴다.
+        try { $ciJson = & gh @ciArgs 2>$null; $ciRc = $LASTEXITCODE } catch { $ciJson = $null; $ciRc = 1 }
+        if ($ciRc -ne 0 -and $env:GH_TOKEN) {
+            $savedTok = $env:GH_TOKEN; $env:GH_TOKEN = $null
+            try { $ciJson = & gh @ciArgs 2>$null; $ciRc = $LASTEXITCODE } catch { $ciJson = $null; $ciRc = 1 }
+            $env:GH_TOKEN = $savedTok
+        }
+        $ci = $null
+        if ($ciRc -eq 0 -and $ciJson) { $ci = @($ciJson | ConvertFrom-Json) | Select-Object -First 1 }
+        if ($ci) {
+            $verdict = if ($ci.conclusion) { $ci.conclusion } else { $ci.status }
+            $ciLine  = "마지막 CI $verdict · $($ci.headSha.Substring(0, 7)) · $($ci.createdAt.Substring(0, 10))"
+            if ($verdict -eq 'success') { $gateReport += "  ✅ $ciLine" }
+            else {
+                $gateReport += "  ❌ $ciLine — 왜인지는:  gh run view --repo $slug --log-failed"
+                $todo += "CI 빨강 — $slug $($ci.headSha.Substring(0, 7)):  gh run view --repo $slug --log-failed"
+            }
+        } elseif ($ciRc -eq 0) {
+            $gateReport += "  · 마지막 CI — 실행이 없다 ($slug)"
+        } else {
+            $gateReport += "  · 마지막 CI — 못 쟀다 (gh 가 Actions 를 못 읽는다: GH_TOKEN 에 Actions: Read 를 더하거나 gh auth login)"
+        }
+    }
     # ⚠ 초록이어도 `$same` 에 한 줄을 또 두지 않는다 — 위 블록이 이미 그 말을 했다.
     # ⚠ **진단은 그 저장소에 지금 있는 선언으로 잰다 — 복사는 아직 안 됐다.** 도구 선언
     #   (`tools.global.conf`)이 이번 배포에서 바뀌면 새 도구는 이 진단에 아예 안 나와 초록이
