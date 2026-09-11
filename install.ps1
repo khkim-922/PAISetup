@@ -1345,12 +1345,26 @@ foreach ($c in $checks) {
   if ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
   else       { Write-Host "  [X] $($c.Name)" -ForegroundColor Red }
 }
+# ⚠ **판정 목록이 둘인데 서로 몰랐다.** `$Fails` 는 「하는 걸음이 졌다」를 담고 이 `$checks` 는
+#   「끝에 다시 재 봤다」를 담는데, 종료코드는 `$Fails` 만 봤다 — 그래서 **검증이 빨간데 초록으로
+#   닫히는 자리**가 있었다. 바로 위 칸 머리글이 「안 재고 됐다로 끝내면 안 선 기계도 성공으로
+#   보고된다」라고 적어 둔 그 일이, **재고도 결론으로 안 건너가** 그대로 났다.
+#   ⚠ 새는 자리가 둘이다 — **자산 나르기**(7 칸)는 `$Fails` 에 아무것도 안 넣고, **값 심기**는
+#     던졌을 때만 넣는데 **검증은 레지스트리를 다시 읽는다.** 조용히 안 남는 자리에서 「심었다」를
+#     찍고도 `[X]` 가 뜬다. 나머지 칸은 하는 걸음과 검증이 **같은 프로브**라 둘이 같이 빨개진다.
+# ⚠ **`$Fails` 에 합치지 않는다.** 합치면 같은 사고를 두 자가 각각 넣어 「N 개가 남았다」가
+#   겹쳐 센다(`[X] VS Code` 와 `VS Code 설치`). 세는 자를 갈라 두면 **종료코드만** 바로잡힌다.
+$redChecks = @($checks | Where-Object { -not $_.Ok }).Count
 
 # ⚠ 옛 판은 여기서 **동봉 자산의 경로만 찍었다**(`posco/` · `seeds/gateway/`). 이제 그 둘은
 #   7 칸이 홈에 깔고 검증도 아래가 든다 — 찍기만 하는 자리를 남겨 두면 zip 폴더를 가리키는
 #   낡은 좌표가 하나 더 산다.
 
 Write-Host ''
+if ($redChecks -gt 0) {
+  Write-Host "검증에서 $redChecks 칸이 빨갛다 — 바로 위 [X] 가 그것이다" -ForegroundColor Red
+  Write-Host ''
+}
 if ($Fails.Count -gt 0) {
   Write-Host "끝내지 못했다 — $($Fails.Count)개가 남았다:" -ForegroundColor Red
   $Fails | ForEach-Object { Write-Host "  - $_" }
@@ -1604,4 +1618,6 @@ if ($NoLaunch) {
 Write-Host ''
 Write-Host "=== 끝 === $tail" -ForegroundColor Yellow
 Write-Host ''
-if ($Fails.Count -gt 0) { exit 1 }
+# ⚠ **둘 다 본다.** 하는 걸음이 진 것(`$Fails`)과 끝에 재서 빨간 것(`$redChecks`)은 겹치기도
+#   하고 한쪽만 서기도 한다 — **어느 쪽이든 하나라도 서면 이 설치는 안 끝난 것이다.**
+if ($Fails.Count -gt 0 -or $redChecks -gt 0) { exit 1 }
