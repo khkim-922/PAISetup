@@ -76,7 +76,9 @@ gemini 는 흘려 달라 하면 흘러오는데(생각 조각 심장박동 · AI
 같은 날 잰 값이 아래다.
 **Claude 갈래의 생각은 모델이 정하고, 낱말은 무관하며, 조각은 선을 안 탄다 — 2026-09-09 18:18,
 atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음(셈 셋)을 두 모델 × 낱말
-있이·없이로 보내고, Claude Code 가 실제로 보내는 몸을 중계로 잡아 되보냈다. 초과 토큰(출력 토큰 −
+있이·없이로 보내고, Claude Code 가 실제로 보내는 몸을 중계로 잡아 되보냈다. **다시 재는 자는 씨앗에
+있다** — `seeds/gateway/_check/claude_thinking_probe.py`(설치본은 `~/.claude/seeds/gateway/`). 앱 없이
+돈다. 몸을 중계로 잡는 자만 아뜰리에 것이라 받는 사람은 못 연다. 초과 토큰(출력 토큰 −
 글자 몫)이 생각의 자다:
 
 - **`claude-opus-4.7` 은 어떤 몸으로도 생각이 안 난다** — 앱 봉투에 `thinking` 을 켜도(초과 15) 꺼도(15)

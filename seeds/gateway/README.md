@@ -46,6 +46,8 @@ python -X utf8 _check/cli_pipe_check.py      # 로컬 CLI 파이프 — 가짜 �
 ```bash
 python -X utf8 _check/live_probe.py all <글 파일>       # 셋 다 · 검체를 안 주면 「안 잼」으로 물러난다 · 숫자는 _check/log/ 에
 python -X utf8 _check/live_probe.py ratio <글 파일>     # 제 봉투의 결(HTML 섞임 등)로 환산비만
+python -X utf8 _check/claude_thinking_probe.py          # Claude 갈래 — 침묵이 생각인가 버퍼링인가. 판정을 낸다
+python -X utf8 _check/stream_probe.py [--wall]          # 글자가 언제 오나. --wall 은 벽의 시각(3분 · 값을 치른다)
 ```
 
 - **자/토큰 환산비** — 한국어 산문으로 쟀다(2026-09-09): anthropic 1.26 · openai 2.06 · gemini 2.08.
@@ -54,6 +56,12 @@ python -X utf8 _check/live_probe.py ratio <글 파일>     # 제 봉투의 결(H
 - **층 셋 이상 봉투의 캐시 적중** — 쟀다(2026-09-09): 표를 단 두 층이 다 캐시에 든다(write 8,005 → read 8,005)
 - **gemini 밖 계약의 여문 빈손** — 판정은 계약 전체 위에 섰지만 다른 계약이 그 판을 낸 적은 없다. **아직 안 쟀다**
 - **생각 조각** — 쟀다(2026-09-09 · gemini-3.1-pro-preview): 첫 조각 8.6초 전에 생각 신호 11번, 씀씀이에 `thinking_tokens=971`
+- **Claude 갈래의 생각** — 쟀다(2026-09-09 · opus-4.7 · opus-5): 4.7 은 어떤 몸으로도 생각이 안 나고 5 는
+  모델 기본값으로 난다. **생각 조각은 어느 판에도 안 흐른다** — 모델이 생각하는 동안 선이 조용하다.
+  그래서 `claude_thinking_probe.py` 의 「선을 탄다」 판정은 **빨강이 실측**이고, 초록이 나오면 게이트웨이가 바뀐 것이다
+- **스트림이 흐르나** — 쟀다(2026-08-24 · anthropic · openai): 고르게 흘렀다. 첫 글자 5초 언저리 · 뒤 창 몫 3%
+- **180초 벽** — 두 번 실측됐지만(2026-08-27 · 09-09 · 클라이언트 쪽에서) **프로브로는 아직 안 쟀다.**
+  `stream_probe.py --wall` 이 그 자리다 — 벽이 옮겨졌는지 의심될 때 돌린다
 
 ## 앱과 씨앗이 갈렸을 때
 
