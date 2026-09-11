@@ -12,9 +12,11 @@
 //
 // ⚠ 확장자가 `.mjs` 인 까닭 — commitlint 21 은 ESM 이고, 저장소 `package.json` 에 `type`
 //   이 없으면 `.js` 는 CJS 로 읽힌다. `.mjs` 는 그 모호함이 없다.
-// ⚠ `extends` 가 `@commitlint/config-conventional` 을 **저장소 기준으로** 푼다. 전역
-//   설치는 저장소 밖이라, 도구 선언의 `wiring = node-link` 가 그 자리를 이어야 선다 —
-//   그 짝이 빠지면 commitlint 는 실행되고 설정을 못 읽어 **제 규칙 없이 통과한다.**
+// ⚠ `extends` 가 `@commitlint/config-conventional` 을 부른다 — 그 이름이 풀려야 규칙이 선다.
+//   도구 선언이 그것을 짝으로 들고(`wiring = node-link`), 그 배선은 **보험이지 지금 무게를
+//   지는 자리가 아니다**: 실측 2026-09-11(리눅스 · npm 전역 · commitlint 21.2.2)에서 링크를
+//   걷어도 규칙이 그대로 살았다 — commitlint 가 제 설치 자리에서 이름을 마저 푼다. 그 폴백은
+//   npm 이 전역을 어디 두느냐에 달려 있고 **윈도우 배치에서는 안 쟀다.**
 
 export default {
   extends: ['@commitlint/config-conventional'],

@@ -24,7 +24,12 @@ DEC="docs/decisions"
 ADR_GEN=""
 [ -f ".githooks/claude-config-path.sh" ] && . "./.githooks/claude-config-path.sh"
 
-staged_adr="$(git diff --cached --name-only --diff-filter=ACM |
+# ⚠ **`core.quotePath=false` 가 있어야 비ASCII 이름이 온다.** 기본값(참)에서 git 은
+#   `"docs/\355\225\234\352\270\200.md"` 꼴로 **싸서** 내고, 그러면 줄 끝이 `"` 라 확장자
+#   패턴에 안 걸리고 `[ -f ]` 도 거짓이라 **한 줄도 안 말하고 빠진다.** 우리 문서는 한국어라
+#   그 이름이 드물지 않다 — 실측 2026-09-11: 한 형제 저장소에 그런 이름의 `.md` 가 322개였고,
+#   같은 위반을 ASCII 이름이면 막고 한글 이름이면 통과했다.
+staged_adr="$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACM |
               grep -E "^$DEC/[0-9]{4}-.*\.md$" || true)"
 [ -n "$staged_adr" ] || exit 0
 

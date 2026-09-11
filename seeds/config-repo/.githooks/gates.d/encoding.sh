@@ -19,12 +19,25 @@ BOM="$(printf '\357\273\277')"
 FAIL=0
 
 # 스테이지된 것만 잰다 — 손대지 않은 파일로 커밋을 막지 않는다.
-STAGED="$(git diff --cached --name-only --diff-filter=ACM)"
+# ⚠ **`core.quotePath=false` 가 있어야 비ASCII 이름이 온다.** 기본값(참)에서 git 은
+#   `"docs/\355\225\234\352\270\200.md"` 꼴로 **싸서** 내고, 그러면 줄 끝이 `"` 라 확장자
+#   패턴에 안 걸리고 `[ -f ]` 도 거짓이라 **한 줄도 안 말하고 빠진다.** 우리 문서는 한국어라
+#   그 이름이 드물지 않다 — 실측 2026-09-11: 한 형제 저장소에 그런 이름의 `.md` 가 322개였고,
+#   같은 위반을 ASCII 이름이면 막고 한글 이름이면 통과했다.
+STAGED="$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACM)"
 [ -n "$STAGED" ] || exit 0
 
+# ⚠ **줄바꿈으로만 가른다.** 기본 `IFS` 로 돌리면 `my script.ps1` 이 두 조각이 되어 둘 다
+#   `[ -f ]` 에서 떨어지고 **막는 것이 존재 이유인 파일 종류가 조용히 빠진다.**
+oldifs=$IFS
+IFS='
+'
 for f in $STAGED; do
-  [ -f "$f" ] || continue
-  head3="$(head -c 3 "$f" 2>/dev/null || true)"
+  IFS=$oldifs
+  # ⚠ **작업 트리가 아니라 담긴 판을 잰다.** 커밋되는 것은 인덱스다 — BOM 없이 담아 두고
+  #   작업 트리에서만 붙이면(`git add -p` · 담고 나서 고친 자리) 게이트가 초록을 내고
+  #   **BOM 없는 판이 그대로 커밋된다.**
+  head3="$(git show ":$f" 2>/dev/null | head -c 3 || true)"
   case "$f" in
     *.ps1|*.psm1|*.psd1)
       if [ "$head3" != "$BOM" ]; then
@@ -43,7 +56,10 @@ for f in $STAGED; do
       fi
       ;;
   esac
+  IFS='
+'
 done
+IFS=$oldifs
 
 [ "$FAIL" = 0 ] || printf '  파일은 멀쩡히 커밋되고 **남의 PC 에서만** 깨지는 자리다.\n' >&2
 exit "$FAIL"

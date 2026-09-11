@@ -148,10 +148,17 @@ probe_tool() {  # probe_tool <갈래> <대상> [인자…]
 # npm 전역에 깔린 판 — **기계에게 묻는다.** `--version` 출력을 파싱하지 않는다: 문구가
 # 도구마다 달라, 그 차이를 표로 들면 그 표가 곧 매핑 레이어다(규범 [Determinism First]).
 # 패키지의 package.json 이 제 판의 진본이고 그것을 읽는 자는 node 다 — npm 이 있으면 있다.
+# ⚠ **경로를 JS 소스에 박지 않는다 — 인자로 넘긴다.** 윈도우의 `npm root -g` 는
+#   `C:\Users\…\node_modules` 를 내는데, 그 문자열을 따옴표 사이에 그대로 넣으면 **역슬래시가
+#   이스케이프로 읽힌다** — `\n` 은 줄바꿈이 되고 `\U` 는 글자가 날아간다. 그러면 경로가
+#   부서져 이 함수가 늘 빈 값을 내고, **판이 정확히 깔린 기계에서도 판정이 「안 닿는다」로
+#   굳는다**: 진단은 ❌, 설치는 매번 같은 패키지를 다시 깔고, 종료코드가 영영 1 이라 배포가
+#   실패를 본다. 리눅스에서만 재면 이 자리는 영영 안 보인다.
 npm_global_version() {  # npm_global_version <패키지 이름> — 못 읽으면 빈 값
   _nr="$(npm root -g 2>/dev/null)" || return 1
   [ -n "$_nr" ] && [ -f "$_nr/$1/package.json" ] || return 1
-  node -p "require('$_nr/$1/package.json').version" 2>/dev/null
+  node -e 'const p = require("path").join(process.argv[1], "package.json")
+           console.log(require(p).version || "")' "$_nr/$1" 2>/dev/null
 }
 
 probe_decl() {  # probe_decl <선언파일> <이름> — 선언에서 갈래·대상·인자를 읽어 잰다
