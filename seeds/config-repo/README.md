@@ -36,6 +36,7 @@
 | `.claude/hooks/utf8-bom.sh` | 편집 뒤 인코딩을 지키는 훅 |
 | `.claude/settings.json` | 위 훅 둘을 **거는** 자리 |
 | `.claude/tools.global.conf` | 전역 도구 선언 — 훅이 이것을 읽고 돈다 |
+| `.claude/get-browser.sh` | 브라우저를 받아 오는 **뒷길**. 도구 선언의 `browsers-fallback` 이 저장소 기준 경로로 가리킨다 |
 | `.githooks/pre-commit` · `commit-msg` | **커밋 게이트 몸통.** 익명이다 — 무엇을 재는지 모른다 |
 | `.githooks/gates-run.sh` | 몸통 둘이 같이 쓰는 러너. 선언을 읽어 조각을 부른다 |
 | `.githooks/gates.d/` | **검사 조각** 다섯 — 인코딩 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 |
