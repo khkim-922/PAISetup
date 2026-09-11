@@ -337,7 +337,7 @@ function Wire-NodeTrust {
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     [IO.File]::WriteAllText($target, $sb.ToString(), (New-Object Text.UTF8Encoding($false)))
   } catch {
-    Write-Host "  ! CA 묶음을 못 썼다 — $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  ! CA 묶음을 못 썼다 — $(Say-Why $_)" -ForegroundColor Red
     $script:Fails.Add('Node 신뢰 배선 (파일 쓰기)')
     return
   }
@@ -374,6 +374,31 @@ function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath) {
   try { & $File @CmdArgs *> $LogPath; return $LASTEXITCODE }
   catch { return -1 }
   finally { $ErrorActionPreference = $prev }
+}
+
+# 실패 사유 한 줄. **까닭을 대는 자리라 읽히게 잘라 준다.**
+# ⚠ **사유가 늘 사람 말인 것은 아니다.** 가로채는 프록시는 오류를 **HTML 페이지 통째로** 준다 —
+#   그대로 찍으면 `<html><body><h1>` 이 줄을 먹고 정작 아는 것(`504 Gateway Time-out`)이 묻힌다.
+#   실측 2026-09-11(사내): PSGallery 자리의 사유가 그 꼴로 기록에 실려, **왜 졌는지를 아무도
+#   못 읽었다.** 까닭을 대라고 둔 줄이 까닭을 덮은 자리다.
+# ⚠ **줄바꿈이 없는 꼴이 더 나쁘다** — 첫 줄만 집어도 문서 전체가 한 줄이라 562자가 쏟아졌다.
+#   그래서 **표시를 걷고 · 빈칸을 접고 · 길이를 문다.** 셋 다 있어야 한 줄로 선다.
+# ⚠ **갈래 이름을 앞에 붙인다** — `WebException` 인지 `UnauthorizedAccessException` 인지가
+#   「망이냐 권한이냐」를 그 자리에서 가른다. 글만 보고는 그게 안 갈린다.
+function Say-Why($ErrorRecord) {
+  $e = $null
+  try { $e = $ErrorRecord.Exception } catch { }
+  $t = ''
+  if ($e) { $t = [string]$e.Message }
+  if (-not $t) { return '(까닭을 안 준다)' }
+  $t = $t -replace '<[^>]*>', ' '                 # 표시를 걷는다
+  $t = ($t -replace '\s+', ' ').Trim()            # 줄바꿈·연속 빈칸을 하나로 접는다
+  if ($t.Length -gt 160) { $t = $t.Substring(0, 160).TrimEnd() + '…' }
+  if (-not $t) { $t = '(글자 없는 사유)' }
+  $kind = ''
+  if ($e) { $kind = $e.GetType().Name }
+  if ($kind) { return "$kind : $t" }
+  return $t
 }
 
 function Show-Log([string]$LogPath, [int]$Lines = 8) {
@@ -414,7 +439,7 @@ function Plant-Var([string]$Name, [string]$Value) {
     $script:Planted[$Name] = $Value
     Write-Host "  $Name — 심었다" -ForegroundColor Green
   } catch {
-    Write-Host "  ! $Name 심기 실패 — $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  ! $Name 심기 실패 — $(Say-Why $_)" -ForegroundColor Red
     $script:Fails.Add("$Name 심기")
   }
 }
@@ -458,6 +483,15 @@ Write-Host ''
 #   넘을 자리가 아니다 — 무엇을 시도했고 무엇에 걸렸는지 적고 물러난다.
 function Restore-Winget {
   Write-Host '  winget 이 없다 — 되살려 본다.' -ForegroundColor Yellow
+  # ⚠ **TLS 1.2 를 여기서 세운다 — 세 갈래가 다 HTTPS 를 탄다.** 옛 판은 이 줄이 셋째
+  #   갈래(GitHub) 안에만 있어, **PSGallery 를 부르는 둘째 갈래가 기본값으로 돌았다.**
+  #   Windows PowerShell 5.1 의 기본은 기계에 따라 아직 SSL3/TLS1.0 이고 PSGallery 는 TLS 1.2
+  #   아래로는 안 받으므로, 그 자리에서 지면 「망이 죽었다」로 보인다 — 죽은 것은 우리 손이다.
+  # ⚠ **덮어쓰지 않고 더한다.** 그냥 대입하면 그 기계가 쓰던 더 높은 판(TLS 1.3)을 지운다.
+  try {
+    [Net.ServicePointManager]::SecurityProtocol =
+      [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+  } catch { }
 
   # ⚠ **갈래를 넘기는 기준은 「깔았다」가 아니라 「불리나」다.** 갈래마다 「됐다」고 말하면서
   #   실제로는 안 잡히는 자리가 있다 — AppX 는 깔려도 이 세션의 PATH 에 안 잡힐 수 있다.
@@ -483,7 +517,7 @@ function Restore-Winget {
     #   명제이고, 그 차이가 다음에 어디를 팔지를 정한다.
     Write-Host '    · 재등록은 됐는데 winget 이 안 잡힌다 — 다음을 해 본다'
   } catch {
-    Write-Host "    · 재등록 안 됨 — $($_.Exception.Message.Split([Environment]::NewLine)[0])"
+    Write-Host "    · 재등록 안 됨 — $(Say-Why $_)"
   }
 
   # ② 마이크로소프트가 적어 둔 길 — PSGallery 의 WinGet 모듈이 스스로 고친다
@@ -507,13 +541,12 @@ function Restore-Winget {
     }
     Write-Host '    · 모듈은 돌았는데 winget 이 안 잡힌다 — 다음을 해 본다'
   } catch {
-    Write-Host "    · 모듈로 안 됨 — $($_.Exception.Message.Split([Environment]::NewLine)[0])"
+    Write-Host "    · 모듈로 안 됨 — $(Say-Why $_)"
   }
 
   # ③ GitHub 릴리스에서 받아 깐다
   try {
     Write-Host '    · GitHub 릴리스에서 받아 본다'
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $rel = Invoke-RestMethod 'https://api.github.com/repos/microsoft/winget-cli/releases/latest' `
              -UseBasicParsing -ErrorAction Stop
     $work = Join-Path ([IO.Path]::GetTempPath()) "winget-$PID"
@@ -543,7 +576,7 @@ function Restore-Winget {
     }
     Write-Host '    · 깔았는데 winget 이 안 잡힌다 — 새 창에서는 잡힐 수 있다'
   } catch {
-    Write-Host "    · 내려받기 안 됨 — $($_.Exception.Message.Split([Environment]::NewLine)[0])"
+    Write-Host "    · 내려받기 안 됨 — $(Say-Why $_)"
   }
 
   return $false
@@ -1513,13 +1546,13 @@ if ($NoLaunch) {
       }
     } catch {
       # 조사를 안 붙인다 — 여기는 이름 둘이 다 지나는 자리다.
-      Write-Host "  ! 못 띄웠다 ($($app.Name)) — $($_.Exception.Message)" -ForegroundColor Yellow
+      Write-Host "  ! 못 띄웠다 ($($app.Name)) — $(Say-Why $_)" -ForegroundColor Yellow
     }
   }
 }
 
 } catch {
-  Write-Host "  ! 여는 자리에서 졌다 — $($_.Exception.Message)" -ForegroundColor Yellow
+  Write-Host "  ! 여는 자리에서 졌다 — $(Say-Why $_)" -ForegroundColor Yellow
 }
 
 Write-Host ''
