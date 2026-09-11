@@ -582,12 +582,20 @@ function Restore-Winget {
   }
 
   # ③ GitHub 릴리스에서 받아 깐다
+  # ⚠ **갈래 하나가 try 하나로 묶여 있어 걸음 이름이 뭉갰다.** 받기·풀기·깔기가 다 「내려받기
+  #   안 됨」으로 찍혔다 — **받는 건 다 되고 깔다 졌을 때도** 그랬다. 실측 2026-09-11(사내):
+  #   206.7 MB 를 다 받아 놓고 그 줄을 보고는 망을 의심하게 됐다.
+  #   그래서 **걸음마다 제 실패 문장을 들고 다니고**, catch 는 그것을 그대로 쓴다. 문장을
+  #   통째로 드는 까닭은 조사다 — 「묻기에서 졌다」 같은 것을 안 짓게, 각자 완성된 말을 든다.
+  $step = '셋째 갈래에서 졌다'
   try {
     Write-Host '    · GitHub 릴리스에서 받아 본다'
+    $step = '릴리스 목록을 못 물었다'
     # ⚠ **묻는 것은 빨리 포기한다.** 작은 JSON 하나라, 안 오는 것은 느린 것이 아니라 막힌
     #   것이다(사내 프록시). 여기를 길게 주면 **막힌 망에서 설치가 말없이 오래 멎는다.**
     $rel = Invoke-RestMethod 'https://api.github.com/repos/microsoft/winget-cli/releases/latest' `
              -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+    $step = '받을 자리를 못 만들었다'
     $work = Join-Path ([IO.Path]::GetTempPath()) "winget-$PID"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
@@ -595,6 +603,7 @@ function Restore-Winget {
     $dep = $rel.assets | Where-Object { $_.name -like '*Dependencies.zip' } | Select-Object -First 1
     if ($dep) {
       $z = Join-Path $work 'dep.zip'
+      $step = '딸린 것 zip 을 못 받았다'
       Say-Get $dep
       # ⚠ **`-TimeoutSec` 가 드는 것은 「몸통을 다 받기까지」가 아니라 「응답이 오기까지」다**
       #   (Windows PowerShell 5.1 에서 `HttpWebRequest.Timeout` 으로 간다 — 기본 100초).
@@ -605,18 +614,43 @@ function Restore-Winget {
       #   ⚠ **안 쟀다** — 5.1 을 돌릴 기계가 없어 이 셋은 .NET 문서에서 온 값이다.
       Invoke-WebRequest $dep.browser_download_url -OutFile $z -UseBasicParsing `
         -TimeoutSec 600 -ErrorAction Stop
+      $step = '딸린 것 zip 을 못 풀었다'
       Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $work 'dep') -Force
-      Get-ChildItem (Join-Path $work 'dep') -Recurse -Filter '*.appx' |
-        Where-Object { $_.FullName -match 'x64' } |
-        ForEach-Object { try { Add-AppxPackage -Path $_.FullName -ErrorAction Stop } catch { } }
+      $step = '딸린 것을 못 깔았다'
+      $deps = @(Get-ChildItem (Join-Path $work 'dep') -Recurse -Filter '*.appx' |
+                Where-Object { $_.FullName -match 'x64' })
+      # ⚠ **하나도 못 골랐으면 그것부터 말한다.** 고를 것이 없는 것과 다 깐 것은 화면에서
+      #   똑같이 조용했다 — 그리고 다음 줄의 본체 설치가 「딸린 것이 없다」로 진다.
+      #   실측 2026-09-11: 이 zip 은 `x64/`·`x86/`·`arm64/` 에 `.appx` 셋씩, x64 는 VCLibs 둘과
+      #   WindowsAppRuntime 하나다. 0 이 나오면 저쪽 꼴이 바뀐 것이니 사람이 봐야 한다.
+      if (-not $deps.Count) {
+        Write-Host '      ! 딸린 것에서 x64 를 하나도 못 골랐다 — 본체 설치가 질 수 있다' `
+          -ForegroundColor Yellow
+      } else {
+        Write-Host "      · 딸린 것 $($deps.Count)개를 깐다"
+      }
+      foreach ($d in $deps) {
+        # ⚠ **하나가 져도 여기서 끝내지 않는다** — 이미 더 새것이 깔린 기계는 윈도우가 무는데
+        #   그건 실패가 아니라 「할 일 없음」이고, 그걸로 본체까지 막으면 멀쩡한 PC 가 진다.
+        # ⚠ **그렇다고 삼키지도 않는다.** 옛 판은 `catch { }` 라 한 글자도 안 남았고, 그래서
+        #   **「받았는데 설치가 안 된다」의 까닭이 화면 어디에도 없었다** — 정작 본체가 지는
+        #   가장 흔한 원인이 여기인데 그랬다. 이름과 사유를 대고 다음 것으로 넘어간다.
+        try { Add-AppxPackage -Path $d.FullName -ErrorAction Stop }
+        catch { Write-Host "        ($($d.Name) — $(Say-Why $_))" }
+      }
     }
 
     $pkg = $rel.assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -First 1
     if (-not $pkg) { throw '릴리스에 msixbundle 이 없다' }
     $b = Join-Path $work $pkg.name
+    $step = '본체를 못 받았다'
     Say-Get $pkg
     Invoke-WebRequest $pkg.browser_download_url -OutFile $b -UseBasicParsing `
       -TimeoutSec 600 -ErrorAction Stop
+    # ⚠ **여기도 조용한 자리다** — 206 MB 를 푸는 동안 한 글자도 안 나온다. 받기와 깔기가
+    #   잇달아 조용하면 사람은 멎은 줄 알고 창을 닫는다. 들어가기 전에 말한다.
+    Write-Host '      · 깐다 — 몇 분 걸린다. 멎은 것이 아니다'
+    $step = '본체를 못 깔았다'
     Add-AppxPackage -Path $b -ErrorAction Stop
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -626,7 +660,7 @@ function Restore-Winget {
     }
     Write-Host '    · 깔았는데 winget 이 안 잡힌다 — 새 창에서는 잡힐 수 있다'
   } catch {
-    Write-Host "    · 내려받기 안 됨 — $(Say-Why $_)"
+    Write-Host "    · $step — $(Say-Why $_)"
   }
 
   return $false
