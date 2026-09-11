@@ -557,6 +557,44 @@ if (Test-Path $mcpFile) {
     }
 }
 
+# --- GitHub 토큰의 만료 ---
+# `GH_TOKEN` 의 세밀 토큰은 만료가 강제다 — 커밋된 키라 좁게 두기로 했고(secrets.env 곁말 ·
+# 결정 0025), 좁은 토큰은 GitHub 이 1년 안에 죽인다. 죽는 날 MCP 와 gh 가 **조용히** 선다: 위
+# 「없으면 setx」 검사는 값이 있기만 하면 초록이라 만료된 토큰도 「있음」이다. 응답 머리글에
+# 만료일이 실려 오므로 호출 한 번으로 잰다 — 죽었으면 실행 환경이 안 선 것(`$envDown`), 30일
+# 안이면 사람이 할 일(`$todo`), 멀쩡하면 날짜를 한 줄 찍는다(초록도 편다).
+# ⚠ 망이 안 닿으면 「못 쟀다」로 한 줄만 남긴다 — 그 사실로 배포를 막지 않는다.
+$ghTok = [Environment]::GetEnvironmentVariable('GH_TOKEN', 'User')
+if ($ghTok) {
+    try {
+        $ghResp = Invoke-WebRequest -Uri 'https://api.github.com/user' -UseBasicParsing -TimeoutSec 8 `
+                    -Headers @{ Authorization = "Bearer $ghTok"; 'User-Agent' = 'claude-config-deploy' }
+        $expKey = @($ghResp.Headers.Keys | Where-Object { $_ -ieq 'Github-Authentication-Token-Expiration' })
+        if ($expKey.Count -eq 0) {
+            Write-Host "= GH_TOKEN 만료 없음 (머리글에 만료일이 안 실렸다 — 클래식·OAuth 토큰)" -ForegroundColor DarkGray
+        } else {
+            $expRaw = [string]$ghResp.Headers[$expKey[0]]
+            $expAt  = [datetime]::ParseExact(($expRaw -replace ' UTC$', ''), 'yyyy-MM-dd HH:mm:ss',
+                        [Globalization.CultureInfo]::InvariantCulture)
+            $left   = [int][math]::Floor(($expAt - (Get-Date).ToUniversalTime()).TotalDays)
+            $expDay = $expAt.ToString('yyyy-MM-dd')
+            if ($left -le 30) {
+                $todo += "GH_TOKEN 만료 ${left}일 남음 ($expDay) — GitHub 에서 재발급해 secrets.env 를 고치고 다시 배포한다"
+            } else {
+                Write-Host "= GH_TOKEN 만료 $expDay (${left}일 남음)" -ForegroundColor DarkGray
+            }
+        }
+    } catch {
+        $code = $null
+        if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+        if ($code -eq 401) {
+            $envDown += 'GH_TOKEN 이 죽었다 (401 — 만료됐거나 회수됐다). GitHub 에서 재발급해 secrets.env 를 고치고 다시 배포한다'
+        } else {
+            Write-Host "· GH_TOKEN 만료 — 못 쟀다 (api.github.com 이 안 닿는다: $($_.Exception.Message))" -ForegroundColor DarkGray
+        }
+    }
+}
+
 # tavily 는 위에서 안 뽑힌다 — 설정에 ${} 가 없고 서버가 프로세스 환경에서 직접 읽어가므로
 # 진본이 이름을 들지 않는다. 뽑을 자리가 없어 여기 명시한다.
 if (-not [Environment]::GetEnvironmentVariable('TAVILY_API_KEY', 'User')) {
