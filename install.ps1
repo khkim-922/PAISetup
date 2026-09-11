@@ -416,6 +416,15 @@ function Show-Log([string]$LogPath, [int]$Lines = 8) {
   else { Write-Host '      (한 줄도 안 뱉었다 — 명령이 글자 없이 졌다)' }
 }
 
+# 받으러 나가기 전에 **무엇을 얼마나** 받는지 댄다 — 느린 링크에서 「멎었나 도나」를 가르는
+# 것이 이 한 줄이다. 크기를 안 주는 자리도 있어 그때는 이름만 댄다.
+function Say-Get($Asset) {
+  $mb = 0
+  try { $mb = [double]$Asset.size / 1MB } catch { }
+  if ($mb -gt 0) { Write-Host ('      · 받는다 — {0} ({1:N1} MB)' -f $Asset.name, $mb) }
+  else           { Write-Host ('      · 받는다 — {0}' -f $Asset.name) }
+}
+
 function Test-Runs([string]$Cmd, [string]$Arg) {
   if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) { return $false }
   try { & $Cmd $Arg 2>$null | Out-Null; return ($LASTEXITCODE -eq 0) } catch { return $false }
@@ -501,6 +510,14 @@ function Restore-Winget {
       [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   } catch { }
 
+  # ⚠ **진행 막대도 여기서 끈다 — TLS 와 같은 까닭이다.** Windows PowerShell 5.1 은 막대를
+  #   그리느라 내려받기가 **몇 배 느려진다.** 옛 판은 이것을 둘째 갈래 안에서만 껐다가
+  #   `finally` 로 되돌려, **정작 수십 MB 를 받는 셋째 갈래는 막대를 켠 채로 받았다.**
+  # ⚠ **되돌리는 손이 없어도 된다.** 함수 안에서 대입하면 **그 함수 안에서만 서고**(바깥 것을
+  #   가린다) 나오면 저절로 돌아온다 — 실측(PowerShell 7.4.6): 밖 `Continue` → 안
+  #   `SilentlyContinue` → 나온 뒤 다시 `Continue`. 옛 판의 `$pp` 저장·복원은 그래서 걷었다.
+  $ProgressPreference = 'SilentlyContinue'
+
   # ⚠ **갈래를 넘기는 기준은 「깔았다」가 아니라 「불리나」다.** 갈래마다 「됐다」고 말하면서
   #   실제로는 안 잡히는 자리가 있다 — AppX 는 깔려도 이 세션의 PATH 에 안 잡힐 수 있다.
   #   그래서 밟은 뒤마다 **PATH 를 레지스트리에서 새로 읽고** 다시 묻는다.
@@ -531,34 +548,30 @@ function Restore-Winget {
   # ② 마이크로소프트가 적어 둔 길 — PSGallery 의 WinGet 모듈이 스스로 고친다
   # ⚠ **이것이 실측으로 되는 것이 확인된 갈래다**(사용자 확인 2026-09-09 · 사내 VDI).
   #   그래서 내려받기(③)보다 앞에 선다 — 되는 것이 먼저다.
-  # ⚠ `$ProgressPreference` 를 끈다. 진행 막대를 그리느라 몇 배가 느려지는 자리다.
   # ⚠ `-AllUsers` 는 관리자를 탄다. 안 되면 그것 없이 한 번 더 — 제 계정에만 서도 쓸 수 있다.
   try {
     Write-Host '    · PowerShell 모듈로 고쳐 본다 (PSGallery)'
-    $pp = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
-    try {
-      # ⚠ **있으면 안 받는다.** 이미 깔린 모듈을 `-Force` 로 다시 깔면 윈도우가
-      #   「쓰는 중이라 못 바꾼다」로 문다 — 실측 2026-09-11(사내): *「현재 'Microsoft.WinGet.Client'
-      #   모듈의 '1.29.280' 버전을 사용 중입니다」*. 받을 까닭이 없는 걸음이었다.
-      if (Get-Module -ListAvailable -Name Microsoft.WinGet.Client) {
-        Write-Host '      (모듈이 이미 있다 — 안 받는다)'
-      } else {
-        # ⚠ **받기가 져도 여기서 끝내지 않는다.** 옛 판은 이 둘을 `-ErrorAction Stop` 으로
-        #   묶어 두어, **준비 걸음 하나가 막히면 본 걸음까지 못 갔다** — 정작 `Repair` 는
-        #   모듈만 있으면 서는데. 사내에서 진 자리가 그것이다: 받으러 나간 길이 504 를 내자
-        #   그 줄에서 끝났고, 같은 명령을 사람이 손으로 돌리면 경고만 내고 넘어가 Repair 가 섰다.
-        #   **준비의 실패가 본 걸음을 막지 않게** 갈래를 끊는다.
-        try {
-          Install-PackageProvider -Name NuGet -Force -ErrorAction Stop | Out-Null
-          Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery `
-            -ErrorAction Stop | Out-Null
-        } catch {
-          Write-Host "      (모듈을 못 받았다 — $(Say-Why $_)) — 있는 것으로 해 본다"
-        }
+    # ⚠ **있으면 안 받는다.** 이미 깔린 모듈을 `-Force` 로 다시 깔면 윈도우가
+    #   「쓰는 중이라 못 바꾼다」로 문다 — 실측 2026-09-11(사내): *「현재 'Microsoft.WinGet.Client'
+    #   모듈의 '1.29.280' 버전을 사용 중입니다」*. 받을 까닭이 없는 걸음이었다.
+    if (Get-Module -ListAvailable -Name Microsoft.WinGet.Client) {
+      Write-Host '      (모듈이 이미 있다 — 안 받는다)'
+    } else {
+      # ⚠ **받기가 져도 여기서 끝내지 않는다.** 옛 판은 이 둘을 `-ErrorAction Stop` 으로
+      #   묶어 두어, **준비 걸음 하나가 막히면 본 걸음까지 못 갔다** — 정작 `Repair` 는
+      #   모듈만 있으면 서는데. 사내에서 진 자리가 그것이다: 받으러 나간 길이 504 를 내자
+      #   그 줄에서 끝났고, 같은 명령을 사람이 손으로 돌리면 경고만 내고 넘어가 Repair 가 섰다.
+      #   **준비의 실패가 본 걸음을 막지 않게** 갈래를 끊는다.
+      try {
+        Install-PackageProvider -Name NuGet -Force -ErrorAction Stop | Out-Null
+        Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery `
+          -ErrorAction Stop | Out-Null
+      } catch {
+        Write-Host "      (모듈을 못 받았다 — $(Say-Why $_)) — 있는 것으로 해 본다"
       }
-      try { Repair-WinGetPackageManager -AllUsers -ErrorAction Stop }
-      catch { Repair-WinGetPackageManager -ErrorAction Stop }
-    } finally { $ProgressPreference = $pp }
+    }
+    try { Repair-WinGetPackageManager -AllUsers -ErrorAction Stop }
+    catch { Repair-WinGetPackageManager -ErrorAction Stop }
     if (& $reach) {
       Write-Host '  되살렸다 (Repair-WinGetPackageManager)' -ForegroundColor Green
       return $true
@@ -571,8 +584,10 @@ function Restore-Winget {
   # ③ GitHub 릴리스에서 받아 깐다
   try {
     Write-Host '    · GitHub 릴리스에서 받아 본다'
+    # ⚠ **묻는 것은 빨리 포기한다.** 작은 JSON 하나라, 안 오는 것은 느린 것이 아니라 막힌
+    #   것이다(사내 프록시). 여기를 길게 주면 **막힌 망에서 설치가 말없이 오래 멎는다.**
     $rel = Invoke-RestMethod 'https://api.github.com/repos/microsoft/winget-cli/releases/latest' `
-             -UseBasicParsing -ErrorAction Stop
+             -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
     $work = Join-Path ([IO.Path]::GetTempPath()) "winget-$PID"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
@@ -580,7 +595,16 @@ function Restore-Winget {
     $dep = $rel.assets | Where-Object { $_.name -like '*Dependencies.zip' } | Select-Object -First 1
     if ($dep) {
       $z = Join-Path $work 'dep.zip'
-      Invoke-WebRequest $dep.browser_download_url -OutFile $z -UseBasicParsing -ErrorAction Stop
+      Say-Get $dep
+      # ⚠ **`-TimeoutSec` 가 드는 것은 「몸통을 다 받기까지」가 아니라 「응답이 오기까지」다**
+      #   (Windows PowerShell 5.1 에서 `HttpWebRequest.Timeout` 으로 간다 — 기본 100초).
+      #   그게 여기서 짧은 까닭은 **사내 프록시가 파일을 통째로 받아 검사한 뒤에야 첫 바이트를
+      #   내주는** 자리가 있어서다. 수십 MB 를 검사하는 동안 100초는 안 버틴다.
+      #   ⚠ **몸통을 읽는 동안은 이 값이 안 든다** — 그쪽은 `ReadWriteTimeout`(기본 300초/읽기)
+      #     이고 `Invoke-WebRequest` 로는 못 건드린다. 그 한도는 그대로 두는 것이 지금 판이다.
+      #   ⚠ **안 쟀다** — 5.1 을 돌릴 기계가 없어 이 셋은 .NET 문서에서 온 값이다.
+      Invoke-WebRequest $dep.browser_download_url -OutFile $z -UseBasicParsing `
+        -TimeoutSec 600 -ErrorAction Stop
       Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $work 'dep') -Force
       Get-ChildItem (Join-Path $work 'dep') -Recurse -Filter '*.appx' |
         Where-Object { $_.FullName -match 'x64' } |
@@ -590,7 +614,9 @@ function Restore-Winget {
     $pkg = $rel.assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -First 1
     if (-not $pkg) { throw '릴리스에 msixbundle 이 없다' }
     $b = Join-Path $work $pkg.name
-    Invoke-WebRequest $pkg.browser_download_url -OutFile $b -UseBasicParsing -ErrorAction Stop
+    Say-Get $pkg
+    Invoke-WebRequest $pkg.browser_download_url -OutFile $b -UseBasicParsing `
+      -TimeoutSec 600 -ErrorAction Stop
     Add-AppxPackage -Path $b -ErrorAction Stop
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 
