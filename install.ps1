@@ -715,12 +715,34 @@ foreach ($app in $Apps) {
   Write-Host "  $($app.Name) — 설치 ($($app.Id))"
   $log = [System.IO.Path]::GetTempFileName()
   # 진행 막대가 로그를 덮는다. 실패할 때만 편다
-  Invoke-Logged 'winget' (@('install','--id',$app.Id) + $WG) $log | Out-Null
+  # ⚠ **종료코드를 안 버린다.** 판정은 여전히 프로브가 든다(winget 은 「올릴 것 없음」에도
+  #   0 이 아닌 값을 내므로 그것만으로는 못 믿는다). 다만 프로브가 끝내 못 잡았을 때
+  #   **「깔렸는데 이 창이 못 잡는다」와 「진짜 못 깔았다」를 가르는 자가 이것뿐이다.**
+  $rc = Invoke-Logged 'winget' (@('install','--id',$app.Id) + $WG) $log
   Update-RuntimePath
-  if (Test-Runs $app.Cmd $app.Arg) {
+  # ⚠ **한 번 재고 포기하지 않는다.** winget 이 일을 떼어 놓고 먼저 돌아오는 자리가 있어,
+  #   곧바로 물으면 아직 안 선 것을 「실패」로 찍는다 — 실측 2026-09-11(사내 PC): VS Code 가
+  #   제어판에 **「새로 설치됨」**으로 앉았는데 우리 기록은 `설치 실패` 였고, winget 로그는
+  #   **한 줄도 없었으며**, 설치기 창이 한참 **뒤에** 떴다. 셋 다 「먼저 돌아왔다」의 자국이다.
+  #   그래서 몇 초를 더 준다. **이미 선 기계는 첫 물음에 서므로 느려지는 값이 없다.**
+  # ⚠ 기다리는 동안 배선을 다시 태운다 — 설치가 끝나면서 그 폴더가 **그때 생긴다.**
+  $ok = $false
+  for ($i = 0; $i -lt 8; $i++) {
+    if (Test-Runs $app.Cmd $app.Arg) { $ok = $true; break }
+    Start-Sleep -Milliseconds 750
+    Update-RuntimePath
+  }
+  if ($ok) {
     Write-Host "  $($app.Name) — 깔았다" -ForegroundColor Green
+  } elseif ($rc -eq 0) {
+    # ⚠ **거짓 빨강을 덜되 초록으로 넘기지는 않는다.** winget 이 성공이라 했는데 이 창이
+    #   못 잡는 것은 흔히 PATH 가 **새 프로세스부터** 서기 때문이다. 그래도 못 잡은 것은 못 잡은
+    #   것이라 남긴다 — 바꾸는 것은 **사유**뿐이다. 「설치 실패」라고 적으면 멀쩡히 깔린 것을
+    #   찾아 헤매게 되고, 오늘 그 자리에서 한참을 썼다.
+    Write-Host "  ! $($app.Name) — winget 은 깔았다는데 이 창이 못 잡는다 (새 창에서 잡힌다)" -ForegroundColor Yellow
+    $Fails.Add("$($app.Name) (깔렸는데 이 창에서 안 잡힌다 — 새 창에서 본다)")
   } else {
-    Write-Host "  ! $($app.Name) 설치 실패 — winget 이 뱉은 끝 줄:" -ForegroundColor Red
+    Write-Host "  ! $($app.Name) 설치 실패 (winget 이 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
     Show-Log $log 5
     $Fails.Add("$($app.Name) 설치")
   }
