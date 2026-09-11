@@ -46,7 +46,21 @@ IFS=$oldifs
 #   위반에 1, **제 오류에 2 이상**을 낸다(설정을 못 읽는 자리가 그렇다 — 배포가 반쪽만 닿으면
 #   난다). 둘을 같이 1 로 세면 **「마크다운 서식이 어긋났다」는 거짓 문장**과 함께 막고,
 #   다음 사람이 엉뚱한 파일을 뒤진다.
-out="$(markdownlint-cli2 --no-globs "$@" 2>&1)"; rc=$?
+# 규칙 파일 — **저장소 것이 먼저다.** 저장소가 뿌리에 제 설정을 두면 그것이 진본이고(대개
+#   `extends` 로 전역 판정을 끌어 온다), 전역 배포본은 안 둔 저장소를 위한 자리다. 도구는 뿌리
+#   설정을 제 손으로 찾으므로 저장소 것이 있으면 아무것도 안 넘긴다.
+# ⚠ **물러남이 없으면 전역 판정이 실려 있어도 기본 규칙이 돈다.** 씨앗은 전역 판정 파일은
+#   싣지만 뿌리 배선은 받는 사람 몫이라, 그 사이에 `markdown` 을 켜면 우리 글이 낳는 오탐
+#   (표 폭 · 줄 길이)에 첫 커밋부터 막힌다 — 실측 2026-09-11: 씨앗 자신의 README 가 20건.
+#   커밋 형식 조각(`commit-format.sh`)이 같은 자리에 같은 물러남을 이미 든다.
+CFG=""
+if ! ls .markdownlint-cli2.jsonc .markdownlint-cli2.yaml .markdownlint-cli2.cjs .markdownlint-cli2.mjs       .markdownlint.jsonc .markdownlint.json .markdownlint.yaml .markdownlint.yml       .markdownlint.cjs .markdownlint.mjs >/dev/null 2>&1; then
+    [ -f .claude/markdownlint.global.jsonc ] && CFG=".claude/markdownlint.global.jsonc"
+fi
+
+if [ -n "$CFG" ]; then out="$(markdownlint-cli2 --config "$CFG" --no-globs "$@" 2>&1)"; rc=$?
+else                   out="$(markdownlint-cli2 --no-globs "$@" 2>&1)";                 rc=$?
+fi
 case "$rc" in
     0) ;;
     1) printf '✖ 마크다운 서식이 어긋났다.\n' >&2
