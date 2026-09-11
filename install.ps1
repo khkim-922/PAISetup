@@ -3,6 +3,7 @@
 #   .\install.ps1                    깔고, 없는 값은 묻는다
 #   .\install.ps1 -NoDevTools        git·python·gh 를 건너뛴다 (확장만 쓸 사람)
 #   .\install.ps1 -WithPersonalConfig  개인 규범·룰·스킬까지 (값 파일이 저장소를 가리킬 때)
+#   .\install.ps1 -NoLaunch          끝에 창을 안 띄운다 (기본은 띄운다)
 #
 # ⚠ **메모리는 여기가 아니다.** 세션 기록은 저장소마다 슬러그 폴더에 깔리는 것이라
 #   저장소가 먼저 있어야 서고, 그 자는 `deploy.ps1` 이다. 이 파일은 기계를 세우는 층이고
@@ -39,8 +40,13 @@
 #   낡은 줄도 모른 채 몇 달을 돈다. 그렇다고 자리를 물으면 이 파일이 자리를 알아야 하는데
 #   그건 이 파일의 몫이 아니다. **있으면 올리고 없으면 깐다** — 프로브가 이미 아는 것으로
 #   넷 다 맞춘다.
+# ⚠ `-NoLaunch` — **기본은 띄운다.** 설치가 끝나고 사람에게 남는 일은 창 하나 여는 것뿐인데,
+#   그 한 손이 안 가면 방금 심은 값은 **아무 데도 안 걸린 채**로 남는다 — 깔기는 다 됐는데 쓸
+#   수는 없는 자리다. 그러니 마지막 손은 설치가 든다.
+#   끄는 칸을 그래도 두는 까닭은 **화면 없이 부르는 갈래**가 있어서다(머리글의 쓰임 목록).
+#   자동화가 도는 자리에 GUI 가 뜨면 그것은 아무도 안 닫는 창이 된다.
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade,
-      [string]$EnvFile)
+      [switch]$NoLaunch, [string]$EnvFile)
 
 $ErrorActionPreference = 'Stop'
 
@@ -1208,9 +1214,11 @@ if (-not $repoUrl) {
 Write-Host ''
 Write-Host '=== 검증 ===' -ForegroundColor Cyan
 $planted = [Environment]::GetEnvironmentVariables('User')
+# 한 번만 잰다 — 같은 물음을 두 번 물으면 두 답이 갈릴 자리가 나고, 아래 「연다」 칸도 이 값을 쓴다.
+$hasCode = Test-Runs 'code' '--version'
 $checks = @(
-  @{ Name='VS Code';          Ok = (Test-Runs 'code' '--version') }
-  @{ Name='클로드 확장';      Ok = ((Test-Runs 'code' '--version') -and ((& code --list-extensions 2>$null) -contains 'anthropic.claude-code')) }
+  @{ Name='VS Code';          Ok = $hasCode }
+  @{ Name='클로드 확장';      Ok = ($hasCode -and ((& code --list-extensions 2>$null) -contains 'anthropic.claude-code')) }
   @{ Name='Claude Code CLI';  Ok = (Test-Runs 'claude' '--version') }
 )
 # ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
@@ -1269,14 +1277,153 @@ if ($Fails.Count -gt 0) {
   }
   Write-Host ''
 }
-# ⚠ 「재시작할 것」만으로는 모자랐다. 창은 뜰 때 PATH 와 환경변수를 **한 번 복사**하고
-#   그 뒤에 바뀐 것은 안 따라온다 — 이미 열려 있던 VS Code 는 방금 심은 키를 못 본다.
-Write-Host '남은 것은 새 창에서 한다.' -ForegroundColor Yellow
-Write-Host '  1. 열려 있는 VS Code 를 전부 닫고 새로 연다 — 낡은 창은 방금 심은 키를 못 본다'
-Write-Host '  2. VS Code 에서 Claude Code 확장을 연다 (Ctrl+Shift+P → Claude)'
 if (-not $WithPersonalConfig) {
-  Write-Host ''
   Write-Host '  개인 규범·룰·스킬까지 원하면:  .\install.ps1 -WithPersonalConfig'
+  Write-Host ''
 }
+
+# ── 연다 — **자리가 정한 것을, 이 창의 자식으로** ───────────────────────────────
+# ⚠ 「재시작할 것」만으로는 모자랐다. 창은 뜰 때 PATH 와 환경변수를 **한 번 복사**하고 그 뒤에
+#   바뀐 것은 안 따라온다 — 그래서 안내로 끝내지 않고 여기서 띄운다. 이 창은 심은 값을 제
+#   프로세스에도 같이 들고 있어(`Plant-Var`), 여기서 난 자식은 **로그아웃 없이** 그 값을 문다.
+# ⚠ **무엇을 열지에 새 잣대를 안 세운다.** `$useGateway` 가 자리 프로브 · `#desktop-app` ·
+#   사람이 넣은 주소를 이미 한 자리에서 접어 든 값이다. 여기서 다시 재면 같은 것을 두 번 재는
+#   꼴이고, 두 판정이 어긋나는 날 어느 쪽이 참인지 아무도 모른다.
+#   게이트웨이를 쓰면 그 주소로 말이 통하는 것은 확장·CLI 뿐이라 **VS Code** 이고, 안 쓰면
+#   구독 로그인이라 **데스크탑 앱**이 앞문이다. 데스크탑이 안 깔린 자리(값 파일에
+#   `#desktop-app` 이 없다)는 VS Code 로 떨어진다 — 없는 것을 열려다 빈손으로 끝내지 않는다.
+# ⚠ **못 열어도 실패로 안 센다.** 설치는 이미 선 것이고 창은 사람이 손으로도 연다. 여기서
+#   `$Fails` 를 불리면 멀쩡히 깔린 기계가 빨갛게 보고된다.
+
+# VS Code 의 실행 파일. PATH 에 걸린 `code` 는 `…\bin\code.cmd` 라 그것을 띄우면 콘솔이 한 번
+# 번쩍인다. **자리를 새로 적지 않고** 이미 걸린 것에서 한 층 올라가 판다 — 적으면 위 배선
+# (`Update-RuntimePath`)과 사본이 둘 되고, 한쪽만 낡는다.
+function Find-VSCode {
+  $c = Get-Command code -ErrorAction SilentlyContinue
+  if ($c -and $c.Source) {
+    # ⚠ **빈 것을 `Join-Path` 에 넘기지 않는다** — 위 `Stop` 이 그 자리에서 던지는데, 여기는
+    #   설치의 마지막 칸이라 **종료코드째 날아간다.** 멀쩡히 끝난 설치가 실패로 보고된다.
+    $vsRoot = Split-Path (Split-Path $c.Source -Parent) -Parent
+    if ($vsRoot) {
+      $exe = Join-Path $vsRoot 'Code.exe'
+      if (Test-Path -LiteralPath $exe) { return $exe }
+    }
+  }
+  foreach ($p in @("$env:ProgramFiles\Microsoft VS Code\Code.exe",
+                   "$env:LOCALAPPDATA\Programs\Microsoft VS Code\Code.exe")) {
+    if (Test-Path -LiteralPath $p) { return $p }
+  }
+  return $null
+}
+
+# 데스크탑 앱 — **PATH 로 못 찾는다.** GUI 앱이라 부를 이름이 안 생기는 것은 위 2′ 칸이 이미
+# 적어 둔 사실이고 여는 자리에서도 같다. 그래서 자리를 훑는다.
+# ⚠ **판 번호를 박지 않는다.** 앱이 올라가면 `app-1.2.3` 꼴 폴더가 새로 나므로, 이름을 박으면
+#   **다음 판에서 조용히 못 찾는다.** 박는 대신 찾고, 그래도 없으면 시작 메뉴 바로가기로 간다 —
+#   그것은 설치 자리가 달라져도 선다.
+function Find-ClaudeApp {
+  $root = Join-Path $env:LOCALAPPDATA 'AnthropicClaude'
+  $stub = Join-Path $root 'claude.exe'
+  if (Test-Path -LiteralPath $stub) { return $stub }
+  if (Test-Path -LiteralPath $root) {
+    $f = Get-ChildItem -LiteralPath $root -Filter 'claude.exe' -Recurse -ErrorAction SilentlyContinue |
+         Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($f) { return $f.FullName }
+  }
+  foreach ($d in @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs",
+                   "$env:ProgramData\Microsoft\Windows\Start Menu\Programs")) {
+    if (-not (Test-Path -LiteralPath $d)) { continue }
+    $l = Get-ChildItem -LiteralPath $d -Filter 'Claude.lnk' -Recurse -ErrorAction SilentlyContinue |
+         Select-Object -First 1
+    if ($l) { return $l.FullName }
+  }
+  return $null
+}
+
+# 그 이름의 프로세스가 이미 도나. 바로가기로 찾았어도 이름은 실행 파일과 같다.
+function Test-AppUp([string]$Path) {
+  if (-not $Path) { return $false }
+  $n = [IO.Path]::GetFileNameWithoutExtension($Path)
+  return [bool](Get-Process -Name $n -ErrorAction SilentlyContinue)
+}
+
+# ⚠ **마지막 한 줄은 `=== 끝 ===` 이 든다.** 화면 껍데기의 완료 문구가 이 줄에서 난다 — 저쪽에
+#   같은 문장을 또 적으면 갈래가 늘 때마다 한쪽만 낡는다. 갈래마다 할 말이 다른 자리라 더 그렇다.
+# ⚠ **이 줄만 사람에게 건네는 말이다.** 위는 다 기록이라 「…했다」로 적혔지만, 여기는 끝에서
+#   사람을 보고 하는 말이라 말투가 갈린다. 화면 껍데기가 이것을 그대로 띄우는 것도 같은 까닭이다.
+$tail = if ($useGateway) {
+  '열려 있는 VS Code 를 전부 닫고 새로 여세요 — 낡은 창은 방금 심은 키를 못 봅니다'
+} else {
+  '구독 로그인으로 섭니다 — Claude 데스크탑이나 VS Code 를 새로 여세요'
+}
+
+# ⚠ **이 칸은 무엇을 던져도 설치를 못 끝낸다.** 위 `Stop` 아래에서 한 줄이 던지면 마지막
+#   `exit` 까지 못 가고, 화면 껍데기는 종료코드를 못 읽어 **멀쩡한 설치를 빨갛게** 낸다.
+#   창을 여는 것은 덤이지 설치의 성패가 아니라, 여기서 진 것은 여기서 삼킨다.
+try {
+
+if ($NoLaunch) {
+  Write-Host '  창은 안 띄운다 (-NoLaunch)'
+} else {
+  # ⚠ **우리가 심은 자가 아닌 갈래가 있다.** 값 저장소로 넘긴 판에서는 부트스트랩이 심었고
+  #   그 값은 **레지스트리에만** 있다 — 이 창의 환경에는 없다. 그대로 자식을 내면 우리가
+  #   **낡은 환경을 물려주는** 꼴이 되어, 사람이 탐색기에서 직접 여는 것보다 나빠진다.
+  #   그래서 띄우기 직전에 **새 창이 볼 자리**를 이 창으로 당긴다 — 검증 칸이 이미 읽어 둔
+  #   값이고, 부트스트랩이 끝난 뒤에 읽은 것이라 저쪽이 심은 것까지 든다.
+  # ⚠ **PATH 만은 안 당긴다.** 그 이름은 기계 값과 사용자 값이 합쳐져 서는 자리라, 사용자
+  #   쪽만 덮으면 이 창이 여태 태운 배선(`Update-RuntimePath`)이 통째로 날아간다.
+  foreach ($k in $planted.Keys) {
+    if ($k -ieq 'PATH') { continue }
+    [Environment]::SetEnvironmentVariable($k, $planted[$k], 'Process')
+  }
+
+  $open = $null; $name = $null
+  if (-not $useGateway) {
+    $open = Find-ClaudeApp
+    if ($open) { $name = 'Claude 데스크탑' }
+  }
+  if (-not $open -and $hasCode) { $open = Find-VSCode; $name = 'VS Code' }
+
+  if (-not $open) {
+    Write-Host '  ! 열 것을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
+  } elseif (Test-AppUp $open) {
+    # ⚠ **떠 있는 데 창을 하나 더 내지 않는다.** `code` 를 다시 불러도 **새 프로세스가 아니라
+    #   떠 있던 그 프로세스**가 창을 낸다 — 그 창은 낡은 환경을 그대로 물어 방금 심은 키를 못
+    #   보는데, 화면에는 「열어 줬다」로 보인다. 부재가 통과로 읽히는 바로 그 자리라, 여기서는
+    #   안 열고 사람에게 닫으라고 말한다.
+    # ⚠ **떠 있는 것을 죽이지 않는다** — 저장 안 한 것이 날아간다. 닫는 것은 사람이 든다.
+    # ⚠ **데스크탑은 닫으라고 안 한다.** 그 앱은 `ANTHROPIC_BASE_URL` 을 안 읽으므로(위 2′ 칸)
+    #   낡은 환경이 물릴 것이 없다 — 안 겪는 일을 겪으라고 하지 않는다.
+    Write-Host "  $name — 이미 떠 있다. 안 띄운다"
+    if ($name -ne 'VS Code') { $tail = "${name}이 이미 떠 있습니다 — 그 창에서 이어 쓰세요" }
+  } else {
+    # ⚠ **`Start-Process` 로 띄운다.** 이 창의 나가는 손잡이는 화면 껍데기가 따라 읽는 파일로
+    #   돌려져 있어, 그것을 물려주면 자식이 그 파일을 붙들고 껍데기의 뒷정리가 막힌다.
+    #   `Start-Process` 는 껍데기 실행이라 손잡이를 안 물려주고 **환경은 물려준다** — 방금 심은
+    #   값이 그 길로 간다. `-Wait` 는 안 건다: 걸면 사람이 그 창을 닫을 때까지 설치가 안 끝난다.
+    try {
+      Start-Process -FilePath $open | Out-Null
+      Write-Host "  $name — 열었다" -ForegroundColor Green
+      # ⚠ **이름 뒤에 조사를 붙일 때 갈래를 본다.** 「데스크탑을」은 붙여 쓰고 「VS Code 를」은
+      #   띄어 쓴다 — 받침도 띄어쓰기도 이름마다 갈린다. 한 틀에 두 이름을 밀어 넣으면 둘 중
+      #   하나가 반드시 어긋나고, 그 어긋남은 사람이 마지막에 읽는 한 줄에서 난다.
+      $tail = if ($name -eq 'VS Code') {
+        'VS Code 를 열었습니다 — Ctrl+Shift+P → Claude 로 확장을 엽니다'
+      } else {
+        "${name}을 열었습니다 — 구독 계정으로 로그인합니다"
+      }
+    } catch {
+      # 조사를 안 붙인다 — 여기는 이름 둘이 다 지나는 자리다.
+      Write-Host "  ! 못 띄웠다 ($name) — $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+  }
+}
+
+} catch {
+  Write-Host "  ! 여는 자리에서 졌다 — $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+Write-Host ''
+Write-Host "=== 끝 === $tail" -ForegroundColor Yellow
 Write-Host ''
 if ($Fails.Count -gt 0) { exit 1 }

@@ -327,6 +327,7 @@ $script:segLo = 0; $script:segHi = 0   # 지금 칸이 차지하는 구간 — �
 $script:idle  = 0                     # 조용한 틱 수 — 쌓이면 막대를 천천히 민다
 $script:proc = $null; $script:tmpEnv = $null
 $script:sw = $null; $script:last = ''   # 흐른 시간과 마지막 줄 — 창이 살아 있음을 보인다
+$script:done = ''                       # 몸통이 낸 마무리 문장 — 끝났을 때 이것을 띄운다
 $script:outFile = $null; $script:errFile = $null
 $script:rdOut = $null;  $script:rdErr = $null
 
@@ -355,6 +356,9 @@ $bGo.Add_Click({
   $script:segLo = 0; $script:segHi = 8; $script:idle = 0
   $script:sw = [Diagnostics.Stopwatch]::StartNew()
   $script:last = '준비'
+  # ⚠ **지난 판의 마무리 문장을 지운다.** 안 지우면 이번 판이 그 줄을 못 내도 옛 문장이
+  #   그대로 떠, 방금 한 일과 다른 말을 한다.
+  $script:done = ''
 
   # ⚠ **값은 임시 파일로 건넨다.** 몸통이 값을 받는 길을 하나로 두려는 것이다 — 화면용
   #   통로를 따로 내면 두 갈래가 서로 다른 코드를 탄다. 끝나면 지운다.
@@ -463,6 +467,11 @@ function Step-Line([string]$line) {
   } elseif ($line -match '^=== 검증') {
     $script:segLo = 100; $script:segHi = 100
     $bar.Value = 100; $script:last = '검증'
+  } elseif ($line -match '^=== 끝 ===\s*(.+)$') {
+    # ⚠ **마무리 문장을 여기 또 적지 않는다.** 몸통이 갈래마다 다른 말을 한다 — 창을
+    #   띄웠나 · 떠 있어서 안 띄웠나 · 못 찾았나 · 안 띄우기로 했나. 그 문장을 이쪽에 사본으로
+    #   두면 갈래가 늘 때마다 **한쪽만 낡고**, 낡은 줄은 멀쩡한 설치를 딴 데로 보낸다.
+    $script:done = $Matches[1].Trim()
   } elseif ($line.Trim()) {
     # 칸 안의 낱줄 — 끝의 한 칸 앞까지만 민다. 끝을 미리 채우면 다음 칸이 뒤로 가는 꼴이 된다.
     if ($script:segHi -gt $script:segLo -and $bar.Value -lt ($script:segHi - 1)) {
@@ -557,7 +566,10 @@ $timer.Add_Tick({
       $lState.ForeColor = [Drawing.Color]::DarkOrange
     } elseif ($rc -eq 0) {
       $bar.Value = 100
-      $lState.Text = '됐습니다 — 열려 있는 VS Code 를 전부 닫고 새로 여세요.'
+      # ⚠ **못 받았으면 아는 척하지 않는다.** 몸통이 그 줄을 못 낸 판(옛 판·중간에 끊긴 판)에서
+      #   그럴듯한 문장을 지어 내면, 안 한 일을 했다고 말하게 된다 — 기록을 보라고 한다.
+      $lState.Text = if ($script:done) { $script:done }
+                     else { '됐습니다 — 아래 기록의 마지막 줄을 보세요.' }
       $lState.ForeColor = [Drawing.Color]::ForestGreen
     } else {
       $lState.Text = "끝내지 못했습니다 (코드 $rc) — 위 기록의 ! 줄을 보세요."
