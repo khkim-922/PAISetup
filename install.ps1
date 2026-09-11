@@ -401,11 +401,19 @@ function Say-Why($ErrorRecord) {
   return $t
 }
 
+# ⚠ **비면 비었다고 말한다.** 부르는 자리마다 바로 앞줄이 「뱉은 끝 줄」을 약속하는데,
+#   조용히 끝나면 **약속만 남고 까닭이 없다** — 읽는 사람은 화면이 잘린 줄 알고 그 자리에서
+#   멈춘다. 실측 2026-09-11(사내): `! VS Code 설치 실패 — winget 이 뱉은 끝 5줄:` 다음이
+#   곧바로 다음 앱 줄이었다. 「글자 없이 졌다」도 **단서다** — 그 자체가 winget 이 아예 못 떴다는
+#   뜻이라, 비었다는 사실을 말해야 다음 물음이 선다.
 function Show-Log([string]$LogPath, [int]$Lines = 8) {
-  if (-not (Test-Path -LiteralPath $LogPath)) { return }
-  $t = Get-Content -LiteralPath $LogPath -Tail $Lines -ErrorAction SilentlyContinue |
-       Where-Object { $_ -and $_.Trim() }
-  if ($t) { $t | ForEach-Object { Write-Host "      $_" } }
+  $t = @()
+  if (Test-Path -LiteralPath $LogPath) {
+    $t = @(Get-Content -LiteralPath $LogPath -Tail $Lines -ErrorAction SilentlyContinue |
+           Where-Object { $_ -and $_.Trim() })
+  }
+  if ($t.Count) { $t | ForEach-Object { Write-Host "      $_" } }
+  else { Write-Host '      (한 줄도 안 뱉었다 — 명령이 글자 없이 졌다)' }
 }
 
 function Test-Runs([string]$Cmd, [string]$Arg) {
@@ -712,8 +720,8 @@ foreach ($app in $Apps) {
   if (Test-Runs $app.Cmd $app.Arg) {
     Write-Host "  $($app.Name) — 깔았다" -ForegroundColor Green
   } else {
-    Write-Host "  ! $($app.Name) 설치 실패 — winget 이 뱉은 끝 5줄:" -ForegroundColor Red
-    Get-Content $log -Tail 5 | ForEach-Object { Write-Host "      $_" }
+    Write-Host "  ! $($app.Name) 설치 실패 — winget 이 뱉은 끝 줄:" -ForegroundColor Red
+    Show-Log $log 5
     $Fails.Add("$($app.Name) 설치")
   }
   Remove-Item $log -ErrorAction SilentlyContinue
