@@ -145,10 +145,32 @@ probe_tool() {  # probe_tool <갈래> <대상> [인자…]
     *) return 1 ;;
   esac
 }
+# npm 전역에 깔린 판 — **기계에게 묻는다.** `--version` 출력을 파싱하지 않는다: 문구가
+# 도구마다 달라, 그 차이를 표로 들면 그 표가 곧 매핑 레이어다(규범 [Determinism First]).
+# 패키지의 package.json 이 제 판의 진본이고 그것을 읽는 자는 node 다 — npm 이 있으면 있다.
+npm_global_version() {  # npm_global_version <패키지 이름> — 못 읽으면 빈 값
+  _nr="$(npm root -g 2>/dev/null)" || return 1
+  [ -n "$_nr" ] && [ -f "$_nr/$1/package.json" ] || return 1
+  node -p "require('$_nr/$1/package.json').version" 2>/dev/null
+}
+
 probe_decl() {  # probe_decl <선언파일> <이름> — 선언에서 갈래·대상·인자를 읽어 잰다
   # shellcheck disable=SC2046 — probe-arg 는 낱말 분리가 의도다
   probe_tool "$(decl_get "$1" "$2" probe)" "$(decl_get "$1" "$2" probe-target)" \
-    $(decl_get "$1" "$2" probe-arg)
+    $(decl_get "$1" "$2" probe-arg) || return 1
+  # ⚠ **「깔렸나」와 「선언한 판인가」는 다른 명제다.** 선언이 `이름@판` 으로 판을 박았으면
+  #   여기서 그것도 잰다 — 안 재면 판을 박아도 **옛 판이 깔린 기계에서 그냥 통과하고**,
+  #   선언만 정확해진 채 실물은 그대로 간다. `python-version` 갈래가 이미 같은 자를 든다.
+  #   판을 안 박은 선언은 이 칸이 통째로 빠진다 — 최신을 받고 안 잰다.
+  [ "$(decl_get "$1" "$2" install)" = npm-global ] || return 0
+  _pk="$(decl_get "$1" "$2" package)"
+  # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
+  case "$_pk" in
+    ?*@*) _pn="${_pk%@*}"; _pv="${_pk##*@}" ;;
+    *) return 0 ;;
+  esac
+  [ -n "$_pn" ] && [ -n "$_pv" ] || return 0
+  [ "$(npm_global_version "$_pn" || true)" = "$_pv" ]
 }
 
 # ── 홈 규범·룰·커밋 훅 배선 — 가볍고 멱등이라 설치 안(①②)만이 아니라 PC 매 세션(auto)
@@ -797,7 +819,9 @@ if [ "$MODE" = install ]; then
     { [ -n "$_groot" ] && [ -d "$_groot/$_mod" ]; } || return 0
     # 전역 설치는 저장소 node_modules 밖이라 import 가 못 찾는다 — 저장소 안으로 건다.
     # ⚠ npm ci 가 node_modules 를 지우고 다시 만든다. 그래서 ④ 뒤에 선다.
-    mkdir -p "$PROJECT_DIR/node_modules" 2>/dev/null
+    # ⚠ **스코프 패키지는 중간 폴더가 먼저 서야 한다** — `@scope/name` 은 링크 자리가
+    #   `node_modules/@scope/name` 이라, 뿌리만 만들면 `ln` 이 조용히 진다.
+    mkdir -p "$(dirname "$PROJECT_DIR/node_modules/$_mod")" 2>/dev/null
     if [ "$OS" = linux ]; then
       ln -sfn "$_groot/$_mod" "$PROJECT_DIR/node_modules/$_mod" 2>/dev/null || true
     elif [ ! -e "$PROJECT_DIR/node_modules/$_mod" ]; then
@@ -929,6 +953,20 @@ if [ -d "$PROJECT_DIR/.githooks" ]; then
   fi
 fi
 
+# 선언이 판을 박았는데 깔린 판이 다른가 — **「안 깔렸다」와 「판이 다르다」는 고칠 자리가
+# 다르다.** 둘 다 ❌ 로 나오는데 사유가 「안 닿는다」 하나면, 다음 사람은 npm 이 없나부터
+# 뒤진다. 사유 없는 ❌ 는 다음 사람에게 부재와 같다 (위 `nogo` 곁말과 같은 결).
+pin_mismatch() {  # pin_mismatch <선언파일> <이름> — 어긋나면 읽을 한 줄, 아니면 빈 값
+  [ "$(decl_get "$1" "$2" install)" = npm-global ] || return 0
+  _mk="$(decl_get "$1" "$2" package)"
+  # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
+  case "$_mk" in ?*@*) ;; *) return 0 ;; esac
+  _mh="$(npm_global_version "${_mk%@*}" || true)"
+  [ -n "$_mh" ] && [ "$_mh" != "${_mk##*@}" ] &&
+    printf '깔린 판이 다르다: %s (선언은 %s) — 다시 깔면 선언한 판을 받는다' "$_mh" "${_mk##*@}"
+  return 0
+}
+
 # 선언 축 — 전역·프로젝트 두 층. 이름·뜻은 전부 선언에서 온다
 render_decl() {  # render_decl <선언파일> <층라벨>
   for _name in $(decl_sections "$1"); do
@@ -942,8 +980,11 @@ render_decl() {  # render_decl <선언파일> <층라벨>
       python-importable) _step="파이썬 의존성" ;;
       *)                 _step="" ;;
     esac
+    _pin="$(pin_mismatch "$1" "$_name")"
     if probe_decl "$1" "$_name"; then
       gate "$_name" ok "$_by ($2)"
+    elif [ -n "$_pin" ]; then
+      gate "$_name" off "$_by ($2) — $_pin$(why "$_name" "$_step")"
     elif [ "$_probe" = node-resolvable ] && [ -d "$(npm root -g 2>/dev/null)/$_target" ]; then
       gate "$_name" off "$_by ($2) — 깔렸는데 프로브가 못 찾는다: 배선이 끊겼다$(why "$_name" "$_step")"
     else

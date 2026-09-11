@@ -1,0 +1,40 @@
+#!/bin/sh
+# 커밋 게이트 몸통 — **익명이다. 무엇을 재는지 모른다.**
+#
+# 진본은 claude-config/.githooks/pre-commit 다. 각 저장소의 것은 deploy.ps1 이
+# 뿌린 배포본이다 — 배포본을 고치면 다음 배포에 덮인다.
+#
+# 재는 것의 진본은 이 저장소의 `.githooks/gates.conf` 다. 검사를 켜고 끄는 자리가
+# 훅 본문이 아니라 선언인 까닭: 본문에 박으면 저장소마다 몸통을 손으로 갈라야 하고,
+# 갈린 몸통은 손사본이 되어 한쪽에서 고친 사고가 다른 쪽에 안 간다.
+#
+# 알면서 통과시켜야 할 때는:  git commit --no-verify
+#
+# ⚠ 이 훅이 걸리려면 `core.hooksPath` 가 이 폴더를 가리켜야 한다 — `.git/hooks/` 는
+#   clone 을 안 따라온다. 설정 저장소의 `deploy.ps1` 과 세션 훅이 그것을 맞춘다.
+#   손으로 걸려면:  git config core.hooksPath .githooks
+set -u
+
+PROJECT_DIR=$(git rev-parse --show-toplevel) || exit 0
+cd "$PROJECT_DIR" || exit 0
+
+CONF="$PROJECT_DIR/.githooks/gates.conf"
+RUNNER="$PROJECT_DIR/.githooks/gates-run.sh"
+
+if [ ! -f "$RUNNER" ]; then
+    # 선언도 없으면 게이트를 아직 안 켠 저장소다 — 정당하므로 조용히 지나간다.
+    [ -f "$CONF" ] || exit 0
+    # ⚠ **선언은 있는데 러너가 없으면 막는다.** 배포가 반쪽만 닿은 자리다. 통과시키면
+    #   이 저장소는 **게이트가 있다고 믿은 채 아무것도 안 재는 상태**로 돈다 —
+    #   게이트가 없는 것보다 나쁘다.
+    printf '✖ 게이트 선언은 있는데 러너가 없다: .githooks/gates-run.sh\n' >&2
+    printf '  배포가 반쪽만 닿았다 — 설정 저장소에서 deploy.ps1 을 돌리고 이 저장소에서 커밋한다.\n' >&2
+    exit 1
+fi
+
+# ⚠ **선언이 없을 때 말하는 자리는 러너 한 곳이다.** 여기서도 말하면 같은 문장이 두 벌이
+#   되고, 한쪽만 고쳐지는 날 둘이 다른 말을 한다. 부재를 침묵으로 두지 않는 것이 핵심이라
+#   말하는 것 자체는 반드시 서야 한다 — 그 자리가 `run_gates` 다.
+
+. "$RUNNER"
+run_gates pre-commit

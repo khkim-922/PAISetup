@@ -36,6 +36,12 @@
 | `.claude/hooks/utf8-bom.sh` | 편집 뒤 인코딩을 지키는 훅 |
 | `.claude/settings.json` | 위 훅 둘을 **거는** 자리 |
 | `.claude/tools.global.conf` | 전역 도구 선언 — 훅이 이것을 읽고 돈다 |
+| `.githooks/pre-commit` · `commit-msg` | **커밋 게이트 몸통.** 익명이다 — 무엇을 재는지 모른다 |
+| `.githooks/gates-run.sh` | 몸통 둘이 같이 쓰는 러너. 선언을 읽어 조각을 부른다 |
+| `.githooks/gates.d/` | **검사 조각** 다섯 — 인코딩 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 |
+| `.githooks/claude-config-path.sh` | 설정 저장소가 이 기계 어디 붙었나를 **한 자리에서** 잰다 |
+| `.claude/markdownlint.global.jsonc` | 우리 글 문체가 낳는 마크다운 오탐 |
+| `.claude/commitlint.global.mjs` | 같은 축 — 커밋 제목 문체가 낳는 오탐 |
 | `bootstrap-flow.svg` | **그림** — 몸통이 도는 일곱 칸을 위에서 아래로 |
 | `session-start-flow.svg` | **그림** — 세션을 열면 무엇이 저절로 도나 |
 | `deploy-flow.svg` | **그림** — 돌리면 무엇이 어디로 가나 |
@@ -77,6 +83,44 @@
 7. **설치 창의 「설정 저장소」 칸에 그 주소를 넣고** [설치 시작] 을 누른다
 
 받아 가는 자리는 `~/repos/<저장소 이름>` 이다. 설치가 clone 한 뒤 Git Bash 로 몸통을 부른다.
+
+## 커밋 게이트를 켜는 법
+
+게이트는 **몸통 + 조각 + 선언** 셋으로 갈려 있다. 몸통과 조각은 여기 실려 있고 어느 저장소에
+가도 같다 — **갈리는 것은 선언 하나뿐이다.**
+
+저장소마다 `.githooks/gates.conf` 를 두고 켤 것을 적는다. 이 파일은 **배포가 안 건드린다** —
+저장소가 커밋하는 것이라, 당신이 고른 판이 다음 배포에 덮이지 않는다.
+
+```ini
+[pre-commit]
+encoding      # .ps1 에 BOM 이 있나 · .cmd 에 없나 — 남의 PC 에서만 깨지는 자리
+markdown      # 담긴 .md 만 잰다
+links         # 깨진 링크·앵커 (--offline)
+adr-index     # 결정 목록이 결정 기록의 머리말과 어긋났나
+
+[commit-msg]
+commit-format # Conventional Commits + 제목 BOM
+```
+
+- **파일이 없으면 아무것도 안 잰다** — 게이트를 아직 안 켠 저장소도 정당하다. 다만 훅이
+  「선언이 없다」고 한 줄 말하고 지나간다: 있다고 믿은 채 없는 것이 제일 나쁘다
+- **선언에 있는데 조각이 없으면 커밋을 막는다** — 배포가 안 닿은 자리다. 조용히 건너뛰면
+  그 저장소는 게이트가 도는 줄 알면서 아무것도 안 재게 된다
+- **도구가 없는 검사는 그것만 건너뛴다** — 다만 「못 쟀다」를 판정 옆에 찍는다. 「전부 통과」는
+  *여기까지* 통과인데 안 적으면 전부로 읽힌다
+- 알면서 통과시켜야 할 때는 `git commit --no-verify`
+
+⚠ **훅이 걸리려면 `core.hooksPath` 가 서야 한다** — `.git/hooks/` 는 clone 을 안 따라온다.
+`deploy.ps1` 과 세션 훅이 `.githooks/` 를 든 저장소에 자동으로 건다. 손으로 걸려면:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+⚠ **제외 목록은 조각에 안 적는다.** 어디를 빼나는 저장소마다 다르므로 그 도구의 표준 자리가
+든다 — 마크다운은 `.markdownlint-cli2.jsonc` 의 `ignores`, 링크는 `lychee.toml` 의
+`exclude_path`. 조각에 적으면 저장소마다 조각이 갈리고, 그 순간 손사본이 된다.
 
 ## 손으로도 재 본다
 
