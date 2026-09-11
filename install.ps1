@@ -529,9 +529,25 @@ function Restore-Winget {
     Write-Host '    · PowerShell 모듈로 고쳐 본다 (PSGallery)'
     $pp = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
     try {
-      Install-PackageProvider -Name NuGet -Force -ErrorAction Stop | Out-Null
-      Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery `
-        -ErrorAction Stop | Out-Null
+      # ⚠ **있으면 안 받는다.** 이미 깔린 모듈을 `-Force` 로 다시 깔면 윈도우가
+      #   「쓰는 중이라 못 바꾼다」로 문다 — 실측 2026-09-11(사내): *「현재 'Microsoft.WinGet.Client'
+      #   모듈의 '1.29.280' 버전을 사용 중입니다」*. 받을 까닭이 없는 걸음이었다.
+      if (Get-Module -ListAvailable -Name Microsoft.WinGet.Client) {
+        Write-Host '      (모듈이 이미 있다 — 안 받는다)'
+      } else {
+        # ⚠ **받기가 져도 여기서 끝내지 않는다.** 옛 판은 이 둘을 `-ErrorAction Stop` 으로
+        #   묶어 두어, **준비 걸음 하나가 막히면 본 걸음까지 못 갔다** — 정작 `Repair` 는
+        #   모듈만 있으면 서는데. 사내에서 진 자리가 그것이다: 받으러 나간 길이 504 를 내자
+        #   그 줄에서 끝났고, 같은 명령을 사람이 손으로 돌리면 경고만 내고 넘어가 Repair 가 섰다.
+        #   **준비의 실패가 본 걸음을 막지 않게** 갈래를 끊는다.
+        try {
+          Install-PackageProvider -Name NuGet -Force -ErrorAction Stop | Out-Null
+          Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery `
+            -ErrorAction Stop | Out-Null
+        } catch {
+          Write-Host "      (모듈을 못 받았다 — $(Say-Why $_)) — 있는 것으로 해 본다"
+        }
+      }
       try { Repair-WinGetPackageManager -AllUsers -ErrorAction Stop }
       catch { Repair-WinGetPackageManager -ErrorAction Stop }
     } finally { $ProgressPreference = $pp }
