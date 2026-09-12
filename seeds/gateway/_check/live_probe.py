@@ -35,11 +35,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from app import gateway, providers  # noqa: E402
-from _verdict import Unmeasured  # noqa: E402
+from _verdict import EXIT_UNMEASURED, Unmeasured  # noqa: E402
 
 LOG = ROOT / "_check" / "log" / "live-probe.log"
-# 기본 검체 — 씨앗이 사는 저장소의 에이전트 진본. 한국어 산문 한 벌이라 헬퍼 결에 가깝다.
-DEFAULT_SPECIMEN = ROOT.parents[1] / "agents" / "lean.md"
+# 기본 검체 — 없다. 씨앗은 복사해 나가는 밑판이라 「이 저장소의 어느 파일」을 가리킬 수 없다
+# (옛 판은 claude-config `agents/lean.md` 를 가리켰고, 복사된 뒤엔 뿌리 밖의 없는 자리였다 — #25).
+# 검체는 인자로 받는다 — 한국어 산문 한 벌이면 헬퍼 결에 가깝고, 제 봉투의 결이면 제 값이다.
+DEFAULT_SPECIMEN = None
 ASK = "배관 측정 중이다. 「확인」 한 낱말만 답해라."
 # ②의 층 하나 크기 — 계약의 캐시 최소 길이(anthropic 1,024토큰 · 일부 모델 2,048)를 어느
 # 환산비에서도 넘게. 자/토큰 2.1 로 잡아도 1,900토큰이다.
@@ -98,15 +100,17 @@ def _call(c, system, ask):
                                            on_think=thinks.append)
     except RuntimeError as exc:
         print(f"[거절] {exc}")
-        raise SystemExit(2) from exc
+        raise SystemExit(EXIT_UNMEASURED) from exc
     return text, stop, (used[-1] if used else None), first[0], round(time.monotonic() - t0, 1), thinks
 
 
 # ---------- ① 환산비 ----------
 def ratio(path, contracts, key):
-    path = Path(path) if path else DEFAULT_SPECIMEN
+    if not path:
+        raise Unmeasured("[안 잼] 검체 파일을 안 줬다 — `live_probe.py ratio <글 파일>`. 씨앗은 기본 검체를 안 든다")
+    path = Path(path)
     if not path.is_file():
-        raise Unmeasured(f"[안 잼] 검체 파일이 없다 — {path}. 파일을 안 주면 {DEFAULT_SPECIMEN} 를 쓴다")
+        raise Unmeasured(f"[안 잼] 검체 파일이 없다 — {path}")
     text = path.read_text(encoding="utf-8")
     chars = len(text) + len(ASK)
     print(f"[①] 환산비 — 검체 {path} · {len(text):,}자")

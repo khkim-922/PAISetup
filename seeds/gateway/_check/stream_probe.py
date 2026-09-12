@@ -153,7 +153,7 @@ def _exit():
     if unmeasureds():
         print(f"\n판정 {len(passes())}건 초록 · 못 잰 갈래 {len(unmeasureds())} — 초록이 아니다")
         raise SystemExit(EXIT_UNMEASURED)
-    print(f"\n✅ 판정 {len(passes())}건 초록 — 잰 갈래 {len(passes())}")
+    print(f"\n✅ 판정 {len(passes())}건 초록")
     raise SystemExit(EXIT_OK)
 
 

@@ -10,7 +10,8 @@
 
 ## 출발하는 법
 
-1. `app/` 과 `_check/` 를 새 저장소로 복사한다
+1. `app/` 과 `_check/` 를 새 저장소로 복사한다 — `_check/` 의 `_verdict.py` · `exit_code_check.py` 는
+   검사 씨앗(`seeds/check/`)의 사본이라 그 씨앗을 먼저 받았으면 겹친다(같은 글자다 — 결정 0040)
 2. `app/gateway.py` 의 `ENV_PREFIX` 를 그 저장소의 접두어로 바꾼다 — 손잡이 전부가 그 접두어로 선다
 3. 갈래 표(`app/gateway.py` `_GATEWAY`)의 값을 확인한다 — 사내 값의 진본은 이 저장소 `posco/` 다
 4. 검사를 돌린다 — 초록이면 배관이 선 것이다
@@ -19,6 +20,7 @@
 python -X utf8 _check/envelope_check.py      # 봉투와 손잡이 — 계약 셋 · 변수로 연 한도
 python -X utf8 _check/sites_lock_check.py    # 담장 스위치 — 닫힌 갈래가 자격에서 빠지나
 python -X utf8 _check/cli_pipe_check.py      # 로컬 CLI 파이프 — 가짜 자식으로 배관만
+python -X utf8 _check/exit_code_check.py     # 검사들이 종료코드 계약을 지키나 — 원문만 읽는다
 ```
 
 앱은 그 위에 제 것을 얹는다 — 서버 문 · 화면 · 프롬프트 · 기록층 · 도구 루프. `providers.stream_once`

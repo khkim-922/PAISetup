@@ -234,7 +234,7 @@ if (Test-Path $skillSrc) {
     }
 }
 
-# 사내 환경 문서와 게이트웨이 씨앗: posco/** · seeds/gateway/** -> ~/.claude/ 아래 같은 이름
+# 사내 환경 문서와 씨앗 둘: posco/** · seeds/gateway/** · seeds/check/** -> ~/.claude/ 아래 같은 이름
 # ⚠ **왜 홈에도 두나** — 이 둘의 진본은 저장소이고, 스킬·형제 저장소 문서가 그 좌표를
 #   가리킨다. 그런데 설치본만 받은 사람에게는 저장소가 없어 그 좌표가 아예 없다. 그래서
 #   설치(`install.ps1` 7 칸)가 홈에 깔고, 이 자리가 그 사본을 진본과 맞춘다 —
@@ -249,7 +249,8 @@ if (Test-Path $skillSrc) {
 #   홈에 완본을 까는 자는 설치본(`install.ps1` 의 씨앗 칸)이다.
 foreach ($pair in @(
         @{ Src = 'posco';             Dst = 'posco' }
-        @{ Src = 'seeds\gateway';     Dst = 'seeds\gateway' })) {
+        @{ Src = 'seeds\gateway';     Dst = 'seeds\gateway' }
+        @{ Src = 'seeds\check';       Dst = 'seeds\check' })) {
     $aSrc = Join-Path $src $pair.Src
     if (-not (Test-Path $aSrc)) { continue }
     # ⚠ **파이썬이 남긴 캐시는 안 민다.** 씨앗의 검사를 돌리면 `__pycache__\` 가 생기는데 git 은

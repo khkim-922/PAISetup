@@ -24,7 +24,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _verdict import EXIT_MISMATCH, edge, fails, passes, show
+from _verdict import EXIT_MISMATCH, Unmeasured, edge, fails, passes, show
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -40,7 +40,7 @@ def creds_of(contract):
     for pid, row in gateway._GATEWAY.items():
         if row["contract"] == contract and not row.get("local"):
             return gateway.creds(provider=pid, token="k")
-    raise SystemExit(f"표에 {contract} 계약의 갈래가 없다")
+    raise Unmeasured(f"표에 {contract} 계약의 갈래가 없다")
 
 
 def peek(code, **env_over):
@@ -130,4 +130,4 @@ bad = fails()
 if bad:
     print(f"❌ {len(bad)}건 어긋남 — {', '.join(bad)}")
     sys.exit(EXIT_MISMATCH)
-print(f"✅ 전부 통과 (판정 {len(passes())}건 — 봉투와 손잡이 계약 여섯)")
+print(f"✅ 전부 통과 (판정 {len(passes())}건 — 봉투와 손잡이 계약)")

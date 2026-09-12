@@ -286,4 +286,4 @@ bad = fails()
 if bad:
     print(f"❌ {len(bad)}건 어긋남 — {', '.join(bad)}")
     sys.exit(EXIT_MISMATCH)
-print(f"✅ 전부 통과 (판정 {len(passes())}건 — 파이프 배관 계약 아홉)")
+print(f"✅ 전부 통과 (판정 {len(passes())}건 — 파이프 배관 계약, 항목은 머리말이 든다)")

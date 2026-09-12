@@ -16,6 +16,8 @@ import io
 import sys
 from pathlib import Path
 
+from _verdict import EXIT_UNMEASURED
+
 SEED = Path(__file__).resolve().parent.parent / "app"
 # 앱 쪽 짝 — 갈래 표·자격은 `gateway.py` 나 `config.py` 에 산다(앱마다 이름이 갈린다)
 PAIRS = [("gateway.py", ("gateway.py", "config.py")), ("providers.py", ("providers.py",))]
@@ -60,7 +62,7 @@ def main(app_root):
     app = Path(app_root).resolve() / "app"
     if not app.is_dir():
         print(f"앱 나무에 app/ 이 없다: {app}", file=sys.stderr)
-        return 2
+        return EXIT_UNMEASURED
     total = {"같음": 0, "갈림": 0, "없음": 0}
     for seed_name, candidates in PAIRS:
         seed_fns, seed_consts = defs(SEED / seed_name)
@@ -93,5 +95,5 @@ def main(app_root):
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(__doc__)
-        sys.exit(2)
+        sys.exit(EXIT_UNMEASURED)
     sys.exit(main(sys.argv[1]))
