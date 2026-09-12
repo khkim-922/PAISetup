@@ -43,9 +43,16 @@ python -X utf8 _check/borrowed_check.py        # 받아 간 사본이 진본과 
 이 저장소 안에서도 같은 규율이 돈다 — 게이트웨이 씨앗의 `_check/_verdict.py` · `exit_code_check.py`
 는 이쪽의 사본이라 `python -X utf8 seeds/check/_check/borrowed_check.py seeds/gateway/_check --seeds seeds` 가 문다.
 
-## 안 옮긴 것 — 자리만 정했다
+## 아뜰리에에서 받은 게이트 — 익명이 된 자리
 
-인자 하나만 빼면 어느 저장소에서나 도는 게이트 아홉이 아직 아뜰리에에 산다(`part_map_check` ·
-`env_names_check` · `doc_span_check` · `boundary_edge_check` · `script_syntax_check` · `shot_clip_check` ·
-`log_race_check` · `child_decode_check` ⑤ · `_bake.mjs`). 옮기는 손마다 짝을 세어야 하므로(스킬
-borrow-spec-as-pair) 파일마다 따로 든다 — 진도는 #25 가 든다.
+아뜰리에 검사 아홉을 짝(손잡이·난간·실측·곁말·검사)을 세어 익명화했다(#25 ㉠-2 · 2026-09-13).
+저장소에 매인 것은 전부 **인자·선언으로 열렸고 기본값을 안 박았다** — 안 주면 「못 쟀다」(2)가
+어떻게 주나를 말한다. 무엇이 있고 무엇을 받나는 `_check/README.md` 의 표가 든다. 받은 저장소가
+저마다 적을 것: `part_map_check` 의 지도 문서·부품 폴더·절 제목 · `env_names_check` 의 문서와
+`--ours` 그물 · `doc_span_check` 의 선언 한 장(`_check/doc_span.conf` — 씨앗은 안 싣는다) ·
+`boundary_edge_check` 의 카드 폭 · `log_race_check` 의 배관(`--plumb`) · `_bake.drmFile` 에 넘길
+머리 바이트(제 진본에서 읽어서).
+
+⚠ **`_serve.py` · `_bake.mjs` 는 부르는 꼴이 아뜰리에 판과 다르다** — 그쪽이 받을 때 부르는
+자리를 함께 고친다(`_serve.knock` 서명 · `drmFile(head)`). 씨앗 `map_check.NEEDS_ARG` 는 비어
+있다 — 인자를 받아야 도는 검사를 게이트 목록에서 뺄지는 받는 저장소가 거기 적는다.
