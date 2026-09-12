@@ -6,6 +6,12 @@
     python -X utf8 _check/borrowed_check.py                       # 이 폴더 · 진본은 ~/.claude/seeds/
     python -X utf8 _check/borrowed_check.py <폴더>                # 잴 `_check/` 를 지정
     python -X utf8 _check/borrowed_check.py <폴더> --seeds <뿌리>  # 진본 뿌리를 지정 (씨앗 저장소 안에서는 `seeds`)
+    python -X utf8 _check/borrowed_check.py --receive              # 어긋난 사본을 진본으로 **받는다** — 곁말은 같은 자리에, 판은 올린다
+
+**받는 손(`--receive`)** — 어긋난 사본마다 진본 글자를 놓고 곁말 블록을 옛 자리(같은 문단 끝)에
+되살리며 판 번호를 진본 뿌리의 git 해시(없으면 날짜)로 올린다. 줄끝·BOM 은 옛 사본을 지킨다.
+`map_check --write` 와 같은 결의 쓰기 모드다 — 받은 뒤 같은 판에서 다시 재어 초록을 본다.
+받는 것은 **곁말 든 사본만**이다 — 일부러 갈린 파일(곁말 없음)은 안 건드린다.
 
 **왜 이 검사가 있나.** 씨앗에서 받아 간 파일은 사본이다 — `_verdict.py` · `exit_code_check.py` 가
 그렇게 형제 저장소에 산다. 사본의 머리말은 「진본은 저기(커밋 판)」라고 적고 **손으로 고치지
@@ -91,6 +97,50 @@ def body_without_marker(text, start):
     return "\n".join(ls[:start] + ls[start + n:])
 
 
+def receive(copy_path, source_path, start, stamp):
+    """진본을 사본 자리에 놓는다 — 곁말 블록은 **같은 문단 자리**에 되살리고 판 번호를 올린다.
+
+    자리 규칙 — 옛 사본에서 곁말 앞에 빈 줄이 k 개였으면, 새 진본의 (k+1)번째 빈 줄 **앞**에 둔다
+    (곁말은 문단 끝에 산다는 계약 그대로). 진본의 문단이 그보다 적으면 마지막 줄 뒤에 둔다.
+    줄끝(CRLF)과 BOM 은 옛 사본의 것을 지킨다 — 받는 저장소의 체크아웃이 정한 것이다.
+    """
+    old_raw = copy_path.read_bytes()
+    crlf = b"\r\n" in old_raw
+    bom = old_raw.startswith(b"\xef\xbb\xbf")
+    old = _lines(old_raw.decode("utf-8"))
+    mark = block("\n".join(old), start)
+    mark = [re.sub(r"\([^()]*판\)", f"({stamp} 판)", ln) for ln in mark]
+    k = sum(1 for ln in old[:start] if not ln.strip())
+    new = _lines(source_path.read_text(encoding="utf-8"))
+    at = len(new)
+    seen = 0
+    for i, ln in enumerate(new):
+        if not ln.strip():
+            if seen == k:
+                at = i
+                break
+            seen += 1
+    out = "\n".join(new[:at] + mark + new[at:])
+    if crlf:
+        out = out.replace("\n", "\r\n")
+    copy_path.write_bytes((b"\xef\xbb\xbf" if bom else b"") + out.encode("utf-8"))
+
+
+def _stamp(seeds_root):
+    """곁말에 적을 판 — 진본 뿌리가 git 나무면 짧은 해시, 아니면 오늘 날짜."""
+    try:
+        import subprocess
+        out = subprocess.run(["git", "-C", str(seeds_root), "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=10)
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    import datetime
+    return datetime.date.today().isoformat()
+
+
 def compare(copy_text, source_text, start):
     """(같은가, 갈린 줄 수)."""
     mine = body_without_marker(copy_text, start)
@@ -104,14 +154,15 @@ def compare(copy_text, source_text, start):
 
 # ── §1 양성 대조 — 임시 뿌리에 넷을 지어 판정이 실제로 가르는지 먼저 보인다 ────
 
-SOURCE = "\"\"\"부품 하나.\n\n좌표 — 어디.\n\"\"\"\nX = 1\n"
+# 실물 꼴 그대로 — 첫 줄 · 빈 줄 · 좌표 문단 · 빈 줄 · 본문. 좌표 문단 뒤에 빈 줄이 있어야
+# 「문단 끝」 자리가 선다(옛 검체는 그 빈 줄이 없어 곁말이 파일 끝에 앉았다 — 실측).
+SOURCE = "\"\"\"부품 하나.\n\n좌표 — 어디.\n\n몸통 설명.\n\"\"\"\nX = 1\n"
 
 
 def _copy(text_source, mark_lines, mutate=None, crlf=False):
     ls = text_source.split("\n")
-    # 곁말을 「좌표 — 어디.」 문단 끝(빈 줄 앞)에 끼운다
-    at = ls.index("")  # 첫 빈 줄 — 독스트링 첫 줄 뒤
-    at = ls.index("", at + 1)  # 둘째 빈 줄 — 좌표 문단 뒤
+    # 곁말을 「좌표 — 어디.」 문단 끝(그 줄 바로 뒤 · 빈 줄 앞)에 끼운다
+    at = ls.index("좌표 — 어디.") + 1
     ls[at:at] = mark_lines
     text = "\n".join(ls)
     if mutate:
@@ -135,7 +186,7 @@ def positive_control():
             ("몸통이 갈린 사본은 어긋남이다",           _copy(SOURCE, one, mutate="X = 2"), False),
             ("CRLF 로 체크아웃된 사본은 같음이다",      _copy(SOURCE, one, crlf=True), True),
             ("곁말을 문단 머리에 둔 사본은 어긋남이다",
-             "\"\"\"부품 하나.\n\n" + one[0] + "\n" + one[1] + "\n좌표 — 어디.\n\"\"\"\nX = 1\n", False),
+             "\"\"\"부품 하나.\n\n" + one[0] + "\n" + one[1] + "\n좌표 — 어디.\n\n몸통 설명.\n\"\"\"\nX = 1\n", False),
         ]
         for said, copy_text, want_same in cases:
             found = marker(copy_text)
@@ -145,6 +196,17 @@ def positive_control():
             same, _n = compare(copy_text, SOURCE, found[0])
             report(said, same == want_same, [f"같음={same} (기대 {want_same})"])
         report("곁말 없는 파일은 남이다 — 곁말이 None 이다", marker(SOURCE) is None)
+        # 받는 손 — 갈린 사본(CRLF)을 받으면 같음이 되고, 곁말은 같은 문단 끝에 서며, 판이 오른다
+        copy_path = tmp / "_part.py"
+        copy_path.write_bytes(_copy(SOURCE, one, mutate="X = 2", crlf=True).encode("utf-8"))
+        receive(copy_path, src_dir / "_part.py", marker(copy_path.read_text(encoding="utf-8"))[0], "new1234")
+        got = copy_path.read_bytes().decode("utf-8")
+        found = marker(got)
+        report("받은 사본은 같음이고 곁말이 같은 자리에 서며 판이 올랐다",
+               found is not None and compare(got, SOURCE, found[0])[0]
+               and "(new1234 판)" in got and "\r\n" in got
+               and _lines(got)[found[0] - 1] == "좌표 — 어디.",
+               [got[:200]])
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -197,10 +259,26 @@ def main(argv):
         raise Unmeasured(f"[안 잼] 진본 뿌리가 없다 — {seeds_root}. 홈에 씨앗이 안 깔렸으면 "
                          "deploy.ps1 이 안 돈 것이고, 씨앗 저장소 안이면 `--seeds seeds` 를 준다")
     bad, same, missing, unreadable = survey(check_dir, seeds_root)
+    if bad and "--receive" in argv:
+        stamp = _stamp(seeds_root)
+        for name, rel, _n in bad:
+            copy_path = check_dir / name
+            found = marker(copy_path.read_text(encoding="utf-8"))
+            receive(copy_path, Path(seeds_root) / Path(rel).relative_to("seeds"), found[0], stamp)
+            print(f"  ← 받았다 {name}  ← {rel} ({stamp} 판)")
+        edge(f"**받았다** — 어긋난 사본 {len(bad)}장을 진본으로 놓고 곁말 판을 {stamp} 로 올렸다. 아래는 받은 뒤의 판정이다")
+        bad, same, missing, unreadable = survey(check_dir, seeds_root)
     if not (bad or same or missing or unreadable):
         raise Unmeasured(f"[안 잼] 곁말 든 파일이 한 장도 없다 — {check_dir}. "
                          "빌려 온 것이 없으면 잴 것이 없고, 있는데 곁말이 없으면 이 자에게는 남이다")
 
+    # 센티널 — 곁말은 있는데 견준 것이 0 이면 어긋남도 0 이라 **아무것도 안 잰 초록**이 난다.
+    # 진본을 한 장도 못 찾은 판(홈에 씨앗이 안 깔린 PC · 뿌리를 잘못 준 판)이 그렇다 — 실측
+    # 2026-09-13 헬퍼 B1. 그 판은 초록이 아니라 「못 쟀다」다.
+    if not (same or bad):
+        raise Unmeasured(f"[안 잼] 곁말 든 파일 {len(missing) + len(unreadable)}장 중 진본과 견준 것이 "
+                         f"0 이다 — 진본 없음 {len(missing)} · 경로 못 읽음 {len(unreadable)}. "
+                         f"진본 뿌리 {seeds_root} 가 맞는가")
     for name, rel, n in bad:
         report(f"{name} — 진본 {rel} 과 어긋남", False, [f"갈린 줄 {n}"])
     report(f"곁말 든 사본이 진본과 같다 (같음 {same} · 어긋남 {len(bad)})", not bad)
