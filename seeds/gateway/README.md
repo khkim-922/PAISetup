@@ -21,6 +21,8 @@ python -X utf8 _check/envelope_check.py      # 봉투와 손잡이 — 계약 �
 python -X utf8 _check/sites_lock_check.py    # 담장 스위치 — 닫힌 갈래가 자격에서 빠지나
 python -X utf8 _check/cli_pipe_check.py      # 로컬 CLI 파이프 — 가짜 자식으로 배관만
 python -X utf8 _check/exit_code_check.py     # 검사들이 종료코드 계약을 지키나 — 원문만 읽는다
+python -X utf8 _check/probe_words_check.py   # 끝점 프로브가 못 닿은 까닭을 사람 말로 내나 — truststore 가 든 파이썬이면 전제 절까지
+python -X utf8 _check/gateway_probe.py --self-check   # 어댑터가 응답을 읽는 쪽 — 가짜 게이트웨이로 값 안 치르고 한 바퀴
 ```
 
 앱은 그 위에 제 것을 얹는다 — 서버 문 · 화면 · 프롬프트 · 기록층 · 도구 루프. `providers.stream_once`

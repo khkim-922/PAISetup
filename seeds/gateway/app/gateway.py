@@ -223,7 +223,7 @@ if not site_allowed(DEFAULT_PROVIDER):
         f"열린 담장의 갈래로 두거나 {ENV_PREFIX}_SITES 를 넓힌다")
 
 # --- 키 묶음 → 그 묶음의 환경변수 후보. 앞에서부터 찾아 **처음 값이 있는 것**을 쓴다.
-# ⚠ **읽는 자는 프로브 하나다**(`_check/gateway_probe.py`). 서버는 아무에게도 키를
+# ⚠ **읽는 자는 프로브들뿐이다**(`_check/gateway_probe.py` · `live_probe.py` · `stream_probe.py`). 서버는 아무에게도 키를
 #   안 깔아 준다 — 로그인이 없어 「띄운 사람」과 「남」을 가를 재료가 없으므로, 깔면
 #   띄운 사람의 키로 남이 마구 쓴다. 안 실어 온 요청은 드라이런이다.
 _KEY_ENV = {
