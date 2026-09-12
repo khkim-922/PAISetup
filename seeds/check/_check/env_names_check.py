@@ -6,6 +6,7 @@
     python -X utf8 _check/env_names_check.py --doc <문서> --ours <그물>
     python -X utf8 _check/env_names_check.py <나무뿌리> --doc <문서> --ours <그물>
     python -X utf8 _check/env_names_check.py <나무뿌리> --doc <문서> --ours '*' --skip 산출물,기록
+    python -X utf8 _check/env_names_check.py           # 곁 `env_names.conf` 에 [env_names] doc·ours·skip 과 [not_ours] 를 적은 저장소
 
 **왜 이 검사가 있나.** 환경변수는 **들여도 지워도 아무 데서도 안 터진다.** 새 손잡이를 들이면
 문서가 그것을 영영 안 들고, 읽는 줄을 지우면 문서만 없는 손잡이를 계속 약속한다. 비싼 쪽은
@@ -62,6 +63,7 @@
 토큰도 망도 브라우저도 안 쓴다.
 """
 import ast
+import configparser
 import os
 import re
 import shutil
@@ -485,11 +487,31 @@ def teeth():
 
 # ── 손잡이를 읽는다 — argv 가 먼저, 환경변수가 그 다음
 
+CONF = "env_names.conf"
+
+
+def _conf():
+    """곁 선언 — `[env_names]` 의 doc · ours · skip 과 `[not_ours]` 의 이름 = 까닭. 없으면 빈 둘.
+
+    씨앗은 선언을 안 싣는다. 받은 저장소가 이 파일을 안 고치고 값을 줄 자리다 — 사본은 진본과
+    글자가 같아야 `borrowed_check` 가 초록이다.
+    """
+    conf = HERE / CONF
+    if not conf.is_file():
+        return {}, {}
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.optionxform = str            # 환경변수 이름은 대소문자가 뜻이다
+    cp.read(conf, encoding="utf-8")
+    opts = dict(cp["env_names"]) if cp.has_section("env_names") else {}
+    return opts, (dict(cp["not_ours"]) if cp.has_section("not_ours") else {})
+
+
 def _opt(argv, flag, env_name):
+    """인자 → 환경변수 → 곁 선언 순으로 — 먼저 주는 것이 이긴다."""
     if flag in argv:
         i = argv.index(flag)
         return argv[i + 1] if i + 1 < len(argv) else None
-    return os.environ.get(env_name)
+    return os.environ.get(env_name) or _conf()[0].get(flag.lstrip("-"))
 
 
 def _positional(argv):
@@ -519,6 +541,7 @@ def main(argv):
     doc_arg = _opt(argv, "--doc", ENV_DOC)
     ours_arg = _opt(argv, "--ours", ENV_OURS)
     skip_arg = _opt(argv, "--skip", ENV_SKIP)
+    NOT_OURS.update(_conf()[1])         # 저장소의 소유 선언 — 바깥 이름과 그 까닭
 
     lack = [n for n, v in (("--doc", doc_arg), ("--ours", ours_arg)) if not v]
     if lack:

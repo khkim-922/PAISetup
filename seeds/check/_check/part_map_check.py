@@ -5,7 +5,7 @@
 결정 0040.
 
     python -X utf8 _check/part_map_check.py <지도 문서> <부품 폴더> <절 제목>
-    python -X utf8 _check/part_map_check.py    # 아래 DOC·APP·SECTION 을 채운 저장소
+    python -X utf8 _check/part_map_check.py    # 곁 `part_map.conf` 의 [part_map] doc·app·section 을 적은 저장소
 
 **왜 이 검사가 있나.** 부품 지도는 *어느 파일이 있고 그것이 무엇을 드나*를 든다. 그런데
 부품 폴더에 파일이 나거나 사라져도 **아무 데서도 안 터진다** — 앱은 그대로 돌고 표만 조용히
@@ -43,6 +43,7 @@
 
 토큰도 네트워크도 브라우저도 안 쓴다.
 """
+import configparser
 import re
 import shutil
 import sys
@@ -199,15 +200,32 @@ def _settings(argv):
         raise Unmeasured(
             f"[안 잼] 인자를 {len(args)}개 줬다 — 지도 문서 · 부품 폴더 · 절 제목 셋이 한 벌이다. "
             "어떻게 주나: `python -X utf8 _check/part_map_check.py <지도 문서> <부품 폴더> <절 제목>`")
-    doc, app, section = args if args else (DOC, APP, SECTION)
+    doc, app, section = args if args else _conf()
     if not (doc and app and section):
         missing = " · ".join(n for n, v in
                              (("지도 문서", doc), ("부품 폴더", app), ("절 제목", section)) if not v)
         raise Unmeasured(
             f"[안 잼] 잴 자리를 안 줬다 — 빈 것: {missing}. 씨앗은 이 셋을 비워서 낸다. "
             "어떻게 주나: `python -X utf8 _check/part_map_check.py <지도 문서> <부품 폴더> <절 제목>` "
-            "으로 주거나, 이 파일 머리의 DOC·APP·SECTION 에 이 저장소의 자리를 적는다")
+            f"으로 주거나, 곁 `{CONF}` 의 `[part_map]` 절에 doc · app · section 을 적는다"
+            "(나무뿌리 기준 경로 · 이 파일은 안 고친다 — 사본은 진본과 글자가 같아야 한다)")
     return Path(doc).resolve(), Path(app).resolve(), section
+
+
+CONF = "part_map.conf"
+
+
+def _conf():
+    """곁 선언 `[part_map]` 의 doc · app · section — 없으면 상수 셋(씨앗은 빈 값). 경로는 나무뿌리 기준."""
+    conf = HERE / CONF
+    if not conf.is_file():
+        return DOC, APP, SECTION
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.read(conf, encoding="utf-8")
+    sec = cp["part_map"] if cp.has_section("part_map") else {}
+    root = HERE.parent
+    doc, app = sec.get("doc", DOC), sec.get("app", APP)
+    return (str(root / doc) if doc else DOC), (str(root / app) if app else APP), sec.get("section", SECTION)
 
 
 def main(argv):

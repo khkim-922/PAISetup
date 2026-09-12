@@ -47,11 +47,15 @@ python -X utf8 _check/borrowed_check.py        # 받아 간 사본이 진본과 
 
 아뜰리에 검사 아홉을 짝(손잡이·난간·실측·곁말·검사)을 세어 익명화했다(#25 ㉠-2 · 2026-09-13).
 저장소에 매인 것은 전부 **인자·선언으로 열렸고 기본값을 안 박았다** — 안 주면 「못 쟀다」(2)가
-어떻게 주나를 말한다. 무엇이 있고 무엇을 받나는 `_check/README.md` 의 표가 든다. 받은 저장소가
-저마다 적을 것: `part_map_check` 의 지도 문서·부품 폴더·절 제목 · `env_names_check` 의 문서와
-`--ours` 그물 · `doc_span_check` 의 선언 한 장(`_check/doc_span.conf` — 씨앗은 안 싣는다) ·
-`boundary_edge_check` 의 카드 폭 · `log_race_check` 의 배관(`--plumb`) · `_bake.drmFile` 에 넘길
-머리 바이트(제 진본에서 읽어서).
+어떻게 주나를 말한다. 무엇이 있고 무엇을 받나는 `_check/README.md` 의 표가 든다.
+
+**받은 저장소의 값은 사본 안이 아니라 곁 선언 `_check/<검사>.conf` 에 산다** — 사본은 진본과
+글자가 같아야 `borrowed_check` 가 초록이므로 파일 머리의 상수를 채우지 않는다. 씨앗은 선언을 안
+싣는다(실으면 남의 나무로 초록을 본다). 저마다 적을 것: `part_map.conf` 의 `[part_map]`
+doc·app·section · `env_names.conf` 의 `[env_names]` doc·ours·skip 과 `[not_ours]` 이름 = 까닭 ·
+`doc_span.conf`(목록 일곱 절 + 어휘 한 절) · `map_check.conf` 의 `[needs_arg]`(게이트 목록에서 뺄
+검사와 까닭) · `boundary_edge_check` 의 카드 폭(`--width` 또는 환경변수) · `log_race_check` 의
+배관(`--plumb` 또는 환경변수) · `_bake.drmFile` 에 넘길 머리 바이트(제 진본에서 읽어서).
 
 ⚠ **`_serve.py` · `_bake.mjs` 는 부르는 꼴이 아뜰리에 판과 다르다** — 그쪽이 받을 때 부르는
 자리를 함께 고친다(`_serve.knock` 서명 · `drmFile(head)`). 씨앗 `map_check.NEEDS_ARG` 는 비어

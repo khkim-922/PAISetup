@@ -61,6 +61,7 @@
 토큰도 네트워크도 브라우저도 안 쓴다.
 """
 import ast
+import configparser
 import shutil
 import sys
 import tempfile
@@ -117,9 +118,22 @@ def scan_map(text):
 GATE_SECTION = "게이트"
 
 # **인자를 받아야 도는 검사** — 기계가 그냥 부르면 「못 쟀다」(2)를 낸다. 빼되 이름과
-# 까닭을 함께 둔다 — 까닭 없이 빼면 눈감은 것이다. **씨앗은 비어 있다** — 이 파일을 받은
-# 저장소가 제 검사를 여기 적는다(그 줄이 곧 이 파일이 씨앗과 갈리는 사유다).
+# 까닭을 함께 둔다 — 까닭 없이 빼면 눈감은 것이다. **씨앗은 비어 있고 이 파일에는 적지 않는다** —
+# 받은 저장소는 곁 `map_check.conf` 의 `[needs_arg]` 절에 `이름 = 까닭` 으로 적는다(이 사본은
+# 진본과 글자가 같아야 `borrowed_check` 가 초록이다 — 저장소 값은 선언 파일이 든다).
 NEEDS_ARG = {}
+CONF = "map_check.conf"
+
+
+def _needs_arg(check_dir):
+    """곁 선언의 `[needs_arg]` — 없으면 빈 사전. 선언은 씨앗이 안 싣는다."""
+    conf = Path(check_dir) / CONF
+    if not conf.is_file():
+        return {}
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.optionxform = str            # 파일 이름은 대소문자가 뜻이다
+    cp.read(conf, encoding="utf-8")
+    return dict(cp["needs_arg"]) if cp.has_section("needs_arg") else {}
 
 
 def gate_rows(text):
@@ -140,8 +154,8 @@ def gate_rows(text):
     return out
 
 
-def print_gates(map_text):
-    """태울 목록을 낸다 — 이름은 stdout, **뺀 것과 까닭은 stderr.**"""
+def print_gates(map_text, needs):
+    """태울 목록을 낸다 — 이름은 stdout, **뺀 것과 까닭은 stderr.** `needs` 는 뺄 것(이름 → 까닭)."""
     rows = gate_rows(map_text)
     if not rows:
         print(f"⚠ 못 쟀다 — 지도에 「{GATE_SECTION}」 절의 표 줄이 하나도 없다. "
@@ -149,8 +163,8 @@ def print_gates(map_text):
               file=sys.stderr)
         return EXIT_UNMEASURED
     for name in rows:
-        if name in NEEDS_ARG:
-            print(f"— 뺐다: {name} · {NEEDS_ARG[name]}", file=sys.stderr)
+        if name in needs:
+            print(f"— 뺐다: {name} · {needs[name]}", file=sys.stderr)
             continue
         print(name)
     return EXIT_OK
@@ -428,7 +442,7 @@ def main(argv):
 
     map_text = map_path.read_text(encoding="utf-8")
     if gates:                      # 태울 목록만 내고 나간다 — 판정은 안 낸다
-        return print_gates(map_text)
+        return print_gates(map_text, {**NEEDS_ARG, **_needs_arg(check_dir)})
     files, rows = scan_files(check_dir), scan_map(map_text)
     marks = sum(1 for line in map_text.split("\n") if line.strip() == MARK)
 
