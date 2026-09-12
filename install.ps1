@@ -1257,7 +1257,7 @@ if (-not $WithPersonalConfig) {
 #   저장소를 든 사람은 `deploy.ps1` 이 이 자리를 갱신하고 `check-global-copies.sh` 가
 #   바이트로 잰다. 사본이 하나 더 늘지만, **재는 자가 붙은 사본**이라 조용히 안 낡는다.
 Write-Host ''
-Write-Host '[7/8] 사내 환경 문서 · 씨앗 둘' -ForegroundColor Cyan
+Write-Host '[7/8] 사내 환경 문서 · 씨앗 셋' -ForegroundColor Cyan
 $envAssets = @(
   @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'
      Name = '사내 환경 문서'; Desc = '게이트웨이·API·오류 기록 — 붙이기 전에 읽는다' }
