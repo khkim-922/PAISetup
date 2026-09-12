@@ -43,6 +43,7 @@ claude-config #25(2026-09-13 실측 — 어느 저장소에서나 도는 것 18�
 토큰도 망도 브라우저도 안 쓴다.
 """
 import ast
+import configparser
 import os
 import shutil
 import subprocess
@@ -52,6 +53,8 @@ import threading
 from pathlib import Path
 
 from _verdict import EXIT_MISMATCH, EXIT_OK, Unmeasured, edge, fails, passes, report, show
+
+HERE = Path(__file__).resolve().parent
 
 # 자식 통로를 눕히는 판 — **utf-8 로 못 읽는 바이트를 내는 판이면 무엇이든 된다.** cp949 인
 # 까닭은 이 병이 처음 난 자리가 한글 Windows 라서지, 그 판이어야 기전이 서는 것은 아니다.
@@ -331,9 +334,36 @@ def parse(args):
     return parent, child
 
 
+CONF = "child_decode.conf"
+
+
+def _skips():
+    """곁 선언 `[skip]` — `파일이름:줄 = 까닭`. 근거 대고 빼는 자리다 — 씨앗은 선언을 안 싣는다.
+
+    옛 판(아뜰리에)은 「답이 ASCII 라」 `git rev-parse` 한 자리를 산문으로 뺐고, 씨앗의 넓은 그물은
+    그 자리를 문다. 빼는 것은 되, **까닭이 판정 옆에 찍혀야** 한다 — 눈감은 자리와 갈리게.
+    """
+    conf = HERE / CONF
+    if not conf.is_file():
+        return {}
+    # ⚠ 구분자를 `=` 하나로 — 기본값은 `:` 도 구분자라 `파일:줄` 열쇠가 `파일` 에서 잘린다(실측).
+    cp = configparser.ConfigParser(interpolation=None, delimiters=("=",))
+    cp.optionxform = str
+    cp.read(conf, encoding="utf-8")
+    return dict(cp["skip"]) if cp.has_section("skip") else {}
+
+
 def sweep(what, paths, judge):
-    """한 축의 전수 — 판정 하나와 경계를 찍는다."""
+    """한 축의 전수 — 판정 하나와 경계를 찍는다. 곁 선언이 뺀 자리는 까닭과 함께 경계로."""
     bad, seen, sites, unreadable = survey(paths, judge)
+    skips = _skips()
+    kept, skipped = [], []
+    for row in bad:
+        key = f"{row[0]}:{row[1]}"
+        (skipped if key in skips else kept).append(row)
+    bad = kept
+    for rel, lineno, _kind, _said in skipped:
+        edge(f"**근거 대고 뺐다** — {rel}:{lineno} · {skips[f'{rel}:{lineno}']}")
     if not seen:
         raise Unmeasured(f"[안 잼] {what} 파일을 한 장도 못 읽었다 — 어떻게 주나: "
                          "파이썬 원문의 경로를 준다")

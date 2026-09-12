@@ -506,12 +506,21 @@ def _conf():
     return opts, (dict(cp["not_ours"]) if cp.has_section("not_ours") else {})
 
 
-def _opt(argv, flag, env_name):
+# ⚠ 열쇠를 **글자로** 읽는다 — `os.environ.get(변수)` 로 읽으면 이 검사가 제 그물에 걸린다
+#   (「못 푼 자리는 빨강」 · 실측 2026-09-13 아뜰리에 A1: 받은 저장소마다 나고 선언으로 못 피한다).
+ENV = {
+    "--doc": os.environ.get("ENV_NAMES_DOC"),
+    "--ours": os.environ.get("ENV_NAMES_OURS"),
+    "--skip": os.environ.get("ENV_NAMES_SKIP"),
+}
+
+
+def _opt(argv, flag):
     """인자 → 환경변수 → 곁 선언 순으로 — 먼저 주는 것이 이긴다."""
     if flag in argv:
         i = argv.index(flag)
         return argv[i + 1] if i + 1 < len(argv) else None
-    return os.environ.get(env_name) or _conf()[0].get(flag.lstrip("-"))
+    return ENV.get(flag) or _conf()[0].get(flag.lstrip("-"))
 
 
 def _positional(argv):
@@ -538,9 +547,9 @@ HOWTO = ("어떻게 주나 — `--doc <나무뿌리 기준 문서 경로>` 와 `
 def main(argv):
     args = _positional(argv)
     root = Path(args[0]).resolve() if args else HERE.parent
-    doc_arg = _opt(argv, "--doc", ENV_DOC)
-    ours_arg = _opt(argv, "--ours", ENV_OURS)
-    skip_arg = _opt(argv, "--skip", ENV_SKIP)
+    doc_arg = _opt(argv, "--doc")
+    ours_arg = _opt(argv, "--ours")
+    skip_arg = _opt(argv, "--skip")
     NOT_OURS.update(_conf()[1])         # 저장소의 소유 선언 — 바깥 이름과 그 까닭
 
     lack = [n for n, v in (("--doc", doc_arg), ("--ours", ours_arg)) if not v]

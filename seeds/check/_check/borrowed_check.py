@@ -44,7 +44,9 @@ from _verdict import EXIT_MISMATCH, EXIT_OK, Unmeasured, edge, fails, passes, re
 
 HERE = Path(__file__).resolve().parent
 
-MARK = "빌려 온 자다"
+# 굵은 꼴로만 문다 — 맨글자 「빌려 온 자다」는 이 검사의 제 머리말처럼 곁말을 *말하는* 자리에도
+# 서므로, 그것까지 물면 받는 자가 제 자신을 사본으로 읽는다(실측 2026-09-13 · 아뜰리에 A1).
+MARK = "**빌려 온 자다**"
 # 곁말 안의 진본 경로 — 백틱으로 싸인 `seeds/…`. 저장소 이름은 앞에 맨글자로 오므로 안 읽는다.
 SOURCE_RE = re.compile(r"`(seeds/[^`]+)`")
 HEAD_LINES = 40             # 곁말은 머리말에 산다 — 이 아래는 본문이라 안 뒤진다
