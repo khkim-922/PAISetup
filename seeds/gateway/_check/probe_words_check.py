@@ -48,7 +48,7 @@ from _verdict import (EXIT_MISMATCH, EXIT_UNMEASURED, edge, fails, passes, repor
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app import gateway  # noqa: E402
+from _plumb import gateway  # noqa: E402 — 배관은 선언이 고른다
 
 
 # --- [1] 전제 · 안 — 「없다」가 None 이 아니라 속성 자체가 없다 ---------------------

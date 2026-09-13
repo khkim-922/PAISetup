@@ -29,18 +29,27 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _verdict import EXIT_MISMATCH, EXIT_UNMEASURED, fails, passes, report
+from _verdict import EXIT_MISMATCH, EXIT_UNMEASURED, Unmeasured, fails, passes, report
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from app import gateway  # noqa: E402 — 접두어 하나만 읽는다
+from _plumb import MODULE, Missing, get  # noqa: E402 — 접두어 하나만 읽는다
 
-P = gateway.ENV_PREFIX
+# ⚠ **접두어를 못 읽으면 못 쟀다(2)다.** 이 검사가 재는 스위치의 **이름 자체**가 접두어에서
+#   나온다 — 지어내면 자식이 아무 스위치도 안 받은 채 돌고, 판정 다섯이 통째로 「비운 판」이
+#   되어 담장이 안 서는데도 초록이 난다.
+try:
+    P = get("ENV_PREFIX")
+except Missing as why:
+    raise Unmeasured(f"⚠ 담장 스위치의 이름을 못 지었다 — {why}") from why
 
+# ⚠ **배관 이름을 자식에게 인자로 건넨다.** 자식은 `_check/` 가 경로에 없어 `_plumb` 을 못
+#   문다 — 여기서 푼 이름을 그대로 넘겨 같은 모듈을 올리게 한다. 자식이 제 손으로
+#   `app.gateway` 를 적으면 배관을 다르게 두는 저장소에서 **남의 모듈을 재고** 초록이 난다.
 _PROBE = r"""
-import json, sys
+import importlib, json, sys
 sys.path.insert(0, sys.argv[1])
-from app import gateway
+gateway = importlib.import_module(sys.argv[2])
 gateway.reachable = lambda *a, **k: True
 def creds(p, t, m):
     try:
@@ -66,7 +75,7 @@ def _child(**env_over):
            if k not in (f"{P}_SITES", f"{P}_PROVIDER", f"{P}_DRY_RUN")}
     env.update(env_over)
     env["PYTHONUTF8"] = "1"
-    r = subprocess.run([sys.executable, "-c", _PROBE, str(ROOT)], cwd=ROOT, env=env,
+    r = subprocess.run([sys.executable, "-c", _PROBE, str(ROOT), MODULE], cwd=ROOT, env=env,
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
                        timeout=120)
     return r.returncode, r.stdout, r.stderr
@@ -80,7 +89,7 @@ def _load(code, out, err, label):
 
 
 def main():
-    print(f"담장 스위치 검사 — 나무 {ROOT} · 접두어 {P}")
+    print(f"담장 스위치 검사 — 나무 {ROOT} · 배관 {MODULE} · 접두어 {P}")
 
     code, out, err = _child()
     base = _load(code, out, err, "① 스위치 없이 올리기")

@@ -47,7 +47,7 @@ from _verdict import EXIT_MISMATCH, EXIT_OK, Unmeasured, edge, fails, passes, re
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app import gateway, providers  # noqa: E402
+from _plumb import gateway, get, providers  # noqa: E402 — 배관은 선언이 고른다
 
 # 재는 검체 — 짧다. 고정 층은 앱이 얹는 것이라 씨앗이 지어낼 재료가 없고, 여기서 캐시
 # 적중을 재려 들면 없는 재료를 짓는 것이 된다(그 자리는 `live_probe.py` ② 가 든다).
@@ -84,7 +84,7 @@ def pick(contract=None, provider=None):
                              "`cli_pipe_check.py` 가 문다")
         if not gateway.site_allowed(provider):
             raise Unmeasured(f"[안 잼] {provider} 의 담장({row['site']})을 이 서버가 안 연다 — "
-                             f"{gateway.ENV_PREFIX}_SITES 가 "
+                             f"{get('ENV_PREFIX')}_SITES 가 "
                              f"{' · '.join(gateway.SITES_ALLOWED)} 만 연다")
         return provider
     for slug, row in table.items():
@@ -98,7 +98,7 @@ def pick(contract=None, provider=None):
 
 def live(slug, key):
     row = gateway._GATEWAY[slug]
-    c = gateway.creds(provider=slug, token=key or gateway.env_token(row["key_group"]))
+    c = gateway.creds(provider=slug, token=key or get("env_token")(row["key_group"]))
     msgs = [{"role": "user", "content": ASK}]
     if c.dry_run:
         # **키가 없으면 배관이 안 보내고 명세를 돌려준다** — 여기서 다시 짓지 않는다.

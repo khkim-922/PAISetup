@@ -34,12 +34,20 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app import gateway  # noqa: E402
-from _verdict import EXIT_UNMEASURED  # noqa: E402
+from _plumb import Missing, gateway, get  # noqa: E402 — 배관은 선언이 고른다
+from _verdict import EXIT_UNMEASURED, Unmeasured  # noqa: E402
 
 # 겉옷이 부를 파이썬을 **환경변수로** 건넨다(위 ⚠②). 자식은 `_cli_once` 가 부모 환경을
 # 그대로 물려 띄우므로 이 이름이 그대로 건너간다.
-FAKE_PY_ENV = f"{gateway.ENV_PREFIX}_FAKE_PY"
+#
+# ⚠ **접두어는 배관이 안 들 수도 있다** — 저장소마다 환경변수 접두어를 배관에 두지 않고
+#   따로 선언하는 곳이 있다. 그 자리는 `gateway.conf` 의 `[values]` 가 값을 든다. 둘 다
+#   없으면 **못 쟀다(2)** 다 — 이름을 지어내면 겉옷이 부를 파이썬이 자식에게 안 건너가고,
+#   그 판은 「가짜가 안 섰다」가 아니라 조용히 진짜를 부르는 자리로 떨어진다.
+try:
+    FAKE_PY_ENV = f"{get('ENV_PREFIX')}_FAKE_PY"
+except Missing as why:
+    raise Unmeasured(f"⛔ 가짜 CLI 의 환경변수 이름을 못 지었다 — {why}") from why
 
 # 「못 쟀다」로 나간다 — 어긋남(1)과 갈래가 다르다. 담에 걸린 판은 판정이 아니라
 # **아예 안 잰 판**이다. 숫자의 진본은 종료코드 계약 하나다(`_verdict`).

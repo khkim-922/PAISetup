@@ -44,11 +44,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import _fake_cli  # noqa: E402 — 가짜를 심는 자와 진짜로 안 넘어가게 하는 담
-from app import gateway, providers  # noqa: E402
+from _plumb import gateway, get, providers, put  # noqa: E402 — 배관은 선언이 고른다
 
 
 TMP = Path(tempfile.mkdtemp(prefix="seed-clipipe-"))
-gateway.LOGS_DIR = TMP / "logs"     # ⑨의 증거 파일 — 이 PC 의 기록 폴더를 안 더럽힌다
+# ⑨의 증거 파일 — 이 PC 의 기록 폴더를 안 더럽힌다.
+# ⚠ **선언이 든 자리에 앉힌다**(`put`). 기록 자리를 배관이 아니라 설정 모듈이 드는 저장소가
+#   있어, 배관에 직접 앉히면 갈아 끼운 줄 알고 **그 PC 의 진짜 기록 폴더**가 더럽혀진다.
+put("LOGS_DIR", TMP / "logs")
 
 # 시계를 실물(초 단위 수백)로 두면 이 검사가 그만큼 걸린다 — 자만 줄인다.
 # ⚠ **자 셋의 크기 순서가 곧 판정이다.** 어긋나면 검사가 저 혼자 빨강을 낸다:
@@ -258,7 +261,7 @@ show("이음매 없는 판은 종전과 같다 (음성 대조)", providers._join
 print("\n[9] 자식이 마지막 줄로 오류를 말한 판은 직전 스트림이 파일로 남고 사유가 그 좌표를 든다")
 # ⚠ 증거는 `result` 줄로 끝난 판에만 선다 — 성내며 죽는 판([5])은 그 줄 없이 죽어 이 자리를
 #   안 지난다(저쪽도 같다). 그래서 검체는 로그인 안 된 판([7]과 같은 가짜)이다.
-evidence = gateway.LOGS_DIR / "_cli_error.log"
+evidence = get("LOGS_DIR") / "_cli_error.log"
 if evidence.exists():
     evidence.unlink()               # [7] 이 이미 남긴 것을 걷어야 이 판이 세운 것만 잰다
 kind, (err, _) = call("nologin", layers=["안녕"])
