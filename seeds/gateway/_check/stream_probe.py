@@ -63,7 +63,7 @@ from _verdict import (EXIT_MISMATCH, EXIT_OK, EXIT_UNMEASURED, Unmeasured, edge,
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app import gateway, providers  # noqa: E402
+from _plumb import Missing, gateway, get, providers  # noqa: E402 — 배관은 선언이 고른다
 from live_probe import _creds  # noqa: E402  — 키 묶음 환경변수 · --key · 「못 쟀다」 물러남을 한 자리에서
 
 LOG = ROOT / "_check" / "log" / "stream-probe.log"
@@ -176,7 +176,13 @@ def flow(want, key):
             unmeasured(pid, f"안 닿는다 — {gateway.why_unreachable(pid)}")
             continue
         # 키는 부르기 전에 본다 — `_creds` 가 물러나며 찍는 줄과 여기 「못 쟀다」가 겹치지 않게.
-        if not (key or gateway.env_token(row["key_group"])):
+        # ⚠ 키를 읽는 손은 이름이 갈리는 자리라 선언이 좌표를 든다(`_creds` 와 같은 손).
+        try:
+            has_key = bool(key or get("env_token")(row["key_group"]))
+        except Missing as why:
+            unmeasured(pid, f"키를 읽는 손을 못 찾았다 — {why}")
+            continue
+        if not has_key:
             names = gateway._KEY_ENV.get(row["key_group"]) or ()
             unmeasured(pid, "키가 없다 — " + (f"`--key` 로 주거나 환경변수 {' · '.join(names)} 를 둔다"
                                             if names else f"`--key` 로 준다. `{row['key_group']}` 묶음은 환경변수를 안 읽는다"))

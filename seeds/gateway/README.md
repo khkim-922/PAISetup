@@ -56,9 +56,10 @@
 [plumb]                                    # 배관이 사는 모듈
 module    = app.gateway
 providers = app.providers
-[where]                                    # 위 `module` 이 **안 드는** 자리만 · 꼴은 `모듈:이름`
+[where]                                    # 위 **두 모듈이 안 드는** 자리만 · 꼴은 `모듈:이름`
 LOGS_DIR  = app.config:LOGS_DIR
 env_token = app.config:_env_token
+SYSTEM_MARKS_BUDGET = app.providers:CACHE_MARK_CAP
 [values]                                   # 배관에 속성이 **아예 없는** 자리 · 좌표가 아니라 값
 ENV_PREFIX = MYAPP
 [no_handle]                                # 이 앱이 **안 여는** 환경변수 손잡이 · 값은 그 까닭이다
@@ -69,11 +70,18 @@ PROVIDER = 기본 갈래를 상수로 둔다 — 고칠 손잡이는 담장 하�
 이름이 씨앗과 같은 저장소는 선언을 안 채워도 그대로 돈다. `[no_handle]` 도 같다: 비면
 **손잡이가 다 있다**가 기본이라 검사가 종전 그대로 다 잰다.
 
-값이 아니라 **모듈 이름 하나**가 선언의 몸통인 까닭은 이렇다. 이 검사들이 코드로 무는 배관
-이름은 서른 남짓인데, 저장소 사이에서 실제로 갈리는 것은 셋뿐이다 — 접두어(`ENV_PREFIX`) ·
-기록 자리(`LOGS_DIR`) · 키를 읽는 손(`env_token`). 나머지는 어느 저장소나 같은 이름으로 든다.
-그래서 `[where]`·`[values]` 는 예외를 적는 자리로 남는다. 예외가 열을 넘어가기 시작하면 그때는
-이 길이 아니라 배관 이름을 씨앗에 맞추는 쪽이 싸다.
+값이 아니라 **모듈 이름 둘**이 선언의 몸통인 까닭은 이렇다. 이 검사들이 코드로 무는 배관
+이름은 서른 남짓인데, 저장소 사이에서 실제로 갈리는 것은 넷뿐이다 — 접두어(`ENV_PREFIX`) ·
+기록 자리(`LOGS_DIR`) · 키를 읽는 손(`env_token`) · 봉투 예산(`SYSTEM_MARKS_BUDGET`).
+나머지는 어느 저장소나 같은 이름으로 든다. 그래서 `[where]`·`[values]` 는 예외를 적는 자리로
+남는다. 예외가 열을 넘어가기 시작하면 그때는 이 길이 아니라 배관 이름을 씨앗에 맞추는 쪽이
+싸다.
+
+**두 모듈은 차례로 본다 — 배관 먼저, 없으면 말하기.** 그래서 `providers` 쪽에 사는 이름은
+`[where]` 를 안 적어도 닿는다. 차례가 없던 판은 말하기 모듈의 이름마다 저장소가 한 줄씩
+적어야 했고, 그 줄이 곧 저장소마다 같은 것을 베끼는 손사본이었다. 차례가 서면 **겹침이
+위험**이다 — 두 모듈이 같은 이름을 다른 값으로 들면 앞엣것이 이기므로, `--self-check` 이 그
+겹침을 세고 있으면 이름을 대고 빨강을 낸다(세 저장소 다 0 이 실측이다).
 
 **넷째 칸은 축이 다르다.** 앞 셋은 「그 자리가 **어디** 있나」인데 `[no_handle]` 은 「그 자리를
 밖에서 바꾸는 **손잡이가 아예 없다**」를 적는다 — 기본 갈래를 환경변수로 안 열고 상수로 두는
@@ -93,11 +101,18 @@ python -X utf8 _check/_plumb.py --show          # 이 저장소의 선언이 무
 python -X utf8 _check/_plumb.py --self-check    # 선언이 좌표를 정말 옮기나 — 임시 나무로
 ```
 
-**이 길로 오는 것은 검사 넷과 부품 하나다** — `cli_pipe_check.py` · `sites_lock_check.py` ·
-`probe_words_check.py` · `gateway_probe.py`, 그리고 그중 `cli_pipe_check.py` 가 쓰는 부품
-`_fake_cli.py`(혼자 안 돈다).
-`envelope_check.py` · `claude_thinking_probe.py` · `live_probe.py` · `stream_probe.py` 는 아직
-`from app import gateway` 를 박고 있어, 배관이 그 이름으로 사는 저장소에서만 돈다.
+**이 길로 오는 것이 무엇인지는 목록을 안 든다** — 받은 트리에서 한 줄로 나온다.
+
+```bash
+grep -l "^from _plumb import" _check/*.py   # 앵커를 빼면 `_plumb.py` 산문까지 세어 하나 많다
+python -X utf8 _check/_plumb_names.py . _check/*.py   # 아직 앱을 직접 무는 이름 — 0 이 끝이다
+```
+
+**앱의 배관을 무는 것은 다 이 길로 온다** — 검사도, 실호출 프로브 셋(`live_probe.py` ·
+`stream_probe.py` · `claude_thinking_probe.py`)도, 혼자 안 도는 부품 `_fake_cli.py` 도.
+이 길 밖에 남는 것은 **배관을 아예 안 무는 자들**이다: 종료코드 계약을 재는 둘
+(`_verdict.py` · `exit_code_check.py`) · 선언을 읽는 자와 무는 이름을 세는 자
+(`_plumb.py` · `_plumb_names.py`) · 앱 나무를 인자로 받아 원문만 견주는 `drift_check.py`.
 
 ⚠ **이 길이 여는 것은 이름까지다.** 저쪽 배관에 그 자리가 **아예 없으면** 좌표로 이을 데가
 없어, `get`·`slot`·`put` 이 「없다」를 던지고 부르는 검사가 그것을 `2`(못 쟀다)로 옮긴다.

@@ -78,7 +78,7 @@ from _verdict import Unmeasured, edge, fails, passes, report
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app import gateway, providers  # noqa: E402
+from _plumb import gateway, providers  # noqa: E402 — 배관은 선언이 고른다
 from live_probe import _creds  # noqa: E402  — 키 묶음 환경변수 · --key · 「못 쟀다」 물러남을 한 자리에서
 
 LOG = ROOT / "_check" / "log"

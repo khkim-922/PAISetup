@@ -24,8 +24,13 @@ python -X utf8 _check/borrowed_check.py
 
 ## 배관 선언 — `gateway.conf`
 
-검사 넷(`cli_pipe_check` · `sites_lock_check` · `probe_words_check` · `gateway_probe`)과 그중
-`cli_pipe_check` 가 쓰는 부품 하나(`_fake_cli`)가 앱의 배관을 문다. 그런데 **배관이 사는 모듈 이름은 저장소마다
+이 폴더의 검사와 부품 몇이 앱의 배관을 문다 — **목록을 여기 두지 않는다.** 한 줄로 나온다.
+
+```bash
+grep -l "^from _plumb import" _check/*.py   # 앵커를 빼면 `_plumb.py` 산문까지 세어 하나 많다
+```
+
+그런데 **배관이 사는 모듈 이름은 저장소마다
 갈린다** — 그 이름을 검사 안에 박으면 다르게 두는 저장소는 사본을 받는 순간 그 줄을 손으로
 고쳐야 하고, 고치는 순간 `borrowed_check` 가 어긋남으로 문다. 그래서 **갈리는 것만 검사 밖으로
 뺀다** — 앱은 갈려도 되고, 갈린 것을 사본이 물지 않게 하는 것이 이 선언의 일이다.
@@ -39,21 +44,29 @@ python -X utf8 _check/borrowed_check.py
 [plumb]                                    # 배관이 사는 모듈
 module    = app.gateway
 providers = app.providers
-[where]                                    # `module` 이 **안 드는** 자리만 · `모듈:이름`
+[where]                                    # **두 모듈이 안 드는** 자리만 · `모듈:이름`
 LOGS_DIR  = app.config:LOGS_DIR
 env_token = app.config:_env_token
+SYSTEM_MARKS_BUDGET = app.providers:CACHE_MARK_CAP
 [values]                                   # 속성이 **아예 없는** 자리 · 좌표가 아니라 값
 ENV_PREFIX = ATELIER
 [no_handle]                                # **손잡이가 아예 없는** 자리 · 값이 그 까닭이다
 PROVIDER = 기본 갈래를 상수로 둔다 — 고칠 손잡이는 담장 하나다
 ```
 
-**왜 이름마다 짝을 적는 매핑표가 아닌가.** 다섯이 코드로 무는 배관 이름은 서른 남짓인데
-**저장소 사이에서 실제로 갈리는 것은 셋뿐**이다 — `ENV_PREFIX` · `LOGS_DIR` · `env_token`.
-나머지는 어느 저장소나 같은 이름으로 산다(센 수와 그 갈라 본 근거는 `_plumb.py` 머리말이
-든다). 그래서 선언의 몸통은 **모듈 이름 하나**이고 `[where]`·`[values]` 는 예외를 적는 자리로
-남는다. 예외가 열을 넘어가기 시작하면 그때는 이 길이 아니라 배관 이름을 씨앗에 맞추는 쪽이
-싸다.
+**왜 이름마다 짝을 적는 매핑표가 아닌가.** 검사가 코드로 무는 배관 이름은 서른 남짓인데
+**저장소 사이에서 실제로 갈리는 것은 넷뿐**이다 — `ENV_PREFIX` · `LOGS_DIR` · `env_token` ·
+`SYSTEM_MARKS_BUDGET`. 나머지는 어느 저장소나 같은 이름으로 산다(센 수와 그 갈라 본 근거는
+`_plumb.py` 머리말이 든다). 그래서 선언의 몸통은 **모듈 이름 둘**이고 `[where]`·`[values]` 는
+예외를 적는 자리로 남는다. 예외가 열을 넘어가기 시작하면 그때는 이 길이 아니라 배관 이름을
+씨앗에 맞추는 쪽이 싸다.
+
+⚠ **`[where]` 를 적기 전에 두 모듈을 먼저 본다.** `module` 에 없는 이름은 `_plumb` 이
+`providers` 를 이어서 보므로(배관 → 말하기 차례), **말하기 모듈에 사는 이름은 선언 없이
+닿는다.** 그 차례가 없던 판은 봉투 예산 같은 자리를 저장소마다 한 줄씩 적게 했고, 그 줄이
+곧 손사본이었다. 차례가 서면 겹침이 위험이 되므로 — 두 모듈이 같은 이름을 다른 값으로 들면
+앞엣것이 이긴다 — `_plumb.py --self-check` 이 그 겹침을 세고 있으면 이름을 대고 빨강으로
+세운다. 어느 쪽을 뜻했는지는 사람이 정해 `[where]` 로 못 박을 일이다.
 
 ```bash
 python -X utf8 _check/_plumb.py --show          # 이 트리의 선언이 무엇으로 풀리나

@@ -21,8 +21,8 @@
 **판정을 안 낸다 — 숫자를 찍고 그 뜻을 한 줄 단다.** 결과는 `_check/log/live-probe.log` 에
 쌓인다(날짜 · 나무 지문 · 숫자) — 그 줄을 씨앗 곁말의 「안 쟀다」 자리에 옮겨 적는 것은 사람이다.
 
-⚠ 키는 갈래 표의 키 묶음이 든 환경변수를 읽는다(`gateway.env_token`). 없으면 「못 쟀다」로
-  나간다 — 초록이 아니다. `--key` 로 줄 수도 있다.
+⚠ 키는 갈래 표의 키 묶음이 든 환경변수를 읽는다(배관의 `env_token` — 이름이 갈리는 자리라
+  선언이 좌표를 든다). 없으면 「못 쟀다」로 나간다 — 초록이 아니다. `--key` 로 줄 수도 있다.
 ⚠ ②는 캐시를 **쓴다** — 1시간 수명의 캐시 쓰기 비용이 든다. 세 번 이상 돌릴 일이 아니다.
 """
 import argparse
@@ -34,7 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from app import gateway, providers  # noqa: E402
+from _plumb import Missing, gateway, get, providers  # noqa: E402 — 배관은 선언이 고른다
 from _verdict import EXIT_UNMEASURED, Unmeasured  # noqa: E402
 
 LOG = ROOT / "_check" / "log" / "live-probe.log"
@@ -69,7 +69,13 @@ def _creds(provider, key, **kw):
         raise Unmeasured(f"[안 잼] 모르는 갈래다 — {provider} (있는 것: {', '.join(gateway._GATEWAY)})")
     if row.get("local"):
         raise Unmeasured(f"[안 잼] {provider} 는 로컬 CLI 갈래라 이 프로브 밖이다")
-    token = key or gateway.env_token(row["key_group"])
+    # ⚠ **키를 읽는 손은 이름이 갈린다** — 밑줄을 붙여 두는 저장소가 있어(`_env_token`)
+    #   선언이 좌표를 든다. `--key` 를 준 판은 애초에 안 부르므로, 그 손이 없는 저장소도
+    #   키를 손으로 주면 그대로 돈다.
+    try:
+        token = key or get("env_token")(row["key_group"])
+    except Missing as why:
+        raise Unmeasured(f"[안 잼] 키를 읽는 손을 못 찾았다 — {why}") from why
     if not token:
         names = gateway._KEY_ENV.get(row["key_group"]) or ()
         raise Unmeasured("[안 잼] 키가 없다 — " + (
@@ -137,8 +143,14 @@ def cache_layers(provider, key):
         raise Unmeasured(f"[안 잼] {pid} 는 anthropic 계약이 아니다 — 표를 우리가 다는 계약만 잰다")
     # 층마다 글이 달라야 한다 — 같으면 둘째 층이 첫 층으로 오인된다. 번호를 박아 가른다.
     layers = [(f"[층 {i}] 이 층은 캐시 적중을 재는 채움 글이다. " * 200)[:LAYER_CHARS] for i in range(3)]
+    # ⚠ **봉투 예산은 이름이 갈린다** — 이 절에서만 드므로 여기서 문다. 위에 올려 두면
+    #   그 이름이 없는 저장소에서 ①③까지 같이 못 쟀다로 떨어진다.
+    try:
+        budget = get("SYSTEM_MARKS_BUDGET")
+    except Missing as why:
+        raise Unmeasured(f"[안 잼] 봉투 예산을 못 찾았다 — {why}") from why
     print(f"[②] 층 셋의 캐시 — {pid} · {c.model} · 층마다 {LAYER_CHARS:,}자 · 경계 예산 "
-          f"{providers.SYSTEM_MARKS_BUDGET}")
+          f"{budget}")
     env = providers.envelope(layers, [{"role": "user", "content": ASK}], c)
     marks = [i for i, b in enumerate(env.body["system"]) if b.get("cache_control")]
     print(f"  표가 선 층: {marks} (기대 [0, 1] — 마지막 층은 턴 지시문 자리라 안 선다)")

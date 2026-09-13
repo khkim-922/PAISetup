@@ -1,24 +1,33 @@
-"""배관을 무는 자 — 검사 다섯이 앱의 배관 모듈을 **선언에서** 문다.
+"""배관을 무는 자 — 검사가 앱의 배관 모듈을 **선언에서** 문다.
 
 이 파일은 혼자 안 돈다(`--self-check` 빼고). 검사가 불러 쓰는 재료다.
 
-**왜 이 파일이 있나.** 게이트웨이 검사 다섯은 사본으로 형제 저장소에 산다. 사본은 진본과
+**왜 이 파일이 있나.** 게이트웨이 검사는 사본으로 형제 저장소에 산다. 사본은 진본과
 글자가 같아야 `borrowed_check.py` 가 초록인데, 검사가 `from app import gateway` 를 박고
 있으면 배관을 다른 이름으로 두는 저장소는 받는 순간 그 줄을 손으로 고쳐야 하고, 고치는
 순간 어긋남으로 뜬다. 그래서 **갈리는 것을 검사 밖으로 뺀다** — 좌표는 `gateway.conf` 가
 들고 검사는 이 자를 통해 문다(claude-config #26 갈래 1 · 결정 0033 「앱은 갈려도 된다」).
 
-**갈리는 자리가 몇인지 세고 들어왔다**(실측 2026-09-13 · 그 트리 지문은 보고가 든다). 검사
-다섯이 코드로 무는 이름은 **스물여덟**인데(점으로 무는 자 스물일곱 · `getattr` 로 무는 자
-하나) 형제 사이에서 **이름이 갈리는 것은 셋뿐**이다 — 나머지 스물넷은 세 저장소가 같은
-이름으로 든다. 그래서 이 자의 몸통은 매핑표가 아니라 **모듈 이름 하나**이고, `[where]` 는
-예외를 적는 자리로 남는다. 예외가 열을 넘어가기 시작하면 그때는 이 길이 아니라 배관을
-맞추는 길이다(#26 갈래 2).
+**갈리는 자리가 몇인지 세고 들어왔다.** 검사가 코드로 무는 배관 이름은 서른 남짓인데 형제
+사이에서 **이름이 갈리는 것은 넷뿐**이다 — 나머지는 세 저장소가 같은 이름으로 든다. 그래서 이
+자의 몸통은 매핑표가 아니라 **모듈 이름 둘**이고, `[where]`·`[values]` 는 예외를 적는 자리로
+남는다. 예외가 열을 넘어가기 시작하면 그때는 이 길이 아니라 배관을 맞추는 길이다(#26 갈래 2).
+
+    ENV_PREFIX · LOGS_DIR · env_token · SYSTEM_MARKS_BUDGET    ← 실제로 갈린 넷(형제 실측)
+
+**수와 무는 자를 손으로 안 든다.** 무는 이름을 다시 세려면 아직 안 바꾼 형제에
+`_plumb_names.py` 를 건다 — 바꾼 트리는 0 이 정상이다. 누가 무는지는 한 줄로 나온다:
+
+    grep -l "^from _plumb import" _check/*.py
+
+⚠ **앵커(`^`)를 뺀 꼴로 세지 않는다** — 이 머리말이 그 낱말을 들어 **이 파일이 저를 센다.**
+  무는 자는 들여쓰기 없이 임포트하므로 앵커가 산문과 코드를 가른다(실측 앵커 없이 열 ·
+  앵커로 아홉).
 
 **어떻게 주나.**
 
-    [plumb]     module = app.gateway        # 배관이 사는 모듈 — 스물넷이 여기서 나온다
-                providers = app.providers   # 갈래별 말하기가 사는 모듈
+    [plumb]     module = app.gateway        # 배관이 사는 모듈 — 대부분이 여기서 나온다
+                providers = app.providers   # 갈래별 말하기 — 여기 사는 이름도 선언 없이 닿는다
     [where]     LOGS_DIR = app.config:LOGS_DIR   # `module` 이 안 드는 자리만 · `모듈:이름`
     [values]    ENV_PREFIX = ATELIER             # 속성이 **아예 없는** 자리 · 좌표가 아니라 값
     [no_handle] PROVIDER = 기본 갈래를 상수로 둔다   # **손잡이가 아예 없는** 자리 · 값이 까닭이다
@@ -26,8 +35,8 @@
 선언이 없으면 씨앗 기본값(`app.gateway` · `app.providers`)으로 돈다 — 씨앗 저장소 자신과
 배관 이름이 같은 형제는 선언을 안 채워도 그대로 돈다.
 
-    from _plumb import gateway, providers      # 안 갈리는 스물넷은 이대로
-    from _plumb import get, put, slot          # 갈릴 수 있는 셋은 이 손으로
+    from _plumb import gateway, providers      # 안 갈리는 이름은 모듈에서 그대로
+    from _plumb import get, put, slot          # 갈릴 수 있는 넷은 이 손으로
     from _plumb import NO_HANDLE               # 그 앱이 안 여는 환경변수 손잡이
 
   · `slot(이름)` — `(모듈, 속성이름)`. 값을 읽고 쓰는 자리가 아니라 **좌표가 필요할 때**
@@ -36,6 +45,18 @@
     「못 쟀다」(2)로 옮긴다. **빨강이 아니다**: 안 잰 것이지 어긋난 것이 아니다
   · `NO_HANDLE` — `{손잡이 이름: 까닭}`. 접두어를 뗀 이름이 칸 이름이고 값이 까닭이다
     (`PROVIDER` → `{접두어}_PROVIDER`). 비었으면 **손잡이가 있다**가 기본이다
+
+**`[where]` 밖 이름은 어디서 찾나 — 배관 → 말하기 차례다.** `module` 을 먼저 보고, 그 모듈에
+그 이름이 없으면 `providers` 를 본다. 말하기 모듈에 사는 이름(봉투 예산 따위)이 **어느
+저장소에서나 선언 없이 닿는** 까닭이다. 옛 판은 늘 `module` 만 봐서, 씨앗에 그 값이 멀쩡히
+있는데도 선언마다 `[where]` 한 줄을 손으로 적어야 했다 — 저장소마다 같은 줄을 적는 손사본이
+곧 이 길이 막혔던 자리다(#28 ⓐ).
+
+⚠ **차례가 서면 겹침이 곧 위험이다.** 두 모듈이 같은 이름을 **다른 값으로** 들면 앞엣것이
+  이기는데, 이기는 것 자체는 규칙이고 **아무도 안 재는 것이 결함**이다. 그래서 `--self-check`
+  이 그 겹침을 세고 하나라도 있으면 이름을 대고 **빨강으로** 세운다 — 무는 검사가 어느 쪽을
+  뜻했는지는 사람이 정해 `[where]` 로 못 박을 일이다. 실측은 세 저장소 다 0 이다(2026-09-14 ·
+  겹치는 공개 이름 다섯~여섯은 `import json` 류로 **같은 객체**라 차례가 답을 안 바꾼다).
 
 ⚠ **`[no_handle]` 은 `[values]` 와 층이 다르다.** 저쪽은 「배관에 그 **속성**이 없다」이고
   이쪽은 「그 속성을 밖에서 바꾸는 **환경변수**가 없다」다 — 기본 갈래를 상수로 두는 앱은
@@ -51,12 +72,14 @@
 
 ⚠ **`--self-check` 는 재는 자가 곧 재이는 것이다.** 선언이 빈 저장소에서는 `[where]`·
   `[values]` 가 한 줄도 안 돌아 「옮긴 자리가 정말 따라가나」가 **안 재진 채로 초록**이 된다.
-  그래서 임시 트리에 배관을 지어 옮김·이름갈림·없음 셋을 실제로 밟는다.
+  그래서 임시 트리에 배관을 지어 옮김·이름갈림·없음·찾는 차례·겹침을 실제로 밟고, **겹침이
+  실제로 있나는 이 저장소의 실물 두 모듈에서** 따로 잰다(⑫ — 임시 트리로만 끝내면 「셀 수
+  있다」가 「없다」로 읽힌다).
 
     python -X utf8 _check/_plumb.py --self-check
     python -X utf8 _check/_plumb.py --show [<트리>]   # 그 트리의 선언이 무엇으로 풀리나
 
-**안 재는 것** — 배관 모듈 **안**이 성한가(그것은 배관을 무는 검사 다섯의 몫이다) · 선언에
+**안 재는 것** — 배관 모듈 **안**이 성한가(그것은 배관을 무는 검사들의 몫이다) · 선언에
 적힌 모듈이 실제로 임포트되나는 `--show` 가 부를 때만 본다.
 """
 import argparse
@@ -114,6 +137,40 @@ class Plumbing:
         self.gateway = importlib.import_module(self.module_name)
         self.providers = importlib.import_module(self.providers_name)
 
+    def _find(self, name):
+        """`[where]` 가 안 든 이름이 사는 모듈 — **배관 → 말하기** 차례다.
+
+        둘 다 안 들면 배관을 돌려준다. 그 자리에서 `get` 이 `Missing` 을 던지고 `put` 은
+        배관에 새로 앉히므로, 차례를 늘려도 「없다」의 뜻은 옛 판과 같다(`--self-check` ⑪).
+        """
+        if hasattr(self.gateway, name):
+            return self.gateway
+        if hasattr(self.providers, name):
+            return self.providers
+        return self.gateway
+
+    def overlap(self):
+        """두 모듈이 **같은 이름**을 든 자리 — `(갈리는 것, 같은 것)` 둘.
+
+        앞엣것만 위험이다: 차례 때문에 배관 쪽이 이기는데 값이 다르다. 뒤엣것은 `import json`
+        류로 **같은 객체**라 어느 쪽이 이겨도 같은 것이 나온다 — 위험에 안 센다.
+        """
+        if self.gateway is self.providers:
+            return [], []
+
+        def pub(mod):
+            return {n for n in dir(mod) if not n.startswith("__")}
+
+        split, same = [], []
+        for name in sorted(pub(self.gateway) & pub(self.providers)):
+            try:
+                one = getattr(self.gateway, name) is getattr(self.providers, name)
+            except Exception:                                  # noqa: BLE001
+                # 못 견줬으면 **갈린 것으로 둔다** — 조용히 위험 밖으로 새지 않게.
+                one = False
+            (same if one else split).append(name)
+        return split, same
+
     def slot(self, name):
         """`(모듈, 속성이름)` — 선언이 옮겼으면 그리로, 없다고 하면 `Missing`."""
         if name in self.values:
@@ -121,7 +178,7 @@ class Plumbing:
                           f"값을 든다: {self.values[name]!r}")
         coord = self.where.get(name)
         if not coord:
-            return self.gateway, name
+            return self._find(name), name
         mod_name, _, attr = coord.partition(":")
         if not mod_name.strip() or not attr.strip():
             raise Missing(f"선언 `[where] {name}` 의 꼴이 `모듈:이름` 이 아니다: {coord!r}")
@@ -135,8 +192,14 @@ class Plumbing:
         try:
             return getattr(mod, attr)
         except AttributeError as exc:
-            raise Missing(f"`{mod.__name__}:{attr}` 가 없다 — 선언 `[where] {name}` 을 "
-                          f"이 저장소 자리로 고치거나, 속성이 없으면 `[values]` 로 옮겨라") from exc
+            # **어디를 보고 없다고 하는지 말한다** — 선언이 든 자리면 그 줄을, 안 든 자리면
+            #   차례로 훑은 모듈 둘을 댄다. 안 대면 받는 사람이 선언을 어디에 적을지 모른다.
+            looked = " · ".join(dict.fromkeys([self.module_name, self.providers_name]))
+            where = (f"선언 `[where] {name}` 이 가리킨 자리다" if name in self.where
+                     else f"차례로 훑은 자리는 {looked} 다")
+            raise Missing(f"`{mod.__name__}:{attr}` 가 없다 — {where}. 이 저장소 자리를 "
+                          f"`[where] {name} = 모듈:이름` 으로 적거나, 속성이 아예 없으면 "
+                          f"`[values] {name} = 값` 으로 옮겨라") from exc
 
     def put(self, name, value):
         """배관 값을 갈아 끼운다 — 검사가 제 임시 자리로 돌릴 때."""
@@ -174,6 +237,7 @@ _FAKE_APP = '''
 CLI_EXE = "claude"
 ENV_PREFIX = "SEED"
 LOGS_DIR = "안 옮긴 자리"
+SHARED = "배관이 든 것"
 def env_token(group):
     return "씨앗 이름"
 '''
@@ -182,14 +246,17 @@ LOGS_DIR = "옮긴 자리"
 def _env_token(group):
     return "밑줄 붙은 이름"
 '''
-_FAKE_PROVIDERS = 'def stream_once(*a, **k):\n    return "말했다", None\n'
+# `BUDGET` — 배관에는 없고 **말하기 모듈에만** 사는 이름. 찾는 차례를 재는 검체다(⑨).
+# `SHARED` — 두 모듈이 같은 이름을 다른 값으로 든 자리. 겹침 판정의 검체다(⑩).
+_FAKE_PROVIDERS = ('BUDGET = 4\nSHARED = "말하기가 든 것"\n'
+                   'def stream_once(*a, **k):\n    return "말했다", None\n')
 
 
 def _self_check():
     import shutil
     import tempfile
 
-    from _verdict import EXIT_MISMATCH, EXIT_OK, edge, fails, passes, show
+    from _verdict import EXIT_MISMATCH, EXIT_OK, edge, fails, passes, report, show
 
     tmp = Path(tempfile.mkdtemp(prefix="plumb-self-")).resolve()
 
@@ -293,6 +360,36 @@ def _self_check():
              p.no_handle.get("PROVIDER"), "기본 갈래를 상수로 둔다")
         show("⑧ 안 적은 손잡이는 없다고 안 한다 (음성 대조)", p.no_handle.get("SITES"), None)
         show("⑧ 손잡이 선언이 좌표를 흔들지 않는다 (음성 대조)", p.get("CLI_EXE"), "claude")
+
+        # ⑨ `[where]` 밖 이름을 **배관 → 말하기** 차례로 찾는다. 말하기 모듈에 사는 이름이
+        #    선언 없이 닿는 자리다 — 옛 판은 늘 배관만 봐서 `Missing` 을 던졌다(#28 ⓐ).
+        (conf_dir / CONF).write_text(
+            "[plumb]\nmodule = app.gateway\nproviders = app.providers\n", encoding="utf-8")
+        p = fresh(conf_dir)
+        show("⑨ 배관에 없는 이름은 말하기 모듈에서 나온다", p.get("BUDGET"), 4)
+        show("⑨ 좌표도 그 모듈을 든다", p.slot("BUDGET")[0].__name__, "app.providers")
+        show("⑨ 배관이 든 이름은 그대로 배관에서 나온다 (음성 대조)", p.get("CLI_EXE"), "claude")
+        # `put` 이 차례를 안 따르면 검사가 **말하기 모듈의 진짜 값을 그대로 둔 채** 배관에
+        # 그림자 속성을 앉히고, 갈아 끼운 줄 알고 남의 값을 잰다.
+        p.put("BUDGET", 9)
+        show("⑨ 갈아 끼우기도 그 모듈에 앉는다", p.get("BUDGET"), 9)
+        show("⑨ 배관 모듈에 그 이름이 새로 안 생겼다 (음성 대조)", hasattr(p.gateway, "BUDGET"), False)
+
+        # ⑩ 차례가 서면 **겹침이 곧 위험**이다 — 같은 이름을 다른 값으로 들면 앞엣것이 이긴다.
+        #    이기는 것은 규칙이고 **안 재지는 것이 결함**이라, 여기서 이름으로 센다.
+        show("⑩ 겹치면 배관이 이긴다", p.get("SHARED"), "배관이 든 것")
+        split, same = p.overlap()
+        show("⑩ 그 겹침을 이름으로 센다", split, ["SHARED"])
+        show("⑩ 같은 객체를 든 겹침은 위험에 안 센다 (음성 대조)", same, [])
+
+        # ⑪ 어디에도 없는 이름은 **여전히** 못 쟀다다 — 차례를 늘렸다고 「없다」가 조용히
+        #    다른 것이 되지 않게. 「없다」를 재기 전에 그것이 정말 그 꼴인지 묻는 자리다.
+        try:
+            p.get("두_모듈에_다_없는_이름")
+            got = "안 던졌다"
+        except Missing:
+            got = "Missing"
+        show("⑪ 두 모듈에 다 없는 이름은 못 쟀다로 간다 (음성 대조)", got, "Missing")
     finally:
         for name in [m for m in sys.modules if m == "app" or m.startswith("app.")]:
             sys.modules.pop(name, None)
@@ -300,9 +397,19 @@ def _self_check():
             sys.path.remove(str(tmp))
         shutil.rmtree(tmp, ignore_errors=True)
 
+    # ⑫ **이 저장소의 실물 두 모듈**에 차례가 답을 바꾸는 겹침이 있나. 위 ⑩ 은 기전이
+    #    서나를 임시 트리로 쟀고, 위험이 실제로 있나는 여기서만 재진다 — 임시 트리로만
+    #    끝내면 「셀 수 있다」가 「없다」로 읽힌다.
     print()
-    edge("잰 범위 — **선언이 좌표를 옮기나**뿐이다. 배관 모듈 **안**이 성한가는 이 자가 "
-         "한 자도 안 잰다 — 그것은 이 배관을 무는 검사 다섯의 몫이다")
+    split, same = _P.overlap()
+    report(f"⑫ 이 저장소는 차례가 답을 바꾸는 겹침이 없다 — {_P.label}", not split,
+           [f"겹친 이름 {split} — 배관 쪽이 이기는데 값이 다르다. 무는 검사가 어느 쪽을 "
+            "뜻했는지는 사람이 정해 `[where]` 로 못 박을 일이라, 그때까지 이 빨강을 안 지운다"])
+    edge(f"겹치는 공개 이름 {len(split) + len(same)} — 그중 {len(same)} 은 **같은 객체**다"
+         f"({', '.join(same) or '없다'}). 어느 쪽이 이겨도 같은 것이 나와 위험에 안 든다")
+
+    edge("잰 범위 — **선언이 좌표를 옮기나**와 **찾는 차례**뿐이다. 배관 모듈 **안**이 성한가는 "
+         "이 자가 한 자도 안 잰다 — 그것은 이 배관을 무는 검사들의 몫이다")
     edge("안 잰 것 — 이 저장소의 실물 선언(`gateway.conf`)이 무엇으로 풀리나. "
          "그것은 `--show` 가 든다")
     edge("안 잰 것 — `[no_handle]` 의 선언이 **참인가**. 손잡이가 있는데 없다고 적은 판은 "
@@ -311,7 +418,8 @@ def _self_check():
         print(f"\n❌ 어긋났다 ({len(fails())}건) — {' · '.join(fails())}")
         return EXIT_MISMATCH
     print(f"\n✅ 선언이 좌표를 옮긴다 — 판정 {len(passes())}건 (기본값 · 모듈 갈이 · "
-          f"한 자리 옮김 · 이름 갈림 · 갈아 끼우기 · 없는 자리 · 엉뚱한 자리 · 없는 손잡이)")
+          f"한 자리 옮김 · 이름 갈림 · 갈아 끼우기 · 없는 자리 · 엉뚱한 자리 · 없는 손잡이 · "
+          f"찾는 차례 · 겹침 · 실물 겹침)")
     return EXIT_OK
 
 
@@ -324,6 +432,9 @@ def _show(root):
     print(f"  옮긴 자리 {p.where or '없다 — 배관이 다 든다'}")
     print(f"  값으로 든 자리 {p.values or '없다'}")
     print(f"  손잡이 없는 자리 {p.no_handle or '없다 — 손잡이가 다 있다고 본다'}")
+    split, same = p.overlap()
+    print(f"  겹치는 이름 {len(split) + len(same)}  ←  차례가 답을 바꾸는 것 "
+          f"{split or '없다'} · 같은 객체 {len(same)}")
     return 0
 
 

@@ -29,9 +29,21 @@ from _verdict import EXIT_MISMATCH, Unmeasured, edge, fails, passes, show
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from app import gateway, providers  # noqa: E402
+from _plumb import (MODULE, PROVIDERS_MODULE, Missing, gateway,  # noqa: E402 — 배관은 선언이 고른다
+                    get, providers)
 
-P = gateway.ENV_PREFIX
+# ⚠ **이 둘만 `get` 으로 문다** — 형제 실측에서 이름이 갈린 자리다. 접두어는 배관에 속성으로
+#   없는 저장소가 둘이고(선언 `[values]` 가 값을 든다), 봉투 예산은 이름이 갈린 저장소가 있다
+#   (`CACHE_MARK_CAP`). 나머지는 어느 저장소나 같은 이름으로 살아 모듈에서 그대로 나온다.
+# ⚠ **못 찾으면 「못 쟀다」(2)다 — 빨강이 아니다.** 접두어를 지어내면 자식이 아무 손잡이도
+#   안 받은 채 돌아 절 셋이 「비운 판」으로 초록이 되고, 예산을 지어내면 경계 판정이 그 앱의
+#   예산이 아니라 씨앗의 수를 잰다.
+try:
+    P = get("ENV_PREFIX")
+    MARKS_BUDGET = get("SYSTEM_MARKS_BUDGET")
+except Missing as why:
+    raise Unmeasured(f"⚠ 봉투를 재는 재료를 못 찾았다 — {why}") from why
+
 ASK = [{"role": "user", "content": "묻는다"}]
 
 
@@ -43,12 +55,22 @@ def creds_of(contract):
     raise Unmeasured(f"표에 {contract} 계약의 갈래가 없다")
 
 
+# ⚠ **배관 이름을 자식에게 인자로 건넨다.** 자식은 `_check/` 가 경로에 없어 `_plumb` 을 못
+#   문다 — 여기서 푼 이름을 그대로 넘겨 같은 모듈을 올리게 한다. 자식이 제 손으로
+#   `app.gateway` 를 적으면 배관을 다르게 두는 저장소에서 **남의 모듈을 재고** 초록이 난다
+#   (씨앗 `README.md` 「받는 길 ②」의 ⚠ · `sites_lock_check` 가 같은 꼴).
+_PLUMB = ("import importlib, sys; "
+          "gateway = importlib.import_module(sys.argv[1]); "
+          "providers = importlib.import_module(sys.argv[2]); ")
+
+
 def peek(code, **env_over):
     """새 프로세스에 손잡이를 얹어 값을 되읽는다 — 굳는 값은 이 길로만 잰다."""
     env = {k: v for k, v in os.environ.items() if not k.startswith(P + "_")}
     env.update(env_over)
     env["PYTHONUTF8"] = "1"
-    r = subprocess.run([sys.executable, "-X", "utf8", "-c", code], cwd=ROOT, env=env,
+    r = subprocess.run([sys.executable, "-X", "utf8", "-c", _PLUMB + code,
+                        MODULE, PROVIDERS_MODULE], cwd=ROOT, env=env,
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
                        timeout=120)
     return r.returncode, r.stdout.strip(), r.stderr
@@ -56,10 +78,10 @@ def peek(code, **env_over):
 
 print("[1] anthropic — 경계 · 수명 · 베타 낱말")
 c = creds_of(gateway.CONTRACT_ANTHROPIC)
-for n, want in ((1, 1), (2, 1), (3, 2), (6, providers.SYSTEM_MARKS_BUDGET)):
+for n, want in ((1, 1), (2, 1), (3, 2), (6, MARKS_BUDGET)):
     env = providers.envelope([f"층{i}" for i in range(n)], ASK, c)
     marks = [b for b in env.body["system"] if b.get("cache_control")]
-    show(f"층 {n} — 경계 {want} (예산 {providers.SYSTEM_MARKS_BUDGET} 안)", len(marks), want)
+    show(f"층 {n} — 경계 {want} (예산 {MARKS_BUDGET} 안)", len(marks), want)
 env = providers.envelope(["층0", "층1"], ASK, c)
 show("수명이 기본(5m)이 아니면 ttl 이 실린다",
      env.body["system"][0]["cache_control"].get("ttl"), gateway.CACHE_TTL)
@@ -94,7 +116,7 @@ show("  그 이름에 값이 실린다", env.body.get(env.cap_field), c.max_toke
 show("저쪽에 대화를 안 남긴다", env.body.get("store"), False)
 
 print("\n[4] 캐시 수명은 한 손잡이다")
-code = ("import json; from app import gateway, providers; "
+code = ("import json; "
         "print(json.dumps([providers._cache_ctl().get('ttl'), "
         "[b for r in gateway._GATEWAY.values() for b in r.get('betas', ()) "
         "if b == gateway.CACHE_TTL_BETA]]))")
@@ -106,18 +128,18 @@ show("기본에서는 낱말이 실린다 (양성 대조)",
      any(gateway.CACHE_TTL_BETA in r.get("betas", ()) for r in gateway._GATEWAY.values()), True)
 
 print("\n[5] 한도는 변수로 열려 있다")
-code = ("from app import gateway, providers; "
-        "print(gateway.TIMEOUT_S, providers.MAX_CONTINUE, gateway.MAX_ENVELOPE_CHARS, "
+code = ("print(gateway.TIMEOUT_S, providers.MAX_CONTINUE, gateway.MAX_ENVELOPE_CHARS, "
         "gateway.WALL_MAX_TOKENS)")
 rc, out, err = peek(code, **{f"{P}_TIMEOUT_S": "7", f"{P}_MAX_CONTINUE": "2",
                              f"{P}_MAX_ENVELOPE_CHARS": "123", f"{P}_WALL_MAX_TOKENS": "99"})
 show("시간 벽 · 이어받기 바퀴 · 봉투 상한 · 출력 상한이 변수를 따른다", out, "7 2 123 99")
 
 print("\n[6] 기본 갈래에 모르는 이름")
-rc, out, err = peek("from app import gateway", **{f"{P}_PROVIDER": "antropic"})
+# 배관을 무는 것만으로 죽는다 — 자식의 머리말(`_PLUMB`)이 그 임포트다.
+rc, out, err = peek("pass", **{f"{P}_PROVIDER": "antropic"})
 show("뜰 때 죽는다", rc != 0, True)
 show("  그 이름과 손잡이 이름을 말한다", "antropic" in err and f"{P}_PROVIDER" in err, True)
-rc, out, err = peek("from app import gateway; print(gateway.DEFAULT_PROVIDER)",
+rc, out, err = peek("print(gateway.DEFAULT_PROVIDER)",
                     **{f"{P}_PROVIDER": list(gateway._GATEWAY)[-1]})
 show("아는 이름이면 그것이 기본이 된다 (양성 대조)", out, list(gateway._GATEWAY)[-1])
 
