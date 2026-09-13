@@ -1,15 +1,19 @@
 # `_check/` — 배관 검사와 종료코드 계약의 사본
 
 이 폴더의 검사·프로브는 판정을 `_verdict.py` 로 찍고 **종료코드로 말한다.** 어느 검사가 무엇을
-재나는 각 파일 머리말과 씨앗 `README.md` 가 든다.
+재나는 각 파일 머리말과 이 씨앗의 `README.md` 가 든다.
 
-**종료코드 계약과 판정 부품의 진본은 검사 씨앗이다** — `seeds/check/_check/README.md` §종료코드 와
-`seeds/check/_check/_verdict.py`. 여기 있는 `_verdict.py` · `exit_code_check.py` 는 그 사본이라 머리말
-곁말이 진본을 가리키고 손으로 안 고친다(결정 0040). 사본이 낡았나는 받는 자가 문다:
+**종료코드 계약과 판정 부품의 진본은 검사 씨앗이다** — 곁 씨앗 `check/` 의 `_check/README.md`
+종료코드 절과 `_check/_verdict.py`. 여기 있는 `_verdict.py` · `exit_code_check.py` 는 그 사본이라
+머리말 곁말이 진본을 가리키고 손으로 안 고친다. 사본이 낡았나를 무는 자(`borrowed_check.py`)도
+그 씨앗이 든다 — 이 폴더에는 없다.
 
 ```bash
-python -X utf8 ../check/_check/borrowed_check.py . --seeds ..     # 이 저장소 안에서
-python -X utf8 _check/borrowed_check.py                          # 받아 간 저장소에서 — 진본은 ~/.claude/seeds/
+# 두 씨앗이 나란히 있는 자리(씨앗 뿌리)에서
+python -X utf8 check/_check/borrowed_check.py gateway/_check --seeds .
+
+# 두 씨앗을 다 받아 간 저장소의 뿌리에서 — 진본 기본값은 `~/.claude/seeds/`
+python -X utf8 _check/borrowed_check.py
 ```
 
 여기서만 드는 부품은 둘이다.
@@ -20,11 +24,11 @@ python -X utf8 _check/borrowed_check.py                          # 받아 간 �
 
 ## 배관 선언 — `gateway.conf`
 
-검사 다섯(`cli_pipe_check` · `sites_lock_check` · `_fake_cli` · `probe_words_check` ·
-`gateway_probe`)은 앱의 배관을 문다. 그런데 **배관이 사는 모듈 이름은 저장소마다 갈린다** — 그
-이름을 검사 안에 박으면 다르게 두는 저장소는 사본을 받는 순간 그 줄을 손으로 고쳐야 하고,
-고치는 순간 `borrowed_check` 가 어긋남으로 문다. 그래서 **갈리는 것만 검사 밖으로 뺀다**(#26
-갈래 1 · 결정 0033 「앱은 갈려도 된다」).
+검사 넷(`cli_pipe_check` · `sites_lock_check` · `probe_words_check` · `gateway_probe`)과 그중
+`cli_pipe_check` 가 쓰는 부품 하나(`_fake_cli`)가 앱의 배관을 문다. 그런데 **배관이 사는 모듈 이름은 저장소마다
+갈린다** — 그 이름을 검사 안에 박으면 다르게 두는 저장소는 사본을 받는 순간 그 줄을 손으로
+고쳐야 하고, 고치는 순간 `borrowed_check` 가 어긋남으로 문다. 그래서 **갈리는 것만 검사 밖으로
+뺀다** — 앱은 갈려도 되고, 갈린 것을 사본이 물지 않게 하는 것이 이 선언의 일이다.
 
 검사는 `from _plumb import gateway, providers` 로 물고, `_plumb.py` 가 이 폴더의
 `gateway.conf` 를 읽어 모듈을 고른다. 선언이 없거나 칸이 비면 씨앗 기본값
@@ -42,11 +46,12 @@ env_token = app.config:_env_token
 ENV_PREFIX = ATELIER
 ```
 
-**왜 매핑표가 안 되나.** 다섯이 코드로 무는 이름은 스물여덟인데(점으로 스물일곱 · `getattr`
-로 하나) **형제 사이에서 갈리는 것은 셋뿐**이다 — `LOGS_DIR` · `ENV_PREFIX` · `env_token`.
-나머지 스물넷은 저장소마다 같은 이름으로 산다. 그래서 선언의 몸통은 **모듈 이름 하나**이고
-`[where]`·`[values]` 는 예외를 적는 자리로 남는다. 예외가 열을 넘어가기 시작하면 그때는 이
-길이 아니라 배관 이름을 맞추는 길이다(#26 갈래 2).
+**왜 이름마다 짝을 적는 매핑표가 아닌가.** 다섯이 코드로 무는 배관 이름은 서른 남짓인데
+**저장소 사이에서 실제로 갈리는 것은 셋뿐**이다 — `ENV_PREFIX` · `LOGS_DIR` · `env_token`.
+나머지는 어느 저장소나 같은 이름으로 산다(센 수와 그 갈라 본 근거는 `_plumb.py` 머리말이
+든다). 그래서 선언의 몸통은 **모듈 이름 하나**이고 `[where]`·`[values]` 는 예외를 적는 자리로
+남는다. 예외가 열을 넘어가기 시작하면 그때는 이 길이 아니라 배관 이름을 씨앗에 맞추는 쪽이
+싸다.
 
 ```bash
 python -X utf8 _check/_plumb.py --show          # 이 트리의 선언이 무엇으로 풀리나

@@ -29,7 +29,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _verdict import EXIT_MISMATCH, EXIT_UNMEASURED, Unmeasured, fails, passes, report
+from _verdict import (EXIT_MISMATCH, EXIT_UNMEASURED, Unmeasured, fails, passes, report,
+                      unmeasured)
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -94,7 +95,7 @@ def main():
     code, out, err = _child()
     base = _load(code, out, err, "① 스위치 없이 올리기")
     if base is None:
-        print("\n⚠ 기준 판을 못 올렸다 — 못 쟀다 (2)", file=sys.stderr)
+        unmeasured("① 스위치 없이 올리기", "기준 판을 못 올렸다 — 아래 판정이 다 이 판에 선다")
         return EXIT_UNMEASURED
     all_ids = list(base["gateway"])
     report("① 스위치를 비우면 여는 담장이 표의 담장 전부다",
@@ -109,7 +110,7 @@ def main():
     inside = [pid for pid, s in base["gateway"].items() if s == posco]
     outside = [pid for pid in all_ids if pid not in inside]
     if not outside:
-        print("\n⚠ 표에 바깥 담장의 갈래가 없다 — 닫힘을 잴 수 없다 (2)", file=sys.stderr)
+        unmeasured("② 담장 닫힘", "표에 바깥 담장의 갈래가 없다 — 닫힘을 잴 수 없다")
         return EXIT_UNMEASURED
     code, out, err = _child(**{f"{P}_SITES": f" {posco} "})
     lock = _load(code, out, err, f"② {P}_SITES={posco}")
