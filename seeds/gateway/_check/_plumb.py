@@ -17,21 +17,34 @@
 
 **어떻게 주나.**
 
-    [plumb]  module = app.gateway        # 배관이 사는 모듈 — 스물넷이 여기서 나온다
-             providers = app.providers   # 갈래별 말하기가 사는 모듈
-    [where]  LOGS_DIR = app.config:LOGS_DIR   # `module` 이 안 드는 자리만 · `모듈:이름`
-    [values] ENV_PREFIX = ATELIER              # 속성이 **아예 없는** 자리 · 좌표가 아니라 값
+    [plumb]     module = app.gateway        # 배관이 사는 모듈 — 스물넷이 여기서 나온다
+                providers = app.providers   # 갈래별 말하기가 사는 모듈
+    [where]     LOGS_DIR = app.config:LOGS_DIR   # `module` 이 안 드는 자리만 · `모듈:이름`
+    [values]    ENV_PREFIX = ATELIER             # 속성이 **아예 없는** 자리 · 좌표가 아니라 값
+    [no_handle] PROVIDER = 기본 갈래를 상수로 둔다   # **손잡이가 아예 없는** 자리 · 값이 까닭이다
 
 선언이 없으면 씨앗 기본값(`app.gateway` · `app.providers`)으로 돈다 — 씨앗 저장소 자신과
 배관 이름이 같은 형제는 선언을 안 채워도 그대로 돈다.
 
     from _plumb import gateway, providers      # 안 갈리는 스물넷은 이대로
     from _plumb import get, put, slot          # 갈릴 수 있는 셋은 이 손으로
+    from _plumb import NO_HANDLE               # 그 앱이 안 여는 환경변수 손잡이
 
   · `slot(이름)` — `(모듈, 속성이름)`. 값을 읽고 쓰는 자리가 아니라 **좌표가 필요할 때**
   · `get(이름)` · `put(이름, 값)` — 검사가 배관 값을 읽거나 갈아 끼울 때
   · 셋 다 선언이 「없다」고 한 자리에서는 `Missing` 을 던진다 — 부르는 검사가 그것을
     「못 쟀다」(2)로 옮긴다. **빨강이 아니다**: 안 잰 것이지 어긋난 것이 아니다
+  · `NO_HANDLE` — `{손잡이 이름: 까닭}`. 접두어를 뗀 이름이 칸 이름이고 값이 까닭이다
+    (`PROVIDER` → `{접두어}_PROVIDER`). 비었으면 **손잡이가 있다**가 기본이다
+
+⚠ **`[no_handle]` 은 `[values]` 와 층이 다르다.** 저쪽은 「배관에 그 **속성**이 없다」이고
+  이쪽은 「그 속성을 밖에서 바꾸는 **환경변수**가 없다」다 — 기본 갈래를 상수로 두는 앱은
+  `DEFAULT_PROVIDER` 속성을 멀쩡히 들고 있으므로 `[values]` 에 적으면 거짓말이 된다. 그래서
+  이 절은 좌표도 값도 아니라 **까닭**을 든다: 그 까닭이 검사의 「뺀 자리」 줄에 그대로 찍힌다.
+
+⚠ **이 절은 사람의 선언이라 어느 검사도 실측으로 되뽑지 않는다.** 손잡이가 있는데 없다고
+  적은 판은 안 걸린다 — 되뽑으려면 그 손잡이가 서나를 재야 하는데 그것이 곧 뺀 판정 자체라,
+  뺀 자리를 뺐는지 재는 자가 되어 제자리를 돈다. 적는 사람이 드는 책임이다.
 
 ⚠ **이 자가 배관을 고르지 검사가 고르지 않는다.** 검사 안에 `app.gateway` 를 다시 적으면
   그 검사만 조용히 씨앗 이름에 묶여, 받은 저장소에서 초록인 채로 **남의 모듈을 잰다.**
@@ -67,7 +80,11 @@ class Missing(LookupError):
 # ── 선언을 읽는다 ─────────────────────────────────────────────────────────────
 
 def read(conf_dir=None):
-    """선언 한 장을 읽어 `(plumb, where, values)` 세 칸을 돌려준다. 없으면 빈 칸 셋."""
+    """선언 한 장을 읽어 `(plumb, where, values, no_handle)` 네 칸을 돌려준다.
+
+    없으면 빈 칸 넷 — 선언이 없는 저장소는 「씨앗 기본값 · 옮긴 자리 없음 · 없는 속성 없음 ·
+    **손잡이는 다 있다**」로 돈다. 마지막이 빈 것이 곧 「셋을 다 재라」는 뜻이다.
+    """
     cp = configparser.ConfigParser(interpolation=None, delimiters=("=",))
     cp.optionxform = str            # 속성 이름은 대소문자가 뜻이다 — `LOGS_DIR` ≠ `logs_dir`
     path = Path(conf_dir or HERE) / CONF
@@ -75,14 +92,15 @@ def read(conf_dir=None):
         cp.read(path, encoding="utf-8")
     return (dict(cp["plumb"]) if cp.has_section("plumb") else {},
             dict(cp["where"]) if cp.has_section("where") else {},
-            dict(cp["values"]) if cp.has_section("values") else {})
+            dict(cp["values"]) if cp.has_section("values") else {},
+            dict(cp["no_handle"]) if cp.has_section("no_handle") else {})
 
 
 class Plumbing:
     """선언 한 장이 풀린 꼴 — 모듈 둘과 예외 몇."""
 
     def __init__(self, conf_dir=None, root=None):
-        plumb, where, values = read(conf_dir)
+        plumb, where, values, no_handle = read(conf_dir)
         self.root = Path(root or Path(conf_dir or HERE).parent).resolve()
         if str(self.root) not in sys.path:
             sys.path.insert(0, str(self.root))
@@ -90,6 +108,9 @@ class Plumbing:
         self.providers_name = plumb.get("providers") or SEED_PROVIDERS
         self.where = where
         self.values = values
+        # ⚠ **좌표가 아니라 까닭이 든 칸이다** — 값을 풀지 않고 그대로 든다. 부르는 검사가
+        #   그 글자를 「뺀 자리」 줄에 찍으므로, 여기서 손대면 앱이 적은 까닭이 갈린다.
+        self.no_handle = no_handle
         self.gateway = importlib.import_module(self.module_name)
         self.providers = importlib.import_module(self.providers_name)
 
@@ -142,6 +163,9 @@ PLUMB = _P.label
 # `_plumb` 을 못 무므로, 이름을 인자로 받아 제 손으로 `import_module` 한다.
 MODULE = _P.module_name
 PROVIDERS_MODULE = _P.providers_name
+# 이 앱이 **안 여는** 환경변수 손잡이 — `{접두어를 뗀 이름: 까닭}`. 비었으면 다 여는 것으로
+# 본다(그래서 선언을 안 채운 형제는 종전 그대로 다 재진다).
+NO_HANDLE = _P.no_handle
 
 
 # ── `--self-check` · `--show` ────────────────────────────────────────────────
@@ -258,6 +282,17 @@ def _self_check():
         except Missing:
             got = "Missing"
         show("⑦ 없는 자리를 가리킨 선언은 못 쟀다로 간다", got, "Missing")
+
+        # ⑧ 손잡이가 아예 없는 자리 — 좌표도 값도 아니라 **까닭**이 선다. 이 칸이 안 읽히면
+        #    선언을 적은 앱에서 검사가 그대로 빨강이라, 「없다」가 조용히 어긋남으로 읽힌다.
+        (conf_dir / CONF).write_text(
+            "[plumb]\nmodule = app.gateway\n"
+            "[no_handle]\nPROVIDER = 기본 갈래를 상수로 둔다\n", encoding="utf-8")
+        p = fresh(conf_dir)
+        show("⑧ 손잡이가 없다는 선언은 까닭을 들고 선다",
+             p.no_handle.get("PROVIDER"), "기본 갈래를 상수로 둔다")
+        show("⑧ 안 적은 손잡이는 없다고 안 한다 (음성 대조)", p.no_handle.get("SITES"), None)
+        show("⑧ 손잡이 선언이 좌표를 흔들지 않는다 (음성 대조)", p.get("CLI_EXE"), "claude")
     finally:
         for name in [m for m in sys.modules if m == "app" or m.startswith("app.")]:
             sys.modules.pop(name, None)
@@ -270,11 +305,13 @@ def _self_check():
          "한 자도 안 잰다 — 그것은 이 배관을 무는 검사 다섯의 몫이다")
     edge("안 잰 것 — 이 저장소의 실물 선언(`gateway.conf`)이 무엇으로 풀리나. "
          "그것은 `--show` 가 든다")
+    edge("안 잰 것 — `[no_handle]` 의 선언이 **참인가**. 손잡이가 있는데 없다고 적은 판은 "
+         "여기도 부르는 검사도 안 잡는다 — 적는 사람이 드는 책임이다")
     if fails():
         print(f"\n❌ 어긋났다 ({len(fails())}건) — {' · '.join(fails())}")
         return EXIT_MISMATCH
     print(f"\n✅ 선언이 좌표를 옮긴다 — 판정 {len(passes())}건 (기본값 · 모듈 갈이 · "
-          f"한 자리 옮김 · 이름 갈림 · 갈아 끼우기 · 없는 자리 · 엉뚱한 자리)")
+          f"한 자리 옮김 · 이름 갈림 · 갈아 끼우기 · 없는 자리 · 엉뚱한 자리 · 없는 손잡이)")
     return EXIT_OK
 
 
@@ -286,6 +323,7 @@ def _show(root):
     print(f"  말하기    {p.providers_name}  ←  {p.providers.__file__}")
     print(f"  옮긴 자리 {p.where or '없다 — 배관이 다 든다'}")
     print(f"  값으로 든 자리 {p.values or '없다'}")
+    print(f"  손잡이 없는 자리 {p.no_handle or '없다 — 손잡이가 다 있다고 본다'}")
     return 0
 
 
