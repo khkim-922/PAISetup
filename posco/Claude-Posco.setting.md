@@ -60,49 +60,17 @@ from anthropic import Anthropic
 
 client = Anthropic(
     api_key="YOUR_API_KEY",
-    base_url="http://{host}/gpgpta01-gpt"
-)
-
-# 일반 응답
+    base_url="http://{host}/gpgpta01-gpt" )  # 일반 응답
 response = client.messages.create(
     model="claude-sonnet-4.5",
     max_tokens=1024,
-    messages=[
-        {"role": "user", "content": "P-GPT API에 대해 알려주세요."}
-    ]
-)
-
-print(response.content[0].text)
-
-# 스트리밍 응답
-with client.messages.stream(
+    messages=[         {"role": "user", "content": "P-GPT API에 대해 알려주세요."}     ] )  print(response.content[0].text)  # 스트리밍 응답 with client.messages.stream(
     model="claude-sonnet-4.5",
     max_tokens=1024,
-    messages=[
-        {"role": "user", "content": "안녕하세요!"}
-    ]
-) as stream:
-    for text in stream.text_stream:
-        print(text, end="")
+    messages=[         {"role": "user", "content": "안녕하세요!"}     ] ) as stream:     for text in stream.text_stream:         print(text, end="")
 Response
 
-{
-  "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
-  "type": "message",
-  "role": "assistant",
-  "model": "claude-sonnet-4.5",
-  "content": [
-    {
-      "type": "text",
-      "text": "P-GPT API는 포스코그룹에서 LLM을 활용하기 위해 제공하는..."
-    }
-  ],
-  "stop_reason": "end_turn",
-  "usage": {
-    "input_tokens": 25,
-    "output_tokens": 150
-  }
-}
+{   "id": "msg_01XFDUDYJgAACzvnptvVoYEL",   "type": "message",   "role": "assistant",   "model": "claude-sonnet-4.5",   "content": [     {       "type": "text",       "text": "P-GPT API는 포스코그룹에서 LLM을 활용하기 위해 제공하는..."     }   ],   "stop_reason": "end_turn",   "usage": {     "input_tokens": 25,     "output_tokens": 150   } }
 Streaming Response
 
 event: message_start
@@ -130,76 +98,30 @@ curl
 Python
 Node.js
 
-# 1단계: 도구 정의와 함께 요청
-curl http://{host}/gpgpta01-gpt/v1/messages \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4.5",
-    "max_tokens": 1024,
-    "tools": [
-      {
-        "name": "get_weather",
-        "description": "지정한 도시의 현재 날씨를 조회합니다.",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "city": {"type": "string", "description": "도시명"}
-          },
-          "required": ["city"]
-        }
-      }
-    ],
-    "messages": [
-      {"role": "user", "content": "서울 날씨 어때?"}
-    ]
-  }'
+import json
+from anthropic import Anthropic
 
-# 2단계: 도구 실행 결과를 포함하여 재요청
-curl http://{host}/gpgpta01-gpt/v1/messages \
-  -H "x-api-key: YOUR_API_KEY" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-4.5",
-    "max_tokens": 1024,
-    "tools": [...],
-    "messages": [
-      {"role": "user", "content": "서울 날씨 어때?"},
-      {"role": "assistant", "content": [
-        {"type": "tool_use", "id": "toolu_01A...", "name": "get_weather", "input": {"city": "Seoul"}}
-      ]},
-      {"role": "user", "content": [
-        {"type": "tool_result", "tool_use_id": "toolu_01A...", "content": "{\"temp\": 22, \"condition\": \"맑음\"}"}
-      ]}
-    ]
-  }'
+client = Anthropic(
+    api_key="YOUR_API_KEY",
+    base_url="http://{host}/gpgpta01-gpt" )
+
+tools = [     {         "name": "get_weather",         "description": "지정한 도시의 현재 날씨를 조회합니다.",         "input_schema": {             "type": "object",             "properties": {                 "city": {"type": "string", "description": "도시명"}             },             "required": ["city"]         }     } ]  # 1단계: 도구와 함께 요청
+response = client.messages.create(
+    model="claude-sonnet-4.5",
+    max_tokens=1024,
+    tools=tools,
+    messages=[{"role": "user", "content": "서울 날씨 어때?"}] )  # 2단계: tool_use가 있으면 실행 후 결과 전달 if response.stop_reason == "tool_use":
+    tool_block = next(b for b in response.content if b.type == "tool_use")
+    result = json.dumps({"temp": 22, "condition": "맑음"})
+
+    final = client.messages.create(
+        model="claude-sonnet-4.5",
+        max_tokens=1024,
+        tools=tools,
+        messages=[             {"role": "user", "content": "서울 날씨 어때?"},             {"role": "assistant", "content": response.content},             {"role": "user", "content": [                 {"type": "tool_result", "tool_use_id": tool_block.id, "content": result}             ]}         ]     )     print(final.content[0].text)
 Tool Use Response
 
-{
-  "id": "msg_01XFDUDYJgAACzvnptvVoYEL",
-  "type": "message",
-  "role": "assistant",
-  "model": "claude-sonnet-4.5",
-  "content": [
-    {
-      "type": "text",
-      "text": "날씨를 확인해보겠습니다."
-    },
-    {
-      "type": "tool_use",
-      "id": "toolu_01A09q90qw90lq917835lq9",
-      "name": "get_weather",
-      "input": {"city": "Seoul"}
-    }
-  ],
-  "stop_reason": "tool_use",
-  "usage": {
-    "input_tokens": 85,
-    "output_tokens": 42
-  }
-}
+{   "id": "msg_01XFDUDYJgAACzvnptvVoYEL",   "type": "message",   "role": "assistant",   "model": "claude-sonnet-4.5",   "content": [     {       "type": "text",       "text": "날씨를 확인해보겠습니다."     },     {       "type": "tool_use",       "id": "toolu_01A09q90qw90lq917835lq9",       "name": "get_weather",       "input": {"city": "Seoul"}     }   ],   "stop_reason": "tool_use",   "usage": {     "input_tokens": 85,     "output_tokens": 42   } }
 이미지 입력 (Multimodal)
 content 배열에 {"type":"image"} 블록을 넣고 source에 접두사 없는 순수 Base64와 media_type을 지정합니다. (OpenAI처럼 data: 접두사를 붙이지 않습니다.)
 
@@ -209,26 +131,13 @@ Python
 import base64
 from anthropic import Anthropic
 
-client = Anthropic(api_key="YOUR_API_KEY", base_url="http://{host}/gpgpta01-gpt")
-
-with open("photo.png", "rb") as f:
+client = Anthropic(api_key="YOUR_API_KEY", base_url="http://{host}/gpgpta01-gpt")  with open("photo.png", "rb") as f:
     b64 = base64.b64encode(f.read()).decode("utf-8")   # 순수 Base64 (접두사 없음)
 
 response = client.messages.create(
     model="claude-sonnet-4.5",
     max_tokens=1024,
-    messages=[{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "이 이미지를 설명해줘."},
-            {"type": "image", "source": {
-                "type": "base64", "media_type": "image/png", "data": b64,   # JPG면 image/jpeg
-            }},
-        ],
-    }],
-)
-
-print(response.content[0].text)
+    messages=[{         "role": "user",         "content": [             {"type": "text", "text": "이 이미지를 설명해줘."},             {"type": "image", "source": {                 "type": "base64", "media_type": "image/png", "data": b64,   # JPG면 image/jpeg             }},         ],     }], )  print(response.content[0].text)
 
 Claude CLI 연동
 P-GPT는 Anthropic Messages API 호환 엔드포인트(/v1/messages)를 제공하므로, Claude CLI(Claude Code)를 P-GPT에 연결하여 사내 AWS Bedrock Claude 모델을 사용할 수 있습니다. P-GPT 에서 발급받은 API Key 하나로 별도 추가 자격증명 없이 연동됩니다.
@@ -289,3 +198,710 @@ API Error: 400 / "모델을 찾을 수 없습니다"	모델 ID 가 P-GPT 등록 
 응답 hang / 연결 실패	ANTHROPIC_BASE_URL 오설정 — /v1 포함, https:// 사용, 경로 끝 슬래시 등	정확히 http://{host}/gpgpta01-gpt 형태로 설정. /v1 미포함, http:// 사용
 OAuth 로그인 화면이 뜸	Claude CLI 가 환경변수를 못 읽고 OAuth flow 진입	현재 셸에서 echo $ANTHROPIC_API_KEY 로 노출 확인. 영구 설정 후 새 셸 사용 권장
 
+에러 코드
+P-GPT API 는 호출한 엔드포인트에 따라 OpenAI / Anthropic / ApiResponse / SSE 4가지 응답 포맷 중 하나로 에러를 반환합니다. 응답 포맷은 표준화되어 있지만, 응답 body 의 code 필드에는 P-GPT 내부 에러 코드(예: C046)가 그대로 노출됩니다 — 즉 "포맷 wrap, 코드 패스스루" 방식입니다.
+
+응답 포맷
+응답 포맷은 호출한 컨트롤러에 의해 결정됩니다. Anthropic Messages 응답에는 P-GPT 코드가 포함되지 않으니 주의하세요.
+
+Native API 에러 (OpenAI envelope)
+Anthropic Messages
+ApiResponse (Legacy)
+SSE error event
+AnthropicExceptionHandler(@Order 0)가 LlmApiMessagesController 전용으로 적용됩니다. 응답 body 에 P-GPT 내부 코드(예: C046)는 포함되지 않으며, error.type 과 error.message 만 사용합니다.
+
+적용 컨트롤러:
+POST /v1/messages
+⚠ Messages API 에는 P-GPT 코드(P001/C046 등)가 포함되지 않습니다. 코드 기반 분기가 필요하면 Chat Completions(/v1/chat/completions)를 사용하세요.
+
+
+{   "type": "error",   "error": {     "type": "invalid_request_error",     "message": "messages는 필수 항목입니다."   } }
+에러 코드 카탈로그
+외부 API 에서 발생 가능한 코드 약 21개입니다. 코드/메시지/enum 이름으로 검색하거나 카테고리로 필터링할 수 있습니다. 각 코드를 클릭하면 일반적 원인과 권장 해결 방안이 표시됩니다.
+
+전체
+인증/권한
+요청 검증
+스트리밍
+Rate Limit
+프로바이더 응답
+서버 내부
+25개 / 전체 25개
+
+P001
+401
+인증/권한
+유효하지 않은 API Key입니다
+▾
+
+P002
+400
+요청 검증
+요청한 모델을 찾을 수 없습니다
+▾
+
+P003
+502
+프로바이더 응답
+LLM 서비스 응답 오류
+▾
+
+P004
+400
+요청 검증
+요청 형식이 올바르지 않습니다
+▾
+
+P005
+400
+요청 검증
+이 프로바이더는 요청한 API 형식을 지원하지 않습니다
+▾
+
+P099
+500
+서버 내부
+서버 내부 오류
+ENUM PENDING
+▾
+
+C040
+400
+요청 검증
+유효하지 않은 채팅 요청입니다
+▾
+
+C042
+400
+요청 검증
+호출할 수 없는 모델입니다. 모델명을 다시 확인해주세요
+▾
+
+C043
+400
+요청 검증
+해당 모델은 사용 기간이 만료되었습니다
+▾
+
+C044
+400
+요청 검증
+messages는 필수 항목입니다
+▾
+
+C045
+400
+요청 검증
+지원하지 않는 LLM 프로바이더입니다
+▾
+
+C046
+400
+요청 검증
+업무GPT 카테고리가 명시되어야 합니다
+▾
+
+C090
+500
+서버 내부
+GPT API 호출 중 오류가 발생했습니다
+▾
+
+C091
+500
+서버 내부
+RAG 검색 중 오류가 발생했습니다
+▾
+
+C051
+400
+스트리밍
+AI 안전 정책에 의해 차단되었습니다
+▾
+ENUM
+CHAT_CONTENT_FILTERED
+발생 위치
+chat-completions messages agent
+일반적 원인
+입력 또는 응답이 LLM 안전 필터(Content filter)에 의해 차단되었습니다.
+해결 방안
+프롬프트에서 안전 정책 위반 가능성이 있는 표현을 제거하세요.
+참조
+ErrorCode.java:101
+
+C052
+400
+스트리밍
+대화 내용이 너무 길어 처리할 수 없습니다
+▾
+ENUM
+CHAT_CONTEXT_TOO_LONG
+발생 위치
+chat-completions messages agent
+일반적 원인
+입력 토큰 수가 모델의 context window 한도를 초과했습니다.
+해결 방안
+메시지 이력을 줄이거나 더 큰 context 의 모델로 전환하세요. RAG 사용 시 검색 청크 수를 조정하세요.
+참조
+ErrorCode.java:102
+
+C053
+429
+Rate Limit
+요청이 너무 많습니다. 잠시 후 다시 시도해주세요
+▾
+ENUM
+CHAT_RATE_LIMITED
+발생 위치
+chat-completions messages agent
+일반적 원인
+단위 시간당 요청량이 한도를 초과했습니다.
+해결 방안
+지수 backoff 로 재시도하세요. 지속적인 한도 초과 시 운영팀에 quota 상향을 문의하세요.
+참조
+ErrorCode.java:103
+
+C054
+500
+스트리밍
+AI 에이전트 처리 중 오류가 발생했습니다
+▾
+ENUM
+CHAT_AGENT_ERROR
+발생 위치
+agent
+일반적 원인
+SseExceptionHandler 의 기본 코드. Agent 스트림 처리 중 일반 예외.
+해결 방안
+detail 의 메시지를 확인하고 잠시 후 재시도하세요.
+참조
+ErrorCode.java:104
+
+C055
+504
+스트리밍
+AI 에이전트 응답 시간이 초과되었습니다
+▾
+ENUM
+CHAT_AGENT_TIMEOUT
+발생 위치
+agent
+일반적 원인
+Agent 응답이 타임아웃 한도(기본 ≥60초) 내에 완료되지 않았습니다.
+해결 방안
+입력을 줄이거나 streaming 으로 부분 응답을 받아 처리하세요. 지속되면 운영팀에 timeout 조정을 문의하세요.
+참조
+ErrorCode.java:105
+
+G011
+400
+요청 검증
+category 는 필수입니다
+▾
+
+G012
+400
+요청 검증
+등록된 category 와 일치하지 않습니다
+DEPRECATED
+▾
+
+G013
+400
+인증/권한
+해당 category 접근 권한이 없습니다
+▾
+
+K041
+403
+인증/권한
+해당 API Key 타입으로는 이 기능을 사용할 수 없습니다
+▾
+
+E001
+400
+요청 검증
+잘못된 입력 값입니다
+▾
+
+E003
+500
+서버 내부
+서버 내부 오류가 발생했습니다
+▾
+API 별 발생 가능 코드
+각 엔드포인트에서 노출 가능한 코드를 한눈에 비교할 수 있는 매트릭스입니다. 포함된 코드는 일반적인 노출 사례 기준이며, 일부 폴백 코드(P099)는 enum 정식화 이전 상태입니다.
+
+API	C040	C042	C043	C044	C045	C046	C051	C052	C053	C054	C055	C090	C091	E001	E003	G011	G013	K041	P001	P002	P003	P004	P005	P099
+POST /v1/chat/completions	●	
+ 
+
+ 
+
+●	●	
+ 
+
+●	●	●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	●	●	●	
+ 
+
+●
+POST /v1/embeddings	
+ 
+
+ 
+
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	●	●	●	
+ 
+
+●
+GET /v1/models	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+ 
+
+ 
+
+●
+POST /v1/responses	
+ 
+
+ 
+
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	●	●	●	
+ 
+
+●
+POST /v1/messages	●	
+ 
+
+ 
+
+●	●	
+ 
+
+●	●	●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	●	●	●	●	●
+POST /agent	●	
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+●	●	●	●	●	●	
+ 
+
+ 
+
+ 
+
+●	●	
+ 
+
+●	
+ 
+
+●	
+ 
+
+ 
+
+●
+GET /agent/list	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+ 
+
+ 
+
+●
+POST /v1beta/.../:generateContent	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	●	●	●	
+ 
+
+●
+POST /sllm	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	●	●	●	
+ 
+
+●
+POST /gptApi/personalApi	
+ 
+
+●	●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	
+ 
+
+●	●	
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+POST /gptApi/personalRagApi	
+ 
+
+●	●	
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	●	●	●	
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+POST /gptApi/personalEmbeddingApi	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+●	●	
+ 
+
+ 
+
+●	
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+참고사항
+Anthropic Messages 포맷에는 P-GPT 코드가 없습니다.
+POST /v1/messages 응답은 error.type(invalid_request_error 등)과 error.message 만 사용합니다. 코드 기반 분기가 필요하면 POST /v1/chat/completions 또는 POST /v1/responses 로 호출하세요.
+
+ 
