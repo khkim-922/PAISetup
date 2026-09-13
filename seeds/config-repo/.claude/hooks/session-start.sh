@@ -246,6 +246,27 @@ deploy_home_norms() {
         cp "$_sf" "$HOME/.claude/$_sr" 2>/dev/null || true
       done
     done
+    # ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ────────
+    # ⚠ **왜 한 줄이 더 필요한가.** 홈 사본을 진본으로 믿고 재는 자가 있다
+    #   (`seeds/check/_check/borrowed_check.py` 의 `_stamp()`). 그런데 홈 뿌리는 git
+    #   나무가 아니라 판을 물을 데가 없어, 옛 판은 **오늘 날짜**를 냈다 — 그래서 낡은
+    #   홈과 견준 초록이 최신처럼 읽혔다 (실측 2026-09-13: 홈 씨앗이 나무와 12 자리
+    #   갈려 있었다). 이 한 줄이 그 물음에 답한다. 이름은 그쪽 `VERSION_FILE` 이 들고
+    #   쓰는 자는 여기와 `deploy.ps1` 의 「씨앗의 판 줄」 칸 둘이다.
+    # ⚠ **자리가 위 폴더 목록 밑인 까닭** — 민 뒤에 적어야 「그 판이 깔렸다」가 참이다.
+    # ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이
+    #   아니다 — 매 세션 덮으면 그 날짜가 늘 오늘이라 낡음을 아무것도 말하지 않는다.
+    # ⚠ **위 `diff` 가 이것을 안 본다** — 견주는 자리가 `seeds/<이름>/` 안이고 이 줄은
+    #   뿌리 `seeds/` 에 산다. 그래서 판 줄 때문에 폴더가 매 세션 다시 밀리지 않는다.
+    # ⚠ **매 세션 프로세스 하나가 는다**(`git rev-parse`). 실측 2026-09-14 · 같은 임시 홈
+    #   에서 옛 몸통과 A/B — 정상 0.33초 → 0.42초(빈 홈 첫 돌림은 3.2초 그대로). 판 줄이
+    #   없으면 홈이 어느 판인지 **물을 데가 아예 없다** — 그 값에 이 0.09초를 문다.
+    _sv="$(git -C "$CONFIG_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+    if [ -n "$_sv" ] && [ -d "$HOME/.claude/seeds" ]; then
+      _svf="$HOME/.claude/seeds/.version"
+      [ "$(awk 'NR==1{print $1}' "$_svf" 2>/dev/null)" = "$_sv" ] ||
+        printf '%s %s\n' "$_sv" "$(date +%Y-%m-%d)" > "$_svf" 2>/dev/null || true
+    fi
   fi
   # 커밋 훅 배선 — .githooks/ 를 둔 저장소만. 존재가 곧 선언이다
   if [ -d "$PROJECT_DIR/.githooks" ]; then

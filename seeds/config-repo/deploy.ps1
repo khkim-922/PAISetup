@@ -227,7 +227,12 @@ if (Test-Path $localSkillsConf) {
 #   `.claude/skills/` 에서 그대로 로드된다. 「홈에 안 깐다」와 「안 쓴다」는 다른 명제다.
 $skillSrc = Join-Path $src '.claude\skills'
 if (Test-Path $skillSrc) {
-    foreach ($f in (Get-ChildItem $skillSrc -Recurse -File)) {
+    # ⚠ **파이썬이 남긴 캐시는 안 민다** — 까닭은 아래 씨앗 칸의 같은 자리가 든다. 스킬도
+    #   `scripts/` 를 들 수 있어 같은 부산물이 난다. 재는 자(`scripts/check-global-copies.sh`
+    #   의 `DIFF_SKIP`)는 이미 그 이름을 빼므로, 여기만 안 빼면 **재는 자와 뿌리는 자가 다른
+    #   것을 세어** 홈이 최신인 날에도 캐시 하나로 「어긋남」이 난다 — 고칠 것이 없는 빨강이다.
+    foreach ($f in (Get-ChildItem $skillSrc -Recurse -File |
+                    Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
         $rel = $f.FullName.Substring($skillSrc.Length + 1)
         if ($localSkills -contains ($rel -split '\\')[0]) { continue }
         $targets += @{ From = $f.FullName; To = Join-Path $dst "skills\$rel" }
@@ -268,6 +273,40 @@ foreach ($t in $targets) {
     } else {
         $verb = if (Test-Path $t.To) { '덮어씀' } else { '새로 만듦' }
         $plan += @{ Kind = 'copy'; From = $t.From; To = $t.To; Repo = $t.Repo; Text = "+ 배포  $($t.To)  ($verb)" }
+    }
+}
+
+# ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ────────────
+# ⚠ **왜 한 줄이 더 필요한가.** 홈 사본을 진본으로 믿고 재는 자가 있다
+#   (`seeds/check/_check/borrowed_check.py` 의 `_stamp()`). 그런데 홈 뿌리는 git 나무가
+#   아니라 판을 물을 데가 없어, 옛 판은 **오늘 날짜**를 냈다 — 그래서 낡은 홈과 견준 초록이
+#   최신처럼 읽혔다 (실측 2026-09-13: 홈 씨앗이 나무와 12 자리 갈려 있었다).
+#   파일 이름은 그쪽 `VERSION_FILE` 이 들고, 쓰는 자는 여기와 세션 훅 `deploy_home_norms`
+#   의 씨앗 칸 둘이다 — 한 낱말이라 선언 파일로 안 뽑고 곁말로 서로를 가리킨다.
+# ⚠ **자리가 위 씨앗 칸이 아니라 여기인 까닭** — 계획은 순서대로 돈다. 저 위에 두면 이 줄이
+#   **씨앗 복사보다 먼저** 서서, 복사가 지거나 건너뛰어도 「그 판이 깔렸다」고 말한다.
+# ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이 아니다 —
+#   매번 덮으면 그 날짜가 늘 오늘이라 낡음을 아무것도 말하지 않는다.
+# ⚠ **재는 자는 이 줄을 안 본다** — `scripts/check-global-copies.sh` 도 세션 훅도 견주는
+#   자리가 `seeds/<이름>/` 안이고 이 줄은 뿌리 `seeds/` 에 산다. 그래서 그 둘에 제외를 따로
+#   안 든다 — 안 잴 것을 빼는 선언은 없는 것을 가리키는 손사본이 된다.
+$stampFile = Join-Path $dst 'seeds\.version'
+$stampRev  = if (Get-Command git -ErrorAction SilentlyContinue) {
+                 (& git -C $src rev-parse --short HEAD 2>$null)
+             } else { $null }
+if ($stampRev) {
+    $stampRev = ([string]$stampRev).Trim()
+    $stampOld = if (Test-Path $stampFile) {
+                    [string](Get-Content $stampFile -TotalCount 1 -Encoding UTF8)
+                } else { '' }
+    if ((($stampOld -split '\s+')[0]) -eq $stampRev) {
+        $same += "= 동일  $stampFile  ($stampOld)"
+    } else {
+        $stampLine = "$stampRev $(Get-Date -Format 'yyyy-MM-dd')"
+        $plan += @{
+            Kind = 'stamp'; Path = $stampFile; Line = $stampLine
+            Text = "+ 판 줄  $stampFile  ($stampLine)"
+        }
     }
 }
 
@@ -825,6 +864,17 @@ foreach ($step in $plan) {
                 Copy-Item $step.From $step.To -Force
                 Write-Host "+ 배포  $($step.To)"
             }
+        }
+
+        'stamp' {
+            # ⚠ **백업을 안 남긴다** — 옛 판 번호는 되살릴 자산이 아니라 **다시 재면 나오는
+            #   값**이다(이 스크립트를 또 돌리면 그 자리에 또 선다).
+            # BOM 없는 UTF-8 · LF 로 쓴다 — 읽는 자가 파이썬이고, BOM 이 붙으면 첫 낱말에
+            # 그 세 바이트가 딸려 들어가 판이 엉뚱한 글자로 읽힌다.
+            New-Item -ItemType Directory -Force -Path (Split-Path $step.Path -Parent) | Out-Null
+            [System.IO.File]::WriteAllText($step.Path, $step.Line + "`n",
+                                          (New-Object System.Text.UTF8Encoding($false)))
+            Write-Host "+ 판 줄  $($step.Path)  ($($step.Line))"
         }
 
         'mcp' {

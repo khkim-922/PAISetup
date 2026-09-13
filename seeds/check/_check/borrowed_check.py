@@ -9,7 +9,9 @@
     python -X utf8 _check/borrowed_check.py --receive              # 어긋난 사본을 진본으로 **받는다** — 곁말은 같은 자리에, 판은 올린다
 
 **받는 손(`--receive`)** — 어긋난 사본마다 진본 글자를 놓고 곁말 블록을 옛 자리(같은 문단 끝)에
-되살리며 판 번호를 진본 뿌리의 git 해시(없으면 날짜)로 올린다. 줄끝·BOM 은 옛 사본을 지킨다.
+되살리며 **판 번호를 진본 뿌리의 판으로 올린다**(아래 「어느 판과 견줬나」의 차례 그대로 ·
+판을 모르면 **받은 날짜**를 적는다 — 곁말의 그 자리는 사람이 읽는 영수증이고, 판정 줄은 그
+날짜를 안 쓴다). 줄끝·BOM 은 옛 사본을 지킨다.
 `map_check --write` 와 같은 결의 쓰기 모드다 — 받은 뒤 같은 판에서 다시 재어 초록을 본다.
 받는 것은 **곁말 든 사본만**이다 — 일부러 갈린 파일(곁말 없음)은 안 건드린다.
 
@@ -28,17 +30,24 @@
   곧 「자리가 틀렸다」는 빨강이다). 진본의 경로는 곁말 안의 백틱 `seeds/…` 에서 읽는다.
   줄끝(CRLF)과 BOM 은 안 본다 — 사본이 사는 저장소의 체크아웃이 그것을 바꾼다.
 
+**어느 판의 진본과 견줬나를 판정 줄이 말한다.** 진본 뿌리의 판은 뿌리에 놓인 `.version` 한
+줄(`<claude-config 짧은 해시> <ISO 날짜>` · 홈에 씨앗을 미는 자가 남긴다) → 뿌리가 git 나무면
+HEAD → 둘 다 없으면 **「판 모름」** 차례로 읽는다. 옛 판은 마지막 자리에서 **오늘 날짜**를 냈고,
+그래서 낡은 홈과 견준 초록이 최신처럼 읽혔다 — 까닭은 `_stamp()` 머리말이 든다.
+
 ⚠ **양성 대조가 판정보다 먼저 선다.** 곁말을 못 읽거나 진본 뿌리가 없으면 어긋남 0 이 나는데,
   그 0 은 초록이 아니다 — §1 이 임시 뿌리에 진본·사본 넷을 지어 같음·어긋남·CRLF·자리 틀림이
   실제로 갈리는지 보이고, 곁말 든 파일이 한 장도 없으면 「못 쟀다」(2)로 나간다.
 
 **안 재는 것** — 곁말 없이 베낀 사본(이름이 같아도 곁말이 없으면 이 자에게는 남이다 — 그것은
 `drift_check` 류 재는 자의 몫) · 곁말이 든 **판 번호**가 진본의 지금 판인가(글자가 같으면 판은
-묻지 않는다) · 곁말 밖에서 **일부러 갈랐다**고 선언한 파일(그 선언이 있으면 곁말도 없어야
+묻지 않는다) · **진본 뿌리가 그 나무의 최신 판인가**(판을 찍기만 하고 묻지 않는다 — 찍힌 판이
+그 물음의 재료다) · 곁말 밖에서 **일부러 갈랐다**고 선언한 파일(그 선언이 있으면 곁말도 없어야
 한다 — 둘 다 있으면 어긋남으로 뜬다, 그것이 맞다).
 
 토큰도 망도 브라우저도 안 쓴다.
 """
+import datetime
 import difflib
 import re
 import shutil
@@ -57,6 +66,11 @@ MARK = "**빌려 온 자다**"
 SOURCE_RE = re.compile(r"`(seeds/[^`]+)`")
 HEAD_LINES = 40             # 곁말은 머리말에 산다 — 이 아래는 본문이라 안 뒤진다
 DEFAULT_SEEDS = Path.home() / ".claude" / "seeds"
+# 진본 뿌리가 **어느 판인가**를 적어 둔 한 줄 — `<claude-config 짧은 해시> <ISO 날짜>`.
+# 홈 뿌리는 git 나무가 아니라 판을 물을 데가 없다. 그래서 **미는 자가 남긴다** —
+# `deploy.ps1` 의 「씨앗의 판 줄」 칸과 세션 훅 `deploy_home_norms` 의 씨앗 칸이 그 둘이다.
+# 이름이 한 낱말이라 선언 파일로 안 뽑는다 — 쓰는 자 둘과 이 자가 곁말로 서로를 가리킨다.
+VERSION_FILE = ".version"
 
 
 # ── 곁말을 읽는다 ──────────────────────────────────────────────────────────────
@@ -127,18 +141,58 @@ def receive(copy_path, source_path, start, stamp):
 
 
 def _stamp(seeds_root):
-    """곁말에 적을 판 — 진본 뿌리가 git 나무면 짧은 해시, 아니면 오늘 날짜."""
+    """**진본 뿌리가 어느 판인가** — `(판, 어디서 읽었나)`. 모르면 `(None, 까닭)`.
+
+    차례 셋 — ① 뿌리의 `.version` 한 줄(홈에 씨앗을 미는 자가 남긴다) ② 뿌리가 git 나무면
+    `HEAD` ③ 둘 다 없으면 **모른다**.
+
+    ⚠ **옛 판은 ③에서 오늘 날짜를 냈다.** 그것은 진본의 판이 아니라 **이 검사를 돌린 날**
+      이라, 홈이 아무리 낡아도 판정 줄이 오늘 날짜를 달고 **최신과 견준 것처럼** 읽혔다 —
+      실측 2026-09-13: 홈 씨앗이 나무와 12 자리 갈린 채 형제 검사가 초록이었다. 모르는
+      것은 모른다고 적는다: 날짜는 답이 아니라 **거짓 신호**였다.
+    """
+    rows = []
+    try:
+        rows = (Path(seeds_root) / VERSION_FILE).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        pass
+    field = (rows[0] if rows else "").split()
+    if field:
+        return field[0], f"{VERSION_FILE} · {' '.join(field[1:]) or '날짜 없음'}에 깔렸다"
     try:
         import subprocess
         out = subprocess.run(["git", "-C", str(seeds_root), "rev-parse", "--short", "HEAD"],
                              capture_output=True, text=True, encoding="utf-8", errors="replace",
                              timeout=10)
         if out.returncode == 0 and out.stdout.strip():
-            return out.stdout.strip()
+            return out.stdout.strip(), "뿌리가 git 나무다 — HEAD"
     except (OSError, subprocess.SubprocessError):
         pass
-    import datetime
-    return datetime.date.today().isoformat()
+    return None, f"뿌리에 `{VERSION_FILE}` 도 없고 git 나무도 아니다"
+
+
+def _git_tree(root):
+    """검체용 git 나무 하나 — 짧은 HEAD 를 돌려준다. 못 세우면 None(git 이 없는 기계).
+
+    ⚠ 커밋이 하나 있어야 `HEAD` 가 선다 — 빈 나무에서 `rev-parse` 는 진다. 이름·서명은
+      **이 자리에서 박는다**: 돌리는 사람의 설정에 끌려가면 그 기계에서만 검체가 안 서고,
+      그 자리는 조용히 「못 쟀다」가 된다.
+    """
+    import subprocess
+    steps = [["init", "-q"],
+             ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+              "commit", "-q", "--allow-empty", "-m", "t"]]
+    try:
+        for step in steps:
+            if subprocess.run(["git", "-C", str(root)] + step,
+                              capture_output=True, timeout=30).returncode:
+                return None
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=10)
+        return out.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def compare(copy_text, source_text, start):
@@ -207,6 +261,30 @@ def positive_control():
                and "(new1234 판)" in got and "\r\n" in got
                and _lines(got)[found[0] - 1] == "좌표 — 어디.",
                [got[:200]])
+        # ── 판을 읽는 차례 — 판 파일 → git 나무 → 모름. **셋이 실제로 갈리나** ──
+        # ⚠ 여기가 이 판의 요점이다. 셋째 자리가 오늘 날짜를 내던 동안, 판을 모르는 판정이
+        #   최신과 견준 것처럼 읽혔다 (`_stamp()` 머리말).
+        bare = tmp / "bare-root"
+        bare.mkdir()
+        got = _stamp(bare)
+        report("판 파일도 git 나무도 없으면 판 모름이다", got[0] is None, [repr(got)])
+        (bare / VERSION_FILE).write_text("abc1234 2026-09-13\n", encoding="utf-8")
+        got = _stamp(bare)
+        report("판 파일이 있으면 그 첫 낱말이 판이고 날짜가 곁말로 선다",
+               got[0] == "abc1234" and "2026-09-13" in got[1], [repr(got)])
+        tree = tmp / "git-root"
+        tree.mkdir()
+        head = _git_tree(tree)
+        if head:
+            got = _stamp(tree)
+            report("판 파일이 없고 git 나무면 HEAD 가 판이다", got[0] == head, [repr(got), head])
+            (tree / VERSION_FILE).write_text("abc1234 2026-09-13\n", encoding="utf-8")
+            got = _stamp(tree)
+            report("판 파일이 git 나무보다 앞선다 — 홈 사본은 제 나무의 HEAD 가 아니다",
+                   got[0] == "abc1234", [repr(got), head])
+        else:
+            edge("**git 나무 갈래는 못 쟀다** — 이 기계에 git 이 없거나 임시 나무를 못 세웠다. "
+                 "그 갈래는 이 저장소 안에서 `--seeds seeds` 로 돌릴 때 실물로 밟힌다")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -258,9 +336,13 @@ def main(argv):
     if not seeds_root.is_dir():
         raise Unmeasured(f"[안 잼] 진본 뿌리가 없다 — {seeds_root}. 홈에 씨앗이 안 깔렸으면 "
                          "deploy.ps1 이 안 돈 것이고, 씨앗 저장소 안이면 `--seeds seeds` 를 준다")
+    ver, where = _stamp(seeds_root)
+    print(f"진본 판 — {ver or '모름'} ({where})")
     bad, same, missing, unreadable = survey(check_dir, seeds_root)
     if bad and "--receive" in argv:
-        stamp = _stamp(seeds_root)
+        # ⚠ 곁말의 판 자리는 **사람이 읽는 영수증**이라, 판을 모르면 받은 날짜를 적는다 —
+        #   판정 줄은 그 날짜를 안 쓴다(거기서 오늘 날짜가 거짓 신호였다 · `_stamp()`).
+        stamp = ver or datetime.date.today().isoformat()
         for name, rel, _n in bad:
             copy_path = check_dir / name
             found = marker(copy_path.read_text(encoding="utf-8"))
@@ -281,7 +363,8 @@ def main(argv):
                          f"진본 뿌리 {seeds_root} 가 맞는가")
     for name, rel, n in bad:
         report(f"{name} — 진본 {rel} 과 어긋남", False, [f"갈린 줄 {n}"])
-    report(f"곁말 든 사본이 진본과 같다 (같음 {same} · 어긋남 {len(bad)})", not bad)
+    report(f"곁말 든 사본이 진본과 같다 (같음 {same} · 어긋남 {len(bad)} · "
+           f"진본 판 {ver or '모름'})", not bad)
 
     for row in missing:
         edge(f"**진본이 없다** — {row}. 곁말이 가리키는 자리에 파일이 없다 — 옮겨졌거나 곁말이 낡았다")
@@ -294,13 +377,22 @@ def main(argv):
     edge(f"잰 범위 — `{check_dir.name}/` 의 곁말 든 파일 {same + len(bad)}장. "
          "곁말 없이 베낀 사본은 안 든다 — 그것은 갈림을 세우는 자(`drift_check` 류)의 몫이다")
     edge("**판 번호는 안 문다** — 글자가 같으면 곁말의 커밋이 옛것이어도 초록이다")
+    if ver is None:
+        edge(f"**진본의 판을 모른다** — {where}. 이 판정은 「지금 이 뿌리와 같다」까지고 "
+             f"**그 뿌리가 낡았나는 안 잰 자리다** — 홈에 씨앗을 미는 자가 그 자리에 "
+             f"`{VERSION_FILE}` 을 남긴다(`deploy.ps1` 의 「씨앗의 판 줄」 칸 · 세션 훅 "
+             "`deploy_home_norms` 의 씨앗 칸). 그 둘이 아직 안 돈 홈이면 한 번 돌린다")
+    else:
+        edge(f"**견준 진본은 {ver} 판이다** ({where}) — 그 판이 진본 나무의 최신인가는 "
+             "이 자가 안 문다. 판을 찍는 것이 그 물음의 재료다")
 
     print()
     if fails():
-        print(f"{len(fails())}건 어긋남 — {' · '.join(fails())}")
+        print(f"{len(fails())}건 어긋남 (진본 판 {ver or '모름'}) — {' · '.join(fails())}")
         print("고치는 법: 진본에서 다시 받는다. 사본을 고쳐야 했다면 그 고침은 진본으로 올린다")
         return EXIT_MISMATCH
-    print(f"전부 통과 (판정 {len(passes())}건 — 양성 대조 {len(passes()) - 1} · 실물 전수 1)")
+    print(f"전부 통과 (판정 {len(passes())}건 — 양성 대조 {len(passes()) - 1} · 실물 전수 1) "
+          f"— 견준 진본 판 {ver or '모름'}")
     return EXIT_OK
 
 
