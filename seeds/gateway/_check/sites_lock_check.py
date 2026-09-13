@@ -84,7 +84,11 @@ def _child(**env_over):
 
 def _load(code, out, err, label):
     if code != 0:
-        print(f"[NG ] {label} — 자식이 죽었다 (exit {code})\n{err.strip()[-800:]}", file=sys.stderr)
+        # ⚠ **판정 표찰을 여기서 안 붙인다** — 같은 「자식이 죽었다」를 부르는 쪽이 저마다
+        #   다르게 센다(①·②는 「못 쟀다」로, ④는 「안 떴다」라는 판정 실패로). `[NG ]` 를
+        #   찍으면 한 사건이 표찰 둘을 져, 화면은 어긋남이라 하고 계수는 못 쟀다로 간다.
+        #   이 줄이 드는 것은 판정이 아니라 **증거**(자식 stderr 꼬리)다.
+        print(f"⚠ {label} — 자식이 죽었다 (exit {code})\n{err.strip()[-800:]}", file=sys.stderr)
         return None
     return json.loads(out.strip().splitlines()[-1])
 
@@ -115,7 +119,9 @@ def main():
     code, out, err = _child(**{f"{P}_SITES": f" {posco} "})
     lock = _load(code, out, err, f"② {P}_SITES={posco}")
     if lock is None:
-        return 1
+        unmeasured(f"② {P}_SITES={posco}",
+                   "담장을 닫은 판을 못 올렸다 — 아래 ② 판정 셋이 이 판에 선다")
+        return EXIT_UNMEASURED
     report(f"② `{posco}` 만 열면 여는 담장이 그 하나다", lock["sites_allowed"] == [posco],
            [f"실측 {lock['sites_allowed']}"])
     report("② 회사 갈래를 실어 온 요청은 그대로 선다",
