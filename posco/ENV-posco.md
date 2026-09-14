@@ -156,8 +156,8 @@ atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음
 - GitHub **HTTPS만 가능** (`github.com`, `api.github.com`, `raw.githubusercontent.com` 전부 200). 프록시 없음, 직결.
 - GitHub **SSH는 차단** (22번, 443번 대체 포트 모두 타임아웃) → 리모트는 반드시 `https://...` 형식
 - Git 인증 세팅 완료: `credential.helper=manager` (GCM + OAuth 방식, PAT 불필요, 첫 push 때 브라우저 로그인)
-- Git 신원·기본 브랜치·`core.autocrlf` 는 **부트스트랩이 심는다** — 진본은
-  `claude-config/bootstrap-vdi.sh` 의 git 설정 칸이다. 여기 옮겨 적으면 어긋난다
+- Git 신원·기본 브랜치·`core.autocrlf` 는 **세션 훅이 심는다** — 진본은
+  `claude-config/.claude/hooks/session-start.sh` 의 개인 칸(`deploy_personal`)이다. 여기 옮겨 적으면 어긋난다
 - Supabase 접근 가능
 - Google Drive, Gmail 발신은 사내망에서 불가
 - npm 레지스트리 접근 가능

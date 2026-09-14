@@ -13,6 +13,8 @@
 #   session-start.sh            리모트면 깐다. PC 면 당겨 오고(ff-only·main 만) 홈 규범을
 #                               새로 민 뒤, 선언 지문이 어긋날 때만 깐다 (claude-config 0009)
 #   session-start.sh --install  기계를 안 가리고 깐다        ← deploy.ps1 이 이걸로 부른다
+#                               PC 에서 밖(설치기 · 사람)이 부르면 사람에게 딸린 것(git 신원 ·
+#                               형제 저장소 · 개인 키 · 홈 개인 설정)을 세우고 deploy.ps1 에 넘긴다
 #   session-start.sh --check    안 깔고 진단만 낸다          ← 어디서 돌려도 안전
 #
 # ⚠ 진짜 문제는 **부재가 통과로 읽히는 것**이다. 게이트는 도구가 없으면 그 검사만 건너뛰고
@@ -27,9 +29,10 @@
 set -uo pipefail
 
 MODE=auto
+ASKED=""   # 인자로 명시된 갈래 — auto 가 지문 어긋남으로 install 이 되는 것과 가른다
 case "${1:-}" in
   --check)   MODE=check ;;
-  --install) MODE=install ;;
+  --install) MODE=install; ASKED=install ;;
 esac
 
 # ── 어느 저장소를 깔고 있나 — **제 자리에서 역산하는 것이 먼저다.**
@@ -282,6 +285,162 @@ deploy_home_norms() {
       [ "$(awk 'NR==1{print $1}' "$_svf" 2>/dev/null)" = "$_sv" ] ||
         printf '%s %s\n' "$_sv" "$(date +%Y-%m-%d)" > "$_svf" 2>/dev/null || true
     fi
+  fi
+}
+
+# ── 사람에게 딸린 것 — git 신원 · 형제 저장소 · 슬러그 폴더 · 개인 키 · 홈 개인 설정 ──────
+#    **PC 에서만, 그리고 전역 저장소가 `bootstrap.conf` 를 들 때만.** 리모트는 저장소를 claude.ai 가
+#    붙이고 키를 환경이 들어 이 칸이 통째로 조용히 지나간다.
+#    옛 판은 이것이 `bootstrap-vdi.sh` 라는 딴 몸통에 살았다 — 설치기(`install.ps1`)가 `#config-repo`
+#    로 받은 저장소 뿌리에서 그 이름을 찾아 불렀고, 그 몸통이 회사 키·프록시·Codex/Gemini 설정까지
+#    들어 설치기와 일이 갈렸다(그 판에서는 확장·CLI 를 아무도 안 깔았다 · 실측 2026-09-14 · 사내 VDI).
+#    이제 회사 것은 설치기가 자리만 보고 전부 세우고, **사람에게 딸린 것만 이 훅이 든다** — Claude Code
+#    가 규격으로 보장하는 자리는 훅뿐이라, 리모트 Setup script 와 설치기가 같은 한 줄(`--install`)로 선다.
+#    ⚠ **몸통은 이름을 모른다.** 값은 전역 저장소의 `bootstrap.conf`(git 신원 · 저장소 · 주소 꼴 · 자리)와
+#      `secrets.env`(개인 키)가 든다 (0004). 회사 키·주소는 여기 없다 — 설치기가 `install.env` 로 심는다.
+#    ⚠ 가볍고 멱등인 것(git config · mkdir · 값이 같으면 건너뛰는 setx)은 매 세션(auto)도 민다 — 키가
+#      돌면 다음 세션이 새 값을 심는다. 망을 타는 clone 과 자리를 재는 홈 설정 덮기는 `--install` 만.
+conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지 않는다: 선언은 값이지 코드가 아니다
+  sed -n "s/^[[:space:]]*$2=//p" "$1" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//'
+}
+deploy_personal() {   # deploy_personal auto|install
+  [ "$OS" = windows ] || return 0
+  [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/bootstrap.conf" ] || return 0
+  _bc="$CONFIG_ROOT/bootstrap.conf"
+  _gn="$(conf_get "$_bc" GIT_NAME)"; _ge="$(conf_get "$_bc" GIT_EMAIL)"
+  _repos="$(conf_get "$_bc" REPOS)"; _url="$(conf_get "$_bc" REPO_URL)"
+  # `$HOME` 을 값에 쓸 수 있게 한 자리만 펴 준다 — 통째로 eval 하지 않는 대신이다.
+  _root="$(conf_get "$_bc" ROOT)"; _root="$(printf '%s' "$_root" | sed "s|\$HOME|$HOME|g;s|^~|$HOME|")"
+  [ -n "$_root" ] || _root="$HOME/repos"
+
+  # git 신원 — **빈 값을 심지 않는다.** 이름을 빼먹은 채 심으면 `user.name` 이 빈 문자열로 굳고
+  # 커밋이 「누가 했는지 없는」 채로 선다 — git 은 그걸 막지 않는다.
+  if [ -n "$_gn" ] && [ -n "$_ge" ]; then
+    [ "$(git config --global user.name 2>/dev/null)" = "$_gn" ] || git config --global user.name "$_gn"
+    [ "$(git config --global user.email 2>/dev/null)" = "$_ge" ] || git config --global user.email "$_ge"
+  elif [ "$1" = install ]; then
+    echo "$PROJECT_NAME: ⚠ bootstrap.conf 에 GIT_NAME · GIT_EMAIL 이 없다 — git 신원을 안 심었다"
+  fi
+  # 윈도우에서 물리는 것들. 바꿀 일이 있으면 이 줄들을 고친다.
+  git config --global init.defaultBranch main
+  git config --global core.autocrlf true      # 체크아웃은 CRLF, 저장소는 LF
+  git config --global core.longpaths true     # 260자 벽 — 깊은 나무에서 clone 이 진다
+  git config --global credential.helper manager
+  git config --global pull.rebase false
+
+  # 형제 저장소 — **없는 것만 받는다.** 당김은 각 저장소의 세션(auto)과 deploy.ps1 이 든다. `--install` 만 —
+  # 망을 타고, 맨바닥 VDI 의 첫 판은 설치기가 부르는 이 갈래가 지지 세션 훅의 시간 한도가 지지 않는다.
+  if [ "$1" = install ] && [ -n "$_repos" ]; then
+    if [ -z "$_url" ]; then
+      echo "$PROJECT_NAME: ⚠ bootstrap.conf 에 REPOS 는 있는데 REPO_URL 이 없다 — 어디서 받을지 모른다"
+    else
+      mkdir -p "$_root"
+      for _r in $_repos; do
+        [ -d "$_root/$_r/.git" ] && continue
+        echo "$PROJECT_NAME: $_r — clone ($_root)"
+        git clone "$(printf '%s' "$_url" | sed "s|<이름>|$_r|g")" "$_root/$_r" ||
+          echo "$PROJECT_NAME: ⚠ $_r clone 실패 — 주소 · 계정 · 망을 본다"
+      done
+    fi
+  fi
+
+  # 슬러그 폴더 — deploy.ps1 은 폴더가 있을 때만 메모리를 민다. 슬러그는 **윈도우 경로**에서 파생한다
+  # (영숫자 아닌 글자가 전부 `-`). ⚠ 글자로 센다 — 로케일 없이 sed 가 바이트를 세면 한글 한 자가 대시
+  # 셋이 되어 슬러그가 통째로 어긋나고 **메모리가 조용히 안 깔린다** (실측 2026-09-10 · `바탕 화면`).
+  _slug_of() { cygpath -w "$1" | LC_ALL=C.UTF-8 sed 's/[^A-Za-z0-9]/-/g'; }
+  for _r in $_repos; do mkdir -p "$HOME/.claude/projects/$(_slug_of "$_root/$_r")" 2>/dev/null || true; done
+  mkdir -p "$HOME/.claude/projects/$(_slug_of "$_root")" 2>/dev/null || true   # 전역 층 — 저장소들을 담은 폴더
+
+  # 개인 키 — `secrets.env` 를 사용자 환경변수로. 값이 같으면 건너뛰고, **빈 값은 안 심는다**(심으면
+  # 부재가 「있다」로 뒤집힌다). ⚠ 평문이다 — 저장소가 private 인 것이 유일한 울타리다 (0025).
+  # ⚠ 이 셸에도 심는다 — setx 는 새로 뜨는 프로세스부터 걸려서, 안 심으면 뒤따르는 deploy 가 방금
+  #   넣은 키를 「없다」로 보고 남은 수동 작업에 도로 띄운다.
+  if [ -f "$CONFIG_ROOT/secrets.env" ]; then
+    while IFS= read -r _line || [ -n "$_line" ]; do
+      _line="$(printf '%s' "$_line" | tr -d '\r' | sed 's/[[:space:]]*$//')"
+      case "$_line" in ''|'#'*) continue ;; esac
+      case "$_line" in *=*) ;; *) continue ;; esac
+      _k="${_line%%=*}"; _v="${_line#*=}"
+      if [ -z "$_v" ]; then
+        [ "$1" = install ] && echo "$PROJECT_NAME: ⚠ $_k — 비었다 (secrets.env 에 값을 넣고 커밋할 것)"
+        continue
+      fi
+      [ "${!_k:-}" = "$_v" ] && continue
+      if setx "$_k" "$_v" >/dev/null 2>&1; then
+        export "$_k=$_v"; echo "$PROJECT_NAME: $_k — 심었다"
+      else
+        echo "$PROJECT_NAME: ⚠ $_k 심기 실패 (값이 1024자를 넘나 본다)"
+      fi
+    done < "$CONFIG_ROOT/secrets.env"
+  fi
+
+  # 홈 개인 설정 씨앗 — `vdi-home-settings.json`. 없으면 깔고, 자리 파일이 `#home-settings = overwrite`
+  # 를 들면 병합해 덮는다. 자리는 `secrets.d/*.env` 의 `#site-probe`(닿음) → `#site-path`(경로) →
+  # `#site-default` 로 가른다 — **이름으로 안 가른다**: DNS 는 사외에서도 사내 IP 를 풀어 준다 (0026).
+  # `--install` 만 — 프로브는 안 닿는 자리에서 3초를 물고, 덮을 자리(사외 VDI)는 매 로그인 설치기를 거친다.
+  # ⚠ 안 덮는 자리에서는 있으면 안 건드린다 — 세션 중에 앱에서 바꾼 값을 재실행이 지우면 안 된다.
+  [ "$1" = install ] || return 0
+  _hs="$CONFIG_ROOT/vdi-home-settings.json"; _hd="$HOME/.claude/settings.json"
+  [ -f "$_hs" ] || return 0
+  mkdir -p "$HOME/.claude"
+  if [ ! -f "$_hd" ]; then
+    cp "$_hs" "$_hd" && echo "$PROJECT_NAME: 홈 settings.json — 씨앗을 깔았다"
+    return 0
+  fi
+  _site=""; _default=""
+  for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
+    [ -e "$_f" ] || continue
+    case "$(sed -n 's/^#[[:space:]]*site-default[[:space:]]*=[[:space:]]*//p' "$_f" | head -1)" in *yes*) _default="$_f" ;; esac
+    [ -n "$_site" ] && continue
+    _probe="$(sed -n 's/^#[[:space:]]*site-probe[[:space:]]*=[[:space:]]*//p' "$_f" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
+    [ -n "$_probe" ] || continue
+    timeout 3 bash -c "(exec 3<>/dev/tcp/${_probe%%:*}/${_probe#*:})" 2>/dev/null && _site="$_f"
+  done
+  if [ -z "$_site" ]; then
+    for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
+      [ -e "$_f" ] || continue
+      _p="$(sed -n 's/^#[[:space:]]*site-path[[:space:]]*=[[:space:]]*//p' "$_f" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
+      [ -n "$_p" ] && [ -d "$_p" ] && { _site="$_f"; break; }
+    done
+  fi
+  [ -n "$_site" ] || _site="$_default"
+  _mode=""
+  [ -n "$_site" ] && _mode="$(sed -n 's/^#[[:space:]]*home-settings[[:space:]]*=[[:space:]]*//p' "$_site" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
+  [ "$_mode" = overwrite ] || return 0
+  # ⚠ **`hooks` 와 `env` 는 씨앗의 것이 아니라 기계가 심은 것이라 넘겨 준다** (0028 · 0030). 훅의 심는 명령은
+  #   작업 루트 경로를 들어 PC 마다 다르고, env 는 설치기가 이 자리 값으로 방금 민 것이다. 지킬 수 없으면
+  #   (파이썬이 없다) **안 덮는다** — 덮으면 이 칸이 고치려는 바로 그 고장을 이 칸이 만든다.
+  # ⚠ **견줄 상대는 씨앗이 아니라 병합 결과다.** 씨앗과 견주면 심긴 훅 때문에 영영 안 맞아 매 로그인
+  #   덮고 백업이 쌓인다. 먼저 만들고, 같으면 안 건드린다.
+  _new="$_hd.new.$$"
+  if "$PY_CMD" -c '' >/dev/null 2>&1 && "$PY_CMD" - "$_hs" "$_new" "$_hd" <<'PYMERGE'
+import json, sys
+src, out, cur = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(src, encoding="utf-8") as f:
+    cfg = json.load(f)
+try:
+    with open(cur, encoding="utf-8") as f:
+        old = json.load(f)
+except (OSError, ValueError):
+    old = {}
+if "hooks" in old:                      # 기계가 심은 것 — 씨앗은 이 키에 의견이 없다
+    cfg["hooks"] = old["hooks"]
+if isinstance(old.get("env"), dict):    # 설치기가 이 자리 값으로 민 것 — 씨앗보다 이긴다
+    cfg["env"] = {**cfg.get("env", {}), **old["env"]}
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(cfg, f, ensure_ascii=False, indent=2)
+    f.write("\n")
+PYMERGE
+  then
+    if cmp -s "$_new" "$_hd"; then
+      rm -f "$_new"
+    elif cp "$_hd" "$_hd.bak-$(date +%Y%m%d-%H%M%S)" && mv "$_new" "$_hd"; then
+      echo "$PROJECT_NAME: 홈 settings.json — 덮었다 ($(basename "$_site" .env) 가 overwrite 를 든다)"
+    else
+      rm -f "$_new"; echo "$PROJECT_NAME: ⚠ 홈 settings.json 덮기 실패 — 쓰기 권한을 본다"
+    fi
+  else
+    rm -f "$_new"; echo "$PROJECT_NAME: ⚠ 홈 settings.json — 파이썬을 못 불러 안 덮는다 (심긴 훅을 지킬 수 없다)"
   fi
 }
 
@@ -612,6 +771,7 @@ if [ "$MODE" = auto ]; then
   pull_ff "$PROJECT_DIR"
   [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" != "$PROJECT_DIR" ] && pull_ff "$CONFIG_ROOT"
   deploy_home_norms
+  deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
   plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
   wire_python_path   # 지문 게이트 앞이다 — 배선은 설치의 사건이 아니라 세션의 상태다 (0011)
   # ── 낡음 게이트 — **선언이 그대로여도 도구는 낡는다** ────────────────────────
@@ -649,6 +809,23 @@ if [ "$MODE" = auto ]; then
 fi
 
 if [ "$MODE" = install ]; then
+
+  # ── PC 에서 밖(설치기 · 사람)이 `--install` 로 불렀으면 — 개인 칸을 세우고 `deploy.ps1` 에 넘긴다 ──
+  # ⚠ **고리를 끊는 표식이 있다.** `deploy.ps1` 은 이 훅을 저장소마다 `--install` 로 부르는 자리라, 여기서
+  #   다시 그것을 부르면 고리다. 그 표식(`CLAUDE_CONFIG_DEPLOYING`)은 deploy.ps1 이 세운다 — 있으면 저장소
+  #   하나의 설치로 간다. 명시된 `--install` 만 탄다: 세션(auto)이 지문 어긋남으로 여기 온 판에서 배포
+  #   전체를 돌리면 세션이 그만큼 멎는다. 리모트는 deploy.ps1 이 없어 이 갈래를 안 탄다.
+  # ⚠ **종료코드는 deploy 의 것이다.** 옛 부트스트랩이 그것을 안 재 「완료」를 찍고 0 으로 끝난 자리가
+  #   있었다(실측 2026-09-07 · deploy 가 첫 MCP 조회에서 죽은 자리) — 부재가 통과로 읽히는 그 자리다.
+  if [ "$ASKED" = install ] && [ "$OS" = windows ] && [ -z "${CLAUDE_CONFIG_DEPLOYING:-}" ] &&
+     [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/deploy.ps1" ]; then
+    deploy_personal install
+    echo "$PROJECT_NAME: deploy.ps1 에 넘긴다 — 저장소·메모리·MCP 를 밀고 각 저장소 훅을 --install 로 부른다"
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$CONFIG_ROOT/deploy.ps1")" -Yes
+    _drc=$?
+    [ "$_drc" -eq 0 ] || echo "$PROJECT_NAME: ⚠ deploy.ps1 이 exit $_drc 로 끝났다 — 위 진단의 ❌ 줄이 곧 고칠 자리"
+    exit "$_drc"
+  fi
 
   # 실패는 삼키되 까닭까지 버리지는 않는다 — 진단이 ❌ 줄에 사유를 이어 붙인다.
   # 지난 실패는 **지우기 전에 찍는다** — 안 그러면 「무엇이 왜 실패했었나」가 성공한 재설치와
@@ -692,10 +869,11 @@ if [ "$MODE" = install ]; then
   #      같은 것을 같은 차례로 민다 ──
   wire_commit_hooks
   deploy_home_norms
+  deploy_personal auto  # 가벼운 것만 — 무거운 것(clone · 홈 설정 덮기)은 위 PC 분기가 이미 들었다
 
   # ── ②′ 전역 SessionStart 훅 · 신뢰 — 몸통은 위 plant_session_state 한 벌이다.
   #    auto 가 지문 게이트 앞에서 이미 부르지만, `--install` 로 곧장 들어온 갈래
-  #    (deploy.ps1 · bootstrap-vdi.sh)는 그 자리를 안 지나므로 여기서도 부른다.
+  #    (deploy.ps1 · 리모트 Setup script)는 그 자리를 안 지나므로 여기서도 부른다.
   #    멱등이라 겹쳐 불려도 항목은 하나다 (0028 이 쟀다).
   plant_session_state
 

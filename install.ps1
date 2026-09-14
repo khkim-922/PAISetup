@@ -14,8 +14,10 @@
 #   1) 옆에 둔 `install.env`  (`이름=값` 한 줄씩 · `secrets.env` 와 같은 꼴)
 #   2) 사람이 그 자리에서 입력
 #
-#   그 파일이 `#config-repo` 를 들면 **키를 안 묻고** 그 저장소를 받아 부트스트랩으로
-#   넘긴다 — 값의 진본이 저쪽이라 여기서 또 물으면 같은 키가 두 자리에 산다.
+#   그 파일이 `#config-repo` 를 들면 **다 세운 뒤에** 그 저장소를 받고, 뿌리에 훅
+#   (`.claude/hooks/session-start.sh`)이 있으면 `--install` 로 부른다 — 사람에게 딸린 것
+#   (git 신원 · 형제 저장소 · 개인 키 · 배포)은 그쪽이 든다. 여기가 하는 일은 그 줄이
+#   있든 없든 같다.
 #   **주소도 여기 없다.** 그래서 이 파일 하나는 어느 갈래에서도 익명으로 남는다.
 #
 #   그래서 **한 몸통이 두 갈래를 다 든다.** 값 파일을 들고 다니는 사람은 아무것도 안 묻고
@@ -121,10 +123,10 @@ $TlsHosts = @(
 #      둘 다 받는다. CLI 는 AUTH_TOKEN 으로도 서므로 이름을 하나로 둔다 — 둘을 다 물으면
 #      받는 사람이 어느 것이 제 키인지 판단해야 한다.
 # ⚠ **`Gateway` 는 「무조건 필요」가 아니라 「게이트웨이를 쓸 때 필요」다.** 필요한지는 **자리에
-#   달렸는데 이 파일은 자리를 모른다** — 사내는 게이트웨이로 서고 사외는 구독 로그인으로 선다.
-#   자리를 가르는 자는 `bootstrap-vdi.sh` 이고 그것은 이 설치 뒤에 온다. 그래서 여기서는
-#   **주소가 있으면 쓰는 것, 없으면 안 쓰는 것**으로 판정한다 — 자리 판별을 여기 옮겨 적으면
-#   같은 규칙이 두 자리에 살고 한쪽만 낡는다.
+#   달렸는데 이 표는 자리를 모른다** — 사내는 게이트웨이로 서고 사외는 구독 로그인으로 선다.
+#   자리를 가르는 자는 아래 프로브(`#site-probe`)이고, 이 표는 **주소가 있으면 쓰는 것, 없으면
+#   안 쓰는 것**으로만 판정한다 — 자리 판별을 표에 옮겨 적으면 같은 규칙이 두 자리에 살고
+#   한쪽만 낡는다.
 # ── 데스크탑 앱 — **이름은 여기 한 자리다.** 아래 2′ 칸이 깔 때도, 마지막 「연다」 칸이
 #    띄울 것을 찾을 때도 이 값에서 판다. 옛 판은 세 자리에 박혀 있었다.
 # ⚠ **띄울 이름은 여기서 파생한다** — winget 의 id 는 `<만든 이>.<앱>` 꼴이라 뒷칸이 곧
@@ -146,7 +148,7 @@ $Vars = @(
 #   이것은 켜거나 안 켜거나뿐이라 사람이 정할 것이 없다 — 늘 맞춰도 뺏는 것이 없다.
 # 스위치가 늘면 여기 한 줄을 더한다. 이 파일 안의 씨앗에는 안 적는다 — 아래에서 늘 맞춘다.
 # ⚠ **다만 저장소의 `vdi-home-settings.json` 은 같이 고쳐야 한다.** 그것은 이 파일이 못 읽는
-#   자리에 살고(배포 묶음에 안 실린다) `bootstrap-vdi.sh` 가 든다. 자리 파일이
+#   자리에 살고(배포 묶음에 안 실린다) 설정 저장소의 훅이 민다. 자리 파일이
 #   `#home-settings = overwrite` 를 드는 자리(사외 VDI)에서는 **그 덮기가 이 설치보다 나중**
 #   이라 씨앗이 최종 승자다 — 여기만 늘리면 그 자리에서 조용히 잃는다.
 $Features = @{
@@ -190,8 +192,8 @@ function Get-Ver([string]$Cmd, [string]$Arg) {
 # 자리를 **닿음으로** 가른다 — `#site-probe = 호스트:포트` 가 있으면 거기에 TCP 로 물어본다.
 # ⚠ **이름으로 안 가른다.** DNS 는 사외에서도 사내 IP 를 풀어 주므로 이름만 봐서는 안 갈린다
 #   (실측: 사외에서 사내 호스트가 사내 IP 로 풀리고 포트는 안 열렸다 · 결정 0026).
-# ⚠ **규칙을 여기 옮겨 적은 것이 아니다.** 재는 대상은 값 파일이 든 그 한 줄이고, 부트스트랩도
-#   같은 줄을 읽는다 — 몸통 둘이 **같은 선언**을 볼 뿐 규칙이 둘로 갈리지 않는다.
+# ⚠ **규칙을 여기 옮겨 적은 것이 아니다.** 재는 대상은 값 파일이 든 그 한 줄이라, 몸통은
+#   **선언**을 볼 뿐 규칙을 들지 않는다.
 function Test-Reach([string]$HostPort, [int]$TimeoutMs = 3000) {
   if ($HostPort -notmatch '^(.+):(\d+)$') { return $false }
   $h = $Matches[1]; $p = [int]$Matches[2]
@@ -778,18 +780,18 @@ if ($probe) {
 #   **있고 사내면** 그것을 세운다. 사외는 셋 다 안 선다 — 구독 로그인 하나로 서는 자리라서.
 # ⚠ **자리를 모르면 안 선다.** 프로브가 없으면 「사내」가 아니라 모르는 것이고, 모르는 자리에
 #   프록시를 세우면 아무 데도 안 닿는 주소를 심은 채 초록으로 끝난다.
-# ⚠ **값 저장소로 넘기는 판(`#config-repo`)에서는 프록시·설정을 여기서 안 세운다** — 값의 진본이
-#   저쪽이고 저쪽 부트스트랩이 같은 일을 든다(로그인마다 새로 서야 하는 VDI 가 그 자리다).
-#   그 판에서도 파이썬만은 아래 1 칸이 깐다 — 프록시가 그것으로 돈다.
-$handsOffEarly = [bool](Read-Directive $EnvFile 'config-repo')
+# ⚠ **`#config-repo` 가 있어도 여기서 세운다.** 옛 판은 그 줄이 있으면 프록시·설정을 저쪽 부트스트랩에
+#   맡기고 **확장·CLI 까지 같은 스위치로 껐다** — 그런데 저쪽은 설정 파일만 쓰지 프로그램은 안 깔아,
+#   그 판에서는 Codex·Gemini 를 아무도 안 깔았다(실측 2026-09-14 · 사내 VDI). 자리를 보고 세우는
+#   자는 이 파일 하나고, 그 줄은 「다 세운 뒤 저장소를 더 받는다」는 뜻일 뿐이다.
 $proxyRel   = Read-Directive $EnvFile 'gateway-proxy'
 $codexTpl   = Read-Directive $EnvFile 'codex-config'
 $geminiTpl  = Read-Directive $EnvFile 'gemini-config'
 $inside     = ($site -eq 'inside')
-$needPython = [bool]($proxyRel -and $inside)
-$wantProxy  = [bool]($proxyRel  -and $inside -and -not $handsOffEarly)
-$wantCodex  = [bool]($codexTpl  -and $inside -and -not $handsOffEarly)
-$wantGemini = [bool]($geminiTpl -and $inside -and -not $handsOffEarly)
+$wantProxy  = [bool]($proxyRel  -and $inside)
+$needPython = $wantProxy            # 프록시가 파이썬으로 돈다 — 개발도구를 꺼도 이것만은 깐다(1 칸)
+$wantCodex  = [bool]($codexTpl  -and $inside)
+$wantGemini = [bool]($geminiTpl -and $inside)
 # 표(`$Extensions` · `$Clis`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
 $wantNeed = @{ core = $true; codex = $wantCodex; gemini = $wantGemini }
 if ($proxyRel -or $codexTpl -or $geminiTpl) {
@@ -798,7 +800,6 @@ if ($proxyRel -or $codexTpl -or $geminiTpl) {
   if ($wantCodex)  { $more += 'Codex' }
   if ($wantGemini) { $more += 'Gemini' }
   if ($more.Count) { Write-Host ("  사내라 더 세운다 — " + ($more -join ' · ')); Write-Host '' }
-  elseif ($handsOffEarly -and $inside) { Write-Host '  프록시·Codex·Gemini 는 #config-repo 가 가리키는 저장소의 부트스트랩이 세운다'; Write-Host '' }
   elseif (-not $inside) { Write-Host '  프록시·Codex·Gemini 는 사내에서만 선다 — 여기서는 안 세운다'; Write-Host '' }
 }
 
@@ -1097,17 +1098,14 @@ foreach ($c in $Clis) {
 }
 
 # ── 5. 값 — 파일이 들면 읽고, 없으면 묻는다 ─────────────────────────────────────
-# ⚠ **값 저장소를 가리키면 여기서 안 묻는다.** `#config-repo` 가 있다는 것은 값의 진본이
-#   저쪽에 있다는 말이고, 저쪽 부트스트랩이 제 파일(`secrets.env`·`secrets.d/`)로 심는다.
-#   여기서도 물으면 같은 키가 두 자리에 살아 한쪽만 낡는다 — 그 어긋남은 **조용하다**:
-#   낡은 값이 심겨도 「설정된 것처럼 보이고」, 부재보다 나쁜 그 상태를 이 저장소가 이미
-#   결정 0026 에서 밟았다. 그러니 가리키는 갈래에서는 묻지 말고 **넘긴다.**
+# ⚠ **`#config-repo` 가 있어도 여기서 받는다.** 옛 판은 그 줄이 있으면 안 묻고 저쪽 부트스트랩이
+#   제 파일로 심게 넘겼다 — 그러면 저장소에 부트스트랩이 없는 사람은 키가 어디에도 안 심긴다.
+#   회사 키는 설치 창(또는 `install.env`)이 받고 이 파일이 심는다. 저쪽이 드는 것은 사람에게
+#   딸린 것(개인 키 · 형제 저장소)이지 이 칸이 아니다.
 Write-Host ''
 Write-Host '[4/8] 키와 주소' -ForegroundColor Cyan
 $fromFile  = Read-EnvFile $EnvFile
-$handsOff  = [bool](Read-Directive $EnvFile 'config-repo')
 if ($fromFile.Count -gt 0) { Write-Host "  install.env 가 $($fromFile.Count)개를 든다" }
-if ($handsOff) { Write-Host '  값의 진본은 #config-repo 가 가리키는 저장소다 — 여기서 안 묻는다' }
 
 # ⚠ **주소가 곧 판정이다.** 주소가 없으면 게이트웨이를 안 쓰는 자리이고, 그러면 키도 안 묻고
 #   없다고 물지도 않는다 — 사외 VDI 가 그 자리다(구독 로그인으로 선다). 옛 판은 둘을 「무조건
@@ -1117,7 +1115,7 @@ $useGateway = $true
 # ⚠ **자리가 값보다 먼저다.** 값 파일이 사내 값을 들고 있어도, 사내에 안 닿는 자리라면 그 값은
 #   여기서 쓸 것이 아니다 — 배포본은 사내용으로 뽑히므로 그 파일을 사외 PC 에서 돌리는 일이
 #   실제로 난다. 그때 사내 주소를 심으면 안 닿는 곳을 가리킨 채 「설정됐다」로 보인다.
-if ($probe -and -not $handsOff) {
+if ($probe) {
   if ($site -eq 'inside') {
     Write-Host "  사내다 — 게이트웨이를 쓴다"
   } else {
@@ -1129,7 +1127,7 @@ if ($probe -and -not $handsOff) {
   }
 }
 
-if (-not $handsOff -and $useGateway) {
+if ($useGateway) {
   $u = $fromFile['ANTHROPIC_BASE_URL']
   if (-not $u -and -not $Yes) {
     Write-Host ''
@@ -1151,7 +1149,7 @@ foreach ($v in $Vars) {
   # 게이트웨이를 안 쓰는 자리에서는 그쪽 이름을 아예 안 본다
   if ($v.Gateway -and -not $useGateway) { continue }
 
-  if (-not $val -and -not $Yes -and -not $handsOff) {
+  if (-not $val -and -not $Yes) {
     Write-Host ''
     Write-Host "  $($v.Name)" -ForegroundColor Yellow
     Write-Host "    $($v.Desc)"
@@ -1169,7 +1167,7 @@ foreach ($v in $Vars) {
 
   # ⚠ **빈 값은 안 심는다.** 심으면 판정이 「있다」로 뒤집혀 부재가 조용해진다.
   if (-not $val) {
-    if ($v.Gateway -and $useGateway -and -not $handsOff) {
+    if ($v.Gateway -and $useGateway) {
       Write-Host "  ! $($v.Name) 이 비었다 — 이게 없으면 확장이 게이트웨이로 못 간다" -ForegroundColor Red
       $Fails.Add("$($v.Name) 미입력")
     }
@@ -1201,7 +1199,7 @@ $KeyAliases = @(
   @{ Name='OPENAI_API_KEY'; Need='codex'  }
   @{ Name='GEMINI_API_KEY'; Need='gemini' }
 )
-if ($useGateway -and -not $handsOff -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
+if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
   foreach ($k in $KeyAliases) {
     if (-not $wantNeed[$k.Need]) { continue }
     Plant-Var $k.Name $Planted['ANTHROPIC_AUTH_TOKEN']
@@ -1336,7 +1334,7 @@ if ($wantProxy) {
 #   실제로 쓰는 설정의 사본이고, 여기서는 자리표(키)와 주소만 채운다. 틀을 고치면 설치가 따라온다.
 # ⚠ **사람 것을 안 덮는다.** Codex 틀은 파일 하나가 통째라 있던 것을 날짜 붙여 물리고 새로 쓴다.
 #   Gemini 는 JSON 이라 틀의 항목만 얹고 사람이 둔 다른 항목은 둔다 — 홈 설정 칸과 같은 규율.
-if ($useGateway -and -not $handsOff -and ($wantCodex -or $wantGemini)) {
+if ($useGateway -and ($wantCodex -or $wantGemini)) {
   Write-Host ''
   Write-Host '  Codex · Gemini 설정' -ForegroundColor Cyan
   $key = $Planted['ANTHROPIC_AUTH_TOKEN']
@@ -1485,15 +1483,7 @@ if ($cfg) {
   # ⚠ **우리가 안 심은 ANTHROPIC_ 이름이 남아 있으면 문다.** 사내 안내 문서가 손으로 적으라고
   #   하는 자리라, 옛 값이 남으면 그쪽이 이겨 방금 심은 것이 가려진다 — 화면은 「심었다」로
   #   찍히는데 안 먹는, 부재보다 나쁜 상태다. 지우지는 않는다: 사람이 뜻을 두고 넣었을 수 있다.
-  # ⚠ **다만 handsOff 면 이 자를 못 댄다.** 그 판에서는 설치가 아무것도 안 심으므로
-  #   ($Planted 가 빈다) 저쪽 저장소가 제대로 밀어 넣은 값까지 전부 「홀로」로 잡힌다 —
-  #   구조적으로 **거짓 빨강만 나오는 자리**다. 프로필이 남는 PC 에서 매번 그랬다
-  #   (실측 2026-09-09 · 사내 PC · 실패 2 건이 전부 이것이었다). 비영속 VDI 는 매 부팅
-  #   settings.json 이 새것이라 안 걸려서, 이 거짓 빨강이 한 기계에서만 보였다.
-  #   검증 칸이 같은 판에서 이미 비켜서는 것과 같은 갈래다 — 값의 진본이 저쪽이면 여기서 안 잰다.
-  if ($handsOff) {
-    Write-Host '  (settings.json 의 값은 #config-repo 가 가리키는 저장소가 든다 — 여기서 안 잰다)'
-  } elseif ($cfg.PSObject.Properties['env']) {
+  if ($cfg.PSObject.Properties['env']) {
     foreach ($p in $cfg.env.PSObject.Properties) {
       if ($p.Name -notlike 'ANTHROPIC_*') { continue }
       if ($Planted.ContainsKey($p.Name)) { continue }
@@ -1578,22 +1568,21 @@ foreach ($a in $envAssets) {
 # ⚠ **주소는 이 파일에 없다.** `install.env` 가 `#config-repo` 를 들 때만 이 칸이 선다 —
 #   그래야 이 스크립트가 익명으로 남아 남에게 그대로 줄 수 있다.
 # ⚠ **이 칸은 갈래가 둘이고 둘 다 정당하다.** 규약은 파일 이름 하나 — 받아온 저장소 뿌리의
-#   `bootstrap-vdi.sh`:
-#     · 있으면 → 그것에 넘긴다. 그 뒤는 그 저장소가 든다
+#   `.claude/hooks/session-start.sh`(Claude Code 의 SessionStart 훅):
+#     · 있으면 → `--install` 로 부른다. 리모트 컨테이너의 Setup script 가 부르는 것과 같은 한
+#                 줄이라 VDI 와 리모트가 같은 자리로 선다. 그 뒤는 그 저장소가 든다
 #     · 없으면 → **받아 둔 것으로 끝낸다.** 저장소를 원한 사람에게 저장소는 왔다
 #   그 이름을 받는 사람에게 알리는 것은 `README.md` 가 든다.
 # ⚠ **옛 판은 없는 것을 실패로 찍었다.** 「넘길 자리가 없는 것을 성공으로 읽지 않는다」가
 #   까닭이었는데, 그것은 **이 칸의 목적을 「넘기기」 하나로 좁게 본 것**이다. 저장소만 들고
 #   다니려는 사람에게는 clone 이 곧 목적이고, 그 사람의 성공을 빨강으로 찍으면 **멀쩡한 PC 가
 #   매번 실패로 보고된다** — 빨강이 흔해지면 진짜 빨강이 안 보인다 (사용자 확정).
-#   그렇다고 조용히 넘어가지도 않는다: 부트스트랩이 **왜 안 돌았나**를 그 자리에서 말한다.
-# ⚠ 여기서 넘긴 뒤 저쪽이 저장소·자리·키·배포를 든다. 런타임을 두 번 깔지 않는다 —
-#   저쪽 런타임 칸은 **확인만** 하고, 무엇을 깔지는 이 파일 하나가 든다.
+#   그렇다고 조용히 넘어가지도 않는다: 훅이 **왜 안 돌았나**를 그 자리에서 말한다.
+# ⚠ **여기서 넘긴 뒤 저쪽이 드는 것은 사람에게 딸린 것뿐이다** — git 신원 · 형제 저장소 · 개인 키 ·
+#   규범·룰·메모리 배포. 회사 키·주소·프록시·Codex/Gemini 설정·확장·CLI 는 위 칸들이 이미 세웠다.
+#   런타임을 두 번 깔지 않는다 — 무엇을 깔지는 이 파일 하나가 든다.
 Write-Host ''
 Write-Host '[8/8] 개인 값 저장소' -ForegroundColor Cyan
-# ⚠ **밖에서 선언한다.** 이 칸이 통째로 안 도는 갈래(git 이 없다 · 주소가 없다)가 있고,
-#   아래 검증이 이 값을 읽는다 — 안 선언하면 그 자리에서 「없는 변수」가 거짓으로 읽힌다.
-$handedOff = $false
 $repoUrl = Read-Directive $EnvFile 'config-repo'
 if (-not $repoUrl) {
   Write-Host '  건너뜀 — install.env 에 #config-repo 가 없다'
@@ -1602,11 +1591,9 @@ if (-not $repoUrl) {
   $Fails.Add('개인 값 저장소 (git 이 안 닿는다)')
 } else {
   # ⚠ **자리를 고르는 칸을 두지 않는다.** 옛 판은 `#config-root` 를 읽었는데, **읽는 자가
-  #   여기 하나뿐이었다** — 넘겨받는 `bootstrap-vdi.sh` 는 `$HOME/repos` 를 제 몸통에 박고
-  #   그 칸을 안 본다. 그래서 그것을 쓰면 설치는 지정한 데로 clone 하고 부트스트랩은
-  #   `~/repos` 로 형제 저장소를 받은 뒤, 거기 없는 `~/repos/claude-config/deploy.ps1` 을
-  #   찾다 죽는다. **쓰는 순간 저장소가 두 갈래로 갈리는 칸**이라 걷어냈다 —
-  #   문서에도 없어서 아무도 모르는 채로 있었다.
+  #   여기 하나뿐이었다** — 넘겨받는 쪽은 형제 저장소를 제 선언의 `ROOT`(`$HOME/repos`)로
+  #   받고 그 칸을 안 본다. 그래서 그것을 쓰면 설치는 지정한 데로 clone 하고 저쪽은 `~/repos`
+  #   에서 찾다 죽는다. **쓰는 순간 저장소가 두 갈래로 갈리는 칸**이라 걷어냈다.
   #   자리를 바꿔야 하면 고칠 자리는 둘이다: 여기와 저쪽 `ROOT`. 한쪽만 고치면 안 선다.
   $root = Join-Path $env:USERPROFILE 'repos'
   New-Item -ItemType Directory -Path $root -Force | Out-Null
@@ -1634,7 +1621,7 @@ if (-not $repoUrl) {
       Write-Host "  있음 — pull ($dest)"
       $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
       # ⚠ **pull 이 져도 실패로 세지 않는다.** 저장소는 이미 있어 넘길 자리가 살아 있다 —
-      #   망이 끊긴 VDI 에서 옛 판으로라도 부트스트랩이 도는 것이 안 도는 것보다 낫다.
+      #   망이 끊긴 VDI 에서 옛 판으로라도 훅이 도는 것이 안 도는 것보다 낫다.
       #   다만 조용히 넘어가지는 않는다: 옛 판으로 간다는 사실을 말한다.
       $got += $dest
       if ($rc -ne 0) {
@@ -1669,21 +1656,23 @@ if (-not $repoUrl) {
   #   사람이 그 순서를 기억해야 하고, 기억해야 하는 것은 그 순간에 안 걸린다. 받아 온
   #   것들 중 **그 이름의 파일을 든 첫 저장소**가 넘길 자리다.
   # ⚠ **여럿이 들고 있으면 하나만 부르고 나머지를 이름으로 말한다.** 둘을 잇달아 부르면
-  #   뒤엣것이 앞엣것의 키·설정을 덮는데 그 순서는 사람이 정한 것이 아니다.
-  $bootRepos = @($got | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'bootstrap-vdi.sh') })
+  #   뒤엣것이 앞엣것의 키·설정을 덮는데 그 순서는 사람이 정한 것이 아니다. 훅은 제 자리에서
+  #   전역 저장소를 찾아 형제까지 밀므로, 하나만 불러도 나머지가 선다.
+  $hookRel = '.claude\hooks\session-start.sh'
+  $bootRepos = @($got | Where-Object { Test-Path -LiteralPath (Join-Path $_ $hookRel) })
   $dest = $bootRepos | Select-Object -First 1
-  $boot = if ($dest) { Join-Path $dest 'bootstrap-vdi.sh' } else { $null }
+  $boot = if ($dest) { Join-Path $dest $hookRel } else { $null }
 
   if (-not $got) {
     # ⚠ 실패는 위에서 까닭을 대고 이미 셌다 — 여기서 또 세면 **한 사고가 둘로 보고된다.**
-    #   대신 사슬이 왜 끊겼는지는 말한다: 안 말하면 부트스트랩이 돈 줄 알 수 있다.
-    Write-Host '  넘길 자리가 없어 부트스트랩을 안 부른다'
+    #   대신 사슬이 왜 끊겼는지는 말한다: 안 말하면 훅이 돈 줄 알 수 있다.
+    Write-Host '  넘길 자리가 없어 훅을 안 부른다'
   } elseif (-not $boot) {
     # ⚠ **실패가 아니다.** 저장소는 왔고(위에서 재고 왔다) 그것이 목적인 사람이 있다.
-    #   대신 **안 돈 것을 이름으로 말한다** — 부트스트랩을 기대한 사람이 조용히 속지 않게.
+    #   대신 **안 돈 것을 이름으로 말한다** — 훅을 기대한 사람이 조용히 속지 않게.
     Write-Host "  받아 뒀다 — $($got.Count)개" -ForegroundColor Green
     $got | ForEach-Object { Write-Host "     $_" }
-    Write-Host '    어느 뿌리에도 bootstrap-vdi.sh 가 없어 부트스트랩은 안 돌았다.'
+    Write-Host "    어느 뿌리에도 $hookRel 가 없어 훅은 안 돌았다."
     Write-Host '    자동화까지 원하면 ~/.claude/seeds/config-repo/ 를 복사해 그 이름으로 둔다.'
   } elseif (-not $bash) {
     Write-Host '  ! Git Bash 를 못 찾았다' -ForegroundColor Red
@@ -1694,16 +1683,15 @@ if (-not $repoUrl) {
       $got | ForEach-Object { Write-Host "     $_" }
     }
     if ($bootRepos.Count -gt 1) {
-      Write-Host "  ! bootstrap-vdi.sh 를 든 저장소가 $($bootRepos.Count)개다 — 첫 것만 부른다" -ForegroundColor Yellow
+      Write-Host "  ! 훅을 든 저장소가 $($bootRepos.Count)개다 — 첫 것만 부른다" -ForegroundColor Yellow
       $bootRepos | Select-Object -Skip 1 | ForEach-Object { Write-Host "     안 부른 것: $_" }
     }
-    Write-Host "  부트스트랩으로 넘긴다 — $dest" -ForegroundColor Green
+    Write-Host "  훅으로 넘긴다 — $boot --install" -ForegroundColor Green
     Write-Host ''
-    & $bash ($boot -replace '\\','/')
-    # ⚠ **판정을 여기서 세운다.** 아래 검증이 「키를 저쪽이 든다」로 넘어가려면 저쪽이
-    #   실제로 돌았어야 한다 — 주소를 넣었다는 사실만으로는 아무것도 안 선다.
-    $handedOff = $true
-    if ($LASTEXITCODE -ne 0) { $Fails.Add("부트스트랩 (exit $LASTEXITCODE)") }
+    # ⚠ `--install` 은 리모트 Setup script 가 부르는 것과 같은 갈래다 — 지문을 안 보고 깐다.
+    #   맨바닥 VDI 의 첫 판(형제 저장소 clone)은 세션 훅의 시간 한도가 아니라 여기서 진다.
+    & $bash ($boot -replace '\\','/') --install
+    if ($LASTEXITCODE -ne 0) { $Fails.Add("훅 --install (exit $LASTEXITCODE)") }
   }
 }
 
@@ -1743,18 +1731,10 @@ foreach ($a in $envAssets) {
 }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
-# ⚠ **「넘겼다」가 아니라 「넘어갔다」로 가른다.** 옛 판은 `$handsOff`(= 주소를 넣었나)만 보고
-#   키 검사를 통째로 건너뛰었다. 그런데 저장소 뿌리에 부트스트랩이 없으면 **아무것도 안 넘어가고**
-#   위 칸도 키를 안 물어, **키가 어디에도 안 심긴 채 초록으로 끝난다** — 부재가 통과로 읽히는
-#   바로 그 자리다. 「받아 두기만 하는 것도 정당한 결과」로 갈래를 넓히면서 난 구멍이다.
-#   그래서 **부트스트랩이 실제로 돌았을 때만** 저쪽에 맡긴다.
-if ($handsOff -and $handedOff) {
-  Write-Host '  (키와 주소는 넘겨받은 저장소가 든다 — 여기서 안 잰다)'
-} elseif ($handsOff -and -not $handedOff) {
-  Write-Host '  ! 저장소를 넣었지만 부트스트랩이 안 돌아, 키를 심은 자가 없다' -ForegroundColor Red
-  Write-Host '    저장소 뿌리에 bootstrap-vdi.sh 를 두거나, 칸을 비우고 다시 눌러 키를 직접 넣는다.'
-  $Fails.Add('키 (넘겨받을 자가 없었다)')
-} elseif ($useGateway) {
+# ⚠ **키는 `#config-repo` 가 있어도 여기서 잰다.** 옛 판은 그 판에서 키 검사를 저쪽에 맡겼는데,
+#   저장소에 부트스트랩이 없으면 **키가 어디에도 안 심긴 채 초록으로 끝났다** — 부재가 통과로
+#   읽히는 자리였다. 이제 심는 자가 이 파일 하나라 재는 자도 하나다.
+if ($useGateway) {
   foreach ($v in $Vars) {
     if (-not $v.Gateway) { continue }
     $checks += @{ Name = $v.Name; Ok = [bool]$planted[$v.Name] }
@@ -1832,10 +1812,10 @@ if (-not $WithPersonalConfig) {
 #   앞문이다. 자리를 모르면 잰 적이 없다는 뜻이라 데스크탑도 안 깔렸으므로 VS Code 로 간다.
 #   **위 2′ 칸이 데스크탑을 깔지 가른 잣대가 바로 이것이다** — 깔 때 쓴 자로 열어야 둘이 안 어긋난다.
 # ⚠ **`$useGateway` 를 쓰면 안 된다 — 그 값은 자리가 아니다.** 옛 판이 그걸 썼다가 졌다:
-#   값 저장소로 넘기는 갈래(`#config-repo`)에서는 자리를 재는 블록을 통째로 건너뛰므로
-#   **사외인데도 `$useGateway` 가 참으로 남는다.** 그 값의 뜻은 「키를 저쪽이 든다」이지
-#   「사내다」가 아니다. 실측 2026-09-11(집 PC): `자리 = 사외` 와 `데스크탑 앱 · 있음` 이 나란히
-#   찍힌 판에서 VS Code 가 떴다 — **한 판정을 두 자가 다르게 읽은 자리다.**
+#   그때는 `#config-repo` 갈래가 자리를 재는 블록을 통째로 건너뛰어 **사외인데도 `$useGateway` 가
+#   참으로 남았다.** 실측 2026-09-11(집 PC): `자리 = 사외` 와 `데스크탑 앱 · 있음` 이 나란히
+#   찍힌 판에서 VS Code 가 떴다 — **한 판정을 두 자가 다르게 읽은 자리다.** 그 갈래는 이제
+#   없지만 「사내인가」와 「게이트웨이를 쓰나」는 여전히 다른 물음이라 자는 그대로 둔다.
 #   데스크탑이 안 깔린 자리(값 파일에 `#desktop-app` 이 없다)는 VS Code 로 떨어진다 —
 #   없는 것을 열려다 빈손으로 끝내지 않는다.
 # ⚠ **못 열어도 실패로 안 센다.** 설치는 이미 선 것이고 창은 사람이 손으로도 연다. 여기서
@@ -1952,11 +1932,11 @@ try {
 if ($NoLaunch) {
   Write-Host '  창은 안 띄운다 (-NoLaunch)'
 } else {
-  # ⚠ **우리가 심은 자가 아닌 갈래가 있다.** 값 저장소로 넘긴 판에서는 부트스트랩이 심었고
+  # ⚠ **우리가 심은 자가 아닌 갈래가 있다.** 값 저장소로 넘긴 판에서는 훅이 개인 키를 심었고
   #   그 값은 **레지스트리에만** 있다 — 이 창의 환경에는 없다. 그대로 자식을 내면 우리가
   #   **낡은 환경을 물려주는** 꼴이 되어, 사람이 탐색기에서 직접 여는 것보다 나빠진다.
   #   그래서 띄우기 직전에 **새 창이 볼 자리**를 이 창으로 당긴다 — 검증 칸이 이미 읽어 둔
-  #   값이고, 부트스트랩이 끝난 뒤에 읽은 것이라 저쪽이 심은 것까지 든다.
+  #   값이고, 훅이 끝난 뒤에 읽은 것이라 저쪽이 심은 것까지 든다.
   # ⚠ **PATH 만은 안 당긴다.** 그 이름은 기계 값과 사용자 값이 합쳐져 서는 자리라, 사용자
   #   쪽만 덮으면 이 창이 여태 태운 배선(`Update-RuntimePath`)이 통째로 날아간다.
   foreach ($k in $planted.Keys) {
@@ -1988,8 +1968,8 @@ if ($NoLaunch) {
     #     못 본다. `--new-window` 도 창만 새로 낼 뿐 프로세스를 안 가르고, 가르는 레버인
     #     `--user-data-dir` 는 설정·상태가 통째로 딴 자리가 되어 처음 깐 것처럼 뜬다 —
     #     키 하나 물리자고 치를 값이 아니다.
-    #   · **선언** — **이 설치가 끝이 아니다.** 뒤이어 부트스트랩이 `deploy.ps1` 을 부르고
-    #     거기서 MCP 서버가 등록되고 세션 훅이 심긴다. 돌던 앱은 그 선언을 **뜰 때 한 번 읽고
+    #   · **선언** — **이 설치가 끝이 아니다.** 뒤이어 설정 저장소의 훅이 규범·MCP 선언·세션
+    #     훅을 심는다. 돌던 앱은 그 선언을 **뜰 때 한 번 읽고
     #     말았다.** 그래서 데스크탑도 닫을 까닭이 선다 — 게이트웨이 주소를 안 읽는 것과는
     #     다른 축이다.
     # ⚠ **그래서 창을 앞으로 불러 주지도 않는다.** 트레이에 내려간 것을 다시 띄우면 창이

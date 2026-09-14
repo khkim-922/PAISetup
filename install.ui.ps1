@@ -109,22 +109,19 @@ function Get-Directive([string]$Key) {
   return $null
 }
 
-# `#config-repo` 가 있으면 값의 진본이 저 저장소다 — 여기서 물으면 같은 키가 두 자리에 산다.
-$handsOff = [bool](Get-Directive 'config-repo')
-
 # ⚠ **자리가 값보다 먼저다.** 배포본은 사내용으로 뽑히므로 사내 값을 들고 오는데, 그 폴더를
 #   사외 PC 에서 돌리는 일이 실제로 난다 — 그때 주소와 키를 물으면 **안 쓸 것을 넣으라고
 #   하는 꼴**이고, 넣으면 안 닿는 곳을 가리킨 채 「설정됐다」로 보인다.
 #   ⚠ 이름이 아니라 **닿음**으로 가른다: DNS 는 사외에서도 사내 IP 를 풀어 준다(결정 0026).
 $offsite = $false
 $probe = Get-Directive 'site-probe'
-if ($probe -and -not $handsOff -and ($probe -match '^(.+):(\d+)$')) {
+if ($probe -and ($probe -match '^(.+):(\d+)$')) {
   $c = New-Object Net.Sockets.TcpClient
   try { $offsite = -not ($c.ConnectAsync($Matches[1], [int]$Matches[2]).Wait(3000) -and $c.Connected) }
   catch { $offsite = $true } finally { $c.Dispose() }
 }
 $gV = New-Object Windows.Forms.GroupBox
-$noAsk = $handsOff -or $offsite
+$noAsk = $offsite
 $gV.Text = if ($noAsk) { '키와 주소' } elseif ($urlPreset) { 'API 키' } else { '게이트웨이 (사내만)' }
 $gV.Location = New-Object Drawing.Point(16, 62)
 $gV.Size = New-Object Drawing.Size(592, 118)
@@ -136,8 +133,7 @@ $lUrl.Size = New-Object Drawing.Size(110, 20); $gV.Controls.Add($lUrl)
 
 if ($noAsk) {
   $vUrl = New-Object Windows.Forms.Label
-  $vUrl.Text = if ($handsOff) { '#config-repo 가 가리키는 저장소가 든다 — 여기서 안 묻는다' }
-               else { "사외입니다 ($probe 안 닿음) — 게이트웨이를 안 씁니다" }
+  $vUrl.Text = "사외입니다 ($probe 안 닿음) — 게이트웨이를 안 씁니다"
   $vUrl.Location = New-Object Drawing.Point(128, 28)
   $vUrl.Size = New-Object Drawing.Size(444, 20)
   $vUrl.ForeColor = [Drawing.Color]::DimGray
@@ -177,8 +173,7 @@ $lHint.Size = New-Object Drawing.Size(444, 20)
 $lHint.ForeColor = [Drawing.Color]::DimGray
 # ⚠ **사외에서는 넣을 것이 없다.** 게이트웨이를 안 타고 구독 로그인으로 서기 때문이다 —
 #   그런데 옛 판은 둘을 필수로 물어, 안 쓰는 자리에서도 넣으라 하고 안 넣으면 막았다.
-$lHint.Text = if ($handsOff)  { '값은 저 저장소가 듭니다 — 넣을 것이 없습니다.' }
-              elseif ($offsite) { '구독 로그인으로 섭니다 — 설치 뒤 claude auth login.' }
+$lHint.Text = if ($offsite) { '구독 로그인으로 섭니다 — 설치 뒤 claude auth login.' }
               elseif ($urlPreset) { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' }
               else { '사내면 주소와 키를 넣습니다. 사외면 둘 다 비워 두세요 — 구독 로그인으로 섭니다.' }
 $gV.Controls.Add($lHint)
@@ -214,12 +209,14 @@ $cUpg.Checked = -not $NoUpgrade
 $gO.Controls.Add($cUpg)
 
 # ── 개인 값 저장소 (선택) ───────────────────────────────────────────────────────
-# ⚠ **넣으면 그 저장소가 값의 진본이 된다.** 받아서 부트스트랩으로 넘기고, 키·자리·배포가
-#   거기서 마저 선다 — 그래서 위 키 칸이 꺼진다: 같은 키가 두 자리에 살면 안 된다.
+# ⚠ **넣어도 위 키 칸은 그대로 산다.** 설치는 자리만 보고 전부 세우고, 저장소는 **그 뒤에** 받아
+#   뿌리의 SessionStart 훅을 `--install` 로 부른다 — 그쪽이 드는 것은 사람에게 딸린 것(git 신원 ·
+#   형제 저장소 · 개인 키 · 배포)뿐이다. 옛 판은 이 칸이 차면 키 칸을 껐는데, 저장소에 부트스트랩이
+#   없는 사람은 키가 어디에도 안 심겼다.
 # ⚠ **여러 개를 빈칸으로 가른다.** 옛 판은 하나만 받았고 까닭이 「나머지는 그 저장소의
-#   부트스트랩이 데려온다」였다 — 그런데 그건 **만든 사람의 부트스트랩 사정**이지 받는 사람의
+#   훅이 데려온다」였다 — 그런데 그건 **만든 사람의 훅 사정**이지 받는 사람의
 #   사정이 아니다. 남의 저장소에 그 목록이 없으면 여기 적을 수밖에 없다.
-#   ⚠ 여럿을 든 사람이 **제 부트스트랩에 목록을 들었으면** 여기는 그 하나만 적는 것이 맞다 —
+#   ⚠ 여럿을 든 사람이 **제 훅 선언에 목록을 들었으면** 여기는 그 하나만 적는 것이 맞다 —
 #     두 자리에 적으면 저장소가 늘 때 한쪽이 낡는다. 어느 쪽이 맞나는 그 사람이 안다.
 # ⚠ **배포본에는 이 값이 안 실려 온다.** 남에게 갈 파일에 내 저장소 주소를 박지 않기 때문이다.
 #   그러니 이 칸이 비어 있는 것이 받는 사람에게는 정상이다.
@@ -242,11 +239,10 @@ $lRepo.ForeColor = [Drawing.Color]::DimGray
 $lRepo.Text = '비우면 이 폴더 값으로만 섭니다. 여러 개를 넣으면 다 받습니다.'
 $gR.Controls.Add($lRepo)
 
-# 넣는 순간 위 키 칸이 뜻을 잃는다 — 그것을 화면이 바로 보여준다
+# 넣어도 위 키 칸은 그대로 산다 — 무엇이 더 서는지만 화면이 보여준다
 $syncRepo = {
   $on = [bool]$tRepo.Text.Trim()
-  $gV.Enabled = -not $on
-  $lRepo.Text = if ($on) { '받아서 bootstrap-vdi.sh 를 든 저장소에 넘깁니다 — 위 칸은 안 씁니다.' }
+  $lRepo.Text = if ($on) { '다 세운 뒤 받아서, 뿌리의 SessionStart 훅을 --install 로 부릅니다.' }
                 else { '비우면 이 폴더 값으로만 섭니다. 여러 개를 넣으면 다 받습니다.' }
 }
 $tRepo.Add_TextChanged($syncRepo)
@@ -268,11 +264,13 @@ $tipText = @'
 넣으면 ~/repos/<저장소 이름> 으로 받습니다. 여러 개는 빈칸으로 가릅니다.
 
 받은 뒤 갈래가 둘이고 둘 다 정당합니다. 가르는 자는 파일 이름 하나입니다 —
-받아온 저장소 뿌리의 bootstrap-vdi.sh:
+받아온 저장소 뿌리의 .claude/hooks/session-start.sh (Claude Code 의 SessionStart 훅):
 
-  · 든 저장소가 있으면  그것에 넘깁니다. 그 뒤는 그 저장소가 듭니다
-                        (git 신원 · 형제 저장소 · 키 · 로그인 · 배포)
+  · 든 저장소가 있으면  --install 로 부릅니다. 그 뒤는 그 저장소가 듭니다
+                        (git 신원 · 형제 저장소 · 개인 키 · 규범·룰·메모리 배포)
   · 어디에도 없으면      받아 둔 것으로 끝냅니다. 저장소만 들고 다니려면 그것으로 됩니다
+
+키·주소·프록시·확장·CLI 는 이 칸과 무관하게 위에서 다 섭니다.
 
 여럿이 그 파일을 들고 있으면 첫 것만 부르고 나머지는 이름을 찍습니다.
 
@@ -338,10 +336,9 @@ function Add-Log([string]$line) {
 $bGo.Add_Click({
   # ⚠ **비어 있는 것은 안 막는다** — 사외는 둘 다 비우는 것이 맞는 답이다. 막는 것은
   #   **반만 넣은 것** 하나다: 한쪽만 있으면 게이트웨이가 안 서는데 화면은 멀쩡해 보인다.
-  $viaRepo = [bool]$tRepo.Text.Trim()
-  $url = if ($noAsk -or $viaRepo) { '' } elseif ($tUrl) { $tUrl.Text.Trim() } else { $urlPreset }
-  $key = if ($tKey -and -not $viaRepo) { $tKey.Text.Trim() } else { '' }
-  if (-not $noAsk -and -not $viaRepo -and (($url -and -not $key) -or ($key -and -not $url))) {
+  $url = if ($noAsk) { '' } elseif ($tUrl) { $tUrl.Text.Trim() } else { $urlPreset }
+  $key = if ($tKey) { $tKey.Text.Trim() } else { '' }
+  if (-not $noAsk -and (($url -and -not $key) -or ($key -and -not $url))) {
     [Windows.Forms.MessageBox]::Show(
       '게이트웨이 주소와 API 키는 둘 다 넣거나 둘 다 비워야 합니다.' + [Environment]::NewLine +
       '사외면 둘 다 비워 두세요 — 구독 로그인으로 섭니다.',
@@ -364,7 +361,7 @@ $bGo.Add_Click({
   #   통로를 따로 내면 두 갈래가 서로 다른 코드를 탄다. 끝나면 지운다.
   $script:tmpEnv = [IO.Path]::Combine([IO.Path]::GetTempPath(), "claude-setup-$PID.env")
   $lines = New-Object System.Collections.Generic.List[string]
-  if (-not $noAsk -and -not $viaRepo) {
+  if (-not $noAsk) {
     foreach ($k in $Preset.Keys) {
       if ($k -in @('ANTHROPIC_BASE_URL','ANTHROPIC_AUTH_TOKEN')) { continue }
       if ($Preset[$k]) { $lines.Add("$k=$($Preset[$k])") }
