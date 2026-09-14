@@ -3,14 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>설정 저장소란? 만드는 법</title>
+<title>내 저장소 받기 · 설정 저장소 만들기</title>
 <!--
   설치 창의 「내 저장소 받기」 칸 옆 링크가 여는 한 장짜리 안내다.
+  읽는 사람은 Claude Code 를 처음 까는 동료다 — 이 저장소 안에서 쓰는 말(선언·몸통·씨앗·
+  슬러그·훅)을 쓰지 않는다. 그 말이 필요한 사람은 견본 폴더의 README 로 간다.
 
-  ⚠ 밖으로 나가는 주소가 한 자도 없다 — 글꼴·스타일·스크립트를 다 안에 든다.
-    사내망에서도 더블클릭 한 번에 떠야 하기 때문이다. 링크 하나만 더해도
-    그 자리가 회사 안에서 조용히 빈칸이 된다.
-  ⚠ 진본은 claude-config 의 docs/config-repo-howto.html 이고, 배포본 뿌리로
+  ⚠ 밖으로 나가는 주소가 한 자도 없다 — 글꼴·스타일을 다 안에 든다. 사내망에서도
+    더블클릭 한 번에 떠야 하기 때문이다.
+  ⚠ 진본은 claude-config 의 docs/config-repo-howto.html 이고, 배포본 뿌리와 씨앗 폴더로
     나가는 것은 뽑기(dist.manifest.conf)가 든다 — 저쪽에서 고치지 않는다.
 -->
 <style>
@@ -48,6 +49,7 @@
                  'Noto Sans KR', 'Noto Sans CJK KR', monospace;
   }
   code { background: var(--mark); padding: 1px 5px; border-radius: 3px; font-size: 0.92em; }
+  pre  { background: var(--mark); padding: 12px 14px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
   h1 { font-size: 25px; margin: 0 0 6px; letter-spacing: -0.01em; }
   h2 {
     font-size: 18px; margin: 44px 0 12px; padding-top: 18px;
@@ -77,146 +79,107 @@
 </head>
 <body>
 
-<h1>설정 저장소란? 만드는 법</h1>
-<p class="lead">설치 창의 「내 저장소 받기」 칸에 대한 안내입니다.</p>
+<h1>내 저장소 받기 · 설정 저장소 만들기</h1>
+<p class="lead">설치 창의 「내 저장소 받기」 칸 옆 링크가 여는 안내입니다.</p>
 
-<h2>이 칸이 하는 일 — 받아 둡니다</h2>
-
+<h2>1. 이 칸은 무엇을 하나</h2>
 <p>
-  칸에 git 주소를 넣으면 설치가 <b>맨 마지막에</b> 그 저장소를 받습니다. 받는 자리는
-  <code>~/repos/&lt;저장소 이름&gt;</code> 입니다. 여러 개를 받으려면 주소 사이를
-  <b>빈칸으로 가릅니다</b> — 주소에는 빈칸이 없으니 그것이 가르는 자입니다.
+  git 저장소 주소를 넣으면, 설치가 다 끝난 뒤 그 저장소를 내 PC 의
+  <code>C:\Users\&lt;내 이름&gt;\repos\&lt;저장소 이름&gt;</code> 에 받아 둡니다(git clone).
+  그게 전부입니다. 코드 저장소든 문서 저장소든 아무거나 됩니다.
 </p>
+<ul>
+  <li>여러 개를 받으려면 주소 사이를 빈칸으로 띄웁니다.</li>
+  <li>비워 두어도 됩니다. 프로그램·확장·CLI·회사 키는 이 칸과 상관없이 다 깔립니다.</li>
+  <li>비공개 저장소면 받을 때 GitHub 로그인 창이 한 번 뜹니다.</li>
+</ul>
 
 <div class="keep">
-  <p style="margin:0">
-    <span class="warn">비워 두는 것이 기본이고 맞는 답입니다.</span>
-    프로그램 · 확장 · CLI · 회사 키 · 주소 · 프록시 · 사내 문서 · 씨앗은
-    <b>이 칸과 무관하게 다 깔립니다.</b> 이 칸을 채워도 위의 키 칸은 그대로 삽니다 —
-    회사 키는 설치가 심고, 저장소는 개인 것만 듭니다.
-  </p>
+  <p><span class="warn">대부분은 여기서 끝입니다.</span> 아래 「설정 저장소」는
+  여러 PC 를 오가며 Claude Code 설정을 들고 다니려는 사람만 필요합니다. PC 하나만 쓰면 안 봐도 됩니다.</p>
 </div>
 
+<h2>2. 「설정 저장소」란</h2>
 <p>
-  받아 둔 뒤 갈래가 둘이고 <b>둘 다 정당합니다.</b> 가르는 자는 파일 이름 하나 —
-  받아온 저장소 뿌리의 <code>.claude/hooks/session-start.sh</code>(Claude Code 의 SessionStart 훅)입니다.
+  Claude Code 는 내 설정을 홈 폴더(<code>C:\Users\&lt;내 이름&gt;\.claude\</code>)에 둡니다.
+  작업 규칙 문서, 스킬, 프로젝트별 메모리, 그리고 개인 API 키나 git 이름·메일 같은 것들입니다.
+  PC 가 둘 이상이면 이것들이 PC 마다 따로 놀고, 매번 로그인할 때 초기화되는 VDI 에서는 아예 날아갑니다.
+</p>
+<p>
+  <b>설정 저장소</b>는 그 설정들을 git 저장소 하나에 넣어 두고, 새 PC 에서 설치 한 번으로
+  되살아나게 하는 방법입니다. 설치기는 받아온 저장소의 뿌리에
+  <code>.claude\hooks\session-start.sh</code> 파일이 있으면 「이건 설정 저장소구나」 하고
+  그 파일을 실행합니다. 그 파일이 나머지를 알아서 합니다.
 </p>
 
+<h2>3. 설정 저장소를 넣으면 무엇이 더 일어나나</h2>
 <table>
-  <tr><th style="width:34%">그 이름의 파일을</th><th>설치가 하는 일</th></tr>
-  <tr>
-    <td><b>아무도 안 들었다</b></td>
-    <td>받아 두고 끝냅니다. 저장소만 들고 다니려면 이것이 전부입니다</td>
-  </tr>
-  <tr>
-    <td><b>든 저장소가 있다</b></td>
-    <td><code>--install</code> 로 부르고 <b>그 뒤는 그 저장소가 듭니다</b>
-        — 아래 「설치 뒤에 무엇이 더 일어나나」</td>
-  </tr>
+  <tr><th>무엇</th><th>어떻게</th></tr>
+  <tr><td>git 이름·메일</td><td>저장소에 적어 둔 값으로 <code>git config --global</code> 을 맞춥니다</td></tr>
+  <tr><td>같이 쓰는 저장소들</td><td>저장소에 적어 둔 목록을 <code>repos\</code> 아래에 받아 둡니다(이미 있으면 건너뜁니다)</td></tr>
+  <tr><td>개인 API 키</td><td>저장소의 <code>secrets.env</code> 에 적어 둔 키를 사용자 환경변수로 심습니다(Tavily · GitHub 토큰 등)</td></tr>
+  <tr><td>Claude Code 홈 설정</td><td>저장소의 <code>vdi-home-settings.json</code> 을 홈 설정으로 깝니다</td></tr>
+  <tr><td>규칙 문서·스킬·메모리</td><td>저장소의 <code>deploy.ps1</code> 이 홈과 각 저장소로 뿌립니다</td></tr>
 </table>
-
 <p>
-  여럿이 그 파일을 들고 있으면 <b>첫 것만 부르고 나머지는 이름을 찍습니다.</b>
+  이 일들은 그 뒤로도 Claude Code 세션을 열 때마다 조용히 다시 확인됩니다. 저장소에서 키를 바꾸면
+  다음 세션이 새 값을 심고, 규칙 문서를 고치면 다음 세션이 다시 뿌립니다.
 </p>
 
-<h2>설정 저장소란 무엇인가</h2>
-
+<h2>4. 설정 저장소 만드는 법</h2>
 <p>
-  <b>여러 PC 를 오가는 사람의 것입니다.</b> 집 · 회사 · VDI 를 오가면서 제 규범 · 룰 · 스킬 ·
-  메모리 · 개인 키를 저장소 하나로 들고 다니려는 사람 — 그 사람이 새 기계에 앉았을 때
-  손이 저절로 가게 하려는 것입니다.
+  맨바닥에서 만들지 않습니다. 설치가 <b>견본 폴더</b>를 깔아 둡니다:
+  <code>C:\Users\&lt;내 이름&gt;\.claude\seeds\config-repo\</code>.
+  그 안에 필요한 파일이 다 들어 있고, 고칠 것은 내 값을 적는 파일 둘뿐입니다.
 </p>
-
-<div class="keep">
-  <p style="margin:0">
-    <span class="warn">대부분은 필요 없습니다.</span>
-    PC 하나만 쓰거나, 설정을 들고 다닐 일이 없으면 이 칸은 비워 두십시오.
-    빈 칸이라고 덜 깔리는 것은 없습니다.
-  </p>
-</div>
-
-<p>
-  그냥 코드 저장소를 받아 두려는 것이라면 그것도 이 칸이 합니다 — 그때는
-  「받아 두고 끝」 갈래를 타고, 아래 「만드는 법」 은 안 봐도 됩니다.
-</p>
-
-<h2>설치 뒤에 무엇이 더 일어나나 — 훅이 있을 때만</h2>
-
-<p>
-  받아온 저장소 뿌리에 <code>.claude/hooks/session-start.sh</code> 가 있으면, 설치가 그것을
-  Git Bash 로 <code>--install</code> 로 부릅니다. 그 훅은 <b>사람에게 딸린 것</b>만 세웁니다.
-</p>
-
-<table>
-  <tr><th style="width:28%">칸</th><th>무엇을 하나</th></tr>
-  <tr><td>git 신원</td><td>선언의 이름 · 메일 · 줄끝 · 긴 경로 · 자격 관리자. 빈 값은 안 심습니다</td></tr>
-  <tr><td>형제 저장소</td><td>선언의 목록 중 <b>없는 것만</b> clone</td></tr>
-  <tr><td>슬러그 폴더</td><td>배포가 메모리를 넣을 자리를 미리 만듭니다</td></tr>
-  <tr><td>개인 키</td><td><code>secrets.env</code> 를 사용자 환경변수로. 값이 같으면 건너뜁니다</td></tr>
-  <tr><td>홈 개인 설정</td><td><code>vdi-home-settings.json</code> — 없으면 깔고, 선언이 그러라면 병합해 덮습니다</td></tr>
-  <tr><td>배포</td><td><code>deploy.ps1 -Yes</code> 에 넘기고 <b>그 종료코드로 끝납니다</b></td></tr>
-</table>
-
-<p>
-  앞 다섯은 <b>선언과 파일이 있을 때만</b> 실제로 일합니다 — 없으면 그 칸이 조용히 넘어갑니다.
-  그리고 이 훅은 세션이 열릴 때마다도 돕니다: 도구를 재고, 가벼운 것(git 신원 · 슬러그 ·
-  값이 바뀐 개인 키)은 매 세션 다시 밉니다.
-</p>
-
-<h2>만드는 법 — 일곱 걸음</h2>
-
-<p>
-  <b>맨바닥에서 짜지 않습니다.</b> 설치가 <code>~/.claude/seeds/config-repo/</code> 에
-  <b>복사해서 출발하는 골든</b>을 깔아 둡니다. 훅 · <code>deploy.ps1</code> ·
-  커밋 게이트 한 벌 · 그것들이 읽는 선언이 <b>돌아가는 한 벌</b>로 들어 있습니다.
-</p>
-
 <ol>
-  <li><b>저장소를 하나 만듭니다</b> — 이름은 아무래도 됩니다. 비공개를 권합니다</li>
   <li>
-    <b>씨앗 폴더를 그 뿌리에 통째로 복사합니다.</b>
-    <span class="warn">⚠ <code>.claude/</code> 는 숨은 폴더라 그냥 끌면 빠집니다</span> —
-    <code>cp -r ~/.claude/seeds/config-repo/. &lt;새 저장소&gt;/</code> 처럼 <b>점까지</b> 담아
-    복사합니다. 빠뜨리면 훅이 안 걸리고, 그 부재는 세션을 열어 봐야 드러납니다
-  </li>
-  <li><b><code>bootstrap.conf</code> 를 고칩니다</b> — git 이름 · 메일, 들고 다닐 저장소 목록, 받을 주소 꼴</li>
-  <li>
-    <b><code>deploy.targets.d/example-pc.conf</code> 를 제 PC 것으로 고치고 이름을 바꿉니다.</b>
-    그리고 견본은 지웁니다 — 안 지워도 없는 경로는 조용히 건너뛰지만, 남으면 어느 쪽이 제
-    것인지 매번 다시 읽게 됩니다
+    <b>GitHub 에 비공개 저장소를 하나 만듭니다.</b> 이름은 아무거나 됩니다.
+    개인 키가 들어가므로 반드시 비공개(Private)로 둡니다.
   </li>
   <li>
-    <b>훅과 <code>deploy.ps1</code> 은 안 고칩니다</b> — 값을 몸통에 박으면 그 파일이 당신 것이
-    되어, 다음에 새 판을 당길 때 그 자리에서 뭅니다. <b>고칠 자리는 늘 선언입니다</b>
+    <b>견본 폴더의 내용을 그 저장소 폴더에 통째로 복사합니다.</b>
+    <span class="warn">숨김 폴더 <code>.claude</code> 와 <code>.githooks</code> 도 같이 복사해야 합니다.</span>
+    탐색기에서 끌어다 놓으면 숨김 폴더가 빠지기 쉬우니, 터미널에서 이렇게 하는 편이 안전합니다.
+<pre>cp -r ~/.claude/seeds/config-repo/. ~/repos/&lt;새 저장소&gt;/</pre>
   </li>
-  <li><b>커밋하고 올립니다</b></li>
-  <li><b>설치 창의 이 칸에 그 주소를 넣고</b> [설치 시작] 을 누릅니다</li>
+  <li>
+    <b><code>bootstrap.conf</code> 를 열어 내 값을 적습니다.</b> 파일 이름은 옛날 것이지만 그냥 설정값 파일입니다.
+    적을 것은 셋: git 이름과 메일, 같이 받아 둘 저장소 이름들, 저장소 주소 형식. 각 줄 위에 설명이 있습니다.
+  </li>
+  <li>
+    <b><code>deploy.targets.d\example-pc.conf</code> 를 내 PC 에 맞게 고치고 이름을 바꿉니다.</b>
+    「어느 PC 의 어느 폴더로 뿌리나」를 적는 파일입니다. 이름은 <code>home.conf</code> 처럼 PC 를 알아볼 수 있게 두고,
+    <code>example-pc.conf</code> 는 지웁니다.
+  </li>
+  <li>
+    <b>개인 키가 있으면 <code>secrets.env</code> 를 만듭니다.</b> 한 줄에 <code>이름=값</code> 하나씩.
+    없으면 안 만들어도 됩니다.
+  </li>
+  <li>
+    <b>커밋하고 올립니다.</b>
+  </li>
+  <li>
+    <b>설치 창의 「내 저장소 받기」 칸에 그 주소를 넣고 설치를 누릅니다.</b>
+    다음부터는 새 PC 에서 이 한 번으로 설정이 다 되살아납니다.
+  </li>
 </ol>
 
-<h2>자세한 것은</h2>
-
 <div class="card">
-  <p style="margin:0 0 8px"><b>씨앗 폴더의 <code>README.md</code> 가 듭니다.</b></p>
-  <p style="margin:0 0 10px"><code>~/.claude/seeds/config-repo/README.md</code></p>
-  <ul style="margin:0">
-    <li>무엇이 들어 있나 — 파일 한 줄씩</li>
-    <li>커밋 게이트를 켜는 법 — 인코딩 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 · 파이썬</li>
-    <li>손으로 재 보는 법과 종료코드 표</li>
-    <li>그림 둘 — <code>session-start-flow.svg</code>(세션을 열면 무엇이 도나) ·
-        <code>deploy-flow.svg</code>(돌리면 무엇이 어디로 가나)</li>
-  </ul>
+  <p><b>고치지 말아야 할 것.</b> 견본에서 온 스크립트들(<code>deploy.ps1</code> · <code>.claude\hooks\</code> ·
+  <code>.githooks\</code>)은 손대지 않습니다. 내 값은 전부 위 3·4·5 번 파일에 들어가고, 스크립트는 그
+  파일들을 읽습니다. 스크립트를 고치면 다음에 새 판을 받을 때 그 자리에서 충돌합니다.</p>
 </div>
 
+<h2>5. 더 알고 싶으면</h2>
 <p>
-  그 곁말에는 <b>이미 값을 치른 함정</b>이 「왜」와 함께 박혀 있습니다 — 창이 PATH 를 못
-  물려받는 것, 윈도우가 깔아 둔 파이썬 껍데기가 「있음」을 내는 것, 마지막 <code>echo</code> 로
-  끝내면 판정이 늘 <code>0</code> 이 되는 것, 홈 설정을 그냥 덮으면 심긴 훅이 조용히 사라지는 것.
-  맨바닥에서 짜면 그것들을 처음부터 다시 겪습니다.
+  견본 폴더의 <code>README.md</code> 가 파일 하나하나가 무엇인지, 커밋할 때 도는 검사는 무엇인지,
+  잘 안 될 때 어디를 보는지를 적고 있습니다. 같은 폴더의 그림 둘
+  (<code>session-start-flow.svg</code> · <code>deploy-flow.svg</code>)은 세션을 열 때와 뿌릴 때
+  무슨 일이 어떤 순서로 일어나는지를 보여 줍니다. 더블클릭하면 브라우저가 엽니다.
 </p>
 
-<footer>
-  이 문서는 설치 폴더에 같이 온 한 장입니다 — 밖으로 나가는 주소가 없어 사내망에서도 뜹니다.
-</footer>
+<footer>이 문서는 설치 폴더에 같이 온 한 장입니다. 밖으로 나가는 주소가 없어 사내망에서도 뜹니다.</footer>
 
 </body>
 </html>
