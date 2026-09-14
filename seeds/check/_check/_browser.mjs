@@ -11,7 +11,8 @@
  *
  * 찾는 차례 — 먼저 걸리는 것을 쓴다:
  *   ① `PW_EXE` — 손으로 못박은 자리 (다른 다 제치고 이것)
- *   ② `PLAYWRIGHT_BROWSERS_PATH` 아래 아무 크로미움 — 훅·playwright·손이 받아 둔 것.
+ *   ② **받아 둔 자리** 아래 아무 크로미움 — 훅·playwright·손이 받아 둔 것. 자리는
+ *      `PLAYWRIGHT_BROWSERS_PATH` · **그 변수가 없으면 `~/.cache/ms-playwright`**.
  *      **판 번호를 안 읽는다** — 이름만 보고 집으므로 번호가 바뀌어도 걸린다
  *   ③ `PATH` 의 크로미움 계열 — 배포판이 깔아 둔 자리
  *   ④ 못 찾으면 **playwright 기본값에 맡긴다** — 제 레지스트리가 맞는 자리(사내 PC 등)
@@ -31,6 +32,7 @@
  */
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -81,11 +83,18 @@ function runnable(p) {
   }
 }
 
+// 받아 둔 자리 — **변수가 없을 때의 자리까지 이 한 줄이 든다.**
+// ⚠ **그 변수가 안 선 기계가 보통이다.** 받아 두는 자는 변수가 없으면 `~/.cache/ms-playwright`
+//   에 푸는데(playwright 자신의 기본 자리이기도 하다), 여기서 변수만 보고 없으면 곧장 null 을
+//   내던 판은 **브라우저가 멀쩡히 있는 기계에서 ②가 통째로 눈이 멀었다** — ④ 로 떨어진
+//   playwright 가 제 레지스트리의 **없는 판**을 가리켜 `Executable doesn't exist` 로 섰다
+//   (실측 2026-09-14 · 윈도우). **받는 자리와 찾는 자리는 같은 식으로 정한다** — 한쪽만
+//   기본값을 들면 받아 둔 것을 아무도 못 본다.
+const browsersRoot = () => process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), ".cache", "ms-playwright");
+
 function underBrowsersPath() {
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (!root) return null;
   // 얕은 곳부터 훑는다(너비 우선) — `…/chromium` 같은 지름길 링크가 먼저 걸린다
-  const queue = [root];
+  const queue = [browsersRoot()];
   let fallback = null;                // 헤드리스 셸이 끝내 안 나오면 이것을 쓴다
   while (queue.length) {
     let entries;

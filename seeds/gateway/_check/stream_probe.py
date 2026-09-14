@@ -41,7 +41,7 @@ SSE 모양으로 오는데 **응답을 다 만든 뒤 한꺼번에 뱉을 수 �
 사내 게이트웨이는 **요청부터의 절대 벽**에서 신호(`stop_reason`) 없이 끊는다. 생성량과 무관하다 —
 초당 51토큰이 쉬지 않고 흐르던 판도, 한 토큰도 안 나온 판도 같은 시각에 잘렸다(claude-config
 `posco/ENV-posco.md` 「스트림 180초 컷」 · 2026-08-27 180.1초 · 2026-09-09 180.0초). 배관은 그 값을
-`gateway.GATEWAY_WALL_S` 로 들고 그 **안쪽**에 출력 상한(`WALL_MAX_TOKENS`)을 둔다 — 절단이
+`GATEWAY_WALL_S` 로 들고 그 **안쪽**에 출력 상한(`WALL_MAX_TOKENS`)을 둔다 — 절단이
 계약(`max_tokens`)으로 오게. 그래서 평소 부름은 벽에 안 닿고, **벽이 옮겨져도 아무도 모른다.**
 이 모드는 일부러 벽 너머까지 시켜 **끊긴 시각**을 찍는다.
 
@@ -50,6 +50,8 @@ SSE 모양으로 오는데 **응답을 다 만든 뒤 한꺼번에 뱉을 수 �
 ⚠ 값을 치른다 — 3분에 만 토큰 언저리. 벽이 옮겨졌는지 의심될 때만 돌린다.
 ⚠ **벽에 안 닿고 끝나면 「못 쟀다」다** — 벽이 없어진 것과 출력이 먼저 끝난 것을 못 가른다.
   더 긴 물음을 주거나 더 느린 모델로 다시 잰다.
+⚠ **견줄 자(벽·난간)는 선언을 통해 문다** — 이 두 이름이 배관에 아예 없는 형제가 있다.
+  모듈에서 곧장 물면 그 저장소는 이 절이 죽어 「어긋났다」로 나간다 — 없으면 못 쟀다(2)다.
 """
 import argparse
 import sys
@@ -207,7 +209,15 @@ def flow(want, key):
 
 
 def wall(pid, key):
-    print(f"--- 벽은 어디 있나 (실호출 · 긴 출력 하나 · 배관이 아는 벽 {gateway.GATEWAY_WALL_S}초)")
+    # ⚠ **벽과 그 안쪽 난간은 `get()` 이 찾는다.** 형제 하나는 배관에 이 두 이름이 아예 없다
+    #   (실측) — 모듈에서 곧장 물면 그 저장소는 이 절이 `AttributeError` 로 죽어 「어긋났다」
+    #   (1)로 나간다. 없으면 선언이 「없다」고 한 것이므로 **못 쟀다**(2)가 맞다.
+    try:
+        w = get("GATEWAY_WALL_S")
+        rail = get("WALL_MAX_TOKENS")
+    except Missing as why:
+        raise Unmeasured(f"[안 잼] 벽을 견줄 자를 못 찾았다 — {why}") from why
+    print(f"--- 벽은 어디 있나 (실호출 · 긴 출력 하나 · 배관이 아는 벽 {w}초)")
     if pid not in gateway._GATEWAY:
         raise Unmeasured(f"[안 잼] 게이트웨이 표에 없다 — {pid} (있는 것: {', '.join(gateway._GATEWAY)})")
     row = gateway._GATEWAY[pid]
@@ -218,7 +228,7 @@ def wall(pid, key):
     c = _creds(pid, key)
     # 배관의 난간(`WALL_MAX_TOKENS`)을 **이 부름 하나만** 넘긴다 — 벽을 재려면 벽 너머로 시켜야 한다.
     c = c._replace(max_tokens=WALL_ASK_TOKENS)
-    print(f"       {pid} · {c.model} · 상한 {c.max_tokens:,} (평소 난간 {gateway.WALL_MAX_TOKENS:,} 을 이 부름만 넘긴다)")
+    print(f"       {pid} · {c.model} · 상한 {c.max_tokens:,} (평소 난간 {rail:,} 을 이 부름만 넘긴다)")
     secs, marks, text, stop, cut, err = measure(c, WALL_ASK)
     n = len(marks)
     print(f"       {bar(secs, marks)}")
@@ -230,7 +240,6 @@ def wall(pid, key):
         unmeasured("벽", f"출력이 벽 전에 끝났다 — 총 {secs:.1f}초 · stop={stop!r} · {len(text):,}자. "
                         "벽이 없어진 것과 출력이 먼저 끝난 것을 못 가른다 — 더 긴 물음이나 더 느린 모델로 다시 잰다")
     else:
-        w = gateway.GATEWAY_WALL_S
         edge(f"신호 없이 끊긴 시각 {secs:.1f}초 · 그때까지 {len(text):,}자 — 이 숫자가 곧 벽의 실측이다")
         report(f"벽이 배관이 아는 자리({w}초 ± {WALL_SLACK_S})에 있다",
                abs(secs - w) <= WALL_SLACK_S,

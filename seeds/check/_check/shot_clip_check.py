@@ -23,7 +23,8 @@
 
 **받은 저장소가 무엇을 줘야 도나** — playwright(파이썬)와 Pillow 가 든 파이썬 하나, 그리고 크로미움
 계열 하나. 앱을 안 문다 — 이 자는 저장소의 코드를 한 줄도 안 읽는다. 브라우저는 환경변수로 짚는다:
-`PW_EXE`(손으로 못박은 실행 파일) · `PLAYWRIGHT_BROWSERS_PATH`(받아 둔 자리 · 판 번호를 안 읽는다).
+`PW_EXE`(손으로 못박은 실행 파일) · **받아 둔 자리**(`PLAYWRIGHT_BROWSERS_PATH` · 그 변수가 없으면
+`~/.cache/ms-playwright` · 판 번호를 안 읽는다).
 둘 다 없으면 PATH 의 크로미움 계열 → playwright 기본값 → msedge → chrome 으로 내려가고, 끝내 못
 띄우면 초록이 아니라 **「못 쟀다」(2)** 로 나간다. 무엇으로 쟀는지는 경계 줄이 찍는다.
 
@@ -79,12 +80,20 @@ def _runnable(path):
     return os.path.isfile(path) and os.access(path, os.X_OK)   # isfile 은 링크를 따라간다 — 끊긴 링크가 여기서 걸린다
 
 
+# 받아 둔 자리 — **변수가 없을 때의 자리까지 이 한 줄이 든다.**
+# ⚠ **그 변수가 안 선 기계가 보통이다.** 받아 두는 자는 변수가 없으면 `~/.cache/ms-playwright`
+#   에 푸는데(playwright 자신의 기본 자리이기도 하다), 여기서 변수만 보고 없으면 곧장 None 을
+#   내던 판은 **브라우저가 멀쩡히 있는 기계에서 이 걸음이 통째로 눈이 멀었다** — 사다리 끝의
+#   playwright 기본값이 제 레지스트리의 **없는 판**을 가리켜 서고, 안내는 `playwright install`
+#   을 시킨다 (실측 2026-09-14 · 윈도우). **받는 자리와 찾는 자리는 같은 식으로 정한다** —
+#   한쪽만 기본값을 들면 받아 둔 것을 아무도 못 본다.
+def _browsers_root():
+    return os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or str(Path.home() / ".cache" / "ms-playwright")
+
+
 def _under_browsers_path():
-    """`PLAYWRIGHT_BROWSERS_PATH` 아래 아무 크로미움 — **판 번호를 안 읽는다.**"""
-    root = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
-    if not root:
-        return None
-    queue = [root]                        # 얕은 곳부터(너비 우선) — `…/chromium` 지름길 링크가 먼저 걸린다
+    """**받아 둔 자리** 아래 아무 크로미움 — **판 번호를 안 읽는다.**"""
+    queue = [_browsers_root()]            # 얕은 곳부터(너비 우선) — `…/chromium` 지름길 링크가 먼저 걸린다
     fallback = None                       # 헤드리스 셸이 끝내 안 나오면 이것을 쓴다
     while queue:
         try:

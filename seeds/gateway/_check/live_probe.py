@@ -107,6 +107,13 @@ def _call(c, system, ask):
     except RuntimeError as exc:
         print(f"[거절] {exc}")
         raise SystemExit(EXIT_UNMEASURED) from exc
+    # ⚠ **망이 답을 안 준 것은 「못 쟀다」(2)지 「어긋났다」(1)가 아니다.** 이 프로브는 애초에
+    #   판정을 안 내고 숫자만 찍는다 — 길이 막혔을 때 1 로 나가면 훅·CI 가 배관이 어긋난
+    #   것으로 읽는다. `URLError`·소켓 시간초과·SSL·연결 끊김이 다 `OSError` 자손이라 한
+    #   자리에서 받는다. 거부(HTTP 4xx·5xx)는 위 `RuntimeError` 가 이미 든다 —
+    #   배관이 `HTTPError` 를 사람 말로 옮겨 던지므로 여기까지 안 온다.
+    except OSError as exc:
+        raise Unmeasured(f"[안 잼] 게이트웨이에 못 닿았다 — {type(exc).__name__}: {exc}") from exc
     return text, stop, (used[-1] if used else None), first[0], round(time.monotonic() - t0, 1), thinks
 
 
