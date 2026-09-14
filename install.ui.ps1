@@ -77,7 +77,7 @@ if (Test-Path -LiteralPath $EnvPath) {
 # ── 화면 ────────────────────────────────────────────────────────────────────────
 $F = New-Object Windows.Forms.Form
 $F.Text = 'Claude Code 설치'
-$F.Size = New-Object Drawing.Size(640, 700)
+$F.Size = New-Object Drawing.Size(640, 744)
 $F.StartPosition = 'CenterScreen'
 $F.FormBorderStyle = 'FixedDialog'
 $F.MaximizeBox = $false
@@ -201,7 +201,7 @@ $gO.Controls.Add($cDev)
 # ⚠ GitHub CLI 는 깔려도 로그인 전에는 안 돈다 — 처음 쓰는 사람은 여기서 그것을 알 데가 없었다.
 #   설정 저장소를 쓰는 사람은 훅이 토큰을 심어 로그인이 필요 없지만, 그것은 저장소 쪽 사정이다.
 $lDev = New-Object Windows.Forms.Label
-$lDev.Text = '설정 저장소를 쓰려면 Git 이 필요합니다. GitHub CLI 는 깔린 뒤 gh auth login 을 한 번 해야 씁니다.'
+$lDev.Text = '저장소를 받으려면 Git 이 필요합니다. GitHub CLI 는 깔린 뒤 gh auth login 을 한 번 해야 씁니다.'
 $lDev.Location = New-Object Drawing.Point(34, 44)
 $lDev.Size = New-Object Drawing.Size(542, 16)
 $lDev.ForeColor = [Drawing.Color]::DimGray
@@ -224,22 +224,22 @@ $cUpg.Size = New-Object Drawing.Size(560, 22)
 $cUpg.Checked = -not $NoUpgrade
 $gO.Controls.Add($cUpg)
 
-# ── 개인 값 저장소 (선택) ───────────────────────────────────────────────────────
-# ⚠ **넣어도 위 키 칸은 그대로 산다.** 설치는 자리만 보고 전부 세우고, 저장소는 **그 뒤에** 받아
-#   뿌리의 SessionStart 훅을 `--install` 로 부른다 — 그쪽이 드는 것은 사람에게 딸린 것(git 신원 ·
-#   형제 저장소 · 개인 키 · 배포)뿐이다. 옛 판은 이 칸이 차면 키 칸을 껐는데, 저장소에 부트스트랩이
-#   없는 사람은 키가 어디에도 안 심겼다.
-# ⚠ **여러 개를 빈칸으로 가른다.** 옛 판은 하나만 받았고 까닭이 「나머지는 그 저장소의
-#   훅이 데려온다」였다 — 그런데 그건 **만든 사람의 훅 사정**이지 받는 사람의
-#   사정이 아니다. 남의 저장소에 그 목록이 없으면 여기 적을 수밖에 없다.
+# ── 내 저장소 받기 (선택) ───────────────────────────────────────────────────────
+# ⚠ **이 칸이 드는 일은 「받아 둔다」 하나다.** 옛 이름(「설정 저장소」)은 **훅을 든 저장소**를
+#   전제로 말했는데, 보통 사람은 그런 저장소가 없고 그냥 제 저장소를 받아 두는 자리로 쓴다 —
+#   이름이 전제를 깔면 안 맞는 사람이 「나는 못 쓰는 칸」으로 읽고 지나친다.
+# ⚠ **넣어도 위 키 칸은 그대로 산다.** 설치는 자리만 보고 전부 세우고, 저장소는 **그 뒤에** 받는다.
+#   뿌리에 SessionStart 훅이 있으면 그것을 `--install` 로 불러 **그 뒤(사람에게 딸린 것)를 잇게**
+#   한다 — 없으면 받아 둔 것으로 끝난다. 둘 다 정당하다.
+# ⚠ **여러 개를 빈칸으로 가른다.** 주소에는 빈칸이 없으므로 그것이 가르는 자다.
 #   ⚠ 여럿을 든 사람이 **제 훅 선언에 목록을 들었으면** 여기는 그 하나만 적는 것이 맞다 —
 #     두 자리에 적으면 저장소가 늘 때 한쪽이 낡는다. 어느 쪽이 맞나는 그 사람이 안다.
 # ⚠ **배포본에는 이 값이 안 실려 온다.** 남에게 갈 파일에 내 저장소 주소를 박지 않기 때문이다.
 #   그러니 이 칸이 비어 있는 것이 받는 사람에게는 정상이다.
 $gR = New-Object Windows.Forms.GroupBox
-$gR.Text = '설정 저장소 (선택) — 여러 개는 빈칸으로 가릅니다'
+$gR.Text = '내 저장소 받기 (선택) — git 주소, 여러 개는 빈칸으로'
 $gR.Location = New-Object Drawing.Point(16, 312)
-$gR.Size = New-Object Drawing.Size(592, 64)
+$gR.Size = New-Object Drawing.Size(592, 108)
 $F.Controls.Add($gR)
 
 $tRepo = New-Object Windows.Forms.TextBox
@@ -249,65 +249,95 @@ $tRepo.Text = [string](Get-Directive 'config-repo')
 $gR.Controls.Add($tRepo)
 
 $lRepo = New-Object Windows.Forms.Label
-$lRepo.Location = New-Object Drawing.Point(16, 50)
-$lRepo.Size = New-Object Drawing.Size(556, 18)
+$lRepo.Location = New-Object Drawing.Point(16, 52)
+$lRepo.Size = New-Object Drawing.Size(556, 34)
 $lRepo.ForeColor = [Drawing.Color]::DimGray
-$lRepo.Text = '비우면 이 폴더 값으로만 섭니다. 여러 개를 넣으면 다 받습니다.'
+$lRepo.Text = '받아만 둡니다 — ~/repos/<저장소 이름>. 뿌리에' +
+              ' .claude/hooks/session-start.sh 가 있는 설정 저장소면' +
+              ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
 $gR.Controls.Add($lRepo)
+
+# ── 안내 한 장을 여는 링크 ──────────────────────────────────────────────────────
+# ⚠ **자리를 박지 않는다.** 안내는 이 스크립트와 같은 폴더에 같이 와 있다 — 사람이 폴더를
+#   어디에 풀었는지는 아무도 모르므로 `$Here` 에서 파생한다. 절대 경로를 박으면 만든 사람
+#   PC 에서만 열린다.
+# ⚠ **없을 때 조용히 지나가지 않는다.** 눌렀는데 아무 일도 안 나면 「내 컴퓨터가 이상한가」
+#   에서 멈춘다 — 무엇이 어디에 없는지를 경로까지 대고 말한다.
+$lnkRepo = New-Object Windows.Forms.LinkLabel
+$lnkRepo.Text = '설정 저장소란? 만드는 법'
+$lnkRepo.Location = New-Object Drawing.Point(388, 86)
+$lnkRepo.Size = New-Object Drawing.Size(184, 18)
+$lnkRepo.TextAlign = 'MiddleRight'
+$lnkRepo.Add_LinkClicked({
+  $howto = Join-Path $Here 'config-repo-howto.html'
+  if (Test-Path -LiteralPath $howto) {
+    try { Start-Process -FilePath $howto | Out-Null }
+    catch {
+      [Windows.Forms.MessageBox]::Show(
+        "안내를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $howto,
+        'Claude Code 설치', 'OK', 'Warning') | Out-Null
+    }
+  } else {
+    [Windows.Forms.MessageBox]::Show(
+      '안내 파일이 이 폴더에 없습니다 — ' + [Environment]::NewLine + $howto,
+      'Claude Code 설치', 'OK', 'Warning') | Out-Null
+  }
+})
+$gR.Controls.Add($lnkRepo)
 
 # 넣어도 위 키 칸은 그대로 산다 — 무엇이 더 서는지만 화면이 보여준다
 $syncRepo = {
   $on = [bool]$tRepo.Text.Trim()
-  $lRepo.Text = if ($on) { '다 세운 뒤 받아서, 뿌리의 SessionStart 훅을 --install 로 부릅니다.' }
-                else { '비우면 이 폴더 값으로만 섭니다. 여러 개를 넣으면 다 받습니다.' }
+  $lRepo.Text = if ($on) {
+                  '다 세운 뒤 ~/repos/<저장소 이름> 으로 받습니다. 뿌리에' +
+                  ' .claude/hooks/session-start.sh 가 있으면 --install 로 불러' +
+                  ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
+                } else {
+                  '받아만 둡니다 — ~/repos/<저장소 이름>. 뿌리에' +
+                  ' .claude/hooks/session-start.sh 가 있는 설정 저장소면' +
+                  ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
+                }
 }
 $tRepo.Add_TextChanged($syncRepo)
 
-# ── 후버로 긴 설명을 내린다 ──────────────────────────────────────────────────────
-# ⚠ **줄 하나에 다 적을 수가 없다.** 이 칸은 규약(파일 이름 하나)과 갈래 둘과 자리
-#   (`~/repos`)를 같이 말해야 하는데, 창의 안내 줄은 한 줄이고 늘리면 아래 것들이 밀린다
-#   (배치가 절대좌표다). 그래서 **머무르면 펴지는 자리**에 둔다 — 안 읽어도 설치는 서고,
-#   읽고 싶은 사람만 편다.
+# ── 후버로 조금 더 내린다 ────────────────────────────────────────────────────────
+# ⚠ **여기에 긴 이력을 적지 않는다.** 자세한 것은 옆 링크가 여는 안내 한 장이 든다 —
+#   툴팁과 그 문서에 같은 글을 두 벌 두면 고칠 때 한쪽만 고쳐진다. 이 자리가 드는 것은
+#   「무엇을 하는 칸인가」와 갈래 둘, 그리고 **더 볼 데가 있다는 것**뿐이다.
 $tip = New-Object Windows.Forms.ToolTip
 $tip.AutoPopDelay = 30000      # 긴 글이라 오래 띄운다
 $tip.InitialDelay = 400
 $tip.ReshowDelay  = 200
 $tip.ShowAlways   = $true
 $tipText = @'
-제 저장소를 이어 붙이는 자리입니다. 비워 두는 것이 기본이고 맞는 답입니다 —
-프로그램·확장·키·사내 문서·씨앗은 이 칸과 무관하게 다 깔립니다.
+제 저장소를 받아 두는 자리입니다. 비워 두는 것이 기본이고 맞는 답입니다 —
+프로그램·확장·CLI·키·주소·프록시·사내 문서·씨앗은 이 칸과 무관하게 다 깔립니다.
 
 넣으면 ~/repos/<저장소 이름> 으로 받습니다. 여러 개는 빈칸으로 가릅니다.
 
-받은 뒤 갈래가 둘이고 둘 다 정당합니다. 가르는 자는 파일 이름 하나입니다 —
-받아온 저장소 뿌리의 .claude/hooks/session-start.sh (Claude Code 의 SessionStart 훅):
+받은 뒤 갈래가 둘이고 둘 다 정당합니다. 가르는 자는 파일 이름 하나 —
+받아온 저장소 뿌리의 .claude/hooks/session-start.sh 입니다.
 
-  · 든 저장소가 있으면  --install 로 부릅니다. 그 뒤는 그 저장소가 듭니다
-                        (git 신원 · 형제 저장소 · 개인 키 · 규범·룰·메모리 배포)
-  · 어디에도 없으면      받아 둔 것으로 끝냅니다. 저장소만 들고 다니려면 그것으로 됩니다
+  · 든 저장소가 있으면  --install 로 부릅니다. 그 뒤는 그 저장소가 잇습니다
+  · 어디에도 없으면      받아 둔 것으로 끝냅니다
 
-키·주소·프록시·확장·CLI 는 이 칸과 무관하게 위에서 다 섭니다.
-
-여럿이 그 파일을 들고 있으면 첫 것만 부르고 나머지는 이름을 찍습니다.
-
-자동화까지 원하면 ~/.claude/seeds/config-repo/ 에 깔리는 골든을 복사해
-제 저장소 뿌리에 그 이름으로 두십시오.
+설정 저장소가 무엇이고 어떻게 만드나는 오른쪽 링크가 한 장으로 답합니다.
 '@
 $tip.SetToolTip($tRepo, $tipText)
 $tip.SetToolTip($lRepo, $tipText)
 
 # 진행
 $bar = New-Object Windows.Forms.ProgressBar
-$bar.Location = New-Object Drawing.Point(16, 388)
+$bar.Location = New-Object Drawing.Point(16, 432)
 $bar.Size = New-Object Drawing.Size(592, 20)
 $bar.Minimum = 0; $bar.Maximum = 100
 $F.Controls.Add($bar)
 
-$lState = New-Label '' 18 412 500 $false
+$lState = New-Label '' 18 456 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
 $log = New-Object Windows.Forms.TextBox
-$log.Location = New-Object Drawing.Point(16, 436)
+$log.Location = New-Object Drawing.Point(16, 480)
 $log.Size = New-Object Drawing.Size(592, 170)
 $log.Multiline = $true; $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'; $log.WordWrap = $false
@@ -317,12 +347,12 @@ $log.Font = New-Object Drawing.Font('Consolas', 9)
 $F.Controls.Add($log)
 
 $bGo = New-Object Windows.Forms.Button
-$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, 618)
+$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, 662)
 $bGo.Size = New-Object Drawing.Size(100, 30)
 $F.Controls.Add($bGo); $F.AcceptButton = $bGo
 
 $bClose = New-Object Windows.Forms.Button
-$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, 618)
+$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, 662)
 $bClose.Size = New-Object Drawing.Size(84, 30)
 $F.Controls.Add($bClose)
 
