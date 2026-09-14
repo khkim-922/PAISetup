@@ -1206,6 +1206,63 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
   }
 }
 
+# ── 4′. 사외 Claude 구독 로그인 — **저장소와 세션 훅에 매지 않는다** ────────────
+# ⚠ 로그인은 클론한 저장소의 일이 아니다. 저장소 칸을 비운 사람도 사외에서는
+#   Claude CLI 자체의 자격이 필요하다. 세션 훅은 로그인한 Claude 세션이 열려야 돌므로
+#   거기에 두면 순서가 뒤집힌다. 비영속 VDI 가 로그인마다 부르는 이 설치기가 든다.
+# ⚠ 2026-09-14 `bootstrap-vdi.sh` 를 걷을 때 검증된 로그인 블록도 같이 사라진 회귀를
+#   복구한다. 기존 로그인을 먼저 재고, 비었을 때만 브라우저 OAuth 를 띄운 뒤
+#   최대 180초 동안 다시 재다. 사람이 안 누르는 것도 선택이므로 타임아웃을 설치 실패로 세지 않는다.
+function Test-ClaudeLoggedIn {
+  if (-not (Test-Runs 'claude' '--version')) { return $false }
+  try {
+    $said = (& claude auth status 2>$null | Out-String)
+    return ($said -match '"loggedIn"\s*:\s*true')
+  } catch { return $false }
+}
+
+$claudeLoggedIn = $false
+if ($offsite) {
+  Write-Host ''
+  Write-Host '  Claude 구독 로그인' -ForegroundColor Cyan
+  if (-not (Test-Runs 'claude' '--version')) {
+    Write-Host '  ! claude CLI 가 안 닿아 로그인을 못 띄운다 — 위 CLI 설치를 본다' -ForegroundColor Yellow
+  } elseif (Test-ClaudeLoggedIn) {
+    $claudeLoggedIn = $true
+    Write-Host '  이미 서 있다 (loggedIn=true)'
+  } else {
+    Write-Host '  구독 계정 로그인 브라우저를 엽니다 — 눌러 주세요 (최대 180초)' -ForegroundColor Yellow
+    try {
+      # PowerShell 에서 `claude`는 npm 이 만든 `claude.ps1`이 먼저 잡히지만, cmd 는
+      # 그 파일을 실행할 수 없다. 같은 자리의 cmd shim 을 정확히 고른다.
+      $cc = Get-Command claude.cmd -ErrorAction Stop
+      # 설치 프로세스는 콘솔이 없고 stdin 도 NUL 이다. 로그인은 stdin 이 아니라
+      # 브라우저 콜백으로 끝나므로 숨은 cmd 자식으로 띄워도 선다(사외 VDI 실측).
+      $cmdArgs = '/d /s /c ""' + $cc.Source + '" auth login"'
+      $login = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
+                 -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
+      for ($waited = 0; $waited -lt 180; $waited += 5) {
+        Start-Sleep -Seconds 5
+        if (Test-ClaudeLoggedIn) { $claudeLoggedIn = $true; break }
+        if ($login.HasExited) { break }
+        $elapsed = $waited + 5
+        if (($elapsed % 15) -eq 0) {
+          Write-Host "  로그인을 기다리는 중 … $elapsed초"
+        }
+      }
+      if (-not $claudeLoggedIn) { $claudeLoggedIn = Test-ClaudeLoggedIn }
+      if ($claudeLoggedIn) {
+        Write-Host '  섰다 (loggedIn=true)' -ForegroundColor Green
+      } else {
+        Write-Host '  ! 아직 로그인되지 않았다 — 새 터미널에서 claude auth login' -ForegroundColor Yellow
+      }
+    } catch {
+      Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
+      Write-Host '     새 터미널에서: claude auth login'
+    }
+  }
+}
+
 # ── 5‴. 로컬 프록시 — **사내에서 Claude 와 Gemini 가 지나는 문** (결정 0041) ─────────────
 # ⚠ **왜 프록시인가.** 게이트웨이가 Opus 5 에서 assistant prefill 을 400 으로 거절하고, Gemini CLI 는
 #   http 주소를 거절한다(루프백만 예외). 둘 다 클라이언트 파일을 못 고치는 자리라 사이에 한 겹을 둔다.
