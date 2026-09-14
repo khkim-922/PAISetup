@@ -115,6 +115,8 @@ atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음
   침묵 → 504** 라(atelier `output/_fail/fail-141502`·`190126`·`191131` · 09-10 은 4.7 로도 504) 층이 다르다.
   atelier 는 prefill 로 끝나는 봉투를 안 보낸다 — 이어받기(`llm._post` resume)도 user 「이어서」 마디로 끝난다.
   그쪽 검증은 전부 짧은 「Reply OK」 스모크(`tests/Test-AllPgptModels.py`)라 긴 생성의 벽은 잰 적이 없다.
+  **우리 사본은 `posco/pgpt-proxy/`** — 프록시·가짜 게이트웨이·전수 스모크를 통째로 담았고, 무엇을 쓰고 무엇이
+  놀고 있나와 상류 판·갱신법은 그 폴더의 README 가 든다(결정 0041).
   - 건질 것 — 그쪽 `docs/P-GPT_연동_노하우.md` 가 「Claude 경로는 내부적으로 Bedrock Converse 로 변환」이라 적어 위
     「추정」과 방향이 같다(그쪽도 실측이 아니라 전언). 그쪽 설치기는 Claude Code 에
     `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` 을 심고 별칭(`opus`) 대신 명시 ID 만 쓰라 한다. `claude-sonnet-5` 는
