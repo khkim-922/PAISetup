@@ -289,14 +289,14 @@ deploy_home_norms() {
 }
 
 # ── 사람에게 딸린 것 — git 신원 · 형제 저장소 · 슬러그 폴더 · 개인 키 · 홈 개인 설정 ──────
-#    **PC 에서만, 그리고 전역 저장소가 `bootstrap.conf` 를 들 때만.** 리모트는 저장소를 claude.ai 가
+#    **PC 에서만, 그리고 전역 저장소가 `personal.conf` 를 들 때만.** 리모트는 저장소를 claude.ai 가
 #    붙이고 키를 환경이 들어 이 칸이 통째로 조용히 지나간다.
 #    옛 판은 이것이 `bootstrap-vdi.sh` 라는 딴 몸통에 살았다 — 설치기(`install.ps1`)가 `#config-repo`
 #    로 받은 저장소 뿌리에서 그 이름을 찾아 불렀고, 그 몸통이 회사 키·프록시·Codex/Gemini 설정까지
 #    들어 설치기와 일이 갈렸다(그 판에서는 확장·CLI 를 아무도 안 깔았다 · 실측 2026-09-14 · 사내 VDI).
 #    이제 회사 것은 설치기가 자리만 보고 전부 세우고, **사람에게 딸린 것만 이 훅이 든다** — Claude Code
 #    가 규격으로 보장하는 자리는 훅뿐이라, 리모트 Setup script 와 설치기가 같은 한 줄(`--install`)로 선다.
-#    ⚠ **몸통은 이름을 모른다.** 값은 전역 저장소의 `bootstrap.conf`(git 신원 · 저장소 · 주소 꼴 · 자리)와
+#    ⚠ **몸통은 이름을 모른다.** 값은 전역 저장소의 `personal.conf`(git 신원 · 저장소 · 주소 꼴 · 자리)와
 #      `secrets.env`(개인 키)가 든다 (0004). 회사 키·주소는 여기 없다 — 설치기가 `install.env` 로 심는다.
 #    ⚠ 가볍고 멱등인 것(git config · mkdir · 값이 같으면 건너뛰는 setx)은 매 세션(auto)도 민다 — 키가
 #      돌면 다음 세션이 새 값을 심는다. 망을 타는 clone 과 자리를 재는 홈 설정 덮기는 `--install` 만.
@@ -305,8 +305,8 @@ conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지
 }
 deploy_personal() {   # deploy_personal auto|install
   [ "$OS" = windows ] || return 0
-  [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/bootstrap.conf" ] || return 0
-  _bc="$CONFIG_ROOT/bootstrap.conf"
+  [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/personal.conf" ] || return 0
+  _bc="$CONFIG_ROOT/personal.conf"
   _gn="$(conf_get "$_bc" GIT_NAME)"; _ge="$(conf_get "$_bc" GIT_EMAIL)"
   _repos="$(conf_get "$_bc" REPOS)"; _url="$(conf_get "$_bc" REPO_URL)"
   # `$HOME` 을 값에 쓸 수 있게 한 자리만 펴 준다 — 통째로 eval 하지 않는 대신이다.
@@ -319,7 +319,7 @@ deploy_personal() {   # deploy_personal auto|install
     [ "$(git config --global user.name 2>/dev/null)" = "$_gn" ] || git config --global user.name "$_gn"
     [ "$(git config --global user.email 2>/dev/null)" = "$_ge" ] || git config --global user.email "$_ge"
   elif [ "$1" = install ]; then
-    echo "$PROJECT_NAME: ⚠ bootstrap.conf 에 GIT_NAME · GIT_EMAIL 이 없다 — git 신원을 안 심었다"
+    echo "$PROJECT_NAME: ⚠ personal.conf 에 GIT_NAME · GIT_EMAIL 이 없다 — git 신원을 안 심었다"
   fi
   # 윈도우에서 물리는 것들. 바꿀 일이 있으면 이 줄들을 고친다.
   git config --global init.defaultBranch main
@@ -332,7 +332,7 @@ deploy_personal() {   # deploy_personal auto|install
   # 망을 타고, 맨바닥 VDI 의 첫 판은 설치기가 부르는 이 갈래가 지지 세션 훅의 시간 한도가 지지 않는다.
   if [ "$1" = install ] && [ -n "$_repos" ]; then
     if [ -z "$_url" ]; then
-      echo "$PROJECT_NAME: ⚠ bootstrap.conf 에 REPOS 는 있는데 REPO_URL 이 없다 — 어디서 받을지 모른다"
+      echo "$PROJECT_NAME: ⚠ personal.conf 에 REPOS 는 있는데 REPO_URL 이 없다 — 어디서 받을지 모른다"
     else
       mkdir -p "$_root"
       for _r in $_repos; do
