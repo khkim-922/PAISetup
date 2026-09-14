@@ -493,7 +493,14 @@ home_hook_cmd() {
   #   값이라 그대로 남는다. 그때만 쓴다.
   # ⚠ **제 설정이 거는지 물어본다.** 「걸 것이다」로 가정하면 설정 없는 저장소가 아무것도 안 도는데
   #   그 부재는 조용하다 — 물어보고, 안 걸면 여기서 직접 부른다.
-  printf 'p="$CLAUDE_PROJECT_DIR"; if [ -f "$p/.claude/hooks/session-start.sh" ]; then grep -q session-start.sh "$p/.claude/settings.json" 2>/dev/null || bash "$p/.claude/hooks/session-start.sh"; else for h in "%s"/*/.claude/hooks/session-start.sh; do [ -f "$h" ] && bash "$h"; done; fi' \
+  # ⚠ **저장소 밖(홈·전역 층)에서는 설정 저장소의 훅 하나만 부른다** (0043). 옛 꼴은 형제 전부를 차례로
+  #   불렀는데, VS Code 확장은 첫 스폰을 홈 cwd 로 띄우고 **초기화를 60초만 기다린다** — 회사 VDI 실측
+  #   2026-09-14: 훅 다섯 × (당김 6~7초 + 몸통) 이 그 60초를 넘겨 「Subprocess initialization did not
+  #   complete within 60000ms」로 두 번 죽었고 사람은 10분을 기다렸다. 형제 훅은 그 저장소를 열 때
+  #   제 설정이 부른다 — 전역 층에서 필요한 것은 홈 규범·개인 칸·전역 도구뿐이고 그것은 설정 저장소
+  #   훅이 든다. 이름은 안 박는다 — `deploy.ps1` 과 `memory/` 를 든 저장소가 곧 그것이다(위 CONFIG_ROOT
+  #   와 같은 자).
+  printf 'p="$CLAUDE_PROJECT_DIR"; if [ -f "$p/.claude/hooks/session-start.sh" ]; then grep -q session-start.sh "$p/.claude/settings.json" 2>/dev/null || bash "$p/.claude/hooks/session-start.sh"; else for h in "%s"/*/.claude/hooks/session-start.sh; do d="${h%%/.claude/*}"; [ -f "$d/deploy.ps1" ] && [ -d "$d/memory" ] && bash "$h"; done; fi' \
     "$(home_hook_root)"
 }
 
@@ -759,18 +766,26 @@ if [ "$MODE" = auto ]; then
   #   이만큼」인지 「여느 때와 다른지」를 말해 준다.
   # ⚠ 그래서 **타임아웃을 안 씌운다.** 정상이 7초인 자리에서 5초로 자르면 되던 당김까지
   #   실패로 찍힌다 — 진단을 세우려다 없던 고장을 만드는 꼴이다.
-  pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기로만
+  # ⚠ **기다리지도 않는다 — 배경으로 띄우고 결과는 다음 세션이 본다** (0043). 회사 망에서는 당김 하나가
+  #   6~7초이고 세션 시작에 둘이 서는데, 확장이 초기화를 60초만 기다려 그 초가 곧 죽는 자리였다.
+  #   당긴 것이 이 세션에 안 보이는 값을 치른다 — 규범·선언이 바뀐 커밋은 **다음 세션**부터 선다.
+  #   진 사유는 `.git/claude-pull.log` 에 남고 다음 세션이 그것을 말한다 — 성공은 빈 파일이라 조용하다.
+  #   stdout·stderr·stdin 을 다 떼어야 한다 — 하나라도 훅의 파이프를 물고 있으면 Claude Code 가
+  #   그 자식이 끝날 때까지 훅을 기다려 배경으로 뺀 뜻이 없어진다.
+  pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기로만, 배경에서
     [ -e "$1/.git" ] || return 0
     [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" = main ] || return 0
+    _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+    _lg="$_gd/claude-pull.log"
+    [ -s "$_lg" ] && echo "$(basename "$1"): ⚠ 지난 세션의 원격 당김이 졌다 — $(git_why "$(cat "$_lg")")"
     pull_due "$1" || return 0
-    _t0="$(date +%s)"
-    _pe="$(git -C "$1" pull --ff-only -q 2>&1)" ||
-      echo "$(basename "$1"): ⚠ 원격 못 당김($(( $(date +%s) - _t0 ))초) — $(git_why "$_pe")"
+    : > "$_lg" 2>/dev/null || true
+    ( git -C "$1" pull --ff-only -q >"$_lg" 2>&1 </dev/null & )
   }
   wire_commit_hooks  # 당김 앞이다 — 망이 느리거나 훅이 잘려도 게이트만은 선다 (#31)
   pull_ff "$PROJECT_DIR"
   [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" != "$PROJECT_DIR" ] && pull_ff "$CONFIG_ROOT"
-  deploy_home_norms
+  deploy_home_norms  # 당김이 배경이라 이번엔 지난 판을 민다 — 방금 당긴 것은 다음 세션이 민다 (0043)
   deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
   plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
   wire_python_path   # 지문 게이트 앞이다 — 배선은 설치의 사건이 아니라 세션의 상태다 (0011)
