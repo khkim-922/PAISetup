@@ -478,6 +478,155 @@ PYENV
     then :; else echo "  ! 밀기 실패 — settings.json 꼴을 본다"; fi
 fi
 
+# ── 6′. 로컬 프록시 · Codex/Gemini 설정 — **자리 파일이 들면** (결정 0041) ─────────────
+# ⚠ 사내 자리 파일이 `#gateway-proxy = <파일>` · `#codex-config = <틀>` · `#gemini-config = <틀>` 로
+#   이 저장소 안의 자리를 가리킨다. 몸통은 파일 이름도 포트도 모른다 — 포트는 방금 심은
+#   `ANTHROPIC_BASE_URL` 에서 판다. 사외 파일은 이 줄들을 안 들어 이 칸이 통째로 조용히 지나간다.
+# ⚠ **왜 여기인가.** `install.ps1` 은 값 저장소로 넘기는 판(`#config-repo`)에서 프록시·설정을 안
+#   세운다 — 값의 진본이 이 저장소라서다. 그리고 비영속 VDI 는 로그인마다 Run 키도 실행 폴더도
+#   날아가므로 **매 로그인 다시 세워야** 하고, 그 자리가 이 스크립트다.
+# ⚠ **이미 도는 것을 함부로 안 죽인다.** `/health` 의 판이 이 판 이상이면 그대로 쓰고, 낡았으면 그
+#   포트를 잡은 파이썬만 끄고 새로 띄운다. 자동시작도 같은 프록시를 띄우는 등록이 있으면 안 건다.
+# ⚠ **키(6/7)보다 뒤에 선다** — 주소도 키도 방금 심은 것을 이 셸에서 읽는다.
+_proxy_rel=""; _codex_tpl=""; _gemini_tpl=""
+if [ -n "$SITE_FILE" ]; then
+    _proxy_rel="$(_trim "$(sed -n 's/^#[[:space:]]*gateway-proxy[[:space:]]*=[[:space:]]*//p' "$SITE_FILE" | head -1)")"
+    _codex_tpl="$(_trim "$(sed -n 's/^#[[:space:]]*codex-config[[:space:]]*=[[:space:]]*//p' "$SITE_FILE" | head -1)")"
+    _gemini_tpl="$(_trim "$(sed -n 's/^#[[:space:]]*gemini-config[[:space:]]*=[[:space:]]*//p' "$SITE_FILE" | head -1)")"
+fi
+_health_ver() { curl -s -m 3 "$1" 2>/dev/null | sed -n 's/.*"version":[[:space:]]*\([0-9]*\).*/\1/p' | head -1; }
+if [ -n "$_proxy_rel" ]; then
+    echo
+    echo "  로컬 프록시 (#gateway-proxy)"
+    _proxy_src="$HERE/$_proxy_rel"
+    _base="${ANTHROPIC_BASE_URL:-}"
+    # 루프백 주소에서 호스트:포트만 뽑는다 — 아니면 프록시를 띄워도 아무도 안 지난다.
+    # ⚠ sed 의 구분자에 `|` 를 안 쓴다 — 패턴 안의 교대(`\|`)와 부딪혀 아무것도 안 잡는다 (집 실측 2026-09-14).
+    _hp="$(printf '%s' "$_base" | sed -n 's#^http://\([^/:]*\):\([0-9][0-9]*\)/.*#\1:\2#p')"
+    case "${_hp%%:*}" in 127.0.0.1|localhost) ;; *) _hp="" ;; esac
+    if [ ! -f "$_proxy_src" ]; then
+        echo "  ! 프록시 파일이 없다 — $_proxy_rel"; FAILS="$FAILS 프록시"
+    elif [ -z "$_hp" ]; then
+        echo "  ! ANTHROPIC_BASE_URL 이 루프백이 아니라 프록시를 안 세운다 (${_base:-비었다})"
+        echo "     프록시를 지나려면 자리 파일의 주소를 127.0.0.1 로 둔다 (결정 0041)"
+    else
+        _health="http://$_hp/health"; _port="${_hp#*:}"
+        _pyw=""
+        _pyexe="$(command -v python 2>/dev/null || true)"
+        [ -n "$_pyexe" ] && _pyw="$(dirname "$_pyexe")/pythonw.exe"
+        if [ -z "$_pyw" ] || [ ! -f "$_pyw" ] || ! _probe_cmd python; then
+            echo "  ! pythonw 를 못 찾았다 — 3/7 이 말한 파이썬부터 (install.cmd 가 깐다)"; FAILS="$FAILS 프록시"
+        else
+            _pdir="$_la/PGPT-Proxy"; mkdir -p "$_pdir"
+            _ppath="$_pdir/$(basename "$_proxy_src")"
+            cp "$_proxy_src" "$_ppath"
+            _pyw_w="$(cygpath -w "$_pyw")"; _ppath_w="$(cygpath -w "$_ppath")"
+            _our="$(sed -n 's/^VERSION[[:space:]]*=[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$_proxy_src" | head -1)"
+            echo "  실행 폴더 — $(cygpath -w "$_pdir") (v${_our:-?})"
+            _run="$(_health_ver "$_health")"
+            _start=yes
+            if [ -n "$_run" ]; then
+                if [ "$_run" -ge "${_our:-0}" ]; then
+                    echo "  이미 돈다 — v$_run · 그대로 쓴다"; _start=no
+                else
+                    echo "  낡은 프록시 v$_run 이 돈다 — 끄고 v$_our 로 새로 띄운다"
+                    powershell.exe -NoProfile -Command "Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $_port -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { \$p = Get-Process -Id \$_ -ErrorAction SilentlyContinue; if (\$p -and \$p.ProcessName -match '^pythonw?\$') { Stop-Process -Id \$_ -Force } }" >/dev/null 2>&1
+                    sleep 1
+                fi
+            fi
+            if [ "$_start" = yes ]; then
+                # 창 없이 띄운다 — bash 의 자식으로 두면 이 창이 닫힐 때 같이 죽을 수 있어 껍데기에 맡긴다.
+                powershell.exe -NoProfile -Command "Start-Process -FilePath '$_pyw_w' -ArgumentList '\"$_ppath_w\"' -WindowStyle Hidden" >/dev/null 2>&1
+                _i=0; _run=""
+                while [ "$_i" -lt 30 ] && [ -z "$_run" ]; do sleep 0.5; _run="$(_health_ver "$_health")"; _i=$((_i + 1)); done
+                if [ -n "$_run" ]; then
+                    echo "  띄웠다 — $_hp v$_run"
+                else
+                    echo "  ! 안 떴다 — $(cygpath -w "$_pdir")\\proxy.log 를 본다 (포트를 딴 프로그램이 잡고 있을 수 있다)"
+                    FAILS="$FAILS 프록시"
+                fi
+            fi
+            # 자동시작 — 같은 프록시 파일을 띄우는 다른 등록이 있으면 우리 것을 안 건다 (둘이 포트를 다툰다).
+            _others="$(MSYS_NO_PATHCONV=1 reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" 2>/dev/null |
+                       grep -i "$(basename "$_proxy_src")" | grep -viE '^[[:space:]]*PGPTProxy[[:space:]]' | awk '{print $1}' | tr '\n' ' ')"
+            _others="$(_trim "$_others")"
+            if [ -n "$_others" ]; then
+                echo "  자동시작 — 다른 등록이 이미 같은 프록시를 띄운다 ($_others) · 우리 것은 안 건다"
+            elif MSYS_NO_PATHCONV=1 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v PGPTProxy /t REG_SZ /d "\"$_pyw_w\" \"$_ppath_w\"" /f >/dev/null 2>&1; then
+                echo "  자동시작 — 로그인마다 띄우도록 걸었다 (HKCU Run · PGPTProxy)"
+            else
+                echo "  ! 자동시작 등록 실패 — reg add 가 졌다"; FAILS="$FAILS 프록시자동시작"
+            fi
+        fi
+    fi
+fi
+# Codex — 틀 그대로. 키는 파일이 아니라 `OPENAI_API_KEY`(6/7 이 심었다)에서 읽는다.
+if [ -n "$_codex_tpl" ]; then
+    echo
+    echo "  Codex 설정 (#codex-config)"
+    _src="$HERE/$_codex_tpl"; _dst="$HOME/.codex/config.toml"
+    if [ ! -f "$_src" ]; then
+        echo "  ! 틀이 없다 — $_codex_tpl"; FAILS="$FAILS Codex설정"
+    elif [ -f "$_dst" ] && cmp -s "$_src" "$_dst"; then
+        echo "  config.toml — 이미 맞다"
+    else
+        mkdir -p "$HOME/.codex"
+        if [ -f "$_dst" ]; then
+            _bak="$_dst.before-pgpt-$(date +%Y%m%d-%H%M%S)"
+            cp "$_dst" "$_bak" && echo "  있던 것을 물렸다 — $(basename "$_bak")"
+        fi
+        if cp "$_src" "$_dst"; then echo "  config.toml — 썼다 (키는 OPENAI_API_KEY 에서 읽는다)"
+        else echo "  ! 못 썼다 — $_dst"; FAILS="$FAILS Codex설정"; fi
+    fi
+fi
+# Gemini — 틀의 항목만 얹고 사람 항목은 둔다. 키와 루프백 주소는 6/7 이 심은 것에서.
+if [ -n "$_gemini_tpl" ]; then
+    echo
+    echo "  Gemini 설정 (#gemini-config)"
+    _src="$HERE/$_gemini_tpl"; _dst="$HOME/.gemini/settings.json"
+    _pym3=""
+    for _c in python python3; do
+        command -v "$_c" >/dev/null 2>&1 && "$_c" -c '' >/dev/null 2>&1 && { _pym3="$_c"; break; }
+    done
+    if [ ! -f "$_src" ]; then
+        echo "  ! 틀이 없다 — $_gemini_tpl"; FAILS="$FAILS Gemini설정"
+    elif [ -z "${GEMINI_API_KEY:-}" ]; then
+        echo "  ! GEMINI_API_KEY 가 안 심겨 키를 채울 수 없다 (자리 파일을 본다)"; FAILS="$FAILS Gemini설정"
+    elif [ -z "$_pym3" ]; then
+        echo "  ! 파이썬을 못 불러 못 쓴다 — 3/7 을 먼저 본다"; FAILS="$FAILS Gemini설정"
+    elif "$_pym3" - "$_src" "$_dst" "$GEMINI_API_KEY" "${GOOGLE_GEMINI_BASE_URL:-}" <<'PYGEM'
+import json, sys, io, os
+src, dst, key, base = sys.argv[1:5]
+with io.open(src, encoding="utf-8") as f:
+    tpl = json.load(f)
+cur = {}
+if os.path.exists(dst):
+    try:
+        with io.open(dst, encoding="utf-8") as f:
+            cur = json.load(f)
+    except ValueError:
+        print("  ! settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다")
+        sys.exit(1)
+before = json.dumps(cur, sort_keys=True)
+for k, v in tpl.items():
+    if k == "apiKey":
+        cur[k] = key
+    elif k == "baseUrl":
+        cur[k] = base or v          # 주소의 진본은 심은 환경변수 — 틀의 직결 주소는 낙하다
+    elif k not in cur:
+        cur[k] = v                  # 사람 것은 둔다
+if json.dumps(cur, sort_keys=True) == before:
+    print("  settings.json — 이미 맞다")
+    sys.exit(0)
+os.makedirs(os.path.dirname(dst), exist_ok=True)
+with io.open(dst, "w", encoding="utf-8") as f:
+    json.dump(cur, f, ensure_ascii=False, indent=2)
+    f.write("\n")
+print("  settings.json — 썼다 (인증 방식 · 키 · 루프백 주소)")
+PYGEM
+    then :; else FAILS="$FAILS Gemini설정"; fi
+fi
+
 echo "== 7/7  deploy =="
 # ⚠ **종료코드를 재다.** 안 재면 deploy 가 죽어도 아래 「완료」가 찍히고 이 스크립트가
 #   0 으로 끝난다 — 저장소 배포도 홈 규범도 부트스트랩(--install)도 안 선 기계가
