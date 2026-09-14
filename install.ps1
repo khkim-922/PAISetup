@@ -1882,8 +1882,22 @@ function Test-AppUp($App) {
 function Ask-Restart([string]$AppName) {
   Add-Type -AssemblyName System.Windows.Forms
   $owner = New-Object Windows.Forms.Form
+  # MessageBox 의 owner 는 실제로 떠 있는 창이어야 한다. 예전 코드는 보이지 않는 Form 을
+  # owner 로만 넘겨서, 회사 PC/VDI 에서는 확인창이 VS Code 뒤에 숨은 채 응답을 기다렸다.
+  # 작업표시줄에는 남기지 않는 1px 창을 먼저 활성화해 메시지박스를 반드시 앞으로 가져온다.
+  $owner.ShowInTaskbar = $false
+  $owner.StartPosition = 'Manual'
+  $owner.Size = New-Object Drawing.Size(1, 1)
+  $work = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+  $owner.Location = New-Object Drawing.Point(
+    ($work.Left + [int]($work.Width / 2)),
+    ($work.Top  + [int]($work.Height / 2)))
+  $owner.Opacity = 0
   $owner.TopMost = $true
   try {
+    $owner.Show()
+    $owner.Activate()
+    $owner.BringToFront()
     $msg = "$AppName — 이미 돌고 있습니다.`n`n" +
            "지금 껐다 새로 열까요?`n" +
            "돌던 것은 방금 깔린 것(키 · MCP 서버 · 세션 훅)을 모릅니다.`n`n" +
