@@ -185,7 +185,22 @@ probe_decl() {  # probe_decl <선언파일> <이름> — 선언에서 갈래·�
   [ "$(npm_global_version "$_pn" || true)" = "$_pv" ]
 }
 
-# ── 홈 규범·룰·에이전트·씨앗·커밋 훅 배선 — 가볍고 멱등이라 설치 안(①②)만이 아니라
+# ── 커밋 훅 배선 — **맨 앞이다.** `.githooks/` 를 둔 저장소만, 존재가 곧 선언이다 ───────
+#    ⚠ **이 파일 머리의 순서(「가볍고 안 죽는 것을 앞에」)가 값을 하는 자리다.** 옛 판은 이
+#      한 줄이 `deploy_home_norms` 꼬리에 붙어 있었는데, 그 함수는 auto 갈래에서 **망을 타는
+#      당김 둘 뒤**에 선다. SessionStart 훅은 시간이 잘리므로 당김이 느린 저장소에서는 훅이
+#      여기 닿기 전에 끊긴다 — 그러면 게이트가 안 걸린 채 커밋이 지나가고 **그 부재는
+#      조용하다**(훅이 안 걸렸으니 안 걸렸다고 말할 자도 없다). 실측 2026-09-14: 한 번의
+#      쓸기에서 형제 넷이 다 당김을 시작했는데 **작은 둘만** 배선이 섰다 (#31).
+#    ⚠ 로컬 `git config` 한 줄이라 망도 디스크도 도구도 안 탄다 — **앞에 둬서 잃는 것이 없고
+#      뒤에 둬서 얻는 것도 없다.** 그래서 자리가 곧 고침이다.
+#    ⚠ `--check` 는 이것을 안 부른다 — 재는 갈래가 상태를 바꾸면 판정이 늘 초록이 된다.
+wire_commit_hooks() {
+  [ -d "$PROJECT_DIR/.githooks" ] || return 0
+  git -C "$PROJECT_DIR" config core.hooksPath .githooks 2>/dev/null || true
+}
+
+# ── 홈 규범·룰·에이전트·씨앗 — 가볍고 멱등이라 설치 안(①②)만이 아니라
 #    PC 매 세션(auto)에도 민다.
 #    **재료는 claude-config 진본 한 자리다.** 저장소는 전역 사본을 안 진다 — 지면 그 폴더가
 #    「이 저장소 것」과 「전역 것」을 겸하게 되고, 겸하면 이름으로 갈라야 하는데 그 이름이
@@ -267,10 +282,6 @@ deploy_home_norms() {
       [ "$(awk 'NR==1{print $1}' "$_svf" 2>/dev/null)" = "$_sv" ] ||
         printf '%s %s\n' "$_sv" "$(date +%Y-%m-%d)" > "$_svf" 2>/dev/null || true
     fi
-  fi
-  # 커밋 훅 배선 — .githooks/ 를 둔 저장소만. 존재가 곧 선언이다
-  if [ -d "$PROJECT_DIR/.githooks" ]; then
-    git -C "$PROJECT_DIR" config core.hooksPath .githooks 2>/dev/null || true
   fi
 }
 
@@ -597,6 +608,7 @@ if [ "$MODE" = auto ]; then
     _pe="$(git -C "$1" pull --ff-only -q 2>&1)" ||
       echo "$(basename "$1"): ⚠ 원격 못 당김($(( $(date +%s) - _t0 ))초) — $(git_why "$_pe")"
   }
+  wire_commit_hooks  # 당김 앞이다 — 망이 느리거나 훅이 잘려도 게이트만은 선다 (#31)
   pull_ff "$PROJECT_DIR"
   [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" != "$PROJECT_DIR" ] && pull_ff "$CONFIG_ROOT"
   deploy_home_norms
@@ -673,9 +685,12 @@ if [ "$MODE" = install ]; then
     return 1
   }
 
-  # ── ①② 전역 규범·영역 룰·에이전트·씨앗을 홈으로 + 커밋 훅 배선 — 가볍고 안 죽는 것이
-  #      맨 앞이다.
-  #      몸통은 deploy_home_norms 한 벌이다 — PC 매 세션 갈래(auto)와 같은 것을 민다 ──
+  # ── ①② 커밋 훅 배선 + 전역 규범·영역 룰·에이전트·씨앗을 홈으로 — 가볍고 안 죽는 것이
+  #      맨 앞이고, **그 안에서도 안 죽는 쪽이 더 앞이다.** 배선은 로컬 한 줄이라 뒤따르는
+  #      복사가 무엇으로 지든 살아남는다 (#31).
+  #      몸통은 wire_commit_hooks · deploy_home_norms 각 한 벌이다 — PC 매 세션 갈래(auto)와
+  #      같은 것을 같은 차례로 민다 ──
+  wire_commit_hooks
   deploy_home_norms
 
   # ── ②′ 전역 SessionStart 훅 · 신뢰 — 몸통은 위 plant_session_state 한 벌이다.

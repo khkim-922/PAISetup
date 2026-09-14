@@ -8,16 +8,18 @@
 # git이 옮기는 것은 파일일 뿐이다. 이 스크립트를 돌려야 실제로 적용된다.
 # 회사 PC에서는 `git pull` 다음에 이것만 실행하면 된다.
 #
-# 하는 일
-#   1. .claude/CLAUDE.global.md -> ~/.claude/CLAUDE.md             전역 룰 (진본은 이 한 자리)
+# 하는 일 — **번호가 곧 차례다**
+#   1. .githooks/ 를 둔 저장소에 core.hooksPath 설정 (git 훅은 clone 을 안 따라온다)
+#      **맨 앞에 둔다** — 로컬 `git config` 한 줄이라 질 까닭이 없고, 뒤가 무엇으로 죽든
+#      커밋 게이트만은 서 있어야 한다. 까닭은 아래 §실행 순서 (#31)
+#   2. .claude/CLAUDE.global.md -> ~/.claude/CLAUDE.md             전역 룰 (진본은 이 한 자리)
 #      .claude/rules.global/*.md -> ~/.claude/rules/                 영역 룰 (홈 한 자리)
 #      agents/*.md -> ~/.claude/agents/                            서브에이전트
 #      memory/<이름>/*.md -> ~/.claude/projects/<슬러그>/memory/    프로젝트·워크스페이스 메모리
 #      .claude/skills/** -> ~/.claude/skills/**                   스킬 (폴더 통째로)
 #      어느 저장소·어느 슬러그로 가나는 deploy.targets.d/*.conf 가 든다 — 스크립트는 모른다
 #      .claude/hooks/*.sh 와 .claude/settings.json -> <저장소>/  훅 몸통과 그 등록
-#   2. mcp-servers.json에 적힌 MCP 서버 등록
-#   3. .githooks/ 를 둔 저장소에 core.hooksPath 설정 (git 훅은 clone 을 안 따라온다)
+#   3. mcp-servers.json에 적힌 MCP 서버 등록
 #   4. 저장소 부트스트랩 — 각 저장소의 .claude/hooks/session-start.sh 를 Git Bash 로 불러
 #      게이트가 쓰는 도구를 확인·설치한다. 무엇을 깔지는 그 훅이 알고 이 스크립트는 모른다
 #   5. 사용자 환경변수 — 이 PC 전체에 걸려야 하는 것 (인코딩 축. 아래 §사용자 환경변수)
@@ -621,6 +623,23 @@ foreach ($k in $userEnvWant.Keys) {
         }
     }
 }
+
+# --- 실행 순서 — **배선을 맨 앞에 세운다** ---
+# `core.hooksPath` 는 로컬 `git config` 한 줄이다. 망도 안 타고 디스크도 안 타고 도구도
+# 안 부르니 **질 까닭이 없다.** 그런데 계획에서 서는 자리는 배포 백여 걸음과 MCP 등록
+# 뒤였고, 실행 고리는 `$ErrorActionPreference = 'Stop'` 아래 **하나**다 — 앞 걸음 하나가
+# 던지면 뒤가 통째로 안 돈다.
+# ⚠ **그러면 커밋 게이트가 없는 채로 저장소가 서고, 그 부재는 조용하다** — 훅이 안 걸렸으니
+#   안 걸렸다고 말할 자도 없다. 이 저장소가 내내 막으려던 「부재가 통과로 읽히는 것」이
+#   가장 비싸게 나는 자리다: 게이트를 안 탄 커밋은 되돌릴 수가 없다 (#31 · 실측 2026-09-14 ·
+#   앞쪽 복사 하나가 던지자 계획에 있던 `+ 설정 core.hooksPath` 둘이 화면에만 남고
+#   저장소에는 안 걸렸다 · 형제 둘에 커밋 넷이 게이트 없이 들어갔다).
+# ⚠ **뒤가 무엇으로 죽든 게이트만은 선다** 는 것이 이 한 줄이 사는 값이다. 못 끝낸 배포도
+#   커밋만은 지키게 둔다 — 고치는 동안에도 사람은 커밋한다.
+# ⚠ **화면에 내는 목록도 이 순서다** — 계획을 굳힌 뒤에 세우니 사람이 읽는 차례와 실제로
+#   도는 차례가 같다. 둘이 갈리면 화면이 거짓말을 한다.
+$plan = @($plan | Where-Object { $_.Kind -eq 'githooks' }) +
+        @($plan | Where-Object { $_.Kind -ne 'githooks' })
 
 # --- 사람이 해야 할 것 ---
 # 키 이름을 여기 손으로 또 적으면 서버가 늘 때마다 두 자리를 고쳐야 하고, 한쪽만 고치면
