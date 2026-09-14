@@ -85,6 +85,24 @@ $Apps = @(
   @{ Name='GitHub CLI'; Id='GitHub.cli';                 Cmd='gh';     Arg='--version'; Need='dev'  }
 )
 
+# ── 확장과 CLI — **목록이 진본이다.** 깔 때도 끝에 잴 때도 이 두 표에서 판다 (결정 0041).
+#    core = 어디서나. codex · gemini = 값 파일이 그 틀(`#codex-config` · `#gemini-config`)을 들고
+#    **사내로 판정될 때만** — 사외는 구독 로그인 하나라 Claude 만 선다. 「어느 자리가 무엇을 드나」는
+#    이 표가 아니라 아래 `$wantNeed` 가 자리와 지시에서 판다.
+# ⚠ Codex 확장은 CLI 의 `~/.codex/config.toml` 을 같이 읽어 게이트웨이를 탄다 — 다만 사용자 정의
+#   프로바이더에서 CLI 와 다르게 구는 이슈가 열려 있어(openai/codex #4558 · #6963 · #27695), 확장 안의
+#   한 턴은 사람이 잰다. Gemini 것은 창이 없는 짝(companion)이라 터미널의 CLI 에 편집기 문맥을 넘길 뿐이다.
+$Extensions = @(
+  @{ Id='anthropic.claude-code';                  Label='클로드 확장';                Need='core'   }
+  @{ Id='openai.chatgpt';                         Label='Codex 확장';                 Need='codex'  }
+  @{ Id='google.gemini-cli-vscode-ide-companion'; Label='Gemini CLI Companion 확장';  Need='gemini' }
+)
+$Clis = @(
+  @{ Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI'; Need='core'   }
+  @{ Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI';       Need='codex'  }
+  @{ Pkg='@google/gemini-cli';        Cmd='gemini'; Label='Gemini CLI';      Need='gemini' }
+)
+
 # ── Node 가 말을 거는 자리 — **목록이 진본이다** ─────────────────────────────────
 # 신뢰를 이을 근거를 여기서 잰다(아래 `Wire-NodeTrust`). Node 를 태우는 곳이 늘면 한 줄 더한다.
 # ⚠ **이 설치가 실제로 여는 곳만 든다.** 신뢰 저장소를 통째로 훑으면 이 PC 가 믿는 CA 를 다
@@ -114,7 +132,7 @@ $TlsHosts = @(
 $DesktopApp = 'Anthropic.Claude'
 
 $Vars = @(
-  @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 끝에 /v1 을 붙이지 않는다 (CLI 가 붙인다)'; Gateway=$true }
+  @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 사내는 로컬 프록시 루프백 · 끝에 /v1 을 붙이지 않는다 (CLI 가 붙인다)'; Gateway=$true }
   @{ Name='ANTHROPIC_AUTH_TOKEN'; Desc='게이트웨이 API 키';                                          Gateway=$true; Secret=$true }
   @{ Name='ANTHROPIC_MODEL';      Desc='기본 모델 이름 (비우면 CLI 기본값으로 둔다)';                Gateway=$false }
 )
@@ -754,6 +772,36 @@ if ($probe) {
   Write-Host ''
 }
 
+# ── 사내에서만 더 서는 것 셋 — 로컬 프록시 · Codex · Gemini (결정 0041) ──────────────
+# ⚠ **몸통은 파일 이름도 모델 이름도 모른다.** 값 파일이 `#gateway-proxy = <프록시 파일>` ·
+#   `#codex-config = <틀>` · `#gemini-config = <틀>` 로 이 폴더 안의 자리를 가리키고, 몸통은
+#   **있고 사내면** 그것을 세운다. 사외는 셋 다 안 선다 — 구독 로그인 하나로 서는 자리라서.
+# ⚠ **자리를 모르면 안 선다.** 프로브가 없으면 「사내」가 아니라 모르는 것이고, 모르는 자리에
+#   프록시를 세우면 아무 데도 안 닿는 주소를 심은 채 초록으로 끝난다.
+# ⚠ **값 저장소로 넘기는 판(`#config-repo`)에서는 프록시·설정을 여기서 안 세운다** — 값의 진본이
+#   저쪽이고 저쪽 부트스트랩이 같은 일을 든다(로그인마다 새로 서야 하는 VDI 가 그 자리다).
+#   그 판에서도 파이썬만은 아래 1 칸이 깐다 — 프록시가 그것으로 돈다.
+$handsOffEarly = [bool](Read-Directive $EnvFile 'config-repo')
+$proxyRel   = Read-Directive $EnvFile 'gateway-proxy'
+$codexTpl   = Read-Directive $EnvFile 'codex-config'
+$geminiTpl  = Read-Directive $EnvFile 'gemini-config'
+$inside     = ($site -eq 'inside')
+$needPython = [bool]($proxyRel -and $inside)
+$wantProxy  = [bool]($proxyRel  -and $inside -and -not $handsOffEarly)
+$wantCodex  = [bool]($codexTpl  -and $inside -and -not $handsOffEarly)
+$wantGemini = [bool]($geminiTpl -and $inside -and -not $handsOffEarly)
+# 표(`$Extensions` · `$Clis`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
+$wantNeed = @{ core = $true; codex = $wantCodex; gemini = $wantGemini }
+if ($proxyRel -or $codexTpl -or $geminiTpl) {
+  $more = @()
+  if ($wantProxy)  { $more += '로컬 프록시' }
+  if ($wantCodex)  { $more += 'Codex' }
+  if ($wantGemini) { $more += 'Gemini' }
+  if ($more.Count) { Write-Host ("  사내라 더 세운다 — " + ($more -join ' · ')); Write-Host '' }
+  elseif ($handsOffEarly -and $inside) { Write-Host '  프록시·Codex·Gemini 는 #config-repo 가 가리키는 저장소의 부트스트랩이 세운다'; Write-Host '' }
+  elseif (-not $inside) { Write-Host '  프록시·Codex·Gemini 는 사내에서만 선다 — 여기서는 안 세운다'; Write-Host '' }
+}
+
 # ── 올릴 것이 있는 앱을 **한 번에** 묻는다 ─────────────────────────────────────
 # ⚠ 옛 판은 앱마다 `winget upgrade --id` 를 불렀다. 그 명령은 이미 최신이면 아무것도 안 하지만
 #   **winget 은 뜰 때마다 원본을 새로 훑는다** — 앱 수만큼 그 값을 낸다. `list
@@ -789,8 +837,14 @@ if (-not ($NoUpgrade -or $noWinget)) {
 Write-Host '[1/8] 프로그램' -ForegroundColor Cyan
 foreach ($app in $Apps) {
   if ($NoDevTools -and $app.Need -eq 'dev') {
-    Write-Host "  $($app.Name) — 건너뜀 (-NoDevTools)"
-    continue
+    # ⚠ **파이썬만은 예외가 선다** — 사내 로컬 프록시가 파이썬으로 돈다(결정 0041). 개발도구를 끈
+    #   사람도 프록시 없이는 Opus 5 와 Gemini 가 게이트웨이에 못 가므로, 사내면 이것만 깐다.
+    if ($needPython -and $app.Cmd -eq 'python') {
+      Write-Host "  $($app.Name) — 개발도구를 껐지만 깐다 (로컬 프록시가 이것으로 돈다)"
+    } else {
+      Write-Host "  $($app.Name) — 건너뜀 (-NoDevTools)"
+      continue
+    }
   }
   if (Test-Runs $app.Cmd $app.Arg) {
     $before = Get-Ver $app.Cmd $app.Arg
@@ -931,96 +985,115 @@ Wire-NodeTrust
 # ── 3. VS Code 확장 — **이 스크립트가 있는 까닭** ────────────────────────────────
 # ⚠ 확장만으로는 안 돈다. 확장은 Claude Code CLI 를 **자식으로 부른다** — 그래서 다음 칸이
 #   붙어 있고, 둘 중 하나만 서면 VS Code 는 열리는데 아무 일도 안 일어난다.
-Write-Host ''
-Write-Host '[2/8] VS Code 클로드 확장' -ForegroundColor Cyan
-if (Test-Runs 'code' '--version') {
-  $ext = (& code --list-extensions 2>$null)
-  if (($ext -contains 'anthropic.claude-code') -and $NoUpgrade) {
-    Write-Host '  있음'
-  } elseif ($ext -contains 'anthropic.claude-code') {
+# ⚠ **하나를 까는 걸음이 한 자리다.** 확장이 셋으로 늘면서(결정 0041) 같은 걸음을 세 번 적으면
+#   한 번 겪은 사고(곧바로 물으면 아직 없다 · 인증서면 다른 병이다)가 두 사본에서 다시 난다.
+function Install-Extension([string]$Id, [string]$Label) {
+  $ext = @(& code --list-extensions 2>$null)
+  if (($ext -contains $Id) -and $NoUpgrade) {
+    Write-Host "  $Label — 있음"
+    return
+  }
+  if ($ext -contains $Id) {
     # ⚠ `--force` 는 이미 있어도 **최신으로 다시 깐다.** 확장에는 올리는 명령이 따로 없다.
     $b = (& code --list-extensions --show-versions 2>$null |
-          Where-Object { $_ -like 'anthropic.claude-code@*' } | Select-Object -First 1)
+          Where-Object { $_ -like "$Id@*" } | Select-Object -First 1)
     $xl = [IO.Path]::GetTempFileName()
-    Invoke-Logged 'code' @('--install-extension','anthropic.claude-code','--force') $xl | Out-Null
+    Invoke-Logged 'code' @('--install-extension',$Id,'--force') $xl | Out-Null
     Remove-Item $xl -ErrorAction SilentlyContinue
     $a = (& code --list-extensions --show-versions 2>$null |
-          Where-Object { $_ -like 'anthropic.claude-code@*' } | Select-Object -First 1)
-    if ($a -and $a -ne $b) { Write-Host "  올렸다  $b  ->  $a" -ForegroundColor Green }
-    else { Write-Host "  최신  ($b)" }
+          Where-Object { $_ -like "$Id@*" } | Select-Object -First 1)
+    if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+    else { Write-Host "  $Label — 최신  ($b)" }
+    return
+  }
+  $xl = [IO.Path]::GetTempFileName()
+  $rc = Invoke-Logged 'code' @('--install-extension',$Id,'--force') $xl
+  # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
+  #   명령은 바로 돌아온다 — 그때 목록을 물으면 「없다」가 나와 멀쩡한 설치가 실패로 찍힌다.
+  #   몇 초를 두고 다시 묻는다. 없는 것을 오래 기다리지는 않는다.
+  $ext = @(& code --list-extensions 2>$null)
+  if ($ext -notcontains $Id) {
+    for ($i = 0; $i -lt 5; $i++) {
+      Start-Sleep -Seconds 2
+      $ext = @(& code --list-extensions 2>$null)
+      if ($ext -contains $Id) { break }
+    }
+  }
+  if ($ext -contains $Id) {
+    Write-Host "  $Label — 깔았다" -ForegroundColor Green
   } else {
-    $xl = [IO.Path]::GetTempFileName()
-    $rc = Invoke-Logged 'code' @('--install-extension','anthropic.claude-code','--force') $xl
-    # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
-    #   명령은 바로 돌아온다 — 그때 목록을 물으면 「없다」가 나와 멀쩡한 설치가 실패로 찍힌다.
-    #   몇 초를 두고 다시 묻는다. 없는 것을 오래 기다리지는 않는다.
-    $ext = (& code --list-extensions 2>$null)
-    if ($ext -notcontains 'anthropic.claude-code') {
-      for ($i = 0; $i -lt 5; $i++) {
-        Start-Sleep -Seconds 2
-        $ext = (& code --list-extensions 2>$null)
-        if ($ext -contains 'anthropic.claude-code') { break }
-      }
+    # ⚠ **까닭을 편다.** 「! 설치 실패」 한 줄만 내면 다음 사람이 열어 볼 자리가 없다 —
+    #   이 자리에서 실제로 그랬다(실측 2026-09-09 · 사외 VDI).
+    Write-Host "  ! $Label 설치 실패 (code 가 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+    Show-Log $xl
+    Write-Host '     10초를 기다려도 목록에 안 떴다.'
+    # ⚠ **인증서면 다른 병이다.** 「self signed certificate」 는 VS Code 의 흠이 아니라
+    #   길에 TLS 를 가로채는 장비가 있는데 **Node 가 그 CA 를 모른다**는 말이다. 안 짚으면
+    #   사람은 영문 오류를 들고 VS Code 를 다시 깔러 간다 — 아무 상관 없는 자리다.
+    $said = (Get-Content -LiteralPath $xl -ErrorAction SilentlyContinue) -join "`n"
+    if ($said -match 'self.signed certificate|unable to (verify|get local issuer)|UNABLE_TO_|CERT_') {
+      Write-Host '     ↑ 인증서 문제다 — 길에 TLS 를 가로채는 장비가 있는데 Node 가 그 CA 를 모른다.' -ForegroundColor Yellow
+      Write-Host '        VS Code 를 다시 깔아도 안 낫는다. 위 「Node 신뢰 배선」 칸을 먼저 본다.'
     }
-    if ($ext -contains 'anthropic.claude-code') {
-      Write-Host '  깔았다' -ForegroundColor Green
-    } else {
-      # ⚠ **까닭을 편다.** 「! 설치 실패」 한 줄만 내면 다음 사람이 열어 볼 자리가 없다 —
-      #   이 자리에서 실제로 그랬다(실측 2026-09-09 · 사외 VDI).
-      Write-Host "  ! 설치 실패 (code 가 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
-      Show-Log $xl
-      Write-Host '     10초를 기다려도 목록에 안 떴다.'
-      # ⚠ **인증서면 다른 병이다.** 「self signed certificate」 는 VS Code 의 흠이 아니라
-      #   길에 TLS 를 가로채는 장비가 있는데 **Node 가 그 CA 를 모른다**는 말이다. 안 짚으면
-      #   사람은 영문 오류를 들고 VS Code 를 다시 깔러 간다 — 아무 상관 없는 자리다.
-      $said = (Get-Content -LiteralPath $xl -ErrorAction SilentlyContinue) -join "`n"
-      if ($said -match 'self.signed certificate|unable to (verify|get local issuer)|UNABLE_TO_|CERT_') {
-        Write-Host '     ↑ 인증서 문제다 — 길에 TLS 를 가로채는 장비가 있는데 Node 가 그 CA 를 모른다.' -ForegroundColor Yellow
-        Write-Host '        VS Code 를 다시 깔아도 안 낫는다. 위 「Node 신뢰 배선」 칸을 먼저 본다.'
-      }
-      Write-Host '     VS Code 가 열려 있으면 전부 닫고 다시 눌러 본다.'
-      Write-Host '     손으로 재려면:  code --install-extension anthropic.claude-code --force'
-      $Fails.Add('VS Code 확장')
-    }
-    Remove-Item $xl -ErrorAction SilentlyContinue
+    Write-Host '     VS Code 가 열려 있으면 전부 닫고 다시 눌러 본다.'
+    Write-Host "     손으로 재려면:  code --install-extension $Id --force"
+    $Fails.Add("VS Code 확장 ($Label)")
+  }
+  Remove-Item $xl -ErrorAction SilentlyContinue
+}
+
+Write-Host ''
+Write-Host '[2/8] VS Code 확장' -ForegroundColor Cyan
+if (Test-Runs 'code' '--version') {
+  foreach ($x in $Extensions) {
+    if (-not $wantNeed[$x.Need]) { continue }
+    Install-Extension $x.Id $x.Label
   }
 } else {
   Write-Host '  ! code 를 못 불러 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
 }
 
-# ── 4. Claude Code CLI ───────────────────────────────────────────────────────────
-Write-Host ''
-Write-Host '[3/8] Claude Code CLI' -ForegroundColor Cyan
-if ((Test-Runs 'claude' '--version') -and ($NoUpgrade -or -not (Test-Runs 'npm' '--version'))) {
-  Write-Host "  있음 — $(Get-Ver 'claude' '--version')"
-} elseif (Test-Runs 'claude' '--version') {
-  $b = Get-Ver 'claude' '--version'
-  $nl = [IO.Path]::GetTempFileName()
-  Invoke-Logged 'npm' @('install','-g','@anthropic-ai/claude-code@latest') $nl | Out-Null
-  Remove-Item $nl -ErrorAction SilentlyContinue
-  Update-RuntimePath
-  $a = Get-Ver 'claude' '--version'
-  if ($a -and $a -ne $b) { Write-Host "  올렸다  $b  ->  $a" -ForegroundColor Green }
-  else { Write-Host "  최신  ($b)" }
-} elseif (Test-Runs 'npm' '--version') {
-  $nl = [IO.Path]::GetTempFileName()
-  $nrc = Invoke-Logged 'npm' @('install','-g','@anthropic-ai/claude-code') $nl
-  # ⚠ **깔고 나서 한 번 더 태운다.** `%APPDATA%\npm` 은 이 설치가 **만드는** 폴더라,
-  #   맨바닥 PC 에서는 앞의 배선이 조용히 지나가고 PATH 가 빈 채로 남는다. 두 번째부터는
-  #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
-  Update-RuntimePath
-  if (Test-Runs 'claude' '--version') {
-    Write-Host "  깔았다 — $(& claude --version)" -ForegroundColor Green
+# ── 4. CLI 셋 — Claude Code 는 어디서나, Codex · Gemini 는 사내에서만 ─────────────────
+# ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 판정은 `--version` 이 도나(프로브)다.
+function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
+  if ((Test-Runs $Cmd '--version') -and ($NoUpgrade -or -not (Test-Runs 'npm' '--version'))) {
+    Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"
+  } elseif (Test-Runs $Cmd '--version') {
+    $b = Get-Ver $Cmd '--version'
+    $nl = [IO.Path]::GetTempFileName()
+    Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl | Out-Null
+    Remove-Item $nl -ErrorAction SilentlyContinue
+    Update-RuntimePath
+    $a = Get-Ver $Cmd '--version'
+    if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+    else { Write-Host "  $Label — 최신  ($b)" }
+  } elseif (Test-Runs 'npm' '--version') {
+    $nl = [IO.Path]::GetTempFileName()
+    $nrc = Invoke-Logged 'npm' @('install','-g',$Pkg) $nl
+    # ⚠ **깔고 나서 한 번 더 태운다.** `%APPDATA%\npm` 은 이 설치가 **만드는** 폴더라,
+    #   맨바닥 PC 에서는 앞의 배선이 조용히 지나가고 PATH 가 빈 채로 남는다. 두 번째부터는
+    #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
+    Update-RuntimePath
+    if (Test-Runs $Cmd '--version') {
+      Write-Host "  $Label — 깔았다 ($(Get-Ver $Cmd '--version'))" -ForegroundColor Green
+    } else {
+      Write-Host "  ! $Label 설치 실패 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+      Show-Log $nl
+      $Fails.Add($Label)
+    }
+    Remove-Item $nl -ErrorAction SilentlyContinue
   } else {
-    Write-Host "  ! 설치 실패 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
-    Show-Log $nl
-    $Fails.Add('Claude Code CLI')
+    Write-Host "  ! npm 이 없어 $Label 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
+    $Fails.Add("$Label (npm 이 안 닿는다)")
   }
-  Remove-Item $nl -ErrorAction SilentlyContinue
-} else {
-  Write-Host '  ! npm 이 없어 못 깐다 — Node.js 설치부터 본다' -ForegroundColor Red
-  $Fails.Add('Claude Code CLI (npm 이 안 닿는다)')
+}
+
+Write-Host ''
+Write-Host '[3/8] CLI' -ForegroundColor Cyan
+foreach ($c in $Clis) {
+  if (-not $wantNeed[$c.Need]) { continue }
+  Install-NpmCli $c.Pkg $c.Cmd $c.Label
 }
 
 # ── 5. 값 — 파일이 들면 읽고, 없으면 묻는다 ─────────────────────────────────────
@@ -1116,6 +1189,227 @@ foreach ($k in $fromFile.Keys) {
   $val = $fromFile[$k]
   if (-not $val) { continue }
   Plant-Var $k $val
+}
+
+# ── 5″. 회사 키의 다른 이름 둘 — **한 번 받은 것을 이름만 바꿔 심는다** ─────────────
+# ⚠ 회사 키는 하나인데 읽는 이름이 셋이다 — Claude Code 는 `ANTHROPIC_AUTH_TOKEN`, Codex CLI 는
+#   `config.toml` 의 `env_key` 가 가리키는 `OPENAI_API_KEY`, Gemini CLI 는 `GEMINI_API_KEY`. 사람에게
+#   세 번 물으면 같은 값이 세 자리에 산다 — 한 번 받아 **파생**한다(결정 0041).
+# ⚠ **필요한 것만 심는다.** 그 CLI 를 안 세우는 자리(사외 · 자리 모름)에 이 이름을 심으면, 같은
+#   이름을 다른 뜻으로 쓰는 도구(구글 직결 키)가 회사 키를 집어 조용히 죽는다.
+$KeyAliases = @(
+  @{ Name='OPENAI_API_KEY'; Need='codex'  }
+  @{ Name='GEMINI_API_KEY'; Need='gemini' }
+)
+if ($useGateway -and -not $handsOff -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
+  foreach ($k in $KeyAliases) {
+    if (-not $wantNeed[$k.Need]) { continue }
+    Plant-Var $k.Name $Planted['ANTHROPIC_AUTH_TOKEN']
+  }
+}
+
+# ── 5‴. 로컬 프록시 — **사내에서 Claude 와 Gemini 가 지나는 문** (결정 0041) ─────────────
+# ⚠ **왜 프록시인가.** 게이트웨이가 Opus 5 에서 assistant prefill 을 400 으로 거절하고, Gemini CLI 는
+#   http 주소를 거절한다(루프백만 예외). 둘 다 클라이언트 파일을 못 고치는 자리라 사이에 한 겹을 둔다.
+#   프록시가 무엇을 고치고 무엇은 안 건드리는지는 그 폴더의 README 가 든다(`posco/pgpt-proxy/`).
+# ⚠ **어디에 두나.** 프록시는 로그·pid 를 제 곁에 쓰므로 홈 사본(7 칸이 까는 `~/.claude/posco/`)에서
+#   바로 띄우지 않고 실행 폴더로 복사해 띄운다. 자동시작은 사용자 Run 키 하나다 — 관리자 없이 선다.
+# ⚠ **이미 도는 것을 함부로 안 죽인다.** 동료 설치본이 같은 프록시를 같은 포트에 띄워 둔 PC 가 있다.
+#   `/health` 의 판이 이 판 이상이면 그대로 쓰고, 낡았으면 그 포트를 잡은 파이썬만 끄고 새로 띄운다.
+#   자동시작도 같은 프록시를 이미 띄우는 등록이 있으면 우리 것을 안 건다 — 둘이 매 로그인 포트를 다툰다.
+# ⚠ **포트·주소는 심은 `ANTHROPIC_BASE_URL` 에서 판다** — 파일에 못박힌 18901 을 여기 또 적으면 사본이다.
+function Get-ProxyHealth([string]$Url) {
+  try { return Invoke-RestMethod -Uri $Url -TimeoutSec 3 } catch { return $null }
+}
+function Test-PrefillDoor([string]$Base, [string]$Token, [string]$Model) {
+  $body = @{ model = $Model; max_tokens = 8
+             messages = @(@{ role = 'user'; content = 'hi' }, @{ role = 'assistant'; content = 'prefill' }) } |
+          ConvertTo-Json -Depth 5 -Compress
+  $hdr = @{ 'x-api-key' = $Token; 'Authorization' = "Bearer $Token"; 'anthropic-version' = '2023-06-01' }
+  try {
+    $r = Invoke-WebRequest -Uri ($Base.TrimEnd('/') + '/v1/messages') -Method Post -Headers $hdr `
+           -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120 -UseBasicParsing
+    return [int]$r.StatusCode
+  } catch {
+    try { return [int]$_.Exception.Response.StatusCode } catch { return 0 }
+  }
+}
+function Stop-ProxyOnPort([int]$Port) {
+  try {
+    $owners = @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty OwningProcess -Unique)
+    foreach ($o in $owners) {
+      $pr = Get-Process -Id $o -ErrorAction SilentlyContinue
+      if ($pr -and $pr.ProcessName -match '^pythonw?$') { Stop-Process -Id $o -Force -ErrorAction SilentlyContinue }
+    }
+    Start-Sleep -Milliseconds 500
+  } catch { }
+}
+$proxyHealthUrl = $null
+if ($wantProxy) {
+  Write-Host ''
+  Write-Host '  로컬 프록시' -ForegroundColor Cyan
+  $proxySrc = Join-Path $Here $proxyRel
+  $baseUrl  = $Planted['ANTHROPIC_BASE_URL']
+  if (-not (Test-Path -LiteralPath $proxySrc)) {
+    Write-Host "  ! 프록시 파일이 이 폴더에 없다 — $proxyRel" -ForegroundColor Red
+    $Fails.Add('로컬 프록시 (파일이 없다)')
+  } elseif (-not $baseUrl) {
+    Write-Host '  ! ANTHROPIC_BASE_URL 이 안 심겨 프록시가 설 자리를 모른다' -ForegroundColor Red
+    $Fails.Add('로컬 프록시 (주소가 없다)')
+  } else {
+    $u = $null
+    try { $u = [Uri]$baseUrl } catch { }
+    if (-not $u -or -not $u.IsLoopback) {
+      # ⚠ 주소가 루프백이 아니면 프록시를 띄워도 아무도 안 지난다 — 세우지 않고 말한다.
+      Write-Host "  ! ANTHROPIC_BASE_URL 이 루프백이 아니다 ($baseUrl) — 프록시를 안 세운다" -ForegroundColor Yellow
+      Write-Host '     프록시를 지나려면 값 파일의 주소를 127.0.0.1 로 둔다 (결정 0041)'
+    } else {
+      $proxyHealthUrl = "http://$($u.Host):$($u.Port)/health"
+      $py = Get-Command python -ErrorAction SilentlyContinue
+      $pyw = $null
+      if ($py -and $py.Source) { $pyw = Join-Path (Split-Path $py.Source -Parent) 'pythonw.exe' }
+      if (-not $pyw -or -not (Test-Path -LiteralPath $pyw)) {
+        Write-Host '  ! pythonw.exe 를 못 찾았다 — 위 1 칸의 파이썬 설치부터 본다' -ForegroundColor Red
+        $Fails.Add('로컬 프록시 (파이썬이 없다)')
+      } else {
+        $proxyDir  = Join-Path $env:LOCALAPPDATA 'PGPT-Proxy'
+        $proxyPath = Join-Path $proxyDir (Split-Path $proxySrc -Leaf)
+        $ourVer = 0
+        $m = [regex]::Match((Get-Content -LiteralPath $proxySrc -Raw -Encoding UTF8), '(?m)^VERSION\s*=\s*(\d+)')
+        if ($m.Success) { $ourVer = [int]$m.Groups[1].Value }
+        New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
+        Copy-Item -LiteralPath $proxySrc -Destination $proxyPath -Force
+        Write-Host "  실행 폴더 — $proxyDir (v$ourVer)"
+
+        $up = Get-ProxyHealth $proxyHealthUrl
+        $start = $true
+        if ($up) {
+          $runVer = 0
+          try { $runVer = [int]$up.version } catch { }
+          if ($runVer -ge $ourVer) {
+            Write-Host "  이미 돈다 — v$runVer · 그대로 쓴다"
+            $start = $false
+          } else {
+            Write-Host "  낡은 프록시 v$runVer 이 돈다 — 끄고 v$ourVer 로 새로 띄운다"
+            Stop-ProxyOnPort $u.Port
+          }
+        }
+        if ($start) {
+          Start-Process -FilePath $pyw -ArgumentList ('"' + $proxyPath + '"') -WindowStyle Hidden | Out-Null
+          $up = $null
+          for ($i = 0; $i -lt 30 -and -not $up; $i++) { Start-Sleep -Milliseconds 500; $up = Get-ProxyHealth $proxyHealthUrl }
+          if ($up) { Write-Host "  띄웠다 — $($u.Host):$($u.Port) v$($up.version)" -ForegroundColor Green }
+          else {
+            Write-Host "  ! 안 떴다 — $proxyDir\proxy.log 를 본다 (포트를 딴 프로그램이 잡고 있을 수 있다)" -ForegroundColor Red
+            $Fails.Add('로컬 프록시 (안 떴다)')
+          }
+        }
+
+        $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+        $others = @()
+        try {
+          $rp = Get-ItemProperty -Path $runKey -ErrorAction Stop
+          foreach ($pp in $rp.PSObject.Properties) {
+            if ($pp.Name -like 'PS*' -or $pp.Name -eq 'PGPTProxy') { continue }
+            if (([string]$pp.Value) -like ('*' + (Split-Path $proxySrc -Leaf) + '*')) { $others += $pp.Name }
+          }
+        } catch { }
+        if ($others.Count) {
+          Write-Host "  자동시작 — 다른 등록이 이미 같은 프록시를 띄운다 ($($others -join ' · ')) · 우리 것은 안 건다"
+        } else {
+          try {
+            Set-ItemProperty -Path $runKey -Name 'PGPTProxy' -Value ('"' + $pyw + '" "' + $proxyPath + '"')
+            Write-Host '  자동시작 — 로그인마다 띄우도록 걸었다 (HKCU Run · PGPTProxy)' -ForegroundColor Green
+          } catch {
+            Write-Host "  ! 자동시작 등록 실패 — $(Say-Why $_)" -ForegroundColor Red
+            $Fails.Add('로컬 프록시 (자동시작)')
+          }
+        }
+      }
+    }
+  }
+}
+
+# ── 5⁗. Codex · Gemini 설정 — **틀에서 파생한다** (결정 0041) ──────────────────────────
+# ⚠ **값을 여기 안 적는다.** 값 파일이 가리키는 틀(`#codex-config` · `#gemini-config`)이 곧 회사가
+#   실제로 쓰는 설정의 사본이고, 여기서는 자리표(키)와 주소만 채운다. 틀을 고치면 설치가 따라온다.
+# ⚠ **사람 것을 안 덮는다.** Codex 틀은 파일 하나가 통째라 있던 것을 날짜 붙여 물리고 새로 쓴다.
+#   Gemini 는 JSON 이라 틀의 항목만 얹고 사람이 둔 다른 항목은 둔다 — 홈 설정 칸과 같은 규율.
+if ($useGateway -and -not $handsOff -and ($wantCodex -or $wantGemini)) {
+  Write-Host ''
+  Write-Host '  Codex · Gemini 설정' -ForegroundColor Cyan
+  $key = $Planted['ANTHROPIC_AUTH_TOKEN']
+  $noBom = New-Object Text.UTF8Encoding($false)
+  if ($wantCodex) {
+    $src = Join-Path $Here $codexTpl
+    $dst = Join-Path $env:USERPROFILE '.codex\config.toml'
+    if (-not (Test-Path -LiteralPath $src)) {
+      Write-Host "  ! Codex 틀이 이 폴더에 없다 — $codexTpl" -ForegroundColor Red
+      $Fails.Add('Codex 설정 (틀이 없다)')
+    } else {
+      $want = Get-Content -LiteralPath $src -Raw -Encoding UTF8
+      New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
+      $have = $null
+      if (Test-Path -LiteralPath $dst) { $have = Get-Content -LiteralPath $dst -Raw -Encoding UTF8 }
+      if ($have -eq $want) {
+        Write-Host '  Codex config.toml — 이미 맞다'
+      } else {
+        if ($null -ne $have) {
+          $bak = "$dst.before-pgpt-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          Copy-Item -LiteralPath $dst -Destination $bak -Force
+          Write-Host "  Codex config.toml — 있던 것을 물렸다: $bak"
+        }
+        [IO.File]::WriteAllText($dst, $want, $noBom)
+        Write-Host '  Codex config.toml — 썼다 (키는 파일이 아니라 OPENAI_API_KEY 에서 읽는다)' -ForegroundColor Green
+      }
+    }
+  }
+  if ($wantGemini) {
+    $src = Join-Path $Here $geminiTpl
+    $dst = Join-Path $env:USERPROFILE '.gemini\settings.json'
+    if (-not (Test-Path -LiteralPath $src)) {
+      Write-Host "  ! Gemini 틀이 이 폴더에 없다 — $geminiTpl" -ForegroundColor Red
+      $Fails.Add('Gemini 설정 (틀이 없다)')
+    } else {
+      $tpl = $null
+      try { $tpl = Get-Content -LiteralPath $src -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
+      $g = $null
+      $broken = $false
+      if (Test-Path -LiteralPath $dst) {
+        try { $g = Get-Content -LiteralPath $dst -Raw -Encoding UTF8 | ConvertFrom-Json } catch {
+          Write-Host '  ! Gemini settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
+          $Fails.Add('Gemini 설정 (settings.json 이 깨졌다)')
+          $broken = $true
+        }
+      } else { $g = [pscustomobject]@{} }
+      if ($broken) {
+      } elseif (-not $tpl) {
+        Write-Host "  ! Gemini 틀을 못 읽었다 — $geminiTpl" -ForegroundColor Red
+        $Fails.Add('Gemini 설정 (틀이 깨졌다)')
+      } else {
+        $before = $g | ConvertTo-Json -Depth 10
+        foreach ($pp in $tpl.PSObject.Properties) {
+          $val = $pp.Value
+          if ($pp.Name -eq 'apiKey') { $val = $key }
+          elseif ($pp.Name -eq 'baseUrl') {
+            # 주소의 진본은 심은 환경변수다 — 틀의 주소(게이트웨이 직결)는 그것이 없을 때의 낙하다.
+            if ($Planted['GOOGLE_GEMINI_BASE_URL']) { $val = $Planted['GOOGLE_GEMINI_BASE_URL'] }
+          }
+          elseif ($g.PSObject.Properties[$pp.Name]) { continue }      # 사람 것은 둔다
+          $g | Add-Member -NotePropertyName $pp.Name -NotePropertyValue $val -Force
+        }
+        $after = $g | ConvertTo-Json -Depth 10
+        if ($after -eq $before) {
+          Write-Host '  Gemini settings.json — 이미 맞다'
+        } else {
+          New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
+          [IO.File]::WriteAllText($dst, $after, $noBom)
+          Write-Host '  Gemini settings.json — 썼다 (인증 방식 · 키 · 루프백 주소)' -ForegroundColor Green
+        }
+      }
+    }
+  }
 }
 
 # ── 6. 홈 설정 ──────────────────────────────────────────────────────────────────
@@ -1423,11 +1717,18 @@ Write-Host '=== 검증 ===' -ForegroundColor Cyan
 $planted = [Environment]::GetEnvironmentVariables('User')
 # 한 번만 잰다 — 같은 물음을 두 번 물으면 두 답이 갈릴 자리가 나고, 아래 「연다」 칸도 이 값을 쓴다.
 $hasCode = Test-Runs 'code' '--version'
-$checks = @(
-  @{ Name='VS Code';          Ok = $hasCode }
-  @{ Name='클로드 확장';      Ok = ($hasCode -and ((& code --list-extensions 2>$null) -contains 'anthropic.claude-code')) }
-  @{ Name='Claude Code CLI';  Ok = (Test-Runs 'claude' '--version') }
-)
+$extList = @()
+if ($hasCode) { $extList = @(& code --list-extensions 2>$null) }
+$checks = @( @{ Name='VS Code'; Ok = $hasCode } )
+# 확장과 CLI 는 **깔 때 본 표 그대로** 잰다 — 표에 한 줄을 더하면 검증도 따라온다.
+foreach ($x in $Extensions) {
+  if (-not $wantNeed[$x.Need]) { continue }
+  $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) }
+}
+foreach ($c in $Clis) {
+  if (-not $wantNeed[$c.Need]) { continue }
+  $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
+}
 # ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
 #   빈 폴더를 [O] 로 찍으면 「깔렸는데 안 든 것」이 성공으로 보고된다. 그래서 **동봉본과
 #   견준다**: 홈 사본의 파일 수가 원본보다 적으면 [X] 다.
@@ -1457,6 +1758,25 @@ if ($handsOff -and $handedOff) {
   foreach ($v in $Vars) {
     if (-not $v.Gateway) { continue }
     $checks += @{ Name = $v.Name; Ok = [bool]$planted[$v.Name] }
+  }
+  foreach ($k in $KeyAliases) {
+    if (-not $wantNeed[$k.Need]) { continue }
+    $checks += @{ Name = $k.Name; Ok = [bool]$planted[$k.Name] }
+  }
+  if ($wantCodex)  { $checks += @{ Name = 'Codex config.toml';    Ok = (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.codex\config.toml')) } }
+  if ($wantGemini) { $checks += @{ Name = 'Gemini settings.json'; Ok = (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.gemini\settings.json')) } }
+  # ⚠ **프록시는 「떠 있나」와 「문을 여나」를 따로 잰다.** 떠 있는 것만 보면 보정이 안 도는 판이
+  #   초록이 된다. 문은 assistant 로 끝나는 본문을 프록시 너머로 보내 200 이 오는가로 잰다 — 이
+  #   게이트웨이가 Opus 5 에서 그 본문을 400 으로 거절하는 것이 프록시가 있는 까닭이라(결정 0041),
+  #   짧은 답이 오나가 아니라 **그 400 이 사라졌나**를 묻는다. 모델 이름은 그 결함의 이름이다.
+  if ($wantProxy -and $proxyHealthUrl) {
+    $h = Get-ProxyHealth $proxyHealthUrl
+    $checks += @{ Name = '로컬 프록시 (/health)'; Ok = [bool]$h }
+    $door = 0
+    if ($h -and $planted['ANTHROPIC_AUTH_TOKEN']) {
+      $door = Test-PrefillDoor $planted['ANTHROPIC_BASE_URL'] $planted['ANTHROPIC_AUTH_TOKEN'] 'claude-opus-5'
+    }
+    $checks += @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (받은 것: $door)"; Ok = ($door -eq 200) }
   }
 } else {
   Write-Host '  (게이트웨이를 안 쓴다 — 구독 로그인으로 선다)'
