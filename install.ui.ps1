@@ -91,7 +91,9 @@ function New-Label($text, $x, $y, $w, $bold) {
   $F.Controls.Add($l); return $l
 }
 
-New-Label 'VS Code 의 Claude Code 확장이 돌게 세웁니다.' 18 14 560 $true | Out-Null
+# ⚠ **첫 줄은 자리를 안 뒤에 채운다.** 사내면 확장·CLI 가 셋(Claude · Codex · Gemini)이고 사외면 Claude
+#   하나라, 자리를 모른 채 적으면 어느 한쪽에 거짓이 된다. 무엇이 더 서나는 값 파일의 틀 지시가 든다.
+$lTop = New-Label '' 18 14 560 $true
 New-Label '이미 깔린 것은 건너뜁니다. 여러 번 눌러도 안전합니다.' 18 34 560 $false | Out-Null
 
 # ── 값 ──────────────────────────────────────────────────────────────────────────
@@ -120,6 +122,12 @@ if ($probe -and ($probe -match '^(.+):(\d+)$')) {
   try { $offsite = -not ($c.ConnectAsync($Matches[1], [int]$Matches[2]).Wait(3000) -and $c.Connected) }
   catch { $offsite = $true } finally { $c.Dispose() }
 }
+$more = @()
+if (Get-Directive 'codex-config')  { $more += 'Codex' }
+if (Get-Directive 'gemini-config') { $more += 'Gemini' }
+$lTop.Text = if ($probe -and -not $offsite -and $more.Count) {
+               "VS Code 에 Claude · $($more -join ' · ') 확장과 CLI 를 세웁니다." }
+             else { 'VS Code 에 Claude Code 확장과 CLI 를 세웁니다.' }
 $gV = New-Object Windows.Forms.GroupBox
 $noAsk = $offsite
 $gV.Text = if ($noAsk) { '키와 주소' } elseif ($urlPreset) { 'API 키' } else { '게이트웨이 (사내만)' }
@@ -181,19 +189,27 @@ $gV.Controls.Add($lHint)
 # 옵션
 $gO = New-Object Windows.Forms.GroupBox
 $gO.Text = '옵션'; $gO.Location = New-Object Drawing.Point(16, 190)
-$gO.Size = New-Object Drawing.Size(592, 110)
+$gO.Size = New-Object Drawing.Size(592, 116)
 $F.Controls.Add($gO)
 
 $cDev = New-Object Windows.Forms.CheckBox
-$cDev.Text = '개발 도구도 깝니다  (Git · Python · GitHub CLI)'
-$cDev.Location = New-Object Drawing.Point(16, 24)
+$cDev.Text = '코드를 짤 사람용 도구도 깝니다  (Git · Python · GitHub CLI)'
+$cDev.Location = New-Object Drawing.Point(16, 22)
 $cDev.Size = New-Object Drawing.Size(560, 22)
 $cDev.Checked = -not $NoDevTools
 $gO.Controls.Add($cDev)
+# ⚠ GitHub CLI 는 깔려도 로그인 전에는 안 돈다 — 처음 쓰는 사람은 여기서 그것을 알 데가 없었다.
+#   설정 저장소를 쓰는 사람은 훅이 토큰을 심어 로그인이 필요 없지만, 그것은 저장소 쪽 사정이다.
+$lDev = New-Object Windows.Forms.Label
+$lDev.Text = '설정 저장소를 쓰려면 Git 이 필요합니다. GitHub CLI 는 깔린 뒤 gh auth login 을 한 번 해야 씁니다.'
+$lDev.Location = New-Object Drawing.Point(34, 44)
+$lDev.Size = New-Object Drawing.Size(542, 16)
+$lDev.ForeColor = [Drawing.Color]::DimGray
+$gO.Controls.Add($lDev)
 
 $cCfg = New-Object Windows.Forms.CheckBox
 $cCfg.Text = '같이 온 규범 · 룰 · 스킬도 깝니다'
-$cCfg.Location = New-Object Drawing.Point(16, 50)
+$cCfg.Location = New-Object Drawing.Point(16, 64)
 $cCfg.Size = New-Object Drawing.Size(560, 22)
 $cCfg.Checked = [bool]$WithPersonalConfig
 $gO.Controls.Add($cCfg)
@@ -203,7 +219,7 @@ $gO.Controls.Add($cCfg)
 #   낡은 줄도 모른 채 몇 달을 돈다. 비영속 VDI 는 어차피 맨바닥이라 이 칸이 안 걸린다.
 $cUpg = New-Object Windows.Forms.CheckBox
 $cUpg.Text = '이미 깔린 것도 최신으로 올립니다'
-$cUpg.Location = New-Object Drawing.Point(16, 76)
+$cUpg.Location = New-Object Drawing.Point(16, 88)
 $cUpg.Size = New-Object Drawing.Size(560, 22)
 $cUpg.Checked = -not $NoUpgrade
 $gO.Controls.Add($cUpg)
