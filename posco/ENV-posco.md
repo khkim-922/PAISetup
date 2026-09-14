@@ -105,6 +105,30 @@ atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음
   그 생각이 180초를 넘으면 스트림 벽 → 접은 비스트리밍이 300초를 더 태우고 504 (2026-09-07 14:07~14:15 실측,
   atelier `output/_fail/fail-141502`). 이 게이트웨이에서 침묵을 없애는 손잡이는 **모델 이름**뿐이다 — 4.7 은
   생각을 안 한다
+- **동료 도구 `pgpt-one-click-connect` 는 이 벽을 안 건드린다** — 사내 다른 사용자(sejuone-cloud)가 배포한
+  Claude Code·Codex·Paseo·Hermes 용 원클릭 설치기(읽은 판: 그 저장소의 포크 · 비공개 · 프록시 v14 ·
+  2026-09-14 대조). `127.0.0.1:18901` 에 파이썬 프록시(`app/opus5_proxy.py`)를 세우고 클라이언트의 base URL 을 거기로
+  돌린다. 그 프록시가 `/v1/messages` 에 하는 일은 **요청 본문 보정뿐**이다 — 끝의 assistant 마디(prefill) 제거 ·
+  `system` 역할 마디를 `user` 로 · 같은 역할 병합 · `temperature`/`top_p` 제거. **응답은 스트리밍 포함 무수정
+  중계**다(심장박동 없음 · 생각 낱말 안 건드림 · 상류 타임아웃 600초). 그쪽이 푼 것은 **Opus 5 직결 때의 400**
+  (「assistant message prefill」 거절 — 그 저장소 README · `docs/수동-설정.md`)이고, 우리 실패는 전부 **200 뒤
+  침묵 → 504** 라(atelier `output/_fail/fail-141502`·`190126`·`191131` · 09-10 은 4.7 로도 504) 층이 다르다.
+  atelier 는 prefill 로 끝나는 봉투를 안 보낸다 — 이어받기(`llm._post` resume)도 user 「이어서」 마디로 끝난다.
+  그쪽 검증은 전부 짧은 「Reply OK」 스모크(`tests/Test-AllPgptModels.py`)라 긴 생성의 벽은 잰 적이 없다.
+  - 건질 것 — 그쪽 `docs/P-GPT_연동_노하우.md` 가 「Claude 경로는 내부적으로 Bedrock Converse 로 변환」이라 적어 위
+    「추정」과 방향이 같다(그쪽도 실측이 아니라 전언). 그쪽 설치기는 Claude Code 에
+    `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` 을 심고 별칭(`opus`) 대신 명시 ID 만 쓰라 한다. `claude-sonnet-5` 는
+    게이트웨이에 미등록이라 프록시가 `claude-sonnet-4.6` 으로 바꿔 보낸다
+  - **실측 2026-09-14(회사) — 프록시는 벽을 안 넘는다.** 아뜰리에를 `ATELIER_GATEWAY_URL` 로 프록시 너머에
+    두고 Opus 5 렌더 한 판: 첫 글자 없이 180초에 끊겼다(사용자 실측). 같은 날 Claude Code(VS Code 2.1.270 ·
+    `claude-opus-5` · 프록시 너머) 75 요청 중 짧은 도구 루프는 첫 바이트 0.4초로 흘렀고, 셋은 60초 유휴
+    워치독(`CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS`)에 끊겨 비스트리밍으로 되받아 각 65초쯤에 성공, 13:50 의
+    한 턴은 180초 벽 → 비스트리밍 300초 초과 → 재시도 300초 초과 → 14:04 포기(14분). 자동 압축 요청
+    (`source=compact`)도 첫 바이트 뒤 멈췄다 — 압축을 다른 모델로 돌릴 설정은 문서에 없다. 원형은
+    `cli-log/2026-09-14 132157.593 *` · `cli-log/autocompact problem.txt`. 그래서 프록시는 Opus 5 의 문(400)만
+    열고, `opus` 별칭은 4.7 에 둔다(결정 0041)
+  - **게이트웨이는 `POST /v1/messages/count_tokens` 를 404(`E006`)로 되돌린다** — 같은 로그. Claude Code 는
+    「count unavailable, estimating locally」로 넘어가 해는 없다. 게이트웨이 팀 보고에 얹을 한 줄
 ⚠ 재요청이 짧게 온 것은 여전히 두 판 다 캐시·짧은 답일 수 있다 — 접은 길의 값은 표본 둘로도 못 가른다.
 
 ## 아직 안 잰 것 — 다음에 물릴 자리
