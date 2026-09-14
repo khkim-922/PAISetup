@@ -1,0 +1,11 @@
+model = "gpt-5.6-sol"
+model_provider = "pgpt"
+model_reasoning_effort = "low"
+
+[model_providers.pgpt]
+name = "P-GPT Internal Server"
+base_url = "http://aigpt.posco.net/gpgpta01-gpt/v1"
+env_key = "OPENAI_API_KEY"
+
+[windows]
+sandbox = "elevated"
