@@ -252,8 +252,8 @@ $lRepo = New-Object Windows.Forms.Label
 $lRepo.Location = New-Object Drawing.Point(16, 52)
 $lRepo.Size = New-Object Drawing.Size(556, 34)
 $lRepo.ForeColor = [Drawing.Color]::DimGray
-$lRepo.Text = '받아만 둡니다 — ~/repos/<저장소 이름>. 뿌리에' +
-              ' .claude/hooks/session-start.sh 가 있는 설정 저장소면' +
+$lRepo.Text = '아무 git 저장소나 됩니다 (코드 저장소도) — ~/repos/<이름> 에 받아만 둡니다.' +
+              ' 설정 저장소(뿌리에 .claude/hooks/session-start.sh)면' +
               ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
 $gR.Controls.Add($lRepo)
 
@@ -289,12 +289,12 @@ $gR.Controls.Add($lnkRepo)
 $syncRepo = {
   $on = [bool]$tRepo.Text.Trim()
   $lRepo.Text = if ($on) {
-                  '다 세운 뒤 ~/repos/<저장소 이름> 으로 받습니다. 뿌리에' +
-                  ' .claude/hooks/session-start.sh 가 있으면 --install 로 불러' +
+                  '다 세운 뒤 ~/repos/<이름> 에 받습니다 (코드 저장소면 그것으로 끝).' +
+                  ' 설정 저장소(뿌리에 .claude/hooks/session-start.sh)면 --install 로 불러' +
                   ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
                 } else {
-                  '받아만 둡니다 — ~/repos/<저장소 이름>. 뿌리에' +
-                  ' .claude/hooks/session-start.sh 가 있는 설정 저장소면' +
+                  '아무 git 저장소나 됩니다 (코드 저장소도) — ~/repos/<이름> 에 받아만 둡니다.' +
+                  ' 설정 저장소(뿌리에 .claude/hooks/session-start.sh)면' +
                   ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
                 }
 }
@@ -310,10 +310,12 @@ $tip.InitialDelay = 400
 $tip.ReshowDelay  = 200
 $tip.ShowAlways   = $true
 $tipText = @'
-제 저장소를 받아 두는 자리입니다. 비워 두는 것이 기본이고 맞는 답입니다 —
-프로그램·확장·CLI·키·주소·프록시·사내 문서·씨앗은 이 칸과 무관하게 다 깔립니다.
+아무 git 저장소나 받아 두는 자리입니다 — 코드 저장소도, 설정 저장소도.
+비워 두는 것이 기본이고 맞는 답입니다: 프로그램·확장·CLI·키·주소·프록시·
+사내 문서·씨앗은 이 칸과 무관하게 다 깔립니다.
 
 넣으면 ~/repos/<저장소 이름> 으로 받습니다. 여러 개는 빈칸으로 가릅니다.
+코드 저장소는 그것으로 끝입니다. 설정 저장소만 한 걸음 더 갑니다:
 
 받은 뒤 갈래가 둘이고 둘 다 정당합니다. 가르는 자는 파일 이름 하나 —
 받아온 저장소 뿌리의 .claude/hooks/session-start.sh 입니다.
