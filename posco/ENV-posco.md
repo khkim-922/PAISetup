@@ -129,6 +129,10 @@ atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음
     (`source=compact`)도 첫 바이트 뒤 멈췄다 — 압축을 다른 모델로 돌릴 설정은 문서에 없다. 원형은
     `cli-log/2026-09-14 132157.593 *` · `cli-log/autocompact problem.txt`. 그래서 프록시는 Opus 5 의 문(400)만
     열고, `opus` 별칭은 4.7 에 둔다(결정 0041)
+  - **침묵을 끊는 자가 Claude Code 쪽이면 두 손이 있다(결정 0044 · 둘 다 회사 실측 전).** 자리 파일이 유휴 워치독 둘
+    (`CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS` · `CLAUDE_STREAM_IDLE_TIMEOUT_MS`)을 10분으로 심고, 프록시(v15)가 상류
+    침묵 15초마다 SSE 주석을 흘린다(`/health` 의 `keepalives`). 게이트웨이 쪽이 제 침묵에 끊는 것이면 둘 다 못 막는다 —
+    그때는 게이트웨이 팀에 낼 한 줄이다. 압축 모델을 따로 두는 설정은 문서에 없다(claude-code-guide 재확인 2026-09-15)
   - **Gemini CLI 는 회사 문서의 번들 패치를 안 쓴다** — 문서(`Gemini-Posco.setting.md`)는 http 주소를 받게 CLI 파일을
     고치는 `gemini-patch.ps1` 을 시키고 업데이트마다 다시 돌리라 하는데, 우리는 주소를 루프백 프록시로 둔다(결정 0041 ·
     `GOOGLE_GEMINI_BASE_URL`). CLI 가 루프백은 http 를 허용해 고칠 파일이 없다. 그 스크립트는 이 저장소에서 지웠다

@@ -57,8 +57,10 @@ Authorization header to whatever host Location names).
 from __future__ import annotations
 
 import http.client
+import io
 import json
 import os
+import queue
 import re
 import socket
 import sys
@@ -74,7 +76,16 @@ LISTEN_PORT = 18901
 # PGPT_PROXY_UPSTREAM 을 쓴다. 프로토콜은 http — https 는 연결되지 않는다.
 UPSTREAM = os.environ.get("PGPT_PROXY_UPSTREAM", "http://aigpt.posco.net").rstrip("/")
 ALLOWED_PREFIX = "/gpgpta01-gpt/"
-VERSION = 14
+# 상류 v14 + keepalive(아래 _relay_sse_keepalive). 설치기가 도는 판과 이 값을 견주어 낮으면 갈아 끼우므로,
+# 상류가 15 를 내면 우리는 16 으로 올린다 — README 「상류 판」.
+VERSION = 15
+# SSE keepalive — 상류가 이만큼 침묵하면 클라이언트 쪽에 SSE 주석 한 줄을 흘린다. 0 이면 끈다.
+# 게이트웨이는 모델이 생각하는 동안 바이트를 안 흘리고, Claude Code 의 바이트 유휴 워치독은 그 침묵에
+# 스트림을 끊는다(회사 실측 2026-09-14 · 자동 압축이 가장 잘 걸림). 주석 줄(`:`)은 SSE 규격상 버려지므로
+# 내용은 안 바뀌고 바이트만 흐른다. 이기는 것은 클라이언트 워치독뿐이다 — 게이트웨이 쪽이 제 침묵에
+# 끊으면 여기서는 못 막는다.
+KEEPALIVE_SEC = float(os.environ.get("PGPT_PROXY_KEEPALIVE_SEC", "15"))
+_KEEPALIVE_LINE = b": keepalive\n\n"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
 LOG_MAX_BYTES = 1_000_000
@@ -182,6 +193,7 @@ _STATS_LOCK = threading.Lock()
 _PATCHED_TOTAL = 0
 _TRIMMED_PREFILLS = 0
 _SLOW_TOTAL = 0
+_KEEPALIVE_TOTAL = 0
 
 
 def _count_patched(count: int) -> None:
@@ -202,12 +214,19 @@ def _count_slow() -> None:
         _SLOW_TOTAL += 1
 
 
+def _count_keepalive() -> None:
+    global _KEEPALIVE_TOTAL
+    with _STATS_LOCK:
+        _KEEPALIVE_TOTAL += 1
+
+
 def stats() -> dict[str, int]:
     with _STATS_LOCK:
         base = {
             "patched_tools": _PATCHED_TOTAL,
             "trimmed_prefills": _TRIMMED_PREFILLS,
             "slow_requests": _SLOW_TOTAL,
+            "keepalives": _KEEPALIVE_TOTAL,
         }
     base.update(_UPSTREAM_POOL.stats())
     return base
@@ -822,13 +841,62 @@ class ProxyHandler(BaseHTTPRequestHandler):
         assert last_error is not None
         raise last_error
 
+    def _relay_sse_keepalive(self, response: object, interval: float) -> bool:
+        """Copy an SSE body, writing an SSE comment whenever upstream is silent.
+
+        Upstream is read on a helper thread so the HTTP parser never sees a
+        socket timeout; the writer waits on the queue with a timeout and fills
+        the gap with a comment line. Returns True if fully consumed.
+        """
+        chunks: queue.Queue = queue.Queue()
+
+        def reader() -> None:
+            try:
+                while True:
+                    chunk = response.read1(65536)  # type: ignore[attr-defined]
+                    if not chunk:
+                        break
+                    chunks.put(chunk)
+                chunks.put(None)
+            except BaseException as error:  # noqa: BLE001 — 사유째 넘긴다
+                chunks.put(error)
+
+        threading.Thread(target=reader, daemon=True).start()
+        sent = 0
+        try:
+            while True:
+                try:
+                    item = chunks.get(timeout=interval)
+                except queue.Empty:
+                    self.wfile.write(_KEEPALIVE_LINE)
+                    self.wfile.flush()
+                    sent += 1
+                    _count_keepalive()
+                    continue
+                if item is None:
+                    break
+                if isinstance(item, BaseException):
+                    log(f"upstream read aborted: {item!r}")
+                    return False
+                self.wfile.write(item)
+                self.wfile.flush()
+            if sent:
+                log(f"keepalive x{sent} (upstream silent > {interval:g}s)")
+            return True
+        except (BrokenPipeError, ConnectionResetError):
+            return False
+
     def _relay_stream(
         self,
         response: http.client.HTTPResponse,
         *,
         gemini_sse: bool,
+        keepalive: bool = False,
+        interval: float | None = None,
     ) -> bool:
         """Copy upstream body to the client. Returns True if fully consumed."""
+        if keepalive and not gemini_sse:
+            return self._relay_sse_keepalive(response, interval or KEEPALIVE_SEC)
         if gemini_sse:
             joiner = GeminiSseJoiner()
             try:
@@ -1008,7 +1076,16 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             self.end_headers()
 
-            fully_read = self._relay_stream(response, gemini_sse=is_gemini_stream)
+            # Anthropic SSE 만 keepalive 를 얹는다 — Gemini 는 재조립 갈래가 따로 있고, JSON 응답은 침묵이 곧 끝이다.
+            keepalive_sse = (
+                KEEPALIVE_SEC > 0
+                and not is_gemini_stream
+                and response.status < 400
+                and (response.headers.get("Content-Type") or "").lower().startswith("text/event-stream")
+            )
+            fully_read = self._relay_stream(
+                response, gemini_sse=is_gemini_stream, keepalive=keepalive_sse
+            )
             if fully_read:
                 conn_hdr = (response.headers.get("Connection") or "").lower()
                 # HTTP/1.1 기본은 keep-alive. close 가 명시된 경우만 버린다.
@@ -1230,6 +1307,24 @@ def self_test() -> None:
     # 풀은 직접 연결(사내 HTTP_PROXY 무시) + 생성 카운터만 확인
     pool = UpstreamPool("http://127.0.0.1:9", max_idle=2)
     assert pool.stats()["upstream_idle"] == 0
+
+    # keepalive: 상류가 침묵하는 동안 SSE 주석이 흐르고, 본문은 글자 하나 안 바뀌고 지나간다.
+    class _SlowResponse:
+        def __init__(self) -> None:
+            self._chunks = [b"event: ping\ndata: {}\n\n", b""]
+
+        def read1(self, _size: int) -> bytes:
+            time.sleep(0.12)
+            return self._chunks.pop(0)
+
+    handler = ProxyHandler.__new__(ProxyHandler)
+    handler.wfile = io.BytesIO()  # type: ignore[assignment]
+    assert handler._relay_stream(_SlowResponse(), gemini_sse=False, keepalive=True, interval=0.03)  # type: ignore[arg-type]
+    relayed = handler.wfile.getvalue()
+    assert relayed.startswith(_KEEPALIVE_LINE), relayed
+    assert b"event: ping\ndata: {}\n\n" in relayed, relayed  # 본문은 그대로 — EOF 전 침묵에는 뒤에도 주석이 붙는다
+    assert relayed.count(_KEEPALIVE_LINE) >= 2, relayed
+    assert stats()["keepalives"] >= 2
 
     print("Self-test: OK")
 

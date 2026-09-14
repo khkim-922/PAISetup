@@ -15,8 +15,11 @@
 ## 상류 판
 
 - 저장소 `pgpt-one-click-connect` · 커밋 `319529d8` (2026-08-26) · 프록시 `VERSION = 14`
+- **우리 판은 `VERSION = 15` = 상류 14 + keepalive 한 덩어리** (결정 0044). 설치기가 도는 판과 이 값을 견주어
+  낮으면 갈아 끼우므로 상류보다 하나 위에 둔다 — 상류가 15 를 내면 우리는 16 이다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **파일은 안 고친다.** 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
+- **파일은 안 고친다 — 예외가 하나다.** `_relay_sse_keepalive`(+ `KEEPALIVE_SEC` · 카운터 `keepalives` · 자체
+  검사 한 칸)만 우리 것이고, 나머지는 상류 그대로다. 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
   파이썬 판정이 무는 두 줄(`raise` 에 `from` 없음 · 안 쓰는 import)은 뿌리 `ruff.toml` 이 이 세 파일을
   제외해 받는다 — 판정은 전역, 제외는 저장소(결정 0039)
 
@@ -28,6 +31,7 @@
 | `/v1beta` — `x-goog-api-key` 곁에 Bearer 추가 · `-customtools` 접미사 제거 · 쪼개진 SSE 재조립 | **쓴다** (Gemini CLI) |
 | `claude-sonnet-5` → `claude-sonnet-4.6` (게이트웨이 미등록 별칭) | 지난다 — 우리는 `ANTHROPIC_MODEL` 로 4.6 을 못박아 걸릴 일이 없다 |
 | GPT-5 계열 `max_tokens` → `max_completion_tokens` · 빈 도구 `description` 채우기 | **논다** — Codex 는 직결이다 |
+| **(우리 것)** Anthropic SSE 가 침묵하면 `KEEPALIVE_SEC`(기본 15초)마다 `: keepalive` 주석 한 줄을 클라이언트에 흘린다 — 게이트웨이가 생각 조각을 안 흘려 Claude Code 의 바이트 유휴 워치독이 끊던 자리. `PGPT_PROXY_KEEPALIVE_SEC=0` 이면 끈다 | **쓴다** (Claude Code · 결정 0044 · 회사 실측 전) |
 | Hermes 갈래 — 대시 모델 ID 복원 · chat 문의 Gemini 변환 · `x-api-key` → Bearer | **논다** — Hermes 를 안 쓴다. 걷어 내지 않는 까닭은 위 「파일은 안 고친다」 |
 | 응답 | **무수정 중계** — 스트리밍 포함. 심장박동도 생각 낱말도 안 건드린다. 180초 벽은 이것으로 안 넘는다(`ENV-posco.md`) |
 
@@ -51,8 +55,11 @@ PGPT_API_KEY=<회사 키> python -X utf8 posco/pgpt-proxy/Test-AllPgptModels.py 
 
 ## 상류에서 새 판을 받을 때
 
-1. 상류의 세 파일을 그대로 복사한다 — `diff --strip-trailing-cr` 로 대조하면 줄끝 잡음이 안 낀다
-2. 위 「상류 판」의 커밋·`VERSION` 을 고친다
+1. 상류의 세 파일을 그대로 복사한다 — `diff --strip-trailing-cr` 로 대조하면 줄끝 잡음이 안 낀다.
+   ⚠ `opus5_proxy.py` 는 복사한 뒤 **keepalive 덩어리를 다시 얹는다** — `git diff` 로 이번 판과 견주면 그 덩어리가
+   그대로 보인다(`KEEPALIVE_SEC` · `_count_keepalive` · `_relay_sse_keepalive` · `_relay_stream` 의 두 인자 ·
+   호출 자리의 `keepalive_sse` · 자체 검사 끝 칸)
+2. 위 「상류 판」의 커밋·`VERSION` 을 고친다 — 우리 `VERSION` 은 상류보다 하나 위
 3. `pair_check.py` 와 `--self-test` 가 초록인지 본다. 프록시가 새 보정을 얹었으면 위 표에 「쓴다/논다」를 더한다
 
 ## 안 담은 것
