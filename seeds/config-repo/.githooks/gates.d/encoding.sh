@@ -18,6 +18,18 @@ set -u
 BOM="$(printf '\357\273\277')"
 FAIL=0
 
+# 담긴 판의 머리 세 바이트.
+# ⚠ **작업 트리가 아니라 담긴 판을 잰다.** 커밋되는 것은 인덱스다 — BOM 없이 담아 두고
+#   작업 트리에서만 붙이면(`git add -p` · 담고 나서 고친 자리) 게이트가 초록을 내고
+#   **BOM 없는 판이 그대로 커밋된다.**
+# ⚠ **부르는 자리는 `case` 안이다 — 거른 뒤에 읽는다.** 담긴 것을 다 읽으면 이진 파일이
+#   담기는 날 셸이 「ignored null byte in input」을 파일마다 한 줄씩 뱉는다(실측). 판정은
+#   안 흔들리므로 더 조용히 나쁘다 — **뜻 없는 줄이 게이트 출력에 쌓이면 사람이 그 출력을
+#   안 읽게 되고, 그러면 진짜 빨강도 같이 안 읽힌다.**
+head3_of() {
+  git show ":$1" 2>/dev/null | head -c 3 || true
+}
+
 # 스테이지된 것만 잰다 — 손대지 않은 파일로 커밋을 막지 않는다.
 # ⚠ **`core.quotePath=false` 가 있어야 비ASCII 이름이 온다.** 기본값(참)에서 git 은
 #   `"docs/\355\225\234\352\270\200.md"` 꼴로 **싸서** 내고, 그러면 줄 끝이 `"` 라 확장자
@@ -34,13 +46,9 @@ IFS='
 '
 for f in $STAGED; do
   IFS=$oldifs
-  # ⚠ **작업 트리가 아니라 담긴 판을 잰다.** 커밋되는 것은 인덱스다 — BOM 없이 담아 두고
-  #   작업 트리에서만 붙이면(`git add -p` · 담고 나서 고친 자리) 게이트가 초록을 내고
-  #   **BOM 없는 판이 그대로 커밋된다.**
-  head3="$(git show ":$f" 2>/dev/null | head -c 3 || true)"
   case "$f" in
     *.ps1|*.psm1|*.psd1)
-      if [ "$head3" != "$BOM" ]; then
+      if [ "$(head3_of "$f")" != "$BOM" ]; then
         printf '✖ BOM 이 없다 — 한국어 윈도우에서 한글이 깨진다:  %s\n' "$f" >&2
         # ⚠ **`echo` 로 찍지 않는다.** 역슬래시를 먹는 셸이 있어 안내가 BOM 글자 자체로
         #   찍혔다(실측) — 그대로 복사하면 안 듣는다. `printf %s` 는 안 먹는다.
@@ -49,7 +57,7 @@ for f in $STAGED; do
       fi
       ;;
     *.cmd|*.bat)
-      if [ "$head3" = "$BOM" ]; then
+      if [ "$(head3_of "$f")" = "$BOM" ]; then
         printf '✖ BOM 이 붙었다 — cmd.exe 가 첫 줄을 못 읽는다:  %s\n' "$f" >&2
         printf '%s\n' "    고치는 법:  tail -c +4 '$f' > t && mv t '$f'" >&2
         FAIL=1
