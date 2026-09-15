@@ -428,7 +428,7 @@ function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath) {
 # 종료코드는 `$LASTEXITCODE` 에 남는다(못 부르면 -1).
 # ⚠ **버리는 것도 `Stop` 아래서는 던진다.** `2>$null` 이 곧 「파워셸이 stderr 를 건드리는」 자리라
 #   그 줄이 오류 레코드가 되고 위 `Stop` 이 거기서 끝낸다 — 실측 2026-09-15 · 사내 VDI: 로그인
-#   안 된 gh 의 「로그인하라」 한 줄에 4″ 칸에서 설치가 끊겼다. 집 PC 는 gh 가 이미 서 있어
+#   안 된 gh 의 「로그인하라」 한 줄에 GitHub CLI 로그인 칸에서 설치가 끊겼다. 집 PC 는 gh 가 이미 서 있어
 #   stderr 가 비었을 뿐이다 — **한 기계의 초록은 다른 기계의 빨강을 못 재준다.**
 #   그래서 `Invoke-Logged` 와 같은 규율로 여기서만 `Stop` 을 풀고, **맨 `2>$null` 은 이 함수
 #   하나에만 산다.** 다른 자리는 뽑기 검사가 막는다(`scripts/build-dist.sh`).
@@ -590,6 +590,17 @@ function Read-EnvFile([string]$Path) {
   }
   return $map
 }
+
+# ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
+# ⚠ **여기 든 글자는 진본이 아니라 울타리다.** 이름이 사람에게 찍히는 자리는 여럿인데
+#   (바로가기 이름 · 바로가기 설명 · 물음 상자 제목), 그 자리마다 글자를 박으면 이름을
+#   바꾸는 날 **한 자리만 낡고 그 한 자리는 아무도 안 본다.** 그래서 다 여기서 판다.
+# ⚠ **없어도 선다.** 값 파일이 그 줄을 안 드는 판(옛 배포본 · 이 파일만 떼어 받은 사람)에서
+#   이름이 비면 바로가기가 `.lnk` 라는 이름 없는 아이콘으로 서고 상자 제목이 빈칸이 된다 —
+#   그건 이름을 못 정한 것이 아니라 **못 읽은 것**인데 화면에는 똑같이 보인다. 울타리가 든다.
+$AppNameDefault = 'PAI Setup Wizard'
+$AppName = Read-Directive $EnvFile 'app-name'
+if (-not $AppName) { $AppName = $AppNameDefault }
 
 Write-Host ''
 Write-Host '=== Claude Code 환경 설치 ===' -ForegroundColor Cyan
@@ -807,14 +818,30 @@ $WG = @('--source','winget','--exact','--silent',
 # ⚠ **자리는 셋이다 — 사내 · 사외 · 모름.** 프로브가 없으면 「사내」가 아니라 **모르는 것**이다.
 #   둘로만 가르면 안 재고 사내라고 말하게 되고, 그 거짓 위에서 데스크탑 앱 같은 판정이 선다
 #   (실측 2026-09-09: 프로브 없는 판이 「사내라 안 깐다」를 찍었다 — 잰 적이 없는데).
+# ⚠ **화면이 이미 쟀으면 다시 안 잰다.** 같은 물음을 두 프로세스가 각각 물으면 **답이 갈릴
+#   수 있고, 갈려도 아무 데도 안 찍힌다** — 프록시가 흔들리는 VDI · 무선 전환 · 회사망
+#   재인증 순간이 그 자리다. 갈리면 화면이 받아 넘긴 키를 몸통이 버리거나(사내→사외), 주소가
+#   빈 채로 게이트웨이를 쓴다고 서거나(사외→사내) 하는데 **둘 다 초록으로 끝난다.**
+#   「규칙이 두 자리에 살면 한쪽만 낡는다」를 이 파일이 여러 곳에서 금하면서 여기서만 어겼다.
+# ⚠ **넘어온 글자를 그대로 믿지 않는다** — 우리가 아는 둘 중 하나일 때만 받는다. 모르는 값을
+#   받아 「사내」로 읽으면 **안 잰 것이 판정이 된다**(바로 위 ⚠ 의 「모름」이 그 자리다).
+# ⚠ **콘솔 갈래에는 그 줄이 없다** — 그때는 지금처럼 여기서 잰다. 재는 자가 둘인 것이 결함이지
+#   재는 자리가 둘인 것은 아니다.
 $probe   = Read-Directive $EnvFile 'site-probe'
 $site    = 'unknown'
-if ($probe) { $site = if (Test-Reach $probe) { 'inside' } else { 'outside' } }
+$siteBy  = ''
+$sitePassed = Read-Directive $EnvFile 'site'
+if ($sitePassed -eq 'inside' -or $sitePassed -eq 'outside') {
+  $site   = $sitePassed
+  $siteBy = '화면이 쟀다'
+} elseif ($probe) {
+  $site   = if (Test-Reach $probe) { 'inside' } else { 'outside' }
+  $siteBy = if ($site -eq 'inside') { '닿음' } else { '안 닿음' }
+}
 $offsite = ($site -eq 'outside')
-if ($probe) {
+if ($site -ne 'unknown') {
   Write-Host ("  자리 = {0}  ({1} {2})" -f
-    $(if ($offsite) { '사외' } else { '사내' }), $probe,
-    $(if ($offsite) { '안 닿음' } else { '닿음' }))
+    $(if ($offsite) { '사외' } else { '사내' }), $probe, $siteBy)
   Write-Host ''
 }
 
@@ -840,6 +867,12 @@ $wantCodex  = [bool]($codexTpl  -and $inside)
 $wantGemini = [bool]($geminiTpl -and $inside)
 # 회사 키의 다른 이름 표(`$KeyAliases`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
 $wantNeed = @{ codex = $wantCodex; gemini = $wantGemini }
+# ── 프록시가 밖에 남기는 자리 둘 — **이름은 여기 한 자리다** ─────────────────────
+# ⚠ **심는 자와 걷는 자가 같은 이름을 봐야 한다.** 아래 5‴ 칸이 이 둘을 만들고, 사외로 갈린
+#   판(5⁵ 칸)이 그것을 걷는다 — 두 자리에 글자를 따로 박으면 한쪽만 고쳐지는 날 **걷는 손이
+#   딴 자리를 지우고 진짜 잔재는 그대로 돈다.** 지우는 손은 헛도는 줄도 안 남긴다.
+$ProxyRunName = 'PGPTProxy'      # HKCU\...\Run 의 등록 이름
+$ProxyDirName = 'PGPT-Proxy'     # %LOCALAPPDATA% 아래 실행 폴더 이름
 if ($proxyRel -or $codexTpl -or $geminiTpl) {
   $more = @()
   if ($wantProxy)  { $more += '로컬 프록시' }
@@ -1125,12 +1158,23 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
     $b = Get-Ver $Cmd '--version'
     Write-Host "  $Label 최신으로 갱신중 … (지금 $b)"     # 긴 명령 앞의 한 줄 — 확장 칸과 같은 까닭
     $nl = [IO.Path]::GetTempFileName()
-    Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl | Out-Null
-    Remove-Item $nl -ErrorAction SilentlyContinue
+    # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** 저쪽(2 칸)은 「올릴 것 없음」에도
+    #   0 이 아닌 값을 내서 버릴 **까닭이 적혀 있지만**, npm 은 지면 지는 값을 낸다. 버리고 판만
+    #   견주면 사내 프록시가 `registry.npmjs.org` 를 막았거나 Node 가 CA 를 몰라 죽은 판에서도
+    #   판이 안 바뀌었으니 **「최신 (1.2.3)」이 찍힌다** — 낡은 판이 도는 것과 최신이 도는 것을
+    #   못 가르는 자리다. 로그도 곧바로 지워 단서가 없었다.
+    # ⚠ **그렇다고 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛 판으로 돈다 — 저장소
+    #   `pull` 이 졌을 때와 같은 꼴이라(8 칸) 같은 규율로 든다: 말은 하되 빨강으로 안 끝낸다.
+    $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
     Update-RuntimePath
     $a = Get-Ver $Cmd '--version'
     if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+    elseif ($nrc -ne 0) {
+      Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+      Show-Log $nl
+    }
     else { Write-Host "  $Label — 최신  ($b)" }
+    Remove-Item $nl -ErrorAction SilentlyContinue
   } elseif (Test-Runs 'npm' '--version') {
     Write-Host "  $Label 설치중 …"
     $nl = [IO.Path]::GetTempFileName()
@@ -1176,6 +1220,10 @@ if ($fromFile.Count -gt 0) { Write-Host "  install.env 가 $($fromFile.Count)개
 #   없다고 물지도 않는다 — 사외 VDI 가 그 자리다(구독 로그인으로 선다). 옛 판은 둘을 「무조건
 #   필요」로 두어, 안 쓰는 자리에서도 넣으라고 하고 안 넣으면 빨갛게 끝냈다.
 $useGateway = $true
+# 값 파일이 든 게이트웨이 값 — **버리기 전에 쥔다.** 아래 5⁵ 칸이 「사용자 환경에 남은 이것이
+# 우리 것인가」를 이 값으로 가른다. 버린 뒤에 물으면 남의 키와 우리 키를 못 갈라, **걷어도
+# 되는 것만 걷는다**는 규율이 아예 못 선다.
+$ourGateway = @{}
 
 # ⚠ **자리가 값보다 먼저다.** 값 파일이 사내 값을 들고 있어도, 사내에 안 닿는 자리라면 그 값은
 #   여기서 쓸 것이 아니다 — 배포본은 사내용으로 뽑히므로 그 파일을 사외 PC 에서 돌리는 일이
@@ -1188,7 +1236,11 @@ if ($probe) {
     Write-Host '    구독 로그인으로 섭니다 (claude auth login)'
     $useGateway = $false
     # 값 파일이 든 사내 값을 **버린다.** 안 버리면 아래 루프가 그대로 심는다.
-    foreach ($v in $Vars) { if ($v.Gateway) { $fromFile.Remove($v.Name) } }
+    foreach ($v in $Vars) {
+      if (-not $v.Gateway) { continue }
+      if ($fromFile[$v.Name]) { $ourGateway[$v.Name] = $fromFile[$v.Name] }
+      $fromFile.Remove($v.Name)
+    }
   }
 }
 
@@ -1306,6 +1358,104 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
   }
 }
 
+# ── 5⁵. 사외로 간 자리의 사내 잔재 — **심은 자리마다 걷는 자가 있다** ───────────────
+# ⚠ **부재가 아니라 잔재가 통과로 읽히는 자리다.** 위 칸들은 *이번 판에 심을 목록*에서만
+#   게이트웨이 이름을 빼는데, **이미 `HKCU\Environment` 에 박힌 옛 값은 아무도 안 건드린다.**
+#   사내 VDI 에서 한 번 깐 노트북을 집에 가져와 다시 돌리면 「사외다 — 게이트웨이를 안 쓴다」를
+#   찍은 뒤 그 이름들을 **검증에서까지 뺐고**(아래 `if ($useGateway)`), 화면은 전부 [O] 였다.
+#   그런데 CLI 는 남은 `ANTHROPIC_BASE_URL` 을 물고 **닿지 않는 루프백으로 나간다** — 구독
+#   로그인이 서 있어도 그쪽이 안 쓰인다. 5‴ 칸이 「물러난 이름」에만 쓴 규율을 여기 마저 쓴다.
+# ⚠ **남의 값은 안 걷는다.** 같은 이름을 제 뜻으로 쓰는 사람이 있다 — 특히 별칭 둘은 구글·
+#   오픈AI 직결 키의 이름이기도 하다(5″ 칸 ⚠ 가 심을 때 이미 든 까닭). 그래서 **우리 것이라는
+#   근거가 설 때만** 걷는다:
+#     · 주소 — 값 파일이 든 그 주소와 같거나, **루프백**이거나. 루프백이 근거가 되는 까닭은
+#       아래 5‴ 칸이 루프백이 아닌 주소에는 프록시를 **안 세우기** 때문이다 — 루프백으로 박힌
+#       `ANTHROPIC_BASE_URL` 은 이 설치기의 게이트웨이 갈래 말고는 나올 자리가 없다.
+#     · 별칭 둘 — 우리가 지금 걷는 그 토큰과 값이 같을 때만. 5″ 칸이 **같은 값을 이름만 바꿔**
+#       심으므로, 값이 같다는 것이 곧 「이것도 우리가 심은 것」이다.
+#   ⚠ **근거가 안 서면 안 걷고 그냥 둔다.** 회사 주소가 루프백이 아니고 값 파일도 그 줄을 안
+#     들고 온 판(화면 갈래의 사외)에서는 우리 것과 남의 것을 못 가른다 — 못 가르면 안 건드리는
+#     쪽으로 기운다. 그때는 아래 검증이 [X] 로 남겨, 조용히 지나가지는 않는다.
+if (-not $useGateway) {
+  Write-Host ''
+  Write-Host '  사내 잔재' -ForegroundColor Cyan
+  function Remove-UserVar([string]$Name) {
+    try {
+      [Environment]::SetEnvironmentVariable($Name, $null, 'User')
+      Remove-Item -Path "Env:$Name" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
+      Write-Host "  $Name — 걷었다 (사외라 안 쓴다)" -ForegroundColor Green
+    } catch {
+      Write-Host "  ! $Name 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
+      $script:Fails.Add("$Name 걷기")
+    }
+  }
+
+  $oldUrl = [Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')
+  $oldKey = [Environment]::GetEnvironmentVariable('ANTHROPIC_AUTH_TOKEN', 'User')
+  # ⚠ **못 읽는 글자를 예외에 맡기지 않는다.** `[Uri]'아무 글자'` 는 **상대 주소로 선다** —
+  #   던지지 않고, 그 위의 `.IsLoopback` 은 5.1 에서 **오류 없이 `$null` 을 준다.** 그래서
+  #   `try/catch` 로 감싼 판은 한 번도 안 걸리고 판정 변수에 참·거짓이 아니라 **빈 것**이 앉았다
+  #   (실측 2026-09-15 · 이 고침의 되뽑기). 지금은 거짓처럼 굴어 표가 안 나지만, 그 값을
+  #   견주거나 찍는 줄이 하나 붙는 날 「모른다」가 「아니다」로 조용히 읽힌다.
+  #   **닫힌 것 위에 세운다** — 루프백을 물을 수 있는 것은 절대 주소뿐이고, 나머지는 남의 것이다.
+  $oursUrl = $false
+  if ($oldUrl) {
+    if ($ourGateway['ANTHROPIC_BASE_URL'] -and $oldUrl -eq $ourGateway['ANTHROPIC_BASE_URL']) { $oursUrl = $true }
+    else {
+      $oldUri = $null
+      try { $oldUri = [Uri]$oldUrl } catch { }
+      $oursUrl = [bool]($oldUri -and $oldUri.IsAbsoluteUri -and $oldUri.IsLoopback)
+    }
+  }
+
+  if (-not $oldUrl) {
+    Write-Host '  ANTHROPIC_BASE_URL — 없다 (걷을 것이 없다)'
+  } elseif (-not $oursUrl) {
+    # ⚠ **모르는 주소를 지우지 않는다** — 다만 말은 한다. 이것이 살아 있으면 구독 로그인이
+    #   서 있어도 CLI 는 이쪽으로 나간다.
+    Write-Host "  ! ANTHROPIC_BASE_URL 이 우리 것이 아니다 — 안 걷는다 ($oldUrl)" -ForegroundColor Yellow
+    Write-Host '     구독 로그인으로 서려면 이 이름을 손으로 걷는다 (시스템 환경 변수)'
+  } else {
+    Remove-UserVar 'ANTHROPIC_BASE_URL'
+    if ($oldKey) { Remove-UserVar 'ANTHROPIC_AUTH_TOKEN' }
+    # 별칭 둘 — 우리가 방금 걷은 토큰과 값이 같을 때만.
+    foreach ($k in $KeyAliases) {
+      $cur = [Environment]::GetEnvironmentVariable($k.Name, 'User')
+      if (-not $cur) { continue }
+      $ours = ($oldKey -and $cur -eq $oldKey) -or
+              ($ourGateway['ANTHROPIC_AUTH_TOKEN'] -and $cur -eq $ourGateway['ANTHROPIC_AUTH_TOKEN'])
+      if ($ours) { Remove-UserVar $k.Name }
+      else { Write-Host "  $($k.Name) — 우리 키가 아니다 · 그대로 둔다" }
+    }
+  }
+
+  # ⚠ **자동시작을 먼저 걷는다.** 프록시 사본을 못 지우는 판이 있어도(도는 중이라 로그 파일이
+  #   잡혀 있다) 등록만 걷히면 **다음 로그인부터는 안 뜬다** — 둘 중 오래 사는 쪽이 등록이다.
+  $runKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+  try {
+    if (Get-ItemProperty -Path $runKeyPath -Name $ProxyRunName -ErrorAction SilentlyContinue) {
+      Remove-ItemProperty -Path $runKeyPath -Name $ProxyRunName -ErrorAction Stop
+      Write-Host "  자동시작 — 걷었다 (HKCU Run · $ProxyRunName)" -ForegroundColor Green
+    }
+  } catch {
+    Write-Host "  ! 자동시작 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
+    $Fails.Add('사내 잔재 (자동시작 걷기)')
+  }
+
+  $oldProxyDir = Join-Path $env:LOCALAPPDATA $ProxyDirName
+  if (Test-Path -LiteralPath $oldProxyDir) {
+    Remove-Item -LiteralPath $oldProxyDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $oldProxyDir) {
+      # ⚠ **못 지운 것을 지웠다고 안 한다.** 도는 프록시가 제 로그를 잡고 있으면 폴더가 남는다 —
+      #   그래도 가리키는 주소가 없어졌고 자동시작도 걷혔으니 **다음 로그인이면 사라진다.**
+      Write-Host "  ! 프록시 사본을 못 지웠다 (도는 중일 수 있다) — $oldProxyDir" -ForegroundColor Yellow
+      Write-Host '     다음 로그인부터는 안 뜬다 — 지금 끄려면 작업 관리자에서 pythonw 를 끝낸다'
+    } else {
+      Write-Host "  프록시 사본 — 걷었다 ($oldProxyDir)" -ForegroundColor Green
+    }
+  }
+}
+
 # ── 4′. 사외 Claude 구독 로그인 — **저장소와 세션 훅에 매지 않는다** ────────────
 # ⚠ 로그인은 클론한 저장소의 일이 아니다. 저장소 칸을 비운 사람도 사외에서는
 #   Claude CLI 자체의 자격이 필요하다. 세션 훅은 로그인한 Claude 세션이 열려야 돌므로
@@ -1360,117 +1510,6 @@ if ($offsite) {
       Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
       Write-Host '     새 터미널에서: claude auth login'
     }
-  }
-}
-
-# ── 4″. GitHub CLI 로그인 — **저장소를 넣은 사람만** ───────────────────────────────
-# ⚠ **왜 저장소를 넣은 사람만인가.** gh 는 [8/8] 이 비공개 저장소를 받을 때와 그 뒤 세션 훅이 쓴다.
-#   저장소를 안 넣은 사람은 GitHub 계정이 없을 수도 있어, 띄우면 가입부터 하라는 말이 된다 —
-#   그 사람에게 이 칸은 없는 칸이다. 개발 도구를 끈 사람도 같다(gh 가 안 깔린다).
-# ⚠ **일회용 코드는 팝업으로 든다.** 설치 창 기록에만 찍으면 스크롤 속에 묻히고, 브라우저는 코드를
-#   기다린 채 사람은 어디를 봐야 하는지 모른다. 창 하나가 코드 · 남은 시간 · 브라우저 열기 · 복사를
-#   들고, 로그인이 서면 스스로 닫힌다.
-# ⚠ **서면 git 자격도 같이 맡긴다**(`gh auth setup-git`) — 그래야 [8/8] 의 clone 이 자격 창을 또 안 띄운다.
-# ⚠ **안 누른 것은 실패가 아니다.** 시간이 다 가거나 [건너뛰기]면 「비었다」로 두고 간다 — [8/8] 의
-#   clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다. Claude 로그인 칸(4′)과 같은 규율.
-$GhLoginWait = 180                      # 초 — Claude 로그인 칸과 같은 값
-function Test-GhLoggedIn {
-  if (-not (Test-Runs 'gh' '--version')) { return $false }
-  $null = Get-Quiet 'gh' @('auth','status')
-  return ($LASTEXITCODE -eq 0)
-}
-# 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 초마다 남은 시간을
-# 줄이고 5초마다 로그인이 섰나 재서, 서면 닫는다. 돌려주는 값은 섰나(참/거짓).
-# ⚠ **손잡이는 닫힘(closure)으로 넘긴다.** 폼 이벤트의 스크립트 블록은 이 함수의 변수를 못 본다 —
-#   `GetNewClosure()` 가 그 순간의 참조를 물려주고, 상태는 해시테이블이라 안에서 고친 것이 밖에 남는다.
-function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait) {
-  Add-Type -AssemblyName System.Windows.Forms
-  Add-Type -AssemblyName System.Drawing
-  $f = New-Object Windows.Forms.Form
-  $f.Text = 'GitHub 로그인'; $f.TopMost = $true; $f.StartPosition = 'CenterScreen'
-  $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
-  $f.ClientSize = New-Object Drawing.Size(420, 190)
-  $l1 = New-Object Windows.Forms.Label
-  $l1.Text = '브라우저의 GitHub 창에 이 코드를 넣고 승인해 주세요.'
-  $l1.Location = New-Object Drawing.Point(16, 14); $l1.Size = New-Object Drawing.Size(390, 20)
-  $tCode = New-Object Windows.Forms.TextBox
-  $tCode.ReadOnly = $true; $tCode.TextAlign = 'Center'
-  $tCode.Font = New-Object Drawing.Font('Consolas', 22, [Drawing.FontStyle]::Bold)
-  $tCode.Text = '코드를 기다리는 중 …'
-  $tCode.Location = New-Object Drawing.Point(16, 40); $tCode.Size = New-Object Drawing.Size(390, 44)
-  $lLeft = New-Object Windows.Forms.Label
-  $lLeft.Text = "남은 시간 $Wait초"
-  $lLeft.Location = New-Object Drawing.Point(16, 96); $lLeft.Size = New-Object Drawing.Size(390, 20)
-  $bOpen = New-Object Windows.Forms.Button; $bOpen.Text = '브라우저 열기'
-  $bOpen.Location = New-Object Drawing.Point(16, 140); $bOpen.Size = New-Object Drawing.Size(120, 32)
-  $bCopy = New-Object Windows.Forms.Button; $bCopy.Text = '코드 복사'
-  $bCopy.Location = New-Object Drawing.Point(146, 140); $bCopy.Size = New-Object Drawing.Size(120, 32)
-  $bSkip = New-Object Windows.Forms.Button; $bSkip.Text = '건너뛰기'
-  $bSkip.Location = New-Object Drawing.Point(286, 140); $bSkip.Size = New-Object Drawing.Size(120, 32)
-  $f.Controls.AddRange(@($l1, $tCode, $lLeft, $bOpen, $bCopy, $bSkip))
-  $state = @{ Code = ''; Left = $Wait; Tick = 0; Ok = $false }
-  $bOpen.Add_Click({ Start-Process 'https://github.com/login/device' | Out-Null })
-  $bCopy.Add_Click({ if ($state.Code) { try { Set-Clipboard -Value $state.Code } catch { } } }.GetNewClosure())
-  $bSkip.Add_Click({ $f.Close() }.GetNewClosure())
-  $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1000
-  $timer.Add_Tick({
-    $state.Left--; $state.Tick++
-    $lLeft.Text = "남은 시간 $($state.Left)초 — 로그인이 서면 이 창은 스스로 닫힙니다"
-    if (-not $state.Code) {
-      $said = ''
-      foreach ($p in @($OutFile, "$OutFile.err")) {
-        if (Test-Path -LiteralPath $p) { $said += (Get-Content -LiteralPath $p -Raw -ErrorAction SilentlyContinue) }
-      }
-      if ($said -match '([A-Z0-9]{4}-[A-Z0-9]{4})') {
-        $state.Code = $Matches[1]; $tCode.Text = $state.Code; $tCode.SelectAll()
-      }
-    }
-    $done = ($Proc -and $Proc.HasExited)
-    if ($done -or ($state.Tick % 5) -eq 0) {
-      if (Test-GhLoggedIn) { $state.Ok = $true; $f.Close(); return }
-    }
-    if ($done -or $state.Left -le 0) { $f.Close() }
-  }.GetNewClosure())
-  $f.Add_Shown({ $f.Activate(); $timer.Start() }.GetNewClosure())
-  $f.Add_FormClosed({ $timer.Stop() }.GetNewClosure())
-  [void]$f.ShowDialog()
-  if (-not $state.Ok) { $state.Ok = Test-GhLoggedIn }
-  return $state.Ok
-}
-
-$ghLoggedIn = $false
-if ((-not $NoDevTools) -and (Read-Directive $EnvFile 'config-repo')) {
-  Write-Host ''
-  Write-Host '  GitHub CLI 로그인' -ForegroundColor Cyan
-  if (-not (Test-Runs 'gh' '--version')) {
-    Write-Host '  ! gh 가 안 닿아 로그인을 못 띄운다 — 위 프로그램 칸을 본다' -ForegroundColor Yellow
-  } elseif (Test-GhLoggedIn) {
-    $ghLoggedIn = $true
-    Write-Host '  이미 서 있다'
-  } else {
-    Write-Host "  브라우저 로그인을 띄운다 — 코드는 팝업에 (최대 $GhLoginWait초)" -ForegroundColor Yellow
-    $gl = [IO.Path]::GetTempFileName()
-    try {
-      $ghExe = (Get-Command gh -ErrorAction Stop).Source
-      # gh 는 「Enter 를 누르면 브라우저를 연다」고 묻고 기다린다 — 콘솔이 없는 자식이라 `echo.` 로
-      # 빈 줄 하나를 넣어 준다. 코드는 gh 가 찍는 것을 파일로 받아 창이 읽는다 — gh 는 코드를
-      # 오류 스트림에 찍으므로 두 스트림을 파일 둘로 받고 창이 둘 다 읽는다(한 파일로 합치는 꼴은
-      # 뽑기 검사가 막는다 — 파워셸 파일 안의 `2>&1` 은 네이티브 stderr 를 오류로 둔갑시킨다).
-      $cmdArgs = '/d /s /c "echo.| "' + $ghExe + '" auth login --hostname github.com --git-protocol https --web > "' + $gl + '" 2> "' + $gl + '.err""'
-      $login = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
-                 -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
-      $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait
-      if ($ghLoggedIn) {
-        Write-Host '  섰다' -ForegroundColor Green
-        $null = Get-Quiet 'gh' @('auth','setup-git')
-      } else {
-        if ($login -and -not $login.HasExited) { try { $login.Kill() } catch { } }
-        Write-Host '  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login (저장소 받기는 제 자격 창을 띄운다)' -ForegroundColor Yellow
-      }
-    } catch {
-      Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
-    }
-    Remove-Item $gl, "$gl.err" -ErrorAction SilentlyContinue
   }
 }
 
@@ -1563,7 +1602,7 @@ if ($wantProxy) {
         Write-Host '  ! pythonw.exe 를 못 찾았다 — 위 1 칸의 파이썬 설치부터 본다' -ForegroundColor Red
         $Fails.Add('로컬 프록시 (파이썬이 없다)')
       } else {
-        $proxyDir  = Join-Path $env:LOCALAPPDATA 'PGPT-Proxy'
+        $proxyDir  = Join-Path $env:LOCALAPPDATA $ProxyDirName
         $proxyPath = Join-Path $proxyDir (Split-Path $proxySrc -Leaf)
         $ourVer = 0
         $m = [regex]::Match((Get-Content -LiteralPath $proxySrc -Raw -Encoding UTF8), '(?m)^VERSION\s*=\s*(\d+)')
@@ -1601,7 +1640,7 @@ if ($wantProxy) {
         try {
           $rp = Get-ItemProperty -Path $runKey -ErrorAction Stop
           foreach ($pp in $rp.PSObject.Properties) {
-            if ($pp.Name -like 'PS*' -or $pp.Name -eq 'PGPTProxy') { continue }
+            if ($pp.Name -like 'PS*' -or $pp.Name -eq $ProxyRunName) { continue }
             if (([string]$pp.Value) -like ('*' + (Split-Path $proxySrc -Leaf) + '*')) { $others += $pp.Name }
           }
         } catch { }
@@ -1609,8 +1648,8 @@ if ($wantProxy) {
           Write-Host "  자동시작 — 다른 등록이 이미 같은 프록시를 띄운다 ($($others -join ' · ')) · 우리 것은 안 건다"
         } else {
           try {
-            Set-ItemProperty -Path $runKey -Name 'PGPTProxy' -Value ('"' + $pyw + '" "' + $proxyPath + '"')
-            Write-Host '  자동시작 — 로그인마다 띄우도록 걸었다 (HKCU Run · PGPTProxy)' -ForegroundColor Green
+            Set-ItemProperty -Path $runKey -Name $ProxyRunName -Value ('"' + $pyw + '" "' + $proxyPath + '"')
+            Write-Host "  자동시작 — 로그인마다 띄우도록 걸었다 (HKCU Run · $ProxyRunName)" -ForegroundColor Green
           } catch {
             Write-Host "  ! 자동시작 등록 실패 — $(Say-Why $_)" -ForegroundColor Red
             $Fails.Add('로컬 프록시 (자동시작)')
@@ -1871,24 +1910,44 @@ if (-not $WithPersonalConfig) {
 #   바이트로 잰다. 사본이 하나 더 늘지만, **재는 자가 붙은 사본**이라 조용히 안 낡는다.
 Write-Host ''
 Write-Host '[7/8] 사내 환경 문서 · 씨앗 셋' -ForegroundColor Cyan
+# ⚠ **씨앗 셋은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 **원본에 없는
+#   파일을 안 지운다.** 진본에서 부품 하나를 걷어도 한 번 깐 기계에는 그것이 영영 남고, 씨앗은
+#   **있으면 복사되는 자리**라 걷힌 것이 계속 새 프로젝트로 퍼진다 — 5‴ 칸의 「심기는 더하기만
+#   한다」와 같은 병이고, 여기도 **지우는 손**이 없어서 난다.
+#   ⚠ 이 셋은 **이 zip 이 유일한 진본**이라 거울이 설 수 있다: 홈 사본에 남는 것은 우리가 옛
+#     판에 깐 것뿐이고, 저쪽에서 따로 심는 자가 없다.
+# ⚠ **`posco` 만은 덮어쓰기로 둔다.** 그 자리는 **진본이 둘이고 런타임 파일이 섞인다** — 설정
+#   저장소의 `deploy.ps1` 이 같은 자리를 갱신하고, 프록시가 제 곁에 `opus5_proxy.pid` 와
+#   `proxy.log` 를 쓴다. 거울로 걷으면 **남이 심은 것과 도는 프로세스가 쓰는 파일을 지운다** —
+#   우리 것만 걷는다는 규율이 못 서는 자리라 여기서는 더하기만 한다.
 $envAssets = @(
-  @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'
+  @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'; Mirror = $false
      Name = '사내 환경 문서'; Desc = '게이트웨이·API·오류 기록 — 붙이기 전에 읽는다' }
-  @{ From = Join-Path $Here 'seeds\gateway'; To = Join-Path $homeDir 'seeds\gateway'
+  @{ From = Join-Path $Here 'seeds\gateway'; To = Join-Path $homeDir 'seeds\gateway'; Mirror = $true
      Name = '게이트웨이 씨앗'; Desc = '새 프로젝트가 복사해서 출발한다' }
-  @{ From = Join-Path $Here 'seeds\check';   To = Join-Path $homeDir 'seeds\check'
+  @{ From = Join-Path $Here 'seeds\check';   To = Join-Path $homeDir 'seeds\check'; Mirror = $true
      Name = '검사 씨앗';       Desc = '검사 부품과 어느 저장소에서나 도는 게이트의 진본 — 받아 간 사본은 여기를 가리킨다' }
   # ⚠ **이것도 스위치를 안 둔다.** 「설정 저장소」 칸을 쓸 사람만 보지만, **볼지 말지를 고르는
   #   때가 이 설치보다 뒤다** — 칸을 채우려면 저장소가 이미 있어야 하고, 그 저장소를 만드는
   #   골든이 이것이다. 켜는 칸으로 두면 안 켠 사람은 그 칸을 채울 길을 못 찾는다.
-  @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'
+  @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'; Mirror = $true
      Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
 )
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없다"; continue }
+  # ⚠ **못 걷었으면 덮어쓰기로 물러나지 않는다.** 걷기가 진 채로 복사하면 옛 부품이 남은
+  #   자리가 「깔았다」 초록으로 덮이고, 아래 검증은 **모자란 것만 물어** 여분을 안 문다 —
+  #   거울이 안 선 판이 그대로 통과한다. 까닭을 대고 실패로 센다.
+  if ($a.Mirror -and (Test-Path -LiteralPath $a.To)) {
+    try { Remove-Item -LiteralPath $a.To -Recurse -Force -ErrorAction Stop }
+    catch {
+      Write-Host "  ! $($a.Name) 옛 사본을 못 걷었다 — $(Say-Why $_)" -ForegroundColor Red
+      $Fails.Add("$($a.Name) (옛 사본 걷기)")
+    }
+  }
   New-Item -ItemType Directory -Path $a.To -Force | Out-Null
   Copy-Item -Path (Join-Path $a.From '*') -Destination $a.To -Recurse -Force
-  Write-Host "  $($a.Name) — 깔았다" -ForegroundColor Green
+  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '거울로 깔았다' } else { '깔았다' })" -ForegroundColor Green
   Write-Host "     $($a.To)"
   Write-Host "     $($a.Desc)"
 }
@@ -1926,6 +1985,125 @@ if (-not $repoUrl) {
   #   자리를 바꿔야 하면 고칠 자리는 둘이다: 여기와 저쪽 `ROOT`. 한쪽만 고치면 안 선다.
   $root = Join-Path $env:USERPROFILE 'repos'
   New-Item -ItemType Directory -Path $root -Force | Out-Null
+
+  # ── 8′. GitHub CLI 로그인 — **받기 직전, 개인 계정이 서야 하는 자리** ─────────────
+  # ⚠ **왜 여기인가.** 이 칸은 **개인 계정이 있어야 서는 칸**이라, 회사 환경(프로그램 · 확장 ·
+  #   CLI · 키 · 프록시 · 회사 설정)이 다 선 뒤 개인 값 바로 앞이 제자리다. 옛 판은 이것을
+  #   4″ 자리(Claude 로그인 뒤 · 프록시 앞)에 두어, 회사 것이 아직 반도 안 선 자리에서 개인
+  #   계정을 먼저 물었다 — 거기서 멈춘 사람은 제 몫도 회사 몫도 못 받은 채로 남았다.
+  # ⚠ **왜 저장소를 넣은 사람만인가.** gh 는 바로 아래가 비공개 저장소를 받을 때와 그 뒤 세션
+  #   훅이 쓴다. 저장소를 안 넣은 사람은 GitHub 계정이 없을 수도 있어, 띄우면 가입부터 하라는
+  #   말이 된다 — 그 사람에게 이 칸은 없는 칸이다. **그 물음은 이 자리가 이미 답한다** — 여기는
+  #   `#config-repo` 가 있을 때만 도는 칸 안이라, 옛 판이 조건에 또 적던 줄이 없어졌다.
+  #   개발 도구를 끈 사람도 같다(gh 가 안 깔린다) — 그 하나만 아래 조건이 든다.
+  # ⚠ **토큰을 전제하지 않는다.** 모두의 길은 팝업이다 — 브라우저에 넣는 일회용 코드 하나.
+  #   개인 토큰을 이미 든 사람은 아래 `Test-GhLoggedIn` 이 「이미 서 있다」로 지나간다.
+  # ⚠ **일회용 코드는 팝업으로 든다.** 설치 창 기록에만 찍으면 스크롤 속에 묻히고, 브라우저는 코드를
+  #   기다린 채 사람은 어디를 봐야 하는지 모른다. 창 하나가 코드 · 남은 시간 · 브라우저 열기 · 복사를
+  #   들고, 로그인이 서면 스스로 닫힌다.
+  # ⚠ **서면 git 자격도 같이 맡긴다**(`gh auth setup-git`) — 그래야 아래 clone 이 자격 창을 또 안 띄운다.
+  # ⚠ **안 누른 것은 실패가 아니다.** 시간이 다 가거나 [건너뛰기]면 「비었다」로 두고 간다 — 아래
+  #   clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다. Claude 로그인 칸(4′)과 같은 규율.
+  $GhLoginWait = 180                      # 초 — Claude 로그인 칸과 같은 값
+  function Test-GhLoggedIn {
+    if (-not (Test-Runs 'gh' '--version')) { return $false }
+    $null = Get-Quiet 'gh' @('auth','status')
+    return ($LASTEXITCODE -eq 0)
+  }
+  # 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 초마다 남은 시간을
+  # 줄이고 5초마다 로그인이 섰나 재서, 서면 닫는다. 돌려주는 값은 섰나(참/거짓).
+  # ⚠ **손잡이는 닫힘(closure)으로 넘긴다.** 폼 이벤트의 스크립트 블록은 이 함수의 변수를 못 본다 —
+  #   `GetNewClosure()` 가 그 순간의 참조를 물려주고, 상태는 해시테이블이라 안에서 고친 것이 밖에 남는다.
+  function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait) {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $f = New-Object Windows.Forms.Form
+    $f.Text = 'GitHub 로그인'; $f.TopMost = $true; $f.StartPosition = 'CenterScreen'
+    $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
+    $f.ClientSize = New-Object Drawing.Size(420, 190)
+    $l1 = New-Object Windows.Forms.Label
+    $l1.Text = '브라우저의 GitHub 창에 이 코드를 넣고 승인해 주세요.'
+    $l1.Location = New-Object Drawing.Point(16, 14); $l1.Size = New-Object Drawing.Size(390, 20)
+    $tCode = New-Object Windows.Forms.TextBox
+    $tCode.ReadOnly = $true; $tCode.TextAlign = 'Center'
+    $tCode.Font = New-Object Drawing.Font('Consolas', 22, [Drawing.FontStyle]::Bold)
+    $tCode.Text = '코드를 기다리는 중 …'
+    $tCode.Location = New-Object Drawing.Point(16, 40); $tCode.Size = New-Object Drawing.Size(390, 44)
+    $lLeft = New-Object Windows.Forms.Label
+    $lLeft.Text = "남은 시간 $Wait초"
+    $lLeft.Location = New-Object Drawing.Point(16, 96); $lLeft.Size = New-Object Drawing.Size(390, 20)
+    $bOpen = New-Object Windows.Forms.Button; $bOpen.Text = '브라우저 열기'
+    $bOpen.Location = New-Object Drawing.Point(16, 140); $bOpen.Size = New-Object Drawing.Size(120, 32)
+    $bCopy = New-Object Windows.Forms.Button; $bCopy.Text = '코드 복사'
+    $bCopy.Location = New-Object Drawing.Point(146, 140); $bCopy.Size = New-Object Drawing.Size(120, 32)
+    $bSkip = New-Object Windows.Forms.Button; $bSkip.Text = '건너뛰기'
+    $bSkip.Location = New-Object Drawing.Point(286, 140); $bSkip.Size = New-Object Drawing.Size(120, 32)
+    $f.Controls.AddRange(@($l1, $tCode, $lLeft, $bOpen, $bCopy, $bSkip))
+    $state = @{ Code = ''; Left = $Wait; Tick = 0; Ok = $false }
+    $bOpen.Add_Click({ Start-Process 'https://github.com/login/device' | Out-Null })
+    $bCopy.Add_Click({ if ($state.Code) { try { Set-Clipboard -Value $state.Code } catch { } } }.GetNewClosure())
+    $bSkip.Add_Click({ $f.Close() }.GetNewClosure())
+    $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1000
+    $timer.Add_Tick({
+      $state.Left--; $state.Tick++
+      $lLeft.Text = "남은 시간 $($state.Left)초 — 로그인이 서면 이 창은 스스로 닫힙니다"
+      if (-not $state.Code) {
+        $said = ''
+        foreach ($p in @($OutFile, "$OutFile.err")) {
+          if (Test-Path -LiteralPath $p) { $said += (Get-Content -LiteralPath $p -Raw -ErrorAction SilentlyContinue) }
+        }
+        if ($said -match '([A-Z0-9]{4}-[A-Z0-9]{4})') {
+          $state.Code = $Matches[1]; $tCode.Text = $state.Code; $tCode.SelectAll()
+        }
+      }
+      $done = ($Proc -and $Proc.HasExited)
+      if ($done -or ($state.Tick % 5) -eq 0) {
+        if (Test-GhLoggedIn) { $state.Ok = $true; $f.Close(); return }
+      }
+      if ($done -or $state.Left -le 0) { $f.Close() }
+    }.GetNewClosure())
+    $f.Add_Shown({ $f.Activate(); $timer.Start() }.GetNewClosure())
+    $f.Add_FormClosed({ $timer.Stop() }.GetNewClosure())
+    [void]$f.ShowDialog()
+    if (-not $state.Ok) { $state.Ok = Test-GhLoggedIn }
+    return $state.Ok
+  }
+
+  $ghLoggedIn = $false
+  if (-not $NoDevTools) {
+    Write-Host ''
+    Write-Host '  GitHub CLI 로그인' -ForegroundColor Cyan
+    if (-not (Test-Runs 'gh' '--version')) {
+      Write-Host '  ! gh 가 안 닿아 로그인을 못 띄운다 — 위 프로그램 칸을 본다' -ForegroundColor Yellow
+    } elseif (Test-GhLoggedIn) {
+      $ghLoggedIn = $true
+      Write-Host '  이미 서 있다'
+    } else {
+      Write-Host "  브라우저 로그인을 띄운다 — 코드는 팝업에 (최대 $GhLoginWait초)" -ForegroundColor Yellow
+      $gl = [IO.Path]::GetTempFileName()
+      try {
+        $ghExe = (Get-Command gh -ErrorAction Stop).Source
+        # gh 는 「Enter 를 누르면 브라우저를 연다」고 묻고 기다린다 — 콘솔이 없는 자식이라 `echo.` 로
+        # 빈 줄 하나를 넣어 준다. 코드는 gh 가 찍는 것을 파일로 받아 창이 읽는다 — gh 는 코드를
+        # 오류 스트림에 찍으므로 두 스트림을 파일 둘로 받고 창이 둘 다 읽는다(한 파일로 합치는 꼴은
+        # 뽑기 검사가 막는다 — 파워셸 파일 안의 `2>&1` 은 네이티브 stderr 를 오류로 둔갑시킨다).
+        $cmdArgs = '/d /s /c "echo.| "' + $ghExe + '" auth login --hostname github.com --git-protocol https --web > "' + $gl + '" 2> "' + $gl + '.err""'
+        $login = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
+                   -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
+        $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait
+        if ($ghLoggedIn) {
+          Write-Host '  섰다' -ForegroundColor Green
+          $null = Get-Quiet 'gh' @('auth','setup-git')
+        } else {
+          if ($login -and -not $login.HasExited) { try { $login.Kill() } catch { } }
+          Write-Host '  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login (저장소 받기는 제 자격 창을 띄운다)' -ForegroundColor Yellow
+        }
+      } catch {
+        Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
+      }
+      Remove-Item $gl, "$gl.err" -ErrorAction SilentlyContinue
+    }
+  }
 
   # ⚠ **여러 개를 빈칸으로 가른다.** 옛 판은 하나만 받았고, 그 까닭은 「나머지는 그 저장소의
   #   부트스트랩이 데려온다」였다 — 그런데 그건 **만든 사람의 부트스트랩 사정**이지 받는
@@ -2024,6 +2202,24 @@ if (-not $repoUrl) {
   }
 }
 
+# ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
+# ⚠ **화면 껍데기도 지우지만 그 손은 제 프로세스가 살아 있을 때만 돈다.** 작업 관리자로 끄거나
+#   VDI 가 세션을 끊거나 그것이 죽으면 **평문 토큰이 든 파일이 `%TEMP%` 에 눌러앉고**, 다음
+#   판은 PID 가 달라 같은 이름을 다시 안 써 **아무도 다시 안 지운다.** 그래서 몸통도 든다 —
+#   값을 다 읽은 자가 지우는 것이 가장 이른 자리다(위 8 칸이 마지막 독자다).
+# ⚠ **넘겨받은 것만 지운다.** 옆에 둔 `install.env` 는 사람 것이고 이 파일의 기본값이라, 그것을
+#   지우면 다음 판이 값 없이 선다. 근거 둘이 다 서야 한다 — **`-EnvFile` 로 받았나**와
+#   **임시 폴더 아래인가.** 하나만 보면 `-EnvFile .\install.env` 로 부른 사람의 파일을 지운다.
+if ($PSBoundParameters.ContainsKey('EnvFile') -and $EnvFile) {
+  $envFull = ''
+  try { $envFull = [IO.Path]::GetFullPath($EnvFile) } catch { }
+  $tmpRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+  if ($envFull -and $envFull.StartsWith($tmpRoot, [StringComparison]::OrdinalIgnoreCase) -and
+      (Test-Path -LiteralPath $envFull)) {
+    Remove-Item -LiteralPath $envFull -Force -ErrorAction SilentlyContinue
+  }
+}
+
 # ── 바탕화면·시작 메뉴 아이콘 ───────────────────────────────────────────────────
 # ⚠ **가리키는 곳은 판에 안 매인 한 자리다.** 설치본은 판마다 제 폴더를 따로 쓰는데
 #   (`…\Claude Code Setup.8.0\`) 바로가기가 그 자리를 가리키면 **다음 판에서 죽는다.**
@@ -2043,17 +2239,34 @@ if (Test-Path -LiteralPath $launcher) {
   $made = @()
   try {
     $sh = New-Object -ComObject WScript.Shell
+    # ⚠ **두 자리를 같은 자로 판다.** 옛 판은 바탕화면만 `GetFolderPath` 로 파고 시작 메뉴는
+    #   경로를 박았다 — 앞엣것은 OneDrive·폴더 리다이렉션을 따라가고 **뒷것은 안 따라간다.**
+    #   시작 메뉴를 리다이렉트한 사내 VDI 에서는 `Test-Path` 가 거짓이라 **조용히 건너뛰고**,
+    #   여기는 실패로도 안 세므로(위 ⚠) 아무 줄도 안 남는다. 윈도우가 드는 자를 둘 다 쓴다.
     $spots = @(
       @{ Name = '바탕화면';   Dir = [Environment]::GetFolderPath('Desktop') }
-      @{ Name = '시작 메뉴'; Dir = (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs') }
+      @{ Name = '시작 메뉴'; Dir = [Environment]::GetFolderPath('Programs') }
     )
+    # ⚠ **옛 이름의 아이콘을 걷는다.** `.lnk` 는 **파일 이름이 곧 표시 이름**이라, 이름을 바꾸면
+    #   새 것이 생길 뿐 옛 것은 그대로 남는다 — 사람 눈에는 아이콘 둘이 서고 둘 다 눌리며,
+    #   둘 다 같은 `Setup.exe` 를 가리켜 **어느 쪽이 맞는지 알 길이 없다.**
+    # ⚠ **이름이 바뀔 때마다 여기 한 줄이 는다** — 걷을 것은 「우리가 옛날에 쓴 이름」이지
+    #   아무 `.lnk` 나가 아니다. 남이 만든 바로가기를 지우지 않으려면 목록으로 드는 수밖에 없다.
+    $OldLnkNames = @('Claude Code 설치')
     foreach ($spot in $spots) {
       if (-not $spot.Dir -or -not (Test-Path -LiteralPath $spot.Dir)) { continue }
+      foreach ($old in $OldLnkNames) {
+        if ($old -eq $AppName) { continue }        # 이름이 안 바뀐 판에서는 방금 만든 것을 지우게 된다
+        $oldLnk = Join-Path $spot.Dir "$old.lnk"
+        if (Test-Path -LiteralPath $oldLnk) {
+          Remove-Item -LiteralPath $oldLnk -Force -ErrorAction SilentlyContinue
+        }
+      }
       try {
-        $lnk = $sh.CreateShortcut((Join-Path $spot.Dir 'Claude Code 설치.lnk'))
+        $lnk = $sh.CreateShortcut((Join-Path $spot.Dir "$AppName.lnk"))
         $lnk.TargetPath       = $launcher
         $lnk.WorkingDirectory = Split-Path -Parent $launcher
-        $lnk.Description      = 'Claude Code 개발 환경 설치 — 누르면 새 판이 있는지도 봅니다'
+        $lnk.Description      = "$AppName — 누르면 새 판이 있는지도 봅니다"
         $lnk.Save()
         $made += $spot.Name
       } catch { }
@@ -2063,6 +2276,24 @@ if (Test-Path -LiteralPath $launcher) {
   else { Write-Host '    ! 아이콘을 못 만들었다 — 설치에는 지장이 없다' -ForegroundColor Yellow }
 }
 
+# 나른 것을 **동봉본과 견주는 자** — 7 칸과 6 칸이 같은 자를 쓴다.
+# ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
+#   빈 폴더를 [O] 로 찍으면 「깔렸는데 안 든 것」이 성공으로 보고된다. 그래서 **파일 수를 센다.**
+# ⚠ **여분은 판정이 아니라 눈금이다.** 「남는 것이 있다」와 「나른 것이 모자란다」는 다른
+#   명제라, 수는 찍되 [X] 는 모자랄 때만 든다 — 걷는 자리(씨앗 셋)와 안 걷는 자리(개인
+#   규범·룰·스킬)가 **같은 자를 쓰면서** 서로 다른 뜻을 읽을 수 있게 하는 것이 이 갈림이다.
+#   ⚠ 두 자를 따로 두면 한쪽만 낡는다 — 찍는 꼴이 두 벌이 되는 그 자리가 사본이다.
+function New-CountCheck([string]$Name, [string]$From, [string]$To) {
+  $isDir = Test-Path -LiteralPath $From -PathType Container
+  $srcN = if ($isDir) { @(Get-ChildItem -LiteralPath $From -Recurse -File -ErrorAction SilentlyContinue).Count } else { 1 }
+  $dstN = 0
+  if (Test-Path -LiteralPath $To) {
+    $dstN = if ($isDir) { @(Get-ChildItem -LiteralPath $To -Recurse -File -ErrorAction SilentlyContinue).Count } else { 1 }
+  }
+  $extra = if ($dstN -gt $srcN) { " · 여분 $($dstN - $srcN)" } else { '' }
+  return @{ Name = "$Name ($dstN/$srcN$extra)"; Ok = ($srcN -gt 0 -and $dstN -ge $srcN) }
+}
+
 # ── 검증 — **재고 나서 말한다** ─────────────────────────────────────────────────
 # ⚠ 안 재고 「됐다」로 끝내면 안 선 기계도 성공으로 보고된다. 부재가 통과로 읽히는 것을
 #   막는 것이 이 스크립트의 규율이라, 마지막 칸이 그것을 든다.
@@ -2070,7 +2301,12 @@ if (Test-Path -LiteralPath $launcher) {
 #   못 잰다. 새 창이 볼 자리를 봐야 판정이 참이 된다.
 Write-Host ''
 Write-Host '=== 검증 ===' -ForegroundColor Cyan
-$planted = [Environment]::GetEnvironmentVariables('User')
+# ⚠ **이름을 `$Planted` 와 갈라 둔다.** 파워셸 변수는 대소문자를 안 가려, 옛 판의 `$planted` 는
+#   **「우리가 심은 것」을 「사용자 환경 전부」로 그 자리에서 갈아치웠다.** 지금은 읽는 자리가
+#   다 이 줄 앞이라 안 터지지만, 이 파일은 칸이 계속 느는 파일이라 뒤에 `$Planted.ContainsKey(...)`
+#   한 줄이 들어오는 날 **「우리가 심었나」가 「사용자 환경에 있나」로 조용히 바뀐다** — 그러면
+#   위 「우리가 안 심은 `ANTHROPIC_*`」 검사가 영영 아무것도 못 문다. 이름만 갈라 두면 없어진다.
+$userEnv = [Environment]::GetEnvironmentVariables('User')
 # 한 번만 잰다 — 같은 물음을 두 번 물으면 두 답이 갈릴 자리가 나고, 아래 「연다」 칸도 이 값을 쓴다.
 $hasCode = Test-Runs 'code' '--version'
 $extList = @()
@@ -2083,17 +2319,22 @@ foreach ($x in $Extensions) {
 foreach ($c in $Clis) {
   $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
 }
-# ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
-#   빈 폴더를 [O] 로 찍으면 「깔렸는데 안 든 것」이 성공으로 보고된다. 그래서 **동봉본과
-#   견준다**: 홈 사본의 파일 수가 원본보다 적으면 [X] 다.
+# 나르는 자리 둘 — 7 칸의 자산과 6 칸의 개인 규범·룰·스킬. 재는 자는 위 `New-CountCheck` 하나다.
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { continue }
-  $srcN = @(Get-ChildItem -LiteralPath $a.From -Recurse -File -ErrorAction SilentlyContinue).Count
-  $dstN = 0
-  if (Test-Path -LiteralPath $a.To) {
-    $dstN = @(Get-ChildItem -LiteralPath $a.To -Recurse -File -ErrorAction SilentlyContinue).Count
+  $checks += New-CountCheck $a.Name $a.From $a.To
+}
+# ⚠ **[6/8] 도 잰다 — 옛 판은 이 칸만 아무것도 안 찍었다.** [7/8] 과 한 글자도 안 다른 무늬인데
+#   `$checks` 에 한 줄도 안 들어, 「스킬 — 깔았다」 초록 한 줄로 끝나고 판정이 없었다.
+# ⚠ **다만 여기는 안 걷는다.** 이 자리들의 진본은 설정 저장소이고 그쪽 배포(`deploy.ps1`)가
+#   같은 자리에 민다 — 설치기가 걷으면 저쪽이 방금 심은 것을 이쪽이 지우는 꼴이 되어, 두 자가
+#   한 자리를 두고 판마다 싸운다. 그래서 여분은 [X] 가 아니고 모자란 것만 문다.
+#   ⚠ 그 대신 **옛 판이 깐 스킬·룰이 홈에 남는 것은 여기서 안 풀린다** — 저쪽 배포가 드는 몫이다.
+if ($WithPersonalConfig -and $pairs) {
+  foreach ($p in $pairs) {
+    if (-not (Test-Path -LiteralPath $p.From)) { continue }
+    $checks += New-CountCheck $p.Name $p.From $p.To
   }
-  $checks += @{ Name = "$($a.Name) ($dstN/$srcN)"; Ok = ($srcN -gt 0 -and $dstN -ge $srcN) }
 }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
@@ -2103,11 +2344,11 @@ foreach ($a in $envAssets) {
 if ($useGateway) {
   foreach ($v in $Vars) {
     if (-not $v.Gateway) { continue }
-    $checks += @{ Name = $v.Name; Ok = [bool]$planted[$v.Name] }
+    $checks += @{ Name = $v.Name; Ok = [bool]$userEnv[$v.Name] }
   }
   foreach ($k in $KeyAliases) {
     if (-not $wantNeed[$k.Need]) { continue }
-    $checks += @{ Name = $k.Name; Ok = [bool]$planted[$k.Name] }
+    $checks += @{ Name = $k.Name; Ok = [bool]$userEnv[$k.Name] }
   }
   if ($wantCodex)  { $checks += @{ Name = 'Codex config.toml';    Ok = (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.codex\config.toml')) } }
   if ($wantGemini) { $checks += @{ Name = 'Gemini settings.json'; Ok = (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.gemini\settings.json')) } }
@@ -2119,13 +2360,21 @@ if ($useGateway) {
     $h = Get-ProxyHealth $proxyHealthUrl
     $checks += @{ Name = '로컬 프록시 (/health)'; Ok = [bool]$h }
     $door = 0
-    if ($h -and $planted['ANTHROPIC_AUTH_TOKEN']) {
-      $door = Test-PrefillDoor $planted['ANTHROPIC_BASE_URL'] $planted['ANTHROPIC_AUTH_TOKEN'] 'claude-opus-5'
+    if ($h -and $userEnv['ANTHROPIC_AUTH_TOKEN']) {
+      $door = Test-PrefillDoor $userEnv['ANTHROPIC_BASE_URL'] $userEnv['ANTHROPIC_AUTH_TOKEN'] 'claude-opus-5'
     }
     $checks += @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (받은 것: $door$(if ($door -ge 500) { " — 상류가 끊었다 · prefill 이 아니다" }))"; Ok = ($door -eq 200) }
   }
 } else {
   Write-Host '  (게이트웨이를 안 쓴다 — 구독 로그인으로 선다)'
+  # ⚠ **안 쓰기로 한 자리에서 재는 것은 「있나」가 아니라 「없나」다.** 옛 판은 이 갈래에서 그
+  #   이름들을 **아예 안 쟀고**, 그래서 사내에서 한 번 깐 기계에 남은 옛 값이 검증을 그대로
+  #   지나갔다 — 화면은 전부 [O] 인데 CLI 는 닿지 않는 루프백으로 나갔다(5⁵ 칸 ⚠).
+  #   **부재가 아니라 잔재가 통과로 읽히는 자리라, 묻는 방향을 뒤집는다.**
+  foreach ($v in $Vars) {
+    if (-not $v.Gateway) { continue }
+    $checks += @{ Name = "$($v.Name) 없음 (사외)"; Ok = (-not $userEnv[$v.Name]) }
+  }
 }
 foreach ($c in $checks) {
   if ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
@@ -2279,7 +2528,7 @@ function Ask-Restart([string]$AppName) {
            "돌던 것은 방금 깔린 것(키 · MCP 서버 · 세션 훅)을 모릅니다.`n`n" +
            "저장 안 한 것이 있으면 먼저 저장하고 눌러 주세요."
     return ([Windows.Forms.MessageBox]::Show(
-      $owner, $msg, 'Claude Code 설치', 'YesNo', 'Warning') -eq 'Yes')
+      $owner, $msg, $AppName, 'YesNo', 'Warning') -eq 'Yes')
   } finally { $owner.Dispose() }
 }
 
@@ -2329,9 +2578,9 @@ if ($NoLaunch) {
   #   값이고, 훅이 끝난 뒤에 읽은 것이라 저쪽이 심은 것까지 든다.
   # ⚠ **PATH 만은 안 당긴다.** 그 이름은 기계 값과 사용자 값이 합쳐져 서는 자리라, 사용자
   #   쪽만 덮으면 이 창이 여태 태운 배선(`Update-RuntimePath`)이 통째로 날아간다.
-  foreach ($k in $planted.Keys) {
+  foreach ($k in $userEnv.Keys) {
     if ($k -ieq 'PATH') { continue }
-    [Environment]::SetEnvironmentVariable($k, $planted[$k], 'Process')
+    [Environment]::SetEnvironmentVariable($k, $userEnv[$k], 'Process')
   }
 
   $app = $null
@@ -2431,3 +2680,8 @@ Write-Host ''
 # ⚠ **둘 다 본다.** 하는 걸음이 진 것(`$Fails`)과 끝에 재서 빨간 것(`$redChecks`)은 겹치기도
 #   하고 한쪽만 서기도 한다 — **어느 쪽이든 하나라도 서면 이 설치는 안 끝난 것이다.**
 if ($Fails.Count -gt 0 -or $redChecks -gt 0) { exit 1 }
+# ⚠ **성공 경로에도 `exit` 가 있어야 한다.** 파일 끝으로 떨어지면 화면 갈래는 성하지만
+#   (`cmd /c` 가 `-File` 규약으로 0 을 낸다) **콘솔 갈래는 같은 런스페이스 안에서** 이 파일을
+#   부른 뒤 `$LASTEXITCODE` 를 읽는다 — 그 값은 이 파일이 마지막으로 부른 **네이티브 명령**이
+#   남긴 남의 값이다. 멀쩡히 끝난 설치가 앞선 명령의 1 을 물고 실패로 보고된다.
+exit 0

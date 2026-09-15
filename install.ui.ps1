@@ -139,10 +139,30 @@ if (Test-Path -LiteralPath $EnvPath) {
   }
 }
 
+# ⚠ **여기로 올라온 까닭 — 창 제목이 이 함수의 답을 쓴다.** 값 파일의 지시를 읽는 자이므로
+#   값 파일을 읽은 바로 다음이 제자리고, 아래 화면 칸들은 그 답 위에 선다.
+function Get-Directive([string]$Key) {
+  if (-not (Test-Path -LiteralPath $EnvPath)) { return $null }
+  foreach ($line in Get-Content -LiteralPath $EnvPath -Encoding UTF8) {
+    if ($line -match "^\s*#\s*$([regex]::Escape($Key))\s*=\s*(.+?)\s*$") { return $Matches[1] }
+  }
+  return $null
+}
+
+# ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
+# ⚠ **여기 든 글자는 진본이 아니라 울타리다.** 이름이 찍히는 자리가 이 파일에만 일곱인데
+#   (창 제목 하나 · 상자 제목 여섯), 자리마다 글자를 박으면 이름을 바꾸는 날 **한 자리만
+#   낡고 그 한 자리는 아무도 안 본다** — 상자 제목은 그 갈래를 밟은 사람만 본다.
+# ⚠ **몸통도 같은 줄에서 판다**(`install.ps1` 의 `$AppName`). 화면과 몸통이 이름을 따로 박으면
+#   창 제목과 바로가기 이름이 갈리는데, 그 둘이 갈린 것은 **둘을 같이 보는 사람만** 안다.
+$AppNameDefault = 'PAI Setup Wizard'
+$AppName = Get-Directive 'app-name'
+if (-not $AppName) { $AppName = $AppNameDefault }
+
 # ── 화면 ────────────────────────────────────────────────────────────────────────
 $F = New-Object Windows.Forms.Form
 # 제목이 판을 든다 — 사람이 「내가 몇 판을 들고 있나」를 볼 자리가 여기밖에 없다.
-$F.Text = if ($DistVersion) { "Claude Code 설치 — $DistVersion" } else { 'Claude Code 설치' }
+$F.Text = if ($DistVersion) { "$AppName — $DistVersion" } else { $AppName }
 # 제목줄과 작업표시줄의 얼굴. 없으면 파란 파워셸 아이콘이 서는데, 그것은 「이게 무슨 창인가」를
 # 한 번 더 묻게 한다.
 # ⚠ **없다고 막지 않는다** — 그림 한 장 때문에 설치가 안 서면 안 된다.
@@ -176,14 +196,6 @@ New-Label '이미 깔린 것은 건너뜁니다. 여러 번 눌러도 안전합�
 #   보인다. 값이 같이 왔으면 **보여만 주고**, 안 왔을 때만 입력칸으로 뜬다.
 #   바꿔야 하면 `install.env` 를 고친다 — 값의 진본은 거기지 이 화면이 아니다.
 $urlPreset = [string]$Preset['ANTHROPIC_BASE_URL']
-
-function Get-Directive([string]$Key) {
-  if (-not (Test-Path -LiteralPath $EnvPath)) { return $null }
-  foreach ($line in Get-Content -LiteralPath $EnvPath -Encoding UTF8) {
-    if ($line -match "^\s*#\s*$([regex]::Escape($Key))\s*=\s*(.+?)\s*$") { return $Matches[1] }
-  }
-  return $null
-}
 
 # ⚠ **자리가 값보다 먼저다.** 배포본은 사내용으로 뽑히므로 사내 값을 들고 오는데, 그 폴더를
 #   사외 PC 에서 돌리는 일이 실제로 난다 — 그때 주소와 키를 물으면 **안 쓸 것을 넣으라고
@@ -349,12 +361,12 @@ $lnkRepo.Add_LinkClicked({
     catch {
       [Windows.Forms.MessageBox]::Show(
         "안내를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $howto,
-        'Claude Code 설치', 'OK', 'Warning') | Out-Null
+        $AppName, 'OK', 'Warning') | Out-Null
     }
   } else {
     [Windows.Forms.MessageBox]::Show(
       '안내 파일이 이 폴더에 없습니다 — ' + [Environment]::NewLine + $howto,
-      'Claude Code 설치', 'OK', 'Warning') | Out-Null
+      $AppName, 'OK', 'Warning') | Out-Null
   }
 })
 $gR.Controls.Add($lnkRepo)
@@ -464,7 +476,7 @@ $bGo.Add_Click({
     [Windows.Forms.MessageBox]::Show(
       '게이트웨이 주소와 API 키는 둘 다 넣거나 둘 다 비워야 합니다.' + [Environment]::NewLine +
       '사외면 둘 다 비워 두세요 — 구독 로그인으로 섭니다.',
-      'Claude Code 설치', 'OK', 'Warning') | Out-Null
+      $AppName, 'OK', 'Warning') | Out-Null
     return
   }
   $bGo.Enabled = $false; $gV.Enabled = $false; $gO.Enabled = $false; $gR.Enabled = $false
@@ -483,11 +495,17 @@ $bGo.Add_Click({
   #   통로를 따로 내면 두 갈래가 서로 다른 코드를 탄다. 끝나면 지운다.
   $script:tmpEnv = [IO.Path]::Combine([IO.Path]::GetTempPath(), "claude-setup-$PID.env")
   $lines = New-Object System.Collections.Generic.List[string]
-  if (-not $noAsk) {
-    foreach ($k in $Preset.Keys) {
-      if ($k -in @('ANTHROPIC_BASE_URL','ANTHROPIC_AUTH_TOKEN')) { continue }
-      if ($Preset[$k]) { $lines.Add("$k=$($Preset[$k])") }
-    }
+  # ⚠ **게이트웨이와 무관한 값은 사외에도 그대로 간다.** 옛 판은 사외로 갈리면 값 파일의 값
+  #   줄을 **한 줄도 안 넘겼다** — 게이트웨이와 상관없는 `CLAUDE_CODE_EFFORT_LEVEL` ·
+  #   스트림 유휴 제한 둘 · `ATELIER_SITES` · `ANTHROPIC_MODEL` 이 다 같이 떨어졌다.
+  #   그래서 **같은 PC 인데** 화면으로 깐 사람만 그 값이 안 서고, 콘솔 갈래로 내려가거나
+  #   `install.ps1` 을 직접 돌린 사람은 섰다 — 바로 아래 ⚠ 가 금하는 그 일이다.
+  # ⚠ **몸통과 같은 갈림이어야 한다.** 몸통이 사외에서 버리는 것은 `$Vars` 의 `Gateway=$true`
+  #   **둘뿐**이고, 그 둘이 여기 걸러지는 이름 둘과 같다. 거르는 자리가 둘이라 이름이 늘면
+  #   두 자리를 같이 봐야 한다 — 이름을 늘리는 자는 몸통의 그 표다.
+  foreach ($k in $Preset.Keys) {
+    if ($k -in @('ANTHROPIC_BASE_URL','ANTHROPIC_AUTH_TOKEN')) { continue }
+    if ($Preset[$k]) { $lines.Add("$k=$($Preset[$k])") }
   }
   # 빈 값은 안 적는다 — 적으면 몸통이 「게이트웨이를 쓴다」로 읽는다
   if ($url) { $lines.Add("ANTHROPIC_BASE_URL=$url") }
@@ -496,14 +514,26 @@ $bGo.Add_Click({
   #   가르라는 말도 못 듣는다 — 화면을 거쳤다는 이유로 갈래가 달라지면 안 된다.
   # ⚠ **`config-repo` 만은 화면이 든다.** 파일에 있던 것을 흘리면, 사람이 칸을 비워도 옛
   #   주소로 clone 이 돈다 — 지운 것이 안 지워지는 자리다.
+  # ⚠ **`site` 도 화면이 든다.** 아래에서 우리가 잰 값을 적으므로, 파일에 있던 것을 같이
+  #   흘리면 한 이름이 두 줄이 되고 **먼저 적힌 쪽(파일)이 이긴다** — 방금 잰 것이 낡은 글자에
+  #   진다. 화면이 재는 이름은 화면만 적는다(`config-repo` 와 같은 결).
   if (Test-Path -LiteralPath $EnvPath) {
     foreach ($line in Get-Content -LiteralPath $EnvPath -Encoding UTF8) {
       if ($line -match '^\s*#\s*config-repo\s*=') { continue }
+      if ($line -match '^\s*#\s*site\s*=')        { continue }
       if ($line -match '^\s*#\s*[A-Za-z][A-Za-z0-9-]*\s*=\s*.+$') { $lines.Add($line.Trim()) }
     }
   }
   $repo = $tRepo.Text.Trim()
   if ($repo) { $lines.Add("#config-repo = $repo") }
+  # ⚠ **자리는 이 화면이 이미 쟀다 — 몸통에 넘긴다.** 같은 물음을 몸통이 또 물으면 두
+  #   프로세스·두 시점이라 **답이 갈릴 수 있고, 갈려도 아무 데도 안 찍힌다**(프록시가 흔들리는
+  #   VDI · 무선 전환 · 회사망 재인증). 갈리면 여기서 받은 키를 몸통이 버리거나, 주소가 빈
+  #   채로 게이트웨이를 쓴다고 서거나 하는데 **둘 다 초록으로 끝난다.** 재는 자를 하나로 둔다.
+  # ⚠ **못 잰 판에서는 안 넘긴다.** 프로브 줄이 없으면 위 `$offsite` 는 「사외가 아니다」지
+  #   「사내다」가 아니다 — 그것을 넘기면 **안 잰 것이 「사내」라는 판정이 된다.** 자리는 셋이고
+  #   (사내 · 사외 · 모름) 모름은 몸통이 제 자리에서 모름으로 들어야 한다.
+  if ($probe) { $lines.Add('#site = ' + $(if ($offsite) { 'outside' } else { 'inside' })) }
   Set-Content -LiteralPath $script:tmpEnv -Value $lines -Encoding UTF8
 
   $argv = @('-NoProfile','-ExecutionPolicy','Bypass','-File', $Engine, '-Yes',
@@ -704,7 +734,7 @@ $timer.Add_Tick({
 $F.Add_FormClosing({
   if ($script:proc -and -not $script:proc.HasExited) {
     $ans = [Windows.Forms.MessageBox]::Show('설치가 도는 중입니다. 멈추고 닫을까요?',
-      'Claude Code 설치', 'YesNo', 'Warning')
+      $AppName, 'YesNo', 'Warning')
     if ($ans -ne 'Yes') { $_.Cancel = $true; return }
     try { $script:proc.Kill() } catch { }
   }
@@ -765,7 +795,7 @@ $script:upTimer.Add_Tick({
   $ans = [Windows.Forms.MessageBox]::Show(
     "새 판 $($found.Ver) 이 나와 있습니다. 지금 것은 $DistVersion 입니다.`n`n" +
     "새 판으로 설치할까요?`n받는 동안 이 창은 잠깐 멈춥니다 — 2MB 남짓입니다.",
-    'Claude Code 설치', 'YesNo', 'Question')
+    $AppName, 'YesNo', 'Question')
   if ($ans -ne 'Yes') { return }
 
   # ⚠ **우리가 받으면 윈도우의 「인터넷에서 온 파일」 표시가 안 붙는다** — 브라우저로 받을
@@ -784,7 +814,7 @@ $script:upTimer.Add_Tick({
     $F.Cursor = [Windows.Forms.Cursors]::Default
     [void][Windows.Forms.MessageBox]::Show(
       "새 판을 못 받았습니다. 지금 것으로 계속 하셔도 됩니다.`n`n$($_.Exception.Message)",
-      'Claude Code 설치', 'OK', 'Warning')
+      $AppName, 'OK', 'Warning')
   }
 })
 
