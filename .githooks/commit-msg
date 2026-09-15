@@ -1,22 +1,24 @@
 #!/bin/sh
-# 커밋 게이트 몸통 — **익명이다. 무엇을 재는지 모른다.**
+# 커밋 메시지 게이트 몸통 — **익명이다. 무엇을 재는지 모른다.**
 #
-# 진본은 claude-config/.githooks/pre-commit 다. 각 저장소의 것은 deploy.ps1 이
+# 진본은 claude-config/.githooks/commit-msg 다. 각 저장소의 것은 deploy.ps1 이
 # 뿌린 배포본이다 — 배포본을 고치면 다음 배포에 덮인다.
 #
-# 재는 것의 진본은 이 저장소의 `.githooks/gates.conf` 다. 검사를 켜고 끄는 자리가
-# 훅 본문이 아니라 선언인 까닭: 본문에 박으면 저장소마다 몸통을 손으로 갈라야 하고,
-# 갈린 몸통은 손사본이 되어 한쪽에서 고친 사고가 다른 쪽에 안 간다.
+# 재는 것의 진본은 `.githooks/gates.conf` 의 `[commit-msg]` 절이다. 조각은 메시지
+# 파일 경로를 $1 로 받는다.
+#
+# ⚠ **뜻은 여기서 안 잰다.** 무엇을 왜 고쳤나·안 한 것이 담겼나는 의미 판단이라
+#   정규식이 후보만 낸다 — 그쪽은 explain-the-essence 스킬이 든다. 여기는 기계가
+#   확실히 가를 수 있는 것만 든다.
 #
 # 알면서 통과시켜야 할 때는:  git commit --no-verify
-#
-# ⚠ 이 훅이 걸리려면 `core.hooksPath` 가 이 폴더를 가리켜야 한다 — `.git/hooks/` 는
-#   clone 을 안 따라온다. 설정 저장소의 `deploy.ps1` 과 세션 훅이 그것을 맞춘다.
-#   손으로 걸려면:  git config core.hooksPath .githooks
 set -u
 
 PROJECT_DIR=$(git rev-parse --show-toplevel) || exit 0
 cd "$PROJECT_DIR" || exit 0
+
+MSGFILE="${1:-}"
+[ -n "$MSGFILE" ] && [ -f "$MSGFILE" ] || exit 0
 
 CONF="$PROJECT_DIR/.githooks/gates.conf"
 RUNNER="$PROJECT_DIR/.githooks/gates-run.sh"
@@ -37,4 +39,4 @@ fi
 #   말하는 것 자체는 반드시 서야 한다 — 그 자리가 `run_gates` 다.
 
 . "$RUNNER"
-run_gates pre-commit
+run_gates commit-msg "$MSGFILE"
