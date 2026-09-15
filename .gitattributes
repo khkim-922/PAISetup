@@ -28,3 +28,4 @@ seeds/**/*.py text eol=lf
 # 아이콘은 이진 파일이다 — 줄끝을 건드리면 그 자리에서 깨진다. `text=auto` 가 NUL 을 보고
 # 알아서 가르지만, 이 저장소는 줄끝을 못박는 곳이라 짐작에 안 맡긴다.
 *.ico   -text
+*.exe   -text
