@@ -23,8 +23,9 @@
   Claude Code CLI 는 `ANTHROPIC_API_KEY` → `x-api-key`. **게이트웨이는 둘 다 받는다** —
   클라이언트마다 읽는 이름이 다를 뿐이라, 하나를 「이게 아니다」로 못 박으면 다른
   클라이언트를 못 붙인다
-- 우리가 쓰는 모델 — `claude-opus-4.7` (Claude Code) · `claude-sonnet-4.6` · `claude-opus-5`
-  (atelier). ⚠ **`claude-opus-5` 는 사내 문서 「지원 모델」 표에 없지만 실제로 돈다**
+- 우리가 쓰는 모델 — **`claude-opus-5` 가 기본이고 `opus` 별칭도 그것이다**(Claude Code · atelier).
+  `claude-opus-4.7` 은 `/model` 의 Custom 칸에 두고, `claude-sonnet-4.6` 도 목록에 선다(결정 0046).
+  ⚠ **`claude-opus-5` 는 사내 문서 「지원 모델」 표에 없지만 실제로 돈다**
   (사용자 확인 2026-08-20) — **문서가 뒤처진 것이다.** 목록을 의심할 일이 있으면
   문서가 아니라 `GET /v1/models` 에 묻는다
 
@@ -127,8 +128,8 @@ atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음
     워치독(`CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS`)에 끊겨 비스트리밍으로 되받아 각 65초쯤에 성공, 13:50 의
     한 턴은 180초 벽 → 비스트리밍 300초 초과 → 재시도 300초 초과 → 14:04 포기(14분). 자동 압축 요청
     (`source=compact`)도 첫 바이트 뒤 멈췄다 — 압축을 다른 모델로 돌릴 설정은 문서에 없다. 원형은
-    `cli-log/2026-09-14 132157.593 *` · `cli-log/autocompact problem.txt`. 그래서 프록시는 Opus 5 의 문(400)만
-    열고, `opus` 별칭은 4.7 에 둔다(결정 0041)
+    `cli-log/2026-09-14 132157.593 *` · `cli-log/autocompact problem.txt`. 그래서 프록시가 Opus 5 의 문(400)을
+    연다(결정 0041). 별칭을 어디 두나는 그 뒤 결정 0046 이 든다 — 기본도 `opus` 별칭도 Opus 5 이고 4.7 은 Custom 칸이다
   - **침묵을 끊는 자가 Claude Code 쪽이면 두 손이 있다(결정 0044 · 둘 다 회사 실측 전).** 자리 파일이 유휴 워치독 둘
     (`CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS` · `CLAUDE_STREAM_IDLE_TIMEOUT_MS`)을 10분으로 심고, 프록시(v15)가 상류
     침묵 15초마다 SSE 주석을 흘린다(`/health` 의 `keepalives`). 게이트웨이 쪽이 제 침묵에 끊는 것이면 둘 다 못 막는다 —
