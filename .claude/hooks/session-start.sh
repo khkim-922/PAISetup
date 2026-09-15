@@ -15,6 +15,13 @@
 #   session-start.sh --install  기계를 안 가리고 깐다        ← deploy.ps1 이 이걸로 부른다
 #                               PC 에서 밖(설치기 · 사람)이 부르면 사람에게 딸린 것(git 신원 ·
 #                               형제 저장소 · 개인 키 · 홈 개인 설정)을 세우고 deploy.ps1 에 넘긴다
+#                               deploy.ps1 이 부른 자리(CLAUDE_CONFIG_DEPLOYING)에서는 **저장소
+#                               몫만** 든다 — 전역형 도구는 아래 갈래가 이미 깔았다
+#   session-start.sh --install-global
+#                               **전역형 도구를 기계에 한 번 깐다** (#43) ← deploy.ps1 이 저장소
+#                               고리 **앞에** 한 번 부른다. 전역 선언과 작업 루트에 붙은 모든
+#                               저장소의 전역형 선언을 이름으로 합쳐 같은 이름을 한 번만 깐다.
+#                               브라우저 뒷길도 여기서 한 번. 저장소 것(venv · npm ci · 배선)은 안 든다
 #   session-start.sh --check    안 깔고 진단만 낸다          ← 어디서 돌려도 안전
 #
 # ⚠ 진짜 문제는 **부재가 통과로 읽히는 것**이다. 게이트는 도구가 없으면 그 검사만 건너뛰고
@@ -31,8 +38,9 @@ set -uo pipefail
 MODE=auto
 ASKED=""   # 인자로 명시된 갈래 — auto 가 지문 어긋남으로 install 이 되는 것과 가른다
 case "${1:-}" in
-  --check)   MODE=check ;;
-  --install) MODE=install; ASKED=install ;;
+  --check)          MODE=check ;;
+  --install)        MODE=install; ASKED=install ;;
+  --install-global) MODE=install; ASKED=install-global ;;
 esac
 
 # ── 어느 저장소를 깔고 있나 — **제 자리에서 역산하는 것이 먼저다.**
@@ -52,9 +60,13 @@ esac
 PROJECT_NAME="$(basename "$PROJECT_DIR")"   # 진단 머리줄·profile.d 파일명이 여기서 파생된다
 VENV="$PROJECT_DIR/.venv"
 FAILS="$PROJECT_DIR/.claude/bootstrap-fail"
+# 전역 갈래의 실패는 **기계 한 자리**에 적는다 (#43). 저장소 파일에 적으면 그 저장소를 여는
+# 세션만 사유를 보고, 같은 도구가 꺼진 형제의 진단에는 ❌ 만 서고 까닭이 영영 안 붙는다.
+GFAILS="$HOME/.claude/bootstrap-global-fail"
 GCONF="$PROJECT_DIR/.claude/tools.global.conf"
 PCONF="$PROJECT_DIR/.claude/tools.conf"
 STAMP="$PROJECT_DIR/.claude/bootstrap-stamp"   # 기계 상태 — bootstrap-fail 과 같은 자리, 커밋 안 한다
+GSTAMP="$HOME/.claude/bootstrap-global-stamp"  # 전역형 선언의 지문 — 저장소가 아니라 기계 하나다 (#43)
 FRESH="$PROJECT_DIR/.claude/bootstrap-upgraded"  # 마지막으로 도구를 최신으로 민 날. 같은 자리, 커밋 안 한다
 UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나면 한 번 민다
 
@@ -68,6 +80,8 @@ UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나�
 # ── 선언 지문 — 설치가 소비하는 선언 넷의 해시. 깨끗한 설치 끝에 굳고(⑧), PC 세션이
 #    「깔 것이 있나」를 이 값과 대조한다(auto). 판정이 사건(풀이 있었나)이 아니라
 #    상태(선언과 설치가 같은 세대인가) 위에 선다. 값은 기계 밖으로 안 나가 줄끝을 안 탄다.
+#    ⚠ **이것은 저장소 몫의 지문이다.** 전역형 도구는 기계 하나에 서므로 지문도 하나다 —
+#      그 짝은 아래 `global_fingerprint` 이고, 게이트도 둘로 갈린다 (#43).
 decl_fingerprint() {
   cat "$PROJECT_DIR/requirements.txt" "$PROJECT_DIR/package-lock.json" \
       "$GCONF" "$PCONF" 2>/dev/null | sha256sum | awk '{print $1}'
@@ -164,14 +178,18 @@ npm_global_version() {  # npm_global_version <패키지 이름> — 못 읽으�
            console.log(require(p).version || "")' "$_nr/$1" 2>/dev/null
 }
 
-probe_decl() {  # probe_decl <선언파일> <이름> — 선언에서 갈래·대상·인자를 읽어 잰다
+probe_reach() {  # probe_reach <선언파일> <이름> — **이 저장소에서** 닿나
   # shellcheck disable=SC2046 — probe-arg 는 낱말 분리가 의도다
   probe_tool "$(decl_get "$1" "$2" probe)" "$(decl_get "$1" "$2" probe-target)" \
-    $(decl_get "$1" "$2" probe-arg) || return 1
+    $(decl_get "$1" "$2" probe-arg)
+}
+probe_pin() {  # probe_pin <선언파일> <이름> — 선언이 판을 박았으면 깔린 판이 그것인가
   # ⚠ **「깔렸나」와 「선언한 판인가」는 다른 명제다.** 선언이 `이름@판` 으로 판을 박았으면
   #   여기서 그것도 잰다 — 안 재면 판을 박아도 **옛 판이 깔린 기계에서 그냥 통과하고**,
   #   선언만 정확해진 채 실물은 그대로 간다. `python-version` 갈래가 이미 같은 자를 든다.
   #   판을 안 박은 선언은 이 칸이 통째로 빠진다 — 최신을 받고 안 잰다.
+  # ⚠ **자리가 갈려 나온 까닭** — 판은 npm 전역 한 자리에 서므로 **저장소를 안 탄다.** 그래서
+  #   저장소 갈래(probe_decl)와 전역 갈래(probe_global)가 같은 이 몸통을 쓴다 (#43).
   [ "$(decl_get "$1" "$2" install)" = npm-global ] || return 0
   _pk="$(decl_get "$1" "$2" package)"
   # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
@@ -186,6 +204,30 @@ probe_decl() {  # probe_decl <선언파일> <이름> — 선언에서 갈래·�
   #   안 재는 것은 `pin_mismatch` 가 진단에서 말한다.
   case "$_pv" in ''|*[!0-9.]*) return 0 ;; esac
   [ "$(npm_global_version "$_pn" || true)" = "$_pv" ]
+}
+probe_decl() {  # probe_decl <선언파일> <이름> — 저장소의 물음. 진단이 쓰는 자다
+  probe_reach "$1" "$2" || return 1
+  probe_pin   "$1" "$2"
+}
+# ── 전역 갈래의 물음 — **저장소가 아니라 기계에게 묻는다** (#43) ────────────────
+# ⚠ **왜 딴 함수인가.** `node-resolvable` 은 「이 저장소 안에서 import 되나」라, 정션이
+#   서기 **전**에 물으면 늘 진다. 전역 고리가 그 물음을 쓰면 playwright 는 매번 지고
+#   `npm install -g` 가 되풀이된다 — 이슈 #43 의 ② 가 그 자리다. 전역형 도구가 사는 자리는
+#   `npm root -g` 이므로 거기서 묻는다: 그 폴더 밑에서 node 를 띄우면 맨 이름이 풀린다.
+# ⚠ **여전히 실행형이다** — 폴더가 있나로 안 묻는다. 「깔린 것과 닿는 것은 다른 명제」가
+#   여기서도 그대로 선다(이 파일 머리말).
+# ⚠ **경로를 JS 소스에 안 박는다 — cwd 로 준다.** 윈도우의 `npm root -g` 는 역슬래시
+#   경로를 내므로 문자열에 끼우면 이스케이프로 읽힌다(`npm_global_version` 곁말과 같은 함정).
+probe_global() {  # probe_global <선언파일> <이름>
+  case "$(decl_get "$1" "$2" probe)" in
+    node-resolvable)
+      _gr="$(npm root -g 2>/dev/null)" || return 1
+      [ -n "$_gr" ] || return 1
+      ( cd "$_gr/.." 2>/dev/null &&
+        node --input-type=module -e "await import('$(decl_get "$1" "$2" probe-target)')" ) >/dev/null 2>&1 || return 1 ;;
+    *) probe_reach "$1" "$2" || return 1 ;;
+  esac
+  probe_pin "$1" "$2"
 }
 
 # ── 커밋 훅 배선 — **맨 앞이다.** `.githooks/` 를 둔 저장소만, 존재가 곧 선언이다 ───────
@@ -483,6 +525,39 @@ home_hook_root() {   # 작업 루트 — 굳힌 꼴. 명령도 진단 문구도 
   [ "$OS" = windows ] && _hr="$(cygpath -m "$_hr" 2>/dev/null || printf '%s' "$_hr")"
   printf '%s' "$_hr"
 }
+
+# ── 전역형 선언 — **기계에 하나만 서는 것들** (#43) ──────────────────────────────
+# ⚠ **가르는 자는 설치법이다.** 아래 넷은 깔리는 자리가 홈·전역이라(npm 전역 · `~/bin` ·
+#   winget 사용자 자리 · 배포판) 저장소가 몇이든 실물은 하나다. `project-axis` 만 저장소를
+#   탄다 — 그것의 진본은 `package.json`·`requirements.txt` 이고 까는 자도 따로다.
+global_kind() {  # global_kind <install 값>
+  case "$1" in npm-global|github-release-binary|winget|apt-package) return 0 ;; esac
+  return 1
+}
+# ── 전역형 선언을 든 파일들 — **이름을 안 박는다.** 제 것 둘이 먼저고, 그 다음 작업 루트에
+#    붙은 저장소들의 선언이다. 훅을 든 저장소를 루트에서 훑는 것은 `plant_session_state` 가
+#    이미 하는 일이고, 여기는 같은 자를 같은 뜻으로 들 뿐이다.
+#    ⚠ **겹침은 파일이 아니라 이름으로 걷는다** — 윈도우에서 한 폴더가 두 꼴로 사므로
+#      (`/c/Users/…` · `C:/Users/…`) 경로 문자열로 겹침을 못 판정한다. 부르는 쪽이 절 이름을
+#      본 순서대로 한 번만 든다. 제 것을 앞에 두는 까닭이 그것이다 — 이 저장소의 선언이 이긴다.
+global_conf_list() {
+  printf '%s\n%s\n' "$GCONF" "$PCONF"
+  for _gc in "$(home_hook_root)"/*/.claude/tools.global.conf "$(home_hook_root)"/*/.claude/tools.conf; do
+    [ -f "$_gc" ] && printf '%s\n' "$_gc"
+  done
+  return 0
+}
+# ── 전역형 지문 — `decl_fingerprint` 의 짝이다. 저쪽은 저장소 몫, 이쪽은 기계 몫.
+#    ⚠ **절을 안 가리고 파일을 통째로 문다.** 전역형만 골라 담으려면 파일을 파싱해 다시
+#      이어야 하는데, 그 이음새가 어긋나면 **선언이 바뀌었는데 지문이 그대로**가 된다 —
+#      부재가 통과로 읽히는 그 자리다. 넘치게 무는 쪽은 전역 갈래를 한 번 더 돌 뿐이고
+#      그 갈래는 정상 상태에서 프로브뿐이다.
+global_fingerprint() {
+  _gl="$(mktemp)"; global_conf_list > "$_gl" 2>/dev/null
+  while IFS= read -r _gf; do cat "$_gf" 2>/dev/null; done < "$_gl" | sha256sum | awk '{print $1}'
+  rm -f "$_gl"
+}
+
 home_hook_cmd() {
   # ⚠ **저장소 안에서 연 세션이면 이 훅은 빠진다.** 옛 꼴은 조건 없이 작업 루트를 쓸어, 저장소
   #   하나를 열면 형제 전부의 훅이 돌았다 — 게다가 연 저장소는 **제 설정과 이 고리가 겹쳐 두 번**
@@ -777,7 +852,17 @@ if [ "$MODE" = auto ]; then
     [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" = main ] || return 0
     _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
     _lg="$_gd/claude-pull.log"
-    [ -s "$_lg" ] && echo "$(basename "$1"): ⚠ 지난 세션의 원격 당김이 졌다 — $(git_why "$(cat "$_lg")")"
+    # ⚠ **원문은 경고를 내기 전에 옆에 둔다** (#38). 아래 `: > "$_lg"` 가 같은 실행에서 로그를
+    #   비우므로, 사람이 이 한 줄을 한 번 읽고 나면 사유의 원문이 사라진다 — `git_why` 가 든
+    #   160자는 **화면의 값**이고 원문은 파일의 값이다. 다음 성공이 그 파일을 걷는다:
+    #   당김이 성공하면 로그가 비어 이 갈래의 else 로 오고, 그때가 곧 「이제 안 진다」이다.
+    _lf="$_gd/claude-pull.last-fail"
+    if [ -s "$_lg" ]; then
+      cp "$_lg" "$_lf" 2>/dev/null || true
+      echo "$(basename "$1"): ⚠ 지난 세션의 원격 당김이 졌다 — $(git_why "$(cat "$_lg")") · 원문 $_lf"
+    else
+      rm -f "$_lf" 2>/dev/null || true
+    fi
     pull_due "$1" || return 0
     : > "$_lg" 2>/dev/null || true
     ( git -C "$1" pull --ff-only -q >"$_lg" 2>&1 </dev/null & )
@@ -804,7 +889,14 @@ if [ "$MODE" = auto ]; then
     echo "$PROJECT_NAME: 도구를 최신으로 민다 (마지막 밀기가 ${UPGRADE_DAYS}일을 넘었다)"
   fi
 
-  if [ -z "$UPGRADE" ] && [ "$(decl_fingerprint)" = "$(cat "$STAMP" 2>/dev/null)" ]; then
+  # ── 지문 게이트 — **둘로 갈린다** (#43). 전역형 도구는 기계 하나에 서므로 지문도 하나고,
+  #    저장소 지문이 어긋나도 전역을 다시 훑을 까닭이 없다(그 반대도 같다). 갈려 있지 않던
+  #    판에서는 저장소 하나의 선언이 바뀌면 그 세션이 전역 다섯을 통째로 다시 물었다.
+  # ⚠ 낡음(UPGRADE)은 둘 다 민다 — 「도구가 낡았나」는 어느 층에도 같이 걸리는 명제다.
+  DO_GLOBAL=""; DO_REPO=""
+  { [ -z "$UPGRADE" ] && [ "$(global_fingerprint)" = "$(cat "$GSTAMP" 2>/dev/null)" ]; } || DO_GLOBAL=1
+  { [ -z "$UPGRADE" ] && [ "$(decl_fingerprint)"   = "$(cat "$STAMP"  2>/dev/null)" ]; } || DO_REPO=1
+  if [ -z "$DO_GLOBAL" ] && [ -z "$DO_REPO" ]; then
     # 침묵하되 실패까지 삼키지는 않는다 — 지난 설치의 실패가 남아 있으면 **사유까지** 알린다.
     # 다시 깔지는 않는다: 막힌 자리(예: 내려받기가 막힌 망)는 다시 깔아도 또 막혀,
     # 재시도가 매 세션 비용만 된다. 다시 까는 손은 deploy.ps1·--install 이 든다.
@@ -812,9 +904,14 @@ if [ "$MODE" = auto ]; then
     #   기록에만 남는다 — 종전엔 이 줄이 stderr 라 네 세션 연속 아무도 못 읽었다(실측 2026-09-05:
     #   npm ci 실패가 남은 채 commitlint 없는 커밋이 넷 지나갔다). 사유를 같이 찍는 까닭도 같다 —
     #   「파일을 열어 보라」는 말은 안 열린다.
-    if [ -s "$FAILS" ]; then
+    # ⚠ **전역 갈래의 실패도 같이 낸다** (#43). 그쪽은 기계 한 자리에 적히므로, 여기서 안 읽으면
+    #   전역형 도구가 못 깔린 채로 도는 저장소는 사유를 아무 데서도 못 본다.
+    if [ -s "$FAILS" ] || [ -s "$GFAILS" ]; then
       echo "$PROJECT_NAME: ⚠ 지난 설치에 실패가 남아 있다 — deploy.ps1 이나 --install 로 다시 깐다. 사유:"
-      awk -F'\t' '{printf "  · %s — %s\n", $1, $2}' "$FAILS" 2>/dev/null
+      # 하나가 없을 때 awk 가 그 자리에서 죽어 뒤엣것을 안 읽는다 — 파일마다 따로 부른다
+      for _ff in "$FAILS" "$GFAILS"; do
+        [ -s "$_ff" ] && awk -F'\t' '{printf "  · %s — %s\n", $1, $2}' "$_ff" 2>/dev/null
+      done
     fi
     _gr="$(global_rule_reason)"
     [ -n "$_gr" ] && echo "$PROJECT_NAME: ⚠ 전역 규율 — $_gr"
@@ -824,6 +921,20 @@ if [ "$MODE" = auto ]; then
 fi
 
 if [ "$MODE" = install ]; then
+
+  # ── 갈래 둘 — **전역은 기계에 한 번, 저장소는 배선만** (#43) ────────────────────
+  #    auto 는 위 지문 게이트가 이미 정했다. 인자로 온 자리는 여기서 정한다:
+  #      --install-global                    전역만          ← deploy.ps1 이 고리 **앞에** 한 번
+  #      --install + CLAUDE_CONFIG_DEPLOYING 저장소만        ← deploy.ps1 이 고리 **안에서**
+  #      --install (그 표식 없이)            전역 + 저장소   ← 리모트 Setup script. 지금 꼴 그대로
+  #    ⚠ **리모트를 안 가른다.** 거기는 `deploy.ps1` 이 없어 `--install` 하나가 전부라, 가르면
+  #      전역형 도구를 아무도 안 깐다. 표식이 곧 「위에서 갈라 부르고 있다」는 뜻이다.
+  case "$ASKED" in
+    install-global) DO_GLOBAL=1; DO_REPO="" ;;
+    install)        DO_REPO=1
+                    if [ -n "${CLAUDE_CONFIG_DEPLOYING:-}" ]; then DO_GLOBAL=""; else DO_GLOBAL=1; fi ;;
+    *)              DO_GLOBAL="${DO_GLOBAL:-}"; DO_REPO="${DO_REPO:-}" ;;
+  esac
 
   # ── PC 에서 밖(설치기 · 사람)이 `--install` 로 불렀으면 — 개인 칸을 세우고 `deploy.ps1` 에 넘긴다 ──
   # ⚠ **고리를 끊는 표식이 있다.** `deploy.ps1` 은 이 훅을 저장소마다 `--install` 로 부르는 자리라, 여기서
@@ -845,11 +956,16 @@ if [ "$MODE" = install ]; then
   # 실패는 삼키되 까닭까지 버리지는 않는다 — 진단이 ❌ 줄에 사유를 이어 붙인다.
   # 지난 실패는 **지우기 전에 찍는다** — 안 그러면 「무엇이 왜 실패했었나」가 성공한 재설치와
   # 함께 사라져 다시 못 잰다(실측 2026-09-05: --install 이 성공하며 npm ci 의 원래 사유가 증발했다).
-  if [ -s "$FAILS" ]; then
-    echo "$PROJECT_NAME: 지난 설치 실패 — 이번에 다시 깐다:"
-    awk -F'\t' '{printf "  · %s — %s\n", $1, $2}' "$FAILS" 2>/dev/null
-  fi
-  mkdir -p "$(dirname "$FAILS")" 2>/dev/null; : > "$FAILS" 2>/dev/null
+  # ⚠ **제가 이번에 안 도는 층의 기록은 안 지운다** (#43). 저장소 갈래가 전역 기록을 비우면
+  #   전역형 도구가 못 깔린 사유가 **깔아 보지도 않은 채** 사라진다 — 위 「지우기 전에 찍는다」
+  #   와 같은 결이고, 지우는 자와 채우는 자를 층마다 맞춘다.
+  for _ff in ${DO_REPO:+"$FAILS"} ${DO_GLOBAL:+"$GFAILS"}; do
+    if [ -s "$_ff" ]; then
+      echo "$PROJECT_NAME: 지난 설치 실패 — 이번에 다시 깐다:"
+      awk -F'\t' '{printf "  · %s — %s\n", $1, $2}' "$_ff" 2>/dev/null
+    fi
+    mkdir -p "$(dirname "$_ff")" 2>/dev/null; : > "$_ff" 2>/dev/null
+  done
   try() {   # try <이름> <명령…> — 안 죽고, 실패하면 출력 한 줄을 사유로 남긴다
     # ⚠ **스택 프레임은 사유가 아니다.** 끝줄을 그대로 집으면 node 계열이 뱉는
     #   `    at ChildProcess…` 한 줄만 남아, 기록이 있는데 원인이 없다 — 다음 사람이
@@ -882,18 +998,23 @@ if [ "$MODE" = install ]; then
   #      복사가 무엇으로 지든 살아남는다 (#31).
   #      몸통은 wire_commit_hooks · deploy_home_norms 각 한 벌이다 — PC 매 세션 갈래(auto)와
   #      같은 것을 같은 차례로 민다 ──
-  wire_commit_hooks
-  deploy_home_norms
-  deploy_personal auto  # 가벼운 것만 — 무거운 것(clone · 홈 설정 덮기)은 위 PC 분기가 이미 들었다
+  #      ⚠ **저장소 몫이라 `DO_REPO` 아래 선다** (#43). `--install-global` 은 저장소를 안 든다 —
+  #        같은 배포 안에서 `deploy.ps1` 의 저장소 고리가 저장소마다 이것을 이미 민다.
+  if [ -n "$DO_REPO" ]; then
+    wire_commit_hooks
+    deploy_home_norms
+    deploy_personal auto  # 가벼운 것만 — 무거운 것(clone · 홈 설정 덮기)은 위 PC 분기가 이미 들었다
 
-  # ── ②′ 전역 SessionStart 훅 · 신뢰 — 몸통은 위 plant_session_state 한 벌이다.
-  #    auto 가 지문 게이트 앞에서 이미 부르지만, `--install` 로 곧장 들어온 갈래
-  #    (deploy.ps1 · 리모트 Setup script)는 그 자리를 안 지나므로 여기서도 부른다.
-  #    멱등이라 겹쳐 불려도 항목은 하나다 (0028 이 쟀다).
-  plant_session_state
+    # ── ②′ 전역 SessionStart 훅 · 신뢰 — 몸통은 위 plant_session_state 한 벌이다.
+    #    auto 가 지문 게이트 앞에서 이미 부르지만, `--install` 로 곧장 들어온 갈래
+    #    (deploy.ps1 · 리모트 Setup script)는 그 자리를 안 지나므로 여기서도 부른다.
+    #    멱등이라 겹쳐 불려도 항목은 하나다 (0028 이 쟀다).
+    plant_session_state
+  fi
 
   # ── ③ 파이썬 축 — requirements.txt 의 존재가 곧 선언이다. venv 에 깐다 ──
-  if [ -f "$PROJECT_DIR/requirements.txt" ]; then
+  #      **프로젝트 축이라 저장소마다 돈다** — 실물이 저장소 안 `.venv` 다 (#43).
+  if [ -n "$DO_REPO" ] && [ -f "$PROJECT_DIR/requirements.txt" ]; then
     # 판 일치 — 선언(probe = python-version)이 들면 **그 판으로** venv 를 만든다.
     # 개발 세계의 판(선언 값)과 다른 판으로 재면 같은 코드가 두 세계에서 다르게
     # 판정된다 — 바닥(최저선)이 아니라 일치다. 컨테이너에 그 판이 없으면 uv 로
@@ -988,7 +1109,8 @@ if [ "$MODE" = install ]; then
 
   # ── ④ 노드 축 — package-lock.json 의 존재가 곧 선언이다. install 이 아니라 ci 다:
   #      잠금을 추적하는 이유가 "판이 갈리면 게이트를 못 믿는다"라서다 ──
-  if [ -f "$PROJECT_DIR/package-lock.json" ] && command -v npm >/dev/null 2>&1; then
+  #      프로젝트 축이라 저장소마다 돈다 — 실물이 저장소 안 `node_modules` 다 (#43).
+  if [ -n "$DO_REPO" ] && [ -f "$PROJECT_DIR/package-lock.json" ] && command -v npm >/dev/null 2>&1; then
     ( cd "$PROJECT_DIR" && try "노드 의존성" npm ci --no-audit --no-fund --silent ) || true
   fi
 
@@ -1146,30 +1268,89 @@ if [ "$MODE" = install ]; then
       fi
     fi
   }
-  for _conf in "$GCONF" "$PCONF"; do
-    for _name in $(decl_sections "$_conf"); do
-      # ⚠ **밀 때는 프로브를 안 묻는다.** 「있나」와 「최신인가」는 다른 명제라, 있으면
-      #   건너뛰는 규칙으로는 영영 안 올라간다. npm-global 은 `npm install -g` 가 최신을
-      #   가져오고, github-release-binary 는 `releases/latest` 를 부르므로 **같은 설치가
-      #   곧 밀기다** — 밀기용 갈래를 따로 두지 않는다.
-      if [ -n "${UPGRADE:-}" ]; then
-        install_tool "$_conf" "$_name" || true
-      else
-        probe_decl "$_conf" "$_name" || install_tool "$_conf" "$_name"
-      fi
-      # ⚠ **배선이 브라우저 찾기 앞에 선다.** 뒷길(`browsers-fallback`)은 「playwright 가
-      #   이미 브라우저를 들고 있나」를 **그 모듈에 물어** 받을지를 가른다. 그 물음은 이름
-      #   해석이나 `wiring-env` 가 먼저 서야 서는데, 뒤집혀 있던 판에서는 첫 세션마다
-      #   조용히 지고 **멀쩡한 브라우저를 둔 기계가 수백 MB 를 받으러 갔다.** 둘 다 ④
-      #   (`npm ci`) 뒤라 맞바꿔도 node_modules 를 밟지 않는다.
-      wire_tool "$_conf" "$_name"
-      browsers_ready "$_conf" "$_name"
+  # ── 전역 자리의 배선 — **정션이 아니라 값 하나다** (#43).
+  #    저장소 배선(`wire_tool`)은 `node_modules` 에 정션을 걸어 저장소 안에서 이름이 풀리게
+  #    한다. 전역 갈래에는 걸 저장소가 없다 — 여기서 서야 하는 것은 바로 뒤의 브라우저 뒷길이
+  #    「playwright 가 이미 브라우저를 들고 있나」를 **그 모듈에 물을 수 있게** 하는 것뿐이다.
+  #    그 값의 이름은 선언이 든다(`wiring-env`) — 몸통은 여기서도 도구 이름을 모른다.
+  wire_global() {  # wire_global <선언파일> <이름>
+    _wf="$1"; _wn="$2"
+    _we="$(decl_get "$_wf" "$_wn" wiring-env)"; [ -n "$_we" ] || return 0
+    _wm="$(decl_get "$_wf" "$_wn" probe-target)"; [ -n "$_wm" ] || return 0
+    _wr="$(npm root -g 2>/dev/null)" || return 0
+    { [ -n "$_wr" ] && [ -d "$_wr/$_wm" ]; } || return 0
+    export "$_we=$_wr/$_wm"
+  }
+
+  # ── ⑤ 전역형 도구 — **기계에 한 번이다** (#43) ─────────────────────────────────
+  #    전역 선언과 작업 루트에 붙은 **모든 저장소의 전역형 선언**을 이름으로 합쳐, 같은 이름은
+  #    한 번만 깐다. 브라우저 뒷길도 여기서 한 번.
+  # ⚠ **옛 꼴은 이 걸음이 저장소 고리 안에 살았다.** 그래서 프로브 비용이 저장소 수에 비례했고
+  #   (실측: 형제 여섯이면 전역형 프로브 35회), playwright 는 프로브가 「이 저장소 안에서
+  #   import 되나」라 정션 **전**에 물어 늘 져서 `npm install -g` 가 저장소마다 되풀이됐다.
+  #   설계는 「전역은 한 번, 저장소는 배선만」인데 구조가 그것을 안 들고 있었다 (#43).
+  # ⚠ **프로브를 빼서 빨리 하지 않는다** — 「깔린 것과 닿는 것은 다른 명제」다(이 파일 머리말).
+  #   줄인 것은 재는 일이 아니라 **묻는 횟수**다.
+  # ⚠ **판정을 여기서 낸다.** 이 갈래는 아래 진단 절(저장소의 물음)을 안 지나므로, 여기서
+  #   말하지 않으면 무엇이 섰는지 아무 데도 안 남는다 — 설치의 목표는 「깔기를 돌았다」가
+  #   아니라 환경이 서 있다이다.
+  GDOWN=0
+  install_global() {
+    _gseen=""; _gl="$(mktemp)"
+    global_conf_list > "$_gl" 2>/dev/null
+    while IFS= read -r _gf; do
+      [ -f "$_gf" ] || continue
+      for _gn in $(decl_sections "$_gf"); do
+        global_kind "$(decl_get "$_gf" "$_gn" install)" || continue
+        case " $_gseen " in *" $_gn "*) continue ;; esac
+        _gseen="$_gseen $_gn"
+        # 밀 때는 프로브를 안 묻는다 — 「있나」와 「최신인가」는 다른 명제라, 있으면 건너뛰는
+        # 규칙으로는 영영 안 올라간다. 같은 설치가 곧 밀기다(옛 고리와 같은 뜻).
+        if [ -z "${UPGRADE:-}" ] && probe_global "$_gf" "$_gn"; then
+          printf '  ✅ %s — 이미 닿는다 (전역)\n' "$_gn"
+        else
+          install_tool "$_gf" "$_gn" || true
+          if probe_global "$_gf" "$_gn"; then
+            printf '  ✅ %s — 이번에 깔았다 (전역)\n' "$_gn"
+          else
+            printf '  ❌ %s — 안 닿는다%s\n' "$_gn" \
+              "$(awk -F'\t' -v k="$_gn" '$1==k{printf " · 설치 실패: %s", $2; exit}' "$GFAILS" 2>/dev/null)"
+            GDOWN=$((GDOWN + 1))
+          fi
+        fi
+        wire_global "$_gf" "$_gn"
+        browsers_ready "$_gf" "$_gn"
+      done
+    done < "$_gl"
+    rm -f "$_gl"
+  }
+  if [ -n "$DO_GLOBAL" ]; then
+    echo "$PROJECT_NAME: 전역형 도구 — 기계에 한 번 깐다 ($(home_hook_root) 에 붙은 저장소의 선언까지 합친다)"
+    # 전역 갈래의 실패는 기계 한 자리에 적는다 — `try`·`nogo` 가 보는 이름을 그 동안만 바꾼다
+    _savefails="$FAILS"; FAILS="$GFAILS"
+    install_global
+    FAILS="$_savefails"
+  fi
+
+  # ── ⑥ 저장소 배선 — **깔지 않는다. 잇기만 한다** (#43) ────────────────────────
+  #    전역 설치는 저장소 `node_modules` 밖이라 import 가 못 찾는다 — 그 한 칸을 잇는 것이
+  #    저장소의 몫이고, 그 뒤에 서는 프로브는 아래 진단 절이 **도구마다 한 번** 든다.
+  # ⚠ **여기서 다시 프로브하지 않는다.** 옛 꼴은 설치 앞에서 한 번, 진단에서 또 한 번 물어
+  #   저장소마다 두 벌이었다. 깔 자가 없는 고리에서 프로브는 판정일 뿐이고, 판정 문구의
+  #   진본은 진단 절 한 자리다.
+  if [ -n "$DO_REPO" ]; then
+    for _conf in "$GCONF" "$PCONF"; do
+      for _name in $(decl_sections "$_conf"); do
+        wire_tool "$_conf" "$_name"
+      done
     done
-  done
+  fi
 
   # ── ⑦ 로컬 main — 컨테이너가 뜬 순간의 스냅샷에 박제된 채 남는다. 원격 최신으로 맞춘다.
   #      main 이 지금 체크아웃돼 있으면 건드리지 않는다 — 작업 중인 브랜치일 수 있다.
-  if git -C "$PROJECT_DIR" show-ref --verify --quiet refs/heads/main &&
+  #      저장소 몫이다 — 전역 갈래에는 맞출 저장소가 없다 (#43).
+  if [ -n "$DO_REPO" ] &&
+     git -C "$PROJECT_DIR" show-ref --verify --quiet refs/heads/main &&
      [ "$(git -C "$PROJECT_DIR" symbolic-ref --short -q HEAD 2>/dev/null)" != main ]; then
     # 사유를 삼키지 않는다 — 여기가 조용히 지면 **낡은 main 을 든 채 세션이 돈다.**
     # 위 당김(①)과 같은 자(git_why)로 낸다: 삼킴이 한 자리에만 남으면 다음엔 저기서 만난다.
@@ -1183,10 +1364,27 @@ if [ "$MODE" = install ]; then
   # ── ⑧ 선언 지문을 굳힌다 — PC 세션(auto)의 「깔 것이 있나」가 이 값과 대조된다.
   #      실패가 남아도 굳는다 — 안 굳히면 막힌 망에서 매 세션 재설치가 돈다. 남은 실패는
   #      auto 갈래가 매 세션 한 줄로 알려 부재가 통과로 안 읽힌다.
-  decl_fingerprint > "$STAMP" 2>/dev/null || true
+  #      ⚠ **돈 층만 굳힌다** (#43) — 전역만 돈 갈래가 저장소 지문까지 찍으면 저장소가 깔린
+  #        적 없는데 「깔 것이 없다」가 되어, 그 침묵이 무작동을 성공으로 보이게 한다.
+  [ -n "$DO_REPO" ] && { decl_fingerprint > "$STAMP" 2>/dev/null || true; }
+  if [ -n "$DO_GLOBAL" ]; then
+    mkdir -p "$(dirname "$GSTAMP")" 2>/dev/null || true
+    global_fingerprint > "$GSTAMP" 2>/dev/null || true
+  fi
   # ⚠ **민 뒤에만 찍는다.** 선언이 바뀌어 깐 세션은 밀기가 아니라, 찍으면 낡음 시계가
   #   공짜로 되감긴다 — 그러면 선언을 자주 고치는 기계는 영영 안 밀린다.
   [ -n "${UPGRADE:-}" ] && { : > "$FRESH" 2>/dev/null || true; }
+
+  # ── 전역만 돈 갈래는 여기서 끝난다 — 아래 진단은 **저장소의 물음**이라 부를 자리가 없다.
+  #    판정은 위 고리가 이미 냈다(GDOWN). `--check`·`--install` 과 같은 규율로 종료코드를 낸다:
+  #    꺼진 것이 있으면 0 으로 안 끝나고, 그 신호를 deploy.ps1 이 받아 위층까지 물고 간다.
+  if [ -z "$DO_REPO" ]; then
+    if [ "${GDOWN:-0}" -gt 0 ]; then
+      echo "  ── 전역형 도구 $GDOWN 개가 안 선다. 위 까닭이 곧 고칠 자리다."
+      exit 1
+    fi
+    exit 0
+  fi
 fi
 
 # ════════════════════════ 진단 — 지금 어느 검사가 도나 ════════════════════════
@@ -1202,9 +1400,14 @@ why() {  # why <도구> [<설치 걸음>] — 도구 이름으로 못 찾으면 
   #   까는 자가 `npm ci`·`pip install` 한 걸음이라 사유는 「노드 의존성」·「파이썬 의존성」으로
   #   적힌다. 도구 이름으로만 찾으면 ❌ 줄에 사유가 영영 안 붙는다(실측 2026-09-05: npm ci 가
   #   실패했는데 진단은 「commitlint 안 닿는다」만 찍었다).
-  [ -f "$FAILS" ] || return 0
-  _w="$(awk -F'\t' -v k="$1" '$1==k{print $2; exit}' "$FAILS" 2>/dev/null)"
-  [ -n "$_w" ] || [ -z "${2:-}" ] || _w="$(awk -F'\t' -v k="$2" '$1==k{print $2; exit}' "$FAILS" 2>/dev/null)"
+  # ⚠ **전역 갈래의 기록도 본다** (#43). 전역형 도구는 저장소 고리가 안 깔고 `--install-global`
+  #   이 기계 한 자리에 적으므로, 저장소 파일만 보면 그 ❌ 에 사유가 영영 안 붙는다.
+  _w=""
+  for _wf in "$FAILS" "$GFAILS"; do
+    [ -f "$_wf" ] || continue
+    [ -n "$_w" ] || _w="$(awk -F'\t' -v k="$1" '$1==k{print $2; exit}' "$_wf" 2>/dev/null)"
+    [ -n "$_w" ] || [ -z "${2:-}" ] || _w="$(awk -F'\t' -v k="$2" '$1==k{print $2; exit}' "$_wf" 2>/dev/null)"
+  done
   [ -n "$_w" ] && printf ' · 설치 실패: %s' "$_w"
   return 0
 }
