@@ -1983,6 +1983,45 @@ if (-not $repoUrl) {
   }
 }
 
+# ── 바탕화면·시작 메뉴 아이콘 ───────────────────────────────────────────────────
+# ⚠ **가리키는 곳은 판에 안 매인 한 자리다.** 설치본은 판마다 제 폴더를 따로 쓰는데
+#   (`…\Claude Code Setup.8.0\`) 바로가기가 그 자리를 가리키면 **다음 판에서 죽는다.**
+#   설치본이 제 자신을 그 위 한 자리에 복사해 두므로 여기서는 그것만 가리킨다 — 새 판을
+#   누를 때마다 그 자리가 최신으로 갈린다.
+# ⚠ **아이콘 경로를 안 박는다.** 바로가기가 exe 를 가리키면 윈도우가 **그 안의 아이콘**을
+#   쓴다. 바로가기의 아이콘 칸은 절대 경로만 먹어 zip 을 건너면 깨지는 자리라(실측
+#   2026-09-15) 안 쓰는 것이 맞다 — 가리키는 것만으로 저절로 선다.
+# ⚠ **없으면 조용히 건너뛴다.** `install.cmd` 로 직접 눌러 들어온 갈래에는 그 파일이 없다.
+#   아이콘 하나 때문에 그 갈래를 빨갛게 만들지 않는다.
+# ⚠ **실패를 세지 않는다.** 설치는 이미 선 것이고, 바로가기는 덤이다. 여기서 `$Fails` 를
+#   불리면 멀쩡히 깔린 기계가 빨갛게 보고된다 — 「연다」 칸과 같은 까닭이다.
+$launcher = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\Setup.exe'
+if (Test-Path -LiteralPath $launcher) {
+  Write-Host ''
+  Write-Host '  바탕화면 · 시작 메뉴에 아이콘을 둔다'
+  $made = @()
+  try {
+    $sh = New-Object -ComObject WScript.Shell
+    $spots = @(
+      @{ Name = '바탕화면';   Dir = [Environment]::GetFolderPath('Desktop') }
+      @{ Name = '시작 메뉴'; Dir = (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs') }
+    )
+    foreach ($spot in $spots) {
+      if (-not $spot.Dir -or -not (Test-Path -LiteralPath $spot.Dir)) { continue }
+      try {
+        $lnk = $sh.CreateShortcut((Join-Path $spot.Dir 'Claude Code 설치.lnk'))
+        $lnk.TargetPath       = $launcher
+        $lnk.WorkingDirectory = Split-Path -Parent $launcher
+        $lnk.Description      = 'Claude Code 개발 환경 설치 — 누르면 새 판이 있는지도 봅니다'
+        $lnk.Save()
+        $made += $spot.Name
+      } catch { }
+    }
+  } catch { }
+  if ($made.Count) { Write-Host ("    " + ($made -join ' · ') + " — 다음에는 이것을 누르면 됩니다") -ForegroundColor Green }
+  else { Write-Host '    ! 아이콘을 못 만들었다 — 설치에는 지장이 없다' -ForegroundColor Yellow }
+}
+
 # ── 검증 — **재고 나서 말한다** ─────────────────────────────────────────────────
 # ⚠ 안 재고 「됐다」로 끝내면 안 선 기계도 성공으로 보고된다. 부재가 통과로 읽히는 것을
 #   막는 것이 이 스크립트의 규율이라, 마지막 칸이 그것을 든다.
