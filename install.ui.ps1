@@ -11,7 +11,9 @@
 #   않는다 — 통로가 둘이면 칸이 늘 때 한쪽만 고쳐지고, 그 어긋남은 「막대가 안 찬다」는
 #   조용한 꼴로만 보인다. 몸통이 사람에게 하는 말을 그대로 읽는다.
 
-param([switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade)
+# ⚠ `$Relaunched` 는 **이 파일이 제 자신에게만 넘기는 표시다.** 사람이 칠 것이 아니다 —
+#   아래 「검은 창을 없애는 자리」가 든다.
+param([switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade, [switch]$Relaunched)
 
 $ErrorActionPreference = 'Stop'
 # ⚠ **던지게 두지 않는다.** 출력이 파일로 돌려진 채로 뜨면 이 줄이 걸릴 수 있고, 위 `Stop`
@@ -75,6 +77,49 @@ if (-not $uiOk) {
   $rc = $LASTEXITCODE
   Hold-Console
   exit $rc
+}
+
+# ── 검은 창을 없애는 자리 — **제 자신을 숨김으로 다시 띄우고 빠진다** ───────────
+# `install.cmd` 가 든 콘솔은 설치가 끝날 때까지 설치 화면 뒤에 앉아 있었다. 그것을 없앤다.
+#
+# ⚠ **순서가 이 갈래의 전부다.** 위 `$uiOk` 갈래보다 **뒤**에 서야 한다 — 화면을 못 세우는
+#   PC 는 이 줄에 닿기 전에 콘솔로 빠지므로, **안 보이는 창에 대고 말하는 일이 안 생긴다.**
+#   앞에 두면 그 갈래가 숨은 창에 찍고 죽어, 사람은 아무 일도 안 일어난 줄 안다.
+#
+# ⚠ **숨김은 「만들 때」 줘야 한다 — 뜬 뒤에 숨기는 길은 죽었다.** Windows 11 의 콘솔은 대개
+#   Windows Terminal 이 드는데, 그때 `GetConsoleWindow()` 는 진짜 창이 아니라
+#   `PseudoConsoleWindow` 를 돌려주고 거기 건 `ShowWindow(SW_HIDE)` 는 **참을 돌려주고
+#   아무것도 안 한다**(실측 2026-09-15). 거짓 초록이다.
+#
+# ⚠ **`CreateNoWindow` 여야 한다 — `-WindowStyle Hidden` 이 아니다.** 둘은 같아 보이는데
+#   **서로 다른 것을 시킨다.**
+#     · `-WindowStyle Hidden` 은 「**첫 창**을 숨겨라」를 프로세스 시작값에 박는다. 그 숨김이
+#       콘솔에서 멈추지 않고 **설치 화면까지 번진다** — 창은 만들어지는데 안 보인다.
+#     · `CreateNoWindow` 는 「이 프로세스에 **콘솔을 붙이지 마라**」다. 창 상태를 안 건드리니
+#       설치 화면은 제 크기로 화면 가운데 뜬다.
+#   실측 2026-09-15 — `-WindowStyle Hidden` 으로 띄운 판에서 창 목록을 훑었더니
+#   `title='Claude Code 설치' visible=False` 였다. 같은 날 `start /min` 이 최소화를 번지게
+#   한 것과 **같은 함정이고 같은 축이다**: 창 상태를 물려주는 자를 쓰면 안 된다.
+#
+# ⚠ **`WindowState` 로 판정하면 안 된다 — 숨은 창도 `Normal` 이다.** 이 갈래를 처음 잴 때
+#   그 값만 보고 초록으로 읽었다가 놓쳤다. 재는 것은 `Visible` 이다.
+#
+# ⚠ **못 띄우면 그냥 이 창에서 간다.** 검은 창 하나 없애자고 설치를 못 하게 만들지 않는다.
+if (-not $Relaunched) {
+  $again = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path, '-Relaunched')
+  if ($NoDevTools)         { $again += '-NoDevTools' }
+  if ($WithPersonalConfig) { $again += '-WithPersonalConfig' }
+  if ($NoUpgrade)          { $again += '-NoUpgrade' }
+  try {
+    $psi = New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName         = (Get-Process -Id $PID).Path     # 지금 나를 돌린 그 파워셸
+    $psi.Arguments        = ($again | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    $psi.WorkingDirectory = $Here
+    $psi.UseShellExecute  = $false
+    $psi.CreateNoWindow   = $true
+    [void][Diagnostics.Process]::Start($psi)
+    exit 0
+  } catch { }
 }
 
 # ── 옆에 온 값 파일 — 회사 공통값은 이미 채워져 온다 ────────────────────────────
