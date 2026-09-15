@@ -991,6 +991,9 @@ Wire-NodeTrust
 #   붙어 있고, 둘 중 하나만 서면 VS Code 는 열리는데 아무 일도 안 일어난다.
 # ⚠ **하나를 까는 걸음이 한 자리다.** 확장이 셋으로 늘면서(결정 0041) 같은 걸음을 세 번 적으면
 #   한 번 겪은 사고(곧바로 물으면 아직 없다 · 인증서면 다른 병이다)가 두 사본에서 다시 난다.
+# ⚠ **긴 명령 앞에 한 줄을 먼저 찍는다.** 화면 껍데기의 상태 줄은 마지막으로 나온 줄을 그대로
+#   보이므로, 끝나고 나서만 찍으면 그 몇십 초 동안 **직전 칸의 결과**가 「지금 하는 일」로 서 있다
+#   (실측 2026-09-15 · 사외 VDI: Codex 확장을 받는 동안 「클로드 확장 — 최신」이 떠 있었다).
 function Install-Extension([string]$Id, [string]$Label) {
   $ext = @(& code --list-extensions 2>$null)
   if (($ext -contains $Id) -and $NoUpgrade) {
@@ -999,6 +1002,7 @@ function Install-Extension([string]$Id, [string]$Label) {
   }
   if ($ext -contains $Id) {
     # ⚠ `--force` 는 이미 있어도 **최신으로 다시 깐다.** 확장에는 올리는 명령이 따로 없다.
+    Write-Host "  $Label 최신으로 갱신중 …"
     $b = (& code --list-extensions --show-versions 2>$null |
           Where-Object { $_ -like "$Id@*" } | Select-Object -First 1)
     $xl = [IO.Path]::GetTempFileName()
@@ -1010,6 +1014,7 @@ function Install-Extension([string]$Id, [string]$Label) {
     else { Write-Host "  $Label — 최신  ($b)" }
     return
   }
+  Write-Host "  $Label 설치중 …"
   $xl = [IO.Path]::GetTempFileName()
   $rc = Invoke-Logged 'code' @('--install-extension',$Id,'--force') $xl
   # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
@@ -1062,6 +1067,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
     Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"
   } elseif (Test-Runs $Cmd '--version') {
     $b = Get-Ver $Cmd '--version'
+    Write-Host "  $Label 최신으로 갱신중 … (지금 $b)"     # 긴 명령 앞의 한 줄 — 확장 칸과 같은 까닭
     $nl = [IO.Path]::GetTempFileName()
     Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl | Out-Null
     Remove-Item $nl -ErrorAction SilentlyContinue
@@ -1070,6 +1076,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
     if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
     else { Write-Host "  $Label — 최신  ($b)" }
   } elseif (Test-Runs 'npm' '--version') {
+    Write-Host "  $Label 설치중 …"
     $nl = [IO.Path]::GetTempFileName()
     $nrc = Invoke-Logged 'npm' @('install','-g',$Pkg) $nl
     # ⚠ **깔고 나서 한 번 더 태운다.** `%APPDATA%\npm` 은 이 설치가 **만드는** 폴더라,
