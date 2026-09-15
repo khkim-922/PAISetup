@@ -1246,6 +1246,10 @@ foreach ($k in $fromFile.Keys) {
 #   기계가 뒤처지는 것($Features 곁말)과 같은 병이고, 이쪽은 **지우는 손**이 없어서 난다.
 # ⚠ **값이 아니라 이름만 든다.** 무엇으로 되돌릴지가 아니라 「이 이름은 이제 우리 것이 아니다」를
 #   적는 자리다 — 값을 적으면 걷은 것을 다시 심는 목록이 된다.
+# ⚠ **걷는 자리가 둘이다 — 여기(사용자 환경)와 아래 홈 설정 칸(`settings.json` 의 `env`).**
+#   `Plant-Var` 가 두 자리에 심으므로 걷기도 둘이어야 한다. 한쪽만 걷으면 나머지가 남아,
+#   아래 「우리가 안 심은 `ANTHROPIC_` 이름」 검사가 그것을 물어 **설치가 빨강으로 끝난다**
+#   (실측 2026-09-15: 사용자 PC 가 `ANTHROPIC_CUSTOM_MODEL_OPTION 이 홀로 있다` 로 안 끝났다).
 # ⚠ **이름을 영영 두지 않는다.** 다 걷힌 뒤에도 남으면 남의 값을 지우는 손이 된다 — 같은 이름을
 #   제 뜻으로 쓰는 사람이 있을 수 있다. 두 판쯤 지나면 지운다.
 # 이름이 늘면 여기 한 줄. **`install.env` 가 그 이름을 들면 위 칸이 이기고 여기는 비켜선다** —
@@ -1753,6 +1757,20 @@ if ($cfg) {
   # ⚠ **우리가 안 심은 ANTHROPIC_ 이름이 남아 있으면 문다.** 사내 안내 문서가 손으로 적으라고
   #   하는 자리라, 옛 값이 남으면 그쪽이 이겨 방금 심은 것이 가려진다 — 화면은 「심었다」로
   #   찍히는데 안 먹는, 부재보다 나쁜 상태다. 지우지는 않는다: 사람이 뜻을 두고 넣었을 수 있다.
+  # ⚠ **단 `$Retired` 는 먼저 걷는다.** 그 이름들은 「사람이 뜻을 두고 넣었을 수 있는 것」이 아니라
+  #   **우리가 옛 판에 심어 놓고 물러난 것**이다 — 여기 남으면 위 칸이 그것을 물어 설치가 빨강으로
+  #   끝난다(실측 2026-09-15: 사용자 PC 가 `ANTHROPIC_CUSTOM_MODEL_OPTION 이 홀로 있다` 로 안 끝났다).
+  #   사용자 환경만 걷고 이 파일을 안 걷은 것이 그 결함이었다 — **심는 자리가 둘이면 걷는 자리도 둘**이다.
+  if ($cfg.PSObject.Properties['env']) {
+    foreach ($k in $Retired) {
+      if ($fromFile.ContainsKey($k)) { continue }              # 진본이 되살렸으면 안 건드린다
+      if (-not $cfg.env.PSObject.Properties[$k]) { continue }
+      $cfg.env.PSObject.Properties.Remove($k)
+      $dirty = $true
+      Write-Host "  $k — settings.json 에서도 걷었다" -ForegroundColor Green
+    }
+  }
+
   if ($cfg.PSObject.Properties['env']) {
     foreach ($p in $cfg.env.PSObject.Properties) {
       if ($p.Name -notlike 'ANTHROPIC_*') { continue }
