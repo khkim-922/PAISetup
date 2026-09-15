@@ -22,6 +22,23 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $Here   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Engine = Join-Path $Here 'install.ps1'
 
+# ── 이 폴더가 몇 판인가 ─────────────────────────────────────────────────────────
+# ⚠ **폴더가 제 판을 알아야 낡은 것을 알 수 있다.** 옛 판은 번호가 릴리스 태그에만 살아서
+#   푼 폴더는 제가 몇 판인지 몰랐고, 그러면 「낡았다」를 잴 자리가 아예 없다. 진본은 옆의
+#   `VERSION` 이고 릴리스 태그가 **그 값에서** 나온다 — 반대가 아니다.
+# ⚠ **없으면 없는 대로 간다.** 이 값은 사람에게 보여 주는 것이지 설치의 조건이 아니다.
+#   없다고 막으면 번호 하나 때문에 설치가 통째로 안 되는 꼴이 된다.
+# ⚠ **BOM 을 손으로 걷는다.** 이 파일은 인코딩 문지기가 안 보는 종류라(`*.ps1`·`*.cmd` 만
+#   본다) 누가 BOM 을 붙여 저장하면 번호 앞에 안 보이는 글자가 붙는다 — 화면에는 멀쩡히
+#   찍히고 **견주는 자리에서만** 안 맞는다.
+$DistVersion = ''
+$VersionPath = Join-Path $Here 'VERSION'
+if (Test-Path -LiteralPath $VersionPath) {
+  try {
+    $DistVersion = (([string](Get-Content -LiteralPath $VersionPath -TotalCount 1 -Encoding UTF8)) -replace "^﻿", '').Trim()
+  } catch { $DistVersion = '' }
+}
+
 # ── 콘솔에 남은 글을 사람이 읽을 틈 ────────────────────────────────────────────
 # ⚠ **`install.cmd` 에는 `pause` 가 없다** — 설치 창의 [닫기] 를 누르면 뒤에 선 콘솔까지
 #   같이 닫혀야 하기 때문이다. 그래서 「읽을 것이 있는 갈래」가 제 멈춤을 직접 든다.
@@ -76,7 +93,8 @@ if (Test-Path -LiteralPath $EnvPath) {
 
 # ── 화면 ────────────────────────────────────────────────────────────────────────
 $F = New-Object Windows.Forms.Form
-$F.Text = 'Claude Code 설치'
+# 제목이 판을 든다 — 사람이 「내가 몇 판을 들고 있나」를 볼 자리가 여기밖에 없다.
+$F.Text = if ($DistVersion) { "Claude Code 설치 — $DistVersion" } else { 'Claude Code 설치' }
 $F.Size = New-Object Drawing.Size(640, 744)
 $F.StartPosition = 'CenterScreen'
 $F.FormBorderStyle = 'FixedDialog'
