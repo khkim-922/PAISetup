@@ -714,9 +714,84 @@ $F.Add_FormClosing({
     }
   }
 })
+# ── 새 판이 있나 — 창이 뜬 뒤에 배경으로 물어본다 ──────────────────────────────
+# ⚠ **앞을 막지 않는다.** 물어보는 데 몇 초가 들 수 있는데(사내 프록시가 막으면 시간이 다
+#   갈 때까지), 그동안 창이 안 뜨면 사람은 아무 일도 안 일어난 줄 안다. 그래서 창이 먼저
+#   서고 이것은 뒤에서 돈다. 답이 오면 타이머가 화면 실에서 집는다 —
+#   **딴 실에서 창을 만지면 그 자리에서 죽는다.**
+# ⚠ **「못 물었다」를 「최신이다」로 읽지 않는다.** 막힌 망에서 조용히 최신이라고 하면
+#   낡은 판을 든 사람이 낡은 줄 모른 채 간다 — 부재가 통과로 읽히는 그 자리다.
+#   그래서 못 물었으면 **아무 말도 안 한다**: 모르는 것은 모르는 것으로 둔다.
+# ⚠ **자리를 여기 안 박는다** — 값 파일의 `#update-repo` 가 든다. 박으면 이 파일이 특정
+#   저장소의 것이 되어 남에게 그대로 못 준다(`#site-probe`·`#config-repo` 와 같은 결).
+$script:upPs = $null
+$script:upHandle = $null
+$UpdateRepo = Get-Directive 'update-repo'
+
+if ($UpdateRepo -and $DistVersion) {
+  try {
+    $script:upPs = [powershell]::Create()
+    [void]$script:upPs.AddScript({
+      param($repo, $mine)
+      try {
+        $r = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" `
+               -TimeoutSec 8 -UseBasicParsing -ErrorAction Stop
+        $new = ([string]$r.tag_name) -replace '^[vV]', ''
+        if ([version]$new -le [version]$mine) { return $null }
+        # ⚠ **자산이 있어야 뜻이 있다.** 설치본 파일이 안 붙은 릴리스는 받을 것이 없다 —
+        #   그때 「새 판이 있다」고만 말하면 사람이 받을 데를 못 찾고 헤맨다.
+        $a = @($r.assets | Where-Object { $_.name -eq 'Setup.exe' })[0]
+        if (-not $a) { return $null }
+        return @{ Ver = $new; Url = [string]$a.browser_download_url }
+      } catch { return $null }
+    })
+    [void]$script:upPs.AddArgument($UpdateRepo)
+    [void]$script:upPs.AddArgument($DistVersion)
+    $script:upHandle = $script:upPs.BeginInvoke()
+  } catch { $script:upPs = $null; $script:upHandle = $null }
+}
+
+$script:upTimer = New-Object Windows.Forms.Timer
+$script:upTimer.Interval = 400
+$script:upTimer.Add_Tick({
+  if (-not $script:upHandle -or -not $script:upHandle.IsCompleted) { return }
+  $script:upTimer.Stop()
+  $found = $null
+  try { $found = @($script:upPs.EndInvoke($script:upHandle))[0] } catch { }
+  try { $script:upPs.Dispose() } catch { }
+  $script:upPs = $null; $script:upHandle = $null
+  if (-not $found) { return }
+
+  $ans = [Windows.Forms.MessageBox]::Show(
+    "새 판 $($found.Ver) 이 나와 있습니다. 지금 것은 $DistVersion 입니다.`n`n" +
+    "새 판으로 설치할까요?`n받는 동안 이 창은 잠깐 멈춥니다 — 2MB 남짓입니다.",
+    'Claude Code 설치', 'YesNo', 'Question')
+  if ($ans -ne 'Yes') { return }
+
+  # ⚠ **우리가 받으면 윈도우의 「인터넷에서 온 파일」 표시가 안 붙는다** — 브라우저로 받을
+  #   때만 붙는다. 그래서 새 판은 SmartScreen 경고 없이 바로 뜬다.
+  $dst = Join-Path ([IO.Path]::GetTempPath()) ("ClaudeCodeSetup-" + $found.Ver + ".exe")
+  try {
+    $F.Cursor = [Windows.Forms.Cursors]::WaitCursor
+    $F.Enabled = $false
+    Invoke-WebRequest -Uri $found.Url -OutFile $dst -UseBasicParsing -TimeoutSec 180 -ErrorAction Stop
+    Start-Process -FilePath $dst | Out-Null
+    # ⚠ **이 창을 닫는다.** 새 판이 제 화면을 띄우므로 둘이 같이 서 있으면 어느 것에 값을
+    #   넣었는지가 흐려진다.
+    $F.Close()
+  } catch {
+    $F.Enabled = $true
+    $F.Cursor = [Windows.Forms.Cursors]::Default
+    [void][Windows.Forms.MessageBox]::Show(
+      "새 판을 못 받았습니다. 지금 것으로 계속 하셔도 됩니다.`n`n$($_.Exception.Message)",
+      'Claude Code 설치', 'OK', 'Warning')
+  }
+})
+
 $bClose.Add_Click({ $F.Close() })
 
 $F.Add_Shown({
+  if ($script:upHandle) { $script:upTimer.Start() }
   & $syncRepo
   if ($tKey -and $tKey.Enabled -and -not $tRepo.Text.Trim()) { $tKey.Focus() | Out-Null }
   else { $bGo.Focus() | Out-Null }
