@@ -108,6 +108,25 @@ if [ "$OS" = windows ]; then
 else
   VENV_BIN="$VENV/bin";     PY_CMD=python3
 fi
+# ⚠ **윈도우의 `python` 이름은 스토어 껍데기일 수 있다** (#50). PATH 앞의 `WindowsApps\python.exe` 는
+#   진짜 파이썬이 아니라 스토어를 여는 자리표라 비대화에서 진다 — 설치기가 같은 실행에서 파이썬을
+#   막 깔았어도 이 셸의 PATH 는 그 전 것이라 껍데기가 먼저 걸린다. 그래서 이름을 믿지 않고
+#   **한 번 불러 보고** 진짜를 고른다: 이름 → `py -3` 런처(python.org·winget 설치가 등록한다) →
+#   winget/python.org 가 두는 자리. 셋 다 지면 이름을 그대로 둔다 — 심는 자리가 그때 사유를 댄다.
+#   auto 갈래마다 파이썬 하나가 잠깐 뜬다 — 심는 자리가 어차피 띄우는 그 하나다.
+py_resolve() {
+  "$PY_CMD" -c '' >/dev/null 2>&1 && return 0
+  [ "$OS" = windows ] || return 0
+  if command -v py >/dev/null 2>&1 && py -3 -c '' >/dev/null 2>&1; then
+    _pf="$(py -3 -c 'import sys; print(sys.executable)' 2>/dev/null)"
+    [ -n "$_pf" ] && [ -x "$_pf" ] && { PY_CMD="$_pf"; return 0; }
+  fi
+  for _pf in "$LOCALAPPDATA"/Programs/Python/Python3*/python.exe; do
+    [ -x "$_pf" ] && "$_pf" -c '' >/dev/null 2>&1 && { PY_CMD="$_pf"; return 0; }
+  done
+  return 0
+}
+py_resolve
 VENV_PY="$VENV_BIN/python"; [ -x "$VENV_PY" ] || VENV_PY="$VENV_BIN/python.exe"
 NPM_BIN="$PROJECT_DIR/node_modules/.bin"
 
