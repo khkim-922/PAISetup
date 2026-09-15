@@ -74,7 +74,10 @@ const PATH_EXTS = process.platform === "win32"
   ? (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean)
   : [""];
 
+// ⚠ 윈도우에서는 확장자가 실행 가능성의 일부다 — `X_OK` 는 거기서 아무것도 안 거른다. 확장자 없는
+//   사본이 실행 파일로 집히면 `spawn` 이 ENOENT 로 진다. 쌍둥이 `scripts/pw-resolve.mjs` 와 같은 줄.
 function runnable(p) {
+  if (process.platform === "win32" && !p.toLowerCase().endsWith(".exe")) return false;
   try {
     accessSync(p, constants.X_OK);
     return statSync(p).isFile();      // statSync 는 링크를 따라간다 — 끊긴 링크는 여기서 걸린다

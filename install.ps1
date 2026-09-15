@@ -2054,6 +2054,11 @@ if (-not $repoUrl) {
         }
         if ($said -match '([A-Z0-9]{4}-[A-Z0-9]{4})') {
           $state.Code = $Matches[1]; $tCode.Text = $state.Code; $tCode.SelectAll()
+          # ⚠ **코드가 오면 브라우저를 사람 대신 연다** — gh 자신도 열려 하지만 콘솔 없는 자식이라
+          #   못 여는 판이 있고, 그때 사람은 코드만 든 채 버튼을 찾는다. 코드는 클립보드에도 둔다 —
+          #   GitHub 창이 붙여넣기를 받는다. 버튼 둘은 그대로 둔다(브라우저가 안 뜬 판의 손잡이다).
+          try { Set-Clipboard -Value $state.Code } catch { }
+          try { Start-Process 'https://github.com/login/device' | Out-Null } catch { }
         }
       }
       $done = ($Proc -and $Proc.HasExited)
