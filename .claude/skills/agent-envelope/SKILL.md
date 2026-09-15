@@ -51,26 +51,34 @@ description: 서브에이전트를 여럿 띄워 일을 가를 때, 봉투를 �
 **레인이 다른 저장소의 규격을 옮겨 오는 판이면 봉투에 borrow-spec-as-pair 를 싣는다** — 레인은
 스킬을 안 읽으므로 짝을 세는 규율은 봉투가 이름으로 든다.
 
+**봉투와 레인의 말은 영어, 보고서만 한국어다** — 모델 안의 매체는 영어라 봉투를 한국어로 쓰면
+레인이 매 문장을 옮기며 읽고, 중간 산출도 한 번 더 옮긴다. 그래서 봉투 본문·레인의 중간 작업·
+곁말은 영어로 두고, **사람이 읽는 최종 보고서 한 장만 한국어로** 시킨다(옮김의 규율은 규범
+[Cross-Cultural Recoupling]). 좌표·이름·따옴표 안의 실물 문자열은 원문 그대로다 — 옮기면 못 찾는다.
+
 **발사 전에 나무를 맞춘다** — 격리 나무는 도구가 세우지만 어디서 무엇 위에 서나는 도구 계약이
-안 적는다: 셸의 작업 폴더가 있는 저장소에, 브랜치 머리가 아니라 기본 갈래(main) 위에 선다.
-발사 직전 Bash 는 `cd <저장소> && pwd` 하나만 두고 다른 명령을 섞지 않는다 — **그리고 그 옮기기와
-발사를 한 응답에 같이 싣지 않는다.** 한 응답의 호출들은 차례가 보장되지 않아 발사가 옮기기보다 먼저
-돌면 레인이 엉뚱한 저장소에 선다(실측: 저장소 셋에 레인 다섯을 띄우다 둘이 딴 저장소로 갔고, 하나는
-격리 밖 본체에 직접 썼다). 옮기기는 한 응답, 발사는 그 다음 응답이다. 브랜치가 main 보다
-앞서 있으면 봉투에 밑판 해시를 적고 레인의 첫 걸음을 「`git rev-parse HEAD` 가 그 해시가 아니면
-`git reset --hard <해시>` 로 맞추고 시작한다」로 둔다 — ⑥ 의 예외는 이 한 번뿐이다(main 에 먼저
-머지했으면 맞출 것이 없다).
+안 적는다: 셸의 작업 폴더가 있는 저장소에, **원격 main(`origin/main`) 위에** 선다 — 로컬 main 도
+지금 갈래도 아니다. 세션 중에 커밋하고 안 밀었으면 그 커밋이 레인에 없다(실측 2026-09-15: 안 민 채
+띄운 레인 셋이 전부 원격 자리(두 판 뒤)에 섰고, 봉투에 적은 좌표가 그 트리에 없었으며, 민 뒤 띄운
+레인은 새 자리에 섰다). 그래서 차례는 셋이다 — **먼저 민다 → `cd <저장소> && pwd` 한 응답 → 발사
+다음 응답 → 발사 직후 `git -C <나무> rev-parse HEAD` 로 밑판을 잰다.** 옮기기와 발사를 한 응답에
+같이 싣지 않는 까닭은 차례가 보장되지 않아서다(실측: 저장소 셋에 레인 다섯을 띄우다 둘이 딴 저장소로
+갔고, 하나는 격리 밖 본체에 직접 썼다). 밑판이 봉투 좌표와 다르면 **레인 안에서 맞추게 하지 않는다**
+— `merge --ff-only`·`reset` 은 승인 층이 거절한다(실측). 밀고 다시 띄우거나, 봉투 좌표를 그 밑판
+기준으로 다시 주고 부모가 세 판 병합을 맡는다.
 
 ## 3. 레인 절대 규칙 — 이 블록을 봉투에 그대로 싣는다
 
-    ① 제 봉투 하나만 맡는다. 곁 것은 읽되 고치지 않는다 — 다른 레인이 그 자리에 있다
-    ② 소유 밖은 안 건드린다. 남의 자리 결함은 고치지 말고 보고한다
-    ③ 골든/스냅샷 승인(bless 류)은 안 돌린다 — 사람이 전문을 읽고 승인한다
-    ④ 빨강이면 끝냈다고 하지 않는다 — 「못 쟀다」 표시도 초록이 아니다
-    ⑤ 판정을 조여 초록이 빨강 되면, 판정과 검체를 같은 판에서 고친다
-    ⑥ git 으로 상태를 바꾸지 않는다. 커밋은 부모가 한다
-    ⑦ 기대값을 실측에서 되뽑지 않는다. 왜 그 값이어야 하나를 적고, 실측과 다르면 보고한다
-    ⑧ 「없다」를 재기 전에 양성 대조부터 — 검체가 실제로 그 꼴인지 먼저 묻는다
+레인이 읽는 말이라 영어다(2절). 부모는 뜻을 알고 싣는다 — 옮겨 적지 않는다.
+
+    ① Own exactly one envelope. Read neighbouring files, never edit them — another lane is there.
+    ② Never touch anything outside your ownership. Report defects you find there; do not fix them.
+    ③ Never run golden/snapshot blessing (bless-style commands) — a human reads the full text and approves.
+    ④ Never say "done" while anything is red — a "could not measure" mark is not green either.
+    ⑤ If tightening a check turns green into red, fix the check and the specimen in the same pass.
+    ⑥ Never change state through git. The parent commits — leave changes uncommitted in the worktree.
+    ⑦ Never derive expected values from what you measured. Write why the value must be what it is; if the measurement differs, report it.
+    ⑧ Before reporting "absent", run a positive control — first ask whether the specimen really has that shape.
 
 레인 갈래에 맞게 **덜어내되 더하지 않는다** — 읽기 전용 재기 레인이면 ③⑤ 는 안 걸릴 수 있다.
 
@@ -88,6 +96,10 @@ description: 서브에이전트를 여럿 띄워 일을 가를 때, 봉투를 �
   쥔 레인에게, 없으면 발견한 레인에 소유를 넓혀서(맥락을 이미 쥐어 새 봉투보다 싸다).
   넓힌 소유는 봉투에 적는다
 - **넘김은 받는 이슈에 줄을 남긴다** — 마감 코멘트에만 적으면 증발한다
+- **나무를 걷는다** — 격리 나무는 저장소 **안** `.claude/worktrees/<이름>/` 에 서고, 도구는 변경이
+  없을 때만 스스로 걷는다. 트리를 통째로 훑는 검사·뽑기가 그 옛 판 사본을 문다(실측 2026-09-15:
+  뽑기 검사가 worktree 의 옛 install.ps1 을 물어 멈추고, 실패 정리가 배포본을 지웠다). 수확이 끝나면
+  `git worktree remove --force` 와 `git branch -D worktree-*` 로 걷는다
 
 ## 갈리는 자리
 
@@ -98,6 +110,8 @@ description: 서브에이전트를 여럿 띄워 일을 가를 때, 봉투를 �
 | 레인 보고가 길고 자세하다 | 길이는 판정이 아니다. 좌표·시나리오·안 잰 것 셋이 있나만 본다 |
 | 봉투를 더 채워 줄까 | 짧은 것이 옳다. 진본 좌표 + 이 판의 규율이면 끝 — 붙여넣은 이력은 값이 아니라 비용이다 |
 | 레인이 곁 결함을 고쳐 왔다 | 시키지 않은 소유 밖 고침은 받지 않는다 — 보고로 되돌리고, 가름은 수확 절 「소유 밖 발견」이 든다 |
+| 레인이 「밑판이 봉투와 다르다」고 한다 | 레인 탓이 아니라 안 민 부모 탓이다 — 2절 「발사 전에 나무를 맞춘다」. 레인에게 맞추라고 시키지 않는다 |
+| 봉투를 한국어로 쓸까 | 안 쓴다 — 2절. 사람이 읽는 최종 보고서 한 장만 한국어다 |
 
 ## 왜 참조가 없나
 
