@@ -202,7 +202,7 @@ $gO.Controls.Add($cDev)
 # ⚠ GitHub CLI 는 깔려도 로그인 전에는 안 돈다 — 처음 쓰는 사람은 여기서 그것을 알 데가 없었다.
 #   설정 저장소를 쓰는 사람은 훅이 토큰을 심어 로그인이 필요 없지만, 그것은 저장소 쪽 사정이다.
 $lDev = New-Object Windows.Forms.Label
-$lDev.Text = '저장소를 받으려면 Git 이 필요합니다. GitHub CLI 는 깔린 뒤 gh auth login 을 한 번 해야 씁니다.'
+$lDev.Text = '저장소를 받으려면 Git 이 필요합니다. 저장소를 넣었으면 GitHub CLI 로그인을 설치가 띄웁니다(코드 팝업).'
 $lDev.Location = New-Object Drawing.Point(34, 44)
 $lDev.Size = New-Object Drawing.Size(542, 16)
 $lDev.ForeColor = [Drawing.Color]::DimGray

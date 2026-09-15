@@ -1272,6 +1272,117 @@ if ($offsite) {
   }
 }
 
+# ── 4″. GitHub CLI 로그인 — **저장소를 넣은 사람만** ───────────────────────────────
+# ⚠ **왜 저장소를 넣은 사람만인가.** gh 는 [8/8] 이 비공개 저장소를 받을 때와 그 뒤 세션 훅이 쓴다.
+#   저장소를 안 넣은 사람은 GitHub 계정이 없을 수도 있어, 띄우면 가입부터 하라는 말이 된다 —
+#   그 사람에게 이 칸은 없는 칸이다. 개발 도구를 끈 사람도 같다(gh 가 안 깔린다).
+# ⚠ **일회용 코드는 팝업으로 든다.** 설치 창 기록에만 찍으면 스크롤 속에 묻히고, 브라우저는 코드를
+#   기다린 채 사람은 어디를 봐야 하는지 모른다. 창 하나가 코드 · 남은 시간 · 브라우저 열기 · 복사를
+#   들고, 로그인이 서면 스스로 닫힌다.
+# ⚠ **서면 git 자격도 같이 맡긴다**(`gh auth setup-git`) — 그래야 [8/8] 의 clone 이 자격 창을 또 안 띄운다.
+# ⚠ **안 누른 것은 실패가 아니다.** 시간이 다 가거나 [건너뛰기]면 「비었다」로 두고 간다 — [8/8] 의
+#   clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다. Claude 로그인 칸(4′)과 같은 규율.
+$GhLoginWait = 180                      # 초 — Claude 로그인 칸과 같은 값
+function Test-GhLoggedIn {
+  if (-not (Test-Runs 'gh' '--version')) { return $false }
+  $null = & gh auth status 2>$null
+  return ($LASTEXITCODE -eq 0)
+}
+# 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 초마다 남은 시간을
+# 줄이고 5초마다 로그인이 섰나 재서, 서면 닫는다. 돌려주는 값은 섰나(참/거짓).
+# ⚠ **손잡이는 닫힘(closure)으로 넘긴다.** 폼 이벤트의 스크립트 블록은 이 함수의 변수를 못 본다 —
+#   `GetNewClosure()` 가 그 순간의 참조를 물려주고, 상태는 해시테이블이라 안에서 고친 것이 밖에 남는다.
+function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait) {
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -AssemblyName System.Drawing
+  $f = New-Object Windows.Forms.Form
+  $f.Text = 'GitHub 로그인'; $f.TopMost = $true; $f.StartPosition = 'CenterScreen'
+  $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
+  $f.ClientSize = New-Object Drawing.Size(420, 190)
+  $l1 = New-Object Windows.Forms.Label
+  $l1.Text = '브라우저의 GitHub 창에 이 코드를 넣고 승인해 주세요.'
+  $l1.Location = New-Object Drawing.Point(16, 14); $l1.Size = New-Object Drawing.Size(390, 20)
+  $tCode = New-Object Windows.Forms.TextBox
+  $tCode.ReadOnly = $true; $tCode.TextAlign = 'Center'
+  $tCode.Font = New-Object Drawing.Font('Consolas', 22, [Drawing.FontStyle]::Bold)
+  $tCode.Text = '코드를 기다리는 중 …'
+  $tCode.Location = New-Object Drawing.Point(16, 40); $tCode.Size = New-Object Drawing.Size(390, 44)
+  $lLeft = New-Object Windows.Forms.Label
+  $lLeft.Text = "남은 시간 $Wait초"
+  $lLeft.Location = New-Object Drawing.Point(16, 96); $lLeft.Size = New-Object Drawing.Size(390, 20)
+  $bOpen = New-Object Windows.Forms.Button; $bOpen.Text = '브라우저 열기'
+  $bOpen.Location = New-Object Drawing.Point(16, 140); $bOpen.Size = New-Object Drawing.Size(120, 32)
+  $bCopy = New-Object Windows.Forms.Button; $bCopy.Text = '코드 복사'
+  $bCopy.Location = New-Object Drawing.Point(146, 140); $bCopy.Size = New-Object Drawing.Size(120, 32)
+  $bSkip = New-Object Windows.Forms.Button; $bSkip.Text = '건너뛰기'
+  $bSkip.Location = New-Object Drawing.Point(286, 140); $bSkip.Size = New-Object Drawing.Size(120, 32)
+  $f.Controls.AddRange(@($l1, $tCode, $lLeft, $bOpen, $bCopy, $bSkip))
+  $state = @{ Code = ''; Left = $Wait; Tick = 0; Ok = $false }
+  $bOpen.Add_Click({ Start-Process 'https://github.com/login/device' | Out-Null })
+  $bCopy.Add_Click({ if ($state.Code) { try { Set-Clipboard -Value $state.Code } catch { } } }.GetNewClosure())
+  $bSkip.Add_Click({ $f.Close() }.GetNewClosure())
+  $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1000
+  $timer.Add_Tick({
+    $state.Left--; $state.Tick++
+    $lLeft.Text = "남은 시간 $($state.Left)초 — 로그인이 서면 이 창은 스스로 닫힙니다"
+    if (-not $state.Code) {
+      $said = ''
+      foreach ($p in @($OutFile, "$OutFile.err")) {
+        if (Test-Path -LiteralPath $p) { $said += (Get-Content -LiteralPath $p -Raw -ErrorAction SilentlyContinue) }
+      }
+      if ($said -match '([A-Z0-9]{4}-[A-Z0-9]{4})') {
+        $state.Code = $Matches[1]; $tCode.Text = $state.Code; $tCode.SelectAll()
+      }
+    }
+    $done = ($Proc -and $Proc.HasExited)
+    if ($done -or ($state.Tick % 5) -eq 0) {
+      if (Test-GhLoggedIn) { $state.Ok = $true; $f.Close(); return }
+    }
+    if ($done -or $state.Left -le 0) { $f.Close() }
+  }.GetNewClosure())
+  $f.Add_Shown({ $f.Activate(); $timer.Start() }.GetNewClosure())
+  $f.Add_FormClosed({ $timer.Stop() }.GetNewClosure())
+  [void]$f.ShowDialog()
+  if (-not $state.Ok) { $state.Ok = Test-GhLoggedIn }
+  return $state.Ok
+}
+
+$ghLoggedIn = $false
+if ((-not $NoDevTools) -and (Read-Directive $EnvFile 'config-repo')) {
+  Write-Host ''
+  Write-Host '  GitHub CLI 로그인' -ForegroundColor Cyan
+  if (-not (Test-Runs 'gh' '--version')) {
+    Write-Host '  ! gh 가 안 닿아 로그인을 못 띄운다 — 위 프로그램 칸을 본다' -ForegroundColor Yellow
+  } elseif (Test-GhLoggedIn) {
+    $ghLoggedIn = $true
+    Write-Host '  이미 서 있다'
+  } else {
+    Write-Host "  브라우저 로그인을 띄운다 — 코드는 팝업에 (최대 $GhLoginWait초)" -ForegroundColor Yellow
+    $gl = [IO.Path]::GetTempFileName()
+    try {
+      $ghExe = (Get-Command gh -ErrorAction Stop).Source
+      # gh 는 「Enter 를 누르면 브라우저를 연다」고 묻고 기다린다 — 콘솔이 없는 자식이라 `echo.` 로
+      # 빈 줄 하나를 넣어 준다. 코드는 gh 가 찍는 것을 파일로 받아 창이 읽는다 — gh 는 코드를
+      # 오류 스트림에 찍으므로 두 스트림을 파일 둘로 받고 창이 둘 다 읽는다(한 파일로 합치는 꼴은
+      # 뽑기 검사가 막는다 — 파워셸 파일 안의 `2>&1` 은 네이티브 stderr 를 오류로 둔갑시킨다).
+      $cmdArgs = '/d /s /c "echo.| "' + $ghExe + '" auth login --hostname github.com --git-protocol https --web > "' + $gl + '" 2> "' + $gl + '.err""'
+      $login = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
+                 -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
+      $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait
+      if ($ghLoggedIn) {
+        Write-Host '  섰다' -ForegroundColor Green
+        $null = & gh auth setup-git 2>$null
+      } else {
+        if ($login -and -not $login.HasExited) { try { $login.Kill() } catch { } }
+        Write-Host '  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login (저장소 받기는 제 자격 창을 띄운다)' -ForegroundColor Yellow
+      }
+    } catch {
+      Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
+    }
+    Remove-Item $gl, "$gl.err" -ErrorAction SilentlyContinue
+  }
+}
+
 # ── 5‴. 로컬 프록시 — **사내에서 Claude 와 Gemini 가 지나는 문** (결정 0041) ─────────────
 # ⚠ **왜 프록시인가.** 게이트웨이가 Opus 5 에서 assistant prefill 을 400 으로 거절하고, Gemini CLI 는
 #   http 주소를 거절한다(루프백만 예외). 둘 다 클라이언트 파일을 못 고치는 자리라 사이에 한 겹을 둔다.
