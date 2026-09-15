@@ -87,22 +87,23 @@ $Apps = @(
   @{ Name='GitHub CLI'; Id='GitHub.cli';                 Cmd='gh';     Arg='--version'; Need='dev'  }
 )
 
-# ── 확장과 CLI — **목록이 진본이다.** 깔 때도 끝에 잴 때도 이 두 표에서 판다 (결정 0041).
-#    core = 어디서나. codex · gemini = 값 파일이 그 틀(`#codex-config` · `#gemini-config`)을 들고
-#    **사내로 판정될 때만** — 사외는 구독 로그인 하나라 Claude 만 선다. 「어느 자리가 무엇을 드나」는
-#    이 표가 아니라 아래 `$wantNeed` 가 자리와 지시에서 판다.
+# ── 확장과 CLI — **목록이 진본이다.** 깔 때도 끝에 잴 때도 이 두 표에서 판다 (결정 0041 · 0045).
+#    **셋 다 어디서나 깐다.** 자리가 가르는 것은 프로그램이 아니라 **그 뒤에 무엇으로 붙나**다 —
+#    사내는 회사 키·설정 틀·프록시로 게이트웨이에 붙고(아래 `$wantCodex` · `$wantGemini`), 사외는
+#    각자 로그인(Codex 는 ChatGPT · Gemini 는 Google)으로 쓴다. 옛 판은 프로그램까지 사내로 묶어
+#    사외 PC 에 Codex·Gemini 가 통째로 안 섰다(결정 0045).
 # ⚠ Codex 확장은 CLI 의 `~/.codex/config.toml` 을 같이 읽어 게이트웨이를 탄다 — 다만 사용자 정의
 #   프로바이더에서 CLI 와 다르게 구는 이슈가 열려 있어(openai/codex #4558 · #6963 · #27695), 확장 안의
 #   한 턴은 사람이 잰다. Gemini 것은 창이 없는 짝(companion)이라 터미널의 CLI 에 편집기 문맥을 넘길 뿐이다.
 $Extensions = @(
-  @{ Id='anthropic.claude-code';                  Label='클로드 확장';                Need='core'   }
-  @{ Id='openai.chatgpt';                         Label='Codex 확장';                 Need='codex'  }
-  @{ Id='google.gemini-cli-vscode-ide-companion'; Label='Gemini CLI Companion 확장';  Need='gemini' }
+  @{ Id='anthropic.claude-code';                  Label='클로드 확장'                }
+  @{ Id='openai.chatgpt';                         Label='Codex 확장'                 }
+  @{ Id='google.gemini-cli-vscode-ide-companion'; Label='Gemini CLI Companion 확장'  }
 )
 $Clis = @(
-  @{ Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI'; Need='core'   }
-  @{ Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI';       Need='codex'  }
-  @{ Pkg='@google/gemini-cli';        Cmd='gemini'; Label='Gemini CLI';      Need='gemini' }
+  @{ Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI' }
+  @{ Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
+  @{ Pkg='@google/gemini-cli';        Cmd='gemini'; Label='Gemini CLI'      }
 )
 
 # ── Node 가 말을 거는 자리 — **목록이 진본이다** ─────────────────────────────────
@@ -774,10 +775,12 @@ if ($probe) {
   Write-Host ''
 }
 
-# ── 사내에서만 더 서는 것 셋 — 로컬 프록시 · Codex · Gemini (결정 0041) ──────────────
+# ── 사내에서만 더 서는 것 셋 — 로컬 프록시 · Codex 회사 설정 · Gemini 회사 설정 (결정 0041 · 0045) ──
 # ⚠ **몸통은 파일 이름도 모델 이름도 모른다.** 값 파일이 `#gateway-proxy = <프록시 파일>` ·
 #   `#codex-config = <틀>` · `#gemini-config = <틀>` 로 이 폴더 안의 자리를 가리키고, 몸통은
-#   **있고 사내면** 그것을 세운다. 사외는 셋 다 안 선다 — 구독 로그인 하나로 서는 자리라서.
+#   **있고 사내면** 그것을 세운다. 사외는 셋 다 안 선다 — 구독·개인 로그인으로 서는 자리라서.
+# ⚠ **프로그램은 이 스위치 밖이다.** Codex·Gemini 확장과 CLI 는 위 표대로 어디서나 깔린다 — 여기가
+#   가르는 것은 그 프로그램을 **회사 키로 게이트웨이에 물리나**뿐이다(결정 0045).
 # ⚠ **자리를 모르면 안 선다.** 프로브가 없으면 「사내」가 아니라 모르는 것이고, 모르는 자리에
 #   프록시를 세우면 아무 데도 안 닿는 주소를 심은 채 초록으로 끝난다.
 # ⚠ **`#config-repo` 가 있어도 여기서 세운다.** 옛 판은 그 줄이 있으면 프록시·설정을 저쪽 부트스트랩에
@@ -792,15 +795,15 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 $needPython = $wantProxy            # 프록시가 파이썬으로 돈다 — 개발도구를 꺼도 이것만은 깐다(1 칸)
 $wantCodex  = [bool]($codexTpl  -and $inside)
 $wantGemini = [bool]($geminiTpl -and $inside)
-# 표(`$Extensions` · `$Clis`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
-$wantNeed = @{ core = $true; codex = $wantCodex; gemini = $wantGemini }
+# 회사 키의 다른 이름 표(`$KeyAliases`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
+$wantNeed = @{ codex = $wantCodex; gemini = $wantGemini }
 if ($proxyRel -or $codexTpl -or $geminiTpl) {
   $more = @()
   if ($wantProxy)  { $more += '로컬 프록시' }
-  if ($wantCodex)  { $more += 'Codex' }
-  if ($wantGemini) { $more += 'Gemini' }
+  if ($wantCodex)  { $more += 'Codex 회사 설정' }
+  if ($wantGemini) { $more += 'Gemini 회사 설정' }
   if ($more.Count) { Write-Host ("  사내라 더 세운다 — " + ($more -join ' · ')); Write-Host '' }
-  elseif (-not $inside) { Write-Host '  프록시·Codex·Gemini 는 사내에서만 선다 — 여기서는 안 세운다'; Write-Host '' }
+  elseif (-not $inside) { Write-Host '  프록시와 Codex·Gemini 회사 설정은 사내에서만 선다 — 여기서는 프로그램만 깔고 각자 로그인으로 쓴다'; Write-Host '' }
 }
 
 # ── 올릴 것이 있는 앱을 **한 번에** 묻는다 ─────────────────────────────────────
@@ -1046,16 +1049,13 @@ function Install-Extension([string]$Id, [string]$Label) {
 Write-Host ''
 Write-Host '[2/8] VS Code 확장' -ForegroundColor Cyan
 if (Test-Runs 'code' '--version') {
-  foreach ($x in $Extensions) {
-    if (-not $wantNeed[$x.Need]) { continue }
-    Install-Extension $x.Id $x.Label
-  }
+  foreach ($x in $Extensions) { Install-Extension $x.Id $x.Label }
 } else {
   Write-Host '  ! code 를 못 불러 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
 }
 
-# ── 4. CLI 셋 — Claude Code 는 어디서나, Codex · Gemini 는 사내에서만 ─────────────────
+# ── 4. CLI 셋 — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────
 # ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 판정은 `--version` 이 도나(프로브)다.
 function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
   if ((Test-Runs $Cmd '--version') -and ($NoUpgrade -or -not (Test-Runs 'npm' '--version'))) {
@@ -1092,9 +1092,11 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
 
 Write-Host ''
 Write-Host '[3/8] CLI' -ForegroundColor Cyan
-foreach ($c in $Clis) {
-  if (-not $wantNeed[$c.Need]) { continue }
-  Install-NpmCli $c.Pkg $c.Cmd $c.Label
+foreach ($c in $Clis) { Install-NpmCli $c.Pkg $c.Cmd $c.Label }
+# ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
+#   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
+if (-not $inside) {
+  Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
 }
 
 # ── 5. 값 — 파일이 들면 읽고, 없으면 묻는다 ─────────────────────────────────────
@@ -1767,11 +1769,9 @@ if ($hasCode) { $extList = @(& code --list-extensions 2>$null) }
 $checks = @( @{ Name='VS Code'; Ok = $hasCode } )
 # 확장과 CLI 는 **깔 때 본 표 그대로** 잰다 — 표에 한 줄을 더하면 검증도 따라온다.
 foreach ($x in $Extensions) {
-  if (-not $wantNeed[$x.Need]) { continue }
   $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) }
 }
 foreach ($c in $Clis) {
-  if (-not $wantNeed[$c.Need]) { continue }
   $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
 }
 # ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
@@ -1881,7 +1881,8 @@ if (-not $WithPersonalConfig) {
 # ⚠ **찾는 자는 「무엇을」이 아니라 「어떻게 띄우나」를 돌려준다.** 둘이 진짜로 다른 기전이라
 #   그렇다 — VS Code 는 실행 파일을 직접 띄워야 **이 창이 방금 심은 값을 물고** 뜨고, 데스크탑은
 #   띄울 실행 파일이 아예 없다. 그래서 `Exe` 를 든 것과 `AppId` 를 든 것이 갈려 나온다.
-#   `Proc` 는 「이미 떠 있나」를 재는 이름이고, **둘 다 제가 든 손잡이에서 판다.**
+#   `Proc` 는 「이미 떠 있나」를 재는 이름(들)이다 — VS Code 는 실행 파일에서 하나를, 데스크탑은
+#   손잡이와 앱 이름에서 후보 목록을 든다(까닭은 `Find-ClaudeApp` 안에).
 
 # VS Code — PATH 에 걸린 `code` 는 `…\bin\code.cmd` 라 그것을 띄우면 콘솔이 한 번 번쩍인다.
 # 한 층 올라가 실행 파일을 판다.
@@ -1918,14 +1919,23 @@ function Find-ClaudeApp {
            Where-Object { $_.Name -like "*$want*" })[0]
   } catch { return $null }                      # 이 윈도우에 그 물음이 없다
   if (-not $a -or -not $a.AppID) { return $null }
-  # 프로세스 이름도 손잡이에서 판다. 스토어 꼴은 `앱_해시!앱` 이라 `_` 앞이 이름이고,
-  # 예전 꼴은 바로가기 경로라 파일 이름이 그 자리다.
-  $proc = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
-          else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
-  return @{ Name = 'Claude 데스크탑'; AppId = $a.AppID; Proc = $proc }
+  # 프로세스 이름은 **후보 목록**이다 — 손잡이에서 판 것 하나와 앱 이름 하나.
+  # ⚠ **손잡이 하나로는 못 판다.** 꼴이 셋이고 이름이 앉는 자리가 다 다르다 — 스토어 꼴은
+  #   `앱_해시!앱` 의 `_` 앞, 바로가기 꼴은 파일 이름, claude.ai 에서 받은 일반 설치본(Squirrel)은
+  #   `com.squirrel.<패키지>.<실행파일>` 의 **마지막 마디**다. 옛 판은 앞 둘만 알아서 셋째 꼴에서
+  #   `com.squirrel.AnthropicClaude` 를 이름으로 들었고, 실물은 `claude` 라 **떠 있는데 「안 떠
+  #   있다」로 읽었다**(실측 2026-09-15 · 사외 PC). 그래서 묻지도 끄지도 않고 손잡이로 띄웠는데,
+  #   도는 앱은 그 호출에 창만 앞으로 올 뿐 새로 안 떠 — 낡은 것이 재시작한 얼굴로 남았다.
+  # ⚠ **꼴을 하나 더 박는 대신 앱 이름을 후보에 더한다.** 세 꼴 다 실행 파일이 곧 앱 이름이라
+  #   (`claude`) 그 하나가 셋을 덮고, 꼴이 또 늘어도 안 어긋난다. 손잡이에서 판 것은 그대로 둔다 —
+  #   이름이 실행 파일과 갈리는 앱이 오면 그쪽이 든다. `Get-Process -Name` 은 목록을 받는다.
+  $fromId = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
+            else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
+  $procs = @($fromId, $want) | Where-Object { $_ } | Select-Object -Unique
+  return @{ Name = 'Claude 데스크탑'; AppId = $a.AppID; Proc = @($procs) }
 }
 
-# 그 앱이 이미 도나 — 이름은 찾는 자가 제 손잡이에서 판 것을 그대로 쓴다.
+# 그 앱이 이미 도나 — 이름은 찾는 자가 든 것을 그대로 쓴다(하나든 목록이든 `-Name` 이 받는다).
 function Test-AppUp($App) {
   if (-not $App -or -not $App.Proc) { return $false }
   return [bool](Get-Process -Name $App.Proc -ErrorAction SilentlyContinue)

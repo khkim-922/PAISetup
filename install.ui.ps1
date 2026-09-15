@@ -91,8 +91,9 @@ function New-Label($text, $x, $y, $w, $bold) {
   $F.Controls.Add($l); return $l
 }
 
-# ⚠ **첫 줄은 자리를 안 뒤에 채운다.** 사내면 확장·CLI 가 셋(Claude · Codex · Gemini)이고 사외면 Claude
-#   하나라, 자리를 모른 채 적으면 어느 한쪽에 거짓이 된다. 무엇이 더 서나는 값 파일의 틀 지시가 든다.
+# ⚠ **첫 줄은 자리를 안 뒤에 채운다.** 확장·CLI 는 셋(Claude · Codex · Gemini)이 어디서나 서고(결정 0045),
+#   자리가 가르는 것은 그 뒤에 무엇으로 붙나다 — 사내는 회사 키, 사외는 각자 로그인. 그 반 줄이 자리를 안
+#   뒤에야 참이 된다. 무엇이 회사 키로 물리나는 값 파일의 틀 지시가 든다.
 $lTop = New-Label '' 18 14 560 $true
 New-Label '이미 깔린 것은 건너뜁니다. 여러 번 눌러도 안전합니다.' 18 34 560 $false | Out-Null
 
@@ -126,8 +127,8 @@ $more = @()
 if (Get-Directive 'codex-config')  { $more += 'Codex' }
 if (Get-Directive 'gemini-config') { $more += 'Gemini' }
 $lTop.Text = if ($probe -and -not $offsite -and $more.Count) {
-               "VS Code 에 Claude · $($more -join ' · ') 확장과 CLI 를 세웁니다." }
-             else { 'VS Code 에 Claude Code 확장과 CLI 를 세웁니다.' }
+               "VS Code 에 Claude · Codex · Gemini 확장과 CLI 를 세웁니다 — $($more -join ' · ') 는 회사 키로 붙습니다." }
+             else { 'VS Code 에 Claude · Codex · Gemini 확장과 CLI 를 세웁니다 — Codex · Gemini 는 각자 로그인으로 씁니다.' }
 $gV = New-Object Windows.Forms.GroupBox
 $noAsk = $offsite
 $gV.Text = if ($noAsk) { '키와 주소' } elseif ($urlPreset) { 'API 키' } else { '게이트웨이 (사내만)' }

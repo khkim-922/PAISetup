@@ -206,26 +206,26 @@
         <text x="525.4" y="566" font-size="7px" text-anchor="middle" fill="rgb(5, 150, 105)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ winget 이 정책에 막히면 여기서 진다</text>
         </g>
 
-        <g id="node-n7" tabindex="0" role="button" aria-label="Focus 7. [2/8] VS Code 확장, 클로드 · 사내면 Codex · Gemini 도, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">7. [2/8] VS Code 확장 · 클로드 · 사내면 Codex · Gemini 도 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
-          <rect x="441.9" y="626" width="167" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="441.9" y="626" width="167" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(447.9 632) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n7" tabindex="0" role="button" aria-label="Focus 7. [2/8] VS Code 확장, 클로드 · Codex · Gemini, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">7. [2/8] VS Code 확장 · 클로드 · Codex · Gemini · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="450.4" y="626" width="150" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="450.4" y="626" width="150" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(456.4 632) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
           </g>
           <text x="525.4" y="647" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">7. [2/8] VS Code 확장</text>
-          <text x="525.4" y="664" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">클로드 · 사내면 Codex · Gemini 도</text>
+          <text x="525.4" y="664" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">클로드 · Codex · Gemini</text>
         </g>
 
-        <g id="node-n8" tabindex="0" role="button" aria-label="Focus 8. [3/8] CLI, Claude Code · 사내면 Codex · Gemini 도, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">8. [3/8] CLI · Claude Code · 사내면 Codex · Gemini 도 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
-          <rect x="429.9" y="734" width="191" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="429.9" y="734" width="191" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(435.9 740) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n8" tabindex="0" role="button" aria-label="Focus 8. [3/8] CLI, Claude Code · Codex · Gemini, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">8. [3/8] CLI · Claude Code · Codex · Gemini · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="450.4" y="734" width="150" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="450.4" y="734" width="150" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(456.4 740) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
           </g>
           <text x="525.4" y="755" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">8. [3/8] CLI</text>
-          <text x="525.4" y="772" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">Claude Code · 사내면 Codex · Gemini 도</text>
+          <text x="525.4" y="772" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">Claude Code · Codex · Gemini</text>
         </g>
 
         <g id="node-n9" tabindex="0" role="button" aria-label="Focus 9. [4/8] 키와 주소 — 사용자 환경변수로 심는다, 사내면 회사 키 세 이름 · 로컬 프록시 띄움 · Codex/Gemini 설정, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
@@ -336,12 +336,12 @@
           <text x="641.4" y="568" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">깔린 뒤</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <rect x="617.4" y="658" width="106" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <text x="670.4" y="668" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">확장은 CLI 를 부른다</text>
+          <rect x="608.4" y="658" width="106" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="661.4" y="668" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">확장은 CLI 를 부른다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <rect x="629" y="766" width="62.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <text x="660.4" y="776" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">둘이 짝이다</text>
+          <rect x="609" y="766" width="62.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="640.4" y="776" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">둘이 짝이다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
           <rect x="684.6" y="874" width="91.6" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>

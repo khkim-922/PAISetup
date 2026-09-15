@@ -19,7 +19,7 @@
 |---|---|
 | VS Code · **Claude Code 확장** | 확장은 CLI 를 자식으로 부른다 — 둘 중 하나만 있으면 안 돈다 |
 | Claude Code CLI · Node.js | 위를 돌리는 것 |
-| **Codex CLI · Codex 확장** · **Gemini CLI · Gemini CLI Companion 확장** | **사내에서만.** 같은 회사 키로 게이트웨이에 붙는다. Codex 는 직결, Gemini 는 아래 프록시를 지난다 |
+| **Codex CLI · Codex 확장** · **Gemini CLI · Gemini CLI Companion 확장** | 어디서나 깔린다. **사내**는 같은 회사 키로 게이트웨이에 붙는다 — Codex 는 직결, Gemini 는 아래 프록시를 지난다. **사외**는 각자 로그인으로 쓴다 — Codex 는 `codex login`(ChatGPT), Gemini 는 첫 실행의 Google 로그인 |
 | **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에 서서 Claude Code(Opus 5)와 Gemini CLI 를 게이트웨이로 넘긴다. 로그인마다 저절로 뜬다. 왜 있나는 `posco/pgpt-proxy/README.md` |
 | Git · Python · GitHub CLI | 코드를 짤 사람만. `-NoDevTools` 로 뺀다 — **다만 사내에서는 Python 만은 깐다** (프록시가 그것으로 돈다) |
 | Claude 데스크탑 앱 | **사외에서만.** 사내에서는 게이트웨이를 못 물어 쓸모가 없다 |
