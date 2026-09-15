@@ -77,6 +77,12 @@ if (-not $EnvFile) { $EnvFile = Join-Path $Here 'install.env' }
 $Fails   = New-Object System.Collections.Generic.List[string]
 $Planted = @{}
 
+# ── 홈 아래 우리가 쓰는 자리 — **이름은 여기 한 자리다** ────────────────────────
+# ⚠ **쓰는 자와 재는 자가 같은 글자를 봐야 한다.** 아래 칸들이 이 아래에 파일을 쓰고 끝의
+#   검증이 같은 자리를 다시 재는데, 글자를 자리마다 박으면 한쪽만 고쳐지는 날 **재는 자가
+#   딴 자리를 보고 [O] 를 찍는다** — 부재가 통과로 읽히는 그 자리다 (#3).
+$homeDir = Join-Path $env:USERPROFILE '.claude'
+
 # ── 무엇을 깔까 — **목록이 진본이다.** 늘리려면 여기 한 줄을 더한다 ────────────────
 #    core = 확장이 돌기까지 없으면 안 되는 것. dev = 코드를 짤 사람에게만.
 #    ⚠ Claude Code CLI 는 이 표에 없다 — winget 이 아니라 npm 이 깔아서다(아래 4칸).
@@ -379,7 +385,7 @@ function Wire-NodeTrust {
   }
 
   # ⚠ **BOM 을 안 찍는다.** PEM 파서는 바이트로 읽는다 — 앞에 BOM 이 붙으면 첫 줄이 어긋난다.
-  $target = Join-Path $env:USERPROFILE '.claude\node-ca.pem'
+  $target = Join-Path $homeDir 'node-ca.pem'
   try {
     $dir = Split-Path -Parent $target
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
@@ -873,6 +879,10 @@ $wantNeed = @{ codex = $wantCodex; gemini = $wantGemini }
 #   딴 자리를 지우고 진짜 잔재는 그대로 돈다.** 지우는 손은 헛도는 줄도 안 남긴다.
 $ProxyRunName = 'PGPTProxy'      # HKCU\...\Run 의 등록 이름
 $ProxyDirName = 'PGPT-Proxy'     # %LOCALAPPDATA% 아래 실행 폴더 이름
+# ── 회사 설정 둘이 앉는 자리 — **같은 까닭으로 여기 한 자리다** ─────────────────
+# 아래 5⁗ 칸이 이 둘에 쓰고 끝의 검증이 이 둘을 다시 재므로, 글자를 두 자리에 박지 않는다 (#3).
+$CodexCfg  = Join-Path $env:USERPROFILE '.codex\config.toml'
+$GeminiCfg = Join-Path $env:USERPROFILE '.gemini\settings.json'
 if ($proxyRel -or $codexTpl -or $geminiTpl) {
   $more = @()
   if ($wantProxy)  { $more += '로컬 프록시' }
@@ -1358,6 +1368,13 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
   }
 }
 
+# ── 홈 `settings.json` 에 안 미는 이름 — **키는 환경변수에만 산다** (#2) ────────────
+# ⚠ **목록을 손으로 적지 않는다.** 키는 하나인데 이름이 셋이라(위 ⚠), 손으로 적으면 넷째
+#   이름이 느는 날 이 목록만 안 늘어 **그 하나가 조용히 파일로 샌다.** 표에서 파생한다 —
+#   비밀이라고 표가 이미 말한 것(`Secret`)과 그 비밀의 다른 이름들(`$KeyAliases`)이다.
+$SettingsEnvSkip = @($Vars | Where-Object { $_.Secret } | ForEach-Object { $_.Name }) +
+                   @($KeyAliases | ForEach-Object { $_.Name })
+
 # ── 5⁵. 사외로 간 자리의 사내 잔재 — **심은 자리마다 걷는 자가 있다** ───────────────
 # ⚠ **부재가 아니라 잔재가 통과로 읽히는 자리다.** 위 칸들은 *이번 판에 심을 목록*에서만
 #   게이트웨이 이름을 빼는데, **이미 `HKCU\Environment` 에 박힌 옛 값은 아무도 안 건드린다.**
@@ -1672,7 +1689,7 @@ if ($useGateway -and ($wantCodex -or $wantGemini)) {
   $noBom = New-Object Text.UTF8Encoding($false)
   if ($wantCodex) {
     $src = Join-Path $Here $codexTpl
-    $dst = Join-Path $env:USERPROFILE '.codex\config.toml'
+    $dst = $CodexCfg
     if (-not (Test-Path -LiteralPath $src)) {
       Write-Host "  ! Codex 틀이 이 폴더에 없다 — $codexTpl" -ForegroundColor Red
       $Fails.Add('Codex 설정 (틀이 없다)')
@@ -1696,7 +1713,7 @@ if ($useGateway -and ($wantCodex -or $wantGemini)) {
   }
   if ($wantGemini) {
     $src = Join-Path $Here $geminiTpl
-    $dst = Join-Path $env:USERPROFILE '.gemini\settings.json'
+    $dst = $GeminiCfg
     if (-not (Test-Path -LiteralPath $src)) {
       Write-Host "  ! Gemini 틀이 이 폴더에 없다 — $geminiTpl" -ForegroundColor Red
       $Fails.Add('Gemini 설정 (틀이 없다)')
@@ -1720,13 +1737,23 @@ if ($useGateway -and ($wantCodex -or $wantGemini)) {
         $before = $g | ConvertTo-Json -Depth 10
         foreach ($pp in $tpl.PSObject.Properties) {
           $val = $pp.Value
-          if ($pp.Name -eq 'apiKey') { $val = $key }
-          elseif ($pp.Name -eq 'baseUrl') {
+          # ⚠ **키는 이 파일에 안 쓴다 — 틀의 자리표까지 같이 안 간다** (#2). Gemini CLI 는 키를
+          #   `GEMINI_API_KEY` 에서 읽고(5″ 칸이 심는 그 이름), 못 찾으면 제 자격 저장소로 간다 —
+          #   `settings.json` 의 `apiKey` 는 **읽는 자가 없다.** 안 읽히는 자리에 평문으로 두는
+          #   것은 얻는 것 없이 새는 자리를 하나 더 여는 것뿐이다.
+          if ($pp.Name -eq 'apiKey') { continue }
+          if ($pp.Name -eq 'baseUrl') {
             # 주소의 진본은 심은 환경변수다 — 틀의 주소(게이트웨이 직결)는 그것이 없을 때의 낙하다.
             if ($Planted['GOOGLE_GEMINI_BASE_URL']) { $val = $Planted['GOOGLE_GEMINI_BASE_URL'] }
           }
           elseif ($g.PSObject.Properties[$pp.Name]) { continue }      # 사람 것은 둔다
           $g | Add-Member -NotePropertyName $pp.Name -NotePropertyValue $val -Force
+        }
+        # ⚠ **옛 판이 쓴 키는 걷는다 — 안 쓰기로 했으면 걷는 자가 선다.** 우리 값일 때만이다:
+        #   제 키를 넣어 둔 사람의 것은 안 건드린다(위 「사람 것은 둔다」와 같은 자).
+        if ($key -and $g.PSObject.Properties['apiKey'] -and $g.apiKey -eq $key) {
+          $g.PSObject.Properties.Remove('apiKey')
+          Write-Host '  Gemini settings.json — apiKey 를 걷었다 (GEMINI_API_KEY 가 든다)' -ForegroundColor Green
         }
         $after = $g | ConvertTo-Json -Depth 10
         if ($after -eq $before) {
@@ -1751,9 +1778,14 @@ if ($useGateway -and ($wantCodex -or $wantGemini)) {
 #   두면 같은 변수를 읽는 다른 앱이 키를 잃는다. **사본이 아니라 파생이다** — 값의 진본은
 #   `install.env` 하나고 여기로 밀려올 뿐이다.
 #   어느 자리가 이것을 드나는 **값 파일이 `#settings-env` 로 든다.** 몸통은 자리 이름을 모른다.
+#
+# ⚠ **그 안에서 키만은 안 민다 — `$SettingsEnvSkip`.** 이 파일은 설정 저장소가 동기화하는
+#   종류라, 여기 든 값은 **평문으로 저장소까지 흘러간다.** 위 까닭이 세운 것은 「모델 고르는
+#   자리가 파일을 봐야 한다」이지 「키가 파일에 있어야 한다」가 아니다 — 키를 읽는 세 이름은
+#   **사용자 환경변수가 이미 들고 있고**(5″ 칸), CLI 는 거기서 읽는다. 그래서 주소·모델은
+#   밀고 토큰과 그 별명 둘은 뺀다 (#2).
 Write-Host ''
 Write-Host '[5/8] 홈 설정' -ForegroundColor Cyan
-$homeDir = Join-Path $env:USERPROFILE '.claude'
 $homeCfg = Join-Path $homeDir 'settings.json'
 New-Item -ItemType Directory -Path $homeDir -Force | Out-Null
 
@@ -1822,16 +1854,42 @@ if ($cfg) {
   }
 
   if ($wantEnv -and $Planted.Count -gt 0) {
+    $pushed = 0
     foreach ($k in $Planted.Keys) {
+      if ($SettingsEnvSkip -contains $k) { continue }
+      $pushed++
       $old = if ($cfg.env.PSObject.Properties[$k]) { $cfg.env.$k } else { $null }
       if ($old -ne $Planted[$k]) {
         $cfg.env | Add-Member -NotePropertyName $k -NotePropertyValue $Planted[$k] -Force
         $dirty = $true
       }
     }
-    Write-Host "  env 에 $($Planted.Count)개를 맞췄다 (#settings-env = yes)" -ForegroundColor Green
+    Write-Host "  env 에 $pushed 개를 맞췄다 (#settings-env = yes · 키는 환경변수에만 둔다)" -ForegroundColor Green
   } elseif (-not $wantEnv) {
     Write-Host '  env 는 안 민다 — 값 파일이 #settings-env 를 안 든다'
+  }
+
+  # ⚠ **안 밀기로 한 이름이 옛 판에서 남아 있으면 걷는다.** 심는 자리를 줄였으면 걷는 자리가
+  #   선다 — 안 걷으면 옛 판으로 깐 기계는 키를 그대로 들고 있어 이 고침이 **새 기계에만**
+  #   선다. 아래 `$Retired` 칸이 이미 쓰는 규율이고, 여기는 이름 대신 **자리**가 물러난 것뿐이다.
+  # ⚠ **우리 값일 때만 걷는다.** 같은 이름에 제 값을 넣은 사람이 있을 수 있다 — 값이 우리가
+  #   방금 심은 것과 같다는 것이 「이것도 우리가 넣은 것」의 근거다(5⁵ 칸이 환경변수에 쓰는 그 자).
+  #   다르면 안 걷고 **문다**: 이 파일의 값이 이기므로, 남겨 두면 방금 심은 키가 가려진 채
+  #   화면은 초록으로 끝난다.
+  if ($cfg.PSObject.Properties['env']) {
+    foreach ($k in $SettingsEnvSkip) {
+      if (-not $Planted.ContainsKey($k)) { continue }          # 안 심은 이름은 아래 「홀로 있다」 칸이 든다
+      if (-not $cfg.env.PSObject.Properties[$k]) { continue }
+      if ($cfg.env.$k -eq $Planted[$k]) {
+        $cfg.env.PSObject.Properties.Remove($k)
+        $dirty = $true
+        Write-Host "  $k — settings.json 에서 걷었다 (환경변수가 든다)" -ForegroundColor Green
+      } else {
+        Write-Host "  ! $k 이 settings.json 에 다른 값으로 있다 — 심은 값을 가린다" -ForegroundColor Red
+        Write-Host "     볼 자리: $homeCfg  (env 칸)"
+        $Fails.Add("$k 이 settings.json 에 다른 값으로 있다")
+      }
+    }
   }
 
   # ⚠ **우리가 안 심은 ANTHROPIC_ 이름이 남아 있으면 문다.** 사내 안내 문서가 손으로 적으라고
@@ -2355,8 +2413,8 @@ if ($useGateway) {
     if (-not $wantNeed[$k.Need]) { continue }
     $checks += @{ Name = $k.Name; Ok = [bool]$userEnv[$k.Name] }
   }
-  if ($wantCodex)  { $checks += @{ Name = 'Codex config.toml';    Ok = (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.codex\config.toml')) } }
-  if ($wantGemini) { $checks += @{ Name = 'Gemini settings.json'; Ok = (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.gemini\settings.json')) } }
+  if ($wantCodex)  { $checks += @{ Name = 'Codex config.toml';    Ok = (Test-Path -LiteralPath $CodexCfg) } }
+  if ($wantGemini) { $checks += @{ Name = 'Gemini settings.json'; Ok = (Test-Path -LiteralPath $GeminiCfg) } }
   # ⚠ **프록시는 「떠 있나」와 「문을 여나」를 따로 잰다.** 떠 있는 것만 보면 보정이 안 도는 판이
   #   초록이 된다. 문은 assistant 로 끝나는 본문을 프록시 너머로 보내 200 이 오는가로 잰다 — 이
   #   게이트웨이가 Opus 5 에서 그 본문을 400 으로 거절하는 것이 프록시가 있는 까닭이라(결정 0041),

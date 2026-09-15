@@ -7,9 +7,10 @@
 #   파일은 값을 받아 그것에 넘기고, 그것이 찍는 줄을 화면에 옮긴다. 로직을 여기 옮기면
 #   화면 갈래와 콘솔 갈래가 서로 다른 코드를 타고, 그러면 한쪽만 고쳐진다.
 #
-# ⚠ **진행 막대의 신호는 몸통이 이미 찍는 `[n/7]` 이다.** 진행률을 알리는 통로를 따로 내지
+# ⚠ **진행 막대의 신호는 몸통이 이미 찍는 `[n/8]` 이다.** 진행률을 알리는 통로를 따로 내지
 #   않는다 — 통로가 둘이면 칸이 늘 때 한쪽만 고쳐지고, 그 어긋남은 「막대가 안 찬다」는
 #   조용한 꼴로만 보인다. 몸통이 사람에게 하는 말을 그대로 읽는다.
+#   ⚠ **분모는 그 줄에서 받는다** — 칸이 늘어도 고칠 코드가 없다. 여덟은 지금 몸통이 찍는 수다.
 
 # ⚠ `$NoConsole` 은 **사람이 칠 것이 아니다** — 「이 프로세스에는 보여줄 콘솔이 없다」는
 #   **상태**를 넘기는 자리고, 아래 「검은 창을 없애는 자리」가 든다. 넘기는 자가 둘이다:
@@ -82,6 +83,21 @@ if (-not $uiOk) {
   exit $rc
 }
 
+# ── 인자를 한 줄로 싸는 자 — **규칙은 이 파일에 하나다** ────────────────────────
+# 이 파일은 `powershell.exe` 를 두 자리에서 띄운다(제 자신을 되띄우는 자리 · 몸통을 띄우는
+# 자리). 같은 꼴로 띄우므로 **규칙이 둘일 수 없다** — 둘 다 이 함수를 지난다 (#3).
+#
+# ⚠ **낱낱을 다 싼다 — 스위치까지.** 따옴표는 파워셸의 인자 맞추기 **전에** 벗겨지므로
+#   `"-NoProfile"` 은 값이 아니라 스위치로 선다. 실측(2026-09-15): 전부 싸서 띄운 자식이
+#   `Get-ExecutionPolicy -Scope Process` 로 `Bypass` 를 찍었고 `$PSBoundParameters` 도
+#   제대로 섰다 — 곧바로 띄운 판과 `cmd` 를 한 겹 지난 판이 같았다.
+# ⚠ **골라 싸면 모자란다.** 아래 몸통 줄은 `cmd` 에 넘어가므로 `&`·`^`·괄호가 든 경로는
+#   안 싸면 cmd 가 거기서 명령을 자른다 — **빈칸이 없어도 그렇다.** 다 싸면 그 갈래가
+#   통째로 없어지고, 자리마다 다른 문자 집합을 맞춰 둘 까닭도 없어진다.
+function Quote-Argv([string[]]$Argv) {
+  ($Argv | ForEach-Object { '"' + $_ + '"' }) -join ' '
+}
+
 # ── 검은 창을 없애는 자리 — **제 자신을 숨김으로 다시 띄우고 빠진다** ───────────
 # `install.cmd` 가 든 콘솔은 설치가 끝날 때까지 설치 화면 뒤에 앉아 있었다. 그것을 없앤다.
 #
@@ -116,7 +132,7 @@ if (-not $NoConsole) {
   try {
     $psi = New-Object Diagnostics.ProcessStartInfo
     $psi.FileName         = (Get-Process -Id $PID).Path     # 지금 나를 돌린 그 파워셸
-    $psi.Arguments        = ($again | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    $psi.Arguments        = Quote-Argv $again
     $psi.WorkingDirectory = $Here
     $psi.UseShellExecute  = $false
     $psi.CreateNoWindow   = $true
@@ -448,7 +464,7 @@ $F.Controls.Add($bClose)
 # ⚠ **`Register-ObjectEvent -Action` 을 안 쓴다 — 그것이 여태 한 줄도 안 나오던 까닭이다.**
 #   그 블록은 파워셸이 **한가할 때만** 돈다. 그런데 창이 떠 있는 동안 런스페이스는 계속
 #   `ShowDialog()` 를 실행 중이라, 자식이 뱉은 줄이 큐에만 쌓이고 **창이 닫힐 때까지 핸들러가
-#   한 번도 안 불린다.** 그래서 기록 칸이 비고, `[n/7]` 을 못 봐 막대 구간이 0/0 이고,
+#   한 번도 안 불린다.** 그래서 기록 칸이 비고, `[n/8]` 을 못 봐 막대 구간이 0/0 이고,
 #   심장박동 조건(`segHi > segLo`)도 영영 안 선다 — 고쳐 온 것이 전부 이 아래층이었다.
 #
 # ⚠ **대신 파일로 받는다.** 자식 출력을 파일에 돌리고, 타이머가 그 파일을 **따라 읽는다.**
@@ -481,7 +497,7 @@ $bGo.Add_Click({
   }
   $bGo.Enabled = $false; $gV.Enabled = $false; $gO.Enabled = $false; $gR.Enabled = $false
   $log.Clear(); $bar.Value = 0; $lState.Text = '시작합니다…'
-  # ⚠ **준비 구간을 미리 연다.** 첫 `[n/7]` 이 나오기 전에도 할 일이 있다 — winget 이 없으면
+  # ⚠ **준비 구간을 미리 연다.** 첫 `[n/8]` 이 나오기 전에도 할 일이 있다 — winget 이 없으면
   #   되살리느라 수십 MB 를 받는다. 그동안 구간이 0/0 이면 심장박동이 못 뛰어 막대가 0 에
   #   못 박히고, 사람은 **아무것도 안 하는 줄 안다**(실제로 그렇게 보였다).
   $script:segLo = 0; $script:segHi = 8; $script:idle = 0
@@ -542,13 +558,8 @@ $bGo.Add_Click({
   if ($cCfg.Checked)      { $argv += '-WithPersonalConfig' }
   if (-not $cUpg.Checked) { $argv += '-NoUpgrade' }
 
-  # ⚠ **경로만 따옴표로 싼다.** 스위치까지 싸면 파워셸이 제 인자를 못 읽는다 —
-  #   `"-NoProfile"` 은 스위치가 아니라 값으로 들어간다.
-  # ⚠ **빈칸만 보고 싸면 모자란다.** 이 줄은 아래에서 `cmd` 에 넘어가므로, `&`·`^`·괄호가
-  #   든 경로는 안 싸면 cmd 가 거기서 명령을 자른다 — 빈칸이 없어도 그렇다.
-  $argLine = ($argv | ForEach-Object {
-      if ($_ -match '[\s&^()<>|,;=]') { '"' + $_ + '"' } else { $_ }
-    }) -join ' '
+  # 싸는 규칙은 위 `Quote-Argv` 하나다 — 되띄우기 자리와 같은 자를 쓴다.
+  $argLine = Quote-Argv $argv
 
   $base = [IO.Path]::Combine([IO.Path]::GetTempPath(), "claude-setup-$PID")
   $script:outFile = "$base.out"; $script:errFile = "$base.err"
@@ -602,8 +613,8 @@ $bGo.Add_Click({
 
 # ── 한 줄을 화면에 반영하는 자 ─────────────────────────────────────────────────
 # 진행률의 신호는 몸통이 사람에게 하는 말 그대로다 — 통로를 따로 안 낸다.
-# ⚠ **칸 안에서도 올라가야 한다.** 옛 판은 `[n/7]` 을 볼 때 `(n-1)/7` 로 놓아 첫 칸이 곧
-#   0% 였다 — 그런데 **첫 칸이 제일 오래 걸린다**. 칸의 시작과 끝을 잡아 두고 그 안에서
+# ⚠ **칸 안에서도 올라가야 한다.** `[n/8]` 을 볼 때 막대를 `(n-1)/8` 에 놓고 두면 첫 칸이 곧
+#   0% 인데 **첫 칸이 제일 오래 걸린다**. 칸의 시작과 끝을 잡아 두고 그 안에서
 #   몸통이 한 줄 찍을 때마다 끝을 향해 조금씩 민다 — **낱줄이 곧 눈금이다.**
 function Step-Line([string]$line) {
   Add-Log $line
@@ -772,7 +783,14 @@ if ($UpdateRepo -and $DistVersion) {
         #   그때 「새 판이 있다」고만 말하면 사람이 받을 데를 못 찾고 헤맨다.
         $a = @($r.assets | Where-Object { $_.name -eq 'Setup.exe' })[0]
         if (-not $a) { return $null }
-        return @{ Ver = $new; Url = [string]$a.browser_download_url }
+        # 곁의 해시 자산도 같이 집어 온다 — 받은 것을 대조할 자가 이 줄 하나다. 없으면 없는 대로
+        # 들고 간다: 「없다」와 「다르다」를 아래가 서로 다른 말로 해야 한다.
+        $s = @($r.assets | Where-Object { $_.name -eq 'Setup.exe.sha256' })[0]
+        $shaUrl = ''
+        if ($s) { $shaUrl = [string]$s.browser_download_url }
+        $rel = [string]$r.tag_name
+        if ($r.name) { $rel = [string]$r.name }
+        return @{ Ver = $new; Url = [string]$a.browser_download_url; ShaUrl = $shaUrl; Rel = $rel }
       } catch { return $null }
     })
     [void]$script:upPs.AddArgument($UpdateRepo)
@@ -799,12 +817,53 @@ $script:upTimer.Add_Tick({
   if ($ans -ne 'Yes') { return }
 
   # ⚠ **우리가 받으면 윈도우의 「인터넷에서 온 파일」 표시가 안 붙는다** — 브라우저로 받을
-  #   때만 붙는다. 그래서 새 판은 SmartScreen 경고 없이 바로 뜬다.
+  #   때만 붙는다. 그래서 브라우저로 받았으면 SmartScreen 이 한 번 섰을 자리가 여기엔 없다.
+  # ⚠ **그 자리를 해시가 든다.** 릴리스에 같이 오른 `Setup.exe.sha256` 과 대조하고, 못 재거나
+  #   다르면 **안 띄운다.** 대조 없이 띄우면 `#update-repo` 저장소에 쓸 수 있게 된 자가 민
+  #   임의의 exe 가 설치 창을 연 사람마다 경고 없이 돌고, 이 설치기가 전제하는 「TLS 를
+  #   가로채는 회사 장비」가 그 연결도 가로챌 수 있다 (claude-config #33).
+  # ⚠ **자산이 없으면 「못 쟀다」다 — 「맞다」가 아니다.** 부재가 통과로 읽히는 그 자리라,
+  #   옛 릴리스는 자동 설치를 안 하고 사람에게 릴리스 이름을 대고 물러난다.
   $dst = Join-Path ([IO.Path]::GetTempPath()) ("ClaudeCodeSetup-" + $found.Ver + ".exe")
+  $sha = "$dst.sha256"
   try {
     $F.Cursor = [Windows.Forms.Cursors]::WaitCursor
     $F.Enabled = $false
-    Invoke-WebRequest -Uri $found.Url -OutFile $dst -UseBasicParsing -TimeoutSec 180 -ErrorAction Stop
+    if (-not $found.ShaUrl) {
+      $F.Enabled = $true
+      $F.Cursor = [Windows.Forms.Cursors]::Default
+      [void][Windows.Forms.MessageBox]::Show(
+        "새 판을 못 쟀습니다 — 릴리스 $($found.Rel) 에 Setup.exe.sha256 이 없습니다.`n`n" +
+        "받은 것이 맞는지 대조할 자가 없어 띄우지 않았습니다. 지금 것으로 계속 하셔도 됩니다.",
+        $AppName, 'OK', 'Warning')
+      return
+    }
+    Invoke-WebRequest -Uri $found.Url    -OutFile $dst -UseBasicParsing -TimeoutSec 180 -ErrorAction Stop
+    Invoke-WebRequest -Uri $found.ShaUrl -OutFile $sha -UseBasicParsing -TimeoutSec 30  -ErrorAction Stop
+    # 자산은 `sha256sum` 한 줄이다 — 앞의 64 글자만 든다. 대소문자는 안 가린다.
+    $want = $null
+    $txt  = Get-Content -LiteralPath $sha -Raw -Encoding UTF8
+    if ($txt -match '([0-9a-fA-F]{64})') { $want = $Matches[1].ToLowerInvariant() }
+    $have = (Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash.ToLowerInvariant()
+    if (-not $want) {
+      $F.Enabled = $true
+      $F.Cursor = [Windows.Forms.Cursors]::Default
+      [void][Windows.Forms.MessageBox]::Show(
+        "새 판을 못 쟀습니다 — 릴리스 $($found.Rel) 의 Setup.exe.sha256 을 읽지 못했습니다.`n`n" +
+        "띄우지 않았습니다. 지금 것으로 계속 하셔도 됩니다.",
+        $AppName, 'OK', 'Warning')
+      return
+    }
+    if ($want -ne $have) {
+      $F.Enabled = $true
+      $F.Cursor = [Windows.Forms.Cursors]::Default
+      [void][Windows.Forms.MessageBox]::Show(
+        "받은 파일이 릴리스에 오른 값과 다릅니다 — 띄우지 않았습니다.`n`n" +
+        "파일: $dst`n릴리스가 든 값: $want`n받은 것의 값: $have`n`n" +
+        "지금 것으로 계속 하셔도 됩니다.",
+        $AppName, 'OK', 'Error')
+      return
+    }
     Start-Process -FilePath $dst | Out-Null
     # ⚠ **이 창을 닫는다.** 새 판이 제 화면을 띄우므로 둘이 같이 서 있으면 어느 것에 값을
     #   넣었는지가 흐려진다.
