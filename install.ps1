@@ -1470,18 +1470,42 @@ if ((-not $NoDevTools) -and (Read-Directive $EnvFile 'config-repo')) {
 function Get-ProxyHealth([string]$Url) {
   try { return Invoke-RestMethod -Uri $Url -TimeoutSec 3 } catch { return $null }
 }
-function Test-PrefillDoor([string]$Base, [string]$Token, [string]$Model) {
+# ⚠ **간헐적 502 가 멀쩡한 설치를 빨강으로 끝냈다.** 게이트웨이가 유휴 keep-alive 연결을 조용히
+#   닫아 두면 프록시가 그 위에 쓰다 `RemoteDisconnected` 를 맞고 스스로 502 를 낸다 — 그쪽 재시도는
+#   1번이라(`opus5_proxy.py` `range(2)`) 새로 집은 연결도 죽어 있으면 그대로 나온다. 실측 2026-09-15:
+#   한 로그에 `unreachable` 88 건이 섞였는데 연속 8 회를 두드리니 8/8 이 200 이었다 — 단발로 재면
+#   상류의 운이 설치 판정이 된다.
+$DoorTries = 3                          # 문을 두드리는 횟수 — 상류가 끊은 것만 다시 묻는다
+$DoorGapMs = 700                        # 사이 쉼 — 죽은 연결이 풀에서 빠질 만큼
+# ⚠ 두 값을 **매개변수 기본값으로 받는다** — 전역만 보면 그 값이 안 선 자리에서 `-le $null` 이 되어
+#   루프가 한 번도 안 돌고 요청 없이 0 이 나온다. 「못 닿았다」와 「안 물어봤다」가 같은 값이 되는
+#   자리라 눈에 안 걸린다(실측: 66ms 에 0 — 나가지도 않았다). 부재가 판정이 되지 않게 여기서 막는다.
+function Test-PrefillDoor([string]$Base, [string]$Token, [string]$Model,
+                          [int]$Tries = $DoorTries, [int]$GapMs = $DoorGapMs) {
+  if ($Tries -lt 1) { $Tries = 1 }
   $body = @{ model = $Model; max_tokens = 8
              messages = @(@{ role = 'user'; content = 'hi' }, @{ role = 'assistant'; content = 'prefill' }) } |
           ConvertTo-Json -Depth 5 -Compress
   $hdr = @{ 'x-api-key' = $Token; 'Authorization' = "Bearer $Token"; 'anthropic-version' = '2023-06-01' }
-  try {
-    $r = Invoke-WebRequest -Uri ($Base.TrimEnd('/') + '/v1/messages') -Method Post -Headers $hdr `
-           -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120 -UseBasicParsing
-    return [int]$r.StatusCode
-  } catch {
-    try { return [int]$_.Exception.Response.StatusCode } catch { return 0 }
+  # ⚠ **다시 묻는 자리는 횟수가 아니라 받은 것의 뜻이 정한다.** 답의 공간이 닫혀 있다 — 게이트웨이가
+  #   **prefill 을 두고 판정한 것**(200 열렸다 · 4xx 거절했다)이면 그 자리에서 멈추고, **그 판정에
+  #   닿지도 못한 것**(5xx 상류가 끊었다 · 0 못 갔다)만 다시 묻는다.
+  #   ⚠ 4xx 를 다시 물으면 안 된다 — 400 이 이 검사가 찾는 그 결함이라(결정 0041) 그것을 재시도로
+  #   덮으면 재는 자가 제가 재려던 것을 지운다. 늦게 빨강인 편이 가짜 초록보다 낫다.
+  $code = 0
+  for ($i = 1; $i -le $Tries; $i++) {
+    if ($i -gt 1) { Start-Sleep -Milliseconds $GapMs }
+    try {
+      $r = Invoke-WebRequest -Uri ($Base.TrimEnd('/') + '/v1/messages') -Method Post -Headers $hdr `
+             -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120 -UseBasicParsing
+      $code = [int]$r.StatusCode
+    } catch {
+      $code = 0
+      try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+    }
+    if (-not (($code -eq 0) -or ($code -ge 500))) { break }
   }
+  return $code
 }
 function Stop-ProxyOnPort([int]$Port) {
   try {
@@ -2081,7 +2105,7 @@ if ($useGateway) {
     if ($h -and $planted['ANTHROPIC_AUTH_TOKEN']) {
       $door = Test-PrefillDoor $planted['ANTHROPIC_BASE_URL'] $planted['ANTHROPIC_AUTH_TOKEN'] 'claude-opus-5'
     }
-    $checks += @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (받은 것: $door)"; Ok = ($door -eq 200) }
+    $checks += @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (받은 것: $door$(if ($door -ge 500) { " — 상류가 끊었다 · prefill 이 아니다" }))"; Ok = ($door -eq 200) }
   }
 } else {
   Write-Host '  (게이트웨이를 안 쓴다 — 구독 로그인으로 선다)'
