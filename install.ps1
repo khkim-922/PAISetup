@@ -994,24 +994,27 @@ Wire-NodeTrust
 # ⚠ **긴 명령 앞에 한 줄을 먼저 찍는다.** 화면 껍데기의 상태 줄은 마지막으로 나온 줄을 그대로
 #   보이므로, 끝나고 나서만 찍으면 그 몇십 초 동안 **직전 칸의 결과**가 「지금 하는 일」로 서 있다
 #   (실측 2026-09-15 · 사외 VDI: Codex 확장을 받는 동안 「클로드 확장 — 최신」이 떠 있었다).
-function Install-Extension([string]$Id, [string]$Label) {
-  $ext = @(& code --list-extensions 2>$null)
-  if (($ext -contains $Id) -and $NoUpgrade) {
-    Write-Host "  $Label — 있음"
-    return
+# ⚠ **`code` 를 띄우는 횟수가 곧 시간이다.** 한 번 뜰 때마다 노드 프로세스가 새로 서고 마켓플레이스에
+#   한 번 묻는데, 이 값이 VDI 에서는 몇 초씩이다. 옛 판은 확장 하나마다 셋(판 번호 → `--force` → 판 번호)을
+#   띄워 셋이면 아홉이었다. 판 번호는 **한 번** 읽고, 깔린 것들은 `--update-extensions` **한 번**으로 올리고,
+#   다시 한 번 읽어 앞뒤로 「올렸다 · 최신」을 가른다 — 셋이 다 깔린 판에서 셋으로 준다.
+# ⚠ **`--force` 가 최신을 다시 받지는 않는다** — 실측 2026-09-15: 같은 판이면 `already installed` 만 찍고
+#   1초에 끝난다. 옛 주석이 「다시 깐다」고 적었던 것은 틀렸고, 느렸던 까닭은 위 횟수다.
+# ⚠ **`--update-extensions` 는 깔린 확장 전부를 올린다** — 우리 셋만 고르는 스위치가 없다. VS Code 가
+#   스스로 하는 자동 갱신과 같은 일이라 더 하는 것은 없다.
+function Get-ExtVersions {
+  $m = @{}
+  foreach ($l in @(& code --list-extensions --show-versions 2>$null)) {
+    if ($l -match '^(.+)@([^@]+)$') { $m[$Matches[1]] = $Matches[2] }
   }
-  if ($ext -contains $Id) {
-    # ⚠ `--force` 는 이미 있어도 **최신으로 다시 깐다.** 확장에는 올리는 명령이 따로 없다.
-    Write-Host "  $Label 최신으로 갱신중 …"
-    $b = (& code --list-extensions --show-versions 2>$null |
-          Where-Object { $_ -like "$Id@*" } | Select-Object -First 1)
-    $xl = [IO.Path]::GetTempFileName()
-    Invoke-Logged 'code' @('--install-extension',$Id,'--force') $xl | Out-Null
-    Remove-Item $xl -ErrorAction SilentlyContinue
-    $a = (& code --list-extensions --show-versions 2>$null |
-          Where-Object { $_ -like "$Id@*" } | Select-Object -First 1)
-    if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-    else { Write-Host "  $Label — 최신  ($b)" }
+  return $m
+}
+function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [hashtable]$After) {
+  if ($Before.ContainsKey($Id)) {
+    $b = $Before[$Id]; $a = $After[$Id]
+    if ($NoUpgrade)             { Write-Host "  $Label — 있음  ($b)" }
+    elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+    else                        { Write-Host "  $Label — 최신  ($b)" }
     return
   }
   Write-Host "  $Label 설치중 …"
@@ -1054,7 +1057,17 @@ function Install-Extension([string]$Id, [string]$Label) {
 Write-Host ''
 Write-Host '[2/8] VS Code 확장' -ForegroundColor Cyan
 if (Test-Runs 'code' '--version') {
-  foreach ($x in $Extensions) { Install-Extension $x.Id $x.Label }
+  $extBefore = Get-ExtVersions
+  $extAfter  = $extBefore
+  $extHave   = @($Extensions | Where-Object { $extBefore.ContainsKey($_.Id) })
+  if ($extHave.Count -gt 0 -and -not $NoUpgrade) {
+    Write-Host "  깔린 확장 $($extHave.Count)개 — 최신인지 확인중 …"
+    $xl = [IO.Path]::GetTempFileName()
+    Invoke-Logged 'code' @('--update-extensions') $xl | Out-Null
+    Remove-Item $xl -ErrorAction SilentlyContinue
+    $extAfter = Get-ExtVersions
+  }
+  foreach ($x in $Extensions) { Install-Extension $x.Id $x.Label $extBefore $extAfter }
 } else {
   Write-Host '  ! code 를 못 불러 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
