@@ -20,8 +20,12 @@
 #      어느 저장소·어느 슬러그로 가나는 deploy.targets.d/*.conf 가 든다 — 스크립트는 모른다
 #      .claude/hooks/*.sh 와 .claude/settings.json -> <저장소>/  훅 몸통과 그 등록
 #   3. mcp-servers.json에 적힌 MCP 서버 등록
-#   4. 저장소 부트스트랩 — 각 저장소의 .claude/hooks/session-start.sh 를 Git Bash 로 불러
-#      게이트가 쓰는 도구를 확인·설치한다. 무엇을 깔지는 그 훅이 알고 이 스크립트는 모른다
+#   4. 부트스트랩 — 걸음이 둘이다 (#43)
+#      4a. 전역 설치 한 번    claude-config 의 훅을 `--install-global` 로 불러 전역형 도구
+#                             (npm 전역 · 릴리스 바이너리 · winget · 브라우저)를 기계에 한 번 깐다
+#      4b. 저장소마다         각 저장소의 .claude/hooks/session-start.sh 를 `--install` 로 불러
+#                             프로젝트 축(venv · npm ci)과 배선을 세운다
+#      무엇을 깔지는 그 훅이 알고 이 스크립트는 모른다 — 도구 이름이 여기 없는 까닭이다
 #   5. 사용자 환경변수 — 이 PC 전체에 걸려야 하는 것 (인코딩 축. 아래 §사용자 환경변수)
 #   6. 남은 수동 작업 안내 (API 키 등)
 #
@@ -472,6 +476,15 @@ foreach ($repoRoot in $hookTargets) {
 # 계획 단계에서는 `--check` 로 **재기만** 한다(아무것도 안 바꾼다). 꺼진 검사가 있을
 # 때만 실행 목록에 올린다 — 다 살아 있으면 매번 승인을 묻지 않는다. **다만 잰 것은
 # 초록이어도 화면에 낸다** — 안 묻는 것과 안 재는 것은 다른 명제다(아래 ⚠).
+#
+# ⚠ **걸음이 둘로 갈렸다 — 전역은 한 번, 저장소는 저장소마다** (#43). 옛 꼴은 저장소마다
+#   부른 훅이 그 안에서 전역 선언까지 다시 훑어, 프로브 비용이 저장소 수에 비례했다. 이제
+#   전역형 도구(npm 전역 · 릴리스 바이너리 · winget · 브라우저)는 아래 고리 **앞에** 한 번
+#   깔고, 고리 안에서는 저장소 몫(프로젝트 축 · 배선)만 부른다.
+# ⚠ **차례가 값을 한다 — 그래서 여기서 바로 `$plan` 에 안 쌓는다.** 전역 걸음이 저장소 걸음
+#   보다 먼저 서야 배선이 걸 물건이 이미 깔려 있다. 실행은 계획 순서대로라, 고리가 도는
+#   동안 모아 두었다가 고리가 끝난 뒤 **전역 하나 + 저장소들** 차례로 붙인다.
+$bootSteps = @()
 foreach ($repoRoot in $globalRuleTargets) {
     $boot = Join-Path $repoRoot '.claude\hooks\session-start.sh'
     if (-not (Test-Path $boot)) { continue }
@@ -536,11 +549,36 @@ foreach ($repoRoot in $globalRuleTargets) {
         $_.Kind -eq 'copy' -and $_.Repo -eq $repoRoot -and $_.To -like '*\.claude\tools.global.conf' })
     if ($gateRc -ne 0 -or $declChanges.Count -gt 0) {
         $why = if ($gateRc -ne 0) { '꺼진 검사가 있다 — 도구를 깐다' } else { '도구 선언이 바뀐다 — 새 선언으로 깐다' }
-        $plan += @{
+        $bootSteps += @{
             Kind = 'bootstrap'; Repo = $repoRoot; Script = $boot
             Text = "+ 부트스트랩  $repoRoot  ($why)"
         }
     }
+}
+
+# --- 전역형 도구 — 저장소 고리 **앞에** 한 번 (#43) ---
+# 무엇이 전역형인지도, 어느 저장소의 선언을 합칠지도 이 스크립트는 모른다 — `--install-global`
+# 갈래가 안다. 여기는 **한 번 부른다**는 것만 든다(도구 이름이 여기 없는 것과 같은 결).
+# ⚠ **저장소 걸음이 하나도 없으면 이 걸음도 없다.** 다 살아 있는 기계에 매번 승인을 묻지
+#   않는 규율이 위와 같다 — 재는 것은 이미 위 `--check` 가 저장소마다 했고, 그 판정이 전부
+#   초록이면 **그 저장소들이 부르는** 전역형 도구는 닿는다는 뜻이다.
+# ⚠ **덮이지 않는 자리가 하나 있다 — 이 저장소 제 도구다**(`.claude/tools.conf`). 여기는
+#   `[repos]` 에 안 들어 위 고리가 안 돌므로 `--check` 를 받는 자가 없고, 그래서 그것만
+#   꺼져 있으면 이 걸음이 안 선다. 그 자리는 이 저장소에서 세션을 열 때 그 훅이 든다 —
+#   배포가 안 재는 것을 안 잰다고 말하는 편이, 매번 승인을 묻는 것보다 싸다.
+if ($bootSteps.Count -gt 0) {
+    $globalBoot = Join-Path $src '.claude\hooks\session-start.sh'
+    if (Test-Path $globalBoot) {
+        if ($bash) {
+            $plan += @{
+                Kind = 'bootstrap-global'; Script = $globalBoot
+                Text = '+ 전역 설치  전역형 도구를 기계에 한 번 (npm 전역 · 릴리스 바이너리 · winget · 브라우저)'
+            }
+        } else {
+            $todo += "Git Bash 를 못 찾음. 직접 실행:  bash '$globalBoot' --install-global"
+        }
+    }
+    $plan += $bootSteps
 }
 
 # --- 제거 후보: 원본에 없는 에이전트 파일 ---
@@ -928,6 +966,22 @@ foreach ($step in $plan) {
             } else {
                 Write-Host "! core.hooksPath 설정 실패  $($step.Repo)" -ForegroundColor Red
                 $todo += "수동 설정:  git -C `"$($step.Repo)`" config core.hooksPath .githooks"
+            }
+        }
+
+        'bootstrap-global' {
+            # 전역형 도구를 기계에 한 번 깐다 (#43). 저장소 고리보다 **먼저** 선다 — 고리 안의
+            # 배선(정션)이 걸 물건이 그때 이미 깔려 있어야 한다.
+            # ⚠ 표식을 여기서 세운다 — 아래 저장소 걸음과 같은 뜻이고, 훅이 `--install-global`
+            #   에서 deploy 로 되넘기는 일은 없지만 이름이 서 있는 것이 갈래의 진실이다.
+            # ⚠ **종료코드를 받는다.** 전역형 도구가 안 선 채로 저장소 걸음이 초록을 내면
+            #   부재가 통과로 읽힌다 — 훅이 그 판정을 내므로 여기서는 받아 나르기만 한다.
+            $env:CLAUDE_CONFIG_DEPLOYING = '1'
+            & $bash ($step.Script -replace '\\', '/') --install-global
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "! 전역 설치가 오류로 끝났습니다 (exit $LASTEXITCODE)" -ForegroundColor Red
+                $envDown += '전역형 도구 — 안 선 것이 남았다 (위 ❌ 줄이 곧 고칠 자리)'
+                $todo += "확인:  bash '$($step.Script)' --install-global"
             }
         }
 

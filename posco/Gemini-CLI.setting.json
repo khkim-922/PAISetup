@@ -7,7 +7,6 @@
   "ide": {
     "hasSeenNudge": true
   },
-  "apiKey": "YOUR_API_KEY",
   "baseUrl": "http://aigpt.posco.net/gpgpta01-gpt",
   "output": {
     "format": "text"
