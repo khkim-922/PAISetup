@@ -11,9 +11,12 @@
 #   않는다 — 통로가 둘이면 칸이 늘 때 한쪽만 고쳐지고, 그 어긋남은 「막대가 안 찬다」는
 #   조용한 꼴로만 보인다. 몸통이 사람에게 하는 말을 그대로 읽는다.
 
-# ⚠ `$Relaunched` 는 **이 파일이 제 자신에게만 넘기는 표시다.** 사람이 칠 것이 아니다 —
-#   아래 「검은 창을 없애는 자리」가 든다.
-param([switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade, [switch]$Relaunched)
+# ⚠ `$NoConsole` 은 **사람이 칠 것이 아니다** — 「이 프로세스에는 보여줄 콘솔이 없다」는
+#   **상태**를 넘기는 자리고, 아래 「검은 창을 없애는 자리」가 든다. 넘기는 자가 둘이다:
+#   이 파일이 제 자신을 다시 띄울 때와, 진입점 exe 가 띄울 때(그쪽은 이미 콘솔을 안 붙인다).
+#   ⚠ **사건이 아니라 상태로 물었다.** 「다시 띄워졌나」로 물으면 exe 갈래가 그 물음에 안 걸려
+#     **콘솔이 없는데도 한 번 더 띄운다** — 창은 하나만 뜨니 안 보이고, 0.5초만 조용히 샌다.
+param([switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade, [switch]$NoConsole)
 
 $ErrorActionPreference = 'Stop'
 # ⚠ **던지게 두지 않는다.** 출력이 파일로 돌려진 채로 뜨면 이 줄이 걸릴 수 있고, 위 `Stop`
@@ -37,7 +40,7 @@ $DistVersion = ''
 $VersionPath = Join-Path $Here 'VERSION'
 if (Test-Path -LiteralPath $VersionPath) {
   try {
-    $DistVersion = (([string](Get-Content -LiteralPath $VersionPath -TotalCount 1 -Encoding UTF8)) -replace "^﻿", '').Trim()
+    $DistVersion = (([string](Get-Content -LiteralPath $VersionPath -TotalCount 1 -Encoding UTF8)) -replace "^\uFEFF", '').Trim()
   } catch { $DistVersion = '' }
 }
 
@@ -105,8 +108,8 @@ if (-not $uiOk) {
 #   그 값만 보고 초록으로 읽었다가 놓쳤다. 재는 것은 `Visible` 이다.
 #
 # ⚠ **못 띄우면 그냥 이 창에서 간다.** 검은 창 하나 없애자고 설치를 못 하게 만들지 않는다.
-if (-not $Relaunched) {
-  $again = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path, '-Relaunched')
+if (-not $NoConsole) {
+  $again = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path, '-NoConsole')
   if ($NoDevTools)         { $again += '-NoDevTools' }
   if ($WithPersonalConfig) { $again += '-WithPersonalConfig' }
   if ($NoUpgrade)          { $again += '-NoUpgrade' }
