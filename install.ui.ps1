@@ -33,22 +33,7 @@ function Hold-Console([string]$Said = '끝났습니다 — Enter 를 누르면 �
   try { Read-Host $Said | Out-Null } catch { }
 }
 
-# ── 최소화된 창에 대고 말하지 않는다 ────────────────────────────────────────────
-# ⚠ **`install.cmd` 가 이 콘솔을 최소화로 띄운다** — 검은 창이 설치 화면 뒤에 앉지 않게.
-#   그래서 콘솔로 물러나는 갈래는 **작업표시줄에만 있는 창에 대고 말하게** 된다. 위 `Hold-Console`
-#   이 창째로 사라지는 것을 막는다면, 이것은 **창이 안 보이는 것**을 막는다 — 둘은 다른 결함이고
-#   사람 눈에는 똑같이 「아무 일도 안 일어났다」로 보인다.
-# ⚠ **여기서 져도 글은 안 잃는다.** 못 끌어 올려도 찍힌 줄은 그 창에 그대로 있어 작업표시줄에서
-#   열면 읽힌다. 그래서 조용히 넘어간다 — 이 한 줄이 설치를 막을 값은 아니다.
-# ⚠ **`ShowWindow` 를 안 쓴다.** Windows 11 의 콘솔은 대개 Windows Terminal 이 드는데, 그때
-#   `GetConsoleWindow()` 는 진짜 창이 아니라 `PseudoConsoleWindow` 를 돌려주고 그 창에 건
-#   `ShowWindow` 는 **참을 돌려주고 아무것도 안 한다**(실측 2026-09-15). 거짓 초록이다.
-function Restore-Console {
-  try { (New-Object -ComObject WScript.Shell).AppActivate($PID) | Out-Null } catch { }
-}
-
 if (-not (Test-Path -LiteralPath $Engine)) {
-  Restore-Console
   Write-Host "install.ps1 이 옆에 없다: $Here" -ForegroundColor Red
   Write-Host '폴더를 통째로 풀었는지 본다 — 압축 안에서 바로 누르면 옆 파일을 못 찾는다.'
   Hold-Console
@@ -66,7 +51,6 @@ try {
 } catch { $uiOk = $false }
 
 if (-not $uiOk) {
-  Restore-Console
   Write-Host '화면을 못 띄운다 — 콘솔로 진행한다.' -ForegroundColor Yellow
   & $Engine -NoDevTools:$NoDevTools -WithPersonalConfig:$WithPersonalConfig -NoUpgrade:$NoUpgrade
   # ⚠ **판정을 먼저 집는다.** `Hold-Console` 뒤에 읽으면 그 사이에 도는 것이 `$LASTEXITCODE`
@@ -660,10 +644,6 @@ $F.Add_FormClosing({
 $bClose.Add_Click({ $F.Close() })
 
 $F.Add_Shown({
-  # ⚠ **제 손으로 앞에 선다.** 이 창을 띄운 콘솔은 최소화로 떠 있어(`install.cmd`) 포그라운드가
-  #   아니고, 그러면 윈도우가 새 창의 전면화를 안 들어줄 수 있다 — 창은 떴는데 다른 창 뒤에
-  #   서고, 누른 사람은 아무 일도 안 일어난 줄 안다.
-  $F.Activate()
   & $syncRepo
   if ($tKey -and $tKey.Enabled -and -not $tRepo.Text.Trim()) { $tKey.Focus() | Out-Null }
   else { $bGo.Focus() | Out-Null }

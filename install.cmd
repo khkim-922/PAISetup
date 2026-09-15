@@ -22,28 +22,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem  "start /min", then leave at once - the black window must not sit behind the
-rem  setup screen for the whole install.
+rem  No pause after this line - pressing [Close] in the setup window must close
+rem  this console with it. Nothing may run between the call and exit /b, or
+rem  %ERRORLEVEL% stops being PowerShell's.
 rem
-rem  *** The window state is stamped HERE, at creation, on purpose. ***
-rem  Hiding it later from the script does not work on Windows 11, where the
-rem  console is normally hosted by Windows Terminal: GetConsoleWindow() then
-rem  returns a helper window of class PseudoConsoleWindow, not the real one, and
-rem  ShowWindow(SW_HIDE) on it returns TRUE and changes nothing - a green that is
-rem  a lie. A state given at creation time is honoured by every host.
-rem  Measured 2026-09-15 on Windows 11 26100:
-rem    plain                            real window visible
-rem    start /min                       minimized, taskbar button only
-rem    powershell -WindowStyle Hidden   minimized only - the name does not hold
-rem
-rem  No "start /wait": cmd must return now, so this console closes instead of
-rem  waiting out the install. That drops PowerShell's exit code - a double-click
-rem  has no caller to read it, and nothing in this repo calls this file. The old
-rem  rule about keeping %ERRORLEVEL% intact guarded a value that no longer exists.
-rem
-rem  No pause either. When the GUI cannot be created, install.ui.ps1 falls back to
-rem  running in this console - and because that window is now minimized, that
-rem  branch pulls itself to the front before it speaks. The pause it needs lives
-rem  there too, inside the branch, not here.
-start "" /min powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ui.ps1" %*
-exit /b 0
+rem  The pause that used to live here carried two jobs. When the GUI cannot be
+rem  created, install.ui.ps1 falls back to running in this console, and that
+rem  branch needs the window to stay readable. That pause now lives in install.ui.ps1
+rem  inside the fallback branch itself - the only branch with output to read here.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ui.ps1" %*
+exit /b %ERRORLEVEL%
