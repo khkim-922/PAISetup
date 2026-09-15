@@ -95,6 +95,13 @@ if (Test-Path -LiteralPath $EnvPath) {
 $F = New-Object Windows.Forms.Form
 # 제목이 판을 든다 — 사람이 「내가 몇 판을 들고 있나」를 볼 자리가 여기밖에 없다.
 $F.Text = if ($DistVersion) { "Claude Code 설치 — $DistVersion" } else { 'Claude Code 설치' }
+# 제목줄과 작업표시줄의 얼굴. 없으면 파란 파워셸 아이콘이 서는데, 그것은 「이게 무슨 창인가」를
+# 한 번 더 묻게 한다.
+# ⚠ **없다고 막지 않는다** — 그림 한 장 때문에 설치가 안 서면 안 된다.
+$IconPath = Join-Path $Here 'setup-icon.ico'
+if (Test-Path -LiteralPath $IconPath) {
+  try { $F.Icon = New-Object Drawing.Icon($IconPath) } catch { }
+}
 $F.Size = New-Object Drawing.Size(640, 744)
 $F.StartPosition = 'CenterScreen'
 $F.FormBorderStyle = 'FixedDialog'
