@@ -294,7 +294,7 @@ foreach ($t in $targets) {
 #   안 든다 — 안 잴 것을 빼는 선언은 없는 것을 가리키는 손사본이 된다.
 $stampFile = Join-Path $dst 'seeds\.version'
 $stampRev  = if (Get-Command git -ErrorAction SilentlyContinue) {
-                 (& git -C $src rev-parse --short HEAD 2>$null)
+                 try { (& git -C $src rev-parse --short HEAD 2>$null) } catch { $null }   # 버리는 것도 방패가 아니라 잡는다(아래 「리다이렉트가 곧 위험이다」)
              } else { $null }
 if ($stampRev) {
     $stampRev = ([string]$stampRev).Trim()

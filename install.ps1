@@ -60,8 +60,9 @@ $ErrorActionPreference = 'Stop'
 #   deprecation 경고에 확장 칸에서 죽었다. **경고는 실패가 아니다.**
 #   ⚠ 합치면 판정도 망가진다: `Get-Ver` 가 판 대신 그 경고 줄을 읽어 갱신 여부를 헛짚는다.
 #
-# ⚠ **그렇다고 버리지도 않는다.** 판정만 재는 자리(`Test-Runs`·`Get-Ver`)는 `2>$null` 로 버려도
-#   되지만, **설치하는 자리는 실패했을 때 까닭이 유일한 단서다.** 처음엔 다 버렸다가 확장이
+# ⚠ **그렇다고 버리지도 않는다.** 판정만 재는 자리(`Test-Runs`·`Get-Ver`)는 `Get-Quiet` 으로
+#   버리되(맨 `2>$null` 은 방패가 아니다 — 그 함수 머리), **설치하는 자리는 실패했을 때 까닭이
+#   유일한 단서다.** 처음엔 다 버렸다가 확장이
 #   「! 설치 실패」 한 줄만 내고 왜인지 아무도 모르는 자리를 밟았다(실측 2026-09-09 · 사외 VDI).
 #   그래서 파일로 **잡아 두고 실패할 때만 편다** — winget 칸이 이미 쓰던 꼴이다.
 
@@ -213,7 +214,7 @@ function Update-RuntimePath {
 #   「깔린 것과 닿는 것은 다른 명제」라, 그 오판으로 설치를 건너뛰면 뒤가 조용히 무너진다.
 # 판을 한 줄로 읽는다 — 올리기 전후를 견주려면 숫자가 있어야 한다. 못 읽으면 빈 글자다.
 function Get-Ver([string]$Cmd, [string]$Arg) {
-  try { $o = (& $Cmd $Arg 2>$null | Select-Object -First 1); return ("$o").Trim() } catch { return '' }
+  $o = Get-Quiet $Cmd $Arg | Select-Object -First 1; return ("$o").Trim()
 }
 
 # 자리를 **닿음으로** 가른다 — `#site-probe = 호스트:포트` 가 있으면 거기에 TCP 로 물어본다.
@@ -423,6 +424,22 @@ function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath) {
   finally { $ErrorActionPreference = $prev }
 }
 
+# 네이티브 명령을 **판정만 하려고** 돌린다 — stdout 은 줄 배열로 돌려주고 stderr 는 버린다.
+# 종료코드는 `$LASTEXITCODE` 에 남는다(못 부르면 -1).
+# ⚠ **버리는 것도 `Stop` 아래서는 던진다.** `2>$null` 이 곧 「파워셸이 stderr 를 건드리는」 자리라
+#   그 줄이 오류 레코드가 되고 위 `Stop` 이 거기서 끝낸다 — 실측 2026-09-15 · 사내 VDI: 로그인
+#   안 된 gh 의 「로그인하라」 한 줄에 4″ 칸에서 설치가 끊겼다. 집 PC 는 gh 가 이미 서 있어
+#   stderr 가 비었을 뿐이다 — **한 기계의 초록은 다른 기계의 빨강을 못 재준다.**
+#   그래서 `Invoke-Logged` 와 같은 규율로 여기서만 `Stop` 을 풀고, **맨 `2>$null` 은 이 함수
+#   하나에만 산다.** 다른 자리는 뽑기 검사가 막는다(`scripts/build-dist.sh`).
+function Get-Quiet([string]$File, [string[]]$CmdArgs) {
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { return @(& $File @CmdArgs 2>$null) }
+  catch { $global:LASTEXITCODE = -1; return @() }
+  finally { $ErrorActionPreference = $prev }
+}
+
 # 실패 사유 한 줄. **까닭을 대는 자리라 읽히게 잘라 준다.**
 # ⚠ **사유가 늘 사람 말인 것은 아니다.** 가로채는 프록시는 오류를 **HTML 페이지 통째로** 준다 —
 #   그대로 찍으면 `<html><body><h1>` 이 줄을 먹고 정작 아는 것(`504 Gateway Time-out`)이 묻힌다.
@@ -525,7 +542,7 @@ function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
 
 function Test-Runs([string]$Cmd, [string]$Arg) {
   if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) { return $false }
-  try { & $Cmd $Arg 2>$null | Out-Null; return ($LASTEXITCODE -eq 0) } catch { return $false }
+  $null = Get-Quiet $Cmd $Arg; return ($LASTEXITCODE -eq 0)
 }
 
 # `#이름 = 값` 꼴 지시를 읽는다 — 값(`이름=값`)과 달리 이것은 **어디로 갈지**를 든다.
@@ -1030,7 +1047,7 @@ Wire-NodeTrust
 #   스스로 하는 자동 갱신과 같은 일이라 더 하는 것은 없다.
 function Get-ExtVersions {
   $m = @{}
-  foreach ($l in @(& code --list-extensions --show-versions 2>$null)) {
+  foreach ($l in (Get-Quiet 'code' @('--list-extensions','--show-versions'))) {
     if ($l -match '^(.+)@([^@]+)$') { $m[$Matches[1]] = $Matches[2] }
   }
   return $m
@@ -1049,11 +1066,11 @@ function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [has
   # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
   #   명령은 바로 돌아온다 — 그때 목록을 물으면 「없다」가 나와 멀쩡한 설치가 실패로 찍힌다.
   #   몇 초를 두고 다시 묻는다. 없는 것을 오래 기다리지는 않는다.
-  $ext = @(& code --list-extensions 2>$null)
+  $ext = Get-Quiet 'code' '--list-extensions'
   if ($ext -notcontains $Id) {
     for ($i = 0; $i -lt 5; $i++) {
       Start-Sleep -Seconds 2
-      $ext = @(& code --list-extensions 2>$null)
+      $ext = Get-Quiet 'code' '--list-extensions'
       if ($ext -contains $Id) { break }
     }
   }
@@ -1299,7 +1316,7 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
 function Test-ClaudeLoggedIn {
   if (-not (Test-Runs 'claude' '--version')) { return $false }
   try {
-    $said = (& claude auth status 2>$null | Out-String)
+    $said = (Get-Quiet 'claude' @('auth','status') | Out-String)
     return ($said -match '"loggedIn"\s*:\s*true')
   } catch { return $false }
 }
@@ -1359,7 +1376,7 @@ if ($offsite) {
 $GhLoginWait = 180                      # 초 — Claude 로그인 칸과 같은 값
 function Test-GhLoggedIn {
   if (-not (Test-Runs 'gh' '--version')) { return $false }
-  $null = & gh auth status 2>$null
+  $null = Get-Quiet 'gh' @('auth','status')
   return ($LASTEXITCODE -eq 0)
 }
 # 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 초마다 남은 시간을
@@ -1445,7 +1462,7 @@ if ((-not $NoDevTools) -and (Read-Directive $EnvFile 'config-repo')) {
       $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait
       if ($ghLoggedIn) {
         Write-Host '  섰다' -ForegroundColor Green
-        $null = & gh auth setup-git 2>$null
+        $null = Get-Quiet 'gh' @('auth','setup-git')
       } else {
         if ($login -and -not $login.HasExited) { try { $login.Kill() } catch { } }
         Write-Host '  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login (저장소 받기는 제 자격 창을 띄운다)' -ForegroundColor Yellow
@@ -2057,7 +2074,7 @@ $planted = [Environment]::GetEnvironmentVariables('User')
 # 한 번만 잰다 — 같은 물음을 두 번 물으면 두 답이 갈릴 자리가 나고, 아래 「연다」 칸도 이 값을 쓴다.
 $hasCode = Test-Runs 'code' '--version'
 $extList = @()
-if ($hasCode) { $extList = @(& code --list-extensions 2>$null) }
+if ($hasCode) { $extList = Get-Quiet 'code' '--list-extensions' }
 $checks = @( @{ Name='VS Code'; Ok = $hasCode } )
 # 확장과 CLI 는 **깔 때 본 표 그대로** 잰다 — 표에 한 줄을 더하면 검증도 따라온다.
 foreach ($x in $Extensions) {
