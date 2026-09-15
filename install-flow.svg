@@ -228,15 +228,15 @@
           <text x="525.4" y="772" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">Claude Code · Codex · Gemini</text>
         </g>
 
-        <g id="node-n9" tabindex="0" role="button" aria-label="Focus 9. [4/8] 키와 주소 — 사용자 환경변수로 심는다, 사내면 회사 키 세 이름 · 로컬 프록시 띄움 · Codex/Gemini 설정, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">9. [4/8] 키와 주소 — 사용자 환경변수로 심는다 · 사내면 회사 키 세 이름 · 로컬 프록시 띄움 · Codex/Gemini 설정 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
-          <rect x="374.9" y="842" width="301" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="374.9" y="842" width="301" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(380.9 848) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n9" tabindex="0" role="button" aria-label="Focus 9. [4/8] 키와 주소 — 사용자 환경변수로 심는다, 사내면 회사 키·프록시·Codex/Gemini 설정 · 사외면 Claude 로그인, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">9. [4/8] 키와 주소 — 사용자 환경변수로 심는다 · 사내면 회사 키·프록시·Codex/Gemini 설정 · 사외면 Claude 로그인 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="372.4" y="842" width="306" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="372.4" y="842" width="306" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(378.4 848) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
           </g>
-          <text x="525.4" y="863" font-size="10.8px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">9. [4/8] 키와 주소 — 사용자 환경변수로 심는다</text>
-          <text x="525.4" y="880" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">사내면 회사 키 세 이름 · 로컬 프록시 띄움 · Codex/Gemini 설정</text>
+          <text x="525.4" y="863" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">9. [4/8] 키와 주소 — 사용자 환경변수로 심는다</text>
+          <text x="525.4" y="880" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">사내면 회사 키·프록시·Codex/Gemini 설정 · 사외면 Claude 로그인</text>
         </g>
 
         <g id="node-nclone" tabindex="0" role="button" aria-label="Focus 저장소를 clone 한다, ~/repos/&lt;저장소 이름&gt;, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
@@ -344,8 +344,8 @@
           <text x="640.4" y="776" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">둘이 짝이다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <rect x="684.6" y="874" width="91.6" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <text x="730.4" y="884" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">새 창이 볼 자리에</text>
+          <rect x="686.6" y="874" width="91.6" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="732.4" y="884" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">새 창이 볼 자리에</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
           <rect x="216.39999999999998" y="1438" width="226" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
