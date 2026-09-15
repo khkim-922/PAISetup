@@ -156,6 +156,32 @@ $Features = @{
   ENABLE_TOOL_SEARCH = 'true'    # 도구를 미리 다 안 싣고 필요할 때 찾아 쓴다
 }
 
+# ── 고를 모델 목록 — **자리를 탄다. 게이트웨이에 닿는 자리에만 선다** (결정 0048) ────
+# `/model` 목록에 설 줄을 우리가 선언한다. 접미사 `[1m]` 이 창을 1M 으로 연다 — 게이트웨이는
+# 이미 그만큼을 주고 있었고(0047 · 상한을 넘겨 쏘면 저쪽이 `1000000` 이라고 말한다) 깎던 자는
+# CLI 였다. 셋 다 쟀다: 4.6 은 792k · 4.7·5 는 576k 로 200 이 왔다.
+# ⚠ **씨앗(`vdi-home-settings.json`)에 두지 않는다.** 이 이름들은 게이트웨이가 등록한 것이라
+#   자리를 타는데 씨앗은 익명 층이고 포크를 따라간다(`secrets.d/posco.env` 의 모델 칸 곁말과
+#   같은 축). 사외는 구독으로 돌아 이 이름이 아예 없어서, 씨앗에 두면 **사외 VDI 의 목록에
+#   못 부르는 줄이 서고 고르면 그 자리에서 깨진다** — 게다가 그 자리는 씨앗 덮기가 이 설치보다
+#   나중이라(위 ⚠) 여기서 안 쓴 것도 씨앗이 되살린다. 그래서 자리를 재는 이 파일이 든다.
+# ⚠ **목록의 진본은 `GET /v1/models` 다.** 게이트웨이가 내는 것만 적는다 — 실측 2026-09-15 에
+#   Sonnet 5 와 Haiku 는 그 목록에 **없다**(내장 줄로는 보이지만 고르면 400 이다). 그래서 아래
+#   `$ModelPickerOnly` 로 내장 줄을 숨긴다: 목록이 곧 「이 자리에서 실제로 되는 것」이 된다.
+# ⚠ **이름은 하이픈으로 적는다.** 게이트웨이는 점 표기(`claude-opus-4.7`)로 목록을 내지만
+#   **두 표기를 다 받는다**(하이픈으로 쏘면 `model: claude-opus-4.7` 로 답한다 · 실측). 하이픈이
+#   CLI 카탈로그가 아는 이름이라 표시명·접미사 판정이 걸리고, 점 표기는 「모르는 모델」로 떨어져
+#   접미사가 안 붙는다.
+# 줄이 늘면 여기 한 줄. 게이트웨이가 그 이름을 내는지 먼저 묻는다.
+$ModelPicker = @(
+  @{ model = 'claude-sonnet-4-6[1m]'; description = 'Sonnet 4.6 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-opus-4-7[1m]';   description = 'Opus 4.7 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-opus-5[1m]';     description = 'Opus 5 · 게이트웨이 · 1M 창' }
+)
+# 내장 줄(Sonnet 5 · Haiku · Custom 칸)을 숨긴다 — 이 게이트웨이가 안 내는 것들이다.
+# `Default` 행은 이 값과 무관하게 남는다.
+$ModelPickerOnly = $true
+
 # ── 배선이 먼저다 ────────────────────────────────────────────────────────────────
 # ⚠ winget 이 심은 PATH 는 **이 창에 안 걸린다** — 이 창이 winget 보다 먼저 떴다.
 #   배선 없이 물으면 이미 깔린 것도 「없음」이 나와 재설치로 샌다. 그래서 묻기 전에도,
@@ -1211,6 +1237,37 @@ foreach ($k in $fromFile.Keys) {
   Plant-Var $k $val
 }
 
+# ── 5‴. 물러난 이름 — **심는 것만으로는 못 걷는다** ─────────────────────────────
+# ⚠ 심기는 더하기만 한다. 진본에서 이름 하나를 걷으면 새로 깔는 기계에는 안 서지만, **한 번
+#   깔았던 기계에는 그 값이 그대로 남는다** — 다시 깔아도 남는다. 옛 값이 살아 있는 채로
+#   설치는 초록으로 끝나고, 어긋남은 그 사람 화면에서만 보인다(실측 2026-09-15:
+#   `ANTHROPIC_CUSTOM_MODEL_OPTION` 을 진본에서 걷고 다시 뽑았는데 `/model` 목록에 그 줄이
+#   그대로 섰다 — 사용자 환경에 박힌 값이 들고 있었다). 씨앗이 「없을 때만」 깔려 오래 쓴
+#   기계가 뒤처지는 것($Features 곁말)과 같은 병이고, 이쪽은 **지우는 손**이 없어서 난다.
+# ⚠ **값이 아니라 이름만 든다.** 무엇으로 되돌릴지가 아니라 「이 이름은 이제 우리 것이 아니다」를
+#   적는 자리다 — 값을 적으면 걷은 것을 다시 심는 목록이 된다.
+# ⚠ **이름을 영영 두지 않는다.** 다 걷힌 뒤에도 남으면 남의 값을 지우는 손이 된다 — 같은 이름을
+#   제 뜻으로 쓰는 사람이 있을 수 있다. 두 판쯤 지나면 지운다.
+# 이름이 늘면 여기 한 줄. **`install.env` 가 그 이름을 들면 위 칸이 이기고 여기는 비켜선다** —
+#   진본이 되살린 것을 이 목록이 지우면 두 자리가 싸운다.
+$Retired = @(
+  # 0048 — 고를 모델은 씨앗의 `modelPicker` 가 든다. 이 칸은 게이트웨이 갈래에서 창을 200k 로
+  #        이고 서서 같은 모델을 1M 으로 못 냈다. 4.7 은 그 목록 줄로 산다.
+  'ANTHROPIC_CUSTOM_MODEL_OPTION'
+)
+foreach ($k in $Retired) {
+  if ($fromFile.ContainsKey($k)) { continue }   # 진본이 되살렸으면 안 건드린다
+  if (-not [Environment]::GetEnvironmentVariable($k, 'User')) { continue }
+  try {
+    [Environment]::SetEnvironmentVariable($k, $null, 'User')
+    Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
+    Write-Host "  $k — 걷었다 (이제 안 쓰는 이름)" -ForegroundColor Green
+  } catch {
+    Write-Host "  ! $k 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
+    $Fails.Add("$k 걷기")
+  }
+}
+
 # ── 5″. 회사 키의 다른 이름 둘 — **한 번 받은 것을 이름만 바꿔 심는다** ─────────────
 # ⚠ 회사 키는 하나인데 읽는 이름이 셋이다 — Claude Code 는 `ANTHROPIC_AUTH_TOKEN`, Codex CLI 는
 #   `config.toml` 의 `env_key` 가 가리키는 `OPENAI_API_KEY`, Gemini CLI 는 `GEMINI_API_KEY`. 사람에게
@@ -1656,6 +1713,29 @@ if ($cfg) {
     }
   }
   if ($fx) { Write-Host "  기능 스위치 $fx 개를 맞췄다 ($($Features.Keys -join ' · '))" -ForegroundColor Green }
+
+  # 고를 모델 목록 — **게이트웨이에 닿는 자리에만 쓴다** (선언은 위 `$ModelPicker`).
+  # ⚠ `$useGateway` 가 자리 판정을 이미 들고 있다 — 사외면 거짓이라 이 칸이 안 선다. 자리를
+  #   여기서 다시 재지 않는다: 두 자리가 재면 한쪽이 낡는다.
+  # ⚠ **사외에 남은 옛 줄도 걷는다.** 사내에서 쓰고 나서 사외로 간 기계(또는 이 판 전에 씨앗이
+  #   깔아 준 기계)에는 그 줄이 그대로 남아, 구독으로 못 부르는 것이 목록에 선다.
+  if ($useGateway) {
+    $want = $ModelPicker | ForEach-Object { [pscustomobject]$_ }
+    $pick = [pscustomobject]@{ options = @($want); replaceBuiltInOptions = $ModelPickerOnly }
+    # 있는 것과 견준다 — 같으면 안 쓴다(매 설치마다 「썼다」가 찍히면 눈이 그 줄을 흘린다).
+    $old = if ($cfg.PSObject.Properties['modelPicker']) { $cfg.modelPicker | ConvertTo-Json -Depth 10 -Compress } else { $null }
+    if ($old -ne ($pick | ConvertTo-Json -Depth 10 -Compress)) {
+      $cfg | Add-Member -NotePropertyName modelPicker -NotePropertyValue $pick -Force
+      $dirty = $true
+      Write-Host "  모델 목록 $($want.Count) 줄을 맞췄다 (다 1M · 내장 줄은 숨긴다)" -ForegroundColor Green
+    } else {
+      Write-Host '  모델 목록 — 이미 맞다'
+    }
+  } elseif ($cfg.PSObject.Properties['modelPicker']) {
+    $cfg.PSObject.Properties.Remove('modelPicker')
+    $dirty = $true
+    Write-Host '  모델 목록 — 걷었다 (게이트웨이를 안 쓰는 자리다)' -ForegroundColor Green
+  }
 
   if ($wantEnv -and $Planted.Count -gt 0) {
     foreach ($k in $Planted.Keys) {
