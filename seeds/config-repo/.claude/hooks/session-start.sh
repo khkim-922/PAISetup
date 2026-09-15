@@ -1064,6 +1064,25 @@ if [ "$MODE" = install ]; then
         # 느려지고, 아예 안 두면 이미지가 오래된 기계에서 영영 못 깐다.
         try "$_t" sh -c "DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $_pkg ||
           { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $_pkg; }" ;;
+      winget)        # 윈도우 패키지 관리자 — **폴더째 와야 도는 도구**가 여기 산다.
+                     # ⚠ `github-release-binary` 로는 못 깐다: 그 갈래는 자산 zip 에서 실행파일
+                     #   **하나만** 꺼내 `$HOME/bin` 에 놓는데, 곁의 `lib/` 가 있어야 도는 물건은
+                     #   그렇게 꺼내면 **깔린 것처럼 보이고 안 돈다** — 제일 나쁜 실패다.
+                     # ⚠ 자산 이름에 판이 안 물려 선언이 안 낡는다 — `apt-package` 와 같은 값이다.
+        _id="$(decl_get "$_f" "$_t" winget-id)"
+        { [ "$OS" = windows ] && [ -n "$_id" ]; } ||
+          { nogo "$_t" "winget 갈래를 못 탄다 — 여기는 $OS 이거나 선언에 winget-id 가 없다"; return 1; }
+        command -v winget.exe >/dev/null 2>&1 ||
+          { nogo "$_t" "winget 이 없다 — 옛 윈도우이거나 앱 설치 관리자가 안 깔렸다"; return 1; }
+        # ⚠ **사용자 자리에 깐다** — 관리자 없이 서야 하는 것이 이 훅의 규율이다(apt 갈래가
+        #   sudo 를 안 부르는 것과 같은 축).
+        # ⚠ **`--source winget` 을 박는다.** 안 박으면 msstore 까지 훑다가 그쪽 인증서 오류로
+        #   통째로 진다 — 실측 2026-09-15: `0x8a15005e` 로 설치가 아예 시작을 못 했다.
+        # ⚠ **묻지 않게 한다** — 물어볼 사람이 없는 자리다.
+        # ⚠ **깐 뒤 이 세션에서는 아직 PATH 에 안 걸린다** — winget 은 사용자 PATH 를 고치고
+        #   그 값은 이미 뜬 셸에 안 온다. 다음 세션에서 선다. 그래서 **부르는 쪽이 winget 의
+        #   링크 자리도 보게** 둔다(`scripts/build-setup-exe.ps1` 이 그렇게 한다).
+        try "$_t" winget.exe install --id "$_id" --exact --source winget --scope user --accept-package-agreements --accept-source-agreements --disable-interactivity ;;
       project-axis) : ;;   # 설치 없음 — 판의 진본은 package.json·requirements.txt 다
       # ⚠ 모르는 갈래도 **조용한 무작동이다.** 선언에 `install` 을 빠뜨리거나 오타를 내면
       #   여기까지 와서 아무것도 안 하고 0 을 냈다 — 진단은 「안 닿는다」만 내고 선언이
