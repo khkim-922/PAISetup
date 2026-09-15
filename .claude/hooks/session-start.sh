@@ -1304,6 +1304,13 @@ if [ "$MODE" = install ]; then
         global_kind "$(decl_get "$_gf" "$_gn" install)" || continue
         case " $_gseen " in *" $_gn "*) continue ;; esac
         _gseen="$_gseen $_gn"
+        # on-demand 는 안 깐다 — 부르는 자가 제 손으로 찾는다(선언 필드 표). 이름은 찍는다:
+        # 안 찍으면 「선언했는데 왜 안 깔렸나」를 다음 사람이 훅에서 판다.
+        if [ "$(decl_get "$_gf" "$_gn" on-demand)" = yes ]; then
+          printf '  · %s — 필요할 때 깐다 (on-demand · %s)
+' "$_gn" "$(decl_get "$_gf" "$_gn" called-by | cut -d' ' -f1)"
+          continue
+        fi
         # 밀 때는 프로브를 안 묻는다 — 「있나」와 「최신인가」는 다른 명제라, 있으면 건너뛰는
         # 규칙으로는 영영 안 올라간다. 같은 설치가 곧 밀기다(옛 고리와 같은 뜻).
         if [ -z "${UPGRADE:-}" ] && probe_global "$_gf" "$_gn"; then
@@ -1545,6 +1552,9 @@ render_decl() {  # render_decl <선언파일> <층라벨>
       gate "$_name" off "$_by ($2) — $_pin$(why "$_name" "$_step")"
     elif [ "$_probe" = node-resolvable ] && [ -d "$(npm root -g 2>/dev/null)/$_target" ]; then
       gate "$_name" off "$_by ($2) — 깔렸는데 프로브가 못 찾는다: 배선이 끊겼다$(why "$_name" "$_step")"
+    elif [ "$(decl_get "$1" "$_name" on-demand)" = yes ]; then
+      # 선언이 「필요할 때 깐다」로 둔 도구 — 부재가 이 저장소의 검사를 끄는 것이 아니다
+      gate "$_name" ok "$_by ($2) — 안 닿는다 · 필요할 때 깐다 (on-demand)"
     else
       gate "$_name" off "$_by ($2) — 안 닿는다$(why "$_name" "$_step")"
     fi
