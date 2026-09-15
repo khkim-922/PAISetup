@@ -1514,7 +1514,7 @@ if ($offsite) {
         if ($login.HasExited) { break }
         $elapsed = $waited + 5
         if (($elapsed % 15) -eq 0) {
-          Write-Host "  로그인을 기다리는 중 … $elapsed초"
+          Write-Host "  로그인을 기다리는 중 … ${elapsed}초"
         }
       }
       if (-not $claudeLoggedIn) { $claudeLoggedIn = Test-ClaudeLoggedIn }
@@ -2088,7 +2088,7 @@ if (-not $repoUrl) {
     $tCode.Text = '코드를 기다리는 중 …'
     $tCode.Location = New-Object Drawing.Point(16, 40); $tCode.Size = New-Object Drawing.Size(390, 44)
     $lLeft = New-Object Windows.Forms.Label
-    $lLeft.Text = "남은 시간 $Wait초"
+    $lLeft.Text = "남은 시간 ${Wait}초"
     $lLeft.Location = New-Object Drawing.Point(16, 96); $lLeft.Size = New-Object Drawing.Size(390, 20)
     $bOpen = New-Object Windows.Forms.Button; $bOpen.Text = '브라우저 열기'
     $bOpen.Location = New-Object Drawing.Point(16, 140); $bOpen.Size = New-Object Drawing.Size(120, 32)
@@ -2142,7 +2142,7 @@ if (-not $repoUrl) {
       $ghLoggedIn = $true
       Write-Host '  이미 서 있다'
     } else {
-      Write-Host "  브라우저 로그인을 띄운다 — 코드는 팝업에 (최대 $GhLoginWait초)" -ForegroundColor Yellow
+      Write-Host "  브라우저 로그인을 띄운다 — 코드는 팝업에 (최대 ${GhLoginWait}초)" -ForegroundColor Yellow
       $gl = [IO.Path]::GetTempFileName()
       try {
         $ghExe = (Get-Command gh -ErrorAction Stop).Source
