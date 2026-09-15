@@ -14,9 +14,9 @@
 
 ## 상류 판
 
-- 저장소 `pgpt-one-click-connect` · 커밋 `319529d8` (2026-08-26) · 프록시 `VERSION = 14`
-- **우리 판은 `VERSION = 15` = 상류 14 + keepalive 한 덩어리** (결정 0044). 설치기가 도는 판과 이 값을 견주어
-  낮으면 갈아 끼우므로 상류보다 하나 위에 둔다 — 상류가 15 를 내면 우리는 16 이다
+- 저장소 `pgpt-one-click-connect` · 커밋 `701765da` (2026-09-15 · v0.5.3) · 프록시 `VERSION = 15`
+- **우리 판은 `VERSION = 16` = 상류 15 + keepalive 한 덩어리** (결정 0044). 설치기가 도는 판과 이 값을 견주어
+  낮으면 갈아 끼우므로 상류보다 하나 위에 둔다 — 상류가 16 을 내면 우리는 17 이다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
 - **파일은 안 고친다 — 예외가 하나다.** `_relay_sse_keepalive`(+ `KEEPALIVE_SEC` · 카운터 `keepalives` · 자체
   검사 한 칸)만 우리 것이고, 나머지는 상류 그대로다. 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
@@ -30,7 +30,8 @@
 | `/v1/messages` — 끝의 assistant 마디 제거 · `system` 역할 마디를 `user` 로 · 같은 역할 병합 · `temperature`/`top_p` 제거 | **쓴다** (Claude Code) |
 | `/v1beta` — `x-goog-api-key` 곁에 Bearer 추가 · `-customtools` 접미사 제거 · 쪼개진 SSE 재조립 | **쓴다** (Gemini CLI) |
 | `claude-sonnet-5` → `claude-sonnet-4.6` (게이트웨이 미등록 별칭) | 지난다 — 우리는 `ANTHROPIC_MODEL` 로 4.6 을 못박아 걸릴 일이 없다 |
-| GPT-5 계열 `max_tokens` → `max_completion_tokens` · 빈 도구 `description` 채우기 | **논다** — Codex 는 직결이다 |
+| GPT-5·GPT-6 계열 `max_tokens` → `max_completion_tokens`(`/v1/responses` 는 `max_output_tokens`) · 빈 도구 `description` 채우기 | **논다** — Codex 는 직결이다 |
+| 상류 연결 풀 — 30초(`UPSTREAM_IDLE_TTL`) 넘게 논 연결은 재사용하지 않고 닫는다 · `/health` 의 `upstream_expired` | **쓴다** — 게이트웨이가 keep-alive 를 끊은 뒤 남은 연결을 집어 첫 요청이 지던 자리 |
 | **(우리 것)** Anthropic SSE 가 침묵하면 `KEEPALIVE_SEC`(기본 15초)마다 `: keepalive` 주석 한 줄을 클라이언트에 흘린다 — 게이트웨이가 생각 조각을 안 흘려 Claude Code 의 바이트 유휴 워치독이 끊던 자리. `PGPT_PROXY_KEEPALIVE_SEC=0` 이면 끈다 | **쓴다** (Claude Code · 결정 0044 · 회사 실측 전) |
 | Hermes 갈래 — 대시 모델 ID 복원 · chat 문의 Gemini 변환 · `x-api-key` → Bearer | **논다** — Hermes 를 안 쓴다. 걷어 내지 않는 까닭은 위 「파일은 안 고친다」 |
 | 응답 | **무수정 중계** — 스트리밍 포함. 심장박동도 생각 낱말도 안 건드린다. 180초 벽은 이것으로 안 넘는다(`ENV-posco.md`) |

@@ -18,11 +18,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 PREFIX = "/gpgpta01-gpt"
-# 사내 포털에 등록돼 있는 이름들(2026-08 기준). Grok 만 대시 표기다.
+# 사내 포털에 등록돼 있는 이름들(2026-08 기준, gpt-6-astra 는 2026-09-15 추가). Grok 만 대시 표기다.
 MODELS = [
     "claude-opus-5",
     "claude-opus-4.7",
     "claude-sonnet-4.6",
+    "gpt-6-astra",
     "gpt-5.6-sol",
     "gpt-5.5",
     "gemini-3.6-flash",
@@ -77,9 +78,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlsplit(self.path)
+        # 인증 실패로 401 을 보내더라도 본문은 먼저 읽어 둔다. 안 읽으면 keep-alive
+        # 연결에 본문이 남아 프록시 풀이 재사용하는 다음 요청이 501 로 깨진다.
+        body = self._body()
         if not self._authorized(parsed.query):
             return
-        body = self._body()
         path = parsed.path
 
         if path == f"{PREFIX}/v1/messages":
@@ -103,7 +106,12 @@ class Handler(BaseHTTPRequestHandler):
                         if isinstance(tool, dict) and not str(tool.get("description", "")).strip():
                             self._send(400, {"error": {"code": "empty_string", "message": "tool description minLength=1"}})
                             return
-            self._send(200, {"id": "resp_mock", "status": "completed", "model": body.get("model")})
+            # Hermes 설치기의 GPT 연결 시험(Kind=responses)은 status 와 output 을 함께 본다.
+            self._send(200, {
+                "id": "resp_mock", "status": "completed", "model": body.get("model"),
+                "output": [{"type": "message", "role": "assistant",
+                            "content": [{"type": "output_text", "text": "OK"}]}],
+            })
             return
 
         if path == f"{PREFIX}/v1/chat/completions":

@@ -33,8 +33,9 @@ Payload fixes, all required by the gateway:
 * Claude Code default Sonnet chip is often ``claude-sonnet-5``.
   Company P-GPT does not register that id (field issue #25), so map the
   alias to the latest registered sonnet (``claude-sonnet-4.6``).
-* GPT-5 / o-series OpenAI generation requests that still send
-  ``max_tokens`` are rewritten to ``max_completion_tokens``.
+* GPT-5 / GPT-6 / o-series OpenAI generation requests that still send
+  ``max_tokens`` are rewritten to ``max_completion_tokens`` on
+  ``/v1/chat/completions`` and to ``max_output_tokens`` on ``/v1/responses``.
 * Hermes custom ``chat_completions`` with ``model`` starting ``gemini-``
   is translated to Gemini native ``generateContent`` and the response is
   converted back to an OpenAI chat completion. This is a chat-only
@@ -76,9 +77,9 @@ LISTEN_PORT = 18901
 # PGPT_PROXY_UPSTREAM 을 쓴다. 프로토콜은 http — https 는 연결되지 않는다.
 UPSTREAM = os.environ.get("PGPT_PROXY_UPSTREAM", "http://aigpt.posco.net").rstrip("/")
 ALLOWED_PREFIX = "/gpgpta01-gpt/"
-# 상류 v14 + keepalive(아래 _relay_sse_keepalive). 설치기가 도는 판과 이 값을 견주어 낮으면 갈아 끼우므로,
-# 상류가 15 를 내면 우리는 16 으로 올린다 — README 「상류 판」.
-VERSION = 15
+# 상류 v15 + keepalive(아래 _relay_sse_keepalive). 설치기가 도는 판과 이 값을 견주어 낮으면 갈아 끼우므로,
+# 상류가 16 을 내면 우리는 17 로 올린다 — README 「상류 판」.
+VERSION = 16
 # SSE keepalive — 상류가 이만큼 침묵하면 클라이언트 쪽에 SSE 주석 한 줄을 흘린다. 0 이면 끈다.
 # 게이트웨이는 모델이 생각하는 동안 바이트를 안 흘리고, Claude Code 의 바이트 유휴 워치독은 그 침묵에
 # 스트림을 끊는다(회사 실측 2026-09-14 · 자동 압축이 가장 잘 걸림). 주석 줄(`:`)은 SSE 규격상 버려지므로
@@ -92,6 +93,7 @@ LOG_MAX_BYTES = 1_000_000
 MAX_CHUNK_SIZE = 0x7FFFFFFF
 UPSTREAM_POOL_SIZE = 8
 UPSTREAM_TIMEOUT = 600
+UPSTREAM_IDLE_TTL = 30.0
 SLOW_REQUEST_SEC = 5.0
 HOP_BY_HOP = {
     "connection",
@@ -123,9 +125,10 @@ class UpstreamPool:
         self._port = parts.port or (443 if parts.scheme == "https" else 80)
         self._max_idle = max_idle
         self._lock = threading.Lock()
-        self._idle: list[http.client.HTTPConnection] = []
+        self._idle: list[tuple[http.client.HTTPConnection, float]] = []
         self._created = 0
         self._reused = 0
+        self._expired = 0
 
     def stats(self) -> dict[str, int]:
         with self._lock:
@@ -133,6 +136,7 @@ class UpstreamPool:
                 "upstream_idle": len(self._idle),
                 "upstream_created": self._created,
                 "upstream_reused": self._reused,
+                "upstream_expired": self._expired,
             }
 
     def _open(self) -> http.client.HTTPConnection:
@@ -158,10 +162,11 @@ class UpstreamPool:
     def acquire(self) -> http.client.HTTPConnection:
         with self._lock:
             while self._idle:
-                conn = self._idle.pop()
-                if conn.sock is not None:
+                conn, released_at = self._idle.pop()
+                if conn.sock is not None and time.monotonic() - released_at < UPSTREAM_IDLE_TTL:
                     self._reused += 1
                     return conn
+                self._expired += 1
                 try:
                     conn.close()
                 except OSError:
@@ -179,7 +184,7 @@ class UpstreamPool:
             return
         with self._lock:
             if len(self._idle) < self._max_idle and conn.sock is not None:
-                self._idle.append(conn)
+                self._idle.append((conn, time.monotonic()))
                 return
         try:
             conn.close()
@@ -336,9 +341,9 @@ def patch_tool_descriptions(payload: dict, path: str = "") -> int:
 
 
 def normalize_openai_token_limit(payload: dict[str, object], path: str = "") -> bool:
-    """Use max_completion_tokens for GPT-5/o-series chat routes.
+    """Normalize legacy token limits for GPT-5/6 and o-series routes.
 
-    The newer GPT 5.x and o-series routes reject ``max_tokens`` with
+    The newer GPT 5.x/6.x and o-series chat routes reject ``max_tokens`` with
     ``Unsupported parameter: 'max_tokens'``.  Older GPT-4.x/Grok routes still
     accept ``max_tokens``.  Only rewrite OpenAI-compatible generation requests
     for the model families known to require the newer parameter, and leave
@@ -351,11 +356,13 @@ def normalize_openai_token_limit(payload: dict[str, object], path: str = "") -> 
     ):
         return False
     model = str(payload.get("model") or "")
-    if not (model.startswith("gpt-5") or model.startswith("o3") or model.startswith("o4")):
+    if not re.match(r"^(?:gpt-[56](?:[.\-]|$)|o[34](?:-|$))", model):
         return False
-    if "max_tokens" not in payload or "max_completion_tokens" in payload:
+    target = "max_output_tokens" if normalized_path.endswith("/v1/responses") else "max_completion_tokens"
+    if "max_tokens" not in payload:
         return False
-    payload["max_completion_tokens"] = payload.pop("max_tokens")
+    legacy_limit = payload.pop("max_tokens")
+    payload.setdefault(target, legacy_limit)
     return True
 
 
@@ -988,10 +995,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         log(f"{parsed.path} model={model_name} openai-chat->gemini-native")
                     if normalize_openai_token_limit(payload_obj, parsed.path):
                         changed = True
-                        log(
-                            f"{parsed.path} model={payload_obj.get('model')} "
-                            "max_tokens->max_completion_tokens"
+                        limit_field = (
+                            "max_output_tokens"
+                            if parsed.path.rstrip("/").endswith("/v1/responses")
+                            else "max_completion_tokens"
                         )
+                        log(f"{parsed.path} model={payload_obj.get('model')} max_tokens->{limit_field}")
                     filled = patch_tool_descriptions(payload_obj, parsed.path)
                     if filled:
                         changed = True
@@ -1213,6 +1222,18 @@ def self_test() -> None:
     old_payload = {"model": "gpt-4o", "max_tokens": 8}
     assert not normalize_openai_token_limit(old_payload, "/gpgpta01-gpt/v1/chat/completions")
     assert old_payload["max_tokens"] == 8
+    # 5b-1. GPT-6(아스트라) 도 같은 보정을 받고, /v1/responses 는 max_output_tokens 로 간다.
+    astra_payload = {"model": "gpt-6-astra", "max_tokens": 8}
+    assert normalize_openai_token_limit(astra_payload, "/gpgpta01-gpt/v1/chat/completions")
+    assert "max_tokens" not in astra_payload and astra_payload["max_completion_tokens"] == 8
+    responses_payload = {"model": "gpt-6-astra", "max_tokens": 8}
+    assert normalize_openai_token_limit(responses_payload, "/gpgpta01-gpt/v1/responses")
+    assert "max_tokens" not in responses_payload and responses_payload["max_output_tokens"] == 8
+    # 둘 다 있으면 legacy 만 떼고 이미 있는 새 필드 값을 지킨다.
+    both_payload = {"model": "gpt-5.6-sol", "max_tokens": 8, "max_completion_tokens": 32}
+    assert normalize_openai_token_limit(both_payload, "/gpgpta01-gpt/v1/chat/completions")
+    assert "max_tokens" not in both_payload and both_payload["max_completion_tokens"] == 32
+    assert not normalize_openai_token_limit({"model": "gpt-4o", "max_tokens": 8}, "/gpgpta01-gpt/v1/responses")
 
     # 5b2. Hermes가 점을 대시로 바꾼 Claude 소수 버전 ID를 복원한다.
     claude_alias = {"model": "claude-opus-4-6"}
@@ -1307,6 +1328,31 @@ def self_test() -> None:
     # 풀은 직접 연결(사내 HTTP_PROXY 무시) + 생성 카운터만 확인
     pool = UpstreamPool("http://127.0.0.1:9", max_idle=2)
     assert pool.stats()["upstream_idle"] == 0
+
+    # 유휴 연결은 UPSTREAM_IDLE_TTL 이 지나면 재사용하지 않고 닫는다 (서버 keep-alive 만료 대비).
+    class _FakeConn:
+        def __init__(self) -> None:
+            self.sock: object | None = object()
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            self.sock = None
+
+    fresh = _FakeConn()
+    pool.release(fresh, reuse=True)  # type: ignore[arg-type]
+    assert pool.stats()["upstream_idle"] == 1
+    assert pool.acquire() is fresh
+    assert pool.stats()["upstream_reused"] == 1
+    stale = _FakeConn()
+    pool.release(stale, reuse=True)  # type: ignore[arg-type]
+    pool._idle[-1] = (stale, time.monotonic() - UPSTREAM_IDLE_TTL - 1)  # type: ignore[list-item]
+    try:
+        pool.acquire()
+    except OSError:
+        pass  # 만료 뒤 새 연결을 127.0.0.1:9 에 열다 거부되는 것은 정상
+    assert stale.closed
+    assert pool.stats()["upstream_expired"] == 1 and pool.stats()["upstream_idle"] == 0
 
     # keepalive: 상류가 침묵하는 동안 SSE 주석이 흐르고, 본문은 글자 하나 안 바뀌고 지나간다.
     class _SlowResponse:
