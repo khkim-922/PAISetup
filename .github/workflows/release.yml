@@ -1,0 +1,204 @@
+# 설치본을 CI 에서 굽는다 — **zig 을 사람 PC 에 두지 않으려는 자리다.**
+#
+#   태그 `vX.Y.Z` 를 이 저장소에 밀면 아래가 `Setup.exe` 와 `Setup.exe.sha256` 을 굽고
+#   그 태그의 릴리스에 **자산 둘로 붙인다.** 사람이 하는 일은 태그를 미는 것 하나다.
+#
+# ⚠ **이 파일은 뽑기(`build-dist.sh`)의 생성물이 아니라 「거기가 집인 진본」이다** —
+#   설치 파일 셋(`install.cmd`·`install.ps1`·`install.ui.ps1`)과 같은 결이다. 워크플로는
+#   **제가 도는 저장소에만 살 수 있어서** 진본 저장소에 두고 나를 수가 없다. 그래서
+#   진본의 `dist.manifest.conf` 에 이 파일 줄이 없다 — 빠뜨린 것이 아니다.
+#   ⚠ 그 대신 진본의 `docs/dist-readme.md` 나무에 `.github/` 한 칸이 서 있어야 한다.
+#     `check-dist-tree.sh` 가 이 저장소 뿌리 한 층을 그 글과 견주므로, 안 적으면
+#     **진본 저장소의 커밋이 막힌다.**
+#
+# ⚠ **굽는 자는 진본의 `scripts/build-setup-exe.ps1` 이고, 그 계약을 여기서 안 바꾼다.**
+#   ① 진본과 배포본이 **형제 폴더**로 나란히 서야 한다 — 배포본 폴더 이름은
+#      `dist.manifest.conf` 가 들고, 굽는 자가 그 이름으로 형제를 찾는다.
+#   ② 결과는 **진본의 `docs/`** 에 난다(`docs/Setup.exe` · `.sha256`).
+#   ③ 담기 전에 문 셋을 연다 — 배포본 깨끗함 · `build-dist.sh --check` ·
+#      `check-global-copies.sh`. 아래 체크아웃 둘이 그 문들이 설 자리를 만든다.
+#
+# ⚠ **윈도우 러너여야 한다** — 짐을 마는 `tar.exe`(푸는 그 자와 같은 구현이어야 한다) ·
+#   아이콘과 VERSIONINFO 를 박는 `zig rc` · `Get-FileHash` 가 다 윈도우 것이고, 굽는 자가
+#   파워셸 5.1 로 쓰였다.
+#
+# ⚠ **진본 저장소는 비공개다** — 러너가 받으려면 읽기 전용 토큰이 이 저장소의 시크릿
+#   `CLAUDE_CONFIG_TOKEN` 에 있어야 한다. 없으면 둘째 걸음에서 바로 진다.
+name: Setup.exe 굽기
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # ⚠ **진짜 태그를 밀기 전에 시험할 자리를 둔다.** 태그는 한 번 밀면 그 이름이 굳는데,
+  #   워크플로가 처음 도는 자리라 문 셋 중 무엇이 러너에서 다르게 나올지 재 본 적이 없다.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '배포본에서 무엇을 굽나 — 브랜치·태그·커밋'
+        required: false
+        default: main
+      source-ref:
+        description: '진본 저장소의 ref. 비우면 기본 브랜치 — 배포본과 같은 판이라야 --check 가 선다'
+        required: false
+        default: ''
+      tag:
+        description: '릴리스에 붙일 태그. **비우면 굽기만 하고 릴리스는 한 자도 안 건드린다**'
+        required: false
+        default: ''
+
+permissions:
+  # 릴리스를 만들고 자산을 붙인다. 그 밖의 권한은 안 든다.
+  contents: write
+
+jobs:
+  bake:
+    runs-on: windows-latest
+    env:
+      # ⚠ **배포본 폴더 이름을 손으로 안 적는다** — 저장소 제 이름에서 판다. 굽는 자는
+      #   `dist.manifest.conf` 가 든 이름으로 형제를 찾으므로, 둘이 어긋나면 그 자리에서
+      #   **이름을 대고** 진다(「배포본이 이 기계에 없다」) — 조용히 엉뚱한 것을 담지 않는다.
+      DIST_DIR: repos/${{ github.event.repository.name }}
+      # ⚠ 진본 이름은 여기 한 번 선다 — 이 저장소 안에 그 이름의 진본이 없어서다.
+      SRC_DIR: repos/claude-config
+
+    steps:
+      - name: 배포본을 받는다
+        uses: actions/checkout@v7
+        with:
+          # 태그 푸시면 그 태그, 손으로 돌리면 고른 ref.
+          ref: ${{ inputs.ref || github.ref }}
+          path: ${{ env.DIST_DIR }}
+
+      - name: 진본을 곁에 받는다 (비공개 — 시크릿이 든다)
+        uses: actions/checkout@v7
+        with:
+          # ⚠ **계정 이름을 글자로 안 적는다.** 진본의 `[새면 안 되는 글자]` 가 배포본
+          #   저장소를 통째로 훑는데(뽑기 모드) 그 목록에 계정 이름이 들어 있다 —
+          #   여기 박으면 이 파일 하나 때문에 **뽑기가 안 나간다.**
+          repository: ${{ github.repository_owner }}/claude-config
+          # 비우면 기본 브랜치. 배포본과 같은 판이라야 `build-dist.sh --check` 가 선다.
+          ref: ${{ inputs.source-ref }}
+          token: ${{ secrets.CLAUDE_CONFIG_TOKEN }}
+          path: ${{ env.SRC_DIR }}
+
+      - name: zig 을 세운다
+        # ⚠ **판을 박는다 — 액션도 컴파일러도.** 지금 동료 손에 있는 설치본은 이 판의
+        #   zig 이 구운 것이고, 그것이 사내 백신을 지나갔다. 「같은 소스면 바이트가 같은가」는
+        #   이 자리가 **안 재기로 한 것**이라(#49 경계), 컴파일러를 흔들면 그 미지수가
+        #   릴리스에 그대로 실린다. 판을 올릴 때는 사람이 한 번 받아 눌러 보고 올린다.
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29  # v2.2.1
+        with:
+          version: 0.16.0
+
+      - name: 태그를 정하고 VERSION 과 견준다
+        shell: powershell
+        env:
+          # ⚠ **사람이 친 값을 스크립트 본문에 끼워 넣지 않는다.** `${{ }}` 는 셸이 뜨기 전에
+          #   글자로 치환되므로, 따옴표 하나가 든 입력이 그 자리에서 **코드가 된다.**
+          #   환경변수로 건네면 그 갈래가 통째로 닫힌다.
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          # 태그 푸시면 그 태그, 손으로 돌리면 입력 칸. 비면 굽기만 하고 릴리스는 안 건드린다.
+          if ($env:GITHUB_REF.StartsWith('refs/tags/')) {
+            $tag = $env:GITHUB_REF.Substring('refs/tags/'.Length)
+          } else {
+            $tag = "$env:INPUT_TAG".Trim()
+          }
+
+          # ⚠ **여기가 사람 손이 지키던 순서를 기계가 무는 자리다** (#49 의 문제 ②).
+          #   굽는 자는 배포본의 `VERSION` 을 읽어 **exe 안에 박고** 푸는 자리도 그 번호로
+          #   정한다. 태그가 그 값과 다르면 **옛 번호를 박은 설치본이 새 태그로 나가는데**,
+          #   파일은 멀쩡히 돌고 받는 사람의 폴더 이름만 틀린다 — 아무도 안 본다.
+          $verFile = Join-Path $env:GITHUB_WORKSPACE (Join-Path $env:DIST_DIR 'VERSION')
+          $ver = (Get-Content -LiteralPath $verFile -TotalCount 1 -Encoding UTF8).Trim().TrimStart([char]0xFEFF)
+          if ($ver -notmatch '^\d+\.\d+\.\d+$') { throw "VERSION 꼴이 아니다: '$ver'" }
+          if ($tag -and $tag -ne "v$ver") {
+            throw "태그와 VERSION 이 어긋났다 — 태그 '$tag' / VERSION '$ver' (v$ver 이어야 한다). 배포본의 VERSION 을 먼저 커밋한다."
+          }
+          if ($tag) { Write-Host "릴리스 태그: $tag (VERSION $ver)" }
+          else       { Write-Host "태그가 없다 — 굽기만 하고 릴리스는 안 건드린다 (VERSION $ver)" }
+
+          # ⚠ **`Out-File` 로 안 쓴다** — 파워셸 5.1 은 BOM 과 CRLF 를 붙인다.
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "TAG=$tag`n", (New-Object Text.UTF8Encoding($false)))
+
+      - name: 굽는다 — 문 셋을 지나 exe 와 지문을 낸다
+        shell: powershell
+        run: |
+          # ⚠ **사람이 치던 그 줄을 그대로 부른다** — 별도 프로세스에 `-File` 이다.
+          #   여기서 다른 꼴로 부르면 릴리스 절차의 진본이 둘이 된다.
+          $script = Join-Path $env:GITHUB_WORKSPACE (Join-Path $env:SRC_DIR 'scripts/build-setup-exe.ps1')
+          & powershell -NoProfile -ExecutionPolicy Bypass -File $script
+          if ($LASTEXITCODE -ne 0) { throw "굽기가 졌다 (코드 $LASTEXITCODE) — 위 줄이 어느 문에 걸렸는지 이름을 댄다" }
+
+      - name: 구운 것을 실행에 남긴다 (시험용 — 릴리스와 무관하다)
+        # ⚠ **태그 없이 돌렸을 때 손에 쥘 것이 있어야 시험이 된다.** 릴리스를 안 건드리는
+        #   갈래에서는 이 자산이 유일한 산출물이다.
+        uses: actions/upload-artifact@v7
+        with:
+          name: Setup-exe
+          path: |
+            ${{ env.SRC_DIR }}/docs/Setup.exe
+            ${{ env.SRC_DIR }}/docs/Setup.exe.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 릴리스에 자산 둘을 붙인다
+        if: env.TAG != ''
+        shell: powershell
+        env:
+          # ⚠ **여기 토큰은 러너가 제 손으로 든 것이다.** 사람 PC 의 세밀 토큰에는 Contents
+          #   권한이 일부러 없어(결정 0025) `gh release` 가 403 으로 지는데, 이 자리는 위
+          #   `permissions: contents: write` 가 그 한 권한만 준다 — 저장소를 여는 키를
+          #   커밋에 두지 않고도 릴리스가 선다.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $tag = $env:TAG
+          $exe = Join-Path $env:GITHUB_WORKSPACE (Join-Path $env:SRC_DIR 'docs/Setup.exe')
+          $sha = "$exe.sha256"
+          foreach ($p in @($exe, $sha)) {
+            if (-not (Test-Path -LiteralPath $p)) { throw "붙일 자산이 없다: $p" }
+          }
+
+          # ⚠ **`Setup.exe` 와 `Setup.exe.sha256` 은 짝이라 같이 올린다.** 설치 화면은 새 판을
+          #   받아 **띄우기 전에** 그 값과 견주는데, 자산이 빠진 릴리스에서는 견줄 값이 없어
+          #   **아무것도 못 재고** 받은 파일이 그대로 돈다. 서명이 없으니 이 한 줄이 그 자리의
+          #   유일한 문지기다. (#33)
+
+          # 릴리스가 이미 있나 — 없을 때 `view` 가 1 로 진다. 그 부재가 갈래를 가른다.
+          & gh release view $tag
+          if ($LASTEXITCODE -ne 0) {
+            # ⚠ **자산이 본문보다 먼저다.** 이 본문은 받는 사람이 **그 자리에서 무엇을 하나**
+            #   두 줄뿐이고, 「이 판이 무엇을 드는가」는 사람이 뒤에 덧붙인다 — 기계가 커밋
+            #   목록으로 채우면 받는 사람이 쓸 것이 아닌 글이 첫 화면에 선다.
+            $notes = @(
+              '받는 것은 아래 `Setup.exe` 하나다 — 받아서 두 번 누른다.',
+              '',
+              '⚠ 서명이 없어 윈도우가 한 번 막는다(SmartScreen). 받은 파일 속성에서 **차단 해제** 를 먼저 하면 안 뜬다.',
+              '',
+              '자세한 것은 묶음 안 `README.md` 가 든다. **이 판이 무엇을 드는지는 사람이 여기 덧붙인다.**'
+            ) -join "`n"
+            $target = (& git -C (Join-Path $env:GITHUB_WORKSPACE $env:DIST_DIR) rev-parse HEAD).Trim()
+            if ($LASTEXITCODE -ne 0) { throw "배포본의 커밋을 못 읽었다 (코드 $LASTEXITCODE)" }
+            & gh release create $tag --title $tag --target $target --notes $notes --latest
+            if ($LASTEXITCODE -ne 0) { throw "릴리스를 못 만들었다 (코드 $LASTEXITCODE)" }
+          } else {
+            # 이미 있으면 본문은 사람 것이라 안 건드리고, `--latest` 만 이 판으로 세운다.
+            & gh release edit $tag --latest
+            if ($LASTEXITCODE -ne 0) { throw "릴리스를 못 고쳤다 (코드 $LASTEXITCODE)" }
+          }
+
+          & gh release upload $tag $exe $sha --clobber
+          if ($LASTEXITCODE -ne 0) { throw "자산을 못 붙였다 (코드 $LASTEXITCODE)" }
+
+          # ⚠ **되읽는다 — 「올렸다」와 「붙어 있다」는 다른 명제다.** 자산이 빠진 릴리스는
+          #   화면에 소스 zip 만 남는데, 그것은 받는 사람이 쓸 것이 아니다.
+          $names = @(& gh release view $tag --json assets --jq '.assets[].name')
+          if ($LASTEXITCODE -ne 0) { throw "붙은 자산을 못 읽었다 (코드 $LASTEXITCODE)" }
+          foreach ($want in @('Setup.exe', 'Setup.exe.sha256')) {
+            if ($names -notcontains $want) {
+              throw "자산이 안 붙었다: $want (붙은 것 — $($names -join ', '))"
+            }
+          }
+          Write-Host "붙었다: $($names -join ' · ')"
