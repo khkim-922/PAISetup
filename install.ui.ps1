@@ -431,6 +431,28 @@ $bar.Size = New-Object Drawing.Size(592, 20)
 $bar.Minimum = 0; $bar.Maximum = 100
 $F.Controls.Add($bar)
 
+# ── 홈에 놓이는 것 — 스위치 없는 것일수록 누르기 전에 말한다 ─────────────────────
+# ⚠ **목록을 여기 옮기지 않는다.** 무엇이 어디에 놓이나의 진본은 install.ps1 의 [7/8] 표와
+#   README 「무엇이 깔리나」다 — 창은 그런 것이 놓인다는 한 줄과, 그것이 든 폴더로 가는 문만 든다.
+#   씨앗 셋은 고를 것이 아니라 환경이라 스위치가 없고, 그래서 더 말해야 한다 — 동의 없이 놓인다.
+# ⚠ **여는 것은 풀어 둔 이 폴더다** — README 와 홈으로 갈 씨앗의 원본이 같이 있다. 홈 쪽
+#   (`~/.claude/seeds`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
+$lHome = New-Label '홈 ~/.claude 에 사내 환경 문서와 씨앗 셋도 놓입니다 — 고르는 것이 아니라 환경이라 스위치가 없습니다.' 18 420 592 $false
+$lHome.ForeColor = [Drawing.Color]::DimGray
+$lnkHome = New-Object Windows.Forms.LinkLabel
+$lnkHome.Text = '무엇이 어디에 놓이나 — 폴더 열기 (README · posco · seeds)'
+$lnkHome.Location = New-Object Drawing.Point(18, 440)
+$lnkHome.Size = New-Object Drawing.Size(400, 16)
+$lnkHome.Add_LinkClicked({
+  try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $Here + '"') | Out-Null }
+  catch {
+    [Windows.Forms.MessageBox]::Show(
+      "폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $Here,
+      $AppName, 'OK', 'Warning') | Out-Null
+  }
+})
+$F.Controls.Add($lnkHome)
+
 $lState = New-Label '' 18 456 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
