@@ -1142,6 +1142,9 @@ if [ "$MODE" = install ]; then
       _msg="$(printf '%s\n' "$_lines" | grep -v '^[[:space:]]*at [^[:space:]]' | tail -1)"
       [ -n "$_msg" ] || _msg="$(printf '%s\n' "$_lines" | tail -1)"
       printf '%s\t%s\n' "$_n" "$(printf '%s' "$_msg" | cut -c1-160)" >> "$FAILS" 2>/dev/null; }
+    # 마지막 출력 줄은 부르는 쪽이 판정으로 쓴다 — 뒷길이 「받았다」인지 「이미 있다」인지는 이 줄에만
+    # 있고, 삼키면 초만 남아 헛받기가 안 보인다(#58). 설치 갈래에서만 도는 자리라 `tail` 하나는 싸다.
+    TRY_LAST="$(tail -1 "$_o" 2>/dev/null)"
     rm -f "$_o"
     return "$_r"
   }
@@ -1403,10 +1406,12 @@ if [ "$MODE" = install ]; then
     _fbroot="$(dirname "$(dirname "$_f")")"
     [ -f "$_fbroot/$_fb" ] || return 0
     _bt0=$SECONDS
+    # 판정을 같이 싣는다 — 스크립트의 마지막 `[browser]` 줄(받았다 / 이미 있다). 초만 찍으면
+    # 「받는 데 30초」와 「있는 것 확인에 30초」가 같은 얼굴이라 헛받기를 아무도 못 봤다(#58).
     if try "$_t" bash "$_fbroot/$_fb"; then
-      printf '  · %s — 브라우저 뒷길 (%s초)\n' "$_t" "$((SECONDS - _bt0))"
+      printf '  · %s — 브라우저 뒷길 (%s초 · %s)\n' "$_t" "$((SECONDS - _bt0))" "${TRY_LAST#\[browser\] }"
     else
-      printf '  · %s — 브라우저 뒷길이 졌다 (%s초)\n' "$_t" "$((SECONDS - _bt0))"
+      printf '  · %s — 브라우저 뒷길이 졌다 (%s초 · %s)\n' "$_t" "$((SECONDS - _bt0))" "${TRY_LAST#\[browser\] }"
     fi
   }
   wire_tool() {  # wire_tool <선언파일> <이름> — node-link: 이름 해석이 되게 만든다
