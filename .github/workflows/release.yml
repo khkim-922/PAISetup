@@ -21,6 +21,10 @@
 # ⚠ **윈도우 러너여야 한다** — 짐을 마는 `tar.exe`(푸는 그 자와 같은 구현이어야 한다) ·
 #   아이콘과 VERSIONINFO 를 박는 `zig rc` · `Get-FileHash` 가 다 윈도우 것이고, 굽는 자가
 #   파워셸 5.1 로 쓰였다.
+# ⚠ **인라인 걸음은 `pwsh` 다 — `powershell`(5.1)이 아니다.** 러너는 `run:` 본문을 BOM 없는
+#   임시 .ps1 로 쓰는데 5.1 은 그것을 ANSI 로 읽어 한국어가 깨지고 **따옴표까지 잃어** 파서가
+#   진다(실측 2026-09-16 · 첫 실행 35049371670). 굽는 자는 여기서 `powershell -File` 로 따로
+#   띄우므로 5.1 그대로다 — 파일에 BOM 이 있다.
 #
 # ⚠ **진본 저장소는 비공개다** — 러너가 받으려면 읽기 전용 토큰이 이 저장소의 시크릿
 #   `CLAUDE_CONFIG_TOKEN` 에 있어야 한다. 없으면 둘째 걸음에서 바로 진다.
@@ -92,7 +96,7 @@ jobs:
           version: 0.16.0
 
       - name: 태그를 정하고 VERSION 과 견준다
-        shell: powershell
+        shell: pwsh
         env:
           # ⚠ **사람이 친 값을 스크립트 본문에 끼워 넣지 않는다.** `${{ }}` 는 셸이 뜨기 전에
           #   글자로 치환되므로, 따옴표 하나가 든 입력이 그 자리에서 **코드가 된다.**
@@ -123,7 +127,7 @@ jobs:
           [IO.File]::AppendAllText($env:GITHUB_ENV, "TAG=$tag`n", (New-Object Text.UTF8Encoding($false)))
 
       - name: 굽는다 — 문 셋을 지나 exe 와 지문을 낸다
-        shell: powershell
+        shell: pwsh
         run: |
           # ⚠ **사람이 치던 그 줄을 그대로 부른다** — 별도 프로세스에 `-File` 이다.
           #   여기서 다른 꼴로 부르면 릴리스 절차의 진본이 둘이 된다.
@@ -145,7 +149,7 @@ jobs:
 
       - name: 릴리스에 자산 둘을 붙인다
         if: env.TAG != ''
-        shell: powershell
+        shell: pwsh
         env:
           # ⚠ **여기 토큰은 러너가 제 손으로 든 것이다.** 사람 PC 의 세밀 토큰에는 Contents
           #   권한이 일부러 없어(결정 0025) `gh release` 가 403 으로 지는데, 이 자리는 위
