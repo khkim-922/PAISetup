@@ -200,10 +200,10 @@ function New-Label($text, $x, $y, $w, $bold) {
   $F.Controls.Add($l); return $l
 }
 
-# ⚠ **첫 줄은 자리를 안 뒤에 채운다.** 확장·CLI 는 셋(Claude · Codex · Gemini)이 어디서나 서고(결정 0045),
-#   자리가 가르는 것은 그 뒤에 무엇으로 붙나다 — 사내는 회사 키, 사외는 각자 로그인. 그 반 줄이 자리를 안
-#   뒤에야 참이 된다. 무엇이 회사 키로 물리나는 값 파일의 틀 지시가 든다.
-$lTop = New-Label '' 18 14 560 $true
+# ⚠ **첫 줄은 자리를 안 가른다.** 확장·CLI 는 셋(Claude · Codex · Gemini)이 어디서나 선다(결정 0045).
+#   자리가 가르는 것 — 회사 키로 붙나, 각자 로그인인가 — 는 아래 키 칸의 안내가 든다. 옛 판은 그 반 줄을
+#   첫 줄에 붙여 한 줄 칸을 넘쳤고, 넘친 글이 둘째 줄과 겹쳐 둘 다 못 읽었다.
+$lTop = New-Label 'Claude · Codex · Gemini 확장과 CLI 를 VS Code 에 세웁니다.' 18 14 560 $true
 New-Label '이미 깔린 것은 건너뜁니다. 여러 번 눌러도 안전합니다.' 18 34 560 $false | Out-Null
 
 # ── 값 ──────────────────────────────────────────────────────────────────────────
@@ -227,14 +227,11 @@ if ($probe -and ($probe -match '^(.+):(\d+)$')) {
 $more = @()
 if (Get-Directive 'codex-config')  { $more += 'Codex' }
 if (Get-Directive 'gemini-config') { $more += 'Gemini' }
-$lTop.Text = if ($probe -and -not $offsite -and $more.Count) {
-               "VS Code 에 Claude · Codex · Gemini 확장과 CLI 를 세웁니다 — $($more -join ' · ') 는 회사 키로 붙습니다." }
-             else { 'VS Code 에 Claude · Codex · Gemini 확장과 CLI 를 세웁니다 — Codex · Gemini 는 각자 로그인으로 씁니다.' }
 $gV = New-Object Windows.Forms.GroupBox
 $noAsk = $offsite
 $gV.Text = if ($noAsk) { '키와 주소' } elseif ($urlPreset) { 'API 키' } else { '게이트웨이 (사내만)' }
 $gV.Location = New-Object Drawing.Point(16, 62)
-$gV.Size = New-Object Drawing.Size(592, 118)
+$gV.Size = New-Object Drawing.Size(592, 124)   # 안내가 두 줄(86+34)이라 118 로는 아래 줄이 테두리에 물린다
 $F.Controls.Add($gV)
 
 $lUrl = New-Object Windows.Forms.Label
@@ -278,13 +275,15 @@ if (-not $noAsk) {
 }
 
 $lHint = New-Object Windows.Forms.Label
-$lHint.Location = New-Object Drawing.Point(128, 86)
-$lHint.Size = New-Object Drawing.Size(444, 20)
+$lHint.Location = New-Object Drawing.Point(128, $(if ($noAsk) { 56 } else { 86 }))   # 사외면 키 줄이 비어 그 자리로
+$lHint.Size = New-Object Drawing.Size(444, 34)   # 두 줄 — 자리 판정과 로그인 안내가 같이 든다
 $lHint.ForeColor = [Drawing.Color]::DimGray
 # ⚠ **사외에서는 넣을 것이 없다.** 게이트웨이를 안 타고 구독 로그인으로 서기 때문이다 —
 #   그런데 옛 판은 둘을 필수로 물어, 안 쓰는 자리에서도 넣으라 하고 안 넣으면 막았다.
-$lHint.Text = if ($offsite) { '구독 로그인으로 섭니다 — 설치 뒤 claude auth login.' }
-              elseif ($urlPreset) { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' }
+$lHint.Text = if ($offsite) { '회사 키를 안 씁니다 — Claude 는 설치 뒤 claude auth login,' +
+                               ' Codex · Gemini 는 각 확장에서 로그인합니다.' }
+              elseif ($urlPreset) { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' +
+                                    $(if ($more.Count) { " $($more -join ' · ') 도 같은 키로 붙습니다." } else { '' }) }
               else { '사내면 주소와 키를 넣습니다. 사외면 둘 다 비워 두세요 — 구독 로그인으로 섭니다.' }
 $gV.Controls.Add($lHint)
 
@@ -303,7 +302,7 @@ $gO.Controls.Add($cDev)
 # ⚠ GitHub CLI 는 깔려도 로그인 전에는 안 돈다 — 처음 쓰는 사람은 여기서 그것을 알 데가 없었다.
 #   설정 저장소를 쓰는 사람은 훅이 토큰을 심어 로그인이 필요 없지만, 그것은 저장소 쪽 사정이다.
 $lDev = New-Object Windows.Forms.Label
-$lDev.Text = '저장소를 받으려면 Git 이 필요합니다. 저장소를 넣었으면 GitHub CLI 로그인을 설치가 띄웁니다(코드 팝업).'
+$lDev.Text = 'Git 이 있어야 저장소를 받습니다. 저장소를 넣었으면 GitHub 로그인 창(코드 팝업)이 뜹니다.'
 $lDev.Location = New-Object Drawing.Point(34, 44)
 $lDev.Size = New-Object Drawing.Size(542, 16)
 $lDev.ForeColor = [Drawing.Color]::DimGray
@@ -354,9 +353,9 @@ $lRepo = New-Object Windows.Forms.Label
 $lRepo.Location = New-Object Drawing.Point(16, 52)
 $lRepo.Size = New-Object Drawing.Size(556, 34)
 $lRepo.ForeColor = [Drawing.Color]::DimGray
-$lRepo.Text = '아무 git 저장소나 됩니다 (코드 저장소도) — ~/repos/<이름> 에 받아만 둡니다.' +
-              ' 설정 저장소(뿌리에 .claude/hooks/session-start.sh)면' +
-              ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
+# ⚠ **줄을 둘로 못박는다** — 칸이 두 줄 높이라 흘려 접으면 셋째 줄이 아래 링크와 겹친다.
+$lRepo.Text = '아무 git 저장소나 됩니다 — ~/repos/<이름> 에 받아 둡니다.' + [Environment]::NewLine +
+              '설정 저장소(뿌리에 .claude/hooks/session-start.sh)면 개인 키 · 형제 저장소 · 배포까지 이어집니다.'
 $gR.Controls.Add($lRepo)
 
 # ── 안내 한 장을 여는 링크 ──────────────────────────────────────────────────────
@@ -390,15 +389,10 @@ $gR.Controls.Add($lnkRepo)
 # 넣어도 위 키 칸은 그대로 산다 — 무엇이 더 서는지만 화면이 보여준다
 $syncRepo = {
   $on = [bool]$tRepo.Text.Trim()
-  $lRepo.Text = if ($on) {
-                  '다 세운 뒤 ~/repos/<이름> 에 받습니다 (코드 저장소면 그것으로 끝).' +
-                  ' 설정 저장소(뿌리에 .claude/hooks/session-start.sh)면 --install 로 불러' +
-                  ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
-                } else {
-                  '아무 git 저장소나 됩니다 (코드 저장소도) — ~/repos/<이름> 에 받아만 둡니다.' +
-                  ' 설정 저장소(뿌리에 .claude/hooks/session-start.sh)면' +
-                  ' 그 뒤(개인 키 · 형제 저장소 · 배포)를 그것이 잇습니다.'
-                }
+  $lRepo.Text = $(if ($on) { '다 세운 뒤 ~/repos/<이름> 에 받습니다 — 코드 저장소면 거기서 끝.' }
+                  else     { '아무 git 저장소나 됩니다 — ~/repos/<이름> 에 받아 둡니다.' }) +
+                [Environment]::NewLine +
+                '설정 저장소(뿌리에 .claude/hooks/session-start.sh)면 개인 키 · 형제 저장소 · 배포까지 이어집니다.'
 }
 $tRepo.Add_TextChanged($syncRepo)
 
