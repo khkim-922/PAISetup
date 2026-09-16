@@ -17,13 +17,17 @@
 
   ① **판정을 세우는데 계수를 안 읽는다** — `report(`·`show(` 를 부르면서 `passes` 를 한 번도
      안 부른다. 초록 줄이 건수를 찍을 재료가 그 파일에 없다.
-  ② **초록 줄에 아라비아 숫자가 손글자로 앉았다** — 「전부 통과」 뒤 괄호 안에 리터럴 숫자.
-     `f"…{len(passes())}건…"` 은 상수 조각에 숫자가 없어 안 걸린다 — 그것이 옳은 꼴이다.
+  ② **초록 줄에 아라비아 숫자가 손글자로 앉았다** — 「전부 통과」 뒤 같은 상수 조각에 리터럴
+     숫자. **괄호만 물지 않는다** — 옛 그물은 「전부 통과 바로 뒤 괄호 안」만 봐서 줄표·쉼표·
+     콜론·맨공백 꼴(`전부 통과 — 판정 20건`)을 초록으로 보냈다(claude-config #45 ⑤ · 현행범은
+     없었고 그물만 좁았다). `f"…{len(passes())}건…"` 은 상수 조각에 숫자가 없어 안 걸린다 —
+     그것이 옳은 꼴이다.
 
 ⚠ **양성 대조가 판정보다 먼저 선다.** §1 이 일부러 어긋난 검체 둘과 제 꼴 하나로 둘이 실제로
   무는지 보이고, 파일을 한 장도 못 읽으면 「못 쟀다」(2)로 나간다.
 
-**안 재는 것** — 한국어 수사(「다섯 항」·「계약 아홉」)로 적은 범위(글자가 곧 뜻이라 기계가
+**안 재는 것** — **머리말(docstring)에 적힌 꼴**(어긋난 꼴을 *말하는* 자리라 물면 받는 자가 제
+머리말을 문다 — `_docstrings()` 가 그 자리를 뺀다) · 한국어 수사(「다섯 항」·「계약 아홉」)로 적은 범위(글자가 곧 뜻이라 기계가
 못 가른다 — 그 자리는 사람이 읽는다) · `.mjs`·`.sh`(이 자는 파이썬 AST 만 읽는다 — `.mjs` 의
 초록 줄은 곁 `shell_exit_check.py` ⑤ 가 물고 `.sh` 는 아직 무는 자가 없다) · 판정을 안 세우는
 파일(재는 자 · 부품 — 계수를 읽을 까닭이 없다) · 초록 줄의 **범위**가 맞는 말인가(건수가
@@ -42,7 +46,10 @@ HERE = Path(__file__).resolve().parent
 SUFFIX = ".py"
 JUDGES = ("report", "show")          # 판정을 세우는 손 — `edge`·`unmeasured` 는 계수에 안 든다
 COUNTER = "passes"
-HAND_DIGIT = re.compile(r"전부 통과\s*[\(（][^\)）]*\d")
+# 「전부 통과」 **뒤에 구분자 한 자 이상**(빈칸·괄호·줄표·쉼표·콜론)이 오고, 그 뒤 같은 줄에
+# 리터럴 숫자가 앉은 자리. 구분자를 요구하는 까닭은 「전부 통과다」처럼 낱말이 이어지는 자리와
+# 가르기 위해서고, 괄호에 안 가두는 까닭은 초록 줄이 괄호로만 범위를 다는 것이 아니어서다.
+HAND_DIGIT = re.compile(r"전부 통과[\s\(（—–,，:：-]+[^\n\)）]*?\d")
 
 
 def _called(tree, name):
@@ -57,11 +64,31 @@ def _called(tree, name):
     return False
 
 
+def _docstrings(tree):
+    """머리말로 선 글자 조각들 — **무는 자리에서 뺀다.**
+
+    머리말은 이 검사가 *무엇을 무나를 말하는* 자리다. 거기 적은 어긋난 꼴(「전부 통과 — 판정
+    20건」)을 그대로 물면 **받는 자가 제 머리말을 문다** — 곁 `borrowed_check.py` 가 굵은 꼴
+    곁말만 무는 것이 같은 자리다. 초록 줄은 찍히는 글자지 머리말이 아니다.
+    """
+    out = set()
+    for n in ast.walk(tree):
+        if not isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        first = n.body[0] if n.body else None
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                and isinstance(first.value.value, str):
+            out.add(id(first.value))
+    return out
+
+
 def _hand_digits(tree):
-    """「전부 통과 (…숫자」 꼴의 상수 조각 — (줄, 글자)."""
+    """「전부 통과 … 숫자」 꼴의 상수 조각 — (줄, 글자). 구분자는 괄호에 안 매인다."""
+    said = _docstrings(tree)
     out = []
     for n in ast.walk(tree):
-        if isinstance(n, ast.Constant) and isinstance(n.value, str) and HAND_DIGIT.search(n.value):
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) \
+                and id(n) not in said and HAND_DIGIT.search(n.value):
             out.append((n.lineno, n.value.strip()[:60]))
     return out
 
@@ -88,10 +115,32 @@ print("전부 통과" if not fails() else "어긋남")
 """),
     # ⚠ 검체의 손글자를 **이 파일에서는 이어 붙여** 둔다 — 한 상수로 두면 이 검사가 제 검체를 문다.
     #   검체 원문은 이어 붙인 결과라 그대로 한 상수이고, 그래서 판정 ② 가 문다.
-    ("②", "초록 줄 숫자가 손글자다", """
+    ("②", "초록 줄 숫자가 손글자다 — 괄호 꼴", """
 from _verdict import fails, passes, report
 report("하나", True)
 print("✅ 전부 통과 (판정 """ + """20건 — 넷·셋)" if not fails() else f"{len(fails())}건 · {len(passes())}")
+"""),
+    # ⚠ 아래 셋이 **이 판에서 넓힌 자리**다 — 옛 그물은 괄호만 물어 이 꼴들을 초록으로
+    #   보냈다(#45 ⑤). 검체를 안 세우면 넓힌 그물이 도로 좁아져도 볼 자가 없다.
+    ("②", "초록 줄 숫자가 손글자다 — 줄표 꼴", """
+from _verdict import fails, passes, report
+report("하나", True)
+print("✅ 전부 통과 — 판정 """ + """20건" if not fails() else f"{len(fails())}건 · {len(passes())}")
+"""),
+    ("②", "초록 줄 숫자가 손글자다 — 콜론 꼴", """
+from _verdict import fails, passes, report
+report("하나", True)
+print("✅ 전부 통과: 판정 """ + """20건" if not fails() else f"{len(fails())}건 · {len(passes())}")
+"""),
+    ("②", "초록 줄 숫자가 손글자다 — 쉼표 꼴", """
+from _verdict import fails, passes, report
+report("하나", True)
+print("✅ 전부 통과, 판정 """ + """20건" if not fails() else f"{len(fails())}건 · {len(passes())}")
+"""),
+    ("②", "초록 줄 숫자가 손글자다 — 구분자 없이 빈칸 하나", """
+from _verdict import fails, passes, report
+report("하나", True)
+print("✅ 전부 통과 """ + """20건" if not fails() else f"{len(fails())}건 · {len(passes())}")
 """),
 ]
 
@@ -110,7 +159,7 @@ def helper(x):
 
 
 def positive_control():
-    print("--- §1 양성 대조 — 일부러 어긋난 검체 둘이 정말 빨개지나")
+    print(f"--- §1 양성 대조 — 일부러 어긋난 검체 {len(BAD)}이 정말 빨개지나")
     for want, said, src in BAD:
         got, _ = judge(src, "<검체>")
         report(f"{want} {said}", len(got) == 1 and got[0][2] == want,

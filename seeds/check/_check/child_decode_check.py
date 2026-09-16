@@ -26,6 +26,12 @@ claude-config #25(2026-09-13 실측 — 어느 저장소에서나 도는 것 18�
   받는다. 원본의 ①∼④ 는 그 저장소의 서버 함수·콘솔층·수확기·굽는 자를 **이름으로** 잡는 절이라
   여기 안 산다. 그중 익명이 되는 축 셋만 위 꼴로 섰다.
 
+⚠ **근거 대고 뺄 자리는 곁 선언 `child_decode.conf` 의 `[skip]` 이 든다** — 열쇠는
+  `파일이름:라벨` 이고, 라벨은 그 자리를 **감싼 def·class 의 점 이름**이다(아무것도 안 감싼
+  자리는 `<module>` · 자식 쪽 ㉢ 은 통로 이름 `stdout`·`stderr`). 판정 줄이 찍는 글자가 곧
+  열쇠다. 줄 번호로 쥐던 옛 꼴(`server.py:51`)은 위에 한 줄만 나도 밀려 **뺀 자리가 조용히
+  옮겨 갔다** — 그 꼴로 적힌 열쇠는 안 물고 경계에 이름을 대고 찍는다(claude-config #45 ⑤).
+
 ⚠ **양성 대조가 실물 판정보다 먼저 선다.** 인자를 주면 §1 이 일부러 어긋난 검체 넷과 제 꼴
   셋으로 탐지기가 무는지 보이고, 기전은 갈래 A(엄격 부모가 까닭을 잃는다)가 제 양성 대조다.
   자식 통로가 안 누우면 초록이 아니라 「못 쟀다」(2)로 나간다.
@@ -45,6 +51,7 @@ claude-config #25(2026-09-13 실측 — 어느 저장소에서나 도는 것 18�
 import ast
 import configparser
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -65,6 +72,9 @@ DECODERS = ("subprocess.run", "subprocess.Popen", "subprocess.check_output")
 # 이 낱말 중 하나라도 있으면 그 호출은 바이트가 아니라 글자를 받는다 — 곧 해독이 있다.
 TEXT_KEYS = ("text", "universal_newlines", "encoding")
 STREAMS = ("stdout", "stderr")
+# 곁 선언의 **열쇠가 되는 라벨** — 감싼 def·class 의 점 이름이고, 아무것도 안 감싼 자리는 이것.
+MODULE_LABEL = "<module>"
+SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 REASON = "자식이 남긴 실패 까닭 — 총량 34건 ≠ 실제 12건"   # 자식이 눕기 전에 남기는 말
 DONE = "자식이 낸 성공 한 줄 — 12건 처리"                   # 자식이 성할 때 내는 말
@@ -90,9 +100,29 @@ def _has(call, name):
     return any(k.arg == name for k in call.keywords)
 
 
+def _labels(tree):
+    """노드 → **그 자리를 감싼 def·class 의 점 이름.** 모듈 자리는 `MODULE_LABEL`.
+
+    곁 선언이 근거 대고 뺄 자리를 가리키는 **열쇠**가 이 이름이다. 줄 번호는 위에 한 줄만
+    나도 밀려, 뺀 자리가 조용히 다른 자리로 옮겨 가거나 아무 데도 안 가리키게 된다 —
+    형제 `record_names_gen` 이 통로를 셀 때 줄이 아니라 라벨로 세는 까닭이 같다.
+    """
+    out = {id(tree): MODULE_LABEL}
+
+    def walk(node, path):
+        for child in ast.iter_child_nodes(node):
+            here = path + [child.name] if isinstance(child, SCOPES) else path
+            out[id(child)] = ".".join(here) or MODULE_LABEL
+            walk(child, here)
+
+    walk(tree, [])
+    return out
+
+
 def judge_parent(src, name):
     """부모 쪽 원문 한 장 — `(어긋남들, 잴 자리 수)`. 제 꼴이면 빈 목록."""
     tree = ast.parse(src)
+    where = _labels(tree)
     out, sites = [], 0
     for dotted in DECODERS:
         for call in _calls(tree, dotted):
@@ -100,11 +130,11 @@ def judge_parent(src, name):
                 continue          # 바이트로 받는다 — 해독이 없어 잃을 말도 없다
             sites += 1
             if not _has(call, "encoding"):
-                out.append((name, call.lineno, "㉠",
+                out.append((name, where[id(call)], call.lineno, "㉠",
                             f"`{dotted}` 이 해독 판을 안 박았다 — 기계의 기본판을 따라가 "
                             "자리마다 다른 글자가 온다"))
             if not _has(call, "errors"):
-                out.append((name, call.lineno, "㉡",
+                out.append((name, where[id(call)], call.lineno, "㉡",
                             f"`{dotted}` 이 엄격하게 읽는다 — 자식이 남긴 까닭이 "
                             "해독에서 걸려 통째로 사라진다"))
     return out, sites
@@ -118,7 +148,9 @@ def judge_child(src, name):
         call = _calls(tree, f"sys.{stream}.reconfigure")
         got = _kw(call[0], "encoding") if call else None
         if len(call) != 1 or got != "utf-8":
-            out.append((name, call[0].lineno if call else 0, "㉢",
+            # ㉢ 의 라벨은 **통로 이름**이다 — 한 파일에 통로마다 판정이 하나씩이고, 아예 안
+            # 세운 판에는 감쌀 자리조차 없다(줄 0). 감싼 이름을 쓰면 둘이 한 열쇠로 겹친다.
+            out.append((name, stream, call[0].lineno if call else 0, "㉢",
                         f"{stream} 를 utf-8 로 안 세운다 — {len(call)}건 · encoding={got!r}"))
     return out, len(STREAMS)
 
@@ -162,21 +194,40 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 """
 
+# 곁 선언이 쥘 **열쇠**가 줄이 아니라 이름인가 — 감싼 def 가 있는 검체.
+LABELLED_PARENT = """
+import subprocess
+def _build_stamp():
+    subprocess.run(["git", "rev-parse"], capture_output=True, text=True, encoding="utf-8")
+"""
+LABELLED_NAME = "_build_stamp"
+
 
 def positive_control():
     print("--- §1 양성 대조 — 탐지기가 볼 줄 아나 (이게 빨가면 아래 초록은 다 무의미하다)")
     for want, said, src in BAD_PARENT:
         got, sites = judge_parent(src, "<검체>")
         report(f"부모 {want} {said}",
-               len(got) == 1 and got[0][2] == want and sites == 1,
-               [f"{len(got)}건 · 갈래 {[r[2] for r in got]} · 잴 자리 {sites}곳 "
+               len(got) == 1 and got[0][3] == want and sites == 1,
+               [f"{len(got)}건 · 갈래 {[r[3] for r in got]} · 잴 자리 {sites}곳 "
                 f"(기대 {want} 하나)"])
     got, _ = judge_child(BAD_CHILD, "<검체>")
     report("자식 ㉢ 두 통로를 다 안 세운 자를 짚는다", len(got) == len(STREAMS),
            [f"{len(got)}건 · 기대 {len(STREAMS)}"])
     got, _ = judge_child(HALF_CHILD, "<검체>")
     report("자식 ㉢ 한 통로만 세운 자를 짚는다 — 빠진 stderr 가 보인다", len(got) == 1,
-           [f"{len(got)}건 · 갈래 {[r[2] for r in got]} (기대 하나)"])
+           [f"{len(got)}건 · 갈래 {[r[3] for r in got]} (기대 하나)"])
+
+    # ── 곁 선언의 열쇠 — **줄이 아니라 라벨이다.** 줄로 쥐면 편집마다 밀린다(#45 ⑤) ──
+    got, _ = judge_parent(LABELLED_PARENT, "<검체>")
+    report(f"부모 판정의 라벨은 감싼 def 이름이다 — `{LABELLED_NAME}`",
+           [r[1] for r in got] == [LABELLED_NAME], [repr(got)])
+    got, _ = judge_parent(BAD_PARENT[0][2], "<검체>")
+    report(f"아무것도 안 감싼 자리의 라벨은 `{MODULE_LABEL}` 이다",
+           [r[1] for r in got] == [MODULE_LABEL], [repr(got)])
+    got, _ = judge_child(BAD_CHILD, "<검체>")
+    report("자식 ㉢ 의 라벨은 통로 이름이다 — 둘이 한 열쇠로 안 겹친다",
+           [r[1] for r in got] == list(STREAMS), [repr(got)])
 
     print("\n--- §2 음성 대조 — 제 꼴과 대상 아닌 자는 안 문다")
     got, sites = judge_parent(GOOD_PARENT, "<제 꼴>")
@@ -335,10 +386,20 @@ def parse(args):
 
 
 CONF = "child_decode.conf"
+# 옛 꼴 열쇠 — 라벨 자리에 줄 번호가 앉은 것. 안 물고 **이름을 대고** 경계로 찍는다.
+OLD_KEY = re.compile(r":\d+$")
 
 
 def _skips():
-    """곁 선언 `[skip]` — `파일이름:줄 = 까닭`. 근거 대고 빼는 자리다 — 씨앗은 선언을 안 싣는다.
+    """곁 선언 `[skip]` — `파일이름:라벨 = 까닭`. 근거 대고 빼는 자리다 — 씨앗은 선언을 안 싣는다.
+
+    **라벨은 그 자리를 감싼 def·class 의 점 이름**이다(`server.py:_build_stamp`). 아무것도 안
+    감싼 자리는 `<module>` 이고, 자식 쪽 ㉢ 은 통로 이름(`stdout`·`stderr`)이 라벨이다 — 열쇠는
+    이 검사가 판정 줄에 찍는 글자 그대로다.
+
+    ⚠ **옛 열쇠는 줄 번호였다**(`server.py:51`). 위에 한 줄만 나도 밀려, 뺀 자리가 조용히 다른
+      자리로 옮겨 가거나 아무 데도 안 가리키게 된다 — 근거 대고 뺀 것이 눈감은 것이 되는
+      자리다(claude-config #45 ⑤). 옛 꼴로 적힌 열쇠는 안 물고 **경계에 이름을 대고 찍는다.**
 
     옛 판(아뜰리에)은 「답이 ASCII 라」 `git rev-parse` 한 자리를 산문으로 뺐고, 씨앗의 넓은 그물은
     그 자리를 문다. 빼는 것은 되, **까닭이 판정 옆에 찍혀야** 한다 — 눈감은 자리와 갈리게.
@@ -362,8 +423,11 @@ def sweep(what, paths, judge):
         key = f"{row[0]}:{row[1]}"
         (skipped if key in skips else kept).append(row)
     bad = kept
-    for rel, lineno, _kind, _said in skipped:
-        edge(f"**근거 대고 뺐다** — {rel}:{lineno} · {skips[f'{rel}:{lineno}']}")
+    for rel, label, lineno, _kind, _said in skipped:
+        edge(f"**근거 대고 뺐다** — {rel}:{label} (줄 {lineno}) · {skips[f'{rel}:{label}']}")
+    for key in sorted(k for k in skips if OLD_KEY.search(k)):
+        edge(f"**옛 꼴 열쇠라 안 물었다** — `[skip]` 의 `{key}` 는 줄 번호로 적혀 있다. "
+             f"라벨(`파일:감싼 이름`)로 고친다 — 판정 줄이 찍는 글자 그대로다")
     if not seen:
         raise Unmeasured(f"[안 잼] {what} 파일을 한 장도 못 읽었다 — 어떻게 주나: "
                          "파이썬 원문의 경로를 준다")
@@ -372,8 +436,8 @@ def sweep(what, paths, judge):
     if not sites:
         raise Unmeasured(f"[안 잼] {what} 잴 자리가 0 곳이다 (파일 {seen}장) — 어떻게 주나: "
                          "자식을 부르는(또는 자식으로 불리는) 원문을 준다")
-    for rel, lineno, kind, said in bad:
-        report(f"{rel}:{lineno} — {kind}", False, [said])
+    for rel, label, lineno, kind, said in bad:
+        report(f"{rel}:{label} (줄 {lineno}) — {kind}", False, [said])
     report(f"{what} 계약을 어기는 자리가 없다 (파일 {seen}장 · 잴 자리 {sites}곳)", not bad)
     for row in unreadable:
         edge(f"**못 읽은 파일** — {row} · 판정이 아니라 **안 잰 자리**다")

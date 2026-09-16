@@ -30,20 +30,37 @@
   곧 「자리가 틀렸다」는 빨강이다). 진본의 경로는 곁말 안의 백틱 `seeds/…` 에서 읽는다.
   줄끝(CRLF)과 BOM 은 안 본다 — 사본이 사는 저장소의 체크아웃이 그것을 바꾼다.
 
+**곁말을 못 다는 사본도 있다 — `.githooks/` 조각이 그렇다.** 셸 조각과 훅 몸통은 씨앗 뿌리 밖
+(설정 저장소의 `.githooks/`)에서 와서 가리킬 `seeds/…` 자리가 없다. 그래서 그 쪽은 **곁말이
+아니라 자리로** 맞춘다 — 이 나무의 `.githooks/<쪽>` 을 진본 저장소의 같은 자리와 글자로 견준다.
+없던 동안 「고치지 않는다」는 산문뿐이었고, 아뜰리에에서 `encoding.sh` 가 한 번 갈렸는데 진본 판인지
+견준 자가 없었다(claude-config #45 ③). 진본 저장소가 이 기계 어디 붙었나는 **묻지 않고 받는다** —
+그 물음의 진본은 배포본 `.githooks/claude-config-path.sh` 이고 이 자는 그것을 태워 `CONFIG_ROOT`
+만 받는다(후보 목록을 여기 옮겨 적으면 손사본이 되어 한쪽이 움직일 때 다른 쪽이 조용히 낡는다).
+
 **어느 판의 진본과 견줬나를 판정 줄이 말한다.** 진본 뿌리의 판은 뿌리에 놓인 `.version` 한
 줄(`<claude-config 짧은 해시> <ISO 날짜>` · 홈에 씨앗을 미는 자가 남긴다) → 뿌리가 git 나무면
 HEAD → 둘 다 없으면 **「판 모름」** 차례로 읽는다. 옛 판은 마지막 자리에서 **오늘 날짜**를 냈고,
 그래서 낡은 홈과 견준 초록이 최신처럼 읽혔다 — 까닭은 `_stamp()` 머리말이 든다.
 
-⚠ **양성 대조가 판정보다 먼저 선다.** 곁말을 못 읽거나 진본 뿌리가 없으면 어긋남 0 이 나는데,
-  그 0 은 초록이 아니다 — §1 이 임시 뿌리에 진본·사본 넷을 지어 같음·어긋남·CRLF·자리 틀림이
-  실제로 갈리는지 보이고, 곁말 든 파일이 한 장도 없으면 「못 쟀다」(2)로 나간다.
+⚠ **잴 수 있나를 §1 보다 먼저 묻는다.** §1 의 판정들은 *탐지기가 무나*를 보이는 자검이지 이
+  나무를 잰 것이 아니다. 진본 뿌리가 없거나 곁말 든 파일이 한 장도 없는 판에서 그 열 줄만
+  `[OK]` 로 찍히면 화면은 열 건을 잰 것처럼 보인다 — 러너 홈에 `~/.claude/seeds` 가 없는 CI 가
+  그 판이고, 거기서 씨앗 사본을 손으로 고쳐도 초록이 났다(claude-config #45 ②). 못 재는 판은
+  **한 줄도 안 찍고** 까닭을 대며 「못 쟀다」(2)로 나간다.
+
+⚠ **양성 대조가 판정보다 먼저 선다.** 곁말을 못 읽으면 어긋남 0 이 나는데 그 0 은 초록이
+  아니다 — §1 이 임시 뿌리에 진본·사본 넷을 지어 같음·어긋남·CRLF·자리 틀림이 실제로 갈리는지
+  보이고, `.githooks/` 갈래는 **일부러 갈린 조각 사본**이 정말 빨개지는지 보인다.
 
 **안 재는 것** — 곁말 없이 베낀 사본(이름이 같아도 곁말이 없으면 이 자에게는 남이다 — 그것은
 `drift_check` 류 재는 자의 몫) · 곁말이 든 **판 번호**가 진본의 지금 판인가(글자가 같으면 판은
 묻지 않는다) · **진본 뿌리가 그 나무의 최신 판인가**(판을 찍기만 하고 묻지 않는다 — 찍힌 판이
 그 물음의 재료다) · 곁말 밖에서 **일부러 갈랐다**고 선언한 파일(그 선언이 있으면 곁말도 없어야
-한다 — 둘 다 있으면 어긋남으로 뜬다, 그것이 맞다).
+한다 — 둘 다 있으면 어긋남으로 뜬다, 그것이 맞다) · 저장소가 제 손으로 드는 선언(`gates.conf`
+— 제 머리말이 「저장소가 커밋한다(배포본이 아니다)」고 말한다) · 진본에는 있는데 이 나무에
+**없는** 조각(배포가 안 닿은 자리는 `gates.conf` 의 「선언에 있는데 조각이 없으면」이 문다) ·
+진본 저장소가 이 기계에 안 붙은 판(그 갈래는 판정이 아니라 **안 잰 자리**다).
 
 토큰도 망도 브라우저도 안 쓴다.
 """
@@ -71,6 +88,16 @@ DEFAULT_SEEDS = Path.home() / ".claude" / "seeds"
 # `deploy.ps1` 의 「씨앗의 판 줄」 칸과 세션 훅 `deploy_home_norms` 의 씨앗 칸이 그 둘이다.
 # 이름이 한 낱말이라 선언 파일로 안 뽑는다 — 쓰는 자 둘과 이 자가 곁말로 서로를 가리킨다.
 VERSION_FILE = ".version"
+
+# 곁말을 못 다는 배포본이 사는 자리 — 설정 저장소의 `.githooks/` 가 통째로 뿌려진다.
+# 이 이름은 **곁 `shell_exit_check.py` 도 문다**(그 자의 `.sh` 팔이 여기까지 온다) — 걷는
+# 손을 두 자리에 손으로 적지 않게 이 자가 진본으로 들고 저쪽이 불러 간다.
+HOOKS = ".githooks"
+# 배포본이 **아닌** 것 — `gates.conf` 는 제 머리말이 「이 저장소가 어느 검사를 켜나 … 저장소가
+# 커밋한다(배포본이 아니다)」고 스스로 말한다. 그 선언이 진본이라 여기서 다시 판단하지 않는다.
+HOOKS_LOCAL = ("gates.conf",)
+# 진본 저장소가 이 기계 어디 붙었나를 **아는 자** — 후보 목록도 지문도 저쪽이 든다.
+HOOKS_FINDER = "claude-config-path.sh"
 
 
 # ── 곁말을 읽는다 ──────────────────────────────────────────────────────────────
@@ -206,11 +233,100 @@ def compare(copy_text, source_text, start):
     return False, len(diff)
 
 
+# ── 곁말을 못 다는 배포본 — `.githooks/` 는 자리로 맞춘다 ──────────────────────
+
+def hooks_root(start):
+    """`.githooks/` 를 든 나무 뿌리 — 제 자리부터 위로 훑는다. 없으면 None.
+
+    `_check/` 는 저장소마다 다른 깊이에 산다(형제는 뿌리 바로 아래 · 씨앗 저장소는
+    `seeds/check/` 아래). 깊이를 박지 않고 **폴더가 나올 때까지** 올라가는 까닭이 그것이다.
+    """
+    start = Path(start).resolve()
+    for d in [start, *start.parents]:
+        if (d / HOOKS).is_dir():
+            return d
+    return None
+
+
+def config_root(root):
+    """진본 저장소(claude-config)가 이 기계 어디 붙었나 — `(자리, 어디서 받았나)`. 모르면 `(None, 까닭)`.
+
+    **묻지 않고 받는다.** 후보 목록(자기 자신 · 형제 · `/workspace` · `$HOME`)과 지문
+    (`deploy.ps1` + `memory/`)의 진본은 배포본 `.githooks/claude-config-path.sh` 이고, 그것을
+    여기 옮겨 적으면 손사본이 되어 한쪽이 움직일 때 다른 쪽이 조용히 낡는다. 그래서 그
+    스크립트를 태워 `CONFIG_ROOT` 만 받는다.
+
+    ⚠ `sh` 가 없는 기계면 None 이다 — 판정이 아니라 **안 잰 자리**다.
+
+    ⚠ **답을 파이썬이 읽을 수 있는 꼴로 되받는다.** Windows 의 `sh` 는 MSYS 라 `/tmp/…` 같은
+      제 나름의 자리를 내는데, 그 글자는 파이썬에게 없는 자리다 — 실측에서 「진본 저장소가
+      안 붙었다」로 잘못 물러났다. `cygpath` 가 있으면 그것으로 옮기고, 없는 기계(리눅스)는
+      그 자리가 곧 답이다.
+    """
+    import subprocess
+    finder = Path(root) / HOOKS / HOOKS_FINDER
+    if not finder.is_file():
+        return None, f"`{HOOKS}/{HOOKS_FINDER}` 이 없다 — 배포가 안 닿은 나무다"
+    script = ('. "$1"\n'
+              '[ -n "${CONFIG_ROOT:-}" ] || exit 0\n'
+              'if command -v cygpath >/dev/null 2>&1; then cygpath -m "$CONFIG_ROOT"; '
+              'else printf "%s" "$CONFIG_ROOT"; fi\n')
+    try:
+        out = subprocess.run(["sh", "-c", script, "sh", str(finder)],
+                             cwd=str(root), capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, f"`{HOOKS_FINDER}` 을 못 태웠다 — {type(exc).__name__} (이 기계에 `sh` 가 없다)"
+    said = (out.stdout or "").strip()
+    if out.returncode or not said:
+        return None, f"`{HOOKS_FINDER}` 이 빈손을 냈다 — 이 기계에 설정 저장소가 안 붙었다"
+    got = Path(said)
+    if not got.is_dir():
+        return None, f"`{HOOKS_FINDER}` 이 {said!r} 를 냈는데 그 자리가 없다"
+    return got.resolve(), f"`{HOOKS_FINDER}` 이 {said} 를 냈다"
+
+
+def hooks_survey(copy_root, source_root):
+    """(어긋남들, 같음 수, 진본 없음들, 못 읽음들) — `.githooks/` 사본 전수.
+
+    곁말이 없으므로 **자리로 맞춘다** — 사본의 `.githooks/<쪽>` 과 진본의 같은 쪽. 줄끝·BOM 은
+    곁말 갈래와 같은 까닭으로 안 본다(사본이 사는 저장소의 체크아웃이 그것을 바꾼다).
+    """
+    bad, same, missing, unreadable = [], 0, [], []
+    for p in sorted((Path(copy_root) / HOOKS).rglob("*")):
+        if not p.is_file() or p.name in HOOKS_LOCAL:
+            continue
+        rel = p.relative_to(copy_root)
+        source = Path(source_root) / rel
+        if not source.is_file():
+            missing.append(rel.as_posix())
+            continue
+        try:
+            mine = "\n".join(_lines(p.read_text(encoding="utf-8")))
+            theirs = "\n".join(_lines(source.read_text(encoding="utf-8")))
+        except (OSError, UnicodeDecodeError) as exc:
+            unreadable.append(f"{rel.as_posix()} — {type(exc).__name__}")
+            continue
+        if mine == theirs:
+            same += 1
+            print(f"  = 같음   {rel.as_posix()}  ← {source}")
+        else:
+            diff = [d for d in difflib.unified_diff(theirs.split("\n"), mine.split("\n"),
+                                                    lineterm="", n=0)
+                    if d[:1] in "+-" and d[:3] not in ("+++", "---")]
+            bad.append((rel.as_posix(), str(source), len(diff)))
+    return bad, same, missing, unreadable
+
+
 # ── §1 양성 대조 — 임시 뿌리에 넷을 지어 판정이 실제로 가르는지 먼저 보인다 ────
 
 # 실물 꼴 그대로 — 첫 줄 · 빈 줄 · 좌표 문단 · 빈 줄 · 본문. 좌표 문단 뒤에 빈 줄이 있어야
 # 「문단 끝」 자리가 선다(옛 검체는 그 빈 줄이 없어 곁말이 파일 끝에 앉았다 — 실측).
 SOURCE = "\"\"\"부품 하나.\n\n좌표 — 어디.\n\n몸통 설명.\n\"\"\"\nX = 1\n"
+
+# `.githooks/` 갈래의 검체 — 셸 조각은 `#` 주석뿐이라 **곁말을 달 자리가 없다.** 그래서
+# 이 글자에는 「빌려 온 자다」가 없고, 그것이 곧 저 갈래가 자리로 맞춰야 하는 까닭이다.
+HOOK = "#!/bin/sh\n# 조각 하나 — 진본은 claude-config/.githooks/gates.d/ 다.\nexit 0\n"
 
 
 def _copy(text_source, mark_lines, mutate=None, crlf=False):
@@ -285,15 +401,49 @@ def positive_control():
         else:
             edge("**git 나무 갈래는 못 쟀다** — 이 기계에 git 이 없거나 임시 나무를 못 세웠다. "
                  "그 갈래는 이 저장소 안에서 `--seeds seeds` 로 돌릴 때 실물로 밟힌다")
+
+        # ── `.githooks/` 갈래 — 곁말 없는 배포본이 **자리로** 맞춰지나 ──
+        # ⚠ 이 절이 이 갈래의 유일한 이빨인 판이 있다: 진본 저장소 안에서 돌리면 사본과 진본이
+        #   같은 나무라 §3 이 「안 잰 자리」로 물러난다. 거기서도 여기는 선다.
+        copy_root, src_root = tmp / "형제나무", tmp / "진본나무"
+        for r in (copy_root, src_root):
+            (r / HOOKS / "gates.d").mkdir(parents=True)
+        for name in ("encoding.sh", "links.sh"):
+            (src_root / HOOKS / "gates.d" / name).write_text(HOOK, encoding="utf-8")
+        (src_root / HOOKS / HOOKS_LOCAL[0]).write_text("[pre-commit]\nencoding\n", encoding="utf-8")
+        # 사본 넷 — ① 한 조각은 손으로 갈렸고 ② 한 조각은 CRLF 로 체크아웃됐고 ③ 선언은 제
+        #           것이라 다르고 ④ 진본에 없는 조각이 하나 더 있다
+        (copy_root / HOOKS / "gates.d" / "encoding.sh").write_text(
+            HOOK.replace("exit 0", "exit 0   # 여기서 한 줄 고쳤다"), encoding="utf-8")
+        (copy_root / HOOKS / "gates.d" / "links.sh").write_bytes(
+            HOOK.replace("\n", "\r\n").encode("utf-8"))
+        (copy_root / HOOKS / HOOKS_LOCAL[0]).write_text("[pre-commit]\nlinks\n", encoding="utf-8")
+        (copy_root / HOOKS / "gates.d" / "남의조각.sh").write_text(HOOK, encoding="utf-8")
+        deep = copy_root / "seeds" / "check" / "_check"
+        deep.mkdir(parents=True)
+        report("`.githooks/` 를 든 뿌리를 제 자리에서 위로 찾는다 — 깊이를 안 박는다",
+               hooks_root(deep) == copy_root.resolve(), [repr(hooks_root(deep)), str(copy_root)])
+        got_bad, got_same, got_missing, got_unread = hooks_survey(copy_root, src_root)
+        report("손으로 갈린 조각 사본은 어긋남이다 — 곁말이 없어도 자리로 문다",
+               [r[0] for r in got_bad] == [f"{HOOKS}/gates.d/encoding.sh"], [repr(got_bad)])
+        report("CRLF 로 체크아웃된 조각은 같음이다", got_same == 1, [f"같음 {got_same}"])
+        report(f"저장소가 제 손으로 드는 `{HOOKS_LOCAL[0]}` 은 대상이 아니다 · 진본에 없는 "
+               "조각은 판정이 아니라 안 잰 자리다",
+               got_missing == [f"{HOOKS}/gates.d/남의조각.sh"] and not got_unread,
+               [repr(got_missing), repr(got_unread)])
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
 # ── §2 실물 전수 ───────────────────────────────────────────────────────────────
 
-def survey(check_dir, seeds_root):
-    """(어긋남들, 같음 수, 진본 없음들, 경로 못 읽음들)."""
-    bad, same, missing, unreadable = [], 0, [], []
+def collect(check_dir):
+    """곁말 든 파일들 — `[(파일, 곁말 줄, 진본 상대경로|None)]`.
+
+    **견주기 전에 「잴 것이 있나」를 이 자가 답한다.** 그 물음이 §1 보다 앞에 서야 해서
+    읽는 자리와 견주는 자리를 갈랐다(머리말 ⚠ 첫 줄).
+    """
+    out = []
     for p in sorted(Path(check_dir).iterdir()):
         if not p.is_file():
             continue
@@ -302,9 +452,15 @@ def survey(check_dir, seeds_root):
         except (OSError, UnicodeDecodeError):
             continue
         found = marker(text)
-        if found is None:
-            continue
-        start, rel = found
+        if found is not None:
+            out.append((p, found[0], found[1]))
+    return out
+
+
+def survey(found, seeds_root):
+    """(어긋남들, 같음 수, 진본 없음들, 경로 못 읽음들)."""
+    bad, same, missing, unreadable = [], 0, [], []
+    for p, start, rel in found:
         if rel is None:
             unreadable.append(p.name)
             continue
@@ -312,13 +468,48 @@ def survey(check_dir, seeds_root):
         if not source.is_file():
             missing.append(f"{p.name} → {source}")
             continue
-        ok, n = compare(text, source.read_text(encoding="utf-8"), start)
+        ok, n = compare(p.read_text(encoding="utf-8"),
+                        source.read_text(encoding="utf-8"), start)
         if ok:
             same += 1
             print(f"  = 같음   {p.name}  ← {rel}")
         else:
             bad.append((p.name, rel, n))
     return bad, same, missing, unreadable
+
+
+# ── §3 배포본 전수 — 곁말 없는 `.githooks/` 조각 ──────────────────────────────
+
+def hooks_pass(check_dir):
+    """`.githooks/` 사본이 진본 저장소의 같은 자리와 같은가 — 못 서는 갈래는 **안 잰 자리**로 찍는다."""
+    print(f"\n--- §3 배포본 전수 — `{HOOKS}/` 조각이 진본과 같은가 (곁말이 없어 자리로 맞춘다)")
+    root = hooks_root(check_dir)
+    if root is None:
+        edge(f"**`{HOOKS}/` 를 못 찾았다 — 안 잰 자리다.** 이 나무에 훅 배포본이 없거나 "
+             f"`{check_dir}` 위로 뿌리가 안 선다")
+        return
+    source, where = config_root(root)
+    if source is None:
+        edge(f"**진본 저장소를 못 찾았다 — 안 잰 자리다.** {where}. 붙이면 이 갈래가 선다")
+        return
+    if source == root.resolve():
+        edge(f"**이 나무가 곧 진본이다** ({where}) — 제 자신과 견주면 늘 초록이라 **안 잰다**. "
+             f"이 갈래는 배포본이 사는 저장소에서 선다(§1 의 `{HOOKS}/` 판정 셋이 그 이빨이다)")
+        return
+    print(f"진본 저장소 — {source} ({where})")
+    bad, same, missing, unreadable = hooks_survey(root, source)
+    for rel, src, n in bad:
+        report(f"{rel} — 진본 {src} 과 어긋남", False, [f"갈린 줄 {n}"])
+    report(f"`{HOOKS}/` 배포본이 진본과 같다 (같음 {same} · 어긋남 {len(bad)})", not bad)
+    for row in missing:
+        edge(f"**진본에 없는 조각** — {row}. 이 나무가 제 손으로 든 것이거나 진본이 옮겨진 "
+             "자리다 — 판정이 아니라 **안 잰 자리**다")
+    for row in unreadable:
+        edge(f"**못 읽은 조각** — {row} · 판정이 아니라 **안 잰 자리**다")
+    edge(f"잰 범위 — `{HOOKS}/` 아래 파일 {same + len(bad)}장. `{HOOKS_LOCAL[0]}` 은 저장소가 "
+         "제 손으로 드는 선언이라 안 든다 · **진본에는 있는데 여기 없는 조각은 이 자가 안 "
+         f"문다** — 배포가 안 닿은 자리는 `{HOOKS_LOCAL[0]}` 의 「선언에 있는데 조각이 "
+         "없으면」이 문다")
 
 
 def main(argv):
@@ -330,29 +521,41 @@ def main(argv):
     check_dir = Path(args[0]).resolve() if args else HERE
     print(f"잴 폴더 — {check_dir}\n진본 뿌리 — {seeds_root}\n")
 
+    # ── 전제 — **잴 수 있나를 §1 보다 먼저 묻는다**(머리말 ⚠ 첫 줄) ──
+    # 여기를 §1 뒤에 두면 못 재는 판에서도 자검 열 줄이 `[OK]` 로 먼저 찍혀, 화면이 열 건을
+    # 잰 것처럼 보인다. 그 판이 CI 였고 씨앗 사본을 손으로 고쳐도 초록이 났다(#45 ②).
+    if not seeds_root.is_dir():
+        raise Unmeasured(f"[안 잼] 진본 뿌리가 없다 — {seeds_root}. 아무것도 안 쟀다(양성 대조도 "
+                         "안 돌렸다 — 그 줄들은 이 나무를 잰 것이 아니라 탐지기 자검이다). 홈에 "
+                         "씨앗이 안 깔렸으면 deploy.ps1 이 안 돈 것이고, 씨앗 저장소 안이면 "
+                         "`--seeds seeds` 를 준다. CI 러너처럼 홈에 씨앗이 없는 자리면 이 검사는 "
+                         "그 판에서 재는 자가 아니다")
+    found = collect(check_dir)
+    if not found:
+        raise Unmeasured(f"[안 잼] 곁말 든 파일이 한 장도 없다 — {check_dir}. 아무것도 안 쟀다. "
+                         "빌려 온 것이 없으면 잴 것이 없고, 있는데 곁말이 없으면 이 자에게는 "
+                         "남이다(씨앗 저장소 제 나무가 그 자리다 — 거기는 진본이지 사본이 아니다)")
+
     positive_control()
+    # 자검이 몇 건이었나 — **손으로 안 적는다.** 아래 초록 줄이 자검과 실물을 갈라 찍는다.
+    self_test = len(passes()) + len(fails())
 
     print("\n--- §2 실물 전수 — 곁말 든 사본이 진본과 같은가")
-    if not seeds_root.is_dir():
-        raise Unmeasured(f"[안 잼] 진본 뿌리가 없다 — {seeds_root}. 홈에 씨앗이 안 깔렸으면 "
-                         "deploy.ps1 이 안 돈 것이고, 씨앗 저장소 안이면 `--seeds seeds` 를 준다")
     ver, where = _stamp(seeds_root)
     print(f"진본 판 — {ver or '모름'} ({where})")
-    bad, same, missing, unreadable = survey(check_dir, seeds_root)
+    bad, same, missing, unreadable = survey(found, seeds_root)
     if bad and "--receive" in argv:
         # ⚠ 곁말의 판 자리는 **사람이 읽는 영수증**이라, 판을 모르면 받은 날짜를 적는다 —
         #   판정 줄은 그 날짜를 안 쓴다(거기서 오늘 날짜가 거짓 신호였다 · `_stamp()`).
         stamp = ver or datetime.date.today().isoformat()
         for name, rel, _n in bad:
             copy_path = check_dir / name
-            found = marker(copy_path.read_text(encoding="utf-8"))
-            receive(copy_path, Path(seeds_root) / Path(rel).relative_to("seeds"), found[0], stamp)
+            at = marker(copy_path.read_text(encoding="utf-8"))
+            receive(copy_path, Path(seeds_root) / Path(rel).relative_to("seeds"), at[0], stamp)
             print(f"  ← 받았다 {name}  ← {rel} ({stamp} 판)")
         edge(f"**받았다** — 어긋난 사본 {len(bad)}장을 진본으로 놓고 곁말 판을 {stamp} 로 올렸다. 아래는 받은 뒤의 판정이다")
-        bad, same, missing, unreadable = survey(check_dir, seeds_root)
-    if not (bad or same or missing or unreadable):
-        raise Unmeasured(f"[안 잼] 곁말 든 파일이 한 장도 없다 — {check_dir}. "
-                         "빌려 온 것이 없으면 잴 것이 없고, 있는데 곁말이 없으면 이 자에게는 남이다")
+        # 받으면 곁말 줄이 밀린다 — 다시 걷어야 그 뒤의 견줌이 제 자리를 본다
+        bad, same, missing, unreadable = survey(collect(check_dir), seeds_root)
 
     # 센티널 — 곁말은 있는데 견준 것이 0 이면 어긋남도 0 이라 **아무것도 안 잰 초록**이 난다.
     # 진본을 한 장도 못 찾은 판(홈에 씨앗이 안 깔린 PC · 뿌리를 잘못 준 판)이 그렇다 — 실측
@@ -386,13 +589,15 @@ def main(argv):
         edge(f"**견준 진본은 {ver} 판이다** ({where}) — 그 판이 진본 나무의 최신인가는 "
              "이 자가 안 문다. 판을 찍는 것이 그 물음의 재료다")
 
+    hooks_pass(check_dir)
+
     print()
     if fails():
         print(f"{len(fails())}건 어긋남 (진본 판 {ver or '모름'}) — {' · '.join(fails())}")
         print("고치는 법: 진본에서 다시 받는다. 사본을 고쳐야 했다면 그 고침은 진본으로 올린다")
         return EXIT_MISMATCH
-    print(f"전부 통과 (판정 {len(passes())}건 — 양성 대조 {len(passes()) - 1} · 실물 전수 1) "
-          f"— 견준 진본 판 {ver or '모름'}")
+    print(f"전부 통과 (판정 {len(passes())}건 — 양성 대조 {self_test} · 실물 전수 "
+          f"{len(passes()) - self_test}) — 견준 진본 판 {ver or '모름'}")
     return EXIT_OK
 
 

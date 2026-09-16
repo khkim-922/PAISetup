@@ -5,8 +5,15 @@
 **둘 다 파이썬 AST 만 읽는다** — 그래서 곁 `README.md` 「무엇을 안 재나」 첫 줄이 이 자리를 비워
 두었다. 이 자가 그 줄을 닫는다. 실측 근거는 claude-config #25 의 가족 1·2·3 이다.
 
-    python -X utf8 _check/shell_exit_check.py            # 이 폴더
+    python -X utf8 _check/shell_exit_check.py            # 이 폴더 + 이 나무의 `.githooks/`
     python -X utf8 _check/shell_exit_check.py <폴더>     # 잴 폴더를 지정 (병렬 작업나무)
+
+**경계가 이 폴더만이 아닌 까닭.** 0·1·2 를 **실제로** 내는 `.sh` 는 커밋 게이트 조각이고, 그것은
+`_check/` 가 아니라 `.githooks/gates.d/` 에 산다. 경계를 이 폴더로 두면 `.sh` 팔이 **0장을 재고
+초록**을 냈다(claude-config #45 ⑤ · 아뜰리에 실측). 그래서 이 자는 제 자리에서 위로 올라가
+`.githooks/` 를 찾아 그 아래 셸 원문을 같이 문다 — 확장자가 없는 몸통(`pre-commit`·`commit-msg`)은
+**첫 줄의 `#!`** 로 갈래를 정하고, 셔뱅도 확장자도 없는 선언(`gates.conf`)은 저절로 빠진다.
+그 폴더를 찾는 손은 곁 `borrowed_check.py` 가 든다 — 같은 walk-up 을 두 자리에 손으로 안 적는다.
 
 **왜 이 검사가 있나.** 종료코드(0 쟀고 맞다 · 1 어긋났다 · 2 못 쟀다)는 훅과 CI 가 읽는 **유일한
 말**이고, 그 계약은 언어를 안 가린다 — 훅은 `.py` 든 `.mjs` 든 `.sh` 든 같은 자리에서 코드만 본다.
@@ -60,16 +67,26 @@
 토큰도 망도 브라우저도 안 쓴다.
 """
 import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 from _verdict import EXIT_MISMATCH, EXIT_OK, Unmeasured, edge, fails, passes, report, show
+# 이 폴더 밖에서 **반드시 같이 재야 하는 자리** — 커밋 게이트 조각이 사는 `.githooks/`.
+# 폴더 이름과 그 뿌리를 찾는 손은 곁 `borrowed_check.py` 가 든다(그 자도 같은 폴더를 배포본으로
+# 문다) — 같은 walk-up 을 두 자리에 손으로 적으면 한쪽이 움직일 때 다른 쪽이 조용히 낡는다.
+from borrowed_check import HOOKS, hooks_root
 
 HERE = Path(__file__).resolve().parent
 
 CONTRACT = (0, 1, 2)        # 진본은 곁 `README.md` §종료코드
 UNMEASURED_CODE = 2         # `.mjs` 에서만 문다 — 아래 LITERAL_TWO 가 그 갈림을 든다
 SUFFIXES = (".mjs", ".sh", ".ps1")
+# 확장자가 없는 훅 몸통(`pre-commit`·`commit-msg`)의 갈래는 **첫 줄이 말한다.** 확장자로만
+# 걷으면 `exit 0/1` 로 나가는 그 둘이 통째로 빠지고, 셔뱅도 확장자도 없는 선언(`gates.conf`)은
+# 저절로 빠진다 — 갈래를 이름으로 어림하지 않는 까닭이다.
+SHEBANG = re.compile(r"^#!.*\b\w*sh\b")
 LITERAL_TWO = (".mjs",)     # 손글자 2 를 어긋남으로 보는 갈래 — 계약 상수를 둘 자리가 있는 쪽
 
 # 걷는 손 — 언어마다 주석과 문자열의 꼴이 다르다.
@@ -572,28 +589,79 @@ def positive_control():
     edge("**경계 셈은 판정이 아니라 이빨이다** — 위 한 자리는 「잴 것이 없다 … `exit 0`」 이라 "
          "빨강이 아니라 셈으로 나가야 맞다. 이 수가 0 이 되면 세는 손이 죽은 것이다.")
 
+    print(f"\n--- §2' 걷는 경계 — `{HOOKS}/` 의 조각을 정말 집나")
+    tmp = Path(tempfile.mkdtemp(prefix="shell-exit-"))
+    try:
+        (tmp / HOOKS / "gates.d").mkdir(parents=True)
+        body = "#!/bin/sh" + GOOD[".sh"]          # 실물 조각과 같은 꼴 — 셔뱅이 첫 줄이다
+        (tmp / HOOKS / "gates.d" / "encoding.sh").write_text(body, encoding="utf-8")
+        (tmp / HOOKS / "pre-commit").write_text(body, encoding="utf-8")   # 확장자가 없다
+        (tmp / HOOKS / "gates.conf").write_text("[pre-commit]\nencoding\n", encoding="utf-8")
+        deep = tmp / "_check"
+        deep.mkdir()
+        show(f"  `{HOOKS}/` 에서 집은 셸 조각", [name for _p, _s, name in hook_sources(deep)],
+             [f"{HOOKS}/gates.d/encoding.sh", f"{HOOKS}/pre-commit"])
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    edge("**확장자가 없는 몸통은 첫 줄의 `#!` 가 갈래를 말한다** — 확장자로만 걷으면 "
+         "`pre-commit`·`commit-msg` 가 통째로 빠지고, 셔뱅도 확장자도 없는 선언은 저절로 빠진다.")
+
 
 # ── §3 실물 전수 ───────────────────────────────────────────────────────────────
 
+def hook_sources(check_dir):
+    """`.githooks/` 아래의 셸 원문 — `[(파일, 갈래, 이름)]`. 뿌리를 못 찾으면 빈 목록.
+
+    **이 폴더 밖인데도 드는 까닭** — 0·1·2 를 실제로 내는 `.sh` 는 커밋 게이트 조각이고, 그것이
+    `_check/` 가 아니라 `.githooks/gates.d/` 에 산다. 경계를 이 폴더로 두면 `.sh` 팔이 **0장을
+    재고 초록**을 낸다(claude-config #45 ⑤ · 아뜰리에 실측). 이름은 뿌리에서의 상대 자리로
+    적는다 — `encoding.sh` 하나로는 어느 `encoding.sh` 인지 안 갈린다.
+    """
+    root = hooks_root(check_dir)
+    if root is None:
+        return []
+    out = []
+    for p in sorted((root / HOOKS).rglob("*")):
+        if not p.is_file():
+            continue
+        name = p.relative_to(root).as_posix()
+        if p.suffix in SUFFIXES:
+            out.append((p, p.suffix, name))
+            continue
+        if p.suffix:
+            continue
+        try:
+            head = p.read_text(encoding="utf-8-sig").splitlines()[:1]
+        except (OSError, UnicodeDecodeError):
+            continue
+        if head and SHEBANG.search(head[0]):
+            out.append((p, ".sh", name))
+    return out
+
+
 def sources(check_dir):
-    """이 폴더의 `.mjs`·`.sh`·`.ps1` — 하위 폴더는 안 본다(검체·기록이다)."""
-    return sorted(p for p in Path(check_dir).iterdir()
-                  if p.is_file() and p.suffix in SUFFIXES)
+    """잴 원문들 — `[(파일, 갈래, 이름)]`.
+
+    이 폴더의 `.mjs`·`.sh`·`.ps1`(하위 폴더는 안 본다 — 검체·기록이다) + `.githooks/` 의 셸 조각.
+    """
+    here = [(p, p.suffix, p.name) for p in sorted(Path(check_dir).iterdir())
+            if p.is_file() and p.suffix in SUFFIXES]
+    return here + hook_sources(check_dir)
 
 
 def survey(check_dir):
     """(어긋남들, 갈래별 파일 수, 나가는 자리 수, 경계 셈, 2 갈래 없는 파일 수, 못 읽은 파일들)."""
     bad, seen, site_n, bound, no2, unreadable = [], {s: 0 for s in SUFFIXES}, 0, 0, 0, []
-    for p in sources(check_dir):
+    for p, suffix, name in sources(check_dir):
         try:
             src = p.read_text(encoding="utf-8-sig")
-            masked, _ = blank(src, p.suffix)
-            found = sites(src, masked, p.suffix)
-            bad += judge(src, p.name, p.suffix)
+            masked, _ = blank(src, suffix)
+            found = sites(src, masked, suffix)
+            bad += judge(src, name, suffix)
         except (OSError, ValueError) as exc:
-            unreadable.append(f"{p.name} — {type(exc).__name__}: {exc}")
+            unreadable.append(f"{name} — {type(exc).__name__}: {exc}")
             continue
-        seen[p.suffix] += 1
+        seen[suffix] += 1
         site_n += len(found)
         bound += boundaries(src, found)
         no2 += 1 if found and not has_unmeasured_branch(found) else 0
@@ -602,11 +670,13 @@ def survey(check_dir):
 
 def main(argv):
     check_dir = Path(argv[1]).resolve() if len(argv) > 1 else HERE
-    print(f"잴 폴더 — {check_dir}\n")
+    root = hooks_root(check_dir)
+    print(f"잴 폴더 — {check_dir}")
+    print(f"게이트 조각 — {root / HOOKS if root else '못 찾았다'}\n")
 
     positive_control()
 
-    print("\n--- §3 실물 전수 — 이 폴더의 `.mjs`·`.sh`·`.ps1` 이 계약을 지키나")
+    print("\n--- §3 실물 전수 — 이 폴더와 게이트 조각의 `.mjs`·`.sh`·`.ps1` 이 계약을 지키나")
     bad, seen, site_n, bound, no2, unreadable = survey(check_dir)
 
     # 센티널이 먼저다 — 한 장도 못 읽은 판은 어긋남 0 이 나도 초록이 아니다.
@@ -625,8 +695,17 @@ def main(argv):
             edge(f"**못 읽은 파일** — {row}")
         edge("못 읽은 파일은 판정이 아니라 **안 잰 자리**다 — 위 건수에서 빠져 있다.")
 
-    edge(f"잰 범위 — `{check_dir.name}/` 의 {tally} 의 **나가는 자리 {site_n}곳**. "
-         "하위 폴더와 이 폴더 밖은 안 든다 — 그 경계는 저장소의 지도가 든다.")
+    hooks = hook_sources(check_dir)
+    if root is None:
+        edge(f"**`{HOOKS}/` 를 못 찾았다 — 게이트 조각은 안 잰 자리다.** 이 나무에 훅 배포본이 "
+             f"없거나 `{check_dir}` 위로 뿌리가 안 선다. 0·1·2 를 실제로 내는 `.sh` 가 거기 "
+             "사는데 그 팔이 이 판에서는 비었다.")
+    else:
+        edge(f"잰 범위 — `{check_dir.name}/` 의 {tally} 에 **`{HOOKS}/` 의 셸 조각 "
+             f"{len(hooks)}장**이 든다({root / HOOKS}). 확장자가 없는 몸통은 첫 줄의 `#!` 로 "
+             f"갈래를 정하고, 셔뱅도 확장자도 없는 선언은 안 든다.")
+    edge(f"잰 범위 — 위 {tally} 의 **나가는 자리 {site_n}곳**. `_check/` 의 하위 폴더와 "
+         f"`{HOOKS}/` 말고 이 폴더 밖은 안 든다 — 그 경계는 저장소의 지도가 든다.")
     edge(f"**「못 쟀다」를 찍고 `exit 0` 으로 나가는 자리 {bound}곳** — 판정을 안 냈다. "
          "그 갈래가 옳은지는 꼴이 아니라 뜻이라 **사람이 읽는다**(#25 가족 2).")
     edge(f"**2 로 나가는 갈래가 한 자리도 없는 파일 {no2}장** — 역시 판정이 아니다. "
@@ -642,7 +721,8 @@ def main(argv):
     if fails():
         print(f"{len(fails())}건 어긋남 — {' · '.join(fails())}")
         return EXIT_MISMATCH
-    print(f"전부 통과 (판정 {len(passes())}건 — 양성 {len(BAD)} · 음성 {len(GOOD)}갈래 · 실물 전수 1)")
+    print(f"전부 통과 (판정 {len(passes())}건 — 양성 {len(BAD)} · 음성 {len(GOOD)}갈래 · "
+          "걷는 경계 · 실물 전수)")
     return EXIT_OK
 
 
