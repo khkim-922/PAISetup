@@ -531,7 +531,7 @@ foreach ($repoRoot in $globalRuleTargets) {
     #   `CLAUDE_PROJECT_DIR` 로 저장소를 넘긴다 — 그 갈래가 훅 `:59-61` 이다. 사본과 진본이 같은
     #   답을 내는 것은 다섯 저장소에서 쟀다.
     if (-not $needsProbe) {
-        $needsProbe = Join-Path $env:TEMP ("needs-install-{0}.sh" -f $PID)
+        $needsProbe = Join-Path $env:TEMP 'needs-install.sh'   # 이름을 고정한다 — 판마다 새 파일을 남기지 않는다
         Copy-Item -LiteralPath (Join-Path $src '.claude\hooks\session-start.sh') -Destination $needsProbe -Force
     }
     $env:CLAUDE_PROJECT_DIR = $repoRoot
