@@ -54,6 +54,26 @@ param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$N
 
 $ErrorActionPreference = 'Stop'
 
+# ── 걸음마다 든 초를 잰다 — **훅이 서기 전의 시간은 여기서만 갈린다** ────────────
+# ⚠ **머리줄(`[n/8]`)은 한 글자도 안 건드린다.** 화면 껍데기가 그 줄을
+#   `^\[(\d+)/(\d+)\]\s*(.*)$` 로 읽어 3 번 묶음을 **칸 이름 그대로** 쓰고 막대도 그 줄로
+#   민다 — 줄 끝에 초를 달면 칸 이름이 「프로그램 (37초)」가 되는데, 그 이름은 칸이 **시작될
+#   때** 찍히므로 아직 안 지난 시간을 이름에 다는 꼴이 된다. 그래서 초는 **칸이 끝나는 자리에
+#   따로 한 줄**로 찍는다 — `[` 로 안 시작해 그 무늬에 안 걸리고, 껍데기는 그것을 칸 안의
+#   낱줄로 읽어 막대를 조금 민다.
+# ⚠ **시계는 하나다.** 칸마다 새로 두면 칸과 칸 사이에 낀 시간이 어디에도 안 잡힌다.
+#   누적 초의 차로 재므로 「준비」부터 끝까지가 빠짐없이 갈리고, 낱칸의 합은 끝의 총계와 맞는다.
+# ⚠ **칸 이름은 머리줄과 손으로 맞춘 사본이다** — 머리줄을 고치면 그 칸의 `Write-Elapsed`
+#   이름도 같이 고친다. 머리줄에서 뽑아 쓰려면 그 줄을 고쳐야 하는데, 그 줄은 껍데기가 읽는
+#   규약이라 안 건드리는 쪽을 골랐다.
+$Sw     = [Diagnostics.Stopwatch]::StartNew()
+$SwMark = 0
+function Write-Elapsed([string]$Text) {
+  $now = [int]$Sw.Elapsed.TotalSeconds
+  Write-Host ("  ── $Text — 마쳤다 (" + ($now - $script:SwMark) + "초)") -ForegroundColor DarkGray
+  $script:SwMark = $now
+}
+
 # ⚠ **네이티브 명령의 stderr 를 성공 스트림에 합치지 않는다 (`2>&1`).** 합치면 파워셸이 그 줄을
 #   오류 레코드로 감싸고, 위 `Stop` 이 **그 자리에서 스크립트를 끝낸다.** 경고 한 줄이 설치를
 #   통째로 죽인다 — 실측 2026-09-09 · 사외 VDI: `code --install-extension` 이 뱉은 Node
@@ -923,6 +943,9 @@ if (-not ($NoUpgrade -or $noWinget)) {
     Write-Host '  (올릴 목록을 한 번에 못 받았다 — 앱마다 묻는다)'
   }
 }
+# 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. [1/8] 앞에도 시간이 든다.
+Write-Elapsed '준비'
+Write-Host ''
 
 Write-Host '[1/8] 프로그램' -ForegroundColor Cyan
 foreach ($app in $Apps) {
@@ -1140,6 +1163,7 @@ function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [has
   Remove-Item $xl -ErrorAction SilentlyContinue
 }
 
+Write-Elapsed '[1/8] 프로그램'
 Write-Host ''
 Write-Host '[2/8] VS Code 확장' -ForegroundColor Cyan
 if (Test-Runs 'code' '--version') {
@@ -1207,6 +1231,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
   }
 }
 
+Write-Elapsed '[2/8] VS Code 확장'
 Write-Host ''
 Write-Host '[3/8] CLI' -ForegroundColor Cyan
 foreach ($c in $Clis) { Install-NpmCli $c.Pkg $c.Cmd $c.Label }
@@ -1216,6 +1241,7 @@ if (-not $inside) {
   Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
 }
 
+Write-Elapsed '[3/8] CLI'
 # ── 5. 값 — 파일이 들면 읽고, 없으면 묻는다 ─────────────────────────────────────
 # ⚠ **`#config-repo` 가 있어도 여기서 받는다.** 옛 판은 그 줄이 있으면 안 묻고 저쪽 부트스트랩이
 #   제 파일로 심게 넘겼다 — 그러면 저장소에 부트스트랩이 없는 사람은 키가 어디에도 안 심긴다.
@@ -1768,6 +1794,7 @@ if ($useGateway -and ($wantCodex -or $wantGemini)) {
   }
 }
 
+Write-Elapsed '[4/8] 키와 주소'
 # ── 6. 홈 설정 ──────────────────────────────────────────────────────────────────
 # ⚠ **씨앗은 없을 때만 깐다.** 사람이 앱에서 바꾼 값을 재실행이 지우면 안 된다. 담는 것도
 #   취향이 아니라 공용으로 서는 것뿐이다 — `permissions` 를 안 담는 까닭이 그것이다: 그
@@ -1930,6 +1957,7 @@ if ($cfg) {
   }
 }
 
+Write-Elapsed '[5/8] 홈 설정'
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
 # ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다.
 #   `-WithPersonalConfig` 를 줄 때만, 그리고 이 폴더에 실제로 있을 때만 깐다.
@@ -1956,6 +1984,7 @@ if (-not $WithPersonalConfig) {
   }
 }
 
+Write-Elapsed '[6/8] 개인 규범·룰·스킬'
 # ── 7. 사내 환경 문서 · 씨앗 둘 ─────────────────────────────────────────────────
 # ⚠ **이건 고를 것이 아니라 환경이다.** 그래서 위 칸과 달리 스위치가 없다 — 사내 게이트웨이의
 #   배선·실측·오류 명세와, 복사해 출발하는 씨앗 둘(배관 · 설정 저장소)은 **누가 받아도 쓴다.**
@@ -2010,6 +2039,7 @@ foreach ($a in $envAssets) {
   Write-Host "     $($a.Desc)"
 }
 
+Write-Elapsed '[7/8] 사내 환경 문서 · 씨앗 셋'
 # ── 8. 개인 값 저장소 (선택) ────────────────────────────────────────────────────
 # ⚠ **주소는 이 파일에 없다.** `install.env` 가 `#config-repo` 를 들 때만 이 칸이 선다 —
 #   그래야 이 스크립트가 익명으로 남아 남에게 그대로 줄 수 있다.
@@ -2264,6 +2294,7 @@ if (-not $repoUrl) {
     if ($LASTEXITCODE -ne 0) { $Fails.Add("훅 --install (exit $LASTEXITCODE)") }
   }
 }
+Write-Elapsed '[8/8] 개인 값 저장소'
 
 # ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
 # ⚠ **화면 껍데기도 지우지만 그 손은 제 프로세스가 살아 있을 때만 돈다.** 작업 관리자로 끄거나
@@ -2740,6 +2771,9 @@ if ($NoLaunch) {
 Write-Host ''
 Write-Host "=== 끝 === $tail" -ForegroundColor Yellow
 Write-Host ''
+# ⚠ **총계는 `exit` 둘보다 위에 둔다.** 아래는 진 판이 1 로 나가는 자리라, 그 뒤에 적으면
+#   **진 판에서만 총계가 사라진다** — 오래 걸려서 진 판이야말로 총계가 필요한 자리다.
+Write-Host ("── 설치를 마쳤다 (" + [int]$Sw.Elapsed.TotalSeconds + "초)") -ForegroundColor DarkGray
 # ⚠ **둘 다 본다.** 하는 걸음이 진 것(`$Fails`)과 끝에 재서 빨간 것(`$redChecks`)은 겹치기도
 #   하고 한쪽만 서기도 한다 — **어느 쪽이든 하나라도 서면 이 설치는 안 끝난 것이다.**
 if ($Fails.Count -gt 0 -or $redChecks -gt 0) { exit 1 }

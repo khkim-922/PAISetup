@@ -1486,7 +1486,7 @@ if [ "$MODE" = install ]; then
     rm -f "$_gl"
   }
   if [ -n "$DO_GLOBAL" ]; then
-    echo "$PROJECT_NAME: 전역형 도구 — 기계에 한 번 깐다 ($(home_hook_root) 에 붙은 저장소의 선언까지 합친다)"
+    echo "전역: 전역형 도구 — 기계에 한 번 깐다 · 깔리는 자리는 저장소가 아니라 홈이다 ($(home_hook_root) 에 붙은 저장소의 선언까지 합친다)"
     # 전역 갈래의 실패는 기계 한 자리에 적는다 — `try`·`nogo` 가 보는 이름을 그 동안만 바꾼다
     _savefails="$FAILS"; FAILS="$GFAILS"
     install_global
