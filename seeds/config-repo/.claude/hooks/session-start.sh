@@ -389,19 +389,38 @@ wire_commit_hooks() {
 }
 
 # ── 홈 규범·룰·에이전트·씨앗 — 가볍고 멱등이라 설치 안(①②)만이 아니라
-#    PC 매 세션(auto)에도 민다.
+#    PC 매 세션(auto)에도 민다. **밀기는 견줌 뒤에 온다** — 아래 `_push_file` 이 그 게이트다.
 #    **재료는 claude-config 진본 한 자리다.** 저장소는 전역 사본을 안 진다 — 지면 그 폴더가
 #    「이 저장소 것」과 「전역 것」을 겸하게 되고, 겸하면 이름으로 갈라야 하는데 그 이름이
 #    PC 에서는 뜻이 없다 (claude-config 0014). 안 붙어 있을 때 조용히 넘어가지 않는 것은
 #    아래 진단 절의 「전역 축」이 든다 — 규율 없이 도는 세션은 스스로 그것을 모른다.
+# ── 파일 하나를 미는 규율 — **이 칸의 모든 밀기가 이 문을 지난다** ────────────────
+#    ⚠ **왜 게이트가 필요한가.** 리모트는 홈이 매 세션 새로 서서 이 복사가 살아야 하고, PC 는
+#      `deploy.ps1` 이 이미 밀어 둬서 **같은 것을 매 세션 다시 옮겼다** — 파일마다 프로세스
+#      둘(폴더 짓기 + 복사)이라 윈도우에서 마흔여덟 자리가 2.2초다 (#54). 두 자리를 가르는
+#      물음은 기계가 아니라 **파일**이다: 없으면 민다 · 원본이 새것이면 민다 · 아니면 넘긴다.
+#      그래서 빈 홈(리모트)에서는 전부 밀리고 이미 선 홈(PC)에서는 아무것도 안 밀린다 —
+#      갈래를 안 세우고 같은 한 문으로 둘 다 든다.
+#    ⚠ **내용을 안 견준다 — 자리와 때로 본다.** `cmp` 는 파일마다 프로세스라 고치려는 값을
+#      도로 문다. `cp` 는 사본에 **지금 시각**을 찍으므로 다음 세션엔 사본이 새것이고, 원본이
+#      당겨져 바뀌면 그때 원본이 새것이 된다 — `-nt` 로 충분하다.
+#    ⚠ **덮어쓰기만 한다 — 홈에만 남은 파일은 안 지운다.** 옛 꼴의 뜻 그대로다.
+_push_file() {   # _push_file <원본> <홈 사본>
+  [ -f "$1" ] || return 0                       # 글롭이 안 맞으면 패턴 그대로 온다
+  _pd="${2%/*}"
+  [ -d "$_pd" ] || mkdir -p "$_pd" 2>/dev/null || true
+  { [ -f "$2" ] && [ ! "$1" -nt "$2" ]; } && return 0
+  cp "$1" "$2" 2>/dev/null || true
+}
 deploy_home_norms() {
   if [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/.claude/CLAUDE.global.md" ]; then
     _src="$CONFIG_ROOT/.claude"
-    mkdir -p "$HOME/.claude"
-    cp "$_src/CLAUDE.global.md" "$HOME/.claude/CLAUDE.md" 2>/dev/null || true
+    [ -d "$HOME/.claude" ] || mkdir -p "$HOME/.claude"
+    _push_file "$_src/CLAUDE.global.md" "$HOME/.claude/CLAUDE.md"
     if [ -d "$_src/rules.global" ]; then
-      mkdir -p "$HOME/.claude/rules"
-      cp "$_src/rules.global/"*.md "$HOME/.claude/rules/" 2>/dev/null || true
+      for _hf in "$_src/rules.global/"*.md; do
+        _push_file "$_hf" "$HOME/.claude/rules/${_hf##*/}"
+      done
     fi
     # 에이전트 — 규범·룰과 같은 통로다. PC 는 deploy.ps1 이 이미 밀었고 리모트만 비어
     # 있었다: 붙여도 안 실렸고, 안 실린 줄도 몰랐다 (#5).
@@ -409,8 +428,9 @@ deploy_home_norms() {
     #   자리라, 거기 두면 이 저장소를 붙인 세션에서 저장소 층과 홈 층에 **두 벌** 실린다 —
     #   `0014` 가 룰에서 겪은 그 고장이다. 루트는 로드 자리가 아니라 짐칸 이름도 필요 없다.
     if [ -d "$CONFIG_ROOT/agents" ]; then
-      mkdir -p "$HOME/.claude/agents"
-      cp "$CONFIG_ROOT/agents/"*.md "$HOME/.claude/agents/" 2>/dev/null || true
+      for _hf in "$CONFIG_ROOT/agents/"*.md; do
+        _push_file "$_hf" "$HOME/.claude/agents/${_hf##*/}"
+      done
     fi
     # 사내 환경 문서와 씨앗 둘 — 규범·룰·에이전트와 **같은 통로에서 빠져 있던 칸**이다.
     # 진본은 이 저장소이고 스킬·형제 저장소 문서가 홈 좌표를 가리키는데, 그 홈 사본을
@@ -428,7 +448,9 @@ deploy_home_norms() {
     # ⚠ **`*.md` 한 줄로는 안 되는 까닭은 씨앗이 폴더를 진다**(`seeds/gateway/app` ·
     #   `_check/log`). 그래서 파일을 훑어 상대 경로를 지어 옮긴다 — deploy.ps1 이 같은 자리
     #   에서 `-Recurse` + 상대경로로 하는 것과 같은 셈이다.
-    # ⚠ **이미 같으면 안 민다 — 그 게이트가 이 칸을 매 세션 물 만한 값으로 만든다.**
+    # ⚠ **이미 같으면 안 민다 — 문이 둘이다.** 폴더 한 벌을 `diff` 로 견주고, 넘어온 파일은
+    #   위 `_push_file` 이 낱개로 다시 견준다. 폴더 문은 성한 판에서 `find` 와 고리를 통째로
+    #   아끼고, 낱개 문은 폴더 문이 「다르다」를 낼 때 **정말 다른 파일만** 남긴다.
     #   파일마다 프로세스를 띄우는 셈이라(폴더 짓기 + 복사) 윈도우에서 쉰두 자리가 2.9초다.
     #   그런데 정상 상태의 홈은 **이미 같다** — 밀 것이 없는데 매 세션 3초를 물면 그 비용이
     #   곧 이 칸을 걷어내자는 말이 된다. 폴더마다 한 벌씩 견주고 같으면 넘긴다:
@@ -437,16 +459,17 @@ deploy_home_norms() {
     #   **이것도 배포자의 뜻이다** — deploy.ps1 은 파일마다 해시를 견주어 같으면 `= 동일` 을
     #   내고 복사 계획에서 뺀다. 여기는 그 견줌을 폴더 단위로 한 벌 할 뿐이다.
     # ⚠ 홈에만 남은 파일(이름이 바뀐 씨앗의 옛 사본)이 있으면 `diff -rq` 가 그것도 「다르다」
-    #   로 세어 그 폴더는 매 세션 다시 밀린다 — 느려질 뿐 틀리지는 않는다. 산문을 읽어
-    #   「홈에만 있음」 줄만 걸러내려 들지 않는다: 그 문구는 로케일이 든다.
+    #   로 세어 그 폴더는 **매 세션 폴더 문을 못 지난다** — 이 PC 의 `posco` 가 그 자리다
+    #   (실측 2026-09-16). 다만 그 뒤가 낱개 문이라 실제로 밀리는 파일은 없다: 느려지는 값이
+    #   `find` 하나와 고리뿐이고, 복사 열여덟은 안 돈다. 산문을 읽어 「홈에만 있음」 줄만
+    #   걸러내려 들지 않는다: 그 문구는 로케일이 든다.
     for _sd in seeds/gateway seeds/check posco; do
       [ -d "$CONFIG_ROOT/$_sd" ] || continue
       diff -rq -x __pycache__ "$CONFIG_ROOT/$_sd" "$HOME/.claude/$_sd" >/dev/null 2>&1 && continue
       find "$CONFIG_ROOT/$_sd" -type f 2>/dev/null | while IFS= read -r _sf; do
         case "$_sf" in */__pycache__/*) continue ;; esac
         _sr="${_sf#"$CONFIG_ROOT"/}"
-        mkdir -p "$HOME/.claude/${_sr%/*}" 2>/dev/null || true
-        cp "$_sf" "$HOME/.claude/$_sr" 2>/dev/null || true
+        _push_file "$_sf" "$HOME/.claude/$_sr"
       done
     done
     # ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ────────
@@ -485,8 +508,27 @@ deploy_home_norms() {
 #      `secrets.env`(개인 키)가 든다 (0004). 회사 키·주소는 여기 없다 — 설치기가 `install.env` 로 심는다.
 #    ⚠ 가볍고 멱등인 것(git config · mkdir · 값이 같으면 건너뛰는 setx)은 매 세션(auto)도 민다 — 키가
 #      돌면 다음 세션이 새 값을 심는다. 망을 타는 clone 과 자리를 재는 홈 설정 덮기는 `--install` 만.
+# ⚠ **부를 때마다 아무것도 스폰하지 않는다.** 옛 꼴은 `sed | head | tr | sed` 넷을 띄웠고,
+#   선언 다섯 자리를 읽는 값이 프로세스 스물이었다 (#54). 파싱은 `case` 와 `${}` 로 다 된다.
+#   **옛 표현의 뜻을 낱낱이 진다** — 앞의 공백을 걷고 · `이름=` 이 **붙어** 선 첫 줄만 들고
+#   (`이름 = 값` 은 안 든다 · 이름이 다른 이름의 앞토막인 줄도 안 든다) · 값은 첫 `=` 뒤 전부 ·
+#   CR 은 어디 박혔든 지우고 · 꼬리 공백을 걷는다. 글자 부류는 `[[:space:]]` 를 case 의
+#   괄호식으로 그대로 들어 옛 sed 와 같은 자를 쓴다.
+# ⚠ **한 자리만 옛것과 갈린다** — 옛 꼴은 이름을 sed 정규식에 박아 넣어 이름 안의 `.`·`*` 이
+#   메타로 섰다. 새 꼴은 글자 그대로 든다. 선언의 이름은 다 영숫자·밑줄이라 실물은 안 갈린다.
+_CR=$(printf '\r')   # 고리 밖에서 한 번 — `$'\r'` 은 sh 에 없다
 conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지 않는다: 선언은 값이지 코드가 아니다
-  sed -n "s/^[[:space:]]*$2=//p" "$1" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//'
+  [ -f "$1" ] || return 0
+  while IFS= read -r _cgl || [ -n "$_cgl" ]; do
+    while :; do case "$_cgl" in [[:space:]]*) _cgl="${_cgl#?}" ;; *) break ;; esac; done
+    case "$_cgl" in "$2="*) ;; *) continue ;; esac
+    _cgv="${_cgl#"$2="}"
+    while :; do case "$_cgv" in *"$_CR"*) _cgv="${_cgv%%"$_CR"*}${_cgv#*"$_CR"}" ;; *) break ;; esac; done
+    while :; do case "$_cgv" in *[[:space:]]) _cgv="${_cgv%?}" ;; *) break ;; esac; done
+    printf '%s\n' "$_cgv"
+    return 0
+  done < "$1"
+  return 0
 }
 deploy_personal() {   # deploy_personal auto|install
   [ "$OS" = windows ] || return 0
@@ -532,9 +574,25 @@ deploy_personal() {   # deploy_personal auto|install
   # 슬러그 폴더 — deploy.ps1 은 폴더가 있을 때만 메모리를 민다. 슬러그는 **윈도우 경로**에서 파생한다
   # (영숫자 아닌 글자가 전부 `-`). ⚠ 글자로 센다 — 로케일 없이 sed 가 바이트를 세면 한글 한 자가 대시
   # 셋이 되어 슬러그가 통째로 어긋나고 **메모리가 조용히 안 깔린다** (실측 2026-09-10 · `바탕 화면`).
-  _slug_of() { cygpath -w "$1" | LC_ALL=C.UTF-8 sed 's/[^A-Za-z0-9]/-/g'; }
-  for _r in $_repos; do mkdir -p "$HOME/.claude/projects/$(_slug_of "$_root/$_r")" 2>/dev/null || true; done
-  mkdir -p "$HOME/.claude/projects/$(_slug_of "$_root")" 2>/dev/null || true   # 전역 층 — 저장소들을 담은 폴더
+  # ⚠ **`cygpath` 는 루트에 한 번만 부른다.** 저장소마다 부르면 `cygpath`+`sed` 둘이 저장소
+  #   수만큼 는다(#54 · 이 PC 의 다섯 저장소에 열둘). 영숫자 아닌 글자가 **전부** `-` 가 되니
+  #   이어붙임이 성립한다: 루트의 슬러그 + `-`(구분자 `\` 가 바뀐 것) + 이름의 슬러그.
+  # ⚠ **글자로 센다는 규율은 그대로인데, 그것을 지는 자가 sed 에서 셸로 옮겨 왔다.** bash 의
+  #   `${//}` 도 로케일을 탄다 — 이 PC 의 맨 로케일에서 `바탕 화면` 이 대시 여섯이 아니라
+  #   **열넷**이 나왔다(실측 2026-09-16 · LC_ALL=C 의 sed 와 같은 값). 그래서 옛 꼴이 sed 앞에
+  #   붙이던 `LC_ALL=C.UTF-8` 을 **셸 제 것으로** 세운다. bash 는 `LC_ALL` 대입에서 곧바로
+  #   setlocale 을 부른다(재 봤다). ⚠ **빌린 뒤 돌려준다** — 안 돌려주면 뒤따르는 걸음의
+  #   정렬·메시지가 말없이 딴 로케일에서 선다.
+  _olc="${LC_ALL+x}"; _olcv="${LC_ALL:-}"; LC_ALL=C.UTF-8
+  _rw="$(cygpath -w "$_root" 2>/dev/null || printf '%s' "$_root")"
+  _rs="${_rw//[^A-Za-z0-9]/-}"
+  for _r in $_repos; do
+    _pp="$HOME/.claude/projects/$_rs-${_r//[^A-Za-z0-9]/-}"
+    [ -d "$_pp" ] || mkdir -p "$_pp" 2>/dev/null || true
+  done
+  # 전역 층 — 저장소들을 담은 폴더
+  [ -d "$HOME/.claude/projects/$_rs" ] || mkdir -p "$HOME/.claude/projects/$_rs" 2>/dev/null || true
+  if [ -n "$_olc" ]; then LC_ALL="$_olcv"; else unset LC_ALL; fi
 
   # 개인 키 — `secrets.env` 를 사용자 환경변수로. 값이 같으면 건너뛰고, **빈 값은 안 심는다**(심으면
   # 부재가 「있다」로 뒤집힌다). ⚠ 평문이다 — 저장소가 private 인 것이 유일한 울타리다 (0025).
@@ -701,10 +759,22 @@ global_conf_list() {
 #      이어야 하는데, 그 이음새가 어긋나면 **선언이 바뀌었는데 지문이 그대로**가 된다 —
 #      부재가 통과로 읽히는 그 자리다. 넘치게 무는 쪽은 전역 갈래를 한 번 더 돌 뿐이고
 #      그 갈래는 정상 상태에서 프로브뿐이다.
+# ⚠ **프로세스는 `sha256sum` 하나다** (#54). 옛 꼴은 목록을 `mktemp` 파일로 받아 선언마다
+#   `cat` 을 띄우고 끝에 `awk` 를 띄웠다 — 이 PC 의 열한 자리면 열다섯이다. 목록은 파이프로
+#   바로 먹이고, 파일은 `read` 로 읽어 `printf` 로 도로 낸다.
+#   ⚠ **무는 바이트와 그 차례가 안 바뀌는 것이 요점이다.** 바뀌면 이미 깔린 기계의 도장이
+#     통째로 어긋나 저장소마다 한 번씩 다시 깐다 (#56 이 이름을 갈 때 겪은 그 자리).
+#   ⚠ `$(<"$f")` 는 안 쓴다 — 꼬리 줄바꿈을 먹어 바이트가 갈린다. 줄바꿈 없이 끝나는 파일은
+#     고리가 끝난 뒤 `$_gln` 에 남은 토막으로 잇는다.
 global_fingerprint() {
-  _gl="$(mktemp)"; global_conf_list > "$_gl" 2>/dev/null
-  while IFS= read -r _gf; do cat "$_gf" 2>/dev/null; done < "$_gl" | sha256sum | awk '{print $1}'
-  rm -f "$_gl"
+  global_conf_list | {
+    while IFS= read -r _gf; do
+      [ -f "$_gf" ] || continue
+      _gln=""
+      while IFS= read -r _gln; do printf '%s\n' "$_gln"; done < "$_gf"
+      [ -n "$_gln" ] && printf '%s' "$_gln"
+    done
+  } | sha256sum | { read -r _gh _grest; printf '%s\n' "$_gh"; }
 }
 
 home_hook_cmd() {
