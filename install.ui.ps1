@@ -309,7 +309,7 @@ $lDev.ForeColor = [Drawing.Color]::DimGray
 $gO.Controls.Add($lDev)
 
 $cCfg = New-Object Windows.Forms.CheckBox
-$cCfg.Text = '같이 온 규범 · 룰 · 스킬도 깝니다'
+$cCfg.Text = '제작자의 클로드 코드 규범 · 룰 · 스킬도 깝니다'
 $cCfg.Location = New-Object Drawing.Point(16, 64)
 $cCfg.Size = New-Object Drawing.Size(560, 22)
 $cCfg.Checked = [bool]$WithPersonalConfig
