@@ -25,6 +25,10 @@
 #                               ⚠ 위 둘(--install · --install-global)은 찍는 줄을 ~/.claude/logs/
 #                               bootstrap-<날짜>.log 에도 남긴다 — 걸음마다 (n초) 가 붙는다 (#48)
 #   session-start.sh --check    안 깔고 진단만 낸다          ← 어디서 돌려도 안전
+#   session-start.sh --needs-install
+#                               **「깔 게 있나」에 예/아니오만 낸다** (#47 ②) ← deploy.ps1 의
+#                               계획 단계가 이걸로 묻는다. 파일만 보고 1초 안에 끝난다 —
+#                               프로브도 망도 안 탄다. 0 안 깐다 · 1 깐다 · 2 못 쟀다
 #
 # ⚠ 진짜 문제는 **부재가 통과로 읽히는 것**이다. 게이트는 도구가 없으면 그 검사만 건너뛰고
 #   통과시킨다. 아래 §진단이 그 자리를 메운다 — 판정 문구는 거기 한 자리에만 둔다.
@@ -41,6 +45,7 @@ MODE=auto
 ASKED=""   # 인자로 명시된 갈래 — auto 가 지문 어긋남으로 install 이 되는 것과 가른다
 case "${1:-}" in
   --check)          MODE=check ;;
+  --needs-install)  MODE=needs-install ;;
   --install)        MODE=install; ASKED=install ;;
   --install-global) MODE=install; ASKED=install-global ;;
 esac
@@ -91,6 +96,9 @@ UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나�
 # ⚠ 선언이 하나도 없으면 **깔 것을 못 찾은 것**이다. 빈 지문은 「선언이 없다」와 「자리를 잘못
 #   봤다」를 구별하지 못해, 엉뚱한 자리에서도 완료 도장이 찍힌다 — 그 침묵이 무작동을 성공으로
 #   보이게 한다. 막지는 않고 자리를 말하고 간다(선언 없는 저장소도 정당하기 때문이다).
+# ⚠ `--needs-install` 은 이 줄을 안 낸다 — 그 갈래의 답은 **기계가 읽는 한 줄**이라 다른 줄이
+#   섞이면 사유가 밀린다. 이 말이 필요한 사람은 세션(auto)·설치 화면에서 그대로 듣는다.
+[ "$MODE" = needs-install ] ||
 [ -e "$PROJECT_DIR/requirements.txt" ] || [ -e "$PROJECT_DIR/package-lock.json" ] ||
 [ -e "$GCONF" ] || [ -e "$PCONF" ] ||
   echo "$PROJECT_NAME: ⚠ 선언이 하나도 없다(requirements.txt · package-lock.json · tools*.conf) — $PROJECT_DIR 를 저장소로 보고 있다. 자리가 맞나 본다."
@@ -130,6 +138,77 @@ if [ "$OS" = windows ]; then
   VENV_BIN="$VENV/Scripts"; PY_CMD=python
 else
   VENV_BIN="$VENV/bin";     PY_CMD=python3
+fi
+
+# ── 파일로 재는 자 둘 — **배선이 섰나 · venv 가 닿나** ─────────────────────────────────
+#    아래 `--needs-install` 과 이 파일 끝의 진단이 같은 것을 묻는다. 자를 두 벌 두면 한쪽만
+#    고쳐져 같은 저장소를 놓고 두 자리가 다르게 말한다 — 그래서 자는 하나다.
+#    ⚠ 둘 다 **읽기만 한다.** 재는 갈래가 상태를 바꾸면 판정이 늘 초록이 된다
+#      (`--check` 가 `wire_commit_hooks` 를 안 부르는 것과 같은 규율).
+#    ⚠ 자리가 여기인 까닭 — 아래 `py_resolve` 는 파이썬을 **한 번 띄운다.** `--needs-install`
+#      은 프로브를 안 문 갈래라 그 앞에 서야 하고, 그러려면 자도 그 앞에 서 있어야 한다.
+hooks_wired() {  # 0 이면 이 저장소의 .githooks 로 배선돼 있다. 걸린 글자는 HOOKS_PATH 가 든다
+  HOOKS_PATH="$(git -C "$PROJECT_DIR" config core.hooksPath 2>/dev/null)"
+  [ -d "$PROJECT_DIR/.githooks" ] || return 1
+  # ⚠ 글자 일치가 아니라 **자리 일치**다 — 절대경로(`C:/…/.githooks`)로 걸어 둔 저장소도 같은
+  #   폴더를 가리키면 배선된 것이다. 옛 판은 `.githooks` 글자만 받아 그 저장소를 ❌ 로 찍었다.
+  case "$HOOKS_PATH" in
+    .githooks|./.githooks) return 0 ;;
+    "") return 1 ;;
+    *) _hw_here="$(cd "$PROJECT_DIR" 2>/dev/null && cd "$HOOKS_PATH" 2>/dev/null && pwd -P)"
+       _hw_want="$(cd "$PROJECT_DIR/.githooks" && pwd -P)"
+       [ -n "$_hw_here" ] && [ "$_hw_here" = "$_hw_want" ] ;;
+  esac
+}
+# ⚠ venv 는 **폴더가 서 있나가 아니라 pip 이 닿나**로 잰다. `python -m venv` 는 트리를 만들고
+#   해석기를 복사한 **뒤에** pip 을 깐다. 그 마지막 걸음만 져도 폴더는 그대로 남아, 존재로
+#   물으면 반쯤 선 venv 가 「있다」로 읽힌다 — 그러면 **다시 깔아도 영영 안 낫는다**: 만들기를
+#   건너뛰고, pip 이 없으니 의존성 칸도 조용히 지나가고, 실패는 한 줄도 안 남는다 (실측
+#   2026-09-10 · VDI 넷이 다 그랬다). 이 파일 머릿말의 「깔린 것과 닿는 것은 다른 명제다」가
+#   정작 제 venv 가드에만 안 걸려 있었다.
+venv_ready() { [ -x "$VENV_BIN/pip" ] || [ -f "$VENV_BIN/pip.exe" ]; }
+
+# ── `--needs-install` — 「이 저장소에 깔 게 있나」 **예/아니오 하나** (#47 ②) ──────────────
+#    묻는 자는 `deploy.ps1` 의 계획 단계다. 거기 필요한 답은 진단이 아니라 이 한 마디인데,
+#    옛 판은 `--check` 를 불러 도구마다 프로브를 띄웠다 — 사내 VDI 실측(PAISetup #5): 저장소당
+#    31~57초 × 다섯 = 200초가, 부트스트랩 끝의 진단과 **같은 판정을 두 벌** 내는 데 들었다.
+#    그래서 여기는 **파일만 본다** — 프로브도 망도 CI 조회도 없다. 「도구가 닿나」는 안 묻는다:
+#    그 물음의 자리는 깐 뒤의 진단 한 벌이다(설치가 끝난 자리의 판정이라야 진짜다).
+#  ⚠ **판정의 진본을 새로 짓지 않는다.** 「깔 게 있다」가 무엇인가는 auto 갈래의 지문 게이트가
+#    이미 든 명제고, 여기는 같은 자(`decl_fingerprint`)를 그대로 부른다. 그 위에 더하는 것은
+#    **설치가 세우는 것 중 파일로 보이는 것**뿐이다 — 배선(`wire_commit_hooks` 가 세운다) ·
+#    venv(파이썬 선언이 있을 때) · 지난 설치가 남긴 실패(다시 까는 손은 여기라고 auto 가 적어 뒀다).
+#  ⚠ **아무것도 안 쓴다 — 지문 도장(STAMP)도 안 찍는다.** 재는 갈래가 제 자국을 남기면 다음
+#    판정이 그것을 읽는다.
+#  ⚠ 종료코드 셋 — 0 안 깐다 · 1 깐다 · **2 못 쟀다**. 2 를 0 으로 접지 않는다: 부재가 통과로
+#    읽히는 자리가 거기다. 사유는 stdout 한 줄이고, 위층이 그 줄을 그대로 화면에 싣는다.
+if [ "$MODE" = needs-install ]; then
+  _nfp="$(decl_fingerprint)"
+  if [ -z "$_nfp" ]; then
+    echo "선언 지문을 못 쟀다 — sha256sum 을 못 부른다"; exit 2
+  fi
+  if [ -d "$PROJECT_DIR/.githooks" ] && ! hooks_wired; then
+    # 「안 걸렸다」와 「못 물었다」를 가른다 — git 이 이 자리를 저장소로 안 읽으면 배선은 1 이
+    # 아니라 2 다. 성한 자리에서는 이 한 번을 안 묻는다(위가 이미 답했다) — 왕복 하나가 값이다.
+    git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1 ||
+      { echo "배선을 못 쟀다 — git 이 $PROJECT_DIR 를 저장소로 안 읽는다"; exit 2; }
+    echo "커밋 훅 배선이 없다 (core.hooksPath=${HOOKS_PATH:-빈 값})"; exit 1
+  fi
+  [ "$_nfp" = "$(cat "$STAMP" 2>/dev/null)" ] ||
+    { echo "선언 지문이 어긋난다 — 선언이 바뀌었거나 아직 안 깔렸다"; exit 1; }
+  if [ -f "$PROJECT_DIR/requirements.txt" ] && ! venv_ready; then
+    echo "venv 에 pip 이 안 닿는다 — 파이썬 선언이 있는데 .venv 가 없거나 반쯤 섰다"; exit 1
+  fi
+  # 지난 실패는 설치가 제 층을 다시 돌 때만 걷힌다 — 남아 있다는 것은 **마지막 설치가 졌다**는 뜻이다.
+  # 전역 쪽도 같이 본다: 전역형 도구가 못 깔린 저장소는 그 사유를 제 파일에 안 진다 (#43).
+  for _nff in "$FAILS" "$GFAILS"; do
+    [ -s "$_nff" ] || continue
+    _nwho=저장소; [ "$_nff" = "$GFAILS" ] && _nwho=전역
+    echo "지난 $_nwho 설치의 실패가 남아 있다 — $(awk -F'\t' '{printf "%s%s", (NR>1 ? " · " : ""), $1}' "$_nff" 2>/dev/null)"
+    exit 1
+  done
+  echo "배선·지문 맞음"
+  exit 0
 fi
 # ⚠ **윈도우의 `python` 이름은 스토어 껍데기일 수 있다** (#50). PATH 앞의 `WindowsApps\python.exe` 는
 #   진짜 파이썬이 아니라 스토어를 여는 자리표라 비대화에서 진다 — 설치기가 같은 실행에서 파이썬을
@@ -1130,12 +1209,7 @@ if [ "$MODE" = install ]; then
       fi
     fi
     # ── venv 는 **폴더가 서 있나가 아니라 pip 이 닿나**로 잰다. 반쯤 선 것은 지우고 다시 만든다.
-    # ⚠ `python -m venv` 는 트리를 만들고 해석기를 복사한 **뒤에** pip 을 깐다. 그 마지막
-    #   걸음만 져도 폴더는 그대로 남아, 존재로 물으면 반쯤 선 venv 가 「있다」로 읽힌다 —
-    #   그러면 **다시 깔아도 영영 안 낫는다**: 만들기를 건너뛰고, pip 이 없으니 아래 의존성
-    #   칸도 조용히 지나가고, 실패는 한 줄도 안 남는다 (실측 2026-09-10 · VDI 넷이 다 그랬다).
-    #   이 파일 머릿말의 「깔린 것과 닿는 것은 다른 명제다」가 정작 제 venv 가드에만 안 걸려 있었다.
-    venv_ready() { [ -x "$VENV_BIN/pip" ] || [ -f "$VENV_BIN/pip.exe" ]; }
+    #    자(`venv_ready`)는 이 파일 앞머리에 있다 — `--needs-install` 이 같은 것을 묻는다.
     if ! venv_ready; then
       [ -d "$VENV" ] && rm -rf "$VENV"
       # ⚠ **stdin 을 물려준다.** venv 는 pip 을 깔 때 제 안에서 파이썬을 한 번 더 띄우고, 그때
@@ -1531,17 +1605,9 @@ fi
 
 # 저장소 규약 축 — .githooks/ 의 존재가 곧 선언이다
 if [ -d "$PROJECT_DIR/.githooks" ]; then
-  # ⚠ 글자 일치가 아니라 **자리 일치**다 — 절대경로(`C:/…/.githooks`)로 걸어 둔 저장소도 같은
-  #   폴더를 가리키면 배선된 것이다. 옛 판은 `.githooks` 글자만 받아 그 저장소를 ❌ 로 찍었다.
-  _hp="$(git -C "$PROJECT_DIR" config core.hooksPath 2>/dev/null)"
-  _hp_ok=""
-  case "$_hp" in
-    .githooks|./.githooks) _hp_ok=1 ;;
-    "") ;;
-    *) [ "$(cd "$PROJECT_DIR" 2>/dev/null && cd "$_hp" 2>/dev/null && pwd -P)" = "$(cd "$PROJECT_DIR/.githooks" && pwd -P)" ] && _hp_ok=1 ;;
-  esac
-  if [ -n "$_hp_ok" ]; then
-    gate "커밋 훅 배선" ok "core.hooksPath=$_hp"
+  # 자리 일치로 재는 몸통은 앞머리의 `hooks_wired` 한 벌이다 — `--needs-install` 과 같은 자다.
+  if hooks_wired; then
+    gate "커밋 훅 배선" ok "core.hooksPath=$HOOKS_PATH"
 
     # ⚠ **몸통 둘 다 본다.** 옛 판은 `commit-msg` 만 물어서, `pre-commit` 에 실행권한이 없으면
     #   **조각이 통째로 안 도는데 진단은 ✅ 였다.** 가드의 부재지 고장이 아니다.
