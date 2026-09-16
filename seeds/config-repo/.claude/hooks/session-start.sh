@@ -90,6 +90,9 @@ GCONF="$PROJECT_DIR/.claude/tools.global.conf"
 PCONF="$PROJECT_DIR/.claude/tools.conf"
 STAMP="$PROJECT_DIR/.claude/install-stamp"   # 기계 상태 — install-fail 과 같은 자리, 커밋 안 한다
 GSTAMP="$HOME/.claude/install-global-stamp"  # 전역형 선언의 지문 — 저장소가 아니라 기계 하나다 (#43)
+# 전역 걸음이 **이번 실행에서** ✅ 로 낸 도구들의 명부 (#57). 쓰는 자는 `install_global`,
+# 읽는 자는 아래 진단의 `global_verified` — 둘 다 이 한 자리를 가리킨다.
+GVERIFIED="$HOME/.claude/install-global-verified"
 FRESH="$PROJECT_DIR/.claude/install-upgraded"  # 마지막으로 도구를 최신으로 민 날. 같은 자리, 커밋 안 한다
 UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나면 한 번 민다
 
@@ -537,11 +540,17 @@ deploy_personal() {   # deploy_personal auto|install
   # 부재가 「있다」로 뒤집힌다). ⚠ 평문이다 — 저장소가 private 인 것이 유일한 울타리다 (0025).
   # ⚠ 이 셸에도 심는다 — setx 는 새로 뜨는 프로세스부터 걸려서, 안 심으면 뒤따르는 deploy 가 방금
   #   넣은 키를 「없다」로 보고 남은 수동 작업에 도로 띄운다.
+  # ⚠ 이 고리는 줄마다 아무것도 스폰하지 않는다 — 윈도우는 프로세스 하나가 ~90ms 라, 줄마다
+  #   `printf | tr | sed` 를 띄우면 값 셋을 심으려고 백 번을 넘게 띄운다 (0054). 파싱은 `case` 와
+  #   `${}` 로 다 되는 일이고, **버릴 줄은 다듬기 전에 버린다** — 주석·빈 줄을 정규화할 까닭이 없다.
   if [ -f "$CONFIG_ROOT/secrets.env" ]; then
+    _cr=$(printf '\r'); _tab=$(printf '\t')   # 고리 밖에서 한 번 — `$'\r'` 은 sh 에 없다
     while IFS= read -r _line || [ -n "$_line" ]; do
-      _line="$(printf '%s' "$_line" | tr -d '\r' | sed 's/[[:space:]]*$//')"
-      case "$_line" in ''|'#'*) continue ;; esac
+      case "$_line" in ''|'#'*) continue ;; esac     # CRLF 인 빈 줄은 CR 만 남아 아래 *=* 에서 걸린다
       case "$_line" in *=*) ;; *) continue ;; esac
+      while :; do                                    # 꼬리의 CR·공백·탭을 걷는다 — sed 없이
+        case "$_line" in *' '|*"$_tab"|*"$_cr") _line="${_line%?}" ;; *) break ;; esac
+      done
       _k="${_line%%=*}"; _v="${_line#*=}"
       if [ -z "$_v" ]; then
         [ "$1" = install ] && echo "$PROJECT_NAME: ⚠ $_k — 비었다 (secrets.env 에 값을 넣고 커밋할 것)"
@@ -1465,8 +1474,25 @@ if [ "$MODE" = install ]; then
   #   말하지 않으면 무엇이 섰는지 아무 데도 안 남는다 — 설치의 목표는 「깔기를 돌았다」가
   #   아니라 환경이 서 있다이다.
   GDOWN=0
+  # ── 이 실행이 확인한 것을 적는다 — **캐시가 아니라 같은 실행의 인용문이다** (#57) ──────
+  # ⚠ `CLAUDE_CONFIG_RUN` 은 배포 한 번을 가리키는 표식이고 그것을 세우는 자는 `deploy.ps1`
+  #   하나다. 표식이 없으면(세션 auto · `--check` · 사람이 손으로 부른 설치) **아무것도 안
+  #   적는다** — 안 적으면 아래 저장소 진단도 볼 것이 없어 지금처럼 매번 프로브한다.
+  # ⚠ **✅ 만 적는다.** ❌ 를 적으면 저장소 진단이 안 선 도구를 「확인했다」로 읽는다.
+  # ⚠ **이름과 프로브 대상을 함께 적는다.** 이름만 적으면 대상이 다른 선언(같은 이름, 딴
+  #   모듈)이 같은 명제로 읽힌다 — 어긋나면 인용하지 않는 것이 규율이다.
+  # ⚠ 줄의 꼴(`이름 \t 프로브대상 \t 표식`)은 읽는 자 `global_verified` 와 **한 벌이다** —
+  #   한쪽만 고치면 인용이 조용히 끊기고, 끊긴 자리는 느려질 뿐이라 아무도 안 걸린다.
+  gverified_put() {  # gverified_put <이름> <probe-target>
+    [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 0
+    printf '%s\t%s\t%s\n' "$1" "$2" "$CLAUDE_CONFIG_RUN" >> "$GVERIFIED" 2>/dev/null || true
+    return 0
+  }
   install_global() {
     _gseen=""; _gl="$(mktemp)"
+    # 이번 실행의 명부는 **이번 실행이 처음부터 짓는다** — 이어 적으면 지난 실행에서 ✅ 였다가
+    # 이번에 ❌ 인 도구가 옛 줄로 살아남는다. 표식이 없으면 파일에 손도 안 댄다.
+    [ -z "${CLAUDE_CONFIG_RUN:-}" ] || : > "$GVERIFIED" 2>/dev/null || true
     global_conf_list > "$_gl" 2>/dev/null
     while IFS= read -r _gf; do
       [ -f "$_gf" ] || continue
@@ -1487,10 +1513,12 @@ if [ "$MODE" = install ]; then
         _gt0=$SECONDS
         if [ -z "${UPGRADE:-}" ] && probe_global "$_gf" "$_gn"; then
           printf '  ✅ %s — 이미 닿는다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
+          gverified_put "$_gn" "$(decl_get "$_gf" "$_gn" probe-target)"
         else
           install_tool "$_gf" "$_gn" || true
           if probe_global "$_gf" "$_gn"; then
             printf '  ✅ %s — 이번에 깔았다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
+            gverified_put "$_gn" "$(decl_get "$_gf" "$_gn" probe-target)"
           else
             printf '  ❌ %s — 안 닿는다%s (%s초)\n' "$_gn" \
               "$(awk -F'\t' -v k="$_gn" '$1==k{printf " · 설치 실패: %s", $2; exit}' "$GFAILS" 2>/dev/null)" \
@@ -1706,6 +1734,36 @@ pin_mismatch() {  # pin_mismatch <선언파일> <이름> — 어긋나면 읽을
   return 0
 }
 
+# ── 전역 걸음이 **이 실행에서** 낸 판정이 있나 — 캐시가 아니라 인용이다 (#57) ─────────
+# ⚠ 배포 한 번(`deploy.ps1`)이 전역 걸음에서 도구마다 프로브를 이미 띄웠는데, 이어 도는
+#   저장소 다섯의 진단이 같은 전역형 도구를 저장소마다 또 띄웠다 — 같은 실행에서 같은 명제를
+#   스물다섯 번(사내 VDI 실측 ~280초). 전역형 도구는 기계에 하나라 저장소마다 답이 같다.
+# ⚠ **프로브를 뺀 것이 아니다** — 「깔린 것과 닿는 것은 다른 명제」는 그대로 서 있고(이 파일
+#   머리말), 그 실행이 방금 실행해서 낸 판정을 좌표로 인용할 뿐이다. 그래서 문은 셋이고 셋이
+#   다 열려야 한다: **표식이 서 있나**(`CLAUDE_CONFIG_RUN` — 세우는 자는 `deploy.ps1` 하나다)
+#   · **이름과 프로브 대상이 같나**(대상이 다르면 같은 이름이라도 딴 명제다) · **표식이 같나**
+#   (지난 실행의 명부는 이번 실행의 실측이 아니다). 배포 밖에서는 표식이 없어 한 줄도 안 바뀐다.
+# ⚠ **읽기는 셸 안에서 끝낸다** — 저장소마다 도구마다 도는 자리라, 여기서 프로세스를 띄우면
+#   줄이려던 값을 되돌려 놓는다. `read` 는 내장이다.
+global_verified() {  # global_verified <선언파일> <이름> <probe-target>
+  [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 1
+  [ -f "$GVERIFIED" ] || return 1
+  global_kind "$(decl_get "$1" "$2" install)" || return 1
+  # ⚠ **`node-resolvable` 은 인용이 못 선다 — 프로브 둘이 딴 명제를 잰다.** 전역 걸음의
+  #   `probe_global` 은 `npm root -g` 에 대고 「기계에 있나」를 묻고, 저장소의 `probe_reach` 는
+  #   **이 저장소 안에서** 「정션을 타고 이름이 풀리나」를 묻는다. 기계에 있어도 저장소 배선이
+  #   지면 후자는 져야 하는데, 전자를 인용하면 그 ❌(「깔렸는데 프로브가 못 찾는다: 배선이
+  #   끊겼다」)가 통째로 사라진다 — **인용은 같은 명제를 대신할 때만 선다.** 기계에 대고 묻는
+  #   갈래(PATH 실행형)만 남기고 이 갈래는 옛 길 그대로 저장소마다 잰다.
+  [ "$(decl_get "$1" "$2" probe)" = node-resolvable ] && return 1
+  # 줄의 꼴은 쓰는 자 `gverified_put` 과 한 벌이다 — 통째로 견줘 셋 중 하나만 달라도 안 문다.
+  _vq="$(printf '%s\t%s\t%s' "$2" "$3" "$CLAUDE_CONFIG_RUN")"
+  while IFS= read -r _vl; do
+    [ "$_vl" = "$_vq" ] && return 0
+  done < "$GVERIFIED"
+  return 1
+}
+
 # 선언 축 — 전역·프로젝트 두 층. 이름·뜻은 전부 선언에서 온다
 render_decl() {  # render_decl <선언파일> <층라벨>
   for _name in $(decl_sections "$1"); do
@@ -1721,7 +1779,11 @@ render_decl() {  # render_decl <선언파일> <층라벨>
     esac
     # ⚠ **판정 앞에서 부르지 않는다.** `pin_mismatch` 안에서 `npm root -g` + `node` 가 도는데,
     #   통과할 도구에도 그 쌍이 돌면 세션마다 도구 수만큼 곱해진다(npm 은 시작만으로 수백 ms 다).
-    if probe_decl "$1" "$_name"; then
+    # ⚠ **프로브 앞에 선다 — 이기면 프로브를 안 띄운다.** 문 셋(표식·이름+대상·같은 표식)은
+    #   `global_verified` 가 든다. 표식이 없는 자리에서는 첫 문에서 바로 져 옛 길 그대로다.
+    if global_verified "$1" "$_name" "$_target"; then
+      gate "$_name" ok "$_by ($2) — 전역 걸음이 이 실행에서 확인했다"
+    elif probe_decl "$1" "$_name"; then
       _shape="$(pin_shape "$1" "$_name")"
       if [ -n "$_shape" ]; then gate "$_name" ok "$_by ($2) — $_shape"
       else                      gate "$_name" ok "$_by ($2)"; fi

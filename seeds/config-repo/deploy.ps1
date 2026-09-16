@@ -944,6 +944,17 @@ function Sync-RepoOnce($repo) {
     return $ok
 }
 
+# ── 이번 실행의 표식 — **같은 배포 안에서만 통하는 인용 좌표다** (#57) ──────────────────
+# 전역 걸음(`--install-global`)이 도구마다 ✅ 를 내면 훅이 그것을 홈의 명부에 이 표식과 함께
+# 적고, 이어 도는 저장소 걸음(`--install`)의 진단은 **표식이 같을 때만** 그 줄을 인용하고
+# 프로브를 안 띄운다. 저장소 다섯이면 같은 명제를 스물다섯 번 재던 자리다(사내 VDI ~280초).
+# ⚠ **캐시가 아니라서 값이 실행마다 갈려야 한다** — 시각에 PID 를 붙이는 까닭이 그것이다(같은
+#   초에 둘이 돌아도 안 겹친다). 아래 고리가 끝나면 이름을 걷으므로, 다음 배포는 다른 값으로
+#   서고 지난 실행의 명부는 아무도 못 읽는다.
+# ⚠ 고리 **앞**에 한 번 세운다 — 걸음마다 세우면 같은 값을 짓는 자리가 둘이 되고, 갈리는 순간
+#   전역 걸음이 적은 줄을 저장소 걸음이 못 알아본다.
+$env:CLAUDE_CONFIG_RUN = "$(Get-Date -Format 'yyyyMMddTHHmmss')-$PID"
+
 Write-Host ""
 foreach ($step in $plan) {
     switch ($step.Kind) {
@@ -1081,6 +1092,10 @@ foreach ($step in $plan) {
         }
     }
 }
+
+# 표식은 이 실행과 함께 걷는다 — 프로세스가 죽으면 어차피 사라지지만, 그 전에 이 셸에서 손으로
+# 부른 훅이 지난 걸음의 명부를 **제 실측으로** 읽는 자리를 안 만든다.
+Remove-Item Env:CLAUDE_CONFIG_RUN -ErrorAction SilentlyContinue
 
 if (Test-Path $backup) { Write-Host "`n백업: $backup" }
 
