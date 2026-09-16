@@ -453,6 +453,30 @@ $lnkHome.Add_LinkClicked({
 })
 $F.Controls.Add($lnkHome)
 
+# 설치 흐름 그림 — 같은 폴더의 `install-flow.svg`(README 가 든 그 그림). 브라우저가 연다.
+# ⚠ 없으면 경로를 대고 말한다 — howto 링크와 같은 까닭(눌렀는데 아무 일도 안 나면 사람은 멈춘다).
+$lnkFlow = New-Object Windows.Forms.LinkLabel
+$lnkFlow.Text = '설치 흐름 그림'
+$lnkFlow.Location = New-Object Drawing.Point(468, 440)
+$lnkFlow.Size = New-Object Drawing.Size(140, 16)
+$lnkFlow.TextAlign = 'MiddleRight'
+$lnkFlow.Add_LinkClicked({
+  $svg = Join-Path $Here 'install-flow.svg'
+  if (Test-Path -LiteralPath $svg) {
+    try { Start-Process -FilePath $svg | Out-Null }
+    catch {
+      [Windows.Forms.MessageBox]::Show(
+        "그림을 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $svg,
+        $AppName, 'OK', 'Warning') | Out-Null
+    }
+  } else {
+    [Windows.Forms.MessageBox]::Show(
+      '그림 파일이 이 폴더에 없습니다 — ' + [Environment]::NewLine + $svg,
+      $AppName, 'OK', 'Warning') | Out-Null
+  }
+})
+$F.Controls.Add($lnkFlow)
+
 $lState = New-Label '' 18 456 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
