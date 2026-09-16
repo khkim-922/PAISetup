@@ -134,6 +134,11 @@ atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음
     (`CLAUDE_BYTE_STREAM_IDLE_TIMEOUT_MS` · `CLAUDE_STREAM_IDLE_TIMEOUT_MS`)을 10분으로 심고, 프록시(v15)가 상류
     침묵 15초마다 SSE 주석을 흘린다(`/health` 의 `keepalives`). 게이트웨이 쪽이 제 침묵에 끊는 것이면 둘 다 못 막는다 —
     그때는 게이트웨이 팀에 낼 한 줄이다. 압축 모델을 따로 두는 설정은 문서에 없다(claude-code-guide 재확인 2026-09-15)
+  - **끊는 자가 게이트웨이 쪽(180초 스트림 상한)이면 셋째 손 — 프록시가 스트림을 비스트리밍으로 받아 SSE 로 지어
+    낸다(결정 0051).** 회사 PC 실측 2026-09-16(#46): 직결 `stream:false` 는 119초에 `200`, 300.04초에야 **앞단 HAProxy**
+    가 `504`(HTML) — 비스트리밍 경로에는 180초 상한이 없다. 그래서 프록시(v17)는 `/v1/messages` 의 `stream:true` 를
+    상류엔 `stream:false` 로 보내고 기다리는 동안 0044 의 주석을 흘리다 답을 SSE 로 짓는다(`/health` 의 `unstreamed` ·
+    `PGPT_PROXY_UNSTREAM=0` 이면 옛 길). 다음 벽은 앞단의 300초다. 잃는 것은 첫 글자가 답 끝에야 보이는 것
   - **Gemini CLI 는 회사 문서의 번들 패치를 안 쓴다** — 문서(`Gemini-Posco.setting.md`)는 http 주소를 받게 CLI 파일을
     고치는 `gemini-patch.ps1` 을 시키고 업데이트마다 다시 돌리라 하는데, 우리는 주소를 루프백 프록시로 둔다(결정 0041 ·
     `GOOGLE_GEMINI_BASE_URL`). CLI 가 루프백은 http 를 허용해 고칠 파일이 없다. 그 스크립트는 이 저장소에서 지웠다

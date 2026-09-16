@@ -77,9 +77,10 @@ LISTEN_PORT = 18901
 # PGPT_PROXY_UPSTREAM 을 쓴다. 프로토콜은 http — https 는 연결되지 않는다.
 UPSTREAM = os.environ.get("PGPT_PROXY_UPSTREAM", "http://aigpt.posco.net").rstrip("/")
 ALLOWED_PREFIX = "/gpgpta01-gpt/"
-# 상류 v15 + keepalive(아래 _relay_sse_keepalive). 설치기가 도는 판과 이 값을 견주어 낮으면 갈아 끼우므로,
-# 상류가 16 을 내면 우리는 17 로 올린다 — README 「상류 판」.
-VERSION = 16
+# 상류 v15 + 우리 덩어리 둘(keepalive `_relay_sse_keepalive` · unstream `_unstream_messages`). 설치기가 도는
+# 판과 이 값을 견주어 낮으면 갈아 끼우므로 상류보다 늘 위에 둔다 — 상류가 17 을 내면 우리는 18 이다.
+# README 「상류 판」.
+VERSION = 17
 # SSE keepalive — 상류가 이만큼 침묵하면 클라이언트 쪽에 SSE 주석 한 줄을 흘린다. 0 이면 끈다.
 # 게이트웨이는 모델이 생각하는 동안 바이트를 안 흘리고, Claude Code 의 바이트 유휴 워치독은 그 침묵에
 # 스트림을 끊는다(회사 실측 2026-09-14 · 자동 압축이 가장 잘 걸림). 주석 줄(`:`)은 SSE 규격상 버려지므로
@@ -87,6 +88,11 @@ VERSION = 16
 # 끊으면 여기서는 못 막는다.
 KEEPALIVE_SEC = float(os.environ.get("PGPT_PROXY_KEEPALIVE_SEC", "15"))
 _KEEPALIVE_LINE = b": keepalive\n\n"
+# unstream — 클라이언트의 `"stream": true` 를 상류엔 `"stream": false` 로 보내고, 답이 오면 SSE 로 지어 낸다.
+# 게이트웨이는 /v1/messages 스트림을 요청 시작 약 180초에 신호 없이 닫지만(claude-config #46) 비스트리밍
+# 경로에는 그 상한이 없다(회사 PC 실측 2026-09-16 — 119초에 200 · 300.04초에 앞단 HAProxy 의 504).
+# 기본은 켬이고 `PGPT_PROXY_UNSTREAM=0` 이면 옛 길 그대로다 — 결정 0051.
+UNSTREAM = os.environ.get("PGPT_PROXY_UNSTREAM", "1").strip().lower() not in {"0", "false", "off", "no"}
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
 LOG_MAX_BYTES = 1_000_000
@@ -199,6 +205,7 @@ _PATCHED_TOTAL = 0
 _TRIMMED_PREFILLS = 0
 _SLOW_TOTAL = 0
 _KEEPALIVE_TOTAL = 0
+_UNSTREAMED_TOTAL = 0
 
 
 def _count_patched(count: int) -> None:
@@ -225,6 +232,12 @@ def _count_keepalive() -> None:
         _KEEPALIVE_TOTAL += 1
 
 
+def _count_unstreamed() -> None:
+    global _UNSTREAMED_TOTAL
+    with _STATS_LOCK:
+        _UNSTREAMED_TOTAL += 1
+
+
 def stats() -> dict[str, int]:
     with _STATS_LOCK:
         base = {
@@ -232,6 +245,7 @@ def stats() -> dict[str, int]:
             "trimmed_prefills": _TRIMMED_PREFILLS,
             "slow_requests": _SLOW_TOTAL,
             "keepalives": _KEEPALIVE_TOTAL,
+            "unstreamed": _UNSTREAMED_TOTAL,
         }
     base.update(_UPSTREAM_POOL.stats())
     return base
@@ -764,6 +778,118 @@ def reframe_gemini_sse(raw: bytes) -> tuple[bytes, int]:
     return b"".join(parts), joiner.joined_fragments
 
 
+# ── (우리 것 · 결정 0051) 비스트리밍 답 하나를 클라이언트가 기대하는 SSE 로 짓는 자들 ──────────────
+# 잃는 것은 첫 글자가 늦는 것뿐이다 — 이 게이트웨이는 어느 길로도 생각 조각을 안 흘린다(#46 물음 ②).
+
+
+def _sse_event(name: str, data: dict[str, object]) -> bytes:
+    return b"event: " + name.encode("ascii") + b"\ndata: " + _json_bytes(data) + b"\n\n"
+
+
+def _content_block_events(index: int, block: dict[str, object]) -> list[bytes]:
+    """Expand one finished content block into start / delta(s) / stop events."""
+    kind = block.get("type")
+    deltas: list[dict[str, object]] = []
+    if kind == "text":
+        start: dict[str, object] = {"type": "text", "text": ""}
+        deltas.append({"type": "text_delta", "text": str(block.get("text") or "")})
+    elif kind == "tool_use":
+        # Claude Code 는 도구 호출을 input_json_delta 로만 읽는다. 답에는 이미 완성된 input 이
+        # 들어 있으므로 조각내지 않고 JSON 문자열 하나로 통째 싣는다.
+        tool_input = block.get("input")
+        start = {
+            "type": "tool_use",
+            "id": block.get("id"),
+            "name": block.get("name"),
+            "input": {},
+        }
+        deltas.append({
+            "type": "input_json_delta",
+            "partial_json": _json_bytes(tool_input if isinstance(tool_input, dict) else {}).decode("utf-8"),
+        })
+    elif kind == "thinking":
+        start = {"type": "thinking", "thinking": "", "signature": ""}
+        deltas.append({"type": "thinking_delta", "thinking": str(block.get("thinking") or "")})
+        signature = block.get("signature")
+        if isinstance(signature, str) and signature:
+            deltas.append({"type": "signature_delta", "signature": signature})
+    else:
+        # redacted_thinking 처럼 델타가 없는 블록은 시작 이벤트에 통째로 싣는다 (본가와 같은 꼴).
+        start = block
+    events = [_sse_event(
+        "content_block_start",
+        {"type": "content_block_start", "index": index, "content_block": start},
+    )]
+    events.extend(
+        _sse_event("content_block_delta", {"type": "content_block_delta", "index": index, "delta": delta})
+        for delta in deltas
+    )
+    events.append(_sse_event("content_block_stop", {"type": "content_block_stop", "index": index}))
+    return events
+
+
+def synthesize_anthropic_sse(message: dict[str, object]) -> bytes:
+    """Build the SSE stream a ``stream: true`` client expects from a finished message."""
+    raw_usage = message.get("usage")
+    usage = raw_usage if isinstance(raw_usage, dict) else {}
+    start_message = {
+        key: value
+        for key, value in message.items()
+        if key not in {"content", "usage", "stop_reason", "stop_sequence"}
+    }
+    start_message["content"] = []
+    start_message["stop_reason"] = None
+    start_message["stop_sequence"] = None
+    # 문맥 계산과 화면이 그대로이려면 input_tokens·cache_* 가 여기 실려야 한다. 낸 토큰은 아직 0 이고
+    # 최종 수는 message_delta 가 든다 (본가도 시작 이벤트의 output_tokens 는 아직 안 센 값이다).
+    start_message["usage"] = {key: value for key, value in usage.items() if key != "output_tokens"}
+    start_message["usage"]["output_tokens"] = 0
+
+    events = [_sse_event("message_start", {"type": "message_start", "message": start_message})]
+    content = message.get("content")
+    blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
+    index = 0
+    if isinstance(blocks, list):
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            events.extend(_content_block_events(index, block))
+            index += 1
+    events.append(_sse_event("message_delta", {
+        "type": "message_delta",
+        "delta": {
+            "stop_reason": message.get("stop_reason"),
+            "stop_sequence": message.get("stop_sequence"),
+        },
+        "usage": {"output_tokens": usage.get("output_tokens", 0)},
+    }))
+    events.append(_sse_event("message_stop", {"type": "message_stop"}))
+    return b"".join(events)
+
+
+def anthropic_sse_error(status: int, raw: bytes) -> bytes:
+    """Carry an upstream failure as an SSE ``error`` event.
+
+    Once a keepalive comment has gone out the status line is already spent, so the
+    only way left to tell the client is an event.
+    """
+    try:
+        parsed = json.loads(raw.decode("utf-8")) if raw else None
+    except (UnicodeDecodeError, ValueError):
+        parsed = None
+    if isinstance(parsed, dict) and isinstance(parsed.get("error"), dict):
+        error: dict[str, object] = parsed["error"]
+    else:
+        # 앞단 HAProxy 의 504 는 JSON 이 아니라 HTML 이다(#46 실측) — 상태와 첫 줄만 담는다.
+        text = raw.decode("utf-8", "replace")
+        first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        message = f"upstream HTTP {status}"
+        if first_line:
+            message = f"{message}: {first_line[:200]}"
+        error = {"type": "api_error", "message": message}
+    return _sse_event("error", {"type": "error", "error": error})
+
+
 class ProxyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -942,6 +1068,130 @@ class ProxyHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             return False
 
+    def _write_client(self, data: bytes) -> bool:
+        """(우리 것 · 0051) 클라이언트 쪽 쓰기. 끊겨 있으면 False."""
+        try:
+            self.wfile.write(data)
+            self.wfile.flush()
+            return True
+        except (BrokenPipeError, ConnectionResetError):
+            return False
+
+    def _begin_synthesized_sse(self) -> None:
+        """(우리 것 · 0051) 200 SSE 로 못박는다 — 이 뒤로는 상태를 못 바꾼다."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+    def _unstream_messages(
+        self,
+        method: str,
+        upstream_path: str,
+        body: bytes | None,
+        headers: dict[str, str],
+    ) -> tuple[http.client.HTTPConnection | None, bool]:
+        """(우리 것 · 결정 0051) 스트림 요청 하나를 비스트리밍 상류 호출 하나로 답한다.
+
+        상류 호출은 블로킹이라 헬퍼 스레드가 받고 이쪽이 기다리며 주석을 흘린다 —
+        ``_relay_sse_keepalive``(0044)와 같은 짜임이다. 돌려주는 것은 풀에 되돌릴 연결과
+        그것을 재사용해도 되는가.
+        """
+        interval = KEEPALIVE_SEC if KEEPALIVE_SEC > 0 else None
+        answers: queue.Queue = queue.Queue()
+        held: dict[str, http.client.HTTPConnection] = {}
+
+        def caller() -> None:
+            try:
+                response, conn = self._write_upstream(method, upstream_path, body, headers)
+                held["conn"] = conn
+                answers.put((response, response.read()))
+            except BaseException as error:  # noqa: BLE001 — 사유째 넘긴다
+                answers.put(error)
+
+        threading.Thread(target=caller, daemon=True).start()
+        comments = 0
+        opened = False
+        aborted = False
+        while True:
+            try:
+                item = answers.get(timeout=interval)
+                break
+            except queue.Empty:
+                if aborted:
+                    continue
+                if not opened:
+                    self._begin_synthesized_sse()
+                    opened = True
+                if not self._write_client(_KEEPALIVE_LINE):
+                    # 클라이언트가 갔다. 그래도 상류 답은 끝까지 기다린다 — 안 그러면 풀 연결이 샌다.
+                    aborted = True
+                    continue
+                comments += 1
+                _count_keepalive()
+
+        conn = held.get("conn")
+        if isinstance(item, BaseException):
+            log(f"{method} {upstream_path} -> unstream upstream failed: {item!r}")
+            if aborted:
+                return conn, False
+            if opened:
+                self._write_client(_sse_event(
+                    "error",
+                    {"type": "error", "error": {"type": "api_error", "message": str(item)}},
+                ))
+            else:
+                self._send_json(502, {"type": "error", "error": {"message": str(item)}})
+            return conn, False
+
+        response, raw = item
+        conn_tokens = {
+            part.strip()
+            for part in (response.headers.get("Connection") or "").lower().split(",")
+            if part.strip()
+        }
+        reuse = "close" not in conn_tokens
+        if aborted:
+            return conn, reuse
+
+        message = None
+        if 200 <= response.status < 300:
+            try:
+                message = json.loads(raw.decode("utf-8")) if raw else None
+            except (UnicodeDecodeError, ValueError):
+                message = None
+        if not isinstance(message, dict) or not isinstance(message.get("content"), (list, str)):
+            if response.status >= 400:
+                log(f"{method} {upstream_path} -> HTTP {response.status} (unstream)")
+            else:
+                log(f"{method} {upstream_path} -> unstream: not an Anthropic message ({len(raw)}B)")
+            if opened:
+                self._write_client(anthropic_sse_error(response.status, raw))
+                return conn, reuse
+            # 주석을 아직 안 흘린 판이면 상태와 몸을 그대로 넘긴다 — 옛 길과 같게.
+            self.send_response(response.status)
+            for key, value in response.headers.items():
+                if key.lower() in HOP_BY_HOP or key.lower() in {"content-length", "date", "server"}:
+                    continue
+                self.send_header(key, value)
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self._write_client(raw)
+            return conn, reuse
+
+        if not opened:
+            self._begin_synthesized_sse()
+        self._write_client(synthesize_anthropic_sse(message))
+        _count_unstreamed()
+        content = message.get("content")
+        log(
+            f"unstreamed model={message.get('model')} "
+            f"blocks={len(content) if isinstance(content, list) else 1} keepalive x{comments}"
+        )
+        return conn, reuse
+
     def _forward(self) -> None:
         started = time.monotonic()
         parsed = urlsplit(self.path)
@@ -964,6 +1214,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         body = self._read_body()
         gemini_chat_model: str | None = None
         gemini_chat_stream = False
+        unstream = False
         if body:
             stripped_path = parsed.path.rstrip("/")
             is_messages = stripped_path.endswith("/v1/messages")
@@ -987,6 +1238,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             log(f"{parsed.path} Claude model restored: {model_name} -> {payload_obj.get('model')}")
                         payload_obj = sanitize_payload(payload_obj)
                         changed = True
+                        # (우리 것 · 결정 0051) 스트림 요청만 · 손잡이가 켜졌을 때만. 상류엔 stream:false 로
+                        # 간다. 이 한 칸 말고는 몸을 안 건드린다 — 프롬프트 캐시는 본문 앞부분의 성질이라
+                        # cache_control 도 키 차례도 그대로여야 캐시가 산다.
+                        if UNSTREAM and self.command == "POST" and payload_obj.get("stream") is True:
+                            payload_obj["stream"] = False
+                            unstream = True
                     elif is_openai_generation and model_name.startswith("gemini-"):
                         gemini_chat_model = model_name
                         gemini_chat_stream = bool(payload_obj.get("stream"))
@@ -1031,6 +1288,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
         response: http.client.HTTPResponse | None = None
         reuse = False
         try:
+            if unstream:
+                # (우리 것 · 결정 0051) 여기부터는 상류가 비스트리밍이라 중계가 아니라 짓기다.
+                conn, reuse = self._unstream_messages(
+                    self.command, upstream_path, body, headers
+                )
+                return
             try:
                 response, conn = self._write_upstream(
                     self.command, upstream_path, body, headers
@@ -1371,6 +1634,81 @@ def self_test() -> None:
     assert b"event: ping\ndata: {}\n\n" in relayed, relayed  # 본문은 그대로 — EOF 전 침묵에는 뒤에도 주석이 붙는다
     assert relayed.count(_KEEPALIVE_LINE) >= 2, relayed
     assert stats()["keepalives"] >= 2
+
+    # unstream(결정 0051): 비스트리밍 답 하나를 클라이언트가 기대하는 SSE 로 짓는다.
+    def _events(raw: bytes) -> list[tuple[str, dict]]:
+        parsed: list[tuple[str, dict]] = []
+        for chunk in raw.decode("utf-8").split("\n\n"):
+            if not chunk.strip():
+                continue
+            name = ""
+            data = "{}"
+            for line in chunk.splitlines():
+                if line.startswith("event: "):
+                    name = line[len("event: "):]
+                elif line.startswith("data: "):
+                    data = line[len("data: "):]
+            parsed.append((name, json.loads(data)))
+        return parsed
+
+    # 7. 글 — 생각 조각이 섞여 와도 index 가 차례대로 붙고 usage 가 두 이벤트로 나뉜다.
+    text_answer = {
+        "id": "msg_01", "type": "message", "role": "assistant", "model": "claude-opus-5",
+        "content": [
+            {"type": "thinking", "thinking": "음", "signature": "sig-abc"},
+            {"type": "text", "text": "안녕하세요"},
+        ],
+        "stop_reason": "end_turn", "stop_sequence": None,
+        "usage": {"input_tokens": 11, "cache_read_input_tokens": 7,
+                  "cache_creation_input_tokens": 0, "output_tokens": 3},
+    }
+    events = _events(synthesize_anthropic_sse(text_answer))
+    assert [name for name, _ in events] == [
+        "message_start",
+        "content_block_start", "content_block_delta", "content_block_delta", "content_block_stop",
+        "content_block_start", "content_block_delta", "content_block_stop",
+        "message_delta", "message_stop",
+    ], events
+    start = events[0][1]["message"]
+    assert start["content"] == [] and start["id"] == "msg_01" and start["model"] == "claude-opus-5"
+    assert start["usage"]["input_tokens"] == 11 and start["usage"]["cache_read_input_tokens"] == 7
+    assert start["usage"]["output_tokens"] == 0 and start["stop_reason"] is None
+    assert events[1][1]["content_block"] == {"type": "thinking", "thinking": "", "signature": ""}
+    assert events[2][1]["delta"] == {"type": "thinking_delta", "thinking": "음"}
+    assert events[3][1]["delta"] == {"type": "signature_delta", "signature": "sig-abc"}
+    assert events[5][1]["index"] == 1 and events[5][1]["content_block"] == {"type": "text", "text": ""}
+    assert events[6][1]["delta"] == {"type": "text_delta", "text": "안녕하세요"}
+    assert events[-2][1]["delta"] == {"stop_reason": "end_turn", "stop_sequence": None}
+    assert events[-2][1]["usage"] == {"output_tokens": 3}
+    assert events[-1][1] == {"type": "message_stop"}
+
+    # 8. 도구 호출 — input 전체가 input_json_delta 하나에 JSON 문자열로 실린다 (Claude Code 가 읽는 꼴).
+    tool_input = {"file_path": "C:/일감/x.py", "limit": 10, "nested": {"a": [1, 2]}}
+    tool_answer = {
+        "id": "msg_02", "type": "message", "role": "assistant", "model": "claude-opus-5",
+        "content": [{"type": "tool_use", "id": "toolu_01", "name": "Read", "input": tool_input}],
+        "stop_reason": "tool_use", "stop_sequence": None,
+        "usage": {"input_tokens": 9, "output_tokens": 21},
+    }
+    tool_events = _events(synthesize_anthropic_sse(tool_answer))
+    deltas = [data for name, data in tool_events if name == "content_block_delta"]
+    assert len(deltas) == 1, deltas
+    assert deltas[0]["delta"]["type"] == "input_json_delta"
+    assert json.loads(deltas[0]["delta"]["partial_json"]) == tool_input
+    opening = [data for name, data in tool_events if name == "content_block_start"][0]
+    assert opening["content_block"] == {"type": "tool_use", "id": "toolu_01", "name": "Read", "input": {}}
+    assert tool_events[-2][1]["delta"]["stop_reason"] == "tool_use"
+
+    # 9. 오류 — 상류 몸이 JSON 이면 그 error 를, 앞단 HTML 504 면 상태와 첫 줄을 담는다.
+    json_error = _events(anthropic_sse_error(500, _json_bytes(
+        {"type": "error", "error": {"type": "api_error", "message": "게이트웨이 실패"}})))
+    assert json_error[0][0] == "error"
+    assert json_error[0][1] == {"type": "error",
+                                "error": {"type": "api_error", "message": "게이트웨이 실패"}}
+    html_error = _events(anthropic_sse_error(
+        504, b"<html><body><h1>504 Gateway Time-out</h1>\nThe server didn't respond in time.\n"))
+    assert html_error[0][1]["error"]["type"] == "api_error"
+    assert "504" in html_error[0][1]["error"]["message"], html_error
 
     print("Self-test: OK")
 

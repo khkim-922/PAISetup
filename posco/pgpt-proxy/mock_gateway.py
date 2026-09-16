@@ -13,11 +13,20 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 PREFIX = "/gpgpta01-gpt"
+# ── (우리 것 · 결정 0051) 느린 비스트리밍 답 ────────────────────────────────────────────────────
+# 프록시가 `stream: true` 를 비스트리밍 한 번으로 받아 SSE 로 지어 내는 갈래를 사내망 밖에서 재는 자리.
+# `MOCK_SLOW_SEC` 만큼 침묵한 뒤(비스트리밍이라 그동안 한 바이트도 안 간다) `MOCK_ANSWER` 꼴로 답하고,
+# 상류가 **무엇을 받았나**(특히 `stream`)를 `GET {PREFIX}/_mock/last` 로 되돌려 준다.
+SLOW_SEC = float(os.environ.get("MOCK_SLOW_SEC", "0"))
+ANSWER = os.environ.get("MOCK_ANSWER", "text")          # text · tool_use · error500
+LAST: dict[str, object] = {}
 # 사내 포털에 등록돼 있는 이름들(2026-08 기준, gpt-6-astra 는 2026-09-15 추가). Grok 만 대시 표기다.
 MODELS = [
     "claude-opus-5",
@@ -50,10 +59,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0") or "0")
+        self.raw_body = b""     # (0051) 프록시가 넘긴 몸을 글자 그대로 기록해 두려고 남긴다
         if not length:
             return {}
+        self.raw_body = self.rfile.read(length)
         try:
-            return json.loads(self.rfile.read(length))
+            return json.loads(self.raw_body)
         except ValueError:
             return {}
 
@@ -66,6 +77,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlsplit(self.path)
+        if parsed.path == f"{PREFIX}/_mock/last":
+            # (0051) 시험 전용 창구 — 상류가 마지막으로 받은 /v1/messages 를 그대로 보여 준다.
+            # 게이트웨이에는 없는 경로이고 키가 안 실리므로 인증 밖에 둔다.
+            self._send(200, dict(LAST))
+            return
         if not self._authorized(parsed.query):
             return
         if parsed.path == f"{PREFIX}/v1/models":
@@ -86,15 +102,44 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == f"{PREFIX}/v1/messages":
+            # (0051) 상류가 무엇을 받았나 — stream 값과 몸 전체를 남긴다
+            LAST.clear()
+            LAST.update({
+                "stream": body.get("stream"),
+                "model": body.get("model"),
+                "answer": ANSWER,
+                "raw": self.raw_body.decode("utf-8", "replace"),
+            })
             # 프록시가 prefill 을 떼지 못하면 실제 게이트웨이처럼 400 을 낸다
             messages = body.get("messages") or []
             if messages and messages[-1].get("role") != "user":
                 self._send(400, {"type": "error", "error": {"message": "assistant prefill 은 허용되지 않습니다."}})
                 return
+            if SLOW_SEC > 0:
+                # (0051) 오래 생각하는 턴 흉내 — 비스트리밍이라 이 동안 클라이언트로 갈 바이트가 없다
+                time.sleep(SLOW_SEC)
+            if ANSWER == "error500":
+                self._send(500, {"type": "error", "error": {"type": "api_error", "message": "mock upstream failure"}})
+                return
+            if ANSWER == "tool_use":
+                self._send(200, {
+                    "id": "msg_mock", "type": "message", "role": "assistant",
+                    "model": body.get("model"),
+                    "content": [{"type": "tool_use", "id": "toolu_mock", "name": "Read",
+                                 "input": {"file_path": "C:/일감/x.py", "limit": 10,
+                                           "nested": {"a": [1, 2]}}}],
+                    "stop_reason": "tool_use", "stop_sequence": None,
+                    "usage": {"input_tokens": 9, "cache_read_input_tokens": 0,
+                              "cache_creation_input_tokens": 0, "output_tokens": 21},
+                })
+                return
             self._send(200, {
                 "id": "msg_mock", "type": "message", "role": "assistant",
                 "model": body.get("model"),
                 "content": [{"type": "text", "text": "OK"}],
+                "stop_reason": "end_turn", "stop_sequence": None,
+                "usage": {"input_tokens": 11, "cache_read_input_tokens": 7,
+                          "cache_creation_input_tokens": 0, "output_tokens": 3},
             })
             return
 

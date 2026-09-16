@@ -15,11 +15,14 @@
 ## 상류 판
 
 - 저장소 `pgpt-one-click-connect` · 커밋 `701765da` (2026-09-15 · v0.5.3) · 프록시 `VERSION = 15`
-- **우리 판은 `VERSION = 16` = 상류 15 + keepalive 한 덩어리** (결정 0044). 설치기가 도는 판과 이 값을 견주어
-  낮으면 갈아 끼우므로 상류보다 하나 위에 둔다 — 상류가 16 을 내면 우리는 17 이다
+- **우리 판은 `VERSION = 17` = 상류 15 + 우리 덩어리 둘**(결정 0044 · 0051). 설치기가 도는 판과 이 값을 견주어
+  낮으면 갈아 끼우므로 **상류보다 늘 위에 둔다** — 상류가 17 을 내면 우리는 18 이다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **파일은 안 고친다 — 예외가 하나다.** `_relay_sse_keepalive`(+ `KEEPALIVE_SEC` · 카운터 `keepalives` · 자체
-  검사 한 칸)만 우리 것이고, 나머지는 상류 그대로다. 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
+- **파일은 안 고친다 — 예외가 둘이다.** ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
+  `keepalives` · 자체 검사 한 칸 · 결정 0044) ⑵ unstream(`UNSTREAM` 손잡이 · `synthesize_anthropic_sse` 무리 ·
+  `_unstream_messages` · 카운터 `unstreamed` · 자체 검사 세 칸 · 결정 0051). 그 둘째를 사내망 밖에서 재느라
+  `mock_gateway.py` 에도 느린 비스트리밍 답 한 칸이 붙었다(`MOCK_SLOW_SEC` · `MOCK_ANSWER` · `_mock/last`).
+  나머지는 상류 그대로다. 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
   파이썬 판정이 무는 두 줄(`raise` 에 `from` 없음 · 안 쓰는 import)은 뿌리 `ruff.toml` 이 이 세 파일을
   제외해 받는다 — 판정은 전역, 제외는 저장소(결정 0039)
 
@@ -36,13 +39,14 @@
 | 빈 도구 `description` 채우기 | **쓴다 · 6회** (Claude Code) · Codex 를 루프백에 태우면 `/v1/responses` 에서도 걸린다(탐침 `tool_descriptions_filled=1`) |
 | 상류 연결 풀 — 30초(`UPSTREAM_IDLE_TTL`) 넘게 논 연결은 재사용하지 않고 닫는다 · `/health` 의 `upstream_expired` | **쓴다** — 게이트웨이가 keep-alive 를 끊은 뒤 남은 연결을 집어 첫 요청이 지던 자리. 실측 `upstream_expired=8` · 재사용 82 |
 | **(우리 것)** Anthropic SSE 가 침묵하면 `KEEPALIVE_SEC`(기본 15초)마다 `: keepalive` 주석 한 줄을 클라이언트에 흘린다 — 게이트웨이가 생각 조각을 안 흘려 Claude Code 의 바이트 유휴 워치독이 끊던 자리. `PGPT_PROXY_KEEPALIVE_SEC=0` 이면 끈다 | **쓴다 · 132회** (Claude Code · 결정 0044) |
+| **(우리 것)** `/v1/messages` 에 `"stream": true` 가 오면 상류엔 **`"stream": false`** 로 보내고, 기다리는 동안 위 주석을 흘리다, 답이 오면 SSE 를 지어 낸다(`message_start` → 블록마다 `content_block_*` → `message_delta` → `message_stop` · 도구 호출은 `input_json_delta` 하나에 `input` 통째). 몸은 그 한 칸 말고 안 바뀐다 — `cache_control` 도 키 차례도 그대로다. `PGPT_PROXY_UNSTREAM=0` 이면 옛 길 | **쓴다 · 회사 실측은 아직** (Claude Code · 아뜰리에 · 결정 0051) — 게이트웨이가 스트림을 요청 시작 180초에 닫는 벽을 스트림 아닌 길로 비껴간다. 다음 벽은 앞단 HAProxy 의 300초다(#46 실측) |
 | `/v1beta` 통과 — Gemini CLI 가 루프백을 지난다 | **쓴다** — 프록시의 값은 보정이 아니라 **주소**다(CLI 가 `https` 아니면 거부하는데 `127.0.0.1` 만 `http` 를 허용한다 · 0041) |
 | `/v1beta` — `-customtools` 접미사 제거 | **논다** — CLI 0.60 은 도구를 켜도 접미사를 안 붙인다(코드 주석은 0.55 기준) |
 | `/v1beta` — 쪼개진 SSE 재조립 | **안 걸렸다** — 탐침 한 판이라 「논다」로 굳히지 않는다. 게이트웨이 버릇이라 Gemini 를 실제로 쓰기 시작하면 다시 잰다 |
 | `/v1beta` — `x-goog-api-key` 곁에 Bearer 추가 | **값이 없다** — 게이트웨이가 두 방식을 다 받는다(`Gemini-Posco.setting.md` 인증 절) · 원래 헤더만으로 200(직결 실측) |
 | GPT-5·GPT-6 계열 `max_tokens` → `max_completion_tokens`(`/v1/responses` 는 `max_output_tokens`) | **논다** — Codex 가 이미 `max_output_tokens` 로 보낸다. 직결도 루프백도 0 |
 | Hermes 갈래 — chat 문의 Gemini 변환 · `x-api-key` → Bearer | **논다** — Hermes 를 안 쓴다. Claude Code 는 Bearer 로 보낸다 |
-| 응답 | **무수정 중계** — 스트리밍 포함. 심장박동도 생각 낱말도 안 건드린다. 180초 벽은 이것으로 안 넘는다(`ENV-posco.md`) |
+| 응답 | **무수정 중계** — 스트리밍 포함. 심장박동도 생각 낱말도 안 건드린다. 180초 벽을 중계로는 못 넘는다(`ENV-posco.md`) — 넘는 것은 위 unstream 갈래고, 그 길의 `/v1/messages` 만 중계가 아니라 짓기다 |
 
 **프록시가 하는 일이 아닌 것 하나** — `POST /v1/messages/count_tokens` 는 게이트웨이에 없어 **404** 다(실측
 775회). 클라이언트가 제 계산으로 넘어가고 `slow` 는 0건이라 지연을 안 만든다 — 고칠 자리가 아니라 알아둘
@@ -61,6 +65,8 @@
 ```bash
 python -X utf8 posco/pgpt-proxy/opus5_proxy.py --self-test     # 보정 함수 — 어디서나
 python -X utf8 posco/pgpt-proxy/pair_check.py                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
+MOCK_SLOW_SEC=4 MOCK_ANSWER=tool_use python -X utf8 posco/pgpt-proxy/mock_gateway.py 18902
+#   느린 비스트리밍 답 — 답 꼴은 text·tool_use·error500 · 상류가 받은 몸은 GET /gpgpta01-gpt/_mock/last (0051)
 PGPT_API_KEY=<회사 키> python -X utf8 posco/pgpt-proxy/Test-AllPgptModels.py   # 회사 · 프록시가 떠 있어야
 ```
 
@@ -69,10 +75,16 @@ PGPT_API_KEY=<회사 키> python -X utf8 posco/pgpt-proxy/Test-AllPgptModels.py 
 ## 상류에서 새 판을 받을 때
 
 1. 상류의 세 파일을 그대로 복사한다 — `diff --strip-trailing-cr` 로 대조하면 줄끝 잡음이 안 낀다.
-   ⚠ `opus5_proxy.py` 는 복사한 뒤 **keepalive 덩어리를 다시 얹는다** — `git diff` 로 이번 판과 견주면 그 덩어리가
-   그대로 보인다(`KEEPALIVE_SEC` · `_count_keepalive` · `_relay_sse_keepalive` · `_relay_stream` 의 두 인자 ·
-   호출 자리의 `keepalive_sse` · 자체 검사 끝 칸)
-2. 위 「상류 판」의 커밋·`VERSION` 을 고친다 — 우리 `VERSION` 은 상류보다 하나 위
+   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 둘을 다시 얹는다** — `git diff` 로 이번 판과 견주면 둘 다
+   그대로 보인다.
+   - keepalive(0044) — `KEEPALIVE_SEC` · `_count_keepalive` · `_relay_sse_keepalive` · `_relay_stream` 의 두 인자 ·
+     호출 자리의 `keepalive_sse` · 자체 검사 한 칸
+   - unstream(0051) — `UNSTREAM` · `_count_unstreamed` · `stats()` 의 `unstreamed` · `_sse_event` ·
+     `_content_block_events` · `synthesize_anthropic_sse` · `anthropic_sse_error` · `_write_client` ·
+     `_begin_synthesized_sse` · `_unstream_messages` · `_forward` 의 `unstream` 두 자리 · 자체 검사 세 칸
+   ⚠ `mock_gateway.py` 에도 얹을 것이 있다 — `SLOW_SEC`/`ANSWER`/`LAST` · `_body` 의 `raw_body` ·
+   `_mock/last` 창구 · `/v1/messages` 의 답 세 꼴(0051)
+2. 위 「상류 판」의 커밋·`VERSION` 을 고친다 — 우리 `VERSION` 은 상류보다 늘 위(설치기가 갈아 끼우는 눈금 · 상류가 우리 번호에 닿으면 하나 더)
 3. `pair_check.py` 와 `--self-test` 가 초록인지 본다. 프록시가 새 보정을 얹었으면 위 표에 「쓴다/논다」를 더한다
 
 ## 안 담은 것
