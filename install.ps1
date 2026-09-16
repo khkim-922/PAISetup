@@ -1190,25 +1190,51 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
     Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"
   } elseif (Test-Runs $Cmd '--version') {
     $b = Get-Ver $Cmd '--version'
-    Write-Host "  $Label 최신으로 갱신중 … (지금 $b)"     # 긴 명령 앞의 한 줄 — 확장 칸과 같은 까닭
-    $nl = [IO.Path]::GetTempFileName()
-    # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** 저쪽(2 칸)은 「올릴 것 없음」에도
-    #   0 이 아닌 값을 내서 버릴 **까닭이 적혀 있지만**, npm 은 지면 지는 값을 낸다. 버리고 판만
-    #   견주면 사내 프록시가 `registry.npmjs.org` 를 막았거나 Node 가 CA 를 몰라 죽은 판에서도
-    #   판이 안 바뀌었으니 **「최신 (1.2.3)」이 찍힌다** — 낡은 판이 도는 것과 최신이 도는 것을
-    #   못 가르는 자리다. 로그도 곧바로 지워 단서가 없었다.
-    # ⚠ **그렇다고 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛 판으로 돈다 — 저장소
-    #   `pull` 이 졌을 때와 같은 꼴이라(8 칸) 같은 규율로 든다: 말은 하되 빨강으로 안 끝낸다.
-    $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
-    Update-RuntimePath
-    $a = Get-Ver $Cmd '--version'
-    if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-    elseif ($nrc -ne 0) {
-      Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
-      Show-Log $nl
+    Write-Host "  $Label 판 확인중 … (지금 $b)"     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
+    # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
+    #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
+    #   이 걸음이 셋 합쳐 121초였다(실측 v1.12.0 두 번째 판 · 사내 VDI · 설치기 전체의 40%).
+    #   판 하나 묻는 GET 은 어느 기계에서도 1초 안팎이다. 사외 VDI 는 **로그인마다** 이 걸음을 지난다.
+    # ⚠ **묻는 것도 `@latest` 로 묻는다.** install 이 보는 태그와 다른 것을 물으면 엉뚱한 판과
+    #   견주게 되고, 그 어긋남은 「올렸는데 또 올린다」로만 드러나 아무도 안 잡는다.
+    $rvo = Get-Quiet 'npm' @('view',"$Pkg@latest",'version') | Select-Object -First 1
+    $vrc = $LASTEXITCODE
+    $rv  = ("$rvo").Trim()
+    # 깔린 판 문자열은 꼴이 셋이다 — `2.1.273 (Claude Code)` · `codex-cli 0.154.0` · `0.60.0`.
+    # 그래서 같음을 등호로 못 재고 **「깔린 문자열이 레지스트리 판을 낱말로 품나」**로 잰다.
+    # ⚠ **경계를 `\b` 로 잡지 않는다.** `\b` 는 점을 경계로 쳐서 `1.2.1.273` 이 `2.1.273` 을 품은
+    #   것으로 읽힌다 — 판 문자열에서 점은 구분자가 아니라 판의 일부다. 앞뒤로 글자도 점도 오지
+    #   않기를 요구해야 `2.1.2730` 과 `1.2.1.273` 이 함께 걸러진다.
+    $same = $rv -and ($b -match "(?<![\w.])$([regex]::Escape($rv))(?![\w.])")
+    # ⚠ **여기서 지는 둘(못 물음 · 못 올림)을 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛
+    #   판으로 돈다 — 저장소 `pull` 이 졌을 때와 같은 꼴이라(8 칸) 같은 규율로 든다: 말은 하되
+    #   빨강으로 안 끝낸다.
+    if ($vrc -ne 0 -or -not $rv) {
+      # ⚠ **못 물었을 때 「최신」이라 찍지 않는다.** 사내 프록시가 `registry.npmjs.org` 를 막았거나
+      #   Node 가 CA 를 몰라 죽은 판에서도 깔린 판은 그대로다 — 거기서 「최신」을 찍으면 **낡은 판이
+      #   도는 것과 최신이 도는 것을 못 가른다.** install 을 돌려 보는 갈래도 안 둔다: 못 닿는
+      #   레지스트리에는 install 도 못 닿는다.
+      Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
+    } elseif ($same) {
+      Write-Host "  $Label — 최신  ($b)"
+    } else {
+      Write-Host "  $Label 갱신중 … ($b  ->  $rv)"
+      $nl = [IO.Path]::GetTempFileName()
+      # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** 저쪽(2 칸)은 「올릴 것 없음」에도
+      #   0 이 아닌 값을 내서 버릴 **까닭이 적혀 있지만**, npm 은 지면 지는 값을 낸다. 버리고 판만
+      #   견주면 설치가 죽은 판에서도 판이 안 바뀌었으니 아래 마지막 갈래로 새어 **「최신」이 찍힌다.**
+      #   로그도 곧바로 지워 단서가 없었다.
+      $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
+      Update-RuntimePath
+      $a = Get-Ver $Cmd '--version'
+      if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+      elseif ($nrc -ne 0) {
+        Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+        Show-Log $nl
+      }
+      else { Write-Host "  $Label — 최신  ($b)" }
+      Remove-Item $nl -ErrorAction SilentlyContinue
     }
-    else { Write-Host "  $Label — 최신  ($b)" }
-    Remove-Item $nl -ErrorAction SilentlyContinue
   } elseif (Test-Runs 'npm' '--version') {
     Write-Host "  $Label 설치중 …"
     $nl = [IO.Path]::GetTempFileName()
