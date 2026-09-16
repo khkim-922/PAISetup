@@ -1531,8 +1531,17 @@ fi
 
 # 저장소 규약 축 — .githooks/ 의 존재가 곧 선언이다
 if [ -d "$PROJECT_DIR/.githooks" ]; then
-  if [ "$(git -C "$PROJECT_DIR" config core.hooksPath 2>/dev/null)" = ".githooks" ]; then
-    gate "커밋 훅 배선" ok "core.hooksPath=.githooks"
+  # ⚠ 글자 일치가 아니라 **자리 일치**다 — 절대경로(`C:/…/.githooks`)로 걸어 둔 저장소도 같은
+  #   폴더를 가리키면 배선된 것이다. 옛 판은 `.githooks` 글자만 받아 그 저장소를 ❌ 로 찍었다.
+  _hp="$(git -C "$PROJECT_DIR" config core.hooksPath 2>/dev/null)"
+  _hp_ok=""
+  case "$_hp" in
+    .githooks|./.githooks) _hp_ok=1 ;;
+    "") ;;
+    *) [ "$(cd "$PROJECT_DIR" 2>/dev/null && cd "$_hp" 2>/dev/null && pwd -P)" = "$(cd "$PROJECT_DIR/.githooks" && pwd -P)" ] && _hp_ok=1 ;;
+  esac
+  if [ -n "$_hp_ok" ]; then
+    gate "커밋 훅 배선" ok "core.hooksPath=$_hp"
 
     # ⚠ **몸통 둘 다 본다.** 옛 판은 `commit-msg` 만 물어서, `pre-commit` 에 실행권한이 없으면
     #   **조각이 통째로 안 도는데 진단은 ✅ 였다.** 가드의 부재지 고장이 아니다.
