@@ -20,7 +20,7 @@
 #      어느 저장소·어느 슬러그로 가나는 deploy.targets.d/*.conf 가 든다 — 스크립트는 모른다
 #      .claude/hooks/*.sh 와 .claude/settings.json -> <저장소>/  훅 몸통과 그 등록
 #   3. mcp-servers.json에 적힌 MCP 서버 등록
-#   4. 부트스트랩 — 걸음이 둘이다 (#43)
+#   4. 설치 — 걸음이 둘이다 (#43)
 #      4a. 전역 설치 한 번    claude-config 의 훅을 `--install-global` 로 불러 전역형 도구
 #                             (npm 전역 · 릴리스 바이너리 · winget · 브라우저)를 기계에 한 번 깐다
 #      4b. 저장소마다         각 저장소의 .claude/hooks/session-start.sh 를 `--install` 로 불러
@@ -65,7 +65,7 @@ $prunable = @()  # 제거 후보 (-Prune 없이는 세기만 한다)
 # ⚠ **초록도 편다.** 통과가 화면에서 침묵하면 「재서 다 살아 있다」와 「아예 안 쟀다」가
 #   같아진다 — 그 침묵은 아무것도 안 말한 것과 같다. 여기는 나르기만 한다.
 # ⚠ 이제 이 통에 드는 것은 **저장소마다 「마지막 CI」 한 줄**뿐이다 — 훅 진단은 계획 단계가
-#   안 돌리고(`--needs-install` 은 파일만 본다 · #47 ②) 부트스트랩 걸음이 `--install` 끝에 그
+#   안 돌리고(`--needs-install` 은 파일만 본다 · #47 ②) 저장소 설치 걸음이 `--install` 끝에 그
 #   자리에서 낸다.
 $gateReport = @()  # 저장소마다 마지막 CI 한 줄 — 초록·빨강·못 쟀다
 $needsProbe = $null  # 계획 단계가 「깔 게 있나」를 묻는 진본 훅의 임시 사본 — 첫 저장소에서 한 번 만든다
@@ -345,7 +345,7 @@ if (Test-Path $mcpFile) {
     #
     # ⚠ **「못 물었다」와 「등록 안 됨」을 섞지 않는다.** claude 에 안 닿을 때의 127 을
     #   「없다」로 읽으면 이미 등록된 것을 다시 등록하러 들고, 실패하면 빨갛게 보고한다.
-    #   맨바닥 PC 의 첫 부트스트랩이 바로 그 자리다 — npm 전역 폴더가 PATH 에 없어 배포가
+    #   맨바닥 PC 의 첫 설치가 바로 그 자리다 — npm 전역 폴더가 PATH 에 없어 배포가
     #   띄운 bash 가 claude 를 못 찾았다 (install.ps1 의 PATH 재배선이 그 짝이다).
     #   「깔린 것과 닿는 것은 다른 명제」가 여기서도 선다.
     $canAskMcp = $false
@@ -365,8 +365,8 @@ if (Test-Path $mcpFile) {
         #   stderr 를 NativeCommandError 로 감싸고, 이 파일 머리의 `ErrorActionPreference = 'Stop'`
         #   아래에서 그것은 **종료 오류**다 — `*> $null` 은 그걸 못 막는다.
         #   그래서 배포가 **첫 MCP 조회에서 통째로 죽었고**, 바로 아래 127/0 갈래는
-        #   한 번도 안 돌았다 (실측 2026-09-07 · 맨바닥 VDI 첫 부트스트랩에서
-        #   저장소 배포·홈 규범·부트스트랩이 전부 안 선 채 「완료」가 찍혔다).
+        #   한 번도 안 돌았다 (실측 2026-09-07 · 맨바닥 VDI 첫 설치에서
+        #   저장소 배포·홈 규범·저장소 설치가 전부 안 선 채 「완료」가 찍혔다).
         #   위 `$canAskMcp` 프로브가 이미 쓰는 꼴이다 — 두 프로브를 같은 꼴로 둔다.
         [System.IO.File]::WriteAllText($probe, "claude mcp get $name >/dev/null 2>&1`n", (New-Object System.Text.UTF8Encoding($false)))
         & $bash $probe *> $null
@@ -480,7 +480,7 @@ foreach ($repoRoot in $hookTargets) {
     }
 }
 
-# --- 저장소 부트스트랩 ---
+# --- 저장소 설치 ---
 # 게이트가 부르는 도구(링크 검사기·commitlint·파이썬 의존성)를 깐다.
 #
 # 왜 여기가 그 자리인가: 이 스크립트가 `git pull` 다음에 **항상** 도는 유일한 자리다.
@@ -494,7 +494,7 @@ foreach ($repoRoot in $hookTargets) {
 # 「이 저장소에 깔 게 있나」 예/아니오 하나고, 그것은 파일만 보면 난다. 깔 게 있는
 # 저장소만 실행 목록에 올린다 — 다 살아 있으면 매번 승인을 묻지 않는다. **다만 물은
 # 것은 초록이어도 화면에 한 줄 낸다** — 안 묻는 것과 안 재는 것은 다른 명제다(아래 ⚠).
-# 진단(무엇을 쟀고 무엇이 사는가)은 **깐 저장소에서 부트스트랩 끝에 한 벌**만 난다.
+# 진단(무엇을 쟀고 무엇이 사는가)은 **깐 저장소에서 설치 끝에 한 벌**만 난다.
 #
 # ⚠ **걸음이 둘로 갈렸다 — 전역은 한 번, 저장소는 저장소마다** (#43). 옛 꼴은 저장소마다
 #   부른 훅이 그 안에서 전역 선언까지 다시 훑어, 프로브 비용이 저장소 수에 비례했다. 이제
@@ -503,7 +503,7 @@ foreach ($repoRoot in $hookTargets) {
 # ⚠ **차례가 값을 한다 — 그래서 여기서 바로 `$plan` 에 안 쌓는다.** 전역 걸음이 저장소 걸음
 #   보다 먼저 서야 배선이 걸 물건이 이미 깔려 있다. 실행은 계획 순서대로라, 고리가 도는
 #   동안 모아 두었다가 고리가 끝난 뒤 **전역 하나 + 저장소들** 차례로 붙인다.
-$bootSteps = @()
+$installSteps = @()
 foreach ($repoRoot in $globalRuleTargets) {
     $boot = Join-Path $repoRoot '.claude\hooks\session-start.sh'
     if (-not (Test-Path $boot)) { continue }
@@ -512,7 +512,7 @@ foreach ($repoRoot in $globalRuleTargets) {
         continue
     }
     # ⚠ **계획 단계는 진단을 안 돌린다 — 「이 저장소에 깔 게 있나」만 묻는다** (#47 ②).
-    #   옛 판은 여기서 `--check` 를 불러 저장소마다 도구를 프로브했는데, 부트스트랩이 끝에
+    #   옛 판은 여기서 `--check` 를 불러 저장소마다 도구를 프로브했는데, 설치가 끝에
     #   **같은 판정을 한 벌 더** 낸다 — 사내 VDI 실측(PAISetup #5 · 1.11.0): 계획 5×31~57초
     #   = 200초와 설치 끝 5×45~70초 = 269초가 같은 물음의 두 벌이었다. 계획에 필요한 답은
     #   예/아니오 하나뿐이고 그것은 파일만 보면 나므로, 훅의 `--needs-install`(프로브도 망도
@@ -541,9 +541,9 @@ foreach ($repoRoot in $globalRuleTargets) {
     if (-not $needsWhy) { $needsWhy = '훅이 사유를 안 냈다' }
     # ⚠ **재는 자는 그 저장소에 지금 있는 선언으로 잰다 — 복사는 아직 안 됐다.** 도구 선언
     #   (`tools.global.conf`)이 이번 배포에서 바뀌면 새 선언이 아직 그 저장소에 없어 지문이
-    #   맞는 것으로 나오고, 부트스트랩이 안 올라 **배포를 두 번 돌려야 깔렸다**(실측 2026-09-12
+    #   맞는 것으로 나오고, 설치가 안 올라 **배포를 두 번 돌려야 깔렸다**(실측 2026-09-12
     #   · ruff: 첫 판은 그 줄이 없었고 둘째 판이 깔았다). 그래서 선언을 덮는 복사가 계획에
-    #   있으면 판정과 무관하게 올린다 — 실행은 계획 순서라 복사(앞)가 부트스트랩(여기)보다 먼저 돈다.
+    #   있으면 판정과 무관하게 올린다 — 실행은 계획 순서라 복사(앞)가 설치(여기)보다 먼저 돈다.
     $declChanges = @($plan | Where-Object {
         $_.Kind -eq 'copy' -and $_.Repo -eq $repoRoot -and $_.To -like '*\.claude\tools.global.conf' })
     # ⚠ **2 는 「못 쟀다」라 0 으로 안 접는다** — 부재가 통과로 읽히는 자리가 거기다. 못 쟀으면 깐다.
@@ -553,9 +553,9 @@ foreach ($repoRoot in $globalRuleTargets) {
         $why = if ($needsRc -eq 1) { $needsWhy }
                elseif ($needsRc -ne 0) { "못 쟀다 — $needsWhy" }
                else { '도구 선언이 바뀐다 — 새 선언으로 깐다' }
-        $bootSteps += @{
-            Kind = 'bootstrap'; Repo = $repoRoot; Script = $boot
-            Text = "+ 부트스트랩  $repoRoot  ($why)"
+        $installSteps += @{
+            Kind = 'install'; Repo = $repoRoot; Script = $boot
+            Text = "+ 저장소 설치  $repoRoot  ($why)"
         }
     }
     # --- 마지막 CI — 읽는 자를 세운다 ---
@@ -613,19 +613,19 @@ foreach ($repoRoot in $globalRuleTargets) {
 #   `[repos]` 에 안 들어 위 고리가 안 돌므로 재는 자가 없고, 그래서 그것만 꺼져 있으면
 #   이 걸음이 안 선다. 그 자리는 이 저장소에서 세션을 열 때 그 훅이 든다 —
 #   배포가 안 재는 것을 안 잰다고 말하는 편이, 매번 승인을 묻는 것보다 싸다.
-if ($bootSteps.Count -gt 0) {
+if ($installSteps.Count -gt 0) {
     $globalBoot = Join-Path $src '.claude\hooks\session-start.sh'
     if (Test-Path $globalBoot) {
         if ($bash) {
             $plan += @{
-                Kind = 'bootstrap-global'; Script = $globalBoot
+                Kind = 'install-global'; Script = $globalBoot
                 Text = '+ 전역 설치  전역형 도구를 기계에 한 번 (npm 전역 · 릴리스 바이너리 · winget · 브라우저)'
             }
         } else {
             $todo += "Git Bash 를 못 찾음. 직접 실행:  bash '$globalBoot' --install-global"
         }
     }
-    $plan += $bootSteps
+    $plan += $installSteps
 }
 
 # --- 제거 후보: 원본에 없는 에이전트 파일 ---
@@ -1016,7 +1016,7 @@ foreach ($step in $plan) {
             }
         }
 
-        'bootstrap-global' {
+        'install-global' {
             # 전역형 도구를 기계에 한 번 깐다 (#43). 저장소 고리보다 **먼저** 선다 — 고리 안의
             # 배선(정션)이 걸 물건이 그때 이미 깔려 있어야 한다.
             # ⚠ 표식을 여기서 세운다 — 아래 저장소 걸음과 같은 뜻이고, 훅이 `--install-global`
@@ -1032,7 +1032,7 @@ foreach ($step in $plan) {
             }
         }
 
-        'bootstrap' {
+        'install' {
             # Git Bash 로 돌린다. PATH 의 bash 는 WSL 일 수 있어 $bash 를 그대로 쓴다.
             # 경로는 슬래시로 바꿔 넘긴다 — 역슬래시는 bash 가 이스케이프로 먹는다.
             # 훅이 진단을 그대로 찍으므로 여기서 한 번 더 판정하지 않는다.
@@ -1045,7 +1045,7 @@ foreach ($step in $plan) {
                 # ⚠ **여기가 목표를 이뤘나를 아는 유일한 자리다.** 훅은 `--install` 에서도
                 #   꺼진 검사를 종료코드로 낸다 — 그 신호를 여기서 받아 위층까지 물고 가지
                 #   않으면 검사가 꺼진 채로 화면이 초록으로 끝난다 (실측 2026-09-10 · VDI 넷).
-                Write-Host "! 부트스트랩이 오류로 끝났습니다 (exit $LASTEXITCODE)  $($step.Repo)" -ForegroundColor Red
+                Write-Host "! 저장소 설치가 오류로 끝났습니다 (exit $LASTEXITCODE)  $($step.Repo)" -ForegroundColor Red
                 $envDown += "$($step.Repo) — 꺼진 검사가 남았다 (위 진단의 ❌ 줄이 곧 고칠 자리)"
                 $todo += "확인:  bash '$($step.Script)' --check"
             }
@@ -1092,7 +1092,7 @@ if ($todo.Count -gt 0) {
 # ── 판정 — **환경이 안 섰으면 「완료」라고 말하지 않는다** ─────────────────
 # ⚠ 옛 판은 무엇이 지든 초록 「완료」로 끝나고 종료코드도 늘 0 이었다. 그래서 이 스크립트를
 #   부르는 자(훅 `--install` → `install.ps1` → 설치 화면)는 **물어볼 데가 없었다** —
-#   부트스트랩이 꺼진 검사를 안고 끝나도 화면은 초록이었다 (실측 2026-09-10 · 사내·사외 VDI).
+#   저장소 설치가 꺼진 검사를 안고 끝나도 화면은 초록이었다 (실측 2026-09-10 · 사내·사외 VDI).
 if ($envDown.Count -gt 0) {
     Write-Host "`n! 실행 환경이 안 섰습니다 — $($envDown.Count)곳:" -ForegroundColor Red
     $envDown | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }

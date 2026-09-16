@@ -1,5 +1,5 @@
 #!/bin/bash
-# 부트스트랩 — 익명 몸통 (SessionStart 훅 겸 설치기)
+# 세션 시작 훅 — 익명 몸통 (SessionStart 훅 겸 설치기)
 #
 # 진본은 claude-config/.claude/hooks/session-start.sh 다. 각 저장소의 것은 deploy.ps1 이
 # 뿌린 배포본이다 — 배포본을 고치면 다음 배포에 덮인다.
@@ -23,7 +23,7 @@
 #                               저장소의 전역형 선언을 이름으로 합쳐 같은 이름을 한 번만 깐다.
 #                               브라우저 뒷길도 여기서 한 번. 저장소 것(venv · npm ci · 배선)은 안 든다
 #                               ⚠ 위 둘(--install · --install-global)은 찍는 줄을 ~/.claude/logs/
-#                               bootstrap-<날짜>.log 에도 남긴다 — 걸음마다 (n초) 가 붙는다 (#48)
+#                               session-start-<날짜>.log 에도 남긴다 — 걸음마다 (n초) 가 붙는다 (#48)
 #   session-start.sh --check    안 깔고 진단만 낸다          ← 어디서 돌려도 안전
 #   session-start.sh --needs-install
 #                               **「깔 게 있나」에 예/아니오만 낸다** (#47 ②) ← deploy.ps1 의
@@ -70,28 +70,47 @@ PROJECT_NAME="$(basename "$PROJECT_DIR")"   # 진단 머리줄·profile.d 파일
 #    붙는 `(n초)` 도 이 파일에서 읽는다. 세션마다 도는 auto 갈래는 안 쓴다(매 세션 파일이 는다).
 #    ⚠ **바깥 하나만 받는다.** PC 의 `--install` 은 deploy.ps1 을 부르고 그것이 저장소마다 이 훅을
 #      다시 `--install` 로 부른다 — 바깥이 받고 있으면 안쪽 줄은 그 파이프로 흘러 같은 줄이 두 번
-#      안 적힌다. 파일 이름(BOOTSTRAP_LOG)이 환경에 서 있는 것이 「바깥이 받고 있다」는 표식이다.
+#      안 적힌다. 파일 이름(SESSION_LOG)이 환경에 서 있는 것이 「바깥이 받고 있다」는 표식이다.
 #    ⚠ stderr 도 같이 받는다 — pip·npm 이 죽은 까닭이 그쪽으로 나온다. 그래서 위층(PowerShell)
 #      에는 stderr 가 아예 안 가고, 5.1 이 그것을 오류로 승격하는 자리(deploy.ps1 곁말)도 안 밟는다.
 #    ⚠ 제 경로를 못 잡은 세션(파이프로 먹인)은 다시 못 띄우므로 안 남긴다.
-if [ -n "$ASKED" ] && [ -z "${BOOTSTRAP_LOG:-}" ] && [ -f "$_self" ] && mkdir -p "$HOME/.claude/logs" 2>/dev/null; then
-  BOOTSTRAP_LOG="$HOME/.claude/logs/bootstrap-$(date +%Y%m%d).log"; export BOOTSTRAP_LOG
-  printf '── %s  %s  --%s  %s ──\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$PROJECT_NAME" "$ASKED" "$PROJECT_DIR" >> "$BOOTSTRAP_LOG"
-  bash "$_self" "$@" 2>&1 | tee -a "$BOOTSTRAP_LOG"
+if [ -n "$ASKED" ] && [ -z "${SESSION_LOG:-}" ] && [ -f "$_self" ] && mkdir -p "$HOME/.claude/logs" 2>/dev/null; then
+  SESSION_LOG="$HOME/.claude/logs/session-start-$(date +%Y%m%d).log"; export SESSION_LOG
+  printf '── %s  %s  --%s  %s ──\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$PROJECT_NAME" "$ASKED" "$PROJECT_DIR" >> "$SESSION_LOG"
+  bash "$_self" "$@" 2>&1 | tee -a "$SESSION_LOG"
   _lrc=$?   # pipefail — tee 가 아니라 훅의 종료코드다. 위층(deploy.ps1)이 이 값을 판정으로 받는다
   exit "$_lrc"
 fi
 VENV="$PROJECT_DIR/.venv"
-FAILS="$PROJECT_DIR/.claude/bootstrap-fail"
+FAILS="$PROJECT_DIR/.claude/install-fail"
 # 전역 갈래의 실패는 **기계 한 자리**에 적는다 (#43). 저장소 파일에 적으면 그 저장소를 여는
 # 세션만 사유를 보고, 같은 도구가 꺼진 형제의 진단에는 ❌ 만 서고 까닭이 영영 안 붙는다.
-GFAILS="$HOME/.claude/bootstrap-global-fail"
+GFAILS="$HOME/.claude/install-global-fail"
 GCONF="$PROJECT_DIR/.claude/tools.global.conf"
 PCONF="$PROJECT_DIR/.claude/tools.conf"
-STAMP="$PROJECT_DIR/.claude/bootstrap-stamp"   # 기계 상태 — bootstrap-fail 과 같은 자리, 커밋 안 한다
-GSTAMP="$HOME/.claude/bootstrap-global-stamp"  # 전역형 선언의 지문 — 저장소가 아니라 기계 하나다 (#43)
-FRESH="$PROJECT_DIR/.claude/bootstrap-upgraded"  # 마지막으로 도구를 최신으로 민 날. 같은 자리, 커밋 안 한다
+STAMP="$PROJECT_DIR/.claude/install-stamp"   # 기계 상태 — install-fail 과 같은 자리, 커밋 안 한다
+GSTAMP="$HOME/.claude/install-global-stamp"  # 전역형 선언의 지문 — 저장소가 아니라 기계 하나다 (#43)
+FRESH="$PROJECT_DIR/.claude/install-upgraded"  # 마지막으로 도구를 최신으로 민 날. 같은 자리, 커밋 안 한다
 UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나면 한 번 민다
+
+# ── 옛 이름에서 옮긴다 (2026-09-16) ─────────────────────────────────────────────
+#    상태 파일이 `bootstrap-*` 에서 `install-*` 로 바뀌었다 (#56 · 걷힌 몸통의 이름이었다).
+#    **이름만 갈면 이미 깐 기계의 도장이 통째로 사라진다** — 지문이 안 맞아 저장소마다 한 번
+#    씩 다시 깐다(사내 VDI 실측 370초). 그래서 옛 이름이 있고 새 이름이 없을 때만 옮긴다:
+#    `[ -e ]` 는 내장이라 스폰이 없고, `mv` 는 옛 파일을 든 기계에서 한 번만 돈다.
+#    새 이름이 이미 서 있으면 **안 덮는다** — 지금 값이 옛 값보다 새 것이다.
+#  ⚠ **걷는 날은 사람이 정한다.** 모든 기계가 한 번씩 이 줄을 밟았는지는 여기서 알 길이
+#    없다 — 옛 이름이 어디에도 안 남았다고 사람이 판정하는 날 이 칸을 통째로 지운다.
+_migrate_name() {   # $1 옛 이름 · $2 새 이름
+  [ -e "$1" ] || return 0
+  [ -e "$2" ] || mv "$1" "$2"
+}
+_migrate_name "$PROJECT_DIR/.claude/bootstrap-fail"          "$FAILS"
+_migrate_name "$PROJECT_DIR/.claude/bootstrap-stamp"         "$STAMP"
+_migrate_name "$PROJECT_DIR/.claude/bootstrap-upgraded"      "$FRESH"
+_migrate_name "$HOME/.claude/bootstrap-global-fail"          "$GFAILS"
+_migrate_name "$HOME/.claude/bootstrap-global-stamp"         "$GSTAMP"
+unset -f _migrate_name
 
 # ⚠ 선언이 하나도 없으면 **깔 것을 못 찾은 것**이다. 빈 지문은 「선언이 없다」와 「자리를 잘못
 #   봤다」를 구별하지 못해, 엉뚱한 자리에서도 완료 도장이 찍힌다 — 그 침묵이 무작동을 성공으로
@@ -171,7 +190,7 @@ venv_ready() { [ -x "$VENV_BIN/pip" ] || [ -f "$VENV_BIN/pip.exe" ]; }
 # ── `--needs-install` — 「이 저장소에 깔 게 있나」 **예/아니오 하나** (#47 ②) ──────────────
 #    묻는 자는 `deploy.ps1` 의 계획 단계다. 거기 필요한 답은 진단이 아니라 이 한 마디인데,
 #    옛 판은 `--check` 를 불러 도구마다 프로브를 띄웠다 — 사내 VDI 실측(PAISetup #5): 저장소당
-#    31~57초 × 다섯 = 200초가, 부트스트랩 끝의 진단과 **같은 판정을 두 벌** 내는 데 들었다.
+#    31~57초 × 다섯 = 200초가, 설치 끝의 진단과 **같은 판정을 두 벌** 내는 데 들었다.
 #    그래서 여기는 **파일만 본다** — 프로브도 망도 CI 조회도 없다. 「도구가 닿나」는 안 묻는다:
 #    그 물음의 자리는 깐 뒤의 진단 한 벌이다(설치가 끝난 자리의 판정이라야 진짜다).
 #  ⚠ **판정의 진본을 새로 짓지 않는다.** 「깔 게 있다」가 무엇인가는 auto 갈래의 지문 게이트가
@@ -625,7 +644,7 @@ PYMERGE
 #   윈도우에서 `python3` 는 스토어로 보내는 껍데기라 `command -v` 로 물으면 「있다」가
 #   나오고 부르면 49 로 죽는다. 그래서 가드가 `py_num`(실행형)이다 — 존재로 물으면
 #   심기가 조용히 실패하고, 조용한 실패는 이 훅이 막으려는 바로 그것이다.
-# ⚠ **실패는 stdout 으로 말한다.** 옛 판은 `try` 로 bootstrap-fail 에 적었는데, 그 파일은
+# ⚠ **실패는 stdout 으로 말한다.** 옛 판은 `try` 로 install-fail 에 적었는데, 그 파일은
 #   설치 갈래에서만 읽히고 「파일을 열어 보라」는 말은 안 열린다 (아래 침묵 갈래 주석과
 #   같은 자리다). 매 세션 한 줄 서는 것이 값이다 — 안 걸리는 것보다 싸다.
 # ── 심는 명령 — **진본은 여기 한 자리다.** 심는 자와 재는 자가 이것을 인자로 받는다.
