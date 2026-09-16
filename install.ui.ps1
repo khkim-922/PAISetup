@@ -665,6 +665,52 @@ function Pump-Tail($Reader) {
   return $n
 }
 
+# ── 창이 닫혀도 사는 기록 ───────────────────────────────────────────────────────
+# ⚠ **화면에 뜬 줄은 창과 함께 죽는다.** 몸통이 낸 것을 받아 두던 두 파일까지 닫을 때 같이
+#   지워, 설치가 끝난 뒤에는 **어느 걸음에서 무슨 일이 있었나를 물을 물건이 아무 데도 없었다.**
+#   그래서 지우기 **전에** 한 파일로 옮긴다 — 화면은 그대로 두고 남는 것만 는다.
+# ⚠ **키는 이 파일에 안 들어온다.** 값을 나르는 것은 임시 env 파일 하나뿐이고, 몸통이 값을
+#   찍는 자리는 이름만 든다(`Plant-Var` 는 `"  $Name — 심었다"`). 비밀 칸은 화면 갈래에서
+#   아예 안 물어지고(`-Yes`), 콘솔 갈래에서도 `-AsSecureString` 이라 되울리지 않는다.
+#   **키가 든 임시 env 는 여전히 무조건 지운다** — 옮기는 것은 나가는 것·오류 둘뿐이다.
+# ⚠ **못 써도 닫는 길을 막지 않는다.** 기록을 남기려다 창이 안 닫히면 그게 더 나쁘다 —
+#   통째로 `try` 안에 두고, 실패하면 빈 자리를 돌려주고 만다.
+# ⚠ **자리는 판 폴더 밖이다.** 판마다 새 폴더가 나므로(`…\Claude Code Setup\<판>\`) 그 안에
+#   두면 다음 판이 옛 기록을 못 보고, 판 폴더를 지우라는 안내가 기록까지 같이 지운다.
+function Save-RunLog {
+  # 남길 것이 **실제로 있는** 판만 쓴다 — 이미 지운 뒤 다시 불려도 빈 파일을 안 만든다.
+  $any = $false
+  foreach ($f in @($script:outFile, $script:errFile)) {
+    if ($f -and (Test-Path -LiteralPath $f)) { $any = $true }
+  }
+  if (-not $any) { return '' }
+  try {
+    $dir = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\logs'
+    if (-not (Test-Path -LiteralPath $dir)) {
+      New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null
+    }
+    $path = Join-Path $dir ('install-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
+    # ⚠ **여는 법은 `Open-Tail` 하나다.** 자식이 방금까지 쥐고 있던 파일이라 공유 열기여야
+    #   하는데, 그 조건을 여기 다시 적으면 한쪽만 고쳐진다 — 이미 있는 것을 부른다.
+    $body = ''
+    if ($script:outFile) {
+      $r = Open-Tail $script:outFile
+      if ($r) { try { $body = $r.ReadToEnd() } finally { try { $r.Dispose() } catch { } } }
+    }
+    # ⚠ 둘을 한 파일에 담되 **경계를 글자로 박는다** — 파일이 둘이면 이름도 둘이라 안내도
+    #   둘이 되고, 읽는 사람이 둘을 손으로 맞춰야 한다.
+    $body += "`r`n──────── 여기부터 오류 통로(stderr) ────────`r`n"
+    if ($script:errFile) {
+      $r = Open-Tail $script:errFile
+      if ($r) { try { $body += $r.ReadToEnd() } finally { try { $r.Dispose() } catch { } } }
+    }
+    Set-Content -LiteralPath $path -Value $body -Encoding UTF8 -NoNewline -ErrorAction Stop
+    return $path
+  } catch {
+    return ''
+  }
+}
+
 # ── 파일을 따라 읽는 타이머 — 화면 실에서만 화면을 만진다 ──────────────────────
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 150
@@ -707,6 +753,8 @@ $timer.Add_Tick({
       if ($r) { try { $r.Dispose() } catch { } }
     }
     $script:rdOut = $null; $script:rdErr = $null
+    # 지우기 전에 옮긴다 — 나가는 것·오류는 여기가 마지막 독자다 (`Save-RunLog` 머리말).
+    Save-RunLog | Out-Null
     # ⚠ **키가 든 임시 파일을 반드시 지운다.** 남기면 사람 임시 폴더에 평문으로 눌러앉는다.
     foreach ($f in @($script:tmpEnv, $script:outFile, $script:errFile)) {
       if ($f -and (Test-Path -LiteralPath $f)) {
@@ -749,6 +797,9 @@ $F.Add_FormClosing({
     if ($ans -ne 'Yes') { $_.Cancel = $true; return }
     try { $script:proc.Kill() } catch { }
   }
+  # 끝까지 못 간 판이야말로 기록이 필요하다 — 여기서도 지우기 전에 옮긴다. 위 갈래가 이미
+  # 옮겼으면 파일이 없어 `Save-RunLog` 가 빈 자리를 돌려주고 만다(빈 파일을 안 만든다).
+  Save-RunLog | Out-Null
   foreach ($f in @($script:tmpEnv, $script:outFile, $script:errFile)) {
     if ($f -and (Test-Path -LiteralPath $f)) {
       Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
