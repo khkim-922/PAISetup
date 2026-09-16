@@ -68,6 +68,7 @@ $prunable = @()  # 제거 후보 (-Prune 없이는 세기만 한다)
 #   안 돌리고(`--needs-install` 은 파일만 본다 · #47 ②) 부트스트랩 걸음이 `--install` 끝에 그
 #   자리에서 낸다.
 $gateReport = @()  # 저장소마다 마지막 CI 한 줄 — 초록·빨강·못 쟀다
+$needsProbe = $null  # 계획 단계가 「깔 게 있나」를 묻는 진본 훅의 임시 사본 — 첫 저장소에서 한 번 만든다
 
 # 배포 대상은 코드가 아니라 선언이 든다 — deploy.targets.d/*.conf.
 # 사람·PC·프로젝트 구성마다 다른 값이라 스크립트에 박지 않는다. 새 PC·새 저장소·
@@ -523,8 +524,19 @@ foreach ($repoRoot in $globalRuleTargets) {
     #   다섯이 다 초록이라 이 칸이 통째로 안 보였다). 아래 한 줄이 그 자리를 든다.
     # ⚠ **`2>&1` 을 안 붙인다** — 5.1 은 네이티브 exe 의 stderr 한 줄을 오류로 승격한다
     #   (까닭은 `Sync-RepoOnce` 머리에 있다). 사유는 훅이 stdout 한 줄로 낸다.
-    $needs    = & $bash ($boot -replace '\\', '/') --needs-install
-    $needsRc  = $LASTEXITCODE
+    # ⚠ **묻는 훅은 그 저장소의 사본이 아니라 진본이다.** 사본은 이 배포가 덮으러 가는 옛 판일 수
+    #   있고, 옛 판은 `--needs-install` 을 몰라 auto 갈래로 빠져 저장소당 50초를 돌고 엉뚱한
+    #   마지막 줄을 사유로 낸다(실측 2026-09-16 · 첫 실전: 다섯 저장소 235초). 훅은 제 파일 자리로
+    #   저장소를 잡으므로(`*/.claude/hooks/*`) 진본을 `.claude\hooks` 밖 임시 자리에 복사해 두고
+    #   `CLAUDE_PROJECT_DIR` 로 저장소를 넘긴다 — 그 갈래가 훅 `:59-61` 이다. 사본과 진본이 같은
+    #   답을 내는 것은 다섯 저장소에서 쟀다.
+    if (-not $needsProbe) {
+        $needsProbe = Join-Path $env:TEMP ("needs-install-{0}.sh" -f $PID)
+        Copy-Item -LiteralPath (Join-Path $src '.claude\hooks\session-start.sh') -Destination $needsProbe -Force
+    }
+    $env:CLAUDE_PROJECT_DIR = $repoRoot
+    try { $needs = & $bash ($needsProbe -replace '\\', '/') --needs-install; $needsRc = $LASTEXITCODE }
+    finally { Remove-Item Env:CLAUDE_PROJECT_DIR -ErrorAction SilentlyContinue }
     $needsWhy = @($needs | Where-Object { "$_".Trim() }) | Select-Object -Last 1
     if (-not $needsWhy) { $needsWhy = '훅이 사유를 안 냈다' }
     # ⚠ **재는 자는 그 저장소에 지금 있는 선언으로 잰다 — 복사는 아직 안 됐다.** 도구 선언
