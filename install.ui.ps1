@@ -426,7 +426,7 @@ $tip.SetToolTip($lRepo, $tipText)
 
 # 진행
 $bar = New-Object Windows.Forms.ProgressBar
-$bar.Location = New-Object Drawing.Point(16, 432)
+$bar.Location = New-Object Drawing.Point(16, 458)   # 홈 안내 줄·링크 줄(420-456) 아래
 $bar.Size = New-Object Drawing.Size(592, 20)
 $bar.Minimum = 0; $bar.Maximum = 100
 $F.Controls.Add($bar)
@@ -437,7 +437,7 @@ $F.Controls.Add($bar)
 #   씨앗 셋은 고를 것이 아니라 환경이라 스위치가 없고, 그래서 더 말해야 한다 — 동의 없이 놓인다.
 # ⚠ **여는 것은 풀어 둔 이 폴더다** — README 와 홈으로 갈 씨앗의 원본이 같이 있다. 홈 쪽
 #   (`~/.claude/seeds`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
-$lHome = New-Label '홈 ~/.claude 에 사내 환경 문서와 씨앗 셋도 놓입니다 — 고르는 것이 아니라 환경이라 스위치가 없습니다.' 18 420 592 $false
+$lHome = New-Label '홈 ~/.claude 에 사내 환경 문서와 씨앗 셋도 놓입니다 — 고르는 것이 아니라 환경입니다.' 18 420 592 $false
 $lHome.ForeColor = [Drawing.Color]::DimGray
 $lnkHome = New-Object Windows.Forms.LinkLabel
 $lnkHome.Text = '무엇이 어디에 놓이나 — 폴더 열기 (README · posco · seeds)'
@@ -477,12 +477,12 @@ $lnkFlow.Add_LinkClicked({
 })
 $F.Controls.Add($lnkFlow)
 
-$lState = New-Label '' 18 456 500 $false
+$lState = New-Label '' 18 480 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
 $log = New-Object Windows.Forms.TextBox
-$log.Location = New-Object Drawing.Point(16, 480)
-$log.Size = New-Object Drawing.Size(592, 170)
+$log.Location = New-Object Drawing.Point(16, 502)
+$log.Size = New-Object Drawing.Size(592, 150)   # 안내 줄 둘이 든 만큼 줄었다 — 단추(662)와 10 남는다
 $log.Multiline = $true; $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'; $log.WordWrap = $false
 $log.BackColor = [Drawing.Color]::FromArgb(30, 30, 30)
