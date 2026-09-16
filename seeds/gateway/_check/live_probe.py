@@ -26,6 +26,7 @@
 ⚠ ②는 캐시를 **쓴다** — 1시간 수명의 캐시 쓰기 비용이 든다. 세 번 이상 돌릴 일이 아니다.
 """
 import argparse
+import http.client
 import subprocess
 import sys
 import time
@@ -112,7 +113,11 @@ def _call(c, system, ask):
     #   것으로 읽는다. `URLError`·소켓 시간초과·SSL·연결 끊김이 다 `OSError` 자손이라 한
     #   자리에서 받는다. 거부(HTTP 4xx·5xx)는 위 `RuntimeError` 가 이미 든다 —
     #   배관이 `HTTPError` 를 사람 말로 옮겨 던지므로 여기까지 안 온다.
-    except OSError as exc:
+    # ⚠ **`http.client.HTTPException` 은 `OSError` 자손이 아니라 따로 적는다.** 답이 오다
+    #   끊긴 자리(`IncompleteRead`)·머리가 깨진 자리(`BadStatusLine`)가 그쪽이라, 소켓
+    #   갈래만 받으면 **같은 「망이 끊겼다」가 여기서만 1** 로 새 나간다. 자손 관계가 아니라
+    #   **뜻이 같은가**로 묶이는 자리다 — 둘 다 답을 못 받은 것이지 값이 어긋난 것이 아니다.
+    except (OSError, http.client.HTTPException) as exc:
         raise Unmeasured(f"[안 잼] 게이트웨이에 못 닿았다 — {type(exc).__name__}: {exc}") from exc
     return text, stop, (used[-1] if used else None), first[0], round(time.monotonic() - t0, 1), thinks
 

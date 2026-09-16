@@ -35,6 +35,11 @@
 선언이 없으면 씨앗 기본값(`app.gateway` · `app.providers`)으로 돈다 — 씨앗 저장소 자신과
 배관 이름이 같은 형제는 선언을 안 채워도 그대로 돈다.
 
+⚠ **선언이 깨졌으면 「못 쟀다」(2)로 나간다** — 절 이름이 두 번 섰거나 꼴이 어긋난 자리다.
+  이 자는 검사가 무는 순간 도므로, 안 막으면 **모든 게이트웨이 검사**가 역추적 한 장과 1 로
+  나간다. 1 은 「쟀고 어긋났다」라 훅·CI 가 배관이 깨진 것으로 읽는데, 정작 배관은 한 자도
+  안 재졌다. 깨진 절 이름을 대고 나간다 — 역추적을 지운 자리에 남는 것이 그 한 줄뿐이다.
+
     from _plumb import gateway, providers      # 안 갈리는 이름은 모듈에서 그대로
     from _plumb import get, put, slot          # 갈릴 수 있는 넷은 이 손으로
     from _plumb import NO_HANDLE               # 그 앱이 안 여는 환경변수 손잡이
@@ -102,17 +107,47 @@ class Missing(LookupError):
 
 # ── 선언을 읽는다 ─────────────────────────────────────────────────────────────
 
+def _unreadable(path, exc):
+    """깨진 선언 — **어디가 깨졌는지 대고 「못 쟀다」(2)로 나간다.** 안 돌아온다.
+
+    이 자는 검사가 무는 순간(`_P = Plumbing()`) 돈다. 그래서 여기서 터진 것을 그대로
+    올려 보내면 **모든 게이트웨이 검사**가 파이썬 역추적 한 장과 종료 1 로 나가는데, 1 은
+    「쟀고 어긋났다」라 훅도 CI 도 **배관이 깨진 것**으로 읽는다. 실제로 깨진 것은 선언
+    한 장이고 배관은 한 자도 안 재졌다 — 그 갈림이 곧 2 다(결정 0029 · 이 파일 머리말의
+    「없다」와 같은 층에 선다).
+
+    ⚠ **이름을 대지 않으면 2 도 소용이 없다.** 역추적을 지우는 순간 사람이 볼 것은 이
+      한 줄뿐이라, 절 이름과 줄 번호가 여기 안 서면 「어딘가 깨졌다」로 끝난다.
+    """
+    from _verdict import Unmeasured       # 깨진 자리에서만 문다 — 성한 판의 비용은 0
+    if isinstance(exc, configparser.DuplicateSectionError):
+        what = f"같은 절 이름 `[{exc.section}]` 이 두 번 섰다 — 한 벌로 합쳐라"
+    elif isinstance(exc, configparser.DuplicateOptionError):
+        what = f"`[{exc.section}]` 안에 `{exc.option}` 이 두 번 섰다 — 한 줄로 합쳐라"
+    else:
+        what = "선언 꼴을 다시 봐라 — 절은 `[이름]`, 줄은 `이름 = 값` 이다"
+    raise Unmeasured(f"[안 잼] 선언을 못 읽었다 — {path}\n"
+                     f"  {what}\n"
+                     f"  {type(exc).__name__}: {exc}")
+
+
 def read(conf_dir=None):
     """선언 한 장을 읽어 `(plumb, where, values, no_handle)` 네 칸을 돌려준다.
 
     없으면 빈 칸 넷 — 선언이 없는 저장소는 「씨앗 기본값 · 옮긴 자리 없음 · 없는 속성 없음 ·
     **손잡이는 다 있다**」로 돈다. 마지막이 빈 것이 곧 「셋을 다 재라」는 뜻이다.
+
+    ⚠ **선언이 깨진 것은 「못 쟀다」(2)다** — 「없다」와 층이 다르지만 종착은 같다. 선언을
+      못 여는 자는 배관이 성한지 **한 자도 안 잰** 것이라 1 로 나갈 자격이 없다.
     """
     cp = configparser.ConfigParser(interpolation=None, delimiters=("=",))
     cp.optionxform = str            # 속성 이름은 대소문자가 뜻이다 — `LOGS_DIR` ≠ `logs_dir`
     path = Path(conf_dir or HERE) / CONF
     if path.exists():
-        cp.read(path, encoding="utf-8")
+        try:
+            cp.read(path, encoding="utf-8")
+        except configparser.Error as exc:
+            _unreadable(path, exc)
     return (dict(cp["plumb"]) if cp.has_section("plumb") else {},
             dict(cp["where"]) if cp.has_section("where") else {},
             dict(cp["values"]) if cp.has_section("values") else {},

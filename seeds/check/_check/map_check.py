@@ -314,12 +314,26 @@ def set_cell(line, cell):
     return "|".join(cells)
 
 
+def read_map(path):
+    """지도를 (줄 목록, **그 파일의 줄끝**)으로 — 읽을 때 잰 줄끝을 쓸 때 돌려주려고 짝으로 낸다.
+
+    ⚠ **읽기는 줄끝을 걷고 쓰기는 안 돌려주던 자리다.** `read_text()` 는 CRLF 를 조용히
+      `\\n` 으로 눕히고 되쓰는 손은 `newline=""` 라 눕은 채로 나간다 — 칸 **하나**를 갈아
+      앉혔는데 파일이 통째로 LF 가 되어, 줄끝을 `.gitattributes` 로 안 못박은 형제에서는
+      그 한 칸이 **전 줄 변경**으로 보인다. 칸은 양쪽이 같게 나오므로 화면은 멀쩡하고
+      diff 만 거짓말을 한다.
+    """
+    raw = path.read_bytes().decode("utf-8")
+    eol = "\r\n" if "\r\n" in raw else "\n"
+    return raw.replace("\r\n", "\n").replace("\r", "\n").split("\n"), eol
+
+
 def cell_gap(check_dir):
     """(표에 앉은 검사, 어긋난 칸, 머리 첫 줄의 흠) — 판정을 안 찍고 재기만 한다.
 
     본판과 §2 의 사본이 **같은 자**로 재게 하려고 재기와 판정을 갈랐다.
     """
-    lines = (check_dir / MAP).read_text(encoding="utf-8").split("\n")
+    lines, _ = read_map(check_dir / MAP)
     seated, gaps, flaw = [], [], []
     for i in row_lines(lines):
         name = _row_head(lines[i])
@@ -341,7 +355,7 @@ def cell_gap(check_dir):
 def write_cells(check_dir):
     """파생 칸을 머리 첫 줄에서 다시 쓴다 — 갈아 앉힌 줄 수를 돌려준다."""
     path = check_dir / MAP
-    lines = path.read_text(encoding="utf-8").split("\n")
+    lines, eol = read_map(path)
     hit = 0
     for i in row_lines(lines):
         name = _row_head(lines[i])
@@ -353,7 +367,9 @@ def write_cells(check_dir):
             lines[i] = made
             hit += 1
     if hit:
-        path.write_text("\n".join(lines), encoding="utf-8", newline="")
+        # `newline=""` 는 파이썬이 제 마음대로 `os.linesep` 을 끼우지 말라는 뜻이고, 무엇을
+        # 끼울지는 **읽을 때 잰 `eol`** 이 든다 — 둘이 짝이라 하나만 두면 줄끝이 흔들린다.
+        path.write_text(eol.join(lines), encoding="utf-8", newline="")
     return hit
 
 
@@ -397,7 +413,7 @@ def _copy(check_dir):
 
 def _first_seat(root):
     """사본에서 파생 칸이 앉는 첫 줄 — (줄 번호, 검사 이름, 그 머리 첫 줄)."""
-    lines = (root / MAP).read_text(encoding="utf-8").split("\n")
+    lines, _ = read_map(root / MAP)
     for i in row_lines(lines):
         name = _row_head(lines[i])
         first = head_line(root / name) if name else None
@@ -423,9 +439,9 @@ def _bend_cell(root):
     if not name:
         return None
     path = root / MAP
-    lines = path.read_text(encoding="utf-8").split("\n")
+    lines, eol = read_map(path)
     lines[i] = set_cell(lines[i], "손으로 고친 칸")
-    path.write_text("\n".join(lines), encoding="utf-8", newline="")
+    path.write_text(eol.join(lines), encoding="utf-8", newline="")
     return name
 
 
