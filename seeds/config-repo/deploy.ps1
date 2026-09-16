@@ -398,9 +398,22 @@ if (Test-Path $mcpFile) {
     $claudeJson = Join-Path $HOME '.claude.json'
     if (Test-Path $claudeJson) {
         try {
-            $reg = (Get-Content $claudeJson -Raw | ConvertFrom-Json).mcpServers
+            # ⚠ **여기만 `ConvertFrom-Json` 이 아니다.** PS 5.1 의 그 파서는 대소문자 무시
+            #   사전을 만들어, JSON 이 형제로 허용하는 `C:/x` 와 `c:/x` 를 못 담고 던진다.
+            #   이 파일은 우리 것이 아니라 상류(Claude Code)가 `projects` 에 두 벌 키를 쌓고,
+            #   그러면 위 울타리가 매 배포마다 「못 쟀다」로 접혀 제거 후보를 **영영 안 잰다**
+            #   (이슈 #52 · 회사 PC 실측). 같은 PS 5.1 의 .NET 파서는 그 둘을 그대로 받는다.
+            #   울타리는 그대로 둔다 — 파일이 정말 깨진 판은 여전히 있다.
+            #   다른 `ConvertFrom-Json` 자리(우리 `mcp-servers.json` · gh 출력)는 안 건드린다.
+            Add-Type -AssemblyName System.Web.Extensions
+            $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
+            # 기본 한도는 2,097,152 자다(실측). 지금 이 PC 의 실물은 47KB 라 안 걸리지만,
+            # 이 파일은 상류가 projects 를 계속 쌓는 자리라 한도는 자라는 쪽으로 열어 둔다 —
+            # 걸리는 날 나올 답이 「못 쟀다」 한 줄이라 원인이 안 보인다.
+            $ser.MaxJsonLength = [int]::MaxValue
+            $reg = ($ser.DeserializeObject((Get-Content $claudeJson -Raw)))['mcpServers']
             if ($reg) {
-                foreach ($n in @($reg.PSObject.Properties.Name)) {
+                foreach ($n in @($reg.Keys)) {
                     if ($wantMcp -ccontains $n) { continue }
                     $prunable += @{ Kind = 'mcpremove'; Name = $n; Text = "- 해제  MCP $n  (mcp-servers.json에 없음)" }
                 }
@@ -497,6 +510,12 @@ foreach ($repoRoot in $globalRuleTargets) {
     #   접었다. 그 한 줄마저 파일 목록과 같은 통(`$same`)에 들어가 개수에만 잡혀, **다 초록인
     #   기계에서는 화면에 자국이 하나도 안 남았다** — 「안 쟀다」와 구별이 안 된다 (실측
     #   2026-09-11 · 사내 PC: 저장소 다섯이 다 초록이라 이 칸이 통째로 안 보였다).
+    # ⚠ **재기 전에 한 줄을 낸다.** 바로 아래 호출은 출력을 **담기만** 한다(판정을 읽어야
+    #   하므로). 그래서 저장소당 십수 초 동안 화면에 새 줄이 하나도 안 오고, 저장소를 다
+    #   재고 나서야 진단이 한꺼번에 흐른다 — 사람은 그 사이를 **멈춘 것으로 읽는다**
+    #   (이슈 #47 · 사내 VDI 실측: 첫 줄 뒤 몇 분이 빈 채였다). 담는 구조는 그대로 두고
+    #   이 한 줄만 앞에 세운다 — 지금 무엇을 재는 중인지가 그 자리에서 보이면 된다.
+    Write-Host "· 재는 중  $repoRoot" -ForegroundColor DarkGray
     $gate   = & $bash ($boot -replace '\\', '/') --check
     $gateRc = $LASTEXITCODE
     if ($gate) { $gateReport += $gate }

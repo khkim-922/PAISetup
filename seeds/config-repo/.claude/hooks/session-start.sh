@@ -22,6 +22,8 @@
 #                               고리 **앞에** 한 번 부른다. 전역 선언과 작업 루트에 붙은 모든
 #                               저장소의 전역형 선언을 이름으로 합쳐 같은 이름을 한 번만 깐다.
 #                               브라우저 뒷길도 여기서 한 번. 저장소 것(venv · npm ci · 배선)은 안 든다
+#                               ⚠ 위 둘(--install · --install-global)은 찍는 줄을 ~/.claude/logs/
+#                               bootstrap-<날짜>.log 에도 남긴다 — 걸음마다 (n초) 가 붙는다 (#48)
 #   session-start.sh --check    안 깔고 진단만 낸다          ← 어디서 돌려도 안전
 #
 # ⚠ 진짜 문제는 **부재가 통과로 읽히는 것**이다. 게이트는 도구가 없으면 그 검사만 건너뛰고
@@ -58,6 +60,22 @@ case "$_self" in
 esac
 [ -n "$PROJECT_DIR" ] || PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"   # 진단 머리줄·profile.d 파일명이 여기서 파생된다
+# ── `--install` · `--install-global` 은 찍는 줄을 파일에도 남긴다 (#48 ③) ─────────────
+#    설치 화면이 닫히면 화면의 줄은 사라지고, 화면을 못 본 사람은 물을 물건이 없다 — 걸음마다
+#    붙는 `(n초)` 도 이 파일에서 읽는다. 세션마다 도는 auto 갈래는 안 쓴다(매 세션 파일이 는다).
+#    ⚠ **바깥 하나만 받는다.** PC 의 `--install` 은 deploy.ps1 을 부르고 그것이 저장소마다 이 훅을
+#      다시 `--install` 로 부른다 — 바깥이 받고 있으면 안쪽 줄은 그 파이프로 흘러 같은 줄이 두 번
+#      안 적힌다. 파일 이름(BOOTSTRAP_LOG)이 환경에 서 있는 것이 「바깥이 받고 있다」는 표식이다.
+#    ⚠ stderr 도 같이 받는다 — pip·npm 이 죽은 까닭이 그쪽으로 나온다. 그래서 위층(PowerShell)
+#      에는 stderr 가 아예 안 가고, 5.1 이 그것을 오류로 승격하는 자리(deploy.ps1 곁말)도 안 밟는다.
+#    ⚠ 제 경로를 못 잡은 세션(파이프로 먹인)은 다시 못 띄우므로 안 남긴다.
+if [ -n "$ASKED" ] && [ -z "${BOOTSTRAP_LOG:-}" ] && [ -f "$_self" ] && mkdir -p "$HOME/.claude/logs" 2>/dev/null; then
+  BOOTSTRAP_LOG="$HOME/.claude/logs/bootstrap-$(date +%Y%m%d).log"; export BOOTSTRAP_LOG
+  printf '── %s  %s  --%s  %s ──\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$PROJECT_NAME" "$ASKED" "$PROJECT_DIR" >> "$BOOTSTRAP_LOG"
+  bash "$_self" "$@" 2>&1 | tee -a "$BOOTSTRAP_LOG"
+  _lrc=$?   # pipefail — tee 가 아니라 훅의 종료코드다. 위층(deploy.ps1)이 이 값을 판정으로 받는다
+  exit "$_lrc"
+fi
 VENV="$PROJECT_DIR/.venv"
 FAILS="$PROJECT_DIR/.claude/bootstrap-fail"
 # 전역 갈래의 실패는 **기계 한 자리**에 적는다 (#43). 저장소 파일에 적으면 그 저장소를 여는
@@ -103,6 +121,11 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) OS=windows ;;
   *)                    OS=linux   ;;
 esac
+# ⚠ **파이썬의 stdio·open() 인코딩을 기계의 로케일에 안 맡긴다** (#51 · PEP 540). 아래 파이썬 셋
+#   (홈 설정 병합 · 홈 훅·신뢰 심기 · 심겼나 재기)은 한국어 문구를 파이프로 내는데, 윈도우의 기본
+#   인코딩(cp949)은 `—` 를 못 담아 **다 쓰고 나서 찍다가 죽는다.** deploy 가 심는 사용자 환경변수
+#   (PYTHONUTF8)는 비영속 VDI 의 첫 로그인과 리모트에는 없다 — 훅이 어디서 돌든 이 한 줄이 덮는다.
+export PYTHONUTF8=1
 if [ "$OS" = windows ]; then
   VENV_BIN="$VENV/Scripts"; PY_CMD=python
 else
@@ -605,12 +628,14 @@ home_hook_cmd() {
 #   뜨는 값이 일 자체보다 컸다. 파이썬을 한 번만 띄우고 그 안에서 둘을 다 한다.
 # ⚠ **해석기가 못 뜨는 것은 종료코드로 안다** — 윈도우의 `python3` 는 스토어로 보내는 껍데기라
 #   부르면 49 로 죽는다. 그래서 존재로 묻지 않고 **불러 보고 지면** 말한다(가드를 따로 띄우지
-#   않는 것이 이 합침의 요점이다).
+#   않는 것이 이 합침의 요점이다). 진 뒤에 가드 하나를 더 띄워 「못 뜬다」와 「죽었다」를 가르는
+#   것은 실패 갈래뿐이다 (#51) — 성한 길은 그대로 프로세스 하나다.
 # ⚠ **옛 항목을 지운다.** 심기는 여태 「없으면 붙인다」뿐이라, 명령 글자가 바뀌면 옛 항목이
 #   남아 **옛 고리가 같이 돌았다** — 위 가드가 무효가 되는 자리다. 우리 꼴(`session-start.sh`
 #   를 든 명령)만 걷고, 무엇을 걷었는지 화면에 댄다.
 plant_session_state() {
-  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" <<'PSSEOF' 2>/dev/null
+  _pse="$(mktemp)"   # stderr 를 받아 둔다 — 「못 부른다」와 「죽었다」를 가르는 물증이다 (#51)
+  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" <<'PSSEOF' 2>"$_pse"
 import json, os, sys, tempfile
 
 settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
@@ -698,10 +723,23 @@ for m in msgs:
     print(m)
 PSSEOF
 )"
-  if [ $? -ne 0 ]; then
-    echo "$PROJECT_NAME: ⚠ 홈 SessionStart 훅·신뢰를 못 심는다 — $PY_CMD 를 못 부른다(윈도우면 스토어 껍데기다). 저장소 밖에서 연 세션은 아무 훅도 안 건다."
+  _prc=$?
+  if [ "$_prc" -ne 0 ]; then
+    # ⚠ **한 문구로 둘을 덮지 않는다** (#51). 해석기가 안 뜬 것과 스크립트가 다 쓰고 나서 죽은 것은
+    #   고칠 자리가 다르다 — 옛 판은 stderr 를 버리고 둘 다 「못 부른다」로 내서, 인코딩으로 죽은
+    #   자리를 스토어 껍데기로 오진했다(#50). 진 뒤에만 해석기를 한 번 더 불러 가른다. 죽은 쪽은
+    #   홈 훅·신뢰가 이미 써졌을 수 있다 — 심겼나는 `--check` 가 잰다.
+    if ! "$PY_CMD" -c '' >/dev/null 2>&1; then
+      echo "$PROJECT_NAME: ⚠ 홈 SessionStart 훅·신뢰를 못 심는다 — $PY_CMD 를 못 부른다(윈도우면 스토어 껍데기다). 저장소 밖에서 연 세션은 아무 훅도 안 건다."
+    else
+      _pl="$(grep -v '^[[:space:]]*$' "$_pse" 2>/dev/null | tail -1 | cut -c1-160)"
+      [ -n "$_pl" ] || _pl="stderr 가 비었다 (exit $_prc)"
+      echo "$PROJECT_NAME: ⚠ 홈 SessionStart 훅·신뢰 — 심는 스크립트가 죽었다: $_pl — 심겼는지는 --check 가 잰다."
+    fi
+    rm -f "$_pse"
     return 0
   fi
+  rm -f "$_pse"
   [ -n "$_pss" ] && printf '%s\n' "$_pss"
   return 0
 }
@@ -1106,7 +1144,12 @@ if [ "$MODE" = install ]; then
       #   **부르는 자리마다 고치면 다음 런처에서 또 만난다** — 그래서 여기서 막는다.
       #   `/dev/null` 은 윈도우에서 NUL 로 서서 어느 부모 밑에서도 성한 손잡이가 된다
       #   (실측 2026-09-10: 닫힌 stdin 아래서 죽던 것이 이 한 자로 pip 까지 완주했다).
-      try "venv" "$PY_CMD" -m venv "$VENV" </dev/null || true
+      _vt0=$SECONDS
+      if try "venv" "$PY_CMD" -m venv "$VENV" </dev/null; then
+        printf '  · venv — 만들었다 (%s초)\n' "$((SECONDS - _vt0))"
+      else
+        printf '  · venv — 못 만들었다 (%s초)\n' "$((SECONDS - _vt0))"
+      fi
     fi
     # 방금 만든 venv 를 프로브가 보게 한다 — VENV_PY 는 스크립트 첫머리(venv 가 아직
     # 없던 때)에 굳었다. 안 풀면 첫 회 진단이 맨 해석기를 재서 헛빨강을 낸다(실측
@@ -1114,8 +1157,13 @@ if [ "$MODE" = install ]; then
     VENV_PY="$VENV_BIN/python"; [ -x "$VENV_PY" ] || VENV_PY="$VENV_BIN/python.exe"
     if venv_ready; then
       _pip="$VENV_BIN/pip"; [ -x "$_pip" ] || _pip="$VENV_BIN/pip.exe"
-      try "파이썬 의존성" "$_pip" install --quiet --disable-pip-version-check \
-        -r "$PROJECT_DIR/requirements.txt" || true
+      _pt0=$SECONDS
+      if try "파이썬 의존성" "$_pip" install --quiet --disable-pip-version-check \
+           -r "$PROJECT_DIR/requirements.txt"; then
+        printf '  · 파이썬 의존성 — 깔았다 (%s초)\n' "$((SECONDS - _pt0))"
+      else
+        printf '  · 파이썬 의존성 — 못 깔았다 (%s초)\n' "$((SECONDS - _pt0))"
+      fi
     else
       # ⚠ **조용히 건너뛰지 않는다.** 옛 판은 pip 이 없으면 아무 말 없이 지나갔고, 그래서
       #   다음 세션은 **실패 줄조차 못 본 채** 의존성만 꺼진 상태로 돌았다 — 부재가 통과로
@@ -1130,7 +1178,12 @@ if [ "$MODE" = install ]; then
   #      잠금을 추적하는 이유가 "판이 갈리면 게이트를 못 믿는다"라서다 ──
   #      프로젝트 축이라 저장소마다 돈다 — 실물이 저장소 안 `node_modules` 다 (#43).
   if [ -n "$DO_REPO" ] && [ -f "$PROJECT_DIR/package-lock.json" ] && command -v npm >/dev/null 2>&1; then
-    ( cd "$PROJECT_DIR" && try "노드 의존성" npm ci --no-audit --no-fund --silent ) || true
+    _nt0=$SECONDS
+    if ( cd "$PROJECT_DIR" && try "노드 의존성" npm ci --no-audit --no-fund --silent ); then
+      printf '  · 노드 의존성 — 깔았다 (%s초)\n' "$((SECONDS - _nt0))"
+    else
+      printf '  · 노드 의존성 — 못 깔았다 (%s초)\n' "$((SECONDS - _nt0))"
+    fi
   fi
 
   # ── ⑤ 선언 도구 — 프로브 → 설치 → 배선 → 재프로브. 판정은 §진단 한 자리가 낸다 ──
@@ -1247,7 +1300,12 @@ if [ "$MODE" = install ]; then
     # 몸통은 무엇을 받는지도 어디서 받는지도 모른 채로 남는다.
     _fbroot="$(dirname "$(dirname "$_f")")"
     [ -f "$_fbroot/$_fb" ] || return 0
-    try "$_t" bash "$_fbroot/$_fb" || true
+    _bt0=$SECONDS
+    if try "$_t" bash "$_fbroot/$_fb"; then
+      printf '  · %s — 브라우저 뒷길 (%s초)\n' "$_t" "$((SECONDS - _bt0))"
+    else
+      printf '  · %s — 브라우저 뒷길이 졌다 (%s초)\n' "$_t" "$((SECONDS - _bt0))"
+    fi
   }
   wire_tool() {  # wire_tool <선언파일> <이름> — node-link: 이름 해석이 되게 만든다
     _f="$1"; _t="$2"
@@ -1332,15 +1390,18 @@ if [ "$MODE" = install ]; then
         fi
         # 밀 때는 프로브를 안 묻는다 — 「있나」와 「최신인가」는 다른 명제라, 있으면 건너뛰는
         # 규칙으로는 영영 안 올라간다. 같은 설치가 곧 밀기다(옛 고리와 같은 뜻).
+        # 걸린 초는 줄 끝에 붙는다 (#48) — 재는 자(installer · deploy)가 줄 앞을 보므로 앞은 안 바꾼다
+        _gt0=$SECONDS
         if [ -z "${UPGRADE:-}" ] && probe_global "$_gf" "$_gn"; then
-          printf '  ✅ %s — 이미 닿는다 (전역)\n' "$_gn"
+          printf '  ✅ %s — 이미 닿는다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
         else
           install_tool "$_gf" "$_gn" || true
           if probe_global "$_gf" "$_gn"; then
-            printf '  ✅ %s — 이번에 깔았다 (전역)\n' "$_gn"
+            printf '  ✅ %s — 이번에 깔았다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
           else
-            printf '  ❌ %s — 안 닿는다%s\n' "$_gn" \
-              "$(awk -F'\t' -v k="$_gn" '$1==k{printf " · 설치 실패: %s", $2; exit}' "$GFAILS" 2>/dev/null)"
+            printf '  ❌ %s — 안 닿는다%s (%s초)\n' "$_gn" \
+              "$(awk -F'\t' -v k="$_gn" '$1==k{printf " · 설치 실패: %s", $2; exit}' "$GFAILS" 2>/dev/null)" \
+              "$((SECONDS - _gt0))"
             GDOWN=$((GDOWN + 1))
           fi
         fi
@@ -1365,11 +1426,13 @@ if [ "$MODE" = install ]; then
   #   저장소마다 두 벌이었다. 깔 자가 없는 고리에서 프로브는 판정일 뿐이고, 판정 문구의
   #   진본은 진단 절 한 자리다.
   if [ -n "$DO_REPO" ]; then
+    _wt0=$SECONDS
     for _conf in "$GCONF" "$PCONF"; do
       for _name in $(decl_sections "$_conf"); do
         wire_tool "$_conf" "$_name"
       done
     done
+    printf '  · 배선 — 전역 도구를 저장소 node_modules 에 잇는다 (%s초)\n' "$((SECONDS - _wt0))"
   fi
 
   # ── ⑦ 로컬 main — 컨테이너가 뜬 순간의 스냅샷에 박제된 채 남는다. 원격 최신으로 맞춘다.
@@ -1438,6 +1501,7 @@ why() {  # why <도구> [<설치 걸음>] — 도구 이름으로 못 찾으면 
   return 0
 }
 
+_dt0=$SECONDS   # 진단 절이 걸린 시간 — 끝줄에 붙는다 (#48)
 echo "$PROJECT_NAME — 지금 어느 검사가 도나  ($OS · $MODE)"
 
 # 전역 축 — 판정과 문구는 위 global_rule_reason 이 든다. 여기는 내는 자리일 뿐이다
@@ -1587,6 +1651,7 @@ if [ "$down" -gt 0 ]; then
   echo "     리모트는 세션을 다시 열면 다시 깐다. PC 는 deploy.ps1 이나 --install 로 다시 깐다."
   echo "     같은 줄이 또 꺼지면 다시 깔지 말고 위의 「설치 실패」 사유를 본다."
 fi
+printf '  ── 진단을 마쳤다 (%s초)\n' "$((SECONDS - _dt0))"
 
 # ── 판정 — **꺼진 검사가 있으면 0 으로 안 끝난다** ────────────────────────────
 # ⚠ 가르는 것은 「깔았나」가 아니라 **누가 물었나**다. `auto` 는 세션 시작이라, 0 이 아니면
