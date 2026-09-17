@@ -49,8 +49,11 @@
 #   ⚠ **자동화로 돌릴 때는 이 칸을 꼭 준다.** 이미 떠 있는 것이 있으면 여는 자리가 **끌지
 #   묻는 창**을 띄우는데, 아무도 안 보는 자리에서 그것은 영영 안 눌리는 창이다 — 설치가
 #   거기서 선 채로 끝나지 않는다.
+# ⚠ `-ListDesktopApps` — **아무것도 안 깔고 표만 내주고 나간다.** 화면 껍데기가 고를 칸을
+#   지으려면 목록이 필요한데, 저쪽에 옮겨 적으면 앱이 늘 때 한쪽만 고쳐진다 — 그 어긋남은
+#   「골랐는데 안 깔린다」는 조용한 꼴로만 보인다. 목록의 진본은 아래 `$DesktopApps` 하나다.
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade,
-      [switch]$NoLaunch, [string]$EnvFile)
+      [switch]$NoLaunch, [string]$EnvFile, [switch]$ListDesktopApps)
 
 $ErrorActionPreference = 'Stop'
 
@@ -155,11 +158,39 @@ $TlsHosts = @(
 #   자리를 가르는 자는 아래 프로브(`#site-probe`)이고, 이 표는 **주소가 있으면 쓰는 것, 없으면
 #   안 쓰는 것**으로만 판정한다 — 자리 판별을 표에 옮겨 적으면 같은 규칙이 두 자리에 살고
 #   한쪽만 낡는다.
-# ── 데스크탑 앱 — **이름은 여기 한 자리다.** 아래 2′ 칸이 깔 때도, 마지막 「연다」 칸이
-#    띄울 것을 찾을 때도 이 값에서 판다. 옛 판은 세 자리에 박혀 있었다.
-# ⚠ **띄울 이름은 여기서 파생한다** — winget 의 id 는 `<만든 이>.<앱>` 꼴이라 뒷칸이 곧
-#   시작 메뉴에 뜨는 이름이다. 둘을 따로 적으면 한쪽만 낡는다.
-$DesktopApp = 'Anthropic.Claude'
+# ── 데스크탑 앱 — **목록이 진본이다.** 아래 2′ 칸이 깔 때도, 마지막 「연다」 칸이 띄울
+#    것을 찾을 때도 이 표에서 판다. 옛 판은 이름 하나가 세 자리에 박혀 있었다.
+# ⚠ **셋의 설치 길이 서로 다르다**(실측 2026-09-17) — 그래서 이 표는 id 목록이 아니라
+#   **길까지 든다.** id 만 들면 갈림이 2′ 칸 안으로 숨어, 앱이 늘 때 표를 고쳐도 안 걸린다.
+#   · `winget` — winget 이 깔고 winget 이 잰다. `Source` 가 어느 소스인지 든다
+#   · `setup`  — 제 설치본을 받아 조용히 돌린다. winget 이 모르는 앱이다
+# ⚠ **띄울 이름(`App`)을 이제 따로 적는다.** 옛 판은 winget id 의 뒷칸(`만든이.앱`)에서
+#   팠는데 **스토어 제품은 id 가 `9PLM9XGG6VKS` 라 팔 것이 없다** — 파생이 죽은 자리다.
+#   두 값이 같은 것을 가리키는 것이 아니라(하나는 패키지, 하나는 시작 메뉴에 뜨는 글자)
+#   한쪽만 낡는 꼴도 아니다.
+# ⚠ **`setup` 갈래는 winget 이 못 잰다** — 종료코드로만 판정하지 않고 시작 메뉴에 묻는다.
+#   그 물음은 이 파일이 이미 쓰는 자다(`Get-StartApps` · 아래 「연다」 칸의 ⚠ 참고): 스토어
+#   꼴이든 예전 꼴이든 같은 답을 내므로 꼴이 늘어도 안 어긋난다.
+$DesktopApps = @(
+  @{ Key = 'claude'; Label = 'Claude 데스크탑'; App = 'Claude'
+     Via = 'winget'; Id = 'Anthropic.Claude'; Source = 'winget' }
+  @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'Codex'
+     Via = 'winget'; Id = '9PLM9XGG6VKS';      Source = 'msstore' }
+  # ⚠ 주소에 태그가 박혀 있다(`appguid` · `appname` · `ap=prod`) — 그래서 인자는 `/silent`
+  #   하나뿐이고, `/install` 을 덧붙이면 **`-10000` 으로 거절한다**(실측). `needsadmin=false`
+  #   라 권한 상승을 안 묻는다 — 설치본이 제 안에 「상승과 조용함은 같이 못 간다」고 적어
+  #   두었는데, 상승이 필요 없어 둘이 안 부딪힌다.
+  @{ Key = 'gemini'; Label = 'Gemini 데스크탑'; App = 'Gemini'
+     Via = 'setup';  SilentArgs = @('/silent'); Log = '%TEMP%\updater.log'
+     Url = 'https://dl.google.com/tag/s/appguid%3D%7B533DD80C-942A-4464-B6A9-2E59428D784E%7D%26appname%3DGemini%26needsadmin%3Dfalse%26ap%3Dprod/update2/installers/gemini/GeminiSetup.exe' }
+)
+
+# 표를 한 줄씩 내준다 — `키|사람에게 보일 글자`. **여기까지 오는 데 부수효과가 없다**(위는
+# 다 선언이다), 그래서 이 갈래는 설치를 한 톨도 안 건드리고 나간다.
+if ($ListDesktopApps) {
+  $DesktopApps | ForEach-Object { '{0}|{1}' -f $_.Key, $_.Label }
+  exit 0
+}
 
 $Vars = @(
   @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 사내는 로컬 프록시 루프백 · 끝에 /v1 을 붙이지 않는다 (CLI 가 붙인다)'; Gateway=$true }
@@ -836,8 +867,12 @@ Update-RuntimePath
 # ⚠ `--source winget` 을 박는다 — 사내에서 빼면 인증서 검증에 걸린다.
 # ⚠ **판정은 종료코드가 아니라 프로브다.** winget 은 이미 깔려 있으면 「올릴 것이 없다」로
 #   0 이 아닌 값을 내는데, 그것을 실패로 읽으면 멀쩡한 PC 가 매번 빨갛게 보고된다.
-$WG = @('--source','winget','--exact','--silent',
-        '--accept-package-agreements','--accept-source-agreements','--disable-interactivity')
+# ⚠ **소스를 뗀 칸을 따로 둔다.** 데스크탑 앱 하나가 **스토어 소스**에 살아서(위 표의
+#   `Source`) 소스를 붙박이로 두면 그 앱을 부를 수가 없다. 나머지 칸은 아래 `$WG` 를 그대로
+#   쓴다 — 붙이는 자리를 한 줄로 두어 둘이 안 갈리게 한다.
+$WGOpts = @('--exact','--silent',
+            '--accept-package-agreements','--accept-source-agreements','--disable-interactivity')
+$WG = @('--source','winget') + $WGOpts
 
 # ── 자리 — **프로그램 칸보다 앞이다.** 무엇을 깔지가 자리에 달렸기 때문이다(데스크탑 앱).
 #    아래 4칸의 키 판정도 이 값을 다시 쓴다 — 한 번 재고 둘이 나눠 쓴다.
@@ -1034,55 +1069,136 @@ foreach ($app in $Apps) {
   Remove-Item $log -ErrorAction SilentlyContinue
 }
 
-# ── 2′. Claude 데스크탑 앱 — **자리가 정한다** ──────────────────────────────────
-# ⚠ **사내에는 쓸모가 없다.** 게이트웨이를 물리는 `ANTHROPIC_BASE_URL` 을 읽는 것은 Claude
-#   Code CLI 뿐이고 앱에는 그 스위치가 없다 — 깔려도 앤트로픽 본사로 나가려 하고 그 길이
-#   막혀 있다. 그래서 값 파일이 `#desktop-app = offsite` 를 들면 **사외로 판정될 때만** 깐다.
-#   `yes` 면 자리를 안 가리고 깐다. 없으면 안 깐다.
+# ── 2′. 데스크탑 앱 — **자리가 언제를, 값 파일이 무엇을 정한다** ────────────────
+# ⚠ **사내에는 쓸모가 없다 — 셋 다.** 게이트웨이를 물리는 `ANTHROPIC_BASE_URL` 을 읽는 것은
+#   Claude Code CLI 뿐이고 앱에는 그 스위치가 없다 — 깔려도 제 본사로 나가려 하고 그 길이
+#   막혀 있다. Codex·Gemini 앱도 각자 로그인으로 서는 자라 같은 자리다(결정 0045). 그래서
+#   값 파일이 `#desktop-app = offsite` 를 들면 **사외로 판정될 때만** 깐다. `yes` 면 자리를
+#   안 가리고 깐다. 없으면 안 깐다.
+# ⚠ **값이 두 겹이다** — 앞은 **언제**(`offsite` · `yes`), `:` 뒤는 **무엇을**(위 표의 `Key`
+#   를 쉼표로). 뒤엣것을 안 적으면 `claude` 하나다: **옛 값 파일이 한 자도 안 고치고 그대로
+#   선다.** 통로를 새 스위치로 내지 않는 까닭은 머리글의 ⚠ 그대로 — 화면 갈래와 콘솔 갈래가
+#   같은 줄을 타야 한쪽만 고쳐지는 자리가 안 난다.
+#
+#       #desktop-app = offsite                사외일 때 Claude        (옛 판과 같다)
+#       #desktop-app = offsite:claude,codex   사외일 때 둘
+#       #desktop-app = yes:gemini             자리를 안 가리고 Gemini
+#
 # ⚠ **GUI 앱이라 PATH 로 못 잰다.** `--version` 을 부를 이름이 안 생겨 다른 것들이 쓰는
-#   프로브가 여기서는 안 선다 — winget 의 목록에 묻는다. 닿을 이름이 아예 없는 자리다.
-$wantApp = Read-Directive $EnvFile 'desktop-app'
-if ($wantApp -eq 'yes' -or ($wantApp -eq 'offsite' -and $offsite)) {
+#   프로브가 여기서는 안 선다 — winget 갈래는 winget 의 목록에, 제 설치본 갈래는 시작
+#   메뉴에 묻는다.
+
+# 있나 — **길마다 묻는 자가 다르다.** 종료코드를 판정으로 안 쓰는 것은 위 2 칸과 같은 결이다.
+function Test-DesktopApp($A) {
+  if ($A.Via -eq 'winget') {
+    $tl = [IO.Path]::GetTempFileName()
+    $rc = Invoke-Logged 'winget' @('list','--id',$A.Id,'--source',$A.Source) $tl
+    Remove-Item $tl -ErrorAction SilentlyContinue
+    return ($rc -eq 0)
+  }
+  # 제 설치본 갈래 — winget 이 모르는 앱이라 **윈도우에 묻는다.** 스토어 꼴이든 예전 꼴이든
+  # 같은 답을 내는 자다(까닭은 아래 「연다」 칸의 ⚠ 에 적혀 있다).
+  try { return [bool](@(Get-StartApps -ErrorAction Stop |
+                        Where-Object { $_.Name -like "*$($A.App)*" })[0]) }
+  catch { return $false }
+}
+
+# 깐다 — **실패를 우리가 분류하지 않는다.** 막히는 방식이 앱마다 다르고(소스 인증서 · 회선
+# 정책 · 인자) 그 갈림을 코드표로 옮기면 **한 기계에서 본 것이 규칙 행세를 한다.** 대신 도구가
+# 뱉은 끝 줄을 그대로 낸다 — 이 파일이 winget 실패에 이미 쓰는 자다.
+function Install-DesktopApp($A) {
   Write-Host ''
-  Write-Host '  Claude 데스크탑 앱' -ForegroundColor Cyan
-  if ($noWinget) {
+  Write-Host "  $($A.Label)" -ForegroundColor Cyan
+  if ($A.Via -eq 'winget' -and $noWinget) {
     Write-Host '  ! winget 이 없어 못 깐다' -ForegroundColor Red
-    $Fails.Add('Claude 데스크탑 앱 (winget 이 없다)')
-  } else {
-    $there = {
-      $tl = [IO.Path]::GetTempFileName()
-      $rc = Invoke-Logged 'winget' @('list','--id',$DesktopApp,'--source','winget') $tl
-      Remove-Item $tl -ErrorAction SilentlyContinue
-      $rc -eq 0
+    $script:Fails.Add("$($A.Label) (winget 이 없다)")
+    return
+  }
+  if (Test-DesktopApp $A) {
+    if (-not $NoUpgrade -and $A.Via -eq 'winget') {
+      $ul = [IO.Path]::GetTempFileName()
+      Invoke-Logged 'winget' (@('upgrade','--id',$A.Id,'--source',$A.Source) + $WGOpts) $ul | Out-Null
+      Remove-Item $ul -ErrorAction SilentlyContinue
     }
-    if (& $there) {
-      if (-not $NoUpgrade) {
-        $al = [IO.Path]::GetTempFileName()
-        Invoke-Logged 'winget' (@('upgrade','--id',$DesktopApp) + $WG) $al | Out-Null
-        Remove-Item $al -ErrorAction SilentlyContinue
-      }
-      Write-Host '  있음'
-    } else {
-      $al = [IO.Path]::GetTempFileName()
-      Invoke-Logged 'winget' (@('install','--id',$DesktopApp) + $WG) $al | Out-Null
-      if (& $there) {
-        Write-Host '  깔았다' -ForegroundColor Green
-      } else {
-        Write-Host '  ! 설치 실패 — winget 이 뱉은 끝 줄:' -ForegroundColor Red
-        Show-Log $al
-        $Fails.Add('Claude 데스크탑 앱')
-      }
+    Write-Host '  있음'
+    return
+  }
+  $al = [IO.Path]::GetTempFileName()
+  $rc = $null
+  if ($A.Via -eq 'winget') {
+    $rc = Invoke-Logged 'winget' (@('install','--id',$A.Id,'--source',$A.Source) + $WGOpts) $al
+  } else {
+    # ⚠ **받는 자리와 도는 자리를 가른다.** 못 받은 것과 받았는데 진 것은 다른 명제이고,
+    #   섞으면 회선이 막은 자리에서 「설치가 실패했다」만 남는다.
+    $exe = Join-Path ([IO.Path]::GetTempPath()) ("{0}Setup.exe" -f $A.App)
+    try {
+      Write-Host ('      · 받는다 — {0}' -f (Split-Path $A.Url -Leaf))
+      Get-Download $A.Url $exe
+    } catch {
+      Write-Host '  ! 설치본을 못 받았다' -ForegroundColor Red
+      Say-Why $_
+      $script:Fails.Add("$($A.Label) (설치본을 못 받았다)")
       Remove-Item $al -ErrorAction SilentlyContinue
+      return
+    }
+    $pr = Start-Process -FilePath $exe -ArgumentList $A.SilentArgs -PassThru -Wait
+    $rc = $pr.ExitCode
+    Remove-Item $exe -ErrorAction SilentlyContinue
+  }
+  if (Test-DesktopApp $A) {
+    Write-Host '  깔았다' -ForegroundColor Green
+  } else {
+    Write-Host ('  ! 설치 실패 — 낸 값 {0}' -f $rc) -ForegroundColor Red
+    # 설치본이 제 로그를 남기는 갈래면 그 끝 줄을 댄다 — 회선이 막은 자리에서는 **막았다는
+    # 말이 그 안에 그대로 들어 있다.**
+    $log = $al
+    if ($A.Log) {
+      $own = [Environment]::ExpandEnvironmentVariables($A.Log)
+      if (Test-Path -LiteralPath $own) { $log = $own }
+    }
+    Show-Log $log
+    $script:Fails.Add($A.Label)
+  }
+  Remove-Item $al -ErrorAction SilentlyContinue
+}
+
+$wantApp = Read-Directive $EnvFile 'desktop-app'
+$appWhen = $wantApp
+$appKeys = @('claude')
+if ($wantApp -and $wantApp -match '^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$') {
+  $appWhen = $Matches[1]
+  $appKeys = @($Matches[2] -split ',' |
+               ForEach-Object { $_.Trim().ToLower() } |
+               Where-Object { $_ })
+}
+$appPicks = @($DesktopApps | Where-Object { $appKeys -contains $_.Key })
+
+if ($appWhen -eq 'yes' -or ($appWhen -eq 'offsite' -and $offsite)) {
+  # ⚠ **모르는 이름을 삼키지 않는다.** 오타 하나로 앱이 조용히 안 깔리면 **초록으로 끝나고**
+  #   아무도 못 본다 — 값 파일을 고친 사람이 제일 늦게 안다.
+  foreach ($k in $appKeys) {
+    if (-not ($DesktopApps | Where-Object { $_.Key -eq $k })) {
+      Write-Host ''
+      Write-Host ('  ! 모르는 데스크탑 앱 이름 — {0} (아는 것: {1})' -f
+                  $k, (($DesktopApps | ForEach-Object { $_.Key }) -join ', ')) -ForegroundColor Yellow
+      $Fails.Add("데스크탑 앱 이름 '$k'")
     }
   }
-} elseif ($wantApp -eq 'offsite') {
+  # ⚠ **빈 목록도 말한다.** `#desktop-app = offsite:` 처럼 뒤가 빈 줄은 **아무 일도 안 일어나고
+  #   한 줄도 안 찍히는** 자리였다 — 값 파일을 고친 사람이 제 손으로 지운 줄 모른다.
+  if (-not $appKeys) {
+    Write-Host ''
+    Write-Host '  데스크탑 앱 — 고를 것이 없어 안 깐다 (#desktop-app 의 : 뒤가 비었다)'
+  }
+  foreach ($da in $appPicks) { Install-DesktopApp $da }
+} elseif ($appWhen -eq 'offsite') {
   Write-Host ''
   # ⚠ **안 깐 까닭을 정확히 댄다.** 「사내라」와 「자리를 몰라」는 다른 명제고, 뒤엣것은
   #   고칠 수 있는 것이다 — 값 파일에 `#site-probe` 를 넣으면 잰다.
   if ($site -eq 'inside') {
-    Write-Host '  Claude 데스크탑 앱 — 사내라 안 깐다 (게이트웨이를 못 문다)'
+    Write-Host '  데스크탑 앱 — 사내라 안 깐다 (게이트웨이를 못 문다)'
   } else {
-    Write-Host '  Claude 데스크탑 앱 — 자리를 몰라 안 깐다 (값 파일에 #site-probe 가 없다)'
+    Write-Host '  데스크탑 앱 — 자리를 몰라 안 깐다 (값 파일에 #site-probe 가 없다)'
   }
 }
 
@@ -2560,7 +2676,7 @@ if (-not $WithPersonalConfig) {
 #   그렇다 — VS Code 는 실행 파일을 직접 띄워야 **이 창이 방금 심은 값을 물고** 뜨고, 데스크탑은
 #   띄울 실행 파일이 아예 없다. 그래서 `Exe` 를 든 것과 `AppId` 를 든 것이 갈려 나온다.
 #   `Proc` 는 「이미 떠 있나」를 재는 이름(들)이다 — VS Code 는 실행 파일에서 하나를, 데스크탑은
-#   손잡이와 앱 이름에서 후보 목록을 든다(까닭은 `Find-ClaudeApp` 안에).
+#   손잡이와 앱 이름에서 후보 목록을 든다(까닭은 `Find-DesktopApp` 안에).
 
 # VS Code — PATH 에 걸린 `code` 는 `…\bin\code.cmd` 라 그것을 띄우면 콘솔이 한 번 번쩍인다.
 # 한 층 올라가 실행 파일을 판다.
@@ -2589,14 +2705,19 @@ function Find-VSCode {
 #   훑어도 못 본다.
 # ⚠ **그러니 자리를 하나 더 박는 것은 답이 아니다** — 꼴이 바뀌면 또 어긋난다. `Get-StartApps`
 #   는 **띄울 수 있는 앱과 그 손잡이**를 돌려주고, 스토어 꼴이든 예전 꼴이든 같은 답을 낸다.
-# ⚠ **찾을 이름도 안 박는다** — 위 `$DesktopApp` 에서 판다.
-function Find-ClaudeApp {
-  $want = ($DesktopApp -split '\.')[-1]        # `만든이.앱` → `앱`
+# ⚠ **찾을 이름도 안 박는다** — 위 표의 `App` 칸이 든다. 고른 것이 여럿이면 **고른 차례로**
+#   묻고 처음 찾은 것을 연다: 앞문은 하나이고, 어느 것이 앞문인지는 값 파일이 적은 차례다.
+function Find-DesktopApp {
+  if (-not $appPicks) { return $null }          # 고른 데스크탑 앱이 없다
   try {
-    $a = @(Get-StartApps -ErrorAction Stop |
-           Where-Object { $_.Name -like "*$want*" })[0]
+    $all = @(Get-StartApps -ErrorAction Stop)
   } catch { return $null }                      # 이 윈도우에 그 물음이 없다
-  if (-not $a -or -not $a.AppID) { return $null }
+  $a = $null; $want = $null; $label = $null
+  foreach ($pick in $appPicks) {
+    $hit = @($all | Where-Object { $_.Name -like "*$($pick.App)*" })[0]
+    if ($hit -and $hit.AppID) { $a = $hit; $want = $pick.App; $label = $pick.Label; break }
+  }
+  if (-not $a) { return $null }
   # 프로세스 이름은 **후보 목록**이다 — 손잡이에서 판 것 하나와 앱 이름 하나.
   # ⚠ **손잡이 하나로는 못 판다.** 꼴이 셋이고 이름이 앉는 자리가 다 다르다 — 스토어 꼴은
   #   `앱_해시!앱` 의 `_` 앞, 바로가기 꼴은 파일 이름, claude.ai 에서 받은 일반 설치본(Squirrel)은
@@ -2610,7 +2731,7 @@ function Find-ClaudeApp {
   $fromId = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
             else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
   $procs = @($fromId, $want) | Where-Object { $_ } | Select-Object -Unique
-  return @{ Name = 'Claude 데스크탑'; AppId = $a.AppID; Proc = @($procs) }
+  return @{ Name = $label; AppId = $a.AppID; Proc = @($procs) }
 }
 
 # 그 앱이 이미 도나 — 이름은 찾는 자가 든 것을 그대로 쓴다(하나든 목록이든 `-Name` 이 받는다).
@@ -2705,13 +2826,17 @@ if ($NoLaunch) {
 
   $app = $null
   if ($offsite) {
-    $app = Find-ClaudeApp
+    $app = Find-DesktopApp
     # ⚠ **못 찾은 것을 말없이 딴 것으로 갈음하지 않는다.** 사외에서 앞문은 데스크탑이다 —
     #   못 찾았다고 조용히 VS Code 를 열면 사람은 「왜 VS Code 가 뜨지」를 혼자 헤맨다.
     #   실측 2026-09-11(집 PC): 한 줄도 안 찍힌 채 VS Code 가 떴고, 까닭을 찾는 데 몇 판이 들었다.
     #   **떨어지더라도 왜 떨어졌는지 찍고 떨어진다.**
     if (-not $app) {
-      Write-Host '  ! Claude 데스크탑을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
+      # 고른 것이 아예 없으면 못 찾은 것이 아니라 **찾을 것이 없는** 것이다 — 두 말을 가른다.
+      if ($appPicks) {
+        Write-Host ('  ! {0}을 못 찾았다 — 시작 메뉴에서 직접 연다' -f
+                    (($appPicks | ForEach-Object { $_.Label }) -join ' · ')) -ForegroundColor Yellow
+      }
     }
   }
   if (-not $app -and $hasCode) { $app = Find-VSCode }

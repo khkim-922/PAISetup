@@ -175,6 +175,36 @@ $AppNameDefault = 'PAI Setup Wizard'
 $AppName = Get-Directive 'app-name'
 if (-not $AppName) { $AppName = $AppNameDefault }
 
+# ── 고를 데스크탑 앱 — **무엇을 고르나는 화면이, 언제 까나는 값 파일이 든다** ────────
+# ⚠ **파일이 `#desktop-app` 을 안 들면 칸을 아예 안 낸다.** 몸통이 안 까는 자리에 고르는
+#   칸을 내면 **화면이 거짓말한다** — 골라 놓고 아무 일도 안 일어나는 것이 가장 나쁜 꼴이다.
+# ⚠ **목록을 여기 옮겨 적지 않는다** — 몸통에 묻는다(`-ListDesktopApps`). 옮겨 적으면 앱이
+#   늘 때 한쪽만 고쳐지고, 그 어긋남은 「골랐는데 안 깔린다」는 조용한 꼴로만 보인다.
+# ⚠ **자식으로 띄워 묻는다.** 이 창 안에서 그 파일을 부르면 저쪽의 `exit` 가 **이 창까지**
+#   끌고 나간다 — 목록 하나 얻자고 치를 값이 아니다.
+$appDirective = Get-Directive 'desktop-app'
+$appWhen = $appDirective
+$appKeys = @('claude')
+if ($appDirective -and $appDirective -match '^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$') {
+  $appWhen = $Matches[1]
+  $appKeys = @($Matches[2] -split ',' |
+               ForEach-Object { $_.Trim().ToLower() } |
+               Where-Object { $_ })
+}
+$AppChoices = @()
+if ($appDirective) {
+  try {
+    $raw = & powershell -NoProfile -ExecutionPolicy Bypass -File $Engine -ListDesktopApps
+    foreach ($ln in @($raw)) {
+      if ("$ln" -match '^\s*([a-z0-9-]+)\|(.+?)\s*$') {
+        $AppChoices += ,@{ Key = $Matches[1]; Label = $Matches[2] }
+      }
+    }
+  } catch { }
+}
+# ⚠ **칸이 없으면 아래 자리를 안 민다.** 빈 줄만큼 창이 길어지면 작은 화면에서 단추가 잘린다.
+$appRow = if ($AppChoices.Count) { 26 } else { 0 }
+
 # ── 화면 ────────────────────────────────────────────────────────────────────────
 $F = New-Object Windows.Forms.Form
 # 제목이 판을 든다 — 사람이 「내가 몇 판을 들고 있나」를 볼 자리가 여기밖에 없다.
@@ -186,7 +216,7 @@ $IconPath = Join-Path $Here 'setup-icon.ico'
 if (Test-Path -LiteralPath $IconPath) {
   try { $F.Icon = New-Object Drawing.Icon($IconPath) } catch { }
 }
-$F.Size = New-Object Drawing.Size(640, 744)
+$F.Size = New-Object Drawing.Size(640, (744 + $appRow))
 $F.StartPosition = 'CenterScreen'
 $F.FormBorderStyle = 'FixedDialog'
 $F.MaximizeBox = $false
@@ -290,7 +320,7 @@ $gV.Controls.Add($lHint)
 # 옵션
 $gO = New-Object Windows.Forms.GroupBox
 $gO.Text = '옵션'; $gO.Location = New-Object Drawing.Point(16, 190)
-$gO.Size = New-Object Drawing.Size(592, 116)
+$gO.Size = New-Object Drawing.Size(592, (116 + $appRow))
 $F.Controls.Add($gO)
 
 $cDev = New-Object Windows.Forms.CheckBox
@@ -325,6 +355,30 @@ $cUpg.Size = New-Object Drawing.Size(560, 22)
 $cUpg.Checked = -not $NoUpgrade
 $gO.Controls.Add($cUpg)
 
+# ⚠ **글자는 몸통이 준 것을 그대로 쓴다** — 여기서 다시 지으면 두 벌이 된다.
+#   미리 켜 두는 것은 값 파일이 적은 것이고, 아무것도 안 고르면 데스크탑 앱을 안 깐다.
+$cApps = @()
+if ($AppChoices.Count) {
+  $lApp = New-Object Windows.Forms.Label
+  $lApp.Text = '데스크탑 앱'
+  $lApp.Location = New-Object Drawing.Point(16, 114)
+  $lApp.Size = New-Object Drawing.Size(84, 20)
+  $gO.Controls.Add($lApp)
+  $x = 104
+  foreach ($choice in $AppChoices) {
+    $c = New-Object Windows.Forms.CheckBox
+    # 「Claude 데스크탑」에서 뒷말을 뗀다 — 줄머리가 이미 「데스크탑 앱」이라 되풀이다.
+    $c.Text = ($choice.Label -replace '\s*데스크탑\s*$', '')
+    $c.Location = New-Object Drawing.Point($x, 112)
+    $c.Size = New-Object Drawing.Size(104, 22)
+    $c.Checked = ($appKeys -contains $choice.Key)
+    $c.Tag = $choice.Key
+    $gO.Controls.Add($c)
+    $cApps += ,$c
+    $x += 110
+  }
+}
+
 # ── 내 저장소 받기 (선택) ───────────────────────────────────────────────────────
 # ⚠ **이 칸이 드는 일은 「받아 둔다」 하나다.** 옛 이름(「설정 저장소」)은 **훅을 든 저장소**를
 #   전제로 말했는데, 보통 사람은 그런 저장소가 없고 그냥 제 저장소를 받아 두는 자리로 쓴다 —
@@ -339,7 +393,7 @@ $gO.Controls.Add($cUpg)
 #   그러니 이 칸이 비어 있는 것이 받는 사람에게는 정상이다.
 $gR = New-Object Windows.Forms.GroupBox
 $gR.Text = '내 저장소 받기 (선택) — git 주소, 여러 개는 빈칸으로'
-$gR.Location = New-Object Drawing.Point(16, 312)
+$gR.Location = New-Object Drawing.Point(16, (312 + $appRow))
 $gR.Size = New-Object Drawing.Size(592, 108)
 $F.Controls.Add($gR)
 
@@ -426,7 +480,7 @@ $tip.SetToolTip($lRepo, $tipText)
 
 # 진행
 $bar = New-Object Windows.Forms.ProgressBar
-$bar.Location = New-Object Drawing.Point(16, 458)   # 홈 안내 줄·링크 줄(420-456) 아래
+$bar.Location = New-Object Drawing.Point(16, (458 + $appRow))   # 홈 안내 줄·링크 줄(420-456) 아래
 $bar.Size = New-Object Drawing.Size(592, 20)
 $bar.Minimum = 0; $bar.Maximum = 100
 $F.Controls.Add($bar)
@@ -437,11 +491,11 @@ $F.Controls.Add($bar)
 #   씨앗 셋은 고를 것이 아니라 환경이라 스위치가 없고, 그래서 더 말해야 한다 — 동의 없이 놓인다.
 # ⚠ **여는 것은 풀어 둔 이 폴더다** — README 와 홈으로 갈 씨앗의 원본이 같이 있다. 홈 쪽
 #   (`~/.claude/seeds`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
-$lHome = New-Label '홈 ~/.claude 에 사내 환경 문서와 씨앗 셋도 놓입니다 — 고르는 것이 아니라 환경입니다.' 18 420 592 $false
+$lHome = New-Label '홈 ~/.claude 에 사내 환경 문서와 씨앗 셋도 놓입니다 — 고르는 것이 아니라 환경입니다.' 18 (420 + $appRow) 592 $false
 $lHome.ForeColor = [Drawing.Color]::DimGray
 $lnkHome = New-Object Windows.Forms.LinkLabel
 $lnkHome.Text = '무엇이 어디에 놓이나 — 폴더 열기 (README · posco · seeds)'
-$lnkHome.Location = New-Object Drawing.Point(18, 440)
+$lnkHome.Location = New-Object Drawing.Point(18, (440 + $appRow))
 $lnkHome.Size = New-Object Drawing.Size(400, 16)
 $lnkHome.Add_LinkClicked({
   try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $Here + '"') | Out-Null }
@@ -457,7 +511,7 @@ $F.Controls.Add($lnkHome)
 # ⚠ 없으면 경로를 대고 말한다 — howto 링크와 같은 까닭(눌렀는데 아무 일도 안 나면 사람은 멈춘다).
 $lnkFlow = New-Object Windows.Forms.LinkLabel
 $lnkFlow.Text = '설치 흐름 그림'
-$lnkFlow.Location = New-Object Drawing.Point(468, 440)
+$lnkFlow.Location = New-Object Drawing.Point(468, (440 + $appRow))
 $lnkFlow.Size = New-Object Drawing.Size(140, 16)
 $lnkFlow.TextAlign = 'MiddleRight'
 $lnkFlow.Add_LinkClicked({
@@ -477,11 +531,11 @@ $lnkFlow.Add_LinkClicked({
 })
 $F.Controls.Add($lnkFlow)
 
-$lState = New-Label '' 18 480 500 $false
+$lState = New-Label '' 18 (480 + $appRow) 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
 $log = New-Object Windows.Forms.TextBox
-$log.Location = New-Object Drawing.Point(16, 502)
+$log.Location = New-Object Drawing.Point(16, (502 + $appRow))
 $log.Size = New-Object Drawing.Size(592, 150)   # 안내 줄 둘이 든 만큼 줄었다 — 단추(662)와 10 남는다
 $log.Multiline = $true; $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'; $log.WordWrap = $false
@@ -491,12 +545,12 @@ $log.Font = New-Object Drawing.Font('Consolas', 9)
 $F.Controls.Add($log)
 
 $bGo = New-Object Windows.Forms.Button
-$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, 662)
+$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, (662 + $appRow))
 $bGo.Size = New-Object Drawing.Size(100, 30)
 $F.Controls.Add($bGo); $F.AcceptButton = $bGo
 
 $bClose = New-Object Windows.Forms.Button
-$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, 662)
+$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, (662 + $appRow))
 $bClose.Size = New-Object Drawing.Size(84, 30)
 $F.Controls.Add($bClose)
 
@@ -577,11 +631,23 @@ $bGo.Add_Click({
     foreach ($line in Get-Content -LiteralPath $EnvPath -Encoding UTF8) {
       if ($line -match '^\s*#\s*config-repo\s*=') { continue }
       if ($line -match '^\s*#\s*site\s*=')        { continue }
+      if ($line -match '^\s*#\s*desktop-app\s*=')  { continue }
       if ($line -match '^\s*#\s*[A-Za-z][A-Za-z0-9-]*\s*=\s*.+$') { $lines.Add($line.Trim()) }
     }
   }
   $repo = $tRepo.Text.Trim()
   if ($repo) { $lines.Add("#config-repo = $repo") }
+  # ⚠ **데스크탑 앱도 화면이 든다** — 파일 줄을 같이 흘리면 한 이름이 두 줄이 되고 **먼저
+  #   적힌 쪽(파일)이 이긴다.** 사람이 방금 끈 앱이 옛 글자로 되살아나는 자리다.
+  # ⚠ **하나도 안 골랐으면 줄 자체를 안 적는다.** 그래야 몸통이 「데스크탑 앱은 안 깐다」로
+  #   읽는다 — 빈 목록을 적으면 지시가 아니라 깨진 글자다.
+  # ⚠ **언제 까나(`$appWhen`)는 그대로 흘린다** — 그것은 사람이 정한 것이 아니라 자리 정책이다.
+  if ($appWhen) {
+    $picked = @($cApps | Where-Object { $_.Checked } | ForEach-Object { [string]$_.Tag })
+    if ($picked.Count) {
+      $lines.Add(('#desktop-app = {0}:{1}' -f $appWhen, ($picked -join ',')))
+    }
+  }
   # ⚠ **자리는 이 화면이 이미 쟀다 — 몸통에 넘긴다.** 같은 물음을 몸통이 또 물으면 두
   #   프로세스·두 시점이라 **답이 갈릴 수 있고, 갈려도 아무 데도 안 찍힌다**(프록시가 흔들리는
   #   VDI · 무선 전환 · 회사망 재인증). 갈리면 여기서 받은 키를 몸통이 버리거나, 주소가 빈
