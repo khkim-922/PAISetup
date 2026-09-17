@@ -1850,9 +1850,24 @@ if ($wantProxy) {
       } else {
         $proxyDir  = Join-Path $env:LOCALAPPDATA $ProxyDirName
         $proxyPath = Join-Path $proxyDir (Split-Path $proxySrc -Leaf)
-        $ourVer = 0
-        $m = [regex]::Match((Get-Content -LiteralPath $proxySrc -Raw -Encoding UTF8), '(?m)^VERSION\s*=\s*(\d+)')
-        if ($m.Success) { $ourVer = [int]$m.Groups[1].Value }
+        # ── 판 번호는 두 칸이다 — **상류 판과 우리 판을 안 섞는다** ─────────────────
+        # ⚠ **점 찍힌 한 줄(`15.4`)을 크기로 견주지 않는다.** 문자열로 견주면 `"9" -ge "10"` 이
+        #   참이 되고, `[version]` 으로 넘기면 옛 판이 낸 정수 한 칸(`18`)이 `18.0` 으로 읽혀
+        #   **낡은 것이 새것으로 보인다.** 그래서 **두 수를 각각 정수로 읽어 차례로 견준다** —
+        #   위 칸이 다르면 그것이 정하고, 같을 때만 아래 칸을 본다.
+        # ⚠ **옛 판이 도는 자리를 받는다.** v17·v18 은 `VERSION` 한 칸만 들어 이 정규식에
+        #   안 걸리는데, 그때 `$runUp` 이 0 으로 남아 **새 판이 늘 이긴다** — 갈아 끼우는 쪽으로
+        #   기운다. 반대로 두면 옛 프록시가 영영 안 바뀐다(부재가 통과로 읽히는 자리).
+        function Get-ProxyVer([string]$text) {
+          $up = 0; $ours = 0
+          $mu = [regex]::Match($text, '(?m)^VERSION_UPSTREAM\s*=\s*(\d+)')
+          $mo = [regex]::Match($text, '(?m)^VERSION_OURS\s*=\s*(\d+)')
+          if ($mu.Success) { $up = [int]$mu.Groups[1].Value }
+          if ($mo.Success) { $ours = [int]$mo.Groups[1].Value }
+          return @($up, $ours)
+        }
+        $ourPair = Get-ProxyVer (Get-Content -LiteralPath $proxySrc -Raw -Encoding UTF8)
+        $ourVer = '{0}.{1}' -f $ourPair[0], $ourPair[1]
         New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
         Copy-Item -LiteralPath $proxySrc -Destination $proxyPath -Force
         Write-Host "  실행 폴더 — $proxyDir (v$ourVer)"
@@ -1860,9 +1875,17 @@ if ($wantProxy) {
         $up = Get-ProxyHealth $proxyHealthUrl
         $start = $true
         if ($up) {
-          $runVer = 0
-          try { $runVer = [int]$up.version } catch { }
-          if ($runVer -ge $ourVer) {
+          # 도는 판이 낸 `version` — 새 판은 `15.4`, 옛 판은 정수 하나다. 둘 다 이 자리가 받는다.
+          $runUp = 0; $runOurs = 0
+          $runVer = [string]$up.version
+          $rm = [regex]::Match($runVer, '^(\d+)(?:\.(\d+))?$')
+          if ($rm.Success) {
+            $runUp = [int]$rm.Groups[1].Value
+            if ($rm.Groups[2].Success) { $runOurs = [int]$rm.Groups[2].Value }
+            else { $runUp = 0 }   # 옛 판의 정수 한 칸은 이 축의 값이 아니다 — 갈아 끼운다
+          }
+          $newer = ($runUp -gt $ourPair[0]) -or (($runUp -eq $ourPair[0]) -and ($runOurs -ge $ourPair[1]))
+          if ($newer) {
             Write-Host "  이미 돈다 — v$runVer · 그대로 쓴다"
             $start = $false
           } else {

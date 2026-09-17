@@ -77,10 +77,20 @@ LISTEN_PORT = 18901
 # PGPT_PROXY_UPSTREAM 을 쓴다. 프로토콜은 http — https 는 연결되지 않는다.
 UPSTREAM = os.environ.get("PGPT_PROXY_UPSTREAM", "http://aigpt.posco.net").rstrip("/")
 ALLOWED_PREFIX = "/gpgpta01-gpt/"
-# 상류 v15 + 우리 덩어리 둘(keepalive `_relay_sse_keepalive` · unstream `_unstream_messages`). 설치기가 도는
-# 판과 이 값을 견주어 낮으면 갈아 끼우므로 상류보다 늘 위에 둔다 — 상류가 17 을 내면 우리는 18 이다.
-# README 「상류 판」.
-VERSION = 17
+# ── 판 번호는 두 칸이다 — **상류 판과 우리 판을 안 섞는다** ──────────────────────────
+# 옛 판은 한 칸(정수 17·18)이었는데, 그러면 **상류가 16 을 내는 날 우리 18 과 부딪히고 번호로는
+# 누가 새것인지 못 가른다** — 같은 축에 두 사람이 번호를 매기니 필연이다. 축을 둘로 가르면
+# 그 충돌이 없어진다: 상류가 16 을 내면 우리 칸은 0 으로 돌아가 `16.0` 이 되고, 그것은 `15.4`
+# 보다 뒤라는 것이 두 수를 차례로 견주면 그냥 나온다.
+# ⚠ **`/health` 는 사람이 읽는 한 줄(`15.4`)을 내고, 견주는 자는 두 수를 따로 본다.**
+#   점 찍힌 문자열을 크기로 견주면 `"9" > "10"` 이 되는 자리라, 설치기는 이 아래 두 이름을
+#   각각 정수로 읽는다(`install.ps1` 의 프록시 칸).
+# ⚠ **상류를 새로 받으면 위 칸을 그 판으로 올리고 아래 칸을 0 으로 되돌린다** — 우리 덩어리를
+#   다시 얹은 만큼만 아래 칸이 오른다. README 「상류에서 새 판을 받을 때」.
+VERSION_UPSTREAM = 15
+# 우리 덩어리 넷 — keepalive(0044) · unstream(0051) · 하이쿠 대체 · 제미나이 이름 표.
+VERSION_OURS = 4
+VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 # SSE keepalive — 상류가 이만큼 침묵하면 클라이언트 쪽에 SSE 주석 한 줄을 흘린다. 0 이면 끈다.
 # 게이트웨이는 모델이 생각하는 동안 바이트를 안 흘리고, Claude Code 의 바이트 유휴 워치독은 그 침묵에
 # 스트림을 끊는다(회사 실측 2026-09-14 · 자동 압축이 가장 잘 걸림). 주석 줄(`:`)은 SSE 규격상 버려지므로
@@ -412,6 +422,25 @@ _CLAUDE_MODEL_ALIASES = {
 #   위 `/v1/models` 에 haiku 가 보이면 이 칸을 지운다.
 _CLAUDE_HAIKU_SUBSTITUTE = "claude-sonnet-4.6"
 
+# ── (우리 것) 안티그래비티가 제목 짓기에 못박아 둔 이름 하나 ──────────────────────────
+# 하이쿠 칸과 **같은 병이다** — 클라이언트가 곁 호출에 제 이름을 보내고 게이트웨이에 그 판이
+# 없어 그 호출만 진다. 여기도 `--model` 이 메인 턴만 못박고 곁 호출은 그 못을 안 탄다.
+# **그런데 약이 다르다.** 하이쿠는 게이트웨이에 한 판도 없어 다른 모델로 갈아야 했지만, 이쪽은
+# **같은 모델이 이름만 다르게 등록돼 있다** — 접미사 `-preview` 하나가 임자다(실측 2026-09-17 ·
+# 직결: `gemini-3.1-flash-lite` 는 200 에 `modelVersion: gemini-3.1-flash-lite` · `-preview`
+# 붙은 것은 400 「모델을 찾을 수 없습니다」). 그래서 성능을 안 깎고 이름만 고친다.
+# ⚠ **접미사를 규칙으로 떼지 않고 이름으로 잡는다** — 하이쿠 칸과 반대로 가는 자리다.
+#   `-preview` 를 무조건 떼면 **게이트웨이에 실제로 있는** `gemini-3.1-pro-preview` 를 깨뜨린다
+#   (같은 날 실측: 그 이름으로 본 턴이 통했다). 새는 쪽과 깨뜨리는 쪽 중 **깨뜨리지 않는 쪽으로
+#   기운다** — 곁 호출 하나가 지면 제목이 안 붙을 뿐이고, 본 턴이 지면 아무것도 안 된다.
+# ⚠ **`agy` 쪽에 이것을 갈 손잡이가 없다** — 바이너리에 상수로 박혀 있고 `titleModel` 류의 설정이
+#   없다. 그래서 고칠 자리가 클라이언트가 아니라 여기다.
+# ⚠ **걷는 날은 사람이 정한다** — 게이트웨이가 `-preview` 판을 들이거나 `agy` 가 이름을 고치면
+#   이 줄이 쓸모없어진다. 위 `/v1/models` 에 그 이름이 보이면 이 칸을 지운다.
+_GEMINI_MODEL_ALIASES = {
+    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
+}
+
 
 def normalize_pgpt_claude_model(model: str) -> str:
     """Restore dotted Claude IDs and map aliases the gateway does not list."""
@@ -693,6 +722,11 @@ def normalize_gemini_model_path(path: str) -> str:
     Gemini CLI 0.55 adds this suffix when tools are enabled, but P-GPT only
     registers the underlying model ID.  The suffix is a client-side routing
     hint, not a distinct gateway model.
+
+    Antigravity's ``agy`` backend hardcodes one model for conversation titles
+    (``gemini-3.1-flash-lite-preview``) and the gateway does not register that
+    name -- only ``gemini-3.1-flash-lite``.  Same class of model, different ID,
+    so the fix is dropping the suffix rather than substituting another model.
     """
     if not path.startswith(f"{GEMINI_PREFIX}/models/"):
         return path
@@ -702,10 +736,14 @@ def normalize_gemini_model_path(path: str) -> str:
     if model_end < 0:
         model_end = len(path)
     model = path[model_start:model_end]
+    base_model = model
     suffix = "-customtools"
-    if not model.endswith(suffix):
+    if base_model.endswith(suffix):
+        base_model = base_model[: -len(suffix)]
+    # (우리 것) 안티그래비티의 제목 짓는 호출만 없는 이름으로 온다 — 그 하나를 이름으로 잡는다.
+    base_model = _GEMINI_MODEL_ALIASES.get(base_model, base_model)
+    if base_model == model:
         return path
-    base_model = model[: -len(suffix)]
     normalized = path[:model_start] + base_model + path[model_end:]
     log(f"Gemini model alias normalized: {model} -> {base_model}")
     return normalized
@@ -1618,6 +1656,19 @@ def self_test() -> None:
     assert normalize_gemini_model_path(
         "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:generateContent"
     ) == "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:generateContent"
+
+    # (우리 것) 안티그래비티의 제목 짓기는 등록 안 된 `-preview` 이름으로 온다 — 그것만 고친다.
+    assert normalize_gemini_model_path(
+        "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview:streamGenerateContent"
+    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:streamGenerateContent"
+    # ⚠ **게이트웨이에 있는 `-preview` 는 안 건드린다** — 접미사를 규칙으로 떼면 이 줄이 깨진다.
+    assert normalize_gemini_model_path(
+        "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent"
+    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent"
+    # 두 접미사가 겹쳐 와도 등록 이름으로 내려앉는다.
+    assert normalize_gemini_model_path(
+        "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview-customtools:generateContent"
+    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:generateContent"
 
     # P-GPT 가 JSON 하나를 여러 data: 줄로 잘라도 완전한 이벤트로 합친다.
     broken_sse = (
