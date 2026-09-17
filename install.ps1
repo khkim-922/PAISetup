@@ -3118,7 +3118,7 @@ if (-not $WithPersonalConfig) {
 #   그렇다 — VS Code 는 실행 파일을 직접 띄워야 **이 창이 방금 심은 값을 물고** 뜨고, 데스크탑은
 #   띄울 실행 파일이 아예 없다. 그래서 `Exe` 를 든 것과 `AppId` 를 든 것이 갈려 나온다.
 #   `Proc` 는 「이미 떠 있나」를 재는 이름(들)이다 — VS Code 는 실행 파일에서 하나를, 데스크탑은
-#   손잡이와 앱 이름에서 후보 목록을 든다(까닭은 `Find-DesktopApp` 안에).
+#   손잡이와 앱 이름에서 후보 목록을 든다(까닭은 `Find-DesktopApps` 안에).
 
 # VS Code — PATH 에 걸린 `code` 는 `…\bin\code.cmd` 라 그것을 띄우면 콘솔이 한 번 번쩍인다.
 # 한 층 올라가 실행 파일을 판다.
@@ -3149,17 +3149,19 @@ function Find-VSCode {
 #   는 **띄울 수 있는 앱과 그 손잡이**를 돌려주고, 스토어 꼴이든 예전 꼴이든 같은 답을 낸다.
 # ⚠ **찾을 이름도 안 박는다** — 위 표의 `App` 칸이 든다. 고른 것이 여럿이면 **고른 차례로**
 #   묻고 처음 찾은 것을 연다: 앞문은 하나이고, 어느 것이 앞문인지는 값 파일이 적은 차례다.
-function Find-DesktopApp {
-  if (-not $appPicks) { return $null }          # 고른 데스크탑 앱이 없다
+function Find-DesktopApps {
+  # ⚠ **고른 것을 다 든다 — 하나만 고르지 않는다.** 옛 판은 표에서 먼저 선 하나에서 멈췄는데,
+  #   그 「먼저」가 **어디에도 안 적힌 채 표 행 순서에 숨어** 있었다: 줄을 옮기면 뜨는 앱이
+  #   조용히 바뀐다. 다 들면 고를 일이 없어져 그 자리가 통째로 없어진다.
+  if (-not $appPicks) { return @() }            # 고른 데스크탑 앱이 없다
   try {
     $all = @(Get-StartApps -ErrorAction Stop)
-  } catch { return $null }                      # 이 윈도우에 그 물음이 없다
-  $a = $null; $want = $null; $label = $null
+  } catch { return @() }                        # 이 윈도우에 그 물음이 없다
+  $out = @()
   foreach ($pick in $appPicks) {
-    $hit = @($all | Where-Object { $_.Name -like "*$($pick.App)*" })[0]
-    if ($hit -and $hit.AppID) { $a = $hit; $want = $pick.App; $label = $pick.Label; break }
-  }
-  if (-not $a) { return $null }
+    $a = @($all | Where-Object { $_.Name -like "*$($pick.App)*" })[0]
+    if (-not ($a -and $a.AppID)) { continue }
+    $want = $pick.App; $label = $pick.Label
   # 프로세스 이름은 **후보 목록**이다 — 손잡이에서 판 것 하나와 앱 이름 하나.
   # ⚠ **손잡이 하나로는 못 판다.** 꼴이 셋이고 이름이 앉는 자리가 다 다르다 — 스토어 꼴은
   #   `앱_해시!앱` 의 `_` 앞, 바로가기 꼴은 파일 이름, claude.ai 에서 받은 일반 설치본(Squirrel)은
@@ -3170,10 +3172,12 @@ function Find-DesktopApp {
   # ⚠ **꼴을 하나 더 박는 대신 앱 이름을 후보에 더한다.** 세 꼴 다 실행 파일이 곧 앱 이름이라
   #   (`claude`) 그 하나가 셋을 덮고, 꼴이 또 늘어도 안 어긋난다. 손잡이에서 판 것은 그대로 둔다 —
   #   이름이 실행 파일과 갈리는 앱이 오면 그쪽이 든다. `Get-Process -Name` 은 목록을 받는다.
-  $fromId = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
-            else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
-  $procs = @($fromId, $want) | Where-Object { $_ } | Select-Object -Unique
-  return @{ Name = $label; AppId = $a.AppID; Proc = @($procs) }
+    $fromId = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
+              else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
+    $procs = @($fromId, $want) | Where-Object { $_ } | Select-Object -Unique
+    $out += @{ Name = $label; AppId = $a.AppID; Proc = @($procs) }
+  }
+  return @($out)
 }
 
 # 그 앱이 이미 도나 — 이름은 찾는 자가 든 것을 그대로 쓴다(하나든 목록이든 `-Name` 이 받는다).
@@ -3266,93 +3270,103 @@ if ($NoLaunch) {
     [Environment]::SetEnvironmentVariable($k, $userEnv[$k], 'Process')
   }
 
-  $app = $null
+  # 열 것을 모은다 — **사외면 고른 데스크탑을 다 든다.**
+  $apps = @()
   if ($offsite) {
-    $app = Find-DesktopApp
+    $apps = @(Find-DesktopApps)
     # ⚠ **못 찾은 것을 말없이 딴 것으로 갈음하지 않는다.** 사외에서 앞문은 데스크탑이다 —
     #   못 찾았다고 조용히 VS Code 를 열면 사람은 「왜 VS Code 가 뜨지」를 혼자 헤맨다.
     #   실측 2026-09-11(집 PC): 한 줄도 안 찍힌 채 VS Code 가 떴고, 까닭을 찾는 데 몇 판이 들었다.
     #   **떨어지더라도 왜 떨어졌는지 찍고 떨어진다.**
-    if (-not $app) {
-      # 고른 것이 아예 없으면 못 찾은 것이 아니라 **찾을 것이 없는** 것이다 — 두 말을 가른다.
-      if ($appPicks) {
-        Write-Host ('  ! {0}을 못 찾았다 — 시작 메뉴에서 직접 연다' -f
-                    (($appPicks | ForEach-Object { $_.Label }) -join ' · ')) -ForegroundColor Yellow
-      }
+    # ⚠ **고른 것과 선 것의 차만 댄다** — 다 열게 되면서 「하나도 못 찾았다」가 아니라 「이건
+    #   못 찾았다」가 되었다. 막힌 회선에서 한 제품만 안 깔린 자리가 이 줄에서 보인다.
+    $found = @($apps | ForEach-Object { $_.Name })
+    $miss  = @($appPicks | Where-Object { $found -notcontains $_.Label })
+    # 고른 것이 아예 없으면 못 찾은 것이 아니라 **찾을 것이 없는** 것이다 — 두 말을 가른다.
+    if ($miss -and $appPicks) {
+      Write-Host ('  ! {0} — 못 찾았다. 시작 메뉴에서 직접 연다' -f
+                  (($miss | ForEach-Object { $_.Label }) -join ' · ')) -ForegroundColor Yellow
     }
   }
-  if (-not $app -and $hasCode) { $app = Find-VSCode }
+  # ⚠ **`$null` 을 배열에 담지 않는다** — `Find-VSCode` 는 못 찾으면 `$null` 을 내는데
+  #   `@($null)` 은 **빈 배열이 아니라 원소 하나짜리**다. 아래 고리들이 그 `$null` 을 든다.
+  if (-not $apps -and $hasCode) { $apps = @(Find-VSCode | Where-Object { $_ }) }
 
-  $go = $false
-  if (-not $app) {
+  $skip = @()
+  if (-not $apps) {
     Write-Host '  ! 열 것을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
-  } elseif (Test-AppUp $app) {
-    # ⚠ **떠 있으면 안 띄운다 — 둘 다.** 까닭이 둘이고, 둘 다 「돌던 것은 뒤에 온 것을
-    #   모른다」다.
+  } else {
+    # ⚠ **떠 있으면 안 띄운다.** 까닭이 둘이고, 둘 다 「돌던 것은 뒤에 온 것을 모른다」다.
     #   · **환경** — 창은 뜰 때 환경을 한 번 복사하고 그 뒤에 바뀐 것은 안 따라온다.
     #     VS Code 는 `code` 를 다시 불러도 **돌던 그 프로세스**가 창을 내므로 방금 심은 키를
     #     못 본다. `--new-window` 도 창만 새로 낼 뿐 프로세스를 안 가르고, 가르는 레버인
-    #     `--user-data-dir` 는 설정·상태가 통째로 딴 자리가 되어 처음 깐 것처럼 뜬다 —
-    #     키 하나 물리자고 치를 값이 아니다.
+    #     `--user-data-dir` 는 설정·상태가 통째로 딴 자리가 된다.
     #   · **선언** — **이 설치가 끝이 아니다.** 뒤이어 설정 저장소의 훅이 규범·MCP 선언·세션
-    #     훅을 심는다. 돌던 앱은 그 선언을 **뜰 때 한 번 읽고
-    #     말았다.** 그래서 데스크탑도 닫을 까닭이 선다 — 게이트웨이 주소를 안 읽는 것과는
-    #     다른 축이다.
-    # ⚠ **그래서 창을 앞으로 불러 주지도 않는다.** 트레이에 내려간 것을 다시 띄우면 창이
-    #   새로 뜬 것처럼 보이는데 **안에 든 것은 그대로다** — 재시작한 것처럼 보이는 것이
-    #   재시작 안 한 것보다 나쁘다. 안 띄우는 대신 **어떻게 끄는지를 댄다.**
+    #     훅을 심는다. 돌던 앱은 그 선언을 뜰 때 한 번 읽고 말았다.
+    # ⚠ **그래서 창을 앞으로 불러 주지도 않는다.** 트레이에 내려간 것을 다시 띄우면 창이 새로
+    #   뜬 것처럼 보이는데 **안에 든 것은 그대로다.**
     # ⚠ **떠 있는 것을 설치가 죽이지 않는다** — 저장 안 한 것이 날아간다. 끄는 것은 사람이 든다.
-    Write-Host "  $($app.Name) — 이미 떠 있다. 끌지 묻는다"
-    # 사람이 아니라고 했거나 안 꺼졌을 때 낼 말. 한 번 세워 두고 두 갈래가 나눠 쓴다.
-    $tail = if ($app.Name -eq 'VS Code') {
-      '열려 있는 VS Code 를 전부 닫고 새로 여세요 — 돌던 창은 방금 깔린 것을 모릅니다'
-    } else {
-      "$($app.Name)을 트레이(시계 옆)에서 완전히 끄고 새로 여세요 — 창만 닫으면 안 꺼집니다"
-    }
-    if (Ask-Restart $app.Name) {
-      Write-Host '  끈다 — 창을 닫으라고 보내고, 안 나가면 세게 끝낸다'
-      if (Stop-App $app) {
-        Write-Host "  $($app.Name) — 껐다" -ForegroundColor Green
-        $go = $true
+    # ⚠ **그리고 모아서 한 번만 묻는다.** 앱마다 물으면 **모달 창이 연달아** 뜬다 — 그것이
+    #   「다 띄우면 정신없다」의 진짜 정체다. 묻는 값은 하나로 묶고 답은 다 같이 든다.
+    $up = @($apps | Where-Object { Test-AppUp $_ })
+    if ($up) {
+      $names = ($up | ForEach-Object { $_.Name }) -join ' · '
+      Write-Host "  $names — 이미 떠 있다. 끌지 묻는다"
+      if (Ask-Restart $names) {
+        Write-Host '  끈다 — 창을 닫으라고 보내고, 안 나가면 세게 끝낸다'
+        foreach ($u in $up) {
+          if (Stop-App $u) { Write-Host "  $($u.Name) — 껐다" -ForegroundColor Green }
+          else {
+            # ⚠ **못 껐으면 「껐다」로 안 넘어간다.** 안 끄고 띄우면 돌던 그 프로세스가 창을
+            #   내므로, 사람은 재시작한 줄 알고 낡은 것을 그대로 쓰게 된다.
+            Write-Host "  ! $($u.Name) — 안 꺼졌다. 직접 끄고 연다" -ForegroundColor Yellow
+            $skip += $u.Name
+          }
+        }
       } else {
-        # ⚠ **못 껐으면 「껐다」로 안 넘어간다.** 안 끄고 띄우면 돌던 그 프로세스가 창을
-        #   내므로, 사람은 재시작한 줄 알고 낡은 것을 그대로 쓰게 된다.
-        Write-Host "  ! 안 꺼졌다 — 직접 끄고 연다" -ForegroundColor Yellow
+        Write-Host '  안 끈다고 했다 — 떠 있는 것은 안 띄운다'
+        $skip += @($up | ForEach-Object { $_.Name })
       }
-    } else {
-      Write-Host '  안 끈다고 했다 — 안 띄운다'
     }
-  } else {
-    $go = $true
-  }
 
-  if ($go) {
-    # ⚠ **띄우기 전에 한 박자 둔다.** 새 창은 설치 창을 덮으므로, 바로 띄우면 위 검증 칸의
-    #   `[O]/[X]` 를 아무도 못 읽고 지나간다 — 그 판정이 이 설치의 결론인데 그렇다.
-    Write-Host '  3초 뒤에 엽니다 — 위 검증 칸을 먼저 읽는다' -ForegroundColor Yellow
-    Start-Sleep -Seconds 3
-    # ⚠ **`Start-Process` 로 띄운다.** 이 창의 나가는 손잡이는 화면 껍데기가 따라 읽는 파일로
-    #   돌려져 있어, 그것을 물려주면 자식이 그 파일을 붙들고 껍데기의 뒷정리가 막힌다.
-    #   `Start-Process` 는 껍데기 실행이라 손잡이를 안 물려주고 **환경은 물려준다** — 방금 심은
-    #   값이 그 길로 간다. `-Wait` 는 안 건다: 걸면 사람이 그 창을 닫을 때까지 설치가 안 끝난다.
-    try {
-      # ⚠ **띄우는 길이 둘이다.** 실행 파일이 있으면 **이 창의 자식으로** 띄운다 — 그래야
-      #   방금 심은 값을 물고 뜬다. 없으면(스토어 꼴) 앱 손잡이로 껍데기에 맡긴다. 그 길은
-      #   이 창의 환경이 안 가지만, 그렇게 뜨는 앱은 그 값을 안 읽으므로 잃는 것이 없다.
-      if ($app.Exe) { Start-Process -FilePath $app.Exe | Out-Null }
-      else          { Start-Process "shell:AppsFolder\$($app.AppId)" | Out-Null }
-      Write-Host "  $($app.Name) — 띄웠다" -ForegroundColor Green
-      # ⚠ **이름 뒤에 조사를 붙일 때 갈래를 본다.** 「데스크탑이」는 붙여 쓰고 「VS Code 를」은
-      #   띄어 쓴다 — 받침도 띄어쓰기도 이름마다 갈린다. 한 틀에 두 이름을 밀어 넣으면 둘 중
-      #   하나가 반드시 어긋나고, 그 어긋남은 사람이 마지막에 읽는 한 줄에서 난다.
-      $tail = if ($app.Name -eq 'VS Code') {
-        'VS Code 를 열었습니다 — Ctrl+Shift+P → Claude 로 확장을 엽니다'
-      } else {
-        "$($app.Name)을 열었습니다 — 처음이면 구독 계정으로 로그인합니다"
+    $go = @($apps | Where-Object { $skip -notcontains $_.Name })
+    $opened = @()
+    if ($go) {
+      # ⚠ **띄우기 전에 한 박자 둔다.** 새 창은 설치 창을 덮으므로, 바로 띄우면 위 검증 칸의
+      #   `[O]/[X]` 를 아무도 못 읽고 지나간다 — 그 판정이 이 설치의 결론인데 그렇다.
+      Write-Host '  3초 뒤에 엽니다 — 위 검증 칸을 먼저 읽는다' -ForegroundColor Yellow
+      Start-Sleep -Seconds 3
+      # ⚠ **`Start-Process` 로 띄운다.** 이 창의 나가는 손잡이는 화면 껍데기가 따라 읽는 파일로
+      #   돌려져 있어, 그것을 물려주면 자식이 그 파일을 붙들고 껍데기의 뒷정리가 막힌다.
+      #   `-Wait` 는 안 건다: 걸면 사람이 그 창을 닫을 때까지 설치가 안 끝난다.
+      # ⚠ **띄우는 길이 둘이다.** 실행 파일이 있으면 **이 창의 자식으로** 띄운다 — 그래야 방금
+      #   심은 값을 물고 뜬다. 없으면(스토어 꼴) 앱 손잡이로 껍데기에 맡긴다.
+      # ⚠ **역순으로 띄운다** — 표에서 앞선 것이 마지막에 떠 위에 서게. **보장은 못 한다**:
+      #   앱마다 뜨는 속도가 달라 누가 앞에 설지는 경쟁이다. 되면 좋고, 약속하지 않는다.
+      for ($i = $go.Count - 1; $i -ge 0; $i--) {
+        $one = $go[$i]
+        try {
+          if ($one.Exe) { Start-Process -FilePath $one.Exe | Out-Null }
+          else          { Start-Process "shell:AppsFolder\$($one.AppId)" | Out-Null }
+          Write-Host "  $($one.Name) — 띄웠다" -ForegroundColor Green
+          $opened += $one.Name
+        } catch {
+          # 조사를 안 붙인다 — 여기는 이름이 여럿 지나는 자리다.
+          Write-Host "  ! 못 띄웠다 ($($one.Name)) — $(Say-Why $_)" -ForegroundColor Yellow
+        }
       }
-    } catch {
-      # 조사를 안 붙인다 — 여기는 이름 둘이 다 지나는 자리다.
-      Write-Host "  ! 못 띄웠다 ($($app.Name)) — $(Say-Why $_)" -ForegroundColor Yellow
+    }
+
+    # ⚠ **끝 줄은 실제로 무슨 일이 났나로 갈린다** — 띄운 것 · 안 띄운 것 · 아무것도 아닌 것.
+    # ⚠ **이름 뒤에 조사를 안 붙인다.** 여럿이면 받침도 띄어쓰기도 이름마다 갈려, 한 틀에 밀어
+    #   넣으면 반드시 하나가 어긋난다 — 그 어긋남은 사람이 마지막에 읽는 한 줄에서 난다.
+    $shown = @($go | Where-Object { $opened -contains $_.Name } | ForEach-Object { $_.Name })
+    if ($shown.Count -eq 1 -and $shown[0] -eq 'VS Code') {
+      $tail = 'VS Code 를 열었습니다 — Ctrl+Shift+P → Claude 로 확장을 엽니다'
+    } elseif ($shown) {
+      $tail = '연 창에서 각각 로그인합니다 — ' + ($shown -join ' · ')
+    } elseif ($skip) {
+      $tail = ($skip -join ' · ') + ' — 트레이(시계 옆)에서 완전히 끄고 새로 여세요. 창만 닫으면 안 꺼집니다'
     }
   }
 }
