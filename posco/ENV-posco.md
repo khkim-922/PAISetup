@@ -165,6 +165,18 @@ atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음
   - **Gemini CLI 는 회사 문서의 번들 패치를 안 쓴다** — 문서(`Gemini-Posco.setting.md`)는 http 주소를 받게 CLI 파일을
     고치는 `gemini-patch.ps1` 을 시키고 업데이트마다 다시 돌리라 하는데, 우리는 주소를 루프백 프록시로 둔다(결정 0041 ·
     `GOOGLE_GEMINI_BASE_URL`). CLI 가 루프백은 http 를 허용해 고칠 파일이 없다. 그 스크립트는 이 저장소에서 지웠다
+  - **안티그래비티는 로그인 없이 회사 키로 선다** — VS Code 확장 `Google.google-antigravity` 는 다리고, 무는 자는
+    제가 받아 오는 `agy`(`~/.gemini/bin/agy.exe`)다. 확장 설정에는 주소 자리가 없어 거기만 보면 「못 문다」로 읽히는데,
+    `agy` 쪽에 셋이 있다 — `~/.gemini/antigravity-cli/settings.json` 의 `modelProvider: "gemini"` ·
+    `GEMINI_API_KEY` · `GOOGLE_GEMINI_BASE_URL`(Gemini CLI 와 **같은 이름을 공유해** 루프백 프록시를 그대로 탄다).
+    그 셋으로 `agy` 가 `authenticated via gemini_api_key` 를 찍고 게이트웨이가 답했다(실측 2026-09-17 ·
+    `gemini-3.6-flash --effort medium`). **게이트웨이가 답한 근거**는 그것만 내는 말이다 —
+    「모델을 찾을 수 없습니다 … 회사코드: 02」
+    ⚠ **`GOOGLE_API_KEY` 가 사용자 환경에 있으면 회사 키를 제친다** — `agy` 가 실토한다(`Both GOOGLE_API_KEY and
+    GEMINI_API_KEY are set. Using GOOGLE_API_KEY.`). 그러면 **답은 오는데 구글에서 온다** — 답이 왔다는 것과
+    게이트웨이가 답했다는 것이 다른 명제라, 이 자리에서 두 판을 헛짚었다. 프록시 로그에 그 호출이 없는 것이 가른 자다
+    ⚠ **곁 호출이 없는 모델 이름을 보낸다** — 대화 제목 생성이 `gemini-3.1-flash-lite-preview` 로 나가 `400` 을 맞는다.
+    본 턴은 멀쩡하다. 클로드 쪽 하이쿠와 같은 병이고 프록시가 그 약을 이미 든다(`_CLAUDE_HAIKU_SUBSTITUTE`)
   - **게이트웨이는 `POST /v1/messages/count_tokens` 를 404(`E006`)로 되돌린다** — 같은 로그. Claude Code 는
     「count unavailable, estimating locally」로 넘어가 해는 없다. 게이트웨이 팀 보고에 얹을 한 줄
 ⚠ 재요청이 짧게 온 것은 여전히 두 판 다 캐시·짧은 답일 수 있다 — 접은 길의 값은 표본 둘로도 못 가른다.

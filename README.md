@@ -20,12 +20,12 @@
 |---|---|
 | VS Code · **Claude Code 확장** | 확장은 CLI 를 자식으로 부른다 — 둘 중 하나만 있으면 안 돈다 |
 | Claude Code CLI · Node.js | 위를 돌리는 것 |
-| **Codex CLI · Codex 확장** · **Gemini CLI · Gemini CLI Companion 확장** | 어디서나 깔린다. **사내**는 같은 회사 키로 게이트웨이에 붙는다 — Codex 는 직결, Gemini 는 아래 프록시를 지난다. **사외**는 각자 로그인으로 쓴다 — Codex 는 `codex login`(ChatGPT), Gemini 는 첫 실행의 Google 로그인 |
-| **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에 서서 Claude Code(Opus 5)와 Gemini CLI 를 게이트웨이로 넘긴다. 로그인마다 저절로 뜬다. 왜 있나는 `posco/pgpt-proxy/README.md` |
+| **Codex CLI · Codex 확장** · **Gemini CLI · Gemini CLI Companion 확장** · **안티그래비티 확장** | 어디서나 깔린다. **사내**는 같은 회사 키로 게이트웨이에 붙는다 — Codex 는 직결, Gemini 와 안티그래비티는 아래 프록시를 지난다. **사외**는 각자 로그인으로 쓴다 — Codex 는 `codex login`(ChatGPT), Gemini 와 안티그래비티는 첫 실행의 Google 로그인. ⚠ **안티그래비티는 제 화면을 든 에이전트다** — Gemini Companion 은 창이 없어 터미널의 `gemini` 와 같이 써야 하지만, 이쪽은 사이드바에서 바로 쓴다. 처음 열 때 제 본체(`agy` · 188MB)를 스스로 받는다 |
+| **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에 서서 Claude Code(Opus 5)와 Gemini CLI·안티그래비티를 게이트웨이로 넘긴다. 로그인마다 저절로 뜬다. 왜 있나는 `posco/pgpt-proxy/README.md` |
 | Git · Python · GitHub CLI | 코드를 짤 사람만. `-NoDevTools` 로 뺀다 — **다만 사내에서는 Python 만은 깐다** (프록시가 그것으로 돈다). 「내 저장소 받기」에 주소를 넣었고 GitHub CLI 로그인이 비었으면 **저장소를 받기 직전에** 설치가 브라우저 로그인을 띄운다 — 일회용 코드와 남은 시간(180초)이 팝업에 뜬다 |
 | **데스크탑 앱** — Claude · Codex · Gemini · Antigravity | **사외에서만** 칸이 뜨고, 넷 중 **고른 것만** 깔린다. 사내에서는 넷 다 게이트웨이를 못 물어 쓸모가 없다. ⚠ 회사 망 위에서는 Gemini(구글 갱신 서버)가 막힌다 — 그때는 **막은 쪽이 낸 말을 그대로 찍고** 나머지를 이어 깐다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다 — VS Code 에 붙는 확장이 아니다 |
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣는다 — 세 CLI 가 읽는 세 이름에 같이 심긴다. **사외면 안 묻고, 사내에서 쓰던 기계를 사외에서 누르면 남아 있던 사내 값을 걷는다** (아래) |
-| Codex · Gemini 설정 | 사내에서만. `~/.codex/config.toml` · `~/.gemini/settings.json` 을 회사 설정 틀(`posco/`)에서 채운다 — 키는 그 파일에 안 들어간다, 환경변수가 든다 |
+| Codex · Gemini · 안티그래비티 설정 | 사내에서만. `~/.codex/config.toml` · `~/.gemini/settings.json` 을 회사 설정 틀(`posco/`)에서 채우고, `~/.gemini/antigravity-cli/settings.json` 에는 인증 방식 한 줄(`modelProvider`)을 둔다 — 키는 그 파일들에 안 들어간다, 환경변수가 든다. ⚠ **`GOOGLE_API_KEY` 가 이미 있으면 회사 키를 제친다** — 구글 직결 키의 제 이름이라 설치기가 안 걷고 말만 한다. 회사 게이트웨이로 쓰려면 손으로 걷는다 |
 | **사내 환경 문서** · **씨앗 셋** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` 로 깔린다. 고를 것이 아니라 환경이라 스위치가 없다. **거울이라 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 진본인 척하지 않는다 |
 
 ## 폴더에 무엇이 들어 있나
@@ -286,13 +286,13 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `[X]` 가 뜬 칸 | 다음에 무엇을 하나 |
 |---|---|
 | `VS Code` | winget 이 못 깔았다. 위쪽 빨간 줄이 까닭을 든다 — 정책이면 IT, 아니면 다시 누른다 |
-| `클로드 확장` · `Codex 확장` · `Gemini CLI Companion 확장` | VS Code 가 먼저 안 선 것이다. 위 칸을 먼저 고치고 다시 누른다. VS Code 는 `[O]` 인데 확장만 `[X]` 면 사내망이 확장 장터를 막은 자리라 IT 에 문의한다 |
+| `클로드 확장` · `Codex 확장` · `Gemini CLI Companion 확장` · `안티그래비티 확장` | VS Code 가 먼저 안 선 것이다. 위 칸을 먼저 고치고 다시 누른다. VS Code 는 `[O]` 인데 확장만 `[X]` 면 사내망이 확장 장터를 막은 자리라 IT 에 문의한다 |
 | `Claude Code CLI` · `Codex CLI` · `Gemini CLI` | npm 이 못 깔았다. Node.js 줄이 위에서 졌는지 먼저 보고, 성했으면 **새 터미널을 열어** 다시 누른다 — 갓 깔린 Node 의 경로를 옛 창은 모른다 |
 | `사내 환경 문서 (n/m)` · `게이트웨이 씨앗 (n/m)` · `검사 씨앗 (n/m)` · `설정 저장소 씨앗 (n/m)` | 홈에 깔린 파일 수가 짐보다 적다. 괄호의 두 숫자가 그것을 댄다. `~/.claude/` 가 읽기 전용이거나 백신이 복사를 막은 자리라 — 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `ANTHROPIC_BASE_URL` · `ANTHROPIC_AUTH_TOKEN` · `ANTHROPIC_MODEL` | 키를 안 넣었거나 빈 값이다. 다시 눌러 넣는다 |
 | `OPENAI_API_KEY` · `GEMINI_API_KEY` | 같은 회사 키를 Codex·Gemini 가 읽는 이름으로도 심는 자리다. 위의 `ANTHROPIC_AUTH_TOKEN` 이 같이 `[X]` 면 그것만 고치면 된다 |
-| `Codex config.toml` · `Gemini settings.json` | 회사 설정 틀을 그 자리에 못 썼다. `~/.codex/` · `~/.gemini/` 가 읽기 전용인지 보고 다시 누른다 |
-| `로컬 프록시 (/health)` | **프록시가 안 떴다** — 사내에서 Claude Code 와 Gemini 가 게이트웨이에 못 붙는다. 파이썬이 성한지 보고 다시 누른다. 왜 이 프록시가 있고 손으로 어떻게 세우나는 `~/.claude/posco/pgpt-proxy/README.md` 가 든다 |
+| `Codex config.toml` · `Gemini settings.json` · `안티그래비티 settings.json` | 회사 설정을 그 자리에 못 썼다. `~/.codex/` · `~/.gemini/` 가 읽기 전용인지 보고 다시 누른다 |
+| `로컬 프록시 (/health)` | **프록시가 안 떴다** — 사내에서 Claude Code 와 Gemini·안티그래비티가 게이트웨이에 못 붙는다. 파이썬이 성한지 보고 다시 누른다. 왜 이 프록시가 있고 손으로 어떻게 세우나는 `~/.claude/posco/pgpt-proxy/README.md` 가 든다 |
 | `Opus 5 문 — prefill …` | **떴는데 문을 못 연다** — 둘은 다른 명제라 따로 잰다. 괄호 안 숫자가 게이트웨이가 낸 답이다: **500 이상이면 상류가 끊은 것이라 우리 자리가 아니고**(잠시 뒤 다시 누른다), 그보다 작으면 프록시가 제 일을 못 한 것이다. 같은 `~/.claude/posco/pgpt-proxy/README.md` 가 재는 법을 든다 |
 
 ## 무를 때
@@ -310,7 +310,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **로그인마다 뜨는 프록시** — 등록 이름은 `PGPTProxy` | 작업 관리자 → 시작 프로그램에서 사용 안 함. 완전히 걷으려면 레지스트리 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 그 이름을 지운다 |
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다 |
 | **옵션을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` |
-| **Codex · Gemini 회사 설정** | `~/.codex/config.toml` · `~/.gemini/settings.json` |
+| **Codex · Gemini · 안티그래비티 회사 설정** | `~/.codex/config.toml` · `~/.gemini/settings.json` · `~/.gemini/antigravity-cli/settings.json`. 마지막 것은 `modelProvider` 줄만 지우면 로그인 갈래로 돌아간다 |
 | **바탕화면·시작 메뉴의 「PAI Setup Wizard」** | 바로가기를 지운다 |
 | **펴 둔 짐** — 판마다 폴더가 하나씩 쌓인다 | `%LOCALAPPDATA%\Claude Code Setup\` 를 통째로 지운다 |
 

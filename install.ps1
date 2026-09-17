@@ -125,10 +125,16 @@ $Apps = @(
 # ⚠ Codex 확장은 CLI 의 `~/.codex/config.toml` 을 같이 읽어 게이트웨이를 탄다 — 다만 사용자 정의
 #   프로바이더에서 CLI 와 다르게 구는 이슈가 열려 있어(openai/codex #4558 · #6963 · #27695), 확장 안의
 #   한 턴은 사람이 잰다. Gemini 것은 창이 없는 짝(companion)이라 터미널의 CLI 에 편집기 문맥을 넘길 뿐이다.
+# ⚠ **안티그래비티 확장은 위 `$DesktopApps` 의 「Antigravity 데스크탑」과 다른 물건이다.** 저쪽은 VS Code 를
+#   대신하는 별개 편집기고, 이쪽은 VS Code 에 붙어 사이드바를 내는 확장이다. 이것도 다리이긴 한데 짝이
+#   터미널의 `gemini` 가 아니라 **제가 받아 오는 `agy`**(`~/.gemini/bin/agy.exe` · 188MB · 확장이
+#   `AGY_ENABLE_HUB=1` 로 띄운다). **설치기가 그 바이너리를 안 심는다** — 확장이 스스로 받고, 받는 곳
+#   (구글 릴리스 호스트)은 사내에서 열린다(실측 2026-09-17). 게이트웨이에 물리는 자리는 아래 5⁗ 칸이 든다.
 $Extensions = @(
   @{ Id='anthropic.claude-code';                  Label='클로드 확장'                }
   @{ Id='openai.chatgpt';                         Label='Codex 확장'                 }
   @{ Id='google.gemini-cli-vscode-ide-companion'; Label='Gemini CLI Companion 확장'  }
+  @{ Id='Google.google-antigravity';              Label='안티그래비티 확장'          }
 )
 $Clis = @(
   @{ Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI' }
@@ -954,6 +960,10 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 $needPython = $wantProxy            # 프록시가 파이썬으로 돈다 — 개발도구를 꺼도 이것만은 깐다(1 칸)
 $wantCodex  = [bool]($codexTpl  -and $inside)
 $wantGemini = [bool]($geminiTpl -and $inside)
+# ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
+#   그래서 스위치가 무는 것은 「사내인가」와 「제미나이 키가 서는가」뿐이다: 이 확장은 그 키를
+#   그대로 쓰므로(아래 5⁗ 칸 ⚠) **제미나이가 안 서는 자리에서는 이것도 안 선다.**
+$wantAgy    = $wantGemini
 # 회사 키의 다른 이름 표(`$KeyAliases`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
 $wantNeed = @{ codex = $wantCodex; gemini = $wantGemini }
 # ── 프록시가 밖에 남기는 자리 둘 — **이름은 여기 한 자리다** ─────────────────────
@@ -966,11 +976,16 @@ $ProxyDirName = 'PGPT-Proxy'     # %LOCALAPPDATA% 아래 실행 폴더 이름
 # 아래 5⁗ 칸이 이 둘에 쓰고 끝의 검증이 이 둘을 다시 재므로, 글자를 두 자리에 박지 않는다 (#3).
 $CodexCfg  = Join-Path $env:USERPROFILE '.codex\config.toml'
 $GeminiCfg = Join-Path $env:USERPROFILE '.gemini\settings.json'
+# ⚠ **안티그래비티는 제 파일을 따로 든다** — 위 `.gemini\settings.json` 이 아니라
+#   `.gemini\antigravity-cli\settings.json` 이다. 같은 뿌리 아래 사는데 읽는 자가 달라, 한 파일로
+#   묶으면 둘 중 하나가 못 읽는 열쇠를 받는다.
+$AgyCfg    = Join-Path $env:USERPROFILE '.gemini\antigravity-cli\settings.json'
 if ($proxyRel -or $codexTpl -or $geminiTpl) {
   $more = @()
   if ($wantProxy)  { $more += '로컬 프록시' }
   if ($wantCodex)  { $more += 'Codex 회사 설정' }
   if ($wantGemini) { $more += 'Gemini 회사 설정' }
+  if ($wantAgy)    { $more += '안티그래비티 회사 설정' }
   if ($more.Count) { Write-Host ("  사내라 더 세운다 — " + ($more -join ' · ')); Write-Host '' }
   elseif (-not $inside) { Write-Host '  프록시와 Codex·Gemini 회사 설정은 사내에서만 선다 — 여기서는 프로그램만 깔고 각자 로그인으로 쓴다'; Write-Host '' }
 }
@@ -1565,6 +1580,21 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
     if (-not $wantNeed[$k.Need]) { continue }
     Plant-Var $k.Name $Planted['ANTHROPIC_AUTH_TOKEN']
   }
+  # ── 회사 키를 제치는 이름 하나 — **말은 하고 지우지는 않는다** (실측 2026-09-17 · #62) ──
+  # ⚠ **이것은 부재가 아니라 잔재가 이기는 자리다.** `GOOGLE_API_KEY` 가 남아 있으면 `agy` 와
+  #   Gemini 갈래가 **회사 키를 제치고 그쪽을 집는다** — 제가 그렇게 말한다:
+  #     `Warning: Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.`
+  #   그러면 답은 오는데 **게이트웨이가 아니라 구글에서 온다.** 답이 왔다는 것과 게이트웨이가
+  #   답했다는 것은 다른 명제고, 이 자리에서 실제로 두 판을 헛짚었다(프록시 로그에 그 호출이
+  #   없는 것이 가른 자다).
+  # ⚠ **그런데 안 지운다.** 이것은 우리가 심은 이름이 아니라 **구글 직결 키의 제 이름**이라,
+  #   제 것을 넣어 둔 사람의 자격을 설치기가 걷으면 그 사람의 다른 일이 죽는다. 아래 5⁵ 칸이
+  #   「남의 값은 안 걷는다」로 세운 그 자와 같은 자리다 — **근거가 안 서면 말만 한다.**
+  #   찍어 두면 화면에 남아, 회사 키로 서야 하는데 안 서는 사람이 열어 볼 자리가 생긴다.
+  if ($wantNeed['gemini'] -and [Environment]::GetEnvironmentVariable('GOOGLE_API_KEY', 'User')) {
+    Write-Host '  ! GOOGLE_API_KEY 가 사용자 환경에 있다 — Gemini·안티그래비티가 회사 키 대신 이것을 집는다' -ForegroundColor Yellow
+    Write-Host '     구글 직결 키의 제 이름이라 설치기가 안 걷는다. 회사 게이트웨이로 쓰려면 손으로 걷는다 (시스템 환경 변수)'
+  }
 }
 
 # ── 홈 `settings.json` 에 안 미는 이름 — **키는 환경변수에만 산다** (#2) ────────────
@@ -1962,6 +1992,45 @@ if ($useGateway -and ($wantCodex -or $wantGemini)) {
           [IO.File]::WriteAllText($dst, $after, $noBom)
           Write-Host '  Gemini settings.json — 썼다 (인증 방식 · 키 · 루프백 주소)' -ForegroundColor Green
         }
+      }
+    }
+  }
+  # ── 안티그래비티 — **로그인 대신 회사 키로 세운다** (실측 2026-09-17 · #62) ─────────
+  # ⚠ **손잡이는 확장이 아니라 `agy` 가 든다.** 확장 설정에는 주소 자리가 없다(선언된 다섯 ·
+  #   `serverPort`·`enableTelemetry`·`enableInlineDiff`·`autoOpenFiles`·`channel`). 그것을 보고
+  #   「못 문다」로 닫으면 **한 층 아래를 안 본 것이다** — `agy` 가 제 체인지로그에 적어 놨다:
+  #   `modelProvider: "gemini"` 를 두고 `GEMINI_API_KEY` 를 export 하면 **로그인 없이** 서고,
+  #   `GOOGLE_GEMINI_BASE_URL` 로 주소를 돌릴 수 있다. 그 셋으로 게이트웨이가 답했다 —
+  #   근거는 그것만 내는 말이다: 「모델을 찾을 수 없습니다 … 회사코드: 02」.
+  # ⚠ **키를 이 파일에 안 쓴다** — 위 Gemini 칸과 같은 자(#2). `agy` 는 `GEMINI_API_KEY` 를
+  #   환경에서 읽고, 5″ 칸이 그 이름을 이미 심는다. 여기 쓸 것은 **인증 방식 한 줄**뿐이다.
+  # ⚠ **주소도 여기 안 쓴다 — 환경변수가 진본이다.** `GOOGLE_GEMINI_BASE_URL` 은 Gemini CLI 와
+  #   **같은 이름을 공유하므로** 5″ 칸이 심은 그 값을 `agy` 도 그대로 본다. 파일에 또 적으면
+  #   같은 사실이 두 자리에 살고 한쪽만 낡는다.
+  # ⚠ **사람 것은 둔다.** 제 키·제 백엔드로 쓰던 사람의 다른 항목은 안 건드리고, 우리가 더하는
+  #   것은 `modelProvider` 하나다. 그 줄을 지우면 로그인 갈래로 돌아간다 — 제 문서가 그렇게
+  #   적었다(*"remove \"modelProvider\" from settings.json"*).
+  if ($wantAgy) {
+    $dst = $AgyCfg
+    $a = $null
+    $agyBroken = $false
+    if (Test-Path -LiteralPath $dst) {
+      try { $a = Get-Content -LiteralPath $dst -Raw -Encoding UTF8 | ConvertFrom-Json } catch {
+        Write-Host '  ! 안티그래비티 settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
+        $Fails.Add('안티그래비티 설정 (settings.json 이 깨졌다)')
+        $agyBroken = $true
+      }
+    } else { $a = [pscustomobject]@{} }
+    if (-not $agyBroken) {
+      $before = $a | ConvertTo-Json -Depth 10
+      $a | Add-Member -NotePropertyName 'modelProvider' -NotePropertyValue 'gemini' -Force
+      $after = $a | ConvertTo-Json -Depth 10
+      if ($after -eq $before) {
+        Write-Host '  안티그래비티 settings.json — 이미 맞다'
+      } else {
+        New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
+        [IO.File]::WriteAllText($dst, $after, $noBom)
+        Write-Host '  안티그래비티 settings.json — 썼다 (modelProvider · 키와 주소는 환경변수가 든다)' -ForegroundColor Green
       }
     }
   }
@@ -2619,6 +2688,7 @@ if ($useGateway) {
   }
   if ($wantCodex)  { $checks += @{ Name = 'Codex config.toml';    Ok = (Test-Path -LiteralPath $CodexCfg) } }
   if ($wantGemini) { $checks += @{ Name = 'Gemini settings.json'; Ok = (Test-Path -LiteralPath $GeminiCfg) } }
+  if ($wantAgy)    { $checks += @{ Name = '안티그래비티 settings.json'; Ok = (Test-Path -LiteralPath $AgyCfg) } }
   # ⚠ **프록시는 「떠 있나」와 「문을 여나」를 따로 잰다.** 떠 있는 것만 보면 보정이 안 도는 판이
   #   초록이 된다. 문은 assistant 로 끝나는 본문을 프록시 너머로 보내 200 이 오는가로 잰다 — 이
   #   게이트웨이가 Opus 5 에서 그 본문을 400 으로 거절하는 것이 프록시가 있는 까닭이라(결정 0041),
