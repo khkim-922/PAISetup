@@ -195,6 +195,22 @@ $DesktopApps = @(
   @{ Key = 'gemini'; Label = 'Gemini 데스크탑'; App = 'Gemini'
      Via = 'setup';  SilentArgs = @('/silent'); Log = '%TEMP%\updater.log'
      Url = 'https://dl.google.com/tag/s/appguid%3D%7B533DD80C-942A-4464-B6A9-2E59428D784E%7D%26appname%3DGemini%26needsadmin%3Dfalse%26ap%3Dprod/update2/installers/gemini/GeminiSetup.exe' }
+  # ⚠ **주소에 판이 박혀 있다 — 그리고 판 없는 주소를 못 찾았다.** 구글이 「최신」 자리를 안
+  #   내놓아서, 새 판이 나오면 이 줄을 손으로 고쳐야 한다. 고칠 때 보는 자리는
+  #   <https://antigravity.google/download> 의 [Download for x64] 가 가리키는 데다 —
+  #   그 쪽은 자바스크립트가 그리므로 **브라우저로 열어 링크를 읽는다.**
+  #   ⚠ **낡아도 조용히 안 진다** — 그 자리가 사라지면 `404` 라 받는 걸음에서 소리 내며 진다.
+  #   ⚠ **한 번 깔리면 제가 따라간다** — 앱이 electron-builder 의 자동 갱신을 들고 있어
+  #     (`resources/app-update.yml`) 우리는 **한 판만 넣어 주면 된다.**
+  # ⚠ **집이 둘인데 하나는 이 회선에서 못 연다.** 받는 자리가 둘로 갈리는데 값이 다르다 —
+  #   「Antigravity 2.0」은 `storage.googleapis.com` 에서 오고 **사내 회선에서 열린다**(실측
+  #   `206`). 같은 페이지 아래쪽 「Antigravity IDE (Standalone)」은 `edgedl.me.gvt1.com` 에서
+  #   오는데 **거기는 TLS 악수부터 진다** — 제미나이 데스크탑의 알맹이를 막는 그 호스트다.
+  #   그래서 **2.0 쪽을 든다.** 둘은 판 번호도 계보도 다른 별개 물건이다.
+  # ⚠ **NSIS 라 조용한 인자는 `/S` 다**(설치본 머리에 `Nullsoft Install System` 이 박혀 있다).
+  @{ Key = 'antigravity'; Label = 'Antigravity 데스크탑'; App = 'Antigravity'
+     Via = 'setup';  SilentArgs = @('/S')
+     Url = 'https://storage.googleapis.com/antigravity-public/antigravity-hub/2.14.0-5449404535144448/windows-x64/Antigravity-x64.exe' }
 )
 
 # 표를 한 줄씩 내준다 — `키|사람에게 보일 글자`. **여기까지 오는 데 부수효과가 없다**(위는

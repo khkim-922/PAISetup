@@ -23,7 +23,7 @@
 | **Codex CLI · Codex 확장** · **Gemini CLI · Gemini CLI Companion 확장** | 어디서나 깔린다. **사내**는 같은 회사 키로 게이트웨이에 붙는다 — Codex 는 직결, Gemini 는 아래 프록시를 지난다. **사외**는 각자 로그인으로 쓴다 — Codex 는 `codex login`(ChatGPT), Gemini 는 첫 실행의 Google 로그인 |
 | **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에 서서 Claude Code(Opus 5)와 Gemini CLI 를 게이트웨이로 넘긴다. 로그인마다 저절로 뜬다. 왜 있나는 `posco/pgpt-proxy/README.md` |
 | Git · Python · GitHub CLI | 코드를 짤 사람만. `-NoDevTools` 로 뺀다 — **다만 사내에서는 Python 만은 깐다** (프록시가 그것으로 돈다). 「내 저장소 받기」에 주소를 넣었고 GitHub CLI 로그인이 비었으면 **저장소를 받기 직전에** 설치가 브라우저 로그인을 띄운다 — 일회용 코드와 남은 시간(180초)이 팝업에 뜬다 |
-| **데스크탑 앱** — Claude · Codex · Gemini | **사외에서만** 칸이 뜨고, 셋 중 **고른 것만** 깔린다. 사내에서는 셋 다 게이트웨이를 못 물어 쓸모가 없다. ⚠ 회사 망 위에서는 Gemini(구글 갱신 서버)가 막힌다 — 그때는 **막은 쪽이 낸 말을 그대로 찍고** 나머지를 이어 깐다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다** |
+| **데스크탑 앱** — Claude · Codex · Gemini · Antigravity | **사외에서만** 칸이 뜨고, 넷 중 **고른 것만** 깔린다. 사내에서는 넷 다 게이트웨이를 못 물어 쓸모가 없다. ⚠ 회사 망 위에서는 Gemini(구글 갱신 서버)가 막힌다 — 그때는 **막은 쪽이 낸 말을 그대로 찍고** 나머지를 이어 깐다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다 — VS Code 에 붙는 확장이 아니다 |
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣는다 — 세 CLI 가 읽는 세 이름에 같이 심긴다. **사외면 안 묻고, 사내에서 쓰던 기계를 사외에서 누르면 남아 있던 사내 값을 걷는다** (아래) |
 | Codex · Gemini 설정 | 사내에서만. `~/.codex/config.toml` · `~/.gemini/settings.json` 을 회사 설정 틀(`posco/`)에서 채운다 — 키는 그 파일에 안 들어간다, 환경변수가 든다 |
 | **사내 환경 문서** · **씨앗 셋** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` 로 깔린다. 고를 것이 아니라 환경이라 스위치가 없다. **거울이라 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 진본인 척하지 않는다 |
