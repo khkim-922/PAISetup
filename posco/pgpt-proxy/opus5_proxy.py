@@ -91,8 +91,13 @@ _KEEPALIVE_LINE = b": keepalive\n\n"
 # unstream — 클라이언트의 `"stream": true` 를 상류엔 `"stream": false` 로 보내고, 답이 오면 SSE 로 지어 낸다.
 # 게이트웨이는 /v1/messages 스트림을 요청 시작 약 180초에 신호 없이 닫지만(claude-config #46) 비스트리밍
 # 경로에는 그 상한이 없다(회사 PC 실측 2026-09-16 — 119초에 200 · 300.04초에 앞단 HAProxy 의 504).
-# 기본은 켬이고 `PGPT_PROXY_UNSTREAM=0` 이면 옛 길 그대로다 — 결정 0051.
-UNSTREAM = os.environ.get("PGPT_PROXY_UNSTREAM", "1").strip().lower() not in {"0", "false", "off", "no"}
+# ⚠ **기본이 끔이다 — 켜면 큰 도구 인자가 빈다**(회사 PC 실측 2026-09-17). 켠 판에서 `Edit` 호출이
+#   `input={}` 로 오고(출력 78/64000 토큰이라 한도와 무관 · `stop_reason` 은 정상 `tool_use`) 같은 판의
+#   작은 `Bash` 호출은 멀쩡하다. 끄면 같은 편집이 통한다(재현 3회). 우리 짓는 코드는 무죄다 —
+#   6,642자 도구 입력이 SSE 왕복해 글자 대 글자로 살아남는다. 까닭은 게이트웨이 안이라 밖에서 못 본다.
+#   **그래서 도구를 쓰는 클라이언트(Claude Code)에는 켜지 않는다.** 도구를 안 쓰는 쪽(아뜰리에)은
+#   `PGPT_PROXY_UNSTREAM=1` 로 켜서 180초 벽을 비껴갈 수 있다 — 결정 0051.
+UNSTREAM = os.environ.get("PGPT_PROXY_UNSTREAM", "0").strip().lower() not in {"0", "false", "off", "no"}
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
 LOG_MAX_BYTES = 1_000_000
@@ -1186,9 +1191,41 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._write_client(synthesize_anthropic_sse(message))
         _count_unstreamed()
         content = message.get("content")
+        # ⚠ **개수만 세면 「무엇이 빠졌나」가 안 보인다.** 도구 호출이 큰 판에서 클라이언트가
+        #   인자를 못 받는 사고를 쫓는 중이라(2026-09-17), 종류와 tool_use 의 input 크기를 함께
+        #   남긴다. **본문은 안 남긴다** — 이름과 숫자뿐이라 대화가 로그로 새지 않는다.
+        shape = "?"
+        if isinstance(content, list):
+            parts = []
+            for blk in content:
+                if not isinstance(blk, dict):
+                    parts.append("?")
+                    continue
+                kind = str(blk.get("type"))
+                if kind == "tool_use":
+                    size = len(_json_bytes(blk.get("input") if isinstance(blk.get("input"), dict) else {}))
+                    parts.append(f"tool_use({blk.get('name')} input={size}B)")
+                elif kind == "text":
+                    parts.append(f"text({len(str(blk.get('text') or ''))}자)")
+                else:
+                    parts.append(kind)
+            shape = " + ".join(parts) or "(빈 content)"
+        # ⚠ **한도에 닿았나를 같이 찍는다.** 큰 도구 인자가 비는 사고의 원인 후보가
+        #   「모델이 인자를 다 쓰기 전에 출력 한도에 걸려 JSON 이 미완성이 된 것」이다
+        #   (직결 실측 2026-09-17: max_tokens 8k 에서 필드가 사라지고 32k 에서 온전했다).
+        #   요청의 max_tokens 와 실제 output_tokens 가 나란히 있으면 그 자리에서 갈린다.
+        want = "?"
+        if body:
+            try:
+                want = str(json.loads(body).get("max_tokens"))
+            except (ValueError, AttributeError):
+                want = "?"
+        usage = message.get("usage")
+        got = usage.get("output_tokens") if isinstance(usage, dict) else "?"
         log(
             f"unstreamed model={message.get('model')} "
-            f"blocks={len(content) if isinstance(content, list) else 1} keepalive x{comments}"
+            f"blocks={len(content) if isinstance(content, list) else 1} "
+            f"stop={message.get('stop_reason')} out={got}/{want} [{shape}] keepalive x{comments}"
         )
         return conn, reuse
 
