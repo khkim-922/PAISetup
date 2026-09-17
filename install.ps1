@@ -738,6 +738,31 @@ function Read-Directive([string]$Path, [string]$Key) {
 #   그 한도가 없고 설정 바뀜 알림도 똑같이 돈다.
 # ⚠ **이 창에도 같이 심는다.** 저것은 새 프로세스부터라, 안 심으면 아래 검증이 방금 넣은
 #   값을 「없다」로 본다.
+# **이 값이 로컬 프록시를 가리키나** — 이름이 아니라 값에서 판다.
+# ⚠ **이름 목록으로 안 가른다.** 옛 판은 「게이트웨이 값인가」를 `$Vars` 표의 `Gateway` 표시가
+#   들었는데, 그 표는 **「물을 것」의 표라 값 파일 전체를 안 덮는다.** 값 파일이 이름 하나를 더
+#   실어 보내면 그것은 표 밖이라 두 문(아래 심는 문 · 걷는 문)을 그냥 지나갔다 — 실측
+#   2026-09-17 집 PC: 「사외」를 옳게 찍고도 `GOOGLE_GEMINI_BASE_URL` 이 죽은 루프백을 가리킨
+#   채 심겼다. 목록은 늘 뒤처지므로 **값에서 파생한다.**
+# ⚠ **루프백이 근거가 되는 까닭은 아래 5⁵ 칸이 이미 쓰는 그것이다** — 이 설치기는 루프백이
+#   아닌 주소에 프록시를 **안 세운다.** 그래서 루프백으로 박힌 주소는 이 설치기의 게이트웨이
+#   갈래 말고는 나올 자리가 없고, 그 갈래는 사내에서만 선다.
+# ⚠ **못 읽는 글자를 예외에 맡기지 않는다** — `[Uri]'아무 글자'` 는 상대 주소로 서고 그 위의
+#   `.IsLoopback` 은 5.1 에서 오류 없이 `$null` 을 준다(5⁵ 칸의 ⚠ 와 같은 자). 절대 주소일
+#   때만 묻는다.
+# ⚠ **갈래(scheme)를 반드시 묻는다 — `IsLoopback` 하나로는 파일 경로가 걸린다.** `[Uri]` 는
+#   `C:\Users\…\node-ca.pem` 을 `file:///C:/…` 로 세우는데 그 호스트가 비어 **`IsLoopback` 이
+#   참**이다(실측 2026-09-17). 갈래를 안 물으면 이 체가 `NODE_EXTRA_CA_CERTS` 같은 경로 값까지
+#   「프록시 주소」로 읽어 **CA 배선을 걷는다.** 프록시는 http 로만 선다.
+function Test-ProxyValue([string]$Value) {
+  if (-not $Value) { return $false }
+  $u = $null
+  try { $u = [Uri]$Value } catch { return $false }
+  if (-not ($u -and $u.IsAbsoluteUri)) { return $false }
+  if ($u.Scheme -ne 'http' -and $u.Scheme -ne 'https') { return $false }
+  return [bool]$u.IsLoopback
+}
+
 function Plant-Var([string]$Name, [string]$Value) {
   try {
     [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
@@ -1657,11 +1682,20 @@ foreach ($v in $Vars) {
 # ⚠ 위 표는 「물을 것」이라 회사 공통 설정을 다 들지 않는다. 파일이 실어 보낸 이름을 표에
 #   있는 것만 심으면 나머지는 **조용히 버려진다** — 파일에는 있는데 기계에는 없는 그 상태가
 #   제일 찾기 어렵다. 그래서 표를 안 보고 파일을 본다.
+# ⚠ **여기에도 자리 게이트가 선다.** 위 표 갈래는 `Gateway` 표시로 사외를 걸러 내는데 이 칸은
+#   **아무것도 안 걸러, 사외로 판정한 기계에도 프록시 주소를 심었다**(실측 2026-09-17 집 PC:
+#   `GOOGLE_GEMINI_BASE_URL` 이 안 서는 `127.0.0.1:18901` 을 가리킨 채 남았다). 그 값은 조용히
+#   안 진다 — **프로그램은 멀쩡히 서고 나갈 때만 죽은 포트로 나간다.**
+# ⚠ **표시가 아니라 값이 가른다**(위 `Test-ProxyValue`). 값 파일은 늘어나고 표는 안 늘어난다.
 $known = $Vars | ForEach-Object { $_.Name }
 foreach ($k in $fromFile.Keys) {
   if ($known -contains $k) { continue }
   $val = $fromFile[$k]
   if (-not $val) { continue }
+  if (-not $useGateway -and (Test-ProxyValue $val)) {
+    Write-Host "  $k — 안 심는다 (사외라 프록시가 안 선다: $val)" -ForegroundColor Yellow
+    continue
+  }
   Plant-Var $k $val
 }
 
@@ -1779,14 +1813,12 @@ if (-not $useGateway) {
   #   (실측 2026-09-15 · 이 고침의 되뽑기). 지금은 거짓처럼 굴어 표가 안 나지만, 그 값을
   #   견주거나 찍는 줄이 하나 붙는 날 「모른다」가 「아니다」로 조용히 읽힌다.
   #   **닫힌 것 위에 세운다** — 루프백을 물을 수 있는 것은 절대 주소뿐이고, 나머지는 남의 것이다.
+  # ⚠ **그 판정을 여기 또 적지 않는다** — 위 `Test-ProxyValue` 가 같은 물음을 든다. 옛 판은 이
+  #   자리에 손으로 폈는데, 같은 규칙이 두 자리에 살면 한쪽만 낡는다(갈래 검사가 실제로 저쪽에만 붙었다).
   $oursUrl = $false
   if ($oldUrl) {
-    if ($ourGateway['ANTHROPIC_BASE_URL'] -and $oldUrl -eq $ourGateway['ANTHROPIC_BASE_URL']) { $oursUrl = $true }
-    else {
-      $oldUri = $null
-      try { $oldUri = [Uri]$oldUrl } catch { }
-      $oursUrl = [bool]($oldUri -and $oldUri.IsAbsoluteUri -and $oldUri.IsLoopback)
-    }
+    $oursUrl = ($ourGateway['ANTHROPIC_BASE_URL'] -and $oldUrl -eq $ourGateway['ANTHROPIC_BASE_URL']) -or
+               (Test-ProxyValue $oldUrl)
   }
 
   if (-not $oldUrl) {
@@ -1808,6 +1840,18 @@ if (-not $useGateway) {
       if ($ours) { Remove-UserVar $k.Name }
       else { Write-Host "  $($k.Name) — 우리 키가 아니다 · 그대로 둔다" }
     }
+  }
+
+  # ⚠ **표 밖의 프록시 주소도 여기서 걷는다 — 안 심는 것만으로는 못 걷는다.** 위 5′ 칸이 이번
+  #   판에 그것을 안 심어도 **사내에서 한 번 깐 기계에는 옛 값이 그대로 남는다**(5‴ 칸이 「물러난
+  #   이름」에 쓴 규율이 여기도 그대로 선다). 옛 판은 이 자리가 `ANTHROPIC_` 둘과 별칭만 들어서,
+  #   표 밖 이름은 **심기지도 걷히지도 않는 것이 아니라 심기기만 했다.**
+  # ⚠ **이름을 손으로 안 든다.** 값 파일이 든 이름 가운데 **지금 사용자 환경에 루프백으로 박힌
+  #   것**만 우리 것으로 보고 걷는다 — 근거는 `Test-ProxyValue` 의 ⚠ 그대로이고, 남의 값은
+  #   루프백이 아니므로 안 걸린다.
+  foreach ($k in $fromFile.Keys) {
+    if ($known -contains $k) { continue }        # 표 갈래는 바로 위에서 이미 들었다
+    if (Test-ProxyValue ([Environment]::GetEnvironmentVariable($k, 'User'))) { Remove-UserVar $k }
   }
 
   # ⚠ **자동시작을 먼저 걷는다.** 프록시 사본을 못 지우는 판이 있어도(도는 중이라 로그 파일이
@@ -2333,6 +2377,22 @@ if ($cfg) {
       $cfg.env.PSObject.Properties.Remove($k)
       $dirty = $true
       Write-Host "  $k — settings.json 에서도 걷었다" -ForegroundColor Green
+    }
+  }
+
+  # ⚠ **프록시 주소도 이 파일에서 걷는다 — 걷는 자리가 둘이라는 그 말이 여기에도 선다.** 5⁵ 칸이
+  #   사용자 환경에서 걷는 값을 여기서 안 걷으면 한쪽만 걷히고 나머지가 남는다(바로 위 ⚠ 가
+  #   `$Retired` 에서 겪은 그것). 실측 2026-09-17 집 PC: 환경변수는 걷혔는데 이 파일의 `env` 에
+  #   `GOOGLE_GEMINI_BASE_URL` 이 **안 서는 루프백을 가리킨 채 남았다** — 밀기는 더하기만 하므로
+  #   안 밀기로 한 이름은 스스로 사라지지 않고, 아래 「홀로 있다」 칸은 `ANTHROPIC_` 만 물어 못 잡는다.
+  # ⚠ **이름이 아니라 값이 가른다**(`Test-ProxyValue`). 그래서 값 파일에 이름이 늘어도 이 자리는 안 낡는다.
+  # ⚠ **훑는 목록을 먼저 뜬다** — 도는 중에 지우면 열거가 깨진다.
+  if (-not $useGateway -and $cfg.PSObject.Properties['env']) {
+    foreach ($p in @($cfg.env.PSObject.Properties)) {
+      if (-not (Test-ProxyValue $p.Value)) { continue }
+      $cfg.env.PSObject.Properties.Remove($p.Name)
+      $dirty = $true
+      Write-Host "  $($p.Name) — settings.json 에서 걷었다 (사외라 프록시가 안 선다)" -ForegroundColor Green
     }
   }
 
@@ -2875,6 +2935,16 @@ if ($useGateway) {
   foreach ($v in $Vars) {
     if (-not $v.Gateway) { continue }
     $checks += @{ Name = "$($v.Name) 없음 (사외)"; Ok = (-not $userEnv[$v.Name]) }
+  }
+  # ⚠ **표 밖의 프록시 주소도 같은 방향으로 묻는다.** 위 5′·5⁵ 칸이 표가 아니라 **값**에서
+  #   파생해 거르므로, 재는 자리만 표를 보면 걷기가 져도 전부 [O] 로 끝난다 — 이 칸이 막으려던
+  #   바로 그 병이 표 밖 이름에서 그대로 재발한다.
+  # ⚠ **묻는 것은 「이름이 없나」가 아니라 「프록시 주소가 아닌가」다.** 같은 이름을 제 주소로
+  #   쓰는 사람이 있고 5⁵ 칸은 그것을 안 걷는다 — 「없나」로 물으면 안 걷기로 한 것을 빨갛게 찍는다.
+  foreach ($k in $fromFile.Keys) {
+    if ($known -contains $k) { continue }
+    if (-not (Test-ProxyValue $fromFile[$k])) { continue }
+    $checks += @{ Name = "$k — 프록시 주소 없음 (사외)"; Ok = (-not (Test-ProxyValue $userEnv[$k])) }
   }
 }
 foreach ($c in $checks) {
