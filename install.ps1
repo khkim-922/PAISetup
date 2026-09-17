@@ -174,8 +174,20 @@ $TlsHosts = @(
 $DesktopApps = @(
   @{ Key = 'claude'; Label = 'Claude 데스크탑'; App = 'Claude'
      Via = 'winget'; Id = 'Anthropic.Claude'; Source = 'winget' }
-  @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'Codex'
-     Via = 'winget'; Id = '9PLM9XGG6VKS';      Source = 'msstore' }
+  # ⚠ **코덱스는 ChatGPT 앱 안에 산다** — 스토어 제품이 하나이고, 사람 눈에 닿는 이름은 전부
+  #   `ChatGPT` 다: 시작 메뉴 이름 · 매니페스트 `DisplayName` · 실행 파일 `app/ChatGPT.exe`.
+  #   `Codex` 가 남아 있는 자리는 꾸러미 이름(`OpenAI.Codex_…!App`) 하나뿐이라, **찾는 자에게
+  #   줄 이름은 `ChatGPT` 여야 한다.** `Codex` 로 두면 97초 걸려 멀쩡히 깔아 놓고 「설치 실패」로
+  #   찍는다 — 깐 뒤에 이름으로 되찾지를 못해서다(실측).
+  # ⚠ **winget 의 msstore 소스로 안 간다.** TLS 를 가로채는 회선에서 winget 의 고정 인증서
+  #   검사가 `0x8a15005e` 로 져 **소스를 열지도 못한다.** 같은 회선에서 스토어 제 설치 스텁은
+  #   선다 — `StoreInstaller.exe /S` · 종료 `0` · 97초(실측 2026-09-17 · 사내 회선). 웹에서
+  #   사람이 누르는 [다운로드] 단추가 주는 것도 이 스텁이라 **공식 길이기도 하다.**
+  # ⚠ **깔린 것을 올리는 길은 이 스텁으로도 막힌다** — 갱신은 윈도우 업데이트를 타는데 그쪽이
+  #   끊긴다(`0x80072EFD`). 깔기는 되고 올리기는 안 되는 것이라, 없으면 깔고 있으면 둔다.
+  @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'ChatGPT'
+     Via = 'setup';  SilentArgs = @('/S')
+     Url = 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS' }
   # ⚠ 주소에 태그가 박혀 있다(`appguid` · `appname` · `ap=prod`) — 그래서 인자는 `/silent`
   #   하나뿐이고, `/install` 을 덧붙이면 **`-10000` 으로 거절한다**(실측). `needsadmin=false`
   #   라 권한 상승을 안 묻는다 — 설치본이 제 안에 「상승과 조용함은 같이 못 간다」고 적어
@@ -1132,7 +1144,10 @@ function Install-DesktopApp($A) {
     #   섞으면 회선이 막은 자리에서 「설치가 실패했다」만 남는다.
     $exe = Join-Path ([IO.Path]::GetTempPath()) ("{0}Setup.exe" -f $A.App)
     try {
-      Write-Host ('      · 받는다 — {0}' -f (Split-Path $A.Url -Leaf))
+      # ⚠ **주소의 끝마디가 아니라 받아 놓을 파일 이름을 댄다.** 주소가 파일 이름으로 끝나지
+      #   않는 갈래가 있어(스토어 스텁은 제품 번호로 끝난다) 끝마디를 대면 `9PLM9XGG6VKS` 가
+      #   찍힌다 — 받는 사람에게 아무 뜻이 없다.
+      Write-Host ('      · 받는다 — {0}' -f (Split-Path $exe -Leaf))
       Get-Download $A.Url $exe
     } catch {
       Write-Host '  ! 설치본을 못 받았다' -ForegroundColor Red
