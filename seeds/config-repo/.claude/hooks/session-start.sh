@@ -530,6 +530,37 @@ conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지
   done < "$1"
   return 0
 }
+# 자리를 가른다 — `secrets.d/*.env` 의 `#site-probe`(닿음) → `#site-path`(경로) → `#site-default`.
+# **이름으로 안 가른다**: DNS 는 사외에서도 사내 IP 를 풀어 준다 (0026). 답은 파일 이름(`posco` ·
+# `outside` · `home`)이고 `$_SITE`, 그 파일은 `$_SITE_FILE` 에 선다.
+# ⚠ **묻는 자가 있을 때만 잰다.** 프로브는 안 닿는 자리에서 3초를 무는데, 아무도 자리를 안 묻는
+#   판에서는 그 3초가 순수한 손해다. 한 번 잰 답은 들고 다시 안 잰다 — 부르는 자가 둘이다.
+_SITE=''; _SITE_FILE=''; _SITE_DONE=''
+_site_of() {
+  [ -n "$_SITE_DONE" ] && return 0
+  _SITE_DONE=1
+  _sf=''; _sd=''
+  for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
+    [ -e "$_f" ] || continue
+    case "$(sed -n 's/^#[[:space:]]*site-default[[:space:]]*=[[:space:]]*//p' "$_f" | head -1)" in *yes*) _sd="$_f" ;; esac
+    [ -n "$_sf" ] && continue
+    _probe="$(sed -n 's/^#[[:space:]]*site-probe[[:space:]]*=[[:space:]]*//p' "$_f" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
+    [ -n "$_probe" ] || continue
+    timeout 3 bash -c "(exec 3<>/dev/tcp/${_probe%%:*}/${_probe#*:})" 2>/dev/null && _sf="$_f"
+  done
+  if [ -z "$_sf" ]; then
+    for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
+      [ -e "$_f" ] || continue
+      _p="$(sed -n 's/^#[[:space:]]*site-path[[:space:]]*=[[:space:]]*//p' "$_f" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
+      [ -n "$_p" ] && [ -d "$_p" ] && { _sf="$_f"; break; }
+    done
+  fi
+  [ -n "$_sf" ] || _sf="$_sd"
+  _SITE_FILE="$_sf"
+  [ -n "$_sf" ] && _SITE="$(basename "$_sf" .env)"
+  return 0
+}
+
 deploy_personal() {   # deploy_personal auto|install
   [ "$OS" = windows ] || return 0
   [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/personal.conf" ] || return 0
@@ -601,15 +632,37 @@ deploy_personal() {   # deploy_personal auto|install
   # ⚠ 이 고리는 줄마다 아무것도 스폰하지 않는다 — 윈도우는 프로세스 하나가 ~90ms 라, 줄마다
   #   `printf | tr | sed` 를 띄우면 값 셋을 심으려고 백 번을 넘게 띄운다 (0054). 파싱은 `case` 와
   #   `${}` 로 다 되는 일이고, **버릴 줄은 다듬기 전에 버린다** — 주석·빈 줄을 정규화할 까닭이 없다.
+  # ⚠ **자리를 타는 이름이 섞여 있다.** 바로 위에 `#only = <자리>,<자리>` 를 단 줄은 **거기서만**
+  #   심는다 — 저쪽에서 해로운 이름이 있어서다(`GOOGLE_API_KEY` 는 사내에서 회사 키를 제친다).
+  #   넣는 기준은 「여기서 쓰나」가 아니라 **「저쪽에서 해로운가」**이고, 그 자는 README 가 든다.
+  # ⚠ **auto 세션은 그 줄을 아예 안 본다** — 자리를 재려면 프로브가 3초를 무는데, 심는 일은
+  #   `--install` 이 이미 한 번 한다. **안 심을 뿐 걷지는 않는다** — 이미 심긴 값을 걷는 자는 없다.
   if [ -f "$CONFIG_ROOT/secrets.env" ]; then
     _cr=$(printf '\r'); _tab=$(printf '\t')   # 고리 밖에서 한 번 — `$'\r'` 은 sh 에 없다
+    _only=''
     while IFS= read -r _line || [ -n "$_line" ]; do
-      case "$_line" in ''|'#'*) continue ;; esac     # CRLF 인 빈 줄은 CR 만 남아 아래 *=* 에서 걸린다
+      case "$_line" in
+        '#'*only*=*) _only="${_line#*=}"                        # 바로 다음 이름 한 줄에만 걸린다
+                     while :; do case "$_only" in ' '*|"$_tab"*) _only="${_only#?}" ;; *) break ;; esac; done
+                     while :; do case "$_only" in *' '|*"$_tab"|*"$_cr") _only="${_only%?}" ;; *) break ;; esac; done
+                     continue ;;
+        ''|'#'*)     continue ;;                 # CRLF 인 빈 줄은 CR 만 남아 아래 *=* 에서 걸린다
+      esac
       case "$_line" in *=*) ;; *) continue ;; esac
       while :; do                                    # 꼬리의 CR·공백·탭을 걷는다 — sed 없이
         case "$_line" in *' '|*"$_tab"|*"$_cr") _line="${_line%?}" ;; *) break ;; esac
       done
       _k="${_line%%=*}"; _v="${_line#*=}"
+      if [ -n "$_only" ]; then                   # 바로 위 줄이 자리를 걸었다 — 쓰고 비운다
+        _o="$_only"; _only=''
+        [ "$1" = install ] || continue
+        _site_of
+        case ",$_o," in
+          *",$_SITE,"*) ;;
+          *) echo "$PROJECT_NAME: $_k — 안 심는다 (자리가 ${_SITE:-모름} · 이 이름은 $_o 에서만 산다)"
+             continue ;;
+        esac
+      fi
       if [ -z "$_v" ]; then
         [ "$1" = install ] && echo "$PROJECT_NAME: ⚠ $_k — 비었다 (secrets.env 에 값을 넣고 커밋할 것)"
         continue
@@ -624,8 +677,7 @@ deploy_personal() {   # deploy_personal auto|install
   fi
 
   # 홈 개인 설정 씨앗 — `vdi-home-settings.json`. 없으면 깔고, 자리 파일이 `#home-settings = overwrite`
-  # 를 들면 병합해 덮는다. 자리는 `secrets.d/*.env` 의 `#site-probe`(닿음) → `#site-path`(경로) →
-  # `#site-default` 로 가른다 — **이름으로 안 가른다**: DNS 는 사외에서도 사내 IP 를 풀어 준다 (0026).
+  # 를 들면 병합해 덮는다. 자리를 가르는 자는 위 `_site_of` 다.
   # `--install` 만 — 프로브는 안 닿는 자리에서 3초를 물고, 덮을 자리(사외 VDI)는 매 로그인 설치기를 거친다.
   # ⚠ 안 덮는 자리에서는 있으면 안 건드린다 — 세션 중에 앱에서 바꾼 값을 재실행이 지우면 안 된다.
   [ "$1" = install ] || return 0
@@ -636,25 +688,9 @@ deploy_personal() {   # deploy_personal auto|install
     cp "$_hs" "$_hd" && echo "$PROJECT_NAME: 홈 settings.json — 씨앗을 깔았다"
     return 0
   fi
-  _site=""; _default=""
-  for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
-    [ -e "$_f" ] || continue
-    case "$(sed -n 's/^#[[:space:]]*site-default[[:space:]]*=[[:space:]]*//p' "$_f" | head -1)" in *yes*) _default="$_f" ;; esac
-    [ -n "$_site" ] && continue
-    _probe="$(sed -n 's/^#[[:space:]]*site-probe[[:space:]]*=[[:space:]]*//p' "$_f" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
-    [ -n "$_probe" ] || continue
-    timeout 3 bash -c "(exec 3<>/dev/tcp/${_probe%%:*}/${_probe#*:})" 2>/dev/null && _site="$_f"
-  done
-  if [ -z "$_site" ]; then
-    for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
-      [ -e "$_f" ] || continue
-      _p="$(sed -n 's/^#[[:space:]]*site-path[[:space:]]*=[[:space:]]*//p' "$_f" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
-      [ -n "$_p" ] && [ -d "$_p" ] && { _site="$_f"; break; }
-    done
-  fi
-  [ -n "$_site" ] || _site="$_default"
+  _site_of
   _mode=""
-  [ -n "$_site" ] && _mode="$(sed -n 's/^#[[:space:]]*home-settings[[:space:]]*=[[:space:]]*//p' "$_site" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
+  [ -n "$_SITE_FILE" ] && _mode="$(sed -n 's/^#[[:space:]]*home-settings[[:space:]]*=[[:space:]]*//p' "$_SITE_FILE" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
   [ "$_mode" = overwrite ] || return 0
   # ⚠ **`hooks` 와 `env` 는 씨앗의 것이 아니라 기계가 심은 것이라 넘겨 준다** (0028 · 0030). 훅의 심는 명령은
   #   작업 루트 경로를 들어 PC 마다 다르고, env 는 설치기가 이 자리 값으로 방금 민 것이다. 지킬 수 없으면
@@ -684,7 +720,7 @@ PYMERGE
     if cmp -s "$_new" "$_hd"; then
       rm -f "$_new"
     elif cp "$_hd" "$_hd.bak-$(date +%Y%m%d-%H%M%S)" && mv "$_new" "$_hd"; then
-      echo "$PROJECT_NAME: 홈 settings.json — 덮었다 ($(basename "$_site" .env) 가 overwrite 를 든다)"
+      echo "$PROJECT_NAME: 홈 settings.json — 덮었다 ($_SITE 가 overwrite 를 든다)"
     else
       rm -f "$_new"; echo "$PROJECT_NAME: ⚠ 홈 settings.json 덮기 실패 — 쓰기 권한을 본다"
     fi
