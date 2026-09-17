@@ -2781,10 +2781,13 @@ $userEnv = [Environment]::GetEnvironmentVariables('User')
 $hasCode = Test-Runs 'code' '--version'
 $extList = @()
 if ($hasCode) { $extList = Get-Quiet 'code' '--list-extensions' }
-$checks = @( @{ Name='VS Code'; Ok = $hasCode } )
+# ⚠ **안 고른 것은 안 잰다** — 켜지도 않은 것을 [X] 로 찍으면 **멀쩡한 설치가 빨갛게 끝난다.**
+#   VS Code 도 고르는 것이 됐으므로 이 줄이 그 문 아래 있어야 한다. 사외 기본이 「끔」이라,
+#   안 걸면 **기본값으로 돌린 사람마다 「끝내지 못했다 — VS Code」를 본다**(실측 2026-09-17).
 # 확장과 CLI 는 **깔 때 본 표 그대로** 잰다 — 표에 한 줄을 더하면 검증도 따라온다.
-# ⚠ **안 고른 것은 안 잰다** — 켜지도 않은 제품을 [X] 로 찍으면 멀쩡한 설치가 빨갛게 끝난다.
+$checks = @()
 if (-not $NoVsCode) {
+  $checks += @{ Name='VS Code'; Ok = $hasCode }
   foreach ($x in $ExtPicks) {
     $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) }
   }
