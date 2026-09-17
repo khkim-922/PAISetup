@@ -18,9 +18,11 @@
 - **우리 판은 `VERSION = 17` = 상류 15 + 우리 덩어리 둘**(결정 0044 · 0051). 설치기가 도는 판과 이 값을 견주어
   낮으면 갈아 끼우므로 **상류보다 늘 위에 둔다** — 상류가 17 을 내면 우리는 18 이다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **파일은 안 고친다 — 예외가 둘이다.** ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
+- **파일은 안 고친다 — 예외가 셋이다.** ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
   `keepalives` · 자체 검사 한 칸 · 결정 0044) ⑵ unstream(`UNSTREAM` 손잡이 · `synthesize_anthropic_sse` 무리 ·
-  `_unstream_messages` · 카운터 `unstreamed` · 자체 검사 세 칸 · 결정 0051). 그 둘째를 사내망 밖에서 재느라
+  `_unstream_messages` · 카운터 `unstreamed` · 자체 검사 세 칸 · 진단 두 줄 · 결정 0051) ⑶ 하이쿠 대체
+  (`_CLAUDE_HAIKU_SUBSTITUTE` · `normalize_pgpt_claude_model` 의 `haiku` 갈래 · 위 표) — 게이트웨이에 하이쿠가
+  없어 서브에이전트가 지던 자리다. 그 둘째를 사내망 밖에서 재느라
   `mock_gateway.py` 에도 느린 비스트리밍 답 한 칸이 붙었다(`MOCK_SLOW_SEC` · `MOCK_ANSWER` · `_mock/last`).
   나머지는 상류 그대로다. 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
   파이썬 판정이 무는 두 줄(`raise` 에 `from` 없음 · 안 쓰는 import)은 뿌리 `ruff.toml` 이 이 세 파일을
@@ -35,6 +37,7 @@
 |---|---|
 | `/v1/messages` — 끝의 assistant 마디 제거 · `system` 역할 마디를 `user` 로 · 같은 역할 병합 · `temperature`/`top_p` 제거 | **쓴다** (Claude Code) — `trimmed_prefills` 가 센다 |
 | `claude-sonnet-5` → `claude-sonnet-4.6` (게이트웨이 미등록 별칭) | **쓴다 · 758회** — `ANTHROPIC_MODEL` 은 메인 세션의 모델 하나만 못박고, Claude Code 가 스스로 부르는 곁 호출(서브에이전트·요약·모델 피커의 다른 칩)은 그 못을 안 타고 제 이름을 보낸다 |
+| **(우리 것)** 이름에 `haiku` 가 들면 `claude-sonnet-4.6` 으로 (`_CLAUDE_HAIKU_SUBSTITUTE`) | **쓴다** — 하이쿠는 이 게이트웨이에 **한 판도 없다**(`GET /v1/models` 실측 2026-09-17 · Claude 는 opus 4.5·4.6·4.7·5 와 sonnet 4.5·4.6 여섯뿐). 그래서 서브에이전트 호출이 통째로 `400`(「모델을 찾을 수 없습니다」)으로 지던 자리다. **이름을 목록으로 안 잡고 규칙으로 잡는다** — 클라이언트가 아는 하이쿠 이름이 열둘이라 판이 오를 때마다 샌다. 실측: `claude-haiku-4-5` · 날짜박은 판 둘 다 `200` 에 `model: claude-sonnet-4.6` · 로그에 `restored` 한 줄. ⚠ **게이트웨이가 하이쿠를 들이면 이 칸을 지운다** — 그때는 이 규칙이 진짜 하이쿠까지 갈아버린다 |
 | 대시 모델 ID 복원 — `claude-opus-4-7` → `claude-opus-4.7` | **쓴다 · 6회** — 같은 곁 호출 길. 별칭과 한 함수(`normalize_claude_model_id`)라 바뀌면 로그 한 줄이 찍힌다 |
 | 빈 도구 `description` 채우기 | **쓴다 · 6회** (Claude Code) · Codex 를 루프백에 태우면 `/v1/responses` 에서도 걸린다(탐침 `tool_descriptions_filled=1`) |
 | 상류 연결 풀 — 30초(`UPSTREAM_IDLE_TTL`) 넘게 논 연결은 재사용하지 않고 닫는다 · `/health` 의 `upstream_expired` | **쓴다** — 게이트웨이가 keep-alive 를 끊은 뒤 남은 연결을 집어 첫 요청이 지던 자리. 실측 `upstream_expired=8` · 재사용 82 |

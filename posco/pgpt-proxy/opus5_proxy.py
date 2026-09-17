@@ -401,6 +401,17 @@ _CLAUDE_MODEL_ALIASES = {
     "claude-opus-latest": "claude-opus-5",
 }
 
+# (우리 것) 하이쿠는 이 게이트웨이에 **한 판도 없다** — `GET /v1/models` 실측 2026-09-17: Claude 는
+# opus 4.5·4.6·4.7·5 와 sonnet 4.5·4.6 여섯뿐이다. 그런데 Claude Code 는 곁 호출(서브에이전트 ·
+# 요약 · 빠른 판정)에 하이쿠를 제 이름으로 보내므로 그 호출이 통째로 진다 — `ANTHROPIC_MODEL` 은
+# 메인 세션 하나만 못박고 곁 호출은 그 못을 안 탄다.
+# **이름을 하나씩 적지 않고 규칙으로 잡는다** — 클라이언트가 아는 하이쿠 이름이 열둘이고
+# (`claude-haiku-4-5` · `-20251001` · `-v1` · `claude-3-5-haiku-latest` …) 판이 오를 때마다 늘어서,
+# 목록으로 두면 새 이름이 조용히 샌다.
+# ⚠ **걷는 날은 사람이 정한다** — 게이트웨이가 하이쿠를 들이면 이 줄이 그것까지 갈아버린다.
+#   위 `/v1/models` 에 haiku 가 보이면 이 칸을 지운다.
+_CLAUDE_HAIKU_SUBSTITUTE = "claude-sonnet-4.6"
+
 
 def normalize_pgpt_claude_model(model: str) -> str:
     """Restore dotted Claude IDs and map aliases the gateway does not list."""
@@ -409,11 +420,15 @@ def normalize_pgpt_claude_model(model: str) -> str:
     name = model.strip()
     if not name:
         return model
-    alias = _CLAUDE_MODEL_ALIASES.get(name.lower())
+    lower = name.lower()
+    alias = _CLAUDE_MODEL_ALIASES.get(lower)
     if alias:
         return alias
+    # (우리 것) 하이쿠는 게이트웨이에 없다 — 이름에 haiku 가 들면 소넷으로 보낸다.
+    # **대시→점 변환보다 먼저 본다**: 그쪽을 먼저 타면 `claude-haiku-4.5` 가 되어 여전히 없는 이름이다.
+    if "haiku" in lower:
+        return _CLAUDE_HAIKU_SUBSTITUTE
     # dated Anthropic ids: claude-sonnet-5-20260219
-    lower = name.lower()
     if lower.startswith("claude-sonnet-5"):
         return "claude-sonnet-4.6"
     if "." in name:
