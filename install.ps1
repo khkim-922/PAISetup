@@ -1364,6 +1364,10 @@ function Install-DesktopApp($A) {
    $al = [IO.Path]::GetTempFileName()
    if ($W.Via -eq 'winget') {
     if ($noWinget) { Write-Host '      · winget 이 없다 — 다음 길로'; continue }
+    # ⚠ **오래 걸리는 걸음은 제 입으로 말한다.** winget 은 조용히(`--silent`) 돌아 수백 MB 를
+    #   받는 1~2분 동안 화면이 한 글자도 안 바뀐다 — 그러면 **「도는 중」과 「멈췄다」가 같은
+    #   화면**이 되어, 진짜로 멈춘 날 사람이 그것을 못 알아본다. 칸의 초는 끝나고서야 찍힌다.
+    Write-Host ('      · 깐다 — 수백 MB 라 1~2분 걸릴 수 있다 (winget · {0})' -f $W.Source)
     $rc = Invoke-Logged 'winget' (@('install','--id',$W.Id,'--source',$W.Source) + $WGOpts) $al
    } else {
     # ⚠ **받는 자리와 도는 자리를 가른다.** 못 받은 것과 받았는데 진 것은 다른 명제이고,
@@ -1382,6 +1386,7 @@ function Install-DesktopApp($A) {
       Remove-Item $al -ErrorAction SilentlyContinue
       return
     }
+    Write-Host '      · 깐다 — 몇 분 걸릴 수 있다'
     $pr = Start-Process -FilePath $exe -ArgumentList $W.SilentArgs -PassThru -Wait
     $rc = $pr.ExitCode
     Remove-Item $exe -ErrorAction SilentlyContinue
