@@ -1992,6 +1992,16 @@ if ($offsite) {
   } elseif (Test-ClaudeLoggedIn) {
     $claudeLoggedIn = $true
     Write-Host '  이미 서 있다 (loggedIn=true)'
+  } elseif (-not (Test-Reach 'claude.ai:443')) {
+    # ⚠ **닿는지 먼저 잰다 — 막힌 자리에서 3분을 서 있지 않는다.** 로그인은 브라우저 콜백으로
+    #   끝나므로 그 페이지에 못 닿으면 CLI 는 **죽지 않고 얌전히 기다린다** — 아래 루프의
+    #   `HasExited` 조기 탈출이 그래서 안 걸린다. 실측 2026-09-18 회사 사외 VDI: 클로드가 통째로
+    #   막혀 데스크탑도 로그인도 안 섰는데 **180초를 다 썼다.**
+    # ⚠ **필요조건이지 충분조건이 아니다** — 서면 「열릴 수도 있다」일 뿐이고 **안 서면 확실히
+    #   못 연다.** 그 한쪽만으로 3분을 아낀다. 닿으면 그때는 예전대로 기다린다.
+    # ⚠ **막혔다고 설치를 실패로 안 센다** — 로그인은 본디 사람이 안 눌러도 되는 자리다(위 ⚠).
+    Write-Host '  ! claude.ai 에 못 닿는다 — 브라우저를 안 띄우고 지나간다 (회선이 막았다)' -ForegroundColor Yellow
+    Write-Host '     닿는 자리에서 새 터미널에 claude auth login'
   } else {
     Write-Host '  구독 계정 로그인 브라우저를 엽니다 — 눌러 주세요 (최대 180초)' -ForegroundColor Yellow
     try {
