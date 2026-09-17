@@ -49,11 +49,14 @@
 #   ⚠ **자동화로 돌릴 때는 이 칸을 꼭 준다.** 이미 떠 있는 것이 있으면 여는 자리가 **끌지
 #   묻는 창**을 띄우는데, 아무도 안 보는 자리에서 그것은 영영 안 눌리는 창이다 — 설치가
 #   거기서 선 채로 끝나지 않는다.
-# ⚠ `-ListDesktopApps` — **아무것도 안 깔고 표만 내주고 나간다.** 화면 껍데기가 고를 칸을
-#   지으려면 목록이 필요한데, 저쪽에 옮겨 적으면 앱이 늘 때 한쪽만 고쳐진다 — 그 어긋남은
-#   「골랐는데 안 깔린다」는 조용한 꼴로만 보인다. 목록의 진본은 아래 `$DesktopApps` 하나다.
+# ⚠ `-Describe` — **아무것도 안 깔고 고를 목록만 내주고 나간다.** 화면 껍데기가 칸을 지으려면
+#   목록이 필요한데, 저쪽에 옮겨 적으면 제품이 늘 때 한쪽만 고쳐진다 — 그 어긋남은 「골랐는데
+#   안 깔린다」는 조용한 꼴로만 보인다. 목록의 진본은 아래 `$Products` 하나다.
+# ⚠ `-Pick claude,codex` — **고른 제품만 깐다**(안 주면 `$Products` 표의 기본값). `-NoVsCode` 는
+#   VS Code 자체와 확장을 통째로 건너뛴다 — 데스크탑 앱만 쓸 사람의 자리다.
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade,
-      [switch]$NoLaunch, [string]$EnvFile, [switch]$ListDesktopApps)
+      [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
+      [string]$Pick, [switch]$NoVsCode)
 
 $ErrorActionPreference = 'Stop'
 
@@ -109,8 +112,26 @@ $homeDir = Join-Path $env:USERPROFILE '.claude'
 # ── 무엇을 깔까 — **목록이 진본이다.** 늘리려면 여기 한 줄을 더한다 ────────────────
 #    core = 확장이 돌기까지 없으면 안 되는 것. dev = 코드를 짤 사람에게만.
 #    ⚠ Claude Code CLI 는 이 표에 없다 — winget 이 아니라 npm 이 깔아서다(아래 4칸).
+# ── 고르는 축 — **제품이다.** 아래 표 셋(CLI · 확장 · 데스크탑 앱)은 같은 축의 세 단면이고,
+#    한 제품이 그 셋에 한 줄씩 든다. 사람은 「어느 도구를 쓰나」로 고르지 「CLI 냐 확장이냐」로
+#    안 고른다 — 클로드 확장은 쓰는데 `claude` 는 안 쓰는 사람이 없다.
+# ⚠ **벤더로 묶지 않는다.** 「구글」한 칸은 Gemini 와 안티그래비티를 한 몸으로 삼키는데 그 둘은
+#   짝이 다르다: Gemini 확장은 터미널의 `gemini` 에 편집기 문맥을 넘기는 **다리**고, 안티그래비티
+#   확장은 제 화면을 든 **에이전트**이며 짝이 `agy` 다. 설정 파일도 갈린다. 넷으로 두면 벤더로
+#   묶는 것은 칸 둘을 같이 켜면 되지만, 셋으로 묶으면 넷을 되돌릴 방법이 없다.
+# ⚠ **기본값도 이 표가 든다** — 화면이 제 값을 따로 들면 두 벌이 된다. Gemini 만 꺼져 있는 것은
+#   안티그래비티가 그 자리를 대신하는 물건이라 둘을 같이 깔 까닭이 없어서다(2026-09-17 사람 판단).
+$Products = @(
+  @{ Key='claude';      Label='Claude';      Default=$true  }
+  @{ Key='codex';       Label='Codex';       Default=$true  }
+  @{ Key='antigravity'; Label='구글 Antigravity'; Default=$true  }
+  @{ Key='gemini';      Label='Gemini';      Default=$false }
+)
+
 $Apps = @(
-  @{ Name='VS Code';    Id='Microsoft.VisualStudioCode'; Cmd='code';   Arg='--version'; Need='core' }
+  # ⚠ `Need='vscode'` 는 `core` 의 갈래다 — `-NoVsCode` 가 이 한 줄만 건너뛴다. 확장은 이것 없이
+  #   설 자리가 없으므로 같이 꺼진다. Node 는 CLI 가 타므로 `core` 로 남는다.
+  @{ Name='VS Code';    Id='Microsoft.VisualStudioCode'; Cmd='code';   Arg='--version'; Need='vscode' }
   @{ Name='Node.js';    Id='OpenJS.NodeJS.LTS';          Cmd='node';   Arg='--version'; Need='core' }
   @{ Name='Git';        Id='Git.Git';                    Cmd='git';    Arg='--version'; Need='dev'  }
   @{ Name='Python';     Id='Python.Python.3.14';         Cmd='python'; Arg='--version'; Need='dev'  }
@@ -131,15 +152,23 @@ $Apps = @(
 #   `AGY_ENABLE_HUB=1` 로 띄운다). **설치기가 그 바이너리를 안 심는다** — 확장이 스스로 받고, 받는 곳
 #   (구글 릴리스 호스트)은 사내에서 열린다(실측 2026-09-17). 게이트웨이에 물리는 자리는 아래 5⁗ 칸이 든다.
 $Extensions = @(
-  @{ Id='anthropic.claude-code';                  Label='클로드 확장'                }
-  @{ Id='openai.chatgpt';                         Label='Codex 확장'                 }
-  @{ Id='google.gemini-cli-vscode-ide-companion'; Label='Gemini CLI Companion 확장'  }
-  @{ Id='Google.google-antigravity';              Label='안티그래비티 확장'          }
+  @{ Key='claude';      Id='anthropic.claude-code';                  Label='클로드 확장'                }
+  @{ Key='codex';       Id='openai.chatgpt';                         Label='Codex 확장'                 }
+  @{ Key='antigravity'; Id='Google.google-antigravity';              Label='안티그래비티 확장'          }
+  @{ Key='gemini';      Id='google.gemini-cli-vscode-ide-companion'; Label='Gemini CLI Companion 확장'  }
 )
+# ⚠ **한 줄만 npm 이 아니다.** 구글이 `agy` 를 제 스크립트로만 내준다 — npm 꾸러미가 없다.
+#   그래서 `Via` 를 둔다: 없으면 npm, `script` 면 `Install-ScriptCli` 가 든다. 갈림이 표 안에
+#   있으므로 CLI 가 늘 때 볼 자리가 한 곳이다(위 `$DesktopApps` 와 같은 꼴).
+# ⚠ **VS Code 의 「안티그래비티 확장」과 다른 물건이다.** 확장은 제 몫의 `agy` 를 스스로 받아
+#   같은 자리(`~/.gemini/bin`)에 두고 절대 경로로 띄운다 — 이 줄이 드는 것은 **터미널에서 부르는
+#   `agy`** 다. 자리가 같아서 확장이 먼저 받았으면 이 걸음은 「있음」으로 지나간다.
 $Clis = @(
-  @{ Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI' }
-  @{ Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
-  @{ Pkg='@google/gemini-cli';        Cmd='gemini'; Label='Gemini CLI'      }
+  @{ Key='claude'; Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI' }
+  @{ Key='codex';  Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
+  @{ Key='antigravity'; Via='script'; Cmd='agy';    Label='안티그래비티 CLI'
+     Url='https://antigravity.google/cli/install.ps1' }
+  @{ Key='gemini'; Pkg='@google/gemini-cli';        Cmd='gemini'; Label='Gemini CLI'      }
 )
 
 # ── Node 가 말을 거는 자리 — **목록이 진본이다** ─────────────────────────────────
@@ -194,13 +223,15 @@ $DesktopApps = @(
   @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'ChatGPT'
      Via = 'setup';  SilentArgs = @('/S')
      Url = 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS' }
-  # ⚠ 주소에 태그가 박혀 있다(`appguid` · `appname` · `ap=prod`) — 그래서 인자는 `/silent`
-  #   하나뿐이고, `/install` 을 덧붙이면 **`-10000` 으로 거절한다**(실측). `needsadmin=false`
-  #   라 권한 상승을 안 묻는다 — 설치본이 제 안에 「상승과 조용함은 같이 못 간다」고 적어
-  #   두었는데, 상승이 필요 없어 둘이 안 부딪힌다.
-  @{ Key = 'gemini'; Label = 'Gemini 데스크탑'; App = 'Gemini'
-     Via = 'setup';  SilentArgs = @('/silent'); Log = '%TEMP%\updater.log'
-     Url = 'https://dl.google.com/tag/s/appguid%3D%7B533DD80C-942A-4464-B6A9-2E59428D784E%7D%26appname%3DGemini%26needsadmin%3Dfalse%26ap%3Dprod/update2/installers/gemini/GeminiSetup.exe' }
+  # ⚠ **Gemini 데스크탑은 이 표에 없다 — 뺐다(2026-09-17).** 이 회선에서 **두 번 다 졌고 끊기는
+  #   자리가 같다**: 구글 태그 서버의 스텁 11.8MB 는 다 받아지는데, 그 스텁이 **알맹이를 받으러
+  #   갈 때** 끊긴다(실측 ① 갱신 요청이 `200` 에 차단 안내 HTML · ② 종료 `-2147012866` =
+  #   `0x80072EFE` 연결 중단 · 그 뒤 구글 갱신기가 **제 작업을 지우고 스스로 되돌아 나간다**).
+  #   ⚠ **「막힌 것은 우리가 분류하지 않는다」(결정 0052)를 어기는 것이 아니다** — 그 조항은
+  #     *지는 방식을 미리 규칙표로 짓지 말라*는 말이고, 여기서 뺀 근거는 규칙표가 아니라
+  #     **두 번의 실측**이다. 표에 있는 것은 여전히 시도하고, 지면 그대로 찍는다.
+  #   ⚠ **집에서는 멀쩡히 깔린다** — 잃는 길이 있다는 뜻이라 적어 둔다. 필요하면 사람이
+  #     <https://gemini.google.com/app> 에서 받고, **안티그래비티가 그 자리를 든다.**
   # ⚠ **주소에 판이 박혀 있다 — 그리고 판 없는 주소를 못 찾았다.** 구글이 「최신」 자리를 안
   #   내놓아서, 새 판이 나오면 이 줄을 손으로 고쳐야 한다. 고칠 때 보는 자리는
   #   <https://antigravity.google/download> 의 [Download for x64] 가 가리키는 데다 —
@@ -219,12 +250,31 @@ $DesktopApps = @(
      Url = 'https://storage.googleapis.com/antigravity-public/antigravity-hub/2.14.0-5449404535144448/windows-x64/Antigravity-x64.exe' }
 )
 
-# 표를 한 줄씩 내준다 — `키|사람에게 보일 글자`. **여기까지 오는 데 부수효과가 없다**(위는
-# 다 선언이다), 그래서 이 갈래는 설치를 한 톨도 안 건드리고 나간다.
-if ($ListDesktopApps) {
-  $DesktopApps | ForEach-Object { '{0}|{1}' -f $_.Key, $_.Label }
+# 고를 목록을 한 줄씩 내준다 — `product|키|글자|기본값`. **여기까지 오는 데 부수효과가 없다**
+# (위는 다 선언이다), 그래서 이 갈래는 설치를 한 톨도 안 건드리고 나간다.
+if ($Describe) {
+  $Products | ForEach-Object {
+    'product|{0}|{1}|{2}' -f $_.Key, $_.Label, $(if ($_.Default) { 'on' } else { 'off' })
+  }
   exit 0
 }
+
+# 고른 제품. **안 주면 표의 기본값** — 화면 갈래와 콘솔 갈래가 같은 자를 쓴다.
+# ⚠ **모르는 이름을 삼키지 않는다.** 오타 하나로 제품이 조용히 안 깔리면 **초록으로 끝나고**
+#   아무도 못 본다 — 값을 준 사람이 제일 늦게 안다.
+if ($PSBoundParameters.ContainsKey('Pick')) {
+  $PickKeys = @($Pick -split ',' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+  foreach ($k in $PickKeys) {
+    if (-not ($Products | Where-Object { $_.Key -eq $k })) {
+      Write-Host ('  ! 모르는 제품 이름 — {0} (아는 것: {1})' -f
+                  $k, (($Products | ForEach-Object { $_.Key }) -join ', ')) -ForegroundColor Yellow
+    }
+  }
+} else {
+  $PickKeys = @($Products | Where-Object { $_.Default } | ForEach-Object { $_.Key })
+}
+# 제품 칸을 하나도 안 켠 판 — 아래 걸음들이 다 빈 채로 지나가므로 여기서 한 번 말한다.
+if (-not $PickKeys) { $PickKeys = @() }
 
 $Vars = @(
   @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 사내는 로컬 프록시 루프백 · 끝에 /v1 을 붙이지 않는다 (CLI 가 붙인다)'; Gateway=$true }
@@ -285,6 +335,16 @@ function Add-ToPath([string]$Dir) {
 }
 
 function Update-RuntimePath {
+  # ⚠ **레지스트리를 먼저 태운다 — 이름 박은 목록은 보험이다.** 이 창이 뜬 뒤에 깔린 것이 심은
+  #   PATH 는 레지스트리에만 있어서, 목록만 보면 **거기 이름이 없는 도구는 깔고도 영영 안 잡힌다.**
+  #   `Add-ToPath` 로 덧대므로 이 창이 원래 들고 있던 자리는 안 잃고 같은 자리가 두 번 붙지도 않는다.
+  # ⚠ **순서가 뜻이다 — 레지스트리가 먼저, 이름이 나중.** `Add-ToPath` 는 앞에 끼우므로 나중에
+  #   부른 쪽이 앞에 선다. 윈도우는 `WindowsApps` 에 스토어로 보내는 파이썬 껍데기를 두는데,
+  #   그것이 사용자 PATH 에 있어도 **진짜 파이썬이 그 앞에 서야** 한다.
+  foreach ($sc in @('Machine','User')) {
+    $v = [Environment]::GetEnvironmentVariable('Path', $sc)
+    if ($v) { foreach ($d in ($v -split ';')) { Add-ToPath $d } }
+  }
   # 파이썬 폴더 이름은 선언에서 판다 — 판을 여기 또 적으면 표와 어긋난다
   $pyId  = ($Apps | Where-Object { $_.Cmd -eq 'python' }).Id
   $pyTag = if ($pyId -match '(\d+)\.(\d+)$') { "Python$($Matches[1])$($Matches[2])" } else { $null }
@@ -298,6 +358,7 @@ function Update-RuntimePath {
     Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag\Scripts"
   }
   Add-ToPath "$env:APPDATA\npm"
+  Add-ToPath "$env:USERPROFILE\.gemini\bin"   # 안티그래비티 CLI(`agy`) — 제 설치본이 여기 둔다
 }
 
 # ⚠ **존재로 묻지 않고 불러 본다.** 윈도우는 `WindowsApps\python` 에 스토어로 보내는
@@ -740,10 +801,7 @@ function Restore-Winget {
   #   그래서 밟은 뒤마다 **PATH 를 레지스트리에서 새로 읽고** 다시 묻는다.
   #   ⚠ 이 세션 PATH 만 보면 방금 깔린 것을 영영 못 본다: 창은 뜰 때 환경을 한 번 복사한다.
   $reach = {
-    foreach ($sc in @('Machine','User')) {
-      $v = [Environment]::GetEnvironmentVariable('Path', $sc)
-      if ($v) { foreach ($d in ($v -split ';')) { Add-ToPath $d } }
-    }
+    Update-RuntimePath      # 레지스트리 두 범위를 다시 태우는 자 — 사본을 여기 또 두지 않는다
     [bool](Get-Command winget -ErrorAction SilentlyContinue)
   }
 
@@ -958,12 +1016,17 @@ $geminiTpl  = Read-Directive $EnvFile 'gemini-config'
 $inside     = ($site -eq 'inside')
 $wantProxy  = [bool]($proxyRel  -and $inside)
 $needPython = $wantProxy            # 프록시가 파이썬으로 돈다 — 개발도구를 꺼도 이것만은 깐다(1 칸)
-$wantCodex  = [bool]($codexTpl  -and $inside)
-$wantGemini = [bool]($geminiTpl -and $inside)
+# ⚠ **회사 설정도 제품 칸을 탄다** — 안 켠 제품에 회사 설정만 심어 두면 쓰지도 않는 파일이
+#   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
+$wantCodex  = [bool]($codexTpl  -and $inside -and ($PickKeys -contains 'codex'))
+$wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini'))
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
-#   그래서 스위치가 무는 것은 「사내인가」와 「제미나이 키가 서는가」뿐이다: 이 확장은 그 키를
-#   그대로 쓰므로(아래 5⁗ 칸 ⚠) **제미나이가 안 서는 자리에서는 이것도 안 선다.**
-$wantAgy    = $wantGemini
+#   그래서 무는 것은 「사내인가」와 「이 제품을 켰나」뿐이다.
+# ⚠ **제미나이 칸에 안 묶는다.** 옛 판은 `$wantAgy = $wantGemini` 였는데, 제미나이를 끌 수 있게
+#   되면서 그 줄이 안티그래비티까지 같이 껐다. 안티그래비티가 실제로 무는 것은 **환경변수 둘**
+#   (`GEMINI_API_KEY` · `GOOGLE_GEMINI_BASE_URL`)이고 그 둘은 자리 값에서 따로 심긴다 —
+#   제미나이의 **설정 파일**과는 별개다. 그래서 제미나이를 끈 자리에서도 이것은 선다.
+$wantAgy    = [bool]($inside -and ($PickKeys -contains 'antigravity'))
 # 회사 키의 다른 이름 표(`$KeyAliases`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
 $wantNeed = @{ codex = $wantCodex; gemini = $wantGemini }
 # ── 프록시가 밖에 남기는 자리 둘 — **이름은 여기 한 자리다** ─────────────────────
@@ -1027,6 +1090,11 @@ Write-Host ''
 
 Write-Host '[1/8] 프로그램' -ForegroundColor Cyan
 foreach ($app in $Apps) {
+  # ⚠ **VS Code 를 끄면 VS Code 만 안 깐다** — Node 는 CLI 가 타므로 `core` 로 남아 그대로 깔린다.
+  if ($NoVsCode -and $app.Need -eq 'vscode') {
+    Write-Host "  $($app.Name) — 건너뜀 (VS Code 칸을 껐다)"
+    continue
+  }
   if ($NoDevTools -and $app.Need -eq 'dev') {
     # ⚠ **파이썬만은 예외가 선다** — 사내 로컬 프록시가 파이썬으로 돈다(결정 0041). 개발도구를 끈
     #   사람도 프록시 없이는 Opus 5 와 Gemini 가 게이트웨이에 못 가므로, 사내면 이것만 깐다.
@@ -1208,33 +1276,26 @@ function Install-DesktopApp($A) {
   Remove-Item $al -ErrorAction SilentlyContinue
 }
 
+# ⚠ **이 줄이 드는 것은 「언제」뿐이다** — **무엇을** 깔지는 위 제품 칸(`$PickKeys`)이 든다.
+#   옛 판은 `:` 뒤에 목록을 뒀는데, 고르는 축이 제품으로 서면서 그 목록은 자리를 잃었다.
+#   ⚠ **들고 있으면 말하고 지나간다** — 조용히 무시하면 값 파일을 고친 사람은 제 줄이 죽은 줄 모른다.
 $wantApp = Read-Directive $EnvFile 'desktop-app'
 $appWhen = $wantApp
-$appKeys = @('claude')
 if ($wantApp -and $wantApp -match '^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$') {
   $appWhen = $Matches[1]
-  $appKeys = @($Matches[2] -split ',' |
-               ForEach-Object { $_.Trim().ToLower() } |
-               Where-Object { $_ })
+  if ($Matches[2].Trim()) {
+    Write-Host ''
+    Write-Host ('  ! #desktop-app 의 : 뒤 목록은 이제 안 쓴다 — 무엇을 깔지는 제품 칸이 든다 (준 값: {0})' -f
+                $Matches[2].Trim()) -ForegroundColor Yellow
+  }
 }
-$appPicks = @($DesktopApps | Where-Object { $appKeys -contains $_.Key })
+$appPicks = @($DesktopApps | Where-Object { $PickKeys -contains $_.Key })
 
 if ($appWhen -eq 'yes' -or ($appWhen -eq 'offsite' -and $offsite)) {
-  # ⚠ **모르는 이름을 삼키지 않는다.** 오타 하나로 앱이 조용히 안 깔리면 **초록으로 끝나고**
-  #   아무도 못 본다 — 값 파일을 고친 사람이 제일 늦게 안다.
-  foreach ($k in $appKeys) {
-    if (-not ($DesktopApps | Where-Object { $_.Key -eq $k })) {
-      Write-Host ''
-      Write-Host ('  ! 모르는 데스크탑 앱 이름 — {0} (아는 것: {1})' -f
-                  $k, (($DesktopApps | ForEach-Object { $_.Key }) -join ', ')) -ForegroundColor Yellow
-      $Fails.Add("데스크탑 앱 이름 '$k'")
-    }
-  }
-  # ⚠ **빈 목록도 말한다.** `#desktop-app = offsite:` 처럼 뒤가 빈 줄은 **아무 일도 안 일어나고
-  #   한 줄도 안 찍히는** 자리였다 — 값 파일을 고친 사람이 제 손으로 지운 줄 모른다.
-  if (-not $appKeys) {
+  # ⚠ **빈 목록도 말한다** — 제품을 하나도 안 켠 판은 아무 일도 안 일어나고 한 줄도 안 찍혔다.
+  if (-not $appPicks) {
     Write-Host ''
-    Write-Host '  데스크탑 앱 — 고를 것이 없어 안 깐다 (#desktop-app 의 : 뒤가 비었다)'
+    Write-Host '  데스크탑 앱 — 켠 제품이 없어 안 깐다'
   }
   foreach ($da in $appPicks) { Install-DesktopApp $da }
 } elseif ($appWhen -eq 'offsite') {
@@ -1328,10 +1389,14 @@ function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [has
 Write-Elapsed '[1/8] 프로그램'
 Write-Host ''
 Write-Host '[2/8] VS Code 확장' -ForegroundColor Cyan
-if (Test-Runs 'code' '--version') {
+# 고른 제품의 확장만 든다 — 목록이 진본이고 고르는 축은 `$Products` 다.
+$ExtPicks = @($Extensions | Where-Object { $PickKeys -contains $_.Key })
+if ($NoVsCode) {
+  Write-Host '  건너뜀 — VS Code 칸을 껐다 (확장은 VS Code 없이 설 자리가 없다)'
+} elseif (Test-Runs 'code' '--version') {
   $extBefore = Get-ExtVersions
   $extAfter  = $extBefore
-  $extHave   = @($Extensions | Where-Object { $extBefore.ContainsKey($_.Id) })
+  $extHave   = @($ExtPicks | Where-Object { $extBefore.ContainsKey($_.Id) })
   if ($extHave.Count -gt 0 -and -not $NoUpgrade) {
     Write-Host "  깔린 확장 $($extHave.Count)개 — 최신인지 확인중 …"
     $xl = [IO.Path]::GetTempFileName()
@@ -1339,7 +1404,8 @@ if (Test-Runs 'code' '--version') {
     Remove-Item $xl -ErrorAction SilentlyContinue
     $extAfter = Get-ExtVersions
   }
-  foreach ($x in $Extensions) { Install-Extension $x.Id $x.Label $extBefore $extAfter }
+  if (-not $ExtPicks) { Write-Host '  고른 제품이 없어 확장을 안 깐다' }
+  foreach ($x in $ExtPicks) { Install-Extension $x.Id $x.Label $extBefore $extAfter }
 } else {
   Write-Host '  ! code 를 못 불러 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
@@ -1419,10 +1485,50 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
   }
 }
 
+# 벤더가 제 스크립트로만 내주는 CLI. **깔렸으면 아무것도 안 한다** — 올리기는 그 도구가 제 손으로 든다.
+# ⚠ **`irm … | iex` 로 안 돌린다.** 벤더가 안내하는 꼴이 그것인데, 파이프로 먹이면 **종료 코드도
+#   뱉은 말도 안 남는다.** 이 설치기는 진 걸음을 그 도구가 낸 끝 줄로 내야 한다(결정 0052) —
+#   파일로 받아 `-File` 로 돌리면 둘 다 남는다.
+# ⚠ **지문을 못 잰다.** 벤더가 그 스크립트의 해시를 안 낸다 — 받는 곳이 https 인 것이 이 자리의
+#   유일한 울타리다. 「없는 것」과 「안 잰 것」을 섞지 않으려고 적어 둔다.
+function Install-ScriptCli([string]$Url, [string]$Cmd, [string]$Label) {
+  if (Test-Runs $Cmd '--version') { Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"; return }
+  Write-Host "  $Label 설치중 … ($(([Uri]$Url).Host))"
+  $ps1 = Join-Path ([IO.Path]::GetTempPath()) "cli-$Cmd-$PID.ps1"
+  try {
+    Invoke-WebRequest -Uri $Url -OutFile $ps1 -UseBasicParsing -ErrorAction Stop
+  } catch {
+    Write-Host "  ! $Label — 설치 스크립트를 못 받았다: $(Say-Why $_)" -ForegroundColor Yellow
+    Write-Host "     손으로 재려면:  irm $Url | iex"
+    $Fails.Add("CLI ($Label)")
+    return
+  }
+  $sl = [IO.Path]::GetTempFileName()
+  $rc = Invoke-Logged 'powershell' @('-NoProfile','-ExecutionPolicy','Bypass','-File',$ps1) $sl
+  Remove-Item -LiteralPath $ps1 -ErrorAction SilentlyContinue
+  # ⚠ **깐 직후에는 이 창이 그 자리를 모른다** — 제 설치본이 심은 PATH 는 레지스트리에만 있다.
+  Update-RuntimePath
+  if (Test-Runs $Cmd '--version') {
+    Write-Host "  $Label — 깔았다 ($(Get-Ver $Cmd '--version'))" -ForegroundColor Green
+  } else {
+    # ⚠ **「됐다는데 안 잡힌다」를 「안 됐다」로 안 적는다** — 다음에 어디를 팔지가 갈린다.
+    Write-Host "  ! $Label — 설치가 $rc 로 끝났는데 $Cmd 가 안 잡힌다 — 뱉은 끝 줄:" -ForegroundColor Red
+    Show-Log $sl
+    Write-Host "     손으로 재려면:  irm $Url | iex"
+    $Fails.Add("CLI ($Label)")
+  }
+  Remove-Item $sl -ErrorAction SilentlyContinue
+}
+
 Write-Elapsed '[2/8] VS Code 확장'
 Write-Host ''
 Write-Host '[3/8] CLI' -ForegroundColor Cyan
-foreach ($c in $Clis) { Install-NpmCli $c.Pkg $c.Cmd $c.Label }
+$CliPicks = @($Clis | Where-Object { $PickKeys -contains $_.Key })
+if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
+foreach ($c in $CliPicks) {
+  if ($c.Via -eq 'script') { Install-ScriptCli $c.Url $c.Cmd $c.Label }
+  else                     { Install-NpmCli   $c.Pkg $c.Cmd $c.Label }
+}
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
 #   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
 if (-not $inside) {
@@ -2672,10 +2778,13 @@ $extList = @()
 if ($hasCode) { $extList = Get-Quiet 'code' '--list-extensions' }
 $checks = @( @{ Name='VS Code'; Ok = $hasCode } )
 # 확장과 CLI 는 **깔 때 본 표 그대로** 잰다 — 표에 한 줄을 더하면 검증도 따라온다.
-foreach ($x in $Extensions) {
-  $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) }
+# ⚠ **안 고른 것은 안 잰다** — 켜지도 않은 제품을 [X] 로 찍으면 멀쩡한 설치가 빨갛게 끝난다.
+if (-not $NoVsCode) {
+  foreach ($x in $ExtPicks) {
+    $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) }
+  }
 }
-foreach ($c in $Clis) {
+foreach ($c in $CliPicks) {
   $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
 }
 # 나르는 자리 둘 — 7 칸의 자산과 6 칸의 개인 규범·룰·스킬. 재는 자는 위 `New-CountCheck` 하나다.

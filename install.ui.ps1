@@ -175,35 +175,27 @@ $AppNameDefault = 'PAI Setup Wizard'
 $AppName = Get-Directive 'app-name'
 if (-not $AppName) { $AppName = $AppNameDefault }
 
-# ── 고를 데스크탑 앱 — **무엇을 고르나는 화면이, 언제 까나는 값 파일이 든다** ────────
-# ⚠ **파일이 `#desktop-app` 을 안 들면 칸을 아예 안 낸다.** 몸통이 안 까는 자리에 고르는
-#   칸을 내면 **화면이 거짓말한다** — 골라 놓고 아무 일도 안 일어나는 것이 가장 나쁜 꼴이다.
-# ⚠ **목록을 여기 옮겨 적지 않는다** — 몸통에 묻는다(`-ListDesktopApps`). 옮겨 적으면 앱이
-#   늘 때 한쪽만 고쳐지고, 그 어긋남은 「골랐는데 안 깔린다」는 조용한 꼴로만 보인다.
+# ── 고를 제품 — **목록도 기본값도 몸통이 든다** ──────────────────────────────────
+# ⚠ **여기 옮겨 적지 않는다** — 몸통에 묻는다(`-Describe`). 옮겨 적으면 제품이 늘 때 한쪽만
+#   고쳐지고, 그 어긋남은 「골랐는데 안 깔린다」는 조용한 꼴로만 보인다.
 # ⚠ **자식으로 띄워 묻는다.** 이 창 안에서 그 파일을 부르면 저쪽의 `exit` 가 **이 창까지**
 #   끌고 나간다 — 목록 하나 얻자고 치를 값이 아니다.
-$appDirective = Get-Directive 'desktop-app'
-$appWhen = $appDirective
-$appKeys = @('claude')
-if ($appDirective -and $appDirective -match '^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$') {
-  $appWhen = $Matches[1]
-  $appKeys = @($Matches[2] -split ',' |
-               ForEach-Object { $_.Trim().ToLower() } |
-               Where-Object { $_ })
-}
-$AppChoices = @()
-if ($appDirective) {
-  try {
-    $raw = & powershell -NoProfile -ExecutionPolicy Bypass -File $Engine -ListDesktopApps
-    foreach ($ln in @($raw)) {
-      if ("$ln" -match '^\s*([a-z0-9-]+)\|(.+?)\s*$') {
-        $AppChoices += ,@{ Key = $Matches[1]; Label = $Matches[2] }
-      }
+$Choices = @()
+try {
+  $raw = & powershell -NoProfile -ExecutionPolicy Bypass -File $Engine -Describe
+  foreach ($ln in @($raw)) {
+    if ("$ln" -match '^\s*product\|([a-z0-9-]+)\|(.+?)\|(on|off)\s*$') {
+      $Choices += ,@{ Key = $Matches[1]; Label = $Matches[2]; On = ($Matches[3] -eq 'on') }
     }
-  } catch { }
-}
+  }
+} catch { }
+# 데스크탑 앱을 **언제** 까나는 여전히 값 파일이 든다 — 무엇을 까나는 위 제품 칸이 든다.
+$appWhen = Get-Directive 'desktop-app'
+if ($appWhen -and $appWhen -match '^\s*([A-Za-z]+)\s*:') { $appWhen = $Matches[1] }
 # ⚠ **칸이 없으면 아래 자리를 안 민다.** 빈 줄만큼 창이 길어지면 작은 화면에서 단추가 잘린다.
-$appRow = if ($AppChoices.Count) { 26 } else { 0 }
+#   제품 줄 · VS Code 줄 · 안내 줄, 셋이다. **안내 줄은 늘 둔다** — 자리에 따라 있다 없다
+#   하면 창 높이가 갈리는데, 그 높이는 자리를 재기 **전에** 정해진다.
+$appRow = if ($Choices.Count) { 78 } else { 0 }
 
 # ── 화면 ────────────────────────────────────────────────────────────────────────
 $F = New-Object Windows.Forms.Form
@@ -216,7 +208,7 @@ $IconPath = Join-Path $Here 'setup-icon.ico'
 if (Test-Path -LiteralPath $IconPath) {
   try { $F.Icon = New-Object Drawing.Icon($IconPath) } catch { }
 }
-$F.Size = New-Object Drawing.Size(640, (744 + $appRow))
+$F.Size = New-Object Drawing.Size(640, (710 + $appRow))
 $F.StartPosition = 'CenterScreen'
 $F.FormBorderStyle = 'FixedDialog'
 $F.MaximizeBox = $false
@@ -230,11 +222,10 @@ function New-Label($text, $x, $y, $w, $bold) {
   $F.Controls.Add($l); return $l
 }
 
-# ⚠ **첫 줄은 자리를 안 가른다.** 확장·CLI 는 셋(Claude · Codex · Gemini)이 어디서나 선다(결정 0045).
-#   자리가 가르는 것 — 회사 키로 붙나, 각자 로그인인가 — 는 아래 키 칸의 안내가 든다. 옛 판은 그 반 줄을
+# ⚠ **첫 줄은 자리를 안 가른다.** 고른 것은 어디서나 선다(결정 0045) — 자리가 가르는 것은
+#   회사 키로 붙나 각자 로그인인가이고, 그것은 아래 키 칸의 안내가 든다. 옛 판은 그 반 줄을
 #   첫 줄에 붙여 한 줄 칸을 넘쳤고, 넘친 글이 둘째 줄과 겹쳐 둘 다 못 읽었다.
-$lTop = New-Label 'Claude · Codex · Gemini 확장과 CLI 를 VS Code 에 세웁니다.' 18 14 560 $true
-New-Label '이미 깔린 것은 건너뜁니다. 여러 번 눌러도 안전합니다.' 18 34 560 $false | Out-Null
+$lTop = New-Label '고른 도구의 CLI · VS Code 확장 · 데스크탑 앱을 세웁니다.' 18 14 560 $true
 
 # ── 값 ──────────────────────────────────────────────────────────────────────────
 # ⚠ **주소는 사람이 넣을 것이 아니다.** 회사 안에서 모두 같은 값이라, 입력칸으로 두면
@@ -259,9 +250,14 @@ if (Get-Directive 'codex-config')  { $more += 'Codex' }
 if (Get-Directive 'gemini-config') { $more += 'Gemini' }
 $gV = New-Object Windows.Forms.GroupBox
 $noAsk = $offsite
+# ⚠ **키 칸은 자리마다 줄 수가 다르다** — 사외는 「사외입니다」 한 줄뿐이고 사내는 주소·키·안내
+#   셋이다. 높이를 한 값으로 박으면 사외에서 빈 칸이 크게 남는다. 줄인 만큼은 **아래를 당기고
+#   로그 창이 받는다** — 창 높이와 단추 자리는 그대로라 아래가 안 흔들린다.
+$gvH   = if ($noAsk) { 84 } else { 138 }   # 사외는 한 줄 + 링크 · 사내는 주소·키·안내 + 링크
+$gvCut = 124 - $gvH
 $gV.Text = if ($noAsk) { '키와 주소' } elseif ($urlPreset) { 'API 키' } else { '게이트웨이 (사내만)' }
 $gV.Location = New-Object Drawing.Point(16, 62)
-$gV.Size = New-Object Drawing.Size(592, 124)   # 안내가 두 줄(86+34)이라 118 로는 아래 줄이 테두리에 물린다
+$gV.Size = New-Object Drawing.Size(592, $gvH)
 $F.Controls.Add($gV)
 
 $lUrl = New-Object Windows.Forms.Label
@@ -270,7 +266,7 @@ $lUrl.Size = New-Object Drawing.Size(110, 20); $gV.Controls.Add($lUrl)
 
 if ($noAsk) {
   $vUrl = New-Object Windows.Forms.Label
-  $vUrl.Text = "사외입니다 ($probe 안 닿음) — 게이트웨이를 안 씁니다"
+  $vUrl.Text = "사외입니다 ($probe 안 닿음) — 개인 구독으로 씁니다"
   $vUrl.Location = New-Object Drawing.Point(128, 28)
   $vUrl.Size = New-Object Drawing.Size(444, 20)
   $vUrl.ForeColor = [Drawing.Color]::DimGray
@@ -304,43 +300,29 @@ if (-not $noAsk) {
   $gV.Controls.Add($tKey)
 }
 
-$lHint = New-Object Windows.Forms.Label
-$lHint.Location = New-Object Drawing.Point(128, $(if ($noAsk) { 56 } else { 86 }))   # 사외면 키 줄이 비어 그 자리로
-$lHint.Size = New-Object Drawing.Size(444, 34)   # 두 줄 — 자리 판정과 로그인 안내가 같이 든다
-$lHint.ForeColor = [Drawing.Color]::DimGray
-# ⚠ **사외에서는 넣을 것이 없다.** 게이트웨이를 안 타고 구독 로그인으로 서기 때문이다 —
-#   그런데 옛 판은 둘을 필수로 물어, 안 쓰는 자리에서도 넣으라 하고 안 넣으면 막았다.
-$lHint.Text = if ($offsite) { '회사 키를 안 씁니다 — Claude 는 설치 뒤 claude auth login,' +
-                               ' Codex · Gemini 는 각 확장에서 로그인합니다.' }
-              elseif ($urlPreset) { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' +
-                                    $(if ($more.Count) { " $($more -join ' · ') 도 같은 키로 붙습니다." } else { '' }) }
-              else { '사내면 주소와 키를 넣습니다. 사외면 둘 다 비워 두세요 — 구독 로그인으로 섭니다.' }
-$gV.Controls.Add($lHint)
+# ⚠ **사외에서는 넣을 것이 없다** — 게이트웨이를 안 타고 제 구독으로 선다. 옛 판은 둘을
+#   필수로 물어, 안 쓰는 자리에서도 넣으라 하고 안 넣으면 막았다. 한 줄로 그 말만 한다.
+# ⚠ **사외에서는 아예 안 만든다.** 글이 비어도 라벨은 자리를 차지하고, 뒤에 놓인 링크를
+#   덮어 **클릭을 삼킨다** — 안 보이는 것과 없는 것은 다른 명제다.
+if (-not $offsite) {
+  $lHint = New-Object Windows.Forms.Label
+  $lHint.Location = New-Object Drawing.Point(128, 86)
+  $lHint.Size = New-Object Drawing.Size(444, 18)
+  $lHint.ForeColor = [Drawing.Color]::DimGray
+  $lHint.Text = if ($urlPreset) { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' }
+                else            { '사내면 주소와 키를 넣습니다.' }
+  $gV.Controls.Add($lHint)
+}
 
 # 옵션
 $gO = New-Object Windows.Forms.GroupBox
-$gO.Text = '옵션'; $gO.Location = New-Object Drawing.Point(16, 190)
-$gO.Size = New-Object Drawing.Size(592, (116 + $appRow))
+$gO.Text = '옵션'; $gO.Location = New-Object Drawing.Point(16, (190 - $gvCut))
+$gO.Size = New-Object Drawing.Size(592, (76 + $appRow))
 $F.Controls.Add($gO)
 
-$cDev = New-Object Windows.Forms.CheckBox
-$cDev.Text = '코드를 짤 사람용 도구도 깝니다  (Git · Python · GitHub CLI)'
-$cDev.Location = New-Object Drawing.Point(16, 22)
-$cDev.Size = New-Object Drawing.Size(560, 22)
-$cDev.Checked = -not $NoDevTools
-$gO.Controls.Add($cDev)
-# ⚠ GitHub CLI 는 깔려도 로그인 전에는 안 돈다 — 처음 쓰는 사람은 여기서 그것을 알 데가 없었다.
-#   설정 저장소를 쓰는 사람은 훅이 토큰을 심어 로그인이 필요 없지만, 그것은 저장소 쪽 사정이다.
-$lDev = New-Object Windows.Forms.Label
-$lDev.Text = 'Git 이 있어야 저장소를 받습니다. 저장소를 넣었으면 GitHub 로그인 창(코드 팝업)이 뜹니다.'
-$lDev.Location = New-Object Drawing.Point(34, 44)
-$lDev.Size = New-Object Drawing.Size(542, 16)
-$lDev.ForeColor = [Drawing.Color]::DimGray
-$gO.Controls.Add($lDev)
-
 $cCfg = New-Object Windows.Forms.CheckBox
-$cCfg.Text = '제작자의 클로드 코드 규범 · 룰 · 스킬도 깝니다'
-$cCfg.Location = New-Object Drawing.Point(16, 64)
+$cCfg.Text = '제작자의 Claude Code 규범 · 룰 · 스킬도 깝니다'
+$cCfg.Location = New-Object Drawing.Point(16, 126)
 $cCfg.Size = New-Object Drawing.Size(560, 22)
 $cCfg.Checked = [bool]$WithPersonalConfig
 $gO.Controls.Add($cCfg)
@@ -350,33 +332,62 @@ $gO.Controls.Add($cCfg)
 #   낡은 줄도 모른 채 몇 달을 돈다. 비영속 VDI 는 어차피 맨바닥이라 이 칸이 안 걸린다.
 $cUpg = New-Object Windows.Forms.CheckBox
 $cUpg.Text = '이미 깔린 것도 최신으로 올립니다'
-$cUpg.Location = New-Object Drawing.Point(16, 88)
+$cUpg.Location = New-Object Drawing.Point(16, 22)
 $cUpg.Size = New-Object Drawing.Size(560, 22)
 $cUpg.Checked = -not $NoUpgrade
 $gO.Controls.Add($cUpg)
 
-# ⚠ **글자는 몸통이 준 것을 그대로 쓴다** — 여기서 다시 지으면 두 벌이 된다.
-#   미리 켜 두는 것은 값 파일이 적은 것이고, 아무것도 안 고르면 데스크탑 앱을 안 깐다.
+# ⚠ **글자도 기본값도 몸통이 준 것을 그대로 쓴다** — 여기서 다시 지으면 두 벌이 된다.
+# 한 칸이 그 제품의 CLI · 확장 · 데스크탑 앱을 통째로 든다. **뺀 것은 아무 데도 안 깔린다.**
 $cApps = @()
-if ($AppChoices.Count) {
+$cVsc  = $null
+if ($Choices.Count) {
   $lApp = New-Object Windows.Forms.Label
-  $lApp.Text = '데스크탑 앱'
-  $lApp.Location = New-Object Drawing.Point(16, 114)
+  $lApp.Text = '설치할 것'
+  $lApp.Location = New-Object Drawing.Point(16, 50)
   $lApp.Size = New-Object Drawing.Size(84, 20)
   $gO.Controls.Add($lApp)
   $x = 104
-  foreach ($choice in $AppChoices) {
+  foreach ($choice in $Choices) {
     $c = New-Object Windows.Forms.CheckBox
-    # 「Claude 데스크탑」에서 뒷말을 뗀다 — 줄머리가 이미 「데스크탑 앱」이라 되풀이다.
-    $c.Text = ($choice.Label -replace '\s*데스크탑\s*$', '')
-    $c.Location = New-Object Drawing.Point($x, 112)
-    $c.Size = New-Object Drawing.Size(104, 22)
-    $c.Checked = ($appKeys -contains $choice.Key)
+    $c.Text = $choice.Label
+    # ⚠ **글자를 재서 칸을 맞춘다.** 폭을 박아 두면 이름이 긴 제품에서 뒷글자가 잘리는데,
+    #   잘린 줄은 **화면에서만 보이고** 아무 검사에도 안 걸린다.
+    $c.AutoSize = $true
+    $c.Location = New-Object Drawing.Point($x, 48)
+    $c.Checked = [bool]$choice.On
     $c.Tag = $choice.Key
     $gO.Controls.Add($c)
     $cApps += ,$c
-    $x += 110
+    $x += $c.Width + 14
   }
+
+  # ⚠ **사외 기본은 끔이다** — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다.
+  #   사내는 VS Code 가 주 무대라 켜 둔다. 자리는 위에서 이미 쟀다(`$offsite`).
+  $cVsc = New-Object Windows.Forms.CheckBox
+  $cVsc.Text = 'VS Code 와 확장도 깝니다  (사내는 필수, 사외는 선택)'
+  # ⚠ **「필수」라 적었으면 못 꺼야 한다.** 끌 수 있는데 필수라 적으면 그 글이 거짓말이 된다 —
+  #   사내는 켠 채로 잠그고, 사외는 기본을 끈 채 사람에게 맡긴다.
+  $cVsc.Location = New-Object Drawing.Point(16, 76)
+  $cVsc.Size = New-Object Drawing.Size(560, 22)
+  $cVsc.Checked = -not $offsite
+  $cVsc.Enabled = $offsite
+  $gO.Controls.Add($cVsc)
+
+  # ⚠ **고르기는 자리를 안 가리는데 깔기는 가린다** — 안 적으면 사내에서 켜 놓고
+  #   「왜 안 깔렸지」가 된다. 줄은 늘 두고 **글만 갈린다**(위 창 높이 ⚠).
+  $lApp2 = New-Object Windows.Forms.Label
+  $lApp2.Text = if ($appWhen -eq 'offsite' -and -not $offsite) {
+    '켠 것의 CLI 와 확장이 깔립니다 — 데스크탑 앱은 사외에서만 깔립니다.'
+  } elseif ($appWhen) {
+    '켠 것의 CLI · 확장 · 데스크탑 앱이 깔립니다.'
+  } else {
+    '켠 것의 CLI 와 확장이 깔립니다.'
+  }
+  $lApp2.Location = New-Object Drawing.Point(18, 102)
+  $lApp2.Size = New-Object Drawing.Size(560, 20)
+  $lApp2.ForeColor = [Drawing.Color]::DimGray
+  $gO.Controls.Add($lApp2)
 }
 
 # ── 내 저장소 받기 (선택) ───────────────────────────────────────────────────────
@@ -393,8 +404,8 @@ if ($AppChoices.Count) {
 #   그러니 이 칸이 비어 있는 것이 받는 사람에게는 정상이다.
 $gR = New-Object Windows.Forms.GroupBox
 $gR.Text = '내 저장소 받기 (선택) — git 주소, 여러 개는 빈칸으로'
-$gR.Location = New-Object Drawing.Point(16, (312 + $appRow))
-$gR.Size = New-Object Drawing.Size(592, 108)
+$gR.Location = New-Object Drawing.Point(16, (278 + $appRow - $gvCut))
+$gR.Size = New-Object Drawing.Size(592, 98)
 $F.Controls.Add($gR)
 
 $tRepo = New-Object Windows.Forms.TextBox
@@ -405,11 +416,11 @@ $gR.Controls.Add($tRepo)
 
 $lRepo = New-Object Windows.Forms.Label
 $lRepo.Location = New-Object Drawing.Point(16, 52)
-$lRepo.Size = New-Object Drawing.Size(556, 34)
+$lRepo.Size = New-Object Drawing.Size(556, 18)
 $lRepo.ForeColor = [Drawing.Color]::DimGray
-# ⚠ **줄을 둘로 못박는다** — 칸이 두 줄 높이라 흘려 접으면 셋째 줄이 아래 링크와 겹친다.
-$lRepo.Text = '아무 git 저장소나 됩니다 — ~/repos/<이름> 에 받아 둡니다.' + [Environment]::NewLine +
-              '설정 저장소(뿌리에 .claude/hooks/session-start.sh)면 개인 키 · 형제 저장소 · 배포까지 이어집니다.'
+# ⚠ **한 줄이다** — 칸 이름이 이미 「내 저장소 받기」라, 여기서 다시 말할 것은 어디에 받나와
+#   설정 저장소일 때 더 따라오는 것뿐이다.
+$lRepo.Text = '~/repos/<이름> 에 받습니다 — 설정 저장소면 개인 키 · 형제 저장소 · 배포까지 이어집니다.'
 $gR.Controls.Add($lRepo)
 
 # ── 안내 한 장을 여는 링크 ──────────────────────────────────────────────────────
@@ -420,7 +431,7 @@ $gR.Controls.Add($lRepo)
 #   에서 멈춘다 — 무엇이 어디에 없는지를 경로까지 대고 말한다.
 $lnkRepo = New-Object Windows.Forms.LinkLabel
 $lnkRepo.Text = '설정 저장소란? 만드는 법'
-$lnkRepo.Location = New-Object Drawing.Point(388, 86)
+$lnkRepo.Location = New-Object Drawing.Point(388, 72)
 $lnkRepo.Size = New-Object Drawing.Size(184, 18)
 $lnkRepo.TextAlign = 'MiddleRight'
 $lnkRepo.Add_LinkClicked({
@@ -441,14 +452,6 @@ $lnkRepo.Add_LinkClicked({
 $gR.Controls.Add($lnkRepo)
 
 # 넣어도 위 키 칸은 그대로 산다 — 무엇이 더 서는지만 화면이 보여준다
-$syncRepo = {
-  $on = [bool]$tRepo.Text.Trim()
-  $lRepo.Text = $(if ($on) { '다 세운 뒤 ~/repos/<이름> 에 받습니다 — 코드 저장소면 거기서 끝.' }
-                  else     { '아무 git 저장소나 됩니다 — ~/repos/<이름> 에 받아 둡니다.' }) +
-                [Environment]::NewLine +
-                '설정 저장소(뿌리에 .claude/hooks/session-start.sh)면 개인 키 · 형제 저장소 · 배포까지 이어집니다.'
-}
-$tRepo.Add_TextChanged($syncRepo)
 
 # ── 후버로 조금 더 내린다 ────────────────────────────────────────────────────────
 # ⚠ **여기에 긴 이력을 적지 않는다.** 자세한 것은 옆 링크가 여는 안내 한 장이 든다 —
@@ -480,7 +483,7 @@ $tip.SetToolTip($lRepo, $tipText)
 
 # 진행
 $bar = New-Object Windows.Forms.ProgressBar
-$bar.Location = New-Object Drawing.Point(16, (458 + $appRow))   # 홈 안내 줄·링크 줄(420-456) 아래
+$bar.Location = New-Object Drawing.Point(16, (388 + $appRow - $gvCut))   # 홈 안내 줄·링크 줄(420-456) 아래
 $bar.Size = New-Object Drawing.Size(592, 20)
 $bar.Minimum = 0; $bar.Maximum = 100
 $F.Controls.Add($bar)
@@ -491,11 +494,9 @@ $F.Controls.Add($bar)
 #   씨앗 셋은 고를 것이 아니라 환경이라 스위치가 없고, 그래서 더 말해야 한다 — 동의 없이 놓인다.
 # ⚠ **여는 것은 풀어 둔 이 폴더다** — README 와 홈으로 갈 씨앗의 원본이 같이 있다. 홈 쪽
 #   (`~/.claude/seeds`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
-$lHome = New-Label '홈 ~/.claude 에 사내 환경 문서와 씨앗 셋도 놓입니다 — 고르는 것이 아니라 환경입니다.' 18 (420 + $appRow) 592 $false
-$lHome.ForeColor = [Drawing.Color]::DimGray
 $lnkHome = New-Object Windows.Forms.LinkLabel
-$lnkHome.Text = '무엇이 어디에 놓이나 — 폴더 열기 (README · posco · seeds)'
-$lnkHome.Location = New-Object Drawing.Point(18, (440 + $appRow))
+$lnkHome.Text = '사내 환경 문서 위치 — 폴더 열기'
+$lnkHome.Location = New-Object Drawing.Point(14, $(if ($noAsk) { 54 } else { 110 }))
 $lnkHome.Size = New-Object Drawing.Size(400, 16)
 $lnkHome.Add_LinkClicked({
   try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $Here + '"') | Out-Null }
@@ -505,13 +506,13 @@ $lnkHome.Add_LinkClicked({
       $AppName, 'OK', 'Warning') | Out-Null
   }
 })
-$F.Controls.Add($lnkHome)
+$gV.Controls.Add($lnkHome)
 
 # 설치 흐름 그림 — 같은 폴더의 `install-flow.svg`(README 가 든 그 그림). 브라우저가 연다.
 # ⚠ 없으면 경로를 대고 말한다 — howto 링크와 같은 까닭(눌렀는데 아무 일도 안 나면 사람은 멈춘다).
 $lnkFlow = New-Object Windows.Forms.LinkLabel
-$lnkFlow.Text = '설치 흐름 그림'
-$lnkFlow.Location = New-Object Drawing.Point(468, (440 + $appRow))
+$lnkFlow.Text = '설치흐름'
+$lnkFlow.Location = New-Object Drawing.Point(466, $(if ($noAsk) { 54 } else { 110 }))
 $lnkFlow.Size = New-Object Drawing.Size(140, 16)
 $lnkFlow.TextAlign = 'MiddleRight'
 $lnkFlow.Add_LinkClicked({
@@ -529,14 +530,14 @@ $lnkFlow.Add_LinkClicked({
       $AppName, 'OK', 'Warning') | Out-Null
   }
 })
-$F.Controls.Add($lnkFlow)
+$gV.Controls.Add($lnkFlow)
 
-$lState = New-Label '' 18 (480 + $appRow) 500 $false
+$lState = New-Label '' 18 (410 + $appRow - $gvCut) 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
 $log = New-Object Windows.Forms.TextBox
-$log.Location = New-Object Drawing.Point(16, (502 + $appRow))
-$log.Size = New-Object Drawing.Size(592, 150)   # 안내 줄 둘이 든 만큼 줄었다 — 단추(662)와 10 남는다
+$log.Location = New-Object Drawing.Point(16, (432 + $appRow - $gvCut))
+$log.Size = New-Object Drawing.Size(592, (186 + $gvCut))   # 키 칸과 링크 줄이 비운 만큼 받는다
 $log.Multiline = $true; $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'; $log.WordWrap = $false
 $log.BackColor = [Drawing.Color]::FromArgb(30, 30, 30)
@@ -545,12 +546,12 @@ $log.Font = New-Object Drawing.Font('Consolas', 9)
 $F.Controls.Add($log)
 
 $bGo = New-Object Windows.Forms.Button
-$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, (662 + $appRow))
+$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, (628 + $appRow))
 $bGo.Size = New-Object Drawing.Size(100, 30)
 $F.Controls.Add($bGo); $F.AcceptButton = $bGo
 
 $bClose = New-Object Windows.Forms.Button
-$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, (662 + $appRow))
+$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, (628 + $appRow))
 $bClose.Size = New-Object Drawing.Size(84, 30)
 $F.Controls.Add($bClose)
 
@@ -637,17 +638,10 @@ $bGo.Add_Click({
   }
   $repo = $tRepo.Text.Trim()
   if ($repo) { $lines.Add("#config-repo = $repo") }
-  # ⚠ **데스크탑 앱도 화면이 든다** — 파일 줄을 같이 흘리면 한 이름이 두 줄이 되고 **먼저
-  #   적힌 쪽(파일)이 이긴다.** 사람이 방금 끈 앱이 옛 글자로 되살아나는 자리다.
-  # ⚠ **하나도 안 골랐으면 줄 자체를 안 적는다.** 그래야 몸통이 「데스크탑 앱은 안 깐다」로
-  #   읽는다 — 빈 목록을 적으면 지시가 아니라 깨진 글자다.
-  # ⚠ **언제 까나(`$appWhen`)는 그대로 흘린다** — 그것은 사람이 정한 것이 아니라 자리 정책이다.
-  if ($appWhen) {
-    $picked = @($cApps | Where-Object { $_.Checked } | ForEach-Object { [string]$_.Tag })
-    if ($picked.Count) {
-      $lines.Add(('#desktop-app = {0}:{1}' -f $appWhen, ($picked -join ',')))
-    }
-  }
+  # ⚠ **언제 까나(`$appWhen`)만 파일 줄로 흘린다** — 그것은 사람이 정한 것이 아니라 자리
+  #   정책이다. **무엇을 까나는 아래 `-Pick` 인자가 든다** — 파일 줄로도 흘리면 한 이름이
+  #   두 자리에 살고, 사람이 방금 끈 제품이 옛 글자로 되살아난다.
+  if ($appWhen) { $lines.Add("#desktop-app = $appWhen") }
   # ⚠ **자리는 이 화면이 이미 쟀다 — 몸통에 넘긴다.** 같은 물음을 몸통이 또 물으면 두
   #   프로세스·두 시점이라 **답이 갈릴 수 있고, 갈려도 아무 데도 안 찍힌다**(프록시가 흔들리는
   #   VDI · 무선 전환 · 회사망 재인증). 갈리면 여기서 받은 키를 몸통이 버리거나, 주소가 빈
@@ -660,9 +654,18 @@ $bGo.Add_Click({
 
   $argv = @('-NoProfile','-ExecutionPolicy','Bypass','-File', $Engine, '-Yes',
             '-EnvFile', $script:tmpEnv)
-  if (-not $cDev.Checked) { $argv += '-NoDevTools' }
+  # ⚠ **화면에는 칸이 없다** — Claude Code 를 깔러 온 사람에게 git 은 옵션이 아니다.
+  #   인자는 남는다: 콘솔로 이 껍데기를 `-NoDevTools` 로 부른 사람의 뜻은 그대로 넘긴다.
+  if ($NoDevTools) { $argv += '-NoDevTools' }
   if ($cCfg.Checked)      { $argv += '-WithPersonalConfig' }
   if (-not $cUpg.Checked) { $argv += '-NoUpgrade' }
+  # ⚠ **하나도 안 골라도 인자를 준다.** 안 주면 몸통이 「값이 없으니 기본값」으로 읽어
+  #   **사람이 방금 다 끈 것을 되살린다** — 빈 값과 부재는 다른 명제다.
+  if ($cApps.Count) {
+    $picked = @($cApps | Where-Object { $_.Checked } | ForEach-Object { [string]$_.Tag })
+    $argv += @('-Pick', ($picked -join ','))
+  }
+  if ($cVsc -and -not $cVsc.Checked) { $argv += '-NoVsCode' }
 
   # 싸는 규칙은 위 `Quote-Argv` 하나다 — 되띄우기 자리와 같은 자를 쓴다.
   $argLine = Quote-Argv $argv
@@ -891,8 +894,7 @@ $timer.Add_Tick({
     }
     $bGo.Text = '다시 설치'; $bGo.Enabled = $true
     $gV.Enabled = $true; $gO.Enabled = $true; $gR.Enabled = $true
-    & $syncRepo
-  }
+    }
 })
 
 # ⚠ 창을 닫을 때 도는 자식을 두고 가지 않는다 — 두면 임시 파일도 안 지워진다.
@@ -1038,7 +1040,6 @@ $bClose.Add_Click({ $F.Close() })
 
 $F.Add_Shown({
   if ($script:upHandle) { $script:upTimer.Start() }
-  & $syncRepo
   if ($tKey -and $tKey.Enabled -and -not $tRepo.Text.Trim()) { $tKey.Focus() | Out-Null }
   else { $bGo.Focus() | Out-Null }
 })
