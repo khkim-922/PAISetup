@@ -160,9 +160,11 @@ $Extensions = @(
 # ⚠ **한 줄만 npm 이 아니다.** 구글이 `agy` 를 제 스크립트로만 내준다 — npm 꾸러미가 없다.
 #   그래서 `Via` 를 둔다: 없으면 npm, `script` 면 `Install-ScriptCli` 가 든다. 갈림이 표 안에
 #   있으므로 CLI 가 늘 때 볼 자리가 한 곳이다(위 `$DesktopApps` 와 같은 꼴).
-# ⚠ **VS Code 의 「안티그래비티 확장」과 다른 물건이다.** 확장은 제 몫의 `agy` 를 스스로 받아
-#   같은 자리(`~/.gemini/bin`)에 두고 절대 경로로 띄운다 — 이 줄이 드는 것은 **터미널에서 부르는
-#   `agy`** 다. 자리가 같아서 확장이 먼저 받았으면 이 걸음은 「있음」으로 지나간다.
+# ⚠ **VS Code 의 「안티그래비티 확장」과 다른 물건이고 자리도 다르다.** 확장은 제 몫을 스스로
+#   받아 `~/.gemini/bin` 에 두고 절대 경로로 띄우는데, 벤더 CLI 는 `%LOCALAPPDATA%\agy\bin` 에
+#   서고 **PATH 에 드는 것은 뒤엣것뿐이다**(실측 2026-09-17). 그래서 **확장을 깐 기계도 이 걸음을
+#   건너뛰지 않는다** — 같은 것(약 197MB)을 두 번 받는다. 줄이려면 제품 칸을 끄는 것이 답이고,
+#   자리를 합치는 것은 우리가 정할 수 있는 것이 아니다.
 $Clis = @(
   @{ Key='claude'; Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI' }
   @{ Key='codex';  Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
@@ -358,7 +360,10 @@ function Update-RuntimePath {
     Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag\Scripts"
   }
   Add-ToPath "$env:APPDATA\npm"
-  Add-ToPath "$env:USERPROFILE\.gemini\bin"   # 안티그래비티 CLI(`agy`) — 제 설치본이 여기 둔다
+  # ⚠ **`agy` 자리는 여기 안 적는다.** 벤더가 제 설치본으로 `%LOCALAPPDATA%\agy\bin` 에 두고
+  #   **사용자 PATH 에 제 손으로 넣는다** — 위 레지스트리 읽기가 그것을 태운다. 이름으로 박으면
+  #   벤더가 자리를 옮길 때 조용히 어긋나고, **확장이 따로 둔 사본**(`~/.gemini/bin`)을 박으면
+  #   그쪽이 앞에 서서 **진짜 CLI 를 가린다**(실측 2026-09-17 — 둘은 같은 크기의 다른 파일이다).
 }
 
 # ⚠ **존재로 묻지 않고 불러 본다.** 윈도우는 `WindowsApps\python` 에 스토어로 보내는
