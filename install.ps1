@@ -276,12 +276,34 @@ if ($Describe) {
 # ⚠ **모르는 이름을 삼키지 않는다.** 오타 하나로 제품이 조용히 안 깔리면 **초록으로 끝나고**
 #   아무도 못 본다 — 값을 준 사람이 제일 늦게 안다.
 if ($PSBoundParameters.ContainsKey('Pick')) {
-  $PickKeys = @($Pick -split ',' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
-  foreach ($k in $PickKeys) {
-    if (-not ($Products | Where-Object { $_.Key -eq $k })) {
-      Write-Host ('  ! 모르는 제품 이름 — {0} (아는 것: {1})' -f
-                  $k, (($Products | ForEach-Object { $_.Key }) -join ', ')) -ForegroundColor Yellow
-    }
+  # ⚠ **쉼표만 구분자로 두지 않는다 — 공백도 받는다.** 파워셸에서 `-Pick a,b,c` 를 **따옴표 없이**
+  #   넘기면 껍데기가 그것을 배열로 읽고 `[string]` 이 공백으로 이어 붙인다. 값을 준 사람은
+  #   쉼표를 쳤는데 몸통에는 `a b c` 한 덩이가 온다(실측 2026-09-17). 가르는 자를 넓히면 그
+  #   자리가 **아예 없어진다** — 제품 이름에는 공백이 없어 넓혀도 잃는 것이 없고, 이 파일은
+  #   `#config-repo` 에서 이미 공백으로 가른다.
+  $PickKeys = @($Pick -split '[,\s]+' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+  # ⚠ **이름을 `$known` 으로 두지 않는다 — 아래 5′ 칸이 그 이름을 `$Vars` 뜻으로 쓴다**
+  #   (`$known = $Vars | …` 줄). ⚠ **좌표를 줄 번호로 안 박는다** — 위가 늘면 그 숫자만 조용히
+  #   낡는다(이 자리가 그랬다).
+  #   오늘은 그쪽이 먼저 덮어써서 맞게 돌지만, 그 줄 **앞**에 `$known` 을 읽는 줄이 하나 붙는 날
+  #   조용히 뜻이 바뀐다 — 파워셸은 대소문자도 스코프도 안 가려 준다(이 파일이 `$Planted` 에서
+  #   이미 겪은 그 함정이다).
+  $ProductKeys = @($Products | ForEach-Object { $_.Key })
+  $unknown     = @($PickKeys | Where-Object { $ProductKeys -notcontains $_ })
+  foreach ($k in $unknown) {
+    Write-Host ('  ! 모르는 제품 이름 — {0} (아는 것: {1})' -f $k, ($ProductKeys -join ', ')) -ForegroundColor Yellow
+  }
+  # 모르는 이름은 들고 가지 않는다 — 아래 걸음마다 아무것도 안 맞는 열쇠가 섞여 다닐 까닭이 없다.
+  $PickKeys = @($PickKeys | Where-Object { $ProductKeys -contains $_ })
+  # ⚠ **아는 이름이 하나도 안 남으면 그것은 오타지 「아무것도 안 깔겠다」가 아니다.** 위 경고 한
+  #   줄은 여덟 칸 로그에 묻히고, 설치는 **제품을 하나도 안 깐 채 초록으로 끝난다** — 이 칸의
+  #   곁말이 막겠다고 한 바로 그 상태다(실측 2026-09-17: 구분자 하나가 어긋나 그렇게 끝났다).
+  #   막지는 않는다(프로그램·키·씨앗은 여전히 설 자리가 있다). 대신 **끝까지 남는 자리**에 적어
+  #   빨강으로 끝나게 한다 — 노란 줄과 달리 이것은 맨 끝 검증에 이름이 선다.
+  if ($unknown -and -not $PickKeys) {
+    Write-Host ('  ! 고른 제품이 하나도 안 섰다 — 준 값을 쉼표로 가른다: -Pick "{0}"' -f
+                ($ProductKeys -join ',')) -ForegroundColor Red
+    $Fails.Add(('-Pick 에 아는 제품 이름이 없다 (준 값: {0})' -f $Pick))
   }
 } else {
   $PickKeys = @($Products | Where-Object { $_.Default } | ForEach-Object { $_.Key })
