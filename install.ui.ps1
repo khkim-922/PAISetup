@@ -512,7 +512,11 @@ $gV.Controls.Add($lnkHome)
 # ⚠ 없으면 경로를 대고 말한다 — howto 링크와 같은 까닭(눌렀는데 아무 일도 안 나면 사람은 멈춘다).
 $lnkFlow = New-Object Windows.Forms.LinkLabel
 $lnkFlow.Text = '설치흐름'
-$lnkFlow.Location = New-Object Drawing.Point(466, $(if ($noAsk) { 54 } else { 110 }))
+# ⚠ **오른쪽 끝이 담는 상자 안에 들어야 한다** — 이 링크는 창이 아니라 `$gV`(너비 592) 안에
+#   산다. 옛 판은 창 기준 좌표(468)를 상자로 옮겨 오면서 그대로 뒀고, 466+140=606 이라
+#   **14픽셀이 잘렸다**(실측 2026-09-17). 왼쪽 링크(`$lnkHome`)가 쓰는 여백 14 를 맞춰
+#   592-14-140 = 438 에 세운다. **상자 너비를 고치면 이 수도 같이 고친다.**
+$lnkFlow.Location = New-Object Drawing.Point(438, $(if ($noAsk) { 54 } else { 110 }))
 $lnkFlow.Size = New-Object Drawing.Size(140, 16)
 $lnkFlow.TextAlign = 'MiddleRight'
 $lnkFlow.Add_LinkClicked({
