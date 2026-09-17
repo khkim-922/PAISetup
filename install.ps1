@@ -157,19 +157,29 @@ $Extensions = @(
   @{ Key='antigravity'; Id='Google.google-antigravity';              Label='안티그래비티 확장'          }
   @{ Key='gemini';      Id='google.gemini-cli-vscode-ide-companion'; Label='Gemini CLI Companion 확장'  }
 )
-# ⚠ **한 줄만 npm 이 아니다.** 구글이 `agy` 를 제 스크립트로만 내준다 — npm 꾸러미가 없다.
-#   그래서 `Via` 를 둔다: 없으면 npm, `script` 면 `Install-ScriptCli` 가 든다. 갈림이 표 안에
-#   있으므로 CLI 가 늘 때 볼 자리가 한 곳이다(위 `$DesktopApps` 와 같은 꼴).
-# ⚠ **VS Code 의 「안티그래비티 확장」과 다른 물건이고 자리도 다르다.** 확장은 제 몫을 스스로
-#   받아 `~/.gemini/bin` 에 두고 절대 경로로 띄우는데, 벤더 CLI 는 `%LOCALAPPDATA%\agy\bin` 에
-#   서고 **PATH 에 드는 것은 뒤엣것뿐이다**(실측 2026-09-17). 그래서 **확장을 깐 기계도 이 걸음을
-#   건너뛰지 않는다** — 같은 것(약 197MB)을 두 번 받는다. 줄이려면 제품 칸을 끄는 것이 답이고,
-#   자리를 합치는 것은 우리가 정할 수 있는 것이 아니다.
+# ⚠ **한 줄만 npm 이 아니다.** 구글이 `agy` 를 npm 으로 안 내준다 — 그 이름은 2013년에 남이
+#   올린 자리표시자다. 그래서 `Via` 를 둔다: 없으면 npm, `winget` 이면 `Install-WingetCli` 가
+#   든다. 갈림이 표 안에 있으므로 CLI 가 늘 때 볼 자리가 한 곳이다(위 `$DesktopApps` 와 같은 꼴).
+# ⚠ **벤더 스크립트를 안 탄다 — winget 이 같은 것을 낸다**(실측 2026-09-17 · `Google.AntigravityCLI`
+#   1.2.4 · 게시자 Google). 옛 판은 <https://antigravity.google/cli/install.ps1> 을 받아 돌렸는데,
+#   그 길은 **벤더가 해시를 안 내 지문을 못 쟀다.** winget 매니페스트는 `InstallerSha256` 을 들고
+#   arm64 도 함께 든다 — 울타리 하나가 생기고 갈래 하나가 공짜로 따라온다.
+#   ⚠ **한 판 뒤처지는 값을 친다** — winget 이 1.2.4, 벤더 스크립트가 주던 것이 1.2.5 였다.
+#   ⚠ **옛 길로 깐 기계는 이 자리에 안 온다.** 아래 `Install-WingetCli` 가 `agy` 가 잡히면 「있음」으로
+#     지나가는데, 그 `agy` 를 winget 은 모르므로 **올리기도 조용히 지나간다.** winget 으로 옮기려면
+#     사람이 옛 것을 한 번 걷어야 한다 — 우리가 남의 설치본을 지우지는 않는다.
+# ⚠ **VS Code 의 「안티그래비티 확장」과 다른 물건이다.** 확장은 제 몫을 스스로 받아 `~/.gemini/bin`
+#   에 두고 절대 경로로 띄우는데, **PATH 에 서는 것은 이 CLI 뿐이다**(실측 2026-09-17). 그래서
+#   **확장을 깐 기계도 이 걸음을 건너뛰지 않는다** — 같은 것(약 197MB)을 두 번 받는다. 줄이려면
+#   제품 칸을 끄는 것이 답이고, 자리를 합치는 것은 우리가 정할 수 있는 것이 아니다.
 $Clis = @(
   @{ Key='claude'; Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI' }
   @{ Key='codex';  Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
-  @{ Key='antigravity'; Via='script'; Cmd='agy';    Label='안티그래비티 CLI'
-     Url='https://antigravity.google/cli/install.ps1' }
+  # ⚠ **`Cmd` 를 우리가 정하는 것이 아니다** — winget 매니페스트의 `Commands:` 가 `agy` 를 든다.
+  #   winget 이 받은 `cli_windows_x64.exe` 를 **그 이름으로 세워** 제 패키지 자리에 두고, 그 자리를
+  #   사용자 PATH 에 심는다(실측 2026-09-17: `…\WinGet\Packages\Google.AntigravityCLI_…\agy.exe`).
+  @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'
+     Id='Google.AntigravityCLI' }
   @{ Key='gemini'; Pkg='@google/gemini-cli';        Cmd='gemini'; Label='Gemini CLI'      }
 )
 
@@ -234,22 +244,22 @@ $DesktopApps = @(
   #     **두 번의 실측**이다. 표에 있는 것은 여전히 시도하고, 지면 그대로 찍는다.
   #   ⚠ **집에서는 멀쩡히 깔린다** — 잃는 길이 있다는 뜻이라 적어 둔다. 필요하면 사람이
   #     <https://gemini.google.com/app> 에서 받고, **안티그래비티가 그 자리를 든다.**
-  # ⚠ **주소에 판이 박혀 있다 — 그리고 판 없는 주소를 못 찾았다.** 구글이 「최신」 자리를 안
-  #   내놓아서, 새 판이 나오면 이 줄을 손으로 고쳐야 한다. 고칠 때 보는 자리는
-  #   <https://antigravity.google/download> 의 [Download for x64] 가 가리키는 데다 —
-  #   그 쪽은 자바스크립트가 그리므로 **브라우저로 열어 링크를 읽는다.**
-  #   ⚠ **낡아도 조용히 안 진다** — 그 자리가 사라지면 `404` 라 받는 걸음에서 소리 내며 진다.
+  # ⚠ **판 박은 주소를 걷었다 — winget 이 판 없는 주소다**(실측 2026-09-17). `Google.Antigravity`
+  #   2.14.0 의 `InstallerUrl` 이 우리가 손으로 박아 뒀던 주소와 **글자까지 같다.** 옛 곁말은
+  #   「판 없는 주소를 못 찾았다 · 새 판이 나오면 이 줄을 손으로 고쳐야 한다」였는데, 못 찾은
+  #   것이 아니라 **winget 을 안 재고 그렇게 적었다.** 손으로 고칠 자리가 하나 없어진다.
+  #   ⚠ **설치 꼴도 winget 이 든다** — 매니페스트가 `nullsoft` 라 조용한 인자(`/S`)를 저쪽이
+  #     댄다. 우리가 `Nullsoft Install System` 을 읽어 `/S` 를 고른 그 판단이 흡수된 자리다.
   #   ⚠ **한 번 깔리면 제가 따라간다** — 앱이 electron-builder 의 자동 갱신을 들고 있어
-  #     (`resources/app-update.yml`) 우리는 **한 판만 넣어 주면 된다.**
-  # ⚠ **집이 둘인데 하나는 이 회선에서 못 연다.** 받는 자리가 둘로 갈리는데 값이 다르다 —
-  #   「Antigravity 2.0」은 `storage.googleapis.com` 에서 오고 **사내 회선에서 열린다**(실측
-  #   `206`). 같은 페이지 아래쪽 「Antigravity IDE (Standalone)」은 `edgedl.me.gvt1.com` 에서
-  #   오는데 **거기는 TLS 악수부터 진다** — 제미나이 데스크탑의 알맹이를 막는 그 호스트다.
-  #   그래서 **2.0 쪽을 든다.** 둘은 판 번호도 계보도 다른 별개 물건이다.
-  # ⚠ **NSIS 라 조용한 인자는 `/S` 다**(설치본 머리에 `Nullsoft Install System` 이 박혀 있다).
+  #     (`resources/app-update.yml`) 우리는 **한 판만 넣어 주면 된다.** winget 갱신은 그 위의 보험이다.
+  # ⚠ **집이 둘인데 하나는 이 회선에서 못 연다 — 그리고 winget 이 드는 것은 여는 쪽이다.** 받는
+  #   자리가 둘로 갈리는데 값이 다르다: 「Antigravity 2.0」은 `storage.googleapis.com` 에서 오고
+  #   **사내 회선에서 열린다**(실측 `206`) — `Google.Antigravity` 가 가리키는 데가 여기다. 같은
+  #   페이지 아래쪽 「Antigravity IDE (Standalone)」은 `edgedl.me.gvt1.com` 에서 오는데 **거기는
+  #   TLS 악수부터 진다**(제미나이 데스크탑의 알맹이를 막는 그 호스트다). 둘은 판 번호도 계보도
+  #   다른 별개 물건이라, **패키지 이름을 바꿀 때 이 갈림을 다시 본다.**
   @{ Key = 'antigravity'; Label = 'Antigravity 데스크탑'; App = 'Antigravity'
-     Via = 'setup';  SilentArgs = @('/S')
-     Url = 'https://storage.googleapis.com/antigravity-public/antigravity-hub/2.14.0-5449404535144448/windows-x64/Antigravity-x64.exe' }
+     Via = 'winget'; Id = 'Google.Antigravity'; Source = 'winget' }
 )
 
 # 고를 목록을 한 줄씩 내준다 — `product|키|글자|기본값`. **여기까지 오는 데 부수효과가 없다**
@@ -1499,39 +1509,44 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
   }
 }
 
-# 벤더가 제 스크립트로만 내주는 CLI. **깔렸으면 아무것도 안 한다** — 올리기는 그 도구가 제 손으로 든다.
-# ⚠ **`irm … | iex` 로 안 돌린다.** 벤더가 안내하는 꼴이 그것인데, 파이프로 먹이면 **종료 코드도
-#   뱉은 말도 안 남는다.** 이 설치기는 진 걸음을 그 도구가 낸 끝 줄로 내야 한다(결정 0052) —
-#   파일로 받아 `-File` 로 돌리면 둘 다 남는다.
-# ⚠ **지문을 못 잰다.** 벤더가 그 스크립트의 해시를 안 낸다 — 받는 곳이 https 인 것이 이 자리의
-#   유일한 울타리다. 「없는 것」과 「안 잰 것」을 섞지 않으려고 적어 둔다.
-function Install-ScriptCli([string]$Url, [string]$Cmd, [string]$Label) {
-  if (Test-Runs $Cmd '--version') { Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"; return }
-  Write-Host "  $Label 설치중 … ($(([Uri]$Url).Host))"
-  $ps1 = Join-Path ([IO.Path]::GetTempPath()) "cli-$Cmd-$PID.ps1"
-  try {
-    Invoke-WebRequest -Uri $Url -OutFile $ps1 -UseBasicParsing -ErrorAction Stop
-  } catch {
-    Write-Host "  ! $Label — 설치 스크립트를 못 받았다: $(Say-Why $_)" -ForegroundColor Yellow
-    Write-Host "     손으로 재려면:  irm $Url | iex"
-    $Fails.Add("CLI ($Label)")
+# winget 이 내주는 CLI. **깔렸으면 올리기만 시도한다** — npm 갈래와 달리 이 자리가 공짜다.
+# ⚠ **여기서 묻는 자는 `winget list` 가 아니라 `--version` 이다.** 데스크탑 갈래는 GUI 라 PATH 로
+#   못 재서 winget 의 목록에 묻지만(위 `Test-DesktopApp`), CLI 는 **사람이 쓸 이름이 실제로 서는가**가
+#   판정이다. 둘은 다른 명제다 — winget 이 「깔았다」 해도 그 이름이 PATH 에 안 서면 못 쓴다.
+# ⚠ **올리기가 조용히 지나가는 자리가 있다** — 옛 벤더 스크립트로 깐 기계의 `agy` 는 winget 이
+#   모른다. 그때 `--version` 은 서므로 「있음」으로 지나가고 `winget upgrade` 는 아무것도 안 한다.
+#   **그것을 실패로 안 찍는다**: 도구는 멀쩡히 서 있고, 걷어낼지는 사람이 정할 일이다.
+function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
+  if (Test-Runs $Cmd '--version') {
+    if (-not $NoUpgrade -and -not $noWinget) {
+      $ul = [IO.Path]::GetTempFileName()
+      Invoke-Logged 'winget' (@('upgrade','--id',$Id) + $WG) $ul | Out-Null
+      Remove-Item $ul -ErrorAction SilentlyContinue
+    }
+    Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"; return
+  }
+  if ($noWinget) {
+    Write-Host "  ! winget 이 없어 $Label 를 못 깐다" -ForegroundColor Red
+    $Fails.Add("$Label (winget 이 없다)")
     return
   }
-  $sl = [IO.Path]::GetTempFileName()
-  $rc = Invoke-Logged 'powershell' @('-NoProfile','-ExecutionPolicy','Bypass','-File',$ps1) $sl
-  Remove-Item -LiteralPath $ps1 -ErrorAction SilentlyContinue
-  # ⚠ **깐 직후에는 이 창이 그 자리를 모른다** — 제 설치본이 심은 PATH 는 레지스트리에만 있다.
+  Write-Host "  $Label 설치중 … (winget · $Id)"
+  $wl = [IO.Path]::GetTempFileName()
+  $rc = Invoke-Logged 'winget' (@('install','--id',$Id) + $WG) $wl
+  # ⚠ **깐 직후에는 이 창이 그 자리를 모른다** — winget 이 portable 을 심으면서 손댄 PATH 는
+  #   레지스트리에만 있다(실측: 이 기계의 사용자 PATH 에 winget 이 심은 자리가 셋 서 있다).
   Update-RuntimePath
   if (Test-Runs $Cmd '--version') {
     Write-Host "  $Label — 깔았다 ($(Get-Ver $Cmd '--version'))" -ForegroundColor Green
   } else {
     # ⚠ **「됐다는데 안 잡힌다」를 「안 됐다」로 안 적는다** — 다음에 어디를 팔지가 갈린다.
+    #   이 갈래가 winget 이 PATH 를 안 들어 준 자리를 잡는 자다.
     Write-Host "  ! $Label — 설치가 $rc 로 끝났는데 $Cmd 가 안 잡힌다 — 뱉은 끝 줄:" -ForegroundColor Red
-    Show-Log $sl
-    Write-Host "     손으로 재려면:  irm $Url | iex"
+    Show-Log $wl
+    Write-Host "     새 터미널에서 다시 보고, 그래도 없으면:  winget install --id $Id --source winget"
     $Fails.Add("CLI ($Label)")
   }
-  Remove-Item $sl -ErrorAction SilentlyContinue
+  Remove-Item $wl -ErrorAction SilentlyContinue
 }
 
 Write-Elapsed '[2/8] VS Code 확장'
@@ -1540,8 +1555,8 @@ Write-Host '[3/8] CLI' -ForegroundColor Cyan
 $CliPicks = @($Clis | Where-Object { $PickKeys -contains $_.Key })
 if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
 foreach ($c in $CliPicks) {
-  if ($c.Via -eq 'script') { Install-ScriptCli $c.Url $c.Cmd $c.Label }
-  else                     { Install-NpmCli   $c.Pkg $c.Cmd $c.Label }
+  if ($c.Via -eq 'winget') { Install-WingetCli $c.Id  $c.Cmd $c.Label }
+  else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label }
 }
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
 #   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
