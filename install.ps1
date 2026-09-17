@@ -331,7 +331,16 @@ $ModelPickerOnly = $true
 #   배선 없이 물으면 이미 깔린 것도 「없음」이 나와 재설치로 샌다. 그래서 묻기 전에도,
 #   설치 직후에도 다시 태운다.
 function Add-ToPath([string]$Dir) {
-  if (-not $Dir -or -not (Test-Path -LiteralPath $Dir)) { return }
+  if (-not $Dir) { return }
+  # ⚠ **묻는 것부터 거절당하는 자리가 기계 PATH 에 섞여 있다.** 윈도우가 SYSTEM 프로필 아래에도
+  #   `…\config\systemprofile\AppData\Local\Microsoft\WindowsApps` 를 두는데, 일반 사용자로는
+  #   **있는지 묻는 `Test-Path` 가 UnauthorizedAccessException 을 던진다.** 이 파일 머리의
+  #   `$ErrorActionPreference = 'Stop'` 아래에서 그것은 곧 **설치 전체의 죽음**이다 — 그리고
+  #   이 함수는 배선 칸이라 **아무것도 묻기 전에** 걸려, 사람은 첫 화면에서 빨간 글만 보고 끝난다
+  #   (실측 2026-09-17 집 PC · 기계 PATH 12번째 줄).
+  # ⚠ **여기서 「못 읽는 것」과 「없는 것」을 가르지 않는다** — 둘 다 답이 같다: PATH 에 안 더한다.
+  #   가를 값이 없는 자리에서 가르려 들면 예외만 늘고 얻는 것이 없다.
+  try { if (-not (Test-Path -LiteralPath $Dir -ErrorAction Stop)) { return } } catch { return }
   if (($env:PATH -split ';') -contains $Dir) { return }   # 여러 번 불려도 PATH 가 안 분다
   $env:PATH = "$Dir;$env:PATH"
 }
