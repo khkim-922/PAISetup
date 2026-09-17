@@ -233,9 +233,18 @@ $DesktopApps = @(
   #   사람이 누르는 [다운로드] 단추가 주는 것도 이 스텁이라 **공식 길이기도 하다.**
   # ⚠ **깔린 것을 올리는 길은 이 스텁으로도 막힌다** — 갱신은 윈도우 업데이트를 타는데 그쪽이
   #   끊긴다(`0x80072EFD`). 깔기는 되고 올리기는 안 되는 것이라, 없으면 깔고 있으면 둔다.
+  # ⚠ **길을 둘 든다 — 두 길이 지는 자리가 엇갈린다**(실측 2026-09-17).
+  #     · winget msstore — 사내 ❌(`0x8a15005e`) · 집 ✅ 조용히 깐다(종료 0)
+  #     · 스토어 스텁     — 사내 ✅ 조용히 깐다(97초) · 집 ❌ **스토어 창으로 넘기고 빠진다**
+  #   스텁이 집에서도 조용한 줄 알았던 것은 **스토어가 막힌 회선에서만 재 봤기** 때문이다 —
+  #   막힌 데서는 넘길 곳이 없어 제가 깐다. 열린 데서는 넘긴다. 그래서 앞길을 winget 으로 두고
+  #   **지면 스텁으로 간다**: 흔한 갈래를 앞이 막고 남는 갈래를 뒤가 든다.
+  # ⚠ **올리기는 안 한다**(`NoSelfUpgrade`) — 스토어 앱 갱신은 윈도우 업데이트를 타는데 사내에서
+  #   그쪽이 끊긴다(`0x80072EFD`). 깔기는 되고 올리기는 안 되는 것이라 없으면 깔고 있으면 둔다.
   @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'ChatGPT'
-     Via = 'setup';  SilentArgs = @('/S')
-     Url = 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS' }
+     Via = 'winget'; Id = '9PLM9XGG6VKS'; Source = 'msstore'; NoSelfUpgrade = $true
+     Fallback = @{ Via = 'setup'; SilentArgs = @('/S')
+                   Url = 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS' } }
   # ⚠ **Gemini 데스크탑은 이 표에 없다 — 뺐다(2026-09-17).** 이 회선에서 **두 번 다 졌고 끊기는
   #   자리가 같다**: 구글 태그 서버의 스텁 11.8MB 는 다 받아지는데, 그 스텁이 **알맹이를 받으러
   #   갈 때** 끊긴다(실측 ① 갱신 요청이 `200` 에 차단 안내 HTML · ② 종료 `-2147012866` =
@@ -1328,13 +1337,14 @@ function Test-DesktopApp($A) {
 function Install-DesktopApp($A) {
   Write-Host ''
   Write-Host "  $($A.Label)" -ForegroundColor Cyan
-  if ($A.Via -eq 'winget' -and $noWinget) {
+  # ⚠ **뒷길이 있으면 winget 이 없다고 여기서 끝내지 않는다** — 뒷길은 winget 을 안 탄다.
+  if ($A.Via -eq 'winget' -and $noWinget -and -not $A.Fallback) {
     Write-Host '  ! winget 이 없어 못 깐다' -ForegroundColor Red
     $script:Fails.Add("$($A.Label) (winget 이 없다)")
     return
   }
   if (Test-DesktopApp $A) {
-    if (-not $NoUpgrade -and $A.Via -eq 'winget') {
+    if (-not $NoUpgrade -and $A.Via -eq 'winget' -and -not $A.NoSelfUpgrade) {
       $ul = [IO.Path]::GetTempFileName()
       Invoke-Logged 'winget' (@('upgrade','--id',$A.Id,'--source',$A.Source) + $WGOpts) $ul | Out-Null
       Remove-Item $ul -ErrorAction SilentlyContinue
@@ -1342,20 +1352,29 @@ function Install-DesktopApp($A) {
     Write-Host '  있음'
     return
   }
-  $al = [IO.Path]::GetTempFileName()
+  # 길이 둘일 수 있다 — 앞길부터, 지면 뒷길. 뒷길은 제 몫(`Via`·`Url`·`SilentArgs`)만 들고
+  # 이름 둘(`App`·`Label`)은 앞길에서 물려받는다.
+  $ways = @($A)
+  if ($A.Fallback) { $ways += (@{ App = $A.App; Label = $A.Label } + $A.Fallback) }
+
+  $al = $null
   $rc = $null
-  if ($A.Via -eq 'winget') {
-    $rc = Invoke-Logged 'winget' (@('install','--id',$A.Id,'--source',$A.Source) + $WGOpts) $al
-  } else {
+  foreach ($W in $ways) {
+   if ($al) { Remove-Item $al -ErrorAction SilentlyContinue }
+   $al = [IO.Path]::GetTempFileName()
+   if ($W.Via -eq 'winget') {
+    if ($noWinget) { Write-Host '      · winget 이 없다 — 다음 길로'; continue }
+    $rc = Invoke-Logged 'winget' (@('install','--id',$W.Id,'--source',$W.Source) + $WGOpts) $al
+   } else {
     # ⚠ **받는 자리와 도는 자리를 가른다.** 못 받은 것과 받았는데 진 것은 다른 명제이고,
     #   섞으면 회선이 막은 자리에서 「설치가 실패했다」만 남는다.
-    $exe = Join-Path ([IO.Path]::GetTempPath()) ("{0}Setup.exe" -f $A.App)
+    $exe = Join-Path ([IO.Path]::GetTempPath()) ("{0}Setup.exe" -f $W.App)
     try {
       # ⚠ **주소의 끝마디가 아니라 받아 놓을 파일 이름을 댄다.** 주소가 파일 이름으로 끝나지
       #   않는 갈래가 있어(스토어 스텁은 제품 번호로 끝난다) 끝마디를 대면 `9PLM9XGG6VKS` 가
       #   찍힌다 — 받는 사람에게 아무 뜻이 없다.
       Write-Host ('      · 받는다 — {0}' -f (Split-Path $exe -Leaf))
-      Get-Download $A.Url $exe
+      Get-Download $W.Url $exe
     } catch {
       Write-Host '  ! 설치본을 못 받았다' -ForegroundColor Red
       Say-Why $_
@@ -1363,12 +1382,22 @@ function Install-DesktopApp($A) {
       Remove-Item $al -ErrorAction SilentlyContinue
       return
     }
-    $pr = Start-Process -FilePath $exe -ArgumentList $A.SilentArgs -PassThru -Wait
+    $pr = Start-Process -FilePath $exe -ArgumentList $W.SilentArgs -PassThru -Wait
     $rc = $pr.ExitCode
     Remove-Item $exe -ErrorAction SilentlyContinue
+   }
+   if (Test-DesktopApp $A) { break }
+   if ($W -ne $ways[-1]) { Write-Host ('      · 이 길이 졌다 (낸 값 {0}) — 다음 길로' -f $rc) }
   }
   if (Test-DesktopApp $A) {
     Write-Host '  깔았다' -ForegroundColor Green
+  } elseif ($rc -eq 0) {
+    # ⚠ **종료 0 인데 앱이 없다 = 설치본이 제 일을 남에게 넘긴 것이다.** 스토어 스텁이 스토어
+    #   창을 띄우고 바로 빠지는 갈래가 그렇다(실측 2026-09-17 집 PC). 이것을 「설치 실패」로
+    #   찍으면 **거짓말이고**(설치본은 제 일을 했다), 사람이 눌러야 할 일 때문에 설치가 빨갛게
+    #   끝난다. 진짜 실패는 0 이 아닌 값을 낸다 — 그 하나가 가르는 자다.
+    Write-Host '  · 창이 열렸다 — 거기서 [다운로드]를 누르면 깔린다' -ForegroundColor Yellow
+    Write-Host '     설치기는 그것을 못 기다린다(넘긴 프로세스가 이미 끝났다). 깔린 뒤 다시 누르면 「있음」으로 지나간다.'
   } else {
     Write-Host ('  ! 설치 실패 — 낸 값 {0}' -f $rc) -ForegroundColor Red
     # 설치본이 제 로그를 남기는 갈래면 그 끝 줄을 댄다 — 회선이 막은 자리에서는 **막았다는
