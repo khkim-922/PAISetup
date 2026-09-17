@@ -402,10 +402,11 @@ function Update-RuntimePath {
     Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag\Scripts"
   }
   Add-ToPath "$env:APPDATA\npm"
-  # ⚠ **`agy` 자리는 여기 안 적는다.** 벤더가 제 설치본으로 `%LOCALAPPDATA%\agy\bin` 에 두고
-  #   **사용자 PATH 에 제 손으로 넣는다** — 위 레지스트리 읽기가 그것을 태운다. 이름으로 박으면
-  #   벤더가 자리를 옮길 때 조용히 어긋나고, **확장이 따로 둔 사본**(`~/.gemini/bin`)을 박으면
-  #   그쪽이 앞에 서서 **진짜 CLI 를 가린다**(실측 2026-09-17 — 둘은 같은 크기의 다른 파일이다).
+  # ⚠ **`agy` 자리는 여기 안 적는다.** winget 이 portable 을 깔면서 **제 자리를 사용자 PATH 에
+  #   제 손으로 넣는다** — 위 레지스트리 읽기가 그것을 태운다. 이름으로 박으면 저쪽이 자리를
+  #   옮길 때 조용히 어긋나고(폴더 이름에 소스 해시가 박혀 있다), **확장이 따로 둔 사본**
+  #   (`~/.gemini/bin`)을 박으면 그쪽이 앞에 서서 **진짜 CLI 를 가린다**(실측 2026-09-17 —
+  #   둘은 같은 크기의 다른 파일이다).
 }
 
 # ⚠ **존재로 묻지 않고 불러 본다.** 윈도우는 `WindowsApps\python` 에 스토어로 보내는
