@@ -1126,7 +1126,17 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 #   제미나이의 **설정 파일**과는 별개다. 그래서 제미나이를 끈 자리에서도 이것은 선다.
 $wantAgy    = [bool]($inside -and ($PickKeys -contains 'antigravity'))
 # 회사 키의 다른 이름 표(`$KeyAliases`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
-$wantNeed = @{ codex = $wantCodex; gemini = $wantGemini }
+# ⚠ **`gemini` 칸이 안티그래비티도 든다 — 그 제품이 무는 키가 같은 이름이다.** 위 `$wantAgy`
+#   곁말대로 안티그래비티는 제미나이 **설정 파일**과는 별개지만 **환경변수는 같은 것을 문다.**
+#   옛 판은 이 칸이 `$wantGemini` 뿐이라, 제미나이를 끄고 안티그래비티만 켠 자리에서
+#   `modelProvider: "gemini"` 는 써지는데 **그 줄이 무는 `GEMINI_API_KEY` 를 아무도 안 심었다**
+#   — 실측 2026-09-17 회사 VDI: `agy` 가 «GEMINI_API_KEY environment variable is not set» 으로
+#   안 떴다. 곁말은 「그 둘은 자리 값에서 따로 심긴다」며 넘겼는데, 그 「자리 값」은 세션 훅의
+#   `secrets.d/<자리>.env` 라 **설치기만 돌린 기계에는 없다.**
+# ⚠ **이 한 칸이 세 자리를 문다** — 심는 문(`$KeyAliases` 고리) · `GOOGLE_API_KEY` 충돌 경고 ·
+#   끝 검증. 그래서 재는 자를 따로 안 고친다: **재는 자는 이미 옳게 쓰여 있었고 같은 조건에
+#   묶여 있었을 뿐이다.** 조건이 공유 지점이라 거기 하나만 고친다.
+$wantNeed = @{ codex = $wantCodex; gemini = ($wantGemini -or $wantAgy) }
 # ── 프록시가 밖에 남기는 자리 둘 — **이름은 여기 한 자리다** ─────────────────────
 # ⚠ **심는 자와 걷는 자가 같은 이름을 봐야 한다.** 아래 5‴ 칸이 이 둘을 만들고, 사외로 갈린
 #   판(5⁵ 칸)이 그것을 걷는다 — 두 자리에 글자를 따로 박으면 한쪽만 고쳐지는 날 **걷는 손이
