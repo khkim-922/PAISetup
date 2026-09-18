@@ -3123,12 +3123,14 @@ if (Test-Path -LiteralPath $argsFile) {
 #   도는데, 그 아래에서는 `2>&1` 로 넘긴 자식의 오류 줄이 **로그에 한 줄도 안 남는다**(실측).
 #   조용히 실패한 설치가 「완료」 한 줄로만 끝나는 자리라, 여기만 말하게 열어 둔다.
 Log "install.ps1 실행: $($versionDirs[0].Name)  $($extra -join ' ')"
-$prevEap = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra 2>&1 |
-  ForEach-Object { Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8 }
+$logTmp = [IO.Path]::GetTempFileName()
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra *> $logTmp
 $rc = $LASTEXITCODE
-$ErrorActionPreference = $prevEap
+if (Test-Path -LiteralPath $logTmp) {
+  Get-Content -LiteralPath $logTmp -Encoding UTF8 -ErrorAction SilentlyContinue |
+    ForEach-Object { Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8 }
+  Remove-Item -LiteralPath $logTmp -Force -ErrorAction SilentlyContinue
+}
 Log "=== PAISetup 자동 실행 완료 (코드 $rc) ==="
 
 try {
