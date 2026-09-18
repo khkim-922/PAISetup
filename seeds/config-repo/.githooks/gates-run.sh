@@ -32,9 +32,11 @@
 #   문체에서 자연스럽다(선언에 주석이 빼곡하고, 파워셸의 `>` 는 BOM 을 붙인다).
 gate_list() {
     [ -f "$2" ] || return 0
-    # BOM 은 awk 에 넣기 전에 걷는다 — 8진 이스케이프 해석이 awk 구현마다 달라서다.
-    sed -e "1s/^$(printf '\357\273\277')//" -e 's/\r$//' "$2" | awk -v sec="$1" '
+    # BOM·CRLF 정리를 awk 안에서 같이 한다 — 선언마다 sed 프로세스를 따로 띄우지 않는다.
+    awk -v sec="$1" -v bom="$(printf '\357\273\277')" '
         {
+            if (NR == 1 && index($0, bom) == 1) $0 = substr($0, length(bom) + 1)
+            sub(/\r$/, "", $0)
             line = $0
             sub(/[[:space:]]*#.*$/, "", line)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
@@ -45,7 +47,7 @@ gate_list() {
         }
         !insec { next }
         line != "" { print line }
-    '
+    ' "$2"
 }
 
 # run_gates <절> [조각에 넘길 인자…]
@@ -70,8 +72,7 @@ run_gates() {
     # ⚠ **목록을 인용 없는 확장으로 펴지 않는다.** `for _g in $(…)` 는 낱말 분리와 파일 이름
     #   확장을 같이 받아, 이름에 공백이 들면 두 조각을 찾다 막고 `*` 한 줄은 저장소 뿌리의
     #   파일 이름으로 부푼다 — 오타가 「조각이 없다」로 나와 배포 사고처럼 보인다.
-    _list="$(mktemp)" || return 1
-    gate_list "$_stage" "$_conf" > "$_list"
+    _list="$(gate_list "$_stage" "$_conf")"
     while IFS= read -r _g; do
         [ -n "$_g" ] || continue
         _f="$PROJECT_DIR/.githooks/gates.d/$_g.sh"
@@ -88,8 +89,9 @@ run_gates() {
             2) _cant="$_cant $_g" ;;
             *) _fail=1 ;;
         esac
-    done < "$_list"
-    rm -f "$_list"
+    done <<EOF
+$_list
+EOF
 
     # 못 잰 것은 초록 옆에 찍는다 — 줄이려고 두는 목록이지 채우려고 두는 것이 아니다.
     # ⚠ 까닭은 조각이 이미 제 줄로 냈다 — 여기는 **목록**만 든다. 러너가 까닭을 짐작해 적으면

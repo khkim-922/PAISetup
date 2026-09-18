@@ -269,19 +269,32 @@ ver_num() {  # ver_num <"3.12"> — 선언의 바닥 문자열을 같은 자로.
 # ── 선언 파서 — sh 순정. [절] + KEY = VALUE, '#' 주석, \r 방어(CRLF 체크아웃 대비) ──
 decl_sections() {
   [ -f "$1" ] || return 0
-  sed -e 's/\r$//' "$1" | awk '/^\[[^]]+\][[:space:]]*$/ { gsub(/[][]/, ""); gsub(/[[:space:]]+$/, ""); print }'
+  # CRLF 정리는 awk 안에서 같이 한다 — 선언 하나를 읽을 때 sed 프로세스를 따로 띄우지 않는다.
+  awk '{
+         sub(/\r$/, "", $0)
+         if ($0 ~ /^\[[^]]+\][[:space:]]*$/) {
+           line = $0
+           gsub(/[][]/, "", line)
+           gsub(/[[:space:]]+$/, "", line)
+           print line
+         }
+       }' "$1"
 }
 decl_get() {  # decl_get <파일> <절> <키>
   [ -f "$1" ] || return 0
-  sed -e 's/\r$//' "$1" | awk -v sec="$2" -v key="$3" '
-    /^\[/ { s = $0; gsub(/[][]/, "", s); gsub(/[[:space:]]+$/, "", s); insec = (s == sec); next }
+  awk -v sec="$2" -v key="$3" '
+    {
+      line = $0
+      sub(/\r$/, "", line)
+    }
+    line ~ /^\[/ { s = line; gsub(/[][]/, "", s); gsub(/[[:space:]]+$/, "", s); insec = (s == sec); next }
     insec {
-      line = $0; sub(/[[:space:]]*#.*$/, "", line)
+      sub(/[[:space:]]*#.*$/, "", line)
       if (line ~ "^"key"[[:space:]]*=") {
         sub(/^[^=]*=[[:space:]]*/, "", line); sub(/[[:space:]]+$/, "", line)
         print line; exit
       }
-    }'
+    }' "$1"
 }
 
 # ── 프로브 — 유한 4갈래, 전부 실행형. 새 갈래가 필요할 때만 이 함수가 는다 ──
@@ -535,29 +548,74 @@ conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지
 # `outside` · `home`)이고 `$_SITE`, 그 파일은 `$_SITE_FILE` 에 선다.
 # ⚠ **묻는 자가 있을 때만 잰다.** 프로브는 안 닿는 자리에서 3초를 무는데, 아무도 자리를 안 묻는
 #   판에서는 그 3초가 순수한 손해다. 한 번 잰 답은 들고 다시 안 잰다 — 부르는 자가 둘이다.
-_SITE=''; _SITE_FILE=''; _SITE_DONE=''
+_SITE=''; _SITE_FILE=''; _SITE_MODE=''; _SITE_DONE=''
+_site_meta() {
+  awk '
+    {
+      line = $0
+      gsub(/\r/, "", line)
+      if (line ~ /^#[[:space:]]*site-default[[:space:]]*=/ && !seen_default) {
+        sub(/^#[[:space:]]*site-default[[:space:]]*=[[:space:]]*/, "", line)
+        defval = line; seen_default = 1
+      } else if (line ~ /^#[[:space:]]*site-probe[[:space:]]*=/ && !seen_probe) {
+        sub(/^#[[:space:]]*site-probe[[:space:]]*=[[:space:]]*/, "", line)
+        sub(/[[:space:]]*$/, "", line)
+        probe = line; seen_probe = 1
+      } else if (line ~ /^#[[:space:]]*site-path[[:space:]]*=/ && !seen_path) {
+        sub(/^#[[:space:]]*site-path[[:space:]]*=[[:space:]]*/, "", line)
+        sub(/[[:space:]]*$/, "", line)
+        path = line; seen_path = 1
+      } else if (line ~ /^#[[:space:]]*home-settings[[:space:]]*=/ && !seen_mode) {
+        sub(/^#[[:space:]]*home-settings[[:space:]]*=[[:space:]]*/, "", line)
+        sub(/[[:space:]]*$/, "", line)
+        mode = line; seen_mode = 1
+      }
+    }
+    END {
+      printf "%s\n%s\n%s\n%s\n", defval, probe, path, mode
+    }
+  ' "$1"
+}
 _site_of() {
   [ -n "$_SITE_DONE" ] && return 0
   _SITE_DONE=1
-  _sf=''; _sd=''
+  _sf=''; _sd=''; _sp=''
   for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
     [ -e "$_f" ] || continue
-    case "$(sed -n 's/^#[[:space:]]*site-default[[:space:]]*=[[:space:]]*//p' "$_f" | head -1)" in *yes*) _sd="$_f" ;; esac
-    [ -n "$_sf" ] && continue
-    _probe="$(sed -n 's/^#[[:space:]]*site-probe[[:space:]]*=[[:space:]]*//p' "$_f" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
-    [ -n "$_probe" ] || continue
-    timeout 3 bash -c "(exec 3<>/dev/tcp/${_probe%%:*}/${_probe#*:})" 2>/dev/null && _sf="$_f"
+    _default=''; _probe=''; _path=''; _mode=''
+    {
+      IFS= read -r _default
+      IFS= read -r _probe
+      IFS= read -r _path
+      IFS= read -r _mode
+    } <<EOF
+$(_site_meta "$_f")
+EOF
+    case "$_default" in *yes*) _sd="$_f" ;; esac
+    [ -n "$_sf" ] || {
+      [ -n "$_probe" ] &&
+        timeout 3 bash -c "(exec 3<>/dev/tcp/${_probe%%:*}/${_probe#*:})" 2>/dev/null &&
+        _sf="$_f"
+    }
+    [ -n "$_sp" ] 2>/dev/null || {
+      [ -n "$_path" ] && [ -d "$_path" ] && _sp="$_f"
+    }
+    [ -n "$_sf" ] || [ -n "$_sp" ] || continue
   done
-  if [ -z "$_sf" ]; then
-    for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
-      [ -e "$_f" ] || continue
-      _p="$(sed -n 's/^#[[:space:]]*site-path[[:space:]]*=[[:space:]]*//p' "$_f" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
-      [ -n "$_p" ] && [ -d "$_p" ] && { _sf="$_f"; break; }
-    done
-  fi
-  [ -n "$_sf" ] || _sf="$_sd"
+  [ -n "$_sf" ] || _sf="${_sp:-$_sd}"
   _SITE_FILE="$_sf"
   [ -n "$_sf" ] && _SITE="$(basename "$_sf" .env)"
+  if [ -n "$_sf" ]; then
+    _default=''; _probe=''; _path=''; _SITE_MODE=''
+    {
+      IFS= read -r _default
+      IFS= read -r _probe
+      IFS= read -r _path
+      IFS= read -r _SITE_MODE
+    } <<EOF
+$(_site_meta "$_sf")
+EOF
+  fi
   return 0
 }
 
@@ -689,8 +747,7 @@ deploy_personal() {   # deploy_personal auto|install
     return 0
   fi
   _site_of
-  _mode=""
-  [ -n "$_SITE_FILE" ] && _mode="$(sed -n 's/^#[[:space:]]*home-settings[[:space:]]*=[[:space:]]*//p' "$_SITE_FILE" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
+  _mode="$_SITE_MODE"
   [ "$_mode" = overwrite ] || return 0
   # ⚠ **`hooks` 와 `env` 는 씨앗의 것이 아니라 기계가 심은 것이라 넘겨 준다** (0028 · 0030). 훅의 심는 명령은
   #   작업 루트 경로를 들어 PC 마다 다르고, env 는 설치기가 이 자리 값으로 방금 민 것이다. 지킬 수 없으면
