@@ -291,11 +291,13 @@ if ($noAsk) {
 $tKey = $null
 $defaultKey = [string]$Preset['ANTHROPIC_AUTH_TOKEN']
 if (-not $defaultKey) {
-  # ⚠ **기존에 이미 심긴 회사 키를 읽어온다** — 파일에 없어도 환경변수에 이미 있으면 사람이 다시 칠 까닭이 없다.
+  # ⚠ **이미 심긴 회사 키를 읽어 온다** — 파일에 없어도 환경에 있으면 다시 칠 까닭이 없다.
+  # ⚠ **같은 이름만 본다.** `OPENAI_API_KEY`·`GEMINI_API_KEY` 는 회사 키에서 **파생된 사본**
+  #   이지 진본이 아니라(몸통의 5″ 칸이 한 방향으로만 심는다), 거꾸로 읽으면 제 OpenAI 키를
+  #   넣어 둔 사람의 값이 이 칸에 들어온다 — 게다가 칸이 가려져 있어 **무엇이 찼는지 본인도
+  #   못 본다.** 몸통이 `GOOGLE_API_KEY` 에 대고 세운 「남의 값은 안 걷는다」와 같은 축이다.
   $defaultKey = [Environment]::GetEnvironmentVariable('ANTHROPIC_AUTH_TOKEN', 'User')
   if (-not $defaultKey) { $defaultKey = $env:ANTHROPIC_AUTH_TOKEN }
-  if (-not $defaultKey) { $defaultKey = [Environment]::GetEnvironmentVariable('OPENAI_API_KEY', 'User') }
-  if (-not $defaultKey) { $defaultKey = [Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'User') }
 }
 
 if (-not $noAsk) {
@@ -319,9 +321,13 @@ if (-not $offsite) {
   $lHint.Location = New-Object Drawing.Point(128, 86)
   $lHint.Size = New-Object Drawing.Size(444, 18)
   $lHint.ForeColor = [Drawing.Color]::DimGray
-  $lHint.Text = if ($defaultKey) { '주소와 API 키가 채워져 있습니다 — 바로 [설치 시작]을 누르면 됩니다.' }
-                elseif ($urlPreset) { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' }
-                else            { '사내면 주소와 키를 넣습니다.' }
+  # ⚠ **「채워져 있다」는 둘 다 찼을 때만 하는 말이다.** 주소 칸이 빈 채로 「바로 누르면
+  #   된다」고 하면, 그대로 누른 사람은 주소 없이 서서 **구독 로그인으로 깔리고 초록으로
+  #   끝난다** — 게이트웨이를 쓸 사람이 안 쓰게 된 것을 아무도 못 본다.
+  $lHint.Text = if ($defaultKey -and $urlPreset) { '주소와 API 키가 채워져 있습니다 — 바로 [설치 시작]을 누르면 됩니다.' }
+                elseif ($urlPreset)  { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' }
+                elseif ($defaultKey) { 'API 키는 이 기계에 있던 것을 넣었습니다 — 사내면 주소를 넣습니다.' }
+                else                 { '사내면 주소와 키를 넣습니다.' }
   $gV.Controls.Add($lHint)
 }
 
@@ -333,17 +339,26 @@ $F.Controls.Add($gO)
 
 $cCfg = New-Object Windows.Forms.CheckBox
 $cCfg.Text = '제작자의 Claude Code 규범 · 룰 · 스킬도 깝니다'
-$cCfg.Location = New-Object Drawing.Point(16, 126)
+# ⚠ **자리를 박지 않고 앱 줄만큼 민다.** 앱 줄이 없는 판(`-Describe` 가 한 줄도 안 낸 자리)에서
+#   박아 둔 126 은 **칸 높이 밖**이라, 그 판에서는 이 칸이 통째로 안 보인 채 기본값으로 돈다.
+$cCfg.Location = New-Object Drawing.Point(16, (48 + $appRow))
 $cCfg.Size = New-Object Drawing.Size(560, 22)
 $cCfg.Checked = [bool]$WithPersonalConfig
 $gO.Controls.Add($cCfg)
 
-# ⚠ **부팅 시 자동 실행** — 작업 스케줄러(PAISetup-AutoRun)로 최신 릴리스 및 환경 동기화를 무인 실행한다.
+# ⚠ **로그온할 때 자동 실행** — 작업 스케줄러(`PAISetup-AutoRun`)가 설치 몸통을 숨은 창으로
+#   다시 돌려 깔린 것을 최신으로 올리고 환경을 다시 맞춘다.
+# ⚠ **「최신 릴리스로 간다」고 적지 않는다.** 설치본 자체를 새 판으로 가는 일은 받은 파일을
+#   해시로 대조하고 사람이 「예」를 눌러야 서서, 이 창에만 있다 — 무인 실행이 드는 것은
+#   **제품들을 최신으로 두는 일**뿐이다. 글자가 실물보다 크면 그만큼이 조용한 거짓이 된다.
 $cAuto = New-Object Windows.Forms.CheckBox
-$cAuto.Text = '부팅할 때 백그라운드에서 자동으로 최신 상태를 유지합니다'
-$cAuto.Location = New-Object Drawing.Point(16, 150)
+$cAuto.Text = '로그온할 때 백그라운드에서 깔린 것을 최신으로 올리고 환경을 다시 맞춥니다'
+$cAuto.Location = New-Object Drawing.Point(16, (72 + $appRow))
 $cAuto.Size = New-Object Drawing.Size(560, 22)
-$hasAutoTask = [bool](Get-ScheduledTask -TaskName 'PAISetup-AutoRun' -ErrorAction SilentlyContinue)
+# ⚠ **못 묻는 것을 「없다」로 읽는다** — 스케줄러 모듈이 없는 판에서 나는 「그런 명령이 없다」는
+#   `-ErrorAction` 으로 안 막히고, 이 줄은 창이 뜨기 **전**이라 그대로 두면 창이 아예 안 뜬다.
+$hasAutoTask = $false
+try { $hasAutoTask = [bool](Get-ScheduledTask -TaskName 'PAISetup-AutoRun' -ErrorAction SilentlyContinue) } catch { }
 $autoDirective = Get-Directive 'autorun'
 $cAuto.Checked = $hasAutoTask -or ($autoDirective -eq 'yes')
 $gO.Controls.Add($cAuto)
@@ -1067,7 +1082,10 @@ $bClose.Add_Click({ $F.Close() })
 
 $F.Add_Shown({
   if ($script:upHandle) { $script:upTimer.Start() }
-  if ($tKey -and $tKey.Enabled -and -not $tKey.Text.Trim()) { $tKey.Focus() | Out-Null }
+  # ⚠ **빈 칸이 있으면 거기로 간다 — 주소 칸이 먼저다.** 키가 채워져 왔다고 곧장 버튼으로
+  #   보내면, 아직 비어 있는 주소 칸을 건너뛴 채 손이 [설치 시작] 위에 놓인다.
+  if ($tUrl -and $tUrl.Enabled -and -not $tUrl.Text.Trim())      { $tUrl.Focus() | Out-Null }
+  elseif ($tKey -and $tKey.Enabled -and -not $tKey.Text.Trim())  { $tKey.Focus() | Out-Null }
   else { $bGo.Focus() | Out-Null }
 })
 [void]$F.ShowDialog()

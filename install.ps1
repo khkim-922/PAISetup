@@ -57,8 +57,10 @@
 #   안 깔린다」는 조용한 꼴로만 보인다. 목록의 진본은 아래 `$Products` 하나다.
 # ⚠ `-Pick claude,codex` — **고른 제품만 깐다**(안 주면 `$Products` 표의 기본값). `-NoVsCode` 는
 #   VS Code 자체와 확장을 통째로 건너뛴다 — 데스크탑 앱만 쓸 사람의 자리다.
-# ⚠ `-AutoRun` / `-NoAutoRun` — 부팅할 때 작업 스케줄러로 무인 실행되어 최신 릴리스 및 환경을 유지한다.
-#   값 파일의 `#autorun = yes|no` 가 기본값을 든다.
+# ⚠ `-AutoRun` / `-NoAutoRun` — 로그온할 때 작업 스케줄러가 이 몸통을 숨은 창으로 다시 돌려
+#   **깔린 것을 최신으로 올리고 환경을 다시 맞춘다.** 값 파일의 `#autorun = yes|no` 가 기본값을
+#   든다. **설치본 자체를 새 릴리스로 갈지는 않는다** — 그 일은 사람이 보고 물러설 자리가
+#   있어야 서서, 설치 창에만 있다(맨 끝 칸 ⚠).
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
       [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun)
@@ -1788,13 +1790,17 @@ foreach ($v in $Vars) {
   $val = $fromFile[$v.Name]
 
   # ⚠ **파일에 없으면 환경변수에 이미 심긴 값을 본다** — 사람이 매번 다시 칠 까닭이 없다.
-  if (-not $val -and $v.Gateway -and $useGateway) {
+  #   자동 실행(맨 끝 칸)이 키 없는 값 파일로 서는 것도 이 줄 덕이다.
+  # ⚠ **같은 이름만 본다 — 별칭은 안 본다.** `OPENAI_API_KEY`·`GEMINI_API_KEY` 는 회사 키에서
+  #   **파생된 사본**이지 진본이 아니다(아래 5″ 칸이 한 방향으로만 심는다). 거꾸로 읽으면
+  #   제 OpenAI 키를 넣어 둔 사람의 값이 회사 키 자리에 심기는데, 칸이 가려져 있어
+  #   **무엇이 들어갔는지 아무도 못 본다.** 이 파일이 `GOOGLE_API_KEY` 에 대고 세운
+  #   「남의 값은 안 걷는다 · 근거가 안 서면 말만 한다」와 같은 축이다.
+  # ⚠ **주소는 여기까지 못 온다.** 주소가 비면 위 칸이 이미 `$useGateway` 를 내려놓으므로,
+  #   `Gateway` 로 물으면 영영 안 도는 줄이 된다 — 묻는 것은 **비밀 하나**다.
+  if (-not $val -and $v.Secret -and $useGateway) {
     $envVal = [Environment]::GetEnvironmentVariable($v.Name, 'User')
     if (-not $envVal) { $envVal = [Environment]::GetEnvironmentVariable($v.Name, 'Process') }
-    if ($v.Secret -and -not $envVal) {
-      $envVal = [Environment]::GetEnvironmentVariable('OPENAI_API_KEY', 'User')
-      if (-not $envVal) { $envVal = [Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'User') }
-    }
     if ($envVal) {
       $val = $envVal
       Write-Host "  $($v.Name) — 환경변수에 있는 값을 쓴다" -ForegroundColor Cyan
@@ -2996,8 +3002,21 @@ if (Test-Path -LiteralPath $launcher) {
 }
 
 # ── 부팅 시 자동 실행 (작업 스케줄러) ─────────────────────────────────────────
-# ⚠ **부팅할 때 백그라운드에서 최신 릴리스 확인 및 환경 동기화를 돌린다.**
-#   `-AutoRun` 이나 값 파일의 `#autorun = yes` 가 켜고, `-NoAutoRun` 이나 `no` 가 걷는다.
+# ⚠ **로그온할 때 이 몸통을 백그라운드로 다시 돌린다** — 깔린 것을 최신으로 올리고 환경을
+#   다시 맞춘다. `-AutoRun` 이나 값 파일의 `#autorun = yes` 가 켜고, `-NoAutoRun` 이나 `no` 가 걷는다.
+# ⚠ **설치본 자체를 새 릴리스로 갈지는 않는다 — 그렇게 적지도 않는다.** 그 일은 받은 exe 를
+#   릴리스에 오른 해시와 대조하고 띄우는 것이라(설치 창의 「새 판이 있습니다」 물음) 대조가
+#   틀어졌을 때 **사람이 보고 물러설 자리가 있어야** 선다. 숨긴 창에서 무인으로 돌리면 그
+#   자리가 없다. 여기가 드는 것은 **이 판이 아는 제품들을 최신으로 두는 일**뿐이다.
+# ⚠ **`Get-ScheduledTask` 를 맨손으로 안 부른다.** 이 파일은 `$ErrorActionPreference = 'Stop'`
+#   아래 도는데, 스케줄러 모듈이 없는 판에서 나는 「그런 명령이 없다」는 `-ErrorAction
+#   SilentlyContinue` 로 안 막힌다 — 그러면 자동 실행 한 칸 때문에 **설치가 통째로 죽는다.**
+#   못 묻는 것과 없는 것은 다른 명제지만, 이 칸이 둘로 할 일은 같다: 「없다」로 답하고 간다.
+function Test-AutoRunTask([string]$Name) {
+  try { return [bool](Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) }
+  catch { return $false }
+}
+
 $AutoRunTaskName = 'PAISetup-AutoRun'
 $autoDirective   = Read-Directive $EnvFile 'autorun'
 $wantAutoRun     = $null
@@ -3050,9 +3069,28 @@ if (-not (Test-Path -LiteralPath $targetEnv)) {
   $targetEnv = Join-Path $versionDirs[0].FullName 'install.env'
 }
 
-Log "install.ps1 실행: $($versionDirs[0].Name)"
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -NoUpgrade -EnvFile $targetEnv *>> $logFile
-Log "=== PAISetup 자동 실행 완료 ==="
+# 사람이 설치 때 고른 것 — 안 넘기면 껐던 제품이 매 로그온 표의 기본값으로 되살아난다.
+$extra    = @()
+$argsFile = Join-Path $setupRoot 'autorun.args'
+if (Test-Path -LiteralPath $argsFile) {
+  $extra = @(Get-Content -LiteralPath $argsFile -Encoding UTF8 | Where-Object { $_.Trim() })
+}
+
+# `-NoUpgrade` 를 안 준다 — 올리는 것이 이 자동 실행이 사는 까닭이다.
+# ⚠ **`*>>` 로 안 붙인다.** 그 리다이렉션은 제 인코딩(UTF-16)으로 쓰는데 위 `Log` 는 UTF-8 이라,
+#   한 파일에 두 인코딩이 섞여 **정작 중요한 설치 출력만 깨져 나온다** — 숨은 창으로 도는 일에
+#   로그가 유일한 창인데 그 창이 깨진다. 한 줄씩 받아 같은 자로 적는다.
+# ⚠ **받는 동안만 `Continue` 로 둔다.** 이 스크립트는 뒷정리가 안 죽게 `SilentlyContinue` 로
+#   도는데, 그 아래에서는 `2>&1` 로 넘긴 자식의 오류 줄이 **로그에 한 줄도 안 남는다**(실측).
+#   조용히 실패한 설치가 「완료」 한 줄로만 끝나는 자리라, 여기만 말하게 열어 둔다.
+Log "install.ps1 실행: $($versionDirs[0].Name)  $($extra -join ' ')"
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra 2>&1 |
+  ForEach-Object { Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8 }
+$rc = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+Log "=== PAISetup 자동 실행 완료 (코드 $rc) ==="
 
 try {
   $old = Get-ChildItem -Path $logDir -Filter "autorun-*.log" | Sort-Object LastWriteTime -Descending | Select-Object -Skip 15
@@ -3061,9 +3099,40 @@ try {
 '@
     [IO.File]::WriteAllText($autoScript, $autoScriptBody, [System.Text.Encoding]::UTF8)
 
+    # ⚠ **사람이 고른 것은 얼리고, 기계가 잰 것은 안 얼린다.** 이 사본은 매 로그온 되먹여지므로
+    #   설치 순간의 판정을 그대로 담으면 **그 한 번이 영구 선언이 된다.**
+    #   ⚠ `#site` 를 뺀다 — 자리는 기계가 재는 것이다. 그 줄은 몸통에서 프로브를 **제치므로**
+    #     (위 2 칸 「화면이 쟀다」), 박아 두면 사내에서 깔고 집에 간 기계가 안 서는 프록시
+    #     주소를 매 부팅 심고, 사외에서 깔고 회사에 온 기계는 게이트웨이 값을 매 부팅 걷는다.
+    #     `#site-probe` 는 같이 실려 가니 자동 실행이 그때그때 제 자리에서 다시 잰다.
+    #   ⚠ 회사 키도 뺀다 — 화면이 쓰는 임시 값 파일은 제 손으로 지우는데(설치 창) **이 사본은
+    #     아무도 안 지운다.** 평문 키가 기계에 영영 남을 까닭이 없다: 키는 이미 사용자 환경에
+    #     심겼고 위 4 칸이 그 이름을 읽으므로, 파일에 없어도 자동 실행이 선다.
     if ($EnvFile -and (Test-Path -LiteralPath $EnvFile)) {
-      $savedEnv = Join-Path $setupRoot 'install.env'
-      Copy-Item -LiteralPath $EnvFile -Destination $savedEnv -Force -ErrorAction SilentlyContinue
+      try {
+        $savedEnv   = Join-Path $setupRoot 'install.env'
+        $savedLines = @(Get-Content -LiteralPath $EnvFile -Encoding UTF8 | Where-Object {
+          ($_ -notmatch '^\s*#\s*site\s*=') -and ($_ -notmatch '^\s*ANTHROPIC_AUTH_TOKEN\s*=')
+        })
+        Set-Content -LiteralPath $savedEnv -Value $savedLines -Encoding UTF8
+      } catch {
+        Write-Host "  ! 자동 실행이 읽을 값 파일을 못 남겼다 — $(Say-Why $_)" -ForegroundColor Yellow
+      }
+    }
+
+    # ⚠ **고른 제품도 같이 남긴다.** 안 남기면 자동 실행이 `-Pick` 없이 돌아 **사람이 끈 제품을
+    #   표의 기본값으로 되살린다** — 설치 창이 「빈 값과 부재는 다른 명제다」로 막아 둔 바로 그
+    #   자리가 매 로그온 되돌아온다. 값 파일이 아니라 따로 두는 까닭은, 이것이 **자리 정책이
+    #   아니라 이 사람이 이 기계에서 고른 것**이라서다(`#desktop-app` 과 `-Pick` 이 갈리는 그 결).
+    try {
+      $autoArgs = @()
+      if ($Pick)               { $autoArgs += @('-Pick', $Pick) }
+      if ($NoVsCode)           { $autoArgs += '-NoVsCode' }
+      if ($NoDevTools)         { $autoArgs += '-NoDevTools' }
+      if ($WithPersonalConfig) { $autoArgs += '-WithPersonalConfig' }
+      Set-Content -LiteralPath (Join-Path $setupRoot 'autorun.args') -Value $autoArgs -Encoding UTF8
+    } catch {
+      Write-Host "  ! 자동 실행이 읽을 선택 파일을 못 남겼다 — $(Say-Why $_)" -ForegroundColor Yellow
     }
 
     try {
@@ -3083,8 +3152,13 @@ try {
     }
   } else {
     try {
-      if (Get-ScheduledTask -TaskName $AutoRunTaskName -ErrorAction SilentlyContinue) {
+      if (Test-AutoRunTask $AutoRunTaskName) {
         Unregister-ScheduledTask -TaskName $AutoRunTaskName -Confirm:$false -ErrorAction Stop
+        # 걷으면 저것이 읽던 것도 같이 걷는다 — 남겨 두면 다음에 켤 때 **옛 선택이 되살아난다.**
+        $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
+        foreach ($f in @('autorun.ps1', 'autorun.args')) {
+          Remove-Item -LiteralPath (Join-Path $setupRoot $f) -Force -ErrorAction SilentlyContinue
+        }
         Write-Host "  부팅 시 자동 실행 — 걷었다 (작업 스케줄러 · $AutoRunTaskName)" -ForegroundColor Green
       } else {
         Write-Host "  부팅 시 자동 실행 — 등록되어 있지 않다"
@@ -3216,7 +3290,7 @@ if ($useGateway) {
   }
 }
 if ($wantAutoRun -eq $true) {
-  $checks += @{ Name = "부팅 시 자동 실행 ($AutoRunTaskName)"; Ok = [bool](Get-ScheduledTask -TaskName $AutoRunTaskName -ErrorAction SilentlyContinue) }
+  $checks += @{ Name = "부팅 시 자동 실행 ($AutoRunTaskName)"; Ok = (Test-AutoRunTask $AutoRunTaskName) }
 }
 foreach ($c in $checks) {
   if ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
