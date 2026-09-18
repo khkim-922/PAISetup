@@ -1331,18 +1331,25 @@ foreach ($app in $Apps) {
 #   메뉴에 묻는다.
 
 # 있나 — **길마다 묻는 자가 다르다.** 종료코드를 판정으로 안 쓰는 것은 위 2 칸과 같은 결이다.
+$script:JustInstalledApps = @{}
 function Test-DesktopApp($A) {
+  # ⚠ **윈도우에 먼저 묻는다 — 스토어 꼴이든 예전 꼴이든 설치된 앱은 시작 메뉴에 선다.**
+  #   스토어 앱은 winget list 가 소스 인증서(0x8a15005e)나 인덱싱 지연으로 0 이 아닌 값을
+  #   내기 십상인데, 그것만 믿으면 앞길(winget)이 방금 깔았는데도 「실패」로 오판해 뒷길(스텁)로
+  #   넘어가 앱이 두 번 실행된다. 윈도우가 이미 알고 있으면 설치된 것이다.
+  try {
+    $found = [bool](@(Get-StartApps -ErrorAction Stop |
+                      Where-Object { $_.Name -like "*$($A.App)*" })[0])
+    if ($found) { return $true }
+  } catch { }
+
   if ($A.Via -eq 'winget') {
     $tl = [IO.Path]::GetTempFileName()
     $rc = Invoke-Logged 'winget' @('list','--id',$A.Id,'--source',$A.Source) $tl
     Remove-Item $tl -ErrorAction SilentlyContinue
     return ($rc -eq 0)
   }
-  # 제 설치본 갈래 — winget 이 모르는 앱이라 **윈도우에 묻는다.** 스토어 꼴이든 예전 꼴이든
-  # 같은 답을 내는 자다(까닭은 아래 「연다」 칸의 ⚠ 에 적혀 있다).
-  try { return [bool](@(Get-StartApps -ErrorAction Stop |
-                        Where-Object { $_.Name -like "*$($A.App)*" })[0]) }
-  catch { return $false }
+  return $false
 }
 
 # 깐다 — **실패를 우리가 분류하지 않는다.** 막히는 방식이 앱마다 다르고(소스 인증서 · 회선
@@ -1410,6 +1417,7 @@ function Install-DesktopApp($A) {
   }
   if (Test-DesktopApp $A) {
     Write-Host '  깔았다' -ForegroundColor Green
+    $script:JustInstalledApps[$A.App] = $true
   } elseif ($rc -eq 0) {
     # ⚠ **종료 0 인데 앱이 없다 = 설치본이 제 일을 남에게 넘긴 것이다.** 스토어 스텁이 스토어
     #   창을 띄우고 바로 빠지는 갈래가 그렇다(실측 2026-09-17 집 PC). 이것을 「설치 실패」로
@@ -3413,7 +3421,7 @@ function Find-DesktopApps {
     $fromId = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
               else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
     $procs = @($fromId, $want) | Where-Object { $_ } | Select-Object -Unique
-    $out += @{ Name = $label; AppId = $a.AppID; Proc = @($procs) }
+    $out += @{ Name = $label; AppId = $a.AppID; Proc = @($procs); App = $want }
   }
   return @($out)
 }
@@ -3549,6 +3557,20 @@ if ($NoLaunch) {
   if (-not $apps) {
     Write-Host '  ! 열 것을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
   } else {
+    # ⚠ **방금 설치된 앱은 인스톨러(스토어 스텁·Squirrel 등)가 설치 끝에 이미 스스로 띄웠다.**
+    #   여기서 또 띄우면 창이 두 번·세 번 중복으로 뜬다 — 사람이 방금 닫은 로그인 창이 또 뜬다.
+    #   방금 새로 깐 것은 이미 뜬 것으로 보고 중복 실행 대상에서 뺀다.
+    $newlyLaunched = @()
+    foreach ($a in $apps) {
+      if ($a.App -and $script:JustInstalledApps.ContainsKey($a.App)) {
+        $newlyLaunched += $a.Name
+      }
+    }
+    if ($newlyLaunched) {
+      Write-Host ('  ' + ($newlyLaunched -join ' · ') + ' — 설치 완료 후 이미 실행되었다') -ForegroundColor Green
+      $skip += $newlyLaunched
+    }
+
     # ⚠ **떠 있으면 안 띄운다.** 까닭이 둘이고, 둘 다 「돌던 것은 뒤에 온 것을 모른다」다.
     #   · **환경** — 창은 뜰 때 환경을 한 번 복사하고 그 뒤에 바뀐 것은 안 따라온다.
     #     VS Code 는 `code` 를 다시 불러도 **돌던 그 프로세스**가 창을 내므로 방금 심은 키를
@@ -3561,7 +3583,7 @@ if ($NoLaunch) {
     # ⚠ **떠 있는 것을 설치가 죽이지 않는다** — 저장 안 한 것이 날아간다. 끄는 것은 사람이 든다.
     # ⚠ **그리고 모아서 한 번만 묻는다.** 앱마다 물으면 **모달 창이 연달아** 뜬다 — 그것이
     #   「다 띄우면 정신없다」의 진짜 정체다. 묻는 값은 하나로 묶고 답은 다 같이 든다.
-    $up = @($apps | Where-Object { Test-AppUp $_ })
+    $up = @($apps | Where-Object { $skip -notcontains $_.Name -and (Test-AppUp $_) })
     if ($up) {
       $names = ($up | ForEach-Object { $_.Name }) -join ' · '
       Write-Host "  $names — 이미 떠 있다"
