@@ -57,9 +57,11 @@
 #   안 깔린다」는 조용한 꼴로만 보인다. 목록의 진본은 아래 `$Products` 하나다.
 # ⚠ `-Pick claude,codex` — **고른 제품만 깐다**(안 주면 `$Products` 표의 기본값). `-NoVsCode` 는
 #   VS Code 자체와 확장을 통째로 건너뛴다 — 데스크탑 앱만 쓸 사람의 자리다.
+# ⚠ `-AutoRun` / `-NoAutoRun` — 부팅할 때 작업 스케줄러로 무인 실행되어 최신 릴리스 및 환경을 유지한다.
+#   값 파일의 `#autorun = yes|no` 가 기본값을 든다.
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
-      [string]$Pick, [switch]$NoVsCode)
+      [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun)
 
 $ErrorActionPreference = 'Stop'
 
@@ -2944,6 +2946,106 @@ if (Test-Path -LiteralPath $launcher) {
   else { Write-Host '    ! 아이콘을 못 만들었다 — 설치에는 지장이 없다' -ForegroundColor Yellow }
 }
 
+# ── 부팅 시 자동 실행 (작업 스케줄러) ─────────────────────────────────────────
+# ⚠ **부팅할 때 백그라운드에서 최신 릴리스 확인 및 환경 동기화를 돌린다.**
+#   `-AutoRun` 이나 값 파일의 `#autorun = yes` 가 켜고, `-NoAutoRun` 이나 `no` 가 걷는다.
+$AutoRunTaskName = 'PAISetup-AutoRun'
+$autoDirective   = Read-Directive $EnvFile 'autorun'
+$wantAutoRun     = $null
+
+if ($AutoRun) { $wantAutoRun = $true }
+elseif ($NoAutoRun) { $wantAutoRun = $false }
+elseif ($autoDirective -eq 'yes') { $wantAutoRun = $true }
+elseif ($autoDirective -eq 'no')  { $wantAutoRun = $false }
+
+if ($null -ne $wantAutoRun) {
+  Write-Host ''
+  if ($wantAutoRun) {
+    $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
+    if (-not (Test-Path -LiteralPath $setupRoot)) { New-Item -ItemType Directory -Path $setupRoot -Force | Out-Null }
+    $autoScript = Join-Path $setupRoot 'autorun.ps1'
+
+    $autoScriptBody = @'
+$ErrorActionPreference = 'SilentlyContinue'
+$setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
+$logDir    = Join-Path $setupRoot 'logs'
+if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+$logFile   = Join-Path $logDir ("autorun-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".log")
+
+function Log([string]$msg) {
+  $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg
+  Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
+}
+
+Log "=== PAISetup 자동 실행 시작 ==="
+
+function Normalize-Version([string]$v) {
+  $v = ($v -replace '^[vV]', '').Trim()
+  $parts = $v -split '\.'
+  while ($parts.Count -lt 4) { $parts += '0' }
+  return [version]($parts[0..3] -join '.')
+}
+
+$versionDirs = @(Get-ChildItem -Path $setupRoot -Directory -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -match '^\d+(\.\d+)+' -and (Test-Path (Join-Path $_.FullName 'install.ps1')) } |
+  Sort-Object { Normalize-Version $_.Name } -Descending)
+
+if (-not $versionDirs) {
+  Log "! 설치본 폴더를 찾지 못했습니다"
+  exit 1
+}
+
+$targetEngine = Join-Path $versionDirs[0].FullName 'install.ps1'
+$targetEnv    = Join-Path $setupRoot 'install.env'
+if (-not (Test-Path -LiteralPath $targetEnv)) {
+  $targetEnv = Join-Path $versionDirs[0].FullName 'install.env'
+}
+
+Log "install.ps1 실행: $($versionDirs[0].Name)"
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -NoUpgrade -EnvFile $targetEnv *>> $logFile
+Log "=== PAISetup 자동 실행 완료 ==="
+
+try {
+  $old = Get-ChildItem -Path $logDir -Filter "autorun-*.log" | Sort-Object LastWriteTime -Descending | Select-Object -Skip 15
+  foreach ($f in $old) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue }
+} catch { }
+'@
+    [IO.File]::WriteAllText($autoScript, $autoScriptBody, [System.Text.Encoding]::UTF8)
+
+    if ($EnvFile -and (Test-Path -LiteralPath $EnvFile)) {
+      $savedEnv = Join-Path $setupRoot 'install.env'
+      Copy-Item -LiteralPath $EnvFile -Destination $savedEnv -Force -ErrorAction SilentlyContinue
+    }
+
+    try {
+      $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+                  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$autoScript`""
+      $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+      $trigger.Delay = "PT1M"
+      $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+      $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+
+      Register-ScheduledTask -TaskName $AutoRunTaskName -Action $action -Trigger $trigger `
+                             -Principal $principal -Settings $settings `
+                             -Description "PAISetup background auto-update & environment sync on logon" -Force | Out-Null
+      Write-Host "  부팅 시 자동 실행 — 걸었다 (작업 스케줄러 · $AutoRunTaskName)" -ForegroundColor Green
+    } catch {
+      Write-Host "  ! 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
+    }
+  } else {
+    try {
+      if (Get-ScheduledTask -TaskName $AutoRunTaskName -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $AutoRunTaskName -Confirm:$false -ErrorAction Stop
+        Write-Host "  부팅 시 자동 실행 — 걷었다 (작업 스케줄러 · $AutoRunTaskName)" -ForegroundColor Green
+      } else {
+        Write-Host "  부팅 시 자동 실행 — 등록되어 있지 않다"
+      }
+    } catch {
+      Write-Host "  ! 자동 실행 스케줄러 등록 해제 실패 — $(Say-Why $_)" -ForegroundColor Yellow
+    }
+  }
+}
+
 # 나른 것을 **동봉본과 견주는 자** — 7 칸과 6 칸이 같은 자를 쓴다.
 # ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
 #   빈 폴더를 [O] 로 찍으면 「깔렸는데 안 든 것」이 성공으로 보고된다. 그래서 **파일 수를 센다.**
@@ -3063,6 +3165,9 @@ if ($useGateway) {
     if (-not (Test-ProxyValue $fromFile[$k])) { continue }
     $checks += @{ Name = "$k — 프록시 주소 없음 (사외)"; Ok = (-not (Test-ProxyValue $userEnv[$k])) }
   }
+}
+if ($wantAutoRun -eq $true) {
+  $checks += @{ Name = "부팅 시 자동 실행 ($AutoRunTaskName)"; Ok = [bool](Get-ScheduledTask -TaskName $AutoRunTaskName -ErrorAction SilentlyContinue) }
 }
 foreach ($c in $checks) {
   if ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }

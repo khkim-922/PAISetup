@@ -196,6 +196,7 @@ if ($appWhen -and $appWhen -match '^\s*([A-Za-z]+)\s*:') { $appWhen = $Matches[1
 #   제품 줄 · VS Code 줄 · 안내 줄, 셋이다. **안내 줄은 늘 둔다** — 자리에 따라 있다 없다
 #   하면 창 높이가 갈리는데, 그 높이는 자리를 재기 **전에** 정해진다.
 $appRow = if ($Choices.Count) { 78 } else { 0 }
+$optExtra = 26
 
 # ── 화면 ────────────────────────────────────────────────────────────────────────
 $F = New-Object Windows.Forms.Form
@@ -208,7 +209,7 @@ $IconPath = Join-Path $Here 'setup-icon.ico'
 if (Test-Path -LiteralPath $IconPath) {
   try { $F.Icon = New-Object Drawing.Icon($IconPath) } catch { }
 }
-$F.Size = New-Object Drawing.Size(640, (710 + $appRow))
+$F.Size = New-Object Drawing.Size(640, (710 + $appRow + $optExtra))
 $F.StartPosition = 'CenterScreen'
 $F.FormBorderStyle = 'FixedDialog'
 $F.MaximizeBox = $false
@@ -317,7 +318,7 @@ if (-not $offsite) {
 # 옵션
 $gO = New-Object Windows.Forms.GroupBox
 $gO.Text = '옵션'; $gO.Location = New-Object Drawing.Point(16, (190 - $gvCut))
-$gO.Size = New-Object Drawing.Size(592, (76 + $appRow))
+$gO.Size = New-Object Drawing.Size(592, (76 + $appRow + $optExtra))
 $F.Controls.Add($gO)
 
 $cCfg = New-Object Windows.Forms.CheckBox
@@ -326,6 +327,16 @@ $cCfg.Location = New-Object Drawing.Point(16, 126)
 $cCfg.Size = New-Object Drawing.Size(560, 22)
 $cCfg.Checked = [bool]$WithPersonalConfig
 $gO.Controls.Add($cCfg)
+
+# ⚠ **부팅 시 자동 실행** — 작업 스케줄러(PAISetup-AutoRun)로 최신 릴리스 및 환경 동기화를 무인 실행한다.
+$cAuto = New-Object Windows.Forms.CheckBox
+$cAuto.Text = '부팅할 때 백그라운드에서 자동으로 최신 상태를 유지합니다'
+$cAuto.Location = New-Object Drawing.Point(16, 150)
+$cAuto.Size = New-Object Drawing.Size(560, 22)
+$hasAutoTask = [bool](Get-ScheduledTask -TaskName 'PAISetup-AutoRun' -ErrorAction SilentlyContinue)
+$autoDirective = Get-Directive 'autorun'
+$cAuto.Checked = $hasAutoTask -or ($autoDirective -eq 'yes')
+$gO.Controls.Add($cAuto)
 
 # ⚠ **이미 선 기계에서는 이게 이 설치의 일 전부다.** 집·회사 PC 는 프로필이 안 날아가서
 #   프로그램이 이미 다 있는데, 「있으면 건너뛴다」만 두면 판이 영영 안 올라간다 —
@@ -404,7 +415,7 @@ if ($Choices.Count) {
 #   그러니 이 칸이 비어 있는 것이 받는 사람에게는 정상이다.
 $gR = New-Object Windows.Forms.GroupBox
 $gR.Text = '내 저장소 받기 (선택) — git 주소, 여러 개는 빈칸으로'
-$gR.Location = New-Object Drawing.Point(16, (278 + $appRow - $gvCut))
+$gR.Location = New-Object Drawing.Point(16, (278 + $appRow + $optExtra - $gvCut))
 $gR.Size = New-Object Drawing.Size(592, 98)
 $F.Controls.Add($gR)
 
@@ -483,7 +494,7 @@ $tip.SetToolTip($lRepo, $tipText)
 
 # 진행
 $bar = New-Object Windows.Forms.ProgressBar
-$bar.Location = New-Object Drawing.Point(16, (388 + $appRow - $gvCut))   # 홈 안내 줄·링크 줄(420-456) 아래
+$bar.Location = New-Object Drawing.Point(16, (388 + $appRow + $optExtra - $gvCut))   # 홈 안내 줄·링크 줄(420-456) 아래
 $bar.Size = New-Object Drawing.Size(592, 20)
 $bar.Minimum = 0; $bar.Maximum = 100
 $F.Controls.Add($bar)
@@ -536,11 +547,11 @@ $lnkFlow.Add_LinkClicked({
 })
 $gV.Controls.Add($lnkFlow)
 
-$lState = New-Label '' 18 (410 + $appRow - $gvCut) 500 $false
+$lState = New-Label '' 18 (410 + $appRow + $optExtra - $gvCut) 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
 $log = New-Object Windows.Forms.TextBox
-$log.Location = New-Object Drawing.Point(16, (432 + $appRow - $gvCut))
+$log.Location = New-Object Drawing.Point(16, (432 + $appRow + $optExtra - $gvCut))
 $log.Size = New-Object Drawing.Size(592, (186 + $gvCut))   # 키 칸과 링크 줄이 비운 만큼 받는다
 $log.Multiline = $true; $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'; $log.WordWrap = $false
@@ -550,12 +561,12 @@ $log.Font = New-Object Drawing.Font('Consolas', 9)
 $F.Controls.Add($log)
 
 $bGo = New-Object Windows.Forms.Button
-$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, (628 + $appRow))
+$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, (628 + $appRow + $optExtra))
 $bGo.Size = New-Object Drawing.Size(100, 30)
 $F.Controls.Add($bGo); $F.AcceptButton = $bGo
 
 $bClose = New-Object Windows.Forms.Button
-$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, (628 + $appRow))
+$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, (628 + $appRow + $optExtra))
 $bClose.Size = New-Object Drawing.Size(84, 30)
 $F.Controls.Add($bClose)
 
@@ -663,6 +674,8 @@ $bGo.Add_Click({
   if ($NoDevTools) { $argv += '-NoDevTools' }
   if ($cCfg.Checked)      { $argv += '-WithPersonalConfig' }
   if (-not $cUpg.Checked) { $argv += '-NoUpgrade' }
+  if ($cAuto.Checked)     { $argv += '-AutoRun' }
+  else                    { $argv += '-NoAutoRun' }
   # ⚠ **하나도 안 골라도 인자를 준다.** 안 주면 몸통이 「값이 없으니 기본값」으로 읽어
   #   **사람이 방금 다 끈 것을 되살린다** — 빈 값과 부재는 다른 명제다.
   if ($cApps.Count) {
