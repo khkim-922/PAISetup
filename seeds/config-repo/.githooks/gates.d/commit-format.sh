@@ -24,8 +24,8 @@ fail=0
 cleanup() { [ -n "$tmp" ] && rm -f "$tmp"; }
 trap cleanup EXIT
 
-# 주석(#)과 빈 줄을 걷어낸 첫 줄이 제목이다.
-subject="$(grep -v '^#' "$msgfile" | sed '/^[[:space:]]*$/d' | head -n 1)"
+# 주석(#)과 빈 줄을 걷어낸 첫 줄이 제목이다. 한 awk가 grep·sed·head를 대신한다.
+subject="$(awk '!/^#/ && !/^[[:space:]]*$/ { print; exit }' "$msgfile")"
 [ -n "$subject" ] || exit 0   # 빈 메시지는 git 이 알아서 막는다
 
 # 자동 병합·되돌리기·rebase 보조 커밋은 규약 밖이다.
@@ -89,7 +89,7 @@ else
     # ⚠ **낱말 목록을 여기 안 적는다** — 머리글이 그렇게 말하고, 명세를 옮겨 적으면 명세와
     #   어긋나는 날 아무도 모른다. 그래서 이 갈래는 **꼴만** 본다: `<type>(범위)!: 요약`.
     #   어느 낱말이 정당한가는 commitlint 가 있는 자리가 든다.
-    check="$(grep -v '^#' "$lintfile" | sed '/^[[:space:]]*$/d' | head -n 1)"
+    check="$(awk '!/^#/ && !/^[[:space:]]*$/ { print; exit }' "$lintfile")"
     if ! printf '%s' "$check" | grep -qE '^[a-z][a-z]*(\([^)]+\))?!?: .+'; then
         printf '✖ 커밋 제목이 Conventional Commits 꼴이 아니다.\n' >&2
         printf '  받은 것: %s\n' "$check" >&2
