@@ -296,6 +296,41 @@ decl_get() {  # decl_get <파일> <절> <키>
       }
     }' "$1"
 }
+# ── 절 하나를 **한 번 읽어 달라는 키를 달라는 순서로** 낸다 ─────────────────────
+# ⚠ **왜 있나.** `decl_get` 은 키 하나에 awk 한 프로세스다. 프로브가 키 셋을 묻고 판 검사가
+#   둘을 더 묻고 진단이 또 셋을 묻는데, 그것이 **도구마다** 돌아 선언 조회 하나가 세션에서
+#   수십 번이 된다(실측 2026-09-18: 도구 여섯짜리 `--check` 한 판에 `decl_get` 56 회).
+#   자리 메타(`_site_meta`)가 이미 같은 자를 들었다 — 파일당 한 번 읽어 필요한 값을 같이
+#   낸다. 그 꼴을 선언에도 세운다.
+# ⚠ **키 목록을 여기 안 적는다 — 부르는 자가 제 자리에서 댄다.** 선언의 낱말을 이 함수가
+#   들면 그 목록이 손사본이 되어, 키가 늘 때 조용히 낡는다.
+# ⚠ **줄 수는 달라는 키 수와 같고, 없는 키는 빈 줄이다** — 값을 **자리로** 읽으므로 한 칸이
+#   비면 그 뒤가 다 밀린다. 그래서 부르는 자는 **읽기 전에 변수를 다 비운다**: 명령 치환이
+#   끝 개행을 깎아 **꼬리의 빈 값은 줄째로 사라지고** `read` 가 EOF 를 만난다 (`_site_of`
+#   와 같은 결). 선언은 한 줄이 한 값이라 값에 줄바꿈은 들 수 없다.
+decl_fields() {  # decl_fields <파일> <절> <키…>
+  _dff="$1"; _dfs="$2"; shift 2
+  [ -f "$_dff" ] || { for _dfk in "$@"; do echo; done; return 0; }
+  awk -v sec="$_dfs" -v keys="$*" '
+    BEGIN { n = split(keys, k, " ") }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+    }
+    line ~ /^\[/ { s = line; gsub(/[][]/, "", s); gsub(/[[:space:]]+$/, "", s); insec = (s == sec); next }
+    insec {
+      sub(/[[:space:]]*#.*$/, "", line)
+      for (i = 1; i <= n; i++) {
+        if (!(i in got) && line ~ "^"k[i]"[[:space:]]*=") {
+          v = line
+          sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v)
+          got[i] = v
+        }
+      }
+    }
+    END { for (i = 1; i <= n; i++) printf "%s\n", (i in got ? got[i] : "") }
+  ' "$_dff"
+}
 
 # ── 프로브 — 유한 4갈래, 전부 실행형. 새 갈래가 필요할 때만 이 함수가 는다 ──
 # ⚠ npx --yes 는 갈래가 아니다 — 설치법과 도달 판정을 섞어 제3의 상태를 만든다 (0004).
@@ -335,9 +370,16 @@ npm_global_version() {  # npm_global_version <패키지 이름> — 못 읽으�
 }
 
 probe_reach() {  # probe_reach <선언파일> <이름> — **이 저장소에서** 닿나
-  # shellcheck disable=SC2046 — probe-arg 는 낱말 분리가 의도다
-  probe_tool "$(decl_get "$1" "$2" probe)" "$(decl_get "$1" "$2" probe-target)" \
-    $(decl_get "$1" "$2" probe-arg)
+  _prk=''; _prt=''; _pra=''
+  {
+    IFS= read -r _prk
+    IFS= read -r _prt
+    IFS= read -r _pra
+  } <<EOF
+$(decl_fields "$1" "$2" probe probe-target probe-arg)
+EOF
+  # shellcheck disable=SC2086 — probe-arg 는 낱말 분리가 의도다
+  probe_tool "$_prk" "$_prt" $_pra
 }
 probe_pin() {  # probe_pin <선언파일> <이름> — 선언이 판을 박았으면 깔린 판이 그것인가
   # ⚠ **「깔렸나」와 「선언한 판인가」는 다른 명제다.** 선언이 `이름@판` 으로 판을 박았으면
@@ -346,8 +388,11 @@ probe_pin() {  # probe_pin <선언파일> <이름> — 선언이 판을 박았�
   #   판을 안 박은 선언은 이 칸이 통째로 빠진다 — 최신을 받고 안 잰다.
   # ⚠ **자리가 갈려 나온 까닭** — 판은 npm 전역 한 자리에 서므로 **저장소를 안 탄다.** 그래서
   #   저장소 갈래(probe_decl)와 전역 갈래(probe_global)가 같은 이 몸통을 쓴다 (#43).
-  [ "$(decl_get "$1" "$2" install)" = npm-global ] || return 0
-  _pk="$(decl_get "$1" "$2" package)"
+  _ppi=''; _pk=''
+  { IFS= read -r _ppi; IFS= read -r _pk; } <<EOF
+$(decl_fields "$1" "$2" install package)
+EOF
+  [ "$_ppi" = npm-global ] || return 0
   # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
   case "$_pk" in
     ?*@*) _pn="${_pk%@*}"; _pv="${_pk##*@}" ;;
@@ -375,12 +420,16 @@ probe_decl() {  # probe_decl <선언파일> <이름> — 저장소의 물음. �
 # ⚠ **경로를 JS 소스에 안 박는다 — cwd 로 준다.** 윈도우의 `npm root -g` 는 역슬래시
 #   경로를 내므로 문자열에 끼우면 이스케이프로 읽힌다(`npm_global_version` 곁말과 같은 함정).
 probe_global() {  # probe_global <선언파일> <이름>
-  case "$(decl_get "$1" "$2" probe)" in
+  _pgk=''; _pgt=''
+  { IFS= read -r _pgk; IFS= read -r _pgt; } <<EOF
+$(decl_fields "$1" "$2" probe probe-target)
+EOF
+  case "$_pgk" in
     node-resolvable)
       _gr="$(npm root -g 2>/dev/null)" || return 1
       [ -n "$_gr" ] || return 1
       ( cd "$_gr/.." 2>/dev/null &&
-        node --input-type=module -e "await import('$(decl_get "$1" "$2" probe-target)')" ) >/dev/null 2>&1 || return 1 ;;
+        node --input-type=module -e "await import('$_pgt')" ) >/dev/null 2>&1 || return 1 ;;
     *) probe_reach "$1" "$2" || return 1 ;;
   esac
   probe_pin "$1" "$2"
@@ -579,7 +628,10 @@ _site_meta() {
 _site_of() {
   [ -n "$_SITE_DONE" ] && return 0
   _SITE_DONE=1
-  _sf=''; _sd=''; _sp=''
+  # ⚠ **이긴 파일의 모드를 그 자리에서 들고 간다.** 고른 뒤에 다시 읽으면 같은 파일을 두 번
+  #   읽는 것이고, 고리 안에서 읽은 `_mode` 는 읽고 안 쓰는 값이 되어 **죽은 채로 남는다** —
+  #   읽었으면 쓰는 것이 이 함수가 한 번 읽기로 바뀐 까닭이다. 그래서 후보 셋마다 짝을 둔다.
+  _sf=''; _sd=''; _sp=''; _sfm=''; _sdm=''; _spm=''
   for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
     [ -e "$_f" ] || continue
     _default=''; _probe=''; _path=''; _mode=''
@@ -591,31 +643,24 @@ _site_of() {
     } <<EOF
 $(_site_meta "$_f")
 EOF
-    case "$_default" in *yes*) _sd="$_f" ;; esac
-    [ -n "$_sf" ] || {
-      [ -n "$_probe" ] &&
-        timeout 3 bash -c "(exec 3<>/dev/tcp/${_probe%%:*}/${_probe#*:})" 2>/dev/null &&
-        _sf="$_f"
-    }
-    [ -n "$_sp" ] 2>/dev/null || {
-      [ -n "$_path" ] && [ -d "$_path" ] && _sp="$_f"
-    }
-    [ -n "$_sf" ] || [ -n "$_sp" ] || continue
+    case "$_default" in *yes*) _sd="$_f"; _sdm="$_mode" ;; esac
+    # 프로브는 **아직 안 이긴 자리에서만** 띄운다 — 3초를 무는 자라 한 번 이기면 그 뒤는 안 잰다.
+    if [ -z "$_sf" ] && [ -n "$_probe" ]; then
+      if timeout 3 bash -c "(exec 3<>/dev/tcp/${_probe%%:*}/${_probe#*:})" 2>/dev/null; then
+        _sf="$_f"; _sfm="$_mode"
+      fi
+    fi
+    if [ -z "$_sp" ] && [ -n "$_path" ] && [ -d "$_path" ]; then
+      _sp="$_f"; _spm="$_mode"
+    fi
   done
-  [ -n "$_sf" ] || _sf="${_sp:-$_sd}"
+  # 우선순위는 **프로브 > 경로 > 기본** 이다 — 망이 답한 자리가 가장 세고, 기본은 바닥이다.
+  if   [ -n "$_sf" ]; then            _SITE_MODE="$_sfm"
+  elif [ -n "$_sp" ]; then _sf="$_sp"; _SITE_MODE="$_spm"
+  elif [ -n "$_sd" ]; then _sf="$_sd"; _SITE_MODE="$_sdm"
+  fi
   _SITE_FILE="$_sf"
   [ -n "$_sf" ] && _SITE="$(basename "$_sf" .env)"
-  if [ -n "$_sf" ]; then
-    _default=''; _probe=''; _path=''; _SITE_MODE=''
-    {
-      IFS= read -r _default
-      IFS= read -r _probe
-      IFS= read -r _path
-      IFS= read -r _SITE_MODE
-    } <<EOF
-$(_site_meta "$_sf")
-EOF
-  fi
   return 0
 }
 
@@ -1580,11 +1625,18 @@ if [ "$MODE" = install ]; then
     #   무관하게 매 세션 한 번 댄다. 받을지 말지는 **스크립트가 스스로 가른다** —
     #   있으면 그대로 두고, 없으면 그때의 최신을 받는다.
     _f="$1"; _t="$2"
-    _br="$(decl_get "$_f" "$_t" browsers)"; [ -n "$_br" ] || return 0
-    _skipname="$(decl_get "$_f" "$_t" skip-browsers-env)"
+    _br=''; _skipname=''; _fb=''
+    {
+      IFS= read -r _br
+      IFS= read -r _skipname
+      IFS= read -r _fb
+    } <<EOF
+$(decl_fields "$_f" "$_t" browsers skip-browsers-env browsers-fallback)
+EOF
+    [ -n "$_br" ] || return 0
     _skipval=""; [ -n "$_skipname" ] && _skipval="${!_skipname:-}"
     [ -z "$_skipval" ] || return 0
-    _fb="$(decl_get "$_f" "$_t" browsers-fallback)"; [ -n "$_fb" ] || return 0
+    [ -n "$_fb" ] || return 0
     # 경로는 **그 선언을 든 저장소** 기준이다(선언은 <저장소>/.claude/ 에 산다) — 그래서
     # 몸통은 무엇을 받는지도 어디서 받는지도 모른 채로 남는다.
     _fbroot="$(dirname "$(dirname "$_f")")"
@@ -1600,8 +1652,15 @@ if [ "$MODE" = install ]; then
   }
   wire_tool() {  # wire_tool <선언파일> <이름> — node-link: 이름 해석이 되게 만든다
     _f="$1"; _t="$2"
-    [ "$(decl_get "$_f" "$_t" wiring)" = node-link ] || return 0
-    _mod="$(decl_get "$_f" "$_t" probe-target)"
+    _wg=''; _mod=''; _env=''
+    {
+      IFS= read -r _wg
+      IFS= read -r _mod
+      IFS= read -r _env
+    } <<EOF
+$(decl_fields "$_f" "$_t" wiring probe-target wiring-env)
+EOF
+    [ "$_wg" = node-link ] || return 0
     probe_tool node-resolvable "$_mod" && return 0
     _groot="$(npm root -g 2>/dev/null)"
     { [ -n "$_groot" ] && [ -d "$_groot/$_mod" ]; } || return 0
@@ -1619,8 +1678,8 @@ if [ "$MODE" = install ]; then
         >/dev/null 2>&1 || true
     fi
     probe_tool node-resolvable "$_mod" && return 0
-    # 이름 해석이 그래도 안 되면 소비자 계약(환경변수)으로 넘긴다 — 이름은 선언이 든다.
-    _env="$(decl_get "$_f" "$_t" wiring-env)"
+    # 이름 해석이 그래도 안 되면 소비자 계약(환경변수)으로 넘긴다 — 이름은 선언이 든다
+    # (`_env` 는 위에서 같은 awk 가 이미 읽었다).
     # ⚠ **진입점을 손으로 찾지 않는다 — 폴더를 넘긴다.** `index.js` 는 추측이라 그 이름이
     #   아닌 패키지에서는 `[ -f ]` 가 빗나가 **배선이 조용히 안 섰다.** 진입점의 진본은 그
     #   패키지의 `package.json` 이고 그것을 읽는 자는 받는 쪽의 해석기다 — 폴더만 주면
@@ -1643,8 +1702,12 @@ if [ "$MODE" = install ]; then
   #    그 값의 이름은 선언이 든다(`wiring-env`) — 몸통은 여기서도 도구 이름을 모른다.
   wire_global() {  # wire_global <선언파일> <이름>
     _wf="$1"; _wn="$2"
-    _we="$(decl_get "$_wf" "$_wn" wiring-env)"; [ -n "$_we" ] || return 0
-    _wm="$(decl_get "$_wf" "$_wn" probe-target)"; [ -n "$_wm" ] || return 0
+    _we=''; _wm=''
+    { IFS= read -r _we; IFS= read -r _wm; } <<EOF
+$(decl_fields "$_wf" "$_wn" wiring-env probe-target)
+EOF
+    [ -n "$_we" ] || return 0
+    [ -n "$_wm" ] || return 0
     _wr="$(npm root -g 2>/dev/null)" || return 0
     { [ -n "$_wr" ] && [ -d "$_wr/$_wm" ]; } || return 0
     export "$_we=$_wr/$_wm"
@@ -1686,14 +1749,24 @@ if [ "$MODE" = install ]; then
     while IFS= read -r _gf; do
       [ -f "$_gf" ] || continue
       for _gn in $(decl_sections "$_gf"); do
-        global_kind "$(decl_get "$_gf" "$_gn" install)" || continue
+        _gi=''; _god=''; _gcb=''; _gtg=''
+        {
+          IFS= read -r _gi
+          IFS= read -r _god
+          IFS= read -r _gcb
+          IFS= read -r _gtg
+        } <<EOF
+$(decl_fields "$_gf" "$_gn" install on-demand called-by probe-target)
+EOF
+        global_kind "$_gi" || continue
         case " $_gseen " in *" $_gn "*) continue ;; esac
         _gseen="$_gseen $_gn"
         # on-demand 는 안 깐다 — 부르는 자가 제 손으로 찾는다(선언 필드 표). 이름은 찍는다:
         # 안 찍으면 「선언했는데 왜 안 깔렸나」를 다음 사람이 훅에서 판다.
-        if [ "$(decl_get "$_gf" "$_gn" on-demand)" = yes ]; then
+        if [ "$_god" = yes ]; then
+          # 첫 낱말은 셸이 뗀다 — `cut` 을 띄우면 도구마다 프로세스가 하나 더 뜬다
           printf '  · %s — 필요할 때 깐다 (on-demand · %s)
-' "$_gn" "$(decl_get "$_gf" "$_gn" called-by | cut -d' ' -f1)"
+' "$_gn" "${_gcb%% *}"
           continue
         fi
         # 밀 때는 프로브를 안 묻는다 — 「있나」와 「최신인가」는 다른 명제라, 있으면 건너뛰는
@@ -1702,12 +1775,12 @@ if [ "$MODE" = install ]; then
         _gt0=$SECONDS
         if [ -z "${UPGRADE:-}" ] && probe_global "$_gf" "$_gn"; then
           printf '  ✅ %s — 이미 닿는다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
-          gverified_put "$_gn" "$(decl_get "$_gf" "$_gn" probe-target)"
+          gverified_put "$_gn" "$_gtg"
         else
           install_tool "$_gf" "$_gn" || true
           if probe_global "$_gf" "$_gn"; then
             printf '  ✅ %s — 이번에 깔았다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
-            gverified_put "$_gn" "$(decl_get "$_gf" "$_gn" probe-target)"
+            gverified_put "$_gn" "$_gtg"
           else
             printf '  ❌ %s — 안 닿는다%s (%s초)\n' "$_gn" \
               "$(awk -F'\t' -v k="$_gn" '$1==k{printf " · 설치 실패: %s", $2; exit}' "$GFAILS" 2>/dev/null)" \
@@ -1896,8 +1969,11 @@ fi
 # ⚠ **범위·딱지는 안 잰 것이다.** 통과 옆에 그 사실이 안 찍히면 「전부 통과」가 「판까지 봤다」로
 #   읽힌다 — 초록의 폭을 검사가 스스로 말하게 한다(규범 [Goal-Driven Execution]).
 pin_shape() {  # pin_shape <선언파일> <이름> — 안 잰 까닭 한 줄, 잴 수 있으면 빈 값
-  [ "$(decl_get "$1" "$2" install)" = npm-global ] || return 0
-  _sk="$(decl_get "$1" "$2" package)"
+  _psi=''; _sk=''
+  { IFS= read -r _psi; IFS= read -r _sk; } <<EOF
+$(decl_fields "$1" "$2" install package)
+EOF
+  [ "$_psi" = npm-global ] || return 0
   case "$_sk" in ?*@*) ;; *) return 0 ;; esac   # 판을 안 박은 선언은 애초에 안 잰다고 적혀 있다
   _sv="${_sk##*@}"
   case "$_sv" in ''|*[!0-9.]*)
@@ -1910,8 +1986,11 @@ pin_shape() {  # pin_shape <선언파일> <이름> — 안 잰 까닭 한 줄, �
 # 다르다.** 둘 다 ❌ 로 나오는데 사유가 「안 닿는다」 하나면, 다음 사람은 npm 이 없나부터
 # 뒤진다. 사유 없는 ❌ 는 다음 사람에게 부재와 같다 (위 `nogo` 곁말과 같은 결).
 pin_mismatch() {  # pin_mismatch <선언파일> <이름> — 어긋나면 읽을 한 줄, 아니면 빈 값
-  [ "$(decl_get "$1" "$2" install)" = npm-global ] || return 0
-  _mk="$(decl_get "$1" "$2" package)"
+  _pmi=''; _mk=''
+  { IFS= read -r _pmi; IFS= read -r _mk; } <<EOF
+$(decl_fields "$1" "$2" install package)
+EOF
+  [ "$_pmi" = npm-global ] || return 0
   # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
   case "$_mk" in ?*@*) ;; *) return 0 ;; esac
   _mv="${_mk##*@}"
@@ -1937,14 +2016,18 @@ pin_mismatch() {  # pin_mismatch <선언파일> <이름> — 어긋나면 읽을
 global_verified() {  # global_verified <선언파일> <이름> <probe-target>
   [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 1
   [ -f "$GVERIFIED" ] || return 1
-  global_kind "$(decl_get "$1" "$2" install)" || return 1
+  _gvi=''; _gvk=''
+  { IFS= read -r _gvi; IFS= read -r _gvk; } <<EOF
+$(decl_fields "$1" "$2" install probe)
+EOF
+  global_kind "$_gvi" || return 1
   # ⚠ **`node-resolvable` 은 인용이 못 선다 — 프로브 둘이 딴 명제를 잰다.** 전역 걸음의
   #   `probe_global` 은 `npm root -g` 에 대고 「기계에 있나」를 묻고, 저장소의 `probe_reach` 는
   #   **이 저장소 안에서** 「정션을 타고 이름이 풀리나」를 묻는다. 기계에 있어도 저장소 배선이
   #   지면 후자는 져야 하는데, 전자를 인용하면 그 ❌(「깔렸는데 프로브가 못 찾는다: 배선이
   #   끊겼다」)가 통째로 사라진다 — **인용은 같은 명제를 대신할 때만 선다.** 기계에 대고 묻는
   #   갈래(PATH 실행형)만 남기고 이 갈래는 옛 길 그대로 저장소마다 잰다.
-  [ "$(decl_get "$1" "$2" probe)" = node-resolvable ] && return 1
+  [ "$_gvk" = node-resolvable ] && return 1
   # 줄의 꼴은 쓰는 자 `gverified_put` 과 한 벌이다 — 통째로 견줘 셋 중 하나만 달라도 안 문다.
   _vq="$(printf '%s\t%s\t%s' "$2" "$3" "$CLAUDE_CONFIG_RUN")"
   while IFS= read -r _vl; do
@@ -1956,9 +2039,18 @@ global_verified() {  # global_verified <선언파일> <이름> <probe-target>
 # 선언 축 — 전역·프로젝트 두 층. 이름·뜻은 전부 선언에서 온다
 render_decl() {  # render_decl <선언파일> <층라벨>
   for _name in $(decl_sections "$1"); do
-    _probe="$(decl_get "$1" "$_name" probe)"
-    _target="$(decl_get "$1" "$_name" probe-target)"
-    _by="$(decl_get "$1" "$_name" called-by)"
+    # ⚠ **on-demand 도 여기서 같이 읽는다.** 쓰는 자리는 맨 아래 갈래 하나뿐이지만, 같은
+    #   awk 가 이미 그 절을 읽고 있어 **키 한 칸을 더 받는 값이 0 이다** — 저 아래서 따로
+    #   물으면 프로세스 하나가 도구마다 더 뜬다.
+    _probe=''; _target=''; _by=''; _ondemand=''
+    {
+      IFS= read -r _probe
+      IFS= read -r _target
+      IFS= read -r _by
+      IFS= read -r _ondemand
+    } <<EOF
+$(decl_fields "$1" "$_name" probe probe-target called-by on-demand)
+EOF
     # 까는 걸음의 이름 — project-axis 도구는 이 이름으로 실패가 남는다 (why 곁주석). `try` 가
     # 적는 그 이름 그대로여야 한다 — 갈리면 사유가 또 안 붙는다.
     case "$_probe" in
@@ -1980,7 +2072,7 @@ render_decl() {  # render_decl <선언파일> <층라벨>
       gate "$_name" off "$_by ($2) — $_pin$(why "$_name" "$_step")"
     elif [ "$_probe" = node-resolvable ] && [ -d "$(npm root -g 2>/dev/null)/$_target" ]; then
       gate "$_name" off "$_by ($2) — 깔렸는데 프로브가 못 찾는다: 배선이 끊겼다$(why "$_name" "$_step")"
-    elif [ "$(decl_get "$1" "$_name" on-demand)" = yes ]; then
+    elif [ "$_ondemand" = yes ]; then
       # 선언이 「필요할 때 깐다」로 둔 도구 — 부재가 이 저장소의 검사를 끄는 것이 아니다
       gate "$_name" ok "$_by ($2) — 안 닿는다 · 필요할 때 깐다 (on-demand)"
     else
