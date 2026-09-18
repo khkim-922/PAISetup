@@ -3559,12 +3559,16 @@ if ($NoLaunch) {
   if (-not $apps) {
     Write-Host '  ! 열 것을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
   } else {
-    # ⚠ **방금 설치된 앱은 인스톨러(스토어 스텁·Squirrel 등)가 설치 끝에 이미 스스로 띄웠다.**
-    #   여기서 또 띄우면 창이 두 번·세 번 중복으로 뜬다 — 사람이 방금 닫은 로그인 창이 또 뜬다.
-    #   방금 새로 깐 것은 이미 뜬 것으로 보고 중복 실행 대상에서 뺀다.
+    # ⚠ **방금 깐 앱을 인스톨러(스토어 스텁·Squirrel 등)가 제 손으로 띄우기도 한다.**
+    #   그때 또 띄우면 창이 두 번·세 번 뜬다 — 사람이 방금 닫은 로그인 창이 또 뜬다.
+    # ⚠ **그러나 「방금 깔았다」는 「떠 있다」가 아니다.** 무인 설치(`SilentArgs`)로 깐 갈래는
+    #   창을 안 띄우는 것이 정상이다. 옛 판은 깔았다는 사실만으로 「이미 실행되었다」를 찍고
+    #   띄우기에서 뺐고, 그래서 **로그는 초록인데 화면에는 아무것도 안 떴다**
+    #   (실측 2026-09-18 · 사외 VDI). **가정을 실측으로 바꾼다** — `Test-AppUp` 이 프로세스를
+    #   보고 **정말 떠 있는 것만** 뺀다. 안 떠 있으면 아래 고리가 띄운다.
     $newlyLaunched = @()
     foreach ($a in $apps) {
-      if ($a.App -and $script:JustInstalledApps.ContainsKey($a.App)) {
+      if ($a.App -and $script:JustInstalledApps.ContainsKey($a.App) -and (Test-AppUp $a)) {
         $newlyLaunched += $a.Name
       }
     }
