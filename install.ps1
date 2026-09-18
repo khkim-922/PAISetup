@@ -1752,6 +1752,20 @@ if ($useGateway) {
 foreach ($v in $Vars) {
   $val = $fromFile[$v.Name]
 
+  # ⚠ **파일에 없으면 환경변수에 이미 심긴 값을 본다** — 사람이 매번 다시 칠 까닭이 없다.
+  if (-not $val -and $v.Gateway -and $useGateway) {
+    $envVal = [Environment]::GetEnvironmentVariable($v.Name, 'User')
+    if (-not $envVal) { $envVal = [Environment]::GetEnvironmentVariable($v.Name, 'Process') }
+    if ($v.Secret -and -not $envVal) {
+      $envVal = [Environment]::GetEnvironmentVariable('OPENAI_API_KEY', 'User')
+      if (-not $envVal) { $envVal = [Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'User') }
+    }
+    if ($envVal) {
+      $val = $envVal
+      Write-Host "  $($v.Name) — 환경변수에 있는 값을 쓴다" -ForegroundColor Cyan
+    }
+  }
+
   # 게이트웨이를 안 쓰는 자리에서는 그쪽 이름을 아예 안 본다
   if ($v.Gateway -and -not $useGateway) { continue }
 

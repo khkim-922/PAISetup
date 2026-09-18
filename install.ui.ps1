@@ -289,6 +289,15 @@ if ($noAsk) {
 }
 
 $tKey = $null
+$defaultKey = [string]$Preset['ANTHROPIC_AUTH_TOKEN']
+if (-not $defaultKey) {
+  # ⚠ **기존에 이미 심긴 회사 키를 읽어온다** — 파일에 없어도 환경변수에 이미 있으면 사람이 다시 칠 까닭이 없다.
+  $defaultKey = [Environment]::GetEnvironmentVariable('ANTHROPIC_AUTH_TOKEN', 'User')
+  if (-not $defaultKey) { $defaultKey = $env:ANTHROPIC_AUTH_TOKEN }
+  if (-not $defaultKey) { $defaultKey = [Environment]::GetEnvironmentVariable('OPENAI_API_KEY', 'User') }
+  if (-not $defaultKey) { $defaultKey = [Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'User') }
+}
+
 if (-not $noAsk) {
   $lKey = New-Object Windows.Forms.Label
   $lKey.Text = 'API 키'; $lKey.Location = New-Object Drawing.Point(14, 60)
@@ -297,7 +306,7 @@ if (-not $noAsk) {
   $tKey.Location = New-Object Drawing.Point(128, 57)
   $tKey.Size = New-Object Drawing.Size(444, 24)
   $tKey.UseSystemPasswordChar = $true
-  $tKey.Text = [string]$Preset['ANTHROPIC_AUTH_TOKEN']
+  $tKey.Text = [string]$defaultKey
   $gV.Controls.Add($tKey)
 }
 
@@ -310,7 +319,8 @@ if (-not $offsite) {
   $lHint.Location = New-Object Drawing.Point(128, 86)
   $lHint.Size = New-Object Drawing.Size(444, 18)
   $lHint.ForeColor = [Drawing.Color]::DimGray
-  $lHint.Text = if ($urlPreset) { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' }
+  $lHint.Text = if ($defaultKey) { '주소와 API 키가 채워져 있습니다 — 바로 [설치 시작]을 누르면 됩니다.' }
+                elseif ($urlPreset) { '주소는 채워져 왔습니다 — API 키만 넣으면 됩니다.' }
                 else            { '사내면 주소와 키를 넣습니다.' }
   $gV.Controls.Add($lHint)
 }
@@ -1057,7 +1067,7 @@ $bClose.Add_Click({ $F.Close() })
 
 $F.Add_Shown({
   if ($script:upHandle) { $script:upTimer.Start() }
-  if ($tKey -and $tKey.Enabled -and -not $tRepo.Text.Trim()) { $tKey.Focus() | Out-Null }
+  if ($tKey -and $tKey.Enabled -and -not $tKey.Text.Trim()) { $tKey.Focus() | Out-Null }
   else { $bGo.Focus() | Out-Null }
 })
 [void]$F.ShowDialog()
