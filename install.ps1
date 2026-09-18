@@ -288,6 +288,36 @@ if ($Describe) {
   exit 0
 }
 
+# ── 단일 실행 빗장 (Mutex) — **겹쳐 도는 것을 뿌리에서 막는다** ────────────────
+# ⚠ **부팅 자동화와 로그온 자동 실행, 또는 사람의 실행이 겹치면** 같은 환경변수와 설정 파일을
+#   동시에 덮어써 진 쪽의 반쪽 상태가 남는다 (#13).
+# ⚠ **무인이면 즉시 조용히 물러선다.** 이미 다른 쪽이 같은 몸통을 돌리고 있으므로 질 이유가 없다.
+#   사람이 실행한 대화형이면 안내를 찍고 잠시 대기(최대 60초)하거나 물러선다.
+$script:EngineMutex = $null
+$script:HasEngineMutex = $false
+try {
+  $script:EngineMutex = New-Object System.Threading.Mutex($false, "Local\PAISetup-Engine-Lock")
+  $script:HasEngineMutex = $script:EngineMutex.WaitOne(0, $false)
+} catch {
+  $script:HasEngineMutex = $true
+}
+
+if (-not $script:HasEngineMutex) {
+  if ($Yes -or -not [Environment]::UserInteractive) {
+    Write-Host '  이미 다른 install.ps1 이 돌고 있습니다 — 무인 실행이라 겹치지 않게 물러납니다.' -ForegroundColor Yellow
+    exit 0
+  } else {
+    Write-Host '  이미 다른 설치 또는 자동 실행이 진행 중입니다. 잠시 기다립니다 (최대 60초)...' -ForegroundColor Yellow
+    try {
+      $script:HasEngineMutex = $script:EngineMutex.WaitOne(60000, $false)
+    } catch { }
+    if (-not $script:HasEngineMutex) {
+      Write-Host '  ! 다른 설치 프로세스가 끝나지 않아 물러납니다.' -ForegroundColor Red
+      exit 1
+    }
+  }
+}
+
 # 고른 제품. **안 주면 표의 기본값** — 화면 갈래와 콘솔 갈래가 같은 자를 쓴다.
 # ⚠ **모르는 이름을 삼키지 않는다.** 오타 하나로 제품이 조용히 안 깔리면 **초록으로 끝나고**
 #   아무도 못 본다 — 값을 준 사람이 제일 늦게 안다.
@@ -3657,6 +3687,9 @@ Write-Host ''
 # ⚠ **총계는 `exit` 둘보다 위에 둔다.** 아래는 진 판이 1 로 나가는 자리라, 그 뒤에 적으면
 #   **진 판에서만 총계가 사라진다** — 오래 걸려서 진 판이야말로 총계가 필요한 자리다.
 Write-Host ("── 설치를 마쳤다 (" + [int]$Sw.Elapsed.TotalSeconds + "초)") -ForegroundColor DarkGray
+# ── 빗장 해제 ────────────────────────────────────────────────────────────────
+try { if ($script:HasEngineMutex -and $script:EngineMutex) { $script:EngineMutex.ReleaseMutex(); $script:EngineMutex.Dispose() } } catch { }
+
 # ⚠ **둘 다 본다.** 하는 걸음이 진 것(`$Fails`)과 끝에 재서 빨간 것(`$redChecks`)은 겹치기도
 #   하고 한쪽만 서기도 한다 — **어느 쪽이든 하나라도 서면 이 설치는 안 끝난 것이다.**
 if ($Fails.Count -gt 0 -or $redChecks -gt 0) { exit 1 }
