@@ -1512,41 +1512,6 @@ Write-Host ''
 Write-Host '  Node 신뢰 배선' -ForegroundColor Cyan
 Wire-NodeTrust
 
-# ── 2‴. 기본 브라우저 — **VDI 환경 감지 시 크롬으로 맞춘다** ────────────────────
-# ⚠ 비영속 VDI 는 매 로그인마다 프로필이 초기화되어 기본 브라우저가 Edge 로 되돌아간다.
-#   VDI 환경이거나 값 파일이 `#default-browser = chrome` 을 들고, 크롬이 깔려 있으면
-#   기본 브라우저를 크롬으로 자동 전환한다. 일반 PC 에서는 사용자의 선택을 존중해 건드리지 않는다.
-$browserDir = Read-Directive $EnvFile 'default-browser'
-$isVdi = [bool]$env:VIEWCLIENT_IP_ADDRESS -or
-         [bool](Get-Process -Name 'vmtoolsd','vmware-view' -ErrorAction SilentlyContinue) -or
-         (((Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue).Model) -match 'VMware|Virtual')
-
-if ($browserDir -eq 'chrome' -or ($isVdi -and $browserDir -ne 'no')) {
-  $chromeExe = @(
-    "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
-    "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-    "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe"
-  ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-
-  if ($chromeExe) {
-    $curHttp = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice' -ErrorAction SilentlyContinue).ProgId
-    if ($curHttp -eq 'ChromeHTML') {
-      Write-Host '  기본 브라우저 — 이미 ChromeHTML 이다'
-    } else {
-      Write-Host '  기본 브라우저 — Chrome 으로 맞춘다 (VDI 환경)' -ForegroundColor Cyan
-      try {
-        Start-Process -FilePath $chromeExe -ArgumentList '--make-default-browser' -WindowStyle Hidden -ErrorAction SilentlyContinue
-        $classes = 'HKCU:\Software\Classes'
-        foreach ($proto in @('http', 'https')) {
-          $protoKey = "$classes\$proto\shell\open\command"
-          if (-not (Test-Path -LiteralPath $protoKey)) { New-Item -ItemType Directory -Path $protoKey -Force | Out-Null }
-          Set-ItemProperty -LiteralPath $protoKey -Name '(Default)' -Value "`"$chromeExe`" -- `"%1`"" -Force -ErrorAction SilentlyContinue
-        }
-      } catch { }
-    }
-  }
-}
-
 # ── 3. VS Code 확장 — **이 스크립트가 있는 까닭** ────────────────────────────────
 # ⚠ 확장만으로는 안 돈다. 확장은 Claude Code CLI 를 **자식으로 부른다** — 그래서 다음 칸이
 #   붙어 있고, 둘 중 하나만 서면 VS Code 는 열리는데 아무 일도 안 일어난다.
