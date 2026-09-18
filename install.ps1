@@ -1917,7 +1917,11 @@ foreach ($k in $fromFile.Keys) {
 $Retired = @(
   # 0048 — 고를 모델은 씨앗의 `modelPicker` 가 든다. 이 칸은 게이트웨이 갈래에서 창을 200k 로
   #        이고 서서 같은 모델을 1M 으로 못 냈다. 4.7 은 그 목록 줄로 산다.
-  'ANTHROPIC_CUSTOM_MODEL_OPTION'
+  'ANTHROPIC_CUSTOM_MODEL_OPTION',
+  # 노력 수준 — **고르는 자는 사람이다.** 심어 두면 화면에서 고른 값과 둘이 되어 어느 쪽이
+  # 이기는지 아무도 모르고, 고른 대로 안 도는 것이 오류처럼 보인다(사용자 실측 2026-09-18).
+  # 진본(자리 파일)에서 이 줄을 걷었으니, 이미 심긴 기계에서도 걷는다.
+  'CLAUDE_CODE_EFFORT_LEVEL'
 )
 foreach ($k in $Retired) {
   if ($fromFile.ContainsKey($k)) { continue }   # 진본이 되살렸으면 안 건드린다
