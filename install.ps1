@@ -46,9 +46,10 @@
 #   그 한 손이 안 가면 방금 심은 값은 **아무 데도 안 걸린 채**로 남는다 — 깔기는 다 됐는데 쓸
 #   수는 없는 자리다. 그러니 마지막 손은 설치가 든다.
 #   끄는 칸을 그래도 두는 까닭은 **화면 없이 부르는 갈래**가 있어서다(머리글의 쓰임 목록).
-#   ⚠ **자동화로 돌릴 때는 이 칸을 꼭 준다.** 이미 떠 있는 것이 있으면 여는 자리가 **끌지
-#   묻는 창**을 띄우는데, 아무도 안 보는 자리에서 그것은 영영 안 눌리는 창이다 — 설치가
-#   거기서 선 채로 끝나지 않는다.
+#   ⚠ **이 칸이 없어도 `-Yes` 면 물음창은 안 뜬다.** 이미 떠 있는 것이 있으면 여는 자리가 **끌지
+#   묻는 창**을 띄우는데, 아무도 안 보는 자리에서 그것은 영영 안 눌리는 창이다 — 그래서 `-Yes`
+#   아래에서는 묻지 않고 **떠 있는 것은 그대로 두고 안 띄운다**(사람이 저장 안 한 것을 설치가
+#   제 손으로 끄지 않는다). 화면이 아예 없는 자리라면 여는 일 자체가 덤이니 이 칸까지 주는 것이 곧다.
 # ⚠ `-Describe` — **아무것도 안 깔고 고를 목록만 내주고 나간다.** 화면 껍데기가 칸을 지으려면
 #   목록이 필요한데, 저쪽에 옮겨 적으면 제품이 늘 때 한쪽만 고쳐진다 — 그 어긋남은 「골랐는데
 #   안 깔린다」는 조용한 꼴로만 보인다. 목록의 진본은 아래 `$Products` 하나다.
@@ -374,6 +375,13 @@ $ModelPickerOnly = $true
 #   설치 직후에도 다시 태운다.
 function Add-ToPath([string]$Dir) {
   if (-not $Dir) { return }
+  # ⚠ **레지스트리에서 온 자리는 아직 안 펴진 글자다.** PATH 는 `REG_EXPAND_SZ` 로 앉는 일이 잦아
+  #   `%USERPROFILE%\…` 가 원문 그대로 온다 — `[Environment]::GetEnvironmentVariable` 은 그것을
+  #   안 펴고 넘긴다. 아래 `Test-Path -LiteralPath` 는 받은 글자를 **글자 그대로** 찾으므로,
+  #   멀쩡히 있는 폴더가 「없다」로 읽혀 예외 하나 없이 조용히 버려진다 — 그리고 그 뒤는
+  #   「깔았는데 안 잡힌다」로만 보인다. 그러니 **재기 전에 편다.** 이름으로 박은 자리
+  #   (`$env:ProgramFiles\…`)는 이 창에서 이미 펴져 오므로 이 줄이 하는 일이 없다.
+  $Dir = [Environment]::ExpandEnvironmentVariables($Dir)
   # ⚠ **묻는 것부터 거절당하는 자리가 기계 PATH 에 섞여 있다.** 윈도우가 SYSTEM 프로필 아래에도
   #   `…\config\systemprofile\AppData\Local\Microsoft\WindowsApps` 를 두는데, 일반 사용자로는
   #   **있는지 묻는 `Test-Path` 가 UnauthorizedAccessException 을 던진다.** 이 파일 머리의
@@ -3192,6 +3200,13 @@ function Test-AppUp($App) {
 # ⚠ **임자를 세워 준다.** 임자 없는 물음창은 설치 창 **뒤로 갈 수 있고**, 그러면 설치가
 #   멈춘 것처럼 보인다 — 안 보이는 창을 아무도 안 눌러 영영 안 끝난다.
 function Ask-Restart([string]$AppName) {
+  # ⚠ **`-Yes` 는 여기서도 안 묻는다.** `-Yes` 는 스크립트 어디서나 「사람에게 안 묻는다」는
+  #   칸인데, 이 자리의 물음은 콘솔이 아니라 **모달 창**이라 그 약속이 깨지면 `Read-Host` 보다
+  #   나쁘다 — 아무도 안 보는 자리에서 뜬 창은 영영 안 눌리고, 설치는 거기서 선 채로 멎는다.
+  # ⚠ **안 묻는 쪽의 답은 「안 끈다」다.** 답을 못 받았다고 설치가 제 손으로 끄면 사람이 띄워 둔
+  #   창과 저장 안 한 것이 말없이 날아간다 — 안 묻는다는 것은 마음대로 해도 된다는 뜻이 아니다.
+  #   떠 있는 것은 그대로 두고 안 띄운다(부르는 자리가 `$skip` 으로 든다).
+  if ($Yes) { return $false }
   Add-Type -AssemblyName System.Windows.Forms
   $owner = New-Object Windows.Forms.Form
   # MessageBox 의 owner 는 실제로 떠 있는 창이어야 한다. 예전 코드는 보이지 않는 Form 을
@@ -3311,7 +3326,8 @@ if ($NoLaunch) {
     $up = @($apps | Where-Object { Test-AppUp $_ })
     if ($up) {
       $names = ($up | ForEach-Object { $_.Name }) -join ' · '
-      Write-Host "  $names — 이미 떠 있다. 끌지 묻는다"
+      if ($Yes) { Write-Host "  $names — 이미 떠 있다. -Yes 라 안 묻는다" }
+      else      { Write-Host "  $names — 이미 떠 있다. 끌지 묻는다" }
       if (Ask-Restart $names) {
         Write-Host '  끈다 — 창을 닫으라고 보내고, 안 나가면 세게 끝낸다'
         foreach ($u in $up) {
@@ -3324,7 +3340,8 @@ if ($NoLaunch) {
           }
         }
       } else {
-        Write-Host '  안 끈다고 했다 — 떠 있는 것은 안 띄운다'
+        if ($Yes) { Write-Host '  안 물었으니 안 끈다 — 떠 있는 것은 안 띄운다' }
+        else      { Write-Host '  안 끈다고 했다 — 떠 있는 것은 안 띄운다' }
         $skip += @($up | ForEach-Object { $_.Name })
       }
     }
