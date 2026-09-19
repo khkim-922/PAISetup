@@ -22,7 +22,7 @@
 | **VS Code 와 확장** | 칸이 따로 있다. **사외는 기본 끔** — 데스크탑 앱만으로 서니까 안 받아도 된다. **사내는 켬**. 끄면 VS Code 자체도 안 깐다. ⚠ 확장은 CLI 를 자식으로 부른다 — 둘 중 하나만 있으면 안 돈다 |
 | Node.js | CLI 넷이 이것으로 돈다 — 고른 것이 하나라도 있으면 깔린다 |
 | 사내에서 무엇에 붙나 | **사내**는 켠 것이 같은 회사 키로 게이트웨이에 붙는다 — Codex 는 직결, Gemini 와 안티그래비티는 아래 프록시를 지난다. **사외**는 각자 로그인 — Codex 는 `codex login`(ChatGPT), Gemini 와 안티그래비티는 첫 실행의 Google 로그인. ⚠ **안티그래비티는 제 화면을 든 에이전트다** — Gemini Companion 은 창이 없어 터미널의 `gemini` 와 같이 써야 하지만 이쪽은 사이드바에서 바로 쓴다. 처음 열 때 제 본체(`agy` · 188MB)를 스스로 받는다 |
-| **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에 서서 Claude Code(Opus 5)와 Gemini CLI·안티그래비티를 게이트웨이로 넘긴다. 로그인마다 저절로 뜬다. 왜 있나는 `posco/pgpt-proxy/README.md` |
+| **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에 서서 Claude Code(Opus 5)와 Gemini CLI·안티그래비티를 게이트웨이로 넘긴다. 로그인마다 감시 작업(`PGPTProxy-Watchdog`)이 저절로 띄우고 지킨다. 왜 있나는 `posco/pgpt-proxy/README.md` |
 | Git · Python · GitHub CLI | 코드를 짤 사람만. `-NoDevTools` 로 뺀다 — **다만 사내에서는 Python 만은 깐다** (프록시가 그것으로 돈다). 「내 저장소 받기」에 주소를 넣었고 GitHub CLI 로그인이 비었으면 **저장소를 받기 직전에** 설치가 브라우저 로그인을 띄운다 — 일회용 코드와 남은 시간(180초)이 팝업에 뜬다 |
 | **데스크탑 앱** | **사외에서만 깔린다** — 사내에서는 넷 다 게이트웨이를 못 물어 쓸모가 없다. 켠 도구의 것만 깔린다. ⚠ 회사 망 위에서는 Gemini(구글 갱신 서버)가 막힌다 — 그때는 **막은 쪽이 낸 말을 그대로 찍고** 나머지를 이어 깐다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다 |
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣는다 — 세 CLI 가 읽는 세 이름에 같이 심긴다. **사외면 안 묻고, 사내에서 쓰던 기계를 사외에서 누르면 남아 있던 사내 값을 걷는다** (아래) |
@@ -327,7 +327,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | 지울 것 | 어디서 |
 |---|---|
 | **사용자 환경변수** — `ANTHROPIC_BASE_URL` · `ANTHROPIC_AUTH_TOKEN` · `ANTHROPIC_MODEL` · `OPENAI_API_KEY` · `GEMINI_API_KEY` | 시작 메뉴에 「환경 변수」로 검색 → 「계정의 환경 변수 편집」. 지우고 창을 새로 연다 |
-| **로그인마다 뜨는 프록시** — 등록 이름은 `PGPTProxy` | 작업 관리자 → 시작 프로그램에서 사용 안 함. 완전히 걷으려면 레지스트리 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 그 이름을 지운다 |
+| **로그인마다 뜨는 프록시 감시 작업** — 작업 이름은 `PGPTProxy-Watchdog` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false`. (기존 버전 잔재는 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `PGPTProxy`) |
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다 |
 | **옵션을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` |
 | **Codex · Gemini · 안티그래비티 회사 설정** | `~/.codex/config.toml` · `~/.gemini/settings.json` · `~/.gemini/antigravity-cli/settings.json`. 마지막 것은 `modelProvider` 줄만 지우면 로그인 갈래로 돌아간다 |

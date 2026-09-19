@@ -1285,8 +1285,14 @@ $wantNeed = @{ codex = $wantCodex; gemini = ($wantGemini -or $wantAgy) }
 # ⚠ **심는 자와 걷는 자가 같은 이름을 봐야 한다.** 아래 5‴ 칸이 이 둘을 만들고, 사외로 갈린
 #   판(5⁵ 칸)이 그것을 걷는다 — 두 자리에 글자를 따로 박으면 한쪽만 고쳐지는 날 **걷는 손이
 #   딴 자리를 지우고 진짜 잔재는 그대로 돈다.** 지우는 손은 헛도는 줄도 안 남긴다.
-$ProxyRunName = 'PGPTProxy'      # HKCU\...\Run 의 등록 이름
-$ProxyDirName = 'PGPT-Proxy'     # %LOCALAPPDATA% 아래 실행 폴더 이름
+$ProxyRunName  = 'PGPTProxy'          # HKCU\...\Run 의 등록 이름 (이전 판 잔재 정리용)
+$ProxyTaskName = 'PGPTProxy-Watchdog' # 작업 스케줄러의 프록시 감시 작업 이름
+$ProxyDirName  = 'PGPT-Proxy'         # %LOCALAPPDATA% 아래 실행 폴더 이름
+
+function Test-ScheduledTaskExists([string]$Name) {
+  try { return [bool](Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) }
+  catch { return $false }
+}
 # ── 회사 설정 둘이 앉는 자리 — **같은 까닭으로 여기 한 자리다** ─────────────────
 # 아래 5⁗ 칸이 이 둘에 쓰고 끝의 검증이 이 둘을 다시 재므로, 글자를 두 자리에 박지 않는다 (#3).
 $CodexCfg  = Join-Path $env:USERPROFILE '.codex\config.toml'
@@ -2111,16 +2117,28 @@ if (-not $useGateway) {
     if (Test-OurProxyEntry $k ([Environment]::GetEnvironmentVariable($k, 'User')) $fromFile) { Remove-UserVar $k }
   }
 
-  # ⚠ **자동시작을 먼저 걷는다.** 프록시 사본을 못 지우는 판이 있어도(도는 중이라 로그 파일이
-  #   잡혀 있다) 등록만 걷히면 **다음 로그인부터는 안 뜬다** — 둘 중 오래 사는 쪽이 등록이다.
+  # ⚠ **감시 작업과 기존 자동시작을 먼저 걷는다.**
+  #   작업 스케줄러의 감시 작업(PGPTProxy-Watchdog)을 먼저 멈추고 지워야,
+  #   프록시 프로세스를 죽였을 때 supervisor 가 다시 되살리지 않는다.
+  try {
+    if (Test-ScheduledTaskExists $ProxyTaskName) {
+      Stop-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue
+      Unregister-ScheduledTask -TaskName $ProxyTaskName -Confirm:$false -ErrorAction Stop
+      Write-Host "  감시 작업 — 걷었다 (작업 스케줄러 · $ProxyTaskName)" -ForegroundColor Green
+    }
+  } catch {
+    Write-Host "  ! 감시 작업 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
+    $Fails.Add('사내 잔재 (감시 작업 걷기)')
+  }
+
   $runKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
   try {
     if (Get-ItemProperty -Path $runKeyPath -Name $ProxyRunName -ErrorAction SilentlyContinue) {
       Remove-ItemProperty -Path $runKeyPath -Name $ProxyRunName -ErrorAction Stop
-      Write-Host "  자동시작 — 걷었다 (HKCU Run · $ProxyRunName)" -ForegroundColor Green
+      Write-Host "  기존 자동시작 — 걷었다 (HKCU Run · $ProxyRunName)" -ForegroundColor Green
     }
   } catch {
-    Write-Host "  ! 자동시작 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
+    Write-Host "  ! 기존 자동시작 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
     $Fails.Add('사내 잔재 (자동시작 걷기)')
   }
 
@@ -2316,6 +2334,11 @@ if ($wantProxy) {
         $ourVer = '{0}.{1}' -f $ourPair[0], $ourPair[1]
         New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
         Copy-Item -LiteralPath $proxySrc -Destination $proxyPath -Force
+        $watchdogSrc = Join-Path (Split-Path $proxySrc -Parent) 'watchdog.ps1'
+        $watchdogPath = Join-Path $proxyDir 'watchdog.ps1'
+        if (Test-Path -LiteralPath $watchdogSrc) {
+          Copy-Item -LiteralPath $watchdogSrc -Destination $watchdogPath -Force
+        }
         Write-Host "  실행 폴더 — $proxyDir (v$ourVer)"
 
         $up = Get-ProxyHealth $proxyHealthUrl
@@ -2350,25 +2373,31 @@ if ($wantProxy) {
           }
         }
 
+        # 기존 HKCU\Run\PGPTProxy 일회성 등록은 제거하고, 작업 스케줄러 감시 작업으로 승격한다.
         $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-        $others = @()
         try {
-          $rp = Get-ItemProperty -Path $runKey -ErrorAction Stop
-          foreach ($pp in $rp.PSObject.Properties) {
-            if ($pp.Name -like 'PS*' -or $pp.Name -eq $ProxyRunName) { continue }
-            if (([string]$pp.Value) -like ('*' + (Split-Path $proxySrc -Leaf) + '*')) { $others += $pp.Name }
+          if (Get-ItemProperty -Path $runKey -Name $ProxyRunName -ErrorAction SilentlyContinue) {
+            Remove-ItemProperty -Path $runKey -Name $ProxyRunName -ErrorAction SilentlyContinue
+            Write-Host "  기존 자동시작 — 걷었다 (HKCU Run · $ProxyRunName)"
           }
         } catch { }
-        if ($others.Count) {
-          Write-Host "  자동시작 — 다른 등록이 이미 같은 프록시를 띄운다 ($($others -join ' · ')) · 우리 것은 안 건다"
-        } else {
-          try {
-            Set-ItemProperty -Path $runKey -Name $ProxyRunName -Value ('"' + $pyw + '" "' + $proxyPath + '"')
-            Write-Host "  자동시작 — 로그인마다 띄우도록 걸었다 (HKCU Run · $ProxyRunName)" -ForegroundColor Green
-          } catch {
-            Write-Host "  ! 자동시작 등록 실패 — $(Say-Why $_)" -ForegroundColor Red
-            $Fails.Add('로컬 프록시 (자동시작)')
-          }
+
+        try {
+          $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+                      -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchdogPath`" -ProxyPath `"$proxyPath`" -PythonPath `"$pyw`""
+          $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+          $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+          $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+                        -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
+
+          Register-ScheduledTask -TaskName $ProxyTaskName -Action $action -Trigger $trigger `
+                                 -Principal $principal -Settings $settings `
+                                 -Description "PGPT proxy watchdog supervisor" -Force | Out-Null
+          Start-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue
+          Write-Host "  감시 작업 — 로그인마다 띄우도록 걸고 시작했다 (작업 스케줄러 · $ProxyTaskName)" -ForegroundColor Green
+        } catch {
+          Write-Host "  ! 감시 작업 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Red
+          $Fails.Add('로컬 프록시 (감시 작업)')
         }
       }
     }
@@ -3112,8 +3141,7 @@ if (Test-Path -LiteralPath $launcher) {
 #   SilentlyContinue` 로 안 막힌다 — 그러면 자동 실행 한 칸 때문에 **설치가 통째로 죽는다.**
 #   못 묻는 것과 없는 것은 다른 명제지만, 이 칸이 둘로 할 일은 같다: 「없다」로 답하고 간다.
 function Test-AutoRunTask([string]$Name) {
-  try { return [bool](Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) }
-  catch { return $false }
+  return (Test-ScheduledTaskExists $Name)
 }
 
 $AutoRunTaskName = 'PAISetup-AutoRun'
