@@ -949,6 +949,23 @@ function Test-OurProxyEntry([string]$Name, [string]$Value, [hashtable]$FromFile)
   return (Test-ProxyValue $Value)
 }
 
+# 사내에서만 뜻이 있는 이름 — **값이 주소가 아니라 위 자가 못 가른다.**
+# ⚠ **프록시 걷기와 같은 축이고 다른 자다.** 저쪽은 「값이 죽은 포트를 가리키나」를 묻고
+#   이쪽은 「이 이름이 사외에서 뜻이 있나」를 묻는다. 값으로만 재면 주소가 아닌 사내 전용 값이
+#   그대로 샌다 — `ATELIER_SITES=posco` 가 그 틈이었다(실측 2026-09-20 집 PC: 아뜰리에가
+#   회사 담장을 문 채 서서 **갈래가 전부 막혔고, 화면에서 고를 것이 하나도 없었다**).
+# ⚠ **이름 울타리는 여기서도 그대로 든다**(`$FromFile` 이 그 이름을 드는가) — 우리가 실어
+#   보낸 이름만 건드린다. 같은 이름을 제 뜻으로 쓰는 사람의 값을 지우지 않는다.
+# ⚠ **값을 안 본다.** 무엇이 앉아 있든 사외에서는 뜻이 없다 — 저쪽이 값을 묻는 것과 갈리는
+#   자리고, 그래서 이름 울타리가 유일한 방어다. 이름이 늘면 여기 한 줄.
+$InsideOnly = @('ATELIER_SITES')
+
+function Test-OurInsideOnlyEntry([string]$Name, [hashtable]$FromFile) {
+  if (-not $FromFile) { return $false }
+  if ($InsideOnly -notcontains $Name) { return $false }
+  return $FromFile.ContainsKey($Name)
+}
+
 # 사용자 환경변수로 심는다 — `HKCU\Environment` 에 써서 **새로 뜨는 프로세스부터** 걸린다.
 # ⚠ `setx` 를 안 쓴다. 같은 자리에 쓰지만 **값이 1024자를 넘으면 못 쓴다** — 토큰은 그보다
 #   길 수 있고, 그때 사람은 「왜 안 되지」를 키가 아니라 주소에서 찾게 된다. .NET 쪽에는
@@ -1956,6 +1973,10 @@ foreach ($k in $fromFile.Keys) {
     Write-Host "  $k — 안 심는다 (사외라 프록시가 안 선다: $val)" -ForegroundColor Yellow
     continue
   }
+  if (-not $useGateway -and ($InsideOnly -contains $k)) {
+    Write-Host "  $k — 안 심는다 (사외에서는 뜻이 없는 이름)" -ForegroundColor Yellow
+    continue
+  }
   Plant-Var $k $val
 }
 
@@ -2067,6 +2088,16 @@ if (-not $useGateway) {
       Write-Host "  ! $Name 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
       $script:Fails.Add("$Name 걷기")
     }
+  }
+
+  # ⚠ **사내 전용 이름도 여기서 걷는다 — 안 심기만으로는 못 고친다.** 위 5' 칸은 *이번 판에
+  #   심을 목록*에서만 뺄 뿐이라, 사내에서 한 번 깐 기계에 박힌 값은 다시 깔아도 그대로 산다
+  #   (5‴ 칸 ⚠ 가 든 그 병). 주소와 달리 이 값들은 **프로그램을 안 죽이고 화면만 좁혀서**
+  #   조용하다 — 아뜰리에는 멀쩡히 뜨고 고를 갈래만 사라졌다.
+  foreach ($k in $InsideOnly) {
+    if (-not (Test-OurInsideOnlyEntry $k $fromFile)) { continue }
+    if (-not [Environment]::GetEnvironmentVariable($k, 'User')) { continue }
+    Remove-UserVar $k
   }
 
   $oldUrl = [Environment]::GetEnvironmentVariable('ANTHROPIC_BASE_URL', 'User')
@@ -2687,10 +2718,15 @@ if ($cfg) {
   # ⚠ **훑는 목록을 먼저 뜬다** — 도는 중에 지우면 열거가 깨진다.
   if (-not $useGateway -and $cfg.PSObject.Properties['env']) {
     foreach ($p in @($cfg.env.PSObject.Properties)) {
-      if (-not (Test-OurProxyEntry $p.Name $p.Value $fromFile)) { continue }
+      # ⚠ **까닭이 둘이라 말도 둘이다.** 한 낱말로 뭉치면 로그를 읽는 사람이 *왜* 걷혔는지
+      #   못 가른다 — 주소가 죽어서인지, 이름이 사외에서 뜻이 없어서인지.
+      $why = ''
+      if (Test-OurProxyEntry $p.Name $p.Value $fromFile)  { $why = '사외라 프록시가 안 선다' }
+      elseif (Test-OurInsideOnlyEntry $p.Name $fromFile)  { $why = '사외에서는 뜻이 없는 이름' }
+      else { continue }
       $cfg.env.PSObject.Properties.Remove($p.Name)
       $dirty = $true
-      Write-Host "  $($p.Name) — settings.json 에서 걷었다 (사외라 프록시가 안 선다)" -ForegroundColor Green
+      Write-Host "  $($p.Name) — settings.json 에서 걷었다 ($why)" -ForegroundColor Green
     }
   }
 
