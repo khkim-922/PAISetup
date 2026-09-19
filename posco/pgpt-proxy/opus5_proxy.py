@@ -80,16 +80,17 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # ── 판 번호는 두 칸이다 — **상류 판과 우리 판을 안 섞는다** ──────────────────────────
 # 옛 판은 한 칸(정수 17·18)이었는데, 그러면 **상류가 16 을 내는 날 우리 18 과 부딪히고 번호로는
 # 누가 새것인지 못 가른다** — 같은 축에 두 사람이 번호를 매기니 필연이다. 축을 둘로 가르면
-# 그 충돌이 없어진다: 상류가 16 을 내면 우리 칸은 0 으로 돌아가 `16.0` 이 되고, 그것은 `15.4`
+# 그 충돌이 없어진다: 상류가 16 을 내면 우리 칸은 0 으로 돌아가 `16.0` 이 되고, 그것은 `15.5`
 # 보다 뒤라는 것이 두 수를 차례로 견주면 그냥 나온다.
-# ⚠ **`/health` 는 사람이 읽는 한 줄(`15.4`)을 내고, 견주는 자는 두 수를 따로 본다.**
+# ⚠ **`/health` 는 사람이 읽는 한 줄(`15.5`)을 내고, 견주는 자는 두 수를 따로 본다.**
 #   점 찍힌 문자열을 크기로 견주면 `"9" > "10"` 이 되는 자리라, 설치기는 이 아래 두 이름을
 #   각각 정수로 읽는다(`install.ps1` 의 프록시 칸).
 # ⚠ **상류를 새로 받으면 위 칸을 그 판으로 올리고 아래 칸을 0 으로 되돌린다** — 우리 덩어리를
 #   다시 얹은 만큼만 아래 칸이 오른다. README 「상류에서 새 판을 받을 때」.
 VERSION_UPSTREAM = 15
-# 우리 덩어리 넷 — keepalive(0044) · unstream(0051) · 하이쿠 대체 · 제미나이 이름 표.
-VERSION_OURS = 4
+# 우리 덩어리 다섯 — keepalive(0044) · unstream(0051) · 하이쿠 대체 · 제미나이 이름 표 ·
+# 게이트웨이 요청 번호 로그(#67).
+VERSION_OURS = 5
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 # SSE keepalive — 상류가 이만큼 침묵하면 클라이언트 쪽에 SSE 주석 한 줄을 흘린다. 0 이면 끈다.
 # 게이트웨이는 모델이 생각하는 동안 바이트를 안 흘리고, Claude Code 의 바이트 유휴 워치독은 그 침묵에
@@ -98,6 +99,13 @@ VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 # 끊으면 여기서는 못 막는다.
 KEEPALIVE_SEC = float(os.environ.get("PGPT_PROXY_KEEPALIVE_SEC", "15"))
 _KEEPALIVE_LINE = b": keepalive\n\n"
+
+# (우리 것) 게이트웨이가 응답 머리에 실어 주는 요청 번호. **서버가 찍은 값이라 게이트웨이 팀이 제
+# 장부를 찾는 열쇠다** — 벽에 걸린 판을 「이 요청」으로 좁혀 물을 수 있다(#67 · #46 물음 ③④).
+# ⚠ **클라이언트가 이것을 로그에 안 찍는다** — Claude Code 확장이 제 안에서 짓는 `reqId` 는 게이트웨이가
+#   모르는 UUID 라 대체가 안 된다. 그래서 프록시가 적어야만 남는다.
+# ⚠ **번호를 우리가 짓지 않는다** — 상류가 안 주면 빈칸으로 둔다. 지어 낸 번호는 장부에 없어 값이 없다.
+_GW_REQUEST_ID_HEADER = "x-pgpt-request-id"
 # unstream — 클라이언트의 `"stream": true` 를 상류엔 `"stream": false` 로 보내고, 답이 오면 SSE 로 지어 낸다.
 # 게이트웨이는 /v1/messages 스트림을 요청 시작 약 180초에 신호 없이 닫지만(claude-config #46) 비스트리밍
 # 경로에는 그 상한이 없다(회사 PC 실측 2026-09-16 — 119초에 200 · 300.04초에 앞단 HAProxy 의 504).
@@ -950,9 +958,20 @@ def anthropic_sse_error(status: int, raw: bytes) -> bytes:
 
 class ProxyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    # (우리 것 · #67) 이 요청에서 상류가 준 요청 번호. 상류에 못 닿은 판(경로 거절 · /health)도
+    # 판마다 한 줄이 이 칸을 읽으므로 빈 값으로 선언해 둔다.
+    gw_request_id = ""
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
+
+    def _gw(self) -> str:
+        """(우리 것 · #67) 판마다 한 줄의 꼬리. 번호가 없으면 아무것도 안 붙인다.
+
+        **한 자리에서 짓는 까닭** — 찍는 자리가 셋(통과 · 0051 지어 낸 길 · 느린 판)이라
+        꼴이 갈리면 나중에 번호로 훑는 자가 셋을 다 알아야 한다.
+        """
+        return f" gw={self.gw_request_id}" if self.gw_request_id else ""
 
     def _send_json(self, status: int, payload: dict[str, object]) -> None:
         data = _json_bytes(payload)
@@ -1021,7 +1040,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
             conn = _UPSTREAM_POOL.acquire()
             try:
                 conn.request(method, path, body=body, headers=upstream_headers)
-                return conn.getresponse(), conn
+                response = conn.getresponse()
+                # (우리 것 · #67) 요청 번호를 핸들러에 걸어 둔다 — 판마다 한 줄이 이것을 읽는다.
+                # **여기 한 자리에서 잡는 까닭**은 상류 응답을 받는 갈래가 둘(통과 길 · 0051 이
+                # 지어 내는 길)인데 둘 다 이 문을 지나기 때문이다.
+                self.gw_request_id = response.headers.get(_GW_REQUEST_ID_HEADER) or ""
+                return response, conn
             except (http.client.HTTPException, OSError, TimeoutError) as error:
                 last_error = error
                 _UPSTREAM_POOL.release(conn, reuse=False)
@@ -1221,7 +1245,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 message = None
         if not isinstance(message, dict) or not isinstance(message.get("content"), (list, str)):
             if response.status >= 400:
-                log(f"{method} {upstream_path} -> HTTP {response.status} (unstream)")
+                log(f"{method} {upstream_path} -> HTTP {response.status} (unstream){self._gw()}")
             else:
                 log(f"{method} {upstream_path} -> unstream: not an Anthropic message ({len(raw)}B)")
             if opened:
@@ -1278,7 +1302,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         log(
             f"unstreamed model={message.get('model')} "
             f"blocks={len(content) if isinstance(content, list) else 1} "
-            f"stop={message.get('stop_reason')} out={got}/{want} [{shape}] keepalive x{comments}"
+            f"stop={message.get('stop_reason')} out={got}/{want} [{shape}] "
+            f"keepalive x{comments}{self._gw()}"
         )
         return conn, reuse
 
@@ -1396,7 +1421,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 return
 
             if response.status >= 400:
-                log(f"{self.command} {parsed.path} -> HTTP {response.status}")
+                log(f"{self.command} {parsed.path} -> HTTP {response.status}{self._gw()}")
 
             if gemini_chat_model and response.status < 400:
                 raw = response.read()
@@ -1461,7 +1486,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             elapsed = time.monotonic() - started
             if elapsed >= SLOW_REQUEST_SEC and parsed.path != "/health":
                 _count_slow()
-                log(f"slow {self.command} {parsed.path} {elapsed:.1f}s")
+                log(f"slow {self.command} {parsed.path} {elapsed:.1f}s{self._gw()}")
 
     do_HEAD = _forward
     do_GET = _forward

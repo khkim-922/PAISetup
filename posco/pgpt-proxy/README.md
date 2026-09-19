@@ -16,11 +16,11 @@
 
 - 저장소 [`pgpt-one-click-connect`](https://github.com/sejuone-cloud/pgpt-one-click-connect) · 커밋 `701765da`
   (2026-09-15 · v0.5.3) · 프록시 `VERSION = 15`
-- **우리 판은 `15.4` — 두 칸이다**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸이 받아온 상류 판이고 뒤 칸이
+- **우리 판은 `15.5` — 두 칸이다**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸이 받아온 상류 판이고 뒤 칸이
   우리가 얹은 덩어리 수다. **한 칸으로 세지 않는 까닭**: 상류와 우리가 같은 축에 번호를 매기면 상류가 16 을
   내는 날 우리 18 과 부딪히고, 그때 번호로는 누가 새것인지 못 가른다. 축을 가르면 **상류가 16 을 내면 우리
-  칸은 0 으로 돌아가 `16.0`** 이 되고 그것이 `15.4` 보다 뒤라는 것이 그냥 나온다
-  ⚠ **`/health` 는 사람이 읽는 `15.4` 를 내고, 견주는 자는 두 수를 각각 정수로 읽는다** — 점 찍힌 문자열을
+  칸은 0 으로 돌아가 `16.0`** 이 되고 그것이 `15.5` 보다 뒤라는 것이 그냥 나온다
+  ⚠ **`/health` 는 사람이 읽는 `15.5` 를 내고, 견주는 자는 두 수를 각각 정수로 읽는다** — 점 찍힌 문자열을
   크기로 견주면 `"9" > "10"` 이 되는 자리다. 설치기가 그렇게 견주어 낮으면 갈아 끼운다(`install.ps1` 프록시 칸)
   ⚠ **옛 정수 한 칸(`17`·`18`)이 도는 자리도 받는다** — 그 판은 새 이름이 없어 「못 읽었다」로 떨어지고,
   그때는 **갈아 끼우는 쪽으로 기운다.** 반대로 두면 옛 프록시가 영영 안 바뀐다
@@ -31,7 +31,9 @@
   (`_CLAUDE_HAIKU_SUBSTITUTE` · `normalize_pgpt_claude_model` 의 `haiku` 갈래 · 위 표) — 게이트웨이에 하이쿠가
   없어 서브에이전트가 지던 자리다 ⑷ 제미나이 이름 표(`_GEMINI_MODEL_ALIASES` ·
   `normalize_gemini_model_path` 의 그 조회 · 자체 검사 세 칸) — 안티그래비티가 제목 짓기에 못박아 둔 이름이
-  게이트웨이에 없어 그 곁 호출만 지던 자리다. **판 번호 두 칸도 우리 것이다**(위). 그 둘째를 사내망 밖에서 재느라
+  게이트웨이에 없어 그 곁 호출만 지던 자리다 ⑸ 게이트웨이 요청 번호 로그(`_GW_REQUEST_ID_HEADER` ·
+  `_write_upstream` 이 잡는 한 줄 · 꼬리를 짓는 `_gw` · 판마다 한 줄 넷) — 게이트웨이가 응답 머리에 주는
+  번호를 셋 다 버려서 벽에 걸린 판을 「이 요청」으로 못 대던 자리다(#67). **판 번호 두 칸도 우리 것이다**(위). 그 둘째를 사내망 밖에서 재느라
   `mock_gateway.py` 에도 느린 비스트리밍 답 한 칸이 붙었다(`MOCK_SLOW_SEC` · `MOCK_ANSWER` · `_mock/last`).
   나머지는 상류 그대로다. 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
   파이썬 판정이 무는 두 줄(`raise` 에 `from` 없음 · 안 쓰는 import)은 뿌리 `ruff.toml` 이 이 세 파일을
@@ -88,7 +90,7 @@ PGPT_API_KEY=<회사 키> python -X utf8 posco/pgpt-proxy/Test-AllPgptModels.py 
 ## 상류에서 새 판을 받을 때
 
 1. 상류의 세 파일을 그대로 복사한다 — `diff --strip-trailing-cr` 로 대조하면 줄끝 잡음이 안 낀다.
-   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 둘을 다시 얹는다** — `git diff` 로 이번 판과 견주면 둘 다
+   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 다섯을 다시 얹는다** — `git diff` 로 이번 판과 견주면 둘 다
    그대로 보인다.
    - keepalive(0044) — `KEEPALIVE_SEC` · `_count_keepalive` · `_relay_sse_keepalive` · `_relay_stream` 의 두 인자 ·
      호출 자리의 `keepalive_sse` · 자체 검사 한 칸
