@@ -288,11 +288,60 @@ if ($Describe) {
   exit 0
 }
 
+# ── 물음창 — **묻는 자리가 둘이라 띄우기는 한 자리가 든다** ──────────────────────
+# ⚠ **임자 없는 물음창은 뒤로 숨는다.** 그러면 설치가 멈춘 것처럼 보이고, 안 보이는 창을 아무도
+#   안 눌러 영영 안 끝난다 — 회사 PC/VDI 에서 확인창이 VS Code 뒤에 숨은 채 기다린 자리가 그것이다.
+#   작업표시줄에 안 남는 1px 창을 먼저 활성화해 메시지박스를 반드시 앞으로 가져온다.
+# ⚠ **「누를 사람이 있나」는 부르는 쪽이 잰다** — 여기는 띄우기만 든다. 두 부름의 판정이 같아야
+#   할 까닭이 없다(한쪽은 앱을 끄는 물음, 한쪽은 설치를 끝내는 물음이다).
+function Show-AskDialog([string]$Title, [string]$Message) {
+  Add-Type -AssemblyName System.Windows.Forms
+  $owner = New-Object Windows.Forms.Form
+  $owner.ShowInTaskbar = $false
+  $owner.StartPosition = 'Manual'
+  $owner.Size = New-Object Drawing.Size(1, 1)
+  $work = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+  $owner.Location = New-Object Drawing.Point(
+    ($work.Left + [int]($work.Width / 2)),
+    ($work.Top  + [int]($work.Height / 2)))
+  $owner.Opacity = 0
+  $owner.TopMost = $true
+  try {
+    $owner.Show()
+    $owner.Activate()
+    $owner.BringToFront()
+    return ([Windows.Forms.MessageBox]::Show(
+      $owner, $Message, $Title, 'YesNo', 'Warning') -eq 'Yes')
+  } finally { $owner.Dispose() }
+}
+
+# 빗장을 쥔 쪽을 찾는다 — **이름으로 싸잡지 않는다.**
+# ⚠ `powershell.exe` 를 이름으로만 고르면 **치고 있는 이 창과 화면 껍데기까지 든다.** 몸통은
+#   `-File …install.ps1` 로 떠 있으므로 그 꼴을 든 것만 고른다. `install.ui.ps1` 은 빗장을 안
+#   쥐고, 두 이름은 서로를 품지 않아 여기 안 걸린다.
+# ⚠ **못 읽는 것은 안 고른다** — 다른 사용자 것은 `CommandLine` 이 비어 오고 `-like` 가 거짓을
+#   낸다. 못 본 것을 끝내지 않는다.
+function Find-EngineHolders {
+  try {
+    @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction Stop |
+        Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*install.ps1*' })
+  } catch { @() }
+}
+
+# 쥔 쪽 한 줄 — 화면과 물음창이 같은 문장을 쓴다
+function Format-EngineHolder($H) {
+  '  PID {0} · {1} 시작 · {2}분째' -f
+    $H.ProcessId, $H.CreationDate.ToString('HH:mm:ss'),
+    [int]((Get-Date) - $H.CreationDate).TotalMinutes
+}
+
 # ── 단일 실행 빗장 (Mutex) — **겹쳐 도는 것을 뿌리에서 막는다** ────────────────
 # ⚠ **부팅 자동화와 로그온 자동 실행, 또는 사람의 실행이 겹치면** 같은 환경변수와 설정 파일을
 #   동시에 덮어써 진 쪽의 반쪽 상태가 남는다 (#13).
-# ⚠ **무인이면 즉시 조용히 물러선다.** 이미 다른 쪽이 같은 몸통을 돌리고 있으므로 질 이유가 없다.
-#   사람이 실행한 대화형이면 안내를 찍고 잠시 대기(최대 60초)하거나 물러선다.
+# ⚠ **막는 말만 하고 정보를 안 주면 받은 사람이 할 수 있는 일이 없다**(#17). 「진행 중」으로는
+#   **정상 진행과 멎은 고아를 못 가른다** — 쥔 쪽의 번호와 경과를 대면 사람이 그 둘을 가른다.
+#   그리고 사람이 있으면 **끝내고 이어갈 길을 준다**: 고아는 기다려서 안 풀리고, 지금까지는
+#   사람이 손으로 PID 를 찾아 죽이는 것 말고 방법이 없었다.
 $script:EngineMutex = $null
 $script:HasEngineMutex = $false
 try {
@@ -303,18 +352,60 @@ try {
 }
 
 if (-not $script:HasEngineMutex) {
-  if ($Yes -or -not [Environment]::UserInteractive) {
-    Write-Host '  이미 다른 install.ps1 이 돌고 있습니다 — 무인 실행이라 겹치지 않게 물러납니다.' -ForegroundColor Yellow
-    exit 0
-  } else {
-    Write-Host '  이미 다른 설치 또는 자동 실행이 진행 중입니다. 잠시 기다립니다 (최대 60초)...' -ForegroundColor Yellow
-    try {
-      $script:HasEngineMutex = $script:EngineMutex.WaitOne(60000, $false)
-    } catch { }
-    if (-not $script:HasEngineMutex) {
-      Write-Host '  ! 다른 설치 프로세스가 끝나지 않아 물러납니다.' -ForegroundColor Red
-      exit 1
+  $holders = @(Find-EngineHolders)
+  Write-Host ''
+  Write-Host '  이미 다른 설치 또는 자동 실행이 진행 중입니다.' -ForegroundColor Yellow
+  foreach ($h in $holders) { Write-Host ('  ' + (Format-EngineHolder $h)) }
+  if (-not $holders) {
+    Write-Host '    · 쥔 프로세스를 못 찾았다 — 방금 끝났거나 다른 사용자 것이다'
+  }
+
+  # ⚠ **묻는 자리를 가르는 것은 `-Yes` 가 아니라 「누를 사람이 있나」다** — 아래 `Ask-Restart` 와
+  #   같은 까닭이다. 화면 껍데기는 사람을 앞에 두고도 몸통을 **늘 `-Yes` 로** 부르므로, `-Yes` 에
+  #   걸면 **화면으로 깐 사람은 영영 안 물어보게 된다.** 누를 사람이 아예 없는 것은 세션 0
+  #   (서비스 · 「로그온하지 않아도 실행」 스케줄러 · CI)뿐이고 `UserInteractive` 가 그것을 가른다.
+  if (-not [Environment]::UserInteractive) {
+    Write-Host '  물을 자리가 없다 (세션 0 · 서비스 · 스케줄러) — 겹치지 않게 물러납니다.' -ForegroundColor Yellow
+    exit 1
+  }
+
+  Write-Host '  잠시 기다립니다 (최대 60초)...'
+  # ⚠ **버려진 빗장은 잡힌 것이다.** 기다리는 동안 쥔 쪽이 죽으면 `WaitOne` 이 던지는데, 그때
+  #   **소유권은 이쪽에 넘어와 있다** — 삼키고 거짓으로 두면 방금 얻은 것을 못 쓴다.
+  try { $script:HasEngineMutex = $script:EngineMutex.WaitOne(60000, $false) }
+  catch { $script:HasEngineMutex = $true }
+
+  if (-not $script:HasEngineMutex) {
+    # ⚠ **기본값은 「안 끝낸다」다.** 빗장이 선 까닭이 *겹쳐 돌면 반쪽 상태가 남는다*(#13)이므로,
+    #   아직 일하는 중인 것을 끝내면 **그 반쪽 상태를 우리가 만드는 셈이다.** 그래서 묻고, 무엇을
+    #   끝내는지 대고, 사람이 예라고 할 때만 끝낸다.
+    # ⚠ **못 찾았으면 안 묻는다** — 무엇을 끝낼지 못 대면서 끝낼지 물을 수 없다.
+    $holders = @(Find-EngineHolders)
+    if ($holders) {
+      $msg = "이미 돌고 있는 설치가 있습니다.`n`n" +
+             (($holders | ForEach-Object { Format-EngineHolder $_ }) -join "`n") + "`n`n" +
+             "그것을 끝내고 새로 시작할까요?`n`n" +
+             "아직 일하는 중이면 반쯤 깔린 상태가 남을 수 있습니다."
+      if (Show-AskDialog '설치가 겹쳤습니다' $msg) {
+        foreach ($h in $holders) {
+          try {
+            Stop-Process -Id $h.ProcessId -Force -ErrorAction Stop
+            Write-Host ('  PID {0} 을 끝냈다' -f $h.ProcessId)
+          } catch {
+            Write-Host ('  ! PID {0} 을 못 끝냈다 — {1}' -f $h.ProcessId, $_.Exception.Message) `
+              -ForegroundColor Yellow
+          }
+        }
+        # 주인이 죽으면 윈도우가 빗장을 놓는다 — 그 버려진 빗장을 여기서 받는다(위 ⚠ 와 같은 자리).
+        try { $script:HasEngineMutex = $script:EngineMutex.WaitOne(10000, $false) }
+        catch { $script:HasEngineMutex = $true }
+      }
     }
+  }
+
+  if (-not $script:HasEngineMutex) {
+    Write-Host '  ! 다른 설치 프로세스가 끝나지 않아 물러납니다.' -ForegroundColor Red
+    exit 1
   }
 }
 
@@ -3455,31 +3546,14 @@ function Ask-Restart([string]$AppName) {
     return $false
   }
   Write-Host '  끌지 묻는다 — 창이 뜬다'
-  Add-Type -AssemblyName System.Windows.Forms
-  $owner = New-Object Windows.Forms.Form
-  # MessageBox 의 owner 는 실제로 떠 있는 창이어야 한다. 예전 코드는 보이지 않는 Form 을
-  # owner 로만 넘겨서, 회사 PC/VDI 에서는 확인창이 VS Code 뒤에 숨은 채 응답을 기다렸다.
-  # 작업표시줄에는 남기지 않는 1px 창을 먼저 활성화해 메시지박스를 반드시 앞으로 가져온다.
-  $owner.ShowInTaskbar = $false
-  $owner.StartPosition = 'Manual'
-  $owner.Size = New-Object Drawing.Size(1, 1)
-  $work = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  $owner.Location = New-Object Drawing.Point(
-    ($work.Left + [int]($work.Width / 2)),
-    ($work.Top  + [int]($work.Height / 2)))
-  $owner.Opacity = 0
-  $owner.TopMost = $true
-  try {
-    $owner.Show()
-    $owner.Activate()
-    $owner.BringToFront()
-    $msg = "$AppName — 이미 돌고 있습니다.`n`n" +
-           "지금 껐다 새로 열까요?`n" +
-           "돌던 것은 방금 깔린 것(키 · MCP 서버 · 세션 훅)을 모릅니다.`n`n" +
-           "저장 안 한 것이 있으면 먼저 저장하고 눌러 주세요."
-    return ([Windows.Forms.MessageBox]::Show(
-      $owner, $msg, $AppName, 'YesNo', 'Warning') -eq 'Yes')
-  } finally { $owner.Dispose() }
+  # ⚠ **창 띄우기는 위 `Show-AskDialog` 가 든다** — 묻는 자리가 둘이 되면서 한 자리로 뺐다(#17).
+  #   임자 창을 앞으로 내는 까닭(회사 PC/VDI 에서 확인창이 VS Code 뒤에 숨은 채 기다리던 자리)도
+  #   그쪽에 적혀 있다. 여기 남는 것은 **이 물음의 말** 하나다.
+  $msg = "$AppName — 이미 돌고 있습니다.`n`n" +
+         "지금 껐다 새로 열까요?`n" +
+         "돌던 것은 방금 깔린 것(키 · MCP 서버 · 세션 훅)을 모릅니다.`n`n" +
+         "저장 안 한 것이 있으면 먼저 저장하고 눌러 주세요."
+  return (Show-AskDialog $AppName $msg)
 }
 
 # 끈다 — **곱게 먼저, 안 나가면 세게.**
