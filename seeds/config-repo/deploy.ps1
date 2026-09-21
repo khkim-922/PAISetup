@@ -658,10 +658,16 @@ if ((Test-Path $skillSrc) -and (Test-Path $skillDst)) {
     # ⚠ **이 저장소 전용 스킬은 여기서도 뺀다.** 그래야 전에 깔려 있던 홈 사본이 제거 후보로
     #   올라온다 — 선언에 이름을 더한 날 홈에서 저절로 걷히는 길이 이것이다. 안 빼면 「밀지도
     #   않고 걷지도 않는」 자리가 되어, 옛 사본이 계속 로드되면서 아무도 모른다.
+    # ⚠ **앱이 관리하는 폴더는 이 저장소 것이 아니라 안 센다.** 데스크톱 앱이 제 스킬을
+    #   `skills/synced/<id>/` 로 동기화한다 — 진본에 없는 것이 당연하고, 걷으면 앱 것을 지운다
+    #   (실측 2026-09-22 집 PC: 제거 후보 231 중 204 가 그 폴더 · #74). `check-global-copies.sh`
+    #   는 진본 없는 홈 스킬을 애초에 안 재므로 이쪽만 갈린다.
+    $appManagedSkillDirs = @('synced')
     $keep = @(Get-ChildItem $skillSrc -Recurse -File |
         ForEach-Object { $_.FullName.Substring($skillSrc.Length + 1) } |
         Where-Object { $localSkills -notcontains ($_ -split '\\')[0] })
     Get-ChildItem $skillDst -Recurse -File |
+        Where-Object { $appManagedSkillDirs -notcontains ($_.FullName.Substring($skillDst.Length + 1) -split '\\')[0] } |
         Where-Object { $keep -notcontains $_.FullName.Substring($skillDst.Length + 1) } |
         ForEach-Object {
             $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  (skills/에 없음)" }

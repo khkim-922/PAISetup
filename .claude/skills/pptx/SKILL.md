@@ -28,8 +28,7 @@ Paths are relative to this skill's directory. Everything else is plain Python, `
 | `scripts/office/soffice.py --headless --convert-to pdf deck.pptx` | LibreOffice wrapper — bare `soffice` hangs in this sandbox |
 | `scripts/build_deck.py data.json -o out.pptx` | 로컬 추가 — 데이터(JSON)만 넘기면 임원 보고용 덱(기본 A4 가로)이 나온다. `--schema` 로 레이아웃·키·지면 목록 |
 | `scripts/audit_layout.ps1 -Path deck.pptx` | 로컬 추가 — PowerPoint 가 직접 잰 글 높이로 넘침·겹침·여백을 검사한다 (고치는 동안 돌리는 검사) |
-| `scripts/capture_slides.ps1 -Path deck.pptx -Slides "1,8"` | 로컬 추가 — DRM 환경에서 슬라이드쇼를 화면 캡처해 육안 QA용 이미지를 만든다 (`capture_slide.py` 가 압축) |
-| `scripts/capture_slide.py -i raw.png -o qa.jpg` | 로컬 추가 — DRM 환경 화면캡처 이미지를 70% 이상 초압축(Pillow)하여 비전 모델 토큰 절감 |
+| `scripts/capture_slides.ps1 -Path deck.pptx -Slides "1,8"` | 로컬 추가 — DRM 환경에서 슬라이드쇼를 화면 캡처해 육안 QA용 이미지를 만든다. 줄이기는 씨앗 부품 `_check/_shrink.py` 가 든다 — 이 스킬은 제 사본을 안 든다 |
 
 ## 임원 보고 덱 빌더 (로컬 추가)
 
@@ -274,14 +273,32 @@ Convert the slides to images (see [Converting to Images](#converting-to-images))
 
 ## Converting to Images
 
-Convert presentations to individual slide images for visual inspection:
+Convert presentations to individual slide images for visual inspection.
+
+⚠ **해상도를 먼저 고른다 — 다 찍어 놓고 누르면 늦다.** 비전 토큰은 치수가 정하고
+(`⌈가로/28⌉ × ⌈세로/28⌉`) 바이트도 압축률도 값을 한 푼도 안 줄인다. A4 가로 기준
+`-r 100` 은 한 장에 약 1,260 토큰, `-r 150` 은 약 2,835 다. **글자가 읽히는 가장 낮은 값**을
+고르고, 이미 큰 그림을 받은 자리는 씨앗 `_check/_shrink.py` 가 줄인다.
 
 ```bash
 python scripts/office/soffice.py --headless --convert-to pdf output.pptx
 rm -f slide-*.jpg
-pdftoppm -jpeg -r 150 output.pdf slide
+pdftoppm -jpeg -r 100 output.pdf slide
 ls -1 "$PWD"/slide-*.jpg
 ```
+
+⚠ **리눅스 컨테이너에는 이 도구들이 빠져 있을 수 있다.** 넷 다 대체가 서 있다.
+
+| 없는 것 | 증상 | 대신 |
+|---|---|---|
+| `libreoffice-impress` | `soffice` 는 도는데 **`Error: source file could not be loaded`** — 덱이 멀쩡해도 이 말이 난다. 파일을 의심하게 만드는 자리다 | `apt-get update && apt-get install -y libreoffice-impress` (인덱스가 낡으면 `update` 가 먼저다) |
+| `pdftoppm` | `command not found` | `pip install pymupdf` 뒤 `pymupdf.open(pdf)[i].get_pixmap(dpi=100).save(...)` |
+| `markitdown` · `python-pptx` | `ModuleNotFoundError` | 글자만 뽑는 자리는 표준 라이브러리로 족하다 — `zipfile` 로 `ppt/slides/slideN.xml` 을 열어 `<a:t>` 를 모은다 |
+| `defusedxml` · `lxml` | `validate.py` 가 임포트에서 죽는다 | `pip install defusedxml lxml` |
+
+⚠ **글꼴이 없으면 넘침 판정이 한쪽으로 기운다.** 맑은 고딕이 없는 자리는 대체 글꼴이 더 넓게
+잡혀 — **「안 넘쳤다」는 믿어도 되고 「넘쳤다」는 거짓 경보일 수 있다.** 그 판정을 근거로 글을
+줄이기 전에 실물에서 한 번 본다.
 
 **Pass the absolute paths printed above directly to the view tool.** The `rm` clears stale images from prior runs. `pdftoppm` zero-pads based on page count: `slide-1.jpg` for decks under 10 pages, `slide-01.jpg` for 10-99, `slide-001.jpg` for 100+.
 
@@ -330,7 +347,7 @@ powershell -ExecutionPolicy Bypass -File scripts/capture_slides.ps1 -Path deck.p
 
 ⚠ **자주 걸리는 함정** — `Slide.Export()` 는 DRM 이 암호화해 열리지 않는다(첫 바이트 `DRMONE`) · `SlideShowWindow.HWND` 는 `null` 이 오므로 창 핸들 대신 프로세스 Id 로 활성화한다 · `powershell -File` 로 `-Slides 1,8` 을 넘기면 `18` 로 붙는다(문자열로 받아 쪼갠다). 전체 실패 계보와 원인은 `references/executive-layouts.md` 의 [QA] 절이 든다.
 
-⚠ **비전 토큰이 비싸다** — 고치는 동안은 `audit_layout.ps1`(배치 실측)만 돌리고, 캡처는 마무리에 핵심 한두 장만 한다. 배치 검사는 통과하는데 눈으로만 잡히는 결함(한글 낱말이 줄 끝에서 반으로 갈리는 자리 등)이 있으므로, 마지막 한 번은 반드시 본다.
+⚠ **고치는 동안은 `audit_layout.ps1`(배치 실측)만 돌리고, 캡처는 마무리에 핵심 한두 장만 한다** — 값이 어디서 매겨지나는 위 [Converting to Images](#converting-to-images) 가 든다. 배치 검사는 통과하는데 눈으로만 잡히는 결함(한글 낱말이 줄 끝에서 반으로 갈리는 자리 등)이 있으므로, 마지막 한 번은 반드시 본다.
 
 ## Dependencies
 

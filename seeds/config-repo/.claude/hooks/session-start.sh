@@ -936,6 +936,31 @@ home_hook_cmd() {
     "$(home_hook_root)"
 }
 
+# ── 그림 문 — PreToolUse 훅 (claude-config #73) ─────────────────────────────────
+#   모델이 그림을 받기 직전에 치수를 재고 안 고른 자리는 막는다. 몸통은 `image-gate.py`(그 머리말이
+#   왜와 갈래를 든다). 홈 한 자리에만 심는다 — 저장소 설정에도 넣으면 저장소 안에서 두 번 돈다.
+# ⚠ **껍데기가 먼저 거른다.** 매 Read 마다 파이썬을 띄우면 윈도우에서 그 값이 일보다 크다 — stdin 에
+#   그림 낌새(확장자 · screenshot · zoom)가 있을 때만 띄운다. 파이썬이 없으면 조용히 통과한다:
+#   문이 없는 것과 문이 잘못 잠긴 것은 다른 사고고 뒤엣것이 더 비싸다.
+#   ⚠ **껍데기의 확장자 목록과 몸통의 `IMG_EXT` 는 짝이다** — 껍데기는 소문자로 눌러 재므로 한 벌만 든다.
+#     몸통이 확장자를 더하면 여기도 더한다(리뷰 2026-09-22: 대문자 `.Png` 가 껍데기에서 버려져 판정
+#     능력이 있는데도 침묵했다).
+#   ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** — 윈도우의 `python3` 는 스토어 껍데기라 49 로 죽는다
+#     (위 plant_session_state 곁말과 같은 함정). 못 뜨면 껍데기가 「못 쟀다」 한 줄을 직접 낸다 —
+#     문이 죽은 사실이 어디에도 안 남는 것이 침묵보다 비싸다.
+#   ⚠ **경로 꼴을 굳힌다** — `home_hook_root` 와 같은 까닭: 안 굳히면 부르는 자가 바뀔 때마다 항목이
+#     하나씩 붙는다. 훅 파일이 없으면 빈 문자열 — 심는 쪽이 그때 안 심는다.
+image_gate_matcher() {
+  printf 'Read|mcp__(Claude_Browser|claude-in-chrome)__(computer|browser_batch)|mcp__computer-use__(screenshot|zoom|computer_batch)'
+}
+image_gate_cmd() {
+  _gr="$CONFIG_ROOT"
+  [ -n "$_gr" ] && [ -f "$_gr/.claude/hooks/image-gate.py" ] || { printf ''; return 0; }
+  [ "$OS" = windows ] && _gr="$(cygpath -m "$_gr" 2>/dev/null || printf '%s' "$_gr")"
+  printf 'j=$(cat); l=$(printf %%s "$j" | tr A-Z a-z); case "$l" in *.png*|*.jpg*|*.jpeg*|*.webp*|*.gif*|*screenshot*|*zoom*) py=; for p in python python3; do "$p" -X utf8 -c "" >/dev/null 2>&1 && { py=$p; break; }; done; if [ -n "$py" ]; then printf %%s "$j" | "$py" -X utf8 "%s/.claude/hooks/image-gate.py"; else printf %%s "{\\"hookSpecificOutput\\":{\\"hookEventName\\":\\"PreToolUse\\",\\"additionalContext\\":\\"그림 문 — 파이썬이 안 떠서 치수를 못 쟀다. 스스로 고른다\\"}}"; fi;; esac; exit 0' \
+    "$_gr"
+}
+
 # ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
 #   드는 것: ① 홈 SessionStart 훅 ② 이 저장소의 신뢰.
 # ⚠ **옛 판은 프로세스를 넷 띄웠다** — 판을 묻는 `py_num` · 훅 심기 · 껍데기 판별하는 `-c ''` ·
@@ -950,10 +975,11 @@ home_hook_cmd() {
 #   를 든 명령)만 걷고, 무엇을 걷었는지 화면에 댄다.
 plant_session_state() {
   _pse="$(mktemp)"   # stderr 를 받아 둔다 — 「못 부른다」와 「죽었다」를 가르는 물증이다 (#51)
-  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" <<'PSSEOF' 2>"$_pse"
+  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" "$(image_gate_cmd)" "$(image_gate_matcher)" <<'PSSEOF' 2>"$_pse"
 import json, os, sys, tempfile
 
 settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+gate_cmd, gate_matcher = sys.argv[5], sys.argv[6]
 msgs = []
 
 
@@ -1004,6 +1030,38 @@ if not have or dropped:
             msgs.append("  홈 SessionStart 훅 — 심었다")
         for c in dropped:
             msgs.append("  홈 SessionStart 훅 — 옛 항목을 걷었다: %s" % c[:70])
+    else:
+        msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
+
+# ①' 그림 문 — PreToolUse. 같은 규율: 우리 꼴(`image-gate.py` 를 든 명령)은 걷고 지금 꼴만 남긴다.
+#    지금 꼴이 둘 이상이면 첫 것만 — 같은 항목 둘이면 문이 호출마다 두 번 돈다.
+pre = cfg.setdefault("hooks", {}).setdefault("PreToolUse", [])
+have, dropped = False, []
+if gate_cmd:
+    for e in pre:
+        keep = []
+        for h in e.get("hooks", []):
+            c = h.get("command", "")
+            if c == gate_cmd and e.get("matcher") == gate_matcher and not have:
+                have = True
+                keep.append(h)
+            elif "image-gate.py" in c:
+                dropped.append(c)
+            else:
+                keep.append(h)
+        e["hooks"] = keep
+    pre[:] = [e for e in pre if e.get("hooks")]
+    if not have:
+        pre.append({"matcher": gate_matcher, "hooks": [{"type": "command", "command": gate_cmd, "timeout": 10}]})
+else:
+    have = True   # 훅 몸통이 없는 자리 — 안 심고 안 걷는다
+    msgs.append("  ! 홈 그림 문(PreToolUse) — 훅 몸통(.claude/hooks/image-gate.py)을 못 찾아 안 심는다")
+if not have or dropped:
+    if save(settings, cfg):
+        if not have:
+            msgs.append("  홈 그림 문(PreToolUse) — 심었다")
+        for c in dropped:
+            msgs.append("  홈 그림 문(PreToolUse) — 옛 항목을 걷었다: %s" % c[:70])
     else:
         msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
 

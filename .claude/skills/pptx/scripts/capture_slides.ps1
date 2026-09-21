@@ -25,8 +25,9 @@
 .PARAMETER OutDir
     이미지를 둘 폴더. 기본값은 현재 폴더.
 
-.PARAMETER MaxWidth
-    압축 후 가로 픽셀. 기본 1280 — 글자 판독은 되고 토큰은 아끼는 자리.
+.PARAMETER MaxEdge
+    줄인 뒤 긴 변 픽셀. 기본 1280 — 글자 판독은 되고 토큰은 아끼는 자리.
+    **비전 토큰은 치수가 정한다**(`⌈가로/28⌉ × ⌈세로/28⌉`) — 이 값만이 값을 줄인다.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File capture_slides.ps1 -Path out.pptx -Slides "3,8"
@@ -36,8 +37,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Path,
     [string]$Slides = "1",
     [string]$OutDir = ".",
-    [int]$MaxWidth = 1280,
-    [int]$Quality = 85,
+    [int]$MaxEdge = 1280,
     [int]$Wait = 1000
 )
 
@@ -115,6 +115,45 @@ try {
 
     $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 
+    # ── 지면만 집는다 — **띠도 값이다** ───────────────────────────────────────────
+    # 슬라이드쇼는 지면을 화면 복판에 비율 맞춰 놓고 남는 자리를 띠로 채운다. 화면을 통째로
+    # 찍으면 그 띠에도 값이 붙는다 — 비전 토큰은 **치수로** 매겨지므로(`⌈가로/28⌉ × ⌈세로/28⌉`)
+    # 띠를 옮기느라 값을 쓰고 정작 읽어야 할 글자를 깎는다. 21:9 에서 띠가 41% 다.
+    # ⚠ **띠를 픽셀 색으로 찾지 않는다** — 어두운 지면과 안 갈려서 다크 표지를 잘라먹는다.
+    #   그건 꼴이 아니라 뜻을 읽는 일이다. **비율로 재면 꼴이다**: 지면 치수는 파일이 들고
+    #   (`PageSetup`), 놓이는 규칙은 「복판에 비율 맞춰」라 집을 자리가 곱셈 몇 번으로 나온다.
+    # ⚠ **못 읽으면 화면 통째로 물러난다.** 지면을 못 재는 것과 그림을 못 내는 것은 다른
+    #   명제다 — 여기서 멈추면 QA 가 통째로 선다. 대신 **물러났다는 사실을 말한다.**
+    # ⚠ **「읽었나」를 결과 치수에서 역산하지 않는다.** 화면과 지면의 비율이 같으면(16:9 화면에
+    #   16:9 덱) 띠가 없어 집을 자리가 화면과 **참으로 같아진다** — 그 같음을 실패로 읽으면
+    #   멀쩡한 판이 매번 경고를 낸다. 상태를 따로 든다: 읽었나는 읽은 자리가 안다.
+    $pageKnown = $false
+    $clip = [System.Drawing.Rectangle]::new($screen.X, $screen.Y, $screen.Width, $screen.Height)
+    try {
+        $slideW = [double]$pres.PageSetup.SlideWidth
+        $slideH = [double]$pres.PageSetup.SlideHeight
+        if ($slideW -gt 0 -and $slideH -gt 0) {
+            $k  = [Math]::Min($screen.Width / $slideW, $screen.Height / $slideH)
+            $dw = [int][Math]::Round($slideW * $k)
+            $dh = [int][Math]::Round($slideH * $k)
+            $clip = [System.Drawing.Rectangle]::new(
+                ($screen.X + [int][Math]::Round(($screen.Width  - $dw) / 2)),
+                ($screen.Y + [int][Math]::Round(($screen.Height - $dh) / 2)),
+                $dw, $dh)
+            $pageKnown = $true
+        }
+    } catch { }
+
+    # 무엇을 집었나는 **기계가 말하게 한다.** 안 찍으면 「지면만 집었나」를 눈으로 되물어야
+    # 하고, 그 물음은 다음에도 똑같이 안 걸린다.
+    if (-not $pageKnown) {
+        Write-Warning ("지면 치수를 못 읽어 화면을 통째로 찍는다 ({0}x{1}) — 띠까지 값을 문다" -f $screen.Width, $screen.Height)
+    } else {
+        $band = 100.0 - (100.0 * $clip.Width * $clip.Height / ($screen.Width * $screen.Height))
+        Write-Host ("  지면만 집는다 — {0}x{1} @ {2},{3}   (화면 {4}x{5} · 띠 {6:N0}%)" -f `
+            $clip.Width, $clip.Height, $clip.X, $clip.Y, $screen.Width, $screen.Height, $band)
+    }
+
     foreach ($n in $slideList) {
         $show.View.GotoSlide($n)
         $proc = Get-Process POWERPNT | Sort-Object StartTime -Descending | Select-Object -First 1
@@ -135,9 +174,9 @@ try {
         Start-Sleep -Milliseconds $Wait          # 첫 프레임이 그려질 때까지
 
         $png = Join-Path $outRoot ("slide-{0}.png" -f $n)
-        $bmp = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
+        $bmp = New-Object System.Drawing.Bitmap $clip.Width, $clip.Height
         $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $g.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+        $g.CopyFromScreen($clip.Location, [System.Drawing.Point]::Empty, $clip.Size)
         $bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
         $g.Dispose()
         $bmp.Dispose()
@@ -162,19 +201,32 @@ try {
     }
 }
 
-# 압축은 capture_slide.py 가 든다 — 원본 PNG 는 비전 토큰을 과하게 먹는다 (Pillow 로 70% 압축)
-$compressor = Join-Path $PSScriptRoot 'capture_slide.py'
+# 줄이는 손은 씨앗 부품이 든다 — 이 스킬은 제 사본을 안 든다(진본은 claude-config `seeds/check/`).
+# 못 찾으면 원본 PNG 를 그대로 낸다 — 큰 그림이라고 안 내는 것보다 낫다.
+$shrink = @(
+    (Join-Path $HOME '.claude/seeds/check/_check/_shrink.py'),
+    (Join-Path $PSScriptRoot '..\..\..\..\seeds\check\_check\_shrink.py')
+) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+
 foreach ($png in $made) {
-    if (Test-Path -LiteralPath $compressor) {
-        $jpg = [System.IO.Path]::ChangeExtension($png, '.jpg')
-        python $compressor -i $png -o $jpg --max-w $MaxWidth --quality $Quality | Out-Null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $jpg)) {
+    if ($shrink) {
+        $webp = [System.IO.Path]::ChangeExtension($png, '.webp')
+        python -X utf8 $shrink $png $webp --max-edge $MaxEdge | Out-Null
+        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $webp)) {
             Remove-Item -LiteralPath $png -Force
-            Write-Output $jpg
+            Write-Output $webp
         } else {
+            # ⚠ **진 갈래도 말한다.** 아래 「못 찾았다」는 경고하는데 여기는 조용했다 — 갈래 둘의
+            #   대우가 어긋나면, 줄이기가 진 판이 **큰 그림이 그냥 나온 것**처럼 보인다.
+            #   부품이 낸 오류 글은 위에 찍히지만 그것은 파이썬의 말이지 **이 스크립트의 판정이
+            #   아니다.** 값을 2~3배 물고 나가는 자리라 그 판정이 한 줄 서야 한다.
+            # ⚠ **흔한 까닭을 같이 둔다.** 씨앗이 PIL 을 드는데 그것을 까는 선언이 없어
+            #   (claude-config #72), 부르는 쪽이 그 자리에서 깔게 둔 것이 지금의 규율이다.
+            Write-Warning "줄이기가 졌다 — 원본 치수 그대로 낸다. 위 오류를 본다 (흔한 까닭은 PIL 이 없는 것: python -m pip install pillow)"
             Write-Output $png
         }
     } else {
+        Write-Warning "줄이는 부품을 못 찾았다 — 원본 치수 그대로 낸다 (~/.claude/seeds/check/_check/_shrink.py)"
         Write-Output $png
     }
 }

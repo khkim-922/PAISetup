@@ -82,7 +82,10 @@ description: 마감이 덜 된 일이 경위를 지고 다음 세션으로 넘�
 
 ## 쓰는 절차
 
-1. `claude-config/memory/<프로젝트>/project_handover_YYYY_MM_DD_<주제>.md` 로 쓴다
+1. `claude-config/memory/<프로젝트>/project_handover_YYYY_MM_DD_<주제>.md` 로 쓴다 —
+   **`<프로젝트>` 는 세션을 연 폴더가 아니라 내용의 주인이다**: 커밋·이슈가 가장 많이 간
+   저장소. 진본↔배포본에 걸친 릴리스는 진본. 어느 저장소도 안 연 세션만 `global`
+   (기준의 진본은 결정 0057 · `claude-config/README.md` §프로젝트 메모리)
 2. `MEMORY.md` 맨 위에 **좌표 한 줄**만 단다 — 내용을 옮기지 않는다(로드 한도에 잘린다)
 3. **저장소로 되돌린다** — commit·push. 메모리는 기계마다 따로 살아, 밀어야 최신이 된다
    (경로·흐름은 `claude-config/README.md` §프로젝트 메모리)
