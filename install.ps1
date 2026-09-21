@@ -3098,6 +3098,24 @@ Write-Elapsed '[8/8] 개인 값 저장소'
 # ⚠ **넘겨받은 것만 지운다.** 옆에 둔 `install.env` 는 사람 것이고 이 파일의 기본값이라, 그것을
 #   지우면 다음 판이 값 없이 선다. 근거 둘이 다 서야 한다 — **`-EnvFile` 로 받았나**와
 #   **임시 폴더 아래인가.** 하나만 보면 `-EnvFile .\install.env` 로 부른 사람의 파일을 지운다.
+# ⚠ **값은 지우기 전에 뜬다 — 아래가 이 파일을 없앤다.** 자동 실행이 읽을 사본은 한참 뒤
+#   (자동 실행 칸)에서 쓰이는데, 그때 이 파일은 이미 없다. 앞선 판은 그 자리에서 「파일이
+#   있으면 얼린다」로 물어 **늘 거짓이었고, 아무 말도 안 하고 지나갔다** — 그래서 화면으로
+#   깐 기계는 사람이 넣은 `#config-repo` 가 매번 사라졌고 로그온 배포가 영영 안 돌았다
+#   (PAISetup #20).
+#   ⚠ **지우기를 뒤로 미루는 길은 안 간다.** 이 자리가 이른 까닭은 평문 토큰이고(아래 곁말),
+#     그것이 값 하나보다 무겁다. 순서를 바꾸는 대신 **읽기를 앞으로 당긴다.**
+#   ⚠ **거르는 규율은 여기가 든다** — `#site` 는 기계가 잴 것이고 회사 키는 기계에 남을
+#     까닭이 없다. 왜 그 둘인지는 아래 자동 실행 칸의 곁말이 든다.
+$script:FrozenEnvLines = $null
+if ($EnvFile -and (Test-Path -LiteralPath $EnvFile)) {
+  try {
+    $script:FrozenEnvLines = @(Get-Content -LiteralPath $EnvFile -Encoding UTF8 | Where-Object {
+      ($_ -notmatch '^\s*#\s*site\s*=') -and ($_ -notmatch '^\s*ANTHROPIC_AUTH_TOKEN\s*=')
+    })
+  } catch { $script:FrozenEnvLines = $null }
+}
+
 if ($PSBoundParameters.ContainsKey('EnvFile') -and $EnvFile) {
   $envFull = ''
   try { $envFull = [IO.Path]::GetFullPath($EnvFile) } catch { }
@@ -3304,6 +3322,17 @@ if (Test-Path -LiteralPath $argsFile) {
 # ⚠ **받는 동안만 `Continue` 로 둔다.** 이 스크립트는 뒷정리가 안 죽게 `SilentlyContinue` 로
 #   도는데, 그 아래에서는 `2>&1` 로 넘긴 자식의 오류 줄이 **로그에 한 줄도 안 남는다**(실측).
 #   조용히 실패한 설치가 「완료」 한 줄로만 끝나는 자리라, 여기만 말하게 열어 둔다.
+# ⚠ **글자가 깨지는 자리는 파일을 쓰는 데가 아니라 자식의 말을 받는 데다.** 앞선 판은
+#   임시 파일로 돌려 `-Encoding UTF8` 로 다시 읽게 고쳤는데, 그 전에 이미 망가진 뒤였다 —
+#   파워셸은 자식이 보낸 바이트를 `[Console]::OutputEncoding` 으로 **풀어서** 문자열을 만들고,
+#   한국어 윈도우에서 그 값은 CP949 다. 자식(`install.ps1`)은 UTF-8 로 말하므로 음절마다
+#   어긋나고, **첫 바이트는 그 자리에서 `?` 로 바뀌어 되살릴 수 없다.** 그 뒤에 UTF-8 로
+#   얌전히 저장되니 파일은 멀쩡해 보이고 글자만 죽는다.
+#   ⚠ **받는 쪽을 UTF-8 로 세운다** — 숨은 창으로 도는 일에 로그가 유일한 창이라, 그 창이
+#     깨지면 무인 갱신이 조용히 져도 읽을 데가 없다.
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+
 Log "install.ps1 실행: $($versionDirs[0].Name)  $($extra -join ' ')"
 $logTmp = [IO.Path]::GetTempFileName()
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra *> $logTmp
@@ -3331,16 +3360,17 @@ try {
     #   ⚠ 회사 키도 뺀다 — 화면이 쓰는 임시 값 파일은 제 손으로 지우는데(설치 창) **이 사본은
     #     아무도 안 지운다.** 평문 키가 기계에 영영 남을 까닭이 없다: 키는 이미 사용자 환경에
     #     심겼고 위 4 칸이 그 이름을 읽으므로, 파일에 없어도 자동 실행이 선다.
-    if ($EnvFile -and (Test-Path -LiteralPath $EnvFile)) {
+    # 뜬 값을 쓴다 — 원본은 위 칸이 이미 지웠다(그 곁말이 까닭을 든다).
+    # ⚠ **못 얼렸으면 말한다.** 앞선 판은 조용히 지나갔고, 그 침묵이 「저장소를 안 쓰는
+    #   사람」과 구분이 안 됐다 — 매 로그온 배포가 빠지는데 아무 데도 안 남았다.
+    if ($null -ne $script:FrozenEnvLines) {
       try {
-        $savedEnv   = Join-Path $setupRoot 'install.env'
-        $savedLines = @(Get-Content -LiteralPath $EnvFile -Encoding UTF8 | Where-Object {
-          ($_ -notmatch '^\s*#\s*site\s*=') -and ($_ -notmatch '^\s*ANTHROPIC_AUTH_TOKEN\s*=')
-        })
-        Set-Content -LiteralPath $savedEnv -Value $savedLines -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $setupRoot 'install.env') -Value $script:FrozenEnvLines -Encoding UTF8
       } catch {
         Write-Host "  ! 자동 실행이 읽을 값 파일을 못 남겼다 — $(Say-Why $_)" -ForegroundColor Yellow
       }
+    } else {
+      Write-Host '  ! 자동 실행이 읽을 값 파일을 못 남겼다 — 값을 못 떴다 (다음 로그온은 딸려 온 기본값으로 돈다)' -ForegroundColor Yellow
     }
 
     # ⚠ **고른 제품도 같이 남긴다.** 안 남기면 자동 실행이 `-Pick` 없이 돌아 **사람이 끈 제품을
