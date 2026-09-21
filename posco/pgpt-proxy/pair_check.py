@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -20,8 +21,12 @@ import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-MOCK_PORT = 18902
-PROXY_PORT = 18901          # 프록시 파일이 못박은 값 — 인자가 없다
+
+
+def free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 def _post(url: str, body: dict) -> int:
@@ -37,29 +42,35 @@ def _post(url: str, body: dict) -> int:
         return err.code
 
 
-def _wait_health() -> dict:
+def _wait_health(port: int, pid: int | None = None) -> dict:
     for _ in range(50):
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{PROXY_PORT}/health", timeout=1) as resp:
-                return json.load(resp)
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as resp:
+                data = json.load(resp)
+                if pid is None or data.get("pid") == pid:
+                    return data
         except OSError:
-            time.sleep(0.1)
-    raise SystemExit(f"프록시가 {PROXY_PORT} 에 안 떴다 — 포트가 잡혀 있나 본다")
+            pass
+        time.sleep(0.1)
+    raise SystemExit(f"프록시가 {port} 에 안 떴다 — 포트가 잡혀 있나 본다")
 
 
 def main() -> int:
-    env = dict(os.environ, PGPT_PROXY_UPSTREAM=f"http://127.0.0.1:{MOCK_PORT}", PYTHONUTF8="1")
+    mock_port = free_port()
+    proxy_port = free_port()
+    env = dict(os.environ, PGPT_PROXY_UPSTREAM=f"http://127.0.0.1:{mock_port}",
+               PGPT_PROXY_PORT=str(proxy_port), PYTHONUTF8="1")
     quiet = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
-    mock = subprocess.Popen([sys.executable, str(HERE / "mock_gateway.py"), str(MOCK_PORT)], **quiet)
+    mock = subprocess.Popen([sys.executable, str(HERE / "mock_gateway.py"), str(mock_port)], **quiet)
     proxy = subprocess.Popen([sys.executable, str(HERE / "opus5_proxy.py")], env=env, **quiet)
     try:
-        _wait_health()
+        _wait_health(proxy_port, proxy.pid)
         body = {"model": "claude-opus-5", "max_tokens": 16, "temperature": 0.2,
                 "messages": [{"role": "user", "content": "hi"},
                              {"role": "assistant", "content": "prefill"}]}
-        direct = _post(f"http://127.0.0.1:{MOCK_PORT}/gpgpta01-gpt/v1/messages", body)
-        via = _post(f"http://127.0.0.1:{PROXY_PORT}/gpgpta01-gpt/v1/messages", body)
-        trimmed = _wait_health().get("trimmed_prefills")
+        direct = _post(f"http://127.0.0.1:{mock_port}/gpgpta01-gpt/v1/messages", body)
+        via = _post(f"http://127.0.0.1:{proxy_port}/gpgpta01-gpt/v1/messages", body)
+        trimmed = _wait_health(proxy_port, proxy.pid).get("trimmed_prefills")
     finally:
         proxy.terminate()
         mock.terminate()

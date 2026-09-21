@@ -10,22 +10,23 @@
 | `opus5_proxy.py` | `app/opus5_proxy.py` | 프록시 본체. 표준 라이브러리만 쓴다 |
 | `mock_gateway.py` | `tests/mock_gateway.py` | 가짜 게이트웨이 — 실제처럼 prefill 에 400 을 낸다. 사내망 밖에서 프록시를 끝까지 돌려 볼 때 |
 | `Test-AllPgptModels.py` | `tests/Test-AllPgptModels.py` | 모델 전수 스모크 — 프록시 너머로 모델마다 「Reply OK」 한 줄. 결과는 곁 `model-results/` |
+| `Test-ProxyFaults.py` | `tests/Test-ProxyFaults.py` | 비정상 응답·스트림 단절·413·surrogate 등 결함 내성 검사 (v16+) |
 | `pair_check.py` | (우리 것) | 위 둘로 「직결 400 · 프록시 200 · prefill 1번 뗐다」를 잰다 |
 
 ## 상류 판
 
-- 저장소 [`pgpt-one-click-connect`](https://github.com/sejuone-cloud/pgpt-one-click-connect) · 커밋 `701765da`
-  (2026-09-15 · v0.5.3) · 프록시 `VERSION = 15`
-- **우리 판은 `15.5` — 두 칸이다**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸이 받아온 상류 판이고 뒤 칸이
+- 저장소 [`pgpt-one-click-connect`](https://github.com/sejuone-cloud/pgpt-one-click-connect) · 커밋 `4c611608`
+  (2026-09-21 · v0.6.16) · 프록시 `VERSION = 17`
+- **우리 판은 `17.5` — 두 칸이다**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸이 받아온 상류 판이고 뒤 칸이
   우리가 얹은 덩어리 수다. **한 칸으로 세지 않는 까닭**: 상류와 우리가 같은 축에 번호를 매기면 상류가 16 을
   내는 날 우리 18 과 부딪히고, 그때 번호로는 누가 새것인지 못 가른다. 축을 가르면 **상류가 16 을 내면 우리
   칸은 0 으로 돌아가 `16.0`** 이 되고 그것이 `15.5` 보다 뒤라는 것이 그냥 나온다
-  ⚠ **`/health` 는 사람이 읽는 `15.5` 를 내고, 견주는 자는 두 수를 각각 정수로 읽는다** — 점 찍힌 문자열을
+  ⚠ **`/health` 는 사람이 읽는 `17.5` 를 내고, 견주는 자는 두 수를 각각 정수로 읽는다** — 점 찍힌 문자열을
   크기로 견주면 `"9" > "10"` 이 되는 자리다. 설치기가 그렇게 견주어 낮으면 갈아 끼운다(`install.ps1` 프록시 칸)
   ⚠ **옛 정수 한 칸(`17`·`18`)이 도는 자리도 받는다** — 그 판은 새 이름이 없어 「못 읽었다」로 떨어지고,
   그때는 **갈아 끼우는 쪽으로 기운다.** 반대로 두면 옛 프록시가 영영 안 바뀐다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **파일은 안 고친다 — 예외가 넷이다.** ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
+- **파일은 안 고친다 — 예외가 다섯이다.** ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
   `keepalives` · 자체 검사 한 칸 · 결정 0044) ⑵ unstream(`UNSTREAM` 손잡이 · `synthesize_anthropic_sse` 무리 ·
   `_unstream_messages` · 카운터 `unstreamed` · 자체 검사 세 칸 · 진단 두 줄 · 결정 0051) ⑶ 하이쿠 대체
   (`_CLAUDE_HAIKU_SUBSTITUTE` · `normalize_pgpt_claude_model` 의 `haiku` 갈래 · 위 표) — 게이트웨이에 하이쿠가
@@ -61,6 +62,15 @@
 | `/v1beta` — `x-goog-api-key` 곁에 Bearer 추가 | **값이 없다** — 게이트웨이가 두 방식을 다 받는다(`Gemini-Posco.setting.md` 인증 절) · 원래 헤더만으로 200(직결 실측) |
 | GPT-5·GPT-6 계열 `max_tokens` → `max_completion_tokens`(`/v1/responses` 는 `max_output_tokens`) | **논다** — Codex 가 이미 `max_output_tokens` 로 보낸다. 직결도 루프백도 0 |
 | Hermes 갈래 — chat 문의 Gemini 변환 · `x-api-key` → Bearer | **논다** — Hermes 를 안 쓴다. Claude Code 는 Bearer 로 보낸다 |
+| 개인 `x-api-key` 헤더 누출 방지 — `Authorization` 이 이미 있으면 `x-api-key` 제거 (v16) | **쓴다** (Claude Code) — 사용자 환경에 개인 `ANTHROPIC_API_KEY` 가 있어도 평문 HTTP 로 사내 게이트웨이에 새지 않는다 |
+| 짝 없는 surrogate(`\ud83d` 등) JSON 인코딩 보호 | **쓴다** — 이모지 반쪽에서 잘린 문자열이 와도 예외로 죽지 않고 `\uXXXX` 로 되돌린다 |
+| 경로 순회(`..` 및 `.`) 차단 | **쓴다** — `/gpgpta01-gpt/../other` 등 게이트웨이 내 다른 서비스 경로 접근을 403 `Connection: close` 로 차단 |
+| 청크 전송 인코딩(`Transfer-Encoding: chunked`) 종료 검증 | **쓴다** — 완전 수신 시에만 `0\r\n\r\n` 종료자를 보내고, 업스트림이 도중 단절되면 종료자 없이 닫아 클라이언트가 `IncompleteRead` 로 감지하게 한다 |
+| 상류 연결 풀 stale 재시도 제한 | **쓴다** — 풀에서 꺼낸 오래된 연결(stale)이 응답 전 끊긴 경우만 새 연결(fresh)로 1회 재시도. 새 연결 실패나 타임아웃은 재시도하지 않아 이중 생성/과금을 막는다 |
+| 15초 바인드 재시도 유예 | **쓴다** — 프로세스 재시작 시 이전 소켓의 TIME_WAIT 정리 지연으로 인한 즉시 크래시 방지 |
+| `PGPT_PROXY_PORT` 환경변수 | **쓴다** — 기본 `18901`, 시험(`Test-ProxyFaults.py` · `pair_check.py`) 시 포트 충돌 없이 임의 포트 바인딩 |
+| `/health` 에 `pid` 포함 | **쓴다** — 설치기·검사기가 방금 띄운 자기 프로세스인지 대조 |
+| Gemini `/v1/responses` 보호 | **쓴다** — chat 변환을 `/v1/chat/completions` 로 한정하여 Responses API 프롬프트 유실 방지 |
 | 응답 | **무수정 중계** — 스트리밍 포함. 심장박동도 생각 낱말도 안 건드린다. 180초 벽을 중계로는 못 넘는다(`ENV-posco.md`) — 넘는 것은 위 unstream 갈래고, 그 길의 `/v1/messages` 만 중계가 아니라 짓기다 |
 
 **프록시가 하는 일이 아닌 것 하나** — `POST /v1/messages/count_tokens` 는 게이트웨이에 없어 **404** 다(실측
@@ -69,7 +79,7 @@
 
 ## 실행 규약
 
-- 듣는 자리 `127.0.0.1:18901` (파일에 못박혀 있다 · 인자 없음) · 허용 경로 `/gpgpta01-gpt/` 아래만
+- 듣는 자리 `127.0.0.1:18901` (환경변수 `PGPT_PROXY_PORT` 로 재정의 가능 · 인자 없음) · 허용 경로 `/gpgpta01-gpt/` 아래만
 - 상류는 `PGPT_PROXY_UPSTREAM` (기본 `http://aigpt.posco.net`) — 사내 `HTTP_PROXY` 를 **안 탄다**(직결)
 - `proxy.log` 와 `opus5_proxy.pid` 를 **제 파일 곁에** 쓴다 — 그래서 설치기는 이 파일을 실행 폴더로 복사해 띄운다.
   저장소·홈 사본에서 바로 띄우면 그 곁에 남고, 저장소는 `.gitignore` 가 받는다
@@ -80,6 +90,7 @@
 ```bash
 python -X utf8 posco/pgpt-proxy/opus5_proxy.py --self-test     # 보정 함수 — 어디서나
 python -X utf8 posco/pgpt-proxy/pair_check.py                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
+python -X utf8 posco/pgpt-proxy/Test-ProxyFaults.py          # 비정상 응답·스트림 단절 등 결함 내성 — 어디서나                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
 MOCK_SLOW_SEC=4 MOCK_ANSWER=tool_use python -X utf8 posco/pgpt-proxy/mock_gateway.py 18902
 #   느린 비스트리밍 답 — 답 꼴은 text·tool_use·error500 · 상류가 받은 몸은 GET /gpgpta01-gpt/_mock/last (0051)
 PGPT_API_KEY=<회사 키> python -X utf8 posco/pgpt-proxy/Test-AllPgptModels.py   # 회사 · 프록시가 떠 있어야

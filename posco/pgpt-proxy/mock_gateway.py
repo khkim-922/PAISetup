@@ -29,6 +29,7 @@ ANSWER = os.environ.get("MOCK_ANSWER", "text")          # text · tool_use · er
 LAST: dict[str, object] = {}
 # 사내 포털에 등록돼 있는 이름들(2026-08 기준, gpt-6-astra 는 2026-09-15 추가). Grok 만 대시 표기다.
 MODELS = [
+    "claude-fable-5.1",
     "claude-opus-5",
     "claude-opus-4.7",
     "claude-sonnet-4.6",
@@ -70,7 +71,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _authorized(self, query: str) -> bool:
         header = self.headers.get("Authorization", "")
-        if not header.startswith("Bearer ") or len(header) < 24:
+        # "bad-" 로 시작하는 키는 게이트웨이가 거부하는 키로 본다(키 교체 전 검증 시험용)
+        if not header.startswith("Bearer ") or len(header) < 24 or header[7:].startswith("bad-"):
             self._send(401, {"error": {"code": "P001", "message": "인증 실패"}})
             return False
         return True

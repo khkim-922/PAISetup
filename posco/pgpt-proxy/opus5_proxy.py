@@ -25,7 +25,10 @@ Payload fixes, all required by the gateway:
   request carries ``x-api-key`` and no ``Authorization``, also add
   ``Authorization: Bearer``. Hermes third-party Anthropic endpoints send
   ``x-api-key`` by default; P-GPT only accepts Bearer. The original
-  ``x-api-key`` is left in place.
+  ``x-api-key`` is left in place. When ``Authorization`` is already there,
+  ``x-api-key`` is dropped (v16): Claude Code sends both when the user also
+  has a personal ``ANTHROPIC_API_KEY``, which would otherwise travel to the
+  company gateway over plain HTTP.
 * Hermes ``anthropic_messages`` rewrites dotted P-GPT Claude IDs to
   Anthropic dash form (``claude-opus-4.6`` → ``claude-opus-4-6``). P-GPT
   rejects the dash form (C042 / model-not-found), so restore dots on
@@ -62,6 +65,7 @@ import io
 import json
 import os
 import queue
+import os
 import re
 import socket
 import sys
@@ -72,7 +76,8 @@ from pathlib import Path
 from urllib.parse import quote, unquote_plus, urlsplit
 
 LISTEN_HOST = "127.0.0.1"
-LISTEN_PORT = 18901
+# 시험(tests/Test-ProxyFaults.py)만 다른 포트를 쓴다. 설치기는 늘 18901 을 쓴다.
+LISTEN_PORT = int(os.environ.get("PGPT_PROXY_PORT", "18901"))
 # 운영 게이트웨이. 개발 게이트웨이(taigpt)나 시험용 스텁으로 바꿀 때만
 # PGPT_PROXY_UPSTREAM 을 쓴다. 프로토콜은 http — https 는 연결되지 않는다.
 UPSTREAM = os.environ.get("PGPT_PROXY_UPSTREAM", "http://aigpt.posco.net").rstrip("/")
@@ -82,12 +87,12 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 누가 새것인지 못 가른다** — 같은 축에 두 사람이 번호를 매기니 필연이다. 축을 둘로 가르면
 # 그 충돌이 없어진다: 상류가 16 을 내면 우리 칸은 0 으로 돌아가 `16.0` 이 되고, 그것은 `15.5`
 # 보다 뒤라는 것이 두 수를 차례로 견주면 그냥 나온다.
-# ⚠ **`/health` 는 사람이 읽는 한 줄(`15.5`)을 내고, 견주는 자는 두 수를 따로 본다.**
+# ⚠ **`/health` 는 사람이 읽는 한 줄(`17.5`)을 내고, 견주는 자는 두 수를 따로 본다.**
 #   점 찍힌 문자열을 크기로 견주면 `"9" > "10"` 이 되는 자리라, 설치기는 이 아래 두 이름을
 #   각각 정수로 읽는다(`install.ps1` 의 프록시 칸).
 # ⚠ **상류를 새로 받으면 위 칸을 그 판으로 올리고 아래 칸을 0 으로 되돌린다** — 우리 덩어리를
 #   다시 얹은 만큼만 아래 칸이 오른다. README 「상류에서 새 판을 받을 때」.
-VERSION_UPSTREAM = 15
+VERSION_UPSTREAM = 17
 # 우리 덩어리 다섯 — keepalive(0044) · unstream(0051) · 하이쿠 대체 · 제미나이 이름 표 ·
 # 게이트웨이 요청 번호 로그(#67).
 VERSION_OURS = 5
@@ -188,19 +193,27 @@ class UpstreamPool:
             self._created += 1
         return conn
 
-    def acquire(self) -> http.client.HTTPConnection:
+    def acquire(self, *, fresh: bool = False) -> http.client.HTTPConnection:
+        """Pooled connection. ``conn.pgpt_reused`` says whether it came from the idle pool.
+
+        ``fresh=True`` skips the pool — the retry after a stale pooled connection must not
+        pick another connection that died the same way (gateway restart, LB failover).
+        """
         with self._lock:
-            while self._idle:
+            while self._idle and not fresh:
                 conn, released_at = self._idle.pop()
                 if conn.sock is not None and time.monotonic() - released_at < UPSTREAM_IDLE_TTL:
                     self._reused += 1
+                    conn.pgpt_reused = True  # type: ignore[attr-defined]
                     return conn
                 self._expired += 1
                 try:
                     conn.close()
                 except OSError:
                     pass
-        return self._open()
+        conn = self._open()
+        conn.pgpt_reused = False  # type: ignore[attr-defined]
+        return conn
 
     def release(self, conn: http.client.HTTPConnection | None, *, reuse: bool) -> None:
         if conn is None:
@@ -231,6 +244,18 @@ _KEEPALIVE_TOTAL = 0
 _UNSTREAMED_TOTAL = 0
 
 
+def _count_keepalive() -> None:
+    global _KEEPALIVE_TOTAL
+    with _STATS_LOCK:
+        _KEEPALIVE_TOTAL += 1
+
+
+def _count_unstreamed() -> None:
+    global _UNSTREAMED_TOTAL
+    with _STATS_LOCK:
+        _UNSTREAMED_TOTAL += 1
+
+
 def _count_patched(count: int) -> None:
     global _PATCHED_TOTAL
     with _STATS_LOCK:
@@ -247,18 +272,6 @@ def _count_slow() -> None:
     global _SLOW_TOTAL
     with _STATS_LOCK:
         _SLOW_TOTAL += 1
-
-
-def _count_keepalive() -> None:
-    global _KEEPALIVE_TOTAL
-    with _STATS_LOCK:
-        _KEEPALIVE_TOTAL += 1
-
-
-def _count_unstreamed() -> None:
-    global _UNSTREAMED_TOTAL
-    with _STATS_LOCK:
-        _UNSTREAMED_TOTAL += 1
 
 
 def stats() -> dict[str, int]:
@@ -287,8 +300,19 @@ def log(message: str) -> None:
         pass
 
 
+def _keeps_alive(response: http.client.HTTPResponse) -> bool:
+    """업스트림 연결을 풀에 돌려도 되는가. HTTP/1.1 기본은 keep-alive — close 토큰이 있을 때만 버린다."""
+    conn_hdr = (response.headers.get("Connection") or "").lower()
+    return "close" not in {part.strip() for part in conn_hdr.split(",") if part.strip()}
+
+
 def _json_bytes(payload: dict[str, object]) -> bytes:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    try:
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    except UnicodeEncodeError:
+        # 짝 없는 surrogate(\ud83d 등 — 클라이언트가 이모지 반쪽에서 문자열을 자른 경우)는 UTF-8 로 못 쓴다.
+        # 받은 그대로 \uXXXX 로 되돌려 보낸다. 전에는 여기서 예외가 나 응답 없이 연결이 끊겼다.
+        return json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("ascii")
 
 
 GEMINI_PREFIX = "/gpgpta01-gpt/v1beta"
@@ -405,20 +429,13 @@ def normalize_openai_token_limit(payload: dict[str, object], path: str = "") -> 
 
 # Hermes anthropic_messages 가 P-GPT 점 표기(claude-opus-4.6) 를 Anthropic
 # 대시 표기(claude-opus-4-6) 로 바꿔 보낸다. 게이트웨이는 점만 받는다.
+# 계열 이름(opus · sonnet · haiku · fable …)은 고정하지 않는다 — 새 계열이 나와도 프록시를 고칠 일이 없게.
 _CLAUDE_DASH_VERSION = re.compile(
-    r"^(claude-(?:opus|sonnet|haiku)-\d+)-(\d+)(.*)$",
+    r"^(claude-[a-z]+-\d+)-(\d+)(.*)$",
     re.IGNORECASE,
 )
 
 # Claude Code 2.1+ Sonnet chip. Not on the company gateway list.
-_CLAUDE_MODEL_ALIASES = {
-    "claude-sonnet-5": "claude-sonnet-4.6",
-    "claude-sonnet-latest": "claude-sonnet-4.6",
-    "claude-3-7-sonnet-latest": "claude-sonnet-4.6",
-    "claude-3-5-sonnet-latest": "claude-sonnet-4.5",
-    "claude-opus-latest": "claude-opus-5",
-}
-
 # (우리 것) 하이쿠는 이 게이트웨이에 **한 판도 없다** — `GET /v1/models` 실측 2026-09-17: Claude 는
 # opus 4.5·4.6·4.7·5 와 sonnet 4.5·4.6 여섯뿐이다. 그런데 Claude Code 는 곁 호출(서브에이전트 ·
 # 요약 · 빠른 판정)에 하이쿠를 제 이름으로 보내므로 그 호출이 통째로 진다 — `ANTHROPIC_MODEL` 은
@@ -449,6 +466,14 @@ _GEMINI_MODEL_ALIASES = {
     "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
 }
 
+_CLAUDE_MODEL_ALIASES = {
+    "claude-sonnet-5": "claude-sonnet-4.6",
+    "claude-sonnet-latest": "claude-sonnet-4.6",
+    "claude-3-7-sonnet-latest": "claude-sonnet-4.6",
+    "claude-3-5-sonnet-latest": "claude-sonnet-4.5",
+    "claude-opus-latest": "claude-opus-5",
+}
+
 
 def normalize_pgpt_claude_model(model: str) -> str:
     """Restore dotted Claude IDs and map aliases the gateway does not list."""
@@ -457,15 +482,15 @@ def normalize_pgpt_claude_model(model: str) -> str:
     name = model.strip()
     if not name:
         return model
-    lower = name.lower()
-    alias = _CLAUDE_MODEL_ALIASES.get(lower)
+    alias = _CLAUDE_MODEL_ALIASES.get(name.lower())
     if alias:
         return alias
     # (우리 것) 하이쿠는 게이트웨이에 없다 — 이름에 haiku 가 들면 소넷으로 보낸다.
     # **대시→점 변환보다 먼저 본다**: 그쪽을 먼저 타면 `claude-haiku-4.5` 가 되어 여전히 없는 이름이다.
-    if "haiku" in lower:
+    if "haiku" in name.lower():
         return _CLAUDE_HAIKU_SUBSTITUTE
     # dated Anthropic ids: claude-sonnet-5-20260219
+    lower = name.lower()
     if lower.startswith("claude-sonnet-5"):
         return "claude-sonnet-4.6"
     if "." in name:
@@ -706,9 +731,15 @@ def normalize_anthropic_auth(headers: dict[str, str]) -> dict[str, str]:
 
     Hermes 의 third-party ``anthropic_messages`` 경로는 기본이 ``x-api-key`` 이고,
     P-GPT 게이트웨이는 Bearer 만 본다. Gemini 경로와 같이 원래 헤더는 남기고
-    ``Authorization`` 만 덧붙인다. 이미 Authorization 이 있으면 그대로 둔다.
+    ``Authorization`` 만 덧붙인다.
+
+    이미 Authorization 이 있으면 x-api-key 는 뺀다(v16). 게이트웨이는 Bearer 만 보는데, 사용자 환경에
+    개인 ANTHROPIC_API_KEY 가 있으면 Claude Code 가 두 헤더를 함께 보내 개인 키가 평문 HTTP 로
+    사내 게이트웨이까지 갔다.
     """
     if any(name.lower() == "authorization" for name in headers):
+        if any(name.lower() == "x-api-key" for name in headers):
+            return {name: value for name, value in headers.items() if name.lower() != "x-api-key"}
         return headers
 
     key = None
@@ -730,11 +761,6 @@ def normalize_gemini_model_path(path: str) -> str:
     Gemini CLI 0.55 adds this suffix when tools are enabled, but P-GPT only
     registers the underlying model ID.  The suffix is a client-side routing
     hint, not a distinct gateway model.
-
-    Antigravity's ``agy`` backend hardcodes one model for conversation titles
-    (``gemini-3.1-flash-lite-preview``) and the gateway does not register that
-    name -- only ``gemini-3.1-flash-lite``.  Same class of model, different ID,
-    so the fix is dropping the suffix rather than substituting another model.
     """
     if not path.startswith(f"{GEMINI_PREFIX}/models/"):
         return path
@@ -958,6 +984,7 @@ def anthropic_sse_error(status: int, raw: bytes) -> bytes:
 
 class ProxyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    _chunked_out = False
     # (우리 것 · #67) 이 요청에서 상류가 준 요청 번호. 상류에 못 닿은 판(경로 거절 · /health)도
     # 판마다 한 줄이 이 칸을 읽으므로 빈 값으로 선언해 둔다.
     gw_request_id = ""
@@ -968,20 +995,23 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def _gw(self) -> str:
         """(우리 것 · #67) 판마다 한 줄의 꼬리. 번호가 없으면 아무것도 안 붙인다.
 
-        **한 자리에서 짓는 까닭** — 찍는 자리가 셋(통과 · 0051 지어 낸 길 · 느린 판)이라
-        꼴이 갈리면 나중에 번호로 훑는 자가 셋을 다 알아야 한다.
+        **한 자리에서 짓는 까닭** — 찍는 자리가 넷(통과 · 0051 지어 낸 길 둘 · 느린 판)이라
+        꼴이 갈리면 나중에 번호로 훑는 자가 넷을 다 알아야 한다.
         """
         return f" gw={self.gw_request_id}" if self.gw_request_id else ""
 
-    def _send_json(self, status: int, payload: dict[str, object]) -> None:
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+    def _send_json(self, status: int, payload: dict[str, object], *, keep_alive: bool = True) -> None:
         data = _json_bytes(payload)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Connection", "keep-alive")
+        self.send_header("Connection", "keep-alive" if keep_alive else "close")
         self.end_headers()
         self.wfile.write(data)
-        self.close_connection = False
+        self.close_connection = not keep_alive
 
     def _read_body(self) -> bytes | None:
         """Read the request body, honouring chunked transfer encoding.
@@ -1035,11 +1065,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
         elif method.upper() in {"POST", "PUT", "PATCH"}:
             upstream_headers["Content-Length"] = "0"
 
-        last_error: Exception | None = None
+        log_path = path.split("?", 1)[0]   # 쿼리(?key=...)는 로그에 남기지 않는다
         for attempt in range(2):
-            conn = _UPSTREAM_POOL.acquire()
+            conn = _UPSTREAM_POOL.acquire(fresh=attempt > 0)
+            reused = bool(getattr(conn, "pgpt_reused", False))
             try:
-                conn.request(method, path, body=body, headers=upstream_headers)
+                try:
+                    conn.request(method, path, body=body, headers=upstream_headers)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    # 게이트웨이가 본문을 다 받기 전에 응답(예: 413)을 보내고 끊었을 수 있다 — 그 응답을 넘긴다
+                    try:
+                        res = conn.getresponse()
+                        self.gw_request_id = res.headers.get(_GW_REQUEST_ID_HEADER) or ""
+                        return res, conn
+                    except (http.client.HTTPException, OSError):
+                        pass
+                    raise
                 response = conn.getresponse()
                 # (우리 것 · #67) 요청 번호를 핸들러에 걸어 둔다 — 판마다 한 줄이 이것을 읽는다.
                 # **여기 한 자리에서 잡는 까닭**은 상류 응답을 받는 갈래가 둘(통과 길 · 0051 이
@@ -1047,14 +1088,25 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self.gw_request_id = response.headers.get(_GW_REQUEST_ID_HEADER) or ""
                 return response, conn
             except (http.client.HTTPException, OSError, TimeoutError) as error:
-                last_error = error
                 _UPSTREAM_POOL.release(conn, reuse=False)
-                if attempt == 0:
-                    log(f"{method} {path} upstream retry after {error!r}")
+                # 다시 보내도 되는 경우는 하나뿐: 풀에서 꺼낸(오래 쉰) 연결이 응답 전에 끊긴 것. 새 연결이 실패했거나
+                # 시간 초과면 게이트웨이가 이미 요청을 처리 중일 수 있어 다시 보내면 생성이 두 번 돈다(비용 두 배).
+                stale = isinstance(error, (http.client.RemoteDisconnected, BrokenPipeError,
+                                           ConnectionResetError, ConnectionAbortedError))
+                if attempt == 0 and reused and stale:
+                    log(f"{method} {log_path} upstream retry on a fresh connection after {error!r}")
                     continue
                 raise
-        assert last_error is not None
-        raise last_error
+        raise RuntimeError("unreachable")
+
+    def _emit(self, data: bytes) -> None:
+        if not data:
+            return
+        if self._chunked_out:
+            self.wfile.write(f"{len(data):X}\r\n".encode("ascii") + data + b"\r\n")
+        else:
+            self.wfile.write(data)
+        self.wfile.flush()
 
     def _relay_sse_keepalive(self, response: object, interval: float) -> bool:
         """Copy an SSE body, writing an SSE comment whenever upstream is silent.
@@ -1083,8 +1135,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 try:
                     item = chunks.get(timeout=interval)
                 except queue.Empty:
-                    self.wfile.write(_KEEPALIVE_LINE)
-                    self.wfile.flush()
+                    self._emit(_KEEPALIVE_LINE)
                     sent += 1
                     _count_keepalive()
                     continue
@@ -1093,12 +1144,18 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 if isinstance(item, BaseException):
                     log(f"upstream read aborted: {item!r}")
                     return False
-                self.wfile.write(item)
+                self._emit(item)
+            remaining = getattr(response, "length", None)
+            if remaining:
+                log(f"upstream ended {remaining} bytes early")
+                return False
+            if self._chunked_out:
+                self.wfile.write(b"0\r\n\r\n")
                 self.wfile.flush()
             if sent:
                 log(f"keepalive x{sent} (upstream silent > {interval:g}s)")
             return True
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return False
 
     def _relay_stream(
@@ -1109,45 +1166,44 @@ class ProxyHandler(BaseHTTPRequestHandler):
         keepalive: bool = False,
         interval: float | None = None,
     ) -> bool:
-        """Copy upstream body to the client. Returns True if fully consumed."""
         if keepalive and not gemini_sse:
             return self._relay_sse_keepalive(response, interval or KEEPALIVE_SEC)
-        if gemini_sse:
-            joiner = GeminiSseJoiner()
-            try:
-                while True:
-                    try:
-                        chunk = response.read1(65536)
-                    except OSError as error:
-                        log(f"upstream read aborted: {error!r}")
-                        return False
-                    if not chunk:
-                        break
-                    for event in joiner.feed(chunk):
-                        self.wfile.write(event)
-                        self.wfile.flush()
-                for event in joiner.finish():
-                    self.wfile.write(event)
-                    self.wfile.flush()
-                if joiner.joined_fragments:
-                    log(f"Gemini SSE fragments joined={joiner.joined_fragments}")
-                return True
-            except (BrokenPipeError, ConnectionResetError):
-                return False
+        """Copy upstream body to the client. Returns True if fully consumed.
 
+        끝까지 받았을 때만 chunked 종료 표시를 쓴다. 업스트림이 도중에 끊기면 종료 표시 없이 연결을 닫아
+        클라이언트가 잘린 응답임을 알게 한다(전에는 Connection: close 로만 끝나 정상 종료와 구별되지 않았다).
+        """
+        joiner = GeminiSseJoiner() if gemini_sse else None
         try:
             while True:
                 try:
                     chunk = response.read1(65536)
-                except OSError as error:
+                except (OSError, http.client.HTTPException) as error:
+                    # IncompleteRead 는 OSError 가 아니다 — 함께 잡아 잘린 응답을 기록한다
                     log(f"upstream read aborted: {error!r}")
                     return False
                 if not chunk:
                     break
-                self.wfile.write(chunk)
+                if joiner is not None:
+                    for event in joiner.feed(chunk):
+                        self._emit(event)
+                else:
+                    self._emit(chunk)
+            # 길이를 선언한 응답이 모자라게 끝나면 read1() 은 예외 없이 빈 바이트를 돌려준다 — 남은 길이로 가린다
+            remaining = getattr(response, "length", None)
+            if remaining:
+                log(f"upstream ended {remaining} bytes early")
+                return False
+            if joiner is not None:
+                for event in joiner.finish():
+                    self._emit(event)
+                if joiner.joined_fragments:
+                    log(f"Gemini SSE fragments joined={joiner.joined_fragments}")
+            if self._chunked_out:
+                self.wfile.write(b"0\r\n\r\n")
                 self.wfile.flush()
             return True
-        except (BrokenPipeError, ConnectionResetError):
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return False
 
     def _write_client(self, data: bytes) -> bool:
@@ -1224,16 +1280,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     {"type": "error", "error": {"type": "api_error", "message": str(item)}},
                 ))
             else:
-                self._send_json(502, {"type": "error", "error": {"message": str(item)}})
+                self._send_json(502, {"type": "error", "error": {"message": str(item)}}, keep_alive=False)
             return conn, False
 
         response, raw = item
-        conn_tokens = {
-            part.strip()
-            for part in (response.headers.get("Connection") or "").lower().split(",")
-            if part.strip()
-        }
-        reuse = "close" not in conn_tokens
+        reuse = _keeps_alive(response)
         if aborted:
             return conn, reuse
 
@@ -1315,14 +1366,20 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "service": "pgpt-proxy",
                 "version": VERSION,
+                # 설치기가 방금 띄운 자기 프로세스인지 확인한다(한 PC 를 여럿이 쓰면 남의 프록시가 포트를 쥘 수 있다)
+                "pid": os.getpid(),
             }
             payload.update(stats())
             self._send_json(200, payload)
             return
-        if not parsed.path.startswith(ALLOWED_PREFIX):
+        # 접두어만 보면 /gpgpta01-gpt/../other 같은 경로가 게이트웨이의 다른 서비스로 간다 — 점 세그먼트도 막는다
+        segments = unquote_plus(parsed.path).split("/")
+        if not parsed.path.startswith(ALLOWED_PREFIX) or ".." in segments or "." in segments:
+            # 본문을 읽지 않았으므로 연결을 닫는다 — 남은 본문이 같은 연결의 다음 요청 줄로 읽혔다
             self._send_json(
                 403,
                 {"type": "error", "error": {"message": "허용되지 않은 경로입니다."}},
+                keep_alive=False,
             )
             return
 
@@ -1359,7 +1416,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         if UNSTREAM and self.command == "POST" and payload_obj.get("stream") is True:
                             payload_obj["stream"] = False
                             unstream = True
-                    elif is_openai_generation and model_name.startswith("gemini-"):
+                    elif stripped_path.endswith("/v1/chat/completions") and model_name.startswith("gemini-"):
+                        # /v1/responses 는 프롬프트가 input · instructions 에 있어 이 변환(messages 만 읽음)을 타면
+                        # 빈 프롬프트가 된다 — chat/completions 만 바꾼다
                         gemini_chat_model = model_name
                         gemini_chat_stream = bool(payload_obj.get("stream"))
                         payload_obj = openai_chat_to_gemini_payload(payload_obj)
@@ -1415,8 +1474,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 )
             except Exception as error:
                 log(f"{self.command} {parsed.path} -> upstream unreachable: {error}")
+                # 이 요청 뒤에 연결을 닫으므로(close_connection) keep-alive 를 약속하지 않는다
                 self._send_json(
-                    502, {"type": "error", "error": {"message": str(error)}}
+                    502, {"type": "error", "error": {"message": str(error)}}, keep_alive=False
                 )
                 return
 
@@ -1424,7 +1484,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 log(f"{self.command} {parsed.path} -> HTTP {response.status}{self._gw()}")
 
             if gemini_chat_model and response.status < 400:
-                raw = response.read()
+                try:
+                    raw = response.read()
+                except (OSError, http.client.HTTPException) as error:
+                    # 변환하려면 본문 전체가 필요하다 — 끊기면 잘린 답을 만들지 말고 502 로 알린다
+                    log(f"{self.command} {parsed.path} -> upstream read aborted before Gemini conversion: {error!r}")
+                    self._send_json(502, {"type": "error", "error": {"message": f"upstream read aborted: {error}"}}, keep_alive=False)
+                    return
                 if gemini_chat_stream:
                     converted = gemini_response_to_openai_stream(raw, gemini_chat_model)
                     content_type = "text/event-stream; charset=utf-8"
@@ -1437,7 +1503,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self.send_header("Connection", "close")
                 self.end_headers()
                 self.wfile.write(converted)
-                reuse = "close" not in (response.headers.get("Connection") or "").lower()
+                reuse = _keeps_alive(response)
                 return
 
             # 3xx: relay as-is, never follow (following would re-send Authorization).
@@ -1457,29 +1523,46 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 }:
                     continue
                 self.send_header(key, value)
-            # Streaming bodies have no Content-Length — close after the body.
-            # Fixed-length replies could keep-alive, but BaseHTTPRequestHandler
-            # still mixes poorly with upstream streaming; close is the safe default.
+            # 본문 길이를 클라이언트가 알 수 있게 한다: 업스트림 길이를 그대로 쓰거나(본문을 바꾸지 않을 때),
+            # chunked 로 다시 싼다. 그래야 업스트림이 도중에 끊긴 응답을 클라이언트가 잘린 것으로 안다.
+            no_body = (
+                self.command == "HEAD"
+                or response.status in (204, 304)
+                or 100 <= response.status < 200
+            )
+            upstream_length = response.getheader("Content-Length")
+            self._chunked_out = False
+            if no_body:
+                pass
+            elif upstream_length is not None and not is_gemini_stream and not getattr(response, "chunked", False):
+                # chunked 와 Content-Length 를 함께 보낸 업스트림은 http.client 가 chunked 로 읽는다 — 그 길이는 틀린 값이다
+                self.send_header("Content-Length", upstream_length)
+            else:
+                self.send_header("Transfer-Encoding", "chunked")
+                self._chunked_out = True
             self.send_header("Connection", "close")
             self.end_headers()
 
-            # Anthropic SSE 만 keepalive 를 얹는다 — Gemini 는 재조립 갈래가 따로 있고, JSON 응답은 침묵이 곧 끝이다.
-            keepalive_sse = (
-                KEEPALIVE_SEC > 0
-                and not is_gemini_stream
-                and response.status < 400
-                and (response.headers.get("Content-Type") or "").lower().startswith("text/event-stream")
-            )
-            fully_read = self._relay_stream(
-                response, gemini_sse=is_gemini_stream, keepalive=keepalive_sse
-            )
-            if fully_read:
-                conn_hdr = (response.headers.get("Connection") or "").lower()
-                # HTTP/1.1 기본은 keep-alive. close 가 명시된 경우만 버린다.
-                tokens = {part.strip() for part in conn_hdr.split(",") if part.strip()}
-                reuse = "close" not in tokens
+            if no_body:
+                fully_read = True
+                try:
+                    response.read()
+                except (OSError, http.client.HTTPException):
+                    fully_read = False
             else:
-                reuse = False
+                keepalive_sse = (
+                    KEEPALIVE_SEC > 0
+                    and not is_gemini_stream
+                    and response.status < 400
+                    and (response.headers.get("Content-Type") or "").lower().startswith("text/event-stream")
+                )
+                fully_read = self._relay_stream(
+                    response, gemini_sse=is_gemini_stream, keepalive=keepalive_sse
+                )
+            reuse = fully_read and _keeps_alive(response)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # 클라이언트가 응답을 받기 전에 끊었다(취소 · 시간 초과) — 조용히 끝낸다. 업스트림 연결은 버린다.
+            reuse = False
         finally:
             _UPSTREAM_POOL.release(conn, reuse=reuse)
             self.close_connection = True
@@ -1620,6 +1703,10 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-sonnet-4-5") == "claude-sonnet-4.5"
     assert normalize_pgpt_claude_model("claude-opus-4.6") == "claude-opus-4.6"
     assert normalize_pgpt_claude_model("claude-opus-5") == "claude-opus-5"
+    assert normalize_pgpt_claude_model("claude-fable-5-1") == "claude-fable-5.1"
+    assert normalize_pgpt_claude_model("claude-fable-5.1") == "claude-fable-5.1"
+    assert normalize_pgpt_claude_model("claude-newfamily-7-2") == "claude-newfamily-7.2"
+    assert normalize_pgpt_claude_model("claude-3-5-sonnet-20241022") == "claude-3-5-sonnet-20241022"
     assert normalize_pgpt_claude_model("gpt-5.6-sol") == "gpt-5.6-sol"
     assert normalize_pgpt_claude_model("claude-sonnet-5") == "claude-sonnet-4.6"
     assert normalize_pgpt_claude_model("claude-sonnet-5-20260219") == "claude-sonnet-4.6"
@@ -1668,8 +1755,9 @@ def self_test() -> None:
     headers = normalize_anthropic_auth({"x-api-key": "pgpt-tok", "Content-Type": "application/json"})
     assert headers["Authorization"] == "Bearer pgpt-tok"
     assert headers["x-api-key"] == "pgpt-tok"
-    headers = normalize_anthropic_auth({"Authorization": "Bearer REAL", "x-api-key": "pgpt-tok"})
+    headers = normalize_anthropic_auth({"Authorization": "Bearer REAL", "x-api-key": "ant-personal-key"})
     assert headers["Authorization"] == "Bearer REAL"
+    assert "x-api-key" not in headers  # 개인 키가 게이트웨이로 새지 않는다(v16)
     assert normalize_anthropic_auth({"Content-Type": "application/json"}) == {
         "Content-Type": "application/json"
     }
@@ -1681,19 +1769,6 @@ def self_test() -> None:
     assert normalize_gemini_model_path(
         "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:generateContent"
     ) == "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:generateContent"
-
-    # (우리 것) 안티그래비티의 제목 짓기는 등록 안 된 `-preview` 이름으로 온다 — 그것만 고친다.
-    assert normalize_gemini_model_path(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview:streamGenerateContent"
-    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:streamGenerateContent"
-    # ⚠ **게이트웨이에 있는 `-preview` 는 안 건드린다** — 접미사를 규칙으로 떼면 이 줄이 깨진다.
-    assert normalize_gemini_model_path(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent"
-    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent"
-    # 두 접미사가 겹쳐 와도 등록 이름으로 내려앉는다.
-    assert normalize_gemini_model_path(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview-customtools:generateContent"
-    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:generateContent"
 
     # P-GPT 가 JSON 하나를 여러 data: 줄로 잘라도 완전한 이벤트로 합친다.
     broken_sse = (
@@ -1745,6 +1820,24 @@ def self_test() -> None:
     assert stale.closed
     assert pool.stats()["upstream_expired"] == 1 and pool.stats()["upstream_idle"] == 0
 
+    # 짝 없는 surrogate 는 UTF-8 로 못 쓴다 — \uXXXX 로 되돌려 보낸다(예외로 연결이 끊기지 않게)
+    lone = json.loads('{"t":"a\\ud83d b"}')
+    assert _json_bytes(lone) == b'{"t":"a\\ud83d b"}'
+    assert _json_bytes({"t": "한글"}) == '{"t":"한글"}'.encode("utf-8")
+
+    # (우리 것) 안티그래비티의 제목 짓기는 등록 안 된 `-preview` 이름으로 온다 — 그것만 고친다.
+    assert normalize_gemini_model_path(
+        "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview:streamGenerateContent"
+    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:streamGenerateContent"
+    # ⚠ **게이트웨이에 있는 `-preview` 는 안 건드린다** — 접미사를 규칙으로 떼면 이 줄이 깨진다.
+    assert normalize_gemini_model_path(
+        "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent"
+    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:streamGenerateContent"
+    # 두 접미사가 겹쳐 와도 등록 이름으로 내려앉는다.
+    assert normalize_gemini_model_path(
+        "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview-customtools:generateContent"
+    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:generateContent"
+
     # keepalive: 상류가 침묵하는 동안 SSE 주석이 흐르고, 본문은 글자 하나 안 바뀌고 지나간다.
     class _SlowResponse:
         def __init__(self) -> None:
@@ -1755,6 +1848,7 @@ def self_test() -> None:
             return self._chunks.pop(0)
 
     handler = ProxyHandler.__new__(ProxyHandler)
+    handler._chunked_out = False
     handler.wfile = io.BytesIO()  # type: ignore[assignment]
     assert handler._relay_stream(_SlowResponse(), gemini_sse=False, keepalive=True, interval=0.03)  # type: ignore[arg-type]
     relayed = handler.wfile.getvalue()
@@ -1842,12 +1936,20 @@ def self_test() -> None:
 
 
 def main() -> None:
-    try:
-        server = ProxyServer((LISTEN_HOST, LISTEN_PORT), ProxyHandler)
-    except OSError as error:
-        log(f"bind {LISTEN_HOST}:{LISTEN_PORT} failed: {error}")
-        print(f"포트 {LISTEN_PORT} 점유: {error}", file=sys.stderr)
-        raise SystemExit(2)
+    # 재설치 · 키 교체는 옛 프록시를 끄자마자 새 프록시를 띄운다. 옛 프록시의 연결이 아직 닫히는 중이면 bind 가
+    # 잠깐 실패할 수 있다 — 바로 죽으면 다음 로그인까지 프록시가 없으므로 15초 동안 다시 시도한다.
+    deadline = time.monotonic() + 15
+    while True:
+        try:
+            server = ProxyServer((LISTEN_HOST, LISTEN_PORT), ProxyHandler)
+            break
+        except OSError as error:
+            if time.monotonic() < deadline:
+                time.sleep(0.5)
+                continue
+            log(f"bind {LISTEN_HOST}:{LISTEN_PORT} failed: {error}")
+            print(f"포트 {LISTEN_PORT} 점유: {error}", file=sys.stderr)
+            raise SystemExit(2)
 
     log(f"started pid={os.getpid()} version={VERSION} python={sys.version.split()[0]}")
     PID_PATH.write_text(str(os.getpid()), encoding="ascii")
