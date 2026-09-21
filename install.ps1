@@ -351,8 +351,8 @@ try {
   $script:HasEngineMutex = $true
 }
 
-if (-not $script:HasEngineMutex) {
-  $holders = @(Find-EngineHolders)
+$holders = @(Find-EngineHolders)
+if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
   Write-Host ''
   Write-Host '  이미 다른 설치 또는 자동 실행이 진행 중입니다.' -ForegroundColor Yellow
   foreach ($h in $holders) { Write-Host ('  ' + (Format-EngineHolder $h)) }
@@ -372,10 +372,20 @@ if (-not $script:HasEngineMutex) {
   Write-Host '  잠시 기다립니다 (최대 60초)...'
   # ⚠ **버려진 빗장은 잡힌 것이다.** 기다리는 동안 쥔 쪽이 죽으면 `WaitOne` 이 던지는데, 그때
   #   **소유권은 이쪽에 넘어와 있다** — 삼키고 거짓으로 두면 방금 얻은 것을 못 쓴다.
-  try { $script:HasEngineMutex = $script:EngineMutex.WaitOne(60000, $false) }
-  catch { $script:HasEngineMutex = $true }
+  #   세션이 다른 프로세스(S4U 등)는 Mutex 로 안 잡히므로 Find-EngineHolders 도 함께 잰다.
+  $swWait = [Diagnostics.Stopwatch]::StartNew()
+  while ($swWait.Elapsed.TotalSeconds -lt 60) {
+    Start-Sleep -Seconds 2
+    try {
+      if (-not $script:HasEngineMutex) {
+        $script:HasEngineMutex = $script:EngineMutex.WaitOne(1000, $false)
+      }
+    } catch { $script:HasEngineMutex = $true }
+    $holders = @(Find-EngineHolders)
+    if ($holders.Count -eq 0 -and $script:HasEngineMutex) { break }
+  }
 
-  if (-not $script:HasEngineMutex) {
+  if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
     # ⚠ **기본값은 「안 끝낸다」다.** 빗장이 선 까닭이 *겹쳐 돌면 반쪽 상태가 남는다*(#13)이므로,
     #   아직 일하는 중인 것을 끝내면 **그 반쪽 상태를 우리가 만드는 셈이다.** 그래서 묻고, 무엇을
     #   끝내는지 대고, 사람이 예라고 할 때만 끝낸다.
@@ -403,7 +413,8 @@ if (-not $script:HasEngineMutex) {
     }
   }
 
-  if (-not $script:HasEngineMutex) {
+  $holders = @(Find-EngineHolders)
+  if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
     Write-Host '  ! 다른 설치 프로세스가 끝나지 않아 물러납니다.' -ForegroundColor Red
     exit 1
   }
@@ -2635,11 +2646,11 @@ if ($cfg) {
   #   깔아 준 기계)에는 그 줄이 그대로 남아, 구독으로 못 부르는 것이 목록에 선다.
   if ($useGateway) {
     $want = $ModelPicker | ForEach-Object { [pscustomobject]$_ }
-    $pick = [pscustomobject]@{ options = @($want); replaceBuiltInOptions = $ModelPickerOnly }
+    $pickerObj = [pscustomobject]@{ options = @($want); replaceBuiltInOptions = $ModelPickerOnly }
     # 있는 것과 견준다 — 같으면 안 쓴다(매 설치마다 「썼다」가 찍히면 눈이 그 줄을 흘린다).
     $old = if ($cfg.PSObject.Properties['modelPicker']) { $cfg.modelPicker | ConvertTo-Json -Depth 10 -Compress } else { $null }
-    if ($old -ne ($pick | ConvertTo-Json -Depth 10 -Compress)) {
-      $cfg | Add-Member -NotePropertyName modelPicker -NotePropertyValue $pick -Force
+    if ($old -ne ($pickerObj | ConvertTo-Json -Depth 10 -Compress)) {
+      $cfg | Add-Member -NotePropertyName modelPicker -NotePropertyValue $pickerObj -Force
       $dirty = $true
       Write-Host "  모델 목록 $($want.Count) 줄을 맞췄다 (다 1M · 내장 줄은 숨긴다)" -ForegroundColor Green
     } else {
@@ -3649,10 +3660,10 @@ function Find-DesktopApps {
     $all = @(Get-StartApps -ErrorAction Stop)
   } catch { return @() }                        # 이 윈도우에 그 물음이 없다
   $out = @()
-  foreach ($pick in $appPicks) {
-    $a = @($all | Where-Object { $_.Name -like "*$($pick.App)*" })[0]
+  foreach ($appPick in $appPicks) {
+    $a = @($all | Where-Object { $_.Name -like "*$($appPick.App)*" })[0]
     if (-not ($a -and $a.AppID)) { continue }
-    $want = $pick.App; $label = $pick.Label
+    $want = $appPick.App; $label = $appPick.Label
   # 프로세스 이름은 **후보 목록**이다 — 손잡이에서 판 것 하나와 앱 이름 하나.
   # ⚠ **손잡이 하나로는 못 판다.** 꼴이 셋이고 이름이 앉는 자리가 다 다르다 — 스토어 꼴은
   #   `앱_해시!앱` 의 `_` 앞, 바로가기 꼴은 파일 이름, claude.ai 에서 받은 일반 설치본(Squirrel)은
