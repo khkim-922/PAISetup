@@ -1,4 +1,4 @@
----
+﻿---
 name: pptx
 description: "Use this skill any time a .pptx or .potx file is involved in any way — as input, output, or both. This includes: creating slide decks, pitch decks, or presentations; reading, parsing, or extracting text from any .pptx or .potx file (even if the extracted content will be used elsewhere, like in an email or summary); editing, modifying, or updating existing presentations; combining or splitting slide files; working with templates (.potx), layouts, speaker notes, or comments. Trigger whenever the user mentions \"deck,\" \"slides,\" \"presentation,\" or references a .pptx or .potx filename, regardless of what they plan to do with the content afterward. If a .pptx or .potx file needs to be opened, created, or touched, use this skill."
 license: Proprietary. LICENSE.txt has complete terms
@@ -11,6 +11,7 @@ A `.pptx` is a ZIP archive of XML files. Choose your approach by task:
 | Task | Approach |
 |---|---|
 | **Create** a new deck | Write a `pptxgenjs` script — see gotchas below |
+| **Create** a Korean executive report deck (A4 landscape by default, python-pptx) | Feed JSON to `scripts/build_deck.py` — see [임원 보고 덱 빌더](#임원-보고-덱-빌더-로컬-추가) |
 | **Edit** an existing deck, or build from a template | unzip → edit `ppt/slides/slideN.xml` → zip |
 | **Read** content | `markitdown deck.pptx` (one block per slide under `<!-- Slide number: N -->` markers); visual grid: `python scripts/thumbnail.py deck.pptx` |
 
@@ -25,12 +26,65 @@ Paths are relative to this skill's directory. Everything else is plain Python, `
 | `scripts/clean.py unpacked/` | Delete slides, media, and rels no longer referenced. Run **after** `<p:sldIdLst>` is final |
 | `scripts/office/validate.py deck.pptx [--original src.pptx]` | Schema, relationship, content-type, chart and slide checks; each failure names its fix. Pass `--original` for any template-derived deck — it baselines the schema checks against the template, so the template's own XSD errors don't read as yours |
 | `scripts/office/soffice.py --headless --convert-to pdf deck.pptx` | LibreOffice wrapper — bare `soffice` hangs in this sandbox |
+| `scripts/build_deck.py data.json -o out.pptx` | 로컬 추가 — 데이터(JSON)만 넘기면 임원 보고용 덱(기본 A4 가로)이 나온다. `--schema` 로 레이아웃·키·지면 목록 |
+| `scripts/audit_layout.ps1 -Path deck.pptx` | 로컬 추가 — PowerPoint 가 직접 잰 글 높이로 넘침·겹침·여백을 검사한다 (고치는 동안 돌리는 검사) |
+| `scripts/capture_slides.ps1 -Path deck.pptx -Slides "1,8"` | 로컬 추가 — DRM 환경에서 슬라이드쇼를 화면 캡처해 육안 QA용 이미지를 만든다 (`capture_slide.py` 가 압축) |
+| `scripts/capture_slide.py -i raw.png -o qa.jpg` | 로컬 추가 — DRM 환경 화면캡처 이미지를 70% 이상 초압축(Pillow)하여 비전 모델 토큰 절감 |
+
+## 임원 보고 덱 빌더 (로컬 추가)
+
+`pptxgenjs` 가 없거나 한국어 임원 보고서를 python-pptx 로 짜야 하는 자리에 쓴다.
+여덟 레이아웃에 **내용만 넘기면** 좌표·색·활자 계층·여백은 엔진이 든다.
+지면 기본값은 **A4 가로(11.693 × 8.268in)** — 사내 보고는 결국 인쇄·PDF로 읽힌다.
+`page` 로 `16:9` · `4:3` · `[가로, 세로]` 를 줄 수 있고, 좌표는 지면에 맞춰 다시 계산된다.
+
+```bash
+python scripts/build_deck.py --schema                     # 레이아웃·키·지면 (진본)
+python scripts/build_deck.py scripts/sample_deck.json -o out.pptx
+powershell -ExecutionPolicy Bypass -File scripts/audit_layout.ps1 -Path out.pptx
+```
+
+| layout | 담는 것 |
+|---|---|
+| `dark_cover` | 다크 표지 · 인용 패널 · 큰 숫자 지표 콜아웃 |
+| `comparison_cards` | 좌우 비교 카드 + 하단 요약 줄 (2-Track · 전후 비교) |
+| `decision_matrix` | **판정표** — 기준 × 선택지, 칸마다 빈 네모로 자가 체크 |
+| `charter_grid` | 표준 양식 1-Pager — 좌측 원칙·콜아웃 + 우측 항목 그리드 |
+| `charter_form` | **작성용 빈 양식** — 칸을 누르고 바로 타이핑하는 입력 그리드 |
+| `process_gates` | 단계 카드 가로 흐름 + 신호등 범례 |
+| `executive_dashboard` | 2×2 사분면 — 지표 / 핵심 항목 / 현황 매트릭스 / 의사결정 요청 |
+| `dark_closing` | 다크 마무리 — 가로 타임라인 + 액션 카드 |
+
+- 다크(표지·마무리)가 라이트(본문)를 감싸는 샌드위치가 기본이고, 헤더 바·측면
+  스트라이프·제목 밑줄은 엔진이 **그리지 않는다.**
+- 라이트 레이아웃은 `note` 로 우상단에 **안내 배지**를 얹는다 — 예시(Sample) 표기,
+  기준일, 출처처럼 「이건 진짜가 아니다 · 이때 기준이다」를 대는 자리다.
+- `process_gates` 는 `banner` 로 하단에 지원·안내 한 줄을 붙이고, 범례 항목에 `tag` 를
+  주면 신호등 점 대신 번호 배지가 붙어 **체크리스트**로 읽힌다.
+- 블록이 넘치면 글자를 먼저 줄이고, 그래도 안 들어가면 경고를 찍는다(종료 코드 1)
+  — 경고가 뜨면 글을 줄이는 쪽이 맞다.
+- 색·데이터 규격·파일이 안 열릴 때의 진단은 `references/executive-layouts.md` 가 든다.
+  예시는 `scripts/sample_deck.json`(여덟 레이아웃) · `scripts/example_deck.py`(파이썬 API).
+
+### ⚠ Anti-Anchoring — 레고 블록이지 완성된 성이 아니다
+
+`scripts/build_deck.py`와 `sample_deck.json`은 보일러플레이트(좌표 계산, 여백, 폰트 축소, 오버플로우 감사)를 아끼는 **원자적 레이아웃 부품(Primitives)**을 제공하며, 8대 레이아웃은 이를 조립한 상위 편의 레시피(Convenience Helpers)다. 모든 덱이 따라야 할 **정형화된 틀(템플릿)이 아니다.**
+
+- **[원자 부품(Atomic Primitives) API]**:
+  - **지면 구획 / 컨테이너**: `Card(x, y, w, h, bg_color, border_color, shadow=True)`, `Grid(x, y, w, h, rows, cols, gap_x, gap_y)`, `Split(x, y, w, h, direction='h'|'v', ratios=[0.4, 0.6], gap=0.3)`
+  - **시각 원자 부품**: `MetricBox(parent, value, label, desc)`, `Badge(parent, text, color, icon)`, `KickerHeader(slide, kicker, title, subtitle, lead)`, `StepCard(parent, step_no, title, items, status_tag)`, `TableBox(parent, headers, rows, col_widths)`, `CalloutBanner(slide, text, rule_type)`, `FormField(parent, label, placeholder, flex)`
+- **[사안의 본질이 양식을 호출한다]** — 덱의 스토리라인, 슬라이드 구성 및 장수는 사용자의 목적(전략 제안, 기술 보고, 킥오프, 교육 등)에 따라 **먼저 자유롭게 기획**한다. 엔진에 있는 8개 레시피에 억지로 끼워 맞추지 않는다.
+- **[블록 합성 규약]** — 8개 레이아웃은 선택지 중 하나다. "좌측 지표 2개 + 우측 3단계 카드", 와이드 타임라인, 다축 매트릭스 등 새로운 레이아웃이 필요하면 `Card`, `Grid`, `Split`, `MetricBox`, `StepCard` 등의 원자 부품을 파이썬 코드로 레고 블록처럼 자유롭게 조합·합성하여 생성한다.
+- **[테마 다양성 보장]** — 네이비 샌드위치가 유일한 답이 아니다. 주제에 맞춰 아래 [Color Palettes]의 10대 추천 팔레트(Ocean Teal, Sage Calm, Charcoal Minimal 등)와 명암 구성을 능동적으로 선택한다.
 
 ## Creating with pptxgenjs — gotchas
 
 `pptxgenjs` is preinstalled — do not run `npm install` first; write the script and `require('pptxgenjs')` directly. Only if that require fails: `npm install pptxgenjs`. The model knows the API; these are the footguns:
 
-- **Set `pres.layout` before adding slides.** The default canvas is `LAYOUT_16x9` = **10" × 5.625"**, not 13.3" wide. Coordinates past the edge are written, not clamped — the shape just isn't on the slide. (`LAYOUT_WIDE` is 13.3" × 7.5".)
+- **Standard Canvas is A4 Landscape (A4 가로 표준).** 사내 보고·인쇄·PDF 열람 기본 표준은 **A4 가로** (29.7cm × 21.0cm / 11.693" × 8.268")다.
+  - python-pptx: `prs.slide_width = Inches(11.693)`, `prs.slide_height = Inches(8.268)` (또는 PPT A4 프리셋 10.833" × 7.5").
+  - pptxgenjs: `pres.defineLayout({ name: 'A4_LANDSCAPE', width: 11.693, height: 8.268 }); pres.layout = 'A4_LANDSCAPE';`.
+  - 사용자가 16:9 와이드스크린을 명시적으로 요구하지 않는 한, 슬라이드 캔버스는 A4 가로를 기본 규격으로 적용한다.
 - **Hex colors: never `#`, never 8 digits.** `color: "FF0000"`. Both `"#FF0000"` and alpha baked into the hex (`"00000020"`) **corrupt the file**. For translucency: `transparency: 0-100` on fills and images, `opacity: 0.0-1.0` on shadows — each is silently ignored on the other.
 - **pptxgenjs mutates option objects in place** (converts values to EMU on first use). Never share one `shadow`/options object across two `add*` calls — build a fresh object each time.
 - **Shadow `offset` must be ≥ 0** — a negative offset corrupts the file. To cast a shadow upward, use `angle: 270` with a positive offset.
@@ -232,6 +286,51 @@ ls -1 "$PWD"/slide-*.jpg
 **Pass the absolute paths printed above directly to the view tool.** The `rm` clears stale images from prior runs. `pdftoppm` zero-pads based on page count: `slide-1.jpg` for decks under 10 pages, `slide-01.jpg` for 10-99, `slide-001.jpg` for 100+.
 
 **After fixes, rerun all four commands above** — the PDF must be regenerated from the edited `.pptx` before `pdftoppm` can reflect your changes.
+
+### ⚠ DRM 환경에서의 육안 QA 우회 기법 (화면 캡처 방식)
+
+사내 Fasoo DRM 환경에서는 백그라운드 프로세스가 생성한 이미지 파일이나 PDF 변환본이 암호화되거나 내보내기(`Slide.Export`)가 차단되어, 위의 일반 변환 파이프라인(`soffice`, `pdftoppm`)이 동작하지 않는다.
+
+**검증된 우회 해법**:
+파워포인트를 창 모드(`WithWindow = $true`) 또는 슬라이드쇼로 띄우고, `.NET`의 데스크톱 화면 캡처(`System.Drawing.Graphics.CopyFromScreen`)를 수행하면 파수의 디스크 파일 암호화 간섭 없이 깨끗한 슬라이드 이미지를 얻을 수 있다.
+
+```powershell
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+$ppt = New-Object -ComObject PowerPoint.Application
+$pres = $ppt.Presentations.Open((Resolve-Path "deck.pptx").Path, $true, $false, $true)
+$pres.SlideShowSettings.Run()
+Start-Sleep -Milliseconds 800
+
+# 화면 캡처
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bmp = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
+$g = [System.Drawing.Graphics]::FromImage($bmp)
+$g.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+$bmp.Save("$PWD\qa_slide.png", [System.Drawing.Imaging.ImageFormat]::Png)
+$g.Dispose(); $bmp.Dispose(); $pres.SlideShowWindow.View.Exit(); $pres.Close(); $ppt.Quit()
+```
+
+생성된 `qa_slide.png`는 `view` 도구로 직접 열어 시각적 품질(색 대비, 타이포 인상, 여백 균형)을 육안으로 검증한다.
+
+**한 줄로 쓰려면** — 위 절차(전경 잠금 해제 · 복구 창 제거 · 프로세스 정리 · 압축)를 그대로 담은 스크립트가 있다:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/capture_slides.ps1 -Path deck.pptx -Slides "1,8"
+```
+
+**검증된 호출 패턴** — 순서가 곧 함정 회피다. 손으로 짤 때도 이 차례를 지킨다.
+
+1. `Resiliency\DocumentRecovery` 삭제 → 복구 창이 슬라이드쇼를 가로채지 못하게
+2. `Presentations.Open($full, $true, $false, $true)` — 4번째 인수 `WithWindow=$true`
+3. `SlideShowSettings.Run()` 후 **`SlideShowWindow` 가 설 때까지 폴링** (바로 물으면 `null`)
+4. `View.GotoSlide($n)` → `SendKeys('%')` → `AppActivate($pid)` **두 번** → 1.2초 대기
+5. `Graphics.CopyFromScreen()` 으로 화면 버퍼 캡처 → PNG 저장
+6. 픽셀 한두 개를 찍어 **슬라이드가 맞는지 확인** 후 열람 (엉뚱한 창이 찍혀도 파일은 생긴다)
+7. 이 스크립트가 띄운 PowerPoint 프로세스만 종료 (남으면 덱 파일이 잠겨 다음 빌드가 죽는다)
+
+⚠ **자주 걸리는 함정** — `Slide.Export()` 는 DRM 이 암호화해 열리지 않는다(첫 바이트 `DRMONE`) · `SlideShowWindow.HWND` 는 `null` 이 오므로 창 핸들 대신 프로세스 Id 로 활성화한다 · `powershell -File` 로 `-Slides 1,8` 을 넘기면 `18` 로 붙는다(문자열로 받아 쪼갠다). 전체 실패 계보와 원인은 `references/executive-layouts.md` 의 [QA] 절이 든다.
+
+⚠ **비전 토큰이 비싸다** — 고치는 동안은 `audit_layout.ps1`(배치 실측)만 돌리고, 캡처는 마무리에 핵심 한두 장만 한다. 배치 검사는 통과하는데 눈으로만 잡히는 결함(한글 낱말이 줄 끝에서 반으로 갈리는 자리 등)이 있으므로, 마지막 한 번은 반드시 본다.
 
 ## Dependencies
 

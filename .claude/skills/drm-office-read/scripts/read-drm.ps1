@@ -90,9 +90,11 @@ function Read-WithWord {
     # ReadOnly 를 켜야 원본에 쓰기 잠금이 안 걸리고 DRM 이 수정으로 보지 않는다.
     $doc = $App.Documents.Open($LiteralPath, $false, $true)
     try {
+        try { $doc.Saved = $true } catch { }
         return [string]$doc.Content.Text
     } finally {
-        $doc.Close($false)              # SaveChanges=$false — 원본을 절대 안 고친다
+        try { $doc.Close($false) } catch { }   # SaveChanges=$false — 원본을 절대 안 고친다
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($doc) | Out-Null } catch { }
     }
 }
 
@@ -100,6 +102,7 @@ function Read-WithExcel {
     param($App, [string]$LiteralPath)
     $book = $App.Workbooks.Open($LiteralPath, 0, $true)   # UpdateLinks=0 · ReadOnly=$true
     try {
+        try { $book.Saved = $true } catch { }
         $out = [System.Text.StringBuilder]::new()
         foreach ($sheet in $book.Sheets) {
             [void]$out.AppendLine("### 시트: $($sheet.Name)")
@@ -116,7 +119,8 @@ function Read-WithExcel {
         }
         return $out.ToString()
     } finally {
-        $book.Close($false)
+        try { $book.Close($false) } catch { }
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($book) | Out-Null } catch { }
     }
 }
 
@@ -125,12 +129,36 @@ function Read-WithPPT {
     # 인자 — 경로 · ReadOnly=$true · Untitled=$false · WithWindow=$false
     $pres = $App.Presentations.Open($LiteralPath, $true, $false, $false)
     try {
+        try { $pres.Saved = $true } catch { }
         $out = [System.Text.StringBuilder]::new()
         foreach ($slide in $pres.Slides) {
             [void]$out.AppendLine("### 장 $($slide.SlideIndex)")
             foreach ($shape in $slide.Shapes) {
                 if ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
                     [void]$out.AppendLine([string]$shape.TextFrame.TextRange.Text)
+                }
+                # 표(Table) 도형 내부 텍스트 추출 보강
+                if ((Flag $shape.HasTable) -eq 1) {
+                    try {
+                        $tbl = $shape.Table
+                        for ($r = 1; $r -le $tbl.Rows.Count; $r++) {
+                            $rowCells = @()
+                            for ($c = 1; $c -le $tbl.Columns.Count; $c++) {
+                                $rowCells += [string]$tbl.Cell($r, $c).Shape.TextFrame.TextRange.Text
+                            }
+                            [void]$out.AppendLine('| ' + ($rowCells -join ' | ') + ' |')
+                        }
+                    } catch { }
+                }
+                # 그룹(Group) 도형 내부 텍스트 추출 보강
+                if ($shape.Type -eq 6) {
+                    try {
+                        foreach ($sub in $shape.GroupItems) {
+                            if ($sub.HasTextFrame -and $sub.TextFrame.HasText) {
+                                [void]$out.AppendLine([string]$sub.TextFrame.TextRange.Text)
+                            }
+                        }
+                    } catch { }
                 }
             }
         }
@@ -234,16 +262,38 @@ try {
         }
     }
 
-    # ⚠ 오피스가 비정상 종료로 인식하여 다음 실행 시 [문서 복구] 작업창을 띄우고,
-    # 복구 캐시를 다시 읽으려다 Fasoo 권한 오류 팝업이 반복되는 것을 원천 차단한다.
-    $recoveryKeys = @(
-        "HKCU:\Software\Microsoft\Office\16.0\PowerPoint\Resiliency\DocumentRecovery",
-        "HKCU:\Software\Microsoft\Office\16.0\Word\Resiliency\DocumentRecovery",
-        "HKCU:\Software\Microsoft\Office\16.0\Excel\Resiliency\DocumentRecovery"
-    )
-    foreach ($rk in $recoveryKeys) {
-        if (Test-Path $rk) {
-            Remove-Item -Path $rk -Recurse -Force -ErrorAction SilentlyContinue
+    # ⚠ DocumentRecovery 트리를 통째로 지우면 사용자의 정상적인 미저장 복구 파일이 날아간다.
+    # $targets 에 매칭되는 특정 항목만 선별 삭제(Targeted Cleanup)한다.
+    $targetLeaves = @($targets | ForEach-Object { Split-Path -Path $_ -Leaf })
+    $officeVerKeys = @(Get-ChildItem -Path "HKCU:\Software\Microsoft\Office" -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d+\.\d+$' })
+    foreach ($ver in $officeVerKeys) {
+        foreach ($appKey in @('PowerPoint', 'Word', 'Excel')) {
+            $recPath = "HKCU:\Software\Microsoft\Office\$($ver.PSChildName)\$appKey\Resiliency\DocumentRecovery"
+            if (Test-Path -LiteralPath $recPath) {
+                try {
+                    $item = Get-Item -LiteralPath $recPath -ErrorAction SilentlyContinue
+                    if ($item) {
+                        foreach ($valName in $item.GetValueNames()) {
+                            $isMatch = $false
+                            foreach ($tl in $targetLeaves) {
+                                if ($valName -like "*$tl*") { $isMatch = $true; break }
+                            }
+                            if (-not $isMatch) {
+                                try {
+                                    $rawBytes = [byte[]]$item.GetValue($valName)
+                                    $rawText = [System.Text.Encoding]::Unicode.GetString($rawBytes)
+                                    foreach ($tl in $targetLeaves) {
+                                        if ($rawText -like "*$tl*") { $isMatch = $true; break }
+                                    }
+                                } catch { }
+                            }
+                            if ($isMatch) {
+                                Remove-ItemProperty -LiteralPath $recPath -Name $valName -Force -ErrorAction SilentlyContinue
+                            }
+                        }
+                    }
+                } catch { }
+            }
         }
     }
 
