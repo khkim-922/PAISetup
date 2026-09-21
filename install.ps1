@@ -3217,13 +3217,71 @@ function Normalize-Version([string]$v) {
   return [version]($parts[0..3] -join '.')
 }
 
-$versionDirs = @(Get-ChildItem -Path $setupRoot -Directory -ErrorAction SilentlyContinue |
-  Where-Object { $_.Name -match '^\d+(\.\d+)+' -and (Test-Path (Join-Path $_.FullName 'install.ps1')) } |
-  Sort-Object { Normalize-Version $_.Name } -Descending)
+function Find-Versions {
+  return @(Get-ChildItem -Path $setupRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^\d+(\.\d+)+' -and (Test-Path (Join-Path $_.FullName 'install.ps1')) } |
+    Sort-Object { Normalize-Version $_.Name } -Descending)
+}
+$versionDirs = Find-Versions
 
 if (-not $versionDirs) {
   Log "! 설치본 폴더를 찾지 못했습니다"
   exit 1
+}
+
+# 값 파일을 **갈기 전에** 한 번 짚는다 — 아래 갱신 칸이 `#update-repo` 를 여기서 읽는다.
+# 뿌리의 것이 먼저다(사람이 설치 때 고른 것이 거기 산다).
+$targetEnvProbe = Join-Path $setupRoot 'install.env'
+if (-not (Test-Path -LiteralPath $targetEnvProbe)) {
+  $targetEnvProbe = Join-Path $versionDirs[0].FullName 'install.env'
+}
+
+# ── 설치본 자신을 새 릴리스로 간다 ───────────────────────────────────────────
+# 제품만 올리고 설치본은 그대로 두면 한 번 깐 기계가 그 판에 영영 묶인다 — 사람이
+# `Setup.exe` 를 누르기 전까지(PAISetup #18).
+#
+# ⚠ **`Setup.exe` 를 「푸는 자」로만 쓴다.** 그것은 짐을 `<판>\` 에 푼 **뒤에** 설치 화면을
+#   띄우고 **기다리지 않고 나간다**(`Setup.c` 맨 끝 곁말). 그래서 그것에 설치를 맡기면
+#   이 스크립트는 끝난 줄 알고 「완료」를 찍는다 — **거짓 초록이다.** `-Unattended` 가
+#   화면을 창 없이 바로 나가게 하고, 그 판으로 설치하는 것은 **아래 원래 걸음**이 든다.
+# ⚠ **못 물은 것을 최신으로 읽지 않는다.** 막힌 망에서는 조용히 지나가되 로그에는 적는다 —
+#   아무도 안 보는 자리라 여기 안 적으면 어디에도 안 남는다.
+$updRepo = ''
+if (Test-Path -LiteralPath $targetEnvProbe) {
+  foreach ($ln in (Get-Content -LiteralPath $targetEnvProbe -Encoding UTF8 -ErrorAction SilentlyContinue)) {
+    if ($ln -match '^\s*#update-repo\s*=\s*(\S+)') { $updRepo = $Matches[1]; break }
+  }
+}
+$updLib = Join-Path $versionDirs[0].FullName 'update-check.ps1'
+if ($updRepo -and (Test-Path -LiteralPath $updLib)) {
+  $mine = $versionDirs[0].Name
+  try { . $updLib } catch { }
+  $found = $null
+  try { $found = Find-NewerRelease -Repo $updRepo -Mine $mine } catch { }
+  if (-not $found) {
+    Log "설치본은 그대로 간다 ($mine) — 새 판이 없거나 못 물었다"
+  } else {
+    Log "새 판 $($found.Ver) 을 받는다 (지금 $mine · 릴리스 $($found.Rel))"
+    $v = $null
+    try { $v = Get-VerifiedSetup -Found $found } catch { }
+    if (-not $v -or -not $v.Ok) {
+      $why = '알 수 없다'
+      if ($v) { $why = "$($v.Status) — $($v.Detail)" }
+      Log "! 새 판을 안 깔았다: $why"
+    } else {
+      Log "지문이 맞다 ($($v.Have)) — 짐을 푼다"
+      try {
+        $pr = Start-Process -FilePath $v.Path -ArgumentList '-Unattended' -Wait -PassThru -ErrorAction Stop
+        if ($pr.ExitCode -ne 0) { Log "! 푸는 자가 $($pr.ExitCode) 로 나갔다 — 옛 판으로 간다" }
+      } catch { Log "! 푸는 자를 못 띄웠다: $($_.Exception.Message)" }
+      Remove-Item -LiteralPath $v.Path, "$($v.Path).sha256" -Force -ErrorAction SilentlyContinue
+      # 푼 판이 섰나는 **다시 세어** 안다 — 「띄웠다」와 「풀렸다」는 다른 명제다.
+      $versionDirs = Find-Versions
+      if (-not $versionDirs) { Log "! 설치본 폴더를 찾지 못했습니다"; exit 1 }
+      if ($versionDirs[0].Name -eq $mine) { Log "! 새 판이 안 풀렸다 — $mine 으로 간다" }
+      else { Log "새 판으로 간다: $($versionDirs[0].Name)" }
+    }
+  }
 }
 
 $targetEngine = Join-Path $versionDirs[0].FullName 'install.ps1'

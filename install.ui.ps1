@@ -17,7 +17,9 @@
 #   이 파일이 제 자신을 다시 띄울 때와, 진입점 exe 가 띄울 때(그쪽은 이미 콘솔을 안 붙인다).
 #   ⚠ **사건이 아니라 상태로 물었다.** 「다시 띄워졌나」로 물으면 exe 갈래가 그 물음에 안 걸려
 #     **콘솔이 없는데도 한 번 더 띄운다** — 창은 하나만 뜨니 안 보이고, 0.5초만 조용히 샌다.
-param([switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade, [switch]$NoConsole)
+# ⚠ `$Unattended` 도 **사람이 칠 것이 아니다** — 로그온 자동 실행이 새 판을 받았을 때
+#   `Setup.exe` 를 **푸는 자로만** 쓰는 자리다. 아래 「무인 갈래」 칸이 든다.
+param([switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade, [switch]$NoConsole, [switch]$Unattended)
 
 $ErrorActionPreference = 'Stop'
 # ⚠ **던지게 두지 않는다.** 출력이 파일로 돌려진 채로 뜨면 이 줄이 걸릴 수 있고, 위 `Stop`
@@ -62,6 +64,15 @@ if (-not (Test-Path -LiteralPath $Engine)) {
   Hold-Console
   exit 1
 }
+
+# ── 무인 갈래 — **창을 안 띄우고 바로 나간다** ─────────────────────────────────
+# ⚠ **이것은 「무인으로 설치한다」가 아니다.** 로그온 자동 실행이 새 판을 받았을 때
+#   `Setup.exe` 를 **푸는 자로만** 쓰는 자리다 — exe 는 짐을 `<판>\` 에 푼 **뒤에** 이
+#   파일을 띄우고 **기다리지 않고 나간다**(`Setup.c` 의 맨 끝 곁말). 그래서 여기서 설치를
+#   시작하면 부르는 쪽은 그것이 끝난 줄 알고 「완료」를 찍는다 — **거짓 초록이다.**
+#   푸는 일은 이 줄에 닿기 전에 이미 끝났으니 우리 몫은 조용히 비키는 것뿐이고,
+#   **새 판으로 설치하는 것은 부르는 쪽**(`autorun.ps1`)이 제 로그 안에서 든다.
+if ($Unattended) { exit 0 }
 
 # ── 화면이 설 수 있나 ───────────────────────────────────────────────────────────
 # ⚠ **물러날 때 조용하지 않는다.** 화면이 안 서는 것과 설치가 안 되는 것은 다른 명제인데,
@@ -969,31 +980,21 @@ $F.Add_FormClosing({
 $script:upPs = $null
 $script:upHandle = $null
 $UpdateRepo = Get-Directive 'update-repo'
+# 묻고 재는 손은 곁의 조각이 든다 — **자동 실행도 같은 자를 부른다.** 여기 붙박이로 두면
+# 그쪽이 베껴야 하고, 그러면 손사본 둘이 되어 한쪽만 고쳐진다.
+# ⚠ **없으면 아예 안 묻는다.** 옛 판이 푼 폴더에는 이 파일이 없다 — 그때 부르면 창이
+#   그 자리에서 죽는다. 새 판을 못 보는 것과 창이 안 서는 것은 값이 다르다.
+$UpdateLib = Join-Path $Here 'update-check.ps1'
 
-if ($UpdateRepo -and $DistVersion) {
+if ($UpdateRepo -and $DistVersion -and (Test-Path -LiteralPath $UpdateLib)) {
   try {
     $script:upPs = [powershell]::Create()
+    # ⚠ **딴 실이라 이 파일의 함수를 모른다** — 그 실 안에서 조각을 제 손으로 읽는다.
     [void]$script:upPs.AddScript({
-      param($repo, $mine)
-      try {
-        $r = Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" `
-               -TimeoutSec 8 -UseBasicParsing -ErrorAction Stop
-        $new = ([string]$r.tag_name) -replace '^[vV]', ''
-        if ([version]$new -le [version]$mine) { return $null }
-        # ⚠ **자산이 있어야 뜻이 있다.** 설치본 파일이 안 붙은 릴리스는 받을 것이 없다 —
-        #   그때 「새 판이 있다」고만 말하면 사람이 받을 데를 못 찾고 헤맨다.
-        $a = @($r.assets | Where-Object { $_.name -eq 'Setup.exe' })[0]
-        if (-not $a) { return $null }
-        # 곁의 해시 자산도 같이 집어 온다 — 받은 것을 대조할 자가 이 줄 하나다. 없으면 없는 대로
-        # 들고 간다: 「없다」와 「다르다」를 아래가 서로 다른 말로 해야 한다.
-        $s = @($r.assets | Where-Object { $_.name -eq 'Setup.exe.sha256' })[0]
-        $shaUrl = ''
-        if ($s) { $shaUrl = [string]$s.browser_download_url }
-        $rel = [string]$r.tag_name
-        if ($r.name) { $rel = [string]$r.name }
-        return @{ Ver = $new; Url = [string]$a.browser_download_url; ShaUrl = $shaUrl; Rel = $rel }
-      } catch { return $null }
+      param($lib, $repo, $mine)
+      try { . $lib; return Find-NewerRelease -Repo $repo -Mine $mine } catch { return $null }
     })
+    [void]$script:upPs.AddArgument($UpdateLib)
     [void]$script:upPs.AddArgument($UpdateRepo)
     [void]$script:upPs.AddArgument($DistVersion)
     $script:upHandle = $script:upPs.BeginInvoke()
@@ -1017,65 +1018,39 @@ $script:upTimer.Add_Tick({
     $AppName, 'YesNo', 'Question')
   if ($ans -ne 'Yes') { return }
 
-  # ⚠ **우리가 받으면 윈도우의 「인터넷에서 온 파일」 표시가 안 붙는다** — 브라우저로 받을
-  #   때만 붙는다. 그래서 브라우저로 받았으면 SmartScreen 이 한 번 섰을 자리가 여기엔 없다.
-  # ⚠ **그 자리를 해시가 든다.** 릴리스에 같이 오른 `Setup.exe.sha256` 과 대조하고, 못 재거나
-  #   다르면 **안 띄운다.** 대조 없이 띄우면 `#update-repo` 저장소에 쓸 수 있게 된 자가 민
-  #   임의의 exe 가 설치 창을 연 사람마다 경고 없이 돌고, 이 설치기가 전제하는 「TLS 를
-  #   가로채는 회사 장비」가 그 연결도 가로챌 수 있다 (claude-config #33).
-  # ⚠ **자산이 없으면 「못 쟀다」다 — 「맞다」가 아니다.** 부재가 통과로 읽히는 그 자리라,
-  #   옛 릴리스는 자동 설치를 안 하고 사람에게 릴리스 이름을 대고 물러난다.
-  $dst = Join-Path ([IO.Path]::GetTempPath()) ("ClaudeCodeSetup-" + $found.Ver + ".exe")
-  $sha = "$dst.sha256"
-  try {
-    $F.Cursor = [Windows.Forms.Cursors]::WaitCursor
-    $F.Enabled = $false
-    if (-not $found.ShaUrl) {
-      $F.Enabled = $true
-      $F.Cursor = [Windows.Forms.Cursors]::Default
-      [void][Windows.Forms.MessageBox]::Show(
-        "새 판을 못 쟀습니다 — 릴리스 $($found.Rel) 에 Setup.exe.sha256 이 없습니다.`n`n" +
-        "받은 것이 맞는지 대조할 자가 없어 띄우지 않았습니다. 지금 것으로 계속 하셔도 됩니다.",
-        $AppName, 'OK', 'Warning')
-      return
+  # 받아서 재는 손은 곁의 조각이 든다(`update-check.ps1`) — **왜 해시가 이 자리를 드는지**도
+  # 거기 곁말이 든다. 여기가 드는 것은 **진 까닭마다 사람에게 뭐라 할까** 하나다.
+  $F.Cursor = [Windows.Forms.Cursors]::WaitCursor
+  $F.Enabled = $false
+  try { . $UpdateLib } catch { }
+  $v = $null
+  try { $v = Get-VerifiedSetup -Found $found }
+  catch { $v = @{ Ok = $false; Status = 'download-failed'; Detail = $_.Exception.Message } }
+  $F.Enabled = $true
+  $F.Cursor = [Windows.Forms.Cursors]::Default
+
+  if (-not $v.Ok) {
+    # ⚠ **「못 쉄다」와 「다르다」를 한 말로 묶지 않는다.** 앞은 옛 릴리스라 대조할 자가
+    #   없는 것이고 뒤는 받은 것이 어긋난 것이다 — 사람이 할 일이 서로 다르다.
+    $say = "새 판을 못 받았습니다. 지금 것으로 계속 하셔도 됩니다.`n`n$($v.Detail)"
+    $ico = 'Warning'
+    if ($v.Status -eq 'no-hash-asset' -or $v.Status -eq 'hash-unreadable') {
+      $say = "새 판을 못 쟀습니다 — $($v.Detail).`n`n" +
+             "받은 것이 맞는지 대조할 자가 없어 띄우지 않았습니다. 지금 것으로 계속 하셔도 됩니다."
+    } elseif ($v.Status -eq 'hash-mismatch') {
+      $ico = 'Error'
+      $say = "받은 파일이 릴리스에 오른 값과 다릅니다 — 띄우지 않았습니다.`n`n" +
+             "파일: $($v.Path)`n릴리스가 든 값: $($v.Want)`n받은 것의 값: $($v.Have)`n`n" +
+             "지금 것으로 계속 하셔도 됩니다."
     }
-    Invoke-WebRequest -Uri $found.Url    -OutFile $dst -UseBasicParsing -TimeoutSec 180 -ErrorAction Stop
-    Invoke-WebRequest -Uri $found.ShaUrl -OutFile $sha -UseBasicParsing -TimeoutSec 30  -ErrorAction Stop
-    # 자산은 `sha256sum` 한 줄이다 — 앞의 64 글자만 든다. 대소문자는 안 가린다.
-    $want = $null
-    $txt  = Get-Content -LiteralPath $sha -Raw -Encoding UTF8
-    if ($txt -match '([0-9a-fA-F]{64})') { $want = $Matches[1].ToLowerInvariant() }
-    $have = (Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash.ToLowerInvariant()
-    if (-not $want) {
-      $F.Enabled = $true
-      $F.Cursor = [Windows.Forms.Cursors]::Default
-      [void][Windows.Forms.MessageBox]::Show(
-        "새 판을 못 쟀습니다 — 릴리스 $($found.Rel) 의 Setup.exe.sha256 을 읽지 못했습니다.`n`n" +
-        "띄우지 않았습니다. 지금 것으로 계속 하셔도 됩니다.",
-        $AppName, 'OK', 'Warning')
-      return
-    }
-    if ($want -ne $have) {
-      $F.Enabled = $true
-      $F.Cursor = [Windows.Forms.Cursors]::Default
-      [void][Windows.Forms.MessageBox]::Show(
-        "받은 파일이 릴리스에 오른 값과 다릅니다 — 띄우지 않았습니다.`n`n" +
-        "파일: $dst`n릴리스가 든 값: $want`n받은 것의 값: $have`n`n" +
-        "지금 것으로 계속 하셔도 됩니다.",
-        $AppName, 'OK', 'Error')
-      return
-    }
-    Start-Process -FilePath $dst | Out-Null
-    # ⚠ **이 창을 닫는다.** 새 판이 제 화면을 띄우므로 둘이 같이 서 있으면 어느 것에 값을
-    #   넣었는지가 흐려진다.
-    $F.Close()
-  } catch {
-    $F.Enabled = $true
-    $F.Cursor = [Windows.Forms.Cursors]::Default
-    [void][Windows.Forms.MessageBox]::Show(
-      "새 판을 못 받았습니다. 지금 것으로 계속 하셔도 됩니다.`n`n$($_.Exception.Message)",
-      $AppName, 'OK', 'Warning')
+    [void][Windows.Forms.MessageBox]::Show($say, $AppName, 'OK', $ico)
+    return
   }
+
+  Start-Process -FilePath $v.Path | Out-Null
+  # ⚠ **이 창을 닫는다.** 새 판이 제 화면을 띄우므로 둘이 같이 서 있으면 어느 것에 값을
+  #   넣었는지가 흐려진다.
+  $F.Close()
 })
 
 $bClose.Add_Click({ $F.Close() })
