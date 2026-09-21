@@ -233,6 +233,29 @@ try {
             }
         }
     }
+
+    # ⚠ 오피스가 비정상 종료로 인식하여 다음 실행 시 [문서 복구] 작업창을 띄우고,
+    # 복구 캐시를 다시 읽으려다 Fasoo 권한 오류 팝업이 반복되는 것을 원천 차단한다.
+    $recoveryKeys = @(
+        "HKCU:\Software\Microsoft\Office\16.0\PowerPoint\Resiliency\DocumentRecovery",
+        "HKCU:\Software\Microsoft\Office\16.0\Word\Resiliency\DocumentRecovery",
+        "HKCU:\Software\Microsoft\Office\16.0\Excel\Resiliency\DocumentRecovery"
+    )
+    foreach ($rk in $recoveryKeys) {
+        if (Test-Path $rk) {
+            Remove-Item -Path $rk -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # 읽기 과정에서 생성된 임시 락 파일(~$...) 정리
+    foreach ($target in $targets) {
+        $parentDir = Split-Path -Path $target -Parent
+        $fileName = Split-Path -Path $target -Leaf
+        $lockFile = Join-Path $parentDir ("~$" + $fileName)
+        if (Test-Path -LiteralPath $lockFile) {
+            Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Write-Output ''
