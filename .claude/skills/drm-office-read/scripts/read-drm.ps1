@@ -54,7 +54,7 @@ function Test-PlainFormat {
 
 function New-OfficeApp {
     <# 앱 하나를 띄운다. 파일마다 띄우면 건당 수 초씩 붙으므로 앱은 재사용한다. #>
-    param([string]$AppName)
+    param([string]$AppName, [ref]$SpawnedPids)
     switch ($AppName) {
         'Word' {
             $a = New-Object -ComObject Word.Application
@@ -69,8 +69,17 @@ function New-OfficeApp {
             return $a
         }
         'PPT' {
-            # ⚠ 파워포인트는 Visible=$false 를 거부한다(그 앱만 그렇다). 건드리지 않는다.
-            return New-Object -ComObject PowerPoint.Application
+            # ⚠ 파워포인트는 Visible=$false 를 거부한다(그 앱만 그렇다).
+            # Fasoo DRM 훅으로 인해 COM Quit 후에도 백그라운드에 남아 권한 오류 팝업을 띄우므로
+            # 생성된 PID를 추적하여 읽기 완료 후 즉시 강제 종료한다.
+            $beforePids = @(Get-Process -Name POWERPNT -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+            $a = New-Object -ComObject PowerPoint.Application
+            $afterProcs = @(Get-Process -Name POWERPNT -ErrorAction SilentlyContinue)
+            $newPids = @($afterProcs | Where-Object { $beforePids -notcontains $_.Id } | Select-Object -ExpandProperty Id)
+            if ($SpawnedPids -and $newPids.Count -gt 0) {
+                $SpawnedPids.Value += $newPids
+            }
+            return $a
         }
     }
 }
@@ -127,7 +136,8 @@ function Read-WithPPT {
         }
         return $out.ToString()
     } finally {
-        $pres.Close()
+        try { $pres.Close() } catch { }
+        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($pres) | Out-Null } catch { }
     }
 }
 
@@ -153,6 +163,7 @@ if ($OutDir -and -not (Test-Path -LiteralPath $OutDir)) {
 # ── 앱별로 묶어 돈다 — 앱 생성이 비싸므로 확장자별로 모아 한 번만 띄운다 ──────
 $byApp = $targets | Group-Object { $HANDLER[[System.IO.Path]::GetExtension($_).ToLower()] }
 $apps = @{}
+$pptSpawnedPids = [System.Collections.Generic.List[int]]::new()
 $done = 0
 $failed = 0
 
@@ -163,7 +174,7 @@ try {
 
         if (-not $apps.ContainsKey($appName)) {
             try {
-                $apps[$appName] = New-OfficeApp -AppName $appName
+                $apps[$appName] = New-OfficeApp -AppName $appName -SpawnedPids ([ref]$pptSpawnedPids)
             } catch {
                 Write-Warning "$appName 를 못 띄웠다: $($_.Exception.Message)"
                 $failed += $group.Count
@@ -210,6 +221,18 @@ try {
     }
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
+
+    # ⚠ 파워포인트는 COM Quit 후에도 Fasoo DRM 훅이나 잔여 핸들 때문에 프로세스가 남아
+    # "열람 권한이 없습니다(0x703000...)" 팝업이 무한 반복될 수 있다.
+    # 스크립트가 띄운 파워포인트 프로세스는 즉시 강제 종료한다.
+    if ($pptSpawnedPids.Count -gt 0) {
+        foreach ($pidToKill in $pptSpawnedPids) {
+            $proc = Get-Process -Id $pidToKill -ErrorAction SilentlyContinue
+            if ($proc) {
+                Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 }
 
 Write-Output ''
