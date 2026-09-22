@@ -2340,9 +2340,49 @@ function Stop-ProxyOnPort([int]$Port) {
       $pr = Get-Process -Id $o -ErrorAction SilentlyContinue
       if ($pr -and $pr.ProcessName -match '^pythonw?$') { Stop-Process -Id $o -Force -ErrorAction SilentlyContinue }
     }
+    # ⚠ 포트를 안 듣더라도 잔여 opus5_proxy 프로세스(죽은 자식의 부모 껍데기 등)가 있으면 정리한다 (#21)
+    Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.CommandLine -like '*opus5_proxy.py*' } |
+      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 500
   } catch { }
 }
+
+# ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** (결정 0028 · #51 · #75 · PAISetup#21).
+#   Get-Command 가 잡는 첫 번째가 WindowsApps 의 스토어 껍데기이거나 Python Manager 런처일 수 있다.
+#   런처 곁의 pythonw.exe 를 와치독에 박으면, 런처가 진짜 해석기를 자식으로 띄우고 자신도
+#   대기하며 남아 프로세스가 두 겹으로 선다 — 자식이 죽어도 껍데기가 남아 와치독이 안 되살린다.
+# ⚠ **해석기에게 sys.executable 을 물어 진짜 제 자리를 딴다.**
+#   런처·심볼릭 링크 뒤에 숨은 실제 인터프리터 위치를 sys.executable 이 돌려준다.
+#   그리고 그 곁의 pythonw.exe 가 실제로 존재하고 껍데기(WindowsApps)가 아닐 때만 택한다.
+function Get-RealPythonW {
+  $candidates = @()
+  $pyCmds = @(Get-Command python, python3, py -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -Unique)
+  if ($pyCmds) { $candidates += $pyCmds }
+  $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+  $candidates += @(Get-ChildItem "$env:ProgramFiles\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+  $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Python\*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+
+  foreach ($c in ($candidates | Select-Object -Unique)) {
+    if (-not $c -or -not (Test-Path -LiteralPath $c)) { continue }
+    $real = $null
+    try {
+      $out = & $c -c "import sys; print(sys.executable)" 2>$null
+      if ($LASTEXITCODE -eq 0 -and $out) {
+        $real = ($out | Select-Object -First 1).Trim()
+      }
+    } catch { }
+
+    if ($real -and (Test-Path -LiteralPath $real)) {
+      $candPyw = Join-Path (Split-Path $real -Parent) 'pythonw.exe'
+      if ((Test-Path -LiteralPath $candPyw) -and ($candPyw -notlike '*\Microsoft\WindowsApps\*')) {
+        return $candPyw
+      }
+    }
+  }
+  return $null
+}
+
 $proxyHealthUrl = $null
 if ($wantProxy) {
   Write-Host ''
@@ -2364,9 +2404,7 @@ if ($wantProxy) {
       Write-Host '     프록시를 지나려면 값 파일의 주소를 127.0.0.1 로 둔다 (결정 0041)'
     } else {
       $proxyHealthUrl = "http://$($u.Host):$($u.Port)/health"
-      $py = Get-Command python -ErrorAction SilentlyContinue
-      $pyw = $null
-      if ($py -and $py.Source) { $pyw = Join-Path (Split-Path $py.Source -Parent) 'pythonw.exe' }
+      $pyw = Get-RealPythonW
       if (-not $pyw -or -not (Test-Path -LiteralPath $pyw)) {
         Write-Host '  ! pythonw.exe 를 못 찾았다 — 위 1 칸의 파이썬 설치부터 본다' -ForegroundColor Red
         $Fails.Add('로컬 프록시 (파이썬이 없다)')
@@ -3687,6 +3725,23 @@ if ($useGateway) {
       $door = Test-PrefillDoor $userEnv['ANTHROPIC_BASE_URL'] $userEnv['ANTHROPIC_AUTH_TOKEN'] 'claude-opus-5'
     }
     $checks += @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (받은 것: $door$(if ($door -ge 500) { " — 상류가 끊었다 · prefill 이 아니다" }))"; Ok = ($door -eq 200) }
+
+    # ⚠ **프록시 프로세스는 하나여야 하고 껍데기가 아니어야 한다** (이슈 #21).
+    #   런처(WindowsApps\pythonw.exe)가 박히면 부모-자식 두 프로세스가 뜨고,
+    #   자식이 죽어도 껍데기가 남아 와치독이 눈먼다.
+    $proxyProcs = @(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.CommandLine -like '*opus5_proxy.py*' })
+    $singleProc = ($proxyProcs.Count -eq 1)
+    $notShell = $false
+    if ($singleProc) {
+      $procPath = $proxyProcs[0].ExecutablePath
+      $notShell = (-not [string]::IsNullOrEmpty($procPath)) -and ($procPath -notlike '*\Microsoft\WindowsApps\*')
+    }
+    $checks += @{ Name = "로컬 프록시 단일 프로세스 (중복 껍데기 없음 — $($proxyProcs.Count)개)"; Ok = ($singleProc -and $notShell) }
+
+    $taskArgs = (Get-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue).Actions | Select-Object -ExpandProperty Arguments
+    $taskOk = ($taskArgs -and ($taskArgs -notlike '*WindowsApps\pythonw.exe*'))
+    $checks += @{ Name = "와치독 감시 등록 (실행형 인터프리터 경로)"; Ok = [bool]$taskOk }
   }
 } else {
   Write-Host '  (게이트웨이를 안 쓴다 — 구독 로그인으로 선다)'
