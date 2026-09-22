@@ -3234,6 +3234,7 @@ $logFile   = Join-Path $logDir ("autorun-" + (Get-Date -Format 'yyyyMMdd-HHmmss'
 
 function Log([string]$msg) {
   $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg
+  Write-Host $line
   Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
 }
 
@@ -3345,15 +3346,19 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 Log "install.ps1 실행: $($versionDirs[0].Name)  $($extra -join ' ')"
-$logTmp = [IO.Path]::GetTempFileName()
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra *> $logTmp
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra 2>&1 |
+  ForEach-Object {
+    Write-Host $_
+    Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8
+  }
 $rc = $LASTEXITCODE
-if (Test-Path -LiteralPath $logTmp) {
-  Get-Content -LiteralPath $logTmp -Encoding UTF8 -ErrorAction SilentlyContinue |
-    ForEach-Object { Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8 }
-  Remove-Item -LiteralPath $logTmp -Force -ErrorAction SilentlyContinue
-}
 Log "=== PAISetup 자동 실행 완료 (코드 $rc) ==="
+
+if ([Environment]::UserInteractive) {
+  Write-Host ''
+  Write-Host '  PAISetup 자동 동기화가 완료되었습니다. 3초 후 창이 닫힙니다...' -ForegroundColor Green
+  Start-Sleep -Seconds 3
+}
 
 try {
   $old = Get-ChildItem -Path $logDir -Filter "autorun-*.log" | Sort-Object LastWriteTime -Descending | Select-Object -Skip 15
@@ -3401,7 +3406,7 @@ try {
 
     try {
       $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-                  -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$autoScript`""
+                  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$autoScript`""
       $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
       $trigger.Delay = "PT1M"
       $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
