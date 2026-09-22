@@ -110,6 +110,23 @@ if (-not $EnvFile) { $EnvFile = Join-Path $Here 'install.env' }
 $Fails   = New-Object System.Collections.Generic.List[string]
 $Planted = @{}
 
+# ── 이 배포본의 판 — **진본은 곁의 `VERSION` 한 줄이고 릴리스 태그가 그 값에서 난다.** ──
+# ⚠ **창(`install.ui.ps1`)도 같은 파일을 같은 꼴로 읽는다.** 값을 넘겨받지 않고 각자 읽는
+#   까닭은 이 몸통이 창 없이도 돌기 때문이다 — 무인 실행(autorun)에 창이 없다.
+# ⚠ **없으면 없는 대로 간다.** 이 값을 쓰는 자리(씨앗 판 줄)는 없으면 안 적고 넘어간다 —
+#   번호 하나 때문에 설치가 통째로 안 되는 꼴로 두지 않는다.
+# ⚠ **BOM 을 손으로 걷는다.** 이 파일은 인코딩 문지기가 안 보는 종류라(`*.ps1`·`*.cmd` 만
+#   본다) 누가 BOM 을 붙여 저장하면 번호 앞에 안 보이는 글자가 붙는다 — 화면에는 멀쩡히
+#   찍히고 **견주는 자리에서만** 안 맞는다.
+$DistVersion = ''
+$DistVersionPath = Join-Path $Here 'VERSION'
+if (Test-Path -LiteralPath $DistVersionPath) {
+  try {
+    $DistVersion = (([string](Get-Content -LiteralPath $DistVersionPath -TotalCount 1 -Encoding UTF8)) `
+                     -replace "^﻿", '').Trim()
+  } catch { $DistVersion = '' }
+}
+
 # ── 홈 아래 우리가 쓰는 자리 — **이름은 여기 한 자리다** ────────────────────────
 # ⚠ **쓰는 자와 재는 자가 같은 글자를 봐야 한다.** 아래 칸들이 이 아래에 파일을 쓰고 끝의
 #   검증이 같은 자리를 다시 재는데, 글자를 자리마다 박으면 한쪽만 고쳐지는 날 **재는 자가
@@ -2844,6 +2861,107 @@ foreach ($a in $envAssets) {
   Write-Host "     $($a.Desc)"
 }
 
+# ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ──────────────
+# ⚠ **왜 한 줄이 더 필요한가.** 홈 사본을 진본으로 믿고 재는 자가 있다
+#   (`seeds/check/_check/borrowed_check.py`). 홈 뿌리는 git 나무가 아니라 판을 물을 데가
+#   없어, 그 자는 **오늘 날짜**를 내고 낡은 홈과 견준 초록이 최신처럼 읽힌다.
+# ⚠ **여기가 적는 것은 릴리스 판이다** — 설정 저장소를 든 사람 자리에서는 같은 파일에
+#   `session-start.sh`·`deploy.ps1` 이 커밋 해심을 적는다. 자가 둘이라 값도 둘이지만
+#   **묻는 물음이 같다**: 「이 홈 사본이 어디서 왔나」. 이쪽 답은 판 번호다.
+# ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이 아니다 —
+#   autorun 이 매일 도는 자리라, 매번 덮으면 그 날짜가 늘 오늘이라 낡음을 말하지 않는다.
+# ⚠ **자리가 씨앗을 깐 뒤인 까닭** — 민 뒤에 적어야 「그 판이 깔렸다」가 참이다.
+$seedRoot = Join-Path $homeDir 'seeds'
+if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion) {
+  $seedVerFile = Join-Path $seedRoot '.version'
+  $seedVerNow = ''
+  if (Test-Path -LiteralPath $seedVerFile) {
+    try {
+      $seedVerNow = (([string](Get-Content -LiteralPath $seedVerFile -TotalCount 1 -Encoding UTF8)) `
+                      -replace "^﻿", '').Trim().Split(' ')[0]
+    } catch { $seedVerNow = '' }
+  }
+  if ($seedVerNow -ne $DistVersion) {
+    # ⚠ **BOM 없이 쓴다** — 읽는 자가 파이썬이고, 그 세 바이트가 판 번호 앞에 붙으면
+    #   화면에는 멀쩡히 찍히고 **견주는 자리에서만** 안 맞는다 (`install.ui.ps1` 의 그 함정).
+    $seedVerLine = "$DistVersion $(Get-Date -Format 'yyyy-MM-dd')`n"
+    [IO.File]::WriteAllText($seedVerFile, $seedVerLine, (New-Object Text.UTF8Encoding($false)))
+    Write-Host "  씨앗 판 줄 — $DistVersion" -ForegroundColor Green
+  }
+}
+
+# ── 그림 문 — PreToolUse 훅을 홈에 심는다 ────────────────────────────────────────
+# 모델이 그림을 받기 **직전**에 치수를 재고 안 고른 자리는 막는다. 왜와 갈래는 몸통
+# (`image-gate.py`)의 머리말이 든다.
+#
+# ⚠ **왜 설치기가 이걸 드나.** 심는 손이 여태 설정 저장소의 `session-start.sh` **하나**였고,
+#   그 저장소는 `#config-repo` 를 적은 사람에게만 온다 — 그런데 **몸통과 눈금은 씨앗으로
+#   누구에게나 간다.** 부품이 다 가는데 배선만 선택 칸에 묶여 있었고, 그래서 규범·룰·스킬을
+#   받은 동료 자리에서 이 문이 **조용히 한 번도 안 섰다.** 부품이 오는 자리에 배선도 온다.
+# ⚠ **`-WithPersonalConfig` 를 안 탄다** — 몸통을 나르는 씨앗 칸에 스위치가 없고, 이 문은
+#   취향이 아니라 값을 아끼는 장치다. 스위치를 달면 「깔았는데 안 서는」 갈래가 또 생긴다.
+# ⚠ **몸통 좌표는 씨앗 안이다.** 설정 저장소를 든 사람 자리에서는 `session-start.sh` 가
+#   **저장소 진본**을 가리켜 다시 심는다 — 우리 꼴만 걷고 다시 쓰는 규율이 양쪽에 같아서,
+#   나중에 저장소가 오면 그 판이 이 항목을 조용히 갈아탄다.
+# ⚠ **껍데기와 matcher 는 저쪽과 한 벌이다.** 확장자 목록도 껍데기가 소문자로 눌러 재는
+#   꼴도 그대로다 — 한쪽만 고치면 대문자 `.PNG` 가 한 자리에서만 걸리는 꼴이 된다.
+# ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** — 윈도우의 `python3` 는 스토어 껍데기라
+#   49 로 죽는다. 못 뜨면 껍데기가 「못 쟀다」 한 줄을 낸다: 문이 죽은 사실이 어디에도
+#   안 남는 것이 침묵보다 비싸다.
+$gateBody = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.py'
+if (-not (Test-Path -LiteralPath $gateBody)) {
+  Write-Host '  ! 그림 문 — 몸통(씨앗의 .claude/hooks/image-gate.py)이 없어 안 심는다' -ForegroundColor Yellow
+} elseif (-not $cfg) {
+  # 홈 설정을 못 읽은 자리(위 5칸이 까닭을 대고 물러난 그 갈래) — 여기서 또 세지 않는다.
+  Write-Host '  그림 문 — 홈 설정을 못 읽어 안 심는다'
+} else {
+  # ⚠ **경로를 슬래시로 굳힌다.** 명령은 Git Bash 가 읽고 역슬래시는 그 자리에서 탈출
+  #   문자다 — `\.claude` 가 조용히 다른 글자가 된다.
+  $gateBodySh = ($gateBody -replace '\\', '/')
+  $gateMatcher = 'Read|mcp__(Claude_Browser|claude-in-chrome)__(computer|browser_batch)|mcp__computer-use__(screenshot|zoom|computer_batch)'
+  $gateFallback = '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"그림 문 — 파이썬이 안 떠서 치수를 못 쟀다. 스스로 고른다\"}}'
+  $gateCmd = 'j=$(cat); l=$(printf %s "$j" | tr A-Z a-z); case "$l" in *.png*|*.jpg*|*.jpeg*|*.webp*|*.gif*|*screenshot*|*zoom*) ' +
+             'py=; for p in python python3; do "$p" -X utf8 -c "" >/dev/null 2>&1 && { py=$p; break; }; done; ' +
+             'if [ -n "$py" ]; then printf %s "$j" | "$py" -X utf8 "' + $gateBodySh + '"; ' +
+             'else printf %s "' + $gateFallback + '"; fi;; esac; exit 0'
+
+  # ⚠ **심기는 더하기만 하지 않는다 — 우리 꼴을 먼저 걷는다.** 명령 글자가 바뀌는 날
+  #   옛 항목이 남아 **옛 고리가 같이 돌고**, 그러면 위 가드가 통째로 무효가 된다
+  #   (진본 훅의 같은 규율). 우리 꼴은 `image-gate.py` 를 든 명령이다.
+  $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
+  if (-not $hooks) {
+    $hooks = New-Object PSObject
+    $cfg | Add-Member -NotePropertyName hooks -NotePropertyValue $hooks -Force
+  }
+  $kept = @()
+  $dropped = 0
+  foreach ($entry in @($hooks.PreToolUse)) {
+    if (-not $entry) { continue }
+    $ours = $false
+    foreach ($h in @($entry.hooks)) {
+      if ($h -and [string]$h.command -and ([string]$h.command).Contains('image-gate.py')) { $ours = $true }
+    }
+    if ($ours) { $dropped++ } else { $kept += $entry }
+  }
+  $kept += [pscustomobject]@{
+    matcher = $gateMatcher
+    hooks   = @([pscustomobject]@{ type = 'command'; command = $gateCmd; timeout = 10 })
+  }
+  $hooks | Add-Member -NotePropertyName PreToolUse -NotePropertyValue $kept -Force
+  $dirty = $true
+  if ($dropped -gt 0) { Write-Host "  그림 문(PreToolUse) — 옛 항목 $dropped 개를 걷고 심었다" -ForegroundColor Green }
+  else                { Write-Host '  그림 문(PreToolUse) — 심었다' -ForegroundColor Green }
+  Write-Host "     $gateBody"
+}
+
+# ⚠ **홈 설정을 여기서 다시 쓴다.** 위 5칸이 이미 한 번 썼지만 그 뒤에 이 칸이 `$cfg` 를
+#   고쳤다 — 안 쓰면 그림 문이 메모리에만 서고 파일에는 없다. 5칸을 여기로 내리지 않는
+#   까닭은 순서가 뜻을 지기 때문이다: 몸통은 씨앗이 깔린 **뒤에야** 그 자리에 있다.
+if ($dirty -and $cfg) {
+  $json = $cfg | ConvertTo-Json -Depth 10
+  [IO.File]::WriteAllText($homeCfg, $json, (New-Object Text.UTF8Encoding($false)))
+}
+
 Write-Elapsed '[7/8] 사내 환경 문서 · 씨앗 셋'
 # ── 8. 개인 값 저장소 (선택) ────────────────────────────────────────────────────
 # ⚠ **주소는 이 파일에 없다.** `install.env` 가 `#config-repo` 를 들 때만 이 칸이 선다 —
@@ -3521,6 +3639,25 @@ if ($WithPersonalConfig -and $pairs) {
     $checks += New-CountCheck $p.Name $p.From $p.To
   }
 }
+# ── 그림 문 — **심었다는 초록과 섰다는 것은 다른 명제다** ──────────────────────────
+# ⚠ **되읽어서 잰다.** 위 심는 칸이 「심었다」를 찍지만 그것은 메모리의 객체를 고쳤다는 말이고,
+#   파일에 실제로 그 항목이 있나는 다른 물음이다 — JSON 쓰기가 지면 화면만 초록이 된다.
+# ⚠ **`-WithPersonalConfig` 를 안 탄다** — 심는 칸이 그 스위치 밖에 살므로 재는 자도 밖이다.
+#   한쪽만 스위치를 타면 안 켠 사람 자리에서 **심겼는데 안 재지거나 그 반대**가 된다.
+# ⚠ **몸통과 배선을 따로 잰다.** 둘이 한 줄이면 「몸통이 안 실렸다」와 「배선이 못 섰다」가
+#   같은 빨강으로 보이는데, 고칠 자리가 서로 다르다(뽑기 선언 · 이 파일).
+$gateBodyChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.py'
+$checks += @{ Name = '그림 문 몸통 (씨앗의 image-gate.py)'; Ok = (Test-Path -LiteralPath $gateBodyChk) }
+$gateWired = $false
+try {
+  $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+  foreach ($entry in @($gc.hooks.PreToolUse)) {
+    foreach ($h in @($entry.hooks)) {
+      if ($h -and ([string]$h.command).Contains('image-gate.py')) { $gateWired = $true }
+    }
+  }
+} catch { $gateWired = $false }
+$checks += @{ Name = '그림 문 배선 (홈 settings.json 의 PreToolUse)'; Ok = $gateWired }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
 # ⚠ **키는 `#config-repo` 가 있어도 여기서 잰다.** 옛 판은 그 판에서 키 검사를 저쪽에 맡겼는데,
