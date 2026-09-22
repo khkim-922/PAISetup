@@ -4158,9 +4158,13 @@ if ($NoLaunch) {
     $found = @($apps | ForEach-Object { $_.Name })
     $miss  = @($script:InstalledAppRows.Keys | Where-Object { $found -notcontains $_ })
     # 고른 것이 아예 없으면 못 찾은 것이 아니라 **찾을 것이 없는** 것이다 — 두 말을 가른다.
+    # ⚠ **`$miss` 는 이미 이름이다 — 한 겹 더 꺼내지 않는다.** 옛 판은 행 객체를 담아
+    #   `$_.Label` 로 꺼냈는데, 담는 자가 `Keys`(곧 `Label`)로 바뀌면서 그 꺼내기가 `$null` 이
+    #   되어 **이름이 통째로 빈 채 「! — 못 찾았다」만 찍혔다**(재현 2026-09-23). 화면은 멀쩡히
+    #   나가고 **정작 무엇이 안 깔렸나만 사라지는** 꼴이라, 이 줄이 있으나 없으나 같아진다.
     if ($miss) {
       Write-Host ('  ! {0} — 못 찾았다. 시작 메뉴에서 직접 연다' -f
-                  (($miss | ForEach-Object { $_.Label }) -join ' · ')) -ForegroundColor Yellow
+                  ($miss -join ' · ')) -ForegroundColor Yellow
     }
   }
   # ⚠ **`$null` 을 배열에 담지 않는다** — `Find-VSCode` 는 못 찾으면 `$null` 을 내는데
