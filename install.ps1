@@ -3346,7 +3346,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 Log "install.ps1 실행: $($versionDirs[0].Name)  $($extra -join ' ')"
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra 2>&1 |
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra |
   ForEach-Object {
     Write-Host $_
     Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8
