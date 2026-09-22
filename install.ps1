@@ -3394,6 +3394,33 @@ function Log([string]$msg) {
 
 Log "=== PAISetup 자동 실행 시작 ==="
 
+# ── 단일 실행 가드 및 쿨다운 (겹침 방지) ───────────────────────────
+# ⚠ 부팅 스케줄러(AtelierServer)와 로그온 스케줄러(PAISetup-AutoRun)가 연달아 돌거나 겹치면
+#   동일 설치를 중복 수행하거나 대기 빗장(Mutex)에 걸린다.
+# 1) 다른 autorun 또는 install 프로세스가 이미 돌고 있으면 즉시 종료한다.
+# 2) 최근 10분 내에 이미 성공적으로 완료되었으면 건너뛴다.
+$myPid = $PID
+$myProc = Get-CimInstance Win32_Process -Filter "ProcessId = $myPid" -ErrorAction SilentlyContinue
+$parentPid = if ($myProc) { $myProc.ParentProcessId } else { 0 }
+$otherEngines = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
+if ($otherEngines) {
+  Log "이미 다른 자동 실행 또는 설치 프로세스가 진행 중입니다 ($($otherEngines.ProcessId -join ', ')). 겹치지 않게 물러납니다."
+  exit 0
+}
+
+$stampFile = Join-Path $setupRoot '.autorun-stamp'
+if (Test-Path -LiteralPath $stampFile) {
+  try {
+    $lastRun = [datetime](Get-Content -LiteralPath $stampFile -Encoding UTF8 -ErrorAction Stop)
+    $elapsed = (Get-Date) - $lastRun
+    if ($elapsed.TotalMinutes -ge 0 -and $elapsed.TotalMinutes -lt 10) {
+      Log "최근 $([int]$elapsed.TotalMinutes)분 전에 이미 자동 실행이 완료되었습니다. 건너뜁니다."
+      exit 0
+    }
+  } catch { }
+}
+
 function Normalize-Version([string]$v) {
   $v = ($v -replace '^[vV]', '').Trim()
   $parts = $v -split '\.'
@@ -3508,6 +3535,10 @@ Log "install.ps1 실행: $($versionDirs[0].Name)  $($extra -join ' ')"
 $rc = $LASTEXITCODE
 Log "=== PAISetup 자동 실행 완료 (코드 $rc) ==="
 
+if ($rc -eq 0) {
+  try { [IO.File]::WriteAllText($stampFile, (Get-Date -Format 'o'), [System.Text.Encoding]::UTF8) } catch { }
+}
+
 if ([Environment]::UserInteractive) {
   Write-Host ''
   Write-Host '  PAISetup 자동 동기화가 완료되었습니다. 3초 후 창이 닫힙니다...' -ForegroundColor Green
@@ -3596,7 +3627,7 @@ try {
         Unregister-ScheduledTask -TaskName $AutoRunTaskName -Confirm:$false -ErrorAction Stop
         # 걷으면 저것이 읽던 것도 같이 걷는다 — 남겨 두면 다음에 켤 때 **옛 선택이 되살아난다.**
         $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
-        foreach ($f in @('autorun.ps1', 'autorun.args')) {
+        foreach ($f in @('autorun.ps1', 'autorun.args', '.autorun-stamp')) {
           Remove-Item -LiteralPath (Join-Path $setupRoot $f) -Force -ErrorAction SilentlyContinue
         }
         Write-Host "  부팅 시 자동 실행 — 걷었다 (작업 스케줄러 · $AutoRunTaskName)" -ForegroundColor Green
