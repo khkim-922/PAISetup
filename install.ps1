@@ -2366,12 +2366,10 @@ function Get-RealPythonW {
   foreach ($c in ($candidates | Select-Object -Unique)) {
     if (-not $c -or -not (Test-Path -LiteralPath $c)) { continue }
     $real = $null
-    try {
-      $out = & $c -c "import sys; print(sys.executable)" 2>$null
-      if ($LASTEXITCODE -eq 0 -and $out) {
-        $real = ($out | Select-Object -First 1).Trim()
-      }
-    } catch { }
+    try { $out = & $c -c "import sys; print(sys.executable)" 2>$null } catch { }
+    if ($LASTEXITCODE -eq 0 -and $out) {
+      $real = ($out | Select-Object -First 1).Trim()
+    }
 
     if ($real -and (Test-Path -LiteralPath $real)) {
       $candPyw = Join-Path (Split-Path $real -Parent) 'pythonw.exe'
@@ -2959,7 +2957,7 @@ if (-not (Test-Path -LiteralPath $gateBody)) {
   $gateMatcher = 'Read|mcp__(Claude_Browser|claude-in-chrome)__(computer|browser_batch)|mcp__computer-use__(screenshot|zoom|computer_batch)'
   $gateFallback = '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"그림 문 — 파이썬이 안 떠서 치수를 못 쟀다. 스스로 고른다\"}}'
   $gateCmd = 'j=$(cat); l=$(printf %s "$j" | tr A-Z a-z); case "$l" in *.png*|*.jpg*|*.jpeg*|*.webp*|*.gif*|*screenshot*|*zoom*) ' +
-             'py=; for p in python python3; do "$p" -X utf8 -c "" >/dev/null 2>&1 && { py=$p; break; }; done; ' +
+             'py=; for p in python python3; do "$p" -X utf8 -c "" >/dev/null 2>/dev/null && { py=$p; break; }; done; ' +
              'if [ -n "$py" ]; then printf %s "$j" | "$py" -X utf8 "' + $gateBodySh + '"; ' +
              'else printf %s "' + $gateFallback + '"; fi;; esac; exit 0'
 
