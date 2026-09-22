@@ -3364,6 +3364,23 @@ try {
   $old = Get-ChildItem -Path $logDir -Filter "autorun-*.log" | Sort-Object LastWriteTime -Descending | Select-Object -Skip 15
   foreach ($f in $old) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue }
 } catch { }
+
+# 옛 판 폴더를 거둔다 — **푸는 자는 새 폴더만 만들고 옛 것을 안 지운다.** 그래서 판마다 3MB 가
+# 영구히 쌓이는데, 아무도 세지 않아 눈에 안 걸린다(실측: 열다섯 벌 50MB).
+# ⚠ **다 끝난 뒤에 지운다.** 앞에 두면 방금 부를 판을 지울 수 있다 — 지우는 손은 늘 쓰는 손보다 뒤다.
+# ⚠ **셋을 남긴다.** 새 판이 깨졌을 때 손으로 옛 판을 부를 자리가 있어야 한다 — 하나만 남기면 그 길이 없다.
+# ⚠ **방금 돈 판은 이름이 아니라 자리로 뺀다.** 위에서 집은 그것이 목록의 첫째가 아닐 수 있다
+#   (새 판을 푼 뒤 다시 센 자리가 있다) — 「최신이니 안 지워진다」고 믿지 않고 그 자리를 직접 뺀다.
+try {
+  $keepVersions = 3
+  $stale = Find-Versions | Select-Object -Skip $keepVersions |
+           Where-Object { $_.FullName -ne $versionDirs[0].FullName }
+  foreach ($d in $stale) {
+    Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $d.FullName) { Log "! 옛 판을 못 지웠다 (쓰는 중일 수 있다): $($d.Name)" }
+    else { Log "옛 판을 거뒀다: $($d.Name)" }
+  }
+} catch { }
 '@
     [IO.File]::WriteAllText($autoScript, $autoScriptBody, [System.Text.Encoding]::UTF8)
 

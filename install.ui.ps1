@@ -168,13 +168,21 @@ if (Test-Path -LiteralPath $EnvPath) {
 
 # ⚠ **여기로 올라온 까닭 — 창 제목이 이 함수의 답을 쓴다.** 값 파일의 지시를 읽는 자이므로
 #   값 파일을 읽은 바로 다음이 제자리고, 아래 화면 칸들은 그 답 위에 선다.
-function Get-Directive([string]$Key) {
-  if (-not (Test-Path -LiteralPath $EnvPath)) { return $null }
-  foreach ($line in Get-Content -LiteralPath $EnvPath -Encoding UTF8) {
+# ⚠ **볼 파일을 인자로 받되 기본값이 옆에 온 값 파일이다** — 부르는 자리 대부분은 그것을 원하고,
+#   판을 넘겨 사는 자리를 되돌아봐야 하는 칸만 둘째 인자를 댄다(아래 저장소 칸).
+function Get-Directive([string]$Key, [string]$File = $EnvPath) {
+  if (-not $File -or -not (Test-Path -LiteralPath $File)) { return $null }
+  foreach ($line in Get-Content -LiteralPath $File -Encoding UTF8) {
     if ($line -match "^\s*#\s*$([regex]::Escape($Key))\s*=\s*(.+?)\s*$") { return $Matches[1] }
   }
   return $null
 }
+
+# 판을 넘겨 사는 값 파일 — **판 폴더의 한 층 위**다. 푸는 자가 판마다 새 폴더를 만들어 옆에 온
+# 것은 늘 「뽑은 그대로」이고, 사람이 넣은 것은 설치기가 이 자리에 얼려 둔다(자동 실행이 읽는 그 파일).
+# ⚠ **이름을 박지 않고 파생한다** — 자리를 옮기면 고칠 자리가 하나여야 한다.
+# ⚠ 풀어 놓고 직접 돌리는 자리에는 이 파일이 없다 — 그러면 `$null` 이고 지금과 같이 빈 칸이다.
+$KeptEnvPath = Join-Path (Split-Path -Parent $Here) 'install.env'
 
 # ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
 # ⚠ **여기 든 글자는 진본이 아니라 울타리다.** 이름이 찍히는 자리가 이 파일에만 일곱인데
@@ -458,7 +466,13 @@ $F.Controls.Add($gR)
 $tRepo = New-Object Windows.Forms.TextBox
 $tRepo.Location = New-Object Drawing.Point(14, 24)
 $tRepo.Size = New-Object Drawing.Size(558, 24)
+# ⚠ **옆에 온 값 파일에 없으면 판을 넘겨 사는 자리를 본다** — 키 칸이 환경변수로 되돌아가는 것과
+#   같은 결이다(위 「비었으면 이미 심긴 것을 본다」). 이 좌표는 배포본에 안 실려 오므로
+#   **한 번 넣은 사람에게만 있는 값**인데, 그것이 판 폴더에 있으면 다음 판에 조용히 사라진다.
+#   그때 이 칸이 비어 뜨고 그대로 누르면 **그 판은 저장소를 안 본다** — 아래 곁말이 「화면이 든다」로
+#   세운 규율이 여기서는 사슬을 끊는 쪽으로 돈다. 끊기지 않게 하는 것이 이 두 줄이다.
 $tRepo.Text = [string](Get-Directive 'config-repo')
+if (-not $tRepo.Text) { $tRepo.Text = [string](Get-Directive 'config-repo' $KeptEnvPath) }
 $gR.Controls.Add($tRepo)
 
 $lRepo = New-Object Windows.Forms.Label
