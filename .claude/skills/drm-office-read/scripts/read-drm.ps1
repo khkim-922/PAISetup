@@ -138,7 +138,7 @@ function Read-WithPPT {
                     [void]$out.AppendLine([string]$shape.TextFrame.TextRange.Text)
                 }
                 # 표(Table) 도형 내부 텍스트 추출 보강
-                if ((Flag $shape.HasTable) -eq 1) {
+                if ($shape.HasTable -ne 0) {
                     try {
                         $tbl = $shape.Table
                         for ($r = 1; $r -le $tbl.Rows.Count; $r++) {
