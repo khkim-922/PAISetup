@@ -150,6 +150,10 @@ $Products = @(
   @{ Key='codex';       Label='Codex';       Default=$true  }
   @{ Key='antigravity'; Label='구글 Antigravity'; Default=$true  }
   @{ Key='gemini';      Label='Gemini';      Default=$false }
+  # ⚠ **기본이 꺼져 있다 — 아직 파일럿이라 쓸 사람이 정해져 있지 않다**(이슈 #16). 켜는 사람만
+  #   받는다. 그리고 이 제품은 **데스크탑 앱 한 줄만** 든다 — CLI·확장 표에는 없다: 회사가 쓰는
+  #   것이 앱이고, winget 의 `GitHub.Copilot` 은 이름이 비슷한 **딴 물건**(CLI 쪽)이다.
+  @{ Key='copilot';     Label='GitHub Copilot'; Default=$false }
 )
 
 $Apps = @(
@@ -243,6 +247,17 @@ $TlsHosts = @(
 # ⚠ **`setup` 갈래는 winget 이 못 잰다** — 종료코드로만 판정하지 않고 시작 메뉴에 묻는다.
 #   그 물음은 이 파일이 이미 쓰는 자다(`Get-StartApps` · 아래 「연다」 칸의 ⚠ 참고): 스토어
 #   꼴이든 예전 꼴이든 같은 답을 내므로 꼴이 늘어도 안 어긋난다.
+# ⚠ **「언제」는 행이 든다 (`When`) — 전역 한 칸이 아니다** (이슈 #16 · 결정 0059). 옛 판은
+#   `#desktop-app` 한 값이 표 전체를 갈랐고, 그 값이 `offsite` 인 까닭은 **셋이 게이트웨이를
+#   못 물어서**였다 — 즉 그것은 실행의 성질이 아니라 **앱의 성질**이다. 게이트웨이를 안 타는
+#   앱이 들어오면 전역 한 값으로는 둘을 같이 못 든다. `#desktop-app` 은 전체 스위치로 남고
+#   (없으면 아무것도 안 깐다), 자리 판정은 행이 든다:
+#     · `offsite` — 사외로 판정될 때만. 게이트웨이를 물어야 쓸모가 있는 앱들
+#     · `any`     — 자리를 안 가린다. 제 인증으로 서는 앱
+#   안 적으면 `offsite` 다 — **옛 행이 한 자도 안 고치고 그대로 선다.**
+# ⚠ **짝으로 먼저 깔 것은 `Requires` 가 든다.** winget 매니페스트의 `Dependencies` 가 비어 있어
+#   winget 이 안 챙기는 자리를 우리가 챈다(#16 실측: 없는 기계에서 설치가 그 사유로 졌다).
+#   **공용 목록(`$Apps`)에 안 넣는 것이 요점이다** — 그 앱을 고른 사람만 받는다.
 $DesktopApps = @(
   @{ Key = 'claude'; Label = 'Claude 데스크탑'; App = 'Claude'
      Via = 'winget'; Id = 'Anthropic.Claude'; Source = 'winget' }
@@ -294,6 +309,21 @@ $DesktopApps = @(
   #   다른 별개 물건이라, **패키지 이름을 바꿀 때 이 갈림을 다시 본다.**
   @{ Key = 'antigravity'; Label = 'Antigravity 데스크탑'; App = 'Antigravity'
      Via = 'winget'; Id = 'Google.Antigravity'; Source = 'winget' }
+  # ⚠ **자리를 안 가리는 첫 앱이다 (`When = 'any'`)** — 위 셋이 사외 전용인 까닭은 게이트웨이를
+  #   못 물어 쓸모가 없어서인데, 이쪽은 **게이트웨이를 안 탄다**(제 인증으로 GitHub 에 붙는다).
+  #   그래서 사내에서도 깔 값이 있고, 그 갈림이 「언제」를 행으로 내리게 한 자다(#16 · 0059).
+  # ⚠ **`GitHub.Copilot` 이 아니다** — 그것은 CLI 쪽 딴 물건이고, 데스크탑 앱은 `CopilotApp` 이다
+  #   (실측 2026-09-19). 지문은 winget 매니페스트의 `InstallerSha256` 이 들고, 벤더가 GitHub 에
+  #   올린 설치본과 SHA256 이 같음을 확인했다 — 벤더 스크립트를 안 타는 이 저장소의 규율대로다.
+  # ⚠ **WebView2 를 탄다 — 그런데 매니페스트에 `Dependencies` 가 없다.** 그래서 winget 이 안
+  #   챙기고, **없는 기계에서는 설치가 그 자리에서 진다**(실측: 사내 VDI 이미지에 WebView2 가
+  #   없어 졌다). `Requires` 가 그 자리를 챈다 — 있으면 안 깐다(레지스트리에 묻는다).
+  # ⚠ **로그인은 사람이 한다.** 대화형 인증(회사 IdP · MFA · 기기 조건)이라 설치기가 낄 자리가
+  #   구조적으로 없다 — 앱은 서고 자격만 사람 몫이다. 사외 개인 PC 에서 **회사 계정은 조건부
+  #   액세스가 막는다**(기기 미등록 `53003`) — 그때는 개인 계정으로 쓴다. 설치의 실패가 아니다.
+  @{ Key = 'copilot'; Label = 'GitHub Copilot 데스크탑'; App = 'GitHub Copilot'
+     Via = 'winget'; Id = 'GitHub.CopilotApp'; Source = 'winget'; When = 'any'
+     Requires = @('Microsoft.EdgeWebView2Runtime') }
 )
 
 # 고를 목록을 한 줄씩 내준다 — `product|키|글자|기본값`. **여기까지 오는 데 부수효과가 없다**
@@ -1483,27 +1513,37 @@ foreach ($app in $Apps) {
   Remove-Item $log -ErrorAction SilentlyContinue
 }
 
-# ── 2′. 데스크탑 앱 — **자리가 언제를, 값 파일이 무엇을 정한다** ────────────────
-# ⚠ **사내에는 쓸모가 없다 — 셋 다.** 게이트웨이를 물리는 `ANTHROPIC_BASE_URL` 을 읽는 것은
-#   Claude Code CLI 뿐이고 앱에는 그 스위치가 없다 — 깔려도 제 본사로 나가려 하고 그 길이
-#   막혀 있다. Codex·Gemini 앱도 각자 로그인으로 서는 자라 같은 자리다(결정 0045). 그래서
-#   값 파일이 `#desktop-app = offsite` 를 들면 **사외로 판정될 때만** 깐다. `yes` 면 자리를
-#   안 가리고 깐다. 없으면 안 깐다.
-# ⚠ **값이 두 겹이다** — 앞은 **언제**(`offsite` · `yes`), `:` 뒤는 **무엇을**(위 표의 `Key`
-#   를 쉼표로). 뒤엣것을 안 적으면 `claude` 하나다: **옛 값 파일이 한 자도 안 고치고 그대로
-#   선다.** 통로를 새 스위치로 내지 않는 까닭은 머리글의 ⚠ 그대로 — 화면 갈래와 콘솔 갈래가
-#   같은 줄을 타야 한쪽만 고쳐지는 자리가 안 난다.
+# ── 2′. 데스크탑 앱 — **켤지는 값 파일이, 언제는 행이, 무엇을은 제품 칸이 정한다** ──────
+# ⚠ **「사내에 쓸모가 없다」는 앱마다 다르다** (결정 0059). 게이트웨이를 물리는
+#   `ANTHROPIC_BASE_URL` 을 읽는 것은 Claude Code CLI 뿐이고 앱에는 그 스위치가 없어, 그것을
+#   물어야 쓸모가 있는 앱은 사내에서 깔려도 제 본사로 나가려 하고 그 길이 막혀 있다
+#   (Claude · Codex · Antigravity — 결정 0045). **그런데 게이트웨이를 안 타는 앱은 그 제약
+#   밖이다** — 제 인증으로 붙으므로 사내에서도 선다. 그래서 그 판정을 **행**(`When`)이 든다:
+#   위 `$DesktopApps` 표의 ⚠ 가 낱말을 들고, 안 적은 행은 `offsite` 다.
+# ⚠ **`#desktop-app` 은 전체 스위치다** — 없으면 아무것도 안 깐다. `offsite` 면 행이 제 `When`
+#   으로 갈리고, `yes` 면 **행의 `When` 도 안 본다**: 사람이 「자리 안 가리고 깔아라」를 명시한
+#   자리다.
+# ⚠ **`:` 뒤 목록은 이제 안 쓴다** — 무엇을 깔지는 제품 칸(`$PickKeys`)이 든다. 옛 값 파일이
+#   그것을 들고 있으면 **말하고 지나간다**(아래 판정 칸) — 조용히 무시하면 고친 사람이 제 줄이
+#   죽은 줄 모른다.
 #
-#       #desktop-app = offsite                사외일 때 Claude        (옛 판과 같다)
-#       #desktop-app = offsite:claude,codex   사외일 때 둘
-#       #desktop-app = yes:gemini             자리를 안 가리고 Gemini
+#       #desktop-app = offsite   행마다 갈린다 — offsite 행은 사외에서만, any 행은 늘  (옛 판과 같다)
+#       #desktop-app = yes       자리를 안 가리고, 켠 제품 전부
 #
 # ⚠ **GUI 앱이라 PATH 로 못 잰다.** `--version` 을 부를 이름이 안 생겨 다른 것들이 쓰는
 #   프로브가 여기서는 안 선다 — winget 갈래는 winget 의 목록에, 제 설치본 갈래는 시작
-#   메뉴에 묻는다.
+#   메뉴에 묻는다. **짝으로 딸린 런타임은 그 둘로도 못 잰다** — 레지스트리가 든다
+#   (`Test-WebView2` 곁말의 실측).
 
 # 있나 — **길마다 묻는 자가 다르다.** 종료코드를 판정으로 안 쓰는 것은 위 2 칸과 같은 결이다.
 $script:JustInstalledApps = @{}
+# ── 이 판에서 **깔거나 이미 서 있던** 데스크탑 앱 — 끝의 「연다」 칸이 이것에 묻는다 (0059) ──
+# ⚠ **자리로 묻지 않는다.** 옛 판은 저쪽에서 `if ($offsite)` 로 갈랐는데, 「언제」가 행으로
+#   내려오면서 **사내에서도 깔리는 앱**이 생겼다 — 자리로 물으면 방금 깐 것을 안 띄운다.
+# ⚠ **`JustInstalledApps` 와 다른 자다.** 저쪽은 *이번에 깐 것*만 들어(인스톨러가 제 손으로
+#   띄웠나를 가른다), 이미 있던 앱은 안 든다. 여기는 **이 판에서 선 것 전부**라야 한다:
+#   어제 깐 앱도 오늘 띄울 것이다. 키는 `Label`(화면에 쓰는 이름), 값은 표의 행이다.
+$script:InstalledAppRows = @{}
 function Test-DesktopApp($A) {
   # ⚠ **윈도우에 먼저 묻는다 — 스토어 꼴이든 예전 꼴이든 설치된 앱은 시작 메뉴에 선다.**
   #   스토어 앱은 winget list 가 소스 인증서(0x8a15005e)나 인덱싱 지연으로 0 이 아닌 값을
@@ -1522,6 +1562,68 @@ function Test-DesktopApp($A) {
     return ($rc -eq 0)
   }
   return $false
+}
+
+# ── 짝으로 먼저 서야 하는 런타임 — **있으면 안 깐다** (#16 · 0059) ──────────────────
+# ⚠ **왜 `Test-DesktopApp` 을 안 쓰나 — 그 둘이 이 물건을 못 잰다**(실측 2026-09-22 · 집 PC).
+#     · 시작 메뉴(`Get-StartApps`) — WebView2 는 **거기 안 선다.** GUI 앱이 아니라 런타임이다
+#     · `winget list` — 찾기는 하는데 **판이 거짓이다**: 이름을 「Microsoft Edge」로, 판을
+#       `107.0.1418.62` 로 냈다. 진본 셋은 전부 `153.0.4234.48` 이었다(레지스트리 `pv` · 설치
+#       폴더 이름 · 제거 목록 `DisplayVersion`)
+#   그래서 **레지스트리에 묻는다** — 그 자리가 WebView2 를 찾는 앱이 실제로 보는 자리다.
+#   기계 자리와 사용자 자리를 둘 다 본다(설치 갈래가 둘이다).
+# ⚠ **판을 안 견준다 — 「있나」만 본다.** 견주려면 「어느 판 이상」을 우리가 정해야 하는데
+#   **그 하한을 벤더가 안 낸다**(매니페스트에 `Dependencies` 가 아예 없는 것이 그 증거).
+#   숫자를 박으면 그것이 곧 근거 없는 규칙표다. 게다가 이 런타임은 Edge 채널을 타는
+#   **Evergreen** 이라 한 번 서면 저절로 따라간다 — 올리는 것은 우리 일이 아니다.
+# ⚠ **`--source winget` 을 박는다.** 안 박으면 msstore 까지 훑다가 그쪽 인증서 오류로
+#   **통째로 진다** — 실측 2026-09-22: `0x8a15005e` 로 설치가 시작도 못 하고, 그런데 **종료코드는
+#   0 이라 성공으로 보인다.** 원본을 박은 뒤 같은 기계에서 한 번에 섰다.
+$WebView2Guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+function Test-WebView2 {
+  foreach ($p in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$WebView2Guid",
+                   "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$WebView2Guid",
+                   "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$WebView2Guid")) {
+    try {
+      $pv = (Get-ItemProperty -LiteralPath $p -Name pv -ErrorAction Stop).pv
+      if ($pv) { return $pv }
+    } catch { }
+  }
+  return ''
+}
+function Install-Requires($A) {
+  foreach ($id in @($A.Requires)) {
+    if (-not $id) { continue }
+    # ⚠ **재는 자는 짝마다 다르다.** 지금 짝이 하나뿐이라 갈래도 하나다 — 늘 때 여기에 한
+    #   갈래를 더한다. 모르는 id 는 **재지 않고 깐다**: 「못 쟀다」를 「있다」로 접으면 설치가
+    #   조용히 안 서고, 그 실패는 앱 쪽에서 엉뚱한 사유로 나타난다.
+    if ($id -eq 'Microsoft.EdgeWebView2Runtime') {
+      $pv = Test-WebView2
+      if ($pv) { Write-Host ('      · WebView2 런타임 — 있음 ({0})' -f $pv); continue }
+      Write-Host '      · WebView2 런타임을 먼저 깐다 — 이 앱이 그것 없이는 안 선다'
+    } else {
+      Write-Host ('      · 짝을 먼저 깐다 — {0}' -f $id)
+    }
+    if ($noWinget) {
+      Write-Host '      ! winget 이 없어 짝을 못 깐다 — 이 앱도 안 선다' -ForegroundColor Red
+      $script:Fails.Add("$($A.Label) (짝 $id — winget 이 없다)")
+      return $false
+    }
+    $rl = [IO.Path]::GetTempFileName()
+    $rc = Invoke-Logged 'winget' (@('install','--id',$id) + $WG) $rl
+    if ($rc -ne 0) {
+      # ⚠ **사유를 우리가 분류하지 않는다 — 뱉은 끝 줄을 그대로 낸다.** 이 파일이 winget
+      #   실패에 이미 쓰는 자(`Show-Log`)를 같은 뜻으로 든다.
+      Write-Host ("      ! 짝을 못 깔았다 (winget 이 $rc 로 끝났다) — 뱉은 끝 줄:") -ForegroundColor Red
+      Show-Log $rl 5
+      $script:Fails.Add("$($A.Label) (짝 $id)")
+      Remove-Item $rl -ErrorAction SilentlyContinue
+      return $false
+    }
+    Remove-Item $rl -ErrorAction SilentlyContinue
+    Write-Host '      · 짝이 섰다'
+  }
+  return $true
 }
 
 # 깐다 — **실패를 우리가 분류하지 않는다.** 막히는 방식이 앱마다 다르고(소스 인증서 · 회선
@@ -1543,8 +1645,13 @@ function Install-DesktopApp($A) {
       Remove-Item $ul -ErrorAction SilentlyContinue
     }
     Write-Host '  있음'
+    $script:InstalledAppRows[$A.Label] = $A
     return
   }
+  # ── 짝이 먼저다 — **앱이 없을 때만 온다.** 앱이 이미 섰으면 짝도 이미 선 것이라(그것 없이는
+  #    안 섰다) 위에서 나갔다. 짝이 지면 앱을 시도하지 않는다: 어차피 그 사유로 지는데, 시도하면
+  #    실패가 **앱 이름으로** 찍혀 까닭이 한 겹 숨는다.
+  if ($A.Requires -and -not (Install-Requires $A)) { return }
   # 길이 둘일 수 있다 — 앞길부터, 지면 뒷길. 뒷길은 제 몫(`Via`·`Url`·`SilentArgs`)만 들고
   # 이름 둘(`App`·`Label`)은 앞길에서 물려받는다.
   $ways = @($A)
@@ -1590,6 +1697,7 @@ function Install-DesktopApp($A) {
   if (Test-DesktopApp $A) {
     Write-Host '  깔았다' -ForegroundColor Green
     $script:JustInstalledApps[$A.App] = $true
+    $script:InstalledAppRows[$A.Label] = $A
   } elseif ($rc -eq 0) {
     # ⚠ **종료 0 인데 앱이 없다 = 설치본이 제 일을 남에게 넘긴 것이다.** 스토어 스텁이 스토어
     #   창을 띄우고 바로 빠지는 갈래가 그렇다(실측 2026-09-17 집 PC). 이것을 「설치 실패」로
@@ -1627,21 +1735,35 @@ if ($wantApp -and $wantApp -match '^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$') {
 }
 $appPicks = @($DesktopApps | Where-Object { $PickKeys -contains $_.Key })
 
-if ($appWhen -eq 'yes' -or ($appWhen -eq 'offsite' -and $offsite)) {
+# ── 자리 판정 — **행마다 묻는다** (#16 · 0059) ──────────────────────────────────
+# ⚠ `#desktop-app` 은 **전체 스위치**로 남는다 — 없으면 아무것도 안 깐다(옛 뜻 그대로). 그
+#   값이 `yes` 면 행의 `When` 도 안 본다: 사람이 「자리 안 가리고 깔아라」를 명시한 자리다.
+#   `offsite` 면 행이 제 `When` 으로 갈린다 — `offsite` 인 행은 사외에서만, `any` 인 행은 늘.
+# ⚠ **안 깐 까닭을 행마다 댄다.** 옛 판은 전체가 한 줄로 갈려 「사내라 안 깐다」 하나였는데,
+#   이제 같은 판에서 어떤 행은 깔리고 어떤 행은 안 깔린다 — 그러면 **안 깔린 줄이 침묵하면
+#   고른 사람이 제 선택이 죽은 줄 모른다.**
+if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
   # ⚠ **빈 목록도 말한다** — 제품을 하나도 안 켠 판은 아무 일도 안 일어나고 한 줄도 안 찍혔다.
   if (-not $appPicks) {
     Write-Host ''
     Write-Host '  데스크탑 앱 — 켠 제품이 없어 안 깐다'
   }
-  foreach ($da in $appPicks) { Install-DesktopApp $da }
-} elseif ($appWhen -eq 'offsite') {
-  Write-Host ''
-  # ⚠ **안 깐 까닭을 정확히 댄다.** 「사내라」와 「자리를 몰라」는 다른 명제고, 뒤엣것은
-  #   고칠 수 있는 것이다 — 값 파일에 `#site-probe` 를 넣으면 잰다.
-  if ($site -eq 'inside') {
-    Write-Host '  데스크탑 앱 — 사내라 안 깐다 (게이트웨이를 못 문다)'
-  } else {
-    Write-Host '  데스크탑 앱 — 자리를 몰라 안 깐다 (값 파일에 #site-probe 가 없다)'
+  foreach ($da in $appPicks) {
+    # 행이 「언제」를 안 적으면 `offsite` 다 — 옛 행이 한 자도 안 고치고 그대로 선다.
+    $daWhen = if ($da.When) { $da.When } else { 'offsite' }
+    if ($appWhen -eq 'yes' -or $daWhen -eq 'any' -or $offsite) {
+      Install-DesktopApp $da
+      continue
+    }
+    Write-Host ''
+    Write-Host "  $($da.Label)" -ForegroundColor Cyan
+    # 「사내라」와 「자리를 몰라」는 다른 명제고, 뒤엣것은 고칠 수 있는 것이다 —
+    # 값 파일에 `#site-probe` 를 넣으면 잰다.
+    if ($site -eq 'inside') {
+      Write-Host '      · 사내라 안 깐다 (게이트웨이를 못 문다)'
+    } else {
+      Write-Host '      · 자리를 몰라 안 깐다 (값 파일에 #site-probe 가 없다)'
+    }
   }
 }
 
@@ -3898,12 +4020,16 @@ function Find-DesktopApps {
   # ⚠ **고른 것을 다 든다 — 하나만 고르지 않는다.** 옛 판은 표에서 먼저 선 하나에서 멈췄는데,
   #   그 「먼저」가 **어디에도 안 적힌 채 표 행 순서에 숨어** 있었다: 줄을 옮기면 뜨는 앱이
   #   조용히 바뀐다. 다 들면 고를 일이 없어져 그 자리가 통째로 없어진다.
-  if (-not $appPicks) { return @() }            # 고른 데스크탑 앱이 없다
+  # ⚠ **훑을 자는 「고른 것」이 아니라 「이 판에서 선 것」이다** (0059). 고른 것으로 훑으면
+  #   사내에서 안 깐 앱(`When = offsite`)까지 시작 메뉴에서 찾으려 들어, **깔지도 않은 것을
+  #   「못 찾았다」로** 찍는다. 부르는 쪽도 같은 자에 묻는다 — 한 자리에서 갈려야 안 어긋난다.
+  $rows = @($script:InstalledAppRows.Values)
+  if (-not $rows) { return @() }                # 이 판에서 선 데스크탑 앱이 없다
   try {
     $all = @(Get-StartApps -ErrorAction Stop)
   } catch { return @() }                        # 이 윈도우에 그 물음이 없다
   $out = @()
-  foreach ($appPick in $appPicks) {
+  foreach ($appPick in $rows) {
     $a = @($all | Where-Object { $_.Name -like "*$($appPick.App)*" })[0]
     if (-not ($a -and $a.AppID)) { continue }
     $want = $appPick.App; $label = $appPick.Label
@@ -4013,20 +4139,26 @@ if ($NoLaunch) {
     [Environment]::SetEnvironmentVariable($k, $userEnv[$k], 'Process')
   }
 
-  # 열 것을 모은다 — **사외면 고른 데스크탑을 다 든다.**
+  # 열 것을 모은다 — **깔았으면 띄운다.** 자리로 묻지 않고 **깐 것으로** 묻는다.
+  # ⚠ **옛 판은 `if ($offsite)` 였다** — 데스크탑 앱이 사외에서만 깔리던 때의 값이다(결정 0052).
+  #   행이 「언제」를 들면서(0059) **사내에서도 깔리는 앱**이 생겼는데, 그 판에서 이 조건은 방금
+  #   깐 앱을 안 띄운다 — 깔고도 아무것도 안 뜨는 꼴이라 로그만 초록이다(같은 결의 사고가
+  #   2026-09-18 에 한 번 났다 — 바로 아래 ⚠ 가 그 자리다). **깐 목록에 묻는 것이 진본이다.**
   $apps = @()
-  if ($offsite) {
+  if ($script:InstalledAppRows.Count) {
     $apps = @(Find-DesktopApps)
-    # ⚠ **못 찾은 것을 말없이 딴 것으로 갈음하지 않는다.** 사외에서 앞문은 데스크탑이다 —
+    # ⚠ **못 찾은 것을 말없이 딴 것으로 갈음하지 않는다.** 데스크탑을 깐 판에서 앞문은 그것이다 —
     #   못 찾았다고 조용히 VS Code 를 열면 사람은 「왜 VS Code 가 뜨지」를 혼자 헤맨다.
     #   실측 2026-09-11(집 PC): 한 줄도 안 찍힌 채 VS Code 가 떴고, 까닭을 찾는 데 몇 판이 들었다.
     #   **떨어지더라도 왜 떨어졌는지 찍고 떨어진다.**
     # ⚠ **고른 것과 선 것의 차만 댄다** — 다 열게 되면서 「하나도 못 찾았다」가 아니라 「이건
     #   못 찾았다」가 되었다. 막힌 회선에서 한 제품만 안 깔린 자리가 이 줄에서 보인다.
+    # ⚠ **견줄 자는 「고른 것」이 아니라 「깐 것」이다** — 사내에서 안 깐 앱(`When = offsite`)을
+    #   여기서 세면 **깔지도 않은 것을 「못 찾았다」로 찍는다.**
     $found = @($apps | ForEach-Object { $_.Name })
-    $miss  = @($appPicks | Where-Object { $found -notcontains $_.Label })
+    $miss  = @($script:InstalledAppRows.Keys | Where-Object { $found -notcontains $_ })
     # 고른 것이 아예 없으면 못 찾은 것이 아니라 **찾을 것이 없는** 것이다 — 두 말을 가른다.
-    if ($miss -and $appPicks) {
+    if ($miss) {
       Write-Host ('  ! {0} — 못 찾았다. 시작 메뉴에서 직접 연다' -f
                   (($miss | ForEach-Object { $_.Label }) -join ' · ')) -ForegroundColor Yellow
     }
