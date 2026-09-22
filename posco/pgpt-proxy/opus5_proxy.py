@@ -10,6 +10,13 @@ Payload fixes, all required by the gateway:
 * ``/v1/messages`` — drop a trailing assistant prefill so the conversation
   ends with a user message (the Opus 5 Bedrock route rejects prefill), and
   strip parameters that route refuses (temperature/top_p, system role).
+* ``/v1/messages`` — hoist ``image`` blocks out of ``tool_result`` content
+  and re-append them to the same user message, leaving a note behind. The
+  gateway silently drops images nested inside ``tool_result`` (HTTP 200,
+  no error), which is exactly where Claude Code's ``Read`` puts them — so
+  screenshots were invisible on the corporate network. The same bytes are
+  read fine as siblings of the ``tool_result`` block; placing them *before*
+  it instead trips the gateway's tool_use/tool_result pairing check (400).
 * documented tool locations only — fill empty ``tools[].description``
   values, which Codex sends for gpt-5.6 class models and Azure rejects
   with minLength=1. The rest of the body, conversation history included,
@@ -93,9 +100,9 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # ⚠ **상류를 새로 받으면 위 칸을 그 판으로 올리고 아래 칸을 0 으로 되돌린다** — 우리 덩어리를
 #   다시 얹은 만큼만 아래 칸이 오른다. README 「상류에서 새 판을 받을 때」.
 VERSION_UPSTREAM = 17
-# 우리 덩어리 다섯 — keepalive(0044) · unstream(0051) · 하이쿠 대체 · 제미나이 이름 표 ·
-# 게이트웨이 요청 번호 로그(#67).
-VERSION_OURS = 5
+# 우리 덩어리 여섯 — keepalive(0044) · unstream(0051) · 하이쿠 대체 · 제미나이 이름 표 ·
+# 게이트웨이 요청 번호 로그(#67) · 그림 끌어내기(#76).
+VERSION_OURS = 6
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 # SSE keepalive — 상류가 이만큼 침묵하면 클라이언트 쪽에 SSE 주석 한 줄을 흘린다. 0 이면 끈다.
 # 게이트웨이는 모델이 생각하는 동안 바이트를 안 흘리고, Claude Code 의 바이트 유휴 워치독은 그 침묵에
@@ -242,6 +249,13 @@ _TRIMMED_PREFILLS = 0
 _SLOW_TOTAL = 0
 _KEEPALIVE_TOTAL = 0
 _UNSTREAMED_TOTAL = 0
+_HOISTED_IMAGES = 0
+
+
+def _count_hoisted(count: int) -> None:
+    global _HOISTED_IMAGES
+    with _STATS_LOCK:
+        _HOISTED_IMAGES += count
 
 
 def _count_keepalive() -> None:
@@ -282,6 +296,7 @@ def stats() -> dict[str, int]:
             "slow_requests": _SLOW_TOTAL,
             "keepalives": _KEEPALIVE_TOTAL,
             "unstreamed": _UNSTREAMED_TOTAL,
+            "hoisted_images": _HOISTED_IMAGES,
         }
     base.update(_UPSTREAM_POOL.stats())
     return base
@@ -656,6 +671,73 @@ def _content_blocks(content: object) -> list[dict[str, object]]:
     return blocks
 
 
+# ── tool_result 안의 그림을 그 블록 **뒤로** 내놓는다 (claude-config #76) ───────────────
+#   게이트웨이는 `tool_result` **안**의 `image` 블록을 200 에 조용히 버린다 — 400 이 아니라
+#   받아 놓고 픽셀을 버리므로, 읽는 쪽은 「도구가 빈 결과를 냈다」로 읽고 색을 지어낸다.
+#   Claude Code 의 `Read` 가 그림을 바로 그 자리에 싣기 때문에 **사내에서는 그림을 못 봤다.**
+#
+#   눈가림 실측 (2026-09-22 · 답을 곁 파일에만 적은 320×320 검체 · `claude-opus-5` · 두 판).
+#   같은 그림·같은 물음인데 **그림이 놓인 자리만으로** 갈렸다:
+#     · `tool_result.content` 안에 [text, image] 또는 image 하나만  → **못 본다**
+#     · 같은 user 메시지에서 `tool_result` **뒤**에 형제 블록으로    → **본다** ← 이 함수의 꼴
+#     · `tool_result` 뒤 별개 user 메시지                            → 본다 (아래 ⚠ 가 안 쓰는 까닭)
+#     · 같은 메시지에서 `tool_result` **앞**에                       → **400** — 짝 검사가 위치를
+#       본다: `messages.N: tool_use ids were found without tool_result blocks`
+#     · OpenAI 라우트 `image_url`                                    → 색은 맞고 **자리를 틀렸다**
+#   마지막 것을 우회로 안 쓴다 — 200 을 내면서 틀린 답을 자신 있게 내므로, **반쯤 보는 것이
+#   못 보는 것보다 비싸다.**
+#
+# ⚠ **`tool_result` 를 지우지 않는다.** 앞 턴의 `tool_use` 와 짝이 깨지면 위 400 이 난다.
+#   블록 **안의 그림만** 빼고, 빈 자리에는 어디로 갔는지 적은 글자를 남긴다 — 안 남기면
+#   모델이 「도구가 실패했다」로 읽어, 그림이 따라와도 그것을 안 믿는다.
+# ⚠ **`tool_result` 보다 앞에 끼우지 않는다** — 위 400 이 그 자리다. 뽑은 그림은 그 메시지의
+#   **끝**으로 간다: `tool_result` 가 여럿이면 다 지난 뒤가 유일하게 안전한 자리다.
+# ⚠ **메시지를 새로 만들지 않는다.** 새로 끼우면 user 가 잇달아 서고, 아래 `sanitize_payload` 의
+#   합치기가 그 둘을 **도로 한 메시지로 접는다** — 접히면 결과는 같지만 거치는 갈래가 늘고,
+#   무엇보다 `tool_result` 가 마지막인 대화(도구 결과를 받고 모델이 답할 차례 · `Read` 의
+#   실제 꼴)에서는 얹을 다음 메시지가 **아예 없다.** 같은 메시지 안에 두면 그 갈래가 안 선다.
+# ⚠ **`tool_result` 가 여럿이면 짝을 글자로 댄다** — 그림이 어느 도구 것인지 순서로만 남는
+#   자리라, 자리표시가 `tool_use_id` 를 든다. 안 대면 그림 둘이 뒤바뀌어도 아무도 모른다.
+def hoist_tool_result_images(messages: list[object]) -> int:
+    """`tool_result` 안의 `image` 를 **같은 메시지의 끝**으로 내놓는다. 옮긴 장수를 낸다."""
+    moved = 0
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+
+        pulled: list[dict[str, object]] = []
+        for result in content:
+            if not isinstance(result, dict) or result.get("type") != "tool_result":
+                continue
+            inner = result.get("content")
+            if not isinstance(inner, list):
+                continue
+            kept: list[dict[str, object]] = []
+            taken = 0
+            for block in inner:
+                if isinstance(block, dict) and block.get("type") == "image":
+                    pulled.append(block)
+                    taken += 1
+                else:
+                    kept.append(block)
+            if not taken:
+                continue
+            label = "그림 %d장" % taken if taken > 1 else "그림"
+            kept.append({"type": "text",
+                         "text": "[%s은 이 도구 결과(%s) 것이고 이 메시지 끝에 실려 있다]"
+                                 % (label, result.get("tool_use_id") or "?")})
+            result["content"] = kept
+
+        if not pulled:
+            continue
+        content.extend(pulled)
+        moved += len(pulled)
+    return moved
+
+
 def sanitize_payload(payload: dict[str, object]) -> dict[str, object]:
     """Anthropic /v1/messages 본문을 Bedrock 라우트가 받는 형태로 정리한다."""
     payload.pop("temperature", None)
@@ -663,6 +745,13 @@ def sanitize_payload(payload: dict[str, object]) -> dict[str, object]:
 
     raw_messages = payload.get("messages")
     if isinstance(raw_messages, list):
+        # ⚠ **아래 합치기보다 먼저 선다.** 이 함수는 한 메시지 안에서만 블록을 옮기므로 합치기와
+        #   다투지 않지만, 순서가 뒤면 합쳐진 메시지를 다시 훑어 **같은 일을 두 번 재게** 된다.
+        #   여기가 이 함수의 유일한 자리다 (claude-config #76).
+        hoisted = hoist_tool_result_images(raw_messages)
+        if hoisted:
+            _count_hoisted(hoisted)
+
         cleaned: list[dict[str, object]] = []
         for raw_message in raw_messages:
             if not isinstance(raw_message, dict):
@@ -1619,6 +1708,28 @@ def self_test() -> None:
     assert result["messages"][0]["role"] == "user"
     assert len(result["messages"][0]["content"]) == 2
     assert result["tools"][0]["description"] == ""  # sanitize 는 도구를 안 만진다
+
+    # 1b. sanitize 안의 그림 끌어내기 — `tool_result` 안의 image 를 그 블록 **뒤**로 (#76).
+    #     ⚠ 자리를 잰다. 옮겨진 것과 `tool_result` 뒤에 선 것은 다른 명제이고, 앞에 서면
+    #       게이트웨이가 짝 검사에서 400 을 낸다(실측 2026-09-22). 얇게 재는 칸이고 두꺼운
+    #       판정(순서 · 짝 글자 · 음성 여섯)은 곁 `hoist_check.py` 가 든다.
+    shot = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}
+    read_shaped = {"model": "claude-opus-5", "messages": [
+        {"role": "user", "content": [{"type": "text", "text": "봐라"}]},
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "tu_1", "name": "Read", "input": {}}]},
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu_1", "content": [
+            {"type": "text", "text": "그림 1장"}, shot]}]}]}
+    hoisted = sanitize_payload(read_shaped)["messages"][-1]["content"]
+    assert [block["type"] for block in hoisted] == ["tool_result", "image"]
+    assert all(block["type"] != "image" for block in hoisted[0]["content"])
+    assert "tu_1" in hoisted[0]["content"][-1]["text"]      # 짝을 글자로 댄다
+    # 음성 — 그림 없는 tool_result 는 한 자도 안 바뀐다.
+    plain = {"model": "claude-opus-5", "messages": [
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu_1",
+                                      "content": [{"type": "text", "text": "됐다"}]}]}]}
+    assert sanitize_payload(plain)["messages"][0]["content"][0]["content"] == \
+        [{"type": "text", "text": "됐다"}]
 
     # 2. patch: 최상위 tools 보정 (sanitize 이후 단일 소유자)
     assert patch_tool_descriptions(result) == 1

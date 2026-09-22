@@ -280,6 +280,12 @@ Convert presentations to individual slide images for visual inspection.
 `-r 100` 은 한 장에 약 1,260 토큰, `-r 150` 은 약 2,835 다. **글자가 읽히는 가장 낮은 값**을
 고르고, 이미 큰 그림을 받은 자리는 씨앗 `_check/_shrink.py` 가 줄인다.
 
+⚠ **사내 게이트웨이를 지나는 자리는 프록시가 서야 그림이 보인다.** 그 게이트웨이는 `tool_result`
+안의 그림을 200 에 조용히 버리는데 그림 읽는 도구가 바로 그 자리에 싣는다 — **오류 없이 빈 결과가
+와서, 안 보고 지나가는 줄도 모른다.** 로컬 프록시가 그것을 비켜가고(`posco/pgpt-proxy` · 판 `17.6`
+이상), 옛 판을 든 기계는 아래 절차를 그대로 밟아도 한 장도 못 본다. 판은 `/health` 가 댄다.
+까닭과 재는 법은 `posco/ENV-posco.md` 의 그림 ⚠ 절이 든다.
+
 ```bash
 python scripts/office/soffice.py --headless --convert-to pdf output.pptx
 rm -f slide-*.jpg

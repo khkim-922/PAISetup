@@ -12,6 +12,10 @@
 | `Test-AllPgptModels.py` | `tests/Test-AllPgptModels.py` | 모델 전수 스모크 — 프록시 너머로 모델마다 「Reply OK」 한 줄. 결과는 곁 `model-results/` |
 | `Test-ProxyFaults.py` | `tests/Test-ProxyFaults.py` | 비정상 응답·스트림 단절·413·surrogate 등 결함 내성 검사 (v16+) |
 | `pair_check.py` | (우리 것) | 위 둘로 「직결 400 · 프록시 200 · prefill 1번 뗐다」를 잰다 |
+| `hoist_check.py` | (우리 것) | 그림 끌어내기가 본문 모양을 옳게 바꾸나 — 함수를 직접 부른다(망 없음) · 양성·음성 양방향 |
+| `hoist_live_check.py` | (우리 것) | 같은 것을 **실호출로** — 보정 없는 판은 못 보고 고친 판은 그림을 맞히나 |
+| `image_lane_probe.py` | (우리 것) | 게이트웨이가 **어느 자리**의 그림을 보나 — 다섯 갈래를 한 그림으로 재는 눈가림 프로브 |
+| `image_tail_probe.py` | (우리 것) | `tool_result` 가 **마지막**일 때(= `Read` 의 실제 꼴) 어디에 두면 보나 |
 
 ## 상류 판
 
@@ -26,7 +30,7 @@
   ⚠ **옛 정수 한 칸(`17`·`18`)이 도는 자리도 받는다** — 그 판은 새 이름이 없어 「못 읽었다」로 떨어지고,
   그때는 **갈아 끼우는 쪽으로 기운다.** 반대로 두면 옛 프록시가 영영 안 바뀐다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **파일은 안 고친다 — 예외가 다섯이다.** ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
+- **파일은 안 고친다 — 예외가 여섯이다.** ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
   `keepalives` · 자체 검사 한 칸 · 결정 0044) ⑵ unstream(`UNSTREAM` 손잡이 · `synthesize_anthropic_sse` 무리 ·
   `_unstream_messages` · 카운터 `unstreamed` · 자체 검사 세 칸 · 진단 두 줄 · 결정 0051) ⑶ 하이쿠 대체
   (`_CLAUDE_HAIKU_SUBSTITUTE` · `normalize_pgpt_claude_model` 의 `haiku` 갈래 · 위 표) — 게이트웨이에 하이쿠가
@@ -34,7 +38,10 @@
   `normalize_gemini_model_path` 의 그 조회 · 자체 검사 세 칸) — 안티그래비티가 제목 짓기에 못박아 둔 이름이
   게이트웨이에 없어 그 곁 호출만 지던 자리다 ⑸ 게이트웨이 요청 번호 로그(`_GW_REQUEST_ID_HEADER` ·
   `_write_upstream` 이 잡는 한 줄 · 꼬리를 짓는 `_gw` · 판마다 한 줄 넷) — 게이트웨이가 응답 머리에 주는
-  번호를 셋 다 버려서 벽에 걸린 판을 「이 요청」으로 못 대던 자리다(#67). **판 번호 두 칸도 우리 것이다**(위). 그 둘째를 사내망 밖에서 재느라
+  번호를 셋 다 버려서 벽에 걸린 판을 「이 요청」으로 못 대던 자리다(#67) ⑹ **그림 끌어내기**
+  (`hoist_tool_result_images` · `sanitize_payload` 의 그 한 줄 · 카운터 `hoisted_images` · 검사 둘 ·
+  프로브 둘) — 게이트웨이가 `tool_result` **안**의 `image` 를 200 에 조용히 버려서 `Read` 로 여는 그림이
+  사내에서 한 픽셀도 안 오던 자리다(#76). **판 번호 두 칸도 우리 것이다**(위). 그 둘째를 사내망 밖에서 재느라
   `mock_gateway.py` 에도 느린 비스트리밍 답 한 칸이 붙었다(`MOCK_SLOW_SEC` · `MOCK_ANSWER` · `_mock/last`).
   나머지는 상류 그대로다. 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
   파이썬 판정이 무는 두 줄(`raise` 에 `from` 없음 · 안 쓰는 import)은 뿌리 `ruff.toml` 이 이 세 파일을
@@ -91,17 +98,28 @@
 python -X utf8 posco/pgpt-proxy/opus5_proxy.py --self-test     # 보정 함수 — 어디서나
 python -X utf8 posco/pgpt-proxy/pair_check.py                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
 python -X utf8 posco/pgpt-proxy/Test-ProxyFaults.py          # 비정상 응답·스트림 단절 등 결함 내성 — 어디서나                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
+python -X utf8 posco/pgpt-proxy/hoist_check.py                # 그림 끌어내기가 본문 모양을 옳게 바꾸나 — 어디서나 (망 없음)
 MOCK_SLOW_SEC=4 MOCK_ANSWER=tool_use python -X utf8 posco/pgpt-proxy/mock_gateway.py 18902
 #   느린 비스트리밍 답 — 답 꼴은 text·tool_use·error500 · 상류가 받은 몸은 GET /gpgpta01-gpt/_mock/last (0051)
 PGPT_API_KEY=<회사 키> python -X utf8 posco/pgpt-proxy/Test-AllPgptModels.py   # 회사 · 프록시가 떠 있어야
+
+# 그림이 정말 보이나 — **회사** · 별 포트에 이 판을 띄워 두고 잰다 (#76)
+PGPT_PROXY_PORT=18907 python -X utf8 posco/pgpt-proxy/opus5_proxy.py &
+python -X utf8 posco/pgpt-proxy/hoist_live_check.py 18907      # 보정 없는 판은 못 보고 이 판은 맞히나
+python -X utf8 posco/pgpt-proxy/image_lane_probe.py claude-opus-5 gpt-5.2   # 어느 자리의 그림을 보나
+python -X utf8 posco/pgpt-proxy/image_tail_probe.py claude-opus-5           # tool_result 가 마지막일 때
 ```
+
+⚠ **눈가림 넷은 정답을 화면에 안 찍는다** — 곁 파일에만 적는다(`%TEMP%\*-answer.txt`). 재는 사람도 먼저
+보지 않는 것이 요점이다: 아는 값을 맞히는 것은 재는 것이 아니다. `hoist_live_check.py` 는 그 대조까지
+스스로 하고 판정 한 줄을 낸다.
 
 전수 스모크는 키를 `PGPT_API_KEY` 나 홈 `.claude/settings.json` 의 `ANTHROPIC_AUTH_TOKEN` 에서 읽는다.
 
 ## 상류에서 새 판을 받을 때
 
 1. 상류의 세 파일을 그대로 복사한다 — `diff --strip-trailing-cr` 로 대조하면 줄끝 잡음이 안 낀다.
-   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 다섯을 다시 얹는다** — `git diff` 로 이번 판과 견주면 둘 다
+   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 여섯을 다시 얹는다** — `git diff` 로 이번 판과 견주면 둘 다
    그대로 보인다.
    - keepalive(0044) — `KEEPALIVE_SEC` · `_count_keepalive` · `_relay_sse_keepalive` · `_relay_stream` 의 두 인자 ·
      호출 자리의 `keepalive_sse` · 자체 검사 한 칸
@@ -111,12 +129,18 @@ PGPT_API_KEY=<회사 키> python -X utf8 posco/pgpt-proxy/Test-AllPgptModels.py 
    - 하이쿠 대체 — `_CLAUDE_HAIKU_SUBSTITUTE` · `normalize_pgpt_claude_model` 의 `haiku` 갈래
    - 제미나이 이름 표 — `_GEMINI_MODEL_ALIASES` · `normalize_gemini_model_path` 의 그 조회
      (상류 함수가 `-customtools` 만 떼므로 **그 함수 안에 한 줄이 든다**) · 자체 검사 세 칸
+   - 그림 끌어내기(#76) — `_HOISTED_IMAGES` · `_count_hoisted` · `stats()` 의 `hoisted_images` ·
+     `hoist_tool_result_images` · `sanitize_payload` 가 **합치기보다 앞에서** 부르는 한 줄
+     ⚠ **그 순서가 뜻을 진다** — 합친 뒤에 부르면 같은 메시지를 두 번 훑는다. 그리고 그림은
+     `tool_result` **뒤**로만 가야 한다: 앞에 끼우면 게이트웨이가 짝 검사에서 400 을 낸다(실측)
    ⚠ `mock_gateway.py` 에도 얹을 것이 있다 — `SLOW_SEC`/`ANSWER`/`LAST` · `_body` 의 `raw_body` ·
    `_mock/last` 창구 · `/v1/messages` 의 답 세 꼴(0051)
 2. 위 「상류 판」의 커밋을 고치고 **판 번호 두 칸을 옮긴다** — `VERSION_UPSTREAM` 을 받아온 판으로 올리고
    `VERSION_OURS` 를 **0 으로 되돌린다.** 그다음 우리 덩어리를 다시 얹은 만큼만 뒤 칸을 올린다.
    ⚠ **뒤 칸을 안 되돌리면 번호가 뜻을 잃는다** — 그 수는 「이 상류 판 위에 우리가 몇 번 얹었나」다
-3. `pair_check.py` 와 `--self-test` 가 초록인지 본다. 프록시가 새 보정을 얹었으면 위 표에 「쓴다/논다」를 더한다
+3. `pair_check.py` · `hoist_check.py` · `--self-test` 가 초록인지 본다. 프록시가 새 보정을 얹었으면 위 표에
+   「쓴다/논다」를 더한다. ⚠ **`hoist_live_check.py` 는 회사에서만 선다** — 실물 게이트웨이가 있어야 「안
+   보던 것이 보인다」를 잰다. 집에서 초록인 것은 모양까지고, 그 경계를 판정 옆에 적는다
 
 ## 안 담은 것
 
