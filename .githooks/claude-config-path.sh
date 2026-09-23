@@ -3,13 +3,14 @@
 # 진본은 claude-config/.githooks/claude-config-path.sh 다. 각 저장소의 것은 deploy.ps1 이
 # 뿌린 배포본이다 — 배포본을 고치면 다음 배포에 덮인다.
 #
-# 왜 한 자리인가: 재는 쪽이 둘이다 — 커밋 게이트(.githooks/gates.d/)와 세션 진단
+# 왜 한 자리인가: 재는 쪽이 둘이다 — 커밋 게이트(.githooks/ 의 몸통 · 조각)와 세션 진단
 #   (.claude/hooks/session-start-body.sh). 목록이 갈리면 **게이트는 안 도는데 진단은 돈다고
 #   말하게 되고**, 그 순간 부재가 통과로 읽힌다. 게이트가 없는 것보다 나쁜 자리다.
 #
 # 부르는 법:  . "$PROJECT_DIR/.githooks/claude-config-path.sh"
 # 내는 것:    CONFIG_ROOT  설정 저장소가 붙은 자리 — 세션 기록·사내 환경 문서 (없으면 빈 문자열)
 #             ADR_GEN      결정 목록 생성기 adr-index.sh          (없으면 빈 문자열)
+#             GATES_HOME   게이트 러너(gates-run.sh)가 선 폴더      (없으면 빈 문자열 · 0064)
 #
 # ⚠ 둘은 따로 논다. PC 는 deploy.ps1 이 **스킬만** 홈에 뿌리므로 저장소가 안 붙어도
 #   생성기는 있다. 리모트는 그 반대다 — 저장소를 통째로 붙여 그 안의 스킬을 쓴다.
@@ -48,4 +49,15 @@ for _g in "$PROJECT_DIR/.githooks/adr-index.sh" \
     [ -f "$_g" ] && { ADR_GEN="$_g"; break; }
 done
 
-unset _d _g _skill
+# 게이트 러너가 선 자리 (0064) — **그 저장소 안 → 붙은 claude-config → 홈 씨앗.** 형제 저장소는
+# 러너 · 조각 사본을 안 들고 몸통(문지기)만 들어, 몸통이 이 값으로 러너를 찾는다. 세션 진단도 같은
+# 값을 본다 — 둘이 따로 찾으면 게이트는 안 도는데 진단은 돈다고 말하게 된다(위 「왜 한 자리인가」).
+# ⚠ 홈 씨앗은 설치기가 모든 PC 에 깐다(`~/.claude/seeds/config-repo/`) — claude-config 가 없는
+#   동료 PC 가 이 자리로 선다. 세션 훅 문지기가 몸통을 찾는 차례와 같다(0063).
+GATES_HOME=""
+for _h in "$PROJECT_DIR/.githooks" ${CONFIG_ROOT:+"$CONFIG_ROOT/.githooks"} \
+          "$HOME/.claude/seeds/config-repo/.githooks"; do
+    [ -f "$_h/gates-run.sh" ] && { GATES_HOME="$(cd "$_h" && pwd)"; break; }
+done
+
+unset _d _g _h _skill
