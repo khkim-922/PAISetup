@@ -1354,7 +1354,19 @@ if [ "$MODE" = auto ]; then
     fi
     pull_due "$1" || return 0
     : > "$_lg" 2>/dev/null || true
-    ( git -C "$1" pull --ff-only -q >"$_lg" 2>&1 </dev/null & )
+    # ⚠ **`pull` 이 아니라 `fetch` + `merge` 다** (#87). `pull` 은 제 fetch 를 돌린 뒤 `FETCH_HEAD` 를
+    #   읽어 무엇을 병합할지 정하는데, 그 파일은 **저장소당 한 장이라 경쟁의 자리다** — 다른 git 이
+    #   같은 순간에 끼어들면 갈래가 두 줄 적히고 pull 은 그것을 병합 대상 둘로 읽어
+    #   `fatal: Cannot fast-forward to multiple branches.` 로 진다(실측 2026-09-23 집 PC: 성공한 당김
+    #   15:36:20 과 진 당김 15:36:21 이 1초 차). **망 재연결은 원인이 아니다** — 연달아 도는 fetch 는
+    #   앞엣것을 덮어써 한 줄로 남고(실측), 겹치는 순간에만 두 줄이 된다(동시 fetch 5회 모두 재현).
+    #   `merge` 에 **이름 있는 자리**(추적 갈래)를 주면 남이 그 파일에 무엇을 쓰든 무관해진다.
+    # ⚠ **원격 이름을 안 박는다** — 옛 `pull` 이 추적 설정에서 읽던 값이라 그 자리를 그대로 든다.
+    #   못 읽으면 당길 자리가 없다는 뜻이라 조용히 물러난다.
+    # ⚠ **둘을 `&&` 로 한 덩이에 둔다** — 어느 쪽이 져도 로그에 남아야 위 「로그가 비면 성공」이 선다.
+    _rm="$(git -C "$1" config --get branch.main.remote 2>/dev/null)" || true
+    [ -n "$_rm" ] || return 0
+    ( { git -C "$1" fetch -q "$_rm" main && git -C "$1" merge --ff-only -q "$_rm/main"; } >"$_lg" 2>&1 </dev/null & )
   }
   # 저장소가 제 세션 시작 일을 두는 자리 — **있으면 부르고 없으면 조용하다.**
   # ⚠ **몸통은 무엇을 할지 모른다.** 기전만 여기 살고 정책은 저장소가 든다 — 그래서 쓰는
