@@ -108,15 +108,25 @@ if ($targetsFiles.Count -gt 0) {
     $todo += 'deploy.targets.d/ 에 *.conf 없음 — 저장소 배포본·프로젝트 메모리는 배포 안 됨. 그 폴더에 <PC이름>.conf 를 만들어 [repos]·[memory:<이름>] 를 채울 것'
 }
 
-# memory/<project>/ 가 이 PC에서 갈 곳. 해당하는 폴더가 없으면 빈 배열.
-# 프로젝트 폴더의 존재로 판정한다 — memory 하위 폴더는 아직 없을 수 있다(첫 배포).
+# memory/<project>/ 가 이 PC에서 갈 곳. 이 PC 의 자리가 아니면 빈 배열.
+# 선언 파일은 PC 마다 한 장이지만 전부 합쳐 읽으므로, 슬러그 중 **이 PC 의 것**을 가려야 한다 —
+# 프로젝트 폴더가 이미 섰거나, 이 PC 의 그 저장소 경로에서 슬러그가 나오면 이 PC 의 것이다.
+# memory 하위 폴더는 아직 없을 수 있다(첫 배포).
+# ⚠ **폴더의 존재만으로는 부족하다** — 그 폴더는 Claude Code 가 그 저장소를 **주 작업 폴더로 한 번
+#   열어야** 선다. 곁에 붙이기만 하던 저장소(이 저장소가 흔히 그렇다)는 선언이 맞아도 폴더가 없어
+#   메모리가 안 간다. 그래서 **이 PC 에 그 저장소가 실제로 있고, 그 경로에서 지은 슬러그가 선언에
+#   있으면** 폴더가 없어도 이 PC 의 자리다 — 복사가 폴더를 세운다. 슬러그는 제품의 규칙대로 짓는다
+#   (영숫자 밖은 전부 `-`). 다른 PC 의 슬러그는 이 PC 의 경로에서 안 나오므로 거기 폴더를 안 만든다.
 function Get-ProjectMemDst($project) {
     $slugs = $memTargets[$project]
     if (-not $slugs) { return @() }
+    $here = @()
+    if ($project -eq (Split-Path $src -Leaf)) { $here += $src }
+    $here += @($globalRuleTargets | Where-Object { (Split-Path $_ -Leaf) -eq $project -and (Test-Path $_) })
+    $mine = @($here | ForEach-Object { (Resolve-Path $_).Path -replace '[^A-Za-z0-9]', '-' })
     @($slugs |
-        ForEach-Object { Join-Path $dst "projects\$_" } |
-        Where-Object   { Test-Path $_ } |
-        ForEach-Object { Join-Path $_ 'memory' })
+        Where-Object   { (Test-Path (Join-Path $dst "projects\$_")) -or ($mine -contains $_) } |
+        ForEach-Object { Join-Path $dst "projects\$_\memory" })
 }
 
 # PATH의 bash는 WSL일 수 있다(배포판 없으면 실패). git.exe 위치에서 Git Bash를 직접 찾는다.
