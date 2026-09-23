@@ -4,7 +4,7 @@
 # 뿌린 배포본이다 — 배포본을 고치면 다음 배포에 덮인다.
 #
 # 왜 한 자리인가: 재는 쪽이 둘이다 — 커밋 게이트(.githooks/gates.d/)와 세션 진단
-#   (.claude/hooks/session-start.sh). 목록이 갈리면 **게이트는 안 도는데 진단은 돈다고
+#   (.claude/hooks/session-start-body.sh). 목록이 갈리면 **게이트는 안 도는데 진단은 돈다고
 #   말하게 되고**, 그 순간 부재가 통과로 읽힌다. 게이트가 없는 것보다 나쁜 자리다.
 #
 # 부르는 법:  . "$PROJECT_DIR/.githooks/claude-config-path.sh"
