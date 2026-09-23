@@ -995,29 +995,27 @@ home_hook_cmd() {
 # ── 그림 문 — PreToolUse 훅 (claude-config #73) ─────────────────────────────────
 #   모델이 그림을 받기 직전에 치수를 재고 안 고른 자리는 막는다. 몸통은 `image-gate.py`(그 머리말이
 #   왜와 갈래를 든다). 홈 한 자리에만 심는다 — 저장소 설정에도 넣으면 저장소 안에서 두 번 돈다.
-# ⚠ **껍데기가 먼저 거른다.** 매 Read 마다 파이썬을 띄우면 윈도우에서 그 값이 일보다 크다 — stdin 에
-#   그림 낌새(확장자 · screenshot · zoom)가 있을 때만 띄운다. 파이썬이 없으면 조용히 통과한다:
-#   문이 없는 것과 문이 잘못 잠긴 것은 다른 사고고 뒤엣것이 더 비싸다.
-#   ⚠ **껍데기의 확장자 목록과 몸통의 `IMG_EXT` 는 짝이다** — 껍데기는 소문자로 눌러 재므로 한 벌만 든다.
-#     몸통이 확장자를 더하면 여기도 더한다(리뷰 2026-09-22: 대문자 `.Png` 가 껍데기에서 버려져 판정
-#     능력이 있는데도 침묵했다).
-#     ⚠ **껍데기를 든 자리가 둘이다** — 여기와 배포본 설치기(`PAISetup/install.ps1` 의 그림 문 칸).
-#       저쪽은 저장소 없는 동료 자리에 같은 문을 세우므로 **껍데기 글자가 한 벌이어야 한다.**
-#       한쪽만 고치면 같은 문이 자리마다 다르게 판정하고, 그 차이는 조용하다.
-#   ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** — 윈도우의 `python3` 는 스토어 껍데기라 49 로 죽는다
-#     (위 plant_session_state 곁말과 같은 함정). 못 뜨면 껍데기가 「못 쟀다」 한 줄을 직접 낸다 —
-#     문이 죽은 사실이 어디에도 안 남는 것이 침묵보다 비싸다.
+# ⚠ **껍데기 글자와 matcher 는 `image-gate.sh` 한 파일이 든다.** 심는 손은 그 자리만 채운 한 줄을
+#   심고 matcher 는 그 파일 첫 줄에서 읽는다 — 손으로 든 벌이 둘이던 판은 한 글자가 어긋났었다.
+#   심는 손은 여기와 배포본 설치기(`PAISetup/install.ps1` 의 그림 문 칸)다.
+# ⚠ **주인은 저장소 진본이다.** 여기는 늘 제 판으로 갈아타고(`image-gate.` 가 든 항목은 걷는다),
+#   설치기는 저장소 진본을 가리키는 항목이 살아 있으면 비켜선다 — 둘 다 갈아타면 세션과 매일
+#   자동실행이 번갈아 서로를 걷는다.
 #   ⚠ **경로 꼴을 굳힌다** — `home_hook_root` 와 같은 까닭: 안 굳히면 부르는 자가 바뀔 때마다 항목이
-#     하나씩 붙는다. 훅 파일이 없으면 빈 문자열 — 심는 쪽이 그때 안 심는다.
+#     하나씩 붙는다. 몸통이나 껍데기가 없거나 matcher 가 비면 빈 문자열 — 심는 쪽이 그때 안 심는다
+#     (빈 matcher 는 모든 도구에 걸린다).
+#   ⚠ **폴더가 사라져도 도구를 안 막는다** — `.` 은 특수 내장이라 파일이 없으면 dash 는 그 자리에서 2 로
+#     죽고(PreToolUse 에서 2 는 막기다), 그림이 아닌 호출까지 깨진다. 그래서 먼저 재고 물러난다.
+#     꼬리의 `# image-gate.py` 는 옛 판 심는 손이 이 항목을 제 것으로 알아보게 두는 표지다.
+IMAGE_GATE_SHELL=image-gate.sh
 image_gate_matcher() {
-  printf 'Read|mcp__(Claude_Browser|claude-in-chrome)__(computer|browser_batch)|mcp__computer-use__(screenshot|zoom|computer_batch)'
+  sed -n '1s/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$IMAGE_GATE_SHELL" 2>/dev/null
 }
 image_gate_cmd() {
-  _gr="$CONFIG_ROOT"
-  [ -n "$_gr" ] && [ -f "$_gr/.claude/hooks/image-gate.py" ] || { printf ''; return 0; }
+  _gr="$CONFIG_ROOT/.claude/hooks"
+  [ -n "$CONFIG_ROOT" ] && [ -f "$_gr/image-gate.py" ] && [ -f "$_gr/$IMAGE_GATE_SHELL" ] && [ -n "$(image_gate_matcher)" ] || { printf ''; return 0; }
   [ "$OS" = windows ] && _gr="$(cygpath -m "$_gr" 2>/dev/null || printf '%s' "$_gr")"
-  printf 'j=$(cat); l=$(printf %%s "$j" | tr A-Z a-z); case "$l" in *.png*|*.jpg*|*.jpeg*|*.webp*|*.gif*|*screenshot*|*zoom*) py=; for p in python python3; do "$p" -X utf8 -c "" >/dev/null 2>&1 && { py=$p; break; }; done; if [ -n "$py" ]; then printf %%s "$j" | "$py" -X utf8 "%s/.claude/hooks/image-gate.py"; else printf %%s "{\\"hookSpecificOutput\\":{\\"hookEventName\\":\\"PreToolUse\\",\\"additionalContext\\":\\"그림 문 — 파이썬이 안 떠서 치수를 못 쟀다. 스스로 고른다\\"}}"; fi;; esac; exit 0' \
-    "$_gr"
+  printf '_ig="%s"; [ -f "$_ig/%s" ] || exit 0; . "$_ig/%s" # image-gate.py' "$_gr" "$IMAGE_GATE_SHELL" "$IMAGE_GATE_SHELL"
 }
 
 # ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
@@ -1092,7 +1090,8 @@ if not have or dropped:
     else:
         msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
 
-# ①' 그림 문 — PreToolUse. 같은 규율: 우리 꼴(`image-gate.py` 를 든 명령)은 걷고 지금 꼴만 남긴다.
+# ①' 그림 문 — PreToolUse. 같은 규율: 우리 꼴(`image-gate.` 가 든 명령 — 옛 판은 `.py` 를 직접 불렀다)은
+#    걷고 지금 꼴만 남긴다. 설치기가 심은 씨앗 쪽 항목도 여기서 걷힌다 — 저장소 진본이 주인이다.
 #    지금 꼴이 둘 이상이면 첫 것만 — 같은 항목 둘이면 문이 호출마다 두 번 돈다.
 pre = cfg.setdefault("hooks", {}).setdefault("PreToolUse", [])
 have, dropped = False, []
@@ -1104,7 +1103,7 @@ if gate_cmd:
             if c == gate_cmd and e.get("matcher") == gate_matcher and not have:
                 have = True
                 keep.append(h)
-            elif "image-gate.py" in c:
+            elif "image-gate." in c:
                 dropped.append(c)
             else:
                 keep.append(h)
@@ -1114,7 +1113,7 @@ if gate_cmd:
         pre.append({"matcher": gate_matcher, "hooks": [{"type": "command", "command": gate_cmd, "timeout": 10}]})
 else:
     have = True   # 훅 몸통이 없는 자리 — 안 심고 안 걷는다
-    msgs.append("  ! 홈 그림 문(PreToolUse) — 훅 몸통(.claude/hooks/image-gate.py)을 못 찾아 안 심는다")
+    msgs.append("  ! 홈 그림 문(PreToolUse) — 몸통이나 껍데기(.claude/hooks/image-gate.py · .sh)를 못 찾아 안 심는다")
 if not have or dropped:
     if save(settings, cfg):
         if not have:
@@ -2216,6 +2215,24 @@ if [ "$down" -gt 0 ]; then
   echo "  ── 꺼진 검사 $down 개. 위 까닭이 곧 고칠 자리다."
   echo "     리모트는 세션을 다시 열면 다시 깐다. PC 는 deploy.ps1 이나 --install 로 다시 깐다."
   echo "     같은 줄이 또 꺼지면 다시 깔지 말고 위의 「설치 실패」 사유를 본다."
+fi
+# ── 메모리 목차 한도 — 넘으면 세션이 뒷줄을 말없이 버린다 ─────────────────────────
+#    세션은 목차(MEMORY.md)를 앞 200줄 · 25KB 까지만 싣는다. 넘었다는 신호가 없으면 잘린 채 돈다.
+#    **막지 않는다** —
+#    무엇을 남길지는 의미 판단이라 consolidate-memory 스킬이 든다. 여기는 재고 부르기만 한다.
+#    `wc` 는 한 번만 띄운다 — 파일마다 띄우면 세션마다 프로젝트 수만큼 곱해진다. `LC_ALL=C` 는 합계 줄
+#    이름(`total`)이 로케일 따라 옮겨져 파일로 읽히지 않게 한다.
+MEMORY_INDEX_MAX_LINES=200
+MEMORY_INDEX_MAX_BYTES=25600
+set -- "$HOME"/.claude/projects/*/memory/MEMORY.md
+if [ -f "$1" ]; then
+  LC_ALL=C wc -lc "$@" | while read -r _ml _mb _mi; do
+    [ "$_mi" = total ] && continue
+    if [ "$_ml" -gt "$MEMORY_INDEX_MAX_LINES" ] || [ "$_mb" -gt "$MEMORY_INDEX_MAX_BYTES" ]; then
+      echo "  ⚠ 메모리 목차가 한도(${MEMORY_INDEX_MAX_LINES}줄 · 25KB)를 넘었다 — ${_ml}줄 · ${_mb}바이트: $_mi"
+      echo "     뒷줄은 세션에 안 실린다. consolidate-memory 스킬로 정리한다(배포되는 메모리면 진본에서)."
+    fi
+  done
 fi
 printf '  ── 진단을 마쳤다 (%s초)\n' "$((SECONDS - _dt0))"
 

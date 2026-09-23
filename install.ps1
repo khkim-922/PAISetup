@@ -1016,7 +1016,13 @@ function Test-OurProxyEntry([string]$Name, [string]$Value, [hashtable]$FromFile)
 #   보낸 이름만 건드린다. 같은 이름을 제 뜻으로 쓰는 사람의 값을 지우지 않는다.
 # ⚠ **값을 안 본다.** 무엇이 앉아 있든 사외에서는 뜻이 없다 — 저쪽이 값을 묻는 것과 갈리는
 #   자리고, 그래서 이름 울타리가 유일한 방어다. 이름이 늘면 여기 한 줄.
-$InsideOnly = @('ATELIER_SITES')
+# ⚠ **끄기 셋도 사내 전용이다** — 회사망이 막는 곳으로 가는 시도를 안 하려고 끄는 것이라 사외에서는
+#   끌 까닭이 없고, 끄면 잃는다: `DISABLE_TELEMETRY` 는 원격 제어가 기대는 기능 플래그 평가까지 꺼
+#   켤 때마다 「Remote Control initialization failed」로 진다(공식 문서 remote-control 요구 조건 ·
+#   실측 2026-09-22 집 PC 와 사외 VDI: 이 값이 처음 심긴 판부터 켜기가 전부 졌다).
+#   ⚠ 그래서 이 셋은 **사용자가 손수 넣었어도 사외에서는 걷힌다** — 설치 목록이 늘 이 이름을 들어 위
+#   이름 울타리를 넘는다.
+$InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE')
 
 function Test-OurInsideOnlyEntry([string]$Name, [hashtable]$FromFile) {
   if (-not $FromFile) { return $false }
@@ -1991,6 +1997,40 @@ if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' 
 foreach ($c in $CliPicks) {
   if ($c.Via -eq 'winget') { Install-WingetCli $c.Id  $c.Cmd $c.Label }
   else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label }
+}
+
+# ── 4″. 공식 문서 스킬 — **배포본에 싣지 않고 공식 통로로 받는다** ──────────────────────
+# pptx · docx · xlsx · pdf 를 다루는 Anthropic 공식 스킬은 플러그인 `document-skills` 로 온다.
+# ⚠ **왜 싣지 않나.** 그 스킬의 라이선스는 복제 · 파생 · 제3자 배포를 막는다 — 상업 여부와 상관없고,
+#   이 배포본은 공개 저장소라 실으면 누구나 받는 자리에 올라간다. 각자가 공식 마켓플레이스에서 받는다.
+# ⚠ **먼저 묻고 없을 때만 깐다** — 자동실행이 매일 이 걸음을 지나므로(CLI 칸과 같은 까닭) 판정은
+#   `plugin list` 한 번이다. 판정 글자는 그 목록이 찍는 `이름@마켓플레이스` 다.
+# ⚠ **`-y` 를 안 넘긴다** — 그 스위치는 마켓플레이스가 선언한 **명령**을 대신 승인한다. 이 플러그인은
+#   git 에서 받는 꼴이라 필요 없고, 모르는 명령을 대신 승인하는 손을 두지 않는다.
+# ⚠ **지면 실패로 세지 않는다** — CLI 는 서 있고 문서 스킬 없이도 Claude Code 는 돈다(CLI 칸의
+#   「못 올림」과 같은 규율). 사내망이 GitHub 을 막는 자리에서 날 수 있다 — 말은 하고 빨강으로 안 끝낸다.
+$DocSkills = @{ Source = 'anthropics/skills'; Market = 'anthropic-agent-skills'; Plugin = 'document-skills@anthropic-agent-skills' }
+if (($PickKeys -contains 'claude') -and (Test-Runs 'claude' '--version')) {
+  $has = ((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)
+  if ($has) {
+    Write-Host '  공식 문서 스킬 — 있음'
+  } else {
+    Write-Host '  공식 문서 스킬(pptx · docx · xlsx · pdf) 설치중 …'
+    $dl = [IO.Path]::GetTempFileName()
+    $rc = 0
+    if (-not ((Get-Quiet 'claude' @('plugin','marketplace','list')) -join "`n").Contains($DocSkills.Market)) {
+      $rc = Invoke-Logged 'claude' @('plugin','marketplace','add',$DocSkills.Source) $dl
+    }
+    if ($rc -eq 0) { $rc = Invoke-Logged 'claude' @('plugin','install',$DocSkills.Plugin) $dl }
+    if (((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)) {
+      Write-Host '  공식 문서 스킬 — 깔았다' -ForegroundColor Green
+    } else {
+      Write-Host "  ! 공식 문서 스킬 — 못 깔았다 ($rc) · Claude Code 는 그대로 돈다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+      Show-Log $dl
+      Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
+    }
+    Remove-Item $dl -ErrorAction SilentlyContinue
+  }
 }
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
 #   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
@@ -3058,34 +3098,55 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion) {
 #   받은 동료 자리에서 이 문이 **조용히 한 번도 안 섰다.** 부품이 오는 자리에 배선도 온다.
 # ⚠ **`-WithPersonalConfig` 를 안 탄다** — 몸통을 나르는 씨앗 칸에 스위치가 없고, 이 문은
 #   취향이 아니라 값을 아끼는 장치다. 스위치를 달면 「깔았는데 안 서는」 갈래가 또 생긴다.
-# ⚠ **몸통 좌표는 씨앗 안이다.** 설정 저장소를 든 사람 자리에서는 `session-start.sh` 가
-#   **저장소 진본**을 가리켜 다시 심는다 — 우리 꼴만 걷고 다시 쓰는 규율이 양쪽에 같아서,
-#   나중에 저장소가 오면 그 판이 이 항목을 조용히 갈아탄다.
-# ⚠ **껍데기와 matcher 는 저쪽과 한 벌이다.** 확장자 목록도 껍데기가 소문자로 눌러 재는
-#   꼴도 그대로다 — 한쪽만 고치면 대문자 `.PNG` 가 한 자리에서만 걸리는 꼴이 된다.
-# ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** — 윈도우의 `python3` 는 스토어 껍데기라
-#   49 로 죽는다. 못 뜨면 껍데기가 「못 쟀다」 한 줄을 낸다: 문이 죽은 사실이 어디에도
-#   안 남는 것이 침묵보다 비싸다.
-$gateBody = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.py'
-if (-not (Test-Path -LiteralPath $gateBody)) {
-  Write-Host '  ! 그림 문 — 몸통(씨앗의 .claude/hooks/image-gate.py)이 없어 안 심는다' -ForegroundColor Yellow
+# ⚠ **주인은 저장소 진본이다.** 설정 저장소를 든 사람 자리에서는 `session-start.sh` 가
+#   **저장소 진본**을 가리켜 세션마다 다시 심는다. 여기도 매번 갈아타면 매일 자동실행과
+#   세션이 번갈아 서로를 걷는다 — 그래서 **다른 자리를 가리키는 우리 항목이 살아 있으면
+#   비켜선다.** 그 자리의 몸통이 사라졌으면(저장소를 지웠다) 여기서 다시 심는다.
+# ⚠ **껍데기 글자와 matcher 는 씨앗의 `image-gate.sh` 한 벌이다.** 여기는 자리만 채운 한 줄을
+#   심고 matcher 는 그 파일 첫 줄에서 읽는다 — 손으로 한 벌 더 들면 저쪽과 조용히 어긋난다.
+$gateDir   = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
+$gateBody  = Join-Path $gateDir 'image-gate.py'
+$gateShell = Join-Path $gateDir 'image-gate.sh'
+$gateMatcher = $null; $gateCmd = $null; $gateOwner = $null
+if (Test-Path -LiteralPath $gateShell) {
+  $gm = Select-String -LiteralPath $gateShell -Pattern '^# matcher = (\S+)' -Encoding UTF8 | Select-Object -First 1
+  if ($gm) { $gateMatcher = $gm.Matches[0].Groups[1].Value }
+}
+if (-not (Test-Path -LiteralPath $gateBody) -or -not $gateMatcher) {
+  Write-Host '  ! 그림 문 — 몸통이나 껍데기(씨앗의 .claude/hooks/image-gate.py · .sh)가 없어 안 심는다' -ForegroundColor Yellow
 } elseif (-not $cfg) {
   # 홈 설정을 못 읽은 자리(위 5칸이 까닭을 대고 물러난 그 갈래) — 여기서 또 세지 않는다.
   Write-Host '  그림 문 — 홈 설정을 못 읽어 안 심는다'
 } else {
   # ⚠ **경로를 슬래시로 굳힌다.** 명령은 Git Bash 가 읽고 역슬래시는 그 자리에서 탈출
   #   문자다 — `\.claude` 가 조용히 다른 글자가 된다.
-  $gateBodySh = ($gateBody -replace '\\', '/')
-  $gateMatcher = 'Read|mcp__(Claude_Browser|claude-in-chrome)__(computer|browser_batch)|mcp__computer-use__(screenshot|zoom|computer_batch)'
-  $gateFallback = '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"그림 문 — 파이썬이 안 떠서 치수를 못 쟀다. 스스로 고른다\"}}'
-  $gateCmd = 'j=$(cat); l=$(printf %s "$j" | tr A-Z a-z); case "$l" in *.png*|*.jpg*|*.jpeg*|*.webp*|*.gif*|*screenshot*|*zoom*) ' +
-             'py=; for p in python python3; do "$p" -X utf8 -c "" >/dev/null 2>/dev/null && { py=$p; break; }; done; ' +
-             'if [ -n "$py" ]; then printf %s "$j" | "$py" -X utf8 "' + $gateBodySh + '"; ' +
-             'else printf %s "' + $gateFallback + '"; fi;; esac; exit 0'
+  $gateDirSh = ($gateDir -replace '\\', '/')
+  # ⚠ **폴더가 사라져도 도구를 안 막는다** — `.` 은 특수 내장이라 파일이 없으면 dash 는 그 자리에서
+  #   2 로 죽고(PreToolUse 에서 2 는 막기다), 그림이 아닌 호출까지 깨진다. 그래서 먼저 재고 물러난다.
+  #   꼬리의 `# image-gate.py` 는 옛 판 심는 손이 이 항목을 제 것으로 알아보게 두는 표지다 — 없으면
+  #   옛 판이 제 항목을 곁에 하나 더 심는다.
+  $gateCmd = '_ig="' + $gateDirSh + '"; [ -f "$_ig/image-gate.sh" ] || exit 0; . "$_ig/image-gate.sh" # image-gate.py'
 
+  # 비켜설 자리 — 우리 꼴(`_ig="…"`)인데 다른 자리를 가리키고, 그 자리에 몸통과 껍데기가 다 있다.
+  foreach ($entry in @($cfg.hooks.PreToolUse)) {
+    foreach ($h in @($entry.hooks)) {
+      $c = if ($h) { [string]$h.command } else { '' }
+      if ($c -match '_ig="([^"]+)"') {
+        $d = $Matches[1]
+        # 문자열로 잇는다 — `Join-Path` 는 없는 드라이브(`Q:/…`)에서 던지고, 전역 Stop 아래라 설치가 통째로 선다.
+        if ($d -ne $gateDirSh -and (Test-Path -LiteralPath "$d/image-gate.py") -and
+            (Test-Path -LiteralPath "$d/image-gate.sh")) { $gateOwner = $d }
+      }
+    }
+  }
+}
+if ($gateOwner) {
+  Write-Host '  그림 문(PreToolUse) — 설정 저장소 진본이 들고 있어 비켜선다' -ForegroundColor Green
+  Write-Host "     $gateOwner"
+} elseif ($gateCmd) {
   # ⚠ **심기는 더하기만 하지 않는다 — 우리 꼴을 먼저 걷는다.** 명령 글자가 바뀌는 날
   #   옛 항목이 남아 **옛 고리가 같이 돌고**, 그러면 위 가드가 통째로 무효가 된다
-  #   (진본 훅의 같은 규율). 우리 꼴은 `image-gate.py` 를 든 명령이다.
+  #   (진본 훅의 같은 규율). 우리 꼴은 `image-gate.` 가 든 명령이다(옛 판은 `.py` 를 직접 불렀다).
   $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
   if (-not $hooks) {
     $hooks = New-Object PSObject
@@ -3097,7 +3158,7 @@ if (-not (Test-Path -LiteralPath $gateBody)) {
     if (-not $entry) { continue }
     $ours = $false
     foreach ($h in @($entry.hooks)) {
-      if ($h -and [string]$h.command -and ([string]$h.command).Contains('image-gate.py')) { $ours = $true }
+      if ($h -and [string]$h.command -and ([string]$h.command).Contains('image-gate.')) { $ours = $true }
     }
     if ($ours) { $dropped++ } else { $kept += $entry }
   }
@@ -3836,13 +3897,15 @@ if ($WithPersonalConfig -and $pairs) {
 # ⚠ **몸통과 배선을 따로 잰다.** 둘이 한 줄이면 「몸통이 안 실렸다」와 「배선이 못 섰다」가
 #   같은 빨강으로 보이는데, 고칠 자리가 서로 다르다(뽑기 선언 · 이 파일).
 $gateBodyChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.py'
+$gateShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.sh'
 $checks += @{ Name = '그림 문 몸통 (씨앗의 image-gate.py)'; Ok = (Test-Path -LiteralPath $gateBodyChk) }
+$checks += @{ Name = '그림 문 껍데기 (씨앗의 image-gate.sh)'; Ok = (Test-Path -LiteralPath $gateShellChk) }
 $gateWired = $false
 try {
   $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
   foreach ($entry in @($gc.hooks.PreToolUse)) {
     foreach ($h in @($entry.hooks)) {
-      if ($h -and ([string]$h.command).Contains('image-gate.py')) { $gateWired = $true }
+      if ($h -and ([string]$h.command).Contains('image-gate.')) { $gateWired = $true }
     }
   }
 } catch { $gateWired = $false }
