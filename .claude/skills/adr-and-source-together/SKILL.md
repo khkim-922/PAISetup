@@ -42,6 +42,10 @@ description: 결정을 기록할 때 부른다. "ADR 써줘"·"결정 기록 남
 
 ⚠ 원문의 해당 절에 `<!-- OVERRIDE … -->` 표식을 박아 뒀다.
 
+⚠ **Confirmation 에 적는 명령은 게이트 조각이거나, 저장소가 손으로 도는 검사 명부에 오른 줄을 가리킨다.**
+결정 기록 본문에만 사는 절차는 열어야 보이는 자리라 반드시 일회성이 된다(규범 [Layer Triage]) — 재는
+법을 적었다는 것과 그것이 돈다는 것은 다른 명제다.
+
 ## 표준에 없어서 더하는 것 — 사슬
 
 ### 1. 쓰기 전에 사슬을 센다
@@ -93,9 +97,8 @@ description: 결정을 기록할 때 부른다. "ADR 써줘"·"결정 기록 남
 ⚠ **번들한 것은 템플릿 한 장뿐이다.** 파일명 규약·폴더 규약은 MADR 문서 사이트 쪽에 있고 여기 없다 —
 위 머리에 한 줄로 적어 둔 이유다.
 
-손댄 것은 하나 — `### Confirmation` 에 `<!-- OVERRIDE -->` 한 줄. 그 줄만 걸러내면 상류와 대조된다.
+손댄 것은 하나 — `### Confirmation` 에 `<!-- OVERRIDE -->` 한 줄. 그 줄은 대조하는 자가 거른다 — 저장소 뿌리에서:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/adr/madr/main/template/adr-template.md \
-  | diff - <(grep -v '^<!-- OVERRIDE' references/madr-template.md)
+sh scripts/check-upstream.sh https://raw.githubusercontent.com/adr/madr/main/template/adr-template.md .claude/skills/adr-and-source-together/references/madr-template.md
 ```

@@ -84,11 +84,9 @@ arc42 는 1장을 맨 앞 필수로 두지만 **못 흔든다고까지는 안 �
 원본 `arc42/arc42-template` 저장소 `EN/adoc/` · **CC BY-SA 4.0** · 받은 시점 2026-08
 
 손댄 것은 하나뿐이다 — `09_architecture_decisions.adoc` 에 `// OVERRIDE` 한 줄.
-그 줄만 걸러내면 열둘 다 상류와 대조된다.
+그 줄은 대조하는 자가 거른다 — 열둘 다, 저장소 뿌리에서:
 
 ```bash
 B=https://raw.githubusercontent.com/arc42/arc42-template/master/EN/adoc
-for f in references/arc42/*.adoc; do
-  curl -sL "$B/$(basename "$f")" | diff -q - <(grep -v '^// OVERRIDE' "$f") >/dev/null || echo "DIFF $f"
-done
+for f in .claude/skills/architecture-doc/references/arc42/*.adoc; do sh scripts/check-upstream.sh "$B/$(basename "$f")" "$f"; done
 ```

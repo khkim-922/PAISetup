@@ -72,9 +72,7 @@ description: 사람이 읽을 **한 편의 글**을 내밀기 직전에 부른�
 
 ## 한국어로 낼 때 — 뜻이 중간에서 새는 자리
 
-**모델 안의 매체는 영어다.** 한국어로 낼 때가 곧 옮김이 벌어지는 자리이고, 뜻은 거기서 샌다.
-
-**어떻게 짓나는 규범 [Cross-Cultural Recoupling] 이 든다** — 짓는 자가 원문 문법을 안 보는 방화벽,
+**왜 새고 어떻게 짓나는 규범 [Cross-Cultural Recoupling] 이 든다** — 짓는 자가 원문 문법을 안 보는 방화벽,
 그리고 눌러 담는 동작 셋. 엔진 전문은 `agents/aletheia.md`.
 **여기는 다 쓴 뒤 제 글에 대는 자만 든다** — 지었으면 잰다.
 
@@ -115,8 +113,7 @@ Google 엔지니어링 관행 문서의 「Writing good CL descriptions」 **영
 `google/eng-practices` · CC BY 3.0 · 2025-11 보존됨(archived) — **상류가 더는 안 움직인다.**
 
 ```bash
-curl -sL https://raw.githubusercontent.com/google/eng-practices/master/review/developer/cl-descriptions.md \
-  | diff - references/cl-descriptions.md
+sh scripts/check-upstream.sh https://raw.githubusercontent.com/google/eng-practices/master/review/developer/cl-descriptions.md .claude/skills/explain-the-essence/references/cl-descriptions.md
 ```
 
 ⚠ 이 원문은 우리 축의 **절반만 든다** — 기록으로 남는 글은 들지만 설명·요약·리뷰는 안 든다.

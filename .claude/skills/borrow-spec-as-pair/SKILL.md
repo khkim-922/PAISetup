@@ -123,6 +123,5 @@ License · Shipped · Security Critical · CPE 는 배포 패키지의 것이라
 덮어쓰는 자리가 파일 밖이라 박을 곳이 없다.
 
 ```bash
-curl -sL https://raw.githubusercontent.com/chromium/chromium/main/third_party/README.chromium.template \
-  | diff - references/README.chromium.template
+sh scripts/check-upstream.sh https://raw.githubusercontent.com/chromium/chromium/main/third_party/README.chromium.template .claude/skills/borrow-spec-as-pair/references/README.chromium.template
 ```

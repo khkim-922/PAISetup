@@ -9,7 +9,7 @@
 「못 쟀다」(2) 로 나간다 — 초록이 아니다. `--key` 로 줄 수도 있다. 사내 밖에서는 닿음 판정이
 갈래를 먼저 비켜 세운다(2).
 
-⚠ **빌려 온 자다** — atelier `_check/claude_thinking_probe.py`(2026-09-09 판)를 이 씨앗의 배관
+⚠ **유래** — atelier `_check/claude_thinking_probe.py`(2026-09-09 판)를 이 씨앗의 배관
   위에 다시 세웠다. 저쪽은 그 앱의 `config` 에 묶여 있어 떼어 오면 안 돈다. 앞으로는 **여기가
   진본**이고 아뜰리에는 제 앱 사정(도구·베타·중계 잡기)이 더 있어 일부러 갈렸다. 원 실측
   좌표는 아래 곁말과 claude-config `posco/ENV-posco.md` 「Claude 갈래의 생각」이 든다.

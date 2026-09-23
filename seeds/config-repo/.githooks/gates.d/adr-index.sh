@@ -42,13 +42,17 @@ if [ -n "$ADR_GEN" ]; then
     # ⚠ 생성기는 작업 트리를 읽는다. 결정 파일을 반쯤만 스테이징하면 어긋난다.
     staged="$(mktemp)"; fresh="$(mktemp)"
     git show ":$DEC/INDEX.md" 2>/dev/null | tr -d '\r' > "$staged"
-    # ⚠ **생성기의 종료코드를 본다.** 안 보면 생성기가 죽었을 때 `$fresh` 가 비고, 그 빈
-    #   파일과 멀쩡한 색인을 견줘 **「색인이 낡았다」** 를 낸다 — 틀린 진단이다. 더 나쁜 것은
-    #   그 다음 줄이다: 안내가 `sh "$ADR_GEN" … > INDEX.md` 인데, 죽는 생성기로 그것을 돌리면
-    #   **색인이 0바이트가 된다.** 막는 것보다 고치라는 말이 위험한 자리다.
+    # ⚠ **생성기의 종료코드를 본다.** 1 은 머리말 결함(어긋남)이고 그 밖은 못 쟀다(2)다 (#80).
     # ⚠ **파이프로 받지 않는다.** POSIX sh 에는 `pipefail` 이 없어 파이프라인의 종료코드는
     #   마지막 명령(`tr`)의 것이다 — 생성기가 죽어도 0 이 와서 이 가드가 통째로 헛돈다.
-    if ! sh "$ADR_GEN" "$DEC" > "$fresh.raw" 2>"$fresh.err"; then
+    sh "$ADR_GEN" "$DEC" > "$fresh.raw" 2>"$fresh.err"
+    _rc=$?
+    if [ "$_rc" -eq 1 ]; then
+        printf '✖ 결정 기록 머리말에 결함이 있다:\n' >&2
+        cat "$fresh.err" >&2
+        rm -f "$staged" "$fresh" "$fresh.raw" "$fresh.err"
+        exit 1
+    elif [ "$_rc" -ne 0 ]; then
         printf '· 색인 생성기가 졌다 — 색인이 낡았는지 **못 쟀다**: %s\n' "$ADR_GEN" >&2
         sed -n '1,3p' "$fresh.err" >&2
         rm -f "$staged" "$fresh" "$fresh.raw" "$fresh.err"

@@ -53,9 +53,14 @@ HEAD → 둘 다 없으면 **「판 모름」** 차례로 읽는다. 옛 판은 
   아니다 — §1 이 임시 뿌리에 진본·사본 넷을 지어 같음·어긋남·CRLF·자리 틀림이 실제로 갈리는지
   보이고, `.githooks/` 갈래는 **일부러 갈린 조각 사본**이 정말 빨개지는지 보인다.
 
+**도장은 조건부로 잰다** — 곁말의 `(<판> 판)` 이 가리키는 판의 진본 본문을 꺼내 사본 본문과 견준다.
+진본 뿌리가 git 나무일 때만이다(진본 저장소가 붙은 PC · CI 의 `--seeds`) — 몸통이 지금 판과 같아도
+영수증이 옛 판이면 「도장이 옛 판이다」 빨강이고 `--receive` 가 도장을 올린다(영수증은 사본이 낡았을 때
+어디서부터 diff 를 볼지 드는 좌표라, 틀린 채 두면 다음 사람이 엉뚱한 판을 편다). 뿌리가 git 나무가
+아니면(홈 씨앗 · 설치본) 그 항은 **「못 쟀다」로 말한다** — 초록이 아니다.
+
 **안 재는 것** — 곁말 없이 베낀 사본(이름이 같아도 곁말이 없으면 이 자에게는 남이다 — 그것은
-`drift_check` 류 재는 자의 몫) · 곁말이 든 **판 번호**가 진본의 지금 판인가(글자가 같으면 판은
-묻지 않는다) · **진본 뿌리가 그 나무의 최신 판인가**(판을 찍기만 하고 묻지 않는다 — 찍힌 판이
+`drift_check` 류 재는 자의 몫) · **진본 뿌리가 그 나무의 최신 판인가**(판을 찍기만 하고 묻지 않는다 — 찍힌 판이
 그 물음의 재료다) · 곁말 밖에서 **일부러 갈랐다**고 선언한 파일(그 선언이 있으면 곁말도 없어야
 한다 — 둘 다 있으면 어긋남으로 뜬다, 그것이 맞다) · 저장소가 제 손으로 드는 선언(`gates.conf`
 — 제 머리말이 「저장소가 커밋한다(배포본이 아니다)」고 말한다) · 진본에는 있는데 이 나무에
@@ -222,6 +227,23 @@ def _git_tree(root):
         return None
 
 
+def _git_commit(root, msg):
+    """검체 나무에 지금 글자를 한 판 더 — 짧은 해시. 못 세우면 None. 이름·서명은 `_git_tree()` 와 같은 까닭으로 박는다."""
+    import subprocess
+    try:
+        if subprocess.run(["git", "-C", str(root), "add", "-A"], capture_output=True, timeout=30).returncode:
+            return None
+        if subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t",
+                           "-c", "commit.gpgsign=false", "commit", "-q", "-m", msg],
+                          capture_output=True, timeout=30).returncode:
+            return None
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
+        return out.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def compare(copy_text, source_text, start):
     """(같은가, 갈린 줄 수)."""
     mine = body_without_marker(copy_text, start)
@@ -231,6 +253,117 @@ def compare(copy_text, source_text, start):
     diff = [d for d in difflib.unified_diff(theirs.split("\n"), mine.split("\n"), lineterm="", n=0)
             if d[:1] in "+-" and d[:3] not in ("+++", "---")]
     return False, len(diff)
+
+
+# ── 도장 — 곁말의 판이 가리키는 진본과 사본이 맞나 ────────────────────────────
+STAMP_RE = re.compile(r"\(([0-9a-f]{7,40}) 판\)")
+
+
+def stamp_of(text, start):
+    """곁말 블록의 도장 — `(<짧은 해시> 판)`. 없거나 해시 꼴이 아니면(「같은 저장소 · 같은 판」 · 날짜) None."""
+    m = STAMP_RE.search("\n".join(block(text, start)))
+    return m.group(1) if m else None
+
+
+def _git_toplevel(seeds_root):
+    """진본 뿌리를 든 git 나무의 꼭대기 — 없으면 None(홈 씨앗 · 설치본 · git 없는 기계)."""
+    import subprocess
+    try:
+        out = subprocess.run(["git", "-C", str(seeds_root), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    top = out.stdout.strip()
+    return Path(top).resolve() if out.returncode == 0 and top else None
+
+
+def _git_blobs(toplevel, keys):
+    """`<판>:<경로>` 마다 그 판의 본문 — 프로세스 하나(`cat-file --batch`)로 다 꺼낸다. 없는 것은 None.
+
+    ⚠ 판마다 `git show` 를 띄우면 사본 수만큼 프로세스다 — 윈도우에서 그 값이 견줌보다 크다.
+    """
+    import subprocess
+    out = {}
+    if not keys:
+        return out
+    try:
+        p = subprocess.run(["git", "-C", str(toplevel), "cat-file", "--batch"],
+                           input=("\n".join(keys) + "\n").encode("utf-8"), capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return {k: None for k in keys}
+    data, i = p.stdout, 0
+    for k in keys:
+        nl = data.find(b"\n", i)
+        if nl < 0:
+            out[k] = None
+            continue
+        head = data[i:nl].decode("utf-8", "replace").split()
+        i = nl + 1
+        if len(head) == 3 and head[2].isdigit():          # <sha> <type> <size>
+            size = int(head[2])
+            out[k] = data[i:i + size].decode("utf-8", "replace")
+            i += size + 1
+        else:                                             # <object> missing · ambiguous
+            out[k] = None
+    return out
+
+
+def stamp_pass(good, seeds_root):
+    """몸통이 맞은 사본마다 — 곁말의 판에서 꺼낸 진본과도 같은가.
+
+    돌려주는 것 — `measured`(뿌리가 git 나무였나) · `stale` [(이름, rel, 도장, 갈린 줄)] · `ok`(맞음 수) ·
+    `unknown`(판을 나무에서 못 찾은 줄들) · `nostamp`(판을 안 적은 사본 이름들) · `why`(못 잰 까닭).
+    **찍지 않는다** — 받는 손이 이 결과로 도장을 올린 뒤 다시 재므로, 찍는 자는 `stamp_report()` 다.
+    """
+    top = _git_toplevel(seeds_root)
+    res = {"measured": top is not None, "stale": [], "ok": 0, "unknown": [], "nostamp": [],
+           "why": "진본 뿌리가 git 나무가 아니다(홈 씨앗 · 설치본)"}
+    if top is None:
+        return res
+    rows = []
+    for p, start, rel, source in good:
+        text = p.read_text(encoding="utf-8")
+        st = stamp_of(text, start)
+        if st is None:
+            res["nostamp"].append(p.name)
+            continue
+        try:
+            inside = source.resolve().relative_to(top).as_posix()
+        except ValueError:
+            res["unknown"].append(f"{p.name} (진본 {source} 이 나무 {top} 밖이다)")
+            continue
+        rows.append((p, start, rel, st, f"{st}:{inside}", text))
+    blobs = _git_blobs(top, sorted({r[4] for r in rows}))
+    for p, start, rel, st, key, text in rows:
+        body = blobs.get(key)
+        if body is None:
+            res["unknown"].append(f"{p.name} ({st} 판 — 이 나무에 그 판이나 그 판의 파일이 없다)")
+            continue
+        same, n = compare(text, body, start)
+        if same:
+            res["ok"] += 1
+        else:
+            res["stale"].append((p.name, rel, st, n))
+    return res
+
+
+def stamp_report(st):
+    if not st["measured"]:
+        edge(f"**도장은 못 쟀다** — {st['why']}. 곁말의 판이 그 판의 진본과 맞나는 진본 저장소가 붙은 PC 나 "
+             "CI 에서 `--seeds <진본 저장소>/seeds` 로 돌릴 때 잰다")
+        return
+    for name, _rel, old, n in st["stale"]:
+        report(f"{name} — 도장 {old} 판의 진본과 다르다(갈린 줄 {n}) — 몸통은 지금 판을 따라왔는데 영수증만 옛 판이다",
+               False, ["고치는 법: `--receive` 로 도장을 올린다"])
+    if st["ok"] or st["stale"]:
+        report(f"도장이 제 판의 진본과 맞는다 (맞음 {st['ok']} · 옛 도장 {len(st['stale'])})", not st["stale"])
+    for row in st["unknown"]:
+        edge(f"**도장의 판을 이 나무에서 못 찾았다** — {row}. 얕은 클론이거나 판이 잘못 적혔다 — 판정이 아니라 "
+             "**안 잰 자리**다")
+    if st["nostamp"]:
+        edge(f"**판 없는 곁말** — {' · '.join(st['nostamp'])}. 「같은 저장소 · 같은 판」처럼 판을 안 적은 사본은 "
+             "도장 항이 없다 — 몸통 견줌만 든다")
 
 
 # ── 곁말을 못 다는 배포본 — `.githooks/` 는 자리로 맞춘다 ──────────────────────
@@ -398,6 +531,29 @@ def positive_control():
             got = _stamp(tree)
             report("판 파일이 git 나무보다 앞선다 — 홈 사본은 제 나무의 HEAD 가 아니다",
                    got[0] == "abc1234", [repr(got), head])
+            # ── 도장 — 몸통이 지금 판과 같아도 영수증이 옛 판이면 빨강인가 ──
+            gsrc = tree / "seeds" / "check" / "_check"
+            gsrc.mkdir(parents=True)
+            (gsrc / "_part.py").write_text(SOURCE, encoding="utf-8")
+            v1 = _git_commit(tree, "첫 판")
+            new_source = SOURCE.replace("X = 1", "X = 1  # 둘째 판")
+            (gsrc / "_part.py").write_text(new_source, encoding="utf-8")
+            v2 = _git_commit(tree, "둘째 판")
+            if v1 and v2:
+                good = []
+                for st in (v1, v2, "0000000"):
+                    c = tree / f"copy_{st}.py"
+                    c.write_text(_copy(new_source, [one[0].replace("abc1234", st), one[1]]), encoding="utf-8")
+                    good.append((c, marker(c.read_text(encoding="utf-8"))[0],
+                                 "seeds/check/_check/_part.py", gsrc / "_part.py"))
+                got = stamp_pass(good, tree / "seeds")
+                report("옛 판 도장은 빨강 · 지금 판 도장은 맞음 · 없는 판은 안 잰 자리다",
+                       got["measured"] and [r[0] for r in got["stale"]] == [f"copy_{v1}.py"]
+                       and got["ok"] == 1 and len(got["unknown"]) == 1, [repr(got)])
+                got = stamp_pass(good, bare)
+                report("git 나무가 아닌 뿌리에서는 도장을 못 쟀다고 말한다", not got["measured"], [repr(got)])
+            else:
+                edge("**도장 갈래는 못 쟀다** — 임시 나무에 커밋을 못 세웠다")
         else:
             edge("**git 나무 갈래는 못 쟀다** — 이 기계에 git 이 없거나 임시 나무를 못 세웠다. "
                  "그 갈래는 이 저장소 안에서 `--seeds seeds` 로 돌릴 때 실물로 밟힌다")
@@ -458,8 +614,8 @@ def collect(check_dir):
 
 
 def survey(found, seeds_root):
-    """(어긋남들, 같음 수, 진본 없음들, 경로 못 읽음들)."""
-    bad, same, missing, unreadable = [], 0, [], []
+    """(어긋남들, 같음 수, 진본 없음들, 경로 못 읽음들, 맞은 것들 [(파일, 곁말 줄, rel, 진본 경로)])."""
+    bad, same, missing, unreadable, good = [], 0, [], [], []
     for p, start, rel in found:
         if rel is None:
             unreadable.append(p.name)
@@ -472,10 +628,11 @@ def survey(found, seeds_root):
                         source.read_text(encoding="utf-8"), start)
         if ok:
             same += 1
+            good.append((p, start, rel, source))
             print(f"  = 같음   {p.name}  ← {rel}")
         else:
             bad.append((p.name, rel, n))
-    return bad, same, missing, unreadable
+    return bad, same, missing, unreadable, good
 
 
 # ── §3 배포본 전수 — 곁말 없는 `.githooks/` 조각 ──────────────────────────────
@@ -543,8 +700,9 @@ def main(argv):
     print("\n--- §2 실물 전수 — 곁말 든 사본이 진본과 같은가")
     ver, where = _stamp(seeds_root)
     print(f"진본 판 — {ver or '모름'} ({where})")
-    bad, same, missing, unreadable = survey(found, seeds_root)
-    if bad and "--receive" in argv:
+    bad, same, missing, unreadable, good = survey(found, seeds_root)
+    stamps = stamp_pass(good, seeds_root)
+    if (bad or stamps["stale"]) and "--receive" in argv:
         # ⚠ 곁말의 판 자리는 **사람이 읽는 영수증**이라, 판을 모르면 받은 날짜를 적는다 —
         #   판정 줄은 그 날짜를 안 쓴다(거기서 오늘 날짜가 거짓 신호였다 · `_stamp()`).
         stamp = ver or datetime.date.today().isoformat()
@@ -553,9 +711,16 @@ def main(argv):
             at = marker(copy_path.read_text(encoding="utf-8"))
             receive(copy_path, Path(seeds_root) / Path(rel).relative_to("seeds"), at[0], stamp)
             print(f"  ← 받았다 {name}  ← {rel} ({stamp} 판)")
-        edge(f"**받았다** — 어긋난 사본 {len(bad)}장을 진본으로 놓고 곁말 판을 {stamp} 로 올렸다. 아래는 받은 뒤의 판정이다")
+        for name, rel, old, _n in stamps["stale"]:
+            copy_path = check_dir / name
+            at = marker(copy_path.read_text(encoding="utf-8"))
+            receive(copy_path, Path(seeds_root) / Path(rel).relative_to("seeds"), at[0], stamp)
+            print(f"  ← 도장 올림 {name}  ({old} → {stamp} 판)")
+        n_stale = len(stamps["stale"])
+        edge(f"**받았다** — 어긋난 사본 {len(bad)}장을 진본으로 놓고 옛 도장 {n_stale}장을 {stamp} 판으로 올렸다. 아래는 받은 뒤의 판정이다")
         # 받으면 곁말 줄이 밀린다 — 다시 걷어야 그 뒤의 견줌이 제 자리를 본다
-        bad, same, missing, unreadable = survey(collect(check_dir), seeds_root)
+        bad, same, missing, unreadable, good = survey(collect(check_dir), seeds_root)
+        stamps = stamp_pass(good, seeds_root)
 
     # 센티널 — 곁말은 있는데 견준 것이 0 이면 어긋남도 0 이라 **아무것도 안 잰 초록**이 난다.
     # 진본을 한 장도 못 찾은 판(홈에 씨앗이 안 깔린 PC · 뿌리를 잘못 준 판)이 그렇다 — 실측
@@ -568,6 +733,7 @@ def main(argv):
         report(f"{name} — 진본 {rel} 과 어긋남", False, [f"갈린 줄 {n}"])
     report(f"곁말 든 사본이 진본과 같다 (같음 {same} · 어긋남 {len(bad)} · "
            f"진본 판 {ver or '모름'})", not bad)
+    stamp_report(stamps)
 
     for row in missing:
         edge(f"**진본이 없다** — {row}. 곁말이 가리키는 자리에 파일이 없다 — 옮겨졌거나 곁말이 낡았다")
@@ -579,7 +745,6 @@ def main(argv):
 
     edge(f"잰 범위 — `{check_dir.name}/` 의 곁말 든 파일 {same + len(bad)}장. "
          "곁말 없이 베낀 사본은 안 든다 — 그것은 갈림을 세우는 자(`drift_check` 류)의 몫이다")
-    edge("**판 번호는 안 문다** — 글자가 같으면 곁말의 커밋이 옛것이어도 초록이다")
     if ver is None:
         edge(f"**진본의 판을 모른다** — {where}. 이 판정은 「지금 이 뿌리와 같다」까지고 "
              f"**그 뿌리가 낡았나는 안 잰 자리다** — 홈에 씨앗을 미는 자가 그 자리에 "

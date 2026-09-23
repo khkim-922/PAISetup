@@ -12,13 +12,10 @@
 #   1. .githooks/ 를 둔 저장소에 core.hooksPath 설정 (git 훅은 clone 을 안 따라온다)
 #      **맨 앞에 둔다** — 로컬 `git config` 한 줄이라 질 까닭이 없고, 뒤가 무엇으로 죽든
 #      커밋 게이트만은 서 있어야 한다. 까닭은 아래 §실행 순서 (#31)
-#   2. .claude/CLAUDE.global.md -> ~/.claude/CLAUDE.md             전역 룰 (진본은 이 한 자리)
-#      .claude/rules.global/*.md -> ~/.claude/rules/                 영역 룰 (홈 한 자리)
-#      agents/*.md -> ~/.claude/agents/                            서브에이전트
-#      memory/<이름>/*.md -> ~/.claude/projects/<슬러그>/memory/    프로젝트·워크스페이스 메모리
-#      .claude/skills/** -> ~/.claude/skills/**                   스킬 (폴더 통째로)
-#      어느 저장소·어느 슬러그로 가나는 deploy.targets.d/*.conf 가 든다 — 스크립트는 모른다
-#      .claude/hooks/*.sh 와 .claude/settings.json -> <저장소>/  훅 몸통과 그 등록
+#   2. 진본을 홈과 형제 저장소로 민다 — **무엇이 어디로 가나의 표는 README 「배포 대상」이 든다**
+#      (여기 옮겨 적지 않는다 — 세 자리가 같은 표를 다른 낱말로 들다 갈렸다). 목록의 진본은 선언
+#      넷이다: deploy.repofiles.conf(저장소로 가는 파일) · deploy.seeds.conf(홈으로 폴더째) ·
+#      deploy.skills.local.conf(홈에서 빼는 스킬) · deploy.targets.d/*.conf(어느 저장소·어느 슬러그)
 #   3. mcp-servers.json에 적힌 MCP 서버 등록
 #   4. 설치 — 걸음이 둘이다 (#43)
 #      4a. 전역 설치 한 번    claude-config 의 훅을 `--install-global` 로 불러 전역형 도구
@@ -254,26 +251,28 @@ if (Test-Path $skillSrc) {
 #   가리킨다. 그런데 설치본만 받은 사람에게는 저장소가 없어 그 좌표가 아예 없다. 그래서
 #   설치(`install.ps1` 7 칸)가 홈에 깔고, 이 자리가 그 사본을 진본과 맞춘다 —
 #   깔아만 두고 갱신을 안 하면 사본이 조용히 낡는다.
-#   목록은 폴더가 든다. 파일이 늘어도 이 파일은 그대로 둔다.
-# ⚠ **설정 저장소 씨앗(`seeds\config-repo`)은 여기서 안 민다.** 이 저장소가 그 폴더에
-#   들고 있는 것은 **사람이 쓴 선언뿐**이다 — 안내문 · `personal.conf` 견본 · 배포 대상
-#   견본. 씨앗의 **몸통은 이 저장소 뿌리의 진본에서 굽는다**(뿌리의 `deploy.ps1` ·
-#   훅 둘이 그것이고, 굽는 규약은 `dist.manifest.conf` 가 든다) — 그래서
-#   **완본은 배포본에만 한 벌로 선다.** 여기서 밀면 홈에 **몸통 없는 골든**이 서는데, 그
-#   반쪽이 안내문을 달고 있어 **완본처럼 보인다** — 부재보다 나쁘다.
-#   홈에 완본을 까는 자는 설치본(`install.ps1` 의 씨앗 칸)이다.
-foreach ($pair in @(
-        @{ Src = 'posco';             Dst = 'posco' }
-        @{ Src = 'seeds\gateway';     Dst = 'seeds\gateway' }
-        @{ Src = 'seeds\check';       Dst = 'seeds\check' })) {
-    $aSrc = Join-Path $src $pair.Src
+#   목록은 선언이 든다 — deploy.seeds.conf(뿌리는 자 둘 · 재는 자 하나가 같은 줄을 읽는다). 폴더 안의
+#   파일이 늘어도 이 파일은 그대로다. `seeds\config-repo` 를 일부러 안 미는 까닭도 그 선언의 머리말이 든다.
+$seedsConf = Join-Path $src 'deploy.seeds.conf'
+$seedDirs = @()
+if (Test-Path $seedsConf) {
+    $seedDirs = @(Get-Content $seedsConf -Encoding UTF8 |
+        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+        Where-Object   { $_ } |
+        ForEach-Object { $_ -replace '/', '\' })
+}
+if ($seedDirs.Count -eq 0) {
+    $todo += 'deploy.seeds.conf 없음(또는 빔) — 홈으로 폴더째 미는 씨앗·사내 환경 문서가 하나도 안 깔린다'
+}
+foreach ($sd in $seedDirs) {
+    $aSrc = Join-Path $src $sd
     if (-not (Test-Path $aSrc)) { continue }
     # ⚠ **파이썬이 남긴 캐시는 안 민다.** 씨앗의 검사를 돌리면 `__pycache__\` 가 생기는데 git 은
     #   무시해도 이 복사는 모른다 — 실측 2026-09-12: 프로브를 돌린 직후 배포가 `.pyc` 일곱을 홈에
     #   깔았다. 그것은 자산이 아니라 그 PC 의 부산물이다.
     foreach ($f in (Get-ChildItem $aSrc -Recurse -File | Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
         $rel = $f.FullName.Substring($aSrc.Length + 1)
-        $targets += @{ From = $f.FullName; To = Join-Path $dst "$($pair.Dst)\$rel" }
+        $targets += @{ From = $f.FullName; To = Join-Path $dst "$sd\$rel" }
     }
 }
 

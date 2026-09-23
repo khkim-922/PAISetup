@@ -500,11 +500,12 @@ deploy_home_norms() {
     # 홈으로 미는 손은 안 도니 커밋이 쌓이는 만큼 홈만 낡았다. 그리고 홈을 진본으로 믿는
     # 검사(`borrowed_check`)는 낡은 판을 보고 **초록을 냈다** — 부재보다 나쁘다
     # (실측 2026-09-13: 홈 씨앗이 나무와 12 자리 갈려 있었다).
-    # ⚠ **무엇을 어떻게 미나의 진본은 deploy.ps1 의 「사내 환경 문서와 씨앗 둘」 절이다**
-    #   (대상 셋 · `__pycache__` 제외 · `seeds/config-repo` 는 일부러 안 민다 — 몸통 없는
-    #   골든이 완본처럼 서는 까닭을 거기 주석이 든다). 여기는 같은 값을 같은 뜻으로 들 뿐
-    #   이고, 제외를 선언 파일로 뽑지 않는다 — 한 낱말이라 선언이 좌표만 늘린다.
-    #   목록은 폴더가 든다. 파일이 늘어도 이 파일은 그대로 둔다.
+    # ⚠ **어느 폴더를 미나는 선언이 든다 — `$CONFIG_ROOT/deploy.seeds.conf`**(deploy.ps1 과 재는 자
+    #   `check-global-copies.sh` 가 같은 줄을 읽는다 · `seeds/config-repo` 를 일부러 안 미는 까닭도
+    #   그 머리말이 든다). 어떻게 미나(`__pycache__` 제외 · 덮어쓰기만)는 deploy.ps1 의 같은 칸과
+    #   같은 뜻이고, 제외 한 낱말은 선언으로 안 뽑는다 — 선언이 좌표만 늘린다.
+    #   선언이 없으면(옛 판 저장소가 붙은 자리) **후퇴 목록 없이** 안 밀고 한 줄로 말한다 — 목록을
+    #   여기 한 벌 더 두면 그것이 곧 손사본이다.
     # ⚠ **덮어쓰기만 한다 — 홈에만 남은 파일은 안 지운다.** 위 룰·에이전트 칸이 그 뜻이고
     #   deploy.ps1 도 그 뜻이다(원본을 훑어 대상 목록을 짜고, 홈 쪽 고아는 안 본다).
     # ⚠ **`*.md` 한 줄로는 안 되는 까닭은 씨앗이 폴더를 진다**(`seeds/gateway/app` ·
@@ -525,7 +526,14 @@ deploy_home_norms() {
     #   (실측 2026-09-16). 다만 그 뒤가 낱개 문이라 실제로 밀리는 파일은 없다: 느려지는 값이
     #   `find` 하나와 고리뿐이고, 복사 열여덟은 안 돈다. 산문을 읽어 「홈에만 있음」 줄만
     #   걸러내려 들지 않는다: 그 문구는 로케일이 든다.
-    for _sd in seeds/gateway seeds/check posco; do
+    _seeds_conf="$CONFIG_ROOT/deploy.seeds.conf"
+    if [ -f "$_seeds_conf" ]; then
+      _seed_dirs="$(awk '{ sub(/#.*/, ""); sub(/^[[:space:]]*/, ""); sub(/[[:space:]]*$/, ""); if (length) print }' "$_seeds_conf")"
+    else
+      _seed_dirs=""
+      echo "· 홈으로 미는 폴더 목록(deploy.seeds.conf)이 $CONFIG_ROOT 에 없다 — 씨앗·사내 환경 문서는 안 밀었다" >&2
+    fi
+    for _sd in $_seed_dirs; do
       [ -d "$CONFIG_ROOT/$_sd" ] || continue
       diff -rq -x __pycache__ "$CONFIG_ROOT/$_sd" "$HOME/.claude/$_sd" >/dev/null 2>&1 && continue
       find "$CONFIG_ROOT/$_sd" -type f 2>/dev/null | while IFS= read -r _sf; do

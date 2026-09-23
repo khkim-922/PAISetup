@@ -73,10 +73,11 @@ description: 스킬을 만들거나 손볼 때 부른다. "스킬 만들자"·"�
 
 ## 6. 낡음을 잴 방법을 남긴다
 
-표식을 박으면 원문과 바이트가 어긋난다. **표식 줄만 걸러내면 다시 맞는다** — 그 명령을 참조 절에 적어 둔다.
+표식을 박으면 원문과 바이트가 어긋난다. **대조하는 자(`scripts/check-upstream.sh`)가 표식 줄만 걸러 다시 맞추고,
+망이 안 닿으면 「다르다」가 아니라 「못 쟀다」로 나간다** — 참조 절에는 그 한 줄만 적어 둔다(저장소 뿌리에서 돈다):
 
 ```bash
-curl -sL <원본 URL> | diff - <(grep -v '^<!-- OVERRIDE' references/<파일>)
+sh scripts/check-upstream.sh <원본 URL> .claude/skills/<스킬>/references/<파일>
 ```
 
 상류 URL 이 없으면 대조가 불가능하다. **그 사실도 적는다** — 못 재는 것을 잰다고 두지 않는다.
@@ -130,6 +131,6 @@ curl -sL <원본 URL> | diff - <(grep -v '^<!-- OVERRIDE' references/<파일>)
 
 ```bash
 B=https://raw.githubusercontent.com/anthropics/claude-plugins-official/main/plugins
-curl -sL $B/plugin-dev/skills/skill-development/SKILL.md | diff - references/skill-development.md
-curl -sL $B/skill-creator/skills/skill-creator/SKILL.md  | diff - references/skill-creator.md
+sh scripts/check-upstream.sh $B/plugin-dev/skills/skill-development/SKILL.md .claude/skills/skill-from-standard/references/skill-development.md
+sh scripts/check-upstream.sh $B/skill-creator/skills/skill-creator/SKILL.md  .claude/skills/skill-from-standard/references/skill-creator.md
 ```

@@ -18,10 +18,11 @@ printf '본문·근거는 각 파일이 들고, 이 표는 **무엇이 있고 �
 printf '| # | 무엇을 정했나 | 상태 | 날짜 |\n|---|---|---|---|\n'
 
 found=0
+has_err=0
 for f in "$DIR"/[0-9]*.md; do
     [ -e "$f" ] || continue
     found=1
-    awk -v file="$(basename "$f")" '
+    if ! awk -v file="$(basename "$f")" '
         /^---[[:space:]]*$/ { fm++; if (fm == 2) exit; next }
         fm != 1 { next }
         /^number:/         { sub(/^number:[[:space:]]*/, "");         num = $0 }
@@ -31,10 +32,17 @@ for f in "$DIR"/[0-9]*.md; do
         /^superseded_by:/  { sub(/^superseded_by:[[:space:]]*/, "");  sup = $0 }
         END {
             if (num == "") exit                      # 머리가 없으면 결정 파일이 아니다
+            if (st == "Superseded" && sup == "") {
+                printf "✖ %s: status: Superseded 인데 superseded_by 가 없다\n", file > "/dev/stderr"
+                exit 1
+            }
             if (sup != "") st = st " → " sup
             printf "| [%s](%s) | %s | %s | %s |\n", num, file, ttl, st, dt
         }
-    ' "$f"
+    ' "$f"; then
+        has_err=1
+    fi
 done
 
 [ "$found" = 1 ] || printf '| — | _아직 없다_ | | |\n'
+[ "$has_err" -eq 0 ] || exit 1

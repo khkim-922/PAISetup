@@ -86,9 +86,8 @@ description: README를 쓰거나 고칠 때 부른다. "리드미 써줘"·"READ
 
 원본 `RichardLitt/standard-readme` 저장소 `spec.md` · MIT · 받은 시점 2026-08
 
-손댄 것은 하나뿐이다 — 덮어쓰는 두 절에 `<!-- OVERRIDE -->` 한 줄씩. 그 줄만 걸러내면 상류와 대조된다.
+손댄 것은 하나뿐이다 — 덮어쓰는 두 절에 `<!-- OVERRIDE -->` 한 줄씩. 그 줄은 대조하는 자가 거른다 — 저장소 뿌리에서:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/RichardLitt/standard-readme/main/spec.md \
-  | diff - <(grep -v '^<!-- OVERRIDE' references/standard-readme-spec.md)
+sh scripts/check-upstream.sh https://raw.githubusercontent.com/RichardLitt/standard-readme/main/spec.md .claude/skills/readme-standard/references/standard-readme-spec.md
 ```
