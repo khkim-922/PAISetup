@@ -53,9 +53,14 @@ IFS=$oldifs
 #   싣지만 뿌리 배선은 받는 사람 몫이라, 그 사이에 `markdown` 을 켜면 우리 글이 낳는 오탐
 #   (표 폭 · 줄 길이)에 첫 커밋부터 막힌다 — 실측 2026-09-11: 씨앗 자신의 README 가 20건.
 #   커밋 형식 조각(`commit-format.sh`)이 같은 자리에 같은 물러남을 이미 든다.
+# ⚠ **전역 판정도 저장소 것이 먼저고, 없으면 이 조각이 선 자리의 `.claude/` 를 본다.** 저장소가
+#   설정 저장소의 원본 게이트를 바로 가리키면 저장소에는 전역 배포본이 없을 수 있다. 사본에서
+#   돌면 두 자리가 같은 파일이다.
 CFG=""
 if ! ls .markdownlint-cli2.jsonc .markdownlint-cli2.yaml .markdownlint-cli2.cjs .markdownlint-cli2.mjs       .markdownlint.jsonc .markdownlint.json .markdownlint.yaml .markdownlint.yml       .markdownlint.cjs .markdownlint.mjs >/dev/null 2>&1; then
-    [ -f .claude/markdownlint.global.jsonc ] && CFG=".claude/markdownlint.global.jsonc"
+    for _c in .claude/markdownlint.global.jsonc "$(dirname "$0")/../../.claude/markdownlint.global.jsonc"; do
+        [ -f "$_c" ] && { CFG="$_c"; break; }
+    done
 fi
 
 if [ -n "$CFG" ]; then out="$(markdownlint-cli2 --config "$CFG" --no-globs "$@" 2>&1)"; rc=$?

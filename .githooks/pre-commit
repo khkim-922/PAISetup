@@ -15,11 +15,16 @@
 #   손으로 걸려면:  git config core.hooksPath .githooks
 set -u
 
+# 러너는 **이 파일 곁에서** 찾는다 — 저장소 뿌리가 아니다. 사본에서 돌면 두 자리가 같고,
+# 저장소가 `core.hooksPath` 로 설정 저장소의 원본을 바로 가리킬 때는 곁만이 러너가 있는 자리다.
+# ⚠ 뿌리로 옮겨 가기 **전에** 절대경로로 굳힌다 — `$0` 은 부른 쪽이 준 글자 그대로라 상대일 수 있다.
+GATES_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+
 PROJECT_DIR=$(git rev-parse --show-toplevel) || exit 0
 cd "$PROJECT_DIR" || exit 0
 
 CONF="$PROJECT_DIR/.githooks/gates.conf"
-RUNNER="$PROJECT_DIR/.githooks/gates-run.sh"
+RUNNER="$GATES_DIR/gates-run.sh"
 
 if [ ! -f "$RUNNER" ]; then
     # 선언도 없으면 게이트를 아직 안 켠 저장소다 — 정당하므로 조용히 지나간다.

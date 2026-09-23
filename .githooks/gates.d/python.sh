@@ -36,10 +36,14 @@ IFS=$oldifs
 # 규칙 파일 — **저장소 것이 먼저다.** 저장소가 뿌리에 제 설정을 두면 그것이 진본이고, 전역
 #   배포본은 안 둔 저장소를 위한 자리다. 도구는 뿌리 설정을 제 손으로 찾으므로 저장소 것이
 #   있으면 아무것도 안 넘긴다. `pyproject.toml` 은 `[tool.ruff` 절이 있을 때만 설정이다.
+#   전역 배포본도 저장소 것이 먼저고, 없으면 이 조각이 선 자리의 `.claude/` 를 본다 — 까닭은
+#   마크다운 조각(`markdown.sh`)의 같은 자리가 든다.
 CFG=""
 if [ ! -f ruff.toml ] && [ ! -f .ruff.toml ] &&
    ! { [ -f pyproject.toml ] && grep -q '^\[tool\.ruff' pyproject.toml; }; then
-    [ -f .claude/ruff.global.toml ] && CFG=".claude/ruff.global.toml"
+    for _c in .claude/ruff.global.toml "$(dirname "$0")/../../.claude/ruff.global.toml"; do
+        [ -f "$_c" ] && { CFG="$_c"; break; }
+    done
 fi
 
 # ⚠ **도구가 「못 쟀다」로 지는 것과 코드가 어긋난 것은 다른 명제다.** 실측 2026-09-12 · ruff 0.16.7:

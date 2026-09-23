@@ -10,7 +10,8 @@
 # 필요할 때뿐이다 (도구 선언 tools.conf 와 같은 결 · claude-config 0004).
 #
 # ── 조각 계약 ───────────────────────────────────────────────────────────────
-#   자리      .githooks/gates.d/<이름>.sh — 선언의 이름이 곧 파일 이름이다
+#   자리      .githooks/gates.d/<이름>.sh — 선언의 이름이 곧 파일 이름이다.
+#              저장소 것이 먼저고, 없으면 러너 곁(GATES_DIR/gates.d/)을 본다
 #   들어가는 것  작업 디렉터리가 저장소 뿌리. PROJECT_DIR 이 서 있다.
 #              commit-msg 절의 조각은 메시지 파일 경로를 $1 로 받는다
 #   나오는 것    0 통과 · 1 어긋남 · **2 못 쟀다**(도구가 없어 이 검사를 못 돌렸다)
@@ -67,6 +68,11 @@ run_gates() {
     #   조각은 `set -u` 아래서 그 자리에 죽는다. 계약을 지키는 자리는 러너 한 곳이다.
     export PROJECT_DIR
 
+    # 러너 곁 — 몸통이 제 자리에서 굳혀 넘긴다(GATES_DIR). 사본에서 돌면 저장소 `.githooks` 와
+    #   같은 자리고, 저장소가 설정 저장소의 원본을 바로 가리킬 때는 원본 곁이다.
+    # ⚠ 안 넘어오면 저장소 자리로 물러난다 — 이 값을 모르는 옛 몸통이 새 러너를 부르는 자리다.
+    _home="${GATES_DIR:-$PROJECT_DIR/.githooks}"
+
     _fail=0; _cant=''; _ran=0
 
     # ⚠ **목록을 인용 없는 확장으로 펴지 않는다.** `for _g in $(…)` 는 낱말 분리와 파일 이름
@@ -75,7 +81,9 @@ run_gates() {
     _list="$(gate_list "$_stage" "$_conf")"
     while IFS= read -r _g; do
         [ -n "$_g" ] || continue
+        # 저장소 조각이 먼저다 — 저장소가 제 판을 든 자리는 그 판이 돈다.
         _f="$PROJECT_DIR/.githooks/gates.d/$_g.sh"
+        [ -f "$_f" ] || _f="$_home/gates.d/$_g.sh"
         if [ ! -f "$_f" ]; then
             printf '✖ 선언에 [%s] 가 있는데 조각이 없다: .githooks/gates.d/%s.sh\n' "$_g" "$_g" >&2
             printf '  배포가 안 닿았다 — 설정 저장소에서 deploy.ps1 을 돌리고 이 저장소에서 커밋한다.\n' >&2

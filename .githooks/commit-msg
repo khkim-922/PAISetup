@@ -14,6 +14,9 @@
 # 알면서 통과시켜야 할 때는:  git commit --no-verify
 set -u
 
+# 러너는 **이 파일 곁에서** 찾는다 — 까닭은 `pre-commit` 머리의 같은 줄이 든다.
+GATES_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+
 PROJECT_DIR=$(git rev-parse --show-toplevel) || exit 0
 cd "$PROJECT_DIR" || exit 0
 
@@ -21,7 +24,7 @@ MSGFILE="${1:-}"
 [ -n "$MSGFILE" ] && [ -f "$MSGFILE" ] || exit 0
 
 CONF="$PROJECT_DIR/.githooks/gates.conf"
-RUNNER="$PROJECT_DIR/.githooks/gates-run.sh"
+RUNNER="$GATES_DIR/gates-run.sh"
 
 if [ ! -f "$RUNNER" ]; then
     # 선언도 없으면 게이트를 아직 안 켠 저장소다 — 정당하므로 조용히 지나간다.

@@ -178,8 +178,14 @@ hooks_wired() {  # 0 이면 이 저장소의 .githooks 로 배선돼 있다. 걸
     .githooks|./.githooks) return 0 ;;
     "") return 1 ;;
     *) _hw_here="$(cd "$PROJECT_DIR" 2>/dev/null && cd "$HOOKS_PATH" 2>/dev/null && pwd -P)"
+       [ -n "$_hw_here" ] || return 1
        _hw_want="$(cd "$PROJECT_DIR/.githooks" && pwd -P)"
-       [ -n "$_hw_here" ] && [ "$_hw_here" = "$_hw_want" ] ;;
+       [ "$_hw_here" = "$_hw_want" ] && return 0
+       # 설정 저장소의 원본 `.githooks` 를 바로 가리켜도 배선된 것이다 — 원본 게이트는 제 자리를
+       #   기준으로 서서, 저장소의 선언과 조각을 먼저 쓰고 없는 것만 제 곁에서 찾는다.
+       # ⚠ 설정 저장소가 어디냐는 앞머리의 CONFIG_ROOT 한 자리가 든다 — 지문을 여기 또 적지 않는다.
+       [ -n "$CONFIG_ROOT" ] &&
+         [ "$_hw_here" = "$(cd "$CONFIG_ROOT/.githooks" 2>/dev/null && pwd -P)" ] ;;
   esac
 }
 # ⚠ venv 는 **폴더가 서 있나가 아니라 pip 이 닿나**로 잰다. `python -m venv` 는 트리를 만들고
