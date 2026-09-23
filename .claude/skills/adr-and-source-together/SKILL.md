@@ -1,24 +1,31 @@
 ---
 name: adr-and-source-together
-description: 결정을 기록할 때 부른다. "ADR 써줘"·"결정 기록 남기자"·"이렇게 가기로 하자"·"이 결정 뒤집자"·"왜 이렇게 했는지 남겨두자". 대화에서 판정이 서면 파일을 안 만들어도 부른다.
+description: 결정을 기록하거나 찾아 읽을 때 부른다. "ADR 써줘"·"결정 기록 남기자"·"이렇게 가기로 하자"·"이 결정 뒤집자"·"왜 이렇게 했는지 남겨두자" · "왜 이렇게 했지"·"그 결정 뭐였지"·"이거 정한 적 있나". 대화에서 무언가를 이렇게 하기로 정했으면 파일을 안 만들어도 부른다.
 ---
 
-# 결정 기록과 진본을 함께 옮긴다
+# 결정 기록과 원본을 함께 옮긴다
 
 **문서 골격 — MADR, 이 순서대로**:
 
-> 머리말 — `status`(`proposed | rejected | accepted | deprecated | superseded by ADR-NNNN`) · `date`
-> `# 제목(문제와 해법이 보이게)` → Context and Problem Statement(두세 문장, 물음 꼴 권장) →
-> Decision Drivers → Considered Options → Decision Outcome(*Chosen option: …, because …*) →
-> Consequences(Good/Bad 목록) → Confirmation → Pros and Cons of the Options → More Information
+| 절 | 채우는 것 |
+|---|---|
+| 머리말 | `number` · `title` · `status`(`Proposed \| Rejected \| Accepted \| Deprecated \| Superseded`) · `superseded_by: NNNN`(Superseded 일 때만) · `date`(마지막으로 고친 날) |
+| `# 제목` | 푼 문제와 찾은 해법이 함께 보이는 짧은 제목 |
+| Context and Problem Statement | 두세 문장이나 짧은 이야기. 물음 꼴이 좋다. **결정이 걸리는 범위**(어느 구성 요소 · 어느 경계)를 밝힌다 |
+| Decision Drivers | 결정을 민 힘 — 바라는 품질 · 걸린 우려 · 제약 |
+| Considered Options | 견준 선택지의 이름 |
+| Decision Outcome | *Chosen option: "…", because …* — 까닭은 결정 동인에 이어서 댄다(하나만 필수 조건을 넘는다 · 어느 힘을 푼다 · 견줘서 가장 낫다) |
+| Consequences | *Good, because …* · *Bad, because …* |
+| Confirmation | 지켜졌는지 무엇으로 확인하나 — 자동 검사나 리뷰(아래 덮어쓰기) |
+| Pros and Cons of the Options | 선택지마다 *Good · Neutral · Bad, because …* 논거 |
+| More Information | 근거 보강 · 언제 다시 볼지 · 다른 결정과 자료의 좌표 |
 
 이 파일의 나머지는 셋을 든다 — **어느 선택 요소를 쓰나** · 표준을 **덮어쓰는 자리** · 표준이 **아예 안 드는 것**.
 
 ⚠ **셋째가 이 스킬의 전부다.** MADR 은 결정 문서 *한 장*을 든다. 그 결정이 **틀리게 만든 자리**는 안 든다 —
-결정 문서만 움직이면 다음 세션은 진본을 읽고 옛 상태로 일한다.
+결정 문서만 움직이면 다음 세션은 원본을 읽고 옛 상태로 일한다.
 
-- **파일명·폴더** — `NNNN-title-with-dashes.md`, `decisions/` 아래.
-  (MADR 규약이지만 번들한 것은 템플릿뿐이라 이 한 줄은 여기 둔다)
+- **파일명·폴더** — `NNNN-title-with-dashes.md`, `decisions/` 아래(MADR 규약).
 - **근거 원칙** — 전역 **[ADR One-File]** · **[Root Cause Fix]** · **[Single Source · Point or Derive]**
 
 ## MADR 선택 요소 — 무엇을 쓰나
@@ -34,19 +41,18 @@ description: 결정을 기록할 때 부른다. "ADR 써줘"·"결정 기록 남
 | Pros and Cons of the Options | 필요하면 | Drivers·Consequences 와 겹친다. 선택지가 셋 이상일 때만 |
 | More Information | 쓴다 — **좌표를 여기 단다** | 아래 *더하는 것* 4 |
 
-## 표준을 덮어쓰는 자리 하나
+## 표준을 덮어쓰는 자리
 
 | MADR | 우리 | 왜 |
 |---|---|---|
 | **Confirmation 은 선택** (*"많은 ADR에 들어 있다"* 고만 한다) | **필수** | **지켜졌는지 재는 법이 안 써지면 그 결정은 아직 안 선 것이다.** 재는 법 없는 판정은 다음에 그냥 안 지켜진다 |
-
-⚠ 원문의 해당 절에 `<!-- OVERRIDE … -->` 표식을 박아 뒀다.
+| 뒤집힘은 `status` 글자에 적는다(`superseded by ADR-NNNN`) | `status: Superseded` 한 낱말 + `superseded_by: NNNN` | 색인 생성기(`scripts/adr-index.sh`)가 그 칸을 읽어 화살표를 긋고, 칸이 비면 막는다. 글자에 섞어 적으면 칸이 비어도 안 걸린다 — 생성기는 그 꼴도 거절한다 |
 
 ⚠ **Confirmation 에 적는 명령은 게이트 조각이거나, 저장소가 손으로 도는 검사 명부에 오른 줄을 가리킨다.**
 결정 기록 본문에만 사는 절차는 열어야 보이는 자리라 반드시 일회성이 된다(규범 [Layer Triage]) — 재는
 법을 적었다는 것과 그것이 돈다는 것은 다른 명제다.
 
-## 표준에 없어서 더하는 것 — 사슬
+## 표준에 없어서 더하는 것 — 사슬(결정 하나가 함께 고치게 만드는 자리들)
 
 ### 1. 쓰기 전에 사슬을 센다
 
@@ -55,7 +61,7 @@ description: 결정을 기록할 때 부른다. "ADR 써줘"·"결정 기록 남
 | 자리 | 무엇이 틀려지나 | 어떻게 찾나 |
 |---|---|---|
 | 결정 색인 | 새 결정이 목록에 없다 | 생성물이면 다시 돌린다(아래 2) |
-| Reference 진본 | 설계도·규약이 옛 상태를 말한다 | 그 결정의 주제어로 진본을 훑는다 |
+| Reference 원본 | 설계도·규약이 옛 상태를 말한다 | 그 결정의 주제어로 원본을 훑는다 |
 | 그 결정을 인용하던 곳 | 뒤집힌 결정을 근거로 든 문장이 남는다 | 옛 결정 번호·핵심 낱말로 저장소를 훑는다 |
 | 딸린 산출물 | 결정이 만든 파일·예시가 낡는다 | 결정이 *"무엇을 만들라"*고 했으면 그 산출물 |
 
@@ -66,7 +72,7 @@ description: 결정을 기록할 때 부른다. "ADR 써줘"·"결정 기록 남
 커밋을 나누지 않는다. 나누면 하나가 남고, 남은 하나가 다음 세션을 잘못 출발시킨다.
 결정이 여럿이면 **하나 쓰고 하나 반영한다.**
 
-색인은 손으로 고치지 말고 **다시 생성한다** — 결정 파일들이 진본이고 색인은 파생물이다.
+색인은 손으로 고치지 말고 **다시 생성한다** — 결정 파일들이 원본이고 색인은 파생물이다.
 아직 생성물이 아니면 이번에 그렇게 만든다.
 
 ### 3. 닫기 전 확인한다
@@ -75,30 +81,26 @@ description: 결정을 기록할 때 부른다. "ADR 써줘"·"결정 기록 남
 
 ### 4. 좌표를 달고, 그때의 수치는 박는다
 
-- **좌표** — 이 판정이 **진본 어디에 섰나**. 사실은 진본에 두고 결정 기록은 가리키기만 한다
+- **좌표** — 이 판정이 **원본 어디에 섰나**. 사실은 원본에 두고 결정 기록은 가리키기만 한다
 - **수치** — 그때의 개수·상태는 박아 둔다(굳는 문서 — 규범 **[Docs-as-Code · State Only]** 의 예외)
+
+## 찾아 읽는 길 — 「왜 이렇게 했지」
+
+결정을 새로 쓰는 것이 아니라 **이미 선 결정을 물을 때**다. 기억으로 답하지 않고 파일로 답한다.
+
+1. **색인부터 연다** — 결정 폴더의 `INDEX.md`(생성물)에서 주제어로 후보를 고른다
+2. **맞는 결정의 본문을 연다** — Context 와 Decision Outcome 이 답의 몸이다
+3. **`superseded_by` 를 끝까지 따라간다** — 처음 걸린 것이 죽은 결정일 수 있다. 살아 있는 결정에서 답하고,
+   뒤집혔다는 사실과 무엇이 남았나(뒤 결정이 「산다」고 적은 것)를 같이 말한다
+4. **없으면 없다고 말한다** — 판정이 대화에서 서 있으면 지금 기록하자고 묻는다(위 사슬로 간다)
 
 ## 갈리는 자리
 
 | 갈리는 자리 | 어느 쪽 |
 |---|---|
-| 목록은 갱신했는데 설계도를 안 열었다 | 목록은 눈에 띄고 설계도는 길다. **설계도가 진본이다** |
-| 진본만 고치고 결정 기록을 안 썼다 | 반대 방향의 같은 실패다 — *무엇*은 남고 *왜*가 사라진다 |
+| 목록은 갱신했는데 설계도를 안 열었다 | 목록은 눈에 띄고 설계도는 길다. **설계도가 원본이다** |
+| 원본만 고치고 결정 기록을 안 썼다 | 반대 방향의 같은 실패다 — *무엇*은 남고 *왜*가 사라진다 |
 
 ---
 
-## 참조 — 표준 원문
-
-`references/madr-template.md` 는 MADR 템플릿 **영어 원문 그대로**다.
-골격은 위 머리에 인라인했다 — 원문의 실값은 **각 절을 무엇으로 채우나의 서술 지침**이다.
-
-원본 `adr/madr` 저장소 `template/adr-template.md` · 받은 시점 2026-08
-
-⚠ **번들한 것은 템플릿 한 장뿐이다.** 파일명 규약·폴더 규약은 MADR 문서 사이트 쪽에 있고 여기 없다 —
-위 머리에 한 줄로 적어 둔 이유다.
-
-손댄 것은 하나 — `### Confirmation` 에 `<!-- OVERRIDE -->` 한 줄. 그 줄은 대조하는 자가 거른다 — 저장소 뿌리에서:
-
-```bash
-sh scripts/check-upstream.sh https://raw.githubusercontent.com/adr/madr/main/template/adr-template.md .claude/skills/adr-and-source-together/references/madr-template.md
-```
+> 출처 — `adr/madr` · `template/adr-template.md` · MIT 또는 CC0 · 받은 판 2026-08

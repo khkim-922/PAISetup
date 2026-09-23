@@ -27,11 +27,15 @@ for f in "$DIR"/[0-9]*.md; do
         fm != 1 { next }
         /^number:/         { sub(/^number:[[:space:]]*/, "");         num = $0 }
         /^title:/          { sub(/^title:[[:space:]]*/, "");          ttl = $0 }
-        /^status:/         { sub(/^status:[[:space:]]*/, "");         st  = $0 }
+        /^status:/         { sub(/^status:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); st = $0 }
         /^date:/           { sub(/^date:[[:space:]]*/, "");           dt  = $0 }
         /^superseded_by:/  { sub(/^superseded_by:[[:space:]]*/, "");  sup = $0 }
         END {
             if (num == "") exit                      # 머리가 없으면 결정 파일이 아니다
+            if (st ~ /^Superseded./) {
+                printf "✖ %s: status 는 Superseded 한 낱말이다 — 대체한 번호는 superseded_by 칸이 든다\n", file > "/dev/stderr"
+                exit 1
+            }
             if (st == "Superseded" && sup == "") {
                 printf "✖ %s: status: Superseded 인데 superseded_by 가 없다\n", file > "/dev/stderr"
                 exit 1

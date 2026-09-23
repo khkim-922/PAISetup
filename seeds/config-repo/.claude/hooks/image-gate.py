@@ -21,13 +21,13 @@
    드는데 그건 모델이 부르는 자리다(#72).
 ⚠ **1280 은 답이 아니다** — UI 글자는 그보다 커야 읽힌다. 곁말은 수를 대고 고르게 한다. 세부는 zoom.
 
-부르는 자리 — 홈 `~/.claude/settings.json` 의 PreToolUse. **심는 손이 둘이고 규율이 같다** —
-`session-start.sh --install`(이 저장소를 든 자리 · 홈 SessionStart 훅과 같은 자리)과 배포본
-설치기(`PAISetup/install.ps1` 의 씨앗 칸 직후 · 저장소 없는 동료 자리). 둘 다 **우리 꼴만 걷고
-다시 심으므로** 나중에 저장소가 붙으면 그 판이 설치기가 심은 항목을 조용히 갈아탄다. 가리키는
-몸통은 갈린다 — 이쪽은 저장소 진본, 저쪽은 홈 씨앗 사본. 셸 껍데기가 stdin 에 그림 낌새
-(확장자·screenshot·zoom)가 있을 때만 파이썬을 띄운다 — 매 Read 마다 프로세스를 띄우지 않기 위해서다.
-⚠ **껍데기 글자는 두 심는 손이 한 벌로 든다** — 한쪽만 고치면 같은 문이 자리마다 다르게 판정한다.
+부르는 자리 — 홈 `~/.claude/settings.json` 의 PreToolUse. 앞에 셸 껍데기(`image-gate.sh` · 곁 파일)가
+서서 stdin 에 그림 낌새(확장자·screenshot·zoom)가 있을 때만 이 몸통을 띄운다 — 매 Read 마다 프로세스를
+띄우지 않기 위해서다. 껍데기 글자와 matcher 는 그 파일 한 벌이고, 심는 손은 자리만 채운 한 줄을 심는다.
+**심는 손이 둘이다** — `session-start-body.sh`(이 저장소를 든 자리 · 홈 SessionStart 훅과 같은 자리)와 배포본
+설치기(`PAISetup/install.ps1` 의 씨앗 칸 직후 · 저장소 없는 동료 자리). 가리키는 몸통은 갈린다 — 이쪽은
+저장소 진본, 저쪽은 홈 씨앗 사본. **주인은 저장소 진본이다** — 세션 훅은 늘 제 판으로 갈아타고, 설치기는
+저장소 진본을 가리키는 항목이 살아 있으면 비켜선다.
 
 시험 — `python -X utf8 scripts/image-gate-check.py` (양성·음성 표본을 먹여 판정을 문다).
 **껍데기 층은 홈에 심긴 실물을 읽어 재므로 누가 심었든 그것을 잰다.**
@@ -221,7 +221,7 @@ def main():
                     '%s · UI 글자가 작으면 더 크게 · 값을 적으면(1 이어도) 통과한다'
                     % (' · '.join(m for m, _ in missing), scale_hints({k for _, k in missing}, v)))
 
-    # Read — 확장자 목록은 껍데기(session-start.sh `image_gate_cmd`)와 짝이다
+    # Read — 확장자 목록은 껍데기(`image-gate.sh` 의 case 글롭)와 짝이다
     path = str(inp.get('file_path') or '')
     if not path.lower().endswith(IMG_EXT):
         return 0

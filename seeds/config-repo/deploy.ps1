@@ -65,7 +65,6 @@ $prunable = @()  # 제거 후보 (-Prune 없이는 세기만 한다)
 #   안 돌리고(`--needs-install` 은 파일만 본다 · #47 ②) 저장소 설치 걸음이 `--install` 끝에 그
 #   자리에서 낸다.
 $gateReport = @()  # 저장소마다 마지막 CI 한 줄 — 초록·빨강·못 쟀다
-$needsProbe = $null  # 계획 단계가 「깔 게 있나」를 묻는 진본 훅의 임시 사본 — 첫 저장소에서 한 번 만든다
 
 # 배포 대상은 코드가 아니라 선언이 든다 — deploy.targets.d/*.conf.
 # 사람·PC·프로젝트 구성마다 다른 값이라 스크립트에 박지 않는다. 새 PC·새 저장소·
@@ -191,6 +190,10 @@ foreach ($bootFile in $repoFiles) {
         $targets += @{ From = $bootSrc; To = Join-Path $repoRoot $bootFile; Repo = $repoRoot }
     }
 }
+
+# ADR 색인 생성기는 저장소로 안 나른다(결정 0064) — 찾는 자(`claude-config-path.sh`)가 홈 스킬 ·
+# 붙은 claude-config 의 스킬로 찾는다. 사본은 「claude-config 없이 연 리모트에서도 색인 검사가 서야
+# 한다」가 까닭이었는데, 리모트는 늘 claude-config 를 붙인다(0061). 남은 옛 사본은 사본 대조가 문다.
 
 # 영역 룰: rules.global/*.md -> ~/.claude/rules/ 한 자리
 # **전역 룰은 홈에만 깐다** (docs/decisions/0014). 제품은 같은 이름을 두 층에서 읽는다 —
@@ -535,17 +538,13 @@ foreach ($repoRoot in $globalRuleTargets) {
     #   (까닭은 `Sync-RepoOnce` 머리에 있다). 사유는 훅이 stdout 한 줄로 낸다.
     # ⚠ **묻는 훅은 그 저장소의 사본이 아니라 진본이다.** 사본은 이 배포가 덮으러 가는 옛 판일 수
     #   있고, 옛 판은 `--needs-install` 을 몰라 auto 갈래로 빠져 저장소당 50초를 돌고 엉뚱한
-    #   마지막 줄을 사유로 낸다(실측 2026-09-16 · 첫 실전: 다섯 저장소 235초). 훅은 제 파일 자리로
-    #   저장소를 잡으므로(`*/.claude/hooks/*`) 진본을 `.claude\hooks` 밖 임시 자리에 복사해 두고
-    #   `CLAUDE_PROJECT_DIR` 로 저장소를 넘긴다 — 그 갈래가 훅 `:59-61` 이다. 사본과 진본이 같은
-    #   답을 내는 것은 다섯 저장소에서 쟀다.
-    if (-not $needsProbe) {
-        $needsProbe = Join-Path $env:TEMP 'needs-install.sh'   # 이름을 고정한다 — 판마다 새 파일을 남기지 않는다
-        Copy-Item -LiteralPath (Join-Path $src '.claude\hooks\session-start.sh') -Destination $needsProbe -Force
-    }
-    $env:CLAUDE_PROJECT_DIR = $repoRoot
+    #   마지막 줄을 사유로 낸다(실측 2026-09-16 · 첫 실전: 다섯 저장소 235초). 그래서 이 저장소의
+    #   몸통(`session-start-body.sh`)을 바로 부르고 대상 저장소는 `SESSION_START_REPO` 로 넘긴다 —
+    #   문지기가 몸통을 부를 때 쓰는 것과 같은 입구다(0061).
+    $needsProbe = Join-Path $src '.claude\hooks\session-start-body.sh'
+    $env:SESSION_START_REPO = $repoRoot -replace '\\', '/'
     try { $needs = & $bash ($needsProbe -replace '\\', '/') --needs-install; $needsRc = $LASTEXITCODE }
-    finally { Remove-Item Env:CLAUDE_PROJECT_DIR -ErrorAction SilentlyContinue }
+    finally { Remove-Item Env:SESSION_START_REPO -ErrorAction SilentlyContinue }
     $needsWhy = @($needs | Where-Object { "$_".Trim() }) | Select-Object -Last 1
     if (-not $needsWhy) { $needsWhy = '훅이 사유를 안 냈다' }
     # ⚠ **재는 자는 그 저장소에 지금 있는 선언으로 잰다 — 복사는 아직 안 됐다.** 도구 선언
@@ -1104,6 +1103,16 @@ foreach ($step in $plan) {
             Save-Backup $step.Path
             Remove-Item $step.Path -Force
             Write-Host "- 제거  $($step.Path)"
+            # ⚠ **파일만 걷으면 빈 폴더가 남는다** — 걷힌 스킬이 `skills/<이름>/scripts/` 같은 껍데기로
+            #   남아 홈 목록을 흐린다. 비었을 때만 위로 올라가며 걷고, 홈 바로 아래 자리(`skills` ·
+            #   `agents` · `projects` …)는 비어도 둔다 — 그 자리는 배포가 아니라 앱이 세운다.
+            $parent = Split-Path $step.Path -Parent
+            while ($parent -and ((Split-Path $parent -Parent) -ne $dst) -and ($parent -ne $dst) -and
+                   (Test-Path $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force | Select-Object -First 1)) {
+                Remove-Item -LiteralPath $parent -Force
+                Write-Host "- 제거  $parent  (빈 폴더)"
+                $parent = Split-Path $parent -Parent
+            }
         }
     }
 }

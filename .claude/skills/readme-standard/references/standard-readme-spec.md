@@ -209,7 +209,6 @@ progressively greater amount of knowledge."
 - State public contact hyper-links if applicable.
 
 ### Contributing
-<!-- OVERRIDE 명세는 필수로 두지만 우리는 뺀다 — 혼자 개발이라 받을 기여가 없다. 사람이 늘면 가장 먼저 되살릴 자리. SKILL.md 의 "표준을 덮어쓰는 자리" 참조 -->
 **Status**: Required.
 
 **Requirements:**
@@ -225,7 +224,6 @@ progressively greater amount of knowledge."
 - A subsection for listing contributors is also welcome here.
 
 ### License
-<!-- OVERRIDE 명세는 필수·마지막 절로 두지만 우리는 공개 저장소에만 켠다 — 비공개 개인 저장소. 공개하면 가장 먼저 되살릴 자리. SKILL.md 의 "표준을 덮어쓰는 자리" 참조 -->
 **Status:** Required.
 
 **Requirements:**

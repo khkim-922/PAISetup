@@ -6,7 +6,7 @@
 
 **LLM API**: Anthropic API 직접 호출 불가 → 사내 게이트웨이 P-GPT 사용
 
-> **명세는 여기 안 적는다** — 사내 문서 두 장이 진본이다:
+> **명세는 여기 안 적는다** — 사내 문서 두 장이 원본이다:
 > [`Claude-Posco.setting.md`](Claude-Posco.setting.md) (Messages API · Claude Code 연동) ·
 > [`OpenAI.-Posco.Setting.md`](OpenAI.-Posco.Setting.md) (chat/completions · responses).
 > 주소·헤더·파라미터·오류 코드·모델 목록은 전부 그쪽이 든다. **베껴 적으면 어긋난다.**
@@ -217,7 +217,7 @@ atelier `_check/claude_thinking_probe.py` · `capture_proxy.py`.** 같은 물음
 - GitHub **HTTPS만 가능** (`github.com`, `api.github.com`, `raw.githubusercontent.com` 전부 200). 프록시 없음, 직결.
 - GitHub **SSH는 차단** (22번, 443번 대체 포트 모두 타임아웃) → 리모트는 반드시 `https://...` 형식
 - Git 인증 세팅 완료: `credential.helper=manager` (GCM + OAuth 방식, PAT 불필요, 첫 push 때 브라우저 로그인)
-- Git 신원·기본 브랜치·`core.autocrlf` 는 **세션 훅이 심는다** — 진본은
+- Git 신원·기본 브랜치·`core.autocrlf` 는 **세션 훅이 심는다** — 원본은
   `claude-config/.claude/hooks/session-start.sh` 의 개인 칸(`deploy_personal`)이다. 여기 옮겨 적으면 어긋난다
 - Supabase 접근 가능
 - Google Drive, Gmail 발신은 사내망에서 불가

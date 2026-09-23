@@ -64,9 +64,13 @@ CL=""
 # 규칙 파일 — **저장소 것이 먼저다.** 저장소가 제 규칙을 두면 그것이 진본이고, 전역
 # 배포본은 안 둔 저장소를 위한 자리다. commitlint 는 뿌리 설정을 제 손으로 찾으므로
 # 저장소 것이 있으면 아무것도 안 넘긴다.
+# 전역 배포본도 저장소 것이 먼저고, 없으면 이 조각이 선 자리의 `.claude/` 를 본다 — 까닭은
+# 마크다운 조각(`markdown.sh`)의 같은 자리가 든다.
 CFG=""
 if [ ! -f commitlint.config.mjs ] && [ ! -f commitlint.config.js ] && [ ! -f .commitlintrc.mjs ]; then
-    [ -f .claude/commitlint.global.mjs ] && CFG=".claude/commitlint.global.mjs"
+    for _c in .claude/commitlint.global.mjs "$(dirname "$0")/../../.claude/commitlint.global.mjs"; do
+        [ -f "$_c" ] && { CFG="$_c"; break; }
+    done
 fi
 
 if [ -n "$CL" ]; then

@@ -2,7 +2,6 @@ ifndef::imagesdir[:imagesdir: ../images]
 
 [[section-design-decisions]]
 == Architecture Decisions
-// OVERRIDE arc42 는 여기 본문에 쓸지 블록 안에 쓸지를 열어 두지만, 우리는 닫는다 — 이 절은 좌표만 들고 본문은 결정 기록 폴더가 든다. SKILL.md 의 "표준을 덮어쓰는 자리" 참조
 
 
 ifdef::arc42help[]

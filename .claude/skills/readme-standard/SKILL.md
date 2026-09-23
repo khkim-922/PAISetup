@@ -13,6 +13,20 @@ description: README를 쓰거나 고칠 때 부른다. "리드미 써줘"·"READ
 >
 > Install·Usage 는 명세가 **문서 저장소**에 한해 선택으로 풀어 둔다.
 
+**명세가 문서 전체에 거는 요구**:
+
+- 파일 이름은 `README` 대문자 + 형식 확장자(`.md`). 여러 언어면 README.de.md 꼴(de 는 언어 태그) — 그때 `README.md` 는 영어 자리다
+- 절은 위 순서를 지키고 위 제목을 쓴다(한국어 README 면 제목도 옮긴다). 선택 절은 빼도 된다
+- 깨진 링크가 없어야 하고, 코드 예시는 저장소의 다른 코드와 같은 린트를 받는다
+
+**필수 절에 걸린 요구**:
+
+- **Title** — 저장소 · 폴더 · 패키지 이름과 맞춘다. 다르면 곁에 괄호로 적고 Long Description 에서 까닭을 댄다
+- **Short Description** — 제목 없이 한 줄, 120자 미만, `> ` 로 시작하지 않는다. GitHub 저장소 설명과 같게 둔다
+- **Table of Contents** — 적어도 `##` 제목은 다 잡는다
+- **Install** — 까는 법을 코드 블록으로. 손으로 깔 의존성이 있으면 `Dependencies` 아래 절
+- **Usage** — 흔한 사용을 코드 블록으로. 명령줄 도구면 `CLI` 아래 절
+
 이 파일의 나머지는 셋을 든다 — **어느 선택 절을 켜나** · 표준을 **덮어쓰는 자리** · 표준에 **없어서 더하는 것**.
 
 - **근거 원칙** — 규범 **[Single Source · Point or Derive]** · **[Diátaxis Axis]**
@@ -50,7 +64,6 @@ description: README를 쓰거나 고칠 때 부른다. "리드미 써줘"·"READ
 
 ⚠ 이 둘은 **선택 절을 안 쓴 게 아니라 명세가 필수로 둔 것을 뺀 것이다.**
 저장소가 공개되거나 사람이 늘면 **가장 먼저 되살릴 자리**이므로, 뺄 때는 *"지금 없다"*이지 *"영영 없다"*가 아니다(위 0의 셋째 줄).
-원문의 해당 절에 `<!-- OVERRIDE … -->` 표식을 박아 뒀다.
 
 ## 표준에 없어서 더하는 것 셋
 
@@ -58,7 +71,7 @@ description: README를 쓰거나 고칠 때 부른다. "리드미 써줘"·"READ
 
 명세는 *무엇을 담나*를 들지만 **무엇이 먼저 썩나**는 안 든다 — 룰 doc-discipline(개수·경로·
 폴더 트리)과 규범 [Layer Triage](절차는 스킬) 그대로. README 가 대신 드는 것은 **무엇의
-진본이 어디인가**와 진행 상태의 좌표(작업큐 · `roadmap-doc`)다.
+원본이 어디인가**와 진행 상태의 좌표(이슈 목록)다.
 
 ### 2. 돌려보지 않은 명령을 넣지 않는다
 
@@ -79,15 +92,4 @@ description: README를 쓰거나 고칠 때 부른다. "리드미 써줘"·"READ
 
 ---
 
-## 참조 — 표준 원문
-
-`references/standard-readme-spec.md` 는 standard-readme 명세 **영어 원문 그대로**다.
-전역 요구(파일명·다국어·절 순서·제목·깨진 링크·코드 린트)와 절 열여섯의 상태·요구·제안을 든다.
-
-원본 `RichardLitt/standard-readme` 저장소 `spec.md` · MIT · 받은 시점 2026-08
-
-손댄 것은 하나뿐이다 — 덮어쓰는 두 절에 `<!-- OVERRIDE -->` 한 줄씩. 그 줄은 대조하는 자가 거른다 — 저장소 뿌리에서:
-
-```bash
-sh scripts/check-upstream.sh https://raw.githubusercontent.com/RichardLitt/standard-readme/main/spec.md .claude/skills/readme-standard/references/standard-readme-spec.md
-```
+> 출처 — `RichardLitt/standard-readme` · `spec.md` · MIT · 받은 판 2026-08

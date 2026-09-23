@@ -39,7 +39,6 @@ Chosen option: "{title of option 1}", because {justification. e.g., only option,
 * … <!-- numbers of consequences can vary -->
 
 <!-- This is an optional element. Feel free to remove. -->
-<!-- OVERRIDE 우리는 이 절을 필수로 쓴다 — 지켜졌는지 재는 법이 안 써지면 그 결정은 아직 안 선 것이다. SKILL.md 의 "표준을 덮어쓰는 자리" 참조 -->
 ### Confirmation
 
 {Describe how the implementation / compliance of the ADR can/will be confirmed. Is there any automated or manual fitness function? If so, list it and explain how it is applied. Is the chosen design and its implementation in line with the decision? E.g., a design/code review or a test with a library such as ArchUnit can help validate this. Note that although we classify this element as optional, it is included in many ADRs.}
