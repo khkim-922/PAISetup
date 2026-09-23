@@ -171,8 +171,11 @@ fi
 #    **형제 저장소를 연 세션(auto)은 안 맡는다** — 그 저장소 일만 하고, 맡는 자리가 오래 안 돌았거나
 #    홈 파일이 설정 저장소와 다르면 알리기만 한다(`pc_wide_notice`).
 # ⚠ 명시한 `--install` 은 어느 저장소에서 불려도 맡는다 — 위 넷 가운데 셋이 그 입구로 들어온다.
+# ⚠ **claude-config 가 이 PC 에 없으면 형제 세션도 맡는다.** 동료 PC(설치기만 쓰고 설정 저장소가 없는 자리)
+#   에는 위 넷 가운데 서는 자리가 없다 — 설치기는 설정 저장소가 없으면 이 몸통을 안 부르고, 설정 저장소
+#   세션도 없다. 그 PC 에서 형제 세션까지 빠지면 전역 도구(게이트가 쓰는 lint 들)를 아무도 안 깐다.
 PC_WIDE=""
-if [ "$MODE" != auto ] || { [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; }; then
+if [ "$MODE" != auto ] || [ -z "$CONFIG_ROOT" ] || [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
   PC_WIDE=1
 fi
 # PC 전체 일이 마지막으로 돈 때 — 파일의 시각이 곧 값이다. 쓰는 자는 PC 전체 일을 한 자리 둘
@@ -525,7 +528,7 @@ _push_file() {   # _push_file <원본> <홈 사본>
 deploy_home_norms() {
   if [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/.claude/CLAUDE.global.md" ]; then
     _src="$CONFIG_ROOT/.claude"
-    [ -d "$HOME/.claude" ] || mkdir -p "$HOME/.claude"
+    [ "$HOME_SYNC" = check ] || [ -d "$HOME/.claude" ] || mkdir -p "$HOME/.claude"
     _push_file "$_src/CLAUDE.global.md" "$HOME/.claude/CLAUDE.md"
     if [ -d "$_src/rules.global" ]; then
       for _hf in "$_src/rules.global/"*.md; do
@@ -628,8 +631,8 @@ EOF
 # ⚠ **막지 않는다 — 한 줄씩 말만 한다.** 말은 stdout 이다(이 파일 머리의 「말은 stdout 으로」).
 #   문구는 쉬운 말로 쓴다 — 읽는 사람이 이 훅의 낱말(「PC 전체 일」 · 「판」)을 모른다.
 # ⚠ 날수 기준은 도구 낡음과 같은 값이다 — 둘 다 「이만큼 안 맞추면 낡았다」를 재는 자다.
-# ⚠ 설정 저장소가 안 붙은 자리(동료 PC · 단독 리모트)는 ② 를 못 잰다 — 견줄 원본이 없다.
-#   그 자리의 부재는 진단의 「전역 규율」이 말한다.
+# ⚠ 설정 저장소가 안 붙은 자리(동료 PC · 단독 리모트)는 이 함수에 안 온다 — 그 자리는 형제 세션이 PC 전체
+#   일을 맡는다(위 PC_WIDE). 견줄 원본도 없다.
 pc_wide_notice() {
   if [ ! -f "$PC_WIDE_STAMP" ]; then
     echo "$PROJECT_NAME: ⚠ 이 PC 의 공통 설정(홈에 까는 규범 · 룰 · 개인 설정 · 전역 도구)을 맞춘 기록이 아직 없다 — 보통은 로그인할 때 자동으로 맞춰진다. 지금 맞추려면 claude-config 를 한 번 열거나 deploy.ps1 을 돌린다"
@@ -1563,7 +1566,16 @@ if [ "$MODE" = install ]; then
     echo "$PROJECT_NAME: deploy.ps1 에 넘긴다 — 저장소·메모리·MCP 를 밀고 각 저장소 훅을 --install 로 부른다"
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$CONFIG_ROOT/deploy.ps1")" -Yes
     _drc=$?
-    [ "$_drc" -eq 0 ] || echo "$PROJECT_NAME: ⚠ deploy.ps1 이 exit $_drc 로 끝났다 — 위 진단의 ❌ 줄이 곧 고칠 자리"
+    # ⚠ **홈 훅 · 신뢰를 여기서 심고 PC 전체 일의 표식을 남긴다** (0062). deploy.ps1 은 할 일이 없는 평소
+    #   상태면 저장소 훅을 안 부르므로(`--needs-install` 이 0), 이 입구 — 로그인 자동 실행이 매번 지나는
+    #   자리 — 가 안 남기면 표식이 안 서고 형제 세션이 멀쩡한 PC 를 「자동 실행이 안 돈다」고 말한다.
+    #   표식은 deploy 가 성공했을 때만 — 진 판에 찍으면 「맞췄다」가 거짓이 된다.
+    plant_session_state
+    if [ "$_drc" -eq 0 ]; then
+      : > "$PC_WIDE_STAMP" 2>/dev/null || true
+    else
+      echo "$PROJECT_NAME: ⚠ deploy.ps1 이 exit $_drc 로 끝났다 — 위 진단의 ❌ 줄이 곧 고칠 자리"
+    fi
     exit "$_drc"
   fi
 
@@ -2158,8 +2170,8 @@ if [ -d "$PROJECT_DIR/.githooks" ]; then
     # ⚠ **러너 · 조각은 몸통과 같은 자리에서 찾는다** — 찾는 자(`claude-config-path.sh`)가 정한 GATES_HOME
     #   (그 저장소 안 → 붙은 claude-config → 홈 씨앗 · 0064). 형제 저장소는 사본을 안 든다 — 저장소
     #   안만 보면 멀쩡한 형제가 「조각이 없다」로 찍힌다. 찾는 자가 옛 판이면 저장소 안으로 물러난다.
+    #   저장소 안의 러너로 물러나지 않는다 — 형제에 남은 옛 사본을 잡으면 진단이 몸통과 다른 러너를 본다.
     _gc="$PROJECT_DIR/.githooks/gates.conf"
-    [ -n "$GATES_HOME" ] || { [ -f "$PROJECT_DIR/.githooks/gates-run.sh" ] && GATES_HOME="$PROJECT_DIR/.githooks"; }
     _gr="${GATES_HOME:+$GATES_HOME/gates-run.sh}"
     if [ ! -f "$_gc" ]; then
       gate "커밋 게이트" off "선언이 없다(.githooks/gates.conf) — 훅은 걸렸는데 **아무것도 안 잰다**"

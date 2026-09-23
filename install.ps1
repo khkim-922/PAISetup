@@ -2981,6 +2981,42 @@ Write-Elapsed '[5/8] 홈 설정'
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
 # ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다.
 #   `-WithPersonalConfig` 를 줄 때만, 그리고 이 폴더에 실제로 있을 때만 깐다.
+# ── 묶음에서 빠진 스킬을 홈에서 걷는다 ─────────────────────────────────────────
+# ⚠ **왜 있나.** 위 복사는 `Copy-Item -Recurse -Force` 라 **묶음에 없는 스킬을 안 지운다** — 배포본에서
+#   스킬을 걷어도 한 번 깐 사람 홈에는 옛 사본이 영영 남아 계속 로드된다(씨앗 칸의 거울과 같은 병이다).
+# ⚠ **홈 스킬 폴더를 거울로 맞추지 않는다.** 그 폴더에는 받는 사람이 손수 만든 스킬 · 다른 도구가 깐
+#   스킬이 섞여 산다 — 묶음에 없는 것을 다 걷으면 남의 것을 지운다. 그래서 **이 설치기가 깐 이름만**
+#   센다: 깐 이름을 기록(`~/.claude/.paisetup-skills`)에 적어 두고, 다음 설치 때 **기록에 있었는데 이번
+#   묶음에 없는 것**만 걷는다.
+# ⚠ **지우지 않고 옮긴다** — `~/.claude/backups/install-skills-<시각>/`. 같은 이름을 사람이 손수 만들어
+#   두었을 수도 있어서, 되돌릴 자리를 남긴다.
+# ⚠ **기록이 없는 기계는 과도기 목록을 쓴다** — 기록은 1.25.0 부터 적힌다. 그 전 판이 깔았다가 배포본에서
+#   빠진 이름은 배포본 이력에서 한 번 셌다(`git log --diff-filter=D -- .claude/skills` · 2026-09-24:
+#   pptx · roadmap-doc). 모든 기계가 이 판 이상을 한 번 돌고 나면 이 목록은 할 일이 없다 — 걷는 날은 사람이 정한다.
+function Remove-RetiredSkills {
+  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot)
+  if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
+  $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
+  $before = if (Test-Path -LiteralPath $Ledger) {
+    @([IO.File]::ReadAllLines($Ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  } else {
+    @('pptx', 'roadmap-doc')   # 과도기 — 위 곁말
+  }
+  $gone = @($before | Where-Object { $shipped -notcontains $_ } |
+            Where-Object { Test-Path -LiteralPath (Join-Path $SkillHome $_) -PathType Container })
+  if ($gone.Count -gt 0) {
+    $bk = Join-Path $BackupRoot ("install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    New-Item -ItemType Directory -Path $bk -Force | Out-Null
+    foreach ($n in $gone) {
+      Move-Item -LiteralPath (Join-Path $SkillHome $n) -Destination (Join-Path $bk $n) -Force
+      Write-Host "  스킬 $n — 묶음에서 빠져 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
+    }
+  }
+  # 이번에 깐 이름을 적는다 — 다음 설치가 이것과 견준다. BOM 없는 UTF-8(이름이 한글이어도 읽힌다).
+  New-Item -ItemType Directory -Path (Split-Path -Parent $Ledger) -Force | Out-Null
+  [IO.File]::WriteAllLines($Ledger, [string[]]$shipped, (New-Object Text.UTF8Encoding($false)))
+}
+
 Write-Host ''
 Write-Host '[6/8] 개인 규범·룰·스킬' -ForegroundColor Cyan
 if (-not $WithPersonalConfig) {
@@ -3002,6 +3038,8 @@ if (-not $WithPersonalConfig) {
     }
     Write-Host "  $($p.Name) — 깔았다" -ForegroundColor Green
   }
+  Remove-RetiredSkills -Bundle (Join-Path $Here '.claude\skills') -SkillHome (Join-Path $homeDir 'skills') `
+                       -Ledger (Join-Path $homeDir '.paisetup-skills') -BackupRoot (Join-Path $homeDir 'backups')
 }
 
 Write-Elapsed '[6/8] 개인 규범·룰·스킬'
@@ -3064,7 +3102,7 @@ foreach ($a in $envAssets) {
 #   (`seeds/check/_check/borrowed_check.py`). 홈 뿌리는 git 나무가 아니라 판을 물을 데가
 #   없어, 그 자는 **오늘 날짜**를 내고 낡은 홈과 견준 초록이 최신처럼 읽힌다.
 # ⚠ **여기가 적는 것은 릴리스 판이다** — 설정 저장소를 든 사람 자리에서는 같은 파일에
-#   `session-start.sh`·`deploy.ps1` 이 커밋 해심을 적는다. 자가 둘이라 값도 둘이지만
+#   세션 훅 몸통(`session-start-body.sh`)·`deploy.ps1` 이 커밋 해심을 적는다. 자가 둘이라 값도 둘이지만
 #   **묻는 물음이 같다**: 「이 홈 사본이 어디서 왔나」. 이쪽 답은 판 번호다.
 # ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이 아니다 —
 #   autorun 이 매일 도는 자리라, 매번 덮으면 그 날짜가 늘 오늘이라 낡음을 말하지 않는다.
@@ -3092,14 +3130,14 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion) {
 # 모델이 그림을 받기 **직전**에 치수를 재고 안 고른 자리는 막는다. 왜와 갈래는 몸통
 # (`image-gate.py`)의 머리말이 든다.
 #
-# ⚠ **왜 설치기가 이걸 드나.** 심는 손이 여태 설정 저장소의 `session-start.sh` **하나**였고,
+# ⚠ **왜 설치기가 이걸 드나.** 심는 손이 여태 설정 저장소의 세션 훅(`session-start-body.sh`) **하나**였고,
 #   그 저장소는 `#config-repo` 를 적은 사람에게만 온다 — 그런데 **몸통과 눈금은 씨앗으로
 #   누구에게나 간다.** 부품이 다 가는데 배선만 선택 칸에 묶여 있었고, 그래서 규범·룰·스킬을
 #   받은 동료 자리에서 이 문이 **조용히 한 번도 안 섰다.** 부품이 오는 자리에 배선도 온다.
 # ⚠ **`-WithPersonalConfig` 를 안 탄다** — 몸통을 나르는 씨앗 칸에 스위치가 없고, 이 문은
 #   취향이 아니라 값을 아끼는 장치다. 스위치를 달면 「깔았는데 안 서는」 갈래가 또 생긴다.
-# ⚠ **주인은 저장소 진본이다.** 설정 저장소를 든 사람 자리에서는 `session-start.sh` 가
-#   **저장소 진본**을 가리켜 세션마다 다시 심는다. 여기도 매번 갈아타면 매일 자동실행과
+# ⚠ **주인은 저장소 진본이다.** 설정 저장소를 든 사람 자리에서는 세션 훅 몸통이
+#   **저장소 진본**을 가리켜 다시 심는다(설정 저장소를 연 세션 · 로그인 자동 실행의 `--install`). 여기도 매번 갈아타면 매일 자동실행과
 #   세션이 번갈아 서로를 걷는다 — 그래서 **다른 자리를 가리키는 우리 항목이 살아 있으면
 #   비켜선다.** 그 자리의 몸통이 사라졌으면(저장소를 지웠다) 여기서 다시 심는다.
 # ⚠ **껍데기 글자와 matcher 는 씨앗의 `image-gate.sh` 한 벌이다.** 여기는 자리만 채운 한 줄을

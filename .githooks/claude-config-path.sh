@@ -40,8 +40,9 @@ done
 # 그 게이트는 구조적으로 늘 꺼져 있게 된다 — 붙이는 것은 셸이 못 하는 일이라
 # (`add_repo` 는 도구 호출이다) 훅을 몇 번 다시 돌려도 안 고쳐진다.
 # 뒤의 둘은 남긴다: 옛 자리로 도는 세션이 갑자기 검사를 잃지 않게.
-# ⚠ `.githooks/adr-index.sh` 는 설정 저장소의 스킬과 **같은 출력을 내야 한다** —
-#   갈리면 한쪽에서 통과한 색인이 다른 쪽에서 걸린다. 본문을 손보지 말 것.
+# ⚠ 형제 저장소의 `.githooks/adr-index.sh` 사본은 걷었다(결정 0064) — 그 저장소들은 뒤의 둘로 선다.
+#   첫 후보는 사본을 아직 든 옛 판 · 제 생성기를 든 저장소를 위해 남긴다. 남은 사본은 스킬과
+#   **같은 출력을 내야 한다** — 갈리면 한쪽에서 통과한 색인이 다른 쪽에서 걸린다.
 ADR_GEN=""
 _skill="skills/adr-and-source-together/scripts/adr-index.sh"
 for _g in "$PROJECT_DIR/.githooks/adr-index.sh" \
@@ -49,15 +50,28 @@ for _g in "$PROJECT_DIR/.githooks/adr-index.sh" \
     [ -f "$_g" ] && { ADR_GEN="$_g"; break; }
 done
 
-# 게이트 러너가 선 자리 (0064) — **그 저장소 안 → 붙은 claude-config → 홈 씨앗.** 형제 저장소는
+# 게이트 러너가 선 자리 (0064) — **git 이 부른 몸통 곁 → 붙은 claude-config → 홈 씨앗.** 형제 저장소는
 # 러너 · 조각 사본을 안 들고 몸통(문지기)만 들어, 몸통이 이 값으로 러너를 찾는다. 세션 진단도 같은
 # 값을 본다 — 둘이 따로 찾으면 게이트는 안 도는데 진단은 돈다고 말하게 된다(위 「왜 한 자리인가」).
+# ⚠ **몸통 곁**(GATES_CALLER — 몸통이 제 자리를 넘긴다)은 그것이 **이 저장소 제 `.githooks` 가 아닐 때만**
+#   본다. `core.hooksPath` 를 claude-config 쪽 절대경로로 건 자리가 그것이다. 제 `.githooks` 를 후보로
+#   받으면 형제에 남은 옛 러너 사본이 잡혀 조각을 저장소 안에서만 찾게 된다 — claude-config 자신은
+#   어차피 둘째 후보(CONFIG_ROOT)로 잡힌다.
+# ⚠ **계약 표식(`# gates-contract: 2`)이 있는 러너만 받는다.** 설치된 옛 홈 씨앗의 러너는 조각을 저장소
+#   안에서만 찾아, 조각이 없는 형제의 커밋을 전부 막는다. 표식이 없으면 없는 것으로 보고 다음으로 간다 —
+#   다 없으면 몸통이 「러너를 못 찾았다」고 알리고 지나간다.
 # ⚠ 홈 씨앗은 설치기가 모든 PC 에 깐다(`~/.claude/seeds/config-repo/`) — claude-config 가 없는
 #   동료 PC 가 이 자리로 선다. 세션 훅 문지기가 몸통을 찾는 차례와 같다(0063).
+_gates_ok() { [ -f "$1/gates-run.sh" ] && grep -q '^# gates-contract: [2-9]' "$1/gates-run.sh" 2>/dev/null; }
+_h_own="$(cd "$PROJECT_DIR/.githooks" 2>/dev/null && pwd -P)"
 GATES_HOME=""
-for _h in "$PROJECT_DIR/.githooks" ${CONFIG_ROOT:+"$CONFIG_ROOT/.githooks"} \
-          "$HOME/.claude/seeds/config-repo/.githooks"; do
-    [ -f "$_h/gates-run.sh" ] && { GATES_HOME="$(cd "$_h" && pwd)"; break; }
-done
+if [ -n "${GATES_CALLER:-}" ] && [ "$(cd "$GATES_CALLER" 2>/dev/null && pwd -P)" != "$_h_own" ] &&
+   _gates_ok "$GATES_CALLER"; then
+    GATES_HOME="$(cd "$GATES_CALLER" && pwd)"
+else
+    for _h in ${CONFIG_ROOT:+"$CONFIG_ROOT/.githooks"} "$HOME/.claude/seeds/config-repo/.githooks"; do
+        _gates_ok "$_h" && { GATES_HOME="$(cd "$_h" && pwd)"; break; }
+    done
+fi
 
-unset _d _g _h _skill
+unset _d _g _h _h_own _skill

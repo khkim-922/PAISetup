@@ -25,10 +25,9 @@ cd "$PROJECT_DIR" || exit 0
 CONF="$PROJECT_DIR/.githooks/gates.conf"
 # 러너는 **찾는 자가 정한 자리**에서 부른다(GATES_HOME · 0064) — 그 저장소 안 → 붙은 claude-config →
 # 홈 씨앗. 형제 저장소는 러너 · 조각 사본을 안 들고 이 몸통(문지기)만 든다. 찾는 자는 이 파일 곁에 선다.
-# ⚠ 찾는 자가 이 값을 모르는 옛 판이면 곁의 러너로 물러난다.
-GATES_HOME=""
+# 제 자리(GATES_CALLER)를 넘긴다 — `core.hooksPath` 가 claude-config 쪽 절대경로면 그 곁이 첫 후보다.
+GATES_HOME=""; GATES_CALLER="$GATES_DIR"
 [ -f "$GATES_DIR/claude-config-path.sh" ] && . "$GATES_DIR/claude-config-path.sh"
-[ -n "$GATES_HOME" ] || { [ -f "$GATES_DIR/gates-run.sh" ] && GATES_HOME="$GATES_DIR"; }
 
 if [ -z "$GATES_HOME" ]; then
     # 선언도 없으면 게이트를 아직 안 켠 저장소다 — 정당하므로 조용히 지나간다.
@@ -37,8 +36,9 @@ if [ -z "$GATES_HOME" ]; then
     #   (또는 홈 씨앗)에 사는데 그것이 이 자리에 안 붙은 것은 이 저장소가 고칠 일이 아니다 —
     #   0061 의 「안 붙은 세션은 알리고 막지 않는다」와 같은 뜻이다. 조용히 지나가지는 않는다:
     #   게이트가 있다고 믿는 채 아무것도 안 재는 것이 제일 나쁘다.
-    printf '· 게이트 러너를 못 찾았다 — 이 저장소 · claude-config · 홈 씨앗 어디에도 gates-run.sh 가 없다.\n' >&2
-    printf '  이 커밋은 아무것도 안 재고 지나간다. claude-config 를 함께 붙이거나 설치기를 다시 돌린다.\n' >&2
+    printf '· 게이트 러너를 못 찾았다 — claude-config 에도 홈 씨앗에도 이 판의 gates-run.sh 가 없다\n' >&2
+    printf '  (홈 씨앗이 옛 설치본이면 그 러너는 안 받는다). 이 커밋은 아무것도 안 재고 지나간다.\n' >&2
+    printf '  claude-config 를 함께 붙이거나 새 설치본을 깐다.\n' >&2
     exit 0
 fi
 GATES_DIR="$GATES_HOME"   # 러너가 조각을 찾는 「곁」은 러너가 선 자리다

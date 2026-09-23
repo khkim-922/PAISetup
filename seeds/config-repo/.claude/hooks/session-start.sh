@@ -45,8 +45,24 @@ else
 fi
 
 if [ -z "$_body" ]; then
+  # 까닭을 가른다 — 고칠 손이 다르다.
+  if [ -n "${CONFIG_ROOT:-}" ]; then
+    _why="claude-config 는 붙었는데 몸통이 없다 — 옛 판이다. claude-config 를 당긴다"
+  elif [ -f "$HOME/.claude/seeds/config-repo/.claude/hooks/session-start.sh" ]; then
+    _why="홈 씨앗이 옛 설치본이라 몸통이 없다 — 새 설치본을 깐다(또는 claude-config 를 함께 붙인다)"
+  else
+    _why="claude-config 가 이 PC(또는 이 세션)에 안 붙었고 홈 씨앗도 없다 — claude-config 를 함께 붙이거나 설치기를 돌린다"
+  fi
+  # ⚠ **종료코드는 부른 갈래의 약속을 따른다.** 세션(auto)은 막지 않는다(0001). 재는 갈래와 설치 갈래는
+  #   「안 깔았다 · 못 쟀다」를 성공으로 내면 위층(deploy.ps1 · 설치기)이 초록으로 읽는다.
+  # ⚠ 배선은 세션에서만 건다 — 재는 갈래가 상태를 바꾸면 판정이 늘 초록이 된다(몸통의 `--check` 규율).
+  case "${1:-}" in
+    --needs-install) echo "세션 훅 몸통을 못 찾았다 — $_why"; exit 2 ;;
+    --check|--install|--install-global)
+      echo "$(basename "$_repo"): ✖ 세션 훅 몸통을 못 찾았다 — $_why"; exit 1 ;;
+  esac
   [ -d "$_repo/.githooks" ] && git -C "$_repo" config core.hooksPath .githooks 2>/dev/null
-  echo "$(basename "$_repo"): ⚠ 세션 훅 몸통을 못 찾았다 — claude-config 가 이 PC(또는 이 세션)에 안 붙었고 홈 씨앗도 없다. 커밋 게이트 배선만 걸었고, 도구 설치 · 진단은 안 돌았다. claude-config 를 함께 붙이거나 설치기를 다시 돌린다"
+  echo "$(basename "$_repo"): ⚠ 세션 훅 몸통을 못 찾았다 — $_why. 커밋 게이트 배선만 걸었고, 도구 설치 · 진단은 안 돌았다"
   exit 0
 fi
 

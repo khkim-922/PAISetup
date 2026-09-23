@@ -51,8 +51,9 @@
 ├─ seeds/
 │  ├─ gateway/               게이트웨이 배관 씨앗 — 새 프로젝트가 복사해서 출발한다
 │  ├─ check/                 검사 씨앗 — 새 저장소의 `_check/` 가 복사해서 출발한다
-│  └─ config-repo/           설정 저장소 씨앗 — 「내 저장소 받기」 칸을 쓸 사람만 본다.
-│                            세션 훅·배포·커밋 게이트가 **한 벌로 돌게** 들어 있다
+│  └─ config-repo/           설정 저장소 씨앗 — 복사해 쓸 사람은 「내 저장소 받기」 칸을 쓸 사람뿐이다.
+│                            세션 훅·배포·커밋 게이트가 **한 벌로 돌게** 들어 있고, 설정 저장소가 없는
+│                            PC 에서는 저장소들의 세션 훅·커밋 게이트가 여기 든 것을 불러 쓴다
 │
 ├─ .claude/                  **두 가지가 한 폴더에 산다** — 홈으로 가는 셋과, 이 설치본이
 │                            제 살림으로 들고 있는 나머지. 바로 아래가 그것을 가른다
@@ -191,6 +192,10 @@
 
 ⚠ **덮어쓰는 것이 아니라 합친다.** 같은 이름은 갈리지만 홈에 이미 있던 **다른 이름은 남는다.**
 깨끗하게 갈려면 `~/.claude/` 의 `skills` · `rules` · `agents` 를 먼저 지우고 깐다.
+
+**스킬만은 설치가 깐 것을 기억한다.** 깐 스킬 이름을 `~/.claude/.paisetup-skills` 에 적어 두고, 다음
+설치 때 **전에 깔았는데 이번 짐에 없는 스킬**을 `~/.claude/backups/install-skills-<시각>/` 로 옮긴다
+(지우지 않는다). 손수 만든 스킬은 그 목록에 없으니 안 건드린다.
 (`CLAUDE.md` 는 파일 하나라 통째로 갈린다.)
 
 **제 규율을 쓰려면 — 이 칸이 아니라 「내 저장소 받기」다.** 짐은 손으로 열 자리가 아니라서
@@ -229,7 +234,7 @@
 | `~/.claude/posco/` | **사내 게이트웨이 환경 문서 한 층.** 무엇이 되고 안 되는지는 **이 폴더 전체**가 답한다 — 한 장만 보고 판정하지 않는다 |
 | `~/.claude/seeds/gateway/` | **게이트웨이 배관 씨앗.** 새 프로젝트를 시작할 때 이 폴더를 복사해 출발한다. 임포트하는 묶음이 아니다 |
 | `~/.claude/seeds/check/` | **검사 씨앗.** 새 프로젝트의 `_check/` 가 복사해 출발한다 — 판정 한 벌 · 종료코드 계약을 무는 자 · 어느 저장소에서나 도는 게이트. 받아 간 사본은 곁말이 원본을 가리키고 `borrowed_check.py --receive` 로 다시 받는다 |
-| `~/.claude/seeds/config-repo/` | **설정 저장소 씨앗.** 아래 「내 저장소 받기」 칸을 쓰려는 사람만 본다 — 그 칸이 기대하는 저장소를 만드는 골든이고, **돌아가는 한 벌**이 다 들어 있다 |
+| `~/.claude/seeds/config-repo/` | **설정 저장소 씨앗.** 아래 「내 저장소 받기」 칸이 기대하는 저장소를 만드는 골든이고, **돌아가는 한 벌**이 다 들어 있다. **지우지 않는다** — 설정 저장소가 없는 PC 에서는 저장소들의 세션 훅·커밋 게이트가 여기 든 몸통·러너를 불러 쓴다 |
 
 ### 「내 저장소 받기」 칸 — 안 넣어도 된다
 
@@ -334,7 +339,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **사용자 환경변수** — `ANTHROPIC_BASE_URL` · `ANTHROPIC_AUTH_TOKEN` · `ANTHROPIC_MODEL` · `OPENAI_API_KEY` · `GEMINI_API_KEY` | 시작 메뉴에 「환경 변수」로 검색 → 「계정의 환경 변수 편집」. 지우고 창을 새로 연다 |
 | **로그인마다 뜨는 프록시 감시 작업** — 작업 이름은 `PGPTProxy-Watchdog` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false`. (기존 버전 잔재는 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `PGPTProxy`) |
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다 |
-| **옵션을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` |
+| **옵션을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` · 깐 스킬 기록 `~/.claude/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.claude/backups/install-skills-*` |
 | **Codex · Gemini · 안티그래비티 회사 설정** | `~/.codex/config.toml` · `~/.gemini/settings.json` · `~/.gemini/antigravity-cli/settings.json`. 마지막 것은 `modelProvider` 줄만 지우면 로그인 갈래로 돌아간다 |
 | **바탕화면·시작 메뉴의 「PAI Setup Wizard」** | 바로가기를 지운다 |
 | **로그온마다 도는 자동 실행** — 작업 이름은 `PAISetup-AutoRun` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PAISetup-AutoRun -Confirm:$false`. **폴더보다 이것을 먼저 지운다** — 짐을 먼저 지우면 작업만 남아 로그인마다 헛돈다 |

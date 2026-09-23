@@ -1,8 +1,14 @@
 #!/bin/sh
 # 게이트 러너 — 몸통 둘(pre-commit · commit-msg)이 같이 쓰는 한 벌.
 #
-# 진본은 claude-config/.githooks/gates-run.sh 다. 각 저장소의 것은 deploy.ps1 이
-# 뿌린 배포본이다 — 배포본을 고치면 다음 배포에 덮인다.
+# 원본은 claude-config/.githooks/gates-run.sh 다. **저장소마다 사본을 두지 않는다**(결정 0064) —
+# 형제의 몸통이 찾는 자(`claude-config-path.sh`)로 이 파일(또는 홈 씨앗의 것)을 찾아 부른다.
+#
+# gates-contract: 2
+# ⚠ **위 줄은 계약 표식이다 — 지우거나 바꾸지 않는다.** 찾는 자가 이 줄이 있는 러너만 받는다. 이 판은
+#   조각을 저장소 → 러너 곁(GATES_DIR) 차례로 찾는데, 표식 없는 옛 러너는 저장소 안만 봐서 조각이 없는
+#   형제의 커밋을 **전부 막는다**(설치된 옛 홈 씨앗이 그 판이다). 러너가 조각을 찾는 계약을 바꾸면 수를 올리고,
+#   찾는 자가 받는 범위도 같이 고친다.
 #
 # **이 파일은 저장소 이름도 검사 이름도 모른다.** 목록의 진본은 선언 하나다:
 #   .githooks/gates.conf   이 저장소가 어느 조각을 켜나 — 저장소가 커밋한다
@@ -93,7 +99,10 @@ run_gates() {
         #   걷히지 않은 옛 사본일 수도 있다 — 옛 사본은 원본을 영영 가리고 아무도 모른다(0064).
         _f="$PROJECT_DIR/.githooks/gates.d/$_g.sh"
         if [ -f "$_f" ]; then
-            [ -z "$_same" ] && [ -f "$_home/gates.d/$_g.sh" ] && ! cmp -s "$_f" "$_home/gates.d/$_g.sh" &&
+            # ⚠ 줄끝(CRLF)만 다른 사본은 같은 것으로 본다 — 윈도우 체크아웃이 흔히 그렇고, 빌린 부품
+            #   대조(`borrowed_check.py`)도 줄끝을 안 가린다.
+            [ -z "$_same" ] && [ -f "$_home/gates.d/$_g.sh" ] &&
+                ! diff -q --strip-trailing-cr "$_f" "$_home/gates.d/$_g.sh" >/dev/null 2>&1 &&
                 printf '· [%s] 는 이 저장소의 조각이 설정 저장소 원본을 가리고 돈다 — 옛 사본이면 지운다.\n' "$_g" >&2
         else
             _f="$_home/gates.d/$_g.sh"
