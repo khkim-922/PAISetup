@@ -2010,7 +2010,25 @@ foreach ($c in $CliPicks) {
 # ⚠ **지면 실패로 세지 않는다** — CLI 는 서 있고 문서 스킬 없이도 Claude Code 는 돈다(CLI 칸의
 #   「못 올림」과 같은 규율). 사내망이 GitHub 을 막는 자리에서 날 수 있다 — 말은 하고 빨강으로 안 끝낸다.
 $DocSkills = @{ Source = 'anthropics/skills'; Market = 'anthropic-agent-skills'; Plugin = 'document-skills@anthropic-agent-skills' }
-if (($PickKeys -contains 'claude') -and (Test-Runs 'claude' '--version')) {
+# ⚠ **두 문을 한 `-and` 로 묶지 않는다.** 묶으면 「Claude 를 안 골랐다」와 「골랐는데 `claude` 가
+#   안 선다」가 똑같이 **한 글자 없이** 지나간다 — 앞엣것은 조용해야 맞지만 뒤엣것은 깔 것을 못
+#   깐 자리라 말해야 한다. 까닭은 `--version` 이 뱉은 끝 줄이 든다(이 칸이 스스로는 모른다).
+$wantDocSkills = $PickKeys -contains 'claude'
+if ($wantDocSkills -and -not (Test-Runs 'claude' '--version')) {
+  Write-Host '  ! 공식 문서 스킬 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 · Claude Code 는 그대로 돈다' -ForegroundColor Yellow
+  if (Get-Command 'claude' -ErrorAction SilentlyContinue) {
+    $vl = [IO.Path]::GetTempFileName()
+    $vrc = Invoke-Logged 'claude' @('--version') $vl
+    Write-Host "     (claude --version 이 $vrc 로 끝났다 — 뱉은 끝 줄:)"
+    Show-Log $vl
+    Remove-Item $vl -ErrorAction SilentlyContinue
+  } else {
+    Write-Host '     (claude 가 이 창의 PATH 에 없다 — 위 CLI 줄을 먼저 본다)'
+  }
+  Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
+  $wantDocSkills = $false
+}
+if ($wantDocSkills) {
   $has = ((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)
   if ($has) {
     Write-Host '  공식 문서 스킬 — 있음'
