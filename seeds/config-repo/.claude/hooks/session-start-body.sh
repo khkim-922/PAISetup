@@ -1890,18 +1890,30 @@ EOF
   }
   wire_tool() {  # wire_tool <선언파일> <이름> — node-link: 이름 해석이 되게 만든다
     _f="$1"; _t="$2"
-    _wg=''; _mod=''; _env=''
+    _wg=''; _mod=''; _env=''; _wod=''
     {
       IFS= read -r _wg
       IFS= read -r _mod
       IFS= read -r _env
+      IFS= read -r _wod
     } <<EOF
-$(decl_fields "$_f" "$_t" wiring probe-target wiring-env)
+$(decl_fields "$_f" "$_t" wiring probe-target wiring-env on-demand)
 EOF
     [ "$_wg" = node-link ] || return 0
     probe_tool node-resolvable "$_mod" && return 0
+    # ⚠ **못 건 배선은 실패로 적는다 — 말없이 빠져나가지 않는다.** 이 걸음 뒤에 지문 도장이
+    #   찍히므로(⑧) 여기서 조용히 나가면 그 저장소는 「배선됐다」로 굳고, 다음 세션(auto)도
+    #   재설치(`--needs-install`)도 파일만 봐서 **영영 다시 안 건다.** 전역 도구가 저장소 걸음보다
+    #   늦게 서는 판이 그 자리다 — 노드가 설치 도중에 들어온 새 PC 에서 저장소 걸음이 먼저 돌아
+    #   정션 없이 굳었고, 재설치를 돌려도 안 메워졌다(실측 2026-09-24 집 PC). 적어 두면
+    #   `--needs-install` 이 1 을 내 다음 배포가 이 걸음을 다시 돌고, auto 는 매 세션 사유를 알린다.
+    # ⚠ **on-demand 는 빼고 적는다** — 그 도구는 전역에 없는 것이 정상이다(부르는 자가 제 손으로 찾는다).
+    [ "$_wod" = yes ] && return 0
     _groot="$(npm root -g 2>/dev/null)"
-    { [ -n "$_groot" ] && [ -d "$_groot/$_mod" ]; } || return 0
+    [ -n "$_groot" ] ||
+      { nogo "$_t" "배선을 못 걸었다 — npm 이 없다. 노드를 깔면 다음 설치가 잇는다"; return 0; }
+    [ -d "$_groot/$_mod" ] ||
+      { nogo "$_t" "배선을 못 걸었다 — 전역에 $_mod 가 아직 없다. 전역 설치가 선 뒤 다음 설치가 잇는다"; return 0; }
     # 전역 설치는 저장소 node_modules 밖이라 import 가 못 찾는다 — 저장소 안으로 건다.
     # ⚠ npm ci 가 node_modules 를 지우고 다시 만든다. 그래서 ④ 뒤에 선다.
     # ⚠ **스코프 패키지는 중간 폴더가 먼저 서야 한다** — `@scope/name` 은 링크 자리가
@@ -1931,7 +1943,11 @@ EOF
       if [ "$OS" = linux ] && [ -w /etc/profile.d ] 2>/dev/null; then
         printf 'export %s="%s"\n' "$_env" "$_entry" > "/etc/profile.d/${PROJECT_NAME}-${_t}.sh"
       fi
+    else
+      # 넘길 계약도 없으면 이름 해석이 안 선 채로 남는다 — 위와 같은 까닭으로 적는다.
+      nogo "$_t" "배선을 걸었는데 저장소 안에서 $_mod 가 안 풀린다 — node_modules/$_mod 를 본다"
     fi
+    return 0
   }
   # ── 전역 자리의 배선 — **정션이 아니라 값 하나다** (#43).
   #    저장소 배선(`wire_tool`)은 `node_modules` 에 정션을 걸어 저장소 안에서 이름이 풀리게

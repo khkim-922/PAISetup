@@ -106,6 +106,15 @@ if ($targetsFiles.Count -gt 0) {
     # 선언이 없어도 홈 배포는 돈다(막 포크한 사람의 첫 실행 형태). 침묵하지 않는다.
     $todo += 'deploy.targets.d/ 에 *.conf 없음 — 저장소 배포본·프로젝트 메모리는 배포 안 됨. 그 폴더에 <PC이름>.conf 를 만들어 [repos]·[memory:<이름>] 를 채울 것'
 }
+# ⚠ **이 PC 에 걸린 저장소가 하나도 없으면 말한다.** 없는 경로를 조용히 건너뛰는 것은 여러 PC 파일이
+#   같이 사는 자리라 맞지만, **다 건너뛰면** 그것은 「이 PC 파일이 없다」는 뜻이다 — 그때 저장소 설치
+#   걸음도, 그에 딸린 전역 설치 걸음도, 프로젝트 메모리도 통째로 안 선다. 메모리 칸은 제 줄을 내지만
+#   저장소 칸은 아무 말이 없어, 새 PC 에서 재설치를 돌려도 저장소가 안 깔린 채 「바꿀 것」만 몇 개 뜬다
+#   (실측 2026-09-24 · 사용자 이름이 다른 새 집 PC).
+if ($targetsFiles.Count -gt 0 -and $globalRuleTargets.Count -gt 0 -and
+    -not ($globalRuleTargets | Where-Object { Test-Path $_ })) {
+    $todo += "deploy.targets.d/ 의 [repos] 가 이 PC($env:COMPUTERNAME)에 하나도 없다 — 저장소 설치·배포본·메모리가 통째로 안 선다. 그 폴더에 이 PC 파일을 만들어 [repos]·[memory:<이름>] 를 채울 것"
+}
 
 # memory/<project>/ 가 이 PC에서 갈 곳. 이 PC 의 자리가 아니면 빈 배열.
 # 선언 파일은 PC 마다 한 장이지만 전부 합쳐 읽으므로, 슬러그 중 **이 PC 의 것**을 가려야 한다 —
