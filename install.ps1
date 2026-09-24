@@ -882,13 +882,34 @@ function Show-Log([string]$LogPath, [int]$Lines = 8) {
   else { Write-Host '      (한 줄도 안 뱉었다 — 명령이 글자 없이 졌다)' }
 }
 
+# 도는 중을 알리는 한 줄 — **꼴은 이 함수 하나가 든다:** `  <대상> — <동작>중 … (<수단> · <덧말>)`.
+# ⚠ **왜 한 자리인가.** 설치 창은 몸통이 찍은 **마지막 한 줄**을 「지금 하는 일」로 띄운다
+#   (`install.ui.ps1` 의 `Step-Line`). 자리마다 제 말투로 찍으면 같은 일이 여러 꼴로 보이고,
+#   안 찍는 자리에서는 **직전 결과 줄이 걸린 채** 오래 돌아 멎은 것과 구분이 안 된다.
+#   그래서 시간이 드는 걸음은 들어가기 전에 이것을 부르고, 동작 낱말은 아래 표에서만 고른다.
+# ⚠ **결과 줄은 여기 안 든다** — `— 깔았다 · 있음 · 최신 · 올렸다` 는 자리마다 까닭이 달라 제
+#   자리가 찍는다. 이 함수는 「들어간다」만 말한다.
+$BusyVerbs = [ordered]@{
+  install = '설치중'
+  upgrade = '갱신중'
+  upcheck = '갱신 확인중'
+  fetch   = '받는중'
+  wait    = '기다리는 중'
+}
+function Say-Busy([string]$What, [string]$Do, [string[]]$Notes = @()) {
+  if (-not $BusyVerbs.Contains($Do)) { throw "Say-Busy — 모르는 동작: $Do" }
+  $n = @($Notes | Where-Object { $_ })
+  $tail = if ($n.Count) { ' (' + ($n -join ' · ') + ')' } else { '' }
+  Write-Host ('  {0} — {1} …{2}' -f $What, $BusyVerbs[$Do], $tail)
+}
+
 # 받으러 나가기 전에 **무엇을 얼마나** 받는지 댄다 — 느린 링크에서 「멎었나 도나」를 가르는
 # 것이 이 한 줄이다. 크기를 안 주는 자리도 있어 그때는 이름만 댄다.
-function Say-Get($Asset) {
+function Say-Get([string]$What, $Asset) {
   $mb = 0
   try { $mb = [double]$Asset.size / 1MB } catch { }
-  if ($mb -gt 0) { Write-Host ('      · 받는다 — {0} ({1:N1} MB)' -f $Asset.name, $mb) }
-  else           { Write-Host ('      · 받는다 — {0}' -f $Asset.name) }
+  $size = if ($mb -gt 0) { '{0:N1} MB' -f $mb } else { '' }
+  Say-Busy $What 'fetch' @($Asset.name, $size)
 }
 
 # 큰 것을 받는 자 — **흘려 쓰고, 가면서 말하고, 두 시계를 다 못박는다.**
@@ -1206,7 +1227,7 @@ function Restore-Winget {
     if ($dep) {
       $z = Join-Path $work 'dep.zip'
       $step = '딸린 것 zip 을 못 받았다'
-      Say-Get $dep
+      Say-Get 'winget 딸린 것' $dep
       Get-Download $dep.browser_download_url $z
       $step = '딸린 것 zip 을 못 풀었다'
       Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $work 'dep') -Force
@@ -1221,7 +1242,7 @@ function Restore-Winget {
         Write-Host '      ! 딸린 것에서 x64 를 하나도 못 골랐다 — 본체 설치가 질 수 있다' `
           -ForegroundColor Yellow
       } else {
-        Write-Host "      · 딸린 것 $($deps.Count)개를 깐다"
+        Say-Busy 'winget 딸린 것' 'install' @("$($deps.Count)개")
       }
       foreach ($d in $deps) {
         # ⚠ **하나가 져도 여기서 끝내지 않는다** — 이미 더 새것이 깔린 기계는 윈도우가 무는데
@@ -1239,11 +1260,11 @@ function Restore-Winget {
     if (-not $pkg) { throw '릴리스에 msixbundle 이 없다' }
     $b = Join-Path $work $pkg.name
     $step = '본체를 못 받았다'
-    Say-Get $pkg
+    Say-Get 'winget' $pkg
     Get-Download $pkg.browser_download_url $b
     # ⚠ **여기도 조용한 자리다** — 206 MB 를 푸는 동안 한 글자도 안 나온다. 받기와 깔기가
     #   잇달아 조용하면 사람은 멎은 줄 알고 창을 닫는다. 들어가기 전에 말한다.
-    Write-Host '      · 깐다 — 몇 분 걸린다. 멎은 것이 아니다'
+    Say-Busy 'winget' 'install' @('몇 분 걸릴 수 있다')
     $step = '본체를 못 깔았다'
     # ⚠ **딸린 것을 같이 넘긴다 — 마이크로소프트가 적어 둔 꼴이다.** 위에서 하나씩 깐 뒤에도
     #   같이 넘기는 까닭은 **판 맞추기를 윈도우가 스스로 하게** 하려는 것이다: 따로 깔면
@@ -1403,6 +1424,7 @@ if ($proxyRel -or $codexTpl -or $geminiTpl) {
 #   헛되게 한 번 더 묻는 값은 시간뿐이고, 안 물어 낡은 판이 서는 값은 고장이다.
 $upgradable = $null
 if (-not ($NoUpgrade -or $noWinget)) {
+  Say-Busy '프로그램 판' 'upcheck' @('winget · 한 번에')
   $ulog = [System.IO.Path]::GetTempFileName()
   $urc = Invoke-Logged 'winget' @('list','--upgrade-available','--accept-source-agreements','--disable-interactivity') $ulog
   $utxt = ''
@@ -1457,6 +1479,9 @@ foreach ($app in $Apps) {
       Write-Host "  $($app.Name) — 최신  ($before)"
       continue
     }
+    # 목록을 못 받았으면(`$null`) 올릴 것이 있는지 모르는 채 묻는다 — 말도 그만큼만 한다.
+    $do = if ($null -eq $upgradable) { 'upcheck' } else { 'upgrade' }
+    Say-Busy $app.Name $do @('winget', "지금 $before")
     $log = [System.IO.Path]::GetTempFileName()
     Invoke-Logged 'winget' (@('upgrade','--id',$app.Id) + $WG) $log | Out-Null
     Remove-Item $log -ErrorAction SilentlyContinue
@@ -1476,13 +1501,12 @@ foreach ($app in $Apps) {
     continue
   }
 
-  Write-Host "  $($app.Name) — 설치 ($($app.Id))"
   # ⚠ **여기가 조용한 까닭을 먼저 말한다.** 아래에서 winget 이 뱉는 것을 통째로 파일로 돌리므로
   #   (바로 아래 까닭) **받고 까는 몇 분 동안 화면에 한 글자도 안 나온다.** 그 침묵은 멎은 것과
   #   구분이 안 되고, 사람은 그때 창을 닫는다 — 셋째 갈래에서 300 MB 로 이미 겪은 자리다.
   #   ⚠ **막대를 흘려서 푸는 것이 아니다.** 그러면 화면 껍데기의 기록 칸이 막대로 도배된다.
   #     조용한 것은 그대로 두고 **조용할 것이라고 미리 말한다.**
-  Write-Host '    (winget 이 받아서 깐다 — 몇 분 조용하다. 멎은 것이 아니다)'
+  Say-Busy $app.Name 'install' @('winget', '몇 분 조용할 수 있다')
   $log = [System.IO.Path]::GetTempFileName()
   # 진행 막대가 로그를 덮는다. 실패할 때만 편다
   # ⚠ **종료코드를 안 버린다.** 판정은 여전히 프로브가 든다(winget 은 「올릴 것 없음」에도
@@ -1606,15 +1630,16 @@ function Install-Requires($A) {
     if ($id -eq 'Microsoft.EdgeWebView2Runtime') {
       $pv = Test-WebView2
       if ($pv) { Write-Host ('      · WebView2 런타임 — 있음 ({0})' -f $pv); continue }
-      Write-Host '      · WebView2 런타임을 먼저 깐다 — 이 앱이 그것 없이는 안 선다'
+      $what = 'WebView2 런타임'
     } else {
-      Write-Host ('      · 짝을 먼저 깐다 — {0}' -f $id)
+      $what = $id
     }
     if ($noWinget) {
       Write-Host '      ! winget 이 없어 짝을 못 깐다 — 이 앱도 안 선다' -ForegroundColor Red
       $script:Fails.Add("$($A.Label) (짝 $id — winget 이 없다)")
       return $false
     }
+    Say-Busy $what 'install' @('winget', "$($A.Label) 이 먼저 요구한다")
     $rl = [IO.Path]::GetTempFileName()
     $rc = Invoke-Logged 'winget' (@('install','--id',$id) + $WG) $rl
     if ($rc -ne 0) {
@@ -1646,6 +1671,7 @@ function Install-DesktopApp($A) {
   }
   if (Test-DesktopApp $A) {
     if (-not $NoUpgrade -and $A.Via -eq 'winget' -and -not $A.NoSelfUpgrade) {
+      Say-Busy $A.Label 'upcheck' @('winget')
       $ul = [IO.Path]::GetTempFileName()
       Invoke-Logged 'winget' (@('upgrade','--id',$A.Id,'--source',$A.Source) + $WGOpts) $ul | Out-Null
       Remove-Item $ul -ErrorAction SilentlyContinue
@@ -1673,7 +1699,9 @@ function Install-DesktopApp($A) {
     # ⚠ **오래 걸리는 걸음은 제 입으로 말한다.** winget 은 조용히(`--silent`) 돌아 수백 MB 를
     #   받는 1~2분 동안 화면이 한 글자도 안 바뀐다 — 그러면 **「도는 중」과 「멈췄다」가 같은
     #   화면**이 되어, 진짜로 멈춘 날 사람이 그것을 못 알아본다. 칸의 초는 끝나고서야 찍힌다.
-    Write-Host ('      · 깐다 — 수백 MB 라 1~2분 걸릴 수 있다 (winget · {0})' -f $W.Source)
+    # 소스가 기본(`winget`)이면 수단과 겹쳐 「winget · winget」이 찍힌다 — 딴 소스일 때만 댄다.
+    $via = if ($W.Source -and $W.Source -ne 'winget') { "winget · $($W.Source)" } else { 'winget' }
+    Say-Busy $A.Label 'install' @($via, '수백 MB · 1~2분 걸릴 수 있다')
     $rc = Invoke-Logged 'winget' (@('install','--id',$W.Id,'--source',$W.Source) + $WGOpts) $al
    } else {
     # ⚠ **받는 자리와 도는 자리를 가른다.** 못 받은 것과 받았는데 진 것은 다른 명제이고,
@@ -1683,7 +1711,7 @@ function Install-DesktopApp($A) {
       # ⚠ **주소의 끝마디가 아니라 받아 놓을 파일 이름을 댄다.** 주소가 파일 이름으로 끝나지
       #   않는 갈래가 있어(스토어 스텁은 제품 번호로 끝난다) 끝마디를 대면 `9PLM9XGG6VKS` 가
       #   찍힌다 — 받는 사람에게 아무 뜻이 없다.
-      Write-Host ('      · 받는다 — {0}' -f (Split-Path $exe -Leaf))
+      Say-Busy $A.Label 'fetch' @((Split-Path $exe -Leaf))
       Get-Download $W.Url $exe
     } catch {
       Write-Host '  ! 설치본을 못 받았다' -ForegroundColor Red
@@ -1692,7 +1720,7 @@ function Install-DesktopApp($A) {
       Remove-Item $al -ErrorAction SilentlyContinue
       return
     }
-    Write-Host '      · 깐다 — 몇 분 걸릴 수 있다'
+    Say-Busy $A.Label 'install' @('설치본', '몇 분 걸릴 수 있다')
     $pr = Start-Process -FilePath $exe -ArgumentList $W.SilentArgs -PassThru -Wait
     $rc = $pr.ExitCode
     Remove-Item $exe -ErrorAction SilentlyContinue
@@ -1813,7 +1841,7 @@ function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [has
     else                        { Write-Host "  $Label — 최신  ($b)" }
     return
   }
-  Write-Host "  $Label 설치중 …"
+  Say-Busy $Label 'install' @('code')
   $xl = [IO.Path]::GetTempFileName()
   $rc = Invoke-Logged 'code' @('--install-extension',$Id,'--force') $xl
   # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
@@ -1862,7 +1890,7 @@ if ($NoVsCode) {
   $extAfter  = $extBefore
   $extHave   = @($ExtPicks | Where-Object { $extBefore.ContainsKey($_.Id) })
   if ($extHave.Count -gt 0 -and -not $NoUpgrade) {
-    Write-Host "  깔린 확장 $($extHave.Count)개 — 최신인지 확인중 …"
+    Say-Busy "깔린 확장 $($extHave.Count)개" 'upcheck' @('code')
     $xl = [IO.Path]::GetTempFileName()
     Invoke-Logged 'code' @('--update-extensions') $xl | Out-Null
     Remove-Item $xl -ErrorAction SilentlyContinue
@@ -1882,7 +1910,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
     Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"
   } elseif (Test-Runs $Cmd '--version') {
     $b = Get-Ver $Cmd '--version'
-    Write-Host "  $Label 판 확인중 … (지금 $b)"     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
+    Say-Busy $Label 'upcheck' @('npm', "지금 $b")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
     # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
     #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
     #   이 걸음이 셋 합쳐 121초였다(실측 v1.12.0 두 번째 판 · 사내 VDI · 설치기 전체의 40%).
@@ -1910,7 +1938,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
     } elseif ($same) {
       Write-Host "  $Label — 최신  ($b)"
     } else {
-      Write-Host "  $Label 갱신중 … ($b  ->  $rv)"
+      Say-Busy $Label 'upgrade' @('npm', "$b → $rv")
       $nl = [IO.Path]::GetTempFileName()
       # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** 저쪽(2 칸)은 「올릴 것 없음」에도
       #   0 이 아닌 값을 내서 버릴 **까닭이 적혀 있지만**, npm 은 지면 지는 값을 낸다. 버리고 판만
@@ -1928,7 +1956,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
       Remove-Item $nl -ErrorAction SilentlyContinue
     }
   } elseif (Test-Runs 'npm' '--version') {
-    Write-Host "  $Label 설치중 …"
+    Say-Busy $Label 'install' @('npm')
     $nl = [IO.Path]::GetTempFileName()
     $nrc = Invoke-Logged 'npm' @('install','-g',$Pkg) $nl
     # ⚠ **깔고 나서 한 번 더 태운다.** `%APPDATA%\npm` 은 이 설치가 **만드는** 폴더라,
@@ -1959,6 +1987,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
 function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
   if (Test-Runs $Cmd '--version') {
     if (-not $NoUpgrade -and -not $noWinget) {
+      Say-Busy $Label 'upcheck' @('winget')
       $ul = [IO.Path]::GetTempFileName()
       Invoke-Logged 'winget' (@('upgrade','--id',$Id) + $WG) $ul | Out-Null
       Remove-Item $ul -ErrorAction SilentlyContinue
@@ -1970,7 +1999,7 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
     $Fails.Add("$Label (winget 이 없다)")
     return
   }
-  Write-Host "  $Label 설치중 … (winget · $Id)"
+  Say-Busy $Label 'install' @('winget')
   $wl = [IO.Path]::GetTempFileName()
   $rc = Invoke-Logged 'winget' (@('install','--id',$Id) + $WG) $wl
   # ⚠ **깐 직후에는 이 창이 그 자리를 모른다** — winget 이 portable 을 심으면서 손댄 PATH 는
@@ -2395,7 +2424,7 @@ if ($offsite) {
         if ($login.HasExited) { break }
         $elapsed = $waited + 5
         if (($elapsed % 15) -eq 0) {
-          Write-Host "  로그인을 기다리는 중 … ${elapsed}초"
+          Say-Busy 'Claude 구독 로그인' 'wait' @("${elapsed}초")
         }
       }
       if (-not $claudeLoggedIn) { $claudeLoggedIn = Test-ClaudeLoggedIn }
@@ -3365,7 +3394,7 @@ if (-not $repoUrl) {
     $dest = Join-Path $root ([IO.Path]::GetFileNameWithoutExtension($u))
     $log = [IO.Path]::GetTempFileName()
     if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
-      Write-Host "  있음 — pull ($dest)"
+      Say-Busy (Split-Path $dest -Leaf) 'upgrade' @('git pull', $dest)
       $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
       # ⚠ **pull 이 져도 실패로 세지 않는다.** 저장소는 이미 있어 넘길 자리가 살아 있다 —
       #   망이 끊긴 VDI 에서 옛 판으로라도 훅이 도는 것이 안 도는 것보다 낫다.
@@ -3376,7 +3405,7 @@ if (-not $repoUrl) {
         Show-Log $log
       }
     } else {
-      Write-Host "  clone ($dest)"
+      Say-Busy (Split-Path $dest -Leaf) 'fetch' @('git clone', $dest)
       # ⚠ **이 안내를 우리가 찍는다.** 자격 관리자가 뱉는 「브라우저에서 마치라」는 줄은 위
       #   `Invoke-Logged` 가 파일로 잡아 화면에 안 나온다 — 안 찍으면 사람은 창이 왜 떴는지
       #   모른 채 기다리고, 그 사이 설치가 멈춘 것처럼 보인다.
@@ -3487,7 +3516,7 @@ if ($wantDocSkills) {
   if ($has) {
     Write-Host '  공식 문서 스킬 — 있음'
   } else {
-    Write-Host '  공식 문서 스킬(pptx · docx · xlsx · pdf) 설치중 …'
+    Say-Busy '공식 문서 스킬' 'install' @('claude plugin', 'pptx · docx · xlsx · pdf')
     $dl = [IO.Path]::GetTempFileName()
     $rc = 0
     if (-not ((Get-Quiet 'claude' @('plugin','marketplace','list')) -join "`n").Contains($DocSkills.Market)) {
