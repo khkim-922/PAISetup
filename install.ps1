@@ -1999,57 +1999,6 @@ foreach ($c in $CliPicks) {
   else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label }
 }
 
-# ── 4″. 공식 문서 스킬 — **배포본에 싣지 않고 공식 통로로 받는다** ──────────────────────
-# pptx · docx · xlsx · pdf 를 다루는 Anthropic 공식 스킬은 플러그인 `document-skills` 로 온다.
-# ⚠ **왜 싣지 않나.** 그 스킬의 라이선스는 복제 · 파생 · 제3자 배포를 막는다 — 상업 여부와 상관없고,
-#   이 배포본은 공개 저장소라 실으면 누구나 받는 자리에 올라간다. 각자가 공식 마켓플레이스에서 받는다.
-# ⚠ **먼저 묻고 없을 때만 깐다** — 자동실행이 매일 이 걸음을 지나므로(CLI 칸과 같은 까닭) 판정은
-#   `plugin list` 한 번이다. 판정 글자는 그 목록이 찍는 `이름@마켓플레이스` 다.
-# ⚠ **`-y` 를 안 넘긴다** — 그 스위치는 마켓플레이스가 선언한 **명령**을 대신 승인한다. 이 플러그인은
-#   git 에서 받는 꼴이라 필요 없고, 모르는 명령을 대신 승인하는 손을 두지 않는다.
-# ⚠ **지면 실패로 세지 않는다** — CLI 는 서 있고 문서 스킬 없이도 Claude Code 는 돈다(CLI 칸의
-#   「못 올림」과 같은 규율). 사내망이 GitHub 을 막는 자리에서 날 수 있다 — 말은 하고 빨강으로 안 끝낸다.
-$DocSkills = @{ Source = 'anthropics/skills'; Market = 'anthropic-agent-skills'; Plugin = 'document-skills@anthropic-agent-skills' }
-# ⚠ **두 문을 한 `-and` 로 묶지 않는다.** 묶으면 「Claude 를 안 골랐다」와 「골랐는데 `claude` 가
-#   안 선다」가 똑같이 **한 글자 없이** 지나간다 — 앞엣것은 조용해야 맞지만 뒤엣것은 깔 것을 못
-#   깐 자리라 말해야 한다. 까닭은 `--version` 이 뱉은 끝 줄이 든다(이 칸이 스스로는 모른다).
-$wantDocSkills = $PickKeys -contains 'claude'
-if ($wantDocSkills -and -not (Test-Runs 'claude' '--version')) {
-  Write-Host '  ! 공식 문서 스킬 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 · Claude Code 는 그대로 돈다' -ForegroundColor Yellow
-  if (Get-Command 'claude' -ErrorAction SilentlyContinue) {
-    $vl = [IO.Path]::GetTempFileName()
-    $vrc = Invoke-Logged 'claude' @('--version') $vl
-    Write-Host "     (claude --version 이 $vrc 로 끝났다 — 뱉은 끝 줄:)"
-    Show-Log $vl
-    Remove-Item $vl -ErrorAction SilentlyContinue
-  } else {
-    Write-Host '     (claude 가 이 창의 PATH 에 없다 — 위 CLI 줄을 먼저 본다)'
-  }
-  Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
-  $wantDocSkills = $false
-}
-if ($wantDocSkills) {
-  $has = ((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)
-  if ($has) {
-    Write-Host '  공식 문서 스킬 — 있음'
-  } else {
-    Write-Host '  공식 문서 스킬(pptx · docx · xlsx · pdf) 설치중 …'
-    $dl = [IO.Path]::GetTempFileName()
-    $rc = 0
-    if (-not ((Get-Quiet 'claude' @('plugin','marketplace','list')) -join "`n").Contains($DocSkills.Market)) {
-      $rc = Invoke-Logged 'claude' @('plugin','marketplace','add',$DocSkills.Source) $dl
-    }
-    if ($rc -eq 0) { $rc = Invoke-Logged 'claude' @('plugin','install',$DocSkills.Plugin) $dl }
-    if (((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)) {
-      Write-Host '  공식 문서 스킬 — 깔았다' -ForegroundColor Green
-    } else {
-      Write-Host "  ! 공식 문서 스킬 — 못 깔았다 ($rc) · Claude Code 는 그대로 돈다 — 뱉은 끝 줄:" -ForegroundColor Yellow
-      Show-Log $dl
-      Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
-    }
-    Remove-Item $dl -ErrorAction SilentlyContinue
-  }
-}
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
 #   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
 if (-not $inside) {
@@ -3493,6 +3442,68 @@ if (-not $repoUrl) {
   }
 }
 Write-Elapsed '[8/8] 개인 값 저장소'
+
+# ── 8″. 공식 문서 스킬 — **자격이 설 자리가 다 선 뒤에 돈다** ────────────────────────
+# ⚠ **왜 CLI 칸(3)이 아니라 여기인가.** CLI 를 깔자마자 붙이면 사외는 구독 로그인(4′) 전이고 사내는
+#   홈 설정(5)·로컬 프록시(5‴) 전이다 — 실측 2026-09-24 집 PC: 3 칸에서 「Not logged in」으로 졌고
+#   로그인 브라우저는 그 뒤에 떴다. 다만 빈 설정 폴더에서는 로그인 없이도 섰으므로 원인이 로그인
+#   하나라고 못 박지 않는다 — 자격이 끼어들 수 있는 칸을 다 지난 뒤에 두면 어느 쪽이어도 선다.
+# 배포본에 싣지 않고 공식 통로로 받는다.
+# pptx · docx · xlsx · pdf 를 다루는 Anthropic 공식 스킬은 플러그인 `document-skills` 로 온다.
+# ⚠ **왜 싣지 않나.** 그 스킬의 라이선스는 복제 · 파생 · 제3자 배포를 막는다 — 상업 여부와 상관없고,
+#   이 배포본은 공개 저장소라 실으면 누구나 받는 자리에 올라간다. 각자가 공식 마켓플레이스에서 받는다.
+# ⚠ **먼저 묻고 없을 때만 깐다** — 자동실행이 매일 이 걸음을 지나므로(CLI 칸과 같은 까닭) 판정은
+#   `plugin list` 한 번이다. 판정 글자는 그 목록이 찍는 `이름@마켓플레이스` 다.
+# ⚠ **`-y` 를 안 넘긴다** — 그 스위치는 마켓플레이스가 선언한 **명령**을 대신 승인한다. 이 플러그인은
+#   git 에서 받는 꼴이라 필요 없고, 모르는 명령을 대신 승인하는 손을 두지 않는다.
+# ⚠ **지면 실패로 세지 않는다** — CLI 는 서 있고 문서 스킬 없이도 Claude Code 는 돈다(CLI 칸의
+#   「못 올림」과 같은 규율). 사내망이 GitHub 을 막는 자리에서 날 수 있다 — 말은 하고 빨강으로 안 끝낸다.
+$DocSkills = @{ Source = 'anthropics/skills'; Market = 'anthropic-agent-skills'; Plugin = 'document-skills@anthropic-agent-skills' }
+# ⚠ **두 문을 한 `-and` 로 묶지 않는다.** 묶으면 「Claude 를 안 골랐다」와 「골랐는데 `claude` 가
+#   안 선다」가 똑같이 **한 글자 없이** 지나간다 — 앞엣것은 조용해야 맞지만 뒤엣것은 깔 것을 못
+#   깐 자리라 말해야 한다. 까닭은 `--version` 이 뱉은 끝 줄이 든다(이 칸이 스스로는 모른다).
+$wantDocSkills = $PickKeys -contains 'claude'
+# 머리는 고른 판에만 선다 — 안 고른 판에 빈 머리만 찍히면 「왜 비었나」를 찾게 된다.
+if ($wantDocSkills) {
+  Write-Host ''
+  Write-Host '공식 문서 스킬' -ForegroundColor Cyan
+}
+if ($wantDocSkills -and -not (Test-Runs 'claude' '--version')) {
+  Write-Host '  ! 공식 문서 스킬 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 · Claude Code 는 그대로 돈다' -ForegroundColor Yellow
+  if (Get-Command 'claude' -ErrorAction SilentlyContinue) {
+    $vl = [IO.Path]::GetTempFileName()
+    $vrc = Invoke-Logged 'claude' @('--version') $vl
+    Write-Host "     (claude --version 이 $vrc 로 끝났다 — 뱉은 끝 줄:)"
+    Show-Log $vl
+    Remove-Item $vl -ErrorAction SilentlyContinue
+  } else {
+    Write-Host '     (claude 가 이 창의 PATH 에 없다 — 위 CLI 줄을 먼저 본다)'
+  }
+  Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
+  $wantDocSkills = $false
+}
+if ($wantDocSkills) {
+  $has = ((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)
+  if ($has) {
+    Write-Host '  공식 문서 스킬 — 있음'
+  } else {
+    Write-Host '  공식 문서 스킬(pptx · docx · xlsx · pdf) 설치중 …'
+    $dl = [IO.Path]::GetTempFileName()
+    $rc = 0
+    if (-not ((Get-Quiet 'claude' @('plugin','marketplace','list')) -join "`n").Contains($DocSkills.Market)) {
+      $rc = Invoke-Logged 'claude' @('plugin','marketplace','add',$DocSkills.Source) $dl
+    }
+    if ($rc -eq 0) { $rc = Invoke-Logged 'claude' @('plugin','install',$DocSkills.Plugin) $dl }
+    if (((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)) {
+      Write-Host '  공식 문서 스킬 — 깔았다' -ForegroundColor Green
+    } else {
+      Write-Host "  ! 공식 문서 스킬 — 못 깔았다 ($rc) · Claude Code 는 그대로 돈다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+      Show-Log $dl
+      Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
+    }
+    Remove-Item $dl -ErrorAction SilentlyContinue
+  }
+}
 
 # ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
 # ⚠ **화면 껍데기도 지우지만 그 손은 제 프로세스가 살아 있을 때만 돈다.** 작업 관리자로 끄거나
