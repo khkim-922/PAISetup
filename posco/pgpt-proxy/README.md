@@ -1,9 +1,16 @@
 # pgpt-proxy — 사내 게이트웨이 앞의 로컬 프록시 (동료 코드 사본)
 
-사내 동료(GitHub `sejuone-cloud`)의 비공개 저장소 `pgpt-one-click-connect` 에서 **통째로** 가져온 사본이다.
-`127.0.0.1:18901` 에 서서 클라이언트가 보내는 본문을 사내 게이트웨이(P-GPT)가 받는 꼴로 고쳐 넘긴다.
-왜 싣나는 결정 기록 0041 이 든다 — Claude Code 의 Opus 5 (assistant prefill 400)와 Gemini CLI (http 주소
-거부 · 번들 패치 대체)가 이 프록시를 지나고, Codex 는 직결이라 안 지난다.
+사내 게이트웨이(P-GPT)가 그대로는 안 받는 요청을 PC 안에서 고쳐 넘기는 프록시다. `127.0.0.1:18901` 에서
+클라이언트의 요청을 받아, 본문을 게이트웨이가 받는 꼴로 고친 뒤 넘긴다.
+
+코드는 사내 동료(GitHub `sejuone-cloud`)의 비공개 저장소 `pgpt-one-click-connect` 에서 **통째로** 가져왔고,
+우리가 얹은 것은 아래 「상류 판」이 든다. 누가 이 프록시를 지나나는 결정 기록 0041(사내는 키 하나로 통일하고
+Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
+
+- **Claude Code** — Opus 5 가 게이트웨이 직결에서 assistant prefill 을 400 으로 거절해서 지난다
+- **Gemini CLI** — CLI 가 `https` 가 아닌 주소를 거부하는데 루프백만은 `http` 를 받아 준다. 회사 문서가 시키는
+  번들 패치 대신 이 길로 간다
+- **Codex** — 게이트웨이에 직결이라 안 지난다(`../Codex-CLI.setting.toml` 의 `base_url`)
 
 | 파일 | 상류 자리 | 무엇 |
 |---|---|---|
@@ -11,51 +18,58 @@
 | `mock_gateway.py` | `tests/mock_gateway.py` | 가짜 게이트웨이 — 실제처럼 prefill 에 400 을 낸다. 사내망 밖에서 프록시를 끝까지 돌려 볼 때 |
 | `Test-AllPgptModels.py` | `tests/Test-AllPgptModels.py` | 모델 전수 스모크 — 프록시 너머로 모델마다 「Reply OK」 한 줄. 결과는 곁 `model-results/` |
 | `Test-ProxyFaults.py` | `tests/Test-ProxyFaults.py` | 비정상 응답·스트림 단절·413·surrogate 등 결함 내성 검사 (v16+) |
-| `pair_check.py` | (우리 것) | 위 둘로 「직결 400 · 프록시 200 · prefill 1번 뗐다」를 잰다 |
+| `pair_check.py` | (우리 것) | 프록시와 가짜 게이트웨이를 함께 띄워 「직결 400 · 프록시 200 · prefill 1번 뗐다」를 잰다 |
 | `hoist_check.py` | (우리 것) | 그림 끌어내기가 본문 모양을 옳게 바꾸나 — 함수를 직접 부른다(망 없음) · 양성·음성 양방향 |
 | `hoist_live_check.py` | (우리 것) | 같은 것을 **실호출로** — 보정 없는 판은 못 보고 고친 판은 그림을 맞히나 |
 | `image_lane_probe.py` | (우리 것) | 게이트웨이가 **어느 자리**의 그림을 보나 — 다섯 갈래를 한 그림으로 재는 눈가림 프로브 |
 | `image_tail_probe.py` | (우리 것) | `tool_result` 가 **마지막**일 때(= `Read` 의 실제 꼴) 어디에 두면 보나 |
+| `watchdog.ps1` | 모름 — 이 저장소에 기록이 없다 | 감시자 — 5초마다 `opus5_proxy.py` 를 돌리는 파이썬 프로세스가 있나 보고, 없으면 `pythonw` 로 창 없이 다시 띄운다. 뮤텍스(이름 `PGPTProxy-Supervisor`)로 한 개만 돌고, 프록시 파일과 같은 폴더에 감시 기록(watchdog.log)을 남긴다 |
 
 ## 상류 판
 
 - 저장소 [`pgpt-one-click-connect`](https://github.com/sejuone-cloud/pgpt-one-click-connect) · 커밋 `4c611608`
   (2026-09-21 · v0.6.16) · 프록시 `VERSION = 17`
-- **우리 판은 `17.5` — 두 칸이다**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸이 받아온 상류 판이고 뒤 칸이
-  우리가 얹은 덩어리 수다. **한 칸으로 세지 않는 까닭**: 상류와 우리가 같은 축에 번호를 매기면 상류가 16 을
-  내는 날 우리 18 과 부딪히고, 그때 번호로는 누가 새것인지 못 가른다. 축을 가르면 **상류가 16 을 내면 우리
-  칸은 0 으로 돌아가 `16.0`** 이 되고 그것이 `15.5` 보다 뒤라는 것이 그냥 나온다
-  ⚠ **`/health` 는 사람이 읽는 `17.5` 를 내고, 견주는 자는 두 수를 각각 정수로 읽는다** — 점 찍힌 문자열을
-  크기로 견주면 `"9" > "10"` 이 되는 자리다. 설치기가 그렇게 견주어 낮으면 갈아 끼운다(`install.ps1` 프록시 칸)
+- **우리 판 번호는 두 칸이다 — 지금 `17.6`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 받아 온 상류 판이고,
+  뒤 칸은 그 위에 우리가 얹은 덩어리 수다. **한 칸으로 세지 않는 까닭**: 상류와 우리가 한 줄에 번호를 매기면
+  상류가 16 을 내는 날 우리 18 과 부딪히고, 그때는 번호만 보고 어느 쪽이 새것인지 못 가른다. 칸을 나누면
+  **상류가 16 을 낼 때 우리 칸이 0 으로 돌아가 `16.0`** 이 되고, 그것이 `15.5` 보다 새것이라는 것이 번호에서
+  바로 보인다
+  ⚠ **`/health` 는 사람이 읽기 좋게 `17.6` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
+  점 찍힌 문자열을 그대로 견주면 `"9" > "10"` 이 되기 때문이다. 설치기는 그렇게 견주어 낮으면 갈아 끼운다
+  (`install.ps1` 프록시 칸)
   ⚠ **옛 정수 한 칸(`17`·`18`)이 도는 자리도 받는다** — 그 판은 새 이름이 없어 「못 읽었다」로 떨어지고,
   그때는 **갈아 끼우는 쪽으로 기운다.** 반대로 두면 옛 프록시가 영영 안 바뀐다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **파일은 안 고친다 — 예외가 여섯이다.** ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
+- **상류 파일은 안 고친다 — 예외는 `opus5_proxy.py` 의 여섯과, ⑵ 를 재려고 `mock_gateway.py` 에 붙인 한 칸이다.**
+  ⑴ keepalive(`KEEPALIVE_SEC` · `_relay_sse_keepalive` · 카운터
   `keepalives` · 자체 검사 한 칸 · 결정 0044) ⑵ unstream(`UNSTREAM` 손잡이 · `synthesize_anthropic_sse` 무리 ·
   `_unstream_messages` · 카운터 `unstreamed` · 자체 검사 세 칸 · 진단 두 줄 · 결정 0051) ⑶ 하이쿠 대체
   (`_CLAUDE_HAIKU_SUBSTITUTE` · `normalize_pgpt_claude_model` 의 `haiku` 갈래 · 위 표) — 게이트웨이에 하이쿠가
   없어 서브에이전트가 지던 자리다 ⑷ 제미나이 이름 표(`_GEMINI_MODEL_ALIASES` ·
   `normalize_gemini_model_path` 의 그 조회 · 자체 검사 세 칸) — 안티그래비티가 제목 짓기에 못박아 둔 이름이
   게이트웨이에 없어 그 곁 호출만 지던 자리다 ⑸ 게이트웨이 요청 번호 로그(`_GW_REQUEST_ID_HEADER` ·
-  `_write_upstream` 이 잡는 한 줄 · 꼬리를 짓는 `_gw` · 판마다 한 줄 넷) — 게이트웨이가 응답 머리에 주는
-  번호를 셋 다 버려서 벽에 걸린 판을 「이 요청」으로 못 대던 자리다(#67) ⑹ **그림 끌어내기**
+  `_write_upstream` 이 번호를 잡는 두 자리 · 꼬리를 짓는 `_gw` · 그 꼬리를 붙인 로그 줄 넷) — 게이트웨이가 응답 머리에 주는
+  번호를 셋 다 버려서 벽에 걸린 판을 「이 요청」으로 못 대던 자리다(이슈 #67) ⑹ **그림 끌어내기**
   (`hoist_tool_result_images` · `sanitize_payload` 의 그 한 줄 · 카운터 `hoisted_images` · 검사 둘 ·
   프로브 둘) — 게이트웨이가 `tool_result` **안**의 `image` 를 200 에 조용히 버려서 `Read` 로 여는 그림이
-  사내에서 한 픽셀도 안 오던 자리다(#76). **판 번호 두 칸도 우리 것이다**(위). 그 둘째를 사내망 밖에서 재느라
-  `mock_gateway.py` 에도 느린 비스트리밍 답 한 칸이 붙었다(`MOCK_SLOW_SEC` · `MOCK_ANSWER` · `_mock/last`).
+  사내에서 한 픽셀도 안 오던 자리다(이슈 #76). **판 번호 두 칸도 우리 것이다**(위). ⑵ unstream 을 사내망
+  밖에서 재느라 `mock_gateway.py` 에도 느린 비스트리밍 답 한 칸이 붙었다(`MOCK_SLOW_SEC` · `MOCK_ANSWER` ·
+  `_mock/last`).
   나머지는 상류 그대로다. 상류가 CRLF 인 것만 이 저장소 규칙(`.gitattributes`)이 LF 로 눕힌다. 커밋 게이트의
-  파이썬 판정이 무는 두 줄(`raise` 에 `from` 없음 · 안 쓰는 import)은 뿌리 `ruff.toml` 이 이 세 파일을
-  제외해 받는다 — 판정은 전역, 제외는 저장소(결정 0039)
+  파이썬 판정(ruff)이 상류 코드에서 문제 삼는 두 가지(`raise` 에 `from` 없음 · 안 쓰는 import)는 뿌리
+  `ruff.toml` 이 상류 파일 셋(`opus5_proxy.py` · `mock_gateway.py` · `Test-AllPgptModels.py`)을 검사에서 빼는
+  것으로 받는다. `Test-ProxyFaults.py` 는 판정을 통과해 뺄 까닭이 없다. 판정 기준은 전역 설정이 들고, 무엇을
+  뺄지는 저장소가 정한다(결정 0039)
 
 ## 무엇을 쓰고 무엇이 노나
 
 칸마다 회사 로그 실측이 든다 — 25시간 3039줄(2026-09-15 08:04 ~ 09-16 09:03) + Gemini·Codex 탐침 한 판씩.
-**「논다」는 안 걸린다는 판정이지 걷어 낸다는 뜻이 아니다** — 걷어 내지 않는 까닭은 위 「파일은 안 고친다」.
+**「논다」는 안 걸린다는 판정이지 걷어 낸다는 뜻이 아니다** — 걷어 내지 않는 까닭은 위 「상류 파일은 안 고친다」.
 
 | 프록시가 하는 일 | 우리 |
 |---|---|
 | `/v1/messages` — 끝의 assistant 마디 제거 · `system` 역할 마디를 `user` 로 · 같은 역할 병합 · `temperature`/`top_p` 제거 | **쓴다** (Claude Code) — `trimmed_prefills` 가 센다 |
-| `claude-sonnet-5` → `claude-sonnet-4.6` (게이트웨이 미등록 별칭) | **쓴다 · 758회** — `ANTHROPIC_MODEL` 은 메인 세션의 모델 하나만 못박고, Claude Code 가 스스로 부르는 곁 호출(서브에이전트·요약·모델 피커의 다른 칩)은 그 못을 안 타고 제 이름을 보낸다 |
+| `claude-sonnet-5` → `claude-sonnet-4.6` (게이트웨이 미등록 별칭) · 같은 표(`_CLAUDE_MODEL_ALIASES`)가 `-latest` 별칭 넷도 등록된 이름으로 푼다 | **쓴다 · 758회**(`claude-sonnet-5`) — `ANTHROPIC_MODEL` 은 메인 세션의 모델 하나만 못박고, Claude Code 가 스스로 부르는 곁 호출(서브에이전트·요약·모델 피커의 다른 칩)은 그 못을 안 타고 제 이름을 보낸다 |
 | **(우리 것)** 이름에 `haiku` 가 들면 `claude-sonnet-4.6` 으로 (`_CLAUDE_HAIKU_SUBSTITUTE`) | **쓴다** — 하이쿠는 이 게이트웨이에 **한 판도 없다**(`GET /v1/models` 실측 2026-09-17 · Claude 는 opus 4.5·4.6·4.7·5 와 sonnet 4.5·4.6 여섯뿐). 그래서 서브에이전트 호출이 통째로 `400`(「모델을 찾을 수 없습니다」)으로 지던 자리다. **이름을 목록으로 안 잡고 규칙으로 잡는다** — 클라이언트가 아는 하이쿠 이름이 열둘이라 판이 오를 때마다 샌다. 실측: `claude-haiku-4-5` · 날짜박은 판 둘 다 `200` 에 `model: claude-sonnet-4.6` · 로그에 `restored` 한 줄. ⚠ **게이트웨이가 하이쿠를 들이면 이 칸을 지운다** — 그때는 이 규칙이 진짜 하이쿠까지 갈아버린다 |
 | 대시 모델 ID 복원 — `claude-opus-4-7` → `claude-opus-4.7` | **쓴다 · 6회** — 같은 곁 호출 길. 별칭과 한 함수(`normalize_claude_model_id`)라 바뀌면 로그 한 줄이 찍힌다 |
 | 빈 도구 `description` 채우기 | **쓴다 · 6회** (Claude Code) · Codex 를 루프백에 태우면 `/v1/responses` 에서도 걸린다(탐침 `tool_descriptions_filled=1`) |
@@ -71,33 +85,34 @@
 | Hermes 갈래 — chat 문의 Gemini 변환 · `x-api-key` → Bearer | **논다** — Hermes 를 안 쓴다. Claude Code 는 Bearer 로 보낸다 |
 | 개인 `x-api-key` 헤더 누출 방지 — `Authorization` 이 이미 있으면 `x-api-key` 제거 (v16) | **쓴다** (Claude Code) — 사용자 환경에 개인 `ANTHROPIC_API_KEY` 가 있어도 평문 HTTP 로 사내 게이트웨이에 새지 않는다 |
 | 짝 없는 surrogate(`\ud83d` 등) JSON 인코딩 보호 | **쓴다** — 이모지 반쪽에서 잘린 문자열이 와도 예외로 죽지 않고 `\uXXXX` 로 되돌린다 |
-| 경로 순회(`..` 및 `.`) 차단 | **쓴다** — `/gpgpta01-gpt/../other` 등 게이트웨이 내 다른 서비스 경로 접근을 403 `Connection: close` 로 차단 |
-| 청크 전송 인코딩(`Transfer-Encoding: chunked`) 종료 검증 | **쓴다** — 완전 수신 시에만 `0\r\n\r\n` 종료자를 보내고, 업스트림이 도중 단절되면 종료자 없이 닫아 클라이언트가 `IncompleteRead` 로 감지하게 한다 |
-| 상류 연결 풀 stale 재시도 제한 | **쓴다** — 풀에서 꺼낸 오래된 연결(stale)이 응답 전 끊긴 경우만 새 연결(fresh)로 1회 재시도. 새 연결 실패나 타임아웃은 재시도하지 않아 이중 생성/과금을 막는다 |
-| 15초 바인드 재시도 유예 | **쓴다** — 프로세스 재시작 시 이전 소켓의 TIME_WAIT 정리 지연으로 인한 즉시 크래시 방지 |
-| `PGPT_PROXY_PORT` 환경변수 | **쓴다** — 기본 `18901`, 시험(`Test-ProxyFaults.py` · `pair_check.py`) 시 포트 충돌 없이 임의 포트 바인딩 |
-| `/health` 에 `pid` 포함 | **쓴다** — 설치기·검사기가 방금 띄운 자기 프로세스인지 대조 |
-| Gemini `/v1/responses` 보호 | **쓴다** — chat 변환을 `/v1/chat/completions` 로 한정하여 Responses API 프롬프트 유실 방지 |
-| 응답 | **무수정 중계** — 스트리밍 포함. 심장박동도 생각 낱말도 안 건드린다. 180초 벽을 중계로는 못 넘는다(`ENV-posco.md`) — 넘는 것은 위 unstream 갈래고, 그 길의 `/v1/messages` 만 중계가 아니라 짓기다 |
+| 경로 순회(`..` 및 `.`) 차단 | **쓴다** — `/gpgpta01-gpt/../other` 처럼 허용 접두어를 빠져나가 게이트웨이의 다른 서비스로 가려는 경로는 403 으로 막고 연결을 닫는다(`Connection: close`) |
+| 청크 전송(`Transfer-Encoding: chunked`)의 끝 표시 | **쓴다** — 상류 응답을 끝까지 받았을 때만 끝 표시(`0\r\n\r\n`)를 보낸다. 상류가 도중에 끊기면 끝 표시 없이 닫아서, 클라이언트가 잘린 응답(`IncompleteRead`)으로 알아채게 한다 |
+| 상류 연결 풀 — 재시도는 한 번, 죽은 연결일 때만 | **쓴다** — 풀에서 꺼낸 연결이 이미 죽어 있어(stale) 응답 전에 끊겼을 때만 새 연결(fresh)로 한 번 더 보낸다. 새 연결이 실패하거나 시간이 넘은 것은 다시 보내지 않는다 — 같은 요청이 두 번 생성·과금되는 것을 막으려는 것이다 |
+| 포트 잡기를 15초 동안 다시 시도 | **쓴다** — 재설치·키 교체로 프록시를 다시 띄울 때 옛 프록시의 연결이 아직 닫히는 중이면 포트 바인드가 잠깐 실패한다. 그 자리에서 죽으면 다음 로그인까지 프록시가 없으므로 15초 동안 다시 시도한다 |
+| `PGPT_PROXY_PORT` 환경변수 | **쓴다** — 기본은 `18901`. 시험(`Test-ProxyFaults.py` · `pair_check.py`)은 이 값으로 다른 포트에 띄워, 떠 있는 프록시와 부딪히지 않는다 |
+| `/health` 에 `pid` 포함 | **쓴다** — 설치기·검사기가 포트를 쥔 프로세스가 방금 제가 띄운 것인지 확인한다(한 PC 를 여럿이 쓰면 남의 프록시가 포트를 쥘 수 있다) |
+| `gemini-` 모델 변환은 `/v1/chat/completions` 에서만 | **쓴다** — Gemini 네이티브로 옮기는 변환(위 Hermes 갈래)을 chat 경로에만 건다. `/v1/responses` 요청까지 옮기면 변환기가 `messages` 만 읽어 그 API 의 프롬프트를 잃는다 |
+| 응답 | **거의 그대로 중계한다** — 스트리밍 포함, 생각 낱말도 안 건드린다. 손대는 것은 위 칸들뿐이다: 침묵 동안 끼우는 keepalive 주석 · `/v1beta` 의 쪼개진 SSE 재조립 · Hermes 갈래의 Gemini→OpenAI 변환 · unstream 갈래의 SSE 짓기. 180초 벽을 중계로는 못 넘는다(`../ENV-posco.md`) — 넘는 길은 unstream 갈래뿐이고, 그 길의 `/v1/messages` 응답은 중계가 아니라 프록시가 지은 것이다 |
 
 **프록시가 하는 일이 아닌 것 하나** — `POST /v1/messages/count_tokens` 는 게이트웨이에 없어 **404** 다(실측
-775회). 클라이언트가 제 계산으로 넘어가고 `slow` 는 0건이라 지연을 안 만든다 — 고칠 자리가 아니라 알아둘
-자리다.
+775회). 클라이언트가 스스로 어림셈으로 넘어가고 느린 요청(`slow`)도 0건이라 지연을 안 만든다 — 고칠 일이
+아니라 알아 둘 일이다.
 
 ## 실행 규약
 
-- 듣는 자리 `127.0.0.1:18901` (환경변수 `PGPT_PROXY_PORT` 로 재정의 가능 · 인자 없음) · 허용 경로 `/gpgpta01-gpt/` 아래만
+- 듣는 자리 `127.0.0.1:18901` (환경변수 `PGPT_PROXY_PORT` 로 바꿀 수 있다 · 포트를 받는 명령 인자는 없다) · 받는 경로는 `/gpgpta01-gpt/` 아래뿐
 - 상류는 `PGPT_PROXY_UPSTREAM` (기본 `http://aigpt.posco.net`) — 사내 `HTTP_PROXY` 를 **안 탄다**(직결)
 - `proxy.log` 와 `opus5_proxy.pid` 를 **제 파일 곁에** 쓴다 — 그래서 설치기는 이 파일을 실행 폴더로 복사해 띄운다.
   저장소·홈 사본에서 바로 띄우면 그 곁에 남고, 저장소는 `.gitignore` 가 받는다
-- `GET /health` — `status` · `version` · 계수(`trimmed_prefills` 등) · `--self-test` — 보정 함수 자체 검사
+- `GET /health` — `status` · `service` · `version` · `pid` · 계수(`trimmed_prefills` 등)
+- `--self-test` — 보정 함수를 스스로 검사하고 끝난다(프록시는 안 뜬다)
 
 ## 재는 법
 
 ```bash
 python -X utf8 posco/pgpt-proxy/opus5_proxy.py --self-test     # 보정 함수 — 어디서나
 python -X utf8 posco/pgpt-proxy/pair_check.py                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
-python -X utf8 posco/pgpt-proxy/Test-ProxyFaults.py          # 비정상 응답·스트림 단절 등 결함 내성 — 어디서나                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
+python -X utf8 posco/pgpt-proxy/Test-ProxyFaults.py          # 비정상 응답·스트림 단절 등 결함 내성 — 어디서나
 python -X utf8 posco/pgpt-proxy/hoist_check.py                # 그림 끌어내기가 본문 모양을 옳게 바꾸나 — 어디서나 (망 없음)
 MOCK_SLOW_SEC=4 MOCK_ANSWER=tool_use python -X utf8 posco/pgpt-proxy/mock_gateway.py 18902
 #   느린 비스트리밍 답 — 답 꼴은 text·tool_use·error500 · 상류가 받은 몸은 GET /gpgpta01-gpt/_mock/last (0051)
@@ -110,17 +125,18 @@ python -X utf8 posco/pgpt-proxy/image_lane_probe.py claude-opus-5 gpt-5.2   # �
 python -X utf8 posco/pgpt-proxy/image_tail_probe.py claude-opus-5           # tool_result 가 마지막일 때
 ```
 
-⚠ **눈가림 넷은 정답을 화면에 안 찍는다** — 곁 파일에만 적는다(`%TEMP%\*-answer.txt`). 재는 사람도 먼저
-보지 않는 것이 요점이다: 아는 값을 맞히는 것은 재는 것이 아니다. `hoist_live_check.py` 는 그 대조까지
-스스로 하고 판정 한 줄을 낸다.
+⚠ **눈가림 셋(`hoist_live_check.py` · `image_lane_probe.py` · `image_tail_probe.py`)은 정답을 화면에 안 찍는다** —
+곁 파일에만 적는다(`%TEMP%\*-answer.txt`). 재는 사람도 정답을 먼저 보지 않는 것이 요점이다: 아는 값을
+맞히는 것은 재는 것이 아니다. `hoist_live_check.py` 는 정답과의 대조까지 스스로 하고 판정 한 줄을 낸다.
 
 전수 스모크는 키를 `PGPT_API_KEY` 나 홈 `.claude/settings.json` 의 `ANTHROPIC_AUTH_TOKEN` 에서 읽는다.
 
 ## 상류에서 새 판을 받을 때
 
-1. 상류의 세 파일을 그대로 복사한다 — `diff --strip-trailing-cr` 로 대조하면 줄끝 잡음이 안 낀다.
-   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 여섯을 다시 얹는다** — `git diff` 로 이번 판과 견주면 둘 다
-   그대로 보인다.
+1. 상류 파일 넷(위 표에서 「상류 자리」가 적힌 것)을 그대로 복사한다 — `diff --strip-trailing-cr` 로 대조하면
+   줄끝 잡음이 안 낀다.
+   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 여섯을 다시 얹는다** — 복사한 뒤 `git diff` 로 직전 판과
+   견주면 상류가 바꾼 것과 복사로 지워진 우리 덩어리가 함께 보인다.
    - keepalive(0044) — `KEEPALIVE_SEC` · `_count_keepalive` · `_relay_sse_keepalive` · `_relay_stream` 의 두 인자 ·
      호출 자리의 `keepalive_sse` · 자체 검사 한 칸
    - unstream(0051) — `UNSTREAM` · `_count_unstreamed` · `stats()` 의 `unstreamed` · `_sse_event` ·
@@ -129,12 +145,14 @@ python -X utf8 posco/pgpt-proxy/image_tail_probe.py claude-opus-5           # to
    - 하이쿠 대체 — `_CLAUDE_HAIKU_SUBSTITUTE` · `normalize_pgpt_claude_model` 의 `haiku` 갈래
    - 제미나이 이름 표 — `_GEMINI_MODEL_ALIASES` · `normalize_gemini_model_path` 의 그 조회
      (상류 함수가 `-customtools` 만 떼므로 **그 함수 안에 한 줄이 든다**) · 자체 검사 세 칸
-   - 그림 끌어내기(#76) — `_HOISTED_IMAGES` · `_count_hoisted` · `stats()` 의 `hoisted_images` ·
+   - 게이트웨이 요청 번호 로그(이슈 #67) — `_GW_REQUEST_ID_HEADER` · 처리기의 `gw_request_id` 칸 ·
+     `_write_upstream` 이 응답 머리에서 번호를 잡는 두 자리 · 꼬리를 짓는 `_gw` · 그 꼬리를 붙인 로그 줄 넷
+   - 그림 끌어내기(이슈 #76) — `_HOISTED_IMAGES` · `_count_hoisted` · `stats()` 의 `hoisted_images` ·
      `hoist_tool_result_images` · `sanitize_payload` 가 **합치기보다 앞에서** 부르는 한 줄
      ⚠ **그 순서가 뜻을 진다** — 합친 뒤에 부르면 같은 메시지를 두 번 훑는다. 그리고 그림은
      `tool_result` **뒤**로만 가야 한다: 앞에 끼우면 게이트웨이가 짝 검사에서 400 을 낸다(실측)
    ⚠ `mock_gateway.py` 에도 얹을 것이 있다 — `SLOW_SEC`/`ANSWER`/`LAST` · `_body` 의 `raw_body` ·
-   `_mock/last` 창구 · `/v1/messages` 의 답 세 꼴(0051)
+   `_mock/last` 창구 · `/v1/messages` 의 답 세 꼴(결정 0051)
 2. 위 「상류 판」의 커밋을 고치고 **판 번호 두 칸을 옮긴다** — `VERSION_UPSTREAM` 을 받아온 판으로 올리고
    `VERSION_OURS` 를 **0 으로 되돌린다.** 그다음 우리 덩어리를 다시 얹은 만큼만 뒤 칸을 올린다.
    ⚠ **뒤 칸을 안 되돌리면 번호가 뜻을 잃는다** — 그 수는 「이 상류 판 위에 우리가 몇 번 얹었나」다

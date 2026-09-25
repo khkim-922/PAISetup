@@ -1598,6 +1598,60 @@ pull_due() {   # pull_due <저장소> — 0=당길 차례 · 1=방금 다른 프
   return 0
 }
 
+# ── 배경 일의 실패를 다음 세션이 말한다 — 배경으로 뺀 당김(pull_ff)과 main 맞추기(sync_main_bg)가 같이 쓴다.
+# ⚠ **원문은 경고를 내기 전에 옆에 둔다** (#38). 부른 쪽이 곧 로그를 비우므로, 사람이 이 한 줄을 한 번 읽고
+#   나면 사유의 원문이 사라진다 — `git_why` 가 든 160자는 **화면의 값**이고 원문은 파일의 값이다. 다음 성공이
+#   그 파일을 걷는다: 성공하면 로그가 비어 else 로 오고, 그때가 곧 「이제 안 진다」이다.
+bg_fail_report() {  # bg_fail_report <저장소> <로그> <원문 보관> <무엇이 졌나>
+  if [ -s "$2" ]; then
+    cp "$2" "$3" 2>/dev/null || true
+    echo "$(basename "$1"): ⚠ $4 — $(git_why "$(cat "$2")") · 원문 $3"
+  else
+    rm -f "$3" 2>/dev/null || true
+  fi
+}
+
+# ── 로컬 main 을 원격에 맞춘다 (0066) — **main 이 아닌 갈래 위에서만.** main 위라면 당김(pull_ff) 몫이다.
+#    `origin/main` 과 로컬 main 은 마지막 fetch 때의 사진이다. 원격이 그 뒤에 움직이면 사진이 낡고,
+#    낡은 사진을 지금으로 읽으면 「main 이 뒤처졌다」 같은 거짓 판정이 선다.
+#    작업 나무는 안 건드린다 — 참조 둘(추적 갈래 · 로컬 main)만 옮긴다.
+#    부르는 자리는 둘이다 — 설치 갈래 ⑦(기다린다) · 리눅스 auto(배경, `sync_main_bg`).
+# ⚠ **빨리감기만 한다.** 로컬 main 에 밀지 않은 커밋이 있으면 git 이 `non-fast-forward` 로 거절하고, 그 사유가
+#   실패로 남는다. 억지로 옮기면(`branch -f`) 그 커밋이 경고 없이 main 에서 떨어진다.
+# ⚠ **refspec 을 두 칸 다 적는다.** 한 갈래만 받게 클론된 저장소는 `fetch <원격> main` 이 추적 갈래를 안 옮기고
+#   FETCH_HEAD 만 쓴다 — 그러면 사진이 그대로인데 성공으로 끝난다.
+# ⚠ **원격 이름을 안 박는다** — 당김(pull_ff)과 같이 추적 설정에서 읽는다. 없으면 맞출 자리가 없어 조용히 물러난다.
+sync_main() {  # sync_main <저장소> — 0=맞췄거나 맞출 것이 없다 · 1=졌다(사유는 stdout)
+  git -C "$1" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  git -C "$1" show-ref --verify --quiet refs/heads/main || return 0
+  [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" != main ] || return 0
+  _sr="$(git -C "$1" config --get branch.main.remote 2>/dev/null)" || true
+  [ -n "$_sr" ] || return 0
+  # ⚠ `-q` 를 안 준다 — 주면 거절 줄(`! [rejected] … (non-fast-forward)`)까지 숨어 사유 없이 진다. 대신 출력을
+  #   붙잡아 두고 **질 때만** 낸다 — 성공 출력이 로그에 남으면 다음 세션이 그것을 실패로 읽는다.
+  _so="$(git -C "$1" fetch "$_sr" "+refs/heads/main:refs/remotes/$_sr/main" "refs/heads/main:refs/heads/main" 2>&1)" ||
+    { printf '%s\n' "$_so"; return 1; }
+}
+
+# 리눅스 auto 에서 붙은 저장소마다 배경으로 맞춘다. 리눅스는 이 함대에서 리모트 컨테이너뿐이다.
+# ⚠ **왜 auto 에도 서나.** 컨테이너가 처음 뜰 때는 설치 갈래 ⑦ 이 맞춘다. 그런데 **이미 떠 있는
+#   컨테이너에서 새 대화를 열면** 훅이 auto 로만 돌고, auto 의 당김은 main 체크아웃에서만 움직인다.
+#   리모트 세션은 늘 `claude/*` 갈래 위라서 로컬 main 이 컨테이너가 뜬 순간의 사진으로 남는다.
+# ⚠ **기다리지 않는다** — 세션 시작 시간을 안 늘린다(0065 가 줄인 값을 되돌리지 않는다). 그래서
+#   이번 대화의 첫 판정에는 늦을 수 있다. 원격을 판정하기 전에 fetch 하는 것은 규범 몫이다.
+# ⚠ **붙은 저장소를 다 돈다** — 리모트는 설정 저장소 훅 하나가 대표로 돌아 형제는 제 훅이 안 선다.
+#   진 사유는 `.git/claude-main-sync.log` 에 남고, 다음 세션이 한 줄로 말한다.
+# ⚠ **main 위면 표식(pull_due)을 찍기 전에 물러난다** — 찍으면 같은 저장소의 당김이 「방금 해 봤다」로 막힌다.
+sync_main_bg() {  # sync_main_bg <저장소>
+  [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" != main ] || return 0
+  _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+  _lg="$_gd/claude-main-sync.log"
+  bg_fail_report "$1" "$_lg" "$_gd/claude-main-sync.last-fail" "지난 세션에 로컬 main 을 원격에 못 맞췄다"
+  pull_due "$1" || return 0
+  : > "$_lg" 2>/dev/null || true
+  ( sync_main "$1" >"$_lg" 2>&1 </dev/null & )
+}
+
 # auto — 두 걸음은 매 세션, 설치는 지문이 어긋날 때만 (claude-config 0009 · 0010):
 #   ① 원격을 당긴다 — ff-only, main 체크아웃일 때만. 로컬을 다치게 하지 않는다:
 #      갈라졌거나 오프라인이면 그대로 두고 **사유까지** 말한다. 「매 세션 풀부터」가 여기로 들어온다.
@@ -1605,6 +1659,7 @@ pull_due() {   # pull_due <저장소> — 0=당길 차례 · 1=방금 다른 프
 #      저장소 밖 세션만 한다** (0062 · 위 PC_WIDE). 형제 저장소 세션은 게이트 배선만 하고 홈은
 #      견주기만 해서, 맞출 것이 있으면 한 줄로 알린다(`pc_wide_notice`).
 #   ③ 선언 지문이 어긋날 때만 깐다 — 설치의 무거움(npm ci)이 선언 바뀐 세션에만 든다.
+#   리눅스(리모트 컨테이너)는 하나 더 — 붙은 저장소마다 로컬 main 을 배경으로 원격에 맞춘다(`sync_main_bg` · 0066).
 # ⚠ 리모트도 같은 세 걸음이다 (0010). 옛 판(「컨테이너가 새로 떠 무조건 깐다」)은 맨
 #   컨테이너 전제였는데 환경 이미지가 서면서 뒤집혔다 — 도구·venv·지문은 이미지 시점에
 #   실려 오고 코드만 세션마다 최신이라, 지문이 「이미지가 낡았나」를 가른다. 맨
@@ -1627,17 +1682,8 @@ if [ "$MODE" = auto ]; then
     [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" = main ] || return 0
     _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
     _lg="$_gd/claude-pull.log"
-    # ⚠ **원문은 경고를 내기 전에 옆에 둔다** (#38). 아래 `: > "$_lg"` 가 같은 실행에서 로그를
-    #   비우므로, 사람이 이 한 줄을 한 번 읽고 나면 사유의 원문이 사라진다 — `git_why` 가 든
-    #   160자는 **화면의 값**이고 원문은 파일의 값이다. 다음 성공이 그 파일을 걷는다:
-    #   당김이 성공하면 로그가 비어 이 갈래의 else 로 오고, 그때가 곧 「이제 안 진다」이다.
-    _lf="$_gd/claude-pull.last-fail"
-    if [ -s "$_lg" ]; then
-      cp "$_lg" "$_lf" 2>/dev/null || true
-      echo "$(basename "$1"): ⚠ 지난 세션의 원격 당김이 졌다 — $(git_why "$(cat "$_lg")") · 원문 $_lf"
-    else
-      rm -f "$_lf" 2>/dev/null || true
-    fi
+    # 원문 보관과 경고는 `bg_fail_report` 한 자리다 (#38) — main 맞추기도 같은 것을 쓴다.
+    bg_fail_report "$1" "$_lg" "$_gd/claude-pull.last-fail" "지난 세션의 원격 당김이 졌다"
     pull_due "$1" || return 0
     : > "$_lg" 2>/dev/null || true
     # ⚠ **`pull` 이 아니라 `fetch` + `merge` 다** (#87). `pull` 은 제 fetch 를 돌린 뒤 `FETCH_HEAD` 를
@@ -1680,6 +1726,19 @@ if [ "$MODE" = auto ]; then
   #   움직이면 `pc_wide_mark` 가 열쇠를 안 적는다 (0065).
   [ -n "$PC_WIDE" ] && pc_wide_key
   pull_ff "$PROJECT_DIR"
+  # 리눅스(리모트 컨테이너)만 — 붙은 저장소마다 로컬 main 을 배경으로 원격에 맞춘다 (0066).
+  # ⚠ `OS=linux` 가 아니라 `uname` 으로 가른다 — 저 값은 윈도우가 아닌 모든 것(맥 포함)을 받는 칸이다.
+  # ⚠ 형제가 main 위면 당김이 맡는다 — 이 저장소는 위에서 이미 당겼다(두 번 부르면 경고가 두 줄이 된다).
+  SYNC_BG=""
+  if [ "$(uname -s)" = Linux ]; then
+    SYNC_BG=1
+    for _g in "$(dirname "$PROJECT_DIR")"/*/.git; do
+      [ -e "$_g" ] || continue
+      _r="${_g%/.git}"
+      [ "$_r" = "$PROJECT_DIR" ] || pull_ff "$_r"
+      sync_main_bg "$_r"
+    done
+  fi
   # PC 전체 일 — 설정 저장소 세션과 저장소 밖 세션만 맡는다 (0062). 형제 저장소 세션은 설정
   #   저장소도 안 당긴다: 당겨 온 것은 홈에 밀어야 실리는데 그 밀기를 이 세션이 안 하므로 효과가 없다.
   # ⚠ **같은 판으로 이미 맞춘 홈은 다시 안 맞춘다** (0065) — 로그인 자동 실행이 방금 다 한 일을 세션마다
@@ -2300,14 +2359,13 @@ EOF
   # ── ⑦ 로컬 main — 컨테이너가 뜬 순간의 스냅샷에 박제된 채 남는다. 원격 최신으로 맞춘다.
   #      main 이 지금 체크아웃돼 있으면 건드리지 않는다 — 작업 중인 브랜치일 수 있다.
   #      저장소 몫이다 — 전역 갈래에는 맞출 저장소가 없다 (#43).
-  if [ -n "$DO_REPO" ] &&
-     git -C "$PROJECT_DIR" show-ref --verify --quiet refs/heads/main &&
-     [ "$(git -C "$PROJECT_DIR" symbolic-ref --short -q HEAD 2>/dev/null)" != main ]; then
+  #      맞추는 몸통은 `sync_main` 한 자리다 — 리눅스 auto 도 같은 것을 배경으로 부른다.
+  # ⚠ **auto 에서 배경 맞추기가 이미 떴으면 건너뛴다.** auto 가 설치로 넘어온 판에 여기서 또 부르면 같은
+  #   저장소에 fetch 둘이 겹쳐 참조 잠금에서 한쪽이 진다 — 그러면 거짓 「못 맞췄다」가 선다(#87 과 같은 결).
+  if [ -n "$DO_REPO" ] && [ -z "${SYNC_BG:-}" ]; then
     # 사유를 삼키지 않는다 — 여기가 조용히 지면 **낡은 main 을 든 채 세션이 돈다.**
     # 위 당김(①)과 같은 자(git_why)로 낸다: 삼킴이 한 자리에만 남으면 다음엔 저기서 만난다.
-    if _fe="$(git -C "$PROJECT_DIR" fetch origin main -q 2>&1)"; then
-      git -C "$PROJECT_DIR" branch -f main origin/main >/dev/null 2>&1 || true
-    else
+    if ! _fe="$(sync_main "$PROJECT_DIR")"; then
       echo "$PROJECT_NAME: ⚠ 로컬 main 을 원격에 못 맞췄다 — $(git_why "$_fe"). 스냅샷 시점의 낡은 main 이 그대로 남는다."
     fi
   fi
