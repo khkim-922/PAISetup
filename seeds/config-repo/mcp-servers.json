@@ -9,9 +9,9 @@
     },
     "tavily-search": {
       "type": "stdio",
-      "command": "npx",
+      "command": "cmd",
       "args": [
-        "-y",
+        "/c",
         "tavily-mcp"
       ]
     }

@@ -135,12 +135,15 @@
 </p>
 <ol>
   <li>
-    <b>GitHub 에 비공개 저장소를 하나 만듭니다.</b> 이름은 아무거나 됩니다.
+    <b>GitHub 에 비공개 저장소를 하나 만듭니다.</b> 이름은 <code>claude-config</code> 로 둡니다.
+    다른 저장소를 열었을 때 세션 훅과 커밋 게이트가 곁의 설정 저장소를 이 이름으로 찾습니다 — 다른 이름이면
+    설치는 서도 다른 저장소에서는 이 저장소를 못 찾고 홈의 견본으로 돕니다.
     개인 키가 들어가므로 반드시 비공개(Private)로 둡니다.
   </li>
   <li>
     <b>견본 폴더의 내용을 그 저장소 폴더에 통째로 복사합니다.</b>
     <span class="warn">숨김 폴더 <code>.claude</code> 와 <code>.githooks</code> 도 같이 복사해야 합니다.</span>
+    <span class="warn"><code>memory</code> 폴더도 지우지 않습니다</span> — 비어 있어도 그 폴더가 있어야 설정 저장소로 알아봅니다.
     탐색기에서 끌어다 놓으면 숨김 폴더가 빠지기 쉬우니, 터미널에서 이렇게 하는 편이 안전합니다.
 <pre>cp -r ~/.claude/seeds/config-repo/. ~/repos/&lt;새 저장소&gt;/</pre>
   </li>

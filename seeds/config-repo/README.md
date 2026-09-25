@@ -38,6 +38,7 @@
 | `deploy.repofiles.conf` | 저장소마다 한 벌씩 둘 파일 목록 — 뿌리는 자와 재는 자가 같이 읽는다 |
 | `deploy.targets.d/` | **어느 PC 의 어디로 뿌리나.** 파일 하나가 PC 하나다 (견본 한 장) |
 | `mcp-servers.json` | MCP 서버 선언. **키는 안 든다** — 환경변수 이름만 든다 |
+| `memory/` | 프로젝트 메모리를 PC 사이로 나르는 자리. **비어 있어도 지우지 않는다** — 이 폴더가 설정 저장소를 알아보는 표시다 |
 | `vdi-home-settings.json` | 홈 `~/.claude/settings.json` 의 씨앗 |
 | `.claude/hooks/session-start.sh` | **문지기.** 세션이 열릴 때 불려 몸통을 찾아 넘긴다 — 저장소마다 한 벌씩 서는 것은 이것이다 |
 | `.claude/hooks/session-start-body.sh` | **익명 몸통.** 세션이 열릴 때 도구를 재고 갖춘다. 설치가 `--install` 로 부르면 개인 칸까지. 저장소마다 사본을 두지 않는다 |
@@ -48,7 +49,7 @@
 | `.claude/get-browser.sh` | 브라우저를 받아 오는 **뒷길**. 도구 선언의 `browsers-fallback` 이 저장소 기준 경로로 가리킨다 |
 | `.githooks/pre-commit` · `commit-msg` | **커밋 게이트 몸통 — 문지기.** 익명이다 — 무엇을 재는지 모르고, 러너를 찾아 부른다. 저장소마다 한 벌씩 가는 것은 이것이다 |
 | `.githooks/gates-run.sh` | 몸통 둘이 같이 쓰는 러너. 선언을 읽어 조각을 부른다. **저장소마다 사본을 두지 않는다** — 몸통이 설정 저장소(찾는 자가 알아보는 자리: 이름이 `claude-config` 이고 `deploy.ps1` 과 `memory/` 를 든 폴더), 없으면 홈 씨앗에서 찾는다 |
-| `.githooks/gates.d/` | **검사 조각** — 인코딩 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 · 파이썬 결함 · 빌린 부품. 러너와 같이 여기에만 산다 |
+| `.githooks/gates.d/` | **검사 조각** — 인코딩 · 셸 문법 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 · 파이썬 결함 · 빌린 부품. 러너와 같이 여기에만 산다 |
 | `.githooks/claude-config-path.sh` | 설정 저장소가 이 기계 어디 붙었나, 게이트 러너가 어디 섰나를 **한 자리에서** 잰다 |
 | `.claude/markdownlint.global.jsonc` | 우리 글 문체가 낳는 마크다운 오탐 |
 | `.claude/commitlint.global.mjs` | 같은 축 — 커밋 제목 문체가 낳는 오탐 |

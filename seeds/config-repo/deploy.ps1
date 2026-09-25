@@ -801,11 +801,9 @@ if ($ghTok) {
     }
 }
 
-# tavily 는 위에서 안 뽑힌다 — 설정에 ${} 가 없고 서버가 프로세스 환경에서 직접 읽어가므로
-# 진본이 이름을 들지 않는다. 뽑을 자리가 없어 여기 명시한다.
-if (-not [Environment]::GetEnvironmentVariable('TAVILY_API_KEY', 'User')) {
-    $todo += 'Tavily 키 설정 — 별도 터미널에서:  setx TAVILY_API_KEY "실제키값"'
-}
+# tavily 키는 할 일로 안 띄운다 — `tavily-mcp` 는 키가 없으면 keyless 로 떠서 검색·추출이 된다.
+# 키는 사이트 지도·크롤·리서치를 여는 덤이라, 없을 때 알리는 자는 홈 SessionStart 의 안내 한 줄이다
+# (배포본 설치기가 심는다 · 표지 `tavily-key-hint`).
 
 
 # ============================ 2단계: 보고 및 승인 ============================
