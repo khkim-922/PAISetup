@@ -1906,11 +1906,15 @@ if ($NoVsCode) {
 
 # ── 4. CLI 셋 — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────
 # ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 판정은 `--version` 이 도나(프로브)다.
-function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
+# ⚠ **판을 `--version` 이 못 대는 패키지가 있다** — `tavily-mcp` 는 0 으로 끝나며 `unknown` 을 낸다.
+#   그 글자로 견주면 레지스트리 판과 늘 달라 **매 실행 다시 깐다.** 그런 자리는 `$ReadVer` 로 판 읽는
+#   손을 넘긴다. 도나(프로브)는 그대로 `--version` 이 든다 — 판을 못 대도 불리기는 한다.
+function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock]$ReadVer = $null) {
+  if (-not $ReadVer) { $ReadVer = { Get-Ver $Cmd '--version' } }
   if ((Test-Runs $Cmd '--version') -and ($NoUpgrade -or -not (Test-Runs 'npm' '--version'))) {
-    Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"
+    Write-Host "  $Label — 있음 ($(& $ReadVer))"
   } elseif (Test-Runs $Cmd '--version') {
-    $b = Get-Ver $Cmd '--version'
+    $b = & $ReadVer
     Say-Busy $Label 'upcheck' @('npm', "지금 $b")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
     # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
     #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
@@ -1947,7 +1951,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
       #   로그도 곧바로 지워 단서가 없었다.
       $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
       Update-RuntimePath
-      $a = Get-Ver $Cmd '--version'
+      $a = & $ReadVer
       if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
       elseif ($nrc -ne 0) {
         Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
@@ -1965,7 +1969,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
     #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
     Update-RuntimePath
     if (Test-Runs $Cmd '--version') {
-      Write-Host "  $Label — 깔았다 ($(Get-Ver $Cmd '--version'))" -ForegroundColor Green
+      Write-Host "  $Label — 깔았다 ($(& $ReadVer))" -ForegroundColor Green
     } else {
       Write-Host "  ! $Label 설치 실패 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
       Show-Log $nl
@@ -2027,6 +2031,21 @@ if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' 
 foreach ($c in $CliPicks) {
   if ($c.Via -eq 'winget') { Install-WingetCli $c.Id  $c.Cmd $c.Label }
   else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label }
+}
+# 웹 검색(Tavily) 패키지 — 왜 미리 까나는 아래 「웹 검색(Tavily)」 등록 칸이 든다.
+# ⚠ **자리가 여기인 까닭 — 등록보다 먼저여야 한다.** 설정 저장소를 든 PC 는 8 칸의 `deploy.ps1` 이
+#   `cmd /c tavily-mcp` 를 등록하는데, 패키지가 그 뒤에 깔리면 그사이 뜬 세션의 서버가 진다.
+#   등록 칸은 자격이 선 뒤(8″)에 남는다 — `claude` 를 부르는 칸이라 공식 문서 스킬과 같은 까닭이다.
+# 판은 전역 폴더의 package.json 이 든다 — `tavily-mcp --version` 은 `unknown` 만 낸다.
+if ($PickKeys -contains 'claude') {
+  $tvReadVer = {
+    $r = ("$(Get-Quiet 'npm' @('root','-g') | Select-Object -First 1)").Trim()
+    $pj = if ($r) { Join-Path $r 'tavily-mcp\package.json' } else { '' }
+    if ($pj -and (Test-Path -LiteralPath $pj)) {
+      try { [string](Get-Content -LiteralPath $pj -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch { '' }
+    }
+  }
+  Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
 }
 
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
@@ -3218,6 +3237,42 @@ if ($gateOwner) {
   Write-Host "     $gateBody"
 }
 
+# ── Tavily 키 안내 — 홈 SessionStart 에 한 줄을 심는다 ──────────────────────────────
+# 키가 없으면 세션을 시작할 때 모델에게 한 줄을 넘겨, 사용자가 키가 여는 도구를 찾으면 알리게 한다.
+# 키가 있으면 아무것도 안 찍는다. 키가 왜 필수가 아니라 덤인지는 아래 「웹 검색(Tavily)」 칸이 든다.
+# ⚠ **동료 PC 에는 이것 말고 세션 훅이 없다** — 설정 저장소의 세션 훅은 `#config-repo` 를 넣은 사람에게만
+#   선다. 모델에게 닿는 자리가 여기뿐이라 설치기가 심는다.
+# ⚠ **표지 `tavily-key-hint` 로 제 항목을 알아본다** — 글자가 같으면 안 건드리고, 다르면 걷고 새로 심는다.
+#   설정 저장소 몸통은 `session-start.sh` 가 든 항목만 제 것으로 걷으므로 이 항목과 안 부딪힌다.
+# ⚠ **명령은 Git Bash 가 읽는다** — 그림 문과 같은 자리라 같은 셸로 돈다.
+$hintMark = 'tavily-key-hint'
+$hintCmd  = '[ -n "$TAVILY_API_KEY" ] || echo "Tavily 웹 검색은 키 없이 검색·추출만 된다. 사용자가 사이트 지도(map)·크롤(crawl)·리서치(research)를 원하면 한 번 알린다: app.tavily.com 에서 무료 키를 받아 새 터미널에서 setx TAVILY_API_KEY <키> 를 친 뒤 VS Code 나 터미널을 완전히 닫았다 다시 열면 쓸 수 있다(창을 새로 띄워야 키가 보인다)." # ' + $hintMark
+if (($PickKeys -contains 'claude') -and $cfg) {
+  $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
+  if (-not $hooks) {
+    $hooks = New-Object PSObject
+    $cfg | Add-Member -NotePropertyName hooks -NotePropertyValue $hooks -Force
+  }
+  $kept = @(); $same = 0; $dropped = 0
+  foreach ($entry in @($hooks.SessionStart)) {
+    if (-not $entry) { continue }
+    $c = @($entry.hooks | Where-Object { $_ } | ForEach-Object { [string]$_.command })
+    if (-not ($c -match [regex]::Escape($hintMark))) { $kept += $entry }
+    elseif ($c.Count -eq 1 -and $c[0] -eq $hintCmd -and $same -eq 0) { $kept += $entry; $same++ }
+    else { $dropped++ }
+  }
+  if ($same -eq 1 -and $dropped -eq 0) {
+    Write-Host '  Tavily 키 안내(SessionStart) — 이미 맞다'
+  } else {
+    if ($same -eq 0) {
+      $kept += [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $hintCmd; timeout = 10 }) }
+    }
+    $hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $kept -Force
+    $dirty = $true
+    Write-Host '  Tavily 키 안내(SessionStart) — 심었다' -ForegroundColor Green
+  }
+}
+
 # ⚠ **홈 설정을 여기서 다시 쓴다.** 위 5칸이 이미 한 번 썼지만 그 뒤에 이 칸이 `$cfg` 를
 #   고쳤다 — 안 쓰면 그림 문이 메모리에만 서고 파일에는 없다. 5칸을 여기로 내리지 않는
 #   까닭은 순서가 뜻을 지기 때문이다: 몸통은 씨앗이 깔린 **뒤에야** 그 자리에 있다.
@@ -3542,6 +3597,60 @@ if ($wantDocSkills) {
       Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
     }
     Remove-Item $dl -ErrorAction SilentlyContinue
+  }
+}
+
+# ── 웹 검색(Tavily) — 미리 깐 패키지를 MCP 로 등록한다 (claude-config #95) ─────────────
+# 사내는 게이트웨이를 거쳐 Claude Code 내장 WebFetch·WebSearch 가 막힌다 — 웹은 이 서버가 대신한다.
+# ⚠ **`npx` 로 부르지 않는다.** npx 는 뜰 때마다 npm 을 한 번 더 띄우고(집 PC 실측 1.3초 · 깐 것을 바로
+#   부르면 0.36초), 캐시가 비면 패키지를 통째로 받는다. 비영속 VDI 는 로그인마다 캐시가 비어, 확장의
+#   첫 스폰이 사내 프록시로 받다가 60초 초기화 문을 넘겼다(사내 VDI 실측: 24.4초 + 두 번째 스폰 12.7초).
+#   그래서 **설치 때 미리 깔고(3 칸)**, 등록은 깔린 이름을 부르는 꼴이다.
+# ⚠ **등록 꼴은 씨앗의 `mcp-servers.json` 이 든다** — 여기 옮겨 적지 않는다. 설정 저장소의 `deploy.ps1`
+#   이 같은 파일로 같은 이름을 등록하므로 이 칸은 **없을 때만** 등록한다 — 이름이 있으면 비켜선다.
+# ⚠ **키는 안 묻는다.** 키가 없으면 keyless 로 떠서 검색·추출은 된다. 키가 여는 덤(사이트 지도·크롤·
+#   리서치)은 홈 SessionStart 의 안내 한 줄이 알린다(7 칸 · 표지 `tavily-key-hint`).
+# ⚠ **자리를 안 가른다 — 모두에게 깐다.** 설정 저장소를 든 PC 는 자리와 무관하게 같은 등록을 쓰므로
+#   패키지가 어느 PC 에나 있어야 한 벌로 선다.
+# ⚠ **패키지는 여기서 안 깐다 — 3 칸(CLI)이 깐다.** 설정 저장소를 든 PC 는 8 칸의 `deploy.ps1` 이 먼저
+#   등록하므로, 패키지가 그보다 앞서야 한다.
+# ⚠ **패키지가 없으면 등록도 안 한다.** 등록은 `cmd /c tavily-mcp` 라 npx 로 물러나지 않는다 — 없는
+#   것을 등록하면 뜰 때마다 지는 서버만 는다. 못 깐 것은 CLI 칸이 이미 실패로 셌다.
+if ($PickKeys -contains 'claude') {
+  Write-Host ''
+  Write-Host '웹 검색(Tavily)' -ForegroundColor Cyan
+  $tvName = 'tavily-search'
+  $tvSpec = $null
+  try {
+    $tvSpec = (Get-Content -LiteralPath (Join-Path $Here 'seeds\config-repo\mcp-servers.json') -Raw -Encoding UTF8 |
+               ConvertFrom-Json).mcpServers.$tvName
+  } catch { }
+  if (-not (Test-Runs 'tavily-mcp' '--version')) {
+    Write-Host "  Tavily 등록 — 패키지가 없어 안 한다"
+  } elseif (-not (Test-Runs 'claude' '--version')) {
+    Write-Host '  ! Tavily 등록 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 (위 CLI 줄을 먼저 본다)' -ForegroundColor Yellow
+  } elseif (-not $tvSpec -or [string]$tvSpec.type -ne 'stdio') {
+    Write-Host "  ! Tavily 등록 — 씨앗 mcp-servers.json 에 $tvName 의 stdio 항목이 없어 안 한다" -ForegroundColor Red
+    $Fails.Add('Tavily 등록 (씨앗에 항목이 없다)')
+  } else {
+    $null = Get-Quiet 'claude' @('mcp','get',$tvName)
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "  Tavily 등록 — 있음 ($tvName)"
+    } else {
+      # ⚠ **JSON 으로 안 넘기고 명령·인자로 넘긴다.** 윈도우 파워셸 5.1 은 네이티브에 넘기는 인자의
+      #   큰따옴표를 안 벗겨 줘서 `add-json` 의 JSON 이 저쪽에서 따옴표 없이 풀린다.
+      $tl = [IO.Path]::GetTempFileName()
+      $tvArgv = @('mcp','add','-s','user',$tvName,'--',[string]$tvSpec.command) + @($tvSpec.args | ForEach-Object { [string]$_ })
+      $rc = Invoke-Logged 'claude' $tvArgv $tl
+      if ($rc -eq 0) {
+        Write-Host "  Tavily 등록 — 했다 ($tvName)" -ForegroundColor Green
+      } else {
+        Write-Host "  ! Tavily 등록 — 못 했다 ($rc) — 뱉은 끝 줄:" -ForegroundColor Red
+        Show-Log $tl
+        $Fails.Add('Tavily 등록')
+      }
+      Remove-Item $tl -ErrorAction SilentlyContinue
+    }
   }
 }
 
