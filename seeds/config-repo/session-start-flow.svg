@@ -93,18 +93,18 @@
           <text x="316.40000000000003" y="888" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">도구 셸 · 로그인 셸 · ~/.local/bin 래퍼 셋</text>
         </g>
 
-        <g id="node-n5" tabindex="0" role="button" aria-label="Focus 5. 홈에 규범·룰·에이전트·씨앗을 민다, 재료는 claude-config 한 자리 · core.hooksPath 도 건다, 세션을 열면 도는 순서 — 위에서 아래로 › 홈" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">5. 홈에 규범·룰·에이전트·씨앗을 민다 · 재료는 claude-config 한 자리 · core.hooksPath 도 건다 · 세션을 열면 도는 순서 — 위에서 아래로 › 홈</title>
-          <rect x="304.90000000000003" y="526" width="263" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="304.90000000000003" y="526" width="263" height="52" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(310.90000000000003 532) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n5" tabindex="0" role="button" aria-label="Focus 5. 홈에 규범·룰·에이전트·씨앗을 민다, 같은 판으로 맞춘 홈은 건너뛰고 바뀐 것만 민다 · core.hooksPath 도 건다, 세션을 열면 도는 순서 — 위에서 아래로 › 홈" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">5. 홈에 규범·룰·에이전트·씨앗을 민다 · 같은 판으로 맞춘 홈은 건너뛰고 바뀐 것만 민다 · core.hooksPath 도 건다 · 세션을 열면 도는 순서 — 위에서 아래로 › 홈</title>
+          <rect x="276.40000000000003" y="526" width="320" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="276.40000000000003" y="526" width="320" height="52" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(282.40000000000003 532) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <rect x="2" y="3" width="12" height="10" rx="2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
             <path d="M2 6.5h12" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
             <circle cx="4.1" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
             <circle cx="6.3" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
           </g>
           <text x="436.40000000000003" y="547" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">5. 홈에 규범·룰·에이전트·씨앗을 민다</text>
-          <text x="436.40000000000003" y="564" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">재료는 claude-config 한 자리 · core.hooksPath 도 건다</text>
+          <text x="436.40000000000003" y="564" font-size="7.4px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">같은 판으로 맞춘 홈은 건너뛰고 바뀐 것만 민다 · core.hooksPath 도 건다</text>
         </g>
 
         <g id="node-n6" tabindex="0" role="button" aria-label="Focus 6. 홈에 SessionStart 훅을 심는다, 저장소 밖에서 연 세션이 쓴다 — 설정 저장소 훅 하나만 부른다, 세션을 열면 도는 순서 — 위에서 아래로 › 홈" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
@@ -336,8 +336,8 @@
           <text x="852.4000000000001" y="468" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">기다리지 않는다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <rect x="576.8000000000001" y="558" width="101.2" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <text x="627.4000000000001" y="568" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">홈 층이 최신이 된다</text>
+          <rect x="604.8000000000001" y="558" width="101.2" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="655.4000000000001" y="568" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">홈 층이 최신이 된다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
           <rect x="591.0000000000001" y="674" width="110.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>

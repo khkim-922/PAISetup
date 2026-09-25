@@ -178,8 +178,9 @@ PC_WIDE=""
 if [ "$MODE" != auto ] || [ -z "$CONFIG_ROOT" ] || [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
   PC_WIDE=1
 fi
-# PC 전체 일이 마지막으로 돈 때 — 파일의 시각이 곧 값이다. 쓰는 자는 PC 전체 일을 한 자리 둘
-# (auto 와 설치 갈래), 읽는 자는 `pc_wide_notice` 다.
+# PC 전체 일이 마지막으로 돈 때 — 파일의 시각이 곧 값이고, 내용은 그때 맞춘 설정 저장소의 판이다(0065).
+# 쓰는 몸통은 `pc_wide_mark` 한 자리(부르는 자리는 PC 전체 일을 끝내는 곳마다)이고, 시각은 `pc_wide_notice` 가,
+# 내용은 `pc_wide_key` 가 읽는다.
 PC_WIDE_STAMP="$HOME/.claude/pc-wide-ran"
 
 # 기계를 가른다. Git Bash 는 `uname -s` 가 MINGW64_NT-… 를 낸다.
@@ -554,9 +555,17 @@ wire_commit_hooks() {
 #    ⚠ **견주기만 하는 판이 있다**(`HOME_SYNC=check` · 0062). 형제 저장소 세션은 홈에 밀지 않고,
 #      밀었다면 옮겼을 파일을 `HOME_STALE` 에 적기만 한다. 견주는 목록을 따로 두면 미는 목록과
 #      갈리므로 같은 문을 지난다.
+#    ⚠ **바뀐 것만 보는 판이 있다**(`PUSH_ONLY` · 0065). 비어 있으면 전부 보고, 차 있으면 그 목록
+#      (설정 저장소 뿌리에서 본 상대경로 · 줄로 감싼 꼴)에 든 원본만 본다. 목록은 `pc_wide_key` 가 짓는다.
 HOME_SYNC=push
 HOME_STALE=""
+PUSH_ONLY=""
 _push_file() {   # _push_file <원본> <홈 사본>
+  if [ -n "$PUSH_ONLY" ]; then
+    case "$PUSH_ONLY" in *"
+${1#"$CONFIG_ROOT"/}
+"*) ;; *) return 0 ;; esac
+  fi
   [ -f "$1" ] || return 0                       # 글롭이 안 맞으면 패턴 그대로 온다
   if [ "$HOME_SYNC" = check ]; then
     { [ -f "$2" ] && [ ! "$1" -nt "$2" ]; } || HOME_STALE="$HOME_STALE ${2#"$HOME/.claude/"}"
@@ -564,8 +573,11 @@ _push_file() {   # _push_file <원본> <홈 사본>
   fi
   _pd="${2%/*}"
   [ -d "$_pd" ] || mkdir -p "$_pd" 2>/dev/null || true
-  { [ -f "$2" ] && [ ! "$1" -nt "$2" ]; } && return 0
-  cp "$1" "$2" 2>/dev/null || true
+  # ⚠ **바뀐 것만 보는 판은 시각 문을 안 탄다** (0065). 목록은 git 이 「판 사이에 바뀌었다」고 한 파일이라
+  #   곧 밀 것이고, 밀고 나면 표식이 「이 판으로 맞췄다」를 굳힌다. 사본이 더 새것이면(다른 클론이 딴 판을
+  #   나중에 민 자리) 시각 문이 넘겨 버려 그 굳힘이 거짓이 된다 — 목록만큼만 복사하므로 값도 작다.
+  [ -z "$PUSH_ONLY" ] && [ -f "$2" ] && [ ! "$1" -nt "$2" ] && return 0
+  cp "$1" "$2" 2>/dev/null || PC_WIDE_FAIL=1   # 진 판에 열쇠를 안 적는다 (0065)
 }
 deploy_home_norms() {
   if [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/.claude/CLAUDE.global.md" ]; then
@@ -604,6 +616,10 @@ deploy_home_norms() {
     # ⚠ **`*.md` 한 줄로는 안 되는 까닭은 씨앗이 폴더를 진다**(`seeds/gateway/app` ·
     #   `_check/log`). 그래서 파일을 훑어 상대 경로를 지어 옮긴다 — deploy.ps1 이 같은 자리
     #   에서 `-Recurse` + 상대경로로 하는 것과 같은 셈이다.
+    # ⚠ **이 두 문 앞에 열쇠가 먼저 선다**(0065 · `pc_wide_key`). 홈이 같은 판으로 이미 맞춰졌으면 이
+    #   함수가 아예 안 불리고, 그 뒤 바뀐 것만 있으면 아래 폴더 문 대신 `PUSH_ONLY` 목록을 걷는다.
+    #   아래 두 문이 도는 것은 통째로 도는 판뿐이다 — 열쇠를 못 믿는 판(표식이 없다 · 판이 저장소에 없다 ·
+    #   오래됐다)과, 열쇠를 안 보는 설치 갈래.
     # ⚠ **이미 같으면 안 민다 — 문이 둘이다.** 폴더 한 벌을 `diff` 로 견주고, 넘어온 파일은
     #   위 `_push_file` 이 낱개로 다시 견준다. 폴더 문은 성한 판에서 `find` 와 고리를 통째로
     #   아끼고, 낱개 문은 폴더 문이 「다르다」를 낼 때 **정말 다른 파일만** 남긴다.
@@ -629,6 +645,16 @@ deploy_home_norms() {
     fi
     for _sd in $_seed_dirs; do
       [ -d "$CONFIG_ROOT/$_sd" ] || continue
+      # ⚠ **바뀐 것만 보는 판(0065)은 폴더를 안 견주고 안 훑는다** — 목록이 곧 밀 후보라, 그 폴더 아래
+      #   줄만 문에 댄다. 폴더 견주기가 사내 VDI 에서 폴더당 1.3초였던 자리다(#96).
+      if [ -n "$PUSH_ONLY" ]; then
+        while IFS= read -r _sr; do
+          case "$_sr" in */__pycache__/*) continue ;; "$_sd"/*) _push_file "$CONFIG_ROOT/$_sr" "$HOME/.claude/$_sr" ;; esac
+        done <<EOF
+$PUSH_ONLY
+EOF
+        continue
+      fi
       diff -rq -x __pycache__ "$CONFIG_ROOT/$_sd" "$HOME/.claude/$_sd" >/dev/null 2>&1 && continue
       # ⚠ 파이프로 먹이지 않는다 — 고리가 하위 셸에서 돌면 견주기 판의 `HOME_STALE` 이 밖으로 안 나온다.
       while IFS= read -r _sf; do
@@ -666,6 +692,110 @@ EOF
   fi
 }
 
+# ── PC 전체 일의 열쇠 — **같은 판으로 이미 맞춘 홈은 다시 안 맞춘다** (0065) ──────────────────
+#    표식(`$PC_WIDE_STAMP`)의 **시각**은 「PC 전체를 맞춘 때」(0062 의 알림이 읽는다)이고, **내용**이
+#    「어느 판으로 맞췄나」다 — 첫 줄이 설정 저장소의 커밋, 그 뒤 줄은 그때 커밋 안 한 채 밀린 파일.
+#    판이 아니라 작업 나무가 홈에 간 것이라, 그 편집을 되돌려도 다음 세션이 그 파일을 다시 보게 적는다.
+#    `pc_wide_key` 가 표식과 지금 판을 견줘 값을 세운다:
+#      PW_RUN      빈 값 = 건너뛴다 · part = 바뀐 것만 · full = 통째로
+#      PW_CHANGED  바뀐 파일(뿌리 상대경로 · 줄로 감싼 꼴) — part 에서 `PUSH_ONLY` 가 된다
+#      PW_REST     개인 설정 · 전역 도구 대조를 다시 하나 — PC 전체 일의 입력이 바뀌었다
+#      PW_PLANT    홈 훅 · 신뢰를 다시 심나 — 위에 더해 홈 settings.json 이 표식보다 새것이다(0031 이 지키던 자리)
+# ⚠ **확실하지 않으면 full 이다** — 표식이 없다 · 비었다 · 판이 저장소에 없다(얕은 클론 · 이력 재작성
+#   뒤 청소) · `UPGRADE_DAYS` 를 넘었다 · 병합이 덜 끝났다 · 경로가 따옴표로 왔다 · git 이 안 답한다.
+#   건너뛰기가 틀리면 낡은 홈이 조용히 남고, 더 도는 것이 틀리면 초만 든다.
+# ⚠ **git 에 한 번 묻는다** — `status --porcelain=v2 --branch` 가 판과 커밋 안 한 편집을 같이 낸다.
+#   판이 바뀐 때만 `diff` 하나가 는다. `--no-optional-locks` 는 배경 당김(`pull_ff`)과 index 잠금을
+#   안 다투게 한다 — status 는 틈나면 잠금을 잡고 index 를 되쓰는데, 그 순간 병합이 진다.
+# ⚠ **PC 전체 일의 입력**(`PW_INPUTS`) — 개인 설정 · 심기 · 전역 도구 대조가 읽는 파일이다. 여기 없는
+#   파일만 바뀐 판은 홈 밀기만 한다. **그 일이 새 파일을 읽기 시작하면 여기 더한다** — 새 입력은 대개
+#   이 몸통을 고치는 커밋과 함께 와서 그 판은 다 돌지만, 그 뒤 그 파일만 바뀐 판은 여기서 갈린다.
+#   바뀌면 바뀐 파일만으로는 모자라 **통째로** 가는 것이 둘이다(`PW_FULL_IF`) — `deploy.seeds.conf` 는 밀 폴더
+#   목록이고, 이 몸통은 무엇을 어디로 미나 자체다. 몸통이 미는 칸을 넓히면 그 칸의 **옛 파일**은 판 사이
+#   diff 에 안 나오므로, 바뀐 파일만 보면 새 칸이 빈 채로 표식이 「맞췄다」를 적는다.
+PW_INPUTS=".claude/hooks/ personal.conf secrets.env .claude/tools.global.conf .claude/tools.conf"
+PW_FULL_IF="deploy.seeds.conf .claude/hooks/session-start-body.sh"
+_TAB=$(printf '\t')   # 옮김 줄의 두 경로를 가르는 글자 — 글자로 박으면 편집기가 공백으로 바꿔도 모른다
+_NL='
+'
+PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_PLANT=1; PW_OID=""; PW_DIRTY=""; PC_WIDE_FAIL=""; PW_DEFER=""
+pc_wide_key() {
+  PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_PLANT=1; PW_OID=""; PW_DIRTY=""
+  [ -n "$CONFIG_ROOT" ] || return 0
+  _pwst="$(git -C "$CONFIG_ROOT" --no-optional-locks -c core.quotepath=false \
+             status --porcelain=v2 --branch --untracked-files=all 2>/dev/null)" || return 0
+  while IFS= read -r _pwe; do
+    case "$_pwe" in
+      '# branch.oid '*) PW_OID="${_pwe#'# branch.oid '}" ;;
+      '#'*|'') ;;
+      # 1 XY sub mH mI mW hH hI <경로> · 2 … Xscore <경로><탭><옛 경로> — 앞 칸을 떼어 낸다
+      '1 '*) _pwp="$_pwe"; for _pwi in 1 2 3 4 5 6 7 8; do _pwp="${_pwp#* }"; done
+             PW_DIRTY="$PW_DIRTY$_pwp$_NL" ;;
+      '2 '*) _pwp="$_pwe"; for _pwi in 1 2 3 4 5 6 7 8 9; do _pwp="${_pwp#* }"; done
+             PW_DIRTY="$PW_DIRTY${_pwp%%"$_TAB"*}$_NL${_pwp#*"$_TAB"}$_NL" ;;
+      '? '*) PW_DIRTY="$PW_DIRTY${_pwe#'? '}$_NL" ;;
+      *) PW_OID=""; return 0 ;;   # u(병합이 덜 끝났다) · 모르는 꼴
+    esac
+  done <<EOF
+$_pwst
+EOF
+  case "$PW_OID" in ''|*[!0-9a-f]*) PW_OID=""; return 0 ;; esac   # `(initial)` · 모르는 꼴
+  [ -s "$PC_WIDE_STAMP" ] || return 0
+  [ -z "$(find "$PC_WIDE_STAMP" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ] || return 0
+  _pwso=""; _pwsd=""
+  {
+    IFS= read -r _pwso
+    while IFS= read -r _pwl || [ -n "$_pwl" ]; do _pwsd="$_pwsd$_pwl$_NL"; done
+  } < "$PC_WIDE_STAMP"
+  [ "${#_pwso}" -ge 40 ] || return 0
+  case "$_pwso" in *[!0-9a-f]*) return 0 ;; esac
+  _pwc="$_NL$PW_DIRTY$_pwsd"
+  if [ "$_pwso" != "$PW_OID" ]; then
+    _pwd="$(git -C "$CONFIG_ROOT" -c core.quotepath=false diff --name-only "$_pwso" "$PW_OID" -- 2>/dev/null)" || return 0
+    _pwc="$_pwc$_pwd$_NL"
+  fi
+  case "$_pwc" in *"$_NL\""*) return 0 ;; esac   # 따옴표로 감싼 경로 — 글자 그대로 못 견준다
+  for _pwf in $PW_FULL_IF; do
+    case "$_pwc" in *"$_NL$_pwf$_NL"*) return 0 ;; esac
+  done
+  PW_REST=""
+  for _pwf in $PW_INPUTS; do
+    case "$_pwf" in
+      */) case "$_pwc" in *"$_NL$_pwf"*) PW_REST=1 ;; esac ;;
+      *)  case "$_pwc" in *"$_NL$_pwf$_NL"*) PW_REST=1 ;; esac ;;
+    esac
+  done
+  PW_PLANT="$PW_REST"
+  # 없어도 심는다 — 지운 settings.json 은 `-nt` 가 거짓이라 훅이 걷힌 채 남는다
+  { [ ! -f "$HOME/.claude/settings.json" ] || [ "$HOME/.claude/settings.json" -nt "$PC_WIDE_STAMP" ]; } && PW_PLANT=1
+  PW_CHANGED="$_pwc"
+  if [ -z "${_pwc//"$_NL"/}" ] && [ -z "$PW_PLANT" ]; then
+    PW_RUN=""
+  else
+    PW_RUN=part
+  fi
+  return 0
+}
+# 적는 몸통은 여기 한 자리다 — PC 전체 일을 끝내는 자리(auto · 밖에서 부른 --install · --install 의 PC 전체
+# 갈래)가 다 이것을 부른다. **판은 시작할 때 읽은 값(PW_OID)으로만 적는다.**
+# ⚠ **다 성공했고 그사이 판이 안 움직였을 때만 열쇠를 적는다.** 아니면 내용을 비운 채 시각만 새로 찍는다 —
+#   시각은 「맞추기를 돌았다」(0062 의 알림)라 그대로 살리고, 빈 내용은 다음 세션을 통째로 돌린다. 판이 움직이는
+#   것은 다른 세션의 배경 당김이 작업 나무를 바꾼 판이다 — 무엇이 밀렸는지 섞였을 수 있다.
+# ⚠ 열쇠는 임시 파일에 쓰고 옮긴다 — 동시에 뜬 세션이 반쯤 쓰인 줄을 읽지 않게. 읽더라도 판이 짧거나 비면 full 이다.
+pc_wide_mark() {
+  if [ -n "$PC_WIDE_FAIL" ] || [ -z "$PW_OID" ] ||
+     [ "$(git -C "$CONFIG_ROOT" rev-parse HEAD 2>/dev/null)" != "$PW_OID" ]; then
+    : > "$PC_WIDE_STAMP" 2>/dev/null || true
+    return 0
+  fi
+  if printf '%s\n%s' "$PW_OID" "$PW_DIRTY" > "$PC_WIDE_STAMP.$$" 2>/dev/null &&
+     mv -f "$PC_WIDE_STAMP.$$" "$PC_WIDE_STAMP" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$PC_WIDE_STAMP.$$" 2>/dev/null
+  : > "$PC_WIDE_STAMP" 2>/dev/null || true
+}
+
 # ── 형제 저장소 세션의 알림 — PC 전체 일을 안 맡는 대신 **맡는 자리가 비었나**만 본다 (0062) ──
 #    둘을 본다. ① 맡는 자리가 오래 안 돌았나 — 자동 실행을 꺼 둔 PC(동료 설치본은 고를 수 있다)는
 #    형제 세션만 열면 홈이 설치 때 판에 머문다. ② 홈 파일이 이 PC 의 설정 저장소와 다른가 — 미는
@@ -682,9 +812,14 @@ pc_wide_notice() {
     echo "$PROJECT_NAME: ⚠ 이 PC 의 공통 설정을 ${UPGRADE_DAYS}일 넘게 안 맞췄다 — 로그인할 때 도는 자동 실행이 꺼졌거나 실패하고 있는 것 같다. claude-config 를 한 번 열거나 deploy.ps1 을 돌리면 맞춰진다"
   fi
   [ -n "$CONFIG_ROOT" ] || return 0
+  # 같은 열쇠를 본다 (0065) — 홈이 지금 판으로 맞춰졌다는 것이 표식으로 서 있으면 견줄 것이 없고,
+  # 그 뒤 바뀐 것만 있으면 그것만 견준다. 표식을 못 믿으면 지금처럼 다 견준다.
+  pc_wide_key
+  [ -n "$PW_RUN" ] || return 0
+  [ "$PW_RUN" = part ] && PUSH_ONLY="$PW_CHANGED"
   HOME_SYNC=check; HOME_STALE=""
   deploy_home_norms
-  HOME_SYNC=push
+  HOME_SYNC=push; PUSH_ONLY=""
   [ -n "$HOME_STALE" ] || return 0
   # shellcheck disable=SC2086 — 이름 목록을 낱말로 편다(홈 아래 상대경로라 공백이 없다)
   set -- $HOME_STALE
@@ -1165,6 +1300,7 @@ import json, os, sys, tempfile
 settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 gate_cmd, gate_matcher = sys.argv[5], sys.argv[6]
 msgs = []
+failed = False   # 다 못 심었다 — 끝에서 3 으로 알린다. 셸이 표식에 판을 안 적는다 (0065)
 
 
 def save(path, cfg):
@@ -1216,6 +1352,7 @@ if not have or dropped:
             msgs.append("  홈 SessionStart 훅 — 옛 항목을 걷었다: %s" % c[:70])
     else:
         msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
+        failed = True
 
 # ①' 그림 문 — PreToolUse. 같은 규율: 우리 꼴(`image-gate.` 가 든 명령 — 옛 판은 `.py` 를 직접 불렀다)은
 #    걷고 지금 꼴만 남긴다. 설치기가 심은 씨앗 쪽 항목도 여기서 걷힌다 — 저장소 진본이 주인이다.
@@ -1249,6 +1386,7 @@ if not have or dropped:
             msgs.append("  홈 그림 문(PreToolUse) — 옛 항목을 걷었다: %s" % c[:70])
     else:
         msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
+        failed = True
 
 # ② 신뢰 — 없거나 깨진 파일은 손대지 않는다
 # ⚠ **작업 루트의 저장소 전부에 건다.** 옛 판은 제 저장소만 걸고 「홈 훅이 어차피 전부
@@ -1263,11 +1401,18 @@ for h in _glob.glob(os.path.join(root, "*", ".claude", "hooks", "session-start.s
     targets.append(os.path.dirname(os.path.dirname(os.path.dirname(h))))
 forms = sorted({t.replace("/", BS) for t in targets} | {t.replace(BS, "/") for t in targets})
 tp = os.path.join(os.path.expanduser("~"), ".claude.json")
+# ⚠ **없는 것과 못 읽은 것을 가른다.** 없으면 손대지 않는 것이 이 칸의 뜻이라 진 것이 아니다. 못 읽은 것
+#   (앱이 쓰는 도중 · 깨졌다)은 신뢰를 못 건 채 지나간 것이라 진 것으로 알린다 — 안 알리면 표식이 「심었다」를
+#   굳혀 다음 세션이 다시 안 걸어 본다 (0065).
 try:
     with open(tp, encoding="utf-8") as f:
         tcfg = json.load(f)
+except FileNotFoundError:
+    tcfg = None
 except (OSError, ValueError):
     tcfg = None
+    failed = True
+    msgs.append("  ! ~/.claude.json 을 못 읽었다 — 신뢰를 이번엔 못 걸었다. 다음 세션이 다시 건다")
 if tcfg is not None:
     pr = tcfg.setdefault("projects", {})
     todo = [k for k in forms if not (pr.get(k) or {}).get("hasTrustDialogAccepted")]
@@ -1276,13 +1421,26 @@ if tcfg is not None:
             pr.setdefault(k, {})["hasTrustDialogAccepted"] = True
         if save(tp, tcfg):
             msgs.append("  신뢰 — %d 자리에 걸었다 (다음 세션부터 안 묻는다)" % len(todo))
+        else:
+            failed = True
+            msgs.append("  ! ~/.claude.json 을 못 썼다 — 신뢰를 이번엔 못 걸었다. 다음 세션이 다시 건다")
 
 for m in msgs:
     print(m)
+sys.exit(3 if failed else 0)
 PSSEOF
 )"
   _prc=$?
+  # 3 은 **돌았는데 다 못 심었다**다 — 까닭은 스크립트가 이미 찍었다. 해석기가 안 뜬 것 · 죽은 것(아래)과
+  #   고칠 자리가 달라 한 갈래로 안 섞는다. 어느 쪽이든 표식에 판을 안 적는다 (0065).
+  if [ "$_prc" -eq 3 ]; then
+    PC_WIDE_FAIL=1
+    rm -f "$_pse"
+    [ -n "$_pss" ] && printf '%s\n' "$_pss"
+    return 0
+  fi
   if [ "$_prc" -ne 0 ]; then
+    PC_WIDE_FAIL=1   # 진 판에 열쇠를 안 적는다 — 다음 세션이 다시 심는다 (0065)
     # ⚠ **한 문구로 둘을 덮지 않는다** (#51). 해석기가 안 뜬 것과 스크립트가 다 쓰고 나서 죽은 것은
     #   고칠 자리가 다르다 — 옛 판은 stderr 를 버리고 둘 다 「못 부른다」로 내서, 인코딩으로 죽은
     #   자리를 스토어 껍데기로 오진했다(#50). 진 뒤에만 해석기를 한 번 더 불러 가른다. 죽은 쪽은
@@ -1518,14 +1676,24 @@ if [ "$MODE" = auto ]; then
   }
   wire_commit_hooks  # 당김 앞이다 — 망이 느리거나 훅이 잘려도 게이트만은 선다 (#31)
   run_repo_start     # 당김 앞이다 — 저장소가 제 나무를 당김이 설 수 있는 꼴로 만든다
+  # 열쇠는 당김 앞에서 읽는다 — 배경 병합이 작업 나무를 바꾸기 전의 판을 잡는다. 그래도 도는 사이 판이
+  #   움직이면 `pc_wide_mark` 가 열쇠를 안 적는다 (0065).
+  [ -n "$PC_WIDE" ] && pc_wide_key
   pull_ff "$PROJECT_DIR"
   # PC 전체 일 — 설정 저장소 세션과 저장소 밖 세션만 맡는다 (0062). 형제 저장소 세션은 설정
   #   저장소도 안 당긴다: 당겨 온 것은 홈에 밀어야 실리는데 그 밀기를 이 세션이 안 하므로 효과가 없다.
+  # ⚠ **같은 판으로 이미 맞춘 홈은 다시 안 맞춘다** (0065) — 로그인 자동 실행이 방금 다 한 일을 세션마다
+  #   되풀이하던 값이 사내 VDI 에서 20초를 넘었다(#96). 열쇠가 안 맞으면 그 사이 바뀐 걸음만 한다.
   if [ -n "$PC_WIDE" ]; then
-    deploy_home_norms  # 당김이 배경이라 이번엔 지난 판을 민다 — 방금 당긴 것은 다음 세션이 민다 (0043)
-    deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
-    plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
-    : > "$PC_WIDE_STAMP" 2>/dev/null || true
+    if [ -n "$PW_RUN" ]; then
+      PC_WIDE_FAIL=""
+      [ "$PW_RUN" = part ] && PUSH_ONLY="$PW_CHANGED"
+      deploy_home_norms  # 당김이 배경이라 이번엔 지난 판을 민다 — 방금 당긴 것은 다음 세션이 민다 (0043)
+      PUSH_ONLY=""
+      [ -n "$PW_REST" ] && deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
+      [ -n "$PW_PLANT" ] && plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
+      # 표식은 아래 지문 게이트 뒤에 적는다 — 전역 도구를 깔 판이면 그 설치가 끝나야 「맞췄다」가 참이다
+    fi
   else
     pc_wide_notice
   fi
@@ -1551,10 +1719,18 @@ if [ "$MODE" = auto ]; then
   # ⚠ 낡음(UPGRADE)은 둘 다 민다 — 「도구가 낡았나」는 어느 층에도 같이 걸리는 명제다.
   DO_GLOBAL=""; DO_REPO=""
   # ⚠ 전역 도구는 PC 전체 일이다 — 형제 저장소 세션은 대조조차 안 한다(형제 선언을 전부 읽는 자리라서다, 0062).
-  if [ -n "$PC_WIDE" ]; then
+  # ⚠ 대조도 PC 전체 일이라 열쇠를 탄다 (0065) — 같은 판으로 맞춘 홈이면 그때 이미 대조했다. 형제 저장소의
+  #   전역 선언이 바뀐 것은 이 열쇠에 안 잡히고, 로그인 자동 실행의 설치가 잡는다(형제 세션과 같은 뜻 · 0062).
+  if [ -n "$PC_WIDE" ] && { [ -n "$PW_REST" ] || [ -n "$UPGRADE" ]; }; then
     { [ -z "$UPGRADE" ] && [ "$(global_fingerprint)" = "$(cat "$GSTAMP" 2>/dev/null)" ]; } || DO_GLOBAL=1
   fi
   { [ -z "$UPGRADE" ] && [ "$(decl_fingerprint)"   = "$(cat "$STAMP"  2>/dev/null)" ]; } || DO_REPO=1
+  # ⚠ **PC 전체 일의 표식은 여기서 적는다 — 전역 도구를 깔 판이면 미룬다** (0065). 대조가 어긋나 설치로 가는
+  #   세션이 먼저 판을 적고 설치 도중 죽으면(창을 닫았다 · 느린 망에서 끊겼다), 다음 세션은 판이 맞아 대조를
+  #   아예 안 하고 새 도구가 안 깔린 채 조용히 남는다. 미룬 표식은 설치 갈래가 전역 지문을 굳힌 뒤(⑧) 적는다.
+  if [ -n "$PC_WIDE" ] && [ -n "$PW_RUN" ]; then
+    if [ -n "$DO_GLOBAL" ]; then PW_DEFER=1; else pc_wide_mark; fi
+  fi
   if [ -z "$DO_GLOBAL" ] && [ -z "$DO_REPO" ]; then
     # 침묵하되 실패까지 삼키지는 않는다 — 지난 설치의 실패가 남아 있으면 **사유까지** 알린다.
     # 다시 깔지는 않는다: 막힌 자리(예: 내려받기가 막힌 망)는 다시 깔아도 또 막혀,
@@ -1604,6 +1780,9 @@ if [ "$MODE" = install ]; then
   #   있었다(실측 2026-09-07 · deploy 가 첫 MCP 조회에서 죽은 자리) — 부재가 통과로 읽히는 그 자리다.
   if [ "$ASKED" = install ] && [ "$OS" = windows ] && [ -z "${CLAUDE_CONFIG_DEPLOYING:-}" ] &&
      [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/deploy.ps1" ]; then
+    # 열쇠는 deploy 앞에서 읽는다 — deploy 가 민 것이 그 판이다. deploy 가 도는 사이 판이 움직였으면
+    #   `pc_wide_mark` 가 열쇠를 안 적는다 (0065).
+    pc_wide_key; PC_WIDE_FAIL=""
     deploy_personal install
     echo "$PROJECT_NAME: deploy.ps1 에 넘긴다 — 저장소·메모리·MCP 를 밀고 각 저장소 훅을 --install 로 부른다"
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$CONFIG_ROOT/deploy.ps1")" -Yes
@@ -1614,7 +1793,7 @@ if [ "$MODE" = install ]; then
     #   표식은 deploy 가 성공했을 때만 — 진 판에 찍으면 「맞췄다」가 거짓이 된다.
     plant_session_state
     if [ "$_drc" -eq 0 ]; then
-      : > "$PC_WIDE_STAMP" 2>/dev/null || true
+      pc_wide_mark
     else
       echo "$PROJECT_NAME: ⚠ deploy.ps1 이 exit $_drc 로 끝났다 — 위 진단의 ❌ 줄이 곧 고칠 자리"
     fi
@@ -1677,6 +1856,8 @@ if [ "$MODE" = install ]; then
   # ⚠ **PC 전체 일은 맡는 실행만 한다** (0062). 형제 저장소 세션이 도구 선언 어긋남으로 여기 온 판은
   #   저장소 몫만 깐다 — 명시한 `--install` 은 어디서 불려도 맡는다(위 PC_WIDE).
   if [ -n "$DO_REPO" ] && [ -n "$PC_WIDE" ]; then
+    # 설치 갈래는 열쇠를 안 믿고 다 한다 — 다 한 뒤 그 판을 적는다 (0065)
+    pc_wide_key; PC_WIDE_FAIL=""
     deploy_home_norms
     deploy_personal auto  # 가벼운 것만 — 무거운 것(clone · 홈 설정 덮기)은 위 PC 분기가 이미 들었다
 
@@ -1685,7 +1866,8 @@ if [ "$MODE" = install ]; then
     #    (deploy.ps1 · 리모트 Setup script)는 그 자리를 안 지나므로 여기서도 부른다.
     #    멱등이라 겹쳐 불려도 항목은 하나다 (0028 이 쟀다).
     plant_session_state
-    : > "$PC_WIDE_STAMP" 2>/dev/null || true
+    # 전역 도구를 깔 판이면 표식은 전역 지문을 굳힌 뒤(⑧)로 미룬다 — 위 auto 의 지문 게이트와 같은 까닭이다
+    if [ -n "$DO_GLOBAL" ]; then PW_DEFER=1; else pc_wide_mark; fi
   fi
 
   # ── ③ 파이썬 축 — requirements.txt 의 존재가 곧 선언이다. venv 에 깐다 ──
@@ -2138,8 +2320,13 @@ EOF
   [ -n "$DO_REPO" ] && { decl_fingerprint > "$STAMP" 2>/dev/null || true; }
   if [ -n "$DO_GLOBAL" ]; then
     mkdir -p "$(dirname "$GSTAMP")" 2>/dev/null || true
-    global_fingerprint > "$GSTAMP" 2>/dev/null || true
+    global_fingerprint > "$GSTAMP" 2>/dev/null
+    # ⚠ **종료코드로 안 가른다** — 이 함수는 pipefail 아래서 지문을 다 내고도 1 을 낸다(마지막 선언 파일이
+    #   줄바꿈으로 끝나면 꼬리 검사가 거짓이다). 적혔나를 파일로 본다 — 폴더 자리면 `-f` 가 거짓이다.
+    { [ -f "$GSTAMP" ] && [ -s "$GSTAMP" ]; } || PC_WIDE_FAIL=1
   fi
+  # 미룬 PC 전체 일의 표식 (0065) — 전역 지문이 굳은 지금이 「맞췄다」가 참인 자리다. 못 굳혔으면 판을 안 적는다.
+  [ -n "$PW_DEFER" ] && pc_wide_mark
   # ⚠ **민 뒤에만 찍는다.** 선언이 바뀌어 깐 세션은 밀기가 아니라, 찍으면 낡음 시계가
   #   공짜로 되감긴다 — 그러면 선언을 자주 고치는 기계는 영영 안 밀린다.
   [ -n "${UPGRADE:-}" ] && { : > "$FRESH" 2>/dev/null || true; }
