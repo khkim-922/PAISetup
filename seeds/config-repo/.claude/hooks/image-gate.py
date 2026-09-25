@@ -20,6 +20,8 @@
 ⚠ **PIL 을 안 든다** — 치수는 파일 머리에서 읽는다(PNG · JPEG · GIF · WebP). 줄이는 손은 PIL 이
    드는데 그건 모델이 부르는 자리다(#72).
 ⚠ **1280 은 답이 아니다** — UI 글자는 그보다 커야 읽힌다. 곁말은 수를 대고 고르게 한다. 세부는 zoom.
+⚠ **화면 전체 크기의 그림이면 한 줄을 더 붙인다** — 가려진 창은 안 찍힌다는 것과 창 손잡이로 찍는 손
+   (`_see_window.ps1` · 눈금 곁)을 댄다. 까닭은 `whole_screen_note` 가 든다.
 
 부르는 자리 — 홈 `~/.claude/settings.json` 의 PreToolUse. 앞에 셸 껍데기(`image-gate.sh` · 곁 파일)가
 서서 stdin 에 그림 낌새(확장자·screenshot·zoom)가 있을 때만 이 몸통을 띄운다 — 매 Read 마다 프로세스를
@@ -117,6 +119,56 @@ def dims(path):
     except (OSError, struct.error, IndexError):
         return None
     return None
+
+
+def screen_sizes():
+    """이 PC 화면 전체의 치수들 — 주 화면과 가상 화면(여러 모니터를 합친 것). 윈도우만 · 못 재면 빈 집합.
+
+    시험은 `IMAGE_GATE_SCREENS="3440x1440;1920x1080"` 로 준다 — 빈 값이면 화면이 없는 것으로 친다.
+    """
+    forced = os.environ.get('IMAGE_GATE_SCREENS')
+    if forced is not None:
+        out = set()
+        for part in forced.split(';'):
+            m = re.match(r'^\s*(\d+)x(\d+)\s*$', part)
+            if m:
+                out.add((int(m.group(1)), int(m.group(2))))
+        return out
+    if sys.platform != 'win32':
+        return set()
+    try:
+        import ctypes  # noqa: PLC0415
+        u = ctypes.windll.user32
+        try:
+            u.SetProcessDPIAware()
+        except Exception:  # noqa: BLE001
+            pass
+        # 0·1 주 화면 · 78·79 가상 화면
+        return {s for s in ((u.GetSystemMetrics(0), u.GetSystemMetrics(1)),
+                            (u.GetSystemMetrics(78), u.GetSystemMetrics(79))) if s[0] and s[1]}
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def whole_screen_note(path, size, vdir):
+    """화면 전체 캡처로 보이는 그림에 붙일 한 줄 — 아니면 빈 문자열.
+
+    ⚠ **왜 있나.** 화면 전체를 찍은 그림은 **맨 위에 보이는 픽셀**이다. 보려던 창이 다른 창 뒤에
+    있으면 앞 창이 찍히고, 캡처를 막는 창(VDI 클라이언트 등)은 대체 그림으로 찍힌다. 새 창은 사람이
+    쓰던 창의 초점을 못 뺏어 뒤에 뜨는 것이 흔한데, 그 빈 자리를 「창이 안 떴다 · 글씨가 없다」로
+    읽으면 멀쩡한 것을 고치러 간다(실측 2026-09-25 — 떠서 글씨를 흘리던 콘솔이 앞 창에 가려 전체
+    캡처에 없었다). 그 교훈은 **그림을 여는 순간에만** 쓸모가 있어 이 문이 든다.
+    ⚠ **치수가 화면과 똑같을 때만 붙인다** — 줄인 그림은 비율만 같아 슬라이드 같은 16:9 그림과 안
+    갈린다. 원본을 여는 첫 순간(대개 천장 밖이라 막히는 그 자리)에 한 번 뜨면 된다.
+    """
+    if tuple(size) not in screen_sizes():
+        return ''
+    see = os.path.join(vdir, '_see_window.ps1')
+    return ('그림 문 — %s 는 이 PC 화면 전체와 같은 크기(%d×%d)다. 화면 합성본이라 **다른 창에 가려진 창은 안 '
+            '찍히고**, 캡처를 막는 창(VDI 등)은 대체 그림으로 찍힌다 — 빈 자리는 「없다」가 아니라 「안 보였다」다. '
+            '특정 창을 보려면 창 손잡이로 찍는다(가려져도 찍힌다): powershell -NoProfile -ExecutionPolicy Bypass '
+            '-File "%s" -Title "<창 제목 일부>"  (제목 목록은 -List)'
+            % (os.path.basename(path), size[0], size[1], see))
 
 
 def screen_long_edge():
@@ -232,22 +284,28 @@ def main():
     toks = v.patches(size)
     # 줄이는 손은 눈금을 읽은 그 폴더의 이웃이다 — 홈 씨앗이 없으면 저장소 진본을 가리킨다
     shrink = 'python -X utf8 "%s" "%s" 결과.webp' % (os.path.join(vdir, '_shrink.py'), path)
+    # 화면 전체 캡처면 치수 말과 **같이** 낸다 — 막히는 판(천장 밖)에서도 빠지면 안 된다: 원본을 처음
+    # 여는 그 순간이 대개 막히는 판이다.
+    note = whole_screen_note(path, size, vdir)
     if v.downscaled(size):
         fw, fh = v.fit(size, v.MAX_EDGE)
-        return emit('deny',
-                    '그림 문 — %s 는 %d×%d · %s 토큰인데 상류 천장(긴 변 %d · %s 토큰) 밖이라 보내기 전에 '
-                    '깎인다 — 그 픽셀은 값이 0 이고 어느 판으로 깎일지 못 고른다. 먼저 줄인다: %s  '
-                    '(긴 변 %d → %d×%d · %s 토큰 · 글자가 작으면 --max-edge 로 더 크게 · '
-                    'PIL 이 없으면 python -m pip install pillow, 그것도 안 되면 다른 손으로 긴 변 %d 안까지 줄여 연다)'
-                    % (os.path.basename(path), w, h, format(toks, ','), v.LONG_EDGE_CAP,
-                       format(v.TOKEN_CAP, ','), shrink, v.MAX_EDGE, fw, fh,
-                       format(v.patches((fw, fh)), ','), v.LONG_EDGE_CAP))
+        reason = ('그림 문 — %s 는 %d×%d · %s 토큰인데 상류 천장(긴 변 %d · %s 토큰) 밖이라 보내기 전에 '
+                  '깎인다 — 그 픽셀은 값이 0 이고 어느 판으로 깎일지 못 고른다. 먼저 줄인다: %s  '
+                  '(긴 변 %d → %d×%d · %s 토큰 · 글자가 작으면 --max-edge 로 더 크게 · '
+                  'PIL 이 없으면 python -m pip install pillow, 그것도 안 되면 다른 손으로 긴 변 %d 안까지 줄여 연다)'
+                  % (os.path.basename(path), w, h, format(toks, ','), v.LONG_EDGE_CAP,
+                     format(v.TOKEN_CAP, ','), shrink, v.MAX_EDGE, fw, fh,
+                     format(v.patches((fw, fh)), ','), v.LONG_EDGE_CAP))
+        return emit('deny', reason + ('\n' + note if note else ''))
     if max(size) > v.MAX_EDGE:
         fw, fh = v.fit(size, v.MAX_EDGE)
-        return emit(context='그림 문 — %s 는 %d×%d · %s 토큰. 긴 변 %d 이면 %d×%d · %s 토큰 (%s). '
-                            '글자가 작으면 그대로 읽는다 — 고르는 것은 너다'
-                            % (os.path.basename(path), w, h, format(toks, ','), v.MAX_EDGE, fw, fh,
-                               format(v.patches((fw, fh)), ','), shrink))
+        ctx = ('그림 문 — %s 는 %d×%d · %s 토큰. 긴 변 %d 이면 %d×%d · %s 토큰 (%s). '
+               '글자가 작으면 그대로 읽는다 — 고르는 것은 너다'
+               % (os.path.basename(path), w, h, format(toks, ','), v.MAX_EDGE, fw, fh,
+                  format(v.patches((fw, fh)), ','), shrink))
+        return emit(context=ctx + ('\n' + note if note else ''))
+    if note:
+        return emit(context=note)
     return 0
 
 

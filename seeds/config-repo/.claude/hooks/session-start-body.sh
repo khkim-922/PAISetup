@@ -378,11 +378,31 @@ decl_fields() {  # decl_fields <파일> <절> <키…>
 # ⚠ npx --yes 는 갈래가 아니다 — 설치법과 도달 판정을 섞어 제3의 상태를 만든다 (0004).
 # 실행 갈래의 인자는 기본 --version 이되 선언의 probe-arg 가 덮는다 — 인자를 받고도
 # 멈추지 않는 도구가 실재한다(실측 2026-08-16: --version 을 받고 저장소 전체를 린트).
-probe_tool() {  # probe_tool <갈래> <대상> [인자…]
-  _k="$1"; _tg="$2"; shift 2
+# ── ⚠ **npm 이 깐 도구는 PATH 로 부르지 않는다** (#96) ──────────────────────────────
+#   `npm install -g` 는 실행파일을 그대로 두지 않고 **셸 래퍼를 하나 더 깐다.** PATH 위의 그
+#   이름을 부르면 래퍼가 먼저 서고, 래퍼는 제 안에서 경로를 풀기 위해 보조 프로세스 몇을
+#   띄운 뒤에야 node 를 부른다. 그래서 **같은 패키지를 node 로 직접 부르면 1초, 래퍼를 타면
+#   10초가 넘는다** — 프로세스 생성이 비싼 자리(가상 데스크톱 · 실시간 검사가 끼는 파일시스템)
+#   에서는 그 배수가 열 배를 넘는다.
+#   ⚠ **판정의 뜻이 갈리는 자리다.** 래퍼를 타는 물음은 「이 이름이 PATH 에서 풀려 도나」고,
+#     여기서 묻고 싶은 것은 「이 도구가 기계에 서 있나」다. npm 이 깐 것은 사는 자리가
+#     `npm root -g` 한 곳이라 그 자리에 대고 물으면 뜻이 더 곧다 — `probe_global` 이 이미
+#     같은 판단을 node-resolvable 갈래에서 들었고, 이 자리는 그것을 실행 갈래로 넓힌다.
+#   ⚠ **npm 패키지 이름을 인자로 받는다 — 밖의 변수를 훔쳐보지 않는다.** 부르는 자가 제
+#     자리에서 대야, 새로 부르는 자가 생겨도 그 칸이 빈 채 조용히 지나가지 않는다. 빈 값이면
+#     「npm 이 깐 것이 아니다」라는 뜻이고, 그때는 사는 자리가 PATH 뿐이라 종전대로 실행해
+#     잰다 — 단일 실행파일로 받은 도구가 그쪽이고, 래퍼가 없어 애초에 1초다.
+probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
+  _k="$1"; _tg="$2"; _knp="$3"; shift 3
   [ $# -gt 0 ] || set -- --version
   case "$_k" in
-    exec-on-path)      command -v "$_tg" >/dev/null 2>&1 && "$_tg" "$@" >/dev/null 2>&1 ;;
+    exec-on-path)      if [ -n "$_knp" ]; then
+                         # 판 떼기는 첫 글자 뒤의 `@` 만 문다 — `probe_pin` 과 같은 꼴. 그냥 `%@*` 면
+                         # 판 없는 스코프 패키지(`@scope/name`)가 통째로 지워져 npm 전역 뿌리 자체를
+                         # 재게 되고, 그 자리는 늘 있으니 **안 깔린 것도 초록이 된다.**
+                         case "$_knp" in ?*@*) _knp="${_knp%@*}" ;; esac
+                         npm_root_g && [ -d "$NPM_ROOT_G/$_knp" ]
+                       else command -v "$_tg" >/dev/null 2>&1 && "$_tg" "$@" >/dev/null 2>&1; fi ;;
     exec-npm-bin)      [ -e "$NPM_BIN/$_tg" ] && "$NPM_BIN/$_tg" "$@" >/dev/null 2>&1 ;;
     node-resolvable)   ( cd "$PROJECT_DIR" && node --input-type=module -e "await import('$_tg')" ) >/dev/null 2>&1 ;;
     python-importable) if [ -x "$VENV_PY" ]; then "$VENV_PY" -c "import $_tg" >/dev/null 2>&1
@@ -404,24 +424,46 @@ probe_tool() {  # probe_tool <갈래> <대상> [인자…]
 #   부서져 이 함수가 늘 빈 값을 내고, **판이 정확히 깔린 기계에서도 판정이 「안 닿는다」로
 #   굳는다**: 진단은 ❌, 설치는 매번 같은 패키지를 다시 깔고, 종료코드가 영영 1 이라 배포가
 #   실패를 본다. 리눅스에서만 재면 이 자리는 영영 안 보인다.
+# npm 전역 자리 — **한 세션에 한 번만 묻는다.** `npm root -g` 는 값을 내기까지 node 를 띄우는데
+# 그 값은 세션 안에서 안 바뀐다. 프로브·판 검사·진단이 저마다 물어 도구 수만큼 되풀이되고,
+# 프로세스 생성이 비싼 자리에서는 그 되풀이가 곧 벽이다 (실측: 이 자리 한 번에 5초 · 아래 곁말).
+# ⚠ **값을 되돌리지 않고 변수에 세운다 — 명령 치환은 서브셸이라 캐시가 부모에 안 남는다.**
+#   `$(npm_root_g)` 꼴로 부르면 매 호출이 제 서브셸에서 빈 캐시를 보고 다시 묻는다: 캐시를
+#   두고도 값이 하나도 안 아껴지는데, 판정은 멀쩡하니 **느린 것만 남고 까닭은 안 보인다.**
+#   그래서 부르는 자는 이것을 **문장으로** 부르고 값은 `$NPM_ROOT_G` 에서 읽는다.
+NPM_ROOT_G=''; NPM_ROOT_G_ASKED=''
+npm_root_g() {  # 성공하면 $NPM_ROOT_G 에 자리가 선다
+  [ -n "$NPM_ROOT_G_ASKED" ] || {
+    NPM_ROOT_G_ASKED=1
+    NPM_ROOT_G="$(npm root -g 2>/dev/null)" || NPM_ROOT_G=''
+  }
+  [ -n "$NPM_ROOT_G" ]
+}
 npm_global_version() {  # npm_global_version <패키지 이름> — 못 읽으면 빈 값
-  _nr="$(npm root -g 2>/dev/null)" || return 1
-  [ -n "$_nr" ] && [ -f "$_nr/$1/package.json" ] || return 1
+  npm_root_g || return 1
+  _nr="$NPM_ROOT_G"
+  [ -f "$_nr/$1/package.json" ] || return 1
   node -e 'const p = require("path").join(process.argv[1], "package.json")
            console.log(require(p).version || "")' "$_nr/$1" 2>/dev/null
 }
 
 probe_reach() {  # probe_reach <선언파일> <이름> — **이 저장소에서** 닿나
-  _prk=''; _prt=''; _pra=''
+  # ⚠ **`install` · `package` 을 같이 읽는다.** 실행 갈래가 npm 래퍼를 비켜서려면 「이것이
+  #   npm 이 깐 것인가」를 알아야 하는데, 그 답은 선언에 이미 있다 (#96 · `probe_tool` 곁말).
+  #   같은 파일을 두 번 읽지 않도록 이 한 번의 조회에 칸을 더한다.
+  _prk=''; _prt=''; _pra=''; _pri=''; _prp=''
   {
     IFS= read -r _prk
     IFS= read -r _prt
     IFS= read -r _pra
+    IFS= read -r _pri
+    IFS= read -r _prp
   } <<EOF
-$(decl_fields "$1" "$2" probe probe-target probe-arg)
+$(decl_fields "$1" "$2" probe probe-target probe-arg install package)
 EOF
+  [ "$_pri" = npm-global ] || _prp=''
   # shellcheck disable=SC2086 — probe-arg 는 낱말 분리가 의도다
-  probe_tool "$_prk" "$_prt" $_pra
+  probe_tool "$_prk" "$_prt" "$_prp" $_pra
 }
 probe_pin() {  # probe_pin <선언파일> <이름> — 선언이 판을 박았으면 깔린 판이 그것인가
   # ⚠ **「깔렸나」와 「선언한 판인가」는 다른 명제다.** 선언이 `이름@판` 으로 판을 박았으면
@@ -468,8 +510,8 @@ $(decl_fields "$1" "$2" probe probe-target)
 EOF
   case "$_pgk" in
     node-resolvable)
-      _gr="$(npm root -g 2>/dev/null)" || return 1
-      [ -n "$_gr" ] || return 1
+      npm_root_g || return 1
+      _gr="$NPM_ROOT_G"
       ( cd "$_gr/.." 2>/dev/null &&
         node --input-type=module -e "await import('$_pgt')" ) >/dev/null 2>&1 || return 1 ;;
     *) probe_reach "$1" "$2" || return 1 ;;
@@ -1900,7 +1942,7 @@ EOF
 $(decl_fields "$_f" "$_t" wiring probe-target wiring-env on-demand)
 EOF
     [ "$_wg" = node-link ] || return 0
-    probe_tool node-resolvable "$_mod" && return 0
+    probe_tool node-resolvable "$_mod" "" && return 0
     # ⚠ **못 건 배선은 실패로 적는다 — 말없이 빠져나가지 않는다.** 이 걸음 뒤에 지문 도장이
     #   찍히므로(⑧) 여기서 조용히 나가면 그 저장소는 「배선됐다」로 굳고, 다음 세션(auto)도
     #   재설치(`--needs-install`)도 파일만 봐서 **영영 다시 안 건다.** 전역 도구가 저장소 걸음보다
@@ -1909,7 +1951,7 @@ EOF
     #   `--needs-install` 이 1 을 내 다음 배포가 이 걸음을 다시 돌고, auto 는 매 세션 사유를 알린다.
     # ⚠ **on-demand 는 빼고 적는다** — 그 도구는 전역에 없는 것이 정상이다(부르는 자가 제 손으로 찾는다).
     [ "$_wod" = yes ] && return 0
-    _groot="$(npm root -g 2>/dev/null)"
+    npm_root_g; _groot="$NPM_ROOT_G"
     [ -n "$_groot" ] ||
       { nogo "$_t" "배선을 못 걸었다 — npm 이 없다. 노드를 깔면 다음 설치가 잇는다"; return 0; }
     [ -d "$_groot/$_mod" ] ||
@@ -1927,7 +1969,7 @@ EOF
       cmd //c mklink //J "$(cygpath -w "$PROJECT_DIR/node_modules/$_mod")" "$(cygpath -w "$_groot/$_mod")" \
         >/dev/null 2>&1 || true
     fi
-    probe_tool node-resolvable "$_mod" && return 0
+    probe_tool node-resolvable "$_mod" "" && return 0
     # 이름 해석이 그래도 안 되면 소비자 계약(환경변수)으로 넘긴다 — 이름은 선언이 든다
     # (`_env` 는 위에서 같은 awk 가 이미 읽었다).
     # ⚠ **진입점을 손으로 찾지 않는다 — 폴더를 넘긴다.** `index.js` 는 추측이라 그 이름이
@@ -1962,8 +2004,9 @@ $(decl_fields "$_wf" "$_wn" wiring-env probe-target)
 EOF
     [ -n "$_we" ] || return 0
     [ -n "$_wm" ] || return 0
-    _wr="$(npm root -g 2>/dev/null)" || return 0
-    { [ -n "$_wr" ] && [ -d "$_wr/$_wm" ]; } || return 0
+    npm_root_g || return 0
+    _wr="$NPM_ROOT_G"
+    [ -d "$_wr/$_wm" ] || return 0
     export "$_we=$_wr/$_wm"
   }
 
@@ -2328,7 +2371,7 @@ EOF
       else                      gate "$_name" ok "$_by ($2)"; fi
     elif _pin="$(pin_mismatch "$1" "$_name")"; [ -n "$_pin" ]; then
       gate "$_name" off "$_by ($2) — $_pin$(why "$_name" "$_step")"
-    elif [ "$_probe" = node-resolvable ] && [ -d "$(npm root -g 2>/dev/null)/$_target" ]; then
+    elif [ "$_probe" = node-resolvable ] && npm_root_g && [ -d "$NPM_ROOT_G/$_target" ]; then
       gate "$_name" off "$_by ($2) — 깔렸는데 프로브가 못 찾는다: 배선이 끊겼다$(why "$_name" "$_step")"
     elif [ "$_ondemand" = yes ]; then
       # 선언이 「필요할 때 깐다」로 둔 도구 — 부재가 이 저장소의 검사를 끄는 것이 아니다
