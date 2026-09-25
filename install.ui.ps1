@@ -638,6 +638,7 @@ $script:sw = $null; $script:last = ''   # 흐른 시간과 마지막 줄 — 창
 $script:done = ''                       # 몸통이 낸 마무리 문장 — 끝났을 때 이것을 띄운다
 $script:outFile = $null; $script:errFile = $null
 $script:rdOut = $null;  $script:rdErr = $null
+$script:con = $null; $script:raise = 0   # 뒤에 서는 기록 창과, 이 창을 다시 올릴 남은 틱 수
 
 function Add-Log([string]$line) {
   $log.AppendText($line + "`r`n")
@@ -784,6 +785,19 @@ $bGo.Add_Click({
     $gV.Enabled = $true; $gO.Enabled = $true; $gR.Enabled = $true
     return
   }
+
+  # ── 뒤에 서는 큰 기록 창 (`Start-ConsoleTail` 머리말) ──
+  # ⚠ **못 띄워도 설치는 간다.** 이 창의 기록 칸이 같은 줄을 이미 들고 있다 — 덤 창 하나
+  #   때문에 설치를 세우지 않는다. 대신 못 띄운 것은 말한다(부재가 통과로 읽히지 않게).
+  try {
+    $script:con = Start-ConsoleTail $script:outFile $script:errFile $script:proc.Id
+    # ⚠ **새 콘솔은 뜨면서 맨 앞을 차지한다** — 그대로 두면 이 창을 덮는다. 뜨는 데 걸리는
+    #   시간이 콘솔마다 달라(옛 콘솔은 곧바로, Terminal 은 1초 남짓) 한 번이 아니라 몇 초에
+    #   걸쳐 이 창을 다시 위로 올린다 — 타이머가 센다(아래 `$script:raise`).
+    $script:raise = 20
+  } catch {
+    Add-Log "! 큰 기록 창을 못 띄웠다 — 이 창의 기록으로 그대로 본다: $($_.Exception.Message)"
+  }
   $timer.Start()
 })
 
@@ -820,11 +834,16 @@ function Step-Line([string]$line) {
 }
 
 # 아직 안 열렸으면 연다. 자식이 **쓰는 중인** 파일이라 공유 열기여야 한다.
+# ⚠ **지우기까지 열어 준다(`Delete`).** 이 함수는 뒤에 서는 기록 창(`Start-ConsoleTail`)에도
+#   글자째 실려 가는데, 그 창은 이 창과 **따로 사는 프로세스**라 이 창이 캡처 파일을 지우는
+#   순간에도 쥐고 있을 수 있다. 그때 `Delete` 가 없으면 지우기가 조용히 지고
+#   (`-ErrorAction SilentlyContinue`) **키 없는 캡처라도 임시 폴더에 눌러앉는다.** 이 창 자신은
+#   지우기 전에 늘 닫으므로 덤이지만, 여는 법은 한 자리라 여기서 푼다.
 function Open-Tail([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { return $null }
   try {
     $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open,
-            [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+            [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
     return New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8)
   } catch { return $null }
 }
@@ -839,6 +858,140 @@ function Pump-Tail($Reader) {
     Step-Line $line; $n++
   }
   return $n
+}
+
+# ── 뒤에 서는 큰 기록 창 — **같은 캡처를 따로 한 번 더 읽을 뿐이다** ───────────────
+# 이 창은 막대와 마지막 한 줄만 보여 준다. 로그온 자동 실행처럼 몸통이 찍는 줄을 **통째로,
+# 큰 글씨로** 흘려 주는 창을 이 창 뒤에 하나 세운다 — 무엇을 하는 중인지, 어디서 멈췄는지가
+# 사람 눈에 바로 보이게.
+#
+# ⚠ **출력을 새로 만들지 않는다.** 몸통은 여태처럼 숨은 채 두 캡처 파일에 쓰고, 이 창은 위
+#   `Open-Tail` 로 **같은 파일을 따로 따라 읽어** 제 콘솔에 옮길 뿐이다. 통로를 하나 더 내면
+#   (몸통을 보이게 띄우거나 `Tee` 로 갈라 쓰거나) 두 갈래가 서로 다른 것을 보여 주는 날이 온다.
+#   ⚠ 여는 법도 글자째 실어 간다(`${function:Open-Tail}`) — 공유 깃발을 두 벌 두지 않는다.
+#
+# ⚠ **빈 창이 뜨는 자리를 안 밟는다.** 콘솔 창이 떴는데 한 줄도 안 나오는 것은, 창을 가진
+#   프로세스의 출력이 **파일로 돌려져** 창이 아니라 파일에 쓰기 때문이다 — 몸통을 보이게 띄우면
+#   `1>` 가 걸려 있어 꼭 그렇게 된다(몸통이 숨은 채 도는 까닭). 이 창은 **아무것도 안 돌린 제
+#   콘솔**에 `Write-Host` 로 쓴다: `Start-Process`(셸 실행) 는 새 콘솔을 따로 붙여 주고, 여기에는
+#   `-NoNewWindow` 도 `-Redirect*` 도 없다. 부모인 이 창은 콘솔이 없어도 상관없다.
+#
+# ⚠ **읽는 쪽이 느려져도 설치는 안 멈춘다.** 몸통은 파일에 쓰므로, 사람이 콘솔 안을 끌어
+#   선택하는 바람에(빠른 편집) 이 창의 쓰기가 멈춰도 몸통은 모른다. 몸통의 출력을 이 창에
+#   **파이프로** 잇지 않는 까닭이 그것이다 — 파이프는 읽는 쪽이 멈추면 쓰는 쪽까지 세운다.
+#
+# ⚠ **명령 줄에 스크립트 이름이 드러나면 안 된다 — `-EncodedCommand` 로 싣는다.** 몸통의 겹침
+#   검사(`Find-EngineHolders`)와 자동 실행의 겹침 가드는 `powershell.exe` 의 명령 줄에서
+#   `install.ps1` 을 **글자로** 찾는다. 이 창은 설치가 끝나도 이 창이 닫힐 때까지 사므로,
+#   명령 줄에 그 이름이 비치면 다음 설치나 로그온 자동 실행이 **이 창을 설치 중으로 읽고 물러난다.**
+#   base64 로 실으면 이름이 명령 줄에 안 서고, 지울 임시 .ps1 도 안 생긴다.
+#
+# ⚠ **언제 죽나 — 이 창보다 오래 살지 않는다.** 사람이 손으로 닫을 일이 없어야 한다.
+#   · 설치 창(`$UiPid`)이 사라지면 곧바로 나간다 — 다 끝나고 [닫기] 든, X 든, 도는 중에 멈춤이든,
+#     죽어서든 **모두 이 프로세스가 끝나는 한 사건으로 모인다.** 그래서 이것 하나를 본다.
+#   · 몸통(`$EnginePid`)이 끝나면 흘리기를 멈추고 끝났다는 줄을 찍은 뒤, **설치 창이 닫힐 때까지
+#     남는다** — 사람이 마지막 줄을 읽을 틈이다. 몇 초 뒤 제풀에 닫는 길은 안 골랐다: 읽는 속도는
+#     사람마다 다르고, 설치 창을 닫는 것이 곧 「다 봤다」는 동작이라 신호가 이미 하나 있다.
+#     `install.cmd` 에 `pause` 를 안 둔 것과 같은 결이다(위 「콘솔에 남은 글」 머리말).
+#   · [다시 설치] 면 옛 창은 비킨다 — 이 창이 끝에 지운 캡처 파일이 **다시 서면** 새 판이 시작된
+#     것이고, 그 판은 새 창이 든다. 신호를 따로 안 낸다: 같은 이름을 다시 쓰는 것이 곧 신호다.
+#   ⚠ **끝낼 때 죽이지 않고 제풀에 나가게 한다.** Windows 11 은 새 콘솔을 대개 Windows Terminal
+#     에 띄우는데, 그쪽은 **0 이 아닌 코드로 끝난 탭을 닫지 않고 남긴다** — `Kill()` 로 끝내면
+#     「프로세스가 코드 1 로 끝났다」는 빈 탭을 사람이 손으로 닫아야 한다. 그래서 주 길은 저쪽이
+#     스스로 `exit 0` 하는 것이고, 이 창이 닫힐 때 거는 것은 `CloseMainWindow()`(창에 닫으라는 말)
+#     뿐이다 — 옛 콘솔 창에서는 바로 닫히고, Terminal 에서는 창이 없다고 거짓을 내며 아무것도
+#     안 하므로 위 PID 감시가 맡는다.
+#
+# ⚠ **글씨 크기는 안 만진다.** 콘솔 글꼴은 `SetCurrentConsoleFontEx` 를 P/Invoke 로 불러야
+#   하고 Windows Terminal 은 그것을 무시한다 — 크기는 사람이 고른 터미널 설정을 따른다.
+#   창 크기(120×40)도 옛 콘솔에서만 먹고 Terminal 에서는 조용히 안 먹는다. 둘 다 편의지 조건이 아니다.
+function Start-ConsoleTail([string]$Out, [string]$Err, [int]$EnginePid, [int]$UiPid = $PID) {
+  # 값은 머리 줄에 작은따옴표 글자로 박는다 — 경로에 작은따옴표가 들면 둘로 늘린다.
+  $lit  = { param($s) "'" + ([string]$s -replace "'", "''") + "'" }
+  $head = '$Out = {0}; $Err = {1}; $UiPid = {2}; $EnginePid = {3}; $Title = {4}' -f `
+            (& $lit $Out), (& $lit $Err), $UiPid, $EnginePid, (& $lit "$AppName — 설치 기록")
+  $body = @'
+$ErrorActionPreference = 'Continue'
+# ⚠ 캡처는 UTF-8 이다(몸통이 제 머리에서 세운다). 읽기는 `Open-Tail` 이 UTF-8 로 하고,
+#   쓰기 쪽 코드 페이지도 맞춘다 — 못 맞춰도 흘리기는 간다.
+$OutputEncoding = [Text.Encoding]::UTF8
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+try { $Host.UI.RawUI.WindowTitle = $Title } catch { }
+try {
+  $raw = $Host.UI.RawUI
+  $w = [Math]::Min(120, $raw.MaxPhysicalWindowSize.Width)
+  $h = [Math]::Min(40,  $raw.MaxPhysicalWindowSize.Height)
+  # 창 너비는 버퍼 너비를 못 넘는다 — 줄일 때는 창을 먼저, 늘릴 때는 버퍼를 먼저.
+  if ($raw.WindowSize.Width -gt $w) {
+    $raw.WindowSize = New-Object Management.Automation.Host.Size($w, $raw.WindowSize.Height)
+  }
+  $raw.BufferSize = New-Object Management.Automation.Host.Size($w, 9999)
+  $raw.WindowSize = New-Object Management.Automation.Host.Size($w, $h)
+} catch { }
+
+# 손잡이를 쥐어 둔다 — PID 가 딴 프로세스에 다시 쓰여도 끝난 것을 끝난 것으로 본다.
+function Get-Watched([int]$Id) {
+  try { $p = [Diagnostics.Process]::GetProcessById($Id) } catch { return $null }
+  try { $null = $p.Handle } catch { }
+  return $p
+}
+function Test-Gone($P) {
+  if (-not $P) { return $true }
+  try { return $P.HasExited }
+  catch { return -not (Get-Process -Id $P.Id -ErrorAction SilentlyContinue) }
+}
+function Show-Lines($Reader, [bool]$IsErr) {
+  if (-not $Reader) { return 0 }
+  $n = 0
+  while ($null -ne ($line = $Reader.ReadLine())) {
+    $n++
+    if ($IsErr)                      { Write-Host $line -ForegroundColor Red }
+    elseif ($line -match '^\[\d+/\d+\]') { Write-Host $line -ForegroundColor Cyan }
+    elseif ($line -match '^===')     { Write-Host $line -ForegroundColor Yellow }
+    else                             { Write-Host $line }
+  }
+  return $n
+}
+
+$ui = Get-Watched $UiPid; $eng = Get-Watched $EnginePid
+$rdOut = $null; $rdErr = $null; $shown = 0
+while ($true) {
+  if (Test-Gone $ui) { exit 0 }
+  if (-not $rdOut) { $rdOut = Open-Tail $Out }
+  if (-not $rdErr) { $rdErr = Open-Tail $Err }
+  $shown += (Show-Lines $rdOut $false) + (Show-Lines $rdErr $true)
+  if (Test-Gone $eng) {
+    Start-Sleep -Milliseconds 300      # 마지막 쓰기가 파일에 닿을 틈 — 설치 창과 같은 자리
+    if (-not $rdOut) { $rdOut = Open-Tail $Out }
+    if (-not $rdErr) { $rdErr = Open-Tail $Err }
+    $shown += (Show-Lines $rdOut $false) + (Show-Lines $rdErr $true)
+    break
+  }
+  Start-Sleep -Milliseconds 200
+}
+# 다 읽었으면 곧바로 놓는다 — 설치 창이 곧 지운다.
+foreach ($r in @($rdOut, $rdErr)) { if ($r) { try { $r.Dispose() } catch { } } }
+
+# ⚠ 됐나 안 됐나는 여기서 말하지 않는다 — 판정은 설치 창 한 자리가 든다(종료코드를 쥔 쪽).
+Write-Host ''
+if ($shown -eq 0) {
+  Write-Host '기록을 한 줄도 못 읽었습니다 — 설치 창의 기록을 보세요.' -ForegroundColor DarkYellow
+}
+Write-Host '설치가 끝났습니다 — 결과는 설치 창에 있습니다. 이 창은 설치 창을 닫으면 같이 닫힙니다.' -ForegroundColor Green
+
+$wasGone = $false
+while (-not (Test-Gone $ui)) {
+  if (-not (Test-Path -LiteralPath $Out)) { $wasGone = $true }
+  elseif ($wasGone) { break }          # 캡처가 다시 섰다 — [다시 설치], 새 창이 든다
+  Start-Sleep -Milliseconds 250
+}
+exit 0
+'@
+  $code = $head + "`n" + "function Open-Tail {`n" + ${function:Open-Tail} + "`n}`n" + $body
+  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($code))
+  $psExe = (Get-Process -Id $PID).Path
+  return Start-Process -FilePath $psExe -PassThru -WindowStyle Normal `
+           -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc)
 }
 
 # ── 창이 닫혀도 사는 기록 ───────────────────────────────────────────────────────
@@ -891,6 +1044,17 @@ function Save-RunLog {
 $timer = New-Object Windows.Forms.Timer
 $timer.Interval = 150
 $timer.Add_Tick({
+  # ⚠ **앞에 세우기는 `TopMost` 를 켰다 끄는 것으로 한다 — `Activate()` 가 아니다.** 콘솔이 뜨며
+  #   포그라운드를 가져간 뒤라, `Activate()` 는 포그라운드 잠금에 걸려 작업표시줄만 깜빡이고 안
+  #   올라올 수 있다. 맨 위 띠로 옮겼다 되돌리는 것은 그 잠금과 무관하게 z-순서를 바꾸고, 되돌린
+  #   뒤에는 **보통 창들 중 맨 위**에 선다 — 콘솔 위, 그러나 맨 위 띠 아래.
+  # ⚠ **몸통의 물음창을 가리지 않는다.** `Show-AskDialog` 는 맨 위 띠의 창을 임자로 세우므로 늘
+  #   이 창보다 위다 — 확인창이 다른 창 뒤에 숨어 설치가 멈춘 듯 보였던 자리를 다시 안 만든다.
+  #   켜 둔 한순간만 그 위로 겹칠 뿐이다. 600ms 마다 한 번, 3초 동안.
+  if ($script:raise -gt 0) {
+    $script:raise--
+    if (($script:raise % 4) -eq 0) { $F.TopMost = $true; $F.TopMost = $false }
+  }
   if (-not $script:rdOut) { $script:rdOut = Open-Tail $script:outFile }
   if (-not $script:rdErr) { $script:rdErr = Open-Tail $script:errFile }
   $got = (Pump-Tail $script:rdOut) + (Pump-Tail $script:rdErr)
@@ -979,6 +1143,15 @@ $F.Add_FormClosing({
     if ($f -and (Test-Path -LiteralPath $f)) {
       Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
     }
+  }
+})
+# ⚠ **뒤의 기록 창도 같이 닫는다 — 닫힘이 확정된 뒤(`FormClosed`)에만.** `FormClosing` 은 위에서
+#   「아니오」로 무를 수 있어, 거기서 닫으면 설치 창은 남고 기록 창만 사라진다. 주 길은 저쪽이
+#   이 프로세스가 사라진 것을 보고 제풀에 나가는 것이고, 여기는 옛 콘솔 창에서 그것을 앞당기는
+#   덧줄이다 — **`Kill()` 이 아니다**(`Start-ConsoleTail` 머리말: Terminal 이 빈 탭을 남긴다).
+$F.Add_FormClosed({
+  if ($script:con -and -not $script:con.HasExited) {
+    try { [void]$script:con.CloseMainWindow() } catch { }
   }
 })
 # ── 새 판이 있나 — 창이 뜬 뒤에 배경으로 물어본다 ──────────────────────────────
