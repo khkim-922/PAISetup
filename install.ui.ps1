@@ -365,13 +365,14 @@ $cCfg.Size = New-Object Drawing.Size(560, 22)
 $cCfg.Checked = [bool]$WithPersonalConfig
 $gO.Controls.Add($cCfg)
 
-# ⚠ **로그온할 때 자동 실행** — 작업 스케줄러(`PAISetup-AutoRun`)가 설치 몸통을 숨은 창으로
-#   다시 돌려 깔린 것을 최신으로 올리고 환경을 다시 맞춘다.
-# ⚠ **「최신 릴리스로 간다」고 적지 않는다.** 설치본 자체를 새 판으로 가는 일은 받은 파일을
-#   해시로 대조하고 사람이 「예」를 눌러야 서서, 이 창에만 있다 — 무인 실행이 드는 것은
-#   **제품들을 최신으로 두는 일**뿐이다. 글자가 실물보다 크면 그만큼이 조용한 거짓이 된다.
+# ⚠ **로그온할 때 자동 실행** — 작업 스케줄러(`PAISetup-AutoRun`)가 설치 몸통을 **보이는 콘솔 창**
+#   으로 다시 돌려 깔린 것을 최신으로 올리고 환경을 다시 맞춘다. 설치본 자신도 `#update-repo` 의 최신
+#   릴리스를 받아 지문을 대조한 뒤 그 판으로 간다(몸통 머리말).
+# ⚠ **「백그라운드」라고 적지 않는다** — 창이 떠서 설치 기록이 흐른다. 옛 글자는 「백그라운드에서」였는데
+#   실물은 보이는 창이라, 사람은 그 창을 보고 무엇이 도는지 몰랐다. 글자가 실물과 다르면 그만큼이
+#   조용한 거짓이 된다. 보이는 창은 일부러 둔다 — 도는 것이 보이고 멈춘 걸음이 눈에 띈다.
 $cAuto = New-Object Windows.Forms.CheckBox
-$cAuto.Text = '로그온할 때 백그라운드에서 깔린 것을 최신으로 올리고 환경을 다시 맞춥니다'
+$cAuto.Text = '로그온할 때 설치 창을 띄워 깔린 것을 최신으로 올리고 환경을 맞춥니다'
 $cAuto.Location = New-Object Drawing.Point(16, (72 + $appRow))
 $cAuto.Size = New-Object Drawing.Size(560, 22)
 # ⚠ **못 묻는 것을 「없다」로 읽는다** — 스케줄러 모듈이 없는 판에서 나는 「그런 명령이 없다」는
@@ -1134,7 +1135,26 @@ $F.Add_FormClosing({
     $ans = [Windows.Forms.MessageBox]::Show('설치가 도는 중입니다. 멈추고 닫을까요?',
       $AppName, 'YesNo', 'Warning')
     if ($ans -ne 'Yes') { $_.Cancel = $true; return }
-    try { $script:proc.Kill() } catch { }
+    # ⚠ **나무째 끈다.** `$script:proc` 는 몸통이 아니라 그것을 감싼 `cmd.exe` 라, 그것만 죽이면
+    #   **몸통 PowerShell 과 그 자식(winget · npm)이 남아 계속 돈다** — 사람은 「멈추고 닫았다」로
+    #   알고 창도 사라졌는데 뒤에서 설치가 이어지고, 다음 판은 빗장에 막힌다.
+    # ⚠ **`taskkill /T` 를 안 쓴다** — 실행 파일 하나를 더 부르는 길은 정책이 막는 자리가 있다
+    #   (실측 2026-09-25: 「Access is denied」로 아예 안 떴다). 자식 목록을 윈도우에 물어 **아래부터**
+    #   끈다 — 위를 먼저 끄면 아래가 부모 없는 고아가 되어 목록에서 못 찾는다.
+    $tree = New-Object System.Collections.Generic.List[int]
+    $walk = New-Object System.Collections.Generic.Queue[int]
+    $walk.Enqueue($script:proc.Id)
+    try {
+      $allProcs = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId -ErrorAction Stop)
+      while ($walk.Count) {
+        $p = $walk.Dequeue(); $tree.Add($p)
+        foreach ($c in $allProcs) { if ($c.ParentProcessId -eq $p -and $c.ProcessId -ne $p) { $walk.Enqueue([int]$c.ProcessId) } }
+      }
+    } catch { }
+    for ($i = $tree.Count - 1; $i -ge 0; $i--) {
+      try { Stop-Process -Id $tree[$i] -Force -ErrorAction Stop } catch { }
+    }
+    try { if (-not $script:proc.HasExited) { $script:proc.Kill() } } catch { }
   }
   # 끝까지 못 간 판이야말로 기록이 필요하다 — 여기서도 지우기 전에 옮긴다. 위 갈래가 이미
   # 옮겼으면 파일이 없어 `Save-RunLog` 가 빈 자리를 돌려주고 만다(빈 파일을 안 만든다).
