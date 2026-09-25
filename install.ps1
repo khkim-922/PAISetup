@@ -2658,14 +2658,24 @@ if ($wantProxy) {
   }
 }
 
-# ── 5⁗. Codex · Gemini 설정 — **틀에서 파생한다** (결정 0041) ──────────────────────────
+# ── 5⁗. Codex · Gemini · 안티그래비티 설정 — **틀에서 파생한다** (결정 0041) ─────────────
 # ⚠ **값을 여기 안 적는다.** 값 파일이 가리키는 틀(`#codex-config` · `#gemini-config`)이 곧 회사가
 #   실제로 쓰는 설정의 사본이고, 여기서는 자리표(키)와 주소만 채운다. 틀을 고치면 설치가 따라온다.
 # ⚠ **사람 것을 안 덮는다.** Codex 틀은 파일 하나가 통째라 있던 것을 날짜 붙여 물리고 새로 쓴다.
 #   Gemini 는 JSON 이라 틀의 항목만 얹고 사람이 둔 다른 항목은 둔다 — 홈 설정 칸과 같은 규율.
-if ($useGateway -and ($wantCodex -or $wantGemini)) {
+# ⚠ **문에 세 제품을 다 적는다 — 안티그래비티가 이 칸 안에 산다.** 옛 판은 문이 `$wantCodex -or
+#   $wantGemini` 뿐이라, 안티그래비티만 켠 자리에서 칸이 통째로 건너뛰어졌다. 그런데 끝의 검증은
+#   `$wantAgy` 로 따로 물어 **쓰는 자는 안 돌고 재는 자만 도는** 꼴이 됐다 — 무엇을 해도 그 항목이
+#   빨갛게 끝났고, 파일이 없다는 말만 나와 까닭이 안 보였다. `$wantAgy` 를 세우는 자리가 「제미나이
+#   칸에 안 묶는다」를 이미 적어 뒀으니(위 5″ 칸), **문이 그 뜻을 거스르고 있던 것이다.**
+if ($useGateway -and ($wantCodex -or $wantGemini -or $wantAgy)) {
   Write-Host ''
-  Write-Host '  Codex · Gemini 설정' -ForegroundColor Cyan
+  # 제목은 **이번에 실제로 서는 것**만 든다 — 안 켠 제품 이름을 부르면 그것도 깔린 줄로 읽힌다.
+  $cfgWho = @()
+  if ($wantCodex)  { $cfgWho += 'Codex' }
+  if ($wantGemini) { $cfgWho += 'Gemini' }
+  if ($wantAgy)    { $cfgWho += '안티그래비티' }
+  Write-Host ('  ' + ($cfgWho -join ' · ') + ' 설정') -ForegroundColor Cyan
   $key = $Planted['ANTHROPIC_AUTH_TOKEN']
   $noBom = New-Object Text.UTF8Encoding($false)
   if ($wantCodex) {
