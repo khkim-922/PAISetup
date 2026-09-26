@@ -14,6 +14,7 @@
 #
 #   session-start.sh            리모트면 깐다. PC 면 당겨 오고(ff-only·main 만) 홈 규범을
 #                               새로 민 뒤, 선언 지문이 어긋날 때만 깐다 (claude-config 0009)
+#                               ⚠ 까는 것은 **배경에서** 돈다 — 세션 시작은 안 기다린다 (0070)
 #                               ⚠ 홈 밀기 같은 PC 전체 일은 설정 저장소 세션 · 저장소 밖 세션만
 #                               한다. 형제 저장소 세션은 그 저장소 일만 한다 (claude-config 0062)
 #   session-start.sh --install  기계를 안 가리고 깐다        ← deploy.ps1 이 이걸로 부른다
@@ -498,10 +499,30 @@ ver_first() { grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1; }
 # 자리에서 태그를 읽는다. API 와 릴리스 쪽은 막히고 받는 주소만 열린 망이 있다(실측
 # 2026-09-26 · 리모트 컨테이너: API · `releases/latest` 는 403, 받는 주소는 302).
 # 자산 이름은 아무것이나 된다 — 넘기기는 자산이 있나를 안 보고 선다.
+# GitHub 에 닿는 기다림(초) — **연결 마감 하나만 뜻한다.** 아래 두 함수가 같이 쓴다.
+#   되풀이 창에 이 값을 겹쳐 쓰지 않는다 — 한 값이 두 뜻을 지면, 연결을 넉넉히 하려고 올린 손이
+#   되풀이까지 조용히 바꾼다.
+GH_CONNECT_S=10
 gh_latest_tag() {  # gh_latest_tag <owner/repo> — 못 읽으면 빈 값
-  curl -sS --max-time 20 -o /dev/null -w '%{redirect_url}' \
+  curl -sS --connect-timeout "$GH_CONNECT_S" --max-time 20 -o /dev/null -w '%{redirect_url}' \
     "https://github.com/$1/releases/latest/download/_" 2>/dev/null |
     sed -n 's|.*/releases/download/\([^/][^/]*\)/.*|\1|p'
+}
+
+# GitHub 릴리스 자산 받기 — `github-release-binary` 갈래의 세 푸는 꼴이 이 한 자리를 부른다.
+# ⚠ **이 값들은 매달리지 않게만 한다 — 세션 시작의 60초는 여기서 안 지킨다.** 세션(auto)의 설치는
+#   통째로 배경에서 돌아(`install_bg` · 0070) 확장의 초기화 창 밖이다. 걸음 전체의 시간을 호출마다
+#   나눠 지키면 호출 수만큼 더해져 상한이 안 선다.
+# ⚠ **기다림을 둘로 가른다: 닿기는 짧게, 받기는 넉넉히.** 닿기(`--connect-timeout`)가 막힌 망의
+#   시도 하나를 곧 떨구고, `--max-time` 은 닿은 뒤 느린 망이 30MB 를 끝까지 받을 몫이다(집 PC 실측
+#   2026-09-26: uv 18MB 1.0초 · 닿기 0.06초 — 10초는 넉넉하다). `--max-time` 은 **시도마다** 새로 잰다.
+# ⚠ **되풀이 창을 따로 두지 않는다.** 되풀이는 GitHub 의 순간 5xx 와 받다가 끊긴 시도를 건지려는
+#   것이라, 시도가 오래 돈 뒤에 온 결함일수록 건질 값이 크다. 창을 닿기 기다림에 묶으면 그 창보다
+#   오래 돈 시도는 되풀이가 안 나 순간 결함이 다음 설치까지 「안 닿는다」로 굳는다.
+# ⚠ 받는 도중 멎은 것을 떨구는 `--speed-limit` 은 안 단다 — 사내 프록시는 검사를 마칠 때까지
+#   한 바이트도 안 넘기기도 해, 멎음과 느림이 바이트로는 안 갈린다. 그 몫은 `--max-time` 이 든다.
+gh_asset_get() {  # gh_asset_get <받을 파일> <주소>
+  curl -sSfL --connect-timeout "$GH_CONNECT_S" --retry 3 --max-time 180 -o "$1" "$2"
 }
 
 tool_version_have() {  # tool_version_have <선언파일> <이름> — 깔린 판 · 못 읽으면 빈 값
@@ -540,9 +561,8 @@ EOF
     # ⚠ **pip 에게 묻는다 — PyPI 주소를 직접 안 친다.** pip 은 제 설정(사내 색인 · 프록시)을 따라
     #   묻는데, 주소를 박아 `curl` 로 치면 그 설정을 비켜서 받는 길과 묻는 길이 갈린다. 첫 줄이
     #   `pillow (12.3.0)` 꼴이라 같은 자(`ver_first`)로 읽힌다. 막힌 망은 빈 값 → 다시 깐다(위 곁말).
-    #   ⚠ 기다림은 아래 설치 칸과 같은 까닭으로 짧다 — 판 견주기 판에서는 이 물음과 설치가 **잇달아**
-    #   망에 가서, 막힌 망이면 둘의 기다림이 더해진다.
-    pip-user) "$PC_PY" -m pip index versions "$_vlp" --disable-pip-version-check --timeout 8 --retries 0 \
+    #   ⚠ 기다림 · 되풀이는 아래 설치 칸과 같은 값이다 — 까닭도 그 칸이 든다.
+    pip-user) "$PC_PY" -m pip index versions "$_vlp" --disable-pip-version-check --timeout 15 --retries 1 \
                 2>/dev/null | ver_first ;;
     github-release-binary)
       if [ -n "$_vlt" ]; then printf '%s\n' "$_vlt" | ver_first
@@ -1797,6 +1817,7 @@ sync_main_bg() {  # sync_main_bg <저장소>
 #      저장소 밖 세션만 한다** (0062 · 위 PC_WIDE). 형제 저장소 세션은 게이트 배선만 하고 홈은
 #      견주기만 해서, 맞출 것이 있으면 한 줄로 알린다(`pc_wide_notice`).
 #   ③ 선언 지문이 어긋날 때만 깐다 — 설치의 무거움(npm ci)이 선언 바뀐 세션에만 든다.
+#      그 설치도 배경에서 돌아 세션 시작을 안 잡는다(`install_bg` · 0070).
 #   리눅스(리모트 컨테이너)는 하나 더 — 붙은 저장소마다 main 을 배경으로 원격에 맞춘다(`sync_main_bg` · `pull_ff` · 0069).
 # ⚠ 리모트도 같은 세 걸음이다 (0010). 옛 판(「컨테이너가 새로 떠 무조건 깐다」)은 맨
 #   컨테이너 전제였는데 환경 이미지가 서면서 뒤집혔다 — 도구·venv·지문은 이미지 시점에
@@ -1957,10 +1978,12 @@ if [ "$MODE" = auto ]; then
     [ -n "$_gr" ] && echo "$PROJECT_NAME: ⚠ 전역 규율 — $_gr"
     exit 0
   fi
-  MODE=install   # 선언이 어긋났거나 도구가 낡았다 — 이 세션에서 바로 깐다. 지문은 설치 끝(⑧)에 굳는다
+  # 선언이 어긋났거나 도구가 낡았다 — 깐다. **배경에서** (`install_bg` · 0070). 지문은 설치 끝(⑧)에 굳는다
+  MODE=install; INSTALL_BG=1
 fi
 
-if [ "$MODE" = install ]; then
+# ══ 설치 걸음 — 명시한 `--install` · `--install-global` 은 여기서 기다리고, 세션(auto)은 배경으로 띄운다 ══
+install_step() {
 
   # ── 갈래 둘 — **전역은 기계에 한 번, 저장소는 배선만** (#43) ────────────────────
   #    auto 는 위 지문 게이트가 이미 정했다. 인자로 온 자리는 여기서 정한다:
@@ -2216,7 +2239,7 @@ if [ "$MODE" = install ]; then
             { [ "$OS" = linux ] && [ -w /usr/local/bin ]; } ||
               { nogo "$_t" "$_asset 는 tar.gz 인데 여기는 $OS 이거나 /usr/local/bin 에 쓸 권한이 없다"; return 1; }
             _tgz="$(mktemp)"
-            if try "$_t" curl -sSfL --retry 3 --max-time 180 -o "$_tgz" "$_url"; then
+            if try "$_t" gh_asset_get "$_tgz" "$_url"; then
               try "$_t" tar xzf "$_tgz" --strip-components=1 -C /usr/local/bin "${_asset%.tar.gz}/$_bin" &&
                 chmod +x "/usr/local/bin/$_bin" 2>/dev/null
             fi
@@ -2225,7 +2248,7 @@ if [ "$MODE" = install ]; then
             { [ "$OS" = linux ] && [ -w /usr/local/bin ]; } ||
               { nogo "$_t" "$_asset 는 tar.xz 인데 여기는 $OS 이거나 /usr/local/bin 에 쓸 권한이 없다"; return 1; }
             _work="$(mktemp -d)"
-            if try "$_t" curl -sSfL --retry 3 --max-time 180 -o "$_work/pkg.tar.xz" "$_url" &&
+            if try "$_t" gh_asset_get "$_work/pkg.tar.xz" "$_url" &&
                try "$_t" tar xJf "$_work/pkg.tar.xz" -C "$_work"; then
               _found="$(find "$_work" -name "$_bin" -type f 2>/dev/null | head -1)"
               # 못 찾거나 못 놓으면 사유를 남긴다 — 안 남기면 진단이 사유 없는 ❌ 를 낸다
@@ -2236,7 +2259,7 @@ if [ "$MODE" = install ]; then
             rm -rf "$_work" ;;
           *.zip)      # 윈도우 — Git Bash 에 unzip 이 없을 수 있어 PowerShell 로 풀고 $HOME/bin 에 놓는다
             _work="$(mktemp -d)"; mkdir -p "$HOME/bin"
-            if try "$_t" curl -sSfL --retry 3 --max-time 180 -o "$_work/pkg.zip" "$_url"; then
+            if try "$_t" gh_asset_get "$_work/pkg.zip" "$_url"; then
               powershell.exe -NoProfile -Command \
                 "Expand-Archive -Force -Path '$(cygpath -w "$_work/pkg.zip")' -DestinationPath '$(cygpath -w "$_work")'" \
                 >/dev/null 2>&1
@@ -2333,12 +2356,11 @@ if [ "$MODE" = install ]; then
         #   「밖에서 관리된다」며 거절하는데, 사용자 자리 설치는 배포판 패키지를 안 건드린다. 인자
         #   (`--break-system-packages`)로 주면 그 인자를 모르는 옛 pip 이 통째로 지고, 환경변수는
         #   모르는 판이 그냥 지나친다.
-        # ⚠ **기다림 8초 · 되풀이 없음.** 이 걸음은 세션 시작 앞단에서 돌고 확장은 초기화를 60초만
-        #   기다린다(0043). 패킷을 떨구는 망에서 pip 은 한 번 묻는 데 `기다림 × (되풀이 + 1)` 을 쓰는데
-        #   (실측 2026-09-26: 15초 · 1번이면 31초, 8초 · 0번이면 9초), 판 견주기 판은 위 판 물음과
-        #   이 설치가 잇달아 가므로 그 값이 두 번 든다. 한 번 진 설치는 다음 세션이 다시 한다.
+        # ⚠ **기다림 15초 · 되풀이 한 번.** 되풀이는 순간 결함을 건지는 몫이라 없애지 않는다. 패킷을
+        #   떨구는 망에서 한 번 묻는 데 `기다림 × (되풀이 + 1)` 이 들지만(실측 2026-09-26: 31초) 세션의
+        #   설치는 배경에서 돌아(`install_bg` · 0070) 세션 시작을 안 잡는다.
         try "$_t" env PIP_BREAK_SYSTEM_PACKAGES=1 "$PC_PY" -m pip install --user --upgrade \
-          --disable-pip-version-check --no-input --timeout 8 --retries 0 "$_pkg" ;;
+          --disable-pip-version-check --no-input --timeout 15 --retries 1 "$_pkg" ;;
       project-axis) : ;;   # 설치 없음 — 판의 진본은 package.json·requirements.txt 다
       # ⚠ 모르는 갈래도 **조용한 무작동이다.** 선언에 `install` 을 빠뜨리거나 오타를 내면
       #   여기까지 와서 아무것도 안 하고 0 을 냈다 — 진단은 「안 닿는다」만 내고 선언이
@@ -2638,6 +2660,53 @@ EOF
     fi
     exit 0
   fi
+}
+
+# ── 세션(auto)의 설치는 배경에서 돈다 (0070) — **세션 시작은 설치를 안 기다린다** ──────────────
+#    확장은 초기화를 60초만 기다리는데(0043) 설치 걸음은 망을 타는 명령이 여럿이라(태그 읽기 · 자산
+#    받기 · pip · npm · winget · 브라우저) 막힌 망에서 그 기다림이 호출 수만큼 더해진다. 호출마다 기다림을
+#    줄여서는 합이 안 묶인다 — 걸음을 창 밖으로 뺀다. 이 세션에는 새 도구가 늦게 서고, 진 사유는
+#    실패 기록(`install-fail` · `install-global-fail`)에 남아 다음 세션이 말한다.
+# ⚠ **자물쇠 하나로 한 번에 하나만 돈다.** 한 세션에 훅이 둘(저장소 설정 · 홈 훅) 불리고, 배경 설치가
+#   도는 사이 새 세션이 떠도 지문은 아직 어긋나 있다 — 둘이 같은 자리에 `npm ci` 를 겹치면 서로 깨뜨린다.
+#   자물쇠는 저장소의 기계 상태 자리(`install-*`)에 산다. 전역형 도구는 PC 전체 일을 맡는 세션(설정
+#   저장소)에서만 깔리므로 그 저장소의 자물쇠가 곧 기계의 자물쇠다.
+# ⚠ **죽은 자물쇠는 말하고 걷는다.** 자물쇠에 적힌 프로세스가 없으면 지난 배경 설치가 끝을 못 본
+#   것이다(창을 닫아 함께 죽었다 등). 지문을 못 굳혔으니 이번에 다시 띄우고, 그 사실과 기록의 끝줄을
+#   낸다 — 안 내면 「매 세션 다시 띄우는데 매번 못 끝낸다」가 아무 데도 안 보인다.
+# ⚠ stdin · stdout · stderr 를 다 뗀다 — 하나라도 훅의 파이프를 물면 Claude Code 가 그 자식을
+#   기다려 배경으로 뺀 뜻이 없어진다(`pull_ff` 와 같은 결).
+INSTALL_BG_LOCK="$PROJECT_DIR/.claude/install-bg.lock"
+INSTALL_BG_LOG="$PROJECT_DIR/.claude/install-bg.log"
+install_bg() {
+  if ! ( set -C; printf '%s\n' "$$" > "$INSTALL_BG_LOCK" ) 2>/dev/null; then
+    _bp="$(cat "$INSTALL_BG_LOCK" 2>/dev/null)"
+    if [ -n "$_bp" ] && kill -0 "$_bp" 2>/dev/null; then
+      echo "$PROJECT_NAME: 다른 세션이 배경에서 도구를 맞추고 있다 — 이번엔 안 띄운다 · 결과는 다음 세션이 말한다"
+      return 0
+    fi
+    echo "$PROJECT_NAME: ⚠ 지난 배경 설치가 끝을 못 봤다 — 다시 띄운다 · 기록 끝줄: $(grep -v '^[[:space:]]*$' "$INSTALL_BG_LOG" 2>/dev/null | tail -1 | cut -c1-160)"
+    rm -f "$INSTALL_BG_LOCK"
+    ( set -C; printf '%s\n' "$$" > "$INSTALL_BG_LOCK" ) 2>/dev/null || {
+      echo "$PROJECT_NAME: 다른 세션이 방금 배경 설치를 띄웠다 — 이번엔 안 띄운다"; return 0; }
+  fi
+  # 자물쇠의 주인은 배경 프로세스가 스스로 적는다 — 부모가 `$!` 로 적으면, 곧 끝난 자식이 자물쇠를
+  #   걷은 뒤에 부모가 죽은 번호로 다시 세워 다음 세션이 「끝을 못 봤다」로 잘못 읽는다.
+  ( printf '%s\n' "$BASHPID" > "$INSTALL_BG_LOCK"
+    trap 'rm -f "$INSTALL_BG_LOCK"' EXIT
+    printf '── %s  %s  auto 배경 설치  %s ──\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$PROJECT_NAME" "$PROJECT_DIR"
+    install_step ) >"$INSTALL_BG_LOG" 2>&1 </dev/null &
+  echo "$PROJECT_NAME: 도구를 배경에서 맞춘다 ($(printf '%s' "${DO_GLOBAL:+전역형 도구 · }${DO_REPO:+이 저장소 도구 · }${UPGRADE:+새 판 견주기 · }" | sed 's/ · $//')) — 세션 시작은 안 기다린다. 이 세션에는 아직 안 선 도구가 있을 수 있고, 진 사유는 다음 세션이 말한다 · 기록 $INSTALL_BG_LOG"
+}
+
+if [ "$MODE" = install ]; then
+  if [ -n "${INSTALL_BG:-}" ]; then
+    install_bg
+    _gr="$(global_rule_reason)"
+    [ -n "$_gr" ] && echo "$PROJECT_NAME: ⚠ 전역 규율 — $_gr"
+    exit 0
+  fi
+  install_step
 fi
 
 # ════════════════════════ 진단 — 지금 어느 검사가 도나 ════════════════════════

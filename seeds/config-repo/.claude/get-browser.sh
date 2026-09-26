@@ -111,7 +111,12 @@ fi
 
 command -v unzip >/dev/null || { echo "[browser] unzip 이 없다" >&2; exit 1; }
 
-rev="$(curl -sSfL $TLS_OPT --max-time 60 "$BUCKET/$PLATFORM/LAST_CHANGE")"
+# 버킷에 닿는 기다림(초) — 막힌 망에서 시도 하나가 닿기에서 곧 진다. 이것이 없으면 닿지도 않는 시도가
+#   `--max-time` 을 다 써서, 받기는 되풀이까지 시도 넷 × 600초를 매달린다(`--max-time` 은 시도마다 새로
+#   잰다). 닿은 뒤 느리거나 멎은 것은 `--max-time` 이 든다.
+# ⚠ 훅 몸통의 `GH_CONNECT_S` 와 값이 같아도 **같은 사실이 아니다** — 저쪽은 GitHub, 이쪽은 구글 버킷이다.
+CONNECT_S=10
+rev="$(curl -sSfL $TLS_OPT --connect-timeout "$CONNECT_S" --max-time 60 "$BUCKET/$PLATFORM/LAST_CHANGE")"
 [ -n "$rev" ] || { echo "[browser] 최신 판 번호를 못 받았다" >&2; exit 1; }
 echo "[browser] 최신 $rev 을 받는다 ($PLATFORM)"
 
@@ -119,7 +124,7 @@ dest="$ROOT/chromium-snapshot-$rev"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-curl -sSfL $TLS_OPT --retry 3 --max-time 600 -o "$tmp/browser.zip" \
+curl -sSfL $TLS_OPT --connect-timeout "$CONNECT_S" --retry 3 --max-time 600 -o "$tmp/browser.zip" \
   "$BUCKET/$PLATFORM/$rev/${INNER%%/*}.zip"
 mkdir -p "$dest"
 unzip -q -o "$tmp/browser.zip" -d "$dest"
