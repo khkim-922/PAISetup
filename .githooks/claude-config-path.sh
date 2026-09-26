@@ -15,6 +15,8 @@
 # ⚠ 둘은 따로 논다. PC 는 deploy.ps1 이 **스킬만** 홈에 뿌리므로 저장소가 안 붙어도
 #   생성기는 있다. 리모트는 그 반대다 — 저장소를 통째로 붙여 그 안의 스킬을 쓴다.
 
+# shellcheck shell=sh  # sh 몸통과 bash 세션 훅이 같이 읽는다 — 둘 다 받는 POSIX 로 잰다
+
 # PROJECT_DIR 이 안 서 있는 자리에서도 선다 — 부르는 쪽을 믿지 않는다.
 [ -n "${PROJECT_DIR:-}" ] || PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
@@ -47,6 +49,7 @@ ADR_GEN=""
 _skill="skills/adr-and-source-together/scripts/adr-index.sh"
 for _g in "$PROJECT_DIR/.githooks/adr-index.sh" \
           "$HOME/.claude/$_skill" ${CONFIG_ROOT:+"$CONFIG_ROOT/.claude/$_skill"}; do
+    # shellcheck disable=SC2034 # 부른 쪽이 읽는 출력이다(머리말 「내는 것」)
     [ -f "$_g" ] && { ADR_GEN="$_g"; break; }
 done
 
@@ -70,6 +73,7 @@ if [ -n "${GATES_CALLER:-}" ] && [ "$(cd "$GATES_CALLER" 2>/dev/null && pwd -P)"
     GATES_HOME="$(cd "$GATES_CALLER" && pwd)"
 else
     for _h in ${CONFIG_ROOT:+"$CONFIG_ROOT/.githooks"} "$HOME/.claude/seeds/config-repo/.githooks"; do
+        # shellcheck disable=SC2034 # 부른 쪽이 읽는 출력이다(머리말 「내는 것」)
         _gates_ok "$_h" && { GATES_HOME="$(cd "$_h" && pwd)"; break; }
     done
 fi
