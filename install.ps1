@@ -3237,6 +3237,39 @@ if ($gateOwner) {
   Write-Host "     $gateBody"
 }
 
+# ── 씨앗이 드는 파이썬 패키지 — **부품이 오는 자리에 의존성도 온다** (claude-config #72) ──────
+# 검사 씨앗의 그림 줄이기(`_shrink.py`)가 PIL 을 든다. 부르는 자는 모델이지만 그 길을 여는 것은
+# 위 그림 문이다 — 그림이 크면 **누구의 PC 에서든** 「줄여서 연다」로 돌려보낸다. 그래서 규범·룰·
+# 스킬 칸이 아니라 여기 선다: 부품도 문도 스위치를 안 타니 의존성도 안 탄다.
+# ⚠ **이름은 이 파일에 없다.** 값 파일의 `#pip-packages = 이름 …` 이 든다 — 몸통은 무엇을 까는지
+#   모르고 까는 법만 안다(`#gateway-proxy` · `#codex-config` 와 같은 결).
+# ⚠ **`pip` 가 아니라 `python -m pip` 로 깐다.** `pip` 를 따로 부르면 어느 파이썬의 것인지 PATH 가
+#   따로 정해, 부품을 부르는 `python` 과 갈릴 수 있다.
+# ⚠ **못 깔아도 빨강으로 안 끝낸다.** 회사망이 패키지 저장소를 막는 자리가 있을 수 있고, 없으면
+#   줄이기가 「PIL 이 없다」와 까는 명령을 대며 원본 치수로 물러난다 — 조용히 무너지는 자리가
+#   아니다. 말은 하고 뱉은 끝 줄을 편다. 막힌 망에 오래 붙잡히지 않게 기다림과 되풀이를 줄인다.
+# ⚠ 이미 있으면 pip 가 망에 안 묻고 「이미 있다」로 끝난다 — 로그온 자동 실행이 매번 불러도 된다.
+$pipLine = Read-Directive $EnvFile 'pip-packages'
+$pipPkgs = @(if ($pipLine) { $pipLine -split '[,\s]+' | Where-Object { $_ } })
+if ($pipPkgs) {
+  $pipNames = $pipPkgs -join ' · '
+  if (-not (Test-Runs 'python' '--version')) {
+    Write-Host "  파이썬 패키지($pipNames) — 건너뛴다: 이 창에서 python 이 안 선다"
+  } else {
+    $pl = [IO.Path]::GetTempFileName()
+    $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
+                 '--timeout', '15', '--retries', '1') + $pipPkgs
+    $prc = Invoke-Logged 'python' $pipArgs $pl
+    if ($prc -eq 0) {
+      Write-Host "  파이썬 패키지 — $pipNames 섰다" -ForegroundColor Green
+    } else {
+      Write-Host "  ! 파이썬 패키지($pipNames) — 못 깔았다(종료 $prc). 그림 줄이기는 원본 치수로 물러난다 · pip 가 뱉은 끝 줄:" -ForegroundColor Yellow
+      Show-Log $pl
+    }
+    Remove-Item $pl -ErrorAction SilentlyContinue
+  }
+}
+
 # ── Tavily 키 안내 — 홈 SessionStart 에 한 줄을 심는다 ──────────────────────────────
 # 키가 없으면 세션을 시작할 때 모델에게 한 줄을 넘겨, 사용자가 키가 여는 도구를 찾으면 알리게 한다.
 # 키가 있으면 아무것도 안 찍는다. 키가 왜 필수가 아니라 덤인지는 아래 「웹 검색(Tavily)」 칸이 든다.
