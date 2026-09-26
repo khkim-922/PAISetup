@@ -46,7 +46,8 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 | `.claude/hooks/session-start-body.sh` | **익명 몸통.** 세션이 열릴 때 도구를 재고 갖춘다. 설치가 `--install` 로 부르면 개인 칸까지. 저장소마다 사본을 두지 않는다 |
 | `.claude/hooks/utf8-bom.sh` | 편집 뒤 인코딩을 지키는 훅 |
 | `.claude/hooks/gate-bypass-ask.sh` | 커밋 게이트를 건너뛰는 git 명령(`--no-verify` · `core.hooksPath` 덮어쓰기)이면 막지 않고 묻는 훅 |
-| `.claude/settings.json` | 문지기 `session-start.sh` · `utf8-bom.sh` · `gate-bypass-ask.sh` 셋을 **거는** 자리 |
+| `.claude/hooks/bash-backslash-deny.sh` | 윈도우에서 Bash 명령에 겹역슬래시가 들면 돌려보내는 훅 — 셸에 닿기 전에 하나로 접혀 명령이 성공한 채 결과만 틀리기 때문이다 |
+| `.claude/settings.json` | 문지기 `session-start.sh` · `utf8-bom.sh` · `gate-bypass-ask.sh` · `bash-backslash-deny.sh` 넷을 **거는** 자리 |
 | `.claude/hooks/image-gate.py` · `image-gate.sh` | **그림 문.** 모델이 그림을 받기 직전에 치수를 재는 훅 — `scale` 을 안 고른 도구 스크린샷과, 상류가 어차피 깎을 만큼 큰 그림 파일은 막는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 저장소가 아니라 **홈** `~/.claude/settings.json` 의 PreToolUse 에 심긴다 — 설정 저장소가 있는 PC 는 세션 훅이, 없는 PC 는 설치기가 심는다. 치수 눈금은 검사 씨앗의 `_vision.py` 가 든다 |
 | `.claude/tools.global.conf` | 전역 도구 선언 — 훅이 이것을 읽고 돈다 |
 | `.claude/get-browser.sh` | 브라우저를 받아 오는 **뒷길**. 저장소 도구 선언(`.claude/tools.conf`)의 `[playwright]` 블록이 `browsers-fallback` 칸에 저장소 기준 경로로 적어 가리킨다 |

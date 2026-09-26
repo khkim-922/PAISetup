@@ -110,8 +110,8 @@ GSTAMP="$HOME/.claude/install-global-stamp"  # 전역형 선언의 지문 — �
 # 전역 걸음이 **이번 실행에서** ✅ 로 낸 도구들의 명부 (#57). 쓰는 자는 `install_global`,
 # 읽는 자는 아래 진단의 `global_verified` — 둘 다 이 한 자리를 가리킨다.
 GVERIFIED="$HOME/.claude/install-global-verified"
-FRESH="$PROJECT_DIR/.claude/install-upgraded"  # 마지막으로 도구를 최신으로 민 날. 같은 자리, 커밋 안 한다
-UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나면 한 번 민다
+FRESH="$PROJECT_DIR/.claude/install-upgraded"  # 마지막으로 도구의 새 판을 견준 날. 같은 자리, 커밋 안 한다
+UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나면 한 번 견주고 새 판만 받는다
 
 # ── 옛 이름에서 옮긴다 (2026-09-16) ─────────────────────────────────────────────
 #    상태 파일이 `bootstrap-*` 에서 `install-*` 로 바뀌었다 (#56 · 걷힌 몸통의 이름이었다).
@@ -179,9 +179,13 @@ if [ "$MODE" != auto ] || [ -z "$CONFIG_ROOT" ] || [ "$CONFIG_ROOT" = "$PROJECT_
   PC_WIDE=1
 fi
 # PC 전체 일이 마지막으로 돈 때 — 파일의 시각이 곧 값이고, 내용은 그때 맞춘 설정 저장소의 판이다(0065).
-# 쓰는 몸통은 `pc_wide_mark` 한 자리(부르는 자리는 PC 전체 일을 끝내는 곳마다)이고, 시각은 `pc_wide_notice` 가,
-# 내용은 `pc_wide_key` 가 읽는다.
+# 쓰는 몸통은 `pc_wide_mark` 한 자리(부르는 자리는 PC 전체 일을 끝내는 곳마다)이고, 시각과 내용을 `pc_wide_key` 가
+# 읽는다 — 시각이 `UPGRADE_DAYS` 를 넘으면 통째로 다시 돈다.
 PC_WIDE_STAMP="$HOME/.claude/pc-wide-ran"
+# 맡는 자리가 열쇠를 견줘 **할 일이 없다고 본** 때 — 빈 파일이고 시각만 값이다(0068). 건너뛴 세션은 위 표식을
+# 안 건드리므로, 「맡는 자리가 돌고 있나」를 묻는 `pc_wide_notice` 는 두 시각 가운데 새것을 본다.
+# ⚠ 한 파일에 두 뜻을 싣지 않는다 — 건너뛸 때 위 표식의 시각을 찍으면 통째로 다시 도는 안전망이 영영 안 선다.
+PC_WIDE_SEEN="$HOME/.claude/pc-wide-seen"
 
 # 기계를 가른다. Git Bash 는 `uname -s` 가 MINGW64_NT-… 를 낸다.
 case "$(uname -s)" in
@@ -448,6 +452,56 @@ npm_global_version() {  # npm_global_version <패키지 이름> — 못 읽으�
            console.log(require(p).version || "")' "$_nr/$1" 2>/dev/null
 }
 
+# ── 판 견주기 — 주기 밀기가 **새 판이 있는 도구만** 다시 깔게 한다 ─────────────────
+# ⚠ **깔린 판과 최신 판을 같은 자로 읽는다 — 글에서 처음 나오는 `숫자.숫자[.숫자]` 하나.**
+#   `--version` 문구는 도구마다 다르지만(`ruff 0.16.9` · `version: 0.11.0`) 판 번호의 꼴은
+#   같아서, 도구마다 문구를 읽는 표를 두지 않고 규칙 하나로 선다. 태그도 같은 자로 읽는다
+#   (`lychee-v0.24.2` → `0.24.2`). npm 이 깐 것은 문구를 안 읽고 `npm_global_version` 이 든다.
+# ⚠ **못 읽으면 빈 값이고, 빈 값은 「다르다」로 간다** — 부르는 자는 그때 옛 길대로 다시
+#   깐다. 잘못 읽어도 치르는 값은 한 번 더 까는 것뿐이라 판정이 틀려도 도구가 낡지는 않는다.
+ver_first() { grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1; }
+
+# GitHub 의 최신 릴리스 태그 — **API 를 안 탄다.** 최신 자산 주소가 태그 주소로 넘기는
+# 자리에서 태그를 읽는다. API 와 릴리스 쪽은 막히고 받는 주소만 열린 망이 있다(실측
+# 2026-09-26 · 리모트 컨테이너: API · `releases/latest` 는 403, 받는 주소는 302).
+# 자산 이름은 아무것이나 된다 — 넘기기는 자산이 있나를 안 보고 선다.
+gh_latest_tag() {  # gh_latest_tag <owner/repo> — 못 읽으면 빈 값
+  curl -sS --max-time 20 -o /dev/null -w '%{redirect_url}' \
+    "https://github.com/$1/releases/latest/download/_" 2>/dev/null |
+    sed -n 's|.*/releases/download/\([^/][^/]*\)/.*|\1|p'
+}
+
+tool_version_have() {  # tool_version_have <선언파일> <이름> — 깔린 판 · 못 읽으면 빈 값
+  _vhi=''; _vhp=''; _vht=''; _vha=''
+  { IFS= read -r _vhi; IFS= read -r _vhp; IFS= read -r _vht; IFS= read -r _vha; } <<EOF
+$(decl_fields "$1" "$2" install package probe-target probe-arg)
+EOF
+  case "$_vhi" in
+    npm-global) case "$_vhp" in ?*@*) _vhp="${_vhp%@*}" ;; esac
+                npm_global_version "$_vhp" ;;
+    github-release-binary)
+      command -v "$_vht" >/dev/null 2>&1 || return 0
+      # shellcheck disable=SC2086 # probe-arg 는 인자 여럿을 한 줄에 든다 — 갈라야 인자가 된다
+      "$_vht" ${_vha:---version} 2>/dev/null | ver_first ;;
+  esac
+}
+
+tool_version_latest() {  # tool_version_latest <선언파일> <이름> — 받을 판 · 못 읽으면 빈 값
+  _vli=''; _vlp=''; _vlr=''; _vlt=''
+  { IFS= read -r _vli; IFS= read -r _vlp; IFS= read -r _vlr; IFS= read -r _vlt; } <<EOF
+$(decl_fields "$1" "$2" install package repo tag)
+EOF
+  case "$_vli" in
+    npm-global) case "$_vlp" in
+                  ?*@*) printf '%s\n' "${_vlp##*@}" | ver_first ;;   # 판을 박았으면 그 판이 받을 판이다
+                  *)    npm view "$_vlp" version 2>/dev/null | ver_first ;;
+                esac ;;
+    github-release-binary)
+      if [ -n "$_vlt" ]; then printf '%s\n' "$_vlt" | ver_first
+      else gh_latest_tag "$_vlr" | ver_first; fi ;;
+  esac
+}
+
 probe_reach() {  # probe_reach <선언파일> <이름> — **이 저장소에서** 닿나
   # ⚠ **`install` · `package` 을 같이 읽는다.** 실행 갈래가 npm 래퍼를 비켜서려면 「이것이
   #   npm 이 깐 것인가」를 알아야 하는데, 그 답은 선언에 이미 있다 (#96 · `probe_tool` 곁말).
@@ -463,7 +517,7 @@ probe_reach() {  # probe_reach <선언파일> <이름> — **이 저장소에서
 $(decl_fields "$1" "$2" probe probe-target probe-arg install package)
 EOF
   [ "$_pri" = npm-global ] || _prp=''
-  # shellcheck disable=SC2086 — probe-arg 는 낱말 분리가 의도다
+  # shellcheck disable=SC2086 # probe-arg 는 낱말 분리가 의도다
   probe_tool "$_prk" "$_prt" "$_prp" $_pra
 }
 probe_pin() {  # probe_pin <선언파일> <이름> — 선언이 판을 박았으면 깔린 판이 그것인가
@@ -693,7 +747,7 @@ EOF
 }
 
 # ── PC 전체 일의 열쇠 — **같은 판으로 이미 맞춘 홈은 다시 안 맞춘다** (0065) ──────────────────
-#    표식(`$PC_WIDE_STAMP`)의 **시각**은 「PC 전체를 맞춘 때」(0062 의 알림이 읽는다)이고, **내용**이
+#    표식(`$PC_WIDE_STAMP`)의 **시각**은 「PC 전체를 맞춘 때」(오래되면 통째로 돈다)이고, **내용**이
 #    「어느 판으로 맞췄나」다 — 첫 줄이 설정 저장소의 커밋, 그 뒤 줄은 그때 커밋 안 한 채 밀린 파일.
 #    판이 아니라 작업 나무가 홈에 간 것이라, 그 편집을 되돌려도 다음 세션이 그 파일을 다시 보게 적는다.
 #    `pc_wide_key` 가 표식과 지금 판을 견줘 값을 세운다:
@@ -798,7 +852,9 @@ pc_wide_mark() {
 
 # ── 형제 저장소 세션의 알림 — PC 전체 일을 안 맡는 대신 **맡는 자리가 비었나**만 본다 (0062) ──
 #    둘을 본다. ① 맡는 자리가 오래 안 돌았나 — 자동 실행을 꺼 둔 PC(동료 설치본은 고를 수 있다)는
-#    형제 세션만 열면 홈이 설치 때 판에 머문다. ② 홈 파일이 이 PC 의 설정 저장소와 다른가 — 미는
+#    형제 세션만 열면 홈이 설치 때 판에 머문다. 「돌았다」는 맞춘 때와 할 일이 없다고 본 때 가운데 새것이다(0068).
+#    ⚠ 표식의 판이 설정 저장소의 판과 같다는 것으로는 안 가린다 — 맡는 자리가 안 돌면 설정 저장소도 안 당겨져
+#      둘이 **같이 낡은 채로 같다.** ① 이 잡으려는 것이 바로 그 PC 다. ② 홈 파일이 이 PC 의 설정 저장소와 다른가 — 미는
 #    문을 견주기 판으로 한 번 지나게 해 밀었다면 옮겼을 파일만 센다.
 # ⚠ **막지 않는다 — 한 줄씩 말만 한다.** 말은 stdout 이다(이 파일 머리의 「말은 stdout 으로」).
 #   문구는 쉬운 말로 쓴다 — 읽는 사람이 이 훅의 낱말(「PC 전체 일」 · 「판」)을 모른다.
@@ -808,7 +864,8 @@ pc_wide_mark() {
 pc_wide_notice() {
   if [ ! -f "$PC_WIDE_STAMP" ]; then
     echo "$PROJECT_NAME: ⚠ 이 PC 의 공통 설정(홈에 까는 규범 · 룰 · 개인 설정 · 전역 도구)을 맞춘 기록이 아직 없다 — 보통은 로그인할 때 자동으로 맞춰진다. 지금 맞추려면 claude-config 를 한 번 열거나 deploy.ps1 을 돌린다"
-  elif [ -n "$(find "$PC_WIDE_STAMP" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ]; then
+  elif [ -n "$(find "$PC_WIDE_STAMP" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ] &&
+       { [ ! -f "$PC_WIDE_SEEN" ] || [ -n "$(find "$PC_WIDE_SEEN" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ]; }; then
     echo "$PROJECT_NAME: ⚠ 이 PC 의 공통 설정을 ${UPGRADE_DAYS}일 넘게 안 맞췄다 — 로그인할 때 도는 자동 실행이 꺼졌거나 실패하고 있는 것 같다. claude-config 를 한 번 열거나 deploy.ps1 을 돌리면 맞춰진다"
   fi
   [ -n "$CONFIG_ROOT" ] || return 0
@@ -821,7 +878,7 @@ pc_wide_notice() {
   deploy_home_norms
   HOME_SYNC=push; PUSH_ONLY=""
   [ -n "$HOME_STALE" ] || return 0
-  # shellcheck disable=SC2086 — 이름 목록을 낱말로 편다(홈 아래 상대경로라 공백이 없다)
+  # shellcheck disable=SC2086 # 이름 목록을 낱말로 편다(홈 아래 상대경로라 공백이 없다)
   set -- $HOME_STALE
   _hn=$#; _hl="$1${2:+ · $2}${3:+ · $3}"
   [ "$_hn" -gt 3 ] && _hl="$_hl 외 $((_hn - 3))개"
@@ -1322,11 +1379,22 @@ def save(path, cfg):
 
 
 # ① 홈 SessionStart 훅 — 우리 옛 꼴은 걷고 지금 꼴만 남긴다
+# ⚠ **「없음」과 「못 읽음」을 가른다** — 아래 ② 의 `~/.claude.json` 과 같은 규율이다. 못 읽은 파일을
+#   빈 설정으로 보고 쓰면 **훅 항목만 남기고 사람의 설정(model · env · permissions)을 통째로 덮는다.**
+#   손으로 고친 직후가 파일이 깨지기 가장 쉬운 순간이고, 그 뒤 첫 세션이 바로 여기를 돈다.
+#   그래서 없을 때만 빈 설정에서 시작하고, 못 읽으면 쓰지 않고 알린다. BOM 은 읽는다(`utf-8-sig`) —
+#   윈도우 편집기가 붙이는 것이라 깨진 것이 아니다.
+cfg_ok = True
 try:
-    with open(settings, encoding="utf-8") as f:
+    with open(settings, encoding="utf-8-sig") as f:
         cfg = json.load(f)
-except (OSError, ValueError):
+    if not isinstance(cfg, dict):
+        raise ValueError("최상위가 객체가 아니다")
+except FileNotFoundError:
     cfg = {}
+except (OSError, ValueError):
+    cfg, cfg_ok, failed = {}, False, True
+    msgs.append("  ! 홈 settings.json 을 못 읽었다 — 덮어쓰지 않았다. JSON 문법을 고치면 다음 세션이 훅을 심는다")
 entries = cfg.setdefault("hooks", {}).setdefault("SessionStart", [])
 have, dropped = False, []
 for e in entries:
@@ -1344,7 +1412,7 @@ for e in entries:
 entries[:] = [e for e in entries if e.get("hooks")]
 if not have:
     entries.append({"hooks": [{"type": "command", "command": cmd, "timeout": 600}]})
-if not have or dropped:
+if cfg_ok and (not have or dropped):
     if save(settings, cfg):
         if not have:
             msgs.append("  홈 SessionStart 훅 — 심었다")
@@ -1378,7 +1446,7 @@ if gate_cmd:
 else:
     have = True   # 훅 몸통이 없는 자리 — 안 심고 안 걷는다
     msgs.append("  ! 홈 그림 문(PreToolUse) — 몸통이나 껍데기(.claude/hooks/image-gate.py · .sh)를 못 찾아 안 심는다")
-if not have or dropped:
+if cfg_ok and (not have or dropped):
     if save(settings, cfg):
         if not have:
             msgs.append("  홈 그림 문(PreToolUse) — 심었다")
@@ -1611,7 +1679,7 @@ bg_fail_report() {  # bg_fail_report <저장소> <로그> <원문 보관> <무�
   fi
 }
 
-# ── 로컬 main 을 원격에 맞춘다 (0066) — **main 이 아닌 갈래 위에서만.** main 위라면 당김(pull_ff) 몫이다.
+# ── 로컬 main 을 원격에 맞춘다 (0069) — **main 이 아닌 갈래 위에서만.** main 위라면 당김(pull_ff) 몫이다.
 #    `origin/main` 과 로컬 main 은 마지막 fetch 때의 사진이다. 원격이 그 뒤에 움직이면 사진이 낡고,
 #    낡은 사진을 지금으로 읽으면 「main 이 뒤처졌다」 같은 거짓 판정이 선다.
 #    작업 나무는 안 건드린다 — 참조 둘(추적 갈래 · 로컬 main)만 옮긴다.
@@ -1634,9 +1702,10 @@ sync_main() {  # sync_main <저장소> — 0=맞췄거나 맞출 것이 없다 �
 }
 
 # 리눅스 auto 에서 붙은 저장소마다 배경으로 맞춘다. 리눅스는 이 함대에서 리모트 컨테이너뿐이다.
-# ⚠ **왜 auto 에도 서나.** 컨테이너가 처음 뜰 때는 설치 갈래 ⑦ 이 맞춘다. 그런데 **이미 떠 있는
-#   컨테이너에서 새 대화를 열면** 훅이 auto 로만 돌고, auto 의 당김은 main 체크아웃에서만 움직인다.
-#   리모트 세션은 늘 `claude/*` 갈래 위라서 로컬 main 이 컨테이너가 뜬 순간의 사진으로 남는다.
+# ⚠ **왜 auto 에도 서나.** 머신이 처음 뜰 때는 설치 갈래 ⑦ 이 맞춘다. 그런데 **같은 머신에서 훅이 다시
+#   돌면**(대화 압축 · `/clear` — 대화마다 머신은 따로 뜬다) 훅이 auto 로만 돌고, auto 의 당김은 main
+#   체크아웃에서만 움직인다. 리모트 세션은 대개 `claude/*` 갈래 위라서 로컬 main 이 머신이 뜬 순간의
+#   사진으로 남는다.
 # ⚠ **기다리지 않는다** — 세션 시작 시간을 안 늘린다(0065 가 줄인 값을 되돌리지 않는다). 그래서
 #   이번 대화의 첫 판정에는 늦을 수 있다. 원격을 판정하기 전에 fetch 하는 것은 규범 몫이다.
 # ⚠ **붙은 저장소를 다 돈다** — 리모트는 설정 저장소 훅 하나가 대표로 돌아 형제는 제 훅이 안 선다.
@@ -1659,7 +1728,7 @@ sync_main_bg() {  # sync_main_bg <저장소>
 #      저장소 밖 세션만 한다** (0062 · 위 PC_WIDE). 형제 저장소 세션은 게이트 배선만 하고 홈은
 #      견주기만 해서, 맞출 것이 있으면 한 줄로 알린다(`pc_wide_notice`).
 #   ③ 선언 지문이 어긋날 때만 깐다 — 설치의 무거움(npm ci)이 선언 바뀐 세션에만 든다.
-#   리눅스(리모트 컨테이너)는 하나 더 — 붙은 저장소마다 로컬 main 을 배경으로 원격에 맞춘다(`sync_main_bg` · 0066).
+#   리눅스(리모트 컨테이너)는 하나 더 — 붙은 저장소마다 main 을 배경으로 원격에 맞춘다(`sync_main_bg` · `pull_ff` · 0069).
 # ⚠ 리모트도 같은 세 걸음이다 (0010). 옛 판(「컨테이너가 새로 떠 무조건 깐다」)은 맨
 #   컨테이너 전제였는데 환경 이미지가 서면서 뒤집혔다 — 도구·venv·지문은 이미지 시점에
 #   실려 오고 코드만 세션마다 최신이라, 지문이 「이미지가 낡았나」를 가른다. 맨
@@ -1726,9 +1795,12 @@ if [ "$MODE" = auto ]; then
   #   움직이면 `pc_wide_mark` 가 열쇠를 안 적는다 (0065).
   [ -n "$PC_WIDE" ] && pc_wide_key
   pull_ff "$PROJECT_DIR"
-  # 리눅스(리모트 컨테이너)만 — 붙은 저장소마다 로컬 main 을 배경으로 원격에 맞춘다 (0066).
+  # 리눅스(리모트 컨테이너)만 — 붙은 저장소마다 main 을 배경으로 원격에 맞춘다 (0069).
+  #   main 이 아닌 갈래 위면 참조만(`sync_main_bg`), main 위면 **작업 나무까지** 빨리감기로(`pull_ff`) 옮긴다.
   # ⚠ `OS=linux` 가 아니라 `uname` 으로 가른다 — 저 값은 윈도우가 아닌 모든 것(맥 포함)을 받는 칸이다.
-  # ⚠ 형제가 main 위면 당김이 맡는다 — 이 저장소는 위에서 이미 당겼다(두 번 부르면 경고가 두 줄이 된다).
+  # ⚠ **main 위 형제의 작업 나무를 옮기는 것은 뜻한 것이다** (0069) — 설정 저장소 세션이 형제 파일을 읽어
+  #   견주는 일(형제 사본 대조 · 규격 빌려 오기)이 최신을 보게. 커밋 안 한 편집과 겹치면 git 이 거절한다.
+  #   이 세션의 저장소는 위에서 이미 당겼다(두 번 부르면 경고가 두 줄이 된다).
   SYNC_BG=""
   if [ "$(uname -s)" = Linux ]; then
     SYNC_BG=1
@@ -1740,7 +1812,8 @@ if [ "$MODE" = auto ]; then
     done
   fi
   # PC 전체 일 — 설정 저장소 세션과 저장소 밖 세션만 맡는다 (0062). 형제 저장소 세션은 설정
-  #   저장소도 안 당긴다: 당겨 온 것은 홈에 밀어야 실리는데 그 밀기를 이 세션이 안 하므로 효과가 없다.
+  #   저장소를 당기려고 따로 걸음을 두지 않는다: 당겨 온 것은 홈에 밀어야 실리는데 그 밀기를 이 세션이 안 한다.
+  #   리눅스는 위 고리가 붙은 저장소를 다 돌아 main 위 설정 저장소도 당겨지지만(0069), 홈에 미는 것은 여전히 없다.
   # ⚠ **같은 판으로 이미 맞춘 홈은 다시 안 맞춘다** (0065) — 로그인 자동 실행이 방금 다 한 일을 세션마다
   #   되풀이하던 값이 사내 VDI 에서 20초를 넘었다(#96). 열쇠가 안 맞으면 그 사이 바뀐 걸음만 한다.
   if [ -n "$PC_WIDE" ]; then
@@ -1752,6 +1825,10 @@ if [ "$MODE" = auto ]; then
       [ -n "$PW_REST" ] && deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
       [ -n "$PW_PLANT" ] && plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
       # 표식은 아래 지문 게이트 뒤에 적는다 — 전역 도구를 깔 판이면 그 설치가 끝나야 「맞췄다」가 참이다
+    else
+      # 할 일이 없다고 봤다 — 형제 세션 알림에 「맡는 자리가 돌고 있다」를 남긴다 (0068).
+      # ⚠ 할 일이 있는 갈래에서는 안 찍는다 — 그 일이 도중에 죽으면 「돌고 있다」가 거짓이 된다.
+      : > "$PC_WIDE_SEEN" 2>/dev/null || true
     fi
   else
     pc_wide_notice
@@ -1769,7 +1846,7 @@ if [ "$MODE" = auto ]; then
     : > "$FRESH" 2>/dev/null || true
   elif [ -n "$(find "$FRESH" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ]; then
     UPGRADE=1
-    echo "$PROJECT_NAME: 도구를 최신으로 민다 (마지막 밀기가 ${UPGRADE_DAYS}일을 넘었다)"
+    echo "$PROJECT_NAME: 도구의 새 판을 견준다 (마지막 견주기가 ${UPGRADE_DAYS}일을 넘었다 · 새 판이 있는 것만 받는다)"
   fi
 
   # ── 지문 게이트 — **둘로 갈린다** (#43). 전역형 도구는 기계 하나에 서므로 지문도 하나고,
@@ -2051,7 +2128,20 @@ if [ "$MODE" = install ]; then
         else _asset="$(decl_get "$_f" "$_t" asset-windows)"; fi
         [ -n "$_repo" ] && [ -n "$_asset" ] && [ -n "$_bin" ] ||
           { nogo "$_t" "선언에 repo·asset-$OS·bin 중 빠진 것이 있다"; return 1; }
-        _url="https://github.com/$_repo/releases/latest/download/$_asset"
+        # 태그를 박은 선언은 그 릴리스를 받고, 안 박으면 최신 릴리스다. 자산 이름에 판이 물린
+        # 도구는 `{tag}` 를 그 태그로 채운다 — 안 박았으면 최신 태그를 읽어 채운다(`gh_latest_tag`).
+        _tag="$(decl_get "$_f" "$_t" tag)"
+        case "$_asset" in *'{tag}'*)
+          [ -n "$_tag" ] || _tag="$(gh_latest_tag "$_repo")"
+          [ -n "$_tag" ] ||
+            { nogo "$_t" "자산 이름에 판이 물렸는데 최신 태그를 못 읽었다 — github.com 에 닿나 본다"; return 1; } ;;
+        esac
+        if [ -n "$_tag" ]; then
+          _asset="$(printf '%s' "$_asset" | sed "s/{tag}/$_tag/g")"
+          _url="https://github.com/$_repo/releases/download/$_tag/$_asset"
+        else
+          _url="https://github.com/$_repo/releases/latest/download/$_asset"
+        fi
         case "$_asset" in
           *.tar.gz)   # 리눅스 — 풀어서 /usr/local/bin 에 놓는다
             { [ "$OS" = linux ] && [ -w /usr/local/bin ]; } ||
@@ -2062,6 +2152,19 @@ if [ "$MODE" = install ]; then
                 chmod +x "/usr/local/bin/$_bin" 2>/dev/null
             fi
             rm -f "$_tgz" ;;
+          *.tar.xz)   # 리눅스 — 묶음 안 폴더 이름이 자산 이름과 다를 수 있어(판만 든다) 풀고 찾는다
+            { [ "$OS" = linux ] && [ -w /usr/local/bin ]; } ||
+              { nogo "$_t" "$_asset 는 tar.xz 인데 여기는 $OS 이거나 /usr/local/bin 에 쓸 권한이 없다"; return 1; }
+            _work="$(mktemp -d)"
+            if try "$_t" curl -sSfL --retry 3 --max-time 180 -o "$_work/pkg.tar.xz" "$_url" &&
+               try "$_t" tar xJf "$_work/pkg.tar.xz" -C "$_work"; then
+              _found="$(find "$_work" -name "$_bin" -type f 2>/dev/null | head -1)"
+              # 못 찾거나 못 놓으면 사유를 남긴다 — 안 남기면 진단이 사유 없는 ❌ 를 낸다
+              if [ -z "$_found" ]; then nogo "$_t" "$_asset 을 풀었는데 안에 $_bin 이 없다 — 묶음 꼴이 바뀌었나 본다"
+              elif cp "$_found" "/usr/local/bin/$_bin" 2>/dev/null; then chmod +x "/usr/local/bin/$_bin"
+              else nogo "$_t" "$_bin 을 /usr/local/bin 에 못 놓았다 — 도는 중이거나 권한이 없다"; fi
+            fi
+            rm -rf "$_work" ;;
           *.zip)      # 윈도우 — Git Bash 에 unzip 이 없을 수 있어 PowerShell 로 풀고 $HOME/bin 에 놓는다
             _work="$(mktemp -d)"; mkdir -p "$HOME/bin"
             if try "$_t" curl -sSfL --retry 3 --max-time 180 -o "$_work/pkg.zip" "$_url"; then
@@ -2069,10 +2172,12 @@ if [ "$MODE" = install ]; then
                 "Expand-Archive -Force -Path '$(cygpath -w "$_work/pkg.zip")' -DestinationPath '$(cygpath -w "$_work")'" \
                 >/dev/null 2>&1
               _found="$(find "$_work" -name "$_bin.exe" -type f 2>/dev/null | head -1)"
-              [ -n "$_found" ] && cp "$_found" "$HOME/bin/$_bin.exe"
+              if [ -z "$_found" ]; then nogo "$_t" "$_asset 을 풀었는데 안에 $_bin.exe 가 없다 — 풀기가 졌거나 묶음 꼴이 바뀌었다"
+              elif ! cp "$_found" "$HOME/bin/$_bin.exe" 2>/dev/null; then
+                nogo "$_t" "$_bin.exe 를 $HOME/bin 에 못 놓았다 — 도는 중이면 창을 닫고 다시 연다"; fi
             fi
             rm -rf "$_work" ;;
-          *) nogo "$_t" "$_asset — 모르는 자산 꼴이다(푸는 갈래는 .tar.gz · .zip 둘뿐)"; return 1 ;;
+          *) nogo "$_t" "$_asset — 모르는 자산 꼴이다(푸는 갈래는 .tar.gz · .tar.xz · .zip 셋뿐)"; return 1 ;;
         esac ;;
       npm-global)
         _pkg="$(decl_get "$_f" "$_t" package)"
@@ -2307,17 +2412,39 @@ EOF
 ' "$_gn" "${_gcb%% *}"
           continue
         fi
-        # 밀 때는 프로브를 안 묻는다 — 「있나」와 「최신인가」는 다른 명제라, 있으면 건너뛰는
-        # 규칙으로는 영영 안 올라간다. 같은 설치가 곧 밀기다(옛 고리와 같은 뜻).
+        # 밀 때는 「있나」에서 멈추지 않는다 — 「있나」와 「최신인가」는 다른 명제라, 있으면
+        # 건너뛰는 규칙으로는 영영 안 올라간다. 그래서 깔린 판과 최신 판을 견주고 **다를 때만**
+        # 다시 깐다(`tool_version_*`). 둘 중 하나라도 못 읽으면 옛 길대로 다시 깐다 — 견주기가
+        # 져서 도구가 낡는 일은 없게 한다.
         # 걸린 초는 줄 끝에 붙는다 (#48) — 재는 자(installer · deploy)가 줄 앞을 보므로 앞은 안 바꾼다
-        _gt0=$SECONDS
-        if [ -z "${UPGRADE:-}" ] && probe_global "$_gf" "$_gn"; then
-          printf '  ✅ %s — 이미 닿는다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
+        _gt0=$SECONDS; _gvh=''; _gvw=''
+        if probe_global "$_gf" "$_gn" &&
+           { [ -z "${UPGRADE:-}" ] ||
+             { _gvh="$(tool_version_have "$_gf" "$_gn" || true)"
+               _gvw="$(tool_version_latest "$_gf" "$_gn" || true)"
+               [ -n "$_gvh" ] && [ "$_gvh" = "$_gvw" ]; }; }; then
+          printf '  ✅ %s — 이미 닿는다 (전역)%s (%s초)\n' "$_gn" "${_gvh:+ · 최신 $_gvh}" "$((SECONDS - _gt0))"
           gverified_put "$_gn" "$_gtg"
         else
           install_tool "$_gf" "$_gn" || true
           if probe_global "$_gf" "$_gn"; then
-            printf '  ✅ %s — 이번에 깔았다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
+            # 민 자리면 무엇이 무엇으로 갔나를 적는다 — 새 판이 규칙을 바꿔 어제 통과한 파일이
+            # 막히면, 까닭을 짚을 자리가 이 한 줄이다.
+            # ⚠ **설치가 졌나는 종료코드가 아니라 실패 기록으로 가른다.** 갈래마다 끝 명령(`rm` 등)이
+            #   종료코드를 덮어 `install_tool` 의 값을 못 믿는다. 이 실행 머리에서 비운 기록에 이
+            #   도구의 줄이 섰으면 졌다 — 옛 실행파일이 남아 프로브는 참이어도, 그것을 「다시
+            #   깔았다」나 「옛 것이 가린다」로 읽으면 진짜 사유(받기가 막힌 망 등)가 가려진다.
+            _gvf="$(awk -F'\t' -v k="$_gn" '$1==k{print $2; exit}' "$GFAILS" 2>/dev/null)"
+            _gvn=''; [ -n "$_gvh" ] && _gvn="$(tool_version_have "$_gf" "$_gn" || true)"
+            if [ -n "$_gvf" ]; then _gvm="닿지만 설치가 졌다 — ${_gvf}${_gvn:+ · 지금 $_gvn}${_gvw:+ (최신 $_gvw)}"
+            elif [ -z "$_gvh" ]; then _gvm='이번에 깔았다'
+            elif [ "$_gvn" != "$_gvh" ]; then _gvm="새 판으로 올렸다: $_gvh → $_gvn"
+            elif [ -z "$_gvw" ]; then _gvm="다시 깔았다 — 최신 판을 못 읽었다 · 지금 $_gvn"
+            else
+              # 깔았는데 판이 그대로다 — 받은 자리보다 앞선 옛 것이 이름을 쥐고 있다.
+              _gvm="다시 깔았는데 여전히 $_gvn 다 (최신 $_gvw) — 앞선 옛 것: $(command -v "$_gtg" 2>/dev/null || echo '?')"
+            fi
+            printf '  ✅ %s — %s (전역) (%s초)\n' "$_gn" "$_gvm" "$((SECONDS - _gt0))"
             gverified_put "$_gn" "$_gtg"
           else
             printf '  ❌ %s — 안 닿는다%s (%s초)\n' "$_gn" \

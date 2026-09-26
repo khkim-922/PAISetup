@@ -13,6 +13,7 @@
 # ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** — 윈도우의 `python3` 는 스토어 껍데기라 49 로 죽는다.
 #   못 뜨면 「못 쟀다」 한 줄을 직접 낸다 — 문이 죽은 사실이 어디에도 안 남는 것이 침묵보다 비싸다.
 #   문이 없는 것과 문이 잘못 잠긴 것은 다른 사고고 뒤엣것이 더 비싸다 — 그래서 막지는 않는다.
+# shellcheck shell=sh  # 점으로 읽혀 셔뱅이 없다 — 어느 셸이 읽어도 서게 POSIX 로 잰다
 j=$(cat)
 l=$(printf %s "$j" | tr A-Z a-z)
 case "$l" in
@@ -22,6 +23,7 @@ case "$l" in
       "$p" -X utf8 -c "" >/dev/null 2>&1 && { py=$p; break; }
     done
     if [ -n "$py" ]; then
+      # shellcheck disable=SC2154 # _ig 는 홈에 심긴 한 줄이 이 파일을 읽기 전에 세운다(머리말)
       printf %s "$j" | "$py" -X utf8 "$_ig/image-gate.py"
     else
       printf %s '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"그림 문 — 파이썬이 안 떠서 치수를 못 쟀다. 스스로 고른다"}}'

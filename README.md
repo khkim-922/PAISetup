@@ -29,7 +29,7 @@
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣으면 고른 도구가 읽는 이름에 같이 심긴다 — Claude 는 `ANTHROPIC_AUTH_TOKEN`, Codex 는 `OPENAI_API_KEY`, Gemini · 안티그래비티는 `GEMINI_API_KEY`. **사외면 키를 안 묻고, 사내에서 쓰던 기계를 사외에서 다시 누르면 남아 있던 사내 값을 걷어 낸다** (아래 「무를 때」) |
 | Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅). 사외로 가면 사내 전용 줄은 걷어 낸다 |
 | Codex · Gemini · 안티그래비티 설정 | 사내에서만. `~/.codex/config.toml` · `~/.gemini/settings.json` 을 회사 설정 틀(`posco/`)에서 채우고, `~/.gemini/antigravity-cli/settings.json` 에는 인증 방식 한 줄(`modelProvider`)을 둔다. 키는 그 파일들에 안 들어가고 환경변수에만 있다. ⚠ **`GOOGLE_API_KEY` 가 이미 있으면 그 키가 회사 키보다 먼저 쓰인다** — 구글에 바로 붙는 키의 제 이름이라 설치는 지우지 않고 알리기만 한다. 회사 게이트웨이로 쓰려면 손으로 지운다 |
-| **사내 환경 문서** · **씨앗 셋** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` 로 깔린다. 고를 것이 아니라 환경이라 스위치가 없다. **씨앗 셋은 거울로 깔려, 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 원본인 척하지 않게. `posco/` 만은 덮어쓰기라 짐에서 빠진 파일이 홈에 남을 수 있다 — 프록시가 그 폴더에 제 기록 파일을 쓰고 있어 통째로 지우지 못한다 |
+| **사내 환경 문서** · **씨앗 셋** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` 로 깔린다. 고를 것이 아니라 환경이라 스위치가 없다. **씨앗 셋은 거울로 깔려, 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 원본인 척하지 않게. `posco/` 만은 덮어쓰기라 짐에서 빠진 파일이 홈에 남을 수 있다 — 프록시가 그 폴더에 제 기록 파일을 쓰고 있어 통째로 지우지 못한다. **검사 씨앗의 그림 줄이기가 드는 파이썬 패키지(`pillow`)도 여기서 깐다** — 그림 문이 큰 그림을 「줄여서 연다」로 돌려보내면 그 부품이 돈다. 파이썬이 없으면 건너뛰고, 회사망이 막아 못 깔면 알리고 넘어간다(그때 줄이기는 원본 크기로 물러난다) |
 
 ## 폴더에 무엇이 들어 있나
 
@@ -372,7 +372,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **사용자 환경변수** — 펴진 짐의 `install.env` 에 값이 적힌 이름 전부(`ANTHROPIC_BASE_URL` · `GOOGLE_GEMINI_BASE_URL` · `ANTHROPIC_MODEL` 등)와 키 셋 `ANTHROPIC_AUTH_TOKEN` · `OPENAI_API_KEY` · `GEMINI_API_KEY` | 시작 메뉴에 「환경 변수」로 검색 → 「계정의 환경 변수 편집」. 지우고 창을 새로 연다 |
 | **홈 설정의 설치가 넣은 줄** — `~/.claude/settings.json` | `env` 칸에서 위와 같은 이름들, `modelPicker` 칸, `hooks` 의 `PreToolUse` 안 `image-gate` 줄을 지운다. 나머지는 사람이 쓰던 설정일 수 있으니 둔다 |
 | **로그인마다 뜨는 프록시 감시 작업** — 작업 이름은 `PGPTProxy-Watchdog` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false`. 프록시가 도는 폴더 `%LOCALAPPDATA%\PGPT-Proxy` 도 지운다. (옛 판이 남긴 것은 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `PGPTProxy`) |
-| **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다 |
+| **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다. 씨앗 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` — 다른 프로그램도 쓸 수 있으니 필요할 때만 |
 | **칸을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` · 깐 스킬 기록 `~/.claude/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.claude/backups/install-skills-*` |
 | **Codex · Gemini · 안티그래비티 회사 설정** | `~/.codex/config.toml` · `~/.gemini/settings.json` · `~/.gemini/antigravity-cli/settings.json`. 마지막 것은 `modelProvider` 줄만 지우면 로그인 갈래로 돌아간다 |
 | **바탕화면·시작 메뉴의 「PAI Setup Wizard」** | 바로가기를 지운다 |

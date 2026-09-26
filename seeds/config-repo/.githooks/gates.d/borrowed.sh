@@ -36,6 +36,7 @@ done
     printf '· 파이썬을 고를 _py.sh 가 없어 borrowed 검사를 못 쟀다(홈 씨앗이 안 깔렸다 — deploy.ps1).\n' >&2
     exit 2
 }
+# shellcheck source=seeds/check/_check/_py.sh # 자리는 위에서 고르고, 진본은 이것이다
 . "$_py_sh"     # $PY 가 선다 — 못 고르면 저쪽이 「python 이 없다」 한 줄과 2 로 나간다
 _py="$PY"
 

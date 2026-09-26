@@ -64,8 +64,8 @@ for f in $STAGED; do
   #   값: sh 도 읽는 셔뱅 없는 파일에 bash 전용 문법이 들면 여기서 안 잡힌다 — shellcheck 가 든다(#91 ③).
   it="$(interp_of "$f")"
   case "$it" in
-    ''|bash) p=bash ;;
-    sh|dash) p=sh ;;
+    ''|bash) p='bash' ;;
+    sh|dash) p='sh' ;;
     *)
       printf '· 셸 문법 — %s 는 셔뱅이 %s 라 이 조각의 파서(bash · sh)로 못 잰다.\n' "$f" "$it" >&2
       CANT=1; IFS='
