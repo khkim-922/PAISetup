@@ -35,6 +35,7 @@ if [ -f "$_repo/.claude/hooks/session-start-body.sh" ]; then
 else
   CONFIG_ROOT=""
   if [ -f "$_repo/.githooks/claude-config-path.sh" ]; then
+    # shellcheck disable=SC2034 # 바로 아래 점으로 읽는 찾는 자(claude-config-path.sh)의 입력이다
     PROJECT_DIR="$_repo"
     . "$_repo/.githooks/claude-config-path.sh"
   fi
