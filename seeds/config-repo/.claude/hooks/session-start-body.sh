@@ -402,6 +402,27 @@ decl_fields() {  # decl_fields <파일> <절> <키…>
 #     자리에서 대야, 새로 부르는 자가 생겨도 그 칸이 빈 채 조용히 지나가지 않는다. 빈 값이면
 #     「npm 이 깐 것이 아니다」라는 뜻이고, 그때는 사는 자리가 PATH 뿐이라 종전대로 실행해
 #     잰다 — 단일 실행파일로 받은 도구가 그쪽이고, 래퍼가 없어 애초에 1초다.
+# ── 사용자 PATH 따라잡기 — **윈도우에서만 · 프로브가 질 때 · 프로세스에 한 번** ──────────────
+# ⚠ **왜 필요한가 — 앱은 뜰 때 PATH 를 한 번 복사한다.** winget 은 깐 자리를 사용자 PATH(레지스트리)에
+#   적는데, 그 전에 뜬 앱(VS Code · 데스크탑 앱 · 터미널)과 그 자식인 이 훅은 그것을 모른다. 그러면
+#   방금 깐 도구가 「안 닿는다」로 서고, 다시 깔려 들면 winget 은 「올릴 판이 없다」(43)로 진다 —
+#   실측 2026-09-26 jq: 배포 한 번에 저장소 다섯이 멀쩡히 깔린 도구를 ❌ 로 찍었다.
+#   레지스트리를 한 번 읽어 **뒤에** 붙인다 — 이미 선 자리가 이기고, 겹친 항목은 해가 없다.
+# ⚠ 값은 `cygpath -p` 한 번으로 목록째 옮긴다 — 항목마다 부르면 그 수만큼 프로세스가 뜬다.
+#   실측 이 PC: 읽고 옮기는 데 0.2초. 통과하는 프로브에는 안 붙는다.
+# ⚠ `//v` — Git Bash 가 `/v` 를 경로로 바꿔 넘긴다.
+PATH_CAUGHT=''
+path_catchup() {  # 0 = 이번에 붙였다 · 1 = 붙일 것이 없거나 이미 붙였다
+  [ "$OS" = windows ] || return 1
+  [ -z "$PATH_CAUGHT" ] || return 1
+  PATH_CAUGHT=1
+  _pcu="$(reg.exe query 'HKCU\Environment' //v Path 2>/dev/null |
+          sed -n 's/^.*REG_[A-Z_]*SZ[[:space:]]*//p' | tr -d '\r')"
+  [ -n "$_pcu" ] || return 1
+  _pcu="$(cygpath -u -p "$_pcu" 2>/dev/null)" || return 1
+  [ -n "$_pcu" ] || return 1
+  PATH="$PATH:$_pcu"; export PATH
+}
 probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
   _k="$1"; _tg="$2"; _knp="$3"; shift 3
   [ $# -gt 0 ] || set -- --version
@@ -412,7 +433,9 @@ probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
                          # 재게 되고, 그 자리는 늘 있으니 **안 깔린 것도 초록이 된다.**
                          case "$_knp" in ?*@*) _knp="${_knp%@*}" ;; esac
                          npm_root_g && [ -d "$NPM_ROOT_G/$_knp" ]
-                       else command -v "$_tg" >/dev/null 2>&1 && "$_tg" "$@" >/dev/null 2>&1; fi ;;
+                       else { command -v "$_tg" >/dev/null 2>&1 ||
+                              { path_catchup && command -v "$_tg" >/dev/null 2>&1; }; } &&
+                            "$_tg" "$@" >/dev/null 2>&1; fi ;;
     exec-npm-bin)      [ -e "$NPM_BIN/$_tg" ] && "$NPM_BIN/$_tg" "$@" >/dev/null 2>&1 ;;
     node-resolvable)   ( cd "$PROJECT_DIR" && node --input-type=module -e "await import('$_tg')" ) >/dev/null 2>&1 ;;
     python-importable) if [ -x "$VENV_PY" ]; then "$VENV_PY" -c "import $_tg" >/dev/null 2>&1
@@ -491,7 +514,10 @@ EOF
                 npm_global_version "$_vhp" ;;
     # 파이썬 패키지는 제 메타데이터가 판의 진본이다 — npm 갈래가 package.json 을 읽는 것과 같은 결.
     #   import 이름(`PIL`)이 아니라 배포 이름(`pillow`)으로 묻는다.
-    pip-user) "$PC_PY" -c 'import importlib.metadata as m, sys; print(m.version(sys.argv[1]))' "$_vhp" 2>/dev/null ;;
+    #   ⚠ 최신 판과 **같은 자로** 읽는다(`ver_first`) — 메타데이터는 `1.2.3.post1` 꼴도 내는데 색인
+    #   쪽은 `1.2.3` 으로 읽히므로, 한쪽만 누르면 판이 같아도 밀 때마다 「다르다」가 된다.
+    pip-user) "$PC_PY" -c 'import importlib.metadata as m, sys; print(m.version(sys.argv[1]))' "$_vhp" 2>/dev/null |
+                ver_first ;;
     # winget 이 깐 것도 실행해서 읽는다 — `winget list` 는 표를 내 칸을 가려야 하고, 도구가 제 판을
     #   말하는 자리가 이미 있다.
     github-release-binary|winget)
@@ -514,7 +540,9 @@ EOF
     # ⚠ **pip 에게 묻는다 — PyPI 주소를 직접 안 친다.** pip 은 제 설정(사내 색인 · 프록시)을 따라
     #   묻는데, 주소를 박아 `curl` 로 치면 그 설정을 비켜서 받는 길과 묻는 길이 갈린다. 첫 줄이
     #   `pillow (12.3.0)` 꼴이라 같은 자(`ver_first`)로 읽힌다. 막힌 망은 빈 값 → 다시 깐다(위 곁말).
-    pip-user) "$PC_PY" -m pip index versions "$_vlp" --disable-pip-version-check --timeout 15 --retries 1 \
+    #   ⚠ 기다림은 아래 설치 칸과 같은 까닭으로 짧다 — 판 견주기 판에서는 이 물음과 설치가 **잇달아**
+    #   망에 가서, 막힌 망이면 둘의 기다림이 더해진다.
+    pip-user) "$PC_PY" -m pip index versions "$_vlp" --disable-pip-version-check --timeout 8 --retries 0 \
                 2>/dev/null | ver_first ;;
     github-release-binary)
       if [ -n "$_vlt" ]; then printf '%s\n' "$_vlt" | ver_first
@@ -1234,6 +1262,18 @@ home_hook_root() {   # 작업 루트 — 굳힌 꼴. 명령도 진단 문구도 
 global_kind() {  # global_kind <install 값>
   case "$1" in npm-global|github-release-binary|winget|apt-package|pip-user) return 0 ;; esac
   return 1
+}
+# ── 이 자리에서 탈 수 있는 설치법인가 — winget 은 윈도우, apt 는 리눅스에만 선다 ────────────
+# ⚠ **못 타는 자리의 부재는 꺼진 검사가 아니다.** 선언 머리말의 약속이 「다른 자리에서는 사유를
+#   남기고 비켜선다」인데, 이 가름이 없으면 설치 갈래의 nogo 가 곧 ❌ 가 되어 리눅스 세션마다 빨강이
+#   서고 `--install` 이 1 로 끝난다 — 고칠 수 없는 빨강이라 진짜 빨강을 가린다. 그 자리에 이미 있으면
+#   (배포판이 들고 온 jq 등) 프로브가 먼저 초록을 낸다.
+kind_here() {  # kind_here <install 값>
+  case "$1" in
+    winget)      [ "$OS" = windows ] ;;
+    apt-package) [ "$OS" = linux ] ;;
+    *)           return 0 ;;
+  esac
 }
 # ── 전역형 선언을 든 파일들 — **이름을 안 박는다.** 제 것 둘이 먼저고, 그 다음 작업 루트에
 #    붙은 저장소들의 선언이다. 훅을 든 저장소를 루트에서 훑는 것은 `plant_session_state` 가
@@ -2265,18 +2305,21 @@ if [ "$MODE" = install ]; then
         # ⚠ **깐 뒤 이 세션에서는 아직 PATH 에 안 걸린다** — winget 은 사용자 PATH 를 고치고
         #   그 값은 이미 뜬 셸에 안 온다. 다음 세션에서 선다. 그래서 **부르는 쪽이 winget 의
         #   링크 자리도 보게** 둔다(`scripts/build-setup-exe.ps1` 이 그렇게 한다).
-        # ⚠ **「이미 깔렸는데 이 창이 모른다」를 설치 실패로 적지 않는다.** 이 훅을 띄운 앱이 설치 전에
-        #   떴으면 PATH 가 낡아 프로브가 지고, 그러면 여기 와서 다시 깔려 드는데 winget 은 「올릴 판이
-        #   없다」(43)로 진다 — 사유가 그 문장이 되어 **고칠 자리가 winget 인 것처럼 읽힌다**(실측
-        #   2026-09-26 · jq: 배포 한 번에 저장소 다섯이 같은 거짓 사유를 찍었다). 실행파일이 PATH 에
-        #   없을 때만 묻는다 — 있으면 판을 올리러 온 것이라 그대로 깐다.
+        # ⚠ **winget 에 이미 있는데 실행파일이 안 보이면 다시 깔지 않는다.** 낡은 PATH 는 프로브가
+        #   레지스트리에서 따라잡으므로(`path_catchup`) 여기 오는 것은 **따라잡고도 안 보이는** 자리다 —
+        #   선언의 `probe-target` 이 winget 이 세운 실행파일 이름과 다르다. 그대로 깔러 가면 winget 이
+        #   「올릴 판이 없다」(43)로 지고 사유가 그 문장이 되어 **고칠 자리가 winget 인 것처럼 읽힌다.**
+        #   실행파일이 PATH 에 있을 때는 안 묻는다 — 판을 올리러 온 것이라 그대로 깐다.
         _wtg="$(decl_get "$_f" "$_t" probe-target)"
         if ! command -v "$_wtg" >/dev/null 2>&1 &&
            winget.exe list --id "$_id" --exact --source winget --accept-source-agreements --disable-interactivity >/dev/null 2>&1; then
-          nogo "$_t" "winget 에는 깔려 있는데 이 창의 PATH 가 아직 모른다 — Claude Code 를 띄운 앱(VS Code · 데스크탑 앱 · 터미널)을 완전히 닫았다 다시 열면 선다"
+          nogo "$_t" "winget 에는 $_id 가 깔려 있는데 사용자 PATH 에서도 $_wtg 가 안 보인다 — 선언의 probe-target 이 winget 이 세운 실행파일 이름과 맞는지 본다"
           return 1
         fi
-        try "$_t" winget.exe install --id "$_id" --exact --source winget --scope user --accept-package-agreements --accept-source-agreements --disable-interactivity ;;
+        try "$_t" winget.exe install --id "$_id" --exact --source winget --scope user --accept-package-agreements --accept-source-agreements --disable-interactivity
+        # 깐 자리를 winget 이 **방금** 레지스트리에 적었다 — 설치 앞의 프로브가 이미 한 번 따라잡았으므로
+        #   표식을 풀어 뒤따르는 프로브가 다시 읽게 한다. 안 풀면 첫 설치가 「안 닿는다」로 선다.
+        PATH_CAUGHT='' ;;
       pip-user)      # 파이썬 패키지 — **저장소 venv 가 아니라 PC 의 파이썬**에 깐다(`PC_PY` 곁말).
         _pkg="$(decl_get "$_f" "$_t" package)"
         [ -n "$_pkg" ] || { nogo "$_t" "선언에 package 가 없다"; return 1; }
@@ -2290,9 +2333,12 @@ if [ "$MODE" = install ]; then
         #   「밖에서 관리된다」며 거절하는데, 사용자 자리 설치는 배포판 패키지를 안 건드린다. 인자
         #   (`--break-system-packages`)로 주면 그 인자를 모르는 옛 pip 이 통째로 지고, 환경변수는
         #   모르는 판이 그냥 지나친다.
-        # ⚠ 막힌 망에 오래 안 붙잡히게 기다림과 되풀이를 줄인다 — 세션 시작의 시간 벽 안에서 돈다.
+        # ⚠ **기다림 8초 · 되풀이 없음.** 이 걸음은 세션 시작 앞단에서 돌고 확장은 초기화를 60초만
+        #   기다린다(0043). 패킷을 떨구는 망에서 pip 은 한 번 묻는 데 `기다림 × (되풀이 + 1)` 을 쓰는데
+        #   (실측 2026-09-26: 15초 · 1번이면 31초, 8초 · 0번이면 9초), 판 견주기 판은 위 판 물음과
+        #   이 설치가 잇달아 가므로 그 값이 두 번 든다. 한 번 진 설치는 다음 세션이 다시 한다.
         try "$_t" env PIP_BREAK_SYSTEM_PACKAGES=1 "$PC_PY" -m pip install --user --upgrade \
-          --disable-pip-version-check --no-input --timeout 15 --retries 1 "$_pkg" ;;
+          --disable-pip-version-check --no-input --timeout 8 --retries 0 "$_pkg" ;;
       project-axis) : ;;   # 설치 없음 — 판의 진본은 package.json·requirements.txt 다
       # ⚠ 모르는 갈래도 **조용한 무작동이다.** 선언에 `install` 을 빠뜨리거나 오타를 내면
       #   여기까지 와서 아무것도 안 하고 0 을 냈다 — 진단은 「안 닿는다」만 내고 선언이
@@ -2474,6 +2520,16 @@ EOF
         # 져서 도구가 낡는 일은 없게 한다.
         # 걸린 초는 줄 끝에 붙는다 (#48) — 재는 자(installer · deploy)가 줄 앞을 보므로 앞은 안 바꾼다
         _gt0=$SECONDS; _gvh=''; _gvw=''
+        # 못 타는 설치법 — 있으면 초록, 없으면 비켜선다. 판 견주기도 안 한다(올릴 손이 없다).
+        if ! kind_here "$_gi"; then
+          if probe_global "$_gf" "$_gn"; then
+            printf '  ✅ %s — 이미 닿는다 (전역) (%s초)\n' "$_gn" "$((SECONDS - _gt0))"
+            gverified_put "$_gn" "$_gtg"
+          else
+            printf '  · %s — 이 자리(%s)에서는 안 깐다 — 설치법 %s 가 여기서 안 선다\n' "$_gn" "$OS" "$_gi"
+          fi
+          continue
+        fi
         if probe_global "$_gf" "$_gn" &&
            { [ -z "${UPGRADE:-}" ] ||
              { _gvh="$(tool_version_have "$_gf" "$_gn" || true)"
@@ -2771,14 +2827,15 @@ render_decl() {  # render_decl <선언파일> <층라벨>
     # ⚠ **on-demand 도 여기서 같이 읽는다.** 쓰는 자리는 맨 아래 갈래 하나뿐이지만, 같은
     #   awk 가 이미 그 절을 읽고 있어 **키 한 칸을 더 받는 값이 0 이다** — 저 아래서 따로
     #   물으면 프로세스 하나가 도구마다 더 뜬다.
-    _probe=''; _target=''; _by=''; _ondemand=''
+    _probe=''; _target=''; _by=''; _ondemand=''; _inst=''
     {
       IFS= read -r _probe
       IFS= read -r _target
       IFS= read -r _by
       IFS= read -r _ondemand
+      IFS= read -r _inst
     } <<EOF
-$(decl_fields "$1" "$_name" probe probe-target called-by on-demand)
+$(decl_fields "$1" "$_name" probe probe-target called-by on-demand install)
 EOF
     # 까는 걸음의 이름 — project-axis 도구는 이 이름으로 실패가 남는다 (why 곁주석). `try` 가
     # 적는 그 이름 그대로여야 한다 — 갈리면 사유가 또 안 붙는다.
@@ -2804,6 +2861,9 @@ EOF
     elif [ "$_ondemand" = yes ]; then
       # 선언이 「필요할 때 깐다」로 둔 도구 — 부재가 이 저장소의 검사를 끄는 것이 아니다
       gate "$_name" ok "$_by ($2) — 안 닿는다 · 필요할 때 깐다 (on-demand)"
+    elif ! kind_here "$_inst"; then
+      # 이 자리에서 못 타는 설치법 — 깔 손이 없으니 꺼진 검사로 안 센다(`kind_here` 곁말)
+      gate "$_name" ok "$_by ($2) — 안 닿는다 · 이 자리($OS)에서는 안 깐다 (설치법 $_inst)"
     else
       gate "$_name" off "$_by ($2) — 안 닿는다$(why "$_name" "$_step")"
     fi
