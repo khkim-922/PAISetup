@@ -1146,4 +1146,7 @@ if ($envDown.Count -gt 0) {
     exit 1
 }
 
-Write-Host "`n완료. Claude Code를 재시작해야 적용됩니다." -ForegroundColor Green
+# ⚠ **「재시작」 한 낱말로 뭉개지 않는다 — 다시 여는 자리가 둘이다.** 규범·룰·스킬은 세션이 뜰 때
+#   읽혀 새 세션이면 되지만, 새로 깐 도구는 PATH 를 타서 **Claude Code 를 띄운 앱**이 설치 뒤에 떠야
+#   보인다 — 앱은 뜰 때 PATH 를 한 번 복사하고 그 뒤 바뀐 것은 안 따라온다.
+Write-Host "`n완료. 이미 열려 있던 Claude Code 세션에는 안 들어갑니다 — 새 세션부터 적용되고, 새로 깐 도구는 Claude Code 를 띄운 앱(VS Code · 데스크탑 앱 · 터미널)을 완전히 닫았다 다시 열어야 잡힙니다." -ForegroundColor Green

@@ -13,7 +13,8 @@
 # ⚠ **낱말 목록(type-enum)은 여기 안 적는다** — 명세가 든다(규범 [Conventional Commits]).
 #   commitlint 이 없는 기계의 열화 갈래도 **꼴만** 보고 낱말은 안 본다: 목록을 적으면 명세와
 #   어긋나는 날 아무도 모르고, 그 갈래는 애초에 「안 쟀다」고 말하는 자리다.
-# 규칙 파일은 저장소가 `commitlint.config.mjs` 로 든다.
+# 규칙 파일은 저장소가 제 것(`commitlint.config.*`)을 두면 그것이, 없으면 전역 배포본
+# (`.claude/commitlint.global.mjs`)이 든다 — 아래 「규칙 파일」 칸.
 set -u
 
 msgfile="${1:-}"

@@ -298,6 +298,11 @@ py_resolve() {
   return 0
 }
 py_resolve
+# ── PC 의 파이썬 — **전역 파이썬 패키지(`pip-user`)가 사는 자리다.** 여기서 굳혀 둔다.
+# ⚠ `PY_CMD` 를 그대로 안 쓴다 — 저장소 걸음이 선언한 판(`probe = python-version`)으로 venv 를
+#   세우려고 그 이름을 다른 해석기로 바꿔 끼운다. 전역 패키지를 부르는 자(그림 문의 줄이기 등)는
+#   저장소와 무관하게 **PATH 의 파이썬**으로 돈다 — 깔고 재는 자리도 그것이어야 명제가 같다.
+PC_PY="$PY_CMD"
 VENV_PY="$VENV_BIN/python"; [ -x "$VENV_PY" ] || VENV_PY="$VENV_BIN/python.exe"
 NPM_BIN="$PROJECT_DIR/node_modules/.bin"
 
@@ -412,6 +417,11 @@ probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
     node-resolvable)   ( cd "$PROJECT_DIR" && node --input-type=module -e "await import('$_tg')" ) >/dev/null 2>&1 ;;
     python-importable) if [ -x "$VENV_PY" ]; then "$VENV_PY" -c "import $_tg" >/dev/null 2>&1
                        else command -v "$PY_CMD" >/dev/null 2>&1 && "$PY_CMD" -c "import $_tg" >/dev/null 2>&1; fi ;;
+    # ⚠ **위 갈래와 딴 명제다 — venv 를 안 본다.** 위는 「이 저장소의 venv 에서 import 되나」라
+    #   venv 가 서 있으면 그쪽만 잰다. 전역 파이썬 패키지는 PC 의 파이썬에 서고 부르는 자도 그것을
+    #   부르므로, 위 갈래로 재면 venv 가 있는 저장소에서 **깔린 패키지가 ❌ 로 읽힌다.**
+    machine-python-importable)
+                       "$PC_PY" -c "import $_tg" >/dev/null 2>&1 ;;
     python-version)    # 「깔렸나」가 아니라 「선언한 판(probe-target)과 같나」 — venv 가
                        # 서 있으면 그 판을, 아니면 venv 를 만들 판(PY_CMD)을 잰다 (판 일치)
                        if [ -x "$VENV_PY" ]; then _pv="$(py_num "$VENV_PY")"
@@ -479,7 +489,12 @@ EOF
   case "$_vhi" in
     npm-global) case "$_vhp" in ?*@*) _vhp="${_vhp%@*}" ;; esac
                 npm_global_version "$_vhp" ;;
-    github-release-binary)
+    # 파이썬 패키지는 제 메타데이터가 판의 진본이다 — npm 갈래가 package.json 을 읽는 것과 같은 결.
+    #   import 이름(`PIL`)이 아니라 배포 이름(`pillow`)으로 묻는다.
+    pip-user) "$PC_PY" -c 'import importlib.metadata as m, sys; print(m.version(sys.argv[1]))' "$_vhp" 2>/dev/null ;;
+    # winget 이 깐 것도 실행해서 읽는다 — `winget list` 는 표를 내 칸을 가려야 하고, 도구가 제 판을
+    #   말하는 자리가 이미 있다.
+    github-release-binary|winget)
       command -v "$_vht" >/dev/null 2>&1 || return 0
       # shellcheck disable=SC2086 # probe-arg 는 인자 여럿을 한 줄에 든다 — 갈라야 인자가 된다
       "$_vht" ${_vha:---version} 2>/dev/null | ver_first ;;
@@ -487,18 +502,31 @@ EOF
 }
 
 tool_version_latest() {  # tool_version_latest <선언파일> <이름> — 받을 판 · 못 읽으면 빈 값
-  _vli=''; _vlp=''; _vlr=''; _vlt=''
-  { IFS= read -r _vli; IFS= read -r _vlp; IFS= read -r _vlr; IFS= read -r _vlt; } <<EOF
-$(decl_fields "$1" "$2" install package repo tag)
+  _vli=''; _vlp=''; _vlr=''; _vlt=''; _vlw=''
+  { IFS= read -r _vli; IFS= read -r _vlp; IFS= read -r _vlr; IFS= read -r _vlt; IFS= read -r _vlw; } <<EOF
+$(decl_fields "$1" "$2" install package repo tag winget-id)
 EOF
   case "$_vli" in
     npm-global) case "$_vlp" in
                   ?*@*) printf '%s\n' "${_vlp##*@}" | ver_first ;;   # 판을 박았으면 그 판이 받을 판이다
                   *)    npm view "$_vlp" version 2>/dev/null | ver_first ;;
                 esac ;;
+    # ⚠ **pip 에게 묻는다 — PyPI 주소를 직접 안 친다.** pip 은 제 설정(사내 색인 · 프록시)을 따라
+    #   묻는데, 주소를 박아 `curl` 로 치면 그 설정을 비켜서 받는 길과 묻는 길이 갈린다. 첫 줄이
+    #   `pillow (12.3.0)` 꼴이라 같은 자(`ver_first`)로 읽힌다. 막힌 망은 빈 값 → 다시 깐다(위 곁말).
+    pip-user) "$PC_PY" -m pip index versions "$_vlp" --disable-pip-version-check --timeout 15 --retries 1 \
+                2>/dev/null | ver_first ;;
     github-release-binary)
       if [ -n "$_vlt" ]; then printf '%s\n' "$_vlt" | ver_first
       else gh_latest_tag "$_vlr" | ver_first; fi ;;
+    # ⚠ **이 자리가 없으면 winget 도구는 밀 때마다 「설치가 졌다」로 찍힌다.** 판을 못 읽으면 고리가
+    #   다시 까는데, 이미 깔린 패키지에 `winget install` 은 「올릴 판이 없다」며 0 이 아닌 값(43)으로
+    #   끝난다 — 멀쩡한 도구에 실패 사유가 붙는다(실측 2026-09-26 · jq 1.8.2).
+    # ⚠ 첫 줄을 버리고 읽는다 — 첫 줄은 이름과 id 이고(`찾음 jq [jqlang.jq]`) id 에 숫자가 드는
+    #   패키지가 있다. 둘째 줄이 판이다(`버전: 1.8.2` — 낱말은 로캘을 타도 숫자는 안 탄다).
+    winget)
+      winget.exe show --id "$_vlw" --exact --source winget --accept-source-agreements --disable-interactivity \
+        2>/dev/null | sed 1d | ver_first ;;
   esac
 }
 
@@ -1199,11 +1227,12 @@ home_hook_root() {   # 작업 루트 — 굳힌 꼴. 명령도 진단 문구도 
 }
 
 # ── 전역형 선언 — **기계에 하나만 서는 것들** (#43) ──────────────────────────────
-# ⚠ **가르는 자는 설치법이다.** 아래 넷은 깔리는 자리가 홈·전역이라(npm 전역 · `~/bin` ·
-#   winget 사용자 자리 · 배포판) 저장소가 몇이든 실물은 하나다. `project-axis` 만 저장소를
-#   탄다 — 그것의 진본은 `package.json`·`requirements.txt` 이고 까는 자도 따로다.
+# ⚠ **가르는 자는 설치법이다.** 아래 다섯은 깔리는 자리가 홈·전역이라(npm 전역 · `~/bin` ·
+#   winget 사용자 자리 · 배포판 · PC 파이썬의 사용자 자리) 저장소가 몇이든 실물은 하나다.
+#   `project-axis` 만 저장소를 탄다 — 그것의 진본은 `package.json`·`requirements.txt` 이고 까는
+#   자도 따로다.
 global_kind() {  # global_kind <install 값>
-  case "$1" in npm-global|github-release-binary|winget|apt-package) return 0 ;; esac
+  case "$1" in npm-global|github-release-binary|winget|apt-package|pip-user) return 0 ;; esac
   return 1
 }
 # ── 전역형 선언을 든 파일들 — **이름을 안 박는다.** 제 것 둘이 먼저고, 그 다음 작업 루트에
@@ -2236,7 +2265,34 @@ if [ "$MODE" = install ]; then
         # ⚠ **깐 뒤 이 세션에서는 아직 PATH 에 안 걸린다** — winget 은 사용자 PATH 를 고치고
         #   그 값은 이미 뜬 셸에 안 온다. 다음 세션에서 선다. 그래서 **부르는 쪽이 winget 의
         #   링크 자리도 보게** 둔다(`scripts/build-setup-exe.ps1` 이 그렇게 한다).
+        # ⚠ **「이미 깔렸는데 이 창이 모른다」를 설치 실패로 적지 않는다.** 이 훅을 띄운 앱이 설치 전에
+        #   떴으면 PATH 가 낡아 프로브가 지고, 그러면 여기 와서 다시 깔려 드는데 winget 은 「올릴 판이
+        #   없다」(43)로 진다 — 사유가 그 문장이 되어 **고칠 자리가 winget 인 것처럼 읽힌다**(실측
+        #   2026-09-26 · jq: 배포 한 번에 저장소 다섯이 같은 거짓 사유를 찍었다). 실행파일이 PATH 에
+        #   없을 때만 묻는다 — 있으면 판을 올리러 온 것이라 그대로 깐다.
+        _wtg="$(decl_get "$_f" "$_t" probe-target)"
+        if ! command -v "$_wtg" >/dev/null 2>&1 &&
+           winget.exe list --id "$_id" --exact --source winget --accept-source-agreements --disable-interactivity >/dev/null 2>&1; then
+          nogo "$_t" "winget 에는 깔려 있는데 이 창의 PATH 가 아직 모른다 — Claude Code 를 띄운 앱(VS Code · 데스크탑 앱 · 터미널)을 완전히 닫았다 다시 열면 선다"
+          return 1
+        fi
         try "$_t" winget.exe install --id "$_id" --exact --source winget --scope user --accept-package-agreements --accept-source-agreements --disable-interactivity ;;
+      pip-user)      # 파이썬 패키지 — **저장소 venv 가 아니라 PC 의 파이썬**에 깐다(`PC_PY` 곁말).
+        _pkg="$(decl_get "$_f" "$_t" package)"
+        [ -n "$_pkg" ] || { nogo "$_t" "선언에 package 가 없다"; return 1; }
+        "$PC_PY" -c '' >/dev/null 2>&1 ||
+          { nogo "$_t" "파이썬이 안 선다 — $PC_PY 가 안 불린다. 파이썬을 깔면 다음 설치가 깐다"; return 1; }
+        # ⚠ **`--user` 로 깐다** — 관리자 없이 서야 하는 것이 이 훅의 규율이다(winget 갈래와 같은 축).
+        #   `Program Files` 에 선 파이썬은 사이트 폴더에 못 쓴다.
+        # ⚠ **`--upgrade` 를 단다** — 이 걸음은 없을 때만이 아니라 **판이 다를 때도** 불린다(위 고리).
+        #   안 달면 pip 이 「이미 있다」로 끝나 새 판이 영영 안 온다.
+        # ⚠ **배포판 파이썬의 잠금(PEP 668)을 환경변수로 연다.** 리눅스 배포판의 파이썬은 pip 을
+        #   「밖에서 관리된다」며 거절하는데, 사용자 자리 설치는 배포판 패키지를 안 건드린다. 인자
+        #   (`--break-system-packages`)로 주면 그 인자를 모르는 옛 pip 이 통째로 지고, 환경변수는
+        #   모르는 판이 그냥 지나친다.
+        # ⚠ 막힌 망에 오래 안 붙잡히게 기다림과 되풀이를 줄인다 — 세션 시작의 시간 벽 안에서 돈다.
+        try "$_t" env PIP_BREAK_SYSTEM_PACKAGES=1 "$PC_PY" -m pip install --user --upgrade \
+          --disable-pip-version-check --no-input --timeout 15 --retries 1 "$_pkg" ;;
       project-axis) : ;;   # 설치 없음 — 판의 진본은 package.json·requirements.txt 다
       # ⚠ 모르는 갈래도 **조용한 무작동이다.** 선언에 `install` 을 빠뜨리거나 오타를 내면
       #   여기까지 와서 아무것도 안 하고 0 을 냈다 — 진단은 「안 닿는다」만 내고 선언이
