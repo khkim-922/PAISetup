@@ -1423,6 +1423,23 @@ if ($proxyRel -or $codexTpl -or $geminiTpl) {
 #   그래서 `$null` 은 「못 쟀다」이고, 그때는 앱마다 묻는 옛 길로 간다.
 # ⚠ **기울기를 한쪽으로만 준다.** Id 가 표에서 잘릴 수 있어 **Id 든 이름이든 걸리면 올린다** —
 #   헛되게 한 번 더 묻는 값은 시간뿐이고, 안 물어 낡은 판이 서는 값은 고장이다.
+# ⚠ **다만 낱말째 건다 — 글자 조각으로 걸지 않는다.** 옛 판은 표 어디든 그 글자가 들었나를
+#   물었고(`-like "*Git*"`, 대소문자 무시), **Lo`git`ech Options** 한 줄이 Git 을 매번 「올릴 것」으로
+#   세웠다 — 실제로는 최신이라 winget 이 헛돌고 기록만 틀린 말을 했다. 셋 중 하나면 센다:
+#   · Id 가 통째로 — 앞뒤가 Id 글자(영숫자·점)가 아니다. `Git.Git` 이 `Git.GitLFS` 에 안 걸린다
+#   · 잘린 Id — 표가 `Microsoft.VisualStud…` 처럼 줄였으면 그 앞토막이 우리 Id 의 머리다
+#   · 이름 칸 — 줄 첫머리에 이름이 서고 **칸 간격(빈칸 둘 이상)이나 줄임표가 뒤따른다.** 그래서
+#     `Git` 은 `GitHub CLI` 에, `Python` 은 `Python Launcher` 에 안 걸린다
+function Test-UpgradeRow([string]$Text, [hashtable]$App) {
+  $id   = [regex]::Escape($App.Id)
+  $name = [regex]::Escape($App.Name)
+  if ($Text -match "(?<![\w.])$id(?![\w.])") { return $true }
+  if ($Text -match "(?m)^\s*$name(\s{2,}|…|\s*$)") { return $true }
+  foreach ($m in [regex]::Matches($Text, '(?<![\w.])([\w.\-+]{8,})…')) {
+    if ($App.Id.StartsWith($m.Groups[1].Value, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+  }
+  return $false
+}
 $upgradable = $null
 if (-not ($NoUpgrade -or $noWinget)) {
   Say-Busy '프로그램 판' 'upcheck' @('winget · 한 번에')
@@ -1434,7 +1451,7 @@ if (-not ($NoUpgrade -or $noWinget)) {
   if ($urc -eq 0 -and $utxt -and $utxt.Length -gt 40) {
     $hits = @()
     foreach ($a in $Apps) {
-      if (($utxt -like "*$($a.Id)*") -or ($utxt -like "*$($a.Name)*")) { $hits += $a.Id }
+      if (Test-UpgradeRow $utxt $a) { $hits += $a.Id }
     }
     $upgradable = $hits
     if ($hits.Count) {
@@ -3069,6 +3086,17 @@ if (-not $WithPersonalConfig) {
 }
 
 Write-Elapsed '[6/8] 개인 규범·룰·스킬'
+# ── 설정 저장소의 주소와 자리 — 7 칸(비켜설 자리를 묻는다)과 8 칸(받는다)이 같이 쓴다 ──────────
+# ⚠ **자리를 짓는 자를 한 벌로 둔다.** 7 칸이 저장소를 찾는 자리와 8 칸이 clone 하는 자리가
+#   갈리면, 비켜서기가 없는 폴더를 보고 늘 깔아 옛 되풀이가 조용히 돌아온다.
+# ⚠ **여러 개를 빈칸으로 가른다** — 까닭은 8 칸 곁말이 든다. 주소에는 빈칸이 없다.
+$repoUrl = Read-Directive $EnvFile 'config-repo'
+$configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
+$configRepoRoot = Join-Path $env:USERPROFILE 'repos'
+function Get-ConfigRepoDir([string]$Url) {
+  return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
+}
+
 # ── 7. 사내 환경 문서 · 씨앗 둘 ─────────────────────────────────────────────────
 # ⚠ **이건 고를 것이 아니라 환경이다.** 그래서 위 칸과 달리 스위치가 없다 — 사내 게이트웨이의
 #   배선·실측·오류 명세와, 복사해 출발하는 씨앗 둘(배관 · 설정 저장소)은 **누가 받아도 쓴다.**
@@ -3085,8 +3113,18 @@ Write-Host '[7/8] 사내 환경 문서 · 씨앗 셋' -ForegroundColor Cyan
 #   파일을 안 지운다.** 진본에서 부품 하나를 걷어도 한 번 깐 기계에는 그것이 영영 남고, 씨앗은
 #   **있으면 복사되는 자리**라 걷힌 것이 계속 새 프로젝트로 퍼진다 — 5‴ 칸의 「심기는 더하기만
 #   한다」와 같은 병이고, 여기도 **지우는 손**이 없어서 난다.
-#   ⚠ 이 셋은 **이 zip 이 유일한 진본**이라 거울이 설 수 있다: 홈 사본에 남는 것은 우리가 옛
-#     판에 깐 것뿐이고, 저쪽에서 따로 심는 자가 없다.
+#   ⚠ 거울이 설 수 있는 것은 **이 zip 만 그 자리에 심을 때**다. 설정 저장소를 든 사람 자리에서는
+#     그 저장소의 배포(`deploy.ps1`)가 `deploy.seeds.conf` 에 적힌 폴더를 **저장소 최신판**으로
+#     같은 자리에 민다 — 그 자리는 아래 「비켜선다」가 든다.
+# ⚠ **설정 저장소가 미는 자리에서는 비켜선다** — 그림 문 칸과 같은 규율이다. 옛 판은 늘 깔아,
+#   릴리스 뒤에 저장소에서 씨앗을 고친 날부터 **이 칸이 옛 판으로 되돌리고 8 칸의 배포가 새 판으로
+#   다시 미는 일**이 자동 실행마다 되풀이됐다 — 같은 파일이 매번 「덮어씀」으로 뜨고 백업 폴더가
+#   쌓이며, 두 칸 사이에는 옛 씨앗이 깔려 있다. 판 줄(`seeds/.version`)은 두 자가 적는 값이 달라
+#   (판 번호 · 커밋 해시) 새 판을 내도 계속 튄다.
+#   무엇을 미나는 **저장소의 선언을 읽는다**(`deploy.seeds.conf` — 배포·세션 훅·재는 자가 같은 줄을
+#   읽는다). 여기에 목록을 따로 들면 저쪽이 폴더를 더하거나 뺀 날 조용히 어긋난다.
+#   ⚠ **홈 자리가 비었으면 비켜서지 않는다.** 저장소가 막 받아졌거나 배포가 한 번도 안 돈
+#     기계에서 비켜서면 그 자리가 빈 채로 남는다 — 우리가 깔고, 뒤따르는 배포가 새 판으로 덮는다.
 # ⚠ **`posco` 만은 덮어쓰기로 둔다.** 그 자리는 **진본이 둘이고 런타임 파일이 섞인다** — 설정
 #   저장소의 `deploy.ps1` 이 같은 자리를 갱신하고, 프록시가 제 곁에 `opus5_proxy.pid` 와
 #   `proxy.log` 를 쓴다. 거울로 걷으면 **남이 심은 것과 도는 프로세스가 쓰는 파일을 지운다** —
@@ -3104,8 +3142,29 @@ $envAssets = @(
   @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'; Mirror = $true
      Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
 )
+# 설정 저장소가 홈으로 미는 자리 — `seeds\gateway` 꼴의 홈 상대 경로 → 그것을 든 저장소.
+# 저장소 자리는 8 칸이 받는 자리와 같은 함수가 댄다(`Get-ConfigRepoDir`).
+$ownedHome = @{}
+foreach ($u in $configRepoUrls) {
+  $d = Get-ConfigRepoDir $u
+  $conf = Join-Path $d 'deploy.seeds.conf'
+  if (-not (Test-Path -LiteralPath $conf)) { continue }
+  foreach ($ln in (Get-Content -LiteralPath $conf -Encoding UTF8)) {
+    $rel = (($ln -replace '#.*$', '').Trim()) -replace '/', '\'
+    if ($rel -and -not $ownedHome.ContainsKey($rel) -and (Test-Path -LiteralPath (Join-Path $d $rel))) {
+      $ownedHome[$rel] = $d
+    }
+  }
+}
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없다"; continue }
+  $owner = $ownedHome[$a.To.Substring($homeDir.Length).TrimStart('\')]
+  if ($owner -and @(Get-ChildItem -LiteralPath $a.To -Recurse -File -ErrorAction SilentlyContinue).Count) {
+    $a.Owner = $owner
+    Write-Host "  $($a.Name) — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
+    Write-Host "     $owner"
+    continue
+  }
   # ⚠ **못 걷었으면 덮어쓰기로 물러나지 않는다.** 걷기가 진 채로 복사하면 옛 부품이 남은
   #   자리가 「깔았다」 초록으로 덮이고, 아래 검증은 **모자란 것만 물어** 여분을 안 문다 —
   #   거울이 안 선 판이 그대로 통과한다. 까닭을 대고 실패로 센다.
@@ -3133,8 +3192,11 @@ foreach ($a in $envAssets) {
 # ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이 아니다 —
 #   autorun 이 매일 도는 자리라, 매번 덮으면 그 날짜가 늘 오늘이라 낡음을 말하지 않는다.
 # ⚠ **자리가 씨앗을 깐 뒤인 까닭** — 민 뒤에 적어야 「그 판이 깔렸다」가 참이다.
+# ⚠ **씨앗 하나라도 설정 저장소가 들면 안 쓴다** — 그 자리의 판 줄은 저쪽 배포가 커밋 해시로
+#   적는다. 여기서 판 번호로 덮으면 위 비켜서기를 해도 이 한 줄이 매번 튄다.
 $seedRoot = Join-Path $homeDir 'seeds'
-if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion) {
+$seedOwned = [bool]@($envAssets | Where-Object { $_.Owner -and $_.To -like "$seedRoot\*" }).Count
+if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
   $seedVerFile = Join-Path $seedRoot '.version'
   $seedVerNow = ''
   if (Test-Path -LiteralPath $seedVerFile) {
@@ -3334,7 +3396,7 @@ Write-Elapsed '[7/8] 사내 환경 문서 · 씨앗 셋'
 #   런타임을 두 번 깔지 않는다 — 무엇을 깔지는 이 파일 하나가 든다.
 Write-Host ''
 Write-Host '[8/8] 개인 값 저장소' -ForegroundColor Cyan
-$repoUrl = Read-Directive $EnvFile 'config-repo'
+# 주소(`$repoUrl` · `$configRepoUrls`)와 자리(`Get-ConfigRepoDir`)는 7 칸 앞에서 한 벌로 섰다.
 if (-not $repoUrl) {
   Write-Host '  건너뜀 — install.env 에 #config-repo 가 없다'
 } elseif (-not (Test-Runs 'git' '--version')) {
@@ -3345,9 +3407,8 @@ if (-not $repoUrl) {
   #   여기 하나뿐이었다** — 넘겨받는 쪽은 형제 저장소를 제 선언의 `ROOT`(`$HOME/repos`)로
   #   받고 그 칸을 안 본다. 그래서 그것을 쓰면 설치는 지정한 데로 clone 하고 저쪽은 `~/repos`
   #   에서 찾다 죽는다. **쓰는 순간 저장소가 두 갈래로 갈리는 칸**이라 걷어냈다.
-  #   자리를 바꿔야 하면 고칠 자리는 둘이다: 여기와 저쪽 `ROOT`. 한쪽만 고치면 안 선다.
-  $root = Join-Path $env:USERPROFILE 'repos'
-  New-Item -ItemType Directory -Path $root -Force | Out-Null
+  #   자리를 바꿔야 하면 고칠 자리는 둘이다: `$configRepoRoot`(7 칸 앞)와 저쪽 `ROOT`. 한쪽만 고치면 안 선다.
+  New-Item -ItemType Directory -Path $configRepoRoot -Force | Out-Null
 
   # ── 8′. GitHub CLI 로그인 — **받기 직전, 개인 계정이 서야 하는 자리** ─────────────
   # ⚠ **왜 여기인가.** 이 칸은 **개인 계정이 있어야 서는 칸**이라, 회사 환경(프로그램 · 확장 ·
@@ -3476,8 +3537,7 @@ if (-not $repoUrl) {
   # ⚠ **여러 개를 빈칸으로 가른다.** 옛 판은 하나만 받았고, 그 까닭은 「나머지는 그 저장소의
   #   부트스트랩이 데려온다」였다 — 그런데 그건 **만든 사람의 부트스트랩 사정**이지 받는
   #   사람의 사정이 아니다. 남은 목록의 진본이 제 저장소에 없으면 여기 적을 수밖에 없다.
-  #   주소에는 빈칸이 없으므로 가르는 자로 빈칸이 안전하다.
-  $repoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
+  #   주소에는 빈칸이 없으므로 가르는 자로 빈칸이 안전하다. 가르는 줄은 7 칸 앞(`$configRepoUrls`)에 있다.
 
   # ⚠ **받은 것과 넘길 자리가 있는 것은 다른 명제다.** 옛 판은 clone 의 실패를 `2>$null` 과
   #   빈 `catch` 로 삼키고, 그 결과를 아래에서 **「저장소에 bootstrap-vdi.sh 가 없다」**로 냈다.
@@ -3489,8 +3549,8 @@ if (-not $repoUrl) {
   # ⚠ **하나가 져도 나머지를 계속 받는다.** 여럿을 준 사람에게 첫 실패로 멈추면, 성한
   #   저장소까지 못 받고 까닭도 하나만 본다.
   $got = @()
-  foreach ($u in $repoUrls) {
-    $dest = Join-Path $root ([IO.Path]::GetFileNameWithoutExtension($u))
+  foreach ($u in $configRepoUrls) {
+    $dest = Get-ConfigRepoDir $u
     $log = [IO.Path]::GetTempFileName()
     if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
       Say-Busy (Split-Path $dest -Leaf) 'upgrade' @('git pull', $dest)
@@ -4123,6 +4183,14 @@ foreach ($c in $CliPicks) {
 # 나르는 자리 둘 — 7 칸의 자산과 6 칸의 개인 규범·룰·스킬. 재는 자는 위 `New-CountCheck` 하나다.
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { continue }
+  # ⚠ **비켜선 자리는 동봉본과 안 견준다** — 거기 든 것은 설정 저장소의 최신판이라, 저쪽이 부품을
+  #   걷은 날 동봉본보다 적어 멀쩡한 자리가 [X] 로 선다. 저쪽 몫은 저쪽 재는 자가 문다. 여기는
+  #   비지 않았나만 센다.
+  if ($a.Owner) {
+    $n = @(Get-ChildItem -LiteralPath $a.To -Recurse -File -ErrorAction SilentlyContinue).Count
+    $checks += @{ Name = "$($a.Name) ($n · 설정 저장소가 든다)"; Ok = ($n -gt 0) }
+    continue
+  }
   $checks += New-CountCheck $a.Name $a.From $a.To
 }
 # ⚠ **[6/8] 도 잰다 — 옛 판은 이 칸만 아무것도 안 찍었다.** [7/8] 과 한 글자도 안 다른 무늬인데
