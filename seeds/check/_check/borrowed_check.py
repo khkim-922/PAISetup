@@ -193,7 +193,7 @@ def _stamp(seeds_root):
         return field[0], f"{VERSION_FILE} · {' '.join(field[1:]) or '날짜 없음'}에 깔렸다"
     try:
         import subprocess
-        out = subprocess.run(["git", "-C", str(seeds_root), "rev-parse", "--short", "HEAD"],
+        out = subprocess.run(["git", "-C", str(seeds_root), "rev-parse", "--short", "HEAD"], env=_git_env(),
                              capture_output=True, text=True, encoding="utf-8", errors="replace",
                              timeout=10)
         if out.returncode == 0 and out.stdout.strip():
@@ -201,6 +201,30 @@ def _stamp(seeds_root):
     except (OSError, subprocess.SubprocessError):
         pass
     return None, f"뿌리에 `{VERSION_FILE}` 도 없고 git 나무도 아니다"
+
+
+def _git_env():
+    """다른 나무를 부르는 git 의 환경 — 훅이 내보낸 **이 저장소 변수**를 걷는다.
+
+    ⚠ **왜 걷나.** 커밋 훅 안에서 돌면 git 이 `GIT_DIR` · `GIT_INDEX_FILE` 따위를 내보내고, 이 검사가
+      부르는 `git -C <임시 폴더> init/commit` 이 그것을 물려받는다. 본 트리에서는 그 값이 상대(`.git`)라
+      임시 폴더 안에서 풀려 무해하지만, **연결된 작업 트리(`git worktree add`)에서는 절대 경로라** `init` 이
+      진짜 저장소를 다시 초기화했다(`core.bare=true` · 시험 커밋이 그 가지에 얹혔다 — 아뜰리에 2026-09-28).
+      진본 뿌리를 묻는 `rev-parse` · `cat-file` 도 같은 까닭으로 엉뚱한 저장소를 읽는다.
+    ⚠ **걷을 이름은 git 이 댄다**(`git rev-parse --local-env-vars`) — 손으로 적은 목록은 git 판이 오르면 낡는다.
+      그 물음이 지면(git 이 없다) 그대로 둔다 — 그때는 뒤따르는 git 호출도 어차피 진다.
+    """
+    import os
+    import subprocess
+    env = dict(os.environ)
+    try:
+        out = subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return env
+    for name in out.stdout.split():
+        env.pop(name, None)
+    return env
 
 
 def _git_tree(root):
@@ -216,10 +240,10 @@ def _git_tree(root):
               "commit", "-q", "--allow-empty", "-m", "t"]]
     try:
         for step in steps:
-            if subprocess.run(["git", "-C", str(root)] + step,
+            if subprocess.run(["git", "-C", str(root)] + step, env=_git_env(),
                               capture_output=True, timeout=30).returncode:
                 return None
-        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"], env=_git_env(),
                              capture_output=True, text=True, encoding="utf-8", errors="replace",
                              timeout=10)
         return out.stdout.strip() or None
@@ -231,13 +255,13 @@ def _git_commit(root, msg):
     """검체 나무에 지금 글자를 한 판 더 — 짧은 해시. 못 세우면 None. 이름·서명은 `_git_tree()` 와 같은 까닭으로 박는다."""
     import subprocess
     try:
-        if subprocess.run(["git", "-C", str(root), "add", "-A"], capture_output=True, timeout=30).returncode:
+        if subprocess.run(["git", "-C", str(root), "add", "-A"], env=_git_env(), capture_output=True, timeout=30).returncode:
             return None
         if subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t",
-                           "-c", "commit.gpgsign=false", "commit", "-q", "-m", msg],
+                           "-c", "commit.gpgsign=false", "commit", "-q", "-m", msg], env=_git_env(),
                           capture_output=True, timeout=30).returncode:
             return None
-        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+        out = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"], env=_git_env(),
                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
         return out.stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
@@ -269,7 +293,7 @@ def _git_toplevel(seeds_root):
     """진본 뿌리를 든 git 나무의 꼭대기 — 없으면 None(홈 씨앗 · 설치본 · git 없는 기계)."""
     import subprocess
     try:
-        out = subprocess.run(["git", "-C", str(seeds_root), "rev-parse", "--show-toplevel"],
+        out = subprocess.run(["git", "-C", str(seeds_root), "rev-parse", "--show-toplevel"], env=_git_env(),
                              capture_output=True, text=True, encoding="utf-8", errors="replace",
                              timeout=10)
     except (OSError, subprocess.SubprocessError):
@@ -288,7 +312,7 @@ def _git_blobs(toplevel, keys):
     if not keys:
         return out
     try:
-        p = subprocess.run(["git", "-C", str(toplevel), "cat-file", "--batch"],
+        p = subprocess.run(["git", "-C", str(toplevel), "cat-file", "--batch"], env=_git_env(),
                            input=("\n".join(keys) + "\n").encode("utf-8"), capture_output=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return {k: None for k in keys}

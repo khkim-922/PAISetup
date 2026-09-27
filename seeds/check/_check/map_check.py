@@ -73,11 +73,14 @@
 import ast
 import configparser
 import contextlib
+import functools
 import io
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -183,10 +186,31 @@ def print_gates(map_text, needs):
     return EXIT_OK
 
 
+@functools.lru_cache(maxsize=None)
+def _gate_env():
+    """게이트에 물릴 환경 — 훅이 내보낸 저장소 변수(`git rev-parse --local-env-vars`)를 걷는다.
+
+    ⚠ 푸시 게이트(`pre-push`) 안에서 돌면 git 이 `GIT_DIR` 따위를 내보낸다. 연결된 작업 트리에서는 그 값이
+      절대 경로라, 임시 폴더에 `git init` 하는 게이트가 **진짜 저장소를 다시 초기화한다**(borrowed_check 의
+      `_git_env()` 가 든 사고). 게이트는 저장소 뿌리에서 돌므로 걷어도 제 저장소를 스스로 찾는다 —
+      여기서 걷으면 그 꼴의 게이트가 하나 더 생겨도 이 자리에서 막힌다.
+    """
+    env = dict(os.environ)
+    try:
+        out = subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return env
+    for name in out.stdout.split():
+        env.pop(name, None)
+    return env
+
+
 def _run_one(check_dir, name):
-    """게이트 하나를 CI 처럼 돌린다 — 저장소 뿌리에서, 출력은 그대로 흘린다."""
+    """게이트 하나를 CI 처럼 돌린다 — 저장소 뿌리에서, 출력은 그대로 흘린다. 표준입력은 막는다."""
     return subprocess.run([sys.executable, "-X", "utf8", str(Path(check_dir) / name)],
-                          cwd=str(Path(check_dir).parent)).returncode
+                          cwd=str(Path(check_dir).parent), stdin=subprocess.DEVNULL,
+                          env=_gate_env()).returncode
 
 
 def run_gates(check_dir, map_text, needs, run=_run_one):
@@ -201,7 +225,7 @@ def run_gates(check_dir, map_text, needs, run=_run_one):
     if not rows:
         print(f"⚠ 못 쟀다 — 지도에 「{GATE_SECTION}」 절의 표 줄이 하나도 없다.", file=sys.stderr)
         return EXIT_UNMEASURED, [], []
-    bad, cant, ran = [], [], 0
+    bad, cant, ran, took = [], [], 0, []
     for name in rows:
         if name in needs:
             print(f"— 뺐다: {name} · {needs[name]}", flush=True)
@@ -212,7 +236,9 @@ def run_gates(check_dir, map_text, needs, run=_run_one):
             print(f"❌ {name} — 목록에 있는데 파일이 없다 (어긋남)", flush=True)
             continue
         ran += 1
+        t0 = time.monotonic()
         code = run(check_dir, name)
+        took.append((time.monotonic() - t0, name))
         if code == EXIT_UNMEASURED:
             cant.append(name)
             print(f"⚠ {name} — 못 쟀다(2)", flush=True)
@@ -221,7 +247,15 @@ def run_gates(check_dir, map_text, needs, run=_run_one):
             print(f"❌ {name} — 어긋났다(종료코드 {code})", flush=True)
     print(f"\n게이트 {len(rows)}개 · 돌았다 {ran}개 · 어긋남 {len(bad)}개 — {' '.join(bad) or '없음'}")
     print(f"         · 못 쟀다 {len(cant)}개 — {' '.join(cant) or '없음'}")
-    code = EXIT_MISMATCH if bad else EXIT_UNMEASURED if cant else EXIT_OK
+    # 한 바퀴가 분 단위라 **어디서 시간이 드나**를 같이 낸다 — 켤지 말지를 가르는 값이 이것이다.
+    if took:
+        slow = " · ".join(f"{n} {s:.0f}초" for s, n in sorted(took, reverse=True)[:3])
+        print(f"         · 모두 {sum(s for s, _ in took):.0f}초 — 오래 걸린 셋: {slow}")
+    # ⚠ **하나도 안 돌았으면 초록이 아니다** — 목록이 전부 `needs` 로 빠지면 어긋남도 못 쟀다도 0 이라
+    #   「통과」로 읽힌다. 빈 목록을 못 쟀다로 내는 `gate_rows` 곁말과 같은 자리다.
+    if not ran and not bad:
+        print("⚠ 못 쟀다 — 게이트 절의 이름이 전부 빠져 한 개도 안 돌았다", file=sys.stderr)
+    code = EXIT_MISMATCH if bad else EXIT_UNMEASURED if (cant or not ran) else EXIT_OK
     return code, bad, cant
 
 
@@ -644,10 +678,14 @@ def main(argv):
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 got_whole = run_gates(whole, map_text, needs, run=lambda _d, _n: EXIT_OK)
                 got_hole = run_gates(hole, map_text, needs, run=fake)
-            report("㉶ 태우기 — 다 있으면 초록 · 없는 파일은 어긋남 · 2 는 못 쟀다로 갈린다 "
+                got_none = run_gates(whole, map_text, {n: "시험" for n in gate_rows(map_text)},
+                                     run=lambda _d, _n: EXIT_OK)
+            report("㉶ 태우기 — 다 있으면 초록 · 없는 파일은 어긋남 · 2 는 못 쟀다 · 하나도 안 돌면 못 쟀다 "
                    f"({gone_g} · {cant_g})",
-                   got_whole == (EXIT_OK, [], []) and got_hole == (EXIT_MISMATCH, [gone_g], [cant_g]),
-                   [f"실측 {got_whole} · {got_hole} — 기대 (0, [], []) · (1, [{gone_g!r}], [{cant_g!r}])"])
+                   got_whole == (EXIT_OK, [], []) and got_hole == (EXIT_MISMATCH, [gone_g], [cant_g])
+                   and got_none == (EXIT_UNMEASURED, [], []),
+                   [f"실측 {got_whole} · {got_hole} · {got_none} — 기대 (0, [], []) · "
+                    f"(1, [{gone_g!r}], [{cant_g!r}]) · (2, [], [])"])
         else:
             report("㉶ 태우기 — 게이트 절에 이름이 둘 이상 있어야 이빨이 선다", False,
                    [f"게이트 절 이름 {len(grows)}개 — 못 쟀다"])

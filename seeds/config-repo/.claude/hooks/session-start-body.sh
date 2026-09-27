@@ -2768,9 +2768,9 @@ if [ -d "$PROJECT_DIR/.githooks" ]; then
   if hooks_wired; then
     gate "커밋 훅 배선" ok "core.hooksPath=$HOOKS_PATH"
 
-    # ⚠ **몸통 둘 다 본다.** 옛 판은 `commit-msg` 만 물어서, `pre-commit` 에 실행권한이 없으면
+    # ⚠ **몸통을 다 본다.** 옛 판은 `commit-msg` 만 물어서, `pre-commit` 에 실행권한이 없으면
     #   **조각이 통째로 안 도는데 진단은 ✅ 였다.** 가드의 부재지 고장이 아니다.
-    for _b in pre-commit commit-msg; do
+    for _b in pre-commit commit-msg pre-push; do
       [ -f "$PROJECT_DIR/.githooks/$_b" ] && [ ! -x "$PROJECT_DIR/.githooks/$_b" ] &&
         gate "커밋 게이트($_b)" off "실행권한이 없어 git 이 무시한다 — 조각이 다 멀쩡해도 안 돈다"
     done
@@ -2793,7 +2793,7 @@ if [ -d "$PROJECT_DIR/.githooks" ]; then
       # shellcheck source=/dev/null
       . "$_gr"
       _on=""; _gone=""
-      for _stage in pre-commit commit-msg; do
+      for _stage in pre-commit commit-msg pre-push; do
         for _g in $(gate_list "$_stage" "$_gc"); do
           if [ -f "$PROJECT_DIR/.githooks/gates.d/$_g.sh" ] || [ -f "$GATES_HOME/gates.d/$_g.sh" ]; then _on="$_on $_g"
           else _gone="$_gone $_g"; fi

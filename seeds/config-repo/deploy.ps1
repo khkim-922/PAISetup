@@ -654,6 +654,23 @@ if (Test-Path $agentDst) {
     }
 }
 
+# --- 제거 후보: 원본에 없는 씨앗 파일 ---
+# ⚠ **씨앗 폴더(`seeds\…`)만 센다 — `posco` 는 안 센다.** 씨앗은 새 프로젝트가 복사해 출발하는 자리라,
+#   원본에서 걷은 부품이 홈에 남으면 계속 퍼진다. 예전에는 설치기가 판마다 거울로 걷었는데, 설정 저장소를
+#   든 PC 에서는 설치기가 이 폴더를 비켜서므로(PAISetup install.ps1 7 칸) 걷는 손이 여기다.
+#   `posco` 는 프록시가 제 기록(`proxy.log` · `*.pid`)을 쓰는 자리라 원본에 없는 파일이 곧 쓰레기가 아니다.
+foreach ($sd in ($seedDirs | Where-Object { $_ -like 'seeds\*' })) {
+    $sSrc = Join-Path $src $sd
+    $sDst = Join-Path $dst $sd
+    if (-not (Test-Path $sSrc) -or -not (Test-Path $sDst)) { continue }
+    Get-ChildItem $sDst -Recurse -File | Where-Object { $_.FullName -notmatch '\\__pycache__\\' } | ForEach-Object {
+        $rel = $_.FullName.Substring($sDst.Length + 1)
+        if (-not (Test-Path -LiteralPath (Join-Path $sSrc $rel))) {
+            $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  ($($sd -replace '\\', '/')/에 없음)" }
+        }
+    }
+}
+
 # --- 제거 후보: 원본에 없는 메모리 파일 ---
 if (Test-Path $memSrc) {
     foreach ($proj in (Get-ChildItem $memSrc -Directory)) {

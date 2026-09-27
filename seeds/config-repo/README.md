@@ -51,9 +51,9 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 | `.claude/hooks/image-gate.py` · `image-gate.sh` | **그림 문.** 모델이 그림을 받기 직전에 치수를 재는 훅 — `scale` 을 안 고른 도구 스크린샷과, 상류가 어차피 깎을 만큼 큰 그림 파일은 막는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 저장소가 아니라 **홈** `~/.claude/settings.json` 의 PreToolUse 에 심긴다 — 설정 저장소가 있는 PC 는 세션 훅이, 없는 PC 는 설치기가 심는다. 치수 눈금은 검사 씨앗의 `_vision.py` 가 든다 |
 | `.claude/tools.global.conf` | 전역 도구 선언 — 훅이 이것을 읽고 돈다 |
 | `.claude/get-browser.sh` | 브라우저를 받아 오는 **뒷길**. 저장소 도구 선언(`.claude/tools.conf`)의 `[playwright]` 블록이 `browsers-fallback` 칸에 저장소 기준 경로로 적어 가리킨다 |
-| `.githooks/pre-commit` · `commit-msg` | **커밋 게이트 몸통 — 문지기.** 익명이다 — 무엇을 재는지 모르고, 러너를 찾아 부른다. 저장소마다 한 벌씩 가는 것은 이것이다 |
-| `.githooks/gates-run.sh` | 몸통 둘이 같이 쓰는 러너. 선언을 읽어 조각을 부른다. **저장소마다 사본을 두지 않는다** — 몸통이 러너를 설정 저장소에서 찾고, 없으면 홈 씨앗에서 찾는다. 설정 저장소로 알아보는 폴더는 커밋하는 저장소 자신이거나, 곁 · `/workspace` · 홈에 선 `claude-config` 폴더 가운데 `deploy.ps1` 과 `memory/` 를 함께 든 것이다 |
-| `.githooks/gates.d/` | **검사 조각** — 인코딩 · 셸 문법 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 · 파이썬 결함 · 빌린 부품. 러너와 같이 여기에만 산다 |
+| `.githooks/pre-commit` · `commit-msg` · `pre-push` | **커밋·푸시 게이트 몸통 — 문지기.** 익명이다 — 무엇을 재는지 모르고, 러너를 찾아 부른다. 저장소마다 한 벌씩 가는 것은 이것이다 |
+| `.githooks/gates-run.sh` | 몸통 셋이 같이 쓰는 러너. 선언을 읽어 조각을 부른다. **저장소마다 사본을 두지 않는다** — 몸통이 러너를 설정 저장소에서 찾고, 없으면 홈 씨앗에서 찾는다. 설정 저장소로 알아보는 폴더는 커밋하는 저장소 자신이거나, 곁 · `/workspace` · 홈에 선 `claude-config` 폴더 가운데 `deploy.ps1` 과 `memory/` 를 함께 든 것이다 |
+| `.githooks/gates.d/` | **검사 조각** — 인코딩 · 셸 문법 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 · 파이썬 결함 · 빌린 부품 · 저장소 게이트 목록. 러너와 같이 여기에만 산다 |
 | `.githooks/claude-config-path.sh` | 설정 저장소가 이 기계 어디 붙었나, 게이트 러너가 어디 섰나를 **한 자리에서** 잰다 |
 | `.claude/markdownlint.global.jsonc` | 우리 글 문체 때문에 마크다운 검사가 잘못 무는 규칙을 끄는 설정 |
 | `.claude/commitlint.global.mjs` | 같은 결 — 커밋 제목 문체 때문에 잘못 무는 규칙을 끄는 설정 |
@@ -120,6 +120,9 @@ python        # 담긴 .py 만 — 결함 부류만 잰다. 파이썬이 없는 
 
 [commit-msg]
 commit-format # Conventional Commits + 제목 BOM
+
+[pre-push]
+repo-gates    # 저장소 검사 지도의 게이트 절 전부 — 분 단위라 커밋이 아니라 푸시 직전에 돈다
 ```
 
 - **파일이 없으면 아무것도 안 잰다** — 게이트를 아직 안 켠 저장소도 정당하다. 다만 러너가
