@@ -14,8 +14,9 @@
 #      커밋 게이트만은 서 있어야 한다. 까닭은 아래 §실행 순서 (#31)
 #   2. 진본을 홈과 형제 저장소로 민다 — **무엇이 어디로 가나의 표는 README 「배포 대상」이 든다**
 #      (여기 옮겨 적지 않는다 — 세 자리가 같은 표를 다른 낱말로 들다 갈렸다). 목록의 진본은 선언
-#      넷이다: deploy.repofiles.conf(저장소로 가는 파일) · deploy.seeds.conf(홈으로 폴더째) ·
-#      deploy.skills.local.conf(홈에서 빼는 스킬) · deploy.targets.d/*.conf(어느 저장소·어느 슬러그)
+#      셋이다: deploy.repofiles.conf(저장소로 가는 파일) · deploy.seeds.conf(홈으로 폴더째) ·
+#      deploy.skills.local.conf(홈에서 빼는 스킬). 어느 저장소·어느 슬러그로 가나는 선언이 아니라
+#      personal.conf 의 REPOS · ROOT 에서 **파생한다**(결정 0072)
 #   3. mcp-servers.json에 적힌 MCP 서버 등록
 #   4. 설치 — 걸음이 둘이다 (#43)
 #      4a. 전역 설치 한 번    claude-config 의 훅을 `--install-global` 로 불러 전역형 도구
@@ -66,75 +67,62 @@ $prunable = @()  # 제거 후보 (-Prune 없이는 세기만 한다)
 #   자리에서 낸다.
 $gateReport = @()  # 저장소마다 마지막 CI 한 줄 — 초록·빨강·못 쟀다
 
-# 배포 대상은 코드가 아니라 선언이 든다 — deploy.targets.d/*.conf.
-# 사람·PC·프로젝트 구성마다 다른 값이라 스크립트에 박지 않는다. 새 PC·새 저장소·
-# 새 사람(포크)은 그 폴더에 파일을 더할 뿐 이 스크립트를 고치지 않는다.
-# 실제로 존재하는 경로에만 배포하므로, 여러 PC 파일이 같이 있어도 된다.
-$memTargets = @{}          # memory/<이름> -> ~/.claude/projects/ 슬러그들
-$globalRuleTargets = @()   # 전역 배포본(규범·영역 룰)을 받을 저장소 루트들
-# 파일 하나가 PC 하나다. 한 파일에 몰지 않는 이유는 포크다 — 갈려 있으면 포크한 사람이
-# 제 파일만 두고 나머지를 지우면 되고, 그 뒤 upstream 머지가 남의 파일만 건드려 안 문다.
-$targetsDir   = Join-Path $src 'deploy.targets.d'
-$legacyFile   = Join-Path $src 'deploy.targets.conf'
-$targetsFiles = @()
-if (Test-Path $targetsDir) {
-    $targetsFiles += @(Get-ChildItem $targetsDir -Filter *.conf -File |
-        Sort-Object Name | ForEach-Object { $_.FullName })
-}
-# 옛 단일 파일도 읽는다 — 이 갈래 전에 포크한 사람의 값이 조용히 빠지지 않게.
-if (Test-Path $legacyFile) {
-    $targetsFiles += $legacyFile
-    $todo += 'deploy.targets.conf 가 아직 있음 — deploy.targets.d/<PC이름>.conf 로 옮기면 upstream 머지가 이 자리에서 안 문다'
-}
-if ($targetsFiles.Count -gt 0) {
-    foreach ($tf in $targetsFiles) {
-        $section = ''
-        foreach ($line in (Get-Content $tf -Encoding UTF8)) {
-            $line = ($line -replace '#.*$', '').Trim()
-            if (-not $line) { continue }
-            if ($line -match '^\[(.+)\]$') { $section = $Matches[1]; continue }
-            if ($section -eq 'repos') {
-                $globalRuleTargets += $line
-            } elseif ($section -like 'memory:*') {
-                $proj = $section.Substring('memory:'.Length)
-                if (-not $memTargets.ContainsKey($proj)) { $memTargets[$proj] = @() }
-                $memTargets[$proj] += $line
-            }
-        }
+# 배포 대상은 PC 마다 적지 않고 `personal.conf` 에서 **파생한다** (결정 0072 · 0019 를 대체).
+# ⚠ **왜 파생인가.** 옛 판은 PC 마다 `deploy.targets.d/<PC>.conf` 에 저장소 절대 경로와 메모리 슬러그를
+#   손으로 적었다. 네 장이 사용자 이름 한 칸만 달랐고, 그 한 칸이 다른 새 PC 에서는 저장소 배포 · 저장소
+#   설치 · **전역 설치** · 메모리가 통째로 안 섰다 — 게이트 도구(commitlint · markdownlint · lychee · ruff)가
+#   안 깔려 커밋 게이트가 「못 쟀다」로만 돌았다(2026-09-24 · 09-28). 저장소 목록과 자리는 이미
+#   `personal.conf`(REPOS · ROOT)가 들고 세션 훅이 그것으로 clone 하고 슬러그 폴더를 세운다 — 같은 사실의 사본이었다.
+# ⚠ **슬러그는 제품의 규칙대로 짓는다** — 윈도 경로에서 영숫자가 아닌 글자를 **글자마다** `-` 로.
+#   PowerShell 의 `-replace` 는 UTF-16 글자로 세므로 한글 한 자가 대시 하나다(세션 훅의 같은 규율 ·
+#   `C:\Users\김균한\repos` → `C--Users-----repos`). 메모리 폴더와 자리의 짝은 셋이다:
+#     memory/<REPOS 의 이름>/  → ROOT\<이름>
+#     memory/<이 저장소 이름>/ → 이 저장소 자리
+#     memory/global/           → ROOT (저장소들을 담은 폴더에서 연 세션)
+$memTargets = @{}          # memory/<이름> -> 그 메모리가 딸린 폴더 경로 (슬러그는 이 경로에서 짓는다)
+$globalRuleTargets = @()   # 저장소 배포본을 받고 설치 걸음이 도는 저장소 루트들
+function ConvertTo-Slug([string]$Path) { $Path -replace '[^A-Za-z0-9]', '-' }
+$personalConf = Join-Path $src 'personal.conf'
+$pc = @{}
+if (Test-Path $personalConf) {
+    foreach ($line in (Get-Content $personalConf -Encoding UTF8)) {
+        if ($line -match '^\s*([A-Z_]+)\s*=\s*(.*?)\s*$') { if (-not $pc.ContainsKey($Matches[1])) { $pc[$Matches[1]] = $Matches[2] } }
     }
 } else {
-    # 선언이 없어도 홈 배포는 돈다(막 포크한 사람의 첫 실행 형태). 침묵하지 않는다.
-    $todo += 'deploy.targets.d/ 에 *.conf 없음 — 저장소 배포본·프로젝트 메모리는 배포 안 됨. 그 폴더에 <PC이름>.conf 를 만들어 [repos]·[memory:<이름>] 를 채울 것'
+    $todo += 'personal.conf 가 없다 — 어느 저장소로 뿌릴지 몰라 저장소 배포본 · 설치 · 저장소 메모리가 안 간다. 씨앗의 personal.conf 를 채워 둔다'
 }
-# ⚠ **이 PC 에 걸린 저장소가 하나도 없으면 말한다.** 없는 경로를 조용히 건너뛰는 것은 여러 PC 파일이
-#   같이 사는 자리라 맞지만, **다 건너뛰면** 그것은 「이 PC 파일이 없다」는 뜻이다 — 그때 저장소 설치
-#   걸음도, 그에 딸린 전역 설치 걸음도, 프로젝트 메모리도 통째로 안 선다. 메모리 칸은 제 줄을 내지만
-#   저장소 칸은 아무 말이 없어, 새 PC 에서 재설치를 돌려도 저장소가 안 깔린 채 「바꿀 것」만 몇 개 뜬다
-#   (실측 2026-09-24 · 사용자 이름이 다른 새 집 PC).
-if ($targetsFiles.Count -gt 0 -and $globalRuleTargets.Count -gt 0 -and
-    -not ($globalRuleTargets | Where-Object { Test-Path $_ })) {
-    $todo += "deploy.targets.d/ 의 [repos] 가 이 PC($env:COMPUTERNAME)에 하나도 없다 — 저장소 설치·배포본·메모리가 통째로 안 선다. 그 폴더에 이 PC 파일을 만들어 [repos]·[memory:<이름>] 를 채울 것"
+# ROOT 의 `$HOME` · `~` 는 세션 훅이 푸는 것과 같이 푼다. 비면 세션 훅의 기본값과 같은 `~/repos`.
+$repoRoot = if ($pc['ROOT']) { $pc['ROOT'] } else { '$HOME/repos' }
+$repoRoot = ($repoRoot -replace '^\$HOME', $HOME -replace '^~', $HOME) -replace '/', '\'
+$repoNames = @(($pc['REPOS'] -split '\s+') | Where-Object { $_ })
+foreach ($n in $repoNames) {
+    $p = Join-Path $repoRoot $n
+    $globalRuleTargets += $p
+    $memTargets[$n] = $p
+}
+$memTargets[(Split-Path $src -Leaf)] = $src
+$memTargets['global'] = $repoRoot
+# ⚠ **적힌 저장소가 이 PC 에 하나도 없으면 말한다** — 그때 저장소 설치 걸음도, 그에 딸린 전역 설치 걸음도
+#   통째로 안 선다. clone 은 세션 훅(`--install`)이 personal.conf 의 REPO_URL 로 한다.
+if ($repoNames.Count -gt 0 -and -not ($globalRuleTargets | Where-Object { Test-Path $_ })) {
+    $todo += "personal.conf 의 REPOS 가 이 PC 의 $repoRoot 에 하나도 없다 — 저장소 설치 · 전역 설치가 안 선다. 세션 훅의 --install 이 REPO_URL 로 받는다"
+}
+# 옛 선언이 남았으면 말한다 — 더는 안 읽는데 남아 있으면 「고쳤는데 안 먹는다」로 사람을 헤매게 한다.
+if ((Test-Path (Join-Path $src 'deploy.targets.conf')) -or
+    @(Get-ChildItem (Join-Path $src 'deploy.targets.d') -Filter *.conf -File -ErrorAction SilentlyContinue).Count) {
+    $todo += 'deploy.targets.d/ · deploy.targets.conf 는 더 안 읽는다 — 대상은 personal.conf 의 REPOS · ROOT 에서 파생한다(결정 0072). 지운다'
 }
 
-# memory/<project>/ 가 이 PC에서 갈 곳. 이 PC 의 자리가 아니면 빈 배열.
-# 선언 파일은 PC 마다 한 장이지만 전부 합쳐 읽으므로, 슬러그 중 **이 PC 의 것**을 가려야 한다 —
-# 프로젝트 폴더가 이미 섰거나, 이 PC 의 그 저장소 경로에서 슬러그가 나오면 이 PC 의 것이다.
-# memory 하위 폴더는 아직 없을 수 있다(첫 배포).
-# ⚠ **폴더의 존재만으로는 부족하다** — 그 폴더는 Claude Code 가 그 저장소를 **주 작업 폴더로 한 번
-#   열어야** 선다. 곁에 붙이기만 하던 저장소(이 저장소가 흔히 그렇다)는 선언이 맞아도 폴더가 없어
-#   메모리가 안 간다. 그래서 **이 PC 에 그 저장소가 실제로 있고, 그 경로에서 지은 슬러그가 선언에
-#   있으면** 폴더가 없어도 이 PC 의 자리다 — 복사가 폴더를 세운다. 슬러그는 제품의 규칙대로 짓는다
-#   (영숫자 밖은 전부 `-`). 다른 PC 의 슬러그는 이 PC 의 경로에서 안 나오므로 거기 폴더를 안 만든다.
+# memory/<project>/ 가 이 PC 에서 갈 곳. 그 메모리가 딸린 폴더가 이 PC 에 없으면(적었지만 아직 안 받은
+# 저장소) 빈 배열 — 없는 저장소의 슬러그 폴더를 새로 세우지 않는다. 폴더가 있으면 슬러그 폴더가 아직
+# 없어도 간다(복사가 폴더를 세운다) — 곁에 붙이기만 하던 저장소는 Claude Code 가 그 폴더를 안 세운다.
+# ⚠ 슬러그는 **실제 경로 글자**에서 짓는다(`Resolve-Path`) — 제품도 그 글자로 짓는다.
 function Get-ProjectMemDst($project) {
-    $slugs = $memTargets[$project]
-    if (-not $slugs) { return @() }
-    $here = @()
-    if ($project -eq (Split-Path $src -Leaf)) { $here += $src }
-    $here += @($globalRuleTargets | Where-Object { (Split-Path $_ -Leaf) -eq $project -and (Test-Path $_) })
-    $mine = @($here | ForEach-Object { (Resolve-Path $_).Path -replace '[^A-Za-z0-9]', '-' })
-    @($slugs |
-        Where-Object   { (Test-Path (Join-Path $dst "projects\$_")) -or ($mine -contains $_) } |
-        ForEach-Object { Join-Path $dst "projects\$_\memory" })
+    $home_ = $memTargets[$project]
+    if (-not $home_) { return @() }
+    $slug = if (Test-Path $home_) { ConvertTo-Slug (Resolve-Path $home_).Path } else { ConvertTo-Slug $home_ }
+    if (-not (Test-Path $home_) -and -not (Test-Path (Join-Path $dst "projects\$slug"))) { return @() }
+    @(Join-Path $dst "projects\$slug\memory")
 }
 
 # PATH의 bash는 WSL일 수 있다(배포판 없으면 실패). git.exe 위치에서 Git Bash를 직접 찾는다.
@@ -224,7 +212,7 @@ if (Test-Path $memSrc) {
         $memDsts = Get-ProjectMemDst $proj.Name
         if ($memDsts.Count -eq 0) {
             # 조용히 넘어가지 않는다 — 배포된 줄 알고 있으면 어긋난 것을 나중에야 안다
-            $todo += "memory/$($proj.Name)/ 배포 안 됨 — 이 PC의 대상 폴더를 못 찾음. deploy.targets.d/ 의 [memory:$($proj.Name)] 확인"
+            $todo += "memory/$($proj.Name)/ 배포 안 됨 — 딸린 폴더가 이 PC 에 없다(personal.conf 의 REPOS · ROOT 로 짓는다 · 결정 0072)"
             continue
         }
         foreach ($f in (Get-ChildItem $proj.FullName -Filter *.md)) {
@@ -525,7 +513,10 @@ foreach ($repoRoot in $hookTargets) {
 #   보다 먼저 서야 배선이 걸 물건이 이미 깔려 있다. 실행은 계획 순서대로라, 고리가 도는
 #   동안 모아 두었다가 고리가 끝난 뒤 **전역 하나 + 저장소들** 차례로 붙인다.
 $installSteps = @()
-foreach ($repoRoot in $globalRuleTargets) {
+# ⚠ **이 저장소 자신도 설치 대상이다** — 파일 배포 대상은 아니지만(진본이라 덮을 것이 없다) 제 도구 선언과
+#   배선이 있다. 옛 판은 형제만 돌아, 이 저장소의 세션 훅(auto)이 남긴 실패 기록을 **다시 까는 손이 없었다** —
+#   auto 는 실패를 다시 안 깔고 알리기만 하므로 「지난 설치에 실패」가 세션마다 영영 떴다(2026-09-28 이 PC).
+foreach ($repoRoot in @(@($src) + $globalRuleTargets)) {
     $boot = Join-Path $repoRoot '.claude\hooks\session-start.sh'
     if (-not (Test-Path $boot)) { continue }
     if (-not $bash) {

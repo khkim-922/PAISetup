@@ -5,7 +5,7 @@
 개인 설정을 세우는 일과 배포가 안 선다.
 
 이 폴더가 하는 일은 프로젝트 메모리를 여러 PC 로 나르는 것이다. `memory/<프로젝트 이름>/*.md` 를
-두면 `deploy.ps1` 이 그 PC 의 Claude Code 프로젝트 메모리 자리로 뿌린다. 어느 PC 의 어느 자리로
-가나는 `deploy.targets.d/` 의 `[memory:<프로젝트 이름>]` 칸이 정한다.
+두면 `deploy.ps1` 이 그 PC 의 Claude Code 프로젝트 메모리 자리로 뿌린다. 자리는 계산한다 —
+`personal.conf` 의 `ROOT` 아래 그 이름의 저장소 경로에서 슬러그를 짓는다(`global` 은 `ROOT` 자신).
 
 이 README 처럼 폴더 바로 아래 둔 파일은 뿌리지 않는다 — 뿌리는 것은 하위 폴더 안의 `.md` 뿐이다.

@@ -1087,7 +1087,12 @@ deploy_personal() {   # deploy_personal auto|install
   fi
   # 윈도우에서 물리는 것들. 바꿀 일이 있으면 이 줄들을 고친다.
   git config --global init.defaultBranch main
-  git config --global core.autocrlf true      # 체크아웃은 CRLF, 저장소는 LF
+  # 줄끝 — **들일 때만 LF 로 누르고, 꺼낼 때는 바꾸지 않는다**(input). ⚠ `true` 였던 판은 체크아웃을 CRLF 로
+  #   풀어, 저장소가 LF 로 못박지 않은 파일이 작업 폴더에서 CRLF 가 되고 `git apply --index` 도 LF 를
+  #   못박은 파일까지 CRLF 로 썼다(#20) — 배포가 같은 파일을 매번 덮고, 바이트로 견주는 검사가 헛돌았다.
+  #   `input` 은 이미 CRLF 로 풀린 작업 파일도 들일 때 LF 로 견주어 「바뀌었다」로 안 세고, 새로 꺼내는
+  #   파일은 LF 로 둔다. CRLF 가 꼭 필요한 파일(`*.cmd`)은 저장소 `.gitattributes` 의 `eol=crlf` 가 든다.
+  git config --global core.autocrlf input
   git config --global core.longpaths true     # 260자 벽 — 깊은 나무에서 clone 이 진다
   git config --global credential.helper manager
   git config --global pull.rebase false
