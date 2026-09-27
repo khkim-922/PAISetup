@@ -20,8 +20,8 @@ MAP_CHECK="_check/map_check.py"
     exit 2
 }
 # 목록을 돌리는 손은 씨앗의 새 판에서 왔다 — 옛 사본은 그 낱말을 모르고 폴더 이름으로 읽어 2 로 나간다.
-grep -q -- '--run-gates' "$MAP_CHECK" || {
-    printf '· 저장소 게이트 — %s 가 옛 판이라 목록을 돌리는 손(--run-gates)이 없다.\n' "$MAP_CHECK" >&2
+grep -q -- '_push_skip' "$MAP_CHECK" || {
+    printf '· 저장소 게이트 — %s 가 옛 판이라 푸시 판(--push · --jobs)이 없다.\n' "$MAP_CHECK" >&2
     printf '  씨앗에서 다시 받는다:  python -X utf8 _check/borrowed_check.py --receive\n' >&2
     exit 2
 }
@@ -48,7 +48,10 @@ log="${TMPDIR:-/tmp}/repo-gates-$(basename "$PROJECT_DIR").log"
 }
 printf '· 저장소 게이트 — 선언된 목록을 돈다 (몇 분 걸린다 · 기록: %s)\n' "$log" >&2
 _t0=$(date +%s)
-"$PY" -X utf8 "$MAP_CHECK" --run-gates >"$log" 2>&1
+# 푸시 판(`--push`) — 저장소가 곁 선언 `[push_skip]` 에 뺀 무거운 게이트는 안 돈다(CI 는 전부 돈다).
+# 동시(`--jobs`) — 코어 수만큼. 켜기 전에 차례 판과 같은 판정이 나오는지 쟀다(결정 0073).
+_jobs=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
+"$PY" -X utf8 "$MAP_CHECK" --run-gates --push --jobs "$_jobs" >"$log" 2>&1
 rc=$?
 _dt=$(( $(date +%s) - _t0 ))
 

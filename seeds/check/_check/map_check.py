@@ -6,6 +6,7 @@
     python _check/map_check.py <폴더>     # 잴 `_check/` 를 지정 (병렬 작업나무)
     python _check/map_check.py --gates      # 게이트 절의 이름을 한 줄에 하나 — 줄끝은 늘 LF
     python _check/map_check.py --run-gates  # 그 목록을 차례로 돌리고 모아 판정한다
+    python _check/map_check.py --run-gates --push --jobs 4  # 푸시 직전 판 — 곁 선언 `[push_skip]` 을 빼고 넷씩 동시에
 
 **왜 태우는 자까지 여기 있나.** `--gates` 를 셸 루프에 먹이는 손 루프는 두 함정을 매번 새로
 연다 — ⓐ 윈도 파이썬은 표준출력의 `\n` 을 `\r\n` 으로 써서 `read -r` 이 이름 끝에 `\r` 을 붙이고,
@@ -14,6 +15,14 @@
 안 돌았는데 빨강이 안 선다(claude-config #103). 그래서 목록은 **플랫폼과 무관하게 LF** 로 내고,
 태우기는 **목록을 읽은 자가 파일이 있나를 먼저 묻고** 없으면 어긋남(1)으로 센다.
 ⚠ 바닥 수(「목록이 줄었나」)와 인자를 받는 게이트는 여기서 안 든다 — 그 저장소 CI 의 몫이다.
+
+**푸시 직전 판(`--push`)은 저장소가 뺀 게이트를 뺀다.** 한 바퀴를 통째로 돌면 분 단위라 푸시마다 물 수
+없다 — 무엇을 뺄지는 저장소가 곁 선언 `[push_skip]` 에 `이름 = 까닭` 으로 적는다(`[needs_arg]` 와 같은
+꼴). 여기 적지 않은 게이트는 푸시에서도 돈다 — 새 게이트가 조용히 빠지지 않게 빼는 쪽을 선언한다.
+CI 는 `--gates` 로 목록 전부를 받으므로 여기서 뺀 게이트도 거기서는 돈다.
+**`--jobs N` 은 게이트를 N 개씩 동시에 돌린다** — 출력은 게이트마다 받아 두었다가 목록 순서대로 낸다.
+게이트끼리 같은 자리를 쓰면(포트 · 고정 임시 파일) 서로를 깬다 — 켜기 전에 차례 판과 같은 판정이 나오는지
+재고 켠다.
 
 **왜 이 검사가 있나.** 이 폴더의 지도는 *어느 검사가 있고 무엇을 재나*를 든다. 그런데
 검사를 새로 짓거나 지우거나 이름을 바꿔도 **아무 데서도 안 터진다** — 검사는 그대로 돌고
@@ -65,12 +74,13 @@
   도나」 칸과 어느 갈래 절에 앉나는 여전히 사람이 실물을 읽고 적은 판단이다.
 
 ⚠ **어긋남 0 은 그 자체로 초록이 아니다.** 표를 못 읽어도 0 이 나온다. 그래서 아래 §2 가
-  **자기 이빨 아홉으로 이 판정이 실제로 무는지**를 같은 판에서 보이고(아뜰리에 결정 0112 의 자기 이빨
+  **자기 이빨 열로 이 판정이 실제로 무는지**를 같은 판에서 보이고(아뜰리에 결정 0112 의 자기 이빨
   규율), 양쪽이 빈손이거나 표식이 한 자리도 없으면 초록이 아니라 「못 쟀다」(2)로 나간다.
 
 토큰도 네트워크도 브라우저도 안 쓴다.
 """
 import ast
+import concurrent.futures
 import configparser
 import contextlib
 import functools
@@ -141,15 +151,25 @@ NEEDS_ARG = {}
 CONF = "map_check.conf"
 
 
-def _needs_arg(check_dir):
-    """곁 선언의 `[needs_arg]` — 없으면 빈 사전. 선언은 씨앗이 안 싣는다."""
+def _conf_section(check_dir, section):
+    """곁 선언의 한 절 — `이름 = 까닭`. 없으면 빈 사전. 선언은 씨앗이 안 싣는다."""
     conf = Path(check_dir) / CONF
     if not conf.is_file():
         return {}
     cp = configparser.ConfigParser(interpolation=None)
     cp.optionxform = str            # 파일 이름은 대소문자가 뜻이다
     cp.read(conf, encoding="utf-8")
-    return dict(cp["needs_arg"]) if cp.has_section("needs_arg") else {}
+    return dict(cp[section]) if cp.has_section(section) else {}
+
+
+def _needs_arg(check_dir):
+    """곁 선언의 `[needs_arg]` — 인자 없이 부르면 못 쟀다(2)로 나가는 게이트."""
+    return _conf_section(check_dir, "needs_arg")
+
+
+def _push_skip(check_dir):
+    """곁 선언의 `[push_skip]` — 푸시 직전 판에서만 빼는 게이트(CI 는 그대로 돈다). 까닭은 값이 든다."""
+    return {n: f"푸시에서 뺀다 — {why}" for n, why in _conf_section(check_dir, "push_skip").items()}
 
 
 def gate_rows(text):
@@ -213,19 +233,42 @@ def _run_one(check_dir, name):
                           env=_gate_env()).returncode
 
 
-def run_gates(check_dir, map_text, needs, run=_run_one):
+def _run_captured(check_dir, name):
+    """게이트 하나를 돌리고 출력을 받아 둔다 — 동시 판에서 출력이 섞이지 않게. (종료코드, 글)."""
+    p = subprocess.run([sys.executable, "-X", "utf8", str(Path(check_dir) / name)],
+                       cwd=str(Path(check_dir).parent), stdin=subprocess.DEVNULL,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=_gate_env())
+    return p.returncode, p.stdout.decode("utf-8", errors="replace")
+
+
+def run_gates(check_dir, map_text, needs, run=None, jobs=1):
     """게이트 절의 검사를 차례로 돌려 모은다 — (종료코드, 어긋남, 못 쟀다).
 
     ⚠ **돌리기 전에 파일이 있나를 묻는다.** 없는 이름을 파이썬에 넘기면 2 가 나와
       「못 쟀다」 경고로 섞인다 — 목록에 있는데 파일이 없는 것은 러너 사정이 아니라 어긋남이다.
     ⚠ **하나가 빨개도 나머지를 다 돈다** — 한 판에 무엇이 빨간지 다 보이게.
-    `run` 은 자기 이빨이 프로세스를 안 띄우고 갈래만 재려고 갈아 끼우는 자리다.
+    ⚠ **동시 판(`jobs` > 1)도 판정 줄은 목록 순서다** — 먼저 끝난 차례로 찍으면 같은 입력에 판마다 다른
+      글이 나 두 판을 견줄 수 없다.
+    `run` 은 자기 이빨이 프로세스를 안 띄우고 갈래만 재려고 갈아 끼우는 자리다 — 종료코드를 내거나
+    (종료코드, 글)을 낸다.
     """
+    if run is None:
+        run = _run_captured if jobs > 1 else _run_one
     rows = gate_rows(map_text)
     if not rows:
         print(f"⚠ 못 쟀다 — 지도에 「{GATE_SECTION}」 절의 표 줄이 하나도 없다.", file=sys.stderr)
         return EXIT_UNMEASURED, [], []
     bad, cant, ran, took = [], [], 0, []
+
+    def timed(name):
+        t0 = time.monotonic()
+        res = run(check_dir, name)
+        code, text = res if isinstance(res, tuple) else (res, "")
+        return code, text, time.monotonic() - t0
+
+    todo = [n for n in rows if n not in needs and (Path(check_dir) / n).is_file()]
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=jobs) if jobs > 1 else None
+    futures = {n: pool.submit(timed, n) for n in todo} if pool else {}
     for name in rows:
         if name in needs:
             print(f"— 뺐다: {name} · {needs[name]}", flush=True)
@@ -236,21 +279,25 @@ def run_gates(check_dir, map_text, needs, run=_run_one):
             print(f"❌ {name} — 목록에 있는데 파일이 없다 (어긋남)", flush=True)
             continue
         ran += 1
-        t0 = time.monotonic()
-        code = run(check_dir, name)
-        took.append((time.monotonic() - t0, name))
+        code, text, secs = futures[name].result() if pool else timed(name)
+        if text:
+            print(text.rstrip("\n"), flush=True)
+        took.append((secs, name))
         if code == EXIT_UNMEASURED:
             cant.append(name)
             print(f"⚠ {name} — 못 쟀다(2)", flush=True)
         elif code != EXIT_OK:
             bad.append(name)
             print(f"❌ {name} — 어긋났다(종료코드 {code})", flush=True)
+    if pool:
+        pool.shutdown()
     print(f"\n게이트 {len(rows)}개 · 돌았다 {ran}개 · 어긋남 {len(bad)}개 — {' '.join(bad) or '없음'}")
     print(f"         · 못 쟀다 {len(cant)}개 — {' '.join(cant) or '없음'}")
     # 한 바퀴가 분 단위라 **어디서 시간이 드나**를 같이 낸다 — 켤지 말지를 가르는 값이 이것이다.
     if took:
         slow = " · ".join(f"{n} {s:.0f}초" for s, n in sorted(took, reverse=True)[:3])
-        print(f"         · 모두 {sum(s for s, _ in took):.0f}초 — 오래 걸린 셋: {slow}")
+        print(f"         · 모두 {sum(s for s, _ in took):.0f}초 — 오래 걸린 셋: {slow}"
+              + (f" · 동시 {jobs}" if jobs > 1 else ""))
     # ⚠ **하나도 안 돌았으면 초록이 아니다** — 목록이 전부 `needs` 로 빠지면 어긋남도 못 쟀다도 0 이라
     #   「통과」로 읽힌다. 빈 목록을 못 쟀다로 내는 `gate_rows` 곁말과 같은 자리다.
     if not ran and not bad:
@@ -535,7 +582,16 @@ def _bend_cell(root):
 
 
 def main(argv):
-    args = [a for a in argv[1:] if a not in ("--write", "--gates", "--run-gates")]
+    jobs = 1
+    if "--jobs" in argv[1:]:
+        i = argv.index("--jobs")
+        try:
+            jobs = max(1, int(argv[i + 1]))
+        except (IndexError, ValueError):
+            print("⚠ 못 쟀다 — `--jobs` 뒤에 수가 없다", file=sys.stderr)
+            return EXIT_UNMEASURED
+        argv = argv[:i] + argv[i + 2:]
+    args = [a for a in argv[1:] if a not in ("--write", "--gates", "--run-gates", "--push")]
     write = "--write" in argv[1:]
     gates = "--gates" in argv[1:]
     run = "--run-gates" in argv[1:]
@@ -554,7 +610,9 @@ def main(argv):
         sys.stdout.reconfigure(newline="\n")
         return print_gates(map_text, needs)
     if run:
-        return run_gates(check_dir, map_text, needs)[0]
+        if "--push" in argv[1:]:
+            needs = {**needs, **_push_skip(check_dir)}
+        return run_gates(check_dir, map_text, needs, jobs=jobs)[0]
     files, rows = scan_files(check_dir), scan_map(map_text)
     marks = sum(1 for line in map_text.split("\n") if line.strip() == MARK)
 
@@ -686,6 +744,19 @@ def main(argv):
                    and got_none == (EXIT_UNMEASURED, [], []),
                    [f"실측 {got_whole} · {got_hole} · {got_none} — 기대 (0, [], []) · "
                     f"(1, [{gone_g!r}], [{cant_g!r}]) · (2, [], [])"])
+
+            # ㉷ 푸시 판 — 동시 판(`jobs`)이 차례 판과 같은 판정을 내나, `[push_skip]` 에 적은 게이트가 정말
+            #    안 도나. 곁 선언은 사본 나무에 심는다 — 진짜 저장소 선언을 안 건드린다.
+            (whole / CONF).write_text(f"[push_skip]\n{gone_g} = 시험\n", encoding="utf-8")
+            seen = []
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                got_par = run_gates(hole, map_text, needs, run=fake, jobs=3)
+                run_gates(whole, map_text, {**needs, **_push_skip(whole)},
+                          run=lambda _d, n: seen.append(n) or EXIT_OK)
+            report(f"㉷ 푸시 판 — 동시 판이 차례 판과 같고 · `[push_skip]` 의 게이트는 안 돈다 ({gone_g})",
+                   got_par == got_hole and gone_g not in seen and len(seen) == len(grows) - 1,
+                   [f"실측 동시 {got_par} · 차례 {got_hole} · 돈 것 {len(seen)}/{len(grows)} "
+                    f"· 뺀 것이 돌았나 {gone_g in seen}"])
         else:
             report("㉶ 태우기 — 게이트 절에 이름이 둘 이상 있어야 이빨이 선다", False,
                    [f"게이트 절 이름 {len(grows)}개 — 못 쟀다"])
@@ -698,7 +769,7 @@ def main(argv):
         print(f"\n❌ {len(bad)}건 실패 — {' · '.join(bad)}", file=sys.stderr)
         return EXIT_MISMATCH
     print(f"\n✅ 지도와 실물이 맞는다 — 판정 {len(passes())}건 "
-          f"(실물 {len(files)} ↔ 표 줄 {len(rows)} · 파생 칸 {len(seated)} · 자기 이빨 아홉 포함)")
+          f"(실물 {len(files)} ↔ 표 줄 {len(rows)} · 파생 칸 {len(seated)} · 자기 이빨 열 포함)")
     return EXIT_OK
 
 
