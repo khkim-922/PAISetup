@@ -4,6 +4,16 @@
 
     python _check/map_check.py            # 이 폴더
     python _check/map_check.py <폴더>     # 잴 `_check/` 를 지정 (병렬 작업나무)
+    python _check/map_check.py --gates      # 게이트 절의 이름을 한 줄에 하나 — 줄끝은 늘 LF
+    python _check/map_check.py --run-gates  # 그 목록을 차례로 돌리고 모아 판정한다
+
+**왜 태우는 자까지 여기 있나.** `--gates` 를 셸 루프에 먹이는 손 루프는 두 함정을 매번 새로
+연다 — ⓐ 윈도 파이썬은 표준출력의 `\n` 을 `\r\n` 으로 써서 `read -r` 이 이름 끝에 `\r` 을 붙이고,
+ⓑ 파이썬은 **파일을 못 열면 2 로 나간다** — 우리 종료코드 계약의 「못 쟀다」와 같은 숫자라
+「이름이 틀렸다 · 파일이 없다」가 「러너가 못 갖춘 자리」 경고로 둔갑한다. 그러면 게이트가 한 개도
+안 돌았는데 빨강이 안 선다(claude-config #103). 그래서 목록은 **플랫폼과 무관하게 LF** 로 내고,
+태우기는 **목록을 읽은 자가 파일이 있나를 먼저 묻고** 없으면 어긋남(1)으로 센다.
+⚠ 바닥 수(「목록이 줄었나」)와 인자를 받는 게이트는 여기서 안 든다 — 그 저장소 CI 의 몫이다.
 
 **왜 이 검사가 있나.** 이 폴더의 지도는 *어느 검사가 있고 무엇을 재나*를 든다. 그런데
 검사를 새로 짓거나 지우거나 이름을 바꿔도 **아무 데서도 안 터진다** — 검사는 그대로 돌고
@@ -55,14 +65,17 @@
   도나」 칸과 어느 갈래 절에 앉나는 여전히 사람이 실물을 읽고 적은 판단이다.
 
 ⚠ **어긋남 0 은 그 자체로 초록이 아니다.** 표를 못 읽어도 0 이 나온다. 그래서 아래 §2 가
-  **손댄 사본 일곱으로 이 판정이 실제로 무는지**를 같은 판에서 보이고(아뜰리에 결정 0112 의 자기 이빨
+  **자기 이빨 아홉으로 이 판정이 실제로 무는지**를 같은 판에서 보이고(아뜰리에 결정 0112 의 자기 이빨
   규율), 양쪽이 빈손이거나 표식이 한 자리도 없으면 초록이 아니라 「못 쟀다」(2)로 나간다.
 
 토큰도 네트워크도 브라우저도 안 쓴다.
 """
 import ast
 import configparser
+import contextlib
+import io
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -168,6 +181,48 @@ def print_gates(map_text, needs):
             continue
         print(name)
     return EXIT_OK
+
+
+def _run_one(check_dir, name):
+    """게이트 하나를 CI 처럼 돌린다 — 저장소 뿌리에서, 출력은 그대로 흘린다."""
+    return subprocess.run([sys.executable, "-X", "utf8", str(Path(check_dir) / name)],
+                          cwd=str(Path(check_dir).parent)).returncode
+
+
+def run_gates(check_dir, map_text, needs, run=_run_one):
+    """게이트 절의 검사를 차례로 돌려 모은다 — (종료코드, 어긋남, 못 쟀다).
+
+    ⚠ **돌리기 전에 파일이 있나를 묻는다.** 없는 이름을 파이썬에 넘기면 2 가 나와
+      「못 쟀다」 경고로 섞인다 — 목록에 있는데 파일이 없는 것은 러너 사정이 아니라 어긋남이다.
+    ⚠ **하나가 빨개도 나머지를 다 돈다** — 한 판에 무엇이 빨간지 다 보이게.
+    `run` 은 자기 이빨이 프로세스를 안 띄우고 갈래만 재려고 갈아 끼우는 자리다.
+    """
+    rows = gate_rows(map_text)
+    if not rows:
+        print(f"⚠ 못 쟀다 — 지도에 「{GATE_SECTION}」 절의 표 줄이 하나도 없다.", file=sys.stderr)
+        return EXIT_UNMEASURED, [], []
+    bad, cant, ran = [], [], 0
+    for name in rows:
+        if name in needs:
+            print(f"— 뺐다: {name} · {needs[name]}", flush=True)
+            continue
+        print(f"── {name}", flush=True)
+        if not (Path(check_dir) / name).is_file():
+            bad.append(name)
+            print(f"❌ {name} — 목록에 있는데 파일이 없다 (어긋남)", flush=True)
+            continue
+        ran += 1
+        code = run(check_dir, name)
+        if code == EXIT_UNMEASURED:
+            cant.append(name)
+            print(f"⚠ {name} — 못 쟀다(2)", flush=True)
+        elif code != EXIT_OK:
+            bad.append(name)
+            print(f"❌ {name} — 어긋났다(종료코드 {code})", flush=True)
+    print(f"\n게이트 {len(rows)}개 · 돌았다 {ran}개 · 어긋남 {len(bad)}개 — {' '.join(bad) or '없음'}")
+    print(f"         · 못 쟀다 {len(cant)}개 — {' '.join(cant) or '없음'}")
+    code = EXIT_MISMATCH if bad else EXIT_UNMEASURED if cant else EXIT_OK
+    return code, bad, cant
 
 
 def _row_head(line):
@@ -446,9 +501,10 @@ def _bend_cell(root):
 
 
 def main(argv):
-    args = [a for a in argv[1:] if a not in ("--write", "--gates")]
+    args = [a for a in argv[1:] if a not in ("--write", "--gates", "--run-gates")]
     write = "--write" in argv[1:]
     gates = "--gates" in argv[1:]
+    run = "--run-gates" in argv[1:]
     check_dir = Path(args[0]).resolve() if args else HERE
     map_path = check_dir / MAP
 
@@ -457,8 +513,14 @@ def main(argv):
         return EXIT_UNMEASURED
 
     map_text = map_path.read_text(encoding="utf-8")
+    needs = {**NEEDS_ARG, **_needs_arg(check_dir)}
     if gates:                      # 태울 목록만 내고 나간다 — 판정은 안 낸다
-        return print_gates(map_text, {**NEEDS_ARG, **_needs_arg(check_dir)})
+        # ⚠ **줄끝을 LF 로 못박는다** — 윈도 파이썬의 텍스트 표준출력은 `\n` 을 `\r\n` 으로
+        #   쓰고, 루프가 받은 이름 끝에 `\r` 이 붙어 게이트가 하나도 안 돈다(머리말 ⓐ).
+        sys.stdout.reconfigure(newline="\n")
+        return print_gates(map_text, needs)
+    if run:
+        return run_gates(check_dir, map_text, needs)[0]
     files, rows = scan_files(check_dir), scan_map(map_text)
     marks = sum(1 for line in map_text.split("\n") if line.strip() == MARK)
 
@@ -561,6 +623,34 @@ def main(argv):
         report(f"㉴ 칸을 손으로 고치면 빨강이다 ({touched})",
                bool(touched) and any(str(touched) in g for g in cell_gap(hand)[1]),
                [f"실측 {cell_gap(hand)[1] or '어긋남 없음'} — {touched} 가 서야 한다"])
+
+        # ㉵ 태울 목록의 줄끝 — 이 판의 파이썬이 실제로 낸 바이트를 잰다. 리눅스에서는 늘
+        #    초록이고, 이빨이 서는 자리는 윈도(머리말 ⓐ)다.
+        listed = subprocess.run([sys.executable, "-X", "utf8", str(Path(__file__).resolve()),
+                                 str(check_dir), "--gates"], capture_output=True)
+        crs = listed.stdout.count(b"\r")
+        report("㉵ `--gates` 목록 줄끝에 CR 이 없다 — 셸 루프가 이름을 그대로 받는다",
+               listed.returncode == EXIT_OK and bool(listed.stdout) and not crs,
+               [f"실측 종료코드 {listed.returncode} · {len(listed.stdout)}바이트 · CR {crs}개"])
+
+        # ㉶ 태우는 자의 갈래 — 목록에 있는데 파일이 없는 게이트는 「못 쟀다」가 아니라
+        #    어긋남이고, 2 를 낸 게이트는 못 쟀다로 남는다. 프로세스는 안 띄운다(`run` 갈아 끼움).
+        grows = [n for n in gate_rows(map_text) if n not in needs]
+        if len(grows) >= 2:
+            gone_g, cant_g = grows[0], grows[1]
+            fake = lambda _d, n: EXIT_UNMEASURED if n == cant_g else EXIT_OK  # noqa: E731
+            whole = _plant(rows | set(grows), map_text); tmps.append(whole)
+            hole = _plant((rows | set(grows)) - {gone_g}, map_text); tmps.append(hole)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                got_whole = run_gates(whole, map_text, needs, run=lambda _d, _n: EXIT_OK)
+                got_hole = run_gates(hole, map_text, needs, run=fake)
+            report("㉶ 태우기 — 다 있으면 초록 · 없는 파일은 어긋남 · 2 는 못 쟀다로 갈린다 "
+                   f"({gone_g} · {cant_g})",
+                   got_whole == (EXIT_OK, [], []) and got_hole == (EXIT_MISMATCH, [gone_g], [cant_g]),
+                   [f"실측 {got_whole} · {got_hole} — 기대 (0, [], []) · (1, [{gone_g!r}], [{cant_g!r}])"])
+        else:
+            report("㉶ 태우기 — 게이트 절에 이름이 둘 이상 있어야 이빨이 선다", False,
+                   [f"게이트 절 이름 {len(grows)}개 — 못 쟀다"])
     finally:
         for t in tmps:
             shutil.rmtree(t, ignore_errors=True)
@@ -570,7 +660,7 @@ def main(argv):
         print(f"\n❌ {len(bad)}건 실패 — {' · '.join(bad)}", file=sys.stderr)
         return EXIT_MISMATCH
     print(f"\n✅ 지도와 실물이 맞는다 — 판정 {len(passes())}건 "
-          f"(실물 {len(files)} ↔ 표 줄 {len(rows)} · 파생 칸 {len(seated)} · 자기 이빨 일곱 포함)")
+          f"(실물 {len(files)} ↔ 표 줄 {len(rows)} · 파생 칸 {len(seated)} · 자기 이빨 아홉 포함)")
     return EXIT_OK
 
 

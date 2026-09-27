@@ -9,7 +9,8 @@
     python -X utf8 _check/shell_exit_check.py <폴더>     # 잴 폴더를 지정 (병렬 작업나무)
 
 **경계가 이 폴더만이 아닌 까닭.** 0·1·2 를 **실제로** 내는 `.sh` 는 커밋 게이트 조각이고, 그것은
-`_check/` 가 아니라 `.githooks/gates.d/` 에 산다. 경계를 이 폴더로 두면 `.sh` 팔이 **0장을 재고
+`_check/` 가 아니라 설정 저장소(claude-config)의 `.githooks/gates.d/` 에 산다 — 받은 저장소의
+`.githooks/` 에는 그 조각을 찾아 부르는 몸통만 있다. 경계를 이 폴더로 두면 `.sh` 팔이 **0장을 재고
 초록**을 냈다(claude-config #45 ⑤ · 아뜰리에 실측). 그래서 이 자는 제 자리에서 위로 올라가
 `.githooks/` 를 찾아 그 아래 셸 원문을 같이 문다 — 확장자가 없는 몸통(`pre-commit`·`commit-msg`)은
 **첫 줄의 `#!`** 로 갈래를 정하고, 셔뱅도 확장자도 없는 선언(`gates.conf`)은 저절로 빠진다.
@@ -613,9 +614,9 @@ def hook_sources(check_dir):
     """`.githooks/` 아래의 셸 원문 — `[(파일, 갈래, 이름)]`. 뿌리를 못 찾으면 빈 목록.
 
     **이 폴더 밖인데도 드는 까닭** — 0·1·2 를 실제로 내는 `.sh` 는 커밋 게이트 조각이고, 그것이
-    `_check/` 가 아니라 `.githooks/gates.d/` 에 산다. 경계를 이 폴더로 두면 `.sh` 팔이 **0장을
-    재고 초록**을 낸다(claude-config #45 ⑤ · 아뜰리에 실측). 이름은 뿌리에서의 상대 자리로
-    적는다 — `encoding.sh` 하나로는 어느 `encoding.sh` 인지 안 갈린다.
+    `_check/` 가 아니라 설정 저장소(claude-config)의 `.githooks/gates.d/` 에 산다(받은 저장소에는
+    몸통만 있다). 경계를 이 폴더로 두면 `.sh` 팔이 **0장을 재고 초록**을 낸다(claude-config #45 ⑤ ·
+    아뜰리에 실측). 이름은 뿌리에서의 상대 자리로 적는다 — `encoding.sh` 하나로는 어느 `encoding.sh` 인지 안 갈린다.
     """
     root = hooks_root(check_dir)
     if root is None:

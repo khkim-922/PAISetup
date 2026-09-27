@@ -5,8 +5,8 @@
     python -X utf8 _check/live_probe.py thoughts [--provider gemini-posco]
     python -X utf8 _check/live_probe.py all [글 파일]
 
-글 파일을 안 주면 이 저장소의 `agents/lean.md`(한국어 산문 · 한 앱의 system 층 진본)를 검체로
-쓴다 — 프로브 자체를 시험할 때는 그것으로 족하다. 제 봉투의 결(HTML 섞임 등)로 재려면 파일을 준다.
+글 파일은 인자로 준다 — 씨앗은 기본 검체를 안 들고, 안 주면 `ratio`·`all` 이 「못 쟀다」로 나간다.
+한국어 산문 한 벌이면 프로브 자체를 시험하기에 족하고, 제 봉투의 결(HTML 섞임 등)로 재려면 그 글을 준다.
 
 재는 것 셋 — 씨앗 곁말의 「안 쟀다」와 하나씩 짝이다:
   ① **환산비**(자/토큰) — 준 글 파일을 system 층 하나로 실어 보내고 저쪽이 센 입력 토큰으로

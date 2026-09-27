@@ -77,6 +77,11 @@ CHANNELS = ("", "msedge", "chrome")
 
 
 def _runnable(path):
+    # ⚠ 윈도우에서는 확장자가 실행 가능성의 일부라 `X_OK` 가 아무것도 안 거른다 — 제 폴더 밖으로
+    #   떼어 낸 사본은 곁의 DLL 이 없어 `spawn` 이 ENOENT 로 진다. `PATHEXT` 가 낸 `…EXE` 도 받게
+    #   대소문자를 접는다. **결정 0175 의 손사본 셋 중 하나다 — 하나를 고치면 셋을 다 고친다.**
+    if os.name == "nt" and not path.lower().endswith(".exe"):
+        return False
     return os.path.isfile(path) and os.access(path, os.X_OK)   # isfile 은 링크를 따라간다 — 끊긴 링크가 여기서 걸린다
 
 

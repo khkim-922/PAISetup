@@ -75,7 +75,8 @@ const PATH_EXTS = process.platform === "win32"
   : [""];
 
 // ⚠ 윈도우에서는 확장자가 실행 가능성의 일부다 — `X_OK` 는 거기서 아무것도 안 거른다. 확장자 없는
-//   사본이 실행 파일로 집히면 `spawn` 이 ENOENT 로 진다. 쌍둥이 `scripts/pw-resolve.mjs` 와 같은 줄.
+//   사본이 실행 파일로 집히면 `spawn` 이 ENOENT 로 진다. 쌍둥이는 설정 저장소(claude-config)의
+//   `scripts/pw-resolve.mjs` 에 살고 같은 줄을 든다.
 function runnable(p) {
   if (process.platform === "win32" && !p.toLowerCase().endsWith(".exe")) return false;
   try {
