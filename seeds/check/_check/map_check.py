@@ -8,6 +8,7 @@
     python _check/map_check.py --run-gates  # 그 목록을 차례로 돌리고 모아 판정한다
     python _check/map_check.py --run-gates --push --jobs 4  # 푸시 직전 판 — 곁 선언 `[push_skip]` 을 빼고 넷씩 동시에
     python _check/map_check.py --run-gates --push --changed <파일>  # 고친 경로(한 줄에 하나)로 `[push_when]` 을 가린다
+    python _check/map_check.py --run-gates --only <이름> [--only <이름> …]  # 게이트 몇 개만 러너로 — 도장이 남는다
 
 **왜 태우는 자까지 여기 있나.** `--gates` 를 셸 루프에 먹이는 손 루프는 두 함정을 매번 새로
 연다 — ⓐ 윈도 파이썬은 표준출력의 `\n` 을 `\r\n` 으로 써서 `read -r` 이 이름 끝에 `\r` 을 붙이고,
@@ -25,13 +26,34 @@ CI 는 `--gates` 로 목록 전부를 받으므로 여기서 뺀 게이트도 �
 `이름 = 글롭 글롭 …` 으로 적으면, 고친 경로가 그 글롭에 하나도 안 걸린 게이트는 푸시에서 안 돈다.
 글롭은 저장소 뿌리 기준 `/` 경로에 `fnmatch` 로 대고, `*` 는 `/` 도 넘는다 — 넘치게 걸리는 쪽이
 모자라게 걸리는 쪽보다 싸다(더 도는 것은 시간이고, 덜 도는 것은 빨강을 CI 로 미룬다).
-⚠ **선언 없는 게이트는 늘 돈다** — 모르면 돈다. 빼는 쪽을 선언하던 `[push_skip]` 과 같은 까닭이다.
+⚠ **선언 없는 게이트는 경로로 안 빠진다** — 모르면 돈다. 빼는 쪽을 선언하던 `[push_skip]` 과 같은 까닭이다
+  (같은 입력으로 이미 초록을 봤으면 아래 도장이 따로 뺀다).
 ⚠ **`[push_skip]` 이 이긴다** — 거기 적은 게이트는 경로가 걸려도 푸시에서 안 돈다.
 ⚠ **경로를 못 받으면 가리지 않는다** — 목록이 없거나 비었거나 못 읽으면 푸시 판 전부를 돌고 까닭을 말한다.
 안 돌린 게이트는 판정 곁 「안 돌렸다」 줄에 이름으로 선다 — 초록은 돈 데까지다.
 **`--jobs N` 은 게이트를 N 개씩 동시에 돌린다** — 출력은 게이트마다 받아 두었다가 목록 순서대로 낸다.
 게이트끼리 같은 자리를 쓰면(포트 · 고정 임시 파일) 서로를 깬다 — 켜기 전에 차례 판과 같은 판정이 나오는지
-재고 켠다.
+재고 켠다. 같이 돌면 안 되는 게이트는 곁 선언 `[serial]` 에 `묶음 = 이름 이름 …` 으로 적는다 — 묶음 안은
+동시 판에서도 목록 순서대로 하나씩 돌고(한 게이트가 두 묶음에 들면 두 묶음이 한 줄로 이어진다), 나머지는
+그 곁에서 동시에 돈다. 프로세스 사이 공유 자원(클립보드 · 포트 · 골든)을 러너가 스스로는 모른다.
+⚠ **묶음은 러너 한 판 안에서만 선다** — 두 레인이 따로 러너를 부르면 서로를 모른다.
+
+**러너는 돈 게이트마다 판정 도장을 남긴다.** 「이름 · 입력 지문 · 판정 · 시각」을 저장소 git 공용 폴더 아래
+(`<git-common-dir>/map-check-stamps/`)에 적고 — 작업 나무(레인)끼리 같은 자리를 본다 — **푸시 판은 지문이
+같은 초록 도장이 있는 게이트를 안 돌리고** 「앞서 쟀다(언제 · 지문)」로 이름을 댄다. 입력 지문은 `_check/`
+아래 파일 전부(게이트 · 부품 · 곁 선언 · 검체 · 러너 자신) · `[push_when]` 글롭에 걸린 파일들(선언이 없으면
+작업 트리의 파일 전부) · 파이썬 판과 깔린 꾸러미의 해시다 — 파일은 저장소 꼭대기 기준의 추적 파일과 무시 안 된
+새 파일이고, 한 글자라도 바뀌면 다시 돈다.
+⚠ **지문 밖의 입력은 도장이 못 본다** — 선언이 게이트가 읽는 자리를 덜 덮으면(푸시에서 경로로 빠지는 것과 같은
+  크기) · 무시된 파일(`.env` · 생성물) · 저장소 밖의 파일. 그런 게이트는 선언을 넓히거나 `[push_fresh]` 에 적는다.
+  안전망은 같다 — CI 는 도장을 안 보고 전부 돈다.
+⚠ **돌기 전과 돈 뒤의 지문이 다르면 도장을 안 남긴다** — 도는 사이 입력이 바뀌었으면 그 초록이 어느 입력의
+  것인지 모른다. 트리에 파일을 쓰는 게이트는 그래서 도장이 안 선다(늘 돈다).
+⚠ **환경에 매인 게이트**(시계 · 네트워크 · 브라우저 · git 이력)는 입력 파일이 같아도 판정이 바뀐다 — 곁 선언
+  `[push_fresh]` 에 `이름 = 까닭` 으로 적으면 도장을 안 믿고 푸시에서 늘 새로 돈다. 도장은 이 기계의 `.git`
+  안에만 살므로 기계는 따로 지문에 안 넣는다.
+⚠ **검사 파일을 직접 부르면 도장이 없다** — 레인 · 세션이 게이트를 돌릴 때는 `--run-gates --only <이름>` 으로
+  러너를 거친다. git 밖에서 돌면(임시 나무) 도장을 안 남기고 안 읽는다.
 
 **왜 이 검사가 있나.** 이 폴더의 지도는 *어느 검사가 있고 무엇을 재나*를 든다. 그런데
 검사를 새로 짓거나 지우거나 이름을 바꿔도 **아무 데서도 안 터진다** — 검사는 그대로 돌고
@@ -94,12 +116,15 @@ import configparser
 import contextlib
 import fnmatch
 import functools
+import hashlib
 import io
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -187,6 +212,189 @@ def _push_when(check_dir):
     return {n: v.split() for n, v in _conf_section(check_dir, "push_when").items()}
 
 
+def _push_fresh(check_dir):
+    """곁 선언의 `[push_fresh]` — 환경에 매여 도장을 안 믿는 게이트(푸시에서 늘 새로 돈다). 까닭은 값이 든다."""
+    return _conf_section(check_dir, "push_fresh")
+
+
+def _serial(check_dir):
+    """곁 선언의 `[serial]` — 묶음 이름 → 같이 돌면 안 되는 게이트들(공백으로 가른다)."""
+    return {n: v.split() for n, v in _conf_section(check_dir, "serial").items()}
+
+
+def serial_chains(groups, names):
+    """동시 판에서 차례로 돌 사슬들 — 각 사슬은 `names` 순서대로 선다.
+
+    한 게이트가 두 묶음에 들면 두 묶음이 한 사슬로 이어진다 — 따로 두면 그 게이트를 사이에 두고 두 묶음의 다른
+    게이트가 동시에 돌 수 있다. `names` 에 한 개만 남은 묶음은 사슬이 아니다(같이 돌 짝이 없다).
+    """
+    chains = []
+    for members in groups.values():
+        got = set(members) & set(names)
+        for c in [c for c in chains if c & got]:
+            chains.remove(c)
+            got |= c
+        if got:
+            chains.append(got)
+    return [[n for n in names if n in c] for c in chains if len(c) > 1]
+
+
+# ── 판정 도장 — 같은 입력으로 이미 초록을 본 게이트를 푸시가 다시 안 돌린다
+
+STAMP_DIR = "map-check-stamps"  # git 공용 폴더 아래 도장 자리 — 작업 나무(레인)끼리 같은 자리를 본다
+STAMP_KEEP = 8                  # 게이트마다 남길 지문 수 — 레인 여럿이 서로의 도장을 밀어내지 않을 만큼
+STAMP_SCHEME = "2"              # 지문 짜임의 판 — 짜임을 바꾸면 올려서 옛 도장을 한꺼번에 무른다
+MISSING = "-"                   # 목록에는 있는데 없는 파일의 해시 자리 — 지워진 것도 입력이다
+
+
+def _git(root, *args):
+    """저장소 뿌리에서 git 한 번 — 표준출력 바이트, 못 부르거나 0 이 아니면 None. 훅이 내보낸 변수는 걷는다."""
+    try:
+        out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, env=_gate_env(), timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def tree_files(root):
+    """작업 트리의 파일 — 추적 파일과 무시 안 된 새 파일(`root` 기준 `/` 경로). git 이 아니면 None.
+
+    ⚠ `root` 는 저장소 꼭대기여야 한다 — 하위 폴더에서 부르면 그 폴더 안만, 그 폴더 기준 경로로 나와
+      뿌리 기준인 `[push_when]` 글롭이 한 파일에도 안 걸린다(지문이 입력을 못 보고 틀린 초록을 믿는다).
+    """
+    out = _git(root, "ls-files", "-z", "-co", "--exclude-standard")
+    return None if out is None else sorted({p for p in out.decode("utf-8", "replace").split("\0") if p})
+
+
+def stamp_home(root):
+    """도장 자리 — 저장소 git 공용 폴더 아래. git 이 아니면 None."""
+    out = _git(root, "rev-parse", "--git-common-dir")
+    if not out or not out.strip():
+        return None
+    common = Path(out.decode("utf-8", "replace").strip())
+    return (common if common.is_absolute() else Path(root) / common) / STAMP_DIR
+
+
+@functools.lru_cache(maxsize=None)
+def _interpreter():
+    """게이트가 도는 파이썬의 판과 깔린 꾸러미 — 작업 나무마다 다른 venv 가 같은 판 글자를 내도 갈린다."""
+    try:
+        from importlib import metadata
+        pkgs = sorted(f"{d.metadata.get('Name') or '?'}=={d.version}" for d in metadata.distributions())
+    except Exception:  # noqa: BLE001 — 꾸러미 목록을 못 내면 이 판만의 값을 넣어 도장이 안 맞게 한다
+        pkgs = [os.urandom(8).hex()]
+    return hashlib.sha256("\n".join([sys.version, *pkgs]).encode("utf-8")).hexdigest()
+
+
+class StampBook:
+    """러너 한 판의 도장 장부 — 지문을 내고(`snap`), 도장을 읽고(`green`) 쓴다(`put`).
+
+    도장은 **지문마다 파일 하나**(`<자리>/<게이트>/<지문>.json`)다 — 게이트마다 한 파일에 모으면 두 판이
+    읽고 고쳐 쓰는 사이 한쪽이 다른 쪽의 빨강을 지우고 옛 초록을 되살린다. 파일 하나를 통째로 갈아 끼우면
+    합치는 쓰기가 없다.
+    `root` 는 저장소 꼭대기(지문의 경로 기준)이고, `lister` 는 작업 트리의 파일 목록을 내는 자리다 — 본판은
+    `tree_files`(git), 자기 이빨은 임시 나무를 걷는 손을 끼운다.
+    """
+
+    def __init__(self, check_dir, when, home, root=None, lister=tree_files):
+        self.check_dir, self.when, self.home, self.lister = Path(check_dir), when, Path(home), lister
+        self.root = Path(root) if root else self.check_dir.parent
+
+    @classmethod
+    def here(cls, check_dir, when):
+        """이 저장소의 장부 — git 밖이거나 `_check/` 가 저장소 밖으로 풀리면 None(도장을 안 남기고 안 읽는다)."""
+        top = _git(Path(check_dir).parent, "rev-parse", "--show-toplevel")
+        home = stamp_home(Path(check_dir).parent)
+        if not top or not home:
+            return None
+        root = Path(top.decode("utf-8", "replace").strip()).resolve()
+        try:
+            Path(check_dir).resolve().relative_to(root)
+        except ValueError:
+            return None
+        return cls(check_dir, when, home, root=root)
+
+    def snap(self):
+        """지금 작업 트리로 지문을 내는 손 — 게이트 이름 → 지문. 목록을 못 뽑으면 None.
+
+        지문 = 게이트 이름 · 파이썬과 꾸러미 · `_check/` 아래 파일 전부(게이트 · 부품 · 곁 선언 · 검체 · 러너 자신) ·
+        `[push_when]` 글롭에 걸린 파일(선언이 없으면 작업 트리 전부)의 글자 해시.
+        ⚠ **글자를 못 잰 자리는 이 판만의 값으로 넣는다** — 디렉터리(서브모듈) · 권한 · 이름이 안 풀린 경로를
+          고정값으로 두면 그 속이 바뀌어도 지문이 같아 틀린 초록을 믿는다. 이 판만의 값이면 도장이 안 맞아 돈다.
+          없는 파일만 고정값(`MISSING`)이다 — 지워진 상태는 그 자체가 잴 수 있는 입력이다.
+        """
+        paths = self.lister(self.root)
+        if paths is None:
+            return None
+        cache = {}
+
+        def digest(p):
+            if p not in cache:
+                try:
+                    if "�" in p:
+                        raise OSError("이름이 utf-8 로 안 풀린다")
+                    cache[p] = hashlib.sha256((self.root / p).read_bytes()).hexdigest()
+                except FileNotFoundError:
+                    cache[p] = MISSING
+                except OSError:
+                    cache[p] = "못 잼 " + os.urandom(8).hex()
+            return cache[p]
+
+        cd = self.check_dir.resolve().relative_to(self.root.resolve()).as_posix()
+        own = [p for p in paths if p.startswith(f"{cd}/")]
+
+        def fp(name):
+            globs = self.when.get(name)
+            reach = [p for p in paths if any(fnmatch.fnmatchcase(p, g) for g in globs)] if globs else paths
+            h = hashlib.sha256(f"{STAMP_SCHEME}\n{name}\n{_interpreter()}\n".encode("utf-8"))
+            for p in sorted({f"{cd}/{name}", *own, *reach}):
+                h.update(f"{p}\0{digest(p)}\n".encode("utf-8"))
+            return h.hexdigest()
+        return fp
+
+    def green(self, name, fp):
+        """그 지문의 마지막 판정이 초록이면 그 도장, 아니면 None — 같은 지문에 뒤에 선 빨강이 앞의 초록을 덮는다."""
+        try:
+            rec = json.loads((self.home / name / f"{fp}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return rec if isinstance(rec, dict) and rec.get("code") == EXIT_OK else None
+
+    def put(self, name, fp, code, secs):
+        """도장 하나를 남긴다 — 게이트마다 최근 `STAMP_KEEP` 개 지문만 둔다. 못 쓰면 False(판정은 안 바꾼다)."""
+        box = self.home / name
+        tmp = box / f"{fp}.{os.getpid()}.tmp"
+        rec = {"code": code, "at": time.strftime("%Y-%m-%d %H:%M:%S"), "secs": round(secs, 1)}
+        try:
+            box.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps(rec, ensure_ascii=False), encoding="utf-8")
+            os.replace(tmp, box / f"{fp}.json")     # 반쯤 쓴 도장을 다른 판이 읽지 않게 통째로 갈아 끼운다
+        except OSError:
+            with contextlib.suppress(OSError):
+                tmp.unlink()
+            return False
+        # 오래된 지문은 치운다 — 치우다 지운 도장은 다시 돌 뿐이라 틀린 초록을 못 낸다
+        with contextlib.suppress(OSError):
+            for q in sorted(box.glob("*.json"), key=lambda q: q.stat().st_mtime)[:-STAMP_KEEP]:
+                q.unlink()
+        return True
+
+    def trusted(self, names, fresh):
+        """지문이 같은 초록 도장이 있는 게이트 → 「앞서 쟀다」 까닭. `fresh`(`[push_fresh]`)는 안 믿는다."""
+        fp = self.snap()
+        if fp is None:
+            return {}
+        out = {}
+        for name in names:
+            if name in fresh:
+                continue
+            now = fp(name)
+            rec = self.green(name, now)
+            if rec:
+                out[name] = f"초록 · {rec.get('at', '?')} · 지문 {now[:12]}"
+        return out
+
+
 def read_changed(path):
     """고친 경로 목록 — (경로들, 못 받은 까닭). 한 줄에 하나 · `\\` 는 `/` 로 편다 · 빈 줄은 버린다."""
     try:
@@ -230,7 +438,7 @@ def push_scope(rows, when, changed, skip, why=None):
             out[name] = f"고친 경로 밖 — 지키는 자리 {' '.join(globs)}"
     declared = sum(1 for n in rows if when.get(n) and n not in skip)
     return out, (f"고른 판 — 고친 경로 {len(changed)}개 · 경로 선언 {declared}개 중 걸림 {hit}개 · "
-                 f"선언 없는 게이트는 늘 돈다{tail}")
+                 f"선언 없는 게이트는 경로로 안 빠진다{tail}")
 
 
 def gate_rows(text):
@@ -302,7 +510,8 @@ def _run_captured(check_dir, name):
     return p.returncode, p.stdout.decode("utf-8", errors="replace")
 
 
-def run_gates(check_dir, map_text, needs, run=None, jobs=1, plan=None):
+def run_gates(check_dir, map_text, needs, run=None, jobs=1, plan=None,
+              book=None, known=None, serial=None, only=None):
     """게이트 절의 검사를 차례로 돌려 모은다 — (종료코드, 어긋남, 못 쟀다).
 
     ⚠ **돌리기 전에 파일이 있나를 묻는다.** 없는 이름을 파이썬에 넘기면 2 가 나와
@@ -313,16 +522,28 @@ def run_gates(check_dir, map_text, needs, run=None, jobs=1, plan=None):
     ⚠ **안 돌린 게이트는 모음 곁에 이름으로 선다** — `needs` 로 빠진 것(인자가 필요하다 · 푸시에서 뺀다 ·
       고친 경로 밖)을 「안 돌렸다」 한 줄에 모은다. 게이트마다의 까닭은 목록 자리의 「— 뺐다」 줄이 든다.
       `plan` 은 푸시 판이 무엇으로 골랐나를 말하는 한 줄이다(`push_scope`).
+    ⚠ **앞서 쟀다(`known`)는 판정이다** — 지문이 같은 초록 도장이 있어 안 돌린 게이트는 「안 돌렸다」가 아니라
+      「앞서 쟀다」 줄에 서고, 전부가 그것이어도 못 쟀다가 아니다. 「안 돌렸다」는 판정이 없는 자리다.
+    ⚠ **도장(`book`)은 돌기 전과 돈 뒤의 지문이 같을 때만 남긴다** — 판정이 어느 입력의 것인지 알 때만.
+    `serial` 은 `[serial]`(묶음 → 이름들) — 동시 판에서 묶음 안을 한 사슬로 차례로 돌린다(`serial_chains`).
+    `only` 는 돌릴 이름들 — 게이트 절에 없는 이름이 있으면 못 쟀다로 나간다(무엇을 돌렸나가 흐려진다).
     `run` 은 자기 이빨이 프로세스를 안 띄우고 갈래만 재려고 갈아 끼우는 자리다 — 종료코드를 내거나
     (종료코드, 글)을 낸다.
     """
     if run is None:
         run = _run_captured if jobs > 1 else _run_one
+    known = known or {}
     rows = gate_rows(map_text)
     if not rows:
         print(f"⚠ 못 쟀다 — 지도에 「{GATE_SECTION}」 절의 표 줄이 하나도 없다.", file=sys.stderr)
         return EXIT_UNMEASURED, [], []
-    bad, cant, ran, took = [], [], 0, []
+    if only:
+        stray = sorted(set(only) - set(rows))
+        if stray:
+            print(f"⚠ 못 쟀다 — `--only` 의 이름이 「{GATE_SECTION}」 절에 없다: {' '.join(stray)}", file=sys.stderr)
+            return EXIT_UNMEASURED, [], []
+        rows = [n for n in rows if n in only]
+    bad, cant, ran, took, verdicts = [], [], 0, [], {}
 
     def timed(name):
         t0 = time.monotonic()
@@ -330,12 +551,27 @@ def run_gates(check_dir, map_text, needs, run=None, jobs=1, plan=None):
         code, text = res if isinstance(res, tuple) else (res, "")
         return code, text, time.monotonic() - t0
 
-    todo = [n for n in rows if n not in needs and (Path(check_dir) / n).is_file()]
+    def batch(names):
+        return {n: timed(n) for n in names}     # 사슬 안은 하나씩 — 사전 짓기가 순서대로 돈다
+
+    todo = [n for n in rows if n not in needs and n not in known and (Path(check_dir) / n).is_file()]
+    before = book.snap() if book else None
+    fp0 = {n: before(n) for n in todo} if before else {}
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=jobs) if jobs > 1 else None
-    futures = {n: pool.submit(timed, n) for n in todo} if pool else {}
+    futures, chains = {}, []
+    if pool:
+        chains = serial_chains(serial or {}, todo)
+        chained = {n for c in chains for n in c}
+        tasks = chains + [[n] for n in todo if n not in chained]
+        for names in sorted(tasks, key=lambda c: todo.index(c[0])):
+            fut = pool.submit(batch, names)
+            futures.update({n: fut for n in names})
     for name in rows:
         if name in needs:
             print(f"— 뺐다: {name} · {needs[name]}", flush=True)
+            continue
+        if name in known:
+            print(f"— 앞서 쟀다: {name} · {known[name]}", flush=True)
             continue
         print(f"── {name}", flush=True)
         if not (Path(check_dir) / name).is_file():
@@ -343,10 +579,11 @@ def run_gates(check_dir, map_text, needs, run=None, jobs=1, plan=None):
             print(f"❌ {name} — 목록에 있는데 파일이 없다 (어긋남)", flush=True)
             continue
         ran += 1
-        code, text, secs = futures[name].result() if pool else timed(name)
+        code, text, secs = futures[name].result()[name] if pool else timed(name)
         if text:
             print(text.rstrip("\n"), flush=True)
         took.append((secs, name))
+        verdicts[name] = (code, secs)
         if code == EXIT_UNMEASURED:
             cant.append(name)
             print(f"⚠ {name} — 못 쟀다(2)", flush=True)
@@ -360,8 +597,23 @@ def run_gates(check_dir, map_text, needs, run=None, jobs=1, plan=None):
     skipped = [n for n in rows if n in needs]
     if skipped:
         print(f"         · 안 돌렸다 {len(skipped)}개 — {' '.join(skipped)}")
+    seen = [n for n in rows if n in known and n not in needs]
+    if seen:
+        print(f"         · 앞서 쟀다 {len(seen)}개 — {' '.join(seen)} (같은 입력의 초록 도장 · 까닭은 목록 자리)")
     if plan:
         print(f"         · {plan}")
+    if chains:
+        print(f"         · 차례로 돈 묶음 — {' · '.join(' → '.join(c) for c in chains)}")
+    if before and verdicts:
+        after = book.snap()
+        if after is None:
+            print(f"         · 도장 — 돈 뒤 지문을 못 내(파일 목록) 안 남겼다 {len(verdicts)}개")
+        else:
+            moved = [n for n in verdicts if after(n) != fp0[n]]
+            lost = [n for n in verdicts if n not in moved and not book.put(n, fp0[n], *verdicts[n])]
+            print(f"         · 도장 — 남겼다 {len(verdicts) - len(moved) - len(lost)}개"
+                  + (f" · 도는 사이 입력이 바뀌어 안 남겼다 {len(moved)}개: {' '.join(moved)}" if moved else "")
+                  + (f" · 못 썼다 {len(lost)}개: {' '.join(lost)}" if lost else ""))
     # 한 바퀴가 분 단위라 **어디서 시간이 드나**를 같이 낸다 — 켤지 말지를 가르는 값이 이것이다.
     if took:
         slow = " · ".join(f"{n} {s:.0f}초" for s, n in sorted(took, reverse=True)[:3])
@@ -369,9 +621,10 @@ def run_gates(check_dir, map_text, needs, run=None, jobs=1, plan=None):
               + (f" · 동시 {jobs}" if jobs > 1 else ""))
     # ⚠ **하나도 안 돌았으면 초록이 아니다** — 목록이 전부 `needs` 로 빠지면 어긋남도 못 쟀다도 0 이라
     #   「통과」로 읽힌다. 빈 목록을 못 쟀다로 내는 `gate_rows` 곁말과 같은 자리다.
-    if not ran and not bad:
+    #   앞서 쟀다(`seen`)는 판정이 있으므로 돈 것과 같이 센다.
+    if not ran and not bad and not seen:
         print("⚠ 못 쟀다 — 게이트 절의 이름이 전부 빠져 한 개도 안 돌았다", file=sys.stderr)
-    code = EXIT_MISMATCH if bad else EXIT_UNMEASURED if (cant or not ran) else EXIT_OK
+    code = EXIT_MISMATCH if bad else EXIT_UNMEASURED if (cant or not (ran or seen)) else EXIT_OK
     return code, bad, cant
 
 
@@ -668,10 +921,21 @@ def main(argv):
             return EXIT_UNMEASURED
         changed_path = argv[i + 1]
         argv = argv[:i] + argv[i + 2:]
+    only = []                       # `--run-gates` 에서만 읽는다 — 레인이 게이트 몇 개를 러너로 돌려 도장을 남기는 입구
+    while "--only" in argv[1:]:
+        i = argv.index("--only", 1)
+        if i + 1 >= len(argv):
+            print("⚠ 못 쟀다 — `--only` 뒤에 이름이 없다", file=sys.stderr)
+            return EXIT_UNMEASURED
+        only.append(argv[i + 1])
+        argv = argv[:i] + argv[i + 2:]
     args = [a for a in argv[1:] if a not in ("--write", "--gates", "--run-gates", "--push")]
     write = "--write" in argv[1:]
     gates = "--gates" in argv[1:]
     run = "--run-gates" in argv[1:]
+    if only and not run:
+        print("⚠ 못 쟀다 — `--only` 는 `--run-gates` 와 함께만 뜻이 선다", file=sys.stderr)
+        return EXIT_UNMEASURED
     check_dir = Path(args[0]).resolve() if args else HERE
     map_path = check_dir / MAP
 
@@ -687,13 +951,20 @@ def main(argv):
         sys.stdout.reconfigure(newline="\n")
         return print_gates(map_text, needs)
     if run:
-        plan = None
-        if "--push" in argv[1:]:
+        plan, known, when = None, {}, _push_when(check_dir)
+        book = StampBook.here(check_dir, when)
+        # `--only` 는 「이것을 돌려라」다 — 푸시 판의 거르기(`[push_skip]` · 경로 · 도장)를 안 탄다. 걸렀다가 빠지면
+        # 레인이 돌려 달라고 한 게이트가 말없이 안 돌고 도장도 안 선다.
+        if "--push" in argv[1:] and not only:
             needs = {**needs, **_push_skip(check_dir)}
             changed, why = read_changed(changed_path) if changed_path else (None, None)
-            scoped, plan = push_scope(gate_rows(map_text), _push_when(check_dir), changed, needs, why)
+            scoped, plan = push_scope(gate_rows(map_text), when, changed, needs, why)
             needs = {**needs, **scoped}
-        return run_gates(check_dir, map_text, needs, jobs=jobs, plan=plan)[0]
+            # 도장은 푸시 판에서만 믿는다 — CI 는 늘 전부 새로 돈다.
+            if book:
+                known = book.trusted([n for n in gate_rows(map_text) if n not in needs], _push_fresh(check_dir))
+        return run_gates(check_dir, map_text, needs, jobs=jobs, plan=plan, book=book, known=known,
+                         serial=_serial(check_dir), only=only)[0]
     files, rows = scan_files(check_dir), scan_map(map_text)
     marks = sum(1 for line in map_text.split("\n") if line.strip() == MARK)
 
@@ -881,6 +1152,125 @@ def main(argv):
                     f"· ⓔ {sorted(e_out)} {sorted(e2_out)} · 돈 것에 {free_g} {free_g in seen} · {doc_g} {doc_g in seen} "
                     f"· 이름 줄 {named} · 고른 판 줄 {planned} · 목록 {got_list} · 빈 목록 {empty_list} — "
                     f"기대 ⓐ [{doc_g!r}] · ⓒ 까닭은 [push_skip] 것 · 나머지 빈 · {free_g} 돌고 {doc_g} 안 돈다 · 두 줄 선다"])
+
+            # ㉹ 판정 도장 — 기대값은 도장의 뜻에서 온다: 돈 게이트는 도장을 남겨 같은 입력이면 믿히고(ⓐ),
+            #    `[push_fresh]` 는 안 믿고(ⓑ), 글롭 밖을 고치면 선언한 게이트만 믿히고 선언 없는 게이트(트리 전부)는
+            #    안 믿히고(ⓒ), 글롭 안을 고치면 안 믿히고(ⓓ), 같은 입력의 빨강이 앞의 초록을 덮고(ⓔ), 도는 사이
+            #    입력이 바뀐 게이트는 도장을 안 남기고 그렇다고 말하고(ⓕ), 게이트 파일을 고치면 안 믿히고(ⓖ),
+            #    전부 앞서 쟀으면 한 개도 안 돌고 초록이며 「앞서 쟀다」 줄이 선다(ⓗ). 도장 자리는 트리 밖 임시 폴더다.
+            sroot = Path(tempfile.mkdtemp(prefix="map-check-stamp-")); tmps.append(sroot)
+            shome = Path(tempfile.mkdtemp(prefix="map-check-home-")); tmps.append(shome)
+            sdir = sroot / "_check"
+            sdir.mkdir()
+            (sdir / MAP).write_text(map_text, encoding="utf-8")
+            for n in rows | set(grows):
+                (sdir / n).write_text("", encoding="utf-8")
+            (sroot / "docs").mkdir()
+            (sroot / "docs" / "a.md").write_text("문서\n", encoding="utf-8")
+            (sroot / "src").mkdir()
+
+            def walk(r):
+                return sorted(p.relative_to(r).as_posix() for p in Path(r).rglob("*") if p.is_file())
+
+            book = StampBook(sdir, {doc_g: ["docs/*.md"]}, shome, lister=walk)
+
+            def quiet(**kw):
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+                    got = run_gates(sdir, map_text, needs, book=book, **kw)
+                return got, buf.getvalue()
+
+            def trust(fresh=None):
+                return set(book.trusted(grows, fresh or {}))
+
+            quiet(run=lambda _d, _n: EXIT_OK)
+            s_a = trust() == set(grows)
+            s_b = free_g not in trust({free_g: "시험"}) and doc_g in trust({free_g: "시험"})
+            (sroot / "src" / "x.py").write_text("x\n", encoding="utf-8")
+            t_c = trust()
+            s_c = doc_g in t_c and free_g not in t_c
+            (sroot / "docs" / "a.md").write_text("문서를 고쳤다\n", encoding="utf-8")
+            s_d = doc_g not in trust()
+            # ⓔ 는 **같은 지문**에서 초록 → 빨강이어야 덮기를 잰다 — 새 지문의 빨강은 덮을 초록이 애초에 없다.
+            quiet(run=lambda _d, _n: EXIT_OK)
+            e_before = doc_g in trust()
+            quiet(run=lambda _d, n: EXIT_MISMATCH if n == doc_g else EXIT_OK)
+            t_e = trust()
+            s_e = e_before and doc_g not in t_e and free_g in t_e
+            (sroot / "src" / "z.py").write_text("z\n", encoding="utf-8")
+            fp_free = book.snap()(free_g)
+
+            def touch(_d, n):
+                if n == free_g:
+                    (sroot / "src" / "y.py").write_text("도는 사이에 썼다\n", encoding="utf-8")
+                return EXIT_OK
+            _, f_out = quiet(run=touch)
+            s_f = (book.green(free_g, fp_free) is None and doc_g in trust()
+                   and any("안 남겼다" in ln and free_g in ln.split(":", 1)[-1].split() for ln in f_out.splitlines()))
+            (sdir / doc_g).write_text("# 게이트를 고쳤다\n", encoding="utf-8")
+            s_g = doc_g not in trust()
+            h_seen = []
+            h_got, h_out = quiet(run=lambda _d, n: h_seen.append(n) or EXIT_OK, known={n: "시험" for n in grows})
+            s_h = (h_got == (EXIT_OK, [], []) and not h_seen
+                   and any(ln.startswith(f"         · 앞서 쟀다 {len(grows)}개 ") for ln in h_out.splitlines()))
+            # ⓘ `_check/` 가 꼭대기에 없는 저장소 — 글롭은 꼭대기 기준이라 지문도 꼭대기에서 재야 문서 변경을 본다.
+            ndir = sroot / "sub" / "_check"
+            ndir.mkdir(parents=True)
+            (ndir / doc_g).write_text("", encoding="utf-8")
+            nbook = StampBook(ndir, {doc_g: ["docs/*.md"]}, Path(tempfile.mkdtemp(prefix="map-check-home-")),
+                              root=sroot, lister=walk)
+            tmps.append(nbook.home)
+            n_fp = nbook.snap()(doc_g)
+            nbook.put(doc_g, n_fp, EXIT_OK, 0.0)
+            (sroot / "docs" / "a.md").write_text("꼭대기 문서를 또 고쳤다\n", encoding="utf-8")
+            s_i = nbook.green(doc_g, n_fp) is not None and not nbook.trusted([doc_g], {})
+            report(f"㉹ 판정 도장 — 같은 입력의 초록만 믿는다 · `[push_fresh]` 는 안 믿는다 · 글롭 밖/안 · 빨강이 덮는다 "
+                   f"· 도는 사이 바뀌면 안 남긴다 · 게이트 파일도 입력이다 · 전부 앞서 쟀으면 초록 · 꼭대기 기준 "
+                   f"({doc_g} · {free_g})",
+                   all((s_a, s_b, s_c, s_d, s_e, s_f, s_g, s_h, s_i)),
+                   [f"실측 ⓐ {s_a} · ⓑ {s_b} · ⓒ {s_c} · ⓓ {s_d} · ⓔ {s_e} · ⓕ {s_f} · ⓖ {s_g} · ⓗ {s_h} {h_got} "
+                    f"돈 것 {h_seen} · ⓘ {s_i} — 기대 전부 True"])
+
+            # ㉺ 차례 묶음 · `--only` — 이름은 시험 지도에서 짓는다(재는 것은 러너의 짜기이지 실물 지도가 아니다).
+            #    묶음 안(ⓐ)은 동시 판에서도 겹치지 않고, 묶음 밖 둘은 서로를 기다리는 장벽을 넘어야 하므로 동시에
+            #    돌아야만 초록이다(ⓑ — 전부를 차례로 돌리는 러너는 여기서 빨개진다). 두 묶음이 한 게이트를 나누면 한
+            #    사슬로 잇고(ⓒ), 판정은 차례 판과 같다(ⓓ). `--only` 는 그 이름만 돌리고, 절에 없는 이름은 못 쟀다다(ⓔ).
+            names = ["sa_check.py", "sb_check.py", "sc_check.py", "sd_check.py"]
+            smap = ("## 게이트 — 시험\n\n| 검사 | 무엇을 재나 |\n|---|---|\n"
+                    + "".join(f"| `{n}` | 시험. |\n" for n in names))
+            stree = _plant(set(names), smap); tmps.append(stree)
+            lock, inside, overlap = threading.Lock(), [], []
+            wall = threading.Barrier(2, timeout=10)
+
+            def sched(_d, n):
+                if n in names[:2]:
+                    with lock:
+                        inside.append(n)
+                        if len(inside) > 1:
+                            overlap.append(tuple(inside))
+                    time.sleep(0.2)
+                    with lock:
+                        inside.remove(n)
+                    return EXIT_OK
+                try:
+                    wall.wait()
+                except threading.BrokenBarrierError:
+                    return EXIT_MISMATCH
+                return EXIT_OK
+            s_buf, o_seen = io.StringIO(), []
+            with contextlib.redirect_stdout(s_buf), contextlib.redirect_stderr(io.StringIO()):
+                s_got = run_gates(stree, smap, {}, run=sched, jobs=4, serial={"clip": names[:2]})
+                o_got = run_gates(stree, smap, {}, run=lambda _d, n: o_seen.append(n) or EXIT_OK, only=[names[2]])
+                o_bad = run_gates(stree, smap, {}, run=lambda _d, _n: EXIT_OK, only=["zzz_not_a_gate.py"])
+            chained = serial_chains({"x": ["a", "b"], "y": ["b", "e"], "z": ["q"]}, ["a", "b", "c", "e", "q"])
+            s_line = any(ln.startswith("         · 차례로 돈 묶음 — ") and " → ".join(names[:2]) in ln
+                         for ln in s_buf.getvalue().splitlines())
+            report("㉺ 차례 묶음 — 묶음 안은 안 겹치고 밖은 동시에 돈다 · 겹친 묶음은 한 사슬 · `--only` 는 그 이름만",
+                   (not overlap and s_got == (EXIT_OK, [], []) and s_line and chained == [["a", "b", "e"]]
+                    and o_seen == [names[2]] and o_got == (EXIT_OK, [], []) and o_bad[0] == EXIT_UNMEASURED),
+                   [f"실측 겹침 {overlap} · 판정 {s_got} · 줄 {s_line} · 사슬 {chained} · only 돈 것 {o_seen} {o_got} "
+                    f"· 없는 이름 {o_bad} — 기대 겹침 없음 · (0, [], []) · 줄 선다 · [['a', 'b', 'e']] · "
+                    f"[{names[2]!r}] · 없는 이름은 2"])
         else:
             report("㉶ 태우기 — 게이트 절에 이름이 둘 이상 있어야 이빨이 선다", False,
                    [f"게이트 절 이름 {len(grows)}개 — 못 쟀다"])
