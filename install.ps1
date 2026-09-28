@@ -3085,6 +3085,31 @@ if (-not $WithPersonalConfig) {
                        -Ledger (Join-Path $homeDir '.paisetup-skills') -BackupRoot (Join-Path $homeDir 'backups')
 }
 
+# ── 걷힌 회사 기준 룰을 홈에서 걷는다 ─────────────────────────────────────────
+# ⚠ **왜 있나.** 1.30.0 이 회사 코딩 기준에서 구운 룰 `futurem-*.md` 를 영역 룰로 깔았는데, 그 뒤 판은
+#   그것을 스킬 `inhouse-app` 으로 바꿨다(claude-config 결정 0075). 위 룰 복사는 묶음에 없는 파일을 안
+#   지우므로 한 번 깐 사람 홈에 옛 룰이 영영 남아 사내 앱의 폴더를 만질 때마다 실린다.
+# ⚠ **구운 표식이 머리에 있는 것만 걷는다** — 같은 이름을 사람이 손수 두었을 수 있다. 표식은 굽는 자가
+#   머리말 바로 뒤 주석에 박던 문장이다. 공통 규약 룰은 머리말의 경로가 여섯 줄이라 표식이 11번째 줄에
+#   선다 — 앞 몇 줄만 읽으면 그 한 장이 안 걷힌다(실측). 그래서 넉넉히 20줄을 본다.
+# ⚠ **[6/8] 을 안 켠 판에서도 돈다** — 옛 판에서 켜고 깐 사람이 이번에 끄고 돌려도 걷혀야 한다.
+# ⚠ **지우지 않고 옮긴다** — `~/.claude/backups/install-rules-<시각>/`. 스킬 걷기와 같은 까닭이다.
+$retiredRuleMark = '생성물 — scripts/pull-vibecoding.sh 가 씨앗의'
+$ruleHome = Join-Path $homeDir 'rules'
+$staleRules = @(Get-ChildItem -LiteralPath $ruleHome -Filter 'futurem-*.md' -File -ErrorAction SilentlyContinue |
+  Where-Object {
+    -not (Test-Path -LiteralPath (Join-Path $Here ".claude\rules.global\$($_.Name)")) -and
+    (@(Get-Content -LiteralPath $_.FullName -TotalCount 20 -Encoding UTF8 -ErrorAction SilentlyContinue) -join "`n").Contains($retiredRuleMark)
+  })
+if ($staleRules.Count -gt 0) {
+  $bk = Join-Path (Join-Path $homeDir 'backups') ("install-rules-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+  New-Item -ItemType Directory -Path $bk -Force | Out-Null
+  foreach ($r in $staleRules) {
+    Move-Item -LiteralPath $r.FullName -Destination (Join-Path $bk $r.Name) -Force
+    Write-Host "  룰 $($r.Name) — 스킬로 바뀌어 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
+  }
+}
+
 Write-Elapsed '[6/8] 개인 규범·룰·스킬'
 # ── 설정 저장소의 주소와 자리 — 7 칸(비켜설 자리를 묻는다)과 8 칸(받는다)이 같이 쓴다 ──────────
 # ⚠ **자리를 짓는 자를 한 벌로 둔다.** 7 칸이 저장소를 찾는 자리와 8 칸이 clone 하는 자리가
@@ -3141,12 +3166,11 @@ $envAssets = @(
   #   골든이 이것이다. 켜는 칸으로 두면 안 켠 사람은 그 칸을 채울 길을 못 찾는다.
   @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'; Mirror = $true
      Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
-  # 회사가 쓴 사내 FastAPI 코딩 기준 — 영역 룰 `futurem-*.md`([6/8] 을 켠 사람)가 이 자리를 가리킨다.
-  # ⚠ **룰을 안 켠 사람에게도 깐다.** 새 앱을 처음 세우는 순간에는 걸릴 파일이 없어 룰이 못 들고,
-  #   그 자리는 사내 환경 문서(`posco/README.md`)와 이 씨앗의 `SEED.md` 좌표가 맡는다 — 그 좌표가
-  #   가리킬 자리가 홈에 서야 한다(claude-config 결정 0074).
+  # 회사가 쓴 사내 FastAPI 코딩 기준 — 스킬 `inhouse-app`([6/8] 을 켠 사람)이 이 자리의 장을 연다.
+  # ⚠ **스킬을 안 켠 사람에게도 깐다.** 사내 환경 문서(`posco/README.md`)와 이 씨앗의 `SEED.md` 가 이
+  #   자리를 가리키므로, 그 좌표가 가리킬 자리가 홈에 서야 한다(claude-config 결정 0074 · 0075).
   @{ From = Join-Path $Here 'seeds\vibecoding'; To = Join-Path $homeDir 'seeds\vibecoding'; Mirror = $true
-     Name = '사내 코딩 기준 씨앗'; Desc = '사내 FastAPI 앱을 짤 때 룰이 가리키는 회사 기준 본문 — 들머리는 SEED.md' }
+     Name = '사내 코딩 기준 씨앗'; Desc = '사내 앱을 회사 방식으로 배포할 때 스킬 inhouse-app 이 여는 회사 기준 본문 — 들머리는 SEED.md' }
 )
 # 설정 저장소가 홈으로 미는 자리 — `seeds\gateway` 꼴의 홈 상대 경로 → 그것을 든 저장소.
 # 저장소 자리는 8 칸이 받는 자리와 같은 함수가 댄다(`Get-ConfigRepoDir`).

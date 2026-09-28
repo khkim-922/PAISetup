@@ -17,42 +17,20 @@
 | 무엇을 고치려는가 | 어디서 |
 |---|---|
 | 회사 기준 자체가 틀렸다 | 회사에 말한다 — 우리가 그 저장소의 주인이 아니다 |
-| 우리 세션에 어떻게 걸리나 | 굽는 자 `scripts/pull-vibecoding.sh` — 룰은 그 자가 굽는 생성물이다 |
+| 우리 세션이 이 기준을 어떻게 쓰나 | 스킬 `inhouse-app` |
 
-## 어떻게 우리 세션에 걸리나
+## 우리 세션은 스킬로 연다 — 자동으로 실리는 룰은 없다
 
-**본문은 여기 살고, 걸리는 자는 룰층에 있다.** 둘을 가른 까닭이 있다 — 회사 문서는 Continue
-확장의 문법(`alwaysApply` · `globs`)으로 쓰여 있어서 Claude Code 가 그대로는 안 읽는다.
-뽑는 자가 그 문법만 우리 룰층의 `paths` 로 바꿔 `continue-rules/` 의 규약마다 룰 한 장을
-**굽는다** — 본문은 회사 원본 그대로다. 설치본에서는 `~/.claude/rules/futurem-*.md` 에 선다
-(진본 자리는 claude-config 의 `.claude/rules.global/`).
+**이 기준은 사내 앱의 어려운 문제에 답이 없다.** 사내 LLM 게이트웨이(스트림 시한 · 조용히 삼켜지는 필드 · 없는
+모델 · 사내 인증서)는 한 줄도 안 다루고, 문자 그대로 따르면 틀리는 자리가 있다(설정 저장소
+`docs/research/2026-09-28-company-standard/`). 값이 있는 것은 SSO · 권한 · 사내 배포 · DB 발급 · 메일 · 문자 ·
+DataBridge 처럼 **회사 방식으로 배포하는 앱**에서다.
 
-| 룰 | 원본 규약 | 언제 걸리나 |
-|---|---|---|
-| `futurem-vibe-coding-standards.md` | `vibe-coding-standards.md` | `main.py` · 레이어 폴더 넷 · `.futurem-prompts/` 를 만질 때 |
-| `futurem-routers.md` | `futurem-routers.md` | `routers/` 를 만질 때 |
-| `futurem-services.md` | `futurem-services.md` | `services/` 를 만질 때 |
-| `futurem-repositories.md` | `futurem-repositories.md` | `repositories/` 를 만질 때 |
-| `futurem-adapters.md` | `futurem-adapters.md` | `adapters/` 를 만질 때 |
+그래서 세션은 스킬 `inhouse-app` 으로 이 폴더를 연다. 스킬은 우리 게이트웨이 실측과 구현에서 배운 것을 먼저 들고,
+회사 방식으로 배포하는 앱일 때만 하려는 일에 맞는 장을 이 폴더에서 콕 집어 열게 한다. 그대로 따르면 틀리는 자리(SSO
+콜백 경로 · 인증서 검증 끄기 기본값 · 깔리지 않는 고정 판 등)도 스킬이 덮어쓴다.
 
-**손으로 옮기지 않고 굽는다.** 손으로 옮긴 룰은 회사가 원본을 고친 날 씨앗만 새 판이 되고 룰은
-옛 판에 남는데, 파일은 멀쩡히 읽히므로 그 낡음은 조용하다. 사람이 정한 것은 공통 규약
-(`alwaysApply: true`)을 어느 경로로 좁히나 하나뿐이고, 그 값은 뽑는 자가 든다.
-
-⚠ **걸리는 경로는 흔한 이름이다** — `main.py` · `services/` 는 사내 앱이 아닌 프로젝트에도 있다.
-그래서 구운 룰은 머리에 「사내 앱이 아니면 무시한다」와 그 표지를 같이 든다.
-
-⚠ **파일이 아직 없는 자리는 룰이 못 든다.** 새 앱을 처음 세우는 순간에는 걸릴 파일이 없어서,
-그 자리는 이 문서와 `posco/README.md` 의 좌표가 맡는다 — 사내 앱을 시작할 때 여기를 먼저 읽는다.
-
-## 새 사내 앱을 시작할 때
-
-1. 이 폴더의 `README.md`(회사가 쓴 것)와 `continue-rules/vibe-coding-standards.md` 를 읽는다 —
-   고정된 기술 스택과 금지 목록이 거기 있다.
-2. 구조를 세운다 — `router → service → repository` 와 `adapters/`. 그 폴더가 생기는 순간부터
-   룰 다섯이 자동으로 걸린다.
-3. 하려는 일에 맞는 상세 가이드를 `docs/guides/` 에서 고른다. 좌표 표는
-   `continue-rules/vibe-coding-standards.md` 끝(「상세 가이드 참조」)에 있다.
+사내 앱을 시작할 때는 이 폴더보다 그 스킬을 먼저 부른다.
 
 ⚠ **설치본에는 SSO 참고 문서 둘이 없다** — `docs/references/futurem-sso-guide.md` ·
 `futurem-sso-auth-guide-ko.md`. 사내 SSO 서버 주소가 본문에 들어 공개 배포본에 안 싣는다(회사가
@@ -66,7 +44,7 @@
 
 **원본의 설치기(`install.bat` · `install.ps1`)는 안 뽑는다.** 그 둘은 프로젝트 폴더에
 `.continue/rules/` 를 까는 자라 VS Code 의 Continue 확장을 쓰는 자리에서만 뜻이 있고, Claude
-Code 세션에는 아무 영향이 없다(우리 쪽은 위의 룰 다섯이 맡는다). 이 씨앗이 들이는 것은
+Code 세션에는 아무 영향이 없다(우리 쪽은 스킬 `inhouse-app` 이 맡는다). 이 씨앗이 들이는 것은
 **기준 본문**이다.
 
 그리고 담을 수도 없다 — 회사 `install.ps1` 은 한글이 가득한데 BOM 이 없어서, 담긴 판에 BOM 을
