@@ -121,7 +121,7 @@ python        # 담긴 .py 만 — 결함 부류만 잰다. 파이썬이 없는 
 commit-format # Conventional Commits + 제목 BOM
 
 [pre-push]
-repo-gates    # 저장소 검사 지도의 게이트 절 전부 — 분 단위라 커밋이 아니라 푸시 직전에 돈다
+repo-gates    # 저장소 검사 지도의 게이트 절 — 분 단위라 커밋이 아니라 푸시 직전에 돈다(뺄 것 · 고친 경로로 고르기는 곁 map_check.conf)
 ```
 
 - **파일이 없으면 아무것도 안 잰다** — 게이트를 아직 안 켠 저장소도 정당하다. 다만 러너가

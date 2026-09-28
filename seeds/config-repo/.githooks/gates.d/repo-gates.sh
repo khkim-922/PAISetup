@@ -12,6 +12,9 @@
 #   푸시마다 임시 파일이 쌓이지 않는다.
 # ⚠ **재는 것은 작업 트리다.** 커밋 안 한 변경이 있으면 미는 커밋과 다른 판을 잰 것이라 그렇다고 말한다.
 # ⚠ **서버를 띄워야 도는 화면 검사는 이 목록 밖이다** — 목록이 게이트 절만 들고, 원격 CI 에도 없다.
+# ⚠ **고친 경로를 넘긴다** — 러너가 곁 선언 `[push_when]` 으로 그 경로를 지키는 게이트만 고른다(결정 0076).
+#   경로는 올라갈 가지(upstream)와 갈라진 자리부터 **작업 트리**까지다 — 재는 것이 작업 트리라 고르는 것도
+#   거기에 맞춘다. 올라갈 가지가 없으면(처음 미는 가지) 경로를 안 넘기고 푸시 판 전부를 돈다고 말한다.
 set -u
 
 MAP_CHECK="_check/map_check.py"
@@ -51,12 +54,26 @@ _t0=$(date +%s)
 # 푸시 판(`--push`) — 저장소가 곁 선언 `[push_skip]` 에 뺀 무거운 게이트는 안 돈다(CI 는 전부 돈다).
 # 동시(`--jobs`) — 코어 수만큼. 켜기 전에 차례 판과 같은 판정이 나오는지 쟀다(결정 0073).
 _jobs=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
-"$PY" -X utf8 "$MAP_CHECK" --run-gates --push --jobs "$_jobs" >"$log" 2>&1
+# 고친 경로 — 옮긴 파일은 옛 자리와 새 자리가 둘 다 서야 한다(`--no-renames`). 옮긴 것으로 접으면 새 이름만
+# 남아, 떠난 폴더를 지키는 게이트가 빠진다. 경로 글자는 인용 없이 그대로 낸다(`core.quotePath=false`).
+chg="${TMPDIR:-/tmp}/repo-gates-$(basename "$PROJECT_DIR").changed"
+set -- --run-gates --push --jobs "$_jobs"
+if ! grep -q -- '_push_when' "$MAP_CHECK"; then
+    printf '· 저장소 게이트 — %s 가 경로로 고르기 전 판이라 푸시 판 전부를 돈다(씨앗에서 다시 받는다).\n' "$MAP_CHECK" >&2
+elif ! _base=$(git merge-base '@{upstream}' HEAD 2>/dev/null); then
+    printf '· 저장소 게이트 — 올라갈 가지(upstream)가 없어 고친 경로를 못 가린다. 푸시 판 전부를 돈다.\n' >&2
+elif ! git -c core.quotePath=false diff --name-only --no-renames "$_base" >"$chg" 2>/dev/null; then
+    printf '· 저장소 게이트 — 고친 경로를 못 뽑았다(git diff). 푸시 판 전부를 돈다.\n' >&2
+else
+    set -- "$@" --changed "$chg"
+fi
+"$PY" -X utf8 "$MAP_CHECK" "$@" >"$log" 2>&1
 rc=$?
 _dt=$(( $(date +%s) - _t0 ))
 
-# 러너가 스스로 낸 판정 줄만 올린다 — 어긋남 · 못 쟀다 · 모음 두 줄. 줄 꼴은 러너(`run_gates`)가 든다.
-grep -E '^(❌ |⚠ .* — 못 쟀다|⚠ 못 쟀다 — |게이트 [0-9]+개 · |[[:space:]]+· 못 쟀다 [0-9]+개|[[:space:]]+· 모두 [0-9]+초)' "$log" >&2
+# 러너가 스스로 낸 판정 줄만 올린다 — 어긋남 · 못 쟀다 · 모음 줄(안 돌린 이름 · 무엇으로 골랐나 포함).
+# 줄 꼴은 러너(`run_gates`)가 든다.
+grep -E '^(❌ |⚠ .* — 못 쟀다|⚠ 못 쟀다 — |게이트 [0-9]+개 · |[[:space:]]+· (못 쟀다|안 돌렸다) [0-9]+개|[[:space:]]+· 고른 판 — |[[:space:]]+· 모두 [0-9]+초)' "$log" >&2
 case "$rc" in
     0) printf '· 저장소 게이트 — 통과 (%s초)\n' "$_dt" >&2
        exit 0 ;;

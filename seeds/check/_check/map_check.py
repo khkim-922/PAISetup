@@ -7,6 +7,7 @@
     python _check/map_check.py --gates      # 게이트 절의 이름을 한 줄에 하나 — 줄끝은 늘 LF
     python _check/map_check.py --run-gates  # 그 목록을 차례로 돌리고 모아 판정한다
     python _check/map_check.py --run-gates --push --jobs 4  # 푸시 직전 판 — 곁 선언 `[push_skip]` 을 빼고 넷씩 동시에
+    python _check/map_check.py --run-gates --push --changed <파일>  # 고친 경로(한 줄에 하나)로 `[push_when]` 을 가린다
 
 **왜 태우는 자까지 여기 있나.** `--gates` 를 셸 루프에 먹이는 손 루프는 두 함정을 매번 새로
 연다 — ⓐ 윈도 파이썬은 표준출력의 `\n` 을 `\r\n` 으로 써서 `read -r` 이 이름 끝에 `\r` 을 붙이고,
@@ -20,6 +21,14 @@
 없다 — 무엇을 뺄지는 저장소가 곁 선언 `[push_skip]` 에 `이름 = 까닭` 으로 적는다(`[needs_arg]` 와 같은
 꼴). 여기 적지 않은 게이트는 푸시에서도 돈다 — 새 게이트가 조용히 빠지지 않게 빼는 쪽을 선언한다.
 CI 는 `--gates` 로 목록 전부를 받으므로 여기서 뺀 게이트도 거기서는 돈다.
+**푸시 판은 고친 경로로도 가린다(`--changed`).** 게이트마다 지키는 경로를 곁 선언 `[push_when]` 에
+`이름 = 글롭 글롭 …` 으로 적으면, 고친 경로가 그 글롭에 하나도 안 걸린 게이트는 푸시에서 안 돈다.
+글롭은 저장소 뿌리 기준 `/` 경로에 `fnmatch` 로 대고, `*` 는 `/` 도 넘는다 — 넘치게 걸리는 쪽이
+모자라게 걸리는 쪽보다 싸다(더 도는 것은 시간이고, 덜 도는 것은 빨강을 CI 로 미룬다).
+⚠ **선언 없는 게이트는 늘 돈다** — 모르면 돈다. 빼는 쪽을 선언하던 `[push_skip]` 과 같은 까닭이다.
+⚠ **`[push_skip]` 이 이긴다** — 거기 적은 게이트는 경로가 걸려도 푸시에서 안 돈다.
+⚠ **경로를 못 받으면 가리지 않는다** — 목록이 없거나 비었거나 못 읽으면 푸시 판 전부를 돌고 까닭을 말한다.
+안 돌린 게이트는 판정 곁 「안 돌렸다」 줄에 이름으로 선다 — 초록은 돈 데까지다.
 **`--jobs N` 은 게이트를 N 개씩 동시에 돌린다** — 출력은 게이트마다 받아 두었다가 목록 순서대로 낸다.
 게이트끼리 같은 자리를 쓰면(포트 · 고정 임시 파일) 서로를 깬다 — 켜기 전에 차례 판과 같은 판정이 나오는지
 재고 켠다.
@@ -83,6 +92,7 @@ import ast
 import concurrent.futures
 import configparser
 import contextlib
+import fnmatch
 import functools
 import io
 import os
@@ -172,6 +182,57 @@ def _push_skip(check_dir):
     return {n: f"푸시에서 뺀다 — {why}" for n, why in _conf_section(check_dir, "push_skip").items()}
 
 
+def _push_when(check_dir):
+    """곁 선언의 `[push_when]` — 게이트 → 그 게이트가 지키는 경로 글롭들(공백으로 가른다)."""
+    return {n: v.split() for n, v in _conf_section(check_dir, "push_when").items()}
+
+
+def read_changed(path):
+    """고친 경로 목록 — (경로들, 못 받은 까닭). 한 줄에 하나 · `\\` 는 `/` 로 편다 · 빈 줄은 버린다."""
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return None, f"고친 경로 목록을 못 읽었다({path} · {e.__class__.__name__})"
+    out = []
+    for line in text.splitlines():
+        p = line.strip().replace("\\", "/")
+        while p.startswith("./"):
+            p = p[2:]
+        if p:
+            out.append(p)
+    return out, (None if out else "고친 경로 목록이 비었다")
+
+
+def push_scope(rows, when, changed, skip, why=None):
+    """고친 경로로 푸시 판을 가린다 — (뺄 게이트 → 까닭, 고른 판 한 줄).
+
+    `rows` 는 게이트 절 이름, `when` 은 `[push_when]`, `changed` 는 고친 경로(None 이면 못 받았다),
+    `skip` 은 이미 뺀 것(`[needs_arg]` · `[push_skip]`) — 거기 든 게이트는 경로가 걸려도 되살리지 않는다.
+    ⚠ **선언이 없거나 글롭이 빈 게이트는 늘 돈다** — 빈 값을 「어디에도 안 걸린다」로 읽으면 한 줄의
+      실수가 게이트를 조용히 끈다.
+    ⚠ **게이트 절에 없는 선언 이름은 말한다** — 오타면 그 게이트는 선언 없이 늘 돈다(안전한 쪽이지만
+      선언한 사람은 가렸다고 믿는다).
+    """
+    if not when:
+        return {}, "고른 판 — `[push_when]` 선언이 없어 경로로 안 가린다 · 푸시 판 전부"
+    stray = sorted(set(when) - set(rows))
+    tail = f" · 게이트 절에 없는 선언 이름 {len(stray)}개: {' '.join(stray)}" if stray else ""
+    if not changed:
+        return {}, f"고른 판 — {why or '고친 경로를 안 받았다'} · 경로로 안 가리고 푸시 판 전부{tail}"
+    out, hit = {}, 0
+    for name in rows:
+        globs = when.get(name)
+        if name in skip or not globs:
+            continue
+        if any(fnmatch.fnmatchcase(p, g) for p in changed for g in globs):
+            hit += 1
+        else:
+            out[name] = f"고친 경로 밖 — 지키는 자리 {' '.join(globs)}"
+    declared = sum(1 for n in rows if when.get(n) and n not in skip)
+    return out, (f"고른 판 — 고친 경로 {len(changed)}개 · 경로 선언 {declared}개 중 걸림 {hit}개 · "
+                 f"선언 없는 게이트는 늘 돈다{tail}")
+
+
 def gate_rows(text):
     """지도의 **게이트 절**에 앉은 검사 이름 — 절을 따라가며 첫 칸만 줍는다.
 
@@ -241,7 +302,7 @@ def _run_captured(check_dir, name):
     return p.returncode, p.stdout.decode("utf-8", errors="replace")
 
 
-def run_gates(check_dir, map_text, needs, run=None, jobs=1):
+def run_gates(check_dir, map_text, needs, run=None, jobs=1, plan=None):
     """게이트 절의 검사를 차례로 돌려 모은다 — (종료코드, 어긋남, 못 쟀다).
 
     ⚠ **돌리기 전에 파일이 있나를 묻는다.** 없는 이름을 파이썬에 넘기면 2 가 나와
@@ -249,6 +310,9 @@ def run_gates(check_dir, map_text, needs, run=None, jobs=1):
     ⚠ **하나가 빨개도 나머지를 다 돈다** — 한 판에 무엇이 빨간지 다 보이게.
     ⚠ **동시 판(`jobs` > 1)도 판정 줄은 목록 순서다** — 먼저 끝난 차례로 찍으면 같은 입력에 판마다 다른
       글이 나 두 판을 견줄 수 없다.
+    ⚠ **안 돌린 게이트는 모음 곁에 이름으로 선다** — `needs` 로 빠진 것(인자가 필요하다 · 푸시에서 뺀다 ·
+      고친 경로 밖)을 「안 돌렸다」 한 줄에 모은다. 게이트마다의 까닭은 목록 자리의 「— 뺐다」 줄이 든다.
+      `plan` 은 푸시 판이 무엇으로 골랐나를 말하는 한 줄이다(`push_scope`).
     `run` 은 자기 이빨이 프로세스를 안 띄우고 갈래만 재려고 갈아 끼우는 자리다 — 종료코드를 내거나
     (종료코드, 글)을 낸다.
     """
@@ -293,6 +357,11 @@ def run_gates(check_dir, map_text, needs, run=None, jobs=1):
         pool.shutdown()
     print(f"\n게이트 {len(rows)}개 · 돌았다 {ran}개 · 어긋남 {len(bad)}개 — {' '.join(bad) or '없음'}")
     print(f"         · 못 쟀다 {len(cant)}개 — {' '.join(cant) or '없음'}")
+    skipped = [n for n in rows if n in needs]
+    if skipped:
+        print(f"         · 안 돌렸다 {len(skipped)}개 — {' '.join(skipped)}")
+    if plan:
+        print(f"         · {plan}")
     # 한 바퀴가 분 단위라 **어디서 시간이 드나**를 같이 낸다 — 켤지 말지를 가르는 값이 이것이다.
     if took:
         slow = " · ".join(f"{n} {s:.0f}초" for s, n in sorted(took, reverse=True)[:3])
@@ -591,6 +660,14 @@ def main(argv):
             print("⚠ 못 쟀다 — `--jobs` 뒤에 수가 없다", file=sys.stderr)
             return EXIT_UNMEASURED
         argv = argv[:i] + argv[i + 2:]
+    changed_path = None             # 푸시 판에서만 읽는다 — CI 판(`--push` 없이)은 경로로 안 가린다
+    if "--changed" in argv[1:]:
+        i = argv.index("--changed")
+        if i + 1 >= len(argv):
+            print("⚠ 못 쟀다 — `--changed` 뒤에 파일이 없다", file=sys.stderr)
+            return EXIT_UNMEASURED
+        changed_path = argv[i + 1]
+        argv = argv[:i] + argv[i + 2:]
     args = [a for a in argv[1:] if a not in ("--write", "--gates", "--run-gates", "--push")]
     write = "--write" in argv[1:]
     gates = "--gates" in argv[1:]
@@ -610,9 +687,13 @@ def main(argv):
         sys.stdout.reconfigure(newline="\n")
         return print_gates(map_text, needs)
     if run:
+        plan = None
         if "--push" in argv[1:]:
             needs = {**needs, **_push_skip(check_dir)}
-        return run_gates(check_dir, map_text, needs, jobs=jobs)[0]
+            changed, why = read_changed(changed_path) if changed_path else (None, None)
+            scoped, plan = push_scope(gate_rows(map_text), _push_when(check_dir), changed, needs, why)
+            needs = {**needs, **scoped}
+        return run_gates(check_dir, map_text, needs, jobs=jobs, plan=plan)[0]
     files, rows = scan_files(check_dir), scan_map(map_text)
     marks = sum(1 for line in map_text.split("\n") if line.strip() == MARK)
 
@@ -757,6 +838,49 @@ def main(argv):
                    got_par == got_hole and gone_g not in seen and len(seen) == len(grows) - 1,
                    [f"실측 동시 {got_par} · 차례 {got_hole} · 돈 것 {len(seen)}/{len(grows)} "
                     f"· 뺀 것이 돌았나 {gone_g in seen}"])
+
+            # ㉸ 경로로 가리기 — `[push_when]` 에 적은 게이트는 고친 경로가 글롭에 걸릴 때만 돈다. 기대값은
+            #    선언의 뜻에서 온다: 문서 글롭만 지키는 게이트는 코드 경로를 고친 푸시에서 빠지고(ⓐ), `*` 는
+            #    `/` 를 넘어 깊은 문서에도 걸리며(ⓑ), 선언 없는 게이트는 늘 돌고(ⓐ 의 둘째), `[push_skip]` 이
+            #    이기고(ⓒ), 빈 글롭은 선언 없음과 같고(ⓓ), 경로를 못 받거나 빈 목록이면 안 가린다(ⓔ).
+            #    안 돌린 이름은 모음 곁 「안 돌렸다」 줄에 서야 한다(ⓕ) — 조각이 그 줄을 화면에 올린다.
+            doc_g, free_g = grows[0], grows[1]
+            when = {doc_g: ["docs/*.md"], "zzz_not_a_gate.py": ["src/*"]}
+            rows_g = gate_rows(map_text)
+            a_out, a_plan = push_scope(rows_g, when, ["src/app.py"], needs)
+            b_out, _ = push_scope(rows_g, when, ["docs/deep/x.md", "src/app.py"], needs)
+            c_skip = {**needs, doc_g: "푸시에서 뺀다 — 시험"}
+            c_out, _ = push_scope(rows_g, when, ["src/app.py"], c_skip)
+            c_why = {**c_skip, **c_out}.get(doc_g, "")
+            d_out, _ = push_scope(rows_g, {doc_g: []}, ["src/app.py"], needs)
+            e_out, e_plan = push_scope(rows_g, when, None, needs, "시험 — 못 받았다")
+            e2_out, _ = push_scope(rows_g, when, [], needs, "고친 경로 목록이 비었다")
+            f_buf, seen = io.StringIO(), []
+            with contextlib.redirect_stdout(f_buf), contextlib.redirect_stderr(io.StringIO()):
+                run_gates(whole, map_text, {**needs, **a_out}, run=lambda _d, n: seen.append(n) or EXIT_OK,
+                          plan=a_plan)
+            f_lines = f_buf.getvalue().splitlines()
+            named = any(ln.startswith("         · 안 돌렸다 ") and doc_g in ln.split(" — ", 1)[-1].split()
+                        for ln in f_lines)
+            planned = any(ln.startswith("         · 고른 판 — ") and "zzz_not_a_gate.py" in ln for ln in f_lines)
+            chg = Path(tempfile.mkdtemp(prefix="map-check-chg-")); tmps.append(chg)
+            (chg / "list").write_text(".\\docs\\a.md\n\n./src/b.py\n", encoding="utf-8")
+            got_list = read_changed(chg / "list")
+            (chg / "empty").write_text("\n", encoding="utf-8")
+            empty_list = read_changed(chg / "empty")
+            ok = (set(a_out) == {doc_g} and b_out == {} and c_why.startswith("푸시에서 뺀다") and d_out == {}
+                  and e_out == {} and e2_out == {} and "시험 — 못 받았다" in e_plan
+                  and free_g in seen and doc_g not in seen and named and planned
+                  and got_list == (["docs/a.md", "src/b.py"], None)
+                  and empty_list[0] == [] and empty_list[1]
+                  and read_changed(chg / "nope")[0] is None)
+            report(f"㉸ 경로로 가리기 — 걸린 게이트만 · 선언 없으면 늘 · `[push_skip]` 이 이긴다 · 못 받으면 전부 "
+                   f"· 안 돌린 이름이 모음에 선다 ({doc_g} · {free_g})",
+                   ok,
+                   [f"실측 ⓐ {sorted(a_out)} · ⓑ {sorted(b_out)} · ⓒ {c_why!r} · ⓓ {sorted(d_out)} "
+                    f"· ⓔ {sorted(e_out)} {sorted(e2_out)} · 돈 것에 {free_g} {free_g in seen} · {doc_g} {doc_g in seen} "
+                    f"· 이름 줄 {named} · 고른 판 줄 {planned} · 목록 {got_list} · 빈 목록 {empty_list} — "
+                    f"기대 ⓐ [{doc_g!r}] · ⓒ 까닭은 [push_skip] 것 · 나머지 빈 · {free_g} 돌고 {doc_g} 안 돈다 · 두 줄 선다"])
         else:
             report("㉶ 태우기 — 게이트 절에 이름이 둘 이상 있어야 이빨이 선다", False,
                    [f"게이트 절 이름 {len(grows)}개 — 못 쟀다"])
