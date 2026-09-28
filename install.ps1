@@ -3108,8 +3108,8 @@ function Get-ConfigRepoDir([string]$Url) {
 #   저장소를 든 사람은 `deploy.ps1` 이 이 자리를 갱신하고 `check-global-copies.sh` 가
 #   바이트로 잰다. 사본이 하나 더 늘지만, **재는 자가 붙은 사본**이라 조용히 안 낡는다.
 Write-Host ''
-Write-Host '[7/8] 사내 환경 문서 · 씨앗 셋' -ForegroundColor Cyan
-# ⚠ **씨앗 셋은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 **원본에 없는
+Write-Host '[7/8] 사내 환경 문서 · 씨앗 넷' -ForegroundColor Cyan
+# ⚠ **씨앗 넷은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 **원본에 없는
 #   파일을 안 지운다.** 진본에서 부품 하나를 걷어도 한 번 깐 기계에는 그것이 영영 남고, 씨앗은
 #   **있으면 복사되는 자리**라 걷힌 것이 계속 새 프로젝트로 퍼진다 — 5‴ 칸의 「심기는 더하기만
 #   한다」와 같은 병이고, 여기도 **지우는 손**이 없어서 난다.
@@ -3141,6 +3141,12 @@ $envAssets = @(
   #   골든이 이것이다. 켜는 칸으로 두면 안 켠 사람은 그 칸을 채울 길을 못 찾는다.
   @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'; Mirror = $true
      Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
+  # 회사가 쓴 사내 FastAPI 코딩 기준 — 영역 룰 `futurem-*.md`([6/8] 을 켠 사람)가 이 자리를 가리킨다.
+  # ⚠ **룰을 안 켠 사람에게도 깐다.** 새 앱을 처음 세우는 순간에는 걸릴 파일이 없어 룰이 못 들고,
+  #   그 자리는 사내 환경 문서(`posco/README.md`)와 이 씨앗의 `SEED.md` 좌표가 맡는다 — 그 좌표가
+  #   가리킬 자리가 홈에 서야 한다(claude-config 결정 0074).
+  @{ From = Join-Path $Here 'seeds\vibecoding'; To = Join-Path $homeDir 'seeds\vibecoding'; Mirror = $true
+     Name = '사내 코딩 기준 씨앗'; Desc = '사내 FastAPI 앱을 짤 때 룰이 가리키는 회사 기준 본문 — 들머리는 SEED.md' }
 )
 # 설정 저장소가 홈으로 미는 자리 — `seeds\gateway` 꼴의 홈 상대 경로 → 그것을 든 저장소.
 # 저장소 자리는 8 칸이 받는 자리와 같은 함수가 댄다(`Get-ConfigRepoDir`).
@@ -3376,7 +3382,7 @@ if ($dirty -and $cfg) {
   [IO.File]::WriteAllText($homeCfg, $json, (New-Object Text.UTF8Encoding($false)))
 }
 
-Write-Elapsed '[7/8] 사내 환경 문서 · 씨앗 셋'
+Write-Elapsed '[7/8] 사내 환경 문서 · 씨앗 넷'
 # ── 8. 개인 값 저장소 (선택) ────────────────────────────────────────────────────
 # ⚠ **주소는 이 파일에 없다.** `install.env` 가 `#config-repo` 를 들 때만 이 칸이 선다 —
 #   그래야 이 스크립트가 익명으로 남아 남에게 그대로 줄 수 있다.
@@ -4135,7 +4141,7 @@ try {
 # ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
 #   빈 폴더를 [O] 로 찍으면 「깔렸는데 안 든 것」이 성공으로 보고된다. 그래서 **파일 수를 센다.**
 # ⚠ **여분은 판정이 아니라 눈금이다.** 「남는 것이 있다」와 「나른 것이 모자란다」는 다른
-#   명제라, 수는 찍되 [X] 는 모자랄 때만 든다 — 걷는 자리(씨앗 셋)와 안 걷는 자리(개인
+#   명제라, 수는 찍되 [X] 는 모자랄 때만 든다 — 걷는 자리(씨앗 넷)와 안 걷는 자리(개인
 #   규범·룰·스킬)가 **같은 자를 쓰면서** 서로 다른 뜻을 읽을 수 있게 하는 것이 이 갈림이다.
 #   ⚠ 두 자를 따로 두면 한쪽만 낡는다 — 찍는 꼴이 두 벌이 되는 그 자리가 사본이다.
 function New-CountCheck([string]$Name, [string]$From, [string]$To) {
