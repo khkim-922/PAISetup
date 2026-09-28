@@ -54,6 +54,11 @@
 3. 하려는 일에 맞는 상세 가이드를 `docs/guides/` 에서 고른다. 좌표 표는
    `continue-rules/vibe-coding-standards.md` 끝(「상세 가이드 참조」)에 있다.
 
+⚠ **설치본에는 SSO 참고 문서 둘이 없다** — `docs/references/futurem-sso-guide.md` ·
+`futurem-sso-auth-guide-ko.md`. 사내 SSO 서버 주소가 본문에 들어 공개 배포본에 안 싣는다(회사가
+정리한 `docs/guides/futurem-sso.md` 는 같은 주소를 가려 적는다). SSO 를 붙일 때는 그 가이드를
+따르고, 실제 주소는 사내 GitLab 원문이나 SSO 담당자에게서 받아 환경변수에 넣는다.
+
 ⚠ **회사 zip 을 따로 받아 쓰지 않는다.** 바탕화면에 풀린 폴더는 설치 매체라 지워지고, 그 판이
 어느 판인지 말하는 자가 없다. 이 폴더는 `.version` 으로 판을 말하고 뽑는 자로 갱신된다.
 
