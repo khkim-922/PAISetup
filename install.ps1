@@ -3902,6 +3902,27 @@ if ($null -ne $wantAutoRun) {
 
     $autoScriptBody = @'
 $ErrorActionPreference = 'SilentlyContinue'
+
+# ⚠ **이 창의 빠른 편집(QuickEdit)을 끈다.** 켜져 있으면 창을 한 번 누르는 것만으로 선택 모드가 되어
+#   (제목에 「선택」) 이 창에 글을 쓰는 쪽이 전부 멈춘다 — 부팅 때 사람이 안 지켜보는 창이라 멎은 줄도
+#   모르고, 로그도 그 줄에서 끊긴다(실측 2026-10-05: 설치는 끝났는데 창만 8분을 기다렸다).
+#   입력 모드에서 그 비트 하나만 내리고 나머지는 그대로 둔다. 창 없이 돌아 콘솔이 아니면 모드를 못
+#   읽으므로 그냥 지나간다 — 이 칸이 져도 설치는 간다.
+try {
+  Add-Type -Namespace PAISetup -Name ConsoleMode -MemberDefinition @"
+[DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int n);
+[DllImport("kernel32.dll")] public static extern bool GetConsoleMode(IntPtr h, out uint m);
+[DllImport("kernel32.dll")] public static extern bool SetConsoleMode(IntPtr h, uint m);
+"@
+  $conIn = [PAISetup.ConsoleMode]::GetStdHandle(-10)
+  $conMode = [uint32]0
+  if ([PAISetup.ConsoleMode]::GetConsoleMode($conIn, [ref]$conMode)) {
+    # 0x40 = ENABLE_QUICK_EDIT_MODE. 0x80(ENABLE_EXTENDED_FLAGS) 이 서 있어야 이 비트를 내린 값이 먹는다.
+    if ($conMode -band 0x40) { $conMode = $conMode - 0x40 }
+    [void][PAISetup.ConsoleMode]::SetConsoleMode($conIn, ($conMode -bor 0x80))
+  }
+} catch { }
+
 $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
 $logDir    = Join-Path $setupRoot 'logs'
 if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
