@@ -843,6 +843,41 @@ function Get-Quiet([string]$File, [string[]]$CmdArgs) {
   finally { $ErrorActionPreference = $prev }
 }
 
+# `Invoke-Logged` 와 같은 일을 하는데 **시간 울타리를 두른다.** 넘기면 나무째 거두고 -2 를 돌려준다.
+# 돌려주는 값 셋을 부르는 쪽이 가른다: 0 이상이면 그 종료코드 · -1 은 못 불렀다 · **-2 는 넘겼다.**
+# ⚠ **왜 이 자가 필요한가.** 갱신을 바깥 명령에 맡기는 칸들은 걸리는 시간이 **밀린 양에 달렸고 그
+#   양은 우리가 모른다** — 마지막 설치가 언제였나가 정한다. 그 편차가 **부르는 쪽의 울타리를 한 칸이
+#   혼자 다 먹는** 자리를 만든다: 실측 2026-10-06 회사 PC — 확장 갱신 한 호출이 587초를 썼고
+#   (평소 1~14초 · 엿새 밀린 회차), 부르는 쪽 울타리가 600초라 **남은 다섯 칸에 13초가 남았다.**
+#   그래서 8칸 중 3칸까지만 서고 두 회차가 연속으로 잘렸다.
+# ⚠ **울타리를 부르는 쪽에만 두면 늦다.** 저쪽은 설치기 전체를 재므로 「어느 칸이 먹었나」를 모르고,
+#   거두면 **아직 안 돈 칸들까지 함께 잃는다.** 칸이 제 몫을 스스로 지키면 느린 칸 하나를 포기하고
+#   뒤 칸들이 돈다 — 포기해도 되는 칸(갱신)과 안 되는 칸(설치)을 부르는 쪽이 가려 준다.
+# ⚠ **글자는 파일 둘로 받는다** — `Invoke-Logged` 는 `*>` 로 한 파일에 담지만, 이쪽은 자식을 따로
+#   띄우므로 두 스트림을 한 파일로 못 보낸다(`Start-Process` 가 같은 파일을 거부한다). gh 로그인
+#   칸과 같은 꼴로 `$LogPath` 와 `$LogPath.err` 를 쓰고, **펴는 쪽이 둘 다 본다.**
+#   파일로 바로 흘리므로 파이프 버퍼가 차서 자식이 멈추는 자리도 없다.
+# ⚠ **나무째 거둔다.** `code` · `npm` 류는 제 자식을 띄우므로 부모만 죽이면 손자가 남아 돈다.
+#   `Kill($true)` 는 이 파워셸(5.1 · .NET Framework)에 없는 오버로드라 `taskkill /T` 가 든다.
+#   ⚠ `ProcessStartInfo.ArgumentList` 도 같은 까닭으로 없다 — `Start-Process -ArgumentList` 가
+#   파워셸 쪽 매개변수라 이 판에서 서고, 빈칸 든 인자의 따옴표도 그쪽이 맞춘다.
+function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec) {
+  $exe = $null
+  try { $exe = (Get-Command $File -ErrorAction Stop).Source } catch { return -1 }
+  try {
+    $p = Start-Process -FilePath $exe -ArgumentList $CmdArgs -NoNewWindow -PassThru `
+           -RedirectStandardOutput $LogPath -RedirectStandardError "$LogPath.err"
+    # ⚠ **핸들을 먼저 잡는다.** `-PassThru` 가 준 객체는 핸들을 안 쥐고 있어, 자식이 끝난 뒤
+    #   `ExitCode` 를 물으면 **빈 값이 온다** — 실측: 이 줄이 없으면 A·C·E 갈래의 종료코드가
+    #   다 비어 나왔다. 종료코드가 판정의 전부인 자리라 그 비는 값이 조용히 번진다.
+    $null = $p.Handle
+    if ($p.WaitForExit($CapSec * 1000)) { return $p.ExitCode }
+    & "$env:SystemRoot\System32\taskkill.exe" /PID $p.Id /T /F 2>&1 | Out-Null
+    try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+    return -2
+  } catch { return -1 }
+}
+
 # 실패 사유 한 줄. **까닭을 대는 자리라 읽히게 잘라 준다.**
 # ⚠ **사유가 늘 사람 말인 것은 아니다.** 가로채는 프록시는 오류를 **HTML 페이지 통째로** 준다 —
 #   그대로 찍으면 `<html><body><h1>` 이 줄을 먹고 정작 아는 것(`504 Gateway Time-out`)이 묻힌다.
@@ -1899,6 +1934,13 @@ function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [has
 Write-Elapsed '[1/8] 프로그램'
 Write-Host ''
 Write-Host '[2/8] VS Code 확장' -ForegroundColor Cyan
+# 확장 갱신 한 호출에 두르는 울타리 — 초. **갱신은 곁일이라 포기할 수 있다**(까닭은 아래 호출 자리).
+# ⚠ **값은 이 칸의 실측 분포가 정한다** — 평소 1~14초이고, 엿새 밀린 회차가 587초를 썼다
+#   (2026-10-06 회사 PC). 72초짜리 회차도 있어 **정상이 꽤 느릴 수 있는 자리**라, 넉넉히 두되
+#   부르는 쪽 울타리(10분)를 혼자 다 먹지는 못하게 그 절반 아래로 둔다.
+$ExtUpdateCap  = 240
+# 이보다 오래 걸렸으면 걸린 시간을 적는다 — 평소치를 넘은 회차만 기록에 남게.
+$ExtUpdateSlow = 30
 # 고른 제품의 확장만 든다 — 목록이 진본이고 고르는 축은 `$Products` 다.
 $ExtPicks = @($Extensions | Where-Object { $PickKeys -contains $_.Key })
 if ($NoVsCode) {
@@ -1910,8 +1952,22 @@ if ($NoVsCode) {
   if ($extHave.Count -gt 0 -and -not $NoUpgrade) {
     Say-Busy "깔린 확장 $($extHave.Count)개" 'upcheck' @('code')
     $xl = [IO.Path]::GetTempFileName()
-    Invoke-Logged 'code' @('--update-extensions') $xl | Out-Null
-    Remove-Item $xl -ErrorAction SilentlyContinue
+    $t0 = Get-Date
+    $rc = Invoke-LoggedCapped 'code' @('--update-extensions') $xl $ExtUpdateCap
+    $took = [int]((Get-Date) - $t0).TotalSeconds
+    Remove-Item $xl, "$xl.err" -ErrorAction SilentlyContinue
+    # ⚠ **넘긴 것은 실패가 아니다.** 확장은 이미 깔려 있어 본일(세우기)이 안 깨지고, 못 올린 판은
+    #   VS Code 가 제 자동 갱신으로 따로 올린다 — 이 호출이 하는 일과 같은 일이다.
+    #   그래서 `$Fails` 에 안 넣고 **말만 하고 다음 칸으로 간다.**
+    if ($rc -eq -2) {
+      Write-Host "  ! 확장 갱신이 ${ExtUpdateCap}초를 넘겨 거뒀다 — 깔린 판 그대로 간다 (VS Code 가 스스로 올린다)" -ForegroundColor Yellow
+    }
+    # ⚠ **걸린 시간을 적는다.** 이 호출은 확장별 소요를 안 뱉어 **느렸을 때 어디로 갔는지 뒤에
+    #   남는 자리가 없다** — 2026-10-06 의 587초가 밀린 양 탓인지 특정 확장 탓인지 로그로 못 갈랐다.
+    #   칸 전체를 재는 `Write-Elapsed` 로는 이 호출 몫이 안 갈리므로 여기서 따로 적는다.
+    elseif ($took -ge $ExtUpdateSlow) {
+      Write-Host "  (확장 갱신에 ${took}초 걸렸다 — 밀린 양이 많았다)" -ForegroundColor DarkGray
+    }
     $extAfter = Get-ExtVersions
   }
   if (-not $ExtPicks) { Write-Host '  고른 제품이 없어 확장을 안 깐다' }
