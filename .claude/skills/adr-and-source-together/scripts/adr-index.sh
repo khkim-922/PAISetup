@@ -29,7 +29,7 @@ for f in "$DIR"/[0-9]*.md; do
         /^title:/          { sub(/^title:[[:space:]]*/, "");          ttl = $0 }
         /^status:/         { sub(/^status:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); st = $0 }
         /^date:/           { sub(/^date:[[:space:]]*/, "");           dt  = $0 }
-        /^superseded_by:/  { sub(/^superseded_by:[[:space:]]*/, "");  sup = $0 }
+        /^superseded_by:/  { sub(/^superseded_by:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); sup = $0 }
         END {
             if (num == "") exit                      # 머리가 없으면 결정 파일이 아니다
             if (st ~ /^Superseded./) {
@@ -38,6 +38,12 @@ for f in "$DIR"/[0-9]*.md; do
             }
             if (st == "Superseded" && sup == "") {
                 printf "✖ %s: status: Superseded 인데 superseded_by 가 없다\n", file > "/dev/stderr"
+                exit 1
+            }
+            # 값의 **꼴**도 문다 — 규칙은 「NNNN」인데 칸이 있나만 보면 슬러그 · `.md` 슬러그 · 따옴표 친
+            #   링크가 그대로 지나가 규칙이 글로만 산다(아뜰리에에서 18장 중 14장이 샜다 · #116).
+            if (sup != "" && sup !~ /^[0-9][0-9][0-9][0-9]$/) {
+                printf "✖ %s: superseded_by 는 네 자리 번호 하나다 (값: %s)\n", file, sup > "/dev/stderr"
                 exit 1
             }
             if (sup != "") st = st " → " sup

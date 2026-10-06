@@ -1225,55 +1225,152 @@ deploy_personal() {   # deploy_personal auto|install
     done < "$CONFIG_ROOT/secrets.env"
   fi
 
-  # 홈 개인 설정 씨앗 — `vdi-home-settings.json`. 없으면 깔고, 자리 파일이 `#home-settings = overwrite`
-  # 를 들면 병합해 덮는다. 자리를 가르는 자는 위 `_site_of` 다.
-  # `--install` 만 — 프로브는 안 닿는 자리에서 3초를 물고, 덮을 자리(사외 VDI)는 매 로그인 설치기를 거친다.
-  # ⚠ 안 덮는 자리에서는 있으면 안 건드린다 — 세션 중에 앱에서 바꾼 값을 재실행이 지우면 안 된다.
+  home_settings_seed "$1"
+}
+
+# ── 홈 개인 설정 씨앗 — 제 이름을 갖는 까닭은 **재이려면 혼자 돌 수 있어야** 한다는 것이다 ─────
+# ⚠ 이 걸음을 위 `deploy_personal` 안에 두면 재는 자가 그 함수를 통째로 불러야 하는데, 그쪽은 같은
+#   호출에서 **진짜 전역 git 설정과 환경변수를 심는다** — 가짜 세상에서 돌릴 수 없는 일이다. 그래서
+#   이름을 주어 떼어 내고, 부르는 자리는 위 한 줄 하나다(`scripts/check-home-issue-permissions.sh`
+#   가 그 한 줄이 살아 있나까지 잰다 — 이름만 떼고 안 부르면 걸음이 조용히 사라진다).
+# ⚠ **바깥 두 문은 여기 없다** — `$OS` 가 윈도우인가와 `personal.conf` 가 있나는 저쪽 머리의 문이고,
+#   이 함수를 직접 부르는 자리(검사)는 그 둘을 안 거친다. 옮기면 저쪽의 다른 걸음들이 그 문을 잃는다.
+home_settings_seed() {   # home_settings_seed auto|install
+  # 홈 개인 설정 — 이 걸음이 하는 일은 **둘이고, 문은 하나에만 선다** (결정 0081).
+  #   ① **덮기** — 씨앗 `vdi-home-settings.json` 으로 홈을 통째로 간다. 사람이 넣은 값이 사라지므로
+  #      자리 파일이 `#home-settings = overwrite` 를 드는 자리에서만 한다 (0029). 홈에 아무것도
+  #      없으면 자리를 안 묻고 깐다 — 지울 것이 없다.
+  #   ② **얹기** — 겹침 `vdi-home-settings.private.json` 의 `permissions.allow` 줄 가운데 **없는
+  #      것만 더한다.** 지우는 것이 없으니 **어느 자리에서나** 한다.
+  # ⚠ **둘을 한 문 뒤에 묶지 않는다.** 옛 판은 ② 를 ① 의 문 뒤에 두어, 홈이 남는 PC(회사·집)에서
+  #   걸음이 겹침을 **읽기도 전에** 돌아섰다 — 실측 2026-10-06 회사 PC: 열세 줄 가운데 0 줄.
+  #   문이 막아야 하는 명제는 「씨앗이 사람 설정을 덮나」 하나인데, 「줄을 더하나」가 거기 얹혀 있었다.
+  # `--install` 만 — 프로브는 안 닿는 자리에서 3초를 물고, 덮을 자리는 매 로그인 설치기를 거친다.
+  # ── 겹침 한 장 — 왜 씨앗과 갈라 두나 ───────────────────────────────────────────────────
+  # ⚠ **쪼갠 까닭은 받는 사람이 다르다는 것이다.** 씨앗은 배포본에 실려 남에게 가는 익명 층이라,
+  #   **남이 안 물은 허용 규칙을 거기 적으면 조용히 함께 나간다.** 겹침은 배포 목록에 없어 안 나가고,
+  #   그 파일이 없는 PC 에서는 그냥 없다 — 선언은 여전히 한 자리이고 **가는 범위만** 갈린다.
+  # ⚠ **겹침이 더하는 것은 `permissions.allow` 줄뿐이다.** 다른 키는 안 읽고 안 쓴다 — 넓히면 씨앗과
+  #   겹침 가운데 어느 쪽이 이기나를 키마다 따로 외워야 한다.
+  # ⚠ **깨진 겹침은 터뜨린다.** 조용히 비켜서면 규칙이 빠진 채로 서고, 선언이 「적혀 있는데 안 선」
+  #   꼴이 된다 — 그 꼴은 막힌 그 자리에서만 드러나고 거기서는 고칠 수가 없다.
   [ "$1" = install ] || return 0
-  _hs="$CONFIG_ROOT/vdi-home-settings.json"; _hd="$HOME/.claude/settings.json"
+  _hs="$CONFIG_ROOT/vdi-home-settings.json"
+  _ho="$CONFIG_ROOT/vdi-home-settings.private.json"
+  _hd="$HOME/.claude/settings.json"
   [ -f "$_hs" ] || return 0
+  [ -f "$_ho" ] || _ho=''
   mkdir -p "$HOME/.claude"
-  if [ ! -f "$_hd" ]; then
-    cp "$_hs" "$_hd" && echo "$PROJECT_NAME: 홈 settings.json — 씨앗을 깔았다"
+  # 어느 일을 하나 — `seed`(씨앗이 바탕) 또는 `add`(홈 파일이 바탕, 줄만 더한다).
+  # ⚠ **자리를 묻는 까닭은 ① 뿐이다.** 홈에 파일이 없으면 묻지 않고(프로브 3초) `seed` 로 간다.
+  #   있으면 「덮어도 되나」를 알아야 하므로 한 번 묻고, 아니라는 답은 **`add` 로 떨어질 뿐
+  #   돌아서지 않는다** — 옛 판이 거기서 `return` 한 것이 이 함수가 고치는 결함이다.
+  _how=seed; _fresh=''
+  if [ -f "$_hd" ]; then
+    _site_of
+    [ "$_SITE_MODE" = overwrite ] || _how=add
+  else
+    _fresh=1
+  fi
+  # 겹침이 없는 PC(동료) — `add` 갈래에는 할 일이 아예 없다. 거동은 옛 판과 같다.
+  if [ "$_how" = add ] && [ -z "$_ho" ]; then
     return 0
   fi
-  _site_of
-  _mode="$_SITE_MODE"
-  [ "$_mode" = overwrite ] || return 0
   # ⚠ **`hooks` 와 `env` 는 씨앗의 것이 아니라 기계가 심은 것이라 넘겨 준다** (0028 · 0030). 훅의 심는 명령은
   #   작업 루트 경로를 들어 PC 마다 다르고, env 는 설치기가 이 자리 값으로 방금 민 것이다. 지킬 수 없으면
   #   (파이썬이 없다) **안 덮는다** — 덮으면 이 칸이 고치려는 바로 그 고장을 이 칸이 만든다.
   # ⚠ **견줄 상대는 씨앗이 아니라 병합 결과다.** 씨앗과 견주면 심긴 훅 때문에 영영 안 맞아 매 로그인
   #   덮고 백업이 쌓인다. 먼저 만들고, 같으면 안 건드린다.
   _new="$_hd.new.$$"
-  if "$PY_CMD" -c '' >/dev/null 2>&1 && "$PY_CMD" - "$_hs" "$_new" "$_hd" <<'PYMERGE'
+  # ⚠ **「파이썬이 없다」와 「JSON 을 못 읽었다」를 한 조건에 묶지 않는다.** 묶으면 겹침이 깨진 날
+  #   화면이 「파이썬을 못 불러」라고 말해, 고칠 자리를 **없는 쪽으로** 가리킨다.
+  # ⚠ **못 했으면 못 했다고 말한다.** 조용히 비켜서는 갈래를 두지 않는다 — 규칙이 안 선 PC 에서
+  #   막히는 자리는 그 세션 안이고, 거기서는 까닭을 알 길이 없다.
+  if ! "$PY_CMD" -c '' >/dev/null 2>&1; then
+    if [ -n "$_fresh" ]; then
+      cp "$_hs" "$_hd" &&
+        echo "$PROJECT_NAME: 홈 settings.json — 씨앗을 깔았다 (파이썬을 못 불러 겹침은 못 얹었다)"
+    elif [ "$_how" = add ]; then
+      echo "$PROJECT_NAME: ⚠ 홈 settings.json — 파이썬을 못 불러 허용 규칙을 못 얹었다"
+    else
+      echo "$PROJECT_NAME: ⚠ 홈 settings.json — 파이썬을 못 불러 안 덮는다 (심긴 훅을 지킬 수 없다)"
+    fi
+    return 0
+  fi
+  # ⚠ **병합은 한 자리다.** `add` 는 바탕만 다르다(씨앗이 아니라 홈 파일) — 조각을 둘로 두면
+  #   한쪽에서 고친 사고가 다른 쪽에 안 간다.
+  # 종료코드 셋 — 0 `$_new` 를 썼다 · **3 더할 줄이 없다(아무것도 안 썼다)** · 그 밖은 JSON 을 못 읽었다.
+  "$PY_CMD" - "$_how" "$_hs" "$_new" "$_hd" "$_ho" <<'PYMERGE'
 import json, sys
-src, out, cur = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(src, encoding="utf-8") as f:
-    cfg = json.load(f)
-try:
-    with open(cur, encoding="utf-8") as f:
-        old = json.load(f)
-except (OSError, ValueError):
-    old = {}
-if "hooks" in old:                      # 기계가 심은 것 — 씨앗은 이 키에 의견이 없다
-    cfg["hooks"] = old["hooks"]
-if isinstance(old.get("env"), dict):    # 설치기가 이 자리 값으로 민 것 — 씨앗보다 이긴다
-    cfg["env"] = {**cfg.get("env", {}), **old["env"]}
+how, src, out, cur = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+own = sys.argv[5] if len(sys.argv) > 5 else ""
+if how == "add":
+    # 바탕이 **사람 파일**이다 — 못 읽으면 터뜨린다. 못 읽은 파일을 바꿔 쓰지 않는다.
+    # `utf-8-sig` — 윈도우 도구(파워셸 5.1 의 `-Encoding utf8` 등)가 쓴 파일은 BOM 을 달고, `utf-8` 로
+    # 읽으면 「Unexpected UTF-8 BOM」으로 터져 그 PC 는 규칙이 영영 안 서고 매 로그인 경고만 뜬다.
+    with open(cur, encoding="utf-8-sig") as f:
+        cfg = json.load(f)
+else:
+    with open(src, encoding="utf-8") as f:
+        cfg = json.load(f)
+    try:
+        with open(cur, encoding="utf-8-sig") as f:
+            old = json.load(f)
+    except (OSError, ValueError):
+        old = {}
+    if "hooks" in old:                  # 기계가 심은 것 — 씨앗은 이 키에 의견이 없다
+        cfg["hooks"] = old["hooks"]
+    if isinstance(old.get("env"), dict):  # 설치기가 이 자리 값으로 민 것 — 씨앗보다 이긴다
+        cfg["env"] = {**cfg.get("env", {}), **old["env"]}
+added = 0
+if own:                                 # 겹침 — `permissions.allow` 에 줄을 **더한다** (0081)
+    with open(own, encoding="utf-8") as f:
+        mine = json.load(f)             # 깨졌으면 여기서 터진다 — 셸이 사유를 낸다
+    allow = cfg.setdefault("permissions", {}).setdefault("allow", [])
+    for rule in mine.get("permissions", {}).get("allow", []):
+        if rule not in allow:           # 같은 줄이 두 번 서면 앱이 잉여 규칙으로 경고한다
+            allow.append(rule)
+            added += 1
+if how == "add" and not added:
+    # 더할 것이 없다 — **한 바이트도 안 건드린다.** 다시 적으면 사람 파일의 들여쓰기가 매 로그인
+    # 바뀌어 백업이 쌓인다(바탕이 사람 파일이라 바이트 견주기로는 멱등이 안 선다).
+    raise SystemExit(3)
 with open(out, "w", encoding="utf-8") as f:
     json.dump(cfg, f, ensure_ascii=False, indent=2)
     f.write("\n")
 PYMERGE
-  then
-    if cmp -s "$_new" "$_hd"; then
-      rm -f "$_new"
-    elif cp "$_hd" "$_hd.bak-$(date +%Y%m%d-%H%M%S)" && mv "$_new" "$_hd"; then
-      echo "$PROJECT_NAME: 홈 settings.json — 덮었다 ($_SITE 가 overwrite 를 든다)"
+  _prc=$?
+  if [ "$_prc" = 3 ]; then
+    rm -f "$_new"
+    return 0
+  fi
+  if [ "$_prc" != 0 ]; then
+    rm -f "$_new"
+    if [ "$_how" = add ]; then
+      echo "$PROJECT_NAME: ⚠ 홈 settings.json — JSON 을 못 읽어 허용 규칙을 못 얹었다 (홈 설정과 겹침을 본다)"
+    elif [ -z "$_fresh" ]; then
+      echo "$PROJECT_NAME: ⚠ 홈 settings.json — 씨앗이나 겹침의 JSON 을 못 읽어 안 덮는다 (둘을 본다)"
+    elif cp "$_hs" "$_hd"; then
+      # ⚠ **빈 홈을 씨앗 없이 두지 않는다.** 겹침 하나가 깨졌다고 홈 설정 전체를 안 깔면,
+      #   테마·알림·기능 스위치까지 함께 잃는다 — 고장 하나가 둘이 된다.
+      echo "$PROJECT_NAME: ⚠ 홈 settings.json — 씨앗만 깔았다. 겹침의 JSON 을 못 읽어 허용 규칙이 안 섰다"
     else
-      rm -f "$_new"; echo "$PROJECT_NAME: ⚠ 홈 settings.json 덮기 실패 — 쓰기 권한을 본다"
+      echo "$PROJECT_NAME: ⚠ 홈 settings.json — 씨앗을 못 깔았다 (쓰기 권한을 본다)"
+    fi
+    return 0
+  fi
+  if cmp -s "$_new" "$_hd"; then
+    rm -f "$_new"
+  elif [ -n "$_fresh" ]; then
+    mv "$_new" "$_hd" && echo "$PROJECT_NAME: 홈 settings.json — 씨앗을 깔았다"
+  elif cp "$_hd" "$_hd.bak-$(date +%Y%m%d-%H%M%S)" && mv "$_new" "$_hd"; then
+    if [ "$_how" = add ]; then
+      echo "$PROJECT_NAME: 홈 settings.json — 겹침의 허용 규칙을 얹었다 (다른 키는 안 건드렸다)"
+    else
+      echo "$PROJECT_NAME: 홈 settings.json — 덮었다 ($_SITE 가 overwrite 를 든다)"
     fi
   else
-    rm -f "$_new"; echo "$PROJECT_NAME: ⚠ 홈 settings.json — 파이썬을 못 불러 안 덮는다 (심긴 훅을 지킬 수 없다)"
+    rm -f "$_new"; echo "$PROJECT_NAME: ⚠ 홈 settings.json 쓰기 실패 — 쓰기 권한을 본다"
   fi
 }
 

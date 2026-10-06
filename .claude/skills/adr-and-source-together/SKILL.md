@@ -46,7 +46,7 @@ description: 결정을 기록하거나 찾아 읽을 때 부른다. "ADR 써줘"
 | MADR | 우리 | 왜 |
 |---|---|---|
 | **Confirmation 은 선택** (*"많은 ADR에 들어 있다"* 고만 한다) | **필수** | **지켜졌는지 재는 법이 안 써지면 그 결정은 아직 안 선 것이다.** 재는 법 없는 판정은 다음에 그냥 안 지켜진다 |
-| 뒤집힘은 `status` 글자에 적는다(`superseded by ADR-NNNN`) | `status: Superseded` 한 낱말 + `superseded_by: NNNN` | 색인 생성기(`scripts/adr-index.sh`)가 그 칸을 읽어 화살표를 긋고, 칸이 비면 막는다. 글자에 섞어 적으면 칸이 비어도 안 걸린다 — 생성기는 그 꼴도 거절한다 |
+| 뒤집힘은 `status` 글자에 적는다(`superseded by ADR-NNNN`) | `status: Superseded` 한 낱말 + `superseded_by: NNNN` | 색인 생성기(`scripts/adr-index.sh`)가 그 칸을 읽어 화살표를 긋고, 칸이 비거나 값이 네 자리 번호가 아니면(슬러그 · `.md` 이름 · 링크) 막는다. 글자에 섞어 적으면 칸이 비어도 안 걸린다 — 생성기는 그 꼴도 거절한다 |
 
 ⚠ **Confirmation 에 적는 명령은 게이트 조각이거나, 저장소가 손으로 도는 검사 명부에 오른 줄을 가리킨다.**
 결정 기록 본문에만 사는 절차는 열어야 보이는 자리라 반드시 일회성이 된다(규범 [Layer Triage]) — 재는

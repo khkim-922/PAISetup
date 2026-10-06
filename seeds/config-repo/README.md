@@ -40,7 +40,7 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 | `deploy.repofiles.conf` | 저장소마다 한 벌씩 둘 파일 목록 — 뿌리는 스크립트와, 뿌린 것이 맞나 재는 검사가 같이 읽는다 |
 | `mcp-servers.json` | MCP 서버 선언. **키는 안 든다** — 환경변수 이름만 든다. 서버마다 `"only": "<자리>,<자리>"` 로 자리를 걸 수 있다(자리 이름은 `secrets.d/` 의 파일 이름) — **자리 파일이 없으면 게이트를 안 걸고 그대로 등록한다.** 이 칸이 막는 것은 **아는** 자리뿐이라, 자리를 모르는 PC 에서 멀쩡한 서버를 거두지 않는다 |
 | `memory/` | 프로젝트 메모리를 PC 사이로 나르는 자리. **비어 있어도 지우지 않는다** — 이 폴더가 설정 저장소를 알아보는 표시다 |
-| `vdi-home-settings.json` | 홈 `~/.claude/settings.json` 의 씨앗 |
+| `vdi-home-settings.json` | 홈 `~/.claude/settings.json` 의 씨앗. **남에게 줄 수 있는 것만 둔다** — 곁에 `vdi-home-settings.private.json` 을 두면 그 `permissions.allow` 줄이 더해지는데, 그 파일은 어디로도 안 실린다. 가르는 물음은 「이 허용 규칙을 남이 물었나」다 |
 | `.claude/hooks/session-start.sh` | **문지기.** 세션이 열릴 때 불려 몸통을 찾아 넘긴다 — 저장소마다 한 벌씩 서는 것은 이것이다 |
 | `.claude/hooks/session-start-body.sh` | **익명 몸통.** 세션이 열릴 때 도구를 재고 갖춘다. 설치가 `--install` 로 부르면 개인 칸까지. 저장소마다 사본을 두지 않는다 |
 | `.claude/hooks/utf8-bom.sh` | 편집 뒤 인코딩을 지키는 훅 |
@@ -180,7 +180,7 @@ bash ~/repos/<저장소 이름>/.claude/hooks/session-start.sh --install; echo "
 | 형제 저장소 | 선언의 목록 중 **없는 것만** clone. 당김은 각 저장소의 세션과 deploy 가 든다 |
 | 슬러그 폴더 | 배포가 메모리를 넣을 자리를 미리 만든다. **접두사까지 윈도우 경로에서 파생한다** |
 | 개인 키 | `secrets.env` 를 사용자 환경변수로. 값이 같으면 건너뛴다 |
-| 홈 개인 설정 | `vdi-home-settings.json` — 없으면 깔고, 자리 파일(`secrets.d/<자리>.env`)이 `#home-settings = overwrite` 를 들면 병합해 덮는다. 덮을 때도 기계가 심은 `hooks` 와 설치기가 민 `env` 는 지킨다 |
+| 홈 개인 설정 | **두 일이고 문은 하나에만 선다.** ① 덮기 — `vdi-home-settings.json` 이 없으면 깔고, 자리 파일(`secrets.d/<자리>.env`)이 `#home-settings = overwrite` 를 들면 병합해 덮는다(덮을 때도 기계가 심은 `hooks` 와 설치기가 민 `env` 는 지킨다). ② 얹기 — 겹침 `vdi-home-settings.private.json` 의 `permissions.allow` 줄 가운데 **없는 것만 더한다. 자리를 안 묻는다** — 지우는 것이 없기 때문이다(그 파일이 있을 때만 · 다른 키는 안 읽고 안 쓴다 · 더할 줄이 없으면 한 바이트도 안 쓴다). 파이썬을 못 부르거나 JSON 을 못 읽으면 **그 사유를 밝히고** 조용히 넘어가지 않는다 |
 | deploy | `deploy.ps1 -Yes` 에 넘기고 **그 종료코드로 끝난다** |
 
 이 표는 **윈도우 PC 에서만** 돈다 — 리모트는 저장소를 claude.ai 가 붙이고 키를 환경이 들어,
