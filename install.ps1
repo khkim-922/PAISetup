@@ -872,7 +872,7 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
     #   다 비어 나왔다. 종료코드가 판정의 전부인 자리라 그 비는 값이 조용히 번진다.
     $null = $p.Handle
     if ($p.WaitForExit($CapSec * 1000)) { return $p.ExitCode }
-    & "$env:SystemRoot\System32\taskkill.exe" /PID $p.Id /T /F 2>&1 | Out-Null
+    try { & "$env:SystemRoot\System32\taskkill.exe" /PID $p.Id /T /F 2>$null | Out-Null } catch { }
     try { if (-not $p.HasExited) { $p.Kill() } } catch { }
     return -2
   } catch { return -1 }
