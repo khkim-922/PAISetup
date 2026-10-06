@@ -2729,18 +2729,41 @@ if ($wantProxy) {
         } catch { }
 
         try {
+          # ── 이 감시자는 **창을 받을 자리 없이** 선다 ──────────────────────────────
+          # ⚠ **`-WindowStyle Hidden` 은 이 자리에서 안 먹는다.** 그것은 파워셸이 제 코드를
+          #   시작한 **뒤에** 이미 난 창을 숨기라는 부탁이라, 데스크톱이 선 뒤 손으로 돌리면
+          #   먹지만 **로그온 와중에 도는 자리에서는 숨기기가 창 붙임을 못 따라잡는다.**
+          #   `powershell.exe` 는 콘솔 프로그램이어서 띄우는 자리에 콘솔이 하나 붙는데,
+          #   창은 그 붙임이 내는 것이고 숨기기는 붙임 자체를 못 막는다.
+          # ⚠ **그래서 숨기지 않고 「창이 날 자리」를 없앤다** — `S4U` 는 그 세션에 데스크톱이
+          #   없어 콘솔이 붙을 데가 아예 없다. 실측(2026-10-06 회사 PC): `Interactive` 로 띄운
+          #   자식은 세션 1 에 서서 `GetConsoleWindow` 가 **보이는 창**을 돌려줬고(제목이
+          #   「관리자: …powershell.exe」로 사람이 본 그 창이었다), `S4U` 로 띄운 자식은
+          #   세션 0 에 섰다. 같은 까닭으로 부팅 라인(`AtelierServer`)이 이미 이 꼴로 돈다.
+          # ⚠ **창 핸들을 세어 재지 않는다.** 콘솔 창은 그 프로세스의 `MainWindowHandle` 로
+          #   안 올라오는 자리가 있어, 창 집합의 차이를 보면 **보이는 창이 떠 있는데도
+          #   「새 창 없음」**이 나온다(같은 날 실측). 재려면 자식에게 `GetConsoleWindow` ·
+          #   `IsWindowVisible` 을 직접 묻는다.
+          # ⚠ **이 감시자는 화면에 쓸 것이 없다.** 5초마다 프록시 생존만 보고 사유는
+          #   `watchdog.log` 에 적으므로, 창을 없애도 사람이 못 보게 되는 글이 없다.
+          #   반대로 창이 남으면 **내용 없이 안 닫히는 창**이 되어, 끝나기를 기다리는 창으로
+          #   읽힌다 — 상주 감시자는 로그아웃까지 안 끝나므로 그 읽기는 영원히 안 풀린다.
           $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-                      -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$watchdogPath`" -ProxyPath `"$proxyPath`" -PythonPath `"$pyw`""
+                      -Argument "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$watchdogPath`" -ProxyPath `"$proxyPath`" -PythonPath `"$pyw`""
           $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-          $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+          $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType S4U -RunLevel Limited
           $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
                         -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
 
           Register-ScheduledTask -TaskName $ProxyTaskName -Action $action -Trigger $trigger `
                                  -Principal $principal -Settings $settings `
                                  -Description "PGPT proxy watchdog supervisor" -Force | Out-Null
+          # ⚠ **이미 도는 회차를 거절하는 것은 결함이 아니다.** 이 작업은 수명이 무한
+          #   (`ExecutionTimeLimit` 0)이고 겹침 정책이 `IgnoreNew` 라, 앞 회차가 사는 중에
+          #   부르면 「요청을 거부했습니다」(`0x800710E0`)가 마지막 결과로 남는다 — 규칙대로
+          #   물러난 것이고 감시자는 멀쩡히 돈다. **그 코드를 보고 작업을 다시 걸지 않는다.**
           Start-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue
-          Write-Host "  감시 작업 — 로그인마다 띄우도록 걸고 시작했다 (작업 스케줄러 · $ProxyTaskName)" -ForegroundColor Green
+          Write-Host "  감시 작업 — 로그인마다 창 없이 띄우도록 걸고 시작했다 (작업 스케줄러 · $ProxyTaskName)" -ForegroundColor Green
         } catch {
           Write-Host "  ! 감시 작업 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Red
           $Fails.Add('로컬 프록시 (감시 작업)')
