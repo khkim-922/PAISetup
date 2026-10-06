@@ -421,8 +421,17 @@ $ruleSrc  = Join-Path $src '.claude\CLAUDE.global.md'
 $targets  = @(
     @{ From = $ruleSrc; To = Join-Path $dst 'CLAUDE.md' }
 )
-Get-ChildItem $agentSrc -Filter *.md | ForEach-Object {
-    $targets += @{ From = $_.FullName; To = Join-Path $dst "agents\$($_.Name)" }
+# ⚠ **`agents` 폴더가 없을 수 있다** — 이 스크립트는 `$ErrorActionPreference = 'Stop'` 이라, 없는 경로를
+#   `Get-ChildItem` 에 그대로 주면 종료 오류로 계획 단계 한가운데서 죽고 **그 뒤 걸음(MCP · 저장소 설치 ·
+#   환경변수)이 하나도 안 돈다**(#114). 없으면 이 걸음만 건너뛰고 한 줄 말한다. 아래 제거 후보도 같은
+#   값을 본다 — **없는 폴더를 「원본이 비었다」로 읽으면 `-Prune` 이 홈의 에이전트를 다 지운다.**
+$hasAgents = Test-Path -LiteralPath $agentSrc -PathType Container
+if ($hasAgents) {
+    Get-ChildItem $agentSrc -Filter *.md | ForEach-Object {
+        $targets += @{ From = $_.FullName; To = Join-Path $dst "agents\$($_.Name)" }
+    }
+} else {
+    Write-Host "· 에이전트 건너뜀  ($agentSrc 가 없다 — 홈의 에이전트도 안 건드린다)" -ForegroundColor DarkGray
 }
 
 # 전역 규범·룰은 저장소로 안 간다 — 홈 한 자리다 (docs/decisions/0014).
@@ -1051,7 +1060,7 @@ if ($installSteps.Count -gt 0) {
 
 # --- 제거 후보: 원본에 없는 에이전트 파일 ---
 $agentDst = Join-Path $dst 'agents'
-if (Test-Path $agentDst) {
+if ($hasAgents -and (Test-Path $agentDst)) {
     $keep = (Get-ChildItem $agentSrc -Filter *.md).Name
     Get-ChildItem $agentDst -Filter *.md | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
         $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  (agents/에 없음)" }
