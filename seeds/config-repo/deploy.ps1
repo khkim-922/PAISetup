@@ -9,23 +9,28 @@
 # 회사 PC에서는 `git pull` 다음에 이것만 실행하면 된다.
 #
 # 하는 일 — **번호가 곧 차례다**
-#   1. .githooks/ 를 둔 저장소에 core.hooksPath 설정 (git 훅은 clone 을 안 따라온다)
-#      **맨 앞에 둔다** — 로컬 `git config` 한 줄이라 질 까닭이 없고, 뒤가 무엇으로 죽든
-#      커밋 게이트만은 서 있어야 한다. 까닭은 아래 §실행 순서 (#31)
-#   2. 진본을 홈과 형제 저장소로 민다 — **무엇이 어디로 가나의 표는 README 「배포 대상」이 든다**
+#   1. 형제 저장소를 원격까지 맞춘다 (main 위에서만 · 빨리감기로만 · 저장소마다 판정 한 줄)
+#      **계획을 짓기 앞이다** — 계획과 설치 판정이 지문을 보므로, 뒤에 두면 새로 들어온 선언이
+#      다음 회차에야 깔린다. 져도 던지지 않는다. 까닭은 아래 §당김 과 결정 0078
+#   2. .githooks/ 를 둔 저장소에 core.hooksPath 설정 (git 훅은 clone 을 안 따라온다)
+#      **바꾸는 걸음 가운데 맨 앞에 둔다** — 로컬 `git config` 한 줄이라 질 까닭이 없고, 뒤가
+#      무엇으로 죽든 커밋 게이트만은 서 있어야 한다. 까닭은 아래 §실행 순서 (#31)
+#   3. 진본을 홈과 형제 저장소로 민다 — **무엇이 어디로 가나의 표는 README 「배포 대상」이 든다**
 #      (여기 옮겨 적지 않는다 — 세 자리가 같은 표를 다른 낱말로 들다 갈렸다). 목록의 진본은 선언
 #      셋이다: deploy.repofiles.conf(저장소로 가는 파일) · deploy.seeds.conf(홈으로 폴더째) ·
 #      deploy.skills.local.conf(홈에서 빼는 스킬). 어느 저장소·어느 슬러그로 가나는 선언이 아니라
 #      personal.conf 의 REPOS · ROOT 에서 **파생한다**(결정 0072)
-#   3. mcp-servers.json에 적힌 MCP 서버 등록
-#   4. 설치 — 걸음이 둘이다 (#43)
-#      4a. 전역 설치 한 번    claude-config 의 훅을 `--install-global` 로 불러 전역형 도구
+#   4. mcp-servers.json에 적힌 MCP 서버 등록 — **서버마다 `only` 로 자리를 걸 수 있다**
+#      (`only = <자리>,<자리>`). 이 자리가 그 목록에 없으면 안 등록하고, 이미 등록돼 있으면
+#      기본 실행에서 걷는다. 자리는 세션 훅에 묻는다(`--site`) — 결정 0079
+#   5. 설치 — 걸음이 둘이다 (#43)
+#      5a. 전역 설치 한 번    claude-config 의 훅을 `--install-global` 로 불러 전역형 도구
 #                             (npm 전역 · 릴리스 바이너리 · winget · 브라우저)를 기계에 한 번 깐다
-#      4b. 저장소마다         각 저장소의 .claude/hooks/session-start.sh 를 `--install` 로 불러
+#      5b. 저장소마다         각 저장소의 .claude/hooks/session-start.sh 를 `--install` 로 불러
 #                             프로젝트 축(venv · npm ci)과 배선을 세운다
 #      무엇을 깔지는 그 훅이 알고 이 스크립트는 모른다 — 도구 이름이 여기 없는 까닭이다
-#   5. 사용자 환경변수 — 이 PC 전체에 걸려야 하는 것 (인코딩 축. 아래 §사용자 환경변수)
-#   6. 남은 수동 작업 안내 (API 키 등)
+#   6. 사용자 환경변수 — 이 PC 전체에 걸려야 하는 것 (인코딩 축. 아래 §사용자 환경변수)
+#   7. 남은 수동 작업 안내 (API 키 등)
 #
 # 복사하지 않는 것 — 무엇이 배포되고 무엇이 안 되는지는 README 의 배포 대상 표가 든다.
 # 여기 적는 것은 **이름이 같아 헷갈리는 자리** 하나뿐이다.
@@ -33,8 +38,9 @@
 #                             저장소의 .claude/settings.json 은 훅 등록 파일이라 배포한다 —
 #                             이름이 같을 뿐 다른 것이다
 #
-# 기본 실행은 아무것도 지우지 않는다. 제거는 -Prune 을 줄 때만 한다.
-# 제거 후보가 있으면 기본 실행에서도 개수만 알려준다.
+# 기본 실행이 지우는 것은 **하나뿐이다** — 선언에 있으면서 `only` 로 이 자리에서 안 사는 MCP
+# 이름(결정 0079). 그것은 「원본에 없는 것」이 아니라 **선언이 시킨 상태**라 -Prune 이 아닌
+# 계획에 선다. 나머지 제거는 -Prune 을 줄 때만 하고, 후보가 있으면 기본 실행에서도 개수만 알려준다.
 #
 # 이미 맞는 것은 건드리지 않는다. 몇 번을 돌려도 안전하다.
 # 덮어쓰거나 치우는 파일은 ~/.claude/backups/deploy-<시각>/ 에 원본을 남긴다.
@@ -59,7 +65,9 @@ $todo    = @()   # 사람이 해야 할 것
 #   환경은 서 있다 — 그것으로 빨강을 내면 판정이 늘 빨강이라 아무것도 안 말한다.
 #   이쪽은 **실행 환경이 안 선 것**이고, 이 목록이 비지 않으면 이 스크립트는 0 으로 안 끝난다.
 $envDown = @()   # 실행 환경이 안 선 것 — 종료코드를 가른다
-$prunable = @()  # 제거 후보 (-Prune 없이는 세기만 한다)
+$prunable = @()  # 제거 후보 — **원본에 없는 것** (-Prune 없이는 세기만 한다)
+# ⚠ 자리가 뺀 MCP 이름은 **여기 안 든다** — 선언에 있으므로 「원본에 없는 것」이 아니다.
+#   그것은 $plan 의 `mcpremove` 로 서서 기본 실행에서 걷힌다 (§MCP 등록 · 결정 0079).
 # ⚠ **초록도 편다.** 통과가 화면에서 침묵하면 「재서 다 살아 있다」와 「아예 안 쟀다」가
 #   같아진다 — 그 침묵은 아무것도 안 말한 것과 같다. 여기는 나르기만 한다.
 # ⚠ 이제 이 통에 드는 것은 **저장소마다 「마지막 CI」 한 줄**뿐이다 — 훅 진단은 계획 단계가
@@ -134,8 +142,274 @@ $bash = @(
 ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
 
+# ── 당김 — **계획을 짓기 앞에** 형제 저장소를 원격까지 맞춘다 (결정 0078 · 이슈 18 을 잇는다) ──
+# ⚠ **왜 계획 앞인가.** 아래 계획(`$targets` · `$plan`)과 설치 판정(`--needs-install`)은 **지금 그
+#   저장소에 있는 파일의 지문**을 본다. 당김을 그 뒤에 두면 새로 들어온 선언이 이번 회차에 안 깔리고
+#   다음 회차에야 깔린다 — 실측 2026-09-12 의 ruff 가 그 병이었고(둘째 판에서 깔렸다) 아래
+#   `$declChanges` 땜질이 그 자리에 남은 흉이다.
+# ⚠ **왜 여기로 옮겼나.** 옛 판은 당기는 자를 `'copy'` 걸음 **안**에 두어, 배포본 지문이 어긋나
+#   밀 것이 있는 회차에만 당겼다. 평상시에는 copy 가 안 서고 **당김도 함께 사라졌다** — 실측
+#   2026-10-06 회사 PC: 2주 넘게 어떤 설치 회차도 형제를 당기지 않았고, 「안 당겼다」가 조용해서
+#   아무도 몰랐다(#112). 그래서 지금은 **밀 것이 하나도 없는 회차에도** 저장소마다 판정 한 줄이 선다.
+# ⚠ **밀기 전에 당긴다는 규율은 그대로다** — 뒤처진 저장소에 새 진본이 앉으면 그것이 M 이 되고,
+#   다음 세션의 훅 당김(`merge --ff-only`)이 그 M 에 막힌다. 한 번 막히면 사람이 되돌리기 전까지
+#   안 풀린다 — **배포가 다음 배포를 막는 고리다.** 실측 2026-09-09 회사 PC: 훅이
+#   `error: Your local changes … would be overwritten by merge` 로 두 번 졌다.
+# ⚠ **못 당기면 안 민다.** 밀어 봐야 그 저장소는 당김이 막힌 채 트리만 더 더러워진다 — 고리를
+#   끊으려는 자리에서 고리를 한 바퀴 더 돌리는 꼴이다. 판정은 `$pulledRepos` 가 들고 아래
+#   `'copy'` 걸음은 그것을 **읽기만** 한다(당기는 자를 부르는 자리는 이 한 곳이다).
+# ⚠ main 위에서만 당긴다 — 작업 중인 브랜치를 건드리지 않는다(훅 `pull_ff` 와 같은 자).
+# ⚠ **`pull` 이 아니라 `fetch` + `merge --ff-only` 다** (#87). `pull` 은 제 fetch 를 돌린 뒤
+#   `FETCH_HEAD` 를 읽어 무엇을 병합할지 정하는데, 그 파일은 **저장소당 한 장이라 경쟁의 자리다** —
+#   같은 순간 다른 git(VS Code 로 연 세션의 훅 당김)이 끼어들면 갈래가 두 줄 적히고 pull 은 그것을
+#   병합 대상 둘로 읽어 `fatal: Cannot fast-forward to multiple branches.` 로 진다. 당김이 매 회차로
+#   늘면 겹칠 자리도 늘어난다. `merge` 에 **이름 있는 자리**(추적 갈래)를 주면 남이 그 파일에 무엇을
+#   쓰든 무관해진다.
+# ⚠ **refspec 을 두 칸 다 적는다** — 한 갈래만 받게 클론된 저장소는 `fetch <원격> main` 이 추적
+#   갈래를 안 옮기고 `FETCH_HEAD` 만 쓴다(훅 `sync_main` 의 같은 규율). 그러면 병합 대상이 안
+#   움직여, 아무것도 안 전진했는데 성공으로 끝난다.
+# ⚠ **fetch 는 저장소마다 동시에 띄우고, merge 는 다 끝난 뒤 차례로 한다.** 저장소가 다르면
+#   `FETCH_HEAD` 도 다른 파일이라 fetch 끼리는 안 겹치고, 한 곳이 느려도 나머지를 안 막는다 —
+#   직렬이면 사내 망에서 저장소 수 × 6~7초를 그대로 문다(세션 훅 `pull_ff` 머리의 실측). 작업
+#   나무를 옮기는 `merge` 는 차례로 둔다.
+# ⚠ **배경이 아니라 동기다.** 세션 훅은 당김을 배경으로 뺐는데(0043 · 0069) 그 까닭은 확장이
+#   초기화를 60초만 기다리는 벽이었다. 이 자리는 부팅·로그온 자동 실행이고 그 **직후에 아뜰리에
+#   서버가 뜬다** — 서버가 뜨기 전에 최신이어야 당긴 것이 이번 부팅에 실린다. 0043 과 안 부딪힌다.
+# ⚠ **져도 던지지 않고 종료코드를 올리지도 않는다.** 부팅 라인의 서버 띄우기는 앞 단계의
+#   종료코드·시간 초과를 안 보고 늘 서는데, 그 성질을 깨지 않는다 — 옛 판 서버가 도는 것이 서버가
+#   아예 안 뜨는 것보다 낫다. 한 저장소의 실패는 그 저장소의 밀기만 막고 나머지는 다 돈다.
+# ⚠ **훅의 90초 표식(`.git/claude-pull-attempted`)은 읽지도 쓰지도 않는다** — 까닭은 결정 0078.
+#   그 표식은 한 세션에서 훅 둘이 겹치는 것을 막는 자리이고, 이 자리의 물음은 「서버가 뜨기 전에
+#   최신인가」라 남이 90초 안에 **시도했다**는 사실로는 답이 안 된다.
+# ⚠ **리다이렉트가 곧 위험이다** — 이 파일에서 가장 되묻기 쉬운 자리라 여기 적어 둔다.
+#   이 스크립트는 `$ErrorActionPreference = 'Stop'` 을 든다. 그 아래에서 파워셸 5.1 은
+#   네이티브의 stderr 를 **파워셸이 건드릴 때만** `NativeCommandError` 로 감싸고, 그것이
+#   종료 오류가 되어 배포를 통째로 죽인다. 실측 2026-09-10 로 갈린 두 편:
+#     · 죽는다 — `2>$null` · `2>$파일` · `2>&1` · `*> $null`  (넷 다 방패가 아니다)
+#     · 안 죽는다 — 리다이렉트를 아예 안 한 자리. stderr 가 콘솔로 흘러 오류 기록이 안 난다
+#                   (`| Out-Null` 이나 값으로 받는 것도 stdout 쪽이라 안전하다)
+#   옛 판은 `2>$파일` 을 방패로 믿었고, 그래서 「못 당김」 갈래는 **한 번도 안 돌았다**
+#   — 저장소 하나의 로컬 수정이 배포 전체를 죽였다 (실측 2026-09-09 · 사내 PC ·
+#   deploy 가 exit 1 로 끝나고 뒤의 배포·MCP 가 다 남았다).
+# ⚠ 그래서 **자식으로 띄운다.** `Start-Process` 는 stderr 를 파워셸에 안 태우고 파일에
+#   바로 붓는다 — 파워셸이 볼 것이 없으니 승격될 것도 없다. 끝나기를 기다리면 종료코드도
+#   제대로 든다. `ErrorActionPreference` 를 잠깐 내리는 길도 살긴 하는데, 그러면 파일에
+#   담기는 것이 git 의 말이 아니라 **파워셸이 꾸민 오류 기록**이라 아래 사유 고르기가
+#   `Aborting` 을 집는다 — 바로 그 주석이 막으려던 자리다.
+# ⚠ **기다림에 한도가 있다 — 걸린 당김은 거두고 그 저장소만 「못 당김」으로 적는다.**
+#   이 자리가 배포의 **첫 걸음**이라, 여기서 안 끝나면 배선(`core.hooksPath`) · 계획 · 배포 ·
+#   설치가 통째로 안 돈다. 무인 라인에서 그것은 조용한 굳음이다: 라인의 10분 울타리가 autorun 을
+#   거두고 아뜰리에 서버는 옛 판으로 뜬다. 걸리는 길이 둘 있다 — **창을 띄우려는 자격증명
+#   도움꾼**(죽은 토큰 · 사람이 없는 세션)과 **답을 안 주는 망**(프록시가 삼키는 자리).
+#   그래서 셋을 함께 둔다: 묻는 자리를 비대화로 못 박고(`Sync-Repos` 머리의 이름 둘) · 묶음
+#   전체에 벽시계 한도를 두고 · 넘긴 자식을 거둔다. **최악의 경우 배선이 늦는 폭이 곧 이 한도다.**
+# ⚠ **0043 이 거절한 「시간 제한」과 다른 것이다.** 저쪽이 거절한 것은 정상이 7초인 왕복을 5초로
+#   자르는 일이었다 — 되던 당김까지 실패로 찍는다. 여기 한도는 **정상의 열 배를 넘는 자리**에
+#   두어 걸린 것에만 걸린다(사내 망 실측 하나 6~7초 · 동시에 돌므로 묶음도 그 값에 가깝다).
+# ⚠ 이 고침은 **차례를 바로잡는다.** 진본이 바뀌면 형제 저장소의 배포본 커밋도 같은 판에
+#   나가야 하고(`chore(claude): 훅 배포본을 진본과 다시 맞춘다`), 안 나가면 당겨도
+#   뒤처진 채라 M 이 다시 뜬다 — 그리고 그 M 은 맞다.
+# 한도는 **이름 둘이 든다** — 값을 아래 고리에 박으면 화면에 찍는 초와 재는 초가 갈린다.
+$PullBatchTimeoutSec = 120   # fetch **묶음 전체**의 벽시계 한도. 넘긴 자식만 거둔다
+$PullMergeTimeoutSec = 30    # merge 하나의 한도 — 디스크 일이라 망을 안 탄다(걸리면 잠금이다)
+$pulledRepos = @{}   # 저장소 -> 이번 회차에 그 저장소로 밀어도 되나 (당김 판정)
+
+function Get-GitWhy($file) {
+    # 사유를 고르는 자는 훅 `git_why` 와 같은 결이다 — 끝줄이 아니라 첫 `fatal:`/`error:` 줄이다.
+    # 로컬 수정 갈래는 끝줄이 `Aborting` 이라, 끝줄을 집으면 사유가 있는데 층이 안 갈린다.
+    $raw   = (Get-Content $file -Raw -ErrorAction SilentlyContinue)
+    $lines = @(("$raw" -split "`r?`n") | Where-Object { $_.Trim() })
+    $why   = @($lines | Where-Object { $_ -match '^(fatal|error):' })[0]
+    if (-not $why) { $why = $lines[-1] }
+    if (-not $why) { $why = '사유가 안 나왔다' }
+    return "$why".Trim()
+}
+
+function Start-GitChild($gitArgs) {
+    # git 하나를 자식으로 띄운다 — **기다리는 것은 부르는 쪽이 한다**(fetch 는 묶음으로 기다리고
+    # merge 는 하나씩 기다려, 기다리는 꼴이 둘이라 이 자는 띄우기만 든다).
+    # 돌려주는 것: @{ Proc; Err; Out } · 못 띄웠으면 @{ Why = 사유 }
+    $errFile = [System.IO.Path]::GetTempFileName()
+    $outFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $p = Start-Process -FilePath 'git' -ArgumentList $gitArgs `
+               -NoNewWindow -PassThru `
+               -RedirectStandardError $errFile -RedirectStandardOutput $outFile
+        # ⚠ **손잡이를 여기서 잡아 둬야 종료코드가 남는다.** `-Wait` 없이 띄운
+        #   `Start-Process -PassThru` 의 Process 객체는 자식이 끝나면 `ExitCode` 가 **빈 값**이다 —
+        #   던지지도 않아서 「0 이 아니다」로 읽히고, 그러면 성공한 fetch 가 전부
+        #   `! 못 당김 — 사유가 안 나왔다` 로 나온다(실측 2026-10-06 · 가짜 저장소 다섯이 다
+        #   그렇게 나왔다). `.Handle` 을 한 번 읽어 두면 .NET 이 핸들을 쥐고 있어 종료코드가
+        #   남는다. 못 읽으면 그 저장소는 「못 쟀다」로 떨어진다 — 0 으로 접지 않는다.
+        try { $null = $p.Handle } catch { }
+        return @{ Proc = $p; Err = $errFile; Out = $outFile }
+    } catch {
+        Remove-Item $errFile, $outFile -Force -ErrorAction SilentlyContinue
+        return @{ Why = "git 을 못 띄웠다: $($_.Exception.Message.Split([char]10)[0].Trim())" }
+    }
+}
+
+function Stop-GitChild($job) {
+    # 한도를 넘긴 자식을 거둔다.
+    # ⚠ **`taskkill.exe` 에 매지 않는다 — 이 기계에서 그놈이 아예 안 돈다.** 실측 2026-10-06
+    #   회사 PC: 제 자식에게조차 「액세스가 거부되었습니다」로 실행 자체가 거부된다(보안 소프트가
+    #   그 바이너리를 막는다). 같은 자리에서 `Stop-Process -Force` 와 `.NET Kill()` 은 멀쩡히
+    #   죽였다 — 부팅 라인(`scripts/startup-pipeline.ps1` 의 거두는 자)이 같은 까닭으로 같은 길이다.
+    # ⚠ **나무째 안 내려간다.** git 이 띄운 전송 도움꾼(`git-remote-https`)은 부모가 죽으면 파이프가
+    #   끊겨 제 발로 나간다. 그리고 이 자리에는 라인의 겹침 가드처럼 **남은 손자가 굳히는 자리가
+    #   없다** — 다음 회차는 당김을 새로 띄운다.
+    try { Stop-Process -Id $job.Proc.Id -Force -ErrorAction Stop }
+    catch { try { $job.Proc.Kill() } catch { } }
+}
+
+function Complete-GitChild($job) {
+    # 끝난 자식의 **종료코드와 사유 한 줄**을 읽고 임시 파일을 걷는다.
+    # ⚠ 코드가 $null 이면 「못 쟀다」다 — 부르는 쪽이 0 으로 접지 않는다.
+    $code = $null
+    try { $code = $job.Proc.ExitCode } catch { $code = $null }
+    $why = Get-GitWhy $job.Err
+    Remove-Item $job.Err, $job.Out -Force -ErrorAction SilentlyContinue
+    return @{ Code = $code; Why = $why }
+}
+
+function Invoke-GitWait($gitArgs, $timeoutSec) {
+    # git 하나를 띄워 **한도 안에서** 기다린다. 넘기면 거두고 「시간 초과」로 낸다.
+    $job = Start-GitChild $gitArgs
+    if ($job.Why) { return @{ Code = $null; Why = $job.Why } }
+    $done = $false
+    try { $done = $job.Proc.WaitForExit($timeoutSec * 1000) } catch { $done = $true }
+    if (-not $done) {
+        Stop-GitChild $job
+        Remove-Item $job.Err, $job.Out -Force -ErrorAction SilentlyContinue
+        return @{ Code = $null; Why = "시간 초과 (${timeoutSec}초)" }
+    }
+    return Complete-GitChild $job
+}
+
+function Sync-Repos($repos) {
+    # 저장소마다 판정 한 줄을 **반드시** 낸다 — `↓ 당김` · `· 당김 건너뜀` · `! 못 당김` 하나다.
+    # 「안 당겼다」가 조용했던 것이 이 결함이 2주 묻힌 까닭이다(#112).
+    #
+    # ⚠ **묻는 자리를 비대화로 못 박는다.** 부팅·로그온 자동 실행에는 자격증명을 넣을 사람이
+    #   없다. 토큰이 죽었거나 자격증명이 비면 git 의 도움꾼(GCM)이 **창을 띄우려 하고**, 창을
+    #   띄울 데가 없는 세션에서 그 fetch 는 영영 안 끝난다 — 아래 한도가 그것을 거두지만,
+    #   애초에 안 묻게 하는 편이 싸고 사유도 또렷하다(git 이 그 자리에서 지고 한 줄을 남긴다).
+    # ⚠ **이 셸에 남기지 않는다.** 뒤의 걸음들(gh · 저장소 설치 · MCP)은 사람의 자격증명을 쓸
+    #   수 있다. 옛 값을 쥐고 끝에서 되돌린다 — 없던 이름은 다시 없애야 한다.
+    $savedPrompt = $env:GIT_TERMINAL_PROMPT
+    $savedGcm    = $env:GCM_INTERACTIVE
+    $env:GIT_TERMINAL_PROMPT = '0'
+    $env:GCM_INTERACTIVE     = 'Never'
+    try {
+        $fetches = @()
+        foreach ($repo in $repos) {
+            if (-not (Test-Path (Join-Path $repo '.git'))) { continue }
+            # ⚠ `2>$null` 은 위에 적은 대로 방패가 아니다 — 여기서는 잡아서 넘긴다.
+            #   HEAD 를 못 읽으면 「main 이 아니다」와 같은 값이라 그 갈래로 떨어뜨린다.
+            try { $head = (& git -C $repo symbolic-ref --short -q HEAD 2>$null) } catch { $head = '' }
+            $head = "$head".Trim()
+            if ($head -ne 'main') {
+                # ⚠ **당길 수 없는 저장소에도 안 민다** — 못 당긴 자리와 같은 값이다. 여기 밀면
+                #   그 M 은 사람이 main 으로 돌아온 뒤의 당김을 막는다. 「지금 안 막혔다」가
+                #   아니라 「나중에 막힐 것을 안 만든다」가 이 게이트의 뜻이다.
+                # ⚠ **빈 값은 「main 이 아니라 ''」가 아니다** — 분리된 HEAD(rebase · 태그 체크아웃)이거나
+                #   HEAD 를 아예 못 읽은 자리다. 빈 따옴표를 보여 주면 사람이 브랜치 이름을 찾는다.
+                $why = if ($head) { "main 이 아니라 '$head'" } else { '분리된 HEAD 이거나 읽지 못했다' }
+                Write-Host "· 당김 건너뜀  $repo  ($why)" -ForegroundColor DarkGray
+                $pulledRepos[$repo] = $false
+                continue
+            }
+            # 원격 이름을 박지 않는다 — 추적 설정에서 읽는다(훅 `pull_ff` 와 같은 자리).
+            try { $remote = (& git -C $repo config --get branch.main.remote 2>$null) } catch { $remote = '' }
+            $remote = "$remote".Trim()
+            if (-not $remote) {
+                # 당길 자리가 없다. **그래도 안 민다** — 옛 판의 `pull --ff-only` 도 이 자리에서
+                # 졌으므로(`There is no tracking information…`) 판정을 그대로 둔다. 이 고침은
+                # 차례만 바꾼다.
+                Write-Host "· 당김 건너뜀  $repo  (main 에 추적 원격이 없다)" -ForegroundColor DarkGray
+                $pulledRepos[$repo] = $false
+                continue
+            }
+            try { $was = (& git -C $repo rev-parse --short HEAD 2>$null) } catch { $was = '' }
+            $job = Start-GitChild @('-C', $repo, 'fetch', '-q', $remote,
+                                    "+refs/heads/main:refs/remotes/$remote/main")
+            if ($job.Why) {
+                Write-Host "! 못 당김  $repo — $($job.Why)" -ForegroundColor Red
+                $pulledRepos[$repo] = $false
+                continue
+            }
+            $job.Repo   = $repo
+            $job.Remote = $remote
+            $job.Was    = "$was".Trim()
+            $fetches += $job
+        }
+
+        # ── 다 끝나기를 기다린다 — **묶음 전체에 벽시계 한도가 있다** ───────────────────
+        # 동시에 돌므로 이 칸의 값은 보통 가장 느린 하나의 값이다. 한도를 넘기면 그때까지 안 끝난
+        # 자식만 거두고 그 저장소를 「시간 초과」로 적는다 — 끝난 것들의 판정은 그대로 산다.
+        # ⚠ **남은 예산으로 기다린다.** 자식마다 한도를 새로 주면 저장소 수만큼 곱해져, 다섯이 걸린
+        #   날 한도가 열 배가 된다 — 배선이 그만큼 늦는다.
+        $deadline = (Get-Date).AddSeconds($PullBatchTimeoutSec)
+        foreach ($f in $fetches) {
+            $leftMs = [int][math]::Max(0, ($deadline - (Get-Date)).TotalMilliseconds)
+            $done = $false
+            try { $done = $f.Proc.WaitForExit($leftMs) } catch { $done = $true }
+            if (-not $done) {
+                Stop-GitChild $f
+                $f.TimedOut = $true
+            }
+        }
+
+        foreach ($f in $fetches) {
+            $repo = $f.Repo
+            if ($f.TimedOut) {
+                Remove-Item $f.Err, $f.Out -Force -ErrorAction SilentlyContinue
+                Write-Host "! 못 당김  $repo — 시간 초과 (${PullBatchTimeoutSec}초)" -ForegroundColor Red
+                $pulledRepos[$repo] = $false
+                continue
+            }
+            $r = Complete-GitChild $f
+            if ($r.Code -ne 0) {
+                Write-Host "! 못 당김  $repo — $($r.Why)" -ForegroundColor Red
+                $pulledRepos[$repo] = $false
+                continue
+            }
+            $m = Invoke-GitWait @('-C', $repo, 'merge', '--ff-only', '-q',
+                                  "refs/remotes/$($f.Remote)/main") $PullMergeTimeoutSec
+            if ($m.Code -ne 0) {
+                Write-Host "! 못 당김  $repo — $($m.Why)" -ForegroundColor Red
+                $pulledRepos[$repo] = $false
+                continue
+            }
+            try { $now = (& git -C $repo rev-parse --short HEAD 2>$null) } catch { $now = '' }
+            $now = "$now".Trim()
+            # ⚠ **전진했나를 같이 낸다.** 「당겼다」만 적으면 새 코드가 들어온 회차와 아무것도 안 온
+            #   회차가 한 줄로 같아진다 — 이 건의 끝 조건이 「원격까지 전진한다」라 그 값을 보여야 한다.
+            if ($now -and $f.Was -and ($now -ne $f.Was)) {
+                Write-Host "↓ 당김  $repo  ($($f.Was) → $now)" -ForegroundColor DarkGray
+            } else {
+                Write-Host "↓ 당김  $repo  (이미 최신)" -ForegroundColor DarkGray
+            }
+            $pulledRepos[$repo] = $true
+        }
+    } finally {
+        if ($null -eq $savedPrompt) { Remove-Item Env:GIT_TERMINAL_PROMPT -ErrorAction SilentlyContinue }
+        else { $env:GIT_TERMINAL_PROMPT = $savedPrompt }
+        if ($null -eq $savedGcm) { Remove-Item Env:GCM_INTERACTIVE -ErrorAction SilentlyContinue }
+        else { $env:GCM_INTERACTIVE = $savedGcm }
+    }
+}
+
+# 대상은 `personal.conf` 의 REPOS 중 이 PC 에 `.git` 을 든 것이다 — 목록을 여기 안 적는다.
+# 이 저장소 자신은 대상이 아니다: 부팅 라인에서 이 스크립트가 도는 것은 설치 `[8/8]` 이 이미
+# 그것을 당긴 뒤이고, 지금 도는 몸통이 곧 그때 당겨 온 판이다.
+Sync-Repos $globalRuleTargets
+
+
 # ============================ 1단계: 계획 수립 ============================
 # 아무것도 바꾸지 않는다. 무엇을 바꿔야 하는지만 조사한다.
+# ⚠ **당김은 이 앞에 있다** — 그래서 이 단계가 보는 나무는 **당긴 뒤**의 나무고, 이 한 줄은
+#   그대로 참이다(당김은 `$plan` 에 아무것도 안 더하므로 「다 최신이면 안 묻는다」도 산다).
 
 # --- 파일 배포 ---
 $agentSrc = Join-Path $src 'agents'
@@ -182,7 +456,8 @@ foreach ($bootFile in $repoFiles) {
     if (-not (Test-Path $bootSrc)) { continue }
     foreach ($repoRoot in $globalRuleTargets) {
         if (-not (Test-Path $repoRoot)) { continue }
-        # Repo 를 달아 둔다 — 실행 단계가 **밀기 전에 그 저장소를 당길** 근거다.
+        # Repo 를 달아 둔다 — 실행 단계가 **그 저장소의 당김 판정을 읽을** 근거다
+        # (당김은 계획 앞에서 이미 돌았다 · 결정 0078). 못 당긴 저장소에는 안 민다.
         # 홈 대상에는 안 단다: ~/.claude 는 git 밖이라 당길 것도 더러워질 것도 없다.
         $targets += @{ From = $bootSrc; To = Join-Path $repoRoot $bootFile; Repo = $repoRoot }
     }
@@ -345,6 +620,25 @@ if ($stampRev) {
 #   원하는 서버는 영영 안 붙는데 매번 초록이었다. `mcp get` 은 가린다 (실측: `GitHub` → exit 1).
 # ⚠ `claude mcp list` 를 안 쓰는 까닭은 그대로다 — 서버 뒤에 진단 블록을 함께 뱉고 그
 #   줄들도 `이름: 값` 꼴이라, 산문을 훑으면 경고 줄이 서버 이름으로 잡힌다. --json 도 없다.
+#
+# ── 자리 게이트 — 선언이 서버마다 `only` 로 자리를 걸 수 있다 (결정 0079) ──────────────
+# 어느 자리에서는 못 쓰는 서버가 있다(사내 웹 필터가 그 엔드포인트만 막는 자리). 그런 이름을
+# 자리와 무관하게 등록하면 **매 세션 연결 실패 줄이 떠 진짜 고장과 섞인다.**
+# ⚠ **두 명제를 가른다 — 「이 자리에서 안 쓴다」와 「선언에서 없어졌다」.** 자리 때문에 빠진
+#   이름도 `$wantMcp` 에는 그대로 담는다. 안 담으면 아래 제거 후보 판정이 그것을 「선언에
+#   없는 것」으로 집어, 자리를 옮기는 PC 에서 **등록·해제가 매 회차 오간다.**
+# ⚠ **자리는 이 스크립트가 재지 않는다 — 훅 몸통에 묻는다**(`--site`). 재는 자가 둘이면
+#   고칠 때 한쪽만 고쳐진 채 조용히 갈린다. 묻는 꼴은 `--needs-install` 과 같다(0061).
+# ⚠ **지우는 손은 「저 자리임을 보인 답」 위에서만 선다.** 훅은 자리와 함께 **어느 자로
+#   얻었나**를 낸다(`probe` · `path` · `default` · `default-after-probe`). 바닥값은 아무 자도
+#   안 답해서 **남은** 답이라, 그것으로 걷으면 **안 재고 지우는 꼴**이다 — 부팅 직후 망이
+#   아직 안 선 사내 PC 가 정확히 그 자리다: 프로브가 놓쳐 바닥값(사외)이 서고, 등록이 섰다가
+#   다음 회차에 걷히며 **매 부팅 등록·해제가 오간다.** 그래서 바닥값이 프로브 선언을 두고
+#   선 것이면(`default-after-probe`) 잠깐 뒤 한 번 다시 묻고, 그래도 바닥값이면 **받아들이되
+#   걷지는 않는다.**
+# ⚠ **자리를 아예 못 쟀으면 게이트를 안 건다 — 등록은 예전대로 한다.** 이 칸이 막는 것은
+#   **아는 자리**이고, 모르는 자리에서 거두는 쪽으로 기울면 설정 저장소 씨앗만 받은 PC
+#   (`secrets.d/` 가 없다)에서 멀쩡한 서버가 사라진다. 다만 **이미 등록된 것을 걷지는 않는다.**
 $mcpFile  = Join-Path $src 'mcp-servers.json'
 $wantMcp  = @()
 if (Test-Path $mcpFile) {
@@ -385,9 +679,125 @@ if (Test-Path $mcpFile) {
         return ($code -eq 0)
     }
 
-    foreach ($p in ((Get-Content $mcpFile -Raw | ConvertFrom-Json).mcpServers.PSObject.Properties)) {
+    # `only` 는 **선언의 칸이지 서버 설정이 아니다** — 등록에 넘기는 JSON 에서 뺀다. 넘기면
+    # 모르는 키가 등록부에 눌러앉고, 그것을 쓰는 자는 아무도 없다.
+    # ⚠ 키가 없는 서버에도 그냥 건다 — 빼기 전과 **바이트가 같다**(실측). 갈래를 하나 줄인다.
+    function Get-McpDef($def) { $def | Select-Object -Property * -ExcludeProperty only }
+    # **키가 없는 것과 비어 있는 것을 가른다** — 없으면 `$null`(안 거는 서버), 있으면 글자다.
+    # 빈 글자를 「안 건다」로 접으면 `"only": ""` 가 **조용히 모든 자리에서 등록된다.**
+    function Get-McpOnly($def) {
+        $hit = @($def.PSObject.Properties | Where-Object { $_.Name -eq 'only' })
+        if ($hit.Count -eq 0) { return $null }
+        return ("$($hit[0].Value)").Trim()
+    }
+    # 쉼표로 가르고 칸마다 공백을 걷고 빈 칸은 버린다 — `"home, outside"` 도 `"home,outside"` 와
+    # 같은 뜻이어야 한다. 글자 통째로 견주면 공백 하나가 그 서버를 **모든 자리에서** 뺀다.
+    function Get-McpOnlyTokens($raw) {
+        if ($null -eq $raw) { return @() }
+        return @(($raw -split ',') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    }
+
+    $mcpProps = @((Get-Content $mcpFile -Raw | ConvertFrom-Json).mcpServers.PSObject.Properties)
+
+    # 자리 **이름 목록**은 파일 이름이 든다 — 선언의 오타를 잡는 자다. ⚠ 이것은 두 번째 자리
+    # 판별기가 아니다: 어느 자리인가를 **고르는** 자는 여전히 훅 하나이고, 여기서 읽는 것은
+    # 「어떤 이름이 선언돼 있나」라는 다른 명제다(둘 다 같은 폴더를 원본으로 본다).
+    $mcpSiteNames = @(Get-ChildItem (Join-Path $src 'secrets.d') -Filter *.env -File -ErrorAction SilentlyContinue |
+                      ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_.Name) })
+
+    # 바닥값으로 선 자리를 받아들이기 전에 다시 묻는 자 — 값에 이름을 준다(박으면 화면에 찍는
+    # 초와 기다리는 초가 갈린다). 프로브는 안 닿을 때 3초를 무니 한 번 더 묻는 값이 그만큼이다.
+    $McpSiteRetryPauseSec = 5   # 다시 묻기 전에 기다리는 시간 — 부팅 직후 망이 서는 틈을 준다
+    $McpSiteRetryAttempts = 1   # 바닥값을 받아들이기 전에 다시 묻는 횟수
+
+    function Get-McpSiteAnswer {
+        # @{ Site; How; Why } — `Why` 가 서면 못 쟀다는 뜻이다
+        if (-not $bash) { return @{ Site = ''; How = ''; Why = 'Git Bash 를 못 찾았다' } }
+        # ⚠ **`2>&1` 을 안 붙인다** — 5.1 은 네이티브의 stderr 한 줄을 종료 오류로 승격한다
+        #   (까닭은 `Sync-Repos` 머리에 있다). 답도 사유도 훅이 stdout 한 줄로 낸다.
+        $body = Join-Path $src '.claude\hooks\session-start-body.sh'
+        $env:SESSION_START_REPO = $src -replace '\\', '/'
+        try { $out = & $bash ($body -replace '\\', '/') --site; $rc = $LASTEXITCODE }
+        finally { Remove-Item Env:SESSION_START_REPO -ErrorAction SilentlyContinue }
+        $line = @($out | Where-Object { "$_".Trim() }) | Select-Object -Last 1
+        if ($rc -ne 0 -or -not $line) {
+            $why = if ($line) { "$line".Trim() } else { "훅이 사유를 안 냈다 (exit $rc)" }
+            return @{ Site = ''; How = ''; Why = $why }
+        }
+        $f = @(("$line".Trim() -split '\s+') | Where-Object { $_ })
+        if ($f.Count -lt 2) {
+            return @{ Site = ''; How = ''; Why = "훅이 자리와 길을 두 칸으로 안 냈다: $line" }
+        }
+        return @{ Site = $f[0]; How = $f[1]; Why = '' }
+    }
+
+    # 자리는 **거는 이름이 하나라도 있을 때만** 묻는다 — `_site_of` 는 안 닿는 자리에서 TCP
+    # 프로브에 3초를 무는 자라, 아무도 자리를 안 거는 판에서는 그 3초가 순수한 손해다.
+    # ⚠ 다시 묻는 값도 그 안에 있다 — 프로브를 선언한 자리가 없으면 훅이 `default` 를 내고
+    #   아래 갈래가 아예 안 선다. 선언이 없는 PC 는 **한 초도 더 안 문다.**
+    $mcpSite = ''; $mcpSiteHow = ''; $mcpSiteWhy = ''
+    if (@($mcpProps | Where-Object { $null -ne (Get-McpOnly $_.Value) }).Count -gt 0) {
+        $ans = Get-McpSiteAnswer
+        for ($i = 0; $i -lt $McpSiteRetryAttempts -and $ans.How -eq 'default-after-probe'; $i++) {
+            Write-Host "· 자리가 바닥값으로 섰다 — 프로브를 선언한 자리가 있어 $McpSiteRetryPauseSec 초 뒤 한 번 다시 묻는다 (부팅 직후면 망이 아직 안 섰다)" -ForegroundColor DarkGray
+            Start-Sleep -Seconds $McpSiteRetryPauseSec
+            $again = Get-McpSiteAnswer
+            # 다시 물어 **못 쟀다**로 바뀌면 첫 답을 들고 간다 — 다시 묻기가 답을 깎지 않는다.
+            if ($again.Why) { break }
+            $ans = $again
+        }
+        $mcpSite = $ans.Site; $mcpSiteHow = $ans.How; $mcpSiteWhy = $ans.Why
+    }
+    # 「저 자리임을 보인 답」인가 — 지우는 손은 이것이 참일 때만 선다.
+    $mcpSiteFirm = ($mcpSiteHow -ceq 'probe' -or $mcpSiteHow -ceq 'path')
+
+    foreach ($p in $mcpProps) {
+        # **선언에 있다는 사실은 자리와 무관하다** — 아래 제거 후보 판정이 이 목록을 본다.
         $wantMcp += $p.Name
-        $isReg = Test-McpRegistered $p.Name
+        $only   = Get-McpOnly $p.Value
+        $tokens = Get-McpOnlyTokens $only
+        $isReg  = Test-McpRegistered $p.Name
+        # ⚠ **자리로 빠지는 이름은 매 회차 화면에 한 줄 낸다.** `$same` 에 넣으면 개수에만
+        #   잡혀 `-ShowUnchanged` 없이는 안 보이고, 「안 심었다」와 「아예 안 쟀다」가 같아진다.
+        if ($null -ne $only) {
+            if (-not $mcpSite) {
+                # **게이트를 안 건다 — 등록은 예전대로.** 이 칸이 막는 것은 아는 자리다.
+                # ⚠ **남은 수동 작업에는 안 올린다.** 자리 파일이 없는 PC 에서는 영영 뜨는 줄이
+                #   되고, 영영 뜨는 할 일은 할 일 목록을 아무것도 안 말하는 목록으로 만든다.
+                #   화면 한 줄은 매 회차 서므로 조용한 것은 아니다.
+                # 사유는 훅이 낸 글자를 그대로 싣는다 — 여기서 다시 말하면 같은 말이 두 번 선다.
+                Write-Host "? MCP $($p.Name) — 게이트를 안 건다 ($mcpSiteWhy) · 이 이름은 $only 에서만 산다. 없으면 등록하고, 있으면 그대로 둔다" -ForegroundColor Yellow
+            } elseif ($tokens.Count -eq 0 -or @($tokens | Where-Object { $mcpSiteNames -cnotcontains $_ }).Count -gt 0) {
+                # **선언 오류다 — 이번 회차에 이 이름은 안 건드린다.** 모르는 자리 이름은 어느
+                # 자리와도 안 맞아, 고치는 대신 따르면 그 서버가 **모든 자리에서** 빠진다.
+                # 걷지도 심지도 않는 까닭 — 망가진 선언을 근거로 지우면 되돌릴 사람이 없다.
+                $bogus = @($tokens | Where-Object { $mcpSiteNames -cnotcontains $_ })
+                $what = if ($tokens.Count -eq 0) { '자리 이름이 하나도 없다' } else { "모르는 자리: $($bogus -join ' · ')" }
+                Write-Host "! MCP $($p.Name) — 선언의 only 가 틀렸다 ($what · 있는 자리: $($mcpSiteNames -join ' · ')). 이번 회차에 안 건드린다" -ForegroundColor Red
+                $todo += "mcp-servers.json 의 $($p.Name) 의 only 를 고친다 ($what · 있는 자리: $($mcpSiteNames -join ' · ')) — 고칠 때까지 이 서버는 등록·해제를 안 한다"
+                continue
+            } elseif ($tokens -cnotcontains $mcpSite) {
+                if ($null -eq $isReg) {
+                    Write-Host "? MCP $($p.Name) — 자리가 $mcpSite 라 안 심는 이름인데 등록 여부를 못 물었다. 해제도 안 한다" -ForegroundColor Yellow
+                    $todo += "MCP $($p.Name) 등록 여부를 못 물었다 (claude 에 안 닿는다) — 자리가 $mcpSite 라 걷어야 한다:  claude mcp remove $($p.Name) -s user"
+                } elseif ($isReg -and -not $mcpSiteFirm) {
+                    # **바닥값으로는 안 걷는다.** 「아무 자도 안 답했다」를 근거로 지우면 안 재고
+                    # 지우는 꼴이고, 그 길이 곧 매 부팅 등록·해제가 오가는 떨림이다.
+                    Write-Host "? MCP $($p.Name) — 자리가 바닥값으로 선 $mcpSite 라 안 걷는다 ($mcpSiteHow · 이 이름은 $only 에서만 산다). 걷는 일은 프로브·경로로 선 답에서만 한다" -ForegroundColor Yellow
+                } elseif ($isReg) {
+                    # **기본 실행에서 걷는다 — `-Prune` 이 아니다.** 저 깃발의 뜻은 「원본에 없는
+                    # 것을 치운다」인데 이 이름은 원본에 있다. 선언이 시킨 상태를 맞추는 일이라
+                    # 계획에 선다 (결정 0079).
+                    $plan += @{
+                        Kind = 'mcpremove'; Name = $p.Name
+                        Text = "- 해제  MCP $($p.Name)  (자리가 $mcpSite · 이 이름은 $only 에서만 산다)"
+                    }
+                } else {
+                    Write-Host "· 안 심는다  MCP $($p.Name)  (자리가 $mcpSite · 이 이름은 $only 에서만 산다)" -ForegroundColor DarkGray
+                }
+                continue
+            }
+        }
         if ($null -eq $isReg) {
             # 못 물었으면 「등록됐다」고도 「아니다」고도 하지 않는다. 침묵하지도 않는다.
             $todo += "MCP $($p.Name) 등록 여부를 못 물었다 (claude 에 안 닿는다 — Git Bash 나 npm 전역 PATH 를 본다) — 확인:  claude mcp get $($p.Name)"
@@ -396,7 +806,7 @@ if (Test-Path $mcpFile) {
         } else {
             $plan += @{
                 Kind = 'mcp'; Name = $p.Name
-                Json = ($p.Value | ConvertTo-Json -Compress -Depth 10)
+                Json = (Get-McpDef $p.Value | ConvertTo-Json -Compress -Depth 10)
                 Text = "+ 등록  MCP $($p.Name)"
             }
         }
@@ -408,6 +818,9 @@ if (Test-Path $mcpFile) {
     #   이슈 #13 이 정확히 그렇게 났다: 못 읽으면 이 칸만 접고 나머지는 그대로 간다.
     # ⚠ 대조는 `-ccontains` 다(대소문자 구분). `-contains` 로 재면 위에서 `github` 을 새로
     #   등록해 놓고 남은 `Github` 는 「원하는 것」으로 잡혀 영영 안 걷힌다.
+    # ⚠ **자리가 뺀 이름은 여기 안 걸린다** — `$wantMcp` 가 자리와 무관하게 선언의 이름을 다
+    #   담기 때문이다(위 §자리 게이트). 그 이름을 걷는 손은 위 계획의 `mcpremove` 이고, 사유도
+    #   「선언에 없음」이 아니라 「이 자리에서 안 산다」로 갈려 찍힌다 (결정 0079).
     $claudeJson = Join-Path $HOME '.claude.json'
     if (Test-Path $claudeJson) {
         try {
@@ -475,7 +888,7 @@ if ($distName) {
 }
 foreach ($repoRoot in $hookTargets) {
     if (-not (Test-Path (Join-Path $repoRoot '.githooks'))) { continue }
-    # ⚠ `2>$null` 은 방패가 아니다 (까닭은 `Sync-RepoOnce` 머리에 있다) — 잡아서 넘긴다.
+    # ⚠ `2>$null` 은 방패가 아니다 (까닭은 `Sync-Repos` 머리에 있다) — 잡아서 넘긴다.
     #   값을 못 읽은 것과 값이 다른 것은 여기서 같은 값이다: 둘 다 「맞춰야 한다」로 간다.
     try { $cur = (& git -C $repoRoot config core.hooksPath 2>$null) }
     catch { $cur = $null }
@@ -535,7 +948,7 @@ foreach ($repoRoot in @(@($src) + $globalRuleTargets)) {
     #   하나도 안 남았다** — 「안 쟀다」와 구별이 안 된다 (실측 2026-09-11 · 사내 PC: 저장소
     #   다섯이 다 초록이라 이 칸이 통째로 안 보였다). 아래 한 줄이 그 자리를 든다.
     # ⚠ **`2>&1` 을 안 붙인다** — 5.1 은 네이티브 exe 의 stderr 한 줄을 오류로 승격한다
-    #   (까닭은 `Sync-RepoOnce` 머리에 있다). 사유는 훅이 stdout 한 줄로 낸다.
+    #   (까닭은 `Sync-Repos` 머리에 있다). 사유는 훅이 stdout 한 줄로 낸다.
     # ⚠ **묻는 훅은 그 저장소의 사본이 아니라 진본이다.** 사본은 이 배포가 덮으러 가는 옛 판일 수
     #   있고, 옛 판은 `--needs-install` 을 몰라 auto 갈래로 빠져 저장소당 50초를 돌고 엉뚱한
     #   마지막 줄을 사유로 낸다(실측 2026-09-16 · 첫 실전: 다섯 저장소 235초). 그래서 이 저장소의
@@ -578,7 +991,7 @@ foreach ($repoRoot in @(@($src) + $globalRuleTargets)) {
     if ($slug -and (Get-Command gh -ErrorAction SilentlyContinue)) {
         $ciArgs = @('run', 'list', '--repo', $slug, '--branch', 'main', '--limit', '1',
                     '--json', 'conclusion,status,headSha,createdAt')
-        # ⚠ `2>$null` 은 방패가 아니다(`Sync-RepoOnce` 머리) — 403 한 줄이 배포를 통째로 죽였다
+        # ⚠ `2>$null` 은 방패가 아니다(`Sync-Repos` 머리) — 403 한 줄이 배포를 통째로 죽였다
         #   (실측 2026-09-12). 잡아서 넘긴다.
         try { $ciJson = & gh @ciArgs 2>$null; $ciRc = $LASTEXITCODE } catch { $ciJson = $null; $ciRc = 1 }
         if ($ciRc -ne 0 -and $env:GH_TOKEN) {
@@ -754,6 +1167,10 @@ foreach ($k in $userEnvWant.Keys) {
 #   커밋만은 지키게 둔다 — 고치는 동안에도 사람은 커밋한다.
 # ⚠ **화면에 내는 목록도 이 순서다** — 계획을 굳힌 뒤에 세우니 사람이 읽는 차례와 실제로
 #   도는 차례가 같다. 둘이 갈리면 화면이 거짓말을 한다.
+# ⚠ **배선보다 앞에 서는 것이 하나 있다 — 당김이다**(결정 0078). 당김은 던지지 않으므로 「뒤가
+#   무엇으로 죽든」은 그대로 서지만, **느린 망은 이 배선을 늦춘다** — 늦는 폭의 최대가 당김
+#   칸의 `$PullBatchTimeoutSec` 다(그 한도를 넘긴 자식은 거둬지고 다음 걸음이 바로 선다).
+#   커밋 게이트 배선의 임자는 매 세션 거는 세션 훅이고, 이 자리는 그 뒤를 받는다.
 $plan = @($plan | Where-Object { $_.Kind -eq 'githooks' }) +
         @($plan | Where-Object { $_.Kind -ne 'githooks' })
 
@@ -903,76 +1320,6 @@ function Save-Backup($path) {
     Copy-Item $path $to
 }
 
-# ── 저장소를 이번 실행에 한 번만 당긴다 — **배포본을 밀기 전에** (docs/decisions 이슈 18) ──
-#    왜 밀기 전인가: 뒤처진 저장소에 새 진본이 앉으면 그것이 M 이 되고, 다음 세션의 훅
-#    당김(`pull --ff-only`)이 그 M 에 막힌다. 한 번 막히면 사람이 되돌리기 전까지 안
-#    풀린다 — **배포가 다음 배포를 막는 고리다.** 실측 2026-09-09 회사 PC: 훅이
-#    `error: Your local changes … would be overwritten by merge` 로 두 번 졌다.
-# ⚠ **못 당기면 안 민다.** 밀어 봐야 그 저장소는 pull 이 막힌 채 트리만 더 더러워진다 —
-#   고리를 끊으려는 자리에서 고리를 한 바퀴 더 돌리는 꼴이다.
-# ⚠ main 위에서만 당긴다 — 작업 중인 브랜치를 건드리지 않는다(훅 `pull_ff` 와 같은 자).
-# ⚠ **리다이렉트가 곧 위험이다** — 이 파일에서 가장 되묻기 쉬운 자리라 여기 적어 둔다.
-#   이 스크립트는 `$ErrorActionPreference = 'Stop'` 을 든다. 그 아래에서 파워셸 5.1 은
-#   네이티브의 stderr 를 **파워셸이 건드릴 때만** `NativeCommandError` 로 감싸고, 그것이
-#   종료 오류가 되어 배포를 통째로 죽인다. 실측 2026-09-10 로 갈린 두 편:
-#     · 죽는다 — `2>$null` · `2>$파일` · `2>&1` · `*> $null`  (넷 다 방패가 아니다)
-#     · 안 죽는다 — 리다이렉트를 아예 안 한 자리. stderr 가 콘솔로 흘러 오류 기록이 안 난다
-#                   (`| Out-Null` 이나 값으로 받는 것도 stdout 쪽이라 안전하다)
-#   옛 판은 `2>$파일` 을 방패로 믿었고, 그래서 아래 「못 당김」 갈래는 **한 번도 안 돌았다**
-#   — 저장소 하나의 로컬 수정이 배포 전체를 죽였다 (실측 2026-09-09 · 사내 PC ·
-#   deploy 가 exit 1 로 끝나고 뒤의 배포·MCP 가 다 남았다).
-# ⚠ 그래서 **자식으로 띄운다.** `Start-Process -Wait` 는 stderr 를 파워셸에 안 태우고 파일에
-#   바로 붓는다 — 파워셸이 볼 것이 없으니 승격될 것도 없다. `-Wait` 를 걸면 종료코드도
-#   제대로 든다. `ErrorActionPreference` 를 잠깐 내리는 길도 살긴 하는데, 그러면 파일에
-#   담기는 것이 git 의 말이 아니라 **파워셸이 꾸민 오류 기록**이라 아래 사유 고르기가
-#   `Aborting` 을 집는다 — 바로 그 주석이 막으려던 자리다.
-# ⚠ 이 고침은 **순서만 바로잡는다.** 진본이 바뀌면 형제 저장소의 배포본 커밋도 같은 판에
-#   나가야 하고(`chore(claude): 훅 배포본을 진본과 다시 맞춘다`), 안 나가면 당겨도
-#   뒤처진 채라 M 이 다시 뜬다 — 그리고 그 M 은 맞다.
-$pulledRepos = @{}
-function Sync-RepoOnce($repo) {
-    if ($pulledRepos.ContainsKey($repo)) { return $pulledRepos[$repo] }
-    $ok = $true
-    if (Test-Path (Join-Path $repo '.git')) {
-        # ⚠ `2>$null` 은 위에 적은 대로 방패가 아니다 — 여기서는 잡아서 넘긴다.
-        #   HEAD 를 못 읽으면 「main 이 아니다」와 같은 값이라 그 갈래로 떨어뜨린다.
-        try { $head = (& git -C $repo symbolic-ref --short -q HEAD 2>$null) }
-        catch { $head = '' }
-        if ($head -ne 'main') {
-            # ⚠ **당길 수 없는 저장소에도 안 민다** — 못 당긴 자리와 같은 값이다. 여기 밀면
-            #   그 M 은 사람이 main 으로 돌아온 뒤의 당김을 막는다. 「지금 안 막혔다」가
-            #   아니라 「나중에 막힐 것을 안 만든다」가 이 게이트의 뜻이다.
-            Write-Host "· 당김 건너뜀  $repo  (main 이 아니라 '$head')" -ForegroundColor DarkGray
-            $ok = $false
-        } else {
-            $errFile = [System.IO.Path]::GetTempFileName()
-            $outFile = [System.IO.Path]::GetTempFileName()
-            $git = Start-Process -FilePath 'git' `
-                     -ArgumentList @('-C', $repo, 'pull', '--ff-only', '-q') `
-                     -NoNewWindow -Wait -PassThru `
-                     -RedirectStandardError $errFile -RedirectStandardOutput $outFile
-            $code = $git.ExitCode
-            $out  = (Get-Content $errFile -Raw -ErrorAction SilentlyContinue)
-            Remove-Item $errFile, $outFile -Force -ErrorAction SilentlyContinue
-            if ($code -ne 0) {
-                # 사유를 고르는 자는 훅 `git_why` 와 같은 결이다 — 끝줄이 아니라 첫
-                # `fatal:`/`error:` 줄이다. 로컬 수정 갈래는 끝줄이 `Aborting` 이라
-                # 끝줄을 집으면 사유가 있는데 층이 안 갈린다.
-                $lines = @(($out -split "`r?`n") | Where-Object { $_.Trim() })
-                $why   = @($lines | Where-Object { $_ -match '^(fatal|error):' })[0]
-                if (-not $why) { $why = $lines[-1] }
-                if (-not $why) { $why = '사유가 안 나왔다' }
-                Write-Host "! 못 당김  $repo — $($why.Trim())" -ForegroundColor Red
-                $ok = $false
-            } else {
-                Write-Host "↓ 당김  $repo" -ForegroundColor DarkGray
-            }
-        }
-    }
-    $pulledRepos[$repo] = $ok
-    return $ok
-}
-
 # ── 이번 실행의 표식 — **같은 배포 안에서만 통하는 인용 좌표다** (#57) ──────────────────
 # 전역 걸음(`--install-global`)이 도구마다 ✅ 를 내면 훅이 그것을 홈의 명부에 이 표식과 함께
 # 적고, 이어 도는 저장소 걸음(`--install`)의 진단은 **표식이 같을 때만** 그 줄을 인용하고
@@ -989,17 +1336,22 @@ foreach ($step in $plan) {
     switch ($step.Kind) {
 
         'copy' {
-            # 저장소 배포본은 그 저장소를 당긴 뒤에 민다. 못 당겼으면 안 민다 (위 Sync-RepoOnce).
+            # 저장소 배포본은 그 저장소를 당긴 뒤에 민다. 못 당겼으면 안 민다.
+            # ⚠ **여기서 당기지 않는다 — 당김은 계획 앞에서 이미 돌았고 이 걸음은 그 판정을
+            #   읽기만 한다**(`$pulledRepos` · 결정 0078). 옛 판은 이 자리에서 당겼고, 그래서
+            #   밀 것이 없는 회차에는 당김도 함께 사라졌다(#112).
+            # ⚠ 판정에 없는 저장소는 당길 것이 없던 자리다(`.git` 이 없다) — 막을 까닭도 없다.
             $skip = $false
-            if ($step.Repo -and -not (Sync-RepoOnce $step.Repo)) {
-                Write-Host "· 건너뜀  $($step.To)  (그 저장소를 지금 못 맞춘다 — 까닭은 위 줄. 밀면 다음 당김이 막힌다)" -ForegroundColor Yellow
+            if ($step.Repo -and $pulledRepos.ContainsKey($step.Repo) -and -not $pulledRepos[$step.Repo]) {
+                Write-Host "· 건너뜀  $($step.To)  (그 저장소를 지금 못 맞춘다 — 까닭은 위 당김 줄. 밀면 다음 당김이 막힌다)" -ForegroundColor Yellow
                 $skip = $true
             }
-            # 계획은 **당기기 전** 트리를 보고 섰다 — 당김이 진본을 이미 앉혔을 수 있으니
-            # 여기서 한 번 더 묻는다. 같은 것을 다시 쓰면 백업만 쌓이고 얻는 것이 없다.
+            # 계획은 당긴 뒤의 트리를 보고 섰지만, 그 사이 다른 손(VS Code 로 연 세션의 배경
+            # 당김)이 같은 파일을 앉혔을 수 있다 — 여기서 한 번 더 묻는다. 같은 것을 다시 쓰면
+            # 백업만 쌓이고 얻는 것이 없다.
             if (-not $skip -and (Test-Path $step.To) -and
                 ((Get-FileHash $step.From).Hash -eq (Get-FileHash $step.To).Hash)) {
-                Write-Host "= 동일  $($step.To)  (당긴 뒤 같아졌다)" -ForegroundColor DarkGray
+                Write-Host "= 동일  $($step.To)  (그 사이 같아졌다)" -ForegroundColor DarkGray
                 $skip = $true
             }
             if (-not $skip) {
@@ -1099,7 +1451,7 @@ foreach ($step in $plan) {
         }
 
         'mcpremove' {
-            # ⚠ **`2>&1` 을 뗐다 — 그것이 위험을 만들던 자였다** (까닭은 `Sync-RepoOnce`
+            # ⚠ **`2>&1` 을 뗐다 — 그것이 위험을 만들던 자였다** (까닭은 `Sync-Repos`
             #   머리에 있다). `claude mcp remove` 는 지울 것이 없을 때 stderr 로 답하는데,
             #   합쳐 놓으면 그 한 줄이 `NativeCommandError` 로 승격돼 **해제 한 건이 배포
             #   전체를 죽인다.** 안 합치면 그 줄은 콘솔로 흐르고 종료코드만 아래로 온다 —

@@ -2,6 +2,7 @@
   "mcpServers": {
     "github": {
       "type": "http",
+      "only": "home,outside",
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
         "Authorization": "Bearer ${GH_TOKEN}"

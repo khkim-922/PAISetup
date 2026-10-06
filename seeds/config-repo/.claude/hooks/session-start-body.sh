@@ -34,6 +34,11 @@
 #                               **「깔 게 있나」에 예/아니오만 낸다** (#47 ②) ← deploy.ps1 의
 #                               계획 단계가 이걸로 묻는다. 파일만 보고 1초 안에 끝난다 —
 #                               프로브도 망도 안 탄다. 0 안 깐다 · 1 깐다 · 2 못 쟀다
+#   session-start.sh --site     **「어느 자리이고 무엇으로 알았나」를 한 줄 두 칸으로 낸다**
+#                               (`<자리> <길>` · 길은 probe · path · default ·
+#                               default-after-probe) ← deploy.ps1 의 MCP 칸이 이걸로 묻는다.
+#                               아무것도 안 깔고 안 심는다. 자리를 재는 자는 `_site_of` 한 자리다
+#                               0 두 칸을 냈다 · 2 못 쟀다(사유 한 줄)
 #
 # ⚠ 진짜 문제는 **부재가 통과로 읽히는 것**이다. 게이트는 도구가 없으면 그 검사만 건너뛰고
 #   통과시킨다. 아래 §진단이 그 자리를 메운다 — 판정 문구는 거기 한 자리에만 둔다.
@@ -51,6 +56,7 @@ ASKED=""   # 인자로 명시된 갈래 — auto 가 지문 어긋남으로 inst
 case "${1:-}" in
   --check)          MODE=check ;;
   --needs-install)  MODE=needs-install ;;
+  --site)           MODE=site ;;   # 읽기만 한다 — ASKED 를 안 세운다(로그도 안 남긴다)
   --install)        MODE=install; ASKED=install ;;
   --install-global) MODE=install; ASKED=install-global ;;
 esac
@@ -136,9 +142,9 @@ unset -f _migrate_name
 # ⚠ 선언이 하나도 없으면 **깔 것을 못 찾은 것**이다. 빈 지문은 「선언이 없다」와 「자리를 잘못
 #   봤다」를 구별하지 못해, 엉뚱한 자리에서도 완료 도장이 찍힌다 — 그 침묵이 무작동을 성공으로
 #   보이게 한다. 막지는 않고 자리를 말하고 간다(선언 없는 저장소도 정당하기 때문이다).
-# ⚠ `--needs-install` 은 이 줄을 안 낸다 — 그 갈래의 답은 **기계가 읽는 한 줄**이라 다른 줄이
-#   섞이면 사유가 밀린다. 이 말이 필요한 사람은 세션(auto)·설치 화면에서 그대로 듣는다.
-[ "$MODE" = needs-install ] ||
+# ⚠ `--needs-install` · `--site` 는 이 줄을 안 낸다 — 그 갈래들의 답은 **기계가 읽는 한 줄**이라
+#   다른 줄이 섞이면 사유가 밀린다. 이 말이 필요한 사람은 세션(auto)·설치 화면에서 그대로 듣는다.
+[ "$MODE" = needs-install ] || [ "$MODE" = site ] ||
 [ -e "$PROJECT_DIR/requirements.txt" ] || [ -e "$PROJECT_DIR/package-lock.json" ] ||
 [ -e "$GCONF" ] || [ -e "$PCONF" ] ||
   echo "$PROJECT_NAME: ⚠ 선언이 하나도 없다(requirements.txt · package-lock.json · tools*.conf) — $PROJECT_DIR 를 저장소로 보고 있다. 자리가 맞나 본다."
@@ -1000,7 +1006,12 @@ conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지
 # `outside` · `home`)이고 `$_SITE`, 그 파일은 `$_SITE_FILE` 에 선다.
 # ⚠ **묻는 자가 있을 때만 잰다.** 프로브는 안 닿는 자리에서 3초를 무는데, 아무도 자리를 안 묻는
 #   판에서는 그 3초가 순수한 손해다. 한 번 잰 답은 들고 다시 안 잰다 — 부르는 자가 둘이다.
-_SITE=''; _SITE_FILE=''; _SITE_MODE=''; _SITE_DONE=''
+# ⚠ **답과 함께 「어느 자로 얻었나」를 들고 간다**(`$_SITE_HOW`). 셋이 같은 무게가 아니다 —
+#   프로브와 경로는 **그 자리임을 적극적으로 보인** 답이고, 바닥값은 **아무 자도 안 답해서 남은**
+#   답이다. 부르는 쪽이 그 둘을 못 가르면 「아무 자도 안 답했다」를 「저 자리다」로 읽는다.
+#   값 넷 — `probe` · `path` · `default`(프로브를 선언한 자리가 아예 없다) ·
+#   `default-after-probe`(선언은 있었고 아무도 안 답했다 — **놓쳤을 수 있는 답**이다).
+_SITE=''; _SITE_FILE=''; _SITE_MODE=''; _SITE_HOW=''; _SITE_DONE=''
 _site_meta() {
   awk '
     {
@@ -1035,6 +1046,8 @@ _site_of() {
   #   읽는 것이고, 고리 안에서 읽은 `_mode` 는 읽고 안 쓰는 값이 되어 **죽은 채로 남는다** —
   #   읽었으면 쓰는 것이 이 함수가 한 번 읽기로 바뀐 까닭이다. 그래서 후보 셋마다 짝을 둔다.
   _sf=''; _sd=''; _sp=''; _sfm=''; _sdm=''; _spm=''
+  # 프로브를 **선언한** 자리가 하나라도 있었나 — 바닥값이 「고른 답」인지 「남은 답」인지를 가른다.
+  _sany=''
   for _f in "$CONFIG_ROOT"/secrets.d/*.env; do
     [ -e "$_f" ] || continue
     _default=''; _probe=''; _path=''; _mode=''
@@ -1047,6 +1060,9 @@ _site_of() {
 $(_site_meta "$_f")
 EOF
     case "$_default" in *yes*) _sd="$_f"; _sdm="$_mode" ;; esac
+    # ⚠ **선언을 띄움보다 먼저 센다.** 아래는 이미 이긴 뒤면 안 띄우므로, 띄운 자리에서만 세면
+    #   「선언이 있었나」가 이긴 순서에 따라 달라진다 — 세는 것은 선언이지 띄움이 아니다.
+    [ -n "$_probe" ] && _sany=1
     # 프로브는 **아직 안 이긴 자리에서만** 띄운다 — 3초를 무는 자라 한 번 이기면 그 뒤는 안 잰다.
     if [ -z "$_sf" ] && [ -n "$_probe" ]; then
       if timeout 3 bash -c "(exec 3<>/dev/tcp/${_probe%%:*}/${_probe#*:})" 2>/dev/null; then
@@ -1058,14 +1074,36 @@ EOF
     fi
   done
   # 우선순위는 **프로브 > 경로 > 기본** 이다 — 망이 답한 자리가 가장 세고, 기본은 바닥이다.
-  if   [ -n "$_sf" ]; then            _SITE_MODE="$_sfm"
-  elif [ -n "$_sp" ]; then _sf="$_sp"; _SITE_MODE="$_spm"
+  # 이긴 자와 함께 **어느 자로 이겼나**를 적는다 — 바닥값은 프로브 선언이 있었나로 한 번 더 갈린다.
+  if   [ -n "$_sf" ]; then            _SITE_MODE="$_sfm"; _SITE_HOW=probe
+  elif [ -n "$_sp" ]; then _sf="$_sp"; _SITE_MODE="$_spm"; _SITE_HOW=path
   elif [ -n "$_sd" ]; then _sf="$_sd"; _SITE_MODE="$_sdm"
+       if [ -n "$_sany" ]; then _SITE_HOW=default-after-probe; else _SITE_HOW=default; fi
   fi
   _SITE_FILE="$_sf"
   [ -n "$_sf" ] && _SITE="$(basename "$_sf" .env)"
   return 0
 }
+
+# ── `--site` — 「지금 어느 자리이고, 무엇으로 그렇게 알았나」 **한 줄 두 칸** ─────────────
+#    묻는 자는 선언에 자리를 거는 칸을 둔 쪽이다. 그쪽이 제 손으로 자리를 다시 재면 재는 자가
+#    둘이 되고, 둘은 **고쳐도 한쪽만 고쳐진 채 조용히 갈린다** — 그래서 묻는 길을 낸다.
+#  ⚠ **자리는 위 `_site_of` 한 자리가 잰다.** 이 갈래가 하는 일은 그 답을 글자로 내는 것뿐이다.
+#  ⚠ **답만 내지 않고 「어느 자로 얻었나」를 같이 낸다** — `<자리> <길>` 두 칸이고 길은
+#    `probe` · `path` · `default` · `default-after-probe` 넷이다(위 `$_SITE_HOW`). 답 하나만
+#    내면 **「아무 자도 안 답해서 남은 자리」가 「저 자리임을 보인 답」과 같아진다** — 묻는 쪽은
+#    그 둘에 다른 일을 해야 하므로(지우는 일은 보인 답 위에서만) 가르는 칸을 답에 싣는다.
+#  ⚠ **아무것도 안 바꾼다** — 안 심고 안 깔고 자국도 안 남긴다. 재는 갈래가 상태를 바꾸면
+#    다음 판정이 제가 만든 상태를 읽는다.
+#  ⚠ 종료코드 둘 — 0 두 칸을 냈다 · **2 못 쟀다(사유 한 줄, 칸 없음).** 2 를 0 으로 접지 않는다:
+#    「자리를 모른다」와 「어느 자리다」는 다른 명제이고, 묻는 쪽이 그 둘을 갈라 써야 한다.
+#  ⚠ **자리가 여기인 까닭** — 셸은 위에서 아래로 돌아, `_site_of` 가 선 뒤가 아니면 못 부른다.
+if [ "$MODE" = site ]; then
+  _site_of
+  if [ -n "$_SITE" ]; then echo "$_SITE $_SITE_HOW"; exit 0; fi
+  echo "자리를 못 쟀다 — ${CONFIG_ROOT:-설정 저장소를 못 찾았다}/secrets.d/*.env 에 이긴 자리가 없다"
+  exit 2
+fi
 
 deploy_personal() {   # deploy_personal auto|install
   [ "$OS" = windows ] || return 0
