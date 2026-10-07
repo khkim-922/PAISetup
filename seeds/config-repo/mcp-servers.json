@@ -15,6 +15,16 @@
         "/c",
         "tavily-mcp"
       ]
+    },
+    "agy-bridge": {
+      "type": "stdio",
+      "only": "home,posco",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "agy-bridge"
+      ],
+      "timeout": 660000
     }
   }
 }

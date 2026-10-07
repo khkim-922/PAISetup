@@ -184,18 +184,18 @@
           <text x="668" y="772" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">CLAUDE.global.md → 홈의 CLAUDE.md — 이름이 다른 것이 요점</text>
         </g>
 
-        <g id="node-n8" tabindex="0" role="button" aria-label="Focus 8. 룰 · 에이전트 · 스킬도 홈으로, rules.global → ~/.claude/rules · skills 는 폴더째, deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 홈 ~/.claude" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">8. 룰 · 에이전트 · 스킬도 홈으로 · rules.global → ~/.claude/rules · skills 는 폴더째 · deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 홈 ~/.claude</title>
-          <rect x="546" y="842" width="244" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="546" y="842" width="244" height="52" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(552 848) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n8" tabindex="0" role="button" aria-label="Focus 8. 룰 · 에이전트 · 스킬도 홈으로, rules · skills 는 ~/.claude · agy 설정은 ~/.gemini/config, deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 홈 ~/.claude" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">8. 룰 · 에이전트 · 스킬도 홈으로 · rules · skills 는 ~/.claude · agy 설정은 ~/.gemini/config · deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 홈 ~/.claude</title>
+          <rect x="527" y="842" width="282" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="527" y="842" width="282" height="52" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(533 848) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <rect x="2" y="3" width="12" height="10" rx="2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
             <path d="M2 6.5h12" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
             <circle cx="4.1" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
             <circle cx="6.3" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
           </g>
           <text x="668" y="863" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">8. 룰 · 에이전트 · 스킬도 홈으로</text>
-          <text x="668" y="880" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">rules.global → ~/.claude/rules · skills 는 폴더째</text>
+          <text x="668" y="880" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">rules · skills 는 ~/.claude · agy 설정은 ~/.gemini/config</text>
         </g>
 
         <g id="node-n9" tabindex="0" role="button" aria-label="Focus 9. 프로젝트 메모리는 슬러그 폴더로, memory/&lt;이름&gt; → ~/.claude/projects/&lt;슬러그&gt;/memory, deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 홈 ~/.claude" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">

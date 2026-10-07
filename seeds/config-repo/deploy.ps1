@@ -490,6 +490,19 @@ if (Test-Path $rulesSrc) {
     }
 }
 
+# agy(Antigravity CLI) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083)
+# 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 스킬·룰은 위 걸음이 홈 `~/.claude` 에 깐 자리를
+# 가리킨다. 그래서 진본을 옮겨 적지 않고 agy 가 Claude Code 와 같은 판을 읽는다.
+# ⚠ **agy 가 없는 PC 에는 안 깐다** — `~/.gemini` 가 없으면 건너뛴다. 없는 도구의 설정 폴더를 지어
+#   두면 「깔렸다」로 읽힌다.
+$geminiSrc = Join-Path $src '.gemini.global'
+$geminiHome = Join-Path $HOME '.gemini'
+if ((Test-Path $geminiSrc) -and (Test-Path $geminiHome)) {
+    foreach ($f in (Get-ChildItem $geminiSrc -File)) {
+        $targets += @{ From = $f.FullName; To = Join-Path $geminiHome "config\$($f.Name)" }
+    }
+}
+
 # 프로젝트별 메모리: memory/<project>/*.md -> ~/.claude/projects/<슬러그>/memory/
 if (Test-Path $memSrc) {
     foreach ($proj in (Get-ChildItem $memSrc -Directory)) {
@@ -1365,6 +1378,11 @@ foreach ($step in $plan) {
             }
             if (-not $skip) {
                 if (Test-Path $step.To) { Save-Backup $step.To }
+                # ⚠ **대상이 링크면 링크를 걷고 쓴다.** `Copy-Item` 은 링크를 따라가 **가리키는 원본**을
+                #   덮는다 — 손으로 링크를 걸어 둔 PC(대상 → 이 저장소의 진본)에서 배포가 진본을 대상의
+                #   새 내용으로 바꿔 버린다. 내용은 위 백업이 이미 떴다.
+                $toItem = Get-Item -LiteralPath $step.To -Force -ErrorAction SilentlyContinue
+                if ($toItem -and $toItem.LinkType) { Remove-Item -LiteralPath $step.To -Force }
                 New-Item -ItemType Directory -Force -Path (Split-Path $step.To -Parent) | Out-Null
                 Copy-Item $step.From $step.To -Force
                 Write-Host "+ 배포  $($step.To)"

@@ -1,0 +1,15 @@
+{
+  "entries": [
+    {
+      "path": "../../.claude/skills",
+      "include_only": [
+        "automation-audit-ops",
+        "benchmark-optimization-loop",
+        "click-path-audit",
+        "doc-coordinate-audit",
+        "doc-rederive-from-source",
+        "drm-office-read"
+      ]
+    }
+  ]
+}

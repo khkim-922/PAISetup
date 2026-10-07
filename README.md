@@ -59,6 +59,7 @@
 │
 ├─ .claude/                  **두 가지가 한 폴더에 산다** — 홈으로 가는 셋과, 이 저장소가
 │                            제 일에만 쓰는 나머지. 바로 아래 표가 그것을 가른다
+├─ .gemini.global/           agy(안티그래비티 CLI) 설정 셋 — 아래 「agy 묶음」 조건일 때만 ~/.gemini/config 로 간다
 ├─ agents/                ← 비어 있다. 제 서브에이전트를 여기 넣으면 같이 깔린다
 │
 ├─ README.md                 이 글
@@ -215,6 +216,22 @@ claude.exe 지만 사는 폴더가 다르다.
 (지우지 않는다). 손수 만든 스킬은 그 목록에 없으니 안 건드린다.
 (`CLAUDE.md` 는 파일 하나라 통째로 갈린다.)
 
+#### agy 묶음 — 사외에서 Claude 와 안티그래비티를 같이 고르면
+
+**사외(게이트웨이 밖)** 이고 제품 칸에서 **Claude 와 구글 Antigravity 를 둘 다** 고르고 이 칸까지 켜면, 셋이 더 선다.
+Claude Code 가 agy(안티그래비티 CLI)에게 일을 넘기고, agy 도 같은 규범 아래서 그 일을 받게 하는 묶음이다.
+
+| 무엇 | 어디에 |
+|---|---|
+| agy 다리 — MCP 서버 `agy-bridge` 0.4.2. 판을 박고, 윈도에서 명령마다 창이 떴다 사라지는 것을 막는 두 줄을 고쳐 깐다 | npm 전역 · Claude Code 에 `agy-bridge` 로 등록 |
+| agy 설정 셋 — 규범을 가리키는 `AGENTS.md`, 스킬 여섯을 여는 `skills.json`, 룰을 가리키는 `rules.json`. **옮겨 적은 사본이 아니라 위 표가 깐 홈 자리를 가리키는 파일이다** | `~/.gemini/config/` — 있던 같은 이름은 `~/.claude/backups/install-agy-<시각>/` 로 떠 둔다 |
+| Python — 오래 걸리는 일을 agy 에게 뒤에서 맡기는 스킬 `agy-background` 가 `pythonw` 로 돈다 | 개발도구 칸을 꺼도 깐다 |
+
+agy 가 로그인 전이면 터미널에서 `agy` 를 한 번 띄워 Google 계정으로 로그인한다. Claude Code 에서는
+`mcp__agy-bridge__*` 도구로 짧은 일을 바로 넘기고, 몇 분 넘게 걸릴 일은 스킬 `agy-background` 가 뒤에서
+돌려 대화를 안 막는다. **사내에서는 이 묶음이 안 선다** — 회사 키로 게이트웨이를 타는 agy 는 모델과
+인증이 달라 아직 안 쟀다.
+
 **제 규율을 쓰려면 — 이 칸이 아니라 「내 저장소 받기」다.** 짐은 손으로 열 자리가 아니라서
 (`Setup.exe` 가 제 안에서 꺼내 판마다 새 폴더에 편다) 거기 든 것을 갈아 끼워 봐야 다음 판에서
 말없이 되돌아간다. 제 규범·룰·스킬은 **제 설정 저장소에 둔다** — 그 주소를 「내 저장소 받기」 칸에 넣으면
@@ -352,6 +369,9 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `사내 환경 문서 (n/m)` · `게이트웨이 씨앗 (n/m)` · `검사 씨앗 (n/m)` · `설정 저장소 씨앗 (n/m)` | 홈에 깔린 파일 수가 짐보다 적다 — 괄호의 두 숫자가 「깔린 것/짐에 든 것」이다. `~/.claude/` 가 읽기 전용이거나 백신이 복사를 막은 자리다 — 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `그림 문 몸통 …` · `그림 문 껍데기 …` | 설정 저장소 씨앗이 덜 깔렸다. 바로 위 `설정 저장소 씨앗 (n/m)` 줄을 먼저 보고 다시 누른다 |
 | `그림 문 배선 (홈 settings.json 의 PreToolUse)` | 홈 `~/.claude/settings.json` 에 훅 한 줄을 못 넣었다. 위쪽에 「settings.json 을 못 읽었다」 빨간 줄이 있으면 그 파일이 깨진 것이다 — 설치는 깨진 파일을 안 덮으니 손으로 고치거나 치워 두고 다시 누른다 |
+| `agy 다리 0.4.2 · 창 숨김 고침` | npm 이 그 판을 못 깔았거나, 깔린 판에서 고칠 두 줄을 못 찾았다. 위쪽 「agy 다리」 빨간 줄이 어느 쪽인지 댄다 — 못 깔았으면 새 터미널을 열어 다시 누르고, 「원문이 바뀌었다」면 그 줄을 그대로 보낸다(판이 바뀐 것이라 설치본을 고쳐야 한다) |
+| `agy 다리 등록 (claude mcp)` | 다리는 깔렸는데 Claude Code 에 등록을 못 했다. 위 `Claude Code CLI` 가 `[X]` 면 그것부터 고친다. 아니면 다시 누른다 |
+| `agy 설정 (n/m · ~/.gemini/config)` | 설정 셋을 다 못 깔았다 — 괄호의 두 숫자가 「짐과 같은 것/짐에 든 것」이다. `~/.gemini/config` 가 읽기 전용인지 보고 다시 누른다 |
 | `ANTHROPIC_BASE_URL` · `ANTHROPIC_AUTH_TOKEN` | 키를 안 넣었거나 빈 값이다. 다시 눌러 넣는다 |
 | `OPENAI_API_KEY` · `GEMINI_API_KEY` | 같은 회사 키를 Codex · Gemini · 안티그래비티가 읽는 이름으로도 심는 자리다. 위의 `ANTHROPIC_AUTH_TOKEN` 이 같이 `[X]` 면 그것만 고치면 된다 |
 | `Codex config.toml` · `Gemini settings.json` · `안티그래비티 settings.json` | 회사 설정을 그 자리에 못 썼다. `~/.codex/` · `~/.gemini/` 가 읽기 전용인지 보고 다시 누른다 |
@@ -378,6 +398,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **로그인마다 뜨는 프록시 감시 작업** — 작업 이름은 `PGPTProxy-Watchdog` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false`. 프록시가 도는 폴더 `%LOCALAPPDATA%\PGPT-Proxy` 도 지운다. (옛 판이 남긴 것은 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `PGPTProxy`) |
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다. 씨앗 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` — 다른 프로그램도 쓸 수 있으니 필요할 때만 |
 | **칸을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` · 깐 스킬 기록 `~/.claude/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.claude/backups/install-skills-*` |
+| **agy 묶음** (사외에서 Claude · 안티그래비티 · 이 칸을 켰을 때) | Claude Code 등록 `claude mcp remove agy-bridge -s user` · 다리 `npm uninstall -g agy-bridge` · agy 설정 `~/.gemini/config/` 의 `AGENTS.md` · `skills.json` · `rules.json` · 옛것을 떠 둔 `~/.claude/backups/install-agy-*` |
 | **Codex · Gemini · 안티그래비티 회사 설정** | `~/.codex/config.toml` · `~/.gemini/settings.json` · `~/.gemini/antigravity-cli/settings.json`. 마지막 것은 `modelProvider` 줄만 지우면 로그인 갈래로 돌아간다 |
 | **바탕화면·시작 메뉴의 「PAI Setup Wizard」** | 바로가기를 지운다 |
 | **로그온마다 도는 자동 실행** — 작업 이름은 `PAISetup-AutoRun` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PAISetup-AutoRun -Confirm:$false`. **폴더보다 이것을 먼저 지운다** — 짐을 먼저 지우면 작업만 남아 로그인마다 헛돈다 |

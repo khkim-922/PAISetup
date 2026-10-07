@@ -1,0 +1,1 @@
+@[norms](~/.claude/CLAUDE.md)

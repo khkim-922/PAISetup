@@ -1403,7 +1403,21 @@ $codexTpl   = Read-Directive $EnvFile 'codex-config'
 $geminiTpl  = Read-Directive $EnvFile 'gemini-config'
 $inside     = ($site -eq 'inside')
 $wantProxy  = [bool]($proxyRel  -and $inside)
-$needPython = $wantProxy            # 프록시가 파이썬으로 돈다 — 개발도구를 꺼도 이것만은 깐다(1 칸)
+# ── agy 묶음 — agy 다리(MCP) · agy 설정 셋 (claude-config 결정 0083 · #117) ─────────────────
+# Claude Code 가 agy 에게 일을 넘기는 다리(`agy-bridge`)와, agy 가 Claude Code 와 같은 규범·스킬·룰을
+# 읽게 하는 설정 셋이다. **둘이 같은 조건을 탄다** — 다리로 넘긴 일을 받는 agy 가 같은 규범 아래 있어야
+# 넘긴 뜻이 선다.
+# ⚠ **사내는 안 선다 — 게이트웨이 밖 갈래만 이 판에 들었다.** 사내 agy 는 회사 키로 게이트웨이를 타서
+#   모델·인증이 다르고, 그 갈래는 아직 안 쟀다(사내 몫은 claude-config #117 에 적어 두었다).
+# ⚠ **제작자 설정 칸을 탄다** — 설정 셋이 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다. 칸을 끄면
+#   가리킬 것이 없다.
+$wantAgyKit = [bool]((-not $inside) -and $WithPersonalConfig -and
+                     ($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
+# 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
+$needPythonWhy = @()
+if ($wantProxy)  { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
+if ($wantAgyKit) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
+$needPython = [bool]$needPythonWhy.Count
 # ⚠ **회사 설정도 제품 칸을 탄다** — 안 켠 제품에 회사 설정만 심어 두면 쓰지도 않는 파일이
 #   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
 $wantCodex  = [bool]($codexTpl  -and $inside -and ($PickKeys -contains 'codex'))
@@ -1520,8 +1534,9 @@ foreach ($app in $Apps) {
   if ($NoDevTools -and $app.Need -eq 'dev') {
     # ⚠ **파이썬만은 예외가 선다** — 사내 로컬 프록시가 파이썬으로 돈다(결정 0041). 개발도구를 끈
     #   사람도 프록시 없이는 Opus 5 와 Gemini 가 게이트웨이에 못 가므로, 사내면 이것만 깐다.
+    #   agy 묶음도 같다 — 백그라운드 래퍼가 pythonw 로 돈다. 까닭은 `$needPythonWhy` 가 든다.
     if ($needPython -and $app.Cmd -eq 'python') {
-      Write-Host "  $($app.Name) — 개발도구를 껐지만 깐다 (로컬 프록시가 이것으로 돈다)"
+      Write-Host "  $($app.Name) — 개발도구를 껐지만 깐다 ($($needPythonWhy -join ' · '))"
     } else {
       Write-Host "  $($app.Name) — 건너뜀 (-NoDevTools)"
       continue
@@ -2127,6 +2142,94 @@ if ($PickKeys -contains 'claude') {
     }
   }
   Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
+}
+
+# agy 다리(agy-bridge) — 판을 박아 깔고 두 줄을 고친다. 등록은 8 칸(Tavily 곁)이 한다.
+# ⚠ **`Install-NpmCli` 를 안 탄다 — 그쪽은 늘 최신으로 올린다.** 이 패키지는 아래 두 줄을 고쳐 쓰는데,
+#   새 판이 그 자리를 바꾸면 고침이 안 먹은 채 「깔았다」로 끝난다. 판을 올릴 때는 사람이 고침을 다시 잰다.
+# ⚠ **두 줄을 고치는 까닭 — 윈도에서 창이 뜬다.** 다리가 agy 를 `detached: true` 로 띄워 agy 가 콘솔 없이
+#   서고, agy 가 명령·MCP 서버를 돌릴 때마다 새 창이 떴다 사라진다. 고친 꼴은 상류 이슈
+#   sshahzaiib/agy-bridge#20 이 내놓은 그대로다(집 실측 2026-10-07: 고치기 전 창 2개 → 고친 뒤 0개).
+#   상류가 합치면 판을 올리고 이 고침을 걷는다.
+# ⚠ **이미 고쳤으면 지나가고, 원문을 못 찾으면 실패로 센다** — 고칠 자리를 못 찾은 채 넘어가면 창이 다시
+#   뜨는데 까닭이 어디에도 안 남는다.
+$AgyBridgeName = 'agy-bridge'
+$AgyBridgeVer  = '0.4.2'
+$AgyBridgeFix  = @(
+  @{ From = 'execFileAsync(file, args, options);'
+     To   = 'execFileAsync(file, args, { windowsHide: true, ...options });' }
+  @{ From = 'spawn(file, args, { cwd, detached: true });'
+     To   = 'spawn(file, args, { cwd, detached: process.platform !== "win32", windowsHide: true });' }
+)
+function Get-AgyBridgeDir {
+  $r = ("$(Get-Quiet 'npm' @('root','-g') | Select-Object -First 1)").Trim()
+  if ($r) { return (Join-Path $r $AgyBridgeName) }
+  return ''
+}
+function Get-AgyBridgeVer {
+  $d = Get-AgyBridgeDir
+  $pj = if ($d) { Join-Path $d 'package.json' } else { '' }
+  if ($pj -and (Test-Path -LiteralPath $pj)) {
+    try { return [string](Get-Content -LiteralPath $pj -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch { }
+  }
+  return ''
+}
+function Read-AgyBridgeMain {
+  $d = Get-AgyBridgeDir
+  $f = if ($d) { Join-Path $d 'dist\index.js' } else { '' }
+  if ($f -and (Test-Path -LiteralPath $f)) { return [IO.File]::ReadAllText($f) }
+  return $null
+}
+# 고침의 상태 넷 — fixed(다 고쳐졌다) · original(원문 그대로라 고칠 수 있다) · unknown(못 찾았다) · missing(파일이 없다)
+function Get-AgyBridgeFixState([string]$Text) {
+  if (-not $Text) { return 'missing' }
+  if (@($AgyBridgeFix | Where-Object { -not $Text.Contains($_.To) }).Count -eq 0) { return 'fixed' }
+  if (@($AgyBridgeFix | Where-Object { [regex]::Matches($Text, [regex]::Escape($_.From)).Count -ne 1 }).Count -eq 0) { return 'original' }
+  return 'unknown'
+}
+if ($wantAgyKit) {
+  $abLabel = "agy 다리 ($AgyBridgeName $AgyBridgeVer)"
+  $abHave = Get-AgyBridgeVer
+  if ($abHave -eq $AgyBridgeVer) {
+    Write-Host "  $abLabel — 있음"
+  } elseif (Test-Runs 'npm' '--version') {
+    Say-Busy $abLabel 'install' @('npm')
+    $nl = [IO.Path]::GetTempFileName()
+    $nrc = Invoke-Logged 'npm' @('install','-g',"$AgyBridgeName@$AgyBridgeVer") $nl
+    Update-RuntimePath
+    if ((Get-AgyBridgeVer) -eq $AgyBridgeVer) {
+      Write-Host "  $abLabel — 깔았다$(if ($abHave) { " (옛 판 $abHave)" })" -ForegroundColor Green
+    } else {
+      Write-Host "  ! $abLabel — 못 깔았다 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+      Show-Log $nl
+      $Fails.Add('agy 다리 설치')
+    }
+    Remove-Item $nl -ErrorAction SilentlyContinue
+  } else {
+    Write-Host "  ! $abLabel — npm 이 없어 못 깐다" -ForegroundColor Red
+    $Fails.Add('agy 다리 설치 (npm 이 없다)')
+  }
+  if ((Get-AgyBridgeVer) -eq $AgyBridgeVer) {
+    $abText = Read-AgyBridgeMain
+    switch (Get-AgyBridgeFixState $abText) {
+      'fixed' { Write-Host "  $abLabel — 창 숨김 고침 있음" }
+      'original' {
+        $t = $abText
+        foreach ($x in $AgyBridgeFix) { $t = $t.Replace($x.From, $x.To) }
+        [IO.File]::WriteAllText((Join-Path (Get-AgyBridgeDir) 'dist\index.js'), $t, (New-Object Text.UTF8Encoding($false)))
+        if ((Get-AgyBridgeFixState (Read-AgyBridgeMain)) -eq 'fixed') {
+          Write-Host "  $abLabel — 창 숨김 고침을 넣었다 (두 줄)" -ForegroundColor Green
+        } else {
+          Write-Host "  ! $abLabel — 창 숨김 고침을 썼는데 다시 읽으니 안 섰다" -ForegroundColor Red
+          $Fails.Add('agy 다리 창 숨김 고침')
+        }
+      }
+      default {
+        Write-Host "  ! $abLabel — 고칠 두 줄을 못 찾았다 (원문이 바뀌었다) — 창이 뜰 수 있다" -ForegroundColor Red
+        $Fails.Add('agy 다리 창 숨김 고침 (원문이 바뀌었다)')
+      }
+    }
+  }
 }
 
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
@@ -3170,6 +3273,43 @@ if (-not $WithPersonalConfig) {
   }
   Remove-RetiredSkills -Bundle (Join-Path $Here '.claude\skills') -SkillHome (Join-Path $homeDir 'skills') `
                        -Ledger (Join-Path $homeDir '.paisetup-skills') -BackupRoot (Join-Path $homeDir 'backups')
+
+  # ── agy 설정 셋 — `.gemini.global/*` → `~/.gemini/config/` (claude-config 결정 0083) ──────
+  # 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 스킬·룰은 바로 위에서 깐 홈 `~/.claude` 의 자리를
+  # 상대 경로로 가리킨다. 그래서 여기서 옮겨 적는 진본이 없다.
+  # ⚠ **대상이 링크면 링크를 걷고 쓴다.** `Copy-Item` 은 링크를 따라가 가리키는 원본을 덮는다 — 손으로
+  #   링크를 걸어 둔 PC 에서 그 원본이 한 줄짜리로 바뀐다. 있던 파일은 백업 자리로 먼저 떠 둔다.
+  if ($wantAgyKit) {
+    $agySrc = Join-Path $Here '.gemini.global'
+    $agyDst = Join-Path $env:USERPROFILE '.gemini\config'
+    if (-not (Test-Path -LiteralPath $agySrc -PathType Container)) {
+      Write-Host '  agy 설정 — 이 폴더에 없다'
+    } else {
+      $agyBk = $null
+      $agyN = 0
+      foreach ($f in @(Get-ChildItem -LiteralPath $agySrc -File)) {
+        $to = Join-Path $agyDst $f.Name
+        if ((Test-Path -LiteralPath $to) -and
+            ((Get-FileHash -LiteralPath $f.FullName).Hash -eq (Get-FileHash -LiteralPath $to).Hash)) { continue }
+        if (Test-Path -LiteralPath $to) {
+          if (-not $agyBk) {
+            $agyBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+            New-Item -ItemType Directory -Path $agyBk -Force | Out-Null
+          }
+          Copy-Item -LiteralPath $to -Destination (Join-Path $agyBk $f.Name) -Force
+          if ((Get-Item -LiteralPath $to -Force).LinkType) { Remove-Item -LiteralPath $to -Force }
+        }
+        New-Item -ItemType Directory -Path $agyDst -Force | Out-Null
+        Copy-Item -LiteralPath $f.FullName -Destination $to -Force
+        $agyN++
+      }
+      if ($agyN) {
+        Write-Host "  agy 설정 — 깔았다 ($agyN 개 · ~/.gemini/config)$(if ($agyBk) { " · 옛것은 $agyBk" })" -ForegroundColor Green
+      } else {
+        Write-Host '  agy 설정 — 이미 맞다'
+      }
+    }
+  }
 }
 
 # ── 걷힌 회사 기준 룰을 홈에서 걷는다 ─────────────────────────────────────────
@@ -3888,6 +4028,49 @@ if ($PickKeys -contains 'claude') {
   }
 }
 
+# ── agy 다리 등록 — 등록 꼴은 씨앗의 `mcp-servers.json` 이 든다(Tavily 와 같은 자) ──────────
+# ⚠ **`add-json` 으로 넘긴다** — 이 서버는 `timeout` 을 함께 넘겨야 하는데(다리 제 한도 600초보다 길게 —
+#   짧으면 Claude Code 가 다리의 답보다 먼저 끊는다) `mcp add` 에는 그 칸이 없다. 파워셸 5.1 이 큰따옴표를
+#   안 벗겨 주는 함정(위 Tavily 곁말)은 `\"` 로 미리 벗겨 넘긴다(실측: 그대로 등록된다).
+# ⚠ **`only` 는 뺀다** — 설정 저장소 `deploy.ps1` 이 자리를 가르는 선언의 칸이지 서버 설정이 아니다.
+#   이 설치기에서는 위 `$wantAgyKit` 이 이미 자리를 갈랐다.
+# ⚠ **패키지가 없으면 등록도 안 한다** — Tavily 와 같은 까닭이다.
+if ($wantAgyKit) {
+  Write-Host ''
+  Write-Host 'agy 다리 (agy-bridge MCP)' -ForegroundColor Cyan
+  $abSpec = $null
+  try {
+    $abSpec = (Get-Content -LiteralPath (Join-Path $Here 'seeds\config-repo\mcp-servers.json') -Raw -Encoding UTF8 |
+               ConvertFrom-Json).mcpServers.$AgyBridgeName
+  } catch { }
+  if ((Get-AgyBridgeVer) -ne $AgyBridgeVer) {
+    Write-Host '  agy 다리 등록 — 패키지가 없어 안 한다'
+  } elseif (-not (Test-Runs 'claude' '--version')) {
+    Write-Host '  ! agy 다리 등록 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 (위 CLI 줄을 먼저 본다)' -ForegroundColor Yellow
+  } elseif (-not $abSpec -or [string]$abSpec.type -ne 'stdio') {
+    Write-Host "  ! agy 다리 등록 — 씨앗 mcp-servers.json 에 $AgyBridgeName 의 stdio 항목이 없어 안 한다" -ForegroundColor Red
+    $Fails.Add('agy 다리 등록 (씨앗에 항목이 없다)')
+  } else {
+    $null = Get-Quiet 'claude' @('mcp','get',$AgyBridgeName)
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "  agy 다리 등록 — 있음 ($AgyBridgeName)"
+    } else {
+      $abJson = ($abSpec | Select-Object -Property * -ExcludeProperty only | ConvertTo-Json -Compress -Depth 10)
+      $tl = [IO.Path]::GetTempFileName()
+      $rc = Invoke-Logged 'claude' @('mcp','add-json','-s','user',$AgyBridgeName,($abJson -replace '"','\"')) $tl
+      if ($rc -eq 0) {
+        Write-Host "  agy 다리 등록 — 했다 ($AgyBridgeName)" -ForegroundColor Green
+      } else {
+        Write-Host "  ! agy 다리 등록 — 못 했다 ($rc) — 뱉은 끝 줄:" -ForegroundColor Red
+        Show-Log $tl
+        $Fails.Add('agy 다리 등록')
+      }
+      Remove-Item $tl -ErrorAction SilentlyContinue
+    }
+  }
+  Write-Host '  agy 가 로그인 전이면 터미널에서 agy 를 한 번 띄워 Google 계정으로 로그인한다'
+}
+
 # ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
 # ⚠ **화면 껍데기도 지우지만 그 손은 제 프로세스가 살아 있을 때만 돈다.** 작업 관리자로 끄거나
 #   VDI 가 세션을 끊거나 그것이 죽으면 **평문 토큰이 든 파일이 `%TEMP%` 에 눌러앉고**, 다음
@@ -4388,6 +4571,22 @@ try {
   }
 } catch { $gateWired = $false }
 $checks += @{ Name = '그림 문 배선 (홈 settings.json 의 PreToolUse)'; Ok = $gateWired }
+# agy 묶음 — 다리 판과 고침 · 등록 · 설정 셋.
+# ⚠ **설정 셋은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
+#   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.
+if ($wantAgyKit) {
+  $abState = if ((Get-AgyBridgeVer) -eq $AgyBridgeVer) { Get-AgyBridgeFixState (Read-AgyBridgeMain) } else { 'missing' }
+  $checks += @{ Name = "agy 다리 $AgyBridgeVer · 창 숨김 고침"; Ok = ($abState -eq 'fixed') }
+  $null = Get-Quiet 'claude' @('mcp','get',$AgyBridgeName)
+  $checks += @{ Name = 'agy 다리 등록 (claude mcp)'; Ok = ($LASTEXITCODE -eq 0) }
+  $agySrcFiles = @(Get-ChildItem -LiteralPath (Join-Path $Here '.gemini.global') -File -ErrorAction SilentlyContinue)
+  $agySame = @($agySrcFiles | Where-Object {
+    $t = Join-Path $env:USERPROFILE ".gemini\config\$($_.Name)"
+    (Test-Path -LiteralPath $t) -and ((Get-FileHash -LiteralPath $_.FullName).Hash -eq (Get-FileHash -LiteralPath $t).Hash)
+  })
+  $checks += @{ Name = "agy 설정 ($($agySame.Count)/$($agySrcFiles.Count) · ~/.gemini/config)"
+                Ok = ($agySrcFiles.Count -gt 0 -and $agySame.Count -eq $agySrcFiles.Count) }
+}
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
 # ⚠ **키는 `#config-repo` 가 있어도 여기서 잰다.** 옛 판은 그 판에서 키 검사를 저쪽에 맡겼는데,

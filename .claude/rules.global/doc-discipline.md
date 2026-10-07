@@ -1,6 +1,9 @@
 ---
 paths:
   - "**/*.md"
+trigger: glob
+globs: "**/*.md"
+description: "문서(.md)를 쓸 때 — 목록 섞임 · 손사본 · 표의 주인 · 블록 교체 감사"
 ---
 
 # 문서 규율 기전 — 쓰는 자리 층
