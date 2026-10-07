@@ -184,6 +184,12 @@ function Get-Directive([string]$Key, [string]$File = $EnvPath) {
 # ⚠ 풀어 놓고 직접 돌리는 자리에는 이 파일이 없다 — 그러면 `$null` 이고 지금과 같이 빈 칸이다.
 $KeptEnvPath = Join-Path (Split-Path -Parent $Here) 'install.env'
 
+# ── 기록이 쌓이는 자리 — **이 파일에 한 번만 적는다** ───────────────────────────
+# 쓰는 자(`Save-RunLog`)와 거기로 가는 문(아래 단추 줄의 링크)이 같은 자리를 가리켜야 한다.
+# 자리를 둘에 적으면 옮기는 날 한쪽만 고쳐지고, 링크는 **없는 폴더를 멀쩡히 연다.**
+# ⚠ **판 폴더 밖이다** — 까닭은 `Save-RunLog` 머리말이 든다.
+$LogDir = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\logs'
+
 # ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
 # ⚠ **여기 든 글자는 진본이 아니라 울타리다.** 이름이 찍히는 자리가 이 파일에만 일곱인데
 #   (창 제목 하나 · 상자 제목 여섯), 자리마다 글자를 박으면 이름을 바꾸는 날 **한 자리만
@@ -273,10 +279,18 @@ $noAsk = $offsite
 # ⚠ **키 칸은 자리마다 줄 수가 다르다** — 사외는 「사외입니다」 한 줄뿐이고 사내는 주소·키·안내
 #   셋이다. 높이를 한 값으로 박으면 사외에서 빈 칸이 크게 남는다. 줄인 만큼은 **아래를 당기고
 #   로그 창이 받는다** — 창 높이와 단추 자리는 그대로라 아래가 안 흔들린다.
+# ⚠ **아래 자리 수들(190 · 278 · 388 · 410 · 432)은 꼭대기 62 · 높이 124 를 전제로 적혔다.**
+#   그래서 당김은 손으로 세지 않고 **그 둘과의 차이로 파생한다** — 어느 쪽을 고쳐도 자리 수를
+#   다시 안 만진다. 숫자를 두 자리에 적으면 한쪽만 고쳐지고, 그 어긋남은 화면에서만 보인다.
+$gvTopBase = 62
+$gvHBase   = 124
+# 첫 줄 바로 아래. **옛 판은 62 였다** — 첫 줄이 34 에서 끝나므로 28픽셀이 빈 띠로 남아,
+# 설명 한 줄과 키 칸 사이가 통째로 비어 보였다. 당긴 18픽셀은 아래 로그 창이 받는다.
+$gvTop = 44
 $gvH   = if ($noAsk) { 84 } else { 138 }   # 사외는 한 줄 + 링크 · 사내는 주소·키·안내 + 링크
-$gvCut = 124 - $gvH
+$gvCut = ($gvTopBase - $gvTop) + ($gvHBase - $gvH)
 $gV.Text = if ($noAsk) { '키와 주소' } elseif ($urlPreset) { 'API 키' } else { '게이트웨이 (사내만)' }
-$gV.Location = New-Object Drawing.Point(16, 62)
+$gV.Location = New-Object Drawing.Point(16, $gvTop)
 $gV.Size = New-Object Drawing.Size(592, $gvH)
 $F.Controls.Add($gV)
 
@@ -610,6 +624,43 @@ $log.BackColor = [Drawing.Color]::FromArgb(30, 30, 30)
 $log.ForeColor = [Drawing.Color]::Gainsboro
 $log.Font = New-Object Drawing.Font('Consolas', 9)
 $F.Controls.Add($log)
+
+# ── 기록 폴더로 가는 문 — 단추 줄 왼쪽 ──────────────────────────────────────────
+# ⚠ **창을 닫은 뒤에 물어볼 거리가 남는 자리가 이 링크의 까닭이다.** 기록은 판마다 파일로
+#   남는데(`Save-RunLog`), 그 자리를 아는 길이 README 한 줄뿐이면 **화면을 보고 있는 사람이
+#   거기 못 닿는다** — 경로를 손으로 쳐야 하고, `%LOCALAPPDATA%` 는 받는 사람이 모르는 글자다.
+# ⚠ **자리는 단추와 같은 줄이다** — 바로 위 `$lState` 가 「됐습니다 · 끝내지 못했습니다」를
+#   찍으므로, 그 판정을 읽은 눈이 다음으로 가는 데가 여기다. 단추 왼쪽(16~400)은 비어 있어
+#   당김(`$gvCut`)과 무관하게 **단추와 같은 고정 자리**로 선다.
+# ⚠ **폴더만 열지 않고 가장 최근 파일을 집어 준다** — 파일이 쌓이는 자리라, 열어 놓고
+#   「어느 것인가」를 사람이 고르게 하면 옛 판을 보고 말한다. 고르는 자는 **쓴 시각**이다.
+# ⚠ **없을 때 조용히 지나가지 않는다** — 다른 두 링크와 같은 까닭(눌렀는데 아무 일도 안 나면
+#   사람은 「내 컴퓨터가 이상한가」에서 멈춘다). 설치를 한 번도 안 돌린 PC 에서는 폴더 자체가
+#   없는 것이 정상이라, **그 말을 그대로 한다**.
+$lnkLog = New-Object Windows.Forms.LinkLabel
+$lnkLog.Text = '설치 기록 폴더 열기 — 안 될 때 가장 최근 기록을 보냅니다'
+$lnkLog.Location = New-Object Drawing.Point(18, (636 + $appRow + $optExtra))
+$lnkLog.Size = New-Object Drawing.Size(392, 18)
+$lnkLog.Add_LinkClicked({
+  if (Test-Path -LiteralPath $LogDir) {
+    # ⚠ **`/select,` 뒤에 빈칸을 두지 않는다** — explorer 는 그 꼴 그대로를 본다.
+    $latest = Get-ChildItem -LiteralPath $LogDir -Filter 'install-*.log' -File -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $argv = if ($latest) { '/select,"' + $latest.FullName + '"' } else { '"' + $LogDir + '"' }
+    try { Start-Process -FilePath 'explorer.exe' -ArgumentList $argv | Out-Null }
+    catch {
+      [Windows.Forms.MessageBox]::Show(
+        "기록 폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $LogDir,
+        $AppName, 'OK', 'Warning') | Out-Null
+    }
+  } else {
+    [Windows.Forms.MessageBox]::Show(
+      '아직 기록이 없습니다 — 설치를 한 판 돌리면 이 폴더에 남습니다.' +
+      [Environment]::NewLine + $LogDir,
+      $AppName, 'OK', 'Information') | Out-Null
+  }
+})
+$F.Controls.Add($lnkLog)
 
 $bGo = New-Object Windows.Forms.Button
 $bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, (628 + $appRow + $optExtra))
@@ -1015,7 +1066,7 @@ function Save-RunLog {
   }
   if (-not $any) { return '' }
   try {
-    $dir = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\logs'
+    $dir = $LogDir
     if (-not (Test-Path -LiteralPath $dir)) {
       New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null
     }
