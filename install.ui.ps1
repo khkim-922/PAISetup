@@ -487,7 +487,12 @@ if ($Choices.Count) {
 $gR = New-Object Windows.Forms.GroupBox
 $gR.Text = '내 저장소 받기 (선택) — 저장소 주소를 붙여 넣습니다. 여러 개면 빈칸으로 띄웁니다'
 $gR.Location = New-Object Drawing.Point(16, (278 + $appRow + $optExtra - $gvCut))
-$gR.Size = New-Object Drawing.Size(592, 98)
+# ⚠ **칸 안의 아래끝(링크 줄 y 70)에 여백 하나만 둔다.** 옛 높이 98 은 링크가 두 줄이던
+#   판의 수인데, 둘을 한 줄로 올리고도 그대로 둬서 **아래 28픽셀이 빈 띠로 남았다.**
+#   줄인 만큼은 아래 칸들을 당기고 **로그 창이 받는다** — 키 칸이 하는 것과 같은 식이다.
+$grH   = 78
+$grCut = 98 - $grH
+$gR.Size = New-Object Drawing.Size(592, $grH)
 $F.Controls.Add($gR)
 
 $tRepo = New-Object Windows.Forms.TextBox
@@ -504,28 +509,30 @@ $gR.Controls.Add($tRepo)
 
 $lRepo = New-Object Windows.Forms.LinkLabel
 $lRepo.Location = New-Object Drawing.Point(16, 52)
-# ⚠ **글자를 재서 칸을 맞추되 접히지는 않게 한다** — 이 줄은 **경로를 품으므로** 길이가
-#   사람마다 다르다. 폭을 박으면 사용자 이름이 긴 PC 에서 경로 뒷부분이 잘리고, 잘린 경로는
-#   **다른 자리를 가리키는 멀쩡한 글**로 보인다. 그렇다고 `MaximumSize` 로 폭만 묶으면
-#   두 줄로 **접혀 아래 칸을 민다**(실측 2026-10-07). 그래서 늘게 두고, 긴 경로에서는
-#   오른쪽 링크와 부딪히기 전에 **글 자체를 줄인다**(아래 `$RepoRoot` 갈래).
+# ⚠ **글자를 재서 칸을 맞춘다** — 글을 고치는 날 폭이 조용히 모자라지 않게. 위 제품 칸과 같은 자.
 $lRepo.AutoSize = $true
-# ⚠ **글로 말하던 것을 열어서 보여 준다.** 옛 줄은 `~/repos/<이름> 에 받습니다` 였는데, `~` 와
-#   `<>` 는 **개발자 기호**라 받는 사람은 그것이 제 PC 의 어디인지 모른다 — 폴더를 여는 링크는
-#   그 물음을 글로 답하지 않고 **없앤다.** 뒤에 붙어 있던 「개인 키 · 형제 저장소 · 배포까지
-#   이어집니다」는 걷어냈다: 셋 다 이 저장소 밖에서 뜻이 안 서는 약칭이고, 그 이야기의 임자는
-#   이미 옆 링크가 여는 안내 한 장과 이 칸의 툴팁이다. 한 줄에 셋을 밀어 넣으면 다 안 읽힌다.
+# ⚠ **경로를 글자로 띄우지 않는다 — 열어서 보여 준다.** 옛 줄은 `~/repos/<이름> 에 받습니다`
+#   였는데 `~` 와 `<>` 는 **개발자 기호**라 받는 사람은 그것이 제 PC 의 어디인지 모른다.
+#   그 다음 판은 실제 경로를 글자로 띄웠는데, 그 줄은 **사람마다 길이가 다른 글**이 되어
+#   한 줄을 꽉 채우고 긴 이름에서는 옆 링크까지 뻗었다(실측: 사용자 이름 33자가 경계).
+#   둘 다 같은 병의 다른 꼴이다 — **자리를 글로 말하려 한 것.** 열어서 보여 주면 그 물음이
+#   글에서 없어지고, 자리가 PC 마다 다른 것도 저절로 맞는다.
+# ⚠ **뒤에 붙어 있던 「개인 키 · 형제 저장소 · 배포까지 이어집니다」는 걷어냈다** — 셋 다 이
+#   저장소 밖에서 뜻이 안 서는 약칭이고, 그 이야기의 임자는 옆 링크가 여는 안내 한 장과
+#   이 칸의 툴팁이다. 한 줄에 셋을 밀어 넣으면 다 안 읽힌다.
+# ⚠ **「설치 위치」라 적지 않는다.** 여기가 여는 곳은 **저장소를 받는 폴더**고, 설치가 제
+#   짐을 푸는 곳은 딴 데다(`%LOCALAPPDATA%\Claude Code Setup\<판>`). 한 이름이 두 자리를
+#   가리키면, 기록을 찾는 사람이 엉뚱한 폴더를 열고 「없다」고 읽는다.
 # ⚠ **자리를 모르면 링크를 안 세운다** — 몸통이 그 줄을 안 낸 판(옛 판)에서는 열 데가 없다.
 #   그때는 LinkLabel 을 그대로 쓰되 **링크 영역을 비워** 글자만 서게 한다(누를 데가 없으니
 #   눌렀는데 아무 일도 안 나는 자리가 안 생긴다).
 if ($RepoRoot) {
-  # ⚠ **「눌러서 엽니다」를 안 붙인다.** 밑줄 친 파란 글자가 이미 그 말을 하고, 붙이면 경로와
-  #   합쳐 한 줄을 넘겨 **두 줄로 접힌다** — 접힌 줄은 아래 칸을 밀어 자리가 어긋난다
-  #   (실측: 364 폭에서 「(눌러서 엽니 / 다)」로 갈렸다).
-  $lRepo.Text = "받는 자리 — $RepoRoot"
+  $lRepo.Text = '받는자리'
   $lRepo.Add_LinkClicked({
     # ⚠ **아직 없는 것이 정상이다** — 저장소를 한 번도 안 받은 PC 에는 이 폴더가 없다.
     #   그 자리에서 만들지 않는다(설치가 제 때 만든다). 대신 그 말을 그대로 한다.
+    # ⚠ **경로는 여기서 말한다 — 화면이 아니라 눌렀을 때.** 보여 줄 데가 없을 때만 글자가
+    #   필요하고, 그때는 줄 길이를 걱정할 자리가 아니다.
     if (Test-Path -LiteralPath $RepoRoot) {
       try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $RepoRoot + '"') | Out-Null }
       catch {
@@ -541,7 +548,9 @@ if ($RepoRoot) {
     }
   })
 } else {
-  $lRepo.Text = '받는 자리 — 내 폴더 아래 repos'
+  # ⚠ **여기는 누를 데가 없으니 글이 자리를 말해야 한다** — 위 갈래는 열어서 보여 주므로
+  #   이름만 들지만, 못 여는 판에서 이름만 두면 **아무 말도 안 한 줄**이 된다.
+  $lRepo.Text = '받는자리 — 내 폴더 아래 repos'
   $lRepo.LinkArea = New-Object Windows.Forms.LinkArea(0, 0)
   $lRepo.ForeColor = [Drawing.Color]::DimGray
 }
@@ -554,8 +563,14 @@ $gR.Controls.Add($lRepo)
 # ⚠ **없을 때 조용히 지나가지 않는다.** 눌렀는데 아무 일도 안 나면 「내 컴퓨터가 이상한가」
 #   에서 멈춘다 — 무엇이 어디에 없는지를 경로까지 대고 말한다.
 $lnkRepo = New-Object Windows.Forms.LinkLabel
-$lnkRepo.Text = '설정 저장소란? 만드는 법'
-$lnkRepo.Location = New-Object Drawing.Point(388, 72)
+$lnkRepo.Text = '설정저장소 만드는 법'
+# ⚠ **왼쪽 링크와 같은 줄에 선다** — 옛 판은 한 줄 아래(72)였는데, 그때 왼쪽은 경로를 품은
+#   긴 글이라 같은 줄에 둘이 못 섰다. 경로가 빠져 왼쪽이 짧아졌으므로 한 줄이 둘을 든다.
+#   그래서 칸 높이도 98 에서 줄었고, 줄인 만큼은 **아래를 당기고 로그 창이 받는다**(`$grCut`).
+# ⚠ **오른쪽 끝을 상자 안에 세운다** — 이 링크는 창이 아니라 `$gR`(너비 592) 안에 산다.
+#   오른쪽 정렬이라 글이 짧아져도 끝이 그대로 서므로, 폭은 **글 길이가 아니라 남은 자리**가
+#   정한다: 왼쪽 링크가 쓰는 여백 14 를 맞춰 592-14-184 = 394 다. 옆 `$lnkFlow` 와 같은 자.
+$lnkRepo.Location = New-Object Drawing.Point(394, 52)
 $lnkRepo.Size = New-Object Drawing.Size(184, 18)
 $lnkRepo.TextAlign = 'MiddleRight'
 $lnkRepo.Add_LinkClicked({
@@ -575,19 +590,6 @@ $lnkRepo.Add_LinkClicked({
 })
 $gR.Controls.Add($lnkRepo)
 
-# ⚠ **늘어난 경로가 옆 링크를 덮는지 재서, 덮으면 글을 줄인다 — 둘이 다 선 뒤에 잰다.**
-#   사용자 이름이 긴 PC 에서는 경로 한 줄이 오른쪽 링크까지 뻗는데, 덮으면 **그 링크의
-#   클릭을 삼킨다**(`$lHint` 가 사외에서 그랬던 자리와 같은 축 — 안 보이는 것과 없는 것은
-#   다른 명제다). 폭을 박아 자르지 않는 까닭은 **잘린 경로가 다른 자리를 가리키는 멀쩡한
-#   글로 보이기** 때문이다. 그래서 자리 수가 아니라 **뜻으로** 줄인다. 전문은 툴팁과
-#   눌러서 열리는 폴더가 든다.
-# ⚠ **여기 둔 까닭은 `$lnkRepo` 가 위에서 아직 안 섰기 때문이다** — 안 선 것에 `.Left` 를
-#   물으면 0 이 나와 **조건이 늘 참이 되고, 경로를 영영 안 보여 준다.** 조용한 꼴이다.
-# ⚠ **388 을 다시 적지 않는다** — 그 링크를 옮기는 날 이 자가 조용히 낡는다.
-if ($RepoRoot -and $lRepo.Right -ge $lnkRepo.Left) {
-  $lRepo.Text = '받는 자리 — 내 폴더 아래 repos'
-}
-
 # 넣어도 위 키 칸은 그대로 산다 — 무엇이 더 서는지만 화면이 보여준다
 
 # ── 후버로 조금 더 내린다 ────────────────────────────────────────────────────────
@@ -604,7 +606,7 @@ $tipText = @'
 비워 두는 것이 기본이고 맞는 답입니다: 프로그램·확장·CLI·키·주소·프록시·
 사내 문서·씨앗·그림 문은 이 칸과 무관하게 다 깔립니다.
 
-받는 자리는 바로 아래 줄이 들고, 눌러서 열 수 있습니다. 저장소마다 제 이름
+받는 자리는 아래 「받는자리」가 열어서 보여 줍니다. 저장소마다 제 이름
 으로 한 폴더를 만듭니다. 여러 개는 빈칸으로 가릅니다.
 코드 저장소는 그것으로 끝입니다. 설정 저장소만 한 걸음 더 갑니다:
 
@@ -621,7 +623,7 @@ $tip.SetToolTip($lRepo, $tipText)
 
 # 진행
 $bar = New-Object Windows.Forms.ProgressBar
-$bar.Location = New-Object Drawing.Point(16, (388 + $appRow + $optExtra - $gvCut))   # 홈 안내 줄·링크 줄(420-456) 아래
+$bar.Location = New-Object Drawing.Point(16, (388 + $appRow + $optExtra - $gvCut - $grCut))   # 홈 안내 줄·링크 줄(420-456) 아래
 $bar.Size = New-Object Drawing.Size(592, 20)
 $bar.Minimum = 0; $bar.Maximum = 100
 $F.Controls.Add($bar)
@@ -632,10 +634,14 @@ $F.Controls.Add($bar)
 #   씨앗 넷은 고를 것이 아니라 환경이라 스위치가 없고, 그래서 더 말해야 한다 — 동의 없이 놓인다.
 # ⚠ **여는 것은 풀어 둔 이 폴더다** — README 와 홈으로 갈 씨앗의 원본이 같이 있다. 홈 쪽
 #   (`~/.claude/seeds`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
+# ⚠ **링크 글은 「무엇이 있는 데인가」만 든다 — 「열기」·「위치」를 안 붙인다.** 밑줄 친 파란
+#   글자가 이미 눌러서 간다는 말을 하고, 창의 링크 넷이 같은 결로 서야 눈이 그것들을 한
+#   무리로 읽는다. 동작을 낱낱이 적으면 긴 줄이 되어 **글도 자리도 둘 다 안 읽힌다.**
 $lnkHome = New-Object Windows.Forms.LinkLabel
-$lnkHome.Text = '사내 환경 문서 위치 — 폴더 열기'
+$lnkHome.Text = '사내환경문서'
+# ⚠ **글자를 재서 칸을 맞춘다** — 글을 고치는 날 폭이 조용히 남거나 모자라지 않게.
+$lnkHome.AutoSize = $true
 $lnkHome.Location = New-Object Drawing.Point(14, $(if ($noAsk) { 54 } else { 110 }))
-$lnkHome.Size = New-Object Drawing.Size(400, 16)
 $lnkHome.Add_LinkClicked({
   try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $Here + '"') | Out-Null }
   catch {
@@ -674,12 +680,12 @@ $lnkFlow.Add_LinkClicked({
 })
 $gV.Controls.Add($lnkFlow)
 
-$lState = New-Label '' 18 (410 + $appRow + $optExtra - $gvCut) 500 $false
+$lState = New-Label '' 18 (410 + $appRow + $optExtra - $gvCut - $grCut) 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
 $log = New-Object Windows.Forms.TextBox
-$log.Location = New-Object Drawing.Point(16, (432 + $appRow + $optExtra - $gvCut))
-$log.Size = New-Object Drawing.Size(592, (186 + $gvCut))   # 키 칸과 링크 줄이 비운 만큼 받는다
+$log.Location = New-Object Drawing.Point(16, (432 + $appRow + $optExtra - $gvCut - $grCut))
+$log.Size = New-Object Drawing.Size(592, (186 + $gvCut + $grCut))   # 위 칸들이 비운 만큼 받는다
 $log.Multiline = $true; $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'; $log.WordWrap = $false
 $log.BackColor = [Drawing.Color]::FromArgb(30, 30, 30)
@@ -705,7 +711,7 @@ $F.Controls.Add($log)
 #   링크 글에 사정을 붙이면 **긴 줄이 되어 둘 다 안 읽힌다.** 보내 달라는 말은 받는 사람이
 #   물어볼 때 할 말이라, 그 임자는 README 「안 될 때」와 「문의」다.
 $lnkLog = New-Object Windows.Forms.LinkLabel
-$lnkLog.Text = '설치 기록 열기'
+$lnkLog.Text = '설치기록'
 $lnkLog.Location = New-Object Drawing.Point(18, (636 + $appRow + $optExtra))
 # ⚠ **글자를 재서 칸을 맞춘다** — 위 제품 칸과 같은 까닭. 폭을 박으면 글을 고치는 날
 #   뒷글자가 잘리는데, 잘린 줄은 **화면에서만 보이고** 아무 검사에도 안 걸린다.
