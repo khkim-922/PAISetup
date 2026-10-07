@@ -10,7 +10,7 @@ Payload fixes, all required by the gateway:
 * ``/v1/messages`` — drop a trailing assistant prefill so the conversation
   ends with a user message (the Opus 5 Bedrock route rejects prefill), and
   strip parameters that route refuses (temperature/top_p, system role).
-* ``/v1/messages`` — hoist ``image`` blocks out of ``tool_result`` content
+* (ours) ``/v1/messages`` — hoist ``image`` blocks out of ``tool_result`` content
   and re-append them to the same user message, leaving a note behind. The
   gateway silently drops images nested inside ``tool_result`` (HTTP 200,
   no error), which is exactly where Claude Code's ``Read`` puts them — so
@@ -60,9 +60,116 @@ Performance (v10+):
 * ``TCP_NODELAY`` on client and upstream sockets; one automatic retry when
   a pooled connection is stale.
 
+Long turns (v18):
+
+* Anthropic / OpenAI SSE that goes silent gets an SSE comment line every
+  ``KEEPALIVE_SEC`` seconds. The gateway relays no thinking deltas, so a
+  thinking turn looks like dead air to Claude Code's byte-idle watchdog,
+  which aborted the stream and re-sent the whole request without streaming.
+  The gateway's own 180-second execution limit on the stream path (#28) is
+  *not* an idle limit and cannot be pushed back this way.
+* Haiku model ids are rewritten to ``CLAUDE_HAIKU_SUBSTITUTE`` — the gateway
+  lists no haiku, so Claude Code's side calls (subagents, summaries) failed
+  with 400 while the main turn worked.
+* An SSE ``error`` frame from the gateway is counted (``/health``
+  ``stream_errors``) and logged with elapsed time and the gateway request id
+  header, so the 180-second cut can be measured and reported.
+
+Measuring the execution cut (v19):
+
+* The gateway's 180-second cut does not always arrive as an SSE ``error``
+  frame. Measured on a company PC 2026-10-02: ``HTTP 500`` at an elapsed
+  180.0s, which ``stream_errors`` did not count (it stayed 0). A non-2xx
+  response whose elapsed time lands near the limit is now counted as
+  ``/health`` ``execution_cuts`` and logged as ``execution cut …`` with the
+  gateway request id. This does not push the limit back — it makes the
+  frequency countable, which is what an ops request needs.
+
+Large requests (v22):
+
+* The local queue is disabled by default (``PGPT_PROXY_HEAVY_BYTES=0``).
+  v21's 10-second queue rejection exhausted client retries while another
+  long request was running. Size alone did not identify the expensive
+  calls. The proxy must not add rate limiting to normal multi-tab use.
+* If explicitly enabled, requests >= ``PGPT_PROXY_HEAVY_BYTES`` queue in FIFO
+  order per provider, with ``PGPT_PROXY_HEAVY_CONCURRENCY`` (default 1)
+  slots each. Claude no longer blocks OpenAI, Gemini or Grok calls.
+* The pre-response queue wait is bounded by ``PGPT_PROXY_HEAVY_QUEUE_TIMEOUT_SEC``
+  (default 10s). A full queue returns HTTP 429 with Retry-After; it never
+  bypasses the concurrency limit. Sending SSE keepalives before receiving
+  upstream headers would hide real HTTP errors, so the queue stays short.
+* Disconnected clients leave the queue, and cancelled requests waiting for
+  upstream headers close their upstream connection. ``/health`` reports
+  active requests, per-provider gates, queue timeouts and cancellations.
+* Logs include model/effort/thinking settings and separate queue, upstream
+  and total durations, without logging prompts or credentials. Effort is
+  forwarded unchanged. Execution-cut detection excludes local queue time
+  and client errors (4xx).
+
 Everything else is relayed untouched, streaming included. Upstream 3xx
 responses are relayed as-is, never followed (following would re-send the
 Authorization header to whatever host Location names).
+
+Stream integrity (v23):
+
+* SSE is always framed as chunked downstream, including when the upstream
+  sent Content-Length, so inserted keepalives cannot truncate the response.
+* A bounded observer assembles complete SSE events across socket reads.
+  Anthropic message_stop, Responses response.completed, and chat [DONE]
+  verify completion. Explicit error/failed/incomplete events are relayed
+  intact and logged as stream_error. EOF without a terminal is incomplete,
+  not a successful chunked end. Oversized uninspectable terminal events
+  are forwarded and reported as unverified rather than rejected.
+* Keepalive counts are per request. A timed-out incomplete/error stream
+  also contributes to execution_cuts, once per request.
+
+Compaction and event boundaries (v24):
+
+* Recognize Claude Code's exact text-only compaction prompt on /v1/messages
+  and append a concise-handoff instruction. Preserve the original prompt,
+  history, tools, effort and thinking. The instruction itself is a soft target;
+  since v26 a separate max_tokens ceiling also applies (see below) and v25 changed
+  the transport. PGPT_PROXY_COMPACT_CONCISE=0 opts out of the instruction only.
+* Emit keepalive comments only between complete SSE events, never inside a
+  split JSON field or CRLF. Log first event/nonempty text, output tokens and
+  stop reason as metadata to distinguish response progress from HTTP headers.
+
+Compaction transport (v25):
+
+* Recognized compact requests use nonstream upstream by default, converted back
+  to Anthropic SSE after full validation. Normal work stays streaming: the company
+  gateway was observed returning empty tool arguments on its nonstream path.
+* PGPT_PROXY_COMPACT_UNSTREAM=0 restores compact streaming. The diagnostic-only
+  PGPT_PROXY_CLAUDE_UNSTREAM=1 expands conversion to all messages; required tool
+  arguments are checked before emitting any calls. Do not enable it in production.
+* This avoids the observed 180s streaming limit for compact calls only. The
+  nonstream gateway still has an observed 300s limit; it is not an unlimited route.
+
+Output ceilings (v26):
+
+* Every Claude /v1/messages request gets max_tokens lowered (never raised) to a
+  ceiling that finishes inside the gateway's limit on the route it actually takes:
+  10000 when it goes upstream streaming (180s), 18000 when nonstream (300s).
+  Measured 2026-10-06 over 197 Opus streaming turns: 1.2s + 13.77ms per output
+  token, thinking included (worst observed 15.0ms/token, worst residual +13.7s),
+  so the caps land near 165s and 285s in the worst case. The client asks 64000.
+* Why: a turn that outgrows the gateway's clock was cut with HTTP 500 at 180s and
+  the client re-sent the identical request up to 10 times. Ending it with
+  stop_reason=max_tokens instead triggers Claude Code's own recovery ("Output token
+  limit hit. Resume directly ... Break remaining work into smaller pieces."), so
+  long work continues in pieces. The longest normal turn on 2026-10-06 was 7742
+  tokens, so ordinary turns never reach the cap. Claude Code's compaction trigger
+  is unchanged because its own max output setting is untouched.
+* An enabled thinking budget is lowered to at most half the ceiling so the answer
+  keeps room. /health: stream_max_tokens, nonstream_max_tokens, max_tokens_hits
+  (all), compact_max_tokens_hit. PGPT_PROXY_STREAM_MAX_TOKENS=0 and
+  PGPT_PROXY_NONSTREAM_MAX_TOKENS=0 restore the client's value on that route.
+* Compact recognition accepts the client's prompt family: the shared
+  "CRITICAL: Respond with TEXT ONLY" first line plus a "Your task is to create a
+  detailed summary of" task within the first 4000 characters. This covers the
+  whole-conversation, continuing-session and RECENT-portion variants and small
+  rewordings of the bullets, so a client update does not silently drop compact
+  calls back onto the 180s streaming path.
 """
 
 from __future__ import annotations
@@ -72,14 +179,16 @@ import io
 import json
 import os
 import queue
-import os
 import re
+import select
 import socket
 import sys
 import threading
 import time
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Callable
 from urllib.parse import quote, unquote_plus, urlsplit
 
 LISTEN_HOST = "127.0.0.1"
@@ -89,53 +198,106 @@ LISTEN_PORT = int(os.environ.get("PGPT_PROXY_PORT", "18901"))
 # PGPT_PROXY_UPSTREAM 을 쓴다. 프로토콜은 http — https 는 연결되지 않는다.
 UPSTREAM = os.environ.get("PGPT_PROXY_UPSTREAM", "http://aigpt.posco.net").rstrip("/")
 ALLOWED_PREFIX = "/gpgpta01-gpt/"
-# ── 판 번호는 두 칸이다 — **상류 판과 우리 판을 안 섞는다** ──────────────────────────
-# 옛 판은 한 칸(정수 17·18)이었는데, 그러면 **상류가 16 을 내는 날 우리 18 과 부딪히고 번호로는
-# 누가 새것인지 못 가른다** — 같은 축에 두 사람이 번호를 매기니 필연이다. 축을 둘로 가르면
-# 그 충돌이 없어진다: 상류가 16 을 내면 우리 칸은 0 으로 돌아가 `16.0` 이 되고, 그것은 `15.5`
-# 보다 뒤라는 것이 두 수를 차례로 견주면 그냥 나온다.
-# ⚠ **`/health` 는 사람이 읽는 한 줄(`17.5`)을 내고, 견주는 자는 두 수를 따로 본다.**
+# ── (우리 것) 판 번호는 두 칸이다 — **상류 판과 우리 판을 안 섞는다** ──────────────────
+# 한 칸이면 **상류가 새 판을 내는 날 우리 번호와 부딪히고 번호로는 누가 새것인지 못 가른다** —
+# 같은 축에 두 사람이 번호를 매기니 필연이다. 축을 둘로 가르면 그 충돌이 없어진다: 상류가 27 을
+# 내면 우리 칸은 0 으로 돌아가 `27.0` 이 되고, 그것은 `26.3` 보다 뒤라는 것이 두 수를 차례로
+# 견주면 그냥 나온다.
+# ⚠ **`/health` 는 사람이 읽는 한 줄(`26.3`)을 내고, 견주는 자는 두 수를 따로 본다.**
 #   점 찍힌 문자열을 크기로 견주면 `"9" > "10"` 이 되는 자리라, 설치기는 이 아래 두 이름을
 #   각각 정수로 읽는다(`install.ps1` 의 프록시 칸).
 # ⚠ **상류를 새로 받으면 위 칸을 그 판으로 올리고 아래 칸을 0 으로 되돌린다** — 우리 덩어리를
 #   다시 얹은 만큼만 아래 칸이 오른다. README 「상류에서 새 판을 받을 때」.
-VERSION_UPSTREAM = 17
-# 우리 덩어리 여섯 — keepalive(0044) · unstream(0051) · 하이쿠 대체 · 제미나이 이름 표 ·
-# 게이트웨이 요청 번호 로그(#67) · 그림 끌어내기(#76).
-VERSION_OURS = 6
+VERSION_UPSTREAM = 26
+# 우리 덩어리 셋 — 제미나이 이름 표 · 그림 끌어내기(#76) · 압축 간결 지시 끔(결정 0082).
+VERSION_OURS = 3
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
-# SSE keepalive — 상류가 이만큼 침묵하면 클라이언트 쪽에 SSE 주석 한 줄을 흘린다. 0 이면 끈다.
-# 게이트웨이는 모델이 생각하는 동안 바이트를 안 흘리고, Claude Code 의 바이트 유휴 워치독은 그 침묵에
-# 스트림을 끊는다(회사 실측 2026-09-14 · 자동 압축이 가장 잘 걸림). 주석 줄(`:`)은 SSE 규격상 버려지므로
-# 내용은 안 바뀌고 바이트만 흐른다. 이기는 것은 클라이언트 워치독뿐이다 — 게이트웨이 쪽이 제 침묵에
-# 끊으면 여기서는 못 막는다.
-KEEPALIVE_SEC = float(os.environ.get("PGPT_PROXY_KEEPALIVE_SEC", "15"))
-_KEEPALIVE_LINE = b": keepalive\n\n"
-
-# (우리 것) 게이트웨이가 응답 머리에 실어 주는 요청 번호. **서버가 찍은 값이라 게이트웨이 팀이 제
-# 장부를 찾는 열쇠다** — 벽에 걸린 판을 「이 요청」으로 좁혀 물을 수 있다(#67 · #46 물음 ③④).
-# ⚠ **클라이언트가 이것을 로그에 안 찍는다** — Claude Code 확장이 제 안에서 짓는 `reqId` 는 게이트웨이가
-#   모르는 UUID 라 대체가 안 된다. 그래서 프록시가 적어야만 남는다.
-# ⚠ **번호를 우리가 짓지 않는다** — 상류가 안 주면 빈칸으로 둔다. 지어 낸 번호는 장부에 없어 값이 없다.
-_GW_REQUEST_ID_HEADER = "x-pgpt-request-id"
-# unstream — 클라이언트의 `"stream": true` 를 상류엔 `"stream": false` 로 보내고, 답이 오면 SSE 로 지어 낸다.
-# 게이트웨이는 /v1/messages 스트림을 요청 시작 약 180초에 신호 없이 닫지만(claude-config #46) 비스트리밍
-# 경로에는 그 상한이 없다(회사 PC 실측 2026-09-16 — 119초에 200 · 300.04초에 앞단 HAProxy 의 504).
-# ⚠ **기본이 끔이다 — 켜면 큰 도구 인자가 빈다**(회사 PC 실측 2026-09-17). 켠 판에서 `Edit` 호출이
-#   `input={}` 로 오고(출력 78/64000 토큰이라 한도와 무관 · `stop_reason` 은 정상 `tool_use`) 같은 판의
-#   작은 `Bash` 호출은 멀쩡하다. 끄면 같은 편집이 통한다(재현 3회). 우리 짓는 코드는 무죄다 —
-#   6,642자 도구 입력이 SSE 왕복해 글자 대 글자로 살아남는다. 까닭은 게이트웨이 안이라 밖에서 못 본다.
-#   **그래서 도구를 쓰는 클라이언트(Claude Code)에는 켜지 않는다.** 도구를 안 쓰는 쪽(아뜰리에)은
-#   `PGPT_PROXY_UNSTREAM=1` 로 켜서 180초 벽을 비껴갈 수 있다 — 결정 0051.
-UNSTREAM = os.environ.get("PGPT_PROXY_UNSTREAM", "0").strip().lower() not in {"0", "false", "off", "no"}
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
 LOG_MAX_BYTES = 1_000_000
 MAX_CHUNK_SIZE = 0x7FFFFFFF
+MAX_SSE_EVENT_BYTES = 2 * 1024 * 1024
 UPSTREAM_POOL_SIZE = 8
 UPSTREAM_TIMEOUT = 600
 UPSTREAM_IDLE_TTL = 30.0
 SLOW_REQUEST_SEC = 5.0
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
+
+
+# (v18) Anthropic · OpenAI SSE 가 침묵할 때 클라이언트에 흘리는 SSE 주석의 간격(초). 게이트웨이는 생각(thinking)
+# 구간의 조각을 전혀 흘리지 않아, Claude Code 의 바이트 유휴 워치독(회사 실측 약 60초)이 스트림을 끊고 같은 요청을
+# 비스트리밍으로 다시 보냈다 — 주석 한 줄이 그 시계를 되돌린다. 게이트웨이 자체의 180초 절대 시한(#28)은 유휴가
+# 아니라 실행 시계라 이것으로는 못 넘는다. PGPT_PROXY_KEEPALIVE_SEC=0 이면 끈다.
+KEEPALIVE_SEC = _env_float("PGPT_PROXY_KEEPALIVE_SEC", 15.0)
+_KEEPALIVE_LINE = b": keepalive\n\n"
+# A soft concision instruction, only for the recognized Claude Code compact
+# prompt. Effort stays the caller's; the v26 output ceilings (STREAM_MAX_TOKENS,
+# NONSTREAM_MAX_TOKENS) are a separate, explicit limit for every Claude call.
+# (우리 것) **기본을 끔으로 뒤집었다** — 상류는 켬이다(결정 0082). 우리는 창을 1M 으로 열어(결정 0049)
+# 압축이 드물고, 드물게 하는 압축을 「3000토큰 안팎」으로 줄이면 그 긴 대화에서 잃는 것이 더 크다.
+# 압축을 180초 벽 밖으로 빼는 일은 아래 COMPACT_UNSTREAM(비스트리밍 · 300초 천장)이 따로 든다.
+# 켜려면 PGPT_PROXY_COMPACT_CONCISE=1.
+COMPACT_CONCISE = os.environ.get("PGPT_PROXY_COMPACT_CONCISE", "0").lower() not in {"0", "false", "off"}
+# Opt in until the company gateway and Claude Code have been exercised together.
+CLAUDE_UNSTREAM = os.environ.get("PGPT_PROXY_CLAUDE_UNSTREAM", "0").lower() in {"1", "true", "on"}
+COMPACT_UNSTREAM = os.environ.get("PGPT_PROXY_COMPACT_UNSTREAM", "1").lower() not in {"0", "false", "off"}
+MAX_UNSTREAM_BYTES = 32 * 1024 * 1024
+# (v26) Claude 요청의 출력 상한 — 상류 경로의 시한 안에 끝나는 크기. 2026-10-06 실측: Opus 턴은 1.2초 + 출력 토큰당
+# 13.77ms(thinking 포함, 최악 15.0ms, 최대 잔차 +13.7초). 스트리밍 10000 은 최악 약 165초로 180초 안, 비스트리밍
+# 18000 은 최악 약 285초로 300초 안. 넘치면 180초 HTTP 500 → 같은 요청 10번 재시도였던 것이, 이제 max_tokens 로
+# 끝나 Claude Code 가 스스로 "나눠서 이어 쓰기" 로 넘어간다. 0 이면 그 경로는 클라이언트 값을 그대로 둔다.
+STREAM_MAX_TOKENS = int(_env_float("PGPT_PROXY_STREAM_MAX_TOKENS", 10000))
+NONSTREAM_MAX_TOKENS = int(_env_float("PGPT_PROXY_NONSTREAM_MAX_TOKENS", 18000))
+_COMPACT_TASK = (
+    "Your task is to create a detailed summary of the conversation so far, "
+    "paying close attention to the user's explicit requests and your previous actions."
+)
+_COMPACT_PREAMBLE = (
+    "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.\n\n"
+    "- Do NOT use Read, Bash, Grep, Glob, Edit, Write, or ANY other tool.\n"
+    "- You already have all the context you need in the conversation above.\n"
+    "- Tool calls will be REJECTED and will waste your only turn — you will fail the task.\n"
+    "- Your entire response must be plain text: an <analysis> block followed by a <summary> block.\n\n"
+)
+# (v26) 알아보는 기준 — 머리 줄과 과제 문장의 앞부분. 위 두 상수는 시험과 문서의 기준 문구로 남긴다.
+_COMPACT_PREAMBLE_HEAD = "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools."
+_COMPACT_TASK_HEAD = "Your task is to create a detailed summary of "
+_COMPACT_TASK_WINDOW = 4000
+_COMPACT_SUFFIX = (
+    "\n\nKeep this handoff concise, ideally within 3000 output tokens. "
+    "Keep <analysis> brief (at most 5 sentences) and put the useful handoff in <summary>. "
+    "Preserve the user goal, constraints, file paths, key decisions, errors, verified results, "
+    "unfinished work and next steps. Remove repetition and long code excerpts. "
+    "Do not perform the work or call tools.\n"
+)
+# 게이트웨이가 응답 머리에 실어 주는 요청 번호 — slow·오류 로그에 붙여 운영팀 문의에 쓴다. 없으면 비운다.
+GATEWAY_REQUEST_ID_HEADER = "x-pgpt-request-id"
+# (v19) 게이트웨이의 180초 요청 실행 시한(#28)은 SSE error 프레임으로만 오지 않는다 — 회사 PC 실측
+# 2026-10-02 에 `HTTP 500` + 경과 180.0초로 왔고, 프레임만 세는 stream_errors 는 그 판을 놓쳤다(0 이었다).
+# 그래서 비-2xx 응답의 경과가 이 창에 들면 따로 센다(`/health` 의 execution_cuts). 시한 자체는 못 늘린다 —
+# 빈도를 세어 운영팀 문의 근거를 쌓는 것이 목적이다. 창을 벗어난 느린 오류는 세지 않는다.
+EXECUTION_LIMIT_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_SEC", 180.0)
+# 시한 근방으로 볼 폭(초). 180.0 실측에 맞추되 측정 오차와 앞단 지연을 담는다.
+EXECUTION_LIMIT_MARGIN_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_MARGIN_SEC", 5.0)
+# 게이트웨이에 하이쿠가 한 판도 없다(2026-09-17 /v1/models 실측). Claude Code 는 곁 호출
+# (서브에이전트 · 요약 · 빠른 판정)에 하이쿠를 제 이름으로 보내므로 그 호출이 통째로 400 이었다. 클라이언트가 아는
+# 하이쿠 이름이 열 개가 넘어 목록 대신 규칙(이름에 haiku)으로 잡는다. ⚠ 게이트웨이가 하이쿠를 들이면 이 대체를 지운다.
+CLAUDE_HAIKU_SUBSTITUTE = "claude-sonnet-4.6"
+# v21의 10초 429가 긴 압축 중 다른 탭의 재시도 횟수를 소진했다. 기본 제한은 해제한다.
+# 필요할 때만 양수 바이트 임계값을 지정해 서비스별 게이트를 켠다.
+HEAVY_REQUEST_BYTES = int(_env_float("PGPT_PROXY_HEAVY_BYTES", 0))
+# 서비스별 큰 요청의 동시 허용 수.
+HEAVY_CONCURRENCY = int(_env_float("PGPT_PROXY_HEAVY_CONCURRENCY", 1))
+# HTTP 응답 전에는 SSE 주석을 보낼 수 없다. 짧게 기다린 뒤 429로 재시도를 알린다.
+# 0 이하면 자리가 없을 때 즉시 429. 게이트를 끄려면 HEAVY_BYTES=0을 쓴다.
+HEAVY_QUEUE_TIMEOUT_SEC = max(0.0, _env_float("PGPT_PROXY_HEAVY_QUEUE_TIMEOUT_SEC", 10.0))
+CLIENT_POLL_SEC = 0.25
 HOP_BY_HOP = {
     "connection",
     "keep-alive",
@@ -226,6 +388,13 @@ class UpstreamPool:
         if conn is None:
             return
         if not reuse:
+            # keepalive 판독 스레드가 read1() 에 막혀 있을 수 있다 — close() 만으로는 리눅스에서 안 깨어난다
+            sock = conn.sock
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
             try:
                 conn.close()
             except OSError:
@@ -248,26 +417,269 @@ _PATCHED_TOTAL = 0
 _TRIMMED_PREFILLS = 0
 _SLOW_TOTAL = 0
 _KEEPALIVE_TOTAL = 0
-_UNSTREAMED_TOTAL = 0
-_HOISTED_IMAGES = 0
+_STREAM_ERROR_TOTAL = 0
+_STREAM_INCOMPLETE_TOTAL = 0
+_STREAM_UNVERIFIED_TOTAL = 0
+_COMPACT_MAX_TOKENS_HIT_TOTAL = 0
+_MAX_TOKENS_HIT_TOTAL = 0
+_EXECUTION_CUT_TOTAL = 0
+_HEAVY_SERIALIZED_TOTAL = 0
+_HEAVY_QUEUE_TIMEOUT_TOTAL = 0
+_HEAVY_WAIT_SEC_TOTAL = 0.0
+_HEAVY_WAIT_MAX_SEC = 0.0
+_CLIENT_CANCELLED_TOTAL = 0
+_ACTIVE_REQUESTS = 0
+_HOISTED_IMAGES = 0  # (우리 것 · #76) tool_result 밖으로 내놓은 그림 장수
+
+
+class _ClientDisconnected(Exception):
+    """The downstream client cancelled before a response was sent."""
+
+
+class HeavyGate:
+    """서비스별 큰 요청 FIFO. 취소와 대기 만료는 상류로 보내지 않는다."""
+
+    def __init__(self, limit: int) -> None:
+        self._limit = max(1, limit)
+        self._cond = threading.Condition()
+        self._active = 0
+        self._tickets: deque[object] = deque()
+
+    def stats(self) -> dict[str, int]:
+        with self._cond:
+            return {"heavy_active": self._active, "heavy_waiting": len(self._tickets)}
+
+    def acquire(self, timeout: float, cancelled: Callable[[], bool] | None = None) -> tuple[bool, float]:
+        """Return (admitted, wait); raise on cancellation, including just before admission."""
+        started = time.monotonic()
+        deadline = started + max(0.0, timeout)
+        ticket = object()
+        with self._cond:
+            self._tickets.append(ticket)
+            try:
+                while True:
+                    if cancelled is not None and cancelled():
+                        raise _ClientDisconnected()
+                    if self._tickets[0] is ticket and self._active < self._limit:
+                        self._active += 1
+                        return True, time.monotonic() - started
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False, time.monotonic() - started
+                    self._cond.wait(min(remaining, CLIENT_POLL_SEC))
+            finally:
+                self._tickets.remove(ticket)
+                self._cond.notify_all()
+
+    def release(self) -> None:
+        with self._cond:
+            self._active -= 1
+            self._cond.notify_all()
+
+
+_HEAVY_GATES = {name: HeavyGate(HEAVY_CONCURRENCY) for name in ("anthropic", "openai", "gemini", "xai")}
+
+
+def request_provider(path: str, model: str) -> str:
+    model = model.lower()
+    if "/v1beta/" in path or model.startswith("gemini-"):
+        return "gemini"
+    if path.rstrip("/").endswith("/v1/messages") or model.startswith("claude-"):
+        return "anthropic"
+    if model.startswith("grok-"):
+        return "xai"
+    return "openai"
+
+
+def request_settings(payload: dict) -> str:
+    """Allowlisted settings only; never dump prompt, tools, headers or arbitrary objects."""
+    def token(value: object) -> str:
+        return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", value) else "unset"
+
+    output = payload.get("output_config")
+    reasoning = payload.get("reasoning")
+    thinking = payload.get("thinking")
+    effort = output.get("effort") if isinstance(output, dict) else None
+    if effort is None:
+        effort = reasoning.get("effort") if isinstance(reasoning, dict) else payload.get("reasoning_effort")
+    fields = [f"model={token(payload.get('model'))}", f"effort={token(effort)}",
+              f"stream={str(payload.get('stream') is True).lower()}"]
+    if isinstance(thinking, dict):
+        fields.append(f"thinking={token(thinking.get('type'))}")
+        if type(thinking.get("budget_tokens")) is int:
+            fields.append(f"budget_tokens={thinking['budget_tokens']}")
+    if type(payload.get("max_tokens")) is int:
+        fields.append(f"max_tokens={payload['max_tokens']}")
+    return " ".join(fields)
+
+
+def is_claude_compaction(payload: dict) -> bool:
+    """Recognize the client's own prompt, not size, stream mode or past messages.
+
+    Claude Code 2.1.290 can reuse the main system prompt and tool definitions
+    for compact, and omits its compaction headers on this third-party route.
+    Prompts outside the compact family (see _is_compact_text) pass through unchanged.
+    """
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return False
+    last = messages[-1]
+    if not isinstance(last, dict) or last.get("role") != "user":
+        return False
+    content = last.get("content")
+    texts = [content] if isinstance(content, str) else [
+        b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+    ] if isinstance(content, list) else []
+    return any(_is_compact_text(t) for t in texts)
+
+
+# (v26) Claude Code 2.1.283 의 출력 한도 복구 문구. 압축이 상한에 닿으면 클라이언트는 같은 압축 안에서
+# 이 문구로 이어 쓰기를 최대 3번 보낸다. 그 요청도 압축과 같은 경로(비스트리밍·300초 상한)로 보낸다.
+_OUTPUT_LIMIT_RESUME_HEAD = "Output token limit hit. Resume directly"
+
+
+def is_compaction_continuation(payload: dict) -> bool:
+    """A client 'resume after max_tokens' turn inside a compaction.
+
+    The last user text is the client's output-limit nudge and an earlier user
+    message carries the compact prompt. Without this, the resume went out as a
+    normal streaming turn while the summary it continues was still being built.
+    """
+    messages = payload.get("messages")
+    if not isinstance(messages, list) or len(messages) < 2:
+        return False
+    if not any(isinstance(t, str) and t.startswith(_OUTPUT_LIMIT_RESUME_HEAD) for t in _user_texts(messages[-1])):
+        return False
+    return any(_is_compact_text(t) for message in messages[:-1] for t in _user_texts(message))
+
+
+def _user_texts(message: object) -> list:
+    if not isinstance(message, dict) or message.get("role") != "user":
+        return []
+    content = message.get("content")
+    if isinstance(content, str):
+        return [content]
+    if isinstance(content, list):
+        return [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+    return []
+
+
+def _is_compact_text(text: object) -> bool:
+    """Match the client's compact prompt family, not one exact wording.
+
+    v24/v25 required the full preamble + one task sentence byte for byte, so a
+    reworded bullet in a Claude Code update would silently send compaction back
+    to the 180s streaming path with max_tokens 64000. The Claude Code 2.1.283
+    binary ships three task variants (whole conversation, continuing session,
+    RECENT portion) behind one shared preamble; 2.1.291 was observed sending the
+    whole-conversation variant. Require that preamble's first line at
+    the very start and a summary task near it; quoted prompts still do not match.
+    """
+    if not isinstance(text, str) or not text.startswith(_COMPACT_PREAMBLE_HEAD):
+        return False
+    return _COMPACT_TASK_HEAD in text[:_COMPACT_TASK_WINDOW]
+
+
+def cap_claude_output(payload: dict, *, unstream: bool) -> str:
+    """Bound a Claude call's output below the gateway's time limit on its route.
+
+    Only lowers max_tokens (and an enabled thinking budget); the prompt, history,
+    tools and effort stay intact. Return a metadata-only description if changed.
+    """
+    cap = output_cap(unstream=unstream)
+    if not cap:
+        return ""
+    current = payload.get("max_tokens")
+    if type(current) is int and 0 < current <= cap:
+        return ""
+    payload["max_tokens"] = cap
+    thinking = payload.get("thinking")
+    if isinstance(thinking, dict) and type(thinking.get("budget_tokens")) is int and thinking["budget_tokens"] > cap // 2:
+        # Anthropic requires budget_tokens < max_tokens. Keep at least half of the
+        # ceiling for the summary text itself, or a long think leaves no summary.
+        payload["thinking"] = {**thinking, "budget_tokens": max(1024, cap // 2)}
+    return f"max_tokens_cap={cap}"
+
+
+def output_cap(*, unstream: bool) -> int:
+    """The max_tokens ceiling actually applied on a route (0 = off)."""
+    configured = NONSTREAM_MAX_TOKENS if unstream else STREAM_MAX_TOKENS
+    return max(4096, configured) if configured > 0 else 0
+
+
+def tune_claude_compaction(payload: dict) -> str:
+    """Append a concise-handoff instruction; retain the full original request.
+
+    The instruction is a soft target and never truncates or invents output;
+    the hard ceiling is cap_claude_output's job. Return a metadata-only description if changed.
+    """
+    if not COMPACT_CONCISE or not is_claude_compaction(payload):
+        return ""
+    last = payload["messages"][-1]
+    content = last["content"]
+    if isinstance(content, str):
+        if content.endswith(_COMPACT_SUFFIX):
+            return ""
+        content = content + _COMPACT_SUFFIX
+    else:
+        blocks = list(content)
+        for index, block in enumerate(blocks):
+            if not isinstance(block, dict) or block.get("type") != "text":
+                continue
+            text = block.get("text")
+            if _is_compact_text(text):
+                if text.endswith(_COMPACT_SUFFIX):
+                    return ""
+                blocks[index] = {**block, "text": text + _COMPACT_SUFFIX}
+                break
+        content = blocks
+    payload["messages"] = [*payload["messages"][:-1], {**last, "content": content}]
+    return "compact_concise=true"
+
+
+def is_heavy_request(path: str, body: bytes | None) -> bool:
+    """이 요청이 게이트를 타야 하는가 — 모델 생성 호출이고 본문이 임계보다 큰가."""
+    if HEAVY_REQUEST_BYTES <= 0 or not body or len(body) < HEAVY_REQUEST_BYTES:
+        return False
+    return is_generation_request(path)
+
+
+def is_generation_request(path: str) -> bool:
+    stripped = path.rstrip("/")
+    # 생성 호출만 센다. /v1/models 같은 조회는 커도 시한에 걸리지 않는다.
+    return (
+        stripped.endswith("/v1/messages")
+        or stripped.endswith("/v1/chat/completions")
+        or stripped.endswith("/v1/responses")
+        or ":generateContent" in stripped
+        or ":streamGenerateContent" in stripped
+    )
+
+
+def _count_heavy_serialized(waited: float) -> None:
+    global _HEAVY_SERIALIZED_TOTAL, _HEAVY_WAIT_SEC_TOTAL, _HEAVY_WAIT_MAX_SEC
+    with _STATS_LOCK:
+        _HEAVY_SERIALIZED_TOTAL += 1
+        _HEAVY_WAIT_SEC_TOTAL += waited
+        _HEAVY_WAIT_MAX_SEC = max(_HEAVY_WAIT_MAX_SEC, waited)
+
+
+def _count_heavy_queue_timeout() -> None:
+    global _HEAVY_QUEUE_TIMEOUT_TOTAL
+    with _STATS_LOCK:
+        _HEAVY_QUEUE_TIMEOUT_TOTAL += 1
+
+
+def _count_client_cancelled() -> None:
+    global _CLIENT_CANCELLED_TOTAL
+    with _STATS_LOCK:
+        _CLIENT_CANCELLED_TOTAL += 1
 
 
 def _count_hoisted(count: int) -> None:
     global _HOISTED_IMAGES
     with _STATS_LOCK:
         _HOISTED_IMAGES += count
-
-
-def _count_keepalive() -> None:
-    global _KEEPALIVE_TOTAL
-    with _STATS_LOCK:
-        _KEEPALIVE_TOTAL += 1
-
-
-def _count_unstreamed() -> None:
-    global _UNSTREAMED_TOTAL
-    with _STATS_LOCK:
-        _UNSTREAMED_TOTAL += 1
 
 
 def _count_patched(count: int) -> None:
@@ -288,16 +700,95 @@ def _count_slow() -> None:
         _SLOW_TOTAL += 1
 
 
-def stats() -> dict[str, int]:
+def _count_keepalive() -> None:
+    global _KEEPALIVE_TOTAL
+    with _STATS_LOCK:
+        _KEEPALIVE_TOTAL += 1
+
+
+def _count_stream_error() -> None:
+    global _STREAM_ERROR_TOTAL
+    with _STATS_LOCK:
+        _STREAM_ERROR_TOTAL += 1
+
+
+def _json_stop_reason(body: bytes | bytearray | None) -> str:
+    try:
+        message = json.loads(body) if body else None
+    except (ValueError, UnicodeDecodeError):
+        return ""
+    return message.get("stop_reason") or "" if isinstance(message, dict) else ""
+
+
+def _count_max_tokens_hit(compact: bool) -> None:
+    global _MAX_TOKENS_HIT_TOTAL, _COMPACT_MAX_TOKENS_HIT_TOTAL
+    with _STATS_LOCK:
+        _MAX_TOKENS_HIT_TOTAL += 1
+        if compact:
+            _COMPACT_MAX_TOKENS_HIT_TOTAL += 1
+
+
+def _count_stream_incomplete() -> None:
+    global _STREAM_INCOMPLETE_TOTAL
+    with _STATS_LOCK:
+        _STREAM_INCOMPLETE_TOTAL += 1
+
+
+def _count_stream_unverified() -> None:
+    global _STREAM_UNVERIFIED_TOTAL
+    with _STATS_LOCK:
+        _STREAM_UNVERIFIED_TOTAL += 1
+
+
+def _count_execution_cut() -> None:
+    global _EXECUTION_CUT_TOTAL
+    with _STATS_LOCK:
+        _EXECUTION_CUT_TOTAL += 1
+
+
+def at_execution_limit(elapsed: float) -> bool:
+    """경과가 게이트웨이의 요청 실행 시한 근방인가 — 시한을 0 이하로 끄면 늘 거짓."""
+    if EXECUTION_LIMIT_SEC <= 0:
+        return False
+    return elapsed >= EXECUTION_LIMIT_SEC - EXECUTION_LIMIT_MARGIN_SEC
+
+
+def stats() -> dict[str, object]:
     with _STATS_LOCK:
         base = {
+            "heavy_gate_enabled": HEAVY_REQUEST_BYTES > 0,
+            "heavy_request_bytes": HEAVY_REQUEST_BYTES,
+            "active_requests": _ACTIVE_REQUESTS,
+            "client_cancellations": _CLIENT_CANCELLED_TOTAL,
             "patched_tools": _PATCHED_TOTAL,
             "trimmed_prefills": _TRIMMED_PREFILLS,
+            "hoisted_images": _HOISTED_IMAGES,
             "slow_requests": _SLOW_TOTAL,
             "keepalives": _KEEPALIVE_TOTAL,
-            "unstreamed": _UNSTREAMED_TOTAL,
-            "hoisted_images": _HOISTED_IMAGES,
+            "stream_errors": _STREAM_ERROR_TOTAL,
+            "stream_incomplete": _STREAM_INCOMPLETE_TOTAL,
+            "stream_unverified": _STREAM_UNVERIFIED_TOTAL,
+            "compact_concise": COMPACT_CONCISE,
+            "claude_unstream": CLAUDE_UNSTREAM,
+            "compact_unstream": COMPACT_UNSTREAM,
+            "stream_max_tokens": output_cap(unstream=False),
+            "nonstream_max_tokens": output_cap(unstream=True),
+            "max_tokens_hits": _MAX_TOKENS_HIT_TOTAL,
+            "compact_max_tokens_hit": _COMPACT_MAX_TOKENS_HIT_TOTAL,
+            "execution_cuts": _EXECUTION_CUT_TOTAL,
+            "heavy_serialized": _HEAVY_SERIALIZED_TOTAL,
+            "heavy_queue_timeouts": _HEAVY_QUEUE_TIMEOUT_TOTAL,
+            "heavy_wait_max_sec": round(_HEAVY_WAIT_MAX_SEC, 1),
+            "heavy_wait_avg_sec": (
+                round(_HEAVY_WAIT_SEC_TOTAL / _HEAVY_SERIALIZED_TOTAL, 1)
+                if _HEAVY_SERIALIZED_TOTAL
+                else 0
+            ),
         }
+    gates = {name: gate.stats() for name, gate in _HEAVY_GATES.items()}
+    base["heavy_by_provider"] = gates
+    base["heavy_active"] = sum(gate["heavy_active"] for gate in gates.values())
+    base["heavy_waiting"] = sum(gate["heavy_waiting"] for gate in gates.values())
     base.update(_UPSTREAM_POOL.stats())
     return base
 
@@ -313,6 +804,152 @@ def log(message: str) -> None:
                 handle.write(f"{stamp} {message}\n")
     except OSError:
         pass
+
+
+class _UpstreamReadError(Exception):
+    """Upstream socket/parse failure while relaying a body — wraps the original error."""
+
+
+class SseObserver:
+    """Observe complete SSE events without changing bytes forwarded to the client.
+
+    Line and event boundaries can cross any read, including CRLF and UTF-8.
+    Inspection is bounded; an oversized event is skipped, not buffered forever.
+    If that prevents terminal verification, report unverified rather than fail
+    an otherwise intact response. No generated text is searched for markers.
+    """
+
+    def __init__(self, protocol: str = "") -> None:
+        self.protocol = protocol
+        self.terminal = False
+        self.error: str | None = None
+        self.limited = False
+        self._line = bytearray()
+        self._data: list[bytes] = []
+        self._event = b""
+        self._size = 0
+        self._skip = False
+        self._after_cr = False
+        self._line_has_bytes = False
+        self.events = 0
+        self.last_event = "none"
+        self.first_event_at: float | None = None
+        self.first_text_at: float | None = None
+        self.output_tokens: int | None = None
+        self.stop_reason = "none"
+
+    @property
+    def can_keepalive(self) -> bool:
+        # A blank line inside an unfinished data/event would dispatch it early.
+        # Also avoid inserting between CR and the LF of a split CRLF.
+        return self._size == 0 and not self._line_has_bytes and not self._after_cr
+
+    def diagnostics(self, started: float) -> str:
+        def elapsed(value: float | None) -> str:
+            return f"{max(0.0, value - started):.3f}s" if value is not None and started else "none"
+        return (f"events={self.events} last_event={self.last_event} "
+                f"first_event={elapsed(self.first_event_at)} first_text={elapsed(self.first_text_at)} "
+                f"output_tokens={self.output_tokens if self.output_tokens is not None else 'unknown'} "
+                f"stop_reason={self.stop_reason}")
+
+    def feed(self, chunk: bytes) -> None:
+        # Split before decoding: a UTF-8 character can straddle socket reads.
+        for part in re.split(rb"([\r\n])", chunk):
+            if not part:
+                continue
+            if part in (b"\r", b"\n"):
+                if part == b"\n" and self._after_cr:
+                    self._after_cr = False
+                    continue
+                self._after_cr = part == b"\r"
+                self._end_line()
+                continue
+            self._after_cr = False
+            self._line_has_bytes = True
+            self._size += len(part)
+            if self._size > MAX_SSE_EVENT_BYTES:
+                self.limited = self._skip = True
+                self._line.clear()
+                self._data.clear()
+                self._event = b""
+            if not self._skip:
+                self._line.extend(part)
+
+    def _end_line(self) -> None:
+        if not self._line_has_bytes:
+            if not self._skip:
+                self._dispatch()
+            self._data.clear()
+            self._event = b""
+            self._size = 0
+            self._skip = False
+        elif not self._skip:
+            field, sep, value = bytes(self._line).partition(b":")
+            if value.startswith(b" "):
+                value = value[1:]
+            if field == b"data":
+                self._data.append(value if sep else b"")
+            elif field == b"event":
+                self._event = value
+        self._line.clear()
+        self._line_has_bytes = False
+
+    def _dispatch(self) -> None:
+        if not self._data:
+            return
+        data = b"\n".join(self._data)
+        if self.protocol == "chat" and data == b"[DONE]":
+            self.terminal = True
+            return
+        try:
+            payload = json.loads(data)
+        except (UnicodeDecodeError, ValueError):
+            return
+        if not isinstance(payload, dict):
+            return
+        kind = payload.get("type") or self._event.decode("utf-8", "replace")
+        self.events += 1
+        now = time.monotonic()
+        if self.first_event_at is None:
+            self.first_event_at = now
+        known = {"message_start", "message_stop", "message_delta", "content_block_start",
+                 "content_block_delta", "content_block_stop", "ping", "error",
+                 "response.created", "response.completed", "response.failed", "response.incomplete"}
+        self.last_event = kind if isinstance(kind, str) and kind in known else "other"
+        delta = payload.get("delta")
+        if isinstance(delta, dict):
+            if (delta.get("type") == "text_delta" and isinstance(delta.get("text"), str)
+                    and delta["text"] and self.first_text_at is None):
+                self.first_text_at = now
+            stop = delta.get("stop_reason")
+            if stop in ("end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"):
+                self.stop_reason = stop
+        usage = payload.get("usage")
+        if isinstance(usage, dict) and type(usage.get("output_tokens")) is int:
+            self.output_tokens = usage["output_tokens"]
+        if ((self.protocol == "anthropic" and kind == "message_stop") or
+                (self.protocol == "responses" and kind == "response.completed")):
+            self.terminal = True
+        failed = kind in ("error", "response.failed", "response.incomplete") or self._event == b"error"
+        error = payload.get("error")
+        # OpenAI chat SSE can carry {"error": {...}} without an event/type field.
+        failed = failed or isinstance(error, dict)
+        if failed and self.error is None:
+            response = payload.get("response")
+            if not error and isinstance(response, dict):
+                error = response.get("error") or response.get("incomplete_details")
+            if isinstance(error, dict):
+                message = error.get("message") or error.get("type") or error.get("reason") or kind
+            else:
+                message = error or kind
+            self.error = " ".join(str(message).split())[:200]
+
+
+def sse_error_message(chunk: bytes) -> str | None:
+    """Whole-frame helper for callers/tests; live streams keep one observer across reads."""
+    observer = SseObserver()
+    observer.feed(chunk)
+    return observer.error
 
 
 def _keeps_alive(response: http.client.HTTPResponse) -> bool:
@@ -450,21 +1087,10 @@ _CLAUDE_DASH_VERSION = re.compile(
     re.IGNORECASE,
 )
 
-# Claude Code 2.1+ Sonnet chip. Not on the company gateway list.
-# (우리 것) 하이쿠는 이 게이트웨이에 **한 판도 없다** — `GET /v1/models` 실측 2026-09-17: Claude 는
-# opus 4.5·4.6·4.7·5 와 sonnet 4.5·4.6 여섯뿐이다. 그런데 Claude Code 는 곁 호출(서브에이전트 ·
-# 요약 · 빠른 판정)에 하이쿠를 제 이름으로 보내므로 그 호출이 통째로 진다 — `ANTHROPIC_MODEL` 은
-# 메인 세션 하나만 못박고 곁 호출은 그 못을 안 탄다.
-# **이름을 하나씩 적지 않고 규칙으로 잡는다** — 클라이언트가 아는 하이쿠 이름이 열둘이고
-# (`claude-haiku-4-5` · `-20251001` · `-v1` · `claude-3-5-haiku-latest` …) 판이 오를 때마다 늘어서,
-# 목록으로 두면 새 이름이 조용히 샌다.
-# ⚠ **걷는 날은 사람이 정한다** — 게이트웨이가 하이쿠를 들이면 이 줄이 그것까지 갈아버린다.
-#   위 `/v1/models` 에 haiku 가 보이면 이 칸을 지운다.
-_CLAUDE_HAIKU_SUBSTITUTE = "claude-sonnet-4.6"
-
 # ── (우리 것) 안티그래비티가 제목 짓기에 못박아 둔 이름 하나 ──────────────────────────
-# 하이쿠 칸과 **같은 병이다** — 클라이언트가 곁 호출에 제 이름을 보내고 게이트웨이에 그 판이
-# 없어 그 호출만 진다. 여기도 `--model` 이 메인 턴만 못박고 곁 호출은 그 못을 안 탄다.
+# 하이쿠 칸(CLAUDE_HAIKU_SUBSTITUTE)과 **같은 병이다** — 클라이언트가 곁 호출에 제 이름을 보내고
+# 게이트웨이에 그 판이 없어 그 호출만 진다. 여기도 `--model` 이 메인 턴만 못박고 곁 호출은 그 못을
+# 안 탄다.
 # **그런데 약이 다르다.** 하이쿠는 게이트웨이에 한 판도 없어 다른 모델로 갈아야 했지만, 이쪽은
 # **같은 모델이 이름만 다르게 등록돼 있다** — 접미사 `-preview` 하나가 임자다(실측 2026-09-17 ·
 # 직결: `gemini-3.1-flash-lite` 는 200 에 `modelVersion: gemini-3.1-flash-lite` · `-preview`
@@ -476,11 +1102,12 @@ _CLAUDE_HAIKU_SUBSTITUTE = "claude-sonnet-4.6"
 # ⚠ **`agy` 쪽에 이것을 갈 손잡이가 없다** — 바이너리에 상수로 박혀 있고 `titleModel` 류의 설정이
 #   없다. 그래서 고칠 자리가 클라이언트가 아니라 여기다.
 # ⚠ **걷는 날은 사람이 정한다** — 게이트웨이가 `-preview` 판을 들이거나 `agy` 가 이름을 고치면
-#   이 줄이 쓸모없어진다. 위 `/v1/models` 에 그 이름이 보이면 이 칸을 지운다.
+#   이 줄이 쓸모없어진다. `/v1/models` 에 그 이름이 보이면 이 칸을 지운다.
 _GEMINI_MODEL_ALIASES = {
     "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
 }
 
+# Claude Code 2.1+ Sonnet chip. Not on the company gateway list.
 _CLAUDE_MODEL_ALIASES = {
     "claude-sonnet-5": "claude-sonnet-4.6",
     "claude-sonnet-latest": "claude-sonnet-4.6",
@@ -497,15 +1124,15 @@ def normalize_pgpt_claude_model(model: str) -> str:
     name = model.strip()
     if not name:
         return model
-    alias = _CLAUDE_MODEL_ALIASES.get(name.lower())
+    lower = name.lower()
+    alias = _CLAUDE_MODEL_ALIASES.get(lower)
     if alias:
         return alias
-    # (우리 것) 하이쿠는 게이트웨이에 없다 — 이름에 haiku 가 들면 소넷으로 보낸다.
-    # **대시→점 변환보다 먼저 본다**: 그쪽을 먼저 타면 `claude-haiku-4.5` 가 되어 여전히 없는 이름이다.
-    if "haiku" in name.lower():
-        return _CLAUDE_HAIKU_SUBSTITUTE
+    # (v18) 하이쿠는 게이트웨이에 없다 — 대시→점 변환보다 먼저 본다(그쪽을 먼저 타면 claude-haiku-4.5 가 되어
+    # 여전히 없는 이름이다)
+    if "haiku" in lower:
+        return CLAUDE_HAIKU_SUBSTITUTE
     # dated Anthropic ids: claude-sonnet-5-20260219
-    lower = name.lower()
     if lower.startswith("claude-sonnet-5"):
         return "claude-sonnet-4.6"
     if "." in name:
@@ -671,7 +1298,7 @@ def _content_blocks(content: object) -> list[dict[str, object]]:
     return blocks
 
 
-# ── tool_result 안의 그림을 그 블록 **뒤로** 내놓는다 (claude-config #76) ───────────────
+# ── (우리 것) tool_result 안의 그림을 그 블록 **뒤로** 내놓는다 (claude-config #76) ──────
 #   게이트웨이는 `tool_result` **안**의 `image` 블록을 200 에 조용히 버린다 — 400 이 아니라
 #   받아 놓고 픽셀을 버리므로, 읽는 쪽은 「도구가 빈 결과를 냈다」로 읽고 색을 지어낸다.
 #   Claude Code 의 `Read` 가 그림을 바로 그 자리에 싣기 때문에 **사내에서는 그림을 못 봤다.**
@@ -745,9 +1372,9 @@ def sanitize_payload(payload: dict[str, object]) -> dict[str, object]:
 
     raw_messages = payload.get("messages")
     if isinstance(raw_messages, list):
-        # ⚠ **아래 합치기보다 먼저 선다.** 이 함수는 한 메시지 안에서만 블록을 옮기므로 합치기와
-        #   다투지 않지만, 순서가 뒤면 합쳐진 메시지를 다시 훑어 **같은 일을 두 번 재게** 된다.
-        #   여기가 이 함수의 유일한 자리다 (claude-config #76).
+        # (우리 것) ⚠ **아래 합치기보다 먼저 선다.** 이 함수는 한 메시지 안에서만 블록을 옮기므로
+        #   합치기와 다투지 않지만, 순서가 뒤면 합쳐진 메시지를 다시 훑어 **같은 일을 두 번 재게**
+        #   된다. 여기가 이 함수의 유일한 자리다 (claude-config #76).
         hoisted = hoist_tool_result_images(raw_messages)
         if hoisted:
             _count_hoisted(hoisted)
@@ -959,145 +1586,115 @@ def reframe_gemini_sse(raw: bytes) -> tuple[bytes, int]:
     return b"".join(parts), joiner.joined_fragments
 
 
-# ── (우리 것 · 결정 0051) 비스트리밍 답 하나를 클라이언트가 기대하는 SSE 로 짓는 자들 ──────────────
-# 잃는 것은 첫 글자가 늦는 것뿐이다 — 이 게이트웨이는 어느 길로도 생각 조각을 안 흘린다(#46 물음 ②).
+def anthropic_message_events(message: object, *, tools: list | None = None, allow_tools: bool = True) -> list[bytes]:
+    """Convert a complete message, validating everything before exposing any tool call.
 
-
-def _sse_event(name: str, data: dict[str, object]) -> bytes:
-    return b"event: " + name.encode("ascii") + b"\ndata: " + _json_bytes(data) + b"\n\n"
-
-
-def _content_block_events(index: int, block: dict[str, object]) -> list[bytes]:
-    """Expand one finished content block into start / delta(s) / stop events."""
-    kind = block.get("type")
-    deltas: list[dict[str, object]] = []
-    if kind == "text":
-        start: dict[str, object] = {"type": "text", "text": ""}
-        deltas.append({"type": "text_delta", "text": str(block.get("text") or "")})
-    elif kind == "tool_use":
-        # Claude Code 는 도구 호출을 input_json_delta 로만 읽는다. 답에는 이미 완성된 input 이
-        # 들어 있으므로 조각내지 않고 JSON 문자열 하나로 통째 싣는다.
-        tool_input = block.get("input")
-        start = {
-            "type": "tool_use",
-            "id": block.get("id"),
-            "name": block.get("name"),
-            "input": {},
-        }
-        deltas.append({
-            "type": "input_json_delta",
-            "partial_json": _json_bytes(tool_input if isinstance(tool_input, dict) else {}).decode("utf-8"),
-        })
-    elif kind == "thinking":
-        start = {"type": "thinking", "thinking": "", "signature": ""}
-        deltas.append({"type": "thinking_delta", "thinking": str(block.get("thinking") or "")})
-        signature = block.get("signature")
-        if isinstance(signature, str) and signature:
-            deltas.append({"type": "signature_delta", "signature": signature})
-    else:
-        # redacted_thinking 처럼 델타가 없는 블록은 시작 이벤트에 통째로 싣는다 (본가와 같은 꼴).
-        start = block
-    events = [_sse_event(
-        "content_block_start",
-        {"type": "content_block_start", "index": index, "content_block": start},
-    )]
-    events.extend(
-        _sse_event("content_block_delta", {"type": "content_block_delta", "index": index, "delta": delta})
-        for delta in deltas
-    )
-    events.append(_sse_event("content_block_stop", {"type": "content_block_stop", "index": index}))
-    return events
-
-
-def synthesize_anthropic_sse(message: dict[str, object]) -> bytes:
-    """Build the SSE stream a ``stream: true`` client expects from a finished message."""
-    raw_usage = message.get("usage")
-    usage = raw_usage if isinstance(raw_usage, dict) else {}
-    start_message = {
-        key: value
-        for key, value in message.items()
-        if key not in {"content", "usage", "stop_reason", "stop_sequence"}
-    }
-    start_message["content"] = []
-    start_message["stop_reason"] = None
-    start_message["stop_sequence"] = None
-    # 문맥 계산과 화면이 그대로이려면 input_tokens·cache_* 가 여기 실려야 한다. 낸 토큰은 아직 0 이고
-    # 최종 수는 message_delta 가 든다 (본가도 시작 이벤트의 output_tokens 는 아직 안 센 값이다).
-    start_message["usage"] = {key: value for key, value in usage.items() if key != "output_tokens"}
-    start_message["usage"]["output_tokens"] = 0
-
-    events = [_sse_event("message_start", {"type": "message_start", "message": start_message})]
-    content = message.get("content")
-    blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content
-    index = 0
-    if isinstance(blocks, list):
-        for block in blocks:
-            if not isinstance(block, dict):
-                continue
-            events.extend(_content_block_events(index, block))
-            index += 1
-    events.append(_sse_event("message_delta", {
-        "type": "message_delta",
-        "delta": {
-            "stop_reason": message.get("stop_reason"),
-            "stop_sequence": message.get("stop_sequence"),
-        },
-        "usage": {"output_tokens": usage.get("output_tokens", 0)},
-    }))
-    events.append(_sse_event("message_stop", {"type": "message_stop"}))
-    return b"".join(events)
-
-
-def anthropic_sse_error(status: int, raw: bytes) -> bytes:
-    """Carry an upstream failure as an SSE ``error`` event.
-
-    Once a keepalive comment has gone out the status line is already spent, so the
-    only way left to tell the client is an event.
+    Input JSON travels in input_json_delta (including large Unicode strings), never
+    in the empty tool_use start block where SDKs would discard it. Unknown block
+    types fail explicitly instead of silently losing model output.
     """
-    try:
-        parsed = json.loads(raw.decode("utf-8")) if raw else None
-    except (UnicodeDecodeError, ValueError):
-        parsed = None
-    if isinstance(parsed, dict) and isinstance(parsed.get("error"), dict):
-        error: dict[str, object] = parsed["error"]
-    else:
-        # 앞단 HAProxy 의 504 는 JSON 이 아니라 HTML 이다(#46 실측) — 상태와 첫 줄만 담는다.
-        text = raw.decode("utf-8", "replace")
-        first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
-        message = f"upstream HTTP {status}"
-        if first_line:
-            message = f"{message}: {first_line[:200]}"
-        error = {"type": "api_error", "message": message}
-    return _sse_event("error", {"type": "error", "error": error})
+    if not isinstance(message, dict) or message.get("type") != "message":
+        raise ValueError("Expected an Anthropic message")
+    if (not isinstance(message.get("content"), list) or not message.get("id")
+            or not message.get("model") or message.get("role") != "assistant"
+            or not message.get("stop_reason") or not isinstance(message.get("usage"), dict)):
+        raise ValueError("Incomplete Anthropic message metadata")
+    events: list[bytes] = []
+
+    def emit(kind: str, **fields: object) -> None:
+        events.append(b"event: " + kind.encode("ascii") + b"\ndata: "
+                      + _json_bytes({"type": kind, **fields}) + b"\n\n")
+
+    start = dict(message, content=[], stop_reason=None, stop_sequence=None)
+    start["usage"] = dict(message["usage"], output_tokens=0)
+    emit("message_start", message=start)
+    for index, block in enumerate(message["content"]):
+        if not isinstance(block, dict):
+            raise ValueError("Invalid content block")
+        kind = block.get("type")
+        initial = dict(block)
+        deltas: list[tuple[str, str, str]] = []
+        if kind == "text":
+            if not isinstance(block.get("text"), str):
+                raise ValueError("Invalid text block")
+            initial["text"] = ""
+            deltas.append(("text_delta", "text", block["text"]))
+        elif kind in {"tool_use", "server_tool_use"}:
+            if not allow_tools:
+                raise ValueError("Compaction must not execute tools")
+            if not block.get("id") or not block.get("name") or not isinstance(block.get("input"), dict):
+                raise ValueError("Invalid tool input")
+            if tools is not None and kind == "tool_use":
+                definition = next((tool for tool in tools if isinstance(tool, dict) and tool.get("name") == block["name"]), None)
+                if definition is None:
+                    raise ValueError("Unknown tool")
+                schema = definition.get("input_schema")
+                if not isinstance(schema, dict):
+                    raise ValueError("Invalid tool schema")
+                required = schema.get("required", [])
+                if not isinstance(required, list):
+                    raise ValueError("Invalid required tool fields")
+                if any(key not in block["input"] for key in required):
+                    raise ValueError("Missing required tool arguments from gateway")
+            initial["input"] = {}
+            deltas.append(("input_json_delta", "partial_json", json.dumps(block["input"], ensure_ascii=False)))
+        elif kind == "thinking":
+            if not isinstance(block.get("thinking"), str) or not isinstance(block.get("signature"), str):
+                raise ValueError("Invalid thinking block")
+            initial.update(thinking="", signature="")
+            deltas.extend([("thinking_delta", "thinking", block["thinking"]),
+                           ("signature_delta", "signature", block["signature"])])
+        elif kind == "redacted_thinking":
+            if not isinstance(block.get("data"), str):
+                raise ValueError("Invalid redacted thinking block")
+        else:
+            raise ValueError("Unsupported Anthropic content block")
+        emit("content_block_start", index=index, content_block=initial)
+        for delta_kind, field, value in deltas:
+            for offset in range(0, len(value), 4096):
+                emit("content_block_delta", index=index,
+                     delta={"type": delta_kind, field: value[offset:offset + 4096]})
+        emit("content_block_stop", index=index)
+    emit("message_delta", delta={"stop_reason": message["stop_reason"],
+                                 "stop_sequence": message.get("stop_sequence")}, usage=message["usage"])
+    emit("message_stop")
+    return events
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     _chunked_out = False
-    # (우리 것 · #67) 이 요청에서 상류가 준 요청 번호. 상류에 못 닿은 판(경로 거절 · /health)도
-    # 판마다 한 줄이 이 칸을 읽으므로 빈 값으로 선언해 둔다.
-    gw_request_id = ""
+    _gw_request_id = ""
+    _started = 0.0
+    _upstream_started = 0.0
+    _request_context = ""
+    _keepalives_sent = 0
+    _stream_outcome = "complete"
 
-    def log_message(self, _format: str, *_args: object) -> None:
-        return
+    def _client_disconnected(self) -> bool:
+        """Peek without consuming request/pipelined bytes or changing socket timeout."""
+        try:
+            readable, _, _ = select.select([self.connection], [], [], 0)
+            return bool(readable) and self.connection.recv(1, socket.MSG_PEEK) == b""
+        except (OSError, ValueError):
+            return True
 
     def _gw(self) -> str:
-        """(우리 것 · #67) 판마다 한 줄의 꼬리. 번호가 없으면 아무것도 안 붙인다.
-
-        **한 자리에서 짓는 까닭** — 찍는 자리가 넷(통과 · 0051 지어 낸 길 둘 · 느린 판)이라
-        꼴이 갈리면 나중에 번호로 훑는 자가 넷을 다 알아야 한다.
-        """
-        return f" gw={self.gw_request_id}" if self.gw_request_id else ""
+        """로그 꼬리: 게이트웨이 요청 번호가 있으면 ` gw=<id>`."""
+        return f" gw={self._gw_request_id}" if self._gw_request_id else ""
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
 
-    def _send_json(self, status: int, payload: dict[str, object], *, keep_alive: bool = True) -> None:
+    def _send_json(self, status: int, payload: dict[str, object], *, keep_alive: bool = True,
+                   retry_after: int | None = None) -> None:
         data = _json_bytes(payload)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Connection", "keep-alive" if keep_alive else "close")
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
         self.end_headers()
         self.wfile.write(data)
         self.close_connection = not keep_alive
@@ -1135,6 +1732,56 @@ class ProxyHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or "0")
         return self.rfile.read(length) if length else None
 
+    def _exchange_upstream(self, conn: http.client.HTTPConnection, method: str, path: str,
+                           body: bytes | None, headers: dict[str, str]) -> http.client.HTTPResponse:
+        """Wait for headers while noticing client cancellation, including long thinking turns.
+
+        The helper owns request/getresponse; the caller owns connection cleanup. A late
+        response is closed on cancellation so it cannot keep the socket alive or be pooled.
+        HTTP status and headers remain untouched; no speculative SSE 200 is sent.
+        """
+        done = threading.Event()
+        lock = threading.Lock()
+        abandoned = False
+        results: list[http.client.HTTPResponse | Exception] = []
+
+        def exchange() -> None:
+            result: http.client.HTTPResponse | Exception
+            try:
+                try:
+                    conn.request(method, path, body=body, headers=headers)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError) as upload_error:
+                    # Preserve an early rejection such as 413 received during upload.
+                    try:
+                        result = conn.getresponse()
+                    except (http.client.HTTPException, OSError):
+                        raise upload_error
+                else:
+                    result = conn.getresponse()
+            except Exception as error:
+                result = error
+            with lock:
+                if abandoned:
+                    if isinstance(result, http.client.HTTPResponse):
+                        result.close()
+                else:
+                    results.append(result)
+            done.set()
+
+        threading.Thread(target=exchange, daemon=True).start()
+        while not done.wait(CLIENT_POLL_SEC):
+            if self._client_disconnected():
+                with lock:
+                    abandoned = True
+                    for result in results:
+                        if isinstance(result, http.client.HTTPResponse):
+                            result.close()
+                raise _ClientDisconnected()
+        result = results[0]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
     def _write_upstream(
         self,
         method: str,
@@ -1156,26 +1803,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
         log_path = path.split("?", 1)[0]   # 쿼리(?key=...)는 로그에 남기지 않는다
         for attempt in range(2):
+            if self._client_disconnected():
+                raise _ClientDisconnected()
             conn = _UPSTREAM_POOL.acquire(fresh=attempt > 0)
             reused = bool(getattr(conn, "pgpt_reused", False))
             try:
-                try:
-                    conn.request(method, path, body=body, headers=upstream_headers)
-                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                    # 게이트웨이가 본문을 다 받기 전에 응답(예: 413)을 보내고 끊었을 수 있다 — 그 응답을 넘긴다
-                    try:
-                        res = conn.getresponse()
-                        self.gw_request_id = res.headers.get(_GW_REQUEST_ID_HEADER) or ""
-                        return res, conn
-                    except (http.client.HTTPException, OSError):
-                        pass
-                    raise
-                response = conn.getresponse()
-                # (우리 것 · #67) 요청 번호를 핸들러에 걸어 둔다 — 판마다 한 줄이 이것을 읽는다.
-                # **여기 한 자리에서 잡는 까닭**은 상류 응답을 받는 갈래가 둘(통과 길 · 0051 이
-                # 지어 내는 길)인데 둘 다 이 문을 지나기 때문이다.
-                self.gw_request_id = response.headers.get(_GW_REQUEST_ID_HEADER) or ""
-                return response, conn
+                return self._exchange_upstream(conn, method, path, body, upstream_headers), conn
+            except _ClientDisconnected:
+                _UPSTREAM_POOL.release(conn, reuse=False)
+                raise
             except (http.client.HTTPException, OSError, TimeoutError) as error:
                 _UPSTREAM_POOL.release(conn, reuse=False)
                 # 다시 보내도 되는 경우는 하나뿐: 풀에서 꺼낸(오래 쉰) 연결이 응답 전에 끊긴 것. 새 연결이 실패했거나
@@ -1197,14 +1833,25 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
         self.wfile.flush()
 
-    def _relay_sse_keepalive(self, response: object, interval: float) -> bool:
-        """Copy an SSE body, writing an SSE comment whenever upstream is silent.
+    def _read_chunks(self, response: object, interval: float, can_keepalive: Callable[[], bool] | None = None):
+        """Yield upstream body chunks; upstream failures surface as ``_UpstreamReadError``.
 
-        Upstream is read on a helper thread so the HTTP parser never sees a
-        socket timeout; the writer waits on the queue with a timeout and fills
-        the gap with a comment line. Returns True if fully consumed.
+        ``interval > 0`` (v18): the socket is read on a helper thread and whenever nothing has
+        arrived for ``interval`` seconds an SSE comment goes to the client, so a silent gateway
+        (thinking deltas are not relayed) does not trip the client's byte-idle watchdog.
         """
-        chunks: queue.Queue = queue.Queue()
+        if interval <= 0:
+            while True:
+                try:
+                    chunk = response.read1(65536)  # type: ignore[attr-defined]
+                except (OSError, http.client.HTTPException) as error:
+                    # IncompleteRead 는 OSError 가 아니다 — 함께 잡아 잘린 응답을 기록한다
+                    raise _UpstreamReadError(error) from error
+                if not chunk:
+                    return
+                yield chunk
+
+        items: queue.Queue = queue.Queue()
 
         def reader() -> None:
             try:
@@ -1212,67 +1859,76 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     chunk = response.read1(65536)  # type: ignore[attr-defined]
                     if not chunk:
                         break
-                    chunks.put(chunk)
-                chunks.put(None)
+                    items.put(chunk)
+                items.put(None)
             except BaseException as error:  # noqa: BLE001 — 사유째 넘긴다
-                chunks.put(error)
+                items.put(error)
 
         threading.Thread(target=reader, daemon=True).start()
-        sent = 0
-        try:
-            while True:
-                try:
-                    item = chunks.get(timeout=interval)
-                except queue.Empty:
-                    self._emit(_KEEPALIVE_LINE)
-                    sent += 1
-                    _count_keepalive()
+        while True:
+            try:
+                item = items.get(timeout=interval)
+            except queue.Empty:
+                if can_keepalive is not None and not can_keepalive():
+                    if self._client_disconnected():
+                        raise ConnectionAbortedError("client disconnected during partial SSE event")
                     continue
-                if item is None:
-                    break
-                if isinstance(item, BaseException):
-                    log(f"upstream read aborted: {item!r}")
-                    return False
-                self._emit(item)
-            remaining = getattr(response, "length", None)
-            if remaining:
-                log(f"upstream ended {remaining} bytes early")
-                return False
-            if self._chunked_out:
-                self.wfile.write(b"0\r\n\r\n")
-                self.wfile.flush()
-            if sent:
-                log(f"keepalive x{sent} (upstream silent > {interval:g}s)")
-            return True
-        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-            return False
+                self._emit(_KEEPALIVE_LINE)
+                _count_keepalive()
+                self._keepalives_sent += 1
+                continue
+            if item is None:
+                return
+            if isinstance(item, BaseException):
+                raise _UpstreamReadError(item) from item
+            yield item
 
     def _relay_stream(
         self,
         response: http.client.HTTPResponse,
         *,
         gemini_sse: bool,
-        keepalive: bool = False,
-        interval: float | None = None,
+        sse: bool = False,
+        keepalive_interval: float = 0.0,
+        protocol: str = "",
     ) -> bool:
-        if keepalive and not gemini_sse:
-            return self._relay_sse_keepalive(response, interval or KEEPALIVE_SEC)
         """Copy upstream body to the client. Returns True if fully consumed.
 
         끝까지 받았을 때만 chunked 종료 표시를 쓴다. 업스트림이 도중에 끊기면 종료 표시 없이 연결을 닫아
         클라이언트가 잘린 응답임을 알게 한다(전에는 Connection: close 로만 끝나 정상 종료와 구별되지 않았다).
+        ``sse`` (Anthropic · OpenAI 스트림)면 게이트웨이의 ``error`` 프레임을 세고 기록한다 — 180초 시한(#28)의 자국이다.
         """
         joiner = GeminiSseJoiner() if gemini_sse else None
+        observer = SseObserver(protocol) if sse else None
+        # (v26) A Claude response relayed as-is (client asked for nonstream, e.g. its own
+        # "Retrying without streaming") is rare and small; keep a bounded copy to read stop_reason.
+        claude_messages = getattr(self, "_claude_messages", False)
+        compact_copy = bytearray() if (claude_messages and not sse and not gemini_sse) else None
+        keepalives_before = self._keepalives_sent
+        self._stream_outcome = "complete"
+
+        def incomplete(reason: str) -> bool:
+            self._stream_outcome = "stream_incomplete" if sse else "incomplete"
+            if sse:
+                _count_stream_incomplete()
+            log(f"upstream incomplete: {reason} {self._request_context}{self._gw()}")
+            return False
+
         try:
-            while True:
-                try:
-                    chunk = response.read1(65536)
-                except (OSError, http.client.HTTPException) as error:
-                    # IncompleteRead 는 OSError 가 아니다 — 함께 잡아 잘린 응답을 기록한다
-                    log(f"upstream read aborted: {error!r}")
-                    return False
-                if not chunk:
-                    break
+            for chunk in self._read_chunks(response, keepalive_interval,
+                                           (lambda: observer.can_keepalive) if observer is not None else None):
+                if observer is not None:
+                    observer.feed(chunk)
+                    if observer.error is not None and self._stream_outcome != "stream_error":
+                        self._stream_outcome = "stream_error"
+                        _count_stream_error()
+                        elapsed = time.monotonic() - self._upstream_started if self._upstream_started else 0.0
+                        log(f"stream error after {elapsed:.1f}s: {observer.error} {self._request_context}{self._gw()}")
+                if compact_copy is not None:
+                    if len(compact_copy) + len(chunk) <= MAX_UNSTREAM_BYTES:
+                        compact_copy.extend(chunk)
+                    else:
+                        compact_copy = None
                 if joiner is not None:
                     for event in joiner.feed(chunk):
                         self._emit(event)
@@ -1281,174 +1937,68 @@ class ProxyHandler(BaseHTTPRequestHandler):
             # 길이를 선언한 응답이 모자라게 끝나면 read1() 은 예외 없이 빈 바이트를 돌려준다 — 남은 길이로 가린다
             remaining = getattr(response, "length", None)
             if remaining:
-                log(f"upstream ended {remaining} bytes early")
-                return False
+                return incomplete(f"ended {remaining} bytes early")
             if joiner is not None:
                 for event in joiner.finish():
                     self._emit(event)
                 if joiner.joined_fragments:
                     log(f"Gemini SSE fragments joined={joiner.joined_fragments}")
+            if observer is not None and protocol and not observer.terminal and observer.error is None:
+                if observer.limited:
+                    self._stream_outcome = "stream_unverified"
+                    _count_stream_unverified()
+                    log(f"stream terminal unverified: event exceeded inspection limit {self._request_context}{self._gw()}")
+                else:
+                    # Do not emit a successful chunked terminator or invent a model event.
+                    return incomplete(f"missing {protocol} terminal event")
             if self._chunked_out:
                 self.wfile.write(b"0\r\n\r\n")
                 self.wfile.flush()
+            if claude_messages:
+                stop_reason = observer.stop_reason if observer is not None else _json_stop_reason(compact_copy)
+                if stop_reason == "max_tokens":
+                    _count_max_tokens_hit(getattr(self, "_compact_request", False))
+                    log(f"reached max_tokens {self._request_context}{self._gw()}")
+            sent = self._keepalives_sent - keepalives_before
+            if sent:
+                log(f"keepalive x{sent} (upstream silent > {keepalive_interval:g}s){self._gw()}")
             return True
+        except _UpstreamReadError as error:
+            return incomplete(f"read aborted: {error.__cause__!r}")
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # 클라이언트가 갔다(취소 · 시간 초과)
+            self._stream_outcome = "client_cancelled"
+            _count_client_cancelled()
             return False
-
-    def _write_client(self, data: bytes) -> bool:
-        """(우리 것 · 0051) 클라이언트 쪽 쓰기. 끊겨 있으면 False."""
-        try:
-            self.wfile.write(data)
-            self.wfile.flush()
-            return True
-        except (BrokenPipeError, ConnectionResetError):
-            return False
-
-    def _begin_synthesized_sse(self) -> None:
-        """(우리 것 · 0051) 200 SSE 로 못박는다 — 이 뒤로는 상태를 못 바꾼다."""
-        self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "close")
-        self.end_headers()
-
-    def _unstream_messages(
-        self,
-        method: str,
-        upstream_path: str,
-        body: bytes | None,
-        headers: dict[str, str],
-    ) -> tuple[http.client.HTTPConnection | None, bool]:
-        """(우리 것 · 결정 0051) 스트림 요청 하나를 비스트리밍 상류 호출 하나로 답한다.
-
-        상류 호출은 블로킹이라 헬퍼 스레드가 받고 이쪽이 기다리며 주석을 흘린다 —
-        ``_relay_sse_keepalive``(0044)와 같은 짜임이다. 돌려주는 것은 풀에 되돌릴 연결과
-        그것을 재사용해도 되는가.
-        """
-        interval = KEEPALIVE_SEC if KEEPALIVE_SEC > 0 else None
-        answers: queue.Queue = queue.Queue()
-        held: dict[str, http.client.HTTPConnection] = {}
-
-        def caller() -> None:
-            try:
-                response, conn = self._write_upstream(method, upstream_path, body, headers)
-                held["conn"] = conn
-                answers.put((response, response.read()))
-            except BaseException as error:  # noqa: BLE001 — 사유째 넘긴다
-                answers.put(error)
-
-        threading.Thread(target=caller, daemon=True).start()
-        comments = 0
-        opened = False
-        aborted = False
-        while True:
-            try:
-                item = answers.get(timeout=interval)
-                break
-            except queue.Empty:
-                if aborted:
-                    continue
-                if not opened:
-                    self._begin_synthesized_sse()
-                    opened = True
-                if not self._write_client(_KEEPALIVE_LINE):
-                    # 클라이언트가 갔다. 그래도 상류 답은 끝까지 기다린다 — 안 그러면 풀 연결이 샌다.
-                    aborted = True
-                    continue
-                comments += 1
-                _count_keepalive()
-
-        conn = held.get("conn")
-        if isinstance(item, BaseException):
-            log(f"{method} {upstream_path} -> unstream upstream failed: {item!r}")
-            if aborted:
-                return conn, False
-            if opened:
-                self._write_client(_sse_event(
-                    "error",
-                    {"type": "error", "error": {"type": "api_error", "message": str(item)}},
-                ))
-            else:
-                self._send_json(502, {"type": "error", "error": {"message": str(item)}}, keep_alive=False)
-            return conn, False
-
-        response, raw = item
-        reuse = _keeps_alive(response)
-        if aborted:
-            return conn, reuse
-
-        message = None
-        if 200 <= response.status < 300:
-            try:
-                message = json.loads(raw.decode("utf-8")) if raw else None
-            except (UnicodeDecodeError, ValueError):
-                message = None
-        if not isinstance(message, dict) or not isinstance(message.get("content"), (list, str)):
-            if response.status >= 400:
-                log(f"{method} {upstream_path} -> HTTP {response.status} (unstream){self._gw()}")
-            else:
-                log(f"{method} {upstream_path} -> unstream: not an Anthropic message ({len(raw)}B)")
-            if opened:
-                self._write_client(anthropic_sse_error(response.status, raw))
-                return conn, reuse
-            # 주석을 아직 안 흘린 판이면 상태와 몸을 그대로 넘긴다 — 옛 길과 같게.
-            self.send_response(response.status)
-            for key, value in response.headers.items():
-                if key.lower() in HOP_BY_HOP or key.lower() in {"content-length", "date", "server"}:
-                    continue
-                self.send_header(key, value)
-            self.send_header("Content-Length", str(len(raw)))
-            self.send_header("Connection", "close")
-            self.end_headers()
-            self._write_client(raw)
-            return conn, reuse
-
-        if not opened:
-            self._begin_synthesized_sse()
-        self._write_client(synthesize_anthropic_sse(message))
-        _count_unstreamed()
-        content = message.get("content")
-        # ⚠ **개수만 세면 「무엇이 빠졌나」가 안 보인다.** 도구 호출이 큰 판에서 클라이언트가
-        #   인자를 못 받는 사고를 쫓는 중이라(2026-09-17), 종류와 tool_use 의 input 크기를 함께
-        #   남긴다. **본문은 안 남긴다** — 이름과 숫자뿐이라 대화가 로그로 새지 않는다.
-        shape = "?"
-        if isinstance(content, list):
-            parts = []
-            for blk in content:
-                if not isinstance(blk, dict):
-                    parts.append("?")
-                    continue
-                kind = str(blk.get("type"))
-                if kind == "tool_use":
-                    size = len(_json_bytes(blk.get("input") if isinstance(blk.get("input"), dict) else {}))
-                    parts.append(f"tool_use({blk.get('name')} input={size}B)")
-                elif kind == "text":
-                    parts.append(f"text({len(str(blk.get('text') or ''))}자)")
-                else:
-                    parts.append(kind)
-            shape = " + ".join(parts) or "(빈 content)"
-        # ⚠ **한도에 닿았나를 같이 찍는다.** 큰 도구 인자가 비는 사고의 원인 후보가
-        #   「모델이 인자를 다 쓰기 전에 출력 한도에 걸려 JSON 이 미완성이 된 것」이다
-        #   (직결 실측 2026-09-17: max_tokens 8k 에서 필드가 사라지고 32k 에서 온전했다).
-        #   요청의 max_tokens 와 실제 output_tokens 가 나란히 있으면 그 자리에서 갈린다.
-        want = "?"
-        if body:
-            try:
-                want = str(json.loads(body).get("max_tokens"))
-            except (ValueError, AttributeError):
-                want = "?"
-        usage = message.get("usage")
-        got = usage.get("output_tokens") if isinstance(usage, dict) else "?"
-        log(
-            f"unstreamed model={message.get('model')} "
-            f"blocks={len(content) if isinstance(content, list) else 1} "
-            f"stop={message.get('stop_reason')} out={got}/{want} [{shape}] "
-            f"keepalive x{comments}{self._gw()}"
-        )
-        return conn, reuse
+        finally:
+            if observer is not None and protocol:
+                log(f"stream {observer.diagnostics(self._upstream_started)} "
+                    f"keepalives={self._keepalives_sent - keepalives_before} "
+                    f"{self._request_context}{self._gw()}")
 
     def _forward(self) -> None:
+        global _ACTIVE_REQUESTS
+        tracked = urlsplit(self.path).path != "/health"
+        if tracked:
+            with _STATS_LOCK:
+                _ACTIVE_REQUESTS += 1
+        try:
+            self._forward_request()
+        finally:
+            if tracked:
+                with _STATS_LOCK:
+                    _ACTIVE_REQUESTS -= 1
+
+    def _forward_request(self) -> None:
         started = time.monotonic()
+        self._started = started
+        self._upstream_started = 0.0
+        self._request_context = f"id={time.monotonic_ns():x}"
+        self._compact_request = False
+        self._claude_messages = False
+        self._keepalives_sent = 0
+        self._stream_outcome = "complete"
+        self._gw_request_id = ""
         parsed = urlsplit(self.path)
         if parsed.path == "/health":
             payload: dict[str, object] = {
@@ -1473,9 +2023,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
 
         body = self._read_body()
+        model_name = ""
         gemini_chat_model: str | None = None
         gemini_chat_stream = False
-        unstream = False
+        claude_unstream = False
+        compact_request = False
+        claude_tools = None
         if body:
             stripped_path = parsed.path.rstrip("/")
             is_messages = stripped_path.endswith("/v1/messages")
@@ -1494,17 +2047,32 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 if isinstance(payload_obj, dict):
                     changed = False
                     model_name = str(payload_obj.get("model") or "")
+                    self._request_context += " " + request_settings(payload_obj)
                     if is_messages:
                         if normalize_claude_model_id(payload_obj, parsed.path):
                             log(f"{parsed.path} Claude model restored: {model_name} -> {payload_obj.get('model')}")
                         payload_obj = sanitize_payload(payload_obj)
+                        compact_request = is_claude_compaction(payload_obj)
+                        if not compact_request and is_compaction_continuation(payload_obj):
+                            compact_request = True
+                            self._request_context += " kind=compact_continue"
+                        elif compact_request:
+                            self._request_context += " kind=compact"
+                        self._compact_request = compact_request
+                        self._claude_messages = True
+                        if compact_request:
+                            adjustment = tune_claude_compaction(payload_obj)
+                            if adjustment:
+                                self._request_context += " " + adjustment
                         changed = True
-                        # (우리 것 · 결정 0051) 스트림 요청만 · 손잡이가 켜졌을 때만. 상류엔 stream:false 로
-                        # 간다. 이 한 칸 말고는 몸을 안 건드린다 — 프롬프트 캐시는 본문 앞부분의 성질이라
-                        # cache_control 도 키 차례도 그대로여야 캐시가 산다.
-                        if UNSTREAM and self.command == "POST" and payload_obj.get("stream") is True:
+                        if (CLAUDE_UNSTREAM or (COMPACT_UNSTREAM and compact_request)) and payload_obj.get("stream") is True:
                             payload_obj["stream"] = False
-                            unstream = True
+                            claude_unstream = True
+                            claude_tools = payload_obj.get("tools", [])
+                            self._request_context += " transport=unstream"
+                        ceiling = cap_claude_output(payload_obj, unstream=payload_obj.get("stream") is not True)
+                        if ceiling:
+                            self._request_context += " " + ceiling
                     elif stripped_path.endswith("/v1/chat/completions") and model_name.startswith("gemini-"):
                         # /v1/responses 는 프롬프트가 input · instructions 에 있어 이 변환(messages 만 읽음)을 타면
                         # 빈 프롬프트가 된다 — chat/completions 만 바꾼다
@@ -1550,32 +2118,75 @@ class ProxyHandler(BaseHTTPRequestHandler):
         conn: http.client.HTTPConnection | None = None
         response: http.client.HTTPResponse | None = None
         reuse = False
+        upstream_status = 0
+        client_status = 0
+        outcome = "complete"
+        waited = 0.0
+        headers_sec = 0.0
+        provider = request_provider(parsed.path, model_name)
+        gate = _HEAVY_GATES[provider]
+        self._request_context += f" provider={provider} bytes={len(body or b'')}"
+        generation = is_generation_request(parsed.path)
+        if generation:
+            log(f"request {self.command} {parsed.path} {self._request_context}")
+        heavy = is_heavy_request(parsed.path, body)
+        heavy_held = False
+        queue_started = time.monotonic()
         try:
-            if unstream:
-                # (우리 것 · 결정 0051) 여기부터는 상류가 비스트리밍이라 중계가 아니라 짓기다.
-                conn, reuse = self._unstream_messages(
-                    self.command, upstream_path, body, headers
-                )
-                return
+            if heavy:
+                try:
+                    heavy_held, waited = gate.acquire(HEAVY_QUEUE_TIMEOUT_SEC, self._client_disconnected)
+                finally:
+                    waited = time.monotonic() - queue_started
+                if not heavy_held:
+                    _count_heavy_queue_timeout()
+                    outcome = "queue_timeout"
+                    client_status = 429
+                    log(
+                        f"heavy gate timeout {self.command} {parsed.path} "
+                        f"waited={waited:.1f}s HTTP 429 {self._request_context}"
+                    )
+                    self._send_json(429, {
+                        "type": "error", "error": {
+                            "type": "rate_limit_error", "code": "proxy_queue_timeout",
+                            "message": f"Local P-GPT proxy {provider} queue is busy. Retry shortly.",
+                        },
+                    }, keep_alive=False, retry_after=5)
+                    return
+                _count_heavy_serialized(waited)
+                if waited >= 1.0:
+                    log(f"heavy gate {self.command} {parsed.path} waited={waited:.1f}s {self._request_context}")
+            self._upstream_started = time.monotonic()
             try:
                 response, conn = self._write_upstream(
                     self.command, upstream_path, body, headers
                 )
+            except _ClientDisconnected:
+                raise
             except Exception as error:
-                log(f"{self.command} {parsed.path} -> upstream unreachable: {error}")
+                outcome = "upstream_error"
+                client_status = 502
+                log(f"{self.command} {parsed.path} -> upstream unreachable: {error} {self._request_context}")
                 # 이 요청 뒤에 연결을 닫으므로(close_connection) keep-alive 를 약속하지 않는다
                 self._send_json(
                     502, {"type": "error", "error": {"message": str(error)}}, keep_alive=False
                 )
                 return
 
+            headers_sec = time.monotonic() - self._upstream_started
+            self._gw_request_id = response.getheader(GATEWAY_REQUEST_ID_HEADER) or ""
+            # (v19) 시한 판정은 경과를 아는 finally 에서 한다 — 여기서는 상태만 넘겨 둔다
+            upstream_status = response.status
+            client_status = upstream_status
             if response.status >= 400:
-                log(f"{self.command} {parsed.path} -> HTTP {response.status}{self._gw()}")
+                log(f"{self.command} {parsed.path} -> HTTP {response.status} {self._request_context}{self._gw()}")
 
             if gemini_chat_model and response.status < 400:
                 try:
                     raw = response.read()
                 except (OSError, http.client.HTTPException) as error:
+                    outcome = "incomplete"
+                    client_status = 502
                     # 변환하려면 본문 전체가 필요하다 — 끊기면 잘린 답을 만들지 말고 502 로 알린다
                     log(f"{self.command} {parsed.path} -> upstream read aborted before Gemini conversion: {error!r}")
                     self._send_json(502, {"type": "error", "error": {"message": f"upstream read aborted: {error}"}}, keep_alive=False)
@@ -1602,6 +2213,55 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 and response.status < 400
             )
 
+            content_type = (response.getheader("Content-Type") or "").lower()
+            if claude_unstream and 200 <= response.status < 300 and not content_type.startswith("text/event-stream"):
+                # Keep real HTTP errors/statuses until upstream headers arrive. The
+                # installed 600s client idle timeout covers the header wait. After
+                # headers, heartbeat while buffering; a failure is an SSE error,
+                # never a fabricated successful tool call or message_stop.
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self._chunked_out = True
+                try:
+                    raw = bytearray()
+                    for chunk in self._read_chunks(response, KEEPALIVE_SEC):
+                        raw.extend(chunk)
+                        if len(raw) > MAX_UNSTREAM_BYTES:
+                            raise ValueError("Nonstream response exceeds buffer limit")
+                    if response.length not in (None, 0):
+                        raise ValueError("Truncated nonstream response")
+                    message = json.loads(raw)
+                    events = anthropic_message_events(message, tools=claude_tools, allow_tools=not compact_request)
+                    for event in events:
+                        self._emit(event)
+                    self._request_context += f" output_tokens={message['usage'].get('output_tokens', 'unknown')} stop_reason={message['stop_reason']}"
+                    if message["stop_reason"] == "max_tokens":
+                        _count_max_tokens_hit(compact_request)
+                        log(f"reached max_tokens {self._request_context}{self._gw()}")
+                    reuse = _keeps_alive(response)
+                except (_UpstreamReadError, ValueError, TypeError):
+                    outcome = "stream_error"
+                    _count_stream_error()
+                    self._emit(b"event: error\ndata: " + _json_bytes({"type": "error", "error": {
+                        "type": "api_error", "message": "Proxy could not convert a complete Anthropic response; no tool calls were emitted."
+                    }}) + b"\n\n")
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+                return
+            is_sse = content_type.startswith("text/event-stream") and not is_gemini_stream
+            protocol = ""
+            if is_sse and response.status < 400:
+                route = parsed.path.rstrip("/")
+                if route.endswith("/v1/messages"):
+                    protocol = "anthropic"
+                elif route.endswith("/v1/responses"):
+                    protocol = "responses"
+                elif route.endswith("/v1/chat/completions"):
+                    protocol = "chat"
+
             self.send_response(response.status)
             for key, value in response.headers.items():
                 # date/server 는 send_response 가 이미 보냈다 — 중복 방지
@@ -1623,7 +2283,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._chunked_out = False
             if no_body:
                 pass
-            elif upstream_length is not None and not is_gemini_stream and not getattr(response, "chunked", False):
+            elif upstream_length is not None and not is_gemini_stream and not is_sse and not getattr(response, "chunked", False):
                 # chunked 와 Content-Length 를 함께 보낸 업스트림은 http.client 가 chunked 로 읽는다 — 그 길이는 틀린 값이다
                 self.send_header("Content-Length", upstream_length)
             else:
@@ -1639,23 +2299,45 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 except (OSError, http.client.HTTPException):
                     fully_read = False
             else:
-                keepalive_sse = (
-                    KEEPALIVE_SEC > 0
-                    and not is_gemini_stream
-                    and response.status < 400
-                    and (response.headers.get("Content-Type") or "").lower().startswith("text/event-stream")
-                )
+                # (v18) Anthropic · OpenAI 스트림에만 주석을 흘린다. Gemini 는 재조립기가 조각을 쥐고 있어 제외한다.
+                keepalive_interval = KEEPALIVE_SEC if (is_sse and response.status < 400 and KEEPALIVE_SEC > 0) else 0.0
                 fully_read = self._relay_stream(
-                    response, gemini_sse=is_gemini_stream, keepalive=keepalive_sse
+                    response,
+                    gemini_sse=is_gemini_stream,
+                    sse=is_sse,
+                    keepalive_interval=keepalive_interval,
+                    protocol=protocol,
                 )
+            if self._stream_outcome != "complete":
+                outcome = self._stream_outcome
+            elif not fully_read:
+                outcome = "incomplete"
             reuse = fully_read and _keeps_alive(response)
-        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+        except (_ClientDisconnected, BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             # 클라이언트가 응답을 받기 전에 끊었다(취소 · 시간 초과) — 조용히 끝낸다. 업스트림 연결은 버린다.
             reuse = False
+            outcome = "client_cancelled"
+            _count_client_cancelled()
         finally:
             _UPSTREAM_POOL.release(conn, reuse=reuse)
+            if heavy_held:
+                gate.release()
             self.close_connection = True
             elapsed = time.monotonic() - started
+            upstream_sec = time.monotonic() - self._upstream_started if self._upstream_started else 0.0
+            # (v21) 로컬 대기는 빼고, 시한을 넘긴 5xx만 게이트웨이 시간 초과 후보로 센다.
+            # SSE error 프레임 판은 _relay_stream 이 이미 stream_errors 로 세므로 여기서 겹치지 않는다.
+            if (upstream_status >= 500 or outcome in ("stream_error", "stream_incomplete")) and at_execution_limit(upstream_sec):
+                _count_execution_cut()
+                log(
+                    f"execution cut {self.command} {parsed.path} upstream={upstream_sec:.1f}s "
+                    f"HTTP {upstream_status} (possible gateway timeout; limit "
+                    f"~{EXECUTION_LIMIT_SEC:g}s) {self._request_context}{self._gw()}"
+                )
+            if generation or outcome != "complete":
+                log(f"complete {self.command} {parsed.path} HTTP {client_status} result={outcome} "
+                    f"queue={waited:.3f}s headers={headers_sec:.3f}s upstream={upstream_sec:.3f}s "
+                    f"total={elapsed:.3f}s {self._request_context}{self._gw()}")
             if elapsed >= SLOW_REQUEST_SEC and parsed.path != "/health":
                 _count_slow()
                 log(f"slow {self.command} {parsed.path} {elapsed:.1f}s{self._gw()}")
@@ -1708,28 +2390,6 @@ def self_test() -> None:
     assert result["messages"][0]["role"] == "user"
     assert len(result["messages"][0]["content"]) == 2
     assert result["tools"][0]["description"] == ""  # sanitize 는 도구를 안 만진다
-
-    # 1b. sanitize 안의 그림 끌어내기 — `tool_result` 안의 image 를 그 블록 **뒤**로 (#76).
-    #     ⚠ 자리를 잰다. 옮겨진 것과 `tool_result` 뒤에 선 것은 다른 명제이고, 앞에 서면
-    #       게이트웨이가 짝 검사에서 400 을 낸다(실측 2026-09-22). 얇게 재는 칸이고 두꺼운
-    #       판정(순서 · 짝 글자 · 음성 여섯)은 곁 `hoist_check.py` 가 든다.
-    shot = {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}}
-    read_shaped = {"model": "claude-opus-5", "messages": [
-        {"role": "user", "content": [{"type": "text", "text": "봐라"}]},
-        {"role": "assistant", "content": [
-            {"type": "tool_use", "id": "tu_1", "name": "Read", "input": {}}]},
-        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu_1", "content": [
-            {"type": "text", "text": "그림 1장"}, shot]}]}]}
-    hoisted = sanitize_payload(read_shaped)["messages"][-1]["content"]
-    assert [block["type"] for block in hoisted] == ["tool_result", "image"]
-    assert all(block["type"] != "image" for block in hoisted[0]["content"])
-    assert "tu_1" in hoisted[0]["content"][-1]["text"]      # 짝을 글자로 댄다
-    # 음성 — 그림 없는 tool_result 는 한 자도 안 바뀐다.
-    plain = {"model": "claude-opus-5", "messages": [
-        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu_1",
-                                      "content": [{"type": "text", "text": "됐다"}]}]}]}
-    assert sanitize_payload(plain)["messages"][0]["content"][0]["content"] == \
-        [{"type": "text", "text": "됐다"}]
 
     # 2. patch: 최상위 tools 보정 (sanitize 이후 단일 소유자)
     assert patch_tool_descriptions(result) == 1
@@ -1866,7 +2526,7 @@ def self_test() -> None:
     headers = normalize_anthropic_auth({"x-api-key": "pgpt-tok", "Content-Type": "application/json"})
     assert headers["Authorization"] == "Bearer pgpt-tok"
     assert headers["x-api-key"] == "pgpt-tok"
-    headers = normalize_anthropic_auth({"Authorization": "Bearer REAL", "x-api-key": "ant-personal-key"})
+    headers = normalize_anthropic_auth({"Authorization": "Bearer REAL", "x-api-key": "sk-ant-personal"})
     assert headers["Authorization"] == "Bearer REAL"
     assert "x-api-key" not in headers  # 개인 키가 게이트웨이로 새지 않는다(v16)
     assert normalize_anthropic_auth({"Content-Type": "application/json"}) == {
@@ -1949,99 +2609,56 @@ def self_test() -> None:
         "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview-customtools:generateContent"
     ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:generateContent"
 
-    # keepalive: 상류가 침묵하는 동안 SSE 주석이 흐르고, 본문은 글자 하나 안 바뀌고 지나간다.
-    class _SlowResponse:
+    # (우리 것 · 결정 0082) 압축 간결 지시는 기본으로 꺼져 있다 — 압축은 알아보되 본문은 안 고친다.
+    assert COMPACT_CONCISE is False or os.environ.get("PGPT_PROXY_COMPACT_CONCISE")
+    assert stats()["compact_concise"] is COMPACT_CONCISE
+
+    # (v18) 하이쿠 대체 — 게이트웨이에 없는 이름은 규칙으로 잡고, 나머지 대시→점 변환은 그대로다
+    for haiku in ("claude-haiku-4-5", "claude-haiku-4-5-20251001", "claude-3-5-haiku-latest", "Claude-Haiku-4.5"):
+        assert normalize_pgpt_claude_model(haiku) == CLAUDE_HAIKU_SUBSTITUTE, haiku
+    assert normalize_pgpt_claude_model("claude-opus-4-7") == "claude-opus-4.7"
+    assert normalize_pgpt_claude_model("claude-sonnet-4.6") == "claude-sonnet-4.6"
+    haiku_payload = {"model": "claude-haiku-4-5-20251001", "messages": []}
+    assert normalize_claude_model_id(haiku_payload, "/gpgpta01-gpt/v1/messages") is True
+    assert haiku_payload["model"] == CLAUDE_HAIKU_SUBSTITUTE
+
+    # (v18) SSE 오류 프레임 — 게이트웨이가 180초 시한에 끊을 때 남기는 마지막 조각을 읽는다
+    frame = (b'event: error\r\ndata: {"type":"error","error":{"type":"api_error","message":'
+             b'"HTTP request execution did not complete before the specified timeout configuration: 180000 millis"}}\r\n\r\n')
+    assert (sse_error_message(frame) or "").endswith("180000 millis")
+    assert sse_error_message(b'data: {"type":"content_block_delta","delta":{"text":"error"}}\n\n') is None
+
+    # (v19) 실행 절단 판정 — 시한 근방만 든다. 회사 PC 실측은 180.0s + HTTP 500 이었다.
+    assert at_execution_limit(180.0) is True
+    assert at_execution_limit(179.0) is True   # 측정 오차·앞단 지연을 담는 폭 안
+    assert at_execution_limit(300.0) is True   # 넘겨 도착한 판도 든다
+    assert at_execution_limit(170.0) is False  # 폭 밖의 느린 오류는 절단이 아니다
+    assert at_execution_limit(12.5) is False
+    assert "execution_cuts" in stats()
+
+    # (v18) keepalive — 상류가 interval 보다 오래 침묵하면 주석이 나가고, 조각은 순서대로 그대로 온다
+    class _Silent:
         def __init__(self) -> None:
-            self._chunks = [b"event: ping\ndata: {}\n\n", b""]
+            self.calls = 0
 
         def read1(self, _size: int) -> bytes:
-            time.sleep(0.12)
-            return self._chunks.pop(0)
+            self.calls += 1
+            if self.calls == 1:
+                time.sleep(0.35)
+                return b"data: one\n\n"
+            if self.calls == 2:
+                return b"data: two\n\n"
+            return b""
 
     handler = ProxyHandler.__new__(ProxyHandler)
-    handler._chunked_out = False
     handler.wfile = io.BytesIO()  # type: ignore[assignment]
-    assert handler._relay_stream(_SlowResponse(), gemini_sse=False, keepalive=True, interval=0.03)  # type: ignore[arg-type]
-    relayed = handler.wfile.getvalue()
-    assert relayed.startswith(_KEEPALIVE_LINE), relayed
-    assert b"event: ping\ndata: {}\n\n" in relayed, relayed  # 본문은 그대로 — EOF 전 침묵에는 뒤에도 주석이 붙는다
-    assert relayed.count(_KEEPALIVE_LINE) >= 2, relayed
+    handler._chunked_out = False
+    assert list(handler._read_chunks(_Silent(), 0.1)) == [b"data: one\n\n", b"data: two\n\n"]
+    assert handler.wfile.getvalue().count(_KEEPALIVE_LINE) >= 2
+    handler.wfile = io.BytesIO()  # type: ignore[assignment]
+    assert list(handler._read_chunks(_Silent(), 0.0)) == [b"data: one\n\n", b"data: two\n\n"]
+    assert handler.wfile.getvalue() == b""
     assert stats()["keepalives"] >= 2
-
-    # unstream(결정 0051): 비스트리밍 답 하나를 클라이언트가 기대하는 SSE 로 짓는다.
-    def _events(raw: bytes) -> list[tuple[str, dict]]:
-        parsed: list[tuple[str, dict]] = []
-        for chunk in raw.decode("utf-8").split("\n\n"):
-            if not chunk.strip():
-                continue
-            name = ""
-            data = "{}"
-            for line in chunk.splitlines():
-                if line.startswith("event: "):
-                    name = line[len("event: "):]
-                elif line.startswith("data: "):
-                    data = line[len("data: "):]
-            parsed.append((name, json.loads(data)))
-        return parsed
-
-    # 7. 글 — 생각 조각이 섞여 와도 index 가 차례대로 붙고 usage 가 두 이벤트로 나뉜다.
-    text_answer = {
-        "id": "msg_01", "type": "message", "role": "assistant", "model": "claude-opus-5",
-        "content": [
-            {"type": "thinking", "thinking": "음", "signature": "sig-abc"},
-            {"type": "text", "text": "안녕하세요"},
-        ],
-        "stop_reason": "end_turn", "stop_sequence": None,
-        "usage": {"input_tokens": 11, "cache_read_input_tokens": 7,
-                  "cache_creation_input_tokens": 0, "output_tokens": 3},
-    }
-    events = _events(synthesize_anthropic_sse(text_answer))
-    assert [name for name, _ in events] == [
-        "message_start",
-        "content_block_start", "content_block_delta", "content_block_delta", "content_block_stop",
-        "content_block_start", "content_block_delta", "content_block_stop",
-        "message_delta", "message_stop",
-    ], events
-    start = events[0][1]["message"]
-    assert start["content"] == [] and start["id"] == "msg_01" and start["model"] == "claude-opus-5"
-    assert start["usage"]["input_tokens"] == 11 and start["usage"]["cache_read_input_tokens"] == 7
-    assert start["usage"]["output_tokens"] == 0 and start["stop_reason"] is None
-    assert events[1][1]["content_block"] == {"type": "thinking", "thinking": "", "signature": ""}
-    assert events[2][1]["delta"] == {"type": "thinking_delta", "thinking": "음"}
-    assert events[3][1]["delta"] == {"type": "signature_delta", "signature": "sig-abc"}
-    assert events[5][1]["index"] == 1 and events[5][1]["content_block"] == {"type": "text", "text": ""}
-    assert events[6][1]["delta"] == {"type": "text_delta", "text": "안녕하세요"}
-    assert events[-2][1]["delta"] == {"stop_reason": "end_turn", "stop_sequence": None}
-    assert events[-2][1]["usage"] == {"output_tokens": 3}
-    assert events[-1][1] == {"type": "message_stop"}
-
-    # 8. 도구 호출 — input 전체가 input_json_delta 하나에 JSON 문자열로 실린다 (Claude Code 가 읽는 꼴).
-    tool_input = {"file_path": "C:/일감/x.py", "limit": 10, "nested": {"a": [1, 2]}}
-    tool_answer = {
-        "id": "msg_02", "type": "message", "role": "assistant", "model": "claude-opus-5",
-        "content": [{"type": "tool_use", "id": "toolu_01", "name": "Read", "input": tool_input}],
-        "stop_reason": "tool_use", "stop_sequence": None,
-        "usage": {"input_tokens": 9, "output_tokens": 21},
-    }
-    tool_events = _events(synthesize_anthropic_sse(tool_answer))
-    deltas = [data for name, data in tool_events if name == "content_block_delta"]
-    assert len(deltas) == 1, deltas
-    assert deltas[0]["delta"]["type"] == "input_json_delta"
-    assert json.loads(deltas[0]["delta"]["partial_json"]) == tool_input
-    opening = [data for name, data in tool_events if name == "content_block_start"][0]
-    assert opening["content_block"] == {"type": "tool_use", "id": "toolu_01", "name": "Read", "input": {}}
-    assert tool_events[-2][1]["delta"]["stop_reason"] == "tool_use"
-
-    # 9. 오류 — 상류 몸이 JSON 이면 그 error 를, 앞단 HTML 504 면 상태와 첫 줄을 담는다.
-    json_error = _events(anthropic_sse_error(500, _json_bytes(
-        {"type": "error", "error": {"type": "api_error", "message": "게이트웨이 실패"}})))
-    assert json_error[0][0] == "error"
-    assert json_error[0][1] == {"type": "error",
-                                "error": {"type": "api_error", "message": "게이트웨이 실패"}}
-    html_error = _events(anthropic_sse_error(
-        504, b"<html><body><h1>504 Gateway Time-out</h1>\nThe server didn't respond in time.\n"))
-    assert html_error[0][1]["error"]["type"] == "api_error"
-    assert "504" in html_error[0][1]["error"]["message"], html_error
 
     print("Self-test: OK")
 
