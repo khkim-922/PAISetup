@@ -206,12 +206,19 @@ if (-not $AppName) { $AppName = $AppNameDefault }
 # ⚠ **자식으로 띄워 묻는다.** 이 창 안에서 그 파일을 부르면 저쪽의 `exit` 가 **이 창까지**
 #   끌고 나간다 — 목록 하나 얻자고 치를 값이 아니다.
 $Choices = @()
+# 저장소를 받는 자리 — **몸통이 내준다**(바로 아래 ⚠). 못 받으면 빈 자리고, 그때는 아래
+# 저장소 칸이 링크 대신 글자만 세운다.
+$RepoRoot = ''
 try {
   $raw = & powershell -NoProfile -ExecutionPolicy Bypass -File $Engine -Describe
   foreach ($ln in @($raw)) {
     if ("$ln" -match '^\s*product\|([a-z0-9-]+)\|(.+?)\|(on|off)\s*$') {
       $Choices += ,@{ Key = $Matches[1]; Label = $Matches[2]; On = ($Matches[3] -eq 'on') }
     }
+    # ⚠ **이 자리를 여기서 짓지 않는다 — 받아 쓴다.** 저장소를 받는 자리는 몸통이 정하고,
+    #   화면이 `~/repos` 를 제 글자로 박으면 자리를 옮기는 날 조용히 어긋난다: 설치는 새 데로
+    #   받는데 화면은 옛 데를 열어 **빈 폴더를 멀쩡히 보여 준다.**
+    elseif ("$ln" -match '^\s*config-repo-root\|(.+?)\s*$') { $RepoRoot = $Matches[1] }
   }
 } catch { }
 # 데스크탑 앱을 **언제** 까나는 여전히 값 파일이 든다 — 무엇을 까나는 위 제품 칸이 든다.
@@ -472,8 +479,13 @@ if ($Choices.Count) {
 #     두 자리에 적으면 저장소가 늘 때 한쪽이 낡는다. 어느 쪽이 맞나는 그 사람이 안다.
 # ⚠ **배포본에는 이 값이 안 실려 온다.** 남에게 갈 파일에 내 저장소 주소를 박지 않기 때문이다.
 #   그러니 이 칸이 비어 있는 것이 받는 사람에게는 정상이다.
+# ⚠ **「git 주소」라 적지 않는다 — 맞는 말인데 안 읽힌다.** 설치는 `git clone` 을 그대로 부르므로
+#   GitHub 가 아닌 주소(사내 GitLab 등)도 받는다. 그래서 「GitHub 주소」로 좁히면 **글이 코드보다
+#   좁아져 거짓이 된다.** 그런데 `git` 은 **도구 이름**이지 사람이 복사해 오는 것의 이름이 아니라,
+#   그 글자를 본 사람은 「내가 가진 주소가 그건가」를 못 가른다. 사람이 실제로 하는 일을 적는다 —
+#   **저장소 페이지 주소를 복사해 붙이는 것.**
 $gR = New-Object Windows.Forms.GroupBox
-$gR.Text = '내 저장소 받기 (선택) — git 주소, 여러 개는 빈칸으로'
+$gR.Text = '내 저장소 받기 (선택) — 저장소 주소를 붙여 넣습니다. 여러 개면 빈칸으로 띄웁니다'
 $gR.Location = New-Object Drawing.Point(16, (278 + $appRow + $optExtra - $gvCut))
 $gR.Size = New-Object Drawing.Size(592, 98)
 $F.Controls.Add($gR)
@@ -490,13 +502,49 @@ $tRepo.Text = [string](Get-Directive 'config-repo')
 if (-not $tRepo.Text) { $tRepo.Text = [string](Get-Directive 'config-repo' $KeptEnvPath) }
 $gR.Controls.Add($tRepo)
 
-$lRepo = New-Object Windows.Forms.Label
+$lRepo = New-Object Windows.Forms.LinkLabel
 $lRepo.Location = New-Object Drawing.Point(16, 52)
-$lRepo.Size = New-Object Drawing.Size(556, 18)
-$lRepo.ForeColor = [Drawing.Color]::DimGray
-# ⚠ **한 줄이다** — 칸 이름이 이미 「내 저장소 받기」라, 여기서 다시 말할 것은 어디에 받나와
-#   설정 저장소일 때 더 따라오는 것뿐이다.
-$lRepo.Text = '~/repos/<이름> 에 받습니다 — 설정 저장소면 개인 키 · 형제 저장소 · 배포까지 이어집니다.'
+# ⚠ **글자를 재서 칸을 맞추되 접히지는 않게 한다** — 이 줄은 **경로를 품으므로** 길이가
+#   사람마다 다르다. 폭을 박으면 사용자 이름이 긴 PC 에서 경로 뒷부분이 잘리고, 잘린 경로는
+#   **다른 자리를 가리키는 멀쩡한 글**로 보인다. 그렇다고 `MaximumSize` 로 폭만 묶으면
+#   두 줄로 **접혀 아래 칸을 민다**(실측 2026-10-07). 그래서 늘게 두고, 긴 경로에서는
+#   오른쪽 링크와 부딪히기 전에 **글 자체를 줄인다**(아래 `$RepoRoot` 갈래).
+$lRepo.AutoSize = $true
+# ⚠ **글로 말하던 것을 열어서 보여 준다.** 옛 줄은 `~/repos/<이름> 에 받습니다` 였는데, `~` 와
+#   `<>` 는 **개발자 기호**라 받는 사람은 그것이 제 PC 의 어디인지 모른다 — 폴더를 여는 링크는
+#   그 물음을 글로 답하지 않고 **없앤다.** 뒤에 붙어 있던 「개인 키 · 형제 저장소 · 배포까지
+#   이어집니다」는 걷어냈다: 셋 다 이 저장소 밖에서 뜻이 안 서는 약칭이고, 그 이야기의 임자는
+#   이미 옆 링크가 여는 안내 한 장과 이 칸의 툴팁이다. 한 줄에 셋을 밀어 넣으면 다 안 읽힌다.
+# ⚠ **자리를 모르면 링크를 안 세운다** — 몸통이 그 줄을 안 낸 판(옛 판)에서는 열 데가 없다.
+#   그때는 LinkLabel 을 그대로 쓰되 **링크 영역을 비워** 글자만 서게 한다(누를 데가 없으니
+#   눌렀는데 아무 일도 안 나는 자리가 안 생긴다).
+if ($RepoRoot) {
+  # ⚠ **「눌러서 엽니다」를 안 붙인다.** 밑줄 친 파란 글자가 이미 그 말을 하고, 붙이면 경로와
+  #   합쳐 한 줄을 넘겨 **두 줄로 접힌다** — 접힌 줄은 아래 칸을 밀어 자리가 어긋난다
+  #   (실측: 364 폭에서 「(눌러서 엽니 / 다)」로 갈렸다).
+  $lRepo.Text = "받는 자리 — $RepoRoot"
+  $lRepo.Add_LinkClicked({
+    # ⚠ **아직 없는 것이 정상이다** — 저장소를 한 번도 안 받은 PC 에는 이 폴더가 없다.
+    #   그 자리에서 만들지 않는다(설치가 제 때 만든다). 대신 그 말을 그대로 한다.
+    if (Test-Path -LiteralPath $RepoRoot) {
+      try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $RepoRoot + '"') | Out-Null }
+      catch {
+        [Windows.Forms.MessageBox]::Show(
+          "폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $RepoRoot,
+          $AppName, 'OK', 'Warning') | Out-Null
+      }
+    } else {
+      [Windows.Forms.MessageBox]::Show(
+        '아직 없습니다 — 주소를 넣고 설치하면 이 자리에 만들어집니다.' +
+        [Environment]::NewLine + $RepoRoot,
+        $AppName, 'OK', 'Information') | Out-Null
+    }
+  })
+} else {
+  $lRepo.Text = '받는 자리 — 내 폴더 아래 repos'
+  $lRepo.LinkArea = New-Object Windows.Forms.LinkArea(0, 0)
+  $lRepo.ForeColor = [Drawing.Color]::DimGray
+}
 $gR.Controls.Add($lRepo)
 
 # ── 안내 한 장을 여는 링크 ──────────────────────────────────────────────────────
@@ -527,6 +575,19 @@ $lnkRepo.Add_LinkClicked({
 })
 $gR.Controls.Add($lnkRepo)
 
+# ⚠ **늘어난 경로가 옆 링크를 덮는지 재서, 덮으면 글을 줄인다 — 둘이 다 선 뒤에 잰다.**
+#   사용자 이름이 긴 PC 에서는 경로 한 줄이 오른쪽 링크까지 뻗는데, 덮으면 **그 링크의
+#   클릭을 삼킨다**(`$lHint` 가 사외에서 그랬던 자리와 같은 축 — 안 보이는 것과 없는 것은
+#   다른 명제다). 폭을 박아 자르지 않는 까닭은 **잘린 경로가 다른 자리를 가리키는 멀쩡한
+#   글로 보이기** 때문이다. 그래서 자리 수가 아니라 **뜻으로** 줄인다. 전문은 툴팁과
+#   눌러서 열리는 폴더가 든다.
+# ⚠ **여기 둔 까닭은 `$lnkRepo` 가 위에서 아직 안 섰기 때문이다** — 안 선 것에 `.Left` 를
+#   물으면 0 이 나와 **조건이 늘 참이 되고, 경로를 영영 안 보여 준다.** 조용한 꼴이다.
+# ⚠ **388 을 다시 적지 않는다** — 그 링크를 옮기는 날 이 자가 조용히 낡는다.
+if ($RepoRoot -and $lRepo.Right -ge $lnkRepo.Left) {
+  $lRepo.Text = '받는 자리 — 내 폴더 아래 repos'
+}
+
 # 넣어도 위 키 칸은 그대로 산다 — 무엇이 더 서는지만 화면이 보여준다
 
 # ── 후버로 조금 더 내린다 ────────────────────────────────────────────────────────
@@ -543,7 +604,8 @@ $tipText = @'
 비워 두는 것이 기본이고 맞는 답입니다: 프로그램·확장·CLI·키·주소·프록시·
 사내 문서·씨앗·그림 문은 이 칸과 무관하게 다 깔립니다.
 
-넣으면 ~/repos/<저장소 이름> 으로 받습니다. 여러 개는 빈칸으로 가릅니다.
+받는 자리는 바로 아래 줄이 들고, 눌러서 열 수 있습니다. 저장소마다 제 이름
+으로 한 폴더를 만듭니다. 여러 개는 빈칸으로 가릅니다.
 코드 저장소는 그것으로 끝입니다. 설정 저장소만 한 걸음 더 갑니다:
 
 받은 뒤 갈래가 둘이고 둘 다 정당합니다. 가르는 자는 파일 이름 하나 —
@@ -637,10 +699,17 @@ $F.Controls.Add($log)
 # ⚠ **없을 때 조용히 지나가지 않는다** — 다른 두 링크와 같은 까닭(눌렀는데 아무 일도 안 나면
 #   사람은 「내 컴퓨터가 이상한가」에서 멈춘다). 설치를 한 번도 안 돌린 PC 에서는 폴더 자체가
 #   없는 것이 정상이라, **그 말을 그대로 한다**.
+# ⚠ **글은 「누르면 무엇이 나오나」 하나만 든다.** 옛 글자는 「설치 기록 폴더 열기 — 안 될 때
+#   가장 최근 기록을 보냅니다」였는데, 뒤 반쪽은 **만든 사람의 사정**이다(그걸 받아야 도와줄
+#   수 있다는). 누르는 사람이 그 자리에서 묻는 것은 그게 아니라 「여기 뭐가 있나」뿐이고,
+#   링크 글에 사정을 붙이면 **긴 줄이 되어 둘 다 안 읽힌다.** 보내 달라는 말은 받는 사람이
+#   물어볼 때 할 말이라, 그 임자는 README 「안 될 때」와 「문의」다.
 $lnkLog = New-Object Windows.Forms.LinkLabel
-$lnkLog.Text = '설치 기록 폴더 열기 — 안 될 때 가장 최근 기록을 보냅니다'
+$lnkLog.Text = '설치 기록 열기'
 $lnkLog.Location = New-Object Drawing.Point(18, (636 + $appRow + $optExtra))
-$lnkLog.Size = New-Object Drawing.Size(392, 18)
+# ⚠ **글자를 재서 칸을 맞춘다** — 위 제품 칸과 같은 까닭. 폭을 박으면 글을 고치는 날
+#   뒷글자가 잘리는데, 잘린 줄은 **화면에서만 보이고** 아무 검사에도 안 걸린다.
+$lnkLog.AutoSize = $true
 $lnkLog.Add_LinkClicked({
   if (Test-Path -LiteralPath $LogDir) {
     # ⚠ **`/select,` 뒤에 빈칸을 두지 않는다** — explorer 는 그 꼴 그대로를 본다.

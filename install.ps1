@@ -329,10 +329,18 @@ $DesktopApps = @(
 
 # 고를 목록을 한 줄씩 내준다 — `product|키|글자|기본값`. **여기까지 오는 데 부수효과가 없다**
 # (위는 다 선언이다), 그래서 이 갈래는 설치를 한 톨도 안 건드리고 나간다.
+# ⚠ **자리도 같이 내준다 — 화면이 그 글자를 다시 적지 않게.** 저장소를 받는 자리(`~/repos`)는
+#   아래 8 칸이 짓는 값이고, 화면은 그 자리를 사람에게 보여 주며 **폴더를 열어 준다.** 화면이
+#   `~/repos` 를 제 글자로 박으면 **자리를 옮기는 날 고칠 데가 셋이 된다**(여기 · 화면 · 넘겨받는
+#   쪽의 `ROOT`). 묻는 통로가 이미 섰으므로 한 줄을 더 내주는 것이 옮겨 적기보다 싸다.
 if ($Describe) {
   $Products | ForEach-Object {
     'product|{0}|{1}|{2}' -f $_.Key, $_.Label, $(if ($_.Default) { 'on' } else { 'off' })
   }
+  # ⚠ **아래 8 칸의 `$configRepoRoot` 와 같은 식이어야 한다.** 그 줄은 여기서 1500 줄 아래라
+  #   같이 안 보인다 — 한쪽을 고치면 다른 쪽도 고친다. 여기 둔 까닭은 이 갈래가 **선언만
+  #   지나고 나가기** 때문이다: 저 아래까지 내려가면 설치가 이미 돌아 버린다.
+  'config-repo-root|{0}' -f (Join-Path $env:USERPROFILE 'repos')
   exit 0
 }
 
@@ -3196,6 +3204,9 @@ Write-Elapsed '[6/8] 개인 규범·룰·스킬'
 # ⚠ **여러 개를 빈칸으로 가른다** — 까닭은 8 칸 곁말이 든다. 주소에는 빈칸이 없다.
 $repoUrl = Read-Directive $EnvFile 'config-repo'
 $configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
+# ⚠ **이 식은 `-Describe` 갈래가 내주는 `config-repo-root` 줄과 짝이다** — 화면이 그 줄로 자리를
+#   받아 사람에게 보여 주고 폴더를 연다. 자리를 옮기면 셋을 같이 고친다: 여기 · 저 줄 ·
+#   넘겨받는 쪽의 `ROOT`. 하나만 고치면 설치는 한 데로 받고 나머지는 딴 데서 찾는다.
 $configRepoRoot = Join-Path $env:USERPROFILE 'repos'
 function Get-ConfigRepoDir([string]$Url) {
   return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
