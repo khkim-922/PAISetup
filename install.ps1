@@ -1409,8 +1409,8 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 # ⚠ **자리를 안 가린다 — 갈리는 것은 모델 값뿐이다.** 사내 agy 는 회사 키로 게이트웨이를 타서 서는
 #   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다). 설정 셋은 사내에서도 그대로 선다
 #   (사내 PC 실측 2026-10-08 · claude-config #117 · 결정 0086).
-# ⚠ **다리(MCP `agy-bridge`)는 안 깐다 — 깔린 것은 걷는다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아,
-#   맡겨 두고 딴 일을 하라는 이 묶음의 뜻과 어긋난다. 걷는 칸은 아래 8 칸(Tavily 곁)이다.
+# ⚠ **다리(MCP `agy-bridge`)는 안 깐다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아, 맡겨 두고 딴 일을
+#   하라는 이 묶음의 뜻과 어긋난다.
 # ⚠ **둘은 조건이 다르다**(결정 0089).
 #   * 모델 값(`$wantAgyModels`)은 「자리 × Claude 와 안티그래비티를 골랐나」의 사실이라 그 둘만 탄다. 래퍼는
 #     제작자 설정 칸으로도, 사람이 붙인 설정 저장소로도 오는데 설치기는 어느 쪽인지 모른다 — 칸에 묶으면
@@ -4063,60 +4063,6 @@ if ($PickKeys -contains 'claude') {
   }
 }
 
-# ── 옛 agy 다리 걷기 — 1.37.0 이 사외에 깐 다리(MCP `agy-bridge`)와 그 등록 (claude-config 결정 0088) ──────
-# agy 에게는 백그라운드 래퍼(스킬 `agy-background`) 하나로만 맡긴다 — 다리는 끝날 때까지 대화를 붙잡아,
-# 맡겨 두고 딴 일을 하라는 이 묶음의 뜻과 어긋난다. 남은 다리는 Claude 가 그 길을 고르게 끌어 걷는다.
-# ⚠ **우리가 깐 것만 걷는다.** 패키지는 우리가 박은 판에 우리 고침 글자(창 숨김)가 들었을 때만 내린다 —
-#   사람이 따로 깐 다리는 그 글자가 없다. 등록은 우리 꼴(`cmd /c agy-bridge`)이고 **패키지가 없을 때만**
-#   걷는다 — 부를 것이 없는 등록은 이미 죽은 것이고, 패키지가 남았으면(사람이 깐 것) 등록도 그 사람 것이다.
-# ⚠ **묶음 칸과 무관하게 돈다** — 칸을 끈 PC 에도 1.37.0 의 다리가 남아 있을 수 있다.
-$OldAgyBridge     = 'agy-bridge'
-$OldAgyBridgeVer  = '0.4.2'
-$OldAgyBridgeMark = 'execFileAsync(file, args, { windowsHide: true, ...options });'
-$oabDir = ''
-if (Test-Runs 'npm' '--version') {
-  $r = ("$(Get-Quiet 'npm' @('root','-g') | Select-Object -First 1)").Trim()
-  if ($r) { $oabDir = Join-Path $r $OldAgyBridge }
-}
-$oabPj = if ($oabDir) { Join-Path $oabDir 'package.json' } else { '' }
-if ($oabPj -and (Test-Path -LiteralPath $oabPj)) {
-  Write-Host ''
-  Write-Host '옛 agy 다리 (agy-bridge MCP)' -ForegroundColor Cyan
-  $oabVer = ''
-  try { $oabVer = [string](Get-Content -LiteralPath $oabPj -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch { }
-  $oabMain = Join-Path $oabDir 'dist\index.js'
-  $oabOurs = ($oabVer -eq $OldAgyBridgeVer) -and (Test-Path -LiteralPath $oabMain) -and
-             ([IO.File]::ReadAllText($oabMain).Contains($OldAgyBridgeMark))
-  if (-not $oabOurs) {
-    Write-Host "  agy 다리 — 따로 깐 판이라 둔다 ($OldAgyBridge $oabVer)"
-  } else {
-    $nl = [IO.Path]::GetTempFileName()
-    $nrc = Invoke-Logged 'npm' @('uninstall','-g',$OldAgyBridge) $nl
-    if (-not (Test-Path -LiteralPath $oabPj)) {
-      Write-Host "  agy 다리 — 걷었다 ($OldAgyBridge $oabVer · 이제 백그라운드 래퍼로 맡긴다)" -ForegroundColor Green
-    } else {
-      Write-Host "  ! agy 다리 — 못 걷었다 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
-      Show-Log $nl
-      $Fails.Add('옛 agy 다리 걷기')
-    }
-    Remove-Item $nl -ErrorAction SilentlyContinue
-  }
-}
-if (-not ($oabPj -and (Test-Path -LiteralPath $oabPj)) -and (Test-Runs 'claude' '--version')) {
-  $reg = @(Get-Quiet 'claude' @('mcp','get',$OldAgyBridge))
-  if ($LASTEXITCODE -eq 0 -and ($reg -match '^\s*Args:\s*/c agy-bridge\s*$')) {
-    $tl = [IO.Path]::GetTempFileName()
-    $rc = Invoke-Logged 'claude' @('mcp','remove',$OldAgyBridge,'-s','user') $tl
-    if ($rc -eq 0) {
-      Write-Host "  agy 다리 등록 — 걷었다 ($OldAgyBridge)" -ForegroundColor Green
-    } else {
-      Write-Host "  ! agy 다리 등록 — 못 걷었다 ($rc) — 뱉은 끝 줄:" -ForegroundColor Red
-      Show-Log $tl
-      $Fails.Add('옛 agy 다리 등록 걷기')
-    }
-    Remove-Item $tl -ErrorAction SilentlyContinue
-  }
-}
 if ($wantAgyKit) {
   Write-Host '  agy 가 로그인 전이면 터미널에서 agy 를 한 번 띄워 Google 계정으로 로그인한다'
 }
@@ -4645,7 +4591,6 @@ if ($inside) {
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
 # agy 묶음 — 모델 값 · 설정 셋. 심는 조건이 둘이라 재는 조건도 둘이다(위 `$wantAgyModels` 곁말).
-#   옛 다리를 걷다 진 것은 그 칸이 실패로 센다.
 if ($wantAgyModels) {
   $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
                 Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
