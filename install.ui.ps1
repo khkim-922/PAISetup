@@ -258,7 +258,7 @@ function New-Label($text, $x, $y, $w, $bold) {
 # ⚠ **첫 줄은 자리를 안 가른다.** 고른 것은 어디서나 선다(결정 0045) — 자리가 가르는 것은
 #   회사 키로 붙나 각자 로그인인가이고, 그것은 아래 키 칸의 안내가 든다. 옛 판은 그 반 줄을
 #   첫 줄에 붙여 한 줄 칸을 넘쳤고, 넘친 글이 둘째 줄과 겹쳐 둘 다 못 읽었다.
-$lTop = New-Label '고른 도구의 CLI · VS Code 확장 · 데스크탑 앱을 세웁니다.' 18 14 560 $true
+$lTop = New-Label '고른 도구의 CLI 와 데스크탑 앱을, 원하면 VS Code 와 확장까지 세웁니다.' 18 14 560 $true
 
 # ── 값 ──────────────────────────────────────────────────────────────────────────
 # ⚠ **주소는 사람이 넣을 것이 아니다.** 회사 안에서 모두 같은 값이라, 입력칸으로 두면
@@ -415,7 +415,8 @@ $cUpg.Checked = -not $NoUpgrade
 $gO.Controls.Add($cUpg)
 
 # ⚠ **글자도 기본값도 몸통이 준 것을 그대로 쓴다** — 여기서 다시 지으면 두 벌이 된다.
-# 한 칸이 그 제품의 CLI · 확장 · 데스크탑 앱을 통째로 든다. **뺀 것은 아무 데도 안 깔린다.**
+# 한 칸이 그 제품의 CLI · 확장 · 데스크탑 앱을 통째로 든다 — 확장은 아래 VS Code 칸까지 켜야 선다.
+# **뺀 것은 아무 데도 안 깔린다.**
 $cApps = @()
 $cVsc  = $null
 if ($Choices.Count) {
@@ -439,32 +440,35 @@ if ($Choices.Count) {
     $x += $c.Width + 14
   }
 
-  # ⚠ **사외 기본은 끔이다** — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다.
-  #   사내는 VS Code 가 주 무대라 켜 둔다. 자리는 위에서 이미 쟀다(`$offsite`).
-  $cVsc = New-Object Windows.Forms.CheckBox
-  $cVsc.Text = 'VS Code 와 확장도 깝니다  (사내는 필수, 사외는 선택)'
-  # ⚠ **「필수」라 적었으면 못 꺼야 한다.** 끌 수 있는데 필수라 적으면 그 글이 거짓말이 된다 —
-  #   사내는 켠 채로 잠그고, 사외는 기본을 끈 채 사람에게 맡긴다.
-  $cVsc.Location = New-Object Drawing.Point(16, 76)
-  $cVsc.Size = New-Object Drawing.Size(560, 22)
-  $cVsc.Checked = -not $offsite
-  $cVsc.Enabled = $offsite
-  $gO.Controls.Add($cVsc)
-
+  # ⚠ **제품 칸이 까는 것은 바로 그 줄 아래 적는다 — 확장은 빼고.** 확장은 아래 VS Code 칸이 켜졌을
+  #   때만 깔리므로 그 칸의 글이 든다. 이 줄이 VS Code 칸 아래 서면 그 칸의 설명으로 읽혀, 「VS Code 를
+  #   켜면 CLI · 데스크탑 앱이 깔린다」로 보이고 칸을 끈 채로도 「확장이 깔립니다」가 남는다.
   # ⚠ **고르기는 자리를 안 가리는데 깔기는 가린다** — 안 적으면 사내에서 켜 놓고
   #   「왜 안 깔렸지」가 된다. 줄은 늘 두고 **글만 갈린다**(위 창 높이 ⚠).
   $lApp2 = New-Object Windows.Forms.Label
   $lApp2.Text = if ($appWhen -eq 'offsite' -and -not $offsite) {
-    '켠 것의 CLI 와 확장이 깔립니다 — 데스크탑 앱은 사외에서만 깔립니다.'
+    '켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 깔립니다.'
   } elseif ($appWhen) {
-    '켠 것의 CLI · 확장 · 데스크탑 앱이 깔립니다.'
+    '켠 것의 CLI · 데스크탑 앱이 깔립니다.'
   } else {
-    '켠 것의 CLI 와 확장이 깔립니다.'
+    '켠 것의 CLI 가 깔립니다.'
   }
-  $lApp2.Location = New-Object Drawing.Point(18, 102)
-  $lApp2.Size = New-Object Drawing.Size(560, 20)
+  $lApp2.Location = New-Object Drawing.Point(104, 76)
+  $lApp2.Size = New-Object Drawing.Size(472, 20)
   $lApp2.ForeColor = [Drawing.Color]::DimGray
   $gO.Controls.Add($lApp2)
+
+  # ⚠ **사외 기본은 끔이다** — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다.
+  #   사내는 VS Code 가 주 무대라 켜 둔다. 자리는 위에서 이미 쟀다(`$offsite`).
+  $cVsc = New-Object Windows.Forms.CheckBox
+  $cVsc.Text = 'VS Code 와 켠 것의 확장도 깝니다  (사내는 필수, 사외는 선택)'
+  # ⚠ **「필수」라 적었으면 못 꺼야 한다.** 끌 수 있는데 필수라 적으면 그 글이 거짓말이 된다 —
+  #   사내는 켠 채로 잠그고, 사외는 기본을 끈 채 사람에게 맡긴다.
+  $cVsc.Location = New-Object Drawing.Point(16, 100)
+  $cVsc.Size = New-Object Drawing.Size(560, 22)
+  $cVsc.Checked = -not $offsite
+  $cVsc.Enabled = $offsite
+  $gO.Controls.Add($cVsc)
 }
 
 # ── 내 저장소 받기 (선택) ───────────────────────────────────────────────────────
