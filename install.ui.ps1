@@ -656,10 +656,11 @@ $F.Controls.Add($bar)
 # ⚠ **목록을 여기 옮기지 않는다.** 무엇이 어디에 놓이나의 진본은 install.ps1 의 [7/8] 표와
 #   README 「무엇이 깔리나」다 — 창은 그런 것이 놓인다는 한 줄과, 그것이 든 폴더로 가는 문만 든다.
 #   씨앗 넷은 고를 것이 아니라 환경이라 스위치가 없고, 그래서 더 말해야 한다 — 동의 없이 놓인다.
-# ⚠ **여는 것은 풀어 둔 이 폴더다** — README 와 홈으로 갈 씨앗의 원본이 같이 있다. 홈 쪽
-#   (`~/.claude/seeds`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
+# ⚠ **여는 것은 풀어 둔 이 폴더의 `posco` 다** — 링크 글이 「사내환경문서」라, 그 문서가 든 자리로 간다. 홈 쪽
+#   (`~/.claude/posco`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다. 그 폴더가 없는 짐이면 이 폴더로 물러난다.
+#   설치가 무엇을 깔아 두나는 「제공 기능」 링크가 든다.
 # ⚠ **링크 글은 「무엇이 있는 데인가」만 든다 — 「열기」·「위치」를 안 붙인다.** 밑줄 친 파란
-#   글자가 이미 눌러서 간다는 말을 하고, 창의 링크 넷이 같은 결로 서야 눈이 그것들을 한
+#   글자가 이미 눌러서 간다는 말을 하고, 창의 링크 다섯이 같은 결로 서야 눈이 그것들을 한
 #   무리로 읽는다. 동작을 낱낱이 적으면 긴 줄이 되어 **글도 자리도 둘 다 안 읽힌다.**
 $lnkHome = New-Object Windows.Forms.LinkLabel
 $lnkHome.Text = '사내환경문서'
@@ -667,10 +668,12 @@ $lnkHome.Text = '사내환경문서'
 $lnkHome.AutoSize = $true
 $lnkHome.Location = New-Object Drawing.Point(14, $(if ($noAsk) { 54 } else { 110 }))
 $lnkHome.Add_LinkClicked({
-  try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $Here + '"') | Out-Null }
+  $docs = Join-Path $Here 'posco'
+  if (-not (Test-Path -LiteralPath $docs -PathType Container)) { $docs = $Here }
+  try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $docs + '"') | Out-Null }
   catch {
     [Windows.Forms.MessageBox]::Show(
-      "폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $Here,
+      "폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $docs,
       $AppName, 'OK', 'Warning') | Out-Null
   }
 })
@@ -703,6 +706,35 @@ $lnkFlow.Add_LinkClicked({
   }
 })
 $gV.Controls.Add($lnkFlow)
+
+# 설치하면 생기는 기능 한 장 — 같은 폴더의 `features.html`(결정 0091). 브라우저가 연다.
+# ⚠ **「설치흐름」 글자 바로 왼쪽에 세운다 — 두 글자를 재서.** 저 링크는 칸 오른쪽에 글을 붙이므로, 그 글자 폭
+#   앞에서 한 칸(14) 띄운 자리가 이 링크의 오른쪽 끝이다. 수를 박으면 글을 고치는 날 겹치거나 벌어진다.
+$lnkFeat = New-Object Windows.Forms.LinkLabel
+$lnkFeat.Text = '제공 기능'
+$featW = [Windows.Forms.TextRenderer]::MeasureText($lnkFeat.Text, $F.Font).Width
+$flowW = [Windows.Forms.TextRenderer]::MeasureText($lnkFlow.Text, $F.Font).Width
+$lnkFeat.Size = New-Object Drawing.Size($featW, 16)
+$lnkFeat.Location = New-Object Drawing.Point((438 + 140 - $flowW - 14 - $featW), $(if ($noAsk) { 54 } else { 110 }))
+$lnkFeat.Add_LinkClicked({
+  $page = Join-Path $Here 'features.html'
+  if (Test-Path -LiteralPath $page) {
+    try { Start-Process -FilePath $page | Out-Null }
+    catch {
+      [Windows.Forms.MessageBox]::Show(
+        "안내 페이지를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $page,
+        $AppName, 'OK', 'Warning') | Out-Null
+    }
+  } else {
+    [Windows.Forms.MessageBox]::Show(
+      '안내 페이지가 이 폴더에 없습니다 — ' + [Environment]::NewLine + $page,
+      $AppName, 'OK', 'Warning') | Out-Null
+  }
+})
+$gV.Controls.Add($lnkFeat)
+# ⚠ **앞으로 낸다** — 이 자리는 「설치흐름」 링크 칸(140 폭 · 글은 오른쪽 끝)의 빈 왼쪽 안이다. 나중에 더한 컨트롤은
+#   뒤에 깔려, 그대로 두면 저 칸의 바탕이 이 글자를 통째로 가린다(실측 2026-10-08: 링크가 안 보였다).
+$lnkFeat.BringToFront()
 
 $lState = New-Label '' 18 (410 + $appRow + $optExtra - $gvCut - $grCut) 500 $false
 
