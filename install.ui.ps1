@@ -658,7 +658,7 @@ $F.Controls.Add($bar)
 #   씨앗 넷은 고를 것이 아니라 환경이라 스위치가 없고, 그래서 더 말해야 한다 — 동의 없이 놓인다.
 # ⚠ **여는 것은 풀어 둔 이 폴더의 `posco` 다** — 링크 글이 「사내환경문서」라, 그 문서가 든 자리로 간다. 홈 쪽
 #   (`~/.claude/posco`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다. 그 폴더가 없는 짐이면 이 폴더로 물러난다.
-#   설치가 무엇을 깔아 두나는 「제공 기능」 링크가 든다.
+#   설치가 무엇을 깔아 두나는 「제공기능」 링크가 든다.
 # ⚠ **링크 글은 「무엇이 있는 데인가」만 든다 — 「열기」·「위치」를 안 붙인다.** 밑줄 친 파란
 #   글자가 이미 눌러서 간다는 말을 하고, 창의 링크 다섯이 같은 결로 서야 눈이 그것들을 한
 #   무리로 읽는다. 동작을 낱낱이 적으면 긴 줄이 되어 **글도 자리도 둘 다 안 읽힌다.**
@@ -711,7 +711,7 @@ $gV.Controls.Add($lnkFlow)
 # ⚠ **「설치흐름」 글자 바로 왼쪽에 세운다 — 두 글자를 재서.** 저 링크는 칸 오른쪽에 글을 붙이므로, 그 글자 폭
 #   앞에서 한 칸(14) 띄운 자리가 이 링크의 오른쪽 끝이다. 수를 박으면 글을 고치는 날 겹치거나 벌어진다.
 $lnkFeat = New-Object Windows.Forms.LinkLabel
-$lnkFeat.Text = '제공 기능'
+$lnkFeat.Text = '제공기능'
 $featW = [Windows.Forms.TextRenderer]::MeasureText($lnkFeat.Text, $F.Font).Width
 $flowW = [Windows.Forms.TextRenderer]::MeasureText($lnkFlow.Text, $F.Font).Width
 $lnkFeat.Size = New-Object Drawing.Size($featW, 16)
