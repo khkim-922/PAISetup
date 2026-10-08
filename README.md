@@ -49,7 +49,8 @@
 ├─ install.env               회사 공통값(주소·모델)이 채워져 온다. 키 칸은 비어 있다
 ├─ install-flow.svg       ← 설치 흐름 그림(아래 「Install」). 설치 창의 「설치흐름」 링크가 연다
 ├─ setup-icon.ico            설치 창 제목줄의 아이콘. 바탕화면 아이콘은 Setup.exe 에 박힌 같은 그림이다
-├─ config-repo-howto.html    설정 저장소를 만드는 법 한 장 — 설치 창의 「설정저장소 만드는 법」 링크가 연다│
+├─ config-repo-howto.html    설정 저장소를 만드는 법 한 장 — 설치 창의 「설정저장소 만드는 법」 링크가 연다
+├─ features.html             설치하면 생기는 기능 한 장 — 설치 창의 「제공 기능」 링크가 연다│
 ├─ posco/                    사내 게이트웨이 환경 문서 한 층 — 되고 안 되는 것의 원본
 │                            (회사 루트 CA `corp-ca.pem` 도 여기 있다 — 설치가 쓴다)
 ├─ seeds/
