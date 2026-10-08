@@ -1411,19 +1411,25 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 #   (사내 PC 실측 2026-10-08 · claude-config #117 · 결정 0086).
 # ⚠ **다리(MCP `agy-bridge`)는 안 깐다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아, 맡겨 두고 딴 일을
 #   하라는 이 묶음의 뜻과 어긋난다.
-# ⚠ **둘은 조건이 다르다**(결정 0089).
-#   * 모델 값(`$wantAgyModels`)은 「자리 × Claude 와 안티그래비티를 골랐나」의 사실이라 그 둘만 탄다. 래퍼는
-#     제작자 설정 칸으로도, 사람이 붙인 설정 저장소로도 오는데 설치기는 어느 쪽인지 모른다 — 칸에 묶으면
-#     저장소로 받은 PC 에서 래퍼는 있는데 값은 아무도 안 심고, 래퍼는 한도에서 넘어갈 데 없이 멈춘다.
-#     래퍼가 없는 PC 에는 읽는 자 없는 이름 두셋이 남는다 — 해는 없고, 래퍼가 오면 바로 쓴다.
+# ⚠ **둘은 조건이 다르다**(결정 0089 · 0091).
+#   * 맡기기(`$wantAgyDelegate`) — 모델 값 · 래퍼 스킬 · 래퍼가 도는 파이썬. 「자리 × Claude 와 안티그래비티를
+#     골랐나」의 사실이라 그 둘만 탄다. 래퍼는 누구의 규범과도 무관하게 agy 를 띄우고 넘기는 도구다.
 #   * 설정 셋(`$wantAgyKit`)은 제작자 설정 칸을 탄다 — 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다.
 #     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다.
-$wantAgyModels = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
-$wantAgyKit    = [bool]($WithPersonalConfig -and $wantAgyModels)
+$wantAgyDelegate = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
+$wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
+# ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091) ──────
+# 키는 스킬 이름, 값은 까는 조건이다. 제작자 설정 칸을 켜면 6 칸이 묶음 전부를 까므로 이 표는 칸을 끈
+# 자리에서만 일을 한다(7 칸의 「칸 없이 까는 스킬」). 셋 다 규범을 안 읽어도 홀로 선다.
+$FreeSkills = [ordered]@{
+  'drm-office-read' = [bool]($PickKeys -contains 'claude')   # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
+  'inhouse-app'     = [bool]($PickKeys -contains 'claude')   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
+  'agy-background'  = $wantAgyDelegate                       # agy 에게 뒤에서 맡기고 한도에서 넘긴다
+}
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
-if ($wantProxy)  { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
-if ($wantAgyKit) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
+if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
+if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **회사 설정도 제품 칸을 탄다** — 안 켠 제품에 회사 설정만 심어 두면 쓰지도 않는 파일이
 #   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
@@ -2190,7 +2196,7 @@ $AgyModelVarsBySite = @{
 }
 $AgyModelSite = if ($inside) { 'inside' } else { 'outside' }
 $AgyModelVars = $AgyModelVarsBySite[$AgyModelSite]
-if ($wantAgyModels) {
+if ($wantAgyDelegate) {
   # 모델 값 — 위 `$AgyModelVars`(이 자리의 것).
   foreach ($k in $AgyModelVars.Keys) {
     if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $AgyModelVars[$k]) {
@@ -3233,10 +3239,15 @@ Write-Elapsed '[5/8] 홈 설정'
 # ⚠ **기록이 없는 기계는 과도기 목록을 쓴다** — 기록은 1.25.0 부터 적힌다. 그 전 판이 깔았다가 배포본에서
 #   빠진 이름은 배포본 이력에서 한 번 셌다(`git log --diff-filter=D -- .claude/skills` · 2026-09-24:
 #   pptx · roadmap-doc). 모든 기계가 이 판 이상을 한 번 돌고 나면 이 목록은 할 일이 없다 — 걷는 날은 사람이 정한다.
+# ⚠ **부르는 자가 둘이다** — 6 칸(묶음 전부를 깐 판)과 7 칸의 「칸 없이 까는 스킬」(몇 개만 깐 판). 그래서
+#   기록에 적는 것은 **이번에 깐 이름(`-Installed`) 더하기, 앞 기록 가운데 묶음에 아직 있는 이름**이다. 몇 개만
+#   깐 판이 기록을 그 몇 개로 갈아 쓰면, 앞서 칸을 켜고 깐 나머지가 기록에서 빠져 묶음에서 걷히는 날 안 걷힌다.
+#   `-Installed` 를 안 주면 묶음 전부를 깐 것으로 친다(6 칸).
 function Remove-RetiredSkills {
-  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot)
+  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed)
   if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
   $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
+  if ($null -eq $Installed) { $Installed = $shipped }
   $before = if (Test-Path -LiteralPath $Ledger) {
     @([IO.File]::ReadAllLines($Ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
   } else {
@@ -3252,9 +3263,10 @@ function Remove-RetiredSkills {
       Write-Host "  스킬 $n — 묶음에서 빠져 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
     }
   }
-  # 이번에 깐 이름을 적는다 — 다음 설치가 이것과 견준다. BOM 없는 UTF-8(이름이 한글이어도 읽힌다).
+  # 기록을 적는다(위 곁말) — 다음 설치가 이것과 견준다. BOM 없는 UTF-8(이름이 한글이어도 읽힌다).
+  $keep = @(@($before | Where-Object { $shipped -contains $_ }) + @($Installed) | Where-Object { $_ } | Select-Object -Unique)
   New-Item -ItemType Directory -Path (Split-Path -Parent $Ledger) -Force | Out-Null
-  [IO.File]::WriteAllLines($Ledger, [string[]]$shipped, (New-Object Text.UTF8Encoding($false)))
+  [IO.File]::WriteAllLines($Ledger, [string[]]$keep, (New-Object Text.UTF8Encoding($false)))
 }
 
 Write-Host ''
@@ -3447,6 +3459,38 @@ foreach ($a in $envAssets) {
   Write-Host "  $($a.Name) — $(if ($a.Mirror) { '거울로 깔았다' } else { '깔았다' })" -ForegroundColor Green
   Write-Host "     $($a.To)"
   Write-Host "     $($a.Desc)"
+}
+
+# ── 칸 없이 까는 스킬 — 위 `$FreeSkills` (결정 0091) ─────────────────────────────────
+# ⚠ **제작자 설정 칸을 켰으면 할 일이 없다** — 6 칸이 묶음 전부를 깔고 기록까지 적었다.
+# ⚠ **설정 저장소가 그 스킬을 들면 비켜선다** — 그 저장소의 배포가 같은 자리를 최신판으로 민다. 설치까지
+#   깔면 둘이 판마다 번갈아 덮는다(위 씨앗 비켜서기와 같은 규율). 든다는 것은 저장소에
+#   `.claude/skills/<이름>/SKILL.md` 가 있다는 것이다.
+# ⚠ **깐 이름은 6 칸과 같은 기록에 더한다** — 묶음에서 빠지는 날 같은 손(`Remove-RetiredSkills`)이 걷는다.
+if (-not $WithPersonalConfig) {
+  $skillBundle = Join-Path $Here '.claude\skills'
+  $skillHome   = Join-Path $homeDir 'skills'
+  $freeDone = @()
+  foreach ($n in $FreeSkills.Keys) {
+    if (-not $FreeSkills[$n]) { continue }
+    $from = Join-Path $skillBundle $n
+    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) { Write-Host "  스킬 $n — 이 폴더에 없다"; continue }
+    $owner = @($configRepoUrls | ForEach-Object { Get-ConfigRepoDir $_ } |
+               Where-Object { Test-Path -LiteralPath (Join-Path $_ ".claude\skills\$n\SKILL.md") }) | Select-Object -First 1
+    if ($owner) {
+      Write-Host "  스킬 $n — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
+      continue
+    }
+    $to = Join-Path $skillHome $n
+    New-Item -ItemType Directory -Path $to -Force | Out-Null
+    Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
+    Write-Host "  스킬 $n — 깔았다" -ForegroundColor Green
+    $freeDone += $n
+  }
+  if ($freeDone.Count) {
+    Remove-RetiredSkills -Bundle $skillBundle -SkillHome $skillHome -Ledger (Join-Path $homeDir '.paisetup-skills') `
+                         -BackupRoot (Join-Path $homeDir 'backups') -Installed $freeDone
+  }
 }
 
 # ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ──────────────
@@ -4063,7 +4107,7 @@ if ($PickKeys -contains 'claude') {
   }
 }
 
-if ($wantAgyKit) {
+if ($wantAgyDelegate) {
   Write-Host '  agy 가 로그인 전이면 터미널에서 agy 를 한 번 띄워 Google 계정으로 로그인한다'
 }
 
@@ -4590,8 +4634,8 @@ if ($inside) {
   try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
-# agy 묶음 — 모델 값 · 설정 셋. 심는 조건이 둘이라 재는 조건도 둘이다(위 `$wantAgyModels` 곁말).
-if ($wantAgyModels) {
+# agy 묶음 — 맡기기(모델 값) · 설정 셋. 심는 조건이 둘이라 재는 조건도 둘이다(위 `$wantAgyDelegate` 곁말).
+if ($wantAgyDelegate) {
   $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
                 Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
 }
@@ -4605,6 +4649,12 @@ if ($wantAgyKit) {
   })
   $checks += @{ Name = "agy 설정 ($($agySame.Count)/$($agySrcFiles.Count) · ~/.gemini/config)"
                 Ok = ($agySrcFiles.Count -gt 0 -and $agySame.Count -eq $agySrcFiles.Count) }
+}
+# 칸 없이 까는 스킬 — 홈에 섰나. 설정 저장소가 든 것도 그 배포(8 칸)가 이 앞에서 홈에 민다.
+$freeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_] })
+if ($freeWant.Count) {
+  $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
+  $checks += @{ Name = "칸 없이 까는 스킬 ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
 }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
