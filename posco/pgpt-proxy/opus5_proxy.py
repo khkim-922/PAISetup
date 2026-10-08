@@ -2277,6 +2277,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
             upstream_path = f"{GEMINI_PREFIX}/models/{quote(gemini_chat_model, safe='')}:generateContent"
         elif web_search:
             upstream_path = f"{GEMINI_PREFIX}/models/{quote(WEB_SEARCH_MODEL, safe='')}:generateContent"
+            # (우리 것 · #118) Anthropic 쪽 쿼리는 제미나이 경로에 안 싣는다 — Claude Code 는
+            #   `/v1/messages?beta=true` 로 보내는데, 제미나이는 모르는 쿼리를 400
+            #   (`Unknown name "beta": Cannot bind query parameter`)으로 거절한다. 인증 키가
+            #   `?key=` 로 온 경우만 남긴다(`normalize_gemini_auth` 가 쓰는 자리).
+            query = "&".join(part for part in query.split("&") if part.startswith("key="))
         else:
             upstream_path = normalize_gemini_model_path(parsed.path)
         if query:
@@ -2359,6 +2364,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     if response.status < 400:
                         message = gemini_grounding_to_anthropic(
                             raw, str(web_search["query"]), str(web_search["model"]), dict(web_search["tool"]))
+                    else:
+                        log(f"web search fill: upstream HTTP {response.status} "
+                            f"body={raw[:400]!r} {self._request_context}{self._gw()}")
                 except (OSError, http.client.HTTPException, ValueError, TypeError, AttributeError,
                         KeyError, IndexError) as error:
                     log(f"web search fill: Gemini answer unreadable: {error!r} {self._request_context}{self._gw()}")
