@@ -2172,17 +2172,23 @@ $AgyBridgeFix  = @(
      To   = 'for (const m of (process.env.AGY_FALLBACK_MODELS || "").split(";").map((s) => canonical(s.trim()))) if (m && available.includes(m) && !models.includes(m)) models.push(m);' +
             "`n    if (models.length === 0) {" }
 )
-# agy 가 고를 모델 — **제미나이를 먼저 쓰고, 그 한도가 다 차면 그외 갈래로 넘어간다.** 설치가 사용자
-# 환경변수로 심고, 다리와 백그라운드 래퍼(스킬 `agy-background`)가 같은 이름을 읽는다.
-# ⚠ **한도는 모델마다가 아니라 갈래마다 찬다.** 로그인 계정 agy 는 사용량이 「제미나이」(3.8 Flash ·
-#   3.1 Pro)와 「그외」(Claude 4.6 둘)로 갈린다. 3.8 Flash 가 막히면 3.1 Pro 도 같이 막히므로 넘어갈
-#   자리는 다른 갈래고, 그 갈래에서는 Sonnet 만 둔다(사람 판단 2026-10-08 — agy 를 쓰는 까닭은 제미나이다).
+# agy 가 고를 모델 — **제미나이를 먼저 쓰고, 그 한도가 차면 다른 데로 넘어간다.** 설치가 사용자 환경변수로
+# 심고, 다리와 백그라운드 래퍼(스킬 `agy-background`)가 같은 이름을 읽는다.
+# ⚠ **한도가 차는 단위가 방식마다 다르다.** 로그인 방식은 「제미나이」(3.8 Flash · 3.1 Pro)와 「그외」(Claude
+#   4.6 둘) **갈래마다** 차서, 3.8 Flash 가 막히면 3.1 Pro 도 같이 막힌다. API 키 방식은 **모델마다** 찬다
+#   (무료 키 실측 2026-10-08 — 한도 이름이 `…PerProjectPerModel-FreeTier`). 그래서 넘길 차례는
+#   「로그인 3.8 Flash → API 키 3.8 → 3.7 → 3.6 Flash → 로그인 Sonnet」이다(사람 판단 2026-10-08 —
+#   agy 를 쓰는 까닭은 제미나이고, Claude 갈래는 마지막 자리다).
+# ⚠ **`api:` 를 붙인 이름은 래퍼만 알아듣고, 키가 있을 때만 산다.** 래퍼는 그 후보를 API 키 방식으로
+#   띄우는데(키는 `GOOGLE_API_KEY` 또는 `GEMINI_API_KEY`) 키가 없으면 **조용히 건너뛴다** — 키 없는 PC 는
+#   「로그인 3.8 → Sonnet」으로 그대로 돈다. 다리는 그 이름이 `agy models` 에 없어 걸러 낸다 — 다리는
+#   로그인 방식 안에서만 넘어간다. 목록을 하나로 두는 까닭은 차례가 한 자리에 살게 하려는 것이다.
 # ⚠ **`AGY_DEFAULT_MODEL` 은 다리가 원래 아는 이름이다** — 셋째 고침이 안 먹은 판에서도 기본 모델만은 선다.
 #   `AGY_FALLBACK_MODELS` 는 셋째 고침과 래퍼가 읽는 이름이고 `;` 로 여럿을 잇는다. 이름은 `agy models` 의
-#   표시 이름 그대로다 — 없는 이름은 다리가 걸러 해롭지 않지만 넘어갈 자리가 조용히 사라진다.
+#   표시 이름 그대로다 — 없는 이름은 걸러져 해롭지 않지만 넘어갈 자리가 조용히 사라진다.
 $AgyModelVars = [ordered]@{
   AGY_DEFAULT_MODEL   = 'Gemini 3.8 Flash (High)'
-  AGY_FALLBACK_MODELS = 'Claude Sonnet 4.6 (Thinking)'
+  AGY_FALLBACK_MODELS = 'api:Gemini 3.8 Flash (High);api:Gemini 3.7 Flash (High);api:Gemini 3.6 Flash (High);Claude Sonnet 4.6 (Thinking)'
 }
 function Get-AgyBridgeDir {
   $r = ("$(Get-Quiet 'npm' @('root','-g') | Select-Object -First 1)").Trim()
