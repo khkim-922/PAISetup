@@ -3,8 +3,8 @@
 # 웹 다시 찾기 — 웹 도구가 못 닿았을 때 **다른 길이 있다는 것을 결과 곁에 한 줄 붙인다**(PostToolUse ·
 # PostToolUseFailure 훅). 붙이기만 한다 — 막지 않는다.
 #
-# **왜 있나.** 웹서치·웹페치가 막히면 모델은 「못 찾았다」로 끝내기 쉽다 — Tavily MCP 나 agy 다리가 세션에
-# 붙어 있어도 그 순간에는 안 떠오른다. 그런데 같은 일을 그 길로 하면 닿는 일이 많다. 규범에 적어도
+# **왜 있나.** 웹서치·웹페치가 막히면 모델은 「못 찾았다」로 끝내기 쉽다 — Tavily MCP 나 agy 가 이 PC 에
+# 있어도 그 순간에는 안 떠오른다. 그런데 같은 일을 그 길로 하면 닿는 일이 많다. 규범에 적어도
 # 도구를 고르는 순간에는 안 걸려, 못 닿은 바로 그 결과 곁에 거는 이 층에 둔다(규범 [Layer Triage]).
 #
 # 거는 꼴 넷 — 실패가 **오류로 오지 않는 꼴이 더 많다**(정상 반환 안에 든다):
@@ -56,8 +56,8 @@ esac
 #   재는 것은 실행 파일이 PATH 에 있나다 — 셸 검사라 값이 없다. ⚠ claude.ai 커넥터로 붙은 Tavily 는 실행 파일이
 #   없어 못 본다(그 자리는 안 대고 넘어간다 — 없는 길을 대는 쪽보다 덜 비싸다).
 # 차례가 도구마다 다르다 — 웹페치는 `curl` 이 맨 앞이다(직결로는 열리는데 웹페치만 못 가는 주소가 있고 가장
-#   싸다). 웹서치는 `curl` 로 못 한다. agy 다리를 Tavily 보다 앞에 두는 까닭은 사내에서 다리가 게이트웨이 안의
-#   길이고 Tavily 는 질의가 회사 밖으로 나가서다(#118).
+#   싸다). 웹서치는 `curl` 로 못 한다. agy 를 Tavily 보다 앞에 두는 까닭은 사내에서 agy 가 게이트웨이 안의
+#   길이고 Tavily 는 질의가 회사 밖으로 나가서다(#118). agy 는 백그라운드로 맡긴다(스킬 `agy-background` · 결정 0088).
 has() { command -v "$1" >/dev/null 2>&1; }
 alts=
 add() { if [ -n "$alts" ]; then alts="$alts · $1"; else alts=$1; fi; }
@@ -65,10 +65,10 @@ case "$j" in
   *'"tool_name":"WebFetch"'*)
     has curl && add "같은 주소를 Bash 의 \`curl\` 로(프록시 환경변수를 비끼려면 \`-x ''\`)"
     has tavily-mcp && add "같은 주소를 Tavily 의 \`tavily_extract\` 로"
-    has agy-bridge && add "같은 물음을 agy 다리 \`mcp__agy-bridge__web_lookup\` 으로"
+    has agy && add "같은 주소를 agy 에게 백그라운드로 읽히기(스킬 \`agy-background\`)"
     head="웹 다시 찾기 — WebFetch 가 이 주소의 본문을 못 받았다($why)." ;;
   *)
-    has agy-bridge && add "같은 물음을 agy 다리 \`mcp__agy-bridge__web_lookup\` 으로"
+    has agy && add "같은 물음을 agy 에게 백그라운드로 맡기기(스킬 \`agy-background\`)"
     has tavily-mcp && add "같은 물음을 Tavily 의 \`tavily_search\` 로"
     head="웹 다시 찾기 — WebSearch 가 $why.$note" ;;
 esac

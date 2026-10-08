@@ -8,8 +8,10 @@ SSE 를 SDK 처럼 칸으로 다시 짓고, CLI 가 그 칸을 읽는 규칙(2.1
 
 ⚠ **양방향이다.** 메우는 것만 재면 「안 건드릴 요청까지 가로채는」 결함이 안 잡힌다 — 서버 웹서치 선언이 없는
   요청 · 손잡이를 끈 판은 원래 길(`/v1/messages`)로 그대로 가야 한다.
-⚠ **상류가 무엇을 받았나도 잰다** — 경로(제미나이 모델) · 머리(회사 키가 두 이름으로) · 본문(검색 도구 · 질의가
-  UTF-8 그대로). 한국어 질의가 다른 인코딩으로 가면 게이트웨이 너머에서 깨진다(#118 실측).
+⚠ **상류가 무엇을 받았나도 잰다** — 경로(제미나이 모델) · 쿼리(Anthropic 쪽 것은 뺐다) · 머리(회사 키가 두
+  이름으로) · 본문(검색 도구 · 질의가 UTF-8 그대로). 한국어 질의가 다른 인코딩으로 가면 게이트웨이 너머에서 깨진다(#118 실측).
+⚠ **가짜 게이트웨이는 실물이 거절하는 것을 거절한다** — 제미나이 경로에 모르는 쿼리가 오면 실물과 같은 400 을 낸다.
+  CLI 는 하위 요청을 `/v1/messages?beta=true` 로 보내는데(사내 PC 실측), 그 쿼리를 빼고 재면 메움이 실물에서만 진다.
 ⚠ **집에서 초록인 것은 모양까지다** — 게이트웨이의 제미나이가 grounding 으로 실제 웹을 찾는 것은 회사에서만 잰다.
 """
 from __future__ import annotations
@@ -21,6 +23,7 @@ import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -31,6 +34,10 @@ QUERY_EN = "python 3.13 release notes"
 QUERY_KO = "파이썬 최신 버전 출시일"
 MODE: dict[str, str] = {"answer": "ok"}
 SEEN: list[dict] = []
+# CLI 가 하위 요청을 보내는 경로 — 쿼리까지가 실물이다(사내 PC 의 프록시 기록 2026-10-08)
+CLI_PATH = "/gpgpta01-gpt/v1/messages?beta=true"
+# 제미나이 경로가 받는 쿼리 이름 — 나머지는 실물 게이트웨이가 「Cannot bind query parameter」 400 으로 거절한다
+GEMINI_QUERY_NAMES = {"key", "alt"}
 
 GROUNDED = {
     "candidates": [{
@@ -54,12 +61,20 @@ class Gateway(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 — http.server 의 이름
         body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
-        SEEN.append({"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}, "body": body})
-        if self.path.endswith("/v1/messages"):
+        url = urlsplit(self.path)
+        SEEN.append({"path": url.path, "query": url.query,
+                     "headers": {k.lower(): v for k, v in self.headers.items()}, "body": body})
+        unknown = [name for name, _ in parse_qsl(url.query) if name not in GEMINI_QUERY_NAMES]
+        if url.path.endswith("/v1/messages"):
             data = json.dumps({"type": "message", "id": "msg_gw", "model": "claude-opus-5", "role": "assistant",
                                "content": [{"type": "text", "text": "plain"}], "stop_reason": "end_turn",
                                "stop_sequence": None, "usage": {"input_tokens": 1, "output_tokens": 1}}).encode()
             status = 200
+        elif unknown:
+            data = json.dumps({"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": (
+                f'Invalid JSON payload received. Unknown name "{unknown[0]}": Cannot bind query parameter. '
+                f"Field '{unknown[0]}' could not be found in request message.")}}).encode()
+            status = 400
         elif MODE["answer"] == "error":
             data, status = b'{"error":{"code":500,"message":"boom"}}', 500
         elif MODE["answer"] == "garbage":
@@ -87,7 +102,7 @@ def cli_request(query: str, *, stream: bool = True, server_tool: bool = True) ->
 def post(port: int, payload: dict) -> tuple[int, str, bytes]:
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
     try:
-        conn.request("POST", "/gpgpta01-gpt/v1/messages", json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        conn.request("POST", CLI_PATH, json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                      {"Content-Type": "application/json", "Authorization": f"Bearer {KEY}",
                       "anthropic-version": "2023-06-01"})
         response = conn.getresponse()
@@ -172,6 +187,7 @@ def main() -> int:
         check("스트림 하위 요청에 200 · SSE 로 답한다", status == 200 and ctype.startswith("text/event-stream"), (status, ctype))
         check("상류는 제미나이 검색 경로를 받았다",
               got["path"].endswith(f"/v1beta/models/{proxy.WEB_SEARCH_MODEL}:generateContent"), got["path"])
+        check("상류 쿼리에 Anthropic 쪽 것(beta)이 안 실린다", "beta" not in got["query"], got["query"])
         sent = json.loads(got["body"])
         check("상류 본문 — 검색 도구 · 질의", sent.get("tools") == [{"googleSearch": {}}]
               and QUERY_EN in sent["contents"][0]["parts"][0]["text"], sent)
@@ -207,10 +223,13 @@ def main() -> int:
                   status == 200 and "Web search error: unavailable" in text, (status, text))
             check(f"상류가 {answer} 면 진 수를 센다", proxy.stats()["web_search_failed"] == failed + 1)
         MODE["answer"] = "ok"
+        log = proxy.LOG_PATH.read_text(encoding="utf-8") if proxy.LOG_PATH.exists() else ""
+        check("상류가 4xx · 5xx 면 그 본문을 기록에 남긴다", "boom" in log, log[-400:])
 
         # ⑤ 안 건드릴 것 — 서버 웹서치 선언이 없는 요청 · 손잡이를 끈 판
         post(port, cli_request(QUERY_EN, server_tool=False))
-        check("클라이언트 도구 요청은 원래 길(/v1/messages)로 간다", SEEN[-1]["path"].endswith("/v1/messages"), SEEN[-1]["path"])
+        check("클라이언트 도구 요청은 원래 길(/v1/messages · 쿼리 그대로)로 간다",
+              SEEN[-1]["path"].endswith("/v1/messages") and SEEN[-1]["query"] == "beta=true", SEEN[-1])
         proxy.WEB_SEARCH = False
         try:
             post(port, cli_request(QUERY_EN))
