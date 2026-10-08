@@ -1403,13 +1403,15 @@ $codexTpl   = Read-Directive $EnvFile 'codex-config'
 $geminiTpl  = Read-Directive $EnvFile 'gemini-config'
 $inside     = ($site -eq 'inside')
 $wantProxy  = [bool]($proxyRel  -and $inside)
-# ── agy 묶음 — agy 다리(MCP) · agy 모델 값 · agy 설정 셋 (claude-config 결정 0083 · 0086 · #117) ──────
-# Claude Code 가 agy 에게 일을 넘기는 다리(`agy-bridge`)와 그 다리·래퍼가 고를 모델(`$AgyModelVars`), 그리고
-# agy 가 Claude Code 와 같은 규범·스킬·룰을 읽게 하는 설정 셋이다. **셋이 같은 조건을 탄다** — 다리로 넘긴
-# 일을 받는 agy 가 같은 규범 아래 있어야 넘긴 뜻이 선다.
+# ── agy 묶음 — agy 모델 값 · agy 설정 셋 (claude-config 결정 0083 · 0086 · 0088 · #117) ──────
+# Claude Code 가 agy 에게 일을 맡기는 길은 백그라운드 래퍼(스킬 `agy-background`) 하나다 — 그 래퍼가 고를
+# 모델(`$AgyModelVars`)과, agy 가 Claude Code 와 같은 규범·스킬·룰을 읽게 하는 설정 셋이다. **둘이 같은 조건을
+# 탄다** — 맡긴 일을 받는 agy 가 같은 규범 아래 있어야 맡긴 뜻이 선다.
 # ⚠ **자리를 안 가린다 — 갈리는 것은 모델 값뿐이다.** 사내 agy 는 회사 키로 게이트웨이를 타서 서는
-#   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다). 다리 설치 · 고침 · 등록 · 설정 셋은 사내에서도
-#   그대로 선다(사내 PC 실측 2026-10-08 · claude-config #117 · 결정 0086).
+#   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다). 설정 셋은 사내에서도 그대로 선다
+#   (사내 PC 실측 2026-10-08 · claude-config #117 · 결정 0086).
+# ⚠ **다리(MCP `agy-bridge`)는 안 깐다 — 깔린 것은 걷는다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아,
+#   맡겨 두고 딴 일을 하라는 이 묶음의 뜻과 어긋난다. 걷는 칸은 아래 8 칸(Tavily 곁)이다.
 # ⚠ **제작자 설정 칸을 탄다** — 설정 셋이 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다. 칸을 끄면
 #   가리킬 것이 없다.
 $wantAgyKit = [bool]($WithPersonalConfig -and
@@ -2145,58 +2147,16 @@ if ($PickKeys -contains 'claude') {
   Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
 }
 
-# agy 다리(agy-bridge) — 판을 박아 깔고 네 줄을 고친다. 등록은 8 칸(Tavily 곁)이 한다.
-# ⚠ **`Install-NpmCli` 를 안 탄다 — 그쪽은 늘 최신으로 올린다.** 이 패키지는 아래 네 줄을 고쳐 쓰는데,
-#   새 판이 그 자리를 바꾸면 고침이 안 먹은 채 「깔았다」로 끝난다. 판을 올릴 때는 사람이 고침을 다시 잰다.
-# ⚠ **앞 두 줄을 고치는 까닭 — 윈도에서 창이 뜬다.** 다리가 agy 를 `detached: true` 로 띄워 agy 가 콘솔 없이
-#   서고, agy 가 명령·MCP 서버를 돌릴 때마다 새 창이 떴다 사라진다. 고친 꼴은 상류 이슈
-#   sshahzaiib/agy-bridge#20 이 내놓은 그대로다(집 실측 2026-10-07: 고치기 전 창 2개 → 고친 뒤 0개).
-#   상류가 합치면 판을 올리고 이 고침을 걷는다.
-# ⚠ **셋째 줄을 고치는 까닭 — 한도가 차면 넘어갈 모델이 없다.** 다리는 도구마다 고를 모델 목록을 들고,
-#   `agy models` 에 없는 이름은 걸러 낸 뒤 한도(429)에 걸리면 목록의 다음 모델로 넘어간다. 그런데 0.4.2 의
-#   목록이 은퇴한 `Gemini 3.5 Flash` 를 들어 로그인 계정 agy 에서는 목록이 거의 비고, 비면 `--model` 없이
-#   agy 가 고른 모델로 돌아 **한도에 걸리면 넘어가지 않고 그대로 실패한다.** 고친 꼴은 기본 모델 뒤에
-#   `AGY_FALLBACK_MODELS`(아래 `$AgyModelVars`)를 잇는다.
-#   상류에 같은 사정의 이슈 sshahzaiib/agy-bridge#17 · PR #18(이름 갈기)이 열려 있다.
-# ⚠ **넷째 줄을 고치는 까닭 — 도구마다 모델을 고를 손잡이가 없다.** 다리의 도구별 목록은 패키지에 박혀
-#   있는데, 사내에서는 일의 무게에 따라 모델을 가르고 싶다 — 맡기기(`delegate`)는 3.1 Pro, 나머지는 3.6
-#   Flash(사람 판단 2026-10-08). 고친 꼴은 환경변수 `AGY_MODEL_<도구 이름 대문자>`(`;` 로 여럿)가 있으면 그
-#   도구의 목록을 그 값으로 **갈아 끼운다** — 다리의 `AGY_TIMEOUT_<도구>` 와 같은 꼴의 이름이다. 없으면
-#   패키지 목록 그대로다. 값은 `agy models` 의 표시 이름 그대로 적는다(목록 거르기가 이름으로 견준다).
-#   ⚠ **패키지 목록의 이름은 손대지 않는다** — `agy models` 는 게이트웨이가 아니라 agy 안에 든 붙박이 목록을
-#     내서(사내 PC 실측 2026-10-08) 자리마다 다른 값이 필요한 것은 도구 목록이 아니라 우리 값이다.
-# ⚠ **이미 고쳤으면 지나가고, 원문을 못 찾으면 실패로 센다** — 고칠 자리를 못 찾은 채 넘어가면 창이 다시
-#   뜨거나 넘어가기가 죽는데 까닭이 어디에도 안 남는다.
-$AgyBridgeName = 'agy-bridge'
-$AgyBridgeVer  = '0.4.2'
-$AgyBridgeFix  = @(
-  @{ From = 'execFileAsync(file, args, options);'
-     To   = 'execFileAsync(file, args, { windowsHide: true, ...options });' }
-  @{ From = 'spawn(file, args, { cwd, detached: true });'
-     To   = 'spawn(file, args, { cwd, detached: process.platform !== "win32", windowsHide: true });' }
-  @{ From = 'if (models.length === 0) {'
-     To   = 'for (const m of (process.env.AGY_FALLBACK_MODELS || "").split(";").map((s) => canonical(s.trim()))) if (m && available.includes(m) && !models.includes(m)) models.push(m);' +
-            "`n    if (models.length === 0) {" }
-  @{ From = 'chain: tool.chain,'
-     To   = 'chain: process.env["AGY_MODEL_" + tool.name.toUpperCase()] ? process.env["AGY_MODEL_" + tool.name.toUpperCase()].split(";").map((s) => s.trim()).filter(Boolean) : tool.chain,' }
-)
-# 고침이 무엇을 하나 — 화면 줄과 끝 검증이 같은 글자로 댄다(사람이 두 줄을 견줘 읽는다).
-$AgyBridgeFixWhat = '창 숨김 · 모델 넘김 · 도구별 모델'
-# agy 가 고를 모델 — 설치가 사용자 환경변수로 심고, 다리와 백그라운드 래퍼(스킬 `agy-background`)가 같은
-# 이름을 읽는다. **값은 자리마다 다르다** — 사내 agy 는 회사 키로 게이트웨이를 타고, 사외는 각자 로그인으로 선다.
+# agy 가 고를 모델 — 설치가 사용자 환경변수로 심고, 백그라운드 래퍼(스킬 `agy-background`)가 읽는다.
+# **값은 자리마다 다르다** — 사내 agy 는 회사 키로 게이트웨이를 타고, 사외는 각자 로그인으로 선다.
 #
 # ── 사내 — 일의 무게로 모델을 가르고, 넘기지 않는다 ──
 # ⚠ **게이트웨이가 받는 이름만 든다.** `agy models` 는 붙박이 목록이라 3.8 도 내지만 게이트웨이는
 #   `gemini-3.8-flash` 를 「모델을 찾을 수 없습니다」(P002)로 거부한다(사내 PC 실측 2026-10-08). 게이트웨이에서
 #   서는 것 가운데 쓸 것은 3.6 Flash 와 3.1 Pro 다(사람 판단).
-# ⚠ **맡기기는 3.1 Pro, 나머지는 3.6 Flash** — 추론이 드는 일만 Pro 로 보낸다(사람 판단 2026-10-08). 넷째
-#   고침의 `AGY_MODEL_DELEGATE` 가 `delegate` 의 목록을 갈아 끼우고, 백그라운드 래퍼도 `--model` 이 없으면
-#   이 값을 먼저 쓴다(긴 일을 뒤에서 맡기는 것도 맡기기다). `adversarial_review` 는 패키지 목록이 이미
-#   3.1 Pro 라 손대지 않는다.
-# ⚠ **`analyze_files` 도 3.6 Flash 로 갈아 끼운다** — 패키지 목록이 「3.5 Flash → 3.1 Pro (Low)」라 3.5 가
-#   걸러지면 Pro 로 돈다(가짜 agy 실측). 큰 파일 읽기는 대개 뽑아내기라 Flash 로 두고, 판단이 드는 물음
-#   (여러 파일 견주기 · 어긋남 찾기)만 부르는 쪽이 그 호출의 `model` 로 `AGY_MODEL_DELEGATE` 값을 준다 —
-#   그 말은 세션 시작에 한 줄로 실린다(아래 Tavily 키 안내 곁 · 사람 판단 2026-10-08).
+# ⚠ **맡기기는 3.1 Pro, 가벼운 일은 3.6 Flash** — 추론이 드는 일만 Pro 로 보낸다(사람 판단 2026-10-08). 래퍼는
+#   `--model` 이 없으면 `AGY_MODEL_DELEGATE` 를 먼저 쓰고, 가벼운 일(훑기 · 찾기 · 요약)은 부르는 쪽이 `--model`
+#   로 `AGY_DEFAULT_MODEL` 값을 준다 — 그 말은 스킬이 든다.
 # ⚠ **넘길 모델(`AGY_FALLBACK_MODELS`)을 안 둔다** — 회사 키는 예산 한도라 하나가 막히면 다 막힌다(사람 판단).
 #
 # ── 사외 · 자리 모름 — 제미나이를 먼저 쓰고, 그 한도가 차면 다른 데로 넘어간다 ──
@@ -2207,22 +2167,17 @@ $AgyBridgeFixWhat = '창 숨김 · 모델 넘김 · 도구별 모델'
 #   (무료 키 실측 2026-10-08 — 한도 이름이 `…PerProjectPerModel-FreeTier`). 그래서 넘길 차례는
 #   「로그인 3.8 Flash → API 키 3.8 → 3.7 → 3.6 Flash → 로그인 Sonnet」이다(사람 판단 2026-10-08 —
 #   agy 를 쓰는 까닭은 제미나이고, Claude 갈래는 마지막 자리다).
-# ⚠ **`api:` 를 붙인 이름은 래퍼만 알아듣고, 키가 있을 때만 산다.** 래퍼는 그 후보를 API 키 방식으로
-#   띄우는데(키는 `GOOGLE_API_KEY` 또는 `GEMINI_API_KEY`) 키가 없으면 **조용히 건너뛴다** — 키 없는 PC 는
-#   「로그인 3.8 → Sonnet」으로 그대로 돈다. 다리는 그 이름이 `agy models` 에 없어 걸러 낸다 — 다리는
-#   로그인 방식 안에서만 넘어간다. 목록을 하나로 두는 까닭은 차례가 한 자리에 살게 하려는 것이다.
-# ⚠ **`AGY_DEFAULT_MODEL` 은 다리가 원래 아는 이름이다** — 셋째 고침이 안 먹은 판에서도 기본 모델만은 선다.
-#   `AGY_FALLBACK_MODELS` 는 셋째 고침과 래퍼가 읽는 이름이고 `;` 로 여럿을 잇는다. 이름은 `agy models` 의
-#   표시 이름 그대로다 — 없는 이름은 걸러져 해롭지 않지만 넘어갈 자리가 조용히 사라진다.
+# ⚠ **`api:` 를 붙인 이름은 키가 있을 때만 산다.** 래퍼는 그 후보를 API 키 방식으로 띄우는데(키는
+#   `GOOGLE_API_KEY` 또는 `GEMINI_API_KEY`) 키가 없으면 **조용히 건너뛴다** — 키 없는 PC 는 「로그인 3.8 →
+#   Sonnet」으로 그대로 돈다. 이름은 `agy models` 의 표시 이름 그대로 적는다.
 #
 # ⚠ **다른 자리의 값이 남아 있으면 걷는다 — 우리가 심은 값과 글자까지 같을 때만.** 한 PC 가 자리를 옮기면
 #   (노트북) 앞 자리의 이름이 남는다. 사외의 `api:` 목록이 사내에 남으면 래퍼가 회사 키로 가짜 홈을 띄워
 #   안 잰 길로 나간다. 값이 다르면 사람이 고친 것이라 안 건드린다.
 $AgyModelVarsBySite = @{
   inside  = [ordered]@{
-    AGY_DEFAULT_MODEL       = 'Gemini 3.6 Flash (High)'
-    AGY_MODEL_DELEGATE      = 'Gemini 3.1 Pro (High)'
-    AGY_MODEL_ANALYZE_FILES = 'Gemini 3.6 Flash (High)'
+    AGY_DEFAULT_MODEL  = 'Gemini 3.6 Flash (High)'
+    AGY_MODEL_DELEGATE = 'Gemini 3.1 Pro (High)'
   }
   outside = [ordered]@{
     AGY_DEFAULT_MODEL   = 'Gemini 3.8 Flash (High)'
@@ -2231,81 +2186,8 @@ $AgyModelVarsBySite = @{
 }
 $AgyModelSite = if ($inside) { 'inside' } else { 'outside' }
 $AgyModelVars = $AgyModelVarsBySite[$AgyModelSite]
-function Get-AgyBridgeDir {
-  $r = ("$(Get-Quiet 'npm' @('root','-g') | Select-Object -First 1)").Trim()
-  if ($r) { return (Join-Path $r $AgyBridgeName) }
-  return ''
-}
-function Get-AgyBridgeVer {
-  $d = Get-AgyBridgeDir
-  $pj = if ($d) { Join-Path $d 'package.json' } else { '' }
-  if ($pj -and (Test-Path -LiteralPath $pj)) {
-    try { return [string](Get-Content -LiteralPath $pj -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch { }
-  }
-  return ''
-}
-function Read-AgyBridgeMain {
-  $d = Get-AgyBridgeDir
-  $f = if ($d) { Join-Path $d 'dist\index.js' } else { '' }
-  if ($f -and (Test-Path -LiteralPath $f)) { return [IO.File]::ReadAllText($f) }
-  return $null
-}
-# 고침의 상태 넷 — fixed(다 고쳐졌다) · pending(남은 고침의 원문을 다 찾았다) · unknown(못 찾았다) · missing(파일이 없다)
-# ⚠ **고침마다 따로 잰다.** 앞 판 설치기가 고침 일부를 이미 넣은 다리가 있다 — 통째로 재면 이미 고친 줄은
-#   원문이 없어 「못 찾았다」가 되고, 남은 고침을 못 넣는다.
-function Get-AgyBridgeFixTodo([string]$Text) { $AgyBridgeFix | Where-Object { -not $Text.Contains($_.To) } }
-function Get-AgyBridgeFixState([string]$Text) {
-  if (-not $Text) { return 'missing' }
-  $todo = @(Get-AgyBridgeFixTodo $Text)
-  if ($todo.Count -eq 0) { return 'fixed' }
-  if (@($todo | Where-Object { [regex]::Matches($Text, [regex]::Escape($_.From)).Count -ne 1 }).Count -eq 0) { return 'pending' }
-  return 'unknown'
-}
 if ($wantAgyKit) {
-  $abLabel = "agy 다리 ($AgyBridgeName $AgyBridgeVer)"
-  $abHave = Get-AgyBridgeVer
-  if ($abHave -eq $AgyBridgeVer) {
-    Write-Host "  $abLabel — 있음"
-  } elseif (Test-Runs 'npm' '--version') {
-    Say-Busy $abLabel 'install' @('npm')
-    $nl = [IO.Path]::GetTempFileName()
-    $nrc = Invoke-Logged 'npm' @('install','-g',"$AgyBridgeName@$AgyBridgeVer") $nl
-    Update-RuntimePath
-    if ((Get-AgyBridgeVer) -eq $AgyBridgeVer) {
-      Write-Host "  $abLabel — 깔았다$(if ($abHave) { " (옛 판 $abHave)" })" -ForegroundColor Green
-    } else {
-      Write-Host "  ! $abLabel — 못 깔았다 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
-      Show-Log $nl
-      $Fails.Add('agy 다리 설치')
-    }
-    Remove-Item $nl -ErrorAction SilentlyContinue
-  } else {
-    Write-Host "  ! $abLabel — npm 이 없어 못 깐다" -ForegroundColor Red
-    $Fails.Add('agy 다리 설치 (npm 이 없다)')
-  }
-  if ((Get-AgyBridgeVer) -eq $AgyBridgeVer) {
-    $abText = Read-AgyBridgeMain
-    switch (Get-AgyBridgeFixState $abText) {
-      'fixed' { Write-Host "  $abLabel — 고침 있음 ($AgyBridgeFixWhat)" }
-      'pending' {
-        $todo = @(Get-AgyBridgeFixTodo $abText)
-        $t = $abText
-        foreach ($x in $todo) { $t = $t.Replace($x.From, $x.To) }
-        [IO.File]::WriteAllText((Join-Path (Get-AgyBridgeDir) 'dist\index.js'), $t, (New-Object Text.UTF8Encoding($false)))
-        if ((Get-AgyBridgeFixState (Read-AgyBridgeMain)) -eq 'fixed') {
-          Write-Host "  $abLabel — 고침을 넣었다 ($($todo.Count) 줄 · $AgyBridgeFixWhat)" -ForegroundColor Green
-        } else {
-          Write-Host "  ! $abLabel — 고침을 썼는데 다시 읽으니 안 섰다" -ForegroundColor Red
-          $Fails.Add('agy 다리 고침')
-        }
-      }
-      default {
-        Write-Host "  ! $abLabel — 고칠 줄을 못 찾았다 (원문이 바뀌었다) — 창이 뜨거나 한도에서 못 넘어갈 수 있다" -ForegroundColor Red
-        $Fails.Add('agy 다리 고침 (원문이 바뀌었다)')
-      }
-    }
-  }
-  # 모델 값 — 위 `$AgyModelVars`(이 자리의 것). 다리가 안 깔려도 심는다: 백그라운드 래퍼도 같은 이름을 읽는다.
+  # 모델 값 — 위 `$AgyModelVars`(이 자리의 것).
   foreach ($k in $AgyModelVars.Keys) {
     if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $AgyModelVars[$k]) {
       Write-Host "  $k — 이미 맞다"
@@ -3697,7 +3579,7 @@ function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts,
 if (Plant-HomeToolHook '그림 문(PreToolUse)' @('PreToolUse') @('image-gate.sh', 'image-gate.py') '_ig' ' # image-gate.py') { $dirty = $true }
 
 # ── 웹 다시 찾기 — PostToolUse · PostToolUseFailure 훅을 홈에 심는다 (claude-config #117) ──────────
-# 웹 도구가 못 닿았을 때 다른 길(curl · Tavily · agy 다리)이 있다는 것을 결과 곁에 붙인다 — 막지 않는다.
+# 웹 도구가 못 닿았을 때 다른 길(curl · Tavily · agy 백그라운드 맡기기)이 있다는 것을 결과 곁에 붙인다 — 막지 않는다.
 # 왜와 거는 꼴은 껍데기(`web-retry.sh`)의 머리말이 든다. 그림 문과 같은 까닭으로 스위치를 안 탄다 —
 # 부품이 씨앗으로 누구에게나 가고, 이 훅은 취향이 아니라 막힌 자리에서 길을 잇는 장치다.
 if (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @('PostToolUse', 'PostToolUseFailure') @('web-retry.sh') '_wr' '') { $dirty = $true }
@@ -3743,8 +3625,8 @@ if ($pipPkgs) {
 # ⚠ **표지 `tavily-key-hint` 로 제 항목을 알아본다** — 글자가 같으면 안 건드리고, 다르면 걷고 새로 심는다.
 #   설정 저장소 몸통은 `session-start.sh` 가 든 항목만 제 것으로 걷으므로 이 항목과 안 부딪힌다.
 # ⚠ **명령은 Git Bash 가 읽는다** — 그림 문과 같은 자리라 같은 셸로 돈다.
-# ⚠ **심는 손은 하나다 — 안내가 둘이다**(Tavily 키 · 아래 agy 모델). 표지로 제 항목만 알아보는 고리를
-#   안내마다 베끼면 한쪽만 낡는다. 심었으면 참을 돌려준다 — 부르는 쪽이 `$dirty` 를 세운다.
+# ⚠ **심는 손은 안내마다 베끼지 않는다** — 표지로 제 항목만 알아보는 고리를 안내가 늘 때마다 베끼면 한쪽만
+#   낡는다. 심었으면 참을 돌려준다 — 부르는 쪽이 `$dirty` 를 세운다.
 function Plant-SessionHint([string]$Label, [string]$Mark, [string]$Cmd) {
   $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
   if (-not $hooks) {
@@ -3776,17 +3658,6 @@ if (($PickKeys -contains 'claude') -and $cfg) {
   if (Plant-SessionHint 'Tavily 키 안내' $hintMark $hintCmd) { $dirty = $true }
 }
 
-# ── agy 모델 안내 — 도구마다 모델이 갈린 자리에서만 한 줄 (claude-config #117 · 결정 0086) ──────────
-# 사내는 `analyze_files` 를 3.6 Flash 로 갈아 끼우고, 판단이 드는 물음에만 부르는 쪽이 Pro 를 고르게 했다
-# (위 `$AgyModelVarsBySite` 곁말). 그 「고르게」가 어디에도 안 실리면 매번 잊는다 — 그래서 세션 시작에 싣는다.
-# ⚠ **자리 이름이 아니라 상태로 건다** — `AGY_MODEL_DELEGATE` 가 심긴 PC 에서만 말한다. 모델 이름도 그
-#   환경변수 값을 그때 읽어 찍는다 — 여기 이름을 박으면 위 상수와 두 벌이 된다.
-# ⚠ **말 안의 따옴표 · 백틱을 안 쓴다** — 백틱은 Git Bash 의 큰따옴표 안에서 명령으로 돈다.
-$agyHintMark = 'agy-model-hint'
-$agyHintCmd  = '[ -z "$AGY_MODEL_DELEGATE" ] || echo "agy 다리의 모델 — 맡기기(delegate)와 백그라운드 래퍼는 $AGY_MODEL_DELEGATE, 나머지 도구는 $AGY_DEFAULT_MODEL 로 돈다. analyze_files 에 판단이 드는 물음(여러 파일 견주기 · 어긋남 찾기)을 줄 때는 그 호출의 model 칸에 $AGY_MODEL_DELEGATE 를 준다." # ' + $agyHintMark
-if ($wantAgyKit -and $cfg) {
-  if (Plant-SessionHint 'agy 모델 안내' $agyHintMark $agyHintCmd) { $dirty = $true }
-}
 
 # ⚠ **홈 설정을 여기서 다시 쓴다.** 위 5칸이 이미 한 번 썼지만 그 뒤에 이 칸이 `$cfg` 를
 #   고쳤다 — 안 쓰면 그림 문이 메모리에만 서고 파일에는 없다. 5칸을 여기로 내리지 않는
@@ -4188,46 +4059,61 @@ if ($PickKeys -contains 'claude') {
   }
 }
 
-# ── agy 다리 등록 — 등록 꼴은 씨앗의 `mcp-servers.json` 이 든다(Tavily 와 같은 자) ──────────
-# ⚠ **`add-json` 으로 넘긴다** — 이 서버는 `timeout` 을 함께 넘겨야 하는데(다리 제 한도 600초보다 길게 —
-#   짧으면 Claude Code 가 다리의 답보다 먼저 끊는다) `mcp add` 에는 그 칸이 없다. 파워셸 5.1 이 큰따옴표를
-#   안 벗겨 주는 함정(위 Tavily 곁말)은 `\"` 로 미리 벗겨 넘긴다(실측: 그대로 등록된다).
-# ⚠ **`only` 는 뺀다** — 설정 저장소 `deploy.ps1` 이 자리를 가르는 선언의 칸이지 서버 설정이 아니다.
-#   이 설치기에서는 위 `$wantAgyKit` 이 이미 자리를 갈랐다.
-# ⚠ **패키지가 없으면 등록도 안 한다** — Tavily 와 같은 까닭이다.
-if ($wantAgyKit) {
+# ── 옛 agy 다리 걷기 — 1.37.0 이 사외에 깐 다리(MCP `agy-bridge`)와 그 등록 (claude-config 결정 0088) ──────
+# agy 에게는 백그라운드 래퍼(스킬 `agy-background`) 하나로만 맡긴다 — 다리는 끝날 때까지 대화를 붙잡아,
+# 맡겨 두고 딴 일을 하라는 이 묶음의 뜻과 어긋난다. 남은 다리는 Claude 가 그 길을 고르게 끌어 걷는다.
+# ⚠ **우리가 깐 것만 걷는다.** 패키지는 우리가 박은 판에 우리 고침 글자(창 숨김)가 들었을 때만 내린다 —
+#   사람이 따로 깐 다리는 그 글자가 없다. 등록은 우리 꼴(`cmd /c agy-bridge`)이고 **패키지가 없을 때만**
+#   걷는다 — 부를 것이 없는 등록은 이미 죽은 것이고, 패키지가 남았으면(사람이 깐 것) 등록도 그 사람 것이다.
+# ⚠ **묶음 칸과 무관하게 돈다** — 칸을 끈 PC 에도 1.37.0 의 다리가 남아 있을 수 있다.
+$OldAgyBridge     = 'agy-bridge'
+$OldAgyBridgeVer  = '0.4.2'
+$OldAgyBridgeMark = 'execFileAsync(file, args, { windowsHide: true, ...options });'
+$oabDir = ''
+if (Test-Runs 'npm' '--version') {
+  $r = ("$(Get-Quiet 'npm' @('root','-g') | Select-Object -First 1)").Trim()
+  if ($r) { $oabDir = Join-Path $r $OldAgyBridge }
+}
+$oabPj = if ($oabDir) { Join-Path $oabDir 'package.json' } else { '' }
+if ($oabPj -and (Test-Path -LiteralPath $oabPj)) {
   Write-Host ''
-  Write-Host 'agy 다리 (agy-bridge MCP)' -ForegroundColor Cyan
-  $abSpec = $null
-  try {
-    $abSpec = (Get-Content -LiteralPath (Join-Path $Here 'seeds\config-repo\mcp-servers.json') -Raw -Encoding UTF8 |
-               ConvertFrom-Json).mcpServers.$AgyBridgeName
-  } catch { }
-  if ((Get-AgyBridgeVer) -ne $AgyBridgeVer) {
-    Write-Host '  agy 다리 등록 — 패키지가 없어 안 한다'
-  } elseif (-not (Test-Runs 'claude' '--version')) {
-    Write-Host '  ! agy 다리 등록 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 (위 CLI 줄을 먼저 본다)' -ForegroundColor Yellow
-  } elseif (-not $abSpec -or [string]$abSpec.type -ne 'stdio') {
-    Write-Host "  ! agy 다리 등록 — 씨앗 mcp-servers.json 에 $AgyBridgeName 의 stdio 항목이 없어 안 한다" -ForegroundColor Red
-    $Fails.Add('agy 다리 등록 (씨앗에 항목이 없다)')
+  Write-Host '옛 agy 다리 (agy-bridge MCP)' -ForegroundColor Cyan
+  $oabVer = ''
+  try { $oabVer = [string](Get-Content -LiteralPath $oabPj -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch { }
+  $oabMain = Join-Path $oabDir 'dist\index.js'
+  $oabOurs = ($oabVer -eq $OldAgyBridgeVer) -and (Test-Path -LiteralPath $oabMain) -and
+             ([IO.File]::ReadAllText($oabMain).Contains($OldAgyBridgeMark))
+  if (-not $oabOurs) {
+    Write-Host "  agy 다리 — 따로 깐 판이라 둔다 ($OldAgyBridge $oabVer)"
   } else {
-    $null = Get-Quiet 'claude' @('mcp','get',$AgyBridgeName)
-    if ($LASTEXITCODE -eq 0) {
-      Write-Host "  agy 다리 등록 — 있음 ($AgyBridgeName)"
+    $nl = [IO.Path]::GetTempFileName()
+    $nrc = Invoke-Logged 'npm' @('uninstall','-g',$OldAgyBridge) $nl
+    if (-not (Test-Path -LiteralPath $oabPj)) {
+      Write-Host "  agy 다리 — 걷었다 ($OldAgyBridge $oabVer · 이제 백그라운드 래퍼로 맡긴다)" -ForegroundColor Green
     } else {
-      $abJson = ($abSpec | Select-Object -Property * -ExcludeProperty only | ConvertTo-Json -Compress -Depth 10)
-      $tl = [IO.Path]::GetTempFileName()
-      $rc = Invoke-Logged 'claude' @('mcp','add-json','-s','user',$AgyBridgeName,($abJson -replace '"','\"')) $tl
-      if ($rc -eq 0) {
-        Write-Host "  agy 다리 등록 — 했다 ($AgyBridgeName)" -ForegroundColor Green
-      } else {
-        Write-Host "  ! agy 다리 등록 — 못 했다 ($rc) — 뱉은 끝 줄:" -ForegroundColor Red
-        Show-Log $tl
-        $Fails.Add('agy 다리 등록')
-      }
-      Remove-Item $tl -ErrorAction SilentlyContinue
+      Write-Host "  ! agy 다리 — 못 걷었다 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+      Show-Log $nl
+      $Fails.Add('옛 agy 다리 걷기')
     }
+    Remove-Item $nl -ErrorAction SilentlyContinue
   }
+}
+if (-not ($oabPj -and (Test-Path -LiteralPath $oabPj)) -and (Test-Runs 'claude' '--version')) {
+  $reg = @(Get-Quiet 'claude' @('mcp','get',$OldAgyBridge))
+  if ($LASTEXITCODE -eq 0 -and ($reg -match '^\s*Args:\s*/c agy-bridge\s*$')) {
+    $tl = [IO.Path]::GetTempFileName()
+    $rc = Invoke-Logged 'claude' @('mcp','remove',$OldAgyBridge,'-s','user') $tl
+    if ($rc -eq 0) {
+      Write-Host "  agy 다리 등록 — 걷었다 ($OldAgyBridge)" -ForegroundColor Green
+    } else {
+      Write-Host "  ! agy 다리 등록 — 못 걷었다 ($rc) — 뱉은 끝 줄:" -ForegroundColor Red
+      Show-Log $tl
+      $Fails.Add('옛 agy 다리 등록 걷기')
+    }
+    Remove-Item $tl -ErrorAction SilentlyContinue
+  }
+}
+if ($wantAgyKit) {
   Write-Host '  agy 가 로그인 전이면 터미널에서 agy 를 한 번 띄워 Google 계정으로 로그인한다'
 }
 
@@ -4754,16 +4640,12 @@ if ($inside) {
   try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
-# agy 묶음 — 다리 판과 고침 · 등록 · 설정 셋.
+# agy 묶음 — 모델 값 · 설정 셋. 옛 다리를 걷다 진 것은 그 칸이 실패로 센다.
 # ⚠ **설정 셋은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
 #   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.
 if ($wantAgyKit) {
-  $abState = if ((Get-AgyBridgeVer) -eq $AgyBridgeVer) { Get-AgyBridgeFixState (Read-AgyBridgeMain) } else { 'missing' }
-  $checks += @{ Name = "agy 다리 $AgyBridgeVer · 고침 ($AgyBridgeFixWhat)"; Ok = ($abState -eq 'fixed') }
   $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
                 Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
-  $null = Get-Quiet 'claude' @('mcp','get',$AgyBridgeName)
-  $checks += @{ Name = 'agy 다리 등록 (claude mcp)'; Ok = ($LASTEXITCODE -eq 0) }
   $agySrcFiles = @(Get-ChildItem -LiteralPath (Join-Path $Here '.gemini.global') -File -ErrorAction SilentlyContinue)
   $agySame = @($agySrcFiles | Where-Object {
     $t = Join-Path $env:USERPROFILE ".gemini\config\$($_.Name)"
