@@ -170,7 +170,7 @@
     </div>
   </div>
   <div class="grid">
-    <div class="card"><b>Opus 5 · 1M 컨텍스트 <code>claude-opus-5[1m]</code></b><span>Claude Code 는 회사 게이트웨이처럼 중간에 서버를 거치면 100만 토큰을 믿지 않고 창을 20만으로 잡았습니다. 게이트웨이와 모델은 100만까지 받으므로, 모델 이름에 <code>[1m]</code> 표시를 붙여 100만 토큰 창으로 엽니다. <code>/model</code> 의 다른 Claude 모델도 같습니다.</span></div>
+    <div class="card"><b>Opus 5 · 1M 컨텍스트 <code>claude-opus-5[1m]</code></b><span>Claude Code 는 회사 게이트웨이를 거치면 100만 토큰을 믿지 않고 창을 20만으로 잡았습니다. 모델 이름에 <code>[1m]</code> 표시를 붙여 100만 토큰 창으로 엽니다. <code>/model</code> 의 다른 Claude 모델도 같습니다.</span></div>
     <div class="card"><b>Opus 5 요청 거절 <code>prefill</code></b><span>게이트웨이(Bedrock)는 대화 끝에 Claude 가 미리 채운 답이 붙은 요청을 거절해(400), Opus 5 로 일을 못 했습니다. 프록시가 그 부분을 떼고 넘깁니다.</span></div>
     <div class="card"><b>없는 모델 이름</b><span>Claude Code 가 곁일에 부르는 Haiku 와 기본 Sonnet 이름이 게이트웨이에 없어, 그 호출이 실패했습니다. 프록시가 게이트웨이에 있는 Sonnet 으로 바꿔 넘깁니다.</span></div>
     <div class="card"><b>웹 검색 <code>WebSearch</code></b><span>Claude 요청은 회사 게이트웨이를 거쳐 AWS Bedrock 에서 도는데, 거기서는 Claude Code 의 웹 검색이 지원되지 않아 사내에서는 늘 빈손이었습니다. 프록시가 그 자리를 게이트웨이의 제미나이 검색으로 채워, 출처가 달린 결과가 옵니다.</span></div>
