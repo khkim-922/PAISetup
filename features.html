@@ -10,7 +10,7 @@
   README 「무엇이 깔리나」가 든다 — 여기 옮겨 적지 않는다(모델 이름 · 개수처럼 자주 바뀌는 값도).
 
   ⚠ 밖에서 불러오는 것이 한 자도 없다 — 글꼴 · 스타일 · 그림을 다 안에 든다. 밖으로 가는 것은 사람이
-    누르는 링크(Tavily 무료 키 받기)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
+    누르는 링크(Tavily · 구글 무료 키 받기)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
     더블클릭 한 번에 떠야 하기 때문이다.
   ⚠ 진본은 claude-config 의 docs/features.html 이고, 배포본 뿌리로 나가는 것은 뽑기
     (dist.manifest.conf)가 든다 — 저쪽에서 고치지 않는다.
@@ -150,6 +150,7 @@
   <div class="grid">
     <div class="card"><b>뒤에서 맡기기 <code>agy-background</code></b><span>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 agy 에게 넘깁니다. 끝나면 Claude 가 결과를 거둬 옵니다.</span></div>
     <div class="card"><b>막히면 다음 모델로</b><span>한도에 걸리거나 서버가 몰리면 다음 모델로 다시 띄웁니다. 사외는 제미나이를 먼저 쓰고 마지막에 Claude 로, 사내는 회사 키가 받는 모델을 일의 무게로 골라 씁니다.</span></div>
+    <div class="card"><b>구글 무료 API 키 <code>GOOGLE_API_KEY</code></b><span>사외에서 로그인 한도가 차도 제미나이를 더 쓰게 해 줍니다. <a href="https://aistudio.google.com/apikey">Google AI Studio</a> 에서 API 키를 만들고, 새 터미널에서 <code>setx GOOGLE_API_KEY &lt;키&gt;</code> 를 친 뒤 앱을 다시 엽니다. 무료 키는 보낸 내용이 구글 제품 개선에 쓰일 수 있어 회사 자료는 안 보냅니다. 사내에서는 넣지 않습니다 — 회사 키보다 먼저 쓰입니다.</span></div>
   </div>
 </section>
 
