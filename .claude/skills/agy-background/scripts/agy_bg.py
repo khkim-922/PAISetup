@@ -8,7 +8,7 @@ GUI 프로그램이라 제 창이 없고, agy 를 「창 없음」(CREATE_NO_WIN
 
 **왜 로그를 훑나.** 로그인 방식 agy 는 화면 없이 돌 때 한도 초과(429)를 밖으로 안 낸다 — 시간이
 다 될 때까지 조용히 다시 시도하다가 빈 답으로 끝난다. 그래서 `--log-file` 을 받아 두고 훑다가 그
-줄(`RESOURCE_EXHAUSTED (code 429)` — agy-bridge 0.4.2 의 `QUOTA_RE` 에서 빌린 꼴)이 보이면 바로 끊는다.
+줄(`RESOURCE_EXHAUSTED (code 429)`)이 보이면 바로 끊는다.
 API 키 방식은 꼴이 달라 로그에 `Error 429 …`, stderr 에 `"error_code":429` 를 남기고 바로 끝난다 —
 둘 다 문다. 과부하(503 「수요가 몰렸다」)도 같이 문다 — agy 는 그 모델로 몇 분씩 다시 시도하다 시간을 다
 쓴다(API 키 방식 실측 2026-10-08: 3.8 Flash 에서 5분 내내 503 · 다음 후보로 안 넘어갔다).
@@ -55,7 +55,7 @@ API_SETTINGS = {'modelProvider': 'gemini'}   # agy 가 로그인 없이 API 키�
 PRINT_TIMEOUT_RE = re.compile(r'\[agy\] print timeout')
 DEFAULT_TIMEOUT_SEC = 1800  # 기본 한도 — 짧은 일도 그대로 둔다(끝나는 대로 돌아온다)
 POLL_SEC = 2                # 로그를 훑고 agy 가 끝났나 보는 간격
-KILL_GRACE_SEC = 15         # agy 제 한도(--print-timeout) 뒤에 기다려 주는 여유 — agy-bridge 0.4.2 에서 빌린 값
+KILL_GRACE_SEC = 15         # agy 제 한도(--print-timeout) 뒤에 기다려 주는 여유
 LOG_CARRY_CHARS = 200       # 읽기 경계에 걸친 패턴을 놓치지 않게 남기는 꼬리
 MAX_PROMPT_CHARS = 30000    # 윈도 명령줄 한도(32,767자) 안에 인자 전체가 들게 남긴다
 EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'overload': 2, 'empty': 2, 'timeout': 3}
