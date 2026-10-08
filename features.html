@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>설치하면 생기는 기능</title>
 <!--
-  설치 창의 「제공 기능」 링크가 여는 한 장이다. 읽는 사람은 Claude Code 를 처음 까는 동료다 —
+  설치 창의 「제공기능」 링크가 여는 한 장이다. 읽는 사람은 Claude Code 를 처음 까는 동료다 —
   무엇을 할 수 있게 되나를 한두 문장으로만 적는다. 어디에 무엇이 깔리나(경로 · 조건 · 값)는
   README 「무엇이 깔리나」가 든다 — 여기 옮겨 적지 않는다(모델 이름 · 개수처럼 자주 바뀌는 값도).
 
@@ -80,7 +80,7 @@
     padding: 15px 17px 14px; box-shadow: var(--shadow); border-top: 3px solid var(--k);
   }
   .card b { display: block; font-size: 15.5px; margin-bottom: 4px; }
-  .card b code { font-weight: 400; margin-left: 4px; }
+  .card b code { font-weight: 400; margin-left: 4px; white-space: nowrap; }
   .card span { color: var(--dim); font-size: 14.2px; }
   .card a { font-weight: 600; color: var(--k); }
 
@@ -129,12 +129,12 @@
     </div>
   </div>
   <div class="grid">
-    <div class="card"><b>그림 문</b><span>스크린샷이나 큰 그림을 Claude 에 보내기 전에 크기를 잽니다. 너무 크면 막고 줄여서 다시 열게 해, 그림 한 장에 대화가 멈추지 않습니다.</span></div>
-    <div class="card"><b>웹 다시 찾기</b><span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 옆에 알려 줍니다. 막지는 않습니다.</span></div>
-    <div class="card"><b>Tavily 웹 검색</b><span>Claude 가 쓸 웹 검색 도구를 하나 더 붙입니다. 키 없이도 검색과 본문 읽기는 됩니다.</span></div>
-    <div class="card"><b>문서 스킬</b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
-    <div class="card"><b>DRM 문서 읽기</b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
-    <div class="card"><b>사내 앱 만들기</b><span>사내 앱을 세우고 회사 LLM 게이트웨이 · SSO · 배포를 붙입니다. 회사 코딩 기준에서 필요한 장만 골라 엽니다.</span></div>
+    <div class="card"><b>그림 문 <code>image-gate</code></b><span>스크린샷이나 큰 그림을 Claude 에 보내기 전에 크기를 잽니다. 너무 크면 막고 줄여서 다시 열게 해, 그림 한 장에 대화가 멈추지 않습니다.</span></div>
+    <div class="card"><b>웹 다시 찾기 <code>web-retry</code></b><span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 옆에 알려 줍니다. 막지는 않습니다.</span></div>
+    <div class="card"><b>Tavily 웹 검색 <code>tavily-search</code></b><span>Claude 가 쓸 웹 검색 도구를 하나 더 붙입니다. 키 없이도 검색과 본문 읽기는 됩니다.</span></div>
+    <div class="card"><b>문서 스킬 <code>document-skills</code></b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
+    <div class="card"><b>DRM 문서 읽기 <code>drm-office-read</code></b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
+    <div class="card"><b>사내 앱 만들기 <code>inhouse-app</code></b><span>사내 앱을 세우고 회사 LLM 게이트웨이 · SSO · 배포를 붙입니다. 회사 코딩 기준에서 필요한 장만 골라 엽니다.</span></div>
   </div>
 </section>
 
@@ -147,7 +147,7 @@
     </div>
   </div>
   <div class="grid">
-    <div class="card"><b>뒤에서 맡기기</b><span>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 agy 에게 넘깁니다. 끝나면 Claude 가 결과를 거둬 옵니다.</span></div>
+    <div class="card"><b>뒤에서 맡기기 <code>agy-background</code></b><span>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 agy 에게 넘깁니다. 끝나면 Claude 가 결과를 거둬 옵니다.</span></div>
     <div class="card"><b>막히면 다음 모델로</b><span>한도에 걸리거나 서버가 몰리면 다음 모델로 다시 띄웁니다. 사외는 제미나이를 먼저 쓰고 마지막에 Claude 로, 사내는 회사 키가 받는 모델을 일의 무게로 골라 씁니다.</span></div>
   </div>
 </section>
@@ -162,12 +162,12 @@
     </div>
   </div>
   <div class="grid">
-    <div class="card"><b>Opus 5 · 1M 컨텍스트</b><span>기본 모델이 Opus 5 이고, 한 번에 100만 토큰까지 읽습니다. 긴 코드나 문서 묶음을 통째로 넣을 수 있습니다. <code>/model</code> 에서 다른 Claude 모델도 같은 1M 창으로 고릅니다.</span></div>
-    <div class="card"><b>웹 검색</b><span>게이트웨이는 웹 검색을 스스로 하지 않습니다. 프록시가 그 자리를 게이트웨이의 제미나이 검색으로 채워, 사내에서도 출처가 달린 결과가 옵니다.</span></div>
-    <div class="card"><b>웹 가져오기</b><span>사내 망이 끊는 사전 확인을 건너뛰게 해, 열리는 주소는 본문을 가져옵니다.</span></div>
-    <div class="card"><b>그림 보기</b><span>파일로 연 그림을 게이트웨이가 버리지 않는 자리로 옮겨 넘깁니다. 그래서 사내에서도 Claude 가 그림을 봅니다.</span></div>
+    <div class="card"><b>Opus 5 · 1M 컨텍스트 <code>claude-opus-5[1m]</code></b><span>사내에서는 Claude Code 가 대화 창을 20만 토큰으로 줄여 썼습니다. 게이트웨이는 100만까지 받으므로, 모델 이름을 맞춰 100만 토큰 창으로 엽니다. <code>/model</code> 의 다른 Claude 모델도 같습니다.</span></div>
+    <div class="card"><b>웹 검색 <code>WebSearch</code></b><span>게이트웨이가 웹 검색을 직접 하지 않아, 사내에서는 늘 빈손이었습니다. 프록시가 그 자리를 게이트웨이의 제미나이 검색으로 채워, 출처가 달린 결과가 옵니다.</span></div>
+    <div class="card"><b>웹 가져오기 <code>WebFetch</code></b><span>페이지를 받기 전에 그 주소가 안전한지 Anthropic 에 묻는데, 사내 망이 그 확인을 끊어 열리는 주소도 못 가져왔습니다. 그 확인을 건너뛰게 해 본문을 가져옵니다.</span></div>
+    <div class="card"><b>그림 보기 <code>Read</code></b><span>파일로 연 그림을 게이트웨이가 조용히 버려, 사내에서는 Claude 가 그림을 못 봤습니다. 프록시가 그림을 게이트웨이가 읽는 자리로 옮겨 넘깁니다.</span></div>
     <div class="card"><b>키 하나로 셋</b><span>Gemini CLI 와 안티그래비티도 같은 회사 키로 붙습니다. 키는 한 번만 넣습니다.</span></div>
-    <div class="card"><b>늘 켜진 프록시</b><span>로그인할 때 감시 작업이 프록시를 띄우고, 꺼지면 다시 살립니다.</span></div>
+    <div class="card"><b>늘 켜진 프록시 <code>PGPTProxy-Watchdog</code></b><span>프록시가 꺼지면 위 고침이 다 멈춥니다. 로그인할 때 감시 작업이 프록시를 띄우고, 꺼지면 다시 살립니다.</span></div>
   </div>
 </section>
 
