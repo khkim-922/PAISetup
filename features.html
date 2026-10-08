@@ -9,7 +9,8 @@
   무엇을 할 수 있게 되나를 한두 문장으로만 적는다. 어디에 무엇이 깔리나(경로 · 조건 · 값)는
   README 「무엇이 깔리나」가 든다 — 여기 옮겨 적지 않는다(모델 이름 · 개수처럼 자주 바뀌는 값도).
 
-  ⚠ 밖으로 나가는 주소가 한 자도 없다 — 글꼴 · 스타일 · 그림을 다 안에 든다. 사내망에서도
+  ⚠ 밖에서 불러오는 것이 한 자도 없다 — 글꼴 · 스타일 · 그림을 다 안에 든다. 밖으로 가는 것은 사람이
+    누르는 링크(Tavily 무료 키 받기)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
     더블클릭 한 번에 떠야 하기 때문이다.
   ⚠ 진본은 claude-config 의 docs/features.html 이고, 배포본 뿌리로 나가는 것은 뽑기
     (dist.manifest.conf)가 든다 — 저쪽에서 고치지 않는다.
@@ -131,10 +132,10 @@
   <div class="grid">
     <div class="card"><b>그림 문 <code>image-gate</code></b><span>스크린샷이나 큰 그림을 Claude 에 보내기 전에 크기를 잽니다. 너무 크면 막고 줄여서 다시 열게 해, 그림 한 장에 대화가 멈추지 않습니다.</span></div>
     <div class="card"><b>웹 다시 찾기 <code>web-retry</code></b><span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 옆에 알려 줍니다. 막지는 않습니다.</span></div>
-    <div class="card"><b>Tavily 웹 검색 <code>tavily-search</code></b><span>Claude 가 쓸 웹 검색 도구를 하나 더 붙입니다. 키 없이도 검색과 본문 읽기는 됩니다.</span></div>
+    <div class="card"><b>Tavily 웹 검색 <code>tavily-search</code></b><span>Claude 가 쓸 웹 검색 도구를 하나 더 붙입니다. 키 없이는 검색과 본문 읽기만 되고, 무료 키를 넣으면 한 달 검색 1,000회까지 쓰고 사이트 지도 · 크롤 · 리서치도 열립니다. 받은 키는 환경변수 <code>TAVILY_API_KEY</code> 에 넣습니다. <a href="https://app.tavily.com">무료 키 받기</a></span></div>
     <div class="card"><b>문서 스킬 <code>document-skills</code></b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
     <div class="card"><b>DRM 문서 읽기 <code>drm-office-read</code></b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
-    <div class="card"><b>사내 앱 만들기 <code>inhouse-app</code></b><span>사내 앱을 세우고 회사 LLM 게이트웨이 · SSO · 배포를 붙입니다. 회사 코딩 기준에서 필요한 장만 골라 엽니다.</span></div>
+    <div class="card"><b>사내 앱 만들기 <code>inhouse-app</code></b><span>회사 디지털혁신그룹이 배포한 사내 앱 기준을 설명해 주는 스킬입니다. 사내 LLM 게이트웨이 · SSO · 배포를 붙일 때 그 기준에서 필요한 장만 골라 엽니다.</span></div>
   </div>
 </section>
 
@@ -184,7 +185,7 @@
     <div class="card"><b>게이트웨이 배관 <code>gateway</code></b><span>회사 게이트웨이에 붙는 앱 코드 한 벌과 그 검사입니다. Anthropic · OpenAI · Gemini 규격을 다 듭니다.</span></div>
     <div class="card"><b>검사 <code>check</code></b><span>새 저장소가 처음 갖출 검사 한 벌입니다. 문서가 없는 파일을 가리키는지, 만든 HTML 이 깨졌는지 같은 것을 잡습니다.</span></div>
     <div class="card"><b>설정 저장소 <code>config-repo</code></b><span>내 Claude Code 설정을 git 저장소로 들고 다니는 견본입니다. <a href="config-repo-howto.html">만드는 법</a></span></div>
-    <div class="card"><b>사내 코딩 기준 <code>vibecoding</code></b><span>회사가 쓴 FastAPI 개발 규약입니다. 사내 앱 만들기 스킬이 이 안의 장을 엽니다.</span></div>
+    <div class="card"><b>사내 코딩 기준 <code>vibecoding</code></b><span>회사 디지털혁신그룹이 배포한 사내 앱(FastAPI) 기준입니다. 사내 앱 만들기 스킬이 이 안의 장을 엽니다.</span></div>
     <div class="card"><b>사내 환경 문서 <code>~/.claude/posco/</code></b><span>게이트웨이 주소 · 모델 · 오류 기록입니다. 회사 게이트웨이에 무언가를 붙이기 전에 읽습니다.</span></div>
   </div>
 </section>
@@ -206,7 +207,7 @@
 
 <footer>
   어디에 무엇이 깔리는지는 같은 폴더의 <code>README.md</code> 「무엇이 깔리나」가 자세히 적습니다.
-  이 페이지는 밖으로 나가는 주소가 없어 사내망에서도 열립니다.
+  이 페이지는 밖에서 불러오는 것이 없어 사내망에서도 열립니다.
 </footer>
 
 </body>
