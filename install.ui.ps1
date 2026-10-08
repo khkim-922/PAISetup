@@ -184,6 +184,26 @@ function Get-Directive([string]$Key, [string]$File = $EnvPath) {
 # ⚠ 풀어 놓고 직접 돌리는 자리에는 이 파일이 없다 — 그러면 `$null` 이고 지금과 같이 빈 칸이다.
 $KeptEnvPath = Join-Path (Split-Path -Parent $Here) 'install.env'
 
+# ── 지난번에 고른 것 — 자동 실행이 읽는 선택 파일(`autorun.args`)이 그 기록이다 ────────────
+# ⚠ **칸은 이것으로 채운다 — 없을 때만 기본값이다.** 설치가 끝날 때 「다음에는 이것을 누르면 됩니다」로
+#   보낸 사람이 창을 다시 열었는데 기본값이 뜨면, 그대로 누르는 순간 그 사람이 켰던 제품 · VS Code ·
+#   제작자 칸이 꺼진 채로 다시 적혀 자동 실행이 그것들을 조용히 안 올린다.
+# ⚠ **자리는 값 파일과 같은 층이고, 꼴은 쓰는 자(몸통의 자동 실행 칸)가 정한다** — 한 줄에 하나 ·
+#   `-Pick` 다음 줄이 그 값. 자동 실행을 끄면 몸통이 이 파일을 걷으므로, 없으면 기본값이 맞다.
+$Saved = $null
+$savedPath = Join-Path (Split-Path -Parent $Here) 'autorun.args'
+if (Test-Path -LiteralPath $savedPath) {
+  try {
+    $al = @(Get-Content -LiteralPath $savedPath -Encoding UTF8 | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $pi = [array]::IndexOf($al, '-Pick')
+    $Saved = @{
+      Pick     = if ($pi -ge 0 -and $pi + 1 -lt $al.Count) { @($al[$pi + 1] -split '[,\s]+' | Where-Object { $_ }) } else { @() }
+      NoVsCode = $al -contains '-NoVsCode'
+      Personal = $al -contains '-WithPersonalConfig'
+    }
+  } catch { $Saved = $null }
+}
+
 # ── 기록이 쌓이는 자리 — **이 파일에 한 번만 적는다** ───────────────────────────
 # 쓰는 자(`Save-RunLog`)와 거기로 가는 문(아래 단추 줄의 링크)이 같은 자리를 가리켜야 한다.
 # 자리를 둘에 적으면 옮기는 날 한쪽만 고쳐지고, 링크는 **없는 폴더를 멀쩡히 연다.**
@@ -383,7 +403,7 @@ $cCfg.Text = '제작자의 Claude Code 규범 · 룰 · 스킬도 깝니다'
 #   박아 둔 126 은 **칸 높이 밖**이라, 그 판에서는 이 칸이 통째로 안 보인 채 기본값으로 돈다.
 $cCfg.Location = New-Object Drawing.Point(16, (48 + $appRow))
 $cCfg.Size = New-Object Drawing.Size(560, 22)
-$cCfg.Checked = [bool]$WithPersonalConfig
+$cCfg.Checked = [bool]$WithPersonalConfig -or ($Saved -and $Saved.Personal)
 $gO.Controls.Add($cCfg)
 
 # ⚠ **로그온할 때 자동 실행** — 작업 스케줄러(`PAISetup-AutoRun`)가 설치 몸통을 **보이는 콘솔 창**
@@ -433,7 +453,7 @@ if ($Choices.Count) {
     #   잘린 줄은 **화면에서만 보이고** 아무 검사에도 안 걸린다.
     $c.AutoSize = $true
     $c.Location = New-Object Drawing.Point($x, 48)
-    $c.Checked = [bool]$choice.On
+    $c.Checked = if ($Saved -and $Saved.Pick.Count) { $Saved.Pick -contains $choice.Key } else { [bool]$choice.On }
     $c.Tag = $choice.Key
     $gO.Controls.Add($c)
     $cApps += ,$c
@@ -458,15 +478,15 @@ if ($Choices.Count) {
   $lApp2.ForeColor = [Drawing.Color]::DimGray
   $gO.Controls.Add($lApp2)
 
-  # ⚠ **사외 기본은 끔이다** — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다.
-  #   사내는 VS Code 가 주 무대라 켜 둔다. 자리는 위에서 이미 쟀다(`$offsite`).
+  # ⚠ **사외 기본은 끔이다** — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다. 지난번에 고른
+  #   것(`$Saved`)이 있으면 그것을 따른다. 사내는 VS Code 가 주 무대라 켜 둔다. 자리는 위에서 이미 쟀다(`$offsite`).
   $cVsc = New-Object Windows.Forms.CheckBox
   $cVsc.Text = 'VS Code 와 켠 것의 확장도 깝니다  (사내는 필수, 사외는 선택)'
   # ⚠ **「필수」라 적었으면 못 꺼야 한다.** 끌 수 있는데 필수라 적으면 그 글이 거짓말이 된다 —
   #   사내는 켠 채로 잠그고, 사외는 기본을 끈 채 사람에게 맡긴다.
   $cVsc.Location = New-Object Drawing.Point(16, 100)
   $cVsc.Size = New-Object Drawing.Size(560, 22)
-  $cVsc.Checked = -not $offsite
+  $cVsc.Checked = if (-not $offsite) { $true } elseif ($Saved) { -not $Saved.NoVsCode } else { $false }
   $cVsc.Enabled = $offsite
   $gO.Controls.Add($cVsc)
 }
