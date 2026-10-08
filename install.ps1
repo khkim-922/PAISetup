@@ -1405,17 +1405,21 @@ $inside     = ($site -eq 'inside')
 $wantProxy  = [bool]($proxyRel  -and $inside)
 # ── agy 묶음 — agy 모델 값 · agy 설정 셋 (claude-config 결정 0083 · 0086 · 0088 · #117) ──────
 # Claude Code 가 agy 에게 일을 맡기는 길은 백그라운드 래퍼(스킬 `agy-background`) 하나다 — 그 래퍼가 고를
-# 모델(`$AgyModelVars`)과, agy 가 Claude Code 와 같은 규범·스킬·룰을 읽게 하는 설정 셋이다. **둘이 같은 조건을
-# 탄다** — 맡긴 일을 받는 agy 가 같은 규범 아래 있어야 맡긴 뜻이 선다.
+# 모델(`$AgyModelVars`)과, agy 가 Claude Code 와 같은 규범·스킬·룰을 읽게 하는 설정 셋이다.
 # ⚠ **자리를 안 가린다 — 갈리는 것은 모델 값뿐이다.** 사내 agy 는 회사 키로 게이트웨이를 타서 서는
 #   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다). 설정 셋은 사내에서도 그대로 선다
 #   (사내 PC 실측 2026-10-08 · claude-config #117 · 결정 0086).
 # ⚠ **다리(MCP `agy-bridge`)는 안 깐다 — 깔린 것은 걷는다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아,
 #   맡겨 두고 딴 일을 하라는 이 묶음의 뜻과 어긋난다. 걷는 칸은 아래 8 칸(Tavily 곁)이다.
-# ⚠ **제작자 설정 칸을 탄다** — 설정 셋이 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다. 칸을 끄면
-#   가리킬 것이 없다.
-$wantAgyKit = [bool]($WithPersonalConfig -and
-                     ($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
+# ⚠ **둘은 조건이 다르다**(결정 0089).
+#   * 모델 값(`$wantAgyModels`)은 「자리 × Claude 와 안티그래비티를 골랐나」의 사실이라 그 둘만 탄다. 래퍼는
+#     제작자 설정 칸으로도, 사람이 붙인 설정 저장소로도 오는데 설치기는 어느 쪽인지 모른다 — 칸에 묶으면
+#     저장소로 받은 PC 에서 래퍼는 있는데 값은 아무도 안 심고, 래퍼는 한도에서 넘어갈 데 없이 멈춘다.
+#     래퍼가 없는 PC 에는 읽는 자 없는 이름 두셋이 남는다 — 해는 없고, 래퍼가 오면 바로 쓴다.
+#   * 설정 셋(`$wantAgyKit`)은 제작자 설정 칸을 탄다 — 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다.
+#     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다.
+$wantAgyModels = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
+$wantAgyKit    = [bool]($WithPersonalConfig -and $wantAgyModels)
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)  { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
@@ -2186,7 +2190,7 @@ $AgyModelVarsBySite = @{
 }
 $AgyModelSite = if ($inside) { 'inside' } else { 'outside' }
 $AgyModelVars = $AgyModelVarsBySite[$AgyModelSite]
-if ($wantAgyKit) {
+if ($wantAgyModels) {
   # 모델 값 — 위 `$AgyModelVars`(이 자리의 것).
   foreach ($k in $AgyModelVars.Keys) {
     if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $AgyModelVars[$k]) {
@@ -4640,12 +4644,15 @@ if ($inside) {
   try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
-# agy 묶음 — 모델 값 · 설정 셋. 옛 다리를 걷다 진 것은 그 칸이 실패로 센다.
+# agy 묶음 — 모델 값 · 설정 셋. 심는 조건이 둘이라 재는 조건도 둘이다(위 `$wantAgyModels` 곁말).
+#   옛 다리를 걷다 진 것은 그 칸이 실패로 센다.
+if ($wantAgyModels) {
+  $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
+                Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
+}
 # ⚠ **설정 셋은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
 #   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.
 if ($wantAgyKit) {
-  $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
-                Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
   $agySrcFiles = @(Get-ChildItem -LiteralPath (Join-Path $Here '.gemini.global') -File -ErrorAction SilentlyContinue)
   $agySame = @($agySrcFiles | Where-Object {
     $t = Join-Path $env:USERPROFILE ".gemini\config\$($_.Name)"
