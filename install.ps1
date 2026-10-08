@@ -1403,15 +1403,16 @@ $codexTpl   = Read-Directive $EnvFile 'codex-config'
 $geminiTpl  = Read-Directive $EnvFile 'gemini-config'
 $inside     = ($site -eq 'inside')
 $wantProxy  = [bool]($proxyRel  -and $inside)
-# ── agy 묶음 — agy 다리(MCP) · agy 모델 두 값 · agy 설정 셋 (claude-config 결정 0083 · #117) ─────────
+# ── agy 묶음 — agy 다리(MCP) · agy 모델 값 · agy 설정 셋 (claude-config 결정 0083 · 0086 · #117) ──────
 # Claude Code 가 agy 에게 일을 넘기는 다리(`agy-bridge`)와 그 다리·래퍼가 고를 모델(`$AgyModelVars`), 그리고
 # agy 가 Claude Code 와 같은 규범·스킬·룰을 읽게 하는 설정 셋이다. **셋이 같은 조건을 탄다** — 다리로 넘긴
 # 일을 받는 agy 가 같은 규범 아래 있어야 넘긴 뜻이 선다.
-# ⚠ **사내는 안 선다 — 게이트웨이 밖 갈래만 이 판에 들었다.** 사내 agy 는 회사 키로 게이트웨이를 타서
-#   모델·인증이 다르고, 그 갈래는 아직 안 쟀다(사내 몫은 claude-config #117 에 적어 두었다).
+# ⚠ **자리를 안 가린다 — 갈리는 것은 모델 값뿐이다.** 사내 agy 는 회사 키로 게이트웨이를 타서 서는
+#   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다). 다리 설치 · 고침 · 등록 · 설정 셋은 사내에서도
+#   그대로 선다(사내 PC 실측 2026-10-08 · claude-config #117 · 결정 0086).
 # ⚠ **제작자 설정 칸을 탄다** — 설정 셋이 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다. 칸을 끄면
 #   가리킬 것이 없다.
-$wantAgyKit = [bool]((-not $inside) -and $WithPersonalConfig -and
+$wantAgyKit = [bool]($WithPersonalConfig -and
                      ($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
@@ -2144,8 +2145,8 @@ if ($PickKeys -contains 'claude') {
   Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
 }
 
-# agy 다리(agy-bridge) — 판을 박아 깔고 세 줄을 고친다. 등록은 8 칸(Tavily 곁)이 한다.
-# ⚠ **`Install-NpmCli` 를 안 탄다 — 그쪽은 늘 최신으로 올린다.** 이 패키지는 아래 세 줄을 고쳐 쓰는데,
+# agy 다리(agy-bridge) — 판을 박아 깔고 네 줄을 고친다. 등록은 8 칸(Tavily 곁)이 한다.
+# ⚠ **`Install-NpmCli` 를 안 탄다 — 그쪽은 늘 최신으로 올린다.** 이 패키지는 아래 네 줄을 고쳐 쓰는데,
 #   새 판이 그 자리를 바꾸면 고침이 안 먹은 채 「깔았다」로 끝난다. 판을 올릴 때는 사람이 고침을 다시 잰다.
 # ⚠ **앞 두 줄을 고치는 까닭 — 윈도에서 창이 뜬다.** 다리가 agy 를 `detached: true` 로 띄워 agy 가 콘솔 없이
 #   서고, agy 가 명령·MCP 서버를 돌릴 때마다 새 창이 떴다 사라진다. 고친 꼴은 상류 이슈
@@ -2156,9 +2157,14 @@ if ($PickKeys -contains 'claude') {
 #   목록이 은퇴한 `Gemini 3.5 Flash` 를 들어 로그인 계정 agy 에서는 목록이 거의 비고, 비면 `--model` 없이
 #   agy 가 고른 모델로 돌아 **한도에 걸리면 넘어가지 않고 그대로 실패한다.** 고친 꼴은 기본 모델 뒤에
 #   `AGY_FALLBACK_MODELS`(아래 `$AgyModelVars`)를 잇는다.
-#   ⚠ **도구별 목록은 안 고친다** — 게이트웨이를 타는 agy 는 3.5 를 아직 낸다. 다리가 `agy models` 로
-#     거르므로 **이어 붙이기만 하면** 두 자리가 각자 낸 모델로 선다. 이름을 갈아 끼우면 저쪽이 깨진다.
-#     상류에 같은 사정의 이슈 sshahzaiib/agy-bridge#17 · PR #18(이름 갈기)이 열려 있다.
+#   상류에 같은 사정의 이슈 sshahzaiib/agy-bridge#17 · PR #18(이름 갈기)이 열려 있다.
+# ⚠ **넷째 줄을 고치는 까닭 — 도구마다 모델을 고를 손잡이가 없다.** 다리의 도구별 목록은 패키지에 박혀
+#   있는데, 사내에서는 일의 무게에 따라 모델을 가르고 싶다 — 맡기기(`delegate`)는 3.1 Pro, 나머지는 3.6
+#   Flash(사람 판단 2026-10-08). 고친 꼴은 환경변수 `AGY_MODEL_<도구 이름 대문자>`(`;` 로 여럿)가 있으면 그
+#   도구의 목록을 그 값으로 **갈아 끼운다** — 다리의 `AGY_TIMEOUT_<도구>` 와 같은 꼴의 이름이다. 없으면
+#   패키지 목록 그대로다. 값은 `agy models` 의 표시 이름 그대로 적는다(목록 거르기가 이름으로 견준다).
+#   ⚠ **패키지 목록의 이름은 손대지 않는다** — `agy models` 는 게이트웨이가 아니라 agy 안에 든 붙박이 목록을
+#     내서(사내 PC 실측 2026-10-08) 자리마다 다른 값이 필요한 것은 도구 목록이 아니라 우리 값이다.
 # ⚠ **이미 고쳤으면 지나가고, 원문을 못 찾으면 실패로 센다** — 고칠 자리를 못 찾은 채 넘어가면 창이 다시
 #   뜨거나 넘어가기가 죽는데 까닭이 어디에도 안 남는다.
 $AgyBridgeName = 'agy-bridge'
@@ -2171,9 +2177,31 @@ $AgyBridgeFix  = @(
   @{ From = 'if (models.length === 0) {'
      To   = 'for (const m of (process.env.AGY_FALLBACK_MODELS || "").split(";").map((s) => canonical(s.trim()))) if (m && available.includes(m) && !models.includes(m)) models.push(m);' +
             "`n    if (models.length === 0) {" }
+  @{ From = 'chain: tool.chain,'
+     To   = 'chain: process.env["AGY_MODEL_" + tool.name.toUpperCase()] ? process.env["AGY_MODEL_" + tool.name.toUpperCase()].split(";").map((s) => s.trim()).filter(Boolean) : tool.chain,' }
 )
-# agy 가 고를 모델 — **제미나이를 먼저 쓰고, 그 한도가 차면 다른 데로 넘어간다.** 설치가 사용자 환경변수로
-# 심고, 다리와 백그라운드 래퍼(스킬 `agy-background`)가 같은 이름을 읽는다.
+# 고침이 무엇을 하나 — 화면 줄과 끝 검증이 같은 글자로 댄다(사람이 두 줄을 견줘 읽는다).
+$AgyBridgeFixWhat = '창 숨김 · 모델 넘김 · 도구별 모델'
+# agy 가 고를 모델 — 설치가 사용자 환경변수로 심고, 다리와 백그라운드 래퍼(스킬 `agy-background`)가 같은
+# 이름을 읽는다. **값은 자리마다 다르다** — 사내 agy 는 회사 키로 게이트웨이를 타고, 사외는 각자 로그인으로 선다.
+#
+# ── 사내 — 일의 무게로 모델을 가르고, 넘기지 않는다 ──
+# ⚠ **게이트웨이가 받는 이름만 든다.** `agy models` 는 붙박이 목록이라 3.8 도 내지만 게이트웨이는
+#   `gemini-3.8-flash` 를 「모델을 찾을 수 없습니다」(P002)로 거부한다(사내 PC 실측 2026-10-08). 게이트웨이에서
+#   서는 것 가운데 쓸 것은 3.6 Flash 와 3.1 Pro 다(사람 판단).
+# ⚠ **맡기기는 3.1 Pro, 나머지는 3.6 Flash** — 추론이 드는 일만 Pro 로 보낸다(사람 판단 2026-10-08). 넷째
+#   고침의 `AGY_MODEL_DELEGATE` 가 `delegate` 의 목록을 갈아 끼우고, 백그라운드 래퍼도 `--model` 이 없으면
+#   이 값을 먼저 쓴다(긴 일을 뒤에서 맡기는 것도 맡기기다). `adversarial_review` 는 패키지 목록이 이미
+#   3.1 Pro 라 손대지 않는다.
+# ⚠ **`analyze_files` 도 3.6 Flash 로 갈아 끼운다** — 패키지 목록이 「3.5 Flash → 3.1 Pro (Low)」라 3.5 가
+#   걸러지면 Pro 로 돈다(가짜 agy 실측). 큰 파일 읽기는 대개 뽑아내기라 Flash 로 두고, 판단이 드는 물음
+#   (여러 파일 견주기 · 어긋남 찾기)만 부르는 쪽이 그 호출의 `model` 로 `AGY_MODEL_DELEGATE` 값을 준다 —
+#   그 말은 세션 시작에 한 줄로 실린다(아래 Tavily 키 안내 곁 · 사람 판단 2026-10-08).
+# ⚠ **넘길 모델(`AGY_FALLBACK_MODELS`)을 안 둔다** — 회사 키는 예산 한도라 하나가 막히면 다 막힌다(사람 판단).
+#
+# ── 사외 · 자리 모름 — 제미나이를 먼저 쓰고, 그 한도가 차면 다른 데로 넘어간다 ──
+# ⚠ **자리를 모르면 사외 값이다**(사람 판단 2026-10-08) — 자리를 모르는 것은 값 파일에 자리 재는 줄이 없을
+#   때뿐이고, 배포본에는 늘 있다.
 # ⚠ **한도가 차는 단위가 방식마다 다르다.** 로그인 방식은 「제미나이」(3.8 Flash · 3.1 Pro)와 「그외」(Claude
 #   4.6 둘) **갈래마다** 차서, 3.8 Flash 가 막히면 3.1 Pro 도 같이 막힌다. API 키 방식은 **모델마다** 찬다
 #   (무료 키 실측 2026-10-08 — 한도 이름이 `…PerProjectPerModel-FreeTier`). 그래서 넘길 차례는
@@ -2186,10 +2214,23 @@ $AgyBridgeFix  = @(
 # ⚠ **`AGY_DEFAULT_MODEL` 은 다리가 원래 아는 이름이다** — 셋째 고침이 안 먹은 판에서도 기본 모델만은 선다.
 #   `AGY_FALLBACK_MODELS` 는 셋째 고침과 래퍼가 읽는 이름이고 `;` 로 여럿을 잇는다. 이름은 `agy models` 의
 #   표시 이름 그대로다 — 없는 이름은 걸러져 해롭지 않지만 넘어갈 자리가 조용히 사라진다.
-$AgyModelVars = [ordered]@{
-  AGY_DEFAULT_MODEL   = 'Gemini 3.8 Flash (High)'
-  AGY_FALLBACK_MODELS = 'api:Gemini 3.8 Flash (High);api:Gemini 3.7 Flash (High);api:Gemini 3.6 Flash (High);Claude Sonnet 4.6 (Thinking)'
+#
+# ⚠ **다른 자리의 값이 남아 있으면 걷는다 — 우리가 심은 값과 글자까지 같을 때만.** 한 PC 가 자리를 옮기면
+#   (노트북) 앞 자리의 이름이 남는다. 사외의 `api:` 목록이 사내에 남으면 래퍼가 회사 키로 가짜 홈을 띄워
+#   안 잰 길로 나간다. 값이 다르면 사람이 고친 것이라 안 건드린다.
+$AgyModelVarsBySite = @{
+  inside  = [ordered]@{
+    AGY_DEFAULT_MODEL       = 'Gemini 3.6 Flash (High)'
+    AGY_MODEL_DELEGATE      = 'Gemini 3.1 Pro (High)'
+    AGY_MODEL_ANALYZE_FILES = 'Gemini 3.6 Flash (High)'
+  }
+  outside = [ordered]@{
+    AGY_DEFAULT_MODEL   = 'Gemini 3.8 Flash (High)'
+    AGY_FALLBACK_MODELS = 'api:Gemini 3.8 Flash (High);api:Gemini 3.7 Flash (High);api:Gemini 3.6 Flash (High);Claude Sonnet 4.6 (Thinking)'
+  }
 }
+$AgyModelSite = if ($inside) { 'inside' } else { 'outside' }
+$AgyModelVars = $AgyModelVarsBySite[$AgyModelSite]
 function Get-AgyBridgeDir {
   $r = ("$(Get-Quiet 'npm' @('root','-g') | Select-Object -First 1)").Trim()
   if ($r) { return (Join-Path $r $AgyBridgeName) }
@@ -2245,14 +2286,14 @@ if ($wantAgyKit) {
   if ((Get-AgyBridgeVer) -eq $AgyBridgeVer) {
     $abText = Read-AgyBridgeMain
     switch (Get-AgyBridgeFixState $abText) {
-      'fixed' { Write-Host "  $abLabel — 고침 있음 (창 숨김 · 모델 넘김)" }
+      'fixed' { Write-Host "  $abLabel — 고침 있음 ($AgyBridgeFixWhat)" }
       'pending' {
         $todo = @(Get-AgyBridgeFixTodo $abText)
         $t = $abText
         foreach ($x in $todo) { $t = $t.Replace($x.From, $x.To) }
         [IO.File]::WriteAllText((Join-Path (Get-AgyBridgeDir) 'dist\index.js'), $t, (New-Object Text.UTF8Encoding($false)))
         if ((Get-AgyBridgeFixState (Read-AgyBridgeMain)) -eq 'fixed') {
-          Write-Host "  $abLabel — 고침을 넣었다 ($($todo.Count) 줄 · 창 숨김 · 모델 넘김)" -ForegroundColor Green
+          Write-Host "  $abLabel — 고침을 넣었다 ($($todo.Count) 줄 · $AgyBridgeFixWhat)" -ForegroundColor Green
         } else {
           Write-Host "  ! $abLabel — 고침을 썼는데 다시 읽으니 안 섰다" -ForegroundColor Red
           $Fails.Add('agy 다리 고침')
@@ -2264,12 +2305,28 @@ if ($wantAgyKit) {
       }
     }
   }
-  # 모델 두 값 — 위 `$AgyModelVars`. 다리가 안 깔려도 심는다: 백그라운드 래퍼도 같은 이름을 읽는다.
+  # 모델 값 — 위 `$AgyModelVars`(이 자리의 것). 다리가 안 깔려도 심는다: 백그라운드 래퍼도 같은 이름을 읽는다.
   foreach ($k in $AgyModelVars.Keys) {
     if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $AgyModelVars[$k]) {
       Write-Host "  $k — 이미 맞다"
     } else {
       Plant-Var $k $AgyModelVars[$k]
+    }
+  }
+  # 다른 자리의 값 — 이 자리에 없는 이름이 우리가 심은 값 그대로 남아 있으면 걷는다(위 `$AgyModelVarsBySite` 곁말).
+  foreach ($s in $AgyModelVarsBySite.Keys) {
+    if ($s -eq $AgyModelSite) { continue }
+    foreach ($k in $AgyModelVarsBySite[$s].Keys) {
+      if ($AgyModelVars.Contains($k)) { continue }
+      if ([Environment]::GetEnvironmentVariable($k, 'User') -ne $AgyModelVarsBySite[$s][$k]) { continue }
+      try {
+        [Environment]::SetEnvironmentVariable($k, $null, 'User')
+        Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
+        Write-Host "  $k — 걷었다 (다른 자리의 값)" -ForegroundColor Green
+      } catch {
+        Write-Host "  ! $k 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
+        $Fails.Add("$k 걷기")
+      }
     }
   }
 }
@@ -3152,6 +3209,28 @@ if ($cfg) {
     Write-Host '  모델 목록 — 걷었다 (게이트웨이를 안 쓰는 자리다)' -ForegroundColor Green
   }
 
+  # WebFetch 검증 건너뛰기 — **사내 자리에만 켠다** (claude-config #118 · 결정 0087).
+  # 사내 망이 `api.anthropic.com` 을 SNI 로 끊어, WebFetch 가 가져오기 전에 묻는 Anthropic 차단 목록 조회
+  # (`/api/web/domain_info`)가 늘 지고 — 그러면 **열리는 주소도 못 가져온다**(사내 PC 실측 2026-10-08).
+  # 이 키가 그 조회를 건너뛴다(Claude Code 설정 스키마의 키 · 2.1.293 바이너리에서 확인).
+  # ⚠ **망 자리로 가른다 — 게이트웨이가 아니다.** 끊는 것은 사내 망 장비라 `$inside` 를 본다.
+  # ⚠ **잃는 것은 Anthropic 의 페치 차단 목록 검사다** — 그래서 사외에서는 안 켜고, 우리가 켠 값(참)이
+  #   남았으면 걷는다(위 모델 목록과 같은 규율 · 거짓이나 다른 값은 사람이 둔 것이라 안 건드린다).
+  $skipOn = $cfg.PSObject.Properties['skipWebFetchPreflight'] -and ($cfg.skipWebFetchPreflight -eq $true)
+  if ($inside) {
+    if ($skipOn) {
+      Write-Host '  WebFetch 검증 건너뛰기 — 이미 켜져 있다'
+    } else {
+      $cfg | Add-Member -NotePropertyName skipWebFetchPreflight -NotePropertyValue $true -Force
+      $dirty = $true
+      Write-Host '  WebFetch 검증 건너뛰기 — 켰다 (사내 망이 그 조회를 끊는다)' -ForegroundColor Green
+    }
+  } elseif ($skipOn) {
+    $cfg.PSObject.Properties.Remove('skipWebFetchPreflight')
+    $dirty = $true
+    Write-Host '  WebFetch 검증 건너뛰기 — 걷었다 (사외는 그 검사가 선다)' -ForegroundColor Green
+  }
+
   if ($wantEnv -and $Planted.Count -gt 0) {
     $pushed = 0
     foreach ($k in $Planted.Keys) {
@@ -3532,74 +3611,96 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
 #   비켜선다.** 그 자리의 몸통이 사라졌으면(저장소를 지웠다) 여기서 다시 심는다.
 # ⚠ **껍데기 글자와 matcher 는 씨앗의 `image-gate.sh` 한 벌이다.** 여기는 자리만 채운 한 줄을
 #   심고 matcher 는 그 파일 첫 줄에서 읽는다 — 손으로 한 벌 더 들면 저쪽과 조용히 어긋난다.
-$gateDir   = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
-$gateBody  = Join-Path $gateDir 'image-gate.py'
-$gateShell = Join-Path $gateDir 'image-gate.sh'
-$gateMatcher = $null; $gateCmd = $null; $gateOwner = $null
-if (Test-Path -LiteralPath $gateShell) {
-  $gm = Select-String -LiteralPath $gateShell -Pattern '^# matcher = (\S+)' -Encoding UTF8 | Select-Object -First 1
-  if ($gm) { $gateMatcher = $gm.Matches[0].Groups[1].Value }
-}
-if (-not (Test-Path -LiteralPath $gateBody) -or -not $gateMatcher) {
-  Write-Host '  ! 그림 문 — 몸통이나 껍데기(씨앗의 .claude/hooks/image-gate.py · .sh)가 없어 안 심는다' -ForegroundColor Yellow
-} elseif (-not $cfg) {
-  # 홈 설정을 못 읽은 자리(위 5칸이 까닭을 대고 물러난 그 갈래) — 여기서 또 세지 않는다.
-  Write-Host '  그림 문 — 홈 설정을 못 읽어 안 심는다'
-} else {
+# ⚠ **심는 손은 하나다 — 그림 문과 웹 다시 찾기(아래 · claude-config #117)가 같이 쓴다.** 훅마다
+#   이 고리를 베끼면 규율 하나를 고칠 때 한쪽만 낡는다. 설정 저장소 몸통(`session-start-body.sh` 의
+#   `plant_tool_hook`)과 같은 규율이다.
+#   `$Parts` 는 있어야 심는 씨앗 파일들이고 맨 앞이 껍데기다. `$Var` 는 심긴 한 줄이 자리를 담는 셸 이름,
+#   `$Tail` 은 그 줄 꼬리다. 심었으면 참을 돌려준다 — 부르는 쪽이 `$dirty` 를 세운다.
+function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts, [string]$Var, [string]$Tail) {
+  $dir = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
+  $shellPath = Join-Path $dir $Parts[0]
+  $matcher = $null
+  if (Test-Path -LiteralPath $shellPath) {
+    $m = Select-String -LiteralPath $shellPath -Pattern '^# matcher = (\S+)' -Encoding UTF8 | Select-Object -First 1
+    if ($m) { $matcher = $m.Matches[0].Groups[1].Value }
+  }
+  if (@($Parts | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dir $_)) }).Count -or -not $matcher) {
+    Write-Host "  ! $Label — 씨앗의 .claude/hooks/ 에 $($Parts -join ' · ') 가 없어 안 심는다" -ForegroundColor Yellow
+    return $false
+  }
+  if (-not $cfg) {
+    # 홈 설정을 못 읽은 자리(위 5칸이 까닭을 대고 물러난 그 갈래) — 여기서 또 세지 않는다.
+    Write-Host "  $Label — 홈 설정을 못 읽어 안 심는다"
+    return $false
+  }
   # ⚠ **경로를 슬래시로 굳힌다.** 명령은 Git Bash 가 읽고 역슬래시는 그 자리에서 탈출
   #   문자다 — `\.claude` 가 조용히 다른 글자가 된다.
-  $gateDirSh = ($gateDir -replace '\\', '/')
+  $dirSh = ($dir -replace '\\', '/')
   # ⚠ **폴더가 사라져도 도구를 안 막는다** — `.` 은 특수 내장이라 파일이 없으면 dash 는 그 자리에서
-  #   2 로 죽고(PreToolUse 에서 2 는 막기다), 그림이 아닌 호출까지 깨진다. 그래서 먼저 재고 물러난다.
-  #   꼬리의 `# image-gate.py` 는 옛 판 심는 손이 이 항목을 제 것으로 알아보게 두는 표지다 — 없으면
-  #   옛 판이 제 항목을 곁에 하나 더 심는다.
-  $gateCmd = '_ig="' + $gateDirSh + '"; [ -f "$_ig/image-gate.sh" ] || exit 0; . "$_ig/image-gate.sh" # image-gate.py'
+  #   2 로 죽고(PreToolUse 에서 2 는 막기다), 걸 일이 없는 호출까지 깨진다. 그래서 먼저 재고 물러난다.
+  $cmd = ('{0}="{1}"; [ -f "${0}/{2}" ] || exit 0; . "${0}/{2}"{3}' -f $Var, $dirSh, $Parts[0], $Tail)
+  # 우리 꼴 — 껍데기 이름이 든 명령(`image-gate.` · `web-retry.`)이다.
+  $marker = [IO.Path]::GetFileNameWithoutExtension($Parts[0]) + '.'
 
-  # 비켜설 자리 — 우리 꼴(`_ig="…"`)인데 다른 자리를 가리키고, 그 자리에 몸통과 껍데기가 다 있다.
-  foreach ($entry in @($cfg.hooks.PreToolUse)) {
-    foreach ($h in @($entry.hooks)) {
-      $c = if ($h) { [string]$h.command } else { '' }
-      if ($c -match '_ig="([^"]+)"') {
-        $d = $Matches[1]
-        # 문자열로 잇는다 — `Join-Path` 는 없는 드라이브(`Q:/…`)에서 던지고, 전역 Stop 아래라 설치가 통째로 선다.
-        if ($d -ne $gateDirSh -and (Test-Path -LiteralPath "$d/image-gate.py") -and
-            (Test-Path -LiteralPath "$d/image-gate.sh")) { $gateOwner = $d }
+  # 비켜설 자리 — 우리 꼴(`<Var>="…"`)인데 다른 자리를 가리키고, 그 자리에 부품이 다 있다.
+  $owner = $null
+  $pat = [regex]::Escape($Var) + '="([^"]+)"'
+  foreach ($ev in $Events) {
+    foreach ($entry in @($cfg.hooks.$ev)) {
+      foreach ($h in @($entry.hooks)) {
+        $c = if ($h) { [string]$h.command } else { '' }
+        if ($c.Contains($marker) -and $c -match $pat) {
+          $d = $Matches[1]
+          # 문자열로 잇는다 — `Join-Path` 는 없는 드라이브(`Q:/…`)에서 던지고, 전역 Stop 아래라 설치가 통째로 선다.
+          if ($d -ne $dirSh -and @($Parts | Where-Object { -not (Test-Path -LiteralPath "$d/$_") }).Count -eq 0) { $owner = $d }
+        }
       }
     }
   }
-}
-if ($gateOwner) {
-  Write-Host '  그림 문(PreToolUse) — 설정 저장소 진본이 들고 있어 비켜선다' -ForegroundColor Green
-  Write-Host "     $gateOwner"
-} elseif ($gateCmd) {
+  if ($owner) {
+    Write-Host "  $Label — 설정 저장소 진본이 들고 있어 비켜선다" -ForegroundColor Green
+    Write-Host "     $owner"
+    return $false
+  }
   # ⚠ **심기는 더하기만 하지 않는다 — 우리 꼴을 먼저 걷는다.** 명령 글자가 바뀌는 날
   #   옛 항목이 남아 **옛 고리가 같이 돌고**, 그러면 위 가드가 통째로 무효가 된다
-  #   (진본 훅의 같은 규율). 우리 꼴은 `image-gate.` 가 든 명령이다(옛 판은 `.py` 를 직접 불렀다).
+  #   (진본 훅의 같은 규율).
   $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
   if (-not $hooks) {
     $hooks = New-Object PSObject
     $cfg | Add-Member -NotePropertyName hooks -NotePropertyValue $hooks -Force
   }
-  $kept = @()
   $dropped = 0
-  foreach ($entry in @($hooks.PreToolUse)) {
-    if (-not $entry) { continue }
-    $ours = $false
-    foreach ($h in @($entry.hooks)) {
-      if ($h -and [string]$h.command -and ([string]$h.command).Contains('image-gate.')) { $ours = $true }
+  foreach ($ev in $Events) {
+    $kept = @()
+    foreach ($entry in @($hooks.$ev)) {
+      if (-not $entry) { continue }
+      $ours = $false
+      foreach ($h in @($entry.hooks)) {
+        if ($h -and [string]$h.command -and ([string]$h.command).Contains($marker)) { $ours = $true }
+      }
+      if ($ours) { $dropped++ } else { $kept += $entry }
     }
-    if ($ours) { $dropped++ } else { $kept += $entry }
+    $kept += [pscustomobject]@{
+      matcher = $matcher
+      hooks   = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = 10 })
+    }
+    $hooks | Add-Member -NotePropertyName $ev -NotePropertyValue $kept -Force
   }
-  $kept += [pscustomobject]@{
-    matcher = $gateMatcher
-    hooks   = @([pscustomobject]@{ type = 'command'; command = $gateCmd; timeout = 10 })
-  }
-  $hooks | Add-Member -NotePropertyName PreToolUse -NotePropertyValue $kept -Force
-  $dirty = $true
-  if ($dropped -gt 0) { Write-Host "  그림 문(PreToolUse) — 옛 항목 $dropped 개를 걷고 심었다" -ForegroundColor Green }
-  else                { Write-Host '  그림 문(PreToolUse) — 심었다' -ForegroundColor Green }
-  Write-Host "     $gateBody"
+  if ($dropped -gt 0) { Write-Host "  $Label — 옛 항목 $dropped 개를 걷고 심었다" -ForegroundColor Green }
+  else                { Write-Host "  $Label — 심었다" -ForegroundColor Green }
+  Write-Host "     $(Join-Path $dir $Parts[-1])"
+  return $true
 }
+# 꼬리의 `# image-gate.py` 는 옛 판 심는 손이 이 항목을 제 것으로 알아보게 두는 표지다 — 없으면
+#   옛 판이 제 항목을 곁에 하나 더 심는다.
+if (Plant-HomeToolHook '그림 문(PreToolUse)' @('PreToolUse') @('image-gate.sh', 'image-gate.py') '_ig' ' # image-gate.py') { $dirty = $true }
+
+# ── 웹 다시 찾기 — PostToolUse · PostToolUseFailure 훅을 홈에 심는다 (claude-config #117) ──────────
+# 웹 도구가 못 닿았을 때 다른 길(curl · Tavily · agy 다리)이 있다는 것을 결과 곁에 붙인다 — 막지 않는다.
+# 왜와 거는 꼴은 껍데기(`web-retry.sh`)의 머리말이 든다. 그림 문과 같은 까닭으로 스위치를 안 탄다 —
+# 부품이 씨앗으로 누구에게나 가고, 이 훅은 취향이 아니라 막힌 자리에서 길을 잇는 장치다.
+if (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @('PostToolUse', 'PostToolUseFailure') @('web-retry.sh') '_wr' '') { $dirty = $true }
 
 # ── 씨앗이 드는 파이썬 패키지 — **부품이 오는 자리에 의존성도 온다** (claude-config #72) ──────
 # 검사 씨앗의 그림 줄이기(`_shrink.py`)가 PIL 을 든다. 부르는 자는 모델이지만 그 길을 여는 것은
@@ -3642,9 +3743,9 @@ if ($pipPkgs) {
 # ⚠ **표지 `tavily-key-hint` 로 제 항목을 알아본다** — 글자가 같으면 안 건드리고, 다르면 걷고 새로 심는다.
 #   설정 저장소 몸통은 `session-start.sh` 가 든 항목만 제 것으로 걷으므로 이 항목과 안 부딪힌다.
 # ⚠ **명령은 Git Bash 가 읽는다** — 그림 문과 같은 자리라 같은 셸로 돈다.
-$hintMark = 'tavily-key-hint'
-$hintCmd  = '[ -n "$TAVILY_API_KEY" ] || echo "Tavily 웹 검색은 키 없이 검색·추출만 된다. 사용자가 사이트 지도(map)·크롤(crawl)·리서치(research)를 원하면 한 번 알린다: app.tavily.com 에서 무료 키를 받아 새 터미널에서 setx TAVILY_API_KEY <키> 를 친 뒤 VS Code 나 터미널을 완전히 닫았다 다시 열면 쓸 수 있다(창을 새로 띄워야 키가 보인다)." # ' + $hintMark
-if (($PickKeys -contains 'claude') -and $cfg) {
+# ⚠ **심는 손은 하나다 — 안내가 둘이다**(Tavily 키 · 아래 agy 모델). 표지로 제 항목만 알아보는 고리를
+#   안내마다 베끼면 한쪽만 낡는다. 심었으면 참을 돌려준다 — 부르는 쪽이 `$dirty` 를 세운다.
+function Plant-SessionHint([string]$Label, [string]$Mark, [string]$Cmd) {
   $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
   if (-not $hooks) {
     $hooks = New-Object PSObject
@@ -3654,20 +3755,37 @@ if (($PickKeys -contains 'claude') -and $cfg) {
   foreach ($entry in @($hooks.SessionStart)) {
     if (-not $entry) { continue }
     $c = @($entry.hooks | Where-Object { $_ } | ForEach-Object { [string]$_.command })
-    if (-not ($c -match [regex]::Escape($hintMark))) { $kept += $entry }
-    elseif ($c.Count -eq 1 -and $c[0] -eq $hintCmd -and $same -eq 0) { $kept += $entry; $same++ }
+    if (-not ($c -match [regex]::Escape($Mark))) { $kept += $entry }
+    elseif ($c.Count -eq 1 -and $c[0] -eq $Cmd -and $same -eq 0) { $kept += $entry; $same++ }
     else { $dropped++ }
   }
   if ($same -eq 1 -and $dropped -eq 0) {
-    Write-Host '  Tavily 키 안내(SessionStart) — 이미 맞다'
-  } else {
-    if ($same -eq 0) {
-      $kept += [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $hintCmd; timeout = 10 }) }
-    }
-    $hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $kept -Force
-    $dirty = $true
-    Write-Host '  Tavily 키 안내(SessionStart) — 심었다' -ForegroundColor Green
+    Write-Host "  $Label(SessionStart) — 이미 맞다"
+    return $false
   }
+  if ($same -eq 0) {
+    $kept += [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $Cmd; timeout = 10 }) }
+  }
+  $hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $kept -Force
+  Write-Host "  $Label(SessionStart) — 심었다" -ForegroundColor Green
+  return $true
+}
+$hintMark = 'tavily-key-hint'
+$hintCmd  = '[ -n "$TAVILY_API_KEY" ] || echo "Tavily 웹 검색은 키 없이 검색·추출만 된다. 사용자가 사이트 지도(map)·크롤(crawl)·리서치(research)를 원하면 한 번 알린다: app.tavily.com 에서 무료 키를 받아 새 터미널에서 setx TAVILY_API_KEY <키> 를 친 뒤 VS Code 나 터미널을 완전히 닫았다 다시 열면 쓸 수 있다(창을 새로 띄워야 키가 보인다)." # ' + $hintMark
+if (($PickKeys -contains 'claude') -and $cfg) {
+  if (Plant-SessionHint 'Tavily 키 안내' $hintMark $hintCmd) { $dirty = $true }
+}
+
+# ── agy 모델 안내 — 도구마다 모델이 갈린 자리에서만 한 줄 (claude-config #117 · 결정 0086) ──────────
+# 사내는 `analyze_files` 를 3.6 Flash 로 갈아 끼우고, 판단이 드는 물음에만 부르는 쪽이 Pro 를 고르게 했다
+# (위 `$AgyModelVarsBySite` 곁말). 그 「고르게」가 어디에도 안 실리면 매번 잊는다 — 그래서 세션 시작에 싣는다.
+# ⚠ **자리 이름이 아니라 상태로 건다** — `AGY_MODEL_DELEGATE` 가 심긴 PC 에서만 말한다. 모델 이름도 그
+#   환경변수 값을 그때 읽어 찍는다 — 여기 이름을 박으면 위 상수와 두 벌이 된다.
+# ⚠ **말 안의 따옴표 · 백틱을 안 쓴다** — 백틱은 Git Bash 의 큰따옴표 안에서 명령으로 돈다.
+$agyHintMark = 'agy-model-hint'
+$agyHintCmd  = '[ -z "$AGY_MODEL_DELEGATE" ] || echo "agy 다리의 모델 — 맡기기(delegate)와 백그라운드 래퍼는 $AGY_MODEL_DELEGATE, 나머지 도구는 $AGY_DEFAULT_MODEL 로 돈다. analyze_files 에 판단이 드는 물음(여러 파일 견주기 · 어긋남 찾기)을 줄 때는 그 호출의 model 칸에 $AGY_MODEL_DELEGATE 를 준다." # ' + $agyHintMark
+if ($wantAgyKit -and $cfg) {
+  if (Plant-SessionHint 'agy 모델 안내' $agyHintMark $agyHintCmd) { $dirty = $true }
 }
 
 # ⚠ **홈 설정을 여기서 다시 쓴다.** 위 5칸이 이미 한 번 썼지만 그 뒤에 이 칸이 `$cfg` 를
@@ -4613,12 +4731,35 @@ try {
   }
 } catch { $gateWired = $false }
 $checks += @{ Name = '그림 문 배선 (홈 settings.json 의 PreToolUse)'; Ok = $gateWired }
+# 웹 다시 찾기 — 그림 문과 같은 자로 잰다. 배선은 두 이벤트 **다** 서야 선 것이다 — 하나만 서면
+#   오류로 끝난 꼴이나 정상 반환 안의 실패 꼴 가운데 한쪽을 조용히 놓친다.
+$webShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\web-retry.sh'
+$checks += @{ Name = '웹 다시 찾기 껍데기 (씨앗의 web-retry.sh)'; Ok = (Test-Path -LiteralPath $webShellChk) }
+$webWired = @()
+try {
+  $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+  foreach ($ev in 'PostToolUse', 'PostToolUseFailure') {
+    foreach ($entry in @($gc.hooks.$ev)) {
+      foreach ($h in @($entry.hooks)) {
+        if ($h -and ([string]$h.command).Contains('web-retry.')) { $webWired += $ev }
+      }
+    }
+  }
+} catch { $webWired = @() }
+$checks += @{ Name = '웹 다시 찾기 배선 (홈 settings.json 의 PostToolUse · PostToolUseFailure)'
+              Ok = (@('PostToolUse', 'PostToolUseFailure' | Where-Object { $webWired -notcontains $_ }).Count -eq 0) }
+# WebFetch 검증 건너뛰기 — 사내에서만 잰다. 위 심는 칸의 「켰다」는 메모리의 객체를 고쳤다는 말이라 되읽는다.
+if ($inside) {
+  $skipSet = $false
+  try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
+  $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
+}
 # agy 묶음 — 다리 판과 고침 · 등록 · 설정 셋.
 # ⚠ **설정 셋은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
 #   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.
 if ($wantAgyKit) {
   $abState = if ((Get-AgyBridgeVer) -eq $AgyBridgeVer) { Get-AgyBridgeFixState (Read-AgyBridgeMain) } else { 'missing' }
-  $checks += @{ Name = "agy 다리 $AgyBridgeVer · 고침 (창 숨김 · 모델 넘김)"; Ok = ($abState -eq 'fixed') }
+  $checks += @{ Name = "agy 다리 $AgyBridgeVer · 고침 ($AgyBridgeFixWhat)"; Ok = ($abState -eq 'fixed') }
   $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
                 Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
   $null = Get-Quiet 'claude' @('mcp','get',$AgyBridgeName)
