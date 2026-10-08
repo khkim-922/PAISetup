@@ -17,6 +17,10 @@ Payload fixes, all required by the gateway:
   screenshots were invisible on the corporate network. The same bytes are
   read fine as siblings of the ``tool_result`` block; placing them *before*
   it instead trips the gateway's tool_use/tool_result pairing check (400).
+* (ours) ``/v1/messages`` — answer Claude Code's web search side request
+  (a ``web_search_20250305`` server tool) with the gateway's Gemini
+  ``googleSearch`` grounding. The gateway turns that server tool into a
+  client ``tool_use`` nobody executes, so WebSearch came back empty.
 * documented tool locations only — fill empty ``tools[].description``
   values, which Codex sends for gpt-5.6 class models and Azure rejects
   with minLength=1. The rest of the body, conversation history included,
@@ -201,16 +205,16 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # ── (우리 것) 판 번호는 두 칸이다 — **상류 판과 우리 판을 안 섞는다** ──────────────────
 # 한 칸이면 **상류가 새 판을 내는 날 우리 번호와 부딪히고 번호로는 누가 새것인지 못 가른다** —
 # 같은 축에 두 사람이 번호를 매기니 필연이다. 축을 둘로 가르면 그 충돌이 없어진다: 상류가 27 을
-# 내면 우리 칸은 0 으로 돌아가 `27.0` 이 되고, 그것은 `26.3` 보다 뒤라는 것이 두 수를 차례로
+# 내면 우리 칸은 0 으로 돌아가 `27.0` 이 되고, 그것은 `26.4` 보다 뒤라는 것이 두 수를 차례로
 # 견주면 그냥 나온다.
-# ⚠ **`/health` 는 사람이 읽는 한 줄(`26.3`)을 내고, 견주는 자는 두 수를 따로 본다.**
+# ⚠ **`/health` 는 사람이 읽는 한 줄(`26.4`)을 내고, 견주는 자는 두 수를 따로 본다.**
 #   점 찍힌 문자열을 크기로 견주면 `"9" > "10"` 이 되는 자리라, 설치기는 이 아래 두 이름을
 #   각각 정수로 읽는다(`install.ps1` 의 프록시 칸).
 # ⚠ **상류를 새로 받으면 위 칸을 그 판으로 올리고 아래 칸을 0 으로 되돌린다** — 우리 덩어리를
 #   다시 얹은 만큼만 아래 칸이 오른다. README 「상류에서 새 판을 받을 때」.
 VERSION_UPSTREAM = 26
-# 우리 덩어리 셋 — 제미나이 이름 표 · 그림 끌어내기(#76) · 압축 간결 지시 끔(결정 0082).
-VERSION_OURS = 3
+# 우리 덩어리 넷 — 제미나이 이름 표 · 그림 끌어내기(#76) · 압축 간결 지시 끔(결정 0082) · 웹서치 메움(#118).
+VERSION_OURS = 4
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -248,6 +252,20 @@ COMPACT_CONCISE = os.environ.get("PGPT_PROXY_COMPACT_CONCISE", "0").lower() not 
 CLAUDE_UNSTREAM = os.environ.get("PGPT_PROXY_CLAUDE_UNSTREAM", "0").lower() in {"1", "true", "on"}
 COMPACT_UNSTREAM = os.environ.get("PGPT_PROXY_COMPACT_UNSTREAM", "1").lower() not in {"0", "false", "off"}
 MAX_UNSTREAM_BYTES = 32 * 1024 * 1024
+# ── (우리 것 · claude-config #118) 웹서치 메움 ────────────────────────────────────────────────────
+# Claude Code 의 WebSearch 는 서버 도구(`web_search_20250305`)를 선언한 하위 요청을 보내고, 상류가 검색해
+# `server_tool_use` · `web_search_tool_result` · `text` 세 칸으로 답하길 기다린다. 게이트웨이는 그 선언을
+# 클라이언트 도구(`tool_use`)로 되돌려 아무도 검색하지 않는다 — CLI 는 그 칸을 못 읽어 결과 0 건이 된다
+# (사내 PC 실측 2026-10-08). 그래서 프록시가 그 하위 요청을 알아보고 **게이트웨이의 제미나이 검색**
+# (`googleSearch` grounding — 실측으로 실제 웹을 찾는다)으로 바꿔 보낸 뒤, 답을 세 칸으로 지어 돌려준다.
+# ⚠ **Claude 를 안 거친다** — #118 본문 안(게이트웨이의 `tool_use` 를 받아 검색 결과를 `tool_result` 로 되먹이는
+#   왕복)보다 상류 호출이 하나로 준다. CLI 는 이 하위 요청의 답을 결과 목록으로만 쓰고 대화에 안 넣는다.
+# ⚠ **Tavily 를 안 쓴다**(#118) — 질의가 회사 밖으로 안 나가고, 외부 한도에 안 매인다.
+# 끄려면 PGPT_PROXY_WEB_SEARCH=0 — 그러면 상류 그대로 중계한다(빈손).
+WEB_SEARCH = os.environ.get("PGPT_PROXY_WEB_SEARCH", "1").lower() not in {"0", "false", "off"}
+WEB_SEARCH_MODEL = os.environ.get("PGPT_PROXY_WEB_SEARCH_MODEL", "gemini-3.6-flash")
+# CLI 가 하위 요청의 첫 user 메시지에 싣는 머리 — 떼고 남는 것이 질의다(2.1.293 바이너리).
+_WEB_SEARCH_PROMPT_HEAD = "Perform a web search for the query: "
 # (v26) Claude 요청의 출력 상한 — 상류 경로의 시한 안에 끝나는 크기. 2026-10-06 실측: Opus 턴은 1.2초 + 출력 토큰당
 # 13.77ms(thinking 포함, 최악 15.0ms, 최대 잔차 +13.7초). 스트리밍 10000 은 최악 약 165초로 180초 안, 비스트리밍
 # 18000 은 최악 약 285초로 300초 안. 넘치면 180초 HTTP 500 → 같은 요청 10번 재시도였던 것이, 이제 max_tokens 로
@@ -430,6 +448,8 @@ _HEAVY_WAIT_MAX_SEC = 0.0
 _CLIENT_CANCELLED_TOTAL = 0
 _ACTIVE_REQUESTS = 0
 _HOISTED_IMAGES = 0  # (우리 것 · #76) tool_result 밖으로 내놓은 그림 장수
+_WEB_SEARCH_FILLED = 0  # (우리 것 · #118) 제미나이 검색으로 메운 웹서치 수
+_WEB_SEARCH_FAILED = 0  # (우리 것 · #118) 메우려다 진 수 — 검색 오류 칸으로 돌려줬다
 
 
 class _ClientDisconnected(Exception):
@@ -682,6 +702,15 @@ def _count_hoisted(count: int) -> None:
         _HOISTED_IMAGES += count
 
 
+def _count_web_search(filled: bool) -> None:
+    global _WEB_SEARCH_FILLED, _WEB_SEARCH_FAILED
+    with _STATS_LOCK:
+        if filled:
+            _WEB_SEARCH_FILLED += 1
+        else:
+            _WEB_SEARCH_FAILED += 1
+
+
 def _count_patched(count: int) -> None:
     global _PATCHED_TOTAL
     with _STATS_LOCK:
@@ -763,6 +792,10 @@ def stats() -> dict[str, object]:
             "patched_tools": _PATCHED_TOTAL,
             "trimmed_prefills": _TRIMMED_PREFILLS,
             "hoisted_images": _HOISTED_IMAGES,
+            "web_search": WEB_SEARCH,
+            "web_search_model": WEB_SEARCH_MODEL,
+            "web_search_filled": _WEB_SEARCH_FILLED,
+            "web_search_failed": _WEB_SEARCH_FAILED,
             "slow_requests": _SLOW_TOTAL,
             "keepalives": _KEEPALIVE_TOTAL,
             "stream_errors": _STREAM_ERROR_TOTAL,
@@ -1647,6 +1680,11 @@ def anthropic_message_events(message: object, *, tools: list | None = None, allo
         elif kind == "redacted_thinking":
             if not isinstance(block.get("data"), str):
                 raise ValueError("Invalid redacted thinking block")
+        elif kind == "web_search_tool_result":
+            # (우리 것 · #118) 서버 검색 결과 — 실제 API 처럼 시작 칸에 통째로 싣는다(조각 없음).
+            #   목록이면 결과, 객체면 검색 오류다(CLI 가 둘을 가른다).
+            if not block.get("tool_use_id") or not isinstance(block.get("content"), (list, dict)):
+                raise ValueError("Invalid web search result block")
         else:
             raise ValueError("Unsupported Anthropic content block")
         emit("content_block_start", index=index, content_block=initial)
@@ -1659,6 +1697,121 @@ def anthropic_message_events(message: object, *, tools: list | None = None, allo
                                  "stop_sequence": message.get("stop_sequence")}, usage=message["usage"])
     emit("message_stop")
     return events
+
+
+# ── (우리 것 · #118) 웹서치 메움 — 알아보기 · 바꾸기 · 짓기. 프록시 칸은 `_forward_request` 의 `web_search` 갈래 ──
+def web_search_tool(payload: dict) -> dict | None:
+    """서버 웹서치 도구 선언(`web_search_*`)을 든 요청이면 그 선언을, 아니면 None."""
+    tools = payload.get("tools")
+    if not isinstance(tools, list):
+        return None
+    return next((tool for tool in tools if isinstance(tool, dict)
+                 and str(tool.get("type", "")).startswith("web_search_")), None)
+
+
+def web_search_query(payload: dict) -> str | None:
+    """CLI 웹서치 하위 요청의 질의 — user 메시지 글에서 CLI 머리를 뗀 것. 글이 없으면 None."""
+    texts = [text for message in payload.get("messages") or [] for text in _user_texts(message)]
+    query = "\n".join(text for text in texts if isinstance(text, str)).strip()
+    if query.startswith(_WEB_SEARCH_PROMPT_HEAD):
+        query = query[len(_WEB_SEARCH_PROMPT_HEAD):].strip()
+    return query or None
+
+
+def _domain_list(tool: dict, key: str) -> list[str]:
+    values = tool.get(key)
+    return [v.strip().lower() for v in values if isinstance(v, str) and v.strip()] if isinstance(values, list) else []
+
+
+def web_search_gemini_payload(query: str, tool: dict) -> dict:
+    """제미나이 grounding 요청. 도메인 제한은 검색 도구에 칸이 없어 말로 싣고, 돌아온 출처를 다시 거른다."""
+    lines = [f"Search the web for: {query}",
+             "Report what the search results say — key facts, names, dates, versions and numbers — "
+             "in the language of the query. Do not answer from memory."]
+    allowed, blocked = _domain_list(tool, "allowed_domains"), _domain_list(tool, "blocked_domains")
+    if allowed:
+        lines.append("Use only sources from these sites: " + ", ".join(allowed))
+    if blocked:
+        lines.append("Do not use sources from these sites: " + ", ".join(blocked))
+    return {"contents": [{"role": "user", "parts": [{"text": "\n".join(lines)}]}],
+            "tools": [{"googleSearch": {}}]}
+
+
+def web_search_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Anthropic 요청 머리를 제미나이 경로 꼴로 — 회사 키 하나가 두 경로에 다 선다.
+
+    `Authorization: Bearer` 는 그대로 두고 같은 키를 `x-goog-api-key` 로도 싣는다(제미나이 클라이언트가 쓰는
+    이름 · 위 `normalize_gemini_auth` 와 같은 자). Anthropic 전용 머리와 본문 길이는 뺀다 — 본문이 바뀐다.
+    """
+    out = {name: value for name, value in headers.items()
+           if not name.lower().startswith("anthropic-") and name.lower() not in {"content-type", "x-api-key"}}
+    out["Content-Type"] = "application/json; charset=utf-8"
+    bearer = next((value for name, value in headers.items() if name.lower() == "authorization"), "")
+    if bearer.lower().startswith("bearer ") and bearer[7:].strip():
+        out["x-goog-api-key"] = bearer[7:].strip()
+    return out
+
+
+def _source_ok(title: str, allowed: list[str], blocked: list[str]) -> bool:
+    """grounding 출처 거르기 — 출처 주소는 구글 경유 주소로 감싸져 오고 제목이 도메인이라 제목으로 견준다."""
+    site = title.strip().lower()
+
+    def hits(domain: str) -> bool:
+        return site == domain or site.endswith("." + domain)
+    if allowed and not any(hits(domain) for domain in allowed):
+        return False
+    return not any(hits(domain) for domain in blocked)
+
+
+def _web_search_message(query: str, model: str, result: list | dict, text: str, usage: dict) -> dict:
+    tool_id = f"srvtoolu_pgpt_{time.monotonic_ns():x}"
+    content: list[dict] = [
+        {"type": "server_tool_use", "id": tool_id, "name": "web_search", "input": {"query": query}},
+        {"type": "web_search_tool_result", "tool_use_id": tool_id, "content": result},
+    ]
+    if text.strip():
+        content.append({"type": "text", "text": text})
+    return {"id": f"msg_pgpt_{time.monotonic_ns():x}", "type": "message", "role": "assistant", "model": model,
+            "content": content, "stop_reason": "end_turn", "stop_sequence": None, "usage": usage}
+
+
+def gemini_grounding_to_anthropic(raw: bytes, query: str, model: str, tool: dict) -> dict:
+    """제미나이 grounding 답을 CLI 가 읽는 세 칸으로 — 출처는 `groundingChunks`, 본문은 생각 아닌 글 조각."""
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("Expected a Gemini response object")
+    candidates = data.get("candidates") or [{}]
+    candidate = candidates[0] if isinstance(candidates[0], dict) else {}
+    parts = (candidate.get("content") or {}).get("parts") or []
+    text = "".join(part.get("text", "") for part in parts
+                   if isinstance(part, dict) and not part.get("thought") and isinstance(part.get("text"), str))
+    meta = candidate.get("groundingMetadata") or {}
+    allowed, blocked = _domain_list(tool, "allowed_domains"), _domain_list(tool, "blocked_domains")
+    results: list[dict] = []
+    seen: set[str] = set()
+    for chunk in meta.get("groundingChunks") or []:
+        web = chunk.get("web") if isinstance(chunk, dict) else None
+        url = web.get("uri") if isinstance(web, dict) else None
+        if not isinstance(url, str) or not url or url in seen:
+            continue
+        title = web.get("title") if isinstance(web.get("title"), str) and web.get("title") else url
+        if not _source_ok(title, allowed, blocked):
+            continue
+        seen.add(url)
+        results.append({"type": "web_search_result", "title": title, "url": url,
+                        "encrypted_content": "", "page_age": None})
+    usage_meta = data.get("usageMetadata") or {}
+    searches = meta.get("webSearchQueries") if isinstance(meta.get("webSearchQueries"), list) else []
+    usage = {"input_tokens": int(usage_meta.get("promptTokenCount") or 0),
+             "output_tokens": int(usage_meta.get("candidatesTokenCount") or 0),
+             "server_tool_use": {"web_search_requests": max(1, len(searches))}}
+    return _web_search_message(query, model, results, text, usage)
+
+
+def web_search_error_message(query: str, model: str, code: str = "unavailable") -> dict:
+    """메우기가 졌을 때 — 서버 도구의 검색 오류 칸으로 돌려준다. CLI 는 「Web search error: <code>」로 읽는다."""
+    return _web_search_message(query, model, {"type": "web_search_tool_result_error", "error_code": code}, "",
+                               {"input_tokens": 0, "output_tokens": 0})
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
@@ -2029,6 +2182,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         claude_unstream = False
         compact_request = False
         claude_tools = None
+        web_search: dict[str, object] | None = None  # (우리 것 · #118) 메울 웹서치 하위 요청 — 질의 · 모델 · 도구 · 스트림
         if body:
             stripped_path = parsed.path.rstrip("/")
             is_messages = stripped_path.endswith("/v1/messages")
@@ -2048,7 +2202,16 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     changed = False
                     model_name = str(payload_obj.get("model") or "")
                     self._request_context += " " + request_settings(payload_obj)
-                    if is_messages:
+                    # (우리 것 · #118) 웹서치 하위 요청은 Claude 갈래를 안 탄다 — 제미나이 grounding 요청으로 바꾼다.
+                    web_tool = web_search_tool(payload_obj) if (is_messages and WEB_SEARCH) else None
+                    web_query = web_search_query(payload_obj) if web_tool else None
+                    if web_tool and web_query:
+                        web_search = {"query": web_query, "model": model_name or "claude", "tool": web_tool,
+                                      "stream": payload_obj.get("stream") is True}
+                        payload_obj = web_search_gemini_payload(web_query, web_tool)
+                        changed = True
+                        self._request_context += f" kind=web_search search_model={WEB_SEARCH_MODEL}"
+                    elif is_messages:
                         if normalize_claude_model_id(payload_obj, parsed.path):
                             log(f"{parsed.path} Claude model restored: {model_name} -> {payload_obj.get('model')}")
                         payload_obj = sanitize_payload(payload_obj)
@@ -2108,8 +2271,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
         }
         query, headers = normalize_gemini_auth(parsed.path, parsed.query, headers)
         headers = normalize_anthropic_auth(headers)
+        if web_search:
+            headers = web_search_headers(headers)
         if gemini_chat_model:
             upstream_path = f"{GEMINI_PREFIX}/models/{quote(gemini_chat_model, safe='')}:generateContent"
+        elif web_search:
+            upstream_path = f"{GEMINI_PREFIX}/models/{quote(WEB_SEARCH_MODEL, safe='')}:generateContent"
         else:
             upstream_path = normalize_gemini_model_path(parsed.path)
         if query:
@@ -2123,7 +2290,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         outcome = "complete"
         waited = 0.0
         headers_sec = 0.0
-        provider = request_provider(parsed.path, model_name)
+        provider = "gemini" if web_search else request_provider(parsed.path, model_name)
         gate = _HEAVY_GATES[provider]
         self._request_context += f" provider={provider} bytes={len(body or b'')}"
         generation = is_generation_request(parsed.path)
@@ -2180,6 +2347,42 @@ class ProxyHandler(BaseHTTPRequestHandler):
             client_status = upstream_status
             if response.status >= 400:
                 log(f"{self.command} {parsed.path} -> HTTP {response.status} {self._request_context}{self._gw()}")
+
+            if web_search:
+                # (우리 것 · #118) 답 전체를 읽어 세 칸으로 짓는다. 상류가 지거나 꼴이 어긋나면 **검색 오류 칸**으로
+                #   돌려준다 — 서버 도구의 오류는 원래 그 칸으로 오고, 그러면 대화는 안 깨지고 CLI 는 「Web search
+                #   error」를 결과로 읽는다(그 뒤는 웹 다시 찾기 훅이 다른 길을 댄다).
+                message: dict | None = None
+                try:
+                    raw = response.read()
+                    reuse = _keeps_alive(response)
+                    if response.status < 400:
+                        message = gemini_grounding_to_anthropic(
+                            raw, str(web_search["query"]), str(web_search["model"]), dict(web_search["tool"]))
+                except (OSError, http.client.HTTPException, ValueError, TypeError, AttributeError,
+                        KeyError, IndexError) as error:
+                    log(f"web search fill: Gemini answer unreadable: {error!r} {self._request_context}{self._gw()}")
+                if message is None:
+                    _count_web_search(False)
+                    outcome = "web_search_failed"
+                    message = web_search_error_message(str(web_search["query"]), str(web_search["model"]))
+                else:
+                    _count_web_search(True)
+                    self._request_context += f" sources={len(message['content'][1]['content'])}"
+                if web_search["stream"]:
+                    data = b"".join(anthropic_message_events(message))
+                    content_type = "text/event-stream; charset=utf-8"
+                else:
+                    data = _json_bytes(message)
+                    content_type = "application/json; charset=utf-8"
+                client_status = 200
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(data)
+                return
 
             if gemini_chat_model and response.status < 400:
                 try:
@@ -2659,6 +2862,35 @@ def self_test() -> None:
     assert list(handler._read_chunks(_Silent(), 0.0)) == [b"data: one\n\n", b"data: two\n\n"]
     assert handler.wfile.getvalue() == b""
     assert stats()["keepalives"] >= 2
+
+    # (우리 것 · #118) 웹서치 메움 — 알아보기 · 바꾸기 · 짓기. HTTP 갈래는 `websearch_check.py` 가 잰다.
+    ws_tool = {"type": "web_search_20250305", "name": "web_search", "max_uses": 8, "allowed_domains": ["python.org"]}
+    ws_payload = {"model": "claude-opus-5", "tools": [ws_tool],
+                  "messages": [{"role": "user", "content": _WEB_SEARCH_PROMPT_HEAD + "python 3.13 release notes"}]}
+    assert web_search_tool(ws_payload) is ws_tool
+    assert web_search_tool({"tools": [{"name": "WebSearch", "input_schema": {}}]}) is None  # 클라이언트 도구는 안 건다
+    assert web_search_query(ws_payload) == "python 3.13 release notes"
+    gem = web_search_gemini_payload("python 3.13 release notes", ws_tool)
+    assert gem["tools"] == [{"googleSearch": {}}] and "python.org" in gem["contents"][0]["parts"][0]["text"]
+    assert web_search_headers({"Authorization": "Bearer k1", "anthropic-version": "2023-06-01"}) == {
+        "Authorization": "Bearer k1", "Content-Type": "application/json; charset=utf-8", "x-goog-api-key": "k1"}
+    grounded = json.dumps({"candidates": [{"content": {"parts": [{"text": "plan", "thought": True}, {"text": "3.14.8"}]},
+                                           "groundingMetadata": {"webSearchQueries": ["a", "b"], "groundingChunks": [
+                                               {"web": {"uri": "https://r/1", "title": "python.org"}},
+                                               {"web": {"uri": "https://r/1", "title": "python.org"}},
+                                               {"web": {"uri": "https://r/2", "title": "docs.python.org"}},
+                                               {"web": {"uri": "https://r/3", "title": "herodevs.com"}}]}}]}).encode()
+    ws_msg = gemini_grounding_to_anthropic(grounded, "q", "claude-opus-5", ws_tool)
+    assert [b["type"] for b in ws_msg["content"]] == ["server_tool_use", "web_search_tool_result", "text"]
+    assert [r["url"] for r in ws_msg["content"][1]["content"]] == ["https://r/1", "https://r/2"]  # 겹침 · 남의 도메인 걷음
+    assert ws_msg["content"][2]["text"] == "3.14.8"  # 생각 조각은 안 싣는다
+    assert ws_msg["content"][1]["tool_use_id"] == ws_msg["content"][0]["id"]
+    ws_events = b"".join(anthropic_message_events(ws_msg))
+    assert b'"web_search_tool_result"' in ws_events and b'"https://r/2"' in ws_events
+    ws_err = web_search_error_message("q", "claude-opus-5")
+    assert ws_err["content"][1]["content"] == {"type": "web_search_tool_result_error", "error_code": "unavailable"}
+    assert anthropic_message_events(ws_err)
+    assert "web_search_filled" in stats()
 
     print("Self-test: OK")
 

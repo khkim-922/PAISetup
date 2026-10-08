@@ -1566,6 +1566,21 @@ image_gate_cmd() {
   printf '_ig="%s"; [ -f "$_ig/%s" ] || exit 0; . "$_ig/%s" # image-gate.py' "$_gr" "$IMAGE_GATE_SHELL" "$IMAGE_GATE_SHELL"
 }
 
+# ── 웹 다시 찾기 — PostToolUse · PostToolUseFailure 훅 (claude-config #117) ──────────────
+#   웹 도구가 못 닿았을 때 다른 길이 있다는 것을 결과 곁에 붙인다. 왜와 거는 꼴은 그 파일 머리말이 든다.
+#   그림 문과 같은 규율이다 — 껍데기 한 벌(`web-retry.sh`)이 글자와 matcher 를 들고, 심는 손은 자리만
+#   채운 한 줄을 **두 이벤트에** 심는다. 주인 · 경로 굳히기 · 폴더가 사라져도 안 막기도 같다.
+WEB_RETRY_SHELL=web-retry.sh
+web_retry_matcher() {
+  sed -n '1s/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$WEB_RETRY_SHELL" 2>/dev/null
+}
+web_retry_cmd() {
+  _wr="$CONFIG_ROOT/.claude/hooks"
+  [ -n "$CONFIG_ROOT" ] && [ -f "$_wr/$WEB_RETRY_SHELL" ] && [ -n "$(web_retry_matcher)" ] || { printf ''; return 0; }
+  [ "$OS" = windows ] && _wr="$(cygpath -m "$_wr" 2>/dev/null || printf '%s' "$_wr")"
+  printf '_wr="%s"; [ -f "$_wr/%s" ] || exit 0; . "$_wr/%s"' "$_wr" "$WEB_RETRY_SHELL" "$WEB_RETRY_SHELL"
+}
+
 # ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
 #   드는 것: ① 홈 SessionStart 훅 ② 이 저장소의 신뢰.
 # ⚠ **옛 판은 프로세스를 넷 띄웠다** — 판을 묻는 `py_num` · 훅 심기 · 껍데기 판별하는 `-c ''` ·
@@ -1580,11 +1595,12 @@ image_gate_cmd() {
 #   를 든 명령)만 걷고, 무엇을 걷었는지 화면에 댄다.
 plant_session_state() {
   _pse="$(mktemp)"   # stderr 를 받아 둔다 — 「못 부른다」와 「죽었다」를 가르는 물증이다 (#51)
-  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" "$(image_gate_cmd)" "$(image_gate_matcher)" <<'PSSEOF' 2>"$_pse"
+  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" "$(image_gate_cmd)" "$(image_gate_matcher)" "$(web_retry_cmd)" "$(web_retry_matcher)" <<'PSSEOF' 2>"$_pse"
 import json, os, sys, tempfile
 
 settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 gate_cmd, gate_matcher = sys.argv[5], sys.argv[6]
+web_cmd, web_matcher = sys.argv[7], sys.argv[8]
 msgs = []
 failed = False   # 다 못 심었다 — 끝에서 3 으로 알린다. 셸이 표식에 판을 안 적는다 (0065)
 
@@ -1651,39 +1667,49 @@ if cfg_ok and (not have or dropped):
         msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
         failed = True
 
-# ①' 그림 문 — PreToolUse. 같은 규율: 우리 꼴(`image-gate.` 가 든 명령 — 옛 판은 `.py` 를 직접 불렀다)은
-#    걷고 지금 꼴만 남긴다. 설치기가 심은 씨앗 쪽 항목도 여기서 걷힌다 — 저장소 진본이 주인이다.
-#    지금 꼴이 둘 이상이면 첫 것만 — 같은 항목 둘이면 문이 호출마다 두 번 돈다.
-pre = cfg.setdefault("hooks", {}).setdefault("PreToolUse", [])
-have, dropped = False, []
-if gate_cmd:
-    for e in pre:
-        keep = []
-        for h in e.get("hooks", []):
-            c = h.get("command", "")
-            if c == gate_cmd and e.get("matcher") == gate_matcher and not have:
-                have = True
-                keep.append(h)
-            elif "image-gate." in c:
-                dropped.append(c)
-            else:
-                keep.append(h)
-        e["hooks"] = keep
-    pre[:] = [e for e in pre if e.get("hooks")]
-    if not have:
-        pre.append({"matcher": gate_matcher, "hooks": [{"type": "command", "command": gate_cmd, "timeout": 10}]})
-else:
-    have = True   # 훅 몸통이 없는 자리 — 안 심고 안 걷는다
-    msgs.append("  ! 홈 그림 문(PreToolUse) — 몸통이나 껍데기(.claude/hooks/image-gate.py · .sh)를 못 찾아 안 심는다")
-if cfg_ok and (not have or dropped):
-    if save(settings, cfg):
+# ①' 도구 훅 — 그림 문(PreToolUse) · 웹 다시 찾기(PostToolUse · PostToolUseFailure). 같은 규율: 우리 꼴
+#    (`marker` 가 든 명령 — 그림 문 옛 판은 `.py` 를 직접 불렀다)은 걷고 지금 꼴만 남긴다. 설치기가 심은 씨앗
+#    쪽 항목도 여기서 걷힌다 — 저장소 진본이 주인이다. 지금 꼴이 둘 이상이면 첫 것만 — 같은 항목 둘이면
+#    훅이 호출마다 두 번 돈다. 심는 손을 하나로 둔다 — 훅마다 이 고리를 베끼면 규율 하나를 고칠 때 한쪽만 낡는다.
+def plant_tool_hook(event, hcmd, matcher, marker, label, missing):
+    global failed
+    lst = cfg.setdefault("hooks", {}).setdefault(event, [])
+    have, dropped = False, []
+    if hcmd:
+        for e in lst:
+            keep = []
+            for h in e.get("hooks", []):
+                c = h.get("command", "")
+                if c == hcmd and e.get("matcher") == matcher and not have:
+                    have = True
+                    keep.append(h)
+                elif marker in c:
+                    dropped.append(c)
+                else:
+                    keep.append(h)
+            e["hooks"] = keep
+        lst[:] = [e for e in lst if e.get("hooks")]
         if not have:
-            msgs.append("  홈 그림 문(PreToolUse) — 심었다")
-        for c in dropped:
-            msgs.append("  홈 그림 문(PreToolUse) — 옛 항목을 걷었다: %s" % c[:70])
+            lst.append({"matcher": matcher, "hooks": [{"type": "command", "command": hcmd, "timeout": 10}]})
     else:
-        msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
-        failed = True
+        have = True   # 훅 몸통이 없는 자리 — 안 심고 안 걷는다
+        msgs.append(missing)
+    if cfg_ok and (not have or dropped):
+        if save(settings, cfg):
+            if not have:
+                msgs.append("  %s — 심었다" % label)
+            for c in dropped:
+                msgs.append("  %s — 옛 항목을 걷었다: %s" % (label, c[:70]))
+        else:
+            msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
+            failed = True
+
+
+plant_tool_hook("PreToolUse", gate_cmd, gate_matcher, "image-gate.", "홈 그림 문(PreToolUse)",
+                "  ! 홈 그림 문(PreToolUse) — 몸통이나 껍데기(.claude/hooks/image-gate.py · .sh)를 못 찾아 안 심는다")
+for _ev in ("PostToolUse", "PostToolUseFailure"):
+    plant_tool_hook(_ev, web_cmd, web_matcher, "web-retry.", "홈 웹 다시 찾기(%s)" % _ev,
+                    "  ! 홈 웹 다시 찾기(%s) — 껍데기(.claude/hooks/web-retry.sh)를 못 찾아 안 심는다" % _ev)
 
 # ② 신뢰 — 없거나 깨진 파일은 손대지 않는다
 # ⚠ **작업 루트의 저장소 전부에 건다.** 옛 판은 제 저장소만 걸고 「홈 훅이 어차피 전부

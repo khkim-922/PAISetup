@@ -23,11 +23,11 @@
 | **VS Code 와 확장** | 칸이 따로 있다. **사내는 필수라 켠 채로 잠겨 있다. 사외는 꺼진 채로 뜬다** — 데스크탑 앱만으로도 쓸 수 있어서다. 끄면 VS Code 자체도 안 깐다. ⚠ 확장은 CLI 를 자식 프로세스로 부른다 — 둘 중 하나만 있으면 안 돈다 |
 | Node.js | Claude · Codex · Gemini 의 CLI 가 이것으로 돈다 — 무엇을 골랐든 늘 깔린다. 안티그래비티 CLI(`agy`)만은 Node 가 아니라 winget 이 깐다 |
 | 어디에 붙나 — 사내 · 사외 | **사내**에서는 켠 도구가 같은 회사 키로 게이트웨이에 붙는다 — Codex 는 게이트웨이에 바로, Gemini 와 안티그래비티는 아래 로컬 프록시를 거쳐 붙는다. **사외**에서는 각자 로그인한다 — Codex 는 `codex login`(ChatGPT 계정), Gemini 와 안티그래비티는 처음 실행할 때 Google 로그인. ⚠ **안티그래비티 확장은 제 화면을 가진 에이전트다** — Gemini Companion 은 창이 없어 터미널의 `gemini` 와 같이 써야 하지만, 안티그래비티는 사이드바에서 바로 쓴다. 이 확장은 처음 열 때 제 본체(`agy` · 188MB)를 따로 받는다 — 설치가 깐 안티그래비티 CLI 와 같은 것을 한 번 더 받는 셈이다 |
-| **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에서 돌며 Claude Code(Opus 5)와 Gemini CLI · 안티그래비티의 요청을 게이트웨이로 넘긴다. 로그인할 때마다 감시 작업(`PGPTProxy-Watchdog`)이 알아서 띄우고 지킨다. 왜 있나는 `posco/pgpt-proxy/README.md` 가 든다 |
+| **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에서 돌며 Claude Code(Opus 5)와 Gemini CLI · 안티그래비티의 요청을 게이트웨이로 넘긴다. Claude Code 의 웹 검색도 여기서 게이트웨이의 제미나이 검색으로 메운다 — 게이트웨이가 그 검색을 스스로 안 한다. 로그인할 때마다 감시 작업(`PGPTProxy-Watchdog`)이 알아서 띄우고 지킨다. 왜 있나는 `posco/pgpt-proxy/README.md` 가 든다 |
 | Git · Python · GitHub CLI | 코드를 짤 사람용이다. 설치 창에는 이 칸이 없어 늘 깔린다 — 빼려면 `Setup.exe -NoDevTools` 로 부른다. **다만 사내에서는 Python 만은 깐다** (프록시가 Python 으로 돈다). 「내 저장소 받기」에 주소를 넣었고 GitHub CLI 로그인이 안 돼 있으면, **저장소를 받기 직전에** 설치가 브라우저 로그인을 띄운다 — 일회용 코드와 남은 시간(180초)이 팝업에 뜬다 |
 | **데스크탑 앱** | **앱마다 다르다.** 게이트웨이에 못 붙어 사내에서는 쓸모가 없는 것(Claude · Codex · Antigravity)은 **사외에서만** 깔리고, 제 계정으로 로그인해 쓰는 것(**GitHub Copilot**)은 **사내·사외 모두** 깔린다. 켠 도구의 것만 깔린다. ⚠ Copilot 은 **WebView2 런타임**이 있어야 도는데 설치 목록에 그것이 딸려 오지 않는다 — 없는 기계(사내 VDI)면 **먼저 깔고**, 이미 있으면(사내 PC 에는 대개 있다) 건너뛴다. ⚠ **Gemini 데스크탑 앱은 안 깐다** — 회사 망이 설치 도중에 연결을 끊어 두 번 다 실패했다. 집에서는 깔리므로 필요하면 <https://gemini.google.com/app> 에서 손으로 받는다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다. ⚠ **로그인은 사람이 한다** — Copilot 은 회사 계정으로 직접 인증하고, 사외 개인 PC 에서는 회사 계정이 막혀(등록 안 된 기기) 개인 계정으로 쓴다 |
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣으면 고른 도구가 읽는 이름에 같이 심긴다 — Claude 는 `ANTHROPIC_AUTH_TOKEN`, Codex 는 `OPENAI_API_KEY`, Gemini · 안티그래비티는 `GEMINI_API_KEY`. **사외면 키를 안 묻고, 사내에서 쓰던 기계를 사외에서 다시 누르면 남아 있던 사내 값을 걷어 낸다** (아래 「무를 때」) |
-| Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅). 사외로 가면 사내 전용 줄은 걷어 낸다 |
+| Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · 사내면 **웹페치 검증 건너뛰기**(`skipWebFetchPreflight` — 사내 망이 웹페치가 미리 묻는 Anthropic 차단 목록 조회를 끊어, 열리는 주소도 못 가져오던 것을 푼다. 사외는 그 검사가 서므로 안 켠다) · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅) · **웹 다시 찾기**(웹 검색 · 웹 가져오기가 못 닿았을 때 `curl` · Tavily · agy 다리 같은 다른 길이 있다는 것을 결과 곁에 붙이는 훅 — 막지는 않는다). 사외로 가면 사내 전용 줄은 걷어 낸다 |
 | Codex · Gemini · 안티그래비티 설정 | 사내에서만. `~/.codex/config.toml` · `~/.gemini/settings.json` 을 회사 설정 틀(`posco/`)에서 채우고, `~/.gemini/antigravity-cli/settings.json` 에는 인증 방식 한 줄(`modelProvider`)을 둔다. 키는 그 파일들에 안 들어가고 환경변수에만 있다. ⚠ **`GOOGLE_API_KEY` 가 이미 있으면 그 키가 회사 키보다 먼저 쓰인다** — 구글에 바로 붙는 키의 제 이름이라 설치는 지우지 않고 알리기만 한다. 회사 게이트웨이로 쓰려면 손으로 지운다 |
 | **사내 환경 문서** · **씨앗 넷** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` · `~/.claude/seeds/vibecoding/` 로 깔린다. 마지막 것은 회사가 쓴 사내 FastAPI 코딩 기준이다 — 들머리는 그 안의 `SEED.md` 고, 사내 앱을 짤 때는 스킬 `inhouse-app` 이 그 안의 장을 콕 집어 연다(개인 스킬을 켠 사람). 고를 것이 아니라 환경이라 스위치가 없다. **씨앗 넷은 거울로 깔려, 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 원본인 척하지 않게. `posco/` 만은 덮어쓰기라 짐에서 빠진 파일이 홈에 남을 수 있다 — 프록시가 그 폴더에 제 기록 파일을 쓰고 있어 통째로 지우지 못한다. **설정 저장소를 넣은 PC 에서는 그 저장소의 `deploy.seeds.conf` 가 드는 폴더를 설치가 건드리지 않는다** — 그 자리는 저장소 배포가 최신판으로 밀고, 설치까지 깔면 둘이 판마다 번갈아 덮는다(홈에 그 폴더가 아직 없을 때만 설치가 먼저 깐다). **검사 씨앗의 그림 줄이기가 드는 파이썬 패키지(`pillow`)도 여기서 깐다** — 그림 문이 큰 그림을 「줄여서 연다」로 돌려보내면 그 부품이 돈다. 파이썬이 없으면 건너뛰고, 회사망이 막아 못 깔면 알리고 넘어간다(그때 줄이기는 원본 크기로 물러난다) |
 
@@ -216,21 +216,22 @@ claude.exe 지만 사는 폴더가 다르다.
 (지우지 않는다). 손수 만든 스킬은 그 목록에 없으니 안 건드린다.
 (`CLAUDE.md` 는 파일 하나라 통째로 갈린다.)
 
-#### agy 묶음 — 사외에서 Claude 와 안티그래비티를 같이 고르면
+#### agy 묶음 — Claude 와 안티그래비티를 같이 고르면
 
-**사외(게이트웨이 밖)** 이고 제품 칸에서 **Claude 와 구글 Antigravity 를 둘 다** 고르고 이 칸까지 켜면, 셋이 더 선다.
+제품 칸에서 **Claude 와 구글 Antigravity 를 둘 다** 고르고 이 칸까지 켜면, 사내든 사외든 넷이 더 선다.
 Claude Code 가 agy(안티그래비티 CLI)에게 일을 넘기고, agy 도 같은 규범 아래서 그 일을 받게 하는 묶음이다.
 
 | 무엇 | 어디에 |
 |---|---|
-| agy 다리 — MCP 서버 `agy-bridge` 0.4.2. 판을 박고, 윈도에서 명령마다 창이 떴다 사라지는 것을 막는 두 줄을 고쳐 깐다 | npm 전역 · Claude Code 에 `agy-bridge` 로 등록 |
+| agy 다리 — MCP 서버 `agy-bridge` 0.4.2. 판을 박고 네 줄을 고쳐 깐다 — 윈도에서 명령마다 창이 떴다 사라지는 것을 막는 두 줄, 한도가 차면 아래 넘길 모델로 넘어가게 하는 한 줄, 도구마다 모델을 갈아 끼우게 하는 한 줄. 도구 설명을 세션 처음부터 실어 둔다 — 안 실으면 Claude 가 이름만 보고 지나쳐, 사람이 다리를 짚어야 쓴다 | npm 전역 · Claude Code 에 `agy-bridge` 로 등록 |
+| agy 모델 — **값이 자리마다 다르다.** **사내**는 회사 키가 받는 모델만 쓰고 일의 무게로 가른다 — 일을 통째로 맡기는 것(`delegate` · 스킬 `agy-background`)은 Pro, 나머지는 Flash 이고, 한도에서 넘기지 않는다(회사 키는 예산 한도라 하나가 막히면 다 막힌다). **사외**는 제미나이를 먼저 쓰고, 그 한도가 차면 다른 데로 넘어간다. **구글 API 키(`GOOGLE_API_KEY`)가 있으면** 오래 걸리는 일(스킬 `agy-background`)은 그 키로 제미나이 모델을 하나씩 더 돌린 뒤 Claude 로 간다 — 무료 키는 구글 약관상 보낸 내용이 제품 개선에 쓰일 수 있다. 키가 없으면 그 차례를 건너뛰고 그대로 돈다. 이름(`AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_<도구>`)과 자리별 값은 `install.ps1` 의 `$AgyModelVarsBySite` 가 든다. 다른 자리에서 심긴 값이 그대로 남아 있으면 걷는다 | 사용자 환경변수 — 다리와 스킬 `agy-background` 가 같이 읽는다 |
 | agy 설정 셋 — 규범을 가리키는 `AGENTS.md`, 스킬 여섯을 여는 `skills.json`, 룰을 가리키는 `rules.json`. **옮겨 적은 사본이 아니라 위 표가 깐 홈 자리를 가리키는 파일이다** | `~/.gemini/config/` — 있던 같은 이름은 `~/.claude/backups/install-agy-<시각>/` 로 떠 둔다 |
 | Python — 오래 걸리는 일을 agy 에게 뒤에서 맡기는 스킬 `agy-background` 가 `pythonw` 로 돈다 | 개발도구 칸을 꺼도 깐다 |
 
-agy 가 로그인 전이면 터미널에서 `agy` 를 한 번 띄워 Google 계정으로 로그인한다. Claude Code 에서는
-`mcp__agy-bridge__*` 도구로 짧은 일을 바로 넘기고, 몇 분 넘게 걸릴 일은 스킬 `agy-background` 가 뒤에서
-돌려 대화를 안 막는다. **사내에서는 이 묶음이 안 선다** — 회사 키로 게이트웨이를 타는 agy 는 모델과
-인증이 달라 아직 안 쟀다.
+사외에서 agy 가 로그인 전이면 터미널에서 `agy` 를 한 번 띄워 Google 계정으로 로그인한다(사내는 위 「어디에 붙나」
+대로 회사 키로 선다). Claude Code 에서는 `mcp__agy-bridge__*` 도구로 짧은 일을 바로 넘기고, 몇 분 넘게 걸릴 일은
+스킬 `agy-background` 가 뒤에서 돌려 대화를 안 막는다. 사내에서는 도구마다 모델이 갈린 것을 세션 시작에 한 줄로
+싣는다 — 큰 파일 읽기(`analyze_files`)에 판단이 드는 물음을 줄 때 Pro 를 고르라는 말이다.
 
 **제 규율을 쓰려면 — 이 칸이 아니라 「내 저장소 받기」다.** 짐은 손으로 열 자리가 아니라서
 (`Setup.exe` 가 제 안에서 꺼내 판마다 새 폴더에 편다) 거기 든 것을 갈아 끼워 봐야 다음 판에서
@@ -252,6 +253,8 @@ agy 가 로그인 전이면 터미널에서 `agy` 를 한 번 띄워 Google 계�
   [O] 그림 문 몸통 (씨앗의 image-gate.py)
   [O] 그림 문 껍데기 (씨앗의 image-gate.sh)
   [O] 그림 문 배선 (홈 settings.json 의 PreToolUse)
+  [O] 웹 다시 찾기 껍데기 (씨앗의 web-retry.sh)
+  [O] 웹 다시 찾기 배선 (홈 settings.json 의 PostToolUse · PostToolUseFailure)
   [O] ANTHROPIC_BASE_URL
   [O] ANTHROPIC_AUTH_TOKEN
 
@@ -369,7 +372,10 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `사내 환경 문서 (n/m)` · `게이트웨이 씨앗 (n/m)` · `검사 씨앗 (n/m)` · `설정 저장소 씨앗 (n/m)` | 홈에 깔린 파일 수가 짐보다 적다 — 괄호의 두 숫자가 「깔린 것/짐에 든 것」이다. `~/.claude/` 가 읽기 전용이거나 백신이 복사를 막은 자리다 — 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `그림 문 몸통 …` · `그림 문 껍데기 …` | 설정 저장소 씨앗이 덜 깔렸다. 바로 위 `설정 저장소 씨앗 (n/m)` 줄을 먼저 보고 다시 누른다 |
 | `그림 문 배선 (홈 settings.json 의 PreToolUse)` | 홈 `~/.claude/settings.json` 에 훅 한 줄을 못 넣었다. 위쪽에 「settings.json 을 못 읽었다」 빨간 줄이 있으면 그 파일이 깨진 것이다 — 설치는 깨진 파일을 안 덮으니 손으로 고치거나 치워 두고 다시 누른다 |
-| `agy 다리 0.4.2 · 창 숨김 고침` | npm 이 그 판을 못 깔았거나, 깔린 판에서 고칠 두 줄을 못 찾았다. 위쪽 「agy 다리」 빨간 줄이 어느 쪽인지 댄다 — 못 깔았으면 새 터미널을 열어 다시 누르고, 「원문이 바뀌었다」면 그 줄을 그대로 보낸다(판이 바뀐 것이라 설치본을 고쳐야 한다) |
+| `웹 다시 찾기 껍데기 …` | 그림 문 껍데기 줄과 같다 — 설정 저장소 씨앗이 덜 깔렸다 |
+| `웹 다시 찾기 배선 (…)` | 그림 문 배선 줄과 같다. 두 이벤트 가운데 하나만 서도 `[X]` 다 — 다시 누른다 |
+| `agy 다리 0.4.2 · 고침 (창 숨김 · 모델 넘김 · 도구별 모델)` | npm 이 그 판을 못 깔았거나, 깔린 판에서 고칠 줄을 못 찾았다. 위쪽 「agy 다리」 빨간 줄이 어느 쪽인지 댄다 — 못 깔았으면 새 터미널을 열어 다시 누르고, 「원문이 바뀌었다」면 그 줄을 그대로 보낸다(판이 바뀐 것이라 설치본을 고쳐야 한다) |
+| `agy 모델 (…)` | 괄호의 환경변수를 못 심었다 — 이름은 자리마다 다르다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 — 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `agy 다리 등록 (claude mcp)` | 다리는 깔렸는데 Claude Code 에 등록을 못 했다. 위 `Claude Code CLI` 가 `[X]` 면 그것부터 고친다. 아니면 다시 누른다 |
 | `agy 설정 (n/m · ~/.gemini/config)` | 설정 셋을 다 못 깔았다 — 괄호의 두 숫자가 「짐과 같은 것/짐에 든 것」이다. `~/.gemini/config` 가 읽기 전용인지 보고 다시 누른다 |
 | `ANTHROPIC_BASE_URL` · `ANTHROPIC_AUTH_TOKEN` | 키를 안 넣었거나 빈 값이다. 다시 눌러 넣는다 |
@@ -394,11 +400,11 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | 지울 것 | 어디서 |
 |---|---|
 | **사용자 환경변수** — 펴진 짐의 `install.env` 에 값이 적힌 이름 전부(`ANTHROPIC_BASE_URL` · `GOOGLE_GEMINI_BASE_URL` · `ANTHROPIC_MODEL` 등)와 키 셋 `ANTHROPIC_AUTH_TOKEN` · `OPENAI_API_KEY` · `GEMINI_API_KEY` | 시작 메뉴에 「환경 변수」로 검색 → 「계정의 환경 변수 편집」. 지우고 창을 새로 연다 |
-| **홈 설정의 설치가 넣은 줄** — `~/.claude/settings.json` | `env` 칸에서 위와 같은 이름들, `modelPicker` 칸, `hooks` 의 `PreToolUse` 안 `image-gate` 줄을 지운다. 나머지는 사람이 쓰던 설정일 수 있으니 둔다 |
+| **홈 설정의 설치가 넣은 줄** — `~/.claude/settings.json` | `env` 칸에서 위와 같은 이름들, `modelPicker` 칸, `skipWebFetchPreflight` 칸, `hooks` 의 `PreToolUse` 안 `image-gate` 줄 · `PostToolUse` 와 `PostToolUseFailure` 안 `web-retry` 줄 · `SessionStart` 안 `agy-model-hint` 줄을 지운다. 나머지는 사람이 쓰던 설정일 수 있으니 둔다 |
 | **로그인마다 뜨는 프록시 감시 작업** — 작업 이름은 `PGPTProxy-Watchdog` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false`. 프록시가 도는 폴더 `%LOCALAPPDATA%\PGPT-Proxy` 도 지운다. (옛 판이 남긴 것은 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `PGPTProxy`) |
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다. 씨앗 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` — 다른 프로그램도 쓸 수 있으니 필요할 때만 |
 | **칸을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` · 깐 스킬 기록 `~/.claude/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.claude/backups/install-skills-*` |
-| **agy 묶음** (사외에서 Claude · 안티그래비티 · 이 칸을 켰을 때) | Claude Code 등록 `claude mcp remove agy-bridge -s user` · 다리 `npm uninstall -g agy-bridge` · agy 설정 `~/.gemini/config/` 의 `AGENTS.md` · `skills.json` · `rules.json` · 옛것을 떠 둔 `~/.claude/backups/install-agy-*` |
+| **agy 묶음** (Claude · 안티그래비티 · 이 칸을 켰을 때) | Claude Code 등록 `claude mcp remove agy-bridge -s user` · 다리 `npm uninstall -g agy-bridge` · 사용자 환경변수 `AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE` · `AGY_MODEL_ANALYZE_FILES` · agy 설정 `~/.gemini/config/` 의 `AGENTS.md` · `skills.json` · `rules.json` · 옛것을 떠 둔 `~/.claude/backups/install-agy-*` |
 | **Codex · Gemini · 안티그래비티 회사 설정** | `~/.codex/config.toml` · `~/.gemini/settings.json` · `~/.gemini/antigravity-cli/settings.json`. 마지막 것은 `modelProvider` 줄만 지우면 로그인 갈래로 돌아간다 |
 | **바탕화면·시작 메뉴의 「PAI Setup Wizard」** | 바로가기를 지운다 |
 | **로그온마다 도는 자동 실행** — 작업 이름은 `PAISetup-AutoRun` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PAISetup-AutoRun -Confirm:$false`. **폴더보다 이것을 먼저 지운다** — 짐을 먼저 지우면 작업만 남아 로그인마다 헛돈다 |

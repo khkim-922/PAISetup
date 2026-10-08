@@ -33,18 +33,18 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
 
 - 저장소 [`pgpt-one-click-connect`](https://github.com/sejuone-cloud/pgpt-one-click-connect) · 커밋 `2ab3f39`
   (2026-10-07 · v0.7.0) · 프록시 `VERSION = 26`. 프록시 파일이 마지막으로 바뀐 상류 커밋은 `3dac49b`(v0.6.32)다
-- **우리 판 번호는 두 칸이다 — 지금 `26.3`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 받아 온 상류 판이고,
+- **우리 판 번호는 두 칸이다 — 지금 `26.4`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 받아 온 상류 판이고,
   뒤 칸은 그 위에 우리가 얹은 덩어리 수다. **한 칸으로 세지 않는 까닭**: 상류와 우리가 한 줄에 번호를 매기면
   상류가 새 판을 내는 날 우리 번호와 부딪히고, 그때는 번호만 보고 어느 쪽이 새것인지 못 가른다. 칸을 나누면
-  **상류가 27 을 낼 때 우리 칸이 0 으로 돌아가 `27.0`** 이 되고, 그것이 `26.3` 보다 새것이라는 것이 번호에서
+  **상류가 27 을 낼 때 우리 칸이 0 으로 돌아가 `27.0`** 이 되고, 그것이 `26.4` 보다 새것이라는 것이 번호에서
   바로 보인다
-  ⚠ **`/health` 는 사람이 읽기 좋게 `26.3` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
+  ⚠ **`/health` 는 사람이 읽기 좋게 `26.4` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
   점 찍힌 문자열을 그대로 견주면 `"9" > "10"` 이 되기 때문이다. 설치기는 그렇게 견주어 낮으면 갈아 끼운다
   (`install.ps1` 프록시 칸)
   ⚠ **정수 한 칸(`17`·`26`)이 도는 자리도 받는다** — 우리 옛 판과 상류 판은 새 이름이 없어 「못 읽었다」로
   떨어지고, 그때는 **갈아 끼우는 쪽으로 기운다.** 반대로 두면 옛 프록시가 영영 안 바뀐다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **상류 파일은 안 고친다 — 예외는 `opus5_proxy.py` 의 셋과 판 번호, 시험 파일의 몇 줄, `mock_gateway.py` 의 한 칸이다**
+- **상류 파일은 안 고친다 — 예외는 `opus5_proxy.py` 의 넷과 판 번호, 시험 파일의 몇 줄, `mock_gateway.py` 의 한 칸이다**
   (결정 0082).
   ⑴ **제미나이 이름 표**(`_GEMINI_MODEL_ALIASES` · `normalize_gemini_model_path` 의 그 조회 · 자체 검사 세 칸) —
   안티그래비티가 제목 짓기에 못박아 둔 이름이 게이트웨이에 없어 그 곁 호출만 지던 자리다
@@ -53,6 +53,10 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
   `Read` 로 여는 그림이 사내에서 한 픽셀도 안 오던 자리다(이슈 #76)
   ⑶ **압축 간결 지시 끔**(`COMPACT_CONCISE` 의 기본값 `"0"` · 자체 검사 한 칸) — 상류는 켬이다. 우리는 1M 창이라
   압축이 드물고, 드물게 하는 압축을 짧게 줄이면 잃는 것이 더 크다(결정 0082)
+  ⑷ **웹서치 메움**(`WEB_SEARCH` · `WEB_SEARCH_MODEL` · `_WEB_SEARCH_PROMPT_HEAD` · 계수 둘 · `stats()` 의 네 칸 ·
+  `web_search_*` 함수 묶음 · `anthropic_message_events` 의 `web_search_tool_result` 갈래 · `_forward_request` 의
+  `web_search` 갈래 · 머리 설명 한 칸 · 자체 검사 한 칸) — 게이트웨이가 서버 웹서치 도구를 클라이언트 `tool_use` 로
+  되돌려, Claude Code 의 WebSearch 가 사내에서 늘 빈손이던 자리다(이슈 #118 · 결정 0087)
   **판 번호 두 칸도 우리 것이다**(위).
   시험 파일은 **프록시를 찾는 경로 줄만** 바꿨다(상류는 `app/` 아래, 우리는 같은 폴더). 하나만 더 —
   `Test-ProxyStreaming.py` 의 압축 HTTP 경로 시험이 간결 지시가 켜진 기본값을 박아 두어, 그 단언 한 줄을
@@ -82,6 +86,7 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
 | 이름에 `haiku` 가 들면 `claude-sonnet-4.6` 으로 (`CLAUDE_HAIKU_SUBSTITUTE` · 상류 v18 — 우리가 먼저 얹던 것과 같은 규칙) | **쓴다** — 하이쿠는 이 게이트웨이에 **한 판도 없다**(`GET /v1/models` 실측 2026-09-17 · Claude 는 opus 4.5·4.6·4.7·5 와 sonnet 4.5·4.6 여섯뿐). 그래서 서브에이전트 호출이 통째로 `400`(「모델을 찾을 수 없습니다」)으로 지던 자리다. **이름을 목록으로 안 잡고 규칙으로 잡는다** — 클라이언트가 아는 하이쿠 이름이 열둘이라 판이 오를 때마다 샌다. 실측: `claude-haiku-4-5` · 날짜박은 판 둘 다 `200` 에 `model: claude-sonnet-4.6` · 로그에 `restored` 한 줄. ⚠ **게이트웨이가 하이쿠를 들이면 이 칸을 지운다** — 그때는 이 규칙이 진짜 하이쿠까지 갈아버린다 |
 | 대시 모델 ID 복원 — `claude-opus-4-7` → `claude-opus-4.7` | **쓴다 · 6회** — 같은 곁 호출 길. 별칭과 한 함수(`normalize_claude_model_id`)라 바뀌면 로그 한 줄이 찍힌다 |
 | 빈 도구 `description` 채우기 | **쓴다 · 6회** (Claude Code) · Codex 를 루프백에 태우면 `/v1/responses` 에서도 걸린다(탐침 `tool_descriptions_filled=1`) |
+| **(우리 것)** Claude Code 의 웹서치 하위 요청(서버 도구 `web_search_20250305` 를 선언한 요청)을 게이트웨이의 제미나이 검색(`googleSearch` grounding · `PGPT_PROXY_WEB_SEARCH_MODEL` · 기본 `gemini-3.6-flash`)으로 메워 `server_tool_use` · `web_search_tool_result` · `text` 세 칸으로 지어 돌려준다. 상류가 지면 검색 오류 칸으로 · `/health` 의 `web_search_filled` · `web_search_failed` · 끄려면 `PGPT_PROXY_WEB_SEARCH=0` | **쓴다 · 회사 실측 아직** — 게이트웨이가 그 선언을 클라이언트 `tool_use` 로 되돌려 아무도 검색하지 않아 결과 0 건이던 자리다(사내 실측 2026-10-08 · #118). 제미나이 grounding 이 실제 웹을 찾는 것은 실측됐다. Claude 를 안 거치므로 상류 호출은 하나다. ⚠ 출처 주소는 구글 경유 주소(`grounding-api-redirect`)로 감싸진 채 싣는다 — 풀지 않는다. ⚠ 게이트웨이가 왜 그 선언을 바꾸는지는 밖에서 안 보여, 게이트웨이가 바뀌면 이 칸이 조용히 어긋날 수 있다 |
 | **(우리 것)** `tool_result` 안의 `image` 를 같은 메시지 **끝**으로 내놓고 빈 자리에 「그림은 이 메시지 끝에」를 적는다(`hoist_tool_result_images` · `/health` 의 `hoisted_images`) | **쓴다** — 게이트웨이가 `tool_result` 안의 그림만 200 에 버리고 같은 바이트가 형제 블록으로 서면 읽는다(눈가림 실측 2026-09-22 · 이슈 #76). ⚠ 그림을 `tool_result` **앞**에 끼우면 짝 검사가 400 을 낸다 — 그래서 끝으로만 간다 |
 | 상류 연결 풀 — 30초(`UPSTREAM_IDLE_TTL`) 넘게 논 연결은 재사용하지 않고 닫는다 · `/health` 의 `upstream_expired` | **쓴다** — 게이트웨이가 keep-alive 를 끊은 뒤 남은 연결을 집어 첫 요청이 지던 자리. 실측 `upstream_expired=8` · 재사용 82 |
 | Anthropic · OpenAI SSE 가 침묵하면 `KEEPALIVE_SEC`(기본 15초)마다 `: keepalive` 주석 한 줄을 클라이언트에 흘린다(상류 v18) — 게이트웨이가 생각 조각을 안 흘려 Claude Code 의 바이트 유휴 워치독이 끊던 자리. **완성된 이벤트 사이에만 끼운다**(v24). `PGPT_PROXY_KEEPALIVE_SEC=0` 이면 끈다 | **쓴다 · 132회** (Claude Code · 옛 판 실측). ⚠ 180초 벽은 못 넘는다 — 유휴가 아니라 요청 실행 시계다(`../ENV-posco.md`) |
@@ -109,7 +114,7 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
 | `PGPT_PROXY_PORT` 환경변수 | **쓴다** — 기본은 `18901`. 시험(`Test-ProxyFaults.py` · `pair_check.py`)은 이 값으로 다른 포트에 띄워, 떠 있는 프록시와 부딪히지 않는다 |
 | `/health` 에 `pid` 포함 | **쓴다** — 설치기·검사기가 포트를 쥔 프로세스가 방금 제가 띄운 것인지 확인한다(한 PC 를 여럿이 쓰면 남의 프록시가 포트를 쥘 수 있다) |
 | `gemini-` 모델 변환은 `/v1/chat/completions` 에서만 | **쓴다** — Gemini 네이티브로 옮기는 변환(위 Hermes 갈래)을 chat 경로에만 건다. `/v1/responses` 요청까지 옮기면 변환기가 `messages` 만 읽어 그 API 의 프롬프트를 잃는다 |
-| 응답 | **거의 그대로 중계한다** — 스트리밍 포함, 생각 낱말도 안 건드린다. 손대는 것은 위 칸들뿐이다: 침묵 동안 끼우는 keepalive 주석 · `/v1beta` 의 쪼개진 SSE 재조립 · Hermes 갈래의 Gemini→OpenAI 변환 · 비스트리밍 갈래의 SSE 짓기. 180초 벽을 중계로는 못 넘는다(`../ENV-posco.md`) — 넘는 길은 비스트리밍 갈래뿐이고(압축은 기본으로 그 길이다), 그 길의 `/v1/messages` 응답은 중계가 아니라 프록시가 지은 것이다 |
+| 응답 | **거의 그대로 중계한다** — 스트리밍 포함, 생각 낱말도 안 건드린다. 손대는 것은 위 칸들뿐이다: 침묵 동안 끼우는 keepalive 주석 · `/v1beta` 의 쪼개진 SSE 재조립 · Hermes 갈래의 Gemini→OpenAI 변환 · 비스트리밍 갈래의 SSE 짓기 · 웹서치 하위 요청의 답 짓기(위 우리 칸). 180초 벽을 중계로는 못 넘는다(`../ENV-posco.md`) — 넘는 길은 비스트리밍 갈래뿐이고(압축은 기본으로 그 길이다), 그 길의 `/v1/messages` 응답은 중계가 아니라 프록시가 지은 것이다 |
 
 **프록시가 하는 일이 아닌 것 하나** — `POST /v1/messages/count_tokens` 는 게이트웨이에 없어 **404** 다(실측
 775회). 클라이언트가 스스로 어림셈으로 넘어가고 느린 요청(`slow`)도 0건이라 지연을 안 만든다 — 고칠 일이
@@ -121,7 +126,7 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
 - 상류는 `PGPT_PROXY_UPSTREAM` (기본 `http://aigpt.posco.net`) — 사내 `HTTP_PROXY` 를 **안 탄다**(직결)
 - `proxy.log` 와 `opus5_proxy.pid` 를 **제 파일 곁에** 쓴다 — 그래서 설치기는 이 파일을 실행 폴더로 복사해 띄운다.
   저장소·홈 사본에서 바로 띄우면 그 곁에 남고, 저장소는 `.gitignore` 가 받는다
-- `GET /health` — `status` · `service` · `version` · `pid` · 계수(`trimmed_prefills` · `hoisted_images` · `execution_cuts` ·
+- `GET /health` — `status` · `service` · `version` · `pid` · 계수(`trimmed_prefills` · `hoisted_images` · `web_search_filled` · `web_search_failed` · `execution_cuts` ·
   `max_tokens_hits` 등)와 지금 걸린 손잡이(`compact_concise` · `compact_unstream` · `stream_max_tokens` 등)
 - `--self-test` — 보정 함수를 스스로 검사하고 끝난다(프록시는 안 뜬다)
 
@@ -131,6 +136,7 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
 python -X utf8 posco/pgpt-proxy/opus5_proxy.py --self-test     # 보정 함수 — 어디서나
 python -X utf8 posco/pgpt-proxy/pair_check.py                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
 python -X utf8 posco/pgpt-proxy/hoist_check.py                # 그림 끌어내기가 본문 모양을 옳게 바꾸나 — 어디서나 (망 없음)
+python -X utf8 posco/pgpt-proxy/websearch_check.py           # 웹서치 메움 — CLI 꼴 요청 · 모델이 받을 글 — 어디서나 (가짜 게이트웨이)
 python -X utf8 posco/pgpt-proxy/Test-ProxyFaults.py          # 비정상 응답·스트림 단절 등 결함 내성 — 어디서나
 python -X utf8 posco/pgpt-proxy/Test-ProxyStreaming.py       # 스트림 무결성 · 진단 줄 — 어디서나
 python -X utf8 posco/pgpt-proxy/Test-ProxyCompaction.py      # 압축 알아보기 · 출력 상한 — 어디서나 (망 없음)
@@ -162,7 +168,7 @@ python -X utf8 posco/pgpt-proxy/image_tail_probe.py claude-opus-5           # to
 
 1. 상류 파일(위 표에서 「상류 자리」가 적힌 것)을 그대로 복사한다 — `diff --strip-trailing-cr` 로 대조하면
    줄끝 잡음이 안 낀다.
-   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 셋과 판 번호를 다시 얹는다** — 복사한 뒤 `git diff` 로 직전 판과
+   ⚠ `opus5_proxy.py` 는 복사한 뒤 **우리 덩어리 넷과 판 번호를 다시 얹는다** — 복사한 뒤 `git diff` 로 직전 판과
    견주면 상류가 바꾼 것과 복사로 지워진 우리 덩어리가 함께 보인다.
    - 제미나이 이름 표 — `_GEMINI_MODEL_ALIASES` · `normalize_gemini_model_path` 의 그 조회
      (상류 함수가 `-customtools` 만 떼므로 **그 함수 안에 한 줄이 든다**) · 자체 검사 세 칸
@@ -171,6 +177,12 @@ python -X utf8 posco/pgpt-proxy/image_tail_probe.py claude-opus-5           # to
      ⚠ **그 순서가 뜻을 진다** — 합친 뒤에 부르면 같은 메시지를 두 번 훑는다. 그리고 그림은
      `tool_result` **뒤**로만 가야 한다: 앞에 끼우면 게이트웨이가 짝 검사에서 400 을 낸다(실측)
    - 압축 간결 지시 끔(결정 0082) — `COMPACT_CONCISE` 의 기본값 `"0"` 과 그 곁말 · 자체 검사 한 칸
+   - 웹서치 메움(#118) — 상수 셋(`WEB_SEARCH` · `WEB_SEARCH_MODEL` · `_WEB_SEARCH_PROMPT_HEAD`) · 계수 둘과
+     `_count_web_search` · `stats()` 의 네 칸 · `web_search_tool` 부터 `web_search_error_message` 까지의 함수 묶음 ·
+     `anthropic_message_events` 의 `web_search_tool_result` 갈래 · `_forward_request` 의 `web_search` 갈래(알아보기 ·
+     머리 · 경로 · 공급자 · 답 짓기) · 머리 설명 한 칸 · 자체 검사 한 칸
+     ⚠ **답 짓기 갈래는 제미나이 chat 변환 갈래보다 앞이고 상태 코드를 안 가린다** — 상류가 지면(4xx · 5xx)
+     그대로 중계하지 않고 검색 오류 칸으로 돌려줘야 대화가 안 깨진다
    - 판 번호 — `VERSION = 정수` 한 줄을 `VERSION_UPSTREAM` · `VERSION_OURS` · `VERSION` 셋으로
    - 하이쿠 칸 곁말의 출처 표기 — 상류가 우리 계정 이름을 적어 두었으면 뺀다. ⚠ 안 빼면 배포본 뽑기가
      「새면 안 되는 글자」로 멈춘다. 상류가 새로 지은 가짜 키가 같은 검사에 걸리면 상류 파일은 두고

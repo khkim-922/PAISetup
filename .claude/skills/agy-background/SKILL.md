@@ -13,10 +13,20 @@ agy 에게 넘기는 길은 둘이다. **MCP 도구는 끝날 때까지 대화�
 | 맞는 일 | 1~2분 안에 끝나고 답을 바로 써야 하는 일 | 그보다 길거나, 그동안 할 딴 일이 있는 일 |
 | 대화 | 막힌다 | 안 막힌다 · 끝나면 알림이 온다 |
 | 시간 한도 | 도구마다 다르다 — 짧게는 2분(`web_lookup`), 가장 긴 `delegate` 가 10분 | `--timeout` (기본은 래퍼의 `DEFAULT_TIMEOUT_SEC`) |
-| 모델 | 브릿지가 도구마다 고르고, 못 고르면 `AGY_DEFAULT_MODEL` | `--model`, 없으면 `AGY_DEFAULT_MODEL`, 그것도 없으면 agy 기본 |
+| 모델 | 도구마다 고른 목록(`AGY_MODEL_<도구>` 가 있으면 그것) 뒤에 `AGY_DEFAULT_MODEL` → `AGY_FALLBACK_MODELS` 차례로 — `api:` 후보는 거른다 | `--model` 하나, 없으면 `AGY_MODEL_DELEGATE` → `AGY_DEFAULT_MODEL` → `AGY_FALLBACK_MODELS` 차례로 — `api:` 후보는 키가 있을 때만 API 키 방식으로, 다 비면 agy 기본 |
+| 한도(429) | 차례의 다음 모델로 넘어간다 — `model` 을 주거나 `follow_up` 이면 안 넘어간다 | 같다 — `--model` 을 주면 안 넘어간다 |
 | 이어 묻기 | `follow_up` + 돌려받은 session_id | `--conversation` + 끝 줄의 id |
 
 - MCP 가 한도에 걸려 끊겨도 agy 세션은 남는다 — 돌려받은 session_id 로 `follow_up` 하면 결과를 받는다.
+- **한도가 차는 단위가 방식마다 다르다** — 로그인 방식은 갈래(제미나이 · 그외)마다, API 키 방식은 모델마다 찬다.
+  그래서 래퍼는 로그인 기본 모델이 막히면 `api:` 후보로 제미나이 모델을 하나씩 돌리다가 마지막에 그외 갈래로
+  간다. 키(`GOOGLE_API_KEY` · `GEMINI_API_KEY`)가 없으면 `api:` 후보는 조용히 건너뛰고, 브릿지는 로그인
+  방식 안에서만 넘어간다. 이름들의 값과 차례는 설치기가 agy 묶음을 깔 때 자리마다 사용자 환경변수로 심는다.
+- **사내는 일의 무게로 모델을 가른다** — 맡기기(`delegate` · 이 래퍼)는 `AGY_MODEL_DELEGATE`, 나머지는
+  `AGY_DEFAULT_MODEL` 이고 넘기지 않는다(회사 키는 예산 한도라 하나가 막히면 다 막힌다). 값은 설치기의
+  자리별 표(`$AgyModelVarsBySite`)가 든다.
+  `analyze_files` 에 판단이 드는 물음을 줄 때는 그 호출의 `model` 로 `AGY_MODEL_DELEGATE` 값을 준다 —
+  세션 시작 안내가 그 값을 댄다.
 - **서브에이전트로 MCP 를 감싸 막힘을 피하지 않는다** — 서브는 제 시작 비용을 따로 싣고, 하는 일은
   기다리는 것뿐이다. 백그라운드가 같은 일을 그 비용 없이 한다.
 
@@ -34,11 +44,13 @@ agy 에게 넘기는 길은 둘이다. **MCP 도구는 끝날 때까지 대화�
 
    모델 이름은 `agy models` 가 내는 표시 이름을 그대로 쓴다(예: `Gemini 3.8 Flash (High)`).
 3. **끝나면 알림이 온다 — `--out` 파일을 읽는다.** 맨 끝 줄 `[agy-bg] <갈래> …` 이 갈래 · 걸린
-   시간 · 모델 · 토큰 · `conversation` id 를 든다. 갈래가 `ok` 가 아니면 그 위에 agy 가 낸 것과 stderr,
+   시간 · 모델 · 넘어간 자취(`failover=`) · 토큰 · `conversation` id 를 든다. 갈래가 `ok` 가 아니면 그 위에 agy 가 낸 것과 stderr,
    끝 줄에 로그 경로가 남아 까닭을 든다. 종료 코드는 0 일 때만 답이 온 것이다(갈래별 코드는 래퍼
    머리말이 든다). ⚠ 인자가 틀리면 답 파일이 아예 안 생긴다 — 종료 코드만 남는다.
 
 4. **이어 물을 때**는 끝 줄의 `conversation` id 를 `--conversation` 으로 준다 — 앞 맥락을 다시 안 보낸다.
+   끝 줄 `model=` 이 `api:` 로 시작하면 그 이름을 `--model` 로 같이 준다 — 그 대화는 API 키 방식의 홈에
+   쌓여 있어 로그인 방식으로는 못 찾는다.
 
 ## 작업 자리
 

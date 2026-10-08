@@ -24,7 +24,8 @@
         "/c",
         "agy-bridge"
       ],
-      "timeout": 660000
+      "timeout": 660000,
+      "alwaysLoad": true
     }
   }
 }
