@@ -1437,7 +1437,8 @@ $wantAgyDelegate = [bool]($wantAgentHost -and ($PickKeys -contains 'antigravity'
 $wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
 # Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
-# ⚠ **Codex 를 고르면 선다 — 사내는 Codex 를 회사 게이트웨이에 물린 자리(`$wantCodex`)에서만.** 사내 Codex 는
+# ⚠ **Claude 와 Codex 를 같이 고르면 선다 — 맡기는 쪽(Claude)과 받는 쪽(Codex)이 다 있어야 한다. 사내는 Codex 를 회사
+#   게이트웨이에 물린 자리(`$wantCodex`)에서만.** 사내 Codex 는
 #   ChatGPT 로그인이 아니라 회사 설정 틀로 게이트웨이를 타서, 틀이 안 심긴 사내 PC 에서는 붙을 데가 없다. 자리를 모르면
 #   사외다(0086). Copilot 은 조건에 안 든다 — 받는 쪽일 뿐이라, 래퍼는 Copilot CLI 가 없으면 Codex 만으로 돈다.
 # ⚠ **자리마다 다른 값은 래퍼가 읽는 사용자 환경변수로 심는다** — 래퍼는 자리를 모르고 이 값만 읽는다(agy 의
@@ -1469,22 +1470,39 @@ $CcBgVarsBySite = @{
   }
 }
 $CcBgVars       = $CcBgVarsBySite[$(if ($inside) { 'inside' } else { 'outside' })]
-$wantCcBg       = [bool]($wantAgentHost -and ($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
-# ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091) ──────
-# 키는 스킬 이름, 값은 까는 조건이다. 제작자 설정 칸을 켜면 6 칸이 묶음 전부를 까므로 이 표는 칸을 끈
-# 자리에서만 일을 한다(7 칸의 「칸 없이 까는 스킬」). 모두 규범을 안 읽어도 홀로 선다.
+$wantCcBg       = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
+# ── Claude 맡기기 — 스킬 `claude-background` (claude-config 결정 0098) ──────────────────────────────
+# 위 Codex · Copilot 맡기기의 거울이다 — Codex 가 맡기는 쪽이고 Claude 가 받는다. 받는 Claude 는 읽기 도구만 열고 뜬다.
+# ⚠ **조건은 위와 같은 사실이다** — 두 CLI 가 다 서는 자리에서 서로에게 맡긴다. 그래서 따로 짓지 않고 가리킨다.
+$wantClaudeBg   = $wantCcBg
+# ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091 · 0097) ──────
+# 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — Claude 홈(`~/.claude/skills`)과 Codex 홈(`~/.agents/skills`).
+# Codex 를 고르면 Claude 를 고른 자리와 같은 기본기를 받는다(0097). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽**
+# 홈에 산다: Codex 에게 맡기는 러너는 Claude 홈, Claude 에게 맡기는 러너는 Codex 홈.
+# 제작자 설정 칸을 켜면 6 칸이 Claude 홈에 묶음 전부를 까므로, Claude 쪽 조건은 칸을 끈 자리에서만 일을 한다
+# (7 칸의 「칸 없이 까는 스킬」). Codex 쪽은 칸과 무관하게 이 표대로 깐다. 모두 규범을 안 읽어도 홀로 선다.
+$hostClaude = [bool]($PickKeys -contains 'claude')
+$hostCodex  = [bool]($PickKeys -contains 'codex')
 $FreeSkills = [ordered]@{
-  'drm-office-read'          = $wantAgentHost                         # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
-  'inhouse-app'              = $wantAgentHost                         # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
-  'agy-background'           = $wantAgyDelegate                       # agy 에게 뒤에서 맡기고 한도에서 넘긴다
-  'codex-copilot-background' = $wantCcBg                              # Codex 에게 뒤에서 맡기고 한도면 Copilot 이 받는다
-  'agent-envelope'           = $wantAgentHost                         # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
+  # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
+  'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex }
+  # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
+  'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex }
+  # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
+  'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex }
+  # agy 에게 맡기고 한도에서 넘긴다
+  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Codex = [bool]($hostCodex -and $wantAgyDelegate) }
+  # Codex 에게 뒤에서 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude
+  'codex-copilot-background' = @{ Claude = $wantCcBg; Codex = $false }
+  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex
+  'claude-background'        = @{ Claude = $false; Codex = $wantClaudeBg }
 }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
 if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
 if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 백그라운드 래퍼가 pythonw 로 돈다' }
+if ($wantClaudeBg)    { $needPythonWhy += 'Claude 맡기기 래퍼가 python 으로 돈다' }
 if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex DRM · 그림 훅이 파이썬으로 돈다' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
 $needPython = [bool]$needPythonWhy.Count
@@ -3318,9 +3336,13 @@ Write-Elapsed '[5/8] 홈 설정'
 #   깐 판이 기록을 그 몇 개로 갈아 쓰면, 앞서 칸을 켜고 깐 나머지가 기록에서 빠져 묶음에서 걷히는 날 안 걷힌다.
 #   `-Installed` 를 안 주면 묶음 전부를 깐 것으로 친다(6 칸).
 function Remove-RetiredSkills {
-  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed)
+  # `$ExtraBundle` — 한 홈에 묶음 두 곳의 스킬이 깔리는 자리(Codex 홈 · 결정 0097). 「묶음에 있다」는 두 곳을 합쳐 잰다.
+  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string]$ExtraBundle)
   if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
   $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
+  if ($ExtraBundle -and (Test-Path -LiteralPath $ExtraBundle -PathType Container)) {
+    $shipped += @(Get-ChildItem -LiteralPath $ExtraBundle -Directory | ForEach-Object { $_.Name })
+  }
   if ($null -eq $Installed) { $Installed = $shipped }
   $before = if (Test-Path -LiteralPath $Ledger) {
     @([IO.File]::ReadAllLines($Ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -3405,16 +3427,24 @@ if (-not $WithPersonalConfig) {
   }
 }
 
-# Codex 를 고른 자리에서는 같은 자동 스킬을 Codex 홈에도 깐다. `~/.claude/skills` 사본만으로는
-# Codex 가 스킬을 발견할 수 없다. 제작자 설정 칸을 켰는지와 관계없이 `$FreeSkills` 조건만 따른다.
-if ($PickKeys -contains 'codex') {
-  $skillBundle = Join-Path $Here '.claude\skills'
-  $codexSkillHome = Join-Path $env:USERPROFILE '.codex\skills'
+# ── Codex 홈의 스킬 — 위 `$FreeSkills` 의 Codex 칸 (결정 0097) ──────────────────────────────
+# Codex 가 사용자 스킬을 읽는 자리는 `~/.agents/skills` 다(Codex 공식 문서 「Build skills」 — 사용자 범위). `~/.claude/skills`
+# 사본만으로는 Codex 가 스킬을 못 찾는다. 제작자 설정 칸과 관계없이 이 표의 Codex 칸만 따른다.
+# ⚠ **묶음이 두 곳이다** — 두 홈이 함께 쓰는 스킬은 `.claude\skills`, Codex 가 맡기는 쪽일 때만 뜻이 서는 스킬은
+#   `.agents\skills` 에 산다. 뒤엣것을 `.claude\skills` 에 두면 제작자 설정 칸(6 칸)이 Claude 홈에도 깔아, 모든 Claude
+#   세션의 스킬 목록에 쓸 일 없는 줄이 는다.
+# ⚠ **옛 자리(`~/.codex/skills`)에 깐 것은 걷는다** — 그 자리를 쓰던 판이 남긴 기록(`~/.codex/.paisetup-skills`)에 적힌
+#   이름만 옮기고 기록을 지운다. 사람이 거기 둔 다른 스킬은 안 건드린다.
+if ($hostCodex) {
+  $skillBundle      = Join-Path $Here '.claude\skills'
+  $agentSkillBundle = Join-Path $Here '.agents\skills'
+  $codexSkillHome   = Join-Path $env:USERPROFILE '.agents\skills'
   $codexFreeDone = @()
   foreach ($n in $FreeSkills.Keys) {
-    if (-not $FreeSkills[$n]) { continue }
-    $from = Join-Path $skillBundle $n
-    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) { continue }
+    if (-not $FreeSkills[$n].Codex) { continue }
+    $from = @($skillBundle, $agentSkillBundle | ForEach-Object { Join-Path $_ $n } |
+              Where-Object { Test-Path -LiteralPath (Join-Path $_ 'SKILL.md') }) | Select-Object -First 1
+    if (-not $from) { Write-Host "  Codex 스킬 $n — 이 폴더에 없다"; continue }
     $to = Join-Path $codexSkillHome $n
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
@@ -3422,8 +3452,22 @@ if ($PickKeys -contains 'codex') {
     $codexFreeDone += $n
   }
   if ($codexFreeDone.Count) {
-    Remove-RetiredSkills -Bundle $skillBundle -SkillHome $codexSkillHome -Ledger (Join-Path $env:USERPROFILE '.codex\.paisetup-skills') `
-                         -BackupRoot (Join-Path $env:USERPROFILE '.codex\backups') -Installed $codexFreeDone
+    Remove-RetiredSkills -Bundle $skillBundle -ExtraBundle $agentSkillBundle -SkillHome $codexSkillHome `
+                         -Ledger (Join-Path $env:USERPROFILE '.agents\.paisetup-skills') `
+                         -BackupRoot (Join-Path $env:USERPROFILE '.agents\backups') -Installed $codexFreeDone
+  }
+  $oldCodexLedger = Join-Path $env:USERPROFILE '.codex\.paisetup-skills'
+  if (Test-Path -LiteralPath $oldCodexLedger) {
+    $oldCodexHome = Join-Path $env:USERPROFILE '.codex\skills'
+    $oldNames = @([IO.File]::ReadAllLines($oldCodexLedger) | ForEach-Object { $_.Trim() } | Where-Object { $_ } |
+                  Where-Object { Test-Path -LiteralPath (Join-Path $oldCodexHome $_) -PathType Container })
+    if ($oldNames.Count) {
+      $oldBk = Join-Path $env:USERPROFILE (".codex\backups\install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+      New-Item -ItemType Directory -Path $oldBk -Force | Out-Null
+      foreach ($n in $oldNames) { Move-Item -LiteralPath (Join-Path $oldCodexHome $n) -Destination (Join-Path $oldBk $n) -Force }
+      Write-Host "  Codex 옛 스킬 자리 — $($oldNames -join ' · ') 를 걷었다 (옮긴 자리: $oldBk)" -ForegroundColor Green
+    }
+    Remove-Item -LiteralPath $oldCodexLedger -Force
   }
 }
 
@@ -3568,7 +3612,7 @@ if (-not $WithPersonalConfig) {
   $skillHome   = Join-Path $homeDir 'skills'
   $freeDone = @()
   foreach ($n in $FreeSkills.Keys) {
-    if (-not $FreeSkills[$n]) { continue }
+    if (-not $FreeSkills[$n].Claude) { continue }
     $from = Join-Path $skillBundle $n
     if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) { Write-Host "  스킬 $n — 이 폴더에 없다"; continue }
     $owner = @($configRepoUrls | ForEach-Object { Get-ConfigRepoDir $_ } |
@@ -4857,14 +4901,15 @@ if ($PickKeys -contains 'codex') {
                       $codexHookText.Contains('codex-safety-hooks.py bash-backslash') -and
                       $codexHookText.Contains('codex-safety-hooks.py utf8-bom')) }
 }
-$freeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_] })
+$freeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Claude })
 if ($freeWant.Count) {
   $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
   $checks += @{ Name = "칸 없이 까는 스킬 ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
-  if ($PickKeys -contains 'codex') {
-    $codexFreeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $env:USERPROFILE ".codex\skills\$_\SKILL.md")) })
-    $checks += @{ Name = "Codex 자동 스킬 ($($freeWant -join ' · '))"; Ok = ($codexFreeMiss.Count -eq 0) }
-  }
+}
+$codexFreeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Codex })
+if ($codexFreeWant.Count) {
+  $codexFreeMiss = @($codexFreeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $env:USERPROFILE ".agents\skills\$_\SKILL.md")) })
+  $checks += @{ Name = "Codex 홈 스킬 ($($codexFreeWant -join ' · ') · ~/.agents/skills)"; Ok = ($codexFreeMiss.Count -eq 0) }
 }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
