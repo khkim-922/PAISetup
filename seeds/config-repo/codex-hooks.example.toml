@@ -1,9 +1,7 @@
-model = "gpt-5.6-sol"
-model_provider = "pgpt"
-model_reasoning_effort = "low"
-web_search = "live"
+# Codex hooks installed with the config-repo seed.
+# Merge this block into ~/.codex/config.toml. Codex asks the user to trust new
+# or changed hooks on the next interactive start; do not copy [hooks.state].
 
-# 훅 몸통은 배포 씨앗에서 온다. Codex 는 다음 대화형 시작에서 새 훅을 신뢰할지 묻는다.
 [hooks]
 UserPromptSubmit = [
   { hooks = [
@@ -15,12 +13,3 @@ PreToolUse = [
     { type = "command", command = "python -X utf8 ~/.claude/seeds/config-repo/.claude/hooks/codex-image-gate.py", commandWindows = "python -X utf8 \"$env:USERPROFILE/.claude/seeds/config-repo/.claude/hooks/codex-image-gate.py\"", async = false, timeout = 10, statusMessage = "이미지 크기 확인 중" },
   ] },
 ]
-
-[model_providers.pgpt]
-name = "P-GPT Internal Server"
-base_url = "http://127.0.0.1:18901/gpgpta01-gpt/v1"
-env_key = "OPENAI_API_KEY"
-supports_standalone_web_search = true
-
-[windows]
-sandbox = "elevated"

@@ -50,6 +50,7 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 | `.claude/hooks/image-gate.py` · `image-gate.sh` | **그림 문.** 모델이 그림을 받기 직전에 치수를 재는 훅 — `scale` 을 안 고른 도구 스크린샷과, 상류가 어차피 깎을 만큼 큰 그림 파일은 막는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 저장소가 아니라 **홈** `~/.claude/settings.json` 의 PreToolUse 에 심긴다 — 설정 저장소가 있는 PC 는 세션 훅이, 없는 PC 는 설치기가 심는다. 치수 눈금은 검사 씨앗의 `_vision.py` 가 든다 |
 | `.claude/hooks/web-retry.sh` | **웹 다시 찾기.** 웹 검색 · 웹 가져오기가 못 닿았을 때 다른 길(`curl` · Tavily · agy)이 있다는 것을 결과 곁에 붙이는 훅 — 막지 않는다. 그림 문처럼 **홈** `~/.claude/settings.json` 의 PostToolUse · PostToolUseFailure 에 심긴다 |
 | `.claude/hooks/drm-guide.py` · `drm-guide.sh` | **DRM 길잡이.** 글에 붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 그것을 읽는 스킬 `drm-office-read` 로 가는 길을 곁에 붙이는 훅 — 막지 않는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 그림 문처럼 **홈** `~/.claude/settings.json` 의 UserPromptSubmit · PostToolUseFailure 에 심긴다 |
+| `.claude/hooks/codex-image-gate.py` · `codex-hooks.example.toml` | **Codex 훅 배선 예시.** Codex의 `view_image(path)`를 그림 문이 알아듣는 `Read(file_path)`로 바꾸는 어댑터와, `~/.codex/config.toml` 에 DRM 길잡이 · 그림 문을 심는 TOML 블록. 다음 릴리스 설치기가 사람의 다른 Codex 설정을 두고 이 블록만 병합할 때 쓰는 진본이다 |
 | `.claude/tools.global.conf` | 전역 도구 선언 — 훅이 이것을 읽고 돈다 |
 | `.claude/get-browser.sh` | 브라우저를 받아 오는 **뒷길**. 저장소 도구 선언(`.claude/tools.conf`)의 `[playwright]` 블록이 `browsers-fallback` 칸에 저장소 기준 경로로 적어 가리킨다 |
 | `.githooks/pre-commit` · `commit-msg` · `pre-push` | **커밋·푸시 게이트 몸통 — 문지기.** 익명이다 — 무엇을 재는지 모르고, 러너를 찾아 부른다. 저장소마다 한 벌씩 가는 것은 이것이다 |
