@@ -1404,6 +1404,10 @@ $codexTpl   = Read-Directive $EnvFile 'codex-config'
 $geminiTpl  = Read-Directive $EnvFile 'gemini-config'
 $inside     = ($site -eq 'inside')
 $wantProxy  = [bool]($proxyRel  -and $inside)
+# ⚠ **회사 설정도 제품 칸을 탄다** — 안 켠 제품에 회사 설정만 심어 두면 쓰지도 않는 파일이
+#   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
+$wantCodex  = [bool]($codexTpl  -and $inside -and ($PickKeys -contains 'codex'))
+$wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini'))
 # ── agy 묶음 — agy 모델 값 · agy 설정 셋 (claude-config 결정 0083 · 0086 · 0088 · #117) ──────
 # Claude Code 가 agy 에게 일을 맡기는 길은 백그라운드 래퍼(스킬 `agy-background`) 하나다 — 그 래퍼가 고를
 # 모델(`$AgyModelVars`)과, agy 가 Claude Code 와 같은 규범·스킬·룰을 읽게 하는 설정 셋이다.
@@ -1419,15 +1423,46 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 #     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다.
 $wantAgyDelegate = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
 $wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
-# ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · Copilot CLI (claude-config 결정 0092 · 0093) ──
-# Codex 에게 읽기만 하는 일(웹 조사 · 문서 찾기)을 뒤에서 맡기고, Codex 한도가 차면 Copilot 이 받는다.
-# ⚠ **사외에서만 선다 — 사내는 회사 PC 시험 뒤에 연다.** 사내 Codex 는 ChatGPT 로그인이 아니라 회사 설정 틀로
-#   게이트웨이를 타는데, 그 게이트웨이는 Responses API 를 Chat Completions 로 바꿔 받는다 — 래퍼가 기대는 Codex 의
-#   웹 검색이 거기서 서는지 아직 모른다. agy 묶음이 처음 그랬듯 `-not $inside` 로 연다: 자리를 모르면 사외다(0086).
-# ⚠ **Copilot 은 조건에 안 든다** — 받는 쪽일 뿐이라, 래퍼는 Copilot CLI 가 없으면 Codex 만으로 돈다. Copilot CLI 는
-#   제품 칸에서 Copilot 까지 고른 사람에게만 깐다(3 칸) — 안 고른 제품의 프로그램은 안 깐다.
-$wantCcBg       = [bool]((-not $inside) -and ($PickKeys -contains 'claude') -and ($PickKeys -contains 'codex'))
-$wantCopilotCli = [bool]($wantCcBg -and ($PickKeys -contains 'copilot'))
+# ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 · Copilot CLI (claude-config 결정 0092 · 0093) ──
+# Codex 에게 읽기만 하는 일을 뒤에서 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
+# ⚠ **Claude 와 Codex 를 고르면 선다 — 사내는 Codex 를 회사 게이트웨이에 물린 자리(`$wantCodex`)에서만.** 사내 Codex 는
+#   ChatGPT 로그인이 아니라 회사 설정 틀로 게이트웨이를 타서, 틀이 안 심긴 사내 PC 에서는 붙을 데가 없다. 자리를 모르면
+#   사외다(0086). Copilot 은 조건에 안 든다 — 받는 쪽일 뿐이라, 래퍼는 Copilot CLI 가 없으면 Codex 만으로 돈다.
+# ⚠ **자리마다 다른 값은 래퍼가 읽는 사용자 환경변수로 심는다** — 래퍼는 자리를 모르고 이 값만 읽는다(agy 의
+#   `$AgyModelVarsBySite` 와 같은 꼴). 받는 값은 래퍼 머리말이 들고, 래퍼 검사(claude-config
+#   `scripts/check-codex-copilot-bg.py`)가 이 표를 읽어 두 자리 값이 래퍼에서 서는지 잰다.
+#   * `CC_BG_SITE` — 스킬 본문이 맡길 자료의 선을 이것으로 고른다. 래퍼는 안 읽는다
+#   * `CC_BG_AGENTS` — 차례이자 쓸 수 있는 쪽. **사내는 Codex 만** — Copilot 은 GitHub(회사 밖)로 가고, 사내에서 개인
+#     구독은 막혀 보이며 회사 계정으로 CLI 를 쓰는 정책은 정해진 것이 없다. Copilot CLI 도 이 값에 copilot 이 든 자리에서만
+#     깐다(3 칸)
+#   * `CC_BG_CODEX_WEB_SEARCH` — Codex 의 `web_search`. **사내는 `disabled`** — 게이트웨이가 Responses 를 Chat Completions
+#     로 바꿔 받고 도구는 `function` 만 적는다(`posco/OpenAI.-Posco.Setting.md`). Codex 는 값이 없어도 `cached` 로 검색
+#     도구를 실어 보내서, 안 싣게 하는 값은 `disabled` 하나다. 사외는 `live`(실시간 검색)
+#   * `CC_BG_CODEX_WIN_SANDBOX` — Codex 의 `windows.sandbox`. **두 자리 다 `unelevated`** — 관리자 승인 설정이 안 드는
+#     값이라 뒤에서 띄운 래퍼가 승인 창을 안 띄운다. `elevated` 는 그 설정이 없는 PC 에서 설정부터 하려 들고, 값이
+#     없으면(새 PC) 읽기 전용을 지키는 OS 샌드박스가 아예 안 선다
+# ⚠ **사내 게이트웨이의 180초 벽은 무게로 넘는다** — 벽은 요청 하나의 실행 시계라(`posco/ENV-posco.md`) 래퍼의 시간
+#   한도로는 못 넘는다. agy 가 가벼운 일을 Flash 로 보내듯, 사내 Codex 의 무게는 회사 설정 틀이 든다
+#   (`model_reasoning_effort = "low"`). 모델을 가는 손잡이 `CC_BG_CODEX_MODEL` 은 래퍼가 읽지만 여기 안 심는다 — 틀이 진본이다.
+# ⚠ **심는 값은 매번 덮는다** — 두 자리가 같은 이름을 들어, 자리를 옮긴 PC 도 이 자리 값으로 바뀐다.
+$CcBgVarsBySite = @{
+  inside  = [ordered]@{
+    CC_BG_SITE              = 'inside'
+    CC_BG_AGENTS            = 'codex'
+    CC_BG_CODEX_WEB_SEARCH  = 'disabled'
+    CC_BG_CODEX_WIN_SANDBOX = 'unelevated'
+  }
+  outside = [ordered]@{
+    CC_BG_SITE              = 'outside'
+    CC_BG_AGENTS            = 'codex,copilot'
+    CC_BG_CODEX_WEB_SEARCH  = 'live'
+    CC_BG_CODEX_WIN_SANDBOX = 'unelevated'
+  }
+}
+$CcBgVars       = $CcBgVarsBySite[$(if ($inside) { 'inside' } else { 'outside' })]
+$wantCcBg       = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
+$wantCopilotCli = [bool]($wantCcBg -and ($PickKeys -contains 'copilot') -and
+                         (@($CcBgVars['CC_BG_AGENTS'] -split ',') -contains 'copilot'))
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091) ──────
 # 키는 스킬 이름, 값은 까는 조건이다. 제작자 설정 칸을 켜면 6 칸이 묶음 전부를 까므로 이 표는 칸을 끈
 # 자리에서만 일을 한다(7 칸의 「칸 없이 까는 스킬」). 모두 규범을 안 읽어도 홀로 선다.
@@ -1443,10 +1478,6 @@ if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈�
 if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
 if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 백그라운드 래퍼가 pythonw 로 돈다' }
 $needPython = [bool]$needPythonWhy.Count
-# ⚠ **회사 설정도 제품 칸을 탄다** — 안 켠 제품에 회사 설정만 심어 두면 쓰지도 않는 파일이
-#   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
-$wantCodex  = [bool]($codexTpl  -and $inside -and ($PickKeys -contains 'codex'))
-$wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini'))
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
 #   그래서 무는 것은 「사내인가」와 「이 제품을 켰나」뿐이다.
 # ⚠ **제미나이 칸에 안 묶는다.** 옛 판은 `$wantAgy = $wantGemini` 였는데, 제미나이를 끌 수 있게
@@ -2169,8 +2200,8 @@ if ($PickKeys -contains 'claude') {
   Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
 }
 # Copilot CLI — Codex · Copilot 맡기기에서 Codex 한도가 차면 받는 쪽이다(위 `$wantCopilotCli` · 결정 0093).
-# ⚠ **제품 표(`$Clis`)에 안 든다.** 그 표의 줄은 자리를 안 가리는데(결정 0045), 이 CLI 가 회사 망에서 깔리고 도는지는
-#   아직 안 쟀다 — Copilot 제품의 데스크탑 앱은 사내에서도 깔리지만(`When='any'`) 이 CLI 는 맡기기와 함께 사외에서만 선다.
+# ⚠ **제품 표(`$Clis`)에 안 든다.** 그 표의 줄은 자리를 안 가리는데(결정 0045), 이 CLI 는 받는 쪽이 쓰이는 자리 —
+#   자리 값 `CC_BG_AGENTS` 에 copilot 이 든 자리 — 에서만 깐다. Copilot 제품의 데스크탑 앱은 그와 따로 사내에서도 깔린다.
 # ⚠ **판은 `--version` 의 끝 마침표를 떼고 읽는다** — `GitHub Copilot CLI 1.0.94.` 처럼 끝나서, 그대로 견주면 레지스트리
 #   판과 늘 달라 매 실행 다시 깐다(`Install-NpmCli` 의 판 견주기는 판 뒤에 점이 오면 다른 판으로 친다).
 if ($wantCopilotCli) {
@@ -2243,13 +2274,25 @@ if ($wantAgyDelegate) {
   }
 }
 
+# Codex · Copilot 맡기기의 자리 값 — 위 `$CcBgVars`(이 자리의 것). 래퍼(스킬 `codex-copilot-background`)가 읽는다.
+# ⚠ **다른 자리 값을 걷는 손이 없다** — 두 자리가 같은 이름을 들어, 이 자리 값으로 덮으면 그것으로 끝이다.
+if ($wantCcBg) {
+  foreach ($k in $CcBgVars.Keys) {
+    if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $CcBgVars[$k]) {
+      Write-Host "  $k — 이미 맞다"
+    } else {
+      Plant-Var $k $CcBgVars[$k]
+    }
+  }
+}
+
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
 #   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
 if (-not $inside) {
   Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
-  if ($wantCopilotCli) {
-    Write-Host '  Copilot CLI 는 터미널에서 `copilot login` 을 한 번 친다 — 브라우저로 GitHub 계정을 잇는다'
-  }
+}
+if ($wantCopilotCli) {
+  Write-Host '  Copilot CLI 는 터미널에서 `copilot login` 을 한 번 친다 — 브라우저로 GitHub 계정을 잇는다'
 }
 
 Write-Elapsed '[3/8] CLI'
@@ -4665,6 +4708,11 @@ if ($inside) {
 if ($wantAgyDelegate) {
   $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
                 Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
+}
+# Codex · Copilot 맡기기의 자리 값 — 이 자리 값과 글자까지 같은가(3 칸 · `$CcBgVars`).
+if ($wantCcBg) {
+  $checks += @{ Name = "Codex · Copilot 맡기기 값 ($($CcBgVars.Keys -join ' · '))"
+                Ok = (@($CcBgVars.Keys | Where-Object { $userEnv[$_] -ne $CcBgVars[$_] }).Count -eq 0) }
 }
 # ⚠ **설정 셋은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
 #   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.

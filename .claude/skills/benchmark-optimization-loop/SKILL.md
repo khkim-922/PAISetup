@@ -1,6 +1,6 @@
 ---
 name: benchmark-optimization-loop
-description: Use when the user asks to make something faster, try many variants, run recursive optimization, benchmark latency/throughput/cost, or choose the best implementation by repeated measured tests.
+description: 사용자가 무언가를 더 빠르게 만들어 달라거나, 여러 변형을 시도하거나, 재귀 최적화를 돌리거나, 지연 시간·처리량·비용을 벤치마크하거나, 반복 측정으로 가장 좋은 구현을 고르려 할 때 사용합니다.
 license: MIT
 metadata:
   origin: ECC
@@ -9,36 +9,35 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 # Benchmark Optimization Loop
 
-Use this skill to convert "make it 20x faster" or "try 50 recursive
-optimizations" into a bounded measured loop that can actually improve a system.
+「20배 빠르게 해 줘」나 「재귀 최적화를 50번 돌려 줘」 같은 요청을, 시스템을 실제로 낫게 만드는 범위가 정해진
+측정 루프로 바꿀 때 이 스킬을 씁니다.
 
-## Required Baseline
+## 갖춰야 할 기준선
 
-Do not optimize until these exist:
+다음이 갖춰지기 전에는 최적화하지 않습니다.
 
-- the operation being optimized;
-- the correctness gate that must stay green;
-- the metric: wall time, p95 latency, rows/sec, cost/run, memory, error rate;
-- the current baseline;
-- the search budget: max variants, max time, max spend, max data impact.
+- 최적화할 작업
+- 내내 초록이어야 하는 정확성 관문
+- 지표: 걸린 시간(wall time), p95 지연, 초당 행 수, 실행당 비용, 메모리, 오류율
+- 지금의 기준선 값
+- 탐색 예산: 최대 변형 수, 최대 시간, 최대 비용, 데이터에 미치는 영향의 상한
 
-If the user asks for an unrealistic target, keep the ambition but make the loop
-bounded and measurable.
+사용자가 비현실적인 목표를 내걸면, 그 포부는 살리되 루프는 범위가 있고 잴 수 있게 만듭니다.
 
-## Loop
+## 루프
 
-1. Measure the baseline.
-2. Identify bottlenecks from evidence.
-3. Generate variants that test one hypothesis each.
-4. Run variants with the same input shape.
-5. Reject variants that fail correctness, safety, or reproducibility.
-6. Promote the fastest safe variant.
-7. Codify the winning path in a script, command, test, config, or doc.
-8. Rerun the baseline and winner to confirm the delta.
+1. 기준선을 잽니다.
+2. 근거에서 병목을 찾습니다.
+3. 변형마다 가설 하나만 시험하게 만듭니다.
+4. 모든 변형을 같은 꼴의 입력으로 돌립니다.
+5. 정확성 · 안전성 · 재현성을 못 지킨 변형은 버립니다.
+6. 안전한 변형 가운데 가장 빠른 것을 올립니다.
+7. 이긴 경로를 스크립트 · 명령 · 테스트 · 설정 · 문서 가운데 하나로 굳힙니다.
+8. 기준선과 승자를 다시 돌려 차이를 확인합니다.
 
-## Variant Table
+## 변형 표
 
-Track variants like this:
+변형은 이렇게 기록합니다.
 
 ```text
 Variant | Hypothesis | Command | Time | Correct? | Notes
@@ -47,25 +46,25 @@ batch-500 | fewer round trips | npm run job -- --batch 500 | 42s | yes | winner
 parallel-8 | more workers | npm run job -- --workers 8 | 31s | no | rate limited
 ```
 
-## Recursive Search
+## 재귀 탐색
 
-For recursive or hyperparameter work:
+재귀 탐색이나 하이퍼파라미터 작업에서는:
 
-- persist every run to a ledger;
-- compare against the prior accepted winner, not only the previous run;
-- keep a holdout or replay check;
-- stop when improvement is within noise, correctness fails, cost exceeds the
-  budget, or the search starts changing more variables than it can explain.
+- 모든 실행을 원장(ledger)에 남깁니다
+- 직전 실행만이 아니라 앞서 채택된 승자와 견줍니다
+- 홀드아웃이나 재실행(replay) 확인을 둡니다
+- 개선 폭이 잡음 안으로 들어오거나, 정확성이 깨지거나, 비용이 예산을 넘거나, 탐색이 설명할 수 있는 것보다
+  많은 변수를 바꾸기 시작하면 멈춥니다
 
-Use phrases like "best measured safe variant" instead of "global optimum" unless
-the search space was actually exhaustive.
+탐색 공간을 실제로 다 훑은 것이 아니면 「전역 최적」 대신 「측정해 본 것 가운데 가장 좋은 안전한 변형」 같은 말을
+씁니다.
 
-## Promotion Gate
+## 승격 관문
 
-A variant cannot become the new default until:
+변형은 다음을 모두 갖춰야 새 기본값이 됩니다.
 
-- correctness tests pass;
-- the performance delta is repeated or explained;
-- rollback is obvious;
-- the change is encoded in source control or a durable runbook;
-- the final summary includes exact commands and measurements.
+- 정확성 테스트 통과
+- 성능 차이의 재현이나 설명
+- 분명한 되돌리는 길
+- 소스 관리나 오래 남는 런북에 담긴 변경
+- 정확한 명령과 측정값이 든 최종 요약

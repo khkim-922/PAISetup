@@ -1,107 +1,107 @@
 ---
 name: automation-audit-ops
-description: ECC의 근거 우선 자동화 인벤토리 및 중복 감사 워크플로입니다. 무엇이 살아 있고, 무엇이 깨졌고, 무엇이 중복되며, 무엇이 비어 있는지 고치기 전에 먼저 알고 싶을 때 사용합니다.
+description: 근거부터 모으는 ECC의 자동화 인벤토리·중복 감사 워크플로입니다. 무엇이든 고치기 전에, 어떤 작업·훅·커넥터·MCP 서버·래퍼가 살아 있고, 깨졌고, 중복되고, 빠져 있는지 사용자가 알고 싶을 때 사용합니다.
 origin: ECC
 ---
 
 # Automation Audit Ops
 
-사용자가 어떤 자동화가 실제로 살아 있는지, 어떤 작업이 깨졌는지, 어디에 중복이 있는지, 어떤 도구와 커넥터가 지금 실제 가치를 내고 있는지 묻는다면 이 스킬을 사용합니다.
+어떤 자동화가 살아 있는지, 어떤 작업이 깨졌는지, 어디가 겹치는지, 어떤 도구와 커넥터가 지금 실제로 쓸모 있는 일을 하고 있는지 사용자가 물으면 이 스킬을 씁니다.
 
-이것은 감사 우선 운영자 스킬입니다. 무엇이든 다시 쓰기 전에 근거 기반 인벤토리와 keep / merge / cut / fix-next 권고 세트를 만드는 것이 목적입니다.
+감사부터 하는 운영 스킬입니다. 무엇이든 고쳐 쓰기 전에, 근거를 갖춘 인벤토리와 keep / merge / cut / fix-next 권고 묶음을 만드는 것이 이 스킬의 일입니다.
 
 ## 스킬 스택
 
-관련 시 다음 ECC 네이티브 스킬을 조합합니다.
+관련이 있으면 다음 ECC 네이티브 스킬을 워크플로에 끌어옵니다.
 
-- `workspace-surface-audit`
-- `knowledge-ops`
-- `github-ops`
-- `ecc-tools-cost-audit`
-- `research-ops`
-- `verification-loop`
+- `workspace-surface-audit` — 커넥터·MCP·훅·앱 인벤토리를 만들 때
+- `knowledge-ops` — 저장소의 지금 실제 상태를 오래 유지되는 맥락과 맞춰 봐야 할 때
+- `github-ops` — 답이 CI, 예약 워크플로, 이슈, PR 자동화에 달려 있을 때
+- `ecc-tools-cost-audit` — 진짜 문제가 형제 앱 저장소의 웹훅 팬아웃, 큐에 쌓인 작업, 불어나는 과금일 때
+- `research-ops` — 로컬 인벤토리를 현재 플랫폼 지원 현황이나 공개 문서와 견줘야 할 때
+- `verification-loop` — 복구됐으려니 가정하지 않고, 고친 뒤의 상태를 증명할 때
 
 ## 사용 시점
 
 - 사용자가 "내 자동화가 뭐가 있지", "뭐가 살아 있지", "뭐가 깨졌지", "뭐가 겹치지"라고 물을 때
-- 작업이 cron, GitHub Actions, local hooks, MCP servers, connectors, wrappers, app integrations를 가로지를 때
-- 다른 에이전트 시스템에서 이식된 것과 ECC 내부에서 다시 만들어야 할 것을 구분하고 싶을 때
-- 같은 일을 하는 여러 경로가 쌓여서 하나의 canonical lane으로 정리하고 싶을 때
+- 맡은 일이 cron 작업, GitHub Actions, 로컬 훅, MCP 서버, 커넥터, 래퍼, 앱 연동에 걸쳐 있을 때
+- 다른 에이전트 시스템에서 무엇이 이식됐고 무엇을 아직 ECC 안에서 다시 만들어야 하는지 사용자가 알고 싶을 때
+- 워크스페이스에 같은 일을 하는 방법이 여러 갈래 쌓여, 사용자가 표준 경로(canonical lane) 하나로 모으고 싶을 때
 
 ## 가드레일
 
-- 사용자가 수정까지 명시하지 않는 한 read-only로 시작합니다
-- 다음을 분리합니다
-  - configured
-  - authenticated
-  - recently verified
-  - stale or broken
-  - missing entirely
-- skill이나 config가 참조한다는 이유만으로 live라고 주장하지 않습니다
-- evidence table이 생기기 전에는 겹치는 표면을 병합하거나 삭제하지 않습니다
+- 사용자가 수정까지 명시적으로 요청하지 않았다면 읽기 전용으로 시작합니다
+- 다음을 구분합니다
+  - 설정됨
+  - 인증됨
+  - 최근에 검증됨
+  - 낡았거나 깨짐
+  - 아예 없음
+- 스킬이나 설정이 참조한다는 이유만으로 그 도구가 살아 있다고 주장하지 않습니다
+- 근거 표가 생기기 전에는 겹치는 표면을 합치거나 지우지 않습니다
 
 ## 워크플로
 
-### 1. 실제 표면 인벤토리
+### 1. 실제 표면 인벤토리 만들기
 
-현재 live 표면을 먼저 읽습니다.
+이론부터 세우지 말고, 지금 살아 있는 표면부터 읽습니다.
 
-- repo hooks and local hook scripts
-- GitHub Actions and scheduled workflows
-- MCP configs and enabled servers
-- connector- or app-backed integrations
-- wrapper scripts and repo-specific automation entrypoints
+- 저장소 훅과 로컬 훅 스크립트
+- GitHub Actions와 예약 워크플로
+- MCP 설정과 활성화된 서버
+- 커넥터나 앱에 기댄 연동
+- 래퍼 스크립트와 저장소 고유의 자동화 진입점
 
-다음 표면별로 묶습니다.
+표면에 따라 다음처럼 묶습니다.
 
-- local runtime
-- repo CI / automation
-- connected external systems
-- messaging / notifications
-- billing / customer operations
-- research / monitoring
+- 로컬 런타임
+- 저장소 CI / 자동화
+- 연결된 외부 시스템
+- 메시징 / 알림
+- 과금 / 고객 운영
+- 리서치 / 모니터링
 
-### 2. 각 항목 live state 분류
+### 2. 항목마다 가동 상태 분류하기
 
-각 자동화에 대해 다음을 표시합니다.
+드러난 자동화마다 다음을 표시합니다.
 
-- configured
-- authenticated
-- recently verified
-- stale or broken
-- missing
+- 설정됨
+- 인증됨
+- 최근에 검증됨
+- 낡았거나 깨짐
+- 없음
 
-그리고 문제 유형도 분류합니다.
+그다음 문제 유형을 분류합니다.
 
-- active breakage
-- auth outage
-- stale status
-- overlap or redundancy
-- missing capability
+- 현재 고장(active breakage)
+- 인증 장애(auth outage)
+- 낡은 상태 정보(stale status)
+- 겹침 또는 중복(overlap or redundancy)
+- 빠진 기능(missing capability)
 
-### 3. 증명 경로 추적
+### 3. 증거 경로 추적하기
 
-중요한 주장은 다음 같은 구체적 소스로 뒷받침합니다.
+중요한 주장마다 구체적인 출처를 댑니다.
 
-- file path
-- workflow run
-- hook log
-- config entry
-- recent command output
-- exact failure signature
+- 파일 경로
+- 워크플로 실행 기록
+- 훅 로그
+- 설정 항목
+- 최근 명령 출력
+- 정확한 실패 시그니처
 
-현재 상태가 모호하면 감사가 완결된 척하지 말고 그대로 말합니다.
+지금 상태가 모호하면 감사가 끝난 척하지 말고 모호하다고 바로 말합니다.
 
-### 4. keep / merge / cut / fix-next로 마무리
+### 4. keep / merge / cut / fix-next로 마무리하기
 
-겹치거나 의심스러운 표면마다 하나의 판정을 반환합니다.
+겹치거나 미심쩍은 표면마다 판정을 하나씩 내립니다.
 
 - keep
 - merge
 - cut
 - fix next
 
-가치는 역사적 경로를 모두 보존하는 데 있지 않고, 소음 많은 자동화를 하나의 canonical ECC lane으로 접는 데 있습니다.
+모든 지난 경로를 지키는 데가 아니라, 어수선한 자동화를 표준 ECC 경로 하나로 접는 데 이 일의 값어치가 있습니다.
 
 ## 출력 형식
 
@@ -130,13 +130,13 @@ NEXT ECC MOVE
 
 ## 함정
 
-- live inventory를 읽을 수 있는데 기억으로 답하지 않습니다
-- "config에 있음"을 "동작 중"으로 간주하지 않습니다
-- 깨진 고신호 경로를 말하기 전에 저가치 중복부터 손대지 않습니다
-- 사용자가 inventory를 먼저 원했는데 저장소 재작성으로 넓히지 않습니다
+- 살아 있는 인벤토리를 직접 읽을 수 있는데 기억으로 답하지 않습니다
+- "설정에 있음"을 "동작함"으로 여기지 않습니다
+- 깨진 핵심 경로(high-signal path)를 짚기 전에 가치가 낮은 중복부터 고치지 않습니다
+- 사용자가 인벤토리를 먼저 원했다면 일을 저장소 재작성으로 넓히지 않습니다
 
 ## 검증
 
-- 중요한 주장은 live proof path를 인용한다
-- 각 자동화는 명확한 live-state 카테고리를 가진다
-- 최종 권고는 keep / merge / cut / fix-next를 구분한다
+- 중요한 주장은 실제로 확인한 증거 경로를 댄다
+- 드러난 자동화마다 분명한 가동 상태 범주가 붙어 있다
+- 최종 권고가 keep / merge / cut / fix-next를 구분한다
