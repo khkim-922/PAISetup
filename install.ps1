@@ -4769,18 +4769,37 @@ if ($PickKeys -contains 'claude') {
   $checks += @{ Name = 'DRM 길잡이 몸통 (씨앗의 drm-guide.py)'; Ok = (Test-Path -LiteralPath $drmBodyChk) }
   $checks += @{ Name = 'DRM 길잡이 껍데기 (씨앗의 drm-guide.sh)'; Ok = (Test-Path -LiteralPath $drmShellChk) }
   $drmWired = @()
+  $drmBadMatcher = @()
   try {
     $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+    # 껍데기의 matcher 진본 — 기대값을 여기 적지 않는다(적으면 진본이 바뀐 날 조용히 어긋난다)
+    $drmWantPre = $null
+    $pm = Select-String -LiteralPath $drmShellChk -Pattern '^# matcher\.PreToolUse = (\S+)' -Encoding UTF8 |
+          Select-Object -First 1
+    if ($pm) { $drmWantPre = $pm.Matches[0].Groups[1].Value }
     foreach ($ev in 'UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure') {
       foreach ($entry in @($gc.hooks.$ev)) {
         foreach ($h in @($entry.hooks)) {
-          if ($h -and ([string]$h.command).Contains('drm-guide.')) { $drmWired += $ev }
+          if ($h -and ([string]$h.command).Contains('drm-guide.')) {
+            $drmWired += $ev
+            # ⚠ **명령이 「있다」만 보면 안 된다** — matcher 가 어긋난 항목은 그 자리에서 훅이 안 돈다:
+            #   제출 자리에 키가 달리면 거는 자가 항목째 걸러내고, 도구 자리의 값이 좁으면 그 밖의
+            #   도구로 턴을 시작한 날 조용히 빠진다(claude-config #120).
+            $hasM = $null -ne ($entry.PSObject.Properties | Where-Object { $_.Name -eq 'matcher' })
+            if ($ev -eq 'UserPromptSubmit' -and $hasM) { $drmBadMatcher += "$ev 에 matcher 가 달렸다" }
+            if ($ev -eq 'PreToolUse' -and $drmWantPre -and [string]$entry.matcher -ne $drmWantPre) {
+              $drmBadMatcher += "$ev matcher 가 '$([string]$entry.matcher)' — 진본은 '$drmWantPre'"
+            }
+          }
         }
       }
     }
-  } catch { $drmWired = @() }
+  } catch { $drmWired = @(); $drmBadMatcher = @('홈 설정을 못 읽었다') }
   $checks += @{ Name = 'DRM 길잡이 배선 (홈 settings.json 의 UserPromptSubmit · PreToolUse · PostToolUseFailure)'
                 Ok = (@('UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure' | Where-Object { $drmWired -notcontains $_ }).Count -eq 0) }
+  $checks += @{ Name = ('DRM 길잡이 matcher (이벤트마다 진본과 같다' +
+                        $(if ($drmBadMatcher.Count) { ' — ' + ($drmBadMatcher -join ' · ') } else { '' }) + ')')
+                Ok = ($drmBadMatcher.Count -eq 0) }
 }
 # WebFetch 검증 건너뛰기 — 사내에서만 잰다. 위 심는 칸의 「켰다」는 메모리의 객체를 고쳤다는 말이라 되읽는다.
 if ($inside) {
