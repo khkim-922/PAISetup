@@ -1484,6 +1484,7 @@ $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
 if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
 if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 백그라운드 래퍼가 pythonw 로 돈다' }
+if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex DRM · 그림 훅이 파이썬으로 돈다' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
@@ -3597,6 +3598,38 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
   }
 }
 
+# ── Codex 훅 — DRM 길잡이 · 그림 문을 config.toml 에 병합한다 ────────────────────
+# 사내 틀은 이미 같은 블록을 들고, 사외은 사람이 진 로그인 설정을 그대로 둔다. 병합 규칙의
+# 진본은 씨앗의 `codex-hook-install.py` · `codex-hooks.example.toml`이다. 같은 이벤트에 남의 훅이 있으면
+# 임의로 덮지 않고 건너뛴며, 끝 검증이 그 빠진 자리를 [X]로 알린다.
+if ($PickKeys -contains 'codex') {
+  $codexHookDir = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
+  $codexHookPlant = Join-Path $codexHookDir 'codex-hook-install.py'
+  $codexHookExample = Join-Path $homeDir 'seeds\config-repo\codex-hooks.example.toml'
+  if (-not (Test-Path -LiteralPath $codexHookPlant) -or -not (Test-Path -LiteralPath $codexHookExample)) {
+    Write-Host '  ! Codex 훅 — 씨앗의 병합기나 예시가 없어 안 심는다' -ForegroundColor Red
+    $Fails.Add('Codex 훅 (씨앗이 없다)')
+  } elseif (-not (Test-Runs 'python' '--version')) {
+    Write-Host '  ! Codex 훅 — python 이 안 서서 안 심는다' -ForegroundColor Red
+    $Fails.Add('Codex 훅 (python 없음)')
+  } else {
+    $codexHookOut = @(& python -X utf8 $codexHookPlant --config $CodexCfg --example $codexHookExample 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "  ! Codex 훅 병합 실패 — $($codexHookOut -join ' ')" -ForegroundColor Red
+      $Fails.Add('Codex 훅 (config.toml 병합 실패)')
+    } else {
+      $skipped = @($codexHookOut | Where-Object { "$_" -like 'SKIP=*' })
+      if ($skipped.Count) {
+        Write-Host "  ! Codex 훅 — 같은 이벤트에 다른 훅이 있어 안 건드린다: $($skipped -join ' ')" -ForegroundColor Yellow
+      } elseif ($codexHookOut -contains 'CHANGED=1') {
+        Write-Host '  Codex 훅 — DRM 길잡이 · 그림 문을 config.toml 에 심었다' -ForegroundColor Green
+      } else {
+        Write-Host '  Codex 훅 — 이미 맞다'
+      }
+    }
+  }
+}
+
 # ── 그림 문 — PreToolUse 훅을 홈에 심는다 ────────────────────────────────────────
 # 모델이 그림을 받기 **직전**에 치수를 재고 안 고른 자리는 막는다. 왜와 갈래는 몸통
 # (`image-gate.py`)의 머리말이 든다.
@@ -4777,6 +4810,26 @@ if ($wantAgyKit) {
                 Ok = ($agySrcFiles.Count -gt 0 -and $agySame.Count -eq $agySrcFiles.Count) }
 }
 # 칸 없이 까는 스킬 — 홈에 섰나. 설정 저장소가 든 것도 그 배포(8 칸)가 이 앞에서 홈에 민다.
+if ($PickKeys -contains 'codex') {
+  $codexHookText = ''
+  if (Test-Path -LiteralPath $CodexCfg) {
+    try { $codexHookText = Get-Content -LiteralPath $CodexCfg -Raw -Encoding UTF8 } catch { $codexHookText = '' }
+  }
+  $codexHookParts = @(
+    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\drm-guide.py'),
+    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-image-gate.py'),
+    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-safety-hooks.py'),
+    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py'),
+    (Join-Path $homeDir 'seeds\config-repo\codex-hooks.example.toml')
+  )
+  $checks += @{ Name = 'Codex 훅 부품 (DRM · 그림 · Bash · BOM · 병합기)'
+                Ok = (@($codexHookParts | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -eq 0) }
+  $checks += @{ Name = 'Codex 훅 배선 (UserPromptSubmit · PreToolUse · PostToolUse)'
+                Ok = ($codexHookText.Contains('drm-guide.py') -and
+                      $codexHookText.Contains('codex-image-gate.py') -and
+                      $codexHookText.Contains('codex-safety-hooks.py bash-backslash') -and
+                      $codexHookText.Contains('codex-safety-hooks.py utf8-bom')) }
+}
 $freeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_] })
 if ($freeWant.Count) {
   $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })

@@ -14,6 +14,14 @@ PreToolUse = [
   { matcher = "view_image|functions.view_image", hooks = [
     { type = "command", command = "python -X utf8 ~/.claude/seeds/config-repo/.claude/hooks/codex-image-gate.py", commandWindows = "python -X utf8 \"$env:USERPROFILE/.claude/seeds/config-repo/.claude/hooks/codex-image-gate.py\"", async = false, timeout = 10, statusMessage = "이미지 크기 확인 중" },
   ] },
+  { matcher = "Bash|shell|exec_command|functions.exec", hooks = [
+    { type = "command", command = "python -X utf8 ~/.claude/seeds/config-repo/.claude/hooks/codex-safety-hooks.py bash-backslash", commandWindows = "python -X utf8 \"$env:USERPROFILE/.claude/seeds/config-repo/.claude/hooks/codex-safety-hooks.py\" bash-backslash", async = false, timeout = 10, statusMessage = "Bash 역슬래시 확인 중" },
+  ] },
+]
+PostToolUse = [
+  { matcher = "apply_patch|functions.apply_patch", hooks = [
+    { type = "command", command = "python -X utf8 ~/.claude/seeds/config-repo/.claude/hooks/codex-safety-hooks.py utf8-bom", commandWindows = "python -X utf8 \"$env:USERPROFILE/.claude/seeds/config-repo/.claude/hooks/codex-safety-hooks.py\" utf8-bom", async = false, timeout = 10, statusMessage = "PowerShell UTF-8 BOM 확인 중" },
+  ] },
 ]
 
 [model_providers.pgpt]
