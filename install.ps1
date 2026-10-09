@@ -152,9 +152,8 @@ $Products = @(
   @{ Key='antigravity'; Label='구글 Antigravity'; Default=$true  }
   @{ Key='gemini';      Label='Gemini';      Default=$false }
   # ⚠ **기본이 꺼져 있다 — 아직 파일럿이라 쓸 사람이 정해져 있지 않다**(이슈 #16). 켜는 사람만
-  #   받는다. 그리고 이 제품은 **데스크탑 앱 한 줄만** 표에 든다 — CLI·확장 표에는 없다: 회사가 쓰는
-  #   것이 앱이고, winget 의 `GitHub.Copilot` 은 이름이 비슷한 **딴 물건**(CLI 쪽)이다. Copilot CLI(npm
-  #   `@github/copilot`)는 표 밖에서 Codex · Copilot 맡기기의 받는 쪽으로만 깐다(아래 `$wantCopilotCli`).
+  #   받는다. 이 제품은 **데스크탑 앱과 CLI 한 줄씩** 표에 든다 — 확장 표에는 없다. CLI 는 npm 의
+  #   `@github/copilot` 이고(아래 `$Clis`), winget 의 `GitHub.Copilot` 은 이름이 비슷한 **딴 물건**이다.
   @{ Key='copilot';     Label='GitHub Copilot'; Default=$false }
 )
 
@@ -212,6 +211,13 @@ $Clis = @(
   @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'
      Id='Google.AntigravityCLI' }
   @{ Key='gemini'; Pkg='@google/gemini-cli';        Cmd='gemini'; Label='Gemini CLI'      }
+  # ⚠ **두 자리에 다 깐다 — 이 표의 다른 줄과 같다**(결정 0045 · 0093). Codex · Copilot 맡기기가 Copilot 을 쓰나는
+  #   자리 값 `CC_BG_AGENTS` 가 가르는 래퍼의 몫이고, 프로그램은 그 값과 무관하게 제품을 고르면 선다.
+  # ⚠ **판은 `--version` 의 끝 마침표를 떼고 읽는다(`ReadVer`)** — `GitHub Copilot CLI 1.0.94.` 처럼 끝나서, 그대로
+  #   견주면 레지스트리 판과 늘 달라 매 실행 다시 깐다(`Install-NpmCli` 의 판 견주기는 판 뒤에 점이 오면 다른 판으로
+  #   친다). 판 읽는 손이 줄마다 다를 수 있어 그 갈림도 표 안에 둔다 — `Via` 와 같은 까닭이다.
+  @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI'
+     ReadVer = { (Get-Ver 'copilot' '--version') -replace '\.$', '' } }
 )
 
 # ── Node 가 말을 거는 자리 — **목록이 진본이다** ─────────────────────────────────
@@ -1423,7 +1429,7 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 #     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다.
 $wantAgyDelegate = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
 $wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
-# ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 · Copilot CLI (claude-config 결정 0092 · 0093) ──
+# ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
 # Codex 에게 읽기만 하는 일을 뒤에서 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
 # ⚠ **Claude 와 Codex 를 고르면 선다 — 사내는 Codex 를 회사 게이트웨이에 물린 자리(`$wantCodex`)에서만.** 사내 Codex 는
 #   ChatGPT 로그인이 아니라 회사 설정 틀로 게이트웨이를 타서, 틀이 안 심긴 사내 PC 에서는 붙을 데가 없다. 자리를 모르면
@@ -1433,8 +1439,8 @@ $wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
 #   `scripts/check-codex-copilot-bg.py`)가 이 표를 읽어 두 자리 값이 래퍼에서 서는지 잰다.
 #   * `CC_BG_SITE` — 스킬 본문이 맡길 자료의 선을 이것으로 고른다. 래퍼는 안 읽는다
 #   * `CC_BG_AGENTS` — 차례이자 쓸 수 있는 쪽. **사내는 Codex 만** — Copilot 은 GitHub(회사 밖)로 가고, 사내에서 개인
-#     구독은 막혀 보이며 회사 계정으로 CLI 를 쓰는 정책은 정해진 것이 없다. Copilot CLI 도 이 값에 copilot 이 든 자리에서만
-#     깐다(3 칸)
+#     구독은 막혀 보이며 회사 계정으로 CLI 를 쓰는 정책은 정해진 것이 없다. 이 값은 래퍼가 무엇을 띄우나만 가른다 —
+#     Copilot CLI 는 이 값과 무관하게 Copilot 제품을 고르면 두 자리에 깔린다(제품 표 `$Clis`)
 #   * `CC_BG_CODEX_WEB_SEARCH` — Codex 의 `web_search`. **사내는 `disabled`** — 게이트웨이가 Responses 를 Chat Completions
 #     로 바꿔 받고 도구는 `function` 만 적는다(`posco/OpenAI.-Posco.Setting.md`). Codex 는 값이 없어도 `cached` 로 검색
 #     도구를 실어 보내서, 안 싣게 하는 값은 `disabled` 하나다. 사외는 `live`(실시간 검색)
@@ -1461,8 +1467,6 @@ $CcBgVarsBySite = @{
 }
 $CcBgVars       = $CcBgVarsBySite[$(if ($inside) { 'inside' } else { 'outside' })]
 $wantCcBg       = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
-$wantCopilotCli = [bool]($wantCcBg -and ($PickKeys -contains 'copilot') -and
-                         (@($CcBgVars['CC_BG_AGENTS'] -split ',') -contains 'copilot'))
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091) ──────
 # 키는 스킬 이름, 값은 까는 조건이다. 제작자 설정 칸을 켜면 6 칸이 묶음 전부를 까므로 이 표는 칸을 끈
 # 자리에서만 일을 한다(7 칸의 「칸 없이 까는 스킬」). 모두 규범을 안 읽어도 홀로 선다.
@@ -2056,7 +2060,7 @@ if ($NoVsCode) {
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
 }
 
-# ── 4. CLI 셋 — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────
+# ── 4. CLI — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────────
 # ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 판정은 `--version` 이 도나(프로브)다.
 # ⚠ **판을 `--version` 이 못 대는 패키지가 있다** — `tavily-mcp` 는 0 으로 끝나며 `unknown` 을 낸다.
 #   그 글자로 견주면 레지스트리 판과 늘 달라 **매 실행 다시 깐다.** 그런 자리는 `$ReadVer` 로 판 읽는
@@ -2182,7 +2186,7 @@ $CliPicks = @($Clis | Where-Object { $PickKeys -contains $_.Key })
 if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
 foreach ($c in $CliPicks) {
   if ($c.Via -eq 'winget') { Install-WingetCli $c.Id  $c.Cmd $c.Label }
-  else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label }
+  else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label $c.ReadVer }
 }
 # 웹 검색(Tavily) 패키지 — 왜 미리 까나는 아래 「웹 검색(Tavily)」 등록 칸이 든다.
 # ⚠ **자리가 여기인 까닭 — 등록보다 먼저여야 한다.** 설정 저장소를 든 PC 는 8 칸의 `deploy.ps1` 이
@@ -2198,14 +2202,6 @@ if ($PickKeys -contains 'claude') {
     }
   }
   Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
-}
-# Copilot CLI — Codex · Copilot 맡기기에서 Codex 한도가 차면 받는 쪽이다(위 `$wantCopilotCli` · 결정 0093).
-# ⚠ **제품 표(`$Clis`)에 안 든다.** 그 표의 줄은 자리를 안 가리는데(결정 0045), 이 CLI 는 받는 쪽이 쓰이는 자리 —
-#   자리 값 `CC_BG_AGENTS` 에 copilot 이 든 자리 — 에서만 깐다. Copilot 제품의 데스크탑 앱은 그와 따로 사내에서도 깔린다.
-# ⚠ **판은 `--version` 의 끝 마침표를 떼고 읽는다** — `GitHub Copilot CLI 1.0.94.` 처럼 끝나서, 그대로 견주면 레지스트리
-#   판과 늘 달라 매 실행 다시 깐다(`Install-NpmCli` 의 판 견주기는 판 뒤에 점이 오면 다른 판으로 친다).
-if ($wantCopilotCli) {
-  Install-NpmCli '@github/copilot' 'copilot' 'Copilot CLI' { (Get-Ver 'copilot' '--version') -replace '\.$', '' }
 }
 
 # agy 가 고를 모델 — 설치가 사용자 환경변수로 심고, 백그라운드 래퍼(스킬 `agy-background`)가 읽는다.
@@ -2291,7 +2287,8 @@ if ($wantCcBg) {
 if (-not $inside) {
   Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
 }
-if ($wantCopilotCli) {
+# Copilot CLI 의 로그인 줄은 사외에만 둔다 — 사내에서 그 CLI 를 어떻게 잇고 쓰나는 아직 정해지지 않았다.
+if ((-not $inside) -and ($PickKeys -contains 'copilot')) {
   Write-Host '  Copilot CLI 는 터미널에서 `copilot login` 을 한 번 친다 — 브라우저로 GitHub 계정을 잇는다'
 }
 
@@ -3607,7 +3604,7 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
 #   비켜선다.** 그 자리의 몸통이 사라졌으면(저장소를 지웠다) 여기서 다시 심는다.
 # ⚠ **껍데기 글자와 matcher 는 씨앗의 `image-gate.sh` 한 벌이다.** 여기는 자리만 채운 한 줄을
 #   심고 matcher 는 그 파일 첫 줄에서 읽는다 — 손으로 한 벌 더 들면 저쪽과 조용히 어긋난다.
-# ⚠ **심는 손은 하나다 — 그림 문과 웹 다시 찾기(아래 · claude-config #117)가 같이 쓴다.** 훅마다
+# ⚠ **심는 손은 하나다 — 그림 문 · 웹 다시 찾기(claude-config #117) · DRM 길잡이(#120)가 같이 쓴다.** 훅마다
 #   이 고리를 베끼면 규율 하나를 고칠 때 한쪽만 낡는다. 설정 저장소 몸통(`session-start-body.sh` 의
 #   `plant_tool_hook`)과 같은 규율이다.
 #   `$Parts` 는 있어야 심는 씨앗 파일들이고 맨 앞이 껍데기다. `$Var` 는 심긴 한 줄이 자리를 담는 셸 이름,
@@ -3635,7 +3632,7 @@ function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts,
   # ⚠ **폴더가 사라져도 도구를 안 막는다** — `.` 은 특수 내장이라 파일이 없으면 dash 는 그 자리에서
   #   2 로 죽고(PreToolUse 에서 2 는 막기다), 걸 일이 없는 호출까지 깨진다. 그래서 먼저 재고 물러난다.
   $cmd = ('{0}="{1}"; [ -f "${0}/{2}" ] || exit 0; . "${0}/{2}"{3}' -f $Var, $dirSh, $Parts[0], $Tail)
-  # 우리 꼴 — 껍데기 이름이 든 명령(`image-gate.` · `web-retry.`)이다.
+  # 우리 꼴 — 껍데기 이름이 든 명령(`image-gate.` · `web-retry.` · `drm-guide.`)이다.
   $marker = [IO.Path]::GetFileNameWithoutExtension($Parts[0]) + '.'
 
   # 비켜설 자리 — 우리 꼴(`<Var>="…"`)인데 다른 자리를 가리키고, 그 자리에 부품이 다 있다.
@@ -3697,6 +3694,15 @@ if (Plant-HomeToolHook '그림 문(PreToolUse)' @('PreToolUse') @('image-gate.sh
 # 왜와 거는 꼴은 껍데기(`web-retry.sh`)의 머리말이 든다. 그림 문과 같은 까닭으로 스위치를 안 탄다 —
 # 부품이 씨앗으로 누구에게나 가고, 이 훅은 취향이 아니라 막힌 자리에서 길을 잇는 장치다.
 if (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @('PostToolUse', 'PostToolUseFailure') @('web-retry.sh') '_wr' '') { $dirty = $true }
+
+# ── DRM 길잡이 — UserPromptSubmit · PostToolUseFailure 훅을 홈에 심는다 (claude-config #120 · 결정 0094) ──────────
+# 붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 스킬 `drm-office-read` 로 가는 길을 곁에 붙인다 — 막지 않는다. 왜와
+# 거는 꼴은 몸통(`drm-guide.py`)의 머리말이 든다.
+# ⚠ **Claude 를 고르면 심는다 — 자리는 안 가린다.** 가리키는 스킬이 같은 조건으로 깔리고(`$FreeSkills`), 감긴 파일이
+#   없는 자리(집 · 사외 VDI)에서는 아무것도 안 붙여 두 자리에 같이 심어도 값이 없다.
+# ⚠ **matcher 는 껍데기 첫 줄 하나다** — UserPromptSubmit 은 matcher 를 안 받아 그 항목에서는 무시된다(껍데기 머리말).
+if (($PickKeys -contains 'claude') -and
+    (Plant-HomeToolHook 'DRM 길잡이(UserPromptSubmit · PostToolUseFailure)' @('UserPromptSubmit', 'PostToolUseFailure') @('drm-guide.sh', 'drm-guide.py') '_dg' '')) { $dirty = $true }
 
 # ── 씨앗이 드는 파이썬 패키지 — **부품이 오는 자리에 의존성도 온다** (claude-config #72) ──────
 # 검사 씨앗의 그림 줄이기(`_shrink.py`)가 PIL 을 든다. 부르는 자는 모델이지만 그 길을 여는 것은
@@ -4631,10 +4637,6 @@ if (-not $NoVsCode) {
 foreach ($c in $CliPicks) {
   $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
 }
-# 제품 표 밖에서 까는 CLI — Codex · Copilot 맡기기의 받는 쪽(3 칸 · `$wantCopilotCli`). 까는 조건 그대로 잰다.
-if ($wantCopilotCli) {
-  $checks += @{ Name = 'Copilot CLI'; Ok = (Test-Runs 'copilot' '--version') }
-}
 # 나르는 자리 둘 — 7 칸의 자산과 6 칸의 개인 규범·룰·스킬. 재는 자는 위 `New-CountCheck` 하나다.
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { continue }
@@ -4698,6 +4700,27 @@ try {
 } catch { $webWired = @() }
 $checks += @{ Name = '웹 다시 찾기 배선 (홈 settings.json 의 PostToolUse · PostToolUseFailure)'
               Ok = (@('PostToolUse', 'PostToolUseFailure' | Where-Object { $webWired -notcontains $_ }).Count -eq 0) }
+# DRM 길잡이 — 그림 문과 같은 자로 잰다. 심는 조건(Claude 를 골랐다) 그대로 잰다. 배선은 두 이벤트 **다** 서야 선
+#   것이다 — 하나만 서면 첨부 쪽이나 PDF 그물 쪽을 조용히 놓친다.
+if ($PickKeys -contains 'claude') {
+  $drmBodyChk  = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\drm-guide.py'
+  $drmShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\drm-guide.sh'
+  $checks += @{ Name = 'DRM 길잡이 몸통 (씨앗의 drm-guide.py)'; Ok = (Test-Path -LiteralPath $drmBodyChk) }
+  $checks += @{ Name = 'DRM 길잡이 껍데기 (씨앗의 drm-guide.sh)'; Ok = (Test-Path -LiteralPath $drmShellChk) }
+  $drmWired = @()
+  try {
+    $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($ev in 'UserPromptSubmit', 'PostToolUseFailure') {
+      foreach ($entry in @($gc.hooks.$ev)) {
+        foreach ($h in @($entry.hooks)) {
+          if ($h -and ([string]$h.command).Contains('drm-guide.')) { $drmWired += $ev }
+        }
+      }
+    }
+  } catch { $drmWired = @() }
+  $checks += @{ Name = 'DRM 길잡이 배선 (홈 settings.json 의 UserPromptSubmit · PostToolUseFailure)'
+                Ok = (@('UserPromptSubmit', 'PostToolUseFailure' | Where-Object { $drmWired -notcontains $_ }).Count -eq 0) }
+}
 # WebFetch 검증 건너뛰기 — 사내에서만 잰다. 위 심는 칸의 「켰다」는 메모리의 객체를 고쳤다는 말이라 되읽는다.
 if ($inside) {
   $skipSet = $false

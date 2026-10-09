@@ -1581,6 +1581,22 @@ web_retry_cmd() {
   printf '_wr="%s"; [ -f "$_wr/%s" ] || exit 0; . "$_wr/%s"' "$_wr" "$WEB_RETRY_SHELL" "$WEB_RETRY_SHELL"
 }
 
+# ── DRM 길잡이 — UserPromptSubmit · PostToolUseFailure 훅 (claude-config #120 · 결정 0094) ──────────
+#   붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 스킬 `drm-office-read` 로 가는 길을 곁에 붙인다. 왜와 거는 꼴은
+#   몸통(`drm-guide.py`) 머리말이 든다. 그림 문과 같은 규율이다 — 껍데기(`drm-guide.sh`)가 글자와 matcher 를 들고,
+#   심는 손은 자리만 채운 한 줄을 **두 이벤트에** 심는다(UserPromptSubmit 은 matcher 를 안 받아 무시한다 — 껍데기
+#   머리말). 주인 · 경로 굳히기 · 폴더가 사라져도 안 막기도 같다.
+DRM_GUIDE_SHELL=drm-guide.sh
+drm_guide_matcher() {
+  sed -n '1s/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$DRM_GUIDE_SHELL" 2>/dev/null
+}
+drm_guide_cmd() {
+  _dg="$CONFIG_ROOT/.claude/hooks"
+  [ -n "$CONFIG_ROOT" ] && [ -f "$_dg/drm-guide.py" ] && [ -f "$_dg/$DRM_GUIDE_SHELL" ] && [ -n "$(drm_guide_matcher)" ] || { printf ''; return 0; }
+  [ "$OS" = windows ] && _dg="$(cygpath -m "$_dg" 2>/dev/null || printf '%s' "$_dg")"
+  printf '_dg="%s"; [ -f "$_dg/%s" ] || exit 0; . "$_dg/%s"' "$_dg" "$DRM_GUIDE_SHELL" "$DRM_GUIDE_SHELL"
+}
+
 # ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
 #   드는 것: ① 홈 SessionStart 훅 ② 이 저장소의 신뢰.
 # ⚠ **옛 판은 프로세스를 넷 띄웠다** — 판을 묻는 `py_num` · 훅 심기 · 껍데기 판별하는 `-c ''` ·
@@ -1595,12 +1611,13 @@ web_retry_cmd() {
 #   를 든 명령)만 걷고, 무엇을 걷었는지 화면에 댄다.
 plant_session_state() {
   _pse="$(mktemp)"   # stderr 를 받아 둔다 — 「못 부른다」와 「죽었다」를 가르는 물증이다 (#51)
-  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" "$(image_gate_cmd)" "$(image_gate_matcher)" "$(web_retry_cmd)" "$(web_retry_matcher)" <<'PSSEOF' 2>"$_pse"
+  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" "$(image_gate_cmd)" "$(image_gate_matcher)" "$(web_retry_cmd)" "$(web_retry_matcher)" "$(drm_guide_cmd)" "$(drm_guide_matcher)" <<'PSSEOF' 2>"$_pse"
 import json, os, sys, tempfile
 
 settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 gate_cmd, gate_matcher = sys.argv[5], sys.argv[6]
 web_cmd, web_matcher = sys.argv[7], sys.argv[8]
+drm_cmd, drm_matcher = sys.argv[9], sys.argv[10]
 msgs = []
 failed = False   # 다 못 심었다 — 끝에서 3 으로 알린다. 셸이 표식에 판을 안 적는다 (0065)
 
@@ -1667,7 +1684,8 @@ if cfg_ok and (not have or dropped):
         msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
         failed = True
 
-# ①' 도구 훅 — 그림 문(PreToolUse) · 웹 다시 찾기(PostToolUse · PostToolUseFailure). 같은 규율: 우리 꼴
+# ①' 도구 훅 — 그림 문(PreToolUse) · 웹 다시 찾기(PostToolUse · PostToolUseFailure) · DRM 길잡이(UserPromptSubmit ·
+#    PostToolUseFailure). 같은 규율: 우리 꼴
 #    (`marker` 가 든 명령 — 그림 문 옛 판은 `.py` 를 직접 불렀다)은 걷고 지금 꼴만 남긴다. 설치기가 심은 씨앗
 #    쪽 항목도 여기서 걷힌다 — 저장소 진본이 주인이다. 지금 꼴이 둘 이상이면 첫 것만 — 같은 항목 둘이면
 #    훅이 호출마다 두 번 돈다. 심는 손을 하나로 둔다 — 훅마다 이 고리를 베끼면 규율 하나를 고칠 때 한쪽만 낡는다.
@@ -1710,6 +1728,9 @@ plant_tool_hook("PreToolUse", gate_cmd, gate_matcher, "image-gate.", "홈 그림
 for _ev in ("PostToolUse", "PostToolUseFailure"):
     plant_tool_hook(_ev, web_cmd, web_matcher, "web-retry.", "홈 웹 다시 찾기(%s)" % _ev,
                     "  ! 홈 웹 다시 찾기(%s) — 껍데기(.claude/hooks/web-retry.sh)를 못 찾아 안 심는다" % _ev)
+for _ev in ("UserPromptSubmit", "PostToolUseFailure"):
+    plant_tool_hook(_ev, drm_cmd, drm_matcher, "drm-guide.", "홈 DRM 길잡이(%s)" % _ev,
+                    "  ! 홈 DRM 길잡이(%s) — 몸통이나 껍데기(.claude/hooks/drm-guide.py · .sh)를 못 찾아 안 심는다" % _ev)
 
 # ② 신뢰 — 없거나 깨진 파일은 손대지 않는다
 # ⚠ **작업 루트의 저장소 전부에 건다.** 옛 판은 제 저장소만 걸고 「홈 훅이 어차피 전부

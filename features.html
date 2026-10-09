@@ -142,6 +142,7 @@
   <div class="grid">
     <div class="card"><b>그림 문 <code>image-gate</code></b><span>스크린샷이나 큰 그림을 Claude 에 보내기 전에 크기를 잽니다. 너무 크면 막고 줄여서 다시 열게 해, 그림 한 장에 대화가 멈추지 않습니다.</span></div>
     <div class="card"><b>웹 다시 찾기 <code>web-retry</code></b><span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 옆에 알려 줍니다. 막지는 않습니다.</span></div>
+    <div class="card"><b>DRM 길잡이 <code>drm-guide</code></b><span>회사 DRM 이 걸린 오피스 · PDF 를 붙이거나 경로를 적으면, Claude 가 그 파일을 DRM 문서 읽기(<code>drm-office-read</code>)로 열도록 길을 알려 줍니다. DRM 이 안 걸린 파일에는 아무것도 붙이지 않습니다.</span></div>
     <div class="card"><b>Tavily 웹 검색 <code>tavily-search</code></b><span>웹 검색 도구를 하나 더 붙입니다. 무료 키(<code>TAVILY_API_KEY</code>)를 넣으면 한 달 1,000회까지 씁니다. <a href="https://app.tavily.com">무료 키 받기</a></span></div>
     <div class="card"><b>문서 스킬 <code>document-skills</code></b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
     <div class="card"><b>DRM 문서 읽기 <code>drm-office-read</code></b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
@@ -174,8 +175,8 @@
   </div>
   <div class="grid">
     <div class="card"><b>뒤에서 맡기기 <code>codex-copilot-background</code></b><span>웹 조사 · 문서 찾기 · 가벼운 탐색을 Codex 에게 넘기고, 끝나면 Claude 가 답을 거둬 옵니다. 맡긴 쪽은 읽기만 하고 파일은 안 고칩니다.</span></div>
-    <div class="card"><b>자리마다 맞춰 돌기</b><span>사외에서는 Codex 가 실시간으로 웹을 검색하고, 무료 몫이 차면 Copilot 이 받습니다(Copilot 까지 고르면 Copilot CLI 가 같이 깔립니다). 사내에서는 Codex 가 회사 게이트웨이로만 가고 회사 밖으로 넘기지 않습니다.</span></div>
-    <div class="card"><b>사외는 로그인 한 번씩</b><span>터미널에서 <code>codex login</code>(ChatGPT 계정)과 <code>copilot login</code>(GitHub 계정)을 한 번씩 칩니다. 무료 요금제라 회사 밖으로 나가도 되는 내용만 맡깁니다. 사내는 회사 키로 서서 로그인이 없습니다.</span></div>
+    <div class="card"><b>자리마다 맞춰 돌기</b><span>사외에서는 Codex 가 실시간으로 웹을 검색하고, 무료 몫이 차면 Copilot 이 받습니다(Copilot CLI 는 Copilot 을 고르면 깔립니다). 사내에서는 Codex 가 회사 게이트웨이로만 가고 회사 밖으로 넘기지 않습니다.</span></div>
+    <div class="card"><b>사외는 로그인 한 번씩</b><span>터미널에서 <code>codex login</code>(ChatGPT 계정)과 <code>copilot login</code>(GitHub 계정)을 한 번씩 칩니다. 무료 요금제라 회사 밖으로 나가도 되는 내용만 맡깁니다. 사내 Codex 는 회사 키로 서서 로그인이 없습니다.</span></div>
   </div>
 </section>
 

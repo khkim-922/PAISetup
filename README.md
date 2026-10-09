@@ -22,7 +22,7 @@
 
 | | |
 |---|---|
-| **고른 도구** — Claude · Codex · 구글 Antigravity · Gemini · GitHub Copilot | 설치 창에서 **켠 것만** 깔린다. 한 칸이 그 도구의 **CLI · VS Code 확장 · 데스크탑 앱**을 한꺼번에 든다 — 도구마다 드는 것이 다르다(Gemini 는 데스크탑 앱이 없고, Copilot 은 데스크탑 앱만 든다 — Claude 와 Codex 까지 고르면 Copilot 이 받는 쪽으로 서는 자리에서 Copilot CLI 가 더해진다. 아래 「Codex · Copilot 맡기기」). **Gemini 와 Copilot 은 꺼진 채로 뜬다** — 안티그래비티가 Gemini 를 대신하는 도구라 둘을 같이 깔 까닭이 없고, Copilot 은 아직 시범 운영이라 쓸 사람만 켠다. 끈 것은 어디에도 안 깔린다 |
+| **고른 도구** — Claude · Codex · 구글 Antigravity · Gemini · GitHub Copilot | 설치 창에서 **켠 것만** 깔린다. 한 칸이 그 도구의 **CLI · VS Code 확장 · 데스크탑 앱**을 한꺼번에 든다 — 도구마다 드는 것이 다르다(Gemini 는 데스크탑 앱이 없고, Copilot 은 확장 없이 데스크탑 앱과 CLI 를 든다). **Gemini 와 Copilot 은 꺼진 채로 뜬다** — 안티그래비티가 Gemini 를 대신하는 도구라 둘을 같이 깔 까닭이 없고, Copilot 은 아직 시범 운영이라 쓸 사람만 켠다. 끈 것은 어디에도 안 깔린다 |
 | **VS Code 와 확장** | 칸이 따로 있다. **사내는 필수라 켠 채로 잠겨 있다. 사외는 꺼진 채로 뜬다** — 데스크탑 앱만으로도 쓸 수 있어서다. 끄면 VS Code 자체도 안 깐다. ⚠ 확장은 CLI 를 자식 프로세스로 부른다 — 둘 중 하나만 있으면 안 돈다 |
 | Node.js | Claude · Codex · Gemini 의 CLI 가 이것으로 돈다 — 무엇을 골랐든 늘 깔린다. 안티그래비티 CLI(`agy`)만은 Node 가 아니라 winget 이 깐다 |
 | 어디에 붙나 — 사내 · 사외 | **사내**에서는 켠 도구가 같은 회사 키로 게이트웨이에 붙는다 — Codex 는 게이트웨이에 바로, Gemini 와 안티그래비티는 아래 로컬 프록시를 거쳐 붙는다. **사외**에서는 각자 로그인한다 — Codex 는 `codex login`(ChatGPT 계정), Gemini 와 안티그래비티는 처음 실행할 때 Google 로그인. ⚠ **안티그래비티 확장은 제 화면을 가진 에이전트다** — Gemini Companion 은 창이 없어 터미널의 `gemini` 와 같이 써야 하지만, 안티그래비티는 사이드바에서 바로 쓴다. 이 확장은 처음 열 때 제 본체(`agy` · 188MB)를 따로 받는다 — 설치가 깐 안티그래비티 CLI 와 같은 것을 한 번 더 받는 셈이다 |
@@ -30,7 +30,7 @@
 | Git · Python · GitHub CLI | 코드를 짤 사람용이다. 설치 창에는 이 칸이 없어 늘 깔린다 — 빼려면 `Setup.exe -NoDevTools` 로 부른다. **다만 Python 으로 도는 것이 서는 자리면 Python 만은 깐다** — 사내 프록시와, 아래 「칸 없이 깔리는 스킬」의 백그라운드 래퍼들이다. 설치 창이 까닭을 그 줄에 적는다. 「내 저장소 받기」에 주소를 넣었고 GitHub CLI 로그인이 안 돼 있으면, **저장소를 받기 직전에** 설치가 브라우저 로그인을 띄운다 — 일회용 코드와 남은 시간(180초)이 팝업에 뜬다 |
 | **데스크탑 앱** | **앱마다 다르다.** 게이트웨이에 못 붙어 사내에서는 쓸모가 없는 것(Claude · Codex · Antigravity)은 **사외에서만** 깔리고, 제 계정으로 로그인해 쓰는 것(**GitHub Copilot**)은 **사내·사외 모두** 깔린다. 켠 도구의 것만 깔린다. ⚠ Copilot 은 **WebView2 런타임**이 있어야 도는데 설치 목록에 그것이 딸려 오지 않는다 — 없는 기계(사내 VDI)면 **먼저 깔고**, 이미 있으면(사내 PC 에는 대개 있다) 건너뛴다. ⚠ **Gemini 데스크탑 앱은 안 깐다** — 회사 망이 설치 도중에 연결을 끊어 두 번 다 실패했다. 집에서는 깔리므로 필요하면 <https://gemini.google.com/app> 에서 손으로 받는다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다. ⚠ **로그인은 사람이 한다** — Copilot 은 회사 계정으로 직접 인증하고, 사외 개인 PC 에서는 회사 계정이 막혀(등록 안 된 기기) 개인 계정으로 쓴다 |
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣으면 고른 도구가 읽는 이름에 같이 심긴다 — Claude 는 `ANTHROPIC_AUTH_TOKEN`, Codex 는 `OPENAI_API_KEY`, Gemini · 안티그래비티는 `GEMINI_API_KEY`. **사외면 키를 안 묻고, 사내에서 쓰던 기계를 사외에서 다시 누르면 남아 있던 사내 값을 걷어 낸다** (아래 「무를 때」) |
-| Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · 사내면 **웹페치 검증 건너뛰기**(`skipWebFetchPreflight` — 사내 망이 웹페치가 미리 묻는 Anthropic 차단 목록 조회를 끊어, 열리는 주소도 못 가져오던 것을 푼다. 사외는 그 검사가 서므로 안 켠다) · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅) · **웹 다시 찾기**(웹 검색 · 웹 가져오기가 못 닿았을 때 `curl` · Tavily · agy 에게 맡기기 같은 다른 길이 있다는 것을 결과 곁에 붙이는 훅 — 막지는 않는다). 사외로 가면 사내 전용 줄은 걷어 낸다 |
+| Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · 사내면 **웹페치 검증 건너뛰기**(`skipWebFetchPreflight` — 사내 망이 웹페치가 미리 묻는 Anthropic 차단 목록 조회를 끊어, 열리는 주소도 못 가져오던 것을 푼다. 사외는 그 검사가 서므로 안 켠다) · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅) · **웹 다시 찾기**(웹 검색 · 웹 가져오기가 못 닿았을 때 `curl` · Tavily · agy 에게 맡기기 같은 다른 길이 있다는 것을 결과 곁에 붙이는 훅 — 막지는 않는다) · **DRM 길잡이**(Claude 를 고르면 — 붙이거나 경로를 적은 오피스 · PDF 가 회사 DRM 에 감겼으면 스킬 `drm-office-read` 로 읽는 길을 곁에 붙이는 훅. 감기지 않은 파일에는 아무것도 안 붙이고, 막지 않는다). 사외로 가면 사내 전용 줄은 걷어 낸다 |
 | Codex · Gemini · 안티그래비티 설정 | 사내에서만. `~/.codex/config.toml` · `~/.gemini/settings.json` 을 회사 설정 틀(`posco/`)에서 채우고, `~/.gemini/antigravity-cli/settings.json` 에는 인증 방식 한 줄(`modelProvider`)을 둔다. 키는 그 파일들에 안 들어가고 환경변수에만 있다. ⚠ **`GOOGLE_API_KEY` 가 이미 있으면 그 키가 회사 키보다 먼저 쓰인다** — 구글에 바로 붙는 키의 제 이름이라 설치는 지우지 않고 알리기만 한다. 회사 게이트웨이로 쓰려면 손으로 지운다 |
 | **사내 환경 문서** · **씨앗 넷** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` · `~/.claude/seeds/vibecoding/` 로 깔린다. 마지막 것은 회사가 쓴 사내 FastAPI 코딩 기준이다 — 들머리는 그 안의 `SEED.md` 고, 사내 앱을 짤 때는 스킬 `inhouse-app` 이 그 안의 장을 콕 집어 연다(Claude 를 고르면 깔린다 — 아래 「칸 없이 깔리는 스킬」). 고를 것이 아니라 환경이라 스위치가 없다. **씨앗 넷은 거울로 깔려, 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 원본인 척하지 않게. `posco/` 만은 덮어쓰기라 짐에서 빠진 파일이 홈에 남을 수 있다 — 프록시가 그 폴더에 제 기록 파일을 쓰고 있어 통째로 지우지 못한다. **설정 저장소를 넣은 PC 에서는 그 저장소의 `deploy.seeds.conf` 가 드는 폴더를 설치가 건드리지 않는다** — 그 자리는 저장소 배포가 최신판으로 밀고, 설치까지 깔면 둘이 판마다 번갈아 덮는다(홈에 그 폴더가 아직 없을 때만 설치가 먼저 깐다). **검사 씨앗의 그림 줄이기가 드는 파이썬 패키지(`pillow`)도 여기서 깐다** — 그림 문이 큰 그림을 「줄여서 연다」로 돌려보내면 그 부품이 돈다. 파이썬이 없으면 건너뛰고, 회사망이 막아 못 깔면 알리고 넘어간다(그때 줄이기는 원본 크기로 물러난다) |
 
@@ -244,11 +244,11 @@ claude.exe 지만 사는 폴더가 다르다.
 | 스킬 `codex-copilot-background` — 위 「칸 없이 깔리는 스킬」 | `~/.claude/skills/` |
 | Python — 그 스킬이 `pythonw` 로 돈다 | 개발도구 칸을 꺼도 깐다 |
 | 자리 값 — **자리마다 다르다.** **사외**는 Codex 가 ChatGPT 로그인으로 실시간 웹 검색을 하고, 무료 몫이 차면 Copilot 이 받는다. **사내**는 Codex 가 회사 게이트웨이로만 가고 웹 검색은 끈다 — 게이트웨이가 Codex 의 검색 도구를 받는다는 근거가 없어서다. Copilot 으로 넘기지 않는다(회사 밖으로 나간다). 두 자리 다 Codex 를 관리자 승인이 안 드는 윈도 샌드박스로 띄운다. 이름(`CC_BG_SITE` · `CC_BG_AGENTS` · `CC_BG_CODEX_WEB_SEARCH` · `CC_BG_CODEX_WIN_SANDBOX`)과 자리별 값은 `install.ps1` 의 `$CcBgVarsBySite` 가 든다 | 사용자 환경변수 — 스킬의 래퍼가 읽는다 |
-| Copilot CLI(npm 으로 깐다) — Codex 한도가 찼을 때 받는 쪽 | 제품 칸에서 **Copilot 까지** 고르고, 그 자리 값이 Copilot 을 쓸 때(지금은 사외). 없으면 Codex 만으로 돈다 |
+| Copilot CLI — Codex 한도가 찼을 때 받는 쪽 | 제품 칸에서 **Copilot 을 고르면** 사내 · 사외 다 깔린다(위 「고른 도구」). 받는 쪽으로 쓰는 것은 자리 값이 Copilot 을 드는 사외다. 없으면 Codex 만으로 돈다 |
 
 **사외의 로그인은 한 번씩 손으로 한다** — 둘 다 브라우저가 뜬다. Codex 는 터미널에서 `codex login`(ChatGPT 계정), Copilot CLI
 는 `copilot login`(GitHub 계정 — Copilot Free 도 된다). 설치 창의 CLI 칸 끝에도 같은 줄이 찍힌다. 사내 Codex 는 회사 키로 서서
-로그인이 없다.
+로그인이 없다. 사내에서 Copilot CLI 의 로그인과 쓰임은 아직 정해지지 않았다.
 
 ⚠ **맡기는 자료의 선이 자리마다 다르다** — 사외는 개인 계정의 무료 요금제라 보낸 내용이 그 회사의 학습에 쓰일 수 있어 회사
 밖으로 나가도 되는 것만 맡긴다. 사내 Codex 는 회사 게이트웨이로 가서 사내 게이트웨이를 타는 다른 도구와 같은 선이다. 스킬이
@@ -298,6 +298,9 @@ claude.exe 지만 사는 폴더가 다르다.
   [O] 그림 문 배선 (홈 settings.json 의 PreToolUse)
   [O] 웹 다시 찾기 껍데기 (씨앗의 web-retry.sh)
   [O] 웹 다시 찾기 배선 (홈 settings.json 의 PostToolUse · PostToolUseFailure)
+  [O] DRM 길잡이 몸통 (씨앗의 drm-guide.py)
+  [O] DRM 길잡이 껍데기 (씨앗의 drm-guide.sh)
+  [O] DRM 길잡이 배선 (홈 settings.json 의 UserPromptSubmit · PostToolUseFailure)
   [O] ANTHROPIC_BASE_URL
   [O] ANTHROPIC_AUTH_TOKEN
 
@@ -417,6 +420,8 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `그림 문 배선 (홈 settings.json 의 PreToolUse)` | 홈 `~/.claude/settings.json` 에 훅 한 줄을 못 넣었다. 위쪽에 「settings.json 을 못 읽었다」 빨간 줄이 있으면 그 파일이 깨진 것이다 — 설치는 깨진 파일을 안 덮으니 손으로 고치거나 치워 두고 다시 누른다 |
 | `웹 다시 찾기 껍데기 …` | 그림 문 껍데기 줄과 같다 — 설정 저장소 씨앗이 덜 깔렸다 |
 | `웹 다시 찾기 배선 (…)` | 그림 문 배선 줄과 같다. 두 이벤트 가운데 하나만 서도 `[X]` 다 — 다시 누른다 |
+| `DRM 길잡이 몸통 …` · `DRM 길잡이 껍데기 …` | 그림 문 몸통 · 껍데기 줄과 같다 — 설정 저장소 씨앗이 덜 깔렸다 |
+| `DRM 길잡이 배선 (…)` | 웹 다시 찾기 배선 줄과 같다. 두 이벤트 가운데 하나만 서도 `[X]` 다 — 다시 누른다 |
 | `agy 모델 (…)` | 괄호의 환경변수를 못 심었다 — 이름은 자리마다 다르다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 — 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `Codex · Copilot 맡기기 값 (…)` | 괄호의 환경변수를 못 심었다 — `agy 모델` 줄과 같다. 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `agy 설정 (n/m · ~/.gemini/config)` | 설정 셋을 다 못 깔았다 — 괄호의 두 숫자가 「짐과 같은 것/짐에 든 것」이다. `~/.gemini/config` 가 읽기 전용인지 보고 다시 누른다 |
@@ -442,7 +447,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | 지울 것 | 어디서 |
 |---|---|
 | **사용자 환경변수** — 펴진 짐의 `install.env` 에 값이 적힌 이름 전부(`ANTHROPIC_BASE_URL` · `GOOGLE_GEMINI_BASE_URL` · `ANTHROPIC_MODEL` 등)와 키 셋 `ANTHROPIC_AUTH_TOKEN` · `OPENAI_API_KEY` · `GEMINI_API_KEY` | 시작 메뉴에 「환경 변수」로 검색 → 「계정의 환경 변수 편집」. 지우고 창을 새로 연다 |
-| **홈 설정의 설치가 넣은 줄** — `~/.claude/settings.json` | `env` 칸에서 위와 같은 이름들, `modelPicker` 칸, `skipWebFetchPreflight` 칸, `hooks` 의 `PreToolUse` 안 `image-gate` 줄 · `PostToolUse` 와 `PostToolUseFailure` 안 `web-retry` 줄을 지운다. 나머지는 사람이 쓰던 설정일 수 있으니 둔다 |
+| **홈 설정의 설치가 넣은 줄** — `~/.claude/settings.json` | `env` 칸에서 위와 같은 이름들, `modelPicker` 칸, `skipWebFetchPreflight` 칸, `hooks` 의 `PreToolUse` 안 `image-gate` 줄 · `PostToolUse` 와 `PostToolUseFailure` 안 `web-retry` 줄 · `UserPromptSubmit` 과 `PostToolUseFailure` 안 `drm-guide` 줄을 지운다. 나머지는 사람이 쓰던 설정일 수 있으니 둔다 |
 | **로그인마다 뜨는 프록시 감시 작업** — 작업 이름은 `PGPTProxy-Watchdog` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false`. 프록시가 도는 폴더 `%LOCALAPPDATA%\PGPT-Proxy` 도 지운다. (옛 판이 남긴 것은 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `PGPTProxy`) |
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다. 씨앗 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` — 다른 프로그램도 쓸 수 있으니 필요할 때만 |
 | **칸 없이 깔린 스킬** | `~/.claude/skills/` 의 `drm-office-read` · `inhouse-app` · `agy-background` · `codex-copilot-background` |
@@ -454,7 +459,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **로그온마다 도는 자동 실행** — 작업 이름은 `PAISetup-AutoRun` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PAISetup-AutoRun -Confirm:$false`. **폴더보다 이것을 먼저 지운다** — 짐을 먼저 지우면 작업만 남아 로그인마다 헛돈다 |
 | **펴 둔 짐** — 판마다 폴더가 하나씩 쌓인다(로그온 자동 실행을 켰으면 최근 셋만 남는다) | `%LOCALAPPDATA%\Claude Code Setup\` 를 통째로 지운다 (자동 실행이 쓰던 `autorun.ps1` · `autorun.args` · `install.env` 사본과 설치 기록 폴더도 그 안이다) |
 
-프로그램(VS Code · Node · Git · Python · GitHub CLI · 고른 도구의 CLI · Copilot CLI · 데스크탑 앱)은 **남겨도 된다** — 회사와 무관한 것들이고,
+프로그램(VS Code · Node · Git · Python · GitHub CLI · 고른 도구의 CLI · 데스크탑 앱)은 **남겨도 된다** — 회사와 무관한 것들이고,
 지우려면 윈도우의 「앱」 화면이나 `winget uninstall` 이 든다.
 
 ⚠ **사내에서 쓰던 기계를 사외에서 다시 누르면 위 표의 사내 값은 설치가 걷어 낸다** — 게이트웨이
