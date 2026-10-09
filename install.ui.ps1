@@ -855,14 +855,12 @@ $bGo.Add_Click({
   #   통로를 따로 내면 두 갈래가 서로 다른 코드를 탄다. 끝나면 지운다.
   $script:tmpEnv = [IO.Path]::Combine([IO.Path]::GetTempPath(), "claude-setup-$PID.env")
   $lines = New-Object System.Collections.Generic.List[string]
-  # ⚠ **게이트웨이와 무관한 값은 사외에도 그대로 간다.** 옛 판은 사외로 갈리면 값 파일의 값
-  #   줄을 **한 줄도 안 넘겼다** — 게이트웨이와 상관없는 `CLAUDE_CODE_EFFORT_LEVEL` ·
-  #   스트림 유휴 제한 둘 · `ATELIER_SITES` · `ANTHROPIC_MODEL` 이 다 같이 떨어졌다.
-  #   그래서 **같은 PC 인데** 화면으로 깐 사람만 그 값이 안 서고, 콘솔 갈래로 내려가거나
-  #   `install.ps1` 을 직접 돌린 사람은 섰다 — 바로 아래 ⚠ 가 금하는 그 일이다.
-  # ⚠ **몸통과 같은 갈림이어야 한다.** 몸통이 사외에서 버리는 것은 `$Vars` 의 `Gateway=$true`
-  #   **둘뿐**이고, 그 둘이 여기 걸러지는 이름 둘과 같다. 거르는 자리가 둘이라 이름이 늘면
-  #   두 자리를 같이 봐야 한다 — 이름을 늘리는 자는 몸통의 그 표다.
+  # ⚠ **사외에도 값 줄을 다 넘긴다 — 무엇을 버릴지는 몸통이 가른다.** 화면이 사외라고 값 줄을
+  #   덜 넘기면 **같은 PC 인데** 화면으로 깐 사람과 `install.ps1` 을 직접 돌린 사람의 결과가
+  #   갈린다 — 바로 아래 ⚠ 가 금하는 그 일이다. 사외에서 버릴 이름은 몸통의 `$Vars` 표
+  #   (`Gateway=$true`)와 `$InsideOnly` 목록이 든다.
+  # ⚠ **여기서 거르는 둘은 화면이 칸으로 다시 받는 값이다** — 파일 값을 흘리고 칸 값으로 갈아
+  #   끼우려는 것이지 사외 거르기가 아니다.
   foreach ($k in $Preset.Keys) {
     if ($k -in @('ANTHROPIC_BASE_URL','ANTHROPIC_AUTH_TOKEN')) { continue }
     if ($Preset[$k]) { $lines.Add("$k=$($Preset[$k])") }

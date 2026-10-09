@@ -1094,7 +1094,12 @@ function Test-OurProxyEntry([string]$Name, [string]$Value, [hashtable]$FromFile)
 #   실측 2026-09-22 집 PC 와 사외 VDI: 이 값이 처음 심긴 판부터 켜기가 전부 졌다).
 #   ⚠ 그래서 이 셋은 **사용자가 손수 넣었어도 사외에서는 걷힌다** — 설치 목록이 늘 이 이름을 들어 위
 #   이름 울타리를 넘는다.
-$InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE')
+# ⚠ **모델 고정 둘도 사내 전용이다** — 게이트웨이가 설정 `model` 키의 `[1m]` 을 벗겨 1M 창을 환경변수로
+#   여는 우회라(claude-config 결정 0049), 구독 로그인으로 서는 사외에서는 열 것이 없다. 남으면 시작 모델이
+#   그 값에 묶여 `/model` 로 고른 것이 새 창마다 밀린다(실측 2026-10-10 집 PC: 새 창이 늘 Opus 5 로 떴다).
+#   `ANTHROPIC_MODEL` 은 위 `$Vars` 표에도 있어 표 루프도 이 목록을 묻는다.
+$InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE',
+                'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL')
 
 function Test-OurInsideOnlyEntry([string]$Name, [hashtable]$FromFile) {
   if (-not $FromFile) { return $false }
@@ -2369,6 +2374,11 @@ foreach ($v in $Vars) {
 
   # 게이트웨이를 안 쓰는 자리에서는 그쪽 이름을 아예 안 본다
   if ($v.Gateway -and -not $useGateway) { continue }
+  # 사내 전용 이름도 같다 — 아래 5′ 칸과 같은 문(`$InsideOnly`)을 묻는다
+  if (-not $useGateway -and ($InsideOnly -contains $v.Name)) {
+    if ($val) { Write-Host "  $($v.Name) — 안 심는다 (사외에서는 뜻이 없는 이름)" -ForegroundColor Yellow }
+    continue
+  }
 
   if (-not $val -and -not $Yes) {
     Write-Host ''
