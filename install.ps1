@@ -3696,6 +3696,8 @@ if ($PickKeys -contains 'codex') {
         Write-Host "  ! Codex 훅 — 못 알아보는 꼴로 적힌 이벤트는 안 건드렸다: $($skipped -join ' ')" -ForegroundColor Yellow
       } elseif ($codexHookOut -contains 'CHANGED=1') {
         Write-Host '  Codex 훅 — DRM 길잡이 · 그림 문 · Bash 겹역슬래시 · BOM 을 config.toml 에 심었다' -ForegroundColor Green
+        $codexHookBak = @($codexHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
+        if ($codexHookBak) { Write-Host "     고치기 전 것은 $($codexHookBak.Substring(7)) 에 떠 뒀다" }
       } else {
         Write-Host '  Codex 훅 — 이미 맞다'
       }
@@ -3888,7 +3890,7 @@ if ($cfg -and $cfg.hooks -and $cfg.hooks.SessionStart) {
   foreach ($entry in @($cfg.hooks.SessionStart)) {
     if (-not $entry) { continue }
     $c = @($entry.hooks | Where-Object { $_ } | ForEach-Object { [string]$_.command })
-    if (@($c | Where-Object { $_ -match 'tavily-key-hint' }).Count) { $hintDropped++ } else { $hintKept += $entry }
+    if (@($c | Where-Object { $_ -cmatch '#\s*tavily-key-hint\s*$' }).Count) { $hintDropped++ } else { $hintKept += $entry }
   }
   if ($hintDropped) {
     $cfg.hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $hintKept -Force
