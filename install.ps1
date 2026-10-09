@@ -152,8 +152,9 @@ $Products = @(
   @{ Key='antigravity'; Label='구글 Antigravity'; Default=$true  }
   @{ Key='gemini';      Label='Gemini';      Default=$false }
   # ⚠ **기본이 꺼져 있다 — 아직 파일럿이라 쓸 사람이 정해져 있지 않다**(이슈 #16). 켜는 사람만
-  #   받는다. 그리고 이 제품은 **데스크탑 앱 한 줄만** 든다 — CLI·확장 표에는 없다: 회사가 쓰는
-  #   것이 앱이고, winget 의 `GitHub.Copilot` 은 이름이 비슷한 **딴 물건**(CLI 쪽)이다.
+  #   받는다. 그리고 이 제품은 **데스크탑 앱 한 줄만** 표에 든다 — CLI·확장 표에는 없다: 회사가 쓰는
+  #   것이 앱이고, winget 의 `GitHub.Copilot` 은 이름이 비슷한 **딴 물건**(CLI 쪽)이다. Copilot CLI(npm
+  #   `@github/copilot`)는 표 밖에서 Codex · Copilot 맡기기의 받는 쪽으로만 깐다(아래 `$wantCopilotCli`).
   @{ Key='copilot';     Label='GitHub Copilot'; Default=$false }
 )
 
@@ -1418,18 +1419,29 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 #     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다.
 $wantAgyDelegate = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
 $wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
+# ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · Copilot CLI (claude-config 결정 0092 · 0093) ──
+# Codex 에게 읽기만 하는 일(웹 조사 · 문서 찾기)을 뒤에서 맡기고, Codex 한도가 차면 Copilot 이 받는다.
+# ⚠ **사외에서만 선다 — 사내는 회사 PC 시험 뒤에 연다.** 사내 Codex 는 ChatGPT 로그인이 아니라 회사 설정 틀로
+#   게이트웨이를 타는데, 그 게이트웨이는 Responses API 를 Chat Completions 로 바꿔 받는다 — 래퍼가 기대는 Codex 의
+#   웹 검색이 거기서 서는지 아직 모른다. agy 묶음이 처음 그랬듯 `-not $inside` 로 연다: 자리를 모르면 사외다(0086).
+# ⚠ **Copilot 은 조건에 안 든다** — 받는 쪽일 뿐이라, 래퍼는 Copilot CLI 가 없으면 Codex 만으로 돈다. Copilot CLI 는
+#   제품 칸에서 Copilot 까지 고른 사람에게만 깐다(3 칸) — 안 고른 제품의 프로그램은 안 깐다.
+$wantCcBg       = [bool]((-not $inside) -and ($PickKeys -contains 'claude') -and ($PickKeys -contains 'codex'))
+$wantCopilotCli = [bool]($wantCcBg -and ($PickKeys -contains 'copilot'))
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091) ──────
 # 키는 스킬 이름, 값은 까는 조건이다. 제작자 설정 칸을 켜면 6 칸이 묶음 전부를 까므로 이 표는 칸을 끈
-# 자리에서만 일을 한다(7 칸의 「칸 없이 까는 스킬」). 셋 다 규범을 안 읽어도 홀로 선다.
+# 자리에서만 일을 한다(7 칸의 「칸 없이 까는 스킬」). 모두 규범을 안 읽어도 홀로 선다.
 $FreeSkills = [ordered]@{
-  'drm-office-read' = [bool]($PickKeys -contains 'claude')   # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
-  'inhouse-app'     = [bool]($PickKeys -contains 'claude')   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
-  'agy-background'  = $wantAgyDelegate                       # agy 에게 뒤에서 맡기고 한도에서 넘긴다
+  'drm-office-read'          = [bool]($PickKeys -contains 'claude')   # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
+  'inhouse-app'              = [bool]($PickKeys -contains 'claude')   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
+  'agy-background'           = $wantAgyDelegate                       # agy 에게 뒤에서 맡기고 한도에서 넘긴다
+  'codex-copilot-background' = $wantCcBg                              # Codex 에게 뒤에서 맡기고 한도면 Copilot 이 받는다
 }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
 if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
+if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 백그라운드 래퍼가 pythonw 로 돈다' }
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **회사 설정도 제품 칸을 탄다** — 안 켠 제품에 회사 설정만 심어 두면 쓰지도 않는 파일이
 #   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
@@ -2156,6 +2168,14 @@ if ($PickKeys -contains 'claude') {
   }
   Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
 }
+# Copilot CLI — Codex · Copilot 맡기기에서 Codex 한도가 차면 받는 쪽이다(위 `$wantCopilotCli` · 결정 0093).
+# ⚠ **제품 표(`$Clis`)에 안 든다.** 그 표의 줄은 자리를 안 가리는데(결정 0045), 이 CLI 가 회사 망에서 깔리고 도는지는
+#   아직 안 쟀다 — Copilot 제품의 데스크탑 앱은 사내에서도 깔리지만(`When='any'`) 이 CLI 는 맡기기와 함께 사외에서만 선다.
+# ⚠ **판은 `--version` 의 끝 마침표를 떼고 읽는다** — `GitHub Copilot CLI 1.0.94.` 처럼 끝나서, 그대로 견주면 레지스트리
+#   판과 늘 달라 매 실행 다시 깐다(`Install-NpmCli` 의 판 견주기는 판 뒤에 점이 오면 다른 판으로 친다).
+if ($wantCopilotCli) {
+  Install-NpmCli '@github/copilot' 'copilot' 'Copilot CLI' { (Get-Ver 'copilot' '--version') -replace '\.$', '' }
+}
 
 # agy 가 고를 모델 — 설치가 사용자 환경변수로 심고, 백그라운드 래퍼(스킬 `agy-background`)가 읽는다.
 # **값은 자리마다 다르다** — 사내 agy 는 회사 키로 게이트웨이를 타고, 사외는 각자 로그인으로 선다.
@@ -2227,6 +2247,9 @@ if ($wantAgyDelegate) {
 #   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
 if (-not $inside) {
   Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
+  if ($wantCopilotCli) {
+    Write-Host '  Copilot CLI 는 터미널에서 `copilot login` 을 한 번 친다 — 브라우저로 GitHub 계정을 잇는다'
+  }
 }
 
 Write-Elapsed '[3/8] CLI'
@@ -4564,6 +4587,10 @@ if (-not $NoVsCode) {
 }
 foreach ($c in $CliPicks) {
   $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
+}
+# 제품 표 밖에서 까는 CLI — Codex · Copilot 맡기기의 받는 쪽(3 칸 · `$wantCopilotCli`). 까는 조건 그대로 잰다.
+if ($wantCopilotCli) {
+  $checks += @{ Name = 'Copilot CLI'; Ok = (Test-Runs 'copilot' '--version') }
 }
 # 나르는 자리 둘 — 7 칸의 자산과 6 칸의 개인 규범·룰·스킬. 재는 자는 위 `New-CountCheck` 하나다.
 foreach ($a in $envAssets) {
