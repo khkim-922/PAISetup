@@ -3621,10 +3621,12 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
   }
 }
 
-# ── Codex 훅 — DRM 길잡이 · 그림 문을 config.toml 에 병합한다 ────────────────────
-# 사내 틀은 이미 같은 블록을 들고, 사외은 사람이 진 로그인 설정을 그대로 둔다. 병합 규칙의
-# 진본은 씨앗의 `codex-hook-install.py` · `codex-hooks.example.toml`이다. 같은 이벤트에 남의 훅이 있으면
-# 임의로 덮지 않고 건너뛴며, 끝 검증이 그 빠진 자리를 [X]로 알린다.
+# ── Codex 훅 — DRM 길잡이 · 그림 문 · Bash 겹역슬래시 · BOM 을 config.toml 에 병합한다 ─────────
+# 두 자리 다 돈다 — 사내는 위 틀이 이미 같은 블록을 들어 고칠 것이 없고, 사외는 사람이 쓴 설정에 우리 항목만
+# 얹는다. 병합 규칙의 진본은 씨앗의 `codex-hook-install.py` · `codex-hooks.example.toml` 이다 — 우리 항목만
+# 갈고 남의 훅 · 다른 표는 뜻 그대로 두며, 결과가 그 뜻으로 다시 읽힐 때만 쓴다. 못 알아보는 꼴로 적힌
+# 이벤트는 건너뛰고(SKIP), 끝 검증이 그 빠진 배선을 [X] 로 알린다.
+# ⚠ **stderr 를 합치지 않는다** — 맨 위 규칙(`2>&1`). 글자는 `Invoke-Logged` 가 파일로 받고, 실패했을 때만 편다.
 if ($PickKeys -contains 'codex') {
   $codexHookDir = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
   $codexHookPlant = Join-Path $codexHookDir 'codex-hook-install.py'
@@ -3636,16 +3638,20 @@ if ($PickKeys -contains 'codex') {
     Write-Host '  ! Codex 훅 — python 이 안 서서 안 심는다' -ForegroundColor Red
     $Fails.Add('Codex 훅 (python 없음)')
   } else {
-    $codexHookOut = @(& python -X utf8 $codexHookPlant --config $CodexCfg --example $codexHookExample 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host "  ! Codex 훅 병합 실패 — $($codexHookOut -join ' ')" -ForegroundColor Red
+    $codexHookLog = [IO.Path]::GetTempFileName()
+    $codexHookRc = Invoke-Logged 'python' @('-X', 'utf8', $codexHookPlant, '--config', $CodexCfg, '--example', $codexHookExample) $codexHookLog
+    $codexHookOut = @(Get-Content -LiteralPath $codexHookLog -ErrorAction SilentlyContinue |
+                      ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    if ($codexHookRc -ne 0) {
+      Write-Host '  ! Codex 훅 병합 실패 — config.toml 은 그대로다. 병합기가 뱉은 끝 줄:' -ForegroundColor Red
+      Show-Log $codexHookLog
       $Fails.Add('Codex 훅 (config.toml 병합 실패)')
     } else {
-      $skipped = @($codexHookOut | Where-Object { "$_" -like 'SKIP=*' })
+      $skipped = @($codexHookOut | Where-Object { $_ -like 'SKIP=*' })
       if ($skipped.Count) {
-        Write-Host "  ! Codex 훅 — 같은 이벤트에 다른 훅이 있어 안 건드린다: $($skipped -join ' ')" -ForegroundColor Yellow
+        Write-Host "  ! Codex 훅 — 못 알아보는 꼴로 적힌 이벤트는 안 건드렸다: $($skipped -join ' ')" -ForegroundColor Yellow
       } elseif ($codexHookOut -contains 'CHANGED=1') {
-        Write-Host '  Codex 훅 — DRM 길잡이 · 그림 문을 config.toml 에 심었다' -ForegroundColor Green
+        Write-Host '  Codex 훅 — DRM 길잡이 · 그림 문 · Bash 겹역슬래시 · BOM 을 config.toml 에 심었다' -ForegroundColor Green
       } else {
         Write-Host '  Codex 훅 — 이미 맞다'
       }
