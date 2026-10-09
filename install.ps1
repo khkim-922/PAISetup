@@ -3878,6 +3878,25 @@ if ($pipPkgs) {
   }
 }
 
+# ── 걷힌 Tavily 키 안내 — 옛 판이 홈 SessionStart 에 심은 한 줄을 걷는다 ──────────────────────
+# 웹 검색 · 웹 가져오기가 대부분 서서 Tavily 키가 여는 덤(사이트 지도 · 크롤 · 리서치)의 값이 줄었고, 웹이 못 닿은
+# 자리는 「웹 다시 찾기」 훅이 다른 길을 결과 곁에 붙인다. 그래서 안내는 더 안 심는다.
+# ⚠ **옛 판이 심은 항목만 걷는다** — 그 명령 끝의 표지(`tavily-key-hint`)로 알아본다. 표지가 없는 SessionStart 항목은
+#   사람 것이거나 설정 저장소 훅의 것이라 안 건드린다.
+if ($cfg -and $cfg.hooks -and $cfg.hooks.SessionStart) {
+  $hintKept = @(); $hintDropped = 0
+  foreach ($entry in @($cfg.hooks.SessionStart)) {
+    if (-not $entry) { continue }
+    $c = @($entry.hooks | Where-Object { $_ } | ForEach-Object { [string]$_.command })
+    if (@($c | Where-Object { $_ -match 'tavily-key-hint' }).Count) { $hintDropped++ } else { $hintKept += $entry }
+  }
+  if ($hintDropped) {
+    $cfg.hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $hintKept -Force
+    Write-Host '  Tavily 키 안내(SessionStart) — 더 안 쓰는 안내라 걷었다' -ForegroundColor Green
+    $dirty = $true
+  }
+}
+
 # ⚠ **홈 설정을 여기서 다시 쓴다.** 위 5칸이 이미 한 번 썼지만 그 뒤에 이 칸이 `$cfg` 를
 #   고쳤다 — 안 쓰면 그림 문이 메모리에만 서고 파일에는 없다. 5칸을 여기로 내리지 않는
 #   까닭은 순서가 뜻을 지기 때문이다: 몸통은 씨앗이 깔린 **뒤에야** 그 자리에 있다.
