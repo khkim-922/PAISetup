@@ -17,20 +17,23 @@ def emit_deny(reason):
     sys.stdout.write(json.dumps(out, ensure_ascii=False))
 
 
-def bash_backslash(data):
+def bash_backslash(data, windows=os.name == 'nt'):
     tool_input = data.get('tool_input') if isinstance(data.get('tool_input'), dict) else {}
     command = str(tool_input.get('cmd') or tool_input.get('command') or '')
     shell = str(tool_input.get('shell') or '').lower()
     name = str(data.get('tool_name') or '').lower()
-    is_bash = name == 'bash' or 'bash' in shell or re.match(r'^\s*(?:["\'][^"\']*bash(?:\.exe)?["\']|\S*bash(?:\.exe)?)\b', command, re.I)
-    if os.name == 'nt' and is_bash and '\\\\' in command:
+    # 단어 경계는 따옴표 없는 갈래에만 건다 — 따옴표로 감싼 경로(`"C:\Program Files\Git\bin\bash.exe"`)는 닫는 따옴표
+    # 뒤가 빈칸이라 경계가 안 선다
+    is_bash = name == 'bash' or 'bash' in shell or re.match(r'^\s*(?:["\'][^"\']*bash(?:\.exe)?["\']|\S*bash(?:\.exe)?\b)', command, re.I)
+    if windows and is_bash and '\\\\' in command:
         emit_deny('Windows에서 Bash로 보낸 명령의 겹역슬래시는 셸에 닿기 전에 하나로 접힐 수 있다. '
                   '파일 내용은 apply_patch로 쓰고, 경로는 /로 적거나 역슬래시는 안전한 방식으로 다시 짓는다.')
 
 
 def patch_paths(text):
     for line in text.splitlines():
-        m = re.match(r'^\*{3} (?:Add|Update) File:\s*(.+?)\s*$', line)
+        # 이름을 바꾸며 고친 파일은 `*** Move to:` 줄의 새 이름에 있다
+        m = re.match(r'^\*{3} (?:Add File|Update File|Move to):\s*(.+?)\s*$', line)
         if m:
             yield m.group(1)
 

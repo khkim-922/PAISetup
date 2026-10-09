@@ -1,6 +1,6 @@
 ---
 name: drm-office-read
-description: "Fasoo DRM 이 감싼 오피스·PDF 문서에서 글자를 뽑을 때 부른다. 파서가 「Data format error」·「형식이 잘못됐다」로 죽는데 그 파일은 오피스로 멀쩡히 열리는 자리다. 만든 덱(pptx)을 검수할 때도 부른다 — DRM 이 파일 내보내기를 막아 슬라이드를 그림으로 못 뽑는 자리에서 화면 캡처로 보고, 넘침은 파워포인트가 직접 잰다. 윈도 + 오피스 + 그 파일을 감싼 Fasoo 에이전트가 도는 PC(회사 PC)가 전제다."
+description: "Fasoo DRM 이 감싼 오피스·PDF 문서에서 글자를 뽑거나 페이지·슬라이드의 표, 그림, 배치를 확인할 때 부른다. 파서가 「Data format error」·「형식이 잘못됐다」로 죽는데 그 파일은 오피스로 멀쩡히 열리는 자리다. PDF·Word는 페이지 그림으로 누락을 보완하고, 만든 덱(pptx)은 화면 캡처와 배치 검사로 검수한다. 윈도 + 오피스 + 그 파일을 감싼 Fasoo 에이전트가 도는 PC(회사 PC)가 전제다."
 ---
 
 # 감긴 파일은 파서가 아니라 앱이 연다
@@ -69,6 +69,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command \
 
 ⚠ **수치·표·고유명사는 그 자리를 눈으로 확인한다** — 산문은 잡음이 눈에 걸리지만 숫자는 틀린 채 조용히
 지나간다.
+
+### PDF·Word의 페이지를 그림으로 확인한다
+
+`read-drm.ps1`의 Word 경로는 `Document.Content.Text`를 읽는다. Word가 PDF를 이미지·도형·머리글로
+변환하면 화면에 보이는 글자가 빠질 수 있고, 글자가 모두 나와도 표와 주변 문장의 위치 관계는 평탄해진다.
+추출 글자가 지나치게 짧거나 표·그림·워터마크·배치가 중요하면 `scripts/capture_pages.ps1`로 페이지 전체를
+PNG로 꺼내 직접 본다.
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass \
+  -File "<이 스킬>/scripts/capture_pages.ps1" -Path report.pdf
+
+# 필요한 쪽만
+powershell -NoProfile -ExecutionPolicy Bypass \
+  -File "<이 스킬>/scripts/capture_pages.ps1" -Path report.docx -Pages "1,3"
+```
+
+이 길은 Word의 `EnhMetaFileBits`를 메모리에서 받아 PowerShell이 PNG로 쓴다. Office의 내보내기나
+다른 이름으로 저장을 쓰지 않으며 원본은 읽기 전용으로 열고 저장하지 않는다. 결과 경로가 출력되면 이미지
+도구로 열어 확인한다. `.pdf`·`.docx`·`.doc`·`.rtf`만 맡고, 슬라이드는 아래 전용 캡처를 쓴다.
 
 ## 4. 덱을 검수한다 — 배치는 재고, 인상은 본다
 

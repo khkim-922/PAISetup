@@ -1788,7 +1788,11 @@ import glob as _glob
 targets = [proj]
 for h in _glob.glob(os.path.join(root, "*", ".claude", "hooks", "session-start.sh")):
     targets.append(os.path.dirname(os.path.dirname(os.path.dirname(h))))
-forms = sorted({t.replace("/", BS) for t in targets} | {t.replace(BS, "/") for t in targets})
+# ⚠ **드라이브 글자도 두 벌로 건다** — 우리 경로는 `C:` 로 오는데 VS Code 는 드라이브 글자를 소문자(`c:`)로 다룬다.
+#   앱이 어느 철자로 찾든 걸리게 한다 — 구분자 두 벌과 같은 까닭이고, 켜서 잃는 것이 없다.
+def _drive_cases(p):
+    return {p[0].upper() + p[1:], p[0].lower() + p[1:]} if len(p) > 1 and p[1] == ":" else {p}
+forms = sorted({v for t in targets for f in (t.replace("/", BS), t.replace(BS, "/")) for v in _drive_cases(f)})
 tp = os.path.join(os.path.expanduser("~"), ".claude.json")
 # ⚠ **없는 것과 못 읽은 것을 가른다.** 없으면 손대지 않는 것이 이 칸의 뜻이라 진 것이 아니다. 못 읽은 것
 #   (앱이 쓰는 도중 · 깨졌다)은 신뢰를 못 건 채 지나간 것이라 진 것으로 알린다 — 안 알리면 표식이 「심었다」를

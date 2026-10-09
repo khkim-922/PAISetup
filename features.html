@@ -135,14 +135,17 @@
   <div class="head">
     <div class="icon"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg></div>
     <div>
-      <h2>사내에서 쓰는 도구<span class="tag">Claude 를 고르면</span></h2>
-      <p>Claude Code 가 막히는 자리를 미리 막고, 회사 문서와 사내 앱 일을 바로 할 수 있게 합니다.</p>
+      <h2>사내에서 쓰는 도구<span class="tag">Claude 나 Codex 를 고르면</span></h2>
+      <p>Claude Code 가 막히는 자리를 미리 막고, 회사 문서와 사내 앱 일을 바로 할 수 있게 합니다.
+         Codex 를 고르면 그림 문 · DRM 길잡이 · 두 안전 훅과 DRM 문서 읽기 · 사내 앱 만들기를 Codex 에도 같이 겁니다.</p>
     </div>
   </div>
   <div class="grid">
     <div class="card"><b>그림 문 <code>image-gate</code></b><span>스크린샷이나 큰 그림을 Claude 에 보내기 전에 크기를 잽니다. 너무 크면 막고 줄여서 다시 열게 해, 그림 한 장에 대화가 멈추지 않습니다.</span></div>
     <div class="card"><b>웹 다시 찾기 <code>web-retry</code></b><span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 옆에 알려 줍니다. 막지는 않습니다.</span></div>
     <div class="card"><b>DRM 길잡이 <code>drm-guide</code></b><span>회사 DRM 이 걸린 오피스 · PDF 를 붙이거나 경로를 적으면, Claude 가 그 파일을 DRM 문서 읽기(<code>drm-office-read</code>)로 열도록 길을 알려 줍니다. DRM 이 안 걸린 파일에는 아무것도 붙이지 않습니다.</span></div>
+    <div class="card"><b>Bash 겹역슬래시 차단 <code>bash-backslash-deny</code></b><span>윈도우에서 Bash 로 보낸 명령의 겹역슬래시는 셸에 닿기 전에 하나로 접혀 엉뚱한 경로가 됩니다. 그런 명령을 실행 전에 돌려보내 다시 짓게 합니다.</span></div>
+    <div class="card"><b>PowerShell 한글 지키기 <code>utf8-bom</code></b><span>윈도우 파워셸 5.1 은 BOM 없는 스크립트의 한글을 깨뜨려 읽습니다. 고친 <code>.ps1</code> 에 BOM 을 찍어 둡니다.</span></div>
     <div class="card"><b>Tavily 웹 검색 <code>tavily-search</code></b><span>웹 검색 도구를 하나 더 붙입니다. 무료 키(<code>TAVILY_API_KEY</code>)를 넣으면 한 달 1,000회까지 씁니다. <a href="https://app.tavily.com">무료 키 받기</a></span></div>
     <div class="card"><b>문서 스킬 <code>document-skills</code></b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
     <div class="card"><b>DRM 문서 읽기 <code>drm-office-read</code></b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
@@ -154,7 +157,7 @@
   <div class="head">
     <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 7h11M11 3l4 4-4 4M20 17H9M13 13l-4 4 4 4"/></svg></div>
     <div>
-      <h2>agy 에게 맡기기<span class="tag">Claude 와 안티그래비티를 같이 고르면</span></h2>
+      <h2>agy 에게 맡기기<span class="tag">Claude 나 Codex 와 안티그래비티를 같이 고르면</span></h2>
       <p>오래 걸리는 일은 agy(구글 제미나이)에게 뒤에서 맡기고, Claude 와는 하던 대화를 이어 갑니다.</p>
     </div>
   </div>
@@ -177,6 +180,7 @@
     <div class="card"><b>뒤에서 맡기기 <code>codex-copilot-background</code></b><span>긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 웹 조사를 Codex 에게 넘기고, 끝나면 Claude 가 답을 거둬 옵니다. 맡긴 쪽은 읽기만 하고 파일은 안 고칩니다.</span></div>
     <div class="card"><b>자리마다 맞춰 돌기</b><span>사외에서는 Codex 가 실시간으로 웹을 검색하고, Codex 한도가 차면 Copilot 이 받습니다(Copilot CLI 는 Copilot 을 고르면 깔립니다). 사내에서는 Codex 가 회사 게이트웨이로 가고, 웹 검색도 사내 프록시가 게이트웨이로 잇습니다.</span></div>
     <div class="card"><b>사외는 로그인 한 번씩</b><span>터미널에서 <code>codex login</code>(ChatGPT 계정)과 <code>copilot login</code>(GitHub 계정)을 한 번씩 칩니다. 사내 Codex 는 회사 키로 서서 로그인이 없습니다.</span></div>
+    <div class="card"><b>거꾸로 — Codex 에서 Claude 에게 <code>claude-background</code></b><span>Codex 를 쓰다가 리뷰 · 조사 · 다른 모델의 의견을 Claude 에게 넘깁니다. 받는 Claude 는 읽기만 하고, 고치는 일은 Codex 가 합니다.</span></div>
   </div>
 </section>
 

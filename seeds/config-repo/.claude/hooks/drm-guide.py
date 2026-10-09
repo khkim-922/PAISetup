@@ -1,5 +1,5 @@
 """DRM 길잡이 — 사람이 붙이거나 적은 오피스 · PDF 가 Fasoo DRM 에 감겼으면 스킬 `drm-office-read` 로 가는 길을 곁에
-붙인다 (UserPromptSubmit · PostToolUseFailure 훅). 붙이기만 한다 — 막지 않는다.
+붙인다 (UserPromptSubmit · PreToolUse · PostToolUseFailure 훅). 붙이기만 한다 — 막지 않는다.
 
 **왜 있나.** 감긴 파일은 Read 와 파서가 형식 인식 단계에서 진다. 그 자리를 여는 스킬은 description 으로만 걸리는데,
 첨부의 실패는 모델의 판단 밖에서 난다 — 모델은 그 파일을 열어 보기 전에는 감긴 줄 모른다. 판단과 무관하게 걸려야 하는
@@ -12,10 +12,14 @@
       @경로            손으로 친 언급(공백 없는 한 낱말 · 상대면 입력의 `cwd` 기준)
       "C:\\…" · 'C:\\…'  탐색기 「경로로 복사」가 주는 꼴
       C:\\… · C:/…       붙여 넣은 맨 절대 경로 — 공백이 들 수 있어 스킬이 다루는 확장자에서 끝을 끊는다
-  · UserPromptSubmit 때 `transcript_path` 의 **이 턴 사용자 줄** — VS Code 앱의 「+」는 PDF 를 경로 없이 본문으로
-    싣는다: 그 줄에 `{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":…},
-    "title":"<원래 이름>"}` 이 들고, 훅 입력에는 첨부 칸도 이름도 없다(#120 실측 — 그 줄은 훅보다 약 0.6 초 먼저 써진다).
-    오피스는 그 앱이 첨부를 형식으로 거절해 이 길에 안 온다 — 글에 경로를 적는 길(위)이 든다
+  · UserPromptSubmit · **PreToolUse** 때 `transcript_path` 의 **이 턴 사용자 줄** — 앱의 「+」는 PDF 를 경로 없이
+    본문으로 싣는다: 그 줄에 `{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":…},
+    "title":"<원래 이름>"}` 이 들고, 훅 입력에는 첨부 칸도 이름도 없다(#120 실측).
+    ⚠ **자리가 둘인 것은 그 줄이 디스크에 닿는 시각이 표면마다 다르기 때문이다.** 데스크톱 앱은 제출 훅보다
+      먼저 쓰지만 VS Code 앱은 **훅이 1.4 초 이르고**, 그 줄은 뒤따르는 메타 줄과 함께 **덩어리로** 닿는다
+      (#120 실측 — 382→388 줄 · 42 KB 가 한 번에). 그래서 제출 때 못 찾은 턴을 **첫 도구 호출 때** 다시 본다:
+      그 시점엔 반드시 써져 있다(착지보다 2.9 초 뒤). 한 턴에 한 번만 알린다(아래 「이 턴의 사용자 줄」).
+    오피스는 앱이 첨부를 형식으로 거절해 이 길에 안 온다 — 글에 경로를 적는 길(위)이 든다
   · PostToolUseFailure(Read) — `tool_input.file_path`. 이 그물에 닿는 것은 PDF 다: Read 는 감긴 PDF 를 실행 단계에서
     지고(「missing %PDF- header」) 이 이벤트를 낸다. 오피스는 입력 검증에서 져(「cannot read binary files」) 어느 훅도
     안 걸린다 — 그 자리는 Read 의 거절 문구가 이미 「스킬을 쓰라」로 민다
@@ -24,11 +28,16 @@
 평문 시그니처가 아닌 것을 「감겼다」로 치는 길(`read-drm.ps1` 의 `Test-PlainFormat`)은 안 쓴다 — 시그니처가 없는
 평문 `.csv` 까지 감긴 것으로 읽는다. 첨부 본문은 base64 의 앞 24 글자(16 바이트)만 풀어 재고, 감겼을 때만 다 푼다.
 
-**이 턴의 사용자 줄** — 기록 끝에서 거슬러 읽어 처음 만나는 대화 줄이 사람이 보낸 사용자 줄(도구 결과도 `isMeta` 도 아닌
-`user` 줄)이면 그것이다. 그보다 뒤에 assistant 줄이나 도구 결과 줄이 있으면 이 턴의 줄이 아직 안 써진 것이라 아무것도
-안 본다 — 앞 턴의 첨부를 다시 알리지 않는다. 그 사이의 메타 줄(`last-prompt` · `attachment` · `file-history-snapshot` ·
-`isMeta` 사용자 줄 …)은 건너뛴다. 입력의 `prompt_id` 는 안 쓴다 — 기록의 `promptId` 와 같은 값인지 잰 적이 없고, 같은 값이 잇단 두 턴에 오는 것이
-보였다(#120). 기록은 수 MB 이고 PDF 한 줄이 MB 단위라 **끝에서부터 그 줄까지만 읽는다**(`TAIL_MAX_BYTES` 가 울타리).
+**이 턴의 사용자 줄 — `prompt_id` 로 지목한다.** 입력의 `prompt_id` 는 기록 줄의 `promptId` 와 **같은 값이다**
+(#120 실측 — 아홉 턴 전부 맞았다). 그 값이 달린 `user` 줄 가운데 문서 블록이 든 것을 든다. 꼬리를 거슬러 「지금이
+어느 턴인가」를 추정하지 않는다 — 그 길은 **언제 보느냐**에 매여 양쪽에서 조인다: 제출 시점에는 그 줄이 아직
+디스크에 없고(VS Code 앱에서 훅이 1.4 초 이르다), 42 초쯤 뒤면 꼬리 창에서 밀려난다. 지목은 **몇 줄째인지와
+무관**해서 두 실패가 함께 사라진다.
+⚠ **같은 `prompt_id` 가 잇단 두 턴에 오는 것이 보였다**(#120). 그래서 값만으로 턴을 가르지 않고 **그 줄에 문서
+  블록이 드나를 다시 재므로** 오인이 안 난다 — 문서 블록이 든 줄의 `promptId` 는 그 턴에만 쓰였다.
+⚠ **한 턴에 한 번만 알린다.** 거는 자리가 둘(제출 · 도구 호출)이라 같은 첨부가 두 번 걸릴 수 있다 — 알린
+  `prompt_id` 를 떨궈 두고(`notified_dir`) 이미 있으면 조용히 끝낸다.
+기록은 수 MB 이고 PDF 한 줄이 MB 단위라 **끝에서부터 찾는 줄까지만 읽는다**(`TAIL_MAX_BYTES` 가 울타리).
 
 **떨구는 자리와 수명** — `read-drm.ps1` 은 디스크의 파일만 받으므로 감긴 첨부는 같은 바이트를
 `<세션 스크래치패드 · 없으면 시스템 임시 폴더>/drm-attach/<session_id>/<원래 이름>` 에 쓴다. 같은 이름은 덮는다 — 한 세션에서
@@ -49,14 +58,15 @@
 ⚠ **재다 져도 막지 않는다** — 뜻밖의 예외는 그 이름만 대는 한 줄로 바꾸고 0 으로 끝낸다. 길잡이가 죽은 사실은 남기되
    사람이 보낸 글은 그대로 간다.
 
-부르는 자리 — 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PostToolUseFailure. 앞에 셸 껍데기(`drm-guide.sh` · 곁
-파일)가 서서, 입력에 오피스 · PDF 확장자가 있거나 기록 꼬리에 문서 블록이 있을 때만 이 몸통을 띄운다. 심는 손과 주인
-규율은 그림 문과 같다(`image-gate.py` 머리말).
+부르는 자리 — 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PreToolUse · PostToolUseFailure. 앞에 셸
+껍데기(`drm-guide.sh` · 곁 파일)가 서서, 입력에 오피스 · PDF 확장자가 있거나 기록에 이 턴의 문서 블록이 있을 때만
+이 몸통을 띄운다. 심는 손과 주인 규율은 그림 문과 같다(`image-gate.py` 머리말).
 
 시험 — `python -X utf8 scripts/check-drm-guide.py`.
 """
 import base64
 import binascii
+import hashlib
 import json
 import os
 import re
@@ -71,6 +81,8 @@ HEAD_BYTES = 16           # 표지를 찾는 머리 길이 — 표본은 셋째 
 B64_HEAD = 24             # 머리 16 바이트를 푸는 데 드는 base64 글자 수 — 4 · ⌈16 / 3⌉
 OUT_SUBDIR = 'drm-text'   # 뽑은 글자를 둘 폴더 이름 — 세션 스크래치패드(없으면 임시 폴더) 밑
 ATTACH_SUBDIR = 'drm-attach'   # 감긴 첨부를 떨굴 폴더 이름 — 같은 밑, 세션마다 한 칸(머리말 「떨구는 자리와 수명」)
+NOTIFIED_SUBDIR = '.notified'   # 알린 턴의 표식을 둘 폴더 — 떨구는 세션 칸 밑(`claim_turn` 머리말 ⚠)
+DOC_MARK = b'"type":"document"'    # 문서 블록 표지 — 푸는 값을 내기 전에 글자로 먼저 거른다
 ATTACH_MEDIA = {'application/pdf': '.pdf'}   # 첨부 문서 블록의 형식 → 확장자. 앱이 본문으로 싣는 문서는 PDF 다(#120)
 # 기록 꼬리를 거꾸로 읽는 한도 — 사용자 줄 하나는 API 요청 한도(32 MB)를 못 넘으니 그 두 배면 한 줄을 다 담는다
 TAIL_MAX_BYTES = 64 << 20
@@ -186,39 +198,50 @@ def tail_lines(path):
             taken += n
 
 
-def turn_documents(path):
-    """이 턴 사용자 줄의 문서 블록 — 이 턴의 줄을 못 찾으면 빈 목록(머리말 「이 턴의 사용자 줄」)."""
-    if not path or not os.path.isfile(path):
-        return []
+def turn_documents(path, pid):
+    """`prompt_id` 로 지목한 이 턴 사용자 줄의 문서 블록 — `(블록들, 줄 식별자)`. 못 찾으면 `([], '')`.
+
+    끝에서 거꾸로 읽어 **그 `promptId` 가 달린 가장 새 `user` 줄**을 찾고, 그 줄에 문서 블록이 있을 때만 든다.
+    「지금이 어느 턴인가」를 추정하지 않으므로 그 줄이 몇 줄째인지 · 뒤에 무엇이 붙었는지와 무관하다.
+
+    ⚠ **「가장 새」가 판정의 핵이다.** 문서 블록이 든 줄만 골라 거슬러 오르면, 같은 `prompt_id` 가 잇달아
+      올 때(#120 실측) **앞 턴의 첨부를 뒤 턴에 알린다** — 뒤 턴이 첨부 없는 평문이어도 그렇다. 없는 첨부를
+      가리키는 안내는 모델을 틀린 길로 밀어 침묵보다 나쁘다. 그래서 그 값의 가장 새 사용자 줄 하나만 보고,
+      거기 문서가 없으면 조용히 끝낸다.
+    ⚠ **줄 식별자를 함께 낸다** — `prompt_id` 는 턴을 못 가르므로(같은 값이 잇달아 온다) 한 번만 알리는
+      표식의 열쇠는 이 값이 든다(`claim_turn`). 기록 줄의 `uuid` 가 그 자리다.
+    """
+    if not path or not pid or not os.path.isfile(path):
+        return [], ''
+    needle = ('"promptId":"%s"' % pid).encode('utf-8')
     try:
         for raw in tail_lines(path):
+            if needle not in raw:
+                continue    # 다른 턴의 줄 — 푸는 값을 안 낸다
             try:
                 o = json.loads(raw)
             except ValueError:
-                continue   # 쓰이다 만 줄
-            if not isinstance(o, dict):
+                continue    # 쓰이다 만 줄
+            if not isinstance(o, dict) or o.get('type') != 'user' or o.get('isMeta'):
                 continue
-            kind = o.get('type')
-            if kind == 'assistant':
-                return []   # 답이 이미 섰다 — 이 턴의 사용자 줄이 아직 없다
-            if kind != 'user':
-                continue    # 메타 줄
             content = (o.get('message') or {}).get('content')
-            blocks = [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
-            if any(b.get('type') == 'tool_result' for b in blocks):
-                return []   # 도구 결과 — 앞 턴의 주고받기다
-            if o.get('isMeta'):
-                continue
-            return [b for b in blocks if b.get('type') == 'document']
+            if not isinstance(content, list):
+                return [], ''   # 이 턴의 가장 새 사용자 줄인데 블록이 없다(평문 글)
+            if any(b.get('type') == 'tool_result' for b in content if isinstance(b, dict)):
+                continue        # 도구 결과 줄 — 사람이 보낸 줄이 아니다
+            uid = str(o.get('uuid') or '')
+            blocks = [b for b in content if isinstance(b, dict) and b.get('type') == 'document']
+            return blocks, uid   # 문서가 없으면 빈 목록 — 거슬러 더 오르지 않는다
     except OSError:
-        return []
-    return []
+        return [], ''
+    return [], ''
 
 
-def wrapped_attachments(path):
-    """이 턴의 감긴 첨부 — [(이름, 확장자, base64)]. 머리 글자만 풀어 잰다."""
+def wrapped_attachments(path, pid):
+    """이 턴의 감긴 첨부 — `([(이름, 확장자, base64)], 줄 식별자)`. 머리 글자만 풀어 잰다."""
     out = []
-    for b in turn_documents(path):
+    blocks, uid = turn_documents(path, pid)
+    for b in blocks:
         src = b.get('source') if isinstance(b.get('source'), dict) else {}
         ext = ATTACH_MEDIA.get(src.get('media_type'))
         data = src.get('data')
@@ -230,7 +253,7 @@ def wrapped_attachments(path):
             continue
         if FASOO_MARK in head[:HEAD_BYTES]:
             out.append((str(b.get('title') or ''), ext, data))
-    return out
+    return out, uid
 
 
 def safe_name(title, ext):
@@ -244,6 +267,36 @@ def attach_dir(data):
     base = str(data.get('scratchpad_dir') or tempfile.gettempdir())
     sid = re.sub(r'[^A-Za-z0-9_-]', '', str(data.get('session_id') or '')) or 'session'
     return os.path.join(base, ATTACH_SUBDIR, sid)
+
+
+def claim_turn(data, key):
+    """이 턴을 **처음** 알리는 자리인가 — 먼저 왔으면 참, 이미 알렸으면 거짓.
+
+    거는 자리가 둘이라(제출 · 도구 호출) 같은 첨부가 두 번 걸릴 수 있다. 표식 파일을 **배타 생성**으로
+    만들어 먼저 온 쪽만 참을 받는다 — 읽고 나서 쓰는 꼴은 두 훅이 겹칠 때 둘 다 통과한다.
+
+    ⚠ **열쇠는 기록 줄의 식별자(`uuid`)다 — `prompt_id` 가 아니다.** 같은 `prompt_id` 가 잇단 두 턴에 오는
+      것이 보였고(#120), 그 값으로 표식을 두면 앞 턴의 표식이 뒤 턴의 다른 첨부를 막는다. 줄 식별자는 줄마다
+      달라 그 일이 안 난다. 식별자가 없는 줄이면(옛 기록 꼴) 막지 않는다 — 안 알리는 것보다 두 번이 낫다.
+    ⚠ **표식은 떨구기가 **선 뒤에** 둔다**(부르는 쪽 차례) — 먼저 두면 떨구다 진 턴이 영구히 막힌다.
+      그 사이에 두 훅이 겹치면 둘 다 떨구고 하나만 알린다: 떨구기는 같은 바이트를 같은 자리에 쓰므로
+      덮어도 해가 없고, 알림이 둘인 것보다 안 알리는 것이 비싸다.
+    ⚠ **표식은 떨구는 세션 칸 밑에 둔다** — 임시 폴더를 비우는 손이 첨부 사본과 함께 거둔다. 세션 칸을 안
+      두면 앞 세션의 표식이 다음 세션을 막는다.
+    """
+    if not key:
+        return True
+    folder = os.path.join(attach_dir(data), NOTIFIED_SUBDIR)
+    name = hashlib.sha256(key.encode('utf-8')).hexdigest()[:32]
+    try:
+        os.makedirs(folder, exist_ok=True)
+        fd = os.open(os.path.join(folder, name), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return False
+    except OSError:
+        return True   # 표식을 못 두면 막지 않는다 — 안 알리는 것보다 두 번이 낫다
+    os.close(fd)
+    return True
 
 
 def drop(items, folder):
@@ -315,9 +368,13 @@ def emit(event, context):
 # ── 판정 ─────────────────────────────────────────────────────────────────────────
 def guide(data):
     event = data.get('hook_event_name') or ''
+    # 첨부를 보는 자리는 둘이다 — 제출(줄이 써졌으면 여기서 잡힌다)과 도구 호출(그때는 반드시 써져 있다).
+    # 글이 가리킨 경로는 제출 때만 본다 — 도구 호출 때 다시 읽으면 같은 글을 매 호출 되읽는다.
     if event == 'UserPromptSubmit':
         toks = None
         text = str(data.get('prompt') or '')
+    elif event == 'PreToolUse':
+        toks, text = [], ''          # 첨부만 본다
     elif event == 'PostToolUseFailure' and data.get('tool_name') == 'Read':
         toks = [str((data.get('tool_input') or {}).get('file_path') or '')]
         text = ''
@@ -343,12 +400,17 @@ def guide(data):
         if os.path.isfile(p) and wrapped(p):
             hits.append(p)
     attached = []
-    if event == 'UserPromptSubmit':
-        found = [a for a in wrapped_attachments(str(data.get('transcript_path') or ''))
-                 if not exts or a[1] in exts]
+    if event in ('UserPromptSubmit', 'PreToolUse'):
+        pid = str(data.get('prompt_id') or '')
+        found, uid = wrapped_attachments(str(data.get('transcript_path') or ''), pid)
+        found = [a for a in found if not exts or a[1] in exts]
         if found and sdir:
-            attached = drop(found, attach_dir(data))
-        else:
+            # ⚠ **떨구고 나서 표식을 둔다** — 먼저 두면 떨구다 진 턴이 영구히 막힌다(`claim_turn` 머리말 ⚠).
+            #   떨구기가 지면 예외가 올라가 바깥의 「재다 졌다」 한 줄이 나가고, 표식이 없으니 다음 자리가 다시 잰다.
+            dropped = drop(found, attach_dir(data))
+            attached = dropped if claim_turn(data, uid) else []
+        elif found:
+            # 읽을 손이 없으면 아무것도 디스크에 안 남긴다(머리말 ⚠) — 표식도 안 둔다
             attached = [(t or 'attachment' + e, None) for t, e, _ in found]
     if not hits and not attached:
         return 0
@@ -367,7 +429,7 @@ def main():
         return guide(data)
     except Exception as e:  # noqa: BLE001 — 길잡이가 진 것은 알리되 사람이 보낸 글은 그대로 간다
         event = data.get('hook_event_name')
-        if event in ('UserPromptSubmit', 'PostToolUseFailure'):
+        if event in ('UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure'):
             return emit(event, '%s — 경로와 첨부를 재다 졌다(%s). 감긴 파일(머리에 DRMONE)은 Read 와 파서로 안 열리고, '
                                '스킬 %s 가 Fasoo 에이전트가 도는 PC 의 오피스로 글자를 뽑는다.'
                                % (NAME, type(e).__name__, SKILL))
