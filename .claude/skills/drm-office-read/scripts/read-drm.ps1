@@ -1,4 +1,4 @@
-﻿# DRM 감긴 문서에서 글자를 뽑는다 — 설치된 오피스를 태워서.
+﻿# DRM 감긴 문서에서 글자를 뽑는다 — Fasoo 에이전트가 도는 PC 의 오피스를 태워서.
 #
 # 왜 이 파일이 있나: Fasoo DRM 은 파일을 통째로 자기 컨테이너로 감싼다. 머리 바이트가
 # `%PDF-`·`PK` 가 아니게 되므로 어떤 파서(PDFium·pdfplumber·python-docx·openpyxl)도

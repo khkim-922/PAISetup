@@ -10,7 +10,8 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
 - **Claude Code** — Opus 5 가 게이트웨이 직결에서 assistant prefill 을 400 으로 거절해서 지난다
 - **Gemini CLI** — CLI 가 `https` 가 아닌 주소를 거부하는데 루프백만은 `http` 를 받아 준다. 회사 문서가 시키는
   번들 패치 대신 이 길로 간다
-- **Codex** — 게이트웨이에 직결이라 안 지난다(`../Codex-CLI.setting.toml` 의 `base_url`)
+- **Codex** — 내장 검색이 게이트웨이에 없는 `/v1/alpha/search` 로 나가므로 프록시를 지난다. 프록시가 같은
+  게이트웨이의 `/v1/responses` + `web_search` 길로 바꾸고 Codex 의 `SearchResponse` 꼴로 되돌린다
 
 | 파일 | 상류 자리 | 무엇 |
 |---|---|---|
@@ -33,7 +34,7 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
 
 - 저장소 [`pgpt-one-click-connect`](https://github.com/sejuone-cloud/pgpt-one-click-connect) · 커밋 `2ab3f39`
   (2026-10-07 · v0.7.0) · 프록시 `VERSION = 26`. 프록시 파일이 마지막으로 바뀐 상류 커밋은 `3dac49b`(v0.6.32)다
-- **우리 판 번호는 두 칸이다 — 지금 `26.4`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 받아 온 상류 판이고,
+- **우리 판 번호는 두 칸이다 — 지금 `26.6`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 받아 온 상류 판이고,
   뒤 칸은 그 위에 우리가 얹은 덩어리 수다. **한 칸으로 세지 않는 까닭**: 상류와 우리가 한 줄에 번호를 매기면
   상류가 새 판을 내는 날 우리 번호와 부딪히고, 그때는 번호만 보고 어느 쪽이 새것인지 못 가른다. 칸을 나누면
   **상류가 27 을 낼 때 우리 칸이 0 으로 돌아가 `27.0`** 이 되고, 그것이 `26.4` 보다 새것이라는 것이 번호에서
@@ -56,7 +57,8 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
   ⑷ **웹서치 메움**(`WEB_SEARCH` · `WEB_SEARCH_MODEL` · `_WEB_SEARCH_PROMPT_HEAD` · 계수 둘 · `stats()` 의 네 칸 ·
   `web_search_*` 함수 묶음 · `anthropic_message_events` 의 `web_search_tool_result` 갈래 · `_forward_request` 의
   `web_search` 갈래 · 머리 설명 한 칸 · 자체 검사 한 칸) — 게이트웨이가 서버 웹서치 도구를 클라이언트 `tool_use` 로
-  되돌려, Claude Code 의 WebSearch 가 사내에서 늘 빈손이던 자리다(이슈 #118 · 결정 0087)
+  되돌려, Claude Code 의 WebSearch 가 사내에서 늘 빈손이던 자리다(이슈 #118 · 결정 0087). Codex 의 독립
+  `/v1/alpha/search`는 게이트웨이의 `/v1/responses` + `web_search`로 바꾸고 `SearchResponse`로 되돌린다(이슈 #121)
   **판 번호 두 칸도 우리 것이다**(위).
   시험 파일은 **프록시를 찾는 경로 줄만** 바꿨다(상류는 `app/` 아래, 우리는 같은 폴더). 하나만 더 —
   `Test-ProxyStreaming.py` 의 압축 HTTP 경로 시험이 간결 지시가 켜진 기본값을 박아 두어, 그 단언 한 줄을
@@ -87,6 +89,7 @@ Claude·Gemini 는 루프백 프록시를 지난다)이 정했다.
 | 대시 모델 ID 복원 — `claude-opus-4-7` → `claude-opus-4.7` | **쓴다 · 6회** — 같은 곁 호출 길. 별칭과 한 함수(`normalize_claude_model_id`)라 바뀌면 로그 한 줄이 찍힌다 |
 | 빈 도구 `description` 채우기 | **쓴다 · 6회** (Claude Code) · Codex 를 루프백에 태우면 `/v1/responses` 에서도 걸린다(탐침 `tool_descriptions_filled=1`) |
 | **(우리 것)** Claude Code 의 웹서치 하위 요청(서버 도구 `web_search_20250305` 를 선언한 요청)을 게이트웨이의 제미나이 검색(`googleSearch` grounding · `PGPT_PROXY_WEB_SEARCH_MODEL` · 기본 `gemini-3.6-flash`)으로 메워 `server_tool_use` · `web_search_tool_result` · `text` 세 칸으로 지어 돌려준다. 상류가 지면 검색 오류 칸으로 · `/health` 의 `web_search_filled` · `web_search_failed` · 끄려면 `PGPT_PROXY_WEB_SEARCH=0` | **쓴다 · 회사 실측 아직** — 게이트웨이가 그 선언을 클라이언트 `tool_use` 로 되돌려 아무도 검색하지 않아 결과 0 건이던 자리다(사내 실측 2026-10-08 · #118). 제미나이 grounding 이 실제 웹을 찾는 것은 실측됐다. Claude 를 안 거치므로 상류 호출은 하나다. ⚠ 출처 주소는 구글 경유 주소(`grounding-api-redirect`)로 감싸진 채 싣는다 — 풀지 않는다. ⚠ 게이트웨이가 왜 그 선언을 바꾸는지는 밖에서 안 보여, 게이트웨이가 바뀌면 이 칸이 조용히 어긋날 수 있다 |
+| **(우리 것)** Codex 의 `/v1/alpha/search`를 게이트웨이의 `/v1/responses` + `web_search`로 메워 `output` · `results`를 돌려준다 | **쓴다 · 상류 능력 사내 실측 2026-10-09** — 같은 게이트웨이의 Responses 웹 검색이 `search`와 `open_page`를 수행하고 URL 인용을 돌려주는 것을 확인했다(#121). Codex 설정은 루프백 `base_url` · `supports_standalone_web_search=true` · `web_search="live"` |
 | **(우리 것)** `tool_result` 안의 `image` 를 같은 메시지 **끝**으로 내놓고 빈 자리에 「그림은 이 메시지 끝에」를 적는다(`hoist_tool_result_images` · `/health` 의 `hoisted_images`) | **쓴다** — 게이트웨이가 `tool_result` 안의 그림만 200 에 버리고 같은 바이트가 형제 블록으로 서면 읽는다(눈가림 실측 2026-09-22 · 이슈 #76). ⚠ 그림을 `tool_result` **앞**에 끼우면 짝 검사가 400 을 낸다 — 그래서 끝으로만 간다 |
 | 상류 연결 풀 — 30초(`UPSTREAM_IDLE_TTL`) 넘게 논 연결은 재사용하지 않고 닫는다 · `/health` 의 `upstream_expired` | **쓴다** — 게이트웨이가 keep-alive 를 끊은 뒤 남은 연결을 집어 첫 요청이 지던 자리. 실측 `upstream_expired=8` · 재사용 82 |
 | Anthropic · OpenAI SSE 가 침묵하면 `KEEPALIVE_SEC`(기본 15초)마다 `: keepalive` 주석 한 줄을 클라이언트에 흘린다(상류 v18) — 게이트웨이가 생각 조각을 안 흘려 Claude Code 의 바이트 유휴 워치독이 끊던 자리. **완성된 이벤트 사이에만 끼운다**(v24). `PGPT_PROXY_KEEPALIVE_SEC=0` 이면 끈다 | **쓴다 · 132회** (Claude Code · 옛 판 실측). ⚠ 180초 벽은 못 넘는다 — 유휴가 아니라 요청 실행 시계다(`../ENV-posco.md`) |
@@ -137,6 +140,7 @@ python -X utf8 posco/pgpt-proxy/opus5_proxy.py --self-test     # 보정 함수 �
 python -X utf8 posco/pgpt-proxy/pair_check.py                 # 400 이 사라지나 — 어디서나 (가짜 게이트웨이)
 python -X utf8 posco/pgpt-proxy/hoist_check.py                # 그림 끌어내기가 본문 모양을 옳게 바꾸나 — 어디서나 (망 없음)
 python -X utf8 posco/pgpt-proxy/websearch_check.py           # 웹서치 메움 — CLI 꼴 요청 · 모델이 받을 글 — 어디서나 (가짜 게이트웨이)
+python -X utf8 posco/pgpt-proxy/codex_websearch_check.py     # Codex 검색 메움 — alpha/search 요청 · SearchResponse — 어디서나
 python -X utf8 posco/pgpt-proxy/Test-ProxyFaults.py          # 비정상 응답·스트림 단절 등 결함 내성 — 어디서나
 python -X utf8 posco/pgpt-proxy/Test-ProxyStreaming.py       # 스트림 무결성 · 진단 줄 — 어디서나
 python -X utf8 posco/pgpt-proxy/Test-ProxyCompaction.py      # 압축 알아보기 · 출력 상한 — 어디서나 (망 없음)

@@ -2,31 +2,47 @@
 붙인다 (UserPromptSubmit · PostToolUseFailure 훅). 붙이기만 한다 — 막지 않는다.
 
 **왜 있나.** 감긴 파일은 Read 와 파서가 형식 인식 단계에서 진다. 그 자리를 여는 스킬은 description 으로만 걸리는데,
-첨부의 실패는 모델의 판단 밖에서 난다 — 데스크톱 앱의 「+」 · 끌어다 놓기는 파일 내용을 안 싣고 경로 글자만 `prompt` 에
-넣고(`@"C:\\…\\보고서.xlsx"`), 모델은 그 파일을 열어 보기 전에는 감긴 줄 모른다. 판단과 무관하게 걸려야 하는 자리라
-훅의 층이다(claude-config #120 · 결정 0094).
+첨부의 실패는 모델의 판단 밖에서 난다 — 모델은 그 파일을 열어 보기 전에는 감긴 줄 모른다. 판단과 무관하게 걸려야 하는
+자리라 훅의 층이다(claude-config #120 · 결정 0094).
 
-두 이벤트를 든다:
+보는 자리는 셋이다:
 
-  · UserPromptSubmit — `prompt` 에서 경로를 뽑는다. 꼴은 넷이다
-      @"…"             「+」 · 끌어다 놓기가 넣는 꼴(따옴표째 · 절대 경로)
+  · UserPromptSubmit 의 `prompt` — 글에 든 경로. 꼴은 넷이다
+      @"…"             데스크톱 앱 Code 탭의 「+」 · 끌어다 놓기가 넣는 꼴(따옴표째 · 절대 경로)
       @경로            손으로 친 언급(공백 없는 한 낱말 · 상대면 입력의 `cwd` 기준)
       "C:\\…" · 'C:\\…'  탐색기 「경로로 복사」가 주는 꼴
       C:\\… · C:/…       붙여 넣은 맨 절대 경로 — 공백이 들 수 있어 스킬이 다루는 확장자에서 끝을 끊는다
+  · UserPromptSubmit 때 `transcript_path` 의 **이 턴 사용자 줄** — VS Code 앱의 「+」는 PDF 를 경로 없이 본문으로
+    싣는다: 그 줄에 `{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":…},
+    "title":"<원래 이름>"}` 이 들고, 훅 입력에는 첨부 칸도 이름도 없다(#120 실측 — 그 줄은 훅보다 약 0.6 초 먼저 써진다).
+    오피스는 그 앱이 첨부를 형식으로 거절해 이 길에 안 온다 — 글에 경로를 적는 길(위)이 든다
   · PostToolUseFailure(Read) — `tool_input.file_path`. 이 그물에 닿는 것은 PDF 다: Read 는 감긴 PDF 를 실행 단계에서
     지고(「missing %PDF- header」) 이 이벤트를 낸다. 오피스는 입력 검증에서 져(「cannot read binary files」) 어느 훅도
     안 걸린다 — 그 자리는 Read 의 거절 문구가 이미 「스킬을 쓰라」로 민다
 
 **감겼나는 머리 16 바이트에 `DRMONE` 이 드나로 가른다** — Fasoo 가 감싼 파일의 표지다(`_check/drm-fixtures/README.md`).
 평문 시그니처가 아닌 것을 「감겼다」로 치는 길(`read-drm.ps1` 의 `Test-PlainFormat`)은 안 쓴다 — 시그니처가 없는
-평문 `.csv` 까지 감긴 것으로 읽는다.
+평문 `.csv` 까지 감긴 것으로 읽는다. 첨부 본문은 base64 의 앞 24 글자(16 바이트)만 풀어 재고, 감겼을 때만 다 푼다.
+
+**이 턴의 사용자 줄** — 기록 끝에서 거슬러 읽어 처음 만나는 대화 줄이 사람이 보낸 사용자 줄(도구 결과도 `isMeta` 도 아닌
+`user` 줄)이면 그것이다. 그보다 뒤에 assistant 줄이나 도구 결과 줄이 있으면 이 턴의 줄이 아직 안 써진 것이라 아무것도
+안 본다 — 앞 턴의 첨부를 다시 알리지 않는다. 그 사이의 메타 줄(`last-prompt` · `attachment` · `file-history-snapshot` ·
+`isMeta` 사용자 줄 …)은 건너뛴다. 입력의 `prompt_id` 는 안 쓴다 — 기록의 `promptId` 와 같은 값인지 잰 적이 없고, 같은 값이 잇단 두 턴에 오는 것이
+보였다(#120). 기록은 수 MB 이고 PDF 한 줄이 MB 단위라 **끝에서부터 그 줄까지만 읽는다**(`TAIL_MAX_BYTES` 가 울타리).
+
+**떨구는 자리와 수명** — `read-drm.ps1` 은 디스크의 파일만 받으므로 감긴 첨부는 같은 바이트를
+`<세션 스크래치패드 · 없으면 시스템 임시 폴더>/drm-attach/<session_id>/<원래 이름>` 에 쓴다. 같은 이름은 덮는다 — 한 세션에서
+같은 첨부를 다시 붙이면 같은 자리라 사본이 안 쌓인다. 한 턴에 같은 이름이 둘이면 뒤엣것에 ` (2)` 를 붙인다. 지우는 손은 안
+둔다 — 쓰는 것은 **풀린 글자가 아니라 감긴 바이트 그대로**라 원본이 이미 사람의 디스크에 있는 것보다 더 드러나는 것이 없고,
+자리가 임시 폴더 밑(스크래치패드도 그 안이다)이라 임시 폴더를 비우는 손이 거둔다. 세션 칸을 두는 것은 스크래치패드가 없는
+표면(VS Code 앱)에서 두 세션이 같은 이름을 서로 덮지 않게 하려는 것이다.
 
 ⚠ **다루는 확장자는 스킬의 표가 든다** — `read-drm.ps1` 의 `$HANDLER`(확장자 → 앱)를 그 자리에서 읽는다. 여기 따로 적으면
    스킬이 확장자를 늘린 날 길잡이만 낡는다. 껍데기의 글롭만은 파이썬을 띄우기 전이라 표를 못 읽어 한 벌을 든다 — 검사가
    표의 확장자마다 껍데기를 지나 걸리나를 잰다.
 ⚠ **스킬을 못 찾으면 그 사실을 말한다** — 감긴 파일이 있는데 읽을 길이 이 PC 에 없다는 것도 모델이 알아야 할 사실이다.
-   그때는 표가 없어 확장자로 거르지 않는다(감긴 표지가 거른다).
-⚠ **파일 내용은 안 싣는다** — 머리만 읽어 감겼나만 본다. 읽기는 스킬의 스크립트가 하고, 이 훅은 길을 가리킨다(#120).
+   그때는 표가 없어 확장자로 거르지 않고(감긴 표지가 거른다), 읽을 손이 없으니 첨부도 안 떨군다.
+⚠ **파일 내용은 안 싣는다** — 덧말에는 이름과 자리만 든다. 읽기는 스킬의 스크립트가 하고, 이 훅은 길을 가리킨다(#120).
 ⚠ **덧말은 사실로 쓴다** — 명령조의 바깥 글은 프롬프트 주입 방어에 걸릴 수 있다(웹 다시 찾기와 같은 까닭).
 ⚠ **명령의 경로는 슬래시로 적는다** — 모델이 Bash 로 칠 때 겹따옴표 안의 역슬래시는 셸이 접고, 겹역슬래시는 홈 훅
    (`bash-backslash-deny.sh`)이 돌려보낸다. PowerShell 은 슬래시 경로를 그대로 받는다.
@@ -34,11 +50,13 @@
    사람이 보낸 글은 그대로 간다.
 
 부르는 자리 — 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PostToolUseFailure. 앞에 셸 껍데기(`drm-guide.sh` · 곁
-파일)가 서서 stdin 에 오피스 · PDF 확장자가 있을 때만 이 몸통을 띄운다. 심는 손과 주인 규율은 그림 문과 같다
-(`image-gate.py` 머리말).
+파일)가 서서, 입력에 오피스 · PDF 확장자가 있거나 기록 꼬리에 문서 블록이 있을 때만 이 몸통을 띄운다. 심는 손과 주인
+규율은 그림 문과 같다(`image-gate.py` 머리말).
 
 시험 — `python -X utf8 scripts/check-drm-guide.py`.
 """
+import base64
+import binascii
 import json
 import os
 import re
@@ -50,7 +68,13 @@ SKILL = 'drm-office-read'
 READER = os.path.join('scripts', 'read-drm.ps1')   # 확장자 표(`$HANDLER`)와 글자를 뽑는 손
 FASOO_MARK = b'DRMONE'    # Fasoo 가 감싼 파일의 머리 표지
 HEAD_BYTES = 16           # 표지를 찾는 머리 길이 — 표본은 셋째 바이트에서 시작한다
+B64_HEAD = 24             # 머리 16 바이트를 푸는 데 드는 base64 글자 수 — 4 · ⌈16 / 3⌉
 OUT_SUBDIR = 'drm-text'   # 뽑은 글자를 둘 폴더 이름 — 세션 스크래치패드(없으면 임시 폴더) 밑
+ATTACH_SUBDIR = 'drm-attach'   # 감긴 첨부를 떨굴 폴더 이름 — 같은 밑, 세션마다 한 칸(머리말 「떨구는 자리와 수명」)
+ATTACH_MEDIA = {'application/pdf': '.pdf'}   # 첨부 문서 블록의 형식 → 확장자. 앱이 본문으로 싣는 문서는 PDF 다(#120)
+# 기록 꼬리를 거꾸로 읽는 한도 — 사용자 줄 하나는 API 요청 한도(32 MB)를 못 넘으니 그 두 배면 한 줄을 다 담는다
+TAIL_MAX_BYTES = 64 << 20
+TAIL_CHUNK = 1 << 20      # 거꾸로 읽는 한 번의 크기
 SKILL_DIR_ENV = 'DRM_GUIDE_SKILL_DIR'   # 시험이 스킬 자리를 줄 때 — 빈 값이면 「스킬 없음」
 
 ATTACH = re.compile(r'@"([^"\r\n]+)"')                                     # 「+」 · 끌어다 놓기
@@ -62,6 +86,7 @@ BARE_START = r'(?<![A-Za-z0-9_"\'@/\\:])((?:[A-Za-z]:[\\/]|\\\\)'
 BARE_BODY = r'(?:(?![A-Za-z]:[\\/])[^"\'\r\n<>|*?])'
 BARE_NOEXT = re.compile(BARE_START + r'(?:(?![A-Za-z]:[\\/])[^\s"\'<>|*?])+)')
 TRAIL = '.,;:!?)]}'       # 표가 없을 때 후보 끝에서 걷는 문장 부호
+UNSAFE_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')   # 윈도우 파일 이름에 못 쓰는 글자
 
 
 # ── 스킬 — 자리와 확장자 표 ──────────────────────────────────────────────────────
@@ -134,6 +159,114 @@ def wrapped(path):
         return False
 
 
+# ── 첨부 — 기록의 이 턴 사용자 줄 ─────────────────────────────────────────────────
+def tail_lines(path):
+    """기록을 끝에서부터 한 줄씩 낸다 — 앞은 안 읽는다. 읽은 양이 `TAIL_MAX_BYTES` 를 넘으면 멈춘다."""
+    with open(path, 'rb') as f:
+        f.seek(0, os.SEEK_END)
+        pos = f.tell()
+        buf, taken = b'', 0
+        while True:
+            i = buf.rfind(b'\n')
+            while i >= 0:   # 줄바꿈 뒤는 끝이 알려진 온전한 줄이다
+                line, buf = buf[i + 1:], buf[:i]
+                if line.strip():
+                    yield line
+                i = buf.rfind(b'\n')
+            if pos == 0:
+                if buf.strip():
+                    yield buf
+                return
+            if taken >= TAIL_MAX_BYTES:
+                return
+            n = min(TAIL_CHUNK, pos)
+            pos -= n
+            f.seek(pos)
+            buf = f.read(n) + buf
+            taken += n
+
+
+def turn_documents(path):
+    """이 턴 사용자 줄의 문서 블록 — 이 턴의 줄을 못 찾으면 빈 목록(머리말 「이 턴의 사용자 줄」)."""
+    if not path or not os.path.isfile(path):
+        return []
+    try:
+        for raw in tail_lines(path):
+            try:
+                o = json.loads(raw)
+            except ValueError:
+                continue   # 쓰이다 만 줄
+            if not isinstance(o, dict):
+                continue
+            kind = o.get('type')
+            if kind == 'assistant':
+                return []   # 답이 이미 섰다 — 이 턴의 사용자 줄이 아직 없다
+            if kind != 'user':
+                continue    # 메타 줄
+            content = (o.get('message') or {}).get('content')
+            blocks = [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+            if any(b.get('type') == 'tool_result' for b in blocks):
+                return []   # 도구 결과 — 앞 턴의 주고받기다
+            if o.get('isMeta'):
+                continue
+            return [b for b in blocks if b.get('type') == 'document']
+    except OSError:
+        return []
+    return []
+
+
+def wrapped_attachments(path):
+    """이 턴의 감긴 첨부 — [(이름, 확장자, base64)]. 머리 글자만 풀어 잰다."""
+    out = []
+    for b in turn_documents(path):
+        src = b.get('source') if isinstance(b.get('source'), dict) else {}
+        ext = ATTACH_MEDIA.get(src.get('media_type'))
+        data = src.get('data')
+        if src.get('type') != 'base64' or not ext or not isinstance(data, str):
+            continue
+        try:
+            head = base64.b64decode(data[:B64_HEAD])
+        except (binascii.Error, ValueError):
+            continue
+        if FASOO_MARK in head[:HEAD_BYTES]:
+            out.append((str(b.get('title') or ''), ext, data))
+    return out
+
+
+def safe_name(title, ext):
+    """첨부 이름 → 쓸 파일 이름. 경로 조각과 못 쓰는 글자를 걷고, 확장자가 없으면 붙인다."""
+    n = UNSAFE_NAME.sub('_', os.path.basename(title.replace('\\', '/'))).strip().rstrip('. ')
+    n = n or 'attachment'
+    return n if n.lower().endswith(ext) else n + ext
+
+
+def attach_dir(data):
+    base = str(data.get('scratchpad_dir') or tempfile.gettempdir())
+    sid = re.sub(r'[^A-Za-z0-9_-]', '', str(data.get('session_id') or '')) or 'session'
+    return os.path.join(base, ATTACH_SUBDIR, sid)
+
+
+def drop(items, folder):
+    """감긴 첨부를 같은 바이트로 쓴다 — [(이름, 쓴 자리)]. 반쯤 쓴 파일이 그 이름으로 안 서게 옆에 쓰고 바꿔 단다."""
+    os.makedirs(folder, exist_ok=True)
+    used, out = set(), []
+    for title, ext, data in items:
+        name = safe_name(title, ext)
+        stem, e = os.path.splitext(name)
+        k = 2
+        while name.lower() in used:
+            name = '%s (%d)%s' % (stem, k, e)
+            k += 1
+        used.add(name.lower())
+        path = os.path.join(folder, name)
+        part = path + '.part'
+        with open(part, 'wb') as f:
+            f.write(base64.b64decode(data))
+        os.replace(part, path)
+        out.append((title or name, path))
+    return out
+
+
 # ── 덧말 ─────────────────────────────────────────────────────────────────────────
 def slash(p):
     return p.replace('\\', '/')
@@ -144,21 +277,31 @@ def ps_quote(s):
     return "'" + s.replace("'", "''") + "'"
 
 
-def message(event, paths, sdir, out_dir):
-    names = ' · '.join(os.path.basename(p) for p in paths)
-    if event == 'PostToolUseFailure':
-        head = '%s — Read 가 진 %s 는 Fasoo DRM 에 감긴 파일이다(머리에 DRMONE).' % (NAME, names)
-    else:
-        head = '%s — 이 글이 가리키는 파일 가운데 Fasoo DRM 에 감긴 것: %s (머리에 DRMONE).' % (NAME, names)
-    head += ' 감긴 파일은 Read 와 파서가 형식 인식 단계에서 진다.'
+def message(event, paths, attached, sdir, out_dir):
+    """paths — 글이 가리킨 감긴 파일 · attached — (첨부 이름, 쓴 자리 또는 None)."""
+    parts = []
+    if paths:
+        names = ' · '.join(os.path.basename(p) for p in paths)
+        if event == 'PostToolUseFailure':
+            parts.append('Read 가 진 %s 는 Fasoo DRM 에 감긴 파일이다' % names)
+        else:
+            parts.append('이 글이 가리키는 파일 가운데 Fasoo DRM 에 감긴 것: %s' % names)
+    if attached:
+        parts.append('이 턴의 첨부 가운데 Fasoo DRM 에 감긴 것: %s' % ' · '.join(t for t, _ in attached))
+    head = '%s — %s (머리에 DRMONE). 감긴 파일은 Read 와 파서가 형식 인식 단계에서 진다.' % (NAME, ' · '.join(parts))
     if not sdir:
         return head + (' 글자를 뽑는 스킬 %s 가 이 PC 에 없다(~/.claude/skills 에 없음) — 이 자리에서는 읽을 길이 없다.'
                        % SKILL)
+    written = [p for _, p in attached if p]
+    if written:
+        head += (' 첨부는 경로 없이 본문으로 와서, 같은 바이트(감긴 그대로)를 디스크에 떨궜다: %s.'
+                 % ' · '.join('%s → %s' % (t, slash(p)) for t, p in attached if p))
     cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -Command "& %s -Path %s -OutDir %s"' % (
         ps_quote(slash(os.path.join(sdir, READER))),
-        ','.join(ps_quote(slash(p)) for p in paths),
+        ','.join(ps_quote(slash(p)) for p in list(paths) + written),
         ps_quote(slash(out_dir)))
-    return head + (' 글자는 스킬 %s 가 설치된 오피스를 태워 뽑는다(%s — 차례와 주의는 그 2 · 3절). 이 파일들이면: %s'
+    return head + (' 글자는 스킬 %s 가 오피스를 태워 뽑는다 — Fasoo 에이전트가 도는 PC(회사 PC)에서만 풀린다'
+                   '(%s — 차례와 주의는 그 2 · 3절). 이 파일들이면: %s'
                    ' — 뽑은 글자는 -OutDir 에 「<파일 이름>.txt」로 남는다.'
                    % (SKILL, slash(os.path.join(sdir, 'SKILL.md')), cmd))
 
@@ -199,10 +342,18 @@ def guide(data):
         seen.add(k)
         if os.path.isfile(p) and wrapped(p):
             hits.append(p)
-    if not hits:
+    attached = []
+    if event == 'UserPromptSubmit':
+        found = [a for a in wrapped_attachments(str(data.get('transcript_path') or ''))
+                 if not exts or a[1] in exts]
+        if found and sdir:
+            attached = drop(found, attach_dir(data))
+        else:
+            attached = [(t or 'attachment' + e, None) for t, e, _ in found]
+    if not hits and not attached:
         return 0
     out_dir = os.path.join(str(data.get('scratchpad_dir') or tempfile.gettempdir()), OUT_SUBDIR)
-    return emit(event, message(event, hits, sdir, out_dir))
+    return emit(event, message(event, hits, attached, sdir, out_dir))
 
 
 def main():
@@ -217,8 +368,9 @@ def main():
     except Exception as e:  # noqa: BLE001 — 길잡이가 진 것은 알리되 사람이 보낸 글은 그대로 간다
         event = data.get('hook_event_name')
         if event in ('UserPromptSubmit', 'PostToolUseFailure'):
-            return emit(event, '%s — 경로를 재다 졌다(%s). 감긴 파일(머리에 DRMONE)은 Read 와 파서로 안 열리고, '
-                               '스킬 %s 가 설치된 오피스로 글자를 뽑는다.' % (NAME, type(e).__name__, SKILL))
+            return emit(event, '%s — 경로와 첨부를 재다 졌다(%s). 감긴 파일(머리에 DRMONE)은 Read 와 파서로 안 열리고, '
+                               '스킬 %s 가 Fasoo 에이전트가 도는 PC 의 오피스로 글자를 뽑는다.'
+                               % (NAME, type(e).__name__, SKILL))
         return 0
 
 

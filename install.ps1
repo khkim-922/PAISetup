@@ -1430,20 +1430,19 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 $wantAgyDelegate = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
 $wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
-# Codex 에게 읽기만 하는 일을 뒤에서 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
+# Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
 # ⚠ **Claude 와 Codex 를 고르면 선다 — 사내는 Codex 를 회사 게이트웨이에 물린 자리(`$wantCodex`)에서만.** 사내 Codex 는
 #   ChatGPT 로그인이 아니라 회사 설정 틀로 게이트웨이를 타서, 틀이 안 심긴 사내 PC 에서는 붙을 데가 없다. 자리를 모르면
 #   사외다(0086). Copilot 은 조건에 안 든다 — 받는 쪽일 뿐이라, 래퍼는 Copilot CLI 가 없으면 Codex 만으로 돈다.
 # ⚠ **자리마다 다른 값은 래퍼가 읽는 사용자 환경변수로 심는다** — 래퍼는 자리를 모르고 이 값만 읽는다(agy 의
 #   `$AgyModelVarsBySite` 와 같은 꼴). 받는 값은 래퍼 머리말이 들고, 래퍼 검사(claude-config
 #   `scripts/check-codex-copilot-bg.py`)가 이 표를 읽어 두 자리 값이 래퍼에서 서는지 잰다.
-#   * `CC_BG_SITE` — 스킬 본문이 맡길 자료의 선을 이것으로 고른다. 래퍼는 안 읽는다
 #   * `CC_BG_AGENTS` — 차례이자 쓸 수 있는 쪽. **사내는 Codex 만** — Copilot 은 GitHub(회사 밖)로 가고, 사내에서 개인
 #     구독은 막혀 보이며 회사 계정으로 CLI 를 쓰는 정책은 정해진 것이 없다. 이 값은 래퍼가 무엇을 띄우나만 가른다 —
 #     Copilot CLI 는 이 값과 무관하게 Copilot 제품을 고르면 두 자리에 깔린다(제품 표 `$Clis`)
-#   * `CC_BG_CODEX_WEB_SEARCH` — Codex 의 `web_search`. **사내는 `disabled`** — 게이트웨이가 Responses 를 Chat Completions
-#     로 바꿔 받고 도구는 `function` 만 적는다(`posco/OpenAI.-Posco.Setting.md`). Codex 는 값이 없어도 `cached` 로 검색
-#     도구를 실어 보내서, 안 싣게 하는 값은 `disabled` 하나다. 사외는 `live`(실시간 검색)
+#   * `CC_BG_CODEX_WEB_SEARCH` — Codex 의 `web_search`. **두 자리 다 `live`(실시간 검색)** — 사내는 회사 설정 틀이 Codex 를
+#     로컬 프록시에 물리고, 프록시가 그 검색을 게이트웨이 Responses 로 잇는다(claude-config #121). 래퍼가 이 값을 `-c` 로
+#     넘겨 틀의 값보다 앞서므로, 검색을 끌 자리는 여기서 `disabled` 로 끈다(`cached` 도 검색 도구를 싣는다)
 #   * `CC_BG_CODEX_WIN_SANDBOX` — Codex 의 `windows.sandbox`. **두 자리 다 `unelevated`** — 관리자 승인 설정이 안 드는
 #     값이라 뒤에서 띄운 래퍼가 승인 창을 안 띄운다. `elevated` 는 그 설정이 없는 PC 에서 설정부터 하려 들고, 값이
 #     없으면(새 PC) 읽기 전용을 지키는 OS 샌드박스가 아예 안 선다
@@ -1453,13 +1452,11 @@ $wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
 # ⚠ **심는 값은 매번 덮는다** — 두 자리가 같은 이름을 들어, 자리를 옮긴 PC 도 이 자리 값으로 바뀐다.
 $CcBgVarsBySite = @{
   inside  = [ordered]@{
-    CC_BG_SITE              = 'inside'
     CC_BG_AGENTS            = 'codex'
-    CC_BG_CODEX_WEB_SEARCH  = 'disabled'
+    CC_BG_CODEX_WEB_SEARCH  = 'live'
     CC_BG_CODEX_WIN_SANDBOX = 'unelevated'
   }
   outside = [ordered]@{
-    CC_BG_SITE              = 'outside'
     CC_BG_AGENTS            = 'codex,copilot'
     CC_BG_CODEX_WEB_SEARCH  = 'live'
     CC_BG_CODEX_WIN_SANDBOX = 'unelevated'
@@ -1475,12 +1472,14 @@ $FreeSkills = [ordered]@{
   'inhouse-app'              = [bool]($PickKeys -contains 'claude')   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
   'agy-background'           = $wantAgyDelegate                       # agy 에게 뒤에서 맡기고 한도에서 넘긴다
   'codex-copilot-background' = $wantCcBg                              # Codex 에게 뒤에서 맡기고 한도면 Copilot 이 받는다
+  'agent-envelope'           = [bool]($PickKeys -contains 'claude')   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
 }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
 if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
 if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 백그라운드 래퍼가 pythonw 로 돈다' }
+if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
 #   그래서 무는 것은 「사내인가」와 「이 제품을 켰나」뿐이다.

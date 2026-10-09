@@ -213,8 +213,8 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # ⚠ **상류를 새로 받으면 위 칸을 그 판으로 올리고 아래 칸을 0 으로 되돌린다** — 우리 덩어리를
 #   다시 얹은 만큼만 아래 칸이 오른다. README 「상류에서 새 판을 받을 때」.
 VERSION_UPSTREAM = 26
-# 우리 덩어리 넷 — 제미나이 이름 표 · 그림 끌어내기(#76) · 압축 간결 지시 끔(결정 0082) · 웹서치 메움(#118).
-VERSION_OURS = 4
+# 우리 판 — 제미나이 이름 표 · 그림 끌어내기(#76) · 압축 간결 지시 끔(결정 0082) · 웹서치 메움(#118, #121).
+VERSION_OURS = 6
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -671,6 +671,7 @@ def is_generation_request(path: str) -> bool:
         stripped.endswith("/v1/messages")
         or stripped.endswith("/v1/chat/completions")
         or stripped.endswith("/v1/responses")
+        or stripped.endswith("/v1/alpha/search")
         or ":generateContent" in stripped
         or ":streamGenerateContent" in stripped
     )
@@ -1042,6 +1043,12 @@ def _fill_tool_list(tools: list) -> int:
         if not isinstance(tool, dict):
             continue
         if _is_gemini_tool(tool):
+            continue
+        # Hosted tools such as {"type": "web_search"} have no description
+        # field in the Responses API schema.  Adding one makes P-GPT reject
+        # the whole request as an unknown parameter.  Only named client tools
+        # and namespaces need the Azure minLength workaround below.
+        if not isinstance(tool.get("name"), str) and not isinstance(tool.get("tools"), list):
             continue
         description = tool.get("description")
         if description is None or (
@@ -1718,6 +1725,65 @@ def web_search_query(payload: dict) -> str | None:
     return query or None
 
 
+def codex_web_search(payload: dict, path: str) -> dict[str, object] | None:
+    """Translate Codex's standalone ``alpha/search`` command for Responses web search.
+
+    Codex 0.162 sends search, open and find operations to this provider-relative
+    endpoint. P-GPT has no such endpoint, but the same gateway performs search
+    and ``open_page`` when ``web_search`` is declared on ``/v1/responses``.
+    """
+    if not path.rstrip("/").endswith("/v1/alpha/search"):
+        return None
+    commands = payload.get("commands")
+    if not isinstance(commands, dict):
+        commands = {}
+    lines = ["Carry out these web operations. Use current web results and include source URLs."]
+    labels = {
+        "search_query": "Search",
+        "image_query": "Image search",
+        "open": "Open",
+        "click": "Click",
+        "find": "Find",
+        "screenshot": "Screenshot",
+        "finance": "Finance",
+        "weather": "Weather",
+        "sports": "Sports",
+        "time": "Time",
+    }
+    for key, label in labels.items():
+        values = commands.get(key)
+        if isinstance(values, list) and values:
+            lines.append(f"{label}: " + json.dumps(values, ensure_ascii=False, separators=(",", ":")))
+    if len(lines) == 1:
+        # Keep the recent conversation as context for unusual/empty command calls.
+        lines.append("Context: " + json.dumps(payload.get("input") or "", ensure_ascii=False)[:12000])
+
+    settings = payload.get("settings")
+    filters = settings.get("filters") if isinstance(settings, dict) else None
+    tool: dict[str, object] = {}
+    if isinstance(filters, dict):
+        for key in ("allowed_domains", "blocked_domains"):
+            if isinstance(filters.get(key), list):
+                tool[key] = filters[key]
+    return {
+        "query": "\n".join(lines),
+        "model": str(payload.get("model") or "codex"),
+        "tool": tool,
+        "stream": False,
+        "response": "codex",
+        "upstream": "responses",
+    }
+
+
+def codex_responses_web_search_payload(search: dict[str, object]) -> dict:
+    """Build the gateway-native Responses request used for Codex web operations."""
+    return {
+        "model": str(search["model"]),
+        "input": str(search["query"]),
+        "tools": [{"type": "web_search"}],
+    }
+
+
 def _domain_list(tool: dict, key: str) -> list[str]:
     values = tool.get(key)
     return [v.strip().lower() for v in values if isinstance(v, str) and v.strip()] if isinstance(values, list) else []
@@ -1806,6 +1872,77 @@ def gemini_grounding_to_anthropic(raw: bytes, query: str, model: str, tool: dict
              "output_tokens": int(usage_meta.get("candidatesTokenCount") or 0),
              "server_tool_use": {"web_search_requests": max(1, len(searches))}}
     return _web_search_message(query, model, results, text, usage)
+
+
+def gemini_grounding_to_codex(raw: bytes, query: str, model: str, tool: dict) -> dict:
+    """Build the standalone SearchResponse expected by Codex 0.162."""
+    message = gemini_grounding_to_anthropic(raw, query, model, tool)
+    blocks = message["content"]
+    source_blocks = blocks[1].get("content") if len(blocks) > 1 else []
+    sources = source_blocks if isinstance(source_blocks, list) else []
+    text = "\n".join(
+        block.get("text", "") for block in blocks
+        if isinstance(block, dict) and block.get("type") == "text"
+    ).strip()
+    results = [
+        {"type": "text_result", "ref_id": f"turn0search{index}",
+         "url": source["url"], "title": source.get("title") or source["url"]}
+        for index, source in enumerate(sources)
+        if isinstance(source, dict) and isinstance(source.get("url"), str)
+    ]
+    if results:
+        links = "\n".join(f"[{item['ref_id']}] {item['title']} — {item['url']}" for item in results)
+        text = (text + "\n\nSources:\n" + links).strip()
+    return {"encrypted_output": None, "output": text or "No web results found.", "results": results}
+
+
+def codex_web_search_error(code: str = "unavailable") -> dict:
+    """Keep the Codex turn alive while making the failed lookup explicit."""
+    return {"encrypted_output": None, "output": f"Web search error: {code}", "results": []}
+
+
+def responses_web_search_to_codex(raw: bytes) -> dict:
+    """Convert a gateway Responses answer, including open_page citations, for Codex."""
+    response = json.loads(raw)
+    output = response.get("output")
+    if not isinstance(output, list):
+        raise ValueError("Responses answer has no output list")
+    texts: list[str] = []
+    sources: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "output_text":
+                continue
+            text = part.get("text")
+            if isinstance(text, str) and text.strip():
+                texts.append(text.strip())
+            annotations = part.get("annotations")
+            if not isinstance(annotations, list):
+                continue
+            for annotation in annotations:
+                if not isinstance(annotation, dict):
+                    continue
+                url = annotation.get("url")
+                if not isinstance(url, str) or not url or url in seen:
+                    continue
+                seen.add(url)
+                title = annotation.get("title")
+                sources.append({"url": url, "title": title if isinstance(title, str) and title else url})
+    results = [
+        {"type": "text_result", "ref_id": f"turn0search{index}", **source}
+        for index, source in enumerate(sources)
+    ]
+    text = "\n\n".join(texts).strip()
+    if results:
+        links = "\n".join(f"[{item['ref_id']}] {item['title']} — {item['url']}" for item in results)
+        text = (text + "\n\nSources:\n" + links).strip()
+    return {"encrypted_output": None, "output": text or "No web results found.", "results": results}
 
 
 def web_search_error_message(query: str, model: str, code: str = "unavailable") -> dict:
@@ -2186,13 +2323,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
         if body:
             stripped_path = parsed.path.rstrip("/")
             is_messages = stripped_path.endswith("/v1/messages")
+            is_codex_search = stripped_path.endswith("/v1/alpha/search")
             is_openai_generation = (
                 stripped_path.endswith("/v1/chat/completions")
                 or stripped_path.endswith("/v1/responses")
             )
             # tools 가 아예 없는 본문은 파싱 자체를 건너뛴다 (요청당 비용 절감).
             # 단 GPT-5/o 계열 토큰 파라미터 보정과 Gemini chat 변환은 짧은 호출에도 필요하다.
-            if is_messages or is_openai_generation or b'"tools"' in body:
+            if is_messages or is_openai_generation or is_codex_search or b'"tools"' in body:
                 try:
                     payload_obj = json.loads(body)
                 except (UnicodeDecodeError, ValueError, TypeError):
@@ -2202,12 +2340,18 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     changed = False
                     model_name = str(payload_obj.get("model") or "")
                     self._request_context += " " + request_settings(payload_obj)
-                    # (우리 것 · #118) 웹서치 하위 요청은 Claude 갈래를 안 탄다 — 제미나이 grounding 요청으로 바꾼다.
+                    # (우리 것 · #118, #121) Claude/Codex 웹 검색을 같은 Gemini grounding 길로 메운다.
+                    codex_search = codex_web_search(payload_obj, parsed.path) if (is_codex_search and WEB_SEARCH) else None
                     web_tool = web_search_tool(payload_obj) if (is_messages and WEB_SEARCH) else None
                     web_query = web_search_query(payload_obj) if web_tool else None
-                    if web_tool and web_query:
+                    if codex_search:
+                        web_search = codex_search
+                        payload_obj = codex_responses_web_search_payload(web_search)
+                        changed = True
+                        self._request_context += " kind=codex_web_search upstream=responses"
+                    elif web_tool and web_query:
                         web_search = {"query": web_query, "model": model_name or "claude", "tool": web_tool,
-                                      "stream": payload_obj.get("stream") is True}
+                                      "stream": payload_obj.get("stream") is True, "response": "anthropic"}
                         payload_obj = web_search_gemini_payload(web_query, web_tool)
                         changed = True
                         self._request_context += f" kind=web_search search_model={WEB_SEARCH_MODEL}"
@@ -2271,10 +2415,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
         }
         query, headers = normalize_gemini_auth(parsed.path, parsed.query, headers)
         headers = normalize_anthropic_auth(headers)
-        if web_search:
+        if web_search and web_search.get("upstream") != "responses":
             headers = web_search_headers(headers)
         if gemini_chat_model:
             upstream_path = f"{GEMINI_PREFIX}/models/{quote(gemini_chat_model, safe='')}:generateContent"
+        elif web_search and web_search.get("upstream") == "responses":
+            upstream_path = parsed.path.rstrip("/")[:-len("/alpha/search")] + "/responses"
+            query = ""
         elif web_search:
             upstream_path = f"{GEMINI_PREFIX}/models/{quote(WEB_SEARCH_MODEL, safe='')}:generateContent"
             # (우리 것 · #118) Anthropic 쪽 쿼리는 제미나이 경로에 안 싣는다 — Claude Code 는
@@ -2295,7 +2442,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         outcome = "complete"
         waited = 0.0
         headers_sec = 0.0
-        provider = "gemini" if web_search else request_provider(parsed.path, model_name)
+        provider = ("openai" if web_search and web_search.get("upstream") == "responses"
+                    else "gemini" if web_search else request_provider(parsed.path, model_name))
         gate = _HEAVY_GATES[provider]
         self._request_context += f" provider={provider} bytes={len(body or b'')}"
         generation = is_generation_request(parsed.path)
@@ -2362,22 +2510,36 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     raw = response.read()
                     reuse = _keeps_alive(response)
                     if response.status < 400:
-                        message = gemini_grounding_to_anthropic(
-                            raw, str(web_search["query"]), str(web_search["model"]), dict(web_search["tool"]))
+                        if web_search.get("response") == "codex":
+                            if web_search.get("upstream") == "responses":
+                                message = responses_web_search_to_codex(raw)
+                            else:
+                                message = gemini_grounding_to_codex(
+                                    raw, str(web_search["query"]), str(web_search["model"]), dict(web_search["tool"]))
+                        else:
+                            message = gemini_grounding_to_anthropic(
+                                raw, str(web_search["query"]), str(web_search["model"]), dict(web_search["tool"]))
                     else:
                         log(f"web search fill: upstream HTTP {response.status} "
                             f"body={raw[:400]!r} {self._request_context}{self._gw()}")
                 except (OSError, http.client.HTTPException, ValueError, TypeError, AttributeError,
                         KeyError, IndexError) as error:
-                    log(f"web search fill: Gemini answer unreadable: {error!r} {self._request_context}{self._gw()}")
+                    log(f"web search fill: upstream answer unreadable: {error!r} {self._request_context}{self._gw()}")
                 if message is None:
                     _count_web_search(False)
                     outcome = "web_search_failed"
-                    message = web_search_error_message(str(web_search["query"]), str(web_search["model"]))
+                    if web_search.get("response") == "codex":
+                        message = codex_web_search_error()
+                    else:
+                        message = web_search_error_message(str(web_search["query"]), str(web_search["model"]))
                 else:
                     _count_web_search(True)
-                    self._request_context += f" sources={len(message['content'][1]['content'])}"
-                if web_search["stream"]:
+                    if web_search.get("response") == "codex":
+                        self._request_context += f" sources={len(message.get('results') or [])}"
+                    else:
+                        self._request_context += f" sources={len(message['content'][1]['content'])}"
+                    log(f"web search fill: complete {self._request_context}{self._gw()}")
+                if web_search["stream"] and web_search.get("response") != "codex":
                     data = b"".join(anthropic_message_events(message))
                     content_type = "text/event-stream; charset=utf-8"
                 else:
