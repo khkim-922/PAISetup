@@ -3622,9 +3622,15 @@ function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts,
   $dir = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
   $shellPath = Join-Path $dir $Parts[0]
   $matcher = $null
+  $perEvent = @{}   # 이벤트마다 다른 matcher — `# matcher.<이벤트> = …` 줄이 그 진본이다
   if (Test-Path -LiteralPath $shellPath) {
     $m = Select-String -LiteralPath $shellPath -Pattern '^# matcher = (\S+)' -Encoding UTF8 | Select-Object -First 1
     if ($m) { $matcher = $m.Matches[0].Groups[1].Value }
+    # ⚠ **이벤트마다 보는 것이 다르면 matcher 도 다르다** — 껍데기가 `# matcher.PreToolUse = …` 처럼 제
+    #   이벤트 이름을 달아 든다. 여기서 손으로 한 벌 더 적으면 저쪽과 조용히 어긋난다.
+    foreach ($em in @(Select-String -LiteralPath $shellPath -Pattern '^# matcher\.(\w+) = (\S+)' -Encoding UTF8)) {
+      $perEvent[$em.Matches[0].Groups[1].Value] = $em.Matches[0].Groups[2].Value
+    }
   }
   if (@($Parts | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dir $_)) }).Count -or -not $matcher) {
     Write-Host "  ! $Label — 씨앗의 .claude/hooks/ 에 $($Parts -join ' · ') 가 없어 안 심는다" -ForegroundColor Yellow
@@ -3691,7 +3697,9 @@ function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts,
       hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = 10 })
     }
     if ($ev -ne 'UserPromptSubmit') {
-      $entryNew | Add-Member -NotePropertyName matcher -NotePropertyValue $matcher -Force
+      # 제 이벤트 이름을 단 진본 줄이 있으면 그것을 — 없으면 꾸밈 없는 한 벌을 든다
+      $mv = if ($perEvent.ContainsKey($ev)) { $perEvent[$ev] } else { $matcher }
+      $entryNew | Add-Member -NotePropertyName matcher -NotePropertyValue $mv -Force
     }
     $kept += $entryNew
     $hooks | Add-Member -NotePropertyName $ev -NotePropertyValue $kept -Force
@@ -3711,15 +3719,18 @@ if (Plant-HomeToolHook '그림 문(PreToolUse)' @('PreToolUse') @('image-gate.sh
 # 부품이 씨앗으로 누구에게나 가고, 이 훅은 취향이 아니라 막힌 자리에서 길을 잇는 장치다.
 if (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @('PostToolUse', 'PostToolUseFailure') @('web-retry.sh') '_wr' '') { $dirty = $true }
 
-# ── DRM 길잡이 — UserPromptSubmit · PostToolUseFailure 훅을 홈에 심는다 (claude-config #120 · 결정 0094) ──────────
+# ── DRM 길잡이 — UserPromptSubmit · PreToolUse · PostToolUseFailure 훅을 홈에 심는다 (claude-config #120 · 결정 0094) ──
 # 붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 스킬 `drm-office-read` 로 가는 길을 곁에 붙인다 — 막지 않는다. 왜와
 # 거는 꼴은 몸통(`drm-guide.py`)의 머리말이 든다.
 # ⚠ **Claude 를 고르면 심는다 — 자리는 안 가린다.** 가리키는 스킬이 같은 조건으로 깔리고(`$FreeSkills`), 감긴 파일이
 #   없는 자리(집 · 사외 VDI)에서는 아무것도 안 붙여 두 자리에 같이 심어도 값이 없다.
-# ⚠ **matcher 는 껍데기 첫 줄 하나다 — 다만 UserPromptSubmit 항목에는 그 키를 안 심는다.** 그 이벤트는 matcher 를
-#   안 받고, 거는 자는 그 값을 무시하는 것이 아니라 항목째 걸러낸다(`Plant-HomeToolHook` 안의 ⚠).
+# ⚠ **matcher 는 이벤트마다 다르고 진본은 껍데기의 머리 줄들이다** — UserPromptSubmit 항목에는 그 키를 **안 심고**
+#   (그 이벤트는 matcher 를 안 받고, 거는 자는 그 값을 무시하는 것이 아니라 항목째 걸러낸다), PreToolUse 는 제
+#   이름을 단 줄(`# matcher.PreToolUse =`)을 든다(`Plant-HomeToolHook` 안의 ⚠).
+# ⚠ **자리가 셋인 까닭은 그 줄이 디스크에 닿는 시각이 표면마다 다르기 때문이다** — VS Code 앱에서는 제출 훅이
+#   1.4 초 이르러 첨부 줄을 못 보고, 그 턴은 첫 도구 호출 때 잡힌다(#120 실측 · 몸통 머리말).
 if (($PickKeys -contains 'claude') -and
-    (Plant-HomeToolHook 'DRM 길잡이(UserPromptSubmit · PostToolUseFailure)' @('UserPromptSubmit', 'PostToolUseFailure') @('drm-guide.sh', 'drm-guide.py') '_dg' '')) { $dirty = $true }
+    (Plant-HomeToolHook 'DRM 길잡이(UserPromptSubmit · PreToolUse · PostToolUseFailure)' @('UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure') @('drm-guide.sh', 'drm-guide.py') '_dg' '')) { $dirty = $true }
 
 # ── 씨앗이 드는 파이썬 패키지 — **부품이 오는 자리에 의존성도 온다** (claude-config #72) ──────
 # 검사 씨앗의 그림 줄이기(`_shrink.py`)가 PIL 을 든다. 부르는 자는 모델이지만 그 길을 여는 것은
@@ -4727,7 +4738,7 @@ if ($PickKeys -contains 'claude') {
   $drmWired = @()
   try {
     $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-    foreach ($ev in 'UserPromptSubmit', 'PostToolUseFailure') {
+    foreach ($ev in 'UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure') {
       foreach ($entry in @($gc.hooks.$ev)) {
         foreach ($h in @($entry.hooks)) {
           if ($h -and ([string]$h.command).Contains('drm-guide.')) { $drmWired += $ev }
@@ -4735,8 +4746,8 @@ if ($PickKeys -contains 'claude') {
       }
     }
   } catch { $drmWired = @() }
-  $checks += @{ Name = 'DRM 길잡이 배선 (홈 settings.json 의 UserPromptSubmit · PostToolUseFailure)'
-                Ok = (@('UserPromptSubmit', 'PostToolUseFailure' | Where-Object { $drmWired -notcontains $_ }).Count -eq 0) }
+  $checks += @{ Name = 'DRM 길잡이 배선 (홈 settings.json 의 UserPromptSubmit · PreToolUse · PostToolUseFailure)'
+                Ok = (@('UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure' | Where-Object { $drmWired -notcontains $_ }).Count -eq 0) }
 }
 # WebFetch 검증 건너뛰기 — 사내에서만 잰다. 위 심는 칸의 「켰다」는 메모리의 객체를 고쳤다는 말이라 되읽는다.
 if ($inside) {
