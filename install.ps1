@@ -3673,10 +3673,17 @@ function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts,
       }
       if ($ours) { $dropped++ } else { $kept += $entry }
     }
-    $kept += [pscustomobject]@{
-      matcher = $matcher
-      hooks   = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = 10 })
+    # ⚠ **matcher 를 안 받는 이벤트에는 키를 아예 안 심는다** — UserPromptSubmit 이 그 자리다. 거는 자는 받지 않는
+    #   값을 조용히 무시하는 것이 아니라 **맞출 도구 이름이 없는 호출을 항목째 걸러낸다**: 심어 두면 훅이 영원히
+    #   안 돈다. 설정에도 코드에도 결함으로 안 보이고 몸통에 입력을 손으로 먹이면 통과해, 「코드는 맞는데 안
+    #   걸린다」로만 나타난다(claude-config #120 실측).
+    $entryNew = [pscustomobject]@{
+      hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = 10 })
     }
+    if ($ev -ne 'UserPromptSubmit') {
+      $entryNew | Add-Member -NotePropertyName matcher -NotePropertyValue $matcher -Force
+    }
+    $kept += $entryNew
     $hooks | Add-Member -NotePropertyName $ev -NotePropertyValue $kept -Force
   }
   if ($dropped -gt 0) { Write-Host "  $Label — 옛 항목 $dropped 개를 걷고 심었다" -ForegroundColor Green }
@@ -3699,7 +3706,8 @@ if (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @(
 # 거는 꼴은 몸통(`drm-guide.py`)의 머리말이 든다.
 # ⚠ **Claude 를 고르면 심는다 — 자리는 안 가린다.** 가리키는 스킬이 같은 조건으로 깔리고(`$FreeSkills`), 감긴 파일이
 #   없는 자리(집 · 사외 VDI)에서는 아무것도 안 붙여 두 자리에 같이 심어도 값이 없다.
-# ⚠ **matcher 는 껍데기 첫 줄 하나다** — UserPromptSubmit 은 matcher 를 안 받아 그 항목에서는 무시된다(껍데기 머리말).
+# ⚠ **matcher 는 껍데기 첫 줄 하나다 — 다만 UserPromptSubmit 항목에는 그 키를 안 심는다.** 그 이벤트는 matcher 를
+#   안 받고, 거는 자는 그 값을 무시하는 것이 아니라 항목째 걸러낸다(`Plant-HomeToolHook` 안의 ⚠).
 if (($PickKeys -contains 'claude') -and
     (Plant-HomeToolHook 'DRM 길잡이(UserPromptSubmit · PostToolUseFailure)' @('UserPromptSubmit', 'PostToolUseFailure') @('drm-guide.sh', 'drm-guide.py') '_dg' '')) { $dirty = $true }
 
