@@ -1,4 +1,5 @@
 #!/bin/sh
+# matcher = Write|Edit
 # 파워셸 스크립트에 UTF-8 BOM 을 찍는다 — PostToolUse 훅 (Write|Edit).
 #
 # 진본은 claude-config/.claude/hooks/utf8-bom.sh 다. 각 저장소의 것은 deploy.ps1 이

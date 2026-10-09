@@ -202,22 +202,22 @@ claude.exe 지만 사는 폴더가 다르다.
 
 ### 칸 없이 깔리는 스킬 — 사내에서 쓰는 도구
 
-아래 스킬은 「제작자의 … 규범 · 룰 · 스킬도 깝니다」 칸과 **상관없이** 깔린다. 만든 사람의 일하는 방식이 아니라 회사에서
+아래 스킬은 「제작자의 … 규범 · 룰 · 스킬도 깝니다」 칸과 **상관없이** 깔린다. Codex 를 고르면 같은 스킬을 `~/.codex/skills/`에도 깔아 Codex 에서 바로 찾는다. 만든 사람의 일하는 방식이 아니라 회사에서
 일할 때 쓰는 도구라서다 — 모두 그 규범 없이도 혼자 돈다(claude-config 결정 0091).
 
 | 스킬 | 무엇을 하나 | 언제 깔리나 |
 |---|---|---|
-| `drm-office-read` | 회사 DRM 이 감싼 오피스 · PDF 에서 글자를 뽑는다. 만든 슬라이드를 화면으로 떠서 검수한다 | Claude 를 고르면 |
-| `inhouse-app` | 사내 앱을 세우고 사내 LLM 게이트웨이 · SSO · 배포를 붙인다. 회사 코딩 기준(씨앗 `vibecoding`)을 콕 집어 연다 | Claude 를 고르면 |
-| `agy-background` | agy 에게 일을 뒤에서 맡기고, 한도나 과부하에 걸리면 다음 모델로 넘어간다 — 아래 「agy 묶음」 | Claude 와 안티그래비티를 같이 고르면 |
-| `codex-copilot-background` | Codex 에게 일(긴 조사 · 큰 코드 읽기 · 리뷰 · 다른 모델의 의견 · 웹 조사)을 뒤에서 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다. 맡긴 쪽은 읽기 전용이라 파일을 안 고친다 — 아래 「Codex · Copilot 맡기기」 | Claude 와 Codex 를 같이 고르면(사내는 Codex 회사 설정이 서는 자리에서) |
-| `agent-envelope` | 다른 에이전트(Claude 서브에이전트 · agy · Codex)에게 일을 맡길 때 누구에게 맡길지 고르고, 그에게 줄 작업 지시서를 짓는다 — 위 둘의 앞문이다 | Claude 를 고르면 |
+| `drm-office-read` | 회사 DRM 이 감싼 오피스 · PDF 에서 글자를 뽑는다. 만든 슬라이드를 화면으로 떠서 검수한다 | Claude 또는 Codex 를 고르면 |
+| `inhouse-app` | 사내 앱을 세우고 사내 LLM 게이트웨이 · SSO · 배포를 붙인다. 회사 코딩 기준(씨앗 `vibecoding`)을 콕 집어 연다 | Claude 또는 Codex 를 고르면 |
+| `agy-background` | agy 에게 일을 뒤에서 맡기고, 한도나 과부하에 걸리면 다음 모델로 넘어간다 — 아래 「agy 묶음」 | Claude 또는 Codex 와 안티그래비티를 같이 고르면 |
+| `codex-copilot-background` | Codex 에게 일(긴 조사 · 큰 코드 읽기 · 리뷰 · 다른 모델의 의견 · 웹 조사)을 뒤에서 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다. 맡긴 쪽은 읽기 전용이라 파일을 안 고친다 — 아래 「Codex · Copilot 맡기기」 | Codex 를 고르면(사내는 Codex 회사 설정이 서는 자리에서) |
+| `agent-envelope` | 다른 에이전트(Claude 서브에이전트 · agy · Codex)에게 일을 맡길 때 누구에게 맡길지 고르고, 그에게 줄 작업 지시서를 짓는다 — 위 둘의 앞문이다 | Claude 또는 Codex 를 고르면 |
 
 칸을 켜면 이 스킬들도 아래 칸이 다른 스킬과 함께 깐다. **설정 저장소를 넣은 PC 에서 그 저장소가 같은 스킬을 들면 설치는
 비켜선다** — 저장소 배포가 최신판으로 민다. 깐 이름은 아래 칸과 같은 기록(`~/.claude/.paisetup-skills`)에 남아, 짐에서
 빠지는 날 같이 걷힌다.
 
-#### agy 묶음 — Claude 와 안티그래비티를 같이 고르면
+#### agy 묶음 — Claude 또는 Codex 와 안티그래비티를 같이 고르면
 
 제품 칸에서 **Claude 와 구글 Antigravity 를 둘 다** 고르면 사내든 사외든 agy 에게 일을 맡기는 데 드는 셋 — 모델 값 ·
 스킬 `agy-background` · 그 스킬이 도는 Python — 이 선다. agy 가 Claude Code 와 같은 규범 아래서 일하게 하는 설정 셋만은
@@ -234,9 +234,9 @@ claude.exe 지만 사는 폴더가 다르다.
 사외에서 agy 가 로그인 전이면 터미널에서 `agy` 를 한 번 띄워 Google 계정으로 로그인한다(사내는 위 「어디에 붙나」
 대로 회사 키로 선다).
 
-#### Codex · Copilot 맡기기 — Claude 와 Codex 를 같이 고르면
+#### Codex · Copilot 맡기기 — Codex 를 고르면
 
-제품 칸에서 **Claude 와 Codex 를 둘 다** 고르면 Codex 에게 일(긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 다른 모델의 의견 · 웹 조사)을 뒤에서
+제품 칸에서 **Codex** 를 고르면 Codex 에게 일(긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 다른 모델의 의견 · 웹 조사)을 뒤에서
 맡기는 스킬 `codex-copilot-background` 가 선다. 사내는 Codex 를 회사 키로 게이트웨이에 물리는 회사 설정이 서는 자리에서
 선다. 맡긴 쪽은 읽기만 하고 파일은 안 고친다 — 고치는 일은 Claude 가 한다(claude-config 결정 0092 · 0093).
 

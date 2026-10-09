@@ -1428,15 +1428,16 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 # ⚠ **다리(MCP `agy-bridge`)는 안 깐다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아, 맡겨 두고 딴 일을
 #   하라는 이 묶음의 뜻과 어긋난다.
 # ⚠ **둘은 조건이 다르다**(결정 0089 · 0091).
-#   * 맡기기(`$wantAgyDelegate`) — 모델 값 · 래퍼 스킬 · 래퍼가 도는 파이썬. 「자리 × Claude 와 안티그래비티를
+#   * 맡기기(`$wantAgyDelegate`) — 모델 값 · 래퍼 스킬 · 래퍼가 도는 파이썬. 「자리 × Claude 또는 Codex 와 안티그래비티를
 #     골랐나」의 사실이라 그 둘만 탄다. 래퍼는 누구의 규범과도 무관하게 agy 를 띄우고 넘기는 도구다.
 #   * 설정 셋(`$wantAgyKit`)은 제작자 설정 칸을 탄다 — 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다.
 #     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다.
-$wantAgyDelegate = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'antigravity'))
+$wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
+$wantAgyDelegate = [bool]($wantAgentHost -and ($PickKeys -contains 'antigravity'))
 $wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
 # Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
-# ⚠ **Claude 와 Codex 를 고르면 선다 — 사내는 Codex 를 회사 게이트웨이에 물린 자리(`$wantCodex`)에서만.** 사내 Codex 는
+# ⚠ **Codex 를 고르면 선다 — 사내는 Codex 를 회사 게이트웨이에 물린 자리(`$wantCodex`)에서만.** 사내 Codex 는
 #   ChatGPT 로그인이 아니라 회사 설정 틀로 게이트웨이를 타서, 틀이 안 심긴 사내 PC 에서는 붙을 데가 없다. 자리를 모르면
 #   사외다(0086). Copilot 은 조건에 안 든다 — 받는 쪽일 뿐이라, 래퍼는 Copilot CLI 가 없으면 Codex 만으로 돈다.
 # ⚠ **자리마다 다른 값은 래퍼가 읽는 사용자 환경변수로 심는다** — 래퍼는 자리를 모르고 이 값만 읽는다(agy 의
@@ -1468,16 +1469,16 @@ $CcBgVarsBySite = @{
   }
 }
 $CcBgVars       = $CcBgVarsBySite[$(if ($inside) { 'inside' } else { 'outside' })]
-$wantCcBg       = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
+$wantCcBg       = [bool]($wantAgentHost -and ($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091) ──────
 # 키는 스킬 이름, 값은 까는 조건이다. 제작자 설정 칸을 켜면 6 칸이 묶음 전부를 까므로 이 표는 칸을 끈
 # 자리에서만 일을 한다(7 칸의 「칸 없이 까는 스킬」). 모두 규범을 안 읽어도 홀로 선다.
 $FreeSkills = [ordered]@{
-  'drm-office-read'          = [bool]($PickKeys -contains 'claude')   # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
-  'inhouse-app'              = [bool]($PickKeys -contains 'claude')   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
+  'drm-office-read'          = $wantAgentHost                         # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
+  'inhouse-app'              = $wantAgentHost                         # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
   'agy-background'           = $wantAgyDelegate                       # agy 에게 뒤에서 맡기고 한도에서 넘긴다
   'codex-copilot-background' = $wantCcBg                              # Codex 에게 뒤에서 맡기고 한도면 Copilot 이 받는다
-  'agent-envelope'           = [bool]($PickKeys -contains 'claude')   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
+  'agent-envelope'           = $wantAgentHost                         # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
 }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
@@ -3404,6 +3405,28 @@ if (-not $WithPersonalConfig) {
   }
 }
 
+# Codex 를 고른 자리에서는 같은 자동 스킬을 Codex 홈에도 깐다. `~/.claude/skills` 사본만으로는
+# Codex 가 스킬을 발견할 수 없다. 제작자 설정 칸을 켰는지와 관계없이 `$FreeSkills` 조건만 따른다.
+if ($PickKeys -contains 'codex') {
+  $skillBundle = Join-Path $Here '.claude\skills'
+  $codexSkillHome = Join-Path $env:USERPROFILE '.codex\skills'
+  $codexFreeDone = @()
+  foreach ($n in $FreeSkills.Keys) {
+    if (-not $FreeSkills[$n]) { continue }
+    $from = Join-Path $skillBundle $n
+    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) { continue }
+    $to = Join-Path $codexSkillHome $n
+    New-Item -ItemType Directory -Path $to -Force | Out-Null
+    Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
+    Write-Host "  Codex 스킬 $n — 깔았다" -ForegroundColor Green
+    $codexFreeDone += $n
+  }
+  if ($codexFreeDone.Count) {
+    Remove-RetiredSkills -Bundle $skillBundle -SkillHome $codexSkillHome -Ledger (Join-Path $env:USERPROFILE '.codex\.paisetup-skills') `
+                         -BackupRoot (Join-Path $env:USERPROFILE '.codex\backups') -Installed $codexFreeDone
+  }
+}
+
 # ── 걷힌 회사 기준 룰을 홈에서 걷는다 ─────────────────────────────────────────
 # ⚠ **왜 있나.** 1.30.0 이 회사 코딩 기준에서 구운 룰 `futurem-*.md` 를 영역 룰로 깔았는데, 그 뒤 판은
 #   그것을 스킬 `inhouse-app` 으로 바꿨다(claude-config 결정 0075). 위 룰 복사는 묶음에 없는 파일을 안
@@ -3765,6 +3788,13 @@ if (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @(
 if (($PickKeys -contains 'claude') -and
     (Plant-HomeToolHook 'DRM 길잡이(UserPromptSubmit · PreToolUse · PostToolUseFailure)' @('UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure') @('drm-guide.sh', 'drm-guide.py') '_dg' '')) { $dirty = $true }
 
+# Windows Bash 명령의 겹역슬래시를 실행 전에 막고, PowerShell 파일은 편집 뒤 UTF-8 BOM 을 맞춘다.
+# Claude 훅 형식이므로 Claude 를 고른 자리에 심는다. Codex 쪽은 TOML 훅으로 같은 보호를 따로 건다.
+if (($PickKeys -contains 'claude') -and
+    (Plant-HomeToolHook 'Bash 겹역슬래시 차단(PreToolUse)' @('PreToolUse') @('bash-backslash-deny.sh') '_bb' '')) { $dirty = $true }
+if (($PickKeys -contains 'claude') -and
+    (Plant-HomeToolHook 'PowerShell UTF-8 BOM 보정(PostToolUse)' @('PostToolUse') @('utf8-bom.sh') '_ub' '')) { $dirty = $true }
+
 # ── 씨앗이 드는 파이썬 패키지 — **부품이 오는 자리에 의존성도 온다** (claude-config #72) ──────
 # 검사 씨앗의 그림 줄이기(`_shrink.py`)가 PIL 을 든다. 부르는 자는 모델이지만 그 길을 여는 것은
 # 위 그림 문이다 — 그림이 크면 **누구의 PC 에서든** 「줄여서 연다」로 돌려보낸다. 그래서 규범·룰·
@@ -3803,41 +3833,10 @@ if ($pipPkgs) {
 # 키가 있으면 아무것도 안 찍는다. 키가 왜 필수가 아니라 덤인지는 아래 「웹 검색(Tavily)」 칸이 든다.
 # ⚠ **동료 PC 에는 이것 말고 세션 훅이 없다** — 설정 저장소의 세션 훅은 `#config-repo` 를 넣은 사람에게만
 #   선다. 모델에게 닿는 자리가 여기뿐이라 설치기가 심는다.
-# ⚠ **표지 `tavily-key-hint` 로 제 항목을 알아본다** — 글자가 같으면 안 건드리고, 다르면 걷고 새로 심는다.
 #   설정 저장소 몸통은 `session-start.sh` 가 든 항목만 제 것으로 걷으므로 이 항목과 안 부딪힌다.
 # ⚠ **명령은 Git Bash 가 읽는다** — 그림 문과 같은 자리라 같은 셸로 돈다.
 # ⚠ **심는 손은 안내마다 베끼지 않는다** — 표지로 제 항목만 알아보는 고리를 안내가 늘 때마다 베끼면 한쪽만
 #   낡는다. 심었으면 참을 돌려준다 — 부르는 쪽이 `$dirty` 를 세운다.
-function Plant-SessionHint([string]$Label, [string]$Mark, [string]$Cmd) {
-  $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
-  if (-not $hooks) {
-    $hooks = New-Object PSObject
-    $cfg | Add-Member -NotePropertyName hooks -NotePropertyValue $hooks -Force
-  }
-  $kept = @(); $same = 0; $dropped = 0
-  foreach ($entry in @($hooks.SessionStart)) {
-    if (-not $entry) { continue }
-    $c = @($entry.hooks | Where-Object { $_ } | ForEach-Object { [string]$_.command })
-    if (-not ($c -match [regex]::Escape($Mark))) { $kept += $entry }
-    elseif ($c.Count -eq 1 -and $c[0] -eq $Cmd -and $same -eq 0) { $kept += $entry; $same++ }
-    else { $dropped++ }
-  }
-  if ($same -eq 1 -and $dropped -eq 0) {
-    Write-Host "  $Label(SessionStart) — 이미 맞다"
-    return $false
-  }
-  if ($same -eq 0) {
-    $kept += [pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = $Cmd; timeout = 10 }) }
-  }
-  $hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $kept -Force
-  Write-Host "  $Label(SessionStart) — 심었다" -ForegroundColor Green
-  return $true
-}
-$hintMark = 'tavily-key-hint'
-$hintCmd  = '[ -n "$TAVILY_API_KEY" ] || echo "Tavily 웹 검색은 키 없이 검색·추출만 된다. 사용자가 사이트 지도(map)·크롤(crawl)·리서치(research)를 원하면 한 번 알린다: app.tavily.com 에서 무료 키를 받아 새 터미널에서 setx TAVILY_API_KEY <키> 를 친 뒤 VS Code 나 터미널을 완전히 닫았다 다시 열면 쓸 수 있다(창을 새로 띄워야 키가 보인다)." # ' + $hintMark
-if (($PickKeys -contains 'claude') -and $cfg) {
-  if (Plant-SessionHint 'Tavily 키 안내' $hintMark $hintCmd) { $dirty = $true }
-}
 
 
 # ⚠ **홈 설정을 여기서 다시 쓴다.** 위 5칸이 이미 한 번 썼지만 그 뒤에 이 칸이 `$cfg` 를
@@ -4195,7 +4194,6 @@ if ($wantDocSkills) {
 # ⚠ **등록 꼴은 씨앗의 `mcp-servers.json` 이 든다** — 여기 옮겨 적지 않는다. 설정 저장소의 `deploy.ps1`
 #   이 같은 파일로 같은 이름을 등록하므로 이 칸은 **없을 때만** 등록한다 — 이름이 있으면 비켜선다.
 # ⚠ **키는 안 묻는다.** 키가 없으면 keyless 로 떠서 검색·추출은 된다. 키가 여는 덤(사이트 지도·크롤·
-#   리서치)은 홈 SessionStart 의 안내 한 줄이 알린다(7 칸 · 표지 `tavily-key-hint`).
 # ⚠ **자리를 안 가른다 — 모두에게 깐다.** 설정 저장소를 든 PC 는 자리와 무관하게 같은 등록을 쓰므로
 #   패키지가 어느 PC 에나 있어야 한 벌로 선다.
 # ⚠ **패키지는 여기서 안 깐다 — 3 칸(CLI)이 깐다.** 설정 저장소를 든 PC 는 8 칸의 `deploy.ps1` 이 먼저
@@ -4800,6 +4798,21 @@ if ($PickKeys -contains 'claude') {
   $checks += @{ Name = ('DRM 길잡이 matcher (이벤트마다 진본과 같다' +
                         $(if ($drmBadMatcher.Count) { ' — ' + ($drmBadMatcher -join ' · ') } else { '' }) + ')')
                 Ok = ($drmBadMatcher.Count -eq 0) }
+  $safetyWired = @()
+  try {
+    $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($ev in 'PreToolUse', 'PostToolUse') {
+      foreach ($entry in @($gc.hooks.$ev)) {
+        foreach ($h in @($entry.hooks)) {
+          $c = if ($h) { [string]$h.command } else { '' }
+          if ($ev -eq 'PreToolUse' -and $c.Contains('bash-backslash-deny.')) { $safetyWired += 'bash' }
+          if ($ev -eq 'PostToolUse' -and $c.Contains('utf8-bom.')) { $safetyWired += 'bom' }
+        }
+      }
+    }
+  } catch { $safetyWired = @() }
+  $checks += @{ Name = 'Bash 겹역슬래시 차단 배선 (홈 settings.json 의 PreToolUse)'; Ok = ($safetyWired -contains 'bash') }
+  $checks += @{ Name = 'PowerShell UTF-8 BOM 보정 배선 (홈 settings.json 의 PostToolUse)'; Ok = ($safetyWired -contains 'bom') }
 }
 # WebFetch 검증 건너뛰기 — 사내에서만 잰다. 위 심는 칸의 「켰다」는 메모리의 객체를 고쳤다는 말이라 되읽는다.
 if ($inside) {
@@ -4853,6 +4866,10 @@ $freeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_] })
 if ($freeWant.Count) {
   $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
   $checks += @{ Name = "칸 없이 까는 스킬 ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
+  if ($PickKeys -contains 'codex') {
+    $codexFreeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $env:USERPROFILE ".codex\skills\$_\SKILL.md")) })
+    $checks += @{ Name = "Codex 자동 스킬 ($($freeWant -join ' · '))"; Ok = ($codexFreeMiss.Count -eq 0) }
+  }
 }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.

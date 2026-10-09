@@ -1581,20 +1581,49 @@ web_retry_cmd() {
   printf '_wr="%s"; [ -f "$_wr/%s" ] || exit 0; . "$_wr/%s"' "$_wr" "$WEB_RETRY_SHELL" "$WEB_RETRY_SHELL"
 }
 
-# ── DRM 길잡이 — UserPromptSubmit · PostToolUseFailure 훅 (claude-config #120 · 결정 0094) ──────────
+# ── DRM 길잡이 — UserPromptSubmit · PreToolUse · PostToolUseFailure 훅 (claude-config #120 · 결정 0094) ──
 #   붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 스킬 `drm-office-read` 로 가는 길을 곁에 붙인다. 왜와 거는 꼴은
 #   몸통(`drm-guide.py`) 머리말이 든다. 그림 문과 같은 규율이다 — 껍데기(`drm-guide.sh`)가 글자와 matcher 를 들고,
-#   심는 손은 자리만 채운 한 줄을 **두 이벤트에** 심는다(UserPromptSubmit 은 matcher 를 안 받아 무시한다 — 껍데기
-#   머리말). 주인 · 경로 굳히기 · 폴더가 사라져도 안 막기도 같다.
+#   심는 손은 자리만 채운 한 줄을 **세 이벤트에** 심는다. 다만 matcher 는 이벤트마다 다르다:
+#   **UserPromptSubmit 에는 키를 안 심고**(그쪽은 matcher 를 안 받고, 거는 자가 그 값을 무시하는 것이 아니라
+#   항목째 걸러낸다 — `plant_tool_hook` 머리말 ⚠), PreToolUse 와 PostToolUseFailure 는 **각자의 진본 줄**을 든다
+#   (껍데기 머리 `# matcher.PreToolUse =` · `# matcher =`). 보는 것이 달라 도구 범위도 다르다.
+#   주인 · 경로 굳히기 · 폴더가 사라져도 안 막기도 같다.
 DRM_GUIDE_SHELL=drm-guide.sh
 drm_guide_matcher() {
   sed -n '1s/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$DRM_GUIDE_SHELL" 2>/dev/null
 }
+drm_guide_pre_matcher() {
+  sed -n 's/^# matcher\.PreToolUse = //p' "$CONFIG_ROOT/.claude/hooks/$DRM_GUIDE_SHELL" 2>/dev/null | head -n 1
+}
 drm_guide_cmd() {
   _dg="$CONFIG_ROOT/.claude/hooks"
-  [ -n "$CONFIG_ROOT" ] && [ -f "$_dg/drm-guide.py" ] && [ -f "$_dg/$DRM_GUIDE_SHELL" ] && [ -n "$(drm_guide_matcher)" ] || { printf ''; return 0; }
+  # matcher 진본 **둘 다** 서야 심는다 — 빈 matcher 를 심으면 맞출 이름이 없어 그 항목이 영원히 안 돈다
+  [ -n "$CONFIG_ROOT" ] && [ -f "$_dg/drm-guide.py" ] && [ -f "$_dg/$DRM_GUIDE_SHELL" ] && [ -n "$(drm_guide_matcher)" ] && [ -n "$(drm_guide_pre_matcher)" ] || { printf ''; return 0; }
   [ "$OS" = windows ] && _dg="$(cygpath -m "$_dg" 2>/dev/null || printf '%s' "$_dg")"
   printf '_dg="%s"; [ -f "$_dg/%s" ] || exit 0; . "$_dg/%s"' "$_dg" "$DRM_GUIDE_SHELL" "$DRM_GUIDE_SHELL"
+}
+
+BASH_BACKSLASH_SHELL=bash-backslash-deny.sh
+bash_backslash_matcher() {
+  sed -n 's/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$BASH_BACKSLASH_SHELL" 2>/dev/null | head -n 1
+}
+bash_backslash_cmd() {
+  _bb="$CONFIG_ROOT/.claude/hooks"
+  [ -n "$CONFIG_ROOT" ] && [ -f "$_bb/$BASH_BACKSLASH_SHELL" ] && [ -n "$(bash_backslash_matcher)" ] || { printf ''; return 0; }
+  [ "$OS" = windows ] && _bb="$(cygpath -m "$_bb" 2>/dev/null || printf '%s' "$_bb")"
+  printf '_bb="%s"; [ -f "$_bb/%s" ] || exit 0; . "$_bb/%s"' "$_bb" "$BASH_BACKSLASH_SHELL" "$BASH_BACKSLASH_SHELL"
+}
+
+UTF8_BOM_SHELL=utf8-bom.sh
+utf8_bom_matcher() {
+  sed -n 's/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$UTF8_BOM_SHELL" 2>/dev/null | head -n 1
+}
+utf8_bom_cmd() {
+  _ub="$CONFIG_ROOT/.claude/hooks"
+  [ -n "$CONFIG_ROOT" ] && [ -f "$_ub/$UTF8_BOM_SHELL" ] && [ -n "$(utf8_bom_matcher)" ] || { printf ''; return 0; }
+  [ "$OS" = windows ] && _ub="$(cygpath -m "$_ub" 2>/dev/null || printf '%s' "$_ub")"
+  printf '_ub="%s"; [ -f "$_ub/%s" ] || exit 0; . "$_ub/%s"' "$_ub" "$UTF8_BOM_SHELL" "$UTF8_BOM_SHELL"
 }
 
 # ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
@@ -1611,13 +1640,16 @@ drm_guide_cmd() {
 #   를 든 명령)만 걷고, 무엇을 걷었는지 화면에 댄다.
 plant_session_state() {
   _pse="$(mktemp)"   # stderr 를 받아 둔다 — 「못 부른다」와 「죽었다」를 가르는 물증이다 (#51)
-  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" "$(image_gate_cmd)" "$(image_gate_matcher)" "$(web_retry_cmd)" "$(web_retry_matcher)" "$(drm_guide_cmd)" "$(drm_guide_matcher)" <<'PSSEOF' 2>"$_pse"
+  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" "$(image_gate_cmd)" "$(image_gate_matcher)" "$(web_retry_cmd)" "$(web_retry_matcher)" "$(drm_guide_cmd)" "$(drm_guide_matcher)" "$(drm_guide_pre_matcher)" "$(bash_backslash_cmd)" "$(bash_backslash_matcher)" "$(utf8_bom_cmd)" "$(utf8_bom_matcher)" <<'PSSEOF' 2>"$_pse"
 import json, os, sys, tempfile
 
 settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 gate_cmd, gate_matcher = sys.argv[5], sys.argv[6]
 web_cmd, web_matcher = sys.argv[7], sys.argv[8]
 drm_cmd, drm_matcher = sys.argv[9], sys.argv[10]
+drm_pre_matcher = sys.argv[11]
+bash_cmd, bash_matcher = sys.argv[12], sys.argv[13]
+bom_cmd, bom_matcher = sys.argv[14], sys.argv[15]
 msgs = []
 failed = False   # 다 못 심었다 — 끝에서 3 으로 알린다. 셸이 표식에 판을 안 적는다 (0065)
 
@@ -1689,6 +1721,9 @@ if cfg_ok and (not have or dropped):
 #    (`marker` 가 든 명령 — 그림 문 옛 판은 `.py` 를 직접 불렀다)은 걷고 지금 꼴만 남긴다. 설치기가 심은 씨앗
 #    쪽 항목도 여기서 걷힌다 — 저장소 진본이 주인이다. 지금 꼴이 둘 이상이면 첫 것만 — 같은 항목 둘이면
 #    훅이 호출마다 두 번 돈다. 심는 손을 하나로 둔다 — 훅마다 이 고리를 베끼면 규율 하나를 고칠 때 한쪽만 낡는다.
+# ⚠ **matcher 를 안 받는 이벤트에는 키를 아예 안 심는다**(`matcher=None`) — UserPromptSubmit 이 그 자리다. 거는
+#    자는 도구 이름이 없는 호출을 matcher 와 못 맞춰 **항목째 걸러낸다**: 조용히 무시하는 것이 아니라 훅이 영원히
+#    안 돈다. 심어 둔 값이 무해해 보여 코드로도 설정으로도 안 드러나고, 몸통을 손으로 먹이면 멀쩡히 통과한다.
 def plant_tool_hook(event, hcmd, matcher, marker, label, missing):
     global failed
     lst = cfg.setdefault("hooks", {}).setdefault(event, [])
@@ -1708,7 +1743,10 @@ def plant_tool_hook(event, hcmd, matcher, marker, label, missing):
             e["hooks"] = keep
         lst[:] = [e for e in lst if e.get("hooks")]
         if not have:
-            lst.append({"matcher": matcher, "hooks": [{"type": "command", "command": hcmd, "timeout": 10}]})
+            entry = {"hooks": [{"type": "command", "command": hcmd, "timeout": 10}]}
+            if matcher is not None:
+                entry["matcher"] = matcher
+            lst.append(entry)
     else:
         have = True   # 훅 몸통이 없는 자리 — 안 심고 안 걷는다
         msgs.append(missing)
@@ -1728,9 +1766,16 @@ plant_tool_hook("PreToolUse", gate_cmd, gate_matcher, "image-gate.", "홈 그림
 for _ev in ("PostToolUse", "PostToolUseFailure"):
     plant_tool_hook(_ev, web_cmd, web_matcher, "web-retry.", "홈 웹 다시 찾기(%s)" % _ev,
                     "  ! 홈 웹 다시 찾기(%s) — 껍데기(.claude/hooks/web-retry.sh)를 못 찾아 안 심는다" % _ev)
-for _ev in ("UserPromptSubmit", "PostToolUseFailure"):
-    plant_tool_hook(_ev, drm_cmd, drm_matcher, "drm-guide.", "홈 DRM 길잡이(%s)" % _ev,
+for _ev in ("UserPromptSubmit", "PreToolUse", "PostToolUseFailure"):
+    # matcher 는 이벤트마다 다르다(껍데기 머리말) — UserPromptSubmit 은 matcher 를 안 받아 키째 빼야 걸리고
+    # (`plant_tool_hook` 머리말 ⚠), 나머지 둘은 보는 것이 달라 각자의 진본 줄을 든다
+    _m = {"UserPromptSubmit": None, "PreToolUse": drm_pre_matcher}.get(_ev, drm_matcher)
+    plant_tool_hook(_ev, drm_cmd, _m, "drm-guide.", "홈 DRM 길잡이(%s)" % _ev,
                     "  ! 홈 DRM 길잡이(%s) — 몸통이나 껍데기(.claude/hooks/drm-guide.py · .sh)를 못 찾아 안 심는다" % _ev)
+plant_tool_hook("PreToolUse", bash_cmd, bash_matcher, "bash-backslash-deny.", "홈 Bash 겹역슬래시 차단(PreToolUse)",
+                "  ! 홈 Bash 겹역슬래시 차단 — 껍데기(.claude/hooks/bash-backslash-deny.sh)를 못 찾아 안 심는다")
+plant_tool_hook("PostToolUse", bom_cmd, bom_matcher, "utf8-bom.", "홈 PowerShell UTF-8 BOM 보정(PostToolUse)",
+                "  ! 홈 PowerShell UTF-8 BOM 보정 — 껍데기(.claude/hooks/utf8-bom.sh)를 못 찾아 안 심는다")
 
 # ② 신뢰 — 없거나 깨진 파일은 손대지 않는다
 # ⚠ **작업 루트의 저장소 전부에 건다.** 옛 판은 제 저장소만 걸고 「홈 훅이 어차피 전부
