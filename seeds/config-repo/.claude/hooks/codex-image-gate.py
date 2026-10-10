@@ -1,6 +1,6 @@
 """Codex 의 view_image 훅 입력을 Claude Read 꼴로 바꿔 `image-gate.py` 로 넘긴다.
 
-Codex 가 넘기는 입력 꼴은 아직 실제 앱에서 못 쟀다(회사 PC 확인 목록 D2). 그래서 꼴을 넓게 받는다 — 도구 이름은
+Codex 가 넘기는 입력 꼴은 아직 실제 앱에서 못 쟀다(claude-config #125 의 D2). 그래서 꼴을 넓게 받는다 — 도구 이름은
 `view_image` 가 든 것이면 되고, `tool_input` 이 JSON 글로 와도 풀며, 경로 칸은 `path` · `file_path` · `image_path`
 가운데 처음 것이고, 상대 경로는 입력의 `cwd` 기준이다.
 **못 잰 자리는 말없이 넘기지 않는다** — 경로를 못 찾았거나 재는 자가 죽으면 막지 않고 「못 쟀다」를 곁에 붙인다
