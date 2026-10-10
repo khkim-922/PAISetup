@@ -1488,16 +1488,16 @@ $F.Add_Shown({
   else { $bGo.Focus() | Out-Null }
 })
 Sync-PersonalBoxes   # 제작자 칸의 켜짐을 제품 칸 첫 상태에 맞춘다
-# 옛 제작자 칸으로 자동 실행이 돌다 이 창이 뜬 판 — 무엇이 바뀌었나를 먼저 알린다(몸통 머리의 「옛 제작자 칸」 칸)
+# 옛 제작자 칸으로 자동 실행이 돈 뒤 이 창이 한 번 뜬 판 — 무엇이 바뀌었나를 먼저 알린다(몸통 끝의 「옛 제작자 칸을 이어받은 판의 마무리」)
 if ($PersonalNotice) {
   $F.Add_Shown({
     [Windows.Forms.MessageBox]::Show(
       ('이번 판부터 제작자의 규범 · 룰 · 스킬을 도구마다 고릅니다 — Claude · Codex · agy.' + [Environment]::NewLine + [Environment]::NewLine +
-       '예전 칸은 Claude 로 이어받아 채워 두었습니다. 예전 칸은 agy 를 같이 골랐을 때 agy 에도 규범을 깔았으니, ' +
-       'agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
-       '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 「제공 기능」에서 읽을 수 있습니다.' +
+       '자동 실행이 예전 칸을 Claude 로 이어받아 방금 설치했습니다. 그대로 두려면 이 창을 닫으면 됩니다 — 다시 묻지 않습니다.' +
        [Environment]::NewLine + [Environment]::NewLine +
-       '고르고 [설치 시작]을 누르면 다음 로그온부터 다시 창 없이 돕니다. 누르기 전까지는 로그온할 때마다 이 창이 뜹니다.'),
+       '바꾸려면 받을 도구를 고르고 [설치 시작]을 누릅니다. 예전 칸은 agy 를 같이 고른 PC 의 agy 에도 규범을 깔았는데, ' +
+       '이번 설치에서 그것은 백업 자리로 옮겨졌습니다 — agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
+       '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 「제공 기능」에서 읽을 수 있습니다.'),
       $AppName, 'OK', 'Information') | Out-Null
   })
 }

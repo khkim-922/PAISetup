@@ -112,28 +112,14 @@ if (-not $EnvFile) { $EnvFile = Join-Path $Here 'install.env' }
 $Fails   = New-Object System.Collections.Generic.List[string]
 $Planted = @{}
 
-# ── 옛 제작자 칸으로 창 없이 불리면 — 이번 한 번은 사람이 고르게 한다 (claude-config 결정 0099) ──────────
+# ── 옛 제작자 칸으로 창 없이 불리면 — 설치는 그대로 가고, 끝나면 한 번만 알린다 (claude-config 결정 0099) ──────────
 # 제작자 칸이 도구마다(Claude · Codex · agy)로 갈렸다. 옛 판이 남긴 자동 실행 기록(`autorun.args`)은 `-WithPersonalConfig`
-# 하나를 들고, 로그온 자동 실행이 그 기록으로 이 몸통을 창 없이(`-Yes`) 부른다. 그대로 깔면 사람이 안 보는 사이에 바뀐다 —
-# 옛 칸은 Claude 에 더해 agy 에도 규범을 깔았고 Codex 에는 안 깔았는데, 새 칸은 도구마다 따로 선다.
-# 그래서 **이 꼴로 불린 판은 깔지 않고 설치 창을 띄운다.** 창은 옛 칸을 Claude 로 이어받아 채우고(칸 이름이 「Claude Code
-# 규범」이었다) 무엇이 바뀌었나를 먼저 알린다. 사람이 고르고 누르면 새 꼴(`-PersonalFor`)이 기록에 적혀 다음 로그온부터는
-# 다시 창 없이 돈다. 창을 닫으면 다음 로그온에 다시 뜬다.
-# ⚠ **창이 부르는 판은 여기 안 걸린다** — 창은 `-PersonalFor` 로 넘긴다. 사람이 콘솔에서 `-WithPersonalConfig` 를 주면
-#   (`-Yes` 없이) Claude 로 읽고 그대로 간다(아래 「제작자 세트를 받을 도구」).
-if ($Yes -and $WithPersonalConfig -and -not $PersonalFor -and -not $Describe) {
-  $uiScript = Join-Path $Here 'install.ui.ps1'
-  if (Test-Path -LiteralPath $uiScript) {
-    try {
-      Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-                                                              ('"' + $uiScript + '"'), '-PersonalNotice') | Out-Null
-      Write-Host '제작자 칸이 도구마다로 바뀌었다 — 이번에는 깔지 않고 설치 창을 띄웠다. 받을 도구를 고르고 [설치 시작]을 누르면 다음 로그온부터 다시 창 없이 돈다.' -ForegroundColor Yellow
-      exit 0
-    } catch {
-      Write-Host "  ! 설치 창을 못 띄웠다 — $($_.Exception.Message). 옛 칸을 Claude 로 읽고 그대로 간다." -ForegroundColor Yellow
-    }
-  }
-}
+# 하나를 들고, 로그온 자동 실행이 그 기록으로 이 몸통을 창 없이(`-Yes`) 부른다. 그 칸은 Claude 로 읽고(아래 「제작자 세트를
+# 받을 도구」 · 옛 칸 이름이 「Claude Code 규범」이었다) **설치를 멈추지 않는다** — 자동 실행은 조용히 올리려고 있는 것이라,
+# 고를 때까지 세워 두면 그동안 올림이 멎고 로그온마다 창이 뜬다. 대신 끝에서 기록을 새 꼴로 고쳐 「골랐다」로 남기고, 바꿀
+# 수 있게 설치 창을 **한 번** 띄운다(맨 끝 「옛 제작자 칸을 이어받은 판의 마무리」).
+# ⚠ **창이 부르는 판은 여기 안 걸린다** — 창은 `-PersonalFor` 로 넘긴다.
+$PersonalUpgrade = [bool]($Yes -and $WithPersonalConfig -and -not $PersonalFor -and -not $Describe)
 
 # ── 이 배포본의 판 — **진본은 곁의 `VERSION` 한 줄이고 릴리스 태그가 그 값에서 난다.** ──
 # ⚠ **창(`install.ui.ps1`)도 같은 파일을 같은 꼴로 읽는다.** 값을 넘겨받지 않고 각자 읽는
@@ -5694,6 +5680,35 @@ if ($NoLaunch) {
 
 } catch {
   Write-Host "  ! 여는 자리에서 졌다 — $(Say-Why $_)" -ForegroundColor Yellow
+}
+
+# ── 옛 제작자 칸을 이어받은 판의 마무리 — 기록을 새 꼴로 고치고 알림 창을 한 번 띄운다 (결정 0099) ──────────
+# ⚠ **기록은 여기서 직접 고친다** — 그 파일은 값 파일이 `#autorun = yes` 를 들 때만 다시 써지는데, 자동 실행은 `-AutoRun`
+#   없이 부른다. 안 고치면 다음 로그온이 또 옛 칸으로 와 창이 매번 뜬다. 고친 뒤로는 옛 칸이 없어 다시 안 묻는다 — 판이 안
+#   올라도 로그온마다 도는 자동 실행이 사람을 방해하지 않는다.
+# ⚠ **창은 기다리지 않는다** — 따로 띄우고 이 몸통은 끝난다. 닫으면 그대로(Claude), 고르고 누르면 그 선택이 새 기록이 된다.
+if ($PersonalUpgrade) {
+  $upArgsFile = Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'autorun.args'
+  try {
+    if (Test-Path -LiteralPath $upArgsFile) {
+      $upArgs = @(Get-Content -LiteralPath $upArgsFile -Encoding UTF8 | ForEach-Object { $_.Trim() } |
+                  Where-Object { $_ -and $_ -ne '-WithPersonalConfig' })
+      if ($personalAny -and ($upArgs -notcontains '-PersonalFor')) { $upArgs += @('-PersonalFor', $PersonalValue) }
+      Set-Content -LiteralPath $upArgsFile -Value $upArgs -Encoding UTF8
+    }
+  } catch {
+    Write-Host "  ! 자동 실행 기록을 새 꼴로 못 고쳤다 — $(Say-Why $_) (다음 로그온에 다시 이어받는다)" -ForegroundColor Yellow
+  }
+  $uiScript = Join-Path $Here 'install.ui.ps1'
+  if (Test-Path -LiteralPath $uiScript) {
+    try {
+      Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                                                              ('"' + $uiScript + '"'), '-PersonalNotice') | Out-Null
+      Write-Host '  제작자 칸이 도구마다로 바뀌었다 — 옛 칸을 Claude 로 이어받아 깔았고, 바꿀 수 있게 설치 창을 한 번 띄웠다' -ForegroundColor Yellow
+    } catch {
+      Write-Host "  ! 알림 창을 못 띄웠다 — $(Say-Why $_). 바꾸려면 설치 창을 열어 제작자 칸을 고른다" -ForegroundColor Yellow
+    }
+  }
 }
 
 Write-Host ''
