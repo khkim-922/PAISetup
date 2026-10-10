@@ -216,8 +216,8 @@ claude.exe 지만 사는 폴더가 다르다.
 | `inhouse-app` | 사내 앱을 세우고 사내 LLM 게이트웨이 · SSO · 배포를 붙인다. 회사 코딩 기준(씨앗 `vibecoding`)을 콕 집어 연다 | Claude 를 고르면 | Codex 를 고르면 | 안티그래비티를 고르면 |
 | `agent-envelope` | 다른 에이전트에게 일을 맡길 때 누구에게 맡길지 고르고, 그에게 줄 작업 지시서를 짓는다 — 아래 맡기기 스킬들의 앞문이다 | Claude 를 고르면 | Codex 를 고르면 | 안티그래비티를 고르면 |
 | `agy-background` | agy 에게 일을 맡기고, 한도나 과부하에 걸리면 다음 모델로 넘어간다 — 아래 「agy 묶음」 | Claude 와 안티그래비티를 같이 고르면 | Codex 와 안티그래비티를 같이 고르면 | — |
-| `codex-copilot-background` | Codex 에게 일(긴 조사 · 큰 코드 읽기 · 리뷰 · 다른 모델의 의견 · 웹 조사)을 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다. 받는 쪽은 읽기 전용이다 — 아래 「Codex · Copilot 맡기기」 | Claude 와 Codex 를 같이 고르면 | — | 안티그래비티와 Codex 를 같이 고르면 |
-| `claude-background` | Claude 에게 읽기만 하는 일을 맡긴다. 받는 Claude 는 읽기 · 찾기 · 웹 읽기 도구만 열고 뜬다 — 아래 「Claude 맡기기」 | — | Claude 와 Codex 를 같이 고르면 | Claude 와 안티그래비티를 같이 고르면 |
+| `codex-copilot-background` | Codex 에게 일(긴 조사 · 큰 코드 읽기 · 리뷰 · 다른 모델의 의견 · 웹 조사)을 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다. 받는 쪽은 기본이 읽기 전용이고, 고치기 레인은 작업 자리 안만 쓴다 — 아래 「Codex · Copilot 맡기기」 | Claude 와 Codex 를 같이 고르면 | — | 안티그래비티와 Codex 를 같이 고르면 |
+| `claude-background` | Claude 에게 일을 맡긴다. 받는 Claude 는 기본이 읽기 · 찾기 · 웹 읽기 도구만 열고 뜨고, 고치기 레인은 작업 자리 안만 고친다 — 아래 「Claude 맡기기」 | — | Claude 와 Codex 를 같이 고르면 | Claude 와 안티그래비티를 같이 고르면 |
 
 Codex 에게 맡기는 줄과 Codex 가 맡기는 줄은 사내에서는 Codex 회사 설정이 서는 자리에서만 선다.
 
@@ -263,7 +263,8 @@ Claude 홈에 서는 나머지 셋(그림 문 · Bash 겹역슬래시 차단 · 
 제품 칸에서 **Claude 와 Codex 를 둘 다** 고르면 Claude 가 Codex 에게 일(긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 다른 모델의
 의견 · 웹 조사)을 뒤에서 맡기는 스킬 `codex-copilot-background` 가 선다. **안티그래비티와 Codex 를 같이 고르면** agy 도 같은
 스킬로 맡긴다 — agy 에서는 끝날 때까지 기다려 답을 읽는다(결정 0099). 사내는 Codex 를 회사 키로 게이트웨이에 물리는 회사
-설정이 서는 자리에서 선다. 받는 쪽은 읽기만 하고 파일은 안 고친다 — 고치는 일은 맡긴 쪽이 한다(claude-config 결정 0092 · 0093).
+설정이 서는 자리에서 선다. 받는 쪽은 기본으로 읽기만 하고 파일은 안 고친다(claude-config 결정 0092 · 0093). 고치기를 맡길
+때(`--write`)는 맡긴 쪽이 세운 작업 폴더 안만 쓰고, 그 일은 Codex 만 받는다 — Copilot 으로 안 넘긴다(결정 0100).
 
 | 무엇 | 어디에 · 언제 |
 |---|---|
@@ -278,10 +279,10 @@ Claude 홈에 서는 나머지 셋(그림 문 · Bash 겹역슬래시 차단 · 
 
 #### Claude 맡기기 — Claude 와 Codex 나 안티그래비티를 같이 고르면
 
-위의 거울이다. 같은 조건에서 Codex 가 Claude 에게 읽기만 하는 일을 맡기는 스킬 `claude-background` 가 Codex 홈에 선다.
+위의 거울이다. 같은 조건에서 Codex 가 Claude 에게 일을 맡기는 스킬 `claude-background` 가 Codex 홈에 선다.
 Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡긴다(결정 0099).
-받는 Claude 는 읽기 · 찾기 · 웹 읽기 도구만 보이게 뜨고, MCP 서버 · 스킬 · 훅은 끈다 — 고치는 일은 맡긴 쪽이 한다
-(claude-config 결정 0098). Claude 는 이 PC 의 설정 그대로 붙는다 — 사외는 구독 로그인, 사내는 위 게이트웨이 값이다.
+받는 Claude 는 기본으로 읽기 · 찾기 · 웹 읽기 도구만 보이게 뜨고, MCP 서버 · 스킬 · 훅은 끈다(claude-config 결정 0098).
+고치기를 맡길 때(`--write`)는 편집 도구 둘을 맡긴 쪽이 세운 작업 폴더 안에만 허락하고 셸은 안 연다(결정 0100). Claude 는 이 PC 의 설정 그대로 붙는다 — 사외는 구독 로그인, 사내는 위 게이트웨이 값이다.
 
 | 무엇 | 어디에 · 언제 |
 |---|---|

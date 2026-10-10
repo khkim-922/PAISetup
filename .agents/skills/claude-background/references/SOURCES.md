@@ -9,7 +9,8 @@
   빌린 것: 플래그 다섯(`--strict-mcp-config` · `--disable-slash-commands` · `--permission-mode dontAsk` · `--tools` ·
   `--allowedTools`), 결과를 가르는 법(`result` 이벤트의 `subtype` · `is_error` · `permission_denials` · 빈 답).
   일부러 가른 것:
-  - **도구** — 상류는 쓰기 · 셸까지 연다(실행 위임). 여기는 읽기 · 찾기 · 웹 읽기뿐이다(결정 0098 — 받는 쪽은 읽기 전용)
+  - **도구** — 상류는 쓰기 · 셸까지 연다(실행 위임). 여기는 기본이 읽기 · 찾기 · 웹 읽기뿐이고(결정 0098), 고치기 레인도
+    편집 도구 둘을 작업 자리 안에만 더할 뿐 셸은 안 연다(결정 0100)
   - **설정** — 상류는 `--setting-sources ''` 로 설정을 다 끄고 게이트웨이 값을 환경변수로 직접 넣는다(자리를 안다).
     이 러너는 자리를 모르므로 사용자 설정을 읽고 훅만 끈다(`disableAllHooks`)
   - **대화 남기기** — 상류는 `--no-session-persistence` 로 매번 새 대화다. 여기는 남긴다 — 봉투의 「이어 묻기」가 선다
@@ -28,3 +29,7 @@
 - 같은 실측 — 부른 쪽이 Claude 리모트 세션이면 받는 쪽이 부른 쪽과 같은 대화 id 로 섰다. `CLAUDECODE` ·
   `CLAUDE_CODE_SESSION_ID` 를 걷어도 그대로였고 `CLAUDE_CODE_REMOTE_SESSION_ID` 까지 걷어야 새 id 가 섰다. 래퍼가 세
   변수를 걷는 까닭이다 — 로컬 Claude 세션에서 어느 것이 그 일을 하나는 안 쟀다
+- Claude Code 2.1.296 · 2026-10-10 · 리눅스 · 하이쿠 — 고치기 레인 꼴(`--tools` 에 `Edit,Write` 를 더하고 `--allowedTools` 는
+  `Edit(./**),Write(./**)`)로 띄워, 자리 안 파일 하나를 고치고 자리 밖 파일 하나를 쓰라고 했다. 자리 안 `Edit` 은 섰고 자리 밖
+  `Write` 는 `permission_denials` 에 실려 거절됐으며 그 파일은 안 생겼다. 부른 쪽이 자동 모드 Claude 세션이었는데 분류기가 그
+  띄우기를 막지 않았다(결정 0100)

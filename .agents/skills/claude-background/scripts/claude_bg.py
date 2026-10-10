@@ -1,8 +1,12 @@
-"""Claude 에게 읽기만 하는 일을 맡기고 답을 파일로 받는다 — Codex 가 맡기는 쪽일 때의 러너(결정 0098).
+"""Claude 에게 일을 맡기고 답을 파일로 받는다 — Codex · agy 가 맡기는 쪽일 때의 러너(결정 0098 · 0100).
 
-**받는 Claude 는 읽기만 한다.** 쓸 수 있는 도구를 읽기 · 찾기 · 웹 읽기(`READ_TOOLS`)로 좁혀 띄운다 — 셸 · 쓰기 도구는
-모델에게 아예 안 보인다. 그래서 받는 쪽이 다른 에이전트를 다시 띄울 길(셸)도 없다. 묻지 않는 권한 방식(`dontAsk`)이라
+**받는 Claude 는 기본이 읽기만 한다.** 쓸 수 있는 도구를 읽기 · 찾기 · 웹 읽기(`READ_TOOLS`)로 좁혀 띄운다 — 셸 · 쓰기
+도구는 모델에게 아예 안 보인다. 그래서 받는 쪽이 다른 에이전트를 다시 띄울 길(셸)도 없다. 묻지 않는 권한 방식(`dontAsk`)이라
 목록 밖 호출은 묻는 대신 거절되고, 거절이 하나라도 있으면 실패로 친다 — 답이 그 도구 없이 지어졌다는 뜻이다.
+**`--write` 를 주면 고치기 레인이다** — 편집 도구 둘(`WRITE_TOOLS`)을 더 보이되 허락은 작업 자리 안(`./**`)만 건다. 그
+밖에 쓰려는 호출은 거절돼 실패로 남는다(실측 Claude Code 2.1.296 · 2026-10-10: 자리 안 `Edit` 은 섰고 자리 밖 `Write`
+는 `permission_denials` 로 거절됐다 · 그 띄우기를 자동 모드 분류기가 안 막았다). 셸은 그래도 안 연다 — 윈도에는 Claude
+샌드박스가 없어 셸이 자리를 못 지킨다. 검사 돌리기는 맡긴 쪽이 한다. 자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
 MCP 서버 · 슬래시 명령(스킬)은 끄고, 사용자 설정은 읽되 훅은 끈다 — 설정에는 자리 값(게이트웨이 주소 · 시간 한도 ·
 웹 가져오기 검증 건너뛰기)이 살고, 훅은 맡긴 일과 무관한 일(세션 시작 동기화 등)을 한다.
 빌린 자리 — 상류 `pgpt-one-click-connect` 의 `app/optional-skills/pgpt-delegate/scripts/Invoke-PgptAgent.ps1` Claude
@@ -38,10 +42,11 @@ EXIT = {'ok': 0, 'failed': 1, 'denied': 1, 'quota': 2, 'empty': 2, 'timeout': 3}
 FOOTER = '[claude-bg]'
 
 READ_TOOLS = 'Read,Glob,Grep,WebFetch,WebSearch'   # 읽기 · 찾기 · 웹 읽기 — 셸 · 쓰기는 모델이 아예 못 본다
+WRITE_TOOLS = ('Edit', 'Write')                   # 고치기 레인에 더 보이는 것 — 셸은 끝내 안 연다
+WRITE_SCOPE = './**'                              # 허락은 작업 자리 안만 — 띄우는 자리(`--cwd`) 기준이다
 CLAUDE_ARGS = ['-p', '--output-format', 'stream-json', '--verbose',
                '--setting-sources', 'user', '--settings', json.dumps({'disableAllHooks': True}),
-               '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'dontAsk',
-               '--tools', READ_TOOLS, '--allowedTools', READ_TOOLS]
+               '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'dontAsk']
 # 셔틀(`.cmd`)이 부르는 꾸러미 — npm 전역 자리(셔틀 곁의 `node_modules`) 기준. 실제로 띄울 것은 꾸러미의
 # `package.json` 의 `bin` 이 든다 — 판에 따라 JS(`cli.js`)이기도 하고 네이티브 실행 파일(`bin/claude.exe`)이기도 하다.
 NPM_PACKAGE = ('@anthropic-ai', 'claude-code')
@@ -97,9 +102,18 @@ def head():
     return resolve(found) if found else None
 
 
-def argv(model, resume):
-    """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력)."""
-    out = list(CLAUDE_ARGS)
+def tool_args(write):
+    """보일 도구와 미리 허락한 도구. 고치기 레인이면 편집 도구를 더하되 허락은 작업 자리 안으로 가둔다."""
+    if not write:
+        return ['--tools', READ_TOOLS, '--allowedTools', READ_TOOLS]
+    shown = ','.join([READ_TOOLS, *WRITE_TOOLS])
+    allowed = ','.join([READ_TOOLS, *(f'{t}({WRITE_SCOPE})' for t in WRITE_TOOLS)])
+    return ['--tools', shown, '--allowedTools', allowed]
+
+
+def argv(model, resume, write=False):
+    """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다."""
+    out = list(CLAUDE_ARGS) + tool_args(write)
     if model:
         out += ['--model', model]
     if resume:
@@ -167,7 +181,7 @@ def run_once(cmd_head, a):
     # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
     with open(a.prompt_file, 'rb') as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
         try:
-            proc = subprocess.Popen(cmd_head + argv(a.model, a.resume), cwd=a.cwd, env=env, stdin=stdin,
+            proc = subprocess.Popen(cmd_head + argv(a.model, a.resume, a.write), cwd=a.cwd, env=env, stdin=stdin,
                                     stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
         except OSError as e:
             return 'spawn', None, '', None, str(e), 'in=- out=-', '-', {}, raw_path
@@ -201,6 +215,7 @@ def main():
     ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC)
     ap.add_argument('--model')
     ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로
+    ap.add_argument('--write', action='store_true')   # 고치기 레인 — 작업 자리 안만 고친다
     try:
         a = ap.parse_args()
     except SystemExit:
@@ -208,6 +223,9 @@ def main():
 
     if not os.path.isfile(a.prompt_file):
         write(a.out, f'{FOOTER} usage · 프롬프트 파일이 없다 — {a.prompt_file}\n')
+        return 4
+    if a.write and not (a.cwd and os.path.isdir(a.cwd)):
+        write(a.out, f'{FOOTER} usage · --write 는 --cwd 로 작업 자리를 준다 — 쓰는 범위가 그 자리다\n')
         return 4
     if a.model and not MODEL_NAME_RE.fullmatch(a.model):
         write(a.out, f'{FOOTER} usage · --model 에 따옴표 · 공백이 든다 — {a.model!r}\n')
@@ -224,7 +242,7 @@ def main():
         write(a.out, f'{FOOTER} usage · 못 띄웠다 — {reason}\n')
         return 4
     used = ','.join(f'{k}:{v}' for k, v in sorted(tools.items())) or '-'
-    footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · model={model} · tools={used}'
+    footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · model={model} · tools={used}'
               f' · tokens {tokens} · resume={conv or "-"}')
     if status == 'ok':
         write(a.out, f'{answer.rstrip()}\n\n{footer}\n')

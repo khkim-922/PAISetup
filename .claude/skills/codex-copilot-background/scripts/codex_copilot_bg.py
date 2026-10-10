@@ -2,8 +2,12 @@
 `pythonw` 로 부른다. 왜 pythonw 인가(콘솔 없는 부모 밑에서 창이 뜨는 사정)는 agy 래퍼
 `agy-background/scripts/agy_bg.py` 머리말이 든다 — 같은 윈도 사정이고, 여기도 같은 길(「창 없음」)로 띄운다.
 
-**둘 다 읽기만 한다.** Codex 는 읽기 전용 샌드박스(`sandbox_mode`)에 앱 · 플러그인 · MCP 도구를 끄고, Copilot 은
+**기본은 둘 다 읽기만 한다.** Codex 는 읽기 전용 샌드박스(`sandbox_mode`)에 앱 · 플러그인 · MCP 도구를 끄고, Copilot 은
 읽기 · 웹 읽기 도구만 보이게(`--available-tools`) 띄운다. Copilot 은 거기에 더해 작업 자리와 임시 폴더 밖 파일을 못 연다.
+**`--write` 를 주면 고치기 레인이다**(결정 0100) — Codex 를 작업 자리 쓰기 샌드박스(`workspace-write`)로 띄운다. 쓰는
+자리는 작업 자리(`--cwd`)와 임시 폴더뿐이고 셸의 망은 닫힌 채다(Codex 기본값). 앱 · 플러그인 · MCP 는 그대로 끈다.
+**고치기 레인은 Copilot 이 안 받는다** — Copilot 의 쓰는 범위를 가두는 법을 아직 안 쟀다. Codex 가 한도면 그대로
+멈춘다(2). 자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
 
 **프롬프트는 표준 입력으로 넘긴다** — 명령줄 길이 한도와 따옴표 해석을 안 탄다. 윈도에서 npm 이 까는
 실행 꼴은 `.cmd` 셔틀이라 명령줄 인자가 cmd.exe 를 거친다(8191자 · `& | % ^` 해석). 그래서 셔틀이 부르는
@@ -58,8 +62,10 @@ CODEX_QUOTA_RE = re.compile(r'hit your usage limit|Quota exceeded\. Check your p
 # 읽기 전용 샌드박스는 셸 명령에만 걸린다 — 앱 커넥터(`codex_apps`) · 플러그인 · MCP 서버의 도구는 샌드박스 밖에서
 # 돌고(쓰기 · 보내기를 하는 도구도 있다) 웹 검색 값과 따로 웹을 연다. 그래서 셋을 다 끄고 띄운다 — 웹으로 가는 길이
 # 검색 도구(`web_search`) 하나로 좁아져, 끝 줄의 `web=` 가 그 길을 다 센다.
-CODEX_ARGS = ['-c', 'sandbox_mode="read-only"', '-c', 'features.apps=false', '-c', 'features.plugins=false',
+CODEX_ARGS = ['-c', 'features.apps=false', '-c', 'features.plugins=false',
               '-c', 'mcp_servers={}', '--skip-git-repo-check', '--json']
+CODEX_SANDBOX = {False: 'read-only', True: 'workspace-write'}   # 읽기 레인 · 고치기 레인
+WRITE_AGENTS = ('codex',)   # 고치기 레인을 받는 쪽 — Copilot 은 쓰는 범위를 가두는 법을 안 쟀다
 
 # 자리 값의 이름과 받는 값 — 받는 값은 Codex 설정의 낱말 그대로다(`web_search` · `windows.sandbox`).
 KNOB_AGENTS = 'CC_BG_AGENTS'
@@ -137,10 +143,10 @@ def codex_config(knobs):
     return out
 
 
-def argv(agent, resume, knobs):
-    """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력)."""
+def argv(agent, resume, knobs, write=False):
+    """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다."""
     if agent == 'codex':
-        tail = [*CODEX_ARGS, *codex_config(knobs)]
+        tail = ['-c', f'sandbox_mode="{CODEX_SANDBOX[write]}"', *CODEX_ARGS, *codex_config(knobs)]
         if resume:
             return ['exec', 'resume', *tail, resume, '-']
         return ['exec', *tail, '-']
@@ -232,7 +238,7 @@ def run_once(agent, cmd_head, a, resume):
     # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
     with open(a.prompt_file, 'rb') as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
         try:
-            proc = subprocess.Popen(cmd_head + argv(agent, resume, a.knobs), cwd=a.cwd, env=env, stdin=stdin,
+            proc = subprocess.Popen(cmd_head + argv(agent, resume, a.knobs, a.write), cwd=a.cwd, env=env, stdin=stdin,
                                     stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
         except OSError as e:
             return 'spawn', None, '', None, str(e), 'in=- out=-', None, raw_path
@@ -266,6 +272,7 @@ def main():
     ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC)
     ap.add_argument('--agent', choices=AGENTS)
     ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로 — `<쪽>:<id>`
+    ap.add_argument('--write', action='store_true')   # 고치기 레인 — 작업 자리 안만 고친다
     try:
         a = ap.parse_args()
     except SystemExit:
@@ -293,6 +300,17 @@ def main():
     if any(x not in allowed for x in order):
         write(a.out, f'{FOOTER} usage · 이 자리에서 안 쓰는 쪽이다 — {KNOB_AGENTS}={",".join(allowed)}\n')
         return 4
+    if a.write:
+        if not (a.cwd and os.path.isdir(a.cwd)):
+            write(a.out, f'{FOOTER} usage · --write 는 --cwd 로 작업 자리를 준다 — 쓰는 범위가 그 자리다\n')
+            return 4
+        if (a.agent or a.resume) and any(x not in WRITE_AGENTS for x in order):
+            write(a.out, f'{FOOTER} usage · 고치기 레인은 {" · ".join(WRITE_AGENTS)} 만 받는다\n')
+            return 4
+        order = [x for x in order if x in WRITE_AGENTS]
+        if not order:
+            write(a.out, f'{FOOTER} usage · 고치기 레인을 받을 쪽이 이 자리에 없다 — {KNOB_AGENTS}={",".join(allowed)}\n')
+            return 4
 
     started = time.monotonic()
     tried = []
@@ -317,7 +335,7 @@ def main():
         write(a.out, f'{FOOTER} usage · 띄울 쪽이 없다 — {"; ".join(tried) or "차례가 비었다"}\n')
         return 4
     agent, status, rc, answer, conv, reason, tokens, searches, raw_path = ran
-    footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · agent={agent}'
+    footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · agent={agent}'
               + (f' · failover={"; ".join(tried)}' if tried else '') +
               f' · tokens {tokens} · web={"-" if searches is None else searches}'
               f' · resume={f"{agent}:{conv}" if conv else "-"}')
