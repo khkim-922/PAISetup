@@ -103,8 +103,9 @@ UNSAFE_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')   # 윈도우 파일 이름�
 
 # ── 스킬 — 자리와 확장자 표 ──────────────────────────────────────────────────────
 def skill_dir():
-    """스킬 폴더 — 이 파일 곁(설정 저장소의 진본) · Claude 홈 · Codex 와 agy 가 같이 쓰는 홈(`~/.agents/skills`).
-    `SKILL.md` 와 `read-drm.ps1` 이 다 있어야 선다. Claude 를 안 고른 PC 에는 뒤엣것만 있다(결정 0097 · 0099)."""
+    """스킬 폴더 — 이 파일 곁(설정 저장소의 진본) · Claude 홈 · Codex 홈(`~/.agents/skills`) · agy 홈
+    (`~/.gemini/config/paisetup-skills`). `SKILL.md` 와 `read-drm.ps1` 이 다 있어야 선다. 도구마다 제 홈을 들어, Claude 를
+    안 고른 PC 에는 뒤의 둘만 있다(결정 0097 · 0099)."""
     forced = os.environ.get(SKILL_DIR_ENV)
     if forced is not None:   # 시험이 자리를 주면 그 자리만 — 「없을 때」를 재려면 대체가 없어야 한다
         cands = [forced]
@@ -113,7 +114,8 @@ def skill_dir():
         home = os.path.expanduser('~')
         cands = [os.path.normpath(os.path.join(here, '..', 'skills', SKILL)),
                  os.path.join(home, '.claude', 'skills', SKILL),
-                 os.path.join(home, '.agents', 'skills', SKILL)]
+                 os.path.join(home, '.agents', 'skills', SKILL),
+                 os.path.join(home, '.gemini', 'config', 'paisetup-skills', SKILL)]
     for d in cands:
         if d and os.path.isfile(os.path.join(d, 'SKILL.md')) and os.path.isfile(os.path.join(d, READER)):
             return d
@@ -371,7 +373,7 @@ def message(event, paths, attached, sdir, out_dir):
         parts.append('이 턴의 첨부 가운데 Fasoo DRM 에 감긴 것: %s' % ' · '.join(t for t, _ in attached))
     head = '%s — %s (머리에 DRMONE). 감긴 파일은 Read 와 파서가 형식 인식 단계에서 진다.' % (NAME, ' · '.join(parts))
     if not sdir:
-        return head + (' 글자를 뽑는 스킬 %s 가 이 PC 에 없다(~/.claude/skills · ~/.agents/skills 에 없음) — 이 자리에서는 읽을 길이 없다.'
+        return head + (' 글자를 뽑는 스킬 %s 가 이 PC 에 없다(~/.claude/skills · ~/.agents/skills · ~/.gemini/config/paisetup-skills 에 없음) — 이 자리에서는 읽을 길이 없다.'
                        % SKILL)
     written = [p for _, p in attached if p]
     if written:

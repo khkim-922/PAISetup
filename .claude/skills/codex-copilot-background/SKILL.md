@@ -1,6 +1,6 @@
 ---
 name: codex-copilot-background
-description: "Codex 에게 일을 백그라운드로 맡기고 거둘 때 부른다 — 띄워 두고 대화를 잇다가 끝나면 알림으로 답을 읽고, 자리 값이 허락하면 Codex 한도에서 Copilot 이 받는다. 긴 조사 · 큰 코드나 여러 파일 읽기 · 분석 · 리뷰 · 다른 모델 계열의 의견 · 웹 조사를 Claude 맥락 밖으로 넘길 때 부른다. 맡길 프롬프트는 agent-envelope 로 짓는다. 「코덱스한테 시켜」·「코파일럿으로 돌려」·「코덱스한테 리뷰 받아 보자」·「웹 조사 맡기자」."
+description: "Codex 에게 일을 맡기고 거둘 때 부른다 — Claude 에서는 띄워 두고 대화를 잇다가 끝나면 알림으로, agy 에서는 끝날 때까지 기다려 답을 읽고, 자리 값이 허락하면 Codex 한도에서 Copilot 이 받는다. 긴 조사 · 큰 코드나 여러 파일 읽기 · 분석 · 리뷰 · 다른 모델 계열의 의견 · 웹 조사를 Claude 맥락 밖으로 넘길 때 부른다. 맡길 프롬프트는 agent-envelope 로 짓는다. 「코덱스한테 시켜」·「코파일럿으로 돌려」·「코덱스한테 리뷰 받아 보자」·「웹 조사 맡기자」."
 ---
 
 # Codex · Copilot 에게는 백그라운드로 맡긴다
@@ -9,7 +9,7 @@ description: "Codex 에게 일을 백그라운드로 맡기고 거둘 때 부른
 모르니 프롬프트가 일의 전부다** — 무엇을 맡기고 어떻게 쓰나는 agent-envelope 가 든다.
 
 **맡긴 쪽은 아무것도 고치지 않으니 저장소를 통째로 가리켜도 된다** — Codex 는 읽기 전용 샌드박스에 앱 · 플러그인 ·
-MCP 도구를 끄고, Copilot 은 파일 읽기 · 웹 읽기 도구만 열고 뜬다. 고칠 것은 답으로 받아 Claude 가 고친다.
+MCP 도구를 끄고, Copilot 은 파일 읽기 · 웹 읽기 도구만 열고 뜬다. 고칠 것은 답으로 받아 맡긴 쪽(Claude · agy)이 고친다.
 
 ## 자리 값
 
@@ -22,12 +22,16 @@ MCP 도구를 끄고, Copilot 은 파일 읽기 · 웹 읽기 도구만 열고 �
 ## 맡기는 법
 
 1. **프롬프트를 파일로 쓴다**(스크래치패드). 길이는 자유다 — 래퍼가 표준 입력으로 넘긴다.
-2. **Bash 를 `run_in_background: true` 로 부르고, `pythonw` 로 띄운다** — 창 없이 돈다. 윈도 밖에서는 `python3` 로 부른다.
+2. **Claude 에서는 Bash 를 `run_in_background: true` 로 부르고, `pythonw` 로 띄운다** — 창 없이 돈다. 윈도 밖에서는 `python3` 로 부른다.
 
    ```sh
    pythonw "<이 스킬 폴더>/scripts/codex_copilot_bg.py" --prompt-file <프롬프트> --out <답 파일> --cwd <작업 자리> \
      [--timeout <초>] [--agent codex|copilot] [--resume <쪽>:<id>]
    ```
+
+   **agy 에서는 같은 명령을 콘솔 있는 `python` 으로 부르고 끝날 때까지 기다린다** — `pythonw` 는 창 없는 프로그램이라
+   셸이 안 기다리고 바로 돌아온다. 명령의 기다림(`WaitMsBeforeAsync`)은 `--timeout` 보다 길게 주고, 뒤로 넘어가면 그
+   작업이 끝날 때까지 상태를 본 뒤 `--out` 을 읽는다.
 
 3. **끝나면 `--out` 파일을 읽는다.** 끝 줄 `[cc-bg] <갈래> …` 이 맡은 쪽(`agent=`) · 넘어간 자취 · Codex 가 마친 웹 검색 수
    (`web=` · Copilot 은 `-`) · 이어 묻기 값(`resume=`)을 든다.

@@ -21,7 +21,7 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
 맡길 곳마다 다른 것만 든다. 가르기 · 봉투 · 절대 규칙 · 거두기(2~5절)는 누구에게 맡기든 같다. 러너로 띄우는 곳은 그
 러너 스킬이 깔린 자리에서만 고른다.
 
-| | Claude 서브에이전트 | agy | Codex(한도면 Copilot) | Claude(Codex 가 맡길 때) |
+| | Claude 서브에이전트 | agy | Codex(한도면 Copilot) | Claude(Codex · agy 가 맡길 때) |
 |---|---|---|---|---|
 | 띄우기 | Agent 도구 — 도구 계약 | agy-background | codex-copilot-background | claude-background |
 | 쓰는 힘 · 가두는 법 | 쓴다 — 고치기는 worktree 격리와 소유 선긋기로 가둔다(2절) | 묻지 않고 쓴다 — 작업 자리로 가둔다 | 못 쓴다 — 읽기 전용 샌드박스. 고칠 것은 답으로 받아 부모가 고친다 | 못 쓴다 — 읽기 · 찾기 · 웹 읽기 도구만 보이게 뜬다. 고칠 것은 답으로 받아 부모가 고친다 |

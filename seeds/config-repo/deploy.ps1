@@ -554,34 +554,38 @@ if (Test-Path $skillSrc) {
     }
 }
 
-# Codex · agy 홈: 스킬(~/.agents/skills) · Codex 규범 블록(~/.codex/AGENTS.md) (docs/decisions/0099)
-# Codex 는 홈 규범을 `~/.claude` 에서 안 읽고, 스킬도 `~/.agents/skills` 에서 찾는다. agy 도 그 스킬 자리를 읽는다 — agy
-# 스킬 목록(위 `.gemini.global/skills.json`)이 그 자리를 연다. 그래서 같은 판을 그 자리에도 민다.
-# ⚠ **둘 다 없는 PC 에는 안 깐다** — `~/.codex` 도 `~/.gemini` 도 없으면 건너뛴다(위 agy 와 같은 까닭). 규범 블록은
-#   Codex 몫이라 `~/.codex` 가 있을 때만 짓는다(agy 는 위 설정 셋의 include 한 줄로 받는다).
+# Codex · agy 홈: 스킬 · Codex 규범 블록(~/.codex/AGENTS.md) (docs/decisions/0099)
+# 도구마다 제 스킬 홈을 든다 — Codex 는 `~/.agents/skills`(Codex 가 스스로 읽는 자리), agy 는 `~/.gemini/config/paisetup-skills`
+# (agy 스킬 목록 — 위 `.gemini.global/skills.json` — 이 그 자리만 연다). Claude 홈과 같은 묶음을 그 홈들에도 민다.
+# ⚠ **그 도구가 없는 PC 에는 그 홈을 안 깐다** — `~/.codex` · `~/.gemini` 가 없으면 건너뛴다(위 agy 와 같은 까닭).
+# ⚠ **맡기기 러너는 받는 쪽 홈에 안 간다** — 러너마다 받는 쪽은 `deploy.skills.targets.conf` 가 든다. 받는 쪽 홈에 서면
+#   그 도구가 제게 맡기는 길을 든다(0097). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다.
 # ⚠ **규범은 옮겨 쓰지만 손사본이 아니다** — Codex 의 AGENTS.md 는 다른 파일을 끌어오지 못해, 블록 짓는 자
 #   (`.claude/hooks/codex-norms.py`)가 진본에서 매번 다시 짓는다. 사람이 그 파일에 쓴 글은 표지 밖이라 그대로다.
-#   지은 결과를 임시 파일로 받아 여느 배포 대상처럼 민다 — 바뀌었을 때만 백업과 함께 덮는다.
-# ⚠ **스킬은 Claude 홈과 같은 묶음 + Codex · agy 홈 전용 묶음(`.agents/skills/`)** 이다. Claude 가 맡기는 쪽일 때만 뜻이
-#   서는 스킬(`deploy.skills.claude-only.conf`)은 뺀다. 홈에서 걷는 손(-Prune)은 Claude 홈만 본다.
+#   지은 결과를 임시 파일로 받아 여느 배포 대상처럼 민다 — 바뀌었을 때만 백업과 함께 덮는다. agy 규범은 위 설정 셋의
+#   include 한 줄이 든다.
+# ⚠ 홈에서 걷는 손(-Prune)은 Claude 홈만 본다.
 $codexHome = Join-Path $HOME '.codex'
-if ((Test-Path $codexHome) -or (Test-Path $geminiHome)) {
-    $agentsSkillDst = Join-Path $HOME '.agents\skills'
-    $claudeOnlyConf = Join-Path $src 'deploy.skills.claude-only.conf'
-    $claudeOnly = @()
-    if (Test-Path $claudeOnlyConf) {
-        $claudeOnly = @(Get-Content $claudeOnlyConf -Encoding UTF8 |
-            ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
-            Where-Object   { $_ })
+$runnerTarget = @{}
+$targetsConf = Join-Path $src 'deploy.skills.targets.conf'
+if (Test-Path $targetsConf) {
+    foreach ($ln in (Get-Content $targetsConf -Encoding UTF8)) {
+        $parts = @((($ln -replace '#.*$', '').Trim()) -split '\s+' | Where-Object { $_ })
+        if ($parts.Count -eq 2) { $runnerTarget[$parts[0]] = $parts[1] }
     }
+}
+foreach ($agentHome in @(
+        @{ Tool = 'codex'; Root = $codexHome;  Dst = Join-Path $HOME '.agents\skills' }
+        @{ Tool = 'agy';   Root = $geminiHome; Dst = Join-Path $geminiHome 'config\paisetup-skills' })) {
+    if (-not (Test-Path $agentHome.Root)) { continue }
     foreach ($bundle in @($skillSrc, (Join-Path $src '.agents\skills'))) {
         if (-not (Test-Path $bundle)) { continue }
         foreach ($f in (Get-ChildItem $bundle -Recurse -File |
                         Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
             $rel = $f.FullName.Substring($bundle.Length + 1)
             $name = ($rel -split '\\')[0]
-            if (($localSkills -contains $name) -or ($claudeOnly -contains $name)) { continue }
-            $targets += @{ From = $f.FullName; To = Join-Path $agentsSkillDst $rel }
+            if (($localSkills -contains $name) -or ($runnerTarget[$name] -eq $agentHome.Tool)) { continue }
+            $targets += @{ From = $f.FullName; To = Join-Path $agentHome.Dst $rel }
         }
     }
 }

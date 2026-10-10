@@ -1474,41 +1474,48 @@ $CcBgVarsBySite = @{
   }
 }
 $CcBgVars       = $CcBgVarsBySite[$(if ($inside) { 'inside' } else { 'outside' })]
-$wantCcBg       = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
+# ⚠ **맡기는 쪽은 Claude 나 agy 다** — 래퍼가 읽는 자리 값과 파이썬은 둘 가운데 하나라도 서면 선다(결정 0099).
+#   Codex 가 받는 쪽으로 서는 자리는 사외이거나, 사내에서 Codex 회사 설정이 서는 자리다.
+$codexReceives  = [bool](($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
+$wantCcBgClaude = [bool](($PickKeys -contains 'claude') -and $codexReceives)
+$wantCcBgAgy    = [bool]($hostAgy -and $codexReceives)
+$wantCcBg       = [bool]($wantCcBgClaude -or $wantCcBgAgy)
 # ── Claude 맡기기 — 스킬 `claude-background` (claude-config 결정 0098) ──────────────────────────────
 # 위 Codex · Copilot 맡기기의 거울이다 — Codex 나 agy 가 맡기는 쪽이고 Claude 가 받는다. 받는 Claude 는 읽기 도구만 열고 뜬다.
 # ⚠ **Codex 쪽 조건은 위와 같은 사실이다** — 두 CLI 가 다 서는 자리에서 서로에게 맡긴다. 그래서 따로 짓지 않고 가리킨다.
-#   agy 쪽은 Claude 와 안티그래비티를 같이 고르면 선다 — agy 도 Codex 와 같은 홈의 스킬을 읽는다(결정 0099).
-$wantClaudeBg   = [bool]($wantCcBg -or (($PickKeys -contains 'claude') -and $hostAgy))
+#   agy 쪽은 Claude 와 안티그래비티를 같이 고르면 선다(결정 0099).
+$wantClaudeBgCodex = $wantCcBgClaude
+$wantClaudeBgAgy   = [bool](($PickKeys -contains 'claude') -and $hostAgy)
+$wantClaudeBg      = [bool]($wantClaudeBgCodex -or $wantClaudeBgAgy)
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091 · 0097) ──────
-# 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — Claude 홈(`~/.claude/skills`)과 Codex · agy 홈(`~/.agents/skills`).
-# Codex 와 agy 는 같은 홈을 읽는다 — agy 는 스킬 목록(`.gemini.global/skills.json`)이 그 홈을 통째로 열고 제게 맡기는
-# 러너(`agy-background`)만 뺀다(결정 0099). Codex 나 안티그래비티를 고르면 Claude 를 고른 자리와 같은 기본기를 받는다
-# (0097 · 0099). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽** 홈에 산다: Codex 에게 맡기는 러너는 Claude 홈,
-# Claude 에게 맡기는 러너는 Codex · agy 홈.
+# 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — 도구마다 제 홈을 든다: Claude `~/.claude/skills` · Codex
+# `~/.agents/skills` · agy `~/.gemini/config/paisetup-skills`. Codex 나 안티그래비티를 고르면 Claude 를 고른 자리와 같은
+# 기본기를 받는다(0097 · 0099). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽** 홈에 살고 **받는 쪽** 홈에는 안 간다
+# (받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다.
 # 제작자 설정 칸을 켜면 6 칸이 Claude 홈에 묶음 전부를 까므로, Claude 쪽 조건은 칸을 끈 자리에서만 일을 한다
-# (7 칸의 「칸 없이 까는 스킬」). Agents 쪽은 칸과 무관하게 이 표대로 깐다. 모두 규범을 안 읽어도 홀로 선다.
+# (7 칸의 「칸 없이 까는 스킬」). Codex · Agy 쪽은 칸과 무관하게 이 표대로 깐다. 모두 규범을 안 읽어도 홀로 선다.
+# ⚠ **러너의 받는 쪽은 설정 저장소의 `deploy.skills.targets.conf` 와 같은 사실이다** — 그 검사가 이 표의 칸과 견준다.
 $hostClaude = [bool]($PickKeys -contains 'claude')
 $hostCodex  = [bool]($PickKeys -contains 'codex')
 $FreeSkills = [ordered]@{
   # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
-  'drm-office-read'          = @{ Claude = $hostClaude; Agents = [bool]($hostCodex -or $hostAgy) }
+  'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
-  'inhouse-app'              = @{ Claude = $hostClaude; Agents = [bool]($hostCodex -or $hostAgy) }
+  'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
-  'agent-envelope'           = @{ Claude = $hostClaude; Agents = [bool]($hostCodex -or $hostAgy) }
-  # agy 에게 맡기고 한도에서 넘긴다 — Agents 칸은 Codex 몫이다(agy 스킬 목록이 이것을 뺀다)
-  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Agents = [bool]($hostCodex -and $wantAgyDelegate) }
-  # Codex 에게 뒤에서 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude
-  'codex-copilot-background' = @{ Claude = $wantCcBg; Agents = $false }
-  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy
-  'claude-background'        = @{ Claude = $false; Agents = $wantClaudeBg }
+  'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
+  # agy 에게 맡기고 한도에서 넘긴다 — 받는 쪽 agy 홈에는 안 간다
+  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Codex = [bool]($hostCodex -and $wantAgyDelegate); Agy = $false }
+  # Codex 에게 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude · agy, 받는 쪽 Codex 홈에는 안 간다
+  'codex-copilot-background' = @{ Claude = $wantCcBgClaude; Codex = $false; Agy = $wantCcBgAgy }
+  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy, 받는 쪽 Claude 홈에는 안 간다
+  'claude-background'        = @{ Claude = $false; Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy }
 }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
 if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
-if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 백그라운드 래퍼가 pythonw 로 돈다' }
+if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 맡기기 래퍼가 파이썬으로 돈다' }
 if ($wantClaudeBg)    { $needPythonWhy += 'Claude 맡기기 래퍼가 python 으로 돈다' }
 if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex DRM · 그림 훅이 파이썬으로 돈다' }
 if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 파이썬으로 돈다' }
@@ -3435,45 +3442,55 @@ if (-not $WithPersonalConfig) {
   }
 }
 
-# ── Codex · agy 홈의 스킬 — 위 `$FreeSkills` 의 Agents 칸 · 제작자 칸 (결정 0097 · 0099) ─────────────────────
-# Codex 가 사용자 스킬을 읽는 자리는 `~/.agents/skills` 다(Codex 공식 문서 「Build skills」 — 사용자 범위). `~/.claude/skills`
-# 사본만으로는 Codex 가 스킬을 못 찾는다. agy 도 이 자리를 읽는다 — agy 스킬 목록이 이 자리를 통째로 연다(아래
-# 「agy 스킬 목록」). 무엇을 까나는 둘이 정한다:
-#   * 칸 없이 — 표의 Agents 칸(Codex 나 안티그래비티를 고르면)
-#   * 제작자 설정 칸 + Codex 나 안티그래비티 — Claude 홈처럼 묶음 전부. 다만 위 표에 든 스킬은 그 Agents 칸을 따른다 —
-#     맡기기 러너는 맡기는 쪽 홈에 산다(0097). 설정 저장소의 `deploy.ps1` 이 같은 사실을 `deploy.skills.claude-only.conf` 로 든다
-# ⚠ **묶음이 두 곳이다** — 두 홈이 함께 쓰는 스킬은 `.claude\skills`, Codex 가 맡기는 쪽일 때만 뜻이 서는 스킬은
-#   `.agents\skills` 에 산다. 뒤엣것을 `.claude\skills` 에 두면 제작자 설정 칸(6 칸)이 Claude 홈에도 깔아, 모든 Claude
-#   세션의 스킬 목록에 쓸 일 없는 줄이 는다.
+# ── Codex · agy 홈의 스킬 — 위 `$FreeSkills` 의 Codex · Agy 칸 · 제작자 칸 (결정 0097 · 0099) ─────────────────
+# 도구마다 제 홈이다 — Codex 는 `~/.agents/skills`(Codex 공식 문서 「Build skills」 — 사용자 범위 · `~/.claude/skills` 사본만으로는
+# 못 찾는다), agy 는 `~/.gemini/config/paisetup-skills`(agy 는 스킬 목록이 여는 자리만 읽는다 — 아래 「agy 스킬 목록」).
+# 무엇을 까나는 둘이 정한다:
+#   * 칸 없이 — 표의 그 도구 칸
+#   * 제작자 설정 칸 — Claude 홈처럼 묶음 전부. 다만 위 표에 든 스킬은 그 칸을 따른다 — 러너는 받는 쪽 홈에 안 간다
+# ⚠ **묶음이 두 곳이다** — Claude 홈에도 가는 스킬은 `.claude\skills`, Claude 홈에는 안 가는 스킬(Claude 에게 맡기는
+#   러너)은 `.agents\skills` 에 산다. 뒤엣것을 `.claude\skills` 에 두면 제작자 설정 칸(6 칸)이 Claude 홈에도 깔아, 모든
+#   Claude 세션의 스킬 목록에 쓸 일 없는 줄이 는다.
 # ⚠ **옛 자리(`~/.codex/skills`)에 깐 것은 걷는다** — 그 자리를 쓰던 판이 남긴 기록(`~/.codex/.paisetup-skills`)에 적힌
 #   이름만 옮기고 기록을 지운다. 사람이 거기 둔 다른 스킬은 안 건드린다.
 $skillBundle      = Join-Path $Here '.claude\skills'
 $agentSkillBundle = Join-Path $Here '.agents\skills'
-$agentsHomeSkills = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Agents })
-if ($WithPersonalConfig -and ($hostCodex -or $hostAgy)) {
-  $agentsHomeSkills += @(@($skillBundle, $agentSkillBundle) | Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
-                         ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory } | ForEach-Object { $_.Name } |
-                         Where-Object { -not $FreeSkills.Contains($_) })
+$AgySkillHome     = Join-Path $env:USERPROFILE '.gemini\config\paisetup-skills'
+function Get-HomeSkills([string]$Column) {
+  $names = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Column })
+  if ($WithPersonalConfig) {
+    $names += @(@($skillBundle, $agentSkillBundle) | Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
+                ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory } | ForEach-Object { $_.Name } |
+                Where-Object { -not $FreeSkills.Contains($_) })
+  }
+  @($names | Where-Object { $_ } | Select-Object -Unique)
 }
-$agentsHomeSkills = @($agentsHomeSkills | Where-Object { $_ } | Select-Object -Unique)
-if ($hostCodex -or $hostAgy) {
-  $codexSkillHome   = Join-Path $env:USERPROFILE '.agents\skills'
-  $codexFreeDone = @()
-  foreach ($n in $agentsHomeSkills) {
+function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot) {
+  $done = @()
+  foreach ($n in $Names) {
     $from = @($skillBundle, $agentSkillBundle | ForEach-Object { Join-Path $_ $n } |
               Where-Object { Test-Path -LiteralPath (Join-Path $_ 'SKILL.md') }) | Select-Object -First 1
-    if (-not $from) { Write-Host "  Codex · agy 홈 스킬 $n — 이 폴더에 없다"; continue }
-    $to = Join-Path $codexSkillHome $n
+    if (-not $from) { Write-Host "  $Label 스킬 $n — 이 폴더에 없다"; continue }
+    $to = Join-Path $SkillHome $n
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
-    Write-Host "  Codex · agy 홈 스킬 $n — 깔았다" -ForegroundColor Green
-    $codexFreeDone += $n
+    Write-Host "  $Label 스킬 $n — 깔았다" -ForegroundColor Green
+    $done += $n
   }
-  if ($codexFreeDone.Count) {
-    Remove-RetiredSkills -Bundle $skillBundle -ExtraBundle $agentSkillBundle -SkillHome $codexSkillHome `
-                         -Ledger (Join-Path $env:USERPROFILE '.agents\.paisetup-skills') `
-                         -BackupRoot (Join-Path $env:USERPROFILE '.agents\backups') -Installed $codexFreeDone
+  if ($done.Count) {
+    Remove-RetiredSkills -Bundle $skillBundle -ExtraBundle $agentSkillBundle -SkillHome $SkillHome `
+                         -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done
   }
+}
+$codexHomeSkills = if ($hostCodex) { @(Get-HomeSkills 'Codex') } else { @() }
+$agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy') }   else { @() }
+if ($hostAgy) {
+  Install-HomeSkills 'agy 홈' $agyHomeSkills $AgySkillHome (Join-Path $env:USERPROFILE '.gemini\.paisetup-skills') `
+                     (Join-Path $env:USERPROFILE '.gemini\backups')
+}
+if ($hostCodex) {
+  Install-HomeSkills 'Codex 홈' $codexHomeSkills (Join-Path $env:USERPROFILE '.agents\skills') `
+                     (Join-Path $env:USERPROFILE '.agents\.paisetup-skills') (Join-Path $env:USERPROFILE '.agents\backups')
   $oldCodexLedger = Join-Path $env:USERPROFILE '.codex\.paisetup-skills'
   if (Test-Path -LiteralPath $oldCodexLedger) {
     $oldCodexHome = Join-Path $env:USERPROFILE '.codex\skills'
@@ -3491,7 +3508,7 @@ if ($hostCodex -or $hostAgy) {
 
 # ── agy 스킬 목록 — 안티그래비티를 고르면 (결정 0099) ─────────────────────────────────────────
 # agy 는 스킬을 `~/.gemini/config/skills.json` 이 여는 자리만 읽는다(결정 0083 실측). 원본 목록(`.gemini.global/skills.json`)은
-# 위 Codex · agy 홈을 통째로 열고 agy 가 제게 맡기는 러너만 빼는 한 줄이다 — 그래서 칸과 상관없이 같은 파일을 깐다.
+# 위 agy 홈(`paisetup-skills` · 설정 폴더 기준 상대 경로)을 여는 한 줄이다 — 그래서 칸과 상관없이 같은 파일을 깐다.
 # 제작자 칸의 agy 설정 셋(6 칸)도 같은 파일을 깔아, 그 판에서는 여기가 「이미 맞다」로 지난다.
 # ⚠ 있던 파일이 다르면 백업 자리로 먼저 떠 둔다(6 칸의 agy 설정 셋과 같은 손).
 if ($hostAgy) {
@@ -3513,7 +3530,7 @@ if ($hostAgy) {
     }
     New-Item -ItemType Directory -Path (Split-Path -Parent $agyListTo) -Force | Out-Null
     Copy-Item -LiteralPath $agyListFrom -Destination $agyListTo -Force
-    Write-Host "  agy 스킬 목록 — ~/.agents/skills 를 여는 목록을 깔았다$(if ($agyListBk) { " · 옛것은 $agyListBk" })" -ForegroundColor Green
+    Write-Host "  agy 스킬 목록 — agy 홈을 여는 목록을 깔았다$(if ($agyListBk) { " · 옛것은 $agyListBk" })" -ForegroundColor Green
   }
 }
 
@@ -5039,17 +5056,20 @@ if ($freeWant.Count) {
   $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
   $checks += @{ Name = "칸 없이 까는 스킬 ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
 }
-# 까는 칸과 같은 목록(`$agentsHomeSkills`)으로 잰다 — 따로 지으면 까는 것과 재는 것이 갈린다.
-if (($hostCodex -or $hostAgy) -and $agentsHomeSkills.Count) {
-  $codexFreeMiss = @($agentsHomeSkills | Where-Object { -not (Test-Path -LiteralPath (Join-Path $env:USERPROFILE ".agents\skills\$_\SKILL.md")) })
-  $agentsShown = if ($agentsHomeSkills.Count -gt 6) { "$($agentsHomeSkills.Count) 개" } else { $agentsHomeSkills -join ' · ' }
-  $checks += @{ Name = "Codex · agy 홈 스킬 ($agentsShown · ~/.agents/skills)"; Ok = ($codexFreeMiss.Count -eq 0) }
+# 까는 칸과 같은 목록(`$codexHomeSkills` · `$agyHomeSkills`)으로 잰다 — 따로 지으면 까는 것과 재는 것이 갈린다.
+foreach ($hs in @(
+    @{ On = $hostCodex; Label = 'Codex 홈 스킬'; Names = $codexHomeSkills; Dir = (Join-Path $env:USERPROFILE '.agents\skills'); Show = '~/.agents/skills' }
+    @{ On = $hostAgy;   Label = 'agy 홈 스킬';   Names = $agyHomeSkills;   Dir = $AgySkillHome; Show = '~/.gemini/config/paisetup-skills' })) {
+  if (-not $hs.On -or -not $hs.Names.Count) { continue }
+  $homeMiss = @($hs.Names | Where-Object { -not (Test-Path -LiteralPath (Join-Path $hs.Dir "$_\SKILL.md")) })
+  $homeShown = if ($hs.Names.Count -gt 6) { "$($hs.Names.Count) 개" } else { $hs.Names -join ' · ' }
+  $checks += @{ Name = "$($hs.Label) ($homeShown · $($hs.Show))"; Ok = ($homeMiss.Count -eq 0) }
 }
 # agy — 스킬 목록이 일하는 도구 자리를 가리키나 · 훅 둘이 우리 어댑터로 걸렸나 (결정 0099)
 if ($hostAgy) {
   $agyListFromChk = Join-Path $Here '.gemini.global\skills.json'
   $agyListToChk   = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
-  $checks += @{ Name = 'agy 스킬 목록 (~/.gemini/config/skills.json 이 짐과 같다 · ~/.agents/skills 를 연다)'
+  $checks += @{ Name = 'agy 스킬 목록 (~/.gemini/config/skills.json 이 짐과 같다 · agy 홈을 연다)'
                 Ok = ((Test-Path -LiteralPath $agyListFromChk) -and (Test-Path -LiteralPath $agyListToChk) -and
                       ((Get-FileHash -LiteralPath $agyListFromChk).Hash -eq (Get-FileHash -LiteralPath $agyListToChk).Hash)) }
   $agyHooksNow = $null

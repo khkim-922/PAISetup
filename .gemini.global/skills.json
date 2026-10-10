@@ -1,10 +1,7 @@
 {
   "entries": [
     {
-      "path": "../../.agents/skills",
-      "exclude": [
-        "agy-background"
-      ]
+      "path": "paisetup-skills"
     }
   ]
 }
