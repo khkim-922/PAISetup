@@ -771,6 +771,31 @@ $gV.Controls.Add($lnkFeat)
 #   뒤에 깔려, 그대로 두면 저 칸의 바탕이 이 글자를 통째로 가린다(실측 2026-10-08: 링크가 안 보였다).
 $lnkFeat.BringToFront()
 
+# 이 판에서 바뀐 것 — 그 판의 릴리스 노트(결정 0099). 판마다 바뀐 것은 판마다 낡으므로 「제공기능」 페이지에 안 적고
+#   릴리스가 든다. 주소는 값 파일의 `#update-repo` 와 곁의 `VERSION` 에서 짓는다 — 이 파일에 저장소를 안 박는다(아래 새 판
+#   묻기와 같은 결). 둘 중 하나가 없으면 링크를 안 세운다 — 못 짓는 주소를 열게 두지 않는다.
+# ⚠ **「제공기능」 글자 바로 왼쪽에 세운다 — 글자를 재서**(위 링크와 같은 규율).
+$ReleasePage = $null
+$relRepo = Get-Directive 'update-repo'
+if ($relRepo -and $DistVersion) { $ReleasePage = "https://github.com/$relRepo/releases/tag/v$DistVersion" }
+if ($ReleasePage) {
+  $lnkNews = New-Object Windows.Forms.LinkLabel
+  $lnkNews.Text = '바뀐 것'
+  $newsW = [Windows.Forms.TextRenderer]::MeasureText($lnkNews.Text, $F.Font).Width
+  $lnkNews.Size = New-Object Drawing.Size($newsW, 16)
+  $lnkNews.Location = New-Object Drawing.Point(($lnkFeat.Left - 14 - $newsW), $lnkFeat.Top)
+  $lnkNews.Add_LinkClicked({
+    try { Start-Process -FilePath $ReleasePage | Out-Null }
+    catch {
+      [Windows.Forms.MessageBox]::Show(
+        "릴리스 노트를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $ReleasePage,
+        $AppName, 'OK', 'Warning') | Out-Null
+    }
+  })
+  $gV.Controls.Add($lnkNews)
+  $lnkNews.BringToFront()
+}
+
 $lState = New-Label '' 18 (410 + $appRow + $optExtra - $gvCut - $grCut) 500 $false
 
 # 기록 — 몸통이 찍는 줄을 그대로 옮긴다
@@ -1491,14 +1516,16 @@ Sync-PersonalBoxes   # 제작자 칸의 켜짐을 제품 칸 첫 상태에 맞�
 # 옛 제작자 칸으로 자동 실행이 돈 뒤 이 창이 한 번 뜬 판 — 무엇이 바뀌었나를 먼저 알린다(몸통 끝의 「옛 제작자 칸을 이어받은 판의 마무리」)
 if ($PersonalNotice) {
   $F.Add_Shown({
-    [Windows.Forms.MessageBox]::Show(
+    $ans = [Windows.Forms.MessageBox]::Show(
       ('이번 판부터 제작자의 규범 · 룰 · 스킬을 도구마다 고릅니다 — Claude · Codex · agy.' + [Environment]::NewLine + [Environment]::NewLine +
        '자동 실행이 예전 칸을 Claude 로 이어받아 방금 설치했습니다. 그대로 두려면 이 창을 닫으면 됩니다 — 다시 묻지 않습니다.' +
        [Environment]::NewLine + [Environment]::NewLine +
        '바꾸려면 받을 도구를 고르고 [설치 시작]을 누릅니다. 예전 칸은 agy 를 같이 고른 PC 의 agy 에도 규범을 깔았는데, ' +
        '이번 설치에서 그것은 백업 자리로 옮겨졌습니다 — agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
-       '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 「제공 기능」에서 읽을 수 있습니다.'),
-      $AppName, 'OK', 'Information') | Out-Null
+       '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 「제공기능」에서 읽을 수 있습니다.' +
+       $(if ($ReleasePage) { [Environment]::NewLine + [Environment]::NewLine + '이 판에서 바뀐 것을 릴리스 노트에서 자세히 볼까요?' } else { '' })),
+      $AppName, $(if ($ReleasePage) { 'YesNo' } else { 'OK' }), 'Information')
+    if ($ReleasePage -and $ans -eq 'Yes') { try { Start-Process -FilePath $ReleasePage | Out-Null } catch { } }
   })
 }
 [void]$F.ShowDialog()
