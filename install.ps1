@@ -1431,10 +1431,14 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 #   * 맡기기(`$wantAgyDelegate`) — 모델 값 · 래퍼 스킬 · 래퍼가 도는 파이썬. 「자리 × Claude 또는 Codex 와 안티그래비티를
 #     골랐나」의 사실이라 그 둘만 탄다. 래퍼는 누구의 규범과도 무관하게 agy 를 띄우고 넘기는 도구다.
 #   * 설정 셋(`$wantAgyKit`)은 제작자 설정 칸을 탄다 — 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다.
-#     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다.
+#     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다. 맡기는 쪽이 없어도 선다 — agy 를
+#     홀로 쓰는 사람에게도 제작자 칸은 같은 세트다(결정 0099).
+#   * 일하는 도구 스킬 · 훅(`$hostAgy`)은 칸 없이 안티그래비티를 고르면 선다(결정 0099) — 아래 「Codex · agy 홈의 스킬」 ·
+#     「agy 스킬 목록」 · 「agy 훅」 칸.
+$hostAgy         = [bool]($PickKeys -contains 'antigravity')
 $wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
-$wantAgyDelegate = [bool]($wantAgentHost -and ($PickKeys -contains 'antigravity'))
-$wantAgyKit      = [bool]($WithPersonalConfig -and $wantAgyDelegate)
+$wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
+$wantAgyKit      = [bool]($WithPersonalConfig -and $hostAgy)
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
 # Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
 # ⚠ **Claude 와 Codex 를 같이 고르면 선다 — 맡기는 쪽(Claude)과 받는 쪽(Codex)이 다 있어야 한다. 사내는 Codex 를 회사
@@ -1477,6 +1481,8 @@ $wantCcBg       = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contain
 $wantClaudeBg   = $wantCcBg
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091 · 0097) ──────
 # 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — Claude 홈(`~/.claude/skills`)과 Codex 홈(`~/.agents/skills`).
+# agy 도 그 Codex 홈의 스킬을 읽는다 — 다만 agy 스킬 목록이 이름을 고르므로, agy 몫은 이 표가 아니라 그 목록이 든다
+# (아래 `$AgyBaseSkills` · 결정 0099).
 # Codex 를 고르면 Claude 를 고른 자리와 같은 기본기를 받는다(0097). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽**
 # 홈에 산다: Codex 에게 맡기는 러너는 Claude 홈, Claude 에게 맡기는 러너는 Codex 홈.
 # 제작자 설정 칸을 켜면 6 칸이 Claude 홈에 묶음 전부를 까므로, Claude 쪽 조건은 칸을 끈 자리에서만 일을 한다
@@ -1497,6 +1503,17 @@ $FreeSkills = [ordered]@{
   # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex
   'claude-background'        = @{ Claude = $false; Codex = $wantClaudeBg }
 }
+# agy 가 칸 없이 받는 일하는 도구 스킬 — agy 스킬 목록(`.gemini.global/skills.json`)의 `~/.agents/skills` 줄이 진본이다.
+# agy 는 그 목록에 적힌 이름만 읽으므로, 여기 따로 적으면 까는 것과 읽는 것이 갈린다. 그래서 그 줄에서 읽는다.
+$AgySkillsList    = Join-Path $Here '.gemini.global\skills.json'
+$AgyBaseEntryPath = '../../.agents/skills'
+$AgyBaseSkills    = @()
+if (Test-Path -LiteralPath $AgySkillsList) {
+  try {
+    $AgyBaseSkills = @((Get-Content -LiteralPath $AgySkillsList -Raw -Encoding UTF8 | ConvertFrom-Json).entries |
+                       Where-Object { $_.path -eq $AgyBaseEntryPath } | ForEach-Object { $_.include_only })
+  } catch { $AgyBaseSkills = @() }
+}
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
@@ -1504,6 +1521,7 @@ if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw
 if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 백그라운드 래퍼가 pythonw 로 돈다' }
 if ($wantClaudeBg)    { $needPythonWhy += 'Claude 맡기기 래퍼가 python 으로 돈다' }
 if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex DRM · 그림 훅이 파이썬으로 돈다' }
+if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 파이썬으로 돈다' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
@@ -3427,28 +3445,39 @@ if (-not $WithPersonalConfig) {
   }
 }
 
-# ── Codex 홈의 스킬 — 위 `$FreeSkills` 의 Codex 칸 (결정 0097) ──────────────────────────────
+# ── Codex · agy 홈의 스킬 — 위 `$FreeSkills` 의 Codex 칸 · `$AgyBaseSkills` · 제작자 칸 (결정 0097 · 0099) ─────────
 # Codex 가 사용자 스킬을 읽는 자리는 `~/.agents/skills` 다(Codex 공식 문서 「Build skills」 — 사용자 범위). `~/.claude/skills`
-# 사본만으로는 Codex 가 스킬을 못 찾는다. 제작자 설정 칸과 관계없이 이 표의 Codex 칸만 따른다.
+# 사본만으로는 Codex 가 스킬을 못 찾는다. agy 도 이 자리의 일하는 도구 스킬을 읽는다 — agy 스킬 목록이 이 자리를
+# 가리킨다(아래 「agy 스킬 목록」). 무엇을 까나는 셋이 정한다:
+#   * 칸 없이 — 표의 Codex 칸(Codex 를 고르면) · `$AgyBaseSkills`(안티그래비티를 고르면)
+#   * 제작자 설정 칸 + Codex — Claude 홈처럼 묶음 전부. 다만 위 표에 든 스킬은 그 Codex 칸을 따른다 — 맡기기 러너는
+#     맡기는 쪽 홈에 산다(0097). 설정 저장소의 `deploy.ps1` 이 같은 사실을 `deploy.skills.claude-only.conf` 로 든다
 # ⚠ **묶음이 두 곳이다** — 두 홈이 함께 쓰는 스킬은 `.claude\skills`, Codex 가 맡기는 쪽일 때만 뜻이 서는 스킬은
 #   `.agents\skills` 에 산다. 뒤엣것을 `.claude\skills` 에 두면 제작자 설정 칸(6 칸)이 Claude 홈에도 깔아, 모든 Claude
 #   세션의 스킬 목록에 쓸 일 없는 줄이 는다.
 # ⚠ **옛 자리(`~/.codex/skills`)에 깐 것은 걷는다** — 그 자리를 쓰던 판이 남긴 기록(`~/.codex/.paisetup-skills`)에 적힌
 #   이름만 옮기고 기록을 지운다. 사람이 거기 둔 다른 스킬은 안 건드린다.
-if ($hostCodex) {
-  $skillBundle      = Join-Path $Here '.claude\skills'
-  $agentSkillBundle = Join-Path $Here '.agents\skills'
+$skillBundle      = Join-Path $Here '.claude\skills'
+$agentSkillBundle = Join-Path $Here '.agents\skills'
+$agentsHomeSkills = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Codex })
+if ($hostAgy) { $agentsHomeSkills += $AgyBaseSkills }
+if ($WithPersonalConfig -and $hostCodex) {
+  $agentsHomeSkills += @(@($skillBundle, $agentSkillBundle) | Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
+                         ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory } | ForEach-Object { $_.Name } |
+                         Where-Object { -not $FreeSkills.Contains($_) })
+}
+$agentsHomeSkills = @($agentsHomeSkills | Where-Object { $_ } | Select-Object -Unique)
+if ($hostCodex -or $hostAgy) {
   $codexSkillHome   = Join-Path $env:USERPROFILE '.agents\skills'
   $codexFreeDone = @()
-  foreach ($n in $FreeSkills.Keys) {
-    if (-not $FreeSkills[$n].Codex) { continue }
+  foreach ($n in $agentsHomeSkills) {
     $from = @($skillBundle, $agentSkillBundle | ForEach-Object { Join-Path $_ $n } |
               Where-Object { Test-Path -LiteralPath (Join-Path $_ 'SKILL.md') }) | Select-Object -First 1
-    if (-not $from) { Write-Host "  Codex 스킬 $n — 이 폴더에 없다"; continue }
+    if (-not $from) { Write-Host "  Codex · agy 홈 스킬 $n — 이 폴더에 없다"; continue }
     $to = Join-Path $codexSkillHome $n
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
-    Write-Host "  Codex 스킬 $n — 깔았다" -ForegroundColor Green
+    Write-Host "  Codex · agy 홈 스킬 $n — 깔았다" -ForegroundColor Green
     $codexFreeDone += $n
   }
   if ($codexFreeDone.Count) {
@@ -3468,6 +3497,38 @@ if ($hostCodex) {
       Write-Host "  Codex 옛 스킬 자리 — $($oldNames -join ' · ') 를 걷었다 (옮긴 자리: $oldBk)" -ForegroundColor Green
     }
     Remove-Item -LiteralPath $oldCodexLedger -Force
+  }
+}
+
+# ── agy 스킬 목록 — 칸 없이 일하는 도구 줄만 (결정 0099) ─────────────────────────────────────
+# agy 는 스킬을 `~/.gemini/config/skills.json` 이 고른 이름만 읽는다(결정 0083 실측). 제작자 설정 칸을 켜면 6 칸이 그
+# 파일을 통째로(일하는 도구 줄 + 제작자 줄) 깔고, 끄면 여기서 **같은 원본의 일하는 도구 줄만** 뽑아 쓴다 — 줄을
+# 여기 따로 적지 않는다.
+# ⚠ **제작자 칸이 깐 것을 덮지 않는다** — 칸을 켠 판에서는 이 칸이 서지 않는다(`$wantAgyKit`).
+# ⚠ 있던 파일이 다르면 백업 자리로 먼저 떠 둔다(6 칸의 agy 설정 셋과 같은 손).
+if ($hostAgy -and -not $wantAgyKit) {
+  $agyListTo = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
+  if (-not $AgyBaseSkills.Count) {
+    Write-Host '  ! agy 스킬 목록 — 원본(.gemini.global/skills.json)에 일하는 도구 줄이 없어 안 쓴다' -ForegroundColor Red
+    $Fails.Add('agy 스킬 목록 (원본 줄 없음)')
+  } else {
+    $agyListText = ([ordered]@{ entries = @([ordered]@{ path = $AgyBaseEntryPath; include_only = @($AgyBaseSkills) }) } |
+                    ConvertTo-Json -Depth 5) + "`n"
+    $agyListBk  = $null
+    $agyListOld = if (Test-Path -LiteralPath $agyListTo) { [IO.File]::ReadAllText($agyListTo) } else { $null }
+    if ($agyListOld -eq $agyListText) {
+      Write-Host '  agy 스킬 목록 — 이미 맞다'
+    } else {
+      if ($null -ne $agyListOld) {
+        $agyListBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        New-Item -ItemType Directory -Path $agyListBk -Force | Out-Null
+        Copy-Item -LiteralPath $agyListTo -Destination (Join-Path $agyListBk 'skills.json') -Force
+        if ((Get-Item -LiteralPath $agyListTo -Force).LinkType) { Remove-Item -LiteralPath $agyListTo -Force }
+      }
+      New-Item -ItemType Directory -Path (Split-Path -Parent $agyListTo) -Force | Out-Null
+      [IO.File]::WriteAllText($agyListTo, $agyListText, (New-Object Text.UTF8Encoding($false)))
+      Write-Host "  agy 스킬 목록 — 일하는 도구 줄을 썼다 ($($AgyBaseSkills -join ' · '))$(if ($agyListBk) { " · 옛것은 $agyListBk" })" -ForegroundColor Green
+    }
   }
 }
 
@@ -3701,6 +3762,72 @@ if ($PickKeys -contains 'codex') {
       } else {
         Write-Host '  Codex 훅 — 이미 맞다'
       }
+    }
+  }
+}
+
+# ── agy 훅 — DRM 길잡이 · BOM 보정을 ~/.gemini/config/hooks.json 에 얹는다 (결정 0099) ─────────────────
+# 안티그래비티를 고르면 선다 — 자리는 안 가린다(사내 agy CLI 도 같은 홈 설정을 읽는다 · 0086). 배선의 진본은 씨앗의
+# `agy-hooks.py` 다: 우리 이름(`paisetup-…`)의 항목만 얹고 남의 항목은 두며, 사람이 끈 우리 항목은 꺼진 채 둔다.
+# ⚠ **씨앗 자리의 것을 부른다** — 배선 명령에 부른 파일의 절대 경로가 박힌다. 이 폴더의 사본을 부르면 내려받은
+#   임시 폴더를 가리키게 된다.
+# ⚠ 다섯 홈 훅 가운데 둘만이다 — 나머지 셋이 agy 에 안 가는 까닭은 그 파일의 머리말이 든다.
+if ($hostAgy) {
+  $agyHookPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\agy-hooks.py'
+  $AgyHooksCfg  = Join-Path $env:USERPROFILE '.gemini\config\hooks.json'
+  if (-not (Test-Path -LiteralPath $agyHookPlant)) {
+    Write-Host '  ! agy 훅 — 씨앗의 어댑터가 없어 안 심는다' -ForegroundColor Red
+    $Fails.Add('agy 훅 (씨앗이 없다)')
+  } elseif (-not (Test-Runs 'python' '--version')) {
+    Write-Host '  ! agy 훅 — python 이 안 서서 안 심는다' -ForegroundColor Red
+    $Fails.Add('agy 훅 (python 없음)')
+  } else {
+    $agyHookLog = [IO.Path]::GetTempFileName()
+    $agyHookRc = Invoke-Logged 'python' @('-X', 'utf8', $agyHookPlant, 'install', '--config', $AgyHooksCfg) $agyHookLog
+    $agyHookOut = @(Get-Content -LiteralPath $agyHookLog -ErrorAction SilentlyContinue |
+                    ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    if ($agyHookRc -ne 0) {
+      Write-Host '  ! agy 훅 — hooks.json 은 그대로다. 어댑터가 뱉은 끝 줄:' -ForegroundColor Red
+      Show-Log $agyHookLog
+      $Fails.Add('agy 훅 (hooks.json 병합 실패)')
+    } elseif ($agyHookOut -contains 'CHANGED=1') {
+      Write-Host '  agy 훅 — DRM 길잡이 · BOM 보정을 hooks.json 에 심었다' -ForegroundColor Green
+      $agyHookBak = @($agyHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
+      if ($agyHookBak) { Write-Host "     고치기 전 것은 $($agyHookBak.Substring(7)) 에 떠 뒀다" }
+    } else {
+      Write-Host '  agy 훅 — 이미 맞다'
+    }
+  }
+}
+
+# ── Codex 규범 블록 — 제작자 설정 칸 + Codex (결정 0099) ─────────────────────────────────────
+# 6 칸이 홈에 깐 규범(`~/.claude/CLAUDE.md`)과 룰(`~/.claude/rules`)에서 블록을 지어 `~/.codex/AGENTS.md` 의 표지 사이에
+# 얹는다. Codex 는 다른 파일을 끌어오지 못해 뽑아 쓰고, 룰은 「이 파일을 만질 때 이 룰을 읽는다」 한 줄로 가리킨다.
+# 짓는 자의 진본은 씨앗의 `codex-norms.py` 다 — 설정 저장소의 `deploy.ps1` 도 같은 자를 부른다. 사람이 쓴 글은 표지
+# 밖이라 그대로다.
+if ($WithPersonalConfig -and $hostCodex) {
+  $codexNormsPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-norms.py'
+  if (-not (Test-Path -LiteralPath $codexNormsPlant)) {
+    Write-Host '  ! Codex 규범 블록 — 씨앗의 짓는 자가 없어 안 얹는다' -ForegroundColor Red
+    $Fails.Add('Codex 규범 블록 (씨앗이 없다)')
+  } elseif (-not (Test-Runs 'python' '--version')) {
+    Write-Host '  ! Codex 규범 블록 — python 이 안 서서 안 얹는다' -ForegroundColor Red
+    $Fails.Add('Codex 규범 블록 (python 없음)')
+  } else {
+    $codexNormsLog = [IO.Path]::GetTempFileName()
+    $codexNormsRc = Invoke-Logged 'python' @('-X', 'utf8', $codexNormsPlant, '--norms', (Join-Path $homeDir 'CLAUDE.md'),
+                                             '--rules', (Join-Path $homeDir 'rules'),
+                                             '--target', (Join-Path $env:USERPROFILE '.codex\AGENTS.md')) $codexNormsLog
+    $codexNormsOut = @(Get-Content -LiteralPath $codexNormsLog -ErrorAction SilentlyContinue |
+                       ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    if ($codexNormsRc -ne 0) {
+      Write-Host '  ! Codex 규범 블록 — AGENTS.md 는 그대로다. 짓는 자가 뱉은 끝 줄:' -ForegroundColor Red
+      Show-Log $codexNormsLog
+      $Fails.Add('Codex 규범 블록 (AGENTS.md 못 고침)')
+    } elseif ($codexNormsOut -contains 'CHANGED=1') {
+      Write-Host '  Codex 규범 블록 — ~/.codex/AGENTS.md 에 규범 · 룰 가리키기를 얹었다' -ForegroundColor Green
+    } else {
+      Write-Host '  Codex 규범 블록 — 이미 맞다'
     }
   }
 }
@@ -4927,10 +5054,30 @@ if ($freeWant.Count) {
   $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
   $checks += @{ Name = "칸 없이 까는 스킬 ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
 }
-$codexFreeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Codex })
-if ($codexFreeWant.Count) {
-  $codexFreeMiss = @($codexFreeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $env:USERPROFILE ".agents\skills\$_\SKILL.md")) })
-  $checks += @{ Name = "Codex 홈 스킬 ($($codexFreeWant -join ' · ') · ~/.agents/skills)"; Ok = ($codexFreeMiss.Count -eq 0) }
+# 까는 칸과 같은 목록(`$agentsHomeSkills`)으로 잰다 — 따로 지으면 까는 것과 재는 것이 갈린다.
+if (($hostCodex -or $hostAgy) -and $agentsHomeSkills.Count) {
+  $codexFreeMiss = @($agentsHomeSkills | Where-Object { -not (Test-Path -LiteralPath (Join-Path $env:USERPROFILE ".agents\skills\$_\SKILL.md")) })
+  $agentsShown = if ($agentsHomeSkills.Count -gt 6) { "$($agentsHomeSkills.Count) 개" } else { $agentsHomeSkills -join ' · ' }
+  $checks += @{ Name = "Codex · agy 홈 스킬 ($agentsShown · ~/.agents/skills)"; Ok = ($codexFreeMiss.Count -eq 0) }
+}
+# agy — 스킬 목록이 일하는 도구 자리를 가리키나 · 훅 둘이 우리 어댑터로 걸렸나 (결정 0099)
+if ($hostAgy) {
+  $agyListNow = $null
+  try { $agyListNow = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.gemini\config\skills.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
+  $checks += @{ Name = "agy 스킬 목록 (~/.gemini/config/skills.json 이 ~/.agents/skills 를 가리킨다)"
+                Ok = [bool]($agyListNow -and @($agyListNow.entries | Where-Object { $_.path -eq $AgyBaseEntryPath }).Count) }
+  $agyHooksNow = $null
+  try { $agyHooksNow = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.gemini\config\hooks.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
+  $agyWired = @('paisetup-drm-guide', 'paisetup-utf8-bom' | Where-Object {
+    $agyHooksNow -and $agyHooksNow.$_ -and (($agyHooksNow.$_ | ConvertTo-Json -Depth 8 -Compress) -match 'agy-hooks\.py')
+  })
+  $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse)'; Ok = ($agyWired.Count -eq 2) }
+}
+if ($WithPersonalConfig -and $hostCodex) {
+  $codexAgentsMd = Join-Path $env:USERPROFILE '.codex\AGENTS.md'
+  $checks += @{ Name = 'Codex 규범 블록 (~/.codex/AGENTS.md)'
+                Ok = ((Test-Path -LiteralPath $codexAgentsMd) -and
+                      ([IO.File]::ReadAllText($codexAgentsMd)).Contains('<!-- paisetup:norms BEGIN -->')) }
 }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.

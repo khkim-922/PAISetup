@@ -492,7 +492,8 @@ if (Test-Path $rulesSrc) {
 
 # agy(Antigravity CLI) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083)
 # 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 스킬·룰은 위 걸음이 홈 `~/.claude` 에 깐 자리를
-# 가리킨다. 그래서 진본을 옮겨 적지 않고 agy 가 Claude Code 와 같은 판을 읽는다.
+# 가리킨다. 그래서 진본을 옮겨 적지 않고 agy 가 Claude Code 와 같은 판을 읽는다. 스킬 목록의 다른 한 줄은
+# 일하는 도구 스킬이 사는 `~/.agents/skills` 를 가리킨다 — 그 자리는 배포본 설치기가 agy 를 고르면 깐다(0099).
 # ⚠ **agy 가 없는 PC 에는 안 깐다** — `~/.gemini` 가 없으면 건너뛴다. 없는 도구의 설정 폴더를 지어
 #   두면 「깔렸다」로 읽힌다.
 $geminiSrc = Join-Path $src '.gemini.global'
@@ -550,6 +551,50 @@ if (Test-Path $skillSrc) {
         $rel = $f.FullName.Substring($skillSrc.Length + 1)
         if ($localSkills -contains ($rel -split '\\')[0]) { continue }
         $targets += @{ From = $f.FullName; To = Join-Path $dst "skills\$rel" }
+    }
+}
+
+# Codex 홈: 규범 블록(~/.codex/AGENTS.md) · 스킬(~/.agents/skills) (docs/decisions/0099)
+# Codex 는 홈 규범을 `~/.claude` 에서 안 읽고, 스킬도 `~/.agents/skills` 에서 찾는다. 그래서 같은 판을 그 자리에도 민다.
+# ⚠ **Codex 가 없는 PC 에는 안 깐다** — `~/.codex` 가 없으면 건너뛴다(위 agy 와 같은 까닭).
+# ⚠ **규범은 옮겨 쓰지만 손사본이 아니다** — Codex 의 AGENTS.md 는 다른 파일을 끌어오지 못해, 블록 짓는 자
+#   (`.claude/hooks/codex-norms.py`)가 진본에서 매번 다시 짓는다. 사람이 그 파일에 쓴 글은 표지 밖이라 그대로다.
+#   지은 결과를 임시 파일로 받아 여느 배포 대상처럼 민다 — 바뀌었을 때만 백업과 함께 덮는다.
+# ⚠ **스킬은 Claude 홈과 같은 묶음 + Codex 홈 전용 묶음(`.agents/skills/`)** 이다. Claude 가 맡기는 쪽일 때만 뜻이
+#   서는 스킬(`deploy.skills.claude-only.conf`)은 뺀다. 홈에서 걷는 손(-Prune)은 Claude 홈만 본다.
+$codexHome = Join-Path $HOME '.codex'
+if (Test-Path $codexHome) {
+    $agentsSkillDst = Join-Path $HOME '.agents\skills'
+    $claudeOnlyConf = Join-Path $src 'deploy.skills.claude-only.conf'
+    $claudeOnly = @()
+    if (Test-Path $claudeOnlyConf) {
+        $claudeOnly = @(Get-Content $claudeOnlyConf -Encoding UTF8 |
+            ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+            Where-Object   { $_ })
+    }
+    foreach ($bundle in @($skillSrc, (Join-Path $src '.agents\skills'))) {
+        if (-not (Test-Path $bundle)) { continue }
+        foreach ($f in (Get-ChildItem $bundle -Recurse -File |
+                        Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
+            $rel = $f.FullName.Substring($bundle.Length + 1)
+            $name = ($rel -split '\\')[0]
+            if (($localSkills -contains $name) -or ($claudeOnly -contains $name)) { continue }
+            $targets += @{ From = $f.FullName; To = Join-Path $agentsSkillDst $rel }
+        }
+    }
+    $codexPy = Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $codexPy) {
+        $todo += 'Codex 규범 블록 — python 이 없어 ~/.codex/AGENTS.md 를 못 지었다'
+    } else {
+        $codexNormsPlan = Join-Path ([IO.Path]::GetTempPath()) 'deploy-codex-agents.md'
+        $codexNormsOut = @(& $codexPy.Source -X utf8 (Join-Path $src '.claude\hooks\codex-norms.py') `
+            --norms $ruleSrc --rules (Join-Path $src '.claude\rules.global') `
+            --target (Join-Path $codexHome 'AGENTS.md') --out $codexNormsPlan)
+        if ($LASTEXITCODE -eq 0) {
+            $targets += @{ From = $codexNormsPlan; To = Join-Path $codexHome 'AGENTS.md' }
+        } else {
+            $todo += "Codex 규범 블록 — 못 지었다: $($codexNormsOut | Select-Object -Last 1)"
+        }
     }
 }
 

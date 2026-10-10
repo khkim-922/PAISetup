@@ -38,27 +38,32 @@ def patch_paths(text):
             yield m.group(1)
 
 
+def add_bom(path, cwd):
+    """PowerShell 파일이면 UTF-8 BOM 을 앞에 붙인다 — 이미 있거나 다른 파일이면 그대로. agy 어댑터도 부른다."""
+    path = os.path.expanduser(path)
+    if not os.path.isabs(path):
+        path = os.path.join(cwd, path)
+    path = os.path.normpath(path)
+    if not path.lower().endswith(POWERSHELL_EXT) or not os.path.isfile(path):
+        return
+    try:
+        with open(path, 'rb') as f:
+            body = f.read()
+        if not body.startswith(b'\xef\xbb\xbf'):
+            part = path + '.codex-bom-part'
+            with open(part, 'wb') as f:
+                f.write(b'\xef\xbb\xbf' + body)
+            os.replace(part, path)
+    except OSError:
+        return
+
+
 def utf8_bom(data):
     tool_input = data.get('tool_input') if isinstance(data.get('tool_input'), dict) else {}
     patch = str(tool_input.get('patch') or tool_input.get('input') or '')
     cwd = str(data.get('cwd') or os.getcwd())
     for raw in patch_paths(patch):
-        path = os.path.expanduser(raw)
-        if not os.path.isabs(path):
-            path = os.path.join(cwd, path)
-        path = os.path.normpath(path)
-        if not path.lower().endswith(POWERSHELL_EXT) or not os.path.isfile(path):
-            continue
-        try:
-            with open(path, 'rb') as f:
-                body = f.read()
-            if not body.startswith(b'\xef\xbb\xbf'):
-                part = path + '.codex-bom-part'
-                with open(part, 'wb') as f:
-                    f.write(b'\xef\xbb\xbf' + body)
-                os.replace(part, path)
-        except OSError:
-            continue
+        add_bom(raw, cwd)
 
 
 def main():

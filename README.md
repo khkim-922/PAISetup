@@ -63,7 +63,7 @@
 ├─ .claude/                  **두 가지가 한 폴더에 산다** — 홈으로 가는 셋과, 이 저장소가
 │                            제 일에만 쓰는 나머지. 바로 아래 표가 그것을 가른다
 ├─ .agents/                  Codex 가 맡기는 쪽일 때만 쓰는 스킬(skills/) — 아래 「Claude 맡기기」 조건일 때만 ~/.agents/skills 로 간다
-├─ .gemini.global/           agy(안티그래비티 CLI) 설정 셋 — 아래 「agy 묶음」 조건일 때만 ~/.gemini/config 로 간다
+├─ .gemini.global/           agy(안티그래비티 CLI) 설정 셋 — 스킬 목록의 일하는 도구 줄은 안티그래비티를 고르면, 나머지는 제작자 칸까지 켜면 ~/.gemini/config 로 간다
 ├─ agents/                ← 비어 있다. 제 서브에이전트를 여기 넣으면 같이 깔린다
 │
 ├─ README.md                 이 글
@@ -205,13 +205,14 @@ claude.exe 지만 사는 폴더가 다르다.
 
 아래 스킬은 「제작자의 … 규범 · 룰 · 스킬도 깝니다」 칸과 **상관없이** 깔린다. 만든 사람의 일하는 방식이 아니라 회사에서
 일할 때 쓰는 도구라서다 — 모두 그 규범 없이도 혼자 돈다(claude-config 결정 0091). **Codex 를 고르면 Claude 를 고른 자리와
-같은 기본기를 받는다** — 스킬은 Codex 가 읽는 `~/.agents/skills/` 에 깔린다(결정 0097). 맡기기 스킬만 홈이 갈린다 — 일을
-**맡기는 쪽** 홈에 깔린다.
+같은 기본기를 받는다** — 스킬은 Codex 가 읽는 `~/.agents/skills/` 에 깔린다(결정 0097). **안티그래비티를 골라도 같다** — 회사
+문서를 읽는 두 스킬이 같은 자리에 깔리고 agy 스킬 목록이 그 자리를 가리킨다(결정 0099 · 아래 「안티그래비티를 고르면」).
+맡기기 스킬만 홈이 갈린다 — 일을 **맡기는 쪽** 홈에 깔린다.
 
-| 스킬 | 무엇을 하나 | Claude 홈(`~/.claude/skills/`) | Codex 홈(`~/.agents/skills/`) |
+| 스킬 | 무엇을 하나 | Claude 홈(`~/.claude/skills/`) | Codex · agy 홈(`~/.agents/skills/`) |
 |---|---|---|---|
-| `drm-office-read` | 회사 DRM 이 감싼 오피스 · PDF 에서 글자를 뽑는다. 페이지 · 슬라이드를 그림으로 떠서 표 · 배치를 본다 | Claude 를 고르면 | Codex 를 고르면 |
-| `inhouse-app` | 사내 앱을 세우고 사내 LLM 게이트웨이 · SSO · 배포를 붙인다. 회사 코딩 기준(씨앗 `vibecoding`)을 콕 집어 연다 | Claude 를 고르면 | Codex 를 고르면 |
+| `drm-office-read` | 회사 DRM 이 감싼 오피스 · PDF 에서 글자를 뽑는다. 페이지 · 슬라이드를 그림으로 떠서 표 · 배치를 본다 | Claude 를 고르면 | Codex 나 안티그래비티를 고르면 |
+| `inhouse-app` | 사내 앱을 세우고 사내 LLM 게이트웨이 · SSO · 배포를 붙인다. 회사 코딩 기준(씨앗 `vibecoding`)을 콕 집어 연다 | Claude 를 고르면 | Codex 나 안티그래비티를 고르면 |
 | `agent-envelope` | 다른 에이전트에게 일을 맡길 때 누구에게 맡길지 고르고, 그에게 줄 작업 지시서를 짓는다 — 아래 맡기기 스킬들의 앞문이다 | Claude 를 고르면 | Codex 를 고르면 |
 | `agy-background` | agy 에게 일을 맡기고, 한도나 과부하에 걸리면 다음 모델로 넘어간다 — 아래 「agy 묶음」 | Claude 와 안티그래비티를 같이 고르면 | Codex 와 안티그래비티를 같이 고르면 |
 | `codex-copilot-background` | Claude 가 Codex 에게 일(긴 조사 · 큰 코드 읽기 · 리뷰 · 다른 모델의 의견 · 웹 조사)을 뒤에서 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다. 받는 쪽은 읽기 전용이다 — 아래 「Codex · Copilot 맡기기」 | Claude 와 Codex 를 같이 고르면(사내는 Codex 회사 설정이 서는 자리에서) | — |
@@ -221,11 +222,27 @@ claude.exe 지만 사는 폴더가 다르다.
 Claude 홈 설치는 비켜선다** — 저장소 배포가 최신판으로 민다. 깐 이름은 홈마다 기록(`~/.claude/.paisetup-skills` ·
 `~/.agents/.paisetup-skills`)에 남아, 짐에서 빠지는 날 같이 걷힌다.
 
+#### 안티그래비티를 고르면 — 일하는 도구 스킬 · 훅 둘
+
+제품 칸에서 **구글 Antigravity 를 고르면** 칸 없이 아래가 선다 — Claude · Codex 를 안 골라도, 사내든 사외든 같다(결정 0099).
+사내 agy CLI 를 회사 키로 쓸 때도 같은 홈 설정을 읽는다.
+
+| 무엇 | 어디에 |
+|---|---|
+| 스킬 `drm-office-read` · `inhouse-app` — 위 「칸 없이 깔리는 스킬」 | `~/.agents/skills/` — agy 는 스킬 목록이 고른 이름만 읽어서, 목록 `~/.gemini/config/skills.json` 에 그 자리를 여는 줄 하나를 쓴다. 제작자 칸을 켜면 그 파일이 제작자 줄까지 든다(아래 「규범 · 룰 · 스킬」) |
+| 훅 둘 — **DRM 길잡이**: agy 가 Fasoo DRM 에 감긴 파일을 열려 하면 막고, 까닭에 스킬 `drm-office-read` 로 가는 길을 싣는다. **PowerShell UTF-8 BOM 보정**: agy 가 `.ps1` · `.psm1` · `.psd1` 을 쓰면 BOM 을 붙인다 | `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목. 사람이 넣은 다른 항목은 두고, 고치기 전 파일은 곁에 `hooks.json.before-paisetup-<시각>` 으로 떠 둔다. 우리 항목을 `"enabled": false` 로 꺼 두면 다음 설치도 꺼진 채 둔다 |
+| Python — 훅 둘이 돈다 | 개발도구 칸을 꺼도 깐다 |
+
+Claude 홈에 서는 나머지 셋(그림 문 · Bash 겹역슬래시 차단 · 웹 다시 찾기)은 agy 에 안 간다 — agy 는 그림 크기로 비용이
+갈리지 않고 역슬래시를 접지 않아(결정 0083 실측), 막을 사고가 없다. agy 훅에는 사람의 글을 받는 자리가 없어 DRM 길잡이는
+**파일을 열려는 순간**에만 걸린다.
+
 #### agy 묶음 — Claude 또는 Codex 와 안티그래비티를 같이 고르면
 
 제품 칸에서 **Claude 와 구글 Antigravity 를 둘 다** 고르면 사내든 사외든 agy 에게 일을 맡기는 데 드는 셋 — 모델 값 ·
-스킬 `agy-background` · 그 스킬이 도는 Python — 이 선다. agy 가 Claude Code 와 같은 규범 아래서 일하게 하는 설정 셋만은
-「제작자의 … 규범 · 룰 · 스킬도 깝니다」 칸까지 켰을 때 선다 — 가리킬 규범이 그 칸에서 온다(claude-config 결정 0089 · 0091).
+스킬 `agy-background` · 그 스킬이 도는 Python — 이 선다. agy 가 Claude Code 와 같은 규범 아래서 일하게 하는 설정 셋은
+맡기는 쪽과 상관없이 「제작자의 … 규범 · 룰 · 스킬도 깝니다」 칸을 켜면 선다 — 가리킬 규범이 그 칸에서 온다(claude-config
+결정 0089 · 0091 · 0099).
 맡기는 길은 스킬 `agy-background` 하나다 — agy 를 뒤에서 띄워 대화를 안 막고, 끝나면 Claude 가 결과를 거둔다.
 
 | 무엇 | 어디에 |
@@ -233,7 +250,7 @@ Claude 홈 설치는 비켜선다** — 저장소 배포가 최신판으로 민�
 | agy 모델 — **값이 자리마다 다르다.** **사내**는 회사 키가 받는 모델만 쓰고 일의 무게로 가른다 — 무거운 일은 Pro 가 먼저고, 가벼운 일(훑기 · 찾기 · 요약)은 Claude 가 Flash 를 골라 맡긴다. 한도에서 넘기지 않는다(회사 키는 예산 한도라 하나가 막히면 다 막힌다). **사외**는 제미나이를 먼저 쓰고, 그 한도가 차거나 몰려서 안 받으면 다음 모델로 넘어간다. **구글 API 키(`GOOGLE_API_KEY`)가 있으면** 그 키로 제미나이 모델을 하나씩 더 돌린 뒤 Claude 로 간다 — 무료 키는 구글 약관상 보낸 내용이 제품 개선에 쓰일 수 있다. 키가 없으면 그 차례를 건너뛰고 그대로 돈다. 이름(`AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE`)과 자리별 값은 `install.ps1` 의 `$AgyModelVarsBySite` 가 든다. 다른 자리에서 심긴 값이 그대로 남아 있으면 걷는다 | 사용자 환경변수 — 스킬 `agy-background` 가 읽는다 |
 | 스킬 `agy-background` — 위 「칸 없이 깔리는 스킬」 | `~/.claude/skills/` · Codex 를 골랐으면 `~/.agents/skills/` 에도 |
 | Python — 그 스킬의 래퍼가 돈다(Claude 는 `pythonw` 로 뒤에서, Codex 는 `python` 으로 앞에서) | 개발도구 칸을 꺼도 깐다 |
-| agy 설정 셋 — 규범을 가리키는 `AGENTS.md`, 스킬 여섯을 여는 `skills.json`, 룰을 가리키는 `rules.json`. **옮겨 적은 사본이 아니라 아래 칸이 깐 홈 자리를 가리키는 파일이다.** **제작자 칸을 켰을 때만** | `~/.gemini/config/` — 있던 같은 이름은 `~/.claude/backups/install-agy-<시각>/` 로 떠 둔다 |
+| agy 설정 셋 — 규범을 가리키는 `AGENTS.md`, 일하는 도구 줄에 제작자 스킬 다섯을 더 여는 `skills.json`, 룰을 가리키는 `rules.json`. **옮겨 적은 사본이 아니라 아래 칸이 깐 홈 자리를 가리키는 파일이다.** **제작자 칸을 켰을 때만** | `~/.gemini/config/` — 있던 같은 이름은 `~/.claude/backups/install-agy-<시각>/` 로 떠 둔다 |
 
 사외에서 agy 가 로그인 전이면 터미널에서 `agy` 를 한 번 띄워 Google 계정으로 로그인한다(사내는 위 「어디에 붙나」
 대로 회사 키로 선다).
@@ -279,6 +296,14 @@ Claude 홈 설치는 비켜선다** — 저장소 배포가 최신판으로 민�
 | `agents/` | `~/.claude/agents/` — **비어 있다.** 만든 사람의 에이전트는 안 싣는다 |
 
 자리가 비어 있으면 **건너뛰고 실패로 세지 않는다.**
+
+**Codex · 안티그래비티를 골랐으면 그 둘도 같은 세트를 받는다**(결정 0099). 원본은 위 홈 자리 하나이고, 두 도구가 읽는 꼴로만
+잇는다.
+
+| 도구 | 규범 | 룰 | 스킬 |
+|---|---|---|---|
+| Codex | `~/.codex/AGENTS.md` 의 표지(`<!-- paisetup:norms BEGIN -->` · `END`) 사이 블록 — Codex 는 다른 파일을 끌어오지 못해 `~/.claude/CLAUDE.md` 를 뽑아 싣는다. 설치마다 다시 짓고, 표지 밖 사람의 글은 그대로 둔다 | 그 블록 끝의 「이 파일들을 만질 때는 이 룰을 먼저 읽는다」 줄 — 본문은 `~/.claude/rules/` 를 가리킨다 | `~/.agents/skills/` 에 묶음 전부. 맡기기 러너만 위 「칸 없이 깔리는 스킬」 표의 조건을 따른다 |
+| 안티그래비티(agy) | `~/.gemini/config/AGENTS.md` — 홈 규범을 가리키는 한 줄 | `~/.gemini/config/rules.json` — 홈 룰 자리를 가리킨다 | `~/.gemini/config/skills.json` 의 제작자 줄 — agy 에게 맡길 훑기 · 재기 쪽으로 고른 다섯(결정 0083) |
 
 ⚠ **덮어쓰는 것이 아니라 합친다.** 같은 이름은 갈리지만 홈에 이미 있던 **다른 이름은 남는다.**
 깨끗하게 갈려면 `~/.claude/` 의 `skills` · `rules` · `agents` 를 먼저 지우고 깐다.
@@ -440,7 +465,10 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `Bash 겹역슬래시 차단 배선 (…)` · `PowerShell UTF-8 BOM 보정 배선 (…)` | 그림 문 배선 줄과 같다 — 다시 누른다 |
 | `Codex 훅 부품 (…)` | 설정 저장소 씨앗에 DRM · 그림 어댑터와 Bash · BOM 보정, 병합기 · 예시 중 빠진 것이 있다. `설정 저장소 씨앗 (n/m)` 줄을 먼저 보고 다시 누른다 |
 | `Codex 훅 배선 (…)` | `~/.codex/config.toml` 에 네 훅의 명령이 다 서지 않았다. 설치는 우리 항목만 갈고 사람이 넣은 훅은 둔다. 훅을 `[hooks]` 표의 `이벤트 = [ … ]` 가 아닌 꼴(`[[hooks.이벤트]]` 등)로 적었으면 그 이벤트는 건드리지 않고 위에 노란 줄로 알린다 — 그 이벤트에 우리 훅을 직접 더한 뒤 다시 누른다. 빨간 「병합 실패」 줄이면 `~/.codex/config.toml` 은 그대로이고 그 아래 줄이 까닭을 댄다. 새 훅은 다음 Codex 대화형 시작에서 한 번 신뢰한다 |
-| `Codex 홈 스킬 (… · ~/.agents/skills)` | Codex 가 읽는 스킬 자리에 괄호의 스킬이 다 서지 않았다. `~/.agents/` 가 읽기 전용인지 보고 다시 누른다 |
+| `Codex · agy 홈 스킬 (… · ~/.agents/skills)` | Codex · agy 가 읽는 스킬 자리에 괄호의 스킬이 다 서지 않았다. `~/.agents/` 가 읽기 전용인지 보고 다시 누른다 |
+| `agy 스킬 목록 (…)` | `~/.gemini/config/skills.json` 에 `~/.agents/skills` 를 여는 줄이 없다 — agy 가 회사 문서 스킬을 못 본다. 그 파일이 손으로 고친 것이면 백업(`~/.claude/backups/install-agy-*`)을 보고, 다시 누른다 |
+| `agy 훅 배선 (…)` | `~/.gemini/config/hooks.json` 에 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목이 다 서지 않았다. 그 파일이 JSON 으로 안 읽히면 설치가 안 건드린다 — 위쪽 빨간 줄이 까닭을 든다. 고치고 다시 누른다 |
+| `Codex 규범 블록 (~/.codex/AGENTS.md)` | 제작자 칸을 켰는데 그 파일에 규범 블록이 없다. 표지 줄(`<!-- paisetup:norms BEGIN -->` · `END`)이 하나만 남았거나 둘 이상이면 설치가 안 건드린다 — 남은 표지를 지우고 다시 누른다 |
 | `agy 모델 (…)` | 괄호의 환경변수를 못 심었다 — 이름은 자리마다 다르다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 — 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `Codex · Copilot 맡기기 값 (…)` | 괄호의 환경변수를 못 심었다 — `agy 모델` 줄과 같다. 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `agy 설정 (n/m · ~/.gemini/config)` | 설정 셋을 다 못 깔았다 — 괄호의 두 숫자가 「짐과 같은 것/짐에 든 것」이다. `~/.gemini/config` 가 읽기 전용인지 보고 다시 누른다 |
@@ -469,7 +497,9 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **홈 설정의 설치가 넣은 줄** — `~/.claude/settings.json` | `env` 칸에서 위와 같은 이름들, `modelPicker` 칸, `skipWebFetchPreflight` 칸, `hooks` 의 `PreToolUse` 안 `image-gate` · `bash-backslash-deny` 줄 · `PostToolUse` 안 `utf8-bom` 줄 · `PostToolUse` 와 `PostToolUseFailure` 안 `web-retry` 줄 · `UserPromptSubmit` 과 `PreToolUse` 와 `PostToolUseFailure` 안 `drm-guide` 줄을 지운다. 나머지는 사람이 쓰던 설정일 수 있으니 둔다 |
 | **로그인마다 뜨는 프록시 감시 작업** — 작업 이름은 `PGPTProxy-Watchdog` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false`. 프록시가 도는 폴더 `%LOCALAPPDATA%\PGPT-Proxy` 도 지운다. (옛 판이 남긴 것은 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `PGPTProxy`) |
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다. 씨앗 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` — 다른 프로그램도 쓸 수 있으니 필요할 때만 |
-| **칸 없이 깔린 스킬** | `~/.claude/skills/` 의 `drm-office-read` · `inhouse-app` · `agent-envelope` · `agy-background` · `codex-copilot-background`. Codex 를 골랐으면 `~/.agents/skills/` 의 `drm-office-read` · `inhouse-app` · `agent-envelope` · `agy-background` · `claude-background` 와 기록 `~/.agents/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.agents/backups/install-skills-*` |
+| **칸 없이 깔린 스킬** | `~/.claude/skills/` 의 `drm-office-read` · `inhouse-app` · `agent-envelope` · `agy-background` · `codex-copilot-background`. Codex 나 안티그래비티를 골랐으면 `~/.agents/skills/` 의 `drm-office-read` · `inhouse-app` · `agent-envelope` · `agy-background` · `claude-background` 와 기록 `~/.agents/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.agents/backups/install-skills-*` |
+| **안티그래비티의 일하는 도구 줄 · 훅** | `~/.gemini/config/skills.json`(제작자 칸을 안 켰을 때 설치가 쓴 것) · `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목. 다른 항목은 사람이 넣은 것일 수 있으니 둔다. 고치기 전 것은 곁의 `hooks.json.before-paisetup-*` |
+| **Codex 규범 블록** (제작자 칸 + Codex) | `~/.codex/AGENTS.md` 에서 `<!-- paisetup:norms BEGIN -->` 부터 `<!-- paisetup:norms END -->` 까지 지운다. 그 밖은 사람이 쓴 글이다 |
 | **칸을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` · 깐 스킬 기록 `~/.claude/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.claude/backups/install-skills-*` |
 | **agy 묶음** (Claude · 안티그래비티를 골랐을 때 — 설정 셋은 위 칸까지 켰을 때) | 사용자 환경변수 `AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE` · agy 설정 `~/.gemini/config/` 의 `AGENTS.md` · `skills.json` · `rules.json` · 옛것을 떠 둔 `~/.claude/backups/install-agy-*` |
 | **Codex · Copilot 맡기기** (Claude · Codex 를 골랐을 때) | 사용자 환경변수 `CC_BG_AGENTS` · `CC_BG_CODEX_WEB_SEARCH` · `CC_BG_CODEX_WIN_SANDBOX` |

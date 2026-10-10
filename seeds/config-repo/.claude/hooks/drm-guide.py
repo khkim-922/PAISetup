@@ -103,14 +103,17 @@ UNSAFE_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')   # 윈도우 파일 이름�
 
 # ── 스킬 — 자리와 확장자 표 ──────────────────────────────────────────────────────
 def skill_dir():
-    """스킬 폴더 — 이 파일 곁(설정 저장소의 진본) · 홈. `SKILL.md` 와 `read-drm.ps1` 이 다 있어야 선다."""
+    """스킬 폴더 — 이 파일 곁(설정 저장소의 진본) · Claude 홈 · Codex 와 agy 가 같이 쓰는 홈(`~/.agents/skills`).
+    `SKILL.md` 와 `read-drm.ps1` 이 다 있어야 선다. Claude 를 안 고른 PC 에는 뒤엣것만 있다(결정 0097 · 0099)."""
     forced = os.environ.get(SKILL_DIR_ENV)
     if forced is not None:   # 시험이 자리를 주면 그 자리만 — 「없을 때」를 재려면 대체가 없어야 한다
         cands = [forced]
     else:
         here = os.path.dirname(os.path.abspath(__file__))
+        home = os.path.expanduser('~')
         cands = [os.path.normpath(os.path.join(here, '..', 'skills', SKILL)),
-                 os.path.join(os.path.expanduser('~'), '.claude', 'skills', SKILL)]
+                 os.path.join(home, '.claude', 'skills', SKILL),
+                 os.path.join(home, '.agents', 'skills', SKILL)]
     for d in cands:
         if d and os.path.isfile(os.path.join(d, 'SKILL.md')) and os.path.isfile(os.path.join(d, READER)):
             return d
@@ -169,6 +172,29 @@ def wrapped(path):
             return FASOO_MARK in f.read(HEAD_BYTES)
     except OSError:
         return False
+
+
+def ext_pattern(exts):
+    """확장자 표 → (정규식 갈래, 후보를 그 확장자에서 끊는 식). 표가 비면 둘 다 빈 값."""
+    alt = ext_alt(exts) if exts else ''
+    return alt, (re.compile(r'(.*?\.(?:%s))(?![A-Za-z0-9_])' % alt, re.I) if alt else None)
+
+
+def wrapped_paths(toks, ext_re, cwd):
+    """후보 → 감긴 파일의 절대 경로. 다듬고 풀고, 겹친 것은 하나로 접는다. agy 어댑터(`agy-hooks.py`)도 부른다."""
+    seen, hits = set(), []
+    for t in toks:
+        t = trim(t, ext_re)
+        if not t:
+            continue
+        p = resolve(t, cwd)
+        k = os.path.normcase(p)
+        if k in seen:
+            continue
+        seen.add(k)
+        if os.path.isfile(p) and wrapped(p):
+            hits.append(p)
+    return hits
 
 
 # ── 첨부 — 기록의 이 턴 사용자 줄 ─────────────────────────────────────────────────
@@ -337,13 +363,15 @@ def message(event, paths, attached, sdir, out_dir):
         names = ' · '.join(os.path.basename(p) for p in paths)
         if event == 'PostToolUseFailure':
             parts.append('Read 가 진 %s 는 Fasoo DRM 에 감긴 파일이다' % names)
+        elif event == 'PreToolUse':    # agy 어댑터 — 열기 전에 막는 자리(`agy-hooks.py`)
+            parts.append('열려던 %s 는 Fasoo DRM 에 감긴 파일이다' % names)
         else:
             parts.append('이 글이 가리키는 파일 가운데 Fasoo DRM 에 감긴 것: %s' % names)
     if attached:
         parts.append('이 턴의 첨부 가운데 Fasoo DRM 에 감긴 것: %s' % ' · '.join(t for t, _ in attached))
     head = '%s — %s (머리에 DRMONE). 감긴 파일은 Read 와 파서가 형식 인식 단계에서 진다.' % (NAME, ' · '.join(parts))
     if not sdir:
-        return head + (' 글자를 뽑는 스킬 %s 가 이 PC 에 없다(~/.claude/skills 에 없음) — 이 자리에서는 읽을 길이 없다.'
+        return head + (' 글자를 뽑는 스킬 %s 가 이 PC 에 없다(~/.claude/skills · ~/.agents/skills 에 없음) — 이 자리에서는 읽을 길이 없다.'
                        % SKILL)
     written = [p for _, p in attached if p]
     if written:
@@ -382,23 +410,10 @@ def guide(data):
         return 0
     sdir = skill_dir()
     exts = handled_exts(sdir) if sdir else set()
-    alt = ext_alt(exts) if exts else ''
-    ext_re = re.compile(r'(.*?\.(?:%s))(?![A-Za-z0-9_])' % alt, re.I) if alt else None
+    alt, ext_re = ext_pattern(exts)
     if toks is None:
         toks = candidates(text, alt)
-    cwd = str(data.get('cwd') or '')
-    seen, hits = set(), []
-    for t in toks:
-        t = trim(t, ext_re)
-        if not t:
-            continue
-        p = resolve(t, cwd)
-        k = os.path.normcase(p)
-        if k in seen:
-            continue
-        seen.add(k)
-        if os.path.isfile(p) and wrapped(p):
-            hits.append(p)
+    hits = wrapped_paths(toks, ext_re, str(data.get('cwd') or ''))
     attached = []
     if event in ('UserPromptSubmit', 'PreToolUse'):
         pid = str(data.get('prompt_id') or '')
