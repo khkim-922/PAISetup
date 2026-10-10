@@ -19,7 +19,8 @@
 #     **콘솔이 없는데도 한 번 더 띄운다** — 창은 하나만 뜨니 안 보이고, 0.5초만 조용히 샌다.
 # ⚠ `$Unattended` 도 **사람이 칠 것이 아니다** — 로그온 자동 실행이 새 판을 받았을 때
 #   `Setup.exe` 를 **푸는 자로만** 쓰는 자리다. 아래 「무인 갈래」 칸이 든다.
-param([switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade, [switch]$NoConsole, [switch]$Unattended)
+param([switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade, [switch]$NoConsole, [switch]$Unattended,
+      [switch]$PersonalNotice)
 
 $ErrorActionPreference = 'Stop'
 # ⚠ **던지게 두지 않는다.** 출력이 파일로 돌려진 채로 뜨면 이 줄이 걸릴 수 있고, 위 `Stop`
@@ -140,6 +141,7 @@ if (-not $NoConsole) {
   if ($NoDevTools)         { $again += '-NoDevTools' }
   if ($WithPersonalConfig) { $again += '-WithPersonalConfig' }
   if ($PersonalFor)        { $again += @('-PersonalFor', $PersonalFor) }
+  if ($PersonalNotice)     { $again += '-PersonalNotice' }
   if ($NoUpgrade)          { $again += '-NoUpgrade' }
   try {
     $psi = New-Object Diagnostics.ProcessStartInfo
@@ -201,9 +203,9 @@ if (Test-Path -LiteralPath $savedPath) {
     $Saved = @{
       Pick     = if ($pi -ge 0 -and $pi + 1 -lt $al.Count) { @($al[$pi + 1] -split '[,\s]+' | Where-Object { $_ }) } else { @() }
       NoVsCode = $al -contains '-NoVsCode'
-      # 제작자 세트를 받을 도구 — 옛 판이 남긴 `-WithPersonalConfig` 는 「고른 제품 전부」로 읽는다(결정 0099)
+      # 제작자 세트를 받을 도구 — 옛 판이 남긴 `-WithPersonalConfig` 는 Claude 로 읽는다(옛 칸 이름이 「Claude Code 규범」 · 결정 0099)
       Personal = if ($fi -ge 0 -and $fi + 1 -lt $al.Count) { @($al[$fi + 1] -split '[,\s]+' | Where-Object { $_ -and $_ -ne 'none' }) }
-                 elseif ($al -contains '-WithPersonalConfig') { @('claude', 'codex', 'agy') } else { @() }
+                 elseif ($al -contains '-WithPersonalConfig') { @('claude') } else { @() }
     }
   } catch { $Saved = $null }
 }
@@ -412,7 +414,7 @@ $lCfg.Location = New-Object Drawing.Point(16, (51 + $appRow))
 $lCfg.AutoSize = $true
 $gO.Controls.Add($lCfg)
 $personalWant = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ }) }
-                elseif ($WithPersonalConfig) { @('claude', 'codex', 'agy') }
+                elseif ($WithPersonalConfig) { @('claude') }
                 elseif ($Saved) { @($Saved.Personal) } else { @() }
 $cPers = @()
 $px = 250
@@ -1486,4 +1488,17 @@ $F.Add_Shown({
   else { $bGo.Focus() | Out-Null }
 })
 Sync-PersonalBoxes   # 제작자 칸의 켜짐을 제품 칸 첫 상태에 맞춘다
+# 옛 제작자 칸으로 자동 실행이 돌다 이 창이 뜬 판 — 무엇이 바뀌었나를 먼저 알린다(몸통 머리의 「옛 제작자 칸」 칸)
+if ($PersonalNotice) {
+  $F.Add_Shown({
+    [Windows.Forms.MessageBox]::Show(
+      ('이번 판부터 제작자의 규범 · 룰 · 스킬을 도구마다 고릅니다 — Claude · Codex · agy.' + [Environment]::NewLine + [Environment]::NewLine +
+       '예전 칸은 Claude 로 이어받아 채워 두었습니다. 예전 칸은 agy 를 같이 골랐을 때 agy 에도 규범을 깔았으니, ' +
+       'agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
+       '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 「제공 기능」에서 읽을 수 있습니다.' +
+       [Environment]::NewLine + [Environment]::NewLine +
+       '고르고 [설치 시작]을 누르면 다음 로그온부터 다시 창 없이 돕니다. 누르기 전까지는 로그온할 때마다 이 창이 뜹니다.'),
+      $AppName, 'OK', 'Information') | Out-Null
+  })
+}
 [void]$F.ShowDialog()

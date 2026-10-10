@@ -3,7 +3,7 @@
 #   .\install.ps1                    깔고, 없는 값은 묻는다
 #   .\install.ps1 -NoDevTools        git·python·gh 를 건너뛴다 (확장만 쓸 사람)
 #   .\install.ps1 -PersonalFor claude,codex,agy  제작자의 규범·룰·스킬을 그 도구에 (고른 것만 · 결정 0099)
-#   .\install.ps1 -WithPersonalConfig  위를 고른 제품 전부에 (옛 쓰임)
+#   .\install.ps1 -WithPersonalConfig  위를 Claude 에만 (옛 칸 — 이름이 「제작자의 Claude Code 규범」이었다)
 #   .\install.ps1 -NoLaunch          끝에 창을 안 띄운다 (기본은 띄운다)
 #
 # ⚠ **메모리는 여기가 아니다.** 세션 기록은 저장소마다 슬러그 폴더에 깔리는 것이라
@@ -111,6 +111,29 @@ $Here    = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $EnvFile) { $EnvFile = Join-Path $Here 'install.env' }
 $Fails   = New-Object System.Collections.Generic.List[string]
 $Planted = @{}
+
+# ── 옛 제작자 칸으로 창 없이 불리면 — 이번 한 번은 사람이 고르게 한다 (claude-config 결정 0099) ──────────
+# 제작자 칸이 도구마다(Claude · Codex · agy)로 갈렸다. 옛 판이 남긴 자동 실행 기록(`autorun.args`)은 `-WithPersonalConfig`
+# 하나를 들고, 로그온 자동 실행이 그 기록으로 이 몸통을 창 없이(`-Yes`) 부른다. 그대로 깔면 사람이 안 보는 사이에 바뀐다 —
+# 옛 칸은 Claude 에 더해 agy 에도 규범을 깔았고 Codex 에는 안 깔았는데, 새 칸은 도구마다 따로 선다.
+# 그래서 **이 꼴로 불린 판은 깔지 않고 설치 창을 띄운다.** 창은 옛 칸을 Claude 로 이어받아 채우고(칸 이름이 「Claude Code
+# 규범」이었다) 무엇이 바뀌었나를 먼저 알린다. 사람이 고르고 누르면 새 꼴(`-PersonalFor`)이 기록에 적혀 다음 로그온부터는
+# 다시 창 없이 돈다. 창을 닫으면 다음 로그온에 다시 뜬다.
+# ⚠ **창이 부르는 판은 여기 안 걸린다** — 창은 `-PersonalFor` 로 넘긴다. 사람이 콘솔에서 `-WithPersonalConfig` 를 주면
+#   (`-Yes` 없이) Claude 로 읽고 그대로 간다(아래 「제작자 세트를 받을 도구」).
+if ($Yes -and $WithPersonalConfig -and -not $PersonalFor -and -not $Describe) {
+  $uiScript = Join-Path $Here 'install.ui.ps1'
+  if (Test-Path -LiteralPath $uiScript) {
+    try {
+      Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                                                              ('"' + $uiScript + '"'), '-PersonalNotice') | Out-Null
+      Write-Host '제작자 칸이 도구마다로 바뀌었다 — 이번에는 깔지 않고 설치 창을 띄웠다. 받을 도구를 고르고 [설치 시작]을 누르면 다음 로그온부터 다시 창 없이 돈다.' -ForegroundColor Yellow
+      exit 0
+    } catch {
+      Write-Host "  ! 설치 창을 못 띄웠다 — $($_.Exception.Message). 옛 칸을 Claude 로 읽고 그대로 간다." -ForegroundColor Yellow
+    }
+  }
+}
 
 # ── 이 배포본의 판 — **진본은 곁의 `VERSION` 한 줄이고 릴리스 태그가 그 값에서 난다.** ──
 # ⚠ **창(`install.ui.ps1`)도 같은 파일을 같은 꼴로 읽는다.** 값을 넘겨받지 않고 각자 읽는
@@ -1437,11 +1460,12 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 #     「agy 스킬 목록」 · 「agy 훅」 칸.
 $hostAgy         = [bool]($PickKeys -contains 'antigravity')
 # ── 제작자 세트를 받을 도구 — 도구마다 고른다 (결정 0099) ───────────────────────────────────────
-# `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 고른 제품 전부다(옛 쓰임). 고른 제품이 아닌
+# `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 Claude 다(옛 칸 — 이름이 「제작자의 Claude Code
+# 규범」이었다 · 창 없이 불린 판은 위에서 설치 창으로 돌린다). 고른 제품이 아닌
 # 도구는 빠진다 — 깔 홈이 없다. 고른 것은 사용자 환경변수 `PAISETUP_PERSONAL` 로도 심어, 설정 저장소의 배포가 같은 값을
 # 읽는다(6 칸). 아무것도 안 골랐으면 `none` — 비운 값은 「이 설치기를 안 돌렸다」와 갈라야 한다.
 $personalAsked  = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() }) }
-                  elseif ($WithPersonalConfig) { @('claude', 'codex', 'agy') } else { @() }
+                  elseif ($WithPersonalConfig) { @('claude') } else { @() }
 $personalClaude = [bool](($personalAsked -contains 'claude') -and ($PickKeys -contains 'claude'))
 $personalCodex  = [bool](($personalAsked -contains 'codex') -and ($PickKeys -contains 'codex'))
 $personalAgy    = [bool](($personalAsked -contains 'agy') -and $hostAgy)

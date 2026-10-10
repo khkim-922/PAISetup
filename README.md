@@ -328,6 +328,12 @@ Claude 칸을 끄고 Codex · agy 칸만 켠 사람에게 거기 깔면 Claude �
 PC 의 배포(`deploy.ps1`)도 이 값을 읽어 **Codex · agy 쪽은 고른 도구에만** 규범 · 룰 · 스킬을 민다 — Claude 쪽은 그 저장소의
 본업이라 값과 상관없이 민다. 값이 없으면(이 설치를 아직 안 돌린 PC) 있는 도구에 다 민다.
 
+**옛 판에서 올라오면 — 한 번은 사람이 고른다.** 예전에는 칸이 하나(「제작자의 Claude Code 규범 · 룰 · 스킬도 깝니다」)였고,
+켜면 Claude 홈에 더해 안티그래비티를 같이 고른 PC 의 agy 에도 규범을 깔았다(Codex 에는 안 깔았다). 로그온 자동 실행이 그
+옛 칸으로 새 판을 부르면 **그 판은 깔지 않고 설치 창을 띄운다** — 사람이 안 보는 사이에 도구마다 규범이 붙거나 빠지지 않게
+하려는 것이다. 창은 옛 칸을 Claude 로 이어받아 채워 두고 무엇이 바뀌었나를 먼저 알린다. 받을 도구를 고르고 [설치 시작]을
+누르면 새 선택이 자동 실행 기록에 적혀 다음 로그온부터 다시 창 없이 돈다. 누르기 전까지는 로그온할 때마다 그 창이 뜬다.
+
 ⚠ **덮어쓰는 것이 아니라 합친다.** 같은 이름은 갈리지만 홈에 이미 있던 **다른 이름은 남는다.**
 깨끗하게 갈려면 `~/.claude/` 의 `skills` · `rules` · `agents` 를 먼저 지우고 깐다.
 
@@ -412,7 +418,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 ```powershell
 .\Setup.exe -NoDevTools          # 개발 도구(Git · Python · GitHub CLI)를 빼고 깐다 — 창에는 이 칸이 없다
 .\Setup.exe -PersonalFor claude,codex  # 제작자 칸에서 그 도구를 켠 채로 연다(claude · codex · agy)
-.\Setup.exe -WithPersonalConfig  # 제작자 칸을 고른 제품 전부 켠 채로 연다(옛 쓰임)
+.\Setup.exe -WithPersonalConfig  # 제작자 칸을 Claude 만 켠 채로 연다(옛 칸과 같은 뜻)
 .\Setup.exe -NoUpgrade           # 갱신 칸을 끈 채로 연다
 ```
 
