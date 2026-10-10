@@ -1,1 +1,1 @@
-@[norms](~/.claude/CLAUDE.md)
+@[norms](~/.paisetup/norms/norms.md)

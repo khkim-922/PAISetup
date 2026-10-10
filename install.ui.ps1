@@ -19,7 +19,7 @@
 #     **콘솔이 없는데도 한 번 더 띄운다** — 창은 하나만 뜨니 안 보이고, 0.5초만 조용히 샌다.
 # ⚠ `$Unattended` 도 **사람이 칠 것이 아니다** — 로그온 자동 실행이 새 판을 받았을 때
 #   `Setup.exe` 를 **푸는 자로만** 쓰는 자리다. 아래 「무인 갈래」 칸이 든다.
-param([switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade, [switch]$NoConsole, [switch]$Unattended)
+param([switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade, [switch]$NoConsole, [switch]$Unattended)
 
 $ErrorActionPreference = 'Stop'
 # ⚠ **던지게 두지 않는다.** 출력이 파일로 돌려진 채로 뜨면 이 줄이 걸릴 수 있고, 위 `Stop`
@@ -86,7 +86,7 @@ try {
 
 if (-not $uiOk) {
   Write-Host '화면을 못 띄운다 — 콘솔로 진행한다.' -ForegroundColor Yellow
-  & $Engine -NoDevTools:$NoDevTools -WithPersonalConfig:$WithPersonalConfig -NoUpgrade:$NoUpgrade
+  & $Engine -NoDevTools:$NoDevTools -WithPersonalConfig:$WithPersonalConfig -PersonalFor $PersonalFor -NoUpgrade:$NoUpgrade
   # ⚠ **판정을 먼저 집는다.** `Hold-Console` 뒤에 읽으면 그 사이에 도는 것이 `$LASTEXITCODE`
   #   를 갈아치울 수 있고, 그러면 **몸통이 진 판이 0 으로 보고된다.**
   $rc = $LASTEXITCODE
@@ -139,6 +139,7 @@ if (-not $NoConsole) {
   $again = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path, '-NoConsole')
   if ($NoDevTools)         { $again += '-NoDevTools' }
   if ($WithPersonalConfig) { $again += '-WithPersonalConfig' }
+  if ($PersonalFor)        { $again += @('-PersonalFor', $PersonalFor) }
   if ($NoUpgrade)          { $again += '-NoUpgrade' }
   try {
     $psi = New-Object Diagnostics.ProcessStartInfo
@@ -196,10 +197,13 @@ if (Test-Path -LiteralPath $savedPath) {
   try {
     $al = @(Get-Content -LiteralPath $savedPath -Encoding UTF8 | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $pi = [array]::IndexOf($al, '-Pick')
+    $fi = [array]::IndexOf($al, '-PersonalFor')
     $Saved = @{
       Pick     = if ($pi -ge 0 -and $pi + 1 -lt $al.Count) { @($al[$pi + 1] -split '[,\s]+' | Where-Object { $_ }) } else { @() }
       NoVsCode = $al -contains '-NoVsCode'
-      Personal = $al -contains '-WithPersonalConfig'
+      # 제작자 세트를 받을 도구 — 옛 판이 남긴 `-WithPersonalConfig` 는 「고른 제품 전부」로 읽는다(결정 0099)
+      Personal = if ($fi -ge 0 -and $fi + 1 -lt $al.Count) { @($al[$fi + 1] -split '[,\s]+' | Where-Object { $_ -and $_ -ne 'none' }) }
+                 elseif ($al -contains '-WithPersonalConfig') { @('claude', 'codex', 'agy') } else { @() }
     }
   } catch { $Saved = $null }
 }
@@ -397,14 +401,41 @@ $gO.Text = '옵션'; $gO.Location = New-Object Drawing.Point(16, (190 - $gvCut))
 $gO.Size = New-Object Drawing.Size(592, (76 + $appRow + $optExtra))
 $F.Controls.Add($gO)
 
-$cCfg = New-Object Windows.Forms.CheckBox
-$cCfg.Text = '제작자의 Claude Code 규범 · 룰 · 스킬도 깝니다'
+# 제작자 칸 — **도구마다 고른다**(결정 0099). Claude 만 규범을 받고 Codex · agy 는 가볍게 쓰는 사람이 있다. 고른 것은
+#   몸통이 사용자 환경변수 `PAISETUP_PERSONAL` 로 심어 설정 저장소의 배포도 같은 값을 따른다.
 # ⚠ **자리를 박지 않고 앱 줄만큼 민다.** 앱 줄이 없는 판(`-Describe` 가 한 줄도 안 낸 자리)에서
 #   박아 둔 126 은 **칸 높이 밖**이라, 그 판에서는 이 칸이 통째로 안 보인 채 기본값으로 돈다.
-$cCfg.Location = New-Object Drawing.Point(16, (48 + $appRow))
-$cCfg.Size = New-Object Drawing.Size(560, 22)
-$cCfg.Checked = [bool]$WithPersonalConfig -or ($Saved -and $Saved.Personal)
-$gO.Controls.Add($cCfg)
+# ⚠ **제품 칸에서 안 고른 도구는 끈다** — 깔 홈이 없다. 꺼진 칸은 켜져 있어도 넘기지 않는다.
+$lCfg = New-Object Windows.Forms.Label
+$lCfg.Text = '제작자의 규범 · 룰 · 스킬도 깝니다:'
+$lCfg.Location = New-Object Drawing.Point(16, (51 + $appRow))
+$lCfg.AutoSize = $true
+$gO.Controls.Add($lCfg)
+$personalWant = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ }) }
+                elseif ($WithPersonalConfig) { @('claude', 'codex', 'agy') }
+                elseif ($Saved) { @($Saved.Personal) } else { @() }
+$cPers = @()
+$px = 250
+foreach ($pt in @(@{ Key = 'claude'; Pick = 'claude'; Label = 'Claude' },
+                  @{ Key = 'codex';  Pick = 'codex';  Label = 'Codex' },
+                  @{ Key = 'agy';    Pick = 'antigravity'; Label = 'agy' })) {
+  $c = New-Object Windows.Forms.CheckBox
+  $c.Text = $pt.Label
+  $c.AutoSize = $true
+  $c.Location = New-Object Drawing.Point($px, (48 + $appRow))
+  $c.Checked = $personalWant -contains $pt.Key
+  $c.Tag = $pt
+  $gO.Controls.Add($c)
+  $cPers += ,$c
+  $px += 90
+}
+# 제품 칸과 묶는다 — 그 제품을 끄면 이 칸도 꺼진다(고른 값은 남아 다시 켜면 돌아온다)
+function Sync-PersonalBoxes {
+  foreach ($c in $cPers) {
+    $prod = @($cApps | Where-Object { [string]$_.Tag -eq $c.Tag.Pick }) | Select-Object -First 1
+    $c.Enabled = (-not $cApps.Count) -or ($prod -and $prod.Checked)
+  }
+}
 
 # ⚠ **로그온할 때 자동 실행** — 작업 스케줄러(`PAISetup-AutoRun`)가 설치 몸통을 **보이는 콘솔 창**
 #   으로 다시 돌려 깔린 것을 최신으로 올리고 환경을 다시 맞춘다. 설치본 자신도 `#update-repo` 의 최신
@@ -459,6 +490,8 @@ if ($Choices.Count) {
     $cApps += ,$c
     $x += $c.Width + 14
   }
+  # 제작자 칸을 제품 칸에 묶는다(위 「제작자 칸」) — 제품 칸이 여기서야 서므로 묶기도 여기다
+  foreach ($a in $cApps) { $a.Add_CheckedChanged({ Sync-PersonalBoxes }) }
 
   # ⚠ **제품 칸이 까는 것은 바로 그 줄 아래 적는다 — 확장은 빼고.** 확장은 아래 VS Code 칸이 켜졌을
   #   때만 깔리므로 그 칸의 글이 든다. 이 줄이 VS Code 칸 아래 서면 그 칸의 설명으로 읽혀, 「VS Code 를
@@ -904,7 +937,9 @@ $bGo.Add_Click({
   # ⚠ **화면에는 칸이 없다** — Claude Code 를 깔러 온 사람에게 git 은 옵션이 아니다.
   #   인자는 남는다: 콘솔로 이 껍데기를 `-NoDevTools` 로 부른 사람의 뜻은 그대로 넘긴다.
   if ($NoDevTools) { $argv += '-NoDevTools' }
-  if ($cCfg.Checked)      { $argv += '-WithPersonalConfig' }
+  # 제작자 칸 — 켜진 칸 가운데 고른 것만. 하나도 없으면 안 넘긴다(몸통의 기본값이 「없음」이다)
+  $persPicked = @($cPers | Where-Object { $_.Enabled -and $_.Checked } | ForEach-Object { $_.Tag.Key })
+  if ($persPicked.Count) { $argv += @('-PersonalFor', ($persPicked -join ',')) }
   if (-not $cUpg.Checked) { $argv += '-NoUpgrade' }
   if ($cAuto.Checked)     { $argv += '-AutoRun' }
   else                    { $argv += '-NoAutoRun' }
@@ -1450,4 +1485,5 @@ $F.Add_Shown({
   elseif ($tKey -and $tKey.Enabled -and -not $tKey.Text.Trim())  { $tKey.Focus() | Out-Null }
   else { $bGo.Focus() | Out-Null }
 })
+Sync-PersonalBoxes   # 제작자 칸의 켜짐을 제품 칸 첫 상태에 맞춘다
 [void]$F.ShowDialog()

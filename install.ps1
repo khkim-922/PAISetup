@@ -2,7 +2,8 @@
 #
 #   .\install.ps1                    깔고, 없는 값은 묻는다
 #   .\install.ps1 -NoDevTools        git·python·gh 를 건너뛴다 (확장만 쓸 사람)
-#   .\install.ps1 -WithPersonalConfig  개인 규범·룰·스킬까지 (값 파일이 저장소를 가리킬 때)
+#   .\install.ps1 -PersonalFor claude,codex,agy  제작자의 규범·룰·스킬을 그 도구에 (고른 것만 · 결정 0099)
+#   .\install.ps1 -WithPersonalConfig  위를 고른 제품 전부에 (옛 쓰임)
 #   .\install.ps1 -NoLaunch          끝에 창을 안 띄운다 (기본은 띄운다)
 #
 # ⚠ **메모리는 여기가 아니다.** 세션 기록은 저장소마다 슬러그 폴더에 깔리는 것이라
@@ -62,7 +63,7 @@
 #   든다. **설치본 자체도 새 릴리스로 간다** — 값 파일의 `#update-repo` 가 가리키는 최신 릴리스를
 #   받아 지문을 대조한 뒤 풀고, 그 판의 엔진으로 설치를 잇는다(아래 자동 실행 칸의 「설치본 자신을
 #   새 릴리스로 간다」).
-param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [switch]$NoUpgrade,
+param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
       [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun)
 
@@ -1430,15 +1431,27 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 # ⚠ **둘은 조건이 다르다**(결정 0089 · 0091).
 #   * 맡기기(`$wantAgyDelegate`) — 모델 값 · 래퍼 스킬 · 래퍼가 도는 파이썬. 「자리 × Claude 또는 Codex 와 안티그래비티를
 #     골랐나」의 사실이라 그 둘만 탄다. 래퍼는 누구의 규범과도 무관하게 agy 를 띄우고 넘기는 도구다.
-#   * 설정 셋(`$wantAgyKit`)은 제작자 설정 칸을 탄다 — 가리키는 것이 그 칸이 까는 홈 규범·룰·스킬이다.
-#     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다. 맡기는 쪽이 없어도 선다 — agy 를
-#     홀로 쓰는 사람에게도 제작자 칸은 같은 세트다(결정 0099).
+#   * 설정 셋(`$wantAgyKit`)은 제작자 칸의 agy 칸을 탄다 — 가리키는 것이 그 칸이 까는 중립 자리의 규범 · 룰이다.
+#     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다. 맡기는 쪽이 없어도 선다(결정 0099).
 #   * 일하는 도구 스킬 · 훅(`$hostAgy`)은 칸 없이 안티그래비티를 고르면 선다(결정 0099) — 아래 「Codex · agy 홈의 스킬」 ·
 #     「agy 스킬 목록」 · 「agy 훅」 칸.
 $hostAgy         = [bool]($PickKeys -contains 'antigravity')
+# ── 제작자 세트를 받을 도구 — 도구마다 고른다 (결정 0099) ───────────────────────────────────────
+# `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 고른 제품 전부다(옛 쓰임). 고른 제품이 아닌
+# 도구는 빠진다 — 깔 홈이 없다. 고른 것은 사용자 환경변수 `PAISETUP_PERSONAL` 로도 심어, 설정 저장소의 배포가 같은 값을
+# 읽는다(6 칸). 아무것도 안 골랐으면 `none` — 비운 값은 「이 설치기를 안 돌렸다」와 갈라야 한다.
+$personalAsked  = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() }) }
+                  elseif ($WithPersonalConfig) { @('claude', 'codex', 'agy') } else { @() }
+$personalClaude = [bool](($personalAsked -contains 'claude') -and ($PickKeys -contains 'claude'))
+$personalCodex  = [bool](($personalAsked -contains 'codex') -and ($PickKeys -contains 'codex'))
+$personalAgy    = [bool](($personalAsked -contains 'agy') -and $hostAgy)
+$personalAny    = [bool]($personalClaude -or $personalCodex -or $personalAgy)
+$PersonalValue  = @($(if ($personalClaude) { 'claude' }), $(if ($personalCodex) { 'codex' }), $(if ($personalAgy) { 'agy' }) |
+                    Where-Object { $_ }) -join ','
+if (-not $PersonalValue) { $PersonalValue = 'none' }
 $wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
 $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
-$wantAgyKit      = [bool]($WithPersonalConfig -and $hostAgy)
+$wantAgyKit      = $personalAgy
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
 # Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
 # ⚠ **Claude 와 Codex 를 같이 고르면 선다 — 맡기는 쪽(Claude)과 받는 쪽(Codex)이 다 있어야 한다. 사내는 Codex 를 회사
@@ -3333,7 +3346,7 @@ if ($cfg) {
 Write-Elapsed '[5/8] 홈 설정'
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
 # ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다.
-#   `-WithPersonalConfig` 를 줄 때만, 그리고 이 폴더에 실제로 있을 때만 깐다.
+#   제작자 칸의 Claude 칸(`-PersonalFor claude` · 옛 `-WithPersonalConfig`)을 켤 때만, 그리고 이 폴더에 실제로 있을 때만 깐다.
 # ── 묶음에서 빠진 스킬을 홈에서 걷는다 ─────────────────────────────────────────
 # ⚠ **왜 있나.** 위 복사는 `Copy-Item -Recurse -Force` 라 **묶음에 없는 스킬을 안 지운다** — 배포본에서
 #   스킬을 걷어도 한 번 깐 사람 홈에는 옛 사본이 영영 남아 계속 로드된다(씨앗 칸의 거울과 같은 병이다).
@@ -3352,7 +3365,10 @@ Write-Elapsed '[5/8] 홈 설정'
 #   `-Installed` 를 안 주면 묶음 전부를 깐 것으로 친다(6 칸).
 function Remove-RetiredSkills {
   # `$ExtraBundle` — 한 홈에 묶음 두 곳의 스킬이 깔리는 자리(Codex 홈 · 결정 0097). 「묶음에 있다」는 두 곳을 합쳐 잰다.
-  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string]$ExtraBundle)
+  # `$Keep` — 「묶음에 있나」 대신 「이번 목록에 있나」로 잰다(Codex · agy 홈 · 결정 0099). 제작자 칸을 끈 도구의 홈에서
+  #   제작자 스킬이 빠지게 한다. 기록에 적힌 이름만 걷는 것은 같다.
+  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string]$ExtraBundle,
+        [string[]]$Keep)
   if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
   $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
   if ($ExtraBundle -and (Test-Path -LiteralPath $ExtraBundle -PathType Container)) {
@@ -3364,7 +3380,8 @@ function Remove-RetiredSkills {
   } else {
     @('pptx', 'roadmap-doc')   # 과도기 — 위 곁말
   }
-  $gone = @($before | Where-Object { $shipped -notcontains $_ } |
+  $stay = if ($null -ne $Keep) { $Keep } else { $shipped }
+  $gone = @($before | Where-Object { $stay -notcontains $_ } |
             Where-Object { Test-Path -LiteralPath (Join-Path $SkillHome $_) -PathType Container })
   if ($gone.Count -gt 0) {
     $bk = Join-Path $BackupRoot ("install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -3375,15 +3392,21 @@ function Remove-RetiredSkills {
     }
   }
   # 기록을 적는다(위 곁말) — 다음 설치가 이것과 견준다. BOM 없는 UTF-8(이름이 한글이어도 읽힌다).
-  $keep = @(@($before | Where-Object { $shipped -contains $_ }) + @($Installed) | Where-Object { $_ } | Select-Object -Unique)
+  $keep = @(@($before | Where-Object { $stay -contains $_ }) + @($Installed) | Where-Object { $_ } | Select-Object -Unique)
   New-Item -ItemType Directory -Path (Split-Path -Parent $Ledger) -Force | Out-Null
   [IO.File]::WriteAllLines($Ledger, [string[]]$keep, (New-Object Text.UTF8Encoding($false)))
 }
 
 Write-Host ''
 Write-Host '[6/8] 개인 규범·룰·스킬' -ForegroundColor Cyan
-if (-not $WithPersonalConfig) {
-  Write-Host '  건너뜀 — 원하면 -WithPersonalConfig 로 다시 돌린다'
+# 고른 도구 — 설정 저장소의 배포(`deploy.ps1`)가 같은 값을 읽어 Codex · agy 에 무엇을 밀지 정한다(결정 0099).
+if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) {
+  Write-Host "  PAISETUP_PERSONAL — 이미 맞다 ($PersonalValue)"
+} else {
+  Plant-Var 'PAISETUP_PERSONAL' $PersonalValue
+}
+if (-not $personalClaude) {
+  Write-Host '  Claude — 건너뜀 (원하면 설치 창의 제작자 칸에서 Claude 를 켠다 · -PersonalFor claude)'
 } else {
   $pairs = @(
     @{ From = Join-Path $Here '.claude\CLAUDE.global.md'; To = Join-Path $homeDir 'CLAUDE.md';  Name='전역 규범' }
@@ -3403,42 +3426,83 @@ if (-not $WithPersonalConfig) {
   }
   Remove-RetiredSkills -Bundle (Join-Path $Here '.claude\skills') -SkillHome (Join-Path $homeDir 'skills') `
                        -Ledger (Join-Path $homeDir '.paisetup-skills') -BackupRoot (Join-Path $homeDir 'backups')
+}
 
-  # ── agy 설정 셋 — `.gemini.global/*` → `~/.gemini/config/` (claude-config 결정 0083) ──────
-  # 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 스킬·룰은 바로 위에서 깐 홈 `~/.claude` 의 자리를
-  # 상대 경로로 가리킨다. 그래서 여기서 옮겨 적는 진본이 없다.
-  # ⚠ **대상이 링크면 링크를 걷고 쓴다.** `Copy-Item` 은 링크를 따라가 가리키는 원본을 덮는다 — 손으로
-  #   링크를 걸어 둔 PC 에서 그 원본이 한 줄짜리로 바뀐다. 있던 파일은 백업 자리로 먼저 떠 둔다.
-  if ($wantAgyKit) {
-    $agySrc = Join-Path $Here '.gemini.global'
-    $agyDst = Join-Path $env:USERPROFILE '.gemini\config'
-    if (-not (Test-Path -LiteralPath $agySrc -PathType Container)) {
-      Write-Host '  agy 설정 — 이 폴더에 없다'
-    } else {
-      $agyBk = $null
-      $agyN = 0
-      foreach ($f in @(Get-ChildItem -LiteralPath $agySrc -File)) {
-        $to = Join-Path $agyDst $f.Name
-        if ((Test-Path -LiteralPath $to) -and
-            ((Get-FileHash -LiteralPath $f.FullName).Hash -eq (Get-FileHash -LiteralPath $to).Hash)) { continue }
-        if (Test-Path -LiteralPath $to) {
-          if (-not $agyBk) {
-            $agyBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-            New-Item -ItemType Directory -Path $agyBk -Force | Out-Null
-          }
-          Copy-Item -LiteralPath $to -Destination (Join-Path $agyBk $f.Name) -Force
-          if ((Get-Item -LiteralPath $to -Force).LinkType) { Remove-Item -LiteralPath $to -Force }
+# ── 규범 · 룰의 중립 자리 — `~/.paisetup/norms` (결정 0099) ─────────────────────────────────────────
+# Codex 의 규범 블록(룰 줄)과 agy 설정 셋이 가리키는 자리다. Claude 홈(`~/.claude`)은 Claude 가 스스로 싣는 자리라, Claude 칸을
+# 끄고 Codex · agy 칸만 켠 사람에게 거기 깔면 Claude 에도 실린다 — 그래서 따로 둔다. 이름이 `CLAUDE.md` 가 아닌 것도 같은
+# 까닭이다(Claude 는 그 이름을 찾아 싣는다). 이 폴더는 통째로 우리 것이라, 쓸 도구가 없으면 걷는다(백업 자리로 옮긴다).
+$NeutralNorms = Join-Path $env:USERPROFILE '.paisetup\norms'
+if ($personalCodex -or $personalAgy) {
+  New-Item -ItemType Directory -Path (Join-Path $NeutralNorms 'rules') -Force | Out-Null
+  Copy-Item -LiteralPath (Join-Path $Here '.claude\CLAUDE.global.md') -Destination (Join-Path $NeutralNorms 'norms.md') -Force
+  Copy-Item -Path (Join-Path $Here '.claude\rules.global\*.md') -Destination (Join-Path $NeutralNorms 'rules') -Force
+  Write-Host '  규범 · 룰 중립 자리 — 깔았다 (~/.paisetup/norms · Codex · agy 가 가리킨다)' -ForegroundColor Green
+} elseif (Test-Path -LiteralPath $NeutralNorms) {
+  $nnBk = Join-Path (Join-Path $homeDir 'backups') ('install-norms-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+  New-Item -ItemType Directory -Path $nnBk -Force | Out-Null
+  Move-Item -LiteralPath $NeutralNorms -Destination (Join-Path $nnBk 'norms') -Force
+  Write-Host "  규범 · 룰 중립 자리 — 쓸 도구가 없어 걷었다 (옮긴 자리: $nnBk)" -ForegroundColor Green
+}
+
+# ── agy 설정 셋 — `.gemini.global/*` → `~/.gemini/config/` (claude-config 결정 0083) ──────
+# 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 아래 중립 자리(`~/.paisetup/norms`)를, 스킬 목록은 agy 홈을
+# 가리킨다. 그래서 여기서 옮겨 적는 진본이 없다. 제작자 칸의 agy 칸을 켰을 때만 — 끄면 아래가 우리 것만 걷는다.
+# ⚠ **대상이 링크면 링크를 걷고 쓴다.** `Copy-Item` 은 링크를 따라가 가리키는 원본을 덮는다 — 손으로
+#   링크를 걸어 둔 PC 에서 그 원본이 한 줄짜리로 바뀐다. 있던 파일은 백업 자리로 먼저 떠 둔다.
+if ($wantAgyKit) {
+  $agySrc = Join-Path $Here '.gemini.global'
+  $agyDst = Join-Path $env:USERPROFILE '.gemini\config'
+  if (-not (Test-Path -LiteralPath $agySrc -PathType Container)) {
+    Write-Host '  agy 설정 — 이 폴더에 없다'
+  } else {
+    $agyBk = $null
+    $agyN = 0
+    foreach ($f in @(Get-ChildItem -LiteralPath $agySrc -File)) {
+      $to = Join-Path $agyDst $f.Name
+      if ((Test-Path -LiteralPath $to) -and
+          ((Get-FileHash -LiteralPath $f.FullName).Hash -eq (Get-FileHash -LiteralPath $to).Hash)) { continue }
+      if (Test-Path -LiteralPath $to) {
+        if (-not $agyBk) {
+          $agyBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+          New-Item -ItemType Directory -Path $agyBk -Force | Out-Null
         }
-        New-Item -ItemType Directory -Path $agyDst -Force | Out-Null
-        Copy-Item -LiteralPath $f.FullName -Destination $to -Force
-        $agyN++
+        Copy-Item -LiteralPath $to -Destination (Join-Path $agyBk $f.Name) -Force
+        if ((Get-Item -LiteralPath $to -Force).LinkType) { Remove-Item -LiteralPath $to -Force }
       }
-      if ($agyN) {
-        Write-Host "  agy 설정 — 깔았다 ($agyN 개 · ~/.gemini/config)$(if ($agyBk) { " · 옛것은 $agyBk" })" -ForegroundColor Green
-      } else {
-        Write-Host '  agy 설정 — 이미 맞다'
-      }
+      New-Item -ItemType Directory -Path $agyDst -Force | Out-Null
+      Copy-Item -LiteralPath $f.FullName -Destination $to -Force
+      $agyN++
     }
+    if ($agyN) {
+      Write-Host "  agy 설정 — 깔았다 ($agyN 개 · ~/.gemini/config)$(if ($agyBk) { " · 옛것은 $agyBk" })" -ForegroundColor Green
+    } else {
+      Write-Host '  agy 설정 — 이미 맞다'
+    }
+  }
+}
+
+# agy 칸을 끈 판 — 우리 설정 셋(규범 · 룰을 가리키는 둘)만 걷는다. 「우리 것」은 꼴로 가린다: 규범 include 한 줄 ·
+# 룰 자리 한 줄이고 그 자리가 우리가 써 온 두 자리(옛 Claude 홈 · 지금 중립 자리) 가운데 하나다. 다르면 사람이 고친
+# 것이라 둔다. 스킬 목록은 칸과 무관하게 선다(아래 「agy 스킬 목록」).
+if ($hostAgy -and -not $personalAgy) {
+  $agyCfgDir = Join-Path $env:USERPROFILE '.gemini\config'
+  $ours = @()
+  $agMd = Join-Path $agyCfgDir 'AGENTS.md'
+  if ((Test-Path -LiteralPath $agMd) -and
+      ([IO.File]::ReadAllText($agMd).Trim() -match '^@\[norms\]\((~/\.claude/CLAUDE\.md|~/\.paisetup/norms/norms\.md)\)$')) { $ours += $agMd }
+  $agRules = Join-Path $agyCfgDir 'rules.json'
+  if (Test-Path -LiteralPath $agRules) {
+    try {
+      $rj = @((Get-Content -LiteralPath $agRules -Raw -Encoding UTF8 | ConvertFrom-Json).entries)
+      if ($rj.Count -eq 1 -and @('../../.claude/rules', '../../.paisetup/norms/rules') -contains $rj[0].path) { $ours += $agRules }
+    } catch { }
+  }
+  if ($ours.Count) {
+    $agOffBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    New-Item -ItemType Directory -Path $agOffBk -Force | Out-Null
+    foreach ($o in $ours) { Move-Item -LiteralPath $o -Destination (Join-Path $agOffBk (Split-Path -Leaf $o)) -Force }
+    Write-Host "  agy 설정 — 제작자 칸을 꺼 규범 · 룰을 가리키는 것을 걷었다 (옮긴 자리: $agOffBk)" -ForegroundColor Green
   }
 }
 
@@ -3447,7 +3511,8 @@ if (-not $WithPersonalConfig) {
 # 못 찾는다), agy 는 `~/.gemini/config/paisetup-skills`(agy 는 스킬 목록이 여는 자리만 읽는다 — 아래 「agy 스킬 목록」).
 # 무엇을 까나는 둘이 정한다:
 #   * 칸 없이 — 표의 그 도구 칸
-#   * 제작자 설정 칸 — Claude 홈처럼 묶음 전부. 다만 위 표에 든 스킬은 그 칸을 따른다 — 러너는 받는 쪽 홈에 안 간다
+#   * 제작자 칸의 그 도구 칸 — Claude 홈처럼 묶음 전부. 다만 위 표에 든 스킬은 그 칸을 따른다 — 러너는 받는 쪽 홈에
+#     안 간다. 칸을 끄면 그 홈의 기록에 있던 제작자 스킬을 걷는다
 # ⚠ **묶음이 두 곳이다** — Claude 홈에도 가는 스킬은 `.claude\skills`, Claude 홈에는 안 가는 스킬(Claude 에게 맡기는
 #   러너)은 `.agents\skills` 에 산다. 뒤엣것을 `.claude\skills` 에 두면 제작자 설정 칸(6 칸)이 Claude 홈에도 깔아, 모든
 #   Claude 세션의 스킬 목록에 쓸 일 없는 줄이 는다.
@@ -3456,9 +3521,9 @@ if (-not $WithPersonalConfig) {
 $skillBundle      = Join-Path $Here '.claude\skills'
 $agentSkillBundle = Join-Path $Here '.agents\skills'
 $AgySkillHome     = Join-Path $env:USERPROFILE '.gemini\config\paisetup-skills'
-function Get-HomeSkills([string]$Column) {
+function Get-HomeSkills([string]$Column, [bool]$Personal) {
   $names = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Column })
-  if ($WithPersonalConfig) {
+  if ($Personal) {
     $names += @(@($skillBundle, $agentSkillBundle) | Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
                 ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory } | ForEach-Object { $_.Name } |
                 Where-Object { -not $FreeSkills.Contains($_) })
@@ -3478,12 +3543,13 @@ function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome
     $done += $n
   }
   if ($done.Count) {
+    # 이 홈에서는 「이번에 깔 목록에 없는 것」을 걷는다 — 제작자 칸을 끈 도구에서 제작자 스킬이 빠진다(결정 0099)
     Remove-RetiredSkills -Bundle $skillBundle -ExtraBundle $agentSkillBundle -SkillHome $SkillHome `
-                         -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done
+                         -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done -Keep $Names
   }
 }
-$codexHomeSkills = if ($hostCodex) { @(Get-HomeSkills 'Codex') } else { @() }
-$agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy') }   else { @() }
+$codexHomeSkills = if ($hostCodex) { @(Get-HomeSkills 'Codex' $personalCodex) } else { @() }
+$agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy' $personalAgy) }     else { @() }
 if ($hostAgy) {
   Install-HomeSkills 'agy 홈' $agyHomeSkills $AgySkillHome (Join-Path $env:USERPROFILE '.gemini\.paisetup-skills') `
                      (Join-Path $env:USERPROFILE '.gemini\backups')
@@ -3665,12 +3731,12 @@ foreach ($a in $envAssets) {
 }
 
 # ── 칸 없이 까는 스킬 — 위 `$FreeSkills` (결정 0091) ─────────────────────────────────
-# ⚠ **제작자 설정 칸을 켰으면 할 일이 없다** — 6 칸이 묶음 전부를 깔고 기록까지 적었다.
+# ⚠ **제작자 칸의 Claude 칸을 켰으면 할 일이 없다** — 6 칸이 묶음 전부를 깔고 기록까지 적었다.
 # ⚠ **설정 저장소가 그 스킬을 들면 비켜선다** — 그 저장소의 배포가 같은 자리를 최신판으로 민다. 설치까지
 #   깔면 둘이 판마다 번갈아 덮는다(위 씨앗 비켜서기와 같은 규율). 든다는 것은 저장소에
 #   `.claude/skills/<이름>/SKILL.md` 가 있다는 것이다.
 # ⚠ **깐 이름은 6 칸과 같은 기록에 더한다** — 묶음에서 빠지는 날 같은 손(`Remove-RetiredSkills`)이 걷는다.
-if (-not $WithPersonalConfig) {
+if (-not $personalClaude) {
   $skillBundle = Join-Path $Here '.claude\skills'
   $skillHome   = Join-Path $homeDir 'skills'
   $freeDone = @()
@@ -3802,24 +3868,29 @@ if ($hostAgy) {
   }
 }
 
-# ── Codex 규범 블록 — 제작자 설정 칸 + Codex (결정 0099) ─────────────────────────────────────
-# 6 칸이 홈에 깐 규범(`~/.claude/CLAUDE.md`)과 룰(`~/.claude/rules`)에서 블록을 지어 `~/.codex/AGENTS.md` 의 표지 사이에
-# 얹는다. Codex 는 다른 파일을 끌어오지 못해 뽑아 쓰고, 룰은 「이 파일을 만질 때 이 룰을 읽는다」 한 줄로 가리킨다.
-# 짓는 자의 진본은 씨앗의 `codex-norms.py` 다 — 설정 저장소의 `deploy.ps1` 도 같은 자를 부른다. 사람이 쓴 글은 표지
-# 밖이라 그대로다.
-if ($WithPersonalConfig -and $hostCodex) {
+# ── Codex 규범 블록 — 제작자 칸의 Codex 칸 (결정 0099) ───────────────────────────────────────────
+# 위 중립 자리(`~/.paisetup/norms`)의 규범으로 블록을 지어 `~/.codex/AGENTS.md` 의 표지 사이에 얹는다. Codex 는 다른 파일을
+# 끌어오지 못해 뽑아 쓰고, 룰은 「이 파일을 만질 때 이 룰을 읽는다」 한 줄로 중립 자리를 가리킨다. 짓는 자의 진본은 씨앗의
+# `codex-norms.py` 다 — 설정 저장소의 `deploy.ps1` 도 같은 자를 부른다. 사람이 쓴 글은 표지 밖이라 그대로다.
+# ⚠ **Codex 칸을 끄면 블록만 걷는다**(`--remove`) — 블록이 없으면 그대로다.
+if ($hostCodex) {
   $codexNormsPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-norms.py'
-  if (-not (Test-Path -LiteralPath $codexNormsPlant)) {
-    Write-Host '  ! Codex 규범 블록 — 씨앗의 짓는 자가 없어 안 얹는다' -ForegroundColor Red
+  $codexAgentsTarget = Join-Path $env:USERPROFILE '.codex\AGENTS.md'
+  $codexNormsArgs = if ($personalCodex) {
+    @('--norms', (Join-Path $NeutralNorms 'norms.md'), '--rules', (Join-Path $NeutralNorms 'rules'),
+      '--rules-home', '~/.paisetup/norms/rules')
+  } else { @('--remove') }
+  if (-not $personalCodex -and -not (Test-Path -LiteralPath $codexAgentsTarget)) {
+    # 끈 판에 걷을 파일이 없다 — 할 일이 없다
+  } elseif (-not (Test-Path -LiteralPath $codexNormsPlant)) {
+    Write-Host '  ! Codex 규범 블록 — 씨앗의 짓는 자가 없어 손을 못 댔다' -ForegroundColor Red
     $Fails.Add('Codex 규범 블록 (씨앗이 없다)')
   } elseif (-not (Test-Runs 'python' '--version')) {
-    Write-Host '  ! Codex 규범 블록 — python 이 안 서서 안 얹는다' -ForegroundColor Red
+    Write-Host '  ! Codex 규범 블록 — python 이 안 서서 손을 못 댔다' -ForegroundColor Red
     $Fails.Add('Codex 규범 블록 (python 없음)')
   } else {
     $codexNormsLog = [IO.Path]::GetTempFileName()
-    $codexNormsRc = Invoke-Logged 'python' @('-X', 'utf8', $codexNormsPlant, '--norms', (Join-Path $homeDir 'CLAUDE.md'),
-                                             '--rules', (Join-Path $homeDir 'rules'),
-                                             '--target', (Join-Path $env:USERPROFILE '.codex\AGENTS.md')) $codexNormsLog
+    $codexNormsRc = Invoke-Logged 'python' (@('-X', 'utf8', $codexNormsPlant) + $codexNormsArgs + @('--target', $codexAgentsTarget)) $codexNormsLog
     $codexNormsOut = @(Get-Content -LiteralPath $codexNormsLog -ErrorAction SilentlyContinue |
                        ForEach-Object { "$_".Trim() } | Where-Object { $_ })
     if ($codexNormsRc -ne 0) {
@@ -3827,8 +3898,9 @@ if ($WithPersonalConfig -and $hostCodex) {
       Show-Log $codexNormsLog
       $Fails.Add('Codex 규범 블록 (AGENTS.md 못 고침)')
     } elseif ($codexNormsOut -contains 'CHANGED=1') {
-      Write-Host '  Codex 규범 블록 — ~/.codex/AGENTS.md 에 규범 · 룰 가리키기를 얹었다' -ForegroundColor Green
-    } else {
+      if ($personalCodex) { Write-Host '  Codex 규범 블록 — ~/.codex/AGENTS.md 에 규범 · 룰 가리키기를 얹었다' -ForegroundColor Green }
+      else { Write-Host '  Codex 규범 블록 — 제작자 칸을 꺼 ~/.codex/AGENTS.md 에서 걷었다' -ForegroundColor Green }
+    } elseif ($personalCodex) {
       Write-Host '  Codex 규범 블록 — 이미 맞다'
     }
   }
@@ -3842,7 +3914,7 @@ if ($WithPersonalConfig -and $hostCodex) {
 #   그 저장소는 `#config-repo` 를 적은 사람에게만 온다 — 그런데 **몸통과 눈금은 씨앗으로
 #   누구에게나 간다.** 부품이 다 가는데 배선만 선택 칸에 묶여 있었고, 그래서 규범·룰·스킬을
 #   받은 동료 자리에서 이 문이 **조용히 한 번도 안 섰다.** 부품이 오는 자리에 배선도 온다.
-# ⚠ **`-WithPersonalConfig` 를 안 탄다** — 몸통을 나르는 씨앗 칸에 스위치가 없고, 이 문은
+# ⚠ **제작자 칸을 안 탄다** — 몸통을 나르는 씨앗 칸에 스위치가 없고, 이 문은
 #   취향이 아니라 값을 아끼는 장치다. 스위치를 달면 「깔았는데 안 서는」 갈래가 또 생긴다.
 # ⚠ **주인은 저장소 진본이다.** 설정 저장소를 든 사람 자리에서는 세션 훅 몸통이
 #   **저장소 진본**을 가리켜 다시 심는다(설정 저장소를 연 세션 · 로그인 자동 실행의 `--install`). 여기도 매번 갈아타면 매일 자동실행과
@@ -4796,7 +4868,7 @@ try {
       if ($Pick)               { $autoArgs += @('-Pick', $Pick) }
       if ($NoVsCode)           { $autoArgs += '-NoVsCode' }
       if ($NoDevTools)         { $autoArgs += '-NoDevTools' }
-      if ($WithPersonalConfig) { $autoArgs += '-WithPersonalConfig' }
+      if ($personalAny)        { $autoArgs += @('-PersonalFor', $PersonalValue) }
       Set-Content -LiteralPath (Join-Path $setupRoot 'autorun.args') -Value $autoArgs -Encoding UTF8
     } catch {
       Write-Host "  ! 자동 실행이 읽을 선택 파일을 못 남겼다 — $(Say-Why $_)" -ForegroundColor Yellow
@@ -4904,7 +4976,7 @@ foreach ($a in $envAssets) {
 #   같은 자리에 민다 — 설치기가 걷으면 저쪽이 방금 심은 것을 이쪽이 지우는 꼴이 되어, 두 자가
 #   한 자리를 두고 판마다 싸운다. 그래서 여분은 [X] 가 아니고 모자란 것만 문다.
 #   ⚠ 그 대신 **옛 판이 깐 스킬·룰이 홈에 남는 것은 여기서 안 풀린다** — 저쪽 배포가 드는 몫이다.
-if ($WithPersonalConfig -and $pairs) {
+if ($personalClaude -and $pairs) {
   foreach ($p in $pairs) {
     if (-not (Test-Path -LiteralPath $p.From)) { continue }
     $checks += New-CountCheck $p.Name $p.From $p.To
@@ -4913,7 +4985,7 @@ if ($WithPersonalConfig -and $pairs) {
 # ── 그림 문 — **심었다는 초록과 섰다는 것은 다른 명제다** ──────────────────────────
 # ⚠ **되읽어서 잰다.** 위 심는 칸이 「심었다」를 찍지만 그것은 메모리의 객체를 고쳤다는 말이고,
 #   파일에 실제로 그 항목이 있나는 다른 물음이다 — JSON 쓰기가 지면 화면만 초록이 된다.
-# ⚠ **`-WithPersonalConfig` 를 안 탄다** — 심는 칸이 그 스위치 밖에 살므로 재는 자도 밖이다.
+# ⚠ **제작자 칸을 안 탄다** — 심는 칸이 그 칸 밖에 살므로 재는 자도 밖이다.
 #   한쪽만 스위치를 타면 안 켠 사람 자리에서 **심겼는데 안 재지거나 그 반대**가 된다.
 # ⚠ **몸통과 배선을 따로 잰다.** 둘이 한 줄이면 「몸통이 안 실렸다」와 「배선이 못 섰다」가
 #   같은 빨강으로 보이는데, 고칠 자리가 서로 다르다(뽑기 선언 · 이 파일).
@@ -5079,7 +5151,16 @@ if ($hostAgy) {
   })
   $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse)'; Ok = ($agyWired.Count -eq 2) }
 }
-if ($WithPersonalConfig -and $hostCodex) {
+# 고른 도구 값 — 설정 저장소의 배포가 읽는다(결정 0099)
+$checks += @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
+              Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
+if ($personalCodex -or $personalAgy) {
+  $nnFile = Join-Path $NeutralNorms 'norms.md'
+  $checks += @{ Name = '규범 · 룰 중립 자리 (~/.paisetup/norms)'
+                Ok = ((Test-Path -LiteralPath $nnFile) -and
+                      ((Get-FileHash -LiteralPath $nnFile).Hash -eq (Get-FileHash -LiteralPath (Join-Path $Here '.claude\CLAUDE.global.md')).Hash)) }
+}
+if ($personalCodex) {
   $codexAgentsMd = Join-Path $env:USERPROFILE '.codex\AGENTS.md'
   $checks += @{ Name = 'Codex 규범 블록 (~/.codex/AGENTS.md)'
                 Ok = ((Test-Path -LiteralPath $codexAgentsMd) -and
@@ -5196,8 +5277,8 @@ if ($Fails.Count -gt 0) {
   }
   Write-Host ''
 }
-if (-not $WithPersonalConfig) {
-  Write-Host '  개인 규범·룰·스킬까지 원하면:  .\install.ps1 -WithPersonalConfig'
+if (-not $personalAny) {
+  Write-Host '  제작자의 규범·룰·스킬까지 원하면:  설치 창의 제작자 칸에서 도구를 고른다 (.\install.ps1 -PersonalFor claude,codex,agy)'
   Write-Host ''
 }
 

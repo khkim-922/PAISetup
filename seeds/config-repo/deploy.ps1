@@ -490,16 +490,26 @@ if (Test-Path $rulesSrc) {
     }
 }
 
-# agy(Antigravity CLI) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083)
-# 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 스킬·룰은 위 걸음이 홈 `~/.claude` 에 깐 자리를
-# 가리킨다. 그래서 진본을 옮겨 적지 않고 agy 가 Claude Code 와 같은 판을 읽는다. 스킬 목록의 다른 한 줄은
-# 일하는 도구 스킬이 사는 `~/.agents/skills` 를 가리킨다 — 그 자리는 배포본 설치기가 agy 를 고르면 깐다(0099).
+# 제작자 세트를 받을 도구 — 사용자 환경변수 `PAISETUP_PERSONAL`(배포본 설치기의 제작자 칸이 심는다 · docs/decisions/0099)
+# ⚠ **Claude 쪽은 이 값을 안 탄다** — Claude 홈에 규범 · 룰 · 스킬을 미는 것이 이 저장소의 본업이라 늘 민다.
+#   Codex · agy 쪽만 이 값을 따른다 — 사람마다 Codex · agy 는 규범 없이 가볍게 쓸 수 있게.
+# ⚠ **값이 없으면 있는 도구 다** — 그 설치기를 아직 안 돌린 PC 가 지금까지처럼 받는다. `none` 은 아무 도구도 아니다.
+$personalRaw = $env:PAISETUP_PERSONAL
+if (-not $personalRaw) { try { $personalRaw = [Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') } catch { } }
+$personalSet = if ($personalRaw) { @($personalRaw -split '[,\s]+' | Where-Object { $_ }) } else { $null }
+function Test-PersonalFor([string]$Tool) { ($null -eq $personalSet) -or ($personalSet -contains $Tool) }
+
+# agy(Antigravity CLI) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083 · 0099)
+# 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 아래 중립 자리(`~/.paisetup/norms`)를, 스킬 목록은 agy 홈
+# (`~/.gemini/config/paisetup-skills`)을 가리킨다. 그래서 진본을 옮겨 적지 않고 agy 가 Claude Code 와 같은 판을 읽는다.
 # ⚠ **agy 가 없는 PC 에는 안 깐다** — `~/.gemini` 가 없으면 건너뛴다. 없는 도구의 설정 폴더를 지어
 #   두면 「깔렸다」로 읽힌다.
+# ⚠ **스킬 목록만 늘 민다** — 규범 · 룰을 가리키는 둘은 agy 를 제작자 세트 도구로 골랐을 때만이다(위 값).
 $geminiSrc = Join-Path $src '.gemini.global'
 $geminiHome = Join-Path $HOME '.gemini'
 if ((Test-Path $geminiSrc) -and (Test-Path $geminiHome)) {
     foreach ($f in (Get-ChildItem $geminiSrc -File)) {
+        if (($f.Name -ne 'skills.json') -and -not (Test-PersonalFor 'agy')) { continue }
         $targets += @{ From = $f.FullName; To = Join-Path $geminiHome "config\$($f.Name)" }
     }
 }
@@ -577,7 +587,7 @@ if (Test-Path $targetsConf) {
 foreach ($agentHome in @(
         @{ Tool = 'codex'; Root = $codexHome;  Dst = Join-Path $HOME '.agents\skills' }
         @{ Tool = 'agy';   Root = $geminiHome; Dst = Join-Path $geminiHome 'config\paisetup-skills' })) {
-    if (-not (Test-Path $agentHome.Root)) { continue }
+    if (-not (Test-Path $agentHome.Root) -or -not (Test-PersonalFor $agentHome.Tool)) { continue }
     foreach ($bundle in @($skillSrc, (Join-Path $src '.agents\skills'))) {
         if (-not (Test-Path $bundle)) { continue }
         foreach ($f in (Get-ChildItem $bundle -Recurse -File |
@@ -589,14 +599,29 @@ foreach ($agentHome in @(
         }
     }
 }
+# 규범 · 룰의 중립 자리 — Codex 의 룰 줄과 agy 설정 셋이 가리킨다(docs/decisions/0099). Claude 홈(`~/.claude`)은 Claude 가
+# 스스로 싣는 자리라 다른 도구를 위해 거기 두면 Claude 에도 실린다 — 그래서 따로 둔다. 이름이 `CLAUDE.md` 가 아닌 것도 같은
+# 까닭이다(Claude 는 그 이름을 찾아 싣는다).
+if (((Test-Path $codexHome) -and (Test-PersonalFor 'codex')) -or ((Test-Path $geminiHome) -and (Test-PersonalFor 'agy'))) {
+    $neutralNorms = Join-Path $HOME '.paisetup\norms'
+    $targets += @{ From = $ruleSrc; To = Join-Path $neutralNorms 'norms.md' }
+    if (Test-Path $rulesSrc) {
+        foreach ($f in (Get-ChildItem $rulesSrc -Filter *.md)) {
+            $targets += @{ From = $f.FullName; To = Join-Path $neutralNorms "rules\$($f.Name)" }
+        }
+    }
+}
 if (Test-Path $codexHome) {
     $codexPy = Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $codexPy) {
         $todo += 'Codex 규범 블록 — python 이 없어 ~/.codex/AGENTS.md 를 못 지었다'
     } else {
         $codexNormsPlan = Join-Path ([IO.Path]::GetTempPath()) 'deploy-codex-agents.md'
-        $codexNormsOut = @(& $codexPy.Source -X utf8 (Join-Path $src '.claude\hooks\codex-norms.py') `
-            --norms $ruleSrc --rules (Join-Path $src '.claude\rules.global') `
+        # 고르지 않았으면 블록을 걷는 판을 짓는다 — 블록이 없으면 지금 파일과 같아 배포가 안 민다
+        $codexNormsArgs = if (Test-PersonalFor 'codex') {
+            @('--norms', $ruleSrc, '--rules', (Join-Path $src '.claude\rules.global'), '--rules-home', '~/.paisetup/norms/rules')
+        } else { @('--remove') }
+        $codexNormsOut = @(& $codexPy.Source -X utf8 (Join-Path $src '.claude\hooks\codex-norms.py') @codexNormsArgs `
             --target (Join-Path $codexHome 'AGENTS.md') --out $codexNormsPlan)
         if ($LASTEXITCODE -eq 0) {
             $targets += @{ From = $codexNormsPlan; To = Join-Path $codexHome 'AGENTS.md' }

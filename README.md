@@ -83,7 +83,7 @@
 
 | `.claude/` 안의 | 무엇이고 어디로 가나 |
 |---|---|
-| `CLAUDE.global.md` · `rules.global/` · `skills/` (그리고 뿌리의 `agents/`) | **홈으로 가는 셋.** 「제작자의 Claude Code 규범 · 룰 · 스킬도 깝니다」 칸을 켠 사람에게만 `~/.claude/` 로 간다 — **꺼진 것이 기본**이다 |
+| `CLAUDE.global.md` · `rules.global/` · `skills/` (그리고 뿌리의 `agents/`) | **홈으로 가는 셋.** 「제작자의 규범 · 룰 · 스킬도 깝니다」 칸에서 Claude 를 고른 사람에게만 `~/.claude/` 로 간다 — **꺼진 것이 기본**이다. Codex · agy 를 고르면 규범 · 룰은 중립 자리 `~/.paisetup/norms/` 로 간다 |
 | 그 밖의 것 — 커밋 게이트가 쓰는 훅 · 도구 선언 · 전역 설정 · 린터 설정 | **이 저장소 안에서만 쓰고 홈으로는 안 간다.** 만든 사람이 이 저장소에 커밋할 때 쓰는 것들이라 **그 칸을 켜도 안 깔린다.** 안 봐도 된다 |
 
 ⚠ **이 폴더를 사람이 만들 일은 없다.** `Setup.exe` 가 제 안에서 꺼내 제 자리에 편다. 같은 판을
@@ -169,7 +169,7 @@ claude.exe 지만 사는 폴더가 다르다.
 |---|---|---|
 | 설치할 것 — Claude · Codex · 구글 Antigravity · Gemini · GitHub Copilot | Claude · Codex · Antigravity **켜짐**, Gemini · Copilot **꺼짐** | 위 「무엇이 깔리나」 첫 줄 |
 | VS Code 와 켠 것의 확장도 깝니다 | 사내 **켜짐**(못 끈다) · 사외 **꺼짐** | VS Code 와 켠 도구의 확장 — 끄면 둘 다 안 깔린다 |
-| 제작자의 Claude Code 규범 · 룰 · 스킬도 깝니다 | **꺼짐** | 만든 사람의 작업 규율이 같이 들어 있다. 쓸 사람만 켠다 — 안 켜도 설치는 완전하다 |
+| 제작자의 규범 · 룰 · 스킬도 깝니다: Claude · Codex · agy | **다 꺼짐** | 만든 사람의 작업 규율이 같이 들어 있다. **도구마다 고른다** — Claude 만 받고 Codex · agy 는 규범 없이 가볍게 쓸 수 있다. 제품 칸에서 고른 도구의 칸만 켜진다. 안 켜도 설치는 완전하다 |
 | 이미 깔린 것도 최신으로 올립니다 | **켜짐** | 옛 판이 깔려 있으면 올린다 |
 | 로그온할 때 설치 창을 띄워 깔린 것을 최신으로 올리고 환경을 맞춥니다 | **꺼짐** (이미 켜 둔 기계면 켜진 채로 뜬다) | 아래 절 |
 
@@ -244,7 +244,7 @@ Claude 홈에 서는 나머지 셋(그림 문 · Bash 겹역슬래시 차단 · 
 
 제품 칸에서 **Claude 와 구글 Antigravity 를 둘 다** 고르면 사내든 사외든 agy 에게 일을 맡기는 데 드는 셋 — 모델 값 ·
 스킬 `agy-background` · 그 스킬이 도는 Python — 이 선다. agy 가 Claude Code 와 같은 규범 아래서 일하게 하는 설정 셋은
-맡기는 쪽과 상관없이 「제작자의 … 규범 · 룰 · 스킬도 깝니다」 칸을 켜면 선다 — 가리킬 규범이 그 칸에서 온다(claude-config
+맡기는 쪽과 상관없이 「제작자의 … 규범 · 룰 · 스킬도 깝니다」 칸에서 agy 를 고르면 선다 — 가리킬 규범이 그 칸에서 온다(claude-config
 결정 0089 · 0091 · 0099).
 맡기는 길은 스킬 `agy-background` 하나다 — agy 를 뒤에서 띄워 대화를 안 막고, 끝나면 Claude 가 결과를 거둔다.
 
@@ -290,7 +290,7 @@ Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡�
 
 ### 규범 · 룰 · 스킬 — 그 칸이 옮기는 것
 
-「제작자의 Claude Code 규범 · 룰 · 스킬도 깝니다」 칸을 켜면 짐 안의 네 자리가 홈의 네 자리로 간다.
+「제작자의 규범 · 룰 · 스킬도 깝니다」 칸은 **도구마다** 고른다(결정 0099). Claude 를 고르면 짐 안의 네 자리가 홈의 네 자리로 간다.
 **설치는 안에 든 이름을 하나도 안 본다** — 그 자리에 무엇이 들었든 그대로 나른다.
 
 | 짐의 이 자리 | 홈의 이 자리로 |
@@ -302,13 +302,22 @@ Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡�
 
 자리가 비어 있으면 **건너뛰고 실패로 세지 않는다.**
 
-**Codex · 안티그래비티를 골랐으면 그 둘도 같은 세트를 받는다**(결정 0099). 원본은 위 홈 자리 하나이고, 두 도구가 읽는 꼴로만
-잇는다.
+**Codex · agy 를 고르면 그 도구도 같은 세트를 받는다**(결정 0099). 규범 · 룰은 Claude 홈이 아니라 **중립 자리
+`~/.paisetup/norms/`**(`~/.paisetup/norms/norms.md` · `~/.paisetup/norms/rules/`)에 깔고 두 도구가 거기를 가리킨다 — Claude 홈은 Claude 가 스스로 싣는 자리라,
+Claude 칸을 끄고 Codex · agy 칸만 켠 사람에게 거기 깔면 Claude 에도 실린다.
 
 | 도구 | 규범 | 룰 | 스킬 |
 |---|---|---|---|
-| Codex | `~/.codex/AGENTS.md` 의 표지(`<!-- paisetup:norms BEGIN -->` · `END`) 사이 블록 — Codex 는 다른 파일을 끌어오지 못해 `~/.claude/CLAUDE.md` 를 뽑아 싣는다. 설치마다 다시 짓고, 표지 밖 사람의 글은 그대로 둔다 | 그 블록 끝의 「이 파일들을 만질 때는 이 룰을 먼저 읽는다」 줄 — 본문은 `~/.claude/rules/` 를 가리킨다 | `~/.agents/skills/` 에 묶음 전부. 맡기기 러너만 위 「칸 없이 깔리는 스킬」 표의 조건을 따른다 |
-| 안티그래비티(agy) | `~/.gemini/config/AGENTS.md` — 홈 규범을 가리키는 한 줄 | `~/.gemini/config/rules.json` — 홈 룰 자리를 가리킨다 | `~/.gemini/config/paisetup-skills/` 에 묶음 전부 — 맡기기 러너만 위 「칸 없이 깔리는 스킬」 표의 조건을 따른다 |
+| Codex | `~/.codex/AGENTS.md` 의 표지(`<!-- paisetup:norms BEGIN -->` · `END`) 사이 블록 — Codex 는 다른 파일을 끌어오지 못해 규범을 뽑아 싣는다. 설치마다 다시 짓고, 표지 밖 사람의 글은 그대로 둔다 | 그 블록 끝의 「이 파일들을 만질 때는 이 룰을 먼저 읽는다」 줄 — 본문은 `~/.paisetup/norms/rules/` 를 가리킨다 | `~/.agents/skills/` 에 묶음 전부. 맡기기 러너만 위 「칸 없이 깔리는 스킬」 표의 조건을 따른다 |
+| 안티그래비티(agy) | `~/.gemini/config/AGENTS.md` — 중립 자리의 규범을 가리키는 한 줄 | `~/.gemini/config/rules.json` — 중립 자리의 룰을 가리킨다 | `~/.gemini/config/paisetup-skills/` 에 묶음 전부 — 맡기기 러너만 위 「칸 없이 깔리는 스킬」 표의 조건을 따른다 |
+
+**칸을 끄면 그 도구에서 우리가 깐 것만 걷는다** — Codex 는 규범 블록과 기록에 적힌 제작자 스킬, agy 는 규범 · 룰을 가리키는
+두 파일과 기록에 적힌 제작자 스킬. 지우지 않고 백업 자리로 옮기고, 사람이 쓴 글 · 사람이 고친 파일은 안 건드린다. 쓸 도구가
+없으면 중립 자리도 옮긴다. Claude 홈은 지금처럼 안 걷는다 — 사람이 쓴 `CLAUDE.md` 와 가를 수 없다.
+
+**고른 도구는 사용자 환경변수 `PAISETUP_PERSONAL` 에 남는다**(예: `claude,codex` · 아무것도 아니면 `none`). 설정 저장소를 넣은
+PC 의 배포(`deploy.ps1`)도 이 값을 읽어 **Codex · agy 쪽은 고른 도구에만** 규범 · 룰 · 스킬을 민다 — Claude 쪽은 그 저장소의
+본업이라 값과 상관없이 민다. 값이 없으면(이 설치를 아직 안 돌린 PC) 있는 도구에 다 민다.
 
 ⚠ **덮어쓰는 것이 아니라 합친다.** 같은 이름은 갈리지만 홈에 이미 있던 **다른 이름은 남는다.**
 깨끗하게 갈려면 `~/.claude/` 의 `skills` · `rules` · `agents` 를 먼저 지우고 깐다.
@@ -393,7 +402,8 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 
 ```powershell
 .\Setup.exe -NoDevTools          # 개발 도구(Git · Python · GitHub CLI)를 빼고 깐다 — 창에는 이 칸이 없다
-.\Setup.exe -WithPersonalConfig  # 규범·룰·스킬 칸을 켠 채로 연다
+.\Setup.exe -PersonalFor claude,codex  # 제작자 칸에서 그 도구를 켠 채로 연다(claude · codex · agy)
+.\Setup.exe -WithPersonalConfig  # 제작자 칸을 고른 제품 전부 켠 채로 연다(옛 쓰임)
 .\Setup.exe -NoUpgrade           # 갱신 칸을 끈 채로 연다
 ```
 
@@ -473,7 +483,9 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `Codex 홈 스킬 (… · ~/.agents/skills)` · `agy 홈 스킬 (… · ~/.gemini/config/paisetup-skills)` | 그 도구가 읽는 스킬 자리에 괄호의 스킬이 다 서지 않았다. 그 폴더가 읽기 전용인지 보고 다시 누른다 |
 | `agy 스킬 목록 (…)` | `~/.gemini/config/skills.json` 이 짐의 것과 다르다 — agy 가 제 홈의 스킬을 못 본다. 그 파일이 손으로 고친 것이면 백업(`~/.claude/backups/install-agy-*`)을 보고, 다시 누른다 |
 | `agy 훅 배선 (…)` | `~/.gemini/config/hooks.json` 에 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목이 다 서지 않았다. 그 파일이 JSON 으로 안 읽히면 설치가 안 건드린다 — 위쪽 빨간 줄이 까닭을 든다. 고치고 다시 누른다 |
-| `Codex 규범 블록 (~/.codex/AGENTS.md)` | 제작자 칸을 켰는데 그 파일에 규범 블록이 없다. 표지 줄(`<!-- paisetup:norms BEGIN -->` · `END`)이 하나만 남았거나 둘 이상이면 설치가 안 건드린다 — 남은 표지를 지우고 다시 누른다 |
+| `제작자 세트 도구 값 (PAISETUP_PERSONAL = …)` | 고른 도구를 사용자 환경변수에 못 심었다 — 설정 저장소의 배포가 옛 값으로 돈다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 |
+| `규범 · 룰 중립 자리 (~/.paisetup/norms)` | Codex · agy 칸을 켰는데 그 자리의 규범이 짐과 다르다. `~/.paisetup/` 가 읽기 전용인지 보고 다시 누른다 |
+| `Codex 규범 블록 (~/.codex/AGENTS.md)` | 제작자 칸의 Codex 칸을 켰는데 그 파일에 규범 블록이 없다. 표지 줄(`<!-- paisetup:norms BEGIN -->` · `END`)이 하나만 남았거나 둘 이상이면 설치가 안 건드린다 — 남은 표지를 지우고 다시 누른다 |
 | `agy 모델 (…)` | 괄호의 환경변수를 못 심었다 — 이름은 자리마다 다르다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 — 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `Codex · Copilot 맡기기 값 (…)` | 괄호의 환경변수를 못 심었다 — `agy 모델` 줄과 같다. 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `agy 설정 (n/m · ~/.gemini/config)` | 설정 셋을 다 못 깔았다 — 괄호의 두 숫자가 「짐과 같은 것/짐에 든 것」이다. `~/.gemini/config` 가 읽기 전용인지 보고 다시 누른다 |
@@ -504,7 +516,8 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다. 씨앗 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` — 다른 프로그램도 쓸 수 있으니 필요할 때만 |
 | **칸 없이 깔린 스킬** | `~/.claude/skills/` 의 `drm-office-read` · `inhouse-app` · `agent-envelope` · `agy-background` · `codex-copilot-background`. Codex 를 골랐으면 `~/.agents/skills/` 의 같은 이름들과 `claude-background` · 기록 `~/.agents/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.agents/backups/install-skills-*`. 안티그래비티를 골랐으면 `~/.gemini/config/paisetup-skills/` 폴더 · 기록 `~/.gemini/.paisetup-skills` · `~/.gemini/backups/install-skills-*` |
 | **안티그래비티의 스킬 목록 · 훅** | `~/.gemini/config/skills.json` · `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목. 다른 항목은 사람이 넣은 것일 수 있으니 둔다. 고치기 전 것은 곁의 `hooks.json.before-paisetup-*` |
-| **Codex 규범 블록** (제작자 칸 + Codex) | `~/.codex/AGENTS.md` 에서 `<!-- paisetup:norms BEGIN -->` 부터 `<!-- paisetup:norms END -->` 까지 지운다. 그 밖은 사람이 쓴 글이다 |
+| **Codex 규범 블록** (제작자 칸의 Codex 칸) | `~/.codex/AGENTS.md` 에서 `<!-- paisetup:norms BEGIN -->` 부터 `<!-- paisetup:norms END -->` 까지 지운다. 그 밖은 사람이 쓴 글이다 |
+| **제작자 세트의 중립 자리 · 고른 도구 값** | `~/.paisetup/` 폴더(규범 · 룰 사본)와 사용자 환경변수 `PAISETUP_PERSONAL` |
 | **칸을 켜서 깔린 규범·룰·스킬** | `~/.claude/` 의 `CLAUDE.md` · `rules/` · `skills/` · `agents/` · 깐 스킬 기록 `~/.claude/.paisetup-skills` · 걷은 스킬을 옮겨 둔 `~/.claude/backups/install-skills-*` |
 | **agy 묶음** (Claude · 안티그래비티를 골랐을 때 — 설정 셋은 위 칸까지 켰을 때) | 사용자 환경변수 `AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE` · agy 설정 `~/.gemini/config/` 의 `AGENTS.md` · `skills.json` · `rules.json` · 옛것을 떠 둔 `~/.claude/backups/install-agy-*` |
 | **Codex · Copilot 맡기기** (Claude · Codex 를 골랐을 때) | 사용자 환경변수 `CC_BG_AGENTS` · `CC_BG_CODEX_WEB_SEARCH` · `CC_BG_CODEX_WIN_SANDBOX` |
