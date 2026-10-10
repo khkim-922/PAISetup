@@ -2,19 +2,8 @@
   "entries": [
     {
       "path": "../../.agents/skills",
-      "include_only": [
-        "drm-office-read",
-        "inhouse-app"
-      ]
-    },
-    {
-      "path": "../../.claude/skills",
-      "include_only": [
-        "automation-audit-ops",
-        "benchmark-optimization-loop",
-        "click-path-audit",
-        "doc-coordinate-audit",
-        "doc-rederive-from-source"
+      "exclude": [
+        "agy-background"
       ]
     }
   ]

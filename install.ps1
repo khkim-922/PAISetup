@@ -1476,43 +1476,33 @@ $CcBgVarsBySite = @{
 $CcBgVars       = $CcBgVarsBySite[$(if ($inside) { 'inside' } else { 'outside' })]
 $wantCcBg       = [bool](($PickKeys -contains 'claude') -and ($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
 # ── Claude 맡기기 — 스킬 `claude-background` (claude-config 결정 0098) ──────────────────────────────
-# 위 Codex · Copilot 맡기기의 거울이다 — Codex 가 맡기는 쪽이고 Claude 가 받는다. 받는 Claude 는 읽기 도구만 열고 뜬다.
-# ⚠ **조건은 위와 같은 사실이다** — 두 CLI 가 다 서는 자리에서 서로에게 맡긴다. 그래서 따로 짓지 않고 가리킨다.
-$wantClaudeBg   = $wantCcBg
+# 위 Codex · Copilot 맡기기의 거울이다 — Codex 나 agy 가 맡기는 쪽이고 Claude 가 받는다. 받는 Claude 는 읽기 도구만 열고 뜬다.
+# ⚠ **Codex 쪽 조건은 위와 같은 사실이다** — 두 CLI 가 다 서는 자리에서 서로에게 맡긴다. 그래서 따로 짓지 않고 가리킨다.
+#   agy 쪽은 Claude 와 안티그래비티를 같이 고르면 선다 — agy 도 Codex 와 같은 홈의 스킬을 읽는다(결정 0099).
+$wantClaudeBg   = [bool]($wantCcBg -or (($PickKeys -contains 'claude') -and $hostAgy))
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091 · 0097) ──────
-# 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — Claude 홈(`~/.claude/skills`)과 Codex 홈(`~/.agents/skills`).
-# agy 도 그 Codex 홈의 스킬을 읽는다 — 다만 agy 스킬 목록이 이름을 고르므로, agy 몫은 이 표가 아니라 그 목록이 든다
-# (아래 `$AgyBaseSkills` · 결정 0099).
-# Codex 를 고르면 Claude 를 고른 자리와 같은 기본기를 받는다(0097). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽**
-# 홈에 산다: Codex 에게 맡기는 러너는 Claude 홈, Claude 에게 맡기는 러너는 Codex 홈.
+# 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — Claude 홈(`~/.claude/skills`)과 Codex · agy 홈(`~/.agents/skills`).
+# Codex 와 agy 는 같은 홈을 읽는다 — agy 는 스킬 목록(`.gemini.global/skills.json`)이 그 홈을 통째로 열고 제게 맡기는
+# 러너(`agy-background`)만 뺀다(결정 0099). Codex 나 안티그래비티를 고르면 Claude 를 고른 자리와 같은 기본기를 받는다
+# (0097 · 0099). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽** 홈에 산다: Codex 에게 맡기는 러너는 Claude 홈,
+# Claude 에게 맡기는 러너는 Codex · agy 홈.
 # 제작자 설정 칸을 켜면 6 칸이 Claude 홈에 묶음 전부를 까므로, Claude 쪽 조건은 칸을 끈 자리에서만 일을 한다
-# (7 칸의 「칸 없이 까는 스킬」). Codex 쪽은 칸과 무관하게 이 표대로 깐다. 모두 규범을 안 읽어도 홀로 선다.
+# (7 칸의 「칸 없이 까는 스킬」). Agents 쪽은 칸과 무관하게 이 표대로 깐다. 모두 규범을 안 읽어도 홀로 선다.
 $hostClaude = [bool]($PickKeys -contains 'claude')
 $hostCodex  = [bool]($PickKeys -contains 'codex')
 $FreeSkills = [ordered]@{
   # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
-  'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex }
+  'drm-office-read'          = @{ Claude = $hostClaude; Agents = [bool]($hostCodex -or $hostAgy) }
   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
-  'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex }
+  'inhouse-app'              = @{ Claude = $hostClaude; Agents = [bool]($hostCodex -or $hostAgy) }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
-  'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex }
-  # agy 에게 맡기고 한도에서 넘긴다
-  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Codex = [bool]($hostCodex -and $wantAgyDelegate) }
+  'agent-envelope'           = @{ Claude = $hostClaude; Agents = [bool]($hostCodex -or $hostAgy) }
+  # agy 에게 맡기고 한도에서 넘긴다 — Agents 칸은 Codex 몫이다(agy 스킬 목록이 이것을 뺀다)
+  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Agents = [bool]($hostCodex -and $wantAgyDelegate) }
   # Codex 에게 뒤에서 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude
-  'codex-copilot-background' = @{ Claude = $wantCcBg; Codex = $false }
-  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex
-  'claude-background'        = @{ Claude = $false; Codex = $wantClaudeBg }
-}
-# agy 가 칸 없이 받는 일하는 도구 스킬 — agy 스킬 목록(`.gemini.global/skills.json`)의 `~/.agents/skills` 줄이 진본이다.
-# agy 는 그 목록에 적힌 이름만 읽으므로, 여기 따로 적으면 까는 것과 읽는 것이 갈린다. 그래서 그 줄에서 읽는다.
-$AgySkillsList    = Join-Path $Here '.gemini.global\skills.json'
-$AgyBaseEntryPath = '../../.agents/skills'
-$AgyBaseSkills    = @()
-if (Test-Path -LiteralPath $AgySkillsList) {
-  try {
-    $AgyBaseSkills = @((Get-Content -LiteralPath $AgySkillsList -Raw -Encoding UTF8 | ConvertFrom-Json).entries |
-                       Where-Object { $_.path -eq $AgyBaseEntryPath } | ForEach-Object { $_.include_only })
-  } catch { $AgyBaseSkills = @() }
+  'codex-copilot-background' = @{ Claude = $wantCcBg; Agents = $false }
+  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy
+  'claude-background'        = @{ Claude = $false; Agents = $wantClaudeBg }
 }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
@@ -3445,13 +3435,13 @@ if (-not $WithPersonalConfig) {
   }
 }
 
-# ── Codex · agy 홈의 스킬 — 위 `$FreeSkills` 의 Codex 칸 · `$AgyBaseSkills` · 제작자 칸 (결정 0097 · 0099) ─────────
+# ── Codex · agy 홈의 스킬 — 위 `$FreeSkills` 의 Agents 칸 · 제작자 칸 (결정 0097 · 0099) ─────────────────────
 # Codex 가 사용자 스킬을 읽는 자리는 `~/.agents/skills` 다(Codex 공식 문서 「Build skills」 — 사용자 범위). `~/.claude/skills`
-# 사본만으로는 Codex 가 스킬을 못 찾는다. agy 도 이 자리의 일하는 도구 스킬을 읽는다 — agy 스킬 목록이 이 자리를
-# 가리킨다(아래 「agy 스킬 목록」). 무엇을 까나는 셋이 정한다:
-#   * 칸 없이 — 표의 Codex 칸(Codex 를 고르면) · `$AgyBaseSkills`(안티그래비티를 고르면)
-#   * 제작자 설정 칸 + Codex — Claude 홈처럼 묶음 전부. 다만 위 표에 든 스킬은 그 Codex 칸을 따른다 — 맡기기 러너는
-#     맡기는 쪽 홈에 산다(0097). 설정 저장소의 `deploy.ps1` 이 같은 사실을 `deploy.skills.claude-only.conf` 로 든다
+# 사본만으로는 Codex 가 스킬을 못 찾는다. agy 도 이 자리를 읽는다 — agy 스킬 목록이 이 자리를 통째로 연다(아래
+# 「agy 스킬 목록」). 무엇을 까나는 둘이 정한다:
+#   * 칸 없이 — 표의 Agents 칸(Codex 나 안티그래비티를 고르면)
+#   * 제작자 설정 칸 + Codex 나 안티그래비티 — Claude 홈처럼 묶음 전부. 다만 위 표에 든 스킬은 그 Agents 칸을 따른다 —
+#     맡기기 러너는 맡기는 쪽 홈에 산다(0097). 설정 저장소의 `deploy.ps1` 이 같은 사실을 `deploy.skills.claude-only.conf` 로 든다
 # ⚠ **묶음이 두 곳이다** — 두 홈이 함께 쓰는 스킬은 `.claude\skills`, Codex 가 맡기는 쪽일 때만 뜻이 서는 스킬은
 #   `.agents\skills` 에 산다. 뒤엣것을 `.claude\skills` 에 두면 제작자 설정 칸(6 칸)이 Claude 홈에도 깔아, 모든 Claude
 #   세션의 스킬 목록에 쓸 일 없는 줄이 는다.
@@ -3459,9 +3449,8 @@ if (-not $WithPersonalConfig) {
 #   이름만 옮기고 기록을 지운다. 사람이 거기 둔 다른 스킬은 안 건드린다.
 $skillBundle      = Join-Path $Here '.claude\skills'
 $agentSkillBundle = Join-Path $Here '.agents\skills'
-$agentsHomeSkills = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Codex })
-if ($hostAgy) { $agentsHomeSkills += $AgyBaseSkills }
-if ($WithPersonalConfig -and $hostCodex) {
+$agentsHomeSkills = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Agents })
+if ($WithPersonalConfig -and ($hostCodex -or $hostAgy)) {
   $agentsHomeSkills += @(@($skillBundle, $agentSkillBundle) | Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
                          ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory } | ForEach-Object { $_.Name } |
                          Where-Object { -not $FreeSkills.Contains($_) })
@@ -3500,35 +3489,31 @@ if ($hostCodex -or $hostAgy) {
   }
 }
 
-# ── agy 스킬 목록 — 칸 없이 일하는 도구 줄만 (결정 0099) ─────────────────────────────────────
-# agy 는 스킬을 `~/.gemini/config/skills.json` 이 고른 이름만 읽는다(결정 0083 실측). 제작자 설정 칸을 켜면 6 칸이 그
-# 파일을 통째로(일하는 도구 줄 + 제작자 줄) 깔고, 끄면 여기서 **같은 원본의 일하는 도구 줄만** 뽑아 쓴다 — 줄을
-# 여기 따로 적지 않는다.
-# ⚠ **제작자 칸이 깐 것을 덮지 않는다** — 칸을 켠 판에서는 이 칸이 서지 않는다(`$wantAgyKit`).
+# ── agy 스킬 목록 — 안티그래비티를 고르면 (결정 0099) ─────────────────────────────────────────
+# agy 는 스킬을 `~/.gemini/config/skills.json` 이 여는 자리만 읽는다(결정 0083 실측). 원본 목록(`.gemini.global/skills.json`)은
+# 위 Codex · agy 홈을 통째로 열고 agy 가 제게 맡기는 러너만 빼는 한 줄이다 — 그래서 칸과 상관없이 같은 파일을 깐다.
+# 제작자 칸의 agy 설정 셋(6 칸)도 같은 파일을 깔아, 그 판에서는 여기가 「이미 맞다」로 지난다.
 # ⚠ 있던 파일이 다르면 백업 자리로 먼저 떠 둔다(6 칸의 agy 설정 셋과 같은 손).
-if ($hostAgy -and -not $wantAgyKit) {
-  $agyListTo = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
-  if (-not $AgyBaseSkills.Count) {
-    Write-Host '  ! agy 스킬 목록 — 원본(.gemini.global/skills.json)에 일하는 도구 줄이 없어 안 쓴다' -ForegroundColor Red
-    $Fails.Add('agy 스킬 목록 (원본 줄 없음)')
+if ($hostAgy) {
+  $agyListFrom = Join-Path $Here '.gemini.global\skills.json'
+  $agyListTo   = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
+  if (-not (Test-Path -LiteralPath $agyListFrom)) {
+    Write-Host '  ! agy 스킬 목록 — 이 폴더에 원본(.gemini.global/skills.json)이 없다' -ForegroundColor Red
+    $Fails.Add('agy 스킬 목록 (원본 없음)')
+  } elseif ((Test-Path -LiteralPath $agyListTo) -and
+            ((Get-FileHash -LiteralPath $agyListFrom).Hash -eq (Get-FileHash -LiteralPath $agyListTo).Hash)) {
+    Write-Host '  agy 스킬 목록 — 이미 맞다'
   } else {
-    $agyListText = ([ordered]@{ entries = @([ordered]@{ path = $AgyBaseEntryPath; include_only = @($AgyBaseSkills) }) } |
-                    ConvertTo-Json -Depth 5) + "`n"
-    $agyListBk  = $null
-    $agyListOld = if (Test-Path -LiteralPath $agyListTo) { [IO.File]::ReadAllText($agyListTo) } else { $null }
-    if ($agyListOld -eq $agyListText) {
-      Write-Host '  agy 스킬 목록 — 이미 맞다'
-    } else {
-      if ($null -ne $agyListOld) {
-        $agyListBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-        New-Item -ItemType Directory -Path $agyListBk -Force | Out-Null
-        Copy-Item -LiteralPath $agyListTo -Destination (Join-Path $agyListBk 'skills.json') -Force
-        if ((Get-Item -LiteralPath $agyListTo -Force).LinkType) { Remove-Item -LiteralPath $agyListTo -Force }
-      }
-      New-Item -ItemType Directory -Path (Split-Path -Parent $agyListTo) -Force | Out-Null
-      [IO.File]::WriteAllText($agyListTo, $agyListText, (New-Object Text.UTF8Encoding($false)))
-      Write-Host "  agy 스킬 목록 — 일하는 도구 줄을 썼다 ($($AgyBaseSkills -join ' · '))$(if ($agyListBk) { " · 옛것은 $agyListBk" })" -ForegroundColor Green
+    $agyListBk = $null
+    if (Test-Path -LiteralPath $agyListTo) {
+      $agyListBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+      New-Item -ItemType Directory -Path $agyListBk -Force | Out-Null
+      Copy-Item -LiteralPath $agyListTo -Destination (Join-Path $agyListBk 'skills.json') -Force
+      if ((Get-Item -LiteralPath $agyListTo -Force).LinkType) { Remove-Item -LiteralPath $agyListTo -Force }
     }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $agyListTo) -Force | Out-Null
+    Copy-Item -LiteralPath $agyListFrom -Destination $agyListTo -Force
+    Write-Host "  agy 스킬 목록 — ~/.agents/skills 를 여는 목록을 깔았다$(if ($agyListBk) { " · 옛것은 $agyListBk" })" -ForegroundColor Green
   }
 }
 
@@ -5062,10 +5047,11 @@ if (($hostCodex -or $hostAgy) -and $agentsHomeSkills.Count) {
 }
 # agy — 스킬 목록이 일하는 도구 자리를 가리키나 · 훅 둘이 우리 어댑터로 걸렸나 (결정 0099)
 if ($hostAgy) {
-  $agyListNow = $null
-  try { $agyListNow = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.gemini\config\skills.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
-  $checks += @{ Name = "agy 스킬 목록 (~/.gemini/config/skills.json 이 ~/.agents/skills 를 가리킨다)"
-                Ok = [bool]($agyListNow -and @($agyListNow.entries | Where-Object { $_.path -eq $AgyBaseEntryPath }).Count) }
+  $agyListFromChk = Join-Path $Here '.gemini.global\skills.json'
+  $agyListToChk   = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
+  $checks += @{ Name = 'agy 스킬 목록 (~/.gemini/config/skills.json 이 짐과 같다 · ~/.agents/skills 를 연다)'
+                Ok = ((Test-Path -LiteralPath $agyListFromChk) -and (Test-Path -LiteralPath $agyListToChk) -and
+                      ((Get-FileHash -LiteralPath $agyListFromChk).Hash -eq (Get-FileHash -LiteralPath $agyListToChk).Hash)) }
   $agyHooksNow = $null
   try { $agyHooksNow = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.gemini\config\hooks.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
   $agyWired = @('paisetup-drm-guide', 'paisetup-utf8-bom' | Where-Object {
