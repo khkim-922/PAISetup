@@ -574,7 +574,39 @@ if (Test-Path $skillSrc) {
 #   (`.claude/hooks/codex-norms.py`)가 진본에서 매번 다시 짓는다. 사람이 그 파일에 쓴 글은 표지 밖이라 그대로다.
 #   지은 결과를 임시 파일로 받아 여느 배포 대상처럼 민다 — 바뀌었을 때만 백업과 함께 덮는다. agy 규범은 위 설정 셋의
 #   include 한 줄이 든다.
-# ⚠ 홈에서 걷는 손(-Prune)은 Claude 홈만 본다.
+# ⚠ **걷는 손(-Prune)은 배포가 민 이름만 든다** — 이 홈들은 Claude 홈과 달리 배포 혼자의 자리가 아니다. 설치기도
+#   깔고(제 기록 `.paisetup-skills`), Codex 홈에는 사람이나 다른 도구가 둔 스킬도 산다. 그래서 배포는 민 이름을 제
+#   기록 `.paisetup-deploy-skills`(설치기 기록 곁)에 적고, 그 기록에 있는데 이번에 안 미는 스킬(원본에서 빠졌거나 칸을
+#   껐다)과 미는 스킬 안에서 원본에 없는 파일을 제거 후보로 센다. 설치기 기록에 든 이름은 설치기가 걷으므로 안
+#   건드린다 — 둘이 한 이름을 두고 다투면 로그온마다 걷고 다시 깐다. 기록이 서기 전에 민 스킬은 모른다.
+function Get-AgentHomePrune {
+    # $Want — 이번에 미는 스킬 이름 → 원본 폴더(칸을 끈 도구면 빈 표) · $Mine — 배포의 기록 · $Installer — 설치기의 기록
+    # 돌려주는 것: Files — 제거 후보 파일 · Ledger — 이 실행 뒤 배포 기록에 남길 이름(안 걷는 판이면 아직 남은 것도 든다)
+    # 판단은 이 한 자리다 — `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 부른다.
+    param([string]$SkillHome, [hashtable]$Want, [string[]]$Mine, [string[]]$Installer, [bool]$Prune)
+    $files = @()
+    foreach ($n in @($Want.Keys)) {
+        $dir = Join-Path $SkillHome $n
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        # 파이썬 캐시는 원본에 없는 것이 당연하다 — 홈에서 스크립트를 돌리면 생긴다
+        foreach ($f in @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force |
+                         Where-Object { $_.FullName -notmatch '[\\/]__pycache__[\\/]' })) {
+            $rel = $f.FullName.Substring($dir.Length + 1)
+            if (-not (Test-Path -LiteralPath (Join-Path $Want[$n] $rel))) { $files += $f.FullName }
+        }
+    }
+    $gone = @(@($Mine) | Where-Object { $_ -and -not $Want.ContainsKey($_) -and (@($Installer) -notcontains $_) } |
+              Where-Object { Test-Path -LiteralPath (Join-Path $SkillHome $_) -PathType Container })
+    foreach ($n in $gone) {
+        $files += @(Get-ChildItem -LiteralPath (Join-Path $SkillHome $n) -Recurse -File -Force | ForEach-Object { $_.FullName })
+    }
+    $kept = if ($Prune) { @() } else { $gone }
+    return @{ Files = $files; Ledger = @(@($Want.Keys) + $kept | Sort-Object -Unique) }
+}
+function Read-SkillLedger([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    return @([IO.File]::ReadAllLines($Path) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
 $codexHome = Join-Path $HOME '.codex'
 $runnerTarget = @{}
 $targetsConf = Join-Path $src 'deploy.skills.targets.conf'
@@ -584,19 +616,37 @@ if (Test-Path $targetsConf) {
         if ($parts.Count -eq 2) { $runnerTarget[$parts[0]] = $parts[1] }
     }
 }
+$agentLedgerSteps = @()   # 배포 기록 쓰기 — 제거 후보 뒤에 붙인다(아래 `-Prune` 칸)
 foreach ($agentHome in @(
-        @{ Tool = 'codex'; Root = $codexHome;  Dst = Join-Path $HOME '.agents\skills' }
-        @{ Tool = 'agy';   Root = $geminiHome; Dst = Join-Path $geminiHome 'config\paisetup-skills' })) {
-    if (-not (Test-Path $agentHome.Root) -or -not (Test-PersonalFor $agentHome.Tool)) { continue }
-    foreach ($bundle in @($skillSrc, (Join-Path $src '.agents\skills'))) {
-        if (-not (Test-Path $bundle)) { continue }
-        foreach ($f in (Get-ChildItem $bundle -Recurse -File |
-                        Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
-            $rel = $f.FullName.Substring($bundle.Length + 1)
-            $name = ($rel -split '\\')[0]
-            if (($localSkills -contains $name) -or ($runnerTarget[$name] -eq $agentHome.Tool)) { continue }
-            $targets += @{ From = $f.FullName; To = Join-Path $agentHome.Dst $rel }
+        @{ Tool = 'codex'; Root = $codexHome;  Dst = Join-Path $HOME '.agents\skills'; Label = 'Codex 홈'
+           Mine = Join-Path $HOME '.agents\.paisetup-deploy-skills'; Installer = Join-Path $HOME '.agents\.paisetup-skills' }
+        @{ Tool = 'agy';   Root = $geminiHome; Dst = Join-Path $geminiHome 'config\paisetup-skills'; Label = 'agy 홈'
+           Mine = Join-Path $geminiHome '.paisetup-deploy-skills'; Installer = Join-Path $geminiHome '.paisetup-skills' })) {
+    if (-not (Test-Path $agentHome.Root)) { continue }
+    $want = @{}
+    if (Test-PersonalFor $agentHome.Tool) {
+        foreach ($bundle in @($skillSrc, (Join-Path $src '.agents\skills'))) {
+            if (-not (Test-Path $bundle)) { continue }
+            foreach ($f in (Get-ChildItem $bundle -Recurse -File |
+                            Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
+                $rel = $f.FullName.Substring($bundle.Length + 1)
+                $name = ($rel -split '\\')[0]
+                if (($localSkills -contains $name) -or ($runnerTarget[$name] -eq $agentHome.Tool)) { continue }
+                $targets += @{ From = $f.FullName; To = Join-Path $agentHome.Dst $rel }
+                if (-not $want.ContainsKey($name)) { $want[$name] = Join-Path $bundle $name }
+            }
         }
+    }
+    $mine = Read-SkillLedger $agentHome.Mine
+    $cut = Get-AgentHomePrune -SkillHome $agentHome.Dst -Want $want -Mine $mine `
+                              -Installer (Read-SkillLedger $agentHome.Installer) -Prune ([bool]$Prune)
+    foreach ($p in $cut.Files) {
+        $prunable += @{ Kind = 'remove'; Path = $p; Floor = $agentHome.Dst
+                        Text = "- 제거  $p  ($($agentHome.Label) — 배포가 민 것인데 원본에 없거나 이번에 안 민다)" }
+    }
+    if ((@($mine | Sort-Object -Unique) -join "`n") -ne ($cut.Ledger -join "`n")) {
+        $agentLedgerSteps += @{ Kind = 'skillledger'; Path = $agentHome.Mine; Names = $cut.Ledger
+                                Text = "+ 기록  $($agentHome.Mine)  (배포가 민 스킬 $($cut.Ledger.Count)개)" }
     }
 }
 # 규범 · 룰의 중립 자리 — Codex 의 룰 줄과 agy 설정 셋이 가리킨다(docs/decisions/0099). Claude 홈(`~/.claude`)은 Claude 가
@@ -1229,6 +1279,8 @@ if (Test-Path $rulesSrc) {
 }
 
 if ($Prune) { $plan += $prunable }
+# Codex · agy 홈의 배포 기록은 걷기 **뒤**에 쓴다 — 걷다 멈추면 기록이 그 이름을 아직 들고 있어 다음 회차가 다시 센다.
+$plan += $agentLedgerSteps
 
 # --- 사용자 환경변수 ---
 # 한국어 윈도우의 인코딩 구멍은 둘이고 서로 다른 자리다:
@@ -1473,6 +1525,15 @@ foreach ($step in $plan) {
             Write-Host "+ 판 줄  $($step.Path)  ($($step.Line))"
         }
 
+        'skillledger' {
+            # 설치기 기록(`.paisetup-skills`)과 같은 꼴 — BOM 없는 UTF-8 · 한 줄에 이름 하나. 백업을 안 남긴다 — 옛
+            # 기록에서 남길 이름은 새 기록이 이미 다 든다(`Get-AgentHomePrune`).
+            New-Item -ItemType Directory -Force -Path (Split-Path $step.Path -Parent) | Out-Null
+            [System.IO.File]::WriteAllLines($step.Path, [string[]]$step.Names,
+                                            (New-Object System.Text.UTF8Encoding($false)))
+            Write-Host "+ 기록  $($step.Path)  (배포가 민 스킬 $($step.Names.Count)개)"
+        }
+
         'mcp' {
             if (-not $bash) {
                 # Git Bash가 없으면 강행하지 않는다 — 따옴표가 깨진 채 등록되면 더 골치다
@@ -1572,9 +1633,12 @@ foreach ($step in $plan) {
             Write-Host "- 제거  $($step.Path)"
             # ⚠ **파일만 걷으면 빈 폴더가 남는다** — 걷힌 스킬이 `skills/<이름>/scripts/` 같은 껍데기로
             #   남아 홈 목록을 흐린다. 비었을 때만 위로 올라가며 걷고, 홈 바로 아래 자리(`skills` ·
-            #   `agents` · `projects` …)는 비어도 둔다 — 그 자리는 배포가 아니라 앱이 세운다.
+            #   `agents` · `projects` …)는 비어도 둔다 — 그 자리는 배포가 아니라 앱이 세운다. Codex · agy 홈은
+            #   `~/.claude` 밖이라 그 스킬 홈(`Floor`)에서 멈춘다 — 안 그러면 비었을 때 `~/.agents` 까지 오른다.
             $parent = Split-Path $step.Path -Parent
-            while ($parent -and ((Split-Path $parent -Parent) -ne $dst) -and ($parent -ne $dst) -and
+            while ($parent -and
+                   $(if ($step.Floor) { $parent -ne $step.Floor }
+                     else { ((Split-Path $parent -Parent) -ne $dst) -and ($parent -ne $dst) }) -and
                    (Test-Path $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force | Select-Object -First 1)) {
                 Remove-Item -LiteralPath $parent -Force
                 Write-Host "- 제거  $parent  (빈 폴더)"
