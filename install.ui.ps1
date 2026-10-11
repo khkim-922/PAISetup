@@ -431,12 +431,17 @@ foreach ($pt in @(@{ Key = 'claude'; Pick = 'claude'; Label = 'Claude' },
   $cPers += ,$c
   $px += 90
 }
+# 제작자 칸이 지금 사나 — 그 제품 칸을 골랐나(제품 칸이 없는 판이면 늘 산다). 칸의 켜짐(`Sync-PersonalBoxes`)과
+#   [설치]가 넘길 값이 둘 다 이 함수에 묻는다. `scripts/check-ui-personal-boxes.ps1`(설정 저장소)이 떼어 잰다.
+# ⚠ **넘길 값을 칸의 `Enabled` 로 고르지 않는다** — 윈도 폼은 묶음(`$gO`)을 잠그면 그 안 칸의 `Enabled` 도 거짓으로
+#   읽는다. [설치]는 값을 모으기 전에 묶음을 잠그므로, `Enabled` 로 모으면 무엇을 골라도 빈 값이 넘어간다.
+function Test-PersonalBoxLive($c) {
+  $prod = @($cApps | Where-Object { [string]$_.Tag -eq $c.Tag.Pick }) | Select-Object -First 1
+  return [bool]((-not $cApps.Count) -or ($prod -and $prod.Checked))
+}
 # 제품 칸과 묶는다 — 그 제품을 끄면 이 칸도 꺼진다(고른 값은 남아 다시 켜면 돌아온다)
 function Sync-PersonalBoxes {
-  foreach ($c in $cPers) {
-    $prod = @($cApps | Where-Object { [string]$_.Tag -eq $c.Tag.Pick }) | Select-Object -First 1
-    $c.Enabled = (-not $cApps.Count) -or ($prod -and $prod.Checked)
-  }
+  foreach ($c in $cPers) { $c.Enabled = Test-PersonalBoxLive $c }
 }
 
 # ⚠ **로그온할 때 자동 실행** — 작업 스케줄러(`PAISetup-AutoRun`)가 설치 몸통을 **보이는 콘솔 창**
@@ -964,8 +969,8 @@ $bGo.Add_Click({
   # ⚠ **화면에는 칸이 없다** — Claude Code 를 깔러 온 사람에게 git 은 옵션이 아니다.
   #   인자는 남는다: 콘솔로 이 껍데기를 `-NoDevTools` 로 부른 사람의 뜻은 그대로 넘긴다.
   if ($NoDevTools) { $argv += '-NoDevTools' }
-  # 제작자 칸 — 켜진 칸 가운데 고른 것만. 하나도 없으면 안 넘긴다(몸통의 기본값이 「없음」이다)
-  $persPicked = @($cPers | Where-Object { $_.Enabled -and $_.Checked } | ForEach-Object { $_.Tag.Key })
+  # 제작자 칸 — 산 칸 가운데 고른 것만. 하나도 없으면 안 넘긴다(몸통의 기본값이 「없음」이다)
+  $persPicked = @($cPers | Where-Object { $_.Checked -and (Test-PersonalBoxLive $_) } | ForEach-Object { $_.Tag.Key })
   if ($persPicked.Count) { $argv += @('-PersonalFor', ($persPicked -join ',')) }
   if (-not $cUpg.Checked) { $argv += '-NoUpgrade' }
   if ($cAuto.Checked)     { $argv += '-AutoRun' }
