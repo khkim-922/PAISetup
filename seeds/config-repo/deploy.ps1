@@ -519,18 +519,44 @@ if ($personalClaude -and (Test-Path $rulesSrc)) {
     }
 }
 
-# agy(Antigravity CLI) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083 · 0099)
+# agy(Antigravity CLI · 데스크탑 앱) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083 · 0099 · #134)
 # 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 아래 중립 자리(`~/.paisetup/norms`)를, 스킬 목록은 agy 홈
 # (`~/.gemini/config/paisetup-skills`)을 가리킨다. 그래서 진본을 옮겨 적지 않고 agy 가 Claude Code 와 같은 판을 읽는다.
+# ⚠ **원본은 틀이고 홈에 까는 파일은 이 PC 의 파생물이다** — 틀은 홈을 `~/` 로 적어 사람을 안 타고, 아래
+#   `ConvertTo-AgyPointerText` 가 그 자리를 이 PC 홈의 절대 경로로 바꾼 글을 임시 파일로 지어 여느 배포 대상처럼 민다.
+#   바이트가 틀과 다른 것이 정상이다.
 # ⚠ **agy 가 없는 PC 에는 안 깐다** — `~/.gemini` 가 없으면 건너뛴다. 없는 도구의 설정 폴더를 지어
 #   두면 「깔렸다」로 읽힌다.
 # ⚠ **스킬 목록만 늘 민다** — 규범 · 룰을 가리키는 둘은 agy 를 제작자 세트 도구로 골랐을 때만이다(위 값).
+function ConvertTo-AgyPointerText {
+    # 가리킴 파일의 틀 글 하나를 이 PC 의 글로 — 틀이 홈을 `~/` 로 연 자리만 `$HomeDir` 의 절대 경로(`C:/Users/<이름>/`)로 바꾼다.
+    # ⚠ **왜 절대 경로인가** — 안티그래비티 데스크탑 앱의 언어 서버는 목록(`skills.json` · `rules.json`)의 `path` 로 절대
+    #   경로만 받는다(앱 로그 `customization.go] Failed to resolve absolute path "paisetup-skills": … must be an absolute path`).
+    #   agy CLI 는 상대 경로도 설정 폴더 기준으로 풀어 받는다 — 그래서 상대 경로는 CLI 에서만 서고 앱에서는 하나도 안 실린다.
+    # ⚠ **`~/` 를 그대로 깔지 않는다** — agy 문서는 `~/` 를 홈 기준이라 적었지만 CLI 도 목록의 `~/` 를 같은 오류로 거절한다
+    #   (CLI 1.3.3 실측 2026-10-11 · 결정 0083 의 1.3.0 실측과 같다). 앱과 CLI 가 둘 다 받는 꼴은 드라이브 문자로 여는
+    #   절대 경로다. `AGENTS.md` 의 include 도 같은 손으로 바꾼다 — 앱이 include 의 `~` 를 푸는지는 못 쟀고, 절대 경로
+    #   include 는 CLI 가 싣는다(0083).
+    # 바꾸는 자리는 JSON 글 값의 머리 `"~/` 와 include 대상의 머리 `](~/` 둘뿐이다. 홈은 `/` 로 적는다 — JSON 에서 역슬래시를
+    #   풀 일이 없고, CLI 는 두 꼴을 다 받는다(실측). 지은 글은 BOM 없는 UTF-8 로 쓴다 — BOM 이 붙으면 agy 가 그 목록을
+    #   JSON 으로 못 읽는다(실측 `Failed to load JSON config file … invalid character '\ufeff'`).
+    # ⚠ 홈 경로에 `)` 가 들면 include 가 거기서 끊긴다 — 윈도 사용자 이름에 드물게 설 수 있는 글자다.
+    # 짝 — 배포본 설치기의 같은 이름 함수가 같은 틀에서 같은 글을 짓는다. `scripts/check-agy-pointers.ps1` 이 둘을 떼어 견준다.
+    param([string]$Template, [string]$HomeDir)
+    $abs = $HomeDir.Replace('\', '/').TrimEnd('/') + '/'
+    return $Template.Replace('"~/', '"' + $abs).Replace('](~/', '](' + $abs)
+}
 $geminiSrc = Join-Path $src '.gemini.global'
 $geminiHome = Join-Path $HOME '.gemini'
 if ((Test-Path $geminiSrc) -and (Test-Path $geminiHome)) {
+    $geminiPlan = Join-Path ([IO.Path]::GetTempPath()) 'deploy-agy-config'
+    New-Item -ItemType Directory -Force -Path $geminiPlan | Out-Null
     foreach ($f in (Get-ChildItem $geminiSrc -File)) {
         if (($f.Name -ne 'skills.json') -and -not (Test-PersonalFor 'agy')) { continue }
-        $targets += @{ From = $f.FullName; To = Join-Path $geminiHome "config\$($f.Name)" }
+        $built = Join-Path $geminiPlan $f.Name
+        [System.IO.File]::WriteAllText($built, (ConvertTo-AgyPointerText ([System.IO.File]::ReadAllText($f.FullName)) $HOME),
+                                      (New-Object System.Text.UTF8Encoding($false)))
+        $targets += @{ From = $built; To = Join-Path $geminiHome "config\$($f.Name)" }
     }
 }
 

@@ -72,7 +72,7 @@ OpenAI · Gemini · 로컬 CLI) · 스트리밍 · 잘린 출력 이어 쓰기 �
 
 | 회사 문서 | 이렇게 한다 | 까닭 |
 |---|---|---|
-| LLM 은 `llm_gateway.complete()` · `AI_GW_URL` · `AI_GW_TOKEN` | 이름은 따르되 속은 1 의 씨앗으로 짓는다 | 함수 파일이 묶음에 없다. 한 주소 · 한 토큰으로는 계약 셋을 못 나타낸다 |
+| LLM 은 `llm_gateway.complete()` · `AI_GW_URL` · `AI_GW_TOKEN` | 이름은 따르되 속은 1 의 씨앗으로 짓는다 — 씨앗이 두 이름을 읽는다. `AI_GW_URL` 은 회사 갈래 셋의 바닥 주소이고(`/v1` 이 붙어 와도 받는다), `AI_GW_TOKEN` 은 로그인을 선언한 앱(`LOGIN_REQUIRED = True`)에서만 쓴다. `complete()` 가 필요하면 씨앗 위에 얇게 짓는다 | 함수 파일이 묶음에 없다. 회사 꼴의 `complete()` 는 비스트리밍 한 방이라 씨앗의 스트리밍 · 이어 쓰기를 못 나른다 |
 | 출력 스키마 강제 · JSON 모드 | Claude 경로는 도구 스키마로 | Claude 경로에 JSON 모드가 없다 |
 | 긴 LLM 출력을 SSE 로 브라우저에 흘린다 | 1 의 시한을 먼저 본다 | 스트림 시한에 신호 없이 잘린다 |
 | 예제 `max_tokens` | 2 의 상한 규칙 | 예제 값은 긴 출력에 작다 |

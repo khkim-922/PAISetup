@@ -231,7 +231,7 @@ Claude 홈 설치는 비켜선다** — 저장소 배포가 최신판으로 민�
 
 | 무엇 | 어디에 |
 |---|---|
-| 스킬 — 위 「칸 없이 깔리는 스킬」의 agy 홈 줄(`drm-office-read` · `inhouse-app` · `agent-envelope`, 같이 고른 도구에게 맡기는 `codex-copilot-background` · `claude-background`) | `~/.gemini/config/paisetup-skills/` — agy 는 스킬 목록이 여는 자리만 읽어서, 목록 `~/.gemini/config/skills.json` 이 그 자리를 연다. 제작자 칸을 켜면 그 자리에 묶음 전부가 깔린다(아래 「규범 · 룰 · 스킬」) |
+| 스킬 — 위 「칸 없이 깔리는 스킬」의 agy 홈 줄(`drm-office-read` · `inhouse-app` · `agent-envelope`, 같이 고른 도구에게 맡기는 `codex-copilot-background` · `claude-background`) | `~/.gemini/config/paisetup-skills/` — agy 는 스킬 목록이 여는 자리만 읽어서, 목록 `~/.gemini/config/skills.json` 이 그 자리를 이 PC 홈의 절대 경로로 연다(데스크탑 앱은 상대 경로 · `~/` 로 연 자리를 안 싣는다). 제작자 칸을 켜면 그 자리에 묶음 전부가 깔린다(아래 「규범 · 룰 · 스킬」) |
 | 훅 둘 — **DRM 길잡이**: agy 가 Fasoo DRM 에 감긴 파일을 열려 하면 막고, 까닭에 스킬 `drm-office-read` 로 가는 길을 싣는다. **PowerShell UTF-8 BOM 보정**: agy 가 `.ps1` · `.psm1` · `.psd1` 을 쓰면 BOM 을 붙인다 | `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목. 사람이 넣은 다른 항목은 두고, 고치기 전 파일은 곁에 `hooks.json.before-paisetup-<시각>` 으로 떠 둔다. 우리 항목을 `"enabled": false` 로 꺼 두면 다음 설치도 꺼진 채 둔다 |
 | Python — 훅 둘이 돈다 | 개발도구 칸을 꺼도 깐다 |
 
@@ -252,7 +252,7 @@ Claude 홈에 서는 나머지 셋(그림 문 · Bash 겹역슬래시 차단 · 
 | agy 모델 — **값이 자리마다 다르다.** **사내**는 회사 키가 받는 모델만 쓰고 일의 무게로 가른다 — 무거운 일은 Pro 가 먼저고, 가벼운 일(훑기 · 찾기 · 요약)은 Claude 가 Flash 를 골라 맡긴다. 한도에서 넘기지 않는다(회사 키는 예산 한도라 하나가 막히면 다 막힌다). **사외**는 제미나이를 먼저 쓰고, 그 한도가 차거나 몰려서 안 받으면 다음 모델로 넘어간다. **구글 API 키(`GOOGLE_API_KEY`)가 있으면** 그 키로 제미나이 모델을 하나씩 더 돌린 뒤 Claude 로 간다 — 무료 키는 구글 약관상 보낸 내용이 제품 개선에 쓰일 수 있다. 키가 없으면 그 차례를 건너뛰고 그대로 돈다. 이름(`AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE`)과 자리별 값은 `install.ps1` 의 `$AgyModelVarsBySite` 가 든다. 다른 자리에서 심긴 값이 그대로 남아 있으면 걷는다 | 사용자 환경변수 — 스킬 `agy-background` 가 읽는다 |
 | 스킬 `agy-background` — 위 「칸 없이 깔리는 스킬」 | `~/.claude/skills/` · Codex 를 골랐으면 `~/.agents/skills/` 에도 |
 | Python — 그 스킬의 래퍼가 돈다(Claude 는 `pythonw` 로 뒤에서, Codex 는 `python` 으로 앞에서) | 개발도구 칸을 꺼도 깐다 |
-| agy 설정 셋 — 규범을 가리키는 `AGENTS.md`, agy 홈을 여는 `skills.json`(이것만은 칸 없이도 깔린다 — 위 「안티그래비티를 고르면」), 룰을 가리키는 `rules.json`. **옮겨 적은 사본이 아니라 아래 칸이 깐 홈 자리를 가리키는 파일이다.** **제작자 칸을 켰을 때만** | `~/.gemini/config/` — 있던 같은 이름은 `~/.claude/backups/install-agy-<시각>/` 로 떠 둔다 |
+| agy 설정 셋 — 규범을 가리키는 `AGENTS.md`, agy 홈을 여는 `skills.json`(이것만은 칸 없이도 깔린다 — 위 「안티그래비티를 고르면」), 룰을 가리키는 `rules.json`. **옮겨 적은 사본이 아니라 아래 칸이 깐 홈 자리를 가리키는 파일이다.** 짐의 셋은 틀이고, 설치가 가리킴을 이 PC 홈의 절대 경로로 지어 쓴다. **제작자 칸을 켰을 때만** | `~/.gemini/config/` — 있던 같은 이름은 `~/.claude/backups/install-agy-<시각>/` 로 떠 둔다 |
 
 사외에서 agy 가 로그인 전이면 터미널에서 `agy` 를 한 번 띄워 Google 계정으로 로그인한다(사내는 위 「어디에 붙나」
 대로 회사 키로 선다).
@@ -505,7 +505,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `Codex 훅 신뢰 (Codex 가 읽은 것 — 배선 n/m · 신뢰 n/m)` | Codex 가 실제로 싣는 우리 훅 가운데 신뢰된 것이 모자라다 — 그 훅은 `codex exec` 에서 안 돈다. 사람이 끈 우리 훅은 모자람으로 안 센다. 위쪽 「Codex 훅 신뢰 — 못 적었다」 빨간 줄이 까닭을 든다. 다시 누르거나 Codex 를 열어 새 훅을 한 번 신뢰한다. 「Codex 가 안 싣는다: not-loaded」 면 Codex 의 훅 기능이 꺼졌거나 관리 정책이 사용자 훅을 막는다 |
 | `Codex 훅 신뢰 (못 잼 — …)` | Codex 에 신뢰 상태를 못 물었다(Codex 가 없다 · 안 뜬다 · 시간 초과 · 모르는 답). 훅이 도는지 모르는 판이라 초록으로 안 센다. 괄호의 까닭을 보고 Codex 를 한 번 띄운 뒤 다시 누른다 |
 | `Codex 홈 스킬 (… · ~/.agents/skills)` · `agy 홈 스킬 (… · ~/.gemini/config/paisetup-skills)` | 그 도구가 읽는 스킬 자리에 괄호의 스킬이 다 서지 않았다. 그 폴더가 읽기 전용인지 보고 다시 누른다 |
-| `agy 스킬 목록 (…)` | `~/.gemini/config/skills.json` 이 짐의 것과 다르다 — agy 가 제 홈의 스킬을 못 본다. 그 파일이 손으로 고친 것이면 백업(`~/.claude/backups/install-agy-*`)을 보고, 다시 누른다 |
+| `agy 스킬 목록 (…)` | `~/.gemini/config/skills.json` 이 이 PC 의 agy 홈(`~/.gemini/config/paisetup-skills`)을 절대 경로로 열지 않는다 — 데스크탑 앱이 제 홈의 스킬을 하나도 못 싣는다(상대 경로 · `~/` 로 열거나 파일 앞에 BOM 이 붙어도 그렇다). agy CLI 에서 스킬이 보여도 이 줄은 빨강일 수 있다. 그 파일이 손으로 고친 것이면 백업(`~/.claude/backups/install-agy-*`)을 보고, 다시 누른다 |
 | `agy 훅 배선 (…)` | `~/.gemini/config/hooks.json` 에 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목이 다 서지 않았다. 그 파일이 JSON 으로 안 읽히면 설치가 안 건드린다 — 위쪽 빨간 줄이 까닭을 든다. 고치고 다시 누른다 |
 | `제작자 스킬 (n 개 · ~/.claude/skills)` | 제작자 칸의 Claude 칸을 켰는데 짐의 스킬 가운데 홈에 안 선 것이 있다. `~/.claude/skills/` 가 읽기 전용인지 보고 다시 누른다 |
 | `받는 쪽 홈에 그 러너가 없다 (…)` | 맡기기 러너가 제가 맡기는 상대의 홈에 서 있다 — 그 도구가 제게 맡기는 길이 생긴다. 옛 판이 깔았거나 손으로 둔 것이다. 괄호의 홈에서 그 스킬 폴더를 지우고(설치가 깐 것이면 다음 설치가 걷는다) 다시 누른다 |
@@ -514,7 +514,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `Codex 규범 블록 (~/.codex/AGENTS.md)` | 제작자 칸의 Codex 칸을 켰는데 그 파일에 규범 블록이 없다. 표지 줄(`<!-- paisetup:norms BEGIN -->` · `END`)이 하나만 남았거나 둘 이상이면 설치가 안 건드린다 — 남은 표지를 지우고 다시 누른다 |
 | `agy 모델 (…)` | 괄호의 환경변수를 못 심었다 — 이름은 자리마다 다르다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 — 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `Codex · Copilot 맡기기 값 (…)` | 괄호의 환경변수를 못 심었다 — `agy 모델` 줄과 같다. 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
-| `agy 설정 (n/m · ~/.gemini/config)` | 설정 셋을 다 못 깔았다 — 괄호의 두 숫자가 「짐과 같은 것/짐에 든 것」이다. `~/.gemini/config` 가 읽기 전용인지 보고 다시 누른다 |
+| `agy 설정 (n/m · ~/.gemini/config · 이 PC 홈의 절대 경로)` | 설정 셋을 다 못 깔았다 — 괄호의 두 숫자가 「이 PC 홈의 절대 경로로 지은 글과 같은 것/짐에 든 것」이다. 짐의 틀 그대로인 파일도 다른 것으로 센다. `~/.gemini/config` 가 읽기 전용인지 보고 다시 누른다 |
 | `ANTHROPIC_BASE_URL` · `ANTHROPIC_AUTH_TOKEN` | 키를 안 넣었거나 빈 값이다. 다시 눌러 넣는다 |
 | `OPENAI_API_KEY` · `GEMINI_API_KEY` | 같은 회사 키를 Codex · Gemini · 안티그래비티가 읽는 이름으로도 심는 자리다. 위의 `ANTHROPIC_AUTH_TOKEN` 이 같이 `[X]` 면 그것만 고치면 된다 |
 | `Codex config.toml` · `Gemini settings.json` · `안티그래비티 settings.json` | 회사 설정을 그 자리에 못 썼다. `~/.codex/` · `~/.gemini/` 가 읽기 전용인지 보고 다시 누른다 |

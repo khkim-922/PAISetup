@@ -1,8 +1,8 @@
 """갈래 표와 자격 — 어디로 보내나 · 무엇으로 여나 · 얼마까지 받나.
 
 ⚠ **골든 씨앗이다** — 진본은 claude-config `seeds/gateway/` 이고, 새 프로젝트가 이 폴더를
-  복사해 출발한다. 복사한 뒤 손댈 자리는 아래 `ENV_PREFIX` 하나와 갈래 표의 값이다 —
-  나머지는 규격이라 고치면 짝(손잡이·난간·실측·곁말·검사)이 깨진다. 왜 이 값들인지의
+  복사해 출발한다. 복사한 뒤 손댈 자리는 아래 `ENV_PREFIX` · `LOGIN_REQUIRED` 둘과 갈래
+  표의 값이다 — 나머지는 규격이라 고치면 짝(손잡이·난간·실측·곁말·검사)이 깨진다. 왜 이 값들인지의
   판정표는 claude-config 결정 0033 이 든다.
 
 실측의 진본은 claude-config `posco/` 다. 여기 적힌 값은 셋 중 하나이고 어느 것인지는
@@ -28,8 +28,21 @@ ENV_PREFIX = "APP"
 
 
 def _env(name, default):
-    """`{ENV_PREFIX}_{name}` — 손잡이는 전부 이 한 자리로 읽는다."""
+    """`{ENV_PREFIX}_{name}` — 손잡이는 전부 이 한 자리로 읽는다.
+
+    예외는 회사가 이름을 정한 둘(`COMPANY_URL_ENV` · `COMPANY_TOKEN_ENV`)뿐이다 — 운영팀이
+    심는 글자 그대로 읽어야 닿아서 접두어를 못 붙인다.
+    """
     return os.environ.get(f"{ENV_PREFIX}_{name}", default)
+
+
+# 이 앱은 **로그인 없이 못 쓰나** — 복사한 뒤 손댈 둘째 자리다. 참이면 서버가 회사 갈래에
+# 운영팀이 심은 앱 토큰을 깐다(아래 `server_token`). 근거는 앱의 문이 **모든** 요청을 로그인
+# (SSO)으로 거른다는 사실 하나고 그 사실은 코드에 있으므로, 선언도 환경변수가 아니라 코드에
+# 둔다 — 배포 환경이 코드의 성질을 대신 말하게 두지 않는다.
+# ⚠ **기본은 거짓이다.** 로그인 없는 앱이 켜면 띄운 자리의 토큰으로 남이 마구 쓴다 — 서버에
+#   「누가 부르나」를 가를 재료가 없다(아래 `_KEY_ENV` 곁말).
+LOGIN_REQUIRED = False
 
 
 # 앱이 제 손으로 여는 기록 폴더 — CLI 오류 증거(`providers._cli_evidence`)가 여기 앉는다.
@@ -82,12 +95,65 @@ _CACHE_BETAS = (CACHE_TTL_BETA,) if CACHE_TTL and CACHE_TTL != "5m" else ()
 
 ANTHROPIC_VERSION = "2023-06-01"   # Claude-Posco.setting.md 14행 (기본값)
 
+# --- 회사 방식 배포(SR → 회사 GitLab → CI/CD)가 CI 변수로 심는 이름. 이름은 회사 기준 씨앗
+# `seeds/vibecoding/` 의 `docs/references/futurem-adapters.md`(llm_gateway 절)가 정했고, 등록은
+# `docs/guides/futurem-deploy.md`(SR 절)가 운영팀에 청하라 한다.
+# ⚠ **접두어를 안 붙인다** — 이름의 주인이 회사라 운영팀이 심는 글자 그대로 읽어야 닿는다.
+COMPANY_URL_ENV = "AI_GW_URL"
+COMPANY_TOKEN_ENV = "AI_GW_TOKEN"
+
+# 계약 경로 — 바닥 주소 뒤에 붙는다. Gemini 계약은 경로에 모델 이름이 들어가 `providers` 가 짓는다.
+MESSAGES_PATH = "/v1/messages"      # Claude-Posco.setting.md 10–14행
+RESPONSES_PATH = "/v1/responses"    # OpenAI.-Posco.Setting.md 394–420행
+
+
+def _base(value, names):
+    """바닥 주소 — 계약 경로를 붙이기 **전**까지. `/v1` 마디가 있으면 그 앞에서 자른다.
+
+    ⚠ **회사 문서끼리 바닥의 꼴이 갈린다.** Claude · Gemini 문서는 `/v1` 을 안 붙이고
+      (Claude-Posco.setting.md 172행 · Gemini-Posco.setting.md 108행) OpenAI 문서와 Codex 틀은
+      붙인다(OpenAI.-Posco.Setting.md 48행 · Codex-CLI.setting.toml `base_url`). `AI_GW_URL` 이
+      어느 꼴로 올지는 회사 문서가 안 정했다 — 그래서 어느 꼴로 와도 같은 바닥으로 받는다.
+      계약 셋이 한 바닥을 나눠 쓰므로 뗀 자리는 갈래 표가 다시 붙인다. 마디 단위라 `/v1beta`
+      는 안 뗀다.
+    ⚠ **주소가 아닌 값은 뜰 때 죽는다** — 요청마다 넘어지면 배포는 성공으로 보이고 화면만 빈다.
+    """
+    u = urlparse(value.strip())
+    if u.scheme not in ("http", "https") or not u.netloc:
+        raise RuntimeError(f"{names} 가 주소가 아니다: {value!r} — `http://호스트/경로` 꼴로 둔다")
+    segs = u.path.split("/")
+    if "v1" in segs:
+        segs = segs[:segs.index("v1")]
+    return f"{u.scheme}://{u.netloc}{'/'.join(segs).rstrip('/')}"
+
+
+# --- 바닥 주소 — **주소도 변수로 연다.** 개발·운영 게이트웨이와 루프백 프록시를 갈아 끼울 때
+# 코드를 안 고친다. 비우면 지금 주소다.
+# 회사 게이트웨이는 손잡이가 둘이다 — 이 앱의 것이 먼저고, 비면 회사 이름을 읽는다. 앱의 것이
+# 더 좁은 선언이라 이긴다. 회사 갈래 셋(아래 표)이 이 바닥 하나를 나눠 쓴다.
+# ⚠ 이름이 `_URL` 이 아니라 `_BASE_URL` 인 까닭 — 형제(atelier)의 `GATEWAY_URL` 은 기본 갈래의
+#   **완성된** 주소다. 같은 이름이면 갈림 목록(`_check/drift_check.py`)이 다른 것을 짝짓는다.
+GATEWAY_BASE_URL = _base(
+    _env("GATEWAY_BASE_URL", "") or os.environ.get(COMPANY_URL_ENV, "")
+    or "http://aigpt.posco.net/gpgpta01-gpt",           # Claude-Posco.setting.md 10–14행
+    f"{ENV_PREFIX}_GATEWAY_BASE_URL · {COMPANY_URL_ENV}")
+# 바깥 갈래는 제 손잡이로만 옮긴다.
+# ⚠ **SDK 표준 이름(`ANTHROPIC_BASE_URL` · `GOOGLE_GEMINI_BASE_URL`)은 안 읽는다.** 회사 PC 에서는
+#   Claude Code · Gemini CLI 가 그 이름으로 회사 게이트웨이나 루프백 프록시를 보므로
+#   (Claude-Posco.setting.md 172행 · ENV-posco 의 프록시 절), 읽으면 「내 키」 갈래가 개인 키를
+#   회사 쪽으로 보낸다 — 아래 `_KEY_ENV` 가 `ANTHROPIC_API_KEY` 를 안 읽는 것과 같은 결이다.
+ANTHROPIC_API_BASE_URL = _base(_env("ANTHROPIC_API_BASE_URL", "https://api.anthropic.com"),
+                               f"{ENV_PREFIX}_ANTHROPIC_API_BASE_URL")
+GEMINI_API_BASE_URL = _base(
+    _env("GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com"),
+    f"{ENV_PREFIX}_GEMINI_API_BASE_URL")
+
 _GATEWAY = {
     # 회사 Claude — 주소·머리는 Claude-Posco.setting.md 10–14행 · 270–277행.
     # ⚠ **첫 항이 곧 기본이다** — 기본을 따로 적으면 목록과 어긋나고 어긋난 줄 아무도 모른다.
     #   순서의 뜻은 앱마다 다르다: 품질 우선이면 최상위가 앞(헬퍼), 비용 우선이면 싼 것이
     #   앞(아뜰리에). 여기는 최상위가 앞이다 — 복사한 앱이 제 뜻대로 돌린다.
-    "anthropic": {"url": "http://aigpt.posco.net/gpgpta01-gpt/v1/messages",
+    "anthropic": {"url": f"{GATEWAY_BASE_URL}{MESSAGES_PATH}",
                   # `claude-opus-5` 는 사내 「지원 모델」 표(같은 문서 279–284행) 밖인데
                   # 실제로 돈다 — 사용자 확인(ENV-posco 26–29행 · atelier 갈래 표).
                   "models": ("claude-opus-5",
@@ -101,7 +167,7 @@ _GATEWAY = {
     # (`/v1/chat/completions`)은 안 쓴다: 이 게이트웨이가 **다 만든 뒤 몰아 줘서**
     # 렌더가 길수록 사용자가 빈 화면을 본다(atelier #123 실측 · 커밋 2be4432).
     # 상한을 실을 이름이 이 계약만 다르다(같은 문서 415행).
-    "openai":    {"url": "http://aigpt.posco.net/gpgpta01-gpt/v1/responses",
+    "openai":    {"url": f"{GATEWAY_BASE_URL}{RESPONSES_PATH}",
                   # 사내 문서 예시는 `gpt-5.2` 계열이고 이 둘은 표 밖 · 사용자 확인
                   # (atelier config.py 주석 · 커밋 2be4432). 최상위가 앞이다.
                   "models": ("gpt-5.6-sol", "gpt-5.6-terra"),
@@ -113,7 +179,7 @@ _GATEWAY = {
     # 표면을 그대로 연다(Gemini-Posco.setting.md 12행 · 인증 17–18행).
     # `url` 은 **바닥 주소**다 — 이 계약만 경로에 모델 이름이 들어가서(providers 의
     # `_gemini_envelope`) 완성된 주소를 여기 적을 수가 없다.
-    "gemini-posco": {"url": "http://aigpt.posco.net/gpgpta01-gpt",
+    "gemini-posco": {"url": GATEWAY_BASE_URL,
                      # 등록 목록은 같은 문서 36–41행인데 「관리자 설정에 따라 다를 수
                      # 있다」고 저쪽이 든다 — `gemini-3.6-flash` 가 목록 밖 · 사용자
                      # 확인이다(atelier config.py 주석 · 커밋 2be4432).
@@ -123,7 +189,7 @@ _GATEWAY = {
                      "contract": CONTRACT_GEMINI},
     # --- 사내망 밖 — 같은 코드로 돌아야 한다. 게이트웨이가 아플 때
     # 제품이 서지 않게 하는 자리고, 집에서 시험하는 자리이기도 하다.
-    "anthropic-api": {"url": "https://api.anthropic.com/v1/messages",
+    "anthropic-api": {"url": f"{ANTHROPIC_API_BASE_URL}{MESSAGES_PATH}",
                       # 공개 모델 ID. 첫 항을 `claude-opus-5` 로 두는 까닭은 회사
                       # Claude 갈래의 기본과 **같은 모델**이라야 갈래를 바꿨을 때
                       # 품질 기준선이 비교되기 때문이다.
@@ -138,7 +204,7 @@ _GATEWAY = {
                       "betas": _CACHE_BETAS},
     # 내 키로 Gemini — 구글 직결. 회사 갈래와 **같은 계약**이라 코드가 하나다.
     # 첫 항이 기본이다 — 무료 키는 pro 미리보기의 할당량이 0 이라(429 · 2026-09-05 실측) flash 가 앞이다.
-    "gemini":    {"url": "https://generativelanguage.googleapis.com",
+    "gemini":    {"url": GEMINI_API_BASE_URL,
                   "models": ("gemini-3.7-flash", "gemini-3.1-pro-preview"),
                   "site": SITE_OUTSIDE, "label": "내 키로 Gemini",
                   "key_group": KEY_GROUP_GEMINI,
@@ -223,9 +289,10 @@ if not site_allowed(DEFAULT_PROVIDER):
         f"열린 담장의 갈래로 두거나 {ENV_PREFIX}_SITES 를 넓힌다")
 
 # --- 키 묶음 → 그 묶음의 환경변수 후보. 앞에서부터 찾아 **처음 값이 있는 것**을 쓴다.
-# ⚠ **읽는 자는 프로브들뿐이다**(`_check/gateway_probe.py` · `live_probe.py` · `stream_probe.py`). 서버는 아무에게도 키를
-#   안 깔아 준다 — 로그인이 없어 「띄운 사람」과 「남」을 가를 재료가 없으므로, 깔면
-#   띄운 사람의 키로 남이 마구 쓴다. 안 실어 온 요청은 드라이런이다.
+# ⚠ **읽는 자는 프로브들뿐이다**(`_check/gateway_probe.py` · `live_probe.py` · `stream_probe.py`). 서버는 이 이름들로
+#   아무에게도 키를 안 깔아 준다 — 로그인이 없어 「띄운 사람」과 「남」을 가를 재료가 없으므로,
+#   깔면 띄운 사람의 키로 남이 마구 쓴다. 안 실어 온 요청은 드라이런이다. 서버가 까는 길은
+#   하나 — 로그인을 선언한 앱의 앱 토큰이고, 그 이름은 이 표에 없다(아래 `server_token`).
 _KEY_ENV = {
     # 회사 묶음이 둘을 보는 까닭 — 키는 하나인데 클라이언트마다 읽는 이름이 다르다
     # (ENV-posco 22–23행: 앱은 `ANTHROPIC_AUTH_TOKEN`, CLI 는 `ANTHROPIC_API_KEY`).
@@ -250,6 +317,20 @@ def env_token(group):
         if os.environ.get(name):
             return os.environ[name]
     return ""
+
+
+def server_token(group):
+    """서버가 까는 키 — **로그인을 선언한 앱(`LOGIN_REQUIRED`)의 회사 묶음에만** 운영팀이
+    심은 앱 토큰(`COMPANY_TOKEN_ENV`)을 준다. 아니면 빈 글자다. **부르는 자는 `creds` 다.**
+
+    ⚠ **회사 묶음 밖에는 안 준다.** 구글 직결 · 사외 Anthropic 에 실으면 회사 자격이 회사 밖으로
+      나가고, 로컬 CLI 갈래에 실으면 구독 토큰 자리(`CLAUDE_CODE_OAUTH_TOKEN`)에 앉는다.
+    ⚠ **사람의 키 이름(`_KEY_ENV`)은 안 본다.** 그것은 PC 마다 사람이 심은 개인 키라 서버가
+      읽으면 띄운 사람의 키를 남이 쓴다 — 앱 토큰은 운영팀이 그 앱에 내준 것이라 결이 다르다.
+    """
+    if not LOGIN_REQUIRED or group != KEY_GROUP_POSCO:
+        return ""
+    return os.environ.get(COMPANY_TOKEN_ENV, "")
 
 
 # --- 닿나 — 한 번 재고 프로세스가 사는 동안 든다 (atelier ADR 0159 · 0167) ----------
@@ -519,10 +600,11 @@ _MODEL_MAX_TOKENS = {
 MAX_ENVELOPE_CHARS = int(_env("MAX_ENVELOPE_CHARS", "900000"))
 
 
-# 요청이 키를 실어 와도 안 보낸다 — 봉투 명세만 돌려준다.
+# 요청이 키를 실어 와도, 서버 토큰이 있어도 안 보낸다 — 봉투 명세만 돌려준다.
 # 판정은 요청마다 선다(아래 `creds`) — **프로세스가 쥔 사실은 이 강제 하나뿐**이라 여기
-# 굳는 값도 그것 하나다. 서버가 키를 안 깔므로(`_KEY_ENV` 곁말) 「이 서버가 실호출인가」는
-# 프로세스가 답할 수 있는 물음이 아니다 — 브라우저마다 다르다.
+# 굳는 값도 그것 하나다. 서버가 키를 안 깔므로(`_KEY_ENV` 곁말 · 로그인을 선언한 앱의 회사
+# 갈래만 예외다) 「이 서버가 실호출인가」는 프로세스가 답할 수 있는 물음이 아니다 — 브라우저마다
+# 다르다.
 DRY_RUN_FORCED = _env("DRY_RUN", "") == "1"
 
 # --- Gemini 갈래에 **생각을 흘려 달라고 요청한다** — 켜면 봉투에
@@ -582,9 +664,10 @@ class Creds(NamedTuple):
 def creds(provider=None, token=None, model=None, max_tokens=None):
     """요청이 실어 온 것 위에 갈래 기본을 깐다.
 
-    ⚠ **키는 요청이 실어 온 것만 쓴다** — 서버 환경변수로 깔아 주지 않는다(위 `_KEY_ENV`
+    ⚠ **키는 요청이 실어 온 것을 쓴다** — 사람의 키 이름으로 깔아 주지 않는다(위 `_KEY_ENV`
       곁말). 안 실어 오면 `dry_run` 이 서서 봉투 명세만 나간다 — 조용히 남의 키로
-      새지 않는다.
+      새지 않는다. **예외는 하나** — 로그인을 선언한 앱의 회사 갈래에는 운영팀이 심은 앱
+      토큰을 깐다(`server_token`). 실어 온 키가 있으면 그것이 이긴다.
     ⚠ **상한은 표가 집는다.** 모델을 바꿔 오면 상한도 그 모델 것이어야 한다(위 표의
       까닭). 부르는 쪽이 **더 낮은 값**을 주면 그것을 쓴다 — 높은 값은 안 받는다:
       난간을 부르는 쪽이 넘게 두면 난간이 아니다.
@@ -596,12 +679,14 @@ def creds(provider=None, token=None, model=None, max_tokens=None):
       것이라, 대개 옛 브라우저 저장분이다. 기본 갈래로 내리되 **키·모델도 함께 비운다**:
       셋이 한 담장에서 온 한 벌이라, 키는 다른 묶음 것이고 모델은 그 갈래만 아는 이름이다.
       비운 키가 아래 `dry_run` 을 세워 **어디로도 안 나간다** — 위 ⚠ 가 막으려던
-      「말없이 사내 게이트웨이로 간다」가 여기서는 안 난다.
+      「말없이 사내 게이트웨이로 간다」가 여기서는 안 난다. 그래서 **내린 요청에는 서버
+      토큰도 안 깐다** — 깔면 내린 요청이 그 토큰을 달고 사내 게이트웨이로 나간다.
     """
     provider = (provider or DEFAULT_PROVIDER).lower()
     if provider not in _GATEWAY:
         raise ValueError(f"모르는 갈래다 — {provider} (있는 것: {', '.join(_GATEWAY)})")
-    if not site_allowed(provider):
+    lowered = not site_allowed(provider)
+    if lowered:
         provider, token, model = DEFAULT_PROVIDER, "", None
     row = _GATEWAY[provider]
     model = model or row["models"][0]
@@ -609,7 +694,7 @@ def creds(provider=None, token=None, model=None, max_tokens=None):
     if row["site"] == SITE_POSCO:
         # 벽 안쪽으로 — 절단이 계약으로 오게(`WALL_MAX_TOKENS` 곁말 · AI-prompt-helper 결정 0017)
         cap = min(cap, WALL_MAX_TOKENS)
-    token = token or ""
+    token = token or ("" if lowered else server_token(row["key_group"]))
     return Creds(
         provider=provider,
         contract=row["contract"],

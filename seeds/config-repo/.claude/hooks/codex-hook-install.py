@@ -19,7 +19,8 @@
 **뜻이 같을 때만** 파일을 갈아 끼운다. 줄로 고치는 손이 무엇을 놓쳐도 사용자 설정이 깨지거나 남의 훅이
 사라진 채 쓰이는 일은 없다 — 그 자리는 쓰지 않고 오류로 끝난다.
 ⚠ **다시 지은 배열의 글꼴은 바뀐다** — 그 배열 안의 주석(주석으로 막아 둔 항목 포함)은 뜻이 아니라 TOML 이 안 든다.
-  그래서 고쳐 쓰기 전에 원본을 곁에 떠 둔다(`BACKUP=`).
+  그래서 고쳐 쓰기 전에 원본을 곁에 떠 둔다(`BACKUP=`). 뜬 원본은 판마다 제 이름을 얻어, 같은 초에 두 번 돌아도
+  앞 판의 원본을 덮지 않는다(`backup_copy`).
 
 **못 알아보는 꼴은 안 건드린다.** 훅을 `[hooks]` 표의 `이벤트 = [ … ]` 가 아닌 꼴(`[[hooks.이벤트]]` · 맨 위의
 점 이름 · 인라인 표)로 적은 설정은 줄 위치를 확정할 수 없다. 그 이벤트는 건너뛰고 까닭을 낸다.
@@ -34,6 +35,7 @@
 import argparse
 import copy
 import datetime
+import itertools
 import json
 import math
 import os
@@ -405,6 +407,33 @@ def write_atomic(path, text):
         raise
 
 
+def backup_copy(config):
+    """고쳐 쓰기 전 원본을 곁에 떠 두고 그 자리를 돌려준다. 이름은 `<설정 이름>.before-hooks-<시각>` 이고, 그 이름이
+    이미 있으면 꼬리에 `-2` · `-3` … 을 단다.
+
+    ⚠ **시각은 초 단위라 같은 초의 두 판은 같은 이름을 고른다** — 그대로 쓰면 뒤 판이 앞 판의 원본을 덮고, 사용자의
+      고치기 전 설정이 소리 없이 사라진다. 그래서 「없을 때만 만든다」로 열고, 있으면 다음 번호로 간다 — 두 프로세스가
+      겹쳐도 한 이름은 하나만 얻는다. 심볼릭 링크면 가리키는 파일 곁에 링크의 이름으로 뜬다.
+    """
+    src = config.resolve()
+    base = src.with_name(config.name + BACKUP_SUFFIX + datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    for n in itertools.count(1):
+        path = base if n == 1 else base.with_name(f'{base.name}-{n}')
+        try:
+            out = open(path, 'xb')
+        except FileExistsError:
+            continue
+        try:
+            with out, open(src, 'rb') as inp:
+                shutil.copyfileobj(inp, out)
+            shutil.copystat(src, path)
+        except BaseException:   # 반쯤 뜬 원본을 남기지 않는다 — 다음 판이 그것을 원본으로 믿는다
+            if os.path.exists(path):
+                os.remove(path)
+            raise
+        return path
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', required=True)
@@ -421,10 +450,7 @@ def main():
             wanted_text = f.read()
         new, changed, skipped = merge(current, wanted_text)
         if changed and config.exists():
-            stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-            backup = config.resolve().with_name(config.name + BACKUP_SUFFIX + stamp)
-            shutil.copy2(config.resolve(), backup)
-            print('BACKUP=' + str(backup))
+            print('BACKUP=' + str(backup_copy(config)))
         if changed:
             write_atomic(config, new)
         if skipped:
