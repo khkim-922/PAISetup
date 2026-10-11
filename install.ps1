@@ -5367,6 +5367,14 @@ function Find-DesktopApps {
     if (-not $lack) { break }
     Start-Sleep -Seconds 2
   }
+  # 바로가기 꼴의 대상 실행 파일 — 시작 메뉴가 손잡이마다 안다. 스토어 꼴은 바로가기가 아니라 비어 있다.
+  $linkTarget = @{}
+  try {
+    foreach ($i in (New-Object -ComObject Shell.Application).NameSpace('shell:AppsFolder').Items()) {
+      $t = [string]$i.ExtendedProperty('System.Link.TargetParsingPath')
+      if ($t -and $t.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase)) { $linkTarget[[string]$i.Path] = $t }
+    }
+  } catch { }
   $out = @()
   foreach ($appPick in $rows) {
     $a = @($all | Where-Object { $_.Name -like "*$($appPick.App)*" })[0]
@@ -5403,6 +5411,14 @@ function Find-DesktopApps {
     } elseif ($a.AppID -match '^com\.squirrel\.([^.]+)\.') {
       # Squirrel 꼴 — `%LOCALAPPDATA%\<패키지>\app-<판>\` 아래에서 돈다(위 곁말의 셋째 꼴).
       $dir = Join-Path $env:LOCALAPPDATA $Matches[1]
+    } elseif ($linkTarget[$a.AppID]) {
+      # 바로가기 꼴 — 바로가기가 가리키는 실행 파일이 곧 그 앱이다. 이름도 폴더도 그 파일에서 읽는다.
+      # ⚠ **손잡이 · 앱 이름에서 짐작하지 않는다** — GitHub Copilot 은 손잡이가 `com.github.githubapp` 이고 실물이
+      #   `github.exe` 라 어느 쪽에서도 안 나온다. 짐작이 빗나가면 떠 있는 앱을 「안 떴다」로 읽어 한 번 더 띄우고,
+      #   다시 깔 때는 「껐다 켤까」도 안 묻는다.
+      $exe = $linkTarget[$a.AppID]
+      $procs = @([IO.Path]::GetFileNameWithoutExtension($exe))
+      $dir = Split-Path -Parent $exe
     }
     $out += @{ Name = $label; AppId = $a.AppID; Proc = @($procs); App = $want; Dir = $dir }
   }
