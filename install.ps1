@@ -350,11 +350,13 @@ $Steps = @(
   @{ Key = 'programs';   Title = '프로그램' }
   @{ Key = 'extensions'; Title = 'VS Code 확장' }
   @{ Key = 'cli';        Title = 'CLI' }
-  @{ Key = 'keys';       Title = '키와 주소' }
-  @{ Key = 'home';       Title = '홈 설정' }
-  @{ Key = 'personal';   Title = '개인 규범·룰·스킬' }
-  @{ Key = 'assets';     Title = '사내 환경 문서 · 씨앗 넷' }
-  @{ Key = 'repo';       Title = '개인 값 저장소' }
+  @{ Key = 'keys';       Title = '키와 값' }
+  @{ Key = 'site';       Title = '사내 연결' }
+  @{ Key = 'home';       Title = 'Claude 홈 설정' }
+  @{ Key = 'assets';     Title = '공용 자산' }
+  @{ Key = 'tools';      Title = '도구별 홈' }
+  @{ Key = 'repo';       Title = '설정 저장소' }
+  @{ Key = 'register';   Title = 'Claude 플러그인 · MCP' }
 )
 
 # 고를 목록을 한 줄씩 내준다 — `product|키|글자|기본값`. **여기까지 오는 데 부수효과가 없다**
@@ -2331,6 +2333,13 @@ function Stop-App($App) {
 
 #endregion 라이브러리
 
+# ══ 준비 ═══════════════════════════════════════════════════════════════════════════════════════
+#   층 — 없음(걸음 앞)
+#   하는 일 — 겹쳐 도는 것을 막는 빗장 · 고른 제품 · 묻고 잴 이름 표 · winget 되살리기 · 자리 재기 · 조건 값 ·
+#     설정 저장소 주소 · 올릴 것 훑기
+#   앞에서 받는 것 — 매개변수 · 값 파일 · 위의 표와 라이브러리
+#   안 하는 것 — 고른 제품을 안 깔고, 사용자 환경과 홈을 안 만진다. winget 되살리기만 깔 도구 자체를 세운다
+
 # ── 단일 실행 빗장 (Mutex) — **겹쳐 도는 것을 뿌리에서 막는다** ────────────────
 # ⚠ **부팅 자동화와 로그온 자동 실행, 또는 사람의 실행이 겹치면** 같은 환경변수와 설정 파일을
 #   동시에 덮어써 진 쪽의 반쪽 상태가 남는다 (#13).
@@ -2868,6 +2877,12 @@ if (-not ($NoUpgrade -or $noWinget)) {
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. [1/8] 앞에도 시간이 든다.
 Write-Elapsed '준비'
 
+# ══ 걸음 「프로그램」 ═══════════════════════════════════════════════════════════════════════════
+#   층 — 기계
+#   하는 일 — winget 앱(VS Code · Node · Git · Python · gh) · 데스크탑 앱 · Node 신뢰
+#   앞에서 받는 것 — 준비의 고른 제품 · 자리 · 올릴 것 목록 · winget 유무 · 파이썬이 필요한 까닭
+#   안 하는 것 — 홈 파일 · 키. 예외 하나 — Node 신뢰가 CA 경로(`NODE_EXTRA_CA_CERTS`)를 사용자 환경에 심는다.
+#     뒤의 확장 · CLI 가 그 값을 물고 받으므로 이 걸음에 선다
 Enter-Step 'programs'
 foreach ($app in $Apps) {
   # ⚠ **VS Code 를 끄면 VS Code 만 안 깐다** — Node 는 CLI 가 타므로 `core` 로 남아 그대로 깔린다.
@@ -3068,6 +3083,13 @@ Write-Host ''
 Write-Host '  Node 신뢰 배선' -ForegroundColor Cyan
 Wire-NodeTrust
 
+Exit-Step 'programs'
+
+# ══ 걸음 「VS Code 확장」 ═══════════════════════════════════════════════════════════════════════
+#   층 — 기계
+#   하는 일 — 깔린 확장을 한 번에 올리고, 고른 제품의 확장을 깐다
+#   앞에서 받는 것 — 「프로그램」의 VS Code(`code`) · Node 신뢰
+#   안 하는 것 — 사용자 환경 · 홈
 # ── 3. VS Code 확장 — **이 스크립트가 있는 까닭** ────────────────────────────────
 # ⚠ 확장만으로는 안 돈다. 확장은 Claude Code CLI 를 **자식으로 부른다** — 그래서 다음 칸이
 #   붙어 있고, 둘 중 하나만 서면 VS Code 는 열리는데 아무 일도 안 일어난다.
@@ -3078,7 +3100,6 @@ Wire-NodeTrust
 # ⚠ **`--update-extensions` 는 깔린 확장 전부를 올린다** — 우리 셋만 고르는 스위치가 없다. VS Code 가
 #   스스로 하는 자동 갱신과 같은 일이라 더 하는 것은 없다.
 
-Exit-Step 'programs'
 Enter-Step 'extensions'
 # 확장 갱신 한 호출에 두르는 울타리 — 초. **갱신은 곁일이라 포기할 수 있다**(까닭은 아래 호출 자리).
 # ⚠ **값은 이 칸의 실측 분포가 정한다** — 평소 1~14초이고, 엿새 밀린 회차가 587초를 썼다
@@ -3123,9 +3144,15 @@ if ($NoVsCode) {
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
 }
 
+Exit-Step 'extensions'
+
+# ══ 걸음 「CLI」 ═══════════════════════════════════════════════════════════════════════════════
+#   층 — 기계
+#   하는 일 — 고른 제품의 CLI(npm · winget) · Tavily 패키지 · 사외 로그인 안내
+#   앞에서 받는 것 — 「프로그램」의 Node · Node 신뢰
+#   안 하는 것 — 사용자 환경변수. 맡기기 값은 「키와 값」이 심는다
 # ── 4. CLI — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────────
 
-Exit-Step 'extensions'
 Enter-Step 'cli'
 $CliPicks = @($Clis | Where-Object { $PickKeys -contains $_.Key })
 if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
@@ -3149,6 +3176,27 @@ if ($PickKeys -contains 'claude') {
   Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
 }
 
+# ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
+#   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
+if (-not $inside) {
+  Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
+}
+# Copilot CLI 의 로그인 줄은 사외에만 둔다 — 사내에서 그 CLI 를 어떻게 잇고 쓰나는 아직 정해지지 않았다.
+if ((-not $inside) -and ($PickKeys -contains 'copilot')) {
+  Write-Host '  Copilot CLI 는 터미널에서 `copilot login` 을 한 번 친다 — 브라우저로 GitHub 계정을 잇는다'
+}
+
+Exit-Step 'cli'
+
+# ══ 걸음 「키와 값」 ═══════════════════════════════════════════════════════════════════════════
+#   층 — 환경
+#   하는 일 — agy 모델 값 · Codex · Copilot 맡기기 값 · 값 파일의 이름들(게이트웨이 키 · 남은 이름) · 물러난 이름 걷기 ·
+#     회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 · 사외 Claude 구독 로그인
+#   앞에서 받는 것 — 준비의 자리 · 맡기기 조건 · 값 파일, 「CLI」의 `claude`(구독 로그인)
+#   안 하는 것 — 도구 홈 파일
+#   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)뿐이다 — 심는 자리를
+#     그 걸음 뒤로 옮기면 settings.json 이 바뀐다
+Enter-Step 'keys'
 # agy 가 고를 모델 — 설치가 사용자 환경변수로 심고, 백그라운드 래퍼(스킬 `agy-background`)가 읽는다.
 # **값은 자리마다 다르다** — 사내 agy 는 회사 키로 게이트웨이를 타고, 사외는 각자 로그인으로 선다.
 #
@@ -3227,23 +3275,11 @@ if ($wantCcBg) {
   }
 }
 
-# ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
-#   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
-if (-not $inside) {
-  Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
-}
-# Copilot CLI 의 로그인 줄은 사외에만 둔다 — 사내에서 그 CLI 를 어떻게 잇고 쓰나는 아직 정해지지 않았다.
-if ((-not $inside) -and ($PickKeys -contains 'copilot')) {
-  Write-Host '  Copilot CLI 는 터미널에서 `copilot login` 을 한 번 친다 — 브라우저로 GitHub 계정을 잇는다'
-}
-
-Exit-Step 'cli'
 # ── 5. 값 — 파일이 들면 읽고, 없으면 묻는다 ─────────────────────────────────────
 # ⚠ **`#config-repo` 가 있어도 여기서 받는다.** 옛 판은 그 줄이 있으면 안 묻고 저쪽 설치 몸통이
 #   제 파일로 심게 넘겼다 — 그러면 저장소에 설치 몸통이 없는 사람은 키가 어디에도 안 심긴다.
 #   회사 키는 설치 창(또는 `install.env`)이 받고 이 파일이 심는다. 저쪽이 드는 것은 사람에게
 #   딸린 것(개인 키 · 형제 저장소)이지 이 칸이 아니다.
-Enter-Step 'keys'
 $fromFile  = Read-EnvFile $EnvFile
 if ($fromFile.Count -gt 0) { Write-Host "  install.env 가 $($fromFile.Count)개를 든다" }
 
@@ -3630,6 +3666,14 @@ if ($offsite) {
   }
 }
 
+Exit-Step 'keys'
+
+# ══ 걸음 「사내 연결」 ═════════════════════════════════════════════════════════════════════════
+#   층 — 환경
+#   하는 일 — 로컬 프록시와 그 감시 작업 · Codex · Gemini · agy 회사 설정. 사내가 아니면 아무 일도 안 한다
+#   앞에서 받는 것 — 「키와 값」이 심은 주소 · 키(`$Planted`) · 게이트웨이를 쓰나(`$useGateway`)
+#   안 하는 것 — Claude 홈 · 스킬
+Enter-Step 'site'
 # ── 5‴. 로컬 프록시 — **사내에서 Claude 와 Gemini 가 지나는 문** (결정 0041) ─────────────
 # ⚠ **왜 프록시인가.** 게이트웨이가 Opus 5 에서 assistant prefill 을 400 으로 거절하고, Gemini CLI 는
 #   http 주소를 거절한다(루프백만 예외). 둘 다 클라이언트 파일을 못 고치는 자리라 사이에 한 겹을 둔다.
@@ -3913,7 +3957,13 @@ if ($useGateway -and ($wantCodex -or $wantGemini -or $wantAgy)) {
   }
 }
 
-Exit-Step 'keys'
+Exit-Step 'site'
+
+# ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
+#   층 — 홈
+#   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · env 밀기와 걷기
+#   앞에서 받는 것 — 「키와 값」의 심은 값 · 값 파일 · 게이트웨이를 쓰나 · settings 에 안 밀 이름 · 물러난 이름
+#   안 하는 것 — 스킬 · 규범 · 훅. 훅은 「도구별 홈」이 이 걸음의 `$cfg` 에 얹고 다시 쓴다
 # ── 6. 홈 설정 ──────────────────────────────────────────────────────────────────
 # ⚠ **씨앗은 없을 때만 깐다.** 사람이 앱에서 바꾼 값을 재실행이 지우면 안 된다. 담는 것도
 #   취향이 아니라 공용으로 서는 것뿐이다 — `permissions` 를 안 담는 까닭이 그것이다: 그
@@ -4121,11 +4171,181 @@ if ($cfg) {
 }
 
 Exit-Step 'home'
+
+# ══ 걸음 「공용 자산」 ═════════════════════════════════════════════════════════════════════════
+#   층 — 홈
+#   하는 일 — 사내 환경 문서 · 씨앗 넷(거울로 깔거나, 설정 저장소가 들면 비켜선다) · 씨앗 판 줄 · 씨앗이 드는 파이썬 패키지
+#   앞에서 받는 것 — 준비의 설정 저장소 주소 · 배포본 판(`$DistVersion`), 「프로그램」의 파이썬
+#   안 하는 것 — 도구별 홈
+# ── 7. 사내 환경 문서 · 씨앗 둘 ─────────────────────────────────────────────────
+# ⚠ **이건 고를 것이 아니라 환경이다.** 그래서 위 칸과 달리 스위치가 없다 — 사내 게이트웨이의
+#   배선·실측·오류 명세와, 복사해 출발하는 씨앗 둘(배관 · 설정 저장소)은 **누가 받아도 쓴다.**
+# ⚠ 옛 판은 이것을 안 깔고 **경로만 찍었다.** 그런데 그 경로는 이 zip 이 풀린 자리였다 —
+#   설정 저장소를 안 넣은 사람에게는 그것이 유일한 사본이고, 바탕화면 폴더를 지우면 사라진다.
+#   게다가 스킬과 형제 저장소 문서가 가리키는 자리는 `claude-config/posco/` 인데, 저장소가
+#   없는 기계에는 그 좌표가 **아예 없다** — 시키는 대로 찾으면 없는 경로를 뒤진다.
+# ⚠ 그래서 홈에 깐다 — 규범·룰·스킬이 이미 쓰는 꼴이다: **진본은 저장소, 로드 자리는 홈.**
+#   저장소를 든 사람은 `deploy.ps1` 이 이 자리를 갱신하고 `check-global-copies.sh` 가
+#   바이트로 잰다. 사본이 하나 더 늘지만, **재는 자가 붙은 사본**이라 조용히 안 낡는다.
+Enter-Step 'assets'
+# ⚠ **씨앗 넷은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 **원본에 없는
+#   파일을 안 지운다.** 진본에서 부품 하나를 걷어도 한 번 깐 기계에는 그것이 영영 남고, 씨앗은
+#   **있으면 복사되는 자리**라 걷힌 것이 계속 새 프로젝트로 퍼진다 — 5‴ 칸의 「심기는 더하기만
+#   한다」와 같은 병이고, 여기도 **지우는 손**이 없어서 난다.
+#   ⚠ 거울이 설 수 있는 것은 **이 zip 만 그 자리에 심을 때**다. 설정 저장소를 든 사람 자리에서는
+#     그 저장소의 배포(`deploy.ps1`)가 `deploy.seeds.conf` 에 적힌 폴더를 **저장소 최신판**으로
+#     같은 자리에 민다 — 그 자리는 아래 「비켜선다」가 든다.
+# ⚠ **설정 저장소가 미는 자리에서는 비켜선다** — 그림 문 칸과 같은 규율이다. 옛 판은 늘 깔아,
+#   릴리스 뒤에 저장소에서 씨앗을 고친 날부터 **이 칸이 옛 판으로 되돌리고 8 칸의 배포가 새 판으로
+#   다시 미는 일**이 자동 실행마다 되풀이됐다 — 같은 파일이 매번 「덮어씀」으로 뜨고 백업 폴더가
+#   쌓이며, 두 칸 사이에는 옛 씨앗이 깔려 있다. 판 줄(`seeds/.version`)은 두 자가 적는 값이 달라
+#   (판 번호 · 커밋 해시) 새 판을 내도 계속 튄다.
+#   무엇을 미나는 **저장소의 선언을 읽는다**(`deploy.seeds.conf` — 배포·세션 훅·재는 자가 같은 줄을
+#   읽는다). 여기에 목록을 따로 들면 저쪽이 폴더를 더하거나 뺀 날 조용히 어긋난다.
+#   ⚠ **홈 자리가 비었으면 비켜서지 않는다.** 저장소가 막 받아졌거나 배포가 한 번도 안 돈
+#     기계에서 비켜서면 그 자리가 빈 채로 남는다 — 우리가 깔고, 뒤따르는 배포가 새 판으로 덮는다.
+# ⚠ **`posco` 만은 덮어쓰기로 둔다.** 그 자리는 **진본이 둘이고 런타임 파일이 섞인다** — 설정
+#   저장소의 `deploy.ps1` 이 같은 자리를 갱신하고, 프록시가 제 곁에 `opus5_proxy.pid` 와
+#   `proxy.log` 를 쓴다. 거울로 걷으면 **남이 심은 것과 도는 프로세스가 쓰는 파일을 지운다** —
+#   우리 것만 걷는다는 규율이 못 서는 자리라 여기서는 더하기만 한다.
+$envAssets = @(
+  @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'; Mirror = $false
+     Name = '사내 환경 문서'; Desc = '게이트웨이·API·오류 기록 — 붙이기 전에 읽는다' }
+  @{ From = Join-Path $Here 'seeds\gateway'; To = Join-Path $homeDir 'seeds\gateway'; Mirror = $true
+     Name = '게이트웨이 씨앗'; Desc = '새 프로젝트가 복사해서 출발한다' }
+  @{ From = Join-Path $Here 'seeds\check';   To = Join-Path $homeDir 'seeds\check'; Mirror = $true
+     Name = '검사 씨앗';       Desc = '검사 부품과 어느 저장소에서나 도는 게이트의 진본 — 받아 간 사본은 여기를 가리킨다' }
+  # ⚠ **이것도 스위치를 안 둔다.** 「설정 저장소」 칸을 쓸 사람만 보지만, **볼지 말지를 고르는
+  #   때가 이 설치보다 뒤다** — 칸을 채우려면 저장소가 이미 있어야 하고, 그 저장소를 만드는
+  #   골든이 이것이다. 켜는 칸으로 두면 안 켠 사람은 그 칸을 채울 길을 못 찾는다.
+  @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'; Mirror = $true
+     Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
+  # 회사가 쓴 사내 FastAPI 코딩 기준 — 스킬 `inhouse-app`([6/8] 을 켠 사람)이 이 자리의 장을 연다.
+  # ⚠ **스킬을 안 켠 사람에게도 깐다.** 사내 환경 문서(`posco/README.md`)와 이 씨앗의 `SEED.md` 가 이
+  #   자리를 가리키므로, 그 좌표가 가리킬 자리가 홈에 서야 한다(claude-config 결정 0074 · 0075).
+  @{ From = Join-Path $Here 'seeds\vibecoding'; To = Join-Path $homeDir 'seeds\vibecoding'; Mirror = $true
+     Name = '사내 코딩 기준 씨앗'; Desc = '사내 앱을 회사 방식으로 배포할 때 스킬 inhouse-app 이 여는 회사 기준 본문 — 들머리는 SEED.md' }
+)
+# 설정 저장소가 홈으로 미는 자리 — `seeds\gateway` 꼴의 홈 상대 경로 → 그것을 든 저장소.
+# 저장소 자리는 8 칸이 받는 자리와 같은 함수가 댄다(`Get-ConfigRepoDir`).
+$ownedHome = @{}
+foreach ($u in $configRepoUrls) {
+  $d = Get-ConfigRepoDir $u
+  $conf = Join-Path $d 'deploy.seeds.conf'
+  if (-not (Test-Path -LiteralPath $conf)) { continue }
+  foreach ($ln in (Get-Content -LiteralPath $conf -Encoding UTF8)) {
+    $rel = (($ln -replace '#.*$', '').Trim()) -replace '/', '\'
+    if ($rel -and -not $ownedHome.ContainsKey($rel) -and (Test-Path -LiteralPath (Join-Path $d $rel))) {
+      $ownedHome[$rel] = $d
+    }
+  }
+}
+foreach ($a in $envAssets) {
+  if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없다"; continue }
+  $owner = $ownedHome[$a.To.Substring($homeDir.Length).TrimStart('\')]
+  if ($owner -and @(Get-ChildItem -LiteralPath $a.To -Recurse -File -ErrorAction SilentlyContinue).Count) {
+    $a.Owner = $owner
+    Write-Host "  $($a.Name) — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
+    Write-Host "     $owner"
+    continue
+  }
+  # ⚠ **못 걷었으면 덮어쓰기로 물러나지 않는다.** 걷기가 진 채로 복사하면 옛 부품이 남은
+  #   자리가 「깔았다」 초록으로 덮이고, 아래 검증은 **모자란 것만 물어** 여분을 안 문다 —
+  #   거울이 안 선 판이 그대로 통과한다. 까닭을 대고 실패로 센다.
+  if ($a.Mirror -and (Test-Path -LiteralPath $a.To)) {
+    try { Remove-Item -LiteralPath $a.To -Recurse -Force -ErrorAction Stop }
+    catch {
+      Write-Host "  ! $($a.Name) 옛 사본을 못 걷었다 — $(Say-Why $_)" -ForegroundColor Red
+      $Fails.Add("$($a.Name) (옛 사본 걷기)")
+    }
+  }
+  New-Item -ItemType Directory -Path $a.To -Force | Out-Null
+  Copy-Item -Path (Join-Path $a.From '*') -Destination $a.To -Recurse -Force
+  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '거울로 깔았다' } else { '깔았다' })" -ForegroundColor Green
+  Write-Host "     $($a.To)"
+  Write-Host "     $($a.Desc)"
+}
+
+# ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ──────────────
+# ⚠ **왜 한 줄이 더 필요한가.** 홈 사본을 진본으로 믿고 재는 자가 있다
+#   (`seeds/check/_check/borrowed_check.py`). 홈 뿌리는 git 나무가 아니라 판을 물을 데가
+#   없어, 그 자는 **오늘 날짜**를 내고 낡은 홈과 견준 초록이 최신처럼 읽힌다.
+# ⚠ **여기가 적는 것은 릴리스 판이다** — 설정 저장소를 든 사람 자리에서는 같은 파일에
+#   세션 훅 몸통(`session-start-body.sh`)·`deploy.ps1` 이 커밋 해심을 적는다. 자가 둘이라 값도 둘이지만
+#   **묻는 물음이 같다**: 「이 홈 사본이 어디서 왔나」. 이쪽 답은 판 번호다.
+# ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이 아니다 —
+#   autorun 이 매일 도는 자리라, 매번 덮으면 그 날짜가 늘 오늘이라 낡음을 말하지 않는다.
+# ⚠ **자리가 씨앗을 깐 뒤인 까닭** — 민 뒤에 적어야 「그 판이 깔렸다」가 참이다.
+# ⚠ **씨앗 하나라도 설정 저장소가 들면 안 쓴다** — 그 자리의 판 줄은 저쪽 배포가 커밋 해시로
+#   적는다. 여기서 판 번호로 덮으면 위 비켜서기를 해도 이 한 줄이 매번 튄다.
+$seedRoot = Join-Path $homeDir 'seeds'
+$seedOwned = [bool]@($envAssets | Where-Object { $_.Owner -and $_.To -like "$seedRoot\*" }).Count
+if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
+  $seedVerFile = Join-Path $seedRoot '.version'
+  $seedVerNow = ''
+  if (Test-Path -LiteralPath $seedVerFile) {
+    try {
+      $seedVerNow = (([string](Get-Content -LiteralPath $seedVerFile -TotalCount 1 -Encoding UTF8)) `
+                      -replace "^﻿", '').Trim().Split(' ')[0]
+    } catch { $seedVerNow = '' }
+  }
+  if ($seedVerNow -ne $DistVersion) {
+    # ⚠ **BOM 없이 쓴다** — 읽는 자가 파이썬이고, 그 세 바이트가 판 번호 앞에 붙으면
+    #   화면에는 멀쩡히 찍히고 **견주는 자리에서만** 안 맞는다 (`install.ui.ps1` 의 그 함정).
+    $seedVerLine = "$DistVersion $(Get-Date -Format 'yyyy-MM-dd')`n"
+    [IO.File]::WriteAllText($seedVerFile, $seedVerLine, (New-Object Text.UTF8Encoding($false)))
+    Write-Host "  씨앗 판 줄 — $DistVersion" -ForegroundColor Green
+  }
+}
+
+# ── 씨앗이 드는 파이썬 패키지 — **부품이 오는 자리에 의존성도 온다** (claude-config #72) ──────
+# 검사 씨앗의 그림 줄이기(`_shrink.py`)가 PIL 을 든다. 부르는 자는 모델이지만 그 길을 여는 것은
+# 위 그림 문이다 — 그림이 크면 **누구의 PC 에서든** 「줄여서 연다」로 돌려보낸다. 그래서 규범·룰·
+# 스킬 칸이 아니라 여기 선다: 부품도 문도 스위치를 안 타니 의존성도 안 탄다.
+# ⚠ **이름은 이 파일에 없다.** 값 파일의 `#pip-packages = 이름 …` 이 든다 — 몸통은 무엇을 까는지
+#   모르고 까는 법만 안다(`#gateway-proxy` · `#codex-config` 와 같은 결).
+# ⚠ **`pip` 가 아니라 `python -m pip` 로 깐다.** `pip` 를 따로 부르면 어느 파이썬의 것인지 PATH 가
+#   따로 정해, 부품을 부르는 `python` 과 갈릴 수 있다.
+# ⚠ **못 깔아도 빨강으로 안 끝낸다.** 회사망이 패키지 저장소를 막는 자리가 있을 수 있고, 없으면
+#   줄이기가 「PIL 이 없다」와 까는 명령을 대며 원본 치수로 물러난다 — 조용히 무너지는 자리가
+#   아니다. 말은 하고 뱉은 끝 줄을 편다. 막힌 망에 오래 붙잡히지 않게 기다림과 되풀이를 줄인다.
+# ⚠ 이미 있으면 pip 가 망에 안 묻고 「이미 있다」로 끝난다 — 로그온 자동 실행이 매번 불러도 된다.
+$pipLine = Read-Directive $EnvFile 'pip-packages'
+$pipPkgs = @(if ($pipLine) { $pipLine -split '[,\s]+' | Where-Object { $_ } })
+if ($pipPkgs) {
+  $pipNames = $pipPkgs -join ' · '
+  if (-not (Test-Runs 'python' '--version')) {
+    Write-Host "  파이썬 패키지($pipNames) — 건너뛴다: 이 창에서 python 이 안 선다"
+  } else {
+    $pl = [IO.Path]::GetTempFileName()
+    $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
+                 '--timeout', '15', '--retries', '1') + $pipPkgs
+    $prc = Invoke-Logged 'python' $pipArgs $pl
+    if ($prc -eq 0) {
+      Write-Host "  파이썬 패키지 — $pipNames 섰다" -ForegroundColor Green
+    } else {
+      Write-Host "  ! 파이썬 패키지($pipNames) — 못 깔았다(종료 $prc). 그림 줄이기는 원본 치수로 물러난다 · pip 가 뱉은 끝 줄:" -ForegroundColor Yellow
+      Show-Log $pl
+    }
+    Remove-Item $pl -ErrorAction SilentlyContinue
+  }
+}
+
+Exit-Step 'assets'
+
+# ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
+#   층 — 홈
+#   하는 일 — 제작자 칸 값 · Claude(제작자 꾸러미 · 칸 없이 까는 스킬 · 걷힌 룰 · 홈 훅 · settings 다시 쓰기) · 중립 규범 자리 ·
+#     agy(설정 둘 · 옛 스킬 자리 · 홈 스킬 · 훅) · Codex(홈 스킬 · 훅 병합과 신뢰 · 규범 블록)
+#   앞에서 받는 것 — 「Claude 홈 설정」의 `$cfg` · `$homeCfg` · `$dirty`, 「공용 자산」의 씨앗(훅 몸통 · 짓는 손)
+#   안 하는 것 — 설정 저장소를 안 받는다
+#   ⚠ 제작자 칸 값(`PAISETUP_PERSONAL`)은 사용자 환경에 심지만 이 걸음에 선다 — 「Claude 홈 설정」 뒤라 settings.json 의 env 로
+#     안 밀리고, 「설정 저장소」의 배포가 이 프로세스에서 그 값을 물려받는다
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
 # ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다.
 #   제작자 칸의 Claude 칸(`-PersonalFor claude` · 옛 `-WithPersonalConfig`)을 켤 때만, 그리고 이 폴더에 실제로 있을 때만 깐다.
 
-Enter-Step 'personal'
+Enter-Step 'tools'
 # 고른 도구 — 설정 저장소의 배포(`deploy.ps1`)와 세션 훅이 같은 값을 읽어 어느 도구 홈을 개인화할지 정한다(결정 0107).
 if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) {
   # ⚠ **이 프로세스의 값도 맞춘다** — 뒤의 설정 저장소 배포(8 칸)는 이 프로세스의 자식이라 그 값을 물려받는다. 새 판의 배포는
@@ -4400,96 +4620,6 @@ if ($staleRules.Count -gt 0) {
   }
 }
 
-Exit-Step 'personal'
-# ── 7. 사내 환경 문서 · 씨앗 둘 ─────────────────────────────────────────────────
-# ⚠ **이건 고를 것이 아니라 환경이다.** 그래서 위 칸과 달리 스위치가 없다 — 사내 게이트웨이의
-#   배선·실측·오류 명세와, 복사해 출발하는 씨앗 둘(배관 · 설정 저장소)은 **누가 받아도 쓴다.**
-# ⚠ 옛 판은 이것을 안 깔고 **경로만 찍었다.** 그런데 그 경로는 이 zip 이 풀린 자리였다 —
-#   설정 저장소를 안 넣은 사람에게는 그것이 유일한 사본이고, 바탕화면 폴더를 지우면 사라진다.
-#   게다가 스킬과 형제 저장소 문서가 가리키는 자리는 `claude-config/posco/` 인데, 저장소가
-#   없는 기계에는 그 좌표가 **아예 없다** — 시키는 대로 찾으면 없는 경로를 뒤진다.
-# ⚠ 그래서 홈에 깐다 — 규범·룰·스킬이 이미 쓰는 꼴이다: **진본은 저장소, 로드 자리는 홈.**
-#   저장소를 든 사람은 `deploy.ps1` 이 이 자리를 갱신하고 `check-global-copies.sh` 가
-#   바이트로 잰다. 사본이 하나 더 늘지만, **재는 자가 붙은 사본**이라 조용히 안 낡는다.
-Enter-Step 'assets'
-# ⚠ **씨앗 넷은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 **원본에 없는
-#   파일을 안 지운다.** 진본에서 부품 하나를 걷어도 한 번 깐 기계에는 그것이 영영 남고, 씨앗은
-#   **있으면 복사되는 자리**라 걷힌 것이 계속 새 프로젝트로 퍼진다 — 5‴ 칸의 「심기는 더하기만
-#   한다」와 같은 병이고, 여기도 **지우는 손**이 없어서 난다.
-#   ⚠ 거울이 설 수 있는 것은 **이 zip 만 그 자리에 심을 때**다. 설정 저장소를 든 사람 자리에서는
-#     그 저장소의 배포(`deploy.ps1`)가 `deploy.seeds.conf` 에 적힌 폴더를 **저장소 최신판**으로
-#     같은 자리에 민다 — 그 자리는 아래 「비켜선다」가 든다.
-# ⚠ **설정 저장소가 미는 자리에서는 비켜선다** — 그림 문 칸과 같은 규율이다. 옛 판은 늘 깔아,
-#   릴리스 뒤에 저장소에서 씨앗을 고친 날부터 **이 칸이 옛 판으로 되돌리고 8 칸의 배포가 새 판으로
-#   다시 미는 일**이 자동 실행마다 되풀이됐다 — 같은 파일이 매번 「덮어씀」으로 뜨고 백업 폴더가
-#   쌓이며, 두 칸 사이에는 옛 씨앗이 깔려 있다. 판 줄(`seeds/.version`)은 두 자가 적는 값이 달라
-#   (판 번호 · 커밋 해시) 새 판을 내도 계속 튄다.
-#   무엇을 미나는 **저장소의 선언을 읽는다**(`deploy.seeds.conf` — 배포·세션 훅·재는 자가 같은 줄을
-#   읽는다). 여기에 목록을 따로 들면 저쪽이 폴더를 더하거나 뺀 날 조용히 어긋난다.
-#   ⚠ **홈 자리가 비었으면 비켜서지 않는다.** 저장소가 막 받아졌거나 배포가 한 번도 안 돈
-#     기계에서 비켜서면 그 자리가 빈 채로 남는다 — 우리가 깔고, 뒤따르는 배포가 새 판으로 덮는다.
-# ⚠ **`posco` 만은 덮어쓰기로 둔다.** 그 자리는 **진본이 둘이고 런타임 파일이 섞인다** — 설정
-#   저장소의 `deploy.ps1` 이 같은 자리를 갱신하고, 프록시가 제 곁에 `opus5_proxy.pid` 와
-#   `proxy.log` 를 쓴다. 거울로 걷으면 **남이 심은 것과 도는 프로세스가 쓰는 파일을 지운다** —
-#   우리 것만 걷는다는 규율이 못 서는 자리라 여기서는 더하기만 한다.
-$envAssets = @(
-  @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'; Mirror = $false
-     Name = '사내 환경 문서'; Desc = '게이트웨이·API·오류 기록 — 붙이기 전에 읽는다' }
-  @{ From = Join-Path $Here 'seeds\gateway'; To = Join-Path $homeDir 'seeds\gateway'; Mirror = $true
-     Name = '게이트웨이 씨앗'; Desc = '새 프로젝트가 복사해서 출발한다' }
-  @{ From = Join-Path $Here 'seeds\check';   To = Join-Path $homeDir 'seeds\check'; Mirror = $true
-     Name = '검사 씨앗';       Desc = '검사 부품과 어느 저장소에서나 도는 게이트의 진본 — 받아 간 사본은 여기를 가리킨다' }
-  # ⚠ **이것도 스위치를 안 둔다.** 「설정 저장소」 칸을 쓸 사람만 보지만, **볼지 말지를 고르는
-  #   때가 이 설치보다 뒤다** — 칸을 채우려면 저장소가 이미 있어야 하고, 그 저장소를 만드는
-  #   골든이 이것이다. 켜는 칸으로 두면 안 켠 사람은 그 칸을 채울 길을 못 찾는다.
-  @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'; Mirror = $true
-     Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
-  # 회사가 쓴 사내 FastAPI 코딩 기준 — 스킬 `inhouse-app`([6/8] 을 켠 사람)이 이 자리의 장을 연다.
-  # ⚠ **스킬을 안 켠 사람에게도 깐다.** 사내 환경 문서(`posco/README.md`)와 이 씨앗의 `SEED.md` 가 이
-  #   자리를 가리키므로, 그 좌표가 가리킬 자리가 홈에 서야 한다(claude-config 결정 0074 · 0075).
-  @{ From = Join-Path $Here 'seeds\vibecoding'; To = Join-Path $homeDir 'seeds\vibecoding'; Mirror = $true
-     Name = '사내 코딩 기준 씨앗'; Desc = '사내 앱을 회사 방식으로 배포할 때 스킬 inhouse-app 이 여는 회사 기준 본문 — 들머리는 SEED.md' }
-)
-# 설정 저장소가 홈으로 미는 자리 — `seeds\gateway` 꼴의 홈 상대 경로 → 그것을 든 저장소.
-# 저장소 자리는 8 칸이 받는 자리와 같은 함수가 댄다(`Get-ConfigRepoDir`).
-$ownedHome = @{}
-foreach ($u in $configRepoUrls) {
-  $d = Get-ConfigRepoDir $u
-  $conf = Join-Path $d 'deploy.seeds.conf'
-  if (-not (Test-Path -LiteralPath $conf)) { continue }
-  foreach ($ln in (Get-Content -LiteralPath $conf -Encoding UTF8)) {
-    $rel = (($ln -replace '#.*$', '').Trim()) -replace '/', '\'
-    if ($rel -and -not $ownedHome.ContainsKey($rel) -and (Test-Path -LiteralPath (Join-Path $d $rel))) {
-      $ownedHome[$rel] = $d
-    }
-  }
-}
-foreach ($a in $envAssets) {
-  if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없다"; continue }
-  $owner = $ownedHome[$a.To.Substring($homeDir.Length).TrimStart('\')]
-  if ($owner -and @(Get-ChildItem -LiteralPath $a.To -Recurse -File -ErrorAction SilentlyContinue).Count) {
-    $a.Owner = $owner
-    Write-Host "  $($a.Name) — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
-    Write-Host "     $owner"
-    continue
-  }
-  # ⚠ **못 걷었으면 덮어쓰기로 물러나지 않는다.** 걷기가 진 채로 복사하면 옛 부품이 남은
-  #   자리가 「깔았다」 초록으로 덮이고, 아래 검증은 **모자란 것만 물어** 여분을 안 문다 —
-  #   거울이 안 선 판이 그대로 통과한다. 까닭을 대고 실패로 센다.
-  if ($a.Mirror -and (Test-Path -LiteralPath $a.To)) {
-    try { Remove-Item -LiteralPath $a.To -Recurse -Force -ErrorAction Stop }
-    catch {
-      Write-Host "  ! $($a.Name) 옛 사본을 못 걷었다 — $(Say-Why $_)" -ForegroundColor Red
-      $Fails.Add("$($a.Name) (옛 사본 걷기)")
-    }
-  }
-  New-Item -ItemType Directory -Path $a.To -Force | Out-Null
-  Copy-Item -Path (Join-Path $a.From '*') -Destination $a.To -Recurse -Force
-  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '거울로 깔았다' } else { '깔았다' })" -ForegroundColor Green
-  Write-Host "     $($a.To)"
-  Write-Host "     $($a.Desc)"
-}
-
 # ── 칸 없이 까는 스킬 — 위 `$FreeSkills` (결정 0091) ─────────────────────────────────
 # ⚠ **제작자 꾸러미를 손수 깔았으면 할 일이 없다** — 6 칸이 묶음 전부를 깔고 기록까지 적었다. 설정 저장소를 넣고 Claude
 #   칸을 켠 판은 여기가 돈다 — 그 저장소가 안 든 표준 스킬은 여기서 깔아야 빠지지 않는다.
@@ -4524,38 +4654,6 @@ if (-not $kitClaude) {
                     Where-Object { Test-SkillGoesTo $_ 'claude' })
     Remove-RetiredSkills -Bundle $KitSkills -SkillHome $skillHome -Ledger (Join-Path $homeDir '.paisetup-skills') `
                          -BackupRoot (Join-Path $homeDir 'backups') -Installed $freeDone -Keep $claudeKeep
-  }
-}
-
-# ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ──────────────
-# ⚠ **왜 한 줄이 더 필요한가.** 홈 사본을 진본으로 믿고 재는 자가 있다
-#   (`seeds/check/_check/borrowed_check.py`). 홈 뿌리는 git 나무가 아니라 판을 물을 데가
-#   없어, 그 자는 **오늘 날짜**를 내고 낡은 홈과 견준 초록이 최신처럼 읽힌다.
-# ⚠ **여기가 적는 것은 릴리스 판이다** — 설정 저장소를 든 사람 자리에서는 같은 파일에
-#   세션 훅 몸통(`session-start-body.sh`)·`deploy.ps1` 이 커밋 해심을 적는다. 자가 둘이라 값도 둘이지만
-#   **묻는 물음이 같다**: 「이 홈 사본이 어디서 왔나」. 이쪽 답은 판 번호다.
-# ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이 아니다 —
-#   autorun 이 매일 도는 자리라, 매번 덮으면 그 날짜가 늘 오늘이라 낡음을 말하지 않는다.
-# ⚠ **자리가 씨앗을 깐 뒤인 까닭** — 민 뒤에 적어야 「그 판이 깔렸다」가 참이다.
-# ⚠ **씨앗 하나라도 설정 저장소가 들면 안 쓴다** — 그 자리의 판 줄은 저쪽 배포가 커밋 해시로
-#   적는다. 여기서 판 번호로 덮으면 위 비켜서기를 해도 이 한 줄이 매번 튄다.
-$seedRoot = Join-Path $homeDir 'seeds'
-$seedOwned = [bool]@($envAssets | Where-Object { $_.Owner -and $_.To -like "$seedRoot\*" }).Count
-if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
-  $seedVerFile = Join-Path $seedRoot '.version'
-  $seedVerNow = ''
-  if (Test-Path -LiteralPath $seedVerFile) {
-    try {
-      $seedVerNow = (([string](Get-Content -LiteralPath $seedVerFile -TotalCount 1 -Encoding UTF8)) `
-                      -replace "^﻿", '').Trim().Split(' ')[0]
-    } catch { $seedVerNow = '' }
-  }
-  if ($seedVerNow -ne $DistVersion) {
-    # ⚠ **BOM 없이 쓴다** — 읽는 자가 파이썬이고, 그 세 바이트가 판 번호 앞에 붙으면
-    #   화면에는 멀쩡히 찍히고 **견주는 자리에서만** 안 맞는다 (`install.ui.ps1` 의 그 함정).
-    $seedVerLine = "$DistVersion $(Get-Date -Format 'yyyy-MM-dd')`n"
-    [IO.File]::WriteAllText($seedVerFile, $seedVerLine, (New-Object Text.UTF8Encoding($false)))
-    Write-Host "  씨앗 판 줄 — $DistVersion" -ForegroundColor Green
   }
 }
 
@@ -4751,39 +4849,6 @@ if (($PickKeys -contains 'claude') -and
 if (($PickKeys -contains 'claude') -and
     (Plant-HomeToolHook 'PowerShell UTF-8 BOM 보정(PostToolUse)' @('PostToolUse') @('utf8-bom.sh') '_ub' '')) { $dirty = $true }
 
-# ── 씨앗이 드는 파이썬 패키지 — **부품이 오는 자리에 의존성도 온다** (claude-config #72) ──────
-# 검사 씨앗의 그림 줄이기(`_shrink.py`)가 PIL 을 든다. 부르는 자는 모델이지만 그 길을 여는 것은
-# 위 그림 문이다 — 그림이 크면 **누구의 PC 에서든** 「줄여서 연다」로 돌려보낸다. 그래서 규범·룰·
-# 스킬 칸이 아니라 여기 선다: 부품도 문도 스위치를 안 타니 의존성도 안 탄다.
-# ⚠ **이름은 이 파일에 없다.** 값 파일의 `#pip-packages = 이름 …` 이 든다 — 몸통은 무엇을 까는지
-#   모르고 까는 법만 안다(`#gateway-proxy` · `#codex-config` 와 같은 결).
-# ⚠ **`pip` 가 아니라 `python -m pip` 로 깐다.** `pip` 를 따로 부르면 어느 파이썬의 것인지 PATH 가
-#   따로 정해, 부품을 부르는 `python` 과 갈릴 수 있다.
-# ⚠ **못 깔아도 빨강으로 안 끝낸다.** 회사망이 패키지 저장소를 막는 자리가 있을 수 있고, 없으면
-#   줄이기가 「PIL 이 없다」와 까는 명령을 대며 원본 치수로 물러난다 — 조용히 무너지는 자리가
-#   아니다. 말은 하고 뱉은 끝 줄을 편다. 막힌 망에 오래 붙잡히지 않게 기다림과 되풀이를 줄인다.
-# ⚠ 이미 있으면 pip 가 망에 안 묻고 「이미 있다」로 끝난다 — 로그온 자동 실행이 매번 불러도 된다.
-$pipLine = Read-Directive $EnvFile 'pip-packages'
-$pipPkgs = @(if ($pipLine) { $pipLine -split '[,\s]+' | Where-Object { $_ } })
-if ($pipPkgs) {
-  $pipNames = $pipPkgs -join ' · '
-  if (-not (Test-Runs 'python' '--version')) {
-    Write-Host "  파이썬 패키지($pipNames) — 건너뛴다: 이 창에서 python 이 안 선다"
-  } else {
-    $pl = [IO.Path]::GetTempFileName()
-    $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
-                 '--timeout', '15', '--retries', '1') + $pipPkgs
-    $prc = Invoke-Logged 'python' $pipArgs $pl
-    if ($prc -eq 0) {
-      Write-Host "  파이썬 패키지 — $pipNames 섰다" -ForegroundColor Green
-    } else {
-      Write-Host "  ! 파이썬 패키지($pipNames) — 못 깔았다(종료 $prc). 그림 줄이기는 원본 치수로 물러난다 · pip 가 뱉은 끝 줄:" -ForegroundColor Yellow
-      Show-Log $pl
-    }
-    Remove-Item $pl -ErrorAction SilentlyContinue
-  }
-}
-
 # ── 걷힌 Tavily 키 안내 — 옛 판이 홈 SessionStart 에 심은 한 줄을 걷는다 ──────────────────────
 # 웹 검색 · 웹 가져오기가 대부분 서서 Tavily 키가 여는 덤(사이트 지도 · 크롤 · 리서치)의 값이 줄었고, 웹이 못 닿은
 # 자리는 「웹 다시 찾기」 훅이 다른 길을 결과 곁에 붙인다. 그래서 안내는 더 안 심는다.
@@ -4811,7 +4876,13 @@ if ($dirty -and $cfg) {
   [IO.File]::WriteAllText($homeCfg, $json, (New-Object Text.UTF8Encoding($false)))
 }
 
-Exit-Step 'assets'
+Exit-Step 'tools'
+
+# ══ 걸음 「설정 저장소」 ═══════════════════════════════════════════════════════════════════════
+#   층 — 저장소
+#   하는 일 — GitHub CLI 로그인 · 설정 저장소 받기 · 그 저장소 훅을 `--install` 로 부르기
+#   앞에서 받는 것 — 준비의 주소 · 자리(`$configRepoUrls` · `$configRepoRoot`), 「도구별 홈」이 이 프로세스에 둔 `PAISETUP_PERSONAL`
+#   안 하는 것 — 그 뒤의 개인화. 그 저장소의 배포가 든다
 # ── 8. 개인 값 저장소 (선택) ────────────────────────────────────────────────────
 # ⚠ **주소는 이 파일에 없다.** `install.env` 가 `#config-repo` 를 들 때만 이 칸이 선다 —
 #   그래야 이 스크립트가 익명으로 남아 남에게 그대로 줄 수 있다.
@@ -5002,6 +5073,13 @@ if (-not $repoUrl) {
 }
 Exit-Step 'repo'
 
+# ══ 걸음 「Claude 플러그인 · MCP」 ═════════════════════════════════════════════════════════════
+#   층 — 등록
+#   하는 일 — 공식 문서 스킬 플러그인 · 웹 검색(Tavily) MCP 등록 · agy 로그인 안내 한 줄
+#   앞에서 받는 것 — 「CLI」의 Tavily 패키지 · 「키와 값」의 구독 로그인 · 「설정 저장소」의 배포가 먼저 한 등록(있으면 비켜선다)
+#   안 하는 것 — 없음
+Enter-Step 'register'
+
 # ── 8″. 공식 문서 스킬 — **자격이 설 자리가 다 선 뒤에 돈다** ────────────────────────
 # ⚠ **왜 CLI 칸(3)이 아니라 여기인가.** CLI 를 깔자마자 붙이면 사외는 구독 로그인(4′) 전이고 사내는
 #   홈 설정(5)·로컬 프록시(5‴) 전이다 — 실측 2026-09-24 집 PC: 3 칸에서 「Not logged in」으로 졌고
@@ -5121,6 +5199,15 @@ if ($wantAgyDelegate) {
   Write-Host '  agy 가 로그인 전이면 터미널에서 agy 를 한 번 띄워 Google 계정으로 로그인한다'
 }
 
+Exit-Step 'register'
+
+# ══ 마무리 ═════════════════════════════════════════════════════════════════════════════════════
+#   층 — 없음(걸음 뒤)
+#   하는 일 — 넘겨받은 임시 값 파일 지우기 · 바로가기 · 로그온 자동 실행 · 끝 검증 · 앱 열기 · 끝 줄 · 종료 코드
+#   앞에서 받는 것 — 앞 걸음 전부
+#   안 하는 것 — 없음
+#   ⚠ 자동 실행 칸의 `Read-Directive $EnvFile 'autorun'` 은 임시 값 파일을 지운 뒤에 선다 — 그 파일을 넘기는 설치 창은
+#     `-AutoRun` · `-NoAutoRun` 가운데 하나를 늘 넘겨, 그 줄에 안 닿는다
 # ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
 # ⚠ **화면 껍데기도 지우지만 그 손은 제 프로세스가 살아 있을 때만 돈다.** 작업 관리자로 끄거나
 #   VDI 가 세션을 끊거나 그것이 죽으면 **평문 토큰이 든 파일이 `%TEMP%` 에 눌러앉고**, 다음
