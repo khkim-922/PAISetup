@@ -15,12 +15,12 @@
 말을 붙일 수 없고, 사람의 글을 받는 훅도 없다. 그래서 감긴 파일을 `view_file` 로 열려는 순간 막고 까닭에 스킬로 가는 길을
 싣는다. 감긴 파일은 열어도 글자가 안 나오니 막아서 잃는 것이 없다.
 ⚠ **둘 것에는 아무것도 안 낸다** — `"allow"` 는 agy 의 권한 묻기를 건너뛰게 한다. 우리 훅이 사람의 권한 설정을 넓히면 안
-   된다. 빈 출력을 agy 가 어떻게 받는지는 claude-config #126 이 잰다.
+   된다. 빈 출력이면 agy 는 묻지도 막지도 않고 도구를 돌린다(claude-config #126 실측).
 ⚠ **재다 져도 막지 않는다** — 몸통과 같은 규율이다. 진 사실은 stderr 한 줄로 남긴다.
 
 **배선도 이 파일이 든다** — `install` 이 agy 전역 훅 자리(`~/.gemini/config/hooks.json`)에 우리 이름(`paisetup-…`)의 항목만
-얹는다. 그 파일은 「이름 → 설정」의 표라 남의 항목과 섞이지 않는다. 명령에는 이 파일의 절대 경로를 슬래시로 박는다 — agy 가
-윈도에서 어느 셸로 훅을 돌리는지 문서에 없어, 어느 셸에서나 같은 뜻인 꼴을 쓴다.
+얹는다. 그 파일은 「이름 → 설정」의 표라 남의 항목과 섞이지 않는다. 명령에는 이 파일의 절대 경로를 슬래시로 박고, 윈도에서는
+따옴표를 안 친다(`script_word` — 까닭은 거기).
 ⚠ 사람이 우리 항목을 `"enabled": false` 로 꺼 두었으면 그 뜻을 잇는다.
 ⚠ 못 읽는 파일(JSON 이 아님 · 맨 위가 표가 아님)은 안 건드리고 까닭을 낸다. 고쳐 쓰기 전에 원본을 곁에 떠 둔다.
 
@@ -33,6 +33,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import shlex
 import shutil
 import sys
 import tempfile
@@ -104,8 +105,43 @@ def utf8_bom(data):
 
 
 # ── 배선 ─────────────────────────────────────────────────────────────────────────
+def short_path(path):
+    """윈도의 8.3 짧은 이름 — 못 얻으면 None. 짧은 이름이 꺼진 볼륨에서는 긴 이름이 그대로 돌아온다."""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        n = ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, len(buf))
+    except (AttributeError, OSError):
+        return None
+    return buf.value if 0 < n < len(buf) else None
+
+
+def script_word():
+    """명령에 박을 이 파일의 자리 — 셸이 한 낱말로 읽는 꼴. 못 지으면 None.
+
+    ⚠ **윈도에서는 따옴표를 안 친다.** agy 는 윈도에서 훅 명령을 cmd.exe 로 돌리면서 명령 속 큰따옴표를 `\\"` 로 감싸
+      넘긴다(Go 의 인자 이스케이프 · claude-config #126 실측). cmd 는 그 역슬래시를 모르고 python 은 따옴표를 글자로 받아,
+      따옴표까지 붙은 경로를 못 찾고 2 로 진다 — agy 는 0 이 아닌 훅을 도구 오류로 바꿔 `view_file` 이 다 막히고 쓰기는
+      「실패」로 보고된다. 그래서 cmd 가 가르는 글자(빈칸 · `&|<>^%"`)가 든 경로는 8.3 짧은 이름으로 그 글자를 없애고,
+      그것도 안 되면 None 이다 — 깨진 훅을 심느니 안 심고 까닭을 낸다.
+    """
+    path = pathlib.Path(__file__).resolve()
+    word = path.as_posix()
+    if os.name != 'nt':
+        return shlex.quote(word)
+
+    def plain(w):
+        return not any(c.isspace() or c in '&|<>^%"' for c in w)
+    if plain(word):
+        return word
+    short = short_path(path)
+    if short and plain(short):
+        return pathlib.PureWindowsPath(short).as_posix()
+    return None
+
+
 def command(mode):
-    return 'python -X utf8 "%s" %s' % (pathlib.Path(__file__).resolve().as_posix(), mode)
+    return 'python -X utf8 %s %s' % (script_word(), mode)
 
 
 def wanted():
@@ -147,6 +183,10 @@ def write_atomic(path, text):
 
 
 def install(config):
+    if script_word() is None:
+        print('ERROR=이 파일의 자리(%s)에 셸이 가르는 글자가 있고 짧은 이름도 없다 — 따옴표 없이 부를 꼴을 못 지어 안 심는다'
+              % pathlib.Path(__file__).resolve())
+        return 1
     config = pathlib.Path(config).expanduser()
     current = {}
     if config.exists():

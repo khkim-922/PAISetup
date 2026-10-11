@@ -661,18 +661,25 @@ if (((Test-Path $codexHome) -and (Test-PersonalFor 'codex')) -or ((Test-Path $ge
         }
     }
 }
+function Get-CodexNormsArgs {
+    # 블록 짓는 자(`codex-norms.py`)에게 넘길 인자 전부. 고르지 않았으면 블록을 걷는 판을 짓는다 — 블록이 없으면 지금
+    # 파일과 같아 배포가 안 민다. `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 실물 짓는 자에 물린다.
+    # ⚠ **늘 여럿을 돌려준다** — 원소 하나짜리 배열은 돌려받는 자리에서 문자열로 풀리고, 그것을 `@` 로 펼치면 글자마다
+    #   인자가 된다(`- - r e m o v e`). `--target` · `--out` 까지 여기서 지어 갈래마다 원소가 늘 여럿이게 한다.
+    param([bool]$Personal, [string]$Norms, [string]$Rules, [string]$Target, [string]$Out)
+    $mode = if ($Personal) { @('--norms', $Norms, '--rules', $Rules, '--rules-home', '~/.paisetup/norms/rules') }
+            else { @('--remove') }
+    return @(@($mode) + @('--target', $Target, '--out', $Out))
+}
 if (Test-Path $codexHome) {
     $codexPy = Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $codexPy) {
         $todo += 'Codex 규범 블록 — python 이 없어 ~/.codex/AGENTS.md 를 못 지었다'
     } else {
         $codexNormsPlan = Join-Path ([IO.Path]::GetTempPath()) 'deploy-codex-agents.md'
-        # 고르지 않았으면 블록을 걷는 판을 짓는다 — 블록이 없으면 지금 파일과 같아 배포가 안 민다
-        $codexNormsArgs = if (Test-PersonalFor 'codex') {
-            @('--norms', $ruleSrc, '--rules', (Join-Path $src '.claude\rules.global'), '--rules-home', '~/.paisetup/norms/rules')
-        } else { @('--remove') }
-        $codexNormsOut = @(& $codexPy.Source -X utf8 (Join-Path $src '.claude\hooks\codex-norms.py') @codexNormsArgs `
-            --target (Join-Path $codexHome 'AGENTS.md') --out $codexNormsPlan)
+        $codexNormsArgs = @(Get-CodexNormsArgs -Personal (Test-PersonalFor 'codex') -Norms $ruleSrc `
+            -Rules (Join-Path $src '.claude\rules.global') -Target (Join-Path $codexHome 'AGENTS.md') -Out $codexNormsPlan)
+        $codexNormsOut = @(& $codexPy.Source -X utf8 (Join-Path $src '.claude\hooks\codex-norms.py') @codexNormsArgs)
         if ($LASTEXITCODE -eq 0) {
             $targets += @{ From = $codexNormsPlan; To = Join-Path $codexHome 'AGENTS.md' }
         } else {
