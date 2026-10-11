@@ -1430,21 +1430,21 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 #   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
 $wantCodex  = [bool]($codexTpl  -and $inside -and ($PickKeys -contains 'codex'))
 $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini'))
-# ── agy 묶음 — agy 모델 값 · agy 설정 셋 (claude-config 결정 0083 · 0086 · 0088 · #117) ──────
+# ── agy 묶음 — agy 모델 값 · agy 설정 둘 (claude-config 결정 0083 · 0086 · 0088 · #117) ──────
 # Claude Code 가 agy 에게 일을 맡기는 길은 백그라운드 래퍼(스킬 `agy-background`) 하나다 — 그 래퍼가 고를
-# 모델(`$AgyModelVars`)과, agy 가 Claude Code 와 같은 규범·스킬·룰을 읽게 하는 설정 셋이다.
+# 모델(`$AgyModelVars`)과, agy 가 Claude Code 와 같은 규범·룰을 읽게 하는 설정 둘이다.
 # ⚠ **자리를 안 가린다 — 갈리는 것은 모델 값뿐이다.** 사내 agy 는 회사 키로 게이트웨이를 타서 서는
-#   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다). 설정 셋은 사내에서도 그대로 선다
+#   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다). 설정 둘은 사내에서도 그대로 선다
 #   (사내 PC 실측 2026-10-08 · claude-config #117 · 결정 0086).
 # ⚠ **다리(MCP `agy-bridge`)는 안 깐다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아, 맡겨 두고 딴 일을
 #   하라는 이 묶음의 뜻과 어긋난다.
 # ⚠ **둘은 조건이 다르다**(결정 0089 · 0091).
 #   * 맡기기(`$wantAgyDelegate`) — 모델 값 · 래퍼 스킬 · 래퍼가 도는 파이썬. 「자리 × Claude 또는 Codex 와 안티그래비티를
 #     골랐나」의 사실이라 그 둘만 탄다. 래퍼는 누구의 규범과도 무관하게 agy 를 띄우고 넘기는 도구다.
-#   * 설정 셋(`$wantAgyKit`)은 제작자 칸의 agy 칸을 탄다 — 가리키는 것이 그 칸이 까는 중립 자리의 규범 · 룰이다.
+#   * 설정 둘(`$wantAgyKit`)은 제작자 칸의 agy 칸을 탄다 — 가리키는 것이 그 칸이 까는 중립 자리의 규범 · 룰이다.
 #     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다. 맡기는 쪽이 없어도 선다(결정 0099).
 #   * 일하는 도구 스킬 · 훅(`$hostAgy`)은 칸 없이 안티그래비티를 고르면 선다(결정 0099) — 아래 「Codex · agy 홈의 스킬」 ·
-#     「agy 스킬 목록」 · 「agy 훅」 칸.
+#     「agy 옛 스킬 자리」 · 「agy 훅」 칸.
 $hostAgy         = [bool]($PickKeys -contains 'antigravity')
 # ── 설정 저장소의 주소와 자리 — 비켜서는 칸들(제작자 칸 · 홈 스킬 · 씨앗 · 칸 없이 까는 스킬)과 8 칸(받는다)이 같이 쓴다 ──
 # ⚠ **자리를 짓는 자를 한 벌로 둔다.** 비켜서는 칸이 저장소를 찾는 자리와 8 칸이 clone 하는 자리가
@@ -1566,7 +1566,7 @@ $wantClaudeBgAgy   = [bool](($PickKeys -contains 'claude') -and $hostAgy)
 $wantClaudeBg      = [bool]($wantClaudeBgCodex -or $wantClaudeBgAgy)
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091 · 0097) ──────
 # 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — 도구마다 제 홈을 든다: Claude `~/.claude/skills` · Codex
-# `~/.agents/skills` · agy `~/.gemini/config/paisetup-skills`. Codex 나 안티그래비티를 고르면 Claude 를 고른 자리와 같은
+# `~/.agents/skills` · agy `~/.gemini/config/skills`. Codex 나 안티그래비티를 고르면 Claude 를 고른 자리와 같은
 # 기본기를 받는다(0097 · 0099). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽** 홈에 살고 **받는 쪽** 홈에는 안 간다
 # (받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다.
 # 제작자 설정 칸을 켜면 6 칸이 Claude 홈에 묶음 전부를 까므로, Claude 쪽 조건은 칸을 끈 자리에서만 일을 한다
@@ -3442,30 +3442,42 @@ Write-Elapsed '[5/8] 홈 설정'
 #   묶음에 없는 것**만 걷는다.
 # ⚠ **지우지 않고 옮긴다** — `~/.claude/backups/install-skills-<시각>/`. 같은 이름을 사람이 손수 만들어
 #   두었을 수도 있어서, 되돌릴 자리를 남긴다.
-# ⚠ **기록이 없는 기계는 과도기 목록을 쓴다** — 기록은 1.25.0 부터 적힌다. 그 전 판이 깔았다가 배포본에서
-#   빠진 이름은 배포본 이력에서 한 번 셌다(`git log --diff-filter=D -- .claude/skills` · 2026-09-24:
+# ⚠ **기록이 없는 Claude 홈은 과도기 목록을 쓴다** — 기록은 1.25.0 부터 적힌다. 그 전 판이 Claude 홈에 깔았다가
+#   배포본에서 빠진 이름은 배포본 이력에서 한 번 셌다(`git log --diff-filter=D -- .claude/skills` · 2026-09-24:
 #   pptx · roadmap-doc). 모든 기계가 이 판 이상을 한 번 돌고 나면 이 목록은 할 일이 없다 — 걷는 날은 사람이 정한다.
+#   **다른 홈은 이 목록을 안 쓴다**(`-Transition @()`) — Codex · agy 홈에 그 판이 깐 적이 없고, 그 홈들은 사람 스킬과
+#   같이 살아 같은 이름의 사람 스킬을 걷게 된다(아래 `Install-HomeSkills`).
 # ⚠ **부르는 자가 둘이다** — 6 칸(묶음 전부를 깐 판)과 7 칸의 「칸 없이 까는 스킬」(몇 개만 깐 판). 그래서
 #   기록에 적는 것은 **이번에 깐 이름(`-Installed`) 더하기, 앞 기록 가운데 묶음에 아직 있는 이름**이다. 몇 개만
 #   깐 판이 기록을 그 몇 개로 갈아 쓰면, 앞서 칸을 켜고 깐 나머지가 기록에서 빠져 묶음에서 걷히는 날 안 걷힌다.
 #   `-Installed` 를 안 주면 묶음 전부를 깐 것으로 친다(6 칸).
+# 백업 자리는 늘 새로 잡는다 — 같은 초에 두 번 돌거나 앞 백업에 같은 이름이 있으면, 이미 있는 폴더로 옮기기가 그 안으로
+#   들어가 앞 백업과 겹친다. 그래서 비어 있는 이름을 고른다(`-2` · `-3` …).
+function Get-FreePath([string]$Path) {
+  # 아직 없는 자리 — `$Path` 가 있으면 `$Path-2` · `$Path-3` … 가운데 처음 빈 것
+  $p = $Path; $i = 2
+  while (Test-Path -LiteralPath $p) { $p = "$Path-$i"; $i++ }
+  return $p
+}
 function Remove-RetiredSkills {
   # `$Keep` — 「묶음에 있나」 대신 「이번 목록에 있나」로 잰다(결정 0099). 제작자 칸을 끈 도구의 홈에서 제작자 스킬이,
   #   받는 쪽 홈에서 러너가 빠지게 한다. 기록에 적힌 이름만 걷는 것은 같다.
-  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string[]]$Keep)
+  # `$Transition` — 기록이 없을 때 기록 대신 쓸 이름(위 곁말). 안 주면 Claude 홈의 과도기 목록이다.
+  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string[]]$Keep,
+        [string[]]$Transition = @('pptx', 'roadmap-doc'))
   if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
   $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
   if ($null -eq $Installed) { $Installed = $shipped }
   $before = if (Test-Path -LiteralPath $Ledger) {
     @([IO.File]::ReadAllLines($Ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
   } else {
-    @('pptx', 'roadmap-doc')   # 과도기 — 위 곁말
+    @($Transition | Where-Object { $_ })   # 과도기 — 위 곁말
   }
   $stay = if ($null -ne $Keep) { $Keep } else { $shipped }
   $gone = @($before | Where-Object { $stay -notcontains $_ } |
             Where-Object { Test-Path -LiteralPath (Join-Path $SkillHome $_) -PathType Container })
   if ($gone.Count -gt 0) {
-    $bk = Join-Path $BackupRoot ("install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $bk = Get-FreePath (Join-Path $BackupRoot ("install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss')))
     New-Item -ItemType Directory -Path $bk -Force | Out-Null
     foreach ($n in $gone) {
       Move-Item -LiteralPath (Join-Path $SkillHome $n) -Destination (Join-Path $bk $n) -Force
@@ -3537,7 +3549,7 @@ if (-not $personalClaude) {
 }
 
 # ── 규범 · 룰의 중립 자리 — `~/.paisetup/norms` (결정 0099) ─────────────────────────────────────────
-# Codex 의 규범 블록(룰 줄)과 agy 설정 셋이 가리키는 자리다. Claude 홈(`~/.claude`)은 Claude 가 스스로 싣는 자리라, Claude 칸을
+# Codex 의 규범 블록(룰 줄)과 agy 설정 둘이 가리키는 자리다. Claude 홈(`~/.claude`)은 Claude 가 스스로 싣는 자리라, Claude 칸을
 # 끄고 Codex · agy 칸만 켠 사람에게 거기 깔면 Claude 에도 실린다 — 그래서 따로 둔다. 이름이 `CLAUDE.md` 가 아닌 것도 같은
 # 까닭이다(Claude 는 그 이름을 찾아 싣는다). 이 폴더는 통째로 우리 것이라, 쓸 도구가 없으면 걷는다(백업 자리로 옮긴다).
 # 설정 저장소를 넣고 Codex · agy 를 켰으면 깔지도 걷지도 않는다 — 그 저장소의 배포가 같은 자리를 민다.
@@ -3554,10 +3566,11 @@ if ($kitCodex -or $kitAgy) {
   Write-Host "  규범 · 룰 중립 자리 — 쓸 도구가 없어 걷었다 (옮긴 자리: $nnBk)" -ForegroundColor Green
 }
 
-# ── agy 설정 셋 — `kit/agy/*` → `~/.gemini/config/` (claude-config 결정 0083 · #134) ──────
-# 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 아래 중립 자리(`~/.paisetup/norms`)를, 스킬 목록은 agy 홈을
-# 가리킨다. 그래서 여기서 옮겨 적는 진본이 없다. 제작자 칸의 agy 칸을 켰을 때만 — 끄면 아래가 우리 것만 걷는다.
-# ⚠ **짐의 셋은 틀이고 홈에 까는 파일은 이 PC 의 파생물이다** — 틀은 홈을 `~/` 로 적고, `ConvertTo-AgyPointerText` 가 그
+# ── agy 설정 둘 — `kit/agy/*` → `~/.gemini/config/` (claude-config 결정 0083 · #134) ──────
+# 둘 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 위 중립 자리(`~/.paisetup/norms`)를 가리킨다. 그래서 여기서
+# 옮겨 적는 진본이 없다. 제작자 칸의 agy 칸을 켰을 때만 — 끄면 아래가 우리 것만 걷는다. 스킬 목록은 없다 — 우리 스킬은
+# agy 가 목록 없이 싣는 기본 자리에 산다(아래 「agy 옛 스킬 자리」 · 결정 0111).
+# ⚠ **짐의 둘은 틀이고 홈에 까는 파일은 이 PC 의 파생물이다** — 틀은 홈을 `~/` 로 적고, `ConvertTo-AgyPointerText` 가 그
 #   자리를 이 PC 홈의 절대 경로로 바꾼 글을 깐다. 「이미 맞다」도 끝 검증도 짐의 바이트가 아니라 그 글과 견준다.
 # ⚠ **대상이 링크면 링크를 걷고 쓴다.** 쓰기는 링크를 따라가 가리키는 원본을 덮는다 — 손으로
 #   링크를 걸어 둔 PC 에서 그 원본이 한 줄짜리로 바뀐다. 있던 파일은 백업 자리로 먼저 떠 둔다.
@@ -3594,7 +3607,7 @@ if ($wantAgyKit) {
       if (Test-AgyPointerSame $to $want) { continue }
       if (Test-Path -LiteralPath $to) {
         if (-not $agyBk) {
-          $agyBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+          $agyBk = Get-FreePath (Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
           New-Item -ItemType Directory -Path $agyBk -Force | Out-Null
         }
         Copy-Item -LiteralPath $to -Destination (Join-Path $agyBk $f.Name) -Force
@@ -3612,10 +3625,10 @@ if ($wantAgyKit) {
   }
 }
 
-# agy 칸을 끈 판 — 우리 설정 셋(규범 · 룰을 가리키는 둘)만 걷는다. 「우리 것」은 꼴로 가린다: 규범 include 한 줄 ·
+# agy 칸을 끈 판 — 우리 설정 둘(규범 · 룰을 가리키는 둘)만 걷는다. 「우리 것」은 꼴로 가린다: 규범 include 한 줄 ·
 # 룰 자리 한 줄이고 그 자리가 우리가 써 온 자리(옛 Claude 홈 · 지금 중립 자리) 가운데 하나다. 다르면 사람이 고친
-# 것이라 둔다. 스킬 목록은 칸과 무관하게 선다(아래 「agy 스킬 목록」). 설정 저장소가 있어도 걷는다 — 그 배포도 끈 칸에는
-# 안 민다(결정 0107).
+# 것이라 둔다. 옛 스킬 목록은 칸과 무관하게 걷는다(아래 「agy 옛 스킬 자리」). 설정 저장소가 있어도 걷는다 — 그 배포도 끈
+# 칸에는 안 민다(결정 0107).
 function Get-AgyKitOurs([string]$CfgDir, [string]$KitAgy, [string]$HomeDir) {
   # 끈 판에 걷을 우리 파일(`AGENTS.md` · `rules.json`)의 경로들. 「우리가 써 온 꼴」은 둘이다:
   #   * 옛 판이 깐 글자 그대로 — 규범 `~/.claude/CLAUDE.md` · `~/.paisetup/norms/norms.md`, 룰 `../../.claude/rules` ·
@@ -3654,7 +3667,7 @@ function Get-AgyKitOurs([string]$CfgDir, [string]$KitAgy, [string]$HomeDir) {
 if ($hostAgy -and -not $personalAgy) {
   $ours = @(Get-AgyKitOurs (Join-Path $env:USERPROFILE '.gemini\config') (Join-Path $Kit 'agy') $env:USERPROFILE)
   if ($ours.Count) {
-    $agOffBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $agOffBk = Get-FreePath (Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
     New-Item -ItemType Directory -Path $agOffBk -Force | Out-Null
     foreach ($o in $ours) { Move-Item -LiteralPath $o -Destination (Join-Path $agOffBk (Split-Path -Leaf $o)) -Force }
     Write-Host "  agy 설정 — 제작자 칸을 꺼 규범 · 룰을 가리키는 것을 걷었다 (옮긴 자리: $agOffBk)" -ForegroundColor Green
@@ -3663,7 +3676,13 @@ if ($hostAgy -and -not $personalAgy) {
 
 # ── Codex · agy 홈의 스킬 — 위 `$FreeSkills` 의 Codex · Agy 칸 · 제작자 칸 (결정 0097 · 0099) ─────────────────
 # 도구마다 제 홈이다 — Codex 는 `~/.agents/skills`(Codex 공식 문서 「Build skills」 — 사용자 범위 · `~/.claude/skills` 사본만으로는
-# 못 찾는다), agy 는 `~/.gemini/config/paisetup-skills`(agy 는 스킬 목록이 여는 자리만 읽는다 — 아래 「agy 스킬 목록」).
+# 못 찾는다), agy 는 `~/.gemini/config/skills`(agy 가 목록 없이 싣는 기본 전역 스킬 자리 — 아래 「agy 옛 스킬 자리」).
+# ⚠ **두 홈 다 사람 것과 같이 산다** — 사람이나 다른 도구가 둔 스킬이 섞인다. 그래서 기록에 든 이름만 다룬다. 우리 것은
+#   이 설치기의 기록(`.paisetup-skills`)과 그 곁의 설정 저장소 배포 기록(`$DeployLedgerName`)에 든 이름이다.
+# ⚠ **깔 자리에 우리 것이 아닌 같은 이름의 폴더가 있으면 그 폴더를 먼저 백업 자리로 옮긴다** — 그 위에 복사하면 사람의
+#   파일이 우리 파일에 덮이거나 섞인다. 옮긴 자리를 노란 줄로 알린다(`Install-HomeSkills`).
+# ⚠ **기록이 없는 홈에 Claude 홈의 과도기 목록을 안 쓴다**(`Remove-RetiredSkills -Transition @()`) — 같은 이름의 사람
+#   스킬이 걷힌다.
 # 무엇을 까나는 둘이 정한다:
 #   * 칸 없이 — 표의 그 도구 칸
 #   * 제작자 칸의 그 도구 칸 — Claude 홈처럼 짐 전부. 칸을 끄면 그 홈의 기록에 있던 제작자 스킬을 걷는다
@@ -3671,7 +3690,9 @@ if ($hostAgy -and -not $personalAgy) {
 # ⚠ **설정 저장소가 그 홈에 미는 이름은 비켜선다**(위 `Get-RepoHeldSkills`) — 깔지 않고, 기록에서도 안 걷는다.
 # ⚠ **옛 자리(`~/.codex/skills`)에 깐 것은 걷는다** — 그 자리를 쓰던 판이 남긴 기록(`~/.codex/.paisetup-skills`)에 적힌
 #   이름만 옮기고 기록을 지운다. 사람이 거기 둔 다른 스킬은 안 건드린다.
-$AgySkillHome     = Join-Path $env:USERPROFILE '.gemini\config\paisetup-skills'
+$AgySkillHome     = Join-Path $env:USERPROFILE '.gemini\config\skills'
+# 설정 저장소 배포가 Codex · agy 홈에 민 이름의 기록 — 이 설치기 기록 곁에 그 배포가 쓴다(설정 저장소 `deploy.ps1` 의 `Mine`)
+$DeployLedgerName = '.paisetup-deploy-skills'
 function Get-HomeSkills([string]$Column, [bool]$Personal) {
   $names = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Column })
   if ($Personal -and (Test-Path -LiteralPath $KitSkills -PathType Container)) {
@@ -3682,6 +3703,10 @@ function Get-HomeSkills([string]$Column, [bool]$Personal) {
 }
 function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot,
                             [hashtable]$Held) {
+  $ours = @(@($Ledger, (Join-Path (Split-Path -Parent $Ledger) $DeployLedgerName)) |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { [IO.File]::ReadAllLines($_) } |
+            ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  $aside = $null
   $done = @()
   foreach ($n in $Names) {
     if ($Held -and $Held.ContainsKey($n)) {
@@ -3695,6 +3720,15 @@ function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome
       continue
     }
     $to = Join-Path $SkillHome $n
+    if ((Test-Path -LiteralPath $to) -and ($ours -notcontains $n)) {
+      # 우리 기록에 없는 같은 이름 — 사람이나 다른 도구의 것이다. 덮지도 섞지도 않고 통째로 비켜 둔 뒤 깐다
+      if (-not $aside) {
+        $aside = Get-FreePath (Join-Path $BackupRoot ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+        New-Item -ItemType Directory -Path $aside -Force | Out-Null
+      }
+      Move-Item -LiteralPath $to -Destination (Join-Path $aside $n) -Force
+      Write-Host "  ! $Label 스킬 $n — 같은 이름의 폴더가 우리 기록에 없어 통째로 옮겨 두고 깐다 (옮긴 자리: $aside)" -ForegroundColor Yellow
+    }
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
     Write-Host "  $Label 스킬 $n — 깔았다" -ForegroundColor Green
@@ -3705,14 +3739,115 @@ function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome
     #   비켜선 이름은 남긴다 — 그 자리는 설정 저장소의 배포가 민 것이다
     $keep = @(@($Names) + @(if ($Held) { $Held.Keys }) | Select-Object -Unique)
     Remove-RetiredSkills -Bundle $KitSkills -SkillHome $SkillHome `
-                         -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done -Keep $keep
+                         -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done -Keep $keep -Transition @()
   }
 }
 $codexHomeSkills = if ($hostCodex) { @(Get-HomeSkills 'Codex' $kitCodex) } else { @() }
 $agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy' $kitAgy) }     else { @() }
+
+# ── agy 옛 스킬 자리 — `~/.gemini/config/paisetup-skills` 와 그 자리를 여는 우리 목록을 걷는다 (claude-config 결정 0111) ──
+# 옛 판은 우리 스킬을 설정 폴더 안의 따로 둔 자리에 깔고 목록(`~/.gemini/config/skills.json`)으로 열었다. 그 자리는 목록에
+# 실려도 agy 에이전트가 본문을 못 연다 — `view_file` 을 「hardcoded system protection boundary rule」로 막는다. 설정 폴더
+# 가운데 `skills/` 만 그 막음에서 빠지고, 그 자리는 목록 없이도 실린다(agy CLI 1.3.3 실측). 그래서 새 홈은 그 기본 자리이고
+# 목록은 더 안 깐다.
+# ⚠ **우리 이름만 옮긴다** — 우리 것은 두 기록(이 설치기 `~/.gemini/.paisetup-skills` · 설정 저장소 배포
+#   `~/.gemini/.paisetup-deploy-skills`)에 든 이름이다. 이번에 다시 까는 이름의 옛것은 백업 자리로, 나머지는 새 자리로 옮겨
+#   그대로 쓰이게 한다(배포가 든 이름은 그 배포가 새 자리에서 이어 맡는다). 기록에 없는 것이 남으면 옛 자리를 안 걷는다 —
+#   사람이 둔 것이다. 끝 검증이 그 판을 빨강으로 알린다.
+# ⚠ **두 기록은 옛 자리의 기록이다** — 그 이름이 아직 옛 자리에 있는 동안 새 자리의 같은 이름은 우리가 둔 것일 수 없다. 그
+#   폴더는 먼저 통째로 비켜 둔다(`Aside`) — 안 그러면 기록을 보고 우리 것으로 읽어 그 위에 깐다.
+# ⚠ **목록은 우리가 쓴 꼴 그대로일 때만 걷는다** — 맨 위 열쇠는 `entries` 하나, 항목은 하나, 그 항목의 열쇠는 `path` 하나이고
+#   그 `path` 가 옛 자리를 우리가 써 온 꼴(상대 `paisetup-skills` · 틀 그대로 `~/…` · 이 PC 홈의 절대 경로)로 연다. 무엇이든
+#   더 붙었으면 사람이 고친 파일이라 둔다(끈 판 걷기 `Get-AgyKitOurs` 와 같은 규율) — 우리 것을 다 옮긴 뒤라 그 항목은 쓸
+#   데가 없을 뿐 해가 없다. 걷기 전에 `~/.claude/backups/install-agy-<시각>/` 로 옮겨 둔다.
+# 백업 자리는 매번 새로 잡는다(`Get-FreePath`) — 같은 초에 두 번 돌아도 앞 백업 안으로 옮겨 들어가지 않는다.
+# 짝 — 설정 저장소 `deploy.ps1` 이 같은 이름의 두 함수로 같은 판을 짓는다(배포만 돌리는 PC). 그쪽
+#   `scripts/check-agy-pointers.ps1` · `scripts/check-deploy-agent-homes.ps1` 이 둘을 떼어 견준다.
+$AgyOldSkillHome = Join-Path $env:USERPROFILE '.gemini\config\paisetup-skills'
+$AgySkillList    = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
+function Get-AgyOldListState([string]$Path, [string]$HomeDir) {
+  # 목록의 꼴 — 'ours'(우리가 쓴 꼴 그대로 — 위 곁말) · 'mixed'(옛 자리를 우리 꼴로 여는 항목이 있는데 무엇이 더 붙었다 ·
+  #   사람이 고친 파일) · 'none'(없다 · 못 읽는다 · 옛 자리를 안 연다). BOM 은 읽을 때 걷는다 — BOM 이 붙은 목록은 agy 가 못
+  #   읽어 애초에 아무것도 안 열었다. 열쇠 이름은 글자까지 견준다 — 우리는 `entries` · `path` 만 썼다.
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 'none' }
+  try { $doc = [IO.File]::ReadAllText($Path) | ConvertFrom-Json } catch { return 'none' }
+  if ($doc -isnot [Management.Automation.PSCustomObject]) { return 'none' }
+  $old = @('paisetup-skills', '~/.gemini/config/paisetup-skills', ($HomeDir.Replace('\', '/').TrimEnd('/') + '/.gemini/config/paisetup-skills'))
+  $hits = @(@($doc.entries) | Where-Object { $_ -is [Management.Automation.PSCustomObject] } |
+            Where-Object { $old -contains ([string]$_.path).Replace('\', '/').TrimEnd('/') })
+  if (-not $hits.Count) { return 'none' }
+  $keys = { param($o) (@($o.PSObject.Properties | ForEach-Object { $_.Name }) -join ',') }
+  $exact = ((& $keys $doc) -ceq 'entries') -and ($doc.entries -is [Array]) -and (@($doc.entries).Count -eq 1) -and
+           ($doc.entries[0] -is [Management.Automation.PSCustomObject]) -and ((& $keys $doc.entries[0]) -ceq 'path') -and
+           ($doc.entries[0].path -is [string])
+  if ($exact) { return 'ours' }
+  return 'mixed'
+}
+function Get-AgyOldHomePlan([string]$OldHome, [string]$NewHome, [string[]]$Ours, [string[]]$Reinstall) {
+  # 옛 자리를 비우는 판 — 옛 자리에 든 우리 이름마다:
+  #   Aside    — 새 자리에 같은 이름이 이미 있다 → 그 폴더를 먼저 통째로 백업 자리로 비켜 둔다(우리가 둔 것일 수 없다 — 위 곁말)
+  #   ToBackup — 이번에 다시 깐다(`$Reinstall`) → 옛것은 백업 자리로
+  #   ToNew    — 나머지 → 새 자리로 옮긴다(그대로 쓰인다)
+  #   Foreign(기록에 없는 이름 · 폴더가 아닌 것 — 안 건드린다) · Remove(옛 자리가 있고 Foreign 이 없다 — 다 옮긴 뒤 걷는다)
+  $plan = @{ ToNew = @(); ToBackup = @(); Aside = @(); Foreign = @(); Remove = $false }
+  if (-not (Test-Path -LiteralPath $OldHome -PathType Container)) { return $plan }
+  foreach ($e in @(Get-ChildItem -LiteralPath $OldHome -Force)) {
+    if (-not $e.PSIsContainer -or (@($Ours) -notcontains $e.Name)) { $plan.Foreign += $e.Name; continue }
+    if (Test-Path -LiteralPath (Join-Path $NewHome $e.Name)) { $plan.Aside += $e.Name }
+    if (@($Reinstall) -contains $e.Name) { $plan.ToBackup += $e.Name } else { $plan.ToNew += $e.Name }
+  }
+  $plan.Remove = ($plan.Foreign.Count -eq 0)
+  return $plan
+}
 if ($hostAgy) {
-  Install-HomeSkills 'agy 홈' $agyHomeSkills $AgySkillHome (Join-Path $env:USERPROFILE '.gemini\.paisetup-skills') `
-                     (Join-Path $env:USERPROFILE '.gemini\backups') (Get-RepoHeldSkills 'agy')
+  $agyLedger = Join-Path $env:USERPROFILE '.gemini\.paisetup-skills'
+  $agyHeld   = Get-RepoHeldSkills 'agy'
+  $agyOurs   = @(@($agyLedger, (Join-Path $env:USERPROFILE ".gemini\$DeployLedgerName")) |
+                 Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { [IO.File]::ReadAllLines($_) } |
+                 ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+  $agyOld = Get-AgyOldHomePlan $AgyOldSkillHome $AgySkillHome $agyOurs @($agyHomeSkills | Where-Object { -not $agyHeld.ContainsKey($_) })
+  $agyBkRoot = Join-Path $env:USERPROFILE '.gemini\backups'
+  if ($agyOld.Aside.Count) {
+    $agyAsideBk = Get-FreePath (Join-Path $agyBkRoot ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+    New-Item -ItemType Directory -Path $agyAsideBk -Force | Out-Null
+    foreach ($n in $agyOld.Aside) { Move-Item -LiteralPath (Join-Path $AgySkillHome $n) -Destination (Join-Path $agyAsideBk $n) -Force }
+    Write-Host ("  ! agy 새 스킬 자리 — 우리 이름과 같은 폴더($($agyOld.Aside -join ' · '))가 먼저 있어 통째로 옮겨 두었다 " +
+                "(옮긴 자리: $agyAsideBk)") -ForegroundColor Yellow
+  }
+  if ($agyOld.ToNew.Count -or $agyOld.ToBackup.Count) {
+    $agyOldBk = $null
+    foreach ($n in $agyOld.ToNew) {
+      New-Item -ItemType Directory -Path $AgySkillHome -Force | Out-Null
+      Move-Item -LiteralPath (Join-Path $AgyOldSkillHome $n) -Destination (Join-Path $AgySkillHome $n) -Force
+    }
+    foreach ($n in $agyOld.ToBackup) {
+      if (-not $agyOldBk) {
+        $agyOldBk = Get-FreePath (Join-Path $agyBkRoot ('install-skills-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+        New-Item -ItemType Directory -Path $agyOldBk -Force | Out-Null
+      }
+      Move-Item -LiteralPath (Join-Path $AgyOldSkillHome $n) -Destination (Join-Path $agyOldBk $n) -Force
+    }
+    Write-Host ("  agy 옛 스킬 자리 — 새 자리(~/.gemini/config/skills)로 $($agyOld.ToNew.Count) 개를 옮기고, 다시 까는 " +
+                "$($agyOld.ToBackup.Count) 개의 옛것은 백업 자리로 옮겼다$(if ($agyOldBk) { " ($agyOldBk)" })") -ForegroundColor Green
+  }
+  if ($agyOld.Foreign.Count) {
+    Write-Host ("  ! agy 옛 스킬 자리 — 우리 기록에 없는 것이 남아 안 걷었다 ($($agyOld.Foreign -join ' · ')). 쓰려면 " +
+                '~/.gemini/config/skills 로 옮긴다 — 옛 자리는 agy 가 본문을 못 연다') -ForegroundColor Yellow
+  } elseif ($agyOld.Remove -and -not (Get-ChildItem -LiteralPath $AgyOldSkillHome -Force | Select-Object -First 1)) {
+    Remove-Item -LiteralPath $AgyOldSkillHome -Force
+    Write-Host '  agy 옛 스킬 자리 — 비어서 걷었다 (~/.gemini/config/paisetup-skills)' -ForegroundColor Green
+  }
+  $agyListState = Get-AgyOldListState $AgySkillList $env:USERPROFILE
+  if ($agyListState -eq 'ours') {
+    $agyListBk = Get-FreePath (Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+    New-Item -ItemType Directory -Path $agyListBk -Force | Out-Null
+    Move-Item -LiteralPath $AgySkillList -Destination (Join-Path $agyListBk 'skills.json') -Force
+    Write-Host "  agy 옛 스킬 목록 — 걷었다 (새 자리는 목록 없이 실린다 · 옮긴 자리: $agyListBk)" -ForegroundColor Green
+  } elseif ($agyListState -eq 'mixed') {
+    Write-Host ('  agy 스킬 목록 — 사람 항목이 섞여 둔다. 옛 자리(paisetup-skills)를 여는 항목은 우리 것이 다 옮겨져 쓸 데가 ' +
+                '없다 — 그 줄만 지운다 (~/.gemini/config/skills.json)') -ForegroundColor Yellow
+  }
+  Install-HomeSkills 'agy 홈' $agyHomeSkills $AgySkillHome $agyLedger $agyBkRoot $agyHeld
 }
 if ($hostCodex) {
   Install-HomeSkills 'Codex 홈' $codexHomeSkills (Join-Path $env:USERPROFILE '.agents\skills') `
@@ -3730,38 +3865,6 @@ if ($hostCodex) {
       Write-Host "  Codex 옛 스킬 자리 — $($oldNames -join ' · ') 를 걷었다 (옮긴 자리: $oldBk)" -ForegroundColor Green
     }
     Remove-Item -LiteralPath $oldCodexLedger -Force
-  }
-}
-
-# ── agy 스킬 목록 — 안티그래비티를 고르면 (결정 0099 · #134) ─────────────────────────────────────────
-# agy 는 스킬을 `~/.gemini/config/skills.json` 이 여는 자리만 읽는다(결정 0083 실측). 원본 목록(`.gemini.global/skills.json`)은
-# 위 agy 홈을 여는 한 줄의 틀이고, 이 PC 홈의 절대 경로로 지어 깐다(위 「agy 설정 셋」의 `ConvertTo-AgyPointerText` — 데스크탑
-# 앱이 절대 경로만 받는다). 칸과 상관없이 같은 글을 깐다. 제작자 칸의 agy 설정 셋(6 칸)도 같은 글을 깔아, 그 판에서는
-# 여기가 「이미 맞다」로 지난다.
-# ⚠ 있던 파일이 다르면 백업 자리로 먼저 떠 둔다(6 칸의 agy 설정 셋과 같은 손).
-if ($hostAgy) {
-  $agyListFrom = Join-Path $Kit 'agy\skills.json'
-  $agyListTo   = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
-  $agyListWant = $null
-  if (Test-Path -LiteralPath $agyListFrom) {
-    $agyListWant = ConvertTo-AgyPointerText ([IO.File]::ReadAllText($agyListFrom)) $env:USERPROFILE
-  }
-  if ($null -eq $agyListWant) {
-    Write-Host '  ! agy 스킬 목록 — 짐에 원본(kit/agy/skills.json)이 없다' -ForegroundColor Red
-    $Fails.Add('agy 스킬 목록 (원본 없음)')
-  } elseif (Test-AgyPointerSame $agyListTo $agyListWant) {
-    Write-Host '  agy 스킬 목록 — 이미 맞다'
-  } else {
-    $agyListBk = $null
-    if (Test-Path -LiteralPath $agyListTo) {
-      $agyListBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-      New-Item -ItemType Directory -Path $agyListBk -Force | Out-Null
-      Copy-Item -LiteralPath $agyListTo -Destination (Join-Path $agyListBk 'skills.json') -Force
-      if ((Get-Item -LiteralPath $agyListTo -Force).LinkType) { Remove-Item -LiteralPath $agyListTo -Force }
-    }
-    New-Item -ItemType Directory -Path (Split-Path -Parent $agyListTo) -Force | Out-Null
-    [IO.File]::WriteAllText($agyListTo, $agyListWant, $AgyUtf8)
-    Write-Host "  agy 스킬 목록 — agy 홈을 이 PC 의 절대 경로로 여는 목록을 깔았다$(if ($agyListBk) { " · 옛것은 $agyListBk" })" -ForegroundColor Green
   }
 }
 
@@ -5287,7 +5390,7 @@ if ($inside) {
   try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
-# agy 묶음 — 맡기기(모델 값) · 설정 셋. 심는 조건이 둘이라 재는 조건도 둘이다(위 `$wantAgyDelegate` 곁말).
+# agy 묶음 — 맡기기(모델 값) · 설정 둘. 심는 조건이 둘이라 재는 조건도 둘이다(위 `$wantAgyDelegate` 곁말).
 if ($wantAgyDelegate) {
   $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
                 Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
@@ -5297,10 +5400,10 @@ if ($wantCcBg) {
   $checks += @{ Name = "Codex · Copilot 맡기기 값 ($($CcBgVars.Keys -join ' · '))"
                 Ok = (@($CcBgVars.Keys | Where-Object { $userEnv[$_] -ne $CcBgVars[$_] }).Count -eq 0) }
 }
-# ⚠ **설정 셋은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
+# ⚠ **설정 둘은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
 #   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.
 # ⚠ **짐의 바이트가 아니라 이 PC 에 지은 글과 견준다** — 깐 파일은 틀의 `~/` 를 이 PC 홈의 절대 경로로 바꾼 파생물이다
-#   (위 「agy 설정 셋」의 `ConvertTo-AgyPointerText`). 짐과 같은 파일은 앱이 못 싣는 꼴이라 빨강이다.
+#   (위 「agy 설정 둘」의 `ConvertTo-AgyPointerText`). 짐과 같은 파일은 앱이 못 싣는 꼴이라 빨강이다.
 if ($wantAgyKit) {
   $agySrcFiles = @(Get-ChildItem -LiteralPath (Join-Path $Kit 'agy') -File -ErrorAction SilentlyContinue)
   $agySame = @($agySrcFiles | Where-Object {
@@ -5366,30 +5469,24 @@ if ($freeWant.Count) {
 # 까는 칸과 같은 목록(`$codexHomeSkills` · `$agyHomeSkills`)으로 잰다 — 따로 지으면 까는 것과 재는 것이 갈린다.
 foreach ($hs in @(
     @{ On = $hostCodex; Label = 'Codex 홈 스킬'; Names = $codexHomeSkills; Dir = (Join-Path $env:USERPROFILE '.agents\skills'); Show = '~/.agents/skills' }
-    @{ On = $hostAgy;   Label = 'agy 홈 스킬';   Names = $agyHomeSkills;   Dir = $AgySkillHome; Show = '~/.gemini/config/paisetup-skills' })) {
+    @{ On = $hostAgy;   Label = 'agy 홈 스킬';   Names = $agyHomeSkills;   Dir = $AgySkillHome; Show = '~/.gemini/config/skills' })) {
   if (-not $hs.On -or -not $hs.Names.Count) { continue }
   $homeMiss = @($hs.Names | Where-Object { -not (Test-Path -LiteralPath (Join-Path $hs.Dir "$_\SKILL.md")) })
   $homeShown = if ($hs.Names.Count -gt 6) { "$($hs.Names.Count) 개" } else { $hs.Names -join ' · ' }
   $checks += @{ Name = "$($hs.Label) ($homeShown · $($hs.Show))"; Ok = ($homeMiss.Count -eq 0) }
 }
-# agy — 스킬 목록이 일하는 도구 자리를 가리키나 · 훅 둘이 우리 어댑터로 걸렸나 (결정 0099)
-# ⚠ **스킬 목록은 「짐과 같다」가 아니라 「이 PC 의 agy 홈을 절대 경로로 연다」를 잰다**(#134) — 데스크탑 앱은 절대 경로가
-#   아닌 목록에서 하나도 안 싣고, agy CLI 는 상대 경로도 받아 CLI 로 보이는 것으로는 못 잰다. 가리킨 자리는 위 홈 스킬 칸이
-#   깐 `$AgySkillHome` 이다. 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 이 판정을 떼어 옛 꼴 · BOM 꼴로 잰다.
-function Test-AgyListOpens([string]$Path, [string]$SkillHome) {
-  # 목록을 agy 처럼 바이트째 읽는다 — BOM 이 붙으면 agy 가 JSON 으로 못 읽어(#134 실측) 그 목록은 아무것도 안 연다.
-  try {
-    $b = [IO.File]::ReadAllBytes($Path)
-    if ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) { return $false }
-    $want = $SkillHome.Replace('/', '\').TrimEnd('\')
-    return (@(((New-Object Text.UTF8Encoding($false)).GetString($b) | ConvertFrom-Json).entries | Where-Object {
-      ([string]$_.path -match '^[A-Za-z]:[\\/]') -and (([string]$_.path).Replace('/', '\').TrimEnd('\') -eq $want)
-    }).Count -gt 0)
-  } catch { return $false }
-}
+# agy — 옛 스킬 자리가 걷혔나 · 훅 둘이 우리 어댑터로 걸렸나 (결정 0099 · 0111)
+# ⚠ **옛 자리나 우리 옛 목록이 남았으면 빨강이다** — 옛 자리는 목록에 실려도 agy 에이전트가 본문을 못 열고, 목록이 남으면
+#   새 자리와 같은 이름이 둘씩 실린다. 위 「agy 옛 스킬 자리」 칸이 우리 것을 옮기고 걷으므로, 남았다면 그 자리에 우리 기록에
+#   없는 것이 있다(사람이 옮길 것). 사람 항목이 섞인 목록은 사람 것이라 여기서 안 센다. 판정은 그 칸의 `Get-AgyOldListState`
+#   를 그대로 부른다 — 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 그 판정을 떼어 옛 꼴마다 잰다.
 if ($hostAgy) {
-  $checks += @{ Name = 'agy 스킬 목록 (~/.gemini/config/skills.json 이 이 PC 의 agy 홈을 절대 경로로 연다)'
-                Ok = (Test-AgyListOpens (Join-Path $env:USERPROFILE '.gemini\config\skills.json') $AgySkillHome) }
+  $agyOldLeft = @()
+  if (Test-Path -LiteralPath $AgyOldSkillHome) { $agyOldLeft += 'paisetup-skills' }
+  if ((Get-AgyOldListState $AgySkillList $env:USERPROFILE) -eq 'ours') { $agyOldLeft += 'skills.json' }
+  $checks += @{ Name = ('agy 옛 스킬 자리 (~/.gemini/config 의 paisetup-skills · 그 자리를 여는 우리 skills.json 이 걷혔다' +
+                        $(if ($agyOldLeft.Count) { ' — 남은 것: ' + ($agyOldLeft -join ' · ') } else { '' }) + ')')
+                Ok = ($agyOldLeft.Count -eq 0) }
   $agyHooksNow = $null
   try { $agyHooksNow = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.gemini\config\hooks.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
   $agyWired = @('paisetup-drm-guide', 'paisetup-utf8-bom' | Where-Object {
