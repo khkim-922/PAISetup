@@ -27,6 +27,11 @@ BOM=$(printf '\357\273\277')
 #   ① JSON 의 이스케이프된 역슬래시(\\)를 하나로 되돌린다 — 윈도우 경로가 그렇게 온다
 #   ② 파워셸 확장자로 끝나는 절대경로만 집는다 (윈도우 C:\… · POSIX /…)
 #   ③ 역슬래시를 슬래시로 눕힌다 — Git Bash 는 C:/… 를 그대로 연다
+#
+# ⚠ **한 쓰기에 이 훅이 겹쳐 돌 수 있다**(홈 · 저장소 두 층에 걸리면 제품이 둘을 함께 띄운다).
+#   그래서 임시본은 실행마다 제 이름(`$$`)으로 짓고, 바꿔 넣기 직전에 BOM 을 다시 본다 — 그 사이
+#   다른 실행이 찍었으면 내 임시본은 버린다. 임시본 이름을 나눠 쓰면 한쪽이 다른 쪽의 임시본을
+#   비운 채 옮겨 넣어 **본문이 사라지고 BOM 만 남는다.**
 sed -e 's/\\\\/\\/g' \
   | grep -oE '[A-Za-z]:[^"]*\.ps[md]?1|/[^"]*\.ps[md]?1' \
   | sed -e 's|\\|/|g' \
@@ -36,10 +41,13 @@ sed -e 's/\\\\/\\/g' \
       case "$(head -c 3 "$f" 2>/dev/null)" in
         "$BOM") continue ;;          # 이미 찍혀 있다 — 안 건드린다
       esac
-      tmp="$f.utf8bom.tmp"
+      tmp="$f.utf8bom.$$.tmp"
       if { printf '%s' "$BOM"; cat "$f"; } > "$tmp" 2>/dev/null; then
-        mv -f "$tmp" "$f" 2>/dev/null
-        echo "utf8-bom: BOM 을 찍었다 (PowerShell 5.1 이 ANSI 로 읽는 것을 막는다) — $f" >&2
+        case "$(head -c 3 "$f" 2>/dev/null)" in
+          "$BOM") ;;                 # 그 사이 겹친 실행이 찍었다 — 내 임시본은 버린다
+          *) mv -f "$tmp" "$f" 2>/dev/null &&
+               echo "utf8-bom: BOM 을 찍었다 (PowerShell 5.1 이 ANSI 로 읽는 것을 막는다) — $f" >&2 ;;
+        esac
       fi
       rm -f "$tmp" 2>/dev/null
     done
