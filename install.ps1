@@ -467,6 +467,26 @@ function Say-Get([string]$What, $Asset) {
   Say-Busy $What 'fetch' @($Asset.name, $size)
 }
 
+# ── 걸음의 머리줄과 마침 줄 — 위 `$Steps` 표에서 짓는다 ─────────────────────────────────
+# 머리줄은 `[번호/분모] 이름` 이다. 화면 껍데기가 그 줄을 `^\[(\d+)/(\d+)\]` 로 읽어 막대를 민다.
+#   들기는 빈 줄 하나를 앞에 두고, 나기는 같은 글자로 걸린 초 한 줄을 찍는다(`Write-Elapsed`).
+# ⚠ **표에 없는 열쇠는 던진다** — 틀린 열쇠로 엉뚱한 머리줄을 찍고 지나가지 않게.
+function Get-StepTitle([string]$Key) {
+  for ($i = 0; $i -lt $Steps.Count; $i++) {
+    if ($Steps[$i].Key -ceq $Key) { return ('[{0}/{1}] {2}' -f ($i + 1), $Steps.Count, $Steps[$i].Title) }
+  }
+  throw "걸음 표에 없는 열쇠 — $Key"
+}
+
+function Enter-Step([string]$Key) {
+  Write-Host ''
+  Write-Host (Get-StepTitle $Key) -ForegroundColor Cyan
+}
+
+function Exit-Step([string]$Key) {
+  Write-Elapsed (Get-StepTitle $Key)
+}
+
 #endregion 화면
 
 #region 프로세스 — 네이티브 명령을 부르고, 빗장을 쥔 설치기와 작업 스케줄러의 작업을 묻는다
@@ -2845,26 +2865,6 @@ if (-not ($NoUpgrade -or $noWinget)) {
     Write-Host '  (올릴 목록을 한 번에 못 받았다 — 앱마다 묻는다)'
   }
 }
-# ── 걸음의 머리줄과 마침 줄 — 위 `$Steps` 표에서 짓는다 ─────────────────────────────────
-# 머리줄은 `[번호/분모] 이름` 이다. 화면 껍데기가 그 줄을 `^\[(\d+)/(\d+)\]` 로 읽어 막대를 민다.
-#   들기는 빈 줄 하나를 앞에 두고, 나기는 같은 글자로 걸린 초 한 줄을 찍는다(`Write-Elapsed`).
-# ⚠ **표에 없는 열쇠는 던진다** — 틀린 열쇠로 엉뚱한 머리줄을 찍고 지나가지 않게.
-function Get-StepTitle([string]$Key) {
-  for ($i = 0; $i -lt $Steps.Count; $i++) {
-    if ($Steps[$i].Key -ceq $Key) { return ('[{0}/{1}] {2}' -f ($i + 1), $Steps.Count, $Steps[$i].Title) }
-  }
-  throw "걸음 표에 없는 열쇠 — $Key"
-}
-
-function Enter-Step([string]$Key) {
-  Write-Host ''
-  Write-Host (Get-StepTitle $Key) -ForegroundColor Cyan
-}
-
-function Exit-Step([string]$Key) {
-  Write-Elapsed (Get-StepTitle $Key)
-}
-
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. [1/8] 앞에도 시간이 든다.
 Write-Elapsed '준비'
 
