@@ -1517,7 +1517,8 @@ $wantClaudeBg      = [bool]($wantClaudeBgCodex -or $wantClaudeBgAgy)
 # (받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다.
 # 제작자 설정 칸을 켜면 6 칸이 Claude 홈에 묶음 전부를 까므로, Claude 쪽 조건은 칸을 끈 자리에서만 일을 한다
 # (7 칸의 「칸 없이 까는 스킬」). Codex · Agy 쪽은 칸과 무관하게 이 표대로 깐다. 모두 규범을 안 읽어도 홀로 선다.
-# ⚠ **러너의 받는 쪽은 설정 저장소의 `deploy.skills.targets.conf` 와 같은 사실이다** — 그 검사가 이 표의 칸과 견준다.
+# ⚠ **러너 줄은 맡기는 쪽 칸만 든다** — 러너가 어느 홈에 **안** 가나(받는 쪽)는 아래 갈 곳 표 하나가 든다. 홈에 깔 이름을
+#   고르는 자리(`Get-HomeSkills` · 6 칸 · 7 칸)가 다 그 표로 거른다.
 $hostClaude = [bool]($PickKeys -contains 'claude')
 $hostCodex  = [bool]($PickKeys -contains 'codex')
 $FreeSkills = [ordered]@{
@@ -1527,13 +1528,34 @@ $FreeSkills = [ordered]@{
   'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
   'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
-  # agy 에게 맡기고 한도에서 넘긴다 — 받는 쪽 agy 홈에는 안 간다
-  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Codex = [bool]($hostCodex -and $wantAgyDelegate); Agy = $false }
-  # Codex 에게 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude · agy, 받는 쪽 Codex 홈에는 안 간다
-  'codex-copilot-background' = @{ Claude = $wantCcBgClaude; Codex = $false; Agy = $wantCcBgAgy }
-  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy, 받는 쪽 Claude 홈에는 안 간다
-  'claude-background'        = @{ Claude = $false; Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy }
+  # agy 에게 맡기고 한도에서 넘긴다 — 맡기는 쪽은 Claude · Codex
+  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Codex = [bool]($hostCodex -and $wantAgyDelegate) }
+  # Codex 에게 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude · agy
+  'codex-copilot-background' = @{ Claude = $wantCcBgClaude; Agy = $wantCcBgAgy }
+  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy
+  'claude-background'        = @{ Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy }
 }
+# ── 도구 홈 짐 — `kit/` (claude-config 결정 0101) ────────────────────────────────────────────
+# 받는 PC 의 도구 홈 여럿에 나눠 깔 것(규범 · 룰 · 스킬 · agy 설정)이 한 폴더에 산다. 도구가 스스로 읽는 자리
+# 이름(`.claude/skills` · `.agents/skills`)에 안 두는 것이 요점이다 — 이 폴더를 Claude Code · Codex 로 열면 그 자리가
+# 그 세션의 스킬로 실린다.
+# 갈 곳 표(`kit/skills.targets.conf`)는 설정 저장소의 `deploy.skills.targets.conf` 를 그대로 실은 것이다 — 한 줄에
+# `<러너> <받는 쪽>`. 러너는 받는 쪽 홈에 안 간다(받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 배포도 같은 표를 읽는다.
+# ⚠ **표가 없으면 빨강이다** — 조용히 「다 간다」로 읽으면 Claude 홈에 Claude 맡기기 러너가 선다.
+$Kit = Join-Path $Here 'kit'
+$KitSkills = Join-Path $Kit 'skills'
+$SkillReceiver = @{}
+$skillTargetsFile = Join-Path $Kit 'skills.targets.conf'
+if (Test-Path -LiteralPath $skillTargetsFile) {
+  foreach ($ln in @(Get-Content -LiteralPath $skillTargetsFile -Encoding UTF8)) {
+    $parts = @((($ln -replace '#.*$', '').Trim()) -split '\s+' | Where-Object { $_ })
+    if ($parts.Count -eq 2) { $SkillReceiver[$parts[0]] = $parts[1].ToLower() }
+  }
+} else {
+  $Fails.Add('맡기기 러너 갈 곳 표 (kit/skills.targets.conf 없음)')
+}
+# 그 스킬이 이 도구의 홈에 가나 — `$Tool` 은 claude · codex · agy
+function Test-SkillGoesTo([string]$Name, [string]$Tool) { return ($SkillReceiver[$Name] -ne $Tool.ToLower()) }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
@@ -3374,16 +3396,11 @@ Write-Elapsed '[5/8] 홈 설정'
 #   깐 판이 기록을 그 몇 개로 갈아 쓰면, 앞서 칸을 켜고 깐 나머지가 기록에서 빠져 묶음에서 걷히는 날 안 걷힌다.
 #   `-Installed` 를 안 주면 묶음 전부를 깐 것으로 친다(6 칸).
 function Remove-RetiredSkills {
-  # `$ExtraBundle` — 한 홈에 묶음 두 곳의 스킬이 깔리는 자리(Codex 홈 · 결정 0097). 「묶음에 있다」는 두 곳을 합쳐 잰다.
-  # `$Keep` — 「묶음에 있나」 대신 「이번 목록에 있나」로 잰다(Codex · agy 홈 · 결정 0099). 제작자 칸을 끈 도구의 홈에서
-  #   제작자 스킬이 빠지게 한다. 기록에 적힌 이름만 걷는 것은 같다.
-  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string]$ExtraBundle,
-        [string[]]$Keep)
+  # `$Keep` — 「묶음에 있나」 대신 「이번 목록에 있나」로 잰다(결정 0099). 제작자 칸을 끈 도구의 홈에서 제작자 스킬이,
+  #   받는 쪽 홈에서 러너가 빠지게 한다. 기록에 적힌 이름만 걷는 것은 같다.
+  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string[]]$Keep)
   if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
   $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
-  if ($ExtraBundle -and (Test-Path -LiteralPath $ExtraBundle -PathType Container)) {
-    $shipped += @(Get-ChildItem -LiteralPath $ExtraBundle -Directory | ForEach-Object { $_.Name })
-  }
   if ($null -eq $Installed) { $Installed = $shipped }
   $before = if (Test-Path -LiteralPath $Ledger) {
     @([IO.File]::ReadAllLines($Ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -3418,14 +3435,22 @@ if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $Pers
 if (-not $personalClaude) {
   Write-Host '  Claude — 건너뜀 (원하면 설치 창의 제작자 칸에서 Claude 를 켠다 · -PersonalFor claude)'
 } else {
+  # ⚠ **짐에 없으면 빨강이다** — 이 판의 짐에서 규범 · 룰 · 스킬이 빠졌다는 것은 짐이 깨졌다는 뜻이라, 건너뛰고 초록으로
+  #   끝나면 아래 개수 대조도 같이 건너뛰어 아무도 모른다. 에이전트만은 안 싣는 판이 있어 있을 때만 나른다.
   $pairs = @(
-    @{ From = Join-Path $Here '.claude\CLAUDE.global.md'; To = Join-Path $homeDir 'CLAUDE.md';  Name='전역 규범' }
-    @{ From = Join-Path $Here '.claude\rules.global';     To = Join-Path $homeDir 'rules';       Name='영역 룰'   }
-    @{ From = Join-Path $Here '.claude\skills';           To = Join-Path $homeDir 'skills';      Name='스킬'      }
-    @{ From = Join-Path $Here 'agents';                   To = Join-Path $homeDir 'agents';      Name='에이전트'  }
+    @{ From = Join-Path $Kit 'norms\norms.md'; To = Join-Path $homeDir 'CLAUDE.md'; Name='전역 규범' }
+    @{ From = Join-Path $Kit 'norms\rules';    To = Join-Path $homeDir 'rules';     Name='영역 룰'   }
   )
+  $kitAgents = Join-Path $Kit 'agents'
+  if (Test-Path -LiteralPath $kitAgents -PathType Container) {
+    $pairs += @{ From = $kitAgents; To = Join-Path $homeDir 'agents'; Name='에이전트' }
+  }
   foreach ($p in $pairs) {
-    if (-not (Test-Path -LiteralPath $p.From)) { Write-Host "  $($p.Name) — 이 폴더에 없다"; continue }
+    if (-not (Test-Path -LiteralPath $p.From)) {
+      Write-Host "  ! $($p.Name) — 짐에 없다 ($($p.From))" -ForegroundColor Red
+      $Fails.Add("$($p.Name) (짐에 없음)")
+      continue
+    }
     if (Test-Path -LiteralPath $p.From -PathType Container) {
       New-Item -ItemType Directory -Path $p.To -Force | Out-Null
       Copy-Item -Path (Join-Path $p.From '*') -Destination $p.To -Recurse -Force
@@ -3434,8 +3459,22 @@ if (-not $personalClaude) {
     }
     Write-Host "  $($p.Name) — 깔았다" -ForegroundColor Green
   }
-  Remove-RetiredSkills -Bundle (Join-Path $Here '.claude\skills') -SkillHome (Join-Path $homeDir 'skills') `
-                       -Ledger (Join-Path $homeDir '.paisetup-skills') -BackupRoot (Join-Path $homeDir 'backups')
+  # 스킬 — 짐 전부에서 받는 쪽이 Claude 인 러너만 뺀다(위 갈 곳 표)
+  $claudeSkillHome = Join-Path $homeDir 'skills'
+  $claudeKitNames = @(Get-ChildItem -LiteralPath $KitSkills -Directory -ErrorAction SilentlyContinue |
+                      ForEach-Object { $_.Name } | Where-Object { Test-SkillGoesTo $_ 'claude' })
+  if (-not $claudeKitNames.Count) {
+    Write-Host "  ! 스킬 — 짐에 없다 ($KitSkills)" -ForegroundColor Red
+    $Fails.Add('스킬 (짐에 없음)')
+  } else {
+    foreach ($n in $claudeKitNames) {
+      New-Item -ItemType Directory -Path (Join-Path $claudeSkillHome $n) -Force | Out-Null
+      Copy-Item -Path (Join-Path (Join-Path $KitSkills $n) '*') -Destination (Join-Path $claudeSkillHome $n) -Recurse -Force
+    }
+    Write-Host "  스킬 — 깔았다 ($($claudeKitNames.Count) 개)" -ForegroundColor Green
+    Remove-RetiredSkills -Bundle $KitSkills -SkillHome $claudeSkillHome -Ledger (Join-Path $homeDir '.paisetup-skills') `
+                         -BackupRoot (Join-Path $homeDir 'backups') -Installed $claudeKitNames -Keep $claudeKitNames
+  }
 }
 
 # ── 규범 · 룰의 중립 자리 — `~/.paisetup/norms` (결정 0099) ─────────────────────────────────────────
@@ -3445,8 +3484,8 @@ if (-not $personalClaude) {
 $NeutralNorms = Join-Path $env:USERPROFILE '.paisetup\norms'
 if ($personalCodex -or $personalAgy) {
   New-Item -ItemType Directory -Path (Join-Path $NeutralNorms 'rules') -Force | Out-Null
-  Copy-Item -LiteralPath (Join-Path $Here '.claude\CLAUDE.global.md') -Destination (Join-Path $NeutralNorms 'norms.md') -Force
-  Copy-Item -Path (Join-Path $Here '.claude\rules.global\*.md') -Destination (Join-Path $NeutralNorms 'rules') -Force
+  Copy-Item -LiteralPath (Join-Path $Kit 'norms\norms.md') -Destination (Join-Path $NeutralNorms 'norms.md') -Force
+  Copy-Item -Path (Join-Path $Kit 'norms\rules\*.md') -Destination (Join-Path $NeutralNorms 'rules') -Force
   Write-Host '  규범 · 룰 중립 자리 — 깔았다 (~/.paisetup/norms · Codex · agy 가 가리킨다)' -ForegroundColor Green
 } elseif (Test-Path -LiteralPath $NeutralNorms) {
   $nnBk = Join-Path (Join-Path $homeDir 'backups') ('install-norms-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -3455,16 +3494,17 @@ if ($personalCodex -or $personalAgy) {
   Write-Host "  규범 · 룰 중립 자리 — 쓸 도구가 없어 걷었다 (옮긴 자리: $nnBk)" -ForegroundColor Green
 }
 
-# ── agy 설정 셋 — `.gemini.global/*` → `~/.gemini/config/` (claude-config 결정 0083) ──────
+# ── agy 설정 셋 — `kit/agy/*` → `~/.gemini/config/` (claude-config 결정 0083) ──────
 # 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 아래 중립 자리(`~/.paisetup/norms`)를, 스킬 목록은 agy 홈을
 # 가리킨다. 그래서 여기서 옮겨 적는 진본이 없다. 제작자 칸의 agy 칸을 켰을 때만 — 끄면 아래가 우리 것만 걷는다.
 # ⚠ **대상이 링크면 링크를 걷고 쓴다.** `Copy-Item` 은 링크를 따라가 가리키는 원본을 덮는다 — 손으로
 #   링크를 걸어 둔 PC 에서 그 원본이 한 줄짜리로 바뀐다. 있던 파일은 백업 자리로 먼저 떠 둔다.
 if ($wantAgyKit) {
-  $agySrc = Join-Path $Here '.gemini.global'
+  $agySrc = Join-Path $Kit 'agy'
   $agyDst = Join-Path $env:USERPROFILE '.gemini\config'
   if (-not (Test-Path -LiteralPath $agySrc -PathType Container)) {
-    Write-Host '  agy 설정 — 이 폴더에 없다'
+    Write-Host "  ! agy 설정 — 짐에 없다 ($agySrc)" -ForegroundColor Red
+    $Fails.Add('agy 설정 (짐에 없음)')
   } else {
     $agyBk = $null
     $agyN = 0
@@ -3521,31 +3561,28 @@ if ($hostAgy -and -not $personalAgy) {
 # 못 찾는다), agy 는 `~/.gemini/config/paisetup-skills`(agy 는 스킬 목록이 여는 자리만 읽는다 — 아래 「agy 스킬 목록」).
 # 무엇을 까나는 둘이 정한다:
 #   * 칸 없이 — 표의 그 도구 칸
-#   * 제작자 칸의 그 도구 칸 — Claude 홈처럼 묶음 전부. 다만 위 표에 든 스킬은 그 칸을 따른다 — 러너는 받는 쪽 홈에
-#     안 간다. 칸을 끄면 그 홈의 기록에 있던 제작자 스킬을 걷는다
-# ⚠ **묶음이 두 곳이다** — Claude 홈에도 가는 스킬은 `.claude\skills`, Claude 홈에는 안 가는 스킬(Claude 에게 맡기는
-#   러너)은 `.agents\skills` 에 산다. 뒤엣것을 `.claude\skills` 에 두면 제작자 설정 칸(6 칸)이 Claude 홈에도 깔아, 모든
-#   Claude 세션의 스킬 목록에 쓸 일 없는 줄이 는다.
+#   * 제작자 칸의 그 도구 칸 — Claude 홈처럼 짐 전부. 칸을 끄면 그 홈의 기록에 있던 제작자 스킬을 걷는다
+#   어느 쪽이든 마지막에 갈 곳 표로 거른다 — 러너는 받는 쪽 홈에 안 간다.
 # ⚠ **옛 자리(`~/.codex/skills`)에 깐 것은 걷는다** — 그 자리를 쓰던 판이 남긴 기록(`~/.codex/.paisetup-skills`)에 적힌
 #   이름만 옮기고 기록을 지운다. 사람이 거기 둔 다른 스킬은 안 건드린다.
-$skillBundle      = Join-Path $Here '.claude\skills'
-$agentSkillBundle = Join-Path $Here '.agents\skills'
 $AgySkillHome     = Join-Path $env:USERPROFILE '.gemini\config\paisetup-skills'
 function Get-HomeSkills([string]$Column, [bool]$Personal) {
   $names = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Column })
-  if ($Personal) {
-    $names += @(@($skillBundle, $agentSkillBundle) | Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
-                ForEach-Object { Get-ChildItem -LiteralPath $_ -Directory } | ForEach-Object { $_.Name } |
+  if ($Personal -and (Test-Path -LiteralPath $KitSkills -PathType Container)) {
+    $names += @(Get-ChildItem -LiteralPath $KitSkills -Directory | ForEach-Object { $_.Name } |
                 Where-Object { -not $FreeSkills.Contains($_) })
   }
-  @($names | Where-Object { $_ } | Select-Object -Unique)
+  @($names | Where-Object { $_ -and (Test-SkillGoesTo $_ $Column) } | Select-Object -Unique)
 }
 function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot) {
   $done = @()
   foreach ($n in $Names) {
-    $from = @($skillBundle, $agentSkillBundle | ForEach-Object { Join-Path $_ $n } |
-              Where-Object { Test-Path -LiteralPath (Join-Path $_ 'SKILL.md') }) | Select-Object -First 1
-    if (-not $from) { Write-Host "  $Label 스킬 $n — 이 폴더에 없다"; continue }
+    $from = Join-Path $KitSkills $n
+    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) {
+      Write-Host "  ! $Label 스킬 $n — 짐에 없다" -ForegroundColor Red
+      $Fails.Add("$Label 스킬 $n (짐에 없음)")
+      continue
+    }
     $to = Join-Path $SkillHome $n
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
@@ -3554,7 +3591,7 @@ function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome
   }
   if ($done.Count) {
     # 이 홈에서는 「이번에 깔 목록에 없는 것」을 걷는다 — 제작자 칸을 끈 도구에서 제작자 스킬이 빠진다(결정 0099)
-    Remove-RetiredSkills -Bundle $skillBundle -ExtraBundle $agentSkillBundle -SkillHome $SkillHome `
+    Remove-RetiredSkills -Bundle $KitSkills -SkillHome $SkillHome `
                          -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done -Keep $Names
   }
 }
@@ -3588,10 +3625,10 @@ if ($hostCodex) {
 # 제작자 칸의 agy 설정 셋(6 칸)도 같은 파일을 깔아, 그 판에서는 여기가 「이미 맞다」로 지난다.
 # ⚠ 있던 파일이 다르면 백업 자리로 먼저 떠 둔다(6 칸의 agy 설정 셋과 같은 손).
 if ($hostAgy) {
-  $agyListFrom = Join-Path $Here '.gemini.global\skills.json'
+  $agyListFrom = Join-Path $Kit 'agy\skills.json'
   $agyListTo   = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
   if (-not (Test-Path -LiteralPath $agyListFrom)) {
-    Write-Host '  ! agy 스킬 목록 — 이 폴더에 원본(.gemini.global/skills.json)이 없다' -ForegroundColor Red
+    Write-Host '  ! agy 스킬 목록 — 짐에 원본(kit/agy/skills.json)이 없다' -ForegroundColor Red
     $Fails.Add('agy 스킬 목록 (원본 없음)')
   } elseif ((Test-Path -LiteralPath $agyListTo) -and
             ((Get-FileHash -LiteralPath $agyListFrom).Hash -eq (Get-FileHash -LiteralPath $agyListTo).Hash)) {
@@ -3623,7 +3660,7 @@ $retiredRuleMark = '생성물 — scripts/pull-vibecoding.sh 가 씨앗의'
 $ruleHome = Join-Path $homeDir 'rules'
 $staleRules = @(Get-ChildItem -LiteralPath $ruleHome -Filter 'futurem-*.md' -File -ErrorAction SilentlyContinue |
   Where-Object {
-    -not (Test-Path -LiteralPath (Join-Path $Here ".claude\rules.global\$($_.Name)")) -and
+    -not (Test-Path -LiteralPath (Join-Path $Kit "norms\rules\$($_.Name)")) -and
     (@(Get-Content -LiteralPath $_.FullName -TotalCount 20 -Encoding UTF8 -ErrorAction SilentlyContinue) -join "`n").Contains($retiredRuleMark)
   })
 if ($staleRules.Count -gt 0) {
@@ -3747,13 +3784,16 @@ foreach ($a in $envAssets) {
 #   `.claude/skills/<이름>/SKILL.md` 가 있다는 것이다.
 # ⚠ **깐 이름은 6 칸과 같은 기록에 더한다** — 묶음에서 빠지는 날 같은 손(`Remove-RetiredSkills`)이 걷는다.
 if (-not $personalClaude) {
-  $skillBundle = Join-Path $Here '.claude\skills'
   $skillHome   = Join-Path $homeDir 'skills'
   $freeDone = @()
   foreach ($n in $FreeSkills.Keys) {
-    if (-not $FreeSkills[$n].Claude) { continue }
-    $from = Join-Path $skillBundle $n
-    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) { Write-Host "  스킬 $n — 이 폴더에 없다"; continue }
+    if (-not ($FreeSkills[$n].Claude -and (Test-SkillGoesTo $n 'claude'))) { continue }
+    $from = Join-Path $KitSkills $n
+    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) {
+      Write-Host "  ! 스킬 $n — 짐에 없다" -ForegroundColor Red
+      $Fails.Add("스킬 $n (짐에 없음)")
+      continue
+    }
     $owner = @($configRepoUrls | ForEach-Object { Get-ConfigRepoDir $_ } |
                Where-Object { Test-Path -LiteralPath (Join-Path $_ ".claude\skills\$n\SKILL.md") }) | Select-Object -First 1
     if ($owner) {
@@ -3767,8 +3807,11 @@ if (-not $personalClaude) {
     $freeDone += $n
   }
   if ($freeDone.Count) {
-    Remove-RetiredSkills -Bundle $skillBundle -SkillHome $skillHome -Ledger (Join-Path $homeDir '.paisetup-skills') `
-                         -BackupRoot (Join-Path $homeDir 'backups') -Installed $freeDone
+    # 남겨 둘 이름은 짐 가운데 Claude 홈에 가는 것 — 받는 쪽이 Claude 인 러너가 옛 기록에 있으면 이 손이 걷는다
+    $claudeKeep = @(Get-ChildItem -LiteralPath $KitSkills -Directory | ForEach-Object { $_.Name } |
+                    Where-Object { Test-SkillGoesTo $_ 'claude' })
+    Remove-RetiredSkills -Bundle $KitSkills -SkillHome $skillHome -Ledger (Join-Path $homeDir '.paisetup-skills') `
+                         -BackupRoot (Join-Path $homeDir 'backups') -Installed $freeDone -Keep $claudeKeep
   }
 }
 
@@ -4030,13 +4073,17 @@ function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts,
 }
 # 꼬리의 `# image-gate.py` 는 옛 판 심는 손이 이 항목을 제 것으로 알아보게 두는 표지다 — 없으면
 #   옛 판이 제 항목을 곁에 하나 더 심는다.
-if (Plant-HomeToolHook '그림 문(PreToolUse)' @('PreToolUse') @('image-gate.sh', 'image-gate.py') '_ig' ' # image-gate.py') { $dirty = $true }
+# ⚠ **Claude 훅은 Claude 를 고른 PC 에만 심는다**(claude-config 결정 0102) — 제작자 칸과는 무관하다(취향이 아니라
+#   막힌 자리에서 길을 잇는 장치다). 다른 도구만 고른 PC 의 Claude 홈에는 쓸 사람이 없다. 그 도구들의 같은 보호는
+#   제 꼴의 훅(Codex TOML · agy hooks.json)으로 따로 건다.
+if ($hostClaude -and
+    (Plant-HomeToolHook '그림 문(PreToolUse)' @('PreToolUse') @('image-gate.sh', 'image-gate.py') '_ig' ' # image-gate.py')) { $dirty = $true }
 
 # ── 웹 다시 찾기 — PostToolUse · PostToolUseFailure 훅을 홈에 심는다 (claude-config #117) ──────────
 # 웹 도구가 못 닿았을 때 다른 길(curl · Tavily · agy 백그라운드 맡기기)이 있다는 것을 결과 곁에 붙인다 — 막지 않는다.
-# 왜와 거는 꼴은 껍데기(`web-retry.sh`)의 머리말이 든다. 그림 문과 같은 까닭으로 스위치를 안 탄다 —
-# 부품이 씨앗으로 누구에게나 가고, 이 훅은 취향이 아니라 막힌 자리에서 길을 잇는 장치다.
-if (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @('PostToolUse', 'PostToolUseFailure') @('web-retry.sh') '_wr' '') { $dirty = $true }
+# 왜와 거는 꼴은 껍데기(`web-retry.sh`)의 머리말이 든다. 그림 문과 같은 조건(Claude 를 골랐다)으로 심는다.
+if ($hostClaude -and
+    (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @('PostToolUse', 'PostToolUseFailure') @('web-retry.sh') '_wr' '')) { $dirty = $true }
 
 # ── DRM 길잡이 — UserPromptSubmit · PreToolUse · PostToolUseFailure 훅을 홈에 심는다 (claude-config #120 · 결정 0094) ──
 # 붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 스킬 `drm-office-read` 로 가는 길을 곁에 붙인다 — 막지 않는다. 왜와
@@ -4991,45 +5038,61 @@ if ($personalClaude -and $pairs) {
     if (-not (Test-Path -LiteralPath $p.From)) { continue }
     $checks += New-CountCheck $p.Name $p.From $p.To
   }
+  if ($claudeKitNames.Count) {
+    $claudeKitMiss = @($claudeKitNames | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
+    $checks += @{ Name = "제작자 스킬 ($($claudeKitNames.Count) 개 · ~/.claude/skills)"; Ok = ($claudeKitMiss.Count -eq 0) }
+  }
+}
+# 러너가 받는 쪽 홈에 없나 — 상태로 잰다. 까는 손이 표로 걸렀어도, 옛 판이 깔았거나 손으로 둔 것까지 여기서 보인다.
+foreach ($rr in @(
+    @{ Tool = 'claude'; On = $true;      Dir = (Join-Path $homeDir 'skills') }
+    @{ Tool = 'codex';  On = $hostCodex; Dir = (Join-Path $env:USERPROFILE '.agents\skills') }
+    @{ Tool = 'agy';    On = $hostAgy;   Dir = $AgySkillHome })) {
+  $runnersHere = @($SkillReceiver.Keys | Where-Object { $SkillReceiver[$_] -eq $rr.Tool })
+  if (-not $rr.On -or -not $runnersHere.Count) { continue }
+  $wrongHere = @($runnersHere | Where-Object { Test-Path -LiteralPath (Join-Path $rr.Dir "$_\SKILL.md") })
+  $checks += @{ Name = "받는 쪽 홈에 그 러너가 없다 ($($rr.Tool) — $($runnersHere -join ' · '))"; Ok = ($wrongHere.Count -eq 0) }
 }
 # ── 그림 문 — **심었다는 초록과 섰다는 것은 다른 명제다** ──────────────────────────
 # ⚠ **되읽어서 잰다.** 위 심는 칸이 「심었다」를 찍지만 그것은 메모리의 객체를 고쳤다는 말이고,
 #   파일에 실제로 그 항목이 있나는 다른 물음이다 — JSON 쓰기가 지면 화면만 초록이 된다.
-# ⚠ **제작자 칸을 안 탄다** — 심는 칸이 그 칸 밖에 살므로 재는 자도 밖이다.
-#   한쪽만 스위치를 타면 안 켠 사람 자리에서 **심겼는데 안 재지거나 그 반대**가 된다.
+# ⚠ **심는 조건 그대로 잰다** — Claude 를 골랐을 때만. 한쪽만 조건을 타면 안 고른 사람 자리에서 **심겼는데 안
+#   재지거나 그 반대**가 된다.
 # ⚠ **몸통과 배선을 따로 잰다.** 둘이 한 줄이면 「몸통이 안 실렸다」와 「배선이 못 섰다」가
 #   같은 빨강으로 보이는데, 고칠 자리가 서로 다르다(뽑기 선언 · 이 파일).
-$gateBodyChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.py'
-$gateShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.sh'
-$checks += @{ Name = '그림 문 몸통 (씨앗의 image-gate.py)'; Ok = (Test-Path -LiteralPath $gateBodyChk) }
-$checks += @{ Name = '그림 문 껍데기 (씨앗의 image-gate.sh)'; Ok = (Test-Path -LiteralPath $gateShellChk) }
-$gateWired = $false
-try {
-  $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-  foreach ($entry in @($gc.hooks.PreToolUse)) {
-    foreach ($h in @($entry.hooks)) {
-      if ($h -and ([string]$h.command).Contains('image-gate.')) { $gateWired = $true }
-    }
-  }
-} catch { $gateWired = $false }
-$checks += @{ Name = '그림 문 배선 (홈 settings.json 의 PreToolUse)'; Ok = $gateWired }
-# 웹 다시 찾기 — 그림 문과 같은 자로 잰다. 배선은 두 이벤트 **다** 서야 선 것이다 — 하나만 서면
-#   오류로 끝난 꼴이나 정상 반환 안의 실패 꼴 가운데 한쪽을 조용히 놓친다.
-$webShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\web-retry.sh'
-$checks += @{ Name = '웹 다시 찾기 껍데기 (씨앗의 web-retry.sh)'; Ok = (Test-Path -LiteralPath $webShellChk) }
-$webWired = @()
-try {
-  $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-  foreach ($ev in 'PostToolUse', 'PostToolUseFailure') {
-    foreach ($entry in @($gc.hooks.$ev)) {
+if ($hostClaude) {
+  $gateBodyChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.py'
+  $gateShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.sh'
+  $checks += @{ Name = '그림 문 몸통 (씨앗의 image-gate.py)'; Ok = (Test-Path -LiteralPath $gateBodyChk) }
+  $checks += @{ Name = '그림 문 껍데기 (씨앗의 image-gate.sh)'; Ok = (Test-Path -LiteralPath $gateShellChk) }
+  $gateWired = $false
+  try {
+    $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($entry in @($gc.hooks.PreToolUse)) {
       foreach ($h in @($entry.hooks)) {
-        if ($h -and ([string]$h.command).Contains('web-retry.')) { $webWired += $ev }
+        if ($h -and ([string]$h.command).Contains('image-gate.')) { $gateWired = $true }
       }
     }
-  }
-} catch { $webWired = @() }
-$checks += @{ Name = '웹 다시 찾기 배선 (홈 settings.json 의 PostToolUse · PostToolUseFailure)'
-              Ok = (@('PostToolUse', 'PostToolUseFailure' | Where-Object { $webWired -notcontains $_ }).Count -eq 0) }
+  } catch { $gateWired = $false }
+  $checks += @{ Name = '그림 문 배선 (홈 settings.json 의 PreToolUse)'; Ok = $gateWired }
+  # 웹 다시 찾기 — 그림 문과 같은 자로 잰다. 배선은 두 이벤트 **다** 서야 선 것이다 — 하나만 서면
+  #   오류로 끝난 꼴이나 정상 반환 안의 실패 꼴 가운데 한쪽을 조용히 놓친다.
+  $webShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\web-retry.sh'
+  $checks += @{ Name = '웹 다시 찾기 껍데기 (씨앗의 web-retry.sh)'; Ok = (Test-Path -LiteralPath $webShellChk) }
+  $webWired = @()
+  try {
+    $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($ev in 'PostToolUse', 'PostToolUseFailure') {
+      foreach ($entry in @($gc.hooks.$ev)) {
+        foreach ($h in @($entry.hooks)) {
+          if ($h -and ([string]$h.command).Contains('web-retry.')) { $webWired += $ev }
+        }
+      }
+    }
+  } catch { $webWired = @() }
+  $checks += @{ Name = '웹 다시 찾기 배선 (홈 settings.json 의 PostToolUse · PostToolUseFailure)'
+                Ok = (@('PostToolUse', 'PostToolUseFailure' | Where-Object { $webWired -notcontains $_ }).Count -eq 0) }
+}
 # DRM 길잡이 — 그림 문과 같은 자로 잰다. 심는 조건(Claude 를 골랐다) 그대로 잰다. 배선은 두 이벤트 **다** 서야 선
 #   것이다 — 하나만 서면 첨부 쪽이나 PDF 그물 쪽을 조용히 놓친다.
 if ($PickKeys -contains 'claude') {
@@ -5104,7 +5167,7 @@ if ($wantCcBg) {
 # ⚠ **설정 셋은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
 #   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.
 if ($wantAgyKit) {
-  $agySrcFiles = @(Get-ChildItem -LiteralPath (Join-Path $Here '.gemini.global') -File -ErrorAction SilentlyContinue)
+  $agySrcFiles = @(Get-ChildItem -LiteralPath (Join-Path $Kit 'agy') -File -ErrorAction SilentlyContinue)
   $agySame = @($agySrcFiles | Where-Object {
     $t = Join-Path $env:USERPROFILE ".gemini\config\$($_.Name)"
     (Test-Path -LiteralPath $t) -and ((Get-FileHash -LiteralPath $_.FullName).Hash -eq (Get-FileHash -LiteralPath $t).Hash)
@@ -5149,7 +5212,7 @@ foreach ($hs in @(
 }
 # agy — 스킬 목록이 일하는 도구 자리를 가리키나 · 훅 둘이 우리 어댑터로 걸렸나 (결정 0099)
 if ($hostAgy) {
-  $agyListFromChk = Join-Path $Here '.gemini.global\skills.json'
+  $agyListFromChk = Join-Path $Kit 'agy\skills.json'
   $agyListToChk   = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
   $checks += @{ Name = 'agy 스킬 목록 (~/.gemini/config/skills.json 이 짐과 같다 · agy 홈을 연다)'
                 Ok = ((Test-Path -LiteralPath $agyListFromChk) -and (Test-Path -LiteralPath $agyListToChk) -and
@@ -5168,7 +5231,7 @@ if ($personalCodex -or $personalAgy) {
   $nnFile = Join-Path $NeutralNorms 'norms.md'
   $checks += @{ Name = '규범 · 룰 중립 자리 (~/.paisetup/norms)'
                 Ok = ((Test-Path -LiteralPath $nnFile) -and
-                      ((Get-FileHash -LiteralPath $nnFile).Hash -eq (Get-FileHash -LiteralPath (Join-Path $Here '.claude\CLAUDE.global.md')).Hash)) }
+                      ((Get-FileHash -LiteralPath $nnFile).Hash -eq (Get-FileHash -LiteralPath (Join-Path $Kit 'norms\norms.md')).Hash)) }
 }
 if ($personalCodex) {
   $codexAgentsMd = Join-Path $env:USERPROFILE '.codex\AGENTS.md'

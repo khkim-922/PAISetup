@@ -19,7 +19,7 @@ seeds/**/*.py text eol=lf
 
 # 스킬이 들고 있는 바깥 표준 원문은 상류와 **바이트가 같아야** 한다 — 각 스킬의
 # "참조 — 표준 원문" 절에 적힌 `curl … | diff` 대조가 그것에 기댄다.
-.claude/skills/**/references/**   -text
+kit/skills/**/references/**   -text
 
 # ⚠ 파워셸 스크립트(*.ps1)는 UTF-8 **BOM** 이 있어야 한다 — PowerShell 5.1 은 BOM 이 없으면
 #   시스템 ANSI(한국은 cp949)로 읽어 한글이 그 자리에서 깨진다. BOM 은 줄바꿈이 아니라
