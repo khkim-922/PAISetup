@@ -84,11 +84,6 @@ $ErrorActionPreference = 'Stop'
 #   규약이라 안 건드리는 쪽을 골랐다.
 $Sw     = [Diagnostics.Stopwatch]::StartNew()
 $SwMark = 0
-function Write-Elapsed([string]$Text) {
-  $now = [int]$Sw.Elapsed.TotalSeconds
-  Write-Host ("  ── $Text — 마쳤다 (" + ($now - $script:SwMark) + "초)") -ForegroundColor DarkGray
-  $script:SwMark = $now
-}
 
 # ⚠ **네이티브 명령의 stderr 를 성공 스트림에 합치지 않는다 (`2>&1`).** 합치면 파워셸이 그 줄을
 #   오류 레코드로 감싸고, 위 `Stop` 이 **그 자리에서 스크립트를 끝낸다.** 경고 한 줄이 설치를
@@ -362,6 +357,14 @@ if ($Describe) {
   exit 0
 }
 
+#region 라이브러리 — 흐름이 부르는 함수는 다 여기 선다. 정의만 있고 도는 문장은 없다
+
+function Write-Elapsed([string]$Text) {
+  $now = [int]$Sw.Elapsed.TotalSeconds
+  Write-Host ("  ── $Text — 마쳤다 (" + ($now - $script:SwMark) + "초)") -ForegroundColor DarkGray
+  $script:SwMark = $now
+}
+
 # ── 물음창 — **묻는 자리가 둘이라 띄우기는 한 자리가 든다** ──────────────────────
 # ⚠ **임자 없는 물음창은 뒤로 숨는다.** 그러면 설치가 멈춘 것처럼 보이고, 안 보이는 창을 아무도
 #   안 눌러 영영 안 끝난다 — 회사 PC/VDI 에서 확인창이 VS Code 뒤에 숨은 채 기다린 자리가 그것이다.
@@ -408,178 +411,6 @@ function Format-EngineHolder($H) {
     $H.ProcessId, $H.CreationDate.ToString('HH:mm:ss'),
     [int]((Get-Date) - $H.CreationDate).TotalMinutes
 }
-
-# ── 단일 실행 빗장 (Mutex) — **겹쳐 도는 것을 뿌리에서 막는다** ────────────────
-# ⚠ **부팅 자동화와 로그온 자동 실행, 또는 사람의 실행이 겹치면** 같은 환경변수와 설정 파일을
-#   동시에 덮어써 진 쪽의 반쪽 상태가 남는다 (#13).
-# ⚠ **막는 말만 하고 정보를 안 주면 받은 사람이 할 수 있는 일이 없다**(#17). 「진행 중」으로는
-#   **정상 진행과 멎은 고아를 못 가른다** — 쥔 쪽의 번호와 경과를 대면 사람이 그 둘을 가른다.
-#   그리고 사람이 있으면 **끝내고 이어갈 길을 준다**: 고아는 기다려서 안 풀리고, 지금까지는
-#   사람이 손으로 PID 를 찾아 죽이는 것 말고 방법이 없었다.
-$script:EngineMutex = $null
-$script:HasEngineMutex = $false
-try {
-  $script:EngineMutex = New-Object System.Threading.Mutex($false, "Local\PAISetup-Engine-Lock")
-  $script:HasEngineMutex = $script:EngineMutex.WaitOne(0, $false)
-} catch {
-  $script:HasEngineMutex = $true
-}
-
-$holders = @(Find-EngineHolders)
-if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
-  Write-Host ''
-  Write-Host '  이미 다른 설치 또는 자동 실행이 진행 중입니다.' -ForegroundColor Yellow
-  foreach ($h in $holders) { Write-Host ('  ' + (Format-EngineHolder $h)) }
-  if (-not $holders) {
-    Write-Host '    · 쥔 프로세스를 못 찾았다 — 방금 끝났거나 다른 사용자 것이다'
-  }
-
-  # ⚠ **묻는 자리를 가르는 것은 `-Yes` 가 아니라 「누를 사람이 있나」다** — 아래 `Ask-Restart` 와
-  #   같은 까닭이다. 화면 껍데기는 사람을 앞에 두고도 몸통을 **늘 `-Yes` 로** 부르므로, `-Yes` 에
-  #   걸면 **화면으로 깐 사람은 영영 안 물어보게 된다.** 누를 사람이 아예 없는 것은 세션 0
-  #   (서비스 · 「로그온하지 않아도 실행」 스케줄러 · CI)뿐이고 `UserInteractive` 가 그것을 가른다.
-  if (-not [Environment]::UserInteractive) {
-    Write-Host '  물을 자리가 없다 (세션 0 · 서비스 · 스케줄러) — 겹치지 않게 물러납니다.' -ForegroundColor Yellow
-    exit 1
-  }
-
-  Write-Host '  잠시 기다립니다 (최대 60초)...'
-  # ⚠ **버려진 빗장은 잡힌 것이다.** 기다리는 동안 쥔 쪽이 죽으면 `WaitOne` 이 던지는데, 그때
-  #   **소유권은 이쪽에 넘어와 있다** — 삼키고 거짓으로 두면 방금 얻은 것을 못 쓴다.
-  #   세션이 다른 프로세스(S4U 등)는 Mutex 로 안 잡히므로 Find-EngineHolders 도 함께 잰다.
-  $swWait = [Diagnostics.Stopwatch]::StartNew()
-  while ($swWait.Elapsed.TotalSeconds -lt 60) {
-    Start-Sleep -Seconds 2
-    try {
-      if (-not $script:HasEngineMutex) {
-        $script:HasEngineMutex = $script:EngineMutex.WaitOne(1000, $false)
-      }
-    } catch { $script:HasEngineMutex = $true }
-    $holders = @(Find-EngineHolders)
-    if ($holders.Count -eq 0 -and $script:HasEngineMutex) { break }
-  }
-
-  if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
-    # ⚠ **기본값은 「안 끝낸다」다.** 빗장이 선 까닭이 *겹쳐 돌면 반쪽 상태가 남는다*(#13)이므로,
-    #   아직 일하는 중인 것을 끝내면 **그 반쪽 상태를 우리가 만드는 셈이다.** 그래서 묻고, 무엇을
-    #   끝내는지 대고, 사람이 예라고 할 때만 끝낸다.
-    # ⚠ **못 찾았으면 안 묻는다** — 무엇을 끝낼지 못 대면서 끝낼지 물을 수 없다.
-    $holders = @(Find-EngineHolders)
-    if ($holders) {
-      $msg = "이미 돌고 있는 설치가 있습니다.`n`n" +
-             (($holders | ForEach-Object { Format-EngineHolder $_ }) -join "`n") + "`n`n" +
-             "그것을 끝내고 새로 시작할까요?`n`n" +
-             "아직 일하는 중이면 반쯤 깔린 상태가 남을 수 있습니다."
-      if (Show-AskDialog '설치가 겹쳤습니다' $msg) {
-        foreach ($h in $holders) {
-          try {
-            Stop-Process -Id $h.ProcessId -Force -ErrorAction Stop
-            Write-Host ('  PID {0} 을 끝냈다' -f $h.ProcessId)
-          } catch {
-            Write-Host ('  ! PID {0} 을 못 끝냈다 — {1}' -f $h.ProcessId, $_.Exception.Message) `
-              -ForegroundColor Yellow
-          }
-        }
-        # 주인이 죽으면 윈도우가 빗장을 놓는다 — 그 버려진 빗장을 여기서 받는다(위 ⚠ 와 같은 자리).
-        try { $script:HasEngineMutex = $script:EngineMutex.WaitOne(10000, $false) }
-        catch { $script:HasEngineMutex = $true }
-      }
-    }
-  }
-
-  $holders = @(Find-EngineHolders)
-  if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
-    Write-Host '  ! 다른 설치 프로세스가 끝나지 않아 물러납니다.' -ForegroundColor Red
-    exit 1
-  }
-}
-
-# 고른 제품. **안 주면 표의 기본값** — 화면 갈래와 콘솔 갈래가 같은 자를 쓴다.
-# ⚠ **모르는 이름을 삼키지 않는다.** 오타 하나로 제품이 조용히 안 깔리면 **초록으로 끝나고**
-#   아무도 못 본다 — 값을 준 사람이 제일 늦게 안다.
-if ($PSBoundParameters.ContainsKey('Pick')) {
-  # ⚠ **쉼표만 구분자로 두지 않는다 — 공백도 받는다.** 파워셸에서 `-Pick a,b,c` 를 **따옴표 없이**
-  #   넘기면 껍데기가 그것을 배열로 읽고 `[string]` 이 공백으로 이어 붙인다. 값을 준 사람은
-  #   쉼표를 쳤는데 몸통에는 `a b c` 한 덩이가 온다(실측 2026-09-17). 가르는 자를 넓히면 그
-  #   자리가 **아예 없어진다** — 제품 이름에는 공백이 없어 넓혀도 잃는 것이 없고, 이 파일은
-  #   `#config-repo` 에서 이미 공백으로 가른다.
-  $PickKeys = @($Pick -split '[,\s]+' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
-  # ⚠ **이름을 `$known` 으로 두지 않는다 — 아래 5′ 칸이 그 이름을 `$Vars` 뜻으로 쓴다**
-  #   (`$known = $Vars | …` 줄). ⚠ **좌표를 줄 번호로 안 박는다** — 위가 늘면 그 숫자만 조용히
-  #   낡는다(이 자리가 그랬다).
-  #   오늘은 그쪽이 먼저 덮어써서 맞게 돌지만, 그 줄 **앞**에 `$known` 을 읽는 줄이 하나 붙는 날
-  #   조용히 뜻이 바뀐다 — 파워셸은 대소문자도 스코프도 안 가려 준다(이 파일이 `$Planted` 에서
-  #   이미 겪은 그 함정이다).
-  $ProductKeys = @($Products | ForEach-Object { $_.Key })
-  $unknown     = @($PickKeys | Where-Object { $ProductKeys -notcontains $_ })
-  foreach ($k in $unknown) {
-    Write-Host ('  ! 모르는 제품 이름 — {0} (아는 것: {1})' -f $k, ($ProductKeys -join ', ')) -ForegroundColor Yellow
-  }
-  # 모르는 이름은 들고 가지 않는다 — 아래 걸음마다 아무것도 안 맞는 열쇠가 섞여 다닐 까닭이 없다.
-  $PickKeys = @($PickKeys | Where-Object { $ProductKeys -contains $_ })
-  # ⚠ **아는 이름이 하나도 안 남으면 그것은 오타지 「아무것도 안 깔겠다」가 아니다.** 위 경고 한
-  #   줄은 여덟 칸 로그에 묻히고, 설치는 **제품을 하나도 안 깐 채 초록으로 끝난다** — 이 칸의
-  #   곁말이 막겠다고 한 바로 그 상태다(실측 2026-09-17: 구분자 하나가 어긋나 그렇게 끝났다).
-  #   막지는 않는다(프로그램·키·씨앗은 여전히 설 자리가 있다). 대신 **끝까지 남는 자리**에 적어
-  #   빨강으로 끝나게 한다 — 노란 줄과 달리 이것은 맨 끝 검증에 이름이 선다.
-  if ($unknown -and -not $PickKeys) {
-    Write-Host ('  ! 고른 제품이 하나도 안 섰다 — 준 값을 쉼표로 가른다: -Pick "{0}"' -f
-                ($ProductKeys -join ',')) -ForegroundColor Red
-    $Fails.Add(('-Pick 에 아는 제품 이름이 없다 (준 값: {0})' -f $Pick))
-  }
-} else {
-  $PickKeys = @($Products | Where-Object { $_.Default } | ForEach-Object { $_.Key })
-}
-# 제품 칸을 하나도 안 켠 판 — 아래 걸음들이 다 빈 채로 지나가므로 여기서 한 번 말한다.
-if (-not $PickKeys) { $PickKeys = @() }
-
-$Vars = @(
-  @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 사내는 로컬 프록시 루프백 · 끝에 /v1 을 붙이지 않는다 (CLI 가 붙인다)'; Gateway=$true }
-  @{ Name='ANTHROPIC_AUTH_TOKEN'; Desc='게이트웨이 API 키';                                          Gateway=$true; Secret=$true }
-  @{ Name='ANTHROPIC_MODEL';      Desc='기본 모델 이름 (비우면 CLI 기본값으로 둔다)';                Gateway=$false }
-)
-
-# ── 클라이언트 기능 스위치 — **씨앗이 아니라 늘 맞춘다** ────────────────────────
-# ⚠ **씨앗은 「settings.json 이 없을 때」만 깔린다.** 그래서 한 번이라도 돌린 기계는 그 뒤에
-#   늘어난 스위치를 **영영 못 받는다** — 새로 깐 기계에만 서고 오래 쓴 기계는 조용히 뒤처지고,
-#   화면은 둘 다 「홈 설정 · 썼다」로 똑같이 찍힌다(실측 2026-09-09 · 사내 VDI: 씨앗에 있는
-#   `ENABLE_TOOL_SEARCH` 가 안 걸린 채로 「env 에 1개를 맞췄다」만 떴다 — 그 하나는 CA 였다).
-# ⚠ **게이트웨이 값과 갈린다.** 저것은 사람마다·자리마다 달라 `#settings-env` 가 물어야 하지만
-#   이것은 켜거나 안 켜거나뿐이라 사람이 정할 것이 없다 — 늘 맞춰도 뺏는 것이 없다.
-# 스위치가 늘면 여기 한 줄을 더한다. 이 파일 안의 씨앗에는 안 적는다 — 아래에서 늘 맞춘다.
-# ⚠ **다만 저장소의 `vdi-home-settings.json` 은 같이 고쳐야 한다.** 그것은 이 파일이 못 읽는
-#   자리에 살고(배포 묶음에 안 실린다) 설정 저장소의 훅이 민다. 자리 파일이
-#   `#home-settings = overwrite` 를 드는 자리(사외 VDI)에서는 **그 덮기가 이 설치보다 나중**
-#   이라 씨앗이 최종 승자다 — 여기만 늘리면 그 자리에서 조용히 잃는다.
-$Features = @{
-  ENABLE_TOOL_SEARCH = 'true'    # 도구를 미리 다 안 싣고 필요할 때 찾아 쓴다
-}
-
-# ── 고를 모델 목록 — **자리를 탄다. 게이트웨이에 닿는 자리에만 선다** (결정 0048) ────
-# `/model` 목록에 설 줄을 우리가 선언한다. 접미사 `[1m]` 이 창을 1M 으로 연다 — 게이트웨이는
-# 이미 그만큼을 주고 있었고(0047 · 상한을 넘겨 쏘면 저쪽이 `1000000` 이라고 말한다) 깎던 자는
-# CLI 였다. 셋 다 쟀다: 4.6 은 792k · 4.7·5 는 576k 로 200 이 왔다.
-# ⚠ **씨앗(`vdi-home-settings.json`)에 두지 않는다.** 이 이름들은 게이트웨이가 등록한 것이라
-#   자리를 타는데 씨앗은 익명 층이고 포크를 따라간다(`secrets.d/posco.env` 의 모델 칸 곁말과
-#   같은 축). 사외는 구독으로 돌아 이 이름이 아예 없어서, 씨앗에 두면 **사외 VDI 의 목록에
-#   못 부르는 줄이 서고 고르면 그 자리에서 깨진다** — 게다가 그 자리는 씨앗 덮기가 이 설치보다
-#   나중이라(위 ⚠) 여기서 안 쓴 것도 씨앗이 되살린다. 그래서 자리를 재는 이 파일이 든다.
-# ⚠ **목록의 진본은 `GET /v1/models` 다.** 게이트웨이가 내는 것만 적는다 — 실측 2026-09-15 에
-#   Sonnet 5 와 Haiku 는 그 목록에 **없다**(내장 줄로는 보이지만 고르면 400 이다). 그래서 아래
-#   `$ModelPickerOnly` 로 내장 줄을 숨긴다: 목록이 곧 「이 자리에서 실제로 되는 것」이 된다.
-# ⚠ **이름은 하이픈으로 적는다.** 게이트웨이는 점 표기(`claude-opus-4.7`)로 목록을 내지만
-#   **두 표기를 다 받는다**(하이픈으로 쏘면 `model: claude-opus-4.7` 로 답한다 · 실측). 하이픈이
-#   CLI 카탈로그가 아는 이름이라 표시명·접미사 판정이 걸리고, 점 표기는 「모르는 모델」로 떨어져
-#   접미사가 안 붙는다.
-# 줄이 늘면 여기 한 줄. 게이트웨이가 그 이름을 내는지 먼저 묻는다.
-$ModelPicker = @(
-  @{ model = 'claude-sonnet-4-6[1m]'; description = 'Sonnet 4.6 · 게이트웨이 · 1M 창' }
-  @{ model = 'claude-opus-4-7[1m]';   description = 'Opus 4.7 · 게이트웨이 · 1M 창' }
-  @{ model = 'claude-opus-5[1m]';     description = 'Opus 5 · 게이트웨이 · 1M 창' }
-)
-# 내장 줄(Sonnet 5 · Haiku · Custom 칸)을 숨긴다 — 이 게이트웨이가 안 내는 것들이다.
-# `Default` 행은 이 값과 무관하게 남는다.
-$ModelPickerOnly = $true
 
 # ── 배선이 먼저다 ────────────────────────────────────────────────────────────────
 # ⚠ winget 이 심은 PATH 는 **이 창에 안 걸린다** — 이 창이 winget 보다 먼저 떴다.
@@ -944,20 +775,6 @@ function Show-Log([string]$LogPath, [int]$Lines = 8) {
   else { Write-Host '      (한 줄도 안 뱉었다 — 명령이 글자 없이 졌다)' }
 }
 
-# 도는 중을 알리는 한 줄 — **꼴은 이 함수 하나가 든다:** `  <대상> — <동작>중 … (<수단> · <덧말>)`.
-# ⚠ **왜 한 자리인가.** 설치 창은 몸통이 찍은 **마지막 한 줄**을 「지금 하는 일」로 띄운다
-#   (`install.ui.ps1` 의 `Step-Line`). 자리마다 제 말투로 찍으면 같은 일이 여러 꼴로 보이고,
-#   안 찍는 자리에서는 **직전 결과 줄이 걸린 채** 오래 돌아 멎은 것과 구분이 안 된다.
-#   그래서 시간이 드는 걸음은 들어가기 전에 이것을 부르고, 동작 낱말은 아래 표에서만 고른다.
-# ⚠ **결과 줄은 여기 안 든다** — `— 깔았다 · 있음 · 최신 · 올렸다` 는 자리마다 까닭이 달라 제
-#   자리가 찍는다. 이 함수는 「들어간다」만 말한다.
-$BusyVerbs = [ordered]@{
-  install = '설치중'
-  upgrade = '갱신중'
-  upcheck = '갱신 확인중'
-  fetch   = '받는중'
-  wait    = '기다리는 중'
-}
 function Say-Busy([string]$What, [string]$Do, [string[]]$Notes = @()) {
   if (-not $BusyVerbs.Contains($Do)) { throw "Say-Busy — 모르는 동작: $Do" }
   $n = @($Notes | Where-Object { $_ })
@@ -1090,28 +907,6 @@ function Test-OurProxyEntry([string]$Name, [string]$Value, [hashtable]$FromFile)
   return (Test-ProxyValue $Value)
 }
 
-# 사내에서만 뜻이 있는 이름 — **값이 주소가 아니라 위 자가 못 가른다.**
-# ⚠ **프록시 걷기와 같은 축이고 다른 자다.** 저쪽은 「값이 죽은 포트를 가리키나」를 묻고
-#   이쪽은 「이 이름이 사외에서 뜻이 있나」를 묻는다. 값으로만 재면 주소가 아닌 사내 전용 값이
-#   그대로 샌다 — `ATELIER_SITES=posco` 가 그 틈이었다(실측 2026-09-20 집 PC: 아뜰리에가
-#   회사 담장을 문 채 서서 **갈래가 전부 막혔고, 화면에서 고를 것이 하나도 없었다**).
-# ⚠ **이름 울타리는 여기서도 그대로 든다**(`$FromFile` 이 그 이름을 드는가) — 우리가 실어
-#   보낸 이름만 건드린다. 같은 이름을 제 뜻으로 쓰는 사람의 값을 지우지 않는다.
-# ⚠ **값을 안 본다.** 무엇이 앉아 있든 사외에서는 뜻이 없다 — 저쪽이 값을 묻는 것과 갈리는
-#   자리고, 그래서 이름 울타리가 유일한 방어다. 이름이 늘면 여기 한 줄.
-# ⚠ **끄기 셋도 사내 전용이다** — 회사망이 막는 곳으로 가는 시도를 안 하려고 끄는 것이라 사외에서는
-#   끌 까닭이 없고, 끄면 잃는다: `DISABLE_TELEMETRY` 는 원격 제어가 기대는 기능 플래그 평가까지 꺼
-#   켤 때마다 「Remote Control initialization failed」로 진다(공식 문서 remote-control 요구 조건 ·
-#   실측 2026-09-22 집 PC 와 사외 VDI: 이 값이 처음 심긴 판부터 켜기가 전부 졌다).
-#   ⚠ 그래서 이 셋은 **사용자가 손수 넣었어도 사외에서는 걷힌다** — 설치 목록이 늘 이 이름을 들어 위
-#   이름 울타리를 넘는다.
-# ⚠ **모델 고정 둘도 사내 전용이다** — 게이트웨이가 설정 `model` 키의 `[1m]` 을 벗겨 1M 창을 환경변수로
-#   여는 우회라(claude-config 결정 0049), 구독 로그인으로 서는 사외에서는 열 것이 없다. 남으면 시작 모델이
-#   그 값에 묶여 `/model` 로 고른 것이 새 창마다 밀린다(실측 2026-10-10 집 PC: 새 창이 늘 Opus 5 로 떴다).
-#   `ANTHROPIC_MODEL` 은 위 `$Vars` 표에도 있어 표 루프도 이 목록을 묻는다.
-$InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE',
-                'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL')
-
 function Test-OurInsideOnlyEntry([string]$Name, [hashtable]$FromFile) {
   if (-not $FromFile) { return $false }
   if ($InsideOnly -notcontains $Name) { return $false }
@@ -1154,27 +949,6 @@ function Read-EnvFile([string]$Path) {
   return $map
 }
 
-# ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
-# ⚠ **여기 든 글자는 진본이 아니라 울타리다.** 이름이 사람에게 찍히는 자리는 여럿인데
-#   (바로가기 이름 · 바로가기 설명 · 물음 상자 제목), 그 자리마다 글자를 박으면 이름을
-#   바꾸는 날 **한 자리만 낡고 그 한 자리는 아무도 안 본다.** 그래서 다 여기서 판다.
-# ⚠ **없어도 선다.** 값 파일이 그 줄을 안 드는 판(옛 배포본 · 이 파일만 떼어 받은 사람)에서
-#   이름이 비면 바로가기가 `.lnk` 라는 이름 없는 아이콘으로 서고 상자 제목이 빈칸이 된다 —
-#   그건 이름을 못 정한 것이 아니라 **못 읽은 것**인데 화면에는 똑같이 보인다. 울타리가 든다.
-$AppNameDefault = 'PAI Setup Wizard'
-$AppName = Read-Directive $EnvFile 'app-name'
-if (-not $AppName) { $AppName = $AppNameDefault }
-
-Write-Host ''
-Write-Host '=== Claude Code 환경 설치 ===' -ForegroundColor Cyan
-Write-Host ''
-
-# ── 1. winget ────────────────────────────────────────────────────────────────────
-# ⚠ **없다고 여기서 죽지 않는다.** winget 이 없으면 **못 까는 것**이지 아무것도 못 하는 것이
-#   아니다 — 확장·CLI·키 심기·홈 설정은 winget 없이 다 선다. 그리고 사내 PC 에는 런타임이
-#   이미 깔려 있는 일이 흔하다(사내 환경 문서가 Node·Python·Git 판을 적고 있다). 죽으면
-#   **다 있는 기계에서도 아무것도 안 되고**, 사람은 못 여는 스토어만 쳐다보게 된다.
-#   ⚠ 그렇다고 조용히 넘기지도 않는다: 못 깐 것은 아래에서 이름을 대고 실패로 적힌다.
 # ── winget 을 되살려 본다 — 없다고 바로 물러나기 전에 ────────────────────────────
 # ⚠ **가장 흔한 자리는 「안 깔림」이 아니라 「이 프로필에 등록 안 됨」이다.** winget 은 AppX
 #   (App Installer)라 기계에는 프로비저닝돼 있는데 사용자 프로필에는 등록이 안 되는 일이
@@ -1353,6 +1127,1356 @@ function Restore-Winget {
   return $false
 }
 
+function Get-ConfigRepoDir([string]$Url) {
+  return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
+}
+
+# ── 설정 저장소가 그 도구 홈에 미는 스킬 — 설치가 비켜설 이름 (결정 0107) ─────────────────────────
+# 저장소가 이 PC 에 받아져 있고, 아래 제작자 칸에서 그 도구를 켰고, 그 저장소가 그 스킬을 들 때다 — 그 저장소의 배포가
+# 같은 칸 값(`PAISETUP_PERSONAL`)을 읽어 같은 자리를 저장소 최신판으로 민다. 설치까지 깔면 둘이 판마다 번갈아 덮는다(씨앗
+# 비켜서기와 같은 규율). 돌려주는 것은 이름 → 저장소 자리. 부르는 자리는 다 아래 제작자 칸 뒤라 칸 값이 서 있다.
+#   * 칸 — 배포의 `Test-PersonalFor` 와 같은 값이다. 둘이 같은 뜻으로 읽는지는 설정 저장소의
+#     `scripts/check-deploy-agent-homes.ps1` 이 잰다
+#   * 든다 — 배포가 그 홈에 미는 묶음에 있다: Claude 홈은 `.claude/skills`, Codex · agy 홈은 거기에 `.agents/skills` 까지.
+#     저장소가 제 안에서만 쓰는 스킬(`deploy.skills.local.conf`)은 배포가 홈으로 안 밀어 빼고, 그 홈에 안 가는 러너도 뺀다
+#     (위 갈 곳 표 — 배포도 같은 표를 읽는다)
+function Get-RepoHeldSkills([string]$Tool) {
+  $held = @{}
+  $chosen = @{ claude = $personalClaude; codex = $personalCodex; agy = $personalAgy }
+  if (-not $chosen[$Tool]) { return $held }   # 끈 도구에는 배포가 안 민다 — 설치가 칸 없는 몫을 깐다
+  foreach ($u in $configRepoUrls) {
+    $d = Get-ConfigRepoDir $u
+    if (-not (Test-Path -LiteralPath $d -PathType Container)) { continue }
+    $local = @(Get-Content -LiteralPath (Join-Path $d 'deploy.skills.local.conf') -Encoding UTF8 -ErrorAction SilentlyContinue |
+               ForEach-Object { ($_ -replace '#.*$', '').Trim() } | Where-Object { $_ })
+    $bundles = @('.claude\skills')
+    if ($Tool -ne 'claude') { $bundles += '.agents\skills' }
+    foreach ($b in $bundles) {
+      foreach ($s in @(Get-ChildItem -LiteralPath (Join-Path $d $b) -Directory -ErrorAction SilentlyContinue)) {
+        if ($held.ContainsKey($s.Name) -or ($local -contains $s.Name) -or -not (Test-SkillGoesTo $s.Name $Tool)) { continue }
+        if (Test-Path -LiteralPath (Join-Path $s.FullName 'SKILL.md')) { $held[$s.Name] = $d }
+      }
+    }
+  }
+  return $held
+}
+
+# 그 스킬이 이 도구의 홈에 가나 — `$Tool` 은 claude · codex · agy
+function Test-SkillGoesTo([string]$Name, [string]$Tool) { return ($SkillReceiver[$Name] -ne $Tool.ToLower()) }
+
+function Test-ScheduledTaskExists([string]$Name) {
+  try { return [bool](Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) }
+  catch { return $false }
+}
+
+# ⚠ **기울기를 한쪽으로만 준다.** Id 가 표에서 잘릴 수 있어 **Id 든 이름이든 걸리면 올린다** —
+#   헛되게 한 번 더 묻는 값은 시간뿐이고, 안 물어 낡은 판이 서는 값은 고장이다.
+# ⚠ **다만 낱말째 건다 — 글자 조각으로 걸지 않는다.** 옛 판은 표 어디든 그 글자가 들었나를
+#   물었고(`-like "*Git*"`, 대소문자 무시), **Lo`git`ech Options** 한 줄이 Git 을 매번 「올릴 것」으로
+#   세웠다 — 실제로는 최신이라 winget 이 헛돌고 기록만 틀린 말을 했다. 셋 중 하나면 센다:
+#   · Id 가 통째로 — 앞뒤가 Id 글자(영숫자·점)가 아니다. `Git.Git` 이 `Git.GitLFS` 에 안 걸린다
+#   · 잘린 Id — 표가 `Microsoft.VisualStud…` 처럼 줄였으면 그 앞토막이 우리 Id 의 머리다
+#   · 이름 칸 — 줄 첫머리에 이름이 서고 **칸 간격(빈칸 둘 이상)이나 줄임표가 뒤따른다.** 그래서
+#     `Git` 은 `GitHub CLI` 에, `Python` 은 `Python Launcher` 에 안 걸린다
+function Test-UpgradeRow([string]$Text, [hashtable]$App) {
+  $id   = [regex]::Escape($App.Id)
+  $name = [regex]::Escape($App.Name)
+  if ($Text -match "(?<![\w.])$id(?![\w.])") { return $true }
+  if ($Text -match "(?m)^\s*$name(\s{2,}|…|\s*$)") { return $true }
+  foreach ($m in [regex]::Matches($Text, '(?<![\w.])([\w.\-+]{8,})…')) {
+    if ($App.Id.StartsWith($m.Groups[1].Value, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+  }
+  return $false
+}
+
+function Test-DesktopApp($A) {
+  # ⚠ **윈도우에 먼저 묻는다 — 스토어 꼴이든 예전 꼴이든 설치된 앱은 시작 메뉴에 선다.**
+  #   스토어 앱은 winget list 가 소스 인증서(0x8a15005e)나 인덱싱 지연으로 0 이 아닌 값을
+  #   내기 십상인데, 그것만 믿으면 앞길(winget)이 방금 깔았는데도 「실패」로 오판해 뒷길(스텁)로
+  #   넘어가 앱이 두 번 실행된다. 윈도우가 이미 알고 있으면 설치된 것이다.
+  try {
+    $found = [bool](@(Get-StartApps -ErrorAction Stop |
+                      Where-Object { $_.Name -like "*$($A.App)*" })[0])
+    if ($found) { return $true }
+  } catch { }
+
+  if ($A.Via -eq 'winget') {
+    $tl = [IO.Path]::GetTempFileName()
+    $rc = Invoke-Logged 'winget' @('list','--id',$A.Id,'--source',$A.Source) $tl
+    Remove-Item $tl -ErrorAction SilentlyContinue
+    return ($rc -eq 0)
+  }
+  return $false
+}
+
+function Test-WebView2 {
+  foreach ($p in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$WebView2Guid",
+                   "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$WebView2Guid",
+                   "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$WebView2Guid")) {
+    try {
+      $pv = (Get-ItemProperty -LiteralPath $p -Name pv -ErrorAction Stop).pv
+      if ($pv) { return $pv }
+    } catch { }
+  }
+  return ''
+}
+
+function Install-Requires($A) {
+  foreach ($id in @($A.Requires)) {
+    if (-not $id) { continue }
+    # ⚠ **재는 자는 짝마다 다르다.** 지금 짝이 하나뿐이라 갈래도 하나다 — 늘 때 여기에 한
+    #   갈래를 더한다. 모르는 id 는 **재지 않고 깐다**: 「못 쟀다」를 「있다」로 접으면 설치가
+    #   조용히 안 서고, 그 실패는 앱 쪽에서 엉뚱한 사유로 나타난다.
+    if ($id -eq 'Microsoft.EdgeWebView2Runtime') {
+      $pv = Test-WebView2
+      if ($pv) { Write-Host ('      · WebView2 런타임 — 있음 ({0})' -f $pv); continue }
+      $what = 'WebView2 런타임'
+    } else {
+      $what = $id
+    }
+    if ($noWinget) {
+      Write-Host '      ! winget 이 없어 짝을 못 깐다 — 이 앱도 안 선다' -ForegroundColor Red
+      $script:Fails.Add("$($A.Label) (짝 $id — winget 이 없다)")
+      return $false
+    }
+    Say-Busy $what 'install' @('winget', "$($A.Label) 이 먼저 요구한다")
+    $rl = [IO.Path]::GetTempFileName()
+    $rc = Invoke-Logged 'winget' (@('install','--id',$id) + $WG) $rl
+    if ($rc -ne 0) {
+      # ⚠ **사유를 우리가 분류하지 않는다 — 뱉은 끝 줄을 그대로 낸다.** 이 파일이 winget
+      #   실패에 이미 쓰는 자(`Show-Log`)를 같은 뜻으로 든다.
+      Write-Host ("      ! 짝을 못 깔았다 (winget 이 $rc 로 끝났다) — 뱉은 끝 줄:") -ForegroundColor Red
+      Show-Log $rl 5
+      $script:Fails.Add("$($A.Label) (짝 $id)")
+      Remove-Item $rl -ErrorAction SilentlyContinue
+      return $false
+    }
+    Remove-Item $rl -ErrorAction SilentlyContinue
+    Write-Host '      · 짝이 섰다'
+  }
+  return $true
+}
+
+# 깐다 — **실패를 우리가 분류하지 않는다.** 막히는 방식이 앱마다 다르고(소스 인증서 · 회선
+# 정책 · 인자) 그 갈림을 코드표로 옮기면 **한 기계에서 본 것이 규칙 행세를 한다.** 대신 도구가
+# 뱉은 끝 줄을 그대로 낸다 — 이 파일이 winget 실패에 이미 쓰는 자다.
+function Install-DesktopApp($A) {
+  Write-Host ''
+  Write-Host "  $($A.Label)" -ForegroundColor Cyan
+  # ⚠ **뒷길이 있으면 winget 이 없다고 여기서 끝내지 않는다** — 뒷길은 winget 을 안 탄다.
+  if ($A.Via -eq 'winget' -and $noWinget -and -not $A.Fallback) {
+    Write-Host '  ! winget 이 없어 못 깐다' -ForegroundColor Red
+    $script:Fails.Add("$($A.Label) (winget 이 없다)")
+    return
+  }
+  if (Test-DesktopApp $A) {
+    if (-not $NoUpgrade -and $A.Via -eq 'winget' -and -not $A.NoSelfUpgrade) {
+      Say-Busy $A.Label 'upcheck' @('winget')
+      $ul = [IO.Path]::GetTempFileName()
+      Invoke-Logged 'winget' (@('upgrade','--id',$A.Id,'--source',$A.Source) + $WGOpts) $ul | Out-Null
+      Remove-Item $ul -ErrorAction SilentlyContinue
+    }
+    Write-Host '  있음'
+    $script:InstalledAppRows[$A.Label] = $A
+    return
+  }
+  # ── 짝이 먼저다 — **앱이 없을 때만 온다.** 앱이 이미 섰으면 짝도 이미 선 것이라(그것 없이는
+  #    안 섰다) 위에서 나갔다. 짝이 지면 앱을 시도하지 않는다: 어차피 그 사유로 지는데, 시도하면
+  #    실패가 **앱 이름으로** 찍혀 까닭이 한 겹 숨는다.
+  if ($A.Requires -and -not (Install-Requires $A)) { return }
+  # 길이 둘일 수 있다 — 앞길부터, 지면 뒷길. 뒷길은 제 몫(`Via`·`Url`·`SilentArgs`)만 들고
+  # 이름 둘(`App`·`Label`)은 앞길에서 물려받는다.
+  $ways = @($A)
+  if ($A.Fallback) { $ways += (@{ App = $A.App; Label = $A.Label } + $A.Fallback) }
+
+  $al = $null
+  $rc = $null
+  foreach ($W in $ways) {
+   if ($al) { Remove-Item $al -ErrorAction SilentlyContinue }
+   $al = [IO.Path]::GetTempFileName()
+   if ($W.Via -eq 'winget') {
+    if ($noWinget) { Write-Host '      · winget 이 없다 — 다음 길로'; continue }
+    # ⚠ **오래 걸리는 걸음은 제 입으로 말한다.** winget 은 조용히(`--silent`) 돌아 수백 MB 를
+    #   받는 1~2분 동안 화면이 한 글자도 안 바뀐다 — 그러면 **「도는 중」과 「멈췄다」가 같은
+    #   화면**이 되어, 진짜로 멈춘 날 사람이 그것을 못 알아본다. 칸의 초는 끝나고서야 찍힌다.
+    # 소스가 기본(`winget`)이면 수단과 겹쳐 「winget · winget」이 찍힌다 — 딴 소스일 때만 댄다.
+    $via = if ($W.Source -and $W.Source -ne 'winget') { "winget · $($W.Source)" } else { 'winget' }
+    Say-Busy $A.Label 'install' @($via, '수백 MB · 1~2분 걸릴 수 있다')
+    $rc = Invoke-Logged 'winget' (@('install','--id',$W.Id,'--source',$W.Source) + $WGOpts) $al
+   } else {
+    # ⚠ **받는 자리와 도는 자리를 가른다.** 못 받은 것과 받았는데 진 것은 다른 명제이고,
+    #   섞으면 회선이 막은 자리에서 「설치가 실패했다」만 남는다.
+    $exe = Join-Path ([IO.Path]::GetTempPath()) ("{0}Setup.exe" -f $W.App)
+    try {
+      # ⚠ **주소의 끝마디가 아니라 받아 놓을 파일 이름을 댄다.** 주소가 파일 이름으로 끝나지
+      #   않는 갈래가 있어(스토어 스텁은 제품 번호로 끝난다) 끝마디를 대면 `9PLM9XGG6VKS` 가
+      #   찍힌다 — 받는 사람에게 아무 뜻이 없다.
+      Say-Busy $A.Label 'fetch' @((Split-Path $exe -Leaf))
+      Get-Download $W.Url $exe
+    } catch {
+      Write-Host '  ! 설치본을 못 받았다' -ForegroundColor Red
+      Say-Why $_
+      $script:Fails.Add("$($A.Label) (설치본을 못 받았다)")
+      Remove-Item $al -ErrorAction SilentlyContinue
+      return
+    }
+    Say-Busy $A.Label 'install' @('설치본', '몇 분 걸릴 수 있다')
+    $pr = Start-Process -FilePath $exe -ArgumentList $W.SilentArgs -PassThru -Wait
+    $rc = $pr.ExitCode
+    Remove-Item $exe -ErrorAction SilentlyContinue
+   }
+   if (Test-DesktopApp $A) { break }
+   if ($W -ne $ways[-1]) { Write-Host ('      · 이 길이 졌다 (낸 값 {0}) — 다음 길로' -f $rc) }
+  }
+  if (Test-DesktopApp $A) {
+    Write-Host '  깔았다' -ForegroundColor Green
+    $script:JustInstalledApps[$A.App] = $true
+    $script:InstalledAppRows[$A.Label] = $A
+  } elseif ($rc -eq 0) {
+    # ⚠ **종료 0 인데 앱이 없다 = 설치본이 제 일을 남에게 넘긴 것이다.** 스토어 스텁이 스토어
+    #   창을 띄우고 바로 빠지는 갈래가 그렇다(실측 2026-09-17 집 PC). 이것을 「설치 실패」로
+    #   찍으면 **거짓말이고**(설치본은 제 일을 했다), 사람이 눌러야 할 일 때문에 설치가 빨갛게
+    #   끝난다. 진짜 실패는 0 이 아닌 값을 낸다 — 그 하나가 가르는 자다.
+    Write-Host '  · 창이 열렸다 — 거기서 [다운로드]를 누르면 깔린다' -ForegroundColor Yellow
+    Write-Host '     설치기는 그것을 못 기다린다(넘긴 프로세스가 이미 끝났다). 깔린 뒤 다시 누르면 「있음」으로 지나간다.'
+  } else {
+    Write-Host ('  ! 설치 실패 — 낸 값 {0}' -f $rc) -ForegroundColor Red
+    # 설치본이 제 로그를 남기는 갈래면 그 끝 줄을 댄다 — 회선이 막은 자리에서는 **막았다는
+    # 말이 그 안에 그대로 들어 있다.**
+    $log = $al
+    if ($A.Log) {
+      $own = [Environment]::ExpandEnvironmentVariables($A.Log)
+      if (Test-Path -LiteralPath $own) { $log = $own }
+    }
+    Show-Log $log
+    $script:Fails.Add($A.Label)
+  }
+  Remove-Item $al -ErrorAction SilentlyContinue
+}
+
+function Get-ExtVersions {
+  $m = @{}
+  foreach ($l in (Get-Quiet 'code' @('--list-extensions','--show-versions'))) {
+    if ($l -match '^(.+)@([^@]+)$') { $m[$Matches[1]] = $Matches[2] }
+  }
+  return $m
+}
+
+# ⚠ **하나를 까는 걸음이 한 자리다.** 확장이 셋으로 늘면서(결정 0041) 같은 걸음을 세 번 적으면
+#   한 번 겪은 사고(곧바로 물으면 아직 없다 · 인증서면 다른 병이다)가 두 사본에서 다시 난다.
+# ⚠ **긴 명령 앞에 한 줄을 먼저 찍는다.** 화면 껍데기의 상태 줄은 마지막으로 나온 줄을 그대로
+#   보이므로, 끝나고 나서만 찍으면 그 몇십 초 동안 **직전 칸의 결과**가 「지금 하는 일」로 서 있다
+#   (실측 2026-09-15 · 사외 VDI: Codex 확장을 받는 동안 「클로드 확장 — 최신」이 떠 있었다).
+# ⚠ **`--force` 가 최신을 다시 받지는 않는다** — 실측 2026-09-15: 같은 판이면 `already installed` 만 찍고
+#   1초에 끝난다. 옛 주석이 「다시 깐다」고 적었던 것은 틀렸고, 느렸던 까닭은 위 횟수다.
+function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [hashtable]$After) {
+  if ($Before.ContainsKey($Id)) {
+    $b = $Before[$Id]; $a = $After[$Id]
+    if ($NoUpgrade)             { Write-Host "  $Label — 있음  ($b)" }
+    elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+    else                        { Write-Host "  $Label — 최신  ($b)" }
+    return
+  }
+  Say-Busy $Label 'install' @('code')
+  $xl = [IO.Path]::GetTempFileName()
+  $rc = Invoke-Logged 'code' @('--install-extension',$Id,'--force') $xl
+  # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
+  #   명령은 바로 돌아온다 — 그때 목록을 물으면 「없다」가 나와 멀쩡한 설치가 실패로 찍힌다.
+  #   몇 초를 두고 다시 묻는다. 없는 것을 오래 기다리지는 않는다.
+  $ext = Get-Quiet 'code' '--list-extensions'
+  if ($ext -notcontains $Id) {
+    for ($i = 0; $i -lt 5; $i++) {
+      Start-Sleep -Seconds 2
+      $ext = Get-Quiet 'code' '--list-extensions'
+      if ($ext -contains $Id) { break }
+    }
+  }
+  if ($ext -contains $Id) {
+    Write-Host "  $Label — 깔았다" -ForegroundColor Green
+  } else {
+    # ⚠ **까닭을 편다.** 「! 설치 실패」 한 줄만 내면 다음 사람이 열어 볼 자리가 없다 —
+    #   이 자리에서 실제로 그랬다(실측 2026-09-09 · 사외 VDI).
+    Write-Host "  ! $Label 설치 실패 (code 가 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+    Show-Log $xl
+    Write-Host '     10초를 기다려도 목록에 안 떴다.'
+    # ⚠ **인증서면 다른 병이다.** 「self signed certificate」 는 VS Code 의 흠이 아니라
+    #   길에 TLS 를 가로채는 장비가 있는데 **Node 가 그 CA 를 모른다**는 말이다. 안 짚으면
+    #   사람은 영문 오류를 들고 VS Code 를 다시 깔러 간다 — 아무 상관 없는 자리다.
+    $said = (Get-Content -LiteralPath $xl -ErrorAction SilentlyContinue) -join "`n"
+    if ($said -match 'self.signed certificate|unable to (verify|get local issuer)|UNABLE_TO_|CERT_') {
+      Write-Host '     ↑ 인증서 문제다 — 길에 TLS 를 가로채는 장비가 있는데 Node 가 그 CA 를 모른다.' -ForegroundColor Yellow
+      Write-Host '        VS Code 를 다시 깔아도 안 낫는다. 위 「Node 신뢰 배선」 칸을 먼저 본다.'
+    }
+    Write-Host '     VS Code 가 열려 있으면 전부 닫고 다시 눌러 본다.'
+    Write-Host "     손으로 재려면:  code --install-extension $Id --force"
+    $Fails.Add("VS Code 확장 ($Label)")
+  }
+  Remove-Item $xl -ErrorAction SilentlyContinue
+}
+
+# ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 판정은 `--version` 이 도나(프로브)다.
+# ⚠ **판을 `--version` 이 못 대는 패키지가 있다** — `tavily-mcp` 는 0 으로 끝나며 `unknown` 을 낸다.
+#   그 글자로 견주면 레지스트리 판과 늘 달라 **매 실행 다시 깐다.** 그런 자리는 `$ReadVer` 로 판 읽는
+#   손을 넘긴다. 도나(프로브)는 그대로 `--version` 이 든다 — 판을 못 대도 불리기는 한다.
+function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock]$ReadVer = $null) {
+  if (-not $ReadVer) { $ReadVer = { Get-Ver $Cmd '--version' } }
+  if ((Test-Runs $Cmd '--version') -and ($NoUpgrade -or -not (Test-Runs 'npm' '--version'))) {
+    Write-Host "  $Label — 있음 ($(& $ReadVer))"
+  } elseif (Test-Runs $Cmd '--version') {
+    $b = & $ReadVer
+    Say-Busy $Label 'upcheck' @('npm', "지금 $b")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
+    # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
+    #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
+    #   이 걸음이 셋 합쳐 121초였다(실측 v1.12.0 두 번째 판 · 사내 VDI · 설치기 전체의 40%).
+    #   판 하나 묻는 GET 은 어느 기계에서도 1초 안팎이다. 사외 VDI 는 **로그인마다** 이 걸음을 지난다.
+    # ⚠ **묻는 것도 `@latest` 로 묻는다.** install 이 보는 태그와 다른 것을 물으면 엉뚱한 판과
+    #   견주게 되고, 그 어긋남은 「올렸는데 또 올린다」로만 드러나 아무도 안 잡는다.
+    $rvo = Get-Quiet 'npm' @('view',"$Pkg@latest",'version') | Select-Object -First 1
+    $vrc = $LASTEXITCODE
+    $rv  = ("$rvo").Trim()
+    # 깔린 판 문자열은 꼴이 셋이다 — `2.1.273 (Claude Code)` · `codex-cli 0.154.0` · `0.60.0`.
+    # 그래서 같음을 등호로 못 재고 **「깔린 문자열이 레지스트리 판을 낱말로 품나」**로 잰다.
+    # ⚠ **경계를 `\b` 로 잡지 않는다.** `\b` 는 점을 경계로 쳐서 `1.2.1.273` 이 `2.1.273` 을 품은
+    #   것으로 읽힌다 — 판 문자열에서 점은 구분자가 아니라 판의 일부다. 앞뒤로 글자도 점도 오지
+    #   않기를 요구해야 `2.1.2730` 과 `1.2.1.273` 이 함께 걸러진다.
+    $same = $rv -and ($b -match "(?<![\w.])$([regex]::Escape($rv))(?![\w.])")
+    # ⚠ **여기서 지는 둘(못 물음 · 못 올림)을 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛
+    #   판으로 돈다 — 저장소 `pull` 이 졌을 때와 같은 꼴이라(8 칸) 같은 규율로 든다: 말은 하되
+    #   빨강으로 안 끝낸다.
+    if ($vrc -ne 0 -or -not $rv) {
+      # ⚠ **못 물었을 때 「최신」이라 찍지 않는다.** 사내 프록시가 `registry.npmjs.org` 를 막았거나
+      #   Node 가 CA 를 몰라 죽은 판에서도 깔린 판은 그대로다 — 거기서 「최신」을 찍으면 **낡은 판이
+      #   도는 것과 최신이 도는 것을 못 가른다.** install 을 돌려 보는 갈래도 안 둔다: 못 닿는
+      #   레지스트리에는 install 도 못 닿는다.
+      Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
+    } elseif ($same) {
+      Write-Host "  $Label — 최신  ($b)"
+    } else {
+      Say-Busy $Label 'upgrade' @('npm', "$b → $rv")
+      $nl = [IO.Path]::GetTempFileName()
+      # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** 저쪽(2 칸)은 「올릴 것 없음」에도
+      #   0 이 아닌 값을 내서 버릴 **까닭이 적혀 있지만**, npm 은 지면 지는 값을 낸다. 버리고 판만
+      #   견주면 설치가 죽은 판에서도 판이 안 바뀌었으니 아래 마지막 갈래로 새어 **「최신」이 찍힌다.**
+      #   로그도 곧바로 지워 단서가 없었다.
+      $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
+      Update-RuntimePath
+      $a = & $ReadVer
+      if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+      elseif ($nrc -ne 0) {
+        Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+        Show-Log $nl
+      }
+      else { Write-Host "  $Label — 최신  ($b)" }
+      Remove-Item $nl -ErrorAction SilentlyContinue
+    }
+  } elseif (Test-Runs 'npm' '--version') {
+    Say-Busy $Label 'install' @('npm')
+    $nl = [IO.Path]::GetTempFileName()
+    $nrc = Invoke-Logged 'npm' @('install','-g',$Pkg) $nl
+    # ⚠ **깔고 나서 한 번 더 태운다.** `%APPDATA%\npm` 은 이 설치가 **만드는** 폴더라,
+    #   맨바닥 PC 에서는 앞의 배선이 조용히 지나가고 PATH 가 빈 채로 남는다. 두 번째부터는
+    #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
+    Update-RuntimePath
+    if (Test-Runs $Cmd '--version') {
+      Write-Host "  $Label — 깔았다 ($(& $ReadVer))" -ForegroundColor Green
+    } else {
+      Write-Host "  ! $Label 설치 실패 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+      Show-Log $nl
+      $Fails.Add($Label)
+    }
+    Remove-Item $nl -ErrorAction SilentlyContinue
+  } else {
+    Write-Host "  ! npm 이 없어 $Label 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
+    $Fails.Add("$Label (npm 이 안 닿는다)")
+  }
+}
+
+# winget 이 내주는 CLI. **깔렸으면 올리기만 시도한다** — npm 갈래와 달리 이 자리가 공짜다.
+# ⚠ **여기서 묻는 자는 `winget list` 가 아니라 `--version` 이다.** 데스크탑 갈래는 GUI 라 PATH 로
+#   못 재서 winget 의 목록에 묻지만(위 `Test-DesktopApp`), CLI 는 **사람이 쓸 이름이 실제로 서는가**가
+#   판정이다. 둘은 다른 명제다 — winget 이 「깔았다」 해도 그 이름이 PATH 에 안 서면 못 쓴다.
+# ⚠ **올리기가 조용히 지나가는 자리가 있다** — 옛 벤더 스크립트로 깐 기계의 `agy` 는 winget 이
+#   모른다. 그때 `--version` 은 서므로 「있음」으로 지나가고 `winget upgrade` 는 아무것도 안 한다.
+#   **그것을 실패로 안 찍는다**: 도구는 멀쩡히 서 있고, 걷어낼지는 사람이 정할 일이다.
+function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
+  if (Test-Runs $Cmd '--version') {
+    if (-not $NoUpgrade -and -not $noWinget) {
+      Say-Busy $Label 'upcheck' @('winget')
+      $ul = [IO.Path]::GetTempFileName()
+      Invoke-Logged 'winget' (@('upgrade','--id',$Id) + $WG) $ul | Out-Null
+      Remove-Item $ul -ErrorAction SilentlyContinue
+    }
+    Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"; return
+  }
+  if ($noWinget) {
+    Write-Host "  ! winget 이 없어 $Label 를 못 깐다" -ForegroundColor Red
+    $Fails.Add("$Label (winget 이 없다)")
+    return
+  }
+  Say-Busy $Label 'install' @('winget')
+  $wl = [IO.Path]::GetTempFileName()
+  $rc = Invoke-Logged 'winget' (@('install','--id',$Id) + $WG) $wl
+  # ⚠ **깐 직후에는 이 창이 그 자리를 모른다** — winget 이 portable 을 심으면서 손댄 PATH 는
+  #   레지스트리에만 있다(실측: 이 기계의 사용자 PATH 에 winget 이 심은 자리가 셋 서 있다).
+  Update-RuntimePath
+  if (Test-Runs $Cmd '--version') {
+    Write-Host "  $Label — 깔았다 ($(Get-Ver $Cmd '--version'))" -ForegroundColor Green
+  } else {
+    # ⚠ **「됐다는데 안 잡힌다」를 「안 됐다」로 안 적는다** — 다음에 어디를 팔지가 갈린다.
+    #   이 갈래가 winget 이 PATH 를 안 들어 준 자리를 잡는 자다.
+    Write-Host "  ! $Label — 설치가 $rc 로 끝났는데 $Cmd 가 안 잡힌다 — 뱉은 끝 줄:" -ForegroundColor Red
+    Show-Log $wl
+    Write-Host "     새 터미널에서 다시 보고, 그래도 없으면:  winget install --id $Id --source winget"
+    $Fails.Add("CLI ($Label)")
+  }
+  Remove-Item $wl -ErrorAction SilentlyContinue
+}
+
+function Remove-UserVar([string]$Name) {
+  try {
+    [Environment]::SetEnvironmentVariable($Name, $null, 'User')
+    Remove-Item -Path "Env:$Name" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
+    Write-Host "  $Name — 걷었다 (사외라 안 쓴다)" -ForegroundColor Green
+  } catch {
+    Write-Host "  ! $Name 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
+    $script:Fails.Add("$Name 걷기")
+  }
+}
+
+function Test-ClaudeLoggedIn {
+  if (-not (Test-Runs 'claude' '--version')) { return $false }
+  try {
+    $said = (Get-Quiet 'claude' @('auth','status') | Out-String)
+    return ($said -match '"loggedIn"\s*:\s*true')
+  } catch { return $false }
+}
+
+function Get-ProxyHealth([string]$Url) {
+  try { return Invoke-RestMethod -Uri $Url -TimeoutSec 3 } catch { return $null }
+}
+
+# ⚠ 두 값을 **매개변수 기본값으로 받는다** — 전역만 보면 그 값이 안 선 자리에서 `-le $null` 이 되어
+#   루프가 한 번도 안 돌고 요청 없이 0 이 나온다. 「못 닿았다」와 「안 물어봤다」가 같은 값이 되는
+#   자리라 눈에 안 걸린다(실측: 66ms 에 0 — 나가지도 않았다). 부재가 판정이 되지 않게 여기서 막는다.
+function Test-PrefillDoor([string]$Base, [string]$Token, [string]$Model,
+                          [int]$Tries = $DoorTries, [int]$GapMs = $DoorGapMs) {
+  if ($Tries -lt 1) { $Tries = 1 }
+  $body = @{ model = $Model; max_tokens = 8
+             messages = @(@{ role = 'user'; content = 'hi' }, @{ role = 'assistant'; content = 'prefill' }) } |
+          ConvertTo-Json -Depth 5 -Compress
+  $hdr = @{ 'x-api-key' = $Token; 'Authorization' = "Bearer $Token"; 'anthropic-version' = '2023-06-01' }
+  # ⚠ **다시 묻는 자리는 횟수가 아니라 받은 것의 뜻이 정한다.** 답의 공간이 닫혀 있다 — 게이트웨이가
+  #   **prefill 을 두고 판정한 것**(200 열렸다 · 4xx 거절했다)이면 그 자리에서 멈추고, **그 판정에
+  #   닿지도 못한 것**(5xx 상류가 끊었다 · 0 못 갔다)만 다시 묻는다.
+  #   ⚠ 4xx 를 다시 물으면 안 된다 — 400 이 이 검사가 찾는 그 결함이라(결정 0041) 그것을 재시도로
+  #   덮으면 재는 자가 제가 재려던 것을 지운다. 늦게 빨강인 편이 가짜 초록보다 낫다.
+  $code = 0
+  for ($i = 1; $i -le $Tries; $i++) {
+    if ($i -gt 1) { Start-Sleep -Milliseconds $GapMs }
+    try {
+      $r = Invoke-WebRequest -Uri ($Base.TrimEnd('/') + '/v1/messages') -Method Post -Headers $hdr `
+             -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120 -UseBasicParsing
+      $code = [int]$r.StatusCode
+    } catch {
+      $code = 0
+      try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+    }
+    if (-not (($code -eq 0) -or ($code -ge 500))) { break }
+  }
+  return $code
+}
+
+function Stop-ProxyOnPort([int]$Port) {
+  try {
+    $owners = @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty OwningProcess -Unique)
+    foreach ($o in $owners) {
+      $pr = Get-Process -Id $o -ErrorAction SilentlyContinue
+      if ($pr -and $pr.ProcessName -match '^pythonw?$') { Stop-Process -Id $o -Force -ErrorAction SilentlyContinue }
+    }
+    # ⚠ 포트를 안 듣더라도 잔여 opus5_proxy 프로세스(죽은 자식의 부모 껍데기 등)가 있으면 정리한다 (#21)
+    Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.CommandLine -like '*opus5_proxy.py*' } |
+      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Milliseconds 500
+  } catch { }
+}
+
+# ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** (결정 0028 · #51 · #75 · PAISetup#21).
+#   Get-Command 가 잡는 첫 번째가 WindowsApps 의 스토어 껍데기이거나 Python Manager 런처일 수 있다.
+#   런처 곁의 pythonw.exe 를 와치독에 박으면, 런처가 진짜 해석기를 자식으로 띄우고 자신도
+#   대기하며 남아 프로세스가 두 겹으로 선다 — 자식이 죽어도 껍데기가 남아 와치독이 안 되살린다.
+# ⚠ **해석기에게 sys.executable 을 물어 진짜 제 자리를 딴다.**
+#   런처·심볼릭 링크 뒤에 숨은 실제 인터프리터 위치를 sys.executable 이 돌려준다.
+#   그리고 그 곁의 pythonw.exe 가 실제로 존재하고 껍데기(WindowsApps)가 아닐 때만 택한다.
+function Get-RealPythonW {
+  $candidates = @()
+  $pyCmds = @(Get-Command python, python3, py -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -Unique)
+  if ($pyCmds) { $candidates += $pyCmds }
+  $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+  $candidates += @(Get-ChildItem "$env:ProgramFiles\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+  $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Python\*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+
+  foreach ($c in ($candidates | Select-Object -Unique)) {
+    if (-not $c -or -not (Test-Path -LiteralPath $c)) { continue }
+    $real = $null
+    try { $out = & $c -c "import sys; print(sys.executable)" 2>$null } catch { }
+    if ($LASTEXITCODE -eq 0 -and $out) {
+      $real = ($out | Select-Object -First 1).Trim()
+    }
+
+    if ($real -and (Test-Path -LiteralPath $real)) {
+      $candPyw = Join-Path (Split-Path $real -Parent) 'pythonw.exe'
+      if ((Test-Path -LiteralPath $candPyw) -and ($candPyw -notlike '*\Microsoft\WindowsApps\*')) {
+        return $candPyw
+      }
+    }
+  }
+  return $null
+}
+
+# ── 판 번호는 두 칸이다 — **상류 판과 우리 판을 안 섞는다** ─────────────────
+# ⚠ **점 찍힌 한 줄(`15.4`)을 크기로 견주지 않는다.** 문자열로 견주면 `"9" -ge "10"` 이
+#   참이 되고, `[version]` 으로 넘기면 옛 판이 낸 정수 한 칸(`18`)이 `18.0` 으로 읽혀
+#   **낡은 것이 새것으로 보인다.** 그래서 **두 수를 각각 정수로 읽어 차례로 견준다** —
+#   위 칸이 다르면 그것이 정하고, 같을 때만 아래 칸을 본다.
+# ⚠ **옛 판이 도는 자리를 받는다.** v17·v18 은 `VERSION` 한 칸만 들어 이 정규식에
+#   안 걸리는데, 그때 `$runUp` 이 0 으로 남아 **새 판이 늘 이긴다** — 갈아 끼우는 쪽으로
+#   기운다. 반대로 두면 옛 프록시가 영영 안 바뀐다(부재가 통과로 읽히는 자리).
+function Get-ProxyVer([string]$text) {
+  $up = 0; $ours = 0
+  $mu = [regex]::Match($text, '(?m)^VERSION_UPSTREAM\s*=\s*(\d+)')
+  $mo = [regex]::Match($text, '(?m)^VERSION_OURS\s*=\s*(\d+)')
+  if ($mu.Success) { $up = [int]$mu.Groups[1].Value }
+  if ($mo.Success) { $ours = [int]$mo.Groups[1].Value }
+  return @($up, $ours)
+}
+
+# 백업 자리는 늘 새로 잡는다 — 같은 초에 두 번 돌거나 앞 백업에 같은 이름이 있으면, 이미 있는 폴더로 옮기기가 그 안으로
+#   들어가 앞 백업과 겹친다. 그래서 비어 있는 이름을 고른다(`-2` · `-3` …).
+function Get-FreePath([string]$Path) {
+  # 아직 없는 자리 — `$Path` 가 있으면 `$Path-2` · `$Path-3` … 가운데 처음 빈 것
+  $p = $Path; $i = 2
+  while (Test-Path -LiteralPath $p) { $p = "$Path-$i"; $i++ }
+  return $p
+}
+
+# ── 묶음에서 빠진 스킬을 홈에서 걷는다 ─────────────────────────────────────────
+# ⚠ **왜 있나.** 위 복사는 `Copy-Item -Recurse -Force` 라 **묶음에 없는 스킬을 안 지운다** — 배포본에서
+#   스킬을 걷어도 한 번 깐 사람 홈에는 옛 사본이 영영 남아 계속 로드된다(씨앗 칸의 거울과 같은 병이다).
+# ⚠ **홈 스킬 폴더를 거울로 맞추지 않는다.** 그 폴더에는 받는 사람이 손수 만든 스킬 · 다른 도구가 깐
+#   스킬이 섞여 산다 — 묶음에 없는 것을 다 걷으면 남의 것을 지운다. 그래서 **이 설치기가 깐 이름만**
+#   센다: 깐 이름을 기록(`~/.claude/.paisetup-skills`)에 적어 두고, 다음 설치 때 **기록에 있었는데 이번
+#   묶음에 없는 것**만 걷는다.
+# ⚠ **지우지 않고 옮긴다** — `~/.claude/backups/install-skills-<시각>/`. 같은 이름을 사람이 손수 만들어
+#   두었을 수도 있어서, 되돌릴 자리를 남긴다.
+# ⚠ **기록이 없는 Claude 홈은 과도기 목록을 쓴다** — 기록은 1.25.0 부터 적힌다. 그 전 판이 Claude 홈에 깔았다가
+#   배포본에서 빠진 이름은 배포본 이력에서 한 번 셌다(`git log --diff-filter=D -- .claude/skills` · 2026-09-24:
+#   pptx · roadmap-doc). 모든 기계가 이 판 이상을 한 번 돌고 나면 이 목록은 할 일이 없다 — 걷는 날은 사람이 정한다.
+#   **다른 홈은 이 목록을 안 쓴다**(`-Transition @()`) — Codex · agy 홈에 그 판이 깐 적이 없고, 그 홈들은 사람 스킬과
+#   같이 살아 같은 이름의 사람 스킬을 걷게 된다(아래 `Install-HomeSkills`).
+# ⚠ **부르는 자가 둘이다** — 6 칸(묶음 전부를 깐 판)과 7 칸의 「칸 없이 까는 스킬」(몇 개만 깐 판). 그래서
+#   기록에 적는 것은 **이번에 깐 이름(`-Installed`) 더하기, 앞 기록 가운데 묶음에 아직 있는 이름**이다. 몇 개만
+#   깐 판이 기록을 그 몇 개로 갈아 쓰면, 앞서 칸을 켜고 깐 나머지가 기록에서 빠져 묶음에서 걷히는 날 안 걷힌다.
+#   `-Installed` 를 안 주면 묶음 전부를 깐 것으로 친다(6 칸).
+function Remove-RetiredSkills {
+  # `$Keep` — 「묶음에 있나」 대신 「이번 목록에 있나」로 잰다(결정 0099). 제작자 칸을 끈 도구의 홈에서 제작자 스킬이,
+  #   받는 쪽 홈에서 러너가 빠지게 한다. 기록에 적힌 이름만 걷는 것은 같다.
+  # `$Transition` — 기록이 없을 때 기록 대신 쓸 이름(위 곁말). 안 주면 Claude 홈의 과도기 목록이다.
+  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string[]]$Keep,
+        [string[]]$Transition = @('pptx', 'roadmap-doc'))
+  if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
+  $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
+  if ($null -eq $Installed) { $Installed = $shipped }
+  $before = if (Test-Path -LiteralPath $Ledger) {
+    @([IO.File]::ReadAllLines($Ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  } else {
+    @($Transition | Where-Object { $_ })   # 과도기 — 위 곁말
+  }
+  $stay = if ($null -ne $Keep) { $Keep } else { $shipped }
+  $gone = @($before | Where-Object { $stay -notcontains $_ } |
+            Where-Object { Test-Path -LiteralPath (Join-Path $SkillHome $_) -PathType Container })
+  if ($gone.Count -gt 0) {
+    $bk = Get-FreePath (Join-Path $BackupRoot ("install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+    New-Item -ItemType Directory -Path $bk -Force | Out-Null
+    foreach ($n in $gone) {
+      Move-Item -LiteralPath (Join-Path $SkillHome $n) -Destination (Join-Path $bk $n) -Force
+      Write-Host "  스킬 $n — 묶음에서 빠져 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
+    }
+  }
+  # 기록을 적는다(위 곁말) — 다음 설치가 이것과 견준다. BOM 없는 UTF-8(이름이 한글이어도 읽힌다).
+  $keep = @(@($before | Where-Object { $stay -contains $_ }) + @($Installed) | Where-Object { $_ } | Select-Object -Unique)
+  New-Item -ItemType Directory -Path (Split-Path -Parent $Ledger) -Force | Out-Null
+  [IO.File]::WriteAllLines($Ledger, [string[]]$keep, (New-Object Text.UTF8Encoding($false)))
+}
+
+function ConvertTo-AgyPointerText([string]$Template, [string]$HomeDir) {
+  # 가리킴 파일의 틀 글 하나를 이 PC 의 글로 — 틀이 홈을 `~/` 로 연 자리(JSON 글 값의 머리 `"~/` · include 대상의 머리
+  #   `](~/`)만 `$HomeDir` 의 절대 경로(`C:/Users/<이름>/`)로 바꾼다. 홈은 `/` 로 적는다(agy 는 두 꼴을 다 받는다).
+  # ⚠ **왜 절대 경로인가** — 안티그래비티 데스크탑 앱은 목록의 `path` 로 절대 경로만 받는다(앱 로그 「must be an absolute
+  #   path」). agy CLI 는 상대 경로도 설정 폴더 기준으로 받지만 `~/` 는 앱과 같은 오류로 거절한다(#134 실측). 둘이 다 받는
+  #   꼴은 드라이브 문자로 여는 절대 경로다. 실측과 나머지 까닭은 설정 저장소 `deploy.ps1` 의 같은 이름 함수 곁말이 든다.
+  # 짝 — 그 함수가 같은 틀에서 같은 글을 짓는다. 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 둘을 떼어 견준다.
+  $abs = $HomeDir.Replace('\', '/').TrimEnd('/') + '/'
+  $Template.Replace('"~/', '"' + $abs).Replace('](~/', '](' + $abs)
+}
+
+function Test-AgyPointerSame([string]$Path, [string]$Want) {
+  $wantBytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Want)
+  (Test-Path -LiteralPath $Path -PathType Leaf) -and
+    ([Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) -ceq [Convert]::ToBase64String($wantBytes))
+}
+
+# agy 칸을 끈 판 — 우리 설정 둘(규범 · 룰을 가리키는 둘)만 걷는다. 「우리 것」은 꼴로 가린다: 규범 include 한 줄 ·
+# 룰 자리 한 줄이고 그 자리가 우리가 써 온 자리(옛 Claude 홈 · 지금 중립 자리) 가운데 하나다. 다르면 사람이 고친
+# 것이라 둔다. 옛 스킬 목록은 칸과 무관하게 걷는다(아래 「agy 옛 스킬 자리」). 설정 저장소가 있어도 걷는다 — 그 배포도 끈
+# 칸에는 안 민다(결정 0107).
+function Get-AgyKitOurs([string]$CfgDir, [string]$KitAgy, [string]$HomeDir) {
+  # 끈 판에 걷을 우리 파일(`AGENTS.md` · `rules.json`)의 경로들. 「우리가 써 온 꼴」은 둘이다:
+  #   * 옛 판이 깐 글자 그대로 — 규범 `~/.claude/CLAUDE.md` · `~/.paisetup/norms/norms.md`, 룰 `../../.claude/rules` ·
+  #     `../../.paisetup/norms/rules`. 이 판에서는 안 짓지만 그 판으로 깐 PC 에 남아 있다
+  #   * 짐의 틀(`$KitAgy` 의 같은 이름)과 그 틀을 이 PC 에 지은 글(`ConvertTo-AgyPointerText`) — 틀에서 파생하므로 틀이
+  #     바뀌어도 따라온다
+  # 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 이 함수를 떼어 옛 꼴 · 새 꼴 · 사람이 고친 꼴로 잰다.
+  $ours = @()
+  $agMd = Join-Path $CfgDir 'AGENTS.md'
+  if (Test-Path -LiteralPath $agMd -PathType Leaf) {
+    $mdWant = @('@[norms](~/.claude/CLAUDE.md)', '@[norms](~/.paisetup/norms/norms.md)')
+    $mdKit = Join-Path $KitAgy 'AGENTS.md'
+    if (Test-Path -LiteralPath $mdKit) {
+      $tpl = [IO.File]::ReadAllText($mdKit)
+      $mdWant += @($tpl.Trim(), (ConvertTo-AgyPointerText $tpl $HomeDir).Trim())
+    }
+    if ($mdWant -contains [IO.File]::ReadAllText($agMd).Trim()) { $ours += $agMd }
+  }
+  $agRules = Join-Path $CfgDir 'rules.json'
+  if (Test-Path -LiteralPath $agRules -PathType Leaf) {
+    try {
+      $rulesWant = @('../../.claude/rules', '../../.paisetup/norms/rules')
+      $rulesKit = Join-Path $KitAgy 'rules.json'
+      if (Test-Path -LiteralPath $rulesKit) {
+        $tpl = [IO.File]::ReadAllText($rulesKit)
+        foreach ($t in @($tpl, (ConvertTo-AgyPointerText $tpl $HomeDir))) {
+          $rulesWant += @(($t | ConvertFrom-Json).entries | ForEach-Object { $_.path })
+        }
+      }
+      $rj = @((Get-Content -LiteralPath $agRules -Raw -Encoding UTF8 | ConvertFrom-Json).entries)
+      if ($rj.Count -eq 1 -and $rulesWant -contains $rj[0].path) { $ours += $agRules }
+    } catch { }
+  }
+  return $ours
+}
+
+function Get-HomeSkills([string]$Column, [bool]$Personal) {
+  $names = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Column })
+  if ($Personal -and (Test-Path -LiteralPath $KitSkills -PathType Container)) {
+    $names += @(Get-ChildItem -LiteralPath $KitSkills -Directory | ForEach-Object { $_.Name } |
+                Where-Object { -not $FreeSkills.Contains($_) })
+  }
+  @($names | Where-Object { $_ -and (Test-SkillGoesTo $_ $Column) } | Select-Object -Unique)
+}
+
+function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot,
+                            [hashtable]$Held) {
+  $ours = @(@($Ledger, (Join-Path (Split-Path -Parent $Ledger) $DeployLedgerName)) |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { [IO.File]::ReadAllLines($_) } |
+            ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  $aside = $null
+  $done = @()
+  foreach ($n in $Names) {
+    if ($Held -and $Held.ContainsKey($n)) {
+      Write-Host "  $Label 스킬 $n — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
+      continue
+    }
+    $from = Join-Path $KitSkills $n
+    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) {
+      Write-Host "  ! $Label 스킬 $n — 짐에 없다" -ForegroundColor Red
+      $Fails.Add("$Label 스킬 $n (짐에 없음)")
+      continue
+    }
+    $to = Join-Path $SkillHome $n
+    if ((Test-Path -LiteralPath $to) -and ($ours -notcontains $n)) {
+      # 우리 기록에 없는 같은 이름 — 사람이나 다른 도구의 것이다. 덮지도 섞지도 않고 통째로 비켜 둔 뒤 깐다
+      if (-not $aside) {
+        $aside = Get-FreePath (Join-Path $BackupRoot ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+        New-Item -ItemType Directory -Path $aside -Force | Out-Null
+      }
+      Move-Item -LiteralPath $to -Destination (Join-Path $aside $n) -Force
+      Write-Host "  ! $Label 스킬 $n — 같은 이름의 폴더가 우리 기록에 없어 통째로 옮겨 두고 깐다 (옮긴 자리: $aside)" -ForegroundColor Yellow
+    }
+    New-Item -ItemType Directory -Path $to -Force | Out-Null
+    Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
+    Write-Host "  $Label 스킬 $n — 깔았다" -ForegroundColor Green
+    $done += $n
+  }
+  if ($done.Count) {
+    # 이 홈에서는 「이번에 깔 목록에 없는 것」을 걷는다 — 제작자 칸을 끈 도구에서 제작자 스킬이 빠진다(결정 0099).
+    #   비켜선 이름은 남긴다 — 그 자리는 설정 저장소의 배포가 민 것이다
+    $keep = @(@($Names) + @(if ($Held) { $Held.Keys }) | Select-Object -Unique)
+    Remove-RetiredSkills -Bundle $KitSkills -SkillHome $SkillHome `
+                         -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done -Keep $keep -Transition @()
+  }
+}
+
+function Get-AgyOldListState([string]$Path, [string]$HomeDir) {
+  # 목록의 꼴 — 'ours'(우리가 쓴 꼴 그대로 — 위 곁말) · 'mixed'(옛 자리를 우리 꼴로 여는 항목이 있는데 무엇이 더 붙었다 ·
+  #   사람이 고친 파일) · 'none'(없다 · 못 읽는다 · 옛 자리를 안 연다). BOM 은 읽을 때 걷는다 — BOM 이 붙은 목록은 agy 가 못
+  #   읽어 애초에 아무것도 안 열었다. 열쇠 이름은 글자까지 견준다 — 우리는 `entries` · `path` 만 썼다.
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 'none' }
+  try { $doc = [IO.File]::ReadAllText($Path) | ConvertFrom-Json } catch { return 'none' }
+  if ($doc -isnot [Management.Automation.PSCustomObject]) { return 'none' }
+  $old = @('paisetup-skills', '~/.gemini/config/paisetup-skills', ($HomeDir.Replace('\', '/').TrimEnd('/') + '/.gemini/config/paisetup-skills'))
+  $hits = @(@($doc.entries) | Where-Object { $_ -is [Management.Automation.PSCustomObject] } |
+            Where-Object { $old -contains ([string]$_.path).Replace('\', '/').TrimEnd('/') })
+  if (-not $hits.Count) { return 'none' }
+  $keys = { param($o) (@($o.PSObject.Properties | ForEach-Object { $_.Name }) -join ',') }
+  $exact = ((& $keys $doc) -ceq 'entries') -and ($doc.entries -is [Array]) -and (@($doc.entries).Count -eq 1) -and
+           ($doc.entries[0] -is [Management.Automation.PSCustomObject]) -and ((& $keys $doc.entries[0]) -ceq 'path') -and
+           ($doc.entries[0].path -is [string])
+  if ($exact) { return 'ours' }
+  return 'mixed'
+}
+
+function Get-AgyOldHomePlan([string]$OldHome, [string]$NewHome, [string[]]$Ours, [string[]]$Reinstall) {
+  # 옛 자리를 비우는 판 — 옛 자리에 든 우리 이름마다:
+  #   Aside    — 새 자리에 같은 이름이 이미 있다 → 그 폴더를 먼저 통째로 백업 자리로 비켜 둔다(우리가 둔 것일 수 없다 — 위 곁말)
+  #   ToBackup — 이번에 다시 깔거나 배포가 미는 몫이다(`$Reinstall`) → 옛것은 백업 자리로
+  #   ToNew    — 나머지 → 새 자리로 옮긴다(그대로 쓰인다)
+  #   Foreign(기록에 없는 이름 · 폴더가 아닌 것 — 안 건드린다) · Remove(옛 자리가 있고 Foreign 이 없다 — 다 옮긴 뒤 걷는다)
+  $plan = @{ ToNew = @(); ToBackup = @(); Aside = @(); Foreign = @(); Remove = $false }
+  if (-not (Test-Path -LiteralPath $OldHome -PathType Container)) { return $plan }
+  foreach ($e in @(Get-ChildItem -LiteralPath $OldHome -Force)) {
+    if (-not $e.PSIsContainer -or (@($Ours) -notcontains $e.Name)) { $plan.Foreign += $e.Name; continue }
+    if (Test-Path -LiteralPath (Join-Path $NewHome $e.Name)) { $plan.Aside += $e.Name }
+    if (@($Reinstall) -contains $e.Name) { $plan.ToBackup += $e.Name } else { $plan.ToNew += $e.Name }
+  }
+  $plan.Remove = ($plan.Foreign.Count -eq 0)
+  return $plan
+}
+
+# ⚠ **심는 손은 하나다 — 그림 문 · 웹 다시 찾기(claude-config #117) · DRM 길잡이(#120)가 같이 쓴다.** 훅마다
+#   이 고리를 베끼면 규율 하나를 고칠 때 한쪽만 낡는다. 설정 저장소 몸통(`session-start-body.sh` 의
+#   `plant_tool_hook`)과 같은 규율이다.
+#   `$Parts` 는 있어야 심는 씨앗 파일들이고 맨 앞이 껍데기다. `$Var` 는 심긴 한 줄이 자리를 담는 셸 이름,
+#   `$Tail` 은 그 줄 꼬리다. 심었으면 참을 돌려준다 — 부르는 쪽이 `$dirty` 를 세운다.
+function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts, [string]$Var, [string]$Tail) {
+  $dir = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
+  $shellPath = Join-Path $dir $Parts[0]
+  $matcher = $null
+  $perEvent = @{}   # 이벤트마다 다른 matcher — `# matcher.<이벤트> = …` 줄이 그 진본이다
+  if (Test-Path -LiteralPath $shellPath) {
+    $m = Select-String -LiteralPath $shellPath -Pattern '^# matcher = (\S+)' -Encoding UTF8 | Select-Object -First 1
+    if ($m) { $matcher = $m.Matches[0].Groups[1].Value }
+    # ⚠ **이벤트마다 보는 것이 다르면 matcher 도 다르다** — 껍데기가 `# matcher.PreToolUse = …` 처럼 제
+    #   이벤트 이름을 달아 든다. 여기서 손으로 한 벌 더 적으면 저쪽과 조용히 어긋난다.
+    foreach ($em in @(Select-String -LiteralPath $shellPath -Pattern '^# matcher\.(\w+) = (\S+)' -Encoding UTF8)) {
+      $perEvent[$em.Matches[0].Groups[1].Value] = $em.Matches[0].Groups[2].Value
+    }
+  }
+  if (@($Parts | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dir $_)) }).Count -or -not $matcher) {
+    Write-Host "  ! $Label — 씨앗의 .claude/hooks/ 에 $($Parts -join ' · ') 가 없어 안 심는다" -ForegroundColor Yellow
+    return $false
+  }
+  if (-not $cfg) {
+    # 홈 설정을 못 읽은 자리(위 5칸이 까닭을 대고 물러난 그 갈래) — 여기서 또 세지 않는다.
+    Write-Host "  $Label — 홈 설정을 못 읽어 안 심는다"
+    return $false
+  }
+  # ⚠ **경로를 슬래시로 굳힌다.** 명령은 Git Bash 가 읽고 역슬래시는 그 자리에서 탈출
+  #   문자다 — `\.claude` 가 조용히 다른 글자가 된다.
+  $dirSh = ($dir -replace '\\', '/')
+  # ⚠ **폴더가 사라져도 도구를 안 막는다** — `.` 은 특수 내장이라 파일이 없으면 dash 는 그 자리에서
+  #   2 로 죽고(PreToolUse 에서 2 는 막기다), 걸 일이 없는 호출까지 깨진다. 그래서 먼저 재고 물러난다.
+  $cmd = ('{0}="{1}"; [ -f "${0}/{2}" ] || exit 0; . "${0}/{2}"{3}' -f $Var, $dirSh, $Parts[0], $Tail)
+  # 우리 꼴 — 껍데기 이름이 든 명령(`image-gate.` · `web-retry.` · `drm-guide.`)이다.
+  $marker = [IO.Path]::GetFileNameWithoutExtension($Parts[0]) + '.'
+
+  # 비켜설 자리 — 우리 꼴(`<Var>="…"`)인데 다른 자리를 가리키고, 그 자리에 부품이 다 있다.
+  $owner = $null
+  $pat = [regex]::Escape($Var) + '="([^"]+)"'
+  foreach ($ev in $Events) {
+    foreach ($entry in @($cfg.hooks.$ev)) {
+      foreach ($h in @($entry.hooks)) {
+        $c = if ($h) { [string]$h.command } else { '' }
+        if ($c.Contains($marker) -and $c -match $pat) {
+          $d = $Matches[1]
+          # 문자열로 잇는다 — `Join-Path` 는 없는 드라이브(`Q:/…`)에서 던지고, 전역 Stop 아래라 설치가 통째로 선다.
+          if ($d -ne $dirSh -and @($Parts | Where-Object { -not (Test-Path -LiteralPath "$d/$_") }).Count -eq 0) { $owner = $d }
+        }
+      }
+    }
+  }
+  if ($owner) {
+    Write-Host "  $Label — 설정 저장소 진본이 들고 있어 비켜선다" -ForegroundColor Green
+    Write-Host "     $owner"
+    return $false
+  }
+  # ⚠ **심기는 더하기만 하지 않는다 — 우리 꼴을 먼저 걷는다.** 명령 글자가 바뀌는 날
+  #   옛 항목이 남아 **옛 고리가 같이 돌고**, 그러면 위 가드가 통째로 무효가 된다
+  #   (진본 훅의 같은 규율).
+  $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
+  if (-not $hooks) {
+    $hooks = New-Object PSObject
+    $cfg | Add-Member -NotePropertyName hooks -NotePropertyValue $hooks -Force
+  }
+  $dropped = 0
+  foreach ($ev in $Events) {
+    $kept = @()
+    foreach ($entry in @($hooks.$ev)) {
+      if (-not $entry) { continue }
+      $ours = $false
+      foreach ($h in @($entry.hooks)) {
+        if ($h -and [string]$h.command -and ([string]$h.command).Contains($marker)) { $ours = $true }
+      }
+      if ($ours) { $dropped++ } else { $kept += $entry }
+    }
+    # ⚠ **matcher 를 안 받는 이벤트에는 키를 아예 안 심는다** — UserPromptSubmit 이 그 자리다. 거는 자는 받지 않는
+    #   값을 조용히 무시하는 것이 아니라 **맞출 도구 이름이 없는 호출을 항목째 걸러낸다**: 심어 두면 훅이 영원히
+    #   안 돈다. 설정에도 코드에도 결함으로 안 보이고 몸통에 입력을 손으로 먹이면 통과해, 「코드는 맞는데 안
+    #   걸린다」로만 나타난다(claude-config #120 실측).
+    $entryNew = [pscustomobject]@{
+      hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = 10 })
+    }
+    if ($ev -ne 'UserPromptSubmit') {
+      # 제 이벤트 이름을 단 진본 줄이 있으면 그것을 — 없으면 꾸밈 없는 한 벌을 든다
+      $mv = if ($perEvent.ContainsKey($ev)) { $perEvent[$ev] } else { $matcher }
+      $entryNew | Add-Member -NotePropertyName matcher -NotePropertyValue $mv -Force
+    }
+    $kept += $entryNew
+    $hooks | Add-Member -NotePropertyName $ev -NotePropertyValue $kept -Force
+  }
+  if ($dropped -gt 0) { Write-Host "  $Label — 옛 항목 $dropped 개를 걷고 심었다" -ForegroundColor Green }
+  else                { Write-Host "  $Label — 심었다" -ForegroundColor Green }
+  Write-Host "     $(Join-Path $dir $Parts[-1])"
+  return $true
+}
+
+# ⚠ **「로그인했나」를 `gh auth status` 의 종료코드로 묻지 않는다.** 그 코드는 **「하나라도 쓸 수
+#   있나」가 아니라 「계정 목록이 다 멀쩡한가」**에 가깝다 — 곁에 자격 깨진 항목이 하나 있으면
+#   **쓸 수 있는 자격이 멀쩡히 서 있어도** 0 이 아닌 코드가 난다. 실측 2026-10-06 회사 PC:
+#   `✓ GH_TOKEN` 과 `X default 토큰이 invalid` 가 함께 떠 코드가 0 이 아니었고, 그 자리에서
+#   `gh api user` · 비공개 저장소 읽기 · `git ls-remote` 가 전부 통했다. 설치기는 그걸 모르고
+#   로그인 창을 띄웠고, 사람이 못 누르자 「안 섰다」를 적은 **바로 다음 줄에서 그 자격으로
+#   저장소를 당겼다** — 판정과 실물이 어긋난 것이 로그 안에서 그대로 보였다.
+# ⚠ **그래서 자격을 한 번 써 본다.** 이 칸이 알고 싶은 것은 「아래 clone 과 세션 훅이 쓸 자격이
+#   있나」이고, 그 물음에 답하는 자는 **그 자격으로 실제 요청 하나를 보내는 것**이다(규범
+#   [State Over Event] — 실물이 곧 상태이고, 목록의 건강 상태는 그것에 대해 말하는 기록이다).
+# ⚠ **망이 끊긴 자리는 「없다」와 갈라 적는다.** API 를 못 물으면 자격이 있어도 거짓이 난다.
+#   지금 판정도 그 자리에서 창을 띄우므로 더 나빠지지는 않지만, **무엇 때문에 거짓인지는
+#   사람에게 다르게 보여야 한다** — 「로그인하라」는 말을 망 끊긴 사람에게 하면 엉뚱한 데를
+#   고치러 간다. 가르는 자는 이미 있는 `Test-Reach` 다(새로 만들지 않는다).
+#   ⚠ `gh api` 로는 그 가름을 못 한다 — **자격 없이는 어떤 길도 안 열어 주고**(실측 2026-10-06:
+#   `gh api rate_limit` 도 자격을 가리면 4 로 끝난다) 망 문제와 자격 문제가 같은 코드로 온다.
+function Test-GhLoggedIn {
+  if (-not (Test-Runs 'gh' '--version')) { return $false }
+  $null = Get-Quiet 'gh' @('api', 'user', '--jq', '.login')
+  return ($LASTEXITCODE -eq 0)
+}
+
+# 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 초마다 남은 시간을
+# 줄이고 5초마다 로그인이 섰나 재서, 서면 닫는다. 돌려주는 값은 섰나(참/거짓).
+# ⚠ **손잡이는 닫힘(closure)으로 넘긴다.** 폼 이벤트의 스크립트 블록은 이 함수의 변수를 못 본다 —
+#   `GetNewClosure()` 가 그 순간의 참조를 물려주고, 상태는 해시테이블이라 안에서 고친 것이 밖에 남는다.
+function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait) {
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -AssemblyName System.Drawing
+  $f = New-Object Windows.Forms.Form
+  $f.Text = 'GitHub 로그인'; $f.TopMost = $true; $f.StartPosition = 'CenterScreen'
+  $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
+  $f.ClientSize = New-Object Drawing.Size(420, 190)
+  $l1 = New-Object Windows.Forms.Label
+  $l1.Text = '브라우저의 GitHub 창에 이 코드를 넣고 승인해 주세요.'
+  $l1.Location = New-Object Drawing.Point(16, 14); $l1.Size = New-Object Drawing.Size(390, 20)
+  $tCode = New-Object Windows.Forms.TextBox
+  $tCode.ReadOnly = $true; $tCode.TextAlign = 'Center'
+  $tCode.Font = New-Object Drawing.Font('Consolas', 22, [Drawing.FontStyle]::Bold)
+  $tCode.Text = '코드를 기다리는 중 …'
+  $tCode.Location = New-Object Drawing.Point(16, 40); $tCode.Size = New-Object Drawing.Size(390, 44)
+  $lLeft = New-Object Windows.Forms.Label
+  $lLeft.Text = "남은 시간 ${Wait}초"
+  $lLeft.Location = New-Object Drawing.Point(16, 96); $lLeft.Size = New-Object Drawing.Size(390, 20)
+  $bOpen = New-Object Windows.Forms.Button; $bOpen.Text = '브라우저 열기'
+  $bOpen.Location = New-Object Drawing.Point(16, 140); $bOpen.Size = New-Object Drawing.Size(120, 32)
+  $bCopy = New-Object Windows.Forms.Button; $bCopy.Text = '코드 복사'
+  $bCopy.Location = New-Object Drawing.Point(146, 140); $bCopy.Size = New-Object Drawing.Size(120, 32)
+  $bSkip = New-Object Windows.Forms.Button; $bSkip.Text = '건너뛰기'
+  $bSkip.Location = New-Object Drawing.Point(286, 140); $bSkip.Size = New-Object Drawing.Size(120, 32)
+  $f.Controls.AddRange(@($l1, $tCode, $lLeft, $bOpen, $bCopy, $bSkip))
+  $state = @{ Code = ''; Left = $Wait; Tick = 0; Ok = $false }
+  $bOpen.Add_Click({ Start-Process 'https://github.com/login/device' | Out-Null })
+  $bCopy.Add_Click({ if ($state.Code) { try { Set-Clipboard -Value $state.Code } catch { } } }.GetNewClosure())
+  $bSkip.Add_Click({ $f.Close() }.GetNewClosure())
+  $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1000
+  $timer.Add_Tick({
+    $state.Left--; $state.Tick++
+    $lLeft.Text = "남은 시간 $($state.Left)초 — 로그인이 서면 이 창은 스스로 닫힙니다"
+    if (-not $state.Code) {
+      $said = ''
+      foreach ($p in @($OutFile, "$OutFile.err")) {
+        if (Test-Path -LiteralPath $p) { $said += (Get-Content -LiteralPath $p -Raw -ErrorAction SilentlyContinue) }
+      }
+      if ($said -match '([A-Z0-9]{4}-[A-Z0-9]{4})') {
+        $state.Code = $Matches[1]; $tCode.Text = $state.Code; $tCode.SelectAll()
+        # ⚠ **코드가 오면 브라우저를 사람 대신 연다** — gh 자신도 열려 하지만 콘솔 없는 자식이라
+        #   못 여는 판이 있고, 그때 사람은 코드만 든 채 버튼을 찾는다. 코드는 클립보드에도 둔다 —
+        #   GitHub 창이 붙여넣기를 받는다. 버튼 둘은 그대로 둔다(브라우저가 안 뜬 판의 손잡이다).
+        try { Set-Clipboard -Value $state.Code } catch { }
+        try { Start-Process 'https://github.com/login/device' | Out-Null } catch { }
+      }
+    }
+    $done = ($Proc -and $Proc.HasExited)
+    if ($done -or ($state.Tick % 5) -eq 0) {
+      if (Test-GhLoggedIn) { $state.Ok = $true; $f.Close(); return }
+    }
+    if ($done -or $state.Left -le 0) { $f.Close() }
+  }.GetNewClosure())
+  $f.Add_Shown({ $f.Activate(); $timer.Start() }.GetNewClosure())
+  $f.Add_FormClosed({ $timer.Stop() }.GetNewClosure())
+  [void]$f.ShowDialog()
+  if (-not $state.Ok) { $state.Ok = Test-GhLoggedIn }
+  return $state.Ok
+}
+
+# ⚠ **`Get-ScheduledTask` 를 맨손으로 안 부른다.** 이 파일은 `$ErrorActionPreference = 'Stop'`
+#   아래 도는데, 스케줄러 모듈이 없는 판에서 나는 「그런 명령이 없다」는 `-ErrorAction
+#   SilentlyContinue` 로 안 막힌다 — 그러면 자동 실행 한 칸 때문에 **설치가 통째로 죽는다.**
+#   못 묻는 것과 없는 것은 다른 명제지만, 이 칸이 둘로 할 일은 같다: 「없다」로 답하고 간다.
+function Test-AutoRunTask([string]$Name) {
+  return (Test-ScheduledTaskExists $Name)
+}
+
+# 나른 것을 **동봉본과 견주는 자** — 7 칸과 6 칸이 같은 자를 쓴다.
+# ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
+#   빈 폴더를 [O] 로 찍으면 「깔렸는데 안 든 것」이 성공으로 보고된다. 그래서 **파일 수를 센다.**
+# ⚠ **여분은 판정이 아니라 눈금이다.** 「남는 것이 있다」와 「나른 것이 모자란다」는 다른
+#   명제라, 수는 찍되 [X] 는 모자랄 때만 든다 — 걷는 자리(씨앗 넷)와 안 걷는 자리(개인
+#   규범·룰·스킬)가 **같은 자를 쓰면서** 서로 다른 뜻을 읽을 수 있게 하는 것이 이 갈림이다.
+#   ⚠ 두 자를 따로 두면 한쪽만 낡는다 — 찍는 꼴이 두 벌이 되는 그 자리가 사본이다.
+function New-CountCheck([string]$Name, [string]$From, [string]$To) {
+  $isDir = Test-Path -LiteralPath $From -PathType Container
+  $srcN = if ($isDir) { @(Get-ChildItem -LiteralPath $From -Recurse -File -ErrorAction SilentlyContinue).Count } else { 1 }
+  $dstN = 0
+  if (Test-Path -LiteralPath $To) {
+    $dstN = if ($isDir) { @(Get-ChildItem -LiteralPath $To -Recurse -File -ErrorAction SilentlyContinue).Count } else { 1 }
+  }
+  $extra = if ($dstN -gt $srcN) { " · 여분 $($dstN - $srcN)" } else { '' }
+  return @{ Name = "$Name ($dstN/$srcN$extra)"; Ok = ($srcN -gt 0 -and $dstN -ge $srcN) }
+}
+
+# VS Code — PATH 에 걸린 `code` 는 `…\bin\code.cmd` 라 그것을 띄우면 콘솔이 한 번 번쩍인다.
+# 한 층 올라가 실행 파일을 판다.
+# ⚠ **자리를 여기 안 적는다.** 적으면 위 배선(`Update-RuntimePath`)이 든 목록과 사본이 둘
+#   되고 한쪽만 낡는다. 부르는 쪽이 `$hasCode`(= `code` 가 실제로 돌더라)일 때만 여기 오므로,
+#   PATH 에서 못 파는 갈래는 **도달할 수 없는 길**이다 — 옛 판이 그 자리에 박아 두었던 경로 둘을
+#   걷었다.
+function Find-VSCode {
+  $c = Get-Command code -ErrorAction SilentlyContinue
+  if (-not $c -or -not $c.Source) { return $null }
+  # ⚠ **빈 것을 `Join-Path` 에 넘기지 않는다** — 위 `Stop` 이 그 자리에서 던지는데, 여기는
+  #   설치의 마지막 칸이라 **종료코드째 날아간다.** 멀쩡히 끝난 설치가 실패로 보고된다.
+  $vsRoot = Split-Path (Split-Path $c.Source -Parent) -Parent
+  if (-not $vsRoot) { return $null }
+  $exe = Join-Path $vsRoot 'Code.exe'
+  if (-not (Test-Path -LiteralPath $exe)) { return $null }
+  return @{ Name = 'VS Code'; Exe = $exe; Dir = $vsRoot
+            Proc = [IO.Path]::GetFileNameWithoutExtension($exe) }
+}
+
+# 데스크탑 앱 — **자리를 묻지 않고 윈도우에 앱을 묻는다.**
+# ⚠ **경로로 찾는 길은 막혀 있다.** 이 앱은 스토어 꼴(MSIX)로 깔릴 수 있고, 그러면 실행 파일도
+#   `Uninstall` 등록 정보도 시작 메뉴 `.lnk` 도 **하나도 안 생긴다.** 실측 2026-09-11(집 PC):
+#   그 셋이 다 빈손인데 winget 은 「있음」이었고, 경로를 훑던 옛 판이 빈손으로 돌아와 **말없이
+#   VS Code 를 열었다.** 실물은 `Program Files\WindowsApps\...` 인데 그 자리는 권한으로 막혀
+#   훑어도 못 본다.
+# ⚠ **그러니 자리를 하나 더 박는 것은 답이 아니다** — 꼴이 바뀌면 또 어긋난다. `Get-StartApps`
+#   는 **띄울 수 있는 앱과 그 손잡이**를 돌려주고, 스토어 꼴이든 예전 꼴이든 같은 답을 낸다.
+# ⚠ **찾을 이름도 안 박는다** — 위 표의 `App` 칸이 든다. 고른 것이 여럿이면 **고른 차례로**
+#   묻고 처음 찾은 것을 연다: 앞문은 하나이고, 어느 것이 앞문인지는 값 파일이 적은 차례다.
+function Find-DesktopApps {
+  # ⚠ **고른 것을 다 든다 — 하나만 고르지 않는다.** 옛 판은 표에서 먼저 선 하나에서 멈췄는데,
+  #   그 「먼저」가 **어디에도 안 적힌 채 표 행 순서에 숨어** 있었다: 줄을 옮기면 뜨는 앱이
+  #   조용히 바뀐다. 다 들면 고를 일이 없어져 그 자리가 통째로 없어진다.
+  # ⚠ **훑을 자는 「고른 것」이 아니라 「이 판에서 선 것」이다** (0059). 고른 것으로 훑으면
+  #   사내에서 안 깐 앱(`When = offsite`)까지 시작 메뉴에서 찾으려 들어, **깔지도 않은 것을
+  #   「못 찾았다」로** 찍는다. 부르는 쪽도 같은 자에 묻는다 — 한 자리에서 갈려야 안 어긋난다.
+  $rows = @($script:InstalledAppRows.Values)
+  if (-not $rows) { return @() }                # 이 판에서 선 데스크탑 앱이 없다
+  # ⚠ **한 번 묻고 끝내지 않는다 — 막 깐 앱은 시작 메뉴에 늦게 선다.** 설치본이 끝난 뒤에도 시작
+  #   메뉴 등록이 뒤따라 도는 갈래가 있어, 한 번만 물으면 방금 깐 것을 「못 찾았다」로 찍고 안
+  #   띄운다(최초 설치에서 아무것도 안 뜬 자리의 후보). 다 찾으면 바로 나가고, 못 찾은 것이 남을
+  #   때만 몇 번 더 묻는다 — 이미 선 기계는 기다리지 않는다.
+  $all = @()
+  for ($try = 0; $try -lt 5; $try++) {
+    try {
+      $all = @(Get-StartApps -ErrorAction Stop)
+    } catch { return @() }                      # 이 윈도우에 그 물음이 없다
+    $lack = @($rows | Where-Object { $w = $_.App; -not @($all | Where-Object { $_.Name -like "*$w*" })[0] })
+    if (-not $lack) { break }
+    Start-Sleep -Seconds 2
+  }
+  # 바로가기 꼴의 대상 실행 파일 — 시작 메뉴가 손잡이마다 안다. 스토어 꼴은 바로가기가 아니라 비어 있다.
+  $linkTarget = @{}
+  try {
+    foreach ($i in (New-Object -ComObject Shell.Application).NameSpace('shell:AppsFolder').Items()) {
+      $t = [string]$i.ExtendedProperty('System.Link.TargetParsingPath')
+      if ($t -and $t.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase)) { $linkTarget[[string]$i.Path] = $t }
+    }
+  } catch { }
+  $out = @()
+  foreach ($appPick in $rows) {
+    $a = @($all | Where-Object { $_.Name -like "*$($appPick.App)*" })[0]
+    if (-not ($a -and $a.AppID)) { continue }
+    $want = $appPick.App; $label = $appPick.Label
+  # 프로세스 이름은 **후보 목록**이다 — 손잡이에서 판 것 하나와 앱 이름 하나.
+  # ⚠ **손잡이 하나로는 못 판다.** 꼴이 셋이고 이름이 앉는 자리가 다 다르다 — 스토어 꼴은
+  #   `앱_해시!앱` 의 `_` 앞, 바로가기 꼴은 파일 이름, claude.ai 에서 받은 일반 설치본(Squirrel)은
+  #   `com.squirrel.<패키지>.<실행파일>` 의 **마지막 마디**다. 옛 판은 앞 둘만 알아서 셋째 꼴에서
+  #   `com.squirrel.AnthropicClaude` 를 이름으로 들었고, 실물은 `claude` 라 **떠 있는데 「안 떠
+  #   있다」로 읽었다**(실측 2026-09-15 · 사외 PC). 그래서 묻지도 끄지도 않고 손잡이로 띄웠는데,
+  #   도는 앱은 그 호출에 창만 앞으로 올 뿐 새로 안 떠 — 낡은 것이 재시작한 얼굴로 남았다.
+  # ⚠ **꼴을 하나 더 박는 대신 앱 이름을 후보에 더한다.** 세 꼴 다 실행 파일이 곧 앱 이름이라
+  #   (`claude`) 그 하나가 셋을 덮고, 꼴이 또 늘어도 안 어긋난다. 손잡이에서 판 것은 그대로 둔다 —
+  #   이름이 실행 파일과 갈리는 앱이 오면 그쪽이 든다. `Get-Process -Name` 은 목록을 받는다.
+    $fromId = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
+              else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
+    $procs = @($fromId, $want) | Where-Object { $_ } | Select-Object -Unique
+    # ⚠ **이름만으로는 그 앱인지 못 가른다 — 설치 폴더를 같이 든다.** `claude` 라는 이름에는 데스크탑
+    #   앱 말고도 **VS Code 확장이 띄우는 CLI**(`…\resources\native-binary\claude.exe`)와 데스크탑이 품은
+    #   Claude Code(`%APPDATA%\Claude\claude-code\…\claude.exe`)가 걸린다(실측 2026-09-25 · 집 PC). 이름만
+    #   물으면 VS Code 가 떠 있는 것만으로 **방금 깐 데스크탑이 「이미 실행되었다」로 빠져 안 뜨고**, 다시
+    #   깔 때 「끈다」를 누르면 **확장과 터미널의 Claude Code 세션까지 죽인다.**
+    #   폴더를 못 판 꼴은 `Dir` 가 비고, 그때는 옛 판처럼 이름으로 묻는다.
+    $dir = $null
+    if ($a.AppID -match '^([^!]+)!') {
+      # 스토어 꼴 — 손잡이 앞마디가 패키지 가족 이름이다. 그 패키지의 설치 자리를 윈도우에 묻는다.
+      $fam = $Matches[1]
+      try {
+        $pkg = @(Get-AppxPackage -Name ($fam -replace '_[^_]+$', '') -ErrorAction Stop |
+                 Where-Object { $_.PackageFamilyName -eq $fam })[0]
+        if ($pkg) { $dir = [string]$pkg.InstallLocation }
+      } catch { }
+    } elseif ($a.AppID -match '^com\.squirrel\.([^.]+)\.') {
+      # Squirrel 꼴 — `%LOCALAPPDATA%\<패키지>\app-<판>\` 아래에서 돈다(위 곁말의 셋째 꼴).
+      $dir = Join-Path $env:LOCALAPPDATA $Matches[1]
+    } elseif ($linkTarget[$a.AppID]) {
+      # 바로가기 꼴 — 바로가기가 가리키는 실행 파일이 곧 그 앱이다. 이름도 폴더도 그 파일에서 읽는다.
+      # ⚠ **손잡이 · 앱 이름에서 짐작하지 않는다** — GitHub Copilot 은 손잡이가 `com.github.githubapp` 이고 실물이
+      #   `github.exe` 라 어느 쪽에서도 안 나온다. 짐작이 빗나가면 떠 있는 앱을 「안 떴다」로 읽어 한 번 더 띄우고,
+      #   다시 깔 때는 「껐다 켤까」도 안 묻는다.
+      $exe = $linkTarget[$a.AppID]
+      $procs = @([IO.Path]::GetFileNameWithoutExtension($exe))
+      $dir = Split-Path -Parent $exe
+    }
+    $out += @{ Name = $label; AppId = $a.AppID; Proc = @($procs); App = $want; Dir = $dir }
+  }
+  return @($out)
+}
+
+# 그 앱의 프로세스 — 이름으로 모으고, 설치 폴더를 알면 **그 아래에서 도는 것만** 남긴다(까닭은
+# `Find-DesktopApps` 의 `Dir` 곁말). 경로를 못 읽는 프로세스(다른 권한)는 그 앱이라고 치지 않는다.
+function Get-AppProcs($App) {
+  if (-not $App -or -not $App.Proc) { return @() }
+  $ps = @(Get-Process -Name $App.Proc -ErrorAction SilentlyContinue)
+  if (-not $App.Dir) { return $ps }
+  $root = ([string]$App.Dir).TrimEnd('\') + '\'
+  return @($ps | Where-Object {
+    $p = $null
+    try { $p = $_.Path } catch { }
+    $p -and $p.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)
+  })
+}
+
+# 그 앱이 이미 도나.
+function Test-AppUp($App) {
+  return (@(Get-AppProcs $App).Count -gt 0)
+}
+
+# 끌지 사람에게 묻는다.
+# ⚠ **이 창에는 콘솔이 없다.** 화면 껍데기가 `CreateNoWindow` 로 띄우고 표준입력을 NUL 로
+#   돌리므로 `Read-Host` 가 못 선다 — 물어도 아무도 못 답한다. 그래서 GUI 로 묻는다.
+# ⚠ **임자를 세워 준다.** 임자 없는 물음창은 설치 창 **뒤로 갈 수 있고**, 그러면 설치가
+#   멈춘 것처럼 보인다 — 안 보이는 창을 아무도 안 눌러 영영 안 끝난다.
+function Ask-Restart([string]$AppName) {
+  # ⚠ **묻는 자리를 가르는 것은 `-Yes` 가 아니라 「누를 사람이 있나」다.** 화면 껍데기
+  #   (`install.ui.ps1`)는 사람을 앞에 두고도 몸통을 **늘 `-Yes` 로** 부른다 — 그쪽엔 콘솔이
+  #   없어 `Read-Host` 가 못 서니 값은 파일로 넘기고 물음은 이 창이 든다. 그래서 `-Yes` 하나로
+  #   이 물음을 지우면 **화면으로 깐 사람은 영영 안 물어보게 되고**, 떠 있던 낡은 창이 그대로
+  #   남는데 사람은 재시작한 줄 안다 — 이 함수가 있는 까닭 자체가 사라진다.
+  # ⚠ **반대로 세션 0 에는 누를 사람이 아예 없다**(서비스 · 「로그온하지 않아도 실행」 스케줄러 ·
+  #   CI). 거기 뜬 모달은 영영 안 눌리는 창이고 설치는 그 앞에서 선 채로 멎는다.
+  #   `UserInteractive` 가 그 둘을 가른다 — 껍데기는 사람 데스크탑 위라 참, 세션 0 은 거짓이다.
+  # ⚠ **안 묻는 쪽의 답은 「안 끈다」다.** 답을 못 받았다고 설치가 제 손으로 끄면 사람이 띄워 둔
+  #   창과 저장 안 한 것이 말없이 날아간다 — 안 묻는다는 것은 마음대로 해도 된다는 뜻이 아니다.
+  if (-not [Environment]::UserInteractive) {
+    Write-Host '  물을 자리가 없다 (세션 0 · 서비스 · 스케줄러) — 안 묻고 그대로 둔다'
+    return $false
+  }
+  Write-Host '  끌지 묻는다 — 창이 뜬다'
+  # ⚠ **창 띄우기는 위 `Show-AskDialog` 가 든다** — 묻는 자리가 둘이 되면서 한 자리로 뺐다(#17).
+  #   임자 창을 앞으로 내는 까닭(회사 PC/VDI 에서 확인창이 VS Code 뒤에 숨은 채 기다리던 자리)도
+  #   그쪽에 적혀 있다. 여기 남는 것은 **이 물음의 말** 하나다.
+  $msg = "$AppName — 이미 돌고 있습니다.`n`n" +
+         "지금 껐다 새로 열까요?`n" +
+         "돌던 것은 방금 깔린 것(키 · MCP 서버 · 세션 훅)을 모릅니다.`n`n" +
+         "저장 안 한 것이 있으면 먼저 저장하고 눌러 주세요."
+  return (Show-AskDialog $AppName $msg)
+}
+
+# 끈다 — **곱게 먼저, 안 나가면 세게.**
+# ⚠ **곱게가 먼저인 까닭** — VS Code 는 창을 닫으라 하면 저장을 묻고, 사람이 답하면 스스로
+#   나간다. 처음부터 죽이면 그 물음이 안 뜬다.
+# ⚠ **세게가 있는 까닭** — 데스크탑은 창을 닫아도 **트레이로 내려갈 뿐 안 나간다.**
+#   곱게만 두면 「껐다」가 거짓이 되고, 그 위에서 「새로 띄웠다」가 또 거짓이 된다.
+# ⚠ **이름이 같은 자식들까지 다 든다.** 둘 다 여럿으로 돈다 — VS Code 는 창·확장·GPU 가
+#   다 `Code.exe` 이고, 데스크탑도 프로세스 셋이 같은 이름으로 떠 있었다(실측 2026-09-11).
+#   하나만 닫으면 남은 것이 살아 「아직 돈다」로 읽힌다.
+# ⚠ **그 앱의 것만 끈다** — 이름이 같은 남(확장이 띄운 CLI 등)은 `Get-AppProcs` 가 걸러 준다.
+function Stop-App($App) {
+  foreach ($p in @(Get-AppProcs $App)) {
+    if ($p.MainWindowHandle -ne 0) { $null = $p.CloseMainWindow() }
+  }
+  # 5초까지 기다리되 나가면 바로 넘어간다 — 안 기다려도 될 때 기다리지 않는다.
+  for ($i = 0; $i -lt 10 -and (Test-AppUp $App); $i++) { Start-Sleep -Milliseconds 500 }
+  foreach ($p in @(Get-AppProcs $App)) {
+    try { $p.Kill() } catch { }
+  }
+  for ($i = 0; $i -lt 6 -and (Test-AppUp $App); $i++) { Start-Sleep -Milliseconds 500 }
+  return (-not (Test-AppUp $App))
+}
+
+#endregion 라이브러리
+
+# ── 단일 실행 빗장 (Mutex) — **겹쳐 도는 것을 뿌리에서 막는다** ────────────────
+# ⚠ **부팅 자동화와 로그온 자동 실행, 또는 사람의 실행이 겹치면** 같은 환경변수와 설정 파일을
+#   동시에 덮어써 진 쪽의 반쪽 상태가 남는다 (#13).
+# ⚠ **막는 말만 하고 정보를 안 주면 받은 사람이 할 수 있는 일이 없다**(#17). 「진행 중」으로는
+#   **정상 진행과 멎은 고아를 못 가른다** — 쥔 쪽의 번호와 경과를 대면 사람이 그 둘을 가른다.
+#   그리고 사람이 있으면 **끝내고 이어갈 길을 준다**: 고아는 기다려서 안 풀리고, 지금까지는
+#   사람이 손으로 PID 를 찾아 죽이는 것 말고 방법이 없었다.
+$script:EngineMutex = $null
+$script:HasEngineMutex = $false
+try {
+  $script:EngineMutex = New-Object System.Threading.Mutex($false, "Local\PAISetup-Engine-Lock")
+  $script:HasEngineMutex = $script:EngineMutex.WaitOne(0, $false)
+} catch {
+  $script:HasEngineMutex = $true
+}
+
+$holders = @(Find-EngineHolders)
+if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
+  Write-Host ''
+  Write-Host '  이미 다른 설치 또는 자동 실행이 진행 중입니다.' -ForegroundColor Yellow
+  foreach ($h in $holders) { Write-Host ('  ' + (Format-EngineHolder $h)) }
+  if (-not $holders) {
+    Write-Host '    · 쥔 프로세스를 못 찾았다 — 방금 끝났거나 다른 사용자 것이다'
+  }
+
+  # ⚠ **묻는 자리를 가르는 것은 `-Yes` 가 아니라 「누를 사람이 있나」다** — 아래 `Ask-Restart` 와
+  #   같은 까닭이다. 화면 껍데기는 사람을 앞에 두고도 몸통을 **늘 `-Yes` 로** 부르므로, `-Yes` 에
+  #   걸면 **화면으로 깐 사람은 영영 안 물어보게 된다.** 누를 사람이 아예 없는 것은 세션 0
+  #   (서비스 · 「로그온하지 않아도 실행」 스케줄러 · CI)뿐이고 `UserInteractive` 가 그것을 가른다.
+  if (-not [Environment]::UserInteractive) {
+    Write-Host '  물을 자리가 없다 (세션 0 · 서비스 · 스케줄러) — 겹치지 않게 물러납니다.' -ForegroundColor Yellow
+    exit 1
+  }
+
+  Write-Host '  잠시 기다립니다 (최대 60초)...'
+  # ⚠ **버려진 빗장은 잡힌 것이다.** 기다리는 동안 쥔 쪽이 죽으면 `WaitOne` 이 던지는데, 그때
+  #   **소유권은 이쪽에 넘어와 있다** — 삼키고 거짓으로 두면 방금 얻은 것을 못 쓴다.
+  #   세션이 다른 프로세스(S4U 등)는 Mutex 로 안 잡히므로 Find-EngineHolders 도 함께 잰다.
+  $swWait = [Diagnostics.Stopwatch]::StartNew()
+  while ($swWait.Elapsed.TotalSeconds -lt 60) {
+    Start-Sleep -Seconds 2
+    try {
+      if (-not $script:HasEngineMutex) {
+        $script:HasEngineMutex = $script:EngineMutex.WaitOne(1000, $false)
+      }
+    } catch { $script:HasEngineMutex = $true }
+    $holders = @(Find-EngineHolders)
+    if ($holders.Count -eq 0 -and $script:HasEngineMutex) { break }
+  }
+
+  if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
+    # ⚠ **기본값은 「안 끝낸다」다.** 빗장이 선 까닭이 *겹쳐 돌면 반쪽 상태가 남는다*(#13)이므로,
+    #   아직 일하는 중인 것을 끝내면 **그 반쪽 상태를 우리가 만드는 셈이다.** 그래서 묻고, 무엇을
+    #   끝내는지 대고, 사람이 예라고 할 때만 끝낸다.
+    # ⚠ **못 찾았으면 안 묻는다** — 무엇을 끝낼지 못 대면서 끝낼지 물을 수 없다.
+    $holders = @(Find-EngineHolders)
+    if ($holders) {
+      $msg = "이미 돌고 있는 설치가 있습니다.`n`n" +
+             (($holders | ForEach-Object { Format-EngineHolder $_ }) -join "`n") + "`n`n" +
+             "그것을 끝내고 새로 시작할까요?`n`n" +
+             "아직 일하는 중이면 반쯤 깔린 상태가 남을 수 있습니다."
+      if (Show-AskDialog '설치가 겹쳤습니다' $msg) {
+        foreach ($h in $holders) {
+          try {
+            Stop-Process -Id $h.ProcessId -Force -ErrorAction Stop
+            Write-Host ('  PID {0} 을 끝냈다' -f $h.ProcessId)
+          } catch {
+            Write-Host ('  ! PID {0} 을 못 끝냈다 — {1}' -f $h.ProcessId, $_.Exception.Message) `
+              -ForegroundColor Yellow
+          }
+        }
+        # 주인이 죽으면 윈도우가 빗장을 놓는다 — 그 버려진 빗장을 여기서 받는다(위 ⚠ 와 같은 자리).
+        try { $script:HasEngineMutex = $script:EngineMutex.WaitOne(10000, $false) }
+        catch { $script:HasEngineMutex = $true }
+      }
+    }
+  }
+
+  $holders = @(Find-EngineHolders)
+  if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
+    Write-Host '  ! 다른 설치 프로세스가 끝나지 않아 물러납니다.' -ForegroundColor Red
+    exit 1
+  }
+}
+
+# 고른 제품. **안 주면 표의 기본값** — 화면 갈래와 콘솔 갈래가 같은 자를 쓴다.
+# ⚠ **모르는 이름을 삼키지 않는다.** 오타 하나로 제품이 조용히 안 깔리면 **초록으로 끝나고**
+#   아무도 못 본다 — 값을 준 사람이 제일 늦게 안다.
+if ($PSBoundParameters.ContainsKey('Pick')) {
+  # ⚠ **쉼표만 구분자로 두지 않는다 — 공백도 받는다.** 파워셸에서 `-Pick a,b,c` 를 **따옴표 없이**
+  #   넘기면 껍데기가 그것을 배열로 읽고 `[string]` 이 공백으로 이어 붙인다. 값을 준 사람은
+  #   쉼표를 쳤는데 몸통에는 `a b c` 한 덩이가 온다(실측 2026-09-17). 가르는 자를 넓히면 그
+  #   자리가 **아예 없어진다** — 제품 이름에는 공백이 없어 넓혀도 잃는 것이 없고, 이 파일은
+  #   `#config-repo` 에서 이미 공백으로 가른다.
+  $PickKeys = @($Pick -split '[,\s]+' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+  # ⚠ **이름을 `$known` 으로 두지 않는다 — 아래 5′ 칸이 그 이름을 `$Vars` 뜻으로 쓴다**
+  #   (`$known = $Vars | …` 줄). ⚠ **좌표를 줄 번호로 안 박는다** — 위가 늘면 그 숫자만 조용히
+  #   낡는다(이 자리가 그랬다).
+  #   오늘은 그쪽이 먼저 덮어써서 맞게 돌지만, 그 줄 **앞**에 `$known` 을 읽는 줄이 하나 붙는 날
+  #   조용히 뜻이 바뀐다 — 파워셸은 대소문자도 스코프도 안 가려 준다(이 파일이 `$Planted` 에서
+  #   이미 겪은 그 함정이다).
+  $ProductKeys = @($Products | ForEach-Object { $_.Key })
+  $unknown     = @($PickKeys | Where-Object { $ProductKeys -notcontains $_ })
+  foreach ($k in $unknown) {
+    Write-Host ('  ! 모르는 제품 이름 — {0} (아는 것: {1})' -f $k, ($ProductKeys -join ', ')) -ForegroundColor Yellow
+  }
+  # 모르는 이름은 들고 가지 않는다 — 아래 걸음마다 아무것도 안 맞는 열쇠가 섞여 다닐 까닭이 없다.
+  $PickKeys = @($PickKeys | Where-Object { $ProductKeys -contains $_ })
+  # ⚠ **아는 이름이 하나도 안 남으면 그것은 오타지 「아무것도 안 깔겠다」가 아니다.** 위 경고 한
+  #   줄은 여덟 칸 로그에 묻히고, 설치는 **제품을 하나도 안 깐 채 초록으로 끝난다** — 이 칸의
+  #   곁말이 막겠다고 한 바로 그 상태다(실측 2026-09-17: 구분자 하나가 어긋나 그렇게 끝났다).
+  #   막지는 않는다(프로그램·키·씨앗은 여전히 설 자리가 있다). 대신 **끝까지 남는 자리**에 적어
+  #   빨강으로 끝나게 한다 — 노란 줄과 달리 이것은 맨 끝 검증에 이름이 선다.
+  if ($unknown -and -not $PickKeys) {
+    Write-Host ('  ! 고른 제품이 하나도 안 섰다 — 준 값을 쉼표로 가른다: -Pick "{0}"' -f
+                ($ProductKeys -join ',')) -ForegroundColor Red
+    $Fails.Add(('-Pick 에 아는 제품 이름이 없다 (준 값: {0})' -f $Pick))
+  }
+} else {
+  $PickKeys = @($Products | Where-Object { $_.Default } | ForEach-Object { $_.Key })
+}
+# 제품 칸을 하나도 안 켠 판 — 아래 걸음들이 다 빈 채로 지나가므로 여기서 한 번 말한다.
+if (-not $PickKeys) { $PickKeys = @() }
+
+$Vars = @(
+  @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 사내는 로컬 프록시 루프백 · 끝에 /v1 을 붙이지 않는다 (CLI 가 붙인다)'; Gateway=$true }
+  @{ Name='ANTHROPIC_AUTH_TOKEN'; Desc='게이트웨이 API 키';                                          Gateway=$true; Secret=$true }
+  @{ Name='ANTHROPIC_MODEL';      Desc='기본 모델 이름 (비우면 CLI 기본값으로 둔다)';                Gateway=$false }
+)
+
+# ── 클라이언트 기능 스위치 — **씨앗이 아니라 늘 맞춘다** ────────────────────────
+# ⚠ **씨앗은 「settings.json 이 없을 때」만 깔린다.** 그래서 한 번이라도 돌린 기계는 그 뒤에
+#   늘어난 스위치를 **영영 못 받는다** — 새로 깐 기계에만 서고 오래 쓴 기계는 조용히 뒤처지고,
+#   화면은 둘 다 「홈 설정 · 썼다」로 똑같이 찍힌다(실측 2026-09-09 · 사내 VDI: 씨앗에 있는
+#   `ENABLE_TOOL_SEARCH` 가 안 걸린 채로 「env 에 1개를 맞췄다」만 떴다 — 그 하나는 CA 였다).
+# ⚠ **게이트웨이 값과 갈린다.** 저것은 사람마다·자리마다 달라 `#settings-env` 가 물어야 하지만
+#   이것은 켜거나 안 켜거나뿐이라 사람이 정할 것이 없다 — 늘 맞춰도 뺏는 것이 없다.
+# 스위치가 늘면 여기 한 줄을 더한다. 이 파일 안의 씨앗에는 안 적는다 — 아래에서 늘 맞춘다.
+# ⚠ **다만 저장소의 `vdi-home-settings.json` 은 같이 고쳐야 한다.** 그것은 이 파일이 못 읽는
+#   자리에 살고(배포 묶음에 안 실린다) 설정 저장소의 훅이 민다. 자리 파일이
+#   `#home-settings = overwrite` 를 드는 자리(사외 VDI)에서는 **그 덮기가 이 설치보다 나중**
+#   이라 씨앗이 최종 승자다 — 여기만 늘리면 그 자리에서 조용히 잃는다.
+$Features = @{
+  ENABLE_TOOL_SEARCH = 'true'    # 도구를 미리 다 안 싣고 필요할 때 찾아 쓴다
+}
+
+# ── 고를 모델 목록 — **자리를 탄다. 게이트웨이에 닿는 자리에만 선다** (결정 0048) ────
+# `/model` 목록에 설 줄을 우리가 선언한다. 접미사 `[1m]` 이 창을 1M 으로 연다 — 게이트웨이는
+# 이미 그만큼을 주고 있었고(0047 · 상한을 넘겨 쏘면 저쪽이 `1000000` 이라고 말한다) 깎던 자는
+# CLI 였다. 셋 다 쟀다: 4.6 은 792k · 4.7·5 는 576k 로 200 이 왔다.
+# ⚠ **씨앗(`vdi-home-settings.json`)에 두지 않는다.** 이 이름들은 게이트웨이가 등록한 것이라
+#   자리를 타는데 씨앗은 익명 층이고 포크를 따라간다(`secrets.d/posco.env` 의 모델 칸 곁말과
+#   같은 축). 사외는 구독으로 돌아 이 이름이 아예 없어서, 씨앗에 두면 **사외 VDI 의 목록에
+#   못 부르는 줄이 서고 고르면 그 자리에서 깨진다** — 게다가 그 자리는 씨앗 덮기가 이 설치보다
+#   나중이라(위 ⚠) 여기서 안 쓴 것도 씨앗이 되살린다. 그래서 자리를 재는 이 파일이 든다.
+# ⚠ **목록의 진본은 `GET /v1/models` 다.** 게이트웨이가 내는 것만 적는다 — 실측 2026-09-15 에
+#   Sonnet 5 와 Haiku 는 그 목록에 **없다**(내장 줄로는 보이지만 고르면 400 이다). 그래서 아래
+#   `$ModelPickerOnly` 로 내장 줄을 숨긴다: 목록이 곧 「이 자리에서 실제로 되는 것」이 된다.
+# ⚠ **이름은 하이픈으로 적는다.** 게이트웨이는 점 표기(`claude-opus-4.7`)로 목록을 내지만
+#   **두 표기를 다 받는다**(하이픈으로 쏘면 `model: claude-opus-4.7` 로 답한다 · 실측). 하이픈이
+#   CLI 카탈로그가 아는 이름이라 표시명·접미사 판정이 걸리고, 점 표기는 「모르는 모델」로 떨어져
+#   접미사가 안 붙는다.
+# 줄이 늘면 여기 한 줄. 게이트웨이가 그 이름을 내는지 먼저 묻는다.
+$ModelPicker = @(
+  @{ model = 'claude-sonnet-4-6[1m]'; description = 'Sonnet 4.6 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-opus-4-7[1m]';   description = 'Opus 4.7 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-opus-5[1m]';     description = 'Opus 5 · 게이트웨이 · 1M 창' }
+)
+# 내장 줄(Sonnet 5 · Haiku · Custom 칸)을 숨긴다 — 이 게이트웨이가 안 내는 것들이다.
+# `Default` 행은 이 값과 무관하게 남는다.
+$ModelPickerOnly = $true
+
+# 도는 중을 알리는 한 줄 — **꼴은 이 함수 하나가 든다:** `  <대상> — <동작>중 … (<수단> · <덧말>)`.
+# ⚠ **왜 한 자리인가.** 설치 창은 몸통이 찍은 **마지막 한 줄**을 「지금 하는 일」로 띄운다
+#   (`install.ui.ps1` 의 `Step-Line`). 자리마다 제 말투로 찍으면 같은 일이 여러 꼴로 보이고,
+#   안 찍는 자리에서는 **직전 결과 줄이 걸린 채** 오래 돌아 멎은 것과 구분이 안 된다.
+#   그래서 시간이 드는 걸음은 들어가기 전에 이것을 부르고, 동작 낱말은 아래 표에서만 고른다.
+# ⚠ **결과 줄은 여기 안 든다** — `— 깔았다 · 있음 · 최신 · 올렸다` 는 자리마다 까닭이 달라 제
+#   자리가 찍는다. 이 함수는 「들어간다」만 말한다.
+$BusyVerbs = [ordered]@{
+  install = '설치중'
+  upgrade = '갱신중'
+  upcheck = '갱신 확인중'
+  fetch   = '받는중'
+  wait    = '기다리는 중'
+}
+
+# 사내에서만 뜻이 있는 이름 — **값이 주소가 아니라 위 자가 못 가른다.**
+# ⚠ **프록시 걷기와 같은 축이고 다른 자다.** 저쪽은 「값이 죽은 포트를 가리키나」를 묻고
+#   이쪽은 「이 이름이 사외에서 뜻이 있나」를 묻는다. 값으로만 재면 주소가 아닌 사내 전용 값이
+#   그대로 샌다 — `ATELIER_SITES=posco` 가 그 틈이었다(실측 2026-09-20 집 PC: 아뜰리에가
+#   회사 담장을 문 채 서서 **갈래가 전부 막혔고, 화면에서 고를 것이 하나도 없었다**).
+# ⚠ **이름 울타리는 여기서도 그대로 든다**(`$FromFile` 이 그 이름을 드는가) — 우리가 실어
+#   보낸 이름만 건드린다. 같은 이름을 제 뜻으로 쓰는 사람의 값을 지우지 않는다.
+# ⚠ **값을 안 본다.** 무엇이 앉아 있든 사외에서는 뜻이 없다 — 저쪽이 값을 묻는 것과 갈리는
+#   자리고, 그래서 이름 울타리가 유일한 방어다. 이름이 늘면 여기 한 줄.
+# ⚠ **끄기 셋도 사내 전용이다** — 회사망이 막는 곳으로 가는 시도를 안 하려고 끄는 것이라 사외에서는
+#   끌 까닭이 없고, 끄면 잃는다: `DISABLE_TELEMETRY` 는 원격 제어가 기대는 기능 플래그 평가까지 꺼
+#   켤 때마다 「Remote Control initialization failed」로 진다(공식 문서 remote-control 요구 조건 ·
+#   실측 2026-09-22 집 PC 와 사외 VDI: 이 값이 처음 심긴 판부터 켜기가 전부 졌다).
+#   ⚠ 그래서 이 셋은 **사용자가 손수 넣었어도 사외에서는 걷힌다** — 설치 목록이 늘 이 이름을 들어 위
+#   이름 울타리를 넘는다.
+# ⚠ **모델 고정 둘도 사내 전용이다** — 게이트웨이가 설정 `model` 키의 `[1m]` 을 벗겨 1M 창을 환경변수로
+#   여는 우회라(claude-config 결정 0049), 구독 로그인으로 서는 사외에서는 열 것이 없다. 남으면 시작 모델이
+#   그 값에 묶여 `/model` 로 고른 것이 새 창마다 밀린다(실측 2026-10-10 집 PC: 새 창이 늘 Opus 5 로 떴다).
+#   `ANTHROPIC_MODEL` 은 위 `$Vars` 표에도 있어 표 루프도 이 목록을 묻는다.
+$InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE',
+                'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL')
+
+# ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
+# ⚠ **여기 든 글자는 진본이 아니라 울타리다.** 이름이 사람에게 찍히는 자리는 여럿인데
+#   (바로가기 이름 · 바로가기 설명 · 물음 상자 제목), 그 자리마다 글자를 박으면 이름을
+#   바꾸는 날 **한 자리만 낡고 그 한 자리는 아무도 안 본다.** 그래서 다 여기서 판다.
+# ⚠ **없어도 선다.** 값 파일이 그 줄을 안 드는 판(옛 배포본 · 이 파일만 떼어 받은 사람)에서
+#   이름이 비면 바로가기가 `.lnk` 라는 이름 없는 아이콘으로 서고 상자 제목이 빈칸이 된다 —
+#   그건 이름을 못 정한 것이 아니라 **못 읽은 것**인데 화면에는 똑같이 보인다. 울타리가 든다.
+$AppNameDefault = 'PAI Setup Wizard'
+$AppName = Read-Directive $EnvFile 'app-name'
+if (-not $AppName) { $AppName = $AppNameDefault }
+
+Write-Host ''
+Write-Host '=== Claude Code 환경 설치 ===' -ForegroundColor Cyan
+Write-Host ''
+
+# ── 1. winget ────────────────────────────────────────────────────────────────────
+# ⚠ **없다고 여기서 죽지 않는다.** winget 이 없으면 **못 까는 것**이지 아무것도 못 하는 것이
+#   아니다 — 확장·CLI·키 심기·홈 설정은 winget 없이 다 선다. 그리고 사내 PC 에는 런타임이
+#   이미 깔려 있는 일이 흔하다(사내 환경 문서가 Node·Python·Git 판을 적고 있다). 죽으면
+#   **다 있는 기계에서도 아무것도 안 되고**, 사람은 못 여는 스토어만 쳐다보게 된다.
+#   ⚠ 그렇다고 조용히 넘기지도 않는다: 못 깐 것은 아래에서 이름을 대고 실패로 적힌다.
+
 $noWinget = -not (Get-Command winget -ErrorAction SilentlyContinue)
 if ($noWinget) {
   if (Restore-Winget) { $noWinget = $false; Update-RuntimePath }
@@ -1456,39 +2580,6 @@ $configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
 #   받아 사람에게 보여 주고 폴더를 연다. 자리를 옮기면 셋을 같이 고친다: 여기 · 저 줄 ·
 #   넘겨받는 쪽의 `ROOT`. 하나만 고치면 설치는 한 데로 받고 나머지는 딴 데서 찾는다.
 $configRepoRoot = Join-Path $env:USERPROFILE 'repos'
-function Get-ConfigRepoDir([string]$Url) {
-  return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
-}
-
-# ── 설정 저장소가 그 도구 홈에 미는 스킬 — 설치가 비켜설 이름 (결정 0107) ─────────────────────────
-# 저장소가 이 PC 에 받아져 있고, 아래 제작자 칸에서 그 도구를 켰고, 그 저장소가 그 스킬을 들 때다 — 그 저장소의 배포가
-# 같은 칸 값(`PAISETUP_PERSONAL`)을 읽어 같은 자리를 저장소 최신판으로 민다. 설치까지 깔면 둘이 판마다 번갈아 덮는다(씨앗
-# 비켜서기와 같은 규율). 돌려주는 것은 이름 → 저장소 자리. 부르는 자리는 다 아래 제작자 칸 뒤라 칸 값이 서 있다.
-#   * 칸 — 배포의 `Test-PersonalFor` 와 같은 값이다. 둘이 같은 뜻으로 읽는지는 설정 저장소의
-#     `scripts/check-deploy-agent-homes.ps1` 이 잰다
-#   * 든다 — 배포가 그 홈에 미는 묶음에 있다: Claude 홈은 `.claude/skills`, Codex · agy 홈은 거기에 `.agents/skills` 까지.
-#     저장소가 제 안에서만 쓰는 스킬(`deploy.skills.local.conf`)은 배포가 홈으로 안 밀어 빼고, 그 홈에 안 가는 러너도 뺀다
-#     (위 갈 곳 표 — 배포도 같은 표를 읽는다)
-function Get-RepoHeldSkills([string]$Tool) {
-  $held = @{}
-  $chosen = @{ claude = $personalClaude; codex = $personalCodex; agy = $personalAgy }
-  if (-not $chosen[$Tool]) { return $held }   # 끈 도구에는 배포가 안 민다 — 설치가 칸 없는 몫을 깐다
-  foreach ($u in $configRepoUrls) {
-    $d = Get-ConfigRepoDir $u
-    if (-not (Test-Path -LiteralPath $d -PathType Container)) { continue }
-    $local = @(Get-Content -LiteralPath (Join-Path $d 'deploy.skills.local.conf') -Encoding UTF8 -ErrorAction SilentlyContinue |
-               ForEach-Object { ($_ -replace '#.*$', '').Trim() } | Where-Object { $_ })
-    $bundles = @('.claude\skills')
-    if ($Tool -ne 'claude') { $bundles += '.agents\skills' }
-    foreach ($b in $bundles) {
-      foreach ($s in @(Get-ChildItem -LiteralPath (Join-Path $d $b) -Directory -ErrorAction SilentlyContinue)) {
-        if ($held.ContainsKey($s.Name) -or ($local -contains $s.Name) -or -not (Test-SkillGoesTo $s.Name $Tool)) { continue }
-        if (Test-Path -LiteralPath (Join-Path $s.FullName 'SKILL.md')) { $held[$s.Name] = $d }
-      }
-    }
-  }
-  return $held
-}
 
 # ── 제작자 세트를 받을 도구 — 도구마다 고른다 (결정 0099) ───────────────────────────────────────
 # `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 Claude 다(옛 칸 — 이름이 「제작자의 Claude Code
@@ -1608,8 +2699,6 @@ if (Test-Path -LiteralPath $skillTargetsFile) {
 } else {
   $Fails.Add('맡기기 러너 갈 곳 표 (kit/skills.targets.conf 없음)')
 }
-# 그 스킬이 이 도구의 홈에 가나 — `$Tool` 은 claude · codex · agy
-function Test-SkillGoesTo([string]$Name, [string]$Tool) { return ($SkillReceiver[$Name] -ne $Tool.ToLower()) }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
@@ -1647,10 +2736,6 @@ $ProxyRunName  = 'PGPTProxy'          # HKCU\...\Run 의 등록 이름 (이전 �
 $ProxyTaskName = 'PGPTProxy-Watchdog' # 작업 스케줄러의 프록시 감시 작업 이름
 $ProxyDirName  = 'PGPT-Proxy'         # %LOCALAPPDATA% 아래 실행 폴더 이름
 
-function Test-ScheduledTaskExists([string]$Name) {
-  try { return [bool](Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) }
-  catch { return $false }
-}
 # ── 회사 설정 둘이 앉는 자리 — **같은 까닭으로 여기 한 자리다** ─────────────────
 # 아래 5⁗ 칸이 이 둘에 쓰고 끝의 검증이 이 둘을 다시 재므로, 글자를 두 자리에 박지 않는다 (#3).
 $CodexCfg  = Join-Path $env:USERPROFILE '.codex\config.toml'
@@ -1676,25 +2761,6 @@ if ($proxyRel -or $codexTpl -or $geminiTpl) {
 # ⚠ **못 읽으면 옛 길로 물러선다.** 이 출력은 표라서 로케일·콘솔 너비·잘린 Id 에 흔들린다.
 #   못 읽은 것을 「올릴 것 없음」으로 읽으면 **판이 낡은 채로 초록이 된다** — 부재보다 나쁘다.
 #   그래서 `$null` 은 「못 쟀다」이고, 그때는 앱마다 묻는 옛 길로 간다.
-# ⚠ **기울기를 한쪽으로만 준다.** Id 가 표에서 잘릴 수 있어 **Id 든 이름이든 걸리면 올린다** —
-#   헛되게 한 번 더 묻는 값은 시간뿐이고, 안 물어 낡은 판이 서는 값은 고장이다.
-# ⚠ **다만 낱말째 건다 — 글자 조각으로 걸지 않는다.** 옛 판은 표 어디든 그 글자가 들었나를
-#   물었고(`-like "*Git*"`, 대소문자 무시), **Lo`git`ech Options** 한 줄이 Git 을 매번 「올릴 것」으로
-#   세웠다 — 실제로는 최신이라 winget 이 헛돌고 기록만 틀린 말을 했다. 셋 중 하나면 센다:
-#   · Id 가 통째로 — 앞뒤가 Id 글자(영숫자·점)가 아니다. `Git.Git` 이 `Git.GitLFS` 에 안 걸린다
-#   · 잘린 Id — 표가 `Microsoft.VisualStud…` 처럼 줄였으면 그 앞토막이 우리 Id 의 머리다
-#   · 이름 칸 — 줄 첫머리에 이름이 서고 **칸 간격(빈칸 둘 이상)이나 줄임표가 뒤따른다.** 그래서
-#     `Git` 은 `GitHub CLI` 에, `Python` 은 `Python Launcher` 에 안 걸린다
-function Test-UpgradeRow([string]$Text, [hashtable]$App) {
-  $id   = [regex]::Escape($App.Id)
-  $name = [regex]::Escape($App.Name)
-  if ($Text -match "(?<![\w.])$id(?![\w.])") { return $true }
-  if ($Text -match "(?m)^\s*$name(\s{2,}|…|\s*$)") { return $true }
-  foreach ($m in [regex]::Matches($Text, '(?<![\w.])([\w.\-+]{8,})…')) {
-    if ($App.Id.StartsWith($m.Groups[1].Value, [StringComparison]::OrdinalIgnoreCase)) { return $true }
-  }
-  return $false
-}
 $upgradable = $null
 if (-not ($NoUpgrade -or $noWinget)) {
   Say-Busy '프로그램 판' 'upcheck' @('winget · 한 번에')
@@ -1848,25 +2914,6 @@ $script:JustInstalledApps = @{}
 #   띄웠나를 가른다), 이미 있던 앱은 안 든다. 여기는 **이 판에서 선 것 전부**라야 한다:
 #   어제 깐 앱도 오늘 띄울 것이다. 키는 `Label`(화면에 쓰는 이름), 값은 표의 행이다.
 $script:InstalledAppRows = @{}
-function Test-DesktopApp($A) {
-  # ⚠ **윈도우에 먼저 묻는다 — 스토어 꼴이든 예전 꼴이든 설치된 앱은 시작 메뉴에 선다.**
-  #   스토어 앱은 winget list 가 소스 인증서(0x8a15005e)나 인덱싱 지연으로 0 이 아닌 값을
-  #   내기 십상인데, 그것만 믿으면 앞길(winget)이 방금 깔았는데도 「실패」로 오판해 뒷길(스텁)로
-  #   넘어가 앱이 두 번 실행된다. 윈도우가 이미 알고 있으면 설치된 것이다.
-  try {
-    $found = [bool](@(Get-StartApps -ErrorAction Stop |
-                      Where-Object { $_.Name -like "*$($A.App)*" })[0])
-    if ($found) { return $true }
-  } catch { }
-
-  if ($A.Via -eq 'winget') {
-    $tl = [IO.Path]::GetTempFileName()
-    $rc = Invoke-Logged 'winget' @('list','--id',$A.Id,'--source',$A.Source) $tl
-    Remove-Item $tl -ErrorAction SilentlyContinue
-    return ($rc -eq 0)
-  }
-  return $false
-}
 
 # ── 짝으로 먼저 서야 하는 런타임 — **있으면 안 깐다** (#16 · 0059) ──────────────────
 # ⚠ **왜 `Test-DesktopApp` 을 안 쓰나 — 그 둘이 이 물건을 못 잰다**(실측 2026-09-22 · 집 PC).
@@ -1884,149 +2931,6 @@ function Test-DesktopApp($A) {
 #   **통째로 진다** — 실측 2026-09-22: `0x8a15005e` 로 설치가 시작도 못 하고, 그런데 **종료코드는
 #   0 이라 성공으로 보인다.** 원본을 박은 뒤 같은 기계에서 한 번에 섰다.
 $WebView2Guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
-function Test-WebView2 {
-  foreach ($p in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$WebView2Guid",
-                   "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$WebView2Guid",
-                   "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$WebView2Guid")) {
-    try {
-      $pv = (Get-ItemProperty -LiteralPath $p -Name pv -ErrorAction Stop).pv
-      if ($pv) { return $pv }
-    } catch { }
-  }
-  return ''
-}
-function Install-Requires($A) {
-  foreach ($id in @($A.Requires)) {
-    if (-not $id) { continue }
-    # ⚠ **재는 자는 짝마다 다르다.** 지금 짝이 하나뿐이라 갈래도 하나다 — 늘 때 여기에 한
-    #   갈래를 더한다. 모르는 id 는 **재지 않고 깐다**: 「못 쟀다」를 「있다」로 접으면 설치가
-    #   조용히 안 서고, 그 실패는 앱 쪽에서 엉뚱한 사유로 나타난다.
-    if ($id -eq 'Microsoft.EdgeWebView2Runtime') {
-      $pv = Test-WebView2
-      if ($pv) { Write-Host ('      · WebView2 런타임 — 있음 ({0})' -f $pv); continue }
-      $what = 'WebView2 런타임'
-    } else {
-      $what = $id
-    }
-    if ($noWinget) {
-      Write-Host '      ! winget 이 없어 짝을 못 깐다 — 이 앱도 안 선다' -ForegroundColor Red
-      $script:Fails.Add("$($A.Label) (짝 $id — winget 이 없다)")
-      return $false
-    }
-    Say-Busy $what 'install' @('winget', "$($A.Label) 이 먼저 요구한다")
-    $rl = [IO.Path]::GetTempFileName()
-    $rc = Invoke-Logged 'winget' (@('install','--id',$id) + $WG) $rl
-    if ($rc -ne 0) {
-      # ⚠ **사유를 우리가 분류하지 않는다 — 뱉은 끝 줄을 그대로 낸다.** 이 파일이 winget
-      #   실패에 이미 쓰는 자(`Show-Log`)를 같은 뜻으로 든다.
-      Write-Host ("      ! 짝을 못 깔았다 (winget 이 $rc 로 끝났다) — 뱉은 끝 줄:") -ForegroundColor Red
-      Show-Log $rl 5
-      $script:Fails.Add("$($A.Label) (짝 $id)")
-      Remove-Item $rl -ErrorAction SilentlyContinue
-      return $false
-    }
-    Remove-Item $rl -ErrorAction SilentlyContinue
-    Write-Host '      · 짝이 섰다'
-  }
-  return $true
-}
-
-# 깐다 — **실패를 우리가 분류하지 않는다.** 막히는 방식이 앱마다 다르고(소스 인증서 · 회선
-# 정책 · 인자) 그 갈림을 코드표로 옮기면 **한 기계에서 본 것이 규칙 행세를 한다.** 대신 도구가
-# 뱉은 끝 줄을 그대로 낸다 — 이 파일이 winget 실패에 이미 쓰는 자다.
-function Install-DesktopApp($A) {
-  Write-Host ''
-  Write-Host "  $($A.Label)" -ForegroundColor Cyan
-  # ⚠ **뒷길이 있으면 winget 이 없다고 여기서 끝내지 않는다** — 뒷길은 winget 을 안 탄다.
-  if ($A.Via -eq 'winget' -and $noWinget -and -not $A.Fallback) {
-    Write-Host '  ! winget 이 없어 못 깐다' -ForegroundColor Red
-    $script:Fails.Add("$($A.Label) (winget 이 없다)")
-    return
-  }
-  if (Test-DesktopApp $A) {
-    if (-not $NoUpgrade -and $A.Via -eq 'winget' -and -not $A.NoSelfUpgrade) {
-      Say-Busy $A.Label 'upcheck' @('winget')
-      $ul = [IO.Path]::GetTempFileName()
-      Invoke-Logged 'winget' (@('upgrade','--id',$A.Id,'--source',$A.Source) + $WGOpts) $ul | Out-Null
-      Remove-Item $ul -ErrorAction SilentlyContinue
-    }
-    Write-Host '  있음'
-    $script:InstalledAppRows[$A.Label] = $A
-    return
-  }
-  # ── 짝이 먼저다 — **앱이 없을 때만 온다.** 앱이 이미 섰으면 짝도 이미 선 것이라(그것 없이는
-  #    안 섰다) 위에서 나갔다. 짝이 지면 앱을 시도하지 않는다: 어차피 그 사유로 지는데, 시도하면
-  #    실패가 **앱 이름으로** 찍혀 까닭이 한 겹 숨는다.
-  if ($A.Requires -and -not (Install-Requires $A)) { return }
-  # 길이 둘일 수 있다 — 앞길부터, 지면 뒷길. 뒷길은 제 몫(`Via`·`Url`·`SilentArgs`)만 들고
-  # 이름 둘(`App`·`Label`)은 앞길에서 물려받는다.
-  $ways = @($A)
-  if ($A.Fallback) { $ways += (@{ App = $A.App; Label = $A.Label } + $A.Fallback) }
-
-  $al = $null
-  $rc = $null
-  foreach ($W in $ways) {
-   if ($al) { Remove-Item $al -ErrorAction SilentlyContinue }
-   $al = [IO.Path]::GetTempFileName()
-   if ($W.Via -eq 'winget') {
-    if ($noWinget) { Write-Host '      · winget 이 없다 — 다음 길로'; continue }
-    # ⚠ **오래 걸리는 걸음은 제 입으로 말한다.** winget 은 조용히(`--silent`) 돌아 수백 MB 를
-    #   받는 1~2분 동안 화면이 한 글자도 안 바뀐다 — 그러면 **「도는 중」과 「멈췄다」가 같은
-    #   화면**이 되어, 진짜로 멈춘 날 사람이 그것을 못 알아본다. 칸의 초는 끝나고서야 찍힌다.
-    # 소스가 기본(`winget`)이면 수단과 겹쳐 「winget · winget」이 찍힌다 — 딴 소스일 때만 댄다.
-    $via = if ($W.Source -and $W.Source -ne 'winget') { "winget · $($W.Source)" } else { 'winget' }
-    Say-Busy $A.Label 'install' @($via, '수백 MB · 1~2분 걸릴 수 있다')
-    $rc = Invoke-Logged 'winget' (@('install','--id',$W.Id,'--source',$W.Source) + $WGOpts) $al
-   } else {
-    # ⚠ **받는 자리와 도는 자리를 가른다.** 못 받은 것과 받았는데 진 것은 다른 명제이고,
-    #   섞으면 회선이 막은 자리에서 「설치가 실패했다」만 남는다.
-    $exe = Join-Path ([IO.Path]::GetTempPath()) ("{0}Setup.exe" -f $W.App)
-    try {
-      # ⚠ **주소의 끝마디가 아니라 받아 놓을 파일 이름을 댄다.** 주소가 파일 이름으로 끝나지
-      #   않는 갈래가 있어(스토어 스텁은 제품 번호로 끝난다) 끝마디를 대면 `9PLM9XGG6VKS` 가
-      #   찍힌다 — 받는 사람에게 아무 뜻이 없다.
-      Say-Busy $A.Label 'fetch' @((Split-Path $exe -Leaf))
-      Get-Download $W.Url $exe
-    } catch {
-      Write-Host '  ! 설치본을 못 받았다' -ForegroundColor Red
-      Say-Why $_
-      $script:Fails.Add("$($A.Label) (설치본을 못 받았다)")
-      Remove-Item $al -ErrorAction SilentlyContinue
-      return
-    }
-    Say-Busy $A.Label 'install' @('설치본', '몇 분 걸릴 수 있다')
-    $pr = Start-Process -FilePath $exe -ArgumentList $W.SilentArgs -PassThru -Wait
-    $rc = $pr.ExitCode
-    Remove-Item $exe -ErrorAction SilentlyContinue
-   }
-   if (Test-DesktopApp $A) { break }
-   if ($W -ne $ways[-1]) { Write-Host ('      · 이 길이 졌다 (낸 값 {0}) — 다음 길로' -f $rc) }
-  }
-  if (Test-DesktopApp $A) {
-    Write-Host '  깔았다' -ForegroundColor Green
-    $script:JustInstalledApps[$A.App] = $true
-    $script:InstalledAppRows[$A.Label] = $A
-  } elseif ($rc -eq 0) {
-    # ⚠ **종료 0 인데 앱이 없다 = 설치본이 제 일을 남에게 넘긴 것이다.** 스토어 스텁이 스토어
-    #   창을 띄우고 바로 빠지는 갈래가 그렇다(실측 2026-09-17 집 PC). 이것을 「설치 실패」로
-    #   찍으면 **거짓말이고**(설치본은 제 일을 했다), 사람이 눌러야 할 일 때문에 설치가 빨갛게
-    #   끝난다. 진짜 실패는 0 이 아닌 값을 낸다 — 그 하나가 가르는 자다.
-    Write-Host '  · 창이 열렸다 — 거기서 [다운로드]를 누르면 깔린다' -ForegroundColor Yellow
-    Write-Host '     설치기는 그것을 못 기다린다(넘긴 프로세스가 이미 끝났다). 깔린 뒤 다시 누르면 「있음」으로 지나간다.'
-  } else {
-    Write-Host ('  ! 설치 실패 — 낸 값 {0}' -f $rc) -ForegroundColor Red
-    # 설치본이 제 로그를 남기는 갈래면 그 끝 줄을 댄다 — 회선이 막은 자리에서는 **막았다는
-    # 말이 그 안에 그대로 들어 있다.**
-    $log = $al
-    if ($A.Log) {
-      $own = [Environment]::ExpandEnvironmentVariables($A.Log)
-      if (Test-Path -LiteralPath $own) { $log = $own }
-    }
-    Show-Log $log
-    $script:Fails.Add($A.Label)
-  }
-  Remove-Item $al -ErrorAction SilentlyContinue
-}
 
 # ⚠ **이 줄이 드는 것은 「언제」뿐이다** — **무엇을** 깔지는 위 제품 칸(`$PickKeys`)이 든다.
 #   옛 판은 `:` 뒤에 목록을 뒀는데, 고르는 축이 제품으로 서면서 그 목록은 자리를 잃었다.
@@ -2087,70 +2991,12 @@ Wire-NodeTrust
 # ── 3. VS Code 확장 — **이 스크립트가 있는 까닭** ────────────────────────────────
 # ⚠ 확장만으로는 안 돈다. 확장은 Claude Code CLI 를 **자식으로 부른다** — 그래서 다음 칸이
 #   붙어 있고, 둘 중 하나만 서면 VS Code 는 열리는데 아무 일도 안 일어난다.
-# ⚠ **하나를 까는 걸음이 한 자리다.** 확장이 셋으로 늘면서(결정 0041) 같은 걸음을 세 번 적으면
-#   한 번 겪은 사고(곧바로 물으면 아직 없다 · 인증서면 다른 병이다)가 두 사본에서 다시 난다.
-# ⚠ **긴 명령 앞에 한 줄을 먼저 찍는다.** 화면 껍데기의 상태 줄은 마지막으로 나온 줄을 그대로
-#   보이므로, 끝나고 나서만 찍으면 그 몇십 초 동안 **직전 칸의 결과**가 「지금 하는 일」로 서 있다
-#   (실측 2026-09-15 · 사외 VDI: Codex 확장을 받는 동안 「클로드 확장 — 최신」이 떠 있었다).
 # ⚠ **`code` 를 띄우는 횟수가 곧 시간이다.** 한 번 뜰 때마다 노드 프로세스가 새로 서고 마켓플레이스에
 #   한 번 묻는데, 이 값이 VDI 에서는 몇 초씩이다. 옛 판은 확장 하나마다 셋(판 번호 → `--force` → 판 번호)을
 #   띄워 셋이면 아홉이었다. 판 번호는 **한 번** 읽고, 깔린 것들은 `--update-extensions` **한 번**으로 올리고,
 #   다시 한 번 읽어 앞뒤로 「올렸다 · 최신」을 가른다 — 셋이 다 깔린 판에서 셋으로 준다.
-# ⚠ **`--force` 가 최신을 다시 받지는 않는다** — 실측 2026-09-15: 같은 판이면 `already installed` 만 찍고
-#   1초에 끝난다. 옛 주석이 「다시 깐다」고 적었던 것은 틀렸고, 느렸던 까닭은 위 횟수다.
 # ⚠ **`--update-extensions` 는 깔린 확장 전부를 올린다** — 우리 셋만 고르는 스위치가 없다. VS Code 가
 #   스스로 하는 자동 갱신과 같은 일이라 더 하는 것은 없다.
-function Get-ExtVersions {
-  $m = @{}
-  foreach ($l in (Get-Quiet 'code' @('--list-extensions','--show-versions'))) {
-    if ($l -match '^(.+)@([^@]+)$') { $m[$Matches[1]] = $Matches[2] }
-  }
-  return $m
-}
-function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [hashtable]$After) {
-  if ($Before.ContainsKey($Id)) {
-    $b = $Before[$Id]; $a = $After[$Id]
-    if ($NoUpgrade)             { Write-Host "  $Label — 있음  ($b)" }
-    elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-    else                        { Write-Host "  $Label — 최신  ($b)" }
-    return
-  }
-  Say-Busy $Label 'install' @('code')
-  $xl = [IO.Path]::GetTempFileName()
-  $rc = Invoke-Logged 'code' @('--install-extension',$Id,'--force') $xl
-  # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
-  #   명령은 바로 돌아온다 — 그때 목록을 물으면 「없다」가 나와 멀쩡한 설치가 실패로 찍힌다.
-  #   몇 초를 두고 다시 묻는다. 없는 것을 오래 기다리지는 않는다.
-  $ext = Get-Quiet 'code' '--list-extensions'
-  if ($ext -notcontains $Id) {
-    for ($i = 0; $i -lt 5; $i++) {
-      Start-Sleep -Seconds 2
-      $ext = Get-Quiet 'code' '--list-extensions'
-      if ($ext -contains $Id) { break }
-    }
-  }
-  if ($ext -contains $Id) {
-    Write-Host "  $Label — 깔았다" -ForegroundColor Green
-  } else {
-    # ⚠ **까닭을 편다.** 「! 설치 실패」 한 줄만 내면 다음 사람이 열어 볼 자리가 없다 —
-    #   이 자리에서 실제로 그랬다(실측 2026-09-09 · 사외 VDI).
-    Write-Host "  ! $Label 설치 실패 (code 가 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
-    Show-Log $xl
-    Write-Host '     10초를 기다려도 목록에 안 떴다.'
-    # ⚠ **인증서면 다른 병이다.** 「self signed certificate」 는 VS Code 의 흠이 아니라
-    #   길에 TLS 를 가로채는 장비가 있는데 **Node 가 그 CA 를 모른다**는 말이다. 안 짚으면
-    #   사람은 영문 오류를 들고 VS Code 를 다시 깔러 간다 — 아무 상관 없는 자리다.
-    $said = (Get-Content -LiteralPath $xl -ErrorAction SilentlyContinue) -join "`n"
-    if ($said -match 'self.signed certificate|unable to (verify|get local issuer)|UNABLE_TO_|CERT_') {
-      Write-Host '     ↑ 인증서 문제다 — 길에 TLS 를 가로채는 장비가 있는데 Node 가 그 CA 를 모른다.' -ForegroundColor Yellow
-      Write-Host '        VS Code 를 다시 깔아도 안 낫는다. 위 「Node 신뢰 배선」 칸을 먼저 본다.'
-    }
-    Write-Host '     VS Code 가 열려 있으면 전부 닫고 다시 눌러 본다.'
-    Write-Host "     손으로 재려면:  code --install-extension $Id --force"
-    $Fails.Add("VS Code 확장 ($Label)")
-  }
-  Remove-Item $xl -ErrorAction SilentlyContinue
-}
 
 Write-Elapsed '[1/8] 프로그램'
 Write-Host ''
@@ -2199,123 +3045,6 @@ if ($NoVsCode) {
 }
 
 # ── 4. CLI — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────────
-# ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 판정은 `--version` 이 도나(프로브)다.
-# ⚠ **판을 `--version` 이 못 대는 패키지가 있다** — `tavily-mcp` 는 0 으로 끝나며 `unknown` 을 낸다.
-#   그 글자로 견주면 레지스트리 판과 늘 달라 **매 실행 다시 깐다.** 그런 자리는 `$ReadVer` 로 판 읽는
-#   손을 넘긴다. 도나(프로브)는 그대로 `--version` 이 든다 — 판을 못 대도 불리기는 한다.
-function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock]$ReadVer = $null) {
-  if (-not $ReadVer) { $ReadVer = { Get-Ver $Cmd '--version' } }
-  if ((Test-Runs $Cmd '--version') -and ($NoUpgrade -or -not (Test-Runs 'npm' '--version'))) {
-    Write-Host "  $Label — 있음 ($(& $ReadVer))"
-  } elseif (Test-Runs $Cmd '--version') {
-    $b = & $ReadVer
-    Say-Busy $Label 'upcheck' @('npm', "지금 $b")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
-    # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
-    #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
-    #   이 걸음이 셋 합쳐 121초였다(실측 v1.12.0 두 번째 판 · 사내 VDI · 설치기 전체의 40%).
-    #   판 하나 묻는 GET 은 어느 기계에서도 1초 안팎이다. 사외 VDI 는 **로그인마다** 이 걸음을 지난다.
-    # ⚠ **묻는 것도 `@latest` 로 묻는다.** install 이 보는 태그와 다른 것을 물으면 엉뚱한 판과
-    #   견주게 되고, 그 어긋남은 「올렸는데 또 올린다」로만 드러나 아무도 안 잡는다.
-    $rvo = Get-Quiet 'npm' @('view',"$Pkg@latest",'version') | Select-Object -First 1
-    $vrc = $LASTEXITCODE
-    $rv  = ("$rvo").Trim()
-    # 깔린 판 문자열은 꼴이 셋이다 — `2.1.273 (Claude Code)` · `codex-cli 0.154.0` · `0.60.0`.
-    # 그래서 같음을 등호로 못 재고 **「깔린 문자열이 레지스트리 판을 낱말로 품나」**로 잰다.
-    # ⚠ **경계를 `\b` 로 잡지 않는다.** `\b` 는 점을 경계로 쳐서 `1.2.1.273` 이 `2.1.273` 을 품은
-    #   것으로 읽힌다 — 판 문자열에서 점은 구분자가 아니라 판의 일부다. 앞뒤로 글자도 점도 오지
-    #   않기를 요구해야 `2.1.2730` 과 `1.2.1.273` 이 함께 걸러진다.
-    $same = $rv -and ($b -match "(?<![\w.])$([regex]::Escape($rv))(?![\w.])")
-    # ⚠ **여기서 지는 둘(못 물음 · 못 올림)을 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛
-    #   판으로 돈다 — 저장소 `pull` 이 졌을 때와 같은 꼴이라(8 칸) 같은 규율로 든다: 말은 하되
-    #   빨강으로 안 끝낸다.
-    if ($vrc -ne 0 -or -not $rv) {
-      # ⚠ **못 물었을 때 「최신」이라 찍지 않는다.** 사내 프록시가 `registry.npmjs.org` 를 막았거나
-      #   Node 가 CA 를 몰라 죽은 판에서도 깔린 판은 그대로다 — 거기서 「최신」을 찍으면 **낡은 판이
-      #   도는 것과 최신이 도는 것을 못 가른다.** install 을 돌려 보는 갈래도 안 둔다: 못 닿는
-      #   레지스트리에는 install 도 못 닿는다.
-      Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
-    } elseif ($same) {
-      Write-Host "  $Label — 최신  ($b)"
-    } else {
-      Say-Busy $Label 'upgrade' @('npm', "$b → $rv")
-      $nl = [IO.Path]::GetTempFileName()
-      # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** 저쪽(2 칸)은 「올릴 것 없음」에도
-      #   0 이 아닌 값을 내서 버릴 **까닭이 적혀 있지만**, npm 은 지면 지는 값을 낸다. 버리고 판만
-      #   견주면 설치가 죽은 판에서도 판이 안 바뀌었으니 아래 마지막 갈래로 새어 **「최신」이 찍힌다.**
-      #   로그도 곧바로 지워 단서가 없었다.
-      $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
-      Update-RuntimePath
-      $a = & $ReadVer
-      if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-      elseif ($nrc -ne 0) {
-        Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
-        Show-Log $nl
-      }
-      else { Write-Host "  $Label — 최신  ($b)" }
-      Remove-Item $nl -ErrorAction SilentlyContinue
-    }
-  } elseif (Test-Runs 'npm' '--version') {
-    Say-Busy $Label 'install' @('npm')
-    $nl = [IO.Path]::GetTempFileName()
-    $nrc = Invoke-Logged 'npm' @('install','-g',$Pkg) $nl
-    # ⚠ **깔고 나서 한 번 더 태운다.** `%APPDATA%\npm` 은 이 설치가 **만드는** 폴더라,
-    #   맨바닥 PC 에서는 앞의 배선이 조용히 지나가고 PATH 가 빈 채로 남는다. 두 번째부터는
-    #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
-    Update-RuntimePath
-    if (Test-Runs $Cmd '--version') {
-      Write-Host "  $Label — 깔았다 ($(& $ReadVer))" -ForegroundColor Green
-    } else {
-      Write-Host "  ! $Label 설치 실패 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
-      Show-Log $nl
-      $Fails.Add($Label)
-    }
-    Remove-Item $nl -ErrorAction SilentlyContinue
-  } else {
-    Write-Host "  ! npm 이 없어 $Label 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
-    $Fails.Add("$Label (npm 이 안 닿는다)")
-  }
-}
-
-# winget 이 내주는 CLI. **깔렸으면 올리기만 시도한다** — npm 갈래와 달리 이 자리가 공짜다.
-# ⚠ **여기서 묻는 자는 `winget list` 가 아니라 `--version` 이다.** 데스크탑 갈래는 GUI 라 PATH 로
-#   못 재서 winget 의 목록에 묻지만(위 `Test-DesktopApp`), CLI 는 **사람이 쓸 이름이 실제로 서는가**가
-#   판정이다. 둘은 다른 명제다 — winget 이 「깔았다」 해도 그 이름이 PATH 에 안 서면 못 쓴다.
-# ⚠ **올리기가 조용히 지나가는 자리가 있다** — 옛 벤더 스크립트로 깐 기계의 `agy` 는 winget 이
-#   모른다. 그때 `--version` 은 서므로 「있음」으로 지나가고 `winget upgrade` 는 아무것도 안 한다.
-#   **그것을 실패로 안 찍는다**: 도구는 멀쩡히 서 있고, 걷어낼지는 사람이 정할 일이다.
-function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
-  if (Test-Runs $Cmd '--version') {
-    if (-not $NoUpgrade -and -not $noWinget) {
-      Say-Busy $Label 'upcheck' @('winget')
-      $ul = [IO.Path]::GetTempFileName()
-      Invoke-Logged 'winget' (@('upgrade','--id',$Id) + $WG) $ul | Out-Null
-      Remove-Item $ul -ErrorAction SilentlyContinue
-    }
-    Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"; return
-  }
-  if ($noWinget) {
-    Write-Host "  ! winget 이 없어 $Label 를 못 깐다" -ForegroundColor Red
-    $Fails.Add("$Label (winget 이 없다)")
-    return
-  }
-  Say-Busy $Label 'install' @('winget')
-  $wl = [IO.Path]::GetTempFileName()
-  $rc = Invoke-Logged 'winget' (@('install','--id',$Id) + $WG) $wl
-  # ⚠ **깐 직후에는 이 창이 그 자리를 모른다** — winget 이 portable 을 심으면서 손댄 PATH 는
-  #   레지스트리에만 있다(실측: 이 기계의 사용자 PATH 에 winget 이 심은 자리가 셋 서 있다).
-  Update-RuntimePath
-  if (Test-Runs $Cmd '--version') {
-    Write-Host "  $Label — 깔았다 ($(Get-Ver $Cmd '--version'))" -ForegroundColor Green
-  } else {
-    # ⚠ **「됐다는데 안 잡힌다」를 「안 됐다」로 안 적는다** — 다음에 어디를 팔지가 갈린다.
-    #   이 갈래가 winget 이 PATH 를 안 들어 준 자리를 잡는 자다.
-    Write-Host "  ! $Label — 설치가 $rc 로 끝났는데 $Cmd 가 안 잡힌다 — 뱉은 끝 줄:" -ForegroundColor Red
-    Show-Log $wl
-    Write-Host "     새 터미널에서 다시 보고, 그래도 없으면:  winget install --id $Id --source winget"
-    $Fails.Add("CLI ($Label)")
-  }
-  Remove-Item $wl -ErrorAction SilentlyContinue
-}
 
 Write-Elapsed '[2/8] VS Code 확장'
 Write-Host ''
@@ -2666,16 +3395,6 @@ $SettingsEnvSkip = @($Vars | Where-Object { $_.Secret } | ForEach-Object { $_.Na
 if (-not $useGateway) {
   Write-Host ''
   Write-Host '  사내 잔재' -ForegroundColor Cyan
-  function Remove-UserVar([string]$Name) {
-    try {
-      [Environment]::SetEnvironmentVariable($Name, $null, 'User')
-      Remove-Item -Path "Env:$Name" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
-      Write-Host "  $Name — 걷었다 (사외라 안 쓴다)" -ForegroundColor Green
-    } catch {
-      Write-Host "  ! $Name 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
-      $script:Fails.Add("$Name 걷기")
-    }
-  }
 
   # ⚠ **사내 전용 이름도 여기서 걷는다 — 안 심기만으로는 못 고친다.** 위 5' 칸은 *이번 판에
   #   심을 목록*에서만 뺄 뿐이라, 사내에서 한 번 깐 기계에 박힌 값은 다시 깔아도 그대로 산다
@@ -2781,13 +3500,6 @@ if (-not $useGateway) {
 # ⚠ 2026-09-14 `bootstrap-vdi.sh` 를 걷을 때 검증된 로그인 블록도 같이 사라진 회귀를
 #   복구한다. 기존 로그인을 먼저 재고, 비었을 때만 브라우저 OAuth 를 띄운 뒤
 #   최대 180초 동안 다시 재다. 사람이 안 누르는 것도 선택이므로 타임아웃을 설치 실패로 세지 않는다.
-function Test-ClaudeLoggedIn {
-  if (-not (Test-Runs 'claude' '--version')) { return $false }
-  try {
-    $said = (Get-Quiet 'claude' @('auth','status') | Out-String)
-    return ($said -match '"loggedIn"\s*:\s*true')
-  } catch { return $false }
-}
 
 $claudeLoggedIn = $false
 if ($offsite) {
@@ -2851,9 +3563,6 @@ if ($offsite) {
 #   `/health` 의 판이 이 판 이상이면 그대로 쓰고, 낡았으면 그 포트를 잡은 파이썬만 끄고 새로 띄운다.
 #   자동시작도 같은 프록시를 이미 띄우는 등록이 있으면 우리 것을 안 건다 — 둘이 매 로그인 포트를 다툰다.
 # ⚠ **포트·주소는 심은 `ANTHROPIC_BASE_URL` 에서 판다** — 파일에 못박힌 18901 을 여기 또 적으면 사본이다.
-function Get-ProxyHealth([string]$Url) {
-  try { return Invoke-RestMethod -Uri $Url -TimeoutSec 3 } catch { return $null }
-}
 # ⚠ **간헐적 502 가 멀쩡한 설치를 빨강으로 끝냈다.** 게이트웨이가 유휴 keep-alive 연결을 조용히
 #   닫아 두면 프록시가 그 위에 쓰다 `RemoteDisconnected` 를 맞고 스스로 502 를 낸다 — 그쪽 재시도는
 #   1번이라(`opus5_proxy.py` `range(2)`) 새로 집은 연결도 죽어 있으면 그대로 나온다. 실측 2026-09-15:
@@ -2861,84 +3570,6 @@ function Get-ProxyHealth([string]$Url) {
 #   상류의 운이 설치 판정이 된다.
 $DoorTries = 3                          # 문을 두드리는 횟수 — 상류가 끊은 것만 다시 묻는다
 $DoorGapMs = 700                        # 사이 쉼 — 죽은 연결이 풀에서 빠질 만큼
-# ⚠ 두 값을 **매개변수 기본값으로 받는다** — 전역만 보면 그 값이 안 선 자리에서 `-le $null` 이 되어
-#   루프가 한 번도 안 돌고 요청 없이 0 이 나온다. 「못 닿았다」와 「안 물어봤다」가 같은 값이 되는
-#   자리라 눈에 안 걸린다(실측: 66ms 에 0 — 나가지도 않았다). 부재가 판정이 되지 않게 여기서 막는다.
-function Test-PrefillDoor([string]$Base, [string]$Token, [string]$Model,
-                          [int]$Tries = $DoorTries, [int]$GapMs = $DoorGapMs) {
-  if ($Tries -lt 1) { $Tries = 1 }
-  $body = @{ model = $Model; max_tokens = 8
-             messages = @(@{ role = 'user'; content = 'hi' }, @{ role = 'assistant'; content = 'prefill' }) } |
-          ConvertTo-Json -Depth 5 -Compress
-  $hdr = @{ 'x-api-key' = $Token; 'Authorization' = "Bearer $Token"; 'anthropic-version' = '2023-06-01' }
-  # ⚠ **다시 묻는 자리는 횟수가 아니라 받은 것의 뜻이 정한다.** 답의 공간이 닫혀 있다 — 게이트웨이가
-  #   **prefill 을 두고 판정한 것**(200 열렸다 · 4xx 거절했다)이면 그 자리에서 멈추고, **그 판정에
-  #   닿지도 못한 것**(5xx 상류가 끊었다 · 0 못 갔다)만 다시 묻는다.
-  #   ⚠ 4xx 를 다시 물으면 안 된다 — 400 이 이 검사가 찾는 그 결함이라(결정 0041) 그것을 재시도로
-  #   덮으면 재는 자가 제가 재려던 것을 지운다. 늦게 빨강인 편이 가짜 초록보다 낫다.
-  $code = 0
-  for ($i = 1; $i -le $Tries; $i++) {
-    if ($i -gt 1) { Start-Sleep -Milliseconds $GapMs }
-    try {
-      $r = Invoke-WebRequest -Uri ($Base.TrimEnd('/') + '/v1/messages') -Method Post -Headers $hdr `
-             -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 120 -UseBasicParsing
-      $code = [int]$r.StatusCode
-    } catch {
-      $code = 0
-      try { $code = [int]$_.Exception.Response.StatusCode } catch { }
-    }
-    if (-not (($code -eq 0) -or ($code -ge 500))) { break }
-  }
-  return $code
-}
-function Stop-ProxyOnPort([int]$Port) {
-  try {
-    $owners = @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
-                Select-Object -ExpandProperty OwningProcess -Unique)
-    foreach ($o in $owners) {
-      $pr = Get-Process -Id $o -ErrorAction SilentlyContinue
-      if ($pr -and $pr.ProcessName -match '^pythonw?$') { Stop-Process -Id $o -Force -ErrorAction SilentlyContinue }
-    }
-    # ⚠ 포트를 안 듣더라도 잔여 opus5_proxy 프로세스(죽은 자식의 부모 껍데기 등)가 있으면 정리한다 (#21)
-    Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.CommandLine -like '*opus5_proxy.py*' } |
-      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Milliseconds 500
-  } catch { }
-}
-
-# ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** (결정 0028 · #51 · #75 · PAISetup#21).
-#   Get-Command 가 잡는 첫 번째가 WindowsApps 의 스토어 껍데기이거나 Python Manager 런처일 수 있다.
-#   런처 곁의 pythonw.exe 를 와치독에 박으면, 런처가 진짜 해석기를 자식으로 띄우고 자신도
-#   대기하며 남아 프로세스가 두 겹으로 선다 — 자식이 죽어도 껍데기가 남아 와치독이 안 되살린다.
-# ⚠ **해석기에게 sys.executable 을 물어 진짜 제 자리를 딴다.**
-#   런처·심볼릭 링크 뒤에 숨은 실제 인터프리터 위치를 sys.executable 이 돌려준다.
-#   그리고 그 곁의 pythonw.exe 가 실제로 존재하고 껍데기(WindowsApps)가 아닐 때만 택한다.
-function Get-RealPythonW {
-  $candidates = @()
-  $pyCmds = @(Get-Command python, python3, py -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -Unique)
-  if ($pyCmds) { $candidates += $pyCmds }
-  $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
-  $candidates += @(Get-ChildItem "$env:ProgramFiles\Python3*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
-  $candidates += @(Get-ChildItem "$env:LOCALAPPDATA\Python\*\python.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
-
-  foreach ($c in ($candidates | Select-Object -Unique)) {
-    if (-not $c -or -not (Test-Path -LiteralPath $c)) { continue }
-    $real = $null
-    try { $out = & $c -c "import sys; print(sys.executable)" 2>$null } catch { }
-    if ($LASTEXITCODE -eq 0 -and $out) {
-      $real = ($out | Select-Object -First 1).Trim()
-    }
-
-    if ($real -and (Test-Path -LiteralPath $real)) {
-      $candPyw = Join-Path (Split-Path $real -Parent) 'pythonw.exe'
-      if ((Test-Path -LiteralPath $candPyw) -and ($candPyw -notlike '*\Microsoft\WindowsApps\*')) {
-        return $candPyw
-      }
-    }
-  }
-  return $null
-}
 
 $proxyHealthUrl = $null
 if ($wantProxy) {
@@ -2968,22 +3599,6 @@ if ($wantProxy) {
       } else {
         $proxyDir  = Join-Path $env:LOCALAPPDATA $ProxyDirName
         $proxyPath = Join-Path $proxyDir (Split-Path $proxySrc -Leaf)
-        # ── 판 번호는 두 칸이다 — **상류 판과 우리 판을 안 섞는다** ─────────────────
-        # ⚠ **점 찍힌 한 줄(`15.4`)을 크기로 견주지 않는다.** 문자열로 견주면 `"9" -ge "10"` 이
-        #   참이 되고, `[version]` 으로 넘기면 옛 판이 낸 정수 한 칸(`18`)이 `18.0` 으로 읽혀
-        #   **낡은 것이 새것으로 보인다.** 그래서 **두 수를 각각 정수로 읽어 차례로 견준다** —
-        #   위 칸이 다르면 그것이 정하고, 같을 때만 아래 칸을 본다.
-        # ⚠ **옛 판이 도는 자리를 받는다.** v17·v18 은 `VERSION` 한 칸만 들어 이 정규식에
-        #   안 걸리는데, 그때 `$runUp` 이 0 으로 남아 **새 판이 늘 이긴다** — 갈아 끼우는 쪽으로
-        #   기운다. 반대로 두면 옛 프록시가 영영 안 바뀐다(부재가 통과로 읽히는 자리).
-        function Get-ProxyVer([string]$text) {
-          $up = 0; $ours = 0
-          $mu = [regex]::Match($text, '(?m)^VERSION_UPSTREAM\s*=\s*(\d+)')
-          $mo = [regex]::Match($text, '(?m)^VERSION_OURS\s*=\s*(\d+)')
-          if ($mu.Success) { $up = [int]$mu.Groups[1].Value }
-          if ($mo.Success) { $ours = [int]$mo.Groups[1].Value }
-          return @($up, $ours)
-        }
         $ourPair = Get-ProxyVer (Get-Content -LiteralPath $proxySrc -Raw -Encoding UTF8)
         $ourVer = '{0}.{1}' -f $ourPair[0], $ourPair[1]
         New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
@@ -3433,62 +4048,6 @@ Write-Elapsed '[5/8] 홈 설정'
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
 # ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다.
 #   제작자 칸의 Claude 칸(`-PersonalFor claude` · 옛 `-WithPersonalConfig`)을 켤 때만, 그리고 이 폴더에 실제로 있을 때만 깐다.
-# ── 묶음에서 빠진 스킬을 홈에서 걷는다 ─────────────────────────────────────────
-# ⚠ **왜 있나.** 위 복사는 `Copy-Item -Recurse -Force` 라 **묶음에 없는 스킬을 안 지운다** — 배포본에서
-#   스킬을 걷어도 한 번 깐 사람 홈에는 옛 사본이 영영 남아 계속 로드된다(씨앗 칸의 거울과 같은 병이다).
-# ⚠ **홈 스킬 폴더를 거울로 맞추지 않는다.** 그 폴더에는 받는 사람이 손수 만든 스킬 · 다른 도구가 깐
-#   스킬이 섞여 산다 — 묶음에 없는 것을 다 걷으면 남의 것을 지운다. 그래서 **이 설치기가 깐 이름만**
-#   센다: 깐 이름을 기록(`~/.claude/.paisetup-skills`)에 적어 두고, 다음 설치 때 **기록에 있었는데 이번
-#   묶음에 없는 것**만 걷는다.
-# ⚠ **지우지 않고 옮긴다** — `~/.claude/backups/install-skills-<시각>/`. 같은 이름을 사람이 손수 만들어
-#   두었을 수도 있어서, 되돌릴 자리를 남긴다.
-# ⚠ **기록이 없는 Claude 홈은 과도기 목록을 쓴다** — 기록은 1.25.0 부터 적힌다. 그 전 판이 Claude 홈에 깔았다가
-#   배포본에서 빠진 이름은 배포본 이력에서 한 번 셌다(`git log --diff-filter=D -- .claude/skills` · 2026-09-24:
-#   pptx · roadmap-doc). 모든 기계가 이 판 이상을 한 번 돌고 나면 이 목록은 할 일이 없다 — 걷는 날은 사람이 정한다.
-#   **다른 홈은 이 목록을 안 쓴다**(`-Transition @()`) — Codex · agy 홈에 그 판이 깐 적이 없고, 그 홈들은 사람 스킬과
-#   같이 살아 같은 이름의 사람 스킬을 걷게 된다(아래 `Install-HomeSkills`).
-# ⚠ **부르는 자가 둘이다** — 6 칸(묶음 전부를 깐 판)과 7 칸의 「칸 없이 까는 스킬」(몇 개만 깐 판). 그래서
-#   기록에 적는 것은 **이번에 깐 이름(`-Installed`) 더하기, 앞 기록 가운데 묶음에 아직 있는 이름**이다. 몇 개만
-#   깐 판이 기록을 그 몇 개로 갈아 쓰면, 앞서 칸을 켜고 깐 나머지가 기록에서 빠져 묶음에서 걷히는 날 안 걷힌다.
-#   `-Installed` 를 안 주면 묶음 전부를 깐 것으로 친다(6 칸).
-# 백업 자리는 늘 새로 잡는다 — 같은 초에 두 번 돌거나 앞 백업에 같은 이름이 있으면, 이미 있는 폴더로 옮기기가 그 안으로
-#   들어가 앞 백업과 겹친다. 그래서 비어 있는 이름을 고른다(`-2` · `-3` …).
-function Get-FreePath([string]$Path) {
-  # 아직 없는 자리 — `$Path` 가 있으면 `$Path-2` · `$Path-3` … 가운데 처음 빈 것
-  $p = $Path; $i = 2
-  while (Test-Path -LiteralPath $p) { $p = "$Path-$i"; $i++ }
-  return $p
-}
-function Remove-RetiredSkills {
-  # `$Keep` — 「묶음에 있나」 대신 「이번 목록에 있나」로 잰다(결정 0099). 제작자 칸을 끈 도구의 홈에서 제작자 스킬이,
-  #   받는 쪽 홈에서 러너가 빠지게 한다. 기록에 적힌 이름만 걷는 것은 같다.
-  # `$Transition` — 기록이 없을 때 기록 대신 쓸 이름(위 곁말). 안 주면 Claude 홈의 과도기 목록이다.
-  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string[]]$Keep,
-        [string[]]$Transition = @('pptx', 'roadmap-doc'))
-  if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
-  $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
-  if ($null -eq $Installed) { $Installed = $shipped }
-  $before = if (Test-Path -LiteralPath $Ledger) {
-    @([IO.File]::ReadAllLines($Ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-  } else {
-    @($Transition | Where-Object { $_ })   # 과도기 — 위 곁말
-  }
-  $stay = if ($null -ne $Keep) { $Keep } else { $shipped }
-  $gone = @($before | Where-Object { $stay -notcontains $_ } |
-            Where-Object { Test-Path -LiteralPath (Join-Path $SkillHome $_) -PathType Container })
-  if ($gone.Count -gt 0) {
-    $bk = Get-FreePath (Join-Path $BackupRoot ("install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss')))
-    New-Item -ItemType Directory -Path $bk -Force | Out-Null
-    foreach ($n in $gone) {
-      Move-Item -LiteralPath (Join-Path $SkillHome $n) -Destination (Join-Path $bk $n) -Force
-      Write-Host "  스킬 $n — 묶음에서 빠져 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
-    }
-  }
-  # 기록을 적는다(위 곁말) — 다음 설치가 이것과 견준다. BOM 없는 UTF-8(이름이 한글이어도 읽힌다).
-  $keep = @(@($before | Where-Object { $stay -contains $_ }) + @($Installed) | Where-Object { $_ } | Select-Object -Unique)
-  New-Item -ItemType Directory -Path (Split-Path -Parent $Ledger) -Force | Out-Null
-  [IO.File]::WriteAllLines($Ledger, [string[]]$keep, (New-Object Text.UTF8Encoding($false)))
-}
 
 Write-Host ''
 Write-Host '[6/8] 개인 규범·룰·스킬' -ForegroundColor Cyan
@@ -3578,24 +4137,9 @@ if ($kitCodex -or $kitAgy) {
 #   자리를 이 PC 홈의 절대 경로로 바꾼 글을 깐다. 「이미 맞다」도 끝 검증도 짐의 바이트가 아니라 그 글과 견준다.
 # ⚠ **대상이 링크면 링크를 걷고 쓴다.** 쓰기는 링크를 따라가 가리키는 원본을 덮는다 — 손으로
 #   링크를 걸어 둔 PC 에서 그 원본이 한 줄짜리로 바뀐다. 있던 파일은 백업 자리로 먼저 떠 둔다.
-function ConvertTo-AgyPointerText([string]$Template, [string]$HomeDir) {
-  # 가리킴 파일의 틀 글 하나를 이 PC 의 글로 — 틀이 홈을 `~/` 로 연 자리(JSON 글 값의 머리 `"~/` · include 대상의 머리
-  #   `](~/`)만 `$HomeDir` 의 절대 경로(`C:/Users/<이름>/`)로 바꾼다. 홈은 `/` 로 적는다(agy 는 두 꼴을 다 받는다).
-  # ⚠ **왜 절대 경로인가** — 안티그래비티 데스크탑 앱은 목록의 `path` 로 절대 경로만 받는다(앱 로그 「must be an absolute
-  #   path」). agy CLI 는 상대 경로도 설정 폴더 기준으로 받지만 `~/` 는 앱과 같은 오류로 거절한다(#134 실측). 둘이 다 받는
-  #   꼴은 드라이브 문자로 여는 절대 경로다. 실측과 나머지 까닭은 설정 저장소 `deploy.ps1` 의 같은 이름 함수 곁말이 든다.
-  # 짝 — 그 함수가 같은 틀에서 같은 글을 짓는다. 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 둘을 떼어 견준다.
-  $abs = $HomeDir.Replace('\', '/').TrimEnd('/') + '/'
-  $Template.Replace('"~/', '"' + $abs).Replace('](~/', '](' + $abs)
-}
 # 지은 글은 BOM 없는 UTF-8 로 쓰고 바이트로 견준다 — BOM 이 붙으면 agy 가 그 목록을 JSON 으로 못 읽는다(#134 실측). 같은
 #   글에 BOM 만 붙은 파일도 다른 것으로 세어 다시 쓴다.
 $AgyUtf8 = New-Object Text.UTF8Encoding($false)
-function Test-AgyPointerSame([string]$Path, [string]$Want) {
-  $wantBytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Want)
-  (Test-Path -LiteralPath $Path -PathType Leaf) -and
-    ([Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) -ceq [Convert]::ToBase64String($wantBytes))
-}
 if ($wantAgyKit) {
   $agySrc = Join-Path $Kit 'agy'
   $agyDst = Join-Path $env:USERPROFILE '.gemini\config'
@@ -3629,45 +4173,6 @@ if ($wantAgyKit) {
   }
 }
 
-# agy 칸을 끈 판 — 우리 설정 둘(규범 · 룰을 가리키는 둘)만 걷는다. 「우리 것」은 꼴로 가린다: 규범 include 한 줄 ·
-# 룰 자리 한 줄이고 그 자리가 우리가 써 온 자리(옛 Claude 홈 · 지금 중립 자리) 가운데 하나다. 다르면 사람이 고친
-# 것이라 둔다. 옛 스킬 목록은 칸과 무관하게 걷는다(아래 「agy 옛 스킬 자리」). 설정 저장소가 있어도 걷는다 — 그 배포도 끈
-# 칸에는 안 민다(결정 0107).
-function Get-AgyKitOurs([string]$CfgDir, [string]$KitAgy, [string]$HomeDir) {
-  # 끈 판에 걷을 우리 파일(`AGENTS.md` · `rules.json`)의 경로들. 「우리가 써 온 꼴」은 둘이다:
-  #   * 옛 판이 깐 글자 그대로 — 규범 `~/.claude/CLAUDE.md` · `~/.paisetup/norms/norms.md`, 룰 `../../.claude/rules` ·
-  #     `../../.paisetup/norms/rules`. 이 판에서는 안 짓지만 그 판으로 깐 PC 에 남아 있다
-  #   * 짐의 틀(`$KitAgy` 의 같은 이름)과 그 틀을 이 PC 에 지은 글(`ConvertTo-AgyPointerText`) — 틀에서 파생하므로 틀이
-  #     바뀌어도 따라온다
-  # 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 이 함수를 떼어 옛 꼴 · 새 꼴 · 사람이 고친 꼴로 잰다.
-  $ours = @()
-  $agMd = Join-Path $CfgDir 'AGENTS.md'
-  if (Test-Path -LiteralPath $agMd -PathType Leaf) {
-    $mdWant = @('@[norms](~/.claude/CLAUDE.md)', '@[norms](~/.paisetup/norms/norms.md)')
-    $mdKit = Join-Path $KitAgy 'AGENTS.md'
-    if (Test-Path -LiteralPath $mdKit) {
-      $tpl = [IO.File]::ReadAllText($mdKit)
-      $mdWant += @($tpl.Trim(), (ConvertTo-AgyPointerText $tpl $HomeDir).Trim())
-    }
-    if ($mdWant -contains [IO.File]::ReadAllText($agMd).Trim()) { $ours += $agMd }
-  }
-  $agRules = Join-Path $CfgDir 'rules.json'
-  if (Test-Path -LiteralPath $agRules -PathType Leaf) {
-    try {
-      $rulesWant = @('../../.claude/rules', '../../.paisetup/norms/rules')
-      $rulesKit = Join-Path $KitAgy 'rules.json'
-      if (Test-Path -LiteralPath $rulesKit) {
-        $tpl = [IO.File]::ReadAllText($rulesKit)
-        foreach ($t in @($tpl, (ConvertTo-AgyPointerText $tpl $HomeDir))) {
-          $rulesWant += @(($t | ConvertFrom-Json).entries | ForEach-Object { $_.path })
-        }
-      }
-      $rj = @((Get-Content -LiteralPath $agRules -Raw -Encoding UTF8 | ConvertFrom-Json).entries)
-      if ($rj.Count -eq 1 -and $rulesWant -contains $rj[0].path) { $ours += $agRules }
-    } catch { }
-  }
-  return $ours
-}
 if ($hostAgy -and -not $personalAgy) {
   $ours = @(Get-AgyKitOurs (Join-Path $env:USERPROFILE '.gemini\config') (Join-Path $Kit 'agy') $env:USERPROFILE)
   if ($ours.Count) {
@@ -3697,55 +4202,6 @@ if ($hostAgy -and -not $personalAgy) {
 $AgySkillHome     = Join-Path $env:USERPROFILE '.gemini\config\skills'
 # 설정 저장소 배포가 Codex · agy 홈에 민 이름의 기록 — 이 설치기 기록 곁에 그 배포가 쓴다(설정 저장소 `deploy.ps1` 의 `Mine`)
 $DeployLedgerName = '.paisetup-deploy-skills'
-function Get-HomeSkills([string]$Column, [bool]$Personal) {
-  $names = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Column })
-  if ($Personal -and (Test-Path -LiteralPath $KitSkills -PathType Container)) {
-    $names += @(Get-ChildItem -LiteralPath $KitSkills -Directory | ForEach-Object { $_.Name } |
-                Where-Object { -not $FreeSkills.Contains($_) })
-  }
-  @($names | Where-Object { $_ -and (Test-SkillGoesTo $_ $Column) } | Select-Object -Unique)
-}
-function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot,
-                            [hashtable]$Held) {
-  $ours = @(@($Ledger, (Join-Path (Split-Path -Parent $Ledger) $DeployLedgerName)) |
-            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { [IO.File]::ReadAllLines($_) } |
-            ForEach-Object { $_.Trim() } | Where-Object { $_ })
-  $aside = $null
-  $done = @()
-  foreach ($n in $Names) {
-    if ($Held -and $Held.ContainsKey($n)) {
-      Write-Host "  $Label 스킬 $n — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
-      continue
-    }
-    $from = Join-Path $KitSkills $n
-    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) {
-      Write-Host "  ! $Label 스킬 $n — 짐에 없다" -ForegroundColor Red
-      $Fails.Add("$Label 스킬 $n (짐에 없음)")
-      continue
-    }
-    $to = Join-Path $SkillHome $n
-    if ((Test-Path -LiteralPath $to) -and ($ours -notcontains $n)) {
-      # 우리 기록에 없는 같은 이름 — 사람이나 다른 도구의 것이다. 덮지도 섞지도 않고 통째로 비켜 둔 뒤 깐다
-      if (-not $aside) {
-        $aside = Get-FreePath (Join-Path $BackupRoot ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
-        New-Item -ItemType Directory -Path $aside -Force | Out-Null
-      }
-      Move-Item -LiteralPath $to -Destination (Join-Path $aside $n) -Force
-      Write-Host "  ! $Label 스킬 $n — 같은 이름의 폴더가 우리 기록에 없어 통째로 옮겨 두고 깐다 (옮긴 자리: $aside)" -ForegroundColor Yellow
-    }
-    New-Item -ItemType Directory -Path $to -Force | Out-Null
-    Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
-    Write-Host "  $Label 스킬 $n — 깔았다" -ForegroundColor Green
-    $done += $n
-  }
-  if ($done.Count) {
-    # 이 홈에서는 「이번에 깔 목록에 없는 것」을 걷는다 — 제작자 칸을 끈 도구에서 제작자 스킬이 빠진다(결정 0099).
-    #   비켜선 이름은 남긴다 — 그 자리는 설정 저장소의 배포가 민 것이다
-    $keep = @(@($Names) + @(if ($Held) { $Held.Keys }) | Select-Object -Unique)
-    Remove-RetiredSkills -Bundle $KitSkills -SkillHome $SkillHome `
-                         -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done -Keep $keep -Transition @()
-  }
-}
 $codexHomeSkills = if ($hostCodex) { @(Get-HomeSkills 'Codex' $kitCodex) } else { @() }
 $agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy' $kitAgy) }     else { @() }
 
@@ -3769,40 +4225,6 @@ $agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy' $kitAgy) }     else 
 #   `scripts/check-agy-pointers.ps1` · `scripts/check-deploy-agent-homes.ps1` 이 둘을 떼어 견준다.
 $AgyOldSkillHome = Join-Path $env:USERPROFILE '.gemini\config\paisetup-skills'
 $AgySkillList    = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
-function Get-AgyOldListState([string]$Path, [string]$HomeDir) {
-  # 목록의 꼴 — 'ours'(우리가 쓴 꼴 그대로 — 위 곁말) · 'mixed'(옛 자리를 우리 꼴로 여는 항목이 있는데 무엇이 더 붙었다 ·
-  #   사람이 고친 파일) · 'none'(없다 · 못 읽는다 · 옛 자리를 안 연다). BOM 은 읽을 때 걷는다 — BOM 이 붙은 목록은 agy 가 못
-  #   읽어 애초에 아무것도 안 열었다. 열쇠 이름은 글자까지 견준다 — 우리는 `entries` · `path` 만 썼다.
-  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 'none' }
-  try { $doc = [IO.File]::ReadAllText($Path) | ConvertFrom-Json } catch { return 'none' }
-  if ($doc -isnot [Management.Automation.PSCustomObject]) { return 'none' }
-  $old = @('paisetup-skills', '~/.gemini/config/paisetup-skills', ($HomeDir.Replace('\', '/').TrimEnd('/') + '/.gemini/config/paisetup-skills'))
-  $hits = @(@($doc.entries) | Where-Object { $_ -is [Management.Automation.PSCustomObject] } |
-            Where-Object { $old -contains ([string]$_.path).Replace('\', '/').TrimEnd('/') })
-  if (-not $hits.Count) { return 'none' }
-  $keys = { param($o) (@($o.PSObject.Properties | ForEach-Object { $_.Name }) -join ',') }
-  $exact = ((& $keys $doc) -ceq 'entries') -and ($doc.entries -is [Array]) -and (@($doc.entries).Count -eq 1) -and
-           ($doc.entries[0] -is [Management.Automation.PSCustomObject]) -and ((& $keys $doc.entries[0]) -ceq 'path') -and
-           ($doc.entries[0].path -is [string])
-  if ($exact) { return 'ours' }
-  return 'mixed'
-}
-function Get-AgyOldHomePlan([string]$OldHome, [string]$NewHome, [string[]]$Ours, [string[]]$Reinstall) {
-  # 옛 자리를 비우는 판 — 옛 자리에 든 우리 이름마다:
-  #   Aside    — 새 자리에 같은 이름이 이미 있다 → 그 폴더를 먼저 통째로 백업 자리로 비켜 둔다(우리가 둔 것일 수 없다 — 위 곁말)
-  #   ToBackup — 이번에 다시 깔거나 배포가 미는 몫이다(`$Reinstall`) → 옛것은 백업 자리로
-  #   ToNew    — 나머지 → 새 자리로 옮긴다(그대로 쓰인다)
-  #   Foreign(기록에 없는 이름 · 폴더가 아닌 것 — 안 건드린다) · Remove(옛 자리가 있고 Foreign 이 없다 — 다 옮긴 뒤 걷는다)
-  $plan = @{ ToNew = @(); ToBackup = @(); Aside = @(); Foreign = @(); Remove = $false }
-  if (-not (Test-Path -LiteralPath $OldHome -PathType Container)) { return $plan }
-  foreach ($e in @(Get-ChildItem -LiteralPath $OldHome -Force)) {
-    if (-not $e.PSIsContainer -or (@($Ours) -notcontains $e.Name)) { $plan.Foreign += $e.Name; continue }
-    if (Test-Path -LiteralPath (Join-Path $NewHome $e.Name)) { $plan.Aside += $e.Name }
-    if (@($Reinstall) -contains $e.Name) { $plan.ToBackup += $e.Name } else { $plan.ToNew += $e.Name }
-  }
-  $plan.Remove = ($plan.Foreign.Count -eq 0)
-  return $plan
-}
 if ($hostAgy) {
   $agyLedger = Join-Path $env:USERPROFILE '.gemini\.paisetup-skills'
   $agyHeld   = Get-RepoHeldSkills 'agy'
@@ -4221,102 +4643,6 @@ if ($hostCodex -and -not ($personalByRepo -and $personalCodex)) {
 #   비켜선다.** 그 자리의 몸통이 사라졌으면(저장소를 지웠다) 여기서 다시 심는다.
 # ⚠ **껍데기 글자와 matcher 는 씨앗의 `image-gate.sh` 한 벌이다.** 여기는 자리만 채운 한 줄을
 #   심고 matcher 는 그 파일 첫 줄에서 읽는다 — 손으로 한 벌 더 들면 저쪽과 조용히 어긋난다.
-# ⚠ **심는 손은 하나다 — 그림 문 · 웹 다시 찾기(claude-config #117) · DRM 길잡이(#120)가 같이 쓴다.** 훅마다
-#   이 고리를 베끼면 규율 하나를 고칠 때 한쪽만 낡는다. 설정 저장소 몸통(`session-start-body.sh` 의
-#   `plant_tool_hook`)과 같은 규율이다.
-#   `$Parts` 는 있어야 심는 씨앗 파일들이고 맨 앞이 껍데기다. `$Var` 는 심긴 한 줄이 자리를 담는 셸 이름,
-#   `$Tail` 은 그 줄 꼬리다. 심었으면 참을 돌려준다 — 부르는 쪽이 `$dirty` 를 세운다.
-function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts, [string]$Var, [string]$Tail) {
-  $dir = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
-  $shellPath = Join-Path $dir $Parts[0]
-  $matcher = $null
-  $perEvent = @{}   # 이벤트마다 다른 matcher — `# matcher.<이벤트> = …` 줄이 그 진본이다
-  if (Test-Path -LiteralPath $shellPath) {
-    $m = Select-String -LiteralPath $shellPath -Pattern '^# matcher = (\S+)' -Encoding UTF8 | Select-Object -First 1
-    if ($m) { $matcher = $m.Matches[0].Groups[1].Value }
-    # ⚠ **이벤트마다 보는 것이 다르면 matcher 도 다르다** — 껍데기가 `# matcher.PreToolUse = …` 처럼 제
-    #   이벤트 이름을 달아 든다. 여기서 손으로 한 벌 더 적으면 저쪽과 조용히 어긋난다.
-    foreach ($em in @(Select-String -LiteralPath $shellPath -Pattern '^# matcher\.(\w+) = (\S+)' -Encoding UTF8)) {
-      $perEvent[$em.Matches[0].Groups[1].Value] = $em.Matches[0].Groups[2].Value
-    }
-  }
-  if (@($Parts | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dir $_)) }).Count -or -not $matcher) {
-    Write-Host "  ! $Label — 씨앗의 .claude/hooks/ 에 $($Parts -join ' · ') 가 없어 안 심는다" -ForegroundColor Yellow
-    return $false
-  }
-  if (-not $cfg) {
-    # 홈 설정을 못 읽은 자리(위 5칸이 까닭을 대고 물러난 그 갈래) — 여기서 또 세지 않는다.
-    Write-Host "  $Label — 홈 설정을 못 읽어 안 심는다"
-    return $false
-  }
-  # ⚠ **경로를 슬래시로 굳힌다.** 명령은 Git Bash 가 읽고 역슬래시는 그 자리에서 탈출
-  #   문자다 — `\.claude` 가 조용히 다른 글자가 된다.
-  $dirSh = ($dir -replace '\\', '/')
-  # ⚠ **폴더가 사라져도 도구를 안 막는다** — `.` 은 특수 내장이라 파일이 없으면 dash 는 그 자리에서
-  #   2 로 죽고(PreToolUse 에서 2 는 막기다), 걸 일이 없는 호출까지 깨진다. 그래서 먼저 재고 물러난다.
-  $cmd = ('{0}="{1}"; [ -f "${0}/{2}" ] || exit 0; . "${0}/{2}"{3}' -f $Var, $dirSh, $Parts[0], $Tail)
-  # 우리 꼴 — 껍데기 이름이 든 명령(`image-gate.` · `web-retry.` · `drm-guide.`)이다.
-  $marker = [IO.Path]::GetFileNameWithoutExtension($Parts[0]) + '.'
-
-  # 비켜설 자리 — 우리 꼴(`<Var>="…"`)인데 다른 자리를 가리키고, 그 자리에 부품이 다 있다.
-  $owner = $null
-  $pat = [regex]::Escape($Var) + '="([^"]+)"'
-  foreach ($ev in $Events) {
-    foreach ($entry in @($cfg.hooks.$ev)) {
-      foreach ($h in @($entry.hooks)) {
-        $c = if ($h) { [string]$h.command } else { '' }
-        if ($c.Contains($marker) -and $c -match $pat) {
-          $d = $Matches[1]
-          # 문자열로 잇는다 — `Join-Path` 는 없는 드라이브(`Q:/…`)에서 던지고, 전역 Stop 아래라 설치가 통째로 선다.
-          if ($d -ne $dirSh -and @($Parts | Where-Object { -not (Test-Path -LiteralPath "$d/$_") }).Count -eq 0) { $owner = $d }
-        }
-      }
-    }
-  }
-  if ($owner) {
-    Write-Host "  $Label — 설정 저장소 진본이 들고 있어 비켜선다" -ForegroundColor Green
-    Write-Host "     $owner"
-    return $false
-  }
-  # ⚠ **심기는 더하기만 하지 않는다 — 우리 꼴을 먼저 걷는다.** 명령 글자가 바뀌는 날
-  #   옛 항목이 남아 **옛 고리가 같이 돌고**, 그러면 위 가드가 통째로 무효가 된다
-  #   (진본 훅의 같은 규율).
-  $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
-  if (-not $hooks) {
-    $hooks = New-Object PSObject
-    $cfg | Add-Member -NotePropertyName hooks -NotePropertyValue $hooks -Force
-  }
-  $dropped = 0
-  foreach ($ev in $Events) {
-    $kept = @()
-    foreach ($entry in @($hooks.$ev)) {
-      if (-not $entry) { continue }
-      $ours = $false
-      foreach ($h in @($entry.hooks)) {
-        if ($h -and [string]$h.command -and ([string]$h.command).Contains($marker)) { $ours = $true }
-      }
-      if ($ours) { $dropped++ } else { $kept += $entry }
-    }
-    # ⚠ **matcher 를 안 받는 이벤트에는 키를 아예 안 심는다** — UserPromptSubmit 이 그 자리다. 거는 자는 받지 않는
-    #   값을 조용히 무시하는 것이 아니라 **맞출 도구 이름이 없는 호출을 항목째 걸러낸다**: 심어 두면 훅이 영원히
-    #   안 돈다. 설정에도 코드에도 결함으로 안 보이고 몸통에 입력을 손으로 먹이면 통과해, 「코드는 맞는데 안
-    #   걸린다」로만 나타난다(claude-config #120 실측).
-    $entryNew = [pscustomobject]@{
-      hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = 10 })
-    }
-    if ($ev -ne 'UserPromptSubmit') {
-      # 제 이벤트 이름을 단 진본 줄이 있으면 그것을 — 없으면 꾸밈 없는 한 벌을 든다
-      $mv = if ($perEvent.ContainsKey($ev)) { $perEvent[$ev] } else { $matcher }
-      $entryNew | Add-Member -NotePropertyName matcher -NotePropertyValue $mv -Force
-    }
-    $kept += $entryNew
-    $hooks | Add-Member -NotePropertyName $ev -NotePropertyValue $kept -Force
-  }
-  if ($dropped -gt 0) { Write-Host "  $Label — 옛 항목 $dropped 개를 걷고 심었다" -ForegroundColor Green }
-  else                { Write-Host "  $Label — 심었다" -ForegroundColor Green }
-  Write-Host "     $(Join-Path $dir $Parts[-1])"
-  return $true
-}
 # 꼬리의 `# image-gate.py` 는 옛 판 심는 손이 이 항목을 제 것으로 알아보게 두는 표지다 — 없으면
 #   옛 판이 제 항목을 곁에 하나 더 심는다.
 # ⚠ **Claude 훅은 Claude 를 고른 PC 에만 심는다**(claude-config 결정 0102) — 제작자 칸과는 무관하다(취향이 아니라
@@ -4464,90 +4790,6 @@ if (-not $repoUrl) {
   # ⚠ **안 누른 것은 실패가 아니다.** 시간이 다 가거나 [건너뛰기]면 「비었다」로 두고 간다 — 아래
   #   clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다. Claude 로그인 칸(4′)과 같은 규율.
   $GhLoginWait = 180                      # 초 — Claude 로그인 칸과 같은 값
-  # ⚠ **「로그인했나」를 `gh auth status` 의 종료코드로 묻지 않는다.** 그 코드는 **「하나라도 쓸 수
-  #   있나」가 아니라 「계정 목록이 다 멀쩡한가」**에 가깝다 — 곁에 자격 깨진 항목이 하나 있으면
-  #   **쓸 수 있는 자격이 멀쩡히 서 있어도** 0 이 아닌 코드가 난다. 실측 2026-10-06 회사 PC:
-  #   `✓ GH_TOKEN` 과 `X default 토큰이 invalid` 가 함께 떠 코드가 0 이 아니었고, 그 자리에서
-  #   `gh api user` · 비공개 저장소 읽기 · `git ls-remote` 가 전부 통했다. 설치기는 그걸 모르고
-  #   로그인 창을 띄웠고, 사람이 못 누르자 「안 섰다」를 적은 **바로 다음 줄에서 그 자격으로
-  #   저장소를 당겼다** — 판정과 실물이 어긋난 것이 로그 안에서 그대로 보였다.
-  # ⚠ **그래서 자격을 한 번 써 본다.** 이 칸이 알고 싶은 것은 「아래 clone 과 세션 훅이 쓸 자격이
-  #   있나」이고, 그 물음에 답하는 자는 **그 자격으로 실제 요청 하나를 보내는 것**이다(규범
-  #   [State Over Event] — 실물이 곧 상태이고, 목록의 건강 상태는 그것에 대해 말하는 기록이다).
-  # ⚠ **망이 끊긴 자리는 「없다」와 갈라 적는다.** API 를 못 물으면 자격이 있어도 거짓이 난다.
-  #   지금 판정도 그 자리에서 창을 띄우므로 더 나빠지지는 않지만, **무엇 때문에 거짓인지는
-  #   사람에게 다르게 보여야 한다** — 「로그인하라」는 말을 망 끊긴 사람에게 하면 엉뚱한 데를
-  #   고치러 간다. 가르는 자는 이미 있는 `Test-Reach` 다(새로 만들지 않는다).
-  #   ⚠ `gh api` 로는 그 가름을 못 한다 — **자격 없이는 어떤 길도 안 열어 주고**(실측 2026-10-06:
-  #   `gh api rate_limit` 도 자격을 가리면 4 로 끝난다) 망 문제와 자격 문제가 같은 코드로 온다.
-  function Test-GhLoggedIn {
-    if (-not (Test-Runs 'gh' '--version')) { return $false }
-    $null = Get-Quiet 'gh' @('api', 'user', '--jq', '.login')
-    return ($LASTEXITCODE -eq 0)
-  }
-  # 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 초마다 남은 시간을
-  # 줄이고 5초마다 로그인이 섰나 재서, 서면 닫는다. 돌려주는 값은 섰나(참/거짓).
-  # ⚠ **손잡이는 닫힘(closure)으로 넘긴다.** 폼 이벤트의 스크립트 블록은 이 함수의 변수를 못 본다 —
-  #   `GetNewClosure()` 가 그 순간의 참조를 물려주고, 상태는 해시테이블이라 안에서 고친 것이 밖에 남는다.
-  function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait) {
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    $f = New-Object Windows.Forms.Form
-    $f.Text = 'GitHub 로그인'; $f.TopMost = $true; $f.StartPosition = 'CenterScreen'
-    $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
-    $f.ClientSize = New-Object Drawing.Size(420, 190)
-    $l1 = New-Object Windows.Forms.Label
-    $l1.Text = '브라우저의 GitHub 창에 이 코드를 넣고 승인해 주세요.'
-    $l1.Location = New-Object Drawing.Point(16, 14); $l1.Size = New-Object Drawing.Size(390, 20)
-    $tCode = New-Object Windows.Forms.TextBox
-    $tCode.ReadOnly = $true; $tCode.TextAlign = 'Center'
-    $tCode.Font = New-Object Drawing.Font('Consolas', 22, [Drawing.FontStyle]::Bold)
-    $tCode.Text = '코드를 기다리는 중 …'
-    $tCode.Location = New-Object Drawing.Point(16, 40); $tCode.Size = New-Object Drawing.Size(390, 44)
-    $lLeft = New-Object Windows.Forms.Label
-    $lLeft.Text = "남은 시간 ${Wait}초"
-    $lLeft.Location = New-Object Drawing.Point(16, 96); $lLeft.Size = New-Object Drawing.Size(390, 20)
-    $bOpen = New-Object Windows.Forms.Button; $bOpen.Text = '브라우저 열기'
-    $bOpen.Location = New-Object Drawing.Point(16, 140); $bOpen.Size = New-Object Drawing.Size(120, 32)
-    $bCopy = New-Object Windows.Forms.Button; $bCopy.Text = '코드 복사'
-    $bCopy.Location = New-Object Drawing.Point(146, 140); $bCopy.Size = New-Object Drawing.Size(120, 32)
-    $bSkip = New-Object Windows.Forms.Button; $bSkip.Text = '건너뛰기'
-    $bSkip.Location = New-Object Drawing.Point(286, 140); $bSkip.Size = New-Object Drawing.Size(120, 32)
-    $f.Controls.AddRange(@($l1, $tCode, $lLeft, $bOpen, $bCopy, $bSkip))
-    $state = @{ Code = ''; Left = $Wait; Tick = 0; Ok = $false }
-    $bOpen.Add_Click({ Start-Process 'https://github.com/login/device' | Out-Null })
-    $bCopy.Add_Click({ if ($state.Code) { try { Set-Clipboard -Value $state.Code } catch { } } }.GetNewClosure())
-    $bSkip.Add_Click({ $f.Close() }.GetNewClosure())
-    $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1000
-    $timer.Add_Tick({
-      $state.Left--; $state.Tick++
-      $lLeft.Text = "남은 시간 $($state.Left)초 — 로그인이 서면 이 창은 스스로 닫힙니다"
-      if (-not $state.Code) {
-        $said = ''
-        foreach ($p in @($OutFile, "$OutFile.err")) {
-          if (Test-Path -LiteralPath $p) { $said += (Get-Content -LiteralPath $p -Raw -ErrorAction SilentlyContinue) }
-        }
-        if ($said -match '([A-Z0-9]{4}-[A-Z0-9]{4})') {
-          $state.Code = $Matches[1]; $tCode.Text = $state.Code; $tCode.SelectAll()
-          # ⚠ **코드가 오면 브라우저를 사람 대신 연다** — gh 자신도 열려 하지만 콘솔 없는 자식이라
-          #   못 여는 판이 있고, 그때 사람은 코드만 든 채 버튼을 찾는다. 코드는 클립보드에도 둔다 —
-          #   GitHub 창이 붙여넣기를 받는다. 버튼 둘은 그대로 둔다(브라우저가 안 뜬 판의 손잡이다).
-          try { Set-Clipboard -Value $state.Code } catch { }
-          try { Start-Process 'https://github.com/login/device' | Out-Null } catch { }
-        }
-      }
-      $done = ($Proc -and $Proc.HasExited)
-      if ($done -or ($state.Tick % 5) -eq 0) {
-        if (Test-GhLoggedIn) { $state.Ok = $true; $f.Close(); return }
-      }
-      if ($done -or $state.Left -le 0) { $f.Close() }
-    }.GetNewClosure())
-    $f.Add_Shown({ $f.Activate(); $timer.Start() }.GetNewClosure())
-    $f.Add_FormClosed({ $timer.Stop() }.GetNewClosure())
-    [void]$f.ShowDialog()
-    if (-not $state.Ok) { $state.Ok = Test-GhLoggedIn }
-    return $state.Ok
-  }
 
   $ghLoggedIn = $false
   if (-not $NoDevTools) {
@@ -4905,13 +5147,6 @@ if (Test-Path -LiteralPath $launcher) {
 #   칸이 `#update-repo` 의 최신 릴리스를 받아 `update-check.ps1` 로 지문을 대조하고, 맞으면
 #   `Setup.exe -Unattended` 로 풀어 그 판의 엔진으로 설치를 잇는다. 사람이 보는 설치 창의 자가
 #   갱신(「새 판이 있습니다」 물음)과 같은 자를 쓴다.
-# ⚠ **`Get-ScheduledTask` 를 맨손으로 안 부른다.** 이 파일은 `$ErrorActionPreference = 'Stop'`
-#   아래 도는데, 스케줄러 모듈이 없는 판에서 나는 「그런 명령이 없다」는 `-ErrorAction
-#   SilentlyContinue` 로 안 막힌다 — 그러면 자동 실행 한 칸 때문에 **설치가 통째로 죽는다.**
-#   못 묻는 것과 없는 것은 다른 명제지만, 이 칸이 둘로 할 일은 같다: 「없다」로 답하고 간다.
-function Test-AutoRunTask([string]$Name) {
-  return (Test-ScheduledTaskExists $Name)
-}
 
 $AutoRunTaskName = 'PAISetup-AutoRun'
 $autoDirective   = Read-Directive $EnvFile 'autorun'
@@ -5209,24 +5444,6 @@ try {
       Write-Host "  ! 자동 실행 스케줄러 등록 해제 실패 — $(Say-Why $_)" -ForegroundColor Yellow
     }
   }
-}
-
-# 나른 것을 **동봉본과 견주는 자** — 7 칸과 6 칸이 같은 자를 쓴다.
-# ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
-#   빈 폴더를 [O] 로 찍으면 「깔렸는데 안 든 것」이 성공으로 보고된다. 그래서 **파일 수를 센다.**
-# ⚠ **여분은 판정이 아니라 눈금이다.** 「남는 것이 있다」와 「나른 것이 모자란다」는 다른
-#   명제라, 수는 찍되 [X] 는 모자랄 때만 든다 — 걷는 자리(씨앗 넷)와 안 걷는 자리(개인
-#   규범·룰·스킬)가 **같은 자를 쓰면서** 서로 다른 뜻을 읽을 수 있게 하는 것이 이 갈림이다.
-#   ⚠ 두 자를 따로 두면 한쪽만 낡는다 — 찍는 꼴이 두 벌이 되는 그 자리가 사본이다.
-function New-CountCheck([string]$Name, [string]$From, [string]$To) {
-  $isDir = Test-Path -LiteralPath $From -PathType Container
-  $srcN = if ($isDir) { @(Get-ChildItem -LiteralPath $From -Recurse -File -ErrorAction SilentlyContinue).Count } else { 1 }
-  $dstN = 0
-  if (Test-Path -LiteralPath $To) {
-    $dstN = if ($isDir) { @(Get-ChildItem -LiteralPath $To -Recurse -File -ErrorAction SilentlyContinue).Count } else { 1 }
-  }
-  $extra = if ($dstN -gt $srcN) { " · 여분 $($dstN - $srcN)" } else { '' }
-  return @{ Name = "$Name ($dstN/$srcN$extra)"; Ok = ($srcN -gt 0 -and $dstN -ge $srcN) }
 }
 
 # ── 검증 — **재고 나서 말한다** ─────────────────────────────────────────────────
@@ -5684,187 +5901,6 @@ if (-not $personalAny -and -not $personalByRepo) {
 #   띄울 실행 파일이 아예 없다. 그래서 `Exe` 를 든 것과 `AppId` 를 든 것이 갈려 나온다.
 #   `Proc` 는 「이미 떠 있나」를 재는 이름(들)이다 — VS Code 는 실행 파일에서 하나를, 데스크탑은
 #   손잡이와 앱 이름에서 후보 목록을 든다(까닭은 `Find-DesktopApps` 안에).
-
-# VS Code — PATH 에 걸린 `code` 는 `…\bin\code.cmd` 라 그것을 띄우면 콘솔이 한 번 번쩍인다.
-# 한 층 올라가 실행 파일을 판다.
-# ⚠ **자리를 여기 안 적는다.** 적으면 위 배선(`Update-RuntimePath`)이 든 목록과 사본이 둘
-#   되고 한쪽만 낡는다. 부르는 쪽이 `$hasCode`(= `code` 가 실제로 돌더라)일 때만 여기 오므로,
-#   PATH 에서 못 파는 갈래는 **도달할 수 없는 길**이다 — 옛 판이 그 자리에 박아 두었던 경로 둘을
-#   걷었다.
-function Find-VSCode {
-  $c = Get-Command code -ErrorAction SilentlyContinue
-  if (-not $c -or -not $c.Source) { return $null }
-  # ⚠ **빈 것을 `Join-Path` 에 넘기지 않는다** — 위 `Stop` 이 그 자리에서 던지는데, 여기는
-  #   설치의 마지막 칸이라 **종료코드째 날아간다.** 멀쩡히 끝난 설치가 실패로 보고된다.
-  $vsRoot = Split-Path (Split-Path $c.Source -Parent) -Parent
-  if (-not $vsRoot) { return $null }
-  $exe = Join-Path $vsRoot 'Code.exe'
-  if (-not (Test-Path -LiteralPath $exe)) { return $null }
-  return @{ Name = 'VS Code'; Exe = $exe; Dir = $vsRoot
-            Proc = [IO.Path]::GetFileNameWithoutExtension($exe) }
-}
-
-# 데스크탑 앱 — **자리를 묻지 않고 윈도우에 앱을 묻는다.**
-# ⚠ **경로로 찾는 길은 막혀 있다.** 이 앱은 스토어 꼴(MSIX)로 깔릴 수 있고, 그러면 실행 파일도
-#   `Uninstall` 등록 정보도 시작 메뉴 `.lnk` 도 **하나도 안 생긴다.** 실측 2026-09-11(집 PC):
-#   그 셋이 다 빈손인데 winget 은 「있음」이었고, 경로를 훑던 옛 판이 빈손으로 돌아와 **말없이
-#   VS Code 를 열었다.** 실물은 `Program Files\WindowsApps\...` 인데 그 자리는 권한으로 막혀
-#   훑어도 못 본다.
-# ⚠ **그러니 자리를 하나 더 박는 것은 답이 아니다** — 꼴이 바뀌면 또 어긋난다. `Get-StartApps`
-#   는 **띄울 수 있는 앱과 그 손잡이**를 돌려주고, 스토어 꼴이든 예전 꼴이든 같은 답을 낸다.
-# ⚠ **찾을 이름도 안 박는다** — 위 표의 `App` 칸이 든다. 고른 것이 여럿이면 **고른 차례로**
-#   묻고 처음 찾은 것을 연다: 앞문은 하나이고, 어느 것이 앞문인지는 값 파일이 적은 차례다.
-function Find-DesktopApps {
-  # ⚠ **고른 것을 다 든다 — 하나만 고르지 않는다.** 옛 판은 표에서 먼저 선 하나에서 멈췄는데,
-  #   그 「먼저」가 **어디에도 안 적힌 채 표 행 순서에 숨어** 있었다: 줄을 옮기면 뜨는 앱이
-  #   조용히 바뀐다. 다 들면 고를 일이 없어져 그 자리가 통째로 없어진다.
-  # ⚠ **훑을 자는 「고른 것」이 아니라 「이 판에서 선 것」이다** (0059). 고른 것으로 훑으면
-  #   사내에서 안 깐 앱(`When = offsite`)까지 시작 메뉴에서 찾으려 들어, **깔지도 않은 것을
-  #   「못 찾았다」로** 찍는다. 부르는 쪽도 같은 자에 묻는다 — 한 자리에서 갈려야 안 어긋난다.
-  $rows = @($script:InstalledAppRows.Values)
-  if (-not $rows) { return @() }                # 이 판에서 선 데스크탑 앱이 없다
-  # ⚠ **한 번 묻고 끝내지 않는다 — 막 깐 앱은 시작 메뉴에 늦게 선다.** 설치본이 끝난 뒤에도 시작
-  #   메뉴 등록이 뒤따라 도는 갈래가 있어, 한 번만 물으면 방금 깐 것을 「못 찾았다」로 찍고 안
-  #   띄운다(최초 설치에서 아무것도 안 뜬 자리의 후보). 다 찾으면 바로 나가고, 못 찾은 것이 남을
-  #   때만 몇 번 더 묻는다 — 이미 선 기계는 기다리지 않는다.
-  $all = @()
-  for ($try = 0; $try -lt 5; $try++) {
-    try {
-      $all = @(Get-StartApps -ErrorAction Stop)
-    } catch { return @() }                      # 이 윈도우에 그 물음이 없다
-    $lack = @($rows | Where-Object { $w = $_.App; -not @($all | Where-Object { $_.Name -like "*$w*" })[0] })
-    if (-not $lack) { break }
-    Start-Sleep -Seconds 2
-  }
-  # 바로가기 꼴의 대상 실행 파일 — 시작 메뉴가 손잡이마다 안다. 스토어 꼴은 바로가기가 아니라 비어 있다.
-  $linkTarget = @{}
-  try {
-    foreach ($i in (New-Object -ComObject Shell.Application).NameSpace('shell:AppsFolder').Items()) {
-      $t = [string]$i.ExtendedProperty('System.Link.TargetParsingPath')
-      if ($t -and $t.EndsWith('.exe', [StringComparison]::OrdinalIgnoreCase)) { $linkTarget[[string]$i.Path] = $t }
-    }
-  } catch { }
-  $out = @()
-  foreach ($appPick in $rows) {
-    $a = @($all | Where-Object { $_.Name -like "*$($appPick.App)*" })[0]
-    if (-not ($a -and $a.AppID)) { continue }
-    $want = $appPick.App; $label = $appPick.Label
-  # 프로세스 이름은 **후보 목록**이다 — 손잡이에서 판 것 하나와 앱 이름 하나.
-  # ⚠ **손잡이 하나로는 못 판다.** 꼴이 셋이고 이름이 앉는 자리가 다 다르다 — 스토어 꼴은
-  #   `앱_해시!앱` 의 `_` 앞, 바로가기 꼴은 파일 이름, claude.ai 에서 받은 일반 설치본(Squirrel)은
-  #   `com.squirrel.<패키지>.<실행파일>` 의 **마지막 마디**다. 옛 판은 앞 둘만 알아서 셋째 꼴에서
-  #   `com.squirrel.AnthropicClaude` 를 이름으로 들었고, 실물은 `claude` 라 **떠 있는데 「안 떠
-  #   있다」로 읽었다**(실측 2026-09-15 · 사외 PC). 그래서 묻지도 끄지도 않고 손잡이로 띄웠는데,
-  #   도는 앱은 그 호출에 창만 앞으로 올 뿐 새로 안 떠 — 낡은 것이 재시작한 얼굴로 남았다.
-  # ⚠ **꼴을 하나 더 박는 대신 앱 이름을 후보에 더한다.** 세 꼴 다 실행 파일이 곧 앱 이름이라
-  #   (`claude`) 그 하나가 셋을 덮고, 꼴이 또 늘어도 안 어긋난다. 손잡이에서 판 것은 그대로 둔다 —
-  #   이름이 실행 파일과 갈리는 앱이 오면 그쪽이 든다. `Get-Process -Name` 은 목록을 받는다.
-    $fromId = if ($a.AppID -match '!') { ($a.AppID -split '_')[0] }
-              else { [IO.Path]::GetFileNameWithoutExtension($a.AppID) }
-    $procs = @($fromId, $want) | Where-Object { $_ } | Select-Object -Unique
-    # ⚠ **이름만으로는 그 앱인지 못 가른다 — 설치 폴더를 같이 든다.** `claude` 라는 이름에는 데스크탑
-    #   앱 말고도 **VS Code 확장이 띄우는 CLI**(`…\resources\native-binary\claude.exe`)와 데스크탑이 품은
-    #   Claude Code(`%APPDATA%\Claude\claude-code\…\claude.exe`)가 걸린다(실측 2026-09-25 · 집 PC). 이름만
-    #   물으면 VS Code 가 떠 있는 것만으로 **방금 깐 데스크탑이 「이미 실행되었다」로 빠져 안 뜨고**, 다시
-    #   깔 때 「끈다」를 누르면 **확장과 터미널의 Claude Code 세션까지 죽인다.**
-    #   폴더를 못 판 꼴은 `Dir` 가 비고, 그때는 옛 판처럼 이름으로 묻는다.
-    $dir = $null
-    if ($a.AppID -match '^([^!]+)!') {
-      # 스토어 꼴 — 손잡이 앞마디가 패키지 가족 이름이다. 그 패키지의 설치 자리를 윈도우에 묻는다.
-      $fam = $Matches[1]
-      try {
-        $pkg = @(Get-AppxPackage -Name ($fam -replace '_[^_]+$', '') -ErrorAction Stop |
-                 Where-Object { $_.PackageFamilyName -eq $fam })[0]
-        if ($pkg) { $dir = [string]$pkg.InstallLocation }
-      } catch { }
-    } elseif ($a.AppID -match '^com\.squirrel\.([^.]+)\.') {
-      # Squirrel 꼴 — `%LOCALAPPDATA%\<패키지>\app-<판>\` 아래에서 돈다(위 곁말의 셋째 꼴).
-      $dir = Join-Path $env:LOCALAPPDATA $Matches[1]
-    } elseif ($linkTarget[$a.AppID]) {
-      # 바로가기 꼴 — 바로가기가 가리키는 실행 파일이 곧 그 앱이다. 이름도 폴더도 그 파일에서 읽는다.
-      # ⚠ **손잡이 · 앱 이름에서 짐작하지 않는다** — GitHub Copilot 은 손잡이가 `com.github.githubapp` 이고 실물이
-      #   `github.exe` 라 어느 쪽에서도 안 나온다. 짐작이 빗나가면 떠 있는 앱을 「안 떴다」로 읽어 한 번 더 띄우고,
-      #   다시 깔 때는 「껐다 켤까」도 안 묻는다.
-      $exe = $linkTarget[$a.AppID]
-      $procs = @([IO.Path]::GetFileNameWithoutExtension($exe))
-      $dir = Split-Path -Parent $exe
-    }
-    $out += @{ Name = $label; AppId = $a.AppID; Proc = @($procs); App = $want; Dir = $dir }
-  }
-  return @($out)
-}
-
-# 그 앱의 프로세스 — 이름으로 모으고, 설치 폴더를 알면 **그 아래에서 도는 것만** 남긴다(까닭은
-# `Find-DesktopApps` 의 `Dir` 곁말). 경로를 못 읽는 프로세스(다른 권한)는 그 앱이라고 치지 않는다.
-function Get-AppProcs($App) {
-  if (-not $App -or -not $App.Proc) { return @() }
-  $ps = @(Get-Process -Name $App.Proc -ErrorAction SilentlyContinue)
-  if (-not $App.Dir) { return $ps }
-  $root = ([string]$App.Dir).TrimEnd('\') + '\'
-  return @($ps | Where-Object {
-    $p = $null
-    try { $p = $_.Path } catch { }
-    $p -and $p.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)
-  })
-}
-
-# 그 앱이 이미 도나.
-function Test-AppUp($App) {
-  return (@(Get-AppProcs $App).Count -gt 0)
-}
-
-# 끌지 사람에게 묻는다.
-# ⚠ **이 창에는 콘솔이 없다.** 화면 껍데기가 `CreateNoWindow` 로 띄우고 표준입력을 NUL 로
-#   돌리므로 `Read-Host` 가 못 선다 — 물어도 아무도 못 답한다. 그래서 GUI 로 묻는다.
-# ⚠ **임자를 세워 준다.** 임자 없는 물음창은 설치 창 **뒤로 갈 수 있고**, 그러면 설치가
-#   멈춘 것처럼 보인다 — 안 보이는 창을 아무도 안 눌러 영영 안 끝난다.
-function Ask-Restart([string]$AppName) {
-  # ⚠ **묻는 자리를 가르는 것은 `-Yes` 가 아니라 「누를 사람이 있나」다.** 화면 껍데기
-  #   (`install.ui.ps1`)는 사람을 앞에 두고도 몸통을 **늘 `-Yes` 로** 부른다 — 그쪽엔 콘솔이
-  #   없어 `Read-Host` 가 못 서니 값은 파일로 넘기고 물음은 이 창이 든다. 그래서 `-Yes` 하나로
-  #   이 물음을 지우면 **화면으로 깐 사람은 영영 안 물어보게 되고**, 떠 있던 낡은 창이 그대로
-  #   남는데 사람은 재시작한 줄 안다 — 이 함수가 있는 까닭 자체가 사라진다.
-  # ⚠ **반대로 세션 0 에는 누를 사람이 아예 없다**(서비스 · 「로그온하지 않아도 실행」 스케줄러 ·
-  #   CI). 거기 뜬 모달은 영영 안 눌리는 창이고 설치는 그 앞에서 선 채로 멎는다.
-  #   `UserInteractive` 가 그 둘을 가른다 — 껍데기는 사람 데스크탑 위라 참, 세션 0 은 거짓이다.
-  # ⚠ **안 묻는 쪽의 답은 「안 끈다」다.** 답을 못 받았다고 설치가 제 손으로 끄면 사람이 띄워 둔
-  #   창과 저장 안 한 것이 말없이 날아간다 — 안 묻는다는 것은 마음대로 해도 된다는 뜻이 아니다.
-  if (-not [Environment]::UserInteractive) {
-    Write-Host '  물을 자리가 없다 (세션 0 · 서비스 · 스케줄러) — 안 묻고 그대로 둔다'
-    return $false
-  }
-  Write-Host '  끌지 묻는다 — 창이 뜬다'
-  # ⚠ **창 띄우기는 위 `Show-AskDialog` 가 든다** — 묻는 자리가 둘이 되면서 한 자리로 뺐다(#17).
-  #   임자 창을 앞으로 내는 까닭(회사 PC/VDI 에서 확인창이 VS Code 뒤에 숨은 채 기다리던 자리)도
-  #   그쪽에 적혀 있다. 여기 남는 것은 **이 물음의 말** 하나다.
-  $msg = "$AppName — 이미 돌고 있습니다.`n`n" +
-         "지금 껐다 새로 열까요?`n" +
-         "돌던 것은 방금 깔린 것(키 · MCP 서버 · 세션 훅)을 모릅니다.`n`n" +
-         "저장 안 한 것이 있으면 먼저 저장하고 눌러 주세요."
-  return (Show-AskDialog $AppName $msg)
-}
-
-# 끈다 — **곱게 먼저, 안 나가면 세게.**
-# ⚠ **곱게가 먼저인 까닭** — VS Code 는 창을 닫으라 하면 저장을 묻고, 사람이 답하면 스스로
-#   나간다. 처음부터 죽이면 그 물음이 안 뜬다.
-# ⚠ **세게가 있는 까닭** — 데스크탑은 창을 닫아도 **트레이로 내려갈 뿐 안 나간다.**
-#   곱게만 두면 「껐다」가 거짓이 되고, 그 위에서 「새로 띄웠다」가 또 거짓이 된다.
-# ⚠ **이름이 같은 자식들까지 다 든다.** 둘 다 여럿으로 돈다 — VS Code 는 창·확장·GPU 가
-#   다 `Code.exe` 이고, 데스크탑도 프로세스 셋이 같은 이름으로 떠 있었다(실측 2026-09-11).
-#   하나만 닫으면 남은 것이 살아 「아직 돈다」로 읽힌다.
-# ⚠ **그 앱의 것만 끈다** — 이름이 같은 남(확장이 띄운 CLI 등)은 `Get-AppProcs` 가 걸러 준다.
-function Stop-App($App) {
-  foreach ($p in @(Get-AppProcs $App)) {
-    if ($p.MainWindowHandle -ne 0) { $null = $p.CloseMainWindow() }
-  }
-  # 5초까지 기다리되 나가면 바로 넘어간다 — 안 기다려도 될 때 기다리지 않는다.
-  for ($i = 0; $i -lt 10 -and (Test-AppUp $App); $i++) { Start-Sleep -Milliseconds 500 }
-  foreach ($p in @(Get-AppProcs $App)) {
-    try { $p.Kill() } catch { }
-  }
-  for ($i = 0; $i -lt 6 -and (Test-AppUp $App); $i++) { Start-Sleep -Milliseconds 500 }
-  return (-not (Test-AppUp $App))
-}
 
 # ⚠ **마지막 한 줄은 `=== 끝 ===` 이 든다.** 화면 껍데기의 완료 문구가 이 줄에서 난다 — 저쪽에
 #   같은 문장을 또 적으면 갈래가 늘 때마다 한쪽만 낡는다. 갈래마다 할 말이 다른 자리라 더 그렇다.
