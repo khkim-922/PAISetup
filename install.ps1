@@ -1447,9 +1447,9 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 $hostAgy         = [bool]($PickKeys -contains 'antigravity')
 # ── 제작자 세트를 받을 도구 — 도구마다 고른다 (결정 0099) ───────────────────────────────────────
 # `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 Claude 다(옛 칸 — 이름이 「제작자의 Claude Code
-# 규범」이었다 · 창 없이 불린 판은 위에서 설치 창으로 돌린다). 고른 제품이 아닌
-# 도구는 빠진다 — 깔 홈이 없다. 고른 것은 사용자 환경변수 `PAISETUP_PERSONAL` 로도 심어, 설정 저장소의 배포가 같은 값을
-# 읽는다(6 칸). 아무것도 안 골랐으면 `none` — 비운 값은 「이 설치기를 안 돌렸다」와 갈라야 한다.
+# 규범」이었다 · 그 칸으로 자동 실행이 오면 Claude 로 깔고 끝에 설치 창을 한 번 띄운다). 고른 제품이 아닌 도구는 빠진다 —
+# 깔 홈이 없다. 고른 것은 사용자 환경변수 `PAISETUP_PERSONAL` 로도 심어, 설정 저장소의 배포가 같은 값을 읽는다(6 칸).
+# 아무것도 안 골랐으면 `none` — 비운 값은 「이 설치기를 안 돌렸다」와 갈라야 한다.
 $personalAsked  = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() }) }
                   elseif ($WithPersonalConfig) { @('claude') } else { @() }
 $personalClaude = [bool](($personalAsked -contains 'claude') -and ($PickKeys -contains 'claude'))
@@ -5222,7 +5222,33 @@ if ($hostAgy) {
   $agyWired = @('paisetup-drm-guide', 'paisetup-utf8-bom' | Where-Object {
     $agyHooksNow -and $agyHooksNow.$_ -and (($agyHooksNow.$_ | ConvertTo-Json -Depth 8 -Compress) -match 'agy-hooks\.py')
   })
-  $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse)'; Ok = ($agyWired.Count -eq 2) }
+  # ⚠ **이름이 있다고 선 것이 아니다** — 명령의 따옴표 하나로 훅이 다 지는데 이름은 그대로 있다(claude-config #126). 그래서
+  #   agy 가 돌리는 꼴 그대로 한 번씩 돌린다: cmd.exe 에 Go 식 인자(명령을 큰따옴표로 싸고 안의 큰따옴표는 `\"`)로 넘기고,
+  #   일하는 자리는 hooks.json 의 폴더다(#126 실측). 아무 일 없는 입력(없는 파일)을 줘 0 으로 끝나나만 본다.
+  $agyRan = @()
+  if ($agyWired.Count -eq 2) {
+    foreach ($probe in @(
+        @{ Name = 'paisetup-drm-guide'; Ev = 'PreToolUse'
+           In = '{"toolCall":{"name":"view_file","args":{"AbsolutePath":"C:/paisetup-probe/none.txt"}}}' }
+        @{ Name = 'paisetup-utf8-bom'; Ev = 'PostToolUse'
+           In = '{"toolCall":{"name":"write_to_file","args":{"TargetFile":"C:/paisetup-probe/none.txt"}}}' })) {
+      try {
+        $psi = New-Object Diagnostics.ProcessStartInfo
+        $psi.FileName = 'cmd.exe'
+        $psi.Arguments = '/c "' + ([string]@($agyHooksNow.($probe.Name).($probe.Ev))[0].hooks[0].command -replace '"', '\"') + '"'
+        $psi.WorkingDirectory = Join-Path $env:USERPROFILE '.gemini\config'
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardInput = $true; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
+        $pr = [Diagnostics.Process]::Start($psi)
+        $pr.StandardInput.Write($probe.In); $pr.StandardInput.Close()
+        $null = $pr.StandardOutput.ReadToEnd(); $null = $pr.StandardError.ReadToEnd()
+        if ($pr.WaitForExit(20000) -and $pr.ExitCode -eq 0) { $agyRan += $probe.Name }
+      } catch { }
+    }
+  }
+  $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · agy 가 돌리는 꼴로 돌려 본다)'
+                Ok = ($agyWired.Count -eq 2 -and $agyRan.Count -eq 2) }
 }
 # 고른 도구 값 — 설정 저장소의 배포가 읽는다(결정 0099)
 $checks += @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
