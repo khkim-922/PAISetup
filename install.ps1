@@ -3,7 +3,7 @@
 #   .\install.ps1                    깔고, 없는 값은 묻는다
 #   .\install.ps1 -NoDevTools        git·python·gh 를 건너뛴다 (확장만 쓸 사람)
 #   .\install.ps1 -PersonalFor claude,codex,agy  제작자의 규범·룰·스킬을 그 도구에 (고른 것만 · 결정 0099 ·
-#                                  설정 저장소를 넣었으면 비켜선다 · 결정 0105)
+#                                  설정 저장소를 넣었으면 그 저장소의 것이 간다 · 결정 0107)
 #   .\install.ps1 -WithPersonalConfig  위를 Claude 에만 (옛 칸 — 이름이 「제작자의 Claude Code 규범」이었다)
 #   .\install.ps1 -NoLaunch          끝에 창을 안 띄운다 (기본은 띄운다)
 #
@@ -1460,27 +1460,22 @@ function Get-ConfigRepoDir([string]$Url) {
   return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
 }
 
-# ── 설정 저장소가 그 도구 홈에 미는 스킬 — 설치가 비켜설 이름 (결정 0105) ─────────────────────────
-# 저장소가 이 PC 에 받아져 있고, 그 저장소의 선언이 그 도구 홈을 개인화하며, 그 스킬을 들 때다 — 그 저장소의 배포가 같은
-# 자리를 저장소 최신판으로 민다. 설치까지 깔면 둘이 판마다 번갈아 덮는다(씨앗 비켜서기와 같은 규율). 돌려주는 것은
-# 이름 → 저장소 자리.
-#   * 선언 — 그 저장소 `personal.conf` 의 `DEPLOY_HOMES`. 읽는 규칙은 배포(`deploy.ps1` 의 `Get-DeployHomes`)와 같다: 줄이
-#     없으면 있는 도구 다 · 빈 값이면 아무것도 아니다. Claude 홈은 그 값을 안 탄다(배포의 본업). 같은 이름을 읽는지는
-#     설정 저장소의 `scripts/check-deploy-agent-homes.ps1` 이 잰다
+# ── 설정 저장소가 그 도구 홈에 미는 스킬 — 설치가 비켜설 이름 (결정 0107) ─────────────────────────
+# 저장소가 이 PC 에 받아져 있고, 아래 제작자 칸에서 그 도구를 켰고, 그 저장소가 그 스킬을 들 때다 — 그 저장소의 배포가
+# 같은 칸 값(`PAISETUP_PERSONAL`)을 읽어 같은 자리를 저장소 최신판으로 민다. 설치까지 깔면 둘이 판마다 번갈아 덮는다(씨앗
+# 비켜서기와 같은 규율). 돌려주는 것은 이름 → 저장소 자리. 부르는 자리는 다 아래 제작자 칸 뒤라 칸 값이 서 있다.
+#   * 칸 — 배포의 `Test-PersonalFor` 와 같은 값이다. 둘이 같은 뜻으로 읽는지는 설정 저장소의
+#     `scripts/check-deploy-agent-homes.ps1` 이 잰다
 #   * 든다 — 배포가 그 홈에 미는 묶음에 있다: Claude 홈은 `.claude/skills`, Codex · agy 홈은 거기에 `.agents/skills` 까지.
 #     저장소가 제 안에서만 쓰는 스킬(`deploy.skills.local.conf`)은 배포가 홈으로 안 밀어 빼고, 그 홈에 안 가는 러너도 뺀다
 #     (위 갈 곳 표 — 배포도 같은 표를 읽는다)
 function Get-RepoHeldSkills([string]$Tool) {
-  $declKey = 'DEPLOY_HOMES'   # 설정 저장소 선언의 이름 — 배포의 `Get-DeployHomes` 가 읽는 이름과 같다
   $held = @{}
+  $chosen = @{ claude = $personalClaude; codex = $personalCodex; agy = $personalAgy }
+  if (-not $chosen[$Tool]) { return $held }   # 끈 도구에는 배포가 안 민다 — 설치가 칸 없는 몫을 깐다
   foreach ($u in $configRepoUrls) {
     $d = Get-ConfigRepoDir $u
     if (-not (Test-Path -LiteralPath $d -PathType Container)) { continue }
-    if ($Tool -ne 'claude') {
-      $line = @(Get-Content -LiteralPath (Join-Path $d 'personal.conf') -Encoding UTF8 -ErrorAction SilentlyContinue |
-                Where-Object { $_ -match "^\s*$declKey\s*=" }) | Select-Object -First 1
-      if ($line -and (@(($line -replace '^[^=]*=', '').Trim().ToLower() -split '[,\s]+') -notcontains $Tool)) { continue }
-    }
     $local = @(Get-Content -LiteralPath (Join-Path $d 'deploy.skills.local.conf') -Encoding UTF8 -ErrorAction SilentlyContinue |
                ForEach-Object { ($_ -replace '#.*$', '').Trim() } | Where-Object { $_ })
     $bundles = @('.claude\skills')
@@ -1498,12 +1493,13 @@ function Get-RepoHeldSkills([string]$Tool) {
 # ── 제작자 세트를 받을 도구 — 도구마다 고른다 (결정 0099) ───────────────────────────────────────
 # `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 Claude 다(옛 칸 — 이름이 「제작자의 Claude Code
 # 규범」이었다 · 그 칸으로 자동 실행이 오면 Claude 로 깔고 끝에 설치 창을 한 번 띄운다). 고른 제품이 아닌 도구는 빠진다 —
-# 깔 홈이 없다.
-# ⚠ **설정 저장소를 넣었으면 이 칸은 비켜선다**(결정 0105) — 그 저장소의 배포가 Claude · Codex · agy 홈의 개인화를 맡고,
-#   어느 도구를 개인화할지도 그 저장소가 선언한다(`personal.conf` 의 `DEPLOY_HOMES`). 이 칸까지 깔면 둘이 같은 홈을 판마다
-#   번갈아 덮고, 칸을 끈 도구에서 우리 것을 걷는 손들(중립 자리 · agy 설정 셋 · Codex 규범 블록)이 배포가 민 것을 걷는다.
-#   그래서 비켜선 판은 깔지도 걷지도 않는다. 아래 `$personalClaude` · `$personalCodex` · `$personalAgy` 는 비켜서기까지 친
-#   값이고, 고른 것(`$personalAny` · `$PersonalValue`)은 그대로 둬 자동 실행 기록에 남긴다.
+# 깔 홈이 없다. 고른 것은 사용자 환경변수 `PAISETUP_PERSONAL` 로도 심어, 설정 저장소의 배포 · 세션 훅이 같은 값을 읽는다
+# (6 칸). 아무것도 안 골랐으면 `none` — 비운 값은 「이 설치기를 안 돌렸다」와 갈라야 한다.
+# ⚠ **칸 하나가 스위치다 — 설정 저장소를 넣어도 그대로다**(결정 0107). 저장소가 없으면 켠 도구에 만든 사람의 꾸러미를
+#   깐다. 저장소를 넣었으면 켠 도구에는 꾸러미를 안 깔고 비켜선다 — 그 저장소의 배포가 같은 값을 읽어 제 것을 민다. 둘
+#   다 깔면 같은 홈을 판마다 번갈아 덮는다. **끈 도구는 저장소가 있어도 우리 것을 걷는다** — 배포도 끈 도구에는 안 밀어
+#   둘이 같은 상태로 간다.
+#   `$personal*` 은 고른 값이고, `$kit*` 은 이 설치가 꾸러미를 손수 까는 도구다.
 $personalAsked  = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() }) }
                   elseif ($WithPersonalConfig) { @('claude') } else { @() }
 $personalClaude = [bool](($personalAsked -contains 'claude') -and ($PickKeys -contains 'claude'))
@@ -1512,11 +1508,14 @@ $personalAgy    = [bool](($personalAsked -contains 'agy') -and $hostAgy)
 $personalAny    = [bool]($personalClaude -or $personalCodex -or $personalAgy)
 $PersonalValue  = @($(if ($personalClaude) { 'claude' }), $(if ($personalCodex) { 'codex' }), $(if ($personalAgy) { 'agy' }) |
                     Where-Object { $_ }) -join ','
+if (-not $PersonalValue) { $PersonalValue = 'none' }
 $personalByRepo = [bool]$configRepoUrls.Count
-if ($personalByRepo) { $personalClaude = $false; $personalCodex = $false; $personalAgy = $false }
+$kitClaude = [bool]($personalClaude -and -not $personalByRepo)
+$kitCodex  = [bool]($personalCodex -and -not $personalByRepo)
+$kitAgy    = [bool]($personalAgy -and -not $personalByRepo)
 $wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
 $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
-$wantAgyKit      = $personalAgy
+$wantAgyKit      = $kitAgy
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
 # Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
 # ⚠ **Claude 와 Codex 를 같이 고르면 선다 — 맡기는 쪽(Claude)과 받는 쪽(Codex)이 다 있어야 한다. 사내는 Codex 를 회사
@@ -2592,9 +2591,7 @@ $Retired = @(
   # 노력 수준 — **고르는 자는 사람이다.** 심어 두면 화면에서 고른 값과 둘이 되어 어느 쪽이
   # 이기는지 아무도 모르고, 고른 대로 안 도는 것이 오류처럼 보인다(사용자 실측 2026-09-18).
   # 진본(자리 파일)에서 이 줄을 걷었으니, 이미 심긴 기계에서도 걷는다.
-  'CLAUDE_CODE_EFFORT_LEVEL',
-  # 0105 — 설정 저장소의 배포는 개인화할 도구를 제 선언(`personal.conf` 의 `DEPLOY_HOMES`)에서 읽는다. 이 이름을 읽는 자가 없다.
-  'PAISETUP_PERSONAL'
+  'CLAUDE_CODE_EFFORT_LEVEL'
 )
 foreach ($k in $Retired) {
   if ($fromFile.ContainsKey($k)) { continue }   # 진본이 되살렸으면 안 건드린다
@@ -3483,10 +3480,19 @@ function Remove-RetiredSkills {
 
 Write-Host ''
 Write-Host '[6/8] 개인 규범·룰·스킬' -ForegroundColor Cyan
-if ($personalByRepo) {
-  Write-Host '  제작자 칸 — 설정 저장소가 개인화를 맡아 비켜선다 (그 저장소의 배포가 Claude · Codex · agy 홈에 민다)' -ForegroundColor Green
-} elseif (-not $personalClaude) {
+# 고른 도구 — 설정 저장소의 배포(`deploy.ps1`)와 세션 훅이 같은 값을 읽어 어느 도구 홈을 개인화할지 정한다(결정 0107).
+if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) {
+  Write-Host "  PAISETUP_PERSONAL — 이미 맞다 ($PersonalValue)"
+} else {
+  Plant-Var 'PAISETUP_PERSONAL' $PersonalValue
+}
+if ($personalByRepo -and $personalAny) {
+  Write-Host "  제작자 칸 — 설정 저장소를 넣어 꾸러미는 비켜선다. 켠 도구($PersonalValue)는 그 저장소의 배포가 민다" -ForegroundColor Green
+}
+if (-not $personalClaude) {
   Write-Host '  Claude — 건너뜀 (원하면 설치 창의 제작자 칸에서 Claude 를 켠다 · -PersonalFor claude)'
+} elseif ($personalByRepo) {
+  # 위 한 줄이 말했다 — Claude 홈의 규범 · 룰 · 스킬은 설정 저장소의 배포가 민다
 } else {
   # ⚠ **짐에 없으면 빨강이다** — 이 판의 짐에서 규범 · 룰 · 스킬이 빠졌다는 것은 짐이 깨졌다는 뜻이라, 건너뛰고 초록으로
   #   끝나면 아래 개수 대조도 같이 건너뛰어 아무도 모른다. 에이전트만은 안 싣는 판이 있어 있을 때만 나른다.
@@ -3533,15 +3539,15 @@ if ($personalByRepo) {
 # ── 규범 · 룰의 중립 자리 — `~/.paisetup/norms` (결정 0099) ─────────────────────────────────────────
 # Codex 의 규범 블록(룰 줄)과 agy 설정 셋이 가리키는 자리다. Claude 홈(`~/.claude`)은 Claude 가 스스로 싣는 자리라, Claude 칸을
 # 끄고 Codex · agy 칸만 켠 사람에게 거기 깔면 Claude 에도 실린다 — 그래서 따로 둔다. 이름이 `CLAUDE.md` 가 아닌 것도 같은
-# 까닭이다(Claude 는 그 이름을 찾아 싣는다). 이 폴더는 통째로 우리 것이라, 쓸 도구가 없으면 걷는다(백업 자리로 옮긴다) —
-# 설정 저장소가 개인화를 맡은 판은 빼고(그 저장소의 배포가 같은 자리를 민다).
+# 까닭이다(Claude 는 그 이름을 찾아 싣는다). 이 폴더는 통째로 우리 것이라, 쓸 도구가 없으면 걷는다(백업 자리로 옮긴다).
+# 설정 저장소를 넣고 Codex · agy 를 켰으면 깔지도 걷지도 않는다 — 그 저장소의 배포가 같은 자리를 민다.
 $NeutralNorms = Join-Path $env:USERPROFILE '.paisetup\norms'
-if ($personalCodex -or $personalAgy) {
+if ($kitCodex -or $kitAgy) {
   New-Item -ItemType Directory -Path (Join-Path $NeutralNorms 'rules') -Force | Out-Null
   Copy-Item -LiteralPath (Join-Path $Kit 'norms\norms.md') -Destination (Join-Path $NeutralNorms 'norms.md') -Force
   Copy-Item -Path (Join-Path $Kit 'norms\rules\*.md') -Destination (Join-Path $NeutralNorms 'rules') -Force
   Write-Host '  규범 · 룰 중립 자리 — 깔았다 (~/.paisetup/norms · Codex · agy 가 가리킨다)' -ForegroundColor Green
-} elseif (-not $personalByRepo -and (Test-Path -LiteralPath $NeutralNorms)) {
+} elseif (-not ($personalCodex -or $personalAgy) -and (Test-Path -LiteralPath $NeutralNorms)) {
   $nnBk = Join-Path (Join-Path $homeDir 'backups') ('install-norms-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
   New-Item -ItemType Directory -Path $nnBk -Force | Out-Null
   Move-Item -LiteralPath $NeutralNorms -Destination (Join-Path $nnBk 'norms') -Force
@@ -3588,9 +3594,9 @@ if ($wantAgyKit) {
 
 # agy 칸을 끈 판 — 우리 설정 셋(규범 · 룰을 가리키는 둘)만 걷는다. 「우리 것」은 꼴로 가린다: 규범 include 한 줄 ·
 # 룰 자리 한 줄이고 그 자리가 우리가 써 온 두 자리(옛 Claude 홈 · 지금 중립 자리) 가운데 하나다. 다르면 사람이 고친
-# 것이라 둔다. 스킬 목록은 칸과 무관하게 선다(아래 「agy 스킬 목록」). 설정 저장소가 개인화를 맡은 판은 그 배포가 미는
-# 자리라 안 걷는다.
-if ($hostAgy -and -not $personalAgy -and -not $personalByRepo) {
+# 것이라 둔다. 스킬 목록은 칸과 무관하게 선다(아래 「agy 스킬 목록」). 설정 저장소가 있어도 걷는다 — 그 배포도 끈 칸에는
+# 안 민다(결정 0107).
+if ($hostAgy -and -not $personalAgy) {
   $agyCfgDir = Join-Path $env:USERPROFILE '.gemini\config'
   $ours = @()
   $agMd = Join-Path $agyCfgDir 'AGENTS.md'
@@ -3658,8 +3664,8 @@ function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome
                          -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done -Keep $keep
   }
 }
-$codexHomeSkills = if ($hostCodex) { @(Get-HomeSkills 'Codex' $personalCodex) } else { @() }
-$agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy' $personalAgy) }     else { @() }
+$codexHomeSkills = if ($hostCodex) { @(Get-HomeSkills 'Codex' $kitCodex) } else { @() }
+$agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy' $kitAgy) }     else { @() }
 if ($hostAgy) {
   Install-HomeSkills 'agy 홈' $agyHomeSkills $AgySkillHome (Join-Path $env:USERPROFILE '.gemini\.paisetup-skills') `
                      (Join-Path $env:USERPROFILE '.gemini\backups') (Get-RepoHeldSkills 'agy')
@@ -3828,11 +3834,12 @@ foreach ($a in $envAssets) {
 }
 
 # ── 칸 없이 까는 스킬 — 위 `$FreeSkills` (결정 0091) ─────────────────────────────────
-# ⚠ **제작자 칸의 Claude 칸을 켰으면 할 일이 없다** — 6 칸이 묶음 전부를 깔고 기록까지 적었다.
+# ⚠ **제작자 꾸러미를 손수 깔았으면 할 일이 없다** — 6 칸이 묶음 전부를 깔고 기록까지 적었다. 설정 저장소를 넣고 Claude
+#   칸을 켠 판은 여기가 돈다 — 그 저장소가 안 든 표준 스킬은 여기서 깔아야 빠지지 않는다.
 # ⚠ **설정 저장소가 그 스킬을 들면 비켜선다** — 그 저장소의 배포가 같은 자리를 최신판으로 민다. 설치까지
 #   깔면 둘이 판마다 번갈아 덮는다(위 씨앗 비켜서기와 같은 규율). 든다는 것은 위 `Get-RepoHeldSkills` 가 정한다.
 # ⚠ **깐 이름은 6 칸과 같은 기록에 더한다** — 묶음에서 빠지는 날 같은 손(`Remove-RetiredSkills`)이 걷는다.
-if (-not $personalClaude) {
+if (-not $kitClaude) {
   $skillHome   = Join-Path $homeDir 'skills'
   $freeDone = @()
   $claudeHeld = Get-RepoHeldSkills 'claude'
@@ -4002,9 +4009,9 @@ if ($hostAgy) {
 # 끌어오지 못해 뽑아 쓰고, 룰은 「이 파일을 만질 때 이 룰을 읽는다」 한 줄로 중립 자리를 가리킨다. 짓는 자의 진본은 씨앗의
 # `codex-norms.py` 다 — 설정 저장소의 `deploy.ps1` 도 같은 자를 부른다. 사람이 쓴 글은 표지 밖이라 그대로다.
 # ⚠ **Codex 칸을 끄면 블록만 걷는다**(`--remove`) — 블록이 없으면 그대로다.
-# ⚠ **설정 저장소가 개인화를 맡은 판은 손대지 않는다** — 그 저장소의 배포가 같은 짓는 자로 블록을 짓거나 걷는다(그 저장소의
-#   `DEPLOY_HOMES`). 여기서 걷으면 배포가 지은 블록을 걷는다.
-if ($hostCodex -and -not $personalByRepo) {
+# ⚠ **설정 저장소를 넣고 Codex 칸을 켰으면 손대지 않는다** — 그 저장소의 배포가 같은 짓는 자로 제 규범의 블록을 짓는다.
+#   여기서 꾸러미 규범으로 지으면 둘이 판마다 번갈아 덮는다. 칸을 껐으면 저장소가 있어도 걷는다 — 배포도 그때는 걷는다.
+if ($hostCodex -and -not ($personalByRepo -and $personalCodex)) {
   $codexNormsPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-norms.py'
   $codexAgentsTarget = Join-Path $env:USERPROFILE '.codex\AGENTS.md'
   $codexNormsArgs = if ($personalCodex) {
@@ -5111,7 +5118,7 @@ foreach ($a in $envAssets) {
 #   같은 자리에 민다 — 설치기가 걷으면 저쪽이 방금 심은 것을 이쪽이 지우는 꼴이 되어, 두 자가
 #   한 자리를 두고 판마다 싸운다. 그래서 여분은 [X] 가 아니고 모자란 것만 문다.
 #   ⚠ 그 대신 **옛 판이 깐 스킬·룰이 홈에 남는 것은 여기서 안 풀린다** — 저쪽 배포가 드는 몫이다.
-if ($personalClaude -and $pairs) {
+if ($kitClaude -and $pairs) {
   foreach ($p in $pairs) {
     if (-not (Test-Path -LiteralPath $p.From)) { continue }
     $checks += New-CountCheck $p.Name $p.From $p.To
@@ -5355,7 +5362,10 @@ if ($hostAgy) {
   $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · agy 가 돌리는 꼴로 돌려 본다)'
                 Ok = ($agyWired.Count -eq 2 -and $agyRan.Count -eq 2) }
 }
-if ($personalCodex -or $personalAgy) {
+# 고른 도구 값 — 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0107)
+$checks += @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
+              Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
+if ($kitCodex -or $kitAgy) {
   $nnFile = Join-Path $NeutralNorms 'norms.md'
   $checks += @{ Name = '규범 · 룰 중립 자리 (~/.paisetup/norms)'
                 Ok = ((Test-Path -LiteralPath $nnFile) -and

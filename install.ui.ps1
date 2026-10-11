@@ -403,9 +403,10 @@ $gO.Text = '옵션'; $gO.Location = New-Object Drawing.Point(16, (190 - $gvCut))
 $gO.Size = New-Object Drawing.Size(592, (76 + $appRow + $optExtra))
 $F.Controls.Add($gO)
 
-# 제작자 칸 — **도구마다 고른다**(결정 0099). Claude 만 규범을 받고 Codex · agy 는 가볍게 쓰는 사람이 있다.
-# ⚠ **설정 저장소 칸에 주소가 있으면 다 끈다**(결정 0105) — 그 저장소의 배포가 개인화를 맡고, 어느 도구를 개인화할지도
-#   그 저장소가 선언한다. 몸통도 그 판에는 이 칸을 비켜선다.
+# 제작자 칸 — **도구마다 고른다**(결정 0099). Claude 만 규범을 받고 Codex · agy 는 가볍게 쓰는 사람이 있다. 고른 것은
+#   몸통이 사용자 환경변수 `PAISETUP_PERSONAL` 로 심어 설정 저장소의 배포 · 세션 훅도 같은 값을 따른다.
+# ⚠ **설정 저장소를 넣어도 이 칸이 스위치다**(결정 0107) — 무엇이 가나만 바뀐다: 저장소가 없으면 만든 사람의 꾸러미, 있으면
+#   그 저장소의 규범 · 룰 · 스킬(몸통은 꾸러미를 비켜서고 그 저장소의 배포가 민다). 칸 앞 글자가 그것을 따라 바뀐다.
 # ⚠ **자리를 박지 않고 앱 줄만큼 민다.** 앱 줄이 없는 판(`-Describe` 가 한 줄도 안 낸 자리)에서
 #   박아 둔 126 은 **칸 높이 밖**이라, 그 판에서는 이 칸이 통째로 안 보인 채 기본값으로 돈다.
 # ⚠ **제품 칸에서 안 고른 도구는 끈다** — 깔 홈이 없다. 꺼진 칸은 켜져 있어도 넘기지 않는다.
@@ -437,7 +438,6 @@ foreach ($pt in @(@{ Key = 'claude'; Pick = 'claude'; Label = 'Claude' },
 # ⚠ **넘길 값을 칸의 `Enabled` 로 고르지 않는다** — 윈도 폼은 묶음(`$gO`)을 잠그면 그 안 칸의 `Enabled` 도 거짓으로
 #   읽는다. [설치]는 값을 모으기 전에 묶음을 잠그므로, `Enabled` 로 모으면 무엇을 골라도 빈 값이 넘어간다.
 function Test-PersonalBoxLive($c) {
-  if ($tRepo -and "$($tRepo.Text)".Trim()) { return $false }   # 설정 저장소가 개인화를 맡는다(위 곁말)
   $prod = @($cApps | Where-Object { [string]$_.Tag -eq $c.Tag.Pick }) | Select-Object -First 1
   return [bool]((-not $cApps.Count) -or ($prod -and $prod.Checked))
 }
@@ -572,8 +572,11 @@ $tRepo.Size = New-Object Drawing.Size(558, 24)
 $tRepo.Text = [string](Get-Directive 'config-repo')
 if (-not $tRepo.Text) { $tRepo.Text = [string](Get-Directive 'config-repo' $KeptEnvPath) }
 $gR.Controls.Add($tRepo)
-# 주소를 넣고 빼는 대로 제작자 칸이 꺼지고 켜진다(위 「제작자 칸」 곁말)
-$tRepo.Add_TextChanged({ Sync-PersonalBoxes })
+# 주소를 넣고 빼는 대로 제작자 칸 앞 글자가 무엇이 가나를 따라 바뀐다(위 「제작자 칸」 곁말)
+function Sync-PersonalLabel {
+  $lCfg.Text = if ("$($tRepo.Text)".Trim()) { '내 저장소의 규범 · 룰 · 스킬을 받을 도구:' } else { '제작자의 규범 · 룰 · 스킬도 깝니다:' }
+}
+$tRepo.Add_TextChanged({ Sync-PersonalLabel })
 
 $lRepo = New-Object Windows.Forms.LinkLabel
 $lRepo.Location = New-Object Drawing.Point(16, 52)
@@ -690,9 +693,10 @@ $tip.SetToolTip($tRepo, $tipText)
 $tip.SetToolTip($lRepo, $tipText)
 # 제작자 칸이 왜 꺼졌나 — 꺼진 칸에는 윈도 폼이 툴팁을 안 띄워, 칸 앞 글자에 단다
 $tip.SetToolTip($lCfg, @'
-만든 사람의 규범 · 룰 · 스킬을 고른 도구에 깝니다. 제품 칸에서 고른 도구만 켜집니다.
-아래 저장소 칸에 설정 저장소 주소를 넣으면 이 칸은 꺼집니다 — 그 저장소의 배포가
-Claude · Codex · agy 의 개인화를 맡고, 어느 도구를 개인화할지도 그 저장소가 정합니다.
+고른 도구에 규범 · 룰 · 스킬을 깝니다. 제품 칸에서 고른 도구만 켜집니다.
+저장소 칸이 비었으면 만든 사람의 것을 깝니다. 설정 저장소 주소를 넣으면 고른 도구에
+그 저장소의 것이 갑니다 — 설치는 만든 사람의 것을 안 깔고, 그 저장소의 배포가 같은 칸을 읽어 밉니다.
+끈 도구에는 어느 쪽도 안 갑니다.
 '@)
 
 # 진행
@@ -1528,6 +1532,7 @@ $F.Add_Shown({
   else { $bGo.Focus() | Out-Null }
 })
 Sync-PersonalBoxes   # 제작자 칸의 켜짐을 제품 칸 첫 상태에 맞춘다
+Sync-PersonalLabel   # 칸 앞 글자를 저장소 칸 첫 값에 맞춘다
 # 옛 제작자 칸으로 자동 실행이 돈 뒤 이 창이 한 번 뜬 판 — 무엇이 바뀌었나를 먼저 알린다(몸통 끝의 「옛 제작자 칸을 이어받은 판의 마무리」)
 if ($PersonalNotice) {
   $F.Add_Shown({
