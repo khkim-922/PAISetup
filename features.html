@@ -20,7 +20,6 @@
     --bg: #f5f4ef; --surface: #ffffff; --fg: #1d2026; --dim: #5d6168; --line: #e4e1d8;
     --soft: #efede6; --shadow: 0 1px 2px rgba(20, 20, 15, .05), 0 4px 14px rgba(20, 20, 15, .05);
     --c-work: #1f7a55;  --c-work-bg: #e3f3eb;
-    --c-agy: #6b46c1;   --c-agy-bg: #efe9fb;
     --c-cc: #0e7490;    --c-cc-bg: #e0f2f6;
     --c-in: #c2410c;    --c-in-bg: #fdeee5;
     --c-seed: #8a6514;  --c-seed-bg: #f6efdc;
@@ -32,7 +31,6 @@
       --bg: #17181b; --surface: #202227; --fg: #e8e7e2; --dim: #a2a49f; --line: #33353b;
       --soft: #272a30; --shadow: 0 1px 2px rgba(0, 0, 0, .3);
       --c-work: #5cc79a;  --c-work-bg: #19352a;
-      --c-agy: #b39af0;   --c-agy-bg: #2b2442;
       --c-cc: #67c6dc;    --c-cc-bg: #15333b;
       --c-in: #f29a6a;    --c-in-bg: #3d2619;
       --c-seed: #e0bc5e;  --c-seed-bg: #362d16;
@@ -92,16 +90,17 @@
   .card b code { font-weight: 400; margin-left: 4px; white-space: nowrap; }
   .card span { color: var(--dim); font-size: 14.2px; }
   .card a { font-weight: 600; color: var(--k); }
+  .card.lead { grid-column: 1 / -1; background: var(--kb); }
+  .card em { display: block; font-style: normal; font-weight: 700; font-size: 12.5px; color: var(--k); margin-bottom: 3px; }
 
   .work  { --k: var(--c-work);  --kb: var(--c-work-bg); }
-  .agy   { --k: var(--c-agy);   --kb: var(--c-agy-bg); }
   .cc    { --k: var(--c-cc);    --kb: var(--c-cc-bg); }
   .in    { --k: var(--c-in);    --kb: var(--c-in-bg); }
   .seed  { --k: var(--c-seed);  --kb: var(--c-seed-bg); }
   .maker { --k: var(--c-maker); --kb: var(--c-maker-bg); }
-  .work .icon, .agy .icon, .cc .icon, .in .icon, .seed .icon, .maker .icon,
+  .work .icon, .cc .icon, .in .icon, .seed .icon, .maker .icon,
   .tag { color: var(--k); background: var(--kb); }
-  nav a.work i, nav a.agy i, nav a.cc i, nav a.in i, nav a.seed i, nav a.maker i { background: var(--k); }
+  nav a.work i, nav a.cc i, nav a.in i, nav a.seed i, nav a.maker i { background: var(--k); }
 
   footer {
     margin-top: 54px; padding-top: 18px; border-top: 1px solid var(--line);
@@ -124,8 +123,7 @@
 
 <nav>
   <a class="work" href="#work"><i></i>사내에서 쓰는 도구</a>
-  <a class="agy" href="#agy"><i></i>agy 에게 맡기기</a>
-  <a class="cc" href="#cc"><i></i>Codex · Copilot 에게 맡기기</a>
+  <a class="cc" href="#delegate"><i></i>다른 도구에게 맡기기</a>
   <a class="in" href="#inside"><i></i>사내에서만</a>
   <a class="seed" href="#seed"><i></i>씨앗과 사내 문서</a>
   <a class="maker" href="#maker"><i></i>제작자 칸을 켜면</a>
@@ -151,38 +149,27 @@
     <div class="card"><b>Tavily 웹 검색 <code>tavily-search</code></b><span>웹 검색 도구를 하나 더 붙입니다. 무료 키(<code>TAVILY_API_KEY</code>)를 넣으면 한 달 1,000회까지 씁니다. <a href="https://app.tavily.com">무료 키 받기</a></span></div>
     <div class="card"><b>문서 스킬 <code>document-skills</code></b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
     <div class="card"><b>DRM 문서 읽기 <code>drm-office-read</code></b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
-    <div class="card"><b>사내 앱 만들기 <code>inhouse-app</code></b><span>회사 디지털혁신그룹이 배포한 사내 앱 기준을 설명해 주는 스킬입니다. 사내 LLM 게이트웨이 · SSO · 배포를 붙일 때 그 기준에서 필요한 장만 골라 엽니다.</span></div>
+    <div class="card"><b>사내 앱 만들기 <code>inhouse-app</code></b><span>회사 디지털혁신그룹이 배포한 FastAPI 사내 앱 기준 문서를 읽어 주는 스킬입니다. 사내 앱에 LLM 게이트웨이 · SSO · 배포를 붙일 때 그 기준에서 필요한 장만 골라 엽니다.</span></div>
   </div>
 </section>
 
-<section id="agy" class="agy">
+<section id="delegate" class="cc">
   <div class="head">
     <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 7h11M11 3l4 4-4 4M20 17H9M13 13l-4 4 4 4"/></svg></div>
     <div>
-      <h2>agy 에게 맡기기<span class="tag">Claude 나 Codex 와 안티그래비티를 같이 고르면</span></h2>
-      <p>오래 걸리는 일은 agy(구글 제미나이)에게 뒤에서 맡기고, Claude 와는 하던 대화를 이어 갑니다.</p>
+      <h2>다른 도구에게 맡기기<span class="tag">맡기는 법은 늘 · 러너는 맡기는 쪽과 받는 쪽을 같이 고르면</span></h2>
+      <p>오래 걸리는 일 · 리뷰 · 다른 모델의 의견을 다른 도구에게 뒤에서 맡기고, 하던 대화를 이어 갑니다. 두 층입니다 —
+         맡기는 법이 일을 가르고 작업 지시서를 짓고 결과를 거두며, 받는 도구마다 있는 러너가 실제로 띄웁니다.
+         러너는 맡기는 쪽에만 깔려, 받는 도구가 제게 되맡기는 길은 생기지 않습니다.</p>
     </div>
   </div>
   <div class="grid">
-    <div class="card"><b>뒤에서 맡기기 <code>agy-background</code></b><span>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 agy 에게 넘깁니다. 끝나면 Claude 가 결과를 거둬 옵니다.</span></div>
-    <div class="card"><b>막히면 다음 모델로</b><span>한도에 걸리거나 서버가 몰리면 다음 모델로 다시 띄웁니다. 사외는 제미나이를 먼저 쓰고 마지막에 Claude 로, 사내는 회사 키가 받는 모델을 일의 무게로 골라 씁니다.</span></div>
-    <div class="card"><b>구글 무료 API 키 <code>GOOGLE_API_KEY</code></b><span>사외에서 로그인 한도가 차도 제미나이를 더 쓰게 해 줍니다. <a href="https://aistudio.google.com/apikey">Google AI Studio</a> 에서 API 키를 만들고, 새 터미널에서 <code>setx GOOGLE_API_KEY &lt;키&gt;</code> 를 친 뒤 앱을 다시 엽니다.</span></div>
-  </div>
-</section>
-
-<section id="cc" class="cc">
-  <div class="head">
-    <div class="icon"><svg viewBox="0 0 24 24"><path d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5M8 11h6M11 8v6"/></svg></div>
-    <div>
-      <h2>Codex · Copilot 에게 맡기기<span class="tag">Claude 와 Codex 를 같이 고르면</span></h2>
-      <p>긴 조사 · 리뷰 · 다른 모델의 의견을 Codex 에게 뒤에서 맡기고, Claude 와는 하던 대화를 이어 갑니다. Claude 의 맥락을 그만큼 아낍니다.</p>
-    </div>
-  </div>
-  <div class="grid">
-    <div class="card"><b>뒤에서 맡기기 <code>codex-copilot-background</code></b><span>긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 웹 조사를 Codex 에게 넘기고, 끝나면 Claude 가 답을 거둬 옵니다. 맡긴 쪽은 기본으로 읽기만 하고, 고치기를 맡길 때는 따로 세운 작업 폴더 안만 고칩니다.</span></div>
-    <div class="card"><b>자리마다 맞춰 돌기</b><span>사외에서는 Codex 가 실시간으로 웹을 검색하고, Codex 한도가 차면 Copilot 이 받습니다(Copilot CLI 는 Copilot 을 고르면 깔립니다). 사내에서는 Codex 가 회사 게이트웨이로 가고, 웹 검색도 사내 프록시가 게이트웨이로 잇습니다.</span></div>
-    <div class="card"><b>사외는 로그인 한 번씩</b><span>터미널에서 <code>codex login</code>(ChatGPT 계정)과 <code>copilot login</code>(GitHub 계정)을 한 번씩 칩니다. 사내 Codex 는 회사 키로 서서 로그인이 없습니다.</span></div>
-    <div class="card"><b>거꾸로 — Codex 에서 Claude 에게 <code>claude-background</code></b><span>Codex 를 쓰다가 리뷰 · 조사 · 다른 모델의 의견을 Claude 에게 넘깁니다. 받는 Claude 는 기본으로 읽기만 하고, 고치기를 맡길 때는 따로 세운 작업 폴더 안만 고칩니다.</span></div>
+    <div class="card lead"><b>맡기는 법 <code>agent-envelope</code></b><span>누구에게 맡길지 고르고, 받는 쪽이 읽을 작업 지시서를 짓고, 돌아온 결과를 확인해 거둡니다. 어느 도구를 고르든 깔리고, Claude 안의 서브에이전트에게 맡길 때도 이 절차를 씁니다. 아래 러너 셋은 이 스킬이 부르는 손입니다.</span></div>
+    <div class="card"><b>agy 에게 <code>agy-background</code></b><span><em>Claude · Codex → agy</em>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 넘깁니다. 한도에 걸리거나 서버가 몰리면 다음 모델로 다시 띄웁니다 — 사외는 제미나이를 먼저 쓰고 마지막에 Claude 로, 사내는 회사 키가 받는 모델을 일의 무게로 골라 씁니다.</span></div>
+    <div class="card"><b>Codex 에게 <code>codex-copilot-background</code></b><span><em>Claude · agy → Codex</em>긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 웹 조사를 넘깁니다. 사외에서는 Codex 가 실시간으로 웹을 찾고, 한도가 차면 Copilot 이 받습니다(Copilot CLI 는 Copilot 을 고르면 깔립니다). 사내에서는 회사 게이트웨이로 갑니다.</span></div>
+    <div class="card"><b>Claude 에게 <code>claude-background</code></b><span><em>Codex · agy → Claude</em>리뷰 · 조사 · 다른 모델의 의견을 Claude 에게 넘깁니다.</span></div>
+    <div class="card"><b>읽기가 기본</b><span>Codex · Claude 는 기본으로 읽기만 하고, 고치기를 맡길 때는 따로 세운 작업 폴더 안만 고칩니다. agy 는 맡길 때 세운 작업 폴더 안에서 씁니다.</span></div>
+    <div class="card"><b>사외는 로그인 한 번씩</b><span>터미널에서 <code>codex login</code>(ChatGPT 계정) · <code>copilot login</code>(GitHub 계정)을 한 번씩 칩니다. agy 는 로그인 한도가 차도 <a href="https://aistudio.google.com/apikey">구글 무료 API 키</a>를 <code>setx GOOGLE_API_KEY &lt;키&gt;</code> 로 넣으면 제미나이를 더 씁니다. 사내는 회사 키로 서서 로그인이 없습니다.</span></div>
   </div>
 </section>
 
@@ -231,7 +218,7 @@
     <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg></div>
     <div>
       <h2>제작자 칸을 켜면<span class="tag">설치 창의 「제작자의 … 깝니다」 — 도구마다 고른다</span></h2>
-      <p>만든 사람이 일하는 방식입니다. Claude · Codex · agy 가운데 받을 도구만 켭니다 — Claude 만 받고 나머지는 가볍게 써도 됩니다. 안 켜도 설치는 완전합니다. 판마다 바뀐 것은 그 판의 릴리스 노트가 적습니다 — 설치 창의 「바뀐 것」 링크가 엽니다.</p>
+      <p>만든 사람이 일하는 방식입니다. Claude · Codex · agy 가운데 받을 도구만 켭니다 — Claude 만 받고 나머지는 가볍게 써도 됩니다. 안 켜도 설치는 완전합니다. 설치 창에 내 설정 저장소 주소를 넣으면 같은 칸이 그 저장소의 규범 · 룰 · 스킬을 고른 도구에 보냅니다. 판마다 바뀐 것은 그 판의 릴리스 노트가 적습니다 — 설치 창의 「바뀐 것」 링크가 엽니다.</p>
     </div>
   </div>
   <div class="grid">
@@ -239,7 +226,7 @@
     <div class="card"><b>일하는 방식 스킬</b><span>결정 기록 · 세션 인계 · 이슈 쓰기 · 문서 점검 · 글 다듬기 같은 절차입니다.</span></div>
     <div class="card"><b>agy 도 같은 규범으로</b><span>agy 가 Claude 와 같은 규범 · 룰을 읽고, 일하는 방식 스킬도 Codex 와 같이 다 받습니다.</span></div>
     <div class="card"><b>Codex 도 같은 규범으로</b><span>Codex 의 지침 파일에 같은 규범을 싣고, 코드나 문서를 만질 때 읽을 룰을 가리킵니다. 일하는 방식 스킬도 Codex 가 읽는 자리에 깝니다. 그 파일에 직접 쓴 글은 그대로 둡니다.</span></div>
-    <div class="card"><b>주로 쓰는 도구에만 켜면 가볍습니다</b><span>규범 · 룰 · 스킬 목록은 그 도구를 부를 때마다 함께 실립니다. agy 로 재 보니 설정 없이 한 번 부르는 데 약 11,700 토큰, 규범과 스킬 목록을 실으면 약 16,000 토큰이었습니다. 직접 대화하며 일을 시키는 도구에만 켜고, 조사 · 리뷰를 가끔 맡기기만 하는 도구는 꺼 두면 맡길 때마다 가볍습니다. 꺼도 회사 문서 스킬 · 맡기기 · 안전 훅은 그대로 깔립니다.</span></div>
+    <div class="card"><b>주로 쓰는 도구에만 켜면 가볍습니다</b><span>규범 · 스킬 목록은 부를 때마다 함께 실립니다(agy 한 번에 약 11,700 → 16,000 토큰). 직접 일을 시키는 도구에만 켜고, 가끔 맡기기만 하는 도구는 꺼 둡니다.</span></div>
   </div>
 </section>
 
