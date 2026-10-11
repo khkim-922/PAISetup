@@ -3789,7 +3789,7 @@ function Get-AgyOldListState([string]$Path, [string]$HomeDir) {
 function Get-AgyOldHomePlan([string]$OldHome, [string]$NewHome, [string[]]$Ours, [string[]]$Reinstall) {
   # 옛 자리를 비우는 판 — 옛 자리에 든 우리 이름마다:
   #   Aside    — 새 자리에 같은 이름이 이미 있다 → 그 폴더를 먼저 통째로 백업 자리로 비켜 둔다(우리가 둔 것일 수 없다 — 위 곁말)
-  #   ToBackup — 이번에 다시 깐다(`$Reinstall`) → 옛것은 백업 자리로
+  #   ToBackup — 이번에 다시 깔거나 배포가 미는 몫이다(`$Reinstall`) → 옛것은 백업 자리로
   #   ToNew    — 나머지 → 새 자리로 옮긴다(그대로 쓰인다)
   #   Foreign(기록에 없는 이름 · 폴더가 아닌 것 — 안 건드린다) · Remove(옛 자리가 있고 Foreign 이 없다 — 다 옮긴 뒤 걷는다)
   $plan = @{ ToNew = @(); ToBackup = @(); Aside = @(); Foreign = @(); Remove = $false }
@@ -3808,7 +3808,13 @@ if ($hostAgy) {
   $agyOurs   = @(@($agyLedger, (Join-Path $env:USERPROFILE ".gemini\$DeployLedgerName")) |
                  Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { [IO.File]::ReadAllLines($_) } |
                  ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
-  $agyOld = Get-AgyOldHomePlan $AgyOldSkillHome $AgySkillHome $agyOurs @($agyHomeSkills | Where-Object { -not $agyHeld.ContainsKey($_) })
+  # 배포 기록의 이름도 백업으로 — 칸에서 agy 를 켰으면 배포가 새 자리에 다시 밀고, 껐으면 백업에 머문다(배포의 같은 판과 같은
+  #   끝). 새 자리로 옮기면 끈 칸에도 개인 스킬이 agy 에 선다.
+  $agyDeployLedger = Join-Path $env:USERPROFILE ".gemini\$DeployLedgerName"
+  $agyDeployNames  = @(if (Test-Path -LiteralPath $agyDeployLedger -PathType Leaf) {
+                         [IO.File]::ReadAllLines($agyDeployLedger) | ForEach-Object { $_.Trim() } | Where-Object { $_ } })
+  $agyOld = Get-AgyOldHomePlan $AgyOldSkillHome $AgySkillHome $agyOurs `
+              (@($agyHomeSkills | Where-Object { -not $agyHeld.ContainsKey($_) }) + $agyDeployNames)
   $agyBkRoot = Join-Path $env:USERPROFILE '.gemini\backups'
   if ($agyOld.Aside.Count) {
     $agyAsideBk = Get-FreePath (Join-Path $agyBkRoot ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
