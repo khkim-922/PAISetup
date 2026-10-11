@@ -645,12 +645,12 @@ function Get-FreePath([string]$Path) {
   return $p
 }
 
-# 나른 것을 **동봉본과 견주는 자** — 7 칸과 6 칸이 같은 자를 쓴다.
+# 나른 것을 **동봉본과 견주는 자** — 7 칸의 자산이 다 이 자를 쓴다.
 # ⚠ **폴더가 있나로 묻지 않는다.** `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남는다 —
 #   빈 폴더를 [O] 로 찍으면 「깔렸는데 안 든 것」이 성공으로 보고된다. 그래서 **파일 수를 센다.**
 # ⚠ **여분은 판정이 아니라 눈금이다.** 「남는 것이 있다」와 「나른 것이 모자란다」는 다른
-#   명제라, 수는 찍되 [X] 는 모자랄 때만 든다 — 걷는 자리(씨앗 넷)와 안 걷는 자리(개인
-#   규범·룰·스킬)가 **같은 자를 쓰면서** 서로 다른 뜻을 읽을 수 있게 하는 것이 이 갈림이다.
+#   명제라, 수는 찍되 [X] 는 모자랄 때만 든다 — 거울로 까는 자리(씨앗 넷)와 덮어쓰기로 두는 자리(사내
+#   환경 문서)가 **같은 자를 쓰면서** 서로 다른 뜻을 읽을 수 있게 하는 것이 이 갈림이다.
 #   ⚠ 두 자를 따로 두면 한쪽만 낡는다 — 찍는 꼴이 두 벌이 되는 그 자리가 사본이다.
 function New-CountCheck([string]$Name, [string]$From, [string]$To) {
   $isDir = Test-Path -LiteralPath $From -PathType Container
@@ -1745,6 +1745,70 @@ function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome
 
 #endregion 홈 스킬
 
+#region 도구 홈의 규범 · 룰 — 손(`tool-homes.py`)을 부르고, 뱉은 줄을 화면과 끝 검증의 꼴로 옮긴다
+
+# 무엇이 어느 도구 홈에 어떤 꼴로 가나는 짐의 표(`tool-homes.conf`)와 손(`tool-homes.py`)만 안다(claude-config 결정 0112).
+#   이 설치기는 그 사실을 안 들고 손을 부를 뿐이다. 줄의 꼴(`CHANGE=` · `WARN=` · `ERROR=` · `CHANGED=`)과 종료 값의 뜻은
+#   손의 머리말이 들고, 그 꼴을 읽는 자리는 이 절의 세 함수뿐이다.
+
+# 손을 한 번 부른다 — 돌려주는 것은 종료 값(`Rc` · 못 불렀으면 -1) · 뱉은 줄 전부(`Lines`) · `CHANGE=` 줄(`Changes`) ·
+#   `ERROR=` 의 까닭(`Errors`).
+# ⚠ 글자는 `Invoke-Logged` 로 파일에 받는다 — 판정이 종료 값에 서므로 `Start-Process -PassThru` 로 띄우지 않는다.
+function Invoke-ToolHomes([string]$Hand, [string[]]$HandArgs) {
+  $log = [IO.Path]::GetTempFileName()
+  $rc = Invoke-Logged 'python' (@('-X', 'utf8', $Hand) + $HandArgs) $log
+  $lines = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | ForEach-Object { "$_".TrimEnd() } | Where-Object { $_ })
+  Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
+  return @{
+    Rc      = $rc
+    Lines   = $lines
+    Changes = @($lines | Where-Object { $_ -like 'CHANGE=*' })
+    Errors  = @($lines | Where-Object { $_ -like 'ERROR=*' } | ForEach-Object { $_.Substring('ERROR='.Length) })
+  }
+}
+
+# 손의 줄을 이 설치기의 꼴로 찍는다 — `CHANGE=` 은 칸 셋(동사 · 자리 · 까닭)을 한 줄로, `WARN=` 은 노랑, `ERROR=` 은 빨강,
+#   꼴 밖의 줄(파이썬이 못 뜬 까닭 같은)은 그대로. 초록 · 빨강 판정은 부르는 자리가 종료 값과 `Errors` 로 내린다.
+function Show-ToolHomesLines([string[]]$Lines) {
+  foreach ($ln in @($Lines)) {
+    if ($ln -like 'CHANGED=*') { continue }
+    if ($ln -like 'CHANGE=*') {
+      $f = @($ln.Substring('CHANGE='.Length).Split("`t"))
+      $where = if ($f.Count -gt 1) { " $($f[1])" } else { '' }
+      $why = if ($f.Count -gt 2) { " — $($f[2])" } else { '' }
+      Write-Host "     $($f[0])$where$why"
+    } elseif ($ln -like 'WARN=*') {
+      Write-Host "     ! $($ln.Substring('WARN='.Length))" -ForegroundColor Yellow
+    } elseif ($ln -like 'ERROR=*') {
+      Write-Host "     ! $($ln.Substring('ERROR='.Length))" -ForegroundColor Red
+    } else {
+      Write-Host "     $ln"
+    }
+  }
+}
+
+# 끝 검증 한 칸 — 손의 `check` 를 한 번 부르고 `$checks` 의 꼴로 돌려준다. 0 홈이 표대로다 · 1 다르다(바꿀 자리와 막힌
+#   까닭을 댄다) · 그 밖은 못 쟀다(짐에 손이 없다 · 층이나 표가 없다 · 손이 못 떴다) — 못 잰 것도 [X] 다.
+function Get-ToolHomesCheck([string]$Hand) {
+  $name = '규범 · 룰 · 에이전트'
+  if (-not (Test-Path -LiteralPath $Hand -PathType Leaf)) { return @{ Name = "$name (못 쟀다 — 짐에 손이 없다: $Hand)"; Ok = $false } }
+  $Result = Invoke-ToolHomes $Hand @('check')
+  if ($Result.Rc -eq 0) { return @{ Name = "$name (홈이 tool-homes.conf 대로다)"; Ok = $true } }
+  if ($Result.Rc -eq 1) {
+    $places = @($Result.Changes | ForEach-Object { @($_.Split("`t"))[1] } | Where-Object { $_ } | Select-Object -Unique)
+    $shown = @($places) + @($Result.Errors)
+    return @{ Name = "$name (홈이 tool-homes.conf 와 다르다 — $($shown -join ' · '))"; Ok = $false }
+  }
+  $other = @($Result.Lines | Where-Object { $_ -notmatch '^(CHANGE|CHANGED|WARN|ERROR)=' })
+  $why = if ($Result.Errors.Count) { $Result.Errors[-1] }
+         elseif ($Result.Rc -eq -1) { 'python 을 못 불렀다' }
+         elseif ($other.Count) { $other[0].Trim() }
+         else { "종료 $($Result.Rc)" }
+  return @{ Name = "$name (못 쟀다 — $why)"; Ok = $false }
+}
+
+#endregion 도구 홈의 규범 · 룰
+
 #region 도구별 · Claude — 구독 로그인을 재고, Claude 홈 설정에 도구 훅을 심는다
 
 function Test-ClaudeLoggedIn {
@@ -1959,64 +2023,7 @@ function Get-ProxyVer([string]$text) {
 
 #endregion 도구별 · 로컬 프록시
 
-#region 도구별 · agy — 가리킴 파일을 이 PC 홈의 글로 짓고 견주며, 끈 판에 걷을 우리 파일과 옛 스킬 목록 · 자리를 가린다
-
-function ConvertTo-AgyPointerText([string]$Template, [string]$HomeDir) {
-  # 가리킴 파일의 틀 글 하나를 이 PC 의 글로 — 틀이 홈을 `~/` 로 연 자리(JSON 글 값의 머리 `"~/` · include 대상의 머리
-  #   `](~/`)만 `$HomeDir` 의 절대 경로(`C:/Users/<이름>/`)로 바꾼다. 홈은 `/` 로 적는다(agy 는 두 꼴을 다 받는다).
-  # ⚠ **왜 절대 경로인가** — 안티그래비티 데스크탑 앱은 목록의 `path` 로 절대 경로만 받는다(앱 로그 「must be an absolute
-  #   path」). agy CLI 는 상대 경로도 설정 폴더 기준으로 받지만 `~/` 는 앱과 같은 오류로 거절한다(#134 실측). 둘이 다 받는
-  #   꼴은 드라이브 문자로 여는 절대 경로다. 실측과 나머지 까닭은 설정 저장소 `deploy.ps1` 의 같은 이름 함수 곁말이 든다.
-  # 짝 — 그 함수가 같은 틀에서 같은 글을 짓는다. 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 둘을 떼어 견준다.
-  $abs = $HomeDir.Replace('\', '/').TrimEnd('/') + '/'
-  $Template.Replace('"~/', '"' + $abs).Replace('](~/', '](' + $abs)
-}
-
-function Test-AgyPointerSame([string]$Path, [string]$Want) {
-  $wantBytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Want)
-  (Test-Path -LiteralPath $Path -PathType Leaf) -and
-    ([Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) -ceq [Convert]::ToBase64String($wantBytes))
-}
-
-# agy 칸을 끈 판 — 우리 설정 둘(규범 · 룰을 가리키는 둘)만 걷는다. 「우리 것」은 꼴로 가린다: 규범 include 한 줄 ·
-# 룰 자리 한 줄이고 그 자리가 우리가 써 온 자리(옛 Claude 홈 · 지금 중립 자리) 가운데 하나다. 다르면 사람이 고친
-# 것이라 둔다. 옛 스킬 목록은 칸과 무관하게 걷는다(아래 「agy 옛 스킬 자리」). 설정 저장소가 있어도 걷는다 — 그 배포도 끈
-# 칸에는 안 민다(결정 0107).
-function Get-AgyKitOurs([string]$CfgDir, [string]$KitAgy, [string]$HomeDir) {
-  # 끈 판에 걷을 우리 파일(`AGENTS.md` · `rules.json`)의 경로들. 「우리가 써 온 꼴」은 둘이다:
-  #   * 옛 판이 깐 글자 그대로 — 규범 `~/.claude/CLAUDE.md` · `~/.paisetup/norms/norms.md`, 룰 `../../.claude/rules` ·
-  #     `../../.paisetup/norms/rules`. 이 판에서는 안 짓지만 그 판으로 깐 PC 에 남아 있다
-  #   * 짐의 틀(`$KitAgy` 의 같은 이름)과 그 틀을 이 PC 에 지은 글(`ConvertTo-AgyPointerText`) — 틀에서 파생하므로 틀이
-  #     바뀌어도 따라온다
-  # 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 이 함수를 떼어 옛 꼴 · 새 꼴 · 사람이 고친 꼴로 잰다.
-  $ours = @()
-  $agMd = Join-Path $CfgDir 'AGENTS.md'
-  if (Test-Path -LiteralPath $agMd -PathType Leaf) {
-    $mdWant = @('@[norms](~/.claude/CLAUDE.md)', '@[norms](~/.paisetup/norms/norms.md)')
-    $mdKit = Join-Path $KitAgy 'AGENTS.md'
-    if (Test-Path -LiteralPath $mdKit) {
-      $tpl = [IO.File]::ReadAllText($mdKit)
-      $mdWant += @($tpl.Trim(), (ConvertTo-AgyPointerText $tpl $HomeDir).Trim())
-    }
-    if ($mdWant -contains [IO.File]::ReadAllText($agMd).Trim()) { $ours += $agMd }
-  }
-  $agRules = Join-Path $CfgDir 'rules.json'
-  if (Test-Path -LiteralPath $agRules -PathType Leaf) {
-    try {
-      $rulesWant = @('../../.claude/rules', '../../.paisetup/norms/rules')
-      $rulesKit = Join-Path $KitAgy 'rules.json'
-      if (Test-Path -LiteralPath $rulesKit) {
-        $tpl = [IO.File]::ReadAllText($rulesKit)
-        foreach ($t in @($tpl, (ConvertTo-AgyPointerText $tpl $HomeDir))) {
-          $rulesWant += @(($t | ConvertFrom-Json).entries | ForEach-Object { $_.path })
-        }
-      }
-      $rj = @((Get-Content -LiteralPath $agRules -Raw -Encoding UTF8 | ConvertFrom-Json).entries)
-      if ($rj.Count -eq 1 -and $rulesWant -contains $rj[0].path) { $ours += $agRules }
-    } catch { }
-  }
-  return $ours
-}
+#region 도구별 · agy — 옛 스킬 목록 · 옛 스킬 자리를 가린다
 
 function Get-AgyOldListState([string]$Path, [string]$HomeDir) {
   # 목록의 꼴 — 'ours'(우리가 쓴 꼴 그대로 — 위 곁말) · 'mixed'(옛 자리를 우리 꼴로 여는 항목이 있는데 무엇이 더 붙었다 ·
@@ -2648,21 +2655,20 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 #   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
 $wantCodex  = [bool]($codexTpl  -and $inside -and ($PickKeys -contains 'codex'))
 $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini'))
-# ── agy 묶음 — agy 모델 값 · agy 설정 둘 (claude-config 결정 0083 · 0086 · 0088 · #117) ──────
+# ── agy 묶음 — agy 모델 값 (claude-config 결정 0083 · 0086 · 0088 · #117) ──────
 # Claude Code 가 agy 에게 일을 맡기는 길은 백그라운드 래퍼(스킬 `agy-background`) 하나다 — 그 래퍼가 고를
-# 모델(`$AgyModelVars`)과, agy 가 Claude Code 와 같은 규범·룰을 읽게 하는 설정 둘이다.
+# 모델(`$AgyModelVars`)이다.
 # ⚠ **자리를 안 가린다 — 갈리는 것은 모델 값뿐이다.** 사내 agy 는 회사 키로 게이트웨이를 타서 서는
-#   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다). 설정 둘은 사내에서도 그대로 선다
-#   (사내 PC 실측 2026-10-08 · claude-config #117 · 결정 0086).
+#   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다).
 # ⚠ **다리(MCP `agy-bridge`)는 안 깐다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아, 맡겨 두고 딴 일을
 #   하라는 이 묶음의 뜻과 어긋난다.
-# ⚠ **둘은 조건이 다르다**(결정 0089 · 0091).
+# ⚠ **조건이 갈린다**(결정 0089 · 0091).
 #   * 맡기기(`$wantAgyDelegate`) — 모델 값 · 래퍼 스킬 · 래퍼가 도는 파이썬. 「자리 × Claude 또는 Codex 와 안티그래비티를
 #     골랐나」의 사실이라 그 둘만 탄다. 래퍼는 누구의 규범과도 무관하게 agy 를 띄우고 넘기는 도구다.
-#   * 설정 둘(`$wantAgyKit`)은 제작자 칸의 agy 칸을 탄다 — 가리키는 것이 그 칸이 까는 중립 자리의 규범 · 룰이다.
-#     칸을 끄면 가리킬 것이 없고, 그 규범을 안 고른 사람의 agy 에 붙이게 된다. 맡기는 쪽이 없어도 선다(결정 0099).
 #   * 일하는 도구 스킬 · 훅(`$hostAgy`)은 칸 없이 안티그래비티를 고르면 선다(결정 0099) — 아래 「Codex · agy 홈의 스킬」 ·
 #     「agy 옛 스킬 자리」 · 「agy 훅」 칸.
+#   * agy 가 규범 · 룰을 읽게 하는 설정 둘은 이 설치기가 짓지 않는다 — 손(`tool-homes.py`)이 제작자 칸의 agy 칸을 보고
+#     놓는다(「도구별 홈」 · claude-config 결정 0112).
 $hostAgy         = [bool]($PickKeys -contains 'antigravity')
 # ── 설정 저장소의 주소와 자리 — 비켜서는 칸들(제작자 칸 · 홈 스킬 · 씨앗 · 칸 없이 까는 스킬)과 8 칸(받는다)이 같이 쓴다 ──
 # ⚠ **자리를 짓는 자를 한 벌로 둔다.** 비켜서는 칸이 저장소를 찾는 자리와 8 칸이 clone 하는 자리가
@@ -2676,11 +2682,13 @@ $configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
 # 규범」이었다 · 그 칸으로 자동 실행이 오면 Claude 로 깔고 끝에 설치 창을 한 번 띄운다). 고른 제품이 아닌 도구는 빠진다 —
 # 깔 홈이 없다. 고른 것은 사용자 환경변수 `PAISETUP_PERSONAL` 로도 심어, 설정 저장소의 배포 · 세션 훅이 같은 값을 읽는다
 # (6 칸). 아무것도 안 골랐으면 `none` — 비운 값은 「이 설치기를 안 돌렸다」와 갈라야 한다.
-# ⚠ **칸 하나가 스위치다 — 설정 저장소를 넣어도 그대로다**(결정 0107). 저장소가 없으면 켠 도구에 만든 사람의 꾸러미를
-#   깐다. 저장소를 넣었으면 켠 도구에는 꾸러미를 안 깔고 비켜선다 — 그 저장소의 배포가 같은 값을 읽어 제 것을 민다. 둘
-#   다 깔면 같은 홈을 판마다 번갈아 덮는다. **끈 도구는 저장소가 있어도 우리 것을 걷는다** — 배포도 끈 도구에는 안 밀어
-#   둘이 같은 상태로 간다.
-#   `$personal*` 은 고른 값이고, `$kit*` 은 이 설치가 꾸러미를 손수 까는 도구다.
+# ⚠ **칸 하나가 스위치다 — 설정 저장소를 넣어도 그대로다**(결정 0107). 저장소가 무엇을 바꾸나는 항목마다 다르다:
+#   * 스킬 — 저장소가 없으면 켠 도구에 만든 사람의 꾸러미를 깐다. 저장소를 넣었으면 켠 도구에는 꾸러미를 안 깔고 비켜선다 —
+#     그 저장소의 배포가 같은 값을 읽어 제 것을 민다. 둘 다 깔면 같은 홈을 판마다 번갈아 덮는다
+#   * 규범 · 룰 · 에이전트 — 비켜서지 않는다. 이 설치는 짐으로 표준 층을 채우고, 저장소의 배포가 채운 개인 층이 항목마다
+#     이긴다(손 `tool-homes.py` · claude-config 결정 0112)
+#   **끈 도구는 저장소가 있어도 우리 것을 걷는다** — 배포도 끈 도구에는 안 밀어 둘이 같은 상태로 간다.
+#   `$personal*` 은 고른 값이고, `$kit*` 은 이 설치가 스킬 꾸러미를 손수 까는 도구다.
 $personalAsked  = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() }) }
                   elseif ($WithPersonalConfig) { @('claude') } else { @() }
 $personalClaude = [bool](($personalAsked -contains 'claude') -and ($PickKeys -contains 'claude'))
@@ -2696,7 +2704,6 @@ $kitCodex  = [bool]($personalCodex -and -not $personalByRepo)
 $kitAgy    = [bool]($personalAgy -and -not $personalByRepo)
 $wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
 $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
-$wantAgyKit      = $kitAgy
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
 # Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
 # ⚠ **Claude 와 Codex 를 같이 고르면 선다 — 맡기는 쪽(Claude)과 받는 쪽(Codex)이 다 있어야 한다. 사내는 Codex 를 회사
@@ -2771,9 +2778,9 @@ $FreeSkills = [ordered]@{
   'claude-background'        = @{ Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy }
 }
 # ── 도구 홈 짐 — `kit/` (claude-config 결정 0101) ────────────────────────────────────────────
-# 받는 PC 의 도구 홈 여럿에 나눠 깔 것(규범 · 룰 · 스킬 · agy 설정)이 한 폴더에 산다. 도구가 스스로 읽는 자리
-# 이름(`.claude/skills` · `.agents/skills`)에 안 두는 것이 요점이다 — 이 폴더를 Claude Code · Codex 로 열면 그 자리가
-# 그 세션의 스킬로 실린다.
+# 받는 PC 의 도구 홈 여럿에 나눠 깔 것(규범 · 룰 · 스킬)과 규범 · 룰을 놓는 손(`tool-homes.py` · 그 표 `tool-homes.conf`)이
+# 한 폴더에 산다. 도구가 스스로 읽는 자리 이름(`.claude/skills` · `.agents/skills`)에 안 두는 것이 요점이다 — 이 폴더를
+# Claude Code · Codex 로 열면 그 자리가 그 세션의 스킬로 실린다.
 # 갈 곳 표(`kit/skills.targets.conf`)는 설정 저장소의 `deploy.skills.targets.conf` 를 그대로 실은 것이다 — 한 줄에
 # `<러너> <받는 쪽>`. 러너는 받는 쪽 홈에 안 간다(받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 배포도 같은 표를 읽는다.
 # ⚠ **표가 없으면 빨강이다** — 조용히 「다 간다」로 읽으면 Claude 홈에 Claude 맡기기 러너가 선다.
@@ -2798,6 +2805,8 @@ if ($wantClaudeBg)    { $needPythonWhy += 'Claude 맡기기 래퍼가 python 으
 if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex DRM · 그림 훅이 파이썬으로 돈다' }
 if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 파이썬으로 돈다' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
+# 제작자 칸을 켰으면 고른 기능이 손(`tool-homes.py`)으로 선다 — 칸을 켠 도구가 위 까닭을 이미 들어도 이 까닭은 따로 적는다
+if ($personalAny) { $needPythonWhy += '제작자 칸의 규범 · 룰을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
 #   그래서 무는 것은 「사내인가」와 「이 제품을 켰나」뿐이다.
@@ -4335,18 +4344,22 @@ Exit-Step 'assets'
 
 # ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 홈
-#   하는 일 — 제작자 칸 값 · Claude(제작자 꾸러미 · 칸 없이 까는 스킬 · 걷힌 룰 · 홈 훅 · settings 다시 쓰기) · 중립 규범 자리 ·
-#     agy(설정 둘 · 옛 스킬 자리 · 홈 스킬 · 훅) · Codex(홈 스킬 · 훅 병합과 신뢰 · 규범 블록)
-#   앞에서 받는 것 — 「Claude 홈 설정」의 `$cfg` · `$homeCfg` · `$dirty`, 「공용 자산」의 씨앗(훅 몸통 · 짓는 손)
+#   하는 일 — 제작자 칸 값 · 규범 · 룰 · 에이전트(짐의 손 `tool-homes.py` 를 부른다 — 표준 층과 세 도구 홈) ·
+#     Claude(제작자 스킬 · 칸 없이 까는 스킬 · 걷힌 룰 · 홈 훅 · settings 다시 쓰기) · agy(옛 스킬 자리 · 홈 스킬 · 훅) ·
+#     Codex(홈 스킬 · 훅 병합과 신뢰)
+#   앞에서 받는 것 — 준비의 짐(`$Kit` — 손과 그 표가 뿌리에 실린다), 「Claude 홈 설정」의 `$cfg` · `$homeCfg` · `$dirty`,
+#     「공용 자산」의 씨앗(훅 몸통 · 병합기 · 어댑터)
 #   안 하는 것 — 설정 저장소를 안 받는다
 #   ⚠ 제작자 칸 값(`PAISETUP_PERSONAL`)은 사용자 환경에 심지만 이 걸음에 선다 — 「Claude 홈 설정」 뒤라 settings.json 의 env 로
-#     안 밀리고, 「설정 저장소」의 배포가 이 프로세스에서 그 값을 물려받는다
+#     안 밀리고, 손이 그 값을 읽으며, 「설정 저장소」의 배포가 이 프로세스에서 그 값을 물려받는다
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
-# ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다.
-#   제작자 칸의 Claude 칸(`-PersonalFor claude` · 옛 `-WithPersonalConfig`)을 켤 때만, 그리고 이 폴더에 실제로 있을 때만 깐다.
+# ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다 — 제작자 칸에서 그 도구를 켤 때만.
+#   규범 · 룰 · 에이전트는 손이 칸을 읽어 도구마다 놓고, Claude 홈의 제작자 스킬은 Claude 칸(`-PersonalFor claude` · 옛
+#   `-WithPersonalConfig`)을 켤 때 아래가 깐다.
 
 Enter-Step 'tools'
-# 고른 도구 — 설정 저장소의 배포(`deploy.ps1`)와 세션 훅이 같은 값을 읽어 어느 도구 홈을 개인화할지 정한다(결정 0107).
+# 고른 도구 — 손(`tool-homes.py`) · 설정 저장소의 배포(`deploy.ps1`) · 세션 훅이 같은 값을 읽어 어느 도구 홈을 개인화할지
+# 정한다(결정 0107 · 0112).
 if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) {
   # ⚠ **이 프로세스의 값도 맞춘다** — 뒤의 설정 저장소 배포(8 칸)는 이 프로세스의 자식이라 그 값을 물려받는다. 새 판의 배포는
   #   사용자 값을 먼저 읽지만, 포크한 설정 저장소는 사람이 당기기 전까지 프로세스 값을 먼저 읽는 판을 든다. 오래 떠 있던 앱에서
@@ -4356,39 +4369,46 @@ if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $Pers
 } else {
   Plant-Var 'PAISETUP_PERSONAL' $PersonalValue
 }
+# ── 규범 · 룰 · 에이전트 — 짐의 손(`tool-homes.py`)이 표준 층을 채우고 도구 홈에 놓는다 (claude-config 결정 0112) ──
+# 무엇이 어느 홈에 어떤 꼴로 가나 · 칸을 끈 도구에서 무엇을 걷나는 손과 그 표(`tool-homes.conf`)가 든다 — 손의 머리말.
+# 설정 저장소를 넣었어도 비켜서지 않는다 — 그 저장소의 배포가 채운 개인 층이 항목마다 이기고, 놓기는 이긴 층의 손이 한다.
+# ⚠ **칸 값을 심은 뒤에 부른다** — 손은 사용자 환경의 `PAISETUP_PERSONAL`(바로 위에서 심었다)을 읽는다.
+# ⚠ **손이 짐에 없으면 빨강이다** — 짐이 깨졌다는 뜻이라, 건너뛰고 초록으로 끝나면 아무도 모른다.
+# ⚠ **켠 칸이 없고 python 이 안 서면 건너뛴다** — 그때 손이 할 일은 끈 칸의 우리 것 걷기뿐이다. 칸을 켰으면 python 은
+#   「프로그램」 걸음이 `-NoDevTools` 여도 깔았으므로(`$needPythonWhy`), 여기서 안 서면 빨강이다.
+$toolHomesHand   = Join-Path $Kit 'tool-homes.py'
+$toolHomesPython = Test-Runs 'python' '--version'
+$toolHomesOn     = [bool]($personalAny -or $toolHomesPython)
+if (-not $toolHomesOn) {
+  Write-Host '  규범 · 룰 · 에이전트 — 건너뜀 (python 이 안 서고 켠 제작자 칸이 없다)'
+} elseif (-not (Test-Path -LiteralPath $toolHomesHand -PathType Leaf)) {
+  Write-Host "  ! 규범 · 룰 · 에이전트 — 짐에 없다 ($toolHomesHand)" -ForegroundColor Red
+  $Fails.Add('규범 · 룰 · 에이전트 (짐에 없음)')
+} elseif (-not $toolHomesPython) {
+  Write-Host '  ! 규범 · 룰 · 에이전트 — python 이 안 서서 손을 못 댔다' -ForegroundColor Red
+  $Fails.Add('규범 · 룰 · 에이전트 (python 없음)')
+} else {
+  $th = Invoke-ToolHomes $toolHomesHand @('sync', '--layer', 'standard', '--from', $Kit)
+  if ($th.Rc -ne 0 -or $th.Errors.Count) {
+    Write-Host "  ! 규범 · 룰 · 에이전트 — 손이 다 못 놓았다 (종료 $($th.Rc))" -ForegroundColor Red
+    $Fails.Add('규범 · 룰 · 에이전트 (손이 다 못 놓았다)')
+  } elseif ($th.Changes.Count) {
+    Write-Host "  규범 · 룰 · 에이전트 — 맞췄다 (제작자 칸 $PersonalValue)" -ForegroundColor Green
+  } else {
+    Write-Host "  규범 · 룰 · 에이전트 — 이미 맞다 (제작자 칸 $PersonalValue)"
+  }
+  Show-ToolHomesLines $th.Lines
+}
+
 if ($personalByRepo -and $personalAny) {
-  Write-Host "  제작자 칸 — 설정 저장소를 넣어 꾸러미는 비켜선다. 켠 도구($PersonalValue)는 그 저장소의 배포가 민다" -ForegroundColor Green
+  Write-Host "  제작자 칸 — 설정 저장소를 넣어 스킬 꾸러미는 비켜선다. 켠 도구($PersonalValue)의 스킬은 그 저장소의 배포가 민다" -ForegroundColor Green
 }
 if (-not $personalClaude) {
   Write-Host '  Claude — 건너뜀 (원하면 설치 창의 제작자 칸에서 Claude 를 켠다 · -PersonalFor claude)'
 } elseif ($personalByRepo) {
-  # 위 한 줄이 말했다 — Claude 홈의 규범 · 룰 · 스킬은 설정 저장소의 배포가 민다
+  # 위 한 줄이 말했다 — Claude 홈의 제작자 스킬은 설정 저장소의 배포가 민다
 } else {
-  # ⚠ **짐에 없으면 빨강이다** — 이 판의 짐에서 규범 · 룰 · 스킬이 빠졌다는 것은 짐이 깨졌다는 뜻이라, 건너뛰고 초록으로
-  #   끝나면 아래 개수 대조도 같이 건너뛰어 아무도 모른다. 에이전트만은 안 싣는 판이 있어 있을 때만 나른다.
-  $pairs = @(
-    @{ From = Join-Path $Kit 'norms\norms.md'; To = Join-Path $homeDir 'CLAUDE.md'; Name='전역 규범' }
-    @{ From = Join-Path $Kit 'norms\rules';    To = Join-Path $homeDir 'rules';     Name='영역 룰'   }
-  )
-  $kitAgents = Join-Path $Kit 'agents'
-  if (Test-Path -LiteralPath $kitAgents -PathType Container) {
-    $pairs += @{ From = $kitAgents; To = Join-Path $homeDir 'agents'; Name='에이전트' }
-  }
-  foreach ($p in $pairs) {
-    if (-not (Test-Path -LiteralPath $p.From)) {
-      Write-Host "  ! $($p.Name) — 짐에 없다 ($($p.From))" -ForegroundColor Red
-      $Fails.Add("$($p.Name) (짐에 없음)")
-      continue
-    }
-    if (Test-Path -LiteralPath $p.From -PathType Container) {
-      New-Item -ItemType Directory -Path $p.To -Force | Out-Null
-      Copy-Item -Path (Join-Path $p.From '*') -Destination $p.To -Recurse -Force
-    } else {
-      Copy-Item -LiteralPath $p.From -Destination $p.To -Force
-    }
-    Write-Host "  $($p.Name) — 깔았다" -ForegroundColor Green
-  }
-  # 스킬 — 짐 전부에서 받는 쪽이 Claude 인 러너만 뺀다(위 갈 곳 표)
+  # 스킬 — 짐 전부에서 받는 쪽이 Claude 인 러너만 뺀다(위 갈 곳 표). 짐에 없으면 빨강이다 — 짐이 깨졌다는 뜻이다
   $claudeSkillHome = Join-Path $homeDir 'skills'
   $claudeKitNames = @(Get-ChildItem -LiteralPath $KitSkills -Directory -ErrorAction SilentlyContinue |
                       ForEach-Object { $_.Name } | Where-Object { Test-SkillGoesTo $_ 'claude' })
@@ -4403,78 +4423,6 @@ if (-not $personalClaude) {
     Write-Host "  스킬 — 깔았다 ($($claudeKitNames.Count) 개)" -ForegroundColor Green
     Remove-RetiredSkills -Bundle $KitSkills -SkillHome $claudeSkillHome -Ledger (Join-Path $homeDir '.paisetup-skills') `
                          -BackupRoot (Join-Path $homeDir 'backups') -Installed $claudeKitNames -Keep $claudeKitNames
-  }
-}
-
-# ── 규범 · 룰의 중립 자리 — `~/.paisetup/norms` (결정 0099) ─────────────────────────────────────────
-# Codex 의 규범 블록(룰 줄)과 agy 설정 둘이 가리키는 자리다. Claude 홈(`~/.claude`)은 Claude 가 스스로 싣는 자리라, Claude 칸을
-# 끄고 Codex · agy 칸만 켠 사람에게 거기 깔면 Claude 에도 실린다 — 그래서 따로 둔다. 이름이 `CLAUDE.md` 가 아닌 것도 같은
-# 까닭이다(Claude 는 그 이름을 찾아 싣는다). 이 폴더는 통째로 우리 것이라, 쓸 도구가 없으면 걷는다(백업 자리로 옮긴다).
-# 설정 저장소를 넣고 Codex · agy 를 켰으면 깔지도 걷지도 않는다 — 그 저장소의 배포가 같은 자리를 민다.
-$NeutralNorms = Join-Path $env:USERPROFILE '.paisetup\norms'
-if ($kitCodex -or $kitAgy) {
-  New-Item -ItemType Directory -Path (Join-Path $NeutralNorms 'rules') -Force | Out-Null
-  Copy-Item -LiteralPath (Join-Path $Kit 'norms\norms.md') -Destination (Join-Path $NeutralNorms 'norms.md') -Force
-  Copy-Item -Path (Join-Path $Kit 'norms\rules\*.md') -Destination (Join-Path $NeutralNorms 'rules') -Force
-  Write-Host '  규범 · 룰 중립 자리 — 깔았다 (~/.paisetup/norms · Codex · agy 가 가리킨다)' -ForegroundColor Green
-} elseif (-not ($personalCodex -or $personalAgy) -and (Test-Path -LiteralPath $NeutralNorms)) {
-  $nnBk = Join-Path (Join-Path $homeDir 'backups') ('install-norms-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-  New-Item -ItemType Directory -Path $nnBk -Force | Out-Null
-  Move-Item -LiteralPath $NeutralNorms -Destination (Join-Path $nnBk 'norms') -Force
-  Write-Host "  규범 · 룰 중립 자리 — 쓸 도구가 없어 걷었다 (옮긴 자리: $nnBk)" -ForegroundColor Green
-}
-
-# ── agy 설정 둘 — `kit/agy/*` → `~/.gemini/config/` (claude-config 결정 0083 · #134) ──────
-# 둘 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 위 중립 자리(`~/.paisetup/norms`)를 가리킨다. 그래서 여기서
-# 옮겨 적는 진본이 없다. 제작자 칸의 agy 칸을 켰을 때만 — 끄면 아래가 우리 것만 걷는다. 스킬 목록은 없다 — 우리 스킬은
-# agy 가 목록 없이 싣는 기본 자리에 산다(아래 「agy 옛 스킬 자리」 · 결정 0111).
-# ⚠ **짐의 둘은 틀이고 홈에 까는 파일은 이 PC 의 파생물이다** — 틀은 홈을 `~/` 로 적고, `ConvertTo-AgyPointerText` 가 그
-#   자리를 이 PC 홈의 절대 경로로 바꾼 글을 깐다. 「이미 맞다」도 끝 검증도 짐의 바이트가 아니라 그 글과 견준다.
-# ⚠ **대상이 링크면 링크를 걷고 쓴다.** 쓰기는 링크를 따라가 가리키는 원본을 덮는다 — 손으로
-#   링크를 걸어 둔 PC 에서 그 원본이 한 줄짜리로 바뀐다. 있던 파일은 백업 자리로 먼저 떠 둔다.
-# 지은 글은 BOM 없는 UTF-8 로 쓰고 바이트로 견준다 — BOM 이 붙으면 agy 가 그 목록을 JSON 으로 못 읽는다(#134 실측). 같은
-#   글에 BOM 만 붙은 파일도 다른 것으로 세어 다시 쓴다.
-$AgyUtf8 = New-Object Text.UTF8Encoding($false)
-if ($wantAgyKit) {
-  $agySrc = Join-Path $Kit 'agy'
-  $agyDst = Join-Path $env:USERPROFILE '.gemini\config'
-  if (-not (Test-Path -LiteralPath $agySrc -PathType Container)) {
-    Write-Host "  ! agy 설정 — 짐에 없다 ($agySrc)" -ForegroundColor Red
-    $Fails.Add('agy 설정 (짐에 없음)')
-  } else {
-    $agyBk = $null
-    $agyN = 0
-    foreach ($f in @(Get-ChildItem -LiteralPath $agySrc -File)) {
-      $to = Join-Path $agyDst $f.Name
-      $want = ConvertTo-AgyPointerText ([IO.File]::ReadAllText($f.FullName)) $env:USERPROFILE
-      if (Test-AgyPointerSame $to $want) { continue }
-      if (Test-Path -LiteralPath $to) {
-        if (-not $agyBk) {
-          $agyBk = Get-FreePath (Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
-          New-Item -ItemType Directory -Path $agyBk -Force | Out-Null
-        }
-        Copy-Item -LiteralPath $to -Destination (Join-Path $agyBk $f.Name) -Force
-        if ((Get-Item -LiteralPath $to -Force).LinkType) { Remove-Item -LiteralPath $to -Force }
-      }
-      New-Item -ItemType Directory -Path $agyDst -Force | Out-Null
-      [IO.File]::WriteAllText($to, $want, $AgyUtf8)
-      $agyN++
-    }
-    if ($agyN) {
-      Write-Host "  agy 설정 — 깔았다 ($agyN 개 · ~/.gemini/config)$(if ($agyBk) { " · 옛것은 $agyBk" })" -ForegroundColor Green
-    } else {
-      Write-Host '  agy 설정 — 이미 맞다'
-    }
-  }
-}
-
-if ($hostAgy -and -not $personalAgy) {
-  $ours = @(Get-AgyKitOurs (Join-Path $env:USERPROFILE '.gemini\config') (Join-Path $Kit 'agy') $env:USERPROFILE)
-  if ($ours.Count) {
-    $agOffBk = Get-FreePath (Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
-    New-Item -ItemType Directory -Path $agOffBk -Force | Out-Null
-    foreach ($o in $ours) { Move-Item -LiteralPath $o -Destination (Join-Path $agOffBk (Split-Path -Leaf $o)) -Force }
-    Write-Host "  agy 설정 — 제작자 칸을 꺼 규범 · 룰을 가리키는 것을 걷었다 (옮긴 자리: $agOffBk)" -ForegroundColor Green
   }
 }
 
@@ -4513,8 +4461,8 @@ $agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy' $kitAgy) }     else 
 #   폴더는 먼저 통째로 비켜 둔다(`Aside`) — 안 그러면 기록을 보고 우리 것으로 읽어 그 위에 깐다.
 # ⚠ **목록은 우리가 쓴 꼴 그대로일 때만 걷는다** — 맨 위 열쇠는 `entries` 하나, 항목은 하나, 그 항목의 열쇠는 `path` 하나이고
 #   그 `path` 가 옛 자리를 우리가 써 온 꼴(상대 `paisetup-skills` · 틀 그대로 `~/…` · 이 PC 홈의 절대 경로)로 연다. 무엇이든
-#   더 붙었으면 사람이 고친 파일이라 둔다(끈 판 걷기 `Get-AgyKitOurs` 와 같은 규율) — 우리 것을 다 옮긴 뒤라 그 항목은 쓸
-#   데가 없을 뿐 해가 없다. 걷기 전에 `~/.claude/backups/install-agy-<시각>/` 로 옮겨 둔다.
+#   더 붙었으면 사람이 고친 파일이라 둔다 — 우리 것을 다 옮긴 뒤라 그 항목은 쓸 데가 없을 뿐 해가 없다. 걷기 전에
+#   `~/.claude/backups/install-agy-<시각>/` 로 옮겨 둔다.
 # 백업 자리는 매번 새로 잡는다(`Get-FreePath`) — 같은 초에 두 번 돌아도 앞 백업 안으로 옮겨 들어가지 않는다.
 # 짝 — 설정 저장소 `deploy.ps1` 이 같은 이름의 두 함수로 같은 판을 짓는다(배포만 돌리는 PC). 그쪽
 #   `scripts/check-agy-pointers.ps1` · `scripts/check-deploy-agent-homes.ps1` 이 둘을 떼어 견준다.
@@ -4597,8 +4545,8 @@ if ($hostCodex) {
 
 # ── 걷힌 회사 기준 룰을 홈에서 걷는다 ─────────────────────────────────────────
 # ⚠ **왜 있나.** 1.30.0 이 회사 코딩 기준에서 구운 룰 `futurem-*.md` 를 영역 룰로 깔았는데, 그 뒤 판은
-#   그것을 스킬 `inhouse-app` 으로 바꿨다(claude-config 결정 0075). 위 룰 복사는 묶음에 없는 파일을 안
-#   지우므로 한 번 깐 사람 홈에 옛 룰이 영영 남아 사내 앱의 폴더를 만질 때마다 실린다.
+#   그것을 스킬 `inhouse-app` 으로 바꿨다(claude-config 결정 0075). 룰을 놓는 손(`tool-homes.py`)은 제 기록
+#   (`placed.tsv`)에 든 파일만 걷어, 기록이 서기 전에 깐 그 룰은 사람 홈에 영영 남아 사내 앱의 폴더를 만질 때마다 실린다.
 # ⚠ **구운 표식이 머리에 있는 것만 걷는다** — 같은 이름을 사람이 손수 두었을 수 있다. 표식은 굽는 자가
 #   머리말 바로 뒤 주석에 박던 문장이다. 공통 규약 룰은 머리말의 경로가 여섯 줄이라 표식이 11번째 줄에
 #   선다 — 앞 몇 줄만 읽으면 그 한 장이 안 걷힌다(실측). 그래서 넉넉히 20줄을 본다.
@@ -4755,46 +4703,6 @@ if ($hostAgy) {
       if ($agyHookBak) { Write-Host "     고치기 전 것은 $($agyHookBak.Substring(7)) 에 떠 뒀다" }
     } else {
       Write-Host '  agy 훅 — 이미 맞다'
-    }
-  }
-}
-
-# ── Codex 규범 블록 — 제작자 칸의 Codex 칸 (결정 0099) ───────────────────────────────────────────
-# 위 중립 자리(`~/.paisetup/norms`)의 규범으로 블록을 지어 `~/.codex/AGENTS.md` 의 표지 사이에 얹는다. Codex 는 다른 파일을
-# 끌어오지 못해 뽑아 쓰고, 룰은 「이 파일을 만질 때 이 룰을 읽는다」 한 줄로 중립 자리를 가리킨다. 짓는 자의 진본은 씨앗의
-# `codex-norms.py` 다 — 설정 저장소의 `deploy.ps1` 도 같은 자를 부른다. 사람이 쓴 글은 표지 밖이라 그대로다.
-# ⚠ **Codex 칸을 끄면 블록만 걷는다**(`--remove`) — 블록이 없으면 그대로다.
-# ⚠ **설정 저장소를 넣고 Codex 칸을 켰으면 손대지 않는다** — 그 저장소의 배포가 같은 짓는 자로 제 규범의 블록을 짓는다.
-#   여기서 꾸러미 규범으로 지으면 둘이 판마다 번갈아 덮는다. 칸을 껐으면 저장소가 있어도 걷는다 — 배포도 그때는 걷는다.
-if ($hostCodex -and -not ($personalByRepo -and $personalCodex)) {
-  $codexNormsPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-norms.py'
-  $codexAgentsTarget = Join-Path $env:USERPROFILE '.codex\AGENTS.md'
-  $codexNormsArgs = if ($personalCodex) {
-    @('--norms', (Join-Path $NeutralNorms 'norms.md'), '--rules', (Join-Path $NeutralNorms 'rules'),
-      '--rules-home', '~/.paisetup/norms/rules')
-  } else { @('--remove') }
-  if (-not $personalCodex -and -not (Test-Path -LiteralPath $codexAgentsTarget)) {
-    # 끈 판에 걷을 파일이 없다 — 할 일이 없다
-  } elseif (-not (Test-Path -LiteralPath $codexNormsPlant)) {
-    Write-Host '  ! Codex 규범 블록 — 씨앗의 짓는 자가 없어 손을 못 댔다' -ForegroundColor Red
-    $Fails.Add('Codex 규범 블록 (씨앗이 없다)')
-  } elseif (-not (Test-Runs 'python' '--version')) {
-    Write-Host '  ! Codex 규범 블록 — python 이 안 서서 손을 못 댔다' -ForegroundColor Red
-    $Fails.Add('Codex 규범 블록 (python 없음)')
-  } else {
-    $codexNormsLog = [IO.Path]::GetTempFileName()
-    $codexNormsRc = Invoke-Logged 'python' (@('-X', 'utf8', $codexNormsPlant) + $codexNormsArgs + @('--target', $codexAgentsTarget)) $codexNormsLog
-    $codexNormsOut = @(Get-Content -LiteralPath $codexNormsLog -ErrorAction SilentlyContinue |
-                       ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-    if ($codexNormsRc -ne 0) {
-      Write-Host '  ! Codex 규범 블록 — AGENTS.md 는 그대로다. 짓는 자가 뱉은 끝 줄:' -ForegroundColor Red
-      Show-Log $codexNormsLog
-      $Fails.Add('Codex 규범 블록 (AGENTS.md 못 고침)')
-    } elseif ($codexNormsOut -contains 'CHANGED=1') {
-      if ($personalCodex) { Write-Host '  Codex 규범 블록 — ~/.codex/AGENTS.md 에 규범 · 룰 가리키기를 얹었다' -ForegroundColor Green }
-      else { Write-Host '  Codex 규범 블록 — 제작자 칸을 꺼 ~/.codex/AGENTS.md 에서 걷었다' -ForegroundColor Green }
-    } elseif ($personalCodex) {
-      Write-Host '  Codex 규범 블록 — 이미 맞다'
     }
   }
 }
@@ -5637,7 +5545,8 @@ if (-not $NoVsCode) {
 foreach ($c in $CliPicks) {
   $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
 }
-# 나르는 자리 둘 — 7 칸의 자산과 6 칸의 개인 규범·룰·스킬. 재는 자는 위 `New-CountCheck` 하나다.
+# 나르는 자리 — 7 칸의 자산. 재는 자는 위 `New-CountCheck` 하나다. 제작자 스킬은 아래에서 이름마다 재고, 규범 · 룰 ·
+#   에이전트는 손의 `check` 가 잰다.
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { continue }
   # ⚠ **비켜선 자리는 동봉본과 안 견준다** — 거기 든 것은 설정 저장소의 최신판이라, 저쪽이 부품을
@@ -5655,16 +5564,10 @@ foreach ($a in $envAssets) {
 # ⚠ **다만 여기는 안 걷는다.** 이 자리들의 진본은 설정 저장소이고 그쪽 배포(`deploy.ps1`)가
 #   같은 자리에 민다 — 설치기가 걷으면 저쪽이 방금 심은 것을 이쪽이 지우는 꼴이 되어, 두 자가
 #   한 자리를 두고 판마다 싸운다. 그래서 여분은 [X] 가 아니고 모자란 것만 문다.
-#   ⚠ 그 대신 **옛 판이 깐 스킬·룰이 홈에 남는 것은 여기서 안 풀린다** — 저쪽 배포가 드는 몫이다.
-if ($kitClaude -and $pairs) {
-  foreach ($p in $pairs) {
-    if (-not (Test-Path -LiteralPath $p.From)) { continue }
-    $checks += New-CountCheck $p.Name $p.From $p.To
-  }
-  if ($claudeKitNames.Count) {
-    $claudeKitMiss = @($claudeKitNames | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
-    $checks += @{ Name = "제작자 스킬 ($($claudeKitNames.Count) 개 · ~/.claude/skills)"; Ok = ($claudeKitMiss.Count -eq 0) }
-  }
+#   ⚠ 그 대신 **옛 판이 깐 스킬이 홈에 남는 것은 여기서 안 풀린다** — 저쪽 배포가 드는 몫이다.
+if ($kitClaude -and $claudeKitNames.Count) {
+  $claudeKitMiss = @($claudeKitNames | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
+  $checks += @{ Name = "제작자 스킬 ($($claudeKitNames.Count) 개 · ~/.claude/skills)"; Ok = ($claudeKitMiss.Count -eq 0) }
 }
 # 러너가 받는 쪽 홈에 없나 — 상태로 잰다. 까는 손이 표로 걸렀어도, 옛 판이 깔았거나 손으로 둔 것까지 여기서 보인다.
 foreach ($rr in @(
@@ -5777,7 +5680,7 @@ if ($inside) {
   try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
-# agy 묶음 — 맡기기(모델 값) · 설정 둘. 심는 조건이 둘이라 재는 조건도 둘이다(위 `$wantAgyDelegate` 곁말).
+# agy 묶음 — 맡기기(모델 값). 심는 조건 그대로 잰다(위 `$wantAgyDelegate` 곁말). agy 설정 둘은 손의 `check` 가 잰다.
 if ($wantAgyDelegate) {
   $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
                 Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
@@ -5786,19 +5689,6 @@ if ($wantAgyDelegate) {
 if ($wantCcBg) {
   $checks += @{ Name = "Codex · Copilot 맡기기 값 ($($CcBgVars.Keys -join ' · '))"
                 Ok = (@($CcBgVars.Keys | Where-Object { $userEnv[$_] -ne $CcBgVars[$_] }).Count -eq 0) }
-}
-# ⚠ **설정 둘은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
-#   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.
-# ⚠ **짐의 바이트가 아니라 이 PC 에 지은 글과 견준다** — 깐 파일은 틀의 `~/` 를 이 PC 홈의 절대 경로로 바꾼 파생물이다
-#   (위 「agy 설정 둘」의 `ConvertTo-AgyPointerText`). 짐과 같은 파일은 앱이 못 싣는 꼴이라 빨강이다.
-if ($wantAgyKit) {
-  $agySrcFiles = @(Get-ChildItem -LiteralPath (Join-Path $Kit 'agy') -File -ErrorAction SilentlyContinue)
-  $agySame = @($agySrcFiles | Where-Object {
-    Test-AgyPointerSame (Join-Path $env:USERPROFILE ".gemini\config\$($_.Name)") `
-                        (ConvertTo-AgyPointerText ([IO.File]::ReadAllText($_.FullName)) $env:USERPROFILE)
-  })
-  $checks += @{ Name = "agy 설정 ($($agySame.Count)/$($agySrcFiles.Count) · ~/.gemini/config · 이 PC 홈의 절대 경로)"
-                Ok = ($agySrcFiles.Count -gt 0 -and $agySame.Count -eq $agySrcFiles.Count) }
 }
 # 칸 없이 까는 스킬 — 홈에 섰나. 설정 저장소가 든 것도 그 배포(8 칸)가 이 앞에서 홈에 민다.
 if ($PickKeys -contains 'codex') {
@@ -5907,21 +5797,12 @@ if ($hostAgy) {
   $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · agy 가 돌리는 꼴로 돌려 본다)'
                 Ok = ($agyWired.Count -eq 2 -and $agyRan.Count -eq 2) }
 }
-# 고른 도구 값 — 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0107)
+# 고른 도구 값 — 손 · 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0107 · 0112)
 $checks += @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
-if ($kitCodex -or $kitAgy) {
-  $nnFile = Join-Path $NeutralNorms 'norms.md'
-  $checks += @{ Name = '규범 · 룰 중립 자리 (~/.paisetup/norms)'
-                Ok = ((Test-Path -LiteralPath $nnFile) -and
-                      ((Get-FileHash -LiteralPath $nnFile).Hash -eq (Get-FileHash -LiteralPath (Join-Path $Kit 'norms\norms.md')).Hash)) }
-}
-if ($personalCodex) {
-  $codexAgentsMd = Join-Path $env:USERPROFILE '.codex\AGENTS.md'
-  $checks += @{ Name = 'Codex 규범 블록 (~/.codex/AGENTS.md)'
-                Ok = ((Test-Path -LiteralPath $codexAgentsMd) -and
-                      ([IO.File]::ReadAllText($codexAgentsMd)).Contains('<!-- paisetup:norms BEGIN -->')) }
-}
+# 규범 · 룰 · 에이전트 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
+#   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
+if ($toolHomesOn) { $checks += Get-ToolHomesCheck $toolHomesHand }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
 # ⚠ **키는 `#config-repo` 가 있어도 여기서 잰다.** 옛 판은 그 판에서 키 검사를 저쪽에 맡겼는데,
