@@ -10,7 +10,8 @@ description: 결정을 기록하거나 찾아 읽을 때 부른다. "ADR 써줘"
 MADR 을 따르되 아래 선택과 덮어쓰기만 달리하고, 이 스킬의 몫은 표준에 없는 **사슬**이다.
 
 - **파일명·폴더** — `NNNN-title-with-dashes.md`, `decisions/` 아래(MADR 규약)
-- **근거 원칙** — 전역 **[ADR One-File]** · **[Root Cause Fix]** · **[Single Source · Point or Derive]**
+- **[ADR One-File]** — 결정 하나에 파일 하나. 뒤집히면 새 파일을 쓰고 옛 파일은 아래 덮어쓰기의 두 칸으로 닫는다.
+  한 파일에 개정 이력을 쌓지 않는다
 
 ## 문서 골격 — MADR, 이 순서대로
 

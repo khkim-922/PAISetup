@@ -11,9 +11,6 @@ description: 다른 저장소(형제 프로젝트)의 코드·상수·규격·�
 **이 스킬의 독자는 옮기는 손이다** — 메인 세션이든 레인이든 같다. 레인은 스킬을 안 읽으므로, 옮기는 자리가
 봉투 안이면 부모가 봉투에 이 스킬 이름을 싣는다(agent-envelope).
 
-- **근거 원칙** — 규범 **[Single Source · Point or Derive]** · **[Recall Priority]** ·
-  **[Root Cause Fix]**(형제 방치) · **[Reusable Means Anonymous]**
-
 ## 1. 낱말이 아니라 자리로 읽는다
 
 **낱말로 훑으면 낱말 밖이 통째로 빠진다.** 내 축의 낱말로 상대 나무를 grep 하면 상대가 그 낱말을 안 쓴

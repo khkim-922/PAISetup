@@ -29,9 +29,6 @@ description: 스킬을 만들거나 손볼 때 부른다. "스킬 만들자"·"�
 
 **아래 여섯 절은 밖에서 찾은 것 위에 우리 판을 세우는 법이다.**
 
-- **근거 원칙** — 규범 **[Recall Priority]** · **[Single Source · Point or Derive]** · **[YAGNI]** · **[Determinism First]** ·
-  **[Reusable Means Anonymous]** · **[Docs-as-Code · State Only]**
-
 ## 1. 쓰기 전에 표준을 찾는다
 
 **만들기 전에 부른다**(규범 **[Recall Priority]**). 규칙을 한 줄이라도 쓰기 전에 찾는다.

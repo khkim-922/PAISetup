@@ -9,13 +9,6 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
 서브에이전트든 agy · Codex 든 부모가 써 준 작업 지시서(이하 **봉투**)만 받는다. 이 대화는 레인에게 건너가지 않으니
 레인이 알 것과 지킬 것은 모두 봉투에 싣는다.
 
-여기는 띄우는 도구가 적지 않는 규율만 든다 — 누구에게 맡기나와, 레인끼리 부딪히거나 결과를 못 믿게 되는
-자리다. 띄우기 · 백그라운드 · 완료 통지 · 이어가기 · 모델 지정은 Claude 서브에이전트면 도구 계약이, 러너로 띄우는 곳이면
-러너 스킬(agy-background · codex-copilot-background · Codex 가 맡기는 쪽일 때 claude-background)이 든다. 쓸 수 있는 양(모델 · 차례 · 한도에서 넘기기)은 설치기가
-심는 자리 값과 래퍼가 들고, 대규모 오케스트레이션 스크립트는 workflow-authoring 스킬이 든다.
-
-- **근거 원칙** — 규범 **[Single Source · Point or Derive]** · **[Goal-Driven Execution]** · **[Root Cause Fix]**
-
 ## 1. 누구에게 맡기나
 
 ### 일의 성격부터 묻는다
@@ -25,7 +18,7 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
 
 1. **계열을 가른다**
    - 남이 만든 것(코드 · 고침 · 설계 · 다른 레인의 답)을 검증하나 → **만든 계열과 다른 계열에게.** 같은 계열은 같은
-     자리를 놓쳐, 같은 계열의 초록은 독립된 확인이 아니다
+     자리를 놓쳐, 같은 계열의 초록은 독립된 확인이 아니다. 검증을 **할지**는 여기가 아니라 룰 [Review Triage] 가 가른다
    - 이 PC 의 실물(앱 · 홈 · 설정 · 세션 도구)을 만지나 → **맡기는 앱의 서브에이전트에게** — 세션의 도구와 승인을
      물려받는 것은 그쪽뿐이다
    - 둘 다 아니면 계열은 열려 있다 — 한도와 값이 남는 쪽으로 간다
@@ -39,22 +32,16 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
 
 ### 맡길 곳마다 다른 것
 
-가르기 · 봉투 · 절대 규칙 · 거두기(2~5절)는 누구에게 맡기든 같다. 러너로 띄우는 곳은 그 러너 스킬이 깔린 자리에서만
-고른다. 웹 조사는 넷 다 한다 — Codex 는 자리 값이 검색을 켠 곳에서만.
+러너로 띄우는 곳은 그 러너 스킬이 깔린 자리에서만 고른다. 웹 조사는 넷 다 한다 — Codex 는 자리 값이 검색을 켠
+곳에서만.
 
 | | Claude 서브에이전트 | agy | Codex(한도면 Copilot) | Claude(Codex · agy 가 맡길 때) |
 |---|---|---|---|---|
-| 띄우기 | Agent 도구 — 도구 계약 | agy-background | codex-copilot-background | claude-background |
-| 무게별 모델 | `model` 인자 — 깊은 판단 · 긴 맥락은 `opus`, 심부름은 `sonnet`. 별칭이 가리킬 실제 모델은 자리 값이 정한다 | 깊은 판단 · 긴 맥락은 `--model` 없이(래퍼가 `AGY_MODEL_DELEGATE` 부터 고른다), 심부름은 `--model "$AGY_DEFAULT_MODEL"` — 한도면 `AGY_FALLBACK_MODELS` 차례로 넘어간다 | `CC_BG_CODEX_MODEL` 하나 — 무게를 못 가른다 | `--model` — 무게는 Claude 서브에이전트 칸과 같다 |
-| 쓰는 힘 · 가두는 법 | 쓴다 — 고치기는 worktree 격리와 소유 선긋기로 가둔다(2절) | 묻지 않고 쓴다 — 작업 자리로 가둔다. 작업 자리를 따로 세운 실험에 맞다 | 기본은 못 쓴다 — 읽기 전용 샌드박스라 읽기 레인은 저장소를 통째로 가리켜도 된다. 리뷰한 레인에 고치기를 이어 맡기면 고치기 레인(`--write`) — 부모가 세운 작업 자리 안만 쓰게 가둔다(Codex 는 쓰기 샌드박스, 한도에서 받는 Copilot 은 제 경로 검사). Copilot 이 받으면 셸이 없어 검사는 부모가 돌린다 | 기본은 못 쓴다 — 읽기 · 찾기 · 웹 읽기 도구만 보이게 떠, 읽기 레인은 저장소를 통째로 가리켜도 된다. 리뷰한 레인에 고치기를 이어 맡기면 고치기 레인(`--write`) — 편집 도구 둘을 부모가 세운 작업 자리 안에만 허락하고 셸은 없어, 검사는 부모가 돌린다 |
-| 이어 묻기 | 같은 레인에 메시지를 보낸다(SendMessage) | 끝 줄의 대화 id — 러너 스킬 | 끝 줄의 `resume=` — 러너 스킬. 고치기 레인은 `--write` 를 다시 준다 | 끝 줄의 `resume=` — 러너 스킬. 고치기 레인은 `--write` 를 다시 준다 |
-| 절대 규칙(4절) | 레인 갈래에 맞게 덜어 싣는다 | 같다 — 다만 블록은 부탁일 뿐이고 울타리는 작업 자리다 | 읽기 레인은 ④⑦⑧⑨ — 나머지는 샌드박스가 막는다. 고치기 레인은 블록을 다 싣는다 | 읽기 레인은 ④⑦⑧⑨ — 나머지는 보이는 도구가 막는다. 고치기 레인은 ③ 만 빼고 싣는다(셸이 없다) |
+| 띄우기 · 이어 묻기 | Agent 도구 · SendMessage | agy-background | codex-copilot-background | claude-background |
+| 무게별 모델 | `model` 인자 — 깊은 판단 · 긴 맥락은 `opus`, 심부름은 `sonnet`. 별칭이 가리킬 실제 모델은 자리 값이 정한다 | 러너 스킬의 「모델」 절 | `CC_BG_CODEX_MODEL` 하나 — 무게를 못 가른다 | `--model` — 무게는 Claude 서브에이전트 칸과 같다 |
+| 쓰는 힘 · 가두는 법 | 쓴다 — 고치기는 worktree 격리와 소유 선긋기로 가둔다(2절) | 묻지 않고 쓴다 — 블록은 부탁일 뿐이고 울타리는 작업 자리다 | 기본은 읽기만이라 저장소를 통째로 가리켜도 된다. 고치기는 `--write` 로 작업 자리 안만 — Copilot 이 받으면 셸이 없어 검사는 부모가 돌린다 | 기본은 읽기만이라 저장소를 통째로 가리켜도 된다. 고치기는 `--write` 로 작업 자리 안만 — 셸이 없어 검사는 부모가 돌린다 |
 
-- **같은 계열에게 맡기기로 했으면 셸보다 그 앱의 서브에이전트로 띄운다** — 고르는 법이 아니라 띄우는 법이다. Claude
-  에서는 Agent 도구로, 위 표의 모델을 주고 백그라운드로 띄운다. 세션의 승인 방식과 도구를 물려받으므로, 지연 목록의 도구(웹 등)는 ToolSearch 로 불러 쓰고 다른
-  저장소의 파일은 절대 경로로 읽으라고 봉투에 적는다
-- 셸(`claude -p`)로 띄우면 쓸 도구를 `--allowedTools` 로 적고 승인 방식은 세션 그대로 둔다. `--output-format json` 으로
-  받아 `permission_denials` 가 비었나 보고, 비어 있지 않으면 실패로 친다
+**같은 계열에게 맡기기로 했으면 셸보다 그 앱의 서브에이전트로 띄운다** — 세션의 승인 방식과 도구를 물려받는다.
 
 ## 2. 가르기 전 — 병렬을 열 수 있나
 
@@ -73,17 +60,16 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
 **과업 원본이 곧 봉투다** — 문제 · 실측 · 갈래 · 재는 법 · 경계는 원본(이슈)이 든다(이슈 골격은 issue-write
 스킬). 봉투에는 원본의 주소와 이 판의 규율만 싣고, 원본은 레인이 직접 연다. 본문이나 이력을 봉투나 사본 파일로
 옮기면 그 순간 두 벌이 되고(낡는 쪽은 늘 사본) 봉투마다 일이 겹친다 — 봉투는 대화 내내 컨텍스트에 살아, 붙여넣은
-이력은 값이 아니라 비용이다. 릴레이가 본문 글자를 이스케이프해 전하는 판이면 **푸는 법 한 줄**을 곁에 적고, 재는
-법의 코드가 전달 중에 잘렸으면 곁의 서술로 다시 지으라고 적는다.
+이력은 값이 아니라 비용이다.
 
 봉투에 미리 가르는 것 — 뒤늦게 가르면 머지에서야 드러난다:
 
 | 칸 | 무엇 |
 |---|---|
-| 소유 | 파일/구역 + 붙잡는 자원 + **그 실물을 역산한 Reference 문서**(코드를 고친 손이 같은 봉투에서 문서도 고친다) · **안 볼 것**까지 — 겹침은 소유가 아니라 「안 봄」이 막는다 |
+| 소유 | **쓰는 레인만 가른다** — 파일/구역 + 붙잡는 자원 + **그 실물을 역산한 Reference 문서**(코드를 고친 손이 같은 봉투에서 문서도 고친다) · **안 볼 것**까지. 겹침은 소유가 아니라 「안 봄」이 막는다. **찾기 · 재기 레인에는 목적과 가르는 기준을 주고 어디를 얼마나 볼지는 맡긴다** — 이름 댄 대상은 출발점이지 울타리가 아니고, 겹친 발견은 거둘 때 걷는다(5절) |
 | 이름 | 표찰(라벨·앵커) · 산출/보고 파일 경로 — **레인마다 다르게.** 같은 이름은 서로 덮는다 |
 | 자료 · 도구 | 레인이 열 원본과 쓸 도구 — 맡길 곳마다 닿는 데가 달라(1절) **못 닿는 원본은 작업 자리에 파일로 내려 두고 그 경로를 준다** |
-| 모델 | 1절에서 가른 계열 · 무게가 고른다 — 값은 1절 표의 「무게별 모델」 칸. 봉투에 그 레인의 무게를 한 낱말로 적어 두면, 거둘 때 무게에 맞는 모델이었나를 견줄 수 있다 |
+| 무게 | 1절에서 가른 무게를 한 낱말로 — 거둘 때 무게에 맞는 모델이었나를 견준다 |
 | 산출 계약 | 발견마다 `파일:줄` + 실패 시나리오 — 둘이 다 있어야 발견이고, 없으면 인상이다 · **안 잰 것 · 안 본 것을 이름으로** · **0건도 유효한 보고다** — 없으면 없다고 쓰고 어디까지 봤나를 댄다(채우려고 지어낸 것도 인상이다) · 화면이면 그림 경로와 「무엇이 보이나」를 사람 말로 · **탐침은 트리를 인자로 받게 짓는다** — 경로를 박으면 부모의 전/후 재기가 헛돈다 |
 
 ⚠ **봉투가 가리키는 좌표가 실재하는지 부모가 먼저 확인한다** — 원본 본문이 낡았을 수 있다.
@@ -101,18 +87,15 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
 
 레인이 읽는 말이라 영어다(3절). 부모는 뜻을 알고 글자 그대로 싣는다.
 
-    ① Own exactly one envelope. Read neighbouring files, never edit them — another lane is there.
-    ② Never touch anything outside your ownership. Report defects you find there; do not fix them.
-    ③ Never run golden/snapshot blessing (bless-style commands) — a human reads the full text and approves.
-    ④ A "could not measure" mark counts as red — never say "done" while one stands.
-    ⑤ If tightening a check turns green into red, fix the check and the specimen in the same pass.
-    ⑥ Never change state through git. The parent commits — leave changes uncommitted in the worktree.
-    ⑦ Never derive expected values from what you measured. Write why the value must be what it is; if the measurement differs, report it.
-    ⑧ Before reporting "absent", run a positive control — first ask whether the specimen really has that shape.
-    ⑨ Never run commands that print the environment or the process list (env, printenv, set, ps aux, pgrep -af) — they write secrets into the transcript.
+    ① Edit only what you own — reading anywhere is fine; another lane may be editing next to you. Report defects outside your ownership; do not fix them.
+    ② A "could not measure" mark counts as red — never say "done" while one stands.
+    ③ Never change state through git. The parent commits — leave changes uncommitted in the worktree.
+    ④ Never derive expected values from what you measured, and never bless goldens or snapshots — a human approves those. Write why the value must be what it is; if the measurement differs, report it.
+    ⑤ Before reporting "absent", run a positive control — first ask whether the specimen really has that shape.
+    ⑥ Never run commands that print the environment or the process list (env, printenv, set, ps aux, pgrep -af) — they write secrets into the transcript.
 
-블록은 레인 갈래에 맞게 **덜어서만 싣는다** — 읽기 전용 재기 레인이면 ③⑤ 는 빠질 수 있고, 맡길 곳마다 남는 규칙은
-1절 표가 든다. 이 판에만 걸리는 지시는 블록 밖 봉투 본문에 적고, 모든 레인에 걸 규칙이면 이 블록을 고친다.
+읽기 레인에는 ①③ 을 빼고 싣는다 — 쓰기는 샌드박스와 보이는 도구가 막는다. 이 판에만 걸리는 지시는 블록 밖 봉투
+본문에 적고, 모든 레인에 걸 규칙이면 이 블록을 고친다.
 
 ## 5. 레인 결과 거두기 — 부모가 지는 것, 레인에 못 넘긴다
 
@@ -120,7 +103,7 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
   형제(레인이 고친 무늬를 grep) · 레인 목록 밖 곁 검사 전수 · 레인이 옮겨 적거나 다시 쓴 덩어리의 원본 대조 ·
   레인이 올린 「부모가 가를 것」. 그림은 눈으로 연다
 - **레인이 돌린 검사와 물림은 보고로 받는다** — 물림은 일부러 틀린 표본을 넣어 검사가 정말 빨강을 내는지 보는
-  단계고, 새 판정을 물리는 손은 레인이며 봉투가 시킨다. 보고에 건수 · 물림 결과 · 트리 지문이 있으면 받는다.
+  단계고, 새 판정은 작아도 레인이 물며 봉투가 시킨다. 보고에 건수 · 물림 결과 · 트리 지문이 있으면 받는다.
   diff 는 읽는다 — 커밋 안 된 worktree 에서 `git checkout` 으로 되돌리면 곧 지우는 것이라, 되돌려 볼 일은
   사본에서 한다
 - 저장소의 게이트 러너가 판정 도장을 남기면 **봉투에 검사를 그 러너로 돌리라고 적는다**(씨앗 러너는
@@ -153,7 +136,4 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
 |---|---|
 | 검증을 다른 계열에 맡기려는데 한도 · 미설치로 막혔다 | 같은 계열로 하되, 보고에 「같은 계열의 검증」이라고 적는다 — 독립성이 빠진 초록을 독립된 확인처럼 내밀지 않는다 |
 | 판단이 들어 보이는데 무게가 애매하다 | 깊은 판단으로 맡긴다 — 무게를 낮춰 틀린 답을 거두는 값이 한 판 더 드는 값보다 크다. 다만 차례가 정해진 일을 판단으로 부풀리지 않는다 |
-| 파일 소유로 갈랐는데 겹쳤다 | 파일 밖 자원(단일 기계 · 포트 · 골든)을 다시 센다 — 2절 |
-| 고침이 작아 물림을 건너뛸까 | **작아도 문다** — 한 번도 빨강을 못 낸 검사는 통과하도록 짠 검사와 구별되지 않는다 |
-| 레인 보고가 길고 자세하다 | 길이는 판정이 아니다. 좌표 · 시나리오 · 안 잰 것 셋이 있나만 본다 |
 | 레인이 곁 결함을 고쳐 왔다 | 시키지 않은 소유 밖 고침은 걷고 보고로 받는다 — 가름은 5절 「소유 밖 발견」이 맡는다 |

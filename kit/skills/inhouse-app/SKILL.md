@@ -9,8 +9,6 @@ description: 사내 앱을 새로 세우거나, 앱에 사내 LLM 게이트웨�
 인증서. 회사 코딩 기준은 쉬운 원칙(시크릿 · 서버 쪽 호출 · 프롬프트 분리)은 옳지만 이 자리에 답이 없고, 문자
 그대로 따르면 틀리는 자리가 있다. 그래서 차례는 **우리가 잰 것 → 구현에서 배운 것 → 길 가르기 → 회사 기준**이다.
 
-- **근거 원칙** — 규범 **[Recall Priority]** · **[Look Before Ask]** · **[Single Source · Point or Derive]**
-
 ## 1. LLM 은 우리 실측을 따른다
 
 **씨앗에서 출발한다.** `~/.claude/seeds/gateway/` 가 게이트웨이 배관이다: 계약 넷(Anthropic ·

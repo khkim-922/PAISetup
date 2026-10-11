@@ -22,8 +22,6 @@ description: 설계도(아키텍처 문서)를 쓰거나 고칠 때 부른다. "
 | 11 Risks and Technical Debt | 알려진 기술 위험 · 기술 부채를 우선순위 순으로 |
 | 12 Glossary | 이해관계자가 이 시스템을 말할 때 쓰는 핵심 낱말과 뜻 |
 
-- **근거 원칙** — 규범 **[Diátaxis Axis]** · **[Docs-as-Code · State Only]** · **[Single Source · Point or Derive]**
-
 ## 선택 절을 켜고 끄는 프로파일
 
 1~6절은 arc42 그대로 쓴다. **켜고 끄는 절은 7~12 여섯이다.**

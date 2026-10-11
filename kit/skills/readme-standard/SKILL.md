@@ -5,8 +5,6 @@ description: README를 쓰거나 고칠 때 부른다. "리드미 써줘"·"READ
 
 # README 작성
 
-- **근거 원칙** — 규범 **[Single Source · Point or Derive]** · **[Diátaxis Axis]**
-
 **절 골격 — 이 순서대로, ★ 는 명세 필수다**:
 
 > Title★ → Banner → Badges → Short Description★(120자 미만) → Long Description →
