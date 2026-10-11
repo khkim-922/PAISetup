@@ -12,23 +12,26 @@
 표의 머리가 든다 — 여기서는 놓는 법만 든다. 손은 표를 읽어 PC 의 중립 한 벌 `~/.paisetup` 의 두 층(standard · personal)을
 채우고 홈에 놓는다. 어느 도구도 그 한 벌을 스스로 안 읽어서, 제작자 칸이 도구마다 뜻을 갖는다.
 
-sync  — 한 층을 채운다. standard 는 짐에서 층 안의 자리 그대로, personal 은 저장소에서 `dist.manifest.conf` 의 `[넣는다]`
-        가운데 `<저장소 자리> -> kit/<층 안의 자리>` 줄과 표의 넷째 칸(짐에 안 싣는 항목)으로. 손과 표도 제 몸을 층 뿌리에
-        싣는다. 층에는 표의 항목과 손 · 표만 든다 — 짐의 다른 것은 안 싣고, 층에 남은 다른 것은 걷는다. 개인 층에서 항목에
-        맞는 매니페스트 줄이 없으면 ERROR(그 항목은 옛 것 그대로), 줄은 있는데 저장소 자리가 없으면 WARN 을 내고 그 층에서
-        뺀다. 항목마다 곁에 다 지은 뒤 바꿔 끼워 반쯤 채운 항목이 이기지 않게 하고, 바꿔 끼우기가 막히면(윈도에서 누가 안의
-        파일을 열어 둠) 옛 항목을 그대로 둔다. 바뀐 것이 없으면 안 쓴다. 그 뒤 이긴 층의 손에게 place 를 넘기고, 그 줄을
-        이어 끝의 CHANGED 하나로 낸다. 개인 층을 채우러 온 뿌리에 표가 없으면 그 저장소는 개인 층을 안 든다 — 아무것도
-        안 쓰고 넘기지도 않는다(`CHANGED=0` · 종료 0). 짐에 표가 없으면 짐이 깨진 것이라 ERROR 다.
+sync  — 한 층을 채운다. standard 는 짐에서 표의 층 안의 자리로, personal 은 설정 저장소에서 표의 저장소 자리로. 손과
+        표도 제 몸을 층 뿌리에 싣는다. 층에는 표의 항목과 손 · 표만 든다 — 짐의 다른 것은 안 싣고, 층에 남은 다른 것은
+        걷는다. 원본에 그 자리가 없으면 그 항목은 그 층에서 조용히 빠지고(층에 있었으면 걷는다) 다른 층이 이긴다 — 짐이
+        안 싣는 항목(local)이 있고, 씨앗으로 만든 저장소는 제가 둔 원본만 든다. 개인 층의 저장소 자리가 있는데 꼴이 표와
+        다르면(파일 · 폴더가 바뀜 · 링크) WARN 을 내고 그 층에서 뺀다. 항목마다 곁에 다 지은 뒤 바꿔 끼워 반쯤 채운 항목이
+        이기지 않게 하고, 바꿔 끼우기가 막히면(윈도에서 누가 안의 파일을 열어 둠) 옛 항목을 그대로 둔다. 바뀐 것이 없으면
+        안 쓴다. 그 뒤 놓기를 맡을 층의 손에게 place 를 넘기고, 그 줄을 이어 끝의 CHANGED 하나로 낸다. 개인 층을 채우러
+        온 뿌리에 표가 없으면 그 저장소는 개인 층을 안 든다 — 아무것도 안 쓰고 넘기지도 않는다(`CHANGED=0` · 종료 0).
+        짐에 표가 없으면 짐이 깨진 것이라 ERROR 다.
 place — 길마다 조건이 서면 항목을 그 항목의 이긴 층에서 놓고, 안 서면 우리 것만 걷는다. 그 뒤 옛 자리를 백업으로 옮긴다.
 check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 함께 1, 층이나 표가 없으면(또는 못 재면) 2.
 
 **이기는 단위는 항목이다** — 개인 층에 그 항목이 있으면 통째로 개인 층 것이다. 파일 단위로 섞으면 저장소에서 지운 룰이
-  지난 릴리스의 표준 층에 남아 계속 깔린다. 개인 층을 채울 때 `[뺀다]` 는 안 탄다 — 그 절은 남에게 안 내보낼 것이지 만든
-  사람이 안 쓸 것이 아니다.
-**놓기는 늘 이긴 층의 손이 한다**(개인 층에 손이 있으면 개인) — 한 PC 에 지난 릴리스의 손(설치기)과 저장소의 손(배포)이
-  같이 있어, 부른 쪽 손으로 놓으면 둘이 홈을 번갈아 고친다. 그래서 place · check 를 다른 손이 받으면 같은 인자로 이긴 층의
-  손을 띄워 넘기고, 그 줄을 이어 낸다. sync --dry-run 만은 부른 쪽 손이 채워질 층을 셈한다 — 채워질 손이 아직 층에 없다.
+  지난 릴리스의 표준 층에 남아 계속 깔린다.
+**놓기는 새 판의 손이 한다** — 손이 선 층 가운데 층 뿌리 표의 판 도장(`stamp` 줄 · 뽑는 자가 짐과 씨앗에 실리는 사본에
+  찍는다)이 새 층의 손이 놓는다. 도장 없는 표(작업장 — 설정 저장소의 원본)와 못 읽는 표는 가장 새 판이고(못 읽으면 그
+  층의 손이 받아 까닭을 낸다), 같으면 개인 층이다. 한 PC 에 지난 릴리스의 손(설치기)과 저장소의 손(배포)이 같이 있어,
+  부른 쪽 손으로 놓으면 둘이 홈을 번갈아 고친다. 그래서 place · check 를 다른 손이 받으면 같은 인자로 그 손을 띄워 넘기고,
+  그 줄을 이어 낸다. 넘겨받은 손은 다시 고르지 않고 제가 놓는다 — 고르는 법이 다른 두 판의 손이 서로 넘기며 맴돌지 않게.
+  sync --dry-run 만은 부른 쪽 손이 채워질 층을 셈한다 — 채워질 손이 아직 층에 없다.
 **우리 것만 걷는다** — 표지 사이, 기록(`~/.paisetup/placed.tsv`)에 적은 해시 그대로인 파일, 우리가 써 온 옛 꼴(아래 OLD_*)만
   우리 것이다. 표지가 우리 것을 말하는 import · block 대상은 기록에 안 든다. 놓을 것이 없는 도구 폴더는 짓지 않는다.
   그 밖의 것을 덮거나 걷어야 하면 먼저 백업 자리(`~/.paisetup/backups/<시각>/<홈 기준 자리>` · 한 번 돌 때 한 자리 · 쓸 일이
@@ -47,6 +50,7 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
   바꿀 줄을 같은 꼴로 낸다.
 종료 — 0 됐다 · 1 ERROR 가 있었다(다른 대상은 계속 갔다). check 는 위의 0 · 1 · 2.
 파이썬 3.8 이상 · 표준 라이브러리만 — 원격 컨테이너의 판을 우리가 못 정한다.
+정한 자리 — 결정 0112 · claude-config#133 「2 단계 첫 걸음 「규범 · 룰」」 코멘트와 그 「계약 보탬」 둘.
 """
 import argparse
 import collections
@@ -78,10 +82,7 @@ LOCK_WAIT = 15.0                       # 초 — 한 판은 1 초 안쪽이다. 
 LOCK_POLL = 0.2
 STAGE = '.tool-homes-'                 # 바꿔 끼우기 전에 곁에 짓는 자리의 이름 머리 — 남은 것은 다음 sync 가 걷는다
 SKIP_DIRS = frozenset(['__pycache__'])
-MANIFEST = 'dist.manifest.conf'
-MANIFEST_SECTION = '[넣는다]'
-MANIFEST_ARROW = '->'
-KIT = 'kit/'
+RELAYED = 'TOOL_HOMES_RELAYED'         # 넘겨받은 손의 표지(환경 변수) — 있으면 다시 고르지 않고 제가 놓는다
 TILDE = '~/'
 BOM = b'\xef\xbb\xbf'
 
@@ -91,7 +92,9 @@ BOX_NONE = 'none'
 BOX_EMPTY = ('claude',)                # 칸 값이 비었을 때
 BOX_SPLIT = re.compile(r'[,\s]+')
 
-KIND_ITEM, KIND_ROUTE, KIND_OLD = 'item', 'route', 'old'
+KIND_ITEM, KIND_ROUTE, KIND_OLD, KIND_STAMP = 'item', 'route', 'old', 'stamp'
+LOCAL = 'local'                        # item 줄의 다섯째 칸 — 짐에 안 싣는 항목(뽑는 자가 읽는다)
+STAMP = re.compile(r'\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z')   # UTC · 초까지 한 꼴이라야 글자 순이 곧 시간 순이다
 IMPORT, BLOCK, LINES, INCLUDE, LIST, COPY = 'import', 'block', 'lines', 'include', 'list', 'copy'
 COND_BOX = 'box'
 FILE_FORMS = (IMPORT, BLOCK, LINES, INCLUDE, LIST)
@@ -122,9 +125,8 @@ OLD_LIST = ('../../.claude/rules', '../../.paisetup/norms/rules', '~/.paisetup/n
 
 LINK_TAGS = (getattr(stat, 'IO_REPARSE_TAG_SYMLINK', 0xA000000C), getattr(stat, 'IO_REPARSE_TAG_MOUNT_POINT', 0xA0000003))
 
-Item = collections.namedtuple('Item', 'name path repo')            # repo — 짐에 안 싣는 항목의 저장소 자리(넷째 칸)
+Item = collections.namedtuple('Item', 'name path repo')            # path — 층 안의 자리 · repo — 설정 저장소 안의 자리
 Route = collections.namedtuple('Route', 'item tool form target cond')
-KEEP = object()                                                     # 원본을 못 셈한 항목 — 층의 옛 것을 그대로 둔다
 
 
 class Busy(Exception):
@@ -226,10 +228,11 @@ def same_files(a, b):
     return all(a[k].read_bytes() == b[k].read_bytes() for k in a)
 
 
-# ── 갈 곳 표 · 매니페스트 ────────────────────────────────────────────────────────────────────────────────
+# ── 갈 곳 표 ─────────────────────────────────────────────────────────────────────────────────────────────
 class Table:
-    def __init__(self, items, routes, olds):
+    def __init__(self, items, routes, olds, stamp):
         self.items, self.routes, self.olds = items, routes, olds
+        self.stamp = stamp                                 # 판 도장 — 없으면 None(작업장 · 가장 새 판)
         self.groups = collections.OrderedDict()            # 대상 → 길들(표의 차례)
         for r in routes:
             self.groups.setdefault(r.target, []).append(r)
@@ -240,22 +243,30 @@ def read_table(path):
     """(표, 틀린 까닭들). 표 파일이 없으면 (None, [])."""
     if not path.is_file():
         return None, []
-    items, routes, olds, bad = collections.OrderedDict(), [], [], []
+    items, routes, olds, stamps, bad = collections.OrderedDict(), [], [], [], []
     for n, raw in enumerate(path.read_text(encoding='utf-8-sig').splitlines(), 1):
         f = raw.split()
         if not f or f[0].startswith('#'):
             continue
         where = '%s:%d' % (path.name, n)
-        if f[0] == KIND_ITEM and len(f) in (3, 4):
+        if f[0] == KIND_ITEM and (len(f) == 4 or (len(f) == 5 and f[4] == LOCAL)):
             if f[1] in items:
                 bad.append('%s — 항목 이름이 겹친다(%s)' % (where, f[1]))
-            items[f[1]] = Item(f[1], f[2], f[3] if len(f) == 4 else None)
+            elif f[2].endswith('/') != f[3].endswith('/'):
+                bad.append('%s — 층 안의 자리와 저장소 자리의 꼴(파일 · 폴더)이 다르다' % where)
+            items[f[1]] = Item(f[1], f[2], f[3])
         elif f[0] == KIND_ROUTE and len(f) == 6:
             routes.append(Route(*f[1:]))
         elif f[0] == KIND_OLD and len(f) == 2 and f[1].startswith(TILDE):
             olds.append(f[1])
+        elif f[0] == KIND_STAMP and len(f) == 2 and STAMP.match(f[1]):
+            stamps.append(f[1])
+        elif f[0] == KIND_STAMP:
+            bad.append('%s — 판 도장은 `stamp <YYYY-MM-DDTHH:MM:SSZ>` 꼴이다' % where)
         else:
             bad.append('%s — 모르는 줄이다' % where)
+    if len(stamps) > 1:
+        bad.append('%s — 판 도장이 %d 줄이다' % (path.name, len(stamps)))
     for r in routes:
         item = items.get(r.item)
         folder_item = item is not None and item.path.endswith('/')
@@ -275,7 +286,7 @@ def read_table(path):
             bad.append('길 %s → %s — lines 는 폴더 항목을 쓴다' % (r.item, r.target))
         elif r.form not in FILE_FORMS + (COPY,):
             bad.append('길 %s → %s — 모르는 꼴이다(%s)' % (r.item, r.target, r.form))
-    table = Table(items, routes, olds)
+    table = Table(items, routes, olds, stamps[0] if len(stamps) == 1 else None)
     for target, rs in table.groups.items():
         forms = [r.form for r in rs]
         if forms.count(BLOCK) == 1 and forms[0] == BLOCK and all(x == LINES for x in forms[1:]):
@@ -286,55 +297,17 @@ def read_table(path):
     return table, bad
 
 
-def read_manifest(path):
-    """`[넣는다]` 가운데 짐으로 가는 줄 — [(저장소 자리, 층 안의 자리)]. 파일이 없으면 None."""
-    if not path.is_file():
-        return None
-    lines, inside = [], False
-    for raw in path.read_text(encoding='utf-8-sig').splitlines():
-        if raw.startswith('['):
-            inside = raw.rstrip() == MANIFEST_SECTION
-            continue
-        s = raw.strip()
-        if not inside or not s or s.startswith('#') or MANIFEST_ARROW not in s:
-            continue
-        src, dst = (x.strip() for x in s.split(MANIFEST_ARROW, 1))
-        if dst.startswith(KIT):
-            lines.append((src, dst[len(KIT):]))
-    return lines
+def source_files(item, layer, root, out):
+    """채울 파일 — {층 안 상대 자리: 원본 파일}. 그 층에 이 항목이 안 서면 None.
 
-
-def source_files(item, layer, root, manifest, out):
-    """채울 파일 — {층 안 상대 자리: 원본 파일}. 그 층에 이 항목이 안 서면 None. 표와 원본이 어긋나면 ValueError.
-
-    짐에 그 항목이 없으면 조용히 안 선다(짐이 안 싣는 항목이 있다). 개인 층은 표의 넷째 칸이나, 대상이 `kit/<층 안의
-    자리>` 그대로인 매니페스트 줄로 채운다 — 맞는 줄이 없으면 표와 매니페스트가 어긋난 것이라 ValueError, 줄은 있는데
-    저장소 자리가 없으면 WARN 을 내고 이 층에서 뺀다(다른 층이 이긴다). 폴더 항목은 여러 줄이 한 폴더로 모일 수 있고,
-    두 줄이 같은 파일을 채우면 ValueError — 어느 쪽이 이기나를 손이 고르지 않는다.
+    표준 층은 짐의 층 안의 자리, 개인 층은 표의 저장소 자리에서 읽는다. 그 자리가 없으면 조용히 안 선다. 개인 층의 저장소
+    자리가 있는데 꼴이 표와 다르면 WARN 을 내고 이 층에서 뺀다 — 원본을 두었는데 안 깔리는 까닭이 보이게.
     """
-    if layer == STANDARD:
-        return item_files(root, item.path)
-    if item.repo:
-        lines = [(item.repo, item.path)]
-    else:
-        if manifest is None:
-            raise ValueError('%s 이 없다' % MANIFEST)
-        lines = [(src, dst) for src, dst in manifest if dst == item.path]
-        if not lines:
-            raise ValueError('매니페스트에 `… -> %s%s` 줄이 없다 — 표와 매니페스트가 어긋났다' % (KIT, item.path))
-    found = {}
-    for src, dst in lines:
-        if src.endswith('/') != dst.endswith('/'):
-            raise ValueError('`%s -> %s%s` — 파일과 폴더가 맞지 않는다' % (src, KIT, dst))
-        got = item_files(root, src)
-        if got is None:
-            out.warn('%s — 저장소 자리 %s 가 없다 · 개인 층에서 이 항목을 뺀다' % (item.name, src))
-            return None
-        for k, v in got.items():
-            if k in found:
-                raise ValueError('매니페스트 두 줄이 같은 자리를 채운다(%s%s)' % (item.path, k))
-            found[k] = v
-    return found
+    rel = item.path if layer == STANDARD else item.repo
+    got = item_files(root, rel)
+    if got is None and layer == PERSONAL and os.path.lexists(str(root / rel.rstrip('/'))):
+        out.warn('%s — 저장소 자리 %s 의 꼴이 표와 다르다 · 개인 층에서 이 항목을 뺀다' % (item.name, rel))
+    return got
 
 
 # ── 제작자 칸 ────────────────────────────────────────────────────────────────────────────────────────────
@@ -510,8 +483,6 @@ def fill_layer(home, layer, table, fills, selves, out, dry):
             out.error('%s — 못 걷었다 (%s: %s)' % (shown, type(x).__name__, x))
     for item in table.items.values():
         new = fills[item.name]
-        if new is KEEP:
-            continue
         dest = root / item.path.rstrip('/')
         shown = '%s%s/%s/%s' % (TILDE, HUB, layer, item.path)
         cur = item_files(root, item.path)
@@ -900,12 +871,38 @@ def layer_views(home):
 
 
 # ── 명령 ─────────────────────────────────────────────────────────────────────────────────────────────────
-def winning_hand(home):
+def stamp_key(table_path):
+    """판 도장을 견줄 열쇠 — 큰 쪽이 새 판이다. 도장 없는 표와 못 읽는 표는 가장 새 판이다."""
+    try:
+        table, _ = read_table(table_path)
+    except (OSError, ValueError):
+        table = None
+    stamp = table.stamp if table is not None else None
+    return (1, '') if stamp is None else (0, stamp)
+
+
+def placing_layer(home, own=None):
+    """놓기를 맡을 층 — 손이 선 층 가운데 표의 도장이 새 층 · 같으면 앞 층(개인). 없으면 None.
+
+    own=(층, 표 자리) — sync --dry-run 이 채워질 층을 셈할 때 그 층을 채울 원본 표로 본다.
+    """
+    best, best_key = None, None
     for layer in LAYERS:
-        hand = home / HUB / layer / HAND
-        if hand.is_file():
-            return hand
-    return None
+        if own is not None and layer == own[0]:
+            table_path = own[1]
+        elif (home / HUB / layer / HAND).is_file():
+            table_path = home / HUB / layer / TABLE
+        else:
+            continue
+        key = stamp_key(table_path)
+        if best is None or key > best_key:
+            best, best_key = layer, key
+    return best
+
+
+def winning_hand(home):
+    layer = placing_layer(home)
+    return None if layer is None else home / HUB / layer / HAND
 
 
 def same_file(a, b):
@@ -925,25 +922,30 @@ def passthrough(a):
 
 
 def hand_over(hand, args, out):
-    """이긴 층의 손을 띄워 넘긴다 — 그 줄을 잇고 그 종료 값을 돌려준다."""
+    """놓기를 맡을 층의 손을 띄워 넘긴다 — 그 줄을 잇고 그 종료 값을 돌려준다."""
     sys.stdout.flush()
-    p = subprocess.run([sys.executable or 'python', '-X', 'utf8', str(hand)] + args, stdout=subprocess.PIPE)
+    env = dict(os.environ)
+    env[RELAYED] = '1'
+    p = subprocess.run([sys.executable or 'python', '-X', 'utf8', str(hand)] + args, stdout=subprocess.PIPE, env=env)
     for line in p.stdout.decode('utf-8', 'replace').splitlines():
         out.relay(line)
     return p.returncode
 
 
 def cmd_place(a, home, out, dry, check):
-    """place · check — 이긴 층의 손이 아니면 넘긴다. 돌려주는 값은 종료 값이다."""
+    """place · check — 놓기를 맡을 층의 손이 아니면 넘긴다. 넘겨받은 손은 다시 고르지 않는다. 돌려주는 값은 종료 값이다."""
     absent = 2 if check else 1
-    hand = winning_hand(home)
-    if hand is None:
-        out.error('층에 손이 없다 — sync 가 먼저 돈다(%s)' % (home / HUB))
-        return absent
-    if not same_file(hand, __file__):
-        args = ['check'] if check else ['place'] + (['--dry-run'] if dry else [])
-        rc = hand_over(hand, args + passthrough(a), out)
-        return rc if rc in (0, 1, absent) else absent
+    if os.environ.get(RELAYED):
+        hand = pathlib.Path(__file__).resolve()
+    else:
+        hand = winning_hand(home)
+        if hand is None:
+            out.error('층에 손이 없다 — sync 가 먼저 돈다(%s)' % (home / HUB))
+            return absent
+        if not same_file(hand, __file__):
+            args = ['check'] if check else ['place'] + (['--dry-run'] if dry else [])
+            rc = hand_over(hand, args + passthrough(a), out)
+            return rc if rc in (0, 1, absent) else absent
     table, bad = read_table(hand.parent / TABLE)
     if table is None:
         out.error('표가 없다 — %s' % (hand.parent / TABLE))
@@ -978,18 +980,11 @@ def cmd_sync(a, home, out):
         out.error(why)
     if bad:
         return 1
-    manifest = read_manifest(root / MANIFEST) if a.layer == PERSONAL else None
-    fills = {}
-    for item in table.items.values():
-        try:
-            fills[item.name] = source_files(item, a.layer, root, manifest, out)
-        except ValueError as e:
-            out.error('%s — %s · 층의 옛 항목을 그대로 둔다' % (item.name, e))
-            fills[item.name] = KEEP
+    fills = dict((item.name, source_files(item, a.layer, root, out)) for item in table.items.values())
     selves = ((TABLE, root / TABLE), (HAND, pathlib.Path(__file__).resolve()))
     if a.dry_run:
         fill_layer(home, a.layer, table, fills, selves, out, True)
-        return dry_place(a, home, table, fills, out)
+        return dry_place(a, home, root, table, fills, out)
     try:
         with Lock(home / HUB):
             fill_layer(home, a.layer, table, fills, selves, out, False)
@@ -1001,21 +996,16 @@ def cmd_sync(a, home, out):
     return 1 if (failed or rc) else 0
 
 
-def dry_place(a, home, table, fills, out):
-    """채워질 층을 셈해 놓을 줄을 낸다 — 그 층은 원본으로 읽고, 표는 채운 뒤 이길 층의 것을 쓴다."""
-    winner = next(layer for layer in LAYERS if layer == a.layer or (home / HUB / layer / HAND).is_file())
+def dry_place(a, home, root, table, fills, out):
+    """채워질 층을 셈해 놓을 줄을 낸다 — 그 층은 원본으로 읽고, 표는 채운 뒤 놓기를 맡을 층의 것을 쓴다."""
+    winner = placing_layer(home, (a.layer, root / TABLE))
     if winner != a.layer:
         table, bad = read_table(home / HUB / winner / TABLE)
         if table is None or bad:
-            out.error('이길 층의 표가 없거나 틀렸다 — %s' % (home / HUB / winner / TABLE))
+            out.error('놓기를 맡을 층의 표가 없거나 틀렸다 — %s' % (home / HUB / winner / TABLE))
             return 1
     views = layer_views(home)
-    real = views[a.layer]
-
-    def synced(item):
-        got = fills.get(item.name, KEEP)
-        return real(item) if got is KEEP else got
-    views[a.layer] = synced
+    views[a.layer] = lambda item: fills[item.name]
     place(Run(home, True, out), table, views, read_box(a.box, table.tools, out))
     return 1 if out.failed else 0
 
