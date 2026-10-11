@@ -139,6 +139,10 @@ if (Test-Path -LiteralPath $DistVersionPath) {
 #   검증이 같은 자리를 다시 재는데, 글자를 자리마다 박으면 한쪽만 고쳐지는 날 **재는 자가
 #   딴 자리를 보고 [O] 를 찍는다** — 부재가 통과로 읽히는 그 자리다 (#3).
 $homeDir = Join-Path $env:USERPROFILE '.claude'
+# ⚠ **이 식은 `-Describe` 갈래가 내주는 `config-repo-root` 줄과 짝이다** — 화면이 그 줄로 자리를
+#   받아 사람에게 보여 주고 폴더를 연다. 자리를 옮기면 셋을 같이 고친다: 여기 · 저 줄 ·
+#   넘겨받는 쪽의 `ROOT`. 하나만 고치면 설치는 한 데로 받고 나머지는 딴 데서 찾는다.
+$configRepoRoot = Join-Path $env:USERPROFILE 'repos'
 
 # ── 무엇을 깔까 — **목록이 진본이다.** 늘리려면 여기 한 줄을 더한다 ────────────────
 #    core = 확장이 돌기까지 없으면 안 되는 것. dev = 코드를 짤 사람에게만.
@@ -353,7 +357,7 @@ if ($Describe) {
   # ⚠ **아래 「설정 저장소의 주소와 자리」 칸의 `$configRepoRoot` 와 같은 식이어야 한다.** 그 줄은 여기서 멀리
   #   아래라 같이 안 보인다 — 한쪽을 고치면 다른 쪽도 고친다. 여기 둔 까닭은 이 갈래가 **선언만
   #   지나고 나가기** 때문이다: 저 아래까지 내려가면 설치가 이미 돌아 버린다.
-  'config-repo-root|{0}' -f (Join-Path $env:USERPROFILE 'repos')
+  'config-repo-root|{0}' -f $configRepoRoot
   exit 0
 }
 
@@ -2624,10 +2628,6 @@ $hostAgy         = [bool]($PickKeys -contains 'antigravity')
 # ⚠ **여러 개를 빈칸으로 가른다** — 까닭은 8 칸 곁말이 든다. 주소에는 빈칸이 없다.
 $repoUrl = Read-Directive $EnvFile 'config-repo'
 $configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
-# ⚠ **이 식은 `-Describe` 갈래가 내주는 `config-repo-root` 줄과 짝이다** — 화면이 그 줄로 자리를
-#   받아 사람에게 보여 주고 폴더를 연다. 자리를 옮기면 셋을 같이 고친다: 여기 · 저 줄 ·
-#   넘겨받는 쪽의 `ROOT`. 하나만 고치면 설치는 한 데로 받고 나머지는 딴 데서 찾는다.
-$configRepoRoot = Join-Path $env:USERPROFILE 'repos'
 
 # ── 제작자 세트를 받을 도구 — 도구마다 고른다 (결정 0099) ───────────────────────────────────────
 # `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 Claude 다(옛 칸 — 이름이 「제작자의 Claude Code
