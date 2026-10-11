@@ -3932,6 +3932,34 @@ if ($PickKeys -contains 'codex') {
         Write-Host '  Codex 훅 — 이미 맞다'
       }
     }
+    # ── 신뢰 — Codex 를 고르면 우리 훅에 신뢰까지 적는다 (claude-config 결정 0106) ──
+    # Codex 는 신뢰한 사용자 훅만 돌린다 — 대화형 시작은 묻지만 `codex exec`(다른 도구가 Codex 에 일을 맡기는 길)는
+    # 말없이 건너뛴다. 배선만 세우면 고른 기능이 반쯤 죽은 채 끝나서, 신뢰 적기까지가 이 칸의 일이다. 씨앗의
+    # `codex-hook-trust.py` 가 Codex 제 설정 쓰기로 **우리 훅에만** 적는다 — 남의 훅 · 사람이 끈 우리 훅은 둔다.
+    # 해시는 Codex 가 낸 값을 그대로 되돌려 적을 뿐이다. 적은 명령은 아래에 그대로 찍어 기록에 남긴다.
+    # ⚠ 홈은 Codex 가 고르는 차례(`CODEX_HOME` → `~/.codex`)를 그대로 따른다 — Codex 가 실제로 읽는 설정에 적는다.
+    # ⚠ 끝 검증이 같은 손(`status`)으로 Codex 가 읽은 상태를 다시 잰다 — 여기서 못 적었으면 거기서 [X] 로 남는다.
+    $codexTrustPlant = Join-Path $codexHookDir 'codex-hook-trust.py'
+    if (-not (Test-Path -LiteralPath $codexTrustPlant)) {
+      Write-Host '  ! Codex 훅 신뢰 — 씨앗에 신뢰 도우미가 없어 못 적었다' -ForegroundColor Red
+      $Fails.Add('Codex 훅 신뢰 (씨앗이 없다)')
+    } else {
+      $codexTrustLog = [IO.Path]::GetTempFileName()
+      $codexTrustRc = Invoke-Logged 'python' @('-X', 'utf8', $codexTrustPlant, 'trust', '--example', $codexHookExample) $codexTrustLog
+      $codexTrustOut = @(Get-Content -LiteralPath $codexTrustLog -Encoding UTF8 -ErrorAction SilentlyContinue |
+                         ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+      $codexTrustNow = @($codexTrustOut | Where-Object { $_ -like 'TRUSTED_NOW=*' })
+      foreach ($ln in $codexTrustNow) {
+        Write-Host "  Codex 훅 신뢰 — 적었다: $($ln.Substring('TRUSTED_NOW='.Length))" -ForegroundColor Green
+      }
+      if ($codexTrustRc -eq 0) {
+        if (-not $codexTrustNow.Count) { Write-Host '  Codex 훅 신뢰 — 이미 맞다' }
+      } else {
+        $codexTrustWhy = @($codexTrustOut | Where-Object { $_ -like 'UNMEASURED=*' -or $_ -like 'ERROR=*' }) | Select-Object -Last 1
+        Write-Host "  ! Codex 훅 신뢰 — 못 적었다 ($(if ($codexTrustWhy) { $codexTrustWhy } else { "종료 $codexTrustRc" })). Codex 를 열어 새 훅을 한 번 신뢰한다" -ForegroundColor Red
+        $Fails.Add('Codex 훅 신뢰 (못 적었다)')
+      }
+    }
   }
 }
 
@@ -5236,15 +5264,42 @@ if ($PickKeys -contains 'codex') {
     (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-image-gate.py'),
     (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-safety-hooks.py'),
     (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py'),
+    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-trust.py'),
     (Join-Path $homeDir 'seeds\config-repo\codex-hooks.example.toml')
   )
-  $checks += @{ Name = 'Codex 훅 부품 (DRM · 그림 · Bash · BOM · 병합기)'
+  $checks += @{ Name = 'Codex 훅 부품 (DRM · 그림 · Bash · BOM · 병합기 · 신뢰 도우미)'
                 Ok = (@($codexHookParts | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -eq 0) }
   $checks += @{ Name = 'Codex 훅 배선 (UserPromptSubmit · PreToolUse · PostToolUse)'
                 Ok = ($codexHookText.Contains('drm-guide.py') -and
                       $codexHookText.Contains('codex-image-gate.py') -and
                       $codexHookText.Contains('codex-safety-hooks.py bash-backslash') -and
                       $codexHookText.Contains('codex-safety-hooks.py utf8-bom')) }
+  # 신뢰 — 설정의 글자가 아니라 **Codex 가 읽은 상태**를 잰다(claude-config 결정 0106). 배선이 다 서도 신뢰가 없으면
+  #   `codex exec` 가 그 훅을 말없이 건너뛴다 — 글자만 보면 그 판이 [O] 로 지나간다. 분모는 예시가 싣는 우리 훅 수다.
+  # ⚠ **못 잰 것은 [X] 다** — Codex 에 못 물었으면 훅이 도는지 모른다. 그 줄이 까닭과 손으로 신뢰하는 길을 댄다.
+  # ⚠ 사람이 끈 우리 훅은 그 사람의 뜻이라 모자람으로 안 센다 — 줄에 따로 적는다.
+  $codexTrustPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-trust.py'
+  $codexTrustExample = Join-Path $homeDir 'seeds\config-repo\codex-hooks.example.toml'
+  if ((Test-Path -LiteralPath $codexTrustPlant) -and (Test-Path -LiteralPath $codexTrustExample)) {
+    $ctLog = [IO.Path]::GetTempFileName()
+    $ctRc = Invoke-Logged 'python' @('-X', 'utf8', $codexTrustPlant, 'status', '--example', $codexTrustExample) $ctLog
+    $ctOut = @(Get-Content -LiteralPath $ctLog -Encoding UTF8 -ErrorAction SilentlyContinue |
+               ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    $ctVal = @{}
+    foreach ($ln in $ctOut) { if ($ln -match '^(EXPECTED|WIRED|TRUSTED|NONE_LISTED|UNMEASURED|ERROR)=(.*)$') { $ctVal[$Matches[1]] = $Matches[2] } }
+    $ctOff = @($ctOut | Where-Object { $_ -like 'HOOK=*' -and $_ -like '*|disabled' }).Count
+    if ($ctRc -ne 0 -or -not $ctVal.ContainsKey('EXPECTED') -or -not $ctVal.ContainsKey('TRUSTED')) {
+      $ctWhy = if ($ctVal['UNMEASURED']) { $ctVal['UNMEASURED'] } elseif ($ctVal['ERROR']) { $ctVal['ERROR'] } else { "종료 $ctRc" }
+      $checks += @{ Name = "Codex 훅 신뢰 (못 잼 — $ctWhy · Codex 를 열어 새 훅을 한 번 신뢰한다)"; Ok = $false }
+    } else {
+      $ctExp = [int]$ctVal['EXPECTED']; $ctWired = [int]$ctVal['WIRED']; $ctTrusted = [int]$ctVal['TRUSTED']
+      $ctNote = @()
+      if ($ctOff) { $ctNote += "사람이 끈 것 $ctOff" }
+      if ($ctVal['NONE_LISTED']) { $ctNote += "Codex 가 안 싣는다: $($ctVal['NONE_LISTED'])" }
+      $checks += @{ Name = "Codex 훅 신뢰 (Codex 가 읽은 것 — 배선 $ctWired/$ctExp · 신뢰 $ctTrusted/$ctExp$(if ($ctNote.Count) { ' · ' + ($ctNote -join ' · ') }))"
+                    Ok = ($ctExp -gt 0 -and $ctWired -eq $ctExp -and ($ctTrusted + $ctOff) -eq $ctExp) }
+    }
+  }
 }
 $freeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Claude })
 if ($freeWant.Count) {
