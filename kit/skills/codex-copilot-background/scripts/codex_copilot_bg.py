@@ -10,8 +10,14 @@
 유닉스의 `/tmp` 도 쓰게 열어, 그대로 띄우면 작업 자리 밖 `%TEMP%` 밑 어디든 쓴다(실측 2026-10-11 — 셸 · apply_patch 둘 다
 섰다). 그래서 세 변수를 새 빈 폴더로 돌려 띄우고 끝나면 지우며, `/tmp` 와 설정의 덧붙인 쓰기 자리는 끈다
 (`WRITE_SANDBOX` — `exclude_slash_tmp` · `writable_roots`).
-**고치기 레인은 Copilot 이 안 받는다** — Copilot 의 쓰는 범위를 가두는 법을 아직 안 쟀다. Codex 가 한도면 그대로
-멈춘다(2). 자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
+**Copilot 도 고치기 레인을 받는다** — Codex 가 한도면 넘겨받는다. 편집 도구(`COPILOT_EDIT_TOOLS`)를 더 보이고 쓰기를
+허락(`--allow-tool=write`)하되, 쓰는 자리는 Copilot 의 경로 검사가 가둔다: 허락된 자리 밖에 쓰려는 호출은 묻는 자리로 가고,
+물을 사람이 없어(비대화) 거절된다. 그 검사는 기본으로 시스템 임시 폴더도 열어 그대로면 `%TEMP%` 밑 어디든 쓴다 — 그래서
+임시 폴더를 허락에서 빼고(`--disallow-temp-dir`), 임시 폴더 변수는 Codex 처럼 이 실행만의 빈 폴더로 돌린다(CLI 가 제 임시
+파일을 거기 남기고, 끝나면 지워진다). 셸은 안 보인다 — Copilot 의 셸 명령은 OS 샌드박스 없이 사용자 권한으로 돈다(`copilot
+help sandbox`). 예외 하나 — Copilot 이 실행마다 제 홈에 세우는 세션 폴더(`<COPILOT_HOME>/session-state/<id>/`)에는 쓴다.
+(실측 2026-10-11 · Copilot CLI 1.0.95 · apply_patch — 작업 자리 안은 섰고, 밖 · `%TEMP%` · 그 실행의 임시 폴더는 거절됐다.)
+자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
 
 **프롬프트는 표준 입력으로 넘긴다** — 명령줄 길이 한도와 따옴표 해석을 안 탄다. 윈도에서 npm 이 까는
 실행 꼴은 `.cmd` 셔틀이라 명령줄 인자가 cmd.exe 를 거친다(8191자 · `& | % ^` 해석). 그래서 셔틀이 부르는
@@ -75,7 +81,6 @@ CODEX_QUOTA_RE = re.compile(r'hit your usage limit|Quota exceeded\. Check your p
 CODEX_ARGS = ['-c', 'features.apps=false', '-c', 'features.plugins=false',
               '-c', 'mcp_servers={}', '--skip-git-repo-check', '--json']
 CODEX_SANDBOX = {False: 'read-only', True: 'workspace-write'}   # 읽기 레인 · 고치기 레인
-WRITE_AGENTS = ('codex',)   # 고치기 레인을 받는 쪽 — Copilot 은 쓰는 범위를 가두는 법을 안 쟀다
 # 고치기 레인의 쓰는 범위를 작업 자리 + 임시 폴더 변수 하나로 못 박는다 — Codex 설정 낱말 그대로(`sandbox_workspace_write.*`).
 # 임시 폴더 변수는 남긴다(`exclude_tmpdir_env_var=false`) — 그 변수를 러너가 세운 빈 폴더로 돌려 띄우므로 거기만 열린다.
 # 셸 도구 다수가 임시 폴더를 써서 아예 닫으면 검사 · 빌드가 진다. `/tmp` 는 유닉스에서만 열리던 자리다(윈도는 안 본다).
@@ -83,7 +88,8 @@ WRITE_SANDBOX = ['-c', 'sandbox_workspace_write.writable_roots=[]',
                  '-c', 'sandbox_workspace_write.exclude_tmpdir_env_var=false',
                  '-c', 'sandbox_workspace_write.exclude_slash_tmp=true']
 # Codex 가 임시 폴더로 읽는 변수 — 윈도 샌드박스는 `TEMP` · `TMP`, 그 밖은 `TMPDIR`(openai/codex `windows-sandbox-rs` ·
-# `protocol/src/permissions.rs`). 셋 다 같은 새 폴더로 돌린다.
+# `protocol/src/permissions.rs`). 셋 다 같은 새 폴더로 돌린다. 고치기 레인이면 두 쪽 다 돌린다 — Copilot 이 「시스템 임시
+# 폴더」로 여는 자리도 이 변수를 따랐다(실측 2026-10-11 — 돌린 폴더 밑 쓰기는 서고 원래 `%TEMP%` 밑은 거절됐다).
 TEMP_VARS = ('TEMP', 'TMP', 'TMPDIR')
 WRITE_TMP_PREFIX = 'cc-bg-write-'
 # 이어 묻기가 서는 대화 기록의 자리(이 PC 실측 2026-10-11) — Codex 는
@@ -111,8 +117,15 @@ MODEL_NAME_RE = re.compile(r'[A-Za-z0-9._:/-]+')  # TOML 따옴표 안에 그대
 # 끝난 기록도 있어 그것보다 이 이벤트를 먼저 본다.
 COPILOT_QUOTA_TYPES = ('quota', 'rate_limit')
 COPILOT_TOOLS = ('view', 'web_fetch', 'glob', 'rg')   # 읽기 · 웹 읽기만 — 셸 · 쓰기는 모델이 아예 못 본다
-COPILOT_ARGS = ['--available-tools', *COPILOT_TOOLS, '--allow-tool=web_fetch', '--allow-all-urls',
-                '--no-ask-user', '--output-format', 'json']
+# 고치기 레인에 더 보이는 편집 도구 — Copilot 이 「edit」 갈래로 묶는 넷 그대로다. 모델 계열마다 받는 것이 다르다(GPT 는
+# apply_patch). 셸(`powershell` · `bash` 와 그 딸린 도구)은 고치기 레인에도 안 보인다 — 셸 명령은 OS 샌드박스 없이
+# 사용자 권한으로 돌아(`copilot help sandbox`) 경로 검사를 울타리로 믿을 수 없다.
+COPILOT_EDIT_TOOLS = ('apply_patch', 'create', 'edit', 'str_replace_editor')
+COPILOT_ARGS = ['--allow-tool=web_fetch', '--allow-all-urls', '--no-ask-user', '--output-format', 'json']
+# 고치기 레인의 울타리 — 편집 도구의 쓰기를 묻지 않고 허락하되(`write`), 경로 검사의 허락 자리에서 시스템 임시 폴더를 뺀다.
+# 남는 허락 자리는 작업 자리와 Copilot 제 세션 폴더다. 경로 검사를 끄는 깃발(`--allow-all-paths` · `--allow-all` · `--yolo`)과
+# 자리를 더하는 `--add-dir` 은 싣지 않는다.
+COPILOT_WRITE = ['--allow-tool=write', '--disallow-temp-dir']
 # 저장된 로그인보다 앞서는 토큰 — Copilot 권한이 없는 토큰이면 인증부터 깨진다. `COPILOT_GITHUB_TOKEN` 은 Copilot 에
 # 쓰라고 둔 것이라 남긴다.
 COPILOT_DROP_ENV = ('GH_TOKEN', 'GITHUB_TOKEN')
@@ -225,7 +238,9 @@ def argv(agent, resume, knobs, write=False):
         if resume:
             return ['exec', 'resume', *tail, resume, '-']
         return ['exec', *tail, '-']
-    return COPILOT_ARGS + ([f'--resume={resume}'] if resume else [])
+    tools = COPILOT_TOOLS + (COPILOT_EDIT_TOOLS if write else ())
+    return (['--available-tools', *tools, *COPILOT_ARGS, *(COPILOT_WRITE if write else [])]
+            + ([f'--resume={resume}'] if resume else []))
 
 
 def read_jsonl(path):
@@ -308,8 +323,9 @@ def run_once(agent, cmd_head, a, resume):
     if agent == 'copilot':
         for k in COPILOT_DROP_ENV:
             env.pop(k, None)
-    # 고치기 레인은 임시 폴더를 이 실행만의 빈 폴더로 돌린다 — 샌드박스가 여는 임시 폴더가 그것뿐이게(`WRITE_SANDBOX`)
-    tmp = tempfile.mkdtemp(prefix=WRITE_TMP_PREFIX) if a.write and agent in WRITE_AGENTS else None
+    # 고치기 레인은 임시 폴더를 이 실행만의 빈 폴더로 돌린다 — Codex 샌드박스가 여는 임시 폴더가 그것뿐이게
+    # (`WRITE_SANDBOX`), Copilot 은 제 임시 파일이 거기 남아 함께 지워지게(그 모델은 거기도 못 쓴다 — `COPILOT_WRITE`)
+    tmp = tempfile.mkdtemp(prefix=WRITE_TMP_PREFIX) if a.write else None
     if tmp:
         env.update({k: tmp for k in TEMP_VARS})
     started = time.monotonic()
@@ -401,17 +417,9 @@ def run(a):
     if any(x not in allowed for x in order):
         write(a.out, f'{FOOTER} usage · 이 자리에서 안 쓰는 쪽이다 — {KNOB_AGENTS}={",".join(allowed)}\n')
         return 4
-    if a.write:
-        if not (a.cwd and os.path.isdir(a.cwd)):
-            write(a.out, f'{FOOTER} usage · --write 는 --cwd 로 작업 자리를 준다 — 쓰는 범위가 그 자리다\n')
-            return 4
-        if (a.agent or a.resume) and any(x not in WRITE_AGENTS for x in order):
-            write(a.out, f'{FOOTER} usage · 고치기 레인은 {" · ".join(WRITE_AGENTS)} 만 받는다\n')
-            return 4
-        order = [x for x in order if x in WRITE_AGENTS]
-        if not order:
-            write(a.out, f'{FOOTER} usage · 고치기 레인을 받을 쪽이 이 자리에 없다 — {KNOB_AGENTS}={",".join(allowed)}\n')
-            return 4
+    if a.write and not (a.cwd and os.path.isdir(a.cwd)):
+        write(a.out, f'{FOOTER} usage · --write 는 --cwd 로 작업 자리를 준다 — 쓰는 범위가 그 자리다\n')
+        return 4
 
     started = time.monotonic()
     tried = []

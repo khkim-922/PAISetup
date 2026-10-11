@@ -1,19 +1,30 @@
 """agy(Antigravity CLI) 훅 어댑터 — DRM 길잡이와 PowerShell UTF-8 BOM 보정을 agy 의 꼴로 건넨다 (결정 0099).
 
-    python -X utf8 agy-hooks.py drm-guide    < PreToolUse 입력   (matcher `view_file`)
+    python -X utf8 agy-hooks.py drm-guide    < PreToolUse 입력   (matcher `view_file` · `run_command`)
     python -X utf8 agy-hooks.py utf8-bom     < PostToolUse 입력  (matcher 쓰기 도구 셋)
     python -X utf8 agy-hooks.py install --config ~/.gemini/config/hooks.json
 
 **왜 어댑터인가.** 몸통은 Claude 훅 꼴(`tool_name` · `tool_input`)을 받는다. agy 는 `toolCall.name` · `toolCall.args` 로 주고
-경로 열쇠도 다르다(`AbsolutePath` · `TargetFile`). 판정은 몸통의 것을 불러 쓰고 여기서는 꼴만 바꾼다 — 같은 판정을 두 벌
-두면 한쪽만 낡는다. 입력 꼴은 agy 문서 「Hooks」의 것이다(<https://antigravity.google/docs/hooks>).
+경로 열쇠도 다르다(`AbsolutePath` · `TargetFile` · 셸은 `CommandLine` · `Cwd`). 판정은 몸통의 것을 불러 쓰고 여기서는 꼴만
+바꾼다 — 같은 판정을 두 벌 두면 한쪽만 낡는다. 입력 꼴은 agy 문서 「Hooks」의 것이다(<https://antigravity.google/docs/hooks>).
 
 **홈 훅 다섯 가운데 둘만 건다.** 그림 문 · Bash 겹역슬래시 차단 · 웹 다시 찾기는 Claude 쪽 사정(그림 크기 비용 · Git Bash 가
 접는 역슬래시 · WebFetch 실패)에서 나온 훅이라 agy 에서는 막을 사고가 없다(결정 0083 실측 · 0099).
 
-**DRM 길잡이는 열기 전에 막는다.** agy 의 PreToolUse 는 결정(`decision`)과 까닭(`reason`)만 받는다 — 도구 뒤 훅은 모델에
-말을 붙일 수 없고, 사람의 글을 받는 훅도 없다. 그래서 감긴 파일을 `view_file` 로 열려는 순간 막고 까닭에 스킬로 가는 길을
-싣는다. 감긴 파일은 열어도 글자가 안 나오니 막아서 잃는 것이 없다.
+**DRM 길잡이는 읽기 전에 막는다.** agy 의 PreToolUse 는 결정(`decision`)과 까닭(`reason`)만 받는다 — 도구 뒤 훅은 모델에
+말을 붙일 수 없고, 사람의 글을 받는 훅도 없다. 그래서 감긴 파일을 읽으려는 도구 호출을 막고 까닭에 스킬로 가는 길을 싣는다.
+감긴 파일은 열어도 글자가 안 나오니 막아서 잃는 것이 없다. 읽는 길은 둘이다:
+  · `view_file` — 경로 칸 하나
+  · `run_command` — 명령 글. 그냥 「읽어 줘」라고 하면 모델은 셸로 먼저 간다(claude-config #137 실측). 명령의 뜻은 짐작하지
+    않는다 — 글에서 경로 꼴의 낱말을 뽑아(몸통의 `candidates` 에 따옴표 안 · 맨 낱말을 더한다 — `shell_words`) 그 가운데
+    **실제로 있는 감긴 파일**이 있으면 막는다. 명령이 그 파일로 무엇을 하든 같다. 명령어 이름 목록으로 가르지 않는다 — 목록은
+    열려 있어 늘 빠진다. 상대 낱말은 그 호출의 일하는 자리(`Cwd`)에서 푼다.
+  ⚠ **읽는 손은 지난다** — 그 명령도 감긴 파일의 경로를 적는다. 낱말 가운데 하나가 설치된 스킬 사본 어느 것의
+    `read-drm.ps1` **과 같은 파일**이면 둔다(`calls_reader`). 이름이 아니라 파일로 가른다 — 같은 이름의 다른 파일은 못 지난다.
+  ⚠ 글에 경로가 안 적힌 읽기는 못 본다 — 와일드카드(`*.docx`) · 변수로 이은 경로 · 먼저 써 둔 스크립트 속 경로 · 명령 안
+    `cd` 뒤의 상대 낱말.
+  ⚠ 러너가 주는 `--dangerously-skip-permissions` 아래에서도 막는다 — 그 플래그는 권한 묻기만 건너뛰고 PreToolUse 훅의
+    deny 는 그대로 선다(#137 실측).
 ⚠ **둘 것에는 아무것도 안 낸다** — `"allow"` 는 agy 의 권한 묻기를 건너뛰게 한다. 우리 훅이 사람의 권한 설정을 넓히면 안
    된다. 빈 출력이면 agy 는 묻지도 막지도 않고 도구를 돌린다(claude-config #126 실측).
 ⚠ **재다 져도 막지 않는다** — 몸통과 같은 규율이다. 진 사실은 stderr 한 줄로 남긴다.
@@ -22,17 +33,19 @@
 얹는다. 그 파일은 「이름 → 설정」의 표라 남의 항목과 섞이지 않는다. 명령에는 이 파일의 절대 경로를 슬래시로 박고, 윈도에서는
 따옴표를 안 친다(`script_word` — 까닭은 거기).
 ⚠ 사람이 우리 항목을 `"enabled": false` 로 꺼 두었으면 그 뜻을 잇는다.
-⚠ 못 읽는 파일(JSON 이 아님 · 맨 위가 표가 아님)은 안 건드리고 까닭을 낸다. 고쳐 쓰기 전에 원본을 곁에 떠 둔다.
+⚠ 못 읽는 파일(JSON 이 아님 · 맨 위가 표가 아님)은 안 건드리고 까닭을 낸다. 고쳐 쓰기 전에 원본을 곁에 떠 둔다 — 떠 두는
+   손은 Codex 병합기의 `backup_copy` 를 불러 쓴다(곁에 같이 실린다). 이름의 시각이 초 단위라 같은 초의 두 판이 한 이름을
+   고르는데, 그 손은 있으면 다음 번호로 가 앞 판의 원본을 안 덮는다. 이름 머리(`BACKUP_SUFFIX`)만 우리 것이다.
 
 출력 계약(`install`) — 한 줄에 하나:
   CHANGED=0|1 · BACKUP=<경로>(고쳐 쓴 판에만) · ERROR=<까닭>(아무것도 안 썼다)
 """
 import argparse
-import datetime
 import importlib.util
 import json
 import os
 import pathlib
+import re
 import shlex
 import shutil
 import sys
@@ -40,13 +53,22 @@ import tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 VIEW_TOOLS = ('view_file',)
+SHELL_TOOLS = ('run_command',)
+GUIDE_TOOLS = VIEW_TOOLS + SHELL_TOOLS   # DRM 길잡이가 지키는 읽는 길 — matcher 가 이것이다
 WRITE_TOOLS = ('write_to_file', 'replace_file_content', 'multi_replace_file_content')
 VIEW_PATH_KEY = 'AbsolutePath'
+SHELL_TEXT_KEY = 'CommandLine'     # run_command 의 명령 글 · 일하는 자리 — agy 1.3.3 실측(#137)
+SHELL_CWD_KEY = 'Cwd'
 WRITE_PATH_KEY = 'TargetFile'
 HOOK_TIMEOUT = 10                  # 초 — agy 의 기본은 30. 둘 다 파일 머리만 읽는다
 NAME_PREFIX = 'paisetup-'          # 우리 항목의 이름 머리 — 이 머리가 아닌 이름은 안 건드린다
 BACKUP_SUFFIX = '.before-paisetup-'
+MERGER_FILE = 'codex-hook-install.py'   # 원본을 떠 두는 손(`backup_copy`)의 진본 — 이 파일 곁에 같이 실린다
 ENABLED_KEY = 'enabled'
+# 명령 글의 낱말 — 따옴표 안은 통째로(빈칸 든 이름 · 겹따옴표 안의 홑따옴표도 따로), 그 밖은 셸이 가르는 글자 사이의 맨 낱말.
+# 몸통의 `candidates` 는 절대 경로 꼴만 뽑아 셸의 상대 낱말(`Expand-Archive 보고서.docx`)을 못 본다
+QUOTED_SPANS = (re.compile(r'"([^"\r\n]+)"'), re.compile(r"'([^'\r\n]+)'"))
+BARE_WORD = re.compile(r'[^\s"\'`|&;<>(){}\[\],=]+')
 
 
 # ── 꼴 바꾸기 ────────────────────────────────────────────────────────────────────
@@ -79,16 +101,48 @@ def base_dir(data):
     return os.getcwd()
 
 
+def shell_words(text):
+    """명령 글 → 경로 후보 낱말. 따옴표 안은 통째로, 그 밖은 맨 낱말로 — 뜻은 안 가린다(가르는 것은 파일의 상태다)."""
+    return [w for rx in QUOTED_SPANS for w in rx.findall(text)] + BARE_WORD.findall(text)
+
+
+def calls_reader(drm, words, cwd):
+    """명령이 읽는 손을 부르나 — 낱말 가운데 설치된 스킬 사본 어느 것의 `read-drm.ps1` 과 **같은 파일**이 있나. 길잡이는
+    첫째 사본의 손을 내주지만, 모델은 제 홈의 스킬 본문을 읽고 그 사본의 손을 부른다(agy 홈 `~/.gemini/config/skills`)."""
+    readers = [os.path.join(d, drm.READER) for d in drm.skill_dirs()]
+    for w in words:
+        p = drm.resolve(w, cwd)
+        for reader in readers:
+            try:
+                if os.path.isfile(p) and os.path.samefile(p, reader):
+                    return True
+            except OSError:
+                continue
+    return False
+
+
 # ── 훅 둘 ────────────────────────────────────────────────────────────────────────
 def drm_guide(data):
     name, args = tool_call(data)
-    raw = str(args.get(VIEW_PATH_KEY) or '')
-    if name not in VIEW_TOOLS or not raw:
+    if name in VIEW_TOOLS:
+        text, cwd = str(args.get(VIEW_PATH_KEY) or ''), base_dir(data)
+    elif name in SHELL_TOOLS:
+        text, cwd = str(args.get(SHELL_TEXT_KEY) or ''), str(args.get(SHELL_CWD_KEY) or '') or base_dir(data)
+    else:
+        return
+    if not text:
         return
     drm = load('drm_guide', 'drm-guide.py')
     sdir = drm.skill_dir()
-    _, ext_re = drm.ext_pattern(drm.handled_exts(sdir) if sdir else set())
-    hits = drm.wrapped_paths([raw], ext_re, base_dir(data))
+    alt, ext_re = drm.ext_pattern(drm.handled_exts(sdir) if sdir else set())
+    if name in VIEW_TOOLS:
+        toks = [text]
+    else:
+        words = shell_words(text)
+        if calls_reader(drm, words, cwd):
+            return
+        toks = drm.candidates(text, alt) + words
+    hits = drm.wrapped_paths(toks, ext_re, cwd)
     if not hits:
         return
     scratch = os.path.expanduser(str(data.get('artifactDirectoryPath') or '')) or tempfile.gettempdir()
@@ -149,7 +203,7 @@ def wanted():
     def entry(event, tools, mode):
         return {event: [{'matcher': '^(%s)$' % '|'.join(tools),
                          'hooks': [{'type': 'command', 'command': command(mode), 'timeout': HOOK_TIMEOUT}]}]}
-    return {NAME_PREFIX + 'drm-guide': entry('PreToolUse', VIEW_TOOLS, 'drm-guide'),
+    return {NAME_PREFIX + 'drm-guide': entry('PreToolUse', GUIDE_TOOLS, 'drm-guide'),
             NAME_PREFIX + 'utf8-bom': entry('PostToolUse', WRITE_TOOLS, 'utf8-bom')}
 
 
@@ -203,10 +257,8 @@ def install(config):
         print('CHANGED=0')
         return 0
     if config.exists():
-        stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-        backup = config.resolve().with_name(config.name + BACKUP_SUFFIX + stamp)
-        shutil.copy2(config.resolve(), backup)
-        print('BACKUP=' + str(backup))
+        merger = load('codex_hook_install', MERGER_FILE)
+        print('BACKUP=' + str(merger.backup_copy(config, BACKUP_SUFFIX)))
     write_atomic(config, json.dumps(merged, ensure_ascii=False, indent=2) + '\n')
     print('CHANGED=1')
     return 0

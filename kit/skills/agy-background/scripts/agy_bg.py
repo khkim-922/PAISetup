@@ -70,6 +70,12 @@ EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'overload': 2, 'empty': 2, 'timeout': 
 # agy 훅 표 — 「이름 → 설정」이라 `entries` 가 없다. 명령에는 설치기가 훅 파일의 절대 경로를 박아(`agy-hooks.py`
 # `command`) 홈을 가리키는 자리가 없어 그대로 옮긴다. 안 옮기면 API 키 방식 agy 는 DRM 길잡이 · BOM 훅 없이 돈다.
 HOOKS_FILE = 'hooks.json'
+# 우리 스킬이 사는 자리 — 진짜 홈의 agy 기본 전역 스킬 자리(`<홈>/.gemini/config/skills` · 결정 0111). agy 는 그 자리를 제 홈
+# (`USERPROFILE`)에서만 목록 없이 싣는다 — API 홈으로 띄운 agy 는 진짜 홈의 그 자리를 모른다. 그래서 API 홈의 스킬 목록에
+# 그 자리를 절대 경로로 더한다(사본을 안 든다). 목록이 연 자리는 실리고, agy 의 막음(「hardcoded system protection boundary
+# rule」)은 제 홈의 설정 폴더만 막아 API 홈에서 진짜 홈의 그 자리는 본문까지 열린다(agy 1.3.3 실측 2026-10-11 · 격리 홈).
+DEFAULT_SKILLS = ('.gemini', 'config', 'skills')
+SKILLS_LIST = 'skills.json'
 # 대화가 남는 자리 — `<홈>/.gemini/antigravity-cli/conversations/<id>.db`(agy 1.3.3 실측 · 로그인 · API 홈 둘 다)
 CONVERSATIONS = ('.gemini', 'antigravity-cli', 'conversations')
 CONVERSATION_FILE = '{id}.db'
@@ -218,6 +224,20 @@ def derive_config(path, src_dir, real_home):
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
+def with_default_skills(text, real_home):
+    """API 홈의 스킬 목록 글(`text` — 진짜 목록에서 지은 것 · 없으면 None)에 진짜 홈의 기본 스킬 자리를 더한다. 그 자리가
+    없으면 목록을 그대로 두고, 이미 들었으면 또 넣지 않는다."""
+    skills = os.path.join(real_home, *DEFAULT_SKILLS)
+    if not os.path.isdir(skills):
+        return text
+    data = json.loads(text) if text else {'entries': []}
+    want = os.path.normpath(skills).replace('\\', '/')
+    paths = [e.get('path') for e in data['entries'] if isinstance(e, dict)]
+    if not any(isinstance(p, str) and os.path.normcase(p) == os.path.normcase(want) for p in paths):
+        data['entries'].append({'path': want})
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
 def api_home_path(real_home):
     base = os.environ.get('LOCALAPPDATA') or os.path.join(real_home, '.cache')
     return os.path.join(base, 'agy-bg', 'api-home')
@@ -225,7 +245,8 @@ def api_home_path(real_home):
 
 def api_home(real_home):
     """API 키 방식으로 띄울 홈을 짓는다 — 방식 한 줄과, 진짜 홈의 규범·스킬·룰·훅 설정에서 **매번 다시 지은**
-    가리킴 파일들. 사본을 들고 있지 않으므로 진짜 설정을 고치면 다음 실행에 따라오고, **진짜 설정에서 빠진 파일은
+    가리킴 파일들. 스킬 목록에는 진짜 홈의 기본 스킬 자리를 더한다(`with_default_skills` — 우리 스킬이 거기 산다).
+    사본을 들고 있지 않으므로 진짜 설정을 고치면 다음 실행에 따라오고, **진짜 설정에서 빠진 파일은
     여기서도 걷는다** — 남기면 로그인 방식에는 없는 규범으로 돌고, 걷힌 훅 파일을 부르는 훅은 도구마다 오류를 낸다.
     걷는 것은 이 함수가 지을 꼴(`derive_config` 가 None 이 아닌 것)뿐이다 — agy 가 제 손으로 둔 파일은 둔다.
     ⚠ 링크(정션)를 안 쓴다 — 파이썬 3.12 전의 `shutil.rmtree` 는 정션을 따라 들어가 진짜 홈을 지운다."""
@@ -241,6 +262,9 @@ def api_home(real_home):
             text = derive_config(os.path.join(src, name), src, real_home)
             if text is not None:
                 derived[name] = text
+    listed = with_default_skills(derived.get(SKILLS_LIST), real_home)
+    if listed is not None:
+        derived[SKILLS_LIST] = listed
     if derived:
         os.makedirs(dst, exist_ok=True)
     for name, text in derived.items():

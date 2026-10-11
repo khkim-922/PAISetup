@@ -407,16 +407,16 @@ def write_atomic(path, text):
         raise
 
 
-def backup_copy(config):
-    """고쳐 쓰기 전 원본을 곁에 떠 두고 그 자리를 돌려준다. 이름은 `<설정 이름>.before-hooks-<시각>` 이고, 그 이름이
-    이미 있으면 꼬리에 `-2` · `-3` … 을 단다.
+def backup_copy(config, suffix=BACKUP_SUFFIX):
+    """고쳐 쓰기 전 원본을 곁에 떠 두고 그 자리를 돌려준다. 이름은 `<설정 이름><suffix><시각>` 이고(이 병합기는
+    `.before-hooks-`), 그 이름이 이미 있으면 꼬리에 `-2` · `-3` … 을 단다. agy 훅 어댑터도 제 이름 머리로 이 손을 부른다.
 
     ⚠ **시각은 초 단위라 같은 초의 두 판은 같은 이름을 고른다** — 그대로 쓰면 뒤 판이 앞 판의 원본을 덮고, 사용자의
       고치기 전 설정이 소리 없이 사라진다. 그래서 「없을 때만 만든다」로 열고, 있으면 다음 번호로 간다 — 두 프로세스가
       겹쳐도 한 이름은 하나만 얻는다. 심볼릭 링크면 가리키는 파일 곁에 링크의 이름으로 뜬다.
     """
     src = config.resolve()
-    base = src.with_name(config.name + BACKUP_SUFFIX + datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    base = src.with_name(config.name + suffix + datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
     for n in itertools.count(1):
         path = base if n == 1 else base.with_name(f'{base.name}-{n}')
         try:
