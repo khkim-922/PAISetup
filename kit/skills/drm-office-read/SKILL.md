@@ -70,25 +70,44 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command \
 ⚠ **수치·표·고유명사는 그 자리를 눈으로 확인한다** — 산문은 잡음이 눈에 걸리지만 숫자는 틀린 채 조용히
 지나간다.
 
-### PDF·Word의 페이지를 그림으로 확인한다
+### 「글 밖」이 비지 않으면 그림으로 본다
 
-`read-drm.ps1`의 Word 경로는 `Document.Content.Text`를 읽는다. Word가 PDF를 이미지·도형·머리글로
-변환하면 화면에 보이는 글자가 빠질 수 있고, 글자가 모두 나와도 표와 주변 문장의 위치 관계는 평탄해진다.
-추출 글자가 지나치게 짧거나 표·그림·워터마크·배치가 중요하면 `scripts/capture_pages.ps1`로 페이지 전체를
-PNG로 꺼내 직접 본다.
+`read-drm.ps1` 은 글자 수와 함께 **글로 담기지 않는 것의 개수**를 낸다 — 표 · 그림 · 도형 · 수식 ·
+차트. 문서 자신에게 물어 센 값이라 **0 이면 글자가 전부라고 단정할 수 있고, 0 이 아니면 그만큼이
+글에서 빠졌거나 평탄해졌다.** 글자 수로는 못 가른다 — 몇 자부터 짧은가는 문서마다 달라, 셀 값만으로
+완결된 시트와 수식 하나가 전부인 문서가 같은 길이로 나온다.
+
+```text
+korean.xlsx         — Excel · 글자 492                      ← 글 밖이 없다. 글자가 전부다
+native-math.docx    — Word  · 글자 20 · 글 밖 수식 1        ← 수식은 글자로 안 나온다
+watermark.pdf       — Word  · 글자 2  · 글 밖 도형 1        ← 표와 워터마크가 도형 하나다
+native-linkpic.pptx — PPT   · 글자 34 · 글 밖 그림·도형 1
+```
+
+**「글 밖」이 서면 그림을 뜬다** — 묻기 전에 뜨고, 뜬 그림을 읽어 답한다. 어느 스크립트인지는
+확장자가 정한다:
+
+| 문서 | 스크립트 | 나가는 자리 |
+|---|---|---|
+| `.pdf` · `.docx` · `.doc` · `.rtf` | `scripts/capture_pages.ps1` | `%TEMP%\drm-pages\<이름>-<시각>\page-NNN.png` |
+| `.pptx` · `.ppt` | `scripts/capture_slides.ps1` (아래 4절) | `%TEMP%\drm-slides\<이름>-<시각>\slide-N.webp` |
+| 엑셀 | **없다** — 차트가 든 시트는 지금 볼 길이 없다 | — |
+
+**둘 다 `-OutDir` 로 나갈 자리를 고른다.** 생략하면 위 표의 임시 자리를 짓는다 — 저장소나 표본
+폴더에서 돌릴 때 산출물이 섞이지 않게 기본이 그쪽이다. 찍은 자리는 스크립트가 끝에 찍으니 그 경로를
+이미지 도구로 연다.
 
 ```bash
 powershell -NoProfile -ExecutionPolicy Bypass \
   -File "<이 스킬>/scripts/capture_pages.ps1" -Path report.pdf
 
-# 필요한 쪽만
+# 필요한 쪽만 · 나갈 자리를 정해서
 powershell -NoProfile -ExecutionPolicy Bypass \
-  -File "<이 스킬>/scripts/capture_pages.ps1" -Path report.docx -Pages "1,3"
+  -File "<이 스킬>/scripts/capture_pages.ps1" -Path report.docx -Pages "1,3" -OutDir "D:\out"
 ```
 
-이 길은 Word의 `EnhMetaFileBits`를 메모리에서 받아 PowerShell이 PNG로 쓴다. Office의 내보내기나
-다른 이름으로 저장을 쓰지 않으며 원본은 읽기 전용으로 열고 저장하지 않는다. 결과 경로가 출력되면 이미지
-도구로 열어 확인한다. `.pdf`·`.docx`·`.doc`·`.rtf`만 맡고, 슬라이드는 아래 전용 캡처를 쓴다.
+Word 경로는 `EnhMetaFileBits` 를 메모리에서 받아 PowerShell 이 PNG 로 쓴다. Office 의 내보내기나
+다른 이름으로 저장을 쓰지 않으며 원본은 읽기 전용으로 열고 저장하지 않는다.
 
 ## 4. 덱을 검수한다 — 배치는 재고, 인상은 본다
 
@@ -118,7 +137,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<이 스킬>/scripts/captur
 ```
 
 찍은 그림에서는 **재서는 안 보이는 것** — 색 대비 · 활자 인상 · 여백 균형 — 을 본다. 스크립트가 긴 변을
-줄여 낸다. 게이트웨이를 지나는 환경이면 그림이 보이는 조건을 그 환경 문서의 그림 절에서 본다.
+줄여 낸다(`-MaxEdge`). 나가는 자리는 `-OutDir` 가 고르고, 생략하면
+`%TEMP%\drm-slides\<덱 이름>-<시각>\` 을 짓는다 — 찍은 경로를 스크립트가 끝에 낸다. 게이트웨이를 지나는
+환경이면 그림이 보이는 조건을 그 환경 문서의 그림 절에서 본다.
 
 ⚠ **한글 낱말이 줄 끝에서 반으로 갈리는 결함은 이 길로만 잡힌다** — 배치 검사는 통과한다. 파워포인트는
 문단의 `eaLnBrk="0"` 과 런의 `lang="ko-KR"` 이 **함께** 있어야 한국어 줄바꿈 규칙을 적용한다. 그래도 한

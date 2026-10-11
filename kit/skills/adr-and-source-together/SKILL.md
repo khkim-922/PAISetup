@@ -23,7 +23,7 @@ MADR 이 선택으로 둔 절도 다 쓴다 — 빼거나 조건을 다는 자�
 | `# 제목` | 푼 문제와 찾은 해법이 함께 보이는 짧은 제목 |
 | Context and Problem Statement | 두세 문장이나 짧은 이야기. 물음 꼴이 좋다. **결정이 걸리는 범위**(어느 구성 요소 · 어느 경계)를 밝힌다 |
 | Decision Drivers | 결정을 민 힘 — 바라는 품질 · 걸린 우려 · 제약 |
-| Considered Options | 견준 선택지의 이름 |
+| Considered Options | 견준 선택지의 이름. **우리가 이미 해 보고 버린 길을 먼저 찾아 싣는다** — 같은 주제의 옛 결정(아래 「찾아 읽는 길」)과 되돌린 커밋(`git log --grep` · `-S`)에서 찾고, 버린 까닭을 그 선택지에 단다. 그 까닭은 옛 파일과 커밋 메시지에만 남아, 안 찾으면 바깥 조사가 같은 길을 다시 권한다 |
 | Decision Outcome | *Chosen option: "…", because …* — 까닭은 결정 동인에 이어서 댄다(하나만 필수 조건을 넘는다 · 어느 힘을 푼다 · 견줘서 가장 낫다) |
 | Consequences | *Good, because …* · *Bad, because …* |
 | Confirmation | 지켜졌는지 무엇으로 확인하나 — 자동 검사나 리뷰. **필수다**(아래 덮어쓰기) |

@@ -230,16 +230,45 @@ def tail_lines(path):
             taken += n
 
 
+def prompt_blocks(o):
+    """기록 줄 하나에서 사람이 보낸 프롬프트 블록 목록 — 사람이 보낸 줄이 아니면 `None`.
+
+    **꼴이 둘이다.** 같은 「+」 첨부가 앱 판에 따라 다른 자리로 간다.
+      · `{"type":"user","message":{"content":[…]}}`        — 옛 꼴(결정 0094 · #120 실측)
+      · `{"type":"attachment","attachment":{"prompt":[…]}}` — 큐에 담기는 꼴. `promptId` 가 없다
+    둘 다 받는다 — 한쪽만 받으면 그 판을 쓰는 PC 에서 첨부가 조용히 안 걸린다.
+
+    ⚠ **`None` 과 빈 목록을 가른다.** `None` 은 「남의 줄」이라 호출부가 더 거슬러 오르고, 빈 목록은
+      「사람 줄인데 블록이 없다」(평문 글 — `content` 가 문자열)라 호출부가 **거기서 멈춘다.** 섞으면
+      평문 턴이 앞 턴 첨부까지 거슬러 올라 없는 첨부를 알린다(#120).
+    """
+    if not isinstance(o, dict) or o.get('isMeta'):
+        return None
+    if o.get('type') == 'user':
+        content = (o.get('message') or {}).get('content')
+        return content if isinstance(content, list) else []
+    if o.get('type') == 'attachment':
+        a = o.get('attachment')
+        if not isinstance(a, dict) or not a.get('humanTurn'):
+            return None     # 사람이 보낸 턴이 아니다 — 도구 · 체계가 붙인 것은 안 본다
+        prompt = a.get('prompt')
+        return prompt if isinstance(prompt, list) else []
+    return None
+
+
 def turn_documents(path, pid):
     """`prompt_id` 로 지목한 이 턴 사용자 줄의 문서 블록 — `(블록들, 줄 식별자)`. 못 찾으면 `([], '')`.
 
-    끝에서 거꾸로 읽어 **그 `promptId` 가 달린 가장 새 `user` 줄**을 찾고, 그 줄에 문서 블록이 있을 때만 든다.
+    끝에서 거꾸로 읽어 **사람이 보낸 가장 새 줄**을 찾고, 그 줄에 문서 블록이 있을 때만 든다.
     「지금이 어느 턴인가」를 추정하지 않으므로 그 줄이 몇 줄째인지 · 뒤에 무엇이 붙었는지와 무관하다.
 
     ⚠ **「가장 새」가 판정의 핵이다.** 문서 블록이 든 줄만 골라 거슬러 오르면, 같은 `prompt_id` 가 잇달아
       올 때(#120 실측) **앞 턴의 첨부를 뒤 턴에 알린다** — 뒤 턴이 첨부 없는 평문이어도 그렇다. 없는 첨부를
-      가리키는 안내는 모델을 틀린 길로 밀어 침묵보다 나쁘다. 그래서 그 값의 가장 새 사용자 줄 하나만 보고,
+      가리키는 안내는 모델을 틀린 길로 밀어 침묵보다 나쁘다. 그래서 사람이 보낸 가장 새 줄 하나만 보고,
       거기 문서가 없으면 조용히 끝낸다.
+    ⚠ **턴을 가르는 열쇠가 꼴마다 다르다.** 옛 꼴은 `promptId` 로 이 턴의 줄만 골라낸다. 큐에 담기는 꼴에는
+      그 값이 없어 **거꾸로 읽어 처음 만나는 사람 줄**이 이 턴의 것이다 — 그 줄 뒤로는 사람이 보낸 줄이
+      없다는 뜻이라 같은 판정이 선다.
     ⚠ **줄 식별자를 함께 낸다** — `prompt_id` 는 턴을 못 가르므로(같은 값이 잇달아 온다) 한 번만 알리는
       표식의 열쇠는 이 값이 든다(`claim_turn`). 기록 줄의 `uuid` 가 그 자리다.
     """
@@ -248,22 +277,21 @@ def turn_documents(path, pid):
     needle = ('"promptId":"%s"' % pid).encode('utf-8')
     try:
         for raw in tail_lines(path):
-            if needle not in raw:
-                continue    # 다른 턴의 줄 — 푸는 값을 안 낸다
             try:
                 o = json.loads(raw)
             except ValueError:
                 continue    # 쓰이다 만 줄
-            if not isinstance(o, dict) or o.get('type') != 'user' or o.get('isMeta'):
-                continue
-            content = (o.get('message') or {}).get('content')
-            if not isinstance(content, list):
-                return [], ''   # 이 턴의 가장 새 사용자 줄인데 블록이 없다(평문 글)
-            if any(b.get('type') == 'tool_result' for b in content if isinstance(b, dict)):
+            blocks = prompt_blocks(o)
+            if blocks is None:
+                continue    # 사람이 보낸 줄이 아니다
+            if any(b.get('type') == 'tool_result' for b in blocks if isinstance(b, dict)):
                 continue        # 도구 결과 줄 — 사람이 보낸 줄이 아니다
+            # ⚠ 여기서 **멈추는** 것이 「가장 새」를 세운다 — 넘기면 평문 턴이 앞 턴 첨부까지 거슬러
+            # 오른다(#120). 옛 꼴은 이 턴 값이 안 달린 줄에서, 큐 꼴은 처음 만난 사람 줄에서 멈춘다
+            if o.get('type') == 'user' and needle not in raw:
+                return [], ''
             uid = str(o.get('uuid') or '')
-            blocks = [b for b in content if isinstance(b, dict) and b.get('type') == 'document']
-            return blocks, uid   # 문서가 없으면 빈 목록 — 거슬러 더 오르지 않는다
+            return [b for b in blocks if isinstance(b, dict) and b.get('type') == 'document'], uid
     except OSError:
         return [], ''
     return [], ''

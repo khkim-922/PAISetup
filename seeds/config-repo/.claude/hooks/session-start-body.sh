@@ -51,6 +51,15 @@
 #   설치는 저마다 실패를 삼키되 사유는 남긴다(try) — 반쯤 깔린 채 침묵하지 않기 위해서다.
 set -uo pipefail
 
+# ══ 단계 · 부름 — 모든 갈래 ════════════════════════
+#    층 — 없음(준비). 무엇을 어느 저장소에 할지를 잡는다
+#    하는 일 — 인자로 갈래(`MODE` · `ASKED`)를 고르고, 대상 저장소(`PROJECT_DIR` · `PROJECT_NAME`)를 문지기가 넘긴
+#      값 → 제 경로 → `CLAUDE_PROJECT_DIR`(없으면 지금 폴더) 차례로 잡는다. 명시한 설치 갈래(`--install` ·
+#      `--install-global`)의 바깥 실행은 기록 파일을 열고 저를 다시 띄워 그 줄을 받은 뒤, 안쪽의 종료코드로 끝난다
+#    앞에서 받는 것 — 인자 하나 · `SESSION_START_REPO`(문지기 · deploy.ps1) · `SESSION_LOG`(바깥이 받고 있다는 표식) ·
+#      `CLAUDE_PROJECT_DIR`
+#    안 하는 것 — 함수를 부르지 않는다(라이브러리는 이 단계 뒤에 선다). 깔지도 홈에 밀지도 않는다 — 쓰는 것은
+#      바깥 실행의 기록 파일(`~/.claude/logs/`) 하나다
 MODE=auto
 ASKED=""   # 인자로 명시된 갈래 — auto 가 지문 어긋남으로 install 이 되는 것과 가른다
 case "${1:-}" in
@@ -105,49 +114,14 @@ if [ -n "$ASKED" ] && [ -z "${SESSION_LOG:-}" ] && [ -f "$_self" ] && mkdir -p "
   _lrc=$?   # pipefail — tee 가 아니라 훅의 종료코드다. 위층(deploy.ps1)이 이 값을 판정으로 받는다
   exit "$_lrc"
 fi
-VENV="$PROJECT_DIR/.venv"
-FAILS="$PROJECT_DIR/.claude/install-fail"
-# 전역 갈래의 실패는 **기계 한 자리**에 적는다 (#43). 저장소 파일에 적으면 그 저장소를 여는
-# 세션만 사유를 보고, 같은 도구가 꺼진 형제의 진단에는 ❌ 만 서고 까닭이 영영 안 붙는다.
-GFAILS="$HOME/.claude/install-global-fail"
-GCONF="$PROJECT_DIR/.claude/tools.global.conf"
-PCONF="$PROJECT_DIR/.claude/tools.conf"
-STAMP="$PROJECT_DIR/.claude/install-stamp"   # 기계 상태 — install-fail 과 같은 자리, 커밋 안 한다
-GSTAMP="$HOME/.claude/install-global-stamp"  # 전역형 선언의 지문 — 저장소가 아니라 기계 하나다 (#43)
-# 전역 걸음이 **이번 실행에서** ✅ 로 낸 도구들의 명부 (#57). 쓰는 자는 `install_global`,
-# 읽는 자는 아래 진단의 `global_verified` — 둘 다 이 한 자리를 가리킨다.
-GVERIFIED="$HOME/.claude/install-global-verified"
-FRESH="$PROJECT_DIR/.claude/install-upgraded"  # 마지막으로 도구의 새 판을 견준 날. 같은 자리, 커밋 안 한다
-UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나면 한 번 견주고 새 판만 받는다
 
-# ── 옛 이름에서 옮긴다 (2026-09-16) ─────────────────────────────────────────────
-#    상태 파일이 `bootstrap-*` 에서 `install-*` 로 바뀌었다 (#56 · 걷힌 몸통의 이름이었다).
-#    **이름만 갈면 이미 깐 기계의 도장이 통째로 사라진다** — 지문이 안 맞아 저장소마다 한 번
-#    씩 다시 깐다(사내 VDI 실측 370초). 그래서 옛 이름이 있고 새 이름이 없을 때만 옮긴다:
-#    `[ -e ]` 는 내장이라 스폰이 없고, `mv` 는 옛 파일을 든 기계에서 한 번만 돈다.
-#    새 이름이 이미 서 있으면 **안 덮는다** — 지금 값이 옛 값보다 새 것이다.
-#  ⚠ **걷는 날은 사람이 정한다.** 모든 기계가 한 번씩 이 줄을 밟았는지는 여기서 알 길이
-#    없다 — 옛 이름이 어디에도 안 남았다고 사람이 판정하는 날 이 칸을 통째로 지운다.
+#region 라이브러리 — 흐름이 부르는 함수는 다 여기 선다. 정의만 있고 도는 문장은 없다
+#   함수가 읽는 전역 값(상태 파일 자리 · 처음 값)은 흐름이 세운다 — 함수는 불릴 때 그 값을 읽는다
+
 _migrate_name() {   # $1 옛 이름 · $2 새 이름
   [ -e "$1" ] || return 0
   [ -e "$2" ] || mv "$1" "$2"
 }
-_migrate_name "$PROJECT_DIR/.claude/bootstrap-fail"          "$FAILS"
-_migrate_name "$PROJECT_DIR/.claude/bootstrap-stamp"         "$STAMP"
-_migrate_name "$PROJECT_DIR/.claude/bootstrap-upgraded"      "$FRESH"
-_migrate_name "$HOME/.claude/bootstrap-global-fail"          "$GFAILS"
-_migrate_name "$HOME/.claude/bootstrap-global-stamp"         "$GSTAMP"
-unset -f _migrate_name
-
-# ⚠ 선언이 하나도 없으면 **깔 것을 못 찾은 것**이다. 빈 지문은 「선언이 없다」와 「자리를 잘못
-#   봤다」를 구별하지 못해, 엉뚱한 자리에서도 완료 도장이 찍힌다 — 그 침묵이 무작동을 성공으로
-#   보이게 한다. 막지는 않고 자리를 말하고 간다(선언 없는 저장소도 정당하기 때문이다).
-# ⚠ `--needs-install` · `--site` 는 이 줄을 안 낸다 — 그 갈래들의 답은 **기계가 읽는 한 줄**이라
-#   다른 줄이 섞이면 사유가 밀린다. 이 말이 필요한 사람은 세션(auto)·설치 화면에서 그대로 듣는다.
-[ "$MODE" = needs-install ] || [ "$MODE" = site ] ||
-[ -e "$PROJECT_DIR/requirements.txt" ] || [ -e "$PROJECT_DIR/package-lock.json" ] ||
-[ -e "$GCONF" ] || [ -e "$PCONF" ] ||
-  echo "$PROJECT_NAME: ⚠ 선언이 하나도 없다(requirements.txt · package-lock.json · tools*.conf) — $PROJECT_DIR 를 저장소로 보고 있다. 자리가 맞나 본다."
 
 # ── 선언 지문 — 설치가 소비하는 선언 넷의 해시. 깨끗한 설치 끝에 굳고(⑧), PC 세션이
 #    「깔 것이 있나」를 이 값과 대조한다(auto). 판정이 사건(풀이 있었나)이 아니라
@@ -158,57 +132,6 @@ decl_fingerprint() {
   cat "$PROJECT_DIR/requirements.txt" "$PROJECT_DIR/package-lock.json" \
       "$GCONF" "$PCONF" 2>/dev/null | sha256sum | awk '{print $1}'
 }
-
-# claude-config 가 어디 붙었나 — 커밋 게이트와 같은 자리(.githooks 의 경로 스크립트)를 본다.
-# 그 스크립트가 없는 저장소는 아래서 직접 짚는다.
-CONFIG_ROOT=""; ADR_GEN=""; GATES_HOME=""
-[ -f "$PROJECT_DIR/.githooks/claude-config-path.sh" ] &&
-  . "$PROJECT_DIR/.githooks/claude-config-path.sh"
-if [ -z "$CONFIG_ROOT" ]; then
-  for _c in "$PROJECT_DIR" "$(dirname "$PROJECT_DIR")/claude-config" "$HOME/claude-config" /workspace/claude-config; do
-    [ -f "$_c/deploy.ps1" ] && [ -d "$_c/memory" ] && { CONFIG_ROOT="$_c"; break; }
-  done
-fi
-
-# ── 이 실행이 PC 전체 일을 맡나 (claude-config 0062) ─────────────────────────────
-#    PC 전체 일 — 홈에 규범 · 룰 · 에이전트 · 씨앗 밀기 · 개인 설정(git 전역 설정 · 키) · 홈 훅과
-#    신뢰 목록 심기 · 전역 도구 선언 대조. 저장소가 몇이든 PC 에 한 번이면 되는 일이다.
-#    맡는 자리는 넷이다 — 로그인 자동 실행(`deploy.ps1` → `--install`) · 설정 저장소를 연 세션 ·
-#    저장소 밖에서 연 세션(홈 훅이 설정 저장소 훅을 부른다, 0043) · 리모트 설정 스크립트(`--install`).
-#    **형제 저장소를 연 세션(auto)은 안 맡는다** — 그 저장소 일만 하고, 맡는 자리가 오래 안 돌았거나
-#    홈 파일이 설정 저장소와 다르면 알리기만 한다(`pc_wide_notice`).
-# ⚠ 명시한 `--install` 은 어느 저장소에서 불려도 맡는다 — 위 넷 가운데 셋이 그 입구로 들어온다.
-# ⚠ **claude-config 가 이 PC 에 없으면 형제 세션도 맡는다.** 동료 PC(설치기만 쓰고 설정 저장소가 없는 자리)
-#   에는 위 넷 가운데 서는 자리가 없다 — 설치기는 설정 저장소가 없으면 이 몸통을 안 부르고, 설정 저장소
-#   세션도 없다. 그 PC 에서 형제 세션까지 빠지면 전역 도구(게이트가 쓰는 lint 들)를 아무도 안 깐다.
-PC_WIDE=""
-if [ "$MODE" != auto ] || [ -z "$CONFIG_ROOT" ] || [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
-  PC_WIDE=1
-fi
-# PC 전체 일이 마지막으로 돈 때 — 파일의 시각이 곧 값이고, 내용은 그때 맞춘 설정 저장소의 판이다(0065).
-# 쓰는 몸통은 `pc_wide_mark` 한 자리(부르는 자리는 PC 전체 일을 끝내는 곳마다)이고, 시각과 내용을 `pc_wide_key` 가
-# 읽는다 — 시각이 `UPGRADE_DAYS` 를 넘으면 통째로 다시 돈다.
-PC_WIDE_STAMP="$HOME/.claude/pc-wide-ran"
-# 맡는 자리가 열쇠를 견줘 **할 일이 없다고 본** 때 — 빈 파일이고 시각만 값이다(0068). 건너뛴 세션은 위 표식을
-# 안 건드리므로, 「맡는 자리가 돌고 있나」를 묻는 `pc_wide_notice` 는 두 시각 가운데 새것을 본다.
-# ⚠ 한 파일에 두 뜻을 싣지 않는다 — 건너뛸 때 위 표식의 시각을 찍으면 통째로 다시 도는 안전망이 영영 안 선다.
-PC_WIDE_SEEN="$HOME/.claude/pc-wide-seen"
-
-# 기계를 가른다. Git Bash 는 `uname -s` 가 MINGW64_NT-… 를 낸다.
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) OS=windows ;;
-  *)                    OS=linux   ;;
-esac
-# ⚠ **파이썬의 stdio·open() 인코딩을 기계의 로케일에 안 맡긴다** (#51 · PEP 540). 아래 파이썬 셋
-#   (홈 설정 병합 · 홈 훅·신뢰 심기 · 심겼나 재기)은 한국어 문구를 파이프로 내는데, 윈도우의 기본
-#   인코딩(cp949)은 `—` 를 못 담아 **다 쓰고 나서 찍다가 죽는다.** deploy 가 심는 사용자 환경변수
-#   (PYTHONUTF8)는 비영속 VDI 의 첫 로그인과 리모트에는 없다 — 훅이 어디서 돌든 이 한 줄이 덮는다.
-export PYTHONUTF8=1
-if [ "$OS" = windows ]; then
-  VENV_BIN="$VENV/Scripts"; PY_CMD=python
-else
-  VENV_BIN="$VENV/bin";     PY_CMD=python3
-fi
 
 # ── 파일로 재는 자 둘 — **배선이 섰나 · venv 가 닿나** ─────────────────────────────────
 #    아래 `--needs-install` 과 이 파일 끝의 진단이 같은 것을 묻는다. 자를 두 벌 두면 한쪽만
@@ -236,6 +159,7 @@ hooks_wired() {  # 0 이면 이 저장소의 .githooks 로 배선돼 있다. 걸
          [ "$_hw_here" = "$(cd "$CONFIG_ROOT/.githooks" 2>/dev/null && pwd -P)" ] ;;
   esac
 }
+
 # ⚠ venv 는 **폴더가 서 있나가 아니라 pip 이 닿나**로 잰다. `python -m venv` 는 트리를 만들고
 #   해석기를 복사한 **뒤에** pip 을 깐다. 그 마지막 걸음만 져도 폴더는 그대로 남아, 존재로
 #   물으면 반쯤 선 venv 가 「있다」로 읽힌다 — 그러면 **다시 깔아도 영영 안 낫는다**: 만들기를
@@ -244,48 +168,6 @@ hooks_wired() {  # 0 이면 이 저장소의 .githooks 로 배선돼 있다. 걸
 #   정작 제 venv 가드에만 안 걸려 있었다.
 venv_ready() { [ -x "$VENV_BIN/pip" ] || [ -f "$VENV_BIN/pip.exe" ]; }
 
-# ── `--needs-install` — 「이 저장소에 깔 게 있나」 **예/아니오 하나** (#47 ②) ──────────────
-#    묻는 자는 `deploy.ps1` 의 계획 단계다. 거기 필요한 답은 진단이 아니라 이 한 마디인데,
-#    옛 판은 `--check` 를 불러 도구마다 프로브를 띄웠다 — 사내 VDI 실측(PAISetup #5): 저장소당
-#    31~57초 × 다섯 = 200초가, 설치 끝의 진단과 **같은 판정을 두 벌** 내는 데 들었다.
-#    그래서 여기는 **파일만 본다** — 프로브도 망도 CI 조회도 없다. 「도구가 닿나」는 안 묻는다:
-#    그 물음의 자리는 깐 뒤의 진단 한 벌이다(설치가 끝난 자리의 판정이라야 진짜다).
-#  ⚠ **판정의 진본을 새로 짓지 않는다.** 「깔 게 있다」가 무엇인가는 auto 갈래의 지문 게이트가
-#    이미 든 명제고, 여기는 같은 자(`decl_fingerprint`)를 그대로 부른다. 그 위에 더하는 것은
-#    **설치가 세우는 것 중 파일로 보이는 것**뿐이다 — 배선(`wire_commit_hooks` 가 세운다) ·
-#    venv(파이썬 선언이 있을 때) · 지난 설치가 남긴 실패(다시 까는 손은 여기라고 auto 가 적어 뒀다).
-#  ⚠ **아무것도 안 쓴다 — 지문 도장(STAMP)도 안 찍는다.** 재는 갈래가 제 자국을 남기면 다음
-#    판정이 그것을 읽는다.
-#  ⚠ 종료코드 셋 — 0 안 깐다 · 1 깐다 · **2 못 쟀다**. 2 를 0 으로 접지 않는다: 부재가 통과로
-#    읽히는 자리가 거기다. 사유는 stdout 한 줄이고, 위층이 그 줄을 그대로 화면에 싣는다.
-if [ "$MODE" = needs-install ]; then
-  _nfp="$(decl_fingerprint)"
-  if [ -z "$_nfp" ]; then
-    echo "선언 지문을 못 쟀다 — sha256sum 을 못 부른다"; exit 2
-  fi
-  if [ -d "$PROJECT_DIR/.githooks" ] && ! hooks_wired; then
-    # 「안 걸렸다」와 「못 물었다」를 가른다 — git 이 이 자리를 저장소로 안 읽으면 배선은 1 이
-    # 아니라 2 다. 성한 자리에서는 이 한 번을 안 묻는다(위가 이미 답했다) — 왕복 하나가 값이다.
-    git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1 ||
-      { echo "배선을 못 쟀다 — git 이 $PROJECT_DIR 를 저장소로 안 읽는다"; exit 2; }
-    echo "커밋 훅 배선이 없다 (core.hooksPath=${HOOKS_PATH:-빈 값})"; exit 1
-  fi
-  [ "$_nfp" = "$(cat "$STAMP" 2>/dev/null)" ] ||
-    { echo "선언 지문이 어긋난다 — 선언이 바뀌었거나 아직 안 깔렸다"; exit 1; }
-  if [ -f "$PROJECT_DIR/requirements.txt" ] && ! venv_ready; then
-    echo "venv 에 pip 이 안 닿는다 — 파이썬 선언이 있는데 .venv 가 없거나 반쯤 섰다"; exit 1
-  fi
-  # 지난 실패는 설치가 제 층을 다시 돌 때만 걷힌다 — 남아 있다는 것은 **마지막 설치가 졌다**는 뜻이다.
-  # 전역 쪽도 같이 본다: 전역형 도구가 못 깔린 저장소는 그 사유를 제 파일에 안 진다 (#43).
-  for _nff in "$FAILS" "$GFAILS"; do
-    [ -s "$_nff" ] || continue
-    _nwho=저장소; [ "$_nff" = "$GFAILS" ] && _nwho=전역
-    echo "지난 $_nwho 설치의 실패가 남아 있다 — $(awk -F'\t' '{printf "%s%s", (NR>1 ? " · " : ""), $1}' "$_nff" 2>/dev/null)"
-    exit 1
-  done
-  echo "배선·지문 맞음"
-  exit 0
-fi
 # ⚠ **윈도우의 `python` 이름은 스토어 껍데기일 수 있다** (#50). PATH 앞의 `WindowsApps\python.exe` 는
 #   진짜 파이썬이 아니라 스토어를 여는 자리표라 비대화에서 진다 — 설치기가 같은 실행에서 파이썬을
 #   막 깔았어도 이 셸의 PATH 는 그 전 것이라 껍데기가 먼저 걸린다. 그래서 이름을 믿지 않고
@@ -304,19 +186,12 @@ py_resolve() {
   done
   return 0
 }
-py_resolve
-# ── PC 의 파이썬 — **전역 파이썬 패키지(`pip-user`)가 사는 자리다.** 여기서 굳혀 둔다.
-# ⚠ `PY_CMD` 를 그대로 안 쓴다 — 저장소 걸음이 선언한 판(`probe = python-version`)으로 venv 를
-#   세우려고 그 이름을 다른 해석기로 바꿔 끼운다. 전역 패키지를 부르는 자(그림 문의 줄이기 등)는
-#   저장소와 무관하게 **PATH 의 파이썬**으로 돈다 — 깔고 재는 자리도 그것이어야 명제가 같다.
-PC_PY="$PY_CMD"
-VENV_PY="$VENV_BIN/python"; [ -x "$VENV_PY" ] || VENV_PY="$VENV_BIN/python.exe"
-NPM_BIN="$PROJECT_DIR/node_modules/.bin"
 
 # ── 파이썬 판 자 — 선언(probe = python-version)이 바닥을 들면 이 자로 잰다 ──
 py_num() {  # py_num <해석기> — 3.13 → 313. 못 부르면 빈 값
   "$1" -c 'import sys; print(sys.version_info[0] * 100 + sys.version_info[1])' 2>/dev/null
 }
+
 ver_num() {  # ver_num <"3.12"> — 선언의 바닥 문자열을 같은 자로. 모양이 아니면 0
   case "$1" in
     *.*) _ma="${1%%.*}"; _mi="${1#*.}"; _mi="${_mi%%.*}"
@@ -339,6 +214,7 @@ decl_sections() {
          }
        }' "$1"
 }
+
 decl_get() {  # decl_get <파일> <절> <키>
   [ -f "$1" ] || return 0
   awk -v sec="$2" -v key="$3" '
@@ -355,6 +231,7 @@ decl_get() {  # decl_get <파일> <절> <키>
       }
     }' "$1"
 }
+
 # ── 절 하나를 **한 번 읽어 달라는 키를 달라는 순서로** 낸다 ─────────────────────
 # ⚠ **왜 있나.** `decl_get` 은 키 하나에 awk 한 프로세스다. 프로브가 키 셋을 묻고 판 검사가
 #   둘을 더 묻고 진단이 또 셋을 묻는데, 그것이 **도구마다** 돌아 선언 조회 하나가 세션에서
@@ -418,7 +295,6 @@ decl_fields() {  # decl_fields <파일> <절> <키…>
 # ⚠ 값은 `cygpath -p` 한 번으로 목록째 옮긴다 — 항목마다 부르면 그 수만큼 프로세스가 뜬다.
 #   실측 이 PC: 읽고 옮기는 데 0.2초. 통과하는 프로브에는 안 붙는다.
 # ⚠ `//v` — Git Bash 가 `/v` 를 경로로 바꿔 넘긴다.
-PATH_CAUGHT=''
 path_catchup() {  # 0 = 이번에 붙였다 · 1 = 붙일 것이 없거나 이미 붙였다
   [ "$OS" = windows ] || return 1
   [ -z "$PATH_CAUGHT" ] || return 1
@@ -430,6 +306,7 @@ path_catchup() {  # 0 = 이번에 붙였다 · 1 = 붙일 것이 없거나 이�
   [ -n "$_pcu" ] || return 1
   PATH="$PATH:$_pcu"; export PATH
 }
+
 probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
   _k="$1"; _tg="$2"; _knp="$3"; shift 3
   [ $# -gt 0 ] || set -- --version
@@ -460,6 +337,7 @@ probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
     *) return 1 ;;
   esac
 }
+
 # npm 전역에 깔린 판 — **기계에게 묻는다.** `--version` 출력을 파싱하지 않는다: 문구가
 # 도구마다 달라, 그 차이를 표로 들면 그 표가 곧 매핑 레이어다(규범 [Determinism First]).
 # 패키지의 package.json 이 제 판의 진본이고 그것을 읽는 자는 node 다 — npm 이 있으면 있다.
@@ -476,7 +354,6 @@ probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
 #   `$(npm_root_g)` 꼴로 부르면 매 호출이 제 서브셸에서 빈 캐시를 보고 다시 묻는다: 캐시를
 #   두고도 값이 하나도 안 아껴지는데, 판정은 멀쩡하니 **느린 것만 남고 까닭은 안 보인다.**
 #   그래서 부르는 자는 이것을 **문장으로** 부르고 값은 `$NPM_ROOT_G` 에서 읽는다.
-NPM_ROOT_G=''; NPM_ROOT_G_ASKED=''
 npm_root_g() {  # 성공하면 $NPM_ROOT_G 에 자리가 선다
   [ -n "$NPM_ROOT_G_ASKED" ] || {
     NPM_ROOT_G_ASKED=1
@@ -484,6 +361,7 @@ npm_root_g() {  # 성공하면 $NPM_ROOT_G 에 자리가 선다
   }
   [ -n "$NPM_ROOT_G" ]
 }
+
 npm_global_version() {  # npm_global_version <패키지 이름> — 못 읽으면 빈 값
   npm_root_g || return 1
   _nr="$NPM_ROOT_G"
@@ -505,10 +383,6 @@ ver_first() { grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1; }
 # 자리에서 태그를 읽는다. API 와 릴리스 쪽은 막히고 받는 주소만 열린 망이 있다(실측
 # 2026-09-26 · 리모트 컨테이너: API · `releases/latest` 는 403, 받는 주소는 302).
 # 자산 이름은 아무것이나 된다 — 넘기기는 자산이 있나를 안 보고 선다.
-# GitHub 에 닿는 기다림(초) — **연결 마감 하나만 뜻한다.** 아래 두 함수가 같이 쓴다.
-#   되풀이 창에 이 값을 겹쳐 쓰지 않는다 — 한 값이 두 뜻을 지면, 연결을 넉넉히 하려고 올린 손이
-#   되풀이까지 조용히 바꾼다.
-GH_CONNECT_S=10
 gh_latest_tag() {  # gh_latest_tag <owner/repo> — 못 읽으면 빈 값
   curl -sS --connect-timeout "$GH_CONNECT_S" --max-time 20 -o /dev/null -w '%{redirect_url}' \
     "https://github.com/$1/releases/latest/download/_" 2>/dev/null |
@@ -602,6 +476,7 @@ EOF
   # shellcheck disable=SC2086 # probe-arg 는 낱말 분리가 의도다
   probe_tool "$_prk" "$_prt" "$_prp" $_pra
 }
+
 probe_pin() {  # probe_pin <선언파일> <이름> — 선언이 판을 박았으면 깔린 판이 그것인가
   # ⚠ **「깔렸나」와 「선언한 판인가」는 다른 명제다.** 선언이 `이름@판` 으로 판을 박았으면
   #   여기서 그것도 잰다 — 안 재면 판을 박아도 **옛 판이 깔린 기계에서 그냥 통과하고**,
@@ -627,10 +502,12 @@ EOF
   case "$_pv" in ''|*[!0-9.]*) return 0 ;; esac
   [ "$(npm_global_version "$_pn" || true)" = "$_pv" ]
 }
+
 probe_decl() {  # probe_decl <선언파일> <이름> — 저장소의 물음. 진단이 쓰는 자다
   probe_reach "$1" "$2" || return 1
   probe_pin   "$1" "$2"
 }
+
 # ── 전역 갈래의 물음 — **저장소가 아니라 기계에게 묻는다** (#43) ────────────────
 # ⚠ **왜 딴 함수인가.** `node-resolvable` 은 「이 저장소 안에서 import 되나」라, 정션이
 #   서기 **전**에 물으면 늘 진다. 전역 고리가 그 물음을 쓰면 playwright 는 매번 지고
@@ -672,12 +549,13 @@ wire_commit_hooks() {
 }
 
 # ── 홈 규범·룰·에이전트·씨앗 — 가볍고 멱등이라 설치 안(①②)만이 아니라
-#    PC 매 세션(auto)에도 민다. **밀기는 견줌 뒤에 온다** — 아래 `_push_file` 이 그 게이트다.
+#    PC 매 세션(auto)에도 민다. **밀기는 견줌 뒤에 온다** — 규범 · 룰 · 에이전트는 손 하나(아래
+#    `tool_homes`)가 견주고 놓고, 씨앗은 아래 `_push_file` 이 그 게이트다.
 #    **재료는 claude-config 진본 한 자리다.** 저장소는 전역 사본을 안 진다 — 지면 그 폴더가
 #    「이 저장소 것」과 「전역 것」을 겸하게 되고, 겸하면 이름으로 갈라야 하는데 그 이름이
 #    PC 에서는 뜻이 없다 (claude-config 0014). 안 붙어 있을 때 조용히 넘어가지 않는 것은
 #    아래 진단 절의 「전역 축」이 든다 — 규율 없이 도는 세션은 스스로 그것을 모른다.
-# ── 파일 하나를 미는 규율 — **이 칸의 모든 밀기가 이 문을 지난다** ────────────────
+# ── 파일 하나를 미는 규율 — **씨앗의 모든 밀기가 이 문을 지난다** ────────────────
 #    ⚠ **왜 게이트가 필요한가.** 리모트는 홈이 매 세션 새로 서서 이 복사가 살아야 하고, PC 는
 #      `deploy.ps1` 이 이미 밀어 둬서 **같은 것을 매 세션 다시 옮겼다** — 파일마다 프로세스
 #      둘(폴더 짓기 + 복사)이라 윈도우에서 마흔여덟 자리가 2.2초다 (#54). 두 자리를 가르는
@@ -693,9 +571,6 @@ wire_commit_hooks() {
 #      갈리므로 같은 문을 지난다.
 #    ⚠ **바뀐 것만 보는 판이 있다**(`PUSH_ONLY` · 0065). 비어 있으면 전부 보고, 차 있으면 그 목록
 #      (설정 저장소 뿌리에서 본 상대경로 · 줄로 감싼 꼴)에 든 원본만 본다. 목록은 `pc_wide_key` 가 짓는다.
-HOME_SYNC=push
-HOME_STALE=""
-PUSH_ONLY=""
 _push_file() {   # _push_file <원본> <홈 사본>
   if [ -n "$PUSH_ONLY" ]; then
     case "$PUSH_ONLY" in *"
@@ -715,47 +590,90 @@ ${1#"$CONFIG_ROOT"/}
   [ -z "$PUSH_ONLY" ] && [ -f "$2" ] && [ ! "$1" -nt "$2" ] && return 0
   cp "$1" "$2" 2>/dev/null || PC_WIDE_FAIL=1   # 진 판에 열쇠를 안 적는다 (0065)
 }
-PERSONAL_RAW=''; PERSONAL_READ=''
-personal_for() {   # personal_for <도구> — 배포본 설치기의 제작자 칸 값(`PAISETUP_PERSONAL`)이 그 도구를 드나 (0107)
-  # 칸 하나가 스위치다 — deploy.ps1 의 `Test-PersonalFor` 와 같은 뜻이다. 값이 없으면 다(리모트 컨테이너 · 설치기 전 PC) ·
-  # `none` 은 아무것도 아니다. 이름은 `claude` · `codex` · `agy` 를 쉼표나 빈칸으로 가른다.
-  # ⚠ **윈도는 사용자 값(레지스트리)이 먼저다** — 앱은 뜰 때 환경을 한 번 복사해, 칸을 바꾸기 전에 뜬 앱의 세션은 옛 값을
-  #   든다. 차례와 까닭은 deploy.ps1 의 `Get-PersonalRaw` 와 같다. 프로세스에 한 번 읽는다 · `//v` 는 `path_catchup` 곁말.
-  if [ -z "$PERSONAL_READ" ]; then
-    PERSONAL_READ=1
-    [ "$OS" = windows ] &&
-      PERSONAL_RAW="$(reg.exe query 'HKCU\Environment' //v PAISETUP_PERSONAL 2>/dev/null |
-                      sed -n 's/^.*REG_[A-Z_]*SZ[[:space:]]*//p' | tr -d '\r')"
-    [ -n "$PERSONAL_RAW" ] || PERSONAL_RAW="${PAISETUP_PERSONAL:-}"
+
+# ── 도구 홈의 규범 · 룰 · 에이전트 — **손 하나를 부르고 그 줄만 읽는다** (결정 0112) ──────────────
+#    무엇이 어느 도구 홈에 어떤 꼴로 가나 · 제작자 칸 · 두 층 가운데 무엇이 이기나는 갈 곳 표와 손
+#    (`.claude/hooks/tool-homes.py`)만 안다. 부르는 꼴 · 내는 줄 · 종료 값은 손의 머리말이 든다.
+#    밀기 판은 `sync` 로, 견주기 판(`HOME_SYNC=check`)은 같은 명령에 `--dry-run` 을 붙여 부른다 — 밀었다면
+#    바꿨을 자리가 곧 낡은 자리다. 손의 `check` 는 홈을 층과만 견주어, 설정 저장소가 층보다 앞선 판(형제
+#    세션이 알려야 할 바로 그 자리)을 못 본다. 기록만 고치는 줄(`record`)은 파일이 이미 맞다는 뜻이라 안 센다.
+#    ⚠ **바뀐 것만 보는 판(`PUSH_ONLY`)에서도 통째로 부른다.** 바뀐 파일이 이 일에 드나를 가르려면 항목의
+#      원본 자리를 알아야 하는데, 그것은 표와 매니페스트가 드는 사실이다. 손은 바뀐 것이 없으면 안 쓴다.
+#    ⚠ **말** — 진 것(`ERROR=` · 0 아닌 종료)은 까닭째 내고, 밀기 판이면 열쇠를 안 적게 한다(`PC_WIDE_FAIL` ·
+#      0065). 밀기 판의 `WARN=` 도 낸다. 바꾼 줄은 안 낸다 — 씨앗 밀기와 같은 결이고, 내면 매 판 문맥만 문다.
+#      다만 손이 백업 자리로 옮기거나 떠 둔 파일(`backup`)은 한 줄로 댄다: 사람이 고친 파일이 제자리에서
+#      사라진 까닭을 홈에서는 알 길이 없다.
+#    ⚠ 손이 없거나 해석기를 못 부르면 한 줄로 말하고 지나간다 — 세션 시작을 안 막는다. 해석기를 미리 불러 보지
+#      않는다(성한 판에 파이썬이 하나 더 뜬다) — 진 뒤에만 한 번 더 불러 까닭을 가른다(`plant_session_state` 와 같은 결).
+tool_homes() {
+  _th="$CONFIG_ROOT/.claude/hooks/tool-homes.py"
+  if [ "$HOME_SYNC" = check ]; then
+    _thn="도구 홈의 규범 · 룰이 claude-config 와 같은지 못 쟀다"
+  else
+    _thn="도구 홈의 규범 · 룰을 다 못 맞췄다 — 다음 세션이 다시 해 본다"
   fi
-  [ -n "$PERSONAL_RAW" ] || return 0
-  case ",$(printf '%s' "$PERSONAL_RAW" | tr 'A-Z ' 'a-z,')," in *",$1,"*) return 0 ;; esac
-  return 1
+  if [ ! -f "$_th" ]; then
+    [ "$HOME_SYNC" = check ] || PC_WIDE_FAIL=1
+    echo "$PROJECT_NAME: ⚠ $_thn (손이 없다: $_th)"
+    return 0
+  fi
+  set -- sync --layer personal --from "$CONFIG_ROOT"
+  [ "$HOME_SYNC" = check ] && set -- "$@" --dry-run
+  _tho="$("$PY_CMD" -X utf8 "$_th" "$@" 2>&1)"; _thr=$?
+  _thf=""; _thx=""; _thb=""; _thl=""   # 진 까닭 · 계약 밖의 끝줄 · 백업한 자리 · 층 자리
+  # ⚠ 파이프로 먹이지 않는다 — 고리가 하위 셸에서 돌면 `HOME_STALE` 이 밖으로 안 나온다.
+  while IFS= read -r _tl; do
+    _tl="${_tl%"$_CR"}"
+    case "$_tl" in
+      CHANGE=*)
+        _tv="${_tl#CHANGE=}"; _tv="${_tv%%"$_TAB"*}"
+        _tp="${_tl#*"$_TAB"}"; _tp="${_tp%%"$_TAB"*}"
+        if [ "$HOME_SYNC" = check ]; then
+          # 층을 채우는 줄(fill · drop)은 홈 자리 뒤에 둔다 — 알림이 앞 셋만 이름으로 든다
+          case "$_tv" in
+            record) ;;
+            fill|drop) case " $_thl " in *" $_tp "*) ;; *) _thl="$_thl $_tp" ;; esac ;;
+            *) case " $HOME_STALE " in *" $_tp "*) ;; *) HOME_STALE="$HOME_STALE $_tp" ;; esac ;;
+          esac
+        elif [ "$_tv" = backup ]; then
+          case " $_thb " in *" $_tp "*) ;; *) _thb="$_thb $_tp" ;; esac
+        fi ;;
+      WARN=*)  [ "$HOME_SYNC" = check ] || echo "$PROJECT_NAME: ⚠ 도구 홈 — ${_tl#WARN=}" ;;
+      ERROR=*) _thf="$_thf  · ${_tl#ERROR=}$_NL" ;;
+      CHANGED=*|'') ;;
+      *) _thx="$_tl" ;;   # 계약 밖의 줄 — 죽은 해석기가 남긴 stderr 다. 진 판의 까닭으로만 쓴다
+    esac
+  done <<EOF
+$_tho
+EOF
+  HOME_STALE="$HOME_STALE$_thl"
+  if [ -n "$_thb" ]; then
+    # shellcheck disable=SC2086 # 자리 목록을 낱말로 편다(홈 아래 자리라 공백이 없다)
+    set -- $_thb
+    _thc="$1${2:+ · $2}${3:+ · $3}"
+    [ "$#" -gt 3 ] && _thc="$_thc 외 $(($# - 3))개"
+    echo "$PROJECT_NAME: 도구 홈 — 우리 것이 아니거나 옛 꼴인 파일을 백업 자리로 옮기거나 떠 두었다: $_thc (백업 자리는 tool-homes.py 머리말이 든다)"
+  fi
+  [ "$_thr" -eq 0 ] && [ -z "$_thf" ] && return 0
+  [ "$HOME_SYNC" = check ] || PC_WIDE_FAIL=1
+  if [ -n "$_thf" ]; then
+    echo "$PROJECT_NAME: ⚠ $_thn (tool-homes.py):"
+    printf '%s' "$_thf"
+  elif ! "$PY_CMD" -c '' >/dev/null 2>&1; then
+    echo "$PROJECT_NAME: ⚠ $_thn ($PY_CMD 를 못 부른다 · 윈도우면 스토어 껍데기다)"
+  else
+    echo "$PROJECT_NAME: ⚠ $_thn (tool-homes.py 가 exit $_thr 로 끝났다: ${_thx:-까닭 줄이 없다})"
+  fi
+  return 0
 }
+
 deploy_home_norms() {
+  # ⚠ **문은 「설정 저장소 완본인가」다.** 씨앗에서 만든 설정 저장소는 몸통만 들고 규범 원본도 손도 안 든다 —
+  #   그 PC 의 규범은 설치기가 채운 표준 층에서 온다. 그 저장소에서는 손도 아래 씨앗도 안 돈다(씨앗의 판 줄이
+  #   그 저장소의 판을 홈 씨앗에 적지 않는다).
   if [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/.claude/CLAUDE.global.md" ]; then
-    _src="$CONFIG_ROOT/.claude"
-    [ "$HOME_SYNC" = check ] || [ -d "$HOME/.claude" ] || mkdir -p "$HOME/.claude"
-    # 규범 · 룰 · 에이전트는 Claude 칸을 탄다 — 끈 PC 에서는 밀지도 낡았다고 세지도 않는다(아래 씨앗은 칸과 상관없다)
-    if personal_for claude; then
-    _push_file "$_src/CLAUDE.global.md" "$HOME/.claude/CLAUDE.md"
-    if [ -d "$_src/rules.global" ]; then
-      for _hf in "$_src/rules.global/"*.md; do
-        _push_file "$_hf" "$HOME/.claude/rules/${_hf##*/}"
-      done
-    fi
-    # 에이전트 — 규범·룰과 같은 통로다. PC 는 deploy.ps1 이 이미 밀었고 리모트만 비어
-    # 있었다: 붙여도 안 실렸고, 안 실린 줄도 몰랐다 (#5).
-    # ⚠ **진본이 루트 `agents/` 인 것이 곧 안전장치다.** `.claude/agents/` 는 제품의 로드
-    #   자리라, 거기 두면 이 저장소를 붙인 세션에서 저장소 층과 홈 층에 **두 벌** 실린다 —
-    #   `0014` 가 룰에서 겪은 그 고장이다. 루트는 로드 자리가 아니라 짐칸 이름도 필요 없다.
-    if [ -d "$CONFIG_ROOT/agents" ]; then
-      for _hf in "$CONFIG_ROOT/agents/"*.md; do
-        _push_file "$_hf" "$HOME/.claude/agents/${_hf##*/}"
-      done
-    fi
-    fi
-    # 사내 환경 문서와 씨앗 둘 — 규범·룰·에이전트와 **같은 통로에서 빠져 있던 칸**이다.
+    tool_homes
+    # 사내 환경 문서와 씨앗 — 이 함수가 세션마다 민다.
     # 진본은 이 저장소이고 스킬·형제 저장소 문서가 홈 좌표를 가리키는데, 그 홈 사본을
     # 갱신하는 자가 **사람이 부르는 deploy.ps1 뿐이었다** — 원격 당김은 매 세션 도는데
     # 홈으로 미는 손은 안 도니 커밋이 쌓이는 만큼 홈만 낡았다. 그리고 홈을 진본으로 믿는
@@ -767,8 +685,8 @@ deploy_home_norms() {
     #   같은 뜻이고, 제외 한 낱말은 선언으로 안 뽑는다 — 선언이 좌표만 늘린다.
     #   선언이 없으면(옛 판 저장소가 붙은 자리) **후퇴 목록 없이** 안 밀고 한 줄로 말한다 — 목록을
     #   여기 한 벌 더 두면 그것이 곧 손사본이다.
-    # ⚠ **덮어쓰기만 한다 — 홈에만 남은 파일은 안 지운다.** 위 룰·에이전트 칸이 그 뜻이고
-    #   deploy.ps1 도 그 뜻이다(원본을 훑어 대상 목록을 짜고, 홈 쪽 고아는 안 본다).
+    # ⚠ **덮어쓰기만 한다 — 홈에만 남은 파일은 안 지운다.** deploy.ps1 의 씨앗 칸도 그 뜻이다
+    #   (원본을 훑어 대상 목록을 짜고, 홈 쪽 고아는 안 본다).
     # ⚠ **`*.md` 한 줄로는 안 되는 까닭은 씨앗이 폴더를 진다**(`seeds/gateway/app` ·
     #   `_check/log`). 그래서 파일을 훑어 상대 경로를 지어 옮긴다 — deploy.ps1 이 같은 자리
     #   에서 `-Recurse` + 상대경로로 하는 것과 같은 셈이다.
@@ -863,18 +781,6 @@ EOF
 # ⚠ **git 에 한 번 묻는다** — `status --porcelain=v2 --branch` 가 판과 커밋 안 한 편집을 같이 낸다.
 #   판이 바뀐 때만 `diff` 하나가 는다. `--no-optional-locks` 는 배경 당김(`pull_ff`)과 index 잠금을
 #   안 다투게 한다 — status 는 틈나면 잠금을 잡고 index 를 되쓰는데, 그 순간 병합이 진다.
-# ⚠ **PC 전체 일의 입력**(`PW_INPUTS`) — 개인 설정 · 심기 · 전역 도구 대조가 읽는 파일이다. 여기 없는
-#   파일만 바뀐 판은 홈 밀기만 한다. **그 일이 새 파일을 읽기 시작하면 여기 더한다** — 새 입력은 대개
-#   이 몸통을 고치는 커밋과 함께 와서 그 판은 다 돌지만, 그 뒤 그 파일만 바뀐 판은 여기서 갈린다.
-#   바뀌면 바뀐 파일만으로는 모자라 **통째로** 가는 것이 둘이다(`PW_FULL_IF`) — `deploy.seeds.conf` 는 밀 폴더
-#   목록이고, 이 몸통은 무엇을 어디로 미나 자체다. 몸통이 미는 칸을 넓히면 그 칸의 **옛 파일**은 판 사이
-#   diff 에 안 나오므로, 바뀐 파일만 보면 새 칸이 빈 채로 표식이 「맞췄다」를 적는다.
-PW_INPUTS=".claude/hooks/ personal.conf secrets.env .claude/tools.global.conf .claude/tools.conf"
-PW_FULL_IF="deploy.seeds.conf .claude/hooks/session-start-body.sh"
-_TAB=$(printf '\t')   # 옮김 줄의 두 경로를 가르는 글자 — 글자로 박으면 편집기가 공백으로 바꿔도 모른다
-_NL='
-'
-PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_PLANT=1; PW_OID=""; PW_DIRTY=""; PC_WIDE_FAIL=""; PW_DEFER=""
 pc_wide_key() {
   PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_PLANT=1; PW_OID=""; PW_DIRTY=""
   [ -n "$CONFIG_ROOT" ] || return 0
@@ -932,6 +838,7 @@ EOF
   fi
   return 0
 }
+
 # 적는 몸통은 여기 한 자리다 — PC 전체 일을 끝내는 자리(auto · 밖에서 부른 --install · --install 의 PC 전체
 # 갈래)가 다 이것을 부른다. **판은 시작할 때 읽은 값(PW_OID)으로만 적는다.**
 # ⚠ **다 성공했고 그사이 판이 안 움직였을 때만 열쇠를 적는다.** 아니면 내용을 비운 채 시각만 새로 찍는다 —
@@ -1007,7 +914,6 @@ pc_wide_notice() {
 #   괄호식으로 그대로 들어 옛 sed 와 같은 자를 쓴다.
 # ⚠ **한 자리만 옛것과 갈린다** — 옛 꼴은 이름을 sed 정규식에 박아 넣어 이름 안의 `.`·`*` 이
 #   메타로 섰다. 새 꼴은 글자 그대로 든다. 선언의 이름은 다 영숫자·밑줄이라 실물은 안 갈린다.
-_CR=$(printf '\r')   # 고리 밖에서 한 번 — `$'\r'` 은 sh 에 없다
 conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지 않는다: 선언은 값이지 코드가 아니다
   [ -f "$1" ] || return 0
   while IFS= read -r _cgl || [ -n "$_cgl" ]; do
@@ -1021,6 +927,7 @@ conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지
   done < "$1"
   return 0
 }
+
 # 자리를 가른다 — `secrets.d/*.env` 의 `#site-probe`(닿음) → `#site-path`(경로) → `#site-default`.
 # **이름으로 안 가른다**: DNS 는 사외에서도 사내 IP 를 풀어 준다 (0026). 답은 파일 이름(`posco` ·
 # `outside` · `home`)이고 `$_SITE`, 그 파일은 `$_SITE_FILE` 에 선다.
@@ -1031,7 +938,6 @@ conf_get() {  # conf_get <파일> <이름> — `이름=값` 한 줄. eval 하지
 #   답이다. 부르는 쪽이 그 둘을 못 가르면 「아무 자도 안 답했다」를 「저 자리다」로 읽는다.
 #   값 넷 — `probe` · `path` · `default`(프로브를 선언한 자리가 아예 없다) ·
 #   `default-after-probe`(선언은 있었고 아무도 안 답했다 — **놓쳤을 수 있는 답**이다).
-_SITE=''; _SITE_FILE=''; _SITE_MODE=''; _SITE_HOW=''; _SITE_DONE=''
 _site_meta() {
   awk '
     {
@@ -1059,6 +965,7 @@ _site_meta() {
     }
   ' "$1"
 }
+
 _site_of() {
   [ -n "$_SITE_DONE" ] && return 0
   _SITE_DONE=1
@@ -1104,26 +1011,6 @@ EOF
   [ -n "$_sf" ] && _SITE="$(basename "$_sf" .env)"
   return 0
 }
-
-# ── `--site` — 「지금 어느 자리이고, 무엇으로 그렇게 알았나」 **한 줄 두 칸** ─────────────
-#    묻는 자는 선언에 자리를 거는 칸을 둔 쪽이다. 그쪽이 제 손으로 자리를 다시 재면 재는 자가
-#    둘이 되고, 둘은 **고쳐도 한쪽만 고쳐진 채 조용히 갈린다** — 그래서 묻는 길을 낸다.
-#  ⚠ **자리는 위 `_site_of` 한 자리가 잰다.** 이 갈래가 하는 일은 그 답을 글자로 내는 것뿐이다.
-#  ⚠ **답만 내지 않고 「어느 자로 얻었나」를 같이 낸다** — `<자리> <길>` 두 칸이고 길은
-#    `probe` · `path` · `default` · `default-after-probe` 넷이다(위 `$_SITE_HOW`). 답 하나만
-#    내면 **「아무 자도 안 답해서 남은 자리」가 「저 자리임을 보인 답」과 같아진다** — 묻는 쪽은
-#    그 둘에 다른 일을 해야 하므로(지우는 일은 보인 답 위에서만) 가르는 칸을 답에 싣는다.
-#  ⚠ **아무것도 안 바꾼다** — 안 심고 안 깔고 자국도 안 남긴다. 재는 갈래가 상태를 바꾸면
-#    다음 판정이 제가 만든 상태를 읽는다.
-#  ⚠ 종료코드 둘 — 0 두 칸을 냈다 · **2 못 쟀다(사유 한 줄, 칸 없음).** 2 를 0 으로 접지 않는다:
-#    「자리를 모른다」와 「어느 자리다」는 다른 명제이고, 묻는 쪽이 그 둘을 갈라 써야 한다.
-#  ⚠ **자리가 여기인 까닭** — 셸은 위에서 아래로 돌아, `_site_of` 가 선 뒤가 아니면 못 부른다.
-if [ "$MODE" = site ]; then
-  _site_of
-  if [ -n "$_SITE" ]; then echo "$_SITE $_SITE_HOW"; exit 0; fi
-  echo "자리를 못 쟀다 — ${CONFIG_ROOT:-설정 저장소를 못 찾았다}/secrets.d/*.env 에 이긴 자리가 없다"
-  exit 2
-fi
 
 deploy_personal() {   # deploy_personal auto|install
   [ "$OS" = windows ] || return 0
@@ -1443,6 +1330,7 @@ global_kind() {  # global_kind <install 값>
   case "$1" in npm-global|github-release-binary|winget|apt-package|pip-user) return 0 ;; esac
   return 1
 }
+
 # ── 이 자리에서 탈 수 있는 설치법인가 — winget 은 윈도우, apt 는 리눅스에만 선다 ────────────
 # ⚠ **못 타는 자리의 부재는 꺼진 검사가 아니다.** 선언 머리말의 약속이 「다른 자리에서는 사유를
 #   남기고 비켜선다」인데, 이 가름이 없으면 설치 갈래의 nogo 가 곧 ❌ 가 되어 리눅스 세션마다 빨강이
@@ -1455,6 +1343,7 @@ kind_here() {  # kind_here <install 값>
     *)           return 0 ;;
   esac
 }
+
 # ── 전역형 선언을 든 파일들 — **이름을 안 박는다.** 제 것 둘이 먼저고, 그 다음 작업 루트에
 #    붙은 저장소들의 선언이다. 훅을 든 저장소를 루트에서 훑는 것은 `plant_session_state` 가
 #    이미 하는 일이고, 여기는 같은 자를 같은 뜻으로 들 뿐이다.
@@ -1468,6 +1357,7 @@ global_conf_list() {
   done
   return 0
 }
+
 # ── 전역형 지문 — `decl_fingerprint` 의 짝이다. 저쪽은 저장소 몫, 이쪽은 기계 몫.
 #    ⚠ **절을 안 가리고 파일을 통째로 문다.** 전역형만 골라 담으려면 파일을 파싱해 다시
 #      이어야 하는데, 그 이음새가 어긋나면 **선언이 바뀌었는데 지문이 그대로**가 된다 —
@@ -1575,10 +1465,10 @@ home_hook_cmd() {
 #   ⚠ **폴더가 사라져도 도구를 안 막는다** — `.` 은 특수 내장이라 파일이 없으면 dash 는 그 자리에서 2 로
 #     죽고(PreToolUse 에서 2 는 막기다), 그림이 아닌 호출까지 깨진다. 그래서 먼저 재고 물러난다.
 #     꼬리의 `# image-gate.py` 는 옛 판 심는 손이 이 항목을 제 것으로 알아보게 두는 표지다.
-IMAGE_GATE_SHELL=image-gate.sh
 image_gate_matcher() {
   sed -n '1s/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$IMAGE_GATE_SHELL" 2>/dev/null
 }
+
 image_gate_cmd() {
   _gr="$CONFIG_ROOT/.claude/hooks"
   [ -n "$CONFIG_ROOT" ] && [ -f "$_gr/image-gate.py" ] && [ -f "$_gr/$IMAGE_GATE_SHELL" ] && [ -n "$(image_gate_matcher)" ] || { printf ''; return 0; }
@@ -1590,10 +1480,10 @@ image_gate_cmd() {
 #   웹 도구가 못 닿았을 때 다른 길이 있다는 것을 결과 곁에 붙인다. 왜와 거는 꼴은 그 파일 머리말이 든다.
 #   그림 문과 같은 규율이다 — 껍데기 한 벌(`web-retry.sh`)이 글자와 matcher 를 들고, 심는 손은 자리만
 #   채운 한 줄을 **두 이벤트에** 심는다. 주인 · 경로 굳히기 · 폴더가 사라져도 안 막기도 같다.
-WEB_RETRY_SHELL=web-retry.sh
 web_retry_matcher() {
   sed -n '1s/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$WEB_RETRY_SHELL" 2>/dev/null
 }
+
 web_retry_cmd() {
   _wr="$CONFIG_ROOT/.claude/hooks"
   [ -n "$CONFIG_ROOT" ] && [ -f "$_wr/$WEB_RETRY_SHELL" ] && [ -n "$(web_retry_matcher)" ] || { printf ''; return 0; }
@@ -1609,13 +1499,14 @@ web_retry_cmd() {
 #   항목째 걸러낸다 — `plant_tool_hook` 머리말 ⚠), PreToolUse 와 PostToolUseFailure 는 **각자의 진본 줄**을 든다
 #   (껍데기 머리 `# matcher.PreToolUse =` · `# matcher =`). 보는 것이 달라 도구 범위도 다르다.
 #   주인 · 경로 굳히기 · 폴더가 사라져도 안 막기도 같다.
-DRM_GUIDE_SHELL=drm-guide.sh
 drm_guide_matcher() {
   sed -n '1s/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$DRM_GUIDE_SHELL" 2>/dev/null
 }
+
 drm_guide_pre_matcher() {
   sed -n 's/^# matcher\.PreToolUse = //p' "$CONFIG_ROOT/.claude/hooks/$DRM_GUIDE_SHELL" 2>/dev/null | head -n 1
 }
+
 drm_guide_cmd() {
   _dg="$CONFIG_ROOT/.claude/hooks"
   # matcher 진본 **둘 다** 서야 심는다 — 빈 matcher 를 심으면 맞출 이름이 없어 그 항목이 영원히 안 돈다
@@ -1624,10 +1515,10 @@ drm_guide_cmd() {
   printf '_dg="%s"; [ -f "$_dg/%s" ] || exit 0; . "$_dg/%s"' "$_dg" "$DRM_GUIDE_SHELL" "$DRM_GUIDE_SHELL"
 }
 
-BASH_BACKSLASH_SHELL=bash-backslash-deny.sh
 bash_backslash_matcher() {
   sed -n 's/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$BASH_BACKSLASH_SHELL" 2>/dev/null | head -n 1
 }
+
 bash_backslash_cmd() {
   _bb="$CONFIG_ROOT/.claude/hooks"
   [ -n "$CONFIG_ROOT" ] && [ -f "$_bb/$BASH_BACKSLASH_SHELL" ] && [ -n "$(bash_backslash_matcher)" ] || { printf ''; return 0; }
@@ -1635,10 +1526,10 @@ bash_backslash_cmd() {
   printf '_bb="%s"; [ -f "$_bb/%s" ] || exit 0; . "$_bb/%s"' "$_bb" "$BASH_BACKSLASH_SHELL" "$BASH_BACKSLASH_SHELL"
 }
 
-UTF8_BOM_SHELL=utf8-bom.sh
 utf8_bom_matcher() {
   sed -n 's/^# matcher = //p' "$CONFIG_ROOT/.claude/hooks/$UTF8_BOM_SHELL" 2>/dev/null | head -n 1
 }
+
 utf8_bom_cmd() {
   _ub="$CONFIG_ROOT/.claude/hooks"
   [ -n "$CONFIG_ROOT" ] && [ -f "$_ub/$UTF8_BOM_SHELL" ] && [ -n "$(utf8_bom_matcher)" ] || { printf ''; return 0; }
@@ -1998,7 +1889,6 @@ git_why() {   # git_why <붙잡은 stderr> — 층이 갈리는 한 줄
 #   걷는 뜻이 없다. 당김 자체가 아니라 **시도**를 적는 것이라 이름도 그렇게 둔다.
 # ⚠ 표식은 `.git` 안에 둔다 — 작업 트리를 안 더럽힌다. 더럽히면 그 더러움이 다음 세션의
 #   `pull --ff-only` 를 막아, 이 함수가 줄이려는 실패를 이 함수가 만든다.
-PULL_TTL=90   # 초. 훅 둘(저장소·홈)이 한 세션에서 40여 초 걸러 도는 것을 한 창으로 덮는다
 pull_due() {   # pull_due <저장소> — 0=당길 차례 · 1=방금 다른 프로세스가 해 봤다
   _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
   [ -n "$_gd" ] || return 0
@@ -2066,179 +1956,63 @@ sync_main_bg() {  # sync_main_bg <저장소>
   ( sync_main "$1" >"$_lg" 2>&1 </dev/null & )
 }
 
-# auto — 두 걸음은 매 세션, 설치는 지문이 어긋날 때만 (claude-config 0009 · 0010):
-#   ① 원격을 당긴다 — ff-only, main 체크아웃일 때만. 로컬을 다치게 하지 않는다:
-#      갈라졌거나 오프라인이면 그대로 두고 **사유까지** 말한다. 「매 세션 풀부터」가 여기로 들어온다.
-#   ② 홈 규범·훅 배선을 새로 민다 — 멱등·싼 것이라 매 세션. **PC 전체 일이라 설정 저장소 세션과
-#      저장소 밖 세션만 한다** (0062 · 위 PC_WIDE). 형제 저장소 세션은 게이트 배선만 하고 홈은
-#      견주기만 해서, 맞출 것이 있으면 한 줄로 알린다(`pc_wide_notice`).
-#   ③ 선언 지문이 어긋날 때만 깐다 — 설치의 무거움(npm ci)이 선언 바뀐 세션에만 든다.
-#      그 설치도 배경에서 돌아 세션 시작을 안 잡는다(`install_bg` · 0070).
-#   리눅스(리모트 컨테이너)는 하나 더 — 붙은 저장소마다 main 을 배경으로 원격에 맞춘다(`sync_main_bg` · `pull_ff` · 0069).
-# ⚠ 리모트도 같은 세 걸음이다 (0010). 옛 판(「컨테이너가 새로 떠 무조건 깐다」)은 맨
-#   컨테이너 전제였는데 환경 이미지가 서면서 뒤집혔다 — 도구·venv·지문은 이미지 시점에
-#   실려 오고 코드만 세션마다 최신이라, 지문이 「이미지가 낡았나」를 가른다. 맨
-#   컨테이너에서도 옳다: 지문 파일이 없으면 어긋남이라 그대로 설치로 간다.
-if [ "$MODE" = auto ]; then
-  # ⚠ **초를 같이 찍는다.** 왕복이 원래 느린 자리가 있다 — 실측 2026-09-09 회사 PC:
-  #   성공한 `git fetch` 가 6.9초, 훅의 실패한 pull 이 하나당 6.3초였다. 두 숫자가 같아서
-  #   **느린 것과 막힌 것이 시간으로는 안 갈린다** — 사유가 가르고, 초는 그 사유가 「원래
-  #   이만큼」인지 「여느 때와 다른지」를 말해 준다.
-  # ⚠ 그래서 **타임아웃을 안 씌운다.** 정상이 7초인 자리에서 5초로 자르면 되던 당김까지
-  #   실패로 찍힌다 — 진단을 세우려다 없던 고장을 만드는 꼴이다.
-  # ⚠ **기다리지도 않는다 — 배경으로 띄우고 결과는 다음 세션이 본다** (0043). 회사 망에서는 당김 하나가
-  #   6~7초이고 세션 시작에 둘이 서는데, 확장이 초기화를 60초만 기다려 그 초가 곧 죽는 자리였다.
-  #   당긴 것이 이 세션에 안 보이는 값을 치른다 — 규범·선언이 바뀐 커밋은 **다음 세션**부터 선다.
-  #   진 사유는 `.git/claude-pull.log` 에 남고 다음 세션이 그것을 말한다 — 성공은 빈 파일이라 조용하다.
-  #   stdout·stderr·stdin 을 다 떼어야 한다 — 하나라도 훅의 파이프를 물고 있으면 Claude Code 가
-  #   그 자식이 끝날 때까지 훅을 기다려 배경으로 뺀 뜻이 없어진다.
-  pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기로만, 배경에서
-    [ -e "$1/.git" ] || return 0
-    [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" = main ] || return 0
-    _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
-    _lg="$_gd/claude-pull.log"
-    # 원문 보관과 경고는 `bg_fail_report` 한 자리다 (#38) — main 맞추기도 같은 것을 쓴다.
-    bg_fail_report "$1" "$_lg" "$_gd/claude-pull.last-fail" "지난 세션의 원격 당김이 졌다"
-    pull_due "$1" || return 0
-    : > "$_lg" 2>/dev/null || true
-    # ⚠ **`pull` 이 아니라 `fetch` + `merge` 다** (#87). `pull` 은 제 fetch 를 돌린 뒤 `FETCH_HEAD` 를
-    #   읽어 무엇을 병합할지 정하는데, 그 파일은 **저장소당 한 장이라 경쟁의 자리다** — 다른 git 이
-    #   같은 순간에 끼어들면 갈래가 두 줄 적히고 pull 은 그것을 병합 대상 둘로 읽어
-    #   `fatal: Cannot fast-forward to multiple branches.` 로 진다(실측 2026-09-23 집 PC: 성공한 당김
-    #   15:36:20 과 진 당김 15:36:21 이 1초 차). **망 재연결은 원인이 아니다** — 연달아 도는 fetch 는
-    #   앞엣것을 덮어써 한 줄로 남고(실측), 겹치는 순간에만 두 줄이 된다(동시 fetch 5회 모두 재현).
-    #   `merge` 에 **이름 있는 자리**(추적 갈래)를 주면 남이 그 파일에 무엇을 쓰든 무관해진다.
-    # ⚠ **원격 이름을 안 박는다** — 옛 `pull` 이 추적 설정에서 읽던 값이라 그 자리를 그대로 든다.
-    #   못 읽으면 당길 자리가 없다는 뜻이라 조용히 물러난다.
-    # ⚠ **둘을 `&&` 로 한 덩이에 둔다** — 어느 쪽이 져도 로그에 남아야 위 「로그가 비면 성공」이 선다.
-    _rm="$(git -C "$1" config --get branch.main.remote 2>/dev/null)" || true
-    [ -n "$_rm" ] || return 0
-    ( { git -C "$1" fetch -q "$_rm" main && git -C "$1" merge --ff-only -q "$_rm/main"; } >"$_lg" 2>&1 </dev/null & )
-  }
-  # 저장소가 제 세션 시작 일을 두는 자리 — **있으면 부르고 없으면 조용하다.**
-  # ⚠ **몸통은 무엇을 할지 모른다.** 기전만 여기 살고 정책은 저장소가 든다 — 그래서 쓰는
-  #   저장소가 늘어도 이 자리는 안 낡는다. 목록을 안 들므로 더할 때 고칠 자리도 없다.
-  # ⚠ **여기 두는 까닭 — `.claude/settings.json` 은 배포가 통째로 덮는 파일이다**
-  #   (`deploy.repofiles.conf`). 저장소 제 훅을 거기 등록하면 **다음 배포가 지운다** — 실측
-  #   2026-09-17: 아뜰리에가 거기 둔 훅이 배포 한 번에 사라졌다(그 저장소 61edde2). 그 세션은
-  #   claude-config 를 안 붙이고 있어 그 파일이 관리 대상인 줄 알 길이 없었다. **자리가 없어서
-  #   난 사고라 자리를 낸다.**
-  # ⚠ **진다고 세션을 안 죽인다.** 저장소 제 일이라 몸통이 그것으로 멈출 까닭이 없다 — 사유만
-  #   내고 간다. 그래서 `set -e` 가 없어도 `||` 로 명시해 둔다.
-  # ⚠ **타임아웃을 안 씌운다** — 당김에 안 씌우는 것과 같은 결이다(위 ⚠). 대신 오래 끄는 손은
-  #   세션 시작을 그만큼 늦추므로 **막는 것은 저장소 몫**이다.
-  # ⚠ **auto 에만 선다.** 이 자리의 뜻이 「당김이 설 수 있는 꼴로 만든다」라 당김이 없는
-  #   갈래에는 지킬 것이 없다.
-  run_repo_start() {
-    _rs="$PROJECT_DIR/.claude/hooks/repo-start.sh"
-    [ -f "$_rs" ] || return 0
-    sh "$_rs" || printf '  ! repo-start.sh 가 졌다 — 저장소 제 일이라 넘어간다
+# ⚠ **초를 같이 찍는다.** 왕복이 원래 느린 자리가 있다 — 실측 2026-09-09 회사 PC:
+#   성공한 `git fetch` 가 6.9초, 훅의 실패한 pull 이 하나당 6.3초였다. 두 숫자가 같아서
+#   **느린 것과 막힌 것이 시간으로는 안 갈린다** — 사유가 가르고, 초는 그 사유가 「원래
+#   이만큼」인지 「여느 때와 다른지」를 말해 준다.
+# ⚠ 그래서 **타임아웃을 안 씌운다.** 정상이 7초인 자리에서 5초로 자르면 되던 당김까지
+#   실패로 찍힌다 — 진단을 세우려다 없던 고장을 만드는 꼴이다.
+# ⚠ **기다리지도 않는다 — 배경으로 띄우고 결과는 다음 세션이 본다** (0043). 회사 망에서는 당김 하나가
+#   6~7초이고 세션 시작에 둘이 서는데, 확장이 초기화를 60초만 기다려 그 초가 곧 죽는 자리였다.
+#   당긴 것이 이 세션에 안 보이는 값을 치른다 — 규범·선언이 바뀐 커밋은 **다음 세션**부터 선다.
+#   진 사유는 `.git/claude-pull.log` 에 남고 다음 세션이 그것을 말한다 — 성공은 빈 파일이라 조용하다.
+#   stdout·stderr·stdin 을 다 떼어야 한다 — 하나라도 훅의 파이프를 물고 있으면 Claude Code 가
+#   그 자식이 끝날 때까지 훅을 기다려 배경으로 뺀 뜻이 없어진다.
+pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기로만, 배경에서
+  [ -e "$1/.git" ] || return 0
+  [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" = main ] || return 0
+  _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+  _lg="$_gd/claude-pull.log"
+  # 원문 보관과 경고는 `bg_fail_report` 한 자리다 (#38) — main 맞추기도 같은 것을 쓴다.
+  bg_fail_report "$1" "$_lg" "$_gd/claude-pull.last-fail" "지난 세션의 원격 당김이 졌다"
+  pull_due "$1" || return 0
+  : > "$_lg" 2>/dev/null || true
+  # ⚠ **`pull` 이 아니라 `fetch` + `merge` 다** (#87). `pull` 은 제 fetch 를 돌린 뒤 `FETCH_HEAD` 를
+  #   읽어 무엇을 병합할지 정하는데, 그 파일은 **저장소당 한 장이라 경쟁의 자리다** — 다른 git 이
+  #   같은 순간에 끼어들면 갈래가 두 줄 적히고 pull 은 그것을 병합 대상 둘로 읽어
+  #   `fatal: Cannot fast-forward to multiple branches.` 로 진다(실측 2026-09-23 집 PC: 성공한 당김
+  #   15:36:20 과 진 당김 15:36:21 이 1초 차). **망 재연결은 원인이 아니다** — 연달아 도는 fetch 는
+  #   앞엣것을 덮어써 한 줄로 남고(실측), 겹치는 순간에만 두 줄이 된다(동시 fetch 5회 모두 재현).
+  #   `merge` 에 **이름 있는 자리**(추적 갈래)를 주면 남이 그 파일에 무엇을 쓰든 무관해진다.
+  # ⚠ **원격 이름을 안 박는다** — 옛 `pull` 이 추적 설정에서 읽던 값이라 그 자리를 그대로 든다.
+  #   못 읽으면 당길 자리가 없다는 뜻이라 조용히 물러난다.
+  # ⚠ **둘을 `&&` 로 한 덩이에 둔다** — 어느 쪽이 져도 로그에 남아야 위 「로그가 비면 성공」이 선다.
+  _rm="$(git -C "$1" config --get branch.main.remote 2>/dev/null)" || true
+  [ -n "$_rm" ] || return 0
+  ( { git -C "$1" fetch -q "$_rm" main && git -C "$1" merge --ff-only -q "$_rm/main"; } >"$_lg" 2>&1 </dev/null & )
+}
+
+# 저장소가 제 세션 시작 일을 두는 자리 — **있으면 부르고 없으면 조용하다.**
+# ⚠ **몸통은 무엇을 할지 모른다.** 기전만 여기 살고 정책은 저장소가 든다 — 그래서 쓰는
+#   저장소가 늘어도 이 자리는 안 낡는다. 목록을 안 들므로 더할 때 고칠 자리도 없다.
+# ⚠ **여기 두는 까닭 — `.claude/settings.json` 은 배포가 통째로 덮는 파일이다**
+#   (`deploy.repofiles.conf`). 저장소 제 훅을 거기 등록하면 **다음 배포가 지운다** — 실측
+#   2026-09-17: 아뜰리에가 거기 둔 훅이 배포 한 번에 사라졌다(그 저장소 61edde2). 그 세션은
+#   claude-config 를 안 붙이고 있어 그 파일이 관리 대상인 줄 알 길이 없었다. **자리가 없어서
+#   난 사고라 자리를 낸다.**
+# ⚠ **진다고 세션을 안 죽인다.** 저장소 제 일이라 몸통이 그것으로 멈출 까닭이 없다 — 사유만
+#   내고 간다. 그래서 `set -e` 가 없어도 `||` 로 명시해 둔다.
+# ⚠ **타임아웃을 안 씌운다** — 당김에 안 씌우는 것과 같은 결이다(위 ⚠). 대신 오래 끄는 손은
+#   세션 시작을 그만큼 늦추므로 **막는 것은 저장소 몫**이다.
+# ⚠ **auto 에만 선다.** 이 자리의 뜻이 「당김이 설 수 있는 꼴로 만든다」라 당김이 없는
+#   갈래에는 지킬 것이 없다.
+run_repo_start() {
+  _rs="$PROJECT_DIR/.claude/hooks/repo-start.sh"
+  [ -f "$_rs" ] || return 0
+  sh "$_rs" || printf '  ! repo-start.sh 가 졌다 — 저장소 제 일이라 넘어간다
 ' >&2
-  }
-  wire_commit_hooks  # 당김 앞이다 — 망이 느리거나 훅이 잘려도 게이트만은 선다 (#31)
-  run_repo_start     # 당김 앞이다 — 저장소가 제 나무를 당김이 설 수 있는 꼴로 만든다
-  # 열쇠는 당김 앞에서 읽는다 — 배경 병합이 작업 나무를 바꾸기 전의 판을 잡는다. 그래도 도는 사이 판이
-  #   움직이면 `pc_wide_mark` 가 열쇠를 안 적는다 (0065).
-  [ -n "$PC_WIDE" ] && pc_wide_key
-  pull_ff "$PROJECT_DIR"
-  # 리눅스(리모트 컨테이너)만 — 붙은 저장소마다 main 을 배경으로 원격에 맞춘다 (0069).
-  #   main 이 아닌 갈래 위면 참조만(`sync_main_bg`), main 위면 **작업 나무까지** 빨리감기로(`pull_ff`) 옮긴다.
-  # ⚠ `OS=linux` 가 아니라 `uname` 으로 가른다 — 저 값은 윈도우가 아닌 모든 것(맥 포함)을 받는 칸이다.
-  # ⚠ **main 위 형제의 작업 나무를 옮기는 것은 뜻한 것이다** (0069) — 설정 저장소 세션이 형제 파일을 읽어
-  #   견주는 일(형제 사본 대조 · 규격 빌려 오기)이 최신을 보게. 커밋 안 한 편집과 겹치면 git 이 거절한다.
-  #   이 세션의 저장소는 위에서 이미 당겼다(두 번 부르면 경고가 두 줄이 된다).
-  SYNC_BG=""
-  if [ "$(uname -s)" = Linux ]; then
-    SYNC_BG=1
-    for _g in "$(dirname "$PROJECT_DIR")"/*/.git; do
-      [ -e "$_g" ] || continue
-      _r="${_g%/.git}"
-      [ "$_r" = "$PROJECT_DIR" ] || pull_ff "$_r"
-      sync_main_bg "$_r"
-    done
-  fi
-  # PC 전체 일 — 설정 저장소 세션과 저장소 밖 세션만 맡는다 (0062). 형제 저장소 세션은 설정
-  #   저장소를 당기려고 따로 걸음을 두지 않는다: 당겨 온 것은 홈에 밀어야 실리는데 그 밀기를 이 세션이 안 한다.
-  #   리눅스는 위 고리가 붙은 저장소를 다 돌아 main 위 설정 저장소도 당겨지지만(0069), 홈에 미는 것은 여전히 없다.
-  # ⚠ **같은 판으로 이미 맞춘 홈은 다시 안 맞춘다** (0065) — 로그인 자동 실행이 방금 다 한 일을 세션마다
-  #   되풀이하던 값이 사내 VDI 에서 20초를 넘었다(#96). 열쇠가 안 맞으면 그 사이 바뀐 걸음만 한다.
-  if [ -n "$PC_WIDE" ]; then
-    if [ -n "$PW_RUN" ]; then
-      PC_WIDE_FAIL=""
-      [ "$PW_RUN" = part ] && PUSH_ONLY="$PW_CHANGED"
-      deploy_home_norms  # 당김이 배경이라 이번엔 지난 판을 민다 — 방금 당긴 것은 다음 세션이 민다 (0043)
-      PUSH_ONLY=""
-      [ -n "$PW_REST" ] && deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
-      [ -n "$PW_PLANT" ] && plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
-      # 표식은 아래 지문 게이트 뒤에 적는다 — 전역 도구를 깔 판이면 그 설치가 끝나야 「맞췄다」가 참이다
-    else
-      # 할 일이 없다고 봤다 — 형제 세션 알림에 「맡는 자리가 돌고 있다」를 남긴다 (0068).
-      # ⚠ 할 일이 있는 갈래에서는 안 찍는다 — 그 일이 도중에 죽으면 「돌고 있다」가 거짓이 된다.
-      : > "$PC_WIDE_SEEN" 2>/dev/null || true
-    fi
-  else
-    pc_wide_notice
-  fi
-  wire_python_path   # 지문 게이트 앞이다 — 배선은 설치의 사건이 아니라 세션의 상태다 (0011)
-  # ── 낡음 게이트 — **선언이 그대로여도 도구는 낡는다** ────────────────────────
-  # ⚠ 지문은 「선언이 바뀌었나」를 재지 「도구가 낡았나」를 안 잰다. 그래서 선언을 안 고치는
-  #   기계(집·회사 PC)에서는 한 번 깔린 도구가 **영영 안 올라갔다** — 낡은 줄도 모르고 돈다.
-  # ⚠ **표식이 없으면 안 민다. 표식만 남긴다.** 컨테이너는 세션마다 새로 나서 표식이 늘
-  #   없는데, 거기서 밀면 **매 세션 수십 초를 물어야 한다.** 그리고 그 자리에서는 밀 까닭도
-  #   약하다: 도구가 이미지만큼만 낡았고 이미지는 이 훅이 관리하는 것이 아니다.
-  #   영속 기계는 표식이 남아 쌓이므로 제때 낡고, 그때 한 번 민다.
-  UPGRADE=""
-  if [ ! -f "$FRESH" ]; then
-    : > "$FRESH" 2>/dev/null || true
-  elif [ -n "$(find "$FRESH" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ]; then
-    UPGRADE=1
-    echo "$PROJECT_NAME: 도구의 새 판을 견준다 (마지막 견주기가 ${UPGRADE_DAYS}일을 넘었다 · 새 판이 있는 것만 받는다)"
-  fi
+}
 
-  # ── 지문 게이트 — **둘로 갈린다** (#43). 전역형 도구는 기계 하나에 서므로 지문도 하나고,
-  #    저장소 지문이 어긋나도 전역을 다시 훑을 까닭이 없다(그 반대도 같다). 갈려 있지 않던
-  #    판에서는 저장소 하나의 선언이 바뀌면 그 세션이 전역 다섯을 통째로 다시 물었다.
-  # ⚠ 낡음(UPGRADE)은 둘 다 민다 — 「도구가 낡았나」는 어느 층에도 같이 걸리는 명제다.
-  DO_GLOBAL=""; DO_REPO=""
-  # ⚠ 전역 도구는 PC 전체 일이다 — 형제 저장소 세션은 대조조차 안 한다(형제 선언을 전부 읽는 자리라서다, 0062).
-  # ⚠ 대조도 PC 전체 일이라 열쇠를 탄다 (0065) — 같은 판으로 맞춘 홈이면 그때 이미 대조했다. 형제 저장소의
-  #   전역 선언이 바뀐 것은 이 열쇠에 안 잡히고, 로그인 자동 실행의 설치가 잡는다(형제 세션과 같은 뜻 · 0062).
-  if [ -n "$PC_WIDE" ] && { [ -n "$PW_REST" ] || [ -n "$UPGRADE" ]; }; then
-    { [ -z "$UPGRADE" ] && [ "$(global_fingerprint)" = "$(cat "$GSTAMP" 2>/dev/null)" ]; } || DO_GLOBAL=1
-  fi
-  { [ -z "$UPGRADE" ] && [ "$(decl_fingerprint)"   = "$(cat "$STAMP"  2>/dev/null)" ]; } || DO_REPO=1
-  # ⚠ **PC 전체 일의 표식은 여기서 적는다 — 전역 도구를 깔 판이면 미룬다** (0065). 대조가 어긋나 설치로 가는
-  #   세션이 먼저 판을 적고 설치 도중 죽으면(창을 닫았다 · 느린 망에서 끊겼다), 다음 세션은 판이 맞아 대조를
-  #   아예 안 하고 새 도구가 안 깔린 채 조용히 남는다. 미룬 표식은 설치 갈래가 전역 지문을 굳힌 뒤(⑧) 적는다.
-  if [ -n "$PC_WIDE" ] && [ -n "$PW_RUN" ]; then
-    if [ -n "$DO_GLOBAL" ]; then PW_DEFER=1; else pc_wide_mark; fi
-  fi
-  if [ -z "$DO_GLOBAL" ] && [ -z "$DO_REPO" ]; then
-    # 침묵하되 실패까지 삼키지는 않는다 — 지난 설치의 실패가 남아 있으면 **사유까지** 알린다.
-    # 다시 깔지는 않는다: 막힌 자리(예: 내려받기가 막힌 망)는 다시 깔아도 또 막혀,
-    # 재시도가 매 세션 비용만 된다. 다시 까는 손은 deploy.ps1·--install 이 든다.
-    # ⚠ **stdout 이다.** SessionStart 훅에서 모델의 문맥에 들어가는 것은 stdout 뿐이고 stderr 는
-    #   기록에만 남는다 — 종전엔 이 줄이 stderr 라 네 세션 연속 아무도 못 읽었다(실측 2026-09-05:
-    #   npm ci 실패가 남은 채 commitlint 없는 커밋이 넷 지나갔다). 사유를 같이 찍는 까닭도 같다 —
-    #   「파일을 열어 보라」는 말은 안 열린다.
-    # ⚠ **전역 갈래의 실패도 같이 낸다** (#43). 그쪽은 기계 한 자리에 적히므로, 여기서 안 읽으면
-    #   전역형 도구가 못 깔린 채로 도는 저장소는 사유를 아무 데서도 못 본다.
-    if [ -s "$FAILS" ] || [ -s "$GFAILS" ]; then
-      echo "$PROJECT_NAME: ⚠ 지난 설치에 실패가 남아 있다 — deploy.ps1 이나 --install 로 다시 깐다. 사유:"
-      # 하나가 없을 때 awk 가 그 자리에서 죽어 뒤엣것을 안 읽는다 — 파일마다 따로 부른다
-      for _ff in "$FAILS" "$GFAILS"; do
-        [ -s "$_ff" ] && awk -F'\t' '{printf "  · %s — %s\n", $1, $2}' "$_ff" 2>/dev/null
-      done
-    fi
-    _gr="$(global_rule_reason)"
-    [ -n "$_gr" ] && echo "$PROJECT_NAME: ⚠ 전역 규율 — $_gr"
-    exit 0
-  fi
-  # 선언이 어긋났거나 도구가 낡았다 — 깐다. **배경에서** (`install_bg` · 0070). 지문은 설치 끝(⑧)에 굳는다
-  MODE=install; INSTALL_BG=1
-fi
-
-# ══ 설치 걸음 — 명시한 `--install` · `--install-global` 은 여기서 기다리고, 세션(auto)은 배경으로 띄운다 ══
 install_step() {
 
   # ── 갈래 둘 — **전역은 기계에 한 번, 저장소는 배선만** (#43) ────────────────────
@@ -2932,8 +2706,6 @@ EOF
 #   낸다 — 안 내면 「매 세션 다시 띄우는데 매번 못 끝낸다」가 아무 데도 안 보인다.
 # ⚠ stdin · stdout · stderr 를 다 뗀다 — 하나라도 훅의 파이프를 물면 Claude Code 가 그 자식을
 #   기다려 배경으로 뺀 뜻이 없어진다(`pull_ff` 와 같은 결).
-INSTALL_BG_LOCK="$PROJECT_DIR/.claude/install-bg.lock"
-INSTALL_BG_LOG="$PROJECT_DIR/.claude/install-bg.log"
 install_bg() {
   if ! ( set -C; printf '%s\n' "$$" > "$INSTALL_BG_LOCK" ) 2>/dev/null; then
     _bp="$(cat "$INSTALL_BG_LOCK" 2>/dev/null)"
@@ -2955,24 +2727,11 @@ install_bg() {
   echo "$PROJECT_NAME: 도구를 배경에서 맞춘다 ($(printf '%s' "${DO_GLOBAL:+전역형 도구 · }${DO_REPO:+이 저장소 도구 · }${UPGRADE:+새 판 견주기 · }" | sed 's/ · $//')) — 세션 시작은 안 기다린다. 이 세션에는 아직 안 선 도구가 있을 수 있고, 진 사유는 다음 세션이 말한다 · 기록 $INSTALL_BG_LOG"
 }
 
-if [ "$MODE" = install ]; then
-  if [ -n "${INSTALL_BG:-}" ]; then
-    install_bg
-    _gr="$(global_rule_reason)"
-    [ -n "$_gr" ] && echo "$PROJECT_NAME: ⚠ 전역 규율 — $_gr"
-    exit 0
-  fi
-  install_step
-fi
-
-# ════════════════════════ 진단 — 지금 어느 검사가 도나 ════════════════════════
-# 판정 문구는 여기 한 자리에만 둔다. 위층이 죽으면 아래는 "실패"가 아니라 "못 잼"으로 낸다.
-
-down=0
 gate() {  # gate <이름> <ok|off> <까닭>
   if [ "$2" = ok ]; then printf '  ✅ %s — %s\n' "$1" "$3"
   else printf '  ❌ %s — %s\n' "$1" "$3"; down=$((down + 1)); fi
 }
+
 why() {  # why <도구> [<설치 걸음>] — 도구 이름으로 못 찾으면 그 도구를 깐 걸음의 실패를 든다
   # ⚠ project-axis 도구(commitlint · markdownlint · pyyaml…)는 제 이름으로 실패를 안 남긴다 —
   #   까는 자가 `npm ci`·`pip install` 한 걸음이라 사유는 「노드 의존성」·「파이썬 의존성」으로
@@ -2989,6 +2748,517 @@ why() {  # why <도구> [<설치 걸음>] — 도구 이름으로 못 찾으면 
   [ -n "$_w" ] && printf ' · 설치 실패: %s' "$_w"
   return 0
 }
+
+# 선언의 판이 **잴 수 있는 꼴인가** — 선언만 읽는다(npm 을 안 부르므로 통과 갈래에서도 싸다).
+# ⚠ **범위·딱지는 안 잰 것이다.** 통과 옆에 그 사실이 안 찍히면 「전부 통과」가 「판까지 봤다」로
+#   읽힌다 — 초록의 폭을 검사가 스스로 말하게 한다(규범 [Goal-Driven Execution]).
+pin_shape() {  # pin_shape <선언파일> <이름> — 안 잰 까닭 한 줄, 잴 수 있으면 빈 값
+  _psi=''; _sk=''
+  { IFS= read -r _psi; IFS= read -r _sk; } <<EOF
+$(decl_fields "$1" "$2" install package)
+EOF
+  [ "$_psi" = npm-global ] || return 0
+  case "$_sk" in ?*@*) ;; *) return 0 ;; esac   # 판을 안 박은 선언은 애초에 안 잰다고 적혀 있다
+  _sv="${_sk##*@}"
+  case "$_sv" in ''|*[!0-9.]*)
+    printf '판 「%s」 는 정확한 판이 아니라 **판은 안 쟀다**(`이름@1.2.3` 꼴이어야 잰다)' "$_sv" ;;
+  esac
+  return 0
+}
+
+# 선언이 판을 박았는데 깔린 판이 다른가 — **「안 깔렸다」와 「판이 다르다」는 고칠 자리가
+# 다르다.** 둘 다 ❌ 로 나오는데 사유가 「안 닿는다」 하나면, 다음 사람은 npm 이 없나부터
+# 뒤진다. 사유 없는 ❌ 는 다음 사람에게 부재와 같다 (위 `nogo` 곁말과 같은 결).
+pin_mismatch() {  # pin_mismatch <선언파일> <이름> — 어긋나면 읽을 한 줄, 아니면 빈 값
+  _pmi=''; _mk=''
+  { IFS= read -r _pmi; IFS= read -r _mk; } <<EOF
+$(decl_fields "$1" "$2" install package)
+EOF
+  [ "$_pmi" = npm-global ] || return 0
+  # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
+  case "$_mk" in ?*@*) ;; *) return 0 ;; esac
+  _mv="${_mk##*@}"
+  # 꼴 판정은 `pin_shape` 한 자리가 든다 — 여기서도 말하면 같은 문장이 두 벌이 된다.
+  case "$_mv" in ''|*[!0-9.]*) return 0 ;; esac
+  _mh="$(npm_global_version "${_mk%@*}" || true)"
+  [ -n "$_mh" ] && [ "$_mh" != "$_mv" ] &&
+    printf '깔린 판이 다르다: %s (선언은 %s) — 다시 깔면 선언한 판을 받는다' "$_mh" "$_mv"
+  return 0
+}
+
+# ── 전역 걸음이 **이 실행에서** 낸 판정이 있나 — 캐시가 아니라 인용이다 (#57) ─────────
+# ⚠ 배포 한 번(`deploy.ps1`)이 전역 걸음에서 도구마다 프로브를 이미 띄웠는데, 이어 도는
+#   저장소 다섯의 진단이 같은 전역형 도구를 저장소마다 또 띄웠다 — 같은 실행에서 같은 명제를
+#   스물다섯 번(사내 VDI 실측 ~280초). 전역형 도구는 기계에 하나라 저장소마다 답이 같다.
+# ⚠ **프로브를 뺀 것이 아니다** — 「깔린 것과 닿는 것은 다른 명제」는 그대로 서 있고(이 파일
+#   머리말), 그 실행이 방금 실행해서 낸 판정을 좌표로 인용할 뿐이다. 그래서 문은 셋이고 셋이
+#   다 열려야 한다: **표식이 서 있나**(`CLAUDE_CONFIG_RUN` — 세우는 자는 `deploy.ps1` 하나다)
+#   · **이름과 프로브 대상이 같나**(대상이 다르면 같은 이름이라도 딴 명제다) · **표식이 같나**
+#   (지난 실행의 명부는 이번 실행의 실측이 아니다). 배포 밖에서는 표식이 없어 한 줄도 안 바뀐다.
+# ⚠ **읽기는 셸 안에서 끝낸다** — 저장소마다 도구마다 도는 자리라, 여기서 프로세스를 띄우면
+#   줄이려던 값을 되돌려 놓는다. `read` 는 내장이다.
+global_verified() {  # global_verified <선언파일> <이름> <probe-target>
+  [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 1
+  [ -f "$GVERIFIED" ] || return 1
+  _gvi=''; _gvk=''
+  { IFS= read -r _gvi; IFS= read -r _gvk; } <<EOF
+$(decl_fields "$1" "$2" install probe)
+EOF
+  global_kind "$_gvi" || return 1
+  # ⚠ **`node-resolvable` 은 인용이 못 선다 — 프로브 둘이 딴 명제를 잰다.** 전역 걸음의
+  #   `probe_global` 은 `npm root -g` 에 대고 「기계에 있나」를 묻고, 저장소의 `probe_reach` 는
+  #   **이 저장소 안에서** 「정션을 타고 이름이 풀리나」를 묻는다. 기계에 있어도 저장소 배선이
+  #   지면 후자는 져야 하는데, 전자를 인용하면 그 ❌(「깔렸는데 프로브가 못 찾는다: 배선이
+  #   끊겼다」)가 통째로 사라진다 — **인용은 같은 명제를 대신할 때만 선다.** 기계에 대고 묻는
+  #   갈래(PATH 실행형)만 남기고 이 갈래는 옛 길 그대로 저장소마다 잰다.
+  [ "$_gvk" = node-resolvable ] && return 1
+  # 줄의 꼴은 쓰는 자 `gverified_put` 과 한 벌이다 — 통째로 견줘 셋 중 하나만 달라도 안 문다.
+  _vq="$(printf '%s\t%s\t%s' "$2" "$3" "$CLAUDE_CONFIG_RUN")"
+  while IFS= read -r _vl; do
+    [ "$_vl" = "$_vq" ] && return 0
+  done < "$GVERIFIED"
+  return 1
+}
+
+render_decl() {  # render_decl <선언파일> <층라벨>
+  for _name in $(decl_sections "$1"); do
+    # ⚠ **on-demand 도 여기서 같이 읽는다.** 쓰는 자리는 맨 아래 갈래 하나뿐이지만, 같은
+    #   awk 가 이미 그 절을 읽고 있어 **키 한 칸을 더 받는 값이 0 이다** — 저 아래서 따로
+    #   물으면 프로세스 하나가 도구마다 더 뜬다.
+    _probe=''; _target=''; _by=''; _ondemand=''; _inst=''
+    {
+      IFS= read -r _probe
+      IFS= read -r _target
+      IFS= read -r _by
+      IFS= read -r _ondemand
+      IFS= read -r _inst
+    } <<EOF
+$(decl_fields "$1" "$_name" probe probe-target called-by on-demand install)
+EOF
+    # 까는 걸음의 이름 — project-axis 도구는 이 이름으로 실패가 남는다 (why 곁주석). `try` 가
+    # 적는 그 이름 그대로여야 한다 — 갈리면 사유가 또 안 붙는다.
+    case "$_probe" in
+      exec-npm-bin)      _step="노드 의존성" ;;
+      python-importable) _step="파이썬 의존성" ;;
+      *)                 _step="" ;;
+    esac
+    # ⚠ **판정 앞에서 부르지 않는다.** `pin_mismatch` 안에서 `npm root -g` + `node` 가 도는데,
+    #   통과할 도구에도 그 쌍이 돌면 세션마다 도구 수만큼 곱해진다(npm 은 시작만으로 수백 ms 다).
+    # ⚠ **프로브 앞에 선다 — 이기면 프로브를 안 띄운다.** 문 셋(표식·이름+대상·같은 표식)은
+    #   `global_verified` 가 든다. 표식이 없는 자리에서는 첫 문에서 바로 져 옛 길 그대로다.
+    if global_verified "$1" "$_name" "$_target"; then
+      gate "$_name" ok "$_by ($2) — 전역 걸음이 이 실행에서 확인했다"
+    elif probe_decl "$1" "$_name"; then
+      _shape="$(pin_shape "$1" "$_name")"
+      if [ -n "$_shape" ]; then gate "$_name" ok "$_by ($2) — $_shape"
+      else                      gate "$_name" ok "$_by ($2)"; fi
+    elif _pin="$(pin_mismatch "$1" "$_name")"; [ -n "$_pin" ]; then
+      gate "$_name" off "$_by ($2) — $_pin$(why "$_name" "$_step")"
+    elif [ "$_probe" = node-resolvable ] && npm_root_g && [ -d "$NPM_ROOT_G/$_target" ]; then
+      gate "$_name" off "$_by ($2) — 깔렸는데 프로브가 못 찾는다: 배선이 끊겼다$(why "$_name" "$_step")"
+    elif [ "$_ondemand" = yes ]; then
+      # 선언이 「필요할 때 깐다」로 둔 도구 — 부재가 이 저장소의 검사를 끄는 것이 아니다
+      gate "$_name" ok "$_by ($2) — 안 닿는다 · 필요할 때 깐다 (on-demand)"
+    elif ! kind_here "$_inst"; then
+      # 이 자리에서 못 타는 설치법 — 깔 손이 없으니 꺼진 검사로 안 센다(`kind_here` 곁말)
+      gate "$_name" ok "$_by ($2) — 안 닿는다 · 이 자리($OS)에서는 안 깐다 (설치법 $_inst)"
+    else
+      gate "$_name" off "$_by ($2) — 안 닿는다$(why "$_name" "$_step")"
+    fi
+  done
+}
+
+#endregion 라이브러리
+
+# ══ 단계 · 준비 — 모든 갈래 ════════════════════════
+#    층 — 없음(준비). 뒤 단계가 읽을 자리와 값을 세운다
+#    하는 일 — 기계 상태 파일 자리(`install-*`)를 세우고 옛 이름(`bootstrap-*`)을 옮긴다. 선언이 하나도 없으면 한 줄
+#      알린다. 설정 저장소 자리(`CONFIG_ROOT` — 저장소의 경로 스크립트를 먼저 읽는다) · 이 실행이 PC 전체 일을
+#      맡나(`PC_WIDE`) · 기계(`OS` · `PY_CMD` · `VENV_BIN`)를 정한다
+#    앞에서 받는 것 — 부름의 `MODE` · `PROJECT_DIR` · `PROJECT_NAME`
+#    안 하는 것 — 깔기 · 홈 밀기 · 망. 쓰는 것은 옛 상태 파일의 이름 옮기기뿐이다
+VENV="$PROJECT_DIR/.venv"
+FAILS="$PROJECT_DIR/.claude/install-fail"
+# 전역 갈래의 실패는 **기계 한 자리**에 적는다 (#43). 저장소 파일에 적으면 그 저장소를 여는
+# 세션만 사유를 보고, 같은 도구가 꺼진 형제의 진단에는 ❌ 만 서고 까닭이 영영 안 붙는다.
+GFAILS="$HOME/.claude/install-global-fail"
+GCONF="$PROJECT_DIR/.claude/tools.global.conf"
+PCONF="$PROJECT_DIR/.claude/tools.conf"
+STAMP="$PROJECT_DIR/.claude/install-stamp"   # 기계 상태 — install-fail 과 같은 자리, 커밋 안 한다
+GSTAMP="$HOME/.claude/install-global-stamp"  # 전역형 선언의 지문 — 저장소가 아니라 기계 하나다 (#43)
+# 전역 걸음이 **이번 실행에서** ✅ 로 낸 도구들의 명부 (#57). 쓰는 자는 `install_global`,
+# 읽는 자는 아래 진단의 `global_verified` — 둘 다 이 한 자리를 가리킨다.
+GVERIFIED="$HOME/.claude/install-global-verified"
+FRESH="$PROJECT_DIR/.claude/install-upgraded"  # 마지막으로 도구의 새 판을 견준 날. 같은 자리, 커밋 안 한다
+UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나면 한 번 견주고 새 판만 받는다
+
+# ── 옛 이름에서 옮긴다 (2026-09-16) ─────────────────────────────────────────────
+#    상태 파일이 `bootstrap-*` 에서 `install-*` 로 바뀌었다 (#56 · 걷힌 몸통의 이름이었다).
+#    **이름만 갈면 이미 깐 기계의 도장이 통째로 사라진다** — 지문이 안 맞아 저장소마다 한 번
+#    씩 다시 깐다(사내 VDI 실측 370초). 그래서 옛 이름이 있고 새 이름이 없을 때만 옮긴다:
+#    `[ -e ]` 는 내장이라 스폰이 없고, `mv` 는 옛 파일을 든 기계에서 한 번만 돈다.
+#    새 이름이 이미 서 있으면 **안 덮는다** — 지금 값이 옛 값보다 새 것이다.
+#  ⚠ **걷는 날은 사람이 정한다.** 모든 기계가 한 번씩 이 줄을 밟았는지는 여기서 알 길이
+#    없다 — 옛 이름이 어디에도 안 남았다고 사람이 판정하는 날 이 칸을 통째로 지운다.
+_migrate_name "$PROJECT_DIR/.claude/bootstrap-fail"          "$FAILS"
+_migrate_name "$PROJECT_DIR/.claude/bootstrap-stamp"         "$STAMP"
+_migrate_name "$PROJECT_DIR/.claude/bootstrap-upgraded"      "$FRESH"
+_migrate_name "$HOME/.claude/bootstrap-global-fail"          "$GFAILS"
+_migrate_name "$HOME/.claude/bootstrap-global-stamp"         "$GSTAMP"
+unset -f _migrate_name
+
+# ⚠ 선언이 하나도 없으면 **깔 것을 못 찾은 것**이다. 빈 지문은 「선언이 없다」와 「자리를 잘못
+#   봤다」를 구별하지 못해, 엉뚱한 자리에서도 완료 도장이 찍힌다 — 그 침묵이 무작동을 성공으로
+#   보이게 한다. 막지는 않고 자리를 말하고 간다(선언 없는 저장소도 정당하기 때문이다).
+# ⚠ `--needs-install` · `--site` 는 이 줄을 안 낸다 — 그 갈래들의 답은 **기계가 읽는 한 줄**이라
+#   다른 줄이 섞이면 사유가 밀린다. 이 말이 필요한 사람은 세션(auto)·설치 화면에서 그대로 듣는다.
+[ "$MODE" = needs-install ] || [ "$MODE" = site ] ||
+[ -e "$PROJECT_DIR/requirements.txt" ] || [ -e "$PROJECT_DIR/package-lock.json" ] ||
+[ -e "$GCONF" ] || [ -e "$PCONF" ] ||
+  echo "$PROJECT_NAME: ⚠ 선언이 하나도 없다(requirements.txt · package-lock.json · tools*.conf) — $PROJECT_DIR 를 저장소로 보고 있다. 자리가 맞나 본다."
+
+# claude-config 가 어디 붙었나 — 커밋 게이트와 같은 자리(.githooks 의 경로 스크립트)를 본다.
+# 그 스크립트가 없는 저장소는 아래서 직접 짚는다.
+CONFIG_ROOT=""; ADR_GEN=""; GATES_HOME=""
+[ -f "$PROJECT_DIR/.githooks/claude-config-path.sh" ] &&
+  . "$PROJECT_DIR/.githooks/claude-config-path.sh"
+if [ -z "$CONFIG_ROOT" ]; then
+  for _c in "$PROJECT_DIR" "$(dirname "$PROJECT_DIR")/claude-config" "$HOME/claude-config" /workspace/claude-config; do
+    [ -f "$_c/deploy.ps1" ] && [ -d "$_c/memory" ] && { CONFIG_ROOT="$_c"; break; }
+  done
+fi
+
+# ── 이 실행이 PC 전체 일을 맡나 (claude-config 0062) ─────────────────────────────
+#    PC 전체 일 — 홈에 규범 · 룰 · 에이전트 · 씨앗 밀기 · 개인 설정(git 전역 설정 · 키) · 홈 훅과
+#    신뢰 목록 심기 · 전역 도구 선언 대조. 저장소가 몇이든 PC 에 한 번이면 되는 일이다.
+#    맡는 자리는 넷이다 — 로그인 자동 실행(`deploy.ps1` → `--install`) · 설정 저장소를 연 세션 ·
+#    저장소 밖에서 연 세션(홈 훅이 설정 저장소 훅을 부른다, 0043) · 리모트 설정 스크립트(`--install`).
+#    **형제 저장소를 연 세션(auto)은 안 맡는다** — 그 저장소 일만 하고, 맡는 자리가 오래 안 돌았거나
+#    홈 파일이 설정 저장소와 다르면 알리기만 한다(`pc_wide_notice`).
+# ⚠ 명시한 `--install` 은 어느 저장소에서 불려도 맡는다 — 위 넷 가운데 셋이 그 입구로 들어온다.
+# ⚠ **claude-config 가 이 PC 에 없으면 형제 세션도 맡는다.** 동료 PC(설치기만 쓰고 설정 저장소가 없는 자리)
+#   에는 위 넷 가운데 서는 자리가 없다 — 설치기는 설정 저장소가 없으면 이 몸통을 안 부르고, 설정 저장소
+#   세션도 없다. 그 PC 에서 형제 세션까지 빠지면 전역 도구(게이트가 쓰는 lint 들)를 아무도 안 깐다.
+PC_WIDE=""
+if [ "$MODE" != auto ] || [ -z "$CONFIG_ROOT" ] || [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
+  PC_WIDE=1
+fi
+# PC 전체 일이 마지막으로 돈 때 — 파일의 시각이 곧 값이고, 내용은 그때 맞춘 설정 저장소의 판이다(0065).
+# 쓰는 몸통은 `pc_wide_mark` 한 자리(부르는 자리는 PC 전체 일을 끝내는 곳마다)이고, 시각과 내용을 `pc_wide_key` 가
+# 읽는다 — 시각이 `UPGRADE_DAYS` 를 넘으면 통째로 다시 돈다.
+PC_WIDE_STAMP="$HOME/.claude/pc-wide-ran"
+# 맡는 자리가 열쇠를 견줘 **할 일이 없다고 본** 때 — 빈 파일이고 시각만 값이다(0068). 건너뛴 세션은 위 표식을
+# 안 건드리므로, 「맡는 자리가 돌고 있나」를 묻는 `pc_wide_notice` 는 두 시각 가운데 새것을 본다.
+# ⚠ 한 파일에 두 뜻을 싣지 않는다 — 건너뛸 때 위 표식의 시각을 찍으면 통째로 다시 도는 안전망이 영영 안 선다.
+PC_WIDE_SEEN="$HOME/.claude/pc-wide-seen"
+
+# 기계를 가른다. Git Bash 는 `uname -s` 가 MINGW64_NT-… 를 낸다.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) OS=windows ;;
+  *)                    OS=linux   ;;
+esac
+# ⚠ **파이썬의 stdio·open() 인코딩을 기계의 로케일에 안 맡긴다** (#51 · PEP 540). 아래 파이썬 셋
+#   (홈 설정 병합 · 홈 훅·신뢰 심기 · 심겼나 재기)은 한국어 문구를 파이프로 내는데, 윈도우의 기본
+#   인코딩(cp949)은 `—` 를 못 담아 **다 쓰고 나서 찍다가 죽는다.** deploy 가 심는 사용자 환경변수
+#   (PYTHONUTF8)는 비영속 VDI 의 첫 로그인과 리모트에는 없다 — 훅이 어디서 돌든 이 한 줄이 덮는다.
+export PYTHONUTF8=1
+if [ "$OS" = windows ]; then
+  VENV_BIN="$VENV/Scripts"; PY_CMD=python
+else
+  VENV_BIN="$VENV/bin";     PY_CMD=python3
+fi
+
+# ══ 단계 · 「깔 게 있나」 답 — needs-install 만 ════════════════════════
+#    층 — 없음(묻는 갈래)
+#    하는 일 — 파일만 보고 이 저장소에 깔 게 있나를 한 줄과 종료코드(0 안 깐다 · 1 깐다 · 2 못 쟀다)로 내고 끝난다
+#    앞에서 받는 것 — 준비의 상태 파일 자리 · 선언 자리 · `CONFIG_ROOT`
+#    안 하는 것 — 아무것도 안 쓴다. 프로브 · 망 · 파이썬을 안 띄운다(해석기 고르기는 이 단계 뒤에 선다)
+# ── `--needs-install` — 「이 저장소에 깔 게 있나」 **예/아니오 하나** (#47 ②) ──────────────
+#    묻는 자는 `deploy.ps1` 의 계획 단계다. 거기 필요한 답은 진단이 아니라 이 한 마디인데,
+#    옛 판은 `--check` 를 불러 도구마다 프로브를 띄웠다 — 사내 VDI 실측(PAISetup #5): 저장소당
+#    31~57초 × 다섯 = 200초가, 설치 끝의 진단과 **같은 판정을 두 벌** 내는 데 들었다.
+#    그래서 여기는 **파일만 본다** — 프로브도 망도 CI 조회도 없다. 「도구가 닿나」는 안 묻는다:
+#    그 물음의 자리는 깐 뒤의 진단 한 벌이다(설치가 끝난 자리의 판정이라야 진짜다).
+#  ⚠ **판정의 진본을 새로 짓지 않는다.** 「깔 게 있다」가 무엇인가는 auto 갈래의 지문 게이트가
+#    이미 든 명제고, 여기는 같은 자(`decl_fingerprint`)를 그대로 부른다. 그 위에 더하는 것은
+#    **설치가 세우는 것 중 파일로 보이는 것**뿐이다 — 배선(`wire_commit_hooks` 가 세운다) ·
+#    venv(파이썬 선언이 있을 때) · 지난 설치가 남긴 실패(다시 까는 손은 여기라고 auto 가 적어 뒀다).
+#  ⚠ **아무것도 안 쓴다 — 지문 도장(STAMP)도 안 찍는다.** 재는 갈래가 제 자국을 남기면 다음
+#    판정이 그것을 읽는다.
+#  ⚠ 종료코드 셋 — 0 안 깐다 · 1 깐다 · **2 못 쟀다**. 2 를 0 으로 접지 않는다: 부재가 통과로
+#    읽히는 자리가 거기다. 사유는 stdout 한 줄이고, 위층이 그 줄을 그대로 화면에 싣는다.
+if [ "$MODE" = needs-install ]; then
+  _nfp="$(decl_fingerprint)"
+  if [ -z "$_nfp" ]; then
+    echo "선언 지문을 못 쟀다 — sha256sum 을 못 부른다"; exit 2
+  fi
+  if [ -d "$PROJECT_DIR/.githooks" ] && ! hooks_wired; then
+    # 「안 걸렸다」와 「못 물었다」를 가른다 — git 이 이 자리를 저장소로 안 읽으면 배선은 1 이
+    # 아니라 2 다. 성한 자리에서는 이 한 번을 안 묻는다(위가 이미 답했다) — 왕복 하나가 값이다.
+    git -C "$PROJECT_DIR" rev-parse --git-dir >/dev/null 2>&1 ||
+      { echo "배선을 못 쟀다 — git 이 $PROJECT_DIR 를 저장소로 안 읽는다"; exit 2; }
+    echo "커밋 훅 배선이 없다 (core.hooksPath=${HOOKS_PATH:-빈 값})"; exit 1
+  fi
+  [ "$_nfp" = "$(cat "$STAMP" 2>/dev/null)" ] ||
+    { echo "선언 지문이 어긋난다 — 선언이 바뀌었거나 아직 안 깔렸다"; exit 1; }
+  if [ -f "$PROJECT_DIR/requirements.txt" ] && ! venv_ready; then
+    echo "venv 에 pip 이 안 닿는다 — 파이썬 선언이 있는데 .venv 가 없거나 반쯤 섰다"; exit 1
+  fi
+  # 지난 실패는 설치가 제 층을 다시 돌 때만 걷힌다 — 남아 있다는 것은 **마지막 설치가 졌다**는 뜻이다.
+  # 전역 쪽도 같이 본다: 전역형 도구가 못 깔린 저장소는 그 사유를 제 파일에 안 진다 (#43).
+  for _nff in "$FAILS" "$GFAILS"; do
+    [ -s "$_nff" ] || continue
+    _nwho=저장소; [ "$_nff" = "$GFAILS" ] && _nwho=전역
+    echo "지난 $_nwho 설치의 실패가 남아 있다 — $(awk -F'\t' '{printf "%s%s", (NR>1 ? " · " : ""), $1}' "$_nff" 2>/dev/null)"
+    exit 1
+  done
+  echo "배선·지문 맞음"
+  exit 0
+fi
+
+# ══ 단계 · 해석기와 처음 값 — needs-install 을 뺀 갈래 다 ════════════════════════
+#    층 — 없음(준비)
+#    하는 일 — 파이썬 이름을 한 번 불러 보고 진짜를 고른다(`py_resolve`). PC 파이썬(`PC_PY`) · venv 파이썬 · 저장소
+#      npm 자리를 굳히고, 라이브러리 함수가 읽고 쓰는 전역 값의 처음 값을 세운다
+#    앞에서 받는 것 — 준비의 `OS` · `PY_CMD` · `VENV_BIN` · `PROJECT_DIR`
+#    안 하는 것 — 깔기 · 쓰기. 파이썬이 한 번 뜰 뿐이다
+py_resolve
+# ── PC 의 파이썬 — **전역 파이썬 패키지(`pip-user`)가 사는 자리다.** 여기서 굳혀 둔다.
+# ⚠ `PY_CMD` 를 그대로 안 쓴다 — 저장소 걸음이 선언한 판(`probe = python-version`)으로 venv 를
+#   세우려고 그 이름을 다른 해석기로 바꿔 끼운다. 전역 패키지를 부르는 자(그림 문의 줄이기 등)는
+#   저장소와 무관하게 **PATH 의 파이썬**으로 돈다 — 깔고 재는 자리도 그것이어야 명제가 같다.
+PC_PY="$PY_CMD"
+VENV_PY="$VENV_BIN/python"; [ -x "$VENV_PY" ] || VENV_PY="$VENV_BIN/python.exe"
+NPM_BIN="$PROJECT_DIR/node_modules/.bin"
+
+PATH_CAUGHT=''
+NPM_ROOT_G=''; NPM_ROOT_G_ASKED=''
+
+# GitHub 에 닿는 기다림(초) — **연결 마감 하나만 뜻한다.** 아래 두 함수가 같이 쓴다.
+#   되풀이 창에 이 값을 겹쳐 쓰지 않는다 — 한 값이 두 뜻을 지면, 연결을 넉넉히 하려고 올린 손이
+#   되풀이까지 조용히 바꾼다.
+GH_CONNECT_S=10
+
+HOME_SYNC=push
+HOME_STALE=""
+PUSH_ONLY=""
+
+# ⚠ **PC 전체 일의 입력**(`PW_INPUTS`) — 개인 설정 · 심기 · 전역 도구 대조가 읽는 파일이다. 여기 없는
+#   파일만 바뀐 판은 홈 밀기만 한다. **그 일이 새 파일을 읽기 시작하면 여기 더한다** — 새 입력은 대개
+#   이 몸통을 고치는 커밋과 함께 와서 그 판은 다 돌지만, 그 뒤 그 파일만 바뀐 판은 여기서 갈린다.
+#   바뀌면 바뀐 파일만으로는 모자라 **통째로** 가는 것이 둘이다(`PW_FULL_IF`) — `deploy.seeds.conf` 는 밀 폴더
+#   목록이고, 이 몸통은 무엇을 어디로 미나 자체다. 몸통이 미는 칸을 넓히면 그 칸의 **옛 파일**은 판 사이
+#   diff 에 안 나오므로, 바뀐 파일만 보면 새 칸이 빈 채로 표식이 「맞췄다」를 적는다.
+PW_INPUTS=".claude/hooks/ personal.conf secrets.env .claude/tools.global.conf .claude/tools.conf"
+PW_FULL_IF="deploy.seeds.conf .claude/hooks/session-start-body.sh"
+_TAB=$(printf '\t')   # 옮김 줄의 두 경로를 가르는 글자 — 글자로 박으면 편집기가 공백으로 바꿔도 모른다
+_NL='
+'
+PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_PLANT=1; PW_OID=""; PW_DIRTY=""; PC_WIDE_FAIL=""; PW_DEFER=""
+
+_CR=$(printf '\r')   # 고리 밖에서 한 번 — `$'\r'` 은 sh 에 없다
+_SITE=''; _SITE_FILE=''; _SITE_MODE=''; _SITE_HOW=''; _SITE_DONE=''
+
+# ══ 단계 · 「어느 자리인가」 답 — site 만 ════════════════════════
+#    층 — 없음(묻는 갈래)
+#    하는 일 — `_site_of` 가 잰 자리를 `<자리> <길>` 한 줄로 내고 끝난다(0 두 칸을 냈다 · 2 못 쟀다)
+#    앞에서 받는 것 — `CONFIG_ROOT`(그 저장소의 `secrets.d/*.env`) · 처음 값 `_SITE*`
+#    안 하는 것 — 심기 · 깔기 · 자국 남기기
+# ── `--site` — 「지금 어느 자리이고, 무엇으로 그렇게 알았나」 **한 줄 두 칸** ─────────────
+#    묻는 자는 선언에 자리를 거는 칸을 둔 쪽이다. 그쪽이 제 손으로 자리를 다시 재면 재는 자가
+#    둘이 되고, 둘은 **고쳐도 한쪽만 고쳐진 채 조용히 갈린다** — 그래서 묻는 길을 낸다.
+#  ⚠ **자리는 위 `_site_of` 한 자리가 잰다.** 이 갈래가 하는 일은 그 답을 글자로 내는 것뿐이다.
+#  ⚠ **답만 내지 않고 「어느 자로 얻었나」를 같이 낸다** — `<자리> <길>` 두 칸이고 길은
+#    `probe` · `path` · `default` · `default-after-probe` 넷이다(위 `$_SITE_HOW`). 답 하나만
+#    내면 **「아무 자도 안 답해서 남은 자리」가 「저 자리임을 보인 답」과 같아진다** — 묻는 쪽은
+#    그 둘에 다른 일을 해야 하므로(지우는 일은 보인 답 위에서만) 가르는 칸을 답에 싣는다.
+#  ⚠ **아무것도 안 바꾼다** — 안 심고 안 깔고 자국도 안 남긴다. 재는 갈래가 상태를 바꾸면
+#    다음 판정이 제가 만든 상태를 읽는다.
+#  ⚠ 종료코드 둘 — 0 두 칸을 냈다 · **2 못 쟀다(사유 한 줄, 칸 없음).** 2 를 0 으로 접지 않는다:
+#    「자리를 모른다」와 「어느 자리다」는 다른 명제이고, 묻는 쪽이 그 둘을 갈라 써야 한다.
+#  ⚠ **자리가 여기인 까닭** — 셸은 위에서 아래로 돌아, `_site_of` 가 선 뒤가 아니면 못 부른다.
+if [ "$MODE" = site ]; then
+  _site_of
+  if [ -n "$_SITE" ]; then echo "$_SITE $_SITE_HOW"; exit 0; fi
+  echo "자리를 못 쟀다 — ${CONFIG_ROOT:-설정 저장소를 못 찾았다}/secrets.d/*.env 에 이긴 자리가 없다"
+  exit 2
+fi
+
+# ══ 단계 · 처음 값 이어서 — check · install · auto ════════════════════════
+#    층 — 없음(준비)
+#    하는 일 — 도구 훅 껍데기 이름 다섯과 당김 창(`PULL_TTL`)을 세운다 — 라이브러리 함수가 불릴 때 읽는다
+#    앞에서 받는 것 — 없다
+#    안 하는 것 — 아무것도 안 부른다
+IMAGE_GATE_SHELL=image-gate.sh
+
+WEB_RETRY_SHELL=web-retry.sh
+
+DRM_GUIDE_SHELL=drm-guide.sh
+
+BASH_BACKSLASH_SHELL=bash-backslash-deny.sh
+
+UTF8_BOM_SHELL=utf8-bom.sh
+
+PULL_TTL=90   # 초. 훅 둘(저장소·홈)이 한 세션에서 40여 초 걸러 도는 것을 한 창으로 덮는다
+
+# ══ 단계 · 세션 — auto 만 ════════════════════════
+#    층 — 저장소(커밋 훅 배선 · 저장소 제 시작 일 · 당김 · venv 를 세션 셸에 잇기) · 홈과 환경(PC 전체 일을 맡을
+#      때 — 규범 · 룰 · 에이전트 · 씨앗 밀기 · 개인 칸의 가벼운 것 · 홈 훅과 신뢰 심기)
+#    하는 일 — 매 세션 일을 하고(리눅스는 붙은 저장소마다 당김 · main 맞추기를 배경으로 더한다), 낡음과 선언 지문(전역 ·
+#      저장소)을 견준다. 깔 것이 없으면 여기서 0 으로 끝나고, 있으면 `MODE=install` · `INSTALL_BG=1` 로 설치
+#      단계에 넘긴다
+#    앞에서 받는 것 — 준비의 `PC_WIDE` · `CONFIG_ROOT` · 상태 파일 자리, 고른 해석기, 처음 값
+#    안 하는 것 — 깔기(설치 단계가 배경에서 든다) · 진단 줄. 형제 저장소 세션은 홈에 안 쓰고 견주어 알리기만 한다
+# auto — 두 걸음은 매 세션, 설치는 지문이 어긋날 때만 (claude-config 0009 · 0010):
+#   ① 원격을 당긴다 — ff-only, main 체크아웃일 때만. 로컬을 다치게 하지 않는다:
+#      갈라졌거나 오프라인이면 그대로 두고 **사유까지** 말한다. 「매 세션 풀부터」가 여기로 들어온다.
+#   ② 홈 규범·훅 배선을 새로 민다 — 멱등·싼 것이라 매 세션. **PC 전체 일이라 설정 저장소 세션과
+#      저장소 밖 세션만 한다** (0062 · 위 PC_WIDE). 형제 저장소 세션은 게이트 배선만 하고 홈은
+#      견주기만 해서, 맞출 것이 있으면 한 줄로 알린다(`pc_wide_notice`).
+#   ③ 선언 지문이 어긋날 때만 깐다 — 설치의 무거움(npm ci)이 선언 바뀐 세션에만 든다.
+#      그 설치도 배경에서 돌아 세션 시작을 안 잡는다(`install_bg` · 0070).
+#   리눅스(리모트 컨테이너)는 하나 더 — 붙은 저장소마다 main 을 배경으로 원격에 맞춘다(`sync_main_bg` · `pull_ff` · 0069).
+# ⚠ 리모트도 같은 세 걸음이다 (0010). 옛 판(「컨테이너가 새로 떠 무조건 깐다」)은 맨
+#   컨테이너 전제였는데 환경 이미지가 서면서 뒤집혔다 — 도구·venv·지문은 이미지 시점에
+#   실려 오고 코드만 세션마다 최신이라, 지문이 「이미지가 낡았나」를 가른다. 맨
+#   컨테이너에서도 옳다: 지문 파일이 없으면 어긋남이라 그대로 설치로 간다.
+if [ "$MODE" = auto ]; then
+  wire_commit_hooks  # 당김 앞이다 — 망이 느리거나 훅이 잘려도 게이트만은 선다 (#31)
+  run_repo_start     # 당김 앞이다 — 저장소가 제 나무를 당김이 설 수 있는 꼴로 만든다
+  # 열쇠는 당김 앞에서 읽는다 — 배경 병합이 작업 나무를 바꾸기 전의 판을 잡는다. 그래도 도는 사이 판이
+  #   움직이면 `pc_wide_mark` 가 열쇠를 안 적는다 (0065).
+  [ -n "$PC_WIDE" ] && pc_wide_key
+  pull_ff "$PROJECT_DIR"
+  # 리눅스(리모트 컨테이너)만 — 붙은 저장소마다 main 을 배경으로 원격에 맞춘다 (0069).
+  #   main 이 아닌 갈래 위면 참조만(`sync_main_bg`), main 위면 **작업 나무까지** 빨리감기로(`pull_ff`) 옮긴다.
+  # ⚠ `OS=linux` 가 아니라 `uname` 으로 가른다 — 저 값은 윈도우가 아닌 모든 것(맥 포함)을 받는 칸이다.
+  # ⚠ **main 위 형제의 작업 나무를 옮기는 것은 뜻한 것이다** (0069) — 설정 저장소 세션이 형제 파일을 읽어
+  #   견주는 일(형제 사본 대조 · 규격 빌려 오기)이 최신을 보게. 커밋 안 한 편집과 겹치면 git 이 거절한다.
+  #   이 세션의 저장소는 위에서 이미 당겼다(두 번 부르면 경고가 두 줄이 된다).
+  SYNC_BG=""
+  if [ "$(uname -s)" = Linux ]; then
+    SYNC_BG=1
+    for _g in "$(dirname "$PROJECT_DIR")"/*/.git; do
+      [ -e "$_g" ] || continue
+      _r="${_g%/.git}"
+      [ "$_r" = "$PROJECT_DIR" ] || pull_ff "$_r"
+      sync_main_bg "$_r"
+    done
+  fi
+  # PC 전체 일 — 설정 저장소 세션과 저장소 밖 세션만 맡는다 (0062). 형제 저장소 세션은 설정
+  #   저장소를 당기려고 따로 걸음을 두지 않는다: 당겨 온 것은 홈에 밀어야 실리는데 그 밀기를 이 세션이 안 한다.
+  #   리눅스는 위 고리가 붙은 저장소를 다 돌아 main 위 설정 저장소도 당겨지지만(0069), 홈에 미는 것은 여전히 없다.
+  # ⚠ **같은 판으로 이미 맞춘 홈은 다시 안 맞춘다** (0065) — 로그인 자동 실행이 방금 다 한 일을 세션마다
+  #   되풀이하던 값이 사내 VDI 에서 20초를 넘었다(#96). 열쇠가 안 맞으면 그 사이 바뀐 걸음만 한다.
+  if [ -n "$PC_WIDE" ]; then
+    if [ -n "$PW_RUN" ]; then
+      PC_WIDE_FAIL=""
+      [ "$PW_RUN" = part ] && PUSH_ONLY="$PW_CHANGED"
+      deploy_home_norms  # 당김이 배경이라 이번엔 지난 판을 민다 — 방금 당긴 것은 다음 세션이 민다 (0043)
+      PUSH_ONLY=""
+      [ -n "$PW_REST" ] && deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
+      [ -n "$PW_PLANT" ] && plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
+      # 표식은 아래 지문 게이트 뒤에 적는다 — 전역 도구를 깔 판이면 그 설치가 끝나야 「맞췄다」가 참이다
+    else
+      # 할 일이 없다고 봤다 — 형제 세션 알림에 「맡는 자리가 돌고 있다」를 남긴다 (0068).
+      # ⚠ 할 일이 있는 갈래에서는 안 찍는다 — 그 일이 도중에 죽으면 「돌고 있다」가 거짓이 된다.
+      : > "$PC_WIDE_SEEN" 2>/dev/null || true
+    fi
+  else
+    pc_wide_notice
+  fi
+  wire_python_path   # 지문 게이트 앞이다 — 배선은 설치의 사건이 아니라 세션의 상태다 (0011)
+  # ── 낡음 게이트 — **선언이 그대로여도 도구는 낡는다** ────────────────────────
+  # ⚠ 지문은 「선언이 바뀌었나」를 재지 「도구가 낡았나」를 안 잰다. 그래서 선언을 안 고치는
+  #   기계(집·회사 PC)에서는 한 번 깔린 도구가 **영영 안 올라갔다** — 낡은 줄도 모르고 돈다.
+  # ⚠ **표식이 없으면 안 민다. 표식만 남긴다.** 컨테이너는 세션마다 새로 나서 표식이 늘
+  #   없는데, 거기서 밀면 **매 세션 수십 초를 물어야 한다.** 그리고 그 자리에서는 밀 까닭도
+  #   약하다: 도구가 이미지만큼만 낡았고 이미지는 이 훅이 관리하는 것이 아니다.
+  #   영속 기계는 표식이 남아 쌓이므로 제때 낡고, 그때 한 번 민다.
+  UPGRADE=""
+  if [ ! -f "$FRESH" ]; then
+    : > "$FRESH" 2>/dev/null || true
+  elif [ -n "$(find "$FRESH" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ]; then
+    UPGRADE=1
+    echo "$PROJECT_NAME: 도구의 새 판을 견준다 (마지막 견주기가 ${UPGRADE_DAYS}일을 넘었다 · 새 판이 있는 것만 받는다)"
+  fi
+
+  # ── 지문 게이트 — **둘로 갈린다** (#43). 전역형 도구는 기계 하나에 서므로 지문도 하나고,
+  #    저장소 지문이 어긋나도 전역을 다시 훑을 까닭이 없다(그 반대도 같다). 갈려 있지 않던
+  #    판에서는 저장소 하나의 선언이 바뀌면 그 세션이 전역 다섯을 통째로 다시 물었다.
+  # ⚠ 낡음(UPGRADE)은 둘 다 민다 — 「도구가 낡았나」는 어느 층에도 같이 걸리는 명제다.
+  DO_GLOBAL=""; DO_REPO=""
+  # ⚠ 전역 도구는 PC 전체 일이다 — 형제 저장소 세션은 대조조차 안 한다(형제 선언을 전부 읽는 자리라서다, 0062).
+  # ⚠ 대조도 PC 전체 일이라 열쇠를 탄다 (0065) — 같은 판으로 맞춘 홈이면 그때 이미 대조했다. 형제 저장소의
+  #   전역 선언이 바뀐 것은 이 열쇠에 안 잡히고, 로그인 자동 실행의 설치가 잡는다(형제 세션과 같은 뜻 · 0062).
+  if [ -n "$PC_WIDE" ] && { [ -n "$PW_REST" ] || [ -n "$UPGRADE" ]; }; then
+    { [ -z "$UPGRADE" ] && [ "$(global_fingerprint)" = "$(cat "$GSTAMP" 2>/dev/null)" ]; } || DO_GLOBAL=1
+  fi
+  { [ -z "$UPGRADE" ] && [ "$(decl_fingerprint)"   = "$(cat "$STAMP"  2>/dev/null)" ]; } || DO_REPO=1
+  # ⚠ **PC 전체 일의 표식은 여기서 적는다 — 전역 도구를 깔 판이면 미룬다** (0065). 대조가 어긋나 설치로 가는
+  #   세션이 먼저 판을 적고 설치 도중 죽으면(창을 닫았다 · 느린 망에서 끊겼다), 다음 세션은 판이 맞아 대조를
+  #   아예 안 하고 새 도구가 안 깔린 채 조용히 남는다. 미룬 표식은 설치 갈래가 전역 지문을 굳힌 뒤(⑧) 적는다.
+  if [ -n "$PC_WIDE" ] && [ -n "$PW_RUN" ]; then
+    if [ -n "$DO_GLOBAL" ]; then PW_DEFER=1; else pc_wide_mark; fi
+  fi
+  if [ -z "$DO_GLOBAL" ] && [ -z "$DO_REPO" ]; then
+    # 침묵하되 실패까지 삼키지는 않는다 — 지난 설치의 실패가 남아 있으면 **사유까지** 알린다.
+    # 다시 깔지는 않는다: 막힌 자리(예: 내려받기가 막힌 망)는 다시 깔아도 또 막혀,
+    # 재시도가 매 세션 비용만 된다. 다시 까는 손은 deploy.ps1·--install 이 든다.
+    # ⚠ **stdout 이다.** SessionStart 훅에서 모델의 문맥에 들어가는 것은 stdout 뿐이고 stderr 는
+    #   기록에만 남는다 — 종전엔 이 줄이 stderr 라 네 세션 연속 아무도 못 읽었다(실측 2026-09-05:
+    #   npm ci 실패가 남은 채 commitlint 없는 커밋이 넷 지나갔다). 사유를 같이 찍는 까닭도 같다 —
+    #   「파일을 열어 보라」는 말은 안 열린다.
+    # ⚠ **전역 갈래의 실패도 같이 낸다** (#43). 그쪽은 기계 한 자리에 적히므로, 여기서 안 읽으면
+    #   전역형 도구가 못 깔린 채로 도는 저장소는 사유를 아무 데서도 못 본다.
+    if [ -s "$FAILS" ] || [ -s "$GFAILS" ]; then
+      echo "$PROJECT_NAME: ⚠ 지난 설치에 실패가 남아 있다 — deploy.ps1 이나 --install 로 다시 깐다. 사유:"
+      # 하나가 없을 때 awk 가 그 자리에서 죽어 뒤엣것을 안 읽는다 — 파일마다 따로 부른다
+      for _ff in "$FAILS" "$GFAILS"; do
+        [ -s "$_ff" ] && awk -F'\t' '{printf "  · %s — %s\n", $1, $2}' "$_ff" 2>/dev/null
+      done
+    fi
+    _gr="$(global_rule_reason)"
+    [ -n "$_gr" ] && echo "$PROJECT_NAME: ⚠ 전역 규율 — $_gr"
+    exit 0
+  fi
+  # 선언이 어긋났거나 도구가 낡았다 — 깐다. **배경에서** (`install_bg` · 0070). 지문은 설치 끝(⑧)에 굳는다
+  MODE=install; INSTALL_BG=1
+fi
+
+# ══ 단계 · 설치 — install(명시한 갈래 · auto 에서 넘어온 판) ════════════════════════
+#    층 — 기계(전역형 도구) · 저장소(venv · npm ci · 배선 · 로컬 main · 선언 지문) · 홈과 환경(PC 전체 일을 맡을 때)
+#    하는 일 — auto 에서 넘어온 판은 `install_bg` 로 배경에 띄우고 0 으로 끝난다. 명시한 갈래는 `install_step` 을
+#      기다린다 — PC 에서 밖이 부른 `--install` 은 개인 칸을 세우고 deploy.ps1 에 넘긴 뒤 그 종료코드로 끝나고,
+#      `--install-global` 은 전역형 도구만 깔고 끝난다. 나머지(deploy.ps1 의 저장소 고리 · 리모트)는 진단으로 간다
+#    앞에서 받는 것 — `ASKED` · `CLAUDE_CONFIG_DEPLOYING`, 세션 단계가 정한 `DO_GLOBAL` · `DO_REPO` · `UPGRADE` ·
+#      `INSTALL_BG`
+#    안 하는 것 — 저장소 도구의 ✅ · ❌ 줄(진단 단계가 낸다 — 전역형 도구 줄만 여기서 낸다)
+# ══ 설치 걸음 — 명시한 `--install` · `--install-global` 은 여기서 기다리고, 세션(auto)은 배경으로 띄운다 ══
+
+INSTALL_BG_LOCK="$PROJECT_DIR/.claude/install-bg.lock"
+INSTALL_BG_LOG="$PROJECT_DIR/.claude/install-bg.log"
+
+if [ "$MODE" = install ]; then
+  if [ -n "${INSTALL_BG:-}" ]; then
+    install_bg
+    _gr="$(global_rule_reason)"
+    [ -n "$_gr" ] && echo "$PROJECT_NAME: ⚠ 전역 규율 — $_gr"
+    exit 0
+  fi
+  install_step
+fi
+
+# ══ 단계 · 진단 — check · 진단까지 오는 install ════════════════════════
+#    층 — 없음(재기)
+#    하는 일 — 전역 규율 · 홈 훅(설정 저장소 세션만) · 커밋 훅 배선과 게이트 · 선언 도구마다 닿나를 한 줄씩 내고,
+#      메모리 목차 한도를 잰다
+#    앞에서 받는 것 — 설치가 남긴 실패 기록(`install-fail` · `install-global-fail`) · 전역 걸음의 확인 명부(`GVERIFIED`)
+#    안 하는 것 — 깔기 · 심기 · 쓰기
+# ════════════════════════ 진단 — 지금 어느 검사가 도나 ════════════════════════
+# 판정 문구는 여기 한 자리에만 둔다. 위층이 죽으면 아래는 "실패"가 아니라 "못 잼"으로 낸다.
+
+down=0
 
 _dt0=$SECONDS   # 진단 절이 걸린 시간 — 끝줄에 붙는다 (#48)
 echo "$PROJECT_NAME — 지금 어느 검사가 도나  ($OS · $MODE)"
@@ -3075,125 +3345,7 @@ if [ -d "$PROJECT_DIR/.githooks" ]; then
   fi
 fi
 
-# 선언의 판이 **잴 수 있는 꼴인가** — 선언만 읽는다(npm 을 안 부르므로 통과 갈래에서도 싸다).
-# ⚠ **범위·딱지는 안 잰 것이다.** 통과 옆에 그 사실이 안 찍히면 「전부 통과」가 「판까지 봤다」로
-#   읽힌다 — 초록의 폭을 검사가 스스로 말하게 한다(규범 [Goal-Driven Execution]).
-pin_shape() {  # pin_shape <선언파일> <이름> — 안 잰 까닭 한 줄, 잴 수 있으면 빈 값
-  _psi=''; _sk=''
-  { IFS= read -r _psi; IFS= read -r _sk; } <<EOF
-$(decl_fields "$1" "$2" install package)
-EOF
-  [ "$_psi" = npm-global ] || return 0
-  case "$_sk" in ?*@*) ;; *) return 0 ;; esac   # 판을 안 박은 선언은 애초에 안 잰다고 적혀 있다
-  _sv="${_sk##*@}"
-  case "$_sv" in ''|*[!0-9.]*)
-    printf '판 「%s」 는 정확한 판이 아니라 **판은 안 쟀다**(`이름@1.2.3` 꼴이어야 잰다)' "$_sv" ;;
-  esac
-  return 0
-}
-
-# 선언이 판을 박았는데 깔린 판이 다른가 — **「안 깔렸다」와 「판이 다르다」는 고칠 자리가
-# 다르다.** 둘 다 ❌ 로 나오는데 사유가 「안 닿는다」 하나면, 다음 사람은 npm 이 없나부터
-# 뒤진다. 사유 없는 ❌ 는 다음 사람에게 부재와 같다 (위 `nogo` 곁말과 같은 결).
-pin_mismatch() {  # pin_mismatch <선언파일> <이름> — 어긋나면 읽을 한 줄, 아니면 빈 값
-  _pmi=''; _mk=''
-  { IFS= read -r _pmi; IFS= read -r _mk; } <<EOF
-$(decl_fields "$1" "$2" install package)
-EOF
-  [ "$_pmi" = npm-global ] || return 0
-  # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
-  case "$_mk" in ?*@*) ;; *) return 0 ;; esac
-  _mv="${_mk##*@}"
-  # 꼴 판정은 `pin_shape` 한 자리가 든다 — 여기서도 말하면 같은 문장이 두 벌이 된다.
-  case "$_mv" in ''|*[!0-9.]*) return 0 ;; esac
-  _mh="$(npm_global_version "${_mk%@*}" || true)"
-  [ -n "$_mh" ] && [ "$_mh" != "$_mv" ] &&
-    printf '깔린 판이 다르다: %s (선언은 %s) — 다시 깔면 선언한 판을 받는다' "$_mh" "$_mv"
-  return 0
-}
-
-# ── 전역 걸음이 **이 실행에서** 낸 판정이 있나 — 캐시가 아니라 인용이다 (#57) ─────────
-# ⚠ 배포 한 번(`deploy.ps1`)이 전역 걸음에서 도구마다 프로브를 이미 띄웠는데, 이어 도는
-#   저장소 다섯의 진단이 같은 전역형 도구를 저장소마다 또 띄웠다 — 같은 실행에서 같은 명제를
-#   스물다섯 번(사내 VDI 실측 ~280초). 전역형 도구는 기계에 하나라 저장소마다 답이 같다.
-# ⚠ **프로브를 뺀 것이 아니다** — 「깔린 것과 닿는 것은 다른 명제」는 그대로 서 있고(이 파일
-#   머리말), 그 실행이 방금 실행해서 낸 판정을 좌표로 인용할 뿐이다. 그래서 문은 셋이고 셋이
-#   다 열려야 한다: **표식이 서 있나**(`CLAUDE_CONFIG_RUN` — 세우는 자는 `deploy.ps1` 하나다)
-#   · **이름과 프로브 대상이 같나**(대상이 다르면 같은 이름이라도 딴 명제다) · **표식이 같나**
-#   (지난 실행의 명부는 이번 실행의 실측이 아니다). 배포 밖에서는 표식이 없어 한 줄도 안 바뀐다.
-# ⚠ **읽기는 셸 안에서 끝낸다** — 저장소마다 도구마다 도는 자리라, 여기서 프로세스를 띄우면
-#   줄이려던 값을 되돌려 놓는다. `read` 는 내장이다.
-global_verified() {  # global_verified <선언파일> <이름> <probe-target>
-  [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 1
-  [ -f "$GVERIFIED" ] || return 1
-  _gvi=''; _gvk=''
-  { IFS= read -r _gvi; IFS= read -r _gvk; } <<EOF
-$(decl_fields "$1" "$2" install probe)
-EOF
-  global_kind "$_gvi" || return 1
-  # ⚠ **`node-resolvable` 은 인용이 못 선다 — 프로브 둘이 딴 명제를 잰다.** 전역 걸음의
-  #   `probe_global` 은 `npm root -g` 에 대고 「기계에 있나」를 묻고, 저장소의 `probe_reach` 는
-  #   **이 저장소 안에서** 「정션을 타고 이름이 풀리나」를 묻는다. 기계에 있어도 저장소 배선이
-  #   지면 후자는 져야 하는데, 전자를 인용하면 그 ❌(「깔렸는데 프로브가 못 찾는다: 배선이
-  #   끊겼다」)가 통째로 사라진다 — **인용은 같은 명제를 대신할 때만 선다.** 기계에 대고 묻는
-  #   갈래(PATH 실행형)만 남기고 이 갈래는 옛 길 그대로 저장소마다 잰다.
-  [ "$_gvk" = node-resolvable ] && return 1
-  # 줄의 꼴은 쓰는 자 `gverified_put` 과 한 벌이다 — 통째로 견줘 셋 중 하나만 달라도 안 문다.
-  _vq="$(printf '%s\t%s\t%s' "$2" "$3" "$CLAUDE_CONFIG_RUN")"
-  while IFS= read -r _vl; do
-    [ "$_vl" = "$_vq" ] && return 0
-  done < "$GVERIFIED"
-  return 1
-}
-
 # 선언 축 — 전역·프로젝트 두 층. 이름·뜻은 전부 선언에서 온다
-render_decl() {  # render_decl <선언파일> <층라벨>
-  for _name in $(decl_sections "$1"); do
-    # ⚠ **on-demand 도 여기서 같이 읽는다.** 쓰는 자리는 맨 아래 갈래 하나뿐이지만, 같은
-    #   awk 가 이미 그 절을 읽고 있어 **키 한 칸을 더 받는 값이 0 이다** — 저 아래서 따로
-    #   물으면 프로세스 하나가 도구마다 더 뜬다.
-    _probe=''; _target=''; _by=''; _ondemand=''; _inst=''
-    {
-      IFS= read -r _probe
-      IFS= read -r _target
-      IFS= read -r _by
-      IFS= read -r _ondemand
-      IFS= read -r _inst
-    } <<EOF
-$(decl_fields "$1" "$_name" probe probe-target called-by on-demand install)
-EOF
-    # 까는 걸음의 이름 — project-axis 도구는 이 이름으로 실패가 남는다 (why 곁주석). `try` 가
-    # 적는 그 이름 그대로여야 한다 — 갈리면 사유가 또 안 붙는다.
-    case "$_probe" in
-      exec-npm-bin)      _step="노드 의존성" ;;
-      python-importable) _step="파이썬 의존성" ;;
-      *)                 _step="" ;;
-    esac
-    # ⚠ **판정 앞에서 부르지 않는다.** `pin_mismatch` 안에서 `npm root -g` + `node` 가 도는데,
-    #   통과할 도구에도 그 쌍이 돌면 세션마다 도구 수만큼 곱해진다(npm 은 시작만으로 수백 ms 다).
-    # ⚠ **프로브 앞에 선다 — 이기면 프로브를 안 띄운다.** 문 셋(표식·이름+대상·같은 표식)은
-    #   `global_verified` 가 든다. 표식이 없는 자리에서는 첫 문에서 바로 져 옛 길 그대로다.
-    if global_verified "$1" "$_name" "$_target"; then
-      gate "$_name" ok "$_by ($2) — 전역 걸음이 이 실행에서 확인했다"
-    elif probe_decl "$1" "$_name"; then
-      _shape="$(pin_shape "$1" "$_name")"
-      if [ -n "$_shape" ]; then gate "$_name" ok "$_by ($2) — $_shape"
-      else                      gate "$_name" ok "$_by ($2)"; fi
-    elif _pin="$(pin_mismatch "$1" "$_name")"; [ -n "$_pin" ]; then
-      gate "$_name" off "$_by ($2) — $_pin$(why "$_name" "$_step")"
-    elif [ "$_probe" = node-resolvable ] && npm_root_g && [ -d "$NPM_ROOT_G/$_target" ]; then
-      gate "$_name" off "$_by ($2) — 깔렸는데 프로브가 못 찾는다: 배선이 끊겼다$(why "$_name" "$_step")"
-    elif [ "$_ondemand" = yes ]; then
-      # 선언이 「필요할 때 깐다」로 둔 도구 — 부재가 이 저장소의 검사를 끄는 것이 아니다
-      gate "$_name" ok "$_by ($2) — 안 닿는다 · 필요할 때 깐다 (on-demand)"
-    elif ! kind_here "$_inst"; then
-      # 이 자리에서 못 타는 설치법 — 깔 손이 없으니 꺼진 검사로 안 센다(`kind_here` 곁말)
-      gate "$_name" ok "$_by ($2) — 안 닿는다 · 이 자리($OS)에서는 안 깐다 (설치법 $_inst)"
-    else
-      gate "$_name" off "$_by ($2) — 안 닿는다$(why "$_name" "$_step")"
-    fi
-  done
-}
 render_decl "$GCONF" "전역"
 render_decl "$PCONF" "프로젝트"
 
@@ -3222,6 +3374,11 @@ if [ -f "$1" ]; then
 fi
 printf '  ── 진단을 마쳤다 (%s초)\n' "$((SECONDS - _dt0))"
 
+# ══ 단계 · 판정 — 진단을 지난 갈래 ════════════════════════
+#    층 — 없음(마무리)
+#    하는 일 — check · install 은 꺼진 검사가 있으면 1, 없으면 0 으로 끝난다
+#    앞에서 받는 것 — 진단의 꺼진 검사 수(`down`)
+#    안 하는 것 — 줄을 더 내지 않는다
 # ── 판정 — **꺼진 검사가 있으면 0 으로 안 끝난다** ────────────────────────────
 # ⚠ 가르는 것은 「깔았나」가 아니라 **누가 물었나**다. `auto` 는 세션 시작이라, 0 이 아니면
 #   세션 자체가 오류로 보인다 — 거기서는 진단을 말로만 낸다. `--check` 와 `--install` 은

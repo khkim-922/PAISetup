@@ -367,7 +367,7 @@ def main():
     ap = Parser(add_help=False)
     ap.add_argument('--prompt-file', required=True)
     ap.add_argument('--out', required=True)
-    ap.add_argument('--cwd')
+    ap.add_argument('--cwd', required=True)
     ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC)
     ap.add_argument('--agent', choices=AGENTS)
     ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로 — `<쪽>:<id>`
@@ -417,8 +417,8 @@ def run(a):
     if any(x not in allowed for x in order):
         write(a.out, f'{FOOTER} usage · 이 자리에서 안 쓰는 쪽이다 — {KNOB_AGENTS}={",".join(allowed)}\n')
         return 4
-    if a.write and not (a.cwd and os.path.isdir(a.cwd)):
-        write(a.out, f'{FOOTER} usage · --write 는 --cwd 로 작업 자리를 준다 — 쓰는 범위가 그 자리다\n')
+    if not (a.cwd and os.path.isdir(a.cwd)):
+        write(a.out, f'{FOOTER} usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
         return 4
 
     started = time.monotonic()

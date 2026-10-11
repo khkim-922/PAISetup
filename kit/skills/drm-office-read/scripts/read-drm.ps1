@@ -84,6 +84,67 @@ function New-OfficeApp {
     }
 }
 
+# ── 글 밖에 있는 것을 센다 ────────────────────────────────────────────────
+# 글자만 뽑으면 표 · 그림 · 수식 · 차트는 뽑히지 않거나 평탄해진다. 그래서 「글로 담기지 않는
+# 것이 이 문서에 몇 개 있나」를 문서 자신에게 묻는다 — 셀 수 있는 값이라 0 이면 그림이 필요
+# 없다고 단정할 수 있다. 글자 수로는 못 가른다: 몇 자부터 짧은가는 문서마다 달라 답이 없고,
+# 셀 값만으로 완결된 시트와 수식 하나가 전부인 문서가 같은 길이로 나온다.
+# 묻는 이름은 앱마다 다르다. 못 묻는 항목은 0 으로 둔다 — 판의 차이로 없는 속성이 있다.
+function Add-Count {
+    param([hashtable]$Into, [string]$Key, [scriptblock]$Get)
+    try {
+        $v = [int](& $Get)
+        if ($v -gt 0) { $Into[$Key] = [int]$Into[$Key] + $v }
+    } catch { }
+}
+
+function Measure-WordVisual {
+    param($Doc)
+    $c = @{}
+    Add-Count $c '표'   { $Doc.Tables.Count }
+    Add-Count $c '그림' { $Doc.InlineShapes.Count }
+    Add-Count $c '도형' { $Doc.Shapes.Count }
+    Add-Count $c '수식' { $Doc.OMaths.Count }
+    Add-Count $c '필드' { $Doc.Fields.Count }
+    return $c
+}
+
+function Measure-ExcelVisual {
+    param($Book)
+    $c = @{}
+    foreach ($sheet in $Book.Sheets) {
+        Add-Count $c '도형' { $sheet.Shapes.Count }
+        Add-Count $c '차트' { $sheet.ChartObjects().Count }
+        Add-Count $c '그림' { $sheet.Pictures().Count }
+    }
+    Add-Count $c '차트' { $Book.Charts.Count }   # 시트째 차트 — 위 고리가 안 센다
+    return $c
+}
+
+function Measure-PptVisual {
+    param($Pres)
+    # 장마다 글 없는 도형을 센다 — 글이 든 도형은 위 추출이 이미 담았다. 표 · 그룹도 같다.
+    $c = @{}
+    foreach ($slide in $Pres.Slides) {
+        foreach ($shape in $slide.Shapes) {
+            try {
+                if ($shape.HasTable -ne 0) { continue }
+                if ($shape.Type -eq 6) { continue }
+                if ($shape.HasTextFrame -and $shape.TextFrame.HasText) { continue }
+            } catch { }
+            $c['그림·도형'] = [int]$c['그림·도형'] + 1
+        }
+    }
+    return $c
+}
+
+# 센 것을 한 줄로 — 0 이면 빈 글이다(부를 것이 없다)
+function Format-Visual {
+    param([hashtable]$Counts)
+    if (-not $Counts -or $Counts.Count -eq 0) { return '' }
+    return ' · 글 밖 ' + (($Counts.Keys | Sort-Object | ForEach-Object { "$_ $($Counts[$_])" }) -join ' · ')
+}
+
 function Read-WithWord {
     param($App, [string]$LiteralPath)
     # 인자 셋 — 경로 · ConfirmConversions=$false · ReadOnly=$true.
@@ -91,7 +152,7 @@ function Read-WithWord {
     $doc = $App.Documents.Open($LiteralPath, $false, $true)
     try {
         try { $doc.Saved = $true } catch { }
-        return [string]$doc.Content.Text
+        return @{ Text = [string]$doc.Content.Text; Visual = (Measure-WordVisual $doc) }
     } finally {
         try { $doc.Close($false) } catch { }   # SaveChanges=$false — 원본을 절대 안 고친다
         try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($doc) | Out-Null } catch { }
@@ -117,7 +178,7 @@ function Read-WithExcel {
                 [void]$out.AppendLine('| ' + ($cells -join ' | ') + ' |')
             }
         }
-        return $out.ToString()
+        return @{ Text = $out.ToString(); Visual = (Measure-ExcelVisual $book) }
     } finally {
         try { $book.Close($false) } catch { }
         try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($book) | Out-Null } catch { }
@@ -162,7 +223,7 @@ function Read-WithPPT {
                 }
             }
         }
-        return $out.ToString()
+        return @{ Text = $out.ToString(); Visual = (Measure-PptVisual $pres) }
     } finally {
         try { $pres.Close() } catch { }
         try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($pres) | Out-Null } catch { }
@@ -218,13 +279,14 @@ try {
             $mark = if ($wrapped) { 'DRM' } else { '평문' }
 
             try {
-                $text = switch ($appName) {
+                $read = switch ($appName) {
                     'Word'  { Read-WithWord  -App $app -LiteralPath $file }
                     'Excel' { Read-WithExcel -App $app -LiteralPath $file }
                     'PPT'   { Read-WithPPT   -App $app -LiteralPath $file }
                 }
+                $text = [string]$read.Text
                 $len = $text.Length
-                Write-Output "[$mark] $name — $appName · 글자 $len · 머리 [$head]"
+                Write-Output "[$mark] $name — $appName · 글자 $len$(Format-Visual $read.Visual) · 머리 [$head]"
 
                 if ($OutDir) {
                     $dest = Join-Path $OutDir "$name.txt"

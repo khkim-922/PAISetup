@@ -38,6 +38,8 @@ agy 가 띄우는 명령 가운데 `USERPROFILE` 로 홈을 찾는 것(node · p
   다) 또는 빈 답 · 3 시간 초과 · 4 부르는 법이 틀렸다
 `--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다. **이어 묻기 id 는 그 홈에 대화가 실제로 남았을 때만
 싣는다** — 제 홈에 못 쓰는 자리에서 돌면 agy 는 id 를 내도 대화를 못 남긴다.
+
+자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
 """
 import argparse
 import json
@@ -371,7 +373,7 @@ def main():
     ap = Parser(add_help=False)
     ap.add_argument('--prompt-file', required=True)
     ap.add_argument('--out', required=True)
-    ap.add_argument('--cwd')
+    ap.add_argument('--cwd', required=True)
     ap.add_argument('--model')
     ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC)
     ap.add_argument('--conversation')
@@ -394,6 +396,11 @@ def main():
 
 
 def run(a):
+    # 자리는 `--cwd` 가 필수라 늘 오지만, 그 선언이 퇴행하면 `None` 이 여기로 와 멈춘다 — 멈춤은 갈래 1 이고
+    # 부르는 쪽은 까닭을 못 읽는다. 관문이 제 갈래(4)로 내게 `None` 도 같이 문다
+    if not (a.cwd and os.path.isdir(a.cwd)):
+        write(a.out, f'[agy-bg] usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
+        return 4
     try:
         # BOM 은 걷는다 — PowerShell 5.1 의 `Set-Content -Encoding utf8` 은 BOM 을 붙이고, 프롬프트는 명령줄로 간다
         with open(a.prompt_file, encoding='utf-8-sig') as f:

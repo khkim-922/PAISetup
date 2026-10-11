@@ -23,7 +23,9 @@
     캡처할 슬라이드 번호. 쉼표로 여럿 준다 (예: "3,8"). 생략하면 1번만.
 
 .PARAMETER OutDir
-    이미지를 둘 폴더. 기본값은 현재 폴더.
+    이미지를 둘 폴더. 생략하면 임시 폴더 아래 `drm-slides\<덱 이름>-<시각>\` 을 짓는다 —
+    형제 `capture_pages.ps1` 과 같은 자리다. 현재 폴더로 떨구면 그 폴더가 저장소이거나
+    표본 폴더일 때 산출물이 섞인다.
 
 .PARAMETER MaxEdge
     줄인 뒤 긴 변 픽셀. 기본 1280 — 글자 판독은 되고 토큰은 아끼는 자리.
@@ -36,7 +38,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Path,
     [string]$Slides = "1",
-    [string]$OutDir = ".",
+    [string]$OutDir,
     [int]$MaxEdge = 1280,
     [int]$Wait = 1000
 )
@@ -75,7 +77,10 @@ foreach ($ver in $officeVerKeys) {
 }
 
 $full = (Resolve-Path -LiteralPath $Path).Path
-$outRoot = (Resolve-Path -LiteralPath $OutDir).Path
+if (-not $OutDir) {
+    $OutDir = Join-Path ([IO.Path]::GetTempPath()) ("drm-slides\{0}-{1}" -f [IO.Path]::GetFileNameWithoutExtension($full), (Get-Date -Format 'yyyyMMdd-HHmmss'))
+}
+$outRoot = (New-Item -ItemType Directory -Path $OutDir -Force).FullName
 $slideList = @($Slides -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
 if ($slideList.Count -eq 0) { throw "Slides 에 슬라이드 번호가 없다" }
 

@@ -56,14 +56,24 @@ if [ -z "$run" ]; then
   case "$j" in
     *'"hook_event_name":"UserPromptSubmit"'*|*'"hook_event_name":"PreToolUse"'*)
       t=${j#*'"transcript_path":"'}
-      p=${j#*'"prompt_id":"'}
-      if [ "$t" != "$j" ] && [ "$p" != "$j" ]; then
+      if [ "$t" != "$j" ]; then
         t=${t%%'"'*}
-        p=${p%%'"'*}
-        # 두 표지가 **한 줄에** 함께 들어야 한다 — 이어 걸어 그 줄만 남긴다
-        [ -f "$t" ] && tail -n "$DRM_TAIL_LINES" "$t" 2>/dev/null \
-          | grep -F "\"promptId\":\"$p\"" 2>/dev/null \
-          | grep -q -F '"type":"document"' && run=1
+        if [ -f "$t" ]; then
+          w=$(tail -n "$DRM_TAIL_LINES" "$t" 2>/dev/null)
+          # 꼴이 둘이다(#124) — 옛 꼴은 이 턴 값과 문서 표지가 **한 줄에** 함께 들어야 하고, 큐에 담기는
+          # 꼴은 그 값이 아예 없어 사람이 보낸 첨부 줄(`humanTurn`)로 가른다. 가르는 것은 몸통이 다시
+          # 하므로 여기서는 띄울지만 정한다 — 둘 가운데 하나라도 보이면 띄운다
+          p=${j#*'"prompt_id":"'}
+          if [ "$p" != "$j" ]; then
+            p=${p%%'"'*}
+            printf %s "$w" | grep -F "\"promptId\":\"$p\"" 2>/dev/null \
+              | grep -q -F '"type":"document"' && run=1
+          fi
+          if [ -z "$run" ]; then
+            printf %s "$w" | grep -F '"humanTurn":true' 2>/dev/null \
+              | grep -q -F '"type":"document"' && run=1
+          fi
+        fi
       fi
       ;;
   esac

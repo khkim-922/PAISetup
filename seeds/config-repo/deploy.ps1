@@ -20,6 +20,8 @@
 #      셋이다: deploy.repofiles.conf(저장소로 가는 파일) · deploy.seeds.conf(홈으로 폴더째) ·
 #      deploy.skills.local.conf(홈에서 빼는 스킬). 어느 저장소·어느 슬러그로 가나는 선언이 아니라
 #      personal.conf 의 REPOS · ROOT 에서 **파생한다**(결정 0072)
+#      규범 · 룰 · 에이전트는 이 스크립트가 안 민다 — 손 하나(`.claude/hooks/tool-homes.py`)가 갈 곳 표대로 도구
+#      홈에 놓는다(결정 0112). 이 스크립트는 그 손을 부르고, 손이 바꿀 줄을 계획에 싣는다
 #   4. mcp-servers.json에 적힌 MCP 서버 등록 — **서버마다 `only` 로 자리를 걸 수 있다**
 #      (`only = <자리>,<자리>`). 이 자리가 그 목록에 없으면 안 등록하고, 이미 등록돼 있으면
 #      기본 실행에서 걷는다. 자리는 세션 훅에 묻는다(`--site`) — 결정 0079
@@ -38,15 +40,16 @@
 #                             저장소의 .claude/settings.json 은 훅 등록 파일이라 배포한다 —
 #                             이름이 같을 뿐 다른 것이다
 #
-# 기본 실행이 지우는 것은 **둘뿐이다** — 선언에 있으면서 `only` 로 이 자리에서 안 사는 MCP
+# 이 스크립트가 기본 실행에서 지우는 것은 **둘뿐이다** — 선언에 있으면서 `only` 로 이 자리에서 안 사는 MCP
 # 이름(결정 0079), 그리고 agy 의 옛 스킬 자리와 그 자리를 여는 우리 목록(결정 0111 — 우리 이름을 새 자리로
 # 옮기고 빈 옛 자리를 걷는다). 둘 다 「원본에 없는 것」이 아니라 **선언이 시킨 상태**라 -Prune 이 아닌
 # 계획에 선다. 나머지 제거는 -Prune 을 줄 때만 하고, 후보가 있으면 기본 실행에서도 개수만 알려준다.
+# 규범 · 룰 · 에이전트는 -Prune 을 안 탄다 — 손이 제가 놓았다고 기록한 것만 기본 실행에서 걷는다(손의 머리말).
 # 지우는 것과 다른 것이 하나 있다 — Codex · agy 홈에 미는 스킬과 같은 이름의 폴더가 우리 기록에 없으면, 그 위에 덮어쓰는
 # 대신 통째로 백업 자리로 옮겨 두고 민다(아래 「비켜 두기」). 계획 줄과 남은 수동 작업에 그 이름이 선다.
 #
 # 이미 맞는 것은 건드리지 않는다. 몇 번을 돌려도 안전하다.
-# 덮어쓰거나 치우는 파일은 ~/.claude/backups/deploy-<시각>/ 에 원본을 남긴다.
+# 덮어쓰거나 치우는 파일은 ~/.claude/backups/deploy-<시각>/ 에 원본을 남긴다. 손이 덮거나 걷는 것은 손이 제 백업 자리에 남긴다.
 
 param([switch]$Yes, [switch]$Prune, [switch]$ShowUnchanged)
 
@@ -57,72 +60,10 @@ $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$src    = $PSScriptRoot
-$dst    = Join-Path $HOME '.claude'
-$backup = Join-Path $dst ('backups\deploy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+#region 라이브러리 — 흐름이 부르는 함수는 다 여기 선다. 정의만 있고 도는 문장은 없다
 
-$plan    = @()   # 바꿀 것
-$same    = @()   # 이미 맞는 것
-$todo    = @()   # 사람이 해야 할 것
-# ⚠ **`$todo` 와 갈라 둔다.** 저쪽은 「사람이 손으로 할 것」(키 입력 같은)이라 남아 있어도
-#   환경은 서 있다 — 그것으로 빨강을 내면 판정이 늘 빨강이라 아무것도 안 말한다.
-#   이쪽은 **실행 환경이 안 선 것**이고, 이 목록이 비지 않으면 이 스크립트는 0 으로 안 끝난다.
-$envDown = @()   # 실행 환경이 안 선 것 — 종료코드를 가른다
-$prunable = @()  # 제거 후보 — **원본에 없는 것** (-Prune 없이는 세기만 한다)
-# ⚠ 자리가 뺀 MCP 이름은 **여기 안 든다** — 선언에 있으므로 「원본에 없는 것」이 아니다.
-#   그것은 $plan 의 `mcpremove` 로 서서 기본 실행에서 걷힌다 (§MCP 등록 · 결정 0079).
-# ⚠ **초록도 편다.** 통과가 화면에서 침묵하면 「재서 다 살아 있다」와 「아예 안 쟀다」가
-#   같아진다 — 그 침묵은 아무것도 안 말한 것과 같다. 여기는 나르기만 한다.
-# ⚠ 이제 이 통에 드는 것은 **저장소마다 「마지막 CI」 한 줄**뿐이다 — 훅 진단은 계획 단계가
-#   안 돌리고(`--needs-install` 은 파일만 본다 · #47 ②) 저장소 설치 걸음이 `--install` 끝에 그
-#   자리에서 낸다.
-$gateReport = @()  # 저장소마다 마지막 CI 한 줄 — 초록·빨강·못 쟀다
-
-# 배포 대상은 PC 마다 적지 않고 `personal.conf` 에서 **파생한다** (결정 0072 · 0019 를 대체).
-# ⚠ **왜 파생인가.** 옛 판은 PC 마다 `deploy.targets.d/<PC>.conf` 에 저장소 절대 경로와 메모리 슬러그를
-#   손으로 적었다. 네 장이 사용자 이름 한 칸만 달랐고, 그 한 칸이 다른 새 PC 에서는 저장소 배포 · 저장소
-#   설치 · **전역 설치** · 메모리가 통째로 안 섰다 — 게이트 도구(commitlint · markdownlint · lychee · ruff)가
-#   안 깔려 커밋 게이트가 「못 쟀다」로만 돌았다(2026-09-24 · 09-28). 저장소 목록과 자리는 이미
-#   `personal.conf`(REPOS · ROOT)가 들고 세션 훅이 그것으로 clone 하고 슬러그 폴더를 세운다 — 같은 사실의 사본이었다.
-# ⚠ **슬러그는 제품의 규칙대로 짓는다** — 윈도 경로에서 영숫자가 아닌 글자를 **글자마다** `-` 로.
-#   PowerShell 의 `-replace` 는 UTF-16 글자로 세므로 한글 한 자가 대시 하나다(세션 훅의 같은 규율 ·
-#   `C:\Users\김균한\repos` → `C--Users-----repos`). 메모리 폴더와 자리의 짝은 셋이다:
-#     memory/<REPOS 의 이름>/  → ROOT\<이름>
-#     memory/<이 저장소 이름>/ → 이 저장소 자리
-#     memory/global/           → ROOT (저장소들을 담은 폴더에서 연 세션)
-$memTargets = @{}          # memory/<이름> -> 그 메모리가 딸린 폴더 경로 (슬러그는 이 경로에서 짓는다)
-$globalRuleTargets = @()   # 저장소 배포본을 받고 설치 걸음이 도는 저장소 루트들
+#region 메모리 자리 손 — 경로에서 메모리 슬러그를 짓고, `memory/<이름>/` 이 이 PC 에서 갈 자리를 고른다
 function ConvertTo-Slug([string]$Path) { $Path -replace '[^A-Za-z0-9]', '-' }
-$personalConf = Join-Path $src 'personal.conf'
-$pc = @{}
-if (Test-Path $personalConf) {
-    foreach ($line in (Get-Content $personalConf -Encoding UTF8)) {
-        if ($line -match '^\s*([A-Z_]+)\s*=\s*(.*?)\s*$') { if (-not $pc.ContainsKey($Matches[1])) { $pc[$Matches[1]] = $Matches[2] } }
-    }
-} else {
-    $todo += 'personal.conf 가 없다 — 어느 저장소로 뿌릴지 몰라 저장소 배포본 · 설치 · 저장소 메모리가 안 간다. 씨앗의 personal.conf 를 채워 둔다'
-}
-# ROOT 의 `$HOME` · `~` 는 세션 훅이 푸는 것과 같이 푼다. 비면 세션 훅의 기본값과 같은 `~/repos`.
-$repoRoot = if ($pc['ROOT']) { $pc['ROOT'] } else { '$HOME/repos' }
-$repoRoot = ($repoRoot -replace '^\$HOME', $HOME -replace '^~', $HOME) -replace '/', '\'
-$repoNames = @(($pc['REPOS'] -split '\s+') | Where-Object { $_ })
-foreach ($n in $repoNames) {
-    $p = Join-Path $repoRoot $n
-    $globalRuleTargets += $p
-    $memTargets[$n] = $p
-}
-$memTargets[(Split-Path $src -Leaf)] = $src
-$memTargets['global'] = $repoRoot
-# ⚠ **적힌 저장소가 이 PC 에 하나도 없으면 말한다** — 그때 저장소 설치 걸음도, 그에 딸린 전역 설치 걸음도
-#   통째로 안 선다. clone 은 세션 훅(`--install`)이 personal.conf 의 REPO_URL 로 한다.
-if ($repoNames.Count -gt 0 -and -not ($globalRuleTargets | Where-Object { Test-Path $_ })) {
-    $todo += "personal.conf 의 REPOS 가 이 PC 의 $repoRoot 에 하나도 없다 — 저장소 설치 · 전역 설치가 안 선다. 세션 훅의 --install 이 REPO_URL 로 받는다"
-}
-# 옛 선언이 남았으면 말한다 — 더는 안 읽는데 남아 있으면 「고쳤는데 안 먹는다」로 사람을 헤매게 한다.
-if ((Test-Path (Join-Path $src 'deploy.targets.conf')) -or
-    @(Get-ChildItem (Join-Path $src 'deploy.targets.d') -Filter *.conf -File -ErrorAction SilentlyContinue).Count) {
-    $todo += 'deploy.targets.d/ · deploy.targets.conf 는 더 안 읽는다 — 대상은 personal.conf 의 REPOS · ROOT 에서 파생한다(결정 0072). 지운다'
-}
 
 # memory/<project>/ 가 이 PC 에서 갈 곳. 그 메모리가 딸린 폴더가 이 PC 에 없으면(적었지만 아직 안 받은
 # 저장소) 빈 배열 — 없는 저장소의 슬러그 폴더를 새로 세우지 않는다. 폴더가 있으면 슬러그 폴더가 아직
@@ -135,33 +76,9 @@ function Get-ProjectMemDst($project) {
     if (-not (Test-Path $home_) -and -not (Test-Path (Join-Path $dst "projects\$slug"))) { return @() }
     @(Join-Path $dst "projects\$slug\memory")
 }
+#endregion 메모리 자리 손
 
-# PATH의 bash는 WSL일 수 있다(배포판 없으면 실패). git.exe 위치에서 Git Bash를 직접 찾는다.
-$bash = @(
-    (Get-Command git -ErrorAction SilentlyContinue |
-        ForEach-Object { Join-Path (Split-Path (Split-Path $_.Source -Parent) -Parent) 'bin\bash.exe' }),
-    "$env:ProgramFiles\Git\bin\bash.exe",
-    "${env:ProgramFiles(x86)}\Git\bin\bash.exe"
-) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-
-
-# ── 당김 — **계획을 짓기 앞에** 형제 저장소를 원격까지 맞춘다 (결정 0078 · 이슈 18 을 잇는다) ──
-# ⚠ **왜 계획 앞인가.** 아래 계획(`$targets` · `$plan`)과 설치 판정(`--needs-install`)은 **지금 그
-#   저장소에 있는 파일의 지문**을 본다. 당김을 그 뒤에 두면 새로 들어온 선언이 이번 회차에 안 깔리고
-#   다음 회차에야 깔린다 — 실측 2026-09-12 의 ruff 가 그 병이었고(둘째 판에서 깔렸다) 아래
-#   `$declChanges` 땜질이 그 자리에 남은 흉이다.
-# ⚠ **왜 여기로 옮겼나.** 옛 판은 당기는 자를 `'copy'` 걸음 **안**에 두어, 배포본 지문이 어긋나
-#   밀 것이 있는 회차에만 당겼다. 평상시에는 copy 가 안 서고 **당김도 함께 사라졌다** — 실측
-#   2026-10-06 회사 PC: 2주 넘게 어떤 설치 회차도 형제를 당기지 않았고, 「안 당겼다」가 조용해서
-#   아무도 몰랐다(#112). 그래서 지금은 **밀 것이 하나도 없는 회차에도** 저장소마다 판정 한 줄이 선다.
-# ⚠ **밀기 전에 당긴다는 규율은 그대로다** — 뒤처진 저장소에 새 진본이 앉으면 그것이 M 이 되고,
-#   다음 세션의 훅 당김(`merge --ff-only`)이 그 M 에 막힌다. 한 번 막히면 사람이 되돌리기 전까지
-#   안 풀린다 — **배포가 다음 배포를 막는 고리다.** 실측 2026-09-09 회사 PC: 훅이
-#   `error: Your local changes … would be overwritten by merge` 로 두 번 졌다.
-# ⚠ **못 당기면 안 민다.** 밀어 봐야 그 저장소는 당김이 막힌 채 트리만 더 더러워진다 — 고리를
-#   끊으려는 자리에서 고리를 한 바퀴 더 돌리는 꼴이다. 판정은 `$pulledRepos` 가 들고 아래
-#   `'copy'` 걸음은 그것을 **읽기만** 한다(당기는 자를 부르는 자리는 이 한 곳이다).
-# ⚠ main 위에서만 당긴다 — 작업 중인 브랜치를 건드리지 않는다(훅 `pull_ff` 와 같은 자).
+#region 당김 손 — git 을 자식으로 띄우고 기다리고 거두는 손과, 저장소마다 판정을 내는 `Sync-Repos`. 왜 계획 앞에 도나는 흐름의 「당김」이 든다
 # ⚠ **`pull` 이 아니라 `fetch` + `merge --ff-only` 다** (#87). `pull` 은 제 fetch 를 돌린 뒤
 #   `FETCH_HEAD` 를 읽어 무엇을 병합할지 정하는데, 그 파일은 **저장소당 한 장이라 경쟁의 자리다** —
 #   같은 순간 다른 git(VS Code 로 연 세션의 훅 당김)이 끼어들면 갈래가 두 줄 적히고 pull 은 그것을
@@ -175,15 +92,6 @@ $bash = @(
 #   `FETCH_HEAD` 도 다른 파일이라 fetch 끼리는 안 겹치고, 한 곳이 느려도 나머지를 안 막는다 —
 #   직렬이면 사내 망에서 저장소 수 × 6~7초를 그대로 문다(세션 훅 `pull_ff` 머리의 실측). 작업
 #   나무를 옮기는 `merge` 는 차례로 둔다.
-# ⚠ **배경이 아니라 동기다.** 세션 훅은 당김을 배경으로 뺐는데(0043 · 0069) 그 까닭은 확장이
-#   초기화를 60초만 기다리는 벽이었다. 이 자리는 부팅·로그온 자동 실행이고 그 **직후에 아뜰리에
-#   서버가 뜬다** — 서버가 뜨기 전에 최신이어야 당긴 것이 이번 부팅에 실린다. 0043 과 안 부딪힌다.
-# ⚠ **져도 던지지 않고 종료코드를 올리지도 않는다.** 부팅 라인의 서버 띄우기는 앞 단계의
-#   종료코드·시간 초과를 안 보고 늘 서는데, 그 성질을 깨지 않는다 — 옛 판 서버가 도는 것이 서버가
-#   아예 안 뜨는 것보다 낫다. 한 저장소의 실패는 그 저장소의 밀기만 막고 나머지는 다 돈다.
-# ⚠ **훅의 90초 표식(`.git/claude-pull-attempted`)은 읽지도 쓰지도 않는다** — 까닭은 결정 0078.
-#   그 표식은 한 세션에서 훅 둘이 겹치는 것을 막는 자리이고, 이 자리의 물음은 「서버가 뜨기 전에
-#   최신인가」라 남이 90초 안에 **시도했다**는 사실로는 답이 안 된다.
 # ⚠ **리다이렉트가 곧 위험이다** — 이 파일에서 가장 되묻기 쉬운 자리라 여기 적어 둔다.
 #   이 스크립트는 `$ErrorActionPreference = 'Stop'` 을 든다. 그 아래에서 파워셸 5.1 은
 #   네이티브의 stderr 를 **파워셸이 건드릴 때만** `NativeCommandError` 로 감싸고, 그것이
@@ -199,24 +107,6 @@ $bash = @(
 #   제대로 든다. `ErrorActionPreference` 를 잠깐 내리는 길도 살긴 하는데, 그러면 파일에
 #   담기는 것이 git 의 말이 아니라 **파워셸이 꾸민 오류 기록**이라 아래 사유 고르기가
 #   `Aborting` 을 집는다 — 바로 그 주석이 막으려던 자리다.
-# ⚠ **기다림에 한도가 있다 — 걸린 당김은 거두고 그 저장소만 「못 당김」으로 적는다.**
-#   이 자리가 배포의 **첫 걸음**이라, 여기서 안 끝나면 배선(`core.hooksPath`) · 계획 · 배포 ·
-#   설치가 통째로 안 돈다. 무인 라인에서 그것은 조용한 굳음이다: 라인의 10분 울타리가 autorun 을
-#   거두고 아뜰리에 서버는 옛 판으로 뜬다. 걸리는 길이 둘 있다 — **창을 띄우려는 자격증명
-#   도움꾼**(죽은 토큰 · 사람이 없는 세션)과 **답을 안 주는 망**(프록시가 삼키는 자리).
-#   그래서 셋을 함께 둔다: 묻는 자리를 비대화로 못 박고(`Sync-Repos` 머리의 이름 둘) · 묶음
-#   전체에 벽시계 한도를 두고 · 넘긴 자식을 거둔다. **최악의 경우 배선이 늦는 폭이 곧 이 한도다.**
-# ⚠ **0043 이 거절한 「시간 제한」과 다른 것이다.** 저쪽이 거절한 것은 정상이 7초인 왕복을 5초로
-#   자르는 일이었다 — 되던 당김까지 실패로 찍는다. 여기 한도는 **정상의 열 배를 넘는 자리**에
-#   두어 걸린 것에만 걸린다(사내 망 실측 하나 6~7초 · 동시에 돌므로 묶음도 그 값에 가깝다).
-# ⚠ 이 고침은 **차례를 바로잡는다.** 진본이 바뀌면 형제 저장소의 배포본 커밋도 같은 판에
-#   나가야 하고(`chore(claude): 훅 배포본을 진본과 다시 맞춘다`), 안 나가면 당겨도
-#   뒤처진 채라 M 이 다시 뜬다 — 그리고 그 M 은 맞다.
-# 한도는 **이름 둘이 든다** — 값을 아래 고리에 박으면 화면에 찍는 초와 재는 초가 갈린다.
-$PullBatchTimeoutSec = 120   # fetch **묶음 전체**의 벽시계 한도. 넘긴 자식만 거둔다
-$PullMergeTimeoutSec = 30    # merge 하나의 한도 — 디스크 일이라 망을 안 탄다(걸리면 잠금이다)
-$pulledRepos = @{}   # 저장소 -> 이번 회차에 그 저장소로 밀어도 되나 (당김 판정)
-
 function Get-GitWhy($file) {
     # 사유를 고르는 자는 훅 `git_why` 와 같은 결이다 — 끝줄이 아니라 첫 `fatal:`/`error:` 줄이다.
     # 로컬 수정 갈래는 끝줄이 `Aborting` 이라, 끝줄을 집으면 사유가 있는데 층이 안 갈린다.
@@ -402,26 +292,9 @@ function Sync-Repos($repos) {
         else { $env:GCM_INTERACTIVE = $savedGcm }
     }
 }
+#endregion 당김 손
 
-# 대상은 `personal.conf` 의 REPOS 중 이 PC 에 `.git` 을 든 것이다 — 목록을 여기 안 적는다.
-# 이 저장소 자신은 대상이 아니다: 부팅 라인에서 이 스크립트가 도는 것은 설치 `[8/8]` 이 이미
-# 그것을 당긴 뒤이고, 지금 도는 몸통이 곧 그때 당겨 온 판이다.
-Sync-Repos $globalRuleTargets
-
-
-# ============================ 1단계: 계획 수립 ============================
-# 아무것도 바꾸지 않는다. 무엇을 바꿔야 하는지만 조사한다.
-# ⚠ **당김은 이 앞에 있다** — 그래서 이 단계가 보는 나무는 **당긴 뒤**의 나무고, 이 한 줄은
-#   그대로 참이다(당김은 `$plan` 에 아무것도 안 더하므로 「다 최신이면 안 묻는다」도 산다).
-
-# --- 개인화할 도구 — 배포본 설치기의 제작자 칸이 심는 사용자 환경변수 `PAISETUP_PERSONAL`(docs/decisions/0107) ---
-# **칸 하나가 스위치다.** 설정 저장소를 넣은 PC 에서 설치기는 켠 도구에 만든 사람의 꾸러미를 안 깔고 비켜서고, 그 도구는
-# 이 배포가 이 저장소의 규범 · 룰 · 스킬로 민다. 끈 도구에는 안 밀고 홈에 있는 것을 걷지도 않는다 — 끈 도구의 우리 것은
-# 설치기가 걷는다. 둘이 같은 값을 보므로 한 홈을 두고 번갈아 덮지 않는다.
-# ⚠ **Claude 도 이 값을 탄다** — 칸 셋이 같은 스위치다. 끄면 Claude 홈의 규범 · 룰 · 에이전트 · 스킬을 안 밀고 안 걷는다.
-#   훅 · 씨앗 · 메모리 · 형제 저장소 배포본은 칸과 상관없이 민다. 세션 훅의 홈 밀기(`deploy_home_norms`)도 같은 값을 탄다.
-# ⚠ **값이 없으면 있는 도구 다** — 설치기를 안 돌린 자리(리모트 컨테이너 · 설치기 전 PC)가 지금까지처럼 받는다.
-#   `none` 은 아무 도구도 아니다 — 빈 값과 「안 돌렸다」를 갈라야 해서 설치기가 그렇게 심는다.
+#region 제작자 칸 손 — `PAISETUP_PERSONAL` 을 읽어 어느 도구 홈을 개인화하나 가른다
 function Get-PersonalTools([string]$Raw) {
     # 돌려주는 것: $null — 값이 없다(있는 도구 다) · 배열 — 그 도구들(`none` 이면 빈 배열)
     # `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 부른다.
@@ -435,207 +308,83 @@ function Get-PersonalRaw([string]$User = $(try { [Environment]::GetEnvironmentVa
     # 돌려주는 것: 칸 값의 날글 — 사용자 값이 있으면 그것, 없으면 프로세스 값(사용자 값이 없는 자리 — 리모트 컨테이너)
     # ⚠ **사용자 값이 진본이다.** 설치기는 사용자 값을 심고, 윈도는 이미 떠 있는 프로세스에 그 변경을 안 넣는다. 칸을 바꾸기
     #   전에 뜬 앱의 세션에서 배포를 부르면 프로세스 값은 옛 값이라, 그것을 먼저 읽으면 켠 도구를 끈 것으로 읽고 그 홈의
-    #   개인화를 걷는다. 세션 훅의 `personal_for` 도 같은 차례로 읽는다.
-    # `scripts/check-deploy-agent-homes.ps1` 이 인자를 넣어 차례를 재고, `scripts/check-agy-pointers.ps1` 은 인자 없이 부른다.
+    #   개인화를 걷는다. 손(`.claude/hooks/tool-homes.py`)도 같은 차례로 읽는다.
+    # `scripts/check-deploy-agent-homes.ps1` 이 인자를 넣어 차례를 잰다.
     if (-not [string]::IsNullOrWhiteSpace($User)) { return $User }
     return $Process
 }
-$personalRaw = Get-PersonalRaw
-$personalSet = Get-PersonalTools $personalRaw
-foreach ($t in @($personalSet | Where-Object { @('claude', 'codex', 'agy') -notcontains $_ })) {
-    $todo += "PAISETUP_PERSONAL 에 모르는 이름이 있다 — $t (claude · codex · agy · none 을 읽는다)"
-}
+
 function Test-PersonalFor([string]$Tool) { ($null -eq $personalSet) -or ($personalSet -contains $Tool) }
-$personalClaude = Test-PersonalFor 'claude'
-if (-not $personalClaude) {
-    Write-Host "· Claude 홈의 규범 · 룰 · 에이전트 · 스킬 건너뜀  (제작자 칸에서 Claude 를 껐다 — PAISETUP_PERSONAL=$personalRaw)" -ForegroundColor DarkGray
+#endregion 제작자 칸 손
+
+#region 손 부르기 — 규범 · 룰 · 에이전트를 도구 홈에 놓는 손(`.claude/hooks/tool-homes.py`)을 부르고, 그 줄을 계획 걸음과 할 일로 가른다
+# 무엇이 어느 홈에 어떤 꼴로 가나는 갈 곳 표(`tool-homes.conf`)와 손만 안다 — 이 스크립트는 손을 부르고 그 줄을 옮겨 싣기만
+#   한다(결정 0112). 부르는 꼴 · 출력 계약 · 종료 값 · 제작자 칸 읽기 · 백업 자리는 손의 머리말이 든다.
+function Invoke-ToolHomes {
+    # 손을 한 번 부른다 — 이 저장소로 개인 층을 채우고 놓는다. `-DryRun` 이면 홈 아래 아무것도 안 쓰고 바꿀 줄만 받는다.
+    # 돌려주는 것: @{ Lines; Code; Rerun } · 못 불렀으면 @{ Why } — 읽는 자는 `ConvertFrom-ToolHomesOutput` 이다
+    # ⚠ **`&` 로 부르고 `$LASTEXITCODE` 를 읽는다** — `Start-Process -PassThru` 는 종료 값을 잃는다(#139).
+    # ⚠ **stderr 를 리다이렉트하지 않는다** — 까닭은 `Sync-Repos` 머리에 있다. 손의 판정은 다 stdout 줄이고, stderr 는 콘솔로 흐른다.
+    param([string]$Src, [switch]$DryRun)
+    $hand = Join-Path $Src '.claude\hooks\tool-homes.py'
+    $py   = Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $py) { return @{ Why = 'python 이 없어 손을 못 불렀다 — 도구 홈에 안 놓였다' } }
+    if (-not (Test-Path -LiteralPath $hand -PathType Leaf)) { return @{ Why = "손이 없다 ($hand) — 도구 홈에 안 놓였다" } }
+    $handArgs = @('-X', 'utf8', $hand, 'sync', '--layer', 'personal', '--from', $Src)
+    if ($DryRun) { $handArgs += '--dry-run' }
+    # 못 띄우는 것(보안 소프트가 실행을 막는 PC)도 할 일 한 줄로 내린다 — 여기서 던지면 계획 한가운데서 배포가 통째로 죽는다
+    try { $lines = @(& $py.Source @handArgs); $code = $LASTEXITCODE }
+    catch { return @{ Why = "python 을 못 띄웠다 ($($_.Exception.Message.Split([char]10)[0].Trim())) — 도구 홈에 안 놓였다" } }
+    return @{ Lines = $lines; Code = $code
+              Rerun = "python -X utf8 `"$hand`" sync --layer personal --from `"$Src`" --dry-run" }
 }
 
-# --- 파일 배포 ---
-$agentSrc = Join-Path $src 'agents'
-$memSrc   = Join-Path $src 'memory'
-# 전역 규범 진본. **이름이 `CLAUDE.md` 가 아닌 것이 요점이다** — 이 저장소를 세션에
-# 붙여도 자동 로드 대상이 아니라, 규범은 아래가 깔아주는 홈 한 자리로만 실린다.
-# 진본이 `CLAUDE.md` 이던 시절에는 붙인 세션에서 두 판이 로드됐다 (docs/decisions/0002).
-$ruleSrc  = Join-Path $src '.claude\CLAUDE.global.md'
-$targets  = @()
-if ($personalClaude) { $targets += @{ From = $ruleSrc; To = Join-Path $dst 'CLAUDE.md' } }
-# ⚠ **`agents` 폴더가 없을 수 있다** — 이 스크립트는 `$ErrorActionPreference = 'Stop'` 이라, 없는 경로를
-#   `Get-ChildItem` 에 그대로 주면 종료 오류로 계획 단계 한가운데서 죽고 **그 뒤 걸음(MCP · 저장소 설치 ·
-#   환경변수)이 하나도 안 돈다**(#114). 없으면 이 걸음만 건너뛰고 한 줄 말한다. 아래 제거 후보도 같은
-#   값을 본다 — **없는 폴더를 「원본이 비었다」로 읽으면 `-Prune` 이 홈의 에이전트를 다 지운다.**
-$hasAgents = Test-Path -LiteralPath $agentSrc -PathType Container
-if (-not $personalClaude) {
-    # 위에서 한 줄로 말했다 — 끈 칸은 밀지도 걷지도 않는다
-} elseif ($hasAgents) {
-    Get-ChildItem $agentSrc -Filter *.md | ForEach-Object {
-        $targets += @{ From = $_.FullName; To = Join-Path $dst "agents\$($_.Name)" }
-    }
-} else {
-    Write-Host "· 에이전트 건너뜀  ($agentSrc 가 없다 — 홈의 에이전트도 안 건드린다)" -ForegroundColor DarkGray
-}
-
-# 전역 규범·룰은 저장소로 안 간다 — 홈 한 자리다 (docs/decisions/0014).
-# 리모트 컨테이너는 홈이 비어 뜨지만, 그 통로는 claude-config 를 함께 붙이는 것이다
-# (docs/decisions/0001 · 0010). 저장소가 사본을 지면 「이 저장소 것」과 「전역 것」이
-# 한 폴더에서 섞여, 이름으로 갈라야 하고 그 이름이 PC 에서는 뜻이 없다.
-
-# 저장소마다 한 벌씩 있어야 하는 것들: 각 저장소로. 몸통은 익명이라 저장소마다 바이트가
-# 같고, 목록은 선언이 든다 (docs/decisions/0004). 홈으로는 안 간다 — 홈이 읽는 자리가
-# 아니라 **그 저장소 안에서 읽히는** 자리들이다: 훅과 그 등록, 그리고 깃허브가 편집창을
-# 채울 때 여는 이슈 템플릿 (docs/decisions/0021).
-#
-# ⚠ 여기의 `.claude\settings.json` 은 **저장소의 훅 등록 파일**이지 홈의 개인 설정이
-#   아니다. 홈 것(~/.claude/settings.json)은 여전히 수동이다 — 위 머리글 참조.
-#   저장소 것은 세 저장소가 이미 바이트가 같아 익명 몸통과 같은 결로 뿌린다.
-# 목록은 선언이 든다 — 재는 자(scripts/check-global-copies.sh)도 같은 파일을 읽는다.
-# 배열로 박아 두면 두 자가 손사본이 되어 한쪽만 고쳐진다 (docs/decisions/0021).
-$repoFilesConf = Join-Path $src 'deploy.repofiles.conf'
-$repoFiles = @()
-if (Test-Path $repoFilesConf) {
-    $repoFiles = @(Get-Content $repoFilesConf -Encoding UTF8 |
-        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
-        Where-Object   { $_ } |
-        ForEach-Object { $_ -replace '/', '\' })
-}
-if ($repoFiles.Count -eq 0) {
-    $todo += 'deploy.repofiles.conf 없음(또는 빔) — 저장소 배포본이 하나도 안 깔린다'
-}
-foreach ($bootFile in $repoFiles) {
-    $bootSrc = Join-Path $src $bootFile
-    if (-not (Test-Path $bootSrc)) { continue }
-    foreach ($repoRoot in $globalRuleTargets) {
-        if (-not (Test-Path $repoRoot)) { continue }
-        # Repo 를 달아 둔다 — 실행 단계가 **그 저장소의 당김 판정을 읽을** 근거다
-        # (당김은 계획 앞에서 이미 돌았다 · 결정 0078). 못 당긴 저장소에는 안 민다.
-        # 홈 대상에는 안 단다: ~/.claude 는 git 밖이라 당길 것도 더러워질 것도 없다.
-        $targets += @{ From = $bootSrc; To = Join-Path $repoRoot $bootFile; Repo = $repoRoot }
-    }
-}
-
-# ADR 색인 생성기는 저장소로 안 나른다(결정 0064) — 찾는 자(`claude-config-path.sh`)가 홈 스킬 ·
-# 붙은 claude-config 의 스킬로 찾는다. 사본은 「claude-config 없이 연 리모트에서도 색인 검사가 서야
-# 한다」가 까닭이었는데, 리모트는 늘 claude-config 를 붙인다(0061). 남은 옛 사본은 사본 대조가 문다.
-
-# 영역 룰: rules.global/*.md -> ~/.claude/rules/ 한 자리
-# **전역 룰은 홈에만 깐다** (docs/decisions/0014). 제품은 같은 이름을 두 층에서 읽는다 —
-# `~/.claude/rules/` 와 `<저장소>/.claude/rules/`. 범위를 정하는 것은 이름이 아니라 층이라,
-# 전역 룰을 저장소에 깔면 그 자리에서도 로드돼 한 세션에 두 벌 실린다. 저장소의 `rules/` 는
-# **그 저장소 자신의 룰** 자리로 비워 둔다.
-# 진본 폴더 이름만 `rules.global/` 이다 — 이 저장소를 세션에 붙였을 때 진본이 로드되지 않게
-# (docs/decisions/0002 와 같은 결). 그 이름은 claude-config 안에서만 뜻이 있다.
-$rulesSrc = Join-Path $src '.claude\rules.global'
-if ($personalClaude -and (Test-Path $rulesSrc)) {
-    foreach ($f in (Get-ChildItem $rulesSrc -Filter *.md)) {
-        $targets += @{ From = $f.FullName; To = Join-Path $dst "rules\$($f.Name)" }
-    }
-}
-
-# agy(Antigravity CLI · 데스크탑 앱) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083 · 0099 · #134)
-# 둘 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 아래 중립 자리(`~/.paisetup/norms`)를 가리킨다. 그래서 진본을
-# 옮겨 적지 않고 agy 가 Claude Code 와 같은 판을 읽는다. 스킬 목록은 없다 — 우리 스킬은 agy 가 목록 없이 싣는 기본 자리에
-# 산다(아래 「Codex · agy 홈」 · 결정 0111).
-# ⚠ **원본은 틀이고 홈에 까는 파일은 이 PC 의 파생물이다** — 틀은 홈을 `~/` 로 적어 사람을 안 타고, 아래
-#   `ConvertTo-AgyPointerText` 가 그 자리를 이 PC 홈의 절대 경로로 바꾼 글을 임시 파일로 지어 여느 배포 대상처럼 민다.
-#   바이트가 틀과 다른 것이 정상이다.
-# ⚠ **agy 가 없는 PC 에는 안 깐다** — `~/.gemini` 가 없으면 건너뛴다. 없는 도구의 설정 폴더를 지어
-#   두면 「깔렸다」로 읽힌다. agy 를 제작자 세트 도구로 골랐을 때만 민다(위 값).
-function ConvertTo-AgyPointerText {
-    # 가리킴 파일의 틀 글 하나를 이 PC 의 글로 — 틀이 홈을 `~/` 로 연 자리만 `$HomeDir` 의 절대 경로(`C:/Users/<이름>/`)로 바꾼다.
-    # ⚠ **왜 절대 경로인가** — 안티그래비티 데스크탑 앱의 언어 서버는 목록(`skills.json` · `rules.json`)의 `path` 로 절대
-    #   경로만 받는다(앱 로그 `customization.go] Failed to resolve absolute path "paisetup-skills": … must be an absolute path`).
-    #   agy CLI 는 상대 경로도 설정 폴더 기준으로 풀어 받는다 — 그래서 상대 경로는 CLI 에서만 서고 앱에서는 하나도 안 실린다.
-    # ⚠ **`~/` 를 그대로 깔지 않는다** — agy 문서는 `~/` 를 홈 기준이라 적었지만 CLI 도 목록의 `~/` 를 같은 오류로 거절한다
-    #   (CLI 1.3.3 실측 2026-10-11 · 결정 0083 의 1.3.0 실측과 같다). 앱과 CLI 가 둘 다 받는 꼴은 드라이브 문자로 여는
-    #   절대 경로다. `AGENTS.md` 의 include 도 같은 손으로 바꾼다 — 앱이 include 의 `~` 를 푸는지는 못 쟀고, 절대 경로
-    #   include 는 CLI 가 싣는다(0083).
-    # 바꾸는 자리는 JSON 글 값의 머리 `"~/` 와 include 대상의 머리 `](~/` 둘뿐이다. 홈은 `/` 로 적는다 — JSON 에서 역슬래시를
-    #   풀 일이 없고, CLI 는 두 꼴을 다 받는다(실측). 지은 글은 BOM 없는 UTF-8 로 쓴다 — BOM 이 붙으면 agy 가 그 목록을
-    #   JSON 으로 못 읽는다(실측 `Failed to load JSON config file … invalid character '\ufeff'`).
-    # ⚠ 홈 경로에 `)` 가 들면 include 가 거기서 끊긴다 — 윈도 사용자 이름에 드물게 설 수 있는 글자다.
-    # 짝 — 배포본 설치기의 같은 이름 함수가 같은 틀에서 같은 글을 짓는다. `scripts/check-agy-pointers.ps1` 이 둘을 떼어 견준다.
-    param([string]$Template, [string]$HomeDir)
-    $abs = $HomeDir.Replace('\', '/').TrimEnd('/') + '/'
-    return $Template.Replace('"~/', '"' + $abs).Replace('](~/', '](' + $abs)
-}
-$geminiSrc = Join-Path $src '.gemini.global'
-$geminiHome = Join-Path $HOME '.gemini'
-if ((Test-Path $geminiSrc) -and (Test-Path $geminiHome) -and (Test-PersonalFor 'agy')) {
-    $geminiPlan = Join-Path ([IO.Path]::GetTempPath()) 'deploy-agy-config'
-    New-Item -ItemType Directory -Force -Path $geminiPlan | Out-Null
-    foreach ($f in (Get-ChildItem $geminiSrc -File)) {
-        $built = Join-Path $geminiPlan $f.Name
-        [System.IO.File]::WriteAllText($built, (ConvertTo-AgyPointerText ([System.IO.File]::ReadAllText($f.FullName)) $HOME),
-                                      (New-Object System.Text.UTF8Encoding($false)))
-        $targets += @{ From = $built; To = Join-Path $geminiHome "config\$($f.Name)" }
-    }
-}
-
-# 프로젝트별 메모리: memory/<project>/*.md -> ~/.claude/projects/<슬러그>/memory/
-if (Test-Path $memSrc) {
-    foreach ($proj in (Get-ChildItem $memSrc -Directory)) {
-        $memDsts = Get-ProjectMemDst $proj.Name
-        if ($memDsts.Count -eq 0) {
-            # 조용히 넘어가지 않는다 — 배포된 줄 알고 있으면 어긋난 것을 나중에야 안다
-            $todo += "memory/$($proj.Name)/ 배포 안 됨 — 딸린 폴더가 이 PC 에 없다(personal.conf 의 REPOS · ROOT 로 짓는다 · 결정 0072)"
-            continue
-        }
-        foreach ($f in (Get-ChildItem $proj.FullName -Filter *.md)) {
-            foreach ($d in $memDsts) {
-                $targets += @{ From = $f.FullName; To = Join-Path $d $f.Name }
-            }
+function ConvertFrom-ToolHomesOutput {
+    # `Invoke-ToolHomes` 의 답 → @{ Steps — 계획 걸음(`CHANGE=` 한 줄에 하나) · Notes — 할 일 줄 · Same — 바꿀 것이 없다고 답했나 ·
+    #   Failed — 다 못 놓았거나 못 쟀다 }
+    # ⚠ **`CHANGE=` 한 줄이 계획의 한 걸음이다** — 그래야 「바꿀 것이 없습니다」가 손이 바꿀 것이 없고 다른 것도 없을 때만 선다.
+    #   자리는 손이 낸 꼴(`~/` 로 연다) 그대로 싣는다.
+    # ⚠ **끝 줄(`CHANGED=`)이 없으면 못 잰 것이다** — 손이 중간에 죽었다. 「바꿀 것 없음」으로 접지 않는다.
+    param($Run)
+    $who = '규범 · 룰 · 에이전트(tool-homes.py)'
+    if ($Run.Why) { return @{ Steps = @(); Notes = @("$who — $($Run.Why)"); Same = $false; Failed = $true } }
+    # 손의 동사 → 이 화면의 꼴(부호 · 낱말). 모르는 동사도 버리지 않고 그 낱말 그대로 싣는다
+    $verbs = @{ fill = '+ 채움'; drop = '- 걷음'; write = '+ 씀'; remove = '- 제거'; backup = '~ 백업'; record = '+ 기록' }
+    $steps = @(); $notes = @(); $ended = $null; $errored = $false
+    foreach ($ln in @($Run.Lines)) {
+        $t = "$ln".TrimEnd()
+        if (-not $t) { continue }
+        if ($t.StartsWith('CHANGE=')) {
+            $f = @($t.Substring(7) -split "`t", 3)
+            $label = if ($verbs.ContainsKey($f[0])) { $verbs[$f[0]] } else { "* $($f[0])" }
+            $where = if ($f.Count -gt 1) { $f[1] } else { '' }
+            $why   = if ($f.Count -gt 2 -and $f[2]) { "  ($($f[2]))" } else { '' }
+            $steps += @{ Kind = 'homes'; Verb = $f[0]; Text = "$label  $where$why" }
+        } elseif ($t.StartsWith('WARN=')) {
+            $notes += "$who — 경고: $($t.Substring(5))"
+        } elseif ($t.StartsWith('ERROR=')) {
+            $errored = $true
+            $notes += "$who — 오류: $($t.Substring(6))"
+        } elseif ($t.StartsWith('CHANGED=')) {
+            $ended = $t.Substring(8)
+        } else {
+            $notes += "$who — 손이 계약 밖의 줄을 냈다: $t"
         }
     }
+    $odd = $true
+    if ($null -eq $ended) {
+        $notes += "$who — 못 쟀다: 손이 끝 줄(CHANGED=)을 안 냈다 (exit $($Run.Code)). 확인:  $($Run.Rerun)"
+    } elseif ($ended -ne $(if ($steps.Count) { '1' } else { '0' })) {
+        $notes += "$who — 손의 끝 줄(CHANGED=$ended)이 바꿀 줄 $($steps.Count)개와 안 맞는다. 확인:  $($Run.Rerun)"
+    } elseif ($Run.Code -ne 0 -and -not $errored) {
+        $notes += "$who — 손이 오류로 끝났다 (exit $($Run.Code)). 확인:  $($Run.Rerun)"
+    } else { $odd = $false }
+    $failed = $odd -or $errored -or ($Run.Code -ne 0)
+    return @{ Steps = $steps; Notes = $notes; Same = (-not $failed -and $steps.Count -eq 0); Failed = $failed }
 }
+#endregion 손 부르기
 
-# 이 저장소에서만 쓰는 스킬 — 홈으로 안 민다. **목록의 진본은 선언이고, 재는 자도 같은 줄을
-# 본다**(`scripts/check-global-copies.sh`). 손사본 둘로 두면 한쪽만 고쳐지고, 그러면 재는 자가
-# 빠진 자산을 안 재면서 초록을 낸다 (`docs/decisions/0021`).
-# ⚠ **이 저장소는 역할이 둘이다** — 전역 자산의 진본이면서 공개 배포본을 뽑는 자다(0035).
-#   뽑기 절차를 든 스킬은 다른 프로젝트를 여는 세션마다 따라붙을 것이 아니다. 도구 선언은
-#   이미 둘로 갈려 있었는데(`tools.global.conf` ↔ `tools.conf`) 스킬만 한 벌이었다.
-$localSkillsConf = Join-Path $src 'deploy.skills.local.conf'
-$localSkills = @()
-if (Test-Path $localSkillsConf) {
-    $localSkills = @(Get-Content $localSkillsConf -Encoding UTF8 |
-        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
-        Where-Object   { $_ })
-}
-
-# 스킬: .claude/skills/** -> ~/.claude/skills/**
-# 폴더를 통째로 미러링한다. SKILL.md만 집어오지 않는 것은 스킬이 references·scripts 같은
-# 딸린 파일을 갖기 때문이다. 목록을 여기 적지 않으므로 스킬이 새로 생겨도 이 파일은 그대로 둔다.
-# ⚠ **빠지는 것은 홈으로 미는 것뿐이다** — 위 선언이 든 스킬도 이 저장소를 붙인 세션에서는
-#   `.claude/skills/` 에서 그대로 로드된다. 「홈에 안 깐다」와 「안 쓴다」는 다른 명제다.
-$skillSrc = Join-Path $src '.claude\skills'
-if ($personalClaude -and (Test-Path $skillSrc)) {
-    # ⚠ **파이썬이 남긴 캐시는 안 민다** — 까닭은 아래 씨앗 칸의 같은 자리가 든다. 스킬도
-    #   `scripts/` 를 들 수 있어 같은 부산물이 난다. 재는 자(`scripts/check-global-copies.sh`
-    #   의 `DIFF_SKIP`)는 이미 그 이름을 빼므로, 여기만 안 빼면 **재는 자와 뿌리는 자가 다른
-    #   것을 세어** 홈이 최신인 날에도 캐시 하나로 「어긋남」이 난다 — 고칠 것이 없는 빨강이다.
-    foreach ($f in (Get-ChildItem $skillSrc -Recurse -File |
-                    Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
-        $rel = $f.FullName.Substring($skillSrc.Length + 1)
-        if ($localSkills -contains ($rel -split '\\')[0]) { continue }
-        $targets += @{ From = $f.FullName; To = Join-Path $dst "skills\$rel" }
-    }
-}
-
-# Codex · agy 홈: 스킬 · Codex 규범 블록(~/.codex/AGENTS.md) (docs/decisions/0099)
-# 도구마다 제 스킬 홈을 든다 — Codex 는 `~/.agents/skills`(Codex 가 스스로 읽는 자리), agy 는 `~/.gemini/config/skills`
-# (agy 가 목록 없이 싣는 기본 전역 스킬 자리 — 아래 「agy 옛 스킬 자리」). Claude 홈과 같은 묶음을 그 홈들에도 민다.
-# ⚠ **그 도구가 없는 PC 에는 그 홈을 안 깐다** — `~/.codex` · `~/.gemini` 가 없으면 건너뛴다(위 agy 와 같은 까닭).
-# ⚠ **맡기기 러너는 받는 쪽 홈에 안 간다** — 러너마다 받는 쪽은 `deploy.skills.targets.conf` 가 든다. 받는 쪽 홈에 서면
-#   그 도구가 제게 맡기는 길을 든다(0097). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다.
-# ⚠ **규범은 옮겨 쓰지만 손사본이 아니다** — Codex 의 AGENTS.md 는 다른 파일을 끌어오지 못해, 블록 짓는 자
-#   (`.claude/hooks/codex-norms.py`)가 진본에서 매번 다시 짓는다. 사람이 그 파일에 쓴 글은 표지 밖이라 그대로다.
-#   지은 결과를 임시 파일로 받아 여느 배포 대상처럼 민다 — 바뀌었을 때만 백업과 함께 덮는다. agy 규범은 위 설정 둘의
-#   include 한 줄이 든다.
-# ⚠ **걷는 손(-Prune)은 배포가 민 이름만 든다** — 이 홈들은 Claude 홈과 달리 배포 혼자의 자리가 아니다. 설치기도
-#   깔고(제 기록 `.paisetup-skills`), 두 홈 다 사람이나 다른 도구가 둔 스킬도 산다. 그래서 배포는 민 이름을 제
-#   기록 `.paisetup-deploy-skills`(설치기 기록 곁)에 적고, 그 기록에 있는데 이번에 안 미는 스킬(원본에서 빠졌거나 칸을
-#   껐다)과 미는 스킬 안에서 원본에 없는 파일을 제거 후보로 센다. 설치기 기록에 든 이름은 설치기가 걷으므로 안
-#   건드린다 — 둘이 한 이름을 두고 다투면 로그온마다 걷고 다시 깐다. 기록이 서기 전에 민 스킬은 모른다.
+#region 스킬 홈 손 — Codex · agy 홈 스킬의 걷기 판정과 기록 · agy 옛 스킬 자리 · 비켜 두기
 function Get-AgentHomePrune {
     # $Want — 이번에 미는 스킬 이름 → 원본 폴더(칸을 끈 도구면 빈 표) · $Mine — 배포의 기록 · $Installer — 설치기의 기록
     # 돌려주는 것: Files — 제거 후보 파일 · Ledger — 이 실행 뒤 배포 기록에 남길 이름(안 걷는 판이면 아직 남은 것도 든다)
@@ -723,6 +472,69 @@ function Get-AgentHomeAside {
     param([string]$SkillHome, [string[]]$Names, [string[]]$Ours)
     return @(@($Names) | Where-Object { $_ -and (@($Ours) -notcontains $_) -and (Test-Path -LiteralPath (Join-Path $SkillHome $_)) })
 }
+#endregion 스킬 홈 손
+
+#region MCP 손 — 등록 여부를 묻고, 선언의 `only` 칸을 읽거나 떼고, 자리를 세션 훅에 묻는다
+function Test-McpRegistered($name) {
+    if (-not $canAskMcp) { return $null }   # 물을 자가 없다. 「없다」와 구별한다
+    $probe = Join-Path $env:TEMP "deploy-mcpget-$name.sh"
+    # ⚠ **리다이렉트는 스크립트 안에 둔다.** `claude mcp get` 은 등록 안 된 이름을
+    #   **stderr 로** 답한다(그것이 정상 갈래다). 그런데 PowerShell 5.1 은 네이티브의
+    #   stderr 를 NativeCommandError 로 감싸고, 이 파일 머리의 `ErrorActionPreference = 'Stop'`
+    #   아래에서 그것은 **종료 오류**다 — `*> $null` 은 그걸 못 막는다.
+    #   그래서 배포가 **첫 MCP 조회에서 통째로 죽었고**, 바로 아래 127/0 갈래는
+    #   한 번도 안 돌았다 (실측 2026-09-07 · 맨바닥 VDI 첫 설치에서
+    #   저장소 배포·홈 규범·저장소 설치가 전부 안 선 채 「완료」가 찍혔다).
+    #   위 `$canAskMcp` 프로브가 이미 쓰는 꼴이다 — 두 프로브를 같은 꼴로 둔다.
+    [System.IO.File]::WriteAllText($probe, "claude mcp get $name >/dev/null 2>&1`n", (New-Object System.Text.UTF8Encoding($false)))
+    & $bash $probe *> $null
+    $code = $LASTEXITCODE
+    Remove-Item $probe -Force -ErrorAction SilentlyContinue
+    if ($code -eq 127) { return $null }     # 셸이 claude 를 못 찾았다 — 답이 아니다
+    return ($code -eq 0)
+}
+
+# `only` 는 **선언의 칸이지 서버 설정이 아니다** — 등록에 넘기는 JSON 에서 뺀다. 넘기면
+# 모르는 키가 등록부에 눌러앉고, 그것을 쓰는 자는 아무도 없다.
+# ⚠ 키가 없는 서버에도 그냥 건다 — 빼기 전과 **바이트가 같다**(실측). 갈래를 하나 줄인다.
+function Get-McpDef($def) { $def | Select-Object -Property * -ExcludeProperty only }
+# **키가 없는 것과 비어 있는 것을 가른다** — 없으면 `$null`(안 거는 서버), 있으면 글자다.
+# 빈 글자를 「안 건다」로 접으면 `"only": ""` 가 **조용히 모든 자리에서 등록된다.**
+function Get-McpOnly($def) {
+    $hit = @($def.PSObject.Properties | Where-Object { $_.Name -eq 'only' })
+    if ($hit.Count -eq 0) { return $null }
+    return ("$($hit[0].Value)").Trim()
+}
+# 쉼표로 가르고 칸마다 공백을 걷고 빈 칸은 버린다 — `"home, outside"` 도 `"home,outside"` 와
+# 같은 뜻이어야 한다. 글자 통째로 견주면 공백 하나가 그 서버를 **모든 자리에서** 뺀다.
+function Get-McpOnlyTokens($raw) {
+    if ($null -eq $raw) { return @() }
+    return @(($raw -split ',') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+}
+
+function Get-McpSiteAnswer {
+    # @{ Site; How; Why } — `Why` 가 서면 못 쟀다는 뜻이다
+    if (-not $bash) { return @{ Site = ''; How = ''; Why = 'Git Bash 를 못 찾았다' } }
+    # ⚠ **`2>&1` 을 안 붙인다** — 5.1 은 네이티브의 stderr 한 줄을 종료 오류로 승격한다
+    #   (까닭은 `Sync-Repos` 머리에 있다). 답도 사유도 훅이 stdout 한 줄로 낸다.
+    $body = Join-Path $src '.claude\hooks\session-start-body.sh'
+    $env:SESSION_START_REPO = $src -replace '\\', '/'
+    try { $out = & $bash ($body -replace '\\', '/') --site; $rc = $LASTEXITCODE }
+    finally { Remove-Item Env:SESSION_START_REPO -ErrorAction SilentlyContinue }
+    $line = @($out | Where-Object { "$_".Trim() }) | Select-Object -Last 1
+    if ($rc -ne 0 -or -not $line) {
+        $why = if ($line) { "$line".Trim() } else { "훅이 사유를 안 냈다 (exit $rc)" }
+        return @{ Site = ''; How = ''; Why = $why }
+    }
+    $f = @(("$line".Trim() -split '\s+') | Where-Object { $_ })
+    if ($f.Count -lt 2) {
+        return @{ Site = ''; How = ''; Why = "훅이 자리와 길을 두 칸으로 안 냈다: $line" }
+    }
+    return @{ Site = $f[0]; How = $f[1]; Why = '' }
+}
+#endregion MCP 손
+
+#region 백업 손 — 빈 백업 자리를 고르고, 덮거나 걷기 전에 원본을 백업 자리에 뜬다
 # 백업 자리는 늘 빈 자리로 — 같은 초에 두 배포가 돌면 백업 폴더(`$backup`)가 같고, 이미 있는 폴더로 옮기기는 그 안으로 들어가
 #   앞 백업과 겹친다(`Move-Item -Force` 실측). 그래서 옮길 자리가 있으면 `-2` · `-3` … 가운데 처음 빈 것을 쓴다.
 function Get-FreePath([string]$Path) {
@@ -730,7 +542,308 @@ function Get-FreePath([string]$Path) {
     while (Test-Path -LiteralPath $p) { $p = "$Path-$i"; $i++ }
     return $p
 }
+
+function Save-Backup($path) {
+    # 백업도 원래 폴더 구조를 유지한다. 이름만 떼어 평평하게 쌓으면
+    # 여러 스킬의 SKILL.md처럼 같은 이름끼리 서로를 덮어써 백업이 소실된다.
+    $rel = if ($path.StartsWith($dst, [StringComparison]::OrdinalIgnoreCase)) {
+        $path.Substring($dst.Length).TrimStart('\')
+    } else {
+        # ~/.claude 밖 (저장소 배포본). 이름만 떼면 여러 저장소의 같은 이름끼리
+        # 서로를 덮어써 백업이 소실된다 — 경로 전체를 이름에 접어 유일하게 만든다.
+        Join-Path '_outside' (($path -replace ':', '') -replace '[\\/]', '-')
+    }
+    $to = Join-Path $backup $rel
+    New-Item -ItemType Directory -Force -Path (Split-Path $to -Parent) | Out-Null
+    Copy-Item $path $to
+}
+#endregion 백업 손
+
+#endregion 라이브러리
+
+# ============================ 준비 ============================
+# 층 — 없다. 아무것도 안 바꾼다
+# 하는 일 — 경로(`$src` · `$dst` · `$backup`)와 계획을 담을 통(`$plan` · `$same` · `$todo` · `$envDown` · `$prunable` ·
+#   `$gateReport`)을 세운다. `personal.conf` 의 REPOS · ROOT 에서 형제 저장소 자리(`$globalRuleTargets`)와 메모리
+#   자리(`$memTargets`)를 파생하고, Git Bash(`$bash`)를 찾는다
+# 앞에서 받는 것 — 매개변수 셋(`-Yes` · `-Prune` · `-ShowUnchanged`) · 머리의 `$ErrorActionPreference = 'Stop'` 과 UTF-8 출력
+# 안 하는 것 — 저장소를 안 받는다(clone 은 세션 훅의 `--install` 이 한다) · 화면에 안 찍는다 — 걸리는 것은 `$todo` 에 쌓는다
+
+$src    = $PSScriptRoot
+$dst    = Join-Path $HOME '.claude'
+$backup = Join-Path $dst ('backups\deploy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+
+$plan    = @()   # 바꿀 것
+$same    = @()   # 이미 맞는 것
+$todo    = @()   # 사람이 해야 할 것
+# ⚠ **`$todo` 와 갈라 둔다.** 저쪽은 「사람이 손으로 할 것」(키 입력 같은)이라 남아 있어도
+#   환경은 서 있다 — 그것으로 빨강을 내면 판정이 늘 빨강이라 아무것도 안 말한다.
+#   이쪽은 **실행 환경이 안 선 것**이고, 이 목록이 비지 않으면 이 스크립트는 0 으로 안 끝난다.
+$envDown = @()   # 실행 환경이 안 선 것 — 종료코드를 가른다
+$prunable = @()  # 제거 후보 — **원본에 없는 것** (-Prune 없이는 세기만 한다)
+# ⚠ 자리가 뺀 MCP 이름은 **여기 안 든다** — 선언에 있으므로 「원본에 없는 것」이 아니다.
+#   그것은 $plan 의 `mcpremove` 로 서서 기본 실행에서 걷힌다 (§MCP 등록 · 결정 0079).
+# ⚠ **초록도 편다.** 통과가 화면에서 침묵하면 「재서 다 살아 있다」와 「아예 안 쟀다」가
+#   같아진다 — 그 침묵은 아무것도 안 말한 것과 같다. 여기는 나르기만 한다.
+# ⚠ 이제 이 통에 드는 것은 **저장소마다 「마지막 CI」 한 줄**뿐이다 — 훅 진단은 계획 단계가
+#   안 돌리고(`--needs-install` 은 파일만 본다 · #47 ②) 저장소 설치 걸음이 `--install` 끝에 그
+#   자리에서 낸다.
+$gateReport = @()  # 저장소마다 마지막 CI 한 줄 — 초록·빨강·못 쟀다
+
+# 배포 대상은 PC 마다 적지 않고 `personal.conf` 에서 **파생한다** (결정 0072 · 0019 를 대체).
+# ⚠ **왜 파생인가.** 옛 판은 PC 마다 `deploy.targets.d/<PC>.conf` 에 저장소 절대 경로와 메모리 슬러그를
+#   손으로 적었다. 네 장이 사용자 이름 한 칸만 달랐고, 그 한 칸이 다른 새 PC 에서는 저장소 배포 · 저장소
+#   설치 · **전역 설치** · 메모리가 통째로 안 섰다 — 게이트 도구(commitlint · markdownlint · lychee · ruff)가
+#   안 깔려 커밋 게이트가 「못 쟀다」로만 돌았다(2026-09-24 · 09-28). 저장소 목록과 자리는 이미
+#   `personal.conf`(REPOS · ROOT)가 들고 세션 훅이 그것으로 clone 하고 슬러그 폴더를 세운다 — 같은 사실의 사본이었다.
+# ⚠ **슬러그는 제품의 규칙대로 짓는다** — 윈도 경로에서 영숫자가 아닌 글자를 **글자마다** `-` 로.
+#   PowerShell 의 `-replace` 는 UTF-16 글자로 세므로 한글 한 자가 대시 하나다(세션 훅의 같은 규율 ·
+#   `C:\Users\김균한\repos` → `C--Users-----repos`). 메모리 폴더와 자리의 짝은 셋이다:
+#     memory/<REPOS 의 이름>/  → ROOT\<이름>
+#     memory/<이 저장소 이름>/ → 이 저장소 자리
+#     memory/global/           → ROOT (저장소들을 담은 폴더에서 연 세션)
+$memTargets = @{}          # memory/<이름> -> 그 메모리가 딸린 폴더 경로 (슬러그는 이 경로에서 짓는다)
+$globalRuleTargets = @()   # 저장소 배포본을 받고 설치 걸음이 도는 저장소 루트들
+$personalConf = Join-Path $src 'personal.conf'
+$pc = @{}
+if (Test-Path $personalConf) {
+    foreach ($line in (Get-Content $personalConf -Encoding UTF8)) {
+        if ($line -match '^\s*([A-Z_]+)\s*=\s*(.*?)\s*$') { if (-not $pc.ContainsKey($Matches[1])) { $pc[$Matches[1]] = $Matches[2] } }
+    }
+} else {
+    $todo += 'personal.conf 가 없다 — 어느 저장소로 뿌릴지 몰라 저장소 배포본 · 설치 · 저장소 메모리가 안 간다. 씨앗의 personal.conf 를 채워 둔다'
+}
+# ROOT 의 `$HOME` · `~` 는 세션 훅이 푸는 것과 같이 푼다. 비면 세션 훅의 기본값과 같은 `~/repos`.
+$repoRoot = if ($pc['ROOT']) { $pc['ROOT'] } else { '$HOME/repos' }
+$repoRoot = ($repoRoot -replace '^\$HOME', $HOME -replace '^~', $HOME) -replace '/', '\'
+$repoNames = @(($pc['REPOS'] -split '\s+') | Where-Object { $_ })
+foreach ($n in $repoNames) {
+    $p = Join-Path $repoRoot $n
+    $globalRuleTargets += $p
+    $memTargets[$n] = $p
+}
+$memTargets[(Split-Path $src -Leaf)] = $src
+$memTargets['global'] = $repoRoot
+# ⚠ **적힌 저장소가 이 PC 에 하나도 없으면 말한다** — 그때 저장소 설치 걸음도, 그에 딸린 전역 설치 걸음도
+#   통째로 안 선다. clone 은 세션 훅(`--install`)이 personal.conf 의 REPO_URL 로 한다.
+if ($repoNames.Count -gt 0 -and -not ($globalRuleTargets | Where-Object { Test-Path $_ })) {
+    $todo += "personal.conf 의 REPOS 가 이 PC 의 $repoRoot 에 하나도 없다 — 저장소 설치 · 전역 설치가 안 선다. 세션 훅의 --install 이 REPO_URL 로 받는다"
+}
+# 옛 선언이 남았으면 말한다 — 더는 안 읽는데 남아 있으면 「고쳤는데 안 먹는다」로 사람을 헤매게 한다.
+if ((Test-Path (Join-Path $src 'deploy.targets.conf')) -or
+    @(Get-ChildItem (Join-Path $src 'deploy.targets.d') -Filter *.conf -File -ErrorAction SilentlyContinue).Count) {
+    $todo += 'deploy.targets.d/ · deploy.targets.conf 는 더 안 읽는다 — 대상은 personal.conf 의 REPOS · ROOT 에서 파생한다(결정 0072). 지운다'
+}
+
+# PATH의 bash는 WSL일 수 있다(배포판 없으면 실패). git.exe 위치에서 Git Bash를 직접 찾는다.
+$bash = @(
+    (Get-Command git -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path (Split-Path (Split-Path $_.Source -Parent) -Parent) 'bin\bash.exe' }),
+    "$env:ProgramFiles\Git\bin\bash.exe",
+    "${env:ProgramFiles(x86)}\Git\bin\bash.exe"
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
+
+# ============================ 당김 ============================
+# 층 — 저장소. 형제 저장소의 main 을 원격까지 빨리감기로 맞춘다
+# 하는 일 — `.git` 을 든 형제 저장소마다 fetch 를 동시에 띄우고 `merge --ff-only` 를 차례로 한다. 저장소마다 판정 한 줄
+#   (`↓ 당김` · `· 당김 건너뜀` · `! 못 당김`)을 내고, 그 판정을 `$pulledRepos` 에 남긴다
+# 앞에서 받는 것 — 준비의 `$globalRuleTargets`
+# 안 하는 것 — 승인을 안 묻는다 · 던지지 않고 종료코드를 안 올린다 · 밀지 않는다(3단계의 `copy` 가 `$pulledRepos` 를 읽기만
+#   한다) · 세션 훅의 당김 표식(`.git/claude-pull-attempted`)을 안 읽고 안 쓴다
+
+# ── 당김 — **계획을 짓기 앞에** 형제 저장소를 원격까지 맞춘다 (결정 0078 · 이슈 18 을 잇는다) ──
+# ⚠ **왜 계획 앞인가.** 아래 계획(`$targets` · `$plan`)과 설치 판정(`--needs-install`)은 **지금 그
+#   저장소에 있는 파일의 지문**을 본다. 당김을 그 뒤에 두면 새로 들어온 선언이 이번 회차에 안 깔리고
+#   다음 회차에야 깔린다 — 실측 2026-09-12 의 ruff 가 그 병이었고(둘째 판에서 깔렸다) 아래
+#   `$declChanges` 땜질이 그 자리에 남은 흉이다.
+# ⚠ **왜 여기로 옮겼나.** 옛 판은 당기는 자를 `'copy'` 걸음 **안**에 두어, 배포본 지문이 어긋나
+#   밀 것이 있는 회차에만 당겼다. 평상시에는 copy 가 안 서고 **당김도 함께 사라졌다** — 실측
+#   2026-10-06 회사 PC: 2주 넘게 어떤 설치 회차도 형제를 당기지 않았고, 「안 당겼다」가 조용해서
+#   아무도 몰랐다(#112). 그래서 지금은 **밀 것이 하나도 없는 회차에도** 저장소마다 판정 한 줄이 선다.
+# ⚠ **밀기 전에 당긴다는 규율은 그대로다** — 뒤처진 저장소에 새 진본이 앉으면 그것이 M 이 되고,
+#   다음 세션의 훅 당김(`merge --ff-only`)이 그 M 에 막힌다. 한 번 막히면 사람이 되돌리기 전까지
+#   안 풀린다 — **배포가 다음 배포를 막는 고리다.** 실측 2026-09-09 회사 PC: 훅이
+#   `error: Your local changes … would be overwritten by merge` 로 두 번 졌다.
+# ⚠ **못 당기면 안 민다.** 밀어 봐야 그 저장소는 당김이 막힌 채 트리만 더 더러워진다 — 고리를
+#   끊으려는 자리에서 고리를 한 바퀴 더 돌리는 꼴이다. 판정은 `$pulledRepos` 가 들고 아래
+#   `'copy'` 걸음은 그것을 **읽기만** 한다(당기는 자를 부르는 자리는 이 한 곳이다).
+# ⚠ main 위에서만 당긴다 — 작업 중인 브랜치를 건드리지 않는다(훅 `pull_ff` 와 같은 자).
+# ⚠ **배경이 아니라 동기다.** 세션 훅은 당김을 배경으로 뺐는데(0043 · 0069) 그 까닭은 확장이
+#   초기화를 60초만 기다리는 벽이었다. 이 자리는 부팅·로그온 자동 실행이고 그 **직후에 아뜰리에
+#   서버가 뜬다** — 서버가 뜨기 전에 최신이어야 당긴 것이 이번 부팅에 실린다. 0043 과 안 부딪힌다.
+# ⚠ **져도 던지지 않고 종료코드를 올리지도 않는다.** 부팅 라인의 서버 띄우기는 앞 단계의
+#   종료코드·시간 초과를 안 보고 늘 서는데, 그 성질을 깨지 않는다 — 옛 판 서버가 도는 것이 서버가
+#   아예 안 뜨는 것보다 낫다. 한 저장소의 실패는 그 저장소의 밀기만 막고 나머지는 다 돈다.
+# ⚠ **훅의 90초 표식(`.git/claude-pull-attempted`)은 읽지도 쓰지도 않는다** — 까닭은 결정 0078.
+#   그 표식은 한 세션에서 훅 둘이 겹치는 것을 막는 자리이고, 이 자리의 물음은 「서버가 뜨기 전에
+#   최신인가」라 남이 90초 안에 **시도했다**는 사실로는 답이 안 된다.
+# ⚠ **기다림에 한도가 있다 — 걸린 당김은 거두고 그 저장소만 「못 당김」으로 적는다.**
+#   이 자리가 배포의 **첫 걸음**이라, 여기서 안 끝나면 배선(`core.hooksPath`) · 계획 · 배포 ·
+#   설치가 통째로 안 돈다. 무인 라인에서 그것은 조용한 굳음이다: 라인의 10분 울타리가 autorun 을
+#   거두고 아뜰리에 서버는 옛 판으로 뜬다. 걸리는 길이 둘 있다 — **창을 띄우려는 자격증명
+#   도움꾼**(죽은 토큰 · 사람이 없는 세션)과 **답을 안 주는 망**(프록시가 삼키는 자리).
+#   그래서 셋을 함께 둔다: 묻는 자리를 비대화로 못 박고(`Sync-Repos` 머리의 이름 둘) · 묶음
+#   전체에 벽시계 한도를 두고 · 넘긴 자식을 거둔다. **최악의 경우 배선이 늦는 폭이 곧 이 한도다.**
+# ⚠ **0043 이 거절한 「시간 제한」과 다른 것이다.** 저쪽이 거절한 것은 정상이 7초인 왕복을 5초로
+#   자르는 일이었다 — 되던 당김까지 실패로 찍는다. 여기 한도는 **정상의 열 배를 넘는 자리**에
+#   두어 걸린 것에만 걸린다(사내 망 실측 하나 6~7초 · 동시에 돌므로 묶음도 그 값에 가깝다).
+# ⚠ 이 고침은 **차례를 바로잡는다.** 진본이 바뀌면 형제 저장소의 배포본 커밋도 같은 판에
+#   나가야 하고(`chore(claude): 훅 배포본을 진본과 다시 맞춘다`), 안 나가면 당겨도
+#   뒤처진 채라 M 이 다시 뜬다 — 그리고 그 M 은 맞다.
+# 한도는 **이름 둘이 든다** — 값을 아래 고리에 박으면 화면에 찍는 초와 재는 초가 갈린다.
+$PullBatchTimeoutSec = 120   # fetch **묶음 전체**의 벽시계 한도. 넘긴 자식만 거둔다
+$PullMergeTimeoutSec = 30    # merge 하나의 한도 — 디스크 일이라 망을 안 탄다(걸리면 잠금이다)
+$pulledRepos = @{}   # 저장소 -> 이번 회차에 그 저장소로 밀어도 되나 (당김 판정)
+
+# 대상은 `personal.conf` 의 REPOS 중 이 PC 에 `.git` 을 든 것이다 — 목록을 여기 안 적는다.
+# 이 저장소 자신은 대상이 아니다: 부팅 라인에서 이 스크립트가 도는 것은 설치의 「설정 저장소」 걸음이 이미
+# 그것을 당긴 뒤이고, 지금 도는 몸통이 곧 그때 당겨 온 판이다.
+Sync-Repos $globalRuleTargets
+
+
+# ============================ 1단계: 계획 수립 ============================
+# 층 — 없다. 홈 · 저장소 · 등록 · 환경 층에서 바꿀 것을 재기만 한다
+# 하는 일 — 제작자 칸(`PAISETUP_PERSONAL`)을 읽고, 밀 파일(`$targets`)을 지어 지문으로 견준다. 도구 홈의 규범 · 룰 · 에이전트는
+#   손에게 `--dry-run` 으로 물어 그 바꿀 줄을 싣는다. 바꿀 것은 `$plan`, 이미 맞는 것은 `$same`, 원본에 없는 것은 `$prunable`,
+#   사람이 할 일은 `$todo`, 실행 환경이 안 선 것은 `$envDown`, 저장소마다 마지막 CI 줄은 `$gateReport` 에 담는다. 계획을 굳히며
+#   배선(`githooks`)을 맨 앞에 세운다
+# 앞에서 받는 것 — 당긴 뒤의 형제 저장소 나무 · 준비의 자리와 통 · `-Prune`(제거 후보를 계획에 올리나)
+# 안 하는 것 — 홈 · 저장소 · 등록부를 안 바꾼다(쓰는 것은 임시 폴더의 프로브뿐이다) · 세션 훅과 손에는 묻기만 한다
+#   (`--needs-install` · `--site` · `--dry-run`) — 깔기와 진단은 3단계가 부른 훅이, 놓기는 3단계가 부른 손이 한다
+# 아무것도 바꾸지 않는다. 무엇을 바꿔야 하는지만 조사한다.
+# ⚠ **당김은 이 앞에 있다** — 그래서 이 단계가 보는 나무는 **당긴 뒤**의 나무고, 이 한 줄은
+#   그대로 참이다(당김은 `$plan` 에 아무것도 안 더하므로 「다 최신이면 안 묻는다」도 산다).
+
+# --- 개인화할 도구 — 배포본 설치기의 제작자 칸이 심는 사용자 환경변수 `PAISETUP_PERSONAL`(docs/decisions/0107) ---
+# **칸 하나가 스위치다.** 설정 저장소를 넣은 PC 에서 설치기는 켠 도구에 만든 사람의 스킬을 안 깔고 비켜서고, 그 도구는
+# 이 배포가 이 저장소의 스킬로 민다. 끈 도구에는 안 밀고 홈에 있는 것을 걷지도 않는다 — 끈 도구의 우리 것은
+# 설치기가 걷는다. 둘이 같은 값을 보므로 한 홈을 두고 번갈아 덮지 않는다.
+# ⚠ **Claude 도 이 값을 탄다** — 칸 셋이 같은 스위치다. 끄면 Claude 홈의 스킬을 안 밀고 안 걷는다.
+#   훅 · 씨앗 · 메모리 · 형제 저장소 배포본은 칸과 상관없이 민다.
+# ⚠ **값이 없으면 있는 도구 다** — 설치기를 안 돌린 자리(리모트 컨테이너 · 설치기 전 PC)가 지금까지처럼 받는다.
+#   `none` 은 아무 도구도 아니다 — 빈 값과 「안 돌렸다」를 갈라야 해서 설치기가 그렇게 심는다.
+# 규범 · 룰 · 에이전트는 이 값을 여기서 안 읽는다 — 손이 같은 칸을 제 뜻으로 읽는다(아래 「도구 홈의 규범 · 룰 · 에이전트」).
+$personalRaw = Get-PersonalRaw
+$personalSet = Get-PersonalTools $personalRaw
+foreach ($t in @($personalSet | Where-Object { @('claude', 'codex', 'agy') -notcontains $_ })) {
+    $todo += "PAISETUP_PERSONAL 에 모르는 이름이 있다 — $t (claude · codex · agy · none 을 읽는다)"
+}
+$personalClaude = Test-PersonalFor 'claude'
+if (-not $personalClaude) {
+    Write-Host "· Claude 홈의 스킬 건너뜀  (제작자 칸에서 Claude 를 껐다 — PAISETUP_PERSONAL=$personalRaw)" -ForegroundColor DarkGray
+}
+
+# --- 파일 배포 ---
+$memSrc   = Join-Path $src 'memory'
+$targets  = @()
+
+# 전역 규범·룰은 저장소로 안 간다 — 홈 한 자리다 (docs/decisions/0014).
+# 리모트 컨테이너는 홈이 비어 뜨지만, 그 통로는 claude-config 를 함께 붙이는 것이다
+# (docs/decisions/0001 · 0010). 저장소가 사본을 지면 「이 저장소 것」과 「전역 것」이
+# 한 폴더에서 섞여, 이름으로 갈라야 하고 그 이름이 PC 에서는 뜻이 없다.
+
+# 저장소마다 한 벌씩 있어야 하는 것들: 각 저장소로. 몸통은 익명이라 저장소마다 바이트가
+# 같고, 목록은 선언이 든다 (docs/decisions/0004). 홈으로는 안 간다 — 홈이 읽는 자리가
+# 아니라 **그 저장소 안에서 읽히는** 자리들이다: 훅과 그 등록, 그리고 깃허브가 편집창을
+# 채울 때 여는 이슈 템플릿 (docs/decisions/0021).
+#
+# ⚠ 여기의 `.claude\settings.json` 은 **저장소의 훅 등록 파일**이지 홈의 개인 설정이
+#   아니다. 홈 것(~/.claude/settings.json)은 여전히 수동이다 — 위 머리글 참조.
+#   저장소 것은 세 저장소가 이미 바이트가 같아 익명 몸통과 같은 결로 뿌린다.
+# 목록은 선언이 든다 — 재는 자(scripts/check-global-copies.sh)도 같은 파일을 읽는다.
+# 배열로 박아 두면 두 자가 손사본이 되어 한쪽만 고쳐진다 (docs/decisions/0021).
+$repoFilesConf = Join-Path $src 'deploy.repofiles.conf'
+$repoFiles = @()
+if (Test-Path $repoFilesConf) {
+    $repoFiles = @(Get-Content $repoFilesConf -Encoding UTF8 |
+        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+        Where-Object   { $_ } |
+        ForEach-Object { $_ -replace '/', '\' })
+}
+if ($repoFiles.Count -eq 0) {
+    $todo += 'deploy.repofiles.conf 없음(또는 빔) — 저장소 배포본이 하나도 안 깔린다'
+}
+foreach ($bootFile in $repoFiles) {
+    $bootSrc = Join-Path $src $bootFile
+    if (-not (Test-Path $bootSrc)) { continue }
+    foreach ($repoRoot in $globalRuleTargets) {
+        if (-not (Test-Path $repoRoot)) { continue }
+        # Repo 를 달아 둔다 — 실행 단계가 **그 저장소의 당김 판정을 읽을** 근거다
+        # (당김은 계획 앞에서 이미 돌았다 · 결정 0078). 못 당긴 저장소에는 안 민다.
+        # 홈 대상에는 안 단다: ~/.claude 는 git 밖이라 당길 것도 더러워질 것도 없다.
+        $targets += @{ From = $bootSrc; To = Join-Path $repoRoot $bootFile; Repo = $repoRoot }
+    }
+}
+
+# ADR 색인 생성기는 저장소로 안 나른다(결정 0064) — 찾는 자(`claude-config-path.sh`)가 홈 스킬 ·
+# 붙은 claude-config 의 스킬로 찾는다. 사본은 「claude-config 없이 연 리모트에서도 색인 검사가 서야
+# 한다」가 까닭이었는데, 리모트는 늘 claude-config 를 붙인다(0061). 남은 옛 사본은 사본 대조가 문다.
+
+# 프로젝트별 메모리: memory/<project>/*.md -> ~/.claude/projects/<슬러그>/memory/
+if (Test-Path $memSrc) {
+    foreach ($proj in (Get-ChildItem $memSrc -Directory)) {
+        $memDsts = Get-ProjectMemDst $proj.Name
+        if ($memDsts.Count -eq 0) {
+            # 조용히 넘어가지 않는다 — 배포된 줄 알고 있으면 어긋난 것을 나중에야 안다
+            $todo += "memory/$($proj.Name)/ 배포 안 됨 — 딸린 폴더가 이 PC 에 없다(personal.conf 의 REPOS · ROOT 로 짓는다 · 결정 0072)"
+            continue
+        }
+        foreach ($f in (Get-ChildItem $proj.FullName -Filter *.md)) {
+            foreach ($d in $memDsts) {
+                $targets += @{ From = $f.FullName; To = Join-Path $d $f.Name }
+            }
+        }
+    }
+}
+
+# 이 저장소에서만 쓰는 스킬 — 홈으로 안 민다. **목록의 진본은 선언이고, 재는 자도 같은 줄을
+# 본다**(`scripts/check-global-copies.sh`). 손사본 둘로 두면 한쪽만 고쳐지고, 그러면 재는 자가
+# 빠진 자산을 안 재면서 초록을 낸다 (`docs/decisions/0021`).
+# ⚠ **이 저장소는 역할이 둘이다** — 전역 자산의 진본이면서 공개 배포본을 뽑는 자다(0035).
+#   뽑기 절차를 든 스킬은 다른 프로젝트를 여는 세션마다 따라붙을 것이 아니다. 도구 선언은
+#   이미 둘로 갈려 있었는데(`tools.global.conf` ↔ `tools.conf`) 스킬만 한 벌이었다.
+$localSkillsConf = Join-Path $src 'deploy.skills.local.conf'
+$localSkills = @()
+if (Test-Path $localSkillsConf) {
+    $localSkills = @(Get-Content $localSkillsConf -Encoding UTF8 |
+        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+        Where-Object   { $_ })
+}
+
+# 스킬: .claude/skills/** -> ~/.claude/skills/**
+# 폴더를 통째로 미러링한다. SKILL.md만 집어오지 않는 것은 스킬이 references·scripts 같은
+# 딸린 파일을 갖기 때문이다. 목록을 여기 적지 않으므로 스킬이 새로 생겨도 이 파일은 그대로 둔다.
+# ⚠ **빠지는 것은 홈으로 미는 것뿐이다** — 위 선언이 든 스킬도 이 저장소를 붙인 세션에서는
+#   `.claude/skills/` 에서 그대로 로드된다. 「홈에 안 깐다」와 「안 쓴다」는 다른 명제다.
+$skillSrc = Join-Path $src '.claude\skills'
+if ($personalClaude -and (Test-Path $skillSrc)) {
+    # ⚠ **파이썬이 남긴 캐시는 안 민다** — 까닭은 아래 씨앗 칸의 같은 자리가 든다. 스킬도
+    #   `scripts/` 를 들 수 있어 같은 부산물이 난다. 재는 자(`scripts/check-global-copies.sh`
+    #   의 `DIFF_SKIP`)는 이미 그 이름을 빼므로, 여기만 안 빼면 **재는 자와 뿌리는 자가 다른
+    #   것을 세어** 홈이 최신인 날에도 캐시 하나로 「어긋남」이 난다 — 고칠 것이 없는 빨강이다.
+    foreach ($f in (Get-ChildItem $skillSrc -Recurse -File |
+                    Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
+        $rel = $f.FullName.Substring($skillSrc.Length + 1)
+        if ($localSkills -contains ($rel -split '\\')[0]) { continue }
+        $targets += @{ From = $f.FullName; To = Join-Path $dst "skills\$rel" }
+    }
+}
+
+# Codex · agy 홈: 스킬 (docs/decisions/0099)
+# 도구마다 제 스킬 홈을 든다 — Codex 는 `~/.agents/skills`(Codex 가 스스로 읽는 자리), agy 는 `~/.gemini/config/skills`
+# (agy 가 목록 없이 싣는 기본 전역 스킬 자리 — 아래 「agy 옛 스킬 자리」). Claude 홈과 같은 묶음을 그 홈들에도 민다.
+# ⚠ **그 도구가 없는 PC 에는 그 홈을 안 깐다** — `~/.codex` · `~/.gemini` 가 없으면 건너뛴다. 없는 도구의 설정 폴더를 지어
+#   두면 「깔렸다」로 읽힌다.
+# ⚠ **맡기기 러너는 받는 쪽 홈에 안 간다** — 러너마다 받는 쪽은 `deploy.skills.targets.conf` 가 든다. 받는 쪽 홈에 서면
+#   그 도구가 제게 맡기는 길을 든다(0097). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다.
+# ⚠ **걷는 손(-Prune)은 배포가 민 이름만 든다** — 이 홈들은 Claude 홈과 달리 배포 혼자의 자리가 아니다. 설치기도
+#   깔고(제 기록 `.paisetup-skills`), 두 홈 다 사람이나 다른 도구가 둔 스킬도 산다. 그래서 배포는 민 이름을 제
+#   기록 `.paisetup-deploy-skills`(설치기 기록 곁)에 적고, 그 기록에 있는데 이번에 안 미는 스킬(원본에서 빠졌거나 칸을
+#   껐다)과 미는 스킬 안에서 원본에 없는 파일을 제거 후보로 센다. 설치기 기록에 든 이름은 설치기가 걷으므로 안
+#   건드린다 — 둘이 한 이름을 두고 다투면 로그온마다 걷고 다시 깐다. 기록이 서기 전에 민 스킬은 모른다.
 $codexHome = Join-Path $HOME '.codex'
+$geminiHome = Join-Path $HOME '.gemini'
 $runnerTarget = @{}
 $targetsConf = Join-Path $src 'deploy.skills.targets.conf'
 if (Test-Path $targetsConf) {
@@ -820,44 +933,6 @@ foreach ($agentHome in @(
         }
     }
 }
-# 규범 · 룰의 중립 자리 — Codex 의 룰 줄과 agy 설정 둘이 가리킨다(docs/decisions/0099). Claude 홈(`~/.claude`)은 Claude 가
-# 스스로 싣는 자리라 다른 도구를 위해 거기 두면 Claude 에도 실린다 — 그래서 따로 둔다. 이름이 `CLAUDE.md` 가 아닌 것도 같은
-# 까닭이다(Claude 는 그 이름을 찾아 싣는다).
-if (((Test-Path $codexHome) -and (Test-PersonalFor 'codex')) -or ((Test-Path $geminiHome) -and (Test-PersonalFor 'agy'))) {
-    $neutralNorms = Join-Path $HOME '.paisetup\norms'
-    $targets += @{ From = $ruleSrc; To = Join-Path $neutralNorms 'norms.md' }
-    if (Test-Path $rulesSrc) {
-        foreach ($f in (Get-ChildItem $rulesSrc -Filter *.md)) {
-            $targets += @{ From = $f.FullName; To = Join-Path $neutralNorms "rules\$($f.Name)" }
-        }
-    }
-}
-function Get-CodexNormsArgs {
-    # 블록 짓는 자(`codex-norms.py`)에게 넘길 인자 전부. 고르지 않았으면 블록을 걷는 판을 짓는다 — 블록이 없으면 지금
-    # 파일과 같아 배포가 안 민다. `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 실물 짓는 자에 물린다.
-    # ⚠ **늘 여럿을 돌려준다** — 원소 하나짜리 배열은 돌려받는 자리에서 문자열로 풀리고, 그것을 `@` 로 펼치면 글자마다
-    #   인자가 된다(`- - r e m o v e`). `--target` · `--out` 까지 여기서 지어 갈래마다 원소가 늘 여럿이게 한다.
-    param([bool]$Personal, [string]$Norms, [string]$Rules, [string]$Target, [string]$Out)
-    $mode = if ($Personal) { @('--norms', $Norms, '--rules', $Rules, '--rules-home', '~/.paisetup/norms/rules') }
-            else { @('--remove') }
-    return @(@($mode) + @('--target', $Target, '--out', $Out))
-}
-if (Test-Path $codexHome) {
-    $codexPy = Get-Command python -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $codexPy) {
-        $todo += 'Codex 규범 블록 — python 이 없어 ~/.codex/AGENTS.md 를 못 지었다'
-    } else {
-        $codexNormsPlan = Join-Path ([IO.Path]::GetTempPath()) 'deploy-codex-agents.md'
-        $codexNormsArgs = @(Get-CodexNormsArgs -Personal (Test-PersonalFor 'codex') -Norms $ruleSrc `
-            -Rules (Join-Path $src '.claude\rules.global') -Target (Join-Path $codexHome 'AGENTS.md') -Out $codexNormsPlan)
-        $codexNormsOut = @(& $codexPy.Source -X utf8 (Join-Path $src '.claude\hooks\codex-norms.py') @codexNormsArgs)
-        if ($LASTEXITCODE -eq 0) {
-            $targets += @{ From = $codexNormsPlan; To = Join-Path $codexHome 'AGENTS.md' }
-        } else {
-            $todo += "Codex 규범 블록 — 못 지었다: $($codexNormsOut | Select-Object -Last 1)"
-        }
-    }
-}
 
 # 사내 환경 문서와 씨앗 둘: posco/** · seeds/gateway/** · seeds/check/** -> ~/.claude/ 아래 같은 이름
 # ⚠ **왜 홈에도 두나** — 이 둘의 진본은 저장소이고, 스킬·형제 저장소 문서가 그 좌표를
@@ -898,6 +973,17 @@ foreach ($t in $targets) {
         $plan += @{ Kind = 'copy'; From = $t.From; To = $t.To; Repo = $t.Repo; Text = "+ 배포  $($t.To)  ($verb)" }
     }
 }
+
+# --- 도구 홈의 규범 · 룰 · 에이전트 — 손 하나가 놓는다 (docs/decisions/0112) ---
+# 이 스크립트는 규범 · 룰 · 에이전트를 제 손으로 놓지 않는다. 이 저장소로 PC 의 개인 층을 채우고 갈 곳 표대로 도구 홈에 놓는
+#   일은 손이 한다 — 여기서는 손에게 `--dry-run` 으로 묻고 그 바꿀 줄을 계획에 싣는다. 승인 뒤 3단계의 `homes` 걸음이 같은
+#   명령을 `--dry-run` 없이 돌린다. 무엇을 어떻게 놓고 걷고 백업하나는 손의 머리말이 든다.
+# ⚠ **제작자 칸도 손이 읽는다** — 위 `$personalSet` 은 스킬만 탄다. 값이 비었을 때의 뜻이 둘이 다르다(손은 Claude 만이다).
+# ⚠ **바꿀 것이 없다는 답도 한 줄 세운다**(`$same`) — 못 물은 판은 할 일에 서므로, 「재서 맞다」와 「안 쟀다」가 안 섞인다.
+$homes = ConvertFrom-ToolHomesOutput (Invoke-ToolHomes -Src $src -DryRun)
+$plan += $homes.Steps
+$todo += $homes.Notes
+if ($homes.Same) { $same += '= 동일  도구 홈의 규범 · 룰 · 에이전트  (손이 바꿀 것이 없다고 답했다)' }
 
 # ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ────────────
 # ⚠ **왜 한 줄이 더 필요한가.** 홈 사본을 진본으로 믿고 재는 자가 있다
@@ -989,43 +1075,6 @@ if (Test-Path $mcpFile) {
         Remove-Item $probe -Force -ErrorAction SilentlyContinue
     }
 
-    function Test-McpRegistered($name) {
-        if (-not $canAskMcp) { return $null }   # 물을 자가 없다. 「없다」와 구별한다
-        $probe = Join-Path $env:TEMP "deploy-mcpget-$name.sh"
-        # ⚠ **리다이렉트는 스크립트 안에 둔다.** `claude mcp get` 은 등록 안 된 이름을
-        #   **stderr 로** 답한다(그것이 정상 갈래다). 그런데 PowerShell 5.1 은 네이티브의
-        #   stderr 를 NativeCommandError 로 감싸고, 이 파일 머리의 `ErrorActionPreference = 'Stop'`
-        #   아래에서 그것은 **종료 오류**다 — `*> $null` 은 그걸 못 막는다.
-        #   그래서 배포가 **첫 MCP 조회에서 통째로 죽었고**, 바로 아래 127/0 갈래는
-        #   한 번도 안 돌았다 (실측 2026-09-07 · 맨바닥 VDI 첫 설치에서
-        #   저장소 배포·홈 규범·저장소 설치가 전부 안 선 채 「완료」가 찍혔다).
-        #   위 `$canAskMcp` 프로브가 이미 쓰는 꼴이다 — 두 프로브를 같은 꼴로 둔다.
-        [System.IO.File]::WriteAllText($probe, "claude mcp get $name >/dev/null 2>&1`n", (New-Object System.Text.UTF8Encoding($false)))
-        & $bash $probe *> $null
-        $code = $LASTEXITCODE
-        Remove-Item $probe -Force -ErrorAction SilentlyContinue
-        if ($code -eq 127) { return $null }     # 셸이 claude 를 못 찾았다 — 답이 아니다
-        return ($code -eq 0)
-    }
-
-    # `only` 는 **선언의 칸이지 서버 설정이 아니다** — 등록에 넘기는 JSON 에서 뺀다. 넘기면
-    # 모르는 키가 등록부에 눌러앉고, 그것을 쓰는 자는 아무도 없다.
-    # ⚠ 키가 없는 서버에도 그냥 건다 — 빼기 전과 **바이트가 같다**(실측). 갈래를 하나 줄인다.
-    function Get-McpDef($def) { $def | Select-Object -Property * -ExcludeProperty only }
-    # **키가 없는 것과 비어 있는 것을 가른다** — 없으면 `$null`(안 거는 서버), 있으면 글자다.
-    # 빈 글자를 「안 건다」로 접으면 `"only": ""` 가 **조용히 모든 자리에서 등록된다.**
-    function Get-McpOnly($def) {
-        $hit = @($def.PSObject.Properties | Where-Object { $_.Name -eq 'only' })
-        if ($hit.Count -eq 0) { return $null }
-        return ("$($hit[0].Value)").Trim()
-    }
-    # 쉼표로 가르고 칸마다 공백을 걷고 빈 칸은 버린다 — `"home, outside"` 도 `"home,outside"` 와
-    # 같은 뜻이어야 한다. 글자 통째로 견주면 공백 하나가 그 서버를 **모든 자리에서** 뺀다.
-    function Get-McpOnlyTokens($raw) {
-        if ($null -eq $raw) { return @() }
-        return @(($raw -split ',') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-    }
-
     $mcpProps = @((Get-Content $mcpFile -Raw | ConvertFrom-Json).mcpServers.PSObject.Properties)
 
     # 자리 **이름 목록**은 파일 이름이 든다 — 선언의 오타를 잡는 자다. ⚠ 이것은 두 번째 자리
@@ -1038,27 +1087,6 @@ if (Test-Path $mcpFile) {
     # 초와 기다리는 초가 갈린다). 프로브는 안 닿을 때 3초를 무니 한 번 더 묻는 값이 그만큼이다.
     $McpSiteRetryPauseSec = 5   # 다시 묻기 전에 기다리는 시간 — 부팅 직후 망이 서는 틈을 준다
     $McpSiteRetryAttempts = 1   # 바닥값을 받아들이기 전에 다시 묻는 횟수
-
-    function Get-McpSiteAnswer {
-        # @{ Site; How; Why } — `Why` 가 서면 못 쟀다는 뜻이다
-        if (-not $bash) { return @{ Site = ''; How = ''; Why = 'Git Bash 를 못 찾았다' } }
-        # ⚠ **`2>&1` 을 안 붙인다** — 5.1 은 네이티브의 stderr 한 줄을 종료 오류로 승격한다
-        #   (까닭은 `Sync-Repos` 머리에 있다). 답도 사유도 훅이 stdout 한 줄로 낸다.
-        $body = Join-Path $src '.claude\hooks\session-start-body.sh'
-        $env:SESSION_START_REPO = $src -replace '\\', '/'
-        try { $out = & $bash ($body -replace '\\', '/') --site; $rc = $LASTEXITCODE }
-        finally { Remove-Item Env:SESSION_START_REPO -ErrorAction SilentlyContinue }
-        $line = @($out | Where-Object { "$_".Trim() }) | Select-Object -Last 1
-        if ($rc -ne 0 -or -not $line) {
-            $why = if ($line) { "$line".Trim() } else { "훅이 사유를 안 냈다 (exit $rc)" }
-            return @{ Site = ''; How = ''; Why = $why }
-        }
-        $f = @(("$line".Trim() -split '\s+') | Where-Object { $_ })
-        if ($f.Count -lt 2) {
-            return @{ Site = ''; How = ''; Why = "훅이 자리와 길을 두 칸으로 안 냈다: $line" }
-        }
-        return @{ Site = $f[0]; How = $f[1]; Why = '' }
-    }
 
     # 자리는 **거는 이름이 하나라도 있을 때만** 묻는다 — `_site_of` 는 안 닿는 자리에서 TCP
     # 프로브에 3초를 무는 자라, 아무도 자리를 안 거는 판에서는 그 3초가 순수한 손해다.
@@ -1378,15 +1406,6 @@ if ($installSteps.Count -gt 0) {
     $plan += $installSteps
 }
 
-# --- 제거 후보: 원본에 없는 에이전트 파일 ---
-$agentDst = Join-Path $dst 'agents'
-if ($personalClaude -and $hasAgents -and (Test-Path $agentDst)) {
-    $keep = (Get-ChildItem $agentSrc -Filter *.md).Name
-    Get-ChildItem $agentDst -Filter *.md | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
-        $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  (agents/에 없음)" }
-    }
-}
-
 # --- 제거 후보: 원본에 없는 씨앗 파일 ---
 # ⚠ **씨앗 폴더(`seeds\…`)만 센다 — `posco` 는 안 센다.** 씨앗은 새 프로젝트가 복사해 출발하는 자리라,
 #   원본에서 걷은 부품이 홈에 남으면 계속 퍼진다. 예전에는 설치기가 판마다 거울로 걷었는데, 설정 저장소를
@@ -1418,7 +1437,7 @@ if (Test-Path $memSrc) {
 }
 
 # --- 제거 후보: 원본에 없는 스킬 파일 ---
-# 에이전트·메모리와 같은 이유다. 저장소에서 지운 스킬이 홈에 남아 계속 로드되면
+# 메모리와 같은 이유다. 저장소에서 지운 스킬이 홈에 남아 계속 로드되면
 # 배포한 줄 알았던 것과 실제가 어긋난다.
 $skillDst = Join-Path $dst 'skills'
 if ($personalClaude -and (Test-Path $skillSrc) -and (Test-Path $skillDst)) {
@@ -1439,22 +1458,6 @@ if ($personalClaude -and (Test-Path $skillSrc) -and (Test-Path $skillDst)) {
         ForEach-Object {
             $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  (skills/에 없음)" }
         }
-}
-
-# --- 제거 후보: 원본에 없는 룰 파일 ---
-# 진본에서 지운 룰이 홈이나 저장소 사본에 남으면 계속 로드·복사된다 — 스킬과 같은 이유.
-$rulesDst = Join-Path $dst 'rules'
-if ($personalClaude -and (Test-Path $rulesSrc)) {
-    $keep = (Get-ChildItem $rulesSrc -Filter *.md).Name
-    # 홈만 본다. 저장소의 `.claude/rules/` 는 **그 저장소 자신의 룰** 자리라, 여기서 훑으면
-    # 진본에 없다는 이유로 남의 룰을 지운다 (docs/decisions/0014).
-    $ruleCopyDirs = @($rulesDst)
-    foreach ($d in $ruleCopyDirs) {
-        if (-not (Test-Path $d)) { continue }
-        Get-ChildItem $d -Filter *.md | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
-            $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  (rules.global/에 없음)" }
-        }
-    }
 }
 
 if ($Prune) { $plan += $prunable }
@@ -1560,6 +1563,12 @@ if ($ghTok) {
 }
 
 # ============================ 2단계: 보고 및 승인 ============================
+# 층 — 없다. 화면에 내고 묻기만 한다
+# 하는 일 — 이미 맞는 것의 개수(`-ShowUnchanged` 면 줄마다) · 제거 후보(`-Prune` 이 없을 때) · 마지막 CI 줄 · 바꿀 것과 백업
+#   자리를 낸다. 바꿀 것이 있으면 승인을 묻는다 — `y`(또는 `Y`)로 시작하는 답만 통과하고, 빈 답(물어볼 자리가 없다)과 다른
+#   답은 멈춘다. `-Yes` 면 안 묻는다
+# 앞에서 받는 것 — 1단계의 `$plan` · `$same` · `$prunable` · `$gateReport` · `$todo`
+# 안 하는 것 — 아무것도 안 바꾼다 · 바꿀 것이 없거나 승인이 안 서면 여기서 돌아가고 3단계는 안 돈다
 
 # 개수만 낸다. 이미 맞는 것을 한 줄씩 펴면 매 실행이 100줄을 넘어 정작 봐야 할
 # "바꿀 것"이 묻힌다 — 침묵하지 않는 목적은 개수 한 줄로 이미 달성된다.
@@ -1600,6 +1609,11 @@ Write-Host "`n바꿀 것 ($($plan.Count)개)" -ForegroundColor Cyan
 $plan | ForEach-Object { Write-Host "  $($_.Text)" -ForegroundColor Cyan }
 Write-Host "`n덮어쓰거나 치우는 파일은 먼저 여기 백업됩니다:"
 Write-Host "  $backup"
+# 손의 줄은 저 백업을 안 탄다 — 손이 백업하는 것은 그 줄마다 「~ 백업」 한 줄이 따로 선다(자리는 손이 정한다).
+#   그 줄 없이 선 손의 「- 제거」 는 백업 없이 걷힌다는 뜻이라, 위 한 줄만 보이면 화면이 거짓말을 한다.
+if (@($plan | Where-Object { $_.Kind -eq 'homes' }).Count) {
+    Write-Host "  규범 · 룰 · 에이전트 줄은 여기가 아니다 — 손(tool-homes.py)이 백업하는 것은 「~ 백업」 줄로 따로 선다"
+}
 
 if (-not $Yes) {
     # 승인은 **명시적인 y 하나만** 통과시킨다. 나머지는 전부 「안 함」이다.
@@ -1632,21 +1646,16 @@ if (-not $Yes) {
 
 
 # ============================ 3단계: 실행 ============================
-
-function Save-Backup($path) {
-    # 백업도 원래 폴더 구조를 유지한다. 이름만 떼어 평평하게 쌓으면
-    # 여러 스킬의 SKILL.md처럼 같은 이름끼리 서로를 덮어써 백업이 소실된다.
-    $rel = if ($path.StartsWith($dst, [StringComparison]::OrdinalIgnoreCase)) {
-        $path.Substring($dst.Length).TrimStart('\')
-    } else {
-        # ~/.claude 밖 (저장소 배포본). 이름만 떼면 여러 저장소의 같은 이름끼리
-        # 서로를 덮어써 백업이 소실된다 — 경로 전체를 이름에 접어 유일하게 만든다.
-        Join-Path '_outside' (($path -replace ':', '') -replace '[\\/]', '-')
-    }
-    $to = Join-Path $backup $rel
-    New-Item -ItemType Directory -Force -Path (Split-Path $to -Parent) | Out-Null
-    Copy-Item $path $to
-}
+# 층 — 홈 · 저장소 · 등록 · 환경. 기계 층(전역형 도구)과 저장소 설치는 세션 훅을 불러 맡긴다
+# 하는 일 — 계획의 걸음을 차례대로 돌고 걸음마다 한 줄을 낸다. 덮거나 걷는 파일은 먼저 `$backup` 에 뜨고(판 줄 · 배포 기록은
+#   안 뜬다), 옮기는 것(비켜 두는 폴더 · agy 옛 스킬 자리와 그 목록)은 새 자리나 백업 자리로 간다. 도구 홈의 규범 · 룰 · 에이전트는
+#   손을 계획과 같은 명령으로 한 번 불러 맡긴다(백업은 손이 제 자리에 뜬다). 전역 설치는 이 저장소의 세션 훅을
+#   `--install-global` 로, 저장소 설치는 그 저장소의 세션 훅을 `--install` 로 부른다. 끝에 백업 자리 · 남은 수동 작업 · 판정을
+#   내고, 실행 환경이 안 선 것(`$envDown`)이 있으면 `exit 1` 로 끝난다
+# 앞에서 받는 것 — 2단계를 지난 `$plan`(배선이 맨 앞) · 당김의 `$pulledRepos`(못 당긴 저장소에는 안 민다) · 1단계의 `$todo` ·
+#   `$envDown`(여기서 더 쌓아 끝에 낸다)
+# 안 하는 것 — 계획에 없는 것은 안 바꾼다 · 당기지 않는다 · 무엇을 깔지 모른다 — 그것은 세션 훅이 안다 · 무엇이 어느 도구 홈에
+#   가나 모른다 — 그것은 손이 안다
 
 # ── 이번 실행의 표식 — **같은 배포 안에서만 통하는 인용 좌표다** (#57) ──────────────────
 # 전역 걸음(`--install-global`)이 도구마다 ✅ 를 내면 훅이 그것을 홈의 명부에 이 표식과 함께
@@ -1659,6 +1668,7 @@ function Save-Backup($path) {
 #   전역 걸음이 적은 줄을 저장소 걸음이 못 알아본다.
 $env:CLAUDE_CONFIG_RUN = "$(Get-Date -Format 'yyyyMMddTHHmmss')-$PID"
 
+$homesRan = $false   # 손은 한 번만 돈다 — 아래 `homes` 걸음
 Write-Host ""
 foreach ($step in $plan) {
     switch ($step.Kind) {
@@ -1704,6 +1714,19 @@ foreach ($step in $plan) {
             [System.IO.File]::WriteAllText($step.Path, $step.Line + "`n",
                                           (New-Object System.Text.UTF8Encoding($false)))
             Write-Host "+ 판 줄  $($step.Path)  ($($step.Line))"
+        }
+
+        'homes' {
+            # 손의 바꿀 줄마다 걸음이 하나지만 손은 한 번 돈다 — 첫 걸음에서 계획과 같은 명령을 `--dry-run` 없이 돌리고 나머지는
+            #   지나간다. 손이 실제로 한 일을 줄마다 낸다. 경고 · 오류는 할 일에 올린다 — 계획에서 올린 같은 줄은 한 번만 선다.
+            if ($homesRan) { break }
+            $homesRan = $true
+            $homesDone = ConvertFrom-ToolHomesOutput (Invoke-ToolHomes -Src $src)
+            $homesDone.Steps | ForEach-Object { Write-Host $_.Text }
+            foreach ($n in $homesDone.Notes) { if ($todo -notcontains $n) { $todo += $n } }
+            if ($homesDone.Failed) {
+                Write-Host "! 규범 · 룰 · 에이전트 — 손이 다 못 놓았습니다 (까닭은 아래 남은 수동 작업)" -ForegroundColor Red
+            }
         }
 
         'skillledger' {
@@ -1834,7 +1857,7 @@ foreach ($step in $plan) {
             Write-Host "- 제거  $($step.Path)"
             # ⚠ **파일만 걷으면 빈 폴더가 남는다** — 걷힌 스킬이 `skills/<이름>/scripts/` 같은 껍데기로
             #   남아 홈 목록을 흐린다. 비었을 때만 위로 올라가며 걷고, 홈 바로 아래 자리(`skills` ·
-            #   `agents` · `projects` …)는 비어도 둔다 — 그 자리는 배포가 아니라 앱이 세운다. Codex · agy 홈은
+            #   `projects` · `seeds` …)는 비어도 둔다 — 그 자리는 배포가 아니라 앱이 세운다. Codex · agy 홈은
             #   `~/.claude` 밖이라 그 스킬 홈(`Floor`)에서 멈춘다 — 안 그러면 비었을 때 `~/.agents` 까지 오른다.
             $parent = Split-Path $step.Path -Parent
             while ($parent -and
