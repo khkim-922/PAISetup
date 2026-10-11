@@ -3554,11 +3554,31 @@ if ($kitCodex -or $kitAgy) {
   Write-Host "  규범 · 룰 중립 자리 — 쓸 도구가 없어 걷었다 (옮긴 자리: $nnBk)" -ForegroundColor Green
 }
 
-# ── agy 설정 셋 — `kit/agy/*` → `~/.gemini/config/` (claude-config 결정 0083) ──────
+# ── agy 설정 셋 — `kit/agy/*` → `~/.gemini/config/` (claude-config 결정 0083 · #134) ──────
 # 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 아래 중립 자리(`~/.paisetup/norms`)를, 스킬 목록은 agy 홈을
 # 가리킨다. 그래서 여기서 옮겨 적는 진본이 없다. 제작자 칸의 agy 칸을 켰을 때만 — 끄면 아래가 우리 것만 걷는다.
-# ⚠ **대상이 링크면 링크를 걷고 쓴다.** `Copy-Item` 은 링크를 따라가 가리키는 원본을 덮는다 — 손으로
+# ⚠ **짐의 셋은 틀이고 홈에 까는 파일은 이 PC 의 파생물이다** — 틀은 홈을 `~/` 로 적고, `ConvertTo-AgyPointerText` 가 그
+#   자리를 이 PC 홈의 절대 경로로 바꾼 글을 깐다. 「이미 맞다」도 끝 검증도 짐의 바이트가 아니라 그 글과 견준다.
+# ⚠ **대상이 링크면 링크를 걷고 쓴다.** 쓰기는 링크를 따라가 가리키는 원본을 덮는다 — 손으로
 #   링크를 걸어 둔 PC 에서 그 원본이 한 줄짜리로 바뀐다. 있던 파일은 백업 자리로 먼저 떠 둔다.
+function ConvertTo-AgyPointerText([string]$Template, [string]$HomeDir) {
+  # 가리킴 파일의 틀 글 하나를 이 PC 의 글로 — 틀이 홈을 `~/` 로 연 자리(JSON 글 값의 머리 `"~/` · include 대상의 머리
+  #   `](~/`)만 `$HomeDir` 의 절대 경로(`C:/Users/<이름>/`)로 바꾼다. 홈은 `/` 로 적는다(agy 는 두 꼴을 다 받는다).
+  # ⚠ **왜 절대 경로인가** — 안티그래비티 데스크탑 앱은 목록의 `path` 로 절대 경로만 받는다(앱 로그 「must be an absolute
+  #   path」). agy CLI 는 상대 경로도 설정 폴더 기준으로 받지만 `~/` 는 앱과 같은 오류로 거절한다(#134 실측). 둘이 다 받는
+  #   꼴은 드라이브 문자로 여는 절대 경로다. 실측과 나머지 까닭은 설정 저장소 `deploy.ps1` 의 같은 이름 함수 곁말이 든다.
+  # 짝 — 그 함수가 같은 틀에서 같은 글을 짓는다. 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 둘을 떼어 견준다.
+  $abs = $HomeDir.Replace('\', '/').TrimEnd('/') + '/'
+  $Template.Replace('"~/', '"' + $abs).Replace('](~/', '](' + $abs)
+}
+# 지은 글은 BOM 없는 UTF-8 로 쓰고 바이트로 견준다 — BOM 이 붙으면 agy 가 그 목록을 JSON 으로 못 읽는다(#134 실측). 같은
+#   글에 BOM 만 붙은 파일도 다른 것으로 세어 다시 쓴다.
+$AgyUtf8 = New-Object Text.UTF8Encoding($false)
+function Test-AgyPointerSame([string]$Path, [string]$Want) {
+  $wantBytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Want)
+  (Test-Path -LiteralPath $Path -PathType Leaf) -and
+    ([Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) -ceq [Convert]::ToBase64String($wantBytes))
+}
 if ($wantAgyKit) {
   $agySrc = Join-Path $Kit 'agy'
   $agyDst = Join-Path $env:USERPROFILE '.gemini\config'
@@ -3570,8 +3590,8 @@ if ($wantAgyKit) {
     $agyN = 0
     foreach ($f in @(Get-ChildItem -LiteralPath $agySrc -File)) {
       $to = Join-Path $agyDst $f.Name
-      if ((Test-Path -LiteralPath $to) -and
-          ((Get-FileHash -LiteralPath $f.FullName).Hash -eq (Get-FileHash -LiteralPath $to).Hash)) { continue }
+      $want = ConvertTo-AgyPointerText ([IO.File]::ReadAllText($f.FullName)) $env:USERPROFILE
+      if (Test-AgyPointerSame $to $want) { continue }
       if (Test-Path -LiteralPath $to) {
         if (-not $agyBk) {
           $agyBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -3581,7 +3601,7 @@ if ($wantAgyKit) {
         if ((Get-Item -LiteralPath $to -Force).LinkType) { Remove-Item -LiteralPath $to -Force }
       }
       New-Item -ItemType Directory -Path $agyDst -Force | Out-Null
-      Copy-Item -LiteralPath $f.FullName -Destination $to -Force
+      [IO.File]::WriteAllText($to, $want, $AgyUtf8)
       $agyN++
     }
     if ($agyN) {
@@ -3593,22 +3613,46 @@ if ($wantAgyKit) {
 }
 
 # agy 칸을 끈 판 — 우리 설정 셋(규범 · 룰을 가리키는 둘)만 걷는다. 「우리 것」은 꼴로 가린다: 규범 include 한 줄 ·
-# 룰 자리 한 줄이고 그 자리가 우리가 써 온 두 자리(옛 Claude 홈 · 지금 중립 자리) 가운데 하나다. 다르면 사람이 고친
+# 룰 자리 한 줄이고 그 자리가 우리가 써 온 자리(옛 Claude 홈 · 지금 중립 자리) 가운데 하나다. 다르면 사람이 고친
 # 것이라 둔다. 스킬 목록은 칸과 무관하게 선다(아래 「agy 스킬 목록」). 설정 저장소가 있어도 걷는다 — 그 배포도 끈 칸에는
 # 안 민다(결정 0107).
-if ($hostAgy -and -not $personalAgy) {
-  $agyCfgDir = Join-Path $env:USERPROFILE '.gemini\config'
+function Get-AgyKitOurs([string]$CfgDir, [string]$KitAgy, [string]$HomeDir) {
+  # 끈 판에 걷을 우리 파일(`AGENTS.md` · `rules.json`)의 경로들. 「우리가 써 온 꼴」은 둘이다:
+  #   * 옛 판이 깐 글자 그대로 — 규범 `~/.claude/CLAUDE.md` · `~/.paisetup/norms/norms.md`, 룰 `../../.claude/rules` ·
+  #     `../../.paisetup/norms/rules`. 이 판에서는 안 짓지만 그 판으로 깐 PC 에 남아 있다
+  #   * 짐의 틀(`$KitAgy` 의 같은 이름)과 그 틀을 이 PC 에 지은 글(`ConvertTo-AgyPointerText`) — 틀에서 파생하므로 틀이
+  #     바뀌어도 따라온다
+  # 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 이 함수를 떼어 옛 꼴 · 새 꼴 · 사람이 고친 꼴로 잰다.
   $ours = @()
-  $agMd = Join-Path $agyCfgDir 'AGENTS.md'
-  if ((Test-Path -LiteralPath $agMd) -and
-      ([IO.File]::ReadAllText($agMd).Trim() -match '^@\[norms\]\((~/\.claude/CLAUDE\.md|~/\.paisetup/norms/norms\.md)\)$')) { $ours += $agMd }
-  $agRules = Join-Path $agyCfgDir 'rules.json'
-  if (Test-Path -LiteralPath $agRules) {
+  $agMd = Join-Path $CfgDir 'AGENTS.md'
+  if (Test-Path -LiteralPath $agMd -PathType Leaf) {
+    $mdWant = @('@[norms](~/.claude/CLAUDE.md)', '@[norms](~/.paisetup/norms/norms.md)')
+    $mdKit = Join-Path $KitAgy 'AGENTS.md'
+    if (Test-Path -LiteralPath $mdKit) {
+      $tpl = [IO.File]::ReadAllText($mdKit)
+      $mdWant += @($tpl.Trim(), (ConvertTo-AgyPointerText $tpl $HomeDir).Trim())
+    }
+    if ($mdWant -contains [IO.File]::ReadAllText($agMd).Trim()) { $ours += $agMd }
+  }
+  $agRules = Join-Path $CfgDir 'rules.json'
+  if (Test-Path -LiteralPath $agRules -PathType Leaf) {
     try {
+      $rulesWant = @('../../.claude/rules', '../../.paisetup/norms/rules')
+      $rulesKit = Join-Path $KitAgy 'rules.json'
+      if (Test-Path -LiteralPath $rulesKit) {
+        $tpl = [IO.File]::ReadAllText($rulesKit)
+        foreach ($t in @($tpl, (ConvertTo-AgyPointerText $tpl $HomeDir))) {
+          $rulesWant += @(($t | ConvertFrom-Json).entries | ForEach-Object { $_.path })
+        }
+      }
       $rj = @((Get-Content -LiteralPath $agRules -Raw -Encoding UTF8 | ConvertFrom-Json).entries)
-      if ($rj.Count -eq 1 -and @('../../.claude/rules', '../../.paisetup/norms/rules') -contains $rj[0].path) { $ours += $agRules }
+      if ($rj.Count -eq 1 -and $rulesWant -contains $rj[0].path) { $ours += $agRules }
     } catch { }
   }
+  return $ours
+}
+if ($hostAgy -and -not $personalAgy) {
+  $ours = @(Get-AgyKitOurs (Join-Path $env:USERPROFILE '.gemini\config') (Join-Path $Kit 'agy') $env:USERPROFILE)
   if ($ours.Count) {
     $agOffBk = Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
     New-Item -ItemType Directory -Path $agOffBk -Force | Out-Null
@@ -3689,19 +3733,23 @@ if ($hostCodex) {
   }
 }
 
-# ── agy 스킬 목록 — 안티그래비티를 고르면 (결정 0099) ─────────────────────────────────────────
+# ── agy 스킬 목록 — 안티그래비티를 고르면 (결정 0099 · #134) ─────────────────────────────────────────
 # agy 는 스킬을 `~/.gemini/config/skills.json` 이 여는 자리만 읽는다(결정 0083 실측). 원본 목록(`.gemini.global/skills.json`)은
-# 위 agy 홈(`paisetup-skills` · 설정 폴더 기준 상대 경로)을 여는 한 줄이다 — 그래서 칸과 상관없이 같은 파일을 깐다.
-# 제작자 칸의 agy 설정 셋(6 칸)도 같은 파일을 깔아, 그 판에서는 여기가 「이미 맞다」로 지난다.
+# 위 agy 홈을 여는 한 줄의 틀이고, 이 PC 홈의 절대 경로로 지어 깐다(위 「agy 설정 셋」의 `ConvertTo-AgyPointerText` — 데스크탑
+# 앱이 절대 경로만 받는다). 칸과 상관없이 같은 글을 깐다. 제작자 칸의 agy 설정 셋(6 칸)도 같은 글을 깔아, 그 판에서는
+# 여기가 「이미 맞다」로 지난다.
 # ⚠ 있던 파일이 다르면 백업 자리로 먼저 떠 둔다(6 칸의 agy 설정 셋과 같은 손).
 if ($hostAgy) {
   $agyListFrom = Join-Path $Kit 'agy\skills.json'
   $agyListTo   = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
-  if (-not (Test-Path -LiteralPath $agyListFrom)) {
+  $agyListWant = $null
+  if (Test-Path -LiteralPath $agyListFrom) {
+    $agyListWant = ConvertTo-AgyPointerText ([IO.File]::ReadAllText($agyListFrom)) $env:USERPROFILE
+  }
+  if ($null -eq $agyListWant) {
     Write-Host '  ! agy 스킬 목록 — 짐에 원본(kit/agy/skills.json)이 없다' -ForegroundColor Red
     $Fails.Add('agy 스킬 목록 (원본 없음)')
-  } elseif ((Test-Path -LiteralPath $agyListTo) -and
-            ((Get-FileHash -LiteralPath $agyListFrom).Hash -eq (Get-FileHash -LiteralPath $agyListTo).Hash)) {
+  } elseif (Test-AgyPointerSame $agyListTo $agyListWant) {
     Write-Host '  agy 스킬 목록 — 이미 맞다'
   } else {
     $agyListBk = $null
@@ -3712,8 +3760,8 @@ if ($hostAgy) {
       if ((Get-Item -LiteralPath $agyListTo -Force).LinkType) { Remove-Item -LiteralPath $agyListTo -Force }
     }
     New-Item -ItemType Directory -Path (Split-Path -Parent $agyListTo) -Force | Out-Null
-    Copy-Item -LiteralPath $agyListFrom -Destination $agyListTo -Force
-    Write-Host "  agy 스킬 목록 — agy 홈을 여는 목록을 깔았다$(if ($agyListBk) { " · 옛것은 $agyListBk" })" -ForegroundColor Green
+    [IO.File]::WriteAllText($agyListTo, $agyListWant, $AgyUtf8)
+    Write-Host "  agy 스킬 목록 — agy 홈을 이 PC 의 절대 경로로 여는 목록을 깔았다$(if ($agyListBk) { " · 옛것은 $agyListBk" })" -ForegroundColor Green
   }
 }
 
@@ -5251,13 +5299,15 @@ if ($wantCcBg) {
 }
 # ⚠ **설정 셋은 개수가 아니라 내용으로 잰다** — `~/.gemini/config` 에는 agy 가 제 파일을 같이 두어,
 #   개수로 재면(`New-CountCheck`) 우리 파일이 없어도 넘쳐서 초록이 된다.
+# ⚠ **짐의 바이트가 아니라 이 PC 에 지은 글과 견준다** — 깐 파일은 틀의 `~/` 를 이 PC 홈의 절대 경로로 바꾼 파생물이다
+#   (위 「agy 설정 셋」의 `ConvertTo-AgyPointerText`). 짐과 같은 파일은 앱이 못 싣는 꼴이라 빨강이다.
 if ($wantAgyKit) {
   $agySrcFiles = @(Get-ChildItem -LiteralPath (Join-Path $Kit 'agy') -File -ErrorAction SilentlyContinue)
   $agySame = @($agySrcFiles | Where-Object {
-    $t = Join-Path $env:USERPROFILE ".gemini\config\$($_.Name)"
-    (Test-Path -LiteralPath $t) -and ((Get-FileHash -LiteralPath $_.FullName).Hash -eq (Get-FileHash -LiteralPath $t).Hash)
+    Test-AgyPointerSame (Join-Path $env:USERPROFILE ".gemini\config\$($_.Name)") `
+                        (ConvertTo-AgyPointerText ([IO.File]::ReadAllText($_.FullName)) $env:USERPROFILE)
   })
-  $checks += @{ Name = "agy 설정 ($($agySame.Count)/$($agySrcFiles.Count) · ~/.gemini/config)"
+  $checks += @{ Name = "agy 설정 ($($agySame.Count)/$($agySrcFiles.Count) · ~/.gemini/config · 이 PC 홈의 절대 경로)"
                 Ok = ($agySrcFiles.Count -gt 0 -and $agySame.Count -eq $agySrcFiles.Count) }
 }
 # 칸 없이 까는 스킬 — 홈에 섰나. 설정 저장소가 든 것도 그 배포(8 칸)가 이 앞에서 홈에 민다.
@@ -5323,12 +5373,23 @@ foreach ($hs in @(
   $checks += @{ Name = "$($hs.Label) ($homeShown · $($hs.Show))"; Ok = ($homeMiss.Count -eq 0) }
 }
 # agy — 스킬 목록이 일하는 도구 자리를 가리키나 · 훅 둘이 우리 어댑터로 걸렸나 (결정 0099)
+# ⚠ **스킬 목록은 「짐과 같다」가 아니라 「이 PC 의 agy 홈을 절대 경로로 연다」를 잰다**(#134) — 데스크탑 앱은 절대 경로가
+#   아닌 목록에서 하나도 안 싣고, agy CLI 는 상대 경로도 받아 CLI 로 보이는 것으로는 못 잰다. 가리킨 자리는 위 홈 스킬 칸이
+#   깐 `$AgySkillHome` 이다. 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 이 판정을 떼어 옛 꼴 · BOM 꼴로 잰다.
+function Test-AgyListOpens([string]$Path, [string]$SkillHome) {
+  # 목록을 agy 처럼 바이트째 읽는다 — BOM 이 붙으면 agy 가 JSON 으로 못 읽어(#134 실측) 그 목록은 아무것도 안 연다.
+  try {
+    $b = [IO.File]::ReadAllBytes($Path)
+    if ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) { return $false }
+    $want = $SkillHome.Replace('/', '\').TrimEnd('\')
+    return (@(((New-Object Text.UTF8Encoding($false)).GetString($b) | ConvertFrom-Json).entries | Where-Object {
+      ([string]$_.path -match '^[A-Za-z]:[\\/]') -and (([string]$_.path).Replace('/', '\').TrimEnd('\') -eq $want)
+    }).Count -gt 0)
+  } catch { return $false }
+}
 if ($hostAgy) {
-  $agyListFromChk = Join-Path $Kit 'agy\skills.json'
-  $agyListToChk   = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
-  $checks += @{ Name = 'agy 스킬 목록 (~/.gemini/config/skills.json 이 짐과 같다 · agy 홈을 연다)'
-                Ok = ((Test-Path -LiteralPath $agyListFromChk) -and (Test-Path -LiteralPath $agyListToChk) -and
-                      ((Get-FileHash -LiteralPath $agyListFromChk).Hash -eq (Get-FileHash -LiteralPath $agyListToChk).Hash)) }
+  $checks += @{ Name = 'agy 스킬 목록 (~/.gemini/config/skills.json 이 이 PC 의 agy 홈을 절대 경로로 연다)'
+                Ok = (Test-AgyListOpens (Join-Path $env:USERPROFILE '.gemini\config\skills.json') $AgySkillHome) }
   $agyHooksNow = $null
   try { $agyHooksNow = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.gemini\config\hooks.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
   $agyWired = @('paisetup-drm-guide', 'paisetup-utf8-bom' | Where-Object {
