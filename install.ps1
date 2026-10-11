@@ -3494,8 +3494,9 @@ Write-Host ''
 Write-Host '[6/8] 개인 규범·룰·스킬' -ForegroundColor Cyan
 # 고른 도구 — 설정 저장소의 배포(`deploy.ps1`)와 세션 훅이 같은 값을 읽어 어느 도구 홈을 개인화할지 정한다(결정 0107).
 if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) {
-  # ⚠ **이 프로세스의 값도 맞춘다** — 뒤의 설정 저장소 배포(8 칸)는 이 프로세스의 자식이라 그 값을 물려받고, 사용자 값보다
-  #   먼저 읽는다. 오래 떠 있던 앱에서 부르면 프로세스에는 옛 값이 남아, 배포가 끈 도구로 읽고 개인화를 걷는다.
+  # ⚠ **이 프로세스의 값도 맞춘다** — 뒤의 설정 저장소 배포(8 칸)는 이 프로세스의 자식이라 그 값을 물려받는다. 새 판의 배포는
+  #   사용자 값을 먼저 읽지만, 포크한 설정 저장소는 사람이 당기기 전까지 프로세스 값을 먼저 읽는 판을 든다. 오래 떠 있던 앱에서
+  #   부르면 프로세스에는 옛 값이 남아, 그 판의 배포가 끈 도구로 읽고 개인화를 걷는다.
   Set-Item -Path 'Env:PAISETUP_PERSONAL' -Value $PersonalValue
   Write-Host "  PAISETUP_PERSONAL — 이미 맞다 ($PersonalValue)"
 } else {

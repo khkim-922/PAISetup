@@ -430,8 +430,17 @@ function Get-PersonalTools([string]$Raw) {
     if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
     return ,@($Raw -split '[,\s]+' | Where-Object { $_ -and $_ -ne 'none' } | ForEach-Object { $_.ToLower() })
 }
-$personalRaw = $env:PAISETUP_PERSONAL
-if (-not $personalRaw) { try { $personalRaw = [Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') } catch { } }
+function Get-PersonalRaw([string]$User = $(try { [Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') } catch { $null }),
+                         [string]$Process = $env:PAISETUP_PERSONAL) {
+    # 돌려주는 것: 칸 값의 날글 — 사용자 값이 있으면 그것, 없으면 프로세스 값(사용자 값이 없는 자리 — 리모트 컨테이너)
+    # ⚠ **사용자 값이 진본이다.** 설치기는 사용자 값을 심고, 윈도는 이미 떠 있는 프로세스에 그 변경을 안 넣는다. 칸을 바꾸기
+    #   전에 뜬 앱의 세션에서 배포를 부르면 프로세스 값은 옛 값이라, 그것을 먼저 읽으면 켠 도구를 끈 것으로 읽고 그 홈의
+    #   개인화를 걷는다. 세션 훅의 `personal_for` 도 같은 차례로 읽는다.
+    # `scripts/check-deploy-agent-homes.ps1` 이 인자를 넣어 차례를 재고, `scripts/check-agy-pointers.ps1` 은 인자 없이 부른다.
+    if (-not [string]::IsNullOrWhiteSpace($User)) { return $User }
+    return $Process
+}
+$personalRaw = Get-PersonalRaw
 $personalSet = Get-PersonalTools $personalRaw
 foreach ($t in @($personalSet | Where-Object { @('claude', 'codex', 'agy') -notcontains $_ })) {
     $todo += "PAISETUP_PERSONAL 에 모르는 이름이 있다 — $t (claude · codex · agy · none 을 읽는다)"

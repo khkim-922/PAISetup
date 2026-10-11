@@ -715,11 +715,21 @@ ${1#"$CONFIG_ROOT"/}
   [ -z "$PUSH_ONLY" ] && [ -f "$2" ] && [ ! "$1" -nt "$2" ] && return 0
   cp "$1" "$2" 2>/dev/null || PC_WIDE_FAIL=1   # 진 판에 열쇠를 안 적는다 (0065)
 }
+PERSONAL_RAW=''; PERSONAL_READ=''
 personal_for() {   # personal_for <도구> — 배포본 설치기의 제작자 칸 값(`PAISETUP_PERSONAL`)이 그 도구를 드나 (0107)
   # 칸 하나가 스위치다 — deploy.ps1 의 `Test-PersonalFor` 와 같은 뜻이다. 값이 없으면 다(리모트 컨테이너 · 설치기 전 PC) ·
   # `none` 은 아무것도 아니다. 이름은 `claude` · `codex` · `agy` 를 쉼표나 빈칸으로 가른다.
-  [ -n "${PAISETUP_PERSONAL:-}" ] || return 0
-  case ",$(printf '%s' "$PAISETUP_PERSONAL" | tr 'A-Z ' 'a-z,')," in *",$1,"*) return 0 ;; esac
+  # ⚠ **윈도는 사용자 값(레지스트리)이 먼저다** — 앱은 뜰 때 환경을 한 번 복사해, 칸을 바꾸기 전에 뜬 앱의 세션은 옛 값을
+  #   든다. 차례와 까닭은 deploy.ps1 의 `Get-PersonalRaw` 와 같다. 프로세스에 한 번 읽는다 · `//v` 는 `path_catchup` 곁말.
+  if [ -z "$PERSONAL_READ" ]; then
+    PERSONAL_READ=1
+    [ "$OS" = windows ] &&
+      PERSONAL_RAW="$(reg.exe query 'HKCU\Environment' //v PAISETUP_PERSONAL 2>/dev/null |
+                      sed -n 's/^.*REG_[A-Z_]*SZ[[:space:]]*//p' | tr -d '\r')"
+    [ -n "$PERSONAL_RAW" ] || PERSONAL_RAW="${PAISETUP_PERSONAL:-}"
+  fi
+  [ -n "$PERSONAL_RAW" ] || return 0
+  case ",$(printf '%s' "$PERSONAL_RAW" | tr 'A-Z ' 'a-z,')," in *",$1,"*) return 0 ;; esac
   return 1
 }
 deploy_home_norms() {
