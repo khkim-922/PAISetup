@@ -25,12 +25,19 @@ API 키 방식은 꼴이 달라 로그에 `Error 429 …`, stderr 에 `"error_co
 agy 가 띄우는 명령 가운데 `USERPROFILE` 로 홈을 찾는 것(node · python)은 가짜 홈을 본다 — `HOME` 은
 진짜 홈으로 두어 git 은 신원을 안 잃는다. 대화도 그 홈에 쌓여, 이어 물을 때는 `--model "api:…"` 로
 같은 방식을 준다.
+**가짜 홈은 `%LOCALAPPDATA%\agy-bg\api-home` 에 둔다** — 그 방식의 대화가 거기 쌓여 다음 실행에서도 이어 물을 수 있어야
+하고, 임시 폴더는 청소된다. 부른 쪽의 샌드박스(Codex `workspace-write`)는 그 자리에 못 쓰게 하지만, 같은 샌드박스는 진짜
+홈(`~/.gemini`)도 막아 로그인 방식 agy 도 대화를 못 남긴다(실측 2026-10-11 · agy 로그 「Failed to save message … Access is denied」) — 한
+홈만 옮겨서는 샌드박스 안의 agy 가 온전해지지 않는다. 그래서 자리는 두고, 러너는 샌드박스 밖에서 부르게 한다(스킬 본문).
+그래도 못 지으면 그 후보는 까닭을 단 실패(1)로 끝난다.
 
 **말은 전부 `--out` 파일로 간다** — pythonw 에는 표준 출력이 없다. 부른 쪽은 종료 코드로 갈래를
 알고 그 파일을 읽는다. 맨 끝 줄 `[agy-bg] …` 이 갈래 · 걸린 시간 · 모델 · 넘어간 자취 · 토큰 ·
 이어 묻기 id 를 든다:
-  0 답이 왔다 · 1 agy 가 실패했다 · 2 한도 초과 · 과부하(넘어갈 모델까지 다) 또는 빈 답 · 3 시간 초과 ·
-  4 부르는 법이 틀렸다
+  0 답이 왔다 · 1 agy 가 실패했다(API 홈을 못 지은 것 · 러너가 멈춘 것 포함) · 2 한도 초과 · 과부하(넘어갈 모델까지
+  다) 또는 빈 답 · 3 시간 초과 · 4 부르는 법이 틀렸다
+`--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다. **이어 묻기 id 는 그 홈에 대화가 실제로 남았을 때만
+싣는다** — 제 홈에 못 쓰는 자리에서 돌면 agy 는 id 를 내도 대화를 못 남긴다.
 """
 import argparse
 import json
@@ -39,6 +46,7 @@ import re
 import subprocess
 import sys
 import time
+import traceback
 
 AGY = 'agy'
 CREATE_NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
@@ -59,11 +67,53 @@ KILL_GRACE_SEC = 15         # agy 제 한도(--print-timeout) 뒤에 기다려 �
 LOG_CARRY_CHARS = 200       # 읽기 경계에 걸친 패턴을 놓치지 않게 남기는 꼬리
 MAX_PROMPT_CHARS = 30000    # 윈도 명령줄 한도(32,767자) 안에 인자 전체가 들게 남긴다
 EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'overload': 2, 'empty': 2, 'timeout': 3}
+# agy 훅 표 — 「이름 → 설정」이라 `entries` 가 없다. 명령에는 설치기가 훅 파일의 절대 경로를 박아(`agy-hooks.py`
+# `command`) 홈을 가리키는 자리가 없어 그대로 옮긴다. 안 옮기면 API 키 방식 agy 는 DRM 길잡이 · BOM 훅 없이 돈다.
+HOOKS_FILE = 'hooks.json'
+# 대화가 남는 자리 — `<홈>/.gemini/antigravity-cli/conversations/<id>.db`(agy 1.3.3 실측 · 로그인 · API 홈 둘 다)
+CONVERSATIONS = ('.gemini', 'antigravity-cli', 'conversations')
+CONVERSATION_FILE = '{id}.db'
+NO_RESUME = ('이어 묻기 못 함 — 대화가 안 남았다({where} 에 이 대화가 없다). agy 가 제 홈에 못 쓰는 자리(맡긴 쪽의 '
+             '샌드박스)에서 돌았거나 대화가 서기 전에 멈췄다')
+# 답 파일의 인코딩 — 윈도 PowerShell 5.1 의 `Get-Content` 는 BOM 없는 파일을 ANSI 코드 페이지(한국어 윈도는 949)로 읽어
+# 한글과 끝 줄의 `·` 를 깨뜨린다(`·` → `쨌` — 실측 2026-10-11). BOM 이 있으면 UTF-8 로 읽는다. 다른 OS 는 BOM 없이 둔다.
+# ⚠ 답 파일에만 쓴다 — agy 설정 파일(`put`)은 BOM 없는 UTF-8 이다(JSON 앞의 BOM 은 읽는 쪽을 깨뜨린다).
+ANSWER_ENCODING = 'utf-8-sig' if os.name == 'nt' else 'utf-8'
 
 
 def write(path, text):
-    with open(path, 'w', encoding='utf-8') as f:
+    """답 파일을 쓴다 — 인코딩은 `ANSWER_ENCODING`."""
+    with open(path, 'w', encoding=ANSWER_ENCODING) as f:
         f.write(text)
+
+
+class Usage(Exception):
+    """인자를 못 갈랐다. argparse 는 그 말을 stderr 에 찍고 끝내지만 pythonw 에는 stderr 가 없다 — 답 파일에 옮긴다."""
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise Usage(message)
+
+
+def out_arg(args):
+    """인자를 못 갈랐을 때 답 파일 자리 — `--out <경로>` · `--out=<경로>` 만 찾는다. 없으면 None."""
+    for i, x in enumerate(args):
+        if x == '--out' and i + 1 < len(args):
+            return args[i + 1]
+        if x.startswith('--out='):
+            return x[len('--out='):]
+    return None
+
+
+def conversation_field(home, conv):
+    """끝 줄의 이어 묻기 칸 — 띄운 홈에 대화가 남았을 때만 id 를 싣는다. 없으면 `-` 와 까닭."""
+    if not conv:
+        return 'conversation=-'
+    where = os.path.join(home, *CONVERSATIONS)
+    if os.path.isfile(os.path.join(where, CONVERSATION_FILE.format(id=conv))):
+        return f'conversation={conv}'
+    return 'conversation=- · ' + NO_RESUME.format(where=where)
 
 
 def kill_tree(proc):
@@ -106,14 +156,29 @@ def failover_reason(text):
 
 
 def put(path, text):
-    """같으면 안 쓴다 — 띄울 때마다 짓는 파일이라 매번 쓰면 시각만 바뀐다."""
+    """같으면 안 쓴다 — 띄울 때마다 짓는 파일이라 매번 쓰면 시각만 바뀌고, 쓸 수 없는 자리에서는 그 쓰기에서 진다."""
     try:
         with open(path, encoding='utf-8') as f:
             if f.read() == text:
                 return
-    except OSError:
+    except (OSError, ValueError):
         pass
-    write(path, text)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(text)
+
+
+def put_settings(path, wanted):
+    """방식 설정을 심는다 — 그 값이 이미 서 있으면 안 쓴다. agy 는 이 파일을 제 꼴로 다시 써 두어(실측 — 들여쓴
+    `{"modelProvider": "gemini"}`) 글자로 견주면 띄울 때마다 다시 쓰게 되고, 그 쓰기가 쓸 수 없는 자리에서 러너를
+    죽였다(실측 2026-10-11 · Codex 샌드박스). 그래서 값으로 견준다. 우리 것 아닌 키는 둔다."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            current = json.load(f)
+    except (OSError, ValueError):
+        current = None
+    if isinstance(current, dict) and all(current.get(k) == v for k, v in wanted.items()):
+        return
+    put(path, json.dumps(dict(current if isinstance(current, dict) else {}, **wanted), ensure_ascii=False, indent=2))
 
 
 def api_key():
@@ -123,11 +188,16 @@ def api_key():
 
 def derive_config(path, src_dir, real_home):
     """진짜 agy 설정 파일 하나를 가짜 홈에 쓸 꼴로 — 홈을 가리키는 자리만 진짜 홈의 절대 경로로 바꾼다.
-    경로를 안 가리키는 파일(기계마다 갈리는 값)은 `None` — 옮기지 않는다."""
+    훅 표(`HOOKS_FILE`)는 그대로 옮긴다. 경로를 안 가리키는 파일(기계마다 갈리는 값)은 `None` — 옮기지 않는다."""
     if not os.path.isfile(path):
         return None
-    with open(path, encoding='utf-8') as f:
-        text = f.read()
+    try:
+        with open(path, encoding='utf-8') as f:
+            text = f.read()
+    except (OSError, ValueError):
+        return None
+    if os.path.basename(path) == HOOKS_FILE:
+        return text
     fwd = real_home.replace('\\', '/')
     if path.endswith('.md'):
         return text.replace('](~/', f']({fwd}/')
@@ -148,23 +218,38 @@ def derive_config(path, src_dir, real_home):
     return json.dumps(data, ensure_ascii=False, indent=2)
 
 
-def api_home(real_home):
-    """API 키 방식으로 띄울 홈을 짓는다 — 방식 한 줄과, 진짜 홈의 규범·스킬·룰 설정에서 **매번 다시 지은**
-    가리킴 파일들. 사본을 들고 있지 않으므로 진짜 설정을 고치면 다음 실행에 따라온다.
-    ⚠ 링크(정션)를 안 쓴다 — 파이썬 3.12 전의 `shutil.rmtree` 는 정션을 따라 들어가 진짜 홈을 지운다."""
+def api_home_path(real_home):
     base = os.environ.get('LOCALAPPDATA') or os.path.join(real_home, '.cache')
-    home = os.path.join(base, 'agy-bg', 'api-home')
+    return os.path.join(base, 'agy-bg', 'api-home')
+
+
+def api_home(real_home):
+    """API 키 방식으로 띄울 홈을 짓는다 — 방식 한 줄과, 진짜 홈의 규범·스킬·룰·훅 설정에서 **매번 다시 지은**
+    가리킴 파일들. 사본을 들고 있지 않으므로 진짜 설정을 고치면 다음 실행에 따라오고, **진짜 설정에서 빠진 파일은
+    여기서도 걷는다** — 남기면 로그인 방식에는 없는 규범으로 돌고, 걷힌 훅 파일을 부르는 훅은 도구마다 오류를 낸다.
+    걷는 것은 이 함수가 지을 꼴(`derive_config` 가 None 이 아닌 것)뿐이다 — agy 가 제 손으로 둔 파일은 둔다.
+    ⚠ 링크(정션)를 안 쓴다 — 파이썬 3.12 전의 `shutil.rmtree` 는 정션을 따라 들어가 진짜 홈을 지운다."""
+    home = api_home_path(real_home)
     cli = os.path.join(home, '.gemini', 'antigravity-cli')
     os.makedirs(cli, exist_ok=True)
-    put(os.path.join(cli, 'settings.json'), json.dumps(API_SETTINGS))
+    put_settings(os.path.join(cli, 'settings.json'), API_SETTINGS)
     src = os.path.join(real_home, '.gemini', 'config')
+    dst = os.path.join(home, '.gemini', 'config')
+    derived = {}
     if os.path.isdir(src):
-        dst = os.path.join(home, '.gemini', 'config')
-        os.makedirs(dst, exist_ok=True)
         for name in os.listdir(src):
             text = derive_config(os.path.join(src, name), src, real_home)
             if text is not None:
-                put(os.path.join(dst, name), text)
+                derived[name] = text
+    if derived:
+        os.makedirs(dst, exist_ok=True)
+    for name, text in derived.items():
+        put(os.path.join(dst, name), text)
+    if os.path.isdir(dst):
+        for name in os.listdir(dst):
+            path = os.path.join(dst, name)
+            if name not in derived and derive_config(path, dst, real_home) is not None:
+                os.remove(path)
     return home
 
 
@@ -186,14 +271,20 @@ def candidates(model, has_key):
     return out or [None]
 
 
-def run_once(a, prompt, model, log, raw_path, err_path):
-    """agy 를 한 번 띄워 끝까지 지켜본다. 돌려주는 것 — (갈래, 종료 코드, 답 JSON, 날 stdout, stderr).
-    띄우지도 못했으면 갈래가 'spawn' 이고 stderr 자리에 까닭이 든다."""
-    env = None
+def launch(model):
+    """후보 하나를 띄울 꼴 — (agy 에 줄 모델 이름, 환경 · None 이면 물려받는다, agy 가 볼 홈). `api:` 후보는 API 홈을
+    지어 그 홈을 보게 한다. 못 지으면 OSError 가 그대로 오른다 — 부른 쪽이 그 후보의 실패로 적는다."""
+    real_home = os.path.expanduser('~')
     if model and model.startswith(API_PREFIX):
-        real_home = os.path.expanduser('~')
-        env = dict(os.environ, USERPROFILE=api_home(real_home), HOME=real_home, GEMINI_API_KEY=api_key())
-        model = model[len(API_PREFIX):]
+        home = api_home(real_home)
+        env = dict(os.environ, USERPROFILE=home, HOME=real_home, GEMINI_API_KEY=api_key())
+        return model[len(API_PREFIX):], env, home
+    return model, None, real_home
+
+
+def run_once(a, prompt, model, log, raw_path, err_path, env=None):
+    """agy 를 한 번 띄워 끝까지 지켜본다(`model` 은 agy 에 줄 이름 · `env` 는 `launch` 의 것). 돌려주는 것 — (갈래,
+    종료 코드, 답 JSON, 날 stdout, stderr). 띄우지도 못했으면 갈래가 'spawn' 이고 stderr 자리에 까닭이 든다."""
     cmd = [AGY, '-p', prompt, '--output-format', 'json', '--dangerously-skip-permissions',
            '--print-timeout', f'{a.timeout}s', '--log-file', log]
     if model:
@@ -253,23 +344,42 @@ def run_once(a, prompt, model, log, raw_path, err_path):
 
 
 def main():
-    ap = argparse.ArgumentParser(add_help=False)
+    ap = Parser(add_help=False)
     ap.add_argument('--prompt-file', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--cwd')
     ap.add_argument('--model')
     ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC)
     ap.add_argument('--conversation')
+    args = sys.argv[1:]
     try:
-        a = ap.parse_args()
-    except SystemExit:
-        return 4   # pythonw 라 argparse 의 말은 어디에도 안 닿는다 — 종료 코드만 남는다
+        a = ap.parse_args(args)
+    except Usage as e:
+        out = out_arg(args)
+        if out:
+            try:
+                write(out, f'[agy-bg] usage · 인자가 틀렸다 — {e}\n')
+            except OSError:
+                pass
+        return 4
+    try:
+        return run(a)
+    except Exception as e:   # 어디서 멈췄든 답 파일과 끝 줄을 남긴다 — 부른 쪽은 그것만 본다
+        write(a.out, f'{traceback.format_exc()}\n[agy-bg] failed · 러너가 멈췄다 — {type(e).__name__}: {e}\n')
+        return EXIT['failed']
 
+
+def run(a):
     try:
-        with open(a.prompt_file, encoding='utf-8') as f:
+        # BOM 은 걷는다 — PowerShell 5.1 의 `Set-Content -Encoding utf8` 은 BOM 을 붙이고, 프롬프트는 명령줄로 간다
+        with open(a.prompt_file, encoding='utf-8-sig') as f:
             prompt = f.read()
     except OSError as e:
         write(a.out, f'[agy-bg] usage · 프롬프트 파일을 못 읽었다 — {e}\n')
+        return 4
+    except UnicodeDecodeError:
+        write(a.out, f'[agy-bg] usage · 프롬프트 파일이 UTF-8 이 아니다 — PowerShell 5.1 이면 '
+                     f'`Set-Content -Encoding utf8` 로 쓴다: {a.prompt_file}\n')
         return 4
     if len(prompt) > MAX_PROMPT_CHARS:
         write(a.out, f'[agy-bg] usage · 프롬프트가 {len(prompt)}자다 — {MAX_PROMPT_CHARS}자를 넘으면 '
@@ -285,7 +395,16 @@ def main():
     tried = []
     models = candidates(a.model, bool(api_key()))
     for i, model in enumerate(models):
-        status, rc, res, raw_text, err_text = run_once(a, prompt, model, log, raw_path, err_path)
+        try:
+            agy_model, env, home = launch(model)
+        except OSError as e:
+            # 모델 탓이 아니다 — 다음 후보로 안 넘기고 까닭을 단 실패로 멈춘다(실패는 멈춘다는 차례 규칙 그대로)
+            status, rc, res, raw_text, home = 'failed', None, {}, '', None
+            where = api_home_path(os.path.expanduser('~'))
+            err_text = (f'API 홈을 못 지었다 — {type(e).__name__}: {e}\n그 자리({where})에 못 쓰는 자리에서 돌았다. '
+                        '맡긴 쪽의 샌드박스 안이면 샌드박스 밖에서 다시 부른다(스킬 본문)')
+            break
+        status, rc, res, raw_text, err_text = run_once(a, prompt, agy_model, log, raw_path, err_path, env)
         if status == 'spawn':
             write(a.out, f'[agy-bg] failed · agy 를 못 띄웠다 — {err_text}\n')
             return 1
@@ -296,11 +415,12 @@ def main():
 
     answer = res.get('response') or ''
     usage = res.get('usage') or {}
-    footer = (f'[agy-bg] {status} · rc={rc} · {elapsed}s'
+    conv = res.get('conversation_id')
+    footer = (f'[agy-bg] {status} · rc={"-" if rc is None else rc} · {elapsed}s'
               f' · model={model or "agy 기본"}'
               + (f' · failover={"; ".join(tried)}' if tried else '') +
               f' · tokens in={usage.get("input_tokens", "-")} out={usage.get("output_tokens", "-")}'
-              f' · conversation={res.get("conversation_id") or "-"}')
+              f' · {conversation_field(home, conv)}')
     if status == 'ok':
         for p in (raw_path, err_path, log):
             try:

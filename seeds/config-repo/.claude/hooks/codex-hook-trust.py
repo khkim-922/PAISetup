@@ -1,0 +1,472 @@
+"""Codex 가 우리 훅을 실제로 믿나를 재고, 우리 훅에만 신뢰를 적는다 — Codex 제 설정 쓰기로.
+
+    python -X utf8 codex-hook-trust.py status --example codex-hooks.example.toml [--codex-home <홈>] [--codex <실행 파일>]
+    python -X utf8 codex-hook-trust.py trust  --example codex-hooks.example.toml [--codex-home <홈>] [--codex <실행 파일>]
+
+홈은 `--codex-home` → 환경변수 `CODEX_HOME` → `~/.codex` 차례다(뒤의 둘은 Codex 가 제 홈을 고르는 차례와 같다).
+Codex 는 PATH 의 `codex.cmd` · `codex` 에서 찾고, `--codex` 가 그 자리를 못박는다(검사 · 진단용).
+
+**왜 있나.** 병합기(`codex-hook-install.py`)가 배선을 세워도 Codex 는 사람이 검토해 신뢰한 사용자 훅만 돌린다 —
+대화형 시작에서는 신뢰를 묻지만 `codex exec` 는 신뢰 안 된 훅을 **말없이** 건너뛴다(codex-rs
+`hooks/src/engine/discovery.rs` 의 「켜졌고 managed 이거나 trusted 일 때만 싣는다」). 그래서 설치기의 끝 검증은 설정의 글자가
+아니라 Codex 가 읽은 신뢰 상태를 재야 하고, Codex 를 고른 설치는 그 신뢰까지 적어야 고른 기능이 선다(결정 0106).
+
+**어디에 묻고 어디로 쓰나.** 신뢰를 적는 문서화된 CLI 는 없다. Codex 의 TUI 가 「Trust all」에서 보내는 것을 같은 통로로
+보낸다(codex-rs `tui/src/hooks_rpc.rs` 의 `write_hook_trusts`) — stdio `codex app-server`(실험 단계 API):
+  `config/read`(사용자 층의 판) → `hooks/list`(열쇠 · 현재 해시 · 신뢰 상태) →
+  `config/batchWrite` {keyPath "hooks.state", value {<열쇠>: {trusted_hash: <현재 해시>}}, upsert, expectedVersion} →
+  `hooks/list` 를 다시 불러 trusted 로 읽히나 확인한다.
+해시는 우리가 셈하지 않는다 — Codex 가 낸 값을 그대로 되돌려 적을 뿐이다. 파일도 우리가 안 쓴다 — Codex 의 쓰는 자가 쓴다.
+판을 먼저 읽고 목록을 뒤에 읽는다 — 그 사이나 쓰기 직전에 누가 설정을 고치면 쓰기가 판 어긋남으로 거절된다. 그때는
+한 번 다시 읽고 다시 쓴다(codex-rs `app-server/src/request_processors/bedrock_auth.rs` 가 같은 자리에서 한 번 다시 한다).
+
+**무엇이 우리 것인가.** 병합기의 판정(`ours_hook` — 명령이 씨앗 자리의 우리 몸통을 부르나)을 그대로 불러 쓴다.
+Codex 가 내는 `command` 는 이 기계의 실효 명령(윈도면 `commandWindows`)이고, 우리 표지는 두 꼴에 다 든다.
+
+**신뢰를 안 적는 것.**
+  - 우리 것이 아닌 훅 — 사람의 훅은 사람이 Codex 에서 검토한다
+  - 사람이 끈 우리 훅(`enabled = false`) — 끈 뜻을 신뢰로 덮지 않는다. `disabled` 로 알린다
+  - 사용자 층 밖의 훅 · 관리 훅 — 신뢰를 적을 자리가 아니다(관리 훅은 신뢰 없이 돈다)
+
+표준 출력 — 한 줄에 하나:
+  EXPECTED=<n>                          예시에 든 우리 훅 수 — 설치기의 분모
+  CODEX_HOME=<경로>                      Codex 가 스스로 밝힌 홈(initialize 응답) — 어느 설정을 쟀나
+  TRUSTED_NOW=<이벤트>|<matcher>|<실효 명령>  (trust) 이번에 신뢰를 적고 Codex 가 trusted 로 다시 읽은 훅 — 기록에 그대로 찍는다
+  HOOK=<이벤트>|<matcher>|<상태>          Codex 가 싣는 우리 훅마다, Codex 의 순서로. 상태 = trusted · untrusted · modified ·
+                                        disabled(사람이 껐다) · managed. matcher 와 명령에는 `|` 가 든다 — 이벤트는 첫 `|` 앞,
+                                        상태는 마지막 `|` 뒤에서 읽는다
+  WIRED=<n>                             Codex 가 싣는 우리 훅 수
+  TRUSTED=<n>                           그 가운데 Codex 가 돌리는 것(켜졌고 trusted · managed)
+  NONE_LISTED=<까닭>                     우리 훅을 하나도 안 실을 때만 —
+                                          no-config      `<홈>/config.toml` 이 없다
+                                          not-in-config  설정에 우리 훅이 없다(배선이 빠졌다 — 병합기의 SKIP 을 본다)
+                                          not-loaded     설정에는 있는데 Codex 가 안 싣는다(훅 기능이 꺼졌거나 관리 정책
+                                                         `allow_managed_hooks_only` 가 사용자 훅을 막는다)
+                                          unreadable     설정을 TOML 로 못 읽는다
+  UNMEASURED=<종류>:<말>                 못 쟀다 — 종료 코드 3. 설치기는 「못 잼」으로 알리고 초록으로 세지 않는다.
+                                        종류 = codex-absent · start-failed · exited · timeout · rpc-error · shape · list-error
+  ERROR=<종류>:<말>                      예시를 못 읽었거나, 신뢰를 못 적었거나, 적은 뒤 확인이 안 됐다 — 종료 코드 1.
+                                        종류 = example · merger · write · version-conflict · verify (그 밖은 예외 이름)
+
+종료 코드: 0 쟀다(trust 면 적을 것을 다 적고 다시 읽어 확인했다) · 1 ERROR · 2 인자가 틀렸다(argparse) · 3 UNMEASURED.
+⚠ UNMEASURED 가 2 가 아닌 까닭 — argparse 가 인자 오류에 2 를 쓴다. 부르는 쪽의 실수와 Codex 를 못 잰 것이 한 값이면 안 갈린다.
+⚠ trust 의 앞단(목록)에서 못 쟀으면 UNMEASURED 다 — 아무것도 안 썼다. 쓰기부터는 무엇이 막혀도 ERROR 다.
+⚠ app-server 가 뜨면 Codex 는 홈에서 제 일(플러그인 동기화 — `<홈>/.tmp/` 등)을 한다. 사람이 Codex 를 켤 때와 같은 일이다.
+"""
+
+import argparse
+import collections
+import importlib.util
+import json
+import os
+import pathlib
+import queue
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+try:
+    import tomllib
+except ImportError:   # 3.10 이하 — 예시를 못 읽으므로 분모가 안 선다
+    tomllib = None
+
+MERGER_FILE = 'codex-hook-install.py'   # 우리 훅 판정의 진본 — 이 파일 곁에 같이 실린다
+# 첫 기동은 느린 VDI 에서 node · 백신 검사가 겹친다(이 PC 0.162.1 실측: 기동 0.2 초 · 호출 0.1 초 미만)
+INIT_TIMEOUT_SEC = 120
+CALL_TIMEOUT_SEC = 60
+EXIT_GRACE_SEC = 10   # 표준입력을 닫은 뒤 스스로 끝나기를 기다리는 시간 — 넘으면 자식까지 끊는다
+POLL_SEC = 0.5
+STDERR_TAIL_LINES = 5
+DETAIL_MAX = 300   # 한 줄 계약 — 남의 긴 오류문이 줄을 덮지 않게
+
+EXIT_ERROR = 1
+EXIT_UNMEASURED = 3
+
+CODEX_NAMES = ('codex.cmd', 'codex')   # 윈도 npm 껍데기가 먼저 — 그 곁의 codex.js 를 node 로 바로 부른다
+NPM_ENTRY = ('node_modules', '@openai', 'codex', 'bin', 'codex.js')
+NODE = 'node'
+APP_SERVER = 'app-server'
+CLIENT_INFO = {'name': 'codex-hook-trust', 'version': '1'}
+CWD_PREFIX = 'codex-hook-trust-'   # hooks/list 를 묻는 빈 자리 — 프로젝트 층(.codex)이 끼지 않는다
+CONFIG_FILE = 'config.toml'
+DEFAULT_HOME = '~/.codex'
+
+STATE_KEY_PATH = 'hooks.state'
+TRUSTED_HASH = 'trusted_hash'
+UPSERT = 'upsert'
+USER = 'user'   # 사용자 층 — hooks/list 의 source 와 config/read 층 이름의 type 이 같은 낱말을 쓴다
+VERSION_CONFLICT = 'configVersionConflict'
+WRITE_ERROR_CODE = 'config_write_error_code'
+WRITE_OK = ('ok', 'okOverridden')
+WRITE_ATTEMPTS = 2   # 판이 어긋나면 한 번 다시 읽고 다시 쓴다
+
+TRUST_STATES = ('managed', 'untrusted', 'trusted', 'modified')   # codex-rs app-server-protocol `HookTrustStatus`
+NEEDS_REVIEW = ('untrusted', 'modified')   # TUI 의 `hook_needs_review` 와 같은 둘
+RUNS = ('trusted', 'managed')
+DISABLED = 'disabled'
+HOOK_KEYS = ('key', 'eventName', 'enabled', 'trustStatus', 'currentHash', 'source', 'isManaged')
+
+
+class Stop(Exception):
+    """한 줄 계약으로 끝낸다 — `line` 을 찍고 `code` 로 나간다."""
+
+    def __init__(self, line, code):
+        super().__init__(line)
+        self.line, self.code = line, code
+
+
+class Transport(Exception):
+    """app-server 와 말이 안 통했다 — 부른 자리가 UNMEASURED 인지 ERROR 인지 정한다."""
+
+    def __init__(self, kind, detail):
+        super().__init__(f'{kind}:{detail}')
+        self.kind, self.detail = kind, detail
+
+
+def clip(text):
+    return ' '.join(str(text).split())[:DETAIL_MAX]
+
+
+def unmeasured(kind, detail):
+    return Stop(f'UNMEASURED={kind}:{clip(detail)}', EXIT_UNMEASURED)
+
+
+def error(kind, detail):
+    return Stop(f'ERROR={kind}:{clip(detail)}', EXIT_ERROR)
+
+
+def load_merger():
+    path = pathlib.Path(__file__).resolve().with_name(MERGER_FILE)
+    sys.dont_write_bytecode = True   # 씨앗 자리는 거울로 깔린다 — 캐시를 흘리지 않는다
+    try:
+        spec = importlib.util.spec_from_file_location('codex_hook_install', path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except (OSError, SyntaxError, ImportError) as exc:
+        raise error('merger', f'{path}: {exc}') from exc
+    return mod
+
+
+def count_ours(merger, data):
+    """TOML 로 읽은 설정(또는 예시)의 `[hooks]` 에서 우리 훅 수 — 병합기가 다루는 이벤트만 센다."""
+    hooks = data.get(merger.HOOKS_TABLE) if isinstance(data, dict) else None
+    if not isinstance(hooks, dict):
+        return 0
+    n = 0
+    for ev in merger.EVENTS:
+        entries = hooks.get(ev)
+        for entry in entries if isinstance(entries, list) else []:
+            inner = entry.get(merger.NESTED_HOOKS_KEY) if isinstance(entry, dict) else None
+            n += sum(1 for h in inner if merger.ours_hook(h)) if isinstance(inner, list) else 0
+    return n
+
+
+def read_toml(merger, path):
+    with open(path, encoding='utf-8') as f:
+        return tomllib.loads(f.read().lstrip(merger.BOM))
+
+
+def expected_count(merger, example):
+    if tomllib is None:
+        raise error('example', 'tomllib 이 없다 — 파이썬 3.11 이상이 든다')
+    try:
+        return count_ours(merger, read_toml(merger, example))
+    except (OSError, ValueError) as exc:   # TOMLDecodeError 는 ValueError 다
+        raise error('example', f'{example}: {exc}') from exc
+
+
+def codex_command(override):
+    """app-server 를 띄울 명령. npm 껍데기면 그 곁의 codex.js 를 node 로 부른다 — 윈도의 .cmd 를 거치지 않는다."""
+    if override:
+        if not os.path.isfile(override):
+            raise unmeasured('codex-absent', override)
+        exe = override
+    else:
+        exe = next(filter(None, map(shutil.which, CODEX_NAMES)), None)
+        if exe is None:
+            raise unmeasured('codex-absent', 'PATH 에 codex 가 없다')
+    entry = os.path.join(os.path.dirname(exe), *NPM_ENTRY)
+    node = shutil.which(NODE)
+    if node and os.path.isfile(entry):
+        return [node, entry, APP_SERVER]
+    return [exe, APP_SERVER]
+
+
+class AppServer:
+    """stdio JSON-RPC 로 `codex app-server` 하나와 말한다. 알림과 서버가 먼저 거는 요청은 흘려보낸다."""
+
+    def __init__(self, cmd, home, cwd):
+        env = dict(os.environ)
+        env['CODEX_HOME'] = home   # 자식에게만 — 이 프로세스의 환경은 그대로다
+        extra = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {'start_new_session': True}
+        try:
+            self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      cwd=cwd, env=env, **extra)
+        except OSError as exc:
+            raise Transport('start-failed', f'{cmd[0]}: {exc}') from exc
+        self.lines = queue.Queue()
+        self.err = collections.deque(maxlen=STDERR_TAIL_LINES)
+        self.next_id = 0
+        threading.Thread(target=self._pump, daemon=True).start()
+        threading.Thread(target=self._drain, daemon=True).start()
+
+    def _pump(self):
+        for line in self.p.stdout:
+            self.lines.put(line)
+        self.lines.put(None)
+
+    def _drain(self):   # 표준 오류를 비워 두지 않으면 관이 차서 서버가 선다
+        for line in self.p.stderr:
+            self.err.append(line.decode('utf-8', 'replace').strip())
+
+    def _send(self, message):
+        try:
+            self.p.stdin.write((json.dumps(message) + '\n').encode('utf-8'))
+            self.p.stdin.flush()
+        except OSError as exc:
+            raise Transport('exited', f'보내는 관이 닫혔다({exc}) {self.tail()}') from exc
+
+    def tail(self):
+        return ' / '.join(self.err)
+
+    def notify(self, method):
+        self._send({'method': method})
+
+    def call(self, method, params, timeout):
+        """응답 하나(`result` 나 `error` 가 든 dict)를 돌려준다."""
+        i = self.next_id
+        self.next_id += 1
+        self._send({'id': i, 'method': method, 'params': params})
+        deadline = time.monotonic() + timeout
+        while True:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise Transport('timeout', f'{method}:{timeout}s')
+            try:
+                line = self.lines.get(timeout=min(left, POLL_SEC))
+            except queue.Empty:
+                continue
+            if line is None:
+                try:
+                    rc = self.p.wait(timeout=EXIT_GRACE_SEC)
+                except subprocess.TimeoutExpired:
+                    rc = '?'
+                raise Transport('exited', f'{method}:rc={rc} {self.tail()}')
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(msg, dict) and msg.get('id') == i and 'method' not in msg:
+                return msg
+
+    def close(self):
+        try:
+            self.p.stdin.close()
+        except OSError:
+            pass
+        try:
+            self.p.wait(timeout=EXIT_GRACE_SEC)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        # npm 껍데기(node)를 거치면 진짜 서버는 그 자식이다 — 껍데기만 끊으면 서버가 남는다
+        if os.name == 'nt':
+            subprocess.run(['taskkill', '/PID', str(self.p.pid), '/T', '/F'], capture_output=True)
+        else:   # 새 세션으로 띄웠다 — 그 무리를 통째로 끊는다
+            try:
+                os.killpg(os.getpgid(self.p.pid), signal.SIGKILL)
+            except OSError:
+                pass
+        try:
+            self.p.wait(timeout=EXIT_GRACE_SEC)
+        except subprocess.TimeoutExpired:
+            self.p.kill()
+
+
+def result_of(srv, method, params, timeout=CALL_TIMEOUT_SEC):
+    """재는 자리의 호출 — 말이 안 통하거나 오류가 오면 UNMEASURED 다."""
+    try:
+        msg = srv.call(method, params, timeout)
+    except Transport as t:
+        raise unmeasured(t.kind, t.detail) from t
+    if 'error' in msg:
+        err = msg['error'] if isinstance(msg['error'], dict) else {}
+        raise unmeasured('rpc-error', f'{method}:{err.get("code")}:{err.get("message", msg["error"])}')
+    res = msg.get('result')
+    if not isinstance(res, dict):
+        raise unmeasured('shape', f'{method} 의 result 가 객체가 아니다')
+    return res
+
+
+def list_ours(merger, srv, cwd):
+    """`hooks/list` 에서 우리 훅만 Codex 의 순서로. 꼴이 어긋나면 UNMEASURED — 모르는 꼴을 아는 꼴로 읽지 않는다."""
+    res = result_of(srv, 'hooks/list', {'cwds': [cwd]})
+    data = res.get('data')
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+        raise unmeasured('shape', 'hooks/list 의 data 가 물은 자리 하나짜리 목록이 아니다')
+    entry = data[0]
+    errors = entry.get('errors')
+    if errors:   # 설정을 못 읽었다 — Codex 가 이 자리의 훅을 하나도 못 셌다
+        first = errors[0] if isinstance(errors, list) else errors
+        raise unmeasured('list-error', first.get('message', first) if isinstance(first, dict) else first)
+    hooks = entry.get('hooks')
+    if not isinstance(hooks, list):
+        raise unmeasured('shape', 'hooks/list 의 hooks 가 목록이 아니다')
+    ours = []
+    for h in hooks:
+        if not isinstance(h, dict) or any(k not in h for k in HOOK_KEYS):
+            raise unmeasured('shape', 'hooks/list 의 훅에 아는 칸이 다 없다: ' + json.dumps(h, ensure_ascii=False)[:120])
+        if h['trustStatus'] not in TRUST_STATES:
+            raise unmeasured('shape', f'모르는 신뢰 상태 {h["trustStatus"]!r}')
+        if merger.ours_hook({'command': h.get('command')}):
+            ours.append(h)
+    return ours
+
+
+def user_version(srv):
+    """사용자 층(프로필 아님)의 판 — 쓰기의 expectedVersion. 사용자 층이 없으면 None(설정 파일이 아직 없다)."""
+    res = result_of(srv, 'config/read', {'includeLayers': True})
+    layers = res.get('layers')
+    if not isinstance(layers, list):
+        raise unmeasured('shape', 'config/read 의 layers 가 목록이 아니다')
+    users = [layer for layer in layers if isinstance(layer, dict) and isinstance(layer.get('name'), dict)
+             and layer['name'].get('type') == USER and layer['name'].get('profile') is None]
+    if len(users) > 1 or (users and not isinstance(users[0].get('version'), str)):
+        raise unmeasured('shape', 'config/read 의 사용자 층이 하나가 아니거나 판이 없다')
+    return users[0]['version'] if users else None
+
+
+def event_label(h):
+    """`preToolUse` → `PreToolUse` — 예시와 병합기가 쓰는 이름."""
+    name = str(h['eventName'])
+    return name[:1].upper() + name[1:]
+
+
+def state_of(h):
+    return DISABLED if not h['enabled'] else h['trustStatus']
+
+
+def writable(h):
+    return h['enabled'] and h['source'] == USER and not h['isManaged'] and h['trustStatus'] in NEEDS_REVIEW
+
+
+def none_listed_cause(merger, home):
+    cfg = os.path.join(home, CONFIG_FILE)
+    if not os.path.isfile(cfg):
+        return 'no-config'
+    try:
+        data = read_toml(merger, cfg)
+    except (OSError, ValueError):
+        return 'unreadable'
+    return 'not-loaded' if count_ours(merger, data) else 'not-in-config'
+
+
+def report(merger, ours, expected, home):
+    for h in ours:
+        print(f'HOOK={event_label(h)}|{h.get("matcher") or ""}|{state_of(h)}')
+    print(f'WIRED={len(ours)}')
+    print(f'TRUSTED={sum(1 for h in ours if h["enabled"] and h["trustStatus"] in RUNS)}')
+    if not ours and expected:
+        print('NONE_LISTED=' + none_listed_cause(merger, home))
+
+
+def write_trust(srv, todo, version):
+    """Codex 의 쓰는 자로 신뢰를 적는다 — 판이 어긋나면 False, 그 밖의 거절은 ERROR."""
+    params = {'edits': [{'keyPath': STATE_KEY_PATH, 'mergeStrategy': UPSERT,
+                         'value': {h['key']: {TRUSTED_HASH: h['currentHash']} for h in todo}}],
+              'filePath': None, 'expectedVersion': version, 'reloadUserConfig': True}
+    try:
+        msg = srv.call('config/batchWrite', params, CALL_TIMEOUT_SEC)
+    except Transport as t:
+        raise error('write', f'{t.kind}:{t.detail}') from t
+    if 'error' in msg:
+        err = msg['error'] if isinstance(msg['error'], dict) else {}
+        data = err.get('data') if isinstance(err.get('data'), dict) else {}
+        if data.get(WRITE_ERROR_CODE) == VERSION_CONFLICT:
+            return False
+        raise error('write', f'{data.get(WRITE_ERROR_CODE) or err.get("code")}:{err.get("message", msg["error"])}')
+    res = msg.get('result')
+    status = res.get('status') if isinstance(res, dict) else None
+    if status not in WRITE_OK:
+        raise error('write', f'알 수 없는 쓰기 결과 {status!r}')
+    return True
+
+
+def trust(merger, srv, cwd):
+    """신뢰를 적고 다시 읽는다 — `(적은 훅, 다시 읽은 우리 훅)`. 적을 것이 없으면 적은 훅은 빈 목록이다."""
+    for _ in range(WRITE_ATTEMPTS):
+        version = user_version(srv)   # 판이 먼저 — 목록 뒤에 설정이 바뀌면 쓰기가 거절된다
+        ours = list_ours(merger, srv, cwd)
+        todo = [h for h in ours if writable(h)]
+        if not todo:
+            return [], ours
+        if version is None:
+            raise unmeasured('shape', '쓸 훅이 있는데 config/read 에 사용자 층이 없다')
+        if write_trust(srv, todo, version):
+            break
+    else:
+        raise error('version-conflict', f'설정이 {WRITE_ATTEMPTS} 번 다 읽은 뒤에 바뀌었다 — 다른 Codex 가 쓰는 중인가 본다')
+    try:
+        return todo, list_ours(merger, srv, cwd)
+    except Stop as s:   # 썼는데 다시 못 읽었다 — 적은 것이 섰는지 모른다
+        raise error('verify', s.line.split('=', 1)[1]) from s
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('mode', choices=('status', 'trust'))
+    ap.add_argument('--example', required=True)
+    ap.add_argument('--codex-home')
+    ap.add_argument('--codex', help='codex 실행 파일을 못박는다(검사 · 진단용). 없으면 PATH 에서 찾는다')
+    args = ap.parse_args()
+    try:
+        merger = load_merger()
+        expected = expected_count(merger, args.example)
+        print(f'EXPECTED={expected}')
+        home = os.path.abspath(os.path.expanduser(args.codex_home or os.environ.get('CODEX_HOME') or DEFAULT_HOME))
+        cmd = codex_command(args.codex)
+        cwd = tempfile.mkdtemp(prefix=CWD_PREFIX)
+        try:
+            try:
+                srv = AppServer(cmd, home, cwd)
+            except Transport as t:
+                raise unmeasured(t.kind, t.detail) from t
+            try:
+                init = result_of(srv, 'initialize', {'clientInfo': CLIENT_INFO}, INIT_TIMEOUT_SEC)
+                try:
+                    srv.notify('initialized')
+                except Transport as t:
+                    raise unmeasured(t.kind, t.detail) from t
+                if init.get('codexHome'):   # 「안 실림」의 까닭은 Codex 가 실제로 읽은 홈에서 가린다
+                    home = str(init['codexHome'])
+                    print(f'CODEX_HOME={home}')
+                if args.mode == 'status':
+                    report(merger, list_ours(merger, srv, cwd), expected, home)
+                    return 0
+                written, after = trust(merger, srv, cwd)
+                now = {h['key']: h for h in after}
+                confirmed = [now[h['key']] for h in written if now.get(h['key'], {}).get('trustStatus') == 'trusted']
+                for h in confirmed:
+                    print(f'TRUSTED_NOW={event_label(h)}|{h.get("matcher") or ""}|{h.get("command", "")}')
+                report(merger, after, expected, home)
+                if len(confirmed) != len(written):
+                    raise error('verify', f'{len(written) - len(confirmed)} 개가 적은 뒤에도 trusted 로 안 읽힌다')
+                return 0
+            finally:
+                srv.close()
+        finally:
+            shutil.rmtree(cwd, ignore_errors=True)
+    except Stop as s:
+        print(s.line)
+        return s.code
+    except Exception as exc:   # 설치기와의 약속은 한 줄이다 — 트레이스백으로 죽으면 까닭이 안 읽힌다
+        print('ERROR=' + type(exc).__name__ + ':' + clip(exc))
+        return EXIT_ERROR
+
+
+if __name__ == '__main__':
+    sys.exit(main())

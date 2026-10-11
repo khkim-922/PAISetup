@@ -4,8 +4,16 @@
 
 **무엇이 우리 것인가.** `[hooks]` 의 이벤트 배열 안 훅 가운데 명령(`command` · `commandWindows`)이 씨앗 자리의 우리 몸통
 (`MARKER_DIR` + `MARKERS`)을 부르는 훅이다. 판정은 항목(matcher 묶음)이 아니라 **훅 하나** 단위다 — 사람이 우리 묶음 안에
-제 훅을 끼워 넣었으면 그 훅은 같은 matcher 의 제 항목으로 남는다. 이벤트마다 「남의 항목 + 예시의 항목」이 되도록 배열을
-고쳐 쓴다 — 남의 항목은 뜻이 그대로 남고, 우리 항목은 예시가 바뀌면 따라간다.
+제 훅을 끼워 넣었으면 그 훅은 같은 matcher 의 제 항목으로 묶음의 자리에 남고, 우리 훅은 예시의 항목으로 따로 선다.
+
+**있던 항목은 제자리를 지킨다.** Codex 는 훅 신뢰를 `[hooks.state]` 에 「설정 파일:이벤트:항목 번호:훅 번호」를 열쇠로
+적는다(codex-rs `hooks/src/lib.rs` 의 `hook_key`). 열쇠가 곧 자리라, 항목 하나가 밀리면 그 뒤 훅은 사람이 신뢰해 둔
+것까지 「바뀜」으로 읽혀 신뢰를 다시 묻고 `codex exec` 에서는 안 돈다. 그래서 이벤트마다
+  - 남의 항목과 예시와 같은 우리 항목은 그 자리에 둔다
+  - 바뀐 우리 항목은 그 자리에서 예시의 새 판으로 간다 — 신뢰는 뜻이 바뀐 그 훅만 잃는다
+  - 예시에 새로 생긴 항목은 끝에 붙인다
+  - 예시가 더는 안 드는 우리 항목은 뒤에 남는 항목이 있으면 빈 항목(`PLACEHOLDER`)으로 자리만 남기고, 없으면 지운다.
+    Codex 는 훅이 없는 항목을 경고 없이 넘기되 번호는 센다 — 그래서 뒤 항목의 열쇠가 안 밀린다
 
 **뜻으로 재고 나서만 쓴다.** 원본과 결과를 둘 다 TOML 로 읽어, 결과가 「원본 + 이번에 고친 이벤트 배열」과
 **뜻이 같을 때만** 파일을 갈아 끼운다. 줄로 고치는 손이 무엇을 놓쳐도 사용자 설정이 깨지거나 남의 훅이
@@ -47,6 +55,7 @@ MARKERS = ('drm-guide.py', 'codex-image-gate.py', 'codex-safety-hooks.py')
 HOOKS_TABLE = 'hooks'
 COMMAND_KEYS = ('command', 'commandWindows')
 NESTED_HOOKS_KEY = 'hooks'
+PLACEHOLDER = {NESTED_HOOKS_KEY: []}   # 예시가 버린 우리 항목의 자리를 잇는 빈 항목 — 맨 위 「있던 항목은 제자리를 지킨다」
 BOM = '﻿'
 BACKUP_SUFFIX = '.before-hooks-'
 
@@ -259,6 +268,32 @@ def render_array(event, entries, nl):
     return nl.join(out)
 
 
+def place(cur, wanted):
+    """이벤트 하나의 새 배열 — 있던 항목은 제자리를 지킨다(맨 위 「있던 항목은 제자리를 지킨다」)."""
+    out, slots = [], []
+    for e in cur:
+        rest = without_ours(e)
+        if rest is None:   # 우리 훅만 든 항목 — 예시의 항목이 들어설 자리
+            slots.append(len(out))
+            out.append(e)
+        else:              # 남의 항목(섞였으면 남의 훅만) — 그 자리에 둔다
+            out.append(rest)
+    todo, free = list(wanted), []
+    for i in slots:
+        if out[i] in todo:
+            todo.remove(out[i])   # 예시와 같다 — 그대로
+        else:
+            free.append(i)
+    for i, w in zip(free, todo):   # 바뀐 우리 항목 — 남은 예시 항목이 차례로 든다
+        out[i] = w
+    out.extend(todo[len(free):])   # 예시에 새로 생긴 항목
+    gone = set(free[len(todo):])   # 예시가 더는 안 드는 우리 항목
+    end = len(out)
+    while end and (end - 1) in gone:   # 뒤에 남는 항목이 없으면 지운다 — 밀릴 번호가 없다
+        end -= 1
+    return [copy.deepcopy(PLACEHOLDER) if i in gone else e for i, e in enumerate(out[:end])]
+
+
 def plan_events(data, wanted):
     """이벤트마다 바라는 배열을 정한다 — `(고칠 것 {이벤트: 배열}, 건너뛴 것 [이벤트(까닭)])`."""
     hooks = data.get(HOOKS_TABLE, {})
@@ -270,8 +305,7 @@ def plan_events(data, wanted):
         if not isinstance(cur, list) or not all(isinstance(e, dict) for e in cur):
             skipped.append(f'{ev}(배열이 아니다)')
             continue
-        kept = [e for e in (without_ours(x) for x in cur) if e is not None]
-        desired = kept + wanted[ev]
+        desired = place(cur, wanted[ev])
         if desired != cur:
             plan[ev] = desired
     return plan, skipped

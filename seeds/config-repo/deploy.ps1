@@ -490,13 +490,24 @@ if (Test-Path $rulesSrc) {
     }
 }
 
-# 제작자 세트를 받을 도구 — 사용자 환경변수 `PAISETUP_PERSONAL`(배포본 설치기의 제작자 칸이 심는다 · docs/decisions/0099)
+# 개인화할 도구 — 이 저장소의 선언 `personal.conf` 의 `DEPLOY_HOMES`(docs/decisions/0105)
+# 개인화는 이 저장소의 일이라, 어느 도구를 개인화할지도 이 저장소가 든다 — 배포본 설치기의 칸 값을 읽으면 그 칸을 안 켠
+# 사람의 배포까지 설치기 칸에 묶인다.
 # ⚠ **Claude 쪽은 이 값을 안 탄다** — Claude 홈에 규범 · 룰 · 스킬을 미는 것이 이 저장소의 본업이라 늘 민다.
 #   Codex · agy 쪽만 이 값을 따른다 — 사람마다 Codex · agy 는 규범 없이 가볍게 쓸 수 있게.
-# ⚠ **값이 없으면 있는 도구 다** — 그 설치기를 아직 안 돌린 PC 가 지금까지처럼 받는다. `none` 은 아무 도구도 아니다.
-$personalRaw = $env:PAISETUP_PERSONAL
-if (-not $personalRaw) { try { $personalRaw = [Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') } catch { } }
-$personalSet = if ($personalRaw) { @($personalRaw -split '[,\s]+' | Where-Object { $_ }) } else { $null }
+# ⚠ **줄이 없으면 있는 도구 다** — 이 줄이 서기 전에 만든 저장소가 지금까지처럼 받는다. 줄은 있는데 값이 비면 아무 도구도 아니다.
+function Get-DeployHomes([hashtable]$Conf) {
+    # 돌려주는 것: $null — 줄이 없다(있는 도구 다) · 배열 — 그 도구들(비면 아무 도구도 아니다)
+    # `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 부른다.
+    # ⚠ **배열을 if 식으로 고르지 않는다** — 빈 배열을 내는 if 식은 $null 로 풀려 「아무 도구도 아님」이 「다」가 된다.
+    #   그래서 줄이 없을 때만 일찍 돌아가고, 배열은 쉼표로 감싸 풀리지 않게 돌려준다.
+    if (-not $Conf.ContainsKey('DEPLOY_HOMES')) { return $null }
+    return ,@($Conf['DEPLOY_HOMES'] -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() })
+}
+$personalSet = Get-DeployHomes $pc
+foreach ($t in @($personalSet | Where-Object { @('claude', 'codex', 'agy') -notcontains $_ })) {
+    $todo += "personal.conf 의 DEPLOY_HOMES 에 모르는 이름이 있다 — $t (codex · agy 를 읽는다)"
+}
 function Test-PersonalFor([string]$Tool) { ($null -eq $personalSet) -or ($personalSet -contains $Tool) }
 
 # agy(Antigravity CLI) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083 · 0099)

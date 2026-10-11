@@ -1,6 +1,6 @@
-# Codex hooks installed with the config-repo seed.
-# Merge this block into ~/.codex/config.toml. Codex asks the user to trust new
-# or changed hooks on the next interactive start; do not copy [hooks.state].
+# Codex hooks installed with the config-repo seed. Merge this block into ~/.codex/config.toml.
+# Codex runs them only once trusted: an interactive start asks about new or changed hooks, `codex exec` skips
+# untrusted ones silently, so the installer writes their trust when Codex is chosen (codex-hook-trust.py). Do not copy [hooks.state].
 
 [hooks]
 UserPromptSubmit = [

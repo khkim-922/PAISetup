@@ -4,8 +4,9 @@
     python -X utf8 codex-norms.py --remove --target ~/.codex/AGENTS.md     # 칸을 끈 판 — 블록만 걷는다
     python -X utf8 codex-norms.py ... --out <파일>     # 대상은 안 고치고 고칠 결과만 그 파일에 쓴다
 
-부르는 자는 둘이다 — 배포본 설치기의 제작자 칸(Codex 칸)과 설정 저장소의 `deploy.ps1`(`~/.codex` 가 있고 Codex 를 골랐으면).
-한 자가 블록을 지어 두 길이 같은 판을 낸다. 고르기는 사용자 환경변수 `PAISETUP_PERSONAL` 이 들고 둘이 같은 값을 읽는다.
+부르는 자는 둘이다 — 배포본 설치기의 제작자 칸(Codex 칸)과 설정 저장소의 `deploy.ps1`(`~/.codex` 가 있고 그 저장소가
+Codex 를 개인화하면 — 그 저장소 `personal.conf` 의 `DEPLOY_HOMES`). 한 자가 블록을 지어 두 길이 같은 판을 낸다. 한 PC 에서
+둘이 같이 손대지는 않는다 — 설정 저장소를 넣은 PC 에서는 설치기 칸이 비켜선다(결정 0105).
 
 **왜 옮겨 쓰나.** Claude 는 홈 규범을 `~/.claude/CLAUDE.md` 에서, agy 는 include 한 줄로 같은 파일을 읽는다(0083). Codex 의
 `AGENTS.md` 에는 다른 파일을 끌어오는 길이 없다(Codex 문서 「Custom instructions with AGENTS.md」). 그래서 원본에서 **뽑아**

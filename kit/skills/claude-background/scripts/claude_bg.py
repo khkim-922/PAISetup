@@ -23,9 +23,14 @@ dontAsk` · `--tools` · `--allowedTools`)과 결과를 가르는 법(`subtype` 
 인자가 cmd.exe 를 거치므로, 셔틀이 부르는 것(꾸러미 `bin` 의 JS 나 실행 파일)을 바로 부른다.
 
 맨 끝 줄 `[claude-bg] …` 이 갈래 · 걸린 시간 · 모델 · 쓴 도구 수 · 토큰 · 이어 묻기 값을 든다:
-  0 답이 왔다 · 1 실패했다(거절된 도구 호출 포함) · 2 한도 · 과부하 또는 빈 답 · 3 시간 초과 · 4 부르는 법이 틀렸다 · Claude 가 없다
+  0 답이 왔다 · 1 실패했다(거절된 도구 호출 · 러너가 멈춘 것 포함) · 2 한도 · 과부하 또는 빈 답 · 3 시간 초과 ·
+  4 부르는 법이 틀렸다 · Claude 가 없다
+**`--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다** — 인자가 틀렸어도, 러너가 멈췄어도 까닭을 적는다.
+**이어 묻기 값은 대화 기록이 실제로 남았을 때만 싣는다** — 받는 Claude 가 제 홈에 못 쓰는 자리(맡긴 쪽의 샌드박스)에서
+돌면 대화 id 는 나와도 기록이 없어 `--resume` 이 「No conversation found」로 진다(실측 2026-10-11 · Codex 샌드박스).
 """
 import argparse
+import glob
 import json
 import os
 import re
@@ -33,6 +38,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 
 CREATE_NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
 DEFAULT_TIMEOUT_SEC = 1800      # 기본 한도 — 짧은 일도 그대로 둔다(끝나는 대로 돌아온다)
@@ -59,11 +65,67 @@ DROP_ENV = ('CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_REMOTE_SESSION_
 QUOTA_STATUS = (429, 529)
 QUOTA_RE = re.compile(r'usage limit|rate[_ ]limit|overloaded|\b429\b|\b529\b', re.I)
 MODEL_NAME_RE = re.compile(r'[A-Za-z0-9._:/\[\]-]+')
+# 답 파일의 인코딩. 윈도 PowerShell 5.1 의 `Get-Content` 는 BOM 없는 파일을 ANSI 코드 페이지(한국어 윈도는 949)로 읽어
+# 한글과 끝 줄의 `·` 를 깨뜨린다(`·` → `쨌` — 실측 2026-10-11 · Codex 가 `Get-Content -Tail 1` 로 끝 줄을 읽었다). BOM 이 있으면
+# UTF-8 로 읽는다. 다른 OS 는 BOM 없이 둔다 — 거기 셸은 UTF-8 로 읽고, BOM 은 첫 줄을 `^[claude-bg]` 로 찾는 손을 헛짚게 한다.
+ANSWER_ENCODING = 'utf-8-sig' if os.name == 'nt' else 'utf-8'
+# 대화 기록의 자리 — 설정 폴더(`CLAUDE_CONFIG_DIR`, 없으면 `~/.claude`)의 `projects/<작업 자리 이름>/<id>.jsonl`(실측
+# Claude Code 2.1.296 · 윈도 · 2026-10-11). 작업 자리 이름을 짓는 규칙은 빌리지 않는다 — `projects/*` 를 다 본다.
+CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR'
+NO_RESUME = ('이어 묻기 못 함 — 대화 기록이 안 남았다({where} 에 이 대화가 없다). 받는 Claude 가 제 홈에 못 쓰는 자리'
+             '(맡긴 쪽의 샌드박스)에서 돌았거나 대화가 서기 전에 멈췄다')
 
 
 def write(path, text):
-    with open(path, 'w', encoding='utf-8') as f:
+    """답 파일을 쓴다 — 인코딩은 `ANSWER_ENCODING`."""
+    with open(path, 'w', encoding=ANSWER_ENCODING) as f:
         f.write(text)
+
+
+class Usage(Exception):
+    """인자를 못 갈랐다. argparse 는 그 말을 stderr 에 찍고 끝내지만 부른 쪽은 답 파일을 읽는다 — 답 파일에 옮긴다."""
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise Usage(message)
+
+
+def out_arg(args):
+    """인자를 못 갈랐을 때 답 파일 자리 — `--out <경로>` · `--out=<경로>` 만 찾는다. 없으면 None."""
+    for i, x in enumerate(args):
+        if x == '--out' and i + 1 < len(args):
+            return args[i + 1]
+        if x.startswith('--out='):
+            return x[len('--out='):]
+    return None
+
+
+def prompt_problem(path):
+    """프롬프트 파일을 못 넘기는 까닭 — 없으면 None. 받는 Claude 는 표준 입력을 UTF-8 로 읽는다: PowerShell 5.1 의
+    `Set-Content`(ANSI) · `Out-File`(UTF-16) 기본값으로 쓴 파일은 글자가 깨진 채 넘어가 답이 조용히 틀어진다."""
+    try:
+        with open(path, 'rb') as f:
+            f.read().decode('utf-8')
+    except OSError as e:
+        return f'프롬프트 파일을 못 읽었다 — {e}'
+    except UnicodeDecodeError:
+        return f'프롬프트 파일이 UTF-8 이 아니다 — PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {path}'
+    return None
+
+
+def transcripts_dir():
+    return os.path.join(os.environ.get(CONFIG_DIR_ENV) or os.path.join(os.path.expanduser('~'), '.claude'), 'projects')
+
+
+def resume_field(conv):
+    """끝 줄의 이어 묻기 칸 — 대화 기록 파일이 있을 때만 id 를 싣는다. 없으면 `-` 와 까닭."""
+    if not conv:
+        return 'resume=-'
+    where = transcripts_dir()
+    if glob.glob(os.path.join(glob.escape(where), '*', glob.escape(conv) + '.jsonl')):
+        return f'resume={conv}'
+    return 'resume=- · ' + NO_RESUME.format(where=where)
 
 
 def kill_tree(proc):
@@ -208,7 +270,7 @@ def run_once(cmd_head, a):
 
 
 def main():
-    ap = argparse.ArgumentParser(add_help=False)
+    ap = Parser(add_help=False)
     ap.add_argument('--prompt-file', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--cwd')
@@ -216,13 +278,31 @@ def main():
     ap.add_argument('--model')
     ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로
     ap.add_argument('--write', action='store_true')   # 고치기 레인 — 작업 자리 안만 고친다
+    args = sys.argv[1:]
     try:
-        a = ap.parse_args()
-    except SystemExit:
+        a = ap.parse_args(args)
+    except Usage as e:
+        out = out_arg(args)
+        if out:
+            try:
+                write(out, f'{FOOTER} usage · 인자가 틀렸다 — {e}\n')
+            except OSError:
+                pass
         return 4
+    try:
+        return run(a)
+    except Exception as e:   # 어디서 멈췄든 답 파일과 끝 줄을 남긴다 — 부른 쪽은 그것만 본다
+        write(a.out, f'{traceback.format_exc()}\n{FOOTER} failed · 러너가 멈췄다 — {type(e).__name__}: {e}\n')
+        return EXIT['failed']
 
+
+def run(a):
     if not os.path.isfile(a.prompt_file):
         write(a.out, f'{FOOTER} usage · 프롬프트 파일이 없다 — {a.prompt_file}\n')
+        return 4
+    bad = prompt_problem(a.prompt_file)
+    if bad:
+        write(a.out, f'{FOOTER} usage · {bad}\n')
         return 4
     if a.write and not (a.cwd and os.path.isdir(a.cwd)):
         write(a.out, f'{FOOTER} usage · --write 는 --cwd 로 작업 자리를 준다 — 쓰는 범위가 그 자리다\n')
@@ -243,7 +323,7 @@ def main():
         return 4
     used = ','.join(f'{k}:{v}' for k, v in sorted(tools.items())) or '-'
     footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · model={model} · tools={used}'
-              f' · tokens {tokens} · resume={conv or "-"}')
+              f' · tokens {tokens} · {resume_field(conv)}')
     if status == 'ok':
         write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
     else:

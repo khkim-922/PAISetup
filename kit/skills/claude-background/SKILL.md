@@ -23,7 +23,8 @@ description: "Claude 에게 일을 맡기고 답을 받을 때 부른다 — Cod
 
 ## 맡기는 법
 
-1. **프롬프트를 파일로 쓴다**(임시 폴더). 길이는 자유다 — 래퍼가 표준 입력으로 넘긴다.
+1. **프롬프트를 UTF-8 파일로 쓴다**(임시 폴더). 길이는 자유다 — 래퍼가 표준 입력으로 넘긴다. PowerShell 5.1 이면
+   `Set-Content -Encoding utf8` 로 쓴다 — 기본값(ANSI · `Out-File` 은 UTF-16)으로 쓴 파일은 래퍼가 4 로 돌려보낸다.
 2. **콘솔 있는 `python` 으로 부르고 끝날 때까지 기다린다** — 명령의 시간 한도는 `--timeout` 보다 길게 준다.
    `pythonw` 는 창 없는 프로그램이라 셸이 안 기다리고 바로 돌아온다. agy 는 명령이 기다림(`WaitMsBeforeAsync`)을 넘기면
    뒤로 넘어가니, 그때는 그 작업이 끝날 때까지 상태를 보고 나서 `--out` 을 읽는다.
@@ -33,18 +34,30 @@ description: "Claude 에게 일을 맡기고 답을 받을 때 부른다 — Cod
      [--timeout <초>] [--model <이름>] [--resume <id>] [--write]
    ```
 
-3. **끝나면 `--out` 파일을 읽는다.** 끝 줄 `[claude-bg] <갈래> …` 이 레인(`mode=read|write`) · 모델(`model=`) · 쓴 도구 수(`tools=`) · 토큰 ·
-   이어 묻기 값(`resume=`)을 든다.
+   **Codex 에서는 이 명령을 샌드박스 밖에서 돌린다** — 셸 도구 호출에 `sandbox_permissions: "require_escalated"` 와
+   허락을 묻는 한 줄(`justification`, 예: 「Claude 에게 리뷰를 맡기려 망이 드는 러너를 샌드박스 밖에서 돌려도 될까요?」)을
+   실어 승인을 받는다. 받는 Claude 는 망이 있어야 답하는데 Codex 의 `workspace-write` 샌드박스는 망을 닫아 둔다. 망만 열어도 그 안에서는 Claude 가 제 홈(`~/.claude`)에 대화 기록을 못 써
+   이어 묻기가 안 선다. 이 길은 승인 정책이 `on-request` 일 때(앱의 기본 `Auto`) 있다 — 출처:
+   [Codex 문서 「Agent approvals & security」](https://developers.openai.com/codex/agent-approvals-security)(망이 드는
+   명령은 승인을 묻는다 · `workspace-write` 는 망이 꺼져 있다) ·
+   [Codex 의 승인 요청 안내](https://github.com/openai/codex/blob/main/codex-rs/prompts/templates/permissions/approval_policy/on_request.md)
+   (`require_escalated` · `justification`). 승인 정책이 `never` 인 자리(`codex exec` 기본)에서는 이 요청이 안 선다 — 그
+   자리는 Codex 를 `-c sandbox_workspace_write.network_access=true` 로 띄워야 답이 오고, 그래도 이어 묻기는 안 선다.
+
+3. **끝나면 `--out` 파일을 읽는다.** 윈도에서는 BOM 붙은 UTF-8 이라 PowerShell 5.1 의 `Get-Content` 가 인코딩을 안 줘도
+   한글을 그대로 읽는다. 끝 줄 `[claude-bg] <갈래> …` 이 레인(`mode=read|write`) · 모델(`model=`) · 쓴 도구 수(`tools=`) ·
+   토큰 · 이어 묻기 값(`resume=`)을 든다. 인자가 틀렸거나 러너가 멈췄어도 `--out` 을 줬으면 그 파일에 까닭과 끝 줄이 남는다.
 
    | 종료 코드 | 뜻 |
    |---|---|
    | 0 | 답이 왔다 |
-   | 1 | 실패 — 거절된 도구 호출도 여기다. 끝 줄 위의 까닭과 `raw=` 경로를 본다 |
+   | 1 | 실패 — 거절된 도구 호출 · 러너가 멈춘 것도 여기다. 끝 줄 위의 까닭과 `raw=` 경로를 본다 |
    | 2 | 한도 · 과부하 또는 빈 답 — 잠시 뒤 다시 맡긴다 |
    | 3 | 시간 초과 |
-   | 4 | 부르는 법이 틀렸거나 Claude Code CLI 가 없다 |
+   | 4 | 부르는 법이 틀렸거나(프롬프트 파일이 UTF-8 이 아닌 것 포함) Claude Code CLI 가 없다 |
 
-4. **이어 물을 때**는 끝 줄의 `resume=` 값을 그대로 `--resume` 으로 준다.
+4. **이어 물을 때**는 끝 줄의 `resume=` 값을 그대로 `--resume` 으로 준다. 대화 기록이 안 남은 실행은 `resume=-` 에
+   까닭을 달고 끝난다 — 그때는 새로 맡긴다.
 5. **사실은 쓴 도구로 가린다** — `tools=` 에 읽기 · 검색이 없는 답은 기억으로 낸 것이다. 판 번호 · 날짜처럼 시점에 매인
    답은 근거를 맞춰 본 뒤에 쓴다.
 
@@ -53,7 +66,8 @@ description: "Claude 에게 일을 맡기고 답을 받을 때 부른다 — Cod
 - Claude Code CLI(`claude`)가 이 PC 에 서 있어야 한다. 사외는 구독 로그인으로, 사내는 설치기가 심은 게이트웨이 값으로
   붙는다 — 래퍼는 사용자 설정을 읽어 그 값을 그대로 쓴다. 인증 실패로 멈추면 터미널에서 `claude` 를 한 번 띄워
   로그인하게 알린다
-- 맡긴 대화는 Claude Code 의 대화 기록에 남는다 — 이어 묻기가 그 기록으로 선다
+- 맡긴 대화는 Claude Code 의 대화 기록(`~/.claude/projects`)에 남는다 — 이어 묻기가 그 기록으로 서고, 래퍼는 그 기록이
+  실제로 있을 때만 `resume=` 에 id 를 싣는다
 
 ## 작업 자리
 

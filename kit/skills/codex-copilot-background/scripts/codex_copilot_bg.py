@@ -5,7 +5,11 @@
 **기본은 둘 다 읽기만 한다.** Codex 는 읽기 전용 샌드박스(`sandbox_mode`)에 앱 · 플러그인 · MCP 도구를 끄고, Copilot 은
 읽기 · 웹 읽기 도구만 보이게(`--available-tools`) 띄운다. Copilot 은 거기에 더해 작업 자리와 임시 폴더 밖 파일을 못 연다.
 **`--write` 를 주면 고치기 레인이다**(결정 0100) — Codex 를 작업 자리 쓰기 샌드박스(`workspace-write`)로 띄운다. 쓰는
-자리는 작업 자리(`--cwd`)와 임시 폴더뿐이고 셸의 망은 닫힌 채다(Codex 기본값). 앱 · 플러그인 · MCP 는 그대로 끈다.
+자리는 작업 자리(`--cwd`)와 **이 러너가 그 실행에만 세우는 임시 폴더**뿐이고, 셸의 망은 닫힌 채다(Codex 기본값). 앱 ·
+플러그인 · MCP 는 그대로 끈다. 그 샌드박스는 임시 폴더 환경변수(윈도 `TEMP` · `TMP`, 그 밖 `TMPDIR`)가 가리키는 자리와
+유닉스의 `/tmp` 도 쓰게 열어, 그대로 띄우면 작업 자리 밖 `%TEMP%` 밑 어디든 쓴다(실측 2026-10-11 — 셸 · apply_patch 둘 다
+섰다). 그래서 세 변수를 새 빈 폴더로 돌려 띄우고 끝나면 지우며, `/tmp` 와 설정의 덧붙인 쓰기 자리는 끈다
+(`WRITE_SANDBOX` — `exclude_slash_tmp` · `writable_roots`).
 **고치기 레인은 Copilot 이 안 받는다** — Copilot 의 쓰는 범위를 가두는 법을 아직 안 쟀다. Codex 가 한도면 그대로
 멈춘다(2). 자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
 
@@ -27,20 +31,26 @@ JS 를 node 로 바로 부른다 — 인자는 고정 플래그뿐이다.
 
 **말은 전부 `--out` 파일로 간다** — pythonw 에는 표준 출력이 없다. 맨 끝 줄 `[cc-bg] …` 이 갈래 · 걸린 시간 ·
 맡은 쪽 · 넘어간 자취 · 토큰 · 웹 검색 수 · 이어 묻기 값을 든다:
-  0 답이 왔다 · 1 실패했다 · 2 한도(받을 쪽까지 다) 또는 빈 답 · 3 시간 초과 · 4 부르는 법이 틀렸다 · 깔린 쪽이 없다
+  0 답이 왔다 · 1 실패했다(러너가 멈춘 것 포함) · 2 한도(받을 쪽까지 다) 또는 빈 답 · 3 시간 초과 · 4 부르는 법이
+  틀렸다 · 깔린 쪽이 없다
+`--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다. **이어 묻기 값은 그쪽 대화 기록이 실제로 남았을 때만
+싣는다** — 제 홈에 못 쓰는 자리(부른 쪽의 샌드박스)에서 돌면 id 는 나와도 기록이 없어 이어 묻기가 진다.
 
 **웹 검색 수(`web=`)는 Codex 가 실제로 마친 검색이다** — 검색을 열어 두어도 검색 없이 기억으로 답할 수 있고,
 모르는 도구를 오류 없이 삼키는 게이트웨이 뒤에서는 그것이 조용히 난다. 답만 보면 안 갈려 끝 줄이 센다.
 Copilot 은 `-` 다 — 검색 도구가 없고, 주소를 연 횟수를 세는 이벤트 꼴은 아직 안 잡았다.
 """
 import argparse
+import glob
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import traceback
 
 AGENTS = ('codex', 'copilot')   # 차례 — 1번 · 2번
 CREATE_NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
@@ -66,6 +76,26 @@ CODEX_ARGS = ['-c', 'features.apps=false', '-c', 'features.plugins=false',
               '-c', 'mcp_servers={}', '--skip-git-repo-check', '--json']
 CODEX_SANDBOX = {False: 'read-only', True: 'workspace-write'}   # 읽기 레인 · 고치기 레인
 WRITE_AGENTS = ('codex',)   # 고치기 레인을 받는 쪽 — Copilot 은 쓰는 범위를 가두는 법을 안 쟀다
+# 고치기 레인의 쓰는 범위를 작업 자리 + 임시 폴더 변수 하나로 못 박는다 — Codex 설정 낱말 그대로(`sandbox_workspace_write.*`).
+# 임시 폴더 변수는 남긴다(`exclude_tmpdir_env_var=false`) — 그 변수를 러너가 세운 빈 폴더로 돌려 띄우므로 거기만 열린다.
+# 셸 도구 다수가 임시 폴더를 써서 아예 닫으면 검사 · 빌드가 진다. `/tmp` 는 유닉스에서만 열리던 자리다(윈도는 안 본다).
+WRITE_SANDBOX = ['-c', 'sandbox_workspace_write.writable_roots=[]',
+                 '-c', 'sandbox_workspace_write.exclude_tmpdir_env_var=false',
+                 '-c', 'sandbox_workspace_write.exclude_slash_tmp=true']
+# Codex 가 임시 폴더로 읽는 변수 — 윈도 샌드박스는 `TEMP` · `TMP`, 그 밖은 `TMPDIR`(openai/codex `windows-sandbox-rs` ·
+# `protocol/src/permissions.rs`). 셋 다 같은 새 폴더로 돌린다.
+TEMP_VARS = ('TEMP', 'TMP', 'TMPDIR')
+WRITE_TMP_PREFIX = 'cc-bg-write-'
+# 이어 묻기가 서는 대화 기록의 자리(이 PC 실측 2026-10-11) — Codex 는
+# `<CODEX_HOME>/sessions/<년>/<월>/<일>/rollout-<시각>-<id>.jsonl`, Copilot 은 `<COPILOT_HOME>/session-state/<id>/`.
+# 홈 변수가 없으면 `~/.codex` · `~/.copilot` 이다(두 CLI 의 설명).
+STORE = {'codex': ('CODEX_HOME', '.codex', ('sessions', '*', '*', '*'), 'rollout-*-{id}.jsonl'),
+         'copilot': ('COPILOT_HOME', '.copilot', ('session-state',), '{id}')}
+NO_RESUME = ('이어 묻기 못 함 — 대화 기록이 안 남았다({where} 에 이 대화가 없다). 받는 쪽이 제 홈에 못 쓰는 자리'
+             '(부른 쪽의 샌드박스)에서 돌았거나 대화가 서기 전에 멈췄다')
+# 답 파일의 인코딩 — 윈도 PowerShell 5.1 의 `Get-Content` 는 BOM 없는 파일을 ANSI 코드 페이지(한국어 윈도는 949)로 읽어
+# 한글과 끝 줄의 `·` 를 깨뜨린다(`·` → `쨌` — 실측 2026-10-11). BOM 이 있으면 UTF-8 로 읽는다. 다른 OS 는 BOM 없이 둔다.
+ANSWER_ENCODING = 'utf-8-sig' if os.name == 'nt' else 'utf-8'
 
 # 자리 값의 이름과 받는 값 — 받는 값은 Codex 설정의 낱말 그대로다(`web_search` · `windows.sandbox`).
 KNOB_AGENTS = 'CC_BG_AGENTS'
@@ -89,8 +119,52 @@ COPILOT_DROP_ENV = ('GH_TOKEN', 'GITHUB_TOKEN')
 
 
 def write(path, text):
-    with open(path, 'w', encoding='utf-8') as f:
+    """답 파일을 쓴다 — 인코딩은 `ANSWER_ENCODING`."""
+    with open(path, 'w', encoding=ANSWER_ENCODING) as f:
         f.write(text)
+
+
+class Usage(Exception):
+    """인자를 못 갈랐다. argparse 는 그 말을 stderr 에 찍고 끝내지만 pythonw 에는 stderr 가 없다 — 답 파일에 옮긴다."""
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        raise Usage(message)
+
+
+def out_arg(args):
+    """인자를 못 갈랐을 때 답 파일 자리 — `--out <경로>` · `--out=<경로>` 만 찾는다. 없으면 None."""
+    for i, x in enumerate(args):
+        if x == '--out' and i + 1 < len(args):
+            return args[i + 1]
+        if x.startswith('--out='):
+            return x[len('--out='):]
+    return None
+
+
+def prompt_problem(path):
+    """프롬프트 파일을 못 넘기는 까닭 — 없으면 None. 받는 쪽은 표준 입력을 UTF-8 로 읽는다: PowerShell 5.1 의
+    `Set-Content`(ANSI) · `Out-File`(UTF-16) 기본값으로 쓴 파일은 글자가 깨진 채 넘어가 답이 조용히 틀어진다."""
+    try:
+        with open(path, 'rb') as f:
+            f.read().decode('utf-8')
+    except OSError as e:
+        return f'프롬프트 파일을 못 읽었다 — {e}'
+    except UnicodeDecodeError:
+        return f'프롬프트 파일이 UTF-8 이 아니다 — PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {path}'
+    return None
+
+
+def resume_field(agent, conv):
+    """끝 줄의 이어 묻기 칸 — 그쪽 대화 기록이 있을 때만 `<쪽>:<id>` 를 싣는다. 없으면 `-` 와 까닭."""
+    if not conv:
+        return 'resume=-'
+    var, default, sub, name = STORE[agent]
+    home = os.environ.get(var) or os.path.join(os.path.expanduser('~'), default)
+    if glob.glob(os.path.join(glob.escape(home), *sub, name.format(id=glob.escape(conv)))):
+        return f'resume={agent}:{conv}'
+    return 'resume=- · ' + NO_RESUME.format(where=os.path.join(home, sub[0]))
 
 
 def kill_tree(proc):
@@ -146,7 +220,8 @@ def codex_config(knobs):
 def argv(agent, resume, knobs, write=False):
     """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다."""
     if agent == 'codex':
-        tail = ['-c', f'sandbox_mode="{CODEX_SANDBOX[write]}"', *CODEX_ARGS, *codex_config(knobs)]
+        tail = ['-c', f'sandbox_mode="{CODEX_SANDBOX[write]}"', *(WRITE_SANDBOX if write else []), *CODEX_ARGS,
+                *codex_config(knobs)]
         if resume:
             return ['exec', 'resume', *tail, resume, '-']
         return ['exec', *tail, '-']
@@ -233,21 +308,29 @@ def run_once(agent, cmd_head, a, resume):
     if agent == 'copilot':
         for k in COPILOT_DROP_ENV:
             env.pop(k, None)
+    # 고치기 레인은 임시 폴더를 이 실행만의 빈 폴더로 돌린다 — 샌드박스가 여는 임시 폴더가 그것뿐이게(`WRITE_SANDBOX`)
+    tmp = tempfile.mkdtemp(prefix=WRITE_TMP_PREFIX) if a.write and agent in WRITE_AGENTS else None
+    if tmp:
+        env.update({k: tmp for k in TEMP_VARS})
     started = time.monotonic()
     status = None
-    # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
-    with open(a.prompt_file, 'rb') as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
-        try:
-            proc = subprocess.Popen(cmd_head + argv(agent, resume, a.knobs, a.write), cwd=a.cwd, env=env, stdin=stdin,
-                                    stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
-        except OSError as e:
-            return 'spawn', None, '', None, str(e), 'in=- out=-', None, raw_path
-        while proc.poll() is None:
-            if time.monotonic() > started + a.timeout:
-                kill_tree(proc)
-                status = 'timeout'
-                break
-            time.sleep(POLL_SEC)
+    try:
+        # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
+        with open(a.prompt_file, 'rb') as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
+            try:
+                proc = subprocess.Popen(cmd_head + argv(agent, resume, a.knobs, a.write), cwd=a.cwd, env=env,
+                                        stdin=stdin, stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
+            except OSError as e:
+                return 'spawn', None, '', None, str(e), 'in=- out=-', None, raw_path
+            while proc.poll() is None:
+                if time.monotonic() > started + a.timeout:
+                    kill_tree(proc)
+                    status = 'timeout'
+                    break
+                time.sleep(POLL_SEC)
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
     with open(err_path, encoding='utf-8', errors='replace') as f:
         err_text = f.read()
     judged, answer, conv, reason, tokens, searches = JUDGE[agent](read_jsonl(raw_path), proc.returncode, err_text)
@@ -265,7 +348,7 @@ def run_once(agent, cmd_head, a, resume):
 
 
 def main():
-    ap = argparse.ArgumentParser(add_help=False)
+    ap = Parser(add_help=False)
     ap.add_argument('--prompt-file', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--cwd')
@@ -273,13 +356,31 @@ def main():
     ap.add_argument('--agent', choices=AGENTS)
     ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로 — `<쪽>:<id>`
     ap.add_argument('--write', action='store_true')   # 고치기 레인 — 작업 자리 안만 고친다
+    args = sys.argv[1:]
     try:
-        a = ap.parse_args()
-    except SystemExit:
-        return 4   # pythonw 라 argparse 의 말은 어디에도 안 닿는다 — 종료 코드만 남는다
+        a = ap.parse_args(args)
+    except Usage as e:
+        out = out_arg(args)
+        if out:
+            try:
+                write(out, f'{FOOTER} usage · 인자가 틀렸다 — {e}\n')
+            except OSError:
+                pass
+        return 4
+    try:
+        return run(a)
+    except Exception as e:   # 어디서 멈췄든 답 파일과 끝 줄을 남긴다 — 부른 쪽은 그것만 본다
+        write(a.out, f'{traceback.format_exc()}\n{FOOTER} failed · 러너가 멈췄다 — {type(e).__name__}: {e}\n')
+        return EXIT['failed']
 
+
+def run(a):
     if not os.path.isfile(a.prompt_file):
         write(a.out, f'{FOOTER} usage · 프롬프트 파일이 없다 — {a.prompt_file}\n')
+        return 4
+    bad = prompt_problem(a.prompt_file)
+    if bad:
+        write(a.out, f'{FOOTER} usage · {bad}\n')
         return 4
     a.knobs, bad = read_knobs(os.environ)
     if bad:
@@ -338,7 +439,7 @@ def main():
     footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · agent={agent}'
               + (f' · failover={"; ".join(tried)}' if tried else '') +
               f' · tokens {tokens} · web={"-" if searches is None else searches}'
-              f' · resume={f"{agent}:{conv}" if conv else "-"}')
+              f' · {resume_field(agent, conv)}')
     if status == 'ok':
         write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
     else:
