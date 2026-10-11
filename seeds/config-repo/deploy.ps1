@@ -411,6 +411,34 @@ Sync-Repos $globalRuleTargets
 # ⚠ **당김은 이 앞에 있다** — 그래서 이 단계가 보는 나무는 **당긴 뒤**의 나무고, 이 한 줄은
 #   그대로 참이다(당김은 `$plan` 에 아무것도 안 더하므로 「다 최신이면 안 묻는다」도 산다).
 
+# --- 개인화할 도구 — 배포본 설치기의 제작자 칸이 심는 사용자 환경변수 `PAISETUP_PERSONAL`(docs/decisions/0107) ---
+# **칸 하나가 스위치다.** 설정 저장소를 넣은 PC 에서 설치기는 켠 도구에 만든 사람의 꾸러미를 안 깔고 비켜서고, 그 도구는
+# 이 배포가 이 저장소의 규범 · 룰 · 스킬로 민다. 끈 도구에는 안 밀고 홈에 있는 것을 걷지도 않는다 — 끈 도구의 우리 것은
+# 설치기가 걷는다. 둘이 같은 값을 보므로 한 홈을 두고 번갈아 덮지 않는다.
+# ⚠ **Claude 도 이 값을 탄다** — 칸 셋이 같은 스위치다. 끄면 Claude 홈의 규범 · 룰 · 에이전트 · 스킬을 안 밀고 안 걷는다.
+#   훅 · 씨앗 · 메모리 · 형제 저장소 배포본은 칸과 상관없이 민다. 세션 훅의 홈 밀기(`deploy_home_norms`)도 같은 값을 탄다.
+# ⚠ **값이 없으면 있는 도구 다** — 설치기를 안 돌린 자리(리모트 컨테이너 · 설치기 전 PC)가 지금까지처럼 받는다.
+#   `none` 은 아무 도구도 아니다 — 빈 값과 「안 돌렸다」를 갈라야 해서 설치기가 그렇게 심는다.
+function Get-PersonalTools([string]$Raw) {
+    # 돌려주는 것: $null — 값이 없다(있는 도구 다) · 배열 — 그 도구들(`none` 이면 빈 배열)
+    # `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 부른다.
+    # ⚠ **배열을 if 식으로 고르지 않는다** — 빈 배열을 내는 if 식은 $null 로 풀려 「아무 도구도 아님」이 「다」가 된다.
+    #   그래서 값이 없을 때만 일찍 돌아가고, 배열은 쉼표로 감싸 풀리지 않게 돌려준다.
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
+    return ,@($Raw -split '[,\s]+' | Where-Object { $_ -and $_ -ne 'none' } | ForEach-Object { $_.ToLower() })
+}
+$personalRaw = $env:PAISETUP_PERSONAL
+if (-not $personalRaw) { try { $personalRaw = [Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') } catch { } }
+$personalSet = Get-PersonalTools $personalRaw
+foreach ($t in @($personalSet | Where-Object { @('claude', 'codex', 'agy') -notcontains $_ })) {
+    $todo += "PAISETUP_PERSONAL 에 모르는 이름이 있다 — $t (claude · codex · agy · none 을 읽는다)"
+}
+function Test-PersonalFor([string]$Tool) { ($null -eq $personalSet) -or ($personalSet -contains $Tool) }
+$personalClaude = Test-PersonalFor 'claude'
+if (-not $personalClaude) {
+    Write-Host "· Claude 홈의 규범 · 룰 · 에이전트 · 스킬 건너뜀  (제작자 칸에서 Claude 를 껐다 — PAISETUP_PERSONAL=$personalRaw)" -ForegroundColor DarkGray
+}
+
 # --- 파일 배포 ---
 $agentSrc = Join-Path $src 'agents'
 $memSrc   = Join-Path $src 'memory'
@@ -418,15 +446,16 @@ $memSrc   = Join-Path $src 'memory'
 # 붙여도 자동 로드 대상이 아니라, 규범은 아래가 깔아주는 홈 한 자리로만 실린다.
 # 진본이 `CLAUDE.md` 이던 시절에는 붙인 세션에서 두 판이 로드됐다 (docs/decisions/0002).
 $ruleSrc  = Join-Path $src '.claude\CLAUDE.global.md'
-$targets  = @(
-    @{ From = $ruleSrc; To = Join-Path $dst 'CLAUDE.md' }
-)
+$targets  = @()
+if ($personalClaude) { $targets += @{ From = $ruleSrc; To = Join-Path $dst 'CLAUDE.md' } }
 # ⚠ **`agents` 폴더가 없을 수 있다** — 이 스크립트는 `$ErrorActionPreference = 'Stop'` 이라, 없는 경로를
 #   `Get-ChildItem` 에 그대로 주면 종료 오류로 계획 단계 한가운데서 죽고 **그 뒤 걸음(MCP · 저장소 설치 ·
 #   환경변수)이 하나도 안 돈다**(#114). 없으면 이 걸음만 건너뛰고 한 줄 말한다. 아래 제거 후보도 같은
 #   값을 본다 — **없는 폴더를 「원본이 비었다」로 읽으면 `-Prune` 이 홈의 에이전트를 다 지운다.**
 $hasAgents = Test-Path -LiteralPath $agentSrc -PathType Container
-if ($hasAgents) {
+if (-not $personalClaude) {
+    # 위에서 한 줄로 말했다 — 끈 칸은 밀지도 걷지도 않는다
+} elseif ($hasAgents) {
     Get-ChildItem $agentSrc -Filter *.md | ForEach-Object {
         $targets += @{ From = $_.FullName; To = Join-Path $dst "agents\$($_.Name)" }
     }
@@ -484,31 +513,11 @@ foreach ($bootFile in $repoFiles) {
 # 진본 폴더 이름만 `rules.global/` 이다 — 이 저장소를 세션에 붙였을 때 진본이 로드되지 않게
 # (docs/decisions/0002 와 같은 결). 그 이름은 claude-config 안에서만 뜻이 있다.
 $rulesSrc = Join-Path $src '.claude\rules.global'
-if (Test-Path $rulesSrc) {
+if ($personalClaude -and (Test-Path $rulesSrc)) {
     foreach ($f in (Get-ChildItem $rulesSrc -Filter *.md)) {
         $targets += @{ From = $f.FullName; To = Join-Path $dst "rules\$($f.Name)" }
     }
 }
-
-# 개인화할 도구 — 이 저장소의 선언 `personal.conf` 의 `DEPLOY_HOMES`(docs/decisions/0105)
-# 개인화는 이 저장소의 일이라, 어느 도구를 개인화할지도 이 저장소가 든다 — 배포본 설치기의 칸 값을 읽으면 그 칸을 안 켠
-# 사람의 배포까지 설치기 칸에 묶인다.
-# ⚠ **Claude 쪽은 이 값을 안 탄다** — Claude 홈에 규범 · 룰 · 스킬을 미는 것이 이 저장소의 본업이라 늘 민다.
-#   Codex · agy 쪽만 이 값을 따른다 — 사람마다 Codex · agy 는 규범 없이 가볍게 쓸 수 있게.
-# ⚠ **줄이 없으면 있는 도구 다** — 이 줄이 서기 전에 만든 저장소가 지금까지처럼 받는다. 줄은 있는데 값이 비면 아무 도구도 아니다.
-function Get-DeployHomes([hashtable]$Conf) {
-    # 돌려주는 것: $null — 줄이 없다(있는 도구 다) · 배열 — 그 도구들(비면 아무 도구도 아니다)
-    # `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 부른다.
-    # ⚠ **배열을 if 식으로 고르지 않는다** — 빈 배열을 내는 if 식은 $null 로 풀려 「아무 도구도 아님」이 「다」가 된다.
-    #   그래서 줄이 없을 때만 일찍 돌아가고, 배열은 쉼표로 감싸 풀리지 않게 돌려준다.
-    if (-not $Conf.ContainsKey('DEPLOY_HOMES')) { return $null }
-    return ,@($Conf['DEPLOY_HOMES'] -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() })
-}
-$personalSet = Get-DeployHomes $pc
-foreach ($t in @($personalSet | Where-Object { @('claude', 'codex', 'agy') -notcontains $_ })) {
-    $todo += "personal.conf 의 DEPLOY_HOMES 에 모르는 이름이 있다 — $t (codex · agy 를 읽는다)"
-}
-function Test-PersonalFor([string]$Tool) { ($null -eq $personalSet) -or ($personalSet -contains $Tool) }
 
 # agy(Antigravity CLI) 설정: .gemini.global/* -> ~/.gemini/config/ (docs/decisions/0083 · 0099)
 # 셋 다 **가리키는 파일**이다 — 규범은 include 한 줄, 룰은 아래 중립 자리(`~/.paisetup/norms`)를, 스킬 목록은 agy 홈
@@ -562,7 +571,7 @@ if (Test-Path $localSkillsConf) {
 # ⚠ **빠지는 것은 홈으로 미는 것뿐이다** — 위 선언이 든 스킬도 이 저장소를 붙인 세션에서는
 #   `.claude/skills/` 에서 그대로 로드된다. 「홈에 안 깐다」와 「안 쓴다」는 다른 명제다.
 $skillSrc = Join-Path $src '.claude\skills'
-if (Test-Path $skillSrc) {
+if ($personalClaude -and (Test-Path $skillSrc)) {
     # ⚠ **파이썬이 남긴 캐시는 안 민다** — 까닭은 아래 씨앗 칸의 같은 자리가 든다. 스킬도
     #   `scripts/` 를 들 수 있어 같은 부산물이 난다. 재는 자(`scripts/check-global-copies.sh`
     #   의 `DIFF_SKIP`)는 이미 그 이름을 빼므로, 여기만 안 빼면 **재는 자와 뿌리는 자가 다른
@@ -1219,7 +1228,7 @@ if ($installSteps.Count -gt 0) {
 
 # --- 제거 후보: 원본에 없는 에이전트 파일 ---
 $agentDst = Join-Path $dst 'agents'
-if ($hasAgents -and (Test-Path $agentDst)) {
+if ($personalClaude -and $hasAgents -and (Test-Path $agentDst)) {
     $keep = (Get-ChildItem $agentSrc -Filter *.md).Name
     Get-ChildItem $agentDst -Filter *.md | Where-Object { $keep -notcontains $_.Name } | ForEach-Object {
         $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  (agents/에 없음)" }
@@ -1260,7 +1269,7 @@ if (Test-Path $memSrc) {
 # 에이전트·메모리와 같은 이유다. 저장소에서 지운 스킬이 홈에 남아 계속 로드되면
 # 배포한 줄 알았던 것과 실제가 어긋난다.
 $skillDst = Join-Path $dst 'skills'
-if ((Test-Path $skillSrc) -and (Test-Path $skillDst)) {
+if ($personalClaude -and (Test-Path $skillSrc) -and (Test-Path $skillDst)) {
     # ⚠ **이 저장소 전용 스킬은 여기서도 뺀다.** 그래야 전에 깔려 있던 홈 사본이 제거 후보로
     #   올라온다 — 선언에 이름을 더한 날 홈에서 저절로 걷히는 길이 이것이다. 안 빼면 「밀지도
     #   않고 걷지도 않는」 자리가 되어, 옛 사본이 계속 로드되면서 아무도 모른다.
@@ -1283,7 +1292,7 @@ if ((Test-Path $skillSrc) -and (Test-Path $skillDst)) {
 # --- 제거 후보: 원본에 없는 룰 파일 ---
 # 진본에서 지운 룰이 홈이나 저장소 사본에 남으면 계속 로드·복사된다 — 스킬과 같은 이유.
 $rulesDst = Join-Path $dst 'rules'
-if (Test-Path $rulesSrc) {
+if ($personalClaude -and (Test-Path $rulesSrc)) {
     $keep = (Get-ChildItem $rulesSrc -Filter *.md).Name
     # 홈만 본다. 저장소의 `.claude/rules/` 는 **그 저장소 자신의 룰** 자리라, 여기서 훑으면
     # 진본에 없다는 이유로 남의 룰을 지운다 (docs/decisions/0014).

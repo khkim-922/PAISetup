@@ -715,10 +715,19 @@ ${1#"$CONFIG_ROOT"/}
   [ -z "$PUSH_ONLY" ] && [ -f "$2" ] && [ ! "$1" -nt "$2" ] && return 0
   cp "$1" "$2" 2>/dev/null || PC_WIDE_FAIL=1   # 진 판에 열쇠를 안 적는다 (0065)
 }
+personal_for() {   # personal_for <도구> — 배포본 설치기의 제작자 칸 값(`PAISETUP_PERSONAL`)이 그 도구를 드나 (0107)
+  # 칸 하나가 스위치다 — deploy.ps1 의 `Test-PersonalFor` 와 같은 뜻이다. 값이 없으면 다(리모트 컨테이너 · 설치기 전 PC) ·
+  # `none` 은 아무것도 아니다. 이름은 `claude` · `codex` · `agy` 를 쉼표나 빈칸으로 가른다.
+  [ -n "${PAISETUP_PERSONAL:-}" ] || return 0
+  case ",$(printf '%s' "$PAISETUP_PERSONAL" | tr 'A-Z ' 'a-z,')," in *",$1,"*) return 0 ;; esac
+  return 1
+}
 deploy_home_norms() {
   if [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/.claude/CLAUDE.global.md" ]; then
     _src="$CONFIG_ROOT/.claude"
     [ "$HOME_SYNC" = check ] || [ -d "$HOME/.claude" ] || mkdir -p "$HOME/.claude"
+    # 규범 · 룰 · 에이전트는 Claude 칸을 탄다 — 끈 PC 에서는 밀지도 낡았다고 세지도 않는다(아래 씨앗은 칸과 상관없다)
+    if personal_for claude; then
     _push_file "$_src/CLAUDE.global.md" "$HOME/.claude/CLAUDE.md"
     if [ -d "$_src/rules.global" ]; then
       for _hf in "$_src/rules.global/"*.md; do
@@ -734,6 +743,7 @@ deploy_home_norms() {
       for _hf in "$CONFIG_ROOT/agents/"*.md; do
         _push_file "$_hf" "$HOME/.claude/agents/${_hf##*/}"
       done
+    fi
     fi
     # 사내 환경 문서와 씨앗 둘 — 규범·룰·에이전트와 **같은 통로에서 빠져 있던 칸**이다.
     # 진본은 이 저장소이고 스킬·형제 저장소 문서가 홈 좌표를 가리키는데, 그 홈 사본을
