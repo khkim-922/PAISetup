@@ -344,6 +344,19 @@ $DesktopApps = @(
      Requires = @('Microsoft.EdgeWebView2Runtime') }
 )
 
+# ── 큰 걸음 — **머리줄과 걸린 초 줄이 이 표에서 난다** ─────────────────────────────────────
+#    번호는 표의 차례, 분모는 표의 길이다. 흐름은 열쇠로 들고 난다(`Enter-Step` · `Exit-Step`).
+$Steps = @(
+  @{ Key = 'programs';   Title = '프로그램' }
+  @{ Key = 'extensions'; Title = 'VS Code 확장' }
+  @{ Key = 'cli';        Title = 'CLI' }
+  @{ Key = 'keys';       Title = '키와 주소' }
+  @{ Key = 'home';       Title = '홈 설정' }
+  @{ Key = 'personal';   Title = '개인 규범·룰·스킬' }
+  @{ Key = 'assets';     Title = '사내 환경 문서 · 씨앗 넷' }
+  @{ Key = 'repo';       Title = '개인 값 저장소' }
+)
+
 # 고를 목록을 한 줄씩 내준다 — `product|키|글자|기본값`. **여기까지 오는 데 부수효과가 없다**
 # (위는 다 선언이다), 그래서 이 갈래는 설치를 한 톨도 안 건드리고 나간다.
 # ⚠ **자리도 같이 내준다 — 화면이 그 글자를 다시 적지 않게.** 저장소를 받는 자리(`~/repos`)는
@@ -2832,11 +2845,30 @@ if (-not ($NoUpgrade -or $noWinget)) {
     Write-Host '  (올릴 목록을 한 번에 못 받았다 — 앱마다 묻는다)'
   }
 }
+# ── 걸음의 머리줄과 마침 줄 — 위 `$Steps` 표에서 짓는다 ─────────────────────────────────
+# 머리줄은 `[번호/분모] 이름` 이다. 화면 껍데기가 그 줄을 `^\[(\d+)/(\d+)\]` 로 읽어 막대를 민다.
+#   들기는 빈 줄 하나를 앞에 두고, 나기는 같은 글자로 걸린 초 한 줄을 찍는다(`Write-Elapsed`).
+# ⚠ **표에 없는 열쇠는 던진다** — 틀린 열쇠로 엉뚱한 머리줄을 찍고 지나가지 않게.
+function Get-StepTitle([string]$Key) {
+  for ($i = 0; $i -lt $Steps.Count; $i++) {
+    if ($Steps[$i].Key -ceq $Key) { return ('[{0}/{1}] {2}' -f ($i + 1), $Steps.Count, $Steps[$i].Title) }
+  }
+  throw "걸음 표에 없는 열쇠 — $Key"
+}
+
+function Enter-Step([string]$Key) {
+  Write-Host ''
+  Write-Host (Get-StepTitle $Key) -ForegroundColor Cyan
+}
+
+function Exit-Step([string]$Key) {
+  Write-Elapsed (Get-StepTitle $Key)
+}
+
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. [1/8] 앞에도 시간이 든다.
 Write-Elapsed '준비'
-Write-Host ''
 
-Write-Host '[1/8] 프로그램' -ForegroundColor Cyan
+Enter-Step 'programs'
 foreach ($app in $Apps) {
   # ⚠ **VS Code 를 끄면 VS Code 만 안 깐다** — Node 는 CLI 가 타므로 `core` 로 남아 그대로 깔린다.
   if ($NoVsCode -and $app.Need -eq 'vscode') {
@@ -3046,9 +3078,8 @@ Wire-NodeTrust
 # ⚠ **`--update-extensions` 는 깔린 확장 전부를 올린다** — 우리 셋만 고르는 스위치가 없다. VS Code 가
 #   스스로 하는 자동 갱신과 같은 일이라 더 하는 것은 없다.
 
-Write-Elapsed '[1/8] 프로그램'
-Write-Host ''
-Write-Host '[2/8] VS Code 확장' -ForegroundColor Cyan
+Exit-Step 'programs'
+Enter-Step 'extensions'
 # 확장 갱신 한 호출에 두르는 울타리 — 초. **갱신은 곁일이라 포기할 수 있다**(까닭은 아래 호출 자리).
 # ⚠ **값은 이 칸의 실측 분포가 정한다** — 평소 1~14초이고, 엿새 밀린 회차가 587초를 썼다
 #   (2026-10-06 회사 PC). 72초짜리 회차도 있어 **정상이 꽤 느릴 수 있는 자리**라, 넉넉히 두되
@@ -3094,9 +3125,8 @@ if ($NoVsCode) {
 
 # ── 4. CLI — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────────
 
-Write-Elapsed '[2/8] VS Code 확장'
-Write-Host ''
-Write-Host '[3/8] CLI' -ForegroundColor Cyan
+Exit-Step 'extensions'
+Enter-Step 'cli'
 $CliPicks = @($Clis | Where-Object { $PickKeys -contains $_.Key })
 if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
 foreach ($c in $CliPicks) {
@@ -3207,14 +3237,13 @@ if ((-not $inside) -and ($PickKeys -contains 'copilot')) {
   Write-Host '  Copilot CLI 는 터미널에서 `copilot login` 을 한 번 친다 — 브라우저로 GitHub 계정을 잇는다'
 }
 
-Write-Elapsed '[3/8] CLI'
+Exit-Step 'cli'
 # ── 5. 값 — 파일이 들면 읽고, 없으면 묻는다 ─────────────────────────────────────
 # ⚠ **`#config-repo` 가 있어도 여기서 받는다.** 옛 판은 그 줄이 있으면 안 묻고 저쪽 설치 몸통이
 #   제 파일로 심게 넘겼다 — 그러면 저장소에 설치 몸통이 없는 사람은 키가 어디에도 안 심긴다.
 #   회사 키는 설치 창(또는 `install.env`)이 받고 이 파일이 심는다. 저쪽이 드는 것은 사람에게
 #   딸린 것(개인 키 · 형제 저장소)이지 이 칸이 아니다.
-Write-Host ''
-Write-Host '[4/8] 키와 주소' -ForegroundColor Cyan
+Enter-Step 'keys'
 $fromFile  = Read-EnvFile $EnvFile
 if ($fromFile.Count -gt 0) { Write-Host "  install.env 가 $($fromFile.Count)개를 든다" }
 
@@ -3884,7 +3913,7 @@ if ($useGateway -and ($wantCodex -or $wantGemini -or $wantAgy)) {
   }
 }
 
-Write-Elapsed '[4/8] 키와 주소'
+Exit-Step 'keys'
 # ── 6. 홈 설정 ──────────────────────────────────────────────────────────────────
 # ⚠ **씨앗은 없을 때만 깐다.** 사람이 앱에서 바꾼 값을 재실행이 지우면 안 된다. 담는 것도
 #   취향이 아니라 공용으로 서는 것뿐이다 — `permissions` 를 안 담는 까닭이 그것이다: 그
@@ -3901,8 +3930,7 @@ Write-Elapsed '[4/8] 키와 주소'
 #   자리가 파일을 봐야 한다」이지 「키가 파일에 있어야 한다」가 아니다 — 키를 읽는 세 이름은
 #   **사용자 환경변수가 이미 들고 있고**(5″ 칸), CLI 는 거기서 읽는다. 그래서 주소·모델은
 #   밀고 토큰과 그 별명 둘은 뺀다 (#2).
-Write-Host ''
-Write-Host '[5/8] 홈 설정' -ForegroundColor Cyan
+Enter-Step 'home'
 $homeCfg = Join-Path $homeDir 'settings.json'
 New-Item -ItemType Directory -Path $homeDir -Force | Out-Null
 
@@ -4092,13 +4120,12 @@ if ($cfg) {
   }
 }
 
-Write-Elapsed '[5/8] 홈 설정'
+Exit-Step 'home'
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
 # ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다.
 #   제작자 칸의 Claude 칸(`-PersonalFor claude` · 옛 `-WithPersonalConfig`)을 켤 때만, 그리고 이 폴더에 실제로 있을 때만 깐다.
 
-Write-Host ''
-Write-Host '[6/8] 개인 규범·룰·스킬' -ForegroundColor Cyan
+Enter-Step 'personal'
 # 고른 도구 — 설정 저장소의 배포(`deploy.ps1`)와 세션 훅이 같은 값을 읽어 어느 도구 홈을 개인화할지 정한다(결정 0107).
 if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) {
   # ⚠ **이 프로세스의 값도 맞춘다** — 뒤의 설정 저장소 배포(8 칸)는 이 프로세스의 자식이라 그 값을 물려받는다. 새 판의 배포는
@@ -4373,7 +4400,7 @@ if ($staleRules.Count -gt 0) {
   }
 }
 
-Write-Elapsed '[6/8] 개인 규범·룰·스킬'
+Exit-Step 'personal'
 # ── 7. 사내 환경 문서 · 씨앗 둘 ─────────────────────────────────────────────────
 # ⚠ **이건 고를 것이 아니라 환경이다.** 그래서 위 칸과 달리 스위치가 없다 — 사내 게이트웨이의
 #   배선·실측·오류 명세와, 복사해 출발하는 씨앗 둘(배관 · 설정 저장소)은 **누가 받아도 쓴다.**
@@ -4384,8 +4411,7 @@ Write-Elapsed '[6/8] 개인 규범·룰·스킬'
 # ⚠ 그래서 홈에 깐다 — 규범·룰·스킬이 이미 쓰는 꼴이다: **진본은 저장소, 로드 자리는 홈.**
 #   저장소를 든 사람은 `deploy.ps1` 이 이 자리를 갱신하고 `check-global-copies.sh` 가
 #   바이트로 잰다. 사본이 하나 더 늘지만, **재는 자가 붙은 사본**이라 조용히 안 낡는다.
-Write-Host ''
-Write-Host '[7/8] 사내 환경 문서 · 씨앗 넷' -ForegroundColor Cyan
+Enter-Step 'assets'
 # ⚠ **씨앗 넷은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 **원본에 없는
 #   파일을 안 지운다.** 진본에서 부품 하나를 걷어도 한 번 깐 기계에는 그것이 영영 남고, 씨앗은
 #   **있으면 복사되는 자리**라 걷힌 것이 계속 새 프로젝트로 퍼진다 — 5‴ 칸의 「심기는 더하기만
@@ -4785,7 +4811,7 @@ if ($dirty -and $cfg) {
   [IO.File]::WriteAllText($homeCfg, $json, (New-Object Text.UTF8Encoding($false)))
 }
 
-Write-Elapsed '[7/8] 사내 환경 문서 · 씨앗 넷'
+Exit-Step 'assets'
 # ── 8. 개인 값 저장소 (선택) ────────────────────────────────────────────────────
 # ⚠ **주소는 이 파일에 없다.** `install.env` 가 `#config-repo` 를 들 때만 이 칸이 선다 —
 #   그래야 이 스크립트가 익명으로 남아 남에게 그대로 줄 수 있다.
@@ -4803,8 +4829,7 @@ Write-Elapsed '[7/8] 사내 환경 문서 · 씨앗 넷'
 # ⚠ **여기서 넘긴 뒤 저쪽이 드는 것은 사람에게 딸린 것뿐이다** — git 신원 · 형제 저장소 · 개인 키 ·
 #   규범·룰·메모리 배포. 회사 키·주소·프록시·Codex/Gemini 설정·확장·CLI 는 위 칸들이 이미 세웠다.
 #   런타임을 두 번 깔지 않는다 — 무엇을 깔지는 이 파일 하나가 든다.
-Write-Host ''
-Write-Host '[8/8] 개인 값 저장소' -ForegroundColor Cyan
+Enter-Step 'repo'
 # 주소(`$repoUrl` · `$configRepoUrls`)와 자리(`Get-ConfigRepoDir`)는 7 칸 앞에서 한 벌로 섰다.
 if (-not $repoUrl) {
   Write-Host '  건너뜀 — install.env 에 #config-repo 가 없다'
@@ -4975,7 +5000,7 @@ if (-not $repoUrl) {
     if ($LASTEXITCODE -ne 0) { $Fails.Add("훅 --install (exit $LASTEXITCODE)") }
   }
 }
-Write-Elapsed '[8/8] 개인 값 저장소'
+Exit-Step 'repo'
 
 # ── 8″. 공식 문서 스킬 — **자격이 설 자리가 다 선 뒤에 돈다** ────────────────────────
 # ⚠ **왜 CLI 칸(3)이 아니라 여기인가.** CLI 를 깔자마자 붙이면 사외는 구독 로그인(4′) 전이고 사내는
