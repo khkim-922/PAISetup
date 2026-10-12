@@ -356,7 +356,7 @@ $Steps = @(
   @{ Key = 'assets';     Title = '공용 자산' }
   @{ Key = 'tools';      Title = '도구별 홈' }
   @{ Key = 'repo';       Title = '설정 저장소' }
-  @{ Key = 'register';   Title = 'Claude 플러그인 · MCP' }
+  @{ Key = 'register';   Title = 'Claude 플러그인' }
 )
 
 # 고를 목록을 한 줄씩 내준다 — `product|키|글자|기본값`. **여기까지 오는 데 부수효과가 없다**
@@ -1559,9 +1559,9 @@ function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [has
 }
 
 # ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 판정은 `--version` 이 도나(프로브)다.
-# ⚠ **판을 `--version` 이 못 대는 패키지가 있다** — `tavily-mcp` 는 0 으로 끝나며 `unknown` 을 낸다.
-#   그 글자로 견주면 레지스트리 판과 늘 달라 **매 실행 다시 깐다.** 그런 자리는 `$ReadVer` 로 판 읽는
-#   손을 넘긴다. 도나(프로브)는 그대로 `--version` 이 든다 — 판을 못 대도 불리기는 한다.
+# ⚠ **판을 `--version` 이 그대로 못 대는 패키지가 있다** — 그 글자로 견주면 레지스트리 판과 늘 달라
+#   **매 실행 다시 깐다.** 그런 자리는 `$ReadVer` 로 판 읽는 손을 넘긴다(어느 줄이 왜 넘기나는 위 `$Clis`
+#   표가 든다). 도나(프로브)는 그대로 `--version` 이 든다 — 판 글자가 어긋나도 불리기는 한다.
 function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock]$ReadVer = $null) {
   if (-not $ReadVer) { $ReadVer = { Get-Ver $Cmd '--version' } }
   if ((Test-Runs $Cmd '--version') -and ($NoUpgrade -or -not (Test-Runs 'npm' '--version'))) {
@@ -2299,7 +2299,7 @@ function Ask-Restart([string]$AppName) {
   #   그쪽에 적혀 있다. 여기 남는 것은 **이 물음의 말** 하나다.
   $msg = "$AppName — 이미 돌고 있습니다.`n`n" +
          "지금 껐다 새로 열까요?`n" +
-         "돌던 것은 방금 깔린 것(키 · MCP 서버 · 세션 훅)을 모릅니다.`n`n" +
+         "돌던 것은 방금 깔린 것(키 · 세션 훅)을 모릅니다.`n`n" +
          "저장 안 한 것이 있으면 먼저 저장하고 눌러 주세요."
   return (Show-AskDialog $AppName $msg)
 }
@@ -3152,7 +3152,7 @@ Exit-Step 'extensions'
 
 # ══ 걸음 「CLI」 ═══════════════════════════════════════════════════════════════════════════════
 #   층 — 기계
-#   하는 일 — 고른 제품의 CLI(npm · winget) · Tavily 패키지 · 사외 로그인 안내
+#   하는 일 — 고른 제품의 CLI(npm · winget) · 사외 로그인 안내
 #   앞에서 받는 것 — 「프로그램」의 Node · Node 신뢰
 #   안 하는 것 — 사용자 환경변수. 맡기기 값은 「키와 값」이 심는다
 # ── 4. CLI — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────────
@@ -3163,21 +3163,6 @@ if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' 
 foreach ($c in $CliPicks) {
   if ($c.Via -eq 'winget') { Install-WingetCli $c.Id  $c.Cmd $c.Label }
   else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label $c.ReadVer }
-}
-# 웹 검색(Tavily) 패키지 — 왜 미리 까나는 아래 「웹 검색(Tavily)」 등록 칸이 든다.
-# ⚠ **자리가 여기인 까닭 — 등록보다 먼저여야 한다.** 설정 저장소를 든 PC 는 8 칸의 `deploy.ps1` 이
-#   `cmd /c tavily-mcp` 를 등록하는데, 패키지가 그 뒤에 깔리면 그사이 뜬 세션의 서버가 진다.
-#   등록 칸은 자격이 선 뒤(8″)에 남는다 — `claude` 를 부르는 칸이라 공식 문서 스킬과 같은 까닭이다.
-# 판은 전역 폴더의 package.json 이 든다 — `tavily-mcp --version` 은 `unknown` 만 낸다.
-if ($PickKeys -contains 'claude') {
-  $tvReadVer = {
-    $r = ("$(Get-Quiet 'npm' @('root','-g') | Select-Object -First 1)").Trim()
-    $pj = if ($r) { Join-Path $r 'tavily-mcp\package.json' } else { '' }
-    if ($pj -and (Test-Path -LiteralPath $pj)) {
-      try { [string](Get-Content -LiteralPath $pj -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch { '' }
-    }
-  }
-  Install-NpmCli 'tavily-mcp' 'tavily-mcp' 'Tavily MCP (웹 검색)' $tvReadVer
 }
 
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
@@ -4787,10 +4772,10 @@ if (-not $repoUrl) {
 }
 Exit-Step 'repo'
 
-# ══ 걸음 「Claude 플러그인 · MCP」 ═════════════════════════════════════════════════════════════
+# ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
 #   층 — 등록
-#   하는 일 — 공식 문서 스킬 플러그인 · 웹 검색(Tavily) MCP 등록 · agy 로그인 안내 한 줄
-#   앞에서 받는 것 — 「CLI」의 Tavily 패키지 · 「키와 값」의 구독 로그인 · 「설정 저장소」의 배포가 먼저 한 등록(있으면 비켜선다)
+#   하는 일 — 공식 문서 스킬 플러그인 · agy 로그인 안내 한 줄
+#   앞에서 받는 것 — 「키와 값」의 구독 로그인
 #   안 하는 것 — 없음
 Enter-Step 'register'
 
@@ -4853,59 +4838,6 @@ if ($wantDocSkills) {
       Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
     }
     Remove-Item $dl -ErrorAction SilentlyContinue
-  }
-}
-
-# ── 웹 검색(Tavily) — 미리 깐 패키지를 MCP 로 등록한다 (claude-config #95) ─────────────
-# 사내는 게이트웨이를 거쳐 Claude Code 내장 WebFetch·WebSearch 가 막힌다 — 웹은 이 서버가 대신한다.
-# ⚠ **`npx` 로 부르지 않는다.** npx 는 뜰 때마다 npm 을 한 번 더 띄우고(집 PC 실측 1.3초 · 깐 것을 바로
-#   부르면 0.36초), 캐시가 비면 패키지를 통째로 받는다. 비영속 VDI 는 로그인마다 캐시가 비어, 확장의
-#   첫 스폰이 사내 프록시로 받다가 60초 초기화 문을 넘겼다(사내 VDI 실측: 24.4초 + 두 번째 스폰 12.7초).
-#   그래서 **설치 때 미리 깔고(3 칸)**, 등록은 깔린 이름을 부르는 꼴이다.
-# ⚠ **등록 꼴은 씨앗의 `mcp-servers.json` 이 든다** — 여기 옮겨 적지 않는다. 설정 저장소의 `deploy.ps1`
-#   이 같은 파일로 같은 이름을 등록하므로 이 칸은 **없을 때만** 등록한다 — 이름이 있으면 비켜선다.
-# ⚠ **키는 안 묻는다.** 키가 없으면 keyless 로 떠서 검색·추출은 된다. 키가 여는 덤(사이트 지도·크롤·
-# ⚠ **자리를 안 가른다 — 모두에게 깐다.** 설정 저장소를 든 PC 는 자리와 무관하게 같은 등록을 쓰므로
-#   패키지가 어느 PC 에나 있어야 한 벌로 선다.
-# ⚠ **패키지는 여기서 안 깐다 — 3 칸(CLI)이 깐다.** 설정 저장소를 든 PC 는 8 칸의 `deploy.ps1` 이 먼저
-#   등록하므로, 패키지가 그보다 앞서야 한다.
-# ⚠ **패키지가 없으면 등록도 안 한다.** 등록은 `cmd /c tavily-mcp` 라 npx 로 물러나지 않는다 — 없는
-#   것을 등록하면 뜰 때마다 지는 서버만 는다. 못 깐 것은 CLI 칸이 이미 실패로 셌다.
-if ($PickKeys -contains 'claude') {
-  Write-Host ''
-  Write-Host '웹 검색(Tavily)' -ForegroundColor Cyan
-  $tvName = 'tavily-search'
-  $tvSpec = $null
-  try {
-    $tvSpec = (Get-Content -LiteralPath (Join-Path $Here 'seeds\config-repo\mcp-servers.json') -Raw -Encoding UTF8 |
-               ConvertFrom-Json).mcpServers.$tvName
-  } catch { }
-  if (-not (Test-Runs 'tavily-mcp' '--version')) {
-    Write-Host "  Tavily 등록 — 패키지가 없어 안 한다"
-  } elseif (-not (Test-Runs 'claude' '--version')) {
-    Write-Host '  ! Tavily 등록 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 (위 CLI 줄을 먼저 본다)' -ForegroundColor Yellow
-  } elseif (-not $tvSpec -or [string]$tvSpec.type -ne 'stdio') {
-    Write-Host "  ! Tavily 등록 — 씨앗 mcp-servers.json 에 $tvName 의 stdio 항목이 없어 안 한다" -ForegroundColor Red
-    $Fails.Add('Tavily 등록 (씨앗에 항목이 없다)')
-  } else {
-    $null = Get-Quiet 'claude' @('mcp','get',$tvName)
-    if ($LASTEXITCODE -eq 0) {
-      Write-Host "  Tavily 등록 — 있음 ($tvName)"
-    } else {
-      # ⚠ **JSON 으로 안 넘기고 명령·인자로 넘긴다.** 윈도우 파워셸 5.1 은 네이티브에 넘기는 인자의
-      #   큰따옴표를 안 벗겨 줘서 `add-json` 의 JSON 이 저쪽에서 따옴표 없이 풀린다.
-      $tl = [IO.Path]::GetTempFileName()
-      $tvArgv = @('mcp','add','-s','user',$tvName,'--',[string]$tvSpec.command) + @($tvSpec.args | ForEach-Object { [string]$_ })
-      $rc = Invoke-Logged 'claude' $tvArgv $tl
-      if ($rc -eq 0) {
-        Write-Host "  Tavily 등록 — 했다 ($tvName)" -ForegroundColor Green
-      } else {
-        Write-Host "  ! Tavily 등록 — 못 했다 ($rc) — 뱉은 끝 줄:" -ForegroundColor Red
-        Show-Log $tl
-        $Fails.Add('Tavily 등록')
-      }
-      Remove-Item $tl -ErrorAction SilentlyContinue
-    }
   }
 }
 
@@ -5756,8 +5688,8 @@ if ($NoLaunch) {
     #     VS Code 는 `code` 를 다시 불러도 **돌던 그 프로세스**가 창을 내므로 방금 심은 키를
     #     못 본다. `--new-window` 도 창만 새로 낼 뿐 프로세스를 안 가르고, 가르는 레버인
     #     `--user-data-dir` 는 설정·상태가 통째로 딴 자리가 된다.
-    #   · **선언** — **이 설치가 끝이 아니다.** 뒤이어 설정 저장소의 훅이 규범·MCP 선언·세션
-    #     훅을 심는다. 돌던 앱은 그 선언을 뜰 때 한 번 읽고 말았다.
+    #   · **선언** — **이 설치가 끝이 아니다.** 뒤이어 설정 저장소의 훅이 규범·세션 훅을
+    #     심는다. 돌던 앱은 그 선언을 뜰 때 한 번 읽고 말았다.
     # ⚠ **그래서 창을 앞으로 불러 주지도 않는다.** 트레이에 내려간 것을 다시 띄우면 창이 새로
     #   뜬 것처럼 보이는데 **안에 든 것은 그대로다.**
     # ⚠ **떠 있는 것을 설치가 죽이지 않는다** — 저장 안 한 것이 날아간다. 끄는 것은 사람이 든다.
