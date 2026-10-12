@@ -94,11 +94,10 @@ function Get-ProjectMemDst($project) {
 #   옛 판은 `2>$파일` 을 방패로 믿었고, 그래서 「못 당김」 갈래는 **한 번도 안 돌았다**
 #   — 저장소 하나의 로컬 수정이 배포 전체를 죽였다 (실측 2026-09-09 · 사내 PC ·
 #   deploy 가 exit 1 로 끝나고 뒤의 걸음이 다 남았다).
-# ⚠ 그래서 **자식으로 띄운다.** `Start-Process` 는 stderr 를 파워셸에 안 태우고 파일에
-#   바로 붓는다 — 파워셸이 볼 것이 없으니 승격될 것도 없다. 끝나기를 기다리면 종료코드도
-#   제대로 든다. `ErrorActionPreference` 를 잠깐 내리는 길도 살긴 하는데, 그러면 파일에
-#   담기는 것이 git 의 말이 아니라 **파워셸이 꾸민 오류 기록**이라 아래 사유 고르기가
-#   `Aborting` 을 집는다 — 바로 그 주석이 막으려던 자리다.
+# ⚠ 그래서 **자식으로 띄운다.** git 의 stderr 는 파이프로 받아 .NET 이 파일에 붓는다(`Start-GitChild`)
+#   — 파워셸이 볼 것이 없으니 승격될 것도 없다. `ErrorActionPreference` 를 잠깐 내리는 길도 살긴
+#   하는데, 그러면 파일에 담기는 것이 git 의 말이 아니라 **파워셸이 꾸민 오류 기록**이라 아래 사유
+#   고르기가 `Aborting` 을 집는다 — 바로 그 주석이 막으려던 자리다.
 function Get-GitWhy($file) {
     # 사유를 고르는 자는 훅 `git_why` 와 같은 결이다 — 끝줄이 아니라 첫 `fatal:`/`error:` 줄이다.
     # 로컬 수정 갈래는 끝줄이 `Aborting` 이라, 끝줄을 집으면 사유가 있는데 층이 안 갈린다.
@@ -112,23 +111,38 @@ function Get-GitWhy($file) {
 
 function Start-GitChild($gitArgs) {
     # git 하나를 자식으로 띄운다 — **기다리는 것은 부르는 쪽이 한다**(fetch 는 묶음으로 기다리고
-    # merge 는 하나씩 기다려, 기다리는 꼴이 둘이라 이 자는 띄우기만 든다).
-    # 돌려주는 것: @{ Proc; Err; Out } · 못 띄웠으면 @{ Why = 사유 }
+    # merge 는 하나씩 기다려, 기다리는 꼴이 둘이라 이 자는 띄우기만 든다). 거두는 것은 `Complete-GitChild` 다.
+    # 돌려주는 것: @{ Proc; Err; Out; Pump; Sink } · 못 띄웠으면 @{ Why = 사유 }
+    # ⚠ **`Start-Process -PassThru` 로 띄우지 않는다.** 그것이 주는 Process 는 손잡이를 안 쥐어, 손잡이를
+    #   잡기 전에 자식이 끝나면 `ExitCode` 가 빈 값이다 — 할 일 없는 fetch · merge 는 그 틈 안에 끝나고,
+    #   그 저장소는 거짓 「못 당김 — 사유가 안 나왔다」로 떨어진다(#139). `Process.Start` 는 띄우는 순간의
+    #   손잡이를 쥐어 틈이 없다.
+    # ⚠ `cmd /c` 로 감싸 파일로 돌리지 않는다 — `Proc` 가 cmd 가 되어 `Stop-GitChild` 가 cmd 만 죽이고 git 은
+    #   남아 돈다. 두 스트림은 파이프로 받고 `CopyToAsync` 가 파일에 붓는다(파워셸 스레드 없이 돌고, 늘 읽으니
+    #   파이프가 차서 자식이 서는 일도 없다). 파일은 지우기를 허락해 연다 — 시간 초과 갈래는 `Complete-GitChild`
+    #   없이 파일을 지운다.
+    # 인자는 한 줄로 싼다(이 .NET 에는 `ArgumentList` 가 없다) — 빈칸 · 따옴표가 든 낱낱만 MSVCRT 규칙으로 감싼다.
     $errFile = [System.IO.Path]::GetTempFileName()
     $outFile = [System.IO.Path]::GetTempFileName()
+    $sink = @()
     try {
-        $p = Start-Process -FilePath 'git' -ArgumentList $gitArgs `
-               -NoNewWindow -PassThru `
-               -RedirectStandardError $errFile -RedirectStandardOutput $outFile
-        # ⚠ **손잡이를 여기서 잡아 둬야 종료코드가 남는다.** `-Wait` 없이 띄운
-        #   `Start-Process -PassThru` 의 Process 객체는 자식이 끝나면 `ExitCode` 가 **빈 값**이다 —
-        #   던지지도 않아서 「0 이 아니다」로 읽히고, 그러면 성공한 fetch 가 전부
-        #   `! 못 당김 — 사유가 안 나왔다` 로 나온다(실측 2026-10-06 · 가짜 저장소 다섯이 다
-        #   그렇게 나왔다). `.Handle` 을 한 번 읽어 두면 .NET 이 핸들을 쥐고 있어 종료코드가
-        #   남는다. 못 읽으면 그 저장소는 「못 쟀다」로 떨어진다 — 0 으로 접지 않는다.
-        try { $null = $p.Handle } catch { }
-        return @{ Proc = $p; Err = $errFile; Out = $outFile }
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName  = @(Get-Command git -CommandType Application -ErrorAction Stop)[0].Source
+        $psi.Arguments = (@($gitArgs) | ForEach-Object {
+            if ("$_" -ne '' -and "$_" -notmatch '[\s"]') { "$_" }
+            else { '"' + (("$_" -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"' }
+        }) -join ' '
+        $psi.UseShellExecute        = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $sink = @([System.IO.File]::Open($outFile, 'Create', 'Write', 'ReadWrite, Delete'),
+                  [System.IO.File]::Open($errFile, 'Create', 'Write', 'ReadWrite, Delete'))
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $pump = @($p.StandardOutput.BaseStream.CopyToAsync($sink[0]),
+                  $p.StandardError.BaseStream.CopyToAsync($sink[1]))
+        return @{ Proc = $p; Err = $errFile; Out = $outFile; Pump = $pump; Sink = $sink }
     } catch {
+        foreach ($s in $sink) { $s.Dispose() }
         Remove-Item $errFile, $outFile -Force -ErrorAction SilentlyContinue
         return @{ Why = "git 을 못 띄웠다: $($_.Exception.Message.Split([char]10)[0].Trim())" }
     }
@@ -150,8 +164,13 @@ function Stop-GitChild($job) {
 function Complete-GitChild($job) {
     # 끝난 자식의 **종료코드와 사유 한 줄**을 읽고 임시 파일을 걷는다.
     # ⚠ 코드가 $null 이면 「못 쟀다」다 — 부르는 쪽이 0 으로 접지 않는다.
+    # ⚠ 붓기가 끝나야 파일이 다 찬다 — 자식이 끝나도 파이프에 남은 꼬리는 아직 안 부었을 수 있다. 그 끝은
+    #   파이프를 쥔 손자까지 다 나가야 와서 기다림에 한도를 둔다. 넘기면 사유에서 꼬리만 빠지고 판정은 종료코드가 든다.
+    $drainMs = 5000
     $code = $null
     try { $code = $job.Proc.ExitCode } catch { $code = $null }
+    try { $null = [System.Threading.Tasks.Task]::WaitAll($job.Pump, $drainMs) } catch { }
+    foreach ($s in $job.Sink) { try { $s.Dispose() } catch { } }
     $why = Get-GitWhy $job.Err
     Remove-Item $job.Err, $job.Out -Force -ErrorAction SilentlyContinue
     return @{ Code = $code; Why = $why }
