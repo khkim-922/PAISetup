@@ -671,7 +671,7 @@ function New-CountCheck([string]$Name, [string]$From, [string]$To) {
 
 #endregion 파일
 
-#region 환경 — 사용자 환경변수를 심고 걷고, 걷어도 되는 값인지 가리고, PATH 를 태운다
+#region 환경 — 사용자 환경변수를 심고 걷고, 걷어도 되는 값인지 가리고, PATH 를 태우고, 워드의 PDF 변환 안내를 끈다
 
 # ── 배선이 먼저다 ────────────────────────────────────────────────────────────────
 # ⚠ winget 이 심은 PATH 는 **이 창에 안 걸린다** — 이 창이 winget 보다 먼저 떴다.
@@ -815,6 +815,74 @@ function Remove-UserVar([string]$Name) {
     Write-Host "  ! $Name 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
     $script:Fails.Add("$Name 걷기")
   }
+}
+
+# ── 워드의 PDF 변환 안내 — 스킬 `drm-office-read` 의 숨은 워드가 그 창에 갇히지 않게 ─────────────
+# 워드로 PDF 를 열면 「PDF 를 편집할 수 있는 문서로 바꾼다」 안내창이 뜬다. 그 스킬은 워드를 숨겨 띄우므로 창이 아무도
+#   못 누르는 자리에 떠, 워드가 멈춘 채 RPC 가 끊긴다(`0x800706BE`). `DisplayAlerts` · `ConfirmConversions` 로는 이 창이
+#   안 눌리고, 끄는 것은 창의 「이 메시지를 다시 표시 안 함」이 쓰는 값 하나다(claude-config #143 실측 · 판 16.0).
+# ⚠ **사람이 PDF 를 워드로 열 때도 그 안내가 안 뜬다** — 그래서 심는 자리가 설치 기록에 그 뜻을 한 줄로 밝힌다.
+# ⚠ 값 자리(`$WordPdfQuiet`)는 「키와 값」 걸음이 들고, 심는 손과 끝 검증이 그 한 자리를 본다.
+
+# 깔린 워드의 판(`16.0` 따위). 이 이름은 오피스가 HKCU 에 판마다 설정을 두는 자리의 이름이고, 워드가 제 `Version` 으로
+#   내는 값이기도 하다 — 스킬이 그 값으로 이 자리를 찾는다.
+# ⚠ 판마다 `Word\InstallRoot` 의 `Path` 가 그 판의 WINWORD.EXE 자리를 든다. 뿌리 넷을 다 본다 — 64비트 · 32비트
+#   (`WOW6432Node`) · 클릭 투 런의 가상 레지스트리 둘. 어느 한 뿌리에만 선 판도 잡힌다.
+# ⚠ **실행 파일이 있는 판만 센다** — 지운 오피스는 판 키를 남긴다.
+# ⚠ `Word.Application.N` 이름으로 세지 않는다 — 요즘 오피스도 옛 이름 `Word.Application.8` 을 같이 둔다(실측).
+function Get-WordVersions([string[]]$Bases = @(
+    'HKLM:\SOFTWARE\Microsoft\Office',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office',
+    'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\REGISTRY\MACHINE\Software\Microsoft\Office',
+    'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\REGISTRY\MACHINE\Software\Wow6432Node\Microsoft\Office')) {
+  $found = @()
+  foreach ($b in $Bases) {
+    foreach ($k in @(Get-ChildItem -LiteralPath $b -ErrorAction SilentlyContinue)) {
+      if ($k.PSChildName -notmatch '^\d+\.\d+$') { continue }
+      $dir = $null
+      try { $dir = [string](Get-ItemProperty -LiteralPath (Join-Path $k.PSPath 'Word\InstallRoot') -Name Path -ErrorAction Stop).Path } catch { continue }
+      if ($dir -and (Test-Path -LiteralPath (Join-Path $dir 'WINWORD.EXE') -PathType Leaf)) { $found += $k.PSChildName }
+    }
+  }
+  @($found | Sort-Object -Unique)
+}
+
+# 한 판의 값 자리와 지금 값 — 심는 손과 재는 손이 같이 쓴다. 값이 없으면 `Now` 가 `$null` 이다.
+function Get-WordPdfQuietAt([string]$Version) {
+  $key = Join-Path $WordPdfQuiet.Office "$Version\Word\Options"
+  $now = $null
+  try { $now = (Get-ItemProperty -LiteralPath $key -Name $WordPdfQuiet.Name -ErrorAction Stop).($WordPdfQuiet.Name) } catch { }
+  @{ Key = $key; Now = $now }
+}
+
+# 판마다 끈다 — 판마다 `@{ Version; Did = 'set' | 'kept' | 'failed'; Err }` 하나를 돌려준다. 판이 없으면 아무것도 안 쓴다.
+# ⚠ **1 이면 안 쓰고, 없거나 다른 값이면 1(DWORD)로 둔다.** 이 값이 하는 일은 안내를 끄는 것 하나라 1 이 아닌 값은
+#   모두 「안내가 뜬다」 — 스킬이 갇히는 그 상태다. 0 은 대개 갓 선 기본값이다. 1 을 다시 안 쓰는 것은 기록이
+#   「이미 꺼져 있다」를 참으로 말하게 하려는 것이다.
+# ⚠ **키는 없을 때만 짓는다.** `New-Item -Force` 는 이미 있는 레지스트리 키를 **비우고 다시 짓는다** — 그 자리의 워드
+#   설정이 다 날아간다(실측). 없는 윗 키는 같은 줄이 같이 짓는다.
+function Set-WordPdfQuiet([string[]]$Versions) {
+  foreach ($v in $Versions) {
+    $at = Get-WordPdfQuietAt $v
+    if ($at.Now -eq 1) { @{ Version = $v; Did = 'kept' }; continue }
+    try {
+      if (-not (Test-Path -LiteralPath $at.Key)) { New-Item -Path $at.Key -Force | Out-Null }
+      New-ItemProperty -LiteralPath $at.Key -Name $WordPdfQuiet.Name -PropertyType DWord -Value 1 -Force | Out-Null
+      @{ Version = $v; Did = 'set' }
+    } catch {
+      @{ Version = $v; Did = 'failed'; Err = $_ }
+    }
+  }
+}
+
+# 끝 검증의 한 줄 — 판마다 지금 값을 되읽어 다 1 이면 [O]. **판이 없으면 줄을 안 낸다** — 워드가 없는 PC 는 고칠 것이
+#   없는데, [X] 로 찍으면 멀쩡한 설치가 빨갛게 끝난다.
+function Get-WordPdfQuietCheck([string[]]$Versions) {
+  if (-not $Versions -or -not $Versions.Count) { return }
+  $on = @($Versions | Where-Object { (Get-WordPdfQuietAt $_).Now -ne 1 })
+  @{ Name = ("워드 PDF 변환 안내 끔 ($($WordPdfQuiet.Name) = 1 · 워드 $($Versions -join ' · ')" +
+             $(if ($on.Count) { ' — 1 이 아닌 판: ' + ($on -join ' · ') } else { '' }) + ')')
+     Ok   = ($on.Count -eq 0) }
 }
 
 #endregion 환경
@@ -3094,7 +3162,7 @@ Exit-Step 'cli'
 # ══ 걸음 「키와 값」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 환경
 #   하는 일 — agy 모델 값 · Codex · Copilot 맡기기 값 · 값 파일의 이름들(게이트웨이 키 · 남은 이름) · 물러난 이름 걷기 ·
-#     회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 · 사외 Claude 구독 로그인
+#     회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 · 워드의 PDF 변환 안내 끄기(워드가 깔린 PC) · 사외 Claude 구독 로그인
 #   앞에서 받는 것 — 준비의 자리 · 맡기기 조건 · 값 파일, 「CLI」의 `claude`(구독 로그인)
 #   안 하는 것 — 도구 홈 파일
 #   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)뿐이다 — 심는 자리를
@@ -3506,6 +3574,34 @@ if (-not $useGateway) {
     } else {
       Write-Host "  프록시 사본 — 걷었다 ($oldProxyDir)" -ForegroundColor Green
     }
+  }
+}
+
+# ── 워드의 PDF 변환 안내 — **워드가 깔린 PC 면 자리 · 고른 제품과 상관없이 끈다** ────────────────
+# 왜 끄나 · 무엇이 바뀌나는 라이브러리 「환경」의 워드 칸이 든다. 판은 깔린 워드에서 읽고(`Get-WordVersions`), 끝 검증이
+#   같은 판 목록(`$WordVersions`)으로 되읽는다 — 묻는 것은 한 번이다.
+# ⚠ **설치 창에 칸을 두지 않는다** — 고를 것을 늘리지 않고, 심었으면 기록 한 줄이 그 뜻(사람이 PDF 를 열 때도 안내가
+#   안 뜬다)을 밝힌다.
+$WordPdfQuiet = @{ Office = 'HKCU:\Software\Microsoft\Office'; Name = 'DisableConvertPdfWarning' }
+$WordVersions = @(Get-WordVersions)
+if (-not $WordVersions.Count) {
+  Write-Host '  워드 PDF 변환 안내 — 워드가 없어 안 건드린다'
+} else {
+  $wordDid  = @(Set-WordPdfQuiet $WordVersions)
+  $wordSet  = @($wordDid | Where-Object { $_.Did -eq 'set' }  | ForEach-Object { $_.Version })
+  $wordKept = @($wordDid | Where-Object { $_.Did -eq 'kept' } | ForEach-Object { $_.Version })
+  $wordSaid = @()
+  if ($wordSet.Count)  { $wordSaid += "껐다 ($($wordSet -join ' · '))" }
+  if ($wordKept.Count) { $wordSaid += "이미 꺼져 있다 ($($wordKept -join ' · '))" }
+  if ($wordSet.Count) {
+    Write-Host ('  워드 PDF 변환 안내 — ' + ($wordSaid -join ' · ') +
+                ' — DRM 스킬이 숨은 워드로 PDF 를 열다 그 창에 갇히지 않게. 사람이 PDF 를 워드로 열 때도 그 안내가 더는 안 뜬다') -ForegroundColor Green
+  } elseif ($wordKept.Count) {
+    Write-Host ('  워드 PDF 변환 안내 — ' + ($wordSaid -join ' · '))
+  }
+  foreach ($wordFail in @($wordDid | Where-Object { $_.Did -eq 'failed' })) {
+    Write-Host "  ! 워드 PDF 변환 안내 끄기 실패 ($($wordFail.Version)) — $(Say-Why $wordFail.Err)" -ForegroundColor Red
+    $Fails.Add("워드 PDF 변환 안내 끄기 ($($wordFail.Version))")
   }
 }
 
@@ -5373,6 +5469,9 @@ if ($PickKeys -contains 'claude') {
   $checks += @{ Name = 'Bash 겹역슬래시 차단 배선 (홈 settings.json 의 PreToolUse)'; Ok = ($safetyWired -contains 'bash') }
   $checks += @{ Name = 'PowerShell UTF-8 BOM 보정 배선 (홈 settings.json 의 PostToolUse)'; Ok = ($safetyWired -contains 'bom') }
 }
+# 워드의 PDF 변환 안내 — 「키와 값」 걸음이 읽은 판 목록 그대로 되읽는다. 워드가 없으면 줄이 없다.
+$wordCheck = Get-WordPdfQuietCheck $WordVersions
+if ($wordCheck) { $checks += $wordCheck }
 # WebFetch 검증 건너뛰기 — 사내에서만 잰다. 위 심는 칸의 「켰다」는 메모리의 객체를 고쳤다는 말이라 되읽는다.
 if ($inside) {
   $skipSet = $false
