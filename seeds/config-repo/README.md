@@ -40,7 +40,6 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 | `tool-homes.conf` | **갈 곳 표.** 규범 · 룰 · 에이전트 · 공용 메모리 · 스킬 · Claude 훅의 원본 자리(`.claude/CLAUDE.global.md` · `.claude/rules.global/` · `agents/` · `memory/global/` · `.claude/skills/` · `.agents/skills/` · `.claude/hooks/`)와 그것이 어느 도구 홈에 어떤 꼴로 가나. 그 자리에 원본을 두면 배포와 세션 훅이 홈에 깔고, 없는 것은 설치가 깐 만든 사람의 것이 간다 — 스킬은 스킬 하나마다 가른다(공용 메모리는 만든 사람 것이 없다 — `memory/global/MEMORY.md` 를 두면 그 목차가 모든 Claude 세션에 실린다). 맡기기 스킬이 그 일을 받는 도구의 홈에 안 가는 것도 이 표의 `not` 줄이 든다. 판 도장 줄(`stamp`)은 이 표가 배포본의 사본이라는 표시라 그대로 둔다 — 이 줄이 있으면 홈에 놓는 일은 설치가 깐 손이 맡고, 이 저장소에 둔 원본은 그대로 이긴다 |
 | `.claude/hooks/tool-homes.py` | 그 표대로 놓는 손(파이썬). 배포와 세션 훅이 부른다 |
 | `deploy.repofiles.conf` | 저장소마다 한 벌씩 둘 파일 목록 — 뿌리는 스크립트와, 뿌린 것이 맞나 재는 검사가 같이 읽는다 |
-| `mcp-servers.json` | MCP 서버 선언. **키는 안 든다** — 환경변수 이름만 든다. 서버마다 `"only": "<자리>,<자리>"` 로 자리를 걸 수 있다(자리 이름은 `secrets.d/` 의 파일 이름) — **자리 파일이 없으면 게이트를 안 걸고 그대로 등록한다.** 이 칸이 막는 것은 **아는** 자리뿐이라, 자리를 모르는 PC 에서 멀쩡한 서버를 거두지 않는다 |
 | `memory/` | 프로젝트 메모리를 PC 사이로 나르는 자리. **비어 있어도 지우지 않는다** — 이 폴더가 설정 저장소를 알아보는 표시다 |
 | `vdi-home-settings.json` | 홈 `~/.claude/settings.json` 의 씨앗. **남에게 줄 수 있는 것만 둔다** — 곁에 `vdi-home-settings.private.json` 을 두면 그 `permissions.allow` 줄이 더해지는데, 그 파일은 어디로도 안 실린다. 가르는 물음은 「이 허용 규칙을 남이 물었나」다 |
 | `.claude/hooks/session-start.sh` | **문지기.** 세션이 열릴 때 불려 몸통을 찾아 넘긴다 — 저장소마다 한 벌씩 서는 것은 이것이다 |

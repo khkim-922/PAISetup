@@ -98,6 +98,7 @@ description: 다른 에이전트에게 일을 맡길 때 — Claude 서브에이
     ④ Never derive expected values from what you measured, and never bless goldens or snapshots — a human approves those. Write why the value must be what it is; if the measurement differs, report it.
     ⑤ Before reporting "absent", run a positive control — first ask whether the specimen really has that shape.
     ⑥ Never run commands that print the environment or the process list (env, printenv, set, ps aux, pgrep -af) — they write secrets into the transcript.
+    ⑦ A check and its specimen are one pair — when tightening a check turns a specimen red, fix both in the same pass.
 
 읽기 레인에는 ①③ 을 빼고 싣는다 — 쓰기는 샌드박스와 보이는 도구가 막는다. 이 판에만 걸리는 지시는 블록 밖 봉투
 본문에 적고, 모든 레인에 걸 규칙이면 이 블록을 고친다.

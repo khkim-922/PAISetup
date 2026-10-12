@@ -26,11 +26,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'office-session.ps1')
 $full = (Resolve-Path -LiteralPath $Path).Path
 $leaf = Split-Path -Path $Path -Leaf
 
 $before = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+# 파워포인트는 하나만 뜬다 — 사람이 쓰고 있었으면 끝에서 그 앱을 안 끈다(office-session.ps1)
+$pptWasRunning = ($before.Count -gt 0)
 $pp = $null
+$session = $null
 $pres = $null
 $slideW = 0
 $slideH = 0
@@ -40,8 +44,13 @@ $issues = 0
 try {
     $pp = New-Object -ComObject PowerPoint.Application
     # ReadOnly=$true 로 열어 쓰기 잠금 방지
-    $pres = $pp.Presentations.Open($full, $true, $false, $false)
-    try { $pres.Saved = $true } catch { }
+    $session = Open-OwnedDocument -Kind 'PPT' -Collection $pp.Presentations -Open { $pp.Presentations.Open($full, $true, $false, $false) }
+    $pres = $session.Document
+    # 아래 재기는 도형의 자동 맞춤과 높이를 바꿨다 되돌린다 — 사람이 열어 둔 발표를 돌려받았으면 그 발표를
+    # 바꾸게 되므로 재지 않는다
+    if (-not $session.Owned) {
+        throw "이 덱이 파워포인트에 열려 있다 — 재는 동안 도형 크기를 바꿨다 되돌리므로 사람의 발표에서는 안 잰다. 그 덱을 닫고 다시 돌린다."
+    }
 
     $slideW = $pres.PageSetup.SlideWidth / 72
     $slideH = $pres.PageSetup.SlideHeight / 72
@@ -70,15 +79,8 @@ try {
         }
     }
 } finally {
-    if ($null -ne $pres) {
-        try { $pres.Saved = $true } catch { }
-        try { $pres.Close() } catch { }
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($pres) | Out-Null } catch { }
-    }
-    if ($null -ne $pp) {
-        try { $pp.Quit() } catch { }
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($pp) | Out-Null } catch { }
-    }
+    Close-OwnedDocument $session
+    [void](Exit-OfficeApp -App $pp -Kind 'PPT' -WasRunning $pptWasRunning)
     Start-Sleep -Milliseconds 500
 
     # 이 스크립트가 띄운 것만 강제 종료

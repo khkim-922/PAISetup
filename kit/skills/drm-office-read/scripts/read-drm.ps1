@@ -22,6 +22,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+. (Join-Path $PSScriptRoot 'office-session.ps1')
+# 파워포인트는 하나만 뜬다 — 띄우기 전에 사람이 쓰고 있었는지 기억해 끝에서 그 앱을 안 끈다
+$PptWasRunning = $false
 
 # 어느 확장자를 어느 앱이 드나. PDF 는 워드가 든다 — Acrobat COM 은 이 기계에서
 # 클래스 미등록(0x80040154)이라 못 탄다.
@@ -73,6 +76,7 @@ function New-OfficeApp {
             # Fasoo DRM 훅으로 인해 COM Quit 후에도 백그라운드에 남아 권한 오류 팝업을 띄우므로
             # 생성된 PID를 추적하여 읽기 완료 후 즉시 강제 종료한다.
             $beforePids = @(Get-Process -Name POWERPNT -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+            $script:PptWasRunning = ($beforePids.Count -gt 0)
             $a = New-Object -ComObject PowerPoint.Application
             $afterProcs = @(Get-Process -Name POWERPNT -ErrorAction SilentlyContinue)
             $newPids = @($afterProcs | Where-Object { $beforePids -notcontains $_.Id } | Select-Object -ExpandProperty Id)
@@ -113,9 +117,14 @@ function Measure-ExcelVisual {
     param($Book)
     $c = @{}
     foreach ($sheet in $Book.Sheets) {
-        Add-Count $c '도형' { $sheet.Shapes.Count }
-        Add-Count $c '차트' { $sheet.ChartObjects().Count }
-        Add-Count $c '그림' { $sheet.Pictures().Count }
+        $charts = 0; $pictures = 0; $shapes = 0
+        try { $charts = [int]$sheet.ChartObjects().Count } catch { }
+        try { $pictures = [int]$sheet.Pictures().Count } catch { }
+        try { $shapes = [int]$sheet.Shapes.Count } catch { }
+        # Shapes 는 차트 · 그림까지 든다 — 빼지 않으면 한 차트가 「차트」와 「도형」으로 두 번 선다
+        Add-Count $c '도형' { $shapes - $charts - $pictures }
+        Add-Count $c '차트' { $charts }
+        Add-Count $c '그림' { $pictures }
     }
     Add-Count $c '차트' { $Book.Charts.Count }   # 시트째 차트 — 위 고리가 안 센다
     return $c
@@ -149,21 +158,26 @@ function Read-WithWord {
     param($App, [string]$LiteralPath)
     # 인자 셋 — 경로 · ConfirmConversions=$false · ReadOnly=$true.
     # ReadOnly 를 켜야 원본에 쓰기 잠금이 안 걸리고 DRM 이 수정으로 보지 않는다.
-    $doc = $App.Documents.Open($LiteralPath, $false, $true)
+    # 사람이 같은 파일을 열어 두었으면 그 문서를 돌려받는다 — 읽기만 하고 닫지 않는다(office-session.ps1)
+    $isPdf = ([System.IO.Path]::GetExtension($LiteralPath).ToLower() -eq '.pdf')
+    if ($isPdf) { Assert-WordPdfQuiet $App }
+    $session = Open-OwnedDocument -Kind 'Word' -Collection $App.Documents -Open { $App.Documents.Open($LiteralPath, $false, $true) }
+    $doc = $session.Document
     try {
-        try { $doc.Saved = $true } catch { }
-        return @{ Text = [string]$doc.Content.Text; Visual = (Measure-WordVisual $doc) }
+        $text = [string]$doc.Content.Text
+        if ($isPdf) { Assert-PdfConverted $text }
+        return @{ Text = $text; Visual = (Measure-WordVisual $doc) }
     } finally {
-        try { $doc.Close($false) } catch { }   # SaveChanges=$false — 원본을 절대 안 고친다
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($doc) | Out-Null } catch { }
+        Close-OwnedDocument $session    # SaveChanges=$false — 원본을 절대 안 고친다
     }
 }
 
 function Read-WithExcel {
     param($App, [string]$LiteralPath)
-    $book = $App.Workbooks.Open($LiteralPath, 0, $true)   # UpdateLinks=0 · ReadOnly=$true
+    # UpdateLinks=0 · ReadOnly=$true
+    $session = Open-OwnedDocument -Kind 'Excel' -Collection $App.Workbooks -Open { $App.Workbooks.Open($LiteralPath, 0, $true) }
+    $book = $session.Document
     try {
-        try { $book.Saved = $true } catch { }
         $out = [System.Text.StringBuilder]::new()
         foreach ($sheet in $book.Sheets) {
             [void]$out.AppendLine("### 시트: $($sheet.Name)")
@@ -180,17 +194,17 @@ function Read-WithExcel {
         }
         return @{ Text = $out.ToString(); Visual = (Measure-ExcelVisual $book) }
     } finally {
-        try { $book.Close($false) } catch { }
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($book) | Out-Null } catch { }
+        Close-OwnedDocument $session
     }
 }
 
 function Read-WithPPT {
     param($App, [string]$LiteralPath)
-    # 인자 — 경로 · ReadOnly=$true · Untitled=$false · WithWindow=$false
-    $pres = $App.Presentations.Open($LiteralPath, $true, $false, $false)
+    # 사람이 같은 파일을 열어 두었으면 그 발표를 돌려받는다 — 읽기만 하고 닫지 않는다(office-session.ps1)
+    # 경로 · ReadOnly=$true · Untitled=$false · WithWindow=$false
+    $session = Open-OwnedDocument -Kind 'PPT' -Collection $App.Presentations -Open { $App.Presentations.Open($LiteralPath, $true, $false, $false) }
+    $pres = $session.Document
     try {
-        try { $pres.Saved = $true } catch { }
         $out = [System.Text.StringBuilder]::new()
         foreach ($slide in $pres.Slides) {
             [void]$out.AppendLine("### 장 $($slide.SlideIndex)")
@@ -225,8 +239,7 @@ function Read-WithPPT {
         }
         return @{ Text = $out.ToString(); Visual = (Measure-PptVisual $pres) }
     } finally {
-        try { $pres.Close() } catch { }
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($pres) | Out-Null } catch { }
+        Close-OwnedDocument $session
     }
 }
 
@@ -305,9 +318,10 @@ try {
     }
 } finally {
     # ⚠ 여기를 건너뛰면 보이지 않는 오피스 프로세스가 쌓여 다음 실행이 느려지거나 멈춘다.
-    foreach ($a in $apps.Values) {
-        try { $a.Quit() } catch { }
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($a) | Out-Null } catch { }
+    #   다만 사람이 쓰던 앱(문서가 남았거나, 원래 떠 있던 파워포인트)은 끄지 않는다(office-session.ps1)
+    foreach ($kind in @($apps.Keys)) {
+        $was = ($kind -eq 'PPT') -and $PptWasRunning
+        [void](Exit-OfficeApp -App $apps[$kind] -Kind $kind -WasRunning $was)
     }
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()

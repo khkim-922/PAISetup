@@ -21,17 +21,14 @@
 #      어느 저장소·어느 슬러그로 가나는 선언이 아니라 personal.conf 의 REPOS · ROOT 에서 **파생한다**(결정 0072)
 #      규범 · 룰 · 에이전트 · 스킬은 이 스크립트가 안 민다 — 손 하나(`.claude/hooks/tool-homes.py`)가 갈 곳 표대로 도구
 #      홈에 놓는다(결정 0112). 이 스크립트는 그 손을 부르고, 손이 바꿀 줄을 계획에 싣는다
-#   4. mcp-servers.json에 적힌 MCP 서버 등록 — **서버마다 `only` 로 자리를 걸 수 있다**
-#      (`only = <자리>,<자리>`). 이 자리가 그 목록에 없으면 안 등록하고, 이미 등록돼 있으면
-#      기본 실행에서 걷는다. 자리는 세션 훅에 묻는다(`--site`) — 결정 0079
-#   5. 설치 — 걸음이 둘이다 (#43)
-#      5a. 전역 설치 한 번    claude-config 의 훅을 `--install-global` 로 불러 전역형 도구
+#   4. 설치 — 걸음이 둘이다 (#43)
+#      4a. 전역 설치 한 번    claude-config 의 훅을 `--install-global` 로 불러 전역형 도구
 #                             (npm 전역 · 릴리스 바이너리 · winget · 브라우저)를 기계에 한 번 깐다
-#      5b. 저장소마다         각 저장소의 .claude/hooks/session-start.sh 를 `--install` 로 불러
+#      4b. 저장소마다         각 저장소의 .claude/hooks/session-start.sh 를 `--install` 로 불러
 #                             프로젝트 축(venv · npm ci)과 배선을 세운다
 #      무엇을 깔지는 그 훅이 알고 이 스크립트는 모른다 — 도구 이름이 여기 없는 까닭이다
-#   6. 사용자 환경변수 — 이 PC 전체에 걸려야 하는 것 (인코딩 축. 아래 §사용자 환경변수)
-#   7. 남은 수동 작업 안내 (API 키 등)
+#   5. 사용자 환경변수 — 이 PC 전체에 걸려야 하는 것 (인코딩 축. 아래 §사용자 환경변수)
+#   6. 남은 수동 작업 안내 (API 키 등)
 #
 # 복사하지 않는 것 — 무엇이 배포되고 무엇이 안 되는지는 README 의 배포 대상 표가 든다.
 # 여기 적는 것은 **이름이 같아 헷갈리는 자리** 하나뿐이다.
@@ -39,11 +36,9 @@
 #                             저장소의 .claude/settings.json 은 훅 등록 파일이라 배포한다 —
 #                             이름이 같을 뿐 다른 것이다
 #
-# 이 스크립트가 기본 실행에서 지우는 것은 **하나뿐이다** — 선언에 있으면서 `only` 로 이 자리에서 안 사는 MCP
-# 이름(결정 0079). 「원본에 없는 것」이 아니라 **선언이 시킨 상태**라 -Prune 이 아닌 계획에 선다. 나머지
-# 제거(원본에 없는 씨앗 · 메모리 파일, 선언에 없는 MCP 등록)는 -Prune 을 줄 때만 하고, 후보가 있으면 기본 실행에서도
-# 개수만 알려준다. 규범 · 룰 · 에이전트 · 스킬은 -Prune 을 안 탄다 — 손이 제가 놓았다고 기록한 것만 기본 실행에서
-# 걷는다(손의 머리말).
+# 이 스크립트는 기본 실행에서 제 손으로 지우는 것이 없다. 제거(원본에 없는 씨앗 · 메모리 파일)는 -Prune 을 줄 때만
+# 하고, 후보가 있으면 기본 실행에서도 개수만 알려준다. 규범 · 룰 · 에이전트 · 스킬은 -Prune 을 안 탄다 — 손이 제가
+# 놓았다고 기록한 것만 기본 실행에서 걷는다(손의 머리말).
 #
 # 이미 맞는 것은 건드리지 않는다. 몇 번을 돌려도 안전하다.
 # 덮어쓰거나 치우는 파일은 ~/.claude/backups/deploy-<시각>/ 에 원본을 남긴다. 손이 덮거나 걷는 것은 손이 제 백업 자리에 남긴다.
@@ -98,7 +93,7 @@ function Get-ProjectMemDst($project) {
 #                   (`| Out-Null` 이나 값으로 받는 것도 stdout 쪽이라 안전하다)
 #   옛 판은 `2>$파일` 을 방패로 믿었고, 그래서 「못 당김」 갈래는 **한 번도 안 돌았다**
 #   — 저장소 하나의 로컬 수정이 배포 전체를 죽였다 (실측 2026-09-09 · 사내 PC ·
-#   deploy 가 exit 1 로 끝나고 뒤의 배포·MCP 가 다 남았다).
+#   deploy 가 exit 1 로 끝나고 뒤의 걸음이 다 남았다).
 # ⚠ 그래서 **자식으로 띄운다.** `Start-Process` 는 stderr 를 파워셸에 안 태우고 파일에
 #   바로 붓는다 — 파워셸이 볼 것이 없으니 승격될 것도 없다. 끝나기를 기다리면 종료코드도
 #   제대로 든다. `ErrorActionPreference` 를 잠깐 내리는 길도 살긴 하는데, 그러면 파일에
@@ -184,7 +179,7 @@ function Sync-Repos($repos) {
     #   없다. 토큰이 죽었거나 자격증명이 비면 git 의 도움꾼(GCM)이 **창을 띄우려 하고**, 창을
     #   띄울 데가 없는 세션에서 그 fetch 는 영영 안 끝난다 — 아래 한도가 그것을 거두지만,
     #   애초에 안 묻게 하는 편이 싸고 사유도 또렷하다(git 이 그 자리에서 지고 한 줄을 남긴다).
-    # ⚠ **이 셸에 남기지 않는다.** 뒤의 걸음들(gh · 저장소 설치 · MCP)은 사람의 자격증명을 쓸
+    # ⚠ **이 셸에 남기지 않는다.** 뒤의 걸음들(gh · 저장소 설치)은 사람의 자격증명을 쓸
     #   수 있다. 옛 값을 쥐고 끝에서 되돌린다 — 없던 이름은 다시 없애야 한다.
     $savedPrompt = $env:GIT_TERMINAL_PROMPT
     $savedGcm    = $env:GCM_INTERACTIVE
@@ -358,66 +353,6 @@ function ConvertFrom-ToolHomesOutput {
 }
 #endregion 손 부르기
 
-#region MCP 손 — 등록 여부를 묻고, 선언의 `only` 칸을 읽거나 떼고, 자리를 세션 훅에 묻는다
-function Test-McpRegistered($name) {
-    if (-not $canAskMcp) { return $null }   # 물을 자가 없다. 「없다」와 구별한다
-    $probe = Join-Path $env:TEMP "deploy-mcpget-$name.sh"
-    # ⚠ **리다이렉트는 스크립트 안에 둔다.** `claude mcp get` 은 등록 안 된 이름을
-    #   **stderr 로** 답한다(그것이 정상 갈래다). 그런데 PowerShell 5.1 은 네이티브의
-    #   stderr 를 NativeCommandError 로 감싸고, 이 파일 머리의 `ErrorActionPreference = 'Stop'`
-    #   아래에서 그것은 **종료 오류**다 — `*> $null` 은 그걸 못 막는다.
-    #   그래서 배포가 **첫 MCP 조회에서 통째로 죽었고**, 바로 아래 127/0 갈래는
-    #   한 번도 안 돌았다 (실측 2026-09-07 · 맨바닥 VDI 첫 설치에서
-    #   저장소 배포·홈 규범·저장소 설치가 전부 안 선 채 「완료」가 찍혔다).
-    #   위 `$canAskMcp` 프로브가 이미 쓰는 꼴이다 — 두 프로브를 같은 꼴로 둔다.
-    [System.IO.File]::WriteAllText($probe, "claude mcp get $name >/dev/null 2>&1`n", (New-Object System.Text.UTF8Encoding($false)))
-    & $bash $probe *> $null
-    $code = $LASTEXITCODE
-    Remove-Item $probe -Force -ErrorAction SilentlyContinue
-    if ($code -eq 127) { return $null }     # 셸이 claude 를 못 찾았다 — 답이 아니다
-    return ($code -eq 0)
-}
-
-# `only` 는 **선언의 칸이지 서버 설정이 아니다** — 등록에 넘기는 JSON 에서 뺀다. 넘기면
-# 모르는 키가 등록부에 눌러앉고, 그것을 쓰는 자는 아무도 없다.
-# ⚠ 키가 없는 서버에도 그냥 건다 — 빼기 전과 **바이트가 같다**(실측). 갈래를 하나 줄인다.
-function Get-McpDef($def) { $def | Select-Object -Property * -ExcludeProperty only }
-# **키가 없는 것과 비어 있는 것을 가른다** — 없으면 `$null`(안 거는 서버), 있으면 글자다.
-# 빈 글자를 「안 건다」로 접으면 `"only": ""` 가 **조용히 모든 자리에서 등록된다.**
-function Get-McpOnly($def) {
-    $hit = @($def.PSObject.Properties | Where-Object { $_.Name -eq 'only' })
-    if ($hit.Count -eq 0) { return $null }
-    return ("$($hit[0].Value)").Trim()
-}
-# 쉼표로 가르고 칸마다 공백을 걷고 빈 칸은 버린다 — `"home, outside"` 도 `"home,outside"` 와
-# 같은 뜻이어야 한다. 글자 통째로 견주면 공백 하나가 그 서버를 **모든 자리에서** 뺀다.
-function Get-McpOnlyTokens($raw) {
-    if ($null -eq $raw) { return @() }
-    return @(($raw -split ',') | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-}
-
-function Get-McpSiteAnswer {
-    # @{ Site; How; Why } — `Why` 가 서면 못 쟀다는 뜻이다
-    if (-not $bash) { return @{ Site = ''; How = ''; Why = 'Git Bash 를 못 찾았다' } }
-    # ⚠ **`2>&1` 을 안 붙인다** — 5.1 은 네이티브의 stderr 한 줄을 종료 오류로 승격한다
-    #   (까닭은 `Sync-Repos` 머리에 있다). 답도 사유도 훅이 stdout 한 줄로 낸다.
-    $body = Join-Path $src '.claude\hooks\session-start-body.sh'
-    $env:SESSION_START_REPO = $src -replace '\\', '/'
-    try { $out = & $bash ($body -replace '\\', '/') --site; $rc = $LASTEXITCODE }
-    finally { Remove-Item Env:SESSION_START_REPO -ErrorAction SilentlyContinue }
-    $line = @($out | Where-Object { "$_".Trim() }) | Select-Object -Last 1
-    if ($rc -ne 0 -or -not $line) {
-        $why = if ($line) { "$line".Trim() } else { "훅이 사유를 안 냈다 (exit $rc)" }
-        return @{ Site = ''; How = ''; Why = $why }
-    }
-    $f = @(("$line".Trim() -split '\s+') | Where-Object { $_ })
-    if ($f.Count -lt 2) {
-        return @{ Site = ''; How = ''; Why = "훅이 자리와 길을 두 칸으로 안 냈다: $line" }
-    }
-    return @{ Site = $f[0]; How = $f[1]; Why = '' }
-}
-#endregion MCP 손
-
 #region 홈 씨앗 손 — 이 저장소가 홈 씨앗의 원본이면 홈으로 폴더째 미는 목록과 「씨앗의 판 줄」 걸음을 짓는다
 function Get-SeedColumn {
     # 돌려주는 것: @{ Dirs — 홈으로 폴더째 미는 폴더(뿌리 기준 · `\` 로) · Notes — 할 일 줄 · Stamp — 「씨앗의 판 줄」 걸음(안
@@ -515,8 +450,6 @@ $todo    = @()   # 사람이 해야 할 것
 #   이쪽은 **실행 환경이 안 선 것**이고, 이 목록이 비지 않으면 이 스크립트는 0 으로 안 끝난다.
 $envDown = @()   # 실행 환경이 안 선 것 — 종료코드를 가른다
 $prunable = @()  # 제거 후보 — **원본에 없는 것** (-Prune 없이는 세기만 한다)
-# ⚠ 자리가 뺀 MCP 이름은 **여기 안 든다** — 선언에 있으므로 「원본에 없는 것」이 아니다.
-#   그것은 $plan 의 `mcpremove` 로 서서 기본 실행에서 걷힌다 (§MCP 등록 · 결정 0079).
 # ⚠ **초록도 편다.** 통과가 화면에서 침묵하면 「재서 다 살아 있다」와 「아예 안 쟀다」가
 #   같아진다 — 그 침묵은 아무것도 안 말한 것과 같다. 여기는 나르기만 한다.
 # ⚠ 이제 이 통에 드는 것은 **저장소마다 「마지막 CI」 한 줄**뿐이다 — 훅 진단은 계획 단계가
@@ -637,14 +570,14 @@ Sync-Repos $globalRuleTargets
 
 
 # ============================ 1단계: 계획 수립 ============================
-# 층 — 없다. 홈 · 저장소 · 등록 · 환경 층에서 바꿀 것을 재기만 한다
+# 층 — 없다. 홈 · 저장소 · 환경 층에서 바꿀 것을 재기만 한다
 # 하는 일 — 밀 파일(`$targets`)을 지어 지문으로 견준다. 도구 홈의 규범 · 룰 · 에이전트 · 스킬은
 #   손에게 `--dry-run` 으로 물어 그 바꿀 줄을 싣는다. 바꿀 것은 `$plan`, 이미 맞는 것은 `$same`, 원본에 없는 것은 `$prunable`,
 #   사람이 할 일은 `$todo`, 실행 환경이 안 선 것은 `$envDown`, 저장소마다 마지막 CI 줄은 `$gateReport` 에 담는다. 계획을 굳히며
 #   배선(`githooks`)을 맨 앞에 세운다
 # 앞에서 받는 것 — 당긴 뒤의 형제 저장소 나무 · 준비의 자리와 통 · `-Prune`(제거 후보를 계획에 올리나)
-# 안 하는 것 — 홈 · 저장소 · 등록부를 안 바꾼다(쓰는 것은 임시 폴더의 프로브뿐이다) · 세션 훅과 손에는 묻기만 한다
-#   (`--needs-install` · `--site` · `--dry-run`) — 깔기와 진단은 3단계가 부른 훅이, 놓기는 3단계가 부른 손이 한다
+# 안 하는 것 — 홈 · 저장소 · 환경을 안 바꾼다 · 세션 훅과 손에는 묻기만 한다
+#   (`--needs-install` · `--dry-run`) — 깔기와 진단은 3단계가 부른 훅이, 놓기는 3단계가 부른 손이 한다
 # 아무것도 바꾸지 않는다. 무엇을 바꿔야 하는지만 조사한다.
 # ⚠ **당김은 이 앞에 있다** — 그래서 이 단계가 보는 나무는 **당긴 뒤**의 나무고, 이 한 줄은
 #   그대로 참이다(당김은 `$plan` 에 아무것도 안 더하므로 「다 최신이면 안 묻는다」도 산다).
@@ -762,194 +695,6 @@ if ($homes.Same) { $same += '= 동일  도구 홈의 규범 · 룰 · 에이전�
 #   **씨앗 복사보다 먼저** 서서, 복사가 지거나 건너뛰어도 「그 판이 깔렸다」고 말한다.
 if ($seedCol.Stamp) { $plan += $seedCol.Stamp }
 if ($seedCol.Same)  { $same += $seedCol.Same }
-
-# --- MCP 등록 ---
-# mcp-servers.json은 기록일 뿐이라 복사한다고 등록되지 않는다. CLI로 등록해야 한다.
-#
-# 등록 여부는 **주인에게 묻는다** — `claude mcp get <이름>` 이 exit 0/1 로 답한다.
-# ⚠ 예전에는 ~/.claude.json 을 통짜로 파싱해 `.mcpServers` 를 읽었다. 그 파일은 우리 것이
-#   아니고, deploy 가 볼 이유 없는 구역(projects · 세션 지표 · 신뢰 플래그)을 같이 든다.
-#   그런데 ConvertFrom-Json 은 **대소문자 무시** 사전을 만들어, JSON 이 형제로 허용하는
-#   `C:/x` 와 `c:/x` 를 못 담고 던진다. 실제로 projects 의 중복 하나가 배포 전체를 그
-#   자리에서 넘어뜨렸다 (이슈 #13) — 질문은 키 하나짜리인데 **폭발 반경이 파일 전체**였다.
-#   물을 자리를 바꾸면 그 반경이 사라진다: .claude.json 이 아무리 지저분해도 안 닿는다.
-# ⚠ 대소문자도 같이 바로잡힌다. `-contains` 는 대소문자를 무시해서, .claude.json 에
-#   `Github` 가 있고 여기가 `github` 을 원하면 「등록됨」으로 보고하고 **건너뛰었다** —
-#   Claude Code 가 읽는 키는 `github` 이라 실제로는 없는데도. 잘못된 이름이 눌러앉고
-#   원하는 서버는 영영 안 붙는데 매번 초록이었다. `mcp get` 은 가린다 (실측: `GitHub` → exit 1).
-# ⚠ `claude mcp list` 를 안 쓰는 까닭은 그대로다 — 서버 뒤에 진단 블록을 함께 뱉고 그
-#   줄들도 `이름: 값` 꼴이라, 산문을 훑으면 경고 줄이 서버 이름으로 잡힌다. --json 도 없다.
-#
-# ── 자리 게이트 — 선언이 서버마다 `only` 로 자리를 걸 수 있다 (결정 0079) ──────────────
-# 어느 자리에서는 못 쓰는 서버가 있다(사내 웹 필터가 그 엔드포인트만 막는 자리). 그런 이름을
-# 자리와 무관하게 등록하면 **매 세션 연결 실패 줄이 떠 진짜 고장과 섞인다.**
-# ⚠ **두 명제를 가른다 — 「이 자리에서 안 쓴다」와 「선언에서 없어졌다」.** 자리 때문에 빠진
-#   이름도 `$wantMcp` 에는 그대로 담는다. 안 담으면 아래 제거 후보 판정이 그것을 「선언에
-#   없는 것」으로 집어, 자리를 옮기는 PC 에서 **등록·해제가 매 회차 오간다.**
-# ⚠ **자리는 이 스크립트가 재지 않는다 — 훅 몸통에 묻는다**(`--site`). 재는 자가 둘이면
-#   고칠 때 한쪽만 고쳐진 채 조용히 갈린다. 묻는 꼴은 `--needs-install` 과 같다(0061).
-# ⚠ **지우는 손은 「저 자리임을 보인 답」 위에서만 선다.** 훅은 자리와 함께 **어느 자로
-#   얻었나**를 낸다(`probe` · `path` · `default` · `default-after-probe`). 바닥값은 아무 자도
-#   안 답해서 **남은** 답이라, 그것으로 걷으면 **안 재고 지우는 꼴**이다 — 부팅 직후 망이
-#   아직 안 선 사내 PC 가 정확히 그 자리다: 프로브가 놓쳐 바닥값(사외)이 서고, 등록이 섰다가
-#   다음 회차에 걷히며 **매 부팅 등록·해제가 오간다.** 그래서 바닥값이 프로브 선언을 두고
-#   선 것이면(`default-after-probe`) 잠깐 뒤 한 번 다시 묻고, 그래도 바닥값이면 **받아들이되
-#   걷지는 않는다.**
-# ⚠ **자리를 아예 못 쟀으면 게이트를 안 건다 — 등록은 예전대로 한다.** 이 칸이 막는 것은
-#   **아는 자리**이고, 모르는 자리에서 거두는 쪽으로 기울면 설정 저장소 씨앗만 받은 PC
-#   (`secrets.d/` 가 없다)에서 멀쩡한 서버가 사라진다. 다만 **이미 등록된 것을 걷지는 않는다.**
-$mcpFile  = Join-Path $src 'mcp-servers.json'
-$wantMcp  = @()
-if (Test-Path $mcpFile) {
-    # 종료 코드만 본다. 출력은 버린다 — 산문을 읽기 시작하면 위의 까닭으로 되돌아간다.
-    # bash 를 거치는 것은 이 파일의 확립된 방식이다: npm shim 이 제 자리를 Git 설치 폴더
-    # 기준으로 잘못 풀어, PowerShell 에서 곧장 부르면 자리에 따라 깨진다.
-    #
-    # ⚠ **「못 물었다」와 「등록 안 됨」을 섞지 않는다.** claude 에 안 닿을 때의 127 을
-    #   「없다」로 읽으면 이미 등록된 것을 다시 등록하러 들고, 실패하면 빨갛게 보고한다.
-    #   맨바닥 PC 의 첫 설치가 바로 그 자리다 — npm 전역 폴더가 PATH 에 없어 배포가
-    #   띄운 bash 가 claude 를 못 찾았다 (install.ps1 의 PATH 재배선이 그 짝이다).
-    #   「깔린 것과 닿는 것은 다른 명제」가 여기서도 선다.
-    $canAskMcp = $false
-    if ($bash) {
-        $probe = Join-Path $env:TEMP 'deploy-mcp-probe.sh'
-        [System.IO.File]::WriteAllText($probe, "command -v claude >/dev/null 2>&1`n", (New-Object System.Text.UTF8Encoding($false)))
-        & $bash $probe *> $null
-        $canAskMcp = ($LASTEXITCODE -eq 0)
-        Remove-Item $probe -Force -ErrorAction SilentlyContinue
-    }
-
-    $mcpProps = @((Get-Content $mcpFile -Raw | ConvertFrom-Json).mcpServers.PSObject.Properties)
-
-    # 자리 **이름 목록**은 파일 이름이 든다 — 선언의 오타를 잡는 자다. ⚠ 이것은 두 번째 자리
-    # 판별기가 아니다: 어느 자리인가를 **고르는** 자는 여전히 훅 하나이고, 여기서 읽는 것은
-    # 「어떤 이름이 선언돼 있나」라는 다른 명제다(둘 다 같은 폴더를 원본으로 본다).
-    $mcpSiteNames = @(Get-ChildItem (Join-Path $src 'secrets.d') -Filter *.env -File -ErrorAction SilentlyContinue |
-                      ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_.Name) })
-
-    # 바닥값으로 선 자리를 받아들이기 전에 다시 묻는 자 — 값에 이름을 준다(박으면 화면에 찍는
-    # 초와 기다리는 초가 갈린다). 프로브는 안 닿을 때 3초를 무니 한 번 더 묻는 값이 그만큼이다.
-    $McpSiteRetryPauseSec = 5   # 다시 묻기 전에 기다리는 시간 — 부팅 직후 망이 서는 틈을 준다
-    $McpSiteRetryAttempts = 1   # 바닥값을 받아들이기 전에 다시 묻는 횟수
-
-    # 자리는 **거는 이름이 하나라도 있을 때만** 묻는다 — `_site_of` 는 안 닿는 자리에서 TCP
-    # 프로브에 3초를 무는 자라, 아무도 자리를 안 거는 판에서는 그 3초가 순수한 손해다.
-    # ⚠ 다시 묻는 값도 그 안에 있다 — 프로브를 선언한 자리가 없으면 훅이 `default` 를 내고
-    #   아래 갈래가 아예 안 선다. 선언이 없는 PC 는 **한 초도 더 안 문다.**
-    $mcpSite = ''; $mcpSiteHow = ''; $mcpSiteWhy = ''
-    if (@($mcpProps | Where-Object { $null -ne (Get-McpOnly $_.Value) }).Count -gt 0) {
-        $ans = Get-McpSiteAnswer
-        for ($i = 0; $i -lt $McpSiteRetryAttempts -and $ans.How -eq 'default-after-probe'; $i++) {
-            Write-Host "· 자리가 바닥값으로 섰다 — 프로브를 선언한 자리가 있어 $McpSiteRetryPauseSec 초 뒤 한 번 다시 묻는다 (부팅 직후면 망이 아직 안 섰다)" -ForegroundColor DarkGray
-            Start-Sleep -Seconds $McpSiteRetryPauseSec
-            $again = Get-McpSiteAnswer
-            # 다시 물어 **못 쟀다**로 바뀌면 첫 답을 들고 간다 — 다시 묻기가 답을 깎지 않는다.
-            if ($again.Why) { break }
-            $ans = $again
-        }
-        $mcpSite = $ans.Site; $mcpSiteHow = $ans.How; $mcpSiteWhy = $ans.Why
-    }
-    # 「저 자리임을 보인 답」인가 — 지우는 손은 이것이 참일 때만 선다.
-    $mcpSiteFirm = ($mcpSiteHow -ceq 'probe' -or $mcpSiteHow -ceq 'path')
-
-    foreach ($p in $mcpProps) {
-        # **선언에 있다는 사실은 자리와 무관하다** — 아래 제거 후보 판정이 이 목록을 본다.
-        $wantMcp += $p.Name
-        $only   = Get-McpOnly $p.Value
-        $tokens = Get-McpOnlyTokens $only
-        $isReg  = Test-McpRegistered $p.Name
-        # ⚠ **자리로 빠지는 이름은 매 회차 화면에 한 줄 낸다.** `$same` 에 넣으면 개수에만
-        #   잡혀 `-ShowUnchanged` 없이는 안 보이고, 「안 심었다」와 「아예 안 쟀다」가 같아진다.
-        if ($null -ne $only) {
-            if (-not $mcpSite) {
-                # **게이트를 안 건다 — 등록은 예전대로.** 이 칸이 막는 것은 아는 자리다.
-                # ⚠ **남은 수동 작업에는 안 올린다.** 자리 파일이 없는 PC 에서는 영영 뜨는 줄이
-                #   되고, 영영 뜨는 할 일은 할 일 목록을 아무것도 안 말하는 목록으로 만든다.
-                #   화면 한 줄은 매 회차 서므로 조용한 것은 아니다.
-                # 사유는 훅이 낸 글자를 그대로 싣는다 — 여기서 다시 말하면 같은 말이 두 번 선다.
-                Write-Host "? MCP $($p.Name) — 게이트를 안 건다 ($mcpSiteWhy) · 이 이름은 $only 에서만 산다. 없으면 등록하고, 있으면 그대로 둔다" -ForegroundColor Yellow
-            } elseif ($tokens.Count -eq 0 -or @($tokens | Where-Object { $mcpSiteNames -cnotcontains $_ }).Count -gt 0) {
-                # **선언 오류다 — 이번 회차에 이 이름은 안 건드린다.** 모르는 자리 이름은 어느
-                # 자리와도 안 맞아, 고치는 대신 따르면 그 서버가 **모든 자리에서** 빠진다.
-                # 걷지도 심지도 않는 까닭 — 망가진 선언을 근거로 지우면 되돌릴 사람이 없다.
-                $bogus = @($tokens | Where-Object { $mcpSiteNames -cnotcontains $_ })
-                $what = if ($tokens.Count -eq 0) { '자리 이름이 하나도 없다' } else { "모르는 자리: $($bogus -join ' · ')" }
-                Write-Host "! MCP $($p.Name) — 선언의 only 가 틀렸다 ($what · 있는 자리: $($mcpSiteNames -join ' · ')). 이번 회차에 안 건드린다" -ForegroundColor Red
-                $todo += "mcp-servers.json 의 $($p.Name) 의 only 를 고친다 ($what · 있는 자리: $($mcpSiteNames -join ' · ')) — 고칠 때까지 이 서버는 등록·해제를 안 한다"
-                continue
-            } elseif ($tokens -cnotcontains $mcpSite) {
-                if ($null -eq $isReg) {
-                    Write-Host "? MCP $($p.Name) — 자리가 $mcpSite 라 안 심는 이름인데 등록 여부를 못 물었다. 해제도 안 한다" -ForegroundColor Yellow
-                    $todo += "MCP $($p.Name) 등록 여부를 못 물었다 (claude 에 안 닿는다) — 자리가 $mcpSite 라 걷어야 한다:  claude mcp remove $($p.Name) -s user"
-                } elseif ($isReg -and -not $mcpSiteFirm) {
-                    # **바닥값으로는 안 걷는다.** 「아무 자도 안 답했다」를 근거로 지우면 안 재고
-                    # 지우는 꼴이고, 그 길이 곧 매 부팅 등록·해제가 오가는 떨림이다.
-                    Write-Host "? MCP $($p.Name) — 자리가 바닥값으로 선 $mcpSite 라 안 걷는다 ($mcpSiteHow · 이 이름은 $only 에서만 산다). 걷는 일은 프로브·경로로 선 답에서만 한다" -ForegroundColor Yellow
-                } elseif ($isReg) {
-                    # **기본 실행에서 걷는다 — `-Prune` 이 아니다.** 저 깃발의 뜻은 「원본에 없는
-                    # 것을 치운다」인데 이 이름은 원본에 있다. 선언이 시킨 상태를 맞추는 일이라
-                    # 계획에 선다 (결정 0079).
-                    $plan += @{
-                        Kind = 'mcpremove'; Name = $p.Name
-                        Text = "- 해제  MCP $($p.Name)  (자리가 $mcpSite · 이 이름은 $only 에서만 산다)"
-                    }
-                } else {
-                    Write-Host "· 안 심는다  MCP $($p.Name)  (자리가 $mcpSite · 이 이름은 $only 에서만 산다)" -ForegroundColor DarkGray
-                }
-                continue
-            }
-        }
-        if ($null -eq $isReg) {
-            # 못 물었으면 「등록됐다」고도 「아니다」고도 하지 않는다. 침묵하지도 않는다.
-            $todo += "MCP $($p.Name) 등록 여부를 못 물었다 (claude 에 안 닿는다 — Git Bash 나 npm 전역 PATH 를 본다) — 확인:  claude mcp get $($p.Name)"
-        } elseif ($isReg) {
-            $same += "= 등록됨  MCP $($p.Name)"
-        } else {
-            $plan += @{
-                Kind = 'mcp'; Name = $p.Name
-                Json = (Get-McpDef $p.Value | ConvertTo-Json -Compress -Depth 10)
-                Text = "+ 등록  MCP $($p.Name)"
-            }
-        }
-    }
-
-    # 제거 후보: 등록돼 있는데 mcp-servers.json에 없는 것.
-    # ⚠ 이것만은 **열거**가 필요한데 `claude mcp list` 에 --json 이 없어 파일을 읽는다.
-    #   그러니 여기만 울타리를 친다 — **없어도 되는 답 하나 때문에 배포 전체가 죽지 않게.**
-    #   이슈 #13 이 정확히 그렇게 났다: 못 읽으면 이 칸만 접고 나머지는 그대로 간다.
-    # ⚠ 대조는 `-ccontains` 다(대소문자 구분). `-contains` 로 재면 위에서 `github` 을 새로
-    #   등록해 놓고 남은 `Github` 는 「원하는 것」으로 잡혀 영영 안 걷힌다.
-    # ⚠ **자리가 뺀 이름은 여기 안 걸린다** — `$wantMcp` 가 자리와 무관하게 선언의 이름을 다
-    #   담기 때문이다(위 §자리 게이트). 그 이름을 걷는 손은 위 계획의 `mcpremove` 이고, 사유도
-    #   「선언에 없음」이 아니라 「이 자리에서 안 산다」로 갈려 찍힌다 (결정 0079).
-    $claudeJson = Join-Path $HOME '.claude.json'
-    if (Test-Path $claudeJson) {
-        try {
-            # ⚠ **여기만 `ConvertFrom-Json` 이 아니다.** PS 5.1 의 그 파서는 대소문자 무시
-            #   사전을 만들어, JSON 이 형제로 허용하는 `C:/x` 와 `c:/x` 를 못 담고 던진다.
-            #   이 파일은 우리 것이 아니라 상류(Claude Code)가 `projects` 에 두 벌 키를 쌓고,
-            #   그러면 위 울타리가 매 배포마다 「못 쟀다」로 접혀 제거 후보를 **영영 안 잰다**
-            #   (이슈 #52 · 회사 PC 실측). 같은 PS 5.1 의 .NET 파서는 그 둘을 그대로 받는다.
-            #   울타리는 그대로 둔다 — 파일이 정말 깨진 판은 여전히 있다.
-            #   다른 `ConvertFrom-Json` 자리(우리 `mcp-servers.json` · gh 출력)는 안 건드린다.
-            Add-Type -AssemblyName System.Web.Extensions
-            $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
-            # 기본 한도는 2,097,152 자다(실측). 지금 이 PC 의 실물은 47KB 라 안 걸리지만,
-            # 이 파일은 상류가 projects 를 계속 쌓는 자리라 한도는 자라는 쪽으로 열어 둔다 —
-            # 걸리는 날 나올 답이 「못 쟀다」 한 줄이라 원인이 안 보인다.
-            $ser.MaxJsonLength = [int]::MaxValue
-            $reg = ($ser.DeserializeObject((Get-Content $claudeJson -Raw)))['mcpServers']
-            if ($reg) {
-                foreach ($n in @($reg.Keys)) {
-                    if ($wantMcp -ccontains $n) { continue }
-                    $prunable += @{ Kind = 'mcpremove'; Name = $n; Text = "- 해제  MCP $n  (mcp-servers.json에 없음)" }
-                }
-            }
-        } catch {
-            $todo += "MCP 제거 후보를 못 쟀다 — ~/.claude.json 파싱 실패: $($_.Exception.Message.Split([char]10)[0].Trim()). 등록·배포는 영향 없다"
-        }
-    }
-}
 
 # --- git 훅 경로 ---
 # 저장소가 .githooks/ 를 들고 있으면 core.hooksPath 를 거기로 맞춰야 훅이 실제로 돈다.
@@ -1207,7 +952,7 @@ foreach ($k in $userEnvWant.Keys) {
 
 # --- 실행 순서 — **배선을 맨 앞에 세운다** ---
 # `core.hooksPath` 는 로컬 `git config` 한 줄이다. 망도 안 타고 디스크도 안 타고 도구도
-# 안 부르니 **질 까닭이 없다.** 그런데 계획에서 서는 자리는 배포 백여 걸음과 MCP 등록
+# 안 부르니 **질 까닭이 없다.** 그런데 계획에서 서는 자리는 배포 백여 걸음
 # 뒤였고, 실행 고리는 `$ErrorActionPreference = 'Stop'` 아래 **하나**다 — 앞 걸음 하나가
 # 던지면 뒤가 통째로 안 돈다.
 # ⚠ **그러면 커밋 게이트가 없는 채로 저장소가 서고, 그 부재는 조용하다** — 훅이 안 걸렸으니
@@ -1226,24 +971,10 @@ foreach ($k in $userEnvWant.Keys) {
 $plan = @($plan | Where-Object { $_.Kind -eq 'githooks' }) +
         @($plan | Where-Object { $_.Kind -ne 'githooks' })
 
-# --- 사람이 해야 할 것 ---
-# 키 이름을 여기 손으로 또 적으면 서버가 늘 때마다 두 자리를 고쳐야 하고, 한쪽만 고치면
-# 새 PC 는 서버만 등록된 채 조용히 실패한다 — 등록 자체는 됐으니 목록엔 초록으로 뜬다.
-# 그래서 설정이 ${VAR} 로 이름을 든 것은 세지 않고 mcp-servers.json 에서 뽑는다.
-if (Test-Path $mcpFile) {
-    $keyRefs = [regex]::Matches((Get-Content $mcpFile -Raw), '\$\{([A-Za-z_][A-Za-z0-9_]*)\}') |
-               ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-    foreach ($k in $keyRefs) {
-        if (-not [Environment]::GetEnvironmentVariable($k, 'User')) {
-            $todo += "$k 설정 — 별도 터미널에서:  setx $k ""실제키값"""
-        }
-    }
-}
-
 # --- GitHub 토큰의 만료 ---
 # `GH_TOKEN` 의 세밀 토큰은 만료가 강제다 — 커밋된 키라 좁게 두기로 했고(secrets.env 곁말 ·
-# 결정 0025), 좁은 토큰은 GitHub 이 1년 안에 죽인다. 죽는 날 MCP 와 gh 가 **조용히** 선다: 위
-# 「없으면 setx」 검사는 값이 있기만 하면 초록이라 만료된 토큰도 「있음」이다. 응답 머리글에
+# 결정 0025), 좁은 토큰은 GitHub 이 1년 안에 죽인다. 죽는 날 gh 가 **조용히** 선다: 값이 있기만
+# 하면 「있음」이라 만료된 토큰이 안 갈린다. 응답 머리글에
 # 만료일이 실려 오므로 호출 한 번으로 잰다 — 죽었으면 실행 환경이 안 선 것(`$envDown`), 30일
 # 안이면 사람이 할 일(`$todo`), 멀쩡하면 날짜를 한 줄 찍는다(초록도 편다).
 # ⚠ 망이 안 닿으면 「못 쟀다」로 한 줄만 남긴다 — 그 사실로 배포를 막지 않는다.
@@ -1362,7 +1093,7 @@ if (-not $Yes) {
 
 
 # ============================ 3단계: 실행 ============================
-# 층 — 홈 · 저장소 · 등록 · 환경. 기계 층(전역형 도구)과 저장소 설치는 세션 훅을 불러 맡긴다
+# 층 — 홈 · 저장소 · 환경. 기계 층(전역형 도구)과 저장소 설치는 세션 훅을 불러 맡긴다
 # 하는 일 — 계획의 걸음을 차례대로 돌고 걸음마다 한 줄을 낸다. 덮거나 걷는 파일은 먼저 `$backup` 에 뜬다(판 줄은 안
 #   뜬다). 도구 홈의 규범 · 룰 · 에이전트 · 스킬은 손을 계획과 같은 명령으로 한 번 불러 맡긴다(백업은 손이 제 자리에
 #   뜬다). 전역 설치는 이 저장소의 세션 훅을 `--install-global` 로, 저장소 설치는 그 저장소의 세션 훅을 `--install` 로
@@ -1444,31 +1175,6 @@ foreach ($step in $plan) {
             }
         }
 
-        'mcp' {
-            if (-not $bash) {
-                # Git Bash가 없으면 강행하지 않는다 — 따옴표가 깨진 채 등록되면 더 골치다
-                Write-Host "! MCP $($step.Name) 미등록 (Git Bash 없음)" -ForegroundColor Red
-                $todo += "Git Bash에서 실행:  claude mcp add-json $($step.Name) '$($step.Json)' -s user"
-                break
-            }
-            # PowerShell이 -c 인자의 따옴표를 먹으므로 명령을 파일에 써서 넘긴다.
-            # BOM이 있으면 bash가 첫 줄을 못 읽으므로 UTF8(BOM 없음) + LF로 쓴다.
-            $cmd = "claude mcp add-json $($step.Name) '$($step.Json)' -s user"
-            $sh  = Join-Path $env:TEMP "deploy-mcp-$($step.Name).sh"
-            [System.IO.File]::WriteAllText($sh, $cmd + "`n", (New-Object System.Text.UTF8Encoding($false)))
-            & $bash $sh
-            $code = $LASTEXITCODE
-            Remove-Item $sh -Force -ErrorAction SilentlyContinue
-
-            # 종료 코드를 반드시 확인한다 — 실패를 성공으로 보고하면 기록과 실제가 어긋난다
-            if ($code -eq 0) {
-                Write-Host "+ 등록  MCP $($step.Name)"
-            } else {
-                Write-Host "! MCP $($step.Name) 등록 실패 (exit $code)" -ForegroundColor Red
-                $todo += "Git Bash에서 실행:  $cmd"
-            }
-        }
-
         'githooks' {
             & git -C $step.Repo config core.hooksPath .githooks
             if ($LASTEXITCODE -eq 0) {
@@ -1519,22 +1225,6 @@ foreach ($step in $plan) {
             # 자르지만 이 API 는 안 자른다 — 값이 짧아도 굳이 자르는 쪽을 쓸 이유가 없다.
             [Environment]::SetEnvironmentVariable($step.Name, $step.Value, 'User')
             Write-Host "+ 설정  사용자 환경변수 $($step.Name)=$($step.Value)"
-        }
-
-        'mcpremove' {
-            # ⚠ **`2>&1` 을 뗐다 — 그것이 위험을 만들던 자였다** (까닭은 `Sync-Repos`
-            #   머리에 있다). `claude mcp remove` 는 지울 것이 없을 때 stderr 로 답하는데,
-            #   합쳐 놓으면 그 한 줄이 `NativeCommandError` 로 승격돼 **해제 한 건이 배포
-            #   전체를 죽인다.** 안 합치면 그 줄은 콘솔로 흐르고 종료코드만 아래로 온다 —
-            #   2026-09-07 에 `claude mcp get` 이 죽인 자리와 같은 병, 더 싼 약이다.
-            & claude mcp remove $step.Name -s user | Out-Null
-            $code = $LASTEXITCODE
-            if ($code -eq 0) {
-                Write-Host "- 해제  MCP $($step.Name)"
-            } else {
-                Write-Host "! MCP $($step.Name) 해제 실패 (exit $code)" -ForegroundColor Red
-                $todo += "수동 해제:  claude mcp remove $($step.Name) -s user"
-            }
         }
 
         'remove' {

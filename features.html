@@ -10,7 +10,7 @@
   README 「무엇이 깔리나」가 든다 — 여기 옮겨 적지 않는다(모델 이름 · 개수처럼 자주 바뀌는 값도).
 
   ⚠ 밖에서 불러오는 것이 한 자도 없다 — 글꼴 · 스타일 · 그림을 다 안에 든다. 밖으로 가는 것은 사람이
-    누르는 링크(Tavily · 구글 무료 키 받기)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
+    누르는 링크(구글 무료 키 받기)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
     더블클릭 한 번에 떠야 하기 때문이다.
   ⚠ 진본은 claude-config 의 docs/features.html 이고, 배포본 뿌리로 나가는 것은 뽑기
     (dist.manifest.conf)가 든다 — 저쪽에서 고치지 않는다.
@@ -146,7 +146,6 @@
     <div class="card"><b>DRM 길잡이 <code>drm-guide</code></b><span>회사 DRM 이 걸린 오피스 · PDF 를 붙이거나 경로를 적으면, Claude 가 그 파일을 DRM 문서 읽기(<code>drm-office-read</code>)로 열도록 길을 알려 줍니다. DRM 이 안 걸린 파일에는 아무것도 붙이지 않습니다.</span></div>
     <div class="card"><b>Bash 겹역슬래시 차단 <code>bash-backslash-deny</code></b><span>윈도우에서 Bash 로 보낸 명령의 겹역슬래시는 셸에 닿기 전에 하나로 접혀 엉뚱한 경로가 됩니다. 그런 명령을 실행 전에 돌려보내 다시 짓게 합니다.</span></div>
     <div class="card"><b>PowerShell 한글 지키기 <code>utf8-bom</code></b><span>윈도우 파워셸 5.1 은 BOM 없는 스크립트의 한글을 깨뜨려 읽습니다. 고친 <code>.ps1</code> 에 BOM 을 찍어 둡니다.</span></div>
-    <div class="card"><b>Tavily 웹 검색 <code>tavily-search</code></b><span>웹 검색 도구를 하나 더 붙입니다. 무료 키(<code>TAVILY_API_KEY</code>)를 넣으면 한 달 1,000회까지 씁니다. <a href="https://app.tavily.com">무료 키 받기</a></span></div>
     <div class="card"><b>문서 스킬 <code>document-skills</code></b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
     <div class="card"><b>DRM 문서 읽기 <code>drm-office-read</code></b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
     <div class="card"><b>사내 앱 만들기 <code>inhouse-app</code></b><span>회사 디지털혁신그룹이 배포한 FastAPI 사내 앱 기준 문서를 읽어 주는 스킬입니다. 사내 앱에 LLM 게이트웨이 · SSO · 배포를 붙일 때 그 기준에서 필요한 장만 골라 엽니다.</span></div>

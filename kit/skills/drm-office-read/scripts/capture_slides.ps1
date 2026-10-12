@@ -44,6 +44,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'office-session.ps1')
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type @"
 using System;
@@ -87,9 +88,10 @@ if ($slideList.Count -eq 0) { throw "Slides 에 슬라이드 번호가 없다" }
 $before = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 
 # 창 없이 떠 있는 PowerPoint 는 앞선 자동화가 남긴 껍데기다 — 두면 슬라이드쇼가 서지 않는다.
-# 사람이 띄워 쓰는 것(제목이 있다)은 건드리지 않는다.
+# 사람이 띄워 쓰는 것은 건드리지 않는다 — 제목이 아니라 창이 아예 없는지로 가른다(대화창이 뜬 순간
+# 사람의 창도 제목이 빌 수 있다).
 foreach ($p in (Get-Process POWERPNT -ErrorAction SilentlyContinue)) {
-    if ([string]::IsNullOrWhiteSpace($p.MainWindowTitle)) {
+    if ($p.MainWindowHandle -eq [IntPtr]::Zero) {
         Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
         $before = @($before | Where-Object { $_ -ne $p.Id })
     }
@@ -100,15 +102,19 @@ if ($before.Count -ne (Get-Process POWERPNT -ErrorAction SilentlyContinue | Meas
 
 $ws = $null
 $ppt = $null
+$session = $null
 $pres = $null
 $show = $null
 $made = @()
+# 파워포인트는 하나만 뜬다 — 사람이 쓰고 있었으면 끝에서 그 앱을 안 끈다(office-session.ps1)
+$pptWasRunning = Test-OfficeRunning 'POWERPNT'
 
 try {
     $ws = New-Object -ComObject WScript.Shell
     $ppt = New-Object -ComObject PowerPoint.Application
-    $pres = $ppt.Presentations.Open($full, $true, $false, $true)
-    try { $pres.Saved = $true } catch { }
+    # 경로 · ReadOnly=$true · Untitled=$false · WithWindow=$true — 사람이 연 덱이면 그 발표로 쇼만 띄우고 안 닫는다
+    $session = Open-OwnedDocument -Kind 'PPT' -Collection $ppt.Presentations -Open { $ppt.Presentations.Open($full, $true, $false, $true) }
+    $pres = $session.Document
     $pres.SlideShowSettings.Run() | Out-Null
 
     # 슬라이드쇼 창이 설 때까지 기다린다 — 바로 물으면 null 이 온다
@@ -189,15 +195,8 @@ try {
     }
 } finally {
     if ($null -ne $show) { try { $show.View.Exit() } catch { } }
-    if ($null -ne $pres) {
-        try { $pres.Saved = $true } catch { }
-        try { $pres.Close() } catch { }
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($pres) | Out-Null } catch { }
-    }
-    if ($null -ne $ppt) {
-        try { $ppt.Quit() } catch { }
-        try { [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ppt) | Out-Null } catch { }
-    }
+    Close-OwnedDocument $session
+    [void](Exit-OfficeApp -App $ppt -Kind 'PPT' -WasRunning $pptWasRunning)
     Start-Sleep -Milliseconds 800
 
     # 이 스크립트가 띄운 것만 끝낸다 — 남으면 다음 빌드가 파일 잠금으로 죽는다

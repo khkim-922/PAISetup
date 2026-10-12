@@ -27,7 +27,9 @@ description: "Claude 에게 일을 맡기고 답을 받을 때 부른다 — Cod
    `Set-Content -Encoding utf8` 로 쓴다 — 기본값(ANSI · `Out-File` 은 UTF-16)으로 쓴 파일은 래퍼가 4 로 돌려보낸다.
 2. **콘솔 있는 `python` 으로 부르고 끝날 때까지 기다린다** — 명령의 시간 한도는 `--timeout` 보다 길게 준다.
    `pythonw` 는 창 없는 프로그램이라 셸이 안 기다리고 바로 돌아온다. agy 는 명령이 기다림(`WaitMsBeforeAsync`)을 넘기면
-   뒤로 넘어가니, 그때는 그 작업이 끝날 때까지 상태를 보고 나서 `--out` 을 읽는다.
+   뒤로 넘어가니, 그때는 그 작업이 끝날 때까지 상태를 보고 나서 `--out` 을 읽는다. 승인 건너뛰기 없이 뜬 헤드리스
+   agy(`agy -p`)에서는 이 명령이 자동 거절된다 — 권한 설정을 고쳐 뚫지 말고 거절됐다고 알리고 멈춘다. 헤드리스로
+   맡기는 길은 부르는 쪽이 `--dangerously-skip-permissions` 를 붙여 띄운 agy 뿐이다(`agy-background` 러너의 꼴 · 결정 0114).
 
    ```sh
    python "<이 스킬 폴더>/scripts/claude_bg.py" --prompt-file <프롬프트> --out <답 파일> --cwd <작업 자리> \
