@@ -15,11 +15,12 @@
 
 sync  — 한 층을 채운다. standard 는 짐에서 표의 층 안의 자리로, personal 은 설정 저장소에서 표의 저장소 자리로. 손과
         표도 제 몸을 층 뿌리에 싣는다. 층에는 표의 항목과 손 · 표만 든다 — 짐의 다른 것은 안 싣고, 층에 남은 다른 것은
-        걷는다. 원본에 그 자리가 없으면 그 항목은 그 층에서 조용히 빠지고(층에 있었으면 걷는다) 다른 층이 이긴다 — 짐이
-        안 싣는 항목(local)이 있고, 씨앗으로 만든 저장소는 제가 둔 원본만 든다. 저장소 자리가 여럿이면(폴더 항목) 그
-        자리들의 내용을 한 폴더로 합치고, 같은 이름(항목 폴더 바로 밑)이 두 자리에 다 있으면 그 이름만 ERROR 를 내고 개인
+        걷는다. 원본에 그 자리가 없거나 실을 파일이 하나도 없으면(표 머리) 그 항목은 그 층에서 조용히 빠지고(층에 있었으면
+        걷는다) 다른 층이 이긴다 — 짐이 안 싣는 항목(local)이 있고, 씨앗으로 만든 저장소는 제가 둔 원본만 든다. 층을 읽을 때도
+        파일 없는 항목 폴더는 없는 것으로 본다. 저장소 자리가 여럿이면(폴더 항목) 그 자리들의 내용을 한 폴더로 합치고, 같은
+        이름(항목 폴더 바로 밑)이 두 자리에 다 있으면 그 이름만 ERROR 를 내고 개인
         층에 안 싣는다(다른 층이 이긴다). each 항목의 뿌리에 바로 든 파일은 단위가 아니라 WARN 을 내고 안 싣는다. hook 길의
-        항목은 등록 머리말을 든 껍데기와 그 껍데기가 부르는 곁 파일만 싣고(표 머리), 껍데기가 없으면 그 층에서 빠진다. 원본은
+        항목은 등록 머리말을 든 껍데기와 그 껍데기가 표 머리의 꼴로 부르는 곁 파일만 싣고, 껍데기가 없으면 그 층에서 빠진다. 원본은
         읽기만 하는 자리라 링크(심볼릭 링크 · 정션)를 따라간다 — 항목 자리 자체도, 폴더 항목 안의 폴더 · 파일도. 층에는
         링크 너머의 파일이 실린다. 폴더 항목 안에서 제 조상 폴더를 가리키는 링크(고리)는 안 따라가고, 끊긴 링크는 WARN 을
         내고 그 자리만 건너뛴다. 개인 층의 저장소 자리가 있는데 꼴이 표와 다르면(파일 · 폴더가 바뀜 · 끊긴 링크) WARN 을
@@ -85,17 +86,17 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
   표지 짝이 안 맞으면 그 파일은 안 건드린다. 블록을 걷고 남은 글이 없으면 파일을 지운다.
 **훅 등록(hook)** — 이긴 층의 껍데기 머리말로 등록을 짓고, 설정 파일을 JSON 으로 읽어(BOM 을 안 가린다) 훅 하나 단위로
   고친다. 우리 것의 첫 자리가 등록을 잇고(그 항목의 matcher 가 다르면 그 바로 뒤의 새 항목으로) 나머지 우리 것은 걷는다.
-  우리 것을 알아보는 껍데기 이름은 두 층에서 다 모은다 — 한 층에서 빠진 껍데기의 등록도 걷힌다. 우리 것을 걷어 빈 항목 · 빈
-  이벤트 목록 · 빈 hooks 표는 걷고, 처음부터 비었던 것과 파일은 둔다. 바뀐 것이 없으면 안 쓴다. 못 읽는 파일(JSON 이 아님 ·
-  맨 위가 표가 아님) · 못 고치는 꼴(hooks 가 표가 아님 · 놓을 이벤트가 목록이 아님) · 이긴 층의 틀린 머리말은 ERROR 이고 그
-  파일을 안 건드린다. 쓸 때는 있던 BOM · 줄끝을 잇고 두 칸 들여 쓴다. CHANGE 는 바뀐 등록마다 한 줄(write)이다.
+  우리 것을 알아보는 껍데기 이름은 두 층에서 다 모은다 — 한 층에서 빠진 껍데기의 등록도 걷힌다. 걷은 뒤 빈 자리 · 있던 BOM ·
+  줄끝 · 목록이 아닌 이벤트 값은 표 머리의 hook 꼴이 정한다 — 처음부터 비었던 항목 · 목록은 둔다. 바뀐 것이 없으면 안 쓴다.
+  못 읽는 파일(JSON 이 아님 · 맨 위가 표가 아님) · hooks 가 표가 아님 · 이긴 층의 틀린 머리말은 ERROR 이고 그 파일을 안
+  건드린다. 쓸 때는 두 칸 들여 쓴다. CHANGE 는 바뀐 등록마다 한 줄(write)이다.
 **조건 값** — 제작자 칸(box · `PAISETUP_PERSONAL`)과 고른 제품(pick · `PAISETUP_PICK`)을 같은 꼴로 읽는다. `--box` · `--pick`
   이 없으면 사용자 값(윈도 레지스트리 `HKCU\\Environment`)을 먼저, 그다음 프로세스 값을 읽는다. 값을 바꾸기 전에 뜬 앱의
   프로세스는 옛 값을 들고 있어 사용자 값이 진본이다. 쉼표 · 빈칸으로 가르고 대소문자를 안 가린다. 빈 값(`--box ""` 도)은
   claude 만, `none` 은 아무것도 아니다. 표에 없는 도구 이름은 WARN 을 내고 건너뛴다. 표의 길이 쓰는 조건만 읽는다.
 **한 번에 하나** — 잠금 파일 `~/.paisetup/.lock`. 잡혀 있으면 LOCK_WAIT 초까지 기다리고 못 잡으면 ERROR. 아무것도 안 쓰는
   판(--dry-run · check)은 잠금을 안 잡고 그 파일도 안 만든다.
-**표가 틀리면 아무것도 안 한다** — 길 하나를 빼고 돌면 그 길이 놓은 파일이 「기록에 있는데 안 바라는 것」으로 걷힌다.
+**표가 틀리면 아무것도 안 한다** — 계약과 까닭은 표 머리가 든다.
 
 출력 계약 — 한 줄에 하나: `CHANGE=<동사> <자리> <까닭>`(세 칸은 탭으로 가른다) · `WARN=<까닭>` · `ERROR=<까닭>` · 끝에
   `CHANGED=0|1`. 동사는 fill(층을 원본으로 채운다) · drop(원본에 없는 층 항목을 걷는다) · write · remove · backup ·
@@ -311,11 +312,12 @@ def walk_files(top):
 
 
 def item_files(root, item_path):
-    """층 `root` 아래 항목의 파일 — {상대 자리: 파일}(파일 항목은 열쇠가 빈 글 하나). 없거나 꼴이 다르면 None.
-    층의 링크는 손이 지은 것이 아니라 항목으로 안 본다 — 원본 읽기는 `source_tree` 다."""
+    """층 `root` 아래 항목의 파일 — {상대 자리: 파일}(파일 항목은 열쇠가 빈 글 하나). 없거나 · 파일이 하나도 없는 폴더이거나 ·
+    꼴이 다르면 None — 파일 없는 자리는 없는 자리다(표 머리). 다른 판의 손이 채운 층에 빈 폴더가 남아도 그 층이 빈 채로
+    이기지 않는다. 층의 링크는 손이 지은 것이 아니라 항목으로 안 본다 — 원본 읽기는 `source_tree` 다."""
     p = root / item_path.rstrip('/')
     if item_path.endswith('/'):
-        return walk_files(p) if p.is_dir() and not is_link(p) else None
+        return (walk_files(p) or None) if p.is_dir() and not is_link(p) else None
     return {'': p} if p.is_file() else None
 
 
@@ -552,8 +554,9 @@ def hook_spec(name, head, twice):
 
 
 def hook_reach(path, var):
-    """껍데기가 제 변수로 부르는 곁 파일 이름들 — 주석 줄은 안 본다."""
-    ref = re.compile(r'\$\{?%s\}?/([A-Za-z0-9._-]+)' % re.escape(var))
+    """껍데기가 제 변수로 부르는 곁 파일 이름들 — 표 머리의 꼴(`"$<변수>/<이름>"`)만 읽고 주석 줄은 안 본다. 다른 꼴로 부른
+    곁 파일은 싣지 않는다."""
+    ref = re.compile(r'"\$%s/([^"/]+)"' % re.escape(var))
     try:
         text = pathlib.Path(path).read_text(encoding='utf-8-sig', errors='replace')
     except OSError:
@@ -592,16 +595,17 @@ def source_files(item, layer, root, out, hook=False):
 
     표준 층은 짐의 층 안의 자리, 개인 층은 표의 저장소 자리에서 읽는다 — 저장소 자리가 여럿이면 한 폴더로 합치고, 같은
     이름(항목 폴더 바로 밑)이 두 자리에 다 있으면 그 이름만 ERROR 를 내고 안 싣는다(다른 층이 이긴다). 링크는 따라간다
-    (항목 자리 자체도). 그 자리가 없으면 조용히 안 선다. 개인 층의 저장소 자리가 있는데 꼴이 표와 다르면(끊긴 링크도)
-    WARN 을 내고 그 자리를 이 층에서 뺀다 — 원본을 두었는데 안 깔리는 까닭이 보이게. each 항목의 뿌리에 바로 든 파일은
-    단위가 아니라 WARN 을 내고 안 싣는다. hook 길의 항목(hook)은 등록 머리말이 싣는 것을 정한다(hook_carried).
+    (항목 자리 자체도). 그 자리가 없거나 실을 파일이 하나도 없으면 조용히 안 선다(표 머리 — 파일 없는 자리는 없는 자리다).
+    개인 층의 저장소 자리가 있는데 꼴이 표와 다르면(끊긴 링크도) WARN 을 내고 그 자리를 이 층에서 뺀다 — 원본을 두었는데
+    안 깔리는 까닭이 보이게. each 항목의 뿌리에 바로 든 파일은 단위가 아니라 WARN 을 내고 안 싣는다. hook 길의 항목(hook)은
+    등록 머리말이 싣는 것을 정한다(hook_carried).
     """
     got = source_merged(item, layer, root, out)
     return hook_carried(got, item.path, out) if hook and got is not None else got
 
 
 def source_merged(item, layer, root, out):
-    """source_files 의 몸 — 걸러 싣기 전의 파일."""
+    """source_files 의 몸 — 걸러 싣기 전의 파일. 파일이 하나도 없으면 None 이다."""
     rels = (item.path,) if layer == STANDARD else item.repos
     if not item.path.endswith('/'):
         p = root / rels[0]
@@ -624,7 +628,7 @@ def source_merged(item, layer, root, out):
                 del got[k]
         parts.append((rel, got))
     if len(parts) < 2:
-        return parts[0][1] if parts else None
+        return (parts[0][1] or None) if parts else None
     owners = collections.OrderedDict()
     for rel, got in parts:
         for name in sorted(set(k.split('/', 1)[0] for k in got)):
@@ -635,7 +639,7 @@ def source_merged(item, layer, root, out):
             clash.add(name)
             out.error('%s — 같은 이름 %s 가 저장소 자리 %s 에 다 있다 · 개인 층에 안 싣는다(다른 층이 이긴다)'
                       % (item.name, name, ' · '.join(where)))
-    return dict((k, p) for rel, got in parts for k, p in got.items() if k.split('/', 1)[0] not in clash)
+    return dict((k, p) for rel, got in parts for k, p in got.items() if k.split('/', 1)[0] not in clash) or None
 
 
 # ── 조건 — 제작자 칸 · 고른 제품 ─────────────────────────────────────────────────────────────────────────

@@ -1307,8 +1307,9 @@ PYMERGE
 #        POSIX 로 정규화된다(재 봤다) — 그러니 남는 후보는 위 `CLAUDE_PROJECT_DIR` 물러섬인데
 #        그 값의 꼴은 하네스가 정하고 이 자리에서 못 잰다. **까닭을 모른 채로 굳힌다** —
 #        고치려는 것이 「왜 갈렸나」가 아니라 「갈려도 안 쌓이나」라서다.
-#      안 굳히면 부르는 자가 바뀔 때마다 항목이 하나씩 붙어, **이 함수가 막으려는 쌓임을
-#      이 함수가 만든다.** 글롭은 bash 가 푸니 둘 다 돌지만, 진본은 하나여야 한다.
+#      안 굳히면 부르는 자가 바뀔 때마다 심긴 명령이 두 꼴 사이를 오가, 세션마다 홈 설정을
+#      다시 쓴다(옛 꼴은 `plant_session_state` 가 걷어 쌓이지는 않는다). 글롭은 bash 가 푸니
+#      둘 다 돌지만, 진본은 하나여야 한다.
 home_hook_root() {   # 작업 루트 — 굳힌 꼴. 명령도 진단 문구도 이것을 쓴다
   _hr="$(dirname "$PROJECT_DIR")"
   [ "$OS" = windows ] && _hr="$(cygpath -m "$_hr" 2>/dev/null || printf '%s' "$_hr")"
@@ -1461,10 +1462,12 @@ home_hook_cmd() {
 #   를 든 명령)만 걷고, 무엇을 걷었는지 화면에 댄다.
 plant_session_state() {
   _pse="$(mktemp)"   # stderr 를 받아 둔다 — 「못 부른다」와 「죽었다」를 가르는 물증이다 (#51)
-  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" <<'PSSEOF' 2>"$_pse"
-import json, os, sys, tempfile
+  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" \
+    "${CONFIG_ROOT:+$CONFIG_ROOT/.claude/hooks/tool-homes.py}" <<'PSSEOF' 2>"$_pse"
+import contextlib, importlib.util, json, os, pathlib, sys, tempfile
 
 settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+hand = sys.argv[5] if len(sys.argv) > 5 else ""
 msgs = []
 failed = False   # 다 못 심었다 — 끝에서 3 으로 알린다. 셸이 표식에 판을 안 적는다 (0065)
 
@@ -1487,49 +1490,73 @@ def save(path, cfg):
         return False
 
 
+def hand_lock():
+    """갈 곳 표의 손과 같은 잠금 — 손도 같은 홈 settings.json 을 통째로 읽고 고쳐 쓴다(훅 등록).
+    잠금은 손의 것을 불러 쓴다(자리 · 기다림 · 못 잡으면 `Busy`). 손이 없는 자리는 잡을 상대도 없어 그냥 간다."""
+    if not hand or not os.path.isfile(hand):
+        return contextlib.nullcontext()
+    spec = importlib.util.spec_from_file_location("tool_homes_hand", hand)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    home = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(settings))))
+    return mod.Lock(home / mod.HUB)
+
+
 # ① 홈 SessionStart 훅 — 우리 옛 꼴은 걷고 지금 꼴만 남긴다
 # ⚠ **「없음」과 「못 읽음」을 가른다** — 아래 ② 의 `~/.claude.json` 과 같은 규율이다. 못 읽은 파일을
 #   빈 설정으로 보고 쓰면 **훅 항목만 남기고 사람의 설정(model · env · permissions)을 통째로 덮는다.**
 #   손으로 고친 직후가 파일이 깨지기 가장 쉬운 순간이고, 그 뒤 첫 세션이 바로 여기를 돈다.
 #   그래서 없을 때만 빈 설정에서 시작하고, 못 읽으면 쓰지 않고 알린다. BOM 은 읽는다(`utf-8-sig`) —
 #   윈도우 편집기가 붙이는 것이라 깨진 것이 아니다.
-cfg_ok = True
-try:
-    with open(settings, encoding="utf-8-sig") as f:
-        cfg = json.load(f)
-    if not isinstance(cfg, dict):
-        raise ValueError("최상위가 객체가 아니다")
-except FileNotFoundError:
-    cfg = {}
-except (OSError, ValueError):
-    cfg, cfg_ok, failed = {}, False, True
-    msgs.append("  ! 홈 settings.json 을 못 읽었다 — 덮어쓰지 않았다. JSON 문법을 고치면 다음 세션이 훅을 심는다")
-entries = cfg.setdefault("hooks", {}).setdefault("SessionStart", [])
-have, dropped = False, []
-for e in entries:
-    keep = []
-    for h in e.get("hooks", []):
-        c = h.get("command", "")
-        if c == cmd:
-            have = True
-            keep.append(h)
-        elif "session-start.sh" in c:
-            dropped.append(c)
+def plant_home_hook():
+    global failed
+    cfg_ok = True
+    try:
+        with open(settings, encoding="utf-8-sig") as f:
+            cfg = json.load(f)
+        if not isinstance(cfg, dict):
+            raise ValueError("최상위가 객체가 아니다")
+    except FileNotFoundError:
+        cfg = {}
+    except (OSError, ValueError):
+        cfg, cfg_ok, failed = {}, False, True
+        msgs.append("  ! 홈 settings.json 을 못 읽었다 — 덮어쓰지 않았다. JSON 문법을 고치면 다음 세션이 훅을 심는다")
+    entries = cfg.setdefault("hooks", {}).setdefault("SessionStart", [])
+    have, dropped = False, []
+    for e in entries:
+        keep = []
+        for h in e.get("hooks", []):
+            c = h.get("command", "")
+            if c == cmd:
+                have = True
+                keep.append(h)
+            elif "session-start.sh" in c:
+                dropped.append(c)
+            else:
+                keep.append(h)
+        e["hooks"] = keep
+    entries[:] = [e for e in entries if e.get("hooks")]
+    if not have:
+        entries.append({"hooks": [{"type": "command", "command": cmd, "timeout": 600}]})
+    if cfg_ok and (not have or dropped):
+        if save(settings, cfg):
+            if not have:
+                msgs.append("  홈 SessionStart 훅 — 심었다")
+            for c in dropped:
+                msgs.append("  홈 SessionStart 훅 — 옛 항목을 걷었다: %s" % c[:70])
         else:
-            keep.append(h)
-    e["hooks"] = keep
-entries[:] = [e for e in entries if e.get("hooks")]
-if not have:
-    entries.append({"hooks": [{"type": "command", "command": cmd, "timeout": 600}]})
-if cfg_ok and (not have or dropped):
-    if save(settings, cfg):
-        if not have:
-            msgs.append("  홈 SessionStart 훅 — 심었다")
-        for c in dropped:
-            msgs.append("  홈 SessionStart 훅 — 옛 항목을 걷었다: %s" % c[:70])
-    else:
-        msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
-        failed = True
+            msgs.append("  ! 홈 settings.json 을 못 썼다 — 쓰기 권한을 본다")
+            failed = True
+
+
+# 읽기부터 쓰기까지 손의 잠금 안에서 한다 — 두 세션이 함께 돌면 한쪽의 고침이 다른 쪽의 통째 쓰기에 덮인다.
+#   못 잡거나 손을 못 불러오면 이번엔 안 심고 3 으로 알린다 — 다음 세션이 다시 심는다.
+try:
+    with hand_lock():
+        plant_home_hook()
+except Exception as e:  # 손의 `Busy` · 손을 못 불러옴
+    failed = True
+    msgs.append("  ! 홈 SessionStart 훅 — 손의 잠금을 못 잡아 이번엔 안 심었다(다음 세션이 다시 심는다): %s" % e)
 
 # ② 신뢰 — 없거나 깨진 파일은 손대지 않는다
 # ⚠ **작업 루트의 저장소 전부에 건다.** 옛 판은 제 저장소만 걸고 「홈 훅이 어차피 전부
