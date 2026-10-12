@@ -29,5 +29,11 @@ export default {
     //   ⚠ 상류에 비라틴 문자 회귀 버그가 따로 있지만(conventional-changelog/commitlint#4620,
     //     20.4.0 이후 키릴 소문자 제목 거부) 그 42건은 그 버그가 아니다. 고쳐져도 안 바뀐다.
     'subject-case': [0],
+    // 줄 길이 — config-conventional 의 100 을 120 으로 늘린다. 한국어 제목과 본문은 진단 한 문장에
+    //   좌표가 붙어 100 을 자주 넘고, 게이트 끝에서 그것 하나로 반려되면 앞의 무거운 검사를 다시
+    //   돌린다(사용자 2026-10-13). 형식 규칙이지 뜻 규칙이 아니라 늘려도 잃는 판정이 없다.
+    'header-max-length': [2, 'always', 120],
+    'body-max-line-length': [2, 'always', 120],
+    'footer-max-line-length': [2, 'always', 120],
   },
 };

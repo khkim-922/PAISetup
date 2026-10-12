@@ -24,13 +24,16 @@
 # 파일이 없으면 넘어가고, BOM 은 몇 번 돌려도 한 번만 붙는다(멱등).
 #
 # 전수 스캔(find)도 안 쓴다 — 이 훅은 Write·Edit 마다 돌아서 비용이 매번 든다.
+#
+# 시험 — `sh scripts/check-utf8-bom.sh` (실물 꼴의 입력을 두 등록 꼴로 먹여 찍을 것과 둘 것을 문다).
 set -u
 
 BOM=$(printf '\357\273\277')
 
 # 훅 입력(JSON)에서 경로 후보를 긁는다.
 #   ① JSON 의 이스케이프된 역슬래시(\\)를 하나로 되돌린다 — 윈도우 경로가 그렇게 온다
-#   ② 파워셸 확장자로 끝나는 절대경로만 집는다 (윈도우 C:\… · POSIX /…)
+#   ② 파워셸 확장자로 끝나는 절대경로만 집는다 (윈도우 C:\… · POSIX /…) — 확장자는 대소문자를 안 가린다(윈도우
+#      파일 이름이 그렇다)
 #   ③ 역슬래시를 슬래시로 눕힌다 — Git Bash 는 C:/… 를 그대로 연다
 #
 # ⚠ **한 쓰기에 이 훅이 겹쳐 돌 수 있다**(홈 · 저장소 두 층에 걸리면 제품이 둘을 함께 띄운다).
@@ -38,13 +41,18 @@ BOM=$(printf '\357\273\277')
 #   다른 실행이 찍었으면 내 임시본은 버린다. 임시본 이름을 나눠 쓰면 한쪽이 다른 쪽의 임시본을
 #   비운 채 옮겨 넣어 **본문이 사라지고 BOM 만 남는다.**
 sed -e 's/\\\\/\\/g' \
-  | grep -oE '[A-Za-z]:[^"]*\.ps[md]?1|/[^"]*\.ps[md]?1' \
+  | grep -oiE '[A-Za-z]:[^"]*\.ps[md]?1|/[^"]*\.ps[md]?1' \
   | sed -e 's|\\|/|g' \
   | sort -u \
   | while IFS= read -r f; do
       [ -f "$f" ] || continue
       case "$(head -c 3 "$f" 2>/dev/null)" in
         "$BOM") continue ;;          # 이미 찍혀 있다 — 안 건드린다
+      esac
+      # UTF-16 BOM(FF FE · FE FF)이 선 파일은 둔다 — 그 앞에 UTF-8 BOM 을 붙이면 PowerShell 5.1 이 깨진 글로 읽는다.
+      #   그 두 바이트는 UTF-8 로 성립하지 않아 셸 글자 견주기 대신 16 진으로 본다
+      case "$(head -c 2 "$f" 2>/dev/null | od -An -tx1 | tr -d ' \n')" in
+        fffe|feff) continue ;;
       esac
       tmp="$f.utf8bom.$$.tmp"
       if { printf '%s' "$BOM"; cat "$f"; } > "$tmp" 2>/dev/null; then
