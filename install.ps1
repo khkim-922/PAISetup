@@ -608,7 +608,7 @@ function Test-AutoRunTask([string]$Name) {
 
 #endregion 프로세스
 
-#region 파일 — 값 파일을 읽고, 백업 자리를 잡고, 나른 파일 수를 센다
+#region 파일 — 값 파일을 읽고, 백업 자리와 설정 저장소를 받는 자리를 잡고, 나른 파일 수를 센다
 
 # `#이름 = 값` 꼴 지시를 읽는다 — 값(`이름=값`)과 달리 이것은 **어디로 갈지**를 든다.
 # 자리 파일이 `#site-probe`·`#home-settings` 로 쓰는 어법과 같다: 몸통은 주소를 모르고
@@ -643,6 +643,12 @@ function Get-FreePath([string]$Path) {
   $p = $Path; $i = 2
   while (Test-Path -LiteralPath $p) { $p = "$Path-$i"; $i++ }
   return $p
+}
+
+# 설정 저장소를 받는 자리 — 8 칸이 clone 하는 자리이자, 씨앗 칸이 그 저장소가 홈으로 미는 자리를 찾는 자리다(아래 「설정
+#   저장소의 주소와 자리」 곁말 — 자리를 짓는 자를 한 벌로 둔다).
+function Get-ConfigRepoDir([string]$Url) {
+  return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
 }
 
 # 나른 것을 **동봉본과 견주는 자** — 7 칸의 자산이 다 이 자를 쓴다.
@@ -1604,148 +1610,82 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
 
 #endregion 깔기
 
-#region 홈 스킬 — 도구 홈에 깔 스킬을 고르고, 깐 이름을 기록해 빠진 것을 걷는다. 설정 저장소가 미는 이름은 비켜선다
+#region 칸 없이 까는 스킬 — 제작자 칸에 안 든 도구의 홈에 고른 제품이 부르는 스킬을 깔고, 우리 기록에서 이번에 안 까는 것을 걷는다
 
-function Get-ConfigRepoDir([string]$Url) {
-  return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
+# 그 도구 홈에 깔 이름 — `$FreeSkills` 의 그 도구 칸(`Claude` · `Codex` · `Agy`)이 참인 것. 까는 칸과 끝 검증이 같은 목록을 쓴다.
+function Get-FreeSkillNames([string]$Tool) {
+  return @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Tool })
 }
 
-# ── 설정 저장소가 그 도구 홈에 미는 스킬 — 설치가 비켜설 이름 (결정 0107) ─────────────────────────
-# 저장소가 이 PC 에 받아져 있고, 아래 제작자 칸에서 그 도구를 켰고, 그 저장소가 그 스킬을 들 때다 — 그 저장소의 배포가
-# 같은 칸 값(`PAISETUP_PERSONAL`)을 읽어 같은 자리를 저장소 최신판으로 민다. 설치까지 깔면 둘이 판마다 번갈아 덮는다(씨앗
-# 비켜서기와 같은 규율). 돌려주는 것은 이름 → 저장소 자리. 부르는 자리는 다 아래 제작자 칸 뒤라 칸 값이 서 있다.
-#   * 칸 — 배포의 `Test-PersonalFor` 와 같은 값이다. 둘이 같은 뜻으로 읽는지는 설정 저장소의
-#     `scripts/check-deploy-agent-homes.ps1` 이 잰다
-#   * 든다 — 배포가 그 홈에 미는 묶음에 있다: Claude 홈은 `.claude/skills`, Codex · agy 홈은 거기에 `.agents/skills` 까지.
-#     저장소가 제 안에서만 쓰는 스킬(`deploy.skills.local.conf`)은 배포가 홈으로 안 밀어 빼고, 그 홈에 안 가는 러너도 뺀다
-#     (위 갈 곳 표 — 배포도 같은 표를 읽는다)
-function Get-RepoHeldSkills([string]$Tool) {
-  $held = @{}
-  $chosen = @{ claude = $personalClaude; codex = $personalCodex; agy = $personalAgy }
-  if (-not $chosen[$Tool]) { return $held }   # 끈 도구에는 배포가 안 민다 — 설치가 칸 없는 몫을 깐다
-  foreach ($u in $configRepoUrls) {
-    $d = Get-ConfigRepoDir $u
-    if (-not (Test-Path -LiteralPath $d -PathType Container)) { continue }
-    $local = @(Get-Content -LiteralPath (Join-Path $d 'deploy.skills.local.conf') -Encoding UTF8 -ErrorAction SilentlyContinue |
-               ForEach-Object { ($_ -replace '#.*$', '').Trim() } | Where-Object { $_ })
-    $bundles = @('.claude\skills')
-    if ($Tool -ne 'claude') { $bundles += '.agents\skills' }
-    foreach ($b in $bundles) {
-      foreach ($s in @(Get-ChildItem -LiteralPath (Join-Path $d $b) -Directory -ErrorAction SilentlyContinue)) {
-        if ($held.ContainsKey($s.Name) -or ($local -contains $s.Name) -or -not (Test-SkillGoesTo $s.Name $Tool)) { continue }
-        if (Test-Path -LiteralPath (Join-Path $s.FullName 'SKILL.md')) { $held[$s.Name] = $d }
-      }
-    }
-  }
-  return $held
-}
-
-# 그 스킬이 이 도구의 홈에 가나 — `$Tool` 은 claude · codex · agy
-function Test-SkillGoesTo([string]$Name, [string]$Tool) { return ($SkillReceiver[$Name] -ne $Tool.ToLower()) }
-
-# ── 묶음에서 빠진 스킬을 홈에서 걷는다 ─────────────────────────────────────────
-# ⚠ **왜 있나.** 위 복사는 `Copy-Item -Recurse -Force` 라 **묶음에 없는 스킬을 안 지운다** — 배포본에서
-#   스킬을 걷어도 한 번 깐 사람 홈에는 옛 사본이 영영 남아 계속 로드된다(씨앗 칸의 거울과 같은 병이다).
-# ⚠ **홈 스킬 폴더를 거울로 맞추지 않는다.** 그 폴더에는 받는 사람이 손수 만든 스킬 · 다른 도구가 깐
-#   스킬이 섞여 산다 — 묶음에 없는 것을 다 걷으면 남의 것을 지운다. 그래서 **이 설치기가 깐 이름만**
-#   센다: 깐 이름을 기록(`~/.claude/.paisetup-skills`)에 적어 두고, 다음 설치 때 **기록에 있었는데 이번
-#   묶음에 없는 것**만 걷는다.
-# ⚠ **지우지 않고 옮긴다** — `~/.claude/backups/install-skills-<시각>/`. 같은 이름을 사람이 손수 만들어
-#   두었을 수도 있어서, 되돌릴 자리를 남긴다.
-# ⚠ **기록이 없는 Claude 홈은 과도기 목록을 쓴다** — 기록은 1.25.0 부터 적힌다. 그 전 판이 Claude 홈에 깔았다가
-#   배포본에서 빠진 이름은 배포본 이력에서 한 번 셌다(`git log --diff-filter=D -- .claude/skills` · 2026-09-24:
-#   pptx · roadmap-doc). 모든 기계가 이 판 이상을 한 번 돌고 나면 이 목록은 할 일이 없다 — 걷는 날은 사람이 정한다.
-#   **다른 홈은 이 목록을 안 쓴다**(`-Transition @()`) — Codex · agy 홈에 그 판이 깐 적이 없고, 그 홈들은 사람 스킬과
-#   같이 살아 같은 이름의 사람 스킬을 걷게 된다(아래 `Install-HomeSkills`).
-# ⚠ **부르는 자가 둘이다** — 6 칸(묶음 전부를 깐 판)과 7 칸의 「칸 없이 까는 스킬」(몇 개만 깐 판). 그래서
-#   기록에 적는 것은 **이번에 깐 이름(`-Installed`) 더하기, 앞 기록 가운데 묶음에 아직 있는 이름**이다. 몇 개만
-#   깐 판이 기록을 그 몇 개로 갈아 쓰면, 앞서 칸을 켜고 깐 나머지가 기록에서 빠져 묶음에서 걷히는 날 안 걷힌다.
-#   `-Installed` 를 안 주면 묶음 전부를 깐 것으로 친다(6 칸).
-function Remove-RetiredSkills {
-  # `$Keep` — 「묶음에 있나」 대신 「이번 목록에 있나」로 잰다(결정 0099). 제작자 칸을 끈 도구의 홈에서 제작자 스킬이,
-  #   받는 쪽 홈에서 러너가 빠지게 한다. 기록에 적힌 이름만 걷는 것은 같다.
-  # `$Transition` — 기록이 없을 때 기록 대신 쓸 이름(위 곁말). 안 주면 Claude 홈의 과도기 목록이다.
-  param([string]$Bundle, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot, [string[]]$Installed, [string[]]$Keep,
-        [string[]]$Transition = @('pptx', 'roadmap-doc'))
-  if (-not (Test-Path -LiteralPath $Bundle -PathType Container)) { return }
-  $shipped = @(Get-ChildItem -LiteralPath $Bundle -Directory | ForEach-Object { $_.Name })
-  if ($null -eq $Installed) { $Installed = $shipped }
-  $before = if (Test-Path -LiteralPath $Ledger) {
-    @([IO.File]::ReadAllLines($Ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-  } else {
-    @($Transition | Where-Object { $_ })   # 과도기 — 위 곁말
-  }
-  $stay = if ($null -ne $Keep) { $Keep } else { $shipped }
-  $gone = @($before | Where-Object { $stay -notcontains $_ } |
-            Where-Object { Test-Path -LiteralPath (Join-Path $SkillHome $_) -PathType Container })
-  if ($gone.Count -gt 0) {
-    $bk = Get-FreePath (Join-Path $BackupRoot ("install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss')))
-    New-Item -ItemType Directory -Path $bk -Force | Out-Null
-    foreach ($n in $gone) {
-      Move-Item -LiteralPath (Join-Path $SkillHome $n) -Destination (Join-Path $bk $n) -Force
-      Write-Host "  스킬 $n — 묶음에서 빠져 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
-    }
-  }
-  # 기록을 적는다(위 곁말) — 다음 설치가 이것과 견준다. BOM 없는 UTF-8(이름이 한글이어도 읽힌다).
-  $keep = @(@($before | Where-Object { $stay -contains $_ }) + @($Installed) | Where-Object { $_ } | Select-Object -Unique)
-  New-Item -ItemType Directory -Path (Split-Path -Parent $Ledger) -Force | Out-Null
-  [IO.File]::WriteAllLines($Ledger, [string[]]$keep, (New-Object Text.UTF8Encoding($false)))
-}
-
-function Get-HomeSkills([string]$Column, [bool]$Personal) {
-  $names = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Column })
-  if ($Personal -and (Test-Path -LiteralPath $KitSkills -PathType Container)) {
-    $names += @(Get-ChildItem -LiteralPath $KitSkills -Directory | ForEach-Object { $_.Name } |
-                Where-Object { -not $FreeSkills.Contains($_) })
-  }
-  @($names | Where-Object { $_ -and (Test-SkillGoesTo $_ $Column) } | Select-Object -Unique)
-}
-
-function Install-HomeSkills([string]$Label, [string[]]$Names, [string]$SkillHome, [string]$Ledger, [string]$BackupRoot,
-                            [hashtable]$Held) {
-  $ours = @(@($Ledger, (Join-Path (Split-Path -Parent $Ledger) $DeployLedgerName)) |
-            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { [IO.File]::ReadAllLines($_) } |
-            ForEach-Object { $_.Trim() } | Where-Object { $_ })
-  $aside = $null
-  $done = @()
-  foreach ($n in $Names) {
-    if ($Held -and $Held.ContainsKey($n)) {
-      Write-Host "  $Label 스킬 $n — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
-      continue
-    }
+# 한 도구 홈의 칸 없이 까는 걸음 — 고르기(`Get-FreeSkillNames`) · 깔기 · 기록 맞추기. 홈의 자리는 `$FreeSkillHomes` 가 든다.
+# ⚠ **한 스킬 폴더에 쓰는 자는 하나다.** 그 도구가 제작자 칸에 들면 손(`tool-homes.py`)이 짐 · 저장소의 스킬을 다 놓으므로
+#   이 함수는 그 홈을 안 건드린다 — 안 깔고 · 안 걷고 · 기록을 안 쓴다. 칸에 안 들면 이 함수만 그 홈에 스킬을 쓴다.
+# ⚠ **우리 것은 이 설치기의 기록(`.paisetup-skills`)에 든 이름뿐이다** — 그 홈에는 사람이나 다른 도구가 둔 스킬이 섞여
+#   산다. 깔 자리에 기록에 없는 같은 이름의 폴더가 있으면 그 폴더를 통째로 백업 자리(`<Root>/backups/install-aside-<시각>/`)로
+#   옮긴 뒤 깐다 — 그 위에 복사하면 남의 파일이 우리 파일에 덮이거나 섞인다. 옮긴 자리를 노란 줄로 알린다.
+# ⚠ **남길 목록은 이번에 깔 목록뿐이다** — 기록에 있는데 이번 목록에 없는 이름(짐에서 빠진 것 · 옛 판이 짐에서 깐 제작자
+#   스킬 · 고른 제품이 더는 안 부르는 것)은 `<Root>/backups/install-skills-<시각>/` 로 옮긴다. 지우지 않는다 — 같은 이름을
+#   사람이 손수 두었을 수도 있어 되돌릴 자리를 남긴다. 깔 것이 없는 판도 기록을 맞춘다. 기록도 깔 것도 없는 홈은 안
+#   건드린다 — 그 도구를 안 쓰는 PC 에 홈을 짓지 않는다.
+# ⚠ **기록이 없는 Claude 홈은 과도기 목록(`Transition`)을 기록 대신 쓴다** — 기록은 1.25.0 부터 적힌다. 그 전 판이 Claude
+#   홈에 깔았다가 배포본에서 빠진 이름은 배포본 이력에서 한 번 셌다(`git log --diff-filter=D -- .claude/skills` · 2026-09-24:
+#   pptx · roadmap-doc). 모든 기계가 이 판 이상을 한 번 돌고 나면 이 목록은 할 일이 없다 — 걷는 날은 사람이 정한다. 다른
+#   홈은 이 목록을 안 쓴다 — 그 판이 깐 적이 없고, 같은 이름의 사람 스킬이 걷힌다.
+# 기록에 적는 것 — 이번에 깐 이름 더하기, 앞 기록 가운데 이번 목록에 남은 이름(짐에 없어 못 깐 이름도 빠지지 않는다). BOM
+#   없는 UTF-8 · 한 줄에 이름 하나(이름이 한글이어도 읽힌다). 백업 자리는 매번 새로 잡는다(`Get-FreePath`) — 같은 초에 두 번
+#   돌아도 앞 백업 안으로 옮겨 들어가지 않는다.
+# 짝 — 설정 저장소 `scripts/check-free-skills.ps1` 이 이 함수를 떼어 가짜 홈에 부른다.
+function Install-FreeSkills([string]$Tool) {
+  $h = $FreeSkillHomes[$Tool]
+  if ($h.Box) { return }
+  $names     = @(Get-FreeSkillNames $Tool)
+  $ledger    = Join-Path $h.Root '.paisetup-skills'
+  $hasLedger = Test-Path -LiteralPath $ledger -PathType Leaf
+  if (-not $hasLedger -and -not $names.Count) { return }
+  $ours    = @(if ($hasLedger) { [IO.File]::ReadAllLines($ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ } })
+  $before  = if ($hasLedger) { $ours } else { @($h.Transition | Where-Object { $_ }) }
+  $backups = Join-Path $h.Root 'backups'
+  $aside   = $null
+  $done    = @()
+  foreach ($n in $names) {
     $from = Join-Path $KitSkills $n
     if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) {
-      Write-Host "  ! $Label 스킬 $n — 짐에 없다" -ForegroundColor Red
-      $Fails.Add("$Label 스킬 $n (짐에 없음)")
+      Write-Host "  ! $($h.Label) 스킬 $n — 짐에 없다" -ForegroundColor Red
+      $Fails.Add("$($h.Label) 스킬 $n (짐에 없음)")
       continue
     }
-    $to = Join-Path $SkillHome $n
+    $to = Join-Path $h.Skills $n
     if ((Test-Path -LiteralPath $to) -and ($ours -notcontains $n)) {
-      # 우리 기록에 없는 같은 이름 — 사람이나 다른 도구의 것이다. 덮지도 섞지도 않고 통째로 비켜 둔 뒤 깐다
       if (-not $aside) {
-        $aside = Get-FreePath (Join-Path $BackupRoot ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+        $aside = Get-FreePath (Join-Path $backups ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
         New-Item -ItemType Directory -Path $aside -Force | Out-Null
       }
       Move-Item -LiteralPath $to -Destination (Join-Path $aside $n) -Force
-      Write-Host "  ! $Label 스킬 $n — 같은 이름의 폴더가 우리 기록에 없어 통째로 옮겨 두고 깐다 (옮긴 자리: $aside)" -ForegroundColor Yellow
+      Write-Host "  ! $($h.Label) 스킬 $n — 같은 이름의 폴더가 우리 기록에 없어 통째로 옮겨 두고 깐다 (옮긴 자리: $aside)" -ForegroundColor Yellow
     }
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
-    Write-Host "  $Label 스킬 $n — 깔았다" -ForegroundColor Green
+    Write-Host "  $($h.Label) 스킬 $n — 깔았다" -ForegroundColor Green
     $done += $n
   }
-  if ($done.Count) {
-    # 이 홈에서는 「이번에 깔 목록에 없는 것」을 걷는다 — 제작자 칸을 끈 도구에서 제작자 스킬이 빠진다(결정 0099).
-    #   비켜선 이름은 남긴다 — 그 자리는 설정 저장소의 배포가 민 것이다
-    $keep = @(@($Names) + @(if ($Held) { $Held.Keys }) | Select-Object -Unique)
-    Remove-RetiredSkills -Bundle $KitSkills -SkillHome $SkillHome `
-                         -Ledger $Ledger -BackupRoot $BackupRoot -Installed $done -Keep $keep -Transition @()
+  $gone = @($before | Where-Object { $names -notcontains $_ } |
+            Where-Object { Test-Path -LiteralPath (Join-Path $h.Skills $_) -PathType Container })
+  if ($gone.Count) {
+    $bk = Get-FreePath (Join-Path $backups ('install-skills-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
+    New-Item -ItemType Directory -Path $bk -Force | Out-Null
+    foreach ($n in $gone) {
+      Move-Item -LiteralPath (Join-Path $h.Skills $n) -Destination (Join-Path $bk $n) -Force
+      Write-Host "  $($h.Label) 스킬 $n — 이번에 깔 목록에 없어 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
+    }
   }
+  $keep = @(@($before | Where-Object { $names -contains $_ }) + $done | Select-Object -Unique)
+  New-Item -ItemType Directory -Path $h.Root -Force | Out-Null
+  [IO.File]::WriteAllLines($ledger, [string[]]$keep, (New-Object Text.UTF8Encoding($false)))
 }
 
-#endregion 홈 스킬
+#endregion 칸 없이 까는 스킬
 
-#region 도구 홈의 규범 · 룰 — 손(`tool-homes.py`)을 부르고, 뱉은 줄을 화면과 끝 검증의 꼴로 옮긴다
+#region 도구 홈의 규범 · 룰 · 스킬 — 손(`tool-homes.py`)을 부르고, 뱉은 줄을 화면과 끝 검증의 꼴로 옮긴다
 
 # 무엇이 어느 도구 홈에 어떤 꼴로 가나는 짐의 표(`tool-homes.conf`)와 손(`tool-homes.py`)만 안다(claude-config 결정 0112).
 #   이 설치기는 그 사실을 안 들고 손을 부를 뿐이다. 줄의 꼴(`CHANGE=` · `WARN=` · `ERROR=` · `CHANGED=`)과 종료 값의 뜻은
@@ -1790,7 +1730,7 @@ function Show-ToolHomesLines([string[]]$Lines) {
 # 끝 검증 한 칸 — 손의 `check` 를 한 번 부르고 `$checks` 의 꼴로 돌려준다. 0 홈이 표대로다 · 1 다르다(바꿀 자리와 막힌
 #   까닭을 댄다) · 그 밖은 못 쟀다(짐에 손이 없다 · 층이나 표가 없다 · 손이 못 떴다) — 못 잰 것도 [X] 다.
 function Get-ToolHomesCheck([string]$Hand) {
-  $name = '규범 · 룰 · 에이전트'
+  $name = '규범 · 룰 · 에이전트 · 스킬'
   if (-not (Test-Path -LiteralPath $Hand -PathType Leaf)) { return @{ Name = "$name (못 쟀다 — 짐에 손이 없다: $Hand)"; Ok = $false } }
   $Result = Invoke-ToolHomes $Hand @('check')
   if ($Result.Rc -eq 0) { return @{ Name = "$name (홈이 tool-homes.conf 대로다)"; Ok = $true } }
@@ -1807,7 +1747,7 @@ function Get-ToolHomesCheck([string]$Hand) {
   return @{ Name = "$name (못 쟀다 — $why)"; Ok = $false }
 }
 
-#endregion 도구 홈의 규범 · 룰
+#endregion 도구 홈의 규범 · 룰 · 스킬
 
 #region 도구별 · Claude — 구독 로그인을 재고, Claude 홈 설정에 도구 훅을 심는다
 
@@ -2022,46 +1962,6 @@ function Get-ProxyVer([string]$text) {
 }
 
 #endregion 도구별 · 로컬 프록시
-
-#region 도구별 · agy — 옛 스킬 목록 · 옛 스킬 자리를 가린다
-
-function Get-AgyOldListState([string]$Path, [string]$HomeDir) {
-  # 목록의 꼴 — 'ours'(우리가 쓴 꼴 그대로 — 위 곁말) · 'mixed'(옛 자리를 우리 꼴로 여는 항목이 있는데 무엇이 더 붙었다 ·
-  #   사람이 고친 파일) · 'none'(없다 · 못 읽는다 · 옛 자리를 안 연다). BOM 은 읽을 때 걷는다 — BOM 이 붙은 목록은 agy 가 못
-  #   읽어 애초에 아무것도 안 열었다. 열쇠 이름은 글자까지 견준다 — 우리는 `entries` · `path` 만 썼다.
-  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 'none' }
-  try { $doc = [IO.File]::ReadAllText($Path) | ConvertFrom-Json } catch { return 'none' }
-  if ($doc -isnot [Management.Automation.PSCustomObject]) { return 'none' }
-  $old = @('paisetup-skills', '~/.gemini/config/paisetup-skills', ($HomeDir.Replace('\', '/').TrimEnd('/') + '/.gemini/config/paisetup-skills'))
-  $hits = @(@($doc.entries) | Where-Object { $_ -is [Management.Automation.PSCustomObject] } |
-            Where-Object { $old -contains ([string]$_.path).Replace('\', '/').TrimEnd('/') })
-  if (-not $hits.Count) { return 'none' }
-  $keys = { param($o) (@($o.PSObject.Properties | ForEach-Object { $_.Name }) -join ',') }
-  $exact = ((& $keys $doc) -ceq 'entries') -and ($doc.entries -is [Array]) -and (@($doc.entries).Count -eq 1) -and
-           ($doc.entries[0] -is [Management.Automation.PSCustomObject]) -and ((& $keys $doc.entries[0]) -ceq 'path') -and
-           ($doc.entries[0].path -is [string])
-  if ($exact) { return 'ours' }
-  return 'mixed'
-}
-
-function Get-AgyOldHomePlan([string]$OldHome, [string]$NewHome, [string[]]$Ours, [string[]]$Reinstall) {
-  # 옛 자리를 비우는 판 — 옛 자리에 든 우리 이름마다:
-  #   Aside    — 새 자리에 같은 이름이 이미 있다 → 그 폴더를 먼저 통째로 백업 자리로 비켜 둔다(우리가 둔 것일 수 없다 — 위 곁말)
-  #   ToBackup — 이번에 다시 깔거나 배포가 미는 몫이다(`$Reinstall`) → 옛것은 백업 자리로
-  #   ToNew    — 나머지 → 새 자리로 옮긴다(그대로 쓰인다)
-  #   Foreign(기록에 없는 이름 · 폴더가 아닌 것 — 안 건드린다) · Remove(옛 자리가 있고 Foreign 이 없다 — 다 옮긴 뒤 걷는다)
-  $plan = @{ ToNew = @(); ToBackup = @(); Aside = @(); Foreign = @(); Remove = $false }
-  if (-not (Test-Path -LiteralPath $OldHome -PathType Container)) { return $plan }
-  foreach ($e in @(Get-ChildItem -LiteralPath $OldHome -Force)) {
-    if (-not $e.PSIsContainer -or (@($Ours) -notcontains $e.Name)) { $plan.Foreign += $e.Name; continue }
-    if (Test-Path -LiteralPath (Join-Path $NewHome $e.Name)) { $plan.Aside += $e.Name }
-    if (@($Reinstall) -contains $e.Name) { $plan.ToBackup += $e.Name } else { $plan.ToNew += $e.Name }
-  }
-  $plan.Remove = ($plan.Foreign.Count -eq 0)
-  return $plan
-}
-
-#endregion 도구별 · agy
 
 #region 도구별 · gh — GitHub CLI 자격을 한 번 써 보고, 로그인 코드 창을 띄운다
 
@@ -2665,13 +2565,13 @@ $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini')
 # ⚠ **조건이 갈린다**(결정 0089 · 0091).
 #   * 맡기기(`$wantAgyDelegate`) — 모델 값 · 래퍼 스킬 · 래퍼가 도는 파이썬. 「자리 × Claude 또는 Codex 와 안티그래비티를
 #     골랐나」의 사실이라 그 둘만 탄다. 래퍼는 누구의 규범과도 무관하게 agy 를 띄우고 넘기는 도구다.
-#   * 일하는 도구 스킬 · 훅(`$hostAgy`)은 칸 없이 안티그래비티를 고르면 선다(결정 0099) — 아래 「Codex · agy 홈의 스킬」 ·
-#     「agy 옛 스킬 자리」 · 「agy 훅」 칸.
+#   * 일하는 도구 스킬 · 훅(`$hostAgy`)은 칸 없이 안티그래비티를 고르면 선다(결정 0099) — 아래 「칸 없이 까는 스킬」 ·
+#     「agy 훅」 칸.
 #   * agy 가 규범 · 룰을 읽게 하는 설정 둘은 이 설치기가 짓지 않는다 — 손(`tool-homes.py`)이 제작자 칸의 agy 칸을 보고
 #     놓는다(「도구별 홈」 · claude-config 결정 0112).
 $hostAgy         = [bool]($PickKeys -contains 'antigravity')
-# ── 설정 저장소의 주소와 자리 — 비켜서는 칸들(제작자 칸 · 홈 스킬 · 씨앗 · 칸 없이 까는 스킬)과 8 칸(받는다)이 같이 쓴다 ──
-# ⚠ **자리를 짓는 자를 한 벌로 둔다.** 비켜서는 칸이 저장소를 찾는 자리와 8 칸이 clone 하는 자리가
+# ── 설정 저장소의 주소와 자리 — 씨앗 칸(비켜선다) · 제작자 칸(끝의 안내) · 8 칸(받는다)이 같이 쓴다 ──
+# ⚠ **자리를 짓는 자를 한 벌로 둔다**(`Get-ConfigRepoDir`). 씨앗 칸이 저장소를 찾는 자리와 8 칸이 clone 하는 자리가
 #   갈리면, 비켜서기가 없는 폴더를 보고 늘 깔아 옛 되풀이가 조용히 돌아온다.
 # ⚠ **여러 개를 빈칸으로 가른다** — 까닭은 8 칸 곁말이 든다. 주소에는 빈칸이 없다.
 $repoUrl = Read-Directive $EnvFile 'config-repo'
@@ -2682,13 +2582,13 @@ $configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
 # 규범」이었다 · 그 칸으로 자동 실행이 오면 Claude 로 깔고 끝에 설치 창을 한 번 띄운다). 고른 제품이 아닌 도구는 빠진다 —
 # 깔 홈이 없다. 고른 것은 사용자 환경변수 `PAISETUP_PERSONAL` 로도 심어, 설정 저장소의 배포 · 세션 훅이 같은 값을 읽는다
 # (6 칸). 아무것도 안 골랐으면 `none` — 비운 값은 「이 설치기를 안 돌렸다」와 갈라야 한다.
-# ⚠ **칸 하나가 스위치다 — 설정 저장소를 넣어도 그대로다**(결정 0107). 저장소가 무엇을 바꾸나는 항목마다 다르다:
-#   * 스킬 — 저장소가 없으면 켠 도구에 만든 사람의 꾸러미를 깐다. 저장소를 넣었으면 켠 도구에는 꾸러미를 안 깔고 비켜선다 —
-#     그 저장소의 배포가 같은 값을 읽어 제 것을 민다. 둘 다 깔면 같은 홈을 판마다 번갈아 덮는다
-#   * 규범 · 룰 · 에이전트 — 비켜서지 않는다. 이 설치는 짐으로 표준 층을 채우고, 저장소의 배포가 채운 개인 층이 항목마다
-#     이긴다(손 `tool-homes.py` · claude-config 결정 0112)
-#   **끈 도구는 저장소가 있어도 우리 것을 걷는다** — 배포도 끈 도구에는 안 밀어 둘이 같은 상태로 간다.
-#   `$personal*` 은 고른 값이고, `$kit*` 은 이 설치가 스킬 꾸러미를 손수 까는 도구다.
+# ⚠ **칸 하나가 스위치다 — 설정 저장소를 넣어도 그대로다**(결정 0107). 규범 · 룰 · 에이전트 · 스킬은 비켜서지 않는다 — 이
+#   설치는 짐으로 표준 층을 채우고, 저장소의 배포가 채운 개인 층이 항목마다(스킬은 스킬 하나마다) 이긴다(손 `tool-homes.py` ·
+#   claude-config 결정 0112). 칸에 안 든 도구의 홈에는 손이 스킬을 안 놓고, 이 설치가 칸 없이 까는 스킬만 깐다(아래
+#   `$FreeSkills`).
+#   **끈 도구는 저장소가 있어도 우리 것을 걷는다** — 손은 제 기록에 든 것을, 칸 없이 까는 걸음은 제 기록에 든 것 가운데
+#   이번에 안 까는 것을.
+#   `$personal*` 은 고른 값이고, `$personalByRepo` 는 설정 저장소를 넣었나다(끝의 안내 한 줄이 가른다).
 $personalAsked  = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() }) }
                   elseif ($WithPersonalConfig) { @('claude') } else { @() }
 $personalClaude = [bool](($personalAsked -contains 'claude') -and ($PickKeys -contains 'claude'))
@@ -2699,9 +2599,6 @@ $PersonalValue  = @($(if ($personalClaude) { 'claude' }), $(if ($personalCodex) 
                     Where-Object { $_ }) -join ','
 if (-not $PersonalValue) { $PersonalValue = 'none' }
 $personalByRepo = [bool]$configRepoUrls.Count
-$kitClaude = [bool]($personalClaude -and -not $personalByRepo)
-$kitCodex  = [bool]($personalCodex -and -not $personalByRepo)
-$kitAgy    = [bool]($personalAgy -and -not $personalByRepo)
 $wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
 $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
@@ -2753,14 +2650,12 @@ $wantClaudeBgCodex = $wantCcBgClaude
 $wantClaudeBgAgy   = [bool](($PickKeys -contains 'claude') -and $hostAgy)
 $wantClaudeBg      = [bool]($wantClaudeBgCodex -or $wantClaudeBgAgy)
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091 · 0097) ──────
-# 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — 도구마다 제 홈을 든다: Claude `~/.claude/skills` · Codex
-# `~/.agents/skills` · agy `~/.gemini/config/skills`. Codex 나 안티그래비티를 고르면 Claude 를 고른 자리와 같은
-# 기본기를 받는다(0097 · 0099). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽** 홈에 살고 **받는 쪽** 홈에는 안 간다
-# (받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다.
-# 제작자 설정 칸을 켜면 6 칸이 Claude 홈에 묶음 전부를 까므로, Claude 쪽 조건은 칸을 끈 자리에서만 일을 한다
-# (7 칸의 「칸 없이 까는 스킬」). Codex · Agy 쪽은 칸과 무관하게 이 표대로 깐다. 모두 규범을 안 읽어도 홀로 선다.
-# ⚠ **러너 줄은 맡기는 쪽 칸만 든다** — 러너가 어느 홈에 **안** 가나(받는 쪽)는 아래 갈 곳 표 하나가 든다. 홈에 깔 이름을
-#   고르는 자리(`Get-HomeSkills` · 6 칸 · 7 칸)가 다 그 표로 거른다.
+# 키는 스킬 이름, 값은 **홈마다** 까는 조건이다 — 도구마다 제 홈을 든다(아래 `$FreeSkillHomes`). Codex 나 안티그래비티를
+# 고르면 Claude 를 고른 자리와 같은 기본기를 받는다(0097 · 0099). 맡기기 러너만 홈이 갈린다 — 러너는 **맡기는 쪽** 칸만 들고
+# **받는 쪽** 칸이 없다(받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다
+# 둔다. 모두 규범을 안 읽어도 홀로 선다.
+# ⚠ **이 표는 제작자 칸에 안 든 도구의 홈에서만 일을 한다**(`Install-FreeSkills`) — 칸에 든 도구의 홈은 손(`tool-homes.py`)이
+#   짐 · 저장소의 스킬을 다 놓는다(이 여섯 포함 · 러너는 손의 갈 곳 표가 받는 쪽 홈에서 뺀다).
 $hostClaude = [bool]($PickKeys -contains 'claude')
 $hostCodex  = [bool]($PickKeys -contains 'codex')
 $FreeSkills = [ordered]@{
@@ -2777,25 +2672,24 @@ $FreeSkills = [ordered]@{
   # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy
   'claude-background'        = @{ Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy }
 }
+# 칸 없이 까는 스킬의 홈 — 위 표의 칸 이름마다 그 도구의 스킬 홈(`Skills`) · 기록과 백업이 사는 자리(`Root`) · 그 도구가
+#   제작자 칸에 드나(`Box` — 들면 그 홈은 손이 쓴다) · 기록이 없을 때 기록 대신 쓸 이름(`Transition` — `Install-FreeSkills`
+#   곁말). Codex 홈은 Codex 공식 문서 「Build skills」의 사용자 범위 자리고(`~/.claude/skills` 사본만으로는 못 찾는다), agy
+#   홈은 agy 가 목록 없이 싣는 기본 전역 스킬 자리다(claude-config 결정 0111).
+$FreeSkillHomes = [ordered]@{
+  Claude = @{ Label = 'Claude 홈'; Box = $personalClaude; Root = $homeDir; Skills = (Join-Path $homeDir 'skills')
+              Transition = @('pptx', 'roadmap-doc') }
+  Codex  = @{ Label = 'Codex 홈'; Box = $personalCodex; Root = (Join-Path $env:USERPROFILE '.agents')
+              Skills = (Join-Path $env:USERPROFILE '.agents\skills'); Transition = @() }
+  Agy    = @{ Label = 'agy 홈'; Box = $personalAgy; Root = (Join-Path $env:USERPROFILE '.gemini')
+              Skills = (Join-Path $env:USERPROFILE '.gemini\config\skills'); Transition = @() }
+}
 # ── 도구 홈 짐 — `kit/` (claude-config 결정 0101) ────────────────────────────────────────────
-# 받는 PC 의 도구 홈 여럿에 나눠 깔 것(규범 · 룰 · 스킬)과 규범 · 룰을 놓는 손(`tool-homes.py` · 그 표 `tool-homes.conf`)이
-# 한 폴더에 산다. 도구가 스스로 읽는 자리 이름(`.claude/skills` · `.agents/skills`)에 안 두는 것이 요점이다 — 이 폴더를
+# 받는 PC 의 도구 홈 여럿에 나눠 깔 것(규범 · 룰 · 스킬)과 그것을 놓는 손(`tool-homes.py` · 그 표 `tool-homes.conf`)이 한
+# 폴더에 산다. 도구가 스스로 읽는 자리 이름(`.claude/skills` · `.agents/skills`)에 안 두는 것이 요점이다 — 이 폴더를
 # Claude Code · Codex 로 열면 그 자리가 그 세션의 스킬로 실린다.
-# 갈 곳 표(`kit/skills.targets.conf`)는 설정 저장소의 `deploy.skills.targets.conf` 를 그대로 실은 것이다 — 한 줄에
-# `<러너> <받는 쪽>`. 러너는 받는 쪽 홈에 안 간다(받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 배포도 같은 표를 읽는다.
-# ⚠ **표가 없으면 빨강이다** — 조용히 「다 간다」로 읽으면 Claude 홈에 Claude 맡기기 러너가 선다.
 $Kit = Join-Path $Here 'kit'
 $KitSkills = Join-Path $Kit 'skills'
-$SkillReceiver = @{}
-$skillTargetsFile = Join-Path $Kit 'skills.targets.conf'
-if (Test-Path -LiteralPath $skillTargetsFile) {
-  foreach ($ln in @(Get-Content -LiteralPath $skillTargetsFile -Encoding UTF8)) {
-    $parts = @((($ln -replace '#.*$', '').Trim()) -split '\s+' | Where-Object { $_ })
-    if ($parts.Count -eq 2) { $SkillReceiver[$parts[0]] = $parts[1].ToLower() }
-  }
-} else {
-  $Fails.Add('맡기기 러너 갈 곳 표 (kit/skills.targets.conf 없음)')
-}
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 1 칸이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
@@ -2806,7 +2700,7 @@ if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex DRM · 그림 훅이
 if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 파이썬으로 돈다' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
 # 제작자 칸을 켰으면 고른 기능이 손(`tool-homes.py`)으로 선다 — 칸을 켠 도구가 위 까닭을 이미 들어도 이 까닭은 따로 적는다
-if ($personalAny) { $needPythonWhy += '제작자 칸의 규범 · 룰을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
+if ($personalAny) { $needPythonWhy += '제작자 칸의 규범 · 룰 · 스킬을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
 #   그래서 무는 것은 「사내인가」와 「이 제품을 켰나」뿐이다.
@@ -4344,9 +4238,8 @@ Exit-Step 'assets'
 
 # ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 홈
-#   하는 일 — 제작자 칸 값 · 규범 · 룰 · 에이전트(짐의 손 `tool-homes.py` 를 부른다 — 표준 층과 세 도구 홈) ·
-#     Claude(제작자 스킬 · 칸 없이 까는 스킬 · 걷힌 룰 · 홈 훅 · settings 다시 쓰기) · agy(옛 스킬 자리 · 홈 스킬 · 훅) ·
-#     Codex(홈 스킬 · 훅 병합과 신뢰)
+#   하는 일 — 제작자 칸 값 · 규범 · 룰 · 에이전트 · 스킬(짐의 손 `tool-homes.py` 를 부른다 — 표준 층과 세 도구 홈) · 칸 없이
+#     까는 스킬(제작자 칸에 안 든 도구의 홈) · Claude(걷힌 룰 · 홈 훅 · settings 다시 쓰기) · agy(훅) · Codex(훅 병합과 신뢰)
 #   앞에서 받는 것 — 준비의 짐(`$Kit` — 손과 그 표가 뿌리에 실린다), 「Claude 홈 설정」의 `$cfg` · `$homeCfg` · `$dirty`,
 #     「공용 자산」의 씨앗(훅 몸통 · 병합기 · 어댑터)
 #   안 하는 것 — 설정 저장소를 안 받는다
@@ -4354,8 +4247,7 @@ Exit-Step 'assets'
 #     안 밀리고, 손이 그 값을 읽으며, 「설정 저장소」의 배포가 이 프로세스에서 그 값을 물려받는다
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
 # ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다 — 제작자 칸에서 그 도구를 켤 때만.
-#   규범 · 룰 · 에이전트는 손이 칸을 읽어 도구마다 놓고, Claude 홈의 제작자 스킬은 Claude 칸(`-PersonalFor claude` · 옛
-#   `-WithPersonalConfig`)을 켤 때 아래가 깐다.
+#   규범 · 룰 · 에이전트 · 스킬은 손이 칸을 읽어 도구마다 놓는다.
 
 Enter-Step 'tools'
 # 고른 도구 — 손(`tool-homes.py`) · 설정 저장소의 배포(`deploy.ps1`) · 세션 훅이 같은 값을 읽어 어느 도구 홈을 개인화할지
@@ -4369,7 +4261,7 @@ if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $Pers
 } else {
   Plant-Var 'PAISETUP_PERSONAL' $PersonalValue
 }
-# ── 규범 · 룰 · 에이전트 — 짐의 손(`tool-homes.py`)이 표준 층을 채우고 도구 홈에 놓는다 (claude-config 결정 0112) ──
+# ── 규범 · 룰 · 에이전트 · 스킬 — 짐의 손(`tool-homes.py`)이 표준 층을 채우고 도구 홈에 놓는다 (claude-config 결정 0112) ──
 # 무엇이 어느 홈에 어떤 꼴로 가나 · 칸을 끈 도구에서 무엇을 걷나는 손과 그 표(`tool-homes.conf`)가 든다 — 손의 머리말.
 # 설정 저장소를 넣었어도 비켜서지 않는다 — 그 저장소의 배포가 채운 개인 층이 항목마다 이기고, 놓기는 이긴 층의 손이 한다.
 # ⚠ **칸 값을 심은 뒤에 부른다** — 손은 사용자 환경의 `PAISETUP_PERSONAL`(바로 위에서 심었다)을 읽는다.
@@ -4380,168 +4272,32 @@ $toolHomesHand   = Join-Path $Kit 'tool-homes.py'
 $toolHomesPython = Test-Runs 'python' '--version'
 $toolHomesOn     = [bool]($personalAny -or $toolHomesPython)
 if (-not $toolHomesOn) {
-  Write-Host '  규범 · 룰 · 에이전트 — 건너뜀 (python 이 안 서고 켠 제작자 칸이 없다)'
+  Write-Host '  규범 · 룰 · 에이전트 · 스킬 — 건너뜀 (python 이 안 서고 켠 제작자 칸이 없다)'
 } elseif (-not (Test-Path -LiteralPath $toolHomesHand -PathType Leaf)) {
-  Write-Host "  ! 규범 · 룰 · 에이전트 — 짐에 없다 ($toolHomesHand)" -ForegroundColor Red
-  $Fails.Add('규범 · 룰 · 에이전트 (짐에 없음)')
+  Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 짐에 없다 ($toolHomesHand)" -ForegroundColor Red
+  $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (짐에 없음)')
 } elseif (-not $toolHomesPython) {
-  Write-Host '  ! 규범 · 룰 · 에이전트 — python 이 안 서서 손을 못 댔다' -ForegroundColor Red
-  $Fails.Add('규범 · 룰 · 에이전트 (python 없음)')
+  Write-Host '  ! 규범 · 룰 · 에이전트 · 스킬 — python 이 안 서서 손을 못 댔다' -ForegroundColor Red
+  $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (python 없음)')
 } else {
   $th = Invoke-ToolHomes $toolHomesHand @('sync', '--layer', 'standard', '--from', $Kit)
   if ($th.Rc -ne 0 -or $th.Errors.Count) {
-    Write-Host "  ! 규범 · 룰 · 에이전트 — 손이 다 못 놓았다 (종료 $($th.Rc))" -ForegroundColor Red
-    $Fails.Add('규범 · 룰 · 에이전트 (손이 다 못 놓았다)')
+    Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 손이 다 못 놓았다 (종료 $($th.Rc))" -ForegroundColor Red
+    $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (손이 다 못 놓았다)')
   } elseif ($th.Changes.Count) {
-    Write-Host "  규범 · 룰 · 에이전트 — 맞췄다 (제작자 칸 $PersonalValue)" -ForegroundColor Green
+    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 맞췄다 (제작자 칸 $PersonalValue)" -ForegroundColor Green
   } else {
-    Write-Host "  규범 · 룰 · 에이전트 — 이미 맞다 (제작자 칸 $PersonalValue)"
+    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 이미 맞다 (제작자 칸 $PersonalValue)"
   }
   Show-ToolHomesLines $th.Lines
 }
 
-if ($personalByRepo -and $personalAny) {
-  Write-Host "  제작자 칸 — 설정 저장소를 넣어 스킬 꾸러미는 비켜선다. 켠 도구($PersonalValue)의 스킬은 그 저장소의 배포가 민다" -ForegroundColor Green
-}
-if (-not $personalClaude) {
-  Write-Host '  Claude — 건너뜀 (원하면 설치 창의 제작자 칸에서 Claude 를 켠다 · -PersonalFor claude)'
-} elseif ($personalByRepo) {
-  # 위 한 줄이 말했다 — Claude 홈의 제작자 스킬은 설정 저장소의 배포가 민다
-} else {
-  # 스킬 — 짐 전부에서 받는 쪽이 Claude 인 러너만 뺀다(위 갈 곳 표). 짐에 없으면 빨강이다 — 짐이 깨졌다는 뜻이다
-  $claudeSkillHome = Join-Path $homeDir 'skills'
-  $claudeKitNames = @(Get-ChildItem -LiteralPath $KitSkills -Directory -ErrorAction SilentlyContinue |
-                      ForEach-Object { $_.Name } | Where-Object { Test-SkillGoesTo $_ 'claude' })
-  if (-not $claudeKitNames.Count) {
-    Write-Host "  ! 스킬 — 짐에 없다 ($KitSkills)" -ForegroundColor Red
-    $Fails.Add('스킬 (짐에 없음)')
-  } else {
-    foreach ($n in $claudeKitNames) {
-      New-Item -ItemType Directory -Path (Join-Path $claudeSkillHome $n) -Force | Out-Null
-      Copy-Item -Path (Join-Path (Join-Path $KitSkills $n) '*') -Destination (Join-Path $claudeSkillHome $n) -Recurse -Force
-    }
-    Write-Host "  스킬 — 깔았다 ($($claudeKitNames.Count) 개)" -ForegroundColor Green
-    Remove-RetiredSkills -Bundle $KitSkills -SkillHome $claudeSkillHome -Ledger (Join-Path $homeDir '.paisetup-skills') `
-                         -BackupRoot (Join-Path $homeDir 'backups') -Installed $claudeKitNames -Keep $claudeKitNames
-  }
-}
-
-# ── Codex · agy 홈의 스킬 — 위 `$FreeSkills` 의 Codex · Agy 칸 · 제작자 칸 (결정 0097 · 0099) ─────────────────
-# 도구마다 제 홈이다 — Codex 는 `~/.agents/skills`(Codex 공식 문서 「Build skills」 — 사용자 범위 · `~/.claude/skills` 사본만으로는
-# 못 찾는다), agy 는 `~/.gemini/config/skills`(agy 가 목록 없이 싣는 기본 전역 스킬 자리 — 아래 「agy 옛 스킬 자리」).
-# ⚠ **두 홈 다 사람 것과 같이 산다** — 사람이나 다른 도구가 둔 스킬이 섞인다. 그래서 기록에 든 이름만 다룬다. 우리 것은
-#   이 설치기의 기록(`.paisetup-skills`)과 그 곁의 설정 저장소 배포 기록(`$DeployLedgerName`)에 든 이름이다.
-# ⚠ **깔 자리에 우리 것이 아닌 같은 이름의 폴더가 있으면 그 폴더를 먼저 백업 자리로 옮긴다** — 그 위에 복사하면 사람의
-#   파일이 우리 파일에 덮이거나 섞인다. 옮긴 자리를 노란 줄로 알린다(`Install-HomeSkills`).
-# ⚠ **기록이 없는 홈에 Claude 홈의 과도기 목록을 안 쓴다**(`Remove-RetiredSkills -Transition @()`) — 같은 이름의 사람
-#   스킬이 걷힌다.
-# 무엇을 까나는 둘이 정한다:
-#   * 칸 없이 — 표의 그 도구 칸
-#   * 제작자 칸의 그 도구 칸 — Claude 홈처럼 짐 전부. 칸을 끄면 그 홈의 기록에 있던 제작자 스킬을 걷는다
-#   어느 쪽이든 마지막에 갈 곳 표로 거른다 — 러너는 받는 쪽 홈에 안 간다.
-# ⚠ **설정 저장소가 그 홈에 미는 이름은 비켜선다**(위 `Get-RepoHeldSkills`) — 깔지 않고, 기록에서도 안 걷는다.
-# ⚠ **옛 자리(`~/.codex/skills`)에 깐 것은 걷는다** — 그 자리를 쓰던 판이 남긴 기록(`~/.codex/.paisetup-skills`)에 적힌
-#   이름만 옮기고 기록을 지운다. 사람이 거기 둔 다른 스킬은 안 건드린다.
-$AgySkillHome     = Join-Path $env:USERPROFILE '.gemini\config\skills'
-# 설정 저장소 배포가 Codex · agy 홈에 민 이름의 기록 — 이 설치기 기록 곁에 그 배포가 쓴다(설정 저장소 `deploy.ps1` 의 `Mine`)
-$DeployLedgerName = '.paisetup-deploy-skills'
-$codexHomeSkills = if ($hostCodex) { @(Get-HomeSkills 'Codex' $kitCodex) } else { @() }
-$agyHomeSkills   = if ($hostAgy)   { @(Get-HomeSkills 'Agy' $kitAgy) }     else { @() }
-
-# ── agy 옛 스킬 자리 — `~/.gemini/config/paisetup-skills` 와 그 자리를 여는 우리 목록을 걷는다 (claude-config 결정 0111) ──
-# 옛 판은 우리 스킬을 설정 폴더 안의 따로 둔 자리에 깔고 목록(`~/.gemini/config/skills.json`)으로 열었다. 그 자리는 목록에
-# 실려도 agy 에이전트가 본문을 못 연다 — `view_file` 을 「hardcoded system protection boundary rule」로 막는다. 설정 폴더
-# 가운데 `skills/` 만 그 막음에서 빠지고, 그 자리는 목록 없이도 실린다(agy CLI 1.3.3 실측). 그래서 새 홈은 그 기본 자리이고
-# 목록은 더 안 깐다.
-# ⚠ **우리 이름만 옮긴다** — 우리 것은 두 기록(이 설치기 `~/.gemini/.paisetup-skills` · 설정 저장소 배포
-#   `~/.gemini/.paisetup-deploy-skills`)에 든 이름이다. 이번에 다시 까는 이름의 옛것은 백업 자리로, 나머지는 새 자리로 옮겨
-#   그대로 쓰이게 한다(배포가 든 이름은 그 배포가 새 자리에서 이어 맡는다). 기록에 없는 것이 남으면 옛 자리를 안 걷는다 —
-#   사람이 둔 것이다. 끝 검증이 그 판을 빨강으로 알린다.
-# ⚠ **두 기록은 옛 자리의 기록이다** — 그 이름이 아직 옛 자리에 있는 동안 새 자리의 같은 이름은 우리가 둔 것일 수 없다. 그
-#   폴더는 먼저 통째로 비켜 둔다(`Aside`) — 안 그러면 기록을 보고 우리 것으로 읽어 그 위에 깐다.
-# ⚠ **목록은 우리가 쓴 꼴 그대로일 때만 걷는다** — 맨 위 열쇠는 `entries` 하나, 항목은 하나, 그 항목의 열쇠는 `path` 하나이고
-#   그 `path` 가 옛 자리를 우리가 써 온 꼴(상대 `paisetup-skills` · 틀 그대로 `~/…` · 이 PC 홈의 절대 경로)로 연다. 무엇이든
-#   더 붙었으면 사람이 고친 파일이라 둔다 — 우리 것을 다 옮긴 뒤라 그 항목은 쓸 데가 없을 뿐 해가 없다. 걷기 전에
-#   `~/.claude/backups/install-agy-<시각>/` 로 옮겨 둔다.
-# 백업 자리는 매번 새로 잡는다(`Get-FreePath`) — 같은 초에 두 번 돌아도 앞 백업 안으로 옮겨 들어가지 않는다.
-# 짝 — 설정 저장소 `deploy.ps1` 이 같은 이름의 두 함수로 같은 판을 짓는다(배포만 돌리는 PC). 그쪽
-#   `scripts/check-agy-pointers.ps1` · `scripts/check-deploy-agent-homes.ps1` 이 둘을 떼어 견준다.
-$AgyOldSkillHome = Join-Path $env:USERPROFILE '.gemini\config\paisetup-skills'
-$AgySkillList    = Join-Path $env:USERPROFILE '.gemini\config\skills.json'
-if ($hostAgy) {
-  $agyLedger = Join-Path $env:USERPROFILE '.gemini\.paisetup-skills'
-  $agyHeld   = Get-RepoHeldSkills 'agy'
-  $agyOurs   = @(@($agyLedger, (Join-Path $env:USERPROFILE ".gemini\$DeployLedgerName")) |
-                 Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | ForEach-Object { [IO.File]::ReadAllLines($_) } |
-                 ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
-  # 배포 기록의 이름도 백업으로 — 칸에서 agy 를 켰으면 배포가 새 자리에 다시 밀고, 껐으면 백업에 머문다(배포의 같은 판과 같은
-  #   끝). 새 자리로 옮기면 끈 칸에도 개인 스킬이 agy 에 선다.
-  $agyDeployLedger = Join-Path $env:USERPROFILE ".gemini\$DeployLedgerName"
-  $agyDeployNames  = @(if (Test-Path -LiteralPath $agyDeployLedger -PathType Leaf) {
-                         [IO.File]::ReadAllLines($agyDeployLedger) | ForEach-Object { $_.Trim() } | Where-Object { $_ } })
-  $agyOld = Get-AgyOldHomePlan $AgyOldSkillHome $AgySkillHome $agyOurs `
-              (@($agyHomeSkills | Where-Object { -not $agyHeld.ContainsKey($_) }) + $agyDeployNames)
-  $agyBkRoot = Join-Path $env:USERPROFILE '.gemini\backups'
-  if ($agyOld.Aside.Count) {
-    $agyAsideBk = Get-FreePath (Join-Path $agyBkRoot ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
-    New-Item -ItemType Directory -Path $agyAsideBk -Force | Out-Null
-    foreach ($n in $agyOld.Aside) { Move-Item -LiteralPath (Join-Path $AgySkillHome $n) -Destination (Join-Path $agyAsideBk $n) -Force }
-    Write-Host ("  ! agy 새 스킬 자리 — 우리 이름과 같은 폴더($($agyOld.Aside -join ' · '))가 먼저 있어 통째로 옮겨 두었다 " +
-                "(옮긴 자리: $agyAsideBk)") -ForegroundColor Yellow
-  }
-  if ($agyOld.ToNew.Count -or $agyOld.ToBackup.Count) {
-    $agyOldBk = $null
-    foreach ($n in $agyOld.ToNew) {
-      New-Item -ItemType Directory -Path $AgySkillHome -Force | Out-Null
-      Move-Item -LiteralPath (Join-Path $AgyOldSkillHome $n) -Destination (Join-Path $AgySkillHome $n) -Force
-    }
-    foreach ($n in $agyOld.ToBackup) {
-      if (-not $agyOldBk) {
-        $agyOldBk = Get-FreePath (Join-Path $agyBkRoot ('install-skills-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
-        New-Item -ItemType Directory -Path $agyOldBk -Force | Out-Null
-      }
-      Move-Item -LiteralPath (Join-Path $AgyOldSkillHome $n) -Destination (Join-Path $agyOldBk $n) -Force
-    }
-    Write-Host ("  agy 옛 스킬 자리 — 새 자리(~/.gemini/config/skills)로 $($agyOld.ToNew.Count) 개를 옮기고, 다시 까는 " +
-                "$($agyOld.ToBackup.Count) 개의 옛것은 백업 자리로 옮겼다$(if ($agyOldBk) { " ($agyOldBk)" })") -ForegroundColor Green
-  }
-  if ($agyOld.Foreign.Count) {
-    Write-Host ("  ! agy 옛 스킬 자리 — 우리 기록에 없는 것이 남아 안 걷었다 ($($agyOld.Foreign -join ' · ')). 쓰려면 " +
-                '~/.gemini/config/skills 로 옮긴다 — 옛 자리는 agy 가 본문을 못 연다') -ForegroundColor Yellow
-  } elseif ($agyOld.Remove -and -not (Get-ChildItem -LiteralPath $AgyOldSkillHome -Force | Select-Object -First 1)) {
-    Remove-Item -LiteralPath $AgyOldSkillHome -Force
-    Write-Host '  agy 옛 스킬 자리 — 비어서 걷었다 (~/.gemini/config/paisetup-skills)' -ForegroundColor Green
-  }
-  $agyListState = Get-AgyOldListState $AgySkillList $env:USERPROFILE
-  if ($agyListState -eq 'ours') {
-    $agyListBk = Get-FreePath (Join-Path (Join-Path $homeDir 'backups') ('install-agy-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
-    New-Item -ItemType Directory -Path $agyListBk -Force | Out-Null
-    Move-Item -LiteralPath $AgySkillList -Destination (Join-Path $agyListBk 'skills.json') -Force
-    Write-Host "  agy 옛 스킬 목록 — 걷었다 (새 자리는 목록 없이 실린다 · 옮긴 자리: $agyListBk)" -ForegroundColor Green
-  } elseif ($agyListState -eq 'mixed') {
-    Write-Host ('  agy 스킬 목록 — 사람 항목이 섞여 둔다. 옛 자리(paisetup-skills)를 여는 항목은 우리 것이 다 옮겨져 쓸 데가 ' +
-                '없다 — 그 줄만 지운다 (~/.gemini/config/skills.json)') -ForegroundColor Yellow
-  }
-  Install-HomeSkills 'agy 홈' $agyHomeSkills $AgySkillHome $agyLedger $agyBkRoot $agyHeld
-}
-if ($hostCodex) {
-  Install-HomeSkills 'Codex 홈' $codexHomeSkills (Join-Path $env:USERPROFILE '.agents\skills') `
-                     (Join-Path $env:USERPROFILE '.agents\.paisetup-skills') (Join-Path $env:USERPROFILE '.agents\backups') `
-                     (Get-RepoHeldSkills 'codex')
-  $oldCodexLedger = Join-Path $env:USERPROFILE '.codex\.paisetup-skills'
-  if (Test-Path -LiteralPath $oldCodexLedger) {
-    $oldCodexHome = Join-Path $env:USERPROFILE '.codex\skills'
-    $oldNames = @([IO.File]::ReadAllLines($oldCodexLedger) | ForEach-Object { $_.Trim() } | Where-Object { $_ } |
-                  Where-Object { Test-Path -LiteralPath (Join-Path $oldCodexHome $_) -PathType Container })
-    if ($oldNames.Count) {
-      $oldBk = Join-Path $env:USERPROFILE (".codex\backups\install-skills-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-      New-Item -ItemType Directory -Path $oldBk -Force | Out-Null
-      foreach ($n in $oldNames) { Move-Item -LiteralPath (Join-Path $oldCodexHome $n) -Destination (Join-Path $oldBk $n) -Force }
-      Write-Host "  Codex 옛 스킬 자리 — $($oldNames -join ' · ') 를 걷었다 (옮긴 자리: $oldBk)" -ForegroundColor Green
-    }
-    Remove-Item -LiteralPath $oldCodexLedger -Force
-  }
-}
+# ── 칸 없이 까는 스킬 — 위 `$FreeSkills` · `$FreeSkillHomes` (결정 0091 · 0097 · 0099) ─────────────────────────
+# 도구 홈마다 `Install-FreeSkills` 한 번 — 그 도구가 제작자 칸에 들면 아무것도 안 한다(그 홈은 위 손이 쓴다). 무엇을 깔고
+#   걷나 · 우리 것이 무엇인가는 그 함수의 곁말이 든다.
+# ⚠ **손 다음에 돈다** — 칸은 설치 창이 바꾸므로 넘겨받기가 이 한 판 안에서 끝난다: 끈 홈은 손이 제 것을 걷은 뒤 여기서
+#   칸 없이 까는 것을 깔고, 켠 홈은 손이 이 걸음의 사본을 처음 만남으로 받아 그 기록을 옮긴다.
+foreach ($t in $FreeSkillHomes.Keys) { Install-FreeSkills $t }
 
 # ── 걷힌 회사 기준 룰을 홈에서 걷는다 ─────────────────────────────────────────
 # ⚠ **왜 있나.** 1.30.0 이 회사 코딩 기준에서 구운 룰 `futurem-*.md` 를 영역 룰로 깔았는데, 그 뒤 판은
@@ -4565,43 +4321,6 @@ if ($staleRules.Count -gt 0) {
   foreach ($r in $staleRules) {
     Move-Item -LiteralPath $r.FullName -Destination (Join-Path $bk $r.Name) -Force
     Write-Host "  룰 $($r.Name) — 스킬로 바뀌어 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
-  }
-}
-
-# ── 칸 없이 까는 스킬 — 위 `$FreeSkills` (결정 0091) ─────────────────────────────────
-# ⚠ **제작자 꾸러미를 손수 깔았으면 할 일이 없다** — 6 칸이 묶음 전부를 깔고 기록까지 적었다. 설정 저장소를 넣고 Claude
-#   칸을 켠 판은 여기가 돈다 — 그 저장소가 안 든 표준 스킬은 여기서 깔아야 빠지지 않는다.
-# ⚠ **설정 저장소가 그 스킬을 들면 비켜선다** — 그 저장소의 배포가 같은 자리를 최신판으로 민다. 설치까지
-#   깔면 둘이 판마다 번갈아 덮는다(위 씨앗 비켜서기와 같은 규율). 든다는 것은 위 `Get-RepoHeldSkills` 가 정한다.
-# ⚠ **깐 이름은 6 칸과 같은 기록에 더한다** — 묶음에서 빠지는 날 같은 손(`Remove-RetiredSkills`)이 걷는다.
-if (-not $kitClaude) {
-  $skillHome   = Join-Path $homeDir 'skills'
-  $freeDone = @()
-  $claudeHeld = Get-RepoHeldSkills 'claude'
-  foreach ($n in $FreeSkills.Keys) {
-    if (-not ($FreeSkills[$n].Claude -and (Test-SkillGoesTo $n 'claude'))) { continue }
-    $from = Join-Path $KitSkills $n
-    if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) {
-      Write-Host "  ! 스킬 $n — 짐에 없다" -ForegroundColor Red
-      $Fails.Add("스킬 $n (짐에 없음)")
-      continue
-    }
-    if ($claudeHeld.ContainsKey($n)) {
-      Write-Host "  스킬 $n — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
-      continue
-    }
-    $to = Join-Path $skillHome $n
-    New-Item -ItemType Directory -Path $to -Force | Out-Null
-    Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
-    Write-Host "  스킬 $n — 깔았다" -ForegroundColor Green
-    $freeDone += $n
-  }
-  if ($freeDone.Count) {
-    # 남겨 둘 이름은 짐 가운데 Claude 홈에 가는 것 — 받는 쪽이 Claude 인 러너가 옛 기록에 있으면 이 손이 걷는다
-    $claudeKeep = @(Get-ChildItem -LiteralPath $KitSkills -Directory | ForEach-Object { $_.Name } |
-                    Where-Object { Test-SkillGoesTo $_ 'claude' })
-    Remove-RetiredSkills -Bundle $KitSkills -SkillHome $skillHome -Ledger (Join-Path $homeDir '.paisetup-skills') `
-                         -BackupRoot (Join-Path $homeDir 'backups') -Installed $freeDone -Keep $claudeKeep
   }
 }
 
@@ -5545,8 +5264,8 @@ if (-not $NoVsCode) {
 foreach ($c in $CliPicks) {
   $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
 }
-# 나르는 자리 — 7 칸의 자산. 재는 자는 위 `New-CountCheck` 하나다. 제작자 스킬은 아래에서 이름마다 재고, 규범 · 룰 ·
-#   에이전트는 손의 `check` 가 잰다.
+# 나르는 자리 — 7 칸의 자산. 재는 자는 위 `New-CountCheck` 하나다. 규범 · 룰 · 에이전트 · 스킬은 손의 `check` 가, 칸 없이
+#   까는 스킬은 아래에서 이름마다 잰다.
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { continue }
   # ⚠ **비켜선 자리는 동봉본과 안 견준다** — 거기 든 것은 설정 저장소의 최신판이라, 저쪽이 부품을
@@ -5558,26 +5277,6 @@ foreach ($a in $envAssets) {
     continue
   }
   $checks += New-CountCheck $a.Name $a.From $a.To
-}
-# ⚠ **[6/8] 도 잰다 — 옛 판은 이 칸만 아무것도 안 찍었다.** [7/8] 과 한 글자도 안 다른 무늬인데
-#   `$checks` 에 한 줄도 안 들어, 「스킬 — 깔았다」 초록 한 줄로 끝나고 판정이 없었다.
-# ⚠ **다만 여기는 안 걷는다.** 이 자리들의 진본은 설정 저장소이고 그쪽 배포(`deploy.ps1`)가
-#   같은 자리에 민다 — 설치기가 걷으면 저쪽이 방금 심은 것을 이쪽이 지우는 꼴이 되어, 두 자가
-#   한 자리를 두고 판마다 싸운다. 그래서 여분은 [X] 가 아니고 모자란 것만 문다.
-#   ⚠ 그 대신 **옛 판이 깐 스킬이 홈에 남는 것은 여기서 안 풀린다** — 저쪽 배포가 드는 몫이다.
-if ($kitClaude -and $claudeKitNames.Count) {
-  $claudeKitMiss = @($claudeKitNames | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
-  $checks += @{ Name = "제작자 스킬 ($($claudeKitNames.Count) 개 · ~/.claude/skills)"; Ok = ($claudeKitMiss.Count -eq 0) }
-}
-# 러너가 받는 쪽 홈에 없나 — 상태로 잰다. 까는 손이 표로 걸렀어도, 옛 판이 깔았거나 손으로 둔 것까지 여기서 보인다.
-foreach ($rr in @(
-    @{ Tool = 'claude'; On = $true;      Dir = (Join-Path $homeDir 'skills') }
-    @{ Tool = 'codex';  On = $hostCodex; Dir = (Join-Path $env:USERPROFILE '.agents\skills') }
-    @{ Tool = 'agy';    On = $hostAgy;   Dir = $AgySkillHome })) {
-  $runnersHere = @($SkillReceiver.Keys | Where-Object { $SkillReceiver[$_] -eq $rr.Tool })
-  if (-not $rr.On -or -not $runnersHere.Count) { continue }
-  $wrongHere = @($runnersHere | Where-Object { Test-Path -LiteralPath (Join-Path $rr.Dir "$_\SKILL.md") })
-  $checks += @{ Name = "받는 쪽 홈에 그 러너가 없다 ($($rr.Tool) — $($runnersHere -join ' · '))"; Ok = ($wrongHere.Count -eq 0) }
 }
 # ── 그림 문 — **심었다는 초록과 섰다는 것은 다른 명제다** ──────────────────────────
 # ⚠ **되읽어서 잰다.** 위 심는 칸이 「심었다」를 찍지만 그것은 메모리의 객체를 고쳤다는 말이고,
@@ -5738,32 +5437,17 @@ if ($PickKeys -contains 'codex') {
     }
   }
 }
-$freeWant = @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].Claude })
-if ($freeWant.Count) {
-  $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $homeDir "skills\$_\SKILL.md")) })
-  $checks += @{ Name = "칸 없이 까는 스킬 ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
+# 칸 없이 까는 스킬 — 제작자 칸에 안 든 도구의 홈만 잰다(칸에 든 홈은 손의 `check` 가 잰다). 까는 칸과 같은 목록
+#   (`Get-FreeSkillNames`)으로 잰다 — 따로 지으면 까는 것과 재는 것이 갈린다.
+foreach ($t in $FreeSkillHomes.Keys) {
+  $fh = $FreeSkillHomes[$t]
+  $freeWant = @(Get-FreeSkillNames $t)
+  if ($fh.Box -or -not $freeWant.Count) { continue }
+  $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $fh.Skills "$_\SKILL.md")) })
+  $checks += @{ Name = "칸 없이 까는 스킬 — $($fh.Label) ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
 }
-# 까는 칸과 같은 목록(`$codexHomeSkills` · `$agyHomeSkills`)으로 잰다 — 따로 지으면 까는 것과 재는 것이 갈린다.
-foreach ($hs in @(
-    @{ On = $hostCodex; Label = 'Codex 홈 스킬'; Names = $codexHomeSkills; Dir = (Join-Path $env:USERPROFILE '.agents\skills'); Show = '~/.agents/skills' }
-    @{ On = $hostAgy;   Label = 'agy 홈 스킬';   Names = $agyHomeSkills;   Dir = $AgySkillHome; Show = '~/.gemini/config/skills' })) {
-  if (-not $hs.On -or -not $hs.Names.Count) { continue }
-  $homeMiss = @($hs.Names | Where-Object { -not (Test-Path -LiteralPath (Join-Path $hs.Dir "$_\SKILL.md")) })
-  $homeShown = if ($hs.Names.Count -gt 6) { "$($hs.Names.Count) 개" } else { $hs.Names -join ' · ' }
-  $checks += @{ Name = "$($hs.Label) ($homeShown · $($hs.Show))"; Ok = ($homeMiss.Count -eq 0) }
-}
-# agy — 옛 스킬 자리가 걷혔나 · 훅 둘이 우리 어댑터로 걸렸나 (결정 0099 · 0111)
-# ⚠ **옛 자리나 우리 옛 목록이 남았으면 빨강이다** — 옛 자리는 목록에 실려도 agy 에이전트가 본문을 못 열고, 목록이 남으면
-#   새 자리와 같은 이름이 둘씩 실린다. 위 「agy 옛 스킬 자리」 칸이 우리 것을 옮기고 걷으므로, 남았다면 그 자리에 우리 기록에
-#   없는 것이 있다(사람이 옮길 것). 사람 항목이 섞인 목록은 사람 것이라 여기서 안 센다. 판정은 그 칸의 `Get-AgyOldListState`
-#   를 그대로 부른다 — 설정 저장소의 `scripts/check-agy-pointers.ps1` 이 그 판정을 떼어 옛 꼴마다 잰다.
+# agy — 훅 둘이 우리 어댑터로 걸렸나 (결정 0099)
 if ($hostAgy) {
-  $agyOldLeft = @()
-  if (Test-Path -LiteralPath $AgyOldSkillHome) { $agyOldLeft += 'paisetup-skills' }
-  if ((Get-AgyOldListState $AgySkillList $env:USERPROFILE) -eq 'ours') { $agyOldLeft += 'skills.json' }
-  $checks += @{ Name = ('agy 옛 스킬 자리 (~/.gemini/config 의 paisetup-skills · 그 자리를 여는 우리 skills.json 이 걷혔다' +
-                        $(if ($agyOldLeft.Count) { ' — 남은 것: ' + ($agyOldLeft -join ' · ') } else { '' }) + ')')
-                Ok = ($agyOldLeft.Count -eq 0) }
   $agyHooksNow = $null
   try { $agyHooksNow = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.gemini\config\hooks.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
   $agyWired = @('paisetup-drm-guide', 'paisetup-utf8-bom' | Where-Object {
@@ -5800,7 +5484,7 @@ if ($hostAgy) {
 # 고른 도구 값 — 손 · 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0107 · 0112)
 $checks += @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
-# 규범 · 룰 · 에이전트 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
+# 규범 · 룰 · 에이전트 · 스킬 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
 if ($toolHomesOn) { $checks += Get-ToolHomesCheck $toolHomesHand }
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
