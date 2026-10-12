@@ -563,29 +563,47 @@ function Get-Quiet([string]$File, [string[]]$CmdArgs) {
 # ⚠ **울타리를 부르는 쪽에만 두면 늦다.** 저쪽은 설치기 전체를 재므로 「어느 칸이 먹었나」를 모르고,
 #   거두면 **아직 안 돈 칸들까지 함께 잃는다.** 칸이 제 몫을 스스로 지키면 느린 칸 하나를 포기하고
 #   뒤 칸들이 돈다 — 포기해도 되는 칸(갱신)과 안 되는 칸(설치)을 부르는 쪽이 가려 준다.
+# ⚠ **`Start-Process -PassThru` 로 띄우지 않는다.** 그것이 주는 Process 는 손잡이를 안 쥐어, 손잡이를
+#   잡기 전에 자식이 끝나면 `ExitCode` 가 빈 값이다(#139). 종료코드가 판정의 전부인 자리라 그 빈 값이
+#   조용히 번진다. `Process.Start` 는 띄우는 순간의 손잡이를 쥐어 틈이 없다.
 # ⚠ **글자는 파일 둘로 받는다** — `Invoke-Logged` 는 `*>` 로 한 파일에 담지만, 이쪽은 자식을 따로
-#   띄우므로 두 스트림을 한 파일로 못 보낸다(`Start-Process` 가 같은 파일을 거부한다). gh 로그인
-#   칸과 같은 꼴로 `$LogPath` 와 `$LogPath.err` 를 쓰고, **펴는 쪽이 둘 다 본다.**
-#   파일로 바로 흘리므로 파이프 버퍼가 차서 자식이 멈추는 자리도 없다.
+#   띄우므로 두 스트림을 파이프로 받고 `CopyToAsync` 가 `$LogPath` 와 `$LogPath.err` 에 붓는다(파워셸
+#   스레드 없이 돈다). 늘 읽으므로 파이프 버퍼가 차서 자식이 멈추는 자리도 없다. `cmd /c` 로 감싸 파일로
+#   돌리지 않는다 — 그러면 아래 `Kill()` 이 자식 대신 cmd 만 죽인다.
 # ⚠ **나무째 거둔다.** `code` · `npm` 류는 제 자식을 띄우므로 부모만 죽이면 손자가 남아 돈다.
 #   `Kill($true)` 는 이 파워셸(5.1 · .NET Framework)에 없는 오버로드라 `taskkill /T` 가 든다.
-#   ⚠ `ProcessStartInfo.ArgumentList` 도 같은 까닭으로 없다 — `Start-Process -ArgumentList` 가
-#   파워셸 쪽 매개변수라 이 판에서 서고, 빈칸 든 인자의 따옴표도 그쪽이 맞춘다.
+#   `ProcessStartInfo.ArgumentList` 도 같은 까닭으로 없다 — 인자는 한 줄로 싸되 빈칸 · 따옴표가 든
+#   낱낱만 MSVCRT 규칙으로 감싼다.
 function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec) {
   $exe = $null
   try { $exe = (Get-Command $File -ErrorAction Stop).Source } catch { return -1 }
+  # 자식이 끝난 뒤 파이프의 꼬리를 다 붓기까지 기다리는 한도 — 그 끝은 파이프를 쥔 손자까지 다 나가야 온다.
+  # 거둔 갈래는 안 기다린다 — 꼬리를 읽을 자리가 없고, 살아남은 손자가 울타리를 늘린다.
+  $drainMs = 5000
+  $sink = @()
   try {
-    $p = Start-Process -FilePath $exe -ArgumentList $CmdArgs -NoNewWindow -PassThru `
-           -RedirectStandardOutput $LogPath -RedirectStandardError "$LogPath.err"
-    # ⚠ **핸들을 먼저 잡는다.** `-PassThru` 가 준 객체는 핸들을 안 쥐고 있어, 자식이 끝난 뒤
-    #   `ExitCode` 를 물으면 **빈 값이 온다** — 실측: 이 줄이 없으면 A·C·E 갈래의 종료코드가
-    #   다 비어 나왔다. 종료코드가 판정의 전부인 자리라 그 비는 값이 조용히 번진다.
-    $null = $p.Handle
-    if ($p.WaitForExit($CapSec * 1000)) { return $p.ExitCode }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
+    $psi.Arguments = (@($CmdArgs) | ForEach-Object {
+      if ("$_" -ne '' -and "$_" -notmatch '[\s"]') { "$_" }
+      else { '"' + (("$_" -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"' }
+    }) -join ' '
+    $psi.UseShellExecute        = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $sink = @([IO.File]::Open($LogPath, 'Create', 'Write', 'ReadWrite'),
+              [IO.File]::Open("$LogPath.err", 'Create', 'Write', 'ReadWrite'))
+    $p = [Diagnostics.Process]::Start($psi)
+    $pump = @($p.StandardOutput.BaseStream.CopyToAsync($sink[0]),
+              $p.StandardError.BaseStream.CopyToAsync($sink[1]))
+    if ($p.WaitForExit($CapSec * 1000)) {
+      try { $null = [Threading.Tasks.Task]::WaitAll($pump, $drainMs) } catch { }
+      return $p.ExitCode
+    }
     try { & "$env:SystemRoot\System32\taskkill.exe" /PID $p.Id /T /F 2>$null | Out-Null } catch { }
     try { if (-not $p.HasExited) { $p.Kill() } } catch { }
     return -2
   } catch { return -1 }
+  finally { foreach ($s in $sink) { try { $s.Dispose() } catch { } } }
 }
 
 function Test-Runs([string]$Cmd, [string]$Arg) {
