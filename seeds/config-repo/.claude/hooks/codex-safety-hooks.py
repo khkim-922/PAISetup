@@ -63,8 +63,10 @@ def bash_backslash(data, windows=os.name == 'nt'):
     tail = bash_tail(command_text(data))
     if windows and tail is not None and '\\\\' in tail:
         emit_deny('Windows에서 bash(Git Bash)로 넘기는 명령의 겹역슬래시는 bash에 닿기 전에 하나로 접힐 수 있다. '
-                  '파일 내용은 apply_patch로 쓰고, 경로는 /로 적거나, bash를 거치지 않고 PowerShell로 바로 돌린다 — '
-                  'PowerShell은 역슬래시를 쓴 대로 넘긴다.')
+                  '먼저 역슬래시를 빼고 같은 명령으로 다시 짓는다 — 경로는 /로, 정규식의 이스케이프는 [.] 같은 문자 '
+                  '묶음으로, 필요 없는 이스케이프는 지운다. 역슬래시가 데이터로 꼭 들어야 할 때(파일 내용 · 스크립트 '
+                  '본문)만 apply_patch로 쓰거나 bash를 거치지 않고 PowerShell로 바로 돌린다 — PowerShell은 역슬래시를 '
+                  '쓴 대로 넘긴다.')
 
 
 def patch_paths(text):

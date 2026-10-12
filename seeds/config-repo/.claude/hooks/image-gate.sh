@@ -1,10 +1,11 @@
 # matcher = Read|mcp__(Claude_Browser|claude-in-chrome)__(computer|browser_batch)|mcp__computer-use__(screenshot|zoom|computer_batch)
+# events = PreToolUse
+# var = _ig
 #
 # 그림 문 껍데기 — 몸통(`image-gate.py`) 앞에서 먼저 거른다. 왜와 갈래는 몸통 머리말이 든다.
 #
-# 홈 `~/.claude/settings.json` 의 PreToolUse 에 이 한 줄로 심긴다 — 심는 손은 이 자리만 채운다:
-#     _ig="<이 파일이 있는 자리>"; . "$_ig/image-gate.sh"
-# 윗줄 `# matcher = …` 가 그 항목의 matcher 진본이다 — 심는 손은 이 줄을 읽어 쓰고 손으로 안 든다.
+# 윗줄들이 홈 `~/.claude/settings.json` 등록의 진본이다 — 갈 곳 표의 손(`tool-homes.py`)이 이 줄들로 등록을 짓고, 몸통은
+# 그 등록이 세운 `$_ig` 곁에 같이 실린다. 머리말의 뜻과 심기는 명령 꼴은 표(`tool-homes.conf`)의 hook 꼴이 든다.
 #
 # ⚠ **점(`.`)으로 부른다** — 같은 셸 안에서 돌아 프로세스가 안 는다. 그래서 끝의 `exit 0` 이 훅을 끝낸다.
 # ⚠ **파이썬은 그림 낌새(확장자 · screenshot · zoom)가 있을 때만 띄운다** — 매 Read 마다 띄우면

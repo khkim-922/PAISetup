@@ -26,10 +26,8 @@
 부르는 자리 — 홈 `~/.claude/settings.json` 의 PreToolUse. 앞에 셸 껍데기(`image-gate.sh` · 곁 파일)가
 서서 stdin 에 그림 낌새(확장자·screenshot·zoom)가 있을 때만 이 몸통을 띄운다 — 매 Read 마다 프로세스를
 띄우지 않기 위해서다. 껍데기 글자와 matcher 는 그 파일 한 벌이고, 심는 손은 자리만 채운 한 줄을 심는다.
-**심는 손이 둘이다** — `session-start-body.sh`(이 저장소를 든 자리 · 홈 SessionStart 훅과 같은 자리)와 배포본
-설치기(`PAISetup/install.ps1` 의 씨앗 칸 직후 · 저장소 없는 동료 자리). 가리키는 몸통은 갈린다 — 이쪽은
-저장소 진본, 저쪽은 홈 씨앗 사본. **주인은 저장소 진본이다** — 세션 훅은 늘 제 판으로 갈아타고, 설치기는
-저장소 진본을 가리키는 항목이 살아 있으면 비켜선다.
+**심는 손은 갈 곳 표의 손(`tool-homes.py`) 하나다** — 껍데기 머리말(events · var · matcher)대로, Claude 를 고른
+PC 에만, 이긴 층(설정 저장소가 있으면 개인 층)의 hooks 폴더를 가리키는 한 줄을 심는다(결정 0112).
 
 시험 — `python -X utf8 scripts/image-gate-check.py` (양성·음성 표본을 먹여 판정을 문다).
 **껍데기 층은 홈에 심긴 실물을 읽어 재므로 누가 심었든 그것을 잰다.**

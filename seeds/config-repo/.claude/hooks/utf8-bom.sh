@@ -1,6 +1,11 @@
 #!/bin/sh
 # matcher = Write|Edit
+# events = PostToolUse
+# var = _ub
+#
 # 파워셸 스크립트에 UTF-8 BOM 을 찍는다 — PostToolUse 훅 (Write|Edit).
+# 윗줄들이 홈 `~/.claude/settings.json` 등록의 진본이다 — 갈 곳 표의 손(`tool-homes.py`)이 짓고, 머리말의 뜻과 심기는 명령
+# 꼴은 표(`tool-homes.conf`)의 hook 꼴이 든다. 홈 등록은 이 파일을 점(`.`)으로 읽고 저장소 설정은 바로 돌린다.
 #
 # 진본은 claude-config/.claude/hooks/utf8-bom.sh 다. 각 저장소의 것은 deploy.ps1 이
 # 뿌린 배포본이다 — 배포본을 고치면 다음 배포에 덮인다.

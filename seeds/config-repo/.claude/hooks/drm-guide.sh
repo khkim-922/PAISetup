@@ -1,12 +1,13 @@
 # matcher = Read
 # matcher.PreToolUse = *
+# events = UserPromptSubmit,PreToolUse,PostToolUseFailure
+# var = _dg
 #
 # DRM 길잡이 껍데기 — 몸통(`drm-guide.py`) 앞에서 먼저 거른다. 왜와 갈래는 몸통 머리말이 든다.
 #
-# 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PreToolUse · PostToolUseFailure 셋에 같은 한 줄로 심긴다 —
-# 심는 손은 이 자리만 채운다:
-#     _dg="<이 파일이 있는 자리>"; [ -f "$_dg/drm-guide.sh" ] || exit 0; . "$_dg/drm-guide.sh"
-# 윗줄 둘이 matcher 진본이다 — 꾸밈 없는 `# matcher =` 는 **PostToolUseFailure** 것이고,
+# 윗줄들이 홈 `~/.claude/settings.json` 등록의 진본이다 — 갈 곳 표의 손(`tool-homes.py`)이 세 이벤트에 같은 명령으로
+# 짓고, 몸통은 그 등록이 세운 `$_dg` 곁에 같이 실린다. 머리말의 뜻과 심기는 명령 꼴은 표(`tool-homes.conf`)의 hook 꼴이
+# 든다. matcher 는 이벤트마다 다르다 — 꾸밈 없는 `# matcher =` 는 **PostToolUseFailure** 것이고,
 # `# matcher.PreToolUse =` 는 **PreToolUse** 것이다. 자리가 둘인 까닭은 보는 것이 다르기 때문이다:
 # 저쪽은 Read 가 진 자리만, 이쪽은 **첨부를 아직 못 알린 턴의 첫 도구 호출**이다.
 # ⚠ **PreToolUse 는 도구를 안 가린다(`*`).** 「첫 도구 호출」이 뜻이라면 그 첫 도구가 무엇일지 못 고른다 —
@@ -15,8 +16,7 @@
 # ⚠ **UserPromptSubmit 항목에는 matcher 키를 안 심는다.** 그 이벤트는 matcher 를 안 받는데, 거는 자는 받지 않는
 #   값을 조용히 무시하는 것이 아니라 **맞출 도구 이름이 없는 호출을 항목째 걸러낸다** — 심어 두면 훅이 영원히 안
 #   돈다. 설정에도 코드에도 결함으로 안 보이고, 몸통에 입력을 손으로 먹이면 멀쩡히 통과해 「코드는 맞는데 안
-#   걸린다」로만 나타난다(claude-config #120 실측). 그래서 심는 손이 이벤트마다 키를 가른다.
-# 심는 손은 그림 문(`image-gate.sh`)과 같다 — `session-start-body.sh` 와 배포본 설치기. 주인 규율도 같다.
+#   걸린다」로만 나타난다(claude-config #120 실측). 그래서 손이 그 이벤트에는 키를 안 둔다.
 #
 # ⚠ **점(`.`)으로 부른다** — 같은 셸 안에서 돌아 프로세스가 안 는다. 그래서 끝의 `exit 0` 이 훅을 끝낸다.
 # ⚠ **파이썬은 낌새가 있을 때만 띄운다** — UserPromptSubmit 과 PreToolUse 는 사람이 글을 보낼 때마다 · 도구를 부를

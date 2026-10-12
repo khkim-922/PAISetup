@@ -3,6 +3,7 @@
     python -X utf8 agy-hooks.py drm-guide    < PreToolUse 입력   (matcher `view_file` · `run_command`)
     python -X utf8 agy-hooks.py utf8-bom     < PostToolUse 입력  (matcher 쓰기 도구 셋)
     python -X utf8 agy-hooks.py install --config ~/.gemini/config/hooks.json
+    python -X utf8 agy-hooks.py remove  --config ~/.gemini/config/hooks.json
 
 **왜 어댑터인가.** 몸통은 Claude 훅 꼴(`tool_name` · `tool_input`)을 받는다. agy 는 `toolCall.name` · `toolCall.args` 로 주고
 경로 열쇠도 다르다(`AbsolutePath` · `TargetFile` · 셸은 `CommandLine` · `Cwd`). 판정은 몸통의 것을 불러 쓰고 여기서는 꼴만
@@ -33,11 +34,13 @@
 얹는다. 그 파일은 「이름 → 설정」의 표라 남의 항목과 섞이지 않는다. 명령에는 이 파일의 절대 경로를 슬래시로 박고, 윈도에서는
 따옴표를 안 친다(`script_word` — 까닭은 거기).
 ⚠ 사람이 우리 항목을 `"enabled": false` 로 꺼 두었으면 그 뜻을 잇는다.
+`remove` 는 우리 이름의 항목만 걷는다(agy 를 고르지 않은 설치) — 사람이 꺼 둔 우리 항목도 우리 것이라 걷고, 파일이 없으면
+짓지 않고, 다 걷혀 빈 표가 남아도 파일은 둔다.
 ⚠ 못 읽는 파일(JSON 이 아님 · 맨 위가 표가 아님)은 안 건드리고 까닭을 낸다. 고쳐 쓰기 전에 원본을 곁에 떠 둔다 — 떠 두는
    손은 Codex 병합기의 `backup_copy` 를 불러 쓴다(곁에 같이 실린다). 이름의 시각이 초 단위라 같은 초의 두 판이 한 이름을
    고르는데, 그 손은 있으면 다음 번호로 가 앞 판의 원본을 안 덮는다. 이름 머리(`BACKUP_SUFFIX`)만 우리 것이다.
 
-출력 계약(`install`) — 한 줄에 하나:
+출력 계약(`install` · `remove`) — 한 줄에 하나:
   CHANGED=0|1 · BACKUP=<경로>(고쳐 쓴 판에만) · ERROR=<까닭>(아무것도 안 썼다)
 """
 import argparse
@@ -236,44 +239,73 @@ def write_atomic(path, text):
         raise
 
 
+def without_ours(current):
+    """(새 표, 바뀌었나) — 우리 이름(`paisetup-…`)의 항목만 걷는다. 사람이 꺼 둔 우리 항목도 우리 것이라 걷는다."""
+    out = dict((k, v) for k, v in current.items() if not k.startswith(NAME_PREFIX))
+    return out, out != current
+
+
+def read_config(config):
+    """(설정 표, 까닭) — 파일이 없으면 빈 표. 못 읽으면 표는 None 이고 까닭이 선다."""
+    if not config.exists():
+        return {}, ''
+    try:
+        current = json.loads(config.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError) as e:
+        return None, '%s 를 JSON 으로 못 읽는다(%s) — 안 건드린다' % (config, type(e).__name__)
+    if not isinstance(current, dict):
+        return None, '%s 의 맨 위가 이름 → 설정의 표가 아니다 — 안 건드린다' % config
+    return current, ''
+
+
+def remove(config):
+    """우리 항목만 걷는다 — 파일이 없거나 우리 항목이 없으면 안 쓴다. 출력 계약은 install 과 같다."""
+    config = pathlib.Path(config).expanduser()
+    current, why = read_config(config)
+    if current is None:
+        print('ERROR=' + why)
+        return 1
+    left, changed = without_ours(current)
+    return save(config, left, changed)
+
+
 def install(config):
     if script_word() is None:
         print('ERROR=이 파일의 자리(%s)에 셸이 가르는 글자가 있고 짧은 이름도 없다 — 따옴표 없이 부를 꼴을 못 지어 안 심는다'
               % pathlib.Path(__file__).resolve())
         return 1
     config = pathlib.Path(config).expanduser()
-    current = {}
-    if config.exists():
-        try:
-            current = json.loads(config.read_text(encoding='utf-8-sig'))
-        except (OSError, ValueError) as e:
-            print('ERROR=%s 를 JSON 으로 못 읽는다(%s) — 안 건드린다' % (config, type(e).__name__))
-            return 1
-        if not isinstance(current, dict):
-            print('ERROR=%s 의 맨 위가 이름 → 설정의 표가 아니다 — 안 건드린다' % config)
-            return 1
+    current, why = read_config(config)
+    if current is None:
+        print('ERROR=' + why)
+        return 1
     merged, changed = merge(current)
+    return save(config, merged, changed)
+
+
+def save(config, table, changed):
+    """바뀌었으면 원본을 곁에 떠 두고 쓴다 — 출력 계약의 CHANGED · BACKUP 줄을 낸다."""
     if not changed:
         print('CHANGED=0')
         return 0
     if config.exists():
         merger = load('codex_hook_install', MERGER_FILE)
         print('BACKUP=' + str(merger.backup_copy(config, BACKUP_SUFFIX)))
-    write_atomic(config, json.dumps(merged, ensure_ascii=False, indent=2) + '\n')
+    write_atomic(config, json.dumps(table, ensure_ascii=False, indent=2) + '\n')
     print('CHANGED=1')
     return 0
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('mode', choices=('drm-guide', 'utf8-bom', 'install'))
+    ap.add_argument('mode', choices=('drm-guide', 'utf8-bom', 'install', 'remove'))
     ap.add_argument('--config')
     args = ap.parse_args()
-    if args.mode == 'install':
+    if args.mode in ('install', 'remove'):
         if not args.config:
-            ap.error('install 에는 --config 가 든다')
+            ap.error('%s 에는 --config 가 든다' % args.mode)
         try:
-            return install(args.config)
+            return (install if args.mode == 'install' else remove)(args.config)
         except Exception as e:  # noqa: BLE001 — 설치기는 이 한 줄로 까닭을 받는다
             print('ERROR=%s: %s' % (type(e).__name__, e))
             return 1

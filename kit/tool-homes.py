@@ -1,12 +1,13 @@
-"""갈 곳 표를 읽어 규범 · 룰 · 에이전트 · 공용 메모리 목차 · 스킬을 도구 홈에 놓는 손 하나 (결정 0112 · 0113).
+"""갈 곳 표를 읽어 규범 · 룰 · 에이전트 · 공용 메모리 목차 · 스킬 · Claude 훅 등록을 도구 홈에 놓는 손 하나 (결정 0112 · 0113).
 
-    python -X utf8 tool-homes.py sync  --layer standard|personal --from <뿌리> [--dry-run] [--home <홈>] [--box <값>]
-    python -X utf8 tool-homes.py place [--dry-run] [--home <홈>] [--box <값>]
-    python -X utf8 tool-homes.py check [--home <홈>] [--box <값>]
+    python -X utf8 tool-homes.py sync  --layer standard|personal --from <뿌리> [--dry-run] [--home <홈>] [--box <값>] [--pick <값>]
+    python -X utf8 tool-homes.py place [--dry-run] [--home <홈>] [--box <값>] [--pick <값>]
+    python -X utf8 tool-homes.py check [--home <홈>] [--box <값>] [--pick <값>]
 
 부르는 자는 셋이다 — 설치기는 짐으로 표준 층을(`sync --layer standard --from <짐>` · 끝 검증은 `check`), 배포와 세션 훅은
 설정 저장소로 개인 층을(`sync --layer personal --from <저장소>`) 채운다. 배포는 `--dry-run` 의 줄을 계획 화면에 싣고 확인
-뒤 같은 명령을 돌린다. `--home`(기본 사용자 홈) · `--box`(제작자 칸 값을 덮는다)는 가짜 홈 시험용이라 부르는 셋은 안 준다.
+뒤 같은 명령을 돌린다. `--home`(기본 사용자 홈) · `--box` · `--pick`(조건 값을 덮는다)은 가짜 홈 시험용이라 부르는 셋은 안
+준다.
 
 **무엇이 어느 홈에 어떤 꼴로 가나는 갈 곳 표(`<뿌리>/tool-homes.conf`)만 든다.** 항목 · 길 · 옛 자리와 꼴 · 조건의 뜻은 그
 표의 머리가 든다 — 여기서는 놓는 법만 든다. 손은 표를 읽어 PC 의 중립 한 벌 `~/.paisetup` 의 두 층(standard · personal)을
@@ -17,7 +18,8 @@ sync  — 한 층을 채운다. standard 는 짐에서 표의 층 안의 자리�
         걷는다. 원본에 그 자리가 없으면 그 항목은 그 층에서 조용히 빠지고(층에 있었으면 걷는다) 다른 층이 이긴다 — 짐이
         안 싣는 항목(local)이 있고, 씨앗으로 만든 저장소는 제가 둔 원본만 든다. 저장소 자리가 여럿이면(폴더 항목) 그
         자리들의 내용을 한 폴더로 합치고, 같은 이름(항목 폴더 바로 밑)이 두 자리에 다 있으면 그 이름만 ERROR 를 내고 개인
-        층에 안 싣는다(다른 층이 이긴다). each 항목의 뿌리에 바로 든 파일은 단위가 아니라 WARN 을 내고 안 싣는다. 원본은
+        층에 안 싣는다(다른 층이 이긴다). each 항목의 뿌리에 바로 든 파일은 단위가 아니라 WARN 을 내고 안 싣는다. hook 길의
+        항목은 등록 머리말을 든 껍데기와 그 껍데기가 부르는 곁 파일만 싣고(표 머리), 껍데기가 없으면 그 층에서 빠진다. 원본은
         읽기만 하는 자리라 링크(심볼릭 링크 · 정션)를 따라간다 — 항목 자리 자체도, 폴더 항목 안의 폴더 · 파일도. 층에는
         링크 너머의 파일이 실린다. 폴더 항목 안에서 제 조상 폴더를 가리키는 링크(고리)는 안 따라가고, 끊긴 링크는 WARN 을
         내고 그 자리만 건너뛴다. 개인 층의 저장소 자리가 있는데 꼴이 표와 다르면(파일 · 폴더가 바뀜 · 끊긴 링크) WARN 을
@@ -76,13 +78,21 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
   표준 층만 놓고, 그 자리를 댄 WARN 한 줄을 낸다(ERROR 가 아니다). 씨앗 사본의 표는 만든 사람 것이라 짐의 손이 그 문법을 다
   읽어 주지 않는다 — 다만 그 사본이 같은 PC 에서 돌아도 설치기가 놓은 것은 안 망가진다(결정 0115).
 **우리 것만 걷는다** — 표지 사이, 기록(`~/.paisetup/placed.tsv`)에 적은 해시 그대로인 파일, 우리가 써 온 옛 꼴(아래 OLD_*),
-  옛 기록(was · old 의 기록 칸)이 말하는 이름의 폴더만 우리 것이다. 표지가 우리 것을 말하는 import · block 대상은 기록에 안 든다. 놓을 것이 없는 도구 폴더는 짓지 않는다.
+  옛 기록(was · old 의 기록 칸)이 말하는 이름의 폴더, 명령 꼴이 우리 것인 훅 등록(표 머리의 hook 꼴)만 우리 것이다. 표지가
+  우리 것을 말하는 import · block 대상과 훅 등록은 기록에 안 든다. 놓을 것이 없는 도구 폴더는 짓지 않는다.
   그 밖의 것을 덮거나 걷어야 하면 먼저 백업 자리(`~/.paisetup/backups/<시각>/<홈 기준 자리>` · 한 번 돌 때 한 자리 · 쓸 일이
   있을 때만)로 떠 두거나 옮긴다. 대상이 링크면 링크를 백업으로 옮기고 쓴다 — 링크 너머의 원본을 고치지 않는다.
   표지 짝이 안 맞으면 그 파일은 안 건드린다. 블록을 걷고 남은 글이 없으면 파일을 지운다.
-**제작자 칸** — `--box` 가 없으면 사용자 값(윈도 레지스트리 `HKCU\\Environment`)을 먼저, 그다음 프로세스 값을 읽는다. 칸을
-  바꾸기 전에 뜬 앱의 프로세스는 옛 값을 들고 있어 사용자 값이 진본이다. 쉼표 · 빈칸으로 가르고 대소문자를 안 가린다.
-  빈 값(`--box ""` 도)은 claude 만, `none` 은 아무것도 아니다. 표에 없는 도구 이름은 WARN 을 내고 건너뛴다.
+**훅 등록(hook)** — 이긴 층의 껍데기 머리말로 등록을 짓고, 설정 파일을 JSON 으로 읽어(BOM 을 안 가린다) 훅 하나 단위로
+  고친다. 우리 것의 첫 자리가 등록을 잇고(그 항목의 matcher 가 다르면 그 바로 뒤의 새 항목으로) 나머지 우리 것은 걷는다.
+  우리 것을 알아보는 껍데기 이름은 두 층에서 다 모은다 — 한 층에서 빠진 껍데기의 등록도 걷힌다. 우리 것을 걷어 빈 항목 · 빈
+  이벤트 목록 · 빈 hooks 표는 걷고, 처음부터 비었던 것과 파일은 둔다. 바뀐 것이 없으면 안 쓴다. 못 읽는 파일(JSON 이 아님 ·
+  맨 위가 표가 아님) · 못 고치는 꼴(hooks 가 표가 아님 · 놓을 이벤트가 목록이 아님) · 이긴 층의 틀린 머리말은 ERROR 이고 그
+  파일을 안 건드린다. 쓸 때는 있던 BOM · 줄끝을 잇고 두 칸 들여 쓴다. CHANGE 는 바뀐 등록마다 한 줄(write)이다.
+**조건 값** — 제작자 칸(box · `PAISETUP_PERSONAL`)과 고른 제품(pick · `PAISETUP_PICK`)을 같은 꼴로 읽는다. `--box` · `--pick`
+  이 없으면 사용자 값(윈도 레지스트리 `HKCU\\Environment`)을 먼저, 그다음 프로세스 값을 읽는다. 값을 바꾸기 전에 뜬 앱의
+  프로세스는 옛 값을 들고 있어 사용자 값이 진본이다. 쉼표 · 빈칸으로 가르고 대소문자를 안 가린다. 빈 값(`--box ""` 도)은
+  claude 만, `none` 은 아무것도 아니다. 표에 없는 도구 이름은 WARN 을 내고 건너뛴다. 표의 길이 쓰는 조건만 읽는다.
 **한 번에 하나** — 잠금 파일 `~/.paisetup/.lock`. 잡혀 있으면 LOCK_WAIT 초까지 기다리고 못 잡으면 ERROR. 아무것도 안 쓰는
   판(--dry-run · check)은 잠금을 안 잡고 그 파일도 안 만든다.
 **표가 틀리면 아무것도 안 한다** — 길 하나를 빼고 돌면 그 길이 놓은 파일이 「기록에 있는데 안 바라는 것」으로 걷힌다.
@@ -94,7 +104,7 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
 종료 — 0 됐다 · 1 ERROR 가 있었다(다른 대상은 계속 갔다). check 는 위의 0 · 1 · 2.
 파이썬 3.8 이상 · 표준 라이브러리만 — 원격 컨테이너의 판을 우리가 못 정한다.
 정한 자리 — 결정 0112 · 0113 · 0115 · claude-config#133 「2 단계 첫 걸음 「규범 · 룰」」 코멘트와 그 뒤의 「계약 보탬」 코멘트들 ·
-  「2 단계 둘째 걸음 「스킬」」 코멘트.
+  「2 단계 둘째 걸음 「스킬」」 · 「2 단계 셋째 걸음 「훅」」 코멘트.
 """
 import argparse
 import collections
@@ -131,11 +141,14 @@ RELAYED = 'TOOL_HOMES_RELAYED'         # 넘김의 표지(환경 변수 · 값�
 TILDE = '~/'
 BOM = b'\xef\xbb\xbf'
 
-BOX_VAR = 'PAISETUP_PERSONAL'
-BOX_REG_KEY = 'Environment'            # HKCU 아래
-BOX_NONE = 'none'
-BOX_EMPTY = ('claude',)                # 칸 값이 비었을 때
-BOX_SPLIT = re.compile(r'[,\s]+')
+# 조건마다 읽는 사용자 값 — 제작자 칸(box)과 고른 제품(pick). 읽는 차례 · 꼴은 같다
+COND_BOX, COND_PICK = 'box', 'pick'
+COND_VARS = {COND_BOX: 'PAISETUP_PERSONAL', COND_PICK: 'PAISETUP_PICK'}
+COND_LABELS = {COND_BOX: '제작자 칸', COND_PICK: '고른 제품'}
+USER_ENV_KEY = 'Environment'           # HKCU 아래
+NAMES_NONE = 'none'
+NAMES_EMPTY = ('claude',)              # 값이 비었을 때
+NAMES_SPLIT = re.compile(r'[,\s]+')
 
 KIND_ITEM, KIND_ROUTE, KIND_OLD = 'item', 'route', 'old'
 KIND_STAMP = 'stamp'                   # 도장 줄 — 그 표가 배포본의 사본이라는 표시. 뒤 칸은 안 읽는다
@@ -153,9 +166,8 @@ LIST_TOP, LIST_PATH = 'entries', 'path'   # agy 목록의 열쇠 — 우리는 �
 LIST_OURS, LIST_MIXED = 'ours', 'mixed'
 RUNNER_WARN = '받는 쪽 홈에 러너가 있다 · 우리 것이 아니라 안 걷는다'
 ANY_WARN = '어느 홈에도 안 놓는 이름이 있다 · 우리 것이 아니라 안 걷는다'
-IMPORT, BLOCK, LINES, INCLUDE, LIST, COPY = 'import', 'block', 'lines', 'include', 'list', 'copy'
-COND_BOX = 'box'
-FILE_FORMS = (IMPORT, BLOCK, LINES, INCLUDE, LIST)
+IMPORT, BLOCK, LINES, INCLUDE, LIST, COPY, HOOK = 'import', 'block', 'lines', 'include', 'list', 'copy', 'hook'
+FILE_FORMS = (IMPORT, BLOCK, LINES, INCLUDE, LIST, HOOK)
 
 ENTRY_BARRED = ('/', '..')             # 가져올 파일 칸을 열 수 없는 글자 — 항목 폴더 안의 상대 자리라야 한다
 
@@ -182,6 +194,24 @@ OLD_INCLUDE = ('@[norms](~/.claude/CLAUDE.md)', '@[norms](~/.paisetup/norms/norm
                '@[norms]({home}/.paisetup/norms/norms.md)')
 OLD_LIST = ('../../.claude/rules', '../../.paisetup/norms/rules', '~/.paisetup/norms/rules',
             '{home}/.paisetup/norms/rules')
+
+# hook — 등록 머리말의 꼴 · 명령 꼴 · 우리 것의 꼴은 표 머리의 hook 꼴이 든다
+HEAD_LINE = re.compile(r'# ([A-Za-z]+(?:\.[A-Za-z]+)?) = (\S.*?)\s*$')
+SHEBANG = '#!'
+HEAD_EVENTS, HEAD_VAR, HEAD_MATCHER = 'events', 'var', 'matcher'
+EVENT_SPLIT = ','
+VAR_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
+HOOK_TIMEOUT = 10
+HOOK_COMMAND = '%(v)s="%(d)s"; [ -f "$%(v)s/%(s)s" ] || exit 0; . "$%(v)s/%(s)s"'
+NO_MATCHER = ('UserPromptSubmit',)     # matcher 를 안 받는 이벤트 — 키가 있으면 거는 자가 항목째 걸러낸다(#120)
+NOT_OURS = ('SessionStart',)           # 세션 훅 문지기의 자리 — 손은 안 건드린다
+HOOKS_KEY, ENTRY_MATCHER = 'hooks', 'matcher'
+OUR_HOOK = re.compile(r'\s*(?P<v>[A-Za-z_][A-Za-z0-9_]*)="[^"]*";\s*'
+                      r'(?:\[ -f "\$(?P=v)/(?P<g>[^"/]+)" \] \|\| exit 0;\s*)?'
+                      r'\.\s+"\$(?P=v)/(?P<s>[^"/]+)"\s*(?:#[^\n]*)?\Z')
+OLD_INLINE = 'j=$(cat);'
+OLD_INLINE_REF = re.compile(r'/([^"/\\\s]+)"')
+UNQUOTABLE = ('"', '$', '`', '\\')     # 큰따옴표 안에서 셸이 푸는 글자 — 폴더 자리에 들면 명령이 깨진다
 
 LINK_TAGS = (getattr(stat, 'IO_REPARSE_TAG_SYMLINK', 0xA000000C), getattr(stat, 'IO_REPARSE_TAG_MOUNT_POINT', 0xA0000003))
 
@@ -349,6 +379,7 @@ class Table:
         for r in routes:
             self.groups.setdefault(r.target, []).append(r)
         self.tools = sorted(set(r.tool for r in routes))
+        self.hook_items = set(r.item for r in routes if r.form == HOOK)   # 등록 머리말이 싣는 것을 정하는 항목
 
     def barred(self, item, name, tool):
         """not 줄이 그 이름을 그 도구의 홈에 안 놓게 하나."""
@@ -431,7 +462,7 @@ def read_table(path):
         folder_item = item is not None and item.path.endswith('/')
         if item is None:
             bad.append('길 %s → %s — 표에 없는 항목이다' % (r.item, r.target))
-        elif r.cond != COND_BOX:
+        elif r.cond not in COND_VARS:
             bad.append('길 %s → %s — 모르는 조건이다(%s)' % (r.item, r.target, r.cond))
         elif not r.target.startswith(TILDE):
             bad.append('길 %s → %s — 자리는 `~/` 로 연다' % (r.item, r.target))
@@ -445,8 +476,8 @@ def read_table(path):
             bad.append('길 %s → %s — %s 의 자리는 파일이다' % (r.item, r.target, r.form))
         elif r.form == BLOCK and folder_item:
             bad.append('길 %s → %s — block 은 파일 항목을 쓴다' % (r.item, r.target))
-        elif r.form == LINES and not folder_item:
-            bad.append('길 %s → %s — lines 는 폴더 항목을 쓴다' % (r.item, r.target))
+        elif r.form in (LINES, HOOK) and not folder_item:
+            bad.append('길 %s → %s — %s 는 폴더 항목을 쓴다' % (r.item, r.target, r.form))
         elif r.form == IMPORT and folder_item and r.entry is None:
             bad.append('길 %s → %s — 폴더 항목의 import 는 가져올 파일 칸이 선다' % (r.item, r.target))
         elif r.form == IMPORT and folder_item and r.entry.startswith(ENTRY_BARRED):
@@ -471,21 +502,106 @@ def read_table(path):
             continue
         if all(x == IMPORT for x in forms):
             continue        # 한 자리에 import 길이 여럿 설 수 있다 — 길마다 한 줄
-        if len(forms) == 1 and forms[0] in (INCLUDE, LIST, COPY):
+        if len(forms) == 1 and forms[0] in (INCLUDE, LIST, COPY, HOOK):
             continue
         bad.append('자리 %s — 한 자리에 맞지 않는 꼴들이다(%s)' % (target, ' · '.join(forms)))
     return table, bad
 
 
-def source_files(item, layer, root, out):
+# ── 훅 머리말 ───────────────────────────────────────────────────────────────────────────────────────────
+def hook_head(path):
+    """껍데기의 등록 머리말 — ({열쇠: 값}, 겹친 열쇠들). 셔뱅 줄을 건너 `# <열쇠> = <값>` 줄이 잇달아 서는 데까지 읽는다."""
+    head, twice = collections.OrderedDict(), []
+    try:
+        with open(str(path), encoding='utf-8-sig', errors='replace') as f:
+            for n, line in enumerate(f):
+                if n == 0 and line.startswith(SHEBANG):
+                    continue
+                m = HEAD_LINE.match(line)
+                if not m:
+                    break
+                if m.group(1) in head:
+                    twice.append(m.group(1))
+                head[m.group(1)] = m.group(2)
+    except OSError:
+        pass
+    return head, twice
+
+
+def hook_spec(name, head, twice):
+    """머리말 → ((변수, [(이벤트, matcher 또는 None)]), 틀린 까닭들). 등록을 안 든 파일은 (None, [])."""
+    if HEAD_EVENTS not in head:
+        return None, []
+    bad = ['%s 열쇠가 겹친다' % k for k in twice]
+    events = [e.strip() for e in head[HEAD_EVENTS].split(EVENT_SPLIT)]
+    var = head.get(HEAD_VAR, '')
+    if not all(events) or len(set(events)) != len(events):
+        bad.append('이벤트가 비었거나 겹친다(%s)' % head[HEAD_EVENTS])
+    bad += ['%s 는 손이 안 건드리는 이벤트다' % e for e in events if e in NOT_OURS]
+    if not VAR_NAME.match(var):
+        bad.append('%s 가 셸 변수 이름이 아니다(%r)' % (HEAD_VAR, var))
+    known = set([HEAD_EVENTS, HEAD_VAR, HEAD_MATCHER]) | set('%s.%s' % (HEAD_MATCHER, e) for e in events if e not in NO_MATCHER)
+    bad += ['모르는 열쇠다(%s)' % k for k in head if k not in known]
+    pairs = []
+    for e in events:
+        m = None if e in NO_MATCHER else head.get('%s.%s' % (HEAD_MATCHER, e), head.get(HEAD_MATCHER))
+        if m is None and e not in NO_MATCHER:
+            bad.append('%s 의 matcher 가 없다 — 빈 matcher 는 모든 도구에 걸린다' % e)
+        pairs.append((e, m))
+    return ((var, pairs), ['%s — 등록 머리말이 틀렸다: %s' % (name, why) for why in bad])
+
+
+def hook_reach(path, var):
+    """껍데기가 제 변수로 부르는 곁 파일 이름들 — 주석 줄은 안 본다."""
+    ref = re.compile(r'\$\{?%s\}?/([A-Za-z0-9._-]+)' % re.escape(var))
+    try:
+        text = pathlib.Path(path).read_text(encoding='utf-8-sig', errors='replace')
+    except OSError:
+        return set()
+    return set(n for ln in text.splitlines() if not ln.lstrip().startswith('#') for n in ref.findall(ln))
+
+
+def hook_specs(files):
+    """항목 폴더 바로 밑의 등록 — ({껍데기: (변수, [(이벤트, matcher)])}, {곁 파일: 그것을 부르는 껍데기}, 틀린 까닭들)."""
+    specs, bodies, bad = collections.OrderedDict(), {}, []
+    for rel in sorted(k for k in files if '/' not in k):
+        spec, why = hook_spec(rel, *hook_head(files[rel]))
+        bad += why
+        if spec is None:
+            continue
+        specs[rel] = spec
+        if VAR_NAME.match(spec[0]):
+            for name in sorted(hook_reach(files[rel], spec[0]) - set([rel])):
+                bodies.setdefault(name, rel)
+    return specs, bodies, bad
+
+
+def hook_carried(found, shown, out):
+    """hook 길의 항목이 싣는 파일 — 등록 머리말을 든 껍데기와 그 껍데기가 부르는 곁 파일. 껍데기가 없으면 None(그 층에 안
+    선다). 머리말이 틀렸어도 싣는다 — 틀린 까닭은 놓을 때 ERROR 로 댄다."""
+    specs, bodies, _ = hook_specs(found)
+    if not specs:
+        return None
+    for name in sorted(n for n in bodies if n not in found):
+        out.warn('%s%s — 껍데기 %s 가 부르는 곁 파일이 원본에 없다' % (shown, name, bodies[name]))
+    return dict((k, found[k]) for k in found if k in specs or k in bodies)
+
+
+def source_files(item, layer, root, out, hook=False):
     """채울 파일 — {층 안 상대 자리: 원본 파일}. 그 층에 이 항목이 안 서면 None.
 
     표준 층은 짐의 층 안의 자리, 개인 층은 표의 저장소 자리에서 읽는다 — 저장소 자리가 여럿이면 한 폴더로 합치고, 같은
     이름(항목 폴더 바로 밑)이 두 자리에 다 있으면 그 이름만 ERROR 를 내고 안 싣는다(다른 층이 이긴다). 링크는 따라간다
     (항목 자리 자체도). 그 자리가 없으면 조용히 안 선다. 개인 층의 저장소 자리가 있는데 꼴이 표와 다르면(끊긴 링크도)
     WARN 을 내고 그 자리를 이 층에서 뺀다 — 원본을 두었는데 안 깔리는 까닭이 보이게. each 항목의 뿌리에 바로 든 파일은
-    단위가 아니라 WARN 을 내고 안 싣는다.
+    단위가 아니라 WARN 을 내고 안 싣는다. hook 길의 항목(hook)은 등록 머리말이 싣는 것을 정한다(hook_carried).
     """
+    got = source_merged(item, layer, root, out)
+    return hook_carried(got, item.path, out) if hook and got is not None else got
+
+
+def source_merged(item, layer, root, out):
+    """source_files 의 몸 — 걸러 싣기 전의 파일."""
     rels = (item.path,) if layer == STANDARD else item.repos
     if not item.path.endswith('/'):
         p = root / rels[0]
@@ -522,34 +638,41 @@ def source_files(item, layer, root, out):
     return dict((k, p) for rel, got in parts for k, p in got.items() if k.split('/', 1)[0] not in clash)
 
 
-# ── 제작자 칸 ────────────────────────────────────────────────────────────────────────────────────────────
-def box_raw():
+# ── 조건 — 제작자 칸 · 고른 제품 ─────────────────────────────────────────────────────────────────────────
+def user_value(var):
     if os.name == 'nt':
         try:
             import winreg
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, BOX_REG_KEY) as k:
-                value = winreg.QueryValueEx(k, BOX_VAR)[0]
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, USER_ENV_KEY) as k:
+                value = winreg.QueryValueEx(k, var)[0]
             if isinstance(value, str) and value.strip():
                 return value
         except OSError:
             pass
-    return os.environ.get(BOX_VAR, '')
+    return os.environ.get(var, '')
 
 
-def read_box(given, tools, out):
-    raw = box_raw() if given is None else given
-    names = [n for n in BOX_SPLIT.split(raw.strip().lower()) if n]
+def read_cond(cond, given, tools, out):
+    """그 조건이 켠 도구의 집합 — given 이 None 이면 사용자 값을 읽는다."""
+    raw = user_value(COND_VARS[cond]) if given is None else given
+    names = [n for n in NAMES_SPLIT.split(raw.strip().lower()) if n]
     if not names:
-        return set(BOX_EMPTY)
-    box = set()
+        return set(NAMES_EMPTY)
+    lit = set()
     for n in names:
-        if n == BOX_NONE:
+        if n == NAMES_NONE:
             continue
         if n in tools:
-            box.add(n)
+            lit.add(n)
         else:
-            out.warn('제작자 칸에 모르는 이름이 있다 — %s (건너뛴다 · 표의 도구: %s)' % (n, ' · '.join(tools)))
-    return box
+            out.warn('%s에 모르는 이름이 있다 — %s (건너뛴다 · 표의 도구: %s)' % (COND_LABELS[cond], n, ' · '.join(tools)))
+    return lit
+
+
+def read_conds(a, table, out):
+    """{조건: 켠 도구들} — 표의 길이 쓰는 조건만 읽는다(안 쓰는 값의 모르는 이름으로 WARN 을 안 낸다)."""
+    given = {COND_BOX: a.box, COND_PICK: a.pick}
+    return dict((c, read_cond(c, given[c], table.tools, out)) for c in COND_VARS if any(r.cond == c for r in table.routes))
 
 
 # ── 잠금 ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -964,12 +1087,13 @@ def import_line(run, route, item, got):
     return IMPORT_LINE % (HUB, layer, item.path + route.entry)
 
 
-def agy_target(run, layer, item):
+def layer_abs(run, layer, item):
+    """층 안 항목의 이 PC 홈 절대 경로(/ 로 · 끝 / 없이) — agy 의 가리킴과 훅 등록이 가리키는 자리."""
     return '%s/%s/%s/%s' % (run.home_abs, HUB, layer, item.path.rstrip('/'))
 
 
 def agy_text(run, form, layer, item):
-    target = agy_target(run, layer, item)
+    target = layer_abs(run, layer, item)
     if form == INCLUDE:
         return INCLUDE_TEXT % (item.name, target)
     return LIST_TEXT % json.dumps(target, ensure_ascii=False)
@@ -987,7 +1111,7 @@ def is_ours(run, form, path, raw, item):
         shapes = set(s.format(home=run.home_abs) for s in OLD_INCLUDE)
         shapes |= set(agy_text(run, INCLUDE, layer, item).strip() for layer in LAYERS)
         return text.strip() in shapes
-    paths = set(s.format(home=run.home_abs) for s in OLD_LIST) | set(agy_target(run, layer, item) for layer in LAYERS)
+    paths = set(s.format(home=run.home_abs) for s in OLD_LIST) | set(layer_abs(run, layer, item) for layer in LAYERS)
     try:
         doc = json.loads(text)
     except ValueError:
@@ -1024,6 +1148,154 @@ def place_whole(run, path, text, form, item):
         run.record(key, None, None)
     elif key in run.ledger:
         run.record(key, None, '놓은 파일이 없다' if raw is None else '우리 것이 아니게 됐다 — 둔다')
+
+
+def ours_hook(h, shells, bodies):
+    """그 훅이 우리 것이면 그 껍데기 이름, 아니면 None — shells · bodies 는 두 층의 껍데기와 곁 파일(→ 부르는 껍데기)."""
+    c = h.get('command') if isinstance(h, dict) else None
+    if not isinstance(c, str):
+        return None
+    m = OUR_HOOK.match(c)
+    if m and m.group('s') in shells and m.group('g') in (None, m.group('s')):
+        return m.group('s')
+    if c.lstrip().startswith(OLD_INLINE):
+        for name in OLD_INLINE_REF.findall(c):
+            if name in bodies:
+                return bodies[name]
+    return None
+
+
+def hook_entry(matcher, hook):
+    return {ENTRY_MATCHER: matcher, HOOKS_KEY: [hook]} if matcher is not None else {HOOKS_KEY: [hook]}
+
+
+def rewire_event(ev, cur, wanted, shells, bodies, notes):
+    """이벤트 하나의 새 목록 — 우리 훅만 고치고 남의 훅 · 항목은 자리 · 꼴 그대로 둔다. 우리 것의 첫 자리가 바라는 등록을
+    잇고(matcher 가 다르면 그 항목 바로 뒤의 새 항목으로), 나머지 우리 것은 걷는다. wanted — [(껍데기, matcher, 훅)] ·
+    notes 에 (동사, 껍데기, 이벤트)를 더한다."""
+    want = collections.OrderedDict((s, (m, h)) for s, m, h in wanted)
+    placed, out = set(), []
+    for e in cur:
+        hooks = e.get(HOOKS_KEY) if isinstance(e, dict) else None
+        if not isinstance(hooks, list):
+            out.append(e)
+            continue
+        keep, after, changed = [], [], False
+        for h in hooks:
+            s = ours_hook(h, shells, bodies)
+            if s is None:
+                keep.append(h)
+                continue
+            if s in want and s not in placed:
+                placed.add(s)
+                m, wh = want[s]
+                fits = e.get(ENTRY_MATCHER) == m if m is not None else ENTRY_MATCHER not in e
+                if fits and h == wh:
+                    keep.append(h)
+                    continue
+                notes.append(('고친다', s, ev))
+                if fits:
+                    keep.append(wh)
+                else:
+                    after.append(hook_entry(m, wh))
+            else:
+                notes.append(('겹친 것을 걷는다' if s in want else '걷는다', s, ev))
+            changed = True
+        if not changed:
+            out.append(e)
+            continue
+        if keep:
+            out.append(dict((k, keep if k == HOOKS_KEY else v) for k, v in e.items()))
+        out.extend(after)
+    for s, (m, wh) in want.items():
+        if s not in placed:
+            notes.append(('심는다', s, ev))
+            out.append(hook_entry(m, wh))
+    return out
+
+
+def rewire(cfg, want, shells, bodies):
+    """(새 설정, 바뀐 것들 [(동사, 껍데기, 이벤트)]) — 바뀐 것이 없으면 cfg 그대로. want — {이벤트: [(껍데기, matcher, 훅)]}.
+    우리 것을 걷어 빈 항목 · 빈 이벤트 목록 · 빈 hooks 표는 걷고, 처음부터 비었던 것은 둔다. 고칠 수 없는 꼴이면 ValueError."""
+    hooks = cfg.get(HOOKS_KEY, {})
+    if not isinstance(hooks, dict):
+        raise ValueError('%s 가 이벤트 → 목록의 표가 아니다' % HOOKS_KEY)
+    notes, out = [], {}
+    for ev in list(hooks) + [x for x in want if x not in hooks]:
+        cur = hooks.get(ev, [])
+        if ev in NOT_OURS or not isinstance(cur, list):
+            if want.get(ev):
+                raise ValueError('%s 가 목록이 아니다' % ev)
+            out[ev] = cur
+            continue
+        before = len(notes)
+        new = rewire_event(ev, cur, want.get(ev, []), shells, bodies, notes)
+        if new or (ev in hooks and len(notes) == before):
+            out[ev] = new
+    if not notes:
+        return cfg, notes
+    new_cfg = dict((k, out if k == HOOKS_KEY else v) for k, v in cfg.items())
+    new_cfg[HOOKS_KEY] = out
+    if not out:
+        del new_cfg[HOOKS_KEY]
+    return new_cfg, notes
+
+
+def place_hooks(run, path, item, got, layers):
+    """hook 길 — 이긴 층(got · 조건이 안 서면 None)의 껍데기마다 등록을 놓고 그 밖의 우리 것은 걷는다. layers — 두 층의 그
+    항목 파일들(없으면 None) · 우리 것을 알아볼 껍데기 · 곁 파일 이름을 거기서 모은다(한 층에서 빠진 껍데기의 등록도 걷힌다).
+    장부에 안 든다. 바뀐 것이 없으면 안 쓴다 — 파일은 바이트 · 시각 그대로다."""
+    shown = TILDE + run.rel(path)
+    shells, bodies = set(), {}
+    for files in layers:
+        if files:
+            specs, reach, _ = hook_specs(files)
+            shells |= set(specs)
+            for k, v in reach.items():
+                bodies.setdefault(k, v)
+    want = collections.OrderedDict()
+    if got:
+        specs, _, bad = hook_specs(got[1])
+        for why in bad:
+            run.out.error('%s — 이긴 층(%s)의 %s' % (shown, got[0], why))
+        if bad:
+            return
+        folder = layer_abs(run, got[0], item)
+        if any(c in folder for c in UNQUOTABLE):
+            run.out.error('%s — 홈 자리(%s)에 큰따옴표 안에서 셸이 푸는 글자가 있어 명령을 못 짓는다' % (shown, folder))
+            return
+        for shell, (var, pairs) in specs.items():
+            hook = {'type': 'command', 'command': HOOK_COMMAND % {'v': var, 'd': folder, 's': shell}, 'timeout': HOOK_TIMEOUT}
+            for ev, m in pairs:
+                want.setdefault(ev, []).append((shell, m, hook))
+    if not want and not shells:
+        return
+    link = is_link(path)
+    if path.is_dir() and not link:
+        raise ValueError('파일 자리에 폴더가 있다')
+    raw = path.read_bytes() if path.is_file() else None
+    if raw is None and not want:
+        return
+    try:
+        cfg = json.loads(raw.decode('utf-8-sig')) if raw is not None else {}
+        if not isinstance(cfg, dict):
+            raise ValueError('맨 위가 표가 아니다')
+        new, notes = rewire(cfg, want, shells, bodies)
+    except ValueError as e:
+        run.out.error('%s — 설정을 못 읽거나 못 고치는 꼴이다(%s) · 안 건드린다' % (shown, e))
+        return
+    if not notes:
+        return
+    text = json.dumps(new, ensure_ascii=False, indent=2) + '\n'
+    if raw is not None and b'\r\n' in raw:
+        text = text.replace('\n', '\r\n')
+    data = (BOM if raw is not None and raw.startswith(BOM) else b'') + text.encode('utf-8')
+    if link:
+        run.backup(path, True, '링크다 — 걷고 파일로 쓴다')
+    if not run.dry:
+        write_atomic(path, data)
+    for verb, shell, ev in collections.OrderedDict.fromkeys(notes):
+        run.out.change('write', shown, '훅 등록을 %s — %s · %s' % (verb, shell, ev))
 
 
 def open_folder(run, folder, prefix, link_dirs, fresh_dirs):
@@ -1368,8 +1640,8 @@ def warn_runners(run, table):
                 run.out.warn('%s%s/ — %s' % (TILDE, top, ANY_WARN if x.tool == ANY_TOOL else RUNNER_WARN))
 
 
-def place(run, table, views, box):
-    """표대로 놓는다. views — 층 → (항목 → 파일들 또는 None).
+def place(run, table, views, conds):
+    """표대로 놓는다. views — 층 → (항목 → 파일들 또는 None) · conds — 조건 → 켠 도구들.
 
     차례 — 길마다 놓기 · 기록 훑기(걷기 · 빈 폴더) · 옛 기록(was)의 이름 · 옛 자리(old) · 옛 기록 파일 · 받는 쪽 홈의 러너.
     옛 기록은 첫머리에 한 번 읽는다 — old 줄도 같은 기록을 읽고, 기록 파일은 옛 자리까지 끝난 뒤 옮긴다."""
@@ -1390,8 +1662,11 @@ def place(run, table, views, box):
                 won[item.name] = (layer, files)
                 break
 
-    def pick(route):
-        return won.get(route.item) if route.tool in box else None
+    def lit(route):
+        return route.tool in conds.get(route.cond, ())
+
+    def chosen(route):
+        return won.get(route.item) if lit(route) else None
 
     ledgers = collections.OrderedDict()
     for x in [w.ledger for w in table.wases] + [y for o in table.olds for y in o.ledgers]:
@@ -1406,22 +1681,24 @@ def place(run, table, views, box):
             if run.kept(run.rel(path)):
                 run.out.warn('%s — 다른 주인의 자리(keep)다 · 이 길을 건너뛴다' % target)
             elif first.form == COPY and item.each:
-                placing[target] = place_each(run, table, first, each_won[item.name] if first.tool in box else None,
+                placing[target] = place_each(run, table, first, each_won[item.name] if lit(first) else None,
                                              link_dirs, fresh_dirs, desired)
             elif first.form == COPY:
-                place_copy(run, first, pick(first), link_dirs, fresh_dirs, desired)
+                place_copy(run, first, chosen(first), link_dirs, fresh_dirs, desired)
             elif first.form == IMPORT:
-                lines = [import_line(run, r, table.items[r.item], pick(r)) for r in routes]
+                lines = [import_line(run, r, table.items[r.item], chosen(r)) for r in routes]
                 lines = [x for x in lines if x]
                 text = ('%s\n%s\n%s\n' % (BEGIN, '\n'.join(lines), END)) if lines else ''
                 place_marked(run, path, text, True)
+            elif first.form == HOOK:
+                place_hooks(run, path, item, chosen(first), [views[layer](item) for layer in LAYERS])
             elif first.form == BLOCK:
-                got = pick(first)
+                got = chosen(first)
                 text = ''
                 if got:
                     rule_sets = []
                     for r in routes[1:]:
-                        g = pick(r)
+                        g = chosen(r)
                         if g:
                             home_of_rules = '%s%s/%s/%s' % (TILDE, HUB, g[0], table.items[r.item].path.rstrip('/'))
                             rule_sets.append((home_of_rules, g[1]))
@@ -1429,13 +1706,13 @@ def place(run, table, views, box):
                 place_marked(run, path, text, False)
             else:
                 whole.add(run.rel(path))
-                got = pick(first)
+                got = chosen(first)
                 place_whole(run, path, agy_text(run, first.form, got[0], item) if got else None, first.form, item)
         except Exception as e:  # noqa: BLE001 — 한 자리가 막혀도 나머지는 간다
             run.out.error('%s — %s: %s' % (target, type(e).__name__, e))
     tops = sorted(set(run.rel(run.at(r.target)) + '/' for r in table.routes if r.form == COPY))
     sweep_ledger(run, desired, whole, link_dirs, fresh_dirs, tops)
-    on = set(r.target for r in table.routes if r.tool in box)
+    on = set(r.target for r in table.routes if lit(r))
     known = dict((name, set(got)) for name, got in each_won.items())
     verdict = settle_was(run, table, ledgers, placing, on, link_dirs, known)
     settle_olds(run, table, ledgers)
@@ -1521,6 +1798,8 @@ def passthrough(a):
         args += ['--home', os.path.abspath(a.home)]
     if a.box is not None:
         args += ['--box', a.box]
+    if a.pick is not None:
+        args += ['--pick', a.pick]
     return args
 
 
@@ -1563,13 +1842,13 @@ def cmd_place(a, home, out, dry, check):
         out.error(why)
     if bad:
         return absent
-    box = read_box(a.box, table.tools, out)
+    conds = read_conds(a, table, out)
     if dry:
-        place(Run(home, True, out), table, layer_views(home, out), box)
+        place(Run(home, True, out), table, layer_views(home, out), conds)
     else:
         try:
             with Lock(home / HUB):
-                place(Run(home, False, out), table, layer_views(home, out), box)
+                place(Run(home, False, out), table, layer_views(home, out), conds)
         except Busy as e:
             out.error(e)
     if check:
@@ -1589,7 +1868,8 @@ def cmd_sync(a, home, out):
         out.error(why)
     if bad:
         return 1
-    fills = dict((item.name, source_files(item, a.layer, root, out)) for item in table.items.values())
+    fills = dict((item.name, source_files(item, a.layer, root, out, item.name in table.hook_items))
+                 for item in table.items.values())
     selves = ((TABLE, root / TABLE), (HAND, pathlib.Path(__file__).resolve()))
     if a.dry_run:
         fill_layer(home, a.layer, table, fills, selves, out, True)
@@ -1615,7 +1895,7 @@ def dry_place(a, home, table, fills, winner, out):
             out.error('놓기를 맡을 층의 표가 없거나 틀렸다 — %s' % path)
             return 1
     views = layer_views(home, out, (a.layer, fills))
-    place(Run(home, True, out), table, views, read_box(a.box, table.tools, out))
+    place(Run(home, True, out), table, views, read_conds(a, table, out))
     return 1 if out.failed else 0
 
 
@@ -1635,6 +1915,7 @@ def main(argv=None):
     for x in (s, p, c):
         x.add_argument('--home')
         x.add_argument('--box')
+        x.add_argument('--pick')
     a = ap.parse_args(argv)
     home = pathlib.Path(os.path.abspath(a.home)) if a.home else pathlib.Path.home()
     out = Out()

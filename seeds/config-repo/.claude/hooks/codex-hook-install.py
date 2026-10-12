@@ -1,6 +1,10 @@
 """Codex 훅 예시를 사용자의 `config.toml` 에 병합한다 — 우리 훅만 갈고, 남의 훅은 그대로 둔다.
 
     python -X utf8 codex-hook-install.py --config ~/.codex/config.toml --example codex-hooks.example.toml
+    python -X utf8 codex-hook-install.py --config ~/.codex/config.toml --remove
+
+`--remove` 는 우리 훅만 걷는다 — 우리 항목이 하나도 없는 예시로 병합한 것과 같아, 아래 규율(자리 · 뜻 재기 · 원본 떠 두기 ·
+못 알아보는 꼴)이 그대로 선다. 설정 파일이 없으면 짓지 않는다. Codex 가 그 훅에 적은 신뢰(`[hooks.state]`)는 안 건드린다.
 
 **무엇이 우리 것인가.** `[hooks]` 의 이벤트 배열 안 훅 가운데 명령(`command` · `commandWindows`)이 씨앗 자리의 우리 몸통
 (`MARKER_DIR` + `MARKERS`)을 부르는 훅이다. 판정은 항목(matcher 묶음)이 아니라 **훅 하나** 단위다 — 사람이 우리 묶음 안에
@@ -328,19 +332,34 @@ def bare_lf(s):
     return s.replace('\r\n', '').count('\n')
 
 
-def merge(config_text, example_text):
-    """`(새 글, 고쳤나, 건너뛴 것)`. 뜻이 어긋나면 ValueError — 그때는 아무것도 안 쓴다."""
+def need_tomllib():
     if tomllib is None:
         raise RuntimeError('tomllib 이 없다 — 파이썬 3.11 이상이 든다')
-    bom = config_text.startswith(BOM)
-    text = config_text[1:] if bom else config_text
-    nl = '\r\n' if '\r\n' in text else '\n'
-    data = tomllib.loads(text)
+
+
+def merge(config_text, example_text):
+    """`(새 글, 고쳤나, 건너뛴 것)`. 뜻이 어긋나면 ValueError — 그때는 아무것도 안 쓴다."""
+    need_tomllib()
     example = tomllib.loads(example_text.lstrip(BOM)).get(HOOKS_TABLE, {})
     missing = [ev for ev in EVENTS if not isinstance(example.get(ev), list)]
     if missing:
         raise ValueError('예시에 이벤트가 없다: ' + ', '.join(missing))
-    wanted = {ev: example[ev] for ev in EVENTS}
+    return rewrite(config_text, {ev: example[ev] for ev in EVENTS})
+
+
+def remove(config_text):
+    """우리 훅만 걷은 `(새 글, 고쳤나, 건너뛴 것)` — 우리 항목이 하나도 없는 예시로 병합한 것과 같다. 남의 훅과 그 자리,
+    뒤에 남는 항목의 번호는 그대로다(맨 위 「있던 항목은 제자리를 지킨다」). 뜻이 어긋나면 ValueError."""
+    return rewrite(config_text, {ev: [] for ev in EVENTS})
+
+
+def rewrite(config_text, wanted):
+    """이벤트마다 우리 항목을 wanted 로 갈아 끼운 `(새 글, 고쳤나, 건너뛴 것)`. 뜻이 어긋나면 ValueError."""
+    need_tomllib()
+    bom = config_text.startswith(BOM)
+    text = config_text[1:] if bom else config_text
+    nl = '\r\n' if '\r\n' in text else '\n'
+    data = tomllib.loads(text)
 
     plan, skipped = plan_events(data, wanted)
     has_header, hooks_at_root, insert_at, found = hooks_layout(text)
@@ -437,18 +456,22 @@ def backup_copy(config, suffix=BACKUP_SUFFIX):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', required=True)
-    ap.add_argument('--example', required=True)
+    mode = ap.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--example')
+    mode.add_argument('--remove', action='store_true')
     args = ap.parse_args()
     config = pathlib.Path(args.config).expanduser()
-    example = pathlib.Path(args.example)
     try:
         current = ''
         if config.exists():
             with open(config, encoding='utf-8', newline='') as f:
                 current = f.read()
-        with open(example, encoding='utf-8', newline='') as f:
-            wanted_text = f.read()
-        new, changed, skipped = merge(current, wanted_text)
+        if args.remove:
+            new, changed, skipped = remove(current)
+        else:
+            with open(pathlib.Path(args.example), encoding='utf-8', newline='') as f:
+                wanted_text = f.read()
+            new, changed, skipped = merge(current, wanted_text)
         if changed and config.exists():
             print('BACKUP=' + str(backup_copy(config)))
         if changed:

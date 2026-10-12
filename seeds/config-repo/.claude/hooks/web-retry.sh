@@ -1,4 +1,6 @@
 # matcher = WebSearch|WebFetch
+# events = PostToolUse,PostToolUseFailure
+# var = _wr
 #
 # 웹 다시 찾기 — 웹 도구가 못 닿았을 때 **다른 길이 있다는 것을 결과 곁에 한 줄 붙인다**(PostToolUse ·
 # PostToolUseFailure 훅). 붙이기만 한다 — 막지 않는다.
@@ -23,11 +25,8 @@
 #   본문에서 죽는다(실측) — 죽은 훅은 아무 말도 안 붙인다.
 # ⚠ **덧말은 사실로 쓴다** — 명령조의 바깥 글은 프롬프트 주입 방어에 걸릴 수 있다(Claude Code 훅 문서).
 #
-# 홈 `~/.claude/settings.json` 의 PostToolUse · PostToolUseFailure 둘에 같은 한 줄로 심긴다 — 심는 손은
-# 이 자리만 채운다:
-#     _wr="<이 파일이 있는 자리>"; [ -f "$_wr/web-retry.sh" ] || exit 0; . "$_wr/web-retry.sh"
-# 윗줄 `# matcher = …` 가 두 항목의 matcher 진본이다. 심는 손은 그림 문(`image-gate.sh`)과 같다 —
-# `session-start-body.sh` 와 배포본 설치기. 주인 규율도 같다.
+# 윗줄들이 홈 `~/.claude/settings.json` 등록의 진본이다 — 갈 곳 표의 손(`tool-homes.py`)이 두 이벤트에 같은 명령으로
+# 짓는다. 머리말의 뜻과 심기는 명령 꼴은 표(`tool-homes.conf`)의 hook 꼴이 든다.
 #
 # 시험 — `sh scripts/check-web-retry.sh` (실물 꼴의 입력을 먹여 걸 것과 둘 것을 문다).
 # shellcheck shell=sh  # 점으로 읽혀 셔뱅이 없다 — 어느 셸이 읽어도 서게 POSIX 로 잰다
