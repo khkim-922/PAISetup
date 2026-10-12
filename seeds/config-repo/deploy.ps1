@@ -17,10 +17,9 @@
 #      무엇으로 죽든 커밋 게이트만은 서 있어야 한다. 까닭은 아래 §실행 순서 (#31)
 #   3. 진본을 홈과 형제 저장소로 민다 — **무엇이 어디로 가나의 표는 README 「배포 대상」이 든다**
 #      (여기 옮겨 적지 않는다 — 세 자리가 같은 표를 다른 낱말로 들다 갈렸다). 목록의 진본은 선언
-#      셋이다: deploy.repofiles.conf(저장소로 가는 파일) · deploy.seeds.conf(홈으로 폴더째) ·
-#      deploy.skills.local.conf(홈에서 빼는 스킬). 어느 저장소·어느 슬러그로 가나는 선언이 아니라
-#      personal.conf 의 REPOS · ROOT 에서 **파생한다**(결정 0072)
-#      규범 · 룰 · 에이전트는 이 스크립트가 안 민다 — 손 하나(`.claude/hooks/tool-homes.py`)가 갈 곳 표대로 도구
+#      둘이다: deploy.repofiles.conf(저장소로 가는 파일) · deploy.seeds.conf(홈으로 폴더째).
+#      어느 저장소·어느 슬러그로 가나는 선언이 아니라 personal.conf 의 REPOS · ROOT 에서 **파생한다**(결정 0072)
+#      규범 · 룰 · 에이전트 · 스킬은 이 스크립트가 안 민다 — 손 하나(`.claude/hooks/tool-homes.py`)가 갈 곳 표대로 도구
 #      홈에 놓는다(결정 0112). 이 스크립트는 그 손을 부르고, 손이 바꿀 줄을 계획에 싣는다
 #   4. mcp-servers.json에 적힌 MCP 서버 등록 — **서버마다 `only` 로 자리를 걸 수 있다**
 #      (`only = <자리>,<자리>`). 이 자리가 그 목록에 없으면 안 등록하고, 이미 등록돼 있으면
@@ -40,13 +39,11 @@
 #                             저장소의 .claude/settings.json 은 훅 등록 파일이라 배포한다 —
 #                             이름이 같을 뿐 다른 것이다
 #
-# 이 스크립트가 기본 실행에서 지우는 것은 **둘뿐이다** — 선언에 있으면서 `only` 로 이 자리에서 안 사는 MCP
-# 이름(결정 0079), 그리고 agy 의 옛 스킬 자리와 그 자리를 여는 우리 목록(결정 0111 — 우리 이름을 새 자리로
-# 옮기고 빈 옛 자리를 걷는다). 둘 다 「원본에 없는 것」이 아니라 **선언이 시킨 상태**라 -Prune 이 아닌
-# 계획에 선다. 나머지 제거는 -Prune 을 줄 때만 하고, 후보가 있으면 기본 실행에서도 개수만 알려준다.
-# 규범 · 룰 · 에이전트는 -Prune 을 안 탄다 — 손이 제가 놓았다고 기록한 것만 기본 실행에서 걷는다(손의 머리말).
-# 지우는 것과 다른 것이 하나 있다 — Codex · agy 홈에 미는 스킬과 같은 이름의 폴더가 우리 기록에 없으면, 그 위에 덮어쓰는
-# 대신 통째로 백업 자리로 옮겨 두고 민다(아래 「비켜 두기」). 계획 줄과 남은 수동 작업에 그 이름이 선다.
+# 이 스크립트가 기본 실행에서 지우는 것은 **하나뿐이다** — 선언에 있으면서 `only` 로 이 자리에서 안 사는 MCP
+# 이름(결정 0079). 「원본에 없는 것」이 아니라 **선언이 시킨 상태**라 -Prune 이 아닌 계획에 선다. 나머지
+# 제거(원본에 없는 씨앗 · 메모리 파일, 선언에 없는 MCP 등록)는 -Prune 을 줄 때만 하고, 후보가 있으면 기본 실행에서도
+# 개수만 알려준다. 규범 · 룰 · 에이전트 · 스킬은 -Prune 을 안 탄다 — 손이 제가 놓았다고 기록한 것만 기본 실행에서
+# 걷는다(손의 머리말).
 #
 # 이미 맞는 것은 건드리지 않는다. 몇 번을 돌려도 안전하다.
 # 덮어쓰거나 치우는 파일은 ~/.claude/backups/deploy-<시각>/ 에 원본을 남긴다. 손이 덮거나 걷는 것은 손이 제 백업 자리에 남긴다.
@@ -294,30 +291,7 @@ function Sync-Repos($repos) {
 }
 #endregion 당김 손
 
-#region 제작자 칸 손 — `PAISETUP_PERSONAL` 을 읽어 어느 도구 홈을 개인화하나 가른다
-function Get-PersonalTools([string]$Raw) {
-    # 돌려주는 것: $null — 값이 없다(있는 도구 다) · 배열 — 그 도구들(`none` 이면 빈 배열)
-    # `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 부른다.
-    # ⚠ **배열을 if 식으로 고르지 않는다** — 빈 배열을 내는 if 식은 $null 로 풀려 「아무 도구도 아님」이 「다」가 된다.
-    #   그래서 값이 없을 때만 일찍 돌아가고, 배열은 쉼표로 감싸 풀리지 않게 돌려준다.
-    if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
-    return ,@($Raw -split '[,\s]+' | Where-Object { $_ -and $_ -ne 'none' } | ForEach-Object { $_.ToLower() })
-}
-function Get-PersonalRaw([string]$User = $(try { [Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') } catch { $null }),
-                         [string]$Process = $env:PAISETUP_PERSONAL) {
-    # 돌려주는 것: 칸 값의 날글 — 사용자 값이 있으면 그것, 없으면 프로세스 값(사용자 값이 없는 자리 — 리모트 컨테이너)
-    # ⚠ **사용자 값이 진본이다.** 설치기는 사용자 값을 심고, 윈도는 이미 떠 있는 프로세스에 그 변경을 안 넣는다. 칸을 바꾸기
-    #   전에 뜬 앱의 세션에서 배포를 부르면 프로세스 값은 옛 값이라, 그것을 먼저 읽으면 켠 도구를 끈 것으로 읽고 그 홈의
-    #   개인화를 걷는다. 손(`.claude/hooks/tool-homes.py`)도 같은 차례로 읽는다.
-    # `scripts/check-deploy-agent-homes.ps1` 이 인자를 넣어 차례를 잰다.
-    if (-not [string]::IsNullOrWhiteSpace($User)) { return $User }
-    return $Process
-}
-
-function Test-PersonalFor([string]$Tool) { ($null -eq $personalSet) -or ($personalSet -contains $Tool) }
-#endregion 제작자 칸 손
-
-#region 손 부르기 — 규범 · 룰 · 에이전트를 도구 홈에 놓는 손(`.claude/hooks/tool-homes.py`)을 부르고, 그 줄을 계획 걸음과 할 일로 가른다
+#region 손 부르기 — 규범 · 룰 · 에이전트 · 스킬을 도구 홈에 놓는 손(`.claude/hooks/tool-homes.py`)을 부르고, 그 줄을 계획 걸음과 할 일로 가른다
 # 무엇이 어느 홈에 어떤 꼴로 가나는 갈 곳 표(`tool-homes.conf`)와 손만 안다 — 이 스크립트는 손을 부르고 그 줄을 옮겨 싣기만
 #   한다(결정 0112). 부르는 꼴 · 출력 계약 · 종료 값 · 제작자 칸 읽기 · 백업 자리는 손의 머리말이 든다.
 function Invoke-ToolHomes {
@@ -346,7 +320,7 @@ function ConvertFrom-ToolHomesOutput {
     #   자리는 손이 낸 꼴(`~/` 로 연다) 그대로 싣는다.
     # ⚠ **끝 줄(`CHANGED=`)이 없으면 못 잰 것이다** — 손이 중간에 죽었다. 「바꿀 것 없음」으로 접지 않는다.
     param($Run)
-    $who = '규범 · 룰 · 에이전트(tool-homes.py)'
+    $who = '규범 · 룰 · 에이전트 · 스킬(tool-homes.py)'
     if ($Run.Why) { return @{ Steps = @(); Notes = @("$who — $($Run.Why)"); Same = $false; Failed = $true } }
     # 손의 동사 → 이 화면의 꼴(부호 · 낱말). 모르는 동사도 버리지 않고 그 낱말 그대로 싣는다
     $verbs = @{ fill = '+ 채움'; drop = '- 걷음'; write = '+ 씀'; remove = '- 제거'; backup = '~ 백업'; record = '+ 기록' }
@@ -383,96 +357,6 @@ function ConvertFrom-ToolHomesOutput {
     return @{ Steps = $steps; Notes = $notes; Same = (-not $failed -and $steps.Count -eq 0); Failed = $failed }
 }
 #endregion 손 부르기
-
-#region 스킬 홈 손 — Codex · agy 홈 스킬의 걷기 판정과 기록 · agy 옛 스킬 자리 · 비켜 두기
-function Get-AgentHomePrune {
-    # $Want — 이번에 미는 스킬 이름 → 원본 폴더(칸을 끈 도구면 빈 표) · $Mine — 배포의 기록 · $Installer — 설치기의 기록
-    # 돌려주는 것: Files — 제거 후보 파일 · Ledger — 이 실행 뒤 배포 기록에 남길 이름(안 걷는 판이면 아직 남은 것도 든다)
-    # 판단은 이 한 자리다 — `scripts/check-deploy-agent-homes.ps1` 이 이 함수를 떼어 부른다.
-    param([string]$SkillHome, [hashtable]$Want, [string[]]$Mine, [string[]]$Installer, [bool]$Prune)
-    $files = @()
-    foreach ($n in @($Want.Keys)) {
-        $dir = Join-Path $SkillHome $n
-        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
-        # 파이썬 캐시는 원본에 없는 것이 당연하다 — 홈에서 스크립트를 돌리면 생긴다
-        foreach ($f in @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force |
-                         Where-Object { $_.FullName -notmatch '[\\/]__pycache__[\\/]' })) {
-            $rel = $f.FullName.Substring($dir.Length + 1)
-            if (-not (Test-Path -LiteralPath (Join-Path $Want[$n] $rel))) { $files += $f.FullName }
-        }
-    }
-    $gone = @(@($Mine) | Where-Object { $_ -and -not $Want.ContainsKey($_) -and (@($Installer) -notcontains $_) } |
-              Where-Object { Test-Path -LiteralPath (Join-Path $SkillHome $_) -PathType Container })
-    foreach ($n in $gone) {
-        $files += @(Get-ChildItem -LiteralPath (Join-Path $SkillHome $n) -Recurse -File -Force | ForEach-Object { $_.FullName })
-    }
-    $kept = if ($Prune) { @() } else { $gone }
-    return @{ Files = $files; Ledger = @(@($Want.Keys) + $kept | Sort-Object -Unique) }
-}
-function Read-SkillLedger([string]$Path) {
-    if (-not (Test-Path -LiteralPath $Path)) { return @() }
-    return @([IO.File]::ReadAllLines($Path) | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-}
-# agy 옛 스킬 자리 — `~/.gemini/config/paisetup-skills` 와 그 자리를 여는 우리 목록(`~/.gemini/config/skills.json`)을 걷는다
-# (docs/decisions/0111). 그 자리는 목록에 실려도 agy 에이전트가 본문을 못 연다 — `view_file` 을 「hardcoded system protection
-# boundary rule」로 막는다. 설정 폴더 가운데 `skills/` 만 그 막음에서 빠지고, 그 자리는 목록 없이도 실린다(agy CLI 1.3.3 실측).
-# ⚠ **기본 실행에서 옮긴다** — 옛 자리가 남으면 새 자리와 같은 이름이 둘씩 실리고 그 가운데 하나는 못 연다. 그래서 「원본에
-#   없는 것」을 걷는 -Prune 의 몫이 아니라 선언이 시킨 상태다. 우리 것은 두 기록(배포 `.paisetup-deploy-skills` · 설치기
-#   `.paisetup-skills`)에 든 이름이다. 이번에 미는 이름과 배포가 들었는데 이번에 안 미는 이름은 백업 자리로(새 자리에 다시
-#   서거나 -Prune 이 걷을 이름이다), 설치기 이름은 새 자리로 옮겨 그대로 쓰이게 한다 — 설치기가 거기서 이어 맡는다. 기록에
-#   없는 것이 남으면 옛 자리를 안 걷고 할 일에 올린다 — 사람이 둔 것이다.
-# ⚠ **두 기록은 옛 자리의 기록이다** — 그 이름이 아직 옛 자리에 있는 동안 새 자리의 같은 이름은 우리가 둔 것일 수 없다. 그
-#   폴더는 먼저 통째로 비켜 둔다(`Aside` — 아래 「비켜 두기」와 같은 손).
-# ⚠ **목록은 우리가 쓴 꼴 그대로일 때만 걷는다** — 맨 위 열쇠는 `entries` 하나, 항목은 하나, 그 항목의 열쇠는 `path` 하나이고
-#   그 `path` 가 옛 자리를 우리가 써 온 꼴(상대 `paisetup-skills` · 틀 그대로 `~/…` · 이 PC 홈의 절대 경로)로 연다. 무엇이든
-#   더 붙었으면 사람이 고친 파일이라 두고 할 일에 올린다.
-# 짝 — 배포본 설치기의 같은 이름 함수 둘이 같은 판을 짓는다. `scripts/check-agy-pointers.ps1`(목록의 꼴) ·
-#   `scripts/check-deploy-agent-homes.ps1`(옮길 판)이 둘을 떼어 견준다.
-function Get-AgyOldListState {
-    # 목록의 꼴 — 'ours'(우리가 쓴 꼴 그대로 — 위 곁말) · 'mixed'(옛 자리를 우리 꼴로 여는 항목이 있는데 무엇이 더 붙었다 ·
-    #   사람이 고친 파일) · 'none'(없다 · 못 읽는다 · 옛 자리를 안 연다). BOM 은 읽을 때 걷는다 — BOM 이 붙은 목록은 agy 가 못
-    #   읽어 애초에 아무것도 안 열었다. 열쇠 이름은 글자까지 견준다 — 우리는 `entries` · `path` 만 썼다.
-    param([string]$Path, [string]$HomeDir)
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return 'none' }
-    try { $doc = [IO.File]::ReadAllText($Path) | ConvertFrom-Json } catch { return 'none' }
-    if ($doc -isnot [Management.Automation.PSCustomObject]) { return 'none' }
-    $old = @('paisetup-skills', '~/.gemini/config/paisetup-skills', ($HomeDir.Replace('\', '/').TrimEnd('/') + '/.gemini/config/paisetup-skills'))
-    $hits = @(@($doc.entries) | Where-Object { $_ -is [Management.Automation.PSCustomObject] } |
-              Where-Object { $old -contains ([string]$_.path).Replace('\', '/').TrimEnd('/') })
-    if (-not $hits.Count) { return 'none' }
-    $keys = { param($o) (@($o.PSObject.Properties | ForEach-Object { $_.Name }) -join ',') }
-    $exact = ((& $keys $doc) -ceq 'entries') -and ($doc.entries -is [Array]) -and (@($doc.entries).Count -eq 1) -and
-             ($doc.entries[0] -is [Management.Automation.PSCustomObject]) -and ((& $keys $doc.entries[0]) -ceq 'path') -and
-             ($doc.entries[0].path -is [string])
-    if ($exact) { return 'ours' }
-    return 'mixed'
-}
-function Get-AgyOldHomePlan {
-    # 옛 자리를 비우는 판 — 옛 자리에 든 우리 이름마다:
-    #   Aside    — 새 자리에 같은 이름이 이미 있다 → 그 폴더를 먼저 통째로 백업 자리로 비켜 둔다(우리가 둔 것일 수 없다 — 위 곁말)
-    #   ToBackup — 이번에 다시 민다 · 배포가 들었는데 더 안 민다(`$Reinstall`) → 옛것은 백업 자리로
-    #   ToNew    — 나머지 → 새 자리로 옮긴다(그대로 쓰인다)
-    #   Foreign(기록에 없는 이름 · 폴더가 아닌 것 — 안 건드린다) · Remove(옛 자리가 있고 Foreign 이 없다 — 다 옮긴 뒤 걷는다)
-    param([string]$OldHome, [string]$NewHome, [string[]]$Ours, [string[]]$Reinstall)
-    $plan = @{ ToNew = @(); ToBackup = @(); Aside = @(); Foreign = @(); Remove = $false }
-    if (-not (Test-Path -LiteralPath $OldHome -PathType Container)) { return $plan }
-    foreach ($e in @(Get-ChildItem -LiteralPath $OldHome -Force)) {
-        if (-not $e.PSIsContainer -or (@($Ours) -notcontains $e.Name)) { $plan.Foreign += $e.Name; continue }
-        if (Test-Path -LiteralPath (Join-Path $NewHome $e.Name)) { $plan.Aside += $e.Name }
-        if (@($Reinstall) -contains $e.Name) { $plan.ToBackup += $e.Name } else { $plan.ToNew += $e.Name }
-    }
-    $plan.Remove = ($plan.Foreign.Count -eq 0)
-    return $plan
-}
-# 비켜 두기 — Codex · agy 홈은 사람 스킬과 같이 산다. 미는 이름과 같은 폴더가 이미 있는데 두 기록(배포 · 설치기) 어디에도 없으면
-#   우리 것이 아니다. 그 위에 밀면 사람의 파일이 덮이고(백업은 파일 하나씩 남는다) 사람만의 파일은 우리 폴더에 섞여 남으며,
-#   -Prune 은 그 파일을 「원본에 없는 파일」로 걷는다. 그래서 그 폴더를 먼저 통째로 백업 자리로 옮기고 민다.
-function Get-AgentHomeAside {
-    # 비켜 둘 이름 — `$Names` 가운데 `$SkillHome` 에 이미 있고 `$Ours` 에 없는 것
-    param([string]$SkillHome, [string[]]$Names, [string[]]$Ours)
-    return @(@($Names) | Where-Object { $_ -and (@($Ours) -notcontains $_) -and (Test-Path -LiteralPath (Join-Path $SkillHome $_)) })
-}
-#endregion 스킬 홈 손
 
 #region MCP 손 — 등록 여부를 묻고, 선언의 `only` 칸을 읽거나 떼고, 자리를 세션 훅에 묻는다
 function Test-McpRegistered($name) {
@@ -534,18 +418,68 @@ function Get-McpSiteAnswer {
 }
 #endregion MCP 손
 
-#region 백업 손 — 빈 백업 자리를 고르고, 덮거나 걷기 전에 원본을 백업 자리에 뜬다
-# 백업 자리는 늘 빈 자리로 — 같은 초에 두 배포가 돌면 백업 폴더(`$backup`)가 같고, 이미 있는 폴더로 옮기기는 그 안으로 들어가
-#   앞 백업과 겹친다(`Move-Item -Force` 실측). 그래서 옮길 자리가 있으면 `-2` · `-3` … 가운데 처음 빈 것을 쓴다.
-function Get-FreePath([string]$Path) {
-    $p = $Path; $i = 2
-    while (Test-Path -LiteralPath $p) { $p = "$Path-$i"; $i++ }
-    return $p
+#region 홈 씨앗 손 — 이 저장소가 홈 씨앗의 원본이면 홈으로 폴더째 미는 목록과 「씨앗의 판 줄」 걸음을 짓는다
+function Get-SeedColumn {
+    # 돌려주는 것: @{ Dirs — 홈으로 폴더째 미는 폴더(뿌리 기준 · `\` 로) · Notes — 할 일 줄 · Stamp — 「씨앗의 판 줄」 걸음(안
+    #   쓰면 $null) · Same — 판 줄이 이미 이 판일 때의 「= 동일」 줄(아니면 $null) }
+    # ⚠ **문은 「이 저장소가 홈 씨앗의 원본인가」 — 뿌리에 deploy.seeds.conf 가 있나다.** 그 선언은 씨앗에 안 실리는 제작자
+    #   저장소의 것이라 씨앗으로 만든 동료 저장소에는 없다. 그 PC 의 홈 씨앗은 설치기가 짐에서 깐 것이고 판 줄도 설치기가 적은
+    #   그대로여야 한다 — 문 없이 돌면 밀 목록이 없는데도 판 줄을 동료 저장소의 커밋으로 덮는다. 문을 못 지나면 아무것도 안 하고
+    #   아무 말도 안 한다(목록 · 할 일 · 판 줄이 다 안 선다). 동료가 그 파일을 두면 그 저장소가 홈 씨앗의 원본이다. 파일은 있는데
+    #   비었으면 할 일 한 줄이다 — 제작자 저장소의 설정 결함. 세션 훅 `deploy_home_norms` 의 씨앗 칸이 같은 문을 쓴다.
+    # `scripts/check-tool-homes.py` ⑳ 이 이 함수를 떼어 동료 저장소로 부른다 — 홈 씨앗의 판 줄 · 씨앗 목록을 이름 대는 글은
+    #   이 함수 밖에 두지 않는다(그 검사가 잰다).
+    param([string]$Src, [string]$Dst)
+    $col  = @{ Dirs = @(); Notes = @(); Stamp = $null; Same = $null }
+    $conf = Join-Path $Src 'deploy.seeds.conf'
+    if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { return $col }
+    $col.Dirs = @(Get-Content -LiteralPath $conf -Encoding UTF8 |
+        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+        Where-Object   { $_ } |
+        ForEach-Object { $_ -replace '/', '\' })
+    if ($col.Dirs.Count -eq 0) {
+        $col.Notes += 'deploy.seeds.conf 가 비었다 — 홈으로 폴더째 미는 씨앗·사내 환경 문서가 하나도 안 깔린다'
+    }
+    # ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ────────────
+    # ⚠ **왜 한 줄이 더 필요한가.** 홈 사본을 진본으로 믿고 재는 자가 있다
+    #   (`seeds/check/_check/borrowed_check.py` 의 `_stamp()`). 그런데 홈 뿌리는 git 나무가
+    #   아니라 판을 물을 데가 없어, 옛 판은 **오늘 날짜**를 냈다 — 그래서 낡은 홈과 견준 초록이
+    #   최신처럼 읽혔다 (실측 2026-09-13: 홈 씨앗이 나무와 12 자리 갈려 있었다).
+    #   파일 이름은 그쪽 `VERSION_FILE` 이 들고, 쓰는 자는 여기와 세션 훅 `deploy_home_norms`
+    #   의 씨앗 칸 둘이다 — 한 낱말이라 선언 파일로 안 뽑고 곁말로 서로를 가리킨다.
+    # ⚠ **걸음은 여기서 짓되 계획에는 흐름의 「씨앗의 판 줄」 자리에서 싣는다** — 계획은 순서대로 돈다(그 자리의 곁말).
+    # ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이 아니다 —
+    #   매번 덮으면 그 날짜가 늘 오늘이라 낡음을 아무것도 말하지 않는다.
+    # ⚠ **재는 자는 이 줄을 안 본다** — `scripts/check-global-copies.sh` 도 세션 훅도 견주는
+    #   자리가 `seeds/<이름>/` 안이고 이 줄은 뿌리 `seeds/` 에 산다. 그래서 그 둘에 제외를 따로
+    #   안 든다 — 안 잴 것을 빼는 선언은 없는 것을 가리키는 손사본이 된다.
+    $stampFile = Join-Path $Dst 'seeds\.version'
+    $stampRev  = if (Get-Command git -ErrorAction SilentlyContinue) {
+                     try { (& git -C $Src rev-parse --short HEAD 2>$null) } catch { $null }   # 버리는 것도 방패가 아니라 잡는다(머리의 「리다이렉트가 곧 위험이다」)
+                 } else { $null }
+    if ($stampRev) {
+        $stampRev = ([string]$stampRev).Trim()
+        $stampOld = if (Test-Path $stampFile) {
+                        [string](Get-Content $stampFile -TotalCount 1 -Encoding UTF8)
+                    } else { '' }
+        if ((($stampOld -split '\s+')[0]) -eq $stampRev) {
+            $col.Same = "= 동일  $stampFile  ($stampOld)"
+        } else {
+            $stampLine = "$stampRev $(Get-Date -Format 'yyyy-MM-dd')"
+            $col.Stamp = @{
+                Kind = 'stamp'; Path = $stampFile; Line = $stampLine
+                Text = "+ 판 줄  $stampFile  ($stampLine)"
+            }
+        }
+    }
+    return $col
 }
+#endregion 홈 씨앗 손
 
+#region 백업 손 — 덮거나 걷기 전에 원본을 백업 자리에 뜬다
 function Save-Backup($path) {
     # 백업도 원래 폴더 구조를 유지한다. 이름만 떼어 평평하게 쌓으면
-    # 여러 스킬의 SKILL.md처럼 같은 이름끼리 서로를 덮어써 백업이 소실된다.
+    # 여러 씨앗의 README.md처럼 같은 이름끼리 서로를 덮어써 백업이 소실된다.
     $rel = if ($path.StartsWith($dst, [StringComparison]::OrdinalIgnoreCase)) {
         $path.Substring($dst.Length).TrimStart('\')
     } else {
@@ -704,7 +638,7 @@ Sync-Repos $globalRuleTargets
 
 # ============================ 1단계: 계획 수립 ============================
 # 층 — 없다. 홈 · 저장소 · 등록 · 환경 층에서 바꿀 것을 재기만 한다
-# 하는 일 — 제작자 칸(`PAISETUP_PERSONAL`)을 읽고, 밀 파일(`$targets`)을 지어 지문으로 견준다. 도구 홈의 규범 · 룰 · 에이전트는
+# 하는 일 — 밀 파일(`$targets`)을 지어 지문으로 견준다. 도구 홈의 규범 · 룰 · 에이전트 · 스킬은
 #   손에게 `--dry-run` 으로 물어 그 바꿀 줄을 싣는다. 바꿀 것은 `$plan`, 이미 맞는 것은 `$same`, 원본에 없는 것은 `$prunable`,
 #   사람이 할 일은 `$todo`, 실행 환경이 안 선 것은 `$envDown`, 저장소마다 마지막 CI 줄은 `$gateReport` 에 담는다. 계획을 굳히며
 #   배선(`githooks`)을 맨 앞에 세운다
@@ -714,25 +648,6 @@ Sync-Repos $globalRuleTargets
 # 아무것도 바꾸지 않는다. 무엇을 바꿔야 하는지만 조사한다.
 # ⚠ **당김은 이 앞에 있다** — 그래서 이 단계가 보는 나무는 **당긴 뒤**의 나무고, 이 한 줄은
 #   그대로 참이다(당김은 `$plan` 에 아무것도 안 더하므로 「다 최신이면 안 묻는다」도 산다).
-
-# --- 개인화할 도구 — 배포본 설치기의 제작자 칸이 심는 사용자 환경변수 `PAISETUP_PERSONAL`(docs/decisions/0107) ---
-# **칸 하나가 스위치다.** 설정 저장소를 넣은 PC 에서 설치기는 켠 도구에 만든 사람의 스킬을 안 깔고 비켜서고, 그 도구는
-# 이 배포가 이 저장소의 스킬로 민다. 끈 도구에는 안 밀고 홈에 있는 것을 걷지도 않는다 — 끈 도구의 우리 것은
-# 설치기가 걷는다. 둘이 같은 값을 보므로 한 홈을 두고 번갈아 덮지 않는다.
-# ⚠ **Claude 도 이 값을 탄다** — 칸 셋이 같은 스위치다. 끄면 Claude 홈의 스킬을 안 밀고 안 걷는다.
-#   훅 · 씨앗 · 메모리 · 형제 저장소 배포본은 칸과 상관없이 민다.
-# ⚠ **값이 없으면 있는 도구 다** — 설치기를 안 돌린 자리(리모트 컨테이너 · 설치기 전 PC)가 지금까지처럼 받는다.
-#   `none` 은 아무 도구도 아니다 — 빈 값과 「안 돌렸다」를 갈라야 해서 설치기가 그렇게 심는다.
-# 규범 · 룰 · 에이전트는 이 값을 여기서 안 읽는다 — 손이 같은 칸을 제 뜻으로 읽는다(아래 「도구 홈의 규범 · 룰 · 에이전트」).
-$personalRaw = Get-PersonalRaw
-$personalSet = Get-PersonalTools $personalRaw
-foreach ($t in @($personalSet | Where-Object { @('claude', 'codex', 'agy') -notcontains $_ })) {
-    $todo += "PAISETUP_PERSONAL 에 모르는 이름이 있다 — $t (claude · codex · agy · none 을 읽는다)"
-}
-$personalClaude = Test-PersonalFor 'claude'
-if (-not $personalClaude) {
-    Write-Host "· Claude 홈의 스킬 건너뜀  (제작자 칸에서 Claude 를 껐다 — PAISETUP_PERSONAL=$personalRaw)" -ForegroundColor DarkGray
-}
 
 # --- 파일 배포 ---
 $memSrc   = Join-Path $src 'memory'
@@ -797,143 +712,6 @@ if (Test-Path $memSrc) {
     }
 }
 
-# 이 저장소에서만 쓰는 스킬 — 홈으로 안 민다. **목록의 진본은 선언이고, 재는 자도 같은 줄을
-# 본다**(`scripts/check-global-copies.sh`). 손사본 둘로 두면 한쪽만 고쳐지고, 그러면 재는 자가
-# 빠진 자산을 안 재면서 초록을 낸다 (`docs/decisions/0021`).
-# ⚠ **이 저장소는 역할이 둘이다** — 전역 자산의 진본이면서 공개 배포본을 뽑는 자다(0035).
-#   뽑기 절차를 든 스킬은 다른 프로젝트를 여는 세션마다 따라붙을 것이 아니다. 도구 선언은
-#   이미 둘로 갈려 있었는데(`tools.global.conf` ↔ `tools.conf`) 스킬만 한 벌이었다.
-$localSkillsConf = Join-Path $src 'deploy.skills.local.conf'
-$localSkills = @()
-if (Test-Path $localSkillsConf) {
-    $localSkills = @(Get-Content $localSkillsConf -Encoding UTF8 |
-        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
-        Where-Object   { $_ })
-}
-
-# 스킬: .claude/skills/** -> ~/.claude/skills/**
-# 폴더를 통째로 미러링한다. SKILL.md만 집어오지 않는 것은 스킬이 references·scripts 같은
-# 딸린 파일을 갖기 때문이다. 목록을 여기 적지 않으므로 스킬이 새로 생겨도 이 파일은 그대로 둔다.
-# ⚠ **빠지는 것은 홈으로 미는 것뿐이다** — 위 선언이 든 스킬도 이 저장소를 붙인 세션에서는
-#   `.claude/skills/` 에서 그대로 로드된다. 「홈에 안 깐다」와 「안 쓴다」는 다른 명제다.
-$skillSrc = Join-Path $src '.claude\skills'
-if ($personalClaude -and (Test-Path $skillSrc)) {
-    # ⚠ **파이썬이 남긴 캐시는 안 민다** — 까닭은 아래 씨앗 칸의 같은 자리가 든다. 스킬도
-    #   `scripts/` 를 들 수 있어 같은 부산물이 난다. 재는 자(`scripts/check-global-copies.sh`
-    #   의 `DIFF_SKIP`)는 이미 그 이름을 빼므로, 여기만 안 빼면 **재는 자와 뿌리는 자가 다른
-    #   것을 세어** 홈이 최신인 날에도 캐시 하나로 「어긋남」이 난다 — 고칠 것이 없는 빨강이다.
-    foreach ($f in (Get-ChildItem $skillSrc -Recurse -File |
-                    Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
-        $rel = $f.FullName.Substring($skillSrc.Length + 1)
-        if ($localSkills -contains ($rel -split '\\')[0]) { continue }
-        $targets += @{ From = $f.FullName; To = Join-Path $dst "skills\$rel" }
-    }
-}
-
-# Codex · agy 홈: 스킬 (docs/decisions/0099)
-# 도구마다 제 스킬 홈을 든다 — Codex 는 `~/.agents/skills`(Codex 가 스스로 읽는 자리), agy 는 `~/.gemini/config/skills`
-# (agy 가 목록 없이 싣는 기본 전역 스킬 자리 — 아래 「agy 옛 스킬 자리」). Claude 홈과 같은 묶음을 그 홈들에도 민다.
-# ⚠ **그 도구가 없는 PC 에는 그 홈을 안 깐다** — `~/.codex` · `~/.gemini` 가 없으면 건너뛴다. 없는 도구의 설정 폴더를 지어
-#   두면 「깔렸다」로 읽힌다.
-# ⚠ **맡기기 러너는 받는 쪽 홈에 안 간다** — 러너마다 받는 쪽은 `deploy.skills.targets.conf` 가 든다. 받는 쪽 홈에 서면
-#   그 도구가 제게 맡기는 길을 든다(0097). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다.
-# ⚠ **걷는 손(-Prune)은 배포가 민 이름만 든다** — 이 홈들은 Claude 홈과 달리 배포 혼자의 자리가 아니다. 설치기도
-#   깔고(제 기록 `.paisetup-skills`), 두 홈 다 사람이나 다른 도구가 둔 스킬도 산다. 그래서 배포는 민 이름을 제
-#   기록 `.paisetup-deploy-skills`(설치기 기록 곁)에 적고, 그 기록에 있는데 이번에 안 미는 스킬(원본에서 빠졌거나 칸을
-#   껐다)과 미는 스킬 안에서 원본에 없는 파일을 제거 후보로 센다. 설치기 기록에 든 이름은 설치기가 걷으므로 안
-#   건드린다 — 둘이 한 이름을 두고 다투면 로그온마다 걷고 다시 깐다. 기록이 서기 전에 민 스킬은 모른다.
-$codexHome = Join-Path $HOME '.codex'
-$geminiHome = Join-Path $HOME '.gemini'
-$runnerTarget = @{}
-$targetsConf = Join-Path $src 'deploy.skills.targets.conf'
-if (Test-Path $targetsConf) {
-    foreach ($ln in (Get-Content $targetsConf -Encoding UTF8)) {
-        $parts = @((($ln -replace '#.*$', '').Trim()) -split '\s+' | Where-Object { $_ })
-        if ($parts.Count -eq 2) { $runnerTarget[$parts[0]] = $parts[1] }
-    }
-}
-$agentLedgerSteps = @()   # 배포 기록 쓰기 — 제거 후보 뒤에 붙인다(아래 `-Prune` 칸)
-$agyOldSteps = @()        # agy 옛 스킬 자리 걷기 — 기본 실행의 계획에 선다(위 곁말)
-foreach ($agentHome in @(
-        @{ Tool = 'codex'; Root = $codexHome;  Dst = Join-Path $HOME '.agents\skills'; Label = 'Codex 홈'
-           Mine = Join-Path $HOME '.agents\.paisetup-deploy-skills'; Installer = Join-Path $HOME '.agents\.paisetup-skills' }
-        @{ Tool = 'agy';   Root = $geminiHome; Dst = Join-Path $geminiHome 'config\skills'; Label = 'agy 홈'
-           Mine = Join-Path $geminiHome '.paisetup-deploy-skills'; Installer = Join-Path $geminiHome '.paisetup-skills'
-           Old = Join-Path $geminiHome 'config\paisetup-skills'; OldList = Join-Path $geminiHome 'config\skills.json' })) {
-    if (-not (Test-Path $agentHome.Root)) { continue }
-    $want = @{}
-    if (Test-PersonalFor $agentHome.Tool) {
-        foreach ($bundle in @($skillSrc, (Join-Path $src '.agents\skills'))) {
-            if (-not (Test-Path $bundle)) { continue }
-            foreach ($f in (Get-ChildItem $bundle -Recurse -File |
-                            Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
-                $rel = $f.FullName.Substring($bundle.Length + 1)
-                $name = ($rel -split '\\')[0]
-                if (($localSkills -contains $name) -or ($runnerTarget[$name] -eq $agentHome.Tool)) { continue }
-                $targets += @{ From = $f.FullName; To = Join-Path $agentHome.Dst $rel }
-                if (-not $want.ContainsKey($name)) { $want[$name] = Join-Path $bundle $name }
-            }
-        }
-    }
-    $mine = Read-SkillLedger $agentHome.Mine
-    $installerNames = Read-SkillLedger $agentHome.Installer
-    $old = if ($agentHome.Old) {
-        Get-AgyOldHomePlan -OldHome $agentHome.Old -NewHome $agentHome.Dst -Ours (@($mine) + @($installerNames)) `
-                           -Reinstall (@($want.Keys) + @($mine | Where-Object { $installerNames -notcontains $_ }))
-    } else { $null }
-    # 비켜 두기(위 곁말) — 미는 이름 가운데 우리 것이 아닌 폴더 · 옛 자리 옮기기가 찾은 것. 민 파일보다 **앞에** 옮겨야 그 위에
-    #   안 쓴다 — 그래서 계획에 바로 세운다(파일 복사는 아래 대상 칸에서 계획에 붙는다)
-    $aside = @(@(Get-AgentHomeAside -SkillHome $agentHome.Dst -Names @($want.Keys) -Ours (@($mine) + @($installerNames))) +
-               @(if ($old) { $old.Aside }) | Where-Object { $_ } | Select-Object -Unique)
-    foreach ($n in $aside) {
-        $dir = Join-Path $agentHome.Dst $n
-        $plan += @{ Kind = 'move'; Path = $dir; To = $null; Backup = Join-Path $backup "aside\$($agentHome.Tool)\$n"
-                    Text = "~ 옮김  $dir  ($($agentHome.Label) — 같은 이름의 폴더가 배포 · 설치기 기록에 없다 · 통째로 백업으로 옮기고 민다)" }
-        $todo += "$($agentHome.Label) · $n — 우리 것이 아닌 같은 이름의 폴더를 배포 백업(aside\$($agentHome.Tool)\$n)으로 옮겼다. 사람 것이면 다른 이름으로 되살린다"
-        # 그 폴더의 파일과 견주면 「이미 같다」로 빠지는 파일이 생긴다 — 옮긴 뒤에는 없으니 다 새로 민다
-        foreach ($t in @($targets | Where-Object { $_.To.StartsWith($dir + '\', [StringComparison]::OrdinalIgnoreCase) })) { $t.Fresh = $true }
-    }
-    $cut = Get-AgentHomePrune -SkillHome $agentHome.Dst -Want $want -Mine $mine `
-                              -Installer $installerNames -Prune ([bool]$Prune)
-    # 비켜 둔 폴더 안의 파일은 걷을 후보가 아니다 — 그 폴더째 옮겨진다
-    $asideDirs = @($aside | ForEach-Object { (Join-Path $agentHome.Dst $_) + '\' })
-    foreach ($p in @($cut.Files | Where-Object { $f = $_; -not @($asideDirs | Where-Object { $f.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }).Count })) {
-        $prunable += @{ Kind = 'remove'; Path = $p; Floor = $agentHome.Dst
-                        Text = "- 제거  $p  ($($agentHome.Label) — 배포가 민 것인데 원본에 없거나 이번에 안 민다)" }
-    }
-    if ((@($mine | Sort-Object -Unique) -join "`n") -ne ($cut.Ledger -join "`n")) {
-        $agentLedgerSteps += @{ Kind = 'skillledger'; Path = $agentHome.Mine; Names = $cut.Ledger
-                                Text = "+ 기록  $($agentHome.Mine)  (배포가 민 스킬 $($cut.Ledger.Count)개)" }
-    }
-    if (-not $old) { continue }
-    # 백업은 옛 꼴 그대로 한 자리(`<백업>\agy-old\`)에 모은다 — 되살릴 때 어디로 돌려놓을지가 이름에서 읽힌다
-    $oldBk = Join-Path $backup 'agy-old'
-    foreach ($n in $old.ToNew) {
-        $agyOldSteps += @{ Kind = 'move'; Path = Join-Path $agentHome.Old $n; To = Join-Path $agentHome.Dst $n
-                           Backup = Join-Path $oldBk "paisetup-skills\$n"
-                           Text = "~ 옮김  $(Join-Path $agentHome.Old $n) → $($agentHome.Dst)  (agy 옛 스킬 자리 — 설치기가 깐 이름)" }
-    }
-    foreach ($n in $old.ToBackup) {
-        $agyOldSteps += @{ Kind = 'move'; Path = Join-Path $agentHome.Old $n; To = $null; Backup = Join-Path $oldBk "paisetup-skills\$n"
-                           Text = "- 제거  $(Join-Path $agentHome.Old $n)  (agy 옛 스킬 자리 — 새 자리에 다시 서거나 배포가 더 안 민다 · 백업으로 옮긴다)" }
-    }
-    if ($old.Foreign.Count) {
-        $todo += "agy 옛 스킬 자리 $($agentHome.Old) — 우리 기록에 없는 것이 남아 안 걷었다($($old.Foreign -join ' · ')). 쓰려면 $($agentHome.Dst) 로 옮긴다(옛 자리는 agy 가 본문을 못 연다)"
-    } elseif ($old.Remove) {
-        $agyOldSteps += @{ Kind = 'rmdir'; Path = $agentHome.Old
-                           Text = "- 제거  $($agentHome.Old)  (agy 옛 스킬 자리 — 우리 것을 다 옮긴 빈 폴더)" }
-    }
-    switch (Get-AgyOldListState $agentHome.OldList $HOME) {
-        'ours' {
-            $agyOldSteps += @{ Kind = 'move'; Path = $agentHome.OldList; To = $null; Backup = Join-Path $oldBk 'skills.json'
-                               Text = "- 제거  $($agentHome.OldList)  (옛 agy 스킬 자리를 여는 우리 목록 — 새 자리는 목록 없이 실린다 · 백업으로 옮긴다)" }
-        }
-        'mixed' {
-            $todo += "agy 스킬 목록 $($agentHome.OldList) — 사람 항목과 함께 옛 스킬 자리(paisetup-skills)를 여는 항목이 남았다. 우리 것은 새 자리로 옮겨져 쓸 데가 없다 — 그 줄만 지운다"
-        }
-    }
-}
-
 # 사내 환경 문서와 씨앗 둘: posco/** · seeds/gateway/** · seeds/check/** -> ~/.claude/ 아래 같은 이름
 # ⚠ **왜 홈에도 두나** — 이 둘의 진본은 저장소이고, 스킬·형제 저장소 문서가 그 좌표를
 #   가리킨다. 그런데 설치본만 받은 사람에게는 저장소가 없어 그 좌표가 아예 없다. 그래서
@@ -941,17 +719,11 @@ foreach ($agentHome in @(
 #   깔아만 두고 갱신을 안 하면 사본이 조용히 낡는다.
 #   목록은 선언이 든다 — deploy.seeds.conf(뿌리는 자 둘 · 재는 자 하나가 같은 줄을 읽는다). 폴더 안의
 #   파일이 늘어도 이 파일은 그대로다. `seeds\config-repo` 를 일부러 안 미는 까닭도 그 선언의 머리말이 든다.
-$seedsConf = Join-Path $src 'deploy.seeds.conf'
-$seedDirs = @()
-if (Test-Path $seedsConf) {
-    $seedDirs = @(Get-Content $seedsConf -Encoding UTF8 |
-        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
-        Where-Object   { $_ } |
-        ForEach-Object { $_ -replace '/', '\' })
-}
-if ($seedDirs.Count -eq 0) {
-    $todo += 'deploy.seeds.conf 없음(또는 빔) — 홈으로 폴더째 미는 씨앗·사내 환경 문서가 하나도 안 깔린다'
-}
+# ⚠ **이 칸의 문 · 목록 · 할 일 · 판 줄은 `Get-SeedColumn` 이 든다** — 이 저장소가 홈 씨앗의 원본이 아니면(뿌리에 그 선언이
+#   없다 · 씨앗으로 만든 동료 저장소) 이 칸은 아무것도 안 하고 아무 말도 안 한다. 여기는 그 답을 계획에 싣기만 한다.
+$seedCol  = Get-SeedColumn -Src $src -Dst $dst
+$seedDirs = $seedCol.Dirs
+$todo    += $seedCol.Notes
 foreach ($sd in $seedDirs) {
     $aSrc = Join-Path $src $sd
     if (-not (Test-Path $aSrc)) { continue }
@@ -965,59 +737,31 @@ foreach ($sd in $seedDirs) {
 }
 
 foreach ($t in $targets) {
-    # `Fresh` — 그 자리의 폴더를 이번에 통째로 비켜 둔다(위 「비켜 두기」). 지금 있는 파일은 견줄 대상이 아니다
-    if (-not $t.Fresh -and (Test-Path $t.To) -and ((Get-FileHash $t.From).Hash -eq (Get-FileHash $t.To).Hash)) {
+    if ((Test-Path $t.To) -and ((Get-FileHash $t.From).Hash -eq (Get-FileHash $t.To).Hash)) {
         $same += "= 동일  $($t.To)"
     } else {
-        $verb = if ((Test-Path $t.To) -and -not $t.Fresh) { '덮어씀' } else { '새로 만듦' }
+        $verb = if (Test-Path $t.To) { '덮어씀' } else { '새로 만듦' }
         $plan += @{ Kind = 'copy'; From = $t.From; To = $t.To; Repo = $t.Repo; Text = "+ 배포  $($t.To)  ($verb)" }
     }
 }
 
-# --- 도구 홈의 규범 · 룰 · 에이전트 — 손 하나가 놓는다 (docs/decisions/0112) ---
-# 이 스크립트는 규범 · 룰 · 에이전트를 제 손으로 놓지 않는다. 이 저장소로 PC 의 개인 층을 채우고 갈 곳 표대로 도구 홈에 놓는
-#   일은 손이 한다 — 여기서는 손에게 `--dry-run` 으로 묻고 그 바꿀 줄을 계획에 싣는다. 승인 뒤 3단계의 `homes` 걸음이 같은
+# --- 도구 홈의 규범 · 룰 · 에이전트 · 스킬 — 손 하나가 놓는다 (docs/decisions/0112) ---
+# 이 스크립트는 규범 · 룰 · 에이전트 · 스킬을 제 손으로 놓지 않는다. 이 저장소로 PC 의 개인 층을 채우고 갈 곳 표대로 도구 홈에
+#   놓는 일은 손이 한다 — 여기서는 손에게 `--dry-run` 으로 묻고 그 바꿀 줄을 계획에 싣는다. 승인 뒤 3단계의 `homes` 걸음이 같은
 #   명령을 `--dry-run` 없이 돌린다. 무엇을 어떻게 놓고 걷고 백업하나는 손의 머리말이 든다.
-# ⚠ **제작자 칸도 손이 읽는다** — 위 `$personalSet` 은 스킬만 탄다. 값이 비었을 때의 뜻이 둘이 다르다(손은 Claude 만이다).
+# ⚠ **제작자 칸(`PAISETUP_PERSONAL`)은 손이 읽는다** — 어느 도구 홈에 놓나는 손이 칸으로 정하고, 이 스크립트는 그 값을 안 본다.
 # ⚠ **바꿀 것이 없다는 답도 한 줄 세운다**(`$same`) — 못 물은 판은 할 일에 서므로, 「재서 맞다」와 「안 쟀다」가 안 섞인다.
 $homes = ConvertFrom-ToolHomesOutput (Invoke-ToolHomes -Src $src -DryRun)
 $plan += $homes.Steps
 $todo += $homes.Notes
-if ($homes.Same) { $same += '= 동일  도구 홈의 규범 · 룰 · 에이전트  (손이 바꿀 것이 없다고 답했다)' }
+if ($homes.Same) { $same += '= 동일  도구 홈의 규범 · 룰 · 에이전트 · 스킬  (손이 바꿀 것이 없다고 답했다)' }
 
 # ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ────────────
-# ⚠ **왜 한 줄이 더 필요한가.** 홈 사본을 진본으로 믿고 재는 자가 있다
-#   (`seeds/check/_check/borrowed_check.py` 의 `_stamp()`). 그런데 홈 뿌리는 git 나무가
-#   아니라 판을 물을 데가 없어, 옛 판은 **오늘 날짜**를 냈다 — 그래서 낡은 홈과 견준 초록이
-#   최신처럼 읽혔다 (실측 2026-09-13: 홈 씨앗이 나무와 12 자리 갈려 있었다).
-#   파일 이름은 그쪽 `VERSION_FILE` 이 들고, 쓰는 자는 여기와 세션 훅 `deploy_home_norms`
-#   의 씨앗 칸 둘이다 — 한 낱말이라 선언 파일로 안 뽑고 곁말로 서로를 가리킨다.
+# 걸음과 그 까닭은 `Get-SeedColumn` 이 든다(위 씨앗 칸에서 지었다). 이 저장소가 홈 씨앗의 원본이 아니면 둘 다 비었다.
 # ⚠ **자리가 위 씨앗 칸이 아니라 여기인 까닭** — 계획은 순서대로 돈다. 저 위에 두면 이 줄이
 #   **씨앗 복사보다 먼저** 서서, 복사가 지거나 건너뛰어도 「그 판이 깔렸다」고 말한다.
-# ⚠ **판이 그대로면 안 쓴다.** 날짜 칸은 「이 판이 홈에 깔린 날」이고 돌린 날이 아니다 —
-#   매번 덮으면 그 날짜가 늘 오늘이라 낡음을 아무것도 말하지 않는다.
-# ⚠ **재는 자는 이 줄을 안 본다** — `scripts/check-global-copies.sh` 도 세션 훅도 견주는
-#   자리가 `seeds/<이름>/` 안이고 이 줄은 뿌리 `seeds/` 에 산다. 그래서 그 둘에 제외를 따로
-#   안 든다 — 안 잴 것을 빼는 선언은 없는 것을 가리키는 손사본이 된다.
-$stampFile = Join-Path $dst 'seeds\.version'
-$stampRev  = if (Get-Command git -ErrorAction SilentlyContinue) {
-                 try { (& git -C $src rev-parse --short HEAD 2>$null) } catch { $null }   # 버리는 것도 방패가 아니라 잡는다(아래 「리다이렉트가 곧 위험이다」)
-             } else { $null }
-if ($stampRev) {
-    $stampRev = ([string]$stampRev).Trim()
-    $stampOld = if (Test-Path $stampFile) {
-                    [string](Get-Content $stampFile -TotalCount 1 -Encoding UTF8)
-                } else { '' }
-    if ((($stampOld -split '\s+')[0]) -eq $stampRev) {
-        $same += "= 동일  $stampFile  ($stampOld)"
-    } else {
-        $stampLine = "$stampRev $(Get-Date -Format 'yyyy-MM-dd')"
-        $plan += @{
-            Kind = 'stamp'; Path = $stampFile; Line = $stampLine
-            Text = "+ 판 줄  $stampFile  ($stampLine)"
-        }
-    }
-}
+if ($seedCol.Stamp) { $plan += $seedCol.Stamp }
+if ($seedCol.Same)  { $same += $seedCol.Same }
 
 # --- MCP 등록 ---
 # mcp-servers.json은 기록일 뿐이라 복사한다고 등록되지 않는다. CLI로 등록해야 한다.
@@ -1436,35 +1180,7 @@ if (Test-Path $memSrc) {
     }
 }
 
-# --- 제거 후보: 원본에 없는 스킬 파일 ---
-# 메모리와 같은 이유다. 저장소에서 지운 스킬이 홈에 남아 계속 로드되면
-# 배포한 줄 알았던 것과 실제가 어긋난다.
-$skillDst = Join-Path $dst 'skills'
-if ($personalClaude -and (Test-Path $skillSrc) -and (Test-Path $skillDst)) {
-    # ⚠ **이 저장소 전용 스킬은 여기서도 뺀다.** 그래야 전에 깔려 있던 홈 사본이 제거 후보로
-    #   올라온다 — 선언에 이름을 더한 날 홈에서 저절로 걷히는 길이 이것이다. 안 빼면 「밀지도
-    #   않고 걷지도 않는」 자리가 되어, 옛 사본이 계속 로드되면서 아무도 모른다.
-    # ⚠ **앱이 관리하는 폴더는 이 저장소 것이 아니라 안 센다.** 데스크톱 앱이 제 스킬을
-    #   `skills/synced/<id>/` 로 동기화한다 — 진본에 없는 것이 당연하고, 걷으면 앱 것을 지운다
-    #   (실측 2026-09-22 집 PC: 제거 후보 231 중 204 가 그 폴더 · #74). `check-global-copies.sh`
-    #   는 진본 없는 홈 스킬을 애초에 안 재므로 이쪽만 갈린다.
-    $appManagedSkillDirs = @('synced')
-    $keep = @(Get-ChildItem $skillSrc -Recurse -File |
-        ForEach-Object { $_.FullName.Substring($skillSrc.Length + 1) } |
-        Where-Object { $localSkills -notcontains ($_ -split '\\')[0] })
-    Get-ChildItem $skillDst -Recurse -File |
-        Where-Object { $appManagedSkillDirs -notcontains ($_.FullName.Substring($skillDst.Length + 1) -split '\\')[0] } |
-        Where-Object { $keep -notcontains $_.FullName.Substring($skillDst.Length + 1) } |
-        ForEach-Object {
-            $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  (skills/에 없음)" }
-        }
-}
-
 if ($Prune) { $plan += $prunable }
-# Codex · agy 홈의 배포 기록은 걷기 **뒤**에 쓴다 — 걷다 멈추면 기록이 그 이름을 아직 들고 있어 다음 회차가 다시 센다.
-$plan += $agentLedgerSteps
-# agy 옛 스킬 자리는 새 자리로 민 **뒤**에 걷는다 — 다시 서는 이름의 옛것은 새것이 선 다음에 백업으로 간다.
-$plan += $agyOldSteps
 
 # --- 사용자 환경변수 ---
 # 한국어 윈도우의 인코딩 구멍은 둘이고 서로 다른 자리다:
@@ -1612,7 +1328,7 @@ Write-Host "  $backup"
 # 손의 줄은 저 백업을 안 탄다 — 손이 백업하는 것은 그 줄마다 「~ 백업」 한 줄이 따로 선다(자리는 손이 정한다).
 #   그 줄 없이 선 손의 「- 제거」 는 백업 없이 걷힌다는 뜻이라, 위 한 줄만 보이면 화면이 거짓말을 한다.
 if (@($plan | Where-Object { $_.Kind -eq 'homes' }).Count) {
-    Write-Host "  규범 · 룰 · 에이전트 줄은 여기가 아니다 — 손(tool-homes.py)이 백업하는 것은 「~ 백업」 줄로 따로 선다"
+    Write-Host "  규범 · 룰 · 에이전트 · 스킬 줄은 여기가 아니다 — 손(tool-homes.py)이 백업하는 것은 「~ 백업」 줄로 따로 선다"
 }
 
 if (-not $Yes) {
@@ -1647,11 +1363,10 @@ if (-not $Yes) {
 
 # ============================ 3단계: 실행 ============================
 # 층 — 홈 · 저장소 · 등록 · 환경. 기계 층(전역형 도구)과 저장소 설치는 세션 훅을 불러 맡긴다
-# 하는 일 — 계획의 걸음을 차례대로 돌고 걸음마다 한 줄을 낸다. 덮거나 걷는 파일은 먼저 `$backup` 에 뜨고(판 줄 · 배포 기록은
-#   안 뜬다), 옮기는 것(비켜 두는 폴더 · agy 옛 스킬 자리와 그 목록)은 새 자리나 백업 자리로 간다. 도구 홈의 규범 · 룰 · 에이전트는
-#   손을 계획과 같은 명령으로 한 번 불러 맡긴다(백업은 손이 제 자리에 뜬다). 전역 설치는 이 저장소의 세션 훅을
-#   `--install-global` 로, 저장소 설치는 그 저장소의 세션 훅을 `--install` 로 부른다. 끝에 백업 자리 · 남은 수동 작업 · 판정을
-#   내고, 실행 환경이 안 선 것(`$envDown`)이 있으면 `exit 1` 로 끝난다
+# 하는 일 — 계획의 걸음을 차례대로 돌고 걸음마다 한 줄을 낸다. 덮거나 걷는 파일은 먼저 `$backup` 에 뜬다(판 줄은 안
+#   뜬다). 도구 홈의 규범 · 룰 · 에이전트 · 스킬은 손을 계획과 같은 명령으로 한 번 불러 맡긴다(백업은 손이 제 자리에
+#   뜬다). 전역 설치는 이 저장소의 세션 훅을 `--install-global` 로, 저장소 설치는 그 저장소의 세션 훅을 `--install` 로
+#   부른다. 끝에 백업 자리 · 남은 수동 작업 · 판정을 내고, 실행 환경이 안 선 것(`$envDown`)이 있으면 `exit 1` 로 끝난다
 # 앞에서 받는 것 — 2단계를 지난 `$plan`(배선이 맨 앞) · 당김의 `$pulledRepos`(못 당긴 저장소에는 안 민다) · 1단계의 `$todo` ·
 #   `$envDown`(여기서 더 쌓아 끝에 낸다)
 # 안 하는 것 — 계획에 없는 것은 안 바꾼다 · 당기지 않는다 · 무엇을 깔지 모른다 — 그것은 세션 훅이 안다 · 무엇이 어느 도구 홈에
@@ -1725,17 +1440,8 @@ foreach ($step in $plan) {
             $homesDone.Steps | ForEach-Object { Write-Host $_.Text }
             foreach ($n in $homesDone.Notes) { if ($todo -notcontains $n) { $todo += $n } }
             if ($homesDone.Failed) {
-                Write-Host "! 규범 · 룰 · 에이전트 — 손이 다 못 놓았습니다 (까닭은 아래 남은 수동 작업)" -ForegroundColor Red
+                Write-Host "! 규범 · 룰 · 에이전트 · 스킬 — 손이 다 못 놓았습니다 (까닭은 아래 남은 수동 작업)" -ForegroundColor Red
             }
-        }
-
-        'skillledger' {
-            # 설치기 기록(`.paisetup-skills`)과 같은 꼴 — BOM 없는 UTF-8 · 한 줄에 이름 하나. 백업을 안 남긴다 — 옛
-            # 기록에서 남길 이름은 새 기록이 이미 다 든다(`Get-AgentHomePrune`).
-            New-Item -ItemType Directory -Force -Path (Split-Path $step.Path -Parent) | Out-Null
-            [System.IO.File]::WriteAllLines($step.Path, [string[]]$step.Names,
-                                            (New-Object System.Text.UTF8Encoding($false)))
-            Write-Host "+ 기록  $($step.Path)  (배포가 민 스킬 $($step.Names.Count)개)"
         }
 
         'mcp' {
@@ -1831,38 +1537,16 @@ foreach ($step in $plan) {
             }
         }
 
-        'move' {
-            # 폴더 하나(스킬 폴더째 · 옛 목록) — 새 자리(`To`)로, 아니면 백업 자리(`Backup`)로 옮긴다. **이미 있는 자리로는 안
-            #   옮긴다** — 폴더 안으로 들어가 겹치거나 앞 백업을 덮는다. 새 자리가 계획 뒤에 섰으면 백업으로, 백업 자리가 이미
-            #   있으면(같은 초의 다른 배포) 비어 있는 이름(`Get-FreePath`)으로 간다.
-            $to = if ($step.To -and -not (Test-Path -LiteralPath $step.To)) { $step.To } else { Get-FreePath $step.Backup }
-            New-Item -ItemType Directory -Force -Path (Split-Path $to -Parent) | Out-Null
-            Move-Item -LiteralPath $step.Path -Destination $to -Force
-            Write-Host "~ 옮김  $($step.Path) → $to"
-        }
-
-        'rmdir' {
-            # 비었을 때만 걷는다 — 계획 뒤에 무엇이 들어왔으면 그것은 우리 것이 아니다
-            if ((Test-Path -LiteralPath $step.Path) -and -not (Get-ChildItem -LiteralPath $step.Path -Force | Select-Object -First 1)) {
-                Remove-Item -LiteralPath $step.Path -Force
-                Write-Host "- 제거  $($step.Path)  (빈 폴더)"
-            } elseif (Test-Path -LiteralPath $step.Path) {
-                Write-Host "· 남김  $($step.Path)  (비지 않았다)" -ForegroundColor Yellow
-            }
-        }
-
         'remove' {
             Save-Backup $step.Path
             Remove-Item $step.Path -Force
             Write-Host "- 제거  $($step.Path)"
-            # ⚠ **파일만 걷으면 빈 폴더가 남는다** — 걷힌 스킬이 `skills/<이름>/scripts/` 같은 껍데기로
-            #   남아 홈 목록을 흐린다. 비었을 때만 위로 올라가며 걷고, 홈 바로 아래 자리(`skills` ·
-            #   `projects` · `seeds` …)는 비어도 둔다 — 그 자리는 배포가 아니라 앱이 세운다. Codex · agy 홈은
-            #   `~/.claude` 밖이라 그 스킬 홈(`Floor`)에서 멈춘다 — 안 그러면 비었을 때 `~/.agents` 까지 오른다.
+            # ⚠ **파일만 걷으면 빈 폴더가 남는다** — 걷힌 씨앗 부품이 `seeds/<이름>/scripts/` 같은 껍데기로
+            #   남아 홈 목록을 흐린다. 비었을 때만 위로 올라가며 걷고, 홈 바로 아래 자리(`projects` ·
+            #   `seeds` …)는 비어도 둔다 — 그 자리는 배포가 아니라 앱이 세운다.
             $parent = Split-Path $step.Path -Parent
             while ($parent -and
-                   $(if ($step.Floor) { $parent -ne $step.Floor }
-                     else { ((Split-Path $parent -Parent) -ne $dst) -and ($parent -ne $dst) }) -and
+                   ((Split-Path $parent -Parent) -ne $dst) -and ($parent -ne $dst) -and
                    (Test-Path $parent) -and -not (Get-ChildItem -LiteralPath $parent -Force | Select-Object -First 1)) {
                 Remove-Item -LiteralPath $parent -Force
                 Write-Host "- 제거  $parent  (빈 폴더)"
