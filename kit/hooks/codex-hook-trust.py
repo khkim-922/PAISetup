@@ -1,7 +1,8 @@
-"""Codex 가 우리 훅을 실제로 믿나를 재고, 우리 훅에만 신뢰를 적는다 — Codex 제 설정 쓰기로.
+"""Codex 가 우리 훅을 실제로 믿나를 재고, 우리 훅에만 신뢰를 적는다 — Codex 제 설정 쓰기로. 폴더 신뢰(projects)도 같은 통로로 적는다.
 
-    python -X utf8 codex-hook-trust.py status --example codex-hooks.example.toml [--codex-home <홈>] [--codex <실행 파일>]
-    python -X utf8 codex-hook-trust.py trust  --example codex-hooks.example.toml [--codex-home <홈>] [--codex <실행 파일>]
+    python -X utf8 codex-hook-trust.py status   --example codex-hooks.example.toml [--codex-home <홈>] [--codex <실행 파일>]
+    python -X utf8 codex-hook-trust.py trust    --example codex-hooks.example.toml [--codex-home <홈>] [--codex <실행 파일>]
+    python -X utf8 codex-hook-trust.py projects [--codex-home <홈>] [--codex <실행 파일>] <저장소 뿌리>...
 
 홈은 `--codex-home` → 환경변수 `CODEX_HOME` → `~/.codex` 차례다(뒤의 둘은 Codex 가 제 홈을 고르는 차례와 같다).
 Codex 는 PATH 의 `codex.cmd` · `codex` 에서 찾고, `--codex` 가 그 자리를 못박는다(검사 · 진단용).
@@ -48,6 +49,20 @@ Codex 가 내는 `command` 는 이 기계의 실효 명령(윈도면 `commandWin
   ERROR=<종류>:<말>                      예시를 못 읽었거나, 신뢰를 못 적었거나, 적은 뒤 확인이 안 됐다 — 종료 코드 1.
                                         종류 = example · merger · write · version-conflict · verify (그 밖은 예외 이름)
 
+**폴더 신뢰(projects).** Codex 는 연 자리의 git 뿌리를 `[projects.'<자리>'] trust_level` 에서 찾아, 없으면 신뢰를 묻는다.
+받은 저장소 뿌리마다 Codex 제 철자로 `trust_level = "trusted"` 를 적는다 — 윈도면 소문자 · 역슬래시(Codex 가 프로젝트 층을 막을
+때 「이 자리를 신뢰로 더하라」고 대는 꼴). Codex 는 역슬래시 열쇠를 대소문자 없이 맞추고 `/` 로 적힌 열쇠는 안 맞춘다 — 서 있나도
+그 규칙으로 가린다. 사용자 설정 파일을 먼저 TOML 로 읽어 다 서 있으면 app-server 를 안 띄운다. 쓰기는 훅 신뢰와 같은 통로다:
+  `config/read`(사용자 층의 판 · projects) → `config/batchWrite` {keyPath "projects", value {<자리>: {trust_level: "trusted"}},
+  upsert, expectedVersion} → `config/read` 를 다시 불러 사용자 층에서 trusted 로 읽히나 확인한다.
+  사람이 `untrusted` 로 둔 자리는 안 덮는다 — 그 뜻을 신뢰로 덮지 않는다(Codex 도 그 자리는 안 묻는다).
+  PROJECT=<자리>|<상태>                  받은 뿌리마다(같은 자리는 한 번) · 상태 = trusted(이미 섰다) · trusted-now(이번에 적고
+                                        Codex 가 다시 읽었다) · untrusted(사람이 정했다 — 안 덮었다)
+  CODEX_HOME=<경로>                      app-server 를 띄운 판만 — Codex 가 스스로 밝힌 홈
+  UNMEASURED · ERROR                    위와 같은 꼴 · ERROR 종류에 config(설정을 TOML 로 못 읽는다 — 안 쓴다)가 는다.
+                                        부르는 자가 app-server 를 띄우지 말라 했는데(`plant_projects(start=False)`) 파일로
+                                        못 가리면 UNMEASURED=tomllib 이다(파이썬 3.11 미만)
+
 종료 코드: 0 쟀다(trust 면 적을 것을 다 적고 다시 읽어 확인했다) · 1 ERROR · 2 인자가 틀렸다(argparse) · 3 UNMEASURED.
 ⚠ UNMEASURED 가 2 가 아닌 까닭 — argparse 가 인자 오류에 2 를 쓴다. 부르는 쪽의 실수와 Codex 를 못 잰 것이 한 값이면 안 갈린다.
 ⚠ trust 의 앞단(목록)에서 못 쟀으면 UNMEASURED 다 — 아무것도 안 썼다. 쓰기부터는 무엇이 막혀도 ERROR 다.
@@ -56,6 +71,7 @@ Codex 가 내는 `command` 는 이 기계의 실효 명령(윈도면 `commandWin
 
 import argparse
 import collections
+import contextlib
 import importlib.util
 import json
 import os
@@ -103,6 +119,11 @@ VERSION_CONFLICT = 'configVersionConflict'
 WRITE_ERROR_CODE = 'config_write_error_code'
 WRITE_OK = ('ok', 'okOverridden')
 WRITE_ATTEMPTS = 2   # 판이 어긋나면 한 번 다시 읽고 다시 쓴다
+
+PROJECTS_KEY_PATH = 'projects'
+TRUST_LEVEL = 'trust_level'
+LEVEL_TRUSTED, LEVEL_UNTRUSTED = 'trusted', 'untrusted'   # codex-rs `TrustLevel`
+P_HAVE, P_NOW, P_KEPT = 'trusted', 'trusted-now', 'untrusted'   # PROJECT= 의 상태
 
 TRUST_STATES = ('managed', 'untrusted', 'trusted', 'modified')   # codex-rs app-server-protocol `HookTrustStatus`
 NEEDS_REVIEW = ('untrusted', 'modified')   # TUI 의 `hook_needs_review` 와 같은 둘
@@ -327,8 +348,8 @@ def list_ours(merger, srv, cwd):
     return ours
 
 
-def user_version(srv):
-    """사용자 층(프로필 아님)의 판 — 쓰기의 expectedVersion. 사용자 층이 없으면 None(설정 파일이 아직 없다)."""
+def user_layer(srv):
+    """`config/read` 의 사용자 층(프로필 아님) — 판(`version`)과 Codex 가 읽은 설정(`config`)이 든다. 없으면 None(설정 파일이 아직 없다)."""
     res = result_of(srv, 'config/read', {'includeLayers': True})
     layers = res.get('layers')
     if not isinstance(layers, list):
@@ -337,7 +358,13 @@ def user_version(srv):
              and layer['name'].get('type') == USER and layer['name'].get('profile') is None]
     if len(users) > 1 or (users and not isinstance(users[0].get('version'), str)):
         raise unmeasured('shape', 'config/read 의 사용자 층이 하나가 아니거나 판이 없다')
-    return users[0]['version'] if users else None
+    return users[0] if users else None
+
+
+def user_version(srv):
+    """사용자 층의 판 — 쓰기의 expectedVersion. 사용자 층이 없으면 None."""
+    layer = user_layer(srv)
+    return layer['version'] if layer else None
 
 
 def event_label(h):
@@ -374,11 +401,9 @@ def report(merger, ours, expected, home):
         print('NONE_LISTED=' + none_listed_cause(merger, home))
 
 
-def write_trust(srv, todo, version):
-    """Codex 의 쓰는 자로 신뢰를 적는다 — 판이 어긋나면 False, 그 밖의 거절은 ERROR."""
-    params = {'edits': [{'keyPath': STATE_KEY_PATH, 'mergeStrategy': UPSERT,
-                         'value': {h['key']: {TRUSTED_HASH: h['currentHash']} for h in todo}}],
-              'filePath': None, 'expectedVersion': version, 'reloadUserConfig': True}
+def write_edits(srv, edits, version):
+    """Codex 의 쓰는 자로 적는다 — 판이 어긋나면 False, 그 밖의 거절은 ERROR."""
+    params = {'edits': edits, 'filePath': None, 'expectedVersion': version, 'reloadUserConfig': True}
     try:
         msg = srv.call('config/batchWrite', params, CALL_TIMEOUT_SEC)
     except Transport as t:
@@ -394,6 +419,12 @@ def write_trust(srv, todo, version):
     if status not in WRITE_OK:
         raise error('write', f'알 수 없는 쓰기 결과 {status!r}')
     return True
+
+
+def write_trust(srv, todo, version):
+    """우리 훅의 신뢰를 적는다 — Codex 가 낸 현재 해시를 그대로 되돌려 적는다."""
+    return write_edits(srv, [{'keyPath': STATE_KEY_PATH, 'mergeStrategy': UPSERT,
+                              'value': {h['key']: {TRUSTED_HASH: h['currentHash']} for h in todo}}], version)
 
 
 def trust(merger, srv, cwd):
@@ -416,50 +447,157 @@ def trust(merger, srv, cwd):
         raise error('verify', s.line.split('=', 1)[1]) from s
 
 
+def codex_home(given):
+    """Codex 의 홈 — 준 자리 → 환경변수 `CODEX_HOME` → `~/.codex` 차례(Codex 가 제 홈을 고르는 차례와 같다)."""
+    return os.path.abspath(os.path.expanduser(given or os.environ.get('CODEX_HOME') or DEFAULT_HOME))
+
+
+@contextlib.contextmanager
+def app_server(cmd, home):
+    """app-server 하나를 띄워 initialize 까지 마치고 `(서버, initialize 결과, 묻는 빈 자리)` 를 내준다. 띄우기 · 첫 말이 막히면
+    UNMEASURED. 나올 때 서버를 끊고 빈 자리를 걷는다."""
+    cwd = tempfile.mkdtemp(prefix=CWD_PREFIX)
+    try:
+        try:
+            srv = AppServer(cmd, home, cwd)
+        except Transport as t:
+            raise unmeasured(t.kind, t.detail) from t
+        try:
+            init = result_of(srv, 'initialize', {'clientInfo': CLIENT_INFO}, INIT_TIMEOUT_SEC)
+            try:
+                srv.notify('initialized')
+            except Transport as t:
+                raise unmeasured(t.kind, t.detail) from t
+            yield srv, init, cwd
+        finally:
+            srv.close()
+    finally:
+        shutil.rmtree(cwd, ignore_errors=True)
+
+
+# ── 폴더 신뢰(projects) ──────────────────────────────────────────────────────────────────────────────────
+def project_key(path):
+    """Codex 가 그 자리의 신뢰를 찾는 열쇠 — 윈도면 소문자 · 역슬래시, 그 밖은 경로 그대로."""
+    return os.path.normcase(os.path.abspath(path))
+
+
+def project_levels(projects):
+    """{열쇠: trust_level} — 윈도에서는 Codex 처럼 열쇠의 대소문자를 안 가린다. `/` 는 그대로 둔다(Codex 가 그 꼴을 안 맞춘다)."""
+    if not isinstance(projects, dict):
+        return {}
+    return {(k.lower() if os.name == 'nt' else k): v.get(TRUST_LEVEL) for k, v in projects.items() if isinstance(v, dict)}
+
+
+def project_states(paths, projects):
+    """받은 뿌리마다(같은 자리는 한 번) `(열쇠, 상태)` — 상태는 P_HAVE · P_KEPT · None(적을 자리)."""
+    levels = project_levels(projects)
+    states = []
+    for key in dict.fromkeys(project_key(p) for p in paths):
+        level = levels.get(key)
+        states.append((key, P_HAVE if level == LEVEL_TRUSTED else P_KEPT if level == LEVEL_UNTRUSTED else None))
+    return states
+
+
+def file_projects(home):
+    """사용자 설정 파일의 `projects` — 파일이 없으면 빈 표. tomllib 이 없으면 None(파일로는 못 가린다). 못 읽으면 ERROR=config."""
+    if tomllib is None:
+        return None
+    path = os.path.join(home, CONFIG_FILE)
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            return tomllib.loads(f.read()).get(PROJECTS_KEY_PATH, {})
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:   # TOMLDecodeError 는 ValueError 다
+        raise error('config', f'{path}: {exc}') from exc
+
+
+def layer_projects(layer):
+    """사용자 층에서 Codex 가 읽은 `projects` — 층이 없으면 빈 표."""
+    config = layer.get('config') if layer else None
+    return config.get(PROJECTS_KEY_PATH, {}) if isinstance(config, dict) else {}
+
+
+def plant_projects(paths, home, codex=None, start=True):
+    """받은 저장소 뿌리마다 폴더 신뢰를 Codex 제 철자로 적는다 — `((열쇠, 상태) 목록, Codex 가 밝힌 홈 또는 None)`.
+    설정 파일로 다 서 있으면 app-server 를 안 띄운다. `start` 가 거짓이면 아예 안 띄우고 파일로 가린 상태를 낸다(None 이 빈 자리).
+    못 쟀으면 UNMEASURED · 못 적었으면 ERROR 의 `Stop` 을 올린다 — 쓰기 앞에서 멈춘 판은 아무것도 안 썼다."""
+    projects = file_projects(home)
+    if projects is not None:
+        states = project_states(paths, projects)
+        if not start or all(s for _, s in states):
+            return states, None
+    elif not start:
+        raise unmeasured('tomllib', '파이썬 3.11 미만이라 설정 파일로 못 가린다')
+    cmd = codex_command(codex)
+    # Codex 는 `CODEX_HOME` 이 가리키는 폴더가 없으면 안 뜬다(0.162.1 실측) — 처음 켤 때 제가 짓는 `~/.codex` 를 먼저 짓는다
+    try:
+        os.makedirs(home, exist_ok=True)
+    except OSError as exc:
+        raise unmeasured('start-failed', f'{home}: {exc}') from exc
+    with app_server(cmd, home) as (srv, init, _):
+        shown = str(init['codexHome']) if init.get('codexHome') else None
+        for _ in range(WRITE_ATTEMPTS):
+            layer = user_layer(srv)   # 판과 projects 를 한 번에 읽는다 — 그 뒤에 설정이 바뀌면 쓰기가 거절된다
+            todo = [k for k, s in project_states(paths, layer_projects(layer)) if s is None]
+            if not todo:
+                return project_states(paths, layer_projects(layer)), shown
+            if write_edits(srv, [{'keyPath': PROJECTS_KEY_PATH, 'mergeStrategy': UPSERT,
+                                  'value': {k: {TRUST_LEVEL: LEVEL_TRUSTED} for k in todo}}],
+                           layer['version'] if layer else None):
+                break
+        else:
+            raise error('version-conflict', f'설정이 {WRITE_ATTEMPTS} 번 다 읽은 뒤에 바뀌었다 — 다른 Codex 가 쓰는 중인가 본다')
+        try:
+            after = project_states(paths, layer_projects(user_layer(srv)))
+        except Stop as s:   # 썼는데 다시 못 읽었다 — 적은 것이 섰는지 모른다
+            raise error('verify', s.line.split('=', 1)[1]) from s
+    missing = [k for k, s in after if k in todo and s != P_HAVE]
+    if missing:
+        raise error('verify', f'{len(missing)} 자리가 적은 뒤에도 trusted 로 안 읽힌다: {missing[0]}')
+    return [(k, P_NOW if k in todo else s) for k, s in after], shown
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('mode', choices=('status', 'trust'))
-    ap.add_argument('--example', required=True)
+    ap.add_argument('mode', choices=('status', 'trust', 'projects'))
+    ap.add_argument('paths', nargs='*', help='projects — 폴더 신뢰를 적을 저장소 뿌리')
+    ap.add_argument('--example', help='status · trust — 우리 훅의 분모를 세는 예시')
     ap.add_argument('--codex-home')
     ap.add_argument('--codex', help='codex 실행 파일을 못박는다(검사 · 진단용). 없으면 PATH 에서 찾는다')
     args = ap.parse_args()
+    if args.mode == 'projects' and not args.paths:
+        ap.error('projects 는 저장소 뿌리를 하나 이상 받는다')
+    if args.mode != 'projects' and (not args.example or args.paths):
+        ap.error(f'{args.mode} 는 --example 을 받고 저장소 뿌리는 안 받는다')
     try:
+        if args.mode == 'projects':
+            states, shown = plant_projects(args.paths, codex_home(args.codex_home), args.codex)
+            if shown:
+                print(f'CODEX_HOME={shown}')
+            for key, state in states:
+                print(f'PROJECT={key}|{state}')
+            return 0
         merger = load_merger()
         expected = expected_count(merger, args.example)
         print(f'EXPECTED={expected}')
-        home = os.path.abspath(os.path.expanduser(args.codex_home or os.environ.get('CODEX_HOME') or DEFAULT_HOME))
-        cmd = codex_command(args.codex)
-        cwd = tempfile.mkdtemp(prefix=CWD_PREFIX)
-        try:
-            try:
-                srv = AppServer(cmd, home, cwd)
-            except Transport as t:
-                raise unmeasured(t.kind, t.detail) from t
-            try:
-                init = result_of(srv, 'initialize', {'clientInfo': CLIENT_INFO}, INIT_TIMEOUT_SEC)
-                try:
-                    srv.notify('initialized')
-                except Transport as t:
-                    raise unmeasured(t.kind, t.detail) from t
-                if init.get('codexHome'):   # 「안 실림」의 까닭은 Codex 가 실제로 읽은 홈에서 가린다
-                    home = str(init['codexHome'])
-                    print(f'CODEX_HOME={home}')
-                if args.mode == 'status':
-                    report(merger, list_ours(merger, srv, cwd), expected, home)
-                    return 0
-                written, after = trust(merger, srv, cwd)
-                now = {h['key']: h for h in after}
-                confirmed = [now[h['key']] for h in written if now.get(h['key'], {}).get('trustStatus') == 'trusted']
-                for h in confirmed:
-                    print(f'TRUSTED_NOW={event_label(h)}|{h.get("matcher") or ""}|{h.get("command", "")}')
-                report(merger, after, expected, home)
-                if len(confirmed) != len(written):
-                    raise error('verify', f'{len(written) - len(confirmed)} 개가 적은 뒤에도 trusted 로 안 읽힌다')
+        home = codex_home(args.codex_home)
+        with app_server(codex_command(args.codex), home) as (srv, init, cwd):
+            if init.get('codexHome'):   # 「안 실림」의 까닭은 Codex 가 실제로 읽은 홈에서 가린다
+                home = str(init['codexHome'])
+                print(f'CODEX_HOME={home}')
+            if args.mode == 'status':
+                report(merger, list_ours(merger, srv, cwd), expected, home)
                 return 0
-            finally:
-                srv.close()
-        finally:
-            shutil.rmtree(cwd, ignore_errors=True)
+            written, after = trust(merger, srv, cwd)
+            now = {h['key']: h for h in after}
+            confirmed = [now[h['key']] for h in written if now.get(h['key'], {}).get('trustStatus') == 'trusted']
+            for h in confirmed:
+                print(f'TRUSTED_NOW={event_label(h)}|{h.get("matcher") or ""}|{h.get("command", "")}')
+            report(merger, after, expected, home)
+            if len(confirmed) != len(written):
+                raise error('verify', f'{len(written) - len(confirmed)} 개가 적은 뒤에도 trusted 로 안 읽힌다')
+            return 0
     except Stop as s:
         print(s.line)
         return s.code

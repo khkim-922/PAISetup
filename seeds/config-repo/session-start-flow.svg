@@ -122,18 +122,18 @@
         <text x="436.40000000000003" y="682" font-size="7px" text-anchor="middle" fill="rgb(8, 145, 178)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 저장소를 옮기면 낡은 항목이 남는다 — 루트로 물어야 걸린다</text>
         </g>
 
-        <g id="node-n7" tabindex="0" role="button" aria-label="Focus 7. 신뢰를 켠다, ~/.claude.json — 윈도우는 한 폴더가 두 철자다, 세션을 열면 도는 순서 — 위에서 아래로 › 홈" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">7. 신뢰를 켠다 · ~/.claude.json — 윈도우는 한 폴더가 두 철자다 · 세션을 열면 도는 순서 — 위에서 아래로 › 홈</title>
-          <rect x="324.40000000000003" y="742" width="224" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="324.40000000000003" y="742" width="224" height="52" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(330.40000000000003 748) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n7" tabindex="0" role="button" aria-label="Focus 7. 신뢰를 켠다, ~/.claude.json(없으면 짓는다) · Codex 는 설치 때, 세션을 열면 도는 순서 — 위에서 아래로 › 홈" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">7. 신뢰를 켠다 · ~/.claude.json(없으면 짓는다) · Codex 는 설치 때 · 세션을 열면 도는 순서 — 위에서 아래로 › 홈</title>
+          <rect x="316.90000000000003" y="742" width="239" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="316.90000000000003" y="742" width="239" height="52" rx="6" stroke-width="1.5px" fill="rgba(34, 211, 238, 0.15)" stroke="rgb(8, 145, 178)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(322.90000000000003 748) scale(0.6875)" fill="none" stroke="rgb(8, 145, 178)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <rect x="2" y="3" width="12" height="10" rx="2" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></rect>
             <path d="M2 6.5h12" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
             <circle cx="4.1" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
             <circle cx="6.3" cy="4.8" r=".7" fill="rgb(8, 145, 178)" stroke="none" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></circle>
           </g>
           <text x="436.40000000000003" y="763" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">7. 신뢰를 켠다</text>
-          <text x="436.40000000000003" y="780" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">~/.claude.json — 윈도우는 한 폴더가 두 철자다</text>
+          <text x="436.40000000000003" y="780" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">~/.claude.json(없으면 짓는다) · Codex 는 설치 때</text>
         </g>
 
         <g id="node-n16" tabindex="0" role="button" aria-label="Focus 16. 진단 — 지금 어느 검사가 도나, 전역 규율 · 홈 훅 · 커밋 훅 · 선언 도구, 세션을 열면 도는 순서 — 위에서 아래로 › 훅" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
@@ -344,8 +344,8 @@
           <text x="646.4000000000001" y="684" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">밖에서 연 세션도 선다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <rect x="557.0000000000001" y="782" width="110.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <text x="612.4000000000001" y="792" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">다음 세션이 안 묻는다</text>
+          <rect x="564.0000000000001" y="782" width="110.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="619.4000000000001" y="792" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">다음 세션이 안 묻는다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
           <rect x="87.60000000000004" y="890" width="115.6" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>

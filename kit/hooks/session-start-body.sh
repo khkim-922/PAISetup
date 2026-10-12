@@ -1201,10 +1201,14 @@ home_settings_seed() {   # home_settings_seed auto|install
   # ⚠ **병합은 한 자리다.** `add` 는 바탕만 다르다(씨앗이 아니라 홈 파일) — 조각을 둘로 두면
   #   한쪽에서 고친 사고가 다른 쪽에 안 간다.
   # 종료코드 셋 — 0 `$_new` 를 썼다 · **3 더할 줄이 없다(아무것도 안 썼다)** · 그 밖은 JSON 을 못 읽었다.
-  "$PY_CMD" - "$_how" "$_hs" "$_new" "$_hd" "$_ho" <<'PYMERGE'
+  # 설치기가 `permissions` 에 심은 값의 기록 — 자리의 진본은 설치기의 `$ClaudePlantLedger`(PAISetup install.ps1)다.
+  #   설치기가 없는 자리(리눅스 · 설치기를 안 돌린 PC)는 비어 넘겨 줄 것이 없다
+  _hl="${LOCALAPPDATA:+$LOCALAPPDATA/Claude Code Setup/claude-settings.tsv}"
+  "$PY_CMD" - "$_how" "$_hs" "$_new" "$_hd" "$_ho" "$_hl" <<'PYMERGE'
 import json, sys
 how, src, out, cur = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 own = sys.argv[5] if len(sys.argv) > 5 else ""
+ledger = sys.argv[6] if len(sys.argv) > 6 else ""
 if how == "add":
     # 바탕이 **사람 파일**이다 — 못 읽으면 터뜨린다. 못 읽은 파일을 바꿔 쓰지 않는다.
     # `utf-8-sig` — 윈도우 도구(파워셸 5.1 의 `-Encoding utf8` 등)가 쓴 파일은 BOM 을 달고, `utf-8` 로
@@ -1223,6 +1227,25 @@ else:
         cfg["hooks"] = old["hooks"]
     if isinstance(old.get("env"), dict):  # 설치기가 이 자리 값으로 민 것 — 씨앗보다 이긴다
         cfg["env"] = {**cfg.get("env", {}), **old["env"]}
+    # 설치기가 `permissions` 에 심은 값(자동 모드 · 맡기기 러너 허락)도 기계가 심은 것이라 넘겨 준다 — 그 걸음은 이 덮기보다
+    #   먼저 돌아, 안 넘기면 덮을 때마다 지워진다. 넘기는 것은 기록에 들었고 옛 파일에서 값이 그대로인 것뿐이다(사람이 손으로
+    #   넣은 줄은 여전히 씨앗 것으로 덮인다). 씨앗이 같은 칸을 정했으면 씨앗이 이긴다 — 사람이 씨앗에 둔 뜻이 먼저다(0119).
+    old_perm = old.get("permissions") if isinstance(old.get("permissions"), dict) else {}
+    planted = []
+    try:
+        with open(ledger, encoding="utf-8") as f:
+            planted = [ln.rstrip("\r\n").split("\t", 1) for ln in f if "\t" in ln]
+    except OSError:
+        pass
+    for key, value in planted:
+        perm = cfg.get("permissions", {})
+        if not isinstance(perm, dict):   # 씨앗이 다른 꼴이면 그 칸을 안 건드린다
+            break
+        if key == "defaultMode" and old_perm.get(key) == value and key not in perm:
+            cfg["permissions"] = {**perm, key: value}
+        elif key == "allow" and value in (old_perm.get(key) or []) and isinstance(perm.get(key, []), list) \
+                and value not in perm.get(key, []):
+            cfg["permissions"] = {**perm, key: perm.get(key, []) + [value]}
 added = 0
 if own:                                 # 겹침 — `permissions.allow` 에 줄을 **더한다** (0081)
     with open(own, encoding="utf-8") as f:
@@ -1446,7 +1469,7 @@ home_hook_cmd() {
 }
 
 # ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
-#   드는 것: ① 홈 SessionStart 훅 ② 이 저장소의 신뢰.
+#   드는 것: ① 홈 SessionStart 훅 ② 작업 루트 저장소들의 폴더 신뢰(고른 도구마다 — Claude · Codex).
 # ⚠ **홈 설정 파일에서 SessionStart 밖은 안 건드린다** — Claude 도구 훅 등록은 갈 곳 표의 손이 같은 파일에
 #   놓는다(`tool_homes` · 결정 0112). 손은 SessionStart 를 안 건드리고 여기는 그 밖을 안 건드린다 — 한쪽이
 #   상대의 항목을 제 것으로 읽으면 PC 전체 일이 도는 세션마다 둘이 번갈아 고쳐 쓴다.
@@ -1463,23 +1486,29 @@ home_hook_cmd() {
 plant_session_state() {
   _pse="$(mktemp)"   # stderr 를 받아 둔다 — 「못 부른다」와 「죽었다」를 가르는 물증이다 (#51)
   _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" \
-    "${CONFIG_ROOT:+$CONFIG_ROOT/.claude/hooks/tool-homes.py}" <<'PSSEOF' 2>"$_pse"
-import contextlib, importlib.util, json, os, pathlib, sys, tempfile
+    "${CONFIG_ROOT:+$CONFIG_ROOT/.claude/hooks/tool-homes.py}" "${_self%/*}/codex-hook-trust.py" "$MODE" \
+    <<'PSSEOF' 2>"$_pse"
+import contextlib, functools, importlib.util, json, os, pathlib, sys, tempfile
 
-settings, cmd, proj, root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-hand = sys.argv[5] if len(sys.argv) > 5 else ""
+sys.dont_write_bytecode = True   # 불러 쓰는 손 · 도우미 곁에 캐시를 흘리지 않는다 — 씨앗 자리는 거울로 깔린다
+settings, cmd, proj, root, hand, codex_helper, mode = sys.argv[1:8]
+install = mode == "install"   # 명시한 설치 — 할 일이 없는 칸도 줄을 남기고, Codex 를 띄워 신뢰를 적을 수 있다
 msgs = []
 failed = False   # 다 못 심었다 — 끝에서 3 으로 알린다. 셸이 표식에 판을 안 적는다 (0065)
 
 
-def save(path, cfg):
+def save(path, cfg, like=None):
+    """JSON 으로 옆에 쓰고 옮긴다. like — 원래 글(새 파일은 빈 글). 주면 그 줄끝(LF · CRLF)과 끝 줄바꿈 유무를 따르고,
+    안 주면 이 판의 기본(끝에 줄바꿈)이다. 들여쓰기는 두 칸 — Claude 가 제 설정을 쓰는 꼴과 같다."""
     d = os.path.dirname(path) or "."
     os.makedirs(d, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=d)
+    nl = None if like is None else ("\r\n" if "\r\n" in like else "\n")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=nl) as f:
             json.dump(cfg, f, ensure_ascii=False, indent=2)
-            f.write("\n")
+            if like is None or like.endswith("\n"):
+                f.write("\n")
         os.replace(tmp, path)
         return True
     except Exception:
@@ -1490,14 +1519,23 @@ def save(path, cfg):
         return False
 
 
-def hand_lock():
-    """갈 곳 표의 손과 같은 잠금 — 손도 같은 홈 settings.json 을 통째로 읽고 고쳐 쓴다(훅 등록).
-    잠금은 손의 것을 불러 쓴다(자리 · 기다림 · 못 잡으면 `Busy`). 손이 없는 자리는 잡을 상대도 없어 그냥 간다."""
+@functools.lru_cache(maxsize=None)
+def load_hand():
+    """갈 곳 표의 손 모듈 — 손이 없는 자리는 None. 못 불러오면 예외가 그대로 올라간다."""
     if not hand or not os.path.isfile(hand):
-        return contextlib.nullcontext()
+        return None
     spec = importlib.util.spec_from_file_location("tool_homes_hand", hand)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    return mod
+
+
+def hand_lock():
+    """갈 곳 표의 손과 같은 잠금 — 손도 같은 홈 settings.json 을 통째로 읽고 고쳐 쓴다(훅 등록).
+    잠금은 손의 것을 불러 쓴다(자리 · 기다림 · 못 잡으면 `Busy`). 손이 없는 자리는 잡을 상대도 없어 그냥 간다."""
+    mod = load_hand()
+    if mod is None:
+        return contextlib.nullcontext()
     home = pathlib.Path(os.path.dirname(os.path.dirname(os.path.abspath(settings))))
     return mod.Lock(home / mod.HUB)
 
@@ -1558,46 +1596,127 @@ except Exception as e:  # 손의 `Busy` · 손을 못 불러옴
     failed = True
     msgs.append("  ! 홈 SessionStart 훅 — 손의 잠금을 못 잡아 이번엔 안 심었다(다음 세션이 다시 심는다): %s" % e)
 
-# ② 신뢰 — 없거나 깨진 파일은 손대지 않는다
-# ⚠ **작업 루트의 저장소 전부에 건다.** 옛 판은 제 저장소만 걸고 「홈 훅이 어차피 전부
-#   부른다」를 근거로 삼았는데, 그 고리에 가드가 붙어 그 근거가 사라졌다. 안 넓히면 저장소를
-#   처음 열 때마다 신뢰 창이 뜨고, 프로필이 매 로그인 날아가는 PC 에서는 **매번** 뜬다.
-#   같은 파일 쓰기 한 번에 담으니 값은 0 이고, 거는 대상은 옛 고리가 걸던 것과 같은 집합이다
-#   (훅을 든 저장소만) — posture 를 넓히는 것이 아니라 하던 일을 한 자리로 옮기는 것이다.
+# ② 폴더 신뢰 — 작업 루트에서 세션 훅을 든 저장소에만, 고른 도구(Claude · Codex)마다 건다
+# ⚠ **거는 집합은 하나다** — 이 저장소와 작업 루트에서 세션 훅을 든 저장소. 두 도구가 같은 목록을 받는다.
+#   그 밖의 폴더는 그대로 묻는다. 신뢰 창은 도구가 훅보다 먼저 띄우므로 저장소를 처음 열기 전에 서 있어야 한다 —
+#   설치기 · 로그인 자동 실행이 부르는 `--install` 이 그 자리다.
+# ⚠ **고른 제품은 손이 읽는 그대로 읽는다**(사용자 값이 먼저 · 비면 Claude 만). 손을 못 부르면 Claude 는 비었을 때의 뜻대로
+#   걸고, Codex 는 안 건다 — 고른 줄 모르는 도구에 신뢰를 넓히지 않는다.
+# ⚠ 두 파일 다 손이 쓰는 파일이 아니라 손의 잠금을 안 잡는다. `~/.claude.json` 은 Claude 가, Codex 설정은 Codex 의 쓰는
+#   자(판 맞추기)가 경합을 든다.
 BS = chr(92)
+CLAUDE, CODEX = "claude", "codex"   # 고른 제품 값의 이름 — 갈 곳 표의 도구 이름이다
 import glob as _glob
 targets = [proj]
 for h in _glob.glob(os.path.join(root, "*", ".claude", "hooks", "session-start.sh")):
     targets.append(os.path.dirname(os.path.dirname(os.path.dirname(h))))
+
+
+def picked():
+    """고른 제품 가운데 이 칸이 거는 둘 — 손을 못 부르면 None."""
+    mod = load_hand()
+    if mod is None:
+        return None
+
+    class Quiet(mod.Out):   # 모르는 이름은 손이 놓는 자리에서 알린다 — 여기는 둘이 들었나만 본다
+        def line(self, text):
+            pass
+    return mod.read_cond(mod.COND_PICK, None, (CLAUDE, CODEX), Quiet())
+
+
+try:
+    tools, pick_why = picked(), "갈 곳 표의 손이 없다"
+except Exception as e:  # 손을 못 불러옴
+    tools, pick_why = None, "손을 못 불렀다: %s" % e
+
+
+# Claude — `~/.claude.json`(`CLAUDE_CONFIG_DIR` 가 서면 그 안)의 `projects` 에 네 철자로 건다.
 # ⚠ **드라이브 글자도 두 벌로 건다** — 우리 경로는 `C:` 로 오는데 VS Code 는 드라이브 글자를 소문자(`c:`)로 다룬다.
 #   앱이 어느 철자로 찾든 걸리게 한다 — 구분자 두 벌과 같은 까닭이고, 켜서 잃는 것이 없다.
+# ⚠ **없는 것과 못 읽은 것을 가른다.** 없으면 `projects` 만 든 파일을 새로 짓는다 — 첫 실행의 안내는 그대로 돌고 심은
+#   항목은 산다. 못 읽은 것(앱이 쓰는 도중 · 깨졌다 · 꼴이 다르다)은 손대지 않고 진 것으로 알린다 — 안 알리면 표식이
+#   「심었다」를 굳혀 다음 세션이 다시 안 걸어 본다 (0065). 쓸 때는 원래 글의 줄끝과 끝 줄바꿈을 따른다.
 def _drive_cases(p):
     return {p[0].upper() + p[1:], p[0].lower() + p[1:]} if len(p) > 1 and p[1] == ":" else {p}
-forms = sorted({v for t in targets for f in (t.replace("/", BS), t.replace(BS, "/")) for v in _drive_cases(f)})
-tp = os.path.join(os.path.expanduser("~"), ".claude.json")
-# ⚠ **없는 것과 못 읽은 것을 가른다.** 없으면 손대지 않는 것이 이 칸의 뜻이라 진 것이 아니다. 못 읽은 것
-#   (앱이 쓰는 도중 · 깨졌다)은 신뢰를 못 건 채 지나간 것이라 진 것으로 알린다 — 안 알리면 표식이 「심었다」를
-#   굳혀 다음 세션이 다시 안 걸어 본다 (0065).
-try:
-    with open(tp, encoding="utf-8") as f:
-        tcfg = json.load(f)
-except FileNotFoundError:
-    tcfg = None
-except (OSError, ValueError):
-    tcfg = None
-    failed = True
-    msgs.append("  ! ~/.claude.json 을 못 읽었다 — 신뢰를 이번엔 못 걸었다. 다음 세션이 다시 건다")
-if tcfg is not None:
+
+
+def plant_claude():
+    global failed
+    forms = sorted({v for t in targets for f in (t.replace("/", BS), t.replace(BS, "/")) for v in _drive_cases(f)})
+    cdir = os.environ.get("CLAUDE_CONFIG_DIR")
+    tp = os.path.join(cdir or os.path.expanduser("~"), ".claude.json")
+    shown = tp if cdir else "~/.claude.json"
+    try:
+        with open(tp, encoding="utf-8", newline="") as f:
+            like = f.read()
+        tcfg = json.loads(like)
+        pr = tcfg.get("projects", {}) if isinstance(tcfg, dict) else None
+        if not isinstance(pr, dict) or any(not isinstance(pr.get(k, {}), dict) for k in forms):
+            raise ValueError("최상위 · projects · 그 항목이 객체가 아니다")
+    except FileNotFoundError:
+        like, tcfg = "", {}
+    except (OSError, ValueError):
+        failed = True
+        msgs.append("  ! 신뢰(Claude) — %s 를 못 읽었다 — 손대지 않았다. 다음 세션이 다시 건다" % shown)
+        return
     pr = tcfg.setdefault("projects", {})
-    todo = [k for k in forms if not (pr.get(k) or {}).get("hasTrustDialogAccepted")]
-    if todo:
-        for k in todo:
-            pr.setdefault(k, {})["hasTrustDialogAccepted"] = True
-        if save(tp, tcfg):
-            msgs.append("  신뢰 — %d 자리에 걸었다 (다음 세션부터 안 묻는다)" % len(todo))
-        else:
-            failed = True
-            msgs.append("  ! ~/.claude.json 을 못 썼다 — 신뢰를 이번엔 못 걸었다. 다음 세션이 다시 건다")
+    todo = [k for k in forms if not pr.get(k, {}).get("hasTrustDialogAccepted")]
+    if not todo:
+        if install:
+            msgs.append("  신뢰(Claude) — 이미 다 걸려 있다 (%d 자리)" % len(forms))
+        return
+    for k in todo:
+        pr.setdefault(k, {})["hasTrustDialogAccepted"] = True
+    if save(tp, tcfg, like):
+        msgs.append("  신뢰(Claude) — %s%d 자리에 걸었다 (다음 세션부터 안 묻는다)"
+                    % ("" if like else "%s 이 없어 새로 짓고 " % shown, len(todo)))
+    else:
+        failed = True
+        msgs.append("  ! 신뢰(Claude) — %s 를 못 썼다 — 다음 세션이 다시 건다" % shown)
+
+
+# Codex — 몸통 곁의 Codex 신뢰 도우미가 `config.toml` 의 `projects` 에 Codex 제 철자로 적는다(도우미 머리말).
+# ⚠ **app-server 는 명시한 설치에서만 띄운다.** 세션 시작은 설정 파일만 보고 빈 자리를 말한다 — Codex 가 느리거나 서면
+#   확장의 초기화 기다림(60초 · 0043)을 넘긴다. 빈 자리는 다음 로그인 자동 실행의 `--install` 이 건다.
+# ⚠ **못 걸어도 진 것으로 안 돌린다**(표식은 적는다) — 진 까닭이 Codex 쪽에 있으면 다음 세션도 똑같이 져, 세션마다 PC 전체
+#   일을 통째로 다시 돈다(#96 · 0118). 줄은 늘 남기고, 다시 거는 것은 다음 설치 · 판이 바뀐 세션이 든다.
+def plant_codex():
+    if not os.path.isfile(codex_helper):
+        msgs.append("  ! 신뢰(Codex) — 도우미가 몸통 곁에 없다(%s) — 못 걸었다" % codex_helper)
+        return
+    spec = importlib.util.spec_from_file_location("codex_hook_trust", codex_helper)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        states, _ = mod.plant_projects(targets, mod.codex_home(None), start=install)
+    except mod.Stop as s:
+        msgs.append("  ! 신뢰(Codex) — 못 걸었다: %s" % s.line)
+        return
+    now = sum(1 for _, s in states if s == mod.P_NOW)
+    kept = sum(1 for _, s in states if s == mod.P_KEPT)
+    empty = sum(1 for _, s in states if s is None)
+    if now:
+        msgs.append("  신뢰(Codex) — %d 자리에 걸었다 (다음 열기부터 안 묻는다)" % now)
+    if empty:
+        msgs.append("  신뢰(Codex) — %d 자리가 비었다 — 세션은 Codex 를 안 띄운다. 다음 설치(로그인 자동 실행 · --install)가 건다"
+                    % empty)
+    if install and kept:
+        msgs.append("  신뢰(Codex) — 사람이 「신뢰 안 함」으로 둔 %d 자리는 안 덮었다" % kept)
+    if install and not (now or empty or kept):
+        msgs.append("  신뢰(Codex) — 이미 다 걸려 있다 (%d 자리)" % len(states))
+
+
+if tools is None or CLAUDE in tools:
+    plant_claude()
+elif install:
+    msgs.append("  신뢰(Claude) — Claude 를 안 골라 건너뛰었다")
+if tools is not None and CODEX in tools:
+    try:
+        plant_codex()
+    except Exception as e:  # 도우미를 못 불러옴 · 모르는 꼴 — Claude 쪽 줄까지 잃지 않게 여기서 받는다
+        msgs.append("  ! 신뢰(Codex) — 못 걸었다: %s: %s" % (type(e).__name__, e))
+elif install:
+    msgs.append("  신뢰(Codex) — %s 건너뛰었다" % ("Codex 를 안 골라" if tools is not None else "고른 제품을 못 읽어(%s)" % pick_why))
 
 for m in msgs:
     print(m)
