@@ -1817,7 +1817,7 @@ function Get-ToolHomesCheck([string]$Hand) {
 
 #endregion 도구 홈의 규범 · 룰 · 스킬
 
-#region 도구별 · Claude — 구독 로그인을 재고, Claude 홈 설정에 도구 훅을 심는다
+#region 도구별 · Claude — 구독 로그인을 재고, 끝 검증이 Claude 홈 설정의 훅 등록을 되읽는다
 
 function Test-ClaudeLoggedIn {
   if (-not (Test-Runs 'claude' '--version')) { return $false }
@@ -1827,104 +1827,126 @@ function Test-ClaudeLoggedIn {
   } catch { return $false }
 }
 
-# ⚠ **심는 손은 하나다 — 그림 문 · 웹 다시 찾기(claude-config #117) · DRM 길잡이(#120)가 같이 쓴다.** 훅마다
-#   이 고리를 베끼면 규율 하나를 고칠 때 한쪽만 낡는다. 설정 저장소 몸통(`session-start-body.sh` 의
-#   `plant_tool_hook`)과 같은 규율이다.
-#   `$Parts` 는 있어야 심는 씨앗 파일들이고 맨 앞이 껍데기다. `$Var` 는 심긴 한 줄이 자리를 담는 셸 이름,
-#   `$Tail` 은 그 줄 꼬리다. 심었으면 참을 돌려준다 — 부르는 쪽이 `$dirty` 를 세운다.
-function Plant-HomeToolHook([string]$Label, [string[]]$Events, [string[]]$Parts, [string]$Var, [string]$Tail) {
-  $dir = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
-  $shellPath = Join-Path $dir $Parts[0]
-  $matcher = $null
-  $perEvent = @{}   # 이벤트마다 다른 matcher — `# matcher.<이벤트> = …` 줄이 그 진본이다
-  if (Test-Path -LiteralPath $shellPath) {
-    $m = Select-String -LiteralPath $shellPath -Pattern '^# matcher = (\S+)' -Encoding UTF8 | Select-Object -First 1
-    if ($m) { $matcher = $m.Matches[0].Groups[1].Value }
-    # ⚠ **이벤트마다 보는 것이 다르면 matcher 도 다르다** — 껍데기가 `# matcher.PreToolUse = …` 처럼 제
-    #   이벤트 이름을 달아 든다. 여기서 손으로 한 벌 더 적으면 저쪽과 조용히 어긋난다.
-    foreach ($em in @(Select-String -LiteralPath $shellPath -Pattern '^# matcher\.(\w+) = (\S+)' -Encoding UTF8)) {
-      $perEvent[$em.Matches[0].Groups[1].Value] = $em.Matches[0].Groups[2].Value
-    }
+# Claude 훅 껍데기의 등록 머리말 — {열쇠: 값}. 파일을 못 읽으면 $null.
+# 꼴과 뜻은 짐의 갈 곳 표(`tool-homes.conf`) 머리의 hook 꼴이 든다 — 맨 위(셔뱅 줄 다음)에 잇달아 선 `# <열쇠> = <값>` 줄들이고, 그
+#   꼴이 아닌 줄에서 끝난다. 등록을 짓는 것은 손(`tool-homes.py`)이고, 여기는 끝 검증이 그 등록을 손과 따로 재려고 읽는다.
+function Get-HookHead([string]$Path) {
+  $lines = $null
+  try { $lines = [IO.File]::ReadAllLines($Path) } catch { return $null }
+  $head = @{}
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    if ($i -eq 0 -and $lines[0].StartsWith('#!')) { continue }
+    $m = [regex]::Match($lines[$i], '^# ([A-Za-z]+(?:\.[A-Za-z]+)?) = (\S.*?)\s*$')
+    if (-not $m.Success) { break }
+    $head[$m.Groups[1].Value] = $m.Groups[2].Value
   }
-  if (@($Parts | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dir $_)) }).Count -or -not $matcher) {
-    Write-Host "  ! $Label — 씨앗의 .claude/hooks/ 에 $($Parts -join ' · ') 가 없어 안 심는다" -ForegroundColor Yellow
-    return $false
-  }
-  if (-not $cfg) {
-    # 홈 설정을 못 읽은 자리(위 5칸이 까닭을 대고 물러난 그 갈래) — 여기서 또 세지 않는다.
-    Write-Host "  $Label — 홈 설정을 못 읽어 안 심는다"
-    return $false
-  }
-  # ⚠ **경로를 슬래시로 굳힌다.** 명령은 Git Bash 가 읽고 역슬래시는 그 자리에서 탈출
-  #   문자다 — `\.claude` 가 조용히 다른 글자가 된다.
-  $dirSh = ($dir -replace '\\', '/')
-  # ⚠ **폴더가 사라져도 도구를 안 막는다** — `.` 은 특수 내장이라 파일이 없으면 dash 는 그 자리에서
-  #   2 로 죽고(PreToolUse 에서 2 는 막기다), 걸 일이 없는 호출까지 깨진다. 그래서 먼저 재고 물러난다.
-  $cmd = ('{0}="{1}"; [ -f "${0}/{2}" ] || exit 0; . "${0}/{2}"{3}' -f $Var, $dirSh, $Parts[0], $Tail)
-  # 우리 꼴 — 껍데기 이름이 든 명령(`image-gate.` · `web-retry.` · `drm-guide.`)이다.
-  $marker = [IO.Path]::GetFileNameWithoutExtension($Parts[0]) + '.'
+  return $head
+}
 
-  # 비켜설 자리 — 우리 꼴(`<Var>="…"`)인데 다른 자리를 가리키고, 그 자리에 부품이 다 있다.
-  $owner = $null
-  $pat = [regex]::Escape($Var) + '="([^"]+)"'
-  foreach ($ev in $Events) {
-    foreach ($entry in @($cfg.hooks.$ev)) {
-      foreach ($h in @($entry.hooks)) {
-        $c = if ($h) { [string]$h.command } else { '' }
-        if ($c.Contains($marker) -and $c -match $pat) {
-          $d = $Matches[1]
+# 껍데기 하나의 등록을 홈 설정에서 되읽는다 — 끝 검증의 배선 · matcher 줄이 쓴다. 머리말의 이벤트마다 우리 꼴의 훅이 있고 그 훅이
+#   가리키는 폴더에 이 껍데기가 있나, 우리 항목의 matcher 가 머리말과 같나를 잰다.
+# ⚠ **머리말은 등록이 가리키는 폴더의 껍데기에서 읽는다** — 이긴 층(사용자 PC 는 개인 층)의 머리말로 놓였기 때문이다. 가리키는
+#   껍데기가 없으면 짐의 사본(`$KitShell`)에서 읽는다.
+# ⚠ **우리 꼴은 표 머리의 hook 명령 꼴이다** — `<변수>="<폴더>"; [ -f "$<변수>/<껍데기>" ] || exit 0; . "$<변수>/<껍데기>"`(가드와
+#   끝 주석은 없어도 된다). 같은 항목에 든 남의 훅은 안 센다.
+# ⚠ **UserPromptSubmit 항목에는 matcher 키가 없어야 한다** — 그 이벤트는 matcher 를 안 받고, 키가 있으면 거는 자가 항목째
+#   걸러낸다(claude-config #120). 손이 고정으로 드는 규칙이라 머리말에 안 든다.
+# `$Cfg` 는 `ConvertFrom-Json` 으로 읽은 홈 설정(못 읽었으면 $null)이다. 돌려주는 것 — Events(머리말의 이벤트) · Missing(우리 훅이
+#   없거나 그 훅이 껍데기 없는 폴더를 가리키는 이벤트) · BadMatcher(어긋난 matcher 의 까닭) · Why(머리말을 못 읽은 까닭).
+function Get-ClaudeHookWiring($Cfg, [string]$Shell, [string]$KitShell) {
+  $form = '^\s*([A-Za-z_][A-Za-z0-9_]*)="([^"]*)";\s*(?:\[ -f "\$\1/([^"/]+)" \] \|\| exit 0;\s*)?\.\s+"\$\1/([^"/]+)"\s*(?:#.*)?$'
+  $ours = @()
+  if ($Cfg -and $Cfg.PSObject.Properties['hooks'] -and $Cfg.hooks) {
+    foreach ($ev in @($Cfg.hooks.PSObject.Properties)) {
+      foreach ($entry in @($ev.Value)) {
+        if (-not $entry -or -not $entry.PSObject.Properties['hooks']) { continue }
+        foreach ($h in @($entry.hooks)) {
+          if (-not $h -or -not $h.PSObject.Properties['command']) { continue }
+          $m = [regex]::Match([string]$h.command, $form)
+          if (-not $m.Success -or $m.Groups[4].Value -cne $Shell) { continue }
+          if ($m.Groups[3].Success -and $m.Groups[3].Value -cne $Shell) { continue }
           # 문자열로 잇는다 — `Join-Path` 는 없는 드라이브(`Q:/…`)에서 던지고, 전역 Stop 아래라 설치가 통째로 선다.
-          if ($d -ne $dirSh -and @($Parts | Where-Object { -not (Test-Path -LiteralPath "$d/$_") }).Count -eq 0) { $owner = $d }
+          $there = $false
+          try { $there = Test-Path -LiteralPath "$($m.Groups[2].Value)/$Shell" -PathType Leaf } catch { $there = $false }
+          $ours += @{ Event = $ev.Name; Entry = $entry; Folder = $m.Groups[2].Value; There = $there }
         }
       }
     }
   }
-  if ($owner) {
-    Write-Host "  $Label — 설정 저장소 진본이 들고 있어 비켜선다" -ForegroundColor Green
-    Write-Host "     $owner"
-    return $false
+  $live = @($ours | Where-Object { $_.There })
+  $headAt = if ($live.Count) { "$($live[0].Folder)/$Shell" } else { $KitShell }
+  $head = Get-HookHead $headAt
+  $out = @{ Events = @(); Missing = @(); BadMatcher = @(); Why = '' }
+  if (-not $head -or -not $head.ContainsKey('events')) {
+    $out.Why = "껍데기 $Shell 의 등록 머리말을 못 읽었다 ($headAt)"
+    return $out
   }
-  # ⚠ **심기는 더하기만 하지 않는다 — 우리 꼴을 먼저 걷는다.** 명령 글자가 바뀌는 날
-  #   옛 항목이 남아 **옛 고리가 같이 돌고**, 그러면 위 가드가 통째로 무효가 된다
-  #   (진본 훅의 같은 규율).
-  $hooks = if ($cfg.hooks) { $cfg.hooks } else { $null }
-  if (-not $hooks) {
-    $hooks = New-Object PSObject
-    $cfg | Add-Member -NotePropertyName hooks -NotePropertyValue $hooks -Force
-  }
-  $dropped = 0
-  foreach ($ev in $Events) {
-    $kept = @()
-    foreach ($entry in @($hooks.$ev)) {
-      if (-not $entry) { continue }
-      $ours = $false
-      foreach ($h in @($entry.hooks)) {
-        if ($h -and [string]$h.command -and ([string]$h.command).Contains($marker)) { $ours = $true }
+  $out.Events = @($head['events'].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  foreach ($ev in $out.Events) {
+    if (-not @($live | Where-Object { $_.Event -ceq $ev }).Count) { $out.Missing += $ev }
+    foreach ($o in @($ours | Where-Object { $_.Event -ceq $ev })) {
+      $hasKey = [bool]$o.Entry.PSObject.Properties['matcher']
+      if ($ev -ceq 'UserPromptSubmit') {
+        if ($hasKey) { $out.BadMatcher += "$ev 에 matcher 가 달렸다" }
+        continue
       }
-      if ($ours) { $dropped++ } else { $kept += $entry }
+      $want = if ($head.ContainsKey("matcher.$ev")) { $head["matcher.$ev"] } else { $head['matcher'] }
+      $got = if ($hasKey) { [string]$o.Entry.matcher } else { '<키 없음>' }
+      if ($got -cne $want) { $out.BadMatcher += "$ev matcher 가 '$got' — 머리말은 '$want'" }
     }
-    # ⚠ **matcher 를 안 받는 이벤트에는 키를 아예 안 심는다** — UserPromptSubmit 이 그 자리다. 거는 자는 받지 않는
-    #   값을 조용히 무시하는 것이 아니라 **맞출 도구 이름이 없는 호출을 항목째 걸러낸다**: 심어 두면 훅이 영원히
-    #   안 돈다. 설정에도 코드에도 결함으로 안 보이고 몸통에 입력을 손으로 먹이면 통과해, 「코드는 맞는데 안
-    #   걸린다」로만 나타난다(claude-config #120 실측).
-    $entryNew = [pscustomobject]@{
-      hooks = @([pscustomobject]@{ type = 'command'; command = $cmd; timeout = 10 })
-    }
-    if ($ev -ne 'UserPromptSubmit') {
-      # 제 이벤트 이름을 단 진본 줄이 있으면 그것을 — 없으면 꾸밈 없는 한 벌을 든다
-      $mv = if ($perEvent.ContainsKey($ev)) { $perEvent[$ev] } else { $matcher }
-      $entryNew | Add-Member -NotePropertyName matcher -NotePropertyValue $mv -Force
-    }
-    $kept += $entryNew
-    $hooks | Add-Member -NotePropertyName $ev -NotePropertyValue $kept -Force
   }
-  if ($dropped -gt 0) { Write-Host "  $Label — 옛 항목 $dropped 개를 걷고 심었다" -ForegroundColor Green }
-  else                { Write-Host "  $Label — 심었다" -ForegroundColor Green }
-  Write-Host "     $(Join-Path $dir $Parts[-1])"
-  return $true
+  return $out
 }
 
 #endregion 도구별 · Claude
+
+#region 도구별 · Codex · agy 훅 — 고르지 않은 도구에서 우리 훅을 걷는다
+
+# 걷는 손은 씨앗의 Codex 병합기 · agy 어댑터의 걷기 판이다 — 무엇이 우리 것이고 남의 훅과 그 자리를 어떻게 지키나는 그 파일의
+#   머리말이 든다. 여기는 부를지 가르고 뱉은 줄을 화면에 옮긴다. `$Parts` 는 있어야 부르는 씨앗 파일이고 맨 앞이 걷는 손이다.
+# ⚠ **설정 파일이 없으면 안 부른다** — 걷을 것이 없고, 그 도구를 안 쓰는 PC 에 그 도구의 파일을 짓지 않는다.
+# ⚠ **파이썬은 걷는 손이 드는 판으로 묻는다**(`$Probe` — `python` 에 줄 인자 · 0 으로 끝나야 선다). 안 서면 노랑 한 줄로
+#   건너뛴다 — 고르지 않은 도구라 이 칸 때문에 파이썬을 깔지 않고, 남은 우리 훅은 그 도구를 다시 고르면 그대로 쓰인다.
+# ⚠ **못 걷으면 빨강으로 세고 설치는 잇는다** — 걷는 손은 못 걷으면 파일을 안 고친다(`ERROR=` · 종료 1).
+# ⚠ **글자는 `Invoke-Logged` 로 파일에 받는다** — stderr 를 합치지 않는다(맨 위 규칙 `2>&1`).
+function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts, [string[]]$HandArgs, [string[]]$Probe,
+                              [string]$ProbeWhat) {
+  if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) { return }
+  $gone = @($Parts | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+  if ($gone.Count) {
+    Write-Host "  ! $Label — 고르지 않았는데 씨앗에 걷는 손이 없어 못 걷었다 ($($gone -join ' · '))" -ForegroundColor Red
+    $script:Fails.Add("$Label 걷기 (씨앗이 없다)")
+    return
+  }
+  $null = Get-Quiet 'python' $Probe
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "  ! $Label — 고르지 않았는데 $ProbeWhat 안 서서 못 걷었다 · 우리 훅이 $Config 에 남았을 수 있다" -ForegroundColor Yellow
+    return
+  }
+  $log = [IO.Path]::GetTempFileName()
+  $rc = Invoke-Logged 'python' (@('-X', 'utf8', $Parts[0]) + $HandArgs) $log
+  $said = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+  if ($rc -ne 0 -or @($said | Where-Object { $_ -like 'ERROR=*' }).Count) {
+    Write-Host "  ! $Label — 고르지 않아 우리 훅을 걷으려 했는데 못 걷었다(종료 $rc) · $Config 는 그대로다. 걷는 손이 뱉은 끝 줄:" -ForegroundColor Red
+    Show-Log $log
+    $script:Fails.Add("$Label 걷기 (못 걷었다)")
+  } else {
+    if ($said -contains 'CHANGED=1') {
+      Write-Host "  $Label — 고르지 않아 우리 훅을 걷었다" -ForegroundColor Green
+      $bak = @($said | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
+      if ($bak) { Write-Host "     고치기 전 것은 $($bak.Substring('BACKUP='.Length)) 에 떠 뒀다" }
+    } else {
+      Write-Host "  $Label — 고르지 않았다 · 걷을 우리 훅이 없다"
+    }
+    $skipped = @($said | Where-Object { $_ -like 'SKIP=*' })
+    if ($skipped.Count) {
+      Write-Host "  ! $Label — 못 알아보는 꼴로 적힌 이벤트는 안 건드렸다: $($skipped -join ' ') · 그 안의 우리 훅은 남았을 수 있다" -ForegroundColor Yellow
+    }
+  }
+  Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
+}
+
+#endregion 도구별 · Codex · agy 훅
 
 #region 도구별 · 로컬 프록시 — 살았나 · 문을 여나 재고, 끄고, 돌릴 파이썬과 판 번호를 가린다
 
@@ -2663,10 +2685,20 @@ $personalClaude = [bool](($personalAsked -contains 'claude') -and ($PickKeys -co
 $personalCodex  = [bool](($personalAsked -contains 'codex') -and ($PickKeys -contains 'codex'))
 $personalAgy    = [bool](($personalAsked -contains 'agy') -and $hostAgy)
 $personalAny    = [bool]($personalClaude -or $personalCodex -or $personalAgy)
-$PersonalValue  = @($(if ($personalClaude) { 'claude' }), $(if ($personalCodex) { 'codex' }), $(if ($personalAgy) { 'agy' }) |
-                    Where-Object { $_ }) -join ','
+# ⚠ **값은 표를 지나 고른다 — `$(if …)` 를 늘어놓아 배열을 짓지 않는다.** 아무것도 안 낸 `$()` 둘이 앞자리에 서면 5.1 의 파이프가
+#   뒤의 값까지 삼켜, agy 하나만 고른 판이 빈 값(→ `none`)이 된다(실측 · 아래 `$PickValue` 도 같다).
+$PersonalValue  = @(([ordered]@{ claude = $personalClaude; codex = $personalCodex; agy = $personalAgy }).GetEnumerator() |
+                    Where-Object { $_.Value } | ForEach-Object { $_.Key }) -join ','
 if (-not $PersonalValue) { $PersonalValue = 'none' }
 $personalByRepo = [bool]$configRepoUrls.Count
+# ── 고른 제품 — 갈 곳 표의 도구 이름으로 (결정 0102 · claude-config #133 「훅」 걸음) ──────────────────────────
+# 손(`tool-homes.py`)의 조건 `pick` 이 읽는 값이라 표의 도구 이름(claude · codex · agy)으로 짓는다 — 표에 없는 제품(Gemini ·
+#   Copilot)은 안 든다. 사용자 환경변수 `PAISETUP_PICK` 으로 심어(「도구별 홈」) 설정 저장소의 배포 · 세션 훅이 부르는 손도 같은
+#   값을 읽는다 — 고른 제품에만 우리 Claude 훅이 서고, 빼면 우리 것이 걷힌다. 셋 다 안 골랐으면 `none` — 빈 값은 손이 「설치기가
+#   안 돈 자리」로 읽어 claude 로 본다.
+$PickValue = @(([ordered]@{ claude = 'claude'; codex = 'codex'; antigravity = 'agy' }).GetEnumerator() |
+               Where-Object { $PickKeys -contains $_.Key } | ForEach-Object { $_.Value }) -join ','
+if (-not $PickValue) { $PickValue = 'none' }
 $wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
 $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
@@ -2767,6 +2799,7 @@ if ($wantClaudeBg)    { $needPythonWhy += 'Claude 맡기기 래퍼가 python 으
 if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex DRM · 그림 훅이 파이썬으로 돈다' }
 if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 파이썬으로 돈다' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
+if ($PickKeys -contains 'claude') { $needPythonWhy += 'Claude 훅 등록을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
 # 제작자 칸을 켰으면 고른 기능이 손(`tool-homes.py`)으로 선다 — 칸을 켠 도구가 위 까닭을 이미 들어도 이 까닭은 따로 적는다
 if ($personalAny) { $needPythonWhy += '제작자 칸의 규범 · 룰 · 스킬을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
 $needPython = [bool]$needPythonWhy.Count
@@ -3960,9 +3993,11 @@ Exit-Step 'site'
 
 # ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
 #   층 — 홈
-#   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · env 밀기와 걷기
+#   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · env 밀기와 걷기 · 옛 판의 Tavily 안내 걷기
 #   앞에서 받는 것 — 「키와 값」의 심은 값 · 값 파일 · 게이트웨이를 쓰나 · settings 에 안 밀 이름 · 물러난 이름
-#   안 하는 것 — 스킬 · 규범 · 훅. 훅은 「도구별 홈」이 이 걸음의 `$cfg` 에 얹고 다시 쓴다
+#   안 하는 것 — 스킬 · 규범 · 훅 등록. 훅 등록은 「도구별 홈」의 손(`tool-homes.py`)이 이 걸음이 쓴 파일 위에 놓는다
+#   ⚠ **이 설치기가 이 파일을 쓰는 자리는 이 걸음 하나다** — 손이 놓은 뒤에 이 걸음의 `$cfg`(손 앞에서 읽은 것)로 다시 쓰면 손이
+#     놓은 등록이 그 앞 판으로 되돌아간다. 이 파일을 고칠 일은 여기서 하고 손 앞에서 한 번 쓴다
 # ── 6. 홈 설정 ──────────────────────────────────────────────────────────────────
 # ⚠ **씨앗은 없을 때만 깐다.** 사람이 앱에서 바꾼 값을 재실행이 지우면 안 된다. 담는 것도
 #   취향이 아니라 공용으로 서는 것뿐이다 — `permissions` 를 안 담는 까닭이 그것이다: 그
@@ -4158,6 +4193,25 @@ if ($cfg) {
     }
   }
 
+  # ── 걷힌 Tavily 키 안내 — 옛 판이 홈 SessionStart 에 심은 한 줄을 걷는다 ──────────────────────
+  # 웹 검색 · 웹 가져오기가 대부분 서서 Tavily 키가 여는 덤(사이트 지도 · 크롤 · 리서치)의 값이 줄었고, 웹이 못 닿은
+  # 자리는 「웹 다시 찾기」 훅이 다른 길을 결과 곁에 붙인다. 그래서 안내는 더 안 심는다.
+  # ⚠ **옛 판이 심은 항목만 걷는다** — 그 명령 끝의 표지(`tavily-key-hint`)로 알아본다. 표지가 없는 SessionStart 항목은
+  #   사람 것이거나 설정 저장소 훅의 것이라 안 건드린다.
+  if ($cfg.hooks -and $cfg.hooks.SessionStart) {
+    $hintKept = @(); $hintDropped = 0
+    foreach ($entry in @($cfg.hooks.SessionStart)) {
+      if (-not $entry) { continue }
+      $c = @($entry.hooks | Where-Object { $_ } | ForEach-Object { [string]$_.command })
+      if (@($c | Where-Object { $_ -cmatch '#\s*tavily-key-hint\s*$' }).Count) { $hintDropped++ } else { $hintKept += $entry }
+    }
+    if ($hintDropped) {
+      $cfg.hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $hintKept -Force
+      Write-Host '  Tavily 키 안내(SessionStart) — 더 안 쓰는 안내라 걷었다' -ForegroundColor Green
+      $dirty = $true
+    }
+  }
+
   if ($dirty -or -not (Test-Path -LiteralPath $homeCfg)) {
     # ⚠ **BOM 없이 쓴다.** PowerShell 5.1 의 `Set-Content -Encoding UTF8` 은 BOM 을 붙이는데,
     #   JSON 을 읽는 쪽이 그 세 바이트에 걸릴 수 있다. 설정이 통째로 안 읽히면 고장이 조용하다.
@@ -4194,7 +4248,7 @@ Enter-Step 'assets'
 #   ⚠ 거울이 설 수 있는 것은 **이 zip 만 그 자리에 심을 때**다. 설정 저장소를 든 사람 자리에서는
 #     그 저장소의 배포(`deploy.ps1`)가 `deploy.seeds.conf` 에 적힌 폴더를 **저장소 최신판**으로
 #     같은 자리에 민다 — 그 자리는 아래 「비켜선다」가 든다.
-# ⚠ **설정 저장소가 미는 자리에서는 비켜선다** — 그림 문 칸과 같은 규율이다. 옛 판은 늘 깔아,
+# ⚠ **설정 저장소가 미는 자리에서는 비켜선다.** 옛 판은 늘 깔아,
 #   릴리스 뒤에 저장소에서 씨앗을 고친 날부터 **이 칸이 옛 판으로 되돌리고 8 칸의 배포가 새 판으로
 #   다시 미는 일**이 자동 실행마다 되풀이됐다 — 같은 파일이 매번 「덮어씀」으로 뜨고 백업 폴더가
 #   쌓이며, 두 칸 사이에는 옛 씨앗이 깔려 있다. 판 줄(`seeds/.version`)은 두 자가 적는 값이 달라
@@ -4334,41 +4388,44 @@ Exit-Step 'assets'
 
 # ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 홈
-#   하는 일 — 제작자 칸 값 · 규범 · 룰 · 에이전트 · 스킬(짐의 손 `tool-homes.py` 를 부른다 — 표준 층과 세 도구 홈) · 칸 없이
-#     까는 스킬(제작자 칸에 안 든 도구의 홈) · Claude(걷힌 룰 · 홈 훅 · settings 다시 쓰기) · agy(훅) · Codex(훅 병합과 신뢰)
-#   앞에서 받는 것 — 준비의 짐(`$Kit` — 손과 그 표가 뿌리에 실린다), 「Claude 홈 설정」의 `$cfg` · `$homeCfg` · `$dirty`,
-#     「공용 자산」의 씨앗(훅 몸통 · 병합기 · 어댑터)
-#   안 하는 것 — 설정 저장소를 안 받는다
-#   ⚠ 제작자 칸 값(`PAISETUP_PERSONAL`)은 사용자 환경에 심지만 이 걸음에 선다 — 「Claude 홈 설정」 뒤라 settings.json 의 env 로
-#     안 밀리고, 손이 그 값을 읽으며, 「설정 저장소」의 배포가 이 프로세스에서 그 값을 물려받는다
+#   하는 일 — 제작자 칸 값 · 고른 제품 값 · 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록(짐의 손 `tool-homes.py` 를 부른다 —
+#     표준 층과 세 도구 홈) · 칸 없이 까는 스킬(제작자 칸에 안 든 도구의 홈) · Claude(걷힌 룰) · agy(훅 — 안 골랐으면 걷기) ·
+#     Codex(훅 병합과 신뢰 — 안 골랐으면 걷기)
+#   앞에서 받는 것 — 준비의 짐(`$Kit` — 손과 그 표가 뿌리에 실린다), 「공용 자산」의 씨앗(훅 몸통 · 병합기 · 어댑터)
+#   안 하는 것 — 설정 저장소를 안 받는다 · 홈 `settings.json` 을 쓰지 않는다(손만 쓴다 — 「Claude 홈 설정」 머리의 ⚠)
+#   ⚠ 제작자 칸 값(`PAISETUP_PERSONAL`)과 고른 제품 값(`PAISETUP_PICK`)은 사용자 환경에 심지만 이 걸음에 선다 — 「Claude 홈
+#     설정」 뒤라 settings.json 의 env 로 안 밀리고, 손이 그 값을 읽으며, 「설정 저장소」의 배포가 이 프로세스에서 그 값을 물려받는다
 # ── 7. 개인 규범·룰·스킬 (선택) ─────────────────────────────────────────────────
 # ⚠ **기본은 안 깐다.** 이것들은 한 사람의 사유 방식이라, 받는 사람이 원할 때만 선다 — 제작자 칸에서 그 도구를 켤 때만.
 #   규범 · 룰 · 에이전트 · 스킬은 손이 칸을 읽어 도구마다 놓는다.
 
 Enter-Step 'tools'
-# 고른 도구 — 손(`tool-homes.py`) · 설정 저장소의 배포(`deploy.ps1`) · 세션 훅이 같은 값을 읽어 어느 도구 홈을 개인화할지
-# 정한다(결정 0107 · 0112).
-if ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) {
-  # ⚠ **이 프로세스의 값도 맞춘다** — 뒤의 설정 저장소 배포(8 칸)는 이 프로세스의 자식이라 그 값을 물려받는다. 새 판의 배포는
-  #   사용자 값을 먼저 읽지만, 포크한 설정 저장소는 사람이 당기기 전까지 프로세스 값을 먼저 읽는 판을 든다. 오래 떠 있던 앱에서
-  #   부르면 프로세스에는 옛 값이 남아, 그 판의 배포가 끈 도구로 읽고 개인화를 걷는다.
-  Set-Item -Path 'Env:PAISETUP_PERSONAL' -Value $PersonalValue
-  Write-Host "  PAISETUP_PERSONAL — 이미 맞다 ($PersonalValue)"
-} else {
-  Plant-Var 'PAISETUP_PERSONAL' $PersonalValue
+# 고른 도구와 고른 제품 — 손(`tool-homes.py`) · 설정 저장소의 배포(`deploy.ps1`) · 세션 훅이 같은 값을 읽는다. 제작자 칸은 어느
+# 도구 홈을 개인화할지를(결정 0107 · 0112), 고른 제품은 어느 도구에 우리 훅을 놓을지를(결정 0102) 정한다.
+foreach ($pv in @(@{ Name = 'PAISETUP_PERSONAL'; Value = $PersonalValue }, @{ Name = 'PAISETUP_PICK'; Value = $PickValue })) {
+  if ([Environment]::GetEnvironmentVariable($pv.Name, 'User') -eq $pv.Value) {
+    # ⚠ **이 프로세스의 값도 맞춘다** — 뒤의 설정 저장소 배포(8 칸)는 이 프로세스의 자식이라 그 값을 물려받는다. 새 판의 배포는
+    #   사용자 값을 먼저 읽지만, 포크한 설정 저장소는 사람이 당기기 전까지 프로세스 값을 먼저 읽는 판을 든다. 오래 떠 있던 앱에서
+    #   부르면 프로세스에는 옛 값이 남아, 그 판의 배포가 끈 도구로 읽고 개인화를 걷는다.
+    Set-Item -Path "Env:$($pv.Name)" -Value $pv.Value
+    Write-Host "  $($pv.Name) — 이미 맞다 ($($pv.Value))"
+  } else {
+    Plant-Var $pv.Name $pv.Value
+  }
 }
-# ── 규범 · 룰 · 에이전트 · 스킬 — 짐의 손(`tool-homes.py`)이 표준 층을 채우고 도구 홈에 놓는다 (claude-config 결정 0112) ──
-# 무엇이 어느 홈에 어떤 꼴로 가나 · 칸을 끈 도구에서 무엇을 걷나는 손과 그 표(`tool-homes.conf`)가 든다 — 손의 머리말.
+# ── 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록 — 짐의 손(`tool-homes.py`)이 표준 층을 채우고 도구 홈에 놓는다 (claude-config 결정 0112) ──
+# 무엇이 어느 홈에 어떤 꼴로 가나 · 칸을 끈 도구와 뺀 제품에서 무엇을 걷나는 손과 그 표(`tool-homes.conf`)가 든다 — 손의 머리말.
 # 설정 저장소를 넣었어도 비켜서지 않는다 — 그 저장소의 배포가 채운 개인 층이 항목마다 이기고, 놓기는 이긴 층의 손이 한다.
-# ⚠ **칸 값을 심은 뒤에 부른다** — 손은 사용자 환경의 `PAISETUP_PERSONAL`(바로 위에서 심었다)을 읽는다.
+# ⚠ **두 값을 심은 뒤에 부른다** — 손은 사용자 환경의 `PAISETUP_PERSONAL` · `PAISETUP_PICK`(바로 위에서 심었다)을 읽는다.
 # ⚠ **손이 짐에 없으면 빨강이다** — 짐이 깨졌다는 뜻이라, 건너뛰고 초록으로 끝나면 아무도 모른다.
-# ⚠ **켠 칸이 없고 python 이 안 서면 건너뛴다** — 그때 손이 할 일은 끈 칸의 우리 것 걷기뿐이다. 칸을 켰으면 python 은
-#   「프로그램」 걸음이 `-NoDevTools` 여도 깔았으므로(`$needPythonWhy`), 여기서 안 서면 빨강이다.
+# ⚠ **켠 칸이 없고 Claude 를 안 골랐고 python 이 안 서면 건너뛴다** — 그때 손이 할 일은 끈 칸 · 뺀 제품의 우리 것 걷기뿐이다.
+#   칸을 켰거나 Claude 를 골랐으면 python 은 「프로그램」 걸음이 `-NoDevTools` 여도 깔았으므로(`$needPythonWhy`), 여기서 안 서면
+#   빨강이다.
 $toolHomesHand   = Join-Path $Kit 'tool-homes.py'
 $toolHomesPython = Test-Runs 'python' '--version'
-$toolHomesOn     = [bool]($personalAny -or $toolHomesPython)
+$toolHomesOn     = [bool]($personalAny -or $hostClaude -or $toolHomesPython)
 if (-not $toolHomesOn) {
-  Write-Host '  규범 · 룰 · 에이전트 · 스킬 — 건너뜀 (python 이 안 서고 켠 제작자 칸이 없다)'
+  Write-Host '  규범 · 룰 · 에이전트 · 스킬 — 건너뜀 (python 이 안 서고, 켠 제작자 칸도 고른 Claude 도 없다)'
 } elseif (-not (Test-Path -LiteralPath $toolHomesHand -PathType Leaf)) {
   Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 짐에 없다 ($toolHomesHand)" -ForegroundColor Red
   $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (짐에 없음)')
@@ -4381,9 +4438,9 @@ if (-not $toolHomesOn) {
     Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 손이 다 못 놓았다 (종료 $($th.Rc))" -ForegroundColor Red
     $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (손이 다 못 놓았다)')
   } elseif ($th.Changes.Count) {
-    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 맞췄다 (제작자 칸 $PersonalValue)" -ForegroundColor Green
+    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 맞췄다 (제작자 칸 $PersonalValue · 고른 제품 $PickValue)" -ForegroundColor Green
   } else {
-    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 이미 맞다 (제작자 칸 $PersonalValue)"
+    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 이미 맞다 (제작자 칸 $PersonalValue · 고른 제품 $PickValue)"
   }
   Show-ToolHomesLines $th.Lines
 }
@@ -4486,6 +4543,11 @@ if ($PickKeys -contains 'codex') {
       }
     }
   }
+} else {
+  # 안 골랐으면 우리 훅만 걷는다 — 병합기의 걷기 판이 뒤 항목의 자리(신뢰 열쇠)를 그대로 두고(결정 0103), Codex 가 적은 신뢰
+  #   (`[hooks.state]`)는 안 건드린다. 병합기는 고친 결과를 TOML 로 다시 읽어 뜻을 잰 뒤에만 써서 파이썬 3.11(`tomllib`)이 든다.
+  Remove-UnpickedHooks 'Codex 훅' $CodexCfg @((Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py')) `
+                       @('--config', $CodexCfg, '--remove') @('-c', 'import tomllib') '파이썬 3.11 이상(tomllib)이'
 }
 
 # ── agy 훅 — DRM 길잡이 · BOM 보정을 ~/.gemini/config/hooks.json 에 얹는다 (결정 0099) ─────────────────
@@ -4494,9 +4556,9 @@ if ($PickKeys -contains 'codex') {
 # ⚠ **씨앗 자리의 것을 부른다** — 배선 명령에 부른 파일의 절대 경로가 박힌다. 이 폴더의 사본을 부르면 내려받은
 #   임시 폴더를 가리키게 된다.
 # ⚠ 다섯 홈 훅 가운데 둘만이다 — 나머지 셋이 agy 에 안 가는 까닭은 그 파일의 머리말이 든다.
+$agyHookPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\agy-hooks.py'
+$AgyHooksCfg  = Join-Path $env:USERPROFILE '.gemini\config\hooks.json'
 if ($hostAgy) {
-  $agyHookPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\agy-hooks.py'
-  $AgyHooksCfg  = Join-Path $env:USERPROFILE '.gemini\config\hooks.json'
   if (-not (Test-Path -LiteralPath $agyHookPlant)) {
     Write-Host '  ! agy 훅 — 씨앗의 어댑터가 없어 안 심는다' -ForegroundColor Red
     $Fails.Add('agy 훅 (씨앗이 없다)')
@@ -4520,83 +4582,11 @@ if ($hostAgy) {
       Write-Host '  agy 훅 — 이미 맞다'
     }
   }
-}
-
-# ── 그림 문 — PreToolUse 훅을 홈에 심는다 ────────────────────────────────────────
-# 모델이 그림을 받기 **직전**에 치수를 재고 안 고른 자리는 막는다. 왜와 갈래는 몸통
-# (`image-gate.py`)의 머리말이 든다.
-#
-# ⚠ **왜 설치기가 이걸 드나.** 심는 손이 여태 설정 저장소의 세션 훅(`session-start-body.sh`) **하나**였고,
-#   그 저장소는 `#config-repo` 를 적은 사람에게만 온다 — 그런데 **몸통과 눈금은 씨앗으로
-#   누구에게나 간다.** 부품이 다 가는데 배선만 선택 칸에 묶여 있었고, 그래서 규범·룰·스킬을
-#   받은 동료 자리에서 이 문이 **조용히 한 번도 안 섰다.** 부품이 오는 자리에 배선도 온다.
-# ⚠ **제작자 칸을 안 탄다** — 몸통을 나르는 씨앗 칸에 스위치가 없고, 이 문은
-#   취향이 아니라 값을 아끼는 장치다. 스위치를 달면 「깔았는데 안 서는」 갈래가 또 생긴다.
-# ⚠ **주인은 저장소 진본이다.** 설정 저장소를 든 사람 자리에서는 세션 훅 몸통이
-#   **저장소 진본**을 가리켜 다시 심는다(설정 저장소를 연 세션 · 로그인 자동 실행의 `--install`). 여기도 매번 갈아타면 매일 자동실행과
-#   세션이 번갈아 서로를 걷는다 — 그래서 **다른 자리를 가리키는 우리 항목이 살아 있으면
-#   비켜선다.** 그 자리의 몸통이 사라졌으면(저장소를 지웠다) 여기서 다시 심는다.
-# ⚠ **껍데기 글자와 matcher 는 씨앗의 `image-gate.sh` 한 벌이다.** 여기는 자리만 채운 한 줄을
-#   심고 matcher 는 그 파일 첫 줄에서 읽는다 — 손으로 한 벌 더 들면 저쪽과 조용히 어긋난다.
-# 꼬리의 `# image-gate.py` 는 옛 판 심는 손이 이 항목을 제 것으로 알아보게 두는 표지다 — 없으면
-#   옛 판이 제 항목을 곁에 하나 더 심는다.
-# ⚠ **Claude 훅은 Claude 를 고른 PC 에만 심는다**(claude-config 결정 0102) — 제작자 칸과는 무관하다(취향이 아니라
-#   막힌 자리에서 길을 잇는 장치다). 다른 도구만 고른 PC 의 Claude 홈에는 쓸 사람이 없다. 그 도구들의 같은 보호는
-#   제 꼴의 훅(Codex TOML · agy hooks.json)으로 따로 건다.
-if ($hostClaude -and
-    (Plant-HomeToolHook '그림 문(PreToolUse)' @('PreToolUse') @('image-gate.sh', 'image-gate.py') '_ig' ' # image-gate.py')) { $dirty = $true }
-
-# ── 웹 다시 찾기 — PostToolUse · PostToolUseFailure 훅을 홈에 심는다 (claude-config #117) ──────────
-# 웹 도구가 못 닿았을 때 다른 길(curl · Tavily · agy 백그라운드 맡기기)이 있다는 것을 결과 곁에 붙인다 — 막지 않는다.
-# 왜와 거는 꼴은 껍데기(`web-retry.sh`)의 머리말이 든다. 그림 문과 같은 조건(Claude 를 골랐다)으로 심는다.
-if ($hostClaude -and
-    (Plant-HomeToolHook '웹 다시 찾기(PostToolUse · PostToolUseFailure)' @('PostToolUse', 'PostToolUseFailure') @('web-retry.sh') '_wr' '')) { $dirty = $true }
-
-# ── DRM 길잡이 — UserPromptSubmit · PreToolUse · PostToolUseFailure 훅을 홈에 심는다 (claude-config #120 · 결정 0094) ──
-# 붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 스킬 `drm-office-read` 로 가는 길을 곁에 붙인다 — 막지 않는다. 왜와
-# 거는 꼴은 몸통(`drm-guide.py`)의 머리말이 든다.
-# ⚠ **Claude 를 고르면 심는다 — 자리는 안 가린다.** 가리키는 스킬이 같은 조건으로 깔리고(`$FreeSkills`), 감긴 파일이
-#   없는 자리(집 · 사외 VDI)에서는 아무것도 안 붙여 두 자리에 같이 심어도 값이 없다.
-# ⚠ **matcher 는 이벤트마다 다르고 진본은 껍데기의 머리 줄들이다** — UserPromptSubmit 항목에는 그 키를 **안 심고**
-#   (그 이벤트는 matcher 를 안 받고, 거는 자는 그 값을 무시하는 것이 아니라 항목째 걸러낸다), PreToolUse 는 제
-#   이름을 단 줄(`# matcher.PreToolUse =`)을 든다(`Plant-HomeToolHook` 안의 ⚠).
-# ⚠ **자리가 셋인 까닭은 그 줄이 디스크에 닿는 시각이 표면마다 다르기 때문이다** — VS Code 앱에서는 제출 훅이
-#   1.4 초 이르러 첨부 줄을 못 보고, 그 턴은 첫 도구 호출 때 잡힌다(#120 실측 · 몸통 머리말).
-if (($PickKeys -contains 'claude') -and
-    (Plant-HomeToolHook 'DRM 길잡이(UserPromptSubmit · PreToolUse · PostToolUseFailure)' @('UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure') @('drm-guide.sh', 'drm-guide.py') '_dg' '')) { $dirty = $true }
-
-# Windows Bash 명령의 겹역슬래시를 실행 전에 막고, PowerShell 파일은 편집 뒤 UTF-8 BOM 을 맞춘다.
-# Claude 훅 형식이므로 Claude 를 고른 자리에 심는다. Codex 쪽은 TOML 훅으로 같은 보호를 따로 건다.
-if (($PickKeys -contains 'claude') -and
-    (Plant-HomeToolHook 'Bash 겹역슬래시 차단(PreToolUse)' @('PreToolUse') @('bash-backslash-deny.sh') '_bb' '')) { $dirty = $true }
-if (($PickKeys -contains 'claude') -and
-    (Plant-HomeToolHook 'PowerShell UTF-8 BOM 보정(PostToolUse)' @('PostToolUse') @('utf8-bom.sh') '_ub' '')) { $dirty = $true }
-
-# ── 걷힌 Tavily 키 안내 — 옛 판이 홈 SessionStart 에 심은 한 줄을 걷는다 ──────────────────────
-# 웹 검색 · 웹 가져오기가 대부분 서서 Tavily 키가 여는 덤(사이트 지도 · 크롤 · 리서치)의 값이 줄었고, 웹이 못 닿은
-# 자리는 「웹 다시 찾기」 훅이 다른 길을 결과 곁에 붙인다. 그래서 안내는 더 안 심는다.
-# ⚠ **옛 판이 심은 항목만 걷는다** — 그 명령 끝의 표지(`tavily-key-hint`)로 알아본다. 표지가 없는 SessionStart 항목은
-#   사람 것이거나 설정 저장소 훅의 것이라 안 건드린다.
-if ($cfg -and $cfg.hooks -and $cfg.hooks.SessionStart) {
-  $hintKept = @(); $hintDropped = 0
-  foreach ($entry in @($cfg.hooks.SessionStart)) {
-    if (-not $entry) { continue }
-    $c = @($entry.hooks | Where-Object { $_ } | ForEach-Object { [string]$_.command })
-    if (@($c | Where-Object { $_ -cmatch '#\s*tavily-key-hint\s*$' }).Count) { $hintDropped++ } else { $hintKept += $entry }
-  }
-  if ($hintDropped) {
-    $cfg.hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $hintKept -Force
-    Write-Host '  Tavily 키 안내(SessionStart) — 더 안 쓰는 안내라 걷었다' -ForegroundColor Green
-    $dirty = $true
-  }
-}
-
-# ⚠ **홈 설정을 여기서 다시 쓴다.** 위 5칸이 이미 한 번 썼지만 그 뒤에 이 칸이 `$cfg` 를
-#   고쳤다 — 안 쓰면 그림 문이 메모리에만 서고 파일에는 없다. 5칸을 여기로 내리지 않는
-#   까닭은 순서가 뜻을 지기 때문이다: 몸통은 씨앗이 깔린 **뒤에야** 그 자리에 있다.
-if ($dirty -and $cfg) {
-  $json = $cfg | ConvertTo-Json -Depth 10
-  [IO.File]::WriteAllText($homeCfg, $json, (New-Object Text.UTF8Encoding($false)))
+} else {
+  # 안 골랐으면 우리 이름(`paisetup-…`)의 항목만 걷는다 — 어댑터의 걷기 판. 고치기 전 원본을 떠 두는 손은 곁의 Codex 병합기라
+  #   둘 다 있어야 부른다.
+  Remove-UnpickedHooks 'agy 훅' $AgyHooksCfg @($agyHookPlant, (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py')) `
+                       @('remove', '--config', $AgyHooksCfg) @('--version') 'python 이'
 }
 
 Exit-Step 'tools'
@@ -4604,7 +4594,8 @@ Exit-Step 'tools'
 # ══ 걸음 「설정 저장소」 ═══════════════════════════════════════════════════════════════════════
 #   층 — 저장소
 #   하는 일 — GitHub CLI 로그인 · 설정 저장소 받기 · 그 저장소 훅을 `--install` 로 부르기
-#   앞에서 받는 것 — 준비의 주소 · 자리(`$configRepoUrls` · `$configRepoRoot`), 「도구별 홈」이 이 프로세스에 둔 `PAISETUP_PERSONAL`
+#   앞에서 받는 것 — 준비의 주소 · 자리(`$configRepoUrls` · `$configRepoRoot`), 「도구별 홈」이 이 프로세스에 둔 `PAISETUP_PERSONAL` ·
+#     `PAISETUP_PICK`
 #   안 하는 것 — 그 뒤의 개인화. 그 저장소의 배포가 든다
 # ── 8. 개인 값 저장소 (선택) ────────────────────────────────────────────────────
 # ⚠ **주소는 이 파일에 없다.** `install.env` 가 `#config-repo` 를 들 때만 이 칸이 선다 —
@@ -5374,100 +5365,43 @@ foreach ($a in $envAssets) {
   }
   $checks += New-CountCheck $a.Name $a.From $a.To
 }
-# ── 그림 문 — **심었다는 초록과 섰다는 것은 다른 명제다** ──────────────────────────
-# ⚠ **되읽어서 잰다.** 위 심는 칸이 「심었다」를 찍지만 그것은 메모리의 객체를 고쳤다는 말이고,
-#   파일에 실제로 그 항목이 있나는 다른 물음이다 — JSON 쓰기가 지면 화면만 초록이 된다.
-# ⚠ **심는 조건 그대로 잰다** — Claude 를 골랐을 때만. 한쪽만 조건을 타면 안 고른 사람 자리에서 **심겼는데 안
+# ── Claude 훅 — **놓았다는 초록과 섰다는 것은 다른 명제다** ──────────────────────────
+# ⚠ **되읽어서 잰다.** 등록은 손이 놓고 「도구별 홈」 걸음이 그 줄을 찍었지만, 파일에 실제로 그 항목이 서 있나는 다른 물음이다.
+#   설정 저장소의 훅(「설정 저장소」 걸음)이 개인 층에서 등록을 다시 놓았으면 그것까지 여기서 본다.
+# ⚠ **놓는 조건 그대로 잰다** — Claude 를 골랐을 때만(결정 0102). 한쪽만 조건을 타면 안 고른 사람 자리에서 **놓였는데 안
 #   재지거나 그 반대**가 된다.
-# ⚠ **몸통과 배선을 따로 잰다.** 둘이 한 줄이면 「몸통이 안 실렸다」와 「배선이 못 섰다」가
-#   같은 빨강으로 보이는데, 고칠 자리가 서로 다르다(뽑기 선언 · 이 파일).
+# ⚠ **배선은 등록이 가리키는 폴더로 잰다** — 껍데기 머리말의 이벤트마다 우리 훅이 있고 그 훅이 가리키는 폴더에 그 껍데기가
+#   있어야 선 것이다. 한 이벤트만 빠져도 그 갈래(오류로 끝난 꼴 · 첨부 쪽 따위)를 조용히 놓친다(`Get-ClaudeHookWiring`).
+# ⚠ **씨앗의 몸통 · 껍데기 줄은 씨앗을 잰다** — Claude 등록이 부르는 사본은 배선 줄이 재고, 이 줄들은 설정 저장소 씨앗이 그
+#   부품을 실었나를 잰다. 고칠 자리가 다르다(뽑기 선언 · 손).
 if ($hostClaude) {
-  $gateBodyChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.py'
-  $gateShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\image-gate.sh'
-  $checks += @{ Name = '그림 문 몸통 (씨앗의 image-gate.py)'; Ok = (Test-Path -LiteralPath $gateBodyChk) }
-  $checks += @{ Name = '그림 문 껍데기 (씨앗의 image-gate.sh)'; Ok = (Test-Path -LiteralPath $gateShellChk) }
-  $gateWired = $false
-  try {
-    $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-    foreach ($entry in @($gc.hooks.PreToolUse)) {
-      foreach ($h in @($entry.hooks)) {
-        if ($h -and ([string]$h.command).Contains('image-gate.')) { $gateWired = $true }
-      }
+  $gc = $null; $gcWhy = ''
+  try { $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $gcWhy = '홈 설정을 못 읽었다' }
+  $seedHooks = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
+  foreach ($w in @(
+      @{ Label = '그림 문';                   Shell = 'image-gate.sh';          Seed = @('image-gate.py', 'image-gate.sh') }
+      @{ Label = '웹 다시 찾기';              Shell = 'web-retry.sh';           Seed = @('web-retry.sh') }
+      @{ Label = 'DRM 길잡이';                Shell = 'drm-guide.sh';           Seed = @('drm-guide.py', 'drm-guide.sh'); Matcher = $true }
+      @{ Label = 'Bash 겹역슬래시 차단';      Shell = 'bash-backslash-deny.sh'; Seed = @() }
+      @{ Label = 'PowerShell UTF-8 BOM 보정'; Shell = 'utf8-bom.sh';            Seed = @() })) {
+    foreach ($f in $w.Seed) {
+      $kind = if ($f -like '*.py') { '몸통' } else { '껍데기' }
+      $checks += @{ Name = "$($w.Label) $kind (씨앗의 $f)"; Ok = (Test-Path -LiteralPath (Join-Path $seedHooks $f)) }
     }
-  } catch { $gateWired = $false }
-  $checks += @{ Name = '그림 문 배선 (홈 settings.json 의 PreToolUse)'; Ok = $gateWired }
-  # 웹 다시 찾기 — 그림 문과 같은 자로 잰다. 배선은 두 이벤트 **다** 서야 선 것이다 — 하나만 서면
-  #   오류로 끝난 꼴이나 정상 반환 안의 실패 꼴 가운데 한쪽을 조용히 놓친다.
-  $webShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\web-retry.sh'
-  $checks += @{ Name = '웹 다시 찾기 껍데기 (씨앗의 web-retry.sh)'; Ok = (Test-Path -LiteralPath $webShellChk) }
-  $webWired = @()
-  try {
-    $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-    foreach ($ev in 'PostToolUse', 'PostToolUseFailure') {
-      foreach ($entry in @($gc.hooks.$ev)) {
-        foreach ($h in @($entry.hooks)) {
-          if ($h -and ([string]$h.command).Contains('web-retry.')) { $webWired += $ev }
-        }
-      }
+    $wr = Get-ClaudeHookWiring $gc $w.Shell (Join-Path $Kit "hooks\$($w.Shell)")
+    $wrWhy = if ($gcWhy) { $gcWhy } else { $wr.Why }
+    if ($wrWhy) {
+      $checks += @{ Name = "$($w.Label) 배선 (홈 settings.json — $wrWhy)"; Ok = $false }
+    } else {
+      $miss = if ($wr.Missing.Count) { " — 빠진 이벤트 $($wr.Missing -join ' · ')" } else { '' }
+      $checks += @{ Name = "$($w.Label) 배선 (홈 settings.json 의 $($wr.Events -join ' · ')$miss)"; Ok = ($wr.Missing.Count -eq 0) }
     }
-  } catch { $webWired = @() }
-  $checks += @{ Name = '웹 다시 찾기 배선 (홈 settings.json 의 PostToolUse · PostToolUseFailure)'
-                Ok = (@('PostToolUse', 'PostToolUseFailure' | Where-Object { $webWired -notcontains $_ }).Count -eq 0) }
-}
-# DRM 길잡이 — 그림 문과 같은 자로 잰다. 심는 조건(Claude 를 골랐다) 그대로 잰다. 배선은 두 이벤트 **다** 서야 선
-#   것이다 — 하나만 서면 첨부 쪽이나 PDF 그물 쪽을 조용히 놓친다.
-if ($PickKeys -contains 'claude') {
-  $drmBodyChk  = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\drm-guide.py'
-  $drmShellChk = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\drm-guide.sh'
-  $checks += @{ Name = 'DRM 길잡이 몸통 (씨앗의 drm-guide.py)'; Ok = (Test-Path -LiteralPath $drmBodyChk) }
-  $checks += @{ Name = 'DRM 길잡이 껍데기 (씨앗의 drm-guide.sh)'; Ok = (Test-Path -LiteralPath $drmShellChk) }
-  $drmWired = @()
-  $drmBadMatcher = @()
-  try {
-    $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-    # 껍데기의 matcher 진본 — 기대값을 여기 적지 않는다(적으면 진본이 바뀐 날 조용히 어긋난다)
-    $drmWantPre = $null
-    $pm = Select-String -LiteralPath $drmShellChk -Pattern '^# matcher\.PreToolUse = (\S+)' -Encoding UTF8 |
-          Select-Object -First 1
-    if ($pm) { $drmWantPre = $pm.Matches[0].Groups[1].Value }
-    foreach ($ev in 'UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure') {
-      foreach ($entry in @($gc.hooks.$ev)) {
-        foreach ($h in @($entry.hooks)) {
-          if ($h -and ([string]$h.command).Contains('drm-guide.')) {
-            $drmWired += $ev
-            # ⚠ **명령이 「있다」만 보면 안 된다** — matcher 가 어긋난 항목은 그 자리에서 훅이 안 돈다:
-            #   제출 자리에 키가 달리면 거는 자가 항목째 걸러내고, 도구 자리의 값이 좁으면 그 밖의
-            #   도구로 턴을 시작한 날 조용히 빠진다(claude-config #120).
-            $hasM = $null -ne ($entry.PSObject.Properties | Where-Object { $_.Name -eq 'matcher' })
-            if ($ev -eq 'UserPromptSubmit' -and $hasM) { $drmBadMatcher += "$ev 에 matcher 가 달렸다" }
-            if ($ev -eq 'PreToolUse' -and $drmWantPre -and [string]$entry.matcher -ne $drmWantPre) {
-              $drmBadMatcher += "$ev matcher 가 '$([string]$entry.matcher)' — 진본은 '$drmWantPre'"
-            }
-          }
-        }
-      }
+    if ($w.Matcher) {
+      $bad = @($wr.BadMatcher) + @($(if ($wrWhy) { $wrWhy }))
+      $checks += @{ Name = ('DRM 길잡이 matcher (이벤트마다 진본과 같다' + $(if ($bad.Count) { ' — ' + ($bad -join ' · ') } else { '' }) + ')')
+                    Ok = ($bad.Count -eq 0) }
     }
-  } catch { $drmWired = @(); $drmBadMatcher = @('홈 설정을 못 읽었다') }
-  $checks += @{ Name = 'DRM 길잡이 배선 (홈 settings.json 의 UserPromptSubmit · PreToolUse · PostToolUseFailure)'
-                Ok = (@('UserPromptSubmit', 'PreToolUse', 'PostToolUseFailure' | Where-Object { $drmWired -notcontains $_ }).Count -eq 0) }
-  $checks += @{ Name = ('DRM 길잡이 matcher (이벤트마다 진본과 같다' +
-                        $(if ($drmBadMatcher.Count) { ' — ' + ($drmBadMatcher -join ' · ') } else { '' }) + ')')
-                Ok = ($drmBadMatcher.Count -eq 0) }
-  $safetyWired = @()
-  try {
-    $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-    foreach ($ev in 'PreToolUse', 'PostToolUse') {
-      foreach ($entry in @($gc.hooks.$ev)) {
-        foreach ($h in @($entry.hooks)) {
-          $c = if ($h) { [string]$h.command } else { '' }
-          if ($ev -eq 'PreToolUse' -and $c.Contains('bash-backslash-deny.')) { $safetyWired += 'bash' }
-          if ($ev -eq 'PostToolUse' -and $c.Contains('utf8-bom.')) { $safetyWired += 'bom' }
-        }
-      }
-    }
-  } catch { $safetyWired = @() }
-  $checks += @{ Name = 'Bash 겹역슬래시 차단 배선 (홈 settings.json 의 PreToolUse)'; Ok = ($safetyWired -contains 'bash') }
-  $checks += @{ Name = 'PowerShell UTF-8 BOM 보정 배선 (홈 settings.json 의 PostToolUse)'; Ok = ($safetyWired -contains 'bom') }
+  }
 }
 # 워드의 PDF 변환 안내 — 「키와 값」 걸음이 읽은 판 목록 그대로 되읽는다. 워드가 없으면 줄이 없다.
 $wordCheck = Get-WordPdfQuietCheck $WordVersions
@@ -5580,9 +5514,11 @@ if ($hostAgy) {
   $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · agy 가 돌리는 꼴로 돌려 본다)'
                 Ok = ($agyWired.Count -eq 2 -and $agyRan.Count -eq 2) }
 }
-# 고른 도구 값 — 손 · 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0107 · 0112)
+# 고른 도구 값 · 고른 제품 값 — 손 · 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0102 · 0107 · 0112)
 $checks += @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
+$checks += @{ Name = "고른 제품 값 (PAISETUP_PICK = $PickValue)"
+              Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PICK', 'User') -eq $PickValue) }
 # 규범 · 룰 · 에이전트 · 스킬 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
 if ($toolHomesOn) { $checks += Get-ToolHomesCheck $toolHomesHand }
