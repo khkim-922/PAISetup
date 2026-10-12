@@ -1,6 +1,12 @@
 #!/bin/sh
 # matcher = Bash
+# events = PreToolUse
+# var = _bb
+#
 # PreToolUse(Bash) — 명령에 겹역슬래시가 들면 **돌려보낸다**(#92).
+# 윗줄들이 홈 `~/.claude/settings.json` 등록의 진본이다 — 갈 곳 표의 손(`tool-homes.py`)이 짓고, 머리말의 뜻과 심기는 명령
+# 꼴은 표(`tool-homes.conf`)의 hook 꼴이 든다. 홈 등록은 이 파일을 점(`.`)으로 읽고 저장소 설정은 바로 돌려, 셔뱅과 끝의
+# `exit 0` 이 둘 다에 선다.
 #
 # 윈도우에서 Bash 도구로 보낸 명령은 셸에 닿기 전에 겹역슬래시가 하나로 접힌다 — 홑따옴표 안이든
 # 따옴표 친 heredoc 안이든, 셸 표준이 글자를 그대로 둬야 하는 자리에서도. 그래서 파이썬 · sed 를
