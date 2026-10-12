@@ -46,7 +46,8 @@ function Assert-WordPdfQuiet($App) {
     try { $value = (Get-ItemProperty -LiteralPath $key -Name DisableConvertPdfWarning -ErrorAction Stop).DisableConvertPdfWarning } catch { }
     if ($value -ne 1) {
         throw ("이 PC 는 워드의 PDF 변환 안내창이 안 꺼져 있다 — 숨은 워드가 그 창에 갇혀 멈추므로 열지 않았다. " +
-               "$key 의 DisableConvertPdfWarning 을 1 로 두거나, 워드로 PDF 를 한 번 열어 「이 메시지를 다시 표시 안 함」을 체크한다.")
+               "PAISetup 설치를 다시 돌리면(로그온 자동 실행도) 그 값을 1 로 둔다. 아니면 $key 의 DisableConvertPdfWarning 을 " +
+               "1 로 두거나, 워드로 PDF 를 한 번 열어 「이 메시지를 다시 표시 안 함」을 체크한다.")
     }
 }
 
