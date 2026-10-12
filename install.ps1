@@ -5330,7 +5330,7 @@ if ($hostClaude) {
     }
     if ($w.Matcher) {
       $bad = @($wr.BadMatcher) + @($(if ($wrWhy) { $wrWhy }))
-      $checks += @{ Name = ('DRM 길잡이 matcher (이벤트마다 진본과 같다' + $(if ($bad.Count) { ' — ' + ($bad -join ' · ') } else { '' }) + ')')
+      $checks += @{ Name = ("$($w.Label) matcher (이벤트마다 진본과 같다" + $(if ($bad.Count) { ' — ' + ($bad -join ' · ') } else { '' }) + ')')
                     Ok = ($bad.Count -eq 0) }
     }
   }
