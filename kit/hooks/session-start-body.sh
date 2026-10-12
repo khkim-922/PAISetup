@@ -34,6 +34,10 @@
 #                               **「깔 게 있나」에 예/아니오만 낸다** (#47 ②) ← deploy.ps1 의
 #                               계획 단계가 이걸로 묻는다. 파일만 보고 1초 안에 끝난다 —
 #                               프로브도 망도 안 탄다. 0 안 깐다 · 1 깐다 · 2 못 쟀다
+#   session-start.sh <그 밖의 인자>
+#                               **아무것도 안 하고** stderr 한 줄과 2 로 끝난다 — 오타(`--chek`)가 인자
+#                               없는 갈래(당김 · 홈 밀기 · 설치)로 새지 않는다. 2 는 「답을 못 냈다」다 —
+#                               1 은 갈래마다 잰 판정(꺼진 검사 · 깔 것 있음)이라 아무것도 안 잰 자리에 못 쓴다
 #
 # ⚠ 진짜 문제는 **부재가 통과로 읽히는 것**이다. 게이트는 도구가 없으면 그 검사만 건너뛰고
 #   통과시킨다. 아래 §진단이 그 자리를 메운다 — 판정 문구는 거기 한 자리에만 둔다.
@@ -48,8 +52,9 @@ set -uo pipefail
 
 # ══ 단계 · 부름 — 모든 갈래 ════════════════════════
 #    층 — 없음(준비). 무엇을 어느 저장소에 할지를 잡는다
-#    하는 일 — 인자로 갈래(`MODE` · `ASKED`)를 고르고, 대상 저장소(`PROJECT_DIR` · `PROJECT_NAME`)를 문지기가 넘긴
-#      값 → 제 경로 → `CLAUDE_PROJECT_DIR`(없으면 지금 폴더) 차례로 잡는다. 명시한 설치 갈래(`--install` ·
+#    하는 일 — 인자로 갈래(`MODE` · `ASKED`)를 고르고(모르는 인자는 무엇도 하기 전에 2 로 끝낸다), 대상 저장소
+#      (`PROJECT_DIR` · `PROJECT_NAME`)를 문지기가 넘긴 값 → 제 경로 → `CLAUDE_PROJECT_DIR`(없으면 지금 폴더) 차례로
+#      잡는다. 명시한 설치 갈래(`--install` ·
 #      `--install-global`)의 바깥 실행은 기록 파일을 열고 저를 다시 띄워 그 줄을 받은 뒤, 안쪽의 종료코드로 끝난다
 #    앞에서 받는 것 — 인자 하나 · `SESSION_START_REPO`(문지기 · deploy.ps1) · `SESSION_LOG`(바깥이 받고 있다는 표식) ·
 #      `CLAUDE_PROJECT_DIR`
@@ -58,10 +63,16 @@ set -uo pipefail
 MODE=auto
 ASKED=""   # 인자로 명시된 갈래 — auto 가 지문 어긋남으로 install 이 되는 것과 가른다
 case "${1:-}" in
+  '')               ;;   # 인자 없음 — 세션(auto)
   --check)          MODE=check ;;
   --needs-install)  MODE=needs-install ;;
   --install)        MODE=install; ASKED=install ;;
   --install-global) MODE=install; ASKED=install-global ;;
+  # 모르는 인자는 무엇도 하기 전에 끝낸다 — 기본 갈래가 없으면 오타 하나가 auto 를 통째로 돈다.
+  #   stderr 로 낸다 — 세션 문맥에 실을 말이 아니라 부른 자의 실수이고, 훅으로 걸렸으면 하네스가 0 아닌
+  #   끝의 stderr 를 사람에게 보인다
+  *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global)\n' "$1" >&2
+     exit 2 ;;
 esac
 
 # ── 어느 저장소를 깔고 있나 — **제 자리에서 역산하는 것이 먼저다.**

@@ -465,7 +465,7 @@ $gateReport = @()  # 저장소마다 마지막 CI 한 줄 — 초록·빨강·�
 #   `personal.conf`(REPOS · ROOT)가 들고 세션 훅이 그것으로 clone 하고 슬러그 폴더를 세운다 — 같은 사실의 사본이었다.
 # ⚠ **슬러그는 제품의 규칙대로 짓는다** — 윈도 경로에서 영숫자가 아닌 글자를 **글자마다** `-` 로.
 #   PowerShell 의 `-replace` 는 UTF-16 글자로 세므로 한글 한 자가 대시 하나다(세션 훅의 같은 규율 ·
-#   `C:\Users\김균한\repos` → `C--Users-----repos`). 메모리 폴더와 자리의 짝은 셋이다:
+#   `C:\Users\홍길동\repos` → `C--Users-----repos`). 메모리 폴더와 자리의 짝은 셋이다:
 #     memory/<REPOS 의 이름>/  → ROOT\<이름>
 #     memory/<이 저장소 이름>/ → 이 저장소 자리
 #     memory/global/           → ROOT (저장소들을 담은 폴더에서 연 세션)
