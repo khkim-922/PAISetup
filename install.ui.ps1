@@ -1543,10 +1543,13 @@ if ($PersonalNotice) {
        [Environment]::NewLine + [Environment]::NewLine +
        '바꾸려면 받을 도구를 고르고 [설치 시작]을 누릅니다. 예전 칸은 agy 를 같이 고른 PC 의 agy 에도 규범을 깔았는데, ' +
        '이번 설치에서 그것은 백업 자리로 옮겨졌습니다 — agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
-       '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 「제공기능」에서 읽을 수 있습니다.' +
+       '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 이 상자를 닫으면 여는 「제공기능」 페이지에 있습니다.' +
        $(if ($ReleasePage) { [Environment]::NewLine + [Environment]::NewLine + '이 판에서 바뀐 것을 릴리스 노트에서 자세히 볼까요?' } else { '' })),
       $AppName, $(if ($ReleasePage) { 'YesNo' } else { 'OK' }), 'Information')
     if ($ReleasePage -and $ans -eq 'Yes') { try { Start-Process -FilePath $ReleasePage | Out-Null } catch { } }
+    # 「제공기능」도 같이 연다(결정 0099) — 못 열면 창의 링크가 그대로 남는다
+    $featPage = Join-Path $Here 'features.html'
+    if (Test-Path -LiteralPath $featPage) { try { Start-Process -FilePath $featPage | Out-Null } catch { } }
   })
 }
 [void]$F.ShowDialog()
