@@ -670,6 +670,70 @@ function Read-EnvFile([string]$Path) {
   return $map
 }
 
+# 맡기기 모델 표(짐의 스킬 `agent-envelope` 폴더의 `models.conf`)를 러너의 자리 값으로 옮긴다 — 표의 꼴과 칸마다 가는 자리는
+#   그 표의 머리가 든다. 모델 이름은 표에만 산다.
+# 받는 것 — 표의 경로. 내는 것 — @{ Agy = @{ inside = [ordered]@{<이름> = <값>}; outside = … }; Codex = (같은 꼴); Why = <못 읽은
+#   까닭 · 읽었으면 $null> }. 못 읽으면 Agy · Codex 가 빈 채로 온다.
+# ⚠ 한 줄이라도 꼴에 안 맞으면 표 전체를 버린다 — 틀린 줄만 빼고 옮기면 남은 줄이 다른 무게의 모델을 그 자리 값에 심는다.
+function Read-ModelTable([string]$Path) {
+  $sites   = @('inside', 'outside')
+  $tools   = @('claude', 'codex', 'agy')
+  $weights = @('deep', 'long', 'errand', 'fallback')
+  $none    = '-'
+  $empty   = @{ Agy = @{ inside = [ordered]@{}; outside = [ordered]@{} }; Codex = @{ inside = [ordered]@{}; outside = [ordered]@{} }; Why = $null }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { $empty.Why = "표가 없다: $Path"; return $empty }
+  try { $lines = [IO.File]::ReadAllLines($Path, [Text.Encoding]::UTF8) }
+  catch { $empty.Why = "표를 못 읽었다: $($_.Exception.Message)"; return $empty }
+  $cell = @{}
+  $fall = @{ inside = @(); outside = @() }
+  $rows = @{ inside = 0; outside = 0 }
+  $why  = $null
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    $t = $lines[$i].Trim()
+    if (-not $t -or $t.StartsWith('#')) { continue }
+    $at = "$($i + 1) 줄"
+    if ($t -notmatch '^(\S+)\s+(\S+)\s+(\S+)\s+(\S.*)$') { $why = "$at — 칸이 넷이 아니다"; break }
+    $site = $Matches[1]; $tool = $Matches[2]; $weight = $Matches[3]; $model = $Matches[4].Trim()
+    if ($sites -cnotcontains $site)     { $why = "$at — 모르는 자리 $site"; break }
+    if ($tools -cnotcontains $tool)     { $why = "$at — 모르는 도구 $tool"; break }
+    if ($weights -cnotcontains $weight) { $why = "$at — 모르는 무게 $weight"; break }
+    if ($model.Contains(';'))           { $why = "$at — 모델 이름에 ; 가 든다"; break }
+    $rows[$site]++
+    if ($weight -ceq 'fallback') {
+      if ($tool -cne 'agy')    { $why = "$at — 넘길 차례는 agy 만 든다"; break }
+      if ($model -ceq $none)   { $why = "$at — 넘길 차례에 - 가 든다"; break }
+      $fall[$site] += $model
+      continue
+    }
+    $key = "$site $tool $weight"
+    if ($cell.ContainsKey($key)) { $why = "$at — $key 가 두 줄이다"; break }
+    $cell[$key] = $model
+  }
+  # 줄이 하나도 없는 자리는 잘린 표다 — 어느 자리든 claude 줄은 선다
+  if (-not $why) { foreach ($s in $sites) { if (-not $rows[$s]) { $why = "자리 $s 의 줄이 없다"; break } } }
+  $out = @{ Agy = @{}; Codex = @{}; Why = $null }
+  foreach ($s in $sites) {
+    if ($why) { break }
+    $deep = $cell["$s agy deep"]; $long = $cell["$s agy long"]; $errand = $cell["$s agy errand"]
+    if ($deep -and $long -and ($deep -cne $long)) { $why = "$s agy — deep · long 이 다르다(러너가 한 값으로 받는다)"; break }
+    $delegate = if ($deep) { $deep } else { $long }
+    $agy = [ordered]@{}
+    if ($errand -and ($errand -cne $none))     { $agy['AGY_DEFAULT_MODEL']  = $errand }
+    if ($delegate -and ($delegate -cne $none)) { $agy['AGY_MODEL_DELEGATE'] = $delegate }
+    if ($fall[$s].Count)                       { $agy['AGY_FALLBACK_MODELS'] = $fall[$s] -join ';' }
+    $out.Agy[$s] = $agy
+    $deep = $cell["$s codex deep"]; $long = $cell["$s codex long"]; $errand = $cell["$s codex errand"]
+    if ($deep -and $long -and ($deep -cne $long)) { $why = "$s codex — deep · long 이 다르다(러너가 한 값으로 받는다)"; break }
+    $delegate = if ($deep) { $deep } else { $long }
+    $codex = [ordered]@{}
+    if ($errand -and ($errand -cne $none))     { $codex['CC_BG_CODEX_MODEL']          = $errand }
+    if ($delegate -and ($delegate -cne $none)) { $codex['CC_BG_CODEX_MODEL_DELEGATE'] = $delegate }
+    $out.Codex[$s] = $codex
+  }
+  if ($why) { $empty.Why = $why; return $empty }
+  return $out
+}
+
 # 백업 자리는 늘 새로 잡는다 — 같은 초에 두 번 돌거나 앞 백업에 같은 이름이 있으면, 이미 있는 폴더로 옮기기가 그 안으로
 #   들어가 앞 백업과 겹친다. 그래서 비어 있는 이름을 고른다(`-2` · `-3` …).
 function Get-FreePath([string]$Path) {
@@ -848,6 +912,27 @@ function Remove-UserVar([string]$Name) {
   } catch {
     Write-Host "  ! $Name 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
     $script:Fails.Add("$Name 걷기")
+  }
+}
+
+# 다른 자리의 값을 걷는다 — 받는 것: 자리마다 `[ordered]@{<이름> = <값>}` 인 표 · 이 자리. 이 자리 표에 없는 이름이 다른 자리
+#   표의 값과 글자까지 같게 사용자 환경에 남았을 때만 걷는다 — 자리를 옮긴 PC(노트북)에 앞 자리의 값이 남으면 러너가 안 잰
+#   길로 나간다. 값이 다르면 사람이 고친 것이라 안 건드린다. 진 것은 빨간 줄과 `$Fails` 다.
+function Remove-OtherSiteVars([hashtable]$BySite, [string]$Site) {
+  foreach ($s in $BySite.Keys) {
+    if ($s -eq $Site) { continue }
+    foreach ($k in $BySite[$s].Keys) {
+      if ($BySite[$Site].Contains($k)) { continue }
+      if ([Environment]::GetEnvironmentVariable($k, 'User') -ne $BySite[$s][$k]) { continue }
+      try {
+        [Environment]::SetEnvironmentVariable($k, $null, 'User')
+        Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
+        Write-Host "  $k — 걷었다 (다른 자리의 값)" -ForegroundColor Green
+      } catch {
+        Write-Host "  ! $k 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
+        $script:Fails.Add("$k 걷기")
+      }
+    }
   }
 }
 
@@ -2674,16 +2759,19 @@ $proxyRel   = Read-Directive $EnvFile 'gateway-proxy'
 $codexTpl   = Read-Directive $EnvFile 'codex-config'
 $geminiTpl  = Read-Directive $EnvFile 'gemini-config'
 $inside     = ($site -eq 'inside')
+# 맡기기 모델 표에서 읽는 자리 줄 — 「키와 값」이 그 줄로 러너의 자리 값을 심고, 「도구별 홈」이 `PAISETUP_SITE` 로 남겨 맡기는
+#   세션이 같은 줄을 읽는다. 자리를 모르면 사외 줄이다(claude-config 결정 0086).
+$ModelSite  = if ($inside) { 'inside' } else { 'outside' }
 $wantProxy  = [bool]($proxyRel  -and $inside)
 # ⚠ **회사 설정도 제품 칸을 탄다** — 안 켠 제품에 회사 설정만 심어 두면 쓰지도 않는 파일이
 #   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
 $wantCodex  = [bool]($codexTpl  -and $inside -and ($PickKeys -contains 'codex'))
 $wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini'))
-# ── agy 묶음 — agy 모델 값 (claude-config 결정 0083 · 0086 · 0088 · #117) ──────
+# ── agy 묶음 — agy 모델 값 (claude-config 결정 0083 · 0086 · 0088 · 0123 · #117) ──────
 # Claude Code 가 agy 에게 일을 맡기는 길은 백그라운드 래퍼(스킬 `agy-background`) 하나다 — 그 래퍼가 고를
 # 모델(`$AgyModelVars`)이다.
 # ⚠ **자리를 안 가린다 — 갈리는 것은 모델 값뿐이다.** 사내 agy 는 회사 키로 게이트웨이를 타서 서는
-#   모델 이름이 다르다(아래 `$AgyModelVars` 가 자리마다 든다).
+#   모델 이름이 다르다(「키와 값」이 맡기기 모델 표의 자리 줄에서 `$AgyModelVars` 를 짓는다).
 # ⚠ **다리(MCP `agy-bridge`)는 안 깐다**(결정 0088). 다리는 끝날 때까지 대화를 붙잡아, 맡겨 두고 딴 일을
 #   하라는 이 묶음의 뜻과 어긋난다.
 # ⚠ **조건이 갈린다**(결정 0089 · 0091).
@@ -2754,8 +2842,10 @@ $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
 #     값이라 뒤에서 띄운 래퍼가 승인 창을 안 띄운다. `elevated` 는 그 설정이 없는 PC 에서 설정부터 하려 들고, 값이
 #     없으면(새 PC) 읽기 전용을 지키는 OS 샌드박스가 아예 안 선다
 # ⚠ **사내 게이트웨이의 180초 벽은 무게로 넘는다** — 벽은 요청 하나의 실행 시계라(`posco/ENV-posco.md`) 래퍼의 시간
-#   한도로는 못 넘는다. agy 가 가벼운 일을 Flash 로 보내듯, 사내 Codex 의 무게는 회사 설정 틀이 든다
-#   (`model_reasoning_effort = "low"`). 모델을 가는 손잡이 `CC_BG_CODEX_MODEL` 은 래퍼가 읽지만 여기 안 심는다 — 틀이 진본이다.
+#   한도로는 못 넘는다. 사내 Codex 의 추론 깊이는 회사 설정 틀이 든다(`model_reasoning_effort = "low"`).
+# ⚠ **모델 둘(`CC_BG_CODEX_MODEL_DELEGATE` 깊은 판단 · 긴 맥락, `CC_BG_CODEX_MODEL` 심부름)은 이 표에 없다** — 맡기기 모델 표가
+#   그 자리에 이름을 줄 때만 「키와 값」이 이 표에 더해 심고, 표가 `-` 거나 줄이 없으면 안 심는다. 둘 다 없으면 래퍼가 모델을
+#   안 넘겨 Codex 설정의 `model`(사내는 회사 설정 틀이 쓴 대화형 기본값)로 뜬다(claude-config 결정 0123).
 # ⚠ **심는 값은 매번 덮는다** — 두 자리가 같은 이름을 들어, 자리를 옮긴 PC 도 이 자리 값으로 바뀐다.
 $CcBgVarsBySite = @{
   inside  = [ordered]@{
@@ -2769,7 +2859,7 @@ $CcBgVarsBySite = @{
     CC_BG_CODEX_WIN_SANDBOX = 'unelevated'
   }
 }
-$CcBgVars       = $CcBgVarsBySite[$(if ($inside) { 'inside' } else { 'outside' })]
+$CcBgVars       = $CcBgVarsBySite[$ModelSite]
 # ⚠ **맡기는 쪽은 Claude 나 agy 다** — 래퍼가 읽는 자리 값과 파이썬은 둘 가운데 하나라도 서면 선다(결정 0099).
 #   Codex 가 받는 쪽으로 서는 자리는 사외이거나, 사내에서 Codex 회사 설정이 서는 자리다.
 $codexReceives  = [bool](($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
@@ -3213,54 +3303,31 @@ Exit-Step 'cli'
 
 # ══ 걸음 「키와 값」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 환경
-#   하는 일 — agy 모델 값 · Codex · Copilot 맡기기 값 · 값 파일의 이름들(게이트웨이 키 · 남은 이름) · 물러난 이름 걷기 ·
-#     회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 · 워드의 PDF 변환 안내 끄기(워드가 깔린 PC) · 사외 Claude 구독 로그인
-#   앞에서 받는 것 — 준비의 자리 · 맡기기 조건 · 값 파일, 「CLI」의 `claude`(구독 로그인)
+#   하는 일 — 맡기기 모델 값(agy · Codex — 맡기기 모델 표에서) · Codex · Copilot 맡기기 값 · 값 파일의 이름들(게이트웨이 키 ·
+#     남은 이름) · 물러난 이름 걷기 · 회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 · 워드의 PDF 변환 안내 끄기(워드가
+#     깔린 PC) · 사외 Claude 구독 로그인
+#   앞에서 받는 것 — 준비의 자리(`$ModelSite`) · 맡기기 조건 · 짐(`$KitSkills`) · 값 파일, 「CLI」의 `claude`(구독 로그인)
 #   안 하는 것 — 도구 홈 파일
 #   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)뿐이다 — 심는 자리를
 #     그 걸음 뒤로 옮기면 settings.json 이 바뀐다
 Enter-Step 'keys'
-# agy 가 고를 모델 — 설치가 사용자 환경변수로 심고, 백그라운드 래퍼(스킬 `agy-background`)가 읽는다.
-# **값은 자리마다 다르다** — 사내 agy 는 회사 키로 게이트웨이를 타고, 사외는 각자 로그인으로 선다.
-#
-# ── 사내 — 일의 무게로 모델을 가르고, 넘기지 않는다 ──
-# ⚠ **게이트웨이가 받는 이름만 든다.** `agy models` 는 붙박이 목록이라 3.8 도 내지만 게이트웨이는
-#   `gemini-3.8-flash` 를 「모델을 찾을 수 없습니다」(P002)로 거부한다(사내 PC 실측 2026-10-08). 게이트웨이에서
-#   서는 것 가운데 쓸 것은 3.6 Flash 와 3.1 Pro 다(사람 판단).
-# ⚠ **맡기기는 3.1 Pro, 가벼운 일은 3.6 Flash** — 추론이 드는 일만 Pro 로 보낸다(사람 판단 2026-10-08). 래퍼는
-#   `--model` 이 없으면 `AGY_MODEL_DELEGATE` 를 먼저 쓰고, 가벼운 일(훑기 · 찾기 · 요약)은 부르는 쪽이 `--model`
-#   로 `AGY_DEFAULT_MODEL` 값을 준다 — 그 말은 스킬이 든다.
-# ⚠ **넘길 모델(`AGY_FALLBACK_MODELS`)을 안 둔다** — 회사 키는 예산 한도라 하나가 막히면 다 막힌다(사람 판단).
-#
-# ── 사외 · 자리 모름 — 제미나이를 먼저 쓰고, 그 한도가 차면 다른 데로 넘어간다 ──
-# ⚠ **자리를 모르면 사외 값이다**(사람 판단 2026-10-08) — 자리를 모르는 것은 값 파일에 자리 재는 줄이 없을
-#   때뿐이고, 배포본에는 늘 있다.
-# ⚠ **한도가 차는 단위가 방식마다 다르다.** 로그인 방식은 「제미나이」(3.8 Flash · 3.1 Pro)와 「그외」(Claude
-#   4.6 둘) **갈래마다** 차서, 3.8 Flash 가 막히면 3.1 Pro 도 같이 막힌다. API 키 방식은 **모델마다** 찬다
-#   (무료 키 실측 2026-10-08 — 한도 이름이 `…PerProjectPerModel-FreeTier`). 그래서 넘길 차례는
-#   「로그인 3.8 Flash → API 키 3.8 → 3.7 → 3.6 Flash → 로그인 Sonnet」이다(사람 판단 2026-10-08 —
-#   agy 를 쓰는 까닭은 제미나이고, Claude 갈래는 마지막 자리다).
-# ⚠ **`api:` 를 붙인 이름은 키가 있을 때만 산다.** 래퍼는 그 후보를 API 키 방식으로 띄우는데(키는
-#   `GOOGLE_API_KEY` 또는 `GEMINI_API_KEY`) 키가 없으면 **조용히 건너뛴다** — 키 없는 PC 는 「로그인 3.8 →
-#   Sonnet」으로 그대로 돈다. 이름은 `agy models` 의 표시 이름 그대로 적는다.
-#
-# ⚠ **다른 자리의 값이 남아 있으면 걷는다 — 우리가 심은 값과 글자까지 같을 때만.** 한 PC 가 자리를 옮기면
-#   (노트북) 앞 자리의 이름이 남는다. 사외의 `api:` 목록이 사내에 남으면 래퍼가 회사 키로 가짜 홈을 띄워
-#   안 잰 길로 나간다. 값이 다르면 사람이 고친 것이라 안 건드린다.
-$AgyModelVarsBySite = @{
-  inside  = [ordered]@{
-    AGY_DEFAULT_MODEL  = 'Gemini 3.6 Flash (High)'
-    AGY_MODEL_DELEGATE = 'Gemini 3.1 Pro (High)'
-  }
-  outside = [ordered]@{
-    AGY_DEFAULT_MODEL   = 'Gemini 3.8 Flash (High)'
-    AGY_FALLBACK_MODELS = 'api:Gemini 3.8 Flash (High);api:Gemini 3.7 Flash (High);api:Gemini 3.6 Flash (High);Claude Sonnet 4.6 (Thinking)'
+# 맡기기 모델 — agy · Codex 러너가 고를 모델을 맡기기 모델 표(짐의 스킬 `agent-envelope` 폴더의 `models.conf`)에서 옮겨
+#   사용자 환경변수로 심는다(claude-config 결정 0123). 자리 · 도구 · 무게마다 무엇을 대나와 그 까닭은 표가 들고, 여기는 이
+#   자리(`$ModelSite`)의 줄을 러너의 자리 값으로 옮기기만 한다(`Read-ModelTable`). 표는 이 설치가 홈에 놓는 그 스킬의 것이다.
+# ⚠ **표를 못 읽으면 모델 값을 안 건드리고 빨갛게 끝낸다** — 아무 말 없이 지나가면 러너가 옛 값으로 돌고 설치는 초록이다.
+# ⚠ **다른 자리의 값은 우리가 심은 글자 그대로일 때만 걷는다**(`Remove-OtherSiteVars`).
+$ModelTable = @{ Agy = @{ inside = [ordered]@{}; outside = [ordered]@{} }; Codex = @{ inside = [ordered]@{}; outside = [ordered]@{} }; Why = $null }
+if ($wantAgyDelegate -or $wantCcBg) {
+  $ModelTable = Read-ModelTable (Join-Path $KitSkills 'agent-envelope\models.conf')
+  if ($ModelTable.Why) {
+    Write-Host "  ! 맡기기 모델 표를 못 읽었다 — agy · Codex 모델 값을 안 건드렸다 ($($ModelTable.Why))" -ForegroundColor Red
+    $Fails.Add("맡기기 모델 표 ($($ModelTable.Why))")
   }
 }
-$AgyModelSite = if ($inside) { 'inside' } else { 'outside' }
-$AgyModelVars = $AgyModelVarsBySite[$AgyModelSite]
+# agy — 래퍼(스킬 `agy-background`)가 읽는다
+$AgyModelVarsBySite = $ModelTable.Agy
+$AgyModelVars       = $AgyModelVarsBySite[$ModelSite]
 if ($wantAgyDelegate) {
-  # 모델 값 — 위 `$AgyModelVars`(이 자리의 것).
   foreach ($k in $AgyModelVars.Keys) {
     if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $AgyModelVars[$k]) {
       Write-Host "  $k — 이미 맞다"
@@ -3268,26 +3335,15 @@ if ($wantAgyDelegate) {
       Plant-Var $k $AgyModelVars[$k]
     }
   }
-  # 다른 자리의 값 — 이 자리에 없는 이름이 우리가 심은 값 그대로 남아 있으면 걷는다(위 `$AgyModelVarsBySite` 곁말).
-  foreach ($s in $AgyModelVarsBySite.Keys) {
-    if ($s -eq $AgyModelSite) { continue }
-    foreach ($k in $AgyModelVarsBySite[$s].Keys) {
-      if ($AgyModelVars.Contains($k)) { continue }
-      if ([Environment]::GetEnvironmentVariable($k, 'User') -ne $AgyModelVarsBySite[$s][$k]) { continue }
-      try {
-        [Environment]::SetEnvironmentVariable($k, $null, 'User')
-        Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
-        Write-Host "  $k — 걷었다 (다른 자리의 값)" -ForegroundColor Green
-      } catch {
-        Write-Host "  ! $k 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
-        $Fails.Add("$k 걷기")
-      }
-    }
-  }
+  Remove-OtherSiteVars $AgyModelVarsBySite $ModelSite
 }
 
-# Codex · Copilot 맡기기의 자리 값 — 위 `$CcBgVars`(이 자리의 것). 래퍼(스킬 `codex-copilot-background`)가 읽는다.
-# ⚠ **다른 자리 값을 걷는 손이 없다** — 두 자리가 같은 이름을 들어, 이 자리 값으로 덮으면 그것으로 끝이다.
+# Codex · Copilot — 위 `$CcBgVars`(이 자리의 것)에 표가 이 자리에 준 Codex 모델(맡기기 · 기본)을 더해 심는다. 래퍼(스킬
+#   `codex-copilot-background`)가 읽는다. 두 자리가 다 드는 이름은 덮으면 끝이고, 한 자리에만 선 Codex 모델은 agy 와 같은 손이
+#   걷는다.
+foreach ($s in @($ModelTable.Codex.Keys)) {
+  foreach ($k in $ModelTable.Codex[$s].Keys) { $CcBgVarsBySite[$s][$k] = $ModelTable.Codex[$s][$k] }
+}
 if ($wantCcBg) {
   foreach ($k in $CcBgVars.Keys) {
     if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $CcBgVars[$k]) {
@@ -3296,6 +3352,7 @@ if ($wantCcBg) {
       Plant-Var $k $CcBgVars[$k]
     }
   }
+  Remove-OtherSiteVars $CcBgVarsBySite $ModelSite
 }
 
 # ── 5. 값 — 파일이 들면 읽고, 없으면 묻는다 ─────────────────────────────────────
@@ -4515,7 +4572,7 @@ Exit-Step 'assets'
 
 # ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 홈
-#   하는 일 — 제작자 칸 값 · 고른 제품 값 · 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록(짐의 손 `tool-homes.py` 를 부른다 —
+#   하는 일 — 제작자 칸 값 · 고른 제품 값 · 자리 값 · 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록(짐의 손 `tool-homes.py` 를 부른다 —
 #     표준 층과 세 도구 홈) · 칸 없이 까는 스킬(제작자 칸에 안 든 도구의 홈) · Claude(걷힌 룰) · agy(훅 — 안 골랐으면 걷기) ·
 #     Codex(훅 병합과 신뢰 — 안 골랐으면 걷기)
 #   앞에서 받는 것 — 준비의 짐(`$Kit` — 손과 그 표가 뿌리에 실린다), 「공용 자산」의 씨앗(훅 몸통 · 병합기 · 어댑터)
@@ -4539,6 +4596,15 @@ foreach ($pv in @(@{ Name = 'PAISETUP_PERSONAL'; Value = $PersonalValue }, @{ Na
   } else {
     Plant-Var $pv.Name $pv.Value
   }
+}
+# 자리 — 맡기는 세션이 맡기기 모델 표(스킬 `agent-envelope`)에서 읽을 자리 줄(claude-config 결정 0123). 「키와 값」이 러너의
+#   자리 값을 고른 그 줄이다. 위 두 값처럼 이 걸음에 심어 settings.json 의 env 로 안 밀린다 — 밀리면 자리를 옮긴 PC 에서 옛
+#   자리가 그 파일에 남아 사용자 값을 가린다.
+if ([Environment]::GetEnvironmentVariable('PAISETUP_SITE', 'User') -eq $ModelSite) {
+  Set-Item -Path 'Env:PAISETUP_SITE' -Value $ModelSite
+  Write-Host "  PAISETUP_SITE — 이미 맞다 ($ModelSite)"
+} else {
+  Plant-Var 'PAISETUP_SITE' $ModelSite
 }
 # ── 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록 — 짐의 손(`tool-homes.py`)이 표준 층을 채우고 도구 홈에 놓는다 (claude-config 결정 0112) ──
 # 무엇이 어느 홈에 어떤 꼴로 가나 · 칸을 끈 도구와 뺀 제품에서 무엇을 걷나는 손과 그 표(`tool-homes.conf`)가 든다 — 손의 머리말.
@@ -5517,11 +5583,13 @@ foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
   }
 }
 # agy 묶음 — 맡기기(모델 값). 심는 조건 그대로 잰다(위 `$wantAgyDelegate` 곁말). agy 설정 둘은 손의 `check` 가 잰다.
+# ⚠ 맡기기 모델 표를 못 읽은 판은 [X] 다 — 견줄 값이 비어 그대로 재면 빈 목록이 [O] 로 찍힌다.
 if ($wantAgyDelegate) {
-  $checks += @{ Name = "agy 모델 ($($AgyModelVars.Keys -join ' · '))"
-                Ok = (@($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
+  $checks += @{ Name = $(if ($ModelTable.Why) { 'agy 모델 (맡기기 모델 표를 못 읽었다)' } else { "agy 모델 ($($AgyModelVars.Keys -join ' · '))" })
+                Ok = ((-not $ModelTable.Why) -and
+                      @($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
 }
-# Codex · Copilot 맡기기의 자리 값 — 이 자리 값과 글자까지 같은가(3 칸 · `$CcBgVars`).
+# Codex · Copilot 맡기기의 자리 값 — 이 자리 값과 글자까지 같은가(`$CcBgVars` — 맡기기 모델 표가 Codex 모델을 주면 그것도).
 if ($wantCcBg) {
   $checks += @{ Name = "Codex · Copilot 맡기기 값 ($($CcBgVars.Keys -join ' · '))"
                 Ok = (@($CcBgVars.Keys | Where-Object { $userEnv[$_] -ne $CcBgVars[$_] }).Count -eq 0) }
@@ -5623,6 +5691,9 @@ $checks += @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $Personal
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
 $checks += @{ Name = "고른 제품 값 (PAISETUP_PICK = $PickValue)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PICK', 'User') -eq $PickValue) }
+# 자리 값 — 맡기는 세션이 맡기기 모델 표의 자리 줄을 고른다(결정 0123)
+$checks += @{ Name = "자리 값 (PAISETUP_SITE = $ModelSite)"
+              Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_SITE', 'User') -eq $ModelSite) }
 # 규범 · 룰 · 에이전트 · 스킬 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
 if ($toolHomesOn) { $checks += Get-ToolHomesCheck $toolHomesHand }
