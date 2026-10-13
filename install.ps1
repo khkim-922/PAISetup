@@ -2067,6 +2067,101 @@ function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts,
 
 #endregion 도구별 · Codex · agy 훅
 
+#region 도구별 · 묻지 않고 돌기 — 고른 도구의 제 승인 설정을 사람 값을 안 덮고 심고, 끝 검증이 되읽는다
+
+# 표 한 줄(`$ToolAutoRun` — 「도구별 홈」 걸음)이 받는 꼴 — Label · Want · Path(설정 파일) · Under(그 안의 표 이름 · 맨 위면 빈 글) ·
+#   Set(심을 키와 값 · 순서대로) · Guard(있으면 사람이 정한 것으로 보는 키 · 없으면 Set 의 키) · Toml(참이면 TOML 맨 위 키).
+# 심는 규칙은 하나다 — **Guard 의 키가 하나라도 서 있으면 그 줄을 통째로 둔다.** 한 줄의 키들은 그 도구의 스위치 하나라, 사람이
+#   하나만 정해 둔 자리에 나머지를 채우면 그 사람이 고른 적 없는 조합이 선다(claude-config 결정 0127).
+# 내는 것 — @{ Did = set · kept · broken · nopython; Have = 서 있던 Guard 키와 값(「키 = 값」 글) · Why = broken 의 까닭 }.
+#   화면 · 실패 줄은 부르는 쪽이 든다. 파일을 못 읽으면 안 건드린다 — 사람이 손댄 것이 거기 들어 있을 수 있다.
+# ⚠ 표인가는 `[System.Management.Automation.PSCustomObject]` 로 가른다 — `[pscustomobject]` 는 `[psobject]` 라 파이프에서 온 글 · 목록도
+#   그 꼴로 읽혀, 맨 위가 목록인 파일을 표로 보고 덮는다.
+function Set-ToolAutoRun($Row) {
+  $guard = if ($Row.Guard) { @($Row.Guard) } else { @($Row.Set.Keys) }
+  if ($Row.Toml) {
+    if (-not (Test-Runs 'python' '--version')) { return @{ Did = 'nopython'; Why = 'python 이 안 선다' } }
+    $null = Get-Quiet 'python' @('-c', 'import tomllib')
+    if ($LASTEXITCODE -ne 0) { return @{ Did = 'nopython'; Why = '파이썬 3.11 이상(tomllib)이 안 선다' } }
+    $old = ''
+    if (Test-Path -LiteralPath $Row.Path -PathType Leaf) {
+      $old = [IO.File]::ReadAllText($Row.Path)
+      $now = Read-TomlTopKeys $Row.Path $guard
+      if ($null -eq $now) { return @{ Did = 'broken'; Why = 'TOML 로 못 읽었다' } }
+      $have = @($guard | Where-Object { $now.PSObject.Properties[$_] } | ForEach-Object { "$_ = $($now.$_ | ConvertTo-Json -Compress)" })
+      if ($have.Count) { return @{ Did = 'kept'; Have = $have } }
+    }
+    # TOML 의 맨 위 키는 첫 표 머리 앞에 서야 한다 — 파일 머리에 얹으면 늘 그 자리다. 값은 따옴표 · 역슬래시가 없는 글자뿐이다.
+    $nl = if ($old.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $head = (@($Row.Set.Keys | ForEach-Object { "$_ = `"$($Row.Set[$_])`"" }) -join $nl) + $nl
+    $probe = [IO.Path]::GetTempFileName()
+    try {
+      [IO.File]::WriteAllText($probe, $head + $old, (New-Object Text.UTF8Encoding($false)))
+      # 얹은 결과를 다시 읽어 뜻을 잰 뒤에만 쓴다 — 같은 키가 둘이 되면 Codex 가 설정째 못 읽고 뜬다.
+      $after = Read-TomlTopKeys $probe @($Row.Set.Keys)
+      $miss = @($Row.Set.Keys | Where-Object { -not ($after -and $after.PSObject.Properties[$_] -and $after.$_ -ceq $Row.Set[$_]) })
+      if ($miss.Count) { return @{ Did = 'broken'; Why = "얹은 결과가 그 뜻으로 안 읽힌다 ($($miss -join ' · '))" } }
+      New-Item -ItemType Directory -Path (Split-Path $Row.Path -Parent) -Force | Out-Null
+      [IO.File]::WriteAllText($Row.Path, $head + $old, (New-Object Text.UTF8Encoding($false)))
+    } finally { Remove-Item -LiteralPath $probe -ErrorAction SilentlyContinue }
+    return @{ Did = 'set' }
+  }
+  $obj = $null
+  if (Test-Path -LiteralPath $Row.Path -PathType Leaf) {
+    $text = [IO.File]::ReadAllText($Row.Path)
+    if ($text.Trim()) {
+      try { $obj = $text | ConvertFrom-Json } catch { return @{ Did = 'broken'; Why = 'JSON 으로 못 읽었다' } }
+      if ($obj -isnot [System.Management.Automation.PSCustomObject]) { return @{ Did = 'broken'; Why = '맨 위가 표가 아니다' } }
+    }
+  }
+  if ($null -eq $obj) { $obj = [pscustomobject]@{} }
+  $at = $obj
+  if ($Row.Under) {
+    $u = $obj.PSObject.Properties[$Row.Under]
+    if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Did = 'broken'; Why = "$($Row.Under) 가 표가 아니다" } }
+    if (-not $u) { $obj | Add-Member -NotePropertyName $Row.Under -NotePropertyValue ([pscustomobject]@{}) }
+    $at = $obj.($Row.Under)
+  }
+  $have = @($guard | Where-Object { $at.PSObject.Properties[$_] } | ForEach-Object { "$_ = $($at.$_ | ConvertTo-Json -Compress)" })
+  if ($have.Count) { return @{ Did = 'kept'; Have = $have } }
+  foreach ($k in $Row.Set.Keys) { $at | Add-Member -NotePropertyName $k -NotePropertyValue $Row.Set[$k] }
+  New-Item -ItemType Directory -Path (Split-Path $Row.Path -Parent) -Force | Out-Null
+  # ⚠ `-Depth` 를 준다 — 5.1 의 기본 깊이는 2 라 사람이 둔 깊은 표가 글자로 뭉개진다.
+  [IO.File]::WriteAllText($Row.Path, ($obj | ConvertTo-Json -Depth 32), (New-Object Text.UTF8Encoding($false)))
+  return @{ Did = 'set' }
+}
+
+# TOML 파일의 맨 위 키 가운데 `$Keys` 에 든 것을 표로 낸다(못 읽으면 $null). 판정은 파이썬 `tomllib` 이 든다 — 첫 표 머리가 어디인가 ·
+#   여러 줄 배열과 글 안의 `[` 는 글자로는 못 가른다.
+# ⚠ 파이썬에 줄 코드에 큰따옴표를 안 쓴다 — 5.1 은 네이티브 인자 안의 큰따옴표를 깨뜨려 넘긴다.
+function Read-TomlTopKeys([string]$Path, [string[]]$Keys) {
+  $code = "import sys,json,tomllib;d=tomllib.load(open(sys.argv[1],'rb'));print(json.dumps({k:d[k] for k in sys.argv[2:] if k in d},default=str))"
+  $out = Get-Quiet 'python' (@('-X', 'utf8', '-c', $code, $Path) + $Keys)
+  if ($LASTEXITCODE -ne 0) { return $null }
+  try { return (($out -join "`n") | ConvertFrom-Json) } catch { return $null }
+}
+
+# 끝 검증 한 줄 — 심은 뒤의 파일을 되읽어, Guard 의 키가 하나라도 서 있으면 [O] 다(사람이 정한 값은 그 사람의 기본값이라 안
+#   덮었고 줄에 그 값을 적는다 · 자동 모드 줄과 같은 자).
+function Get-ToolAutoRunCheck($Row) {
+  $guard = if ($Row.Guard) { @($Row.Guard) } else { @($Row.Set.Keys) }
+  $at = $null
+  if (Test-Path -LiteralPath $Row.Path -PathType Leaf) {
+    if ($Row.Toml) {
+      $at = Read-TomlTopKeys $Row.Path $guard
+    } else {
+      try { $at = [IO.File]::ReadAllText($Row.Path) | ConvertFrom-Json } catch { $at = $null }
+      if ($at -and $Row.Under) { $at = if ($at.PSObject.Properties[$Row.Under]) { $at.($Row.Under) } else { $null } }
+    }
+  }
+  $have = @()
+  if ($at -is [System.Management.Automation.PSCustomObject]) { $have = @($guard | Where-Object { $at.PSObject.Properties[$_] } | ForEach-Object { "$_ = $($at.$_ | ConvertTo-Json -Compress)" }) }
+  $where = $Row.Path + $(if ($Row.Under) { " 의 $($Row.Under)" } else { '' })
+  @{ Name = "묻지 않고 돌기 · $($Row.Label) ($where — $(if ($have.Count) { $have -join ' · ' } else { '없다' }))"; Ok = [bool]$have.Count }
+}
+
+#endregion 도구별 · 묻지 않고 돌기
+
 #region 도구별 · 로컬 프록시 — 살았나 · 문을 여나 재고, 끄고, 돌릴 파이썬과 판 번호를 가린다
 
 function Get-ProxyHealth([string]$Url) {
@@ -4629,7 +4724,7 @@ Exit-Step 'assets'
 #   층 — 홈
 #   하는 일 — 제작자 칸 값 · 고른 제품 값 · 자리 값 · 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록(짐의 손 `tool-homes.py` 를 부른다 —
 #     표준 층과 세 도구 홈) · 칸 없이 까는 스킬(제작자 칸에 안 든 도구의 홈) · Claude(걷힌 룰) · agy(훅 — 안 골랐으면 걷기) ·
-#     Codex(훅 병합과 신뢰 — 안 골랐으면 걷기)
+#     Codex(훅 병합과 신뢰 — 안 골랐으면 걷기) · 묻지 않고 돌기(고른 agy · Copilot · Codex 의 제 승인 설정)
 #   앞에서 받는 것 — 준비의 짐(`$Kit` — 손과 그 표가 뿌리에 실린다), 「공용 자산」의 씨앗(훅 몸통 · 병합기 · 어댑터)
 #   안 하는 것 — 설정 저장소를 안 받는다 · 홈 `settings.json` 을 쓰지 않는다(손만 쓴다 — 「Claude 홈 설정」 머리의 ⚠)
 #   ⚠ 제작자 칸 값(`PAISETUP_PERSONAL`)과 고른 제품 값(`PAISETUP_PICK`)은 사용자 환경에 심지만 이 걸음에 선다 — 「Claude 홈
@@ -4835,6 +4930,50 @@ if ($hostAgy) {
   #   둘 다 있어야 부른다.
   Remove-UnpickedHooks 'agy 훅' $AgyHooksCfg @($agyHookPlant, (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py')) `
                        @('remove', '--config', $AgyHooksCfg) @('--version') 'python 이'
+}
+
+# ── 묻지 않고 돌기 — 고른 도구마다 그 도구 제 승인 설정을 심는다 (claude-config #158 · 결정 0127) ─────────────────────
+# 설치 창에 칸이 없다 — 그 도구를 고르면 선다(Codex 만 아직 사외에서만). Claude 의 자동 모드는 「Claude 홈 설정」의 표가 든다.
+# 무엇을 심나 — 그 도구가 대화형에서 사람에게 묻는 대신 스스로 진행하게 하는 제 설정 하나씩이다. 폴더 신뢰(세션 훅) · 러너 허락
+#   (Claude 홈 설정) · 헤드리스의 건너뛰기 깃발(부르는 쪽)과는 다른 층이다. 값마다 무엇을 여나는 결정 0127 이 든다.
+#   * agy CLI — `toolPermission = always-proceed`. 앱의 값은 CLI 에 안 먹어 둘 다 심는다
+#   * agy 앱 — Turbo 의 세 칸. 셋이 한 스위치라 한 줄이다
+#   * Copilot CLI — `defaultPermissionMode = allow-all`. 대화형 시작에만 먹고 `-p` 맡기기에는 안 간다
+#   * Codex(CLI · 데스크탑 앱) — `approvals_reviewer = auto_review`(「Approve for me」). 샌드박스를 넘는 요청을 사람 대신 검토자가
+#     가른다. 샌드박스 모드는 안 심는다 — 사용자 단에 두면 신뢰하지 않은 폴더까지 열린다. `approval_policy` 가 서 있으면 사람이
+#     승인 층을 정한 것이라 둔다
+# 고르지 않게 돼도 안 걷는다 — 심은 값은 사람이 같은 값을 둔 것과 글자로 안 갈리고, 기록을 따로 두면 그 기록이 또 하나의
+#   사본이 된다. 끄는 길은 그 도구의 설정에서 다른 값을 고르는 것이다(다음 설치가 그 값을 안 덮는다).
+$ToolAutoRun = @(
+  @{ Label = 'agy CLI'; Want = [bool]$hostAgy; Path = $AgyCfg; Under = ''
+     Set = [ordered]@{ toolPermission = 'always-proceed' } }
+  @{ Label = 'agy 앱(Turbo)'; Want = [bool]$hostAgy; Path = (Join-Path $env:USERPROFILE '.gemini\config\config.json'); Under = 'userSettings'
+     Set = [ordered]@{ autoExecutionPolicy          = 'CASCADE_COMMANDS_AUTO_EXECUTION_EAGER'
+                       enableTerminalSandbox        = $false
+                       nonWorkspaceFileAccessPolicy = 'AGENT_SETTING_POLICY_ALLOW' } }
+  # Copilot 홈은 Copilot 이 고르는 차례(`COPILOT_HOME` → `~/.copilot`)를 따른다 — 세션 훅이 폴더 신뢰를 거는 자리와 같다(결정 0122).
+  @{ Label = 'Copilot CLI'; Want = [bool]($PickKeys -contains 'copilot'); Under = ''
+     Path = (Join-Path $(if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE '.copilot' }) 'settings.json')
+     Set = [ordered]@{ defaultPermissionMode = 'allow-all' } }
+  # Codex 는 사외에서만 심는다 — 사내 Codex 는 게이트웨이로 가 검토자가 쓸 모델이 그 목록에 없을 수 있고, 그러면 샌드박스를 넘는
+  #   요청마다 검토가 져 묻는 것보다 나쁘다. 사내 PC 에서 검토가 서는 것을 재면 `-not $inside` 를 걷는다(결정 0127).
+  @{ Label = 'Codex'; Want = [bool]($hostCodex -and -not $inside); Path = $CodexCfg; Under = ''; Toml = $true
+     Set = [ordered]@{ approvals_reviewer = 'auto_review' }; Guard = @('approval_policy', 'approvals_reviewer') }
+)
+foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) {
+  $res = Set-ToolAutoRun $r
+  $ours = @($r.Set.Keys | ForEach-Object { "$_ = $($r.Set[$_] | ConvertTo-Json -Compress)" }) -join ' · '
+  switch ($res.Did) {
+    'set'  { Write-Host "  묻지 않고 돌기 · $($r.Label) — 심었다 ($ours)" -ForegroundColor Green }
+    'kept' {
+      if ((@($res.Have) -join ' · ') -ceq $ours) { Write-Host "  묻지 않고 돌기 · $($r.Label) — 이미 맞다" }
+      else { Write-Host "  묻지 않고 돌기 · $($r.Label) — 사람이 정한 값($($res.Have -join ' · '))이라 둔다" }
+    }
+    default {
+      Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 안 건드렸다 ($($r.Path))" -ForegroundColor Red
+      $Fails.Add("묻지 않고 돌기 · $($r.Label) ($($res.Why))")
+    }
+  }
 }
 
 Exit-Step 'tools'
@@ -5691,6 +5830,8 @@ foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
     $checks += @{ Name = "$($p.Label) (홈 settings.json 의 permissions.$($p.Key) = $pvShow)"; Ok = ($null -ne $pv) }
   }
 }
+# 묻지 않고 돌기 — 「도구별 홈」의 표(`$ToolAutoRun`)에서 이번에 심을 것을 파일에서 되읽는다.
+foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) { $checks += Get-ToolAutoRunCheck $r }
 # agy 묶음 — 맡기기(모델 값). 심는 조건 그대로 잰다(위 `$wantAgyDelegate` 곁말). agy 설정 둘은 손의 `check` 가 잰다.
 # ⚠ 맡기기 모델 표를 못 읽은 판은 [X] 다 — 견줄 값이 비어 그대로 재면 빈 목록이 [O] 로 찍힌다.
 if ($wantAgyDelegate) {
