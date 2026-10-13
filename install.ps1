@@ -2355,61 +2355,6 @@ function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc,
   return $state.Ok
 }
 
-# Copilot 데스크탑이 로그인돼 있나 — 자격 관리자에 `<uuid>.github-copilot-app` 항목이 있나(claude-config 결정 0128).
-# 앱은 로그인하는 순간 이 항목을 쓰고, 앱을 지워도 항목은 남아 다시 깐 앱이 그것으로 로그인된 채 뜬다. 앱 로그는 로그인하는
-#   순간만 적고 이미 로그인된 채 켜질 때는 아무 줄도 없어 상태를 못 든다.
-function Test-CopilotDesktopLoggedIn {
-  $credTail = '.github-copilot-app'       # 항목 이름의 꼬리 — 앞마디는 앱 DB(`~/.copilot/data.db`)의 uuid
-  $list = Get-Quiet (Join-Path $env:SystemRoot 'System32\cmdkey.exe') @('/list')
-  return [bool]@($list | Where-Object { $_ -match "$([regex]::Escape($credTail))\s*$" }).Count
-}
-
-# Copilot 데스크탑 로그인이 gh 로그인보다 늦게 섰거나 안 섰을 때 사람에게 남기는 말 — 두 로그인은 GitHub 에서 같은 OAuth
-#   앱이라, 데스크탑 로그인이 먼저 선 gh 키링 토큰을 거둔다(claude-config 결정 0128).
-$CopilotGhRedo = 'Copilot 데스크탑에 로그인하면 먼저 선 gh 로그인이 풀린다 — 그 뒤 새 터미널에서 gh auth login 을 한 번 더'
-
-# Copilot 로그인 창 — 「Copilot 창에서 먼저 로그인」과 남은 시간을 들고, 5초마다 로그인이 섰나 재서 서면 닫는다. 돌려주는
-#   값은 섰나(참/거짓). [Copilot 열기] 는 앱 손잡이(`$AppId`)로 앱을 띄우거나 앞으로 부른다. 손잡이는 닫힘으로 넘긴다
-#   (`Show-GhLoginWindow` 곁말).
-# ⚠ 창은 화면 오른쪽 아래에 둔다 — 가운데에 두면 맨 위에 선 이 창이 Copilot 창의 로그인 단추를 가린다.
-function Show-CopilotLoginWindow([string]$AppId, [int]$Wait) {
-  Add-Type -AssemblyName System.Windows.Forms
-  Add-Type -AssemblyName System.Drawing
-  $f = New-Object Windows.Forms.Form
-  $f.Text = 'Copilot 데스크탑 로그인'; $f.TopMost = $true
-  $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
-  $f.ClientSize = New-Object Drawing.Size(420, 170)
-  $wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-  $f.StartPosition = 'Manual'
-  $f.Location = New-Object Drawing.Point(($wa.Right - $f.Width - 16), ($wa.Bottom - $f.Height - 16))
-  $l1 = New-Object Windows.Forms.Label
-  $l1.Text = "GitHub Copilot 창에서 먼저 로그인해 주세요.`nGitHub CLI 로그인은 그 다음입니다 — 차례가 바뀌면 먼저 한 gh 로그인이 풀립니다."
-  $l1.Location = New-Object Drawing.Point(16, 14); $l1.Size = New-Object Drawing.Size(390, 60)
-  $lLeft = New-Object Windows.Forms.Label
-  $lLeft.Text = "남은 시간 ${Wait}초"
-  $lLeft.Location = New-Object Drawing.Point(16, 82); $lLeft.Size = New-Object Drawing.Size(390, 20)
-  $bOpen = New-Object Windows.Forms.Button; $bOpen.Text = 'Copilot 열기'
-  $bOpen.Location = New-Object Drawing.Point(16, 122); $bOpen.Size = New-Object Drawing.Size(120, 32)
-  $bSkip = New-Object Windows.Forms.Button; $bSkip.Text = '건너뛰기'
-  $bSkip.Location = New-Object Drawing.Point(286, 122); $bSkip.Size = New-Object Drawing.Size(120, 32)
-  $f.Controls.AddRange(@($l1, $lLeft, $bOpen, $bSkip))
-  $state = @{ Left = $Wait; Tick = 0; Ok = $false }
-  $bOpen.Add_Click({ if ($AppId) { try { Start-Process "shell:AppsFolder\$AppId" | Out-Null } catch { } } }.GetNewClosure())
-  $bSkip.Add_Click({ $f.Close() }.GetNewClosure())
-  $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1000
-  $timer.Add_Tick({
-    $state.Left--; $state.Tick++
-    $lLeft.Text = "남은 시간 $($state.Left)초 — 로그인이 서면 이 창은 스스로 닫힙니다"
-    if (($state.Tick % 5) -eq 0 -and (Test-CopilotDesktopLoggedIn)) { $state.Ok = $true; $f.Close(); return }
-    if ($state.Left -le 0) { $f.Close() }
-  }.GetNewClosure())
-  $f.Add_Shown({ $f.Activate(); $timer.Start() }.GetNewClosure())
-  $f.Add_FormClosed({ $timer.Stop() }.GetNewClosure())
-  [void]$f.ShowDialog()
-  if (-not $state.Ok) { $state.Ok = Test-CopilotDesktopLoggedIn }
-  return $state.Ok
-}
-
 #endregion 도구별 · gh
 
 #region 앱 열기 — 끝에 띄울 앱을 찾고, 이미 돌고 있으면 끌지 묻고 끈다
@@ -5035,46 +4980,9 @@ if (-not $repoUrl) {
   # ⚠ **안 누른 것은 실패가 아니다.** 시간이 다 가거나 [건너뛰기]면 「비었다」로 두고 간다 — 아래
   #   clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다. Claude 로그인 칸(4′)과 같은 규율.
   $GhLoginWait = 180                      # 초 — Claude 로그인 칸과 같은 값
-  $CopilotLoginWait = 180                 # 초 — 위와 같은 값
 
   $ghLoggedIn = $false
   if (-not $NoDevTools) {
-    # ── Copilot 데스크탑 로그인 — **아래 GitHub CLI 로그인보다 먼저** ───────────────────────────
-    # 두 로그인은 GitHub 에서 같은 OAuth 앱이라, 데스크탑 로그인이 먼저 선 gh 키링 토큰을 거둔다 — 반대 차례는 둘 다 산다
-    #   (claude-config #159 · 결정 0128). 그래서 이번 실행이 깐 데스크탑의 로그인을 gh 로그인 앞에서 받는다. 이미 서 있던 gh
-    #   토큰이 거둬졌으면 아래 `Test-GhLoggedIn` 이 그것을 보고 다시 받는다.
-    # 사람이 쓰던 데스크탑은 안 건드린다 — 이번 실행이 깔았을 때만이다(아래 Codex 닫기와 같은 규칙 · 결정 0126). 개발 도구를
-    #   끈 판은 gh 가 안 깔려 거둘 것이 없다.
-    # ⚠ 조용한 설치(winget `--silent`)는 창을 안 띄운다 — 안 떠 있으면 여기서 띄운다.
-    # 누를 사람이 없는 판(세션 0)은 안 기다리고, 시간이 다 가거나 [건너뛰기]면 노란 줄을 남기고 gh 로그인으로 간다 — 안 누른
-    #   것은 실패가 아니다(아래 gh 로그인과 같은 규율).
-    $copilotRow = $DesktopApps | Where-Object { $_.Key -eq 'copilot' }
-    if ($copilotRow -and $script:JustInstalledApps.ContainsKey($copilotRow.App)) {
-      $tCp = Get-Took
-      Write-Host ''
-      Write-Host '  Copilot 데스크탑 로그인 — GitHub CLI 로그인보다 먼저' -ForegroundColor Cyan
-      if (Test-CopilotDesktopLoggedIn) {
-        Write-Host '  이미 서 있다 — 앞서 지운 앱의 자격으로 뜬다'
-      } elseif (-not [Environment]::UserInteractive) {
-        Write-Host '  ! 누를 사람이 없는 자리라 안 기다린다 (세션 0 · 서비스 · 스케줄러)' -ForegroundColor Yellow
-        Write-Host "     $CopilotGhRedo"
-      } else {
-        $copilotApp = @(Find-DesktopApps | Where-Object { $_.App -eq $copilotRow.App }) | Select-Object -First 1
-        $copilotId = if ($copilotApp) { $copilotApp.AppId } else { '' }
-        if ($copilotApp -and -not (Test-AppUp $copilotApp)) {
-          try { Start-Process "shell:AppsFolder\$copilotId" | Out-Null } catch { }
-        }
-        Write-Host "  Copilot 창에서 로그인한다 — 팝업이 기다린다 (최대 ${CopilotLoginWait}초)" -ForegroundColor Yellow
-        if (Show-CopilotLoginWindow $copilotId $CopilotLoginWait) {
-          Write-Host '  섰다' -ForegroundColor Green
-        } else {
-          Write-Host '  ! 로그인이 안 섰다' -ForegroundColor Yellow
-          Write-Host "     $CopilotGhRedo"
-        }
-      }
-      Write-Took 'Copilot 데스크탑 로그인' $tCp
-    }
-
     # ⚠ **이 구간은 사람을 기다린 시간이 섞인다** — 브라우저에서 코드를 누를 때까지 멎는다.
     #   그래서 가르는 값이 크다: 이 줄이 없으면 그 대기가 「저장소 걸음이 느리다」로 읽힌다.
     $tGh = Get-Took
@@ -6299,15 +6207,7 @@ if ($NoLaunch) {
     # ⚠ **끝 줄은 실제로 무슨 일이 났나로 갈린다** — 띄운 것 · 안 띄운 것 · 아무것도 아닌 것.
     # ⚠ **이름 뒤에 조사를 안 붙인다.** 여럿이면 받침도 띄어쓰기도 이름마다 갈려, 한 틀에 밀어
     #   넣으면 반드시 하나가 어긋난다 — 그 어긋남은 사람이 마지막에 읽는 한 줄에서 난다.
-    # 로그인이 이미 선 Copilot 데스크탑은 로그인할 목록에서 뺀다 — 자격 항목이 그 상태다(`Test-CopilotDesktopLoggedIn`).
-    #   남으면 그 로그인이 gh 로그인보다 늦게 서므로 gh 를 다시 하라는 줄을 같이 낸다(설정 저장소 걸음의 Copilot 로그인 곁말).
-    $copilotApps = @($DesktopApps | Where-Object { $_.Key -eq 'copilot' } | ForEach-Object { $_.App })
-    $copilotIn = Test-CopilotDesktopLoggedIn
-    $shown = @($go | Where-Object { $opened -contains $_.Name -and -not ($copilotIn -and $copilotApps -contains $_.App) } |
-               ForEach-Object { $_.Name })
-    if (-not $copilotIn -and @($go | Where-Object { $shown -contains $_.Name -and $copilotApps -contains $_.App }).Count) {
-      Write-Host "  $CopilotGhRedo" -ForegroundColor Yellow
-    }
+    $shown = @($go | Where-Object { $opened -contains $_.Name } | ForEach-Object { $_.Name })
     if ($shown.Count -eq 1 -and $shown[0] -eq 'VS Code') {
       $tail = 'VS Code 를 열었습니다 — Ctrl+Shift+P → Claude 로 확장을 엽니다'
     } elseif ($shown) {
