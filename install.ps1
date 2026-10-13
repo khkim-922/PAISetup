@@ -5937,6 +5937,12 @@ if ($NoLaunch) {
           $opened += $one.Name
         }
       }
+      # VS Code 는 저장소를 처음 열 때 제 작업 영역 신뢰를 따로 묻고, 그 전에는 제한 모드라 확장이 다 꺼진다 — 한 번 신뢰하면
+      #   Claude · Codex · agy 확장이 함께 풀린다. 신뢰 목록은 VS Code 내부 상태라 미리 못 심는다. 끝 줄은 창의 한 줄 칸에 떠
+      #   길게 못 붙이므로 기록 칸 한 줄에 드는 길이로 따로 낸다.
+      if ($opened -contains 'VS Code') {
+        Write-Host '  VS Code 가 이 폴더를 믿느냐고 물으면 Trust 한 번 — 확장이 함께 풀린다' -ForegroundColor Yellow
+      }
     }
 
     # ⚠ **끝 줄은 실제로 무슨 일이 났나로 갈린다** — 띄운 것 · 안 띄운 것 · 아무것도 아닌 것.
