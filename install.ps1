@@ -4980,6 +4980,23 @@ if (-not $repoUrl) {
       Write-Host "  ! 훅을 든 저장소가 $($bootRepos.Count)개다 — 첫 것만 부른다" -ForegroundColor Yellow
       $bootRepos | Select-Object -Skip 1 | ForEach-Object { Write-Host "     안 부른 것: $_" }
     }
+    # 아래 훅이 Codex 데스크탑의 프로젝트 목록(`~/.codex/.codex-global-state.json`)에 작업 루트 저장소를 적는다
+    #   (claude-config 결정 0126). 데스크탑이 떠 있으면 닫힐 때 제 기억으로 그 파일을 덮어 적은 것이 사라진다.
+    # ⚠ **이번 실행에서 깔았고 떠 있는 것만 닫는다** — 설치본이 깔자마자 스스로 띄운 창이다(사람이 띄운 창이 아니다).
+    #   그 밖은 안 닫는다(「떠 있는 것을 설치가 죽이지 않는다」 — 끝의 앱 열기 곁말) — 훅이 미루고 다음 설치가 적는다.
+    #   닫은 것은 끝의 앱 열기가 다시 띄운다(안 떠 있으면 띄운다 · `-NoLaunch` 면 안 띄운다).
+    $codexRow = $DesktopApps | Where-Object { $_.Key -eq 'codex' }
+    if ($codexRow -and $script:JustInstalledApps.ContainsKey($codexRow.App)) {
+      $codexApp = @(Find-DesktopApps | Where-Object { $_.App -eq $codexRow.App }) | Select-Object -First 1
+      if ($codexApp -and (Test-AppUp $codexApp)) {
+        if (Stop-App $codexApp) {
+          $codexBack = if ($NoLaunch) { '다음에 열면 프로젝트가 서 있다' } else { '프로젝트를 적고 끝에서 다시 띄운다' }
+          Write-Host "  Codex 데스크탑 — 이번 설치가 띄운 창을 잠깐 닫는다($codexBack)"
+        } else {
+          Write-Host '  ! Codex 데스크탑 — 이번 설치가 띄운 창을 못 닫았다 — 프로젝트는 다음 설치가 적는다' -ForegroundColor Yellow
+        }
+      }
+    }
     Write-Host "  훅으로 넘긴다 — $boot --install" -ForegroundColor Green
     Write-Host ''
     # ⚠ `--install` 은 리모트 Setup script 가 부르는 것과 같은 갈래다 — 지문을 안 보고 깐다.
