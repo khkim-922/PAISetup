@@ -386,6 +386,22 @@ function Write-Elapsed([string]$Text) {
   $script:SwMark = $now
 }
 
+# ── 걸음 **안**의 한 구간 — 걸음 경계를 안 옮긴다 ─────────────────────────────────
+# ⚠ **`Write-Elapsed` 를 걸음 안에서 부르면 안 된다.** 저쪽은 찍으면서 `SwMark` 를 옮기므로,
+#   걸음 안에서 부르면 그 뒤 걸음의 값이 **이미 센 구간만큼 깎인다** — 낱칸의 합이 총계와
+#   맞는다는 보증(위 `$Sw` 곁말)이 조용히 깨진다. 그래서 재기는 부르는 쪽이 시작 값을 쥐고
+#   이 손은 찍기만 든다.
+# ⚠ **구간은 걸음의 부분집합이라 합이 걸음과 안 맞는다** — 시간 줄이 없는 자리가 남는 것이
+#   정상이고, 그 나머지가 곧 「아직 안 가른 몫」이다. 다 덮으려 들면 줄만 늘고 가르는 값은
+#   안 는다.
+function Write-Took([string]$Text, [int]$From) {
+  Write-Host ("    · $Text — " + ([int]$Sw.Elapsed.TotalSeconds - $From) + "초") -ForegroundColor DarkGray
+}
+
+# 지금 누적 초 — `Write-Took` 에 넘길 시작 값을 집는다. 부르는 쪽이 이름 있는 변수에 받아
+# 둬야 구간이 어디서 시작했는지가 코드에 남는다.
+function Get-Took { [int]$Sw.Elapsed.TotalSeconds }
+
 # ── 물음창 — **묻는 자리가 둘이라 띄우기는 한 자리가 든다** ──────────────────────
 # ⚠ **임자 없는 물음창은 뒤로 숨는다.** 그러면 설치가 멈춘 것처럼 보이고, 안 보이는 창을 아무도
 #   안 눌러 영영 안 끝난다 — 회사 PC/VDI 에서 확인창이 VS Code 뒤에 숨은 채 기다린 자리가 그것이다.
@@ -4762,6 +4778,9 @@ if (-not $repoUrl) {
 
   $ghLoggedIn = $false
   if (-not $NoDevTools) {
+    # ⚠ **이 구간은 사람을 기다린 시간이 섞인다** — 브라우저에서 코드를 누를 때까지 멎는다.
+    #   그래서 가르는 값이 크다: 이 줄이 없으면 그 대기가 「저장소 걸음이 느리다」로 읽힌다.
+    $tGh = Get-Took
     Write-Host ''
     Write-Host '  GitHub CLI 로그인' -ForegroundColor Cyan
     if (-not (Test-Runs 'gh' '--version')) {
@@ -4799,6 +4818,8 @@ if (-not $repoUrl) {
       }
       Remove-Item $gl, "$gl.err" -ErrorAction SilentlyContinue
     }
+    # 분기 넷(gh 없음 · 이미 섬 · 망 못 닿음 · 팝업)이 다 지나는 자리라 여기 하나면 된다.
+    Write-Took 'GitHub CLI 로그인' $tGh
   }
 
   # ⚠ **여러 개를 빈칸으로 가른다.** 옛 판은 하나만 받았고, 그 까닭은 「나머지는 그 저장소의
@@ -4819,6 +4840,8 @@ if (-not $repoUrl) {
   foreach ($u in $configRepoUrls) {
     $dest = Get-ConfigRepoDir $u
     $log = [IO.Path]::GetTempFileName()
+    # 저장소마다 가른다 — 받는 양이 저장소마다 크게 달라, 합만 보면 어느 것이 먹는지 안 보인다.
+    $tRepo = Get-Took
     if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
       Say-Busy (Split-Path $dest -Leaf) 'upgrade' @('git pull', $dest)
       $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
@@ -4830,6 +4853,7 @@ if (-not $repoUrl) {
         Write-Host '  ! pull 이 졌다 — 이미 받아 둔 판으로 넘긴다' -ForegroundColor Yellow
         Show-Log $log
       }
+      Write-Took ((Split-Path $dest -Leaf) + ' 당김') $tRepo
     } else {
       Say-Busy (Split-Path $dest -Leaf) 'fetch' @('git clone', $dest)
       # ⚠ **이 안내를 우리가 찍는다.** 자격 관리자가 뱉는 「브라우저에서 마치라」는 줄은 위
@@ -4845,6 +4869,8 @@ if (-not $repoUrl) {
         Show-Log $log
         $Fails.Add("개인 값 저장소 (못 받았다: $u)")
       }
+      # 받기는 자격 창이 뜰 수 있어 여기도 사람 대기가 섞인다 — 진 판도 찍는다(진 데 든 시간도 시간이다).
+      Write-Took ((Split-Path $dest -Leaf) + ' 받기') $tRepo
     }
     Remove-Item $log -ErrorAction SilentlyContinue
   }
@@ -4892,8 +4918,12 @@ if (-not $repoUrl) {
     Write-Host ''
     # ⚠ `--install` 은 리모트 Setup script 가 부르는 것과 같은 갈래다 — 지문을 안 보고 깐다.
     #   맨바닥 VDI 의 첫 판(형제 저장소 clone)은 세션 훅의 시간 한도가 아니라 여기서 진다.
+    # 이 한 부름 안에 형제 clone · 전역 도구 · 배포 · 저장소 설치 · 진단이 다 들어 있다.
+    # 저쪽이 제 안을 가르는 줄을 내므로 여기는 그 전체를 감싼 값 하나만 든다.
+    $tHook = Get-Took
     & $bash ($boot -replace '\\','/') --install
     if ($LASTEXITCODE -ne 0) { $Fails.Add("훅 --install (exit $LASTEXITCODE)") }
+    Write-Took '훅 --install 전체' $tHook
   }
 }
 Exit-Step 'repo'
