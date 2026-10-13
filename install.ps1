@@ -3093,6 +3093,67 @@ function Stop-App($App) {
 
 #endregion 앱 열기
 
+#region 심기 · 제공기능 — 홈 씨앗 몸통의 `--plant` 를 부르고, 로그온 자동 실행이 새 큰 판을 처음 깐 PC 에 「제공기능」을 한 번 연다
+
+# 심기만 — 홈 씨앗의 세션 훅을 `--plant <작업 루트>` 로 부른다(claude-config 결정 0134 · 부르는 자리와 차례는 결정 0135). 저장소를
+#   받았든 안 받았든 같은 홈 씨앗을 부른다 — 홈 씨앗은 늘 서 있고, 몸통은 거기서 홈 훅 · 고른 도구의 폴더 신뢰 · 데스크탑 상태를 심는다.
+# 작업 루트는 저장소를 받는 자리(`$configRepoRoot` — `Get-ConfigRepoDir` 가 받는 자리를 짓는 그 값)를 그대로 받는다. 몸통은 받은 글자를
+#   `pwd` 로만 굳혀(대소문자 · 짧은 이름은 그대로) 홈 훅 명령에 박으므로, 받은 저장소의 `--install` 이 제 자리에서 잡는 루트와 글자가
+#   다르면 두 부름이 설치마다 그 명령을 번갈아 갈아 심는다(결정 0032). 없으면 짓는다 — 몸통은 없는 루트에 아무것도 안 심고(2로 끝난다),
+#   심은 홈 훅이 훑을 자리도 거기다.
+# ⚠ **루트는 `/` 꼴로 끝의 구분자 없이 넘긴다** — 5.1 은 빈칸이 든 인자를 따옴표로 싸는데 끝의 `\` 가 닫는 따옴표를 글자로 만들어
+#   bash 에 `…\"` 가 간다(그러면 몸통이 그 자리로 못 들어가 2로 끝난다). 훅 자리도 `--install` 처럼 `/` 꼴로 넘긴다.
+# 내는 것 — @{ Ran = 불렀나; Ok = 0 으로 끝났나; Why = 안 불렀거나 0 이 아닌 까닭 }. 실패로 셀지는 부르는 쪽이 든다.
+function Invoke-Plant([string]$Bash, [string]$Root) {
+  $hook = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\session-start.sh'
+  if (-not $Bash) { return @{ Ran = $false; Ok = $false; Why = 'Git Bash 가 없다' } }
+  if (-not (Test-Path -LiteralPath $hook -PathType Leaf)) { return @{ Ran = $false; Ok = $false; Why = "홈 씨앗에 훅이 없다 ($hook)" } }
+  $rootArg = ($Root -replace '\\', '/').TrimEnd('/')
+  $t = Get-Took
+  try {
+    New-Item -ItemType Directory -Path $Root -Force | Out-Null
+    Write-Host "  심기만 — $hook --plant $rootArg" -ForegroundColor Green
+    Write-Host ''
+    & $Bash ($hook -replace '\\', '/') --plant $rootArg
+    $rc = $LASTEXITCODE
+  } catch {
+    return @{ Ran = $true; Ok = $false; Why = (Say-Why $_) }
+  }
+  Write-Took '심기 --plant' $t
+  @{ Ran = $true; Ok = ($rc -eq 0); Why = "exit $rc" }
+}
+
+# 「제공기능」(곁의 `features.html`)을 큰 판(`VERSION` 의 첫 수)마다 한 번 연다 — 창 없이 돈 설치(로그온 자동 실행)가 새 큰 판을 처음 깐
+#   PC 에서다(claude-config 결정 0135). 창으로 깐 판은 창이 「제공기능」 링크를 들어 안 연다. 옛 제작자 칸 알림 창을 띄운 판은 그 창이
+#   닫힐 때 연다(결정 0099) — 두 번 안 연다.
+# 기록은 설치본 자리(`%LOCALAPPDATA%\Claude Code Setup`)의 한 줄 — 본 큰 판의 수다. 링크를 든 판(창)과 알림 창을 띄운 판도 적는다 —
+#   본 것은 같아, 다음 로그온이 또 열지 않는다. 열지 못했으면 안 적는다 — 다음 로그온이 다시 연다. 못 읽는 기록은 없는 것으로 본다.
+# 내는 것 — 한 낱말: opened · window · notice · seen · nopage · failed · nover. 화면 줄은 부르는 쪽이 든다.
+function Open-FeaturesOnce([string]$Version, [bool]$Unattended, [bool]$NoticeShown, [string]$Record, [string]$Page) {
+  if ($Version -notmatch '^(\d+)\.') { return 'nover' }
+  $major = [int]$Matches[1]
+  $seen = 0
+  try {
+    if (Test-Path -LiteralPath $Record -PathType Leaf) {
+      $txt = ([IO.File]::ReadAllText($Record) -replace "^$([char]0xFEFF)", '').Trim()
+      if ($txt -match '^\d+$') { $seen = [int]$txt }
+    }
+  } catch { $seen = 0 }
+  if ($seen -ge $major) { return 'seen' }
+  $how = if (-not $Unattended) { 'window' } elseif ($NoticeShown) { 'notice' } else { '' }
+  if (-not $how) {
+    if (-not (Test-Path -LiteralPath $Page -PathType Leaf)) { return 'nopage' }
+    try { Start-Process -FilePath $Page | Out-Null; $how = 'opened' } catch { return 'failed' }
+  }
+  try {
+    New-Item -ItemType Directory -Path (Split-Path -Parent $Record) -Force | Out-Null
+    [IO.File]::WriteAllText($Record, "$major", (New-Object Text.UTF8Encoding($false)))
+  } catch { }
+  $how
+}
+
+#endregion 심기 · 제공기능
+
 #endregion 라이브러리
 
 # ══ 준비 ═══════════════════════════════════════════════════════════════════════════════════════
@@ -5435,9 +5496,11 @@ if ($hostAgy) {
 #   * agy CLI — `toolPermission = always-proceed`. 앱의 값은 CLI 에 안 먹어 둘 다 심는다
 #   * agy 앱 — Turbo 의 세 칸. 셋이 한 스위치라 한 줄이다
 #   * Copilot CLI — `defaultPermissionMode = allow-all`, 그 위에 `defaultMode = autopilot`. 대화형 시작에만 먹고 `-p` 맡기기에는 안 간다
-#   * Codex(CLI · 데스크탑 앱) — `approvals_reviewer = auto_review`(「Approve for me」). 샌드박스를 넘는 요청을 사람 대신 검토자가
+#   * Codex CLI — `approvals_reviewer = auto_review`(「Approve for me」). 샌드박스를 넘는 요청을 사람 대신 검토자가
 #     가른다. 샌드박스 모드는 안 심는다 — 사용자 단에 두면 신뢰하지 않은 폴더까지 열린다. `approval_policy` 가 서 있으면 사람이
-#     승인 층을 정한 것이라 둔다
+#     승인 층을 정한 것이라 둔다. 데스크탑 앱에는 앱이 권한을 저장하기 전, 곧 첫 샌드박스 설정이 `auto` 를 적기 전까지만 먹는다 —
+#     데스크탑의 「나 대신 승인」은 Codex 가 닫힌 채 도는 심기(「설정 저장소」 걸음의 `--install` · `--plant`, 끝의 다시 띄우기
+#     동의 뒤의 `--plant`)가 그 상태 파일에 쓴다(결정 0127 · 0135)
 # 고르지 않게 돼도 안 걷는다 — 심은 값은 사람이 같은 값을 둔 것과 글자로 안 갈리고, 기록을 따로 두면 그 기록이 또 하나의
 #   사본이 된다. 끄는 길은 그 도구의 설정에서 다른 값을 고르는 것이다(다음 설치가 그 값을 안 덮는다).
 # Copilot 홈은 Copilot 이 고르는 차례(`COPILOT_HOME` → `~/.copilot`)를 따른다 — 세션 훅이 폴더 신뢰를 거는 자리와 같다(결정 0122).
@@ -5483,9 +5546,9 @@ Exit-Step 'tools'
 # ══ 걸음 「설정 저장소」 ═══════════════════════════════════════════════════════════════════════
 #   층 — 저장소
 #   하는 일 — GitHub CLI 로그인 · 설정 저장소 받기 · 옛 우리 사본을 갈고 그 저장소 훅을 `--install` 로 부르기 · 작업 루트의 옛 우리 사본
-#     훑기(claude-config 결정 0129)
+#     훑기(claude-config 결정 0129) · 이번 실행이 깐 Codex 데스크탑 닫기 · PC 마다 홈 씨앗의 `--plant`(claude-config 결정 0134 · 0135)
 #   앞에서 받는 것 — 준비의 주소 · 자리(`$configRepoUrls` · `$configRepoRoot`), 제작자 칸(`$personalAny`), 「도구별 홈」이 이 프로세스에 둔 `PAISETUP_PERSONAL` ·
-#     `PAISETUP_PICK`
+#     `PAISETUP_PICK`, 「공용 자산」이 깐 홈 씨앗
 #   안 하는 것 — 그 뒤의 개인화. 그 저장소의 배포가 든다
 # ── 8. 개인 값 저장소 (선택) ────────────────────────────────────────────────────
 # ⚠ **주소는 이 파일에 없다.** `install.env` 가 `#config-repo` 를 들 때만 이 칸이 선다 —
@@ -5509,6 +5572,13 @@ Enter-Step 'repo'
 # 옛 판 훅을 든 받은 저장소 — 아래 넘길 자리를 고르는 줄이 채우고, 끝의 요약이 그 가운데 세션마다 도는 것을 알린다. 받은 저장소(`$got`)는
 #   걸음 끝의 작업 루트 훑기가 건너뛸 목록이라 칸이 비어도 서 있어야 한다.
 $oldHooks = @(); $got = @()
+# 받은 저장소의 훅으로 넘기나 — 넘길 자리를 고르는 줄 끝에서 선다. 부름은 칸 밖에 선다 — 그 앞의 Codex 데스크탑 닫기가 칸이 빈
+#   PC 의 `--plant` 에도 서야 해서다.
+$handOff = $false
+# ⚠ **Git Bash 로 부른다.** 저쪽은 bash 몸통이고, PowerShell 에서 직접 못 부른다. 칸이 비어도 찾는다 — 걸음 끝의 `--plant` 가 쓴다.
+$bash = @("$env:ProgramFiles\Git\bin\bash.exe",
+          "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe") |
+        Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 # 주소(`$repoUrl` · `$configRepoUrls`)와 자리(`Get-ConfigRepoDir`)는 7 칸 앞에서 한 벌로 섰다.
 if (-not $repoUrl) {
   Write-Host '  건너뜀 — install.env 에 #config-repo 가 없다'
@@ -5643,11 +5713,6 @@ if (-not $repoUrl) {
     Remove-Item $log -ErrorAction SilentlyContinue
   }
 
-  # ⚠ **Git Bash 로 부른다.** 저쪽은 bash 몸통이고, PowerShell 에서 직접 못 부른다.
-  $bash = @("$env:ProgramFiles\Git\bin\bash.exe",
-            "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe") |
-          Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-
   # ⚠ **넘길 자리를 순서로 정하지 않고 찾는다.** 「첫째가 설정 저장소」 같은 규칙을 두면
   #   사람이 그 순서를 기억해야 하고, 기억해야 하는 것은 그 순간에 안 걸린다. 받아 온
   #   것들 중 **넘겨도 되는 훅을 든 첫 저장소**가 넘길 자리다.
@@ -5706,40 +5771,59 @@ if (-not $repoUrl) {
       Write-Host "  ! 넘겨도 되는 훅을 든 저장소가 $($bootRepos.Count)개다 — 첫 것만 부른다" -ForegroundColor Yellow
       $bootRepos | Select-Object -Skip 1 | ForEach-Object { Write-Host "     안 부른 것: $_" }
     }
-    # 아래 훅이 Codex 데스크탑의 프로젝트 목록(`~/.codex/.codex-global-state.json`)에 작업 루트 저장소를 적는다
-    #   (claude-config 결정 0126). 데스크탑이 떠 있으면 닫힐 때 제 기억으로 그 파일을 덮어 적은 것이 사라진다.
-    # ⚠ **이번 실행에서 깔았고 떠 있는 것만 닫는다** — 설치본이 깔자마자 스스로 띄운 창이다(사람이 띄운 창이 아니다).
-    #   그 밖은 안 닫는다(「떠 있는 것을 설치가 죽이지 않는다」 — 끝의 앱 열기 곁말) — 훅이 미루고 다음 설치가 적는다.
-    #   닫은 것은 끝의 앱 열기가 다시 띄운다(안 떠 있으면 띄운다 · `-NoLaunch` 면 안 띄운다).
-    $codexRow = $DesktopApps | Where-Object { $_.Key -eq 'codex' }
-    if ($codexRow -and $script:JustInstalledApps.ContainsKey($codexRow.App)) {
-      $codexApp = @(Find-DesktopApps | Where-Object { $_.App -eq $codexRow.App }) | Select-Object -First 1
-      if ($codexApp -and (Test-AppUp $codexApp)) {
-        if (Stop-App $codexApp) {
-          $codexBack = if ($NoLaunch) { '다음에 열면 프로젝트가 서 있다' } else { '프로젝트를 적고 끝에서 다시 띄운다' }
-          Write-Host "  Codex 데스크탑 — 이번 설치가 띄운 창을 잠깐 닫는다($codexBack)"
-        } else {
-          Write-Host '  ! Codex 데스크탑 — 이번 설치가 띄운 창을 못 닫았다 — 프로젝트는 다음 설치가 적는다' -ForegroundColor Yellow
-        }
+    $handOff = $true
+  }
+}
+# ── 이번 실행이 깐 Codex 데스크탑을 닫는다 — 아래 두 부름(넘긴 훅의 `--install` · 홈 씨앗의 `--plant`)이 그 상태 파일을 쓴다 ──
+# 두 부름이 Codex 데스크탑의 상태 파일(`~/.codex/.codex-global-state.json`)에 작업 루트 저장소(claude-config 결정 0126)와 새 대화의
+#   기본 권한(결정 0127)을 적는다. 데스크탑이 떠 있으면 닫힐 때 제 기억으로 그 파일을 덮어 적은 것이 사라진다. 칸 밖에 서는 것은
+#   칸이 빈 PC 의 `--plant` 앞에도 서야 해서다 — 칸을 쓴 PC 에서는 받기 · 고르기가 끝난 뒤 · `--install` 바로 앞, 그 자리 그대로다.
+# ⚠ **이번 실행에서 깔았고 떠 있는 것만 닫는다** — 설치본이 깔자마자 스스로 띄운 창이다(사람이 띄운 창이 아니다).
+#   그 밖은 안 닫는다(「떠 있는 것을 설치가 죽이지 않는다」 — 끝의 앱 열기 곁말) — 심기가 미루고, 끝의 앱 열기에서 사람이 다시
+#   띄우기에 동의하면 그 자리에서 심는다(결정 0135).
+#   닫은 것은 끝의 앱 열기가 다시 띄운다(안 떠 있으면 띄운다 · `-NoLaunch` 면 안 띄운다).
+# Git Bash 가 없으면 두 부름이 다 못 서므로 안 닫는다 — 닫아 봐야 적을 손이 없다.
+if ($bash) {
+  $codexRow = $DesktopApps | Where-Object { $_.Key -eq 'codex' }
+  if ($codexRow -and $script:JustInstalledApps.ContainsKey($codexRow.App)) {
+    $codexApp = @(Find-DesktopApps | Where-Object { $_.App -eq $codexRow.App }) | Select-Object -First 1
+    if ($codexApp -and (Test-AppUp $codexApp)) {
+      if (Stop-App $codexApp) {
+        $codexBack = if ($NoLaunch) { '다음에 열면 프로젝트 · 권한이 서 있다' } else { '프로젝트 · 권한을 적고 끝에서 다시 띄운다' }
+        Write-Host "  Codex 데스크탑 — 이번 설치가 띄운 창을 잠깐 닫는다($codexBack)"
+      } else {
+        Write-Host '  ! Codex 데스크탑 — 이번 설치가 띄운 창을 못 닫았다 — 프로젝트 · 권한은 다음 설치가 적는다' -ForegroundColor Yellow
       }
     }
-    Write-Host "  훅으로 넘긴다 — $boot --install" -ForegroundColor Green
-    Write-Host ''
-    # ⚠ `--install` 은 리모트 Setup script 가 부르는 것과 같은 갈래다 — 지문을 안 보고 깐다.
-    #   맨바닥 VDI 의 첫 판(형제 저장소 clone)은 세션 훅의 시간 한도가 아니라 여기서 진다.
-    # 이 한 부름 안에 형제 clone · 전역 도구 · 배포 · 저장소 설치 · 진단이 다 들어 있다.
-    # 저쪽이 제 안을 가르는 줄을 내므로 여기는 그 전체를 감싼 값 하나만 든다.
-    $tHook = Get-Took
-    & $bash ($boot -replace '\\','/') --install
-    if ($LASTEXITCODE -ne 0) { $Fails.Add("훅 --install (exit $LASTEXITCODE)") }
-    Write-Took '훅 --install 전체' $tHook
   }
+}
+if ($handOff) {
+  Write-Host "  훅으로 넘긴다 — $boot --install" -ForegroundColor Green
+  Write-Host ''
+  # ⚠ `--install` 은 리모트 Setup script 가 부르는 것과 같은 갈래다 — 지문을 안 보고 깐다.
+  #   맨바닥 VDI 의 첫 판(형제 저장소 clone)은 세션 훅의 시간 한도가 아니라 여기서 진다.
+  # 이 한 부름 안에 형제 clone · 전역 도구 · 배포 · 저장소 설치 · 진단이 다 들어 있다.
+  # 저쪽이 제 안을 가르는 줄을 내므로 여기는 그 전체를 감싼 값 하나만 든다.
+  $tHook = Get-Took
+  & $bash ($boot -replace '\\','/') --install
+  if ($LASTEXITCODE -ne 0) { $Fails.Add("훅 --install (exit $LASTEXITCODE)") }
+  Write-Took '훅 --install 전체' $tHook
 }
 # ── 작업 루트 훑기 — 칸에서 안 받은 저장소의 옛 우리 사본(claude-config 결정 0129 · PAISetup#25 사용자 결정 ①) ──────────────
 # 칸이 비어도 돈다 — 칸에 저장소를 안 넣은 동료도 옛 설치 · 배포가 놓은 우리 훅을 작업 저장소에 든다. 칸에서 받은 저장소는 위에서 다뤘다.
 #   넘긴 훅의 배포가 형제를 먼저 맞추도록 넘기기 뒤에 선다 — 배포가 맞춘 형제는 지금 판으로 읽혀 지나간다. 무엇을 하고 안 하나는
 #   `Invoke-WorkRootScan` 이 든다.
 $scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny (Join-Path $homeDir 'seeds\config-repo')
+# ── 심기만 — PC 마다 홈 씨앗의 `--plant` (claude-config 결정 0134 · 부르는 차례는 결정 0135) ──────────────────────────────────
+# 칸이 비어도 돈다 — 설정 저장소를 안 받은 PC 는 이 부름 말고는 홈 SessionStart 훅 · 폴더 신뢰 · 데스크탑 상태를 심는 길이 없다.
+#   넘긴 훅의 `--install` 이 이미 심었어도 또 부른다 — 같은 값을 다시 쓸 뿐이고(겹쳐 안 쌓인다), 넘긴 훅이 남의 것이거나 중간에 져도
+#   심긴다. 훑기 뒤에 선다 — 훑기가 간 옛 사본이 지금 판의 표지를 든 뒤라야 거는 대상에 든다(결정 0133).
+# ⚠ **못 부른 것(Git Bash · 홈 씨앗의 훅이 없다)은 노란 줄로만 낸다** — Git Bash 가 없는 것은 「프로그램」 걸음이 셌거나 개발
+#   도구를 끈 PC(`-NoDevTools`)가 고른 몫이고, 홈 씨앗이 모자라면 끝 검증의 씨앗 줄이 [X] 다. 불렀는데 0 이 아니면 센다. 0 은
+#   「다 심었다」가 아니다 — 미룬 칸과 걸 저장소가 없는 루트도 0 이다. 무엇을 심고 미뤘나는 몸통이 찍는 줄이 든다.
+$plant = Invoke-Plant $bash $configRepoRoot
+if (-not $plant.Ran) { Write-Host "  ! 심기 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 못 심었다" -ForegroundColor Yellow }
+elseif (-not $plant.Ok) { $Fails.Add("심기 --plant ($($plant.Why))") }
 Exit-Step 'repo'
 
 # ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
@@ -6736,6 +6820,14 @@ if ($NoLaunch) {
             $skip += $u.Name
           }
         }
+        # 끈 것이 있으면 다시 띄우기 전에 심는다 — 떠 있던 앱 때문에 「설정 저장소」 걸음의 심기가 미룬 칸(Codex 데스크탑의 권한 ·
+        #   프로젝트 · agy 데스크탑 · VS Code 신뢰)이 닫힌 지금 선다(claude-config 결정 0135). 기다리지 않는다 — 심고 바로 띄운다.
+        # ⚠ **여기서 진 것은 실패로 안 센다** — 이 칸의 규율(위 「못 열어도 실패로 안 센다」)이고, 같은 심기는 「설정 저장소」 걸음이
+        #   이미 셌다. 줄로만 낸다.
+        if (@($up | Where-Object { $skip -notcontains $_.Name }).Count) {
+          $replant = Invoke-Plant $bash $configRepoRoot
+          if (-not $replant.Ok) { Write-Host "  ! 심기 — $($replant.Why) · 다시 띄운 앱의 미룬 칸은 다음 설치가 심는다" -ForegroundColor Yellow }
+        }
       } else {
         Write-Host '  안 끈다 — 떠 있는 것은 안 띄운다'
         $skip += @($up | ForEach-Object { $_.Name })
@@ -6838,6 +6930,8 @@ if ($NoLaunch) {
 #   없이 부른다. 안 고치면 다음 로그온이 또 옛 칸으로 와 창이 매번 뜬다. 고친 뒤로는 옛 칸이 없어 다시 안 묻는다 — 판이 안
 #   올라도 로그온마다 도는 자동 실행이 사람을 방해하지 않는다.
 # ⚠ **창은 기다리지 않는다** — 따로 띄우고 이 몸통은 끝난다. 닫으면 그대로(Claude), 고르고 누르면 그 선택이 새 기록이 된다.
+# 알림 창을 띄웠나(`$noticeShown`) — 그 창이 닫힐 때 「제공기능」을 열므로 아래 「제공기능」 칸이 안 연다.
+$noticeShown = $false
 if ($PersonalUpgrade) {
   $upArgsFile = Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'autorun.args'
   try {
@@ -6855,11 +6949,28 @@ if ($PersonalUpgrade) {
     try {
       Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                                                               ('"' + $uiScript + '"'), '-PersonalNotice') | Out-Null
+      $noticeShown = $true
       Write-Host '  제작자 칸이 도구마다로 바뀌었다 — 옛 칸을 Claude 로 이어받아 깔았고, 바꿀 수 있게 설치 창을 한 번 띄웠다' -ForegroundColor Yellow
     } catch {
       Write-Host "  ! 알림 창을 못 띄웠다 — $(Say-Why $_). 바꾸려면 설치 창을 열어 제작자 칸을 고른다" -ForegroundColor Yellow
     }
   }
+}
+
+# ── 「제공기능」 — 로그온 자동 실행이 새 큰 판을 처음 깐 PC 에서 한 번 연다 (claude-config 결정 0135) ──────────
+# 창 없이 돈 판인가는 인자로 가른다 — 로그온 자동 실행의 스크립트(`autorun.ps1`)는 판마다 늘 `-Yes -NoLaunch` 로 부르고, 설치 창은
+#   늘 `-Yes` 만 넘긴다(`-NoLaunch` 를 안 넘긴다). 사람이 손으로 두 깃발을 다 준 판도 창이 없어 링크가 없으니 같이 연다.
+# ⚠ **무엇을 던져도 설치를 못 끝낸다** — 안내 페이지는 덤이다(앱 열기 칸과 같은 규율).
+try {
+  $featHow = Open-FeaturesOnce $DistVersion ([bool]($Yes -and $NoLaunch)) $noticeShown `
+                               (Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'features.major') (Join-Path $Here 'features.html')
+  switch ($featHow) {
+    'opened' { Write-Host "  제공기능 — 이번 큰 판($DistVersion)에서 처음이라 브라우저로 열었다" -ForegroundColor Green }
+    'nopage' { Write-Host '  ! 제공기능 — 이 폴더에 features.html 이 없어 못 열었다 (다음 로그온에 다시 본다)' -ForegroundColor Yellow }
+    'failed' { Write-Host '  ! 제공기능 — 브라우저로 못 열었다 (다음 로그온에 다시 연다)' -ForegroundColor Yellow }
+  }
+} catch {
+  Write-Host "  ! 제공기능 — $(Say-Why $_)" -ForegroundColor Yellow
 }
 
 Write-Host ''
