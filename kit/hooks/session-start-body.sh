@@ -27,7 +27,17 @@
 #                               고리 **앞에** 한 번 부른다. 전역 선언과 작업 루트에 붙은 모든
 #                               저장소의 전역형 선언을 이름으로 합쳐 같은 이름을 한 번만 깐다.
 #                               브라우저 뒷길도 여기서 한 번. 저장소 것(venv · npm ci · 배선)은 안 든다
-#                               ⚠ 위 둘(--install · --install-global)은 찍는 줄을 ~/.claude/logs/
+#   session-start.sh --plant <작업 루트>
+#                               **심기만 한다** ← 설치기가 저장소 걸음 뒤에 PC 마다 부른다. 홈 SessionStart 훅 ·
+#                               작업 루트 우리 저장소의 폴더 신뢰 · 데스크탑 앱 목록과 권한(`plant_session_state`).
+#                               설정 저장소가 없어도 돈다(홈 씨앗의 몸통). 깔기 · 배포 · 당김 · 배선 · 홈 밀기는
+#                               안 한다. 0 · 홈 훅이나 Claude 신뢰를 못 심었거나 심는 스크립트가 못 돌았으면 1 ·
+#                               작업 루트가 없거나 폴더가 아니면 아무것도 안 하고 2
+#                               ⚠ 다른 칸(Codex · 데스크탑 앱 · agy · Copilot · VS Code)은 못 심어도(`ERROR=desktop-state`
+#                               도) `!` 줄만 남기고 0 이다 — 다음 설치가 다시 심는다(`plant_session_state` 의 그 칸들)
+#                               ⚠ 작업 루트는 꼭 받는다 — 홈 씨앗의 몸통은 제 자리로 루트를 못 잡는다(씨앗 폴더의
+#                               부모로 심으면 홈 훅이 엉뚱한 루트를 가리키고 씨앗 폴더가 신뢰 대상에 든다)
+#                               ⚠ 위 셋(--install · --install-global · --plant)은 찍는 줄을 ~/.claude/logs/
 #                               session-start-<날짜>.log 에도 남긴다 — 걸음마다 (n초) 가 붙는다 (#48)
 #   session-start.sh --check    안 깔고 진단만 낸다          ← 어디서 돌려도 안전
 #   session-start.sh --needs-install
@@ -52,28 +62,41 @@ set -uo pipefail
 
 # ══ 단계 · 부름 — 모든 갈래 ════════════════════════
 #    층 — 없음(준비). 무엇을 어느 저장소에 할지를 잡는다
-#    하는 일 — 인자로 갈래(`MODE` · `ASKED`)를 고르고(모르는 인자는 무엇도 하기 전에 2 로 끝낸다), 대상 저장소
+#    하는 일 — 인자로 갈래(`MODE` · `ASKED`)를 고르고(모르는 인자 · 작업 루트 없는 `--plant` 는 무엇도 하기 전에 2 로 끝낸다), 대상 저장소
 #      (`PROJECT_DIR` · `PROJECT_NAME`)를 문지기가 넘긴 값 → 제 경로 → `CLAUDE_PROJECT_DIR`(없으면 지금 폴더) 차례로
-#      잡는다. 명시한 설치 갈래(`--install` ·
-#      `--install-global`)의 바깥 실행은 기록 파일을 열고 저를 다시 띄워 그 줄을 받은 뒤, 안쪽의 종료코드로 끝난다
-#    앞에서 받는 것 — 인자 하나 · `SESSION_START_REPO`(문지기 · deploy.ps1) · `SESSION_LOG`(바깥이 받고 있다는 표식) ·
+#      잡는다. 명시한 갈래(`--install` · `--install-global` ·
+#      `--plant`)의 바깥 실행은 기록 파일을 열고 저를 다시 띄워 그 줄을 받은 뒤, 안쪽의 종료코드로 끝난다
+#    앞에서 받는 것 — 인자 하나(`--plant` 는 작업 루트 하나 더 · `PLANT_ROOT`) · `SESSION_START_REPO`(문지기 · deploy.ps1) · `SESSION_LOG`(바깥이 받고 있다는 표식) ·
 #      `CLAUDE_PROJECT_DIR`
 #    안 하는 것 — 함수를 부르지 않는다(라이브러리는 이 단계 뒤에 선다). 깔지도 홈에 밀지도 않는다 — 쓰는 것은
 #      바깥 실행의 기록 파일(`~/.claude/logs/`) 하나다
 MODE=auto
 ASKED=""   # 인자로 명시된 갈래 — auto 가 지문 어긋남으로 install 이 되는 것과 가른다
+PLANT_ROOT=""   # `--plant` 가 받은 작업 루트 — 아래에서 `pwd` 꼴로 굳혀 SIBLING_BASE 가 된다
 case "${1:-}" in
   '')               ;;   # 인자 없음 — 세션(auto)
   --check)          MODE=check ;;
   --needs-install)  MODE=needs-install ;;
   --install)        MODE=install; ASKED=install ;;
   --install-global) MODE=install; ASKED=install-global ;;
+  --plant)          MODE=plant; ASKED=plant; PLANT_ROOT="${2:-}" ;;
   # 모르는 인자는 무엇도 하기 전에 끝낸다 — 기본 갈래가 없으면 오타 하나가 auto 를 통째로 돈다.
   #   stderr 로 낸다 — 세션 문맥에 실을 말이 아니라 부른 자의 실수이고, 훅으로 걸렸으면 하네스가 0 아닌
   #   끝의 stderr 를 사람에게 보인다
-  *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global)\n' "$1" >&2
+  *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global · --plant)\n' "$1" >&2
      exit 2 ;;
 esac
+# `--plant` 의 작업 루트는 무엇도 하기 전에 굳힌다 — 없거나 폴더가 아니면 모르는 인자와 같이 2 로 끝낸다.
+#   `pwd` 꼴로 굳히는 것은 `--install` 이 제 자리에서 잡는 루트(`SIBLING_BASE`)와 같은 글자를 내려서다 — 글자가 다르면
+#   두 갈래가 번갈아 홈 훅 명령을 갈아 심는다(0032). 끝의 구분자도 여기서 떨어진다
+if [ "$MODE" = plant ]; then
+  _pr="$(cd "$PLANT_ROOT" 2>/dev/null && pwd)" || _pr=""
+  if [ -z "$PLANT_ROOT" ] || [ -z "$_pr" ]; then
+    printf '세션 훅: --plant 는 작업 루트(있는 폴더) 하나를 받는다 — 받은 것 「%s」 — 아무것도 안 하고 끝낸다\n' "$PLANT_ROOT" >&2
+    exit 2
+  fi
+  PLANT_ROOT="$_pr"
+fi
 
 # ── 어느 저장소를 깔고 있나 — **제 자리에서 역산하는 것이 먼저다.**
 #    CLAUDE_PROJECT_DIR 은 저장소가 아니라 **세션 루트**다. 저장소를 둘 붙이면 루트가 한 칸
@@ -103,7 +126,7 @@ if [ -z "$PROJECT_DIR" ]; then
 fi
 [ -n "$PROJECT_DIR" ] || PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"   # 진단 머리줄·profile.d 파일명이 여기서 파생된다
-# ── `--install` · `--install-global` 은 찍는 줄을 파일에도 남긴다 (#48 ③) ─────────────
+# ── 명시한 갈래(`--install` · `--install-global` · `--plant`)는 찍는 줄을 파일에도 남긴다 (#48 ③) ─────────────
 #    설치 화면이 닫히면 화면의 줄은 사라지고, 화면을 못 본 사람은 물을 물건이 없다 — 걸음마다
 #    붙는 `(n초)` 도 이 파일에서 읽는다. 세션마다 도는 auto 갈래는 안 쓴다(매 세션 파일이 는다).
 #    ⚠ **바깥 하나만 받는다.** PC 의 `--install` 은 deploy.ps1 을 부르고 그것이 저장소마다 이 훅을
@@ -780,15 +803,42 @@ EOF
 #      PW_RUN      빈 값 = 건너뛴다 · part = 바뀐 것만 · full = 통째로
 #      PW_CHANGED  바뀐 파일(뿌리 상대경로 · 줄로 감싼 꼴) — part 에서 `PUSH_ONLY` 가 된다
 #      PW_REST     개인 설정 · 전역 도구 대조를 다시 하나 — PC 전체 일의 입력이 바뀌었다
-#      PW_PLANT    홈 훅 · 신뢰를 다시 심나 — 위에 더해 홈 settings.json 이 표식보다 새것이다(0031 이 지키던 자리)
+#      PW_HOMESET  홈 settings.json 이 표식보다 새것이거나, 없는데 손이 되메운다(고른 제품에 Claude 가 든다) — 바뀐 파일이
+#                  없어도 홈 밀기를 돌려 손이 도구 훅 등록을 되놓는다(0112). 홈 훅 · 신뢰는 세션이 안 심는다 — 명시한 설치만
+#                  심는다(plant_session_state 머리말)
 # ⚠ **확실하지 않으면 full 이다** — 표식이 없다 · 비었다 · 판이 저장소에 없다(얕은 클론 · 이력 재작성
 #   뒤 청소) · `UPGRADE_DAYS` 를 넘었다 · 병합이 덜 끝났다 · 경로가 따옴표로 왔다 · git 이 안 답한다.
 #   건너뛰기가 틀리면 낡은 홈이 조용히 남고, 더 도는 것이 틀리면 초만 든다.
 # ⚠ **git 에 한 번 묻는다** — `status --porcelain=v2 --branch` 가 판과 커밋 안 한 편집을 같이 낸다.
 #   판이 바뀐 때만 `diff` 하나가 는다. `--no-optional-locks` 는 배경 당김(`pull_ff`)과 index 잠금을
 #   안 다투게 한다 — status 는 틈나면 잠금을 잡고 index 를 되쓰는데, 그 순간 병합이 진다.
+# 고른 제품에 Claude 가 드나 — 손(`tool-homes.py`)이 읽는 그대로 손에게 묻는다(`read_cond` · 사용자 값이 먼저 · 비면 Claude 만).
+#   0 = 든다 · 1 = 안 든다 · 손이 없다. 손을 못 부르면 든다고 본다 — 부르는 `pc_wide_key` 는 모르면 도는 쪽이다.
+claude_picked() {
+  _cpf="$CONFIG_ROOT/.claude/hooks/tool-homes.py"
+  [ -f "$_cpf" ] || return 1
+  _cpo="$("$PY_CMD" - "$_cpf" 2>/dev/null <<'CPEOF'
+import importlib.util, sys
+
+sys.dont_write_bytecode = True   # 손 곁에 캐시를 흘리지 않는다 — plant_session_state 와 같은 까닭
+spec = importlib.util.spec_from_file_location("tool_homes_hand", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+
+class Quiet(mod.Out):   # 모르는 이름은 손이 놓는 자리에서 알린다 — 여기는 Claude 가 들었나만 본다
+    def line(self, text):
+        pass
+
+
+sys.stdout.write("yes" if "claude" in mod.read_cond(mod.COND_PICK, None, ("claude",), Quiet()) else "no")
+CPEOF
+)"
+  [ "$_cpo" != no ]
+}
+
 pc_wide_key() {
-  PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_PLANT=1; PW_OID=""; PW_DIRTY=""
+  PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_HOMESET=1; PW_OID=""; PW_DIRTY=""
   [ -n "$CONFIG_ROOT" ] || return 0
   _pwst="$(git -C "$CONFIG_ROOT" --no-optional-locks -c core.quotepath=false \
              status --porcelain=v2 --branch --untracked-files=all 2>/dev/null)" || return 0
@@ -833,11 +883,16 @@ EOF
       *)  case "$_pwc" in *"$_NL$_pwf$_NL"*) PW_REST=1 ;; esac ;;
     esac
   done
-  PW_PLANT="$PW_REST"
-  # 없어도 심는다 — 지운 settings.json 은 `-nt` 가 거짓이라 훅이 걷힌 채 남는다
-  { [ ! -f "$HOME/.claude/settings.json" ] || [ "$HOME/.claude/settings.json" -nt "$PC_WIDE_STAMP" ]; } && PW_PLANT=1
+  PW_HOMESET="$PW_REST"
+  # 없는 settings.json 은 손이 되메울 때만 센다 — 고른 제품에 Claude 가 들면 홈 밀기의 손이 도구 훅 등록과 함께 그 파일을 다시
+  #   짓는다. 안 들면 아무도 안 메워, 세면 그 PC 는 세션마다 홈 밀기를 돈다(#96). 그 파일의 SessionStart 는 다음 설치가 심는다
+  if [ -f "$HOME/.claude/settings.json" ]; then
+    [ "$HOME/.claude/settings.json" -nt "$PC_WIDE_STAMP" ] && PW_HOMESET=1
+  elif [ -z "$PW_HOMESET" ] && claude_picked; then
+    PW_HOMESET=1
+  fi
   PW_CHANGED="$_pwc"
-  if [ -z "${_pwc//"$_NL"/}" ] && [ -z "$PW_PLANT" ]; then
+  if [ -z "${_pwc//"$_NL"/}" ] && [ -z "$PW_HOMESET" ]; then
     PW_RUN=""
   else
     PW_RUN=part
@@ -1487,12 +1542,28 @@ home_hook_cmd() {
   #   제 설정이 부른다 — 전역 층에서 필요한 것은 홈 규범·개인 칸·전역 도구뿐이고 그것은 설정 저장소
   #   훅이 든다. 이름은 안 박는다 — `deploy.ps1` 과 `memory/` 를 든 저장소가 곧 그것이다(위 CONFIG_ROOT
   #   와 같은 자).
-  printf 'p="$CLAUDE_PROJECT_DIR"; if [ -f "$p/.claude/hooks/session-start.sh" ]; then grep -q session-start.sh "$p/.claude/settings.json" 2>/dev/null || bash "$p/.claude/hooks/session-start.sh"; else for h in "%s"/*/.claude/hooks/session-start.sh; do d="${h%%/.claude/*}"; [ -f "$d/deploy.ps1" ] && [ -d "$d/memory" ] && bash "$h"; done; fi' \
+  # ⚠ **끝은 `exit 0` 이다** — 안 두면 고리의 마지막 시험(설정 저장소가 아닌 형제)이 명령의 종료 값이 되어, 저장소 밖에서
+  #   연 세션마다 훅이 1 로 진 것으로 보인다(#167). 글자가 바뀐 명령은 설치 갈래의 심기가 옛 항목을 걷고 한 번 갈아 심는다.
+  printf 'p="$CLAUDE_PROJECT_DIR"; if [ -f "$p/.claude/hooks/session-start.sh" ]; then grep -q session-start.sh "$p/.claude/settings.json" 2>/dev/null || bash "$p/.claude/hooks/session-start.sh"; else for h in "%s"/*/.claude/hooks/session-start.sh; do d="${h%%/.claude/*}"; [ -f "$d/deploy.ps1" ] && [ -d "$d/memory" ] && bash "$h"; done; fi; exit 0' \
     "$(home_hook_root)"
 }
 
+# 홈 SessionStart 의 어느 항목이 우리 것인가 — 파이썬 정규식 하나를 낸다. 심기(`plant_session_state` 가 옛 꼴을 걷는다)와
+#   재기(`home_hook_planted` 가 낡은 항목을 댄다)가 이 한 자를 받는다.
+#   우리 꼴은 작업 루트를 훑는 고리다 — 이 몸통이 심어 온 홈 명령은 판마다 다 그 고리를 들었다(위 `home_hook_cmd`). 이름에
+#   `session-start.sh` 가 든 다른 항목은 그 사람의 것이라 안 걷고 낡았다고도 안 한다. 첫 묶음이 그 항목의 작업 루트다 — 재기가
+#   낡은 항목을 그 루트로 댄다(명령의 첫 따옴표 안은 판에 따라 루트가 아니라 `$CLAUDE_PROJECT_DIR` 다)
+home_hook_shape() {
+  printf '%s' 'for h in "([^"]*)"/\*/\.claude/hooks/session-start\.sh; do'
+}
+
 # ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
-#   드는 것: ① 홈 SessionStart 훅 ② 작업 루트 저장소들의 폴더 신뢰(고른 도구마다 — Claude · Codex).
+#   드는 것: ① 홈 SessionStart 훅 ② 작업 루트 저장소들의 폴더 신뢰(고른 도구마다 · VS Code 자체)와 데스크탑 앱 상태(② 머리말).
+# ⚠ **명시한 설치(`--install`)와 심기만(`--plant`)이 부른다** — 설치기 · 로그온 자동 실행 · deploy.ps1 의 저장소마다 부름 ·
+#   리눅스 설정 스크립트. 심기만은 설정 저장소가 없는 PC 에서도 돈다 — 그때 고른 제품은 몸통 곁의 손(홈 씨앗에 함께 실린다)이
+#   읽고, 부른 자리(홈 씨앗)는 저장소가 아니라 거는 집합에 안 넣는다(작업 루트 훑기만).
+#   세션은 안 부른다: 폴더 신뢰 창은 훅보다 먼저 떠 세션이 제 저장소에는 늘 늦고, VS Code 세션에서는 VS Code 가 떠 있어
+#   그 칸이 미루기만 한다. 로그온마다 자동 실행이 바깥 `--install` 로 이것을 지난다(0031 · 0118 고침).
 # ⚠ **홈 설정 파일에서 SessionStart 밖은 안 건드린다** — Claude 도구 훅 등록은 갈 곳 표의 손이 같은 파일에
 #   놓는다(`tool_homes` · 결정 0112). 손은 SessionStart 를 안 건드리고 여기는 그 밖을 안 건드린다 — 한쪽이
 #   상대의 항목을 제 것으로 읽으면 PC 전체 일이 도는 세션마다 둘이 번갈아 고쳐 쓴다.
@@ -1504,18 +1575,25 @@ home_hook_cmd() {
 #   않는 것이 이 합침의 요점이다). 진 뒤에 가드 하나를 더 띄워 「못 뜬다」와 「죽었다」를 가르는
 #   것은 실패 갈래뿐이다 (#51) — 성한 길은 그대로 프로세스 하나다.
 # ⚠ **옛 항목을 지운다.** 심기는 여태 「없으면 붙인다」뿐이라, 명령 글자가 바뀌면 옛 항목이
-#   남아 **옛 고리가 같이 돌았다** — 위 가드가 무효가 되는 자리다. 우리 꼴(`session-start.sh`
-#   를 든 명령)만 걷고, 무엇을 걷었는지 화면에 댄다.
+#   남아 **옛 고리가 같이 돌았다** — 위 가드가 무효가 되는 자리다. 우리 꼴(작업 루트를 훑는 고리를
+#   든 명령 — `home_hook_shape`)만 걷고, 무엇을 걷었는지 화면에 댄다.
 plant_session_state() {
   _pse="$(mktemp)"   # stderr 를 받아 둔다 — 「못 부른다」와 「죽었다」를 가르는 물증이다 (#51)
-  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$PROJECT_DIR" "$(home_hook_root)" \
-    "${CONFIG_ROOT:+$CONFIG_ROOT/.claude/hooks/tool-homes.py}" "${_self%/*}/codex-hook-trust.py" "$MODE" \
+  _psp="$PROJECT_DIR"; _psh="${CONFIG_ROOT:+$CONFIG_ROOT/.claude/hooks/tool-homes.py}"
+  if [ "$MODE" = plant ]; then
+    _psp=""
+    [ -n "$_psh" ] || _psh="${_self%/*}/tool-homes.py"
+  fi
+  _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$_psp" "$(home_hook_root)" \
+    "$_psh" "${_self%/*}/codex-hook-trust.py" "$MODE" "$(home_hook_shape)" \
     <<'PSSEOF' 2>"$_pse"
-import contextlib, functools, importlib.util, json, os, pathlib, sys, tempfile
+import contextlib, functools, importlib.util, json, os, pathlib, re, sys, tempfile
 
 sys.dont_write_bytecode = True   # 불러 쓰는 손 · 도우미 곁에 캐시를 흘리지 않는다 — 씨앗 자리는 거울로 깔린다
-settings, cmd, proj, root, hand, codex_helper, mode = sys.argv[1:8]
-install = mode == "install"   # 명시한 설치 — 할 일이 없는 칸도 줄을 남기고, Codex 를 띄워 신뢰를 적을 수 있다
+settings, cmd, proj, root, hand, codex_helper, mode, shape = sys.argv[1:9]
+if not shape:   # 빈 자는 모든 항목에 맞아 사람의 SessionStart 까지 걷는다 — 쓰기 전에 죽는다
+    sys.exit("홈 훅 꼴(home_hook_shape)을 못 받았다")
+install = mode in ("install", "plant")   # 명시한 설치 · 심기만 — 할 일이 없는 칸도 줄을 남기고, Codex 를 띄워 신뢰를 적을 수 있다
 msgs = []
 failed = False   # 다 못 심었다 — 끝에서 3 으로 알린다. 셸이 표식에 판을 안 적는다 (0065)
 
@@ -1566,6 +1644,10 @@ def hand_lock():
 
 
 # ① 홈 SessionStart 훅 — 우리 옛 꼴은 걷고 지금 꼴만 남긴다
+# ⚠ **우리 꼴만 걷는다** — 자는 셸의 `home_hook_shape` 한 자리가 든다. 이름에 `session-start.sh` 가 든 다른 항목은 그 사람의 것이다.
+OUR_HOME_CMD = re.compile(shape)
+
+
 # ⚠ **「없음」과 「못 읽음」을 가른다** — 아래 ② 의 `~/.claude.json` 과 같은 규율이다. 못 읽은 파일을
 #   빈 설정으로 보고 쓰면 **훅 항목만 남기고 사람의 설정(model · env · permissions)을 통째로 덮는다.**
 #   손으로 고친 직후가 파일이 깨지기 가장 쉬운 순간이고, 그 뒤 첫 세션이 바로 여기를 돈다.
@@ -1583,7 +1665,7 @@ def plant_home_hook():
         cfg = {}
     except (OSError, ValueError):
         cfg, cfg_ok, failed = {}, False, True
-        msgs.append("  ! 홈 settings.json 을 못 읽었다 — 덮어쓰지 않았다. JSON 문법을 고치면 다음 세션이 훅을 심는다")
+        msgs.append("  ! 홈 settings.json 을 못 읽었다 — 덮어쓰지 않았다. JSON 문법을 고치면 다음 설치가 훅을 심는다")
     entries = cfg.setdefault("hooks", {}).setdefault("SessionStart", [])
     have, dropped = False, []
     for e in entries:
@@ -1593,7 +1675,7 @@ def plant_home_hook():
             if c == cmd:
                 have = True
                 keep.append(h)
-            elif "session-start.sh" in c:
+            elif OUR_HOME_CMD.search(c):
                 dropped.append(c)
             else:
                 keep.append(h)
@@ -1613,29 +1695,81 @@ def plant_home_hook():
 
 
 # 읽기부터 쓰기까지 손의 잠금 안에서 한다 — 두 세션이 함께 돌면 한쪽의 고침이 다른 쪽의 통째 쓰기에 덮인다.
-#   못 잡거나 손을 못 불러오면 이번엔 안 심고 3 으로 알린다 — 다음 세션이 다시 심는다.
+#   못 잡거나 손을 못 불러오면 이번엔 안 심고 3 으로 알린다 — 다음 설치가 다시 심는다.
 try:
     with hand_lock():
         plant_home_hook()
 except Exception as e:  # 손의 `Busy` · 손을 못 불러옴
     failed = True
-    msgs.append("  ! 홈 SessionStart 훅 — 손의 잠금을 못 잡아 이번엔 안 심었다(다음 세션이 다시 심는다): %s" % e)
+    msgs.append("  ! 홈 SessionStart 훅 — 손의 잠금을 못 잡아 이번엔 안 심었다(다음 설치가 다시 심는다): %s" % e)
 
-# ② 폴더 신뢰 — 작업 루트에서 세션 훅을 든 저장소에만, 고른 도구(Claude · Codex · agy · Copilot)마다 건다 (0118 · 0121 · 0122)
-# ⚠ **거는 집합은 하나다** — 이 저장소와 작업 루트에서 세션 훅을 든 저장소. 네 도구가 같은 목록을 받는다.
-#   그 밖의 폴더는 그대로 묻는다. 신뢰 창은 도구가 훅보다 먼저 띄우므로 저장소를 처음 열기 전에 서 있어야 한다 —
-#   설치기 · 로그인 자동 실행이 부르는 `--install` 이 그 자리다.
+# ② 폴더 신뢰 — 작업 루트의 우리 저장소에만, 고른 도구(Claude · Codex · agy · Copilot)마다 건다 (0118 · 0121 · 0122 · 0133).
+#   VS Code 자체의 작업 영역 신뢰는 고른 도구와 관계없이 VS Code 가 있으면 건다(0130). 고른 도구의 데스크탑 앱 프로젝트 목록
+#   (Codex · agy — 0126 · 0132)과 Codex 데스크탑의 기본 권한(0127)도 이 칸이 같은 규칙(떠 있으면 미룸 · 사람이 뺀 것은 둠)으로 든다.
+# ⚠ **거는 집합은 하나다**(`targets`) — 이 저장소와 작업 루트 바로 아래 저장소 가운데 세션 훅(`.claude/hooks/session-start.sh`)이
+#   우리 표지를 든 것. 네 도구 · VS Code · 데스크탑 목록이 다 이 목록을 받는다. 그 밖의 폴더는 그대로 묻는다. 신뢰 창은 도구가
+#   훅보다 먼저 띄우므로 저장소를 처음 열기 전에 서 있어야 한다 — 설치기 · 로그인 자동 실행이 부르는 `--install` 이 그 자리다.
 # ⚠ **고른 제품은 손이 읽는 그대로 읽는다**(사용자 값이 먼저 · 비면 Claude 만). 손을 못 부르면 Claude 는 비었을 때의 뜻대로
 #   걸고, Codex · agy · Copilot 은 안 건다 — 고른 줄 모르는 도구에 신뢰를 넓히지 않는다.
-# ⚠ 네 파일 다 손이 쓰는 파일이 아니라 손의 잠금을 안 잡는다. `~/.claude.json` 은 Claude 가, Codex 설정은 Codex 의 쓰는
-#   자(판 맞추기)가, agy · Copilot 설정은 그 도구가 경합을 든다.
+# ⚠ 다 손이 쓰는 파일이 아니라 손의 잠금을 안 잡는다. `~/.claude.json` 은 Claude 가, Codex 설정은 Codex 의 쓰는
+#   자(판 맞추기)가, agy · Copilot 설정은 그 도구가 경합을 든다. VS Code 의 DB 는 도우미가 SQLite 거래로 든다.
 BS = chr(92)
 CLAUDE, CODEX, AGY = "claude", "codex", "agy"   # 고른 제품 값의 이름 — 갈 곳 표의 도구 이름이다
 COPILOT = "copilot"   # 고른 제품 값에 들지만 갈 곳 표에 길이 없다 — 폴더 신뢰만 건다(0122)
 import glob as _glob
-targets = [proj]
-for h in _glob.glob(os.path.join(root, "*", ".claude", "hooks", "session-start.sh")):
-    targets.append(os.path.dirname(os.path.dirname(os.path.dirname(h))))
+# 우리 표지 — 자는 결정 0129 「우리 표지」가 든다(원본은 설치기 `install.ps1` 의 `Test-OurMark`). 설치기는 파워셸 · 여기는 파이썬이라
+#   가리킬 수 없어 같은 정규식을 여기서 짓는다 — 어긋나면 설치기가 넘긴 훅과 신뢰를 거는 훅이 다른 답을 낸다. 같은 표본으로
+#   두 자리를 무는 것은 `scripts/check-home-hook.sh` ⑬ 이 든다. `-match` 처럼 대소문자를 안 가리고, 못 읽으면 우리 것이 아니다.
+OUR_HOOK = (".claude", "hooks", "session-start.sh")
+MARK_LINES = 12
+_MARK_AT = re.escape("claude-config/" + "/".join(OUR_HOOK))
+OUR_MARK = re.compile(r"^\s*(#|//).*(?:(?:진본|원본)은 " + _MARK_AT + r" 다|\(진본: " + _MARK_AT + r"\))", re.IGNORECASE)
+GITDIR_PREFIX = "gitdir:"
+
+
+def our_hook(repo):
+    try:
+        with open(os.path.join(repo, *OUR_HOOK), encoding="utf-8-sig", errors="replace") as f:
+            return any(OUR_MARK.match(ln) for _, ln in zip(range(MARK_LINES), f))
+    except OSError:
+        return False
+
+
+def main_checkout(p):
+    """git 작업 트리면 그 본 저장소 — `.git` 이 파일이고 그 `gitdir` 에 `commondir` 이 있으면 작업 트리다. 작업 트리를 못 풀면
+    None(뺀다) — 작업 트리마다 신뢰 줄 · 데스크탑 프로젝트가 생기고 지우면 찌꺼기로 남는다. `gitdir` 이 없는 `.git` 파일(본
+    저장소에서 걷힌 작업 트리)도 못 푼 것이다. 작업 트리가 아니면 그대로."""
+    dotgit = os.path.join(p, ".git")
+    if not os.path.isfile(dotgit):
+        return p
+    try:
+        with open(dotgit, encoding="utf-8") as f:
+            line = f.readline().strip()
+        if not line.startswith(GITDIR_PREFIX):
+            return None
+        gitdir = os.path.join(p, line[len(GITDIR_PREFIX):].strip())   # 절대 경로면 그대로 선다
+        if not os.path.isdir(gitdir):
+            return None
+        common_file = os.path.join(gitdir, "commondir")
+        if not os.path.isfile(common_file):
+            return p   # 하위 모듈 — 제 저장소다
+        with open(common_file, encoding="utf-8") as f:
+            common = os.path.normpath(os.path.join(gitdir, f.readline().strip()))
+    except OSError:
+        return None
+    return os.path.dirname(common) if os.path.basename(common) == ".git" else None
+
+
+# 겹침은 경로를 고른 꼴로 가린다 — 이 저장소는 문지기가 넘긴 철자(`C:/…/x`)로, 작업 루트 아래는 훑은 철자(`C:/…\x`)로 와 글자가 갈린다.
+#   집합에는 처음 온 철자를 둔다. 윈도는 대소문자도 안 가린다(`normcase`).
+targets, _target_keys = [], set()
+for t in ([proj] if proj else []) + [os.path.dirname(os.path.dirname(os.path.dirname(h)))
+                   for h in _glob.glob(os.path.join(root, "*", *OUR_HOOK))]:
+    r = main_checkout(t)
+    k = r and os.path.normcase(os.path.normpath(r))
+    if r and k not in _target_keys and our_hook(r):
+        targets.append(r)
+        _target_keys.add(k)
 
 
 def picked():
@@ -1661,8 +1795,8 @@ except Exception as e:  # 손을 못 불러옴
 # ⚠ **드라이브 글자도 두 벌로 건다** — 우리 경로는 `C:` 로 오는데 VS Code 는 드라이브 글자를 소문자(`c:`)로 다룬다.
 #   앱이 어느 철자로 찾든 걸리게 한다 — 구분자 두 벌과 같은 까닭이고, 켜서 잃는 것이 없다.
 # ⚠ **없는 것과 못 읽은 것을 가른다.** 없으면 `projects` 만 든 파일을 새로 짓는다 — 첫 실행의 안내는 그대로 돌고 심은
-#   항목은 산다. 못 읽은 것(앱이 쓰는 도중 · 깨졌다 · 꼴이 다르다)은 손대지 않고 진 것으로 알린다 — 안 알리면 표식이
-#   「심었다」를 굳혀 다음 세션이 다시 안 걸어 본다 (0065). 쓸 때는 원래 글의 줄끝과 끝 줄바꿈을 따른다.
+#   항목은 산다. 못 읽은 것(앱이 쓰는 도중 · 깨졌다 · 꼴이 다르다)은 손대지 않고 진 것으로 알린다 — 안 알리면 진 판이
+#   PC 전체 일의 표식에 「맞췄다」로 적힌다 (0065). 다시 거는 것은 다음 설치다. 쓸 때는 원래 글의 줄끝과 끝 줄바꿈을 따른다.
 def _drive_cases(p):
     return {p[0].upper() + p[1:], p[0].lower() + p[1:]} if len(p) > 1 and p[1] == ":" else {p}
 
@@ -1706,7 +1840,7 @@ def plant_claude():
         like, tcfg = "", {}
     except (OSError, ValueError):
         failed = True
-        msgs.append("  ! 신뢰(Claude) — %s 를 못 읽었다 — 손대지 않았다. 다음 세션이 다시 건다" % shown)
+        msgs.append("  ! 신뢰(Claude) — %s 를 못 읽었다 — 손대지 않았다. 다음 설치가 다시 건다" % shown)
         return
     pr = tcfg.setdefault("projects", {})
     todo = [k for k in forms if not pr.get(k, {}).get("hasTrustDialogAccepted")]
@@ -1721,7 +1855,7 @@ def plant_claude():
                     % ("" if like else "%s 이 없어 새로 짓고 " % shown, len(todo)))
     else:
         failed = True
-        msgs.append("  ! 신뢰(Claude) — %s 를 못 썼다 — 다음 세션이 다시 건다" % shown)
+        msgs.append("  ! 신뢰(Claude) — %s 를 못 썼다 — 다음 설치가 다시 건다" % shown)
 
 
 def codex_helper_module():
@@ -1735,10 +1869,10 @@ def codex_helper_module():
 
 
 # Codex — 몸통 곁의 Codex 신뢰 도우미가 `config.toml` 의 `projects` 에 Codex 제 철자로 적는다(도우미 머리말).
-# ⚠ **app-server 는 명시한 설치에서만 띄운다.** 세션 시작은 설정 파일만 보고 빈 자리를 말한다 — Codex 가 느리거나 서면
-#   확장의 초기화 기다림(60초 · 0043)을 넘긴다. 빈 자리는 다음 로그인 자동 실행의 `--install` 이 건다.
-# ⚠ **못 걸어도 진 것으로 안 돌린다**(표식은 적는다) — 진 까닭이 Codex 쪽에 있으면 다음 세션도 똑같이 져, 세션마다 PC 전체
-#   일을 통째로 다시 돈다(#96 · 0118). 줄은 늘 남기고, 다시 거는 것은 다음 설치 · 판이 바뀐 세션이 든다.
+# ⚠ **app-server 는 MODE 가 install 일 때만 띄운다** — 아니면 설정 파일만 보고 빈 자리를 말한다(Codex 가 느리거나 서면 오래
+#   걸린다). 이 칸을 부르는 자리는 다 명시한 설치다(plant_session_state 머리말).
+# ⚠ **못 걸어도 진 것으로 안 돌린다**(표식은 적는다) — 진 까닭이 Codex 쪽에 있으면 다음 설치도 똑같이 져, 그때마다 PC 전체
+#   일을 통째로 다시 돈다(#96 · 0118). 줄은 늘 남기고, 다시 거는 것은 다음 설치가 든다.
 def plant_codex(mod):
     try:
         states, _ = mod.plant_projects(targets, mod.codex_home(None), start=install)
@@ -1762,7 +1896,7 @@ def plant_codex(mod):
 # Codex 데스크탑 — 저장소 뿌리를 데스크탑 프로젝트 목록(제 상태 파일)에 더한다(도우미 `plant_desktop_projects` · 0126). 신뢰는
 #   앞 칸이 이미 걸어, 더한 프로젝트는 열 때 안 묻는다. 데스크탑이 떠 있으면 안 쓰고 미룬다 — 이번 설치가 띄운 창은 설치기가
 #   이 걸음 앞에서 닫는다. 사람이 목록에서 뺀 저장소는 다시 안 넣는다.
-# ⚠ **못 더해도 진 것으로 안 돌린다** — 신뢰와 같은 까닭이다. 다시 더하는 것은 다음 설치 · 판이 바뀐 세션이 든다.
+# ⚠ **못 더해도 진 것으로 안 돌린다** — 신뢰와 같은 까닭이다. 다시 더하는 것은 다음 설치가 든다.
 def plant_codex_desktop(mod):
     label = "  프로젝트(Codex 데스크탑) — "
     try:
@@ -1774,10 +1908,15 @@ def plant_codex_desktop(mod):
     gone = sum(1 for _, s in states if s == mod.DP_GONE)
     if now:
         msgs.append(label + "%d 개 더했다 (다음에 데스크탑을 열면 보인다)" % now)
+    if held == mod.DP_RECORD:   # 저절로 안 풀린다 — 말 수를 줄이는 판(MODE 가 install 이 아님)에서도 알린다
+        msgs.append("  ! 프로젝트(Codex 데스크탑) — 우리 기록(%s)을 못 읽어 아무것도 안 더했다(사람이 뺀 것을 다시 넣지 않으려고)"
+                    % mod.DESKTOP_SEEN)
     if not install:
         return
     if held == mod.DP_RUNNING:
         msgs.append(label + "데스크탑이 떠 있어 미뤘다 — 닫힌 뒤의 다음 설치가 더한다")
+    elif held == mod.DP_UNKNOWN:
+        msgs.append(label + "데스크탑이 떠 있는지 못 가려 미뤘다 — 다음 설치가 다시 본다")
     elif held == mod.DP_NEVER:
         msgs.append(label + "데스크탑을 아직 한 번도 안 띄웠다 — 띄운 뒤의 다음 설치가 더한다")
     elif held == mod.DP_OFF:
@@ -1788,17 +1927,43 @@ def plant_codex_desktop(mod):
         msgs.append(label + "이미 다 들어 있다 (%d 개)" % len(states))
 
 
+# Codex 데스크탑 권한 — 같은 상태 파일의 로컬 호스트 권한 모드를 「나 대신 승인」으로 쓴다(도우미 `plant_desktop_agent_mode` · 0127).
+#   지금 값이 무엇이든 그 한 칸만 쓰고 기록은 안 남긴다 — 설치마다 다시 쓴다. 상태 파일이 없으면 안 짓고, 데스크탑이 떠 있으면 미룬다
+#   (설치기가 그 앞에서 닫는다). 못 심어도 진 것으로 안 돌린다 — 프로젝트 칸과 같은 까닭이다.
+def plant_codex_desktop_mode(mod):
+    label = "  권한(Codex 데스크탑) — "
+    try:
+        state, held = mod.plant_desktop_agent_mode(mod.codex_home(None))
+    except mod.Stop as s:
+        msgs.append("  ! 권한(Codex 데스크탑) — 못 심었다: %s" % s.line)
+        return
+    if state == mod.DM_NOW:
+        msgs.append(label + "새 대화의 기본을 「나 대신 승인」으로 심었다 (계정이 안 열면 앱이 「승인 요청」으로 둔다)")
+    if not install:
+        return
+    if held == mod.DP_RUNNING:
+        msgs.append(label + "데스크탑이 떠 있어 미뤘다 — 닫힌 뒤의 다음 설치가 심는다")
+    elif held == mod.DP_UNKNOWN:
+        msgs.append(label + "데스크탑이 떠 있는지 못 가려 미뤘다 — 다음 설치가 다시 본다")
+    elif held == mod.DP_NEVER:
+        msgs.append(label + "데스크탑을 아직 한 번도 안 띄웠다(상태 파일을 안 지어 둔다) — 띄운 뒤의 다음 설치가 심는다")
+    elif held == mod.DP_OFF:
+        msgs.append(label + "윈도에서만 심는다 — 건너뛰었다")
+    elif state == mod.DM_HAVE:
+        msgs.append(label + "이미 「나 대신 승인」이다")
+
+
 # agy CLI · Copilot CLI — 제 설정 JSON 의 목록 하나에 저장소 뿌리를 한 줄씩 더한다(0121 · 0122 · 데스크탑 · VS Code 확장은
 #   안 묻는다 — #154). 줄은 디스크 철자로 짓고(윈도 — `realpath`), 이미 섰나는 그 도구가 맞추는 법대로 가린다.
 #   agy — `~/.gemini/antigravity-cli/settings.json` 의 `trustedWorkspaces`. 작업 폴더 글을 **철자 그대로** 맞춘다 — 대소문자만
 #     다른 줄은 다른 자리라, 사람이 치는 철자(`typed_spellings` — 디스크 · 통째 소문자 × 드라이브 글자)마다 한 줄씩 건다
 #   Copilot — `config.json`(`COPILOT_HOME` 이 서면 그 안, 아니면 `~/.copilot`)의 `trustedFolders`. 대소문자 없이 맞추고 아래
 #     폴더까지 덮는다
-# ⚠ **app-server 같은 것 없이 파일만 쓴다** — 그래서 세션에서도 건다. 새 파일은 두 도구가 제 설정을 쓰는 꼴(두 칸 · LF · 끝
+# ⚠ **app-server 같은 것 없이 파일만 쓴다** — MODE 와 관계없이 건다. 새 파일은 두 도구가 제 설정을 쓰는 꼴(두 칸 · LF · 끝
 #   줄바꿈)로 짓고, 있던 파일은 원래 줄끝 · 끝 줄바꿈을 따른다. 없던 파일을 지어도 두 도구가 첫 실행에 그대로 읽는다(실측).
 # ⚠ **머리의 `//` 주석 줄은 살린다** — Copilot 이 제 `config.json` 맨 위에 두 줄을 단다. 그 밖의 주석이 든 글은 못 읽는 글이다.
-# ⚠ **못 걸어도 진 것으로 안 돌린다** — Codex 와 같은 까닭이다. 못 읽는 파일은 그 도구의 것이라 다음 세션에도 못 읽는다.
-#   손대지 않고 줄만 남기며, 다시 거는 것은 다음 설치 · 판이 바뀐 세션이 든다.
+# ⚠ **못 걸어도 진 것으로 안 돌린다** — Codex 와 같은 까닭이다. 못 읽는 파일은 그 도구의 것이라 다음 설치에도 못 읽는다.
+#   손대지 않고 줄만 남기며, 다시 거는 것은 다음 설치가 든다.
 LISTED_NEW_LIKE = "\n"   # save 에 넘기는 「원래 글」 — LF · 끝 줄바꿈
 LINE_COMMENT = "//"
 
@@ -1854,6 +2019,95 @@ def plant_listed(label, path, shown, key, fold):
         msgs.append("  ! 신뢰(%s) — %s 를 못 썼다 — 다음 설치가 다시 건다" % (label, shown))
 
 
+# agy 데스크탑 — 몸통 곁의 도우미(`agy-desktop-projects.py` · 0132)가 저장소 뿌리를 Antigravity 의 프로젝트 목록(프로젝트 하나에
+#   파일 하나)에 더한다. agy 를 고를 때만이다. 앱이 떠 있으면 미루고, 사람이 목록에서 뺀 저장소는 다시 안 넣는다.
+# ⚠ **못 더해도 진 것으로 안 돌린다** — Codex 데스크탑과 같은 까닭이다.
+AGY_DESKTOP_HELPER = "agy-desktop-projects.py"
+
+
+def plant_agy_desktop():
+    label = "  프로젝트(agy 데스크탑) — "
+    path = os.path.join(os.path.dirname(codex_helper), AGY_DESKTOP_HELPER)   # 도우미는 다 몸통 곁에 실린다
+    if not os.path.isfile(path):
+        msgs.append("  ! 프로젝트(agy 데스크탑) — 도우미가 몸통 곁에 없다(%s) — 못 더했다" % path)
+        return
+    spec = importlib.util.spec_from_file_location("agy_desktop_projects", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        states, held = mod.plant_agy_projects(targets)
+    except mod.Stop as s:
+        msgs.append("  ! 프로젝트(agy 데스크탑) — 못 더했다: %s" % s.line)
+        return
+    now = sum(1 for _, s in states if s == mod.AP_NOW)
+    gone = sum(1 for _, s in states if s == mod.AP_GONE)
+    if now:
+        msgs.append(label + "%d 개 더했다 (다음에 앱을 열면 보인다)" % now)
+    if held == mod.AP_RECORD:   # 저절로 안 풀린다 — 말 수를 줄이는 판(MODE 가 install 이 아님)에서도 알린다
+        msgs.append("  ! 프로젝트(agy 데스크탑) — 우리 기록(~/.gemini/config/%s)을 못 읽어 아무것도 안 더했다(사람이 뺀 것을 다시 넣지 않으려고)"
+                    % mod.SEEN_FILE)
+    if not install:
+        return
+    if held == mod.AP_RUNNING:
+        msgs.append(label + "앱이 떠 있어 미뤘다 — 닫힌 뒤의 다음 설치가 더한다")
+    elif held == mod.AP_UNKNOWN:
+        msgs.append(label + "앱이 떠 있는지 못 가려 미뤘다 — 다음 설치가 다시 본다")
+    elif held == mod.AP_ABSENT:
+        msgs.append(label + "agy 설정 폴더(~/.gemini/config)가 없어 건너뛰었다")
+    elif held == mod.AP_OFF:
+        msgs.append(label + "윈도에서만 더한다 — 건너뛰었다")
+    if gone:
+        msgs.append(label + "사람이 목록에서 뺀 %d 개는 다시 안 넣었다" % gone)
+    if held is None and not (now or gone):
+        msgs.append(label + "이미 다 들어 있다 (%d 개)" % len(states))
+
+
+# VS Code — 몸통 곁의 VS Code 신뢰 도우미(`vscode-trust.py` · 0130)가 VS Code 의 신뢰 목록(공유 DB)에 저장소 뿌리마다 한 줄씩 더한다.
+#   설정 파일이 아니라 VS Code 의 상태 DB 라, VS Code 가 떠 있으면 안 쓰고 미룬다 — 설치기는 VS Code 를 이 걸음 뒤에 띄운다.
+#   사람이 VS Code 에서 신뢰를 뺀 저장소는 다시 안 넣는다.
+# ⚠ **못 걸어도 진 것으로 안 돌린다** — Codex 와 같은 까닭이다. 다시 거는 것은 다음 설치가 든다.
+VSCODE_HELPER = "vscode-trust.py"
+
+
+def plant_vscode():
+    label = "  신뢰(VS Code) — "
+    path = os.path.join(os.path.dirname(codex_helper), VSCODE_HELPER)   # 두 도우미 다 몸통 곁에 실린다
+    if not os.path.isfile(path):
+        msgs.append("  ! 신뢰(VS Code) — 도우미가 몸통 곁에 없다(%s) — 못 걸었다" % path)
+        return
+    spec = importlib.util.spec_from_file_location("vscode_trust", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    try:
+        states, held = mod.plant_trusted_folders(targets)
+    except mod.Stop as s:
+        msgs.append("  ! 신뢰(VS Code) — 못 걸었다: %s" % s.line)
+        return
+    now = sum(1 for _, s in states if s == mod.VT_NOW)
+    gone = sum(1 for _, s in states if s == mod.VT_GONE)
+    if now:
+        msgs.append(label + "%d 자리에 걸었다 (다음 열기부터 안 묻는다)" % now)
+    if held == mod.VT_RECORD:   # 저절로 안 풀린다 — 말 수를 줄이는 판(MODE 가 install 이 아님)에서도 알린다
+        msgs.append("  ! 신뢰(VS Code) — 우리 기록(~/.vscode-shared/sharedStorage/%s)을 못 읽어 아무것도 안 걸었다(사람이 뺀 것을 다시 넣지 않으려고)"
+                    % mod.SEEN_FILE)
+    if not install:
+        return
+    if held == mod.VT_RUNNING:
+        msgs.append(label + "VS Code 가 떠 있어 미뤘다 — 다 닫은 뒤의 다음 설치(로그인 자동 실행 · --install)가 건다")
+    elif held == mod.VT_UNKNOWN:
+        msgs.append(label + "VS Code 가 떠 있는지 못 가려 미뤘다 — 다음 설치가 다시 본다")
+    elif held == mod.VT_UNMOVED:
+        msgs.append(label + "VS Code 가 앞서 믿은 폴더 목록을 아직 새 자리로 안 옮겨 미뤘다 — VS Code 를 한 번 연 뒤의 다음 설치가 건다")
+    elif held == mod.VT_ABSENT:
+        msgs.append(label + "VS Code 가 없어 건너뛰었다")
+    elif held == mod.VT_OFF:
+        msgs.append(label + "윈도에서만 건다 — 건너뛰었다")
+    if gone:
+        msgs.append(label + "사람이 신뢰를 뺀 %d 자리는 다시 안 넣었다" % gone)
+    if held is None and not (now or gone):
+        msgs.append(label + "이미 다 걸려 있다 (%d 자리)" % len(states))
+
+
 if tools is None or CLAUDE in tools:
     plant_claude()
 elif install:
@@ -1868,7 +2122,8 @@ if tools is not None and CODEX in tools:
         if codex_mod is None:
             msgs.append("  ! 신뢰(Codex) — 도우미가 몸통 곁에 없다(%s) — 못 걸었다" % codex_helper)
     for step, what in ((plant_codex, "  ! 신뢰(Codex) — 못 걸었다"),
-                       (plant_codex_desktop, "  ! 프로젝트(Codex 데스크탑) — 못 더했다")):
+                       (plant_codex_desktop, "  ! 프로젝트(Codex 데스크탑) — 못 더했다"),
+                       (plant_codex_desktop_mode, "  ! 권한(Codex 데스크탑) — 못 심었다")):
         if codex_mod is None:
             break
         try:
@@ -1885,6 +2140,15 @@ for tool, label, obj in ((AGY, "agy", "agy 를"), (COPILOT, "Copilot", "Copilot 
             msgs.append("  ! 신뢰(%s) — 못 걸었다: %s: %s" % (label, type(e).__name__, e))
     elif install:
         msgs.append("  신뢰(%s) — %s 건너뛰었다" % (label, "%s 안 골라" % obj if tools is not None else "고른 제품을 못 읽어(%s)" % pick_why))
+if tools is not None and AGY in tools:
+    try:
+        plant_agy_desktop()
+    except Exception as e:  # 도우미를 못 불러옴 · 모르는 꼴 — 앞뒤 칸의 줄까지 잃지 않게 여기서 받는다
+        msgs.append("  ! 프로젝트(agy 데스크탑) — 못 더했다: %s: %s" % (type(e).__name__, e))
+try:
+    plant_vscode()
+except Exception as e:  # 도우미를 못 불러옴 · 모르는 꼴 — 앞 도구의 줄까지 잃지 않게 여기서 받는다
+    msgs.append("  ! 신뢰(VS Code) — 못 걸었다: %s: %s" % (type(e).__name__, e))
 
 for m in msgs:
     print(m)
@@ -1901,7 +2165,7 @@ PSSEOF
     return 0
   fi
   if [ "$_prc" -ne 0 ]; then
-    PC_WIDE_FAIL=1   # 진 판에 열쇠를 안 적는다 — 다음 세션이 다시 심는다 (0065)
+    PC_WIDE_FAIL=1   # 진 판에 열쇠를 안 적는다 — 다음 판이 PC 전체 일을 다시 돌고, 심기는 다음 설치가 다시 한다 (0065)
     # ⚠ **한 문구로 둘을 덮지 않는다** (#51). 해석기가 안 뜬 것과 스크립트가 다 쓰고 나서 죽은 것은
     #   고칠 자리가 다르다 — 옛 판은 stderr 를 버리고 둘 다 「못 부른다」로 내서, 인코딩으로 죽은
     #   자리를 스토어 껍데기로 오진했다(#50). 진 뒤에만 해석기를 한 번 더 불러 가른다. 죽은 쪽은
@@ -1935,9 +2199,9 @@ PSSEOF
 #      이 훅의 일이 아니다. 자리를 말하고 간다(선언 부재를 다루는 자리와 같은 결).
 home_hook_planted() {   # 0=이 루트로 심김 · 1=안 심김 · 2=못 잼 · 3=심겼는데 낡은 항목이 남음
   [ -n "$(py_num "$PY_CMD")" ] || return 2
-  "$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" <<'HOOKEOF'
-import json, sys
-path, cmd = sys.argv[1], sys.argv[2]
+  "$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$(home_hook_shape)" <<'HOOKEOF'
+import json, re, sys
+path, cmd, shape = sys.argv[1:4]
 try:
     cfg = json.load(open(path, encoding="utf-8"))
 except (OSError, ValueError):
@@ -1946,12 +2210,12 @@ found, stale = False, []
 for e in cfg.get("hooks", {}).get("SessionStart", []):
     for h in e.get("hooks", []):
         c = h.get("command", "")
+        ours = re.search(shape, c)
         if c == cmd:
             found = True
-        elif "session-start.sh" in c:
-            # 우리 꼴이면 루트만 — 아니면 명령 그대로. 「파일을 열어 보라」는 말은 안 열린다
-            parts = c.split('"')
-            stale.append(parts[1] if len(parts) > 2 else c)
+        elif ours:
+            # 우리 꼴이면 그 루트(꼴의 첫 묶음)를 댄다 — 「파일을 열어 보라」는 말은 안 열린다. 그 사람의 항목은 안 센다
+            stale.append(ours.group(1))
 for s in stale:
     print(s)
 raise SystemExit((3 if stale else 0) if found else 1)
@@ -2026,13 +2290,17 @@ global_rule_reason() {   # 낸다: 못 닿으면 까닭 한 줄, 닿으면 빈 �
 #    스냅샷 맞춤(install ⑦)이 같이 쓴다.
 # ⚠ **끝줄이 아니라 첫 `fatal:`/`error:` 줄이다.** 로컬 작업 트리 갈래는 끝줄이 `Aborting`
 #   이라, 끝줄을 집으면 사유가 있는데 층이 안 갈린다(실물로 재 봤다). 층이 갈리는 것이
-#   요점이다 — 아래 넷이 여기서 나뉘고, 넷은 손대는 자리가 서로 다르다:
+#   요점이다 — 아래가 여기서 나뉘고, 손대는 자리가 서로 다르다:
 #     `could not read Username`  자격증명 — GCM 이 사람을 부르려는데 훅엔 부를 사람이 없다
 #     `unable to access …`       망·게이트
 #     `Your local changes …`     로컬 수정 · 줄끝(`core.autocrlf`)
 #     `Not possible to fast-forward`  로컬이 원격과 갈라졌다
+#     `! [rejected] … (non-fast-forward)`  fetch 가 로컬 갈래를 못 옮겼다 — 갈라졌다
+# ⚠ **`fatal:`/`error:` 줄이 없으면 끝줄이 아니라 첫 거절 줄(`! [rejected]`)이다.** fetch 의 거절은 `fatal:` 이
+#   아니라 갱신 표의 한 줄로 나오고, 그 뒤에 `* [new tag] …` 같은 줄이 붙을 수 있어 끝줄은 사유가 아니다.
 git_why() {   # git_why <붙잡은 stderr> — 층이 갈리는 한 줄
   _w="$({ printf '%s\n' "$1" | grep -m1 -E '^(fatal|error):' ||
+          printf '%s\n' "$1" | grep -m1 -E '^[[:space:]]*! \[rejected\]' ||
           printf '%s\n' "$1" | grep -v '^[[:space:]]*$' | tail -1; } 2>/dev/null | cut -c1-160)"
   printf '%s' "${_w:-사유가 안 나왔다}"
 }
@@ -2081,6 +2349,14 @@ bg_fail_report() {  # bg_fail_report <저장소> <로그> <원문 보관> <무�
 # ⚠ **refspec 을 두 칸 다 적는다.** 한 갈래만 받게 클론된 저장소는 `fetch <원격> main` 이 추적 갈래를 안 옮기고
 #   FETCH_HEAD 만 쓴다 — 그러면 사진이 그대로인데 성공으로 끝난다.
 # ⚠ **원격 이름을 안 박는다** — 당김(pull_ff)과 같이 추적 설정에서 읽는다. 없으면 맞출 자리가 없어 조용히 물러난다.
+# ⚠ **얕게 받은 저장소는 거절을 한 번 더 따진다.** 리모트 하네스는 깊이 50 으로 받는다. 스냅샷 뒤 원격이 그 창을 넘게
+#   앞서면 로컬 main 과 추적 갈래의 창이 안 겹쳐, 갈라지지 않았는데도 git 이 빨리감기를 증명하지 못해 거절한다. 그래서 지면
+#   로컬 main 의 커밋 시각(epoch · 같은 초의 커밋도 든다) 이후까지만 깊이를 늘려 한 번 더 한다 — 그래도 지면 정말 갈라진
+#   것이라 그 사유를 낸다. 전체를 풀지 않는다: 받는 양이 로컬 main 이 뒤처진 만큼으로 끝난다.
+_fetch_main() {  # _fetch_main <저장소> <원격> — 추적 갈래(강제)와 로컬 main(빨리감기만)을 옮긴다. 출력은 부른 쪽이 붙잡는다
+  git -C "$1" fetch "$2" "+refs/heads/main:refs/remotes/$2/main" "refs/heads/main:refs/heads/main" 2>&1
+}
+
 sync_main() {  # sync_main <저장소> — 0=맞췄거나 맞출 것이 없다 · 1=졌다(사유는 stdout)
   git -C "$1" rev-parse --git-dir >/dev/null 2>&1 || return 0
   git -C "$1" show-ref --verify --quiet refs/heads/main || return 0
@@ -2089,8 +2365,15 @@ sync_main() {  # sync_main <저장소> — 0=맞췄거나 맞출 것이 없다 �
   [ -n "$_sr" ] || return 0
   # ⚠ `-q` 를 안 준다 — 주면 거절 줄(`! [rejected] … (non-fast-forward)`)까지 숨어 사유 없이 진다. 대신 출력을
   #   붙잡아 두고 **질 때만** 낸다 — 성공 출력이 로그에 남으면 다음 세션이 그것을 실패로 읽는다.
-  _so="$(git -C "$1" fetch "$_sr" "+refs/heads/main:refs/remotes/$_sr/main" "refs/heads/main:refs/heads/main" 2>&1)" ||
-    { printf '%s\n' "$_so"; return 1; }
+  _so="$(_fetch_main "$1" "$_sr")" && return 0
+  if [ "$(git -C "$1" rev-parse --is-shallow-repository 2>/dev/null)" = true ]; then
+    _since="$(git -C "$1" log -1 --format=%ct main 2>/dev/null)"
+    if [ -n "$_since" ]; then
+      _so="$(git -C "$1" fetch "$_sr" --shallow-since="$_since" main 2>&1)" &&
+        _so="$(_fetch_main "$1" "$_sr")" && return 0
+    fi
+  fi
+  printf '%s\n' "$_so"; return 1
 }
 
 # 리눅스 auto 에서 붙은 저장소마다 배경으로 맞춘다. 리눅스는 이 함대에서 리모트 컨테이너뿐이다.
@@ -2277,10 +2560,10 @@ install_step() {
     deploy_personal auto  # 가벼운 것만 — 무거운 것(clone · 홈 설정 덮기)은 위 PC 분기가 이미 들었다
 
     # ── ②′ 전역 SessionStart 훅 · 신뢰 — 몸통은 위 plant_session_state 한 벌이다.
-    #    auto 가 지문 게이트 앞에서 이미 부르지만, `--install` 로 곧장 들어온 갈래
-    #    (deploy.ps1 · 리모트 Setup script)는 그 자리를 안 지나므로 여기서도 부른다.
+    #    명시한 `--install` 로 들어온 갈래(deploy.ps1 의 저장소마다 · 리눅스 설정 스크립트)만 심는다. 세션(auto)이 지문
+    #    어긋남으로 이 갈래에 온 판은 `ASKED` 가 비어 안 심는다 — 심기는 세션의 일이 아니다(위 plant_session_state 머리말).
     #    멱등이라 겹쳐 불려도 항목은 하나다 (0028 이 쟀다).
-    plant_session_state
+    [ "$ASKED" = install ] && plant_session_state
     # 전역 도구를 깔 판이면 표식은 전역 지문을 굳힌 뒤(⑧)로 미룬다 — 위 auto 의 지문 게이트와 같은 까닭이다
     if [ -n "$DO_GLOBAL" ]; then PW_DEFER=1; else pc_wide_mark; fi
   fi
@@ -3124,7 +3407,7 @@ unset -f _migrate_name
 #   보이게 한다. 막지는 않고 자리를 말하고 간다(선언 없는 저장소도 정당하기 때문이다).
 # ⚠ `--needs-install` 은 이 줄을 안 낸다 — 그 갈래의 답은 **기계가 읽는 한 줄**이라 다른 줄이
 #   섞이면 사유가 밀린다. 이 말이 필요한 사람은 세션(auto)·설치 화면에서 그대로 듣는다.
-[ "$MODE" = needs-install ] ||
+[ "$MODE" = needs-install ] || [ "$MODE" = plant ] ||
 [ -e "$PROJECT_DIR/requirements.txt" ] || [ -e "$PROJECT_DIR/package-lock.json" ] ||
 [ -e "$GCONF" ] || [ -e "$PCONF" ] ||
   echo "$PROJECT_NAME: ⚠ 선언이 하나도 없다(requirements.txt · package-lock.json · tools*.conf) — $PROJECT_DIR 를 저장소로 보고 있다. 자리가 맞나 본다."
@@ -3272,15 +3555,29 @@ PW_FULL_IF="deploy.seeds.conf .claude/hooks/session-start-body.sh"
 _TAB=$(printf '\t')   # 옮김 줄의 두 경로를 가르는 글자 — 글자로 박으면 편집기가 공백으로 바꿔도 모른다
 _NL='
 '
-PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_PLANT=1; PW_OID=""; PW_DIRTY=""; PC_WIDE_FAIL=""; PW_DEFER=""
+PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_HOMESET=1; PW_OID=""; PW_DIRTY=""; PC_WIDE_FAIL=""; PW_DEFER=""
 
 _CR=$(printf '\r')   # 고리 밖에서 한 번 — `$'\r'` 은 sh 에 없다
 _SITE=''; _SITE_FILE=''; _SITE_MODE=''; _SITE_DONE=''
 PULL_TTL=90   # 초. 훅 둘(저장소·홈)이 한 세션에서 40여 초 걸러 도는 것을 한 창으로 덮는다
 
+# ══ 단계 · 심기만 — plant 만 ════════════════════════
+#    층 — 홈과 환경(홈 SessionStart 훅 · 작업 루트 우리 저장소의 폴더 신뢰 · 데스크탑 앱 목록과 권한 — `plant_session_state`)
+#    하는 일 — 심기 하나를 하고 끝난다. 설정 저장소가 없는 PC 에서도 설치기가 홈 씨앗의 이 몸통으로 부른다. 작업 루트는
+#      받은 값(`PLANT_ROOT` — 부름 단계가 굳혔다)이다. 홈 훅이나 Claude 신뢰를 못 심었거나 심는 스크립트가 못 돌았으면
+#      (`PC_WIDE_FAIL`) 1 로 끝난다(까닭은 위 줄). 다른 칸은 못 심어도 줄만 남기고 0 이다(머리말 `--plant`)
+#    앞에서 받는 것 — `PLANT_ROOT` · `CONFIG_ROOT`(없어도 된다 — `plant_session_state` 머리말) · 고른 해석기
+#    안 하는 것 — 깔기 · 배포 · 당김 · 커밋 훅 배선 · PC 전체 일(홈 밀기)과 그 표식 · 진단
+if [ "$MODE" = plant ]; then
+  SIBLING_BASE="$PLANT_ROOT"
+  plant_session_state
+  [ -n "$PC_WIDE_FAIL" ] && exit 1
+  exit 0
+fi
+
 # ══ 단계 · 세션 — auto 만 ════════════════════════
 #    층 — 저장소(커밋 훅 배선 · 저장소 제 시작 일 · 당김 · venv 를 세션 셸에 잇기) · 홈과 환경(PC 전체 일을 맡을
-#      때 — 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록 · 씨앗 밀기 · 개인 칸의 가벼운 것 · 홈 훅과 신뢰 심기)
+#      때 — 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록 · 씨앗 밀기 · 개인 칸의 가벼운 것). 홈 훅과 신뢰 심기는 명시한 설치만 한다
 #    하는 일 — 매 세션 일을 하고(리눅스는 붙은 저장소마다 당김 · main 맞추기를 배경으로 더한다), 낡음과 선언 지문(전역 ·
 #      저장소)을 견준다. 깔 것이 없으면 여기서 0 으로 끝나고, 있으면 `MODE=install` · `INSTALL_BG=1` 로 설치
 #      단계에 넘긴다
@@ -3336,7 +3633,7 @@ if [ "$MODE" = auto ]; then
       deploy_home_norms  # 당김이 배경이라 이번엔 지난 판을 민다 — 방금 당긴 것은 다음 세션이 민다 (0043)
       PUSH_ONLY=""
       [ -n "$PW_REST" ] && deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
-      [ -n "$PW_PLANT" ] && plant_session_state  # 지문 게이트 앞이다 — 심겼나·신뢰는 선언 지문과 무관한 명제다
+      # 홈 훅 · 신뢰 · 데스크탑 목록은 여기서 안 심는다 — 명시한 설치만 심는다(plant_session_state 머리말)
       # 표식은 아래 지문 게이트 뒤에 적는다 — 전역 도구를 깔 판이면 그 설치가 끝나야 「맞췄다」가 참이다
     else
       # 할 일이 없다고 봤다 — 형제 세션 알림에 「맡는 자리가 돌고 있다」를 남긴다 (0068).
@@ -3472,9 +3769,9 @@ if [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
   case "$_hh" in
     0) gate "홈 훅" ok  "심겼다 — 저장소 밖(전역 층·홈)에서 연 세션도 auto 가 선다" ;;
     1) if [ -n "$_stale" ]; then
-         gate "홈 훅" off "이 루트($(home_hook_root))로는 안 심겼다 — 딴 루트만 심겨 있다: $_stale. 저장소를 옮겼으면 deploy.ps1 이나 --install 이 이 루트로 심는다"
+         gate "홈 훅" off "이 루트($(home_hook_root))로는 안 심겼다 — 딴 루트만 심겨 있다: $_stale. 저장소를 옮겼으면 다음 설치(설치기 · 로그온 자동 실행의 --install)가 이 루트로 심는다"
        else
-         gate "홈 훅" off "안 심겼다 — 저장소 밖에서 연 세션은 아무 훅도 안 건다. deploy.ps1 이나 --install 이 심는다"
+         gate "홈 훅" off "안 심겼다 — 저장소 밖에서 연 세션은 아무 훅도 안 건다. 다음 설치(설치기 · 로그온 자동 실행의 --install)가 심는다"
        fi ;;
     2) gate "홈 훅" off "**못 잼** — $PY_CMD 를 못 부른다(윈도우면 스토어 껍데기다). 심기도 같은 가드에서 진다" ;;
     3) gate "홈 훅" off "이 루트로는 심겼는데 **낡은 항목이 남아 있다**: $_stale — 그 루트의 저장소를 세션마다 헛돈다. ~/.claude/settings.json 에서 그 항목을 지운다" ;;

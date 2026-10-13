@@ -70,6 +70,8 @@ Codex 가 내는 `command` 는 이 기계의 실효 명령(윈도면 `commandWin
 
 **데스크탑 프로젝트(local-projects).** 명령은 없다 — 세션 훅이 `plant_desktop_projects` 를 불러 저장소 뿌리를 Codex
 데스크탑의 프로젝트 목록(제 상태 파일)에 더한다. app-server 를 안 거치고 파일을 쓴다(그 절 머리말 · 결정 0126).
+**데스크탑 권한 모드(agent-mode).** 명령은 없다 — 세션 훅이 `plant_desktop_agent_mode` 를 불러 같은 상태 파일의 로컬 호스트 권한을
+지금 값과 상관없이 「나 대신 승인」으로 쓴다(그 절 머리말 · 결정 0127).
 
 종료 코드: 0 쟀다(trust 면 적을 것을 다 적고 다시 읽어 확인했다) · 1 ERROR · 2 인자가 틀렸다(argparse) · 3 UNMEASURED.
 ⚠ UNMEASURED 가 2 가 아닌 까닭 — argparse 가 인자 오류에 2 를 쓴다. 부르는 쪽의 실수와 Codex 를 못 잰 것이 한 값이면 안 갈린다.
@@ -82,6 +84,7 @@ import collections
 import contextlib
 import importlib.util
 import json
+import math
 import os
 import pathlib
 import queue
@@ -595,7 +598,9 @@ def plant_projects(paths, home, codex=None, start=True):
 #   짝이 없는 것을 `project/import` 로 맺는다(데스크탑 26.1007 · 결정 0126). app-server 에만 만든 프로젝트는 목록에 안 선다.
 # ⚠ **데스크탑이 떠 있으면 안 쓴다** — 앱이 그 파일을 제 기억으로 다시 써, 그 사이 적은 것이 사라진다.
 # ⚠ **목록에 한 번 섰던 자리는 사람이 빼면 다시 안 넣는다** — 선 적이 있는 뿌리를 우리 기록(`.paisetup-desktop-projects.json`)에
-#   남긴다. 그 기록은 쓴 뒤에도 데스크탑이 안 떠 있을 때만 적는다 — 그 사이 떴으면 적은 것이 사라졌을 수 있어 다음 판이 다시 본다.
+#   남긴다. 그 기록은 쓴 뒤에도 데스크탑이 안 떠 있다고 가렸을 때만 적는다 — 그 사이 떴으면 적은 것이 사라졌을 수 있어 다음 판이
+#   다시 본다. 기록이 없을 때만 「본 적 없음」이다 — 있는데 못 읽으면(잠김 · 깨짐) 아무것도 안 쓰고 미룬다.
+# ⚠ **떠 있나를 못 가리면 떠 있는 것으로 본다** — 미루는 쪽이 잃는 것이 없다.
 DESKTOP_STATE = '.codex-global-state.json'
 DESKTOP_SEEN = '.paisetup-desktop-projects.json'
 LOCAL_PROJECTS, PROJECT_ORDER, ROOT_PATHS = 'local-projects', 'project-order', 'rootPaths'
@@ -605,6 +610,19 @@ PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 PID_SLOTS, IMAGE_CHARS = 8192, 32768
 DP_HAVE, DP_NOW, DP_GONE = 'listed', 'listed-now', 'removed-by-user'
 DP_OFF, DP_NEVER, DP_RUNNING = 'not-windows', 'desktop-never-ran', 'desktop-running'
+DP_UNKNOWN, DP_RECORD = 'running-unknown', 'record-unreadable'
+
+
+def read_seen_list(path):
+    """우리 기록(글 목록) — 없으면 빈 것. 못 읽거나 글 목록이 아니면 None 이다(부르는 쪽이 미룬다)."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            got = json.load(f)
+    except FileNotFoundError:
+        return set()
+    except (OSError, ValueError):   # 잠겼다 · 폴더다 · 깨졌다
+        return None
+    return set(got) if isinstance(got, list) and all(isinstance(s, str) for s in got) else None
 
 
 def desktop_running():
@@ -638,13 +656,37 @@ def desktop_running():
     return False
 
 
+def compact_json(obj):
+    """데스크탑이 제 상태 파일을 쓰는 꼴의 글 — 공백 없는 한 줄 · 끝 줄바꿈 없음 · 한글 그대로."""
+    return json.dumps(obj, ensure_ascii=False, separators=(',', ':'))
+
+
+def refuse_non_json(token):
+    raise ValueError(f'JSON 이 아닌 값 {token} 이 들었다 — 앱은 이 글을 못 읽는다')
+
+
+def finite_float(text):
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError(f'수 {text} 가 넘친다 — 우리가 되쓰면 앱이 못 읽는 Infinity 가 된다')
+    return value
+
+
+def read_desktop_state(text):
+    """데스크탑 상태 파일의 글을 읽는다. 앱의 `JSON.parse` 가 못 읽는 상수(`NaN` · `Infinity` · `-Infinity`)나 우리가 되쓰면 그
+    상수가 되는 수(넘치는 수 — `1e400`)가 들었으면 ValueError 다.
+    ⚠ 파이썬 `json` 은 그 상수를 읽고 그대로 되쓴다 — 앱은 본 파일을 못 읽으면 `.bak` 을 읽고, 둘 다 못 읽으면 빈 상태로 뜬다
+    (프로젝트 · 설정이 다 사라진다). 그래서 읽는 자리에서 막는다 — 두 심기가 이 하나로 읽는다."""
+    return json.loads(text, parse_constant=refuse_non_json, parse_float=finite_float)
+
+
 def write_compact_json(path, obj):
-    """데스크탑이 제 상태 파일을 쓰는 꼴(공백 없는 한 줄 · 끝 줄바꿈 없음 · 한글 그대로)로 옆에 쓰고 옮긴다."""
+    """데스크탑이 제 상태 파일을 쓰는 꼴(`compact_json`)로 옆에 쓰고 옮긴다."""
     d = os.path.dirname(path)
     fd, tmp = tempfile.mkstemp(dir=d, prefix='.paisetup-', suffix='.tmp')
     try:
         with os.fdopen(fd, 'w', encoding='utf-8', newline='') as f:
-            f.write(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
+            f.write(compact_json(obj))
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -655,18 +697,27 @@ def write_compact_json(path, obj):
 def plant_desktop_projects(paths, home, running=desktop_running):
     """받은 저장소 뿌리를 Codex 데스크탑 프로젝트로 하나씩 더한다 — `((이름, 상태) 목록, 미룬 까닭 또는 None)`.
     상태 = DP_HAVE(이미 어느 프로젝트의 폴더다) · DP_NOW(이번에 더했다) · DP_GONE(목록에 섰다가 사람이 뺐다 — 안 넣었다).
-    미룬 까닭 = DP_OFF(윈도 밖) · DP_NEVER(데스크탑이 아직 상태 파일을 안 지었다) · DP_RUNNING(데스크탑이 떠 있다).
-    상태 파일을 못 읽거나 꼴이 다르면 ERROR=desktop-state 의 `Stop` — 아무것도 안 썼다. 못 쓰면 ERROR=desktop-write 의 `Stop`."""
+    미룬 까닭 = DP_OFF(윈도 밖) · DP_NEVER(데스크탑이 아직 상태 파일을 안 지었다) · DP_RUNNING(데스크탑이 떠 있다) ·
+    DP_UNKNOWN(떠 있나를 못 가렸다) · DP_RECORD(우리 기록을 못 읽었다) — 미룬 판은 아무것도 안 쓴다.
+    상태 파일을 못 읽거나 꼴이 다르거나 JSON 이 아닌 상수가 들었으면(`read_desktop_state`) ERROR=desktop-state 의 `Stop` — 아무것도
+    안 썼다. 못 쓰면 ERROR=desktop-write 의 `Stop`."""
     if os.name != 'nt':
         return [], DP_OFF
     path = os.path.join(home, DESKTOP_STATE)
     if not os.path.isfile(path):
         return [], DP_NEVER
-    if running():
+    up = running()
+    if up is None:
+        return [], DP_UNKNOWN
+    if up:
         return [], DP_RUNNING
+    seen_path = os.path.join(home, DESKTOP_SEEN)
+    seen = read_seen_list(seen_path)
+    if seen is None:
+        return [], DP_RECORD
     try:
         with open(path, encoding='utf-8') as f:
-            state = json.load(f)
+            state = read_desktop_state(f.read())
         projects = state.get(LOCAL_PROJECTS, {}) if isinstance(state, dict) else None
         order = state.get(PROJECT_ORDER, []) if isinstance(state, dict) else None
         if not isinstance(projects, dict) or not isinstance(order, list):
@@ -675,12 +726,6 @@ def plant_desktop_projects(paths, home, running=desktop_running):
         raise error('desktop-state', f'{path}: {exc}') from exc
     listed = {os.path.normcase(r) for p in projects.values() if isinstance(p, dict)
               for r in (p.get(ROOT_PATHS) or []) if isinstance(r, str)}
-    seen_path = os.path.join(home, DESKTOP_SEEN)
-    try:
-        with open(seen_path, encoding='utf-8') as f:
-            seen = {s for s in json.load(f) if isinstance(s, str)}
-    except (OSError, ValueError, TypeError):
-        seen = set()
     roots = {}
     for p in paths:
         d = os.path.realpath(p)
@@ -706,10 +751,73 @@ def plant_desktop_projects(paths, home, running=desktop_running):
         except OSError as exc:
             raise error('desktop-write', f'{path}: {exc}') from exc
     new_seen = seen | {k for k in roots if k in listed} | set(added)
-    if new_seen != seen and not running():
+    if new_seen != seen and running() is False:   # 떴거나 못 가렸으면 안 남긴다 — 다음 판이 다시 본다
         with contextlib.suppress(OSError):   # 못 적으면 다음 판이 목록에 선 것을 보고 다시 적는다
             write_compact_json(seen_path, sorted(new_seen))
     return states, None
+
+
+# ── 데스크탑 권한 모드(agent-mode) ─────────────────────────────────────────────────────────────────────────────
+# 데스크탑의 권한 고르기 값은 제 상태 파일의 `electron-persisted-atom-state` → `agent-mode-by-host-id`(호스트마다)에 선다. 그 호스트의
+#   값이 없으면 새 대화는 `config.toml` 에서 고른 기본을 쓰고(`approvals_reviewer` 가 검토자를 대면 「나 대신 승인」), 윈도 샌드박스 설정을
+#   마치기 전에는 `read-only` 다. 앱이 그 칸에 쓰는 때는 사람이 고를 때와, 로그인 뒤 샌드박스 설정을 마칠 때(`auto` — 「승인 요청」 ·
+#   지금 값과 상관없이 덮는다) 둘이다(데스크탑 26.1007 번들 · 결정 0127 「Codex 데스크탑의 기본 권한」).
+# ⚠ **로컬 호스트의 그 한 칸만 「나 대신 승인」으로 쓴다 — 지금 값이 무엇이든**(없음 · `auto` · 그 밖). 앱이 적은 값과 사람이 고른 값이
+#   글자로 안 갈리고, 이 칸은 이 기능 하나만 든다(사용자 결정 2026-10-14). 기록은 안 남긴다 — 설치마다 다시 쓴다.
+# ⚠ **상태 파일이 없으면 안 짓는다** — 지으면 앱이 첫 실행 준비를 건너뛰고, 심은 값도 로그인 뒤 샌드박스 설정이 덮는다.
+# ⚠ **떠 있으면 안 쓴다** — 앱은 그 파일을 다시 안 읽고 저장 때마다 제 기억을 통째로 써, 그 사이 적은 것이 사라진다.
+# ⚠ **그 칸 밖의 바이트는 그대로다** — 앱이 쓰는 꼴(`JSON.stringify` — 공백 없는 한 줄)로 되짜 원래 글과 같을 때만 쓴다. 다르면 안 쓰고
+#   진다 — 앱이 쓴 글에도 파이썬 `json` 이 달리 적는 꼴(짝 없는 서로게이트의 `\u` 꼴 · `0.00001` 같은 작은 수)이 들고, 손으로 고친
+#   글도 다르다. 앱이 저장마다 같은 글을 곁의 `.bak` 에도 쓰므로 우리도 같은 글을 거기 쓴다
+#   (앱은 본 파일을 못 읽을 때만 `.bak` 을 읽는다 — 본 파일이 깨졌을 때 옛 값으로 돌아가지 않게 한다).
+DESKTOP_ATOMS, AGENT_MODES, LOCAL_HOST = 'electron-persisted-atom-state', 'agent-mode-by-host-id', 'local'
+MODE_APPROVE_FOR_ME = 'guardian-approvals'
+DESKTOP_BACKUP_SUFFIX = '.bak'
+DM_NOW, DM_HAVE = 'planted-now', 'approve-for-me'
+
+
+def plant_desktop_agent_mode(home, running=desktop_running):
+    """데스크탑 로컬 호스트의 권한 모드를 「나 대신 승인」으로 쓴다 — `(상태 또는 None, 미룬 까닭 또는 None)`.
+    상태 = DM_NOW(다른 값이었거나 없어 썼다) · DM_HAVE(이미 그 값이다 — 안 썼다). 미룬 까닭 = `plant_desktop_projects` 의 OFF ·
+    NEVER(상태 파일이 없다 — 안 짓는다) · RUNNING · UNKNOWN — 미룬 판은 아무것도 안 쓴다.
+    못 읽거나 꼴이 다르거나 JSON 이 아닌 상수가 들었거나(`read_desktop_state`) 앱의 꼴로 되짜지 않으면 ERROR=desktop-state · 못 쓰면
+    ERROR=desktop-write 의 `Stop` — 본 파일도 `.bak` 도 안 바뀌었다."""
+    if os.name != 'nt':
+        return None, DP_OFF
+    path = os.path.join(home, DESKTOP_STATE)
+    if not os.path.isfile(path):
+        return None, DP_NEVER
+    up = running()
+    if up is None:
+        return None, DP_UNKNOWN
+    if up:
+        return None, DP_RUNNING
+    try:
+        with open(path, encoding='utf-8', newline='') as f:
+            raw = f.read()
+        state = read_desktop_state(raw)
+        if not isinstance(state, dict):
+            raise ValueError('글 전체가 객체가 아니다')
+        atoms = state.get(DESKTOP_ATOMS, {})
+        modes = atoms.get(AGENT_MODES, {}) if isinstance(atoms, dict) else None
+        if not isinstance(modes, dict):
+            raise ValueError(f'{DESKTOP_ATOMS} · {AGENT_MODES} 꼴이 다르다')
+        if compact_json(state) != raw:
+            raise ValueError('이 상태 파일을 바이트 그대로 되쓸 수 없어 손대지 않았다(앱이 쓴 글에도 우리가 달리 적는 글자 · 숫자 꼴이 '
+                             '들 수 있다) — 권한은 앱에서 고르면 된다')
+    except (OSError, ValueError) as exc:   # UnicodeDecodeError · JSONDecodeError 는 ValueError 다
+        raise error('desktop-state', f'{path}: {exc}') from exc
+    if modes.get(LOCAL_HOST) == MODE_APPROVE_FOR_ME:
+        return DM_HAVE, None
+    modes[LOCAL_HOST] = MODE_APPROVE_FOR_ME
+    atoms[AGENT_MODES], state[DESKTOP_ATOMS] = modes, atoms
+    try:
+        write_compact_json(path, state)
+    except (OSError, ValueError) as exc:   # 못 담는 글자(짝 없는 서로게이트)는 ValueError 다 — 옆에 쓰고 옮겨 본 파일은 그대로다
+        raise error('desktop-write', f'{path}: {exc}') from exc
+    with contextlib.suppress(OSError):   # 앱도 `.bak` 쓰기가 지면 알리고 간다 — 본 파일이 섰으니 앱은 그것을 읽는다
+        write_compact_json(path + DESKTOP_BACKUP_SUFFIX, state)
+    return DM_NOW, None
 
 
 def main():

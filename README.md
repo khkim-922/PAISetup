@@ -17,23 +17,23 @@
 
 ## 무엇이 깔리나
 
-무엇을 할 수 있게 되나를 한눈에 보려면 설치 창의 「제공기능」 링크(`features.html`)를 연다. 이 판에서 바뀐 것은 그 곁의 「바뀐 것」 링크가 그 판의 릴리스 노트를 연다 — 주소는 값 파일의 `#update-repo` 와 `VERSION` 에서 지어 진다. 아래 표는 어디에 무엇이
+무엇을 할 수 있게 되나를 한눈에 보려면 설치 창의 「제공기능」 링크(`features.html`)를 연다 — 로그온 자동 실행은 새 첫자리 판에 처음 오를 때 그 페이지를 한 번 연다. 이 판에서 바뀐 것은 그 곁의 「바뀐 것」 링크가 그 판의 릴리스 노트를 연다 — 주소는 값 파일의 `#update-repo` 와 `VERSION` 에서 지어 진다. 아래 표는 어디에 무엇이
 어떤 조건으로 깔리나를 적는다.
 
 | | |
 |---|---|
 | **고른 도구** — Claude · Codex · 구글 Antigravity · Gemini · GitHub Copilot | 설치 창에서 **켠 것만** 깔린다. 한 칸이 그 도구의 **CLI · VS Code 확장 · 데스크탑 앱**을 한꺼번에 든다 — 도구마다 드는 것이 다르다(Gemini 는 데스크탑 앱이 없고, Copilot 은 확장 없이 데스크탑 앱과 CLI 를 든다). **Gemini 와 Copilot 은 꺼진 채로 뜬다** — 안티그래비티가 Gemini 를 대신하는 도구라 둘을 같이 깔 까닭이 없고, Copilot 은 아직 시범 운영이라 쓸 사람만 켠다. 끈 것은 어디에도 안 깔린다 |
-| **VS Code 와 확장** | 칸이 따로 있다. **사내는 필수라 켠 채로 잠겨 있다. 사외는 꺼진 채로 뜬다** — 데스크탑 앱만으로도 쓸 수 있어서다. 끄면 VS Code 자체도 안 깐다. ⚠ 확장은 CLI 를 자식 프로세스로 부른다 — 둘 중 하나만 있으면 안 돈다 |
+| **VS Code 와 확장** | 칸이 따로 있다. **사내는 필수라 켠 채로 잠겨 있다. 사외는 꺼진 채로 뜬다** — 데스크탑 앱만으로도 쓸 수 있어서다. 끄면 VS Code 자체도 안 깐다. ⚠ 확장은 CLI 를 자식 프로세스로 부른다 — 둘 중 하나만 있으면 안 돈다. 깔린 VS Code 에는 **설정 저장소들의 작업 영역 신뢰를 미리 적어** 처음 열 때 「작성자를 믿느냐」를 안 묻고 확장이 바로 선다 — 그 밖의 폴더는 그대로 묻는다 |
 | Node.js | Claude · Codex · Gemini 의 CLI 가 이것으로 돈다 — 무엇을 골랐든 늘 깔린다. 안티그래비티 CLI(`agy`)만은 Node 가 아니라 winget 이 깐다 |
 | 어디에 붙나 — 사내 · 사외 | **사내**에서는 켠 도구가 같은 회사 키로 게이트웨이에 붙는다 — 아래 로컬 프록시를 거쳐 붙는다. **사외**에서는 각자 로그인한다 — Codex 는 `codex login`(ChatGPT 계정), Gemini 와 안티그래비티는 처음 실행할 때 Google 로그인. 설치가 잰 자리는 사용자 환경변수 `PAISETUP_SITE`(`inside` · `outside` — 모르면 `outside`)에 남는다 — 일을 맡기는 세션이 맡기기 모델 표(아래 「agy 묶음」)에서 이 자리 줄을 읽는다. ⚠ **안티그래비티 확장은 제 화면을 가진 에이전트다** — Gemini Companion 은 창이 없어 터미널의 `gemini` 와 같이 써야 하지만, 안티그래비티는 사이드바에서 바로 쓴다. 이 확장은 처음 열 때 제 본체(`agy` · 188MB)를 따로 받는다 — 설치가 깐 안티그래비티 CLI 와 같은 것을 한 번 더 받는 셈이다 |
 | **로컬 프록시** | **사내에서만.** `127.0.0.1:18901` 에서 돌며 Claude Code(Opus 5) · Codex · Gemini CLI · 안티그래비티의 요청을 게이트웨이로 넘긴다. Claude Code 의 웹 검색은 게이트웨이의 제미나이 검색으로, Codex 의 웹 검색은 게이트웨이의 Responses 검색으로 여기서 메운다 — 두 도구가 묻는 꼴을 게이트웨이가 그대로는 안 받는다. 로그인할 때마다 감시 작업(`PGPTProxy-Watchdog`)이 알아서 띄우고 지킨다. 왜 있나는 `posco/pgpt-proxy/README.md` 가 든다 |
 | Git · Python · GitHub CLI | 코드를 짤 사람용이다. 설치 창에는 이 칸이 없어 늘 깔린다 — 빼려면 `Setup.exe -NoDevTools` 로 부른다. **다만 Python 으로 도는 것이 서는 자리면 Python 만은 깐다** — 사내 프록시와, 아래 「칸 없이 깔리는 스킬」의 맡기기 래퍼들과, Claude 를 고르면 심기는 DRM 길잡이 훅과, Codex 를 고르면 심기는 Codex 훅과, 제작자 칸을 하나라도 켜거나 Claude 를 고르면 규범 · 룰 · 스킬 · Claude 훅 등록을 놓는 프로그램(`tool-homes.py` — 아래 「규범 · 룰 · 스킬」)이다. 설치 창이 까닭을 그 줄에 적는다. 「내 저장소 받기」에 주소를 넣었고 GitHub CLI 로그인이 안 돼 있으면, **저장소를 받기 직전에** 설치가 브라우저 로그인을 띄운다 — 일회용 코드와 남은 시간(180초)이 팝업에 뜬다 |
-| **데스크탑 앱** | **앱마다 다르다.** 게이트웨이에 못 붙어 사내에서는 쓸모가 없는 것(Claude · Codex · Antigravity)은 **사외에서만** 깔리고, 제 계정으로 로그인해 쓰는 것(**GitHub Copilot**)은 **사내·사외 모두** 깔린다. 켠 도구의 것만 깔린다. ⚠ Copilot 은 **WebView2 런타임**이 있어야 도는데 설치 목록에 그것이 딸려 오지 않는다 — 없는 기계(사내 VDI)면 **먼저 깔고**, 이미 있으면(사내 PC 에는 대개 있다) 건너뛴다. ⚠ **Gemini 데스크탑 앱은 안 깐다** — 회사 망이 설치 도중에 연결을 끊어 두 번 다 실패했다. 집에서는 깔리므로 필요하면 <https://gemini.google.com/app> 에서 손으로 받는다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다. ⚠ **로그인은 사람이 한다** — Copilot 은 회사 계정으로 직접 인증하고, 사외 개인 PC 에서는 회사 계정이 막혀(등록 안 된 기기) 개인 계정으로 쓴다 |
+| **데스크탑 앱** | **앱마다 다르다.** 게이트웨이에 못 붙어 사내에서는 쓸모가 없는 것(Claude · Codex · Antigravity)은 **사외에서만** 깔리고, 제 계정으로 로그인해 쓰는 것(**GitHub Copilot**)은 **사내·사외 모두** 깔린다. 켠 도구의 것만 깔린다. ⚠ Copilot 은 **WebView2 런타임**이 있어야 도는데 설치 목록에 그것이 딸려 오지 않는다 — 없는 기계(사내 VDI)면 **먼저 깔고**, 이미 있으면(사내 PC 에는 대개 있다) 건너뛴다. ⚠ **Gemini 데스크탑 앱은 안 깐다** — 회사 망이 설치 도중에 연결을 끊어 두 번 다 실패했다. 집에서는 깔리므로 필요하면 <https://gemini.google.com/app> 에서 손으로 받는다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다. ⚠ **로그인은 사람이 한다** — Copilot 은 회사 계정으로 직접 인증하고, 사외 개인 PC 에서는 회사 계정이 막혀(등록 안 된 기기) 개인 계정으로 쓴다. Codex · Antigravity 데스크탑에는 설정 저장소들을 **프로젝트로 미리 더해** 둔다 — 앱이 떠 있었으면 다음 설치가 더하고, 사람이 목록에서 뺀 것은 다시 안 넣는다. Copilot 데스크탑의 프로젝트는 안 더한다 |
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣으면 고른 도구가 읽는 이름에 같이 심긴다 — Claude 는 `ANTHROPIC_AUTH_TOKEN`, Codex 는 `OPENAI_API_KEY`, Gemini · 안티그래비티는 `GEMINI_API_KEY`. **사외면 키를 안 묻고, 사내에서 쓰던 기계를 사외에서 다시 누르면 남아 있던 사내 값을 걷어 낸다** (아래 「무를 때」) |
 | **워드의 PDF 변환 안내 끄기** | 워드가 깔린 PC 면 자리 · 고른 도구와 상관없이, 깔린 판마다 `HKCU\Software\Microsoft\Office\<판>\Word\Options` 의 `DisableConvertPdfWarning` 을 1 로 둔다. 스킬 `drm-office-read` 가 숨겨 띄운 워드는 이 안내창이 뜨면 아무도 못 눌러 멈춘다. ⚠ **사람이 PDF 를 워드로 열 때도 그 안내가 안 뜬다** — 설치 창에 칸은 없고 설치 기록 한 줄과 끝 검증 한 줄이 밝힌다. 워드가 없으면 안 건드린다 (아래 「무를 때」) |
 | Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · 사내면 **웹페치 검증 건너뛰기**(`skipWebFetchPreflight` — 사내 망이 웹페치가 미리 묻는 Anthropic 차단 목록 조회를 끊어, 열리는 주소도 못 가져오던 것을 푼다. 사외는 그 검사가 서므로 안 켠다) · **자동 모드와 맡기기 러너 허락**(Claude 를 고르면 「permissions.defaultMode」를 `auto` 로 — 그 키가 이미 있으면 사람 값이라 안 덮는다. agy · Codex/Copilot 러너 스킬이 Claude 홈에 서면 그 러너를 부르는 `pythonw` 명령의 허락 한 줄씩을 `permissions.allow` 에 — 자동 모드 분류기가 뒤에서 러너를 띄우는 명령을 막기 때문이다. 심은 것은 설치기 폴더의 기록(`%LOCALAPPDATA%\Claude Code Setup\claude-settings.tsv`)에 적고, 조건이 빠지면 값이 그대로인 것만 걷는다. 지운 것은 다음 설치가 다시 심으니, 끄려면 다른 「defaultMode」 값이나 「permissions.deny」를 둔다) · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(Claude 를 고르면 — 모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅) · **웹 다시 찾기**(Claude 를 고르면 — 웹 검색 · 웹 가져오기가 못 닿았을 때 `curl` · Tavily · agy 에게 맡기기 같은 다른 길이 있다는 것을 결과 곁에 붙이는 훅 — 막지는 않는다) · **DRM 길잡이**(Claude 를 고르면 — 붙이거나 경로를 적은 오피스 · PDF 가 회사 DRM 에 감겼으면 스킬 `drm-office-read` 로 읽는 길을 곁에 붙이는 훅. VS Code 앱에서 「+」로 붙인 PDF 는 경로 없이 본문만 오므로, 감긴 바이트 그대로를 임시 폴더의 `drm-attach` 밑에 한 벌 떨궈 그 자리를 댄다. 감기지 않은 파일에는 아무것도 안 붙이고, 막지 않는다) · **Bash 겹역슬래시 보정**(Claude 를 고르면 — 윈도우에서 Bash 로 보낸 명령의 역슬래시는 셸에 닿기 전에 짝마다 하나로 접히므로, 명령의 역슬래시를 두 배로 늘려 쓴 그대로 닿게 고쳐 넘기는 훅. 접힘을 잰 Claude Code 판에서만 고치고, 처음 보는 판이면 명령을 돌려보낸다) · **PowerShell UTF-8 BOM 보정**(Claude 를 고르면 — 편집한 `.ps1` 에 BOM 이 없으면 찍는 훅. 윈도우 파워셸 5.1 은 BOM 없는 파일의 한글을 깨뜨려 읽는다). 사외로 가면 사내 전용 줄은 걷어 낸다. 훅 다섯의 등록은 `tool-homes.py` 가 놓는다 — 명령은 `~/.paisetup/` 두 층 가운데 이긴 층의 `hooks/` 를 가리키고(설정 저장소가 훅을 들면 개인 층, 아니면 짐이 채운 표준 층), 사람이 넣은 훅은 같은 항목에 있어도 둔다. 고른 제품은 사용자 환경변수 `PAISETUP_PICK` 에 남는다(예: `claude,codex,agy,copilot` · 넷 다 아니면 `none` — Gemini 는 안 든다). **Claude 를 빼고 다시 누르면 우리 훅 등록만 걷는다** |
 | Codex · Gemini · 안티그래비티 설정 | 회사 연결 설정은 사내에서만 선다. `~/.codex/config.toml` 은 없으면 회사 틀(`posco/`)로 쓰고, 있으면 틀이 든 자리만 틀의 값으로 맞춘다 — 사람이 둔 키 · Codex 가 적는 훅 신뢰 · 폴더 신뢰는 그대로 두고, 바꾼 게 있으면 고치기 전 것을 `config.toml.before-pgpt-<시각>` 에 떠 둔다. `~/.gemini/settings.json` 은 틀의 항목만 얹고, `~/.gemini/antigravity-cli/settings.json` 에는 인증 방식 한 줄(`modelProvider`)을 둔다. **Codex 훅은 자리와 관계없이 Codex를 고르면 선다** — DRM 길잡이 · 그림 문 · Windows Bash 겹역슬래시 차단 · PowerShell UTF-8 BOM 보정을 사람의 다른 Codex 설정을 두고 병합한다. 몸통은 설정 저장소 씨앗에서 오고, **설치가 우리 훅에 Codex 신뢰까지 적는다** — Codex 는 신뢰한 훅만 돌려, 신뢰가 없으면 대화형 시작은 묻고 `codex exec`(다른 도구가 Codex 에 일을 맡기는 길)는 말없이 건너뛴다. 신뢰는 Codex 제 설정 쓰기로 적고, 사람이 넣은 훅 · 사람이 끈 우리 훅은 안 건드린다. **Codex 를 빼고 다시 누르면 우리 훅만 걷는다** — 사람 훅과 뒤 항목의 자리 · 적어 둔 신뢰는 둔다. 걷는 손이 파이썬 3.11 이상으로 돌아, 없으면 노란 줄로 알리고 넘어간다. 키는 설정 파일에 안 들어가고 환경변수에만 있다. ⚠ **`GOOGLE_API_KEY` 가 이미 있으면 그 키가 회사 키보다 먼저 쓰인다** — 구글에 바로 붙는 키의 제 이름이라 설치는 지우지 않고 알리기만 한다. 회사 게이트웨이로 쓰려면 손으로 지운다 |
-| **묻지 않고 돌기** — 고른 agy · Copilot · Codex | 설치 창에 칸이 없다 — 그 도구를 고르면, 그 도구가 사람에게 묻던 자리를 스스로 진행하게 하는 **제 설정 하나**를 심는다(Claude 는 위 「자동 모드」가 같은 몫이다). agy · Copilot 은 자리와 상관없이, Codex 는 **사외에서만** 심는다 — 사내 게이트웨이에서 Codex 의 검토자가 서는지 아직 못 쟀다. agy CLI 는 `~/.gemini/antigravity-cli/settings.json` 의 `toolPermission` 을 `always-proceed` 로, agy 데스크탑 앱은 `~/.gemini/config/config.json` 의 `userSettings` 에 Turbo 세 칸(`autoExecutionPolicy` · `enableTerminalSandbox` · `nonWorkspaceFileAccessPolicy`)을 둔다 — 앱의 값은 CLI 에 안 먹어 둘 다 심는다. Copilot CLI 는 `~/.copilot/settings.json`(`COPILOT_HOME` 이 서면 그 안)의 `defaultPermissionMode` 를 `allow-all` 로 — 대화형 시작에만 먹고, `-p` 로 일을 맡기는 길은 그대로다. Codex(CLI · 데스크탑 앱)는 `~/.codex/config.toml` 맨 위에 `approvals_reviewer = "auto_review"`(「Approve for me」)를 둔다 — 샌드박스를 넘는 요청을 사람 대신 검토자가 가르고, 샌드박스 모드는 안 바꾼다. **사람이 둔 값은 안 덮는다** — 그 키가 이미 있으면(agy 앱은 세 칸 가운데 하나라도, Codex 는 `approval_policy` 도) 그 도구 줄을 통째로 둔다. 못 읽는 파일은 안 건드리고 빨간 줄로 알린다. agy · Copilot 의 이 설정은 **위험을 가르는 판단 없이 다 돌린다** — agy 에 걸린 우리 훅 가운데 DRM 길잡이는 그대로 막고(감긴 파일을 읽기 전에), Copilot 에는 우리 훅이 안 걸린다. **도구를 빼고 다시 눌러도 안 걷는다** — 사람이 같은 값을 둔 것과 글자로 안 갈려서다. 끄려면 그 도구의 설정에서 다른 값을 고른다(다음 설치가 그 값을 안 덮는다) |
+| **묻지 않고 돌기** — 고른 agy · Copilot · Codex | 설치 창에 칸이 없다 — 그 도구를 고르면, 그 도구가 사람에게 묻던 자리를 스스로 진행하게 하는 **제 설정 하나**를 심는다(Claude 는 위 「자동 모드」가 같은 몫이다). agy · Copilot 은 자리와 상관없이, Codex 는 **사외에서만** 심는다 — 사내 게이트웨이에서 Codex 의 검토자가 서는지 아직 못 쟀다. agy CLI 는 `~/.gemini/antigravity-cli/settings.json` 의 `toolPermission` 을 `always-proceed` 로, agy 데스크탑 앱은 `~/.gemini/config/config.json` 의 `userSettings` 에 Turbo 세 칸(`autoExecutionPolicy` · `enableTerminalSandbox` · `nonWorkspaceFileAccessPolicy`)을 둔다 — 앱의 값은 CLI 에 안 먹어 둘 다 심는다. Copilot CLI 는 `~/.copilot/settings.json`(`COPILOT_HOME` 이 서면 그 안)의 `defaultPermissionMode` 를 `allow-all` 로, 그 값이 `allow-all` 이면 `defaultMode` 를 `autopilot` 으로 둔다 — 새 대화형 세션이 첫 프롬프트에서 일을 끝까지 스스로 이어 그만큼 AI 크레딧을 쓴다. 승인을 `manual` 로 둔 사람에게는 Autopilot 을 안 심는다(새 세션마다 확인이 뜬다). 둘 다 대화형 시작에만 먹고, `-p` 로 일을 맡기는 길은 그대로다. Codex CLI 는 `~/.codex/config.toml` 맨 위에 `approvals_reviewer = "auto_review"`(「Approve for me」)를 둔다 — 샌드박스를 넘는 요청을 사람 대신 검토자가 가르고, 샌드박스 모드는 안 바꾼다. Codex 데스크탑 앱에는 그 키가 앱이 권한을 저장하기 전까지만 먹는다 — 앱은 첫 샌드박스 설정(앱의 배너를 누르고 관리자 승인)을 마칠 때 「승인 요청」을 한 번 적어 두므로, 설치기는 **Codex 를 닫아 둔 때**(이번 설치가 깐 Codex 를 닫은 뒤 · 손으로 다시 돌려 Codex 다시 띄우기에 동의한 뒤) 지금 값과 상관없이 「나 대신 승인」을 써 둔다 — 상태 파일의 그 칸 하나만 쓰고, 파일이 없으면 안 만든다. 기다리지 않으므로 샌드박스 설정 전에 쓴 값은 앱이 되돌리고, 그 뒤 설치기를 다시 돌려 다시 띄우기에 동의하면 남는다. 로그온 자동 실행은 Codex 가 떠 있어 못 쓴다. **사람이 둔 값은 안 덮는다** — 그 키가 이미 있으면(agy 앱은 세 칸 가운데 하나라도, Codex 는 `approval_policy` 도) 그 도구 줄을 통째로 둔다. 못 읽는 파일은 안 건드리고 빨간 줄로 알린다. agy · Copilot 의 이 설정은 **위험을 가르는 판단 없이 다 돌린다** — agy 에 걸린 우리 훅 가운데 DRM 길잡이는 그대로 막고(감긴 파일을 읽기 전에), Copilot 에는 우리 훅이 안 걸린다. **도구를 빼고 다시 눌러도 안 걷는다** — 사람이 같은 값을 둔 것과 글자로 안 갈려서다. 끄려면 그 도구의 설정에서 다른 값을 고른다(다음 설치가 그 값을 안 덮는다 — Codex 데스크탑의 모드만 예외다) |
 | **사내 환경 문서** · **씨앗 넷** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` · `~/.claude/seeds/vibecoding/` 로 깔린다. 마지막 것은 회사가 쓴 사내 FastAPI 코딩 기준이다 — 들머리는 그 안의 `SEED.md` 고, 사내 앱을 짤 때는 스킬 `inhouse-app` 이 그 안의 장을 콕 집어 연다(Claude 또는 Codex 를 고르면 깔린다 — 아래 「칸 없이 깔리는 스킬」). 고를 것이 아니라 환경이라 스위치가 없다. **씨앗 넷은 거울로 깔려, 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 원본인 척하지 않게. `posco/` 만은 덮어쓰기라 짐에서 빠진 파일이 홈에 남을 수 있다 — 프록시가 그 폴더에 제 기록 파일을 쓰고 있어 통째로 지우지 못한다. **설정 저장소를 넣은 PC 에서는 그 저장소의 `deploy.seeds.conf` 가 드는 폴더를 설치가 건드리지 않는다** — 그 자리는 저장소 배포가 최신판으로 밀고, 설치까지 깔면 둘이 판마다 번갈아 덮는다(홈에 그 폴더가 아직 없을 때만 설치가 먼저 깐다). **검사 씨앗의 그림 줄이기가 드는 파이썬 패키지(`pillow`)도 여기서 깐다** — 그림 문이 큰 그림을 「줄여서 연다」로 돌려보내면 그 부품이 돈다. 파이썬이 없으면 건너뛰고, 회사망이 막아 못 깔면 알리고 넘어간다(그때 줄이기는 원본 크기로 물러난다) |
 
 ## 폴더에 무엇이 들어 있나
@@ -422,15 +422,17 @@ Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡�
 
   3초 뒤에 엽니다 — 위 검증 칸을 먼저 읽는다
   VS Code — 띄웠다
-  VS Code 가 이 폴더를 믿느냐고 물으면 Trust 한 번 — 확장이 함께 풀린다
 
 === 끝 === VS Code 를 열었습니다 — Ctrl+Shift+P → Claude 로 확장을 엽니다
 ```
 
 **마지막 `=== 끝 ===` 줄이 다음에 할 일을 댄다** — 창 아래 줄에 뜨는 것도 그 줄이고, 갈래마다
 다른 말을 한다(띄웠다 · 이미 떠 있다 · 못 찾았다). 띄운 것이 VS Code 면 거기서
-`Ctrl+Shift+P` → `Claude` 로 확장을 연다. 저장소를 처음 열 때 VS Code 가 이 폴더의 작성자를 믿느냐고 물으면
-Trust 를 한 번 누른다 — 그 전에는 제한 모드라 확장이 다 꺼져 있고, 한 번에 Claude · Codex · agy 확장이 함께 풀린다.
+`Ctrl+Shift+P` → `Claude` 로 확장을 연다. 설정 저장소들은 VS Code 의 신뢰 목록에 미리 적혀 있어 처음 열어도 작성자를
+믿느냐고 묻지 않는다. 설치하는 동안 VS Code 가 떠 있었으면 적기를 미루고 `VS Code — 띄웠다` 아래에
+`VS Code 가 이 폴더를 믿느냐고 물으면 Trust 한 번 — 확장이 함께 풀린다` 줄을 낸다 — 그때는 묻는 창에서 Trust 를 한 번
+누른다. 그 전에는 제한 모드라 확장이 다 꺼져 있고, 한 번에 Claude · Codex · agy 확장이 함께 풀린다. 미룬 것은 VS Code 를
+다 닫은 뒤의 다음 설치가 적는다.
 
 ### 같이 깔린 환경 자료 — 어디에 있나
 
@@ -460,6 +462,30 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 (설정 저장소 씨앗)가 든다. 설정 저장소가 무엇이고 어떻게 만드나(일곱 걸음)는 칸 옆
 「설정저장소 만드는 법」 링크가 여는 안내 한 장이 든다 — 설치가 끝난 뒤에도
 `~/.claude/seeds/config-repo/config-repo-howto.html` 을 더블클릭하면 같은 장이 열린다.
+
+**옛 판 우리 훅은 먼저 지금 판으로 간다.** 옛 설치 · 배포가 저장소마다 놓은 우리 훅이 이 설치본보다
+옛 판이면, 그대로 부를 때 설치가 놓은 규범 · 룰을 제 사본으로 덮는다. 그래서 설치는 그 저장소의 우리
+파일 묶음을 홈 씨앗의 지금 판으로 바꿔 둔 뒤 부른다. 작업 나무에만 쓰고 커밋은 안 하니 「우리 파일을
+지금 판으로 갈았다」 줄이 뜬 저장소에서 보고 커밋한다 — 그 줄이 바뀐 파일을 하나하나 대고, 보기 ·
+되돌리기 명령(`git -C <저장소> diff -- <파일>` · `git -C <저장소> checkout -- <파일>`)도 댄다.
+
+- **머리말에 우리 표지가 있는 파일은 그 사람이 고쳐 커밋했어도 덮는다.** 덮기 전 판은 git 이 들고, 바뀐
+  파일은 다음 Claude 세션부터 선다. 되돌려도 다음 설치(로그온 자동 실행 포함)가 다시 간다 — 그 저장소에서
+  우리 훅을 안 쓰려면 `.claude/hooks/session-start.sh` 와 `.claude/settings.json` 의 SessionStart 줄을 함께 걷는다
+- **`.claude/settings.json` 은 덮지 않고 우리 항목만 고친다** — 우리 훅 등록을 지금 판으로 바꾸고,
+  훅 파일이 사라진 우리 꼴 등록은 걷고, `env.PYTHONUTF8` 이 없으면 더한다. 사람이 넣은 키 · 훅 · 값은 그대로다.
+  같은 줄에 「우리 항목만 고쳤다」로 따로 대고(걷은 등록의 이름도), 보기 · 되돌리기는 위와 같다. 엄격한 JSON 이
+  아니거나(Claude Code 도 그 파일을 안 읽는다) 우리 키와 대소문자만 다른 키(`Hooks` 등)가 있으면 그 파일만 두고
+  바로잡는 길을 한 줄로 댄다
+- 머리말에 우리 표지가 없는 파일은 그 사람의 것이라 두고, 같은 줄에 「우리 표지가 없어 둔 것」으로 댄다
+- 커밋 안 한 손질 · git 밖의 사본이 있거나, 설정 저장소 꼴이거나, 곁에 옛 claude-config 가 서 있으면 안
+  갈거나 안 넘긴다 — 「이 저장소의 훅으로 넘기지 않는다」 줄이 까닭과 고치는 길을 대고, 다음 저장소의 훅을 부른다
+- **칸에 안 넣은 저장소도 본다.** `~/repos` 바로 아래 저장소의 옛 우리 훅은 제작자 칸을 하나라도 켰으면 같은
+  지킴으로 지금 판으로 간다(그 훅을 부르지는 않는다). 끄면 안 건드리고 「작업 루트의 옛 우리 훅 — 칸에 안 든
+  저장소」 줄이 고치는 길을 댄다. 이 칸을 비워도 돈다. `~/repos` 밖을 가리키는 링크 폴더 너머와 git 저장소가
+  아닌 폴더에는 안 쓰고 알리기만 한다
+- 못 갈고 남은 옛 훅은 끝 요약 「옛 판 세션 훅이 남은 저장소」에도 댄다 — 저장소 설정이 그 훅을 안 걸어도
+  홈의 세션 훅이 그것을 부른다
 
 **칸은 창에서 고른다.** 여러 대를 같은 값으로 세워야 하면 `Setup.exe` 에 깃발을 붙여
 칸을 미리 채워 둘 수 있다 — 창은 그대로 뜬다:
@@ -588,7 +614,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다. 씨앗 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` — 다른 프로그램도 쓸 수 있으니 필요할 때만 |
 | **칸 없이 깔린 스킬** — 제작자 칸을 끈 도구의 홈 | 홈마다 기록에 적힌 이름의 폴더 · 그 기록 · 걷은 스킬을 옮겨 둔 `backups/install-skills-*` · 같은 이름이라 비켜 둔 `backups/install-aside-*`(사람 것이면 되살린다). Claude 는 `~/.claude/skills/` · 기록 `~/.claude/.paisetup-skills` · `~/.claude/backups/`, Codex 는 `~/.agents/skills/` · `~/.agents/.paisetup-skills` · `~/.agents/backups/`, 안티그래비티는 `~/.gemini/config/skills/` · `~/.gemini/.paisetup-skills` · `~/.gemini/backups/` 다. 스킬 폴더에는 사람이 둔 스킬도 사니 기록에 없는 이름은 둔다 |
 | **안티그래비티의 훅** | 설치 창에서 안티그래비티를 빼고 한 번 더 누르면 설치가 걷는다. 손으로는 `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목. 다른 항목은 사람이 넣은 것일 수 있으니 둔다. 고치기 전 것은 곁의 `hooks.json.before-paisetup-*` |
-| **묻지 않고 돌기** — 고른 agy · Copilot · Codex | 설치가 걷지 않는다. 손으로는 `~/.gemini/antigravity-cli/settings.json` 의 `toolPermission` · `~/.gemini/config/config.json` 의 `userSettings` 세 칸 · `~/.copilot/settings.json` 의 `defaultPermissionMode` · `~/.codex/config.toml` 맨 위의 `approvals_reviewer` 줄을 지우거나, 그 도구의 설정 화면에서 다른 값을 고른다 |
+| **묻지 않고 돌기** — 고른 agy · Copilot · Codex | 설치가 걷지 않는다. 손으로는 `~/.gemini/antigravity-cli/settings.json` 의 `toolPermission` · `~/.gemini/config/config.json` 의 `userSettings` 세 칸 · `~/.copilot/settings.json` 의 `defaultPermissionMode` · `defaultMode` · `~/.codex/config.toml` 맨 위의 `approvals_reviewer` 줄을 지우거나, 그 도구의 설정 화면에서 다른 값을 고른다 |
 | **제작자 칸의 규범 · 룰 · 에이전트 · 스킬** — `tool-homes.py` 가 놓은 것 | 설치 창에서 제작자 칸을 다 끄고 한 번 더 누르면 `tool-homes.py` 가 제가 놓은 것을 걷는다 — `~/.claude/CLAUDE.md` 와 `~/.codex/AGENTS.md` 의 표지(`<!-- paisetup:norms BEGIN -->` · `END`) 사이, `~/.gemini/config/AGENTS.md` · `~/.gemini/config/rules.json`, 기록 `~/.paisetup/placed.tsv` 에 든 룰 · 에이전트 · 스킬 사본. 손으로 할 때도 이 자리들이다 — 표지 밖은 사람이 쓴 글이다 |
 | **규범 · 룰 한 벌 · 고른 도구 값** | `~/.paisetup/` 폴더(두 층 `~/.paisetup/standard/` · `~/.paisetup/personal/` · 기록 `~/.paisetup/placed.tsv` · 덮거나 걷기 전에 떠 둔 백업 `~/.paisetup/backups/` — 사람 것이 들었으면 되살린다)와 사용자 환경변수 `PAISETUP_PERSONAL` · `PAISETUP_PICK` · `PAISETUP_SITE`. 위 칸을 먼저 하고 지운다 — 홈의 가져오기 줄 · 가리킴 파일 · Claude 훅 등록이 이 폴더를 가리킨다 |
 | **agy 묶음** (Claude · 안티그래비티를 골랐을 때) | 사용자 환경변수 `AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE` · 옛 판이 옛 스킬 목록을 떠 둔 `~/.claude/backups/install-agy-*` |

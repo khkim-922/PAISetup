@@ -8,6 +8,10 @@
   설치 창의 「제공기능」 링크가 여는 한 장이다. 읽는 사람은 Claude Code 를 처음 까는 동료다 —
   무엇을 할 수 있게 되나를 한두 문장으로만 적는다. 어디에 무엇이 깔리나(경로 · 조건 · 값)는
   README 「무엇이 깔리나」가 든다 — 여기 옮겨 적지 않는다(모델 이름 · 개수처럼 자주 바뀌는 값도).
+  판마다 바뀐 것도 안 적는다 — 그 판의 릴리스 노트가 든다(결정 0099). 판이 바뀌어도 맞는 것만 적는다.
+
+  ⚠ 배포 저장소 주소를 박지 않는다 — 그 주소의 계정 이름이 뽑기의 「새면 안 되는 글자」(dist.manifest.conf)라
+    박으면 릴리스가 멈춘다. 이슈 안내는 설치 창의 「바뀐 것」 링크(주소를 값 파일의 `#update-repo` 에서 짓는다)를 가리킨다.
 
   ⚠ 밖에서 불러오는 것이 한 자도 없다 — 글꼴 · 스타일 · 그림을 다 안에 든다. 밖으로 가는 것은 사람이
     누르는 링크(구글 무료 키 받기)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
@@ -24,6 +28,8 @@
     --c-in: #c2410c;    --c-in-bg: #fdeee5;
     --c-seed: #8a6514;  --c-seed-bg: #f6efdc;
     --c-maker: #3f4b5b; --c-maker-bg: #e8ecf1;
+    --c-go: #6b3fb3;    --c-go-bg: #efe8f8;
+    --c-keep: #2459a8;  --c-keep-bg: #e4edf9;
     --fix: #b42318; --fix-bg: #fee4e2;
   }
   @media (prefers-color-scheme: dark) {
@@ -35,6 +41,8 @@
       --c-in: #f29a6a;    --c-in-bg: #3d2619;
       --c-seed: #e0bc5e;  --c-seed-bg: #362d16;
       --c-maker: #a9b6c6; --c-maker-bg: #283039;
+      --c-go: #b79cf0;    --c-go-bg: #2c2240;
+      --c-keep: #7fb0ea;  --c-keep-bg: #182a40;
       --fix: #fda29b; --fix-bg: #3d1a17;
     }
   }
@@ -82,6 +90,7 @@
   }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .grid.two { grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
   .card {
     background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
     padding: 15px 17px 14px; box-shadow: var(--shadow); border-top: 3px solid var(--k);
@@ -98,13 +107,19 @@
   .in    { --k: var(--c-in);    --kb: var(--c-in-bg); }
   .seed  { --k: var(--c-seed);  --kb: var(--c-seed-bg); }
   .maker { --k: var(--c-maker); --kb: var(--c-maker-bg); }
-  .work .icon, .cc .icon, .in .icon, .seed .icon, .maker .icon,
+  .go    { --k: var(--c-go);    --kb: var(--c-go-bg); }
+  .keep  { --k: var(--c-keep);  --kb: var(--c-keep-bg); }
+  .work .icon, .cc .icon, .in .icon, .seed .icon, .maker .icon, .go .icon, .keep .icon,
   .tag { color: var(--k); background: var(--kb); }
-  nav a.work i, nav a.cc i, nav a.in i, nav a.seed i, nav a.maker i { background: var(--k); }
+  nav a.work i, nav a.cc i, nav a.in i, nav a.seed i, nav a.maker i, nav a.go i, nav a.keep i { background: var(--k); }
 
   footer {
     margin-top: 54px; padding-top: 18px; border-top: 1px solid var(--line);
     color: var(--dim); font-size: 13.5px;
+  }
+  footer .help {
+    margin: 0 0 14px; padding: 12px 15px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--line); color: var(--fg); font-size: 14.2px;
   }
   @media (max-width: 560px) {
     body { padding: 28px 16px 56px; }
@@ -117,17 +132,37 @@
 
 <header>
   <h1>설치하면 생기는 기능</h1>
-  <p>설치 창에서 고른 프로그램 말고도, 일하는 데 쓰는 도구를 함께 깔아 둡니다.
+  <p>설치 창에서 고른 프로그램이 묻지 않고 바로 일하게 맞춰 두고, 일하는 데 쓰는 도구도 함께 깔아 둡니다.
      무엇을 할 수 있게 되는지만 짧게 적었습니다.</p>
 </header>
 
 <nav>
+  <a class="go" href="#noask"><i></i>묻지 않고 일하기</a>
   <a class="work" href="#work"><i></i>사내에서 쓰는 도구</a>
   <a class="cc" href="#delegate"><i></i>다른 도구에게 맡기기</a>
   <a class="in" href="#inside"><i></i>사내에서만</a>
   <a class="seed" href="#seed"><i></i>씨앗과 사내 문서</a>
+  <a class="keep" href="#upkeep"><i></i>설치할 때마다</a>
   <a class="maker" href="#maker"><i></i>제작자 칸을 켜면</a>
 </nav>
+
+<section id="noask" class="go">
+  <div class="head">
+    <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 6l7 6-7 6zM13 6l7 6-7 6z"/></svg></div>
+    <div>
+      <h2>고른 도구는 묻지 않고 일합니다<span class="tag">Claude · Codex · 안티그래비티 · Copilot 가운데 고르면</span></h2>
+      <p>도구는 명령을 돌리거나 파일을 고치기 전에 「해도 될까요」를 묻곤 하고, 누가 눌러 줄 때까지 일이 멈춥니다.
+         그래서 고른 도구마다 그 도구 자신의 「묻지 않음」 설정을 심어 둡니다 — 그 도구의 설정 화면에 그대로 보이고 거기서 되돌립니다.
+         이미 정해 둔 값은 건드리지 않고, 다른 값으로 바꿔 두면 다음 설치도 덮지 않습니다(Codex 데스크탑 앱만 다릅니다 — 아래).</p>
+    </div>
+  </div>
+  <div class="grid two">
+    <div class="card"><b>Claude Code · 자동 모드</b><span>위험해 보이는 동작은 분류기가 따로 가르고, 나머지는 묻지 않고 진행합니다.</span></div>
+    <div class="card"><b>Codex · 나 대신 승인</b><span>작업 폴더 밖에 쓰는 것처럼 울타리(샌드박스)를 넘는 요청은 사람 대신 검토 모델이 승인하거나 거절합니다. 사외 PC 의 Codex CLI 와 데스크탑 앱에 섭니다(사내 Codex 는 묻던 대로 묻습니다). 데스크탑 앱은 새로 깐 뒤 대개 묻는 채로 시작합니다 — 앱의 샌드박스 설정을 마친 뒤 설치를 다시 돌려 Codex 를 껐다 켜는 데 동의하면 「나 대신 승인」이 되고, 그 뒤 앱에서 다른 값을 골라도 그렇게 동의할 때마다 다시 이 값으로 돌아갑니다.</span></div>
+    <div class="card"><b>agy · 묻지 않고 진행</b><span>agy CLI 는 도구를 쓸 때마다 묻던 것을 묻지 않고 진행하고, 안티그래비티 앱에도 Turbo 설정을 심어 둡니다. 위험을 가르는 판단은 없습니다 — 감긴 회사 문서를 여는 것만 DRM 길잡이가 그대로 막습니다.</span></div>
+    <div class="card"><b>Copilot CLI · Allow All · Autopilot</b><span>도구를 묻지 않고 쓰고, 새 대화는 Autopilot 으로 시작해 첫 요청에서 일을 끝까지 스스로 이어 갑니다 — 그만큼 AI 크레딧을 씁니다. 위험을 가르는 판단도, 우리가 거는 안전장치도 없습니다. Copilot 데스크탑 앱의 권한은 앱이 정한 그대로입니다.</span></div>
+  </div>
+</section>
 
 <section id="work" class="work">
   <div class="head">
@@ -212,6 +247,22 @@
   </div>
 </section>
 
+<section id="upkeep" class="keep">
+  <div class="head">
+    <div class="icon"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg></div>
+    <div>
+      <h2>설치할 때마다 다시 맞춥니다<span class="tag">다시 누르거나 로그온 자동 실행이 돌 때</span></h2>
+      <p>깔린 것을 새 판으로 올리고 환경을 다시 맞추는 일은 설치가 돌 때마다 되풀이됩니다.
+         설치 창에서 내 저장소를 받으면 그 저장소도 이때 손봅니다.</p>
+    </div>
+  </div>
+  <div class="grid two">
+    <div class="card lead"><b>로그온할 때 저절로</b><span>설치 창의 로그온 자동 실행 칸은 기본으로 켜져 있습니다. 켜 둔 동안은 로그온할 때마다 설치 창이 떠서 이 일을 하고, 설치본도 새 판이 있으면 그 판으로 올라갑니다. 칸을 끄면 설치를 다시 누를 때만 합니다.</span></div>
+    <div class="card"><b>처음 열어도 안 묻는 저장소</b><span><em>설정 저장소를 받으면</em><a href="config-repo-howto.html">설정 저장소</a>와, 그 저장소가 설정을 깔아 둔 같이 쓰는 저장소는 고른 도구(Claude Code · Codex · agy · Copilot CLI)와 VS Code 가 처음 열 때 「이 폴더를 믿나」를 묻지 않습니다. Codex 데스크탑 앱에는 프로젝트로도 올려 둡니다. 다른 폴더는 그대로 묻고, VS Code 나 앱이 떠 있으면 다음 설치로 미룹니다.</span></div>
+    <div class="card"><b>옛 판 우리 파일은 지금 판으로</b><span><em>받은 저장소 · 제작자 칸을 켜면 repos 의 다른 저장소도</em>예전 설치가 저장소에 깔아 둔 우리 파일(세션 훅 등)이 옛 판이면 지금 판으로 갈아 둡니다 — 옛 판은 설치가 깐 것을 제 사본으로 덮어 버립니다. 작업 폴더에만 쓰고 커밋은 안 하며, 설치 기록의 「우리 파일을 지금 판으로 갈았다」 줄이 바뀐 파일과 되돌리는 명령을 댑니다. 고쳐 커밋해 둔 것도 갈지만 옛 판은 git 에 남고, 커밋 안 한 손질이 걸리면 그 저장소는 건드리지 않습니다.</span></div>
+  </div>
+</section>
+
 <section id="maker" class="maker">
   <div class="head">
     <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg></div>
@@ -230,6 +281,8 @@
 </section>
 
 <footer>
+  <p class="help"><b>막히거나 바라는 것이 있으면</b> 이 설치본이 나온 GitHub 저장소에 이슈로 남겨 주세요.
+     설치 창의 「바뀐 것」 링크가 여는 페이지 위쪽에 Issues 탭이 있습니다 — 공개 저장소라 회사 문서 · 키 · 사내 주소는 적지 않습니다.</p>
   어디에 무엇이 깔리는지는 같은 폴더의 <code>README.md</code> 「무엇이 깔리나」가 자세히 적습니다.
   이 페이지는 밖에서 불러오는 것이 없어 사내망에서도 열립니다.
 </footer>
