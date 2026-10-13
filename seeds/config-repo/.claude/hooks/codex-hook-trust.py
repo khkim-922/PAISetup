@@ -50,14 +50,19 @@ Codex 가 내는 `command` 는 이 기계의 실효 명령(윈도면 `commandWin
                                         종류 = example · merger · write · version-conflict · verify (그 밖은 예외 이름)
 
 **폴더 신뢰(projects).** Codex 는 연 자리의 git 뿌리를 `[projects.'<자리>'] trust_level` 에서 찾아, 없으면 신뢰를 묻는다.
-받은 저장소 뿌리마다 Codex 제 철자로 `trust_level = "trusted"` 를 적는다 — 윈도면 소문자 · 역슬래시(Codex 가 프로젝트 층을 막을
-때 「이 자리를 신뢰로 더하라」고 대는 꼴). Codex 는 역슬래시 열쇠를 대소문자 없이 맞추고 `/` 로 적힌 열쇠는 안 맞춘다 — 서 있나도
-그 규칙으로 가린다. 사용자 설정 파일을 먼저 TOML 로 읽어 다 서 있으면 app-server 를 안 띄운다. 쓰기는 훅 신뢰와 같은 통로다:
+받은 저장소 뿌리마다 `trust_level = "trusted"` 를 적는다. 찾는 손이 둘이라 윈도에서는 열쇠도 두 벌이다(결정 0121):
+  - 본체(CLI · VS Code 확장) — 소문자 · 역슬래시(Codex 가 프로젝트 층을 막을 때 「이 자리를 신뢰로 더하라」고 대는 꼴).
+    본체는 역슬래시 열쇠를 대소문자 없이 맞추고 `/` 로 적힌 열쇠는 안 맞춘다 — 서 있나도 그 규칙으로 가린다.
+  - 데스크탑 앱 — 폴더 선택기가 준 디스크 철자를 철자 그대로 찾는다(데스크탑 26.1007.2314.0 의 폴더 동의 `confirm` 이
+    `config/read` 의 projects 를 JS 객체로 찾는다). 서 있나도 철자 그대로 가린다.
+  윈도 밖에서는 두 열쇠가 같아 하나다. 사용자 설정 파일을 먼저 TOML 로 읽어 다 서 있으면 app-server 를 안 띄운다. 쓰기는 훅
+  신뢰와 같은 통로다:
   `config/read`(사용자 층의 판 · projects) → `config/batchWrite` {keyPath "projects", value {<자리>: {trust_level: "trusted"}},
   upsert, expectedVersion} → `config/read` 를 다시 불러 사용자 층에서 trusted 로 읽히나 확인한다.
-  사람이 `untrusted` 로 둔 자리는 안 덮는다 — 그 뜻을 신뢰로 덮지 않는다(Codex 도 그 자리는 안 묻는다).
-  PROJECT=<자리>|<상태>                  받은 뿌리마다(같은 자리는 한 번) · 상태 = trusted(이미 섰다) · trusted-now(이번에 적고
-                                        Codex 가 다시 읽었다) · untrusted(사람이 정했다 — 안 덮었다)
+  사람이 `untrusted` 로 둔 자리는 안 덮는다 — 대소문자만 다른 열쇠 가운데 하나라도 `untrusted` 면 그 자리는 어느 철자로도 안
+  적는다(Codex 도 그 자리는 안 묻는다).
+  PROJECT=<열쇠>|<상태>                  받은 뿌리마다(같은 자리는 한 번) 열쇠마다 · 상태 = trusted(이미 섰다) · trusted-now(이번에
+                                        적고 Codex 가 다시 읽었다) · untrusted(사람이 정했다 — 본체 열쇠 한 줄로 내고 안 덮었다)
   CODEX_HOME=<경로>                      app-server 를 띄운 판만 — Codex 가 스스로 밝힌 홈
   UNMEASURED · ERROR                    위와 같은 꼴 · ERROR 종류에 config(설정을 TOML 로 못 읽는다 — 안 쓴다)가 는다.
                                         부르는 자가 app-server 를 띄우지 말라 했는데(`plant_projects(start=False)`) 파일로
@@ -477,24 +482,47 @@ def app_server(cmd, home):
 
 # ── 폴더 신뢰(projects) ──────────────────────────────────────────────────────────────────────────────────
 def project_key(path):
-    """Codex 가 그 자리의 신뢰를 찾는 열쇠 — 윈도면 소문자 · 역슬래시, 그 밖은 경로 그대로."""
+    """Codex 본체가 그 자리의 신뢰를 찾는 열쇠 — 윈도면 소문자 · 역슬래시, 그 밖은 경로 그대로."""
     return os.path.normcase(os.path.abspath(path))
 
 
+def desktop_key(path):
+    """Codex 데스크탑이 찾는 열쇠 — 윈도면 디스크에 선 철자(역슬래시), 그 밖은 본체 열쇠와 같다.
+    받은 철자가 아니라 디스크의 철자다 — 사람이 친 대소문자로 온 경로도 폴더 선택기가 주는 꼴로 바꾼다."""
+    return os.path.realpath(path) if os.name == 'nt' else project_key(path)
+
+
 def project_levels(projects):
-    """{열쇠: trust_level} — 윈도에서는 Codex 처럼 열쇠의 대소문자를 안 가린다. `/` 는 그대로 둔다(Codex 가 그 꼴을 안 맞춘다)."""
-    if not isinstance(projects, dict):
-        return {}
-    return {(k.lower() if os.name == 'nt' else k): v.get(TRUST_LEVEL) for k, v in projects.items() if isinstance(v, dict)}
+    """{열쇠: trust_level} — 윈도에서는 Codex 본체처럼 열쇠의 대소문자를 안 가린다. `/` 는 그대로 둔다(본체가 그 꼴을 안 맞춘다).
+    대소문자만 다른 열쇠가 여럿이면 `untrusted` 가 이긴다 — 사람이 막은 뜻을 다른 철자의 신뢰로 덮지 않는다."""
+    levels = {}
+    for k, v in (projects.items() if isinstance(projects, dict) else ()):
+        if isinstance(v, dict):
+            key = k.lower() if os.name == 'nt' else k
+            if levels.get(key) != LEVEL_UNTRUSTED:
+                levels[key] = v.get(TRUST_LEVEL)
+    return levels
 
 
 def project_states(paths, projects):
-    """받은 뿌리마다(같은 자리는 한 번) `(열쇠, 상태)` — 상태는 P_HAVE · P_KEPT · None(적을 자리)."""
+    """받은 뿌리마다(같은 자리는 한 번) 열쇠마다 `(열쇠, 상태)` — 상태는 P_HAVE · P_KEPT · None(적을 자리).
+    본체 열쇠는 대소문자 없이, 데스크탑 열쇠는 철자 그대로 가린다. 사람이 막은 자리는 본체 열쇠 한 줄(P_KEPT)만 낸다."""
     levels = project_levels(projects)
+    exact = projects if isinstance(projects, dict) else {}
+    roots = {}
+    for p in paths:
+        roots.setdefault(project_key(p), p)
     states = []
-    for key in dict.fromkeys(project_key(p) for p in paths):
+    for key, path in roots.items():
         level = levels.get(key)
-        states.append((key, P_HAVE if level == LEVEL_TRUSTED else P_KEPT if level == LEVEL_UNTRUSTED else None))
+        if level == LEVEL_UNTRUSTED:
+            states.append((key, P_KEPT))
+            continue
+        states.append((key, P_HAVE if level == LEVEL_TRUSTED else None))
+        dkey = desktop_key(path)
+        if dkey != key:
+            entry = exact.get(dkey)
+            states.append((dkey, P_HAVE if isinstance(entry, dict) and entry.get(TRUST_LEVEL) == LEVEL_TRUSTED else None))
     return states
 
 
@@ -519,7 +547,7 @@ def layer_projects(layer):
 
 
 def plant_projects(paths, home, codex=None, start=True):
-    """받은 저장소 뿌리마다 폴더 신뢰를 Codex 제 철자로 적는다 — `((열쇠, 상태) 목록, Codex 가 밝힌 홈 또는 None)`.
+    """받은 저장소 뿌리마다 폴더 신뢰를 본체 · 데스크탑 철자로 적는다 — `((열쇠, 상태) 목록, Codex 가 밝힌 홈 또는 None)`.
     설정 파일로 다 서 있으면 app-server 를 안 띄운다. `start` 가 거짓이면 아예 안 띄우고 파일로 가린 상태를 낸다(None 이 빈 자리).
     못 쟀으면 UNMEASURED · 못 적었으면 ERROR 의 `Stop` 을 올린다 — 쓰기 앞에서 멈춘 판은 아무것도 안 썼다."""
     projects = file_projects(home)

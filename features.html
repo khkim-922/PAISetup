@@ -144,7 +144,7 @@
     <div class="card"><b>그림 문 <code>image-gate</code></b><span>스크린샷이나 큰 그림을 Claude 에 보내기 전에 크기를 잽니다. 너무 크면 막고 줄여서 다시 열게 해, 그림 한 장에 대화가 멈추지 않습니다.</span></div>
     <div class="card"><b>웹 다시 찾기 <code>web-retry</code></b><span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 옆에 알려 줍니다. 막지는 않습니다.</span></div>
     <div class="card"><b>DRM 길잡이 <code>drm-guide</code></b><span>회사 DRM 이 걸린 오피스 · PDF 를 붙이거나 경로를 적으면, Claude 가 그 파일을 DRM 문서 읽기(<code>drm-office-read</code>)로 열도록 길을 알려 줍니다. DRM 이 안 걸린 파일에는 아무것도 붙이지 않습니다.</span></div>
-    <div class="card"><b>Bash 겹역슬래시 차단 <code>bash-backslash-deny</code></b><span>윈도우에서 Bash 로 보낸 명령의 겹역슬래시는 셸에 닿기 전에 하나로 접혀 엉뚱한 경로가 됩니다. 그런 명령을 실행 전에 돌려보내 다시 짓게 합니다.</span></div>
+    <div class="card"><b>Bash 겹역슬래시 보정 <code>bash-backslash-deny</code></b><span>윈도우에서 Bash 로 보낸 명령의 겹역슬래시는 셸에 닿기 전에 하나로 접혀 엉뚱한 경로가 됩니다. 그런 명령의 역슬래시를 미리 두 배로 늘려 쓴 그대로 닿게 합니다. 접힘을 아직 안 잰 새 Claude Code 판에서는 돌려보내 다시 짓게 합니다.</span></div>
     <div class="card"><b>PowerShell 한글 지키기 <code>utf8-bom</code></b><span>윈도우 파워셸 5.1 은 BOM 없는 스크립트의 한글을 깨뜨려 읽습니다. 고친 <code>.ps1</code> 에 BOM 을 찍어 둡니다.</span></div>
     <div class="card"><b>문서 스킬 <code>document-skills</code></b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
     <div class="card"><b>DRM 문서 읽기 <code>drm-office-read</code></b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>

@@ -1497,15 +1497,17 @@ msgs = []
 failed = False   # 다 못 심었다 — 끝에서 3 으로 알린다. 셸이 표식에 판을 안 적는다 (0065)
 
 
-def save(path, cfg, like=None):
+def save(path, cfg, like=None, head=""):
     """JSON 으로 옆에 쓰고 옮긴다. like — 원래 글(새 파일은 빈 글). 주면 그 줄끝(LF · CRLF)과 끝 줄바꿈 유무를 따르고,
-    안 주면 이 판의 기본(끝에 줄바꿈)이다. 들여쓰기는 두 칸 — Claude 가 제 설정을 쓰는 꼴과 같다."""
+    안 주면 이 판의 기본(끝에 줄바꿈)이다. 들여쓰기는 두 칸 — Claude 가 제 설정을 쓰는 꼴과 같다. head — JSON 앞에 그대로
+    다시 쓸 글(원래 글 머리의 주석 줄 · 줄끝 그대로)."""
     d = os.path.dirname(path) or "."
     os.makedirs(d, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=d)
     nl = None if like is None else ("\r\n" if "\r\n" in like else "\n")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline=nl) as f:
+            f.write(head.replace("\r\n", "\n") if nl else head)
             json.dump(cfg, f, ensure_ascii=False, indent=2)
             if like is None or like.endswith("\n"):
                 f.write("\n")
@@ -1596,16 +1598,17 @@ except Exception as e:  # 손의 `Busy` · 손을 못 불러옴
     failed = True
     msgs.append("  ! 홈 SessionStart 훅 — 손의 잠금을 못 잡아 이번엔 안 심었다(다음 세션이 다시 심는다): %s" % e)
 
-# ② 폴더 신뢰 — 작업 루트에서 세션 훅을 든 저장소에만, 고른 도구(Claude · Codex)마다 건다
-# ⚠ **거는 집합은 하나다** — 이 저장소와 작업 루트에서 세션 훅을 든 저장소. 두 도구가 같은 목록을 받는다.
+# ② 폴더 신뢰 — 작업 루트에서 세션 훅을 든 저장소에만, 고른 도구(Claude · Codex · agy · Copilot)마다 건다 (0118 · 0121 · 0122)
+# ⚠ **거는 집합은 하나다** — 이 저장소와 작업 루트에서 세션 훅을 든 저장소. 네 도구가 같은 목록을 받는다.
 #   그 밖의 폴더는 그대로 묻는다. 신뢰 창은 도구가 훅보다 먼저 띄우므로 저장소를 처음 열기 전에 서 있어야 한다 —
 #   설치기 · 로그인 자동 실행이 부르는 `--install` 이 그 자리다.
 # ⚠ **고른 제품은 손이 읽는 그대로 읽는다**(사용자 값이 먼저 · 비면 Claude 만). 손을 못 부르면 Claude 는 비었을 때의 뜻대로
-#   걸고, Codex 는 안 건다 — 고른 줄 모르는 도구에 신뢰를 넓히지 않는다.
-# ⚠ 두 파일 다 손이 쓰는 파일이 아니라 손의 잠금을 안 잡는다. `~/.claude.json` 은 Claude 가, Codex 설정은 Codex 의 쓰는
-#   자(판 맞추기)가 경합을 든다.
+#   걸고, Codex · agy · Copilot 은 안 건다 — 고른 줄 모르는 도구에 신뢰를 넓히지 않는다.
+# ⚠ 네 파일 다 손이 쓰는 파일이 아니라 손의 잠금을 안 잡는다. `~/.claude.json` 은 Claude 가, Codex 설정은 Codex 의 쓰는
+#   자(판 맞추기)가, agy · Copilot 설정은 그 도구가 경합을 든다.
 BS = chr(92)
-CLAUDE, CODEX = "claude", "codex"   # 고른 제품 값의 이름 — 갈 곳 표의 도구 이름이다
+CLAUDE, CODEX, AGY = "claude", "codex", "agy"   # 고른 제품 값의 이름 — 갈 곳 표의 도구 이름이다
+COPILOT = "copilot"   # 고른 제품 값에 들지만 갈 곳 표에 길이 없다 — 폴더 신뢰만 건다(0122)
 import glob as _glob
 targets = [proj]
 for h in _glob.glob(os.path.join(root, "*", ".claude", "hooks", "session-start.sh")):
@@ -1613,15 +1616,15 @@ for h in _glob.glob(os.path.join(root, "*", ".claude", "hooks", "session-start.s
 
 
 def picked():
-    """고른 제품 가운데 이 칸이 거는 둘 — 손을 못 부르면 None."""
+    """고른 제품 가운데 이 칸이 거는 넷 — 손을 못 부르면 None."""
     mod = load_hand()
     if mod is None:
         return None
 
-    class Quiet(mod.Out):   # 모르는 이름은 손이 놓는 자리에서 알린다 — 여기는 둘이 들었나만 본다
+    class Quiet(mod.Out):   # 모르는 이름은 손이 놓는 자리에서 알린다 — 여기는 넷이 들었나만 본다
         def line(self, text):
             pass
-    return mod.read_cond(mod.COND_PICK, None, (CLAUDE, CODEX), Quiet())
+    return mod.read_cond(mod.COND_PICK, None, (CLAUDE, CODEX, AGY, COPILOT), Quiet())
 
 
 try:
@@ -1706,6 +1709,68 @@ def plant_codex():
         msgs.append("  신뢰(Codex) — 이미 다 걸려 있다 (%d 자리)" % len(states))
 
 
+# agy CLI · Copilot CLI — 제 설정 JSON 의 목록 하나에 저장소 뿌리를 한 줄씩 더한다(0121 · 0122). 둘 다 그 목록을 대소문자
+#   없이 맞추므로 이미 섰나도 그렇게 가린다(데스크탑 · VS Code 확장은 안 묻는다 — #154).
+#   agy — `~/.gemini/antigravity-cli/settings.json` 의 `trustedWorkspaces`
+#   Copilot — `config.json`(`COPILOT_HOME` 이 서면 그 안, 아니면 `~/.copilot`)의 `trustedFolders`. 아래 폴더까지 덮는다
+# ⚠ **app-server 같은 것 없이 파일만 쓴다** — 그래서 세션에서도 건다. 새 파일은 두 도구가 제 설정을 쓰는 꼴(두 칸 · LF · 끝
+#   줄바꿈)로 짓고, 있던 파일은 원래 줄끝 · 끝 줄바꿈을 따른다. 없던 파일을 지어도 두 도구가 첫 실행에 그대로 읽는다(실측).
+# ⚠ **머리의 `//` 주석 줄은 살린다** — Copilot 이 제 `config.json` 맨 위에 두 줄을 단다. 그 밖의 주석이 든 글은 못 읽는 글이다.
+# ⚠ **못 걸어도 진 것으로 안 돌린다** — Codex 와 같은 까닭이다. 못 읽는 파일은 그 도구의 것이라 다음 세션에도 못 읽는다.
+#   손대지 않고 줄만 남기며, 다시 거는 것은 다음 설치 · 판이 바뀐 세션이 든다.
+LISTED_NEW_LIKE = "\n"   # save 에 넘기는 「원래 글」 — LF · 끝 줄바꿈
+LINE_COMMENT = "//"
+
+
+def listed_files():
+    """{도구: (파일, 보일 이름, 목록 열쇠)} — 목록 꼴로 신뢰를 드는 둘."""
+    cph = os.environ.get("COPILOT_HOME")
+    return {AGY: (os.path.join(os.path.expanduser("~"), ".gemini", "antigravity-cli", "settings.json"),
+                  "~/.gemini/antigravity-cli/settings.json", "trustedWorkspaces"),
+            COPILOT: (os.path.join(cph or os.path.join(os.path.expanduser("~"), ".copilot"), "config.json"),
+                      os.path.join(cph, "config.json") if cph else "~/.copilot/config.json", "trustedFolders")}
+
+
+def split_head(text):
+    """(머리의 `//` 주석 줄들, 나머지 글) — 줄끝은 그대로 둔다."""
+    lines = text.splitlines(keepends=True)
+    n = 0
+    while n < len(lines) and lines[n].lstrip().startswith(LINE_COMMENT):
+        n += 1
+    return "".join(lines[:n]), "".join(lines[n:])
+
+
+def plant_listed(label, path, shown, key):
+    try:
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            like = f.read()
+        head, body = split_head(like)
+        cfg = json.loads(body)
+        ws = cfg.get(key, []) if isinstance(cfg, dict) else None
+        if not isinstance(ws, list) or any(not isinstance(w, str) for w in ws):
+            raise ValueError("최상위가 객체가 아니거나 %s 가 글 목록이 아니다" % key)
+    except FileNotFoundError:
+        like, head, cfg, ws = None, "", {}, []
+    except (OSError, ValueError):
+        msgs.append("  ! 신뢰(%s) — %s 를 못 읽었다 — 손대지 않았다. 다음 설치가 다시 건다" % (label, shown))
+        return
+    have = {os.path.normcase(os.path.normpath(w)) for w in ws}
+    roots = {}
+    for t in targets:
+        roots.setdefault(os.path.normcase(os.path.normpath(t)), os.path.normpath(t))
+    todo = [p for k, p in roots.items() if k not in have]
+    if not todo:
+        if install:
+            msgs.append("  신뢰(%s) — 이미 다 걸려 있다 (%d 자리)" % (label, len(roots)))
+        return
+    cfg[key] = ws + todo
+    if save(path, cfg, LISTED_NEW_LIKE if like is None else like, head):
+        msgs.append("  신뢰(%s) — %s%d 자리에 걸었다 (다음 열기부터 안 묻는다)"
+                    % (label, "%s 이 없어 새로 짓고 " % shown if like is None else "", len(todo)))
+    else:
+        msgs.append("  ! 신뢰(%s) — %s 를 못 썼다 — 다음 설치가 다시 건다" % (label, shown))
+
+
 if tools is None or CLAUDE in tools:
     plant_claude()
 elif install:
@@ -1717,6 +1782,14 @@ if tools is not None and CODEX in tools:
         msgs.append("  ! 신뢰(Codex) — 못 걸었다: %s: %s" % (type(e).__name__, e))
 elif install:
     msgs.append("  신뢰(Codex) — %s 건너뛰었다" % ("Codex 를 안 골라" if tools is not None else "고른 제품을 못 읽어(%s)" % pick_why))
+for tool, label, obj in ((AGY, "agy", "agy 를"), (COPILOT, "Copilot", "Copilot 을")):
+    if tools is not None and tool in tools:
+        try:
+            plant_listed(label, *listed_files()[tool])
+        except Exception as e:  # 모르는 꼴 — 앞 도구의 줄까지 잃지 않게 여기서 받는다
+            msgs.append("  ! 신뢰(%s) — 못 걸었다: %s: %s" % (label, type(e).__name__, e))
+    elif install:
+        msgs.append("  신뢰(%s) — %s 건너뛰었다" % (label, "%s 안 골라" % obj if tools is not None else "고른 제품을 못 읽어(%s)" % pick_why))
 
 for m in msgs:
     print(m)

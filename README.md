@@ -31,7 +31,7 @@
 | **데스크탑 앱** | **앱마다 다르다.** 게이트웨이에 못 붙어 사내에서는 쓸모가 없는 것(Claude · Codex · Antigravity)은 **사외에서만** 깔리고, 제 계정으로 로그인해 쓰는 것(**GitHub Copilot**)은 **사내·사외 모두** 깔린다. 켠 도구의 것만 깔린다. ⚠ Copilot 은 **WebView2 런타임**이 있어야 도는데 설치 목록에 그것이 딸려 오지 않는다 — 없는 기계(사내 VDI)면 **먼저 깔고**, 이미 있으면(사내 PC 에는 대개 있다) 건너뛴다. ⚠ **Gemini 데스크탑 앱은 안 깐다** — 회사 망이 설치 도중에 연결을 끊어 두 번 다 실패했다. 집에서는 깔리므로 필요하면 <https://gemini.google.com/app> 에서 손으로 받는다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다. ⚠ **로그인은 사람이 한다** — Copilot 은 회사 계정으로 직접 인증하고, 사외 개인 PC 에서는 회사 계정이 막혀(등록 안 된 기기) 개인 계정으로 쓴다 |
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣으면 고른 도구가 읽는 이름에 같이 심긴다 — Claude 는 `ANTHROPIC_AUTH_TOKEN`, Codex 는 `OPENAI_API_KEY`, Gemini · 안티그래비티는 `GEMINI_API_KEY`. **사외면 키를 안 묻고, 사내에서 쓰던 기계를 사외에서 다시 누르면 남아 있던 사내 값을 걷어 낸다** (아래 「무를 때」) |
 | **워드의 PDF 변환 안내 끄기** | 워드가 깔린 PC 면 자리 · 고른 도구와 상관없이, 깔린 판마다 `HKCU\Software\Microsoft\Office\<판>\Word\Options` 의 `DisableConvertPdfWarning` 을 1 로 둔다. 스킬 `drm-office-read` 가 숨겨 띄운 워드는 이 안내창이 뜨면 아무도 못 눌러 멈춘다. ⚠ **사람이 PDF 를 워드로 열 때도 그 안내가 안 뜬다** — 설치 창에 칸은 없고 설치 기록 한 줄과 끝 검증 한 줄이 밝힌다. 워드가 없으면 안 건드린다 (아래 「무를 때」) |
-| Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · 사내면 **웹페치 검증 건너뛰기**(`skipWebFetchPreflight` — 사내 망이 웹페치가 미리 묻는 Anthropic 차단 목록 조회를 끊어, 열리는 주소도 못 가져오던 것을 푼다. 사외는 그 검사가 서므로 안 켠다) · **자동 모드와 맡기기 러너 허락**(Claude 를 고르면 「permissions.defaultMode」를 `auto` 로 — 그 키가 이미 있으면 사람 값이라 안 덮는다. agy · Codex/Copilot 러너 스킬이 Claude 홈에 서면 그 러너를 부르는 `pythonw` 명령의 허락 한 줄씩을 `permissions.allow` 에 — 자동 모드 분류기가 뒤에서 러너를 띄우는 명령을 막기 때문이다. 심은 것은 설치기 폴더의 기록(`%LOCALAPPDATA%\Claude Code Setup\claude-settings.tsv`)에 적고, 조건이 빠지면 값이 그대로인 것만 걷는다. 지운 것은 다음 설치가 다시 심으니, 끄려면 다른 「defaultMode」 값이나 「permissions.deny」를 둔다) · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(Claude 를 고르면 — 모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅) · **웹 다시 찾기**(Claude 를 고르면 — 웹 검색 · 웹 가져오기가 못 닿았을 때 `curl` · Tavily · agy 에게 맡기기 같은 다른 길이 있다는 것을 결과 곁에 붙이는 훅 — 막지는 않는다) · **DRM 길잡이**(Claude 를 고르면 — 붙이거나 경로를 적은 오피스 · PDF 가 회사 DRM 에 감겼으면 스킬 `drm-office-read` 로 읽는 길을 곁에 붙이는 훅. VS Code 앱에서 「+」로 붙인 PDF 는 경로 없이 본문만 오므로, 감긴 바이트 그대로를 임시 폴더의 `drm-attach` 밑에 한 벌 떨궈 그 자리를 댄다. 감기지 않은 파일에는 아무것도 안 붙이고, 막지 않는다) · **Bash 겹역슬래시 차단**(Claude 를 고르면 — 윈도우에서 Bash 로 보낸 명령에 겹역슬래시가 들면 셸에 닿기 전에 하나로 접히므로 실행 전에 돌려보내는 훅) · **PowerShell UTF-8 BOM 보정**(Claude 를 고르면 — 편집한 `.ps1` 에 BOM 이 없으면 찍는 훅. 윈도우 파워셸 5.1 은 BOM 없는 파일의 한글을 깨뜨려 읽는다). 사외로 가면 사내 전용 줄은 걷어 낸다. 훅 다섯의 등록은 `tool-homes.py` 가 놓는다 — 명령은 `~/.paisetup/` 두 층 가운데 이긴 층의 `hooks/` 를 가리키고(설정 저장소가 훅을 들면 개인 층, 아니면 짐이 채운 표준 층), 사람이 넣은 훅은 같은 항목에 있어도 둔다. 고른 제품은 사용자 환경변수 `PAISETUP_PICK` 에 남는다(예: `claude,codex,agy` · 셋 다 아니면 `none` — Gemini · Copilot 은 안 든다). **Claude 를 빼고 다시 누르면 우리 훅 등록만 걷는다** |
+| Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · 사내면 **웹페치 검증 건너뛰기**(`skipWebFetchPreflight` — 사내 망이 웹페치가 미리 묻는 Anthropic 차단 목록 조회를 끊어, 열리는 주소도 못 가져오던 것을 푼다. 사외는 그 검사가 서므로 안 켠다) · **자동 모드와 맡기기 러너 허락**(Claude 를 고르면 「permissions.defaultMode」를 `auto` 로 — 그 키가 이미 있으면 사람 값이라 안 덮는다. agy · Codex/Copilot 러너 스킬이 Claude 홈에 서면 그 러너를 부르는 `pythonw` 명령의 허락 한 줄씩을 `permissions.allow` 에 — 자동 모드 분류기가 뒤에서 러너를 띄우는 명령을 막기 때문이다. 심은 것은 설치기 폴더의 기록(`%LOCALAPPDATA%\Claude Code Setup\claude-settings.tsv`)에 적고, 조건이 빠지면 값이 그대로인 것만 걷는다. 지운 것은 다음 설치가 다시 심으니, 끄려면 다른 「defaultMode」 값이나 「permissions.deny」를 둔다) · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(Claude 를 고르면 — 모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅) · **웹 다시 찾기**(Claude 를 고르면 — 웹 검색 · 웹 가져오기가 못 닿았을 때 `curl` · Tavily · agy 에게 맡기기 같은 다른 길이 있다는 것을 결과 곁에 붙이는 훅 — 막지는 않는다) · **DRM 길잡이**(Claude 를 고르면 — 붙이거나 경로를 적은 오피스 · PDF 가 회사 DRM 에 감겼으면 스킬 `drm-office-read` 로 읽는 길을 곁에 붙이는 훅. VS Code 앱에서 「+」로 붙인 PDF 는 경로 없이 본문만 오므로, 감긴 바이트 그대로를 임시 폴더의 `drm-attach` 밑에 한 벌 떨궈 그 자리를 댄다. 감기지 않은 파일에는 아무것도 안 붙이고, 막지 않는다) · **Bash 겹역슬래시 보정**(Claude 를 고르면 — 윈도우에서 Bash 로 보낸 명령의 역슬래시는 셸에 닿기 전에 짝마다 하나로 접히므로, 명령의 역슬래시를 두 배로 늘려 쓴 그대로 닿게 고쳐 넘기는 훅. 접힘을 잰 Claude Code 판에서만 고치고, 처음 보는 판이면 명령을 돌려보낸다) · **PowerShell UTF-8 BOM 보정**(Claude 를 고르면 — 편집한 `.ps1` 에 BOM 이 없으면 찍는 훅. 윈도우 파워셸 5.1 은 BOM 없는 파일의 한글을 깨뜨려 읽는다). 사외로 가면 사내 전용 줄은 걷어 낸다. 훅 다섯의 등록은 `tool-homes.py` 가 놓는다 — 명령은 `~/.paisetup/` 두 층 가운데 이긴 층의 `hooks/` 를 가리키고(설정 저장소가 훅을 들면 개인 층, 아니면 짐이 채운 표준 층), 사람이 넣은 훅은 같은 항목에 있어도 둔다. 고른 제품은 사용자 환경변수 `PAISETUP_PICK` 에 남는다(예: `claude,codex,agy` · 셋 다 아니면 `none` — Gemini · Copilot 은 안 든다). **Claude 를 빼고 다시 누르면 우리 훅 등록만 걷는다** |
 | Codex · Gemini · 안티그래비티 설정 | 회사 연결 설정은 사내에서만 선다. `~/.codex/config.toml` 은 없으면 회사 틀(`posco/`)로 쓰고, 있으면 틀이 든 자리만 틀의 값으로 맞춘다 — 사람이 둔 키 · Codex 가 적는 훅 신뢰 · 폴더 신뢰는 그대로 두고, 바꾼 게 있으면 고치기 전 것을 `config.toml.before-pgpt-<시각>` 에 떠 둔다. `~/.gemini/settings.json` 은 틀의 항목만 얹고, `~/.gemini/antigravity-cli/settings.json` 에는 인증 방식 한 줄(`modelProvider`)을 둔다. **Codex 훅은 자리와 관계없이 Codex를 고르면 선다** — DRM 길잡이 · 그림 문 · Windows Bash 겹역슬래시 차단 · PowerShell UTF-8 BOM 보정을 사람의 다른 Codex 설정을 두고 병합한다. 몸통은 설정 저장소 씨앗에서 오고, **설치가 우리 훅에 Codex 신뢰까지 적는다** — Codex 는 신뢰한 훅만 돌려, 신뢰가 없으면 대화형 시작은 묻고 `codex exec`(다른 도구가 Codex 에 일을 맡기는 길)는 말없이 건너뛴다. 신뢰는 Codex 제 설정 쓰기로 적고, 사람이 넣은 훅 · 사람이 끈 우리 훅은 안 건드린다. **Codex 를 빼고 다시 누르면 우리 훅만 걷는다** — 사람 훅과 뒤 항목의 자리 · 적어 둔 신뢰는 둔다. 걷는 손이 파이썬 3.11 이상으로 돌아, 없으면 노란 줄로 알리고 넘어간다. 키는 설정 파일에 안 들어가고 환경변수에만 있다. ⚠ **`GOOGLE_API_KEY` 가 이미 있으면 그 키가 회사 키보다 먼저 쓰인다** — 구글에 바로 붙는 키의 제 이름이라 설치는 지우지 않고 알리기만 한다. 회사 게이트웨이로 쓰려면 손으로 지운다 |
 | **사내 환경 문서** · **씨앗 넷** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` · `~/.claude/seeds/vibecoding/` 로 깔린다. 마지막 것은 회사가 쓴 사내 FastAPI 코딩 기준이다 — 들머리는 그 안의 `SEED.md` 고, 사내 앱을 짤 때는 스킬 `inhouse-app` 이 그 안의 장을 콕 집어 연다(Claude 또는 Codex 를 고르면 깔린다 — 아래 「칸 없이 깔리는 스킬」). 고를 것이 아니라 환경이라 스위치가 없다. **씨앗 넷은 거울로 깔려, 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 원본인 척하지 않게. `posco/` 만은 덮어쓰기라 짐에서 빠진 파일이 홈에 남을 수 있다 — 프록시가 그 폴더에 제 기록 파일을 쓰고 있어 통째로 지우지 못한다. **설정 저장소를 넣은 PC 에서는 그 저장소의 `deploy.seeds.conf` 가 드는 폴더를 설치가 건드리지 않는다** — 그 자리는 저장소 배포가 최신판으로 밀고, 설치까지 깔면 둘이 판마다 번갈아 덮는다(홈에 그 폴더가 아직 없을 때만 설치가 먼저 깐다). **검사 씨앗의 그림 줄이기가 드는 파이썬 패키지(`pillow`)도 여기서 깐다** — 그림 문이 큰 그림을 「줄여서 연다」로 돌려보내면 그 부품이 돈다. 파이썬이 없으면 건너뛰고, 회사망이 막아 못 깔면 알리고 넘어간다(그때 줄이기는 원본 크기로 물러난다) |
 
@@ -242,7 +242,7 @@ Codex 에게 맡기는 줄과 Codex 가 맡기는 줄은 사내에서는 Codex �
 | 훅 둘 — **DRM 길잡이**: agy 가 Fasoo DRM 에 감긴 파일을 열거나 그 경로를 적은 셸 명령으로 읽으려 하면 막고, 까닭에 스킬 `drm-office-read` 로 가는 길을 싣는다. **PowerShell UTF-8 BOM 보정**: agy 가 `.ps1` · `.psm1` · `.psd1` 을 쓰면 BOM 을 붙인다 | `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목. 사람이 넣은 다른 항목은 두고, 고치기 전 파일은 곁에 `hooks.json.before-paisetup-<시각>` 으로 떠 둔다. 우리 항목을 `"enabled": false` 로 꺼 두면 다음 설치도 꺼진 채 둔다. **안티그래비티를 빼고 다시 누르면 이 두 항목만 걷는다**(꺼 둔 것도) |
 | Python — 훅 둘이 돈다 | 개발도구 칸을 꺼도 깐다 |
 
-Claude 홈에 서는 나머지 셋(그림 문 · Bash 겹역슬래시 차단 · 웹 다시 찾기)은 agy 에 안 간다 — agy 는 그림 크기로 비용이
+Claude 홈에 서는 나머지 셋(그림 문 · Bash 겹역슬래시 보정 · 웹 다시 찾기)은 agy 에 안 간다 — agy 는 그림 크기로 비용이
 갈리지 않고 역슬래시를 접지 않아(결정 0083 실측), 막을 사고가 없다. agy 훅에는 사람의 글을 받는 자리가 없어 DRM 길잡이는
 **도구가 그 파일을 읽으려는 순간**(파일 열기 · 그 경로를 적은 셸 명령)에만 걸린다 — 경로를 안 적은 셸 읽기(와일드카드 ·
 변수로 이은 경로)는 못 본다(결정 0110).
@@ -414,20 +414,22 @@ Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡�
   [O] DRM 길잡이 껍데기 (씨앗의 drm-guide.sh)
   [O] DRM 길잡이 배선 (홈 settings.json 의 UserPromptSubmit · PreToolUse · PostToolUseFailure)
   [O] DRM 길잡이 matcher (이벤트마다 진본과 같다)
-  [O] Bash 겹역슬래시 차단 배선 (홈 settings.json 의 PreToolUse)
+  [O] Bash 겹역슬래시 보정 배선 (홈 settings.json 의 PreToolUse)
   [O] PowerShell UTF-8 BOM 보정 배선 (홈 settings.json 의 PostToolUse)
   [O] ANTHROPIC_BASE_URL
   [O] ANTHROPIC_AUTH_TOKEN
 
   3초 뒤에 엽니다 — 위 검증 칸을 먼저 읽는다
   VS Code — 띄웠다
+  VS Code 가 이 폴더를 믿느냐고 물으면 Trust 한 번 — 확장이 함께 풀린다
 
 === 끝 === VS Code 를 열었습니다 — Ctrl+Shift+P → Claude 로 확장을 엽니다
 ```
 
 **마지막 `=== 끝 ===` 줄이 다음에 할 일을 댄다** — 창 아래 줄에 뜨는 것도 그 줄이고, 갈래마다
 다른 말을 한다(띄웠다 · 이미 떠 있다 · 못 찾았다). 띄운 것이 VS Code 면 거기서
-`Ctrl+Shift+P` → `Claude` 로 확장을 연다.
+`Ctrl+Shift+P` → `Claude` 로 확장을 연다. 저장소를 처음 열 때 VS Code 가 이 폴더의 작성자를 믿느냐고 물으면
+Trust 를 한 번 누른다 — 그 전에는 제한 모드라 확장이 다 꺼져 있고, 한 번에 Claude · Codex · agy 확장이 함께 풀린다.
 
 ### 같이 깔린 환경 자료 — 어디에 있나
 
@@ -539,7 +541,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `웹 다시 찾기 배선 (…)` | 그림 문 배선 줄과 같다. 두 이벤트 가운데 하나만 서도 `[X]` 다 — 다시 누른다 |
 | `DRM 길잡이 몸통 …` · `DRM 길잡이 껍데기 …` | 그림 문 몸통 · 껍데기 줄과 같다 — 설정 저장소 씨앗이 덜 깔렸다 |
 | `DRM 길잡이 배선 (…)` · `DRM 길잡이 matcher (…)` | 웹 다시 찾기 배선 줄과 같다. 세 이벤트 가운데 하나만 빠지거나, 이벤트마다의 matcher 가 등록이 가리키는 껍데기(`drm-guide.sh`)의 머리말과 어긋나도 `[X]` 다 — 괄호가 어느 이벤트인지 댄다. 다시 누른다 |
-| `Bash 겹역슬래시 차단 배선 (…)` · `PowerShell UTF-8 BOM 보정 배선 (…)` | 그림 문 배선 줄과 같다 — 다시 누른다 |
+| `Bash 겹역슬래시 보정 배선 (…)` · `PowerShell UTF-8 BOM 보정 배선 (…)` | 그림 문 배선 줄과 같다 — 다시 누른다 |
 | `워드 PDF 변환 안내 끔 (…)` | 워드의 PDF 변환 안내를 끄는 값이 1 이 아닌 판이 남았다. 위쪽 「워드 PDF 변환 안내 끄기 실패」 빨간 줄이 까닭을 든다 — 회사 정책이 홈의 오피스 키를 막았으면 IT, 아니면 다시 누른다 |
 | `Codex 훅 부품 (…)` | 설정 저장소 씨앗에 DRM · 그림 어댑터와 Bash · BOM 보정, 병합기 · 신뢰 도우미 · 예시 중 빠진 것이 있다. `설정 저장소 씨앗 (n/m)` 줄을 먼저 보고 다시 누른다 |
 | `Codex 훅 배선 (…)` | `~/.codex/config.toml` 에 네 훅의 명령이 다 서지 않았다. 설치는 우리 항목만 갈고 사람이 넣은 훅은 둔다. 훅을 `[hooks]` 표의 `이벤트 = [ … ]` 가 아닌 꼴(`[[hooks.이벤트]]` 등)로 적었으면 그 이벤트는 건드리지 않고 위에 노란 줄로 알린다 — 그 이벤트에 우리 훅을 직접 더한 뒤 다시 누른다. 빨간 「병합 실패」 줄이면 `~/.codex/config.toml` 은 그대로이고 그 아래 줄이 까닭을 댄다 |

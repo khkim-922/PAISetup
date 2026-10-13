@@ -149,6 +149,8 @@ COND_LABELS = {COND_BOX: '제작자 칸', COND_PICK: '고른 제품'}
 USER_ENV_KEY = 'Environment'           # HKCU 아래
 NAMES_NONE = 'none'
 NAMES_EMPTY = ('claude',)              # 값이 비었을 때
+# 고른 제품 값에 들지만 이 표에 길이 없는 제품 — 세션 훅이 폴더 신뢰만 건다(결정 0122). 손은 모르는 이름으로 안 센다
+PICK_ROUTELESS = ('copilot',)
 NAMES_SPLIT = re.compile(r'[,\s]+')
 
 KIND_ITEM, KIND_ROUTE, KIND_OLD = 'item', 'route', 'old'
@@ -664,7 +666,7 @@ def read_cond(cond, given, tools, out):
         return set(NAMES_EMPTY)
     lit = set()
     for n in names:
-        if n == NAMES_NONE:
+        if n == NAMES_NONE or (cond == COND_PICK and n in PICK_ROUTELESS and n not in tools):
             continue
         if n in tools:
             lit.add(n)
