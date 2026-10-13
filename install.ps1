@@ -2609,10 +2609,12 @@ function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts,
 #region 도구별 · 묻지 않고 돌기 — 고른 도구의 제 승인 설정을 사람 값을 안 덮고 심고, 끝 검증이 되읽는다
 
 # 표 한 줄(`$ToolAutoRun` — 「도구별 홈」 걸음)이 받는 꼴 — Label · Want · Path(설정 파일) · Under(그 안의 표 이름 · 맨 위면 빈 글) ·
-#   Set(심을 키와 값 · 순서대로) · Guard(있으면 사람이 정한 것으로 보는 키 · 없으면 Set 의 키) · Toml(참이면 TOML 맨 위 키).
+#   Set(심을 키와 값 · 순서대로) · Guard(있으면 사람이 정한 것으로 보는 키 · 없으면 Set 의 키) · Toml(참이면 TOML 맨 위 키) ·
+#   Need(심기 전에 그 자리에 그 값으로 서 있어야 하는 키 · JSON 줄만 — 표의 앞 줄이 심은 뒤에 재므로 같은 파일의 앞 줄을 먼저 둔다).
 # 심는 규칙은 하나다 — **Guard 의 키가 하나라도 서 있으면 그 줄을 통째로 둔다.** 한 줄의 키들은 그 도구의 스위치 하나라, 사람이
 #   하나만 정해 둔 자리에 나머지를 채우면 그 사람이 고른 적 없는 조합이 선다(claude-config 결정 0127).
-# 내는 것 — @{ Did = set · kept · broken · nopython; Have = 서 있던 Guard 키와 값(「키 = 값」 글) · Why = broken 의 까닭 }.
+# 내는 것 — @{ Did = set · kept · skipped(Need 가 안 섰다) · broken · nopython; Have = 서 있던 Guard 키와 값(「키 = 값」 글) ·
+#   Why = skipped · broken 의 까닭 }.
 #   화면 · 실패 줄은 부르는 쪽이 든다. 파일을 못 읽으면 안 건드린다 — 사람이 손댄 것이 거기 들어 있을 수 있다.
 # ⚠ 표인가는 `[System.Management.Automation.PSCustomObject]` 로 가른다 — `[pscustomobject]` 는 `[psobject]` 라 파이프에서 온 글 · 목록도
 #   그 꼴로 읽혀, 맨 위가 목록인 파일을 표로 보고 덮는다.
@@ -2663,6 +2665,10 @@ function Set-ToolAutoRun($Row) {
   }
   $have = @($guard | Where-Object { $at.PSObject.Properties[$_] } | ForEach-Object { "$_ = $($at.$_ | ConvertTo-Json -Compress)" })
   if ($have.Count) { return @{ Did = 'kept'; Have = $have } }
+  if ($Row.Need) {
+    $unmet = @($Row.Need.Keys | Where-Object { -not ($at.PSObject.Properties[$_] -and $at.$_ -ceq $Row.Need[$_]) })
+    if ($unmet.Count) { return @{ Did = 'skipped'; Why = (@($unmet | ForEach-Object { "$_ 가 $($Row.Need[$_] | ConvertTo-Json -Compress) 가 아니다" }) -join ' · ') } }
+  }
   foreach ($k in $Row.Set.Keys) { $at | Add-Member -NotePropertyName $k -NotePropertyValue $Row.Set[$k] }
   New-Item -ItemType Directory -Path (Split-Path $Row.Path -Parent) -Force | Out-Null
   # ⚠ `-Depth` 를 준다 — 5.1 의 기본 깊이는 2 라 사람이 둔 깊은 표가 글자로 뭉개진다.
@@ -2681,7 +2687,8 @@ function Read-TomlTopKeys([string]$Path, [string[]]$Keys) {
 }
 
 # 끝 검증 한 줄 — 심은 뒤의 파일을 되읽어, Guard 의 키가 하나라도 서 있으면 [O] 다(사람이 정한 값은 그 사람의 기본값이라 안
-#   덮었고 줄에 그 값을 적는다 · 자동 모드 줄과 같은 자).
+#   덮었고 줄에 그 값을 적는다 · 자동 모드 줄과 같은 자). Need 의 키가 다른 값으로 서 있으면 안 심은 것이 맞아 [O] 고, 그 키가
+#   없으면 앞 줄이 못 심은 것이라 [X] 다.
 function Get-ToolAutoRunCheck($Row) {
   $guard = if ($Row.Guard) { @($Row.Guard) } else { @($Row.Set.Keys) }
   $at = $null
@@ -2695,8 +2702,13 @@ function Get-ToolAutoRunCheck($Row) {
   }
   $have = @()
   if ($at -is [System.Management.Automation.PSCustomObject]) { $have = @($guard | Where-Object { $at.PSObject.Properties[$_] } | ForEach-Object { "$_ = $($at.$_ | ConvertTo-Json -Compress)" }) }
+  $waived = @()
+  if (-not $have.Count -and $Row.Need -and $at -is [System.Management.Automation.PSCustomObject]) {
+    $waived = @($Row.Need.Keys | Where-Object { $at.PSObject.Properties[$_] -and $at.$_ -cne $Row.Need[$_] } | ForEach-Object { "$_ = $($at.$_ | ConvertTo-Json -Compress)" })
+  }
   $where = $Row.Path + $(if ($Row.Under) { " 의 $($Row.Under)" } else { '' })
-  @{ Name = "묻지 않고 돌기 · $($Row.Label) ($where — $(if ($have.Count) { $have -join ' · ' } else { '없다' }))"; Ok = [bool]$have.Count }
+  $shown = if ($have.Count) { $have -join ' · ' } elseif ($waived.Count) { "안 심는다 — $($waived -join ' · ')" } else { '없다' }
+  @{ Name = "묻지 않고 돌기 · $($Row.Label) ($where — $shown)"; Ok = [bool]($have.Count -or $waived.Count) }
 }
 
 #endregion 도구별 · 묻지 않고 돌기
@@ -5422,12 +5434,14 @@ if ($hostAgy) {
 #   (Claude 홈 설정) · 헤드리스의 건너뛰기 깃발(부르는 쪽)과는 다른 층이다. 값마다 무엇을 여나는 결정 0127 이 든다.
 #   * agy CLI — `toolPermission = always-proceed`. 앱의 값은 CLI 에 안 먹어 둘 다 심는다
 #   * agy 앱 — Turbo 의 세 칸. 셋이 한 스위치라 한 줄이다
-#   * Copilot CLI — `defaultPermissionMode = allow-all`. 대화형 시작에만 먹고 `-p` 맡기기에는 안 간다
+#   * Copilot CLI — `defaultPermissionMode = allow-all`, 그 위에 `defaultMode = autopilot`. 대화형 시작에만 먹고 `-p` 맡기기에는 안 간다
 #   * Codex(CLI · 데스크탑 앱) — `approvals_reviewer = auto_review`(「Approve for me」). 샌드박스를 넘는 요청을 사람 대신 검토자가
 #     가른다. 샌드박스 모드는 안 심는다 — 사용자 단에 두면 신뢰하지 않은 폴더까지 열린다. `approval_policy` 가 서 있으면 사람이
 #     승인 층을 정한 것이라 둔다
 # 고르지 않게 돼도 안 걷는다 — 심은 값은 사람이 같은 값을 둔 것과 글자로 안 갈리고, 기록을 따로 두면 그 기록이 또 하나의
 #   사본이 된다. 끄는 길은 그 도구의 설정에서 다른 값을 고르는 것이다(다음 설치가 그 값을 안 덮는다).
+# Copilot 홈은 Copilot 이 고르는 차례(`COPILOT_HOME` → `~/.copilot`)를 따른다 — 세션 훅이 폴더 신뢰를 거는 자리와 같다(결정 0122).
+$CopilotCfg = Join-Path $(if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE '.copilot' }) 'settings.json'
 $ToolAutoRun = @(
   @{ Label = 'agy CLI'; Want = [bool]$hostAgy; Path = $AgyCfg; Under = ''
      Set = [ordered]@{ toolPermission = 'always-proceed' } }
@@ -5435,10 +5449,13 @@ $ToolAutoRun = @(
      Set = [ordered]@{ autoExecutionPolicy          = 'CASCADE_COMMANDS_AUTO_EXECUTION_EAGER'
                        enableTerminalSandbox        = $false
                        nonWorkspaceFileAccessPolicy = 'AGENT_SETTING_POLICY_ALLOW' } }
-  # Copilot 홈은 Copilot 이 고르는 차례(`COPILOT_HOME` → `~/.copilot`)를 따른다 — 세션 훅이 폴더 신뢰를 거는 자리와 같다(결정 0122).
-  @{ Label = 'Copilot CLI'; Want = [bool]($PickKeys -contains 'copilot'); Under = ''
-     Path = (Join-Path $(if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE '.copilot' }) 'settings.json')
+  @{ Label = 'Copilot CLI'; Want = [bool]($PickKeys -contains 'copilot'); Path = $CopilotCfg; Under = ''
      Set = [ordered]@{ defaultPermissionMode = 'allow-all' } }
+  # Autopilot — 새 대화형 세션이 첫 프롬프트에서 일을 끝까지 스스로 잇는 모드다(`-p` · 서버 · ACP 실행에는 안 먹는다). 승인이
+  #   `allow-all` 일 때만 심는다 — 사람이 `manual` 을 골랐는데 Autopilot 이면 새 세션마다 그 확인이 뜬다. 바로 위 줄이 심은 뒤에
+  #   재므로 그 줄 뒤에 선다. 모드는 승인 층이 아니라 승인 줄을 안 막는다(결정 0127).
+  @{ Label = 'Copilot CLI(Autopilot)'; Want = [bool]($PickKeys -contains 'copilot'); Path = $CopilotCfg; Under = ''
+     Set = [ordered]@{ defaultMode = 'autopilot' }; Need = [ordered]@{ defaultPermissionMode = 'allow-all' } }
   # Codex 는 사외에서만 심는다 — 사내 Codex 는 게이트웨이로 가 검토자가 쓸 모델이 그 목록에 없을 수 있고, 그러면 샌드박스를 넘는
   #   요청마다 검토가 져 묻는 것보다 나쁘다. 사내 PC 에서 검토가 서는 것을 재면 `-not $inside` 를 걷는다(결정 0127).
   @{ Label = 'Codex'; Want = [bool]($hostCodex -and -not $inside); Path = $CodexCfg; Under = ''; Toml = $true
@@ -5453,6 +5470,7 @@ foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) {
       if ((@($res.Have) -join ' · ') -ceq $ours) { Write-Host "  묻지 않고 돌기 · $($r.Label) — 이미 맞다" }
       else { Write-Host "  묻지 않고 돌기 · $($r.Label) — 사람이 정한 값($($res.Have -join ' · '))이라 둔다" }
     }
+    'skipped' { Write-Host "  묻지 않고 돌기 · $($r.Label) — 안 심는다 ($($res.Why))" }
     default {
       Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 안 건드렸다 ($($r.Path))" -ForegroundColor Red
       $Fails.Add("묻지 않고 돌기 · $($r.Label) ($($res.Why))")
@@ -6784,10 +6802,16 @@ if ($NoLaunch) {
         }
       }
       # VS Code 는 저장소를 처음 열 때 제 작업 영역 신뢰를 따로 묻고, 그 전에는 제한 모드라 확장이 다 꺼진다 — 한 번 신뢰하면
-      #   Claude · Codex · agy 확장이 함께 풀린다. 신뢰 목록은 VS Code 내부 상태라 미리 못 심는다. 끝 줄은 창의 한 줄 칸에 떠
-      #   길게 못 붙이므로 기록 칸 한 줄에 드는 길이로 따로 낸다.
+      #   Claude · Codex · agy 확장이 함께 풀린다. 설정 저장소 훅이 작업 루트 저장소를 VS Code 의 신뢰 목록에 미리 적되(claude-config
+      #   결정 0130) VS Code 가 떠 있었으면 미루므로, 「Trust 한 번」 줄은 심은 기록이 하나도 없을 때만 낸다. 기록의 자리와 꼴은
+      #   씨앗의 도우미가 들고 여기는 그 `status` 를 묻는다 — 못 물으면 줄을 낸다. 끝 줄은 창의 한 줄 칸에 떠 길게 못 붙이므로
+      #   기록 칸 한 줄에 드는 길이로 따로 낸다.
       if ($opened -contains 'VS Code') {
-        Write-Host '  VS Code 가 이 폴더를 믿느냐고 물으면 Trust 한 번 — 확장이 함께 풀린다' -ForegroundColor Yellow
+        $vsTrust = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\vscode-trust.py'
+        $vsSeen = if (Test-Path -LiteralPath $vsTrust) { @(Get-Quiet 'python' @('-X', 'utf8', $vsTrust, 'status')) -match '^SEEN=[1-9]' } else { @() }
+        if (-not $vsSeen) {
+          Write-Host '  VS Code 가 이 폴더를 믿느냐고 물으면 Trust 한 번 — 확장이 함께 풀린다' -ForegroundColor Yellow
+        }
       }
     }
 
