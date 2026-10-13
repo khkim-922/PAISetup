@@ -44,10 +44,10 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 | `vdi-home-settings.json` | 홈 `~/.claude/settings.json` 의 씨앗. **남에게 줄 수 있는 것만 둔다** — 곁에 `vdi-home-settings.private.json` 을 두면 그 `permissions.allow` 줄이 더해지는데, 그 파일은 어디로도 안 실린다. 가르는 물음은 「이 허용 규칙을 남이 물었나」다 |
 | `.claude/hooks/session-start.sh` | **문지기.** 세션이 열릴 때 불려 몸통을 찾아 넘긴다 — 저장소마다 한 벌씩 서는 것은 이것이다 |
 | `.claude/hooks/session-start-body.sh` | **익명 몸통.** 세션이 열릴 때 도구를 재고 갖춘다. 설치가 `--install` 로 부르면 개인 칸까지. 저장소마다 사본을 두지 않는다 |
-| `.claude/hooks/utf8-bom.sh` | 편집 뒤 인코딩을 지키는 훅 |
+| `.claude/hooks/utf8-bom.sh` | 편집 뒤 인코딩을 지키는 훅 — 손이 껍데기 머리말대로 **홈** `~/.claude/settings.json` 에 건다 |
 | `.claude/hooks/gate-bypass-ask.sh` | 커밋 게이트를 건너뛰는 git 명령(`--no-verify` · `core.hooksPath` 덮어쓰기)이면 막지 않고 묻는 훅 |
-| `.claude/hooks/bash-backslash-deny.sh` | 윈도우에서 Bash 명령에 겹역슬래시가 들면 돌려보내는 훅 — 셸에 닿기 전에 하나로 접혀 명령이 성공한 채 결과만 틀리기 때문이다 |
-| `.claude/settings.json` | 문지기 `session-start.sh` · `utf8-bom.sh` · `gate-bypass-ask.sh` · `bash-backslash-deny.sh` 넷을 **거는** 자리 |
+| `.claude/hooks/bash-backslash-deny.sh` | 윈도우에서 Bash 명령에 겹역슬래시가 들면 역슬래시를 두 배로 늘려 셸에 쓴 그대로 닿게 넘기는 훅 — 셸에 닿기 전에 하나로 접혀 명령이 성공한 채 결과만 틀리기 때문이다(접힘을 안 잰 새 판에서는 돌려보낸다). 손이 **홈** `~/.claude/settings.json` 에 건다 |
+| `.claude/settings.json` | 문지기 `session-start.sh` 와 `gate-bypass-ask.sh` 둘을 **거는** 자리 — 나머지 훅은 손이 홈에 건다(거는 쪽이 둘이면 도구 호출마다 두 번 돈다) |
 | `.claude/hooks/image-gate.py` · `image-gate.sh` | **그림 문.** 모델이 그림을 받기 직전에 치수를 재는 훅 — `scale` 을 안 고른 도구 스크린샷과, 상류가 어차피 깎을 만큼 큰 그림 파일은 막는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 저장소가 아니라 **홈** `~/.claude/settings.json` 에 등록된다 — 갈 곳 표의 손이 껍데기 머리말(어느 이벤트에 무엇을 맞춰 거나)대로 짓고, **설치 창에서 Claude 를 고른 PC 에만** 놓는다(설치를 안 거친 자리는 고른 것으로 본다). 치수 눈금은 검사 씨앗의 `_vision.py` 가 든다 |
 | `.claude/hooks/web-retry.sh` | **웹 다시 찾기.** 웹 검색 · 웹 가져오기가 못 닿았을 때 다른 길(`curl` · Tavily · agy)이 있다는 것을 결과 곁에 붙이는 훅 — 막지 않는다. 그림 문처럼 손이 껍데기 머리말대로 **홈** `~/.claude/settings.json` 에 놓는다 |
 | `.claude/hooks/drm-guide.py` · `drm-guide.sh` | **DRM 길잡이.** 글에 붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 그것을 읽는 스킬 `drm-office-read` 로 가는 길을 곁에 붙이는 훅 — 막지 않는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 그림 문처럼 손이 껍데기 머리말대로 **홈** `~/.claude/settings.json` 에 놓는다 |

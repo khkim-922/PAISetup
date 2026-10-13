@@ -1046,8 +1046,12 @@ deploy_personal() {   # deploy_personal auto|install
       for _r in $_repos; do
         [ -d "$_root/$_r/.git" ] && continue
         echo "$PROJECT_NAME: $_r — clone ($_root)"
+        # 저장소마다 초를 붙인다 — 받는 양이 저장소마다 자리 수가 다르고, 합만 보면 그 차가
+        # 망 탓인지 파일 수 탓인지 안 갈린다. 진 판도 찍는다(진 데 든 시간도 시간이다).
+        _ct0=$SECONDS
         git clone "$(printf '%s' "$_url" | sed "s|<이름>|$_r|g")" "$_root/$_r" ||
           echo "$PROJECT_NAME: ⚠ $_r clone 실패 — 주소 · 계정 · 망을 본다"
+        printf '  · %s clone — %s초\n' "$_r" "$((SECONDS - _ct0))"
       done
     fi
   fi
@@ -2512,7 +2516,8 @@ EOF
 $(decl_fields "$_f" "$_t" wiring probe-target wiring-env on-demand)
 EOF
     [ "$_wg" = node-link ] || return 0
-    probe_tool node-resolvable "$_mod" "" && return 0
+    # 닿으면 그 답을 적는다 — 진단이 같은 물음을 다시 안 띄우고 인용한다(`repo_verified` 곁말).
+    probe_tool node-resolvable "$_mod" "" && { repo_verified_put "$_f" "$_t" node-resolvable "$_mod"; return 0; }
     # ⚠ **못 건 배선은 실패로 적는다 — 말없이 빠져나가지 않는다.** 이 걸음 뒤에 지문 도장이
     #   찍히므로(⑧) 여기서 조용히 나가면 그 저장소는 「배선됐다」로 굳고, 다음 세션(auto)도
     #   재설치(`--needs-install`)도 파일만 봐서 **영영 다시 안 건다.** 전역 도구가 저장소 걸음보다
@@ -2539,7 +2544,7 @@ EOF
       cmd //c mklink //J "$(cygpath -w "$PROJECT_DIR/node_modules/$_mod")" "$(cygpath -w "$_groot/$_mod")" \
         >/dev/null 2>&1 || true
     fi
-    probe_tool node-resolvable "$_mod" "" && return 0
+    probe_tool node-resolvable "$_mod" "" && { repo_verified_put "$_f" "$_t" node-resolvable "$_mod"; return 0; }
     # 이름 해석이 그래도 안 되면 소비자 계약(환경변수)으로 넘긴다 — 이름은 선언이 든다
     # (`_env` 는 위에서 같은 awk 가 이미 읽었다).
     # ⚠ **진입점을 손으로 찾지 않는다 — 폴더를 넘긴다.** `index.js` 는 추측이라 그 이름이
@@ -2703,10 +2708,10 @@ EOF
 
   # ── ⑥ 저장소 배선 — **깔지 않는다. 잇기만 한다** (#43) ────────────────────────
   #    전역 설치는 저장소 `node_modules` 밖이라 import 가 못 찾는다 — 그 한 칸을 잇는 것이
-  #    저장소의 몫이고, 그 뒤에 서는 프로브는 아래 진단 절이 **도구마다 한 번** 든다.
-  # ⚠ **여기서 다시 프로브하지 않는다.** 옛 꼴은 설치 앞에서 한 번, 진단에서 또 한 번 물어
-  #   저장소마다 두 벌이었다. 깔 자가 없는 고리에서 프로브는 판정일 뿐이고, 판정 문구의
-  #   진본은 진단 절 한 자리다.
+  #    저장소의 몫이다. 도구가 닿나는 아래 진단 절이 **도구마다 한 번** 든다 — 잇는 걸음이 정션을
+  #    걸려고 이미 물어 닿은 도구는 진단이 그 답을 인용한다(`repo_verified`).
+  # ⚠ **잇는 일 밖의 프로브는 여기 안 둔다.** 설치 앞에서 한 번, 진단에서 또 한 번 물으면 저장소마다
+  #   두 벌이다. 깔 자가 없는 고리에서 프로브는 판정일 뿐이고, 판정 문구의 진본은 진단 절 한 자리다.
   if [ -n "$DO_REPO" ]; then
     _wt0=$SECONDS
     for _conf in "$GCONF" "$PCONF"; do
@@ -2797,9 +2802,35 @@ install_bg() {
   echo "$PROJECT_NAME: 도구를 배경에서 맞춘다 ($(printf '%s' "${DO_GLOBAL:+전역형 도구 · }${DO_REPO:+이 저장소 도구 · }${UPGRADE:+새 판 견주기 · }" | sed 's/ · $//')) — 세션 시작은 안 기다린다. 이 세션에는 아직 안 선 도구가 있을 수 있고, 진 사유는 다음 세션이 말한다 · 기록 $INSTALL_BG_LOG"
 }
 
-gate() {  # gate <이름> <ok|off> <까닭>
-  if [ "$2" = ok ]; then printf '  ✅ %s — %s\n' "$1" "$3"
-  else printf '  ❌ %s — %s\n' "$1" "$3"; down=$((down + 1)); fi
+gate() {  # gate <이름> <ok|ok-partial|off> <까닭> — 진단 줄 하나. off 는 꺼진 검사(`down`)로 센다
+  # ok-partial 은 ✅ 이되 그 초록이 다 재지는 않은 줄이다 — 안 닿는데 안 세거나(on-demand · 못 타는 설치법)
+  #   판을 못 쟀다. `down` 에는 안 들고, 저장소를 한 줄로 접을지(`gate_flush`)만 가른다.
+  case "$2" in
+    ok)         _gate_line="  ✅ $1 — $3" ;;
+    ok-partial) _gate_line="  ✅ $1 — $3"; GATE_PARTIAL=$((GATE_PARTIAL + 1)) ;;
+    *)          _gate_line="  ❌ $1 — $3"; down=$((down + 1)) ;;
+  esac
+  GATE_N=$((GATE_N + 1))
+  # `--install` 만 모아 두고 끝에 낸다 — 접을지는 마지막 줄까지 봐야 갈린다. 다른 갈래는 바로 낸다.
+  if [ "$MODE" = install ]; then GATE_LINES="$GATE_LINES$_gate_line$_NL"
+  else printf '%s\n' "$_gate_line"; fi
+}
+
+# ── 모아 둔 진단 줄을 낸다 — **`--install` 에서 다 초록이면 저장소마다 한 줄로 접는다** (#130 ③) ──
+#    `--install` 을 읽는 자는 설치 화면과 기록이고, 거기서 필요한 것은 성패와 고칠 자리다. ❌ 가 하나라도
+#    있거나 다 재지 않은 초록(`ok-partial`)이 있으면 줄을 다 낸다 — 접힌 한 줄이 그것을 가리면 다
+#    선 저장소와 구별이 안 된다.
+# ⚠ `--check` 는 접지 않는다 — 사람이 「어느 검사가 도나」를 물으러 온 자리이고, 배포가 진 저장소마다
+#   그 명령을 고칠 자리로 건넨다(deploy.ps1). 거기서 목록을 접으면 물은 것에 답을 안 한다.
+# ⚠ 종료코드와 무관하다 — 판정은 `down` 하나가 들고, 여기는 줄을 어떻게 내나만 정한다.
+gate_flush() {
+  [ -n "$GATE_LINES" ] || return 0
+  if [ "$down" -eq 0 ] && [ "$GATE_PARTIAL" -eq 0 ]; then
+    printf '  ✅ 검사 %s개가 다 선다 — 줄마다 보려면 session-start.sh --check\n' "$GATE_N"
+  else
+    printf '%s' "$GATE_LINES"
+  fi
+  GATE_LINES=''
 }
 
 why() {  # why <도구> [<설치 걸음>] — 도구 이름으로 못 찾으면 그 도구를 깐 걸음의 실패를 든다
@@ -2890,6 +2921,29 @@ EOF
   return 1
 }
 
+# ── 설치 걸음이 **이 프로세스에서** 「이 저장소에서 닿나」를 이미 물었나 — 저장소 도구의 인용 (#130 ②) ──
+#    배선 걸음(`wire_tool`)은 정션을 걸기 앞뒤로 `node-resolvable` 을 이 저장소에서 묻는다 — 진단의
+#    `probe_reach` 와 같은 명령이다. 그 답이 참이었으면 진단은 닿나를 다시 안 묻고 이 기록을 인용한다.
+# ⚠ **기록은 파일이 아니라 이 셸의 변수다.** 설치 걸음과 진단이 한 프로세스에서 돌아(`--install`) 기록이
+#   다른 실행에서 올 길이 없다 — 전역 명부(`GVERIFIED`)가 표식을 견줘야 하는 까닭이 여기는 없다. 처음 값은
+#   흐름이 비운다(「해석기와 처음 값」) — 환경에서 같은 이름이 들어와도 인용이 안 선다. `--check` 는 설치
+#   걸음을 안 돌아 기록이 늘 비고, 그래서 늘 묻는다.
+# ⚠ **참만 적는다.** 거짓을 적으면 진단이 안 선 도구를 「확인했다」로 읽는다.
+# ⚠ **선언 파일 · 이름 · 프로브 갈래 · 대상을 다 견준다.** 배선 걸음은 선언의 프로브 갈래와 무관하게
+#   `node-resolvable` 을 묻는다 — 선언이 딴 갈래면 딴 명제라 인용이 안 선다. 같은 이름이 두 선언에서
+#   딴 갈래로 서는 저장소도 있다.
+# ⚠ **판은 인용하지 않는다.** 배선 걸음은 닿나만 묻고 판(`probe_pin`)은 안 물었다 — 진단이 판은 묻는다.
+repo_verified_put() {  # repo_verified_put <선언파일> <이름> <probe> <probe-target>
+  REPO_VERIFIED="$REPO_VERIFIED$1$_TAB$2$_TAB$3$_TAB$4$_NL"
+}
+repo_verified() {  # repo_verified <선언파일> <이름> <probe> <probe-target> — 0 이면 인용한다
+  # 줄째로 견준다 — 줄 앞뒤에 줄바꿈을 붙여, 긴 줄의 꼬리가 짧은 줄로 읽히지 않게 한다.
+  case "$_NL$REPO_VERIFIED" in
+    *"$_NL$1$_TAB$2$_TAB$3$_TAB$4$_NL"*) return 0 ;;
+  esac
+  return 1
+}
+
 render_decl() {  # render_decl <선언파일> <층라벨>
   for _name in $(decl_sections "$1"); do
     # ⚠ **on-demand 도 여기서 같이 읽는다.** 쓰는 자리는 맨 아래 갈래 하나뿐이지만, 같은
@@ -2916,22 +2970,27 @@ EOF
     #   통과할 도구에도 그 쌍이 돌면 세션마다 도구 수만큼 곱해진다(npm 은 시작만으로 수백 ms 다).
     # ⚠ **프로브 앞에 선다 — 이기면 프로브를 안 띄운다.** 문 셋(표식·이름+대상·같은 표식)은
     #   `global_verified` 가 든다. 표식이 없는 자리에서는 첫 문에서 바로 져 옛 길 그대로다.
+    # 설치 걸음이 이 프로세스에서 닿나를 이미 물었으면(`repo_verified`) 판만 묻는다 — 판은 그 걸음이 안 물었다.
+    #   기록이 없으면 옛 길 그대로 둘 다 묻는다. 어느 쪽이든 지면 아래 갈래가 옛 길과 같은 줄을 낸다.
+    _cited=''
+    repo_verified "$1" "$_name" "$_probe" "$_target" && _cited=' — 설치 걸음이 이 실행에서 확인했다'
     if global_verified "$1" "$_name" "$_target"; then
       gate "$_name" ok "$_by ($2) — 전역 걸음이 이 실행에서 확인했다"
-    elif probe_decl "$1" "$_name"; then
+    elif { [ -n "$_cited" ] && probe_pin "$1" "$_name"; } ||
+         { [ -z "$_cited" ] && probe_decl "$1" "$_name"; }; then
       _shape="$(pin_shape "$1" "$_name")"
-      if [ -n "$_shape" ]; then gate "$_name" ok "$_by ($2) — $_shape"
-      else                      gate "$_name" ok "$_by ($2)"; fi
+      if [ -n "$_shape" ]; then gate "$_name" ok-partial "$_by ($2)$_cited — $_shape"
+      else                      gate "$_name" ok "$_by ($2)$_cited"; fi
     elif _pin="$(pin_mismatch "$1" "$_name")"; [ -n "$_pin" ]; then
       gate "$_name" off "$_by ($2) — $_pin$(why "$_name" "$_step")"
     elif [ "$_probe" = node-resolvable ] && npm_root_g && [ -d "$NPM_ROOT_G/$_target" ]; then
       gate "$_name" off "$_by ($2) — 깔렸는데 프로브가 못 찾는다: 배선이 끊겼다$(why "$_name" "$_step")"
     elif [ "$_ondemand" = yes ]; then
       # 선언이 「필요할 때 깐다」로 둔 도구 — 부재가 이 저장소의 검사를 끄는 것이 아니다
-      gate "$_name" ok "$_by ($2) — 안 닿는다 · 필요할 때 깐다 (on-demand)"
+      gate "$_name" ok-partial "$_by ($2) — 안 닿는다 · 필요할 때 깐다 (on-demand)"
     elif ! kind_here "$_inst"; then
       # 이 자리에서 못 타는 설치법 — 깔 손이 없으니 꺼진 검사로 안 센다(`kind_here` 곁말)
-      gate "$_name" ok "$_by ($2) — 안 닿는다 · 이 자리($OS)에서는 안 깐다 (설치법 $_inst)"
+      gate "$_name" ok-partial "$_by ($2) — 안 닿는다 · 이 자리($OS)에서는 안 깐다 (설치법 $_inst)"
     else
       gate "$_name" off "$_by ($2) — 안 닿는다$(why "$_name" "$_step")"
     fi
@@ -3103,6 +3162,9 @@ NPM_BIN="$PROJECT_DIR/node_modules/.bin"
 
 PATH_CAUGHT=''
 NPM_ROOT_G=''; NPM_ROOT_G_ASKED=''
+# 설치 걸음이 이 프로세스에서 닿는다고 확인한 저장소 도구 — 진단이 인용한다(`repo_verified`). 여기서 비운다:
+#   환경에서 같은 이름이 들어와도 인용이 서면 안 된다.
+REPO_VERIFIED=''
 
 # GitHub 에 닿는 기다림(초) — **연결 마감 하나만 뜻한다.** 아래 두 함수가 같이 쓴다.
 #   되풀이 창에 이 값을 겹쳐 쓰지 않는다 — 한 값이 두 뜻을 지면, 연결을 넉넉히 하려고 올린 손이
@@ -3281,13 +3343,27 @@ fi
 # ══ 단계 · 진단 — check · 진단까지 오는 install ════════════════════════
 #    층 — 없음(재기)
 #    하는 일 — 전역 규율 · 홈 훅(설정 저장소 세션만) · 커밋 훅 배선과 게이트 · 선언 도구마다 닿나를 한 줄씩 내고,
-#      메모리 목차 한도를 잰다
-#    앞에서 받는 것 — 설치가 남긴 실패 기록(`install-fail` · `install-global-fail`) · 전역 걸음의 확인 명부(`GVERIFIED`)
+#      메모리 목차 한도를 잰다. `--install` 은 다 초록이면 그 줄들을 한 줄로 접는다(`gate_flush`)
+#    앞에서 받는 것 — 설치가 남긴 실패 기록(`install-fail` · `install-global-fail`) · 전역 걸음의 확인 명부(`GVERIFIED`) ·
+#      설치 걸음의 확인 기록(`REPO_VERIFIED`)
 #    안 하는 것 — 깔기 · 심기 · 쓰기
 # ════════════════════════ 진단 — 지금 어느 검사가 도나 ════════════════════════
 # 판정 문구는 여기 한 자리에만 둔다. 위층이 죽으면 아래는 "실패"가 아니라 "못 잼"으로 낸다.
 
+# ── 재기용 문 — **진단 몫이 몇 초인가를 같은 조건에서 견주려면 끈 판이 있어야 한다** ──────
+# ⚠ **이 문을 열면 설치의 성패 판정이 사라진다.** 아래 「판정」 절이 `--check` · `--install` 의
+#   종료코드를 꺼진 검사 수(`down`)로 내는데, 진단을 안 돌면 그 수가 0 으로 남아 **무엇이
+#   꺼져 있어도 0 으로 끝난다** — 그 자리가 2026-09-10 사외·사내 VDI 에서 「실패가 초록으로
+#   보고된」 자리다(아래 판정 절의 곁말). 그래서 재기 전용이고, 기본값은 도는 쪽이다.
+# ⚠ **켠 판은 화면에 박는다.** 안 박으면 다음 사람이 그 판의 초록을 성공으로 읽는다 — 끈
+#   사람만 아는 사실은 로그에 안 남아, 로그를 나중에 읽는 자리에서 거짓이 된다.
+if [ -n "${CLAUDE_SKIP_DIAG:-}" ]; then
+  echo "$PROJECT_NAME — ⚠ 진단을 건너뛴다 (CLAUDE_SKIP_DIAG · 재기 전용) — 이 판의 종료코드는 설치 성패를 안 가린다"
+  exit 0
+fi
+
 down=0
+GATE_N=0; GATE_PARTIAL=0; GATE_LINES=''   # 진단 줄의 수 · 다 재지 않은 초록 · `--install` 이 모아 둔 줄 (`gate`)
 
 _dt0=$SECONDS   # 진단 절이 걸린 시간 — 끝줄에 붙는다 (#48)
 echo "$PROJECT_NAME — 지금 어느 검사가 도나  ($OS · $MODE)"
@@ -3377,6 +3453,7 @@ fi
 # 선언 축 — 전역·프로젝트 두 층. 이름·뜻은 전부 선언에서 온다
 render_decl "$GCONF" "전역"
 render_decl "$PCONF" "프로젝트"
+gate_flush
 
 if [ "$down" -gt 0 ]; then
   echo "  ── 꺼진 검사 $down 개. 위 까닭이 곧 고칠 자리다."

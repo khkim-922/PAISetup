@@ -47,6 +47,10 @@ param([switch]$Yes, [switch]$Prune, [switch]$ShowUnchanged)
 
 $ErrorActionPreference = 'Stop'
 
+# 재기용 시계 — 실행 걸음의 종류별 초를 내는 자(아래 `$stepSecs`)가 읽는다. 머리에 두는
+# 까닭은 하나다: 걸음 안의 구간을 재려면 기준이 실행 내내 한 자리여야 한다.
+$deploySw = [Diagnostics.Stopwatch]::StartNew()
+
 # 콘솔 출력 UTF-8 강제. PowerShell 5.1 기본은 시스템 코드페이지(한국은 cp949)라
 # 이 스크립트의 한글이 깨진다. UTF-8로 고정해 어느 PC에서도 그대로 읽히게 한다.
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -1134,8 +1138,17 @@ if (-not $Yes) {
 $env:CLAUDE_CONFIG_RUN = "$(Get-Date -Format 'yyyyMMddTHHmmss')-$PID"
 
 $homesRan = $false   # 손은 한 번만 돈다 — 아래 `homes` 걸음
+
+# ── 걸음 종류마다 걸린 초 — **줄마다 찍지 않고 종류별로 합쳐 끝에 한 번 낸다** ──────────
+# ⚠ **왜 합치나.** 계획은 수백 줄이라(이 PC 맨바닥 220개) 줄마다 초를 붙이면 읽을 수 없고,
+#   정작 가르려는 것은 「파일 붓기가 먹나 · 깔기가 먹나」다. 종류가 그 물음의 단위라 종류로
+#   센다 — 배포 걸음(`copy`)이 수백 개인데 합이 몇 초면 「복사가 느리다」는 읽기가 접힌다.
+# ⚠ **이 합은 걸음 안의 시간만 든다** — 계획 세우기(`--dry-run` 으로 손에게 묻는 자리)와 당김은
+#   이 고리 밖이라 안 들어온다. 안 든 자리가 있다는 것이 끝 줄에 적혀야 사람이 합을 전체로 안 읽는다.
+$stepSecs = @{}
 Write-Host ""
 foreach ($step in $plan) {
+    $tStep = $deploySw.Elapsed.TotalMilliseconds
     switch ($step.Kind) {
 
         'copy' {
@@ -1262,6 +1275,20 @@ foreach ($step in $plan) {
                 $parent = Split-Path $parent -Parent
             }
         }
+    }
+    $stepSecs[$step.Kind] = [double]$stepSecs[$step.Kind] + ($deploySw.Elapsed.TotalMilliseconds - $tStep)
+}
+
+# 걸음 종류별 초 — 큰 것부터.
+# ⚠ **밀리초로 세고 초로 낸다.** 정수 초로 세면 한 걸음이 1 초 미만인 종류가 **전부 0 으로
+#   깎여**, 수백 개를 밀어도 합이 0 으로 나온다 — 재려던 것(「복사가 먹나」)을 못 재는 자리다.
+# 0.1 초에 못 미치는 종류는 안 낸다 — 줄만 늘고 가르는 값이 없다.
+if ($plan.Count) {
+    $shown = @($stepSecs.GetEnumerator() | Where-Object { $_.Value -ge 100 } | Sort-Object Value -Descending)
+    if ($shown.Count) {
+        Write-Host ("`n걸음에 걸린 초 — " +
+                    (($shown | ForEach-Object { "$($_.Key) $([math]::Round($_.Value / 1000, 1))" }) -join ' · ') +
+                    "  (계획 세우기 · 당김은 이 고리 밖이라 안 들어 있다)") -ForegroundColor DarkGray
     }
 }
 

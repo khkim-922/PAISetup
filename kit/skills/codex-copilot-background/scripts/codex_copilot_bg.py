@@ -27,16 +27,21 @@ JS 를 node 로 바로 부른다 — 인자는 고정 플래그뿐이다.
 초과는 멈춘다: Copilot 으로 다시 띄우면 같은 일이 되풀이되거나 Codex 쪽 고장을 가린다. 깔리지 않은 쪽은
 건너뛴다(끝 줄에 남는다).
 
-**자리마다 다른 값은 환경변수로 받는다** — 배포본 설치기가 자리(사내 · 사외)마다 사용자 환경변수로 심고(그 값의
-진본은 설치기의 `$CcBgVarsBySite`), 래퍼는 자리를 모른 채 그 값만 읽는다. 없으면 아래 기본값이다. 값이 틀리면
-그 이름을 대고 멈춘다(4) — 조용히 기본값으로 물러나면 자리의 선(어느 쪽에 보내나)이 말없이 바뀐다.
+**자리마다 다른 값은 환경변수로 받는다** — 배포본 설치기가 자리(사내 · 사외)마다 사용자 환경변수로 심고(차례 · 검색 ·
+샌드박스의 진본은 설치기의 `$CcBgVarsBySite`, 모델 둘은 맡기기 모델 표 `agent-envelope/models.conf`), 래퍼는 자리를 모른
+채 그 값만 읽는다. 없으면 아래 기본값이다. 값이 틀리면 그 이름을 대고 멈춘다(4) — 조용히 기본값으로 물러나면 자리의
+선(어느 쪽에 보내나)이 말없이 바뀐다.
   · `CC_BG_AGENTS` — 차례이자 쓸 수 있는 쪽(쉼표). 여기 없는 쪽은 `--agent` · `--resume` 으로도 못 부른다
   · `CC_BG_CODEX_WEB_SEARCH` — Codex 의 `web_search`. `disabled` 만이 검색 도구를 요청에서 뺀다(`cached` 도 싣는다)
   · `CC_BG_CODEX_WIN_SANDBOX` — Codex 의 `windows.sandbox`. 없으면 안 넘겨 Codex 설정을 따른다
-  · `CC_BG_CODEX_MODEL` — Codex 의 `model`. 없으면 안 넘긴다
+  · `CC_BG_CODEX_MODEL_DELEGATE` — 맡기기 모델(깊은 판단 · 긴 맥락). `--model` 이 없으면 이것을 먼저 쓴다
+  · `CC_BG_CODEX_MODEL` — 기본 모델(심부름). 맡기기 모델이 없을 때 쓰고, 가벼운 일은 부르는 쪽이 `--model` 로 준다
+Codex 의 `model` 은 `--model`(빈 값은 안 준 것) → 맡기기 모델 → 기본 모델 가운데 처음 선 것이고, 다 없으면 안 넘겨 Codex
+설정의 `model` 로 뜬다. Copilot 에는 모델을 안 넘긴다 — 이름이 Codex 의 것이다.
 
 **말은 전부 `--out` 파일로 간다** — pythonw 에는 표준 출력이 없다. 맨 끝 줄 `[cc-bg] …` 이 갈래 · 걸린 시간 ·
-맡은 쪽 · 넘어간 자취 · 토큰 · 웹 검색 수 · 이어 묻기 값을 든다:
+맡은 쪽 · 모델(`model=` — Codex 에 넘긴 이름, 안 넘겼거나 Copilot 이면 `-`) · 넘어간 자취 · 토큰 · 웹 검색 수 · 이어 묻기
+값을 든다:
   0 답이 왔다 · 1 실패했다(러너가 멈춘 것 포함) · 2 한도(받을 쪽까지 다) 또는 빈 답 · 3 시간 초과 · 4 부르는 법이
   틀렸다 · 깔린 쪽이 없다
 `--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다. **이어 묻기 값은 그쪽 대화 기록이 실제로 남았을 때만
@@ -108,6 +113,7 @@ KNOB_AGENTS = 'CC_BG_AGENTS'
 KNOB_WEB_SEARCH = 'CC_BG_CODEX_WEB_SEARCH'
 KNOB_WIN_SANDBOX = 'CC_BG_CODEX_WIN_SANDBOX'
 KNOB_MODEL = 'CC_BG_CODEX_MODEL'
+KNOB_MODEL_DELEGATE = 'CC_BG_CODEX_MODEL_DELEGATE'
 WEB_SEARCH_MODES = ('disabled', 'cached', 'indexed', 'live')
 WIN_SANDBOX_MODES = ('elevated', 'unelevated', 'mxc')
 DEFAULT_WEB_SEARCH = 'live'                       # 값이 없으면 실시간 검색
@@ -214,27 +220,37 @@ def read_knobs(env):
     sandbox = env.get(KNOB_WIN_SANDBOX, '').strip()
     if sandbox and sandbox not in WIN_SANDBOX_MODES:
         return None, f'{KNOB_WIN_SANDBOX}={sandbox!r} — {" · ".join(WIN_SANDBOX_MODES)} 가운데 하나'
-    model = env.get(KNOB_MODEL, '').strip()
-    if model and not MODEL_NAME_RE.fullmatch(model):
-        return None, f'{KNOB_MODEL}={model!r} — 모델 이름에 따옴표 · 공백이 든다'
-    return {'agents': agents, 'web_search': web, 'win_sandbox': sandbox, 'model': model}, None
+    models = {}
+    for key, knob in (('model', KNOB_MODEL), ('model_delegate', KNOB_MODEL_DELEGATE)):
+        name = env.get(knob, '').strip()
+        if name and not MODEL_NAME_RE.fullmatch(name):
+            return None, f'{knob}={name!r} — 모델 이름에 따옴표 · 공백이 든다'
+        models[key] = name
+    return {'agents': agents, 'web_search': web, 'win_sandbox': sandbox, **models}, None
 
 
-def codex_config(knobs):
-    """자리 값을 Codex 설정 덮어쓰기(`-c`)로 — 이어 묻기에도 같이 건다."""
+def codex_model(knobs, given=''):
+    """Codex 에 줄 모델 — 준 것(`--model`) · 맡기기 모델 · 기본 모델 가운데 처음 선 것. 다 없으면 빈 글(안 넘긴다)."""
+    return given or knobs['model_delegate'] or knobs['model']
+
+
+def codex_config(knobs, model=''):
+    """자리 값을 Codex 설정 덮어쓰기(`-c`)로 — 이어 묻기에도 같이 건다. `model` 은 `--model` 로 받은 이름이다."""
     out = ['-c', f'web_search="{knobs["web_search"]}"']
     if knobs['win_sandbox']:
         out += ['-c', f'windows.sandbox="{knobs["win_sandbox"]}"']
-    if knobs['model']:
-        out += ['-c', f'model="{knobs["model"]}"']
+    chosen = codex_model(knobs, model)
+    if chosen:
+        out += ['-c', f'model="{chosen}"']
     return out
 
 
-def argv(agent, resume, knobs, write=False):
-    """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다."""
+def argv(agent, resume, knobs, write=False, model=''):
+    """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다.
+    `model` 은 `--model` 로 받은 이름이고 Codex 에만 간다."""
     if agent == 'codex':
         tail = ['-c', f'sandbox_mode="{CODEX_SANDBOX[write]}"', *(WRITE_SANDBOX if write else []), *CODEX_ARGS,
-                *codex_config(knobs)]
+                *codex_config(knobs, model)]
         if resume:
             return ['exec', 'resume', *tail, resume, '-']
         return ['exec', *tail, '-']
@@ -334,7 +350,7 @@ def run_once(agent, cmd_head, a, resume):
         # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
         with open(a.prompt_file, 'rb') as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
             try:
-                proc = subprocess.Popen(cmd_head + argv(agent, resume, a.knobs, a.write), cwd=a.cwd, env=env,
+                proc = subprocess.Popen(cmd_head + argv(agent, resume, a.knobs, a.write, a.model), cwd=a.cwd, env=env,
                                         stdin=stdin, stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
             except OSError as e:
                 return 'spawn', None, '', None, str(e), 'in=- out=-', None, raw_path
@@ -372,6 +388,7 @@ def main():
     ap.add_argument('--agent', choices=AGENTS)
     ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로 — `<쪽>:<id>`
     ap.add_argument('--write', action='store_true')   # 고치기 레인 — 작업 자리 안만 고친다
+    ap.add_argument('--model', default='')   # 이 실행의 Codex 모델 — 빈 값은 안 준 것(자리 값이 고른다)
     args = sys.argv[1:]
     try:
         a = ap.parse_args(args)
@@ -401,6 +418,10 @@ def run(a):
     a.knobs, bad = read_knobs(os.environ)
     if bad:
         write(a.out, f'{FOOTER} usage · 자리 값이 틀렸다 — {bad}\n')
+        return 4
+    a.model = a.model.strip()
+    if a.model and not MODEL_NAME_RE.fullmatch(a.model):
+        write(a.out, f'{FOOTER} usage · --model {a.model!r} — 모델 이름에 따옴표 · 공백이 든다\n')
         return 4
     allowed = a.knobs['agents']
     resume = None
@@ -444,7 +465,9 @@ def run(a):
         write(a.out, f'{FOOTER} usage · 띄울 쪽이 없다 — {"; ".join(tried) or "차례가 비었다"}\n')
         return 4
     agent, status, rc, answer, conv, reason, tokens, searches, raw_path = ran
+    model = (codex_model(a.knobs, a.model) or '-') if agent == 'codex' else '-'
     footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · agent={agent}'
+              f' · model={model}'
               + (f' · failover={"; ".join(tried)}' if tried else '') +
               f' · tokens {tokens} · web={"-" if searches is None else searches}'
               f' · {resume_field(agent, conv)}')
