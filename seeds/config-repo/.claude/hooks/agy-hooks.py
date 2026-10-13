@@ -9,7 +9,7 @@
 경로 열쇠도 다르다(`AbsolutePath` · `TargetFile` · 셸은 `CommandLine` · `Cwd`). 판정은 몸통의 것을 불러 쓰고 여기서는 꼴만
 바꾼다 — 같은 판정을 두 벌 두면 한쪽만 낡는다. 입력 꼴은 agy 문서 「Hooks」의 것이다(<https://antigravity.google/docs/hooks>).
 
-**홈 훅 다섯 가운데 둘만 건다.** 그림 문 · Bash 겹역슬래시 차단 · 웹 다시 찾기는 Claude 쪽 사정(그림 크기 비용 · Git Bash 가
+**홈 훅 다섯 가운데 둘만 건다.** 그림 문 · Bash 겹역슬래시 보정 · 웹 다시 찾기는 Claude 쪽 사정(그림 크기 비용 · Git Bash 가
 접는 역슬래시 · WebFetch 실패)에서 나온 훅이라 agy 에서는 막을 사고가 없다(결정 0083 실측 · 0099).
 
 **DRM 길잡이는 읽기 전에 막는다.** agy 의 PreToolUse 는 결정(`decision`)과 까닭(`reason`)만 받는다 — 도구 뒤 훅은 모델에

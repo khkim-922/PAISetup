@@ -1302,6 +1302,23 @@ PYMERGE
   fi
 }
 
+# ── 본 작업 폴더 — 형제가 서는 자리는 이 폴더의 부모다 (#157) ─────────────────────
+#    연결된 작업 트리(`.claude/worktrees/<이름>` — 데스크탑 앱이 세션마다 만든다)의 부모는 형제 자리가 아니다 — 거기서
+#    훑으면 설정 저장소를 못 찾고 다른 작업 트리를 형제로 센다. 본 작업 폴더는 git 이 댄다: 공통 git 폴더
+#    (`--git-common-dir`)가 `<본 작업 폴더>/.git` 이다. 검사가 쓰는 `scripts/sibling_base.py` 와 같은 자리를 내고, 찾는 자
+#    (`claude-config-path.sh`)도 같은 손을 제 안에 든다 — `sibling_base.py` 는 안 실리고, 이 앞머리는 파이썬 없이도 돈다.
+#    ⚠ `--path-format=absolute` 를 안 쓴다 — 그 옵션이 없는 git(2.31 앞)의 `rev-parse` 는 모르는 옵션을 출력에 그대로
+#      되돌려 틀린 자리가 조용히 선다. 맨 꼴의 답은 상대 경로(`.git`)일 수 있어 저장소 자리에서 푼다.
+#    git 이 없거나 · git 나무가 아니거나 · 공통 git 폴더가 `.git` 이 아니면(맨 저장소 · 따로 둔 git 폴더 · 하위 모듈) 제
+#    자리를 본 작업 폴더로 본다. 본 작업 폴더에서는 받은 글자를 그대로 낸다 — 꼴 굳히기는 `home_hook_root` 한 자리가 든다.
+main_worktree() {   # main_worktree <저장소 뿌리> — 그 저장소의 본 작업 폴더를 낸다
+  _mw="$(git -C "$1" rev-parse --git-common-dir 2>/dev/null)" || _mw=""
+  case "$_mw" in
+    */.git) (cd "$1" && cd "${_mw%/.git}" && pwd) 2>/dev/null || printf '%s' "$1" ;;
+    *)      printf '%s' "$1" ;;
+  esac
+}
+
 # ── 전역 SessionStart 훅을 홈에 심는다 (claude-config 0010 · 0028) ──────────────
 #    **저장소 훅은 세션 루트가 그 저장소일 때만 걸린다.** 그 밖에서 연 세션 — 저장소들을
 #    담은 폴더(전역 층 · deploy 가 `[memory:global]` 로 슬러그까지 두는 자리)나 홈 — 은
@@ -1337,8 +1354,10 @@ PYMERGE
 #      안 굳히면 부르는 자가 바뀔 때마다 심긴 명령이 두 꼴 사이를 오가, 세션마다 홈 설정을
 #      다시 쓴다(옛 꼴은 `plant_session_state` 가 걷어 쌓이지는 않는다). 글롭은 bash 가 푸니
 #      둘 다 돌지만, 진본은 하나여야 한다.
+#    작업 루트는 형제가 서는 자리(`SIBLING_BASE` — 준비 단계가 `main_worktree` 로 세운다)다. 작업 트리에서 연 세션도
+#      본 작업 폴더에서 연 세션과 같은 루트를 심고 훑는다.
 home_hook_root() {   # 작업 루트 — 굳힌 꼴. 명령도 진단 문구도 이것을 쓴다
-  _hr="$(dirname "$PROJECT_DIR")"
+  _hr="$SIBLING_BASE"
   [ "$OS" = windows ] && _hr="$(cygpath -m "$_hr" 2>/dev/null || printf '%s' "$_hr")"
   printf '%s' "$_hr"
 }
@@ -3066,8 +3085,8 @@ EOF
 # ══ 단계 · 준비 — 모든 갈래 ════════════════════════
 #    층 — 없음(준비). 뒤 단계가 읽을 자리와 값을 세운다
 #    하는 일 — 기계 상태 파일 자리(`install-*`)를 세우고 옛 이름(`bootstrap-*`)을 옮긴다. 선언이 하나도 없으면 한 줄
-#      알린다. 설정 저장소 자리(`CONFIG_ROOT` — 저장소의 경로 스크립트를 먼저 읽는다) · 이 실행이 PC 전체 일을
-#      맡나(`PC_WIDE`) · 기계(`OS` · `PY_CMD` · `VENV_BIN`)를 정한다
+#      알린다. 형제가 서는 자리(`SIBLING_BASE`) · 설정 저장소 자리(`CONFIG_ROOT` — 저장소의 경로 스크립트를 먼저
+#      읽는다) · 이 실행이 PC 전체 일을 맡나(`PC_WIDE`) · 기계(`OS` · `PY_CMD` · `VENV_BIN`)를 정한다
 #    앞에서 받는 것 — 부름의 `MODE` · `PROJECT_DIR` · `PROJECT_NAME`
 #    안 하는 것 — 깔기 · 홈 밀기 · 망. 쓰는 것은 옛 상태 파일의 이름 옮기기뿐이다
 VENV="$PROJECT_DIR/.venv"
@@ -3110,13 +3129,16 @@ unset -f _migrate_name
 [ -e "$GCONF" ] || [ -e "$PCONF" ] ||
   echo "$PROJECT_NAME: ⚠ 선언이 하나도 없다(requirements.txt · package-lock.json · tools*.conf) — $PROJECT_DIR 를 저장소로 보고 있다. 자리가 맞나 본다."
 
+# 형제가 서는 자리 — 이 저장소 본 작업 폴더의 부모(`main_worktree`). 아래 설정 저장소 후보 · 작업 루트(`home_hook_root`) ·
+# 리눅스의 붙은 저장소 훑기가 다 이 값을 읽는다 — git 은 한 번만 띄운다.
+SIBLING_BASE="$(dirname "$(main_worktree "$PROJECT_DIR")")"
 # claude-config 가 어디 붙었나 — 커밋 게이트와 같은 자리(.githooks 의 경로 스크립트)를 본다.
-# 그 스크립트가 없는 저장소는 아래서 직접 짚는다.
+# 그 스크립트가 없거나 못 찾은 저장소(작업 트리를 모르는 옛 배포본 포함)는 아래서 직접 짚는다.
 CONFIG_ROOT=""; ADR_GEN=""; GATES_HOME=""
 [ -f "$PROJECT_DIR/.githooks/claude-config-path.sh" ] &&
   . "$PROJECT_DIR/.githooks/claude-config-path.sh"
 if [ -z "$CONFIG_ROOT" ]; then
-  for _c in "$PROJECT_DIR" "$(dirname "$PROJECT_DIR")/claude-config" "$HOME/claude-config" /workspace/claude-config; do
+  for _c in "$PROJECT_DIR" "$SIBLING_BASE/claude-config" "$HOME/claude-config" /workspace/claude-config; do
     [ -f "$_c/deploy.ps1" ] && [ -d "$_c/memory" ] && { CONFIG_ROOT="$_c"; break; }
   done
 fi
@@ -3290,10 +3312,12 @@ if [ "$MODE" = auto ]; then
   # ⚠ **main 위 형제의 작업 나무를 옮기는 것은 뜻한 것이다** (0069) — 설정 저장소 세션이 형제 파일을 읽어
   #   견주는 일(형제 사본 대조 · 규격 빌려 오기)이 최신을 보게. 커밋 안 한 편집과 겹치면 git 이 거절한다.
   #   이 세션의 저장소는 위에서 이미 당겼다(두 번 부르면 경고가 두 줄이 된다).
+  #   훑는 자리는 본 작업 폴더의 곁(`SIBLING_BASE`)이다 — 작업 트리 세션이면 그 작업 트리는 안 나오고, 이 저장소의
+  #   본 작업 폴더가 main 위 형제와 같이 당겨진다(main 이 거기 꺼내져 있어 `sync_main_bg` 는 비켜서고 `pull_ff` 가 옮긴다).
   SYNC_BG=""
   if [ "$(uname -s)" = Linux ]; then
     SYNC_BG=1
-    for _g in "$(dirname "$PROJECT_DIR")"/*/.git; do
+    for _g in "$SIBLING_BASE"/*/.git; do
       [ -e "$_g" ] || continue
       _r="${_g%/.git}"
       [ "$_r" = "$PROJECT_DIR" ] || pull_ff "$_r"

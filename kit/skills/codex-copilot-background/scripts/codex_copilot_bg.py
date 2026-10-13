@@ -83,7 +83,10 @@ CODEX_QUOTA_RE = re.compile(r'hit your usage limit|Quota exceeded\. Check your p
 # 읽기 전용 샌드박스는 셸 명령에만 걸린다 — 앱 커넥터(`codex_apps`) · 플러그인 · MCP 서버의 도구는 샌드박스 밖에서
 # 돌고(쓰기 · 보내기를 하는 도구도 있다) 웹 검색 값과 따로 웹을 연다. 그래서 셋을 다 끄고 띄운다 — 웹으로 가는 길이
 # 검색 도구(`web_search`) 하나로 좁아져, 끝 줄의 `web=` 가 그 길을 다 센다.
-CODEX_ARGS = ['-c', 'features.apps=false', '-c', 'features.plugins=false',
+# 승인은 `never` 로 박는다 — 샌드박스가 두 레인의 유일한 울타리여야 한다. 사용자 설정에 `approvals_reviewer = "auto_review"` 가
+# 서면(설치기가 Codex 를 고른 PC 에 심는다 · 결정 0127) `codex exec` 가 승인을 `on-request` 로 바꾸고, 검토자가 샌드박스 밖 쓰기를
+# 승인한다(실측 2026-10-13 · codex-cli 0.162.1 — 읽기 전용 샌드박스에서 작업 자리 밖에 파일이 섰고, 이것을 박으면 막혔다).
+CODEX_ARGS = ['-c', 'approval_policy="never"', '-c', 'features.apps=false', '-c', 'features.plugins=false',
               '-c', 'mcp_servers={}', '--skip-git-repo-check', '--json']
 CODEX_SANDBOX = {False: 'read-only', True: 'workspace-write'}   # 읽기 레인 · 고치기 레인
 # 고치기 레인의 쓰는 범위를 작업 자리 + 임시 폴더 변수 하나로 못 박는다 — Codex 설정 낱말 그대로(`sandbox_workspace_write.*`).

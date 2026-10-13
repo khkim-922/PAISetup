@@ -451,6 +451,26 @@ function Save-Backup($path) {
 }
 #endregion 백업 손
 
+#region 본 작업 폴더 손 — 형제 저장소가 서는 자리는 이 저장소 본 작업 폴더의 부모다 (#157)
+# 연결된 작업 트리(`.claude\worktrees\<이름>` — 데스크탑 앱이 세션마다 만든다)에서 돌면 `$src` 의 부모는 형제 자리가
+# 아니다. 본 작업 폴더는 git 이 댄다 — 공통 git 폴더(`--git-common-dir`)가 `<본 작업 폴더>\.git` 이다. 검사가 쓰는
+# `scripts/sibling_base.py` · 세션 훅 몸통의 `main_worktree` 와 같은 자리를 낸다(이 파일은 파이썬 · bash 없이 돌아
+# 그것들을 못 부른다).
+# ⚠ `--path-format=absolute` 를 안 쓴다 — 그 옵션이 없는 git(2.31 앞)의 `rev-parse` 는 모르는 옵션을 출력에 그대로 되돌려
+#   틀린 자리가 조용히 선다. 맨 꼴의 답은 상대 경로(`.git`)일 수 있어 `$Dir` 에서 푼다.
+# git 이 없거나 · git 나무가 아니거나 · 공통 git 폴더가 `.git` 이 아니면(맨 저장소 · 따로 둔 git 폴더 · 하위 모듈) `$Dir`
+# 자신이다. 본 작업 폴더에서는 받은 글자를 그대로 돌려준다.
+function Get-MainWorktree([string]$Dir) {
+    # ⚠ `2>$null` 은 방패가 아니다(까닭은 `Sync-Repos` 머리) — 잡아서 물러선다.
+    try { $common = [string](& git -C $Dir rev-parse --git-common-dir 2>$null) }
+    catch { return $Dir }
+    if ($LASTEXITCODE -ne 0 -or -not $common -or $common -eq '.git') { return $Dir }
+    $full = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($Dir, $common))
+    if ((Split-Path $full -Leaf) -ne '.git') { return $Dir }
+    return (Split-Path $full -Parent)
+}
+#endregion 본 작업 폴더 손
+
 #endregion 라이브러리
 
 # ============================ 준비 ============================
@@ -749,8 +769,9 @@ if (Test-Path $manifest) {
     }
 }
 if ($distName) {
-    # 형제 자리에서 파생한다 — 세 PC 가 다 홈 밑 `repos\` 를 본다.
-    $distRoot = Join-Path (Split-Path -Parent $src) $distName
+    # 형제 자리에서 파생한다 — 세 PC 가 다 홈 밑 `repos\` 를 본다. 형제 자리는 이 저장소 본 작업 폴더의 곁이라
+    #   작업 트리에서 돌아도 같은 배포본을 잡는다(`Get-MainWorktree`).
+    $distRoot = Join-Path (Split-Path -Parent (Get-MainWorktree $src)) $distName
     if ((Test-Path (Join-Path $distRoot '.git')) -and ($hookTargets -notcontains $distRoot)) {
         $hookTargets += $distRoot
     }
