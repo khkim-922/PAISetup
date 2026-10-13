@@ -68,6 +68,9 @@ Codex 가 내는 `command` 는 이 기계의 실효 명령(윈도면 `commandWin
                                         부르는 자가 app-server 를 띄우지 말라 했는데(`plant_projects(start=False)`) 파일로
                                         못 가리면 UNMEASURED=tomllib 이다(파이썬 3.11 미만)
 
+**데스크탑 프로젝트(local-projects).** 명령은 없다 — 세션 훅이 `plant_desktop_projects` 를 불러 저장소 뿌리를 Codex
+데스크탑의 프로젝트 목록(제 상태 파일)에 더한다. app-server 를 안 거치고 파일을 쓴다(그 절 머리말 · 결정 0126).
+
 종료 코드: 0 쟀다(trust 면 적을 것을 다 적고 다시 읽어 확인했다) · 1 ERROR · 2 인자가 틀렸다(argparse) · 3 UNMEASURED.
 ⚠ UNMEASURED 가 2 가 아닌 까닭 — argparse 가 인자 오류에 2 를 쓴다. 부르는 쪽의 실수와 Codex 를 못 잰 것이 한 값이면 안 갈린다.
 ⚠ trust 의 앞단(목록)에서 못 쟀으면 UNMEASURED 다 — 아무것도 안 썼다. 쓰기부터는 무엇이 막혀도 ERROR 다.
@@ -89,6 +92,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 
 try:
     import tomllib
@@ -584,6 +588,128 @@ def plant_projects(paths, home, codex=None, start=True):
     if missing:
         raise error('verify', f'{len(missing)} 자리가 적은 뒤에도 trusted 로 안 읽힌다: {missing[0]}')
     return [(k, P_NOW if k in todo else s) for k, s in after], shown
+
+
+# ── 데스크탑 프로젝트(local-projects) ───────────────────────────────────────────────────────────────────
+# Codex 데스크탑의 프로젝트 목록 원본은 제 상태 파일의 `local-projects` 다 — 데스크탑은 뜰 때마다 그 목록을 돌며 app-server
+#   짝이 없는 것을 `project/import` 로 맺는다(데스크탑 26.1007 · 결정 0126). app-server 에만 만든 프로젝트는 목록에 안 선다.
+# ⚠ **데스크탑이 떠 있으면 안 쓴다** — 앱이 그 파일을 제 기억으로 다시 써, 그 사이 적은 것이 사라진다.
+# ⚠ **목록에 한 번 섰던 자리는 사람이 빼면 다시 안 넣는다** — 선 적이 있는 뿌리를 우리 기록(`.paisetup-desktop-projects.json`)에
+#   남긴다. 그 기록은 쓴 뒤에도 데스크탑이 안 떠 있을 때만 적는다 — 그 사이 떴으면 적은 것이 사라졌을 수 있어 다음 판이 다시 본다.
+DESKTOP_STATE = '.codex-global-state.json'
+DESKTOP_SEEN = '.paisetup-desktop-projects.json'
+LOCAL_PROJECTS, PROJECT_ORDER, ROOT_PATHS = 'local-projects', 'project-order', 'rootPaths'
+DESKTOP_PACKAGE_DIR, DESKTOP_EXE = '\\openai.codex_', '\\app\\chatgpt.exe'   # 데스크탑 실행 파일 자리 — 소문자로 견준다.
+#   ChatGPT 데스크탑과 실행 파일 이름이 같아 꾸러미 폴더로 가른다. 같은 꾸러미의 샌드박스 서비스는 늘 돌아 데스크탑이 아니다
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+PID_SLOTS, IMAGE_CHARS = 8192, 32768
+DP_HAVE, DP_NOW, DP_GONE = 'listed', 'listed-now', 'removed-by-user'
+DP_OFF, DP_NEVER, DP_RUNNING = 'not-windows', 'desktop-never-ran', 'desktop-running'
+
+
+def desktop_running():
+    """Codex 데스크탑이 떠 있나 — 윈도 밖은 None. 프로세스마다 실행 파일 경로를 묻는다(같은 사용자의 것만 열린다)."""
+    if os.name != 'nt':
+        return None
+    import ctypes
+    from ctypes import wintypes
+    psapi, k32 = ctypes.WinDLL('psapi'), ctypes.WinDLL('kernel32')
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    k32.QueryFullProcessImageNameW.argtypes = (wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+                                               ctypes.POINTER(wintypes.DWORD))
+    k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    pids, got = (wintypes.DWORD * PID_SLOTS)(), wintypes.DWORD()
+    if not psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(got)):
+        return None
+    buf = ctypes.create_unicode_buffer(IMAGE_CHARS)
+    for pid in pids[:got.value // ctypes.sizeof(wintypes.DWORD)]:
+        h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            continue
+        try:
+            n = wintypes.DWORD(IMAGE_CHARS)
+            if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n)):
+                image = buf.value.lower()
+                if DESKTOP_PACKAGE_DIR in image and image.endswith(DESKTOP_EXE):
+                    return True
+        finally:
+            k32.CloseHandle(h)
+    return False
+
+
+def write_compact_json(path, obj):
+    """데스크탑이 제 상태 파일을 쓰는 꼴(공백 없는 한 줄 · 끝 줄바꿈 없음 · 한글 그대로)로 옆에 쓰고 옮긴다."""
+    d = os.path.dirname(path)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix='.paisetup-', suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='') as f:
+            f.write(json.dumps(obj, ensure_ascii=False, separators=(',', ':')))
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def plant_desktop_projects(paths, home, running=desktop_running):
+    """받은 저장소 뿌리를 Codex 데스크탑 프로젝트로 하나씩 더한다 — `((이름, 상태) 목록, 미룬 까닭 또는 None)`.
+    상태 = DP_HAVE(이미 어느 프로젝트의 폴더다) · DP_NOW(이번에 더했다) · DP_GONE(목록에 섰다가 사람이 뺐다 — 안 넣었다).
+    미룬 까닭 = DP_OFF(윈도 밖) · DP_NEVER(데스크탑이 아직 상태 파일을 안 지었다) · DP_RUNNING(데스크탑이 떠 있다).
+    상태 파일을 못 읽거나 꼴이 다르면 ERROR=desktop-state 의 `Stop` — 아무것도 안 썼다. 못 쓰면 ERROR=desktop-write 의 `Stop`."""
+    if os.name != 'nt':
+        return [], DP_OFF
+    path = os.path.join(home, DESKTOP_STATE)
+    if not os.path.isfile(path):
+        return [], DP_NEVER
+    if running():
+        return [], DP_RUNNING
+    try:
+        with open(path, encoding='utf-8') as f:
+            state = json.load(f)
+        projects = state.get(LOCAL_PROJECTS, {}) if isinstance(state, dict) else None
+        order = state.get(PROJECT_ORDER, []) if isinstance(state, dict) else None
+        if not isinstance(projects, dict) or not isinstance(order, list):
+            raise ValueError(f'{LOCAL_PROJECTS} · {PROJECT_ORDER} 꼴이 다르다')
+    except (OSError, ValueError) as exc:
+        raise error('desktop-state', f'{path}: {exc}') from exc
+    listed = {os.path.normcase(r) for p in projects.values() if isinstance(p, dict)
+              for r in (p.get(ROOT_PATHS) or []) if isinstance(r, str)}
+    seen_path = os.path.join(home, DESKTOP_SEEN)
+    try:
+        with open(seen_path, encoding='utf-8') as f:
+            seen = {s for s in json.load(f) if isinstance(s, str)}
+    except (OSError, ValueError, TypeError):
+        seen = set()
+    roots = {}
+    for p in paths:
+        d = os.path.realpath(p)
+        roots.setdefault(os.path.normcase(d), d)
+    now_ms = int(time.time() * 1000)
+    states, added = [], []
+    for key, root in roots.items():
+        name = os.path.basename(root)
+        if key in listed:
+            states.append((name, DP_HAVE))
+        elif key in seen:
+            states.append((name, DP_GONE))
+        else:
+            new_id = str(uuid.uuid4())
+            projects[new_id] = {'id': new_id, 'name': name, ROOT_PATHS: [root], 'createdAt': now_ms, 'updatedAt': now_ms}
+            order.append(new_id)
+            added.append(key)
+            states.append((name, DP_NOW))
+    if added:
+        state[LOCAL_PROJECTS], state[PROJECT_ORDER] = projects, order
+        try:
+            write_compact_json(path, state)
+        except OSError as exc:
+            raise error('desktop-write', f'{path}: {exc}') from exc
+    new_seen = seen | {k for k in roots if k in listed} | set(added)
+    if new_seen != seen and not running():
+        with contextlib.suppress(OSError):   # 못 적으면 다음 판이 목록에 선 것을 보고 다시 적는다
+            write_compact_json(seen_path, sorted(new_seen))
+    return states, None
 
 
 def main():

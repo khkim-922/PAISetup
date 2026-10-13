@@ -1637,7 +1637,8 @@ except Exception as e:  # 손을 못 불러옴
     tools, pick_why = None, "손을 못 불렀다: %s" % e
 
 
-# Claude — `~/.claude.json`(`CLAUDE_CONFIG_DIR` 가 서면 그 안)의 `projects` 에 네 철자로 건다.
+# Claude — `~/.claude.json`(`CLAUDE_CONFIG_DIR` 가 서면 그 안)의 `projects` 에 건다. Claude 는 철자 그대로 맞추므로 받은 철자와
+#   사람이 치는 철자(`typed_spellings`)마다 구분자 두 벌 × 드라이브 글자 두 벌로 건다(윈도 — 저장소마다 여덟 남짓).
 # ⚠ **드라이브 글자도 두 벌로 건다** — 우리 경로는 `C:` 로 오는데 VS Code 는 드라이브 글자를 소문자(`c:`)로 다룬다.
 #   앱이 어느 철자로 찾든 걸리게 한다 — 구분자 두 벌과 같은 까닭이고, 켜서 잃는 것이 없다.
 # ⚠ **없는 것과 못 읽은 것을 가른다.** 없으면 `projects` 만 든 파일을 새로 짓는다 — 첫 실행의 안내는 그대로 돌고 심은
@@ -1647,9 +1648,31 @@ def _drive_cases(p):
     return {p[0].upper() + p[1:], p[0].lower() + p[1:]} if len(p) > 1 and p[1] == ":" else {p}
 
 
+def disk_spelling(p):
+    """그 자리의 디스크 철자 — 윈도면 `realpath`(대소문자를 디스크대로), 그 밖은 경로를 고른 꼴."""
+    return os.path.realpath(p) if os.name == "nt" else os.path.normpath(p)
+
+
+def typed_spellings(p):
+    """사람이 그 자리를 여는 흔한 철자 — 디스크 철자와 통째 소문자에 드라이브 글자 두 벌(윈도 · 0122). 철자 그대로 맞추는
+    도구(Claude · agy)에 이 꼴을 다 건다 — 탐색기 · VS Code · 탭 완성은 디스크 철자를, 손으로 친 경로는 대개 통째 소문자를
+    준다. 대소문자를 섞어 친 꼴은 못 덮는다. 윈도 밖은 철자가 하나다."""
+    d = disk_spelling(p)
+    if os.name != "nt":
+        return [d]
+    out = []
+    for b in (d, d.lower()):
+        for v in ((b[:1].upper() + b[1:], b[:1].lower() + b[1:]) if len(b) > 1 and b[1] == ":" else (b,)):
+            if v not in out:
+                out.append(v)
+    return out
+
+
 def plant_claude():
     global failed
-    forms = sorted({v for t in targets for f in (t.replace("/", BS), t.replace(BS, "/")) for v in _drive_cases(f)})
+    # 받은 철자 · 사람이 치는 철자마다 구분자 두 벌 × 드라이브 글자 두 벌
+    forms = sorted({v for t in targets for b in {t, *typed_spellings(t), *([t.lower()] if os.name == "nt" else [])}
+                    for f in (b.replace("/", BS), b.replace(BS, "/")) for v in _drive_cases(f)})
     cdir = os.environ.get("CLAUDE_CONFIG_DIR")
     tp = os.path.join(cdir or os.path.expanduser("~"), ".claude.json")
     shown = tp if cdir else "~/.claude.json"
@@ -1682,18 +1705,22 @@ def plant_claude():
         msgs.append("  ! 신뢰(Claude) — %s 를 못 썼다 — 다음 세션이 다시 건다" % shown)
 
 
+def codex_helper_module():
+    """몸통 곁의 Codex 신뢰 도우미 — 없으면 None."""
+    if not os.path.isfile(codex_helper):
+        return None
+    spec = importlib.util.spec_from_file_location("codex_hook_trust", codex_helper)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 # Codex — 몸통 곁의 Codex 신뢰 도우미가 `config.toml` 의 `projects` 에 Codex 제 철자로 적는다(도우미 머리말).
 # ⚠ **app-server 는 명시한 설치에서만 띄운다.** 세션 시작은 설정 파일만 보고 빈 자리를 말한다 — Codex 가 느리거나 서면
 #   확장의 초기화 기다림(60초 · 0043)을 넘긴다. 빈 자리는 다음 로그인 자동 실행의 `--install` 이 건다.
 # ⚠ **못 걸어도 진 것으로 안 돌린다**(표식은 적는다) — 진 까닭이 Codex 쪽에 있으면 다음 세션도 똑같이 져, 세션마다 PC 전체
 #   일을 통째로 다시 돈다(#96 · 0118). 줄은 늘 남기고, 다시 거는 것은 다음 설치 · 판이 바뀐 세션이 든다.
-def plant_codex():
-    if not os.path.isfile(codex_helper):
-        msgs.append("  ! 신뢰(Codex) — 도우미가 몸통 곁에 없다(%s) — 못 걸었다" % codex_helper)
-        return
-    spec = importlib.util.spec_from_file_location("codex_hook_trust", codex_helper)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+def plant_codex(mod):
     try:
         states, _ = mod.plant_projects(targets, mod.codex_home(None), start=install)
     except mod.Stop as s:
@@ -1713,10 +1740,39 @@ def plant_codex():
         msgs.append("  신뢰(Codex) — 이미 다 걸려 있다 (%d 자리)" % len(states))
 
 
+# Codex 데스크탑 — 저장소 뿌리를 데스크탑 프로젝트 목록(제 상태 파일)에 더한다(도우미 `plant_desktop_projects` · 0126). 신뢰는
+#   앞 칸이 이미 걸어, 더한 프로젝트는 열 때 안 묻는다. 데스크탑이 떠 있으면 안 쓰고 미룬다 — 이번 설치가 띄운 창은 설치기가
+#   이 걸음 앞에서 닫는다. 사람이 목록에서 뺀 저장소는 다시 안 넣는다.
+# ⚠ **못 더해도 진 것으로 안 돌린다** — 신뢰와 같은 까닭이다. 다시 더하는 것은 다음 설치 · 판이 바뀐 세션이 든다.
+def plant_codex_desktop(mod):
+    label = "  프로젝트(Codex 데스크탑) — "
+    try:
+        states, held = mod.plant_desktop_projects(targets, mod.codex_home(None))
+    except mod.Stop as s:
+        msgs.append("  ! 프로젝트(Codex 데스크탑) — 못 더했다: %s" % s.line)
+        return
+    now = sum(1 for _, s in states if s == mod.DP_NOW)
+    gone = sum(1 for _, s in states if s == mod.DP_GONE)
+    if now:
+        msgs.append(label + "%d 개 더했다 (다음에 데스크탑을 열면 보인다)" % now)
+    if not install:
+        return
+    if held == mod.DP_RUNNING:
+        msgs.append(label + "데스크탑이 떠 있어 미뤘다 — 닫힌 뒤의 다음 설치가 더한다")
+    elif held == mod.DP_NEVER:
+        msgs.append(label + "데스크탑을 아직 한 번도 안 띄웠다 — 띄운 뒤의 다음 설치가 더한다")
+    elif held == mod.DP_OFF:
+        msgs.append(label + "윈도에서만 더한다 — 건너뛰었다")
+    if gone:
+        msgs.append(label + "사람이 목록에서 뺀 %d 개는 다시 안 넣었다" % gone)
+    if held is None and not (now or gone):
+        msgs.append(label + "이미 다 들어 있다 (%d 개)" % len(states))
+
+
 # agy CLI · Copilot CLI — 제 설정 JSON 의 목록 하나에 저장소 뿌리를 한 줄씩 더한다(0121 · 0122 · 데스크탑 · VS Code 확장은
 #   안 묻는다 — #154). 줄은 디스크 철자로 짓고(윈도 — `realpath`), 이미 섰나는 그 도구가 맞추는 법대로 가린다.
 #   agy — `~/.gemini/antigravity-cli/settings.json` 의 `trustedWorkspaces`. 작업 폴더 글을 **철자 그대로** 맞춘다 — 대소문자만
-#     다른 줄은 다른 자리다(사람이 친 대소문자로 연 agy 는 그래서 묻는다)
+#     다른 줄은 다른 자리라, 사람이 치는 철자(`typed_spellings` — 디스크 · 통째 소문자 × 드라이브 글자)마다 한 줄씩 건다
 #   Copilot — `config.json`(`COPILOT_HOME` 이 서면 그 안, 아니면 `~/.copilot`)의 `trustedFolders`. 대소문자 없이 맞추고 아래
 #     폴더까지 덮는다
 # ⚠ **app-server 같은 것 없이 파일만 쓴다** — 그래서 세션에서도 건다. 새 파일은 두 도구가 제 설정을 쓰는 꼴(두 칸 · LF · 끝
@@ -1735,11 +1791,6 @@ def listed_files():
                   "~/.gemini/antigravity-cli/settings.json", "trustedWorkspaces", False),
             COPILOT: (os.path.join(cph or os.path.join(os.path.expanduser("~"), ".copilot"), "config.json"),
                       os.path.join(cph, "config.json") if cph else "~/.copilot/config.json", "trustedFolders", True)}
-
-
-def disk_spelling(p):
-    """그 자리의 디스크 철자 — 윈도면 `realpath`(대소문자를 디스크대로), 그 밖은 경로를 고른 꼴."""
-    return os.path.realpath(p) if os.name == "nt" else os.path.normpath(p)
 
 
 def split_head(text):
@@ -1768,8 +1819,9 @@ def plant_listed(label, path, shown, key, fold):
     same = (lambda p: os.path.normcase(os.path.normpath(p))) if fold else os.path.normpath
     have = {same(w) for w in ws}
     roots = {}
-    for t in targets:
-        roots.setdefault(same(disk_spelling(t)), disk_spelling(t))
+    for t in targets:   # 대소문자를 가리는 도구(agy)는 사람이 치는 철자마다, 안 가리는 도구는 디스크 철자 하나로
+        for s in ([disk_spelling(t)] if fold else typed_spellings(t)):
+            roots.setdefault(same(s), s)
     todo = [p for k, p in roots.items() if k not in have]
     if not todo:
         if install:
@@ -1789,9 +1841,21 @@ elif install:
     msgs.append("  신뢰(Claude) — Claude 를 안 골라 건너뛰었다")
 if tools is not None and CODEX in tools:
     try:
-        plant_codex()
-    except Exception as e:  # 도우미를 못 불러옴 · 모르는 꼴 — Claude 쪽 줄까지 잃지 않게 여기서 받는다
-        msgs.append("  ! 신뢰(Codex) — 못 걸었다: %s: %s" % (type(e).__name__, e))
+        codex_mod = codex_helper_module()
+    except Exception as e:  # 도우미를 못 불러옴 — Claude 쪽 줄까지 잃지 않게 여기서 받는다
+        codex_mod = None
+        msgs.append("  ! 신뢰(Codex) — 도우미를 못 불렀다: %s: %s" % (type(e).__name__, e))
+    else:
+        if codex_mod is None:
+            msgs.append("  ! 신뢰(Codex) — 도우미가 몸통 곁에 없다(%s) — 못 걸었다" % codex_helper)
+    for step, what in ((plant_codex, "  ! 신뢰(Codex) — 못 걸었다"),
+                       (plant_codex_desktop, "  ! 프로젝트(Codex 데스크탑) — 못 더했다")):
+        if codex_mod is None:
+            break
+        try:
+            step(codex_mod)
+        except Exception as e:  # 모르는 꼴 — 앞뒤 칸의 줄까지 잃지 않게 칸마다 받는다
+            msgs.append("%s: %s: %s" % (what, type(e).__name__, e))
 elif install:
     msgs.append("  신뢰(Codex) — %s 건너뛰었다" % ("Codex 를 안 골라" if tools is not None else "고른 제품을 못 읽어(%s)" % pick_why))
 for tool, label, obj in ((AGY, "agy", "agy 를"), (COPILOT, "Copilot", "Copilot 을")):
