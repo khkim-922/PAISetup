@@ -20,6 +20,21 @@
 # PROJECT_DIR 이 안 서 있는 자리에서도 선다 — 부르는 쪽을 믿지 않는다.
 [ -n "${PROJECT_DIR:-}" ] || PROJECT_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# 형제가 서는 자리는 **이 저장소 본 작업 폴더의 부모**다. 연결된 작업 트리(`.claude/worktrees/<이름>` — 데스크탑 앱이
+#   세션마다 만든다)의 부모는 형제 자리가 아니다. 본 작업 폴더는 git 이 댄다 — 공통 git 폴더(`--git-common-dir`)가
+#   `<본 작업 폴더>/.git` 이다. 검사가 쓰는 `scripts/sibling_base.py` 와 같은 자리를 낸다(그 파일은 안 실려 여기서 못 부른다).
+# ⚠ `--path-format=absolute` 를 안 쓴다 — 그 옵션이 없는 git(2.31 앞)의 `rev-parse` 는 모르는 옵션을 출력에 그대로
+#   되돌려 틀린 자리가 조용히 선다. 맨 꼴의 답은 상대 경로(`.git`)일 수 있어 저장소 자리에서 푼다.
+# git 이 없거나 · git 나무가 아니거나 · 공통 git 폴더가 `.git` 이 아니면(맨 저장소 · 따로 둔 git 폴더 · 하위 모듈) 제 자리를
+#   본 작업 폴더로 본다. 본 작업 폴더에서는 받은 글자를 그대로 낸다.
+_ccp_main_worktree() {   # _ccp_main_worktree <저장소 뿌리> — 그 저장소의 본 작업 폴더를 낸다
+    _ccp_cd="$(git -C "$1" rev-parse --git-common-dir 2>/dev/null)" || _ccp_cd=""
+    case "$_ccp_cd" in
+        */.git) (cd "$1" && cd "${_ccp_cd%/.git}" && pwd) 2>/dev/null || printf '%s' "$1" ;;
+        *)      printf '%s' "$1" ;;
+    esac
+}
+
 # ⚠ **이름이 아니라 지문으로 확인한다.** 이름만 보면 그 이름의 빈 폴더도 잡히고, 반대로
 #   클론 이름이 다른 자리(리모트가 소문자로 바꾸는 자리 — 실측 2026-09-11)는 못 잡는다.
 #   세션 진단이 쓰는 것과 같은 지문이다: 뿌리는 자(deploy.ps1)와 기록(memory/)이 같이 있나.
@@ -27,11 +42,11 @@
 #   자 — 결정 0035) 제 안에서 이 스크립트가 돌 때 형제를 찾으면 영영 못 찾는다.
 CONFIG_ROOT=""
 for _d in "$PROJECT_DIR" \
-          "$(dirname "$PROJECT_DIR")/claude-config" \
+          "$(dirname "$(_ccp_main_worktree "$PROJECT_DIR")")/claude-config" \
           /workspace/claude-config \
           "$HOME/claude-config"; do
-    # 자기 자신  — 역할이 둘인 저장소
-    # 형제       — 저장소 둘을 나란히 clone 한 자리
+    # 자기 자신  — 역할이 둘인 저장소. 그 저장소의 작업 트리에서는 그 작업 트리 자신이다
+    # 형제       — 저장소 둘을 나란히 clone 한 자리. 작업 트리에서 돌아도 본 작업 폴더의 곁을 본다
     # /workspace — 리모트. add_repo 가 여기 붙인다(실측 2026-08-14). 세션 루트와 다른
     #              자리라 형제로만 찾으면 리모트에서 영영 못 찾는다
     # $HOME      — 손으로 홈에 clone 한 자리
@@ -79,3 +94,4 @@ else
 fi
 
 unset _d _g _h _h_own _skill
+unset -f _ccp_main_worktree   # 점으로 읽은 쪽(게이트 몸통 · 문지기 · 세션 훅 몸통)에 이 손을 남기지 않는다
