@@ -2709,12 +2709,12 @@ $PersonalValue  = @(([ordered]@{ claude = $personalClaude; codex = $personalCode
                     Where-Object { $_.Value } | ForEach-Object { $_.Key }) -join ','
 if (-not $PersonalValue) { $PersonalValue = 'none' }
 $personalByRepo = [bool]$configRepoUrls.Count
-# ── 고른 제품 — 갈 곳 표의 도구 이름으로 (결정 0102 · claude-config #133 「훅」 걸음) ──────────────────────────
-# 손(`tool-homes.py`)의 조건 `pick` 이 읽는 값이라 표의 도구 이름(claude · codex · agy)으로 짓는다 — 표에 없는 제품(Gemini ·
-#   Copilot)은 안 든다. 사용자 환경변수 `PAISETUP_PICK` 으로 심어(「도구별 홈」) 설정 저장소의 배포 · 세션 훅이 부르는 손도 같은
-#   값을 읽는다 — 고른 제품에만 우리 Claude 훅이 서고, 빼면 우리 것이 걷힌다. 셋 다 안 골랐으면 `none` — 빈 값은 손이 「설치기가
-#   안 돈 자리」로 읽어 claude 로 본다.
-$PickValue = @(([ordered]@{ claude = 'claude'; codex = 'codex'; antigravity = 'agy' }).GetEnumerator() |
+# ── 고른 제품 — 갈 곳 표의 도구 이름으로 (결정 0102 · claude-config #133 「훅」 걸음 · claude-config 결정 0122) ──────
+# 손(`tool-homes.py`)의 조건 `pick` 이 읽는 값이라 표의 도구 이름(claude · codex · agy)으로 짓고, 표에 길은 없지만 세션 훅이
+#   폴더 신뢰를 거는 Copilot(`copilot`)도 싣는다 — 손은 그 이름을 아는 제품으로 넘긴다. Gemini 는 안 든다. 사용자 환경변수
+#   `PAISETUP_PICK` 으로 심어(「도구별 홈」) 설정 저장소의 배포 · 세션 훅이 부르는 손도 같은 값을 읽는다 — 고른 제품에만 우리
+#   Claude 훅이 서고, 빼면 우리 것이 걷힌다. 넷 다 안 골랐으면 `none` — 빈 값은 손이 「설치기가 안 돈 자리」로 읽어 claude 로 본다.
+$PickValue = @(([ordered]@{ claude = 'claude'; codex = 'codex'; antigravity = 'agy'; copilot = 'copilot' }).GetEnumerator() |
                Where-Object { $PickKeys -contains $_.Key } | ForEach-Object { $_.Value }) -join ','
 if (-not $PickValue) { $PickValue = 'none' }
 $wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
