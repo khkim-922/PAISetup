@@ -1709,10 +1709,12 @@ def plant_codex():
         msgs.append("  신뢰(Codex) — 이미 다 걸려 있다 (%d 자리)" % len(states))
 
 
-# agy CLI · Copilot CLI — 제 설정 JSON 의 목록 하나에 저장소 뿌리를 한 줄씩 더한다(0121 · 0122). 둘 다 그 목록을 대소문자
-#   없이 맞추므로 이미 섰나도 그렇게 가린다(데스크탑 · VS Code 확장은 안 묻는다 — #154).
-#   agy — `~/.gemini/antigravity-cli/settings.json` 의 `trustedWorkspaces`
-#   Copilot — `config.json`(`COPILOT_HOME` 이 서면 그 안, 아니면 `~/.copilot`)의 `trustedFolders`. 아래 폴더까지 덮는다
+# agy CLI · Copilot CLI — 제 설정 JSON 의 목록 하나에 저장소 뿌리를 한 줄씩 더한다(0121 · 0122 · 데스크탑 · VS Code 확장은
+#   안 묻는다 — #154). 줄은 디스크 철자로 짓고(윈도 — `realpath`), 이미 섰나는 그 도구가 맞추는 법대로 가린다.
+#   agy — `~/.gemini/antigravity-cli/settings.json` 의 `trustedWorkspaces`. 작업 폴더 글을 **철자 그대로** 맞춘다 — 대소문자만
+#     다른 줄은 다른 자리다(사람이 친 대소문자로 연 agy 는 그래서 묻는다)
+#   Copilot — `config.json`(`COPILOT_HOME` 이 서면 그 안, 아니면 `~/.copilot`)의 `trustedFolders`. 대소문자 없이 맞추고 아래
+#     폴더까지 덮는다
 # ⚠ **app-server 같은 것 없이 파일만 쓴다** — 그래서 세션에서도 건다. 새 파일은 두 도구가 제 설정을 쓰는 꼴(두 칸 · LF · 끝
 #   줄바꿈)로 짓고, 있던 파일은 원래 줄끝 · 끝 줄바꿈을 따른다. 없던 파일을 지어도 두 도구가 첫 실행에 그대로 읽는다(실측).
 # ⚠ **머리의 `//` 주석 줄은 살린다** — Copilot 이 제 `config.json` 맨 위에 두 줄을 단다. 그 밖의 주석이 든 글은 못 읽는 글이다.
@@ -1723,12 +1725,17 @@ LINE_COMMENT = "//"
 
 
 def listed_files():
-    """{도구: (파일, 보일 이름, 목록 열쇠)} — 목록 꼴로 신뢰를 드는 둘."""
+    """{도구: (파일, 보일 이름, 목록 열쇠, 대소문자를 안 가리나)} — 목록 꼴로 신뢰를 드는 둘."""
     cph = os.environ.get("COPILOT_HOME")
     return {AGY: (os.path.join(os.path.expanduser("~"), ".gemini", "antigravity-cli", "settings.json"),
-                  "~/.gemini/antigravity-cli/settings.json", "trustedWorkspaces"),
+                  "~/.gemini/antigravity-cli/settings.json", "trustedWorkspaces", False),
             COPILOT: (os.path.join(cph or os.path.join(os.path.expanduser("~"), ".copilot"), "config.json"),
-                      os.path.join(cph, "config.json") if cph else "~/.copilot/config.json", "trustedFolders")}
+                      os.path.join(cph, "config.json") if cph else "~/.copilot/config.json", "trustedFolders", True)}
+
+
+def disk_spelling(p):
+    """그 자리의 디스크 철자 — 윈도면 `realpath`(대소문자를 디스크대로), 그 밖은 경로를 고른 꼴."""
+    return os.path.realpath(p) if os.name == "nt" else os.path.normpath(p)
 
 
 def split_head(text):
@@ -1740,7 +1747,7 @@ def split_head(text):
     return "".join(lines[:n]), "".join(lines[n:])
 
 
-def plant_listed(label, path, shown, key):
+def plant_listed(label, path, shown, key, fold):
     try:
         with open(path, encoding="utf-8-sig", newline="") as f:
             like = f.read()
@@ -1754,10 +1761,11 @@ def plant_listed(label, path, shown, key):
     except (OSError, ValueError):
         msgs.append("  ! 신뢰(%s) — %s 를 못 읽었다 — 손대지 않았다. 다음 설치가 다시 건다" % (label, shown))
         return
-    have = {os.path.normcase(os.path.normpath(w)) for w in ws}
+    same = (lambda p: os.path.normcase(os.path.normpath(p))) if fold else os.path.normpath
+    have = {same(w) for w in ws}
     roots = {}
     for t in targets:
-        roots.setdefault(os.path.normcase(os.path.normpath(t)), os.path.normpath(t))
+        roots.setdefault(same(disk_spelling(t)), disk_spelling(t))
     todo = [p for k, p in roots.items() if k not in have]
     if not todo:
         if install:
