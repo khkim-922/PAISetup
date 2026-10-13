@@ -3114,7 +3114,9 @@ function Invoke-Plant([string]$Bash, [string]$Root) {
     New-Item -ItemType Directory -Path $Root -Force | Out-Null
     Write-Host "  심기만 — $hook --plant $rootArg" -ForegroundColor Green
     Write-Host ''
-    & $Bash ($hook -replace '\\', '/') --plant $rootArg
+    # ⚠ 몸통의 줄은 `Out-Host` 로 화면에 낸다 — 함수 안에서 그냥 부르면 bash 의 stdout 이 이 함수가 내는 값에 섞여, 설치 화면 ·
+    #   자동 실행 로그에 한 줄도 안 남는다(심었다 · 미뤘다 · 진 까닭). 종료값은 그대로 `$LASTEXITCODE` 가 든다.
+    & $Bash ($hook -replace '\\', '/') --plant $rootArg | Out-Host
     $rc = $LASTEXITCODE
   } catch {
     return @{ Ran = $true; Ok = $false; Why = (Say-Why $_) }
