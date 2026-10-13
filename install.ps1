@@ -17,7 +17,7 @@
 #   2) 사람이 그 자리에서 입력
 #
 #   그 파일이 `#config-repo` 를 들면 **다 세운 뒤에** 그 저장소를 받고, 뿌리에 훅
-#   (`.claude/hooks/session-start.sh`)이 있으면 `--install` 로 부른다 — 사람에게 딸린 것
+#   (`.claude/hooks/session-start.sh` — 옛 세대의 우리 사본은 지금 판으로 간 뒤)이 있으면 `--install` 로 부른다 — 사람에게 딸린 것
 #   (git 신원 · 형제 저장소 · 개인 키 · 배포)은 그쪽이 든다. 여기가 하는 일은 그 줄이
 #   있든 없든 같다.
 #   **주소도 여기 없다.** 그래서 이 파일 하나는 어느 갈래에서도 익명으로 남는다.
@@ -747,6 +747,545 @@ function Get-FreePath([string]$Path) {
 #   저장소의 주소와 자리」 곁말 — 자리를 짓는 자를 한 벌로 둔다).
 function Get-ConfigRepoDir([string]$Url) {
   return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
+}
+
+# JSON 을 2 칸 들여쓰기 · `"키": 값` 꼴로 쓴다 — 씨앗 저장소 설정과 같은 꼴이다. ASCII 밖의 글자(한글 등)는 그대로 두고 따옴표 · 역슬래시 ·
+#   제어 문자만 이스케이프한다. 윈도 PowerShell 5.1 의 `ConvertTo-Json` 은 ASCII 밖의 글자와 `<>&'` 를 \uXXXX 로 바꾸고 들여쓰기를 제 꼴로
+#   흩어, 사람이 쓴 설정의 글자가 안 읽히고 바뀐 줄이 는다. 받는 값은 `ConvertFrom-Json` 이 낸 꼴(표 · 목록 · 글 · 수 · 참거짓 · 빈 값)이다.
+#   ⚠ `ConvertFrom-Json` 은 `"\/Date(…)\/"` 꼴의 글을 날짜로 바꾸고, 날짜는 아래 값 갈래가 따옴표 없이 써 JSON 이 깨진다 — 부르는 쪽이
+#   쓰기 전에 엄격하게 되읽는다(`Merge-RepoSettings`).
+function ConvertTo-PlainJson($Value, [string]$Pad = '') {
+  if ($null -eq $Value) { return 'null' }
+  if ($Value -is [bool]) { if ($Value) { return 'true' } else { return 'false' } }
+  if ($Value -is [string]) {
+    $sb = New-Object Text.StringBuilder
+    [void]$sb.Append('"')
+    foreach ($ch in $Value.ToCharArray()) {
+      $code = [int]$ch
+      if ($ch -eq '"') { [void]$sb.Append('\"') }
+      elseif ($ch -eq '\') { [void]$sb.Append('\\') }
+      elseif ($code -eq 10) { [void]$sb.Append('\n') }
+      elseif ($code -eq 13) { [void]$sb.Append('\r') }
+      elseif ($code -eq 9) { [void]$sb.Append('\t') }
+      elseif ($code -lt 32) { [void]$sb.Append(('\u{0:x4}' -f $code)) }
+      else { [void]$sb.Append($ch) }
+    }
+    [void]$sb.Append('"')
+    return $sb.ToString()
+  }
+  if ($Value -is [ValueType]) { return [Convert]::ToString($Value, [Globalization.CultureInfo]::InvariantCulture) }
+  $in = $Pad + '  '
+  if ($Value -is [System.Collections.IList]) {
+    if (-not $Value.Count) { return '[]' }
+    $items = foreach ($e in $Value) { $in + (ConvertTo-PlainJson $e $in) }
+    return "[`n" + (@($items) -join ",`n") + "`n$Pad]"
+  }
+  $props = @($Value.PSObject.Properties)
+  if (-not $props.Count) { return '{}' }
+  $items = foreach ($p in $props) { $in + (ConvertTo-PlainJson $p.Name) + ': ' + (ConvertTo-PlainJson $p.Value $in) }
+  return "{`n" + (@($items) -join ",`n") + "`n$Pad}"
+}
+
+# 저장소 설정(`.claude/settings.json`)에서 우리 항목만 홈 씨앗의 지금 판으로 맞춘다(claude-config 결정 0129 「저장소 설정」). 그 파일은 사람이 많이
+#   고친다 — 우리 항목 밖의 키 · 값 · 훅은 안 건드린다:
+#   · 엄격한 JSON 만 고친다 — Claude Code 는 엄격하지 않은 파일(작은따옴표 · 앞의 0 · 꼬리 쉼표 · 주석)을 통째로 안 읽는데, PowerShell 5.1 의
+#     `ConvertFrom-Json` 은 그것을 받아들인다. 고쳐 쓰면 그동안 안 돌던 사람의 설정(권한 등)이 살아난다. 쓸 글도 엄격하게 되읽는다 —
+#     `ConvertTo-PlainJson` 이 옮기지 못하는 값(날짜로 읽힌 글)이 있으면 안 쓴다
+#   · 키는 대소문자를 가린다(Claude Code 와 같다). 우리가 읽거나 더하는 키(`hooks` · `env` · 씨앗의 이벤트)와 대소문자만 다른 키가 있으면
+#     안 고친다 — PowerShell 의 표는 그 둘을 한 이름으로 다뤄 엉뚱한 키에 쓴다. 한 표에 대소문자만 다른 두 키가 함께 서면(`hooks` 와 `Hooks`)
+#     PowerShell 5.1 의 `ConvertFrom-Json` 이 던져 못 고친다 — 그 말이 두 키 이름을 댄다. `env` 안의 키만은 대소문자를 안 가린다 — 윈도의
+#     환경 변수 이름이 그렇다(사람의 `pythonutf8` 은 같은 변수다)
+#   · 우리 항목 — 훅 명령 객체의 명령이 따옴표를 벗기면 `$CLAUDE_PROJECT_DIR/.claude/hooks/<이름>` 이고, 그 이름이 홈 씨앗이 싣는 훅
+#     (`<씨앗>/.claude/hooks/` 의 파일)이거나 · 저장소에 그 파일이 없거나(걷은 우리 훅의 남은 등록 — 사용자 결정 2026-10-13, Dropped 에
+#     댄다) · 저장소의 그 파일이 우리 표지를 든 것. 그 파일이 있고 표지가 없으면 그 사람의 훅이라 말없이 둔다. 이름에 경로에 못 쓰는 글자가
+#     들면 파일일 수 없어 우리 것이 아니다
+#   · 우리 명령 객체를 제 묶음에서 걷고 — 우리 것을 걷어 비게 된 묶음과 이벤트만 걷는다(사람의 훅이 같은 묶음에 있을 수 있다) — 씨앗의
+#     등록을 그 이벤트 끝에 더한다. 그래서 씨앗의 등록이 하나씩만 선다
+#   · `env` — 씨앗이 든 키가 없을 때만 더한다. 사람이 정한 값은 안 덮는다(결정 0127 의 규칙). `env` 가 없으면 맨 앞에 둔다(씨앗의 차례)
+#   · `permissions` 와 그 밖의 키는 안 본다 — 우리 것과 사람 것을 가를 길이 없다
+# 쓸 글은 위 꼴(`ConvertTo-PlainJson`)로 다시 짓고, 원래 파일의 줄끝 · BOM 을 따른다. 뜻이 안 바뀌면(맞춘 뒤의 글과 맞추기 전 글을 같은 꼴로
+#   지어 견준다) 안 쓴다.
+# 내는 것 — @{ Ok; Changed; Bytes; Why; Fix; Dropped }. 못 고치면 Ok 가 거짓이고 안 쓴다 — Why · Fix 가 그 까닭과 길이다
+function Merge-RepoSettings([string]$Path, [string]$SeedPath, [string]$Repo, [string]$SeedHooks) {
+  $res = @{ Ok = $false; Changed = $false; Bytes = $null; Why = ''; Fix = ''; Dropped = @() }
+  $jsonFix = '그 파일을 엄격한 JSON 으로 바로잡은 뒤(편집기가 문법 오류 자리를 짚는다) 설치를 다시 누른다 — 그 사이 그 파일은 그대로다'
+  # 엄격한 JSON 인데 꼴이 다른 것 — 편집기는 짚을 오류가 없다
+  $shapeFix = '그 자리를 Claude Code 설정의 꼴(맨 위 · hooks · env 는 표, hooks 의 이벤트는 목록)로 바로잡은 뒤 설치를 다시 누른다 — 그 사이 그 파일은 그대로다'
+  $refuse = { param([string]$why, [string]$fix)
+    $res.Why = "저장소 설정(.claude/settings.json)을 $why 안 고쳤다"
+    $res.Fix = if ($fix) { $fix } else { $jsonFix }
+    $res }
+  # 엄격한 JSON 인가 — 참 · 거짓, 잴 자가 없으면 빈 값. 윈도 런타임의 `JsonValue` 가 엄격하다(실측 PowerShell 5.1: 작은따옴표 · 앞의 0 ·
+  #   꼬리 쉼표 · 주석을 거절하고, 범위 밖의 수에는 던진다 — 던지면 거짓이다)
+  $strict = { param([string]$t)
+    $jv = $null
+    try { $jv = [Windows.Data.Json.JsonValue, Windows.Data.Json, ContentType = WindowsRuntime] } catch { }
+    if (-not $jv) { return $null }
+    try { $v = $null; return [bool]$jv::TryParse($t, [ref]$v) } catch { return $false } }
+  $propOf = { param($o, [string]$k) @($o.PSObject.Properties | Where-Object { $_.Name -ceq $k }) | Select-Object -First 1 }
+  $twinOf = { param($o, [string]$k) @($o.PSObject.Properties | Where-Object { $_.Name -ieq $k -and $_.Name -cne $k } | ForEach-Object { $_.Name }) | Select-Object -First 1 }
+  $caseFix = { param([string]$k) "그 키를 $k 로 바로잡거나 지운 뒤 설치를 다시 누른다 — Claude Code 는 대소문자가 다른 키를 안 읽는다" }
+  $pso = [System.Management.Automation.PSCustomObject]
+  $bytes = [IO.File]::ReadAllBytes($Path)
+  $bom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+  $skip = if ($bom) { 3 } else { 0 }
+  $raw = (New-Object Text.UTF8Encoding($false)).GetString($bytes, $skip, $bytes.Length - $skip)
+  $nl = if ($raw.Contains("`r`n")) { "`r`n" } else { "`n" }
+  $isStrict = & $strict $raw
+  if ($null -eq $isStrict) { return (& $refuse '이 PowerShell 에서 엄격한 JSON 으로 잴 자(Windows.Data.Json)가 없어' '설치 창(Windows PowerShell 5.1)으로 설치를 다시 누른다 — 같으면 이 줄을 그대로 보낸다') }
+  if (-not $isStrict) { return (& $refuse '엄격한 JSON 으로 못 읽어(Claude Code 도 그 파일을 통째로 안 읽는다)') }
+  $obj = $null
+  # 엄격한 JSON 을 PowerShell 5.1 이 못 읽는 자리는 한 표에 대소문자만 다른 두 키다 — 그 말에 두 키 이름이 든다
+  try { $obj = $raw | ConvertFrom-Json -ErrorAction Stop }
+  catch {
+    $msg = ([string]$_.Exception.Message -replace '\s+', ' ').Trim()
+    return (& $refuse "PowerShell 5.1 이 못 읽어($msg)" '그 말이 댄 두 키 가운데 하나를 지우거나 이름을 바로잡은 뒤 설치를 다시 누른다(Claude Code 는 대소문자가 다른 두 키를 따로 읽는다) — 다른 말이면 이 줄을 그대로 보낸다')
+  }
+  if ($obj -isnot $pso) { return (& $refuse '맨 위가 표가 아니라' $shapeFix) }
+  foreach ($k in @('hooks', 'env')) { $tw = & $twinOf $obj $k; if ($tw) { return (& $refuse "키 $tw 가 우리 키 $k 와 대소문자만 달라" (& $caseFix $k)) } }
+  $hooksProp = & $propOf $obj 'hooks'
+  if ($hooksProp -and $hooksProp.Value -isnot $pso) { return (& $refuse 'hooks 가 표가 아니라' $shapeFix) }
+  $seedObj = [IO.File]::ReadAllText($SeedPath) | ConvertFrom-Json
+  if ($hooksProp) {
+    foreach ($sev in @($seedObj.hooks.PSObject.Properties)) { $tw = & $twinOf $hooksProp.Value $sev.Name; if ($tw) { return (& $refuse "hooks.$tw 가 이벤트 $($sev.Name) 와 대소문자만 달라" (& $caseFix $sev.Name)) } }
+    foreach ($ev in @($hooksProp.Value.PSObject.Properties)) { if ($ev.Value -isnot [System.Collections.IList]) { return (& $refuse "hooks.$($ev.Name) 가 목록이 아니라" $shapeFix) } }
+  }
+  $envProp = & $propOf $obj 'env'
+  if ($envProp -and $envProp.Value -isnot $pso) { return (& $refuse 'env 가 표가 아니라' $shapeFix) }
+  $before = ConvertTo-PlainJson $obj
+  $shipped = @(Get-ChildItem -LiteralPath $SeedHooks -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+  # 우리 꼴의 명령이면 훅 이름, 아니면 빈 글
+  $nameOf = { param($cmd)
+    $c = ([string]$cmd).Trim()
+    if ($c.Length -ge 2 -and (($c[0] -eq '"' -and $c[-1] -eq '"') -or ($c[0] -eq "'" -and $c[-1] -eq "'"))) { $c = $c.Substring(1, $c.Length - 2) }
+    if ($c -match '^\$CLAUDE_PROJECT_DIR/\.claude/hooks/([^/\\\s"'']+)$' -and $Matches[1].IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -lt 0) { $Matches[1] } else { '' } }
+  # 걷기 — 이벤트마다 우리 명령 객체를 걷고, 우리 것을 걷어 비게 된 묶음은 뺀다. 우리 것을 걷은 이벤트를 적어 둔다(비면 뒤에서 뺀다)
+  $touched = @()
+  if ($hooksProp) {
+    foreach ($ev in @($hooksProp.Value.PSObject.Properties)) {
+      $keep = @(); $removed = $false
+      foreach ($grp in @($ev.Value)) {
+        $hp = if ($grp -is $pso) { & $propOf $grp 'hooks' } else { $null }
+        if ($hp -and $hp.Value -is [System.Collections.IList]) {
+          $rest = @()
+          foreach ($h in @($hp.Value)) {
+            $cp = if ($h -is $pso) { & $propOf $h 'command' } else { $null }
+            $n = if ($cp) { & $nameOf $cp.Value } else { '' }
+            if ($n) {
+              $file = Join-Path $Repo ".claude\hooks\$n"
+              $gone = -not (Test-Path -LiteralPath $file -PathType Leaf)
+              if (($shipped -contains $n) -or $gone -or (Test-OurMark $file ".claude/hooks/$n")) {
+                $removed = $true
+                if ($gone -and $shipped -notcontains $n -and $res.Dropped -notcontains $n) { $res.Dropped += $n }
+                continue
+              }
+            }
+            $rest += , $h
+          }
+          if ($rest.Count -lt @($hp.Value).Count) {
+            if (-not $rest.Count) { continue }
+            $hp.Value = $rest
+          }
+        }
+        $keep += , $grp
+      }
+      $ev.Value = $keep
+      if ($removed) { $touched += $ev.Name }
+    }
+  }
+  # 더하기 — 씨앗의 등록을 그 이벤트 끝에(없으면 이벤트를 hooks 끝에) 더한다
+  if ($seedObj.hooks) {
+    if (-not $hooksProp) { $obj | Add-Member -NotePropertyName 'hooks' -NotePropertyValue ([pscustomobject]@{}); $hooksProp = & $propOf $obj 'hooks' }
+    foreach ($sev in @($seedObj.hooks.PSObject.Properties)) {
+      $cur = & $propOf $hooksProp.Value $sev.Name
+      if ($cur) { $cur.Value = @(@($cur.Value) + @($sev.Value)) }
+      else { $hooksProp.Value | Add-Member -NotePropertyName $sev.Name -NotePropertyValue @($sev.Value) }
+    }
+  }
+  # 우리 것을 걷어 빈 이벤트는 뺀다 — 원래 빈 이벤트는 사람 것이라 둔다
+  foreach ($name in $touched) {
+    $cur = & $propOf $hooksProp.Value $name
+    if ($cur -and -not @($cur.Value).Count) { $hooksProp.Value.PSObject.Properties.Remove($name) }
+  }
+  # env — 씨앗의 키가 없을 때만 더한다
+  if ($seedObj.env) {
+    if (-not $envProp) {
+      $front = [pscustomobject]@{}
+      $front | Add-Member -NotePropertyName 'env' -NotePropertyValue ([pscustomobject]@{})
+      foreach ($p in @($obj.PSObject.Properties)) { $front | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value }
+      $obj = $front; $envProp = & $propOf $obj 'env'
+    }
+    foreach ($sp in @($seedObj.env.PSObject.Properties)) {
+      if (-not $envProp.Value.PSObject.Properties[$sp.Name]) { $envProp.Value | Add-Member -NotePropertyName $sp.Name -NotePropertyValue $sp.Value }
+    }
+  }
+  $after = ConvertTo-PlainJson $obj
+  if ($after -ceq $before) { $res.Ok = $true; return $res }
+  if (-not (& $strict $after)) { return (& $refuse '맞춘 글이 엄격한 JSON 으로 안 읽혀(그 파일의 어느 값을 설치기가 그대로 못 옮긴다)' '설치를 다시 누른다 — 같으면 이 줄을 그대로 보낸다') }
+  $res.Ok = $true
+  $res.Changed = $true
+  $body = (New-Object Text.UTF8Encoding($false)).GetBytes((($after + "`n") -replace "`n", $nl))
+  $res.Bytes = if ($bom) { [byte[]](@([byte]0xEF, [byte]0xBB, [byte]0xBF) + @($body)) } else { $body }
+  return $res
+}
+
+# 우리 파일인가 — 머리 12 줄 안의 주석 줄(`#` · `//`)이 우리 표지 문구로 그 파일의 원본 좌표를 대나(claude-config 결정 0129 「우리 표지」).
+#   문구는 둘이다: 「진본은|원본은 claude-config/<저장소 상대 경로> 다」 · 「(진본: claude-config/<저장소 상대 경로>)」. 배포가 뿌린 우리
+#   파일의 머리말이 이 꼴이다. 문구로 좁힌다 — 주석이나 코드 줄에서 그 경로를 부르기만 하는 사람의 감싸개는 우리 것이 아니다.
+#   못 읽으면 거짓이다.
+function Test-OurMark([string]$Path, [string]$Rel) {
+  $at = [regex]::Escape('claude-config/' + ($Rel -replace '\\', '/'))
+  $mark = '^\s*(#|//).*(?:(?:진본|원본)은 ' + $at + ' 다|\(진본: ' + $at + '\))'
+  try {
+    foreach ($ln in @(Get-Content -LiteralPath $Path -TotalCount 12 -Encoding UTF8 -ErrorAction Stop)) {
+      if ($ln -match $mark) { return $true }
+    }
+  } catch { }
+  return $false
+}
+
+# 받은 저장소의 세션 훅을 가른다 — 우리 것인가 · 저장소의 꼴 · 이 설치기와 같은 세대인가. 「설정 저장소」 걸음이 넘기기 전에, 작업 루트
+#   훑기가 갈기 전에 묻는다(claude-config 결정 0129). 이 설치기의 세대는 홈의 규범 · 룰 · 에이전트 · 훅 놓기를 손(`tool-homes.py`)에 맡긴다.
+#   그보다 옛 판의 우리 훅 · 몸통 · 배포는 그것을 제 사본으로 붓는다 — 넘기면 「도구별 홈」 걸음이 손으로 놓은 것이 덮이고 끝 검증의 손 줄이
+#   빨개진다.
+# 가르는 글자는 그 `--install` 이 실제로 돌릴 것의 글이다:
+#   · 우리 것인가 — 훅의 머리말 주석이 우리 표지 문구를 대나(`Test-OurMark`). 아니면 그 사람의 훅이라 가르지 않는다 — 붙인 저장소의 훅은
+#     누구 것이든 부른다(결정 0115)
+#   · 꼴(안 쓸 자리를 가른다) — 몸통(`session-start-body.sh`)을 곁에 들거나 뿌리에 `deploy.ps1` · `deploy.repofiles.conf` 를 든 저장소는
+#     설정 저장소 꼴이다(claude-config 클론 · 씨앗을 떠 만든 저장소 · 그 밖에 제 배포를 든 저장소). 둘은 배포가 형제에 미는 묶음에 없어
+#     형제에는 안 선다. 그 밖은 형제 꼴이고, 거기 든 우리 파일은 배포가 형제에 미는 묶음(`deploy.repofiles.conf`)이다
+#   · 세대 — 훅이 몸통으로 넘기는 문지기인가(그 이름이 없으면 그 파일이 곧 몸통인 옛 판이다) · 곁의 몸통이 손을 부르나 · 제 설정 저장소면
+#     그 `deploy.ps1` 이 손을 부르나. 제 설정 저장소는 찾는 자(`claude-config-path.sh`)의 지문 — 뿌리의 `deploy.ps1` 과 `memory/` — 이고, 몸통이
+#     `deploy.ps1` 을 부르는 것은 그때뿐이라 지문이 없는 저장소의 `deploy.ps1`(팀의 배포 스크립트 등)은 세대를 안 가른다. 손의 이름이 없으면
+#     옛 판이다
+# 내는 것 — 훅이 없으면 `$null`. 있으면 @{ Repo; Ours; Shape(sibling | config); Current; Why; Fix; Refreshed; Overwrote; Edited; Kept;
+#   SettingsNote; Dropped; Blocked }:
+#   Fix — 손으로 고치는 길 한 줄. 설정 저장소 꼴만 여기서 짓고, 형제 꼴은 갈기(`Invoke-HookRefresh`)나 작업 루트 훑기가 그 결과대로 짓는다
+#   그 밖은 비어 나온다. 갈기와 넘길 자리를 고르는 줄이 채운다 — 쓴 파일 · 그 가운데 덮은 파일 · 우리 항목만 고친 파일 · 우리 표지가 없어 둔
+#     파일 · 저장소 설정을 못 고친 까닭 · 저장소 설정에서 걷은 파일 없는 우리 꼴 등록 · 설정 저장소 때문에 못 넘기는 까닭
+function Get-SessionHookGen([string]$Repo) {
+  $hooks = Join-Path $Repo '.claude\hooks'
+  $hook = Join-Path $hooks 'session-start.sh'
+  if (-not (Test-Path -LiteralPath $hook -PathType Leaf)) { return $null }
+  $r = @{ Repo = $Repo; Ours = $false; Shape = 'sibling'; Current = $true; Why = ''; Fix = ''; Refreshed = @(); Overwrote = @(); Edited = @(); Kept = @()
+          SettingsNote = ''; Dropped = @(); Blocked = '' }
+  # 훅을 못 읽으면 표지도 못 읽어 그 사람의 훅으로 본다(계약대로 부른다)
+  if (-not (Test-OurMark $hook '.claude/hooks/session-start.sh')) { return $r }
+  $r.Ours = $true
+  # 못 읽은 몸통 · 배포는 빈 글로 본다 — 손을 부르는지 모르니 안 넘긴다
+  $read = { param([string]$p) try { [IO.File]::ReadAllText($p) } catch { '' } }
+  $body = Join-Path $hooks 'session-start-body.sh'
+  $deploy = Join-Path $Repo 'deploy.ps1'
+  $hasBody = Test-Path -LiteralPath $body -PathType Leaf
+  $hasDeploy = Test-Path -LiteralPath $deploy -PathType Leaf
+  $ownRoot = $hasDeploy -and (Test-Path -LiteralPath (Join-Path $Repo 'memory') -PathType Container)
+  if ($hasBody -or $hasDeploy -or (Test-Path -LiteralPath (Join-Path $Repo 'deploy.repofiles.conf') -PathType Leaf)) { $r.Shape = 'config' }
+  if (-not (& $read $hook).Contains('session-start-body.sh')) {
+    $r.Current = $false
+    $r.Why = '몸통을 제 안에 든 옛 판 훅이다 — 넘기면 「도구별 홈」이 손으로 놓은 규범 · 룰을 제 사본으로 덮는다'
+  } elseif ($hasBody -and -not (& $read $body).Contains('tool-homes.py')) {
+    $r.Current = $false
+    $r.Why = '곁의 몸통(session-start-body.sh)이 손(tool-homes.py)을 안 부르는 옛 판이다 — 넘기면 「도구별 홈」이 손으로 놓은 것을 제 손으로 덮는다'
+  } elseif ($ownRoot -and -not (& $read $deploy).Contains('tool-homes.py')) {
+    $r.Current = $false
+    $r.Why = '이 저장소의 deploy.ps1 이 손(tool-homes.py)을 안 부르는 옛 판이다 — 넘기면 몸통이 그것을 불러 「도구별 홈」이 손으로 놓은 것을 덮는다'
+  }
+  if ($r.Current) { return $r }
+  if ($r.Shape -eq 'config') {
+    $r.Fix = '설정 저장소 꼴이라 설치기가 안 고친다 — 원본에서 받은 저장소면 당기고(git pull), 씨앗으로 만든 저장소면 ~/.claude/seeds/config-repo/ 의 지금 판으로 손수 올린다 · 그 훅을 안 쓰면 그 파일과 .claude/settings.json 의 SessionStart 줄을 함께 걷는다'
+  }
+  return $r
+}
+
+# 저장소 안의 자리까지 가는 길에 저장소 밖으로 이어진 갈래(정션 · 링크 폴더)가 있나 — 있으면 그 갈래의 자리를 내고, 없으면 빈 글.
+#   갈래의 끝을 못 풀어도 그 자리를 낸다(안 쓴다). 그 갈래를 지나 쓰면 새 파일이 저장소 밖에 앉는다.
+function Get-OutsideHop([string]$Root, [string]$Path) {
+  $parts = @($Path.Substring($Root.Length).TrimStart('\') -split '\\')
+  $cur = $Root
+  for ($i = 0; $i -lt $parts.Count - 1; $i++) {
+    $cur = Join-Path $cur $parts[$i]
+    $it = Get-Item -LiteralPath $cur -Force -ErrorAction SilentlyContinue
+    if (-not $it) { break }
+    if (-not ($it.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+    $tg = [string](@($it.Target) | Select-Object -First 1)
+    if (-not $tg) { return $cur }
+    if (-not [IO.Path]::IsPathRooted($tg)) { $tg = Join-Path (Split-Path $cur -Parent) $tg }
+    $full = [IO.Path]::GetFullPath($tg).TrimEnd('\')
+    if (-not ($full -ieq $Root -or $full.StartsWith("$Root\", [StringComparison]::OrdinalIgnoreCase))) { return $cur }
+  }
+  return ''
+}
+
+# 형제 꼴 저장소에 든 우리 파일을 홈 씨앗의 지금 판으로 간다(claude-config 결정 0129). 묶음은 씨앗의 `deploy.repofiles.conf` — 배포가
+#   형제에 미는 것과 같은 목록이고, 씨앗과 바이트가 다른 것만 덮는다. 묶음 밖의 파일은 안 건드린다 — 배포도 덮어쓰기만 한다.
+# git 은 읽기만 한다 — 커밋 · 스테이징 · 되돌리기를 안 한다. 바뀐 파일은 작업 나무에 남고 그 사람이 보고 커밋한다.
+# 안 쓰는 자리 — 아래 하나라도 걸리면 아무것도 안 쓴다(읽다 진 것도 같다). 까닭(Why)과 그 까닭에 맞는 고치는 길(Fix)을 함께 낸다:
+#   · git 저장소가 아닌 폴더 — 고치는 길은 비어 나온다(설치가 가리킬 길이 없다)
+#   · 저장소 밖으로 이어진 갈래를 지나는 자리(`Get-OutsideHop`) — 그 갈래를 걷는다
+#   ⚠ 덮을 파일의 작업 나무가 git 인덱스의 것과 다르다 — `git hash-object --path` 가 그 자리의 걸러짐(줄끝 등)을 입혀 지은 값이 인덱스의
+#     값과 같아야 덮는다. 상태(`status`)로 묻지 않는다 — 건너뛰기 · 안 바뀐 셈 표시(skip-worktree · assume-unchanged)가 서면 바뀐 파일도
+#     깨끗하게 나와, 덮은 손질을 되돌릴 길이 없다. 고치는 길은 셋으로 갈린다: 커밋 안 한 손질(커밋 · stash) · 표시 아래 손질(표시를 걷고
+#     커밋 · stash — 표시가 서 있으면 둘 다 그 손질을 못 본다) · git 밖의 파일(지우거나 옮긴다 — 무시된 파일에 「커밋」은 안 맞는다)
+# 있는 파일은 머리말이 우리 표지를 댈 때만 덮고(`Test-OurMark`), 아니면 그 사람의 것이라 두고 Kept 에 댄다. 사람이 고쳐 커밋한 우리
+#   파일도 덮는다(결정 0129 — 사용자가 받아들인 위험). 저장소 설정(`.claude/settings.json`)은 덮지 않고 우리 항목만 고친다(`Merge-RepoSettings`) —
+#   뜻이 안 바뀌면 안 쓰고, JSON 으로 못 읽으면 그 파일만 두고 SettingsNote 에 까닭과 길을 댄다(다른 파일은 간다).
+# 훅(`.claude/hooks/session-start.sh`)은 맨 뒤에 쓴다 — 쓰다 지면 옛 훅이 남아 다음 실행이 다시 옛 판으로 읽고 이어 간다. 먼저 쓴 것은
+#   씨앗과 같아 그때 건너뛴다.
+# 내는 것 — @{ Ok; Why; Fix; Files; Overwrote; Edited; Kept; SettingsNote; Dropped }. Files 는 쓴 파일(저장소 상대 경로) · Overwrote 는 그
+#   가운데 있던 파일을 덮은 것 · Edited 는 우리 항목만 고친 것(저장소 설정) · Dropped 는 저장소 설정에서 걷은 파일 없는 우리 꼴 등록 — 쓰다 졌으면
+#   그때까지 쓴 것
+function Update-OurRepoFiles([string]$Repo, [string]$Seed) {
+  $out = @{ Ok = $false; Why = ''; Fix = ''; Files = @(); Overwrote = @(); Edited = @(); Kept = @(); SettingsNote = ''; Dropped = @() }
+  $hookRel = '.claude/hooks/session-start.sh'
+  $again = '설치를 다시 누른다'
+  try {
+    $conf = Join-Path $Seed 'deploy.repofiles.conf'
+    if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) {
+      $out.Why = "홈 씨앗에 묶음 목록이 없어 안 갈았다 ($conf)"
+      $out.Fix = "$again — 같으면 이 줄을 그대로 보낸다(홈 씨앗이 덜 깔렸다)"
+      return $out
+    }
+    $root = [IO.Path]::GetFullPath($Repo).TrimEnd('\')
+    # git 저장소가 아닌 폴더(풀어 놓은 사본 등)는 덮기 전 판을 들 자가 없다 — 안 쓰고, 고치는 길도 안 댄다(설치가 가리킬 길이 없다)
+    $inTree = [string](@(Get-Quiet 'git' @('-C', $root, 'rev-parse', '--is-inside-work-tree')) | Select-Object -Last 1)
+    if ($LASTEXITCODE -ne 0 -or $inTree -ne 'true') {
+      $out.Why = 'git 저장소가 아닌 폴더라 안 갈았다 — 덮으면 되돌릴 길이 없다'
+      return $out
+    }
+    $todo = @()
+    foreach ($rel in @(Get-Content -LiteralPath $conf -Encoding UTF8 | ForEach-Object { ($_ -replace '#.*$', '').Trim() } | Where-Object { $_ })) {
+      $from = Join-Path $Seed ($rel -replace '/', '\')
+      if (-not (Test-Path -LiteralPath $from -PathType Leaf)) { continue }
+      $to = Join-Path $root ($rel -replace '/', '\')
+      $hop = Get-OutsideHop $root $to
+      if ($hop) {
+        $out.Why = "저장소 밖으로 이어진 갈래($hop)를 지나야 해서 안 갈았다 — 쓰면 저장소 밖에 앉는다"
+        $out.Fix = "그 갈래($hop)를 걷거나 저장소 안의 진짜 폴더로 바꾼 뒤 $again"
+        return $out
+      }
+      $has = Test-Path -LiteralPath $to -PathType Leaf
+      if ($has -and (Get-FileHash -LiteralPath $from).Hash -eq (Get-FileHash -LiteralPath $to).Hash) { continue }
+      if ($has -and $rel -eq '.claude/settings.json') {
+        $m = Merge-RepoSettings $to $from $root (Join-Path $Seed '.claude\hooks')
+        $out.Dropped = @($m.Dropped)
+        if (-not $m.Ok) { $out.SettingsNote = "$($m.Why) · 고치는 길: $($m.Fix)"; continue }
+        if ($m.Changed) { $todo += @{ Rel = $rel; To = $to; Has = $true; Bytes = $m.Bytes } }
+        continue
+      }
+      if ($has -and -not (Test-OurMark $to $rel)) { $out.Kept += $rel; continue }
+      $todo += @{ Rel = $rel; From = $from; To = $to; Has = $has }
+    }
+    $todo = @(@($todo | Where-Object { $_.Rel -ne $hookRel }) + @($todo | Where-Object { $_.Rel -eq $hookRel }))
+    $over = @($todo | Where-Object { $_.Has })
+    if ($over.Count) {
+      $listed = @(Get-Quiet 'git' (@('-C', $root, 'ls-files', '-s', '--') + @($over | ForEach-Object { $_.Rel })))
+      if ($LASTEXITCODE -ne 0) {
+        $out.Why = 'git 에 우리 파일의 인덱스를 못 물어 안 갈았다'
+        $out.Fix = "그 폴더가 git 저장소로 서는지 본다(git -C `"$root`" status) — 고친 뒤 $again"
+        return $out
+      }
+      $index = @{}
+      foreach ($ln in $listed) { if ($ln -match '^\d+ ([0-9a-f]+) \d+\t(.+)$') { $index[$Matches[2]] = $Matches[1] } }
+      $outside = @(); $differ = @()
+      foreach ($t in $over) {
+        $blob = $index[$t.Rel]
+        if (-not $blob) { $outside += $t.Rel; continue }
+        $now = [string](@(Get-Quiet 'git' @('-C', $root, 'hash-object', "--path=$($t.Rel)", '--', $t.To)) | Select-Object -Last 1)
+        if ($LASTEXITCODE -ne 0 -or $now -cne $blob) { $differ += $t.Rel }
+      }
+      if ($outside.Count -or $differ.Count) {
+        # 인덱스와 다른 것 가운데 표시가 선 것 — `ls-files -v` 의 꼬리표가 S(건너뛰기) · 작은 글자(안 바뀐 셈)다
+        $flagged = @()
+        if ($differ.Count) {
+          foreach ($ln in @(Get-Quiet 'git' (@('-C', $root, 'ls-files', '-v', '--') + $differ))) {
+            if ($ln -match '^(\S) (.+)$' -and @('S', 's', 'h') -ccontains $Matches[1]) { $flagged += $Matches[2] }
+          }
+        }
+        $plain = @($differ | Where-Object { $flagged -notcontains $_ })
+        $whyParts = @(); $fixParts = @()
+        if ($plain.Count) {
+          $whyParts += "커밋 안 한 손질: $($plain -join ' · ')"
+          $fixParts += "커밋 안 한 손질($($plain -join ' · '))은 커밋하거나 stash 하고"
+        }
+        if ($flagged.Count) {
+          $whyParts += "건너뛰기 · 안 바뀐 셈 표시 아래 손질: $($flagged -join ' · ')"
+          $fixParts += "표시를 걷고(git -C `"$root`" update-index --no-skip-worktree --no-assume-unchanged -- $($flagged -join ' ')) 그 손질을 커밋하거나 stash 하고"
+        }
+        if ($outside.Count) {
+          $whyParts += "git 밖의 파일(추적 안 됨 · 무시됨): $($outside -join ' · ')"
+          $fixParts += "git 밖의 파일($($outside -join ' · '))은 지워도 되면 지우고 둘 것이면 다른 이름으로 옮기고"
+        }
+        $out.Why = "우리 파일의 작업 나무가 git 에 든 것과 달라 안 갈았다 — 덮으면 되돌릴 길이 없다 ($($whyParts -join ' / '))"
+        $out.Fix = ($fixParts -join ' · ') + " 그 뒤 $again"
+        return $out
+      }
+    }
+  } catch {
+    $out.Why = "우리 파일을 못 읽어 안 갈았다 — $($_.Exception.Message)"
+    $out.Fix = "그 저장소의 파일을 쥔 프로그램(편집기 · 동기화 · 백신)을 닫고 $again"
+    return $out
+  }
+  foreach ($t in $todo) {
+    try {
+      # 대상이 링크면 링크를 걷고 쓴다 — 복사가 링크를 따라가 가리키는 원본을 덮는다(배포의 저장소 칸과 같은 까닭)
+      $it = Get-Item -LiteralPath $t.To -Force -ErrorAction SilentlyContinue
+      if ($it -and $it.LinkType) { Remove-Item -LiteralPath $t.To -Force }
+      [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($t.To))
+      if ($t.Bytes) { [IO.File]::WriteAllBytes($t.To, [byte[]]$t.Bytes); $out.Edited += $t.Rel }
+      else { Copy-Item -LiteralPath $t.From -Destination $t.To -Force; if ($t.Has) { $out.Overwrote += $t.Rel } }
+      $out.Files += $t.Rel
+    } catch {
+      $out.Why = "쓰다 졌다 — $($t.Rel): $($_.Exception.Message)$(if ($out.Files.Count) { " · 먼저 쓴 것: $($out.Files -join ' · ')" }) · 훅은 맨 뒤라 옛 판 그대로다"
+      $out.Fix = "그 파일을 쥔 프로그램(편집기 · 동기화 · 백신)을 닫고 $again — 다음 실행이 이어서 간다"
+      return $out
+    }
+  }
+  $out.Ok = $true
+  return $out
+}
+
+# 형제 꼴 옛 사본 하나를 간다 — `Update-OurRepoFiles` 를 부르고 다시 가른다. 가른 표(`Get-SessionHookGen` 의 꼴)의 Refreshed · Overwrote ·
+#   Edited · Kept · SettingsNote · Dropped · Current · Why · Fix 를 그 결과로 채운다(claude-config 결정 0129). 칸에서 받은 저장소와 작업 루트
+#   훑기가 같은 자를 쓴다.
+function Invoke-HookRefresh([hashtable]$g, [string]$Seed) {
+  $u = Update-OurRepoFiles $g.Repo $Seed
+  $g.Refreshed = @($u.Files); $g.Overwrote = @($u.Overwrote); $g.Edited = @($u.Edited); $g.Kept = @($u.Kept)
+  $g.SettingsNote = $u.SettingsNote; $g.Dropped = @($u.Dropped)
+  if (-not $u.Ok) { $g.Why = $u.Why; $g.Fix = $u.Fix; return }
+  $now = Get-SessionHookGen $g.Repo
+  if ($now -and $now.Current) { $g.Current = $true; $g.Why = ''; $g.Fix = ''; return }
+  $g.Why = "지금 판으로 갈았는데도 옛 판으로 읽힌다 — 홈 씨앗($Seed)이 이 설치기의 판이 아닐 수 있다$(if ($g.Refreshed.Count) { " · 쓴 것: $($g.Refreshed -join ' · ')" })"
+  $g.Fix = '설치를 다시 누른다 — 같으면 이 줄을 그대로 보낸다'
+}
+
+# 간 저장소의 줄 — 「우리 파일을 지금 판으로 갈았다」 한 줄에 덮은 파일 · 우리 항목만 고친 파일(저장소 설정) · 새로 둔 파일 · 우리 표지가 없어
+#   둔 파일과, 바뀐 파일 하나를 보고 되돌리는 명령을 댄다. 사람이 고쳐 커밋한 우리 파일도 덮인다(결정 0129 — 사용자가 받아들인 위험)라 덮은 것은
+#   하나하나 이름을 댄다. 작업 나무에만 썼으니 그 사람이 보고 커밋해야 선다. 저장소 설정을 못 고쳤거나 우리 것인지 모르는 등록을 뒀으면 그 줄이
+#   하나씩 뒤따른다.
+function Write-RefreshLine([hashtable]$g) {
+  $changed = @(@($g.Overwrote) + @($g.Edited))
+  $added = @($g.Refreshed | Where-Object { $changed -notcontains $_ })
+  $parts = @("우리 파일을 지금 판으로 갈았다 — $($g.Repo)")
+  if ($g.Overwrote.Count) { $parts += "덮은 것: $($g.Overwrote -join ' · ')" }
+  if ($g.Edited.Count) { $parts += "우리 항목만 고쳤다: $($g.Edited -join ' · ')$(if ($g.Dropped.Count) { " (파일이 없는 우리 훅 등록을 걷었다: $($g.Dropped -join ' · '))" })" }
+  if ($added.Count) { $parts += "새로 둔 것: $($added -join ' · ')" }
+  if ($g.Kept.Count) { $parts += "우리 표지가 없어 둔 것: $($g.Kept -join ' · ')" }
+  if ($changed.Count) { $parts += "바뀐 파일 하나 보기 git -C `"$($g.Repo)`" diff -- <파일> · 되돌리기 git -C `"$($g.Repo)`" checkout -- <파일>" }
+  $parts += '그 저장소에서 보고 커밋한다'
+  Write-Host ('  ' + ($parts -join ' · ')) -ForegroundColor Green
+  if ($g.SettingsNote) { Write-Host "     $($g.SettingsNote)" }
+}
+
+# 못 갈았거나 못 넘기는 저장소의 세 줄 — 머리 · 까닭 · 고치는 길(설치가 가리킬 길이 없으면 — git 저장소가 아닌 폴더 — 고치는 길 줄은 없다).
+#   실패로 세지 않는다 — 이 설치기의 몫은 다 섰고 남은 것은 그 저장소의 사본이나 곁의 설정 저장소다. 빨강으로 세면 멀쩡한 설치가 빨갛게 끝난다.
+function Write-HookNotice([hashtable]$o, [string]$Head) {
+  Write-Host "  ! $Head — $($o.Repo)" -ForegroundColor Yellow
+  Write-Host "     $(if ($o.Blocked) { $o.Blocked } else { $o.Why })"
+  if ($o.Fix) { Write-Host "     고치는 길: $($o.Fix)" }
+}
+
+# 작업 루트를 훑는다 — 바로 아래 저장소 가운데 칸에서 받지 않은 것의 옛 우리 사본을 다룬다(claude-config 결정 0129 · PAISetup#25 사용자
+#   결정 ① 2026-10-13). 칸에 저장소를 안 넣은 동료도 옛 설치 · 배포가 놓은 우리 훅을 작업 저장소에 든다. 작업 루트는 칸의 저장소를 받는 그
+#   자리(`$configRepoRoot`)다 — 배포가 형제를 두는 자리(`ROOT`)와 찾는 자가 형제를 보는 자리가 그 바로 아래다.
+#   · 형제 꼴 옛 사본 — 제작자 칸을 켰으면 칸에서 받은 것과 같은 지킴으로 간다(`Invoke-HookRefresh`). 끄면 알리기만 한다
+#   · 작업 루트 밖으로 이어진 갈래(정션 · 링크 폴더)인 아이 — 그 너머에 안 쓰고 알린다(`Get-OutsideHop` 과 같은 까닭 — 쓰면 작업 루트 밖에 앉는다)
+#   · 설정 저장소 꼴 옛 사본 — 안 쓰고 알린다
+#   · 넘기지 않는다 — 그 사람이 그 저장소의 훅에 설치를 맡긴 적이 없다
+#   우리 것이 아니거나 지금 판이면 말없이 지나간다. 갈래는 끝까지 따라가 실제 자리로 견준다 — 칸에서 받은 저장소나 앞서 본 아이를 다른 이름으로
+#   가리키는 갈래는 두 번 안 본다(진짜 폴더를 먼저 본다).
+# 받는 것 — 작업 루트 · 칸에서 받은 저장소(그 자리에서 이미 다뤘다 — 두 번 안 본다) · 제작자 칸을 켰나 · 홈 씨앗
+# 내는 것 — 찾은 옛 사본의 가른 표 목록. 간 것은 「갈았다」 줄(`Write-RefreshLine`), 못 간 것 · 알릴 것은 `Write-HookNotice` 로 그 자리에서 낸다
+function Invoke-WorkRootScan([string]$Root, [string[]]$Handled, [bool]$CreatorOn, [string]$Seed) {
+  $found = @()
+  if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return , $found }
+  $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+  # 실제 자리 — 갈래를 끝까지 따라간 전체 경로. 끝을 못 풀면 빈 글
+  $realOf = { param([string]$p)
+    $cur = [IO.Path]::GetFullPath($p).TrimEnd('\')
+    for ($i = 0; $i -lt 16; $i++) {
+      $it = Get-Item -LiteralPath $cur -Force -ErrorAction SilentlyContinue
+      if (-not $it -or -not ($it.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $cur }
+      $tg = [string](@($it.Target) | Select-Object -First 1)
+      if (-not $tg) { return '' }
+      if (-not [IO.Path]::IsPathRooted($tg)) { $tg = Join-Path (Split-Path $cur -Parent) $tg }
+      $cur = [IO.Path]::GetFullPath($tg).TrimEnd('\')
+    }
+    return '' }
+  $seen = @($Handled | Where-Object { $_ } | ForEach-Object { & $realOf $_ } | Where-Object { $_ })
+  $kids = @(Get-ChildItem -LiteralPath $Root -Directory -Force -ErrorAction SilentlyContinue |
+            Sort-Object -Property @{ Expression = { [bool]($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } }, Name)
+  foreach ($d in $kids) {
+    $real = & $realOf $d.FullName
+    if ($real -and $seen -contains $real) { continue }
+    if ($real) { $seen += $real }
+    $g = Get-SessionHookGen $d.FullName
+    if (-not $g -or -not $g.Ours -or $g.Current) { continue }
+    if ($g.Shape -eq 'sibling') {
+      if (-not ($real -and $real.StartsWith("$rootFull\", [StringComparison]::OrdinalIgnoreCase))) {
+        $g.Why = "$($g.Why) · 이 자리는 작업 루트 밖($(if ($real) { $real } else { '끝을 못 푼 갈래' }))으로 이어진 갈래라 설치가 그 너머에 안 쓴다"
+        $g.Fix = '그 저장소를 작업 루트 안으로 옮기면 다음 설치가 같은 지킴으로 간다 · 이 훅을 안 쓰면 그 저장소의 .claude/hooks/session-start.sh 와 .claude/settings.json 의 SessionStart 줄을 걷는다'
+      } elseif ($CreatorOn) { Invoke-HookRefresh $g $Seed }
+      else { $g.Fix = '제작자 칸을 켜고 설치를 다시 누르면 설치가 같은 지킴으로 지금 판으로 간다 · 그 저장소에서 이 훅을 안 쓰면 .claude/hooks/session-start.sh 와 .claude/settings.json 의 SessionStart 줄을 걷는다' }
+    }
+    $found += $g
+  }
+  foreach ($g in @($found | Where-Object { $_.Refreshed.Count -and $_.Current })) { Write-RefreshLine $g }
+  foreach ($o in @($found | Where-Object { -not $_.Current })) { Write-HookNotice $o '작업 루트의 옛 우리 훅 — 칸에 안 든 저장소' }
+  return , $found
+}
+
+# 우리 훅을 넘기면 그 몸통이 잡을 설정 저장소(`CONFIG_ROOT`)가 이 설치기와 같은 세대인가(claude-config 결정 0129). 문지기는 그 저장소의
+#   몸통을 홈 씨앗보다 먼저 부르고, 몸통은 PC 에서 `--install` 이면 그 저장소의 `deploy.ps1` 에 넘긴다. 손 이전 판의 몸통과
+#   `deploy.ps1` 은 홈 규범을 제 손으로 붓는다 — 받은 저장소가 지금 판이어도 곁에 낡은 claude-config 클론이 서 있으면 넘기는 순간 덮인다.
+# 찾기는 홈 씨앗의 찾는 자(`.githooks/claude-config-path.sh` — 문지기와 몸통이 읽는 그 자)를 Git Bash 로 불러 맡긴다 — 후보를 여기
+#   옮겨 적지 않는다. 답은 파일로 받아 UTF-8 로 읽는다 — 자식의 표준 출력은 이 창의 콘솔 코드 페이지로 풀려, 그것이 UTF-8 이 아니면
+#   한글 자리가 깨진다.
+# 내는 것 — @{ Root; Current; Why; Fix }. 설정 저장소가 없거나 그 저장소 자신이면 Current 다(자신의 판은 `Get-SessionHookGen` 이 쟀다).
+#   못 잰 것은 Current 가 아니다 — Git Bash · 찾는 자가 없다 · 찾는 자가 졌다 · 찾은 자리가 있는 폴더가 아니다 · 읽다 졌다
+function Get-ConfigRootGen([string]$Repo, [string]$Bash, [string]$Finder) {
+  $r = @{ Root = ''; Current = $true; Why = ''; Fix = '' }
+  $unmeasured = { param([string]$why)
+    $r.Current = $false
+    $r.Why = "넘기면 잡힐 곁의 설정 저장소를 못 쟀다 — $why"
+    $r.Fix = '설치를 다시 누른다 — 같으면 이 줄을 그대로 보낸다'
+    $r }
+  $tag = [guid]::NewGuid().ToString('N')
+  $probe = Join-Path ([IO.Path]::GetTempPath()) "paisetup-config-root-$tag.sh"
+  $answer = Join-Path ([IO.Path]::GetTempPath()) "paisetup-config-root-$tag.txt"
+  $saveLc = $env:LC_ALL
+  try {
+    if (-not $Bash) { return (& $unmeasured 'Git Bash 가 없다') }
+    if (-not (Test-Path -LiteralPath $Finder -PathType Leaf)) { return (& $unmeasured "찾는 자가 없다 ($Finder)") }
+    # 찾는 자를 점으로 읽고 찾은 자리를 윈도 꼴로 파일에 쓰는 세 줄 — 파일로 넘긴다. `-c` 로 넘기면 파워셸 5.1 이 글 안의 큰따옴표를 안
+    #   감싸 깨진다. 로캘을 UTF-8 로 세워 인자와 답이 UTF-8 로 오간다
+    [IO.File]::WriteAllText($probe, ('PROJECT_DIR="$1"' + "`n" + '. "$2"' + "`n" + '[ -z "$CONFIG_ROOT" ] || cygpath -w "$CONFIG_ROOT" > "$3"' + "`n"),
+                            (New-Object Text.UTF8Encoding($false)))
+    $env:LC_ALL = 'C.UTF-8'
+    $null = Get-Quiet $Bash @(($probe -replace '\\', '/'), ($Repo -replace '\\', '/'), ($Finder -replace '\\', '/'), ($answer -replace '\\', '/'))
+    if ($LASTEXITCODE -ne 0) { return (& $unmeasured "찾는 자가 exit $LASTEXITCODE 로 끝났다") }
+    $root = if (Test-Path -LiteralPath $answer -PathType Leaf) { [IO.File]::ReadAllText($answer, [Text.Encoding]::UTF8).Trim() } else { '' }
+    if (-not $root) { return $r }
+    $r.Root = $root
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { return (& $unmeasured "찾은 자리가 있는 폴더가 아니다 ($root)") }
+    if ([IO.Path]::GetFullPath($root).TrimEnd('\') -ieq [IO.Path]::GetFullPath($Repo).TrimEnd('\')) { return $r }
+    $read = { param([string]$p) try { [IO.File]::ReadAllText($p) } catch { '' } }
+    $old = @()
+    foreach ($f in @('.claude\hooks\session-start-body.sh', 'deploy.ps1')) {
+      $p = Join-Path $root $f
+      if ((Test-Path -LiteralPath $p -PathType Leaf) -and -not (& $read $p).Contains('tool-homes.py')) { $old += ($f -replace '\\', '/') }
+    }
+    if ($old.Count) {
+      $r.Current = $false
+      $r.Why = "넘기면 곁의 설정 저장소($root)의 $($old -join ' · ') 가 도는데 손(tool-homes.py)을 안 부르는 옛 판이다 — 「도구별 홈」이 손으로 놓은 것을 덮는다"
+      $r.Fix = "그 설정 저장소를 지금 판으로 당긴 뒤(git -C `"$root`" pull --ff-only) 설치를 다시 누른다"
+    }
+    return $r
+  } catch {
+    return (& $unmeasured $_.Exception.Message)
+  } finally {
+    $env:LC_ALL = $saveLc
+    Remove-Item -LiteralPath $probe, $answer -Force -ErrorAction SilentlyContinue
+  }
 }
 
 # 나른 것을 **동봉본과 견주는 자** — 7 칸의 자산이 다 이 자를 쓴다.
@@ -4925,8 +5464,9 @@ Exit-Step 'tools'
 
 # ══ 걸음 「설정 저장소」 ═══════════════════════════════════════════════════════════════════════
 #   층 — 저장소
-#   하는 일 — GitHub CLI 로그인 · 설정 저장소 받기 · 그 저장소 훅을 `--install` 로 부르기
-#   앞에서 받는 것 — 준비의 주소 · 자리(`$configRepoUrls` · `$configRepoRoot`), 「도구별 홈」이 이 프로세스에 둔 `PAISETUP_PERSONAL` ·
+#   하는 일 — GitHub CLI 로그인 · 설정 저장소 받기 · 옛 우리 사본을 갈고 그 저장소 훅을 `--install` 로 부르기 · 작업 루트의 옛 우리 사본
+#     훑기(claude-config 결정 0129)
+#   앞에서 받는 것 — 준비의 주소 · 자리(`$configRepoUrls` · `$configRepoRoot`), 제작자 칸(`$personalAny`), 「도구별 홈」이 이 프로세스에 둔 `PAISETUP_PERSONAL` ·
 #     `PAISETUP_PICK`
 #   안 하는 것 — 그 뒤의 개인화. 그 저장소의 배포가 든다
 # ── 8. 개인 값 저장소 (선택) ────────────────────────────────────────────────────
@@ -4935,7 +5475,8 @@ Exit-Step 'tools'
 # ⚠ **이 칸은 갈래가 둘이고 둘 다 정당하다.** 규약은 파일 이름 하나 — 받아온 저장소 뿌리의
 #   `.claude/hooks/session-start.sh`(Claude Code 의 SessionStart 훅):
 #     · 있으면 → `--install` 로 부른다. 리모트 컨테이너의 Setup script 가 부르는 것과 같은 한
-#                 줄이라 VDI 와 리모트가 같은 자리로 선다. 그 뒤는 그 저장소가 든다
+#                 줄이라 VDI 와 리모트가 같은 자리로 선다. 그 뒤는 그 저장소가 든다. 이 설치기보다
+#                 옛 세대의 우리 사본이면 지금 판으로 갈고 부르거나, 못 갈면 안 부른다(아래 「넘길 자리」)
 #     · 없으면 → **받아 둔 것으로 끝낸다.** 저장소를 원한 사람에게 저장소는 왔다
 #   그 이름을 받는 사람에게 알리는 것은 `README.md` 가 든다.
 # ⚠ **옛 판은 없는 것을 실패로 찍었다.** 「넘길 자리가 없는 것을 성공으로 읽지 않는다」가
@@ -4947,6 +5488,9 @@ Exit-Step 'tools'
 #   규범·룰·메모리 배포. 회사 키·주소·프록시·Codex/Gemini 설정·확장·CLI 는 위 칸들이 이미 세웠다.
 #   런타임을 두 번 깔지 않는다 — 무엇을 깔지는 이 파일 하나가 든다.
 Enter-Step 'repo'
+# 옛 판 훅을 든 받은 저장소 — 아래 넘길 자리를 고르는 줄이 채우고, 끝의 요약이 그 가운데 세션마다 도는 것을 알린다. 받은 저장소(`$got`)는
+#   걸음 끝의 작업 루트 훑기가 건너뛸 목록이라 칸이 비어도 서 있어야 한다.
+$oldHooks = @(); $got = @()
 # 주소(`$repoUrl` · `$configRepoUrls`)와 자리(`Get-ConfigRepoDir`)는 7 칸 앞에서 한 벌로 섰다.
 if (-not $repoUrl) {
   Write-Host '  건너뜀 — install.env 에 #config-repo 가 없다'
@@ -5051,11 +5595,12 @@ if (-not $repoUrl) {
       Say-Busy (Split-Path $dest -Leaf) 'upgrade' @('git pull', $dest)
       $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
       # ⚠ **pull 이 져도 실패로 세지 않는다.** 저장소는 이미 있어 넘길 자리가 살아 있다 —
-      #   망이 끊긴 VDI 에서 옛 판으로라도 훅이 도는 것이 안 도는 것보다 낫다.
-      #   다만 조용히 넘어가지는 않는다: 옛 판으로 간다는 사실을 말한다.
+      #   망이 끊긴 VDI 에서 옛 판으로라도 훅이 도는 것이 안 도는 것보다 낫다. 다만 이 설치기보다 옛 세대면
+      #   아래 넘길 자리를 고르는 줄이 가른다(`Get-SessionHookGen`).
+      #   조용히 넘어가지는 않는다: 옛 판으로 간다는 사실을 말한다.
       $got += $dest
       if ($rc -ne 0) {
-        Write-Host '  ! pull 이 졌다 — 이미 받아 둔 판으로 넘긴다' -ForegroundColor Yellow
+        Write-Host '  ! pull 이 졌다 — 이미 받아 둔 판으로 간다' -ForegroundColor Yellow
         Show-Log $log
       }
       Write-Took ((Split-Path $dest -Leaf) + ' 당김') $tRepo
@@ -5087,14 +5632,37 @@ if (-not $repoUrl) {
 
   # ⚠ **넘길 자리를 순서로 정하지 않고 찾는다.** 「첫째가 설정 저장소」 같은 규칙을 두면
   #   사람이 그 순서를 기억해야 하고, 기억해야 하는 것은 그 순간에 안 걸린다. 받아 온
-  #   것들 중 **그 이름의 파일을 든 첫 저장소**가 넘길 자리다.
+  #   것들 중 **넘겨도 되는 훅을 든 첫 저장소**가 넘길 자리다.
+  # 이 설치기보다 옛 세대의 우리 사본은 그대로는 넘길 자리가 아니다 — 넘기면 「도구별 홈」이 손으로 놓은 것을 제 사본으로
+  #   덮는다(결정 0129). 그래서 넘기기 전에 셋을 한다:
+  #   · 가른다 — 훅마다 우리 것인가 · 꼴 · 세대(`Get-SessionHookGen`)
+  #   · 간다 — 형제 꼴의 옛 사본은 이 실행이 깐 홈 씨앗의 지금 판으로 간다(`Update-OurRepoFiles`). 옛 판 훅은 옛 설치 · 배포가
+  #     놓은 우리 파일이고, 저장소를 이 칸에 넣은 사람은 거기 우리 설정을 맡긴 것이다. 설정 저장소 꼴은 그 사람이 씨앗을 떠 만든
+  #     저장소거나 claude-config 클론이라 안 간다(결정 0115)
+  #   · 본다 — 우리 훅이면 넘겼을 때 잡힐 설정 저장소가 지금 판인가(`Get-ConfigRootGen`)
+  #   순서에 뜻이 없으니 못 넘기는 것을 건너 그 뒤의 넘겨도 되는 훅으로 넘긴다 — 한 실행에 하나만 부르는 규칙은 그대로다.
   # ⚠ **여럿이 들고 있으면 하나만 부르고 나머지를 이름으로 말한다.** 둘을 잇달아 부르면
   #   뒤엣것이 앞엣것의 키·설정을 덮는데 그 순서는 사람이 정한 것이 아니다. 훅은 제 자리에서
   #   전역 저장소를 찾아 형제까지 밀므로, 하나만 불러도 나머지가 선다.
   $hookRel = '.claude\hooks\session-start.sh'
-  $bootRepos = @($got | Where-Object { Test-Path -LiteralPath (Join-Path $_ $hookRel) })
+  $seedDir = Join-Path $homeDir 'seeds\config-repo'
+  $hookGen = @($got | ForEach-Object { Get-SessionHookGen $_ } | Where-Object { $_ })
+  foreach ($g in @($hookGen | Where-Object { $_.Ours -and -not $_.Current -and $_.Shape -eq 'sibling' })) { Invoke-HookRefresh $g $seedDir }
+  if ($bash) {
+    foreach ($g in @($hookGen | Where-Object { $_.Ours -and $_.Current })) {
+      $c = Get-ConfigRootGen $g.Repo $bash (Join-Path $seedDir '.githooks\claude-config-path.sh')
+      if (-not $c.Current) { $g.Blocked = $c.Why; $g.Fix = $c.Fix }
+    }
+  }
+  $bootRepos = @($hookGen | Where-Object { -not $_.Ours -or ($_.Current -and -not $_.Blocked) } | ForEach-Object { $_.Repo })
+  $oldHooks = @($hookGen | Where-Object { $_.Ours -and (-not $_.Current -or $_.Blocked) })
   $dest = $bootRepos | Select-Object -First 1
   $boot = if ($dest) { Join-Path $dest $hookRel } else { $null }
+
+  # 간 저장소마다 「갈았다」 줄 — 쓰다 져 옛 판으로 남은 것은 안 댄다(그것은 아래 「넘기지 않는다」 줄이 든다).
+  foreach ($g in @($hookGen | Where-Object { $_.Refreshed.Count -and $_.Current })) { Write-RefreshLine $g }
+  # ⚠ **못 넘긴 것은 실패로 세지 않는다**(`Write-HookNotice`) — 저장소와 까닭과 그 까닭에 맞는 고치는 길을 댄다.
+  foreach ($o in $oldHooks) { Write-HookNotice $o '이 저장소의 훅으로 넘기지 않는다' }
 
   if (-not $got) {
     # ⚠ 실패는 위에서 까닭을 대고 이미 셌다 — 여기서 또 세면 **한 사고가 둘로 보고된다.**
@@ -5105,7 +5673,8 @@ if (-not $repoUrl) {
     #   대신 **안 돈 것을 이름으로 말한다** — 훅을 기대한 사람이 조용히 속지 않게.
     Write-Host "  받아 뒀다 — $($got.Count)개" -ForegroundColor Green
     $got | ForEach-Object { Write-Host "     $_" }
-    Write-Host "    어느 뿌리에도 $hookRel 가 없어 훅은 안 돌았다."
+    if ($oldHooks) { Write-Host '    넘겨도 되는 훅을 든 뿌리가 없어 훅은 안 돌았다 — 까닭은 위 「이 저장소의 훅으로 넘기지 않는다」 줄이 든다.' }
+    else           { Write-Host "    어느 뿌리에도 $hookRel 가 없어 훅은 안 돌았다." }
     Write-Host '    자동화까지 원하면 ~/.claude/seeds/config-repo/ 를 복사해 그 이름으로 둔다.'
   } elseif (-not $bash) {
     Write-Host '  ! Git Bash 를 못 찾았다' -ForegroundColor Red
@@ -5116,7 +5685,7 @@ if (-not $repoUrl) {
       $got | ForEach-Object { Write-Host "     $_" }
     }
     if ($bootRepos.Count -gt 1) {
-      Write-Host "  ! 훅을 든 저장소가 $($bootRepos.Count)개다 — 첫 것만 부른다" -ForegroundColor Yellow
+      Write-Host "  ! 넘겨도 되는 훅을 든 저장소가 $($bootRepos.Count)개다 — 첫 것만 부른다" -ForegroundColor Yellow
       $bootRepos | Select-Object -Skip 1 | ForEach-Object { Write-Host "     안 부른 것: $_" }
     }
     # 아래 훅이 Codex 데스크탑의 프로젝트 목록(`~/.codex/.codex-global-state.json`)에 작업 루트 저장소를 적는다
@@ -5148,6 +5717,11 @@ if (-not $repoUrl) {
     Write-Took '훅 --install 전체' $tHook
   }
 }
+# ── 작업 루트 훑기 — 칸에서 안 받은 저장소의 옛 우리 사본(claude-config 결정 0129 · PAISetup#25 사용자 결정 ①) ──────────────
+# 칸이 비어도 돈다 — 칸에 저장소를 안 넣은 동료도 옛 설치 · 배포가 놓은 우리 훅을 작업 저장소에 든다. 칸에서 받은 저장소는 위에서 다뤘다.
+#   넘긴 훅의 배포가 형제를 먼저 맞추도록 넘기기 뒤에 선다 — 배포가 맞춘 형제는 지금 판으로 읽혀 지나간다. 무엇을 하고 안 하나는
+#   `Invoke-WorkRootScan` 이 든다.
+$scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny (Join-Path $homeDir 'seeds\config-repo')
 Exit-Step 'repo'
 
 # ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
@@ -5983,6 +6557,19 @@ if ($Fails.Count -gt 0) {
     Write-Host '    또는 모자란 프로그램을 직접 (VS Code · Node.js · Git · Python).'
     Write-Host '    ※ 재등록 · PowerShell 모듈 · GitHub 내려받기를 이미 다 시도했다 —'
     Write-Host '       위 · 줄이 각각 무엇에 걸렸는지 든다.'
+  }
+  Write-Host ''
+}
+# 못 갈고 남은 옛 판 훅을 든 저장소(칸에서 받은 것 · 작업 루트에서 찾은 것) — 거기서 세션을 열면 그 훅이 「설정 저장소」 걸음 밖에서 돌아,
+#   판에 따라 홈의 규범 · 룰을 제 사본으로 덮는다(결정 0129). 저장소 설정이 그 훅을 안 걸어도 돈다 — 홈의 SessionStart 훅이 저장소 설정에 안
+#   걸린 저장소 훅을 바로 부른다. 간 저장소와 곁의 설정 저장소 때문에 못 넘긴 저장소는 지금 판 문지기가 서 있어 여기 안 든다.
+# ⚠ **검증 칸에 넣지 않는다.** 이 실행이 놓은 것은 지금 다 서 있어 [X] 는 거짓이고, 빨강이면 멀쩡한 설치가 빨갛게 끝난다.
+$sessionOld = @(@($oldHooks) + @($scanHooks) | Where-Object { $_ -and -not $_.Current })
+if ($sessionOld.Count) {
+  Write-Host "옛 판 세션 훅이 남은 저장소 — $($sessionOld.Count)개: 거기서 Claude 세션을 열면 그 훅이 돌아 홈의 규범 · 룰을 제 사본으로 덮을 수 있다" -ForegroundColor Yellow
+  foreach ($o in $sessionOld) {
+    Write-Host "  - $($o.Repo)"
+    Write-Host "    $(if ($o.Fix) { $o.Fix } else { $o.Why })"
   }
   Write-Host ''
 }
