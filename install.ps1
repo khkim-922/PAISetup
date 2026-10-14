@@ -734,7 +734,7 @@ function Read-EnvFile([string]$Path) {
 function Read-ModelTable([string]$Path) {
   $sites   = @('inside', 'outside')
   $tools   = @('claude', 'codex', 'agy')
-  $weights = @('deep', 'long', 'errand', 'fallback')
+  $weights = @('deep', 'errand', 'fallback')
   $none    = '-'
   $empty   = @{ Agy = @{ inside = [ordered]@{}; outside = [ordered]@{} }; Codex = @{ inside = [ordered]@{}; outside = [ordered]@{} }; Why = $null }
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { $empty.Why = "표가 없다: $Path"; return $empty }
@@ -770,17 +770,13 @@ function Read-ModelTable([string]$Path) {
   $out = @{ Agy = @{}; Codex = @{}; Why = $null }
   foreach ($s in $sites) {
     if ($why) { break }
-    $deep = $cell["$s agy deep"]; $long = $cell["$s agy long"]; $errand = $cell["$s agy errand"]
-    if ($deep -and $long -and ($deep -cne $long)) { $why = "$s agy — deep · long 이 다르다(러너가 한 값으로 받는다)"; break }
-    $delegate = if ($deep) { $deep } else { $long }
+    $delegate = $cell["$s agy deep"]; $errand = $cell["$s agy errand"]
     $agy = [ordered]@{}
     if ($errand -and ($errand -cne $none))     { $agy['AGY_DEFAULT_MODEL']  = $errand }
     if ($delegate -and ($delegate -cne $none)) { $agy['AGY_MODEL_DELEGATE'] = $delegate }
     if ($fall[$s].Count)                       { $agy['AGY_FALLBACK_MODELS'] = $fall[$s] -join ';' }
     $out.Agy[$s] = $agy
-    $deep = $cell["$s codex deep"]; $long = $cell["$s codex long"]; $errand = $cell["$s codex errand"]
-    if ($deep -and $long -and ($deep -cne $long)) { $why = "$s codex — deep · long 이 다르다(러너가 한 값으로 받는다)"; break }
-    $delegate = if ($deep) { $deep } else { $long }
+    $delegate = $cell["$s codex deep"]; $errand = $cell["$s codex errand"]
     $codex = [ordered]@{}
     if ($errand -and ($errand -cne $none))     { $codex['CC_BG_CODEX_MODEL']          = $errand }
     if ($delegate -and ($delegate -cne $none)) { $codex['CC_BG_CODEX_MODEL_DELEGATE'] = $delegate }
@@ -3672,7 +3668,7 @@ $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
 #     없으면(새 PC) 읽기 전용을 지키는 OS 샌드박스가 아예 안 선다
 # ⚠ **사내 게이트웨이의 180초 벽은 무게로 넘는다** — 벽은 요청 하나의 실행 시계라(`posco/ENV-posco.md`) 래퍼의 시간
 #   한도로는 못 넘는다. 사내 Codex 의 추론 깊이는 회사 설정 틀이 든다(`model_reasoning_effort = "low"`).
-# ⚠ **모델 둘(`CC_BG_CODEX_MODEL_DELEGATE` 깊은 판단 · 긴 맥락, `CC_BG_CODEX_MODEL` 심부름)은 이 표에 없다** — 맡기기 모델 표가
+# ⚠ **모델 둘(`CC_BG_CODEX_MODEL_DELEGATE` 깊은 판단, `CC_BG_CODEX_MODEL` 심부름)은 이 표에 없다** — 맡기기 모델 표가
 #   그 자리에 이름을 줄 때만 「키와 값」이 이 표에 더해 심고, 표가 `-` 거나 줄이 없으면 안 심는다. 둘 다 없으면 래퍼가 모델을
 #   안 넘겨 Codex 설정의 `model`(사내는 회사 설정 틀이 쓴 대화형 기본값)로 뜬다(claude-config 결정 0123).
 # ⚠ **심는 값은 매번 덮는다** — 두 자리가 같은 이름을 들어, 자리를 옮긴 PC 도 이 자리 값으로 바뀐다.
