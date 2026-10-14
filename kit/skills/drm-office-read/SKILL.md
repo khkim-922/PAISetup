@@ -92,7 +92,7 @@ native-linkpic.pptx — PPT   · 글자 34 · 글 밖 그림·도형 1
 
 | 문서 | 스크립트 | 나가는 자리 |
 |---|---|---|
-| `.pdf` · `.docx` · `.doc` · `.rtf` | `scripts/capture_pages.ps1` — 쪽마다 한 장 · 표마다 한 장 | `%TEMP%\drm-pages\<이름>-<시각>\page-NNN.png` · `table-NN.png` |
+| `.pdf` · `.docx` · `.doc` · `.rtf` | `scripts/capture_pages.ps1` — 쪽마다 한 장 · 표마다 한 장 | `%TEMP%\drm-pages\<이름>-<시각>\page-NNN.png` · `%TEMP%\drm-pages\<이름>-<시각>\table-NN.png` |
 | `.xlsx` · `.xlsm` · `.xls` | `scripts/capture_pages.ps1` — 시트째 차트 · 시트 사용 영역 · 시트 위 도형마다 한 장 | `%TEMP%\drm-pages\<이름>-<시각>\item-NNN.png` |
 | `.pptx` · `.ppt` | `scripts/capture_slides.ps1` (아래 4절) | `%TEMP%\drm-slides\<이름>-<시각>\slide-N.webp` |
 
