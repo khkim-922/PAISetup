@@ -261,9 +261,11 @@ $TlsHosts = @(
 #   팠는데 **스토어 제품은 id 가 `9PLM9XGG6VKS` 라 팔 것이 없다** — 파생이 죽은 자리다.
 #   두 값이 같은 것을 가리키는 것이 아니라(하나는 패키지, 하나는 시작 메뉴에 뜨는 글자)
 #   한쪽만 낡는 꼴도 아니다.
-# ⚠ **`setup` 갈래는 winget 이 못 잰다** — 종료코드로만 판정하지 않고 시작 메뉴에 묻는다.
-#   그 물음은 이 파일이 이미 쓰는 자다(`Get-StartApps` · 아래 「연다」 칸의 ⚠ 참고): 스토어
-#   꼴이든 예전 꼴이든 같은 답을 내므로 꼴이 늘어도 안 어긋난다.
+# ⚠ **「깔렸나」를 재는 자를 행이 든다** — 시작 메뉴 이름(`App`) → 윈도우의 설치 목록 → winget 목록 차례로 묻는다
+#   (`Measure-DesktopApp` · 결정 0145). 설치 목록의 자는 앱의 꼴마다 다르다:
+#     · `Reg`  — 레지스트리 `Uninstall` 의 `DisplayName` 에 거는 `-like` 꼴. 「있다」만 세운다(이름은 벤더가 바꾼다)
+#     · `Appx` — 스토어 꼴 앱의 꾸러미 가족. 「있다」도 「없다」도 세우고, 이 행에는 winget 목록을 안 묻는다
+#   둘 다 없는 행은 시작 메뉴와 winget 목록이 잰다.
 # ⚠ **「언제」는 행이 든다 (`When`) — 전역 한 칸이 아니다** (이슈 #16 · 결정 0059). 옛 판은
 #   `#desktop-app` 한 값이 표 전체를 갈랐고, 그 값이 `offsite` 인 까닭은 **셋이 게이트웨이를
 #   못 물어서**였다 — 즉 그것은 실행의 성질이 아니라 **앱의 성질**이다. 게이트웨이를 안 타는
@@ -297,7 +299,10 @@ $DesktopApps = @(
   #   **지면 스텁으로 간다**: 흔한 갈래를 앞이 막고 남는 갈래를 뒤가 든다.
   # ⚠ **올리기는 안 한다**(`NoSelfUpgrade`) — 스토어 앱 갱신은 윈도우 업데이트를 타는데 사내에서
   #   그쪽이 끊긴다(`0x80072EFD`). 깔기는 되고 올리기는 안 되는 것이라 없으면 깔고 있으면 둔다.
-  @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'ChatGPT'
+  # ⚠ **깔렸나는 꾸러미 가족(`Appx`)이 잰다 — msstore 의 winget 목록은 못 잰다.** 깔린 채로 「안 깔렸다」를
+  #   냈고(실측 2026-10-14 · 집 PC), 막힌 회선에서는 그 소스가 열리지도 않는다. 가족 이름은 시작 메뉴 손잡이
+  #   (`OpenAI.Codex_2p2nqsd0c76g0!App`)의 앞마디다.
+  @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'ChatGPT'; Appx = 'OpenAI.Codex_2p2nqsd0c76g0'
      Via = 'winget'; Id = '9PLM9XGG6VKS'; Source = 'msstore'; NoSelfUpgrade = $true
      Fallback = @{ Via = 'setup'; SilentArgs = @('/S')
                    Url = 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS' } }
@@ -324,7 +329,9 @@ $DesktopApps = @(
   #   페이지 아래쪽 「Antigravity IDE (Standalone)」은 `edgedl.me.gvt1.com` 에서 오는데 **거기는
   #   TLS 악수부터 진다**(제미나이 데스크탑의 알맹이를 막는 그 호스트다). 둘은 판 번호도 계보도
   #   다른 별개 물건이라, **패키지 이름을 바꿀 때 이 갈림을 다시 본다.**
-  @{ Key = 'antigravity'; Label = 'Antigravity 데스크탑'; App = 'Antigravity'
+  # ⚠ **설치 목록 이름에 판이 붙는다** — `Antigravity 2.22.0`(HKCU · 실측 2026-10-14). 곁에 같은 머리의 딴 물건
+  #   `Antigravity CLI` 가 서므로 `Reg` 는 이름 뒤에 숫자가 오는 꼴만 잡는다.
+  @{ Key = 'antigravity'; Label = 'Antigravity 데스크탑'; App = 'Antigravity'; Reg = 'Antigravity [0-9]*'
      Via = 'winget'; Id = 'Google.Antigravity'; Source = 'winget' }
   # ⚠ **자리를 안 가리는 첫 앱이다 (`When = 'any'`)** — 위 셋이 사외 전용인 까닭은 게이트웨이를
   #   못 물어 쓸모가 없어서인데, 이쪽은 **게이트웨이를 안 탄다**(제 인증으로 GitHub 에 붙는다).
@@ -338,7 +345,9 @@ $DesktopApps = @(
   # ⚠ **로그인은 사람이 한다.** 대화형 인증(회사 IdP · MFA · 기기 조건)이라 설치기가 낄 자리가
   #   구조적으로 없다 — 앱은 서고 자격만 사람 몫이다. 사외 개인 PC 에서 **회사 계정은 조건부
   #   액세스가 막는다**(기기 미등록 `53003`) — 그때는 개인 계정으로 쓴다. 설치의 실패가 아니다.
-  @{ Key = 'copilot'; Label = 'GitHub Copilot 데스크탑'; App = 'GitHub Copilot'
+  # ⚠ **설치 목록 이름은 `GitHub Copilot` 그대로다**(HKCU · 실측 2026-10-14). 기계 범위에 서는 `Copilot` 은
+  #   Microsoft Copilot 이라 이름 전체로 건다.
+  @{ Key = 'copilot'; Label = 'GitHub Copilot 데스크탑'; App = 'GitHub Copilot'; Reg = 'GitHub Copilot'
      Via = 'winget'; Id = 'GitHub.CopilotApp'; Source = 'winget'; When = 'any'
      Requires = @('Microsoft.EdgeWebView2Runtime') }
 )
@@ -700,6 +709,11 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
 #   **설치가 「그 제품이 없다」로 끝나** 사람이 깔러 간다. 길게 잡아도 잃는 것은 멎은 한 자리의
 #   그 초뿐이다 — 그래서 **의심스러우면 길게** 잡는다.
 $ProbeCap = 20
+# 할 일을 가르려고 「무엇이 깔렸나 · 무엇을 올릴까」를 묻는 바깥 명령의 한도 — 넘기면 「못 쟀다」다(결정 0145). 위와 같이 멈춤을 가르는 값이라
+#   의심스러우면 길게 둔다.
+$WingetListCap = 120   # winget 의 첫 부름은 원본을 새로 받느라 수십 초를 쓰고, 막힌 소스를 붙든 사내 회선에서는 더 쓴다
+$NpmViewCap    = 60    # 레지스트리에 판 하나를 묻는 GET 이라 평소 1초 안팎이다 — 느린 프록시를 넉넉히 덮는다
+$ExtListCap    = 60    # `code` 가 node 를 띄워 깔린 확장을 읽는다 — VDI 에서 몇 초씩 걸리는 자리라 `--version` 울타리보다 길게 둔다
 
 # 울타리를 넘긴 프로브 — **넘김 하나가 한 줄이다.** 같은 명령이 여러 자리에서 넘기면 그 수만큼 서고, 줄마다 명령(`Probe`) ·
 #   부른 자리(`Site` — 이 파일의 행) · 한도(`Cap`)를 든다. 끝 검증이 이것을 명령마다 「몇 자리 · 몇 번」으로 센다.
@@ -739,11 +753,28 @@ function Test-Runs([string]$Cmd, [string]$Arg) {
 }
 
 # 부재에 기대 상태를 바꾸는 자리가 `unmeasured` 를 받으면 부른다 — 그 자리에서 노란 줄을 찍고 끝 검증의 「안 한 걸음」에
-#   남긴다. `$Step` 은 안 한 걸음의 이름, `$Probe` 는 넘긴 명령, `$Held` 는 무엇을 안 했나다. 하나라도 남으면 설치는 성공이
-#   아니다(끝 검증).
-function Add-UnmeasuredStep([string]$Step, [string]$Probe, [string]$Held) {
-  $script:UnmeasuredSteps.Add(@{ Step = $Step; Probe = $Probe; Held = $Held })
-  Write-Host "  ! $Step — 못 쟀다: ``$Probe`` 이 ${ProbeCap}초 안에 안 끝나 $Held (없는 것이 아니다)" -ForegroundColor Yellow
+#   남긴다. `$Step` 은 안 한 걸음의 이름, `$Probe` 는 못 잰 물음, `$Held` 는 무엇을 안 했나, `$Why` 는 그 물음이 어떻게 졌나다
+#   (「``$Probe`` 이 …」 뒤에 이어 읽히는 꼴 — 비우면 `Measure-Runs` 의 넘김 「${ProbeCap}초 안에 안 끝나」). 하나라도 남으면
+#   설치는 성공이 아니다(끝 검증).
+# ⚠ **넘김이 아닌 못 잼은 제 까닭을 넘긴다** — winget 의 종료 값 · 던진 오류 · 도구가 없음. 넘김 글로 찍으면 사람이 멎은 것을
+#   찾아 헤맨다(결정 0145).
+function Add-UnmeasuredStep([string]$Step, [string]$Probe, [string]$Held, [string]$Why = '') {
+  if (-not $Why) { $Why = "${ProbeCap}초 안에 안 끝나" }
+  $script:UnmeasuredSteps.Add(@{ Step = $Step; Probe = $Probe; Held = $Held; Why = $Why })
+  Write-Host "  ! $Step — 못 쟀다: ``$Probe`` 이 $Why $Held (없는 것이 아니다)" -ForegroundColor Yellow
+}
+
+# 울타리 손(`Invoke-LoggedCapped`)이 -2 를 낸 자리가 부른다 — 넘김 한 줄(명령 · 부른 행 · 한도)을 `$script:ProbeTimedOut` 에 남겨
+#   끝 검증이 센다. `Measure-Runs` 밖에서 울타리를 두른 자리(할 일을 가르는 바깥 명령)의 몫이다.
+function Add-ProbeOverflow([string]$Probe, [int]$Cap) {
+  $script:ProbeTimedOut.Add(@{ Probe = $Probe; Site = $MyInvocation.ScriptLineNumber; Cap = $Cap })
+}
+
+# 울타리 손이 낸 값을 「``명령`` 이 …」 뒤에 이어 읽히는 까닭으로 — -2 넘김 · -1 못 띄움 · 그 밖은 종료 값.
+function Format-ProbeWhy([int]$Rc, [int]$Cap) {
+  if ($Rc -eq -2) { return "${Cap}초 안에 안 끝나" }
+  if ($Rc -eq -1) { return '띄우지 못해' }
+  return ('{0} (0x{0:X8}) 로 끝나' -f $Rc)
 }
 
 # `Measure-Runs` 가 쓰는 울타리 — **종료코드만 쥐고 글자는 버린다.** `Invoke-LoggedCapped` 와 거두는
@@ -2224,24 +2255,152 @@ function Test-UpgradeRow([string]$Text, [hashtable]$App) {
   return $false
 }
 
-function Test-DesktopApp($A) {
-  # ⚠ **윈도우에 먼저 묻는다 — 스토어 꼴이든 예전 꼴이든 설치된 앱은 시작 메뉴에 선다.**
-  #   스토어 앱은 winget list 가 소스 인증서(0x8a15005e)나 인덱싱 지연으로 0 이 아닌 값을
-  #   내기 십상인데, 그것만 믿으면 앞길(winget)이 방금 깔았는데도 「실패」로 오판해 뒷길(스텁)로
-  #   넘어가 앱이 두 번 실행된다. 윈도우가 이미 알고 있으면 설치된 것이다.
-  try {
-    $found = [bool](@(Get-StartApps -ErrorAction Stop |
-                      Where-Object { $_.Name -like "*$($A.App)*" })[0])
-    if ($found) { return $true }
-  } catch { }
-
-  if ($A.Via -eq 'winget') {
-    $tl = [IO.Path]::GetTempFileName()
-    $rc = Invoke-Logged 'winget' @('list','--id',$A.Id,'--source',$A.Source) $tl
-    Remove-Item $tl -ErrorAction SilentlyContinue
-    return ($rc -eq 0)
+# 할 일을 가른다 — 설치 갈래(프로그램 · 데스크탑 앱 · npm CLI · winget CLI · VS Code 확장)가 다 이 한 자리에 묻는다. 갈래마다
+#   다른 것은 재는 손과 하는 손뿐이다(claude-config 결정 0145).
+#   받는 것 — `$Installed` 깔렸나(`yes` · `no` · `unmeasured`) · `$Current` 깔린 판 · `$Latest` 최신 판(빈 글자는 「모른다」) ·
+#     `$Listed` 맨 앞에서 한 번에 받은 「올릴 것」 목록의 답(`$true` 목록에 있다 · `$false` 목록을 받았는데 없다 · `$null` 못 받았거나
+#     그 목록에 안 묻는 갈래) · `$CanAsk` 판을 모를 때 그 도구에 올리기를 물어도 되나(winget `upgrade` 와 `code --update-extensions`
+#     는 판을 안 내린다 · npm 은 묻는 것이 곧 다시 받기다) · `$NoUpgrade` 올리기를 안 하는 판(`-NoUpgrade` · 올릴 도구가 없다 · 그 행이
+#     안 올린다)
+#   내는 것 — `hold` 손대지 않는다(「안 한 걸음」 · 결정 0141) · `install` 깐다 · `present` 있음 · `latest` 최신 · `upgrade` 올린다 ·
+#     `upcheck` 올릴 것이 있는지 모르는 채 묻는다 · `keep` 깔린 것을 두고 노란 줄로 말한다
+# ⚠ **`install` 은 `no` 에서만 난다.** 깔린 것 위에 새로 깔면 그 도구 목록의 판으로 간다 — 그 판은 앱이 스스로 올린 판보다 늦을 수
+#   있어 앱을 내린다. 모르는 값도 `hold` 다.
+# ⚠ **판을 모르는 것은 「다르다」가 아니다.** 빈 판을 다르다로 읽으면 npm 은 매 실행 다시 받는다 — 두 판을 다 알 때만 견준다.
+function Get-InstallAction([string]$Installed, [string]$Current, [string]$Latest, $Listed, [bool]$CanAsk, [bool]$NoUpgrade) {
+  if ($Installed -eq 'no')  { return 'install' }
+  if ($Installed -ne 'yes') { return 'hold' }
+  if ($NoUpgrade)           { return 'present' }
+  if ($null -ne $Listed)    { if ($Listed) { return 'upgrade' } else { return 'latest' } }
+  if ($Current -and $Latest) {
+    # 깔린 판 글자는 꼴이 셋이다 — `2.1.273 (Claude Code)` · `codex-cli 0.154.0` · `0.60.0`. 그래서 등호로 못 재고 「깔린 글자가
+    #   최신 판을 낱말로 품나」로 잰다. 경계를 `\b` 로 안 잡는다 — 점을 경계로 쳐서 `1.2.1.273` 이 `2.1.273` 을 품은 것이 된다.
+    if ($Current -match "(?<![\w.])$([regex]::Escape($Latest))(?![\w.])") { return 'latest' }
+    return 'upgrade'
   }
-  return $false
+  if ($CanAsk) { return 'upcheck' }
+  return 'keep'
+}
+
+# 맨 앞에서 한 번에 받은 「올릴 것」 목록(`$upgradable`)의 답 — `$null` 은 목록을 못 받았다는 뜻이라 「없다」로 안 읽는다.
+function Get-Listed([string]$Id) {
+  if ($null -eq $upgradable) { return $null }
+  return ($upgradable -contains $Id)
+}
+
+
+# winget 으로 올린다 — 할 일이 `upgrade` · `upcheck` 일 때 winget 갈래(프로그램 · 데스크탑 앱 · winget CLI)가 부른다. `$Act` 가
+#   걸음 줄의 낱말이다. `upgrade` 만 부르고 `install` 은 안 부른다 — winget `upgrade` 는 깔린 판보다 낮은 판으로 안 간다.
+# ⚠ **종료코드를 판정에 안 쓴다** — 올릴 것이 없어도 winget 은 0 이 아닌 값을 낸다. 올랐나는 앞뒤 판이 가른다(`Write-UpgradeResult`).
+function Invoke-WingetUpgrade([string]$Label, [string]$Id, [string]$Source, [string]$Act, [string[]]$Notes = @()) {
+  Say-Busy $Label $Act (@('winget') + $Notes)
+  $log = [System.IO.Path]::GetTempFileName()
+  Invoke-Logged 'winget' (@('upgrade','--id',$Id,'--source',$Source) + $WGOpts) $log | Out-Null
+  Remove-Item $log -ErrorAction SilentlyContinue
+}
+
+# winget 으로 올리기를 물은 뒤의 한 줄 — 프로그램 · 데스크탑 앱 · winget CLI 가 이 한 자리를 쓴다.
+# ⚠ **앞 판을 못 읽었으면 「올렸다」로 안 찍는다** — 빈 글자와 읽힌 판은 늘 다르므로 그 비교가 참이 되어, 올린 적 없는 자리에
+#   ` -> 3.14.7` 이 선다(#32 처럼 앞 판이 삼켜진 회차). 둘 다 읽혔을 때만 견주고, 한쪽이라도 비면 「최신」에 읽힌 판을 대거나
+#   못 읽음을 말한다(`Format-VerPart`).
+function Write-UpgradeResult([string]$Name, [string]$before, [string]$after) {
+  if ($after -and $before -and $after -ne $before) {
+    Write-Host "  $Name — 올렸다  $before  ->  $after" -ForegroundColor Green
+  } else {
+    $shown = if ($after) { $after } else { $before }
+    Write-Host "  $Name — 최신  $(Format-VerPart $shown)"
+  }
+}
+
+# 윈도우 설치 목록(제어판 「앱」 · 레지스트리 `Uninstall`)의 항목 — `@{ Name = DisplayName; Ver = DisplayVersion }` 를 다 낸다.
+#   사용자 범위(HKCU)와 기계 범위(HKLM), 64 · 32 비트 두 보기를 다 본다 — 32 비트 파워셸에서도 64 비트 보기를 열도록 경로가
+#   아니라 `RegistryView` 로 연다. 못 여는 가지는 건너뛴다.
+function Get-UninstallEntries {
+  $out = @()
+  foreach ($hive in 'CurrentUser', 'LocalMachine') {
+    foreach ($view in 'Registry64', 'Registry32') {
+      $base = $null; $k = $null
+      try {
+        $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($hive, $view)
+        $k = $base.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')
+        if ($k) {
+          foreach ($n in $k.GetSubKeyNames()) {
+            $s = $null
+            try {
+              $s = $k.OpenSubKey($n)
+              if ($s) {
+                $dn = [string]$s.GetValue('DisplayName')
+                if ($dn) { $out += @{ Name = $dn; Ver = [string]$s.GetValue('DisplayVersion') } }
+              }
+            } catch { } finally { if ($s) { $s.Close() } }
+          }
+        }
+      } catch { } finally { if ($k) { $k.Close() }; if ($base) { $base.Close() } }
+    }
+  }
+  return $out
+}
+
+# 데스크탑 앱이 깔렸나를 세 값으로 잰다 — `@{ State = yes · no · unmeasured; Ver = 깔린 판(모르면 빈 글자); Probe = 못 잰 물음;
+#   Why = 그 물음이 어떻게 졌나(`Add-UnmeasuredStep` 의 꼴) }`.
+#   묻는 차례 — 시작 메뉴(`App`) → 윈도우의 설치 목록(`Reg` — `Uninstall` 의 `DisplayName` · `Appx` — 꾸러미 가족) → winget 목록.
+#   하나라도 찾으면 `yes` 다. GUI 앱이라 `--version` 을 부를 이름이 없어 `Measure-Runs` 를 못 쓴다.
+# ⚠ **이름은 「있다」만 세운다.** 시작 메뉴 이름과 `DisplayName` 은 벤더가 바꾸는 글자라, 못 찾은 것이 없는 것이 아니다. 「없다」는
+#   꾸러미의 정체가 세운다 — `Appx` 행은 그 가족(게시자에 묶인 이름이고 그 행의 꼴이 그것뿐이다)이, 나머지는 `winget list --exact`
+#   가 「깔린 꾸러미가 없다」(`$WingetNotInstalled`)로 답할 때만이다. winget 이 없거나 다른 값으로 지면 `unmeasured` 다 — 소스
+#   인증서(`0x8A15005E`) · 인덱싱 지연이 흔하다(claude-config 결정 0145).
+# ⚠ **`Appx` 행에는 winget 목록을 안 묻는다** — 스토어 꼴 Codex 를 msstore 소스가 「안 깔렸다」로 답했다(실측 2026-10-14 · 집 PC ·
+#   꾸러미 `OpenAI.Codex_2p2nqsd0c76g0` 이 깔린 채로). 막힌 회선에서는 그 소스가 열리지도 않는다.
+# ⚠ **winget 에는 `--exact` 를 준다** — 없으면 Id 가 글자 조각으로 걸려 `Google.Antigravity` 가 `Google.AntigravityCLI` 에 「있음」을
+#   낸다(실측 2026-10-14). 같은 까닭으로 `Reg` 는 이름 전체에 거는 `-like` 꼴이다 — `Antigravity CLI` 가 데스크탑 앱 곁에 선다.
+function Measure-DesktopApp($A) {
+  $hit = $false; $ver = ''
+  try {
+    $s = @(Get-StartApps -ErrorAction Stop | Where-Object { $_.Name -like "*$($A.App)*" })[0]
+    if ($s) {
+      $hit = $true
+      # 스토어 꼴 손잡이(`가족!앱`)면 그 꾸러미의 판을 읽는다 — 판을 못 읽어도 「있다」는 그대로다.
+      if ("$($s.AppID)" -match '^([^!]+)!') {
+        $fam = $Matches[1]
+        try { $ver = [string](@(Get-AppxPackage -Name ($fam -replace '_[^_]+$', '') -ErrorAction Stop |
+                                Where-Object { $_.PackageFamilyName -eq $fam })[0].Version) } catch { }
+      }
+    }
+  } catch { }
+  if ($A.Reg) {
+    $e = @(Get-UninstallEntries | Where-Object { $_.Name -like $A.Reg })[0]
+    if ($e) { $hit = $true; if (-not $ver) { $ver = $e.Ver } }
+  }
+  if ($hit) { return @{ State = 'yes'; Ver = $ver; Probe = ''; Why = '' } }
+  if ($A.Appx) {
+    $probe = "Get-AppxPackage $($A.Appx)"
+    try {
+      $pkg = @(Get-AppxPackage -Name ($A.Appx -replace '_[^_]+$', '') -ErrorAction Stop |
+               Where-Object { $_.PackageFamilyName -eq $A.Appx })[0]
+    } catch { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '오류를 던져' } }
+    if ($pkg) { return @{ State = 'yes'; Ver = [string]$pkg.Version; Probe = ''; Why = '' } }
+    return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' }
+  }
+  $probe = "winget list --id $($A.Id) --exact --source $($A.Source)"
+  if ($A.Via -ne 'winget' -or $noWinget) { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = 'winget 이 없어 안 불려' } }
+  # ⚠ **울타리를 두른다** — 멎은 `winget list` 하나가 설치를 영구히 세운다(#26 과 같은 꼴). 넘기면 「못 쟀다」다.
+  $tl = [IO.Path]::GetTempFileName()
+  $rc = Invoke-LoggedCapped 'winget' @('list','--id',$A.Id,'--exact','--source',$A.Source) $tl $WingetListCap
+  $txt = "$(Get-Content -LiteralPath $tl -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)"
+  Remove-Item -LiteralPath $tl, "$tl.err" -ErrorAction SilentlyContinue
+  if ($rc -eq -2) { Add-ProbeOverflow $probe $WingetListCap }
+  if ($rc -eq 0) {
+    # 판은 표에서 Id 바로 뒤 칸이다 — 이름 칸은 빈칸을 품을 수 있어 Id 로 줄을 잡는다. Id 가 잘려 찍혔으면 판을 모른다.
+    $m = [regex]::Match($txt, "(?m)(?<![\w.])$([regex]::Escape($A.Id))\s+(\S+)")
+    return @{ State = 'yes'; Ver = $(if ($m.Success) { $m.Groups[1].Value } else { '' }); Probe = ''; Why = '' }
+  }
+  if ($rc -eq $WingetNotInstalled) { return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
+  return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = (Format-ProbeWhy $rc $WingetListCap) }
+}
+
+# 깔렸나를 참 · 거짓으로 — 깐 뒤 「섰나」를 다시 묻는 자리가 쓴다. 못 잰 것은 거짓이다.
+function Test-DesktopApp($A) {
+  return ((Measure-DesktopApp $A).State -eq 'yes')
 }
 
 function Test-WebView2 {
@@ -2298,20 +2457,29 @@ function Install-Requires($A) {
 function Install-DesktopApp($A) {
   Write-Host ''
   Write-Host "  $($A.Label)" -ForegroundColor Cyan
-  # ⚠ **뒷길이 있으면 winget 이 없다고 여기서 끝내지 않는다** — 뒷길은 winget 을 안 탄다.
-  if ($A.Via -eq 'winget' -and $noWinget -and -not $A.Fallback) {
+  $m = Measure-DesktopApp $A
+  # 올리기는 winget 길의 행만 한다 — `NoSelfUpgrade` 행(스토어 앱)은 있으면 둔다.
+  $deskAct = Get-InstallAction $m.State $m.Ver '' (Get-Listed $A.Id) $true `
+               ($NoUpgrade -or $noWinget -or $A.Via -ne 'winget' -or [bool]$A.NoSelfUpgrade)
+  # ⚠ **뒷길이 있으면 winget 이 없다고 여기서 끝내지 않는다** — 뒷길은 winget 을 안 탄다. 깔린 앱은 winget 없이도 「있음」이다.
+  if (($deskAct -eq 'install' -or $deskAct -eq 'hold') -and $A.Via -eq 'winget' -and $noWinget -and -not $A.Fallback) {
     Write-Host '  ! winget 이 없어 못 깐다' -ForegroundColor Red
     $script:Fails.Add("$($A.Label) (winget 이 없다)")
     return
   }
-  if (Test-DesktopApp $A) {
-    if (-not $NoUpgrade -and $A.Via -eq 'winget' -and -not $A.NoSelfUpgrade) {
-      Say-Busy $A.Label 'upcheck' @('winget')
-      $ul = [IO.Path]::GetTempFileName()
-      Invoke-Logged 'winget' (@('upgrade','--id',$A.Id,'--source',$A.Source) + $WGOpts) $ul | Out-Null
-      Remove-Item $ul -ErrorAction SilentlyContinue
+  # ⚠ **못 쟀으면 깔지도 올리지도 않는다** — 못 잰 것을 「없다」로 읽으면 깔린 앱 위에 `winget install` 을 돌려 winget 목록의 판으로
+  #   내린다(결정 0145).
+  if ($deskAct -eq 'hold') {
+    Add-UnmeasuredStep $A.Label $m.Probe '깔지도 올리지도 않았다' $m.Why
+    return
+  }
+  if ($deskAct -ne 'install') {
+    if ($deskAct -eq 'present')    { Write-Host "  있음  $(Format-VerPart $m.Ver)" }
+    elseif ($deskAct -eq 'latest') { Write-Host "  최신  $(Format-VerPart $m.Ver)" }
+    elseif ($deskAct -eq 'upgrade' -or $deskAct -eq 'upcheck') {
+      Invoke-WingetUpgrade $A.Label $A.Id $A.Source $deskAct
+      Write-UpgradeResult $A.Label $m.Ver (Measure-DesktopApp $A).Ver
     }
-    Write-Host '  있음'
     $script:InstalledAppRows[$A.Label] = $A
     return
   }
@@ -2389,12 +2557,21 @@ function Install-DesktopApp($A) {
   Remove-Item $al -ErrorAction SilentlyContinue
 }
 
+# 깔린 확장과 그 판 — `@{ Vers = @{ Id = 판 }; Why = '' }`. 못 읽었으면 `Vers` 가 `$null` 이고 `Why` 가 그 까닭이다
+#   (`Add-UnmeasuredStep` 의 꼴): 못 읽은 목록을 빈 목록으로 읽으면 깔린 확장을 「없다」로 보고 다시 깐다(결정 0145).
+# ⚠ **울타리를 두른다** — `code` 가 멎으면 설치가 영구히 선다(#26 과 같은 꼴). 넘기면 「못 쟀다」다.
 function Get-ExtVersions {
-  $m = @{}
-  foreach ($l in (Get-Quiet 'code' @('--list-extensions','--show-versions'))) {
-    if ($l -match '^(.+)@([^@]+)$') { $m[$Matches[1]] = $Matches[2] }
-  }
-  return $m
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-LoggedCapped 'code' @('--list-extensions','--show-versions') $log $ExtListCap
+    if ($rc -eq -2) { Add-ProbeOverflow 'code --list-extensions --show-versions' $ExtListCap }
+    if ($rc -ne 0) { return @{ Vers = $null; Why = (Format-ProbeWhy $rc $ExtListCap) } }
+    $m = @{}
+    foreach ($l in @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue)) {
+      if ($l -match '^(.+)@([^@]+)$') { $m[$Matches[1]] = $Matches[2] }
+    }
+    return @{ Vers = $m; Why = '' }
+  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
 # ⚠ **하나를 까는 걸음이 한 자리다.** 확장이 셋으로 늘면서(결정 0041) 같은 걸음을 세 번 적으면
@@ -2404,10 +2581,17 @@ function Get-ExtVersions {
 #   (실측 2026-09-15 · 사외 VDI: Codex 확장을 받는 동안 「클로드 확장 — 최신」이 떠 있었다).
 # ⚠ **`--force` 가 최신을 다시 받지는 않는다** — 실측 2026-09-15: 같은 판이면 `already installed` 만 찍고
 #   1초에 끝난다. 옛 주석이 「다시 깐다」고 적었던 것은 틀렸고, 느렸던 까닭은 위 횟수다.
-function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [hashtable]$After) {
-  if ($Before.ContainsKey($Id)) {
-    $b = $Before[$Id]; $a = $After[$Id]
-    if ($NoUpgrade)             { Write-Host "  $Label — 있음  $(Format-VerPart $b)" }
+# `$Act` 는 「VS Code 확장」 걸음이 `Get-InstallAction` 에서 받은 할 일이다 — 올리기(`upcheck`)는 그 걸음이 깔린 확장을 한 번에
+#   묻고(`--update-extensions`) 여기는 앞뒤 판(`$Before` · `$After`)으로 결과만 찍는다. `$Probe` · `$Why` 는 못 쟀을 때 댈 물음과
+#   그 까닭이다(`Add-UnmeasuredStep` 의 꼴).
+function Install-Extension([string]$Id, [string]$Label, [string]$Act, [hashtable]$Before, [hashtable]$After, [string]$Probe, [string]$Why) {
+  if ($Act -eq 'hold') {
+    Add-UnmeasuredStep $Label $Probe '깔지도 올리지도 않았다' $Why
+    return
+  }
+  if ($Act -ne 'install') {
+    $b = $Before[$Id]; $a = if ($After) { $After[$Id] } else { '' }
+    if ($Act -eq 'present')     { Write-Host "  $Label — 있음  $(Format-VerPart $b)" }
     elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
     else                        { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
     return
@@ -2458,18 +2642,14 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
   # ⚠ **두 물음 다 넘김을 「없다」로 안 읽는다**(결정 0141) — CLI 를 못 쟀는데 깔면 깔린 것 위에 다시 깔고, npm 을 못 쟀는데
   #   「있음」으로 끝내면 올리기가 조용히 빠진다. 둘 다 하지도 건너뛰지도 않고 끝 검증에 남긴다.
   $cliRuns = Measure-Runs $Cmd '--version'
-  if ($cliRuns -eq 'unmeasured') {
-    Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다'
-    return
-  }
   $npmRuns = if ($cliRuns -eq 'yes' -and -not $NoUpgrade) { Measure-Runs 'npm' '--version' } else { '' }
-  if ($npmRuns -eq 'unmeasured') {
-    Write-Host "  $Label — 있음 $(Format-VerPart (& $ReadVer))"
-    Add-UnmeasuredStep "$Label 올리기" 'npm --version' '최신인지 안 묻고 올리지도 않았다'
-  } elseif ($cliRuns -eq 'yes' -and ($NoUpgrade -or $npmRuns -ne 'yes')) {
-    Write-Host "  $Label — 있음 $(Format-VerPart (& $ReadVer))"
-  } elseif ($cliRuns -eq 'yes') {
+  # 깔린 판 — `--version` 이 빈 글자면 npm 의 기록에 다시 묻는다(그 글자는 node 가 다 선 뒤에 나온다 · #32).
+  $b = ''; $rv = ''; $vrc = 0
+  if ($cliRuns -eq 'yes') {
     $b = & $ReadVer
+    if (-not $b -and $npmRuns -eq 'yes') { $b = Get-NpmGlobalVer $Pkg }
+  }
+  if ($cliRuns -eq 'yes' -and $npmRuns -eq 'yes') {
     Say-Busy $Label 'upcheck' @('npm', "지금 $b")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
     # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
     #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
@@ -2477,44 +2657,55 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
     #   판 하나 묻는 GET 은 어느 기계에서도 1초 안팎이다. 사외 VDI 는 **로그인마다** 이 걸음을 지난다.
     # ⚠ **묻는 것도 `@latest` 로 묻는다.** install 이 보는 태그와 다른 것을 물으면 엉뚱한 판과
     #   견주게 되고, 그 어긋남은 「올렸는데 또 올린다」로만 드러나 아무도 안 잡는다.
-    $rvo = Get-Quiet 'npm' @('view',"$Pkg@latest",'version') | Select-Object -First 1
-    $vrc = $LASTEXITCODE
-    $rv  = ("$rvo").Trim()
-    # 깔린 판 문자열은 꼴이 셋이다 — `2.1.273 (Claude Code)` · `codex-cli 0.154.0` · `0.60.0`.
-    # 그래서 같음을 등호로 못 재고 **「깔린 문자열이 레지스트리 판을 낱말로 품나」**로 잰다.
-    # ⚠ **경계를 `\b` 로 잡지 않는다.** `\b` 는 점을 경계로 쳐서 `1.2.1.273` 이 `2.1.273` 을 품은
-    #   것으로 읽힌다 — 판 문자열에서 점은 구분자가 아니라 판의 일부다. 앞뒤로 글자도 점도 오지
-    #   않기를 요구해야 `2.1.2730` 과 `1.2.1.273` 이 함께 걸러진다.
-    $same = $rv -and ($b -match "(?<![\w.])$([regex]::Escape($rv))(?![\w.])")
-    # ⚠ **여기서 지는 둘(못 물음 · 못 올림)을 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛
-    #   판으로 돈다 — 저장소 `pull` 이 졌을 때와 같은 꼴이라(8 칸) 같은 규율로 든다: 말은 하되
-    #   빨강으로 안 끝낸다.
-    if ($vrc -ne 0 -or -not $rv) {
-      # ⚠ **못 물었을 때 「최신」이라 찍지 않는다.** 사내 프록시가 `registry.npmjs.org` 를 막았거나
-      #   Node 가 CA 를 몰라 죽은 판에서도 깔린 판은 그대로다 — 거기서 「최신」을 찍으면 **낡은 판이
-      #   도는 것과 최신이 도는 것을 못 가른다.** install 을 돌려 보는 갈래도 안 둔다: 못 닿는
-      #   레지스트리에는 install 도 못 닿는다.
-      Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
-    } elseif ($same) {
-      Write-Host "  $Label — 최신  $(Format-VerPart $b)"
+    # ⚠ **울타리를 두른다** — 회선이 붙든 `npm view` 하나가 설치를 영구히 세운다(#26 과 같은 꼴). 넘기면 최신 판을 「못 쟀다」다.
+    $vl  = [IO.Path]::GetTempFileName()
+    $vrc = Invoke-LoggedCapped 'npm' @('view',"$Pkg@latest",'version') $vl $NpmViewCap
+    $rvo = @(Get-Content -LiteralPath $vl -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0]
+    Remove-Item -LiteralPath $vl, "$vl.err" -ErrorAction SilentlyContinue
+    if ($vrc -eq -2) { Add-ProbeOverflow "npm view $Pkg@latest version" $NpmViewCap }
+    $rv  = if ($vrc -eq 0) { ("$rvo").Trim() } else { '' }
+  }
+  # npm 이 안 서면(`no`) 올릴 길이 없다 — 있음으로 끝낸다. 못 쟀으면(`unmeasured`) 최신을 모르는 채 두고 안 한 걸음으로 남긴다.
+  $cliAct = Get-InstallAction $cliRuns $b $rv $null $false ($NoUpgrade -or $npmRuns -eq 'no')
+  if ($cliAct -eq 'hold') {
+    Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다'
+  } elseif ($cliAct -eq 'present') {
+    Write-Host "  $Label — 있음 $(Format-VerPart $b)"
+  } elseif ($cliAct -eq 'latest') {
+    Write-Host "  $Label — 최신  $(Format-VerPart $b)"
+  } elseif ($cliAct -eq 'keep') {
+    # ⚠ **여기서 지는 것을 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛 판으로 돈다 — 저장소 `pull` 이 졌을 때와 같은
+    #   꼴이라 같은 규율로 든다: 말은 하되 빨강으로 안 끝낸다. 「최신」이라고도 안 찍는다 — 낡은 판이 도는 것과 못 가른다.
+    # ⚠ **판을 모르면 다시 받지 않는다** — 빈 판을 「다르다」로 읽으면 매 실행 받는다. 못 닿는 레지스트리에는 install 도 못 닿는다.
+    if ($npmRuns -eq 'unmeasured') {
+      Write-Host "  $Label — 있음 $(Format-VerPart $b)"
+      Add-UnmeasuredStep "$Label 올리기" 'npm --version' '최신인지 안 묻고 올리지도 않았다'
+    } elseif ($vrc -eq -2) {
+      Write-Host "  $Label — 있음 $(Format-VerPart $b)"
+      Add-UnmeasuredStep "$Label 올리기" "npm view $Pkg@latest version" '최신인지 모른 채 올리지도 않았다' (Format-ProbeWhy $vrc $NpmViewCap)
+    } elseif (-not $b) {
+      Write-Host "  ! $Label — 깔린 판을 못 읽었다 (``$Cmd --version`` · ``npm ls -g`` 다 빈 글자) · 깔린 그대로 간다" -ForegroundColor Yellow
     } else {
-      Say-Busy $Label 'upgrade' @('npm', "$b → $rv")
-      $nl = [IO.Path]::GetTempFileName()
-      # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** 저쪽(2 칸)은 「올릴 것 없음」에도
-      #   0 이 아닌 값을 내서 버릴 **까닭이 적혀 있지만**, npm 은 지면 지는 값을 낸다. 버리고 판만
-      #   견주면 설치가 죽은 판에서도 판이 안 바뀌었으니 아래 마지막 갈래로 새어 **「최신」이 찍힌다.**
-      #   로그도 곧바로 지워 단서가 없었다.
-      $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
-      Update-RuntimePath
-      $a = & $ReadVer
-      if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-      elseif ($nrc -ne 0) {
-        Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
-        Show-Log $nl
-      }
-      else { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
-      Remove-Item $nl -ErrorAction SilentlyContinue
+      Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
     }
+  } elseif ($cliAct -eq 'upgrade') {
+    Say-Busy $Label 'upgrade' @('npm', "$b → $rv")
+    $nl = [IO.Path]::GetTempFileName()
+    # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** winget 은 「올릴 것 없음」에도 0 이 아닌 값을 내서 버릴 까닭이
+    #   있지만, npm 은 지면 지는 값을 낸다. 버리고 판만 견주면 설치가 죽은 판에서도 판이 안 바뀌었으니 「최신」이 찍힌다.
+    $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
+    Update-RuntimePath
+    $a = & $ReadVer
+    if (-not $a) { $a = Get-NpmGlobalVer $Pkg }
+    if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+    elseif ($nrc -ne 0) {
+      Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+      Show-Log $nl
+    }
+    else { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
+    Remove-Item $nl -ErrorAction SilentlyContinue
+  } elseif ($cliAct -ne 'install') {
+    # 깔기는 `install` 일 때만이다 — 이 갈래가 안 내는 할 일이 와도 깔린 것 위에 다시 깔지 않는다.
   } elseif (Test-Runs 'npm' '--version') {
     Say-Busy $Label 'install' @('npm')
     $nl = [IO.Path]::GetTempFileName()
@@ -2537,29 +2728,46 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
   }
 }
 
-# winget 이 내주는 CLI. **깔렸으면 올리기만 시도한다** — npm 갈래와 달리 이 자리가 공짜다.
+# npm 이 제 기록에 적은 깔린 판 — `npm ls -g <pkg> --depth=0 --json` 의 `dependencies.<pkg>.version`. 못 읽으면 빈 글자다.
+#   `--version` 이 빈 글자를 낸 판에 다시 묻는 자리다 — 이 글자는 node 가 다 선 뒤에 나와 DRM 이 끼는 PC 에서도 안 잃는다(#32).
+#   울타리를 두른 손(`Invoke-LoggedCapped`)으로 부르고, 넘기면 「도나」처럼 그 자리를 `$script:ProbeTimedOut` 에 남긴다.
+# ⚠ **종료코드로 안 가른다** — npm 은 전역 폴더에 군더더기가 있으면 1 로 끝나면서도 JSON 은 온전히 낸다.
+function Get-NpmGlobalVer([string]$Pkg) {
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-LoggedCapped 'npm' @('ls','-g',$Pkg,'--depth=0','--json') $log $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow "npm ls -g $Pkg" $ProbeCap }
+    $j = Get-Content -LiteralPath $log -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
+    return [string]$j.dependencies.$Pkg.version
+  } catch { return '' }
+  finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+}
+
+# winget 이 내주는 CLI. 깔렸으면 프로그램 칸처럼 「올릴 것」 목록이 가른다(`Get-InstallAction`).
 # ⚠ **여기서 묻는 자는 `winget list` 가 아니라 `--version` 이다.** 데스크탑 갈래는 GUI 라 PATH 로
-#   못 재서 winget 의 목록에 묻지만(위 `Test-DesktopApp`), CLI 는 **사람이 쓸 이름이 실제로 서는가**가
+#   못 재서 winget 의 목록에 묻지만(위 `Measure-DesktopApp`), CLI 는 **사람이 쓸 이름이 실제로 서는가**가
 #   판정이다. 둘은 다른 명제다 — winget 이 「깔았다」 해도 그 이름이 PATH 에 안 서면 못 쓴다.
 # ⚠ **올리기가 조용히 지나가는 자리가 있다** — 옛 벤더 스크립트로 깐 기계의 `agy` 는 winget 이
-#   모른다. 그때 `--version` 은 서므로 「있음」으로 지나가고 `winget upgrade` 는 아무것도 안 한다.
+#   모른다. 그때 `--version` 은 서고 winget 목록에는 안 올라 「최신」으로 지나간다.
 #   **그것을 실패로 안 찍는다**: 도구는 멀쩡히 서 있고, 걷어낼지는 사람이 정할 일이다.
 function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
-  # ⚠ **못 쟀으면 깔지 않는다** — 넘김을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141).
+  # ⚠ **못 쟀으면 깔지 않는다** — 넘김을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 · 0145).
   $cliRuns = Measure-Runs $Cmd '--version'
-  if ($cliRuns -eq 'unmeasured') {
+  $b = if ($cliRuns -eq 'yes') { Get-Ver $Cmd '--version' } else { '' }
+  $cliAct = Get-InstallAction $cliRuns $b '' (Get-Listed $Id) $true ($NoUpgrade -or $noWinget)
+  if ($cliAct -eq 'hold') {
     Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다'
     return
   }
-  if ($cliRuns -eq 'yes') {
-    if (-not $NoUpgrade -and -not $noWinget) {
-      Say-Busy $Label 'upcheck' @('winget')
-      $ul = [IO.Path]::GetTempFileName()
-      Invoke-Logged 'winget' (@('upgrade','--id',$Id) + $WG) $ul | Out-Null
-      Remove-Item $ul -ErrorAction SilentlyContinue
-    }
-    Write-Host "  $Label — 있음 $(Format-VerPart (Get-Ver $Cmd '--version'))"; return
+  if ($cliAct -eq 'present') { Write-Host "  $Label — 있음 $(Format-VerPart $b)"; return }
+  if ($cliAct -eq 'latest')  { Write-Host "  $Label — 최신  $(Format-VerPart $b)"; return }
+  if ($cliAct -eq 'upgrade' -or $cliAct -eq 'upcheck') {
+    Invoke-WingetUpgrade $Label $Id 'winget' $cliAct @("지금 $b")
+    Update-RuntimePath
+    Write-UpgradeResult $Label $b (Get-Ver $Cmd '--version')
+    return
   }
+  if ($cliAct -ne 'install') { return }
   if ($noWinget) {
     Write-Host "  ! winget 이 없어 $Label 를 못 깐다" -ForegroundColor Red
     $Fails.Add("$Label (winget 이 없다)")
@@ -3734,6 +3942,9 @@ Update-RuntimePath
 $WGOpts = @('--exact','--silent',
             '--accept-package-agreements','--accept-source-agreements','--disable-interactivity')
 $WG = @('--source','winget') + $WGOpts
+# winget 이 「입력 조건과 일치하는 설치된 패키지를 찾을 수 없다」로 끝난 값(`APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND`). `winget list`
+#   의 0 아닌 값 가운데 **이것만 「없다」다** — 소스를 못 열었거나(인증서 `0x8A15005E`) 그 밖으로 진 값은 「못 쟀다」다(결정 0145).
+$WingetNotInstalled = 0x8A150014
 
 # ── 자리 — **프로그램 칸보다 앞이다.** 무엇을 깔지가 자리에 달렸기 때문이다(데스크탑 앱).
 #    아래 4칸의 키 판정도 이 값을 다시 쓴다 — 한 번 재고 둘이 나눠 쓴다.
@@ -3991,17 +4202,27 @@ if ($proxyRel -or $codexTpl) {
 # ⚠ **못 읽으면 옛 길로 물러선다.** 이 출력은 표라서 로케일·콘솔 너비·잘린 Id 에 흔들린다.
 #   못 읽은 것을 「올릴 것 없음」으로 읽으면 **판이 낡은 채로 초록이 된다** — 부재보다 나쁘다.
 #   그래서 `$null` 은 「못 쟀다」이고, 그때는 앱마다 묻는 옛 길로 간다.
+# ⚠ **winget 이 올리는 갈래는 다 이 목록에 묻는다** — 프로그램 · 고른 데스크탑 앱 · winget CLI. 목록에 없는 Id 를 「올릴 것
+#   없음」으로 읽으므로(`Get-Listed`), 여기서 안 물은 갈래는 목록을 받은 판에서 영영 안 올라간다(결정 0145).
 $upgradable = $null
 if (-not ($NoUpgrade -or $noWinget)) {
   Say-Busy '프로그램 판' 'upcheck' @('winget · 한 번에')
+  # ⚠ **울타리를 두른다** — 멎은 winget 하나가 설치를 영구히 세운다(#26 과 같은 꼴). 넘기면 목록을 못 받은 것(`$null`)이라 앱마다 묻는다.
   $ulog = [System.IO.Path]::GetTempFileName()
-  $urc = Invoke-Logged 'winget' @('list','--upgrade-available','--accept-source-agreements','--disable-interactivity') $ulog
+  $urc = Invoke-LoggedCapped 'winget' @('list','--upgrade-available','--accept-source-agreements','--disable-interactivity') $ulog $WingetListCap
   $utxt = ''
-  if (Test-Path $ulog) { $utxt = (Get-Content $ulog -Raw -ErrorAction SilentlyContinue) }
-  Remove-Item $ulog -ErrorAction SilentlyContinue
+  if (Test-Path $ulog) { $utxt = (Get-Content $ulog -Raw -Encoding UTF8 -ErrorAction SilentlyContinue) }
+  Remove-Item -LiteralPath $ulog, "$ulog.err" -ErrorAction SilentlyContinue
+  if ($urc -eq -2) { Add-ProbeOverflow 'winget list --upgrade-available' $WingetListCap }
   if ($urc -eq 0 -and $utxt -and $utxt.Length -gt 40) {
+    # 이름 칸은 데스크탑 앱이 시작 메뉴 이름(`App`), winget CLI 가 제 글자(`Label`)다 — 판정은 Id 가 든다.
+    $asked = @($Apps) +
+             @($DesktopApps | Where-Object { ($PickKeys -contains $_.Key) -and $_.Via -eq 'winget' -and -not $_.NoSelfUpgrade } |
+               ForEach-Object { @{ Name = $_.App; Id = $_.Id } }) +
+             @($Clis | Where-Object { ($PickKeys -contains $_.Key) -and $_.Via -eq 'winget' } |
+               ForEach-Object { @{ Name = $_.Label; Id = $_.Id } })
     $hits = @()
-    foreach ($a in $Apps) {
+    foreach ($a in $asked) {
       if (Test-UpgradeRow $utxt $a) { $hits += $a.Id }
     }
     $upgradable = $hits
@@ -4011,7 +4232,9 @@ if (-not ($NoUpgrade -or $noWinget)) {
       Write-Host '  올릴 것 없음 — 판 대조를 한 번에 끝냈다'
     }
   } else {
-    Write-Host '  (올릴 목록을 한 번에 못 받았다 — 앱마다 묻는다)'
+    # 까닭을 댄다 — 넘김이면 그 한도를, 졌으면 그 값을. 표를 못 읽은 것과 winget 이 진 것은 다음에 볼 자리가 다르다.
+    $uwhy = if ($urc -eq 0) { '표를 못 읽어' } else { '`winget list --upgrade-available` 이 ' + (Format-ProbeWhy $urc $WingetListCap) }
+    Write-Host "  (올릴 목록을 한 번에 못 받았다 — $uwhy 앱마다 묻는다)"
   }
 }
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. [1/8] 앞에도 시간이 든다.
@@ -4041,44 +4264,25 @@ foreach ($app in $Apps) {
       continue
     }
   }
-  # ⚠ **못 쟀으면 깔지도 올리지도 않는다** — 넘김을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141).
+  # 할 일은 한 자리(`Get-InstallAction`)가 가른다 — 올릴지는 맨 앞에서 한 번에 받은 목록이, 못 받았으면 앱마다 묻는다.
+  #   판(`Get-Ver`)은 화면에만 쓴다 — 견주기는 winget 이 제 기록으로 한다.
+  # ⚠ **못 쟀으면 깔지도 올리지도 않는다** — 넘김을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 · 0145).
   $appRuns = Measure-Runs $app.Cmd $app.Arg
-  if ($appRuns -eq 'unmeasured') {
+  $before  = if ($appRuns -eq 'yes') { Get-Ver $app.Cmd $app.Arg } else { '' }
+  $appAct  = Get-InstallAction $appRuns $before '' (Get-Listed $app.Id) $true ($NoUpgrade -or $noWinget)
+  if ($appAct -eq 'hold') {
     Add-UnmeasuredStep $app.Name "$($app.Cmd) $($app.Arg)" '깔지도 올리지도 않았다'
     continue
   }
-  if ($appRuns -eq 'yes') {
-    $before = Get-Ver $app.Cmd $app.Arg
-    if ($NoUpgrade -or $noWinget) {
-      Write-Host "  $($app.Name) — 있음  $(Format-VerPart $before)"
-      continue
-    }
-    # ⚠ **판정은 winget 의 종료코드가 아니라 판 번호다.** 올릴 것이 없으면 winget 은 0 이 아닌
-    #   값을 내는데, 그걸 실패로 읽으면 최신인 PC 가 매번 빨갛게 보고된다.
-    # 한 번에 받은 목록에 없으면 안 묻는다. **`$null`(못 쟀다)일 때는 물어본다.**
-    if (($null -ne $upgradable) -and ($upgradable -notcontains $app.Id)) {
-      Write-Host "  $($app.Name) — 최신  $(Format-VerPart $before)"
-      continue
-    }
-    # 목록을 못 받았으면(`$null`) 올릴 것이 있는지 모르는 채 묻는다 — 말도 그만큼만 한다.
-    $do = if ($null -eq $upgradable) { 'upcheck' } else { 'upgrade' }
-    Say-Busy $app.Name $do @('winget', "지금 $before")
-    $log = [System.IO.Path]::GetTempFileName()
-    Invoke-Logged 'winget' (@('upgrade','--id',$app.Id) + $WG) $log | Out-Null
-    Remove-Item $log -ErrorAction SilentlyContinue
+  if ($appAct -eq 'present') { Write-Host "  $($app.Name) — 있음  $(Format-VerPart $before)"; continue }
+  if ($appAct -eq 'latest')  { Write-Host "  $($app.Name) — 최신  $(Format-VerPart $before)"; continue }
+  if ($appAct -eq 'upgrade' -or $appAct -eq 'upcheck') {
+    Invoke-WingetUpgrade $app.Name $app.Id 'winget' $appAct @("지금 $before")
     Update-RuntimePath
-    $after = Get-Ver $app.Cmd $app.Arg
-    # ⚠ **앞 판을 못 읽었으면 「올렸다」로 안 찍는다** — 빈 글자와 읽힌 판은 늘 다르므로 그 비교가
-    #   참이 되어, 올린 적 없는 자리에 ` -> 3.14.7` 이 선다(#32 처럼 앞 판이 삼켜진 회차). 둘 다
-    #   읽혔을 때만 견주고, 한쪽이라도 비면 아래 갈래가 못 읽음을 말한다.
-    if ($after -and $before -and $after -ne $before) {
-      Write-Host "  $($app.Name) — 올렸다  $before  ->  $after" -ForegroundColor Green
-    } else {
-      $shown = if ($after) { $after } else { $before }
-      Write-Host "  $($app.Name) — 최신  $(Format-VerPart $shown)"
-    }
+    Write-UpgradeResult $app.Name $before (Get-Ver $app.Cmd $app.Arg)
     continue
   }
+  if ($appAct -ne 'install') { continue }
 
   if ($noWinget) {
     Write-Host "  ! $($app.Name) — 없는데 winget 이 없어 못 깐다" -ForegroundColor Red
@@ -4265,13 +4469,26 @@ $ExtUpdateCap  = 240
 $ExtUpdateSlow = 30
 # 고른 제품의 확장만 든다 — 목록이 진본이고 고르는 축은 `$Products` 다.
 $ExtPicks = @($Extensions | Where-Object { $PickKeys -contains $_.Key })
+# 할 일은 확장마다 `Get-InstallAction` 이 가른다 — 깔렸나는 `code --list-extensions` 가 재고, 최신 판은 묻지 않는다(마켓플레이스 판을
+#   따로 물을 손이 없다). 그래서 깔린 확장은 `upcheck` 이고, 그 묻기는 아래 한 호출(`--update-extensions`)이 한꺼번에 한다.
+# ⚠ **`code` 를 못 쟀으면 확장도 못 잰 것이다** — 「안 선다」로 읽어 빨갛게 끝내지 않고 확장마다 안 한 걸음으로 남긴다(결정 0141 · 0145).
+$extCodeRuns = if ($NoVsCode) { '' } else { Measure-Runs 'code' '--version' }
 if ($NoVsCode) {
   Write-Host '  건너뜀 — VS Code 칸을 껐다 (확장은 VS Code 없이 설 자리가 없다)'
-} elseif (Test-Runs 'code' '--version') {
-  $extBefore = Get-ExtVersions
+} elseif ($extCodeRuns -ne 'no') {
+  # `code --version` 을 못 쟀으면 그 넘김이 까닭이다 — `Why` 를 비워 `Add-UnmeasuredStep` 의 넘김 글로 찍는다.
+  $extRead   = if ($extCodeRuns -eq 'yes') { Get-ExtVersions } else { @{ Vers = $null; Why = '' } }
+  $extBefore = $extRead.Vers
+  $extProbe  = if ($extCodeRuns -eq 'yes') { 'code --list-extensions --show-versions' } else { 'code --version' }
+  $extActs   = @{}
+  foreach ($x in $ExtPicks) {
+    $xHas = if ($null -eq $extBefore) { 'unmeasured' } elseif ($extBefore.ContainsKey($x.Id)) { 'yes' } else { 'no' }
+    $xVer = if ($xHas -eq 'yes') { $extBefore[$x.Id] } else { '' }
+    $extActs[$x.Id] = Get-InstallAction $xHas $xVer '' $null $true ([bool]$NoUpgrade)
+  }
   $extAfter  = $extBefore
-  $extHave   = @($ExtPicks | Where-Object { $extBefore.ContainsKey($_.Id) })
-  if ($extHave.Count -gt 0 -and -not $NoUpgrade) {
+  $extHave   = @($ExtPicks | Where-Object { $extActs[$_.Id] -eq 'upcheck' })
+  if ($extHave.Count -gt 0) {
     Say-Busy "깔린 확장 $($extHave.Count)개" 'upcheck' @('code')
     $xl = [IO.Path]::GetTempFileName()
     $t0 = Get-Date
@@ -4290,10 +4507,10 @@ if ($NoVsCode) {
     elseif ($took -ge $ExtUpdateSlow) {
       Write-Host "  (확장 갱신에 ${took}초 걸렸다 — 밀린 양이 많았다)" -ForegroundColor DarkGray
     }
-    $extAfter = Get-ExtVersions
+    $extAfter = (Get-ExtVersions).Vers
   }
   if (-not $ExtPicks) { Write-Host '  고른 제품이 없어 확장을 안 깐다' }
-  foreach ($x in $ExtPicks) { Install-Extension $x.Id $x.Label $extBefore $extAfter }
+  foreach ($x in $ExtPicks) { Install-Extension $x.Id $x.Label $extActs[$x.Id] $extBefore $extAfter $extProbe $extRead.Why }
 } else {
   Write-Host '  ! code 를 못 불러 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
@@ -7184,18 +7401,21 @@ foreach ($c in $checks) {
   elseif ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
   else           { Write-Host "  [X] $($c.Name)" -ForegroundColor Red }
 }
-# 안 한 걸음 — 넘김 때문에 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`). 끝 검증에 짝 칸이 없어 여기서 따로 찍는다.
+# 안 한 걸음 — 못 재서 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`). 끝 검증에 짝 칸이 없어 여기서 따로 찍는다. 까닭은 걸음이
+#   든 것(`Why` — 넘김 · 종료 값 · 던진 오류)을 그대로 찍는다.
 foreach ($s in $script:UnmeasuredSteps) {
-  Write-Host "  [?] 안 한 걸음 · $($s.Step) — 못 쟀다: ``$($s.Probe)`` 이 ${ProbeCap}초 안에 안 끝나 $($s.Held)" -ForegroundColor Yellow
+  Write-Host "  [?] 안 한 걸음 · $($s.Step) — 못 쟀다: ``$($s.Probe)`` 이 $($s.Why) $($s.Held)" -ForegroundColor Yellow
 }
 # 이 설치에서 울타리를 넘긴 프로브 — 명령마다 몇 자리에서 몇 번인가. 칸에 안 걸린 넘김(그 자리가 「안 선다 · 없음」을 적고
 #   지나간 것)도 여기서 보인다. 세기에는 안 든다 — 칸 · 걸음 · `$Fails` 가 제 몫으로 이미 셌다.
 if ($script:ProbeTimedOut.Count) {
   Write-Host ''
-  Write-Host "  ! 울타리(${ProbeCap}초)를 넘긴 프로브 — 그 탓에 「안 선다 · 없음 · 안 닿는다」로 적힌 줄은 없는 것이 아니라 못 잰 것이다:" -ForegroundColor Yellow
+  Write-Host "  ! 울타리를 넘긴 프로브 — 그 탓에 「안 선다 · 없음 · 안 닿는다」로 적힌 줄은 없는 것이 아니라 못 잰 것이다:" -ForegroundColor Yellow
+  # 한도는 자리마다 다르다 — `--version` 류는 `$ProbeCap`, 할 일을 가르는 바깥 명령은 제 한도(결정 0145). 넘김이 든 값을 찍는다.
   foreach ($g in @($script:ProbeTimedOut | Group-Object { $_.Probe })) {
     $gSites = @($g.Group | ForEach-Object { $_.Site } | Sort-Object -Unique).Count
-    Write-Host "      · ``$($g.Name)`` — $gSites 자리 · $($g.Count)번" -ForegroundColor Yellow
+    $gCap   = @($g.Group | ForEach-Object { $_.Cap } | Sort-Object -Unique) -join '/'
+    Write-Host "      · ``$($g.Name)`` — $gSites 자리 · $($g.Count)번 (한도 ${gCap}초)" -ForegroundColor Yellow
   }
 }
 # gh 로그인 — 설정 저장소를 받는 PC 와 사외에서 Copilot 을 고른 PC 만 잰다. 그 둘이 이 로그인을 쓴다(개인 쪽 gh · git ·
