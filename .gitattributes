@@ -21,6 +21,10 @@ seeds/**/*.py text eol=lf
 # "참조 — 표준 원문" 절에 적힌 `curl … | diff` 대조가 그것에 기댄다.
 kit/skills/**/references/**   -text
 
+# 보고용 덱 양식은 OOXML 파트를 **푼 그대로** 싣는다 — 진본(설정 저장소 `.gitattributes`)과 같은 까닭이다.
+# 파트가 CRLF 를 들고 있어 위 `text=auto eol=lf` 가 걸리면 이쪽만 LF 로 바뀌고, 뽑기 대조가 「낡았다」를 낸다.
+kit/skills/ppt-report/template/report-a4/**   -text
+
 # ⚠ 파워셸 스크립트(*.ps1)는 UTF-8 **BOM** 이 있어야 한다 — PowerShell 5.1 은 BOM 이 없으면
 #   시스템 ANSI(한국은 cp949)로 읽어 한글이 그 자리에서 깨진다. BOM 은 줄바꿈이 아니라
 #   **내용**이라 git 이 안 건드리므로 여기 걸 규칙이 없다.
