@@ -456,4 +456,4 @@ Any `[?]` must keep the overall result non-successful. It must not be printed as
 - I did not benchmark the 20-second cap on slow corporate hardware. The cap assessment is qualitative.
 - I did not exhaustively audit unrelated helpers except where necessary to establish the concrete outcomes above.
 
-[cc-bg] ok · rc=0 · 82s · mode=read · agent=codex · model=gpt-5.6-sol · tokens in=1093504 out=16555 · web=1 · resume=codex:01a137f7-17fc-7e60-969a-f26570225e71
+[cc-bg] ok · rc=0 · 82s · mode=read · agent=codex · model=gpt-5.6-sol · tokens in=1093504 out=16555 · web=1 · resume=codex:<세션 ID 가림>
