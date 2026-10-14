@@ -30,6 +30,9 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $Here   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Engine = Join-Path $Here 'install.ps1'
+# 로컬 페이지를 기본 브라우저로 여는 손(`Open-InBrowser`)은 곁의 조각이 든다 — 설치 몸통과 같이 쓴다
+$OpenPageLib = Join-Path $Here 'open-page.ps1'
+if (Test-Path -LiteralPath $OpenPageLib) { . $OpenPageLib }
 
 # ── 이 폴더가 몇 판인가 ─────────────────────────────────────────────────────────
 # ⚠ **폴더가 제 판을 알아야 낡은 것을 알 수 있다.** 옛 판은 번호가 릴리스 태그에만 살아서
@@ -773,7 +776,7 @@ $lnkFeat.Location = New-Object Drawing.Point((438 + 140 - $flowW - 14 - $featW),
 $lnkFeat.Add_LinkClicked({
   $page = Join-Path $Here 'features.html'
   if (Test-Path -LiteralPath $page) {
-    try { Start-Process -FilePath $page | Out-Null }
+    try { Open-InBrowser $page }
     catch {
       [Windows.Forms.MessageBox]::Show(
         "안내 페이지를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $page,
@@ -1548,7 +1551,7 @@ if ($PersonalNotice) {
     if ($ReleasePage -and $ans -eq 'Yes') { try { Start-Process -FilePath $ReleasePage | Out-Null } catch { } }
     # 「제공기능」도 같이 연다(결정 0099) — 못 열면 창의 링크가 그대로 남는다
     $featPage = Join-Path $Here 'features.html'
-    if (Test-Path -LiteralPath $featPage) { try { Start-Process -FilePath $featPage | Out-Null } catch { } }
+    if (Test-Path -LiteralPath $featPage) { try { Open-InBrowser $featPage } catch { } }
   })
 }
 [void]$F.ShowDialog()

@@ -105,6 +105,9 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $Here    = Split-Path -Parent $MyInvocation.MyCommand.Path
+# 로컬 페이지를 기본 브라우저로 여는 손(`Open-InBrowser`)은 곁의 조각이 든다 — 설치 창과 같이 쓴다
+$OpenPageLib = Join-Path $Here 'open-page.ps1'
+if (Test-Path -LiteralPath $OpenPageLib) { . $OpenPageLib }
 if (-not $EnvFile) { $EnvFile = Join-Path $Here 'install.env' }
 $Fails   = New-Object System.Collections.Generic.List[string]
 $Planted = @{}
@@ -3870,7 +3873,7 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
   $how = 'notice'
   if (-not $NoticeShown) {
     if (-not (Test-Path -LiteralPath $Page -PathType Leaf)) { return 'nopage' }
-    try { Start-Process -FilePath $Page | Out-Null; $how = 'opened' } catch { return 'failed' }
+    try { Open-InBrowser $Page; $how = 'opened' } catch { return 'failed' }
   }
   try {
     New-Item -ItemType Directory -Path (Split-Path -Parent $Record) -Force | Out-Null
