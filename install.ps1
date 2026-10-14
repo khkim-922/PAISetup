@@ -3099,8 +3099,9 @@ function Stop-App($App) {
 #   받았든 안 받았든 같은 홈 씨앗을 부른다 — 홈 씨앗은 늘 서 있고, 몸통은 거기서 홈 훅 · 고른 도구의 폴더 신뢰 · 데스크탑 상태를 심는다.
 # 작업 루트는 저장소를 받는 자리(`$configRepoRoot` — `Get-ConfigRepoDir` 가 받는 자리를 짓는 그 값)를 그대로 받는다. 몸통은 받은 글자를
 #   `pwd` 로만 굳혀(대소문자 · 짧은 이름은 그대로) 홈 훅 명령에 박으므로, 받은 저장소의 `--install` 이 제 자리에서 잡는 루트와 글자가
-#   다르면 두 부름이 설치마다 그 명령을 번갈아 갈아 심는다(결정 0032). 없으면 짓는다 — 몸통은 없는 루트에 아무것도 안 심고(2로 끝난다),
-#   심은 홈 훅이 훑을 자리도 거기다.
+#   다르면 두 부름이 설치마다 그 명령을 번갈아 갈아 심는다(결정 0032). 없으면 부르는 동안만 짓는다 — 몸통은 없는 루트에 아무것도 안
+#   심는다(2로 끝난다). 이 부름이 지은 루트가 끝에 비어 있으면 걷는다 — 칸이 빈 PC 에 빈 `~/repos` 를 남기지 않는다(claude-config 결정
+#   0138). 심은 홈 훅은 그 자리가 없어도 0 으로 끝나고, 사람이 그 자리에 저장소를 두면 그때부터 훑는다.
 # ⚠ **루트는 `/` 꼴로 끝의 구분자 없이 넘긴다** — 5.1 은 빈칸이 든 인자를 따옴표로 싸는데 끝의 `\` 가 닫는 따옴표를 글자로 만들어
 #   bash 에 `…\"` 가 간다(그러면 몸통이 그 자리로 못 들어가 2로 끝난다). 훅 자리도 `--install` 처럼 `/` 꼴로 넘긴다.
 # 내는 것 — @{ Ran = 불렀나; Ok = 0 으로 끝났나; Why = 안 불렀거나 0 이 아닌 까닭 }. 실패로 셀지는 부르는 쪽이 든다.
@@ -3110,6 +3111,7 @@ function Invoke-Plant([string]$Bash, [string]$Root) {
   if (-not (Test-Path -LiteralPath $hook -PathType Leaf)) { return @{ Ran = $false; Ok = $false; Why = "홈 씨앗에 훅이 없다 ($hook)" } }
   $rootArg = ($Root -replace '\\', '/').TrimEnd('/')
   $t = Get-Took
+  $made = -not (Test-Path -LiteralPath $Root)
   try {
     New-Item -ItemType Directory -Path $Root -Force | Out-Null
     Write-Host "  심기만 — $hook --plant $rootArg" -ForegroundColor Green
@@ -3120,6 +3122,9 @@ function Invoke-Plant([string]$Bash, [string]$Root) {
     $rc = $LASTEXITCODE
   } catch {
     return @{ Ran = $true; Ok = $false; Why = (Say-Why $_) }
+  } finally {
+    # 지은 루트를 비었을 때만 걷는다 — 폴더 하나만 지우는 `Directory.Delete` 는 무엇이 들었으면 던지고 아무것도 안 지운다
+    if ($made) { try { [IO.Directory]::Delete($Root) } catch { } }
   }
   Write-Took '심기 --plant' $t
   @{ Ran = $true; Ok = ($rc -eq 0); Why = "exit $rc" }
