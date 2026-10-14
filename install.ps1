@@ -2678,6 +2678,9 @@ function Install-Extension([string]$Id, [string]$Label, [string]$Act, [hashtable
 # ⚠ **종료코드로 안 가른다** — npm 은 그 패키지가 없거나 전역 폴더에 군더더기가 있으면 1 로 끝나면서도 JSON 은 온전히 낸다. 넘겼거나
 #   못 띄웠거나 JSON 을 못 읽었거나 npm 이 오류를 적었으면 `unmeasured` 다 — 「없다」가 아니다(결정 0141). 넘김의 `Why` 는 비운다
 #   (`Add-UnmeasuredStep` 이 `$ProbeCap` 넘김 글로 채운다).
+# ⚠ **맨바닥 PC 의 `ENOENT` 는 「없다」다** — 전역 폴더(`%APPDATA%\npm`)는 첫 `npm install -g` 가 만들어, 그 전에는 npm 이 그 자리를 못
+#   읽고 `error.code = ENOENT` 를 적는다. 그때 `npm root -g` 로 전역 패키지가 사는 폴더를 묻고, 그 폴더가 정말 없으면 깔린 것이
+#   없다는 잰 값이다. 폴더가 있는데 `ENOENT` 거나 그 물음이 졌으면 그대로 못 쟀다다.
 function Measure-NpmGlobal([string]$Pkg) {
   $probe = "npm ls -g $Pkg --depth=0 --json"
   $log = [IO.Path]::GetTempFileName()
@@ -2688,7 +2691,18 @@ function Measure-NpmGlobal([string]$Pkg) {
     $j = $null
     try { $j = Get-Content -LiteralPath $log -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json } catch { }
     if (-not $j)   { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = 'JSON 을 안 내' } }
-    if ($j.error)  { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '오류를 적어' } }
+    if ($j.error) {
+      if ("$($j.error.code)" -eq 'ENOENT') {
+        $rl = [IO.Path]::GetTempFileName()
+        try {
+          $rrc  = Invoke-LoggedCapped 'npm' @('root','-g') $rl $ProbeCap
+          $root = ("$(@(Get-Content -LiteralPath $rl -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0])").Trim()
+        } finally { Remove-Item -LiteralPath $rl, "$rl.err" -ErrorAction SilentlyContinue }
+        if ($rrc -eq -2) { Add-ProbeOverflow 'npm root -g' $ProbeCap; return @{ State = 'unmeasured'; Ver = ''; Probe = 'npm root -g'; Why = '' } }
+        if ($rrc -eq 0 -and $root -and -not (Test-Path -LiteralPath $root)) { return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
+      }
+      return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '오류를 적어' }
+    }
     $d = if ($j.dependencies) { $j.dependencies.$Pkg } else { $null }
     if (-not $d)   { return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
     return @{ State = 'yes'; Ver = ("$($d.version)").Trim(); Probe = ''; Why = '' }
