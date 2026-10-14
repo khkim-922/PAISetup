@@ -220,6 +220,11 @@ $Clis = @(
   # ⚠ **두 자리에 다 깐다 — 이 표의 다른 줄과 같다**(결정 0045 · 0093). Codex · Copilot 맡기기가 Copilot 을 쓰나는
   #   자리 값 `CC_BG_AGENTS` 가 가르는 래퍼의 몫이고, 프로그램은 그 값과 무관하게 제품을 고르면 선다.
   @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI' }
+  # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로는 lychee,
+  #   마크다운 구조는 markdownlint-cli2 로 잰다. 설정 저장소의 세션 훅도 같은 둘을 까지만, 그 저장소를 안 붙인 PC 에는 그 걸음이
+  #   없다. lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 `WinGet\Links` 에 이름이 걸린다 — 관리자 승인이 안 든다.
+  @{ Key='lychee';       Via='winget'; Cmd='lychee'; Label='lychee'; Id='lycheeverse.lychee'; Maker=$true }
+  @{ Key='markdownlint'; Pkg='markdownlint-cli2'; Cmd='markdownlint-cli2'; Label='markdownlint-cli2'; Maker=$true }
 )
 # npm 이 전역에 깐 CLI 가 서는 자리 — 배선(`Update-RuntimePath`)이 이 창에 태우고, 마무리의 「사용자 범위 명령 자리」가 사용자
 #   PATH 에 심고, 끝 검증이 사용자 PATH 에서 잰다(claude-config 결정 0143 · PAISetup #30 ②). 세 자리가 이 한 줄을 읽는다.
@@ -4389,6 +4394,9 @@ if ($proxyRel -or $codexTpl) {
 # ⚠ **winget 이 올리는 갈래는 다 이 목록에 묻는다** — 프로그램 · 고른 데스크탑 앱 · winget CLI. 목록에 없는 Id 를 「올릴 것
 #   없음」으로 읽으므로(`Get-Listed`), 여기서 안 물은 갈래는 목록을 받은 판에서 영영 안 올라간다(결정 0145).
 $upgradable = $null
+# CLI 표에서 이번 설치가 깔 줄 — 고른 제품의 CLI 와, 제작자 칸을 켰을 때 그 칸의 스킬이 부르는 도구(`Maker`). 올리기를 묻는
+#   이 덩어리와 「CLI」 걸음이 같은 목록을 쓴다.
+$CliPicks = @($Clis | Where-Object { ($PickKeys -contains $_.Key) -or ($_.Maker -and $personalAny) })
 if (-not ($NoUpgrade -or $noWinget)) {
   Say-Busy '프로그램 판' 'upcheck' @('winget · 한 번에')
   # ⚠ **울타리를 두른다** — 멎은 winget 하나가 설치를 영구히 세운다(#26 과 같은 꼴). 넘기면 목록을 못 받은 것(`$null`)이라 앱마다 묻는다.
@@ -4403,7 +4411,7 @@ if (-not ($NoUpgrade -or $noWinget)) {
     $asked = @($Apps) +
              @($DesktopApps | Where-Object { ($PickKeys -contains $_.Key) -and $_.Via -eq 'winget' -and -not $_.NoSelfUpgrade } |
                ForEach-Object { @{ Name = $_.App; Id = $_.Id } }) +
-             @($Clis | Where-Object { ($PickKeys -contains $_.Key) -and $_.Via -eq 'winget' } |
+             @($CliPicks | Where-Object { $_.Via -eq 'winget' } |
                ForEach-Object { @{ Name = $_.Label; Id = $_.Id } })
     $hits = @()
     foreach ($a in $asked) {
@@ -4720,7 +4728,6 @@ Exit-Step 'extensions'
 # ── 4. CLI — 어디서나 (회사 키로 물리나는 5″·5⁗ 이 가른다) ─────────────────────────
 
 Enter-Step 'cli'
-$CliPicks = @($Clis | Where-Object { $PickKeys -contains $_.Key })
 if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
 foreach ($c in $CliPicks) {
   if ($c.Via -eq 'winget') { Install-WingetCli $c.Id  $c.Cmd $c.Label }
