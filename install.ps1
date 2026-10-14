@@ -2892,10 +2892,62 @@ function Get-ProxyVer([string]$text) {
 #   고치러 간다. 가르는 자는 이미 있는 `Test-Reach` 다(새로 만들지 않는다).
 #   ⚠ `gh api` 로는 그 가름을 못 한다 — **자격 없이는 어떤 길도 안 열어 주고**(실측 2026-10-06:
 #   `gh api rate_limit` 도 자격을 가리면 4 로 끝난다) 망 문제와 자격 문제가 같은 코드로 온다.
+# ⚠ 환경변수 토큰(`$GhEnvTokens`)이 서 있으면 gh 는 그것을 쓰므로 이 판정도 그것을 잰다 — 그 토큰이 가린 키링 로그인의
+#   생사는 `Get-GhKeyringState` 가 따로 잰다(끝 검증).
 function Test-GhLoggedIn {
   if (-not (Test-Runs 'gh' '--version')) { return $false }
   $null = Get-Quiet 'gh' @('api', 'user', '--jq', '.login')
   return ($LASTEXITCODE -eq 0)
+}
+
+# gh 가 키링의 로그인보다 먼저 쓰는 환경변수 토큰 — 이것이 선 셸에서는 `gh auth login` 이 로그인을 안 받는다.
+$GhEnvTokens = @('GH_TOKEN', 'GITHUB_TOKEN')
+
+# gh 키링 로그인 하나만 잰다 — 개인 쪽 gh · git 과 Copilot CLI 가 쓰는 로그인이다(claude-config 결정 0137). Copilot 러너는
+#   환경변수 토큰을 빼고 띄우므로 그 토큰이 있어도 키링이 죽으면 Copilot 이 진다 — 그래서 `$GhEnvTokens` 를 이 호출 동안만
+#   이 프로세스에서 빼고 묻고 되돌린다(사용자 · 기계 범위의 값은 안 건드린다).
+# 내는 것 — @{ State = 'ok' | 'invalid' | 'none' | 'unmeasured'; Why = 까닭 }. 판정은 gh 의 JSON(`gh auth status --json hosts`)
+#   의 `state` 가 든다 — `success` 면 산다. `error` 는 gh 가 「The token in keyring is invalid」를 내는 상태인데 망이 끊겨도
+#   나므로, GitHub 가 토큰을 401 로 거절했을 때(`error` 칸)만 무효로 친다. 로그인이 없으면 hosts 가 빈다.
+function Get-GhKeyringState {
+  if (-not (Test-Runs 'gh' '--version')) { return @{ State = 'unmeasured'; Why = 'gh 가 안 닿는다' } }
+  $saved = @{}
+  foreach ($n in $GhEnvTokens) {
+    $saved[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
+    [Environment]::SetEnvironmentVariable($n, $null, 'Process')
+  }
+  try {
+    $said = @(Get-Quiet 'gh' @('auth', 'status', '--hostname', 'github.com', '--active', '--json', 'hosts'))
+    $rc = $LASTEXITCODE
+  } finally {
+    foreach ($n in $GhEnvTokens) { [Environment]::SetEnvironmentVariable($n, $saved[$n], 'Process') }
+  }
+  if ($rc -ne 0) { return @{ State = 'unmeasured'; Why = "gh auth status 가 $rc 로 끝났다" } }
+  try { $hosts = (($said -join "`n") | ConvertFrom-Json).hosts } catch { return @{ State = 'unmeasured'; Why = 'gh 의 답을 JSON 으로 못 읽었다' } }
+  $acct = @($hosts.'github.com') | Select-Object -First 1
+  if (-not $acct) { return @{ State = 'none'; Why = '' } }
+  if ($acct.state -eq 'success') { return @{ State = 'ok'; Why = '' } }
+  if ($acct.state -eq 'error' -and "$($acct.error)" -match '\b401\b') { return @{ State = 'invalid'; Why = '' } }
+  $err = "$($acct.error)" -replace '\s+', ' '
+  if ($err.Length -gt 120) { $err = $err.Substring(0, 120) + ' …' }
+  return @{ State = 'unmeasured'; Why = "gh 가 GitHub 에 못 물었다 — $($acct.state)$(if ($err) { ": $err" })" }
+}
+
+# 끝 검증의 gh 로그인 줄 — `Get-GhKeyringState` 의 답을 사람이 읽을 줄로 옮긴다. 받는 것 — 그 답 · 사용자 · 기계 범위에
+#   선 환경변수 토큰의 이름들. 내는 것 — @{ Ok = 살아 있나; Lines = 줄들 }. 무효 · 없음이면 되살리는 명령을 붙이고, 이름이
+#   있으면 그 셸에서 먼저 비우는 명령을 더한다(값은 안 싣는다).
+function Get-GhKeyringLines($St, [string[]]$TokenVars) {
+  $fix = @('    새 터미널에서 gh auth login 한 번이면 된다')
+  if (@($TokenVars).Count) {
+    $fix += ("    환경변수 토큰($(@($TokenVars) -join ' · '))이 선 셸에서는 gh 가 로그인을 안 받는다 — 그 셸에서 먼저 비운다" +
+             "(PowerShell: Remove-Item $((@($TokenVars) | ForEach-Object { "Env:$_" }) -join ', '))")
+  }
+  switch ($St.State) {
+    'ok'      { return @{ Ok = $true;  Lines = @('  [O] gh 로그인 (키링 — 환경변수 토큰을 뺀 채로 쟀다)') } }
+    'invalid' { return @{ Ok = $false; Lines = @('  ! gh 로그인이 무효다 — 키링의 토큰이 죽었다 (대개 다른 기기에서 같은 범위로 gh 에 로그인한 탓이다)') + $fix } }
+    'none'    { return @{ Ok = $false; Lines = @('  ! gh 로그인이 없다 — gh · git · Copilot CLI 가 쓰는 로그인이다') + $fix } }
+    default   { return @{ Ok = $false; Lines = @("  ! gh 로그인 — 못 쟀다 ($($St.Why))") } }
+  }
 }
 
 # 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 초마다 남은 시간을
@@ -4064,10 +4116,8 @@ foreach ($c in $CliPicks) {
 if (-not $inside) {
   Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
 }
-# Copilot CLI 의 로그인 줄은 사외에만 둔다 — 사내에서 그 CLI 를 어떻게 잇고 쓰나는 아직 정해지지 않았다.
-if ((-not $inside) -and ($PickKeys -contains 'copilot')) {
-  Write-Host '  Copilot CLI 는 터미널에서 `copilot login` 을 한 번 친다 — 브라우저로 GitHub 계정을 잇는다'
-}
+# Copilot CLI 는 따로 로그인하지 않고 gh 로그인을 쓴다(claude-config 결정 0137) — 그 로그인이 서 있나는 끝 검증의 gh 로그인
+#   줄이 잰다(`Get-GhKeyringLines`).
 
 Exit-Step 'cli'
 
@@ -6787,6 +6837,16 @@ if ($script:ProbeTimedOut.Count) {
     Write-Host "      · $k — $($script:ProbeTimedOut[$k])초 안에 안 끝나 거뒀다" -ForegroundColor Yellow
   }
   Write-Host '      다시 깔지 말고 그 명령을 터미널에서 한 번 쳐 본다 — 거기서도 멎으면 그 도구 · 보안 소프트 쪽이다.' -ForegroundColor Yellow
+}
+# gh 로그인 — 설정 저장소를 받는 PC 와 사외에서 Copilot 을 고른 PC 만 잰다. 그 둘이 이 로그인을 쓴다(개인 쪽 gh · git ·
+#   Copilot CLI · claude-config 결정 0137). 사내 Copilot 은 쓰임이 아직 정해지지 않아 안 잰다.
+# ⚠ **`$checks` 에 안 넣는다** — 무효 · 없음은 노란 줄이다. 다른 기기의 gh 로그인에 밀려 죽은 토큰은 이 설치가 못 세운 것이
+#   아니고 되살리는 것은 사람의 명령 한 번이라, 빨강으로 세면 멀쩡히 깔린 PC 가 실패로 끝난다.
+if ($repoUrl -or ((-not $inside) -and ($PickKeys -contains 'copilot'))) {
+  $ghTokVars = @($GhEnvTokens | Where-Object {
+    [Environment]::GetEnvironmentVariable($_, 'User') -or [Environment]::GetEnvironmentVariable($_, 'Machine') })
+  $ghKr = Get-GhKeyringLines (Get-GhKeyringState) $ghTokVars
+  foreach ($l in $ghKr.Lines) { Write-Host $l -ForegroundColor $(if ($ghKr.Ok) { 'Green' } else { 'Yellow' }) }
 }
 # ⚠ **판정 목록이 둘인데 서로 몰랐다.** `$Fails` 는 「하는 걸음이 졌다」를 담고 이 `$checks` 는
 #   「끝에 다시 재 봤다」를 담는데, 종료코드는 `$Fails` 만 봤다 — 그래서 **검증이 빨간데 초록으로
