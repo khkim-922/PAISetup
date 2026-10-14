@@ -150,22 +150,19 @@ $configRepoRoot = Join-Path $env:USERPROFILE 'repos'
 # ── 고르는 축 — **제품이다.** 아래 표 셋(CLI · 확장 · 데스크탑 앱)은 같은 축의 세 단면이고,
 #    한 제품이 그 셋에 한 줄씩 든다. 사람은 「어느 도구를 쓰나」로 고르지 「CLI 냐 확장이냐」로
 #    안 고른다 — 클로드 확장은 쓰는데 `claude` 는 안 쓰는 사람이 없다.
-# ⚠ **벤더로 묶지 않는다.** 「구글」한 칸은 Gemini 와 안티그래비티를 한 몸으로 삼키는데 그 둘은
-#   짝이 다르다: Gemini 확장은 터미널의 `gemini` 에 편집기 문맥을 넘기는 **다리**고, 안티그래비티
-#   확장은 제 화면을 든 **에이전트**이며 짝이 `agy` 다. 설정 파일도 갈린다. 넷으로 두면 벤더로
-#   묶는 것은 칸 둘을 같이 켜면 되지만, 셋으로 묶으면 넷을 되돌릴 방법이 없다.
-# ⚠ **기본값도 이 표가 든다** — 화면이 제 값을 따로 들면 두 벌이 된다. Gemini 만 꺼져 있는 것은
-#   안티그래비티가 그 자리를 대신하는 물건이라 둘을 같이 깔 까닭이 없어서다(2026-09-17 사람 판단).
+# ⚠ **기본값도 이 표가 든다** — 화면이 제 값을 따로 들면 두 벌이 된다.
 $Products = @(
   @{ Key='claude';      Label='Claude';      Default=$true  }
   @{ Key='codex';       Label='Codex';       Default=$true  }
   @{ Key='antigravity'; Label='구글 Antigravity'; Default=$true  }
-  @{ Key='gemini';      Label='Gemini';      Default=$false }
   # ⚠ **기본이 꺼져 있다 — 아직 파일럿이라 쓸 사람이 정해져 있지 않다**(이슈 #16). 켜는 사람만
   #   받는다. 이 제품은 **데스크탑 앱과 CLI 한 줄씩** 표에 든다 — 확장 표에는 없다. CLI 는 npm 의
   #   `@github/copilot` 이고(아래 `$Clis`), winget 의 `GitHub.Copilot` 은 이름이 비슷한 **딴 물건**이다.
   @{ Key='copilot';     Label='GitHub Copilot'; Default=$false }
 )
+# 걷은 제품 이름 — 옛 판이 고른 값(로그온 자동 실행이 든 `-Pick`)에 남아 들어온다. 아래 「고른 제품」 칸이 이 이름을
+#   말없이 빼고, 「모르는 제품 이름」 노란 줄은 이 목록 밖의 이름에만 선다(claude-config 결정 0136).
+$RetiredProducts = @('gemini')
 
 $Apps = @(
   # ⚠ `Need='vscode'` 는 `core` 의 갈래다 — `-NoVsCode` 가 이 한 줄만 건너뛴다. 확장은 이것 없이
@@ -179,23 +176,22 @@ $Apps = @(
 
 # ── 확장과 CLI — **목록이 진본이다.** 깔 때도 끝에 잴 때도 이 두 표에서 판다 (결정 0041 · 0045).
 #    **셋 다 어디서나 깐다.** 자리가 가르는 것은 프로그램이 아니라 **그 뒤에 무엇으로 붙나**다 —
-#    사내는 회사 키·설정 틀·프록시로 게이트웨이에 붙고(아래 `$wantCodex` · `$wantGemini`), 사외는
-#    각자 로그인(Codex 는 ChatGPT · Gemini 는 Google)으로 쓴다. 옛 판은 프로그램까지 사내로 묶어
-#    사외 PC 에 Codex·Gemini 가 통째로 안 섰다(결정 0045).
+#    사내는 회사 키·설정 틀·프록시로 게이트웨이에 붙고(아래 `$wantCodex` · `$wantAgy`), 사외는
+#    각자 로그인(Codex 는 ChatGPT · 안티그래비티는 Google)으로 쓴다. 옛 판은 프로그램까지 사내로 묶어
+#    사외 PC 에 Codex 가 통째로 안 섰다(결정 0045).
 # ⚠ Codex 확장은 CLI 의 `~/.codex/config.toml` 을 같이 읽어 게이트웨이를 탄다 — 다만 사용자 정의
 #   프로바이더에서 CLI 와 다르게 구는 이슈가 열려 있어(openai/codex #27695), 확장 안의
 #   한 턴은 사람이 잰다. ⚠ **이슈 번호를 여럿 안 적는다** — 하나가 닫혀도 이 줄만 조용히 낡는다.
-#   울타리를 드는 것은 **지금 열려 있는 하나**지 목록이 아니다. Gemini 것은 창이 없는 짝(companion)이라 터미널의 CLI 에 편집기 문맥을 넘길 뿐이다.
+#   울타리를 드는 것은 **지금 열려 있는 하나**지 목록이 아니다.
 # ⚠ **안티그래비티 확장은 위 `$DesktopApps` 의 「Antigravity 데스크탑」과 다른 물건이다.** 저쪽은 VS Code 를
-#   대신하는 별개 편집기고, 이쪽은 VS Code 에 붙어 사이드바를 내는 확장이다. 이것도 다리이긴 한데 짝이
-#   터미널의 `gemini` 가 아니라 **제가 받아 오는 `agy`**(`~/.gemini/bin/agy.exe` · 188MB · 확장이
+#   대신하는 별개 편집기고, 이쪽은 VS Code 에 붙어 사이드바를 내는 확장이다. 이것도 다리이고 짝은
+#   **제가 받아 오는 `agy`**(`~/.gemini/bin/agy.exe` · 188MB · 확장이
 #   `AGY_ENABLE_HUB=1` 로 띄운다). **설치기가 그 바이너리를 안 심는다** — 확장이 스스로 받고, 받는 곳
 #   (구글 릴리스 호스트)은 사내에서 열린다(실측 2026-09-17). 게이트웨이에 물리는 자리는 아래 5⁗ 칸이 든다.
 $Extensions = @(
   @{ Key='claude';      Id='anthropic.claude-code';                  Label='클로드 확장'                }
   @{ Key='codex';       Id='openai.chatgpt';                         Label='Codex 확장'                 }
   @{ Key='antigravity'; Id='Google.google-antigravity';              Label='안티그래비티 확장'          }
-  @{ Key='gemini';      Id='google.gemini-cli-vscode-ide-companion'; Label='Gemini CLI Companion 확장'  }
 )
 # ⚠ **한 줄만 npm 이 아니다.** 구글이 `agy` 를 npm 으로 안 내준다 — 그 이름은 2013년에 남이
 #   올린 자리표시자다. 그래서 `Via` 를 둔다: 없으면 npm, `winget` 이면 `Install-WingetCli` 가
@@ -220,7 +216,6 @@ $Clis = @(
   #   사용자 PATH 에 심는다(실측 2026-09-17: `…\WinGet\Packages\Google.AntigravityCLI_…\agy.exe`).
   @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'
      Id='Google.AntigravityCLI' }
-  @{ Key='gemini'; Pkg='@google/gemini-cli';        Cmd='gemini'; Label='Gemini CLI'      }
   # ⚠ **두 자리에 다 깐다 — 이 표의 다른 줄과 같다**(결정 0045 · 0093). Codex · Copilot 맡기기가 Copilot 을 쓰나는
   #   자리 값 `CC_BG_AGENTS` 가 가르는 래퍼의 몫이고, 프로그램은 그 값과 무관하게 제품을 고르면 선다.
   # ⚠ **판은 `--version` 의 끝 마침표를 떼고 읽는다(`ReadVer`)** — `GitHub Copilot CLI 1.0.94.` 처럼 끝나서, 그대로
@@ -3383,7 +3378,8 @@ if ($PSBoundParameters.ContainsKey('Pick')) {
   #   조용히 뜻이 바뀐다 — 파워셸은 대소문자도 스코프도 안 가려 준다(이 파일이 `$Planted` 에서
   #   이미 겪은 그 함정이다).
   $ProductKeys = @($Products | ForEach-Object { $_.Key })
-  $unknown     = @($PickKeys | Where-Object { $ProductKeys -notcontains $_ })
+  # 걷은 제품 이름(`$RetiredProducts`)은 오타가 아니라 옛 판이 고른 값이라 말없이 빠진다 — 그 이름만 든 값은 빈 값과 같다.
+  $unknown     = @($PickKeys | Where-Object { $ProductKeys -notcontains $_ -and $RetiredProducts -notcontains $_ })
   foreach ($k in $unknown) {
     Write-Host ('  ! 모르는 제품 이름 — {0} (아는 것: {1})' -f $k, ($ProductKeys -join ', ')) -ForegroundColor Yellow
   }
@@ -3568,21 +3564,20 @@ if ($site -ne 'unknown') {
   Write-Host ''
 }
 
-# ── 사내에서만 더 서는 것 셋 — 로컬 프록시 · Codex 회사 설정 · Gemini 회사 설정 (결정 0041 · 0045) ──
+# ── 사내에서만 더 서는 것 — 로컬 프록시 · Codex 회사 설정 · 안티그래비티 회사 설정 (결정 0041 · 0045 · 0136) ──
 # ⚠ **몸통은 파일 이름도 모델 이름도 모른다.** 값 파일이 `#gateway-proxy = <프록시 파일>` ·
-#   `#codex-config = <틀>` · `#gemini-config = <틀>` 로 이 폴더 안의 자리를 가리키고, 몸통은
-#   **있고 사내면** 그것을 세운다. 사외는 셋 다 안 선다 — 구독·개인 로그인으로 서는 자리라서.
-# ⚠ **프로그램은 이 스위치 밖이다.** Codex·Gemini 확장과 CLI 는 위 표대로 어디서나 깔린다 — 여기가
+#   `#codex-config = <틀>` 로 이 폴더 안의 자리를 가리키고, 몸통은 **있고 사내면** 그것을 세운다.
+#   안티그래비티는 틀이 없다(아래 `$wantAgy`). 사외는 다 안 선다 — 구독·개인 로그인으로 서는 자리라서.
+# ⚠ **프로그램은 이 스위치 밖이다.** Codex·안티그래비티 확장과 CLI 는 위 표대로 어디서나 깔린다 — 여기가
 #   가르는 것은 그 프로그램을 **회사 키로 게이트웨이에 물리나**뿐이다(결정 0045).
 # ⚠ **자리를 모르면 안 선다.** 프로브가 없으면 「사내」가 아니라 모르는 것이고, 모르는 자리에
 #   프록시를 세우면 아무 데도 안 닿는 주소를 심은 채 초록으로 끝난다.
 # ⚠ **`#config-repo` 가 있어도 여기서 세운다.** 옛 판은 그 줄이 있으면 프록시·설정을 저쪽 부트스트랩에
 #   맡기고 **확장·CLI 까지 같은 스위치로 껐다** — 그런데 저쪽은 설정 파일만 쓰지 프로그램은 안 깔아,
-#   그 판에서는 Codex·Gemini 를 아무도 안 깔았다(실측 2026-09-14 · 사내 VDI). 자리를 보고 세우는
+#   그 판에서는 확장·CLI 를 아무도 안 깔았다(실측 2026-09-14 · 사내 VDI). 자리를 보고 세우는
 #   자는 이 파일 하나고, 그 줄은 「다 세운 뒤 저장소를 더 받는다」는 뜻일 뿐이다.
 $proxyRel   = Read-Directive $EnvFile 'gateway-proxy'
 $codexTpl   = Read-Directive $EnvFile 'codex-config'
-$geminiTpl  = Read-Directive $EnvFile 'gemini-config'
 $inside     = ($site -eq 'inside')
 # 맡기기 모델 표에서 읽는 자리 줄 — 「키와 값」이 그 줄로 러너의 자리 값을 심고, 「도구별 홈」이 `PAISETUP_SITE` 로 남겨 맡기는
 #   세션이 같은 줄을 읽는다. 자리를 모르면 사외 줄이다(claude-config 결정 0086).
@@ -3591,7 +3586,6 @@ $wantProxy  = [bool]($proxyRel  -and $inside)
 # ⚠ **회사 설정도 제품 칸을 탄다** — 안 켠 제품에 회사 설정만 심어 두면 쓰지도 않는 파일이
 #   남고, 나중에 그 파일을 보고 「깔렸나 보다」로 읽힌다.
 $wantCodex  = [bool]($codexTpl  -and $inside -and ($PickKeys -contains 'codex'))
-$wantGemini = [bool]($geminiTpl -and $inside -and ($PickKeys -contains 'gemini'))
 # ── agy 묶음 — agy 모델 값 (claude-config 결정 0083 · 0086 · 0088 · 0123 · #117) ──────
 # Claude Code 가 agy 에게 일을 맡기는 길은 백그라운드 래퍼(스킬 `agy-background`) 하나다 — 그 래퍼가 고를
 # 모델(`$AgyModelVars`)이다.
@@ -3640,7 +3634,7 @@ if (-not $PersonalValue) { $PersonalValue = 'none' }
 $personalByRepo = [bool]$configRepoUrls.Count
 # ── 고른 제품 — 갈 곳 표의 도구 이름으로 (결정 0102 · claude-config #133 「훅」 걸음 · claude-config 결정 0122) ──────
 # 손(`tool-homes.py`)의 조건 `pick` 이 읽는 값이라 표의 도구 이름(claude · codex · agy)으로 짓고, 표에 길은 없지만 세션 훅이
-#   폴더 신뢰를 거는 Copilot(`copilot`)도 싣는다 — 손은 그 이름을 아는 제품으로 넘긴다. Gemini 는 안 든다. 사용자 환경변수
+#   폴더 신뢰를 거는 Copilot(`copilot`)도 싣는다 — 손은 그 이름을 아는 제품으로 넘긴다. 사용자 환경변수
 #   `PAISETUP_PICK` 으로 심어(「도구별 홈」) 설정 저장소의 배포 · 세션 훅이 부르는 손도 같은 값을 읽는다 — 고른 제품에만 우리
 #   Claude 훅이 서고, 빼면 우리 것이 걷힌다. 넷 다 안 골랐으면 `none` — 빈 값은 손이 「설치기가 안 돈 자리」로 읽어 claude 로 본다.
 $PickValue = @(([ordered]@{ claude = 'claude'; codex = 'codex'; antigravity = 'agy'; copilot = 'copilot' }).GetEnumerator() |
@@ -3754,23 +3748,16 @@ if ($personalAny) { $needPythonWhy += '제작자 칸의 규범 · 룰 · 스킬�
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
 #   그래서 무는 것은 「사내인가」와 「이 제품을 켰나」뿐이다.
-# ⚠ **제미나이 칸에 안 묶는다.** 옛 판은 `$wantAgy = $wantGemini` 였는데, 제미나이를 끌 수 있게
-#   되면서 그 줄이 안티그래비티까지 같이 껐다. 안티그래비티가 실제로 무는 것은 **환경변수 둘**
-#   (`GEMINI_API_KEY` · `GOOGLE_GEMINI_BASE_URL`)이고 그 둘은 자리 값에서 따로 심긴다 —
-#   제미나이의 **설정 파일**과는 별개다. 그래서 제미나이를 끈 자리에서도 이것은 선다.
 $wantAgy    = [bool]($inside -and ($PickKeys -contains 'antigravity'))
 # 회사 키의 다른 이름 표(`$KeyAliases`)의 `Need` 를 이 자리가 푼다 — 표는 이름만 들고 켜고 끄는 것은 여기다.
-# ⚠ **`gemini` 칸이 안티그래비티도 든다 — 그 제품이 무는 키가 같은 이름이다.** 위 `$wantAgy`
-#   곁말대로 안티그래비티는 제미나이 **설정 파일**과는 별개지만 **환경변수는 같은 것을 문다.**
-#   옛 판은 이 칸이 `$wantGemini` 뿐이라, 제미나이를 끄고 안티그래비티만 켠 자리에서
-#   `modelProvider: "gemini"` 는 써지는데 **그 줄이 무는 `GEMINI_API_KEY` 를 아무도 안 심었다**
-#   — 실측 2026-09-17 회사 VDI: `agy` 가 «GEMINI_API_KEY environment variable is not set» 으로
-#   안 떴다. 곁말은 「그 둘은 자리 값에서 따로 심긴다」며 넘겼는데, 그 「자리 값」은 세션 훅의
-#   `secrets.d/<자리>.env` 라 **설치기만 돌린 기계에는 없다.**
+# ⚠ **`gemini` 칸은 안티그래비티의 것이다 — 이름만 구글이 정한 키 이름을 따른다.** `agy` 는
+#   `modelProvider: "gemini"` 아래에서 `GEMINI_API_KEY` 를 읽고, 그 이름은 구글이 정해 우리가 못 바꾼다.
+#   설치기만 돌린 기계에는 세션 훅의 `secrets.d/<자리>.env` 가 없어 이 칸 말고는 그 키를 심는 자가 없다 —
+#   안 심기면 `agy` 가 «GEMINI_API_KEY environment variable is not set» 으로 안 뜬다(실측 2026-09-17 회사 VDI).
 # ⚠ **이 한 칸이 세 자리를 문다** — 심는 문(`$KeyAliases` 고리) · `GOOGLE_API_KEY` 충돌 경고 ·
 #   끝 검증. 그래서 재는 자를 따로 안 고친다: **재는 자는 이미 옳게 쓰여 있었고 같은 조건에
 #   묶여 있었을 뿐이다.** 조건이 공유 지점이라 거기 하나만 고친다.
-$wantNeed = @{ codex = $wantCodex; gemini = ($wantGemini -or $wantAgy) }
+$wantNeed = @{ codex = $wantCodex; gemini = $wantAgy }
 # ── 프록시가 밖에 남기는 자리 둘 — **이름은 여기 한 자리다** ─────────────────────
 # ⚠ **심는 자와 걷는 자가 같은 이름을 봐야 한다.** 아래 5‴ 칸이 이 둘을 만들고, 사외로 갈린
 #   판(5⁵ 칸)이 그것을 걷는다 — 두 자리에 글자를 따로 박으면 한쪽만 고쳐지는 날 **걷는 손이
@@ -3782,19 +3769,16 @@ $ProxyDirName  = 'PGPT-Proxy'         # %LOCALAPPDATA% 아래 실행 폴더 이�
 # ── 회사 설정 둘이 앉는 자리 — **같은 까닭으로 여기 한 자리다** ─────────────────
 # 아래 5⁗ 칸이 이 둘에 쓰고 끝의 검증이 이 둘을 다시 재므로, 글자를 두 자리에 박지 않는다 (#3).
 $CodexCfg  = Join-Path $env:USERPROFILE '.codex\config.toml'
-$GeminiCfg = Join-Path $env:USERPROFILE '.gemini\settings.json'
-# ⚠ **안티그래비티는 제 파일을 따로 든다** — 위 `.gemini\settings.json` 이 아니라
-#   `.gemini\antigravity-cli\settings.json` 이다. 같은 뿌리 아래 사는데 읽는 자가 달라, 한 파일로
-#   묶으면 둘 중 하나가 못 읽는 열쇠를 받는다.
+# ⚠ **안티그래비티는 `.gemini\antigravity-cli\settings.json` 이다 — 같은 뿌리의 `.gemini\settings.json` 이 아니다.**
+#   그 파일은 Gemini CLI 의 것이라 `agy` 가 안 읽고, 이 설치기도 안 쓴다(결정 0136).
 $AgyCfg    = Join-Path $env:USERPROFILE '.gemini\antigravity-cli\settings.json'
-if ($proxyRel -or $codexTpl -or $geminiTpl) {
+if ($proxyRel -or $codexTpl) {
   $more = @()
   if ($wantProxy)  { $more += '로컬 프록시' }
   if ($wantCodex)  { $more += 'Codex 회사 설정' }
-  if ($wantGemini) { $more += 'Gemini 회사 설정' }
   if ($wantAgy)    { $more += '안티그래비티 회사 설정' }
   if ($more.Count) { Write-Host ("  사내라 더 세운다 — " + ($more -join ' · ')); Write-Host '' }
-  elseif (-not $inside) { Write-Host '  프록시와 Codex·Gemini 회사 설정은 사내에서만 선다 — 여기서는 프로그램만 깔고 각자 로그인으로 쓴다'; Write-Host '' }
+  elseif (-not $inside) { Write-Host '  프록시와 Codex·안티그래비티 회사 설정은 사내에서만 선다 — 여기서는 프로그램만 깔고 각자 로그인으로 쓴다'; Write-Host '' }
 }
 
 # ── 올릴 것이 있는 앱을 **한 번에** 묻는다 ─────────────────────────────────────
@@ -3845,7 +3829,7 @@ foreach ($app in $Apps) {
   }
   if ($NoDevTools -and $app.Need -eq 'dev') {
     # ⚠ **파이썬만은 예외가 선다** — 사내 로컬 프록시가 파이썬으로 돈다(결정 0041). 개발도구를 끈
-    #   사람도 프록시 없이는 Opus 5 와 Gemini 가 게이트웨이에 못 가므로, 사내면 이것만 깐다.
+    #   사람도 프록시 없이는 Opus 5 와 안티그래비티가 게이트웨이에 못 가므로, 사내면 이것만 깐다.
     #   agy 묶음도 같다 — 백그라운드 래퍼가 pythonw 로 돈다. 까닭은 `$needPythonWhy` 가 든다.
     if ($needPython -and $app.Cmd -eq 'python') {
       Write-Host "  $($app.Name) — 개발도구를 껐지만 깐다 ($($needPythonWhy -join ' · '))"
@@ -4117,7 +4101,7 @@ foreach ($c in $CliPicks) {
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
 #   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
 if (-not $inside) {
-  Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), Gemini 는 `gemini` 첫 실행의 Google 로그인으로 쓴다'
+  Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), 안티그래비티는 `agy` 첫 실행의 Google 로그인으로 쓴다'
 }
 # Copilot CLI 는 따로 로그인하지 않고 gh 로그인을 쓴다(claude-config 결정 0137) — 그 로그인이 서 있나는 끝 검증의 gh 로그인
 #   줄이 잰다(`Get-GhKeyringLines`).
@@ -4353,7 +4337,7 @@ foreach ($k in $Retired) {
 
 # ── 5″. 회사 키의 다른 이름 둘 — **한 번 받은 것을 이름만 바꿔 심는다** ─────────────
 # ⚠ 회사 키는 하나인데 읽는 이름이 셋이다 — Claude Code 는 `ANTHROPIC_AUTH_TOKEN`, Codex CLI 는
-#   `config.toml` 의 `env_key` 가 가리키는 `OPENAI_API_KEY`, Gemini CLI 는 `GEMINI_API_KEY`. 사람에게
+#   `config.toml` 의 `env_key` 가 가리키는 `OPENAI_API_KEY`, 안티그래비티(`agy`)는 `GEMINI_API_KEY`. 사람에게
 #   세 번 물으면 같은 값이 세 자리에 산다 — 한 번 받아 **파생**한다(결정 0041).
 # ⚠ **필요한 것만 심는다.** 그 CLI 를 안 세우는 자리(사외 · 자리 모름)에 이 이름을 심으면, 같은
 #   이름을 다른 뜻으로 쓰는 도구(구글 직결 키)가 회사 키를 집어 조용히 죽는다.
@@ -4367,8 +4351,8 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
     Plant-Var $k.Name $Planted['ANTHROPIC_AUTH_TOKEN']
   }
   # ── 회사 키를 제치는 이름 하나 — **말은 하고 지우지는 않는다** (실측 2026-09-17 · #62) ──
-  # ⚠ **이것은 부재가 아니라 잔재가 이기는 자리다.** `GOOGLE_API_KEY` 가 남아 있으면 `agy` 와
-  #   Gemini 갈래가 **회사 키를 제치고 그쪽을 집는다** — 제가 그렇게 말한다:
+  # ⚠ **이것은 부재가 아니라 잔재가 이기는 자리다.** `GOOGLE_API_KEY` 가 남아 있으면 `agy` 가
+  #   **회사 키를 제치고 그쪽을 집는다** — 제가 그렇게 말한다:
   #     `Warning: Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.`
   #   그러면 답은 오는데 **게이트웨이가 아니라 구글에서 온다.** 답이 왔다는 것과 게이트웨이가
   #   답했다는 것은 다른 명제고, 이 자리에서 실제로 두 판을 헛짚었다(프록시 로그에 그 호출이
@@ -4378,7 +4362,7 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
   #   「남의 값은 안 걷는다」로 세운 그 자와 같은 자리다 — **근거가 안 서면 말만 한다.**
   #   찍어 두면 화면에 남아, 회사 키로 서야 하는데 안 서는 사람이 열어 볼 자리가 생긴다.
   if ($wantNeed['gemini'] -and [Environment]::GetEnvironmentVariable('GOOGLE_API_KEY', 'User')) {
-    Write-Host '  ! GOOGLE_API_KEY 가 사용자 환경에 있다 — Gemini·안티그래비티가 회사 키 대신 이것을 집는다' -ForegroundColor Yellow
+    Write-Host '  ! GOOGLE_API_KEY 가 사용자 환경에 있다 — 안티그래비티가 회사 키 대신 이것을 집는다' -ForegroundColor Yellow
     Write-Host '     구글 직결 키의 제 이름이라 설치기가 안 걷는다. 회사 게이트웨이로 쓰려면 손으로 걷는다 (시스템 환경 변수)'
   }
 }
@@ -4601,13 +4585,13 @@ Exit-Step 'keys'
 
 # ══ 걸음 「사내 연결」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 환경
-#   하는 일 — 로컬 프록시와 그 감시 작업 · Codex · Gemini · agy 회사 설정. 사내가 아니면 아무 일도 안 한다
+#   하는 일 — 로컬 프록시와 그 감시 작업 · Codex · agy 회사 설정. 사내가 아니면 아무 일도 안 한다
 #   앞에서 받는 것 — 「키와 값」이 심은 주소 · 키(`$Planted`) · 게이트웨이를 쓰나(`$useGateway`)
 #   안 하는 것 — Claude 홈 · 스킬
 Enter-Step 'site'
-# ── 5‴. 로컬 프록시 — **사내에서 Claude 와 Gemini 가 지나는 문** (결정 0041) ─────────────
-# ⚠ **왜 프록시인가.** 게이트웨이가 Opus 5 에서 assistant prefill 을 400 으로 거절하고, Gemini CLI 는
-#   http 주소를 거절한다(루프백만 예외). 둘 다 클라이언트 파일을 못 고치는 자리라 사이에 한 겹을 둔다.
+# ── 5‴. 로컬 프록시 — **사내에서 Claude 와 안티그래비티가 지나는 문** (결정 0041) ─────────────
+# ⚠ **왜 프록시인가.** 게이트웨이가 Opus 5 에서 assistant prefill 을 400 으로 거절하고, 안티그래비티는
+#   곁 호출에 게이트웨이에 없는 모델 이름을 못박아 둔다. 둘 다 클라이언트 파일을 못 고치는 자리라 사이에 한 겹을 둔다.
 #   프록시가 무엇을 고치고 무엇은 안 건드리는지는 그 폴더의 README 가 든다(`posco/pgpt-proxy/`).
 # ⚠ **어디에 두나.** 프록시는 로그·pid 를 제 곁에 쓰므로 홈 사본(7 칸이 까는 `~/.claude/posco/`)에서
 #   바로 띄우지 않고 실행 폴더로 복사해 띄운다. 자동시작은 사용자 Run 키 하나다 — 관리자 없이 선다.
@@ -4748,27 +4732,21 @@ if ($wantProxy) {
   }
 }
 
-# ── 5⁗. Codex · Gemini · 안티그래비티 설정 — **틀에서 파생한다** (결정 0041) ─────────────
-# ⚠ **값을 여기 안 적는다.** 값 파일이 가리키는 틀(`#codex-config` · `#gemini-config`)이 곧 회사가
-#   실제로 쓰는 설정의 사본이고, 여기서는 자리표(키)와 주소만 채운다. 틀을 고치면 설치가 따라온다.
+# ── 5⁗. Codex · 안티그래비티 설정 — **Codex 는 틀에서 파생한다** (결정 0041 · 0136) ─────────────
+# ⚠ **값을 여기 안 적는다.** 값 파일이 가리키는 틀(`#codex-config`)이 곧 회사가 실제로 쓰는 설정의 사본이다.
+#   틀을 고치면 설치가 따라온다.
 # ⚠ **사람 것을 안 덮는다.** Codex 는 틀의 자리만 틀의 값으로 맞춘다(씨앗의 `codex-config-merge.py` — 무엇을 어떻게
 #   맞추나는 그 머리말이 든다). 그 파일에는 Codex 가 적는 훅 · 폴더 신뢰와 사람 키도 살아, 통째로 갈면 그것이 사라진다.
 #   파일이 없을 때만 틀을 그대로 쓴다. 병합기는 씨앗이 홈에 깔리기 전이라 이 폴더의 씨앗 자리에서 부른다.
-#   Gemini 는 JSON 이라 틀의 항목만 얹고 사람이 둔 다른 항목은 둔다 — 홈 설정 칸과 같은 규율.
-# ⚠ **문에 세 제품을 다 적는다 — 안티그래비티가 이 칸 안에 산다.** 옛 판은 문이 `$wantCodex -or
-#   $wantGemini` 뿐이라, 안티그래비티만 켠 자리에서 칸이 통째로 건너뛰어졌다. 그런데 끝의 검증은
-#   `$wantAgy` 로 따로 물어 **쓰는 자는 안 돌고 재는 자만 도는** 꼴이 됐다 — 무엇을 해도 그 항목이
-#   빨갛게 끝났고, 파일이 없다는 말만 나와 까닭이 안 보였다. `$wantAgy` 를 세우는 자리가 「제미나이
-#   칸에 안 묶는다」를 이미 적어 뒀으니(위 5″ 칸), **문이 그 뜻을 거스르고 있던 것이다.**
-if ($useGateway -and ($wantCodex -or $wantGemini -or $wantAgy)) {
+# ⚠ **문에 두 제품을 다 적는다 — 안티그래비티가 이 칸 안에 산다.** 문이 Codex 만 물으면 안티그래비티만 켠
+#   자리에서 칸이 통째로 건너뛰어지는데, 끝의 검증은 `$wantAgy` 로 따로 물어 그 항목이 늘 빨갛게 끝난다.
+if ($useGateway -and ($wantCodex -or $wantAgy)) {
   Write-Host ''
   # 제목은 **이번에 실제로 서는 것**만 든다 — 안 켠 제품 이름을 부르면 그것도 깔린 줄로 읽힌다.
   $cfgWho = @()
   if ($wantCodex)  { $cfgWho += 'Codex' }
-  if ($wantGemini) { $cfgWho += 'Gemini' }
   if ($wantAgy)    { $cfgWho += '안티그래비티' }
   Write-Host ('  ' + ($cfgWho -join ' · ') + ' 설정') -ForegroundColor Cyan
-  $key = $Planted['ANTHROPIC_AUTH_TOKEN']
   $noBom = New-Object Text.UTF8Encoding($false)
   if ($wantCodex) {
     $src = Join-Path $Here $codexTpl
@@ -4808,61 +4786,6 @@ if ($useGateway -and ($wantCodex -or $wantGemini -or $wantAgy)) {
       Remove-Item -LiteralPath $cmLog -ErrorAction SilentlyContinue
     }
   }
-  if ($wantGemini) {
-    $src = Join-Path $Here $geminiTpl
-    $dst = $GeminiCfg
-    if (-not (Test-Path -LiteralPath $src)) {
-      Write-Host "  ! Gemini 틀이 이 폴더에 없다 — $geminiTpl" -ForegroundColor Red
-      $Fails.Add('Gemini 설정 (틀이 없다)')
-    } else {
-      $tpl = $null
-      try { $tpl = Get-Content -LiteralPath $src -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
-      $g = $null
-      $broken = $false
-      if (Test-Path -LiteralPath $dst) {
-        try { $g = Get-Content -LiteralPath $dst -Raw -Encoding UTF8 | ConvertFrom-Json } catch {
-          Write-Host '  ! Gemini settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
-          $Fails.Add('Gemini 설정 (settings.json 이 깨졌다)')
-          $broken = $true
-        }
-      } else { $g = [pscustomobject]@{} }
-      if ($broken) {
-      } elseif (-not $tpl) {
-        Write-Host "  ! Gemini 틀을 못 읽었다 — $geminiTpl" -ForegroundColor Red
-        $Fails.Add('Gemini 설정 (틀이 깨졌다)')
-      } else {
-        $before = $g | ConvertTo-Json -Depth 10
-        foreach ($pp in $tpl.PSObject.Properties) {
-          $val = $pp.Value
-          # ⚠ **키는 이 파일에 안 쓴다 — 틀의 자리표까지 같이 안 간다** (#2). Gemini CLI 는 키를
-          #   `GEMINI_API_KEY` 에서 읽고(5″ 칸이 심는 그 이름), 못 찾으면 제 자격 저장소로 간다 —
-          #   `settings.json` 의 `apiKey` 는 **읽는 자가 없다.** 안 읽히는 자리에 평문으로 두는
-          #   것은 얻는 것 없이 새는 자리를 하나 더 여는 것뿐이다.
-          if ($pp.Name -eq 'apiKey') { continue }
-          if ($pp.Name -eq 'baseUrl') {
-            # 주소의 진본은 심은 환경변수다 — 틀의 주소(게이트웨이 직결)는 그것이 없을 때의 낙하다.
-            if ($Planted['GOOGLE_GEMINI_BASE_URL']) { $val = $Planted['GOOGLE_GEMINI_BASE_URL'] }
-          }
-          elseif ($g.PSObject.Properties[$pp.Name]) { continue }      # 사람 것은 둔다
-          $g | Add-Member -NotePropertyName $pp.Name -NotePropertyValue $val -Force
-        }
-        # ⚠ **옛 판이 쓴 키는 걷는다 — 안 쓰기로 했으면 걷는 자가 선다.** 우리 값일 때만이다:
-        #   제 키를 넣어 둔 사람의 것은 안 건드린다(위 「사람 것은 둔다」와 같은 자).
-        if ($key -and $g.PSObject.Properties['apiKey'] -and $g.apiKey -eq $key) {
-          $g.PSObject.Properties.Remove('apiKey')
-          Write-Host '  Gemini settings.json — apiKey 를 걷었다 (GEMINI_API_KEY 가 든다)' -ForegroundColor Green
-        }
-        $after = $g | ConvertTo-Json -Depth 10
-        if ($after -eq $before) {
-          Write-Host '  Gemini settings.json — 이미 맞다'
-        } else {
-          New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
-          [IO.File]::WriteAllText($dst, $after, $noBom)
-          Write-Host '  Gemini settings.json — 썼다 (인증 방식 · 키 · 루프백 주소)' -ForegroundColor Green
-        }
-      }
-    }
-  }
   # ── 안티그래비티 — **로그인 대신 회사 키로 세운다** (실측 2026-09-17 · #62) ─────────
   # ⚠ **손잡이는 확장이 아니라 `agy` 가 든다.** 확장 설정에는 주소 자리가 없다(선언된 다섯 ·
   #   `serverPort`·`enableTelemetry`·`enableInlineDiff`·`autoOpenFiles`·`channel`). 그것을 보고
@@ -4870,10 +4793,10 @@ if ($useGateway -and ($wantCodex -or $wantGemini -or $wantAgy)) {
   #   `modelProvider: "gemini"` 를 두고 `GEMINI_API_KEY` 를 export 하면 **로그인 없이** 서고,
   #   `GOOGLE_GEMINI_BASE_URL` 로 주소를 돌릴 수 있다. 그 셋으로 게이트웨이가 답했다 —
   #   근거는 그것만 내는 말이다: 「모델을 찾을 수 없습니다 … 회사코드: 02」.
-  # ⚠ **키를 이 파일에 안 쓴다** — 위 Gemini 칸과 같은 자(#2). `agy` 는 `GEMINI_API_KEY` 를
+  # ⚠ **키를 이 파일에 안 쓴다**(#2) — 평문 키는 새는 자리만 늘린다. `agy` 는 `GEMINI_API_KEY` 를
   #   환경에서 읽고, 5″ 칸이 그 이름을 이미 심는다. 여기 쓸 것은 **인증 방식 한 줄**뿐이다.
-  # ⚠ **주소도 여기 안 쓴다 — 환경변수가 진본이다.** `GOOGLE_GEMINI_BASE_URL` 은 Gemini CLI 와
-  #   **같은 이름을 공유하므로** 5″ 칸이 심은 그 값을 `agy` 도 그대로 본다. 파일에 또 적으면
+  # ⚠ **주소도 여기 안 쓴다 — 환경변수가 진본이다.** `agy` 는 `GOOGLE_GEMINI_BASE_URL` 을 환경에서
+  #   읽으므로 5′ 칸이 값 파일에서 심은 그 값을 그대로 본다. 파일에 또 적으면
   #   같은 사실이 두 자리에 살고 한쪽만 낡는다.
   # ⚠ **사람 것은 둔다.** 제 키·제 백엔드로 쓰던 사람의 다른 항목은 안 건드리고, 우리가 더하는
   #   것은 `modelProvider` 하나다. 그 줄을 지우면 로그인 갈래로 돌아간다 — 제 문서가 그렇게
@@ -5682,7 +5605,7 @@ Exit-Step 'tools'
 #   매번 실패로 보고된다** — 빨강이 흔해지면 진짜 빨강이 안 보인다 (사용자 확정).
 #   그렇다고 조용히 넘어가지도 않는다: 훅이 **왜 안 돌았나**를 그 자리에서 말한다.
 # ⚠ **여기서 넘긴 뒤 저쪽이 드는 것은 사람에게 딸린 것뿐이다** — git 신원 · 형제 저장소 · 개인 키 ·
-#   규범·룰·메모리 배포. 회사 키·주소·프록시·Codex/Gemini 설정·확장·CLI 는 위 칸들이 이미 세웠다.
+#   규범·룰·메모리 배포. 회사 키·주소·프록시·Codex/안티그래비티 설정·확장·CLI 는 위 칸들이 이미 세웠다.
 #   런타임을 두 번 깔지 않는다 — 무엇을 깔지는 이 파일 하나가 든다.
 Enter-Step 'repo'
 # 옛 판 훅을 든 받은 저장소 — 아래 넘길 자리를 고르는 줄이 채우고, 끝의 요약이 그 가운데 세션마다 도는 것을 알린다. 받은 저장소(`$got`)는
@@ -6744,7 +6667,7 @@ if ($useGateway) {
     $checks += @{ Name = $k.Name; Ok = [bool]$userEnv[$k.Name] }
   }
   if ($wantCodex) {
-    # 틀의 자리가 서 있나 — 「Codex · Gemini · 안티그래비티 설정」 칸의 병합기(`$CodexCfgMerge`)를 판정만 하는 꼴로 부른다. 못 잰 것도 [X] 다.
+    # 틀의 자리가 서 있나 — 「Codex · 안티그래비티 설정」 칸의 병합기(`$CodexCfgMerge`)를 판정만 하는 꼴로 부른다. 못 잰 것도 [X] 다.
     $cmWhy = '파일이 없다'
     $cmOk = $false
     if (-not (Test-Path -LiteralPath $CodexCfg)) {
@@ -6764,7 +6687,6 @@ if ($useGateway) {
     }
     $checks += @{ Name = "Codex config.toml ($cmWhy)"; Ok = $cmOk }
   }
-  if ($wantGemini) { $checks += @{ Name = 'Gemini settings.json'; Ok = (Test-Path -LiteralPath $GeminiCfg) } }
   if ($wantAgy)    { $checks += @{ Name = '안티그래비티 settings.json'; Ok = (Test-Path -LiteralPath $AgyCfg) } }
   # ⚠ **프록시는 「떠 있나」와 「문을 여나」를 따로 잰다.** 떠 있는 것만 보면 보정이 안 도는 판이
   #   초록이 된다. 문은 assistant 로 끝나는 본문을 프록시 너머로 보내 200 이 오는가로 잰다 — 이

@@ -306,7 +306,6 @@ if ($probe -and ($probe -match '^(.+):(\d+)$')) {
 }
 $more = @()
 if (Get-Directive 'codex-config')  { $more += 'Codex' }
-if (Get-Directive 'gemini-config') { $more += 'Gemini' }
 $gV = New-Object Windows.Forms.GroupBox
 $noAsk = $offsite
 # ⚠ **키 칸은 자리마다 줄 수가 다르다** — 사외는 「사외입니다」 한 줄뿐이고 사내는 주소·키·안내
