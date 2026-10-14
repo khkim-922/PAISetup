@@ -2903,6 +2903,9 @@ function Test-GhLoggedIn {
 # gh 가 키링의 로그인보다 먼저 쓰는 환경변수 토큰 — 이것이 선 셸에서는 `gh auth login` 이 로그인을 안 받는다.
 $GhEnvTokens = @('GH_TOKEN', 'GITHUB_TOKEN')
 
+# 키링을 재는 한 번(`gh auth status` — GitHub 에 한 번 묻는다)에 주는 한도. 즉답 프로브(`$ProbeCap`)보다 길다 — 망을 한 번 탄다.
+$GhStatusCap = 30
+
 # gh 키링 로그인 하나만 잰다 — 개인 쪽 gh · git 과 Copilot CLI 가 쓰는 로그인이다(claude-config 결정 0137). Copilot 러너는
 #   환경변수 토큰을 빼고 띄우므로 그 토큰이 있어도 키링이 죽으면 Copilot 이 진다 — 그래서 `$GhEnvTokens` 를 이 호출 동안만
 #   이 프로세스에서 빼고 묻고 되돌린다(사용자 · 기계 범위의 값은 안 건드린다).
@@ -2916,12 +2919,16 @@ function Get-GhKeyringState {
     $saved[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
     [Environment]::SetEnvironmentVariable($n, $null, 'Process')
   }
+  # 울타리를 두른 손(`Invoke-LoggedCapped`)으로 부른다 — 멎은 gh 하나가 설치를 끝없이 세우지 않게 한다(`Test-Runs` 머리말).
+  $log = [IO.Path]::GetTempFileName()
   try {
-    $said = @(Get-Quiet 'gh' @('auth', 'status', '--hostname', 'github.com', '--active', '--json', 'hosts'))
-    $rc = $LASTEXITCODE
+    $rc = Invoke-LoggedCapped 'gh' @('auth', 'status', '--hostname', 'github.com', '--active', '--json', 'hosts') $log $GhStatusCap
+    $said = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue)
   } finally {
     foreach ($n in $GhEnvTokens) { [Environment]::SetEnvironmentVariable($n, $saved[$n], 'Process') }
+    Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
   }
+  if ($rc -eq -2) { return @{ State = 'unmeasured'; Why = "gh auth status 가 ${GhStatusCap}초 안에 안 끝나 거뒀다" } }
   if ($rc -ne 0) { return @{ State = 'unmeasured'; Why = "gh auth status 가 $rc 로 끝났다" } }
   try { $hosts = (($said -join "`n") | ConvertFrom-Json).hosts } catch { return @{ State = 'unmeasured'; Why = 'gh 의 답을 JSON 으로 못 읽었다' } }
   $acct = @($hosts.'github.com') | Select-Object -First 1
