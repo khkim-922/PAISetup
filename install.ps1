@@ -532,8 +532,38 @@ function Format-EngineHolder($H) {
 #   껍데기를 깔아 두고 `Get-Command` 가 그것을 잡아 「있음」을 낸다 — 부르면 죽는 파일이다.
 #   「깔린 것과 닿는 것은 다른 명제」라, 그 오판으로 설치를 건너뛰면 뒤가 조용히 무너진다.
 # 판을 한 줄로 읽는다 — 올리기 전후를 견주려면 숫자가 있어야 한다. 못 읽으면 빈 글자다.
+# ⚠ **파이썬만은 `--version` 으로 못 읽는다**(#32). DRM(Fasoo)이 프로세스 초기화를 가로채는 창
+#   안에서 python 이 `--version` 을 뱉고 나가 버려 **글자가 사라지고 종료 코드만 0 으로 남는다** —
+#   실측 2026-10-14 회사 PC: 30번 중 20번이 빈 글자였고 종료는 매번 0. 그래서 판 칸이 `최신 ()` 으로
+#   섰고, 그 빈 괄호는 「값만 못 읽었다」와 「판정이 틀렸다」를 못 가르게 해 사람이 고장을 의심한다.
+#   ⚠ **까닭은 우리 밖이고 재설치로 안 고쳐진다** — winget 으로 걷고 같은 인자로 다시 깔아도
+#   19/30 이 그대로 빈다(병이 파이썬 파일에 없다). 그래서 멈춤을 쫓지 않고 멈춰도 끝나게 한 #26 과
+#   같은 규율로 **삼켜져도 읽게** 한다: 인터프리터가 **완전히 선 뒤**의 출력은 75번 중 한 번도 안 잃었다
+#   (`print` · `sys.stdout.write` · 원시 `os.write(1,…)` 다 0/25). `-u` · `-S` · `-I` 는 빈도를 안 바꾸고,
+#   파이프로 받든 진짜 파일로 리다이렉트하든 똑같이 빈다 — PowerShell 도 `Get-Quiet` 도 아니다.
+#   ⚠ **드는 값은 호출당 100ms 쯤이다**(중앙값 99 → 202ms) — 울타리 `$ProbeCap`(20초)에 비해 무의미하고,
+#   이 자를 부르는 자리는 손에 꼽는다(판 칸 · CLI 칸).
+# ⚠ **종료 코드는 참이라 다른 python 걸음은 안 건드린다.** 「python 이 서나」를 묻는 관문
+#   (`Test-Runs 'python' '--version'` · `Measure-Runs`)과 손들(`tool-homes` · TOML · 훅 걷기)은 종료 코드로
+#   판정하는데, 그 값은 75번을 재서 한 번도 안 틀렸다(0 · 1 · 3 을 그대로 냈다). 삼켜지는 것은 글자뿐이다.
+$PyVerCode = 'import sys;print(sys.version.split()[0])'
 function Get-Ver([string]$Cmd, [string]$Arg) {
-  $o = Get-Quiet $Cmd $Arg | Select-Object -First 1; return ("$o").Trim()
+  $o = if ($Cmd -eq 'python') { Get-Quiet $Cmd @('-c', $PyVerCode) | Where-Object { "$_".Trim() } }
+       else { Get-Quiet $Cmd $Arg }
+  $v = ("$(@($o) | Select-Object -First 1)").Trim()
+  # 판 칸의 꼴을 다른 도구와 맞춘다 — 저쪽은 `Python 3.14.7` 처럼 이름을 들고 온다.
+  if ($v -and $Cmd -eq 'python') { $v = "Python $v" }
+  return $v
+}
+
+# 판 번호를 결과 줄의 괄호에 넣는다 — **빈 괄호를 안 찍는다.**
+# ⚠ **`()` 는 틀린 말을 안 하면서 아무 말도 안 한다.** 그 자리에는 「값만 못 읽었다」와 「판정이 틀렸다」가
+#   함께 서는데 보는 쪽은 둘을 못 가른다 — 실측 2026-10-14: `Python — 최신 ()` 을 보고 고장을 의심해
+#   파이썬을 걷고 다시 깔았다(#32). 설치기의 다른 못 잰 자리는 `[?]` · 노란 줄로 제 상태를 말하므로
+#   (결정 0141) 이 자리도 말하게 한다. **판정은 안 바꾼다** — 올릴 것이 없다는 말은 그대로 참이다.
+function Format-VerPart([string]$Ver) {
+  if ("$Ver".Trim()) { return "($Ver)" }
+  return '(판을 못 읽었다)'
 }
 
 # 네이티브 명령을 돌리고, **모든 스트림을 파일로 잡는다.** 종료코드를 돌려준다.
@@ -2234,7 +2264,7 @@ function Install-Requires($A) {
     #   조용히 안 서고, 그 실패는 앱 쪽에서 엉뚱한 사유로 나타난다.
     if ($id -eq 'Microsoft.EdgeWebView2Runtime') {
       $pv = Test-WebView2
-      if ($pv) { Write-Host ('      · WebView2 런타임 — 있음 ({0})' -f $pv); continue }
+      if ($pv) { Write-Host ('      · WebView2 런타임 — 있음 {0}' -f (Format-VerPart $pv)); continue }
       $what = 'WebView2 런타임'
     } else {
       $what = $id
@@ -2377,9 +2407,9 @@ function Get-ExtVersions {
 function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [hashtable]$After) {
   if ($Before.ContainsKey($Id)) {
     $b = $Before[$Id]; $a = $After[$Id]
-    if ($NoUpgrade)             { Write-Host "  $Label — 있음  ($b)" }
+    if ($NoUpgrade)             { Write-Host "  $Label — 있음  $(Format-VerPart $b)" }
     elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-    else                        { Write-Host "  $Label — 최신  ($b)" }
+    else                        { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
     return
   }
   Say-Busy $Label 'install' @('code')
@@ -2434,10 +2464,10 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
   }
   $npmRuns = if ($cliRuns -eq 'yes' -and -not $NoUpgrade) { Measure-Runs 'npm' '--version' } else { '' }
   if ($npmRuns -eq 'unmeasured') {
-    Write-Host "  $Label — 있음 ($(& $ReadVer))"
+    Write-Host "  $Label — 있음 $(Format-VerPart (& $ReadVer))"
     Add-UnmeasuredStep "$Label 올리기" 'npm --version' '최신인지 안 묻고 올리지도 않았다'
   } elseif ($cliRuns -eq 'yes' -and ($NoUpgrade -or $npmRuns -ne 'yes')) {
-    Write-Host "  $Label — 있음 ($(& $ReadVer))"
+    Write-Host "  $Label — 있음 $(Format-VerPart (& $ReadVer))"
   } elseif ($cliRuns -eq 'yes') {
     $b = & $ReadVer
     Say-Busy $Label 'upcheck' @('npm', "지금 $b")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
@@ -2466,7 +2496,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
       #   레지스트리에는 install 도 못 닿는다.
       Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
     } elseif ($same) {
-      Write-Host "  $Label — 최신  ($b)"
+      Write-Host "  $Label — 최신  $(Format-VerPart $b)"
     } else {
       Say-Busy $Label 'upgrade' @('npm', "$b → $rv")
       $nl = [IO.Path]::GetTempFileName()
@@ -2482,7 +2512,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
         Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
         Show-Log $nl
       }
-      else { Write-Host "  $Label — 최신  ($b)" }
+      else { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
       Remove-Item $nl -ErrorAction SilentlyContinue
     }
   } elseif (Test-Runs 'npm' '--version') {
@@ -2494,7 +2524,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
     #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
     Update-RuntimePath
     if (Test-Runs $Cmd '--version') {
-      Write-Host "  $Label — 깔았다 ($(& $ReadVer))" -ForegroundColor Green
+      Write-Host "  $Label — 깔았다 $(Format-VerPart (& $ReadVer))" -ForegroundColor Green
     } else {
       Write-Host "  ! $Label 설치 실패 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
       Show-Log $nl
@@ -2528,7 +2558,7 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
       Invoke-Logged 'winget' (@('upgrade','--id',$Id) + $WG) $ul | Out-Null
       Remove-Item $ul -ErrorAction SilentlyContinue
     }
-    Write-Host "  $Label — 있음 ($(Get-Ver $Cmd '--version'))"; return
+    Write-Host "  $Label — 있음 $(Format-VerPart (Get-Ver $Cmd '--version'))"; return
   }
   if ($noWinget) {
     Write-Host "  ! winget 이 없어 $Label 를 못 깐다" -ForegroundColor Red
@@ -2542,7 +2572,7 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
   #   레지스트리에만 있다(실측: 이 기계의 사용자 PATH 에 winget 이 심은 자리가 셋 서 있다).
   Update-RuntimePath
   if (Test-Runs $Cmd '--version') {
-    Write-Host "  $Label — 깔았다 ($(Get-Ver $Cmd '--version'))" -ForegroundColor Green
+    Write-Host "  $Label — 깔았다 $(Format-VerPart (Get-Ver $Cmd '--version'))" -ForegroundColor Green
   } else {
     # ⚠ **「됐다는데 안 잡힌다」를 「안 됐다」로 안 적는다** — 다음에 어디를 팔지가 갈린다.
     #   이 갈래가 winget 이 PATH 를 안 들어 준 자리를 잡는 자다.
@@ -4020,14 +4050,14 @@ foreach ($app in $Apps) {
   if ($appRuns -eq 'yes') {
     $before = Get-Ver $app.Cmd $app.Arg
     if ($NoUpgrade -or $noWinget) {
-      Write-Host "  $($app.Name) — 있음  ($before)"
+      Write-Host "  $($app.Name) — 있음  $(Format-VerPart $before)"
       continue
     }
     # ⚠ **판정은 winget 의 종료코드가 아니라 판 번호다.** 올릴 것이 없으면 winget 은 0 이 아닌
     #   값을 내는데, 그걸 실패로 읽으면 최신인 PC 가 매번 빨갛게 보고된다.
     # 한 번에 받은 목록에 없으면 안 묻는다. **`$null`(못 쟀다)일 때는 물어본다.**
     if (($null -ne $upgradable) -and ($upgradable -notcontains $app.Id)) {
-      Write-Host "  $($app.Name) — 최신  ($before)"
+      Write-Host "  $($app.Name) — 최신  $(Format-VerPart $before)"
       continue
     }
     # 목록을 못 받았으면(`$null`) 올릴 것이 있는지 모르는 채 묻는다 — 말도 그만큼만 한다.
@@ -4038,10 +4068,14 @@ foreach ($app in $Apps) {
     Remove-Item $log -ErrorAction SilentlyContinue
     Update-RuntimePath
     $after = Get-Ver $app.Cmd $app.Arg
-    if ($after -and $after -ne $before) {
+    # ⚠ **앞 판을 못 읽었으면 「올렸다」로 안 찍는다** — 빈 글자와 읽힌 판은 늘 다르므로 그 비교가
+    #   참이 되어, 올린 적 없는 자리에 ` -> 3.14.7` 이 선다(#32 처럼 앞 판이 삼켜진 회차). 둘 다
+    #   읽혔을 때만 견주고, 한쪽이라도 비면 아래 갈래가 못 읽음을 말한다.
+    if ($after -and $before -and $after -ne $before) {
       Write-Host "  $($app.Name) — 올렸다  $before  ->  $after" -ForegroundColor Green
     } else {
-      Write-Host "  $($app.Name) — 최신  ($before)"
+      $shown = if ($after) { $after } else { $before }
+      Write-Host "  $($app.Name) — 최신  $(Format-VerPart $shown)"
     }
     continue
   }
