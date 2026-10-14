@@ -59,11 +59,11 @@ if [ -z "$_body" ]; then
   # ⚠ 배선은 세션에서만 건다 — 재는 갈래가 상태를 바꾸면 판정이 늘 초록이 된다(몸통의 `--check` 규율).
   case "${1:-}" in
     --needs-install) echo "세션 훅 몸통을 못 찾았다 — $_why"; exit 2 ;;
-    --check|--install|--install-global)
+    --check|--install|--install-global|--plant)
       echo "$(basename "$_repo"): ✖ 세션 훅 몸통을 못 찾았다 — $_why"; exit 1 ;;
     '') ;;
     # 모르는 인자는 몸통과 같이 아무것도 안 하고 끝낸다 — 안 그러면 오타가 아래 세션 갈래의 배선으로 샌다
-    *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global)\n' "$1" >&2
+    *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global · --plant)\n' "$1" >&2
        exit 2 ;;
   esac
   [ -d "$_repo/.githooks" ] && git -C "$_repo" config core.hooksPath .githooks 2>/dev/null

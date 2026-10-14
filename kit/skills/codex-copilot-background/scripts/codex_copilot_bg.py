@@ -34,7 +34,7 @@ JS 를 node 로 바로 부른다 — 인자는 고정 플래그뿐이다.
   · `CC_BG_AGENTS` — 차례이자 쓸 수 있는 쪽(쉼표). 여기 없는 쪽은 `--agent` · `--resume` 으로도 못 부른다
   · `CC_BG_CODEX_WEB_SEARCH` — Codex 의 `web_search`. `disabled` 만이 검색 도구를 요청에서 뺀다(`cached` 도 싣는다)
   · `CC_BG_CODEX_WIN_SANDBOX` — Codex 의 `windows.sandbox`. 없으면 안 넘겨 Codex 설정을 따른다
-  · `CC_BG_CODEX_MODEL_DELEGATE` — 맡기기 모델(깊은 판단 · 긴 맥락). `--model` 이 없으면 이것을 먼저 쓴다
+  · `CC_BG_CODEX_MODEL_DELEGATE` — 맡기기 모델(깊은 판단). `--model` 이 없으면 이것을 먼저 쓴다
   · `CC_BG_CODEX_MODEL` — 기본 모델(심부름). 맡기기 모델이 없을 때 쓰고, 가벼운 일은 부르는 쪽이 `--model` 로 준다
 Codex 의 `model` 은 `--model`(빈 값은 안 준 것) → 맡기기 모델 → 기본 모델 가운데 처음 선 것이고, 다 없으면 안 넘겨 Codex
 설정의 `model` 로 뜬다. Copilot 에는 모델을 안 넘긴다 — 이름이 Codex 의 것이다.
@@ -46,6 +46,9 @@ Codex 의 `model` 은 `--model`(빈 값은 안 준 것) → 맡기기 모델 →
   틀렸다 · 깔린 쪽이 없다
 `--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다. **이어 묻기 값은 그쪽 대화 기록이 실제로 남았을 때만
 싣는다** — 제 홈에 못 쓰는 자리(부른 쪽의 샌드박스)에서 돌면 id 는 나와도 기록이 없어 이어 묻기가 진다.
+**Copilot 이 gh 로그인의 토큰이 무효라 졌으면 갈래 바로 뒤에 그 말과 되살리는 명령(`gh auth login`)을 싣는다** — Copilot
+CLI 는 따로 로그인하지 않고 gh 로그인을 쓰는데, 그 토큰은 다른 기기의 gh 로그인에 밀려 죽을 수 있고 Copilot 제 안내는
+망을 의심하게 한다(claude-config 결정 0137).
 
 **웹 검색 수(`web=`)는 Codex 가 실제로 마친 검색이다** — 검색을 열어 두어도 검색 없이 기억으로 답할 수 있고,
 모르는 도구를 오류 없이 삼키는 게이트웨이 뒤에서는 그것이 조용히 난다. 답만 보면 안 갈려 끝 줄이 센다.
@@ -138,6 +141,15 @@ COPILOT_WRITE = ['--allow-tool=write', '--disallow-temp-dir']
 # 저장된 로그인보다 앞서는 토큰 — Copilot 권한이 없는 토큰이면 인증부터 깨진다. `COPILOT_GITHUB_TOKEN` 은 Copilot 에
 # 쓰라고 둔 것이라 남긴다.
 COPILOT_DROP_ENV = ('GH_TOKEN', 'GITHUB_TOKEN')
+# Copilot 이 gh 로그인의 토큰으로 인증하다 진 꼴 — GitHub 가 그 토큰을 401 로 거절했다. 문구는 실측이다(보관본
+# `copilot-gh-login-401.stderr.txt` · #156). 뒤는 판마다 갈려(「(401): Bad credentials」 · 「(401): GitHub returned: Bad
+# credentials」) 앞머리를 문다.
+COPILOT_GH_LOGIN_DEAD = 'Failed to fetch GitHub CLI user login (401)'
+# gh 가 키링의 로그인보다 먼저 쓰는 환경변수 토큰 — 이것이 선 셸에서는 `gh auth login` 이 로그인을 안 받는다.
+GH_ENV_TOKENS = ('GH_TOKEN', 'GITHUB_TOKEN')
+GH_LOGIN_DEAD_SAY = ('Copilot 이 쓰는 gh 로그인이 무효가 됐다(대개 다른 기기에서 같은 범위로 gh 에 로그인한 탓이다) — '
+                     '터미널에서 `gh auth login` 한 번이면 되살아난다')
+GH_LOGIN_ENV_SAY = '(환경변수 토큰 {names} 이 선 셸에서는 gh 가 로그인을 안 받는다 — 그 변수를 비운 셸에서 친다)'
 
 
 def write(path, text):
@@ -187,6 +199,16 @@ def resume_field(agent, conv):
     if glob.glob(os.path.join(glob.escape(home), *sub, name.format(id=glob.escape(conv)))):
         return f'resume={agent}:{conv}'
     return 'resume=- · ' + NO_RESUME.format(where=os.path.join(home, sub[0]))
+
+
+def gh_login_dead_say(agent, status, reason, env):
+    """끝 줄에 실을 「gh 로그인이 무효다」 말 — 해당이 없으면 빈 글. Copilot 이 실패로 끝났고 그 까닭(오류 이벤트 · stderr)에
+    `COPILOT_GH_LOGIN_DEAD` 가 들 때만이다 — 답 본문은 안 본다(그 문구를 인용한 답이 성공으로 올 수 있다). `env` 에
+    `GH_ENV_TOKENS` 가 서 있으면 그 이름을 대고 그 셸에서는 로그인이 안 선다고 덧붙인다 — 값은 안 싣는다."""
+    if agent != 'copilot' or status != 'failed' or COPILOT_GH_LOGIN_DEAD not in reason:
+        return ''
+    names = [k for k in GH_ENV_TOKENS if env.get(k)]
+    return GH_LOGIN_DEAD_SAY + (GH_LOGIN_ENV_SAY.format(names='·'.join(names)) if names else '')
 
 
 def kill_tree(proc):
@@ -469,7 +491,9 @@ def run(a):
         return 4
     agent, status, rc, answer, conv, reason, tokens, searches, raw_path = ran
     model = (codex_model(a.knobs, a.model) or '-') if agent == 'codex' else '-'
-    footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · agent={agent}'
+    said = gh_login_dead_say(agent, status, reason, os.environ)
+    footer = (f'{FOOTER} {status}' + (f' · {said}' if said else '') +
+              f' · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · agent={agent}'
               f' · model={model}'
               + (f' · failover={"; ".join(tried)}' if tried else '') +
               f' · tokens {tokens} · web={"-" if searches is None else searches}'

@@ -3762,20 +3762,32 @@ _gr="$(global_rule_reason)"
 #   돌아 같은 줄이 저장소 수만큼 찍힌다. 홈 층의 진본을 든 저장소만 낸다 — 규범·룰·
 #   에이전트가 거기서만 나가는 것과 같은 자리다 (0014). 그 저장소가 안 붙은 세션은 이
 #   줄이 없는 대신 위 「전역 규율」이 선다.
-if [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
-  # 낡은 항목의 루트는 재는 자가 stdout 으로 낸다 — 받아서 문구에 실어 준다
-  _stale="$(home_hook_planted)"; _hh=$?
-  _stale="$(printf '%s' "$_stale" | tr '\n' ' ')"
-  case "$_hh" in
+# home_hook_gate <재는 자의 종료 값> <낡은 항목의 루트(줄마다)> — 재는 자(`home_hook_planted`)의 답을 진단 줄 하나로 낸다.
+#   낡은 항목은 이 루트의 것(명령 글자만 옛 판이다 — 몸통이 명령을 바꾼 뒤 아직 설치가 안 돌았다)과 딴 루트의 것으로 갈라 댄다.
+#   견주기 전에 그 루트를 `home_hook_root` 의 꼴로 굳힌다 — 굳히기 전에 심긴 `/c/…` 도 같은 루트다(0032).
+home_hook_gate() {
+  _hgh="$(home_hook_root)"; _hgsame=""; _hgother=""
+  while IFS= read -r _hgr; do
+    [ -n "$_hgr" ] || continue
+    if [ "$(SIBLING_BASE="$_hgr"; home_hook_root)" = "$_hgh" ]; then _hgsame=1; else _hgother="$_hgother $_hgr"; fi
+  done <<< "$2"
+  _hgother="${_hgother# }"
+  case "$1" in
     0) gate "홈 훅" ok  "심겼다 — 저장소 밖(전역 층·홈)에서 연 세션도 auto 가 선다" ;;
-    1) if [ -n "$_stale" ]; then
-         gate "홈 훅" off "이 루트($(home_hook_root))로는 안 심겼다 — 딴 루트만 심겨 있다: $_stale. 저장소를 옮겼으면 다음 설치(설치기 · 로그온 자동 실행의 --install)가 이 루트로 심는다"
+    1) if [ -n "$_hgsame" ]; then
+         gate "홈 훅" off "이 루트($_hgh)로 심긴 항목이 옛 판의 명령이다${_hgother:+ — 딴 루트에도 심겨 있다: $_hgother}. 다음 설치(설치기 · 로그온 자동 실행의 --install)가 지금 명령으로 갈아 심는다"
+       elif [ -n "$_hgother" ]; then
+         gate "홈 훅" off "이 루트($_hgh)로는 안 심겼다 — 딴 루트만 심겨 있다: $_hgother. 저장소를 옮겼으면 다음 설치(설치기 · 로그온 자동 실행의 --install)가 이 루트로 심는다"
        else
          gate "홈 훅" off "안 심겼다 — 저장소 밖에서 연 세션은 아무 훅도 안 건다. 다음 설치(설치기 · 로그온 자동 실행의 --install)가 심는다"
        fi ;;
     2) gate "홈 훅" off "**못 잼** — $PY_CMD 를 못 부른다(윈도우면 스토어 껍데기다). 심기도 같은 가드에서 진다" ;;
-    3) gate "홈 훅" off "이 루트로는 심겼는데 **낡은 항목이 남아 있다**: $_stale — 그 루트의 저장소를 세션마다 헛돈다. ~/.claude/settings.json 에서 그 항목을 지운다" ;;
+    3) gate "홈 훅" off "이 루트로는 심겼는데 **낡은 항목이 남아 있다**: $(printf '%s' "$2" | tr '\n' ' ') — 그 루트의 저장소를 세션마다 헛돈다. ~/.claude/settings.json 에서 그 항목을 지운다" ;;
   esac
+}
+if [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
+  _stale="$(home_hook_planted)"; _hh=$?
+  home_hook_gate "$_hh" "$_stale"
 fi
 
 # 저장소 규약 축 — .githooks/ 의 존재가 곧 선언이다

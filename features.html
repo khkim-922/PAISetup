@@ -203,7 +203,7 @@
     <div class="card"><b>Codex 에게 <code>codex-copilot-background</code></b><span><em>Claude · agy → Codex</em>긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 웹 조사를 넘깁니다. 사외에서는 Codex 가 실시간으로 웹을 찾고, 한도가 차면 Copilot 이 받습니다(Copilot CLI 는 Copilot 을 고르면 깔립니다). 사내에서는 회사 게이트웨이로 갑니다.</span></div>
     <div class="card"><b>Claude 에게 <code>claude-background</code></b><span><em>Codex · agy → Claude</em>리뷰 · 조사 · 다른 모델의 의견을 Claude 에게 넘깁니다.</span></div>
     <div class="card"><b>읽기가 기본</b><span>Codex · Claude 는 기본으로 읽기만 하고, 고치기를 맡길 때는 따로 세운 작업 폴더 안만 고칩니다. agy 는 맡길 때 세운 작업 폴더 안에서 씁니다.</span></div>
-    <div class="card"><b>사외는 로그인 한 번씩</b><span>터미널에서 <code>codex login</code>(ChatGPT 계정) · <code>copilot login</code>(GitHub 계정)을 한 번씩 칩니다. agy 는 로그인 한도가 차도 <a href="https://aistudio.google.com/apikey">구글 무료 API 키</a>를 <code>setx GOOGLE_API_KEY &lt;키&gt;</code> 로 넣으면 제미나이를 더 씁니다. 사내는 회사 키로 서서 로그인이 없습니다.</span></div>
+    <div class="card"><b>사외는 로그인 한 번씩</b><span>터미널에서 <code>codex login</code>(ChatGPT 계정)을 한 번 칩니다. Copilot 은 따로 로그인하지 않고 gh 로그인을 씁니다 — 설치 끝 검증이 그 로그인을 재서, 없거나 무효면 노란 줄로 <code>gh auth login</code> 한 번을 알립니다. agy 는 로그인 한도가 차도 <a href="https://aistudio.google.com/apikey">구글 무료 API 키</a>를 <code>setx GOOGLE_API_KEY &lt;키&gt;</code> 로 넣으면 제미나이를 더 씁니다. 사내는 회사 키로 서서 로그인이 없습니다.</span></div>
   </div>
 </section>
 
@@ -212,7 +212,7 @@
     <div class="icon"><svg viewBox="0 0 24 24"><path d="M4 21V5l8-2v18M12 8l8 2v11M3 21h18M7.5 8h1M7.5 12h1M7.5 16h1M15.5 13h1M15.5 17h1"/></svg></div>
     <div>
       <h2>사내에서만<span class="tag">회사 망 안에서</span></h2>
-      <p>사내에서는 Claude · Gemini · 안티그래비티가 회사 키 하나로 게이트웨이에 붙습니다.
+      <p>사내에서는 Claude · 안티그래비티가 회사 키 하나로 게이트웨이에 붙습니다.
          PC 안의 작은 프록시가 그 사이에 서서, 게이트웨이가 그대로는 못 받는 요청을 고쳐 넘깁니다.<span class="fix">bug fix</span></p>
     </div>
   </div>

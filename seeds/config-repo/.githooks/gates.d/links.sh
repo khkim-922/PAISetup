@@ -12,6 +12,7 @@
 # ⚠ `--offline` 이다. 바깥 주소는 안 두드린다 — 커밋마다 네트워크를 타면 비행기·사내망
 #   에서 게이트가 멈추고, 멈추는 게이트는 `--no-verify` 를 습관으로 만든다. 바깥 링크가
 #   살아있나는 커밋이 아니라 CI 나 문서 감사가 잴 자리다.
+# ⚠ 앵커는 `--include-fragments` 가 있어야 잰다 — 없으면 lychee 는 파일이 있나만 보고 `#없는-절` 을 통과시킨다.
 set -u
 
 command -v lychee >/dev/null 2>&1 || {
@@ -19,7 +20,7 @@ command -v lychee >/dev/null 2>&1 || {
     exit 2
 }
 
-set -- --offline --no-progress
+set -- --offline --no-progress --include-fragments
 [ -f lychee.toml ] && set -- "$@" --config lychee.toml
 
 # ⚠ **도구가 제 사유로 지는 것과 링크가 깨진 것은 다른 명제다** — 설정 파싱 실패가 그 자리다.

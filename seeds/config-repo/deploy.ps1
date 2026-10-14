@@ -872,8 +872,8 @@ foreach ($repoRoot in @(@($src) + $globalRuleTargets)) {
     # --- 마지막 CI — 읽는 자를 세운다 ---
     # main 에 바로 커밋하는 이 집에서 CI 는 PR 도 자동머지도 없이 GitHub 페이지에만 빨강을 남긴다.
     # 읽는 자가 없어 저장소 둘이 사흘을 빨갛게 살았다(실측 2026-09-12). 배포가 도는 자리가 곧
-    # 사람이 보는 자리라 여기서 한 줄 읽는다. 세밀 토큰(GH_TOKEN)에는 Actions 읽기가 없어 403 이
-    # 나면 키링(gh auth login)으로 한 번 더 묻고, 그것도 없으면 「못 쟀다」로 남긴다 — 이 줄로
+    # 사람이 보는 자리라 여기서 한 줄 읽는다. `GH_TOKEN` 이 Actions 읽기 없는 세밀 토큰이면 403 이
+    # 나서 키링(gh auth login)으로 한 번 더 묻고, 그것도 없으면 「못 쟀다」로 남긴다 — 이 줄로
     # 배포를 막지 않는다. 빨강이면 남은 수동 작업에 올린다.
     $slug = $null
     try { $remote = & git -C $repoRoot remote get-url origin 2>$null } catch { $remote = '' }
@@ -1016,9 +1016,8 @@ $plan = @($plan | Where-Object { $_.Kind -eq 'githooks' }) +
         @($plan | Where-Object { $_.Kind -ne 'githooks' })
 
 # --- GitHub 토큰의 만료 ---
-# `GH_TOKEN` 의 세밀 토큰은 만료가 강제다 — 커밋된 키라 좁게 두기로 했고(secrets.env 곁말 ·
-# 결정 0025), 좁은 토큰은 GitHub 이 1년 안에 죽인다. 죽는 날 gh 가 **조용히** 선다: 값이 있기만
-# 하면 「있음」이라 만료된 토큰이 안 갈린다. 응답 머리글에
+# 사용자 환경변수 `GH_TOKEN` 이 세밀 토큰이면 만료가 강제다 — GitHub 이 1년 안에 죽인다. 죽는 날
+# gh 가 **조용히** 선다: 값이 있기만 하면 「있음」이라 만료된 토큰이 안 갈린다. 응답 머리글에
 # 만료일이 실려 오므로 호출 한 번으로 잰다 — 죽었으면 실행 환경이 안 선 것(`$envDown`), 30일
 # 안이면 사람이 할 일(`$todo`), 멀쩡하면 날짜를 한 줄 찍는다(초록도 편다).
 # ⚠ 망이 안 닿으면 「못 쟀다」로 한 줄만 남긴다 — 그 사실로 배포를 막지 않는다.
@@ -1037,7 +1036,7 @@ if ($ghTok) {
             $left   = [int][math]::Floor(($expAt - (Get-Date).ToUniversalTime()).TotalDays)
             $expDay = $expAt.ToString('yyyy-MM-dd')
             if ($left -le 30) {
-                $todo += "GH_TOKEN 만료 ${left}일 남음 ($expDay) — GitHub 에서 재발급해 secrets.env 를 고치고 다시 배포한다"
+                $todo += "GH_TOKEN 만료 ${left}일 남음 ($expDay) — GitHub 에서 재발급해 심은 자리(secrets.env · setx)를 고치거나, 안 쓰면 사용자 환경변수에서 지운다"
             } else {
                 Write-Host "= GH_TOKEN 만료 $expDay (${left}일 남음)" -ForegroundColor DarkGray
             }
@@ -1046,7 +1045,7 @@ if ($ghTok) {
         $code = $null
         if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
         if ($code -eq 401) {
-            $envDown += 'GH_TOKEN 이 죽었다 (401 — 만료됐거나 회수됐다). GitHub 에서 재발급해 secrets.env 를 고치고 다시 배포한다'
+            $envDown += 'GH_TOKEN 이 죽었다 (401 — 만료됐거나 회수됐다). GitHub 에서 재발급해 심은 자리(secrets.env · setx)를 고치거나, 안 쓰면 사용자 환경변수에서 지운다'
         } else {
             Write-Host "· GH_TOKEN 만료 — 못 쟀다 (api.github.com 이 안 닿는다: $($_.Exception.Message))" -ForegroundColor DarkGray
         }

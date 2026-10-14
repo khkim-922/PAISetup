@@ -674,10 +674,17 @@ def finite_float(text):
 
 def read_desktop_state(text):
     """데스크탑 상태 파일의 글을 읽는다. 앱의 `JSON.parse` 가 못 읽는 상수(`NaN` · `Infinity` · `-Infinity`)나 우리가 되쓰면 그
-    상수가 되는 수(넘치는 수 — `1e400`)가 들었으면 ValueError 다.
+    상수가 되는 수(넘치는 수 — `1e400`)가 들었거나, 우리 꼴(`compact_json`)로 UTF-8 에 못 담는 글자(짝 없는 서로게이트 — 앱은
+    `\\ud800` 꼴로 적는다)가 들었으면 ValueError 다.
     ⚠ 파이썬 `json` 은 그 상수를 읽고 그대로 되쓴다 — 앱은 본 파일을 못 읽으면 `.bak` 을 읽고, 둘 다 못 읽으면 빈 상태로 뜬다
     (프로젝트 · 설정이 다 사라진다). 그래서 읽는 자리에서 막는다 — 두 심기가 이 하나로 읽는다."""
-    return json.loads(text, parse_constant=refuse_non_json, parse_float=finite_float)
+    state = json.loads(text, parse_constant=refuse_non_json, parse_float=finite_float)
+    try:
+        compact_json(state).encode('utf-8')
+    except UnicodeEncodeError as exc:
+        raise ValueError(f'짝 없는 서로게이트 \\u{ord(exc.object[exc.start]):04x} 가 든 글이라 우리가 되쓸 수 없어 손대지 '
+                         '않았다') from None
+    return state
 
 
 def write_compact_json(path, obj):
@@ -699,8 +706,8 @@ def plant_desktop_projects(paths, home, running=desktop_running):
     상태 = DP_HAVE(이미 어느 프로젝트의 폴더다) · DP_NOW(이번에 더했다) · DP_GONE(목록에 섰다가 사람이 뺐다 — 안 넣었다).
     미룬 까닭 = DP_OFF(윈도 밖) · DP_NEVER(데스크탑이 아직 상태 파일을 안 지었다) · DP_RUNNING(데스크탑이 떠 있다) ·
     DP_UNKNOWN(떠 있나를 못 가렸다) · DP_RECORD(우리 기록을 못 읽었다) — 미룬 판은 아무것도 안 쓴다.
-    상태 파일을 못 읽거나 꼴이 다르거나 JSON 이 아닌 상수가 들었으면(`read_desktop_state`) ERROR=desktop-state 의 `Stop` — 아무것도
-    안 썼다. 못 쓰면 ERROR=desktop-write 의 `Stop`."""
+    상태 파일을 못 읽거나 꼴이 다르거나 JSON 이 아닌 상수 · 못 되쓸 글자가 들었으면(`read_desktop_state`) ERROR=desktop-state 의
+    `Stop` — 아무것도 안 썼다. 못 쓰면 ERROR=desktop-write 의 `Stop`."""
     if os.name != 'nt':
         return [], DP_OFF
     path = os.path.join(home, DESKTOP_STATE)
@@ -780,8 +787,8 @@ def plant_desktop_agent_mode(home, running=desktop_running):
     """데스크탑 로컬 호스트의 권한 모드를 「나 대신 승인」으로 쓴다 — `(상태 또는 None, 미룬 까닭 또는 None)`.
     상태 = DM_NOW(다른 값이었거나 없어 썼다) · DM_HAVE(이미 그 값이다 — 안 썼다). 미룬 까닭 = `plant_desktop_projects` 의 OFF ·
     NEVER(상태 파일이 없다 — 안 짓는다) · RUNNING · UNKNOWN — 미룬 판은 아무것도 안 쓴다.
-    못 읽거나 꼴이 다르거나 JSON 이 아닌 상수가 들었거나(`read_desktop_state`) 앱의 꼴로 되짜지 않으면 ERROR=desktop-state · 못 쓰면
-    ERROR=desktop-write 의 `Stop` — 본 파일도 `.bak` 도 안 바뀌었다."""
+    못 읽거나 꼴이 다르거나 JSON 이 아닌 상수 · 못 되쓸 글자가 들었거나(`read_desktop_state`) 앱의 꼴로 되짜지 않으면
+    ERROR=desktop-state · 못 쓰면 ERROR=desktop-write 의 `Stop` — 본 파일도 `.bak` 도 안 바뀌었다."""
     if os.name != 'nt':
         return None, DP_OFF
     path = os.path.join(home, DESKTOP_STATE)

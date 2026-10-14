@@ -5,6 +5,9 @@ description: 설계도(아키텍처 문서)를 쓰거나 고칠 때 부른다. "
 
 # 설계도 작성
 
+*(➔ 규범 [Diátaxis Axis] — 설계도는 Reference 다 · [Docs-as-Code · State Only] · [Single Source · Point or Derive] — 결정 본문은
+결정 기록이 들고 9 절은 좌표만)*
+
 **절 골격 — arc42 열둘, 이 순서대로**:
 
 | 절 | 담는 것 |

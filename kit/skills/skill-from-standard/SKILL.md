@@ -5,6 +5,9 @@ description: 스킬을 만들거나 손볼 때 부른다. "스킬 만들자"·"�
 
 # 표준 위에 스킬을 세운다
 
+*(➔ 규범 [Recall Priority] — 만들기 전에 표준을 찾는다 · [Single Source · Point or Derive] — 원문은 보관하고 가리킨다 · [YAGNI] ·
+[Determinism First] — 스크립트는 결정론 작업만 · [Reusable Means Anonymous] · [Docs-as-Code · State Only] — 본문은 지금 상태만)*
+
 **스킬 하나의 골격은 이렇다**:
 
 - 자리 — `.claude/skills/<이름>/SKILL.md` · 머리말은 `name`(폴더명과 같게) + `description` 둘
