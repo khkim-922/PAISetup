@@ -2968,21 +2968,19 @@ EOF
   # ⚠ `CLAUDE_CONFIG_RUN` 은 배포 한 번을 가리키는 표식이고 그것을 세우는 자는 `deploy.ps1`
   #   하나다. 표식이 없으면(세션 auto · `--check` · 사람이 손으로 부른 설치) **아무것도 안
   #   적는다** — 안 적으면 아래 저장소 진단도 볼 것이 없어 지금처럼 매번 프로브한다.
-  # ⚠ **✅ 만 적는다.** ❌ 를 적으면 저장소 진단이 안 선 도구를 「확인했다」로 읽는다.
+  # ⚠ **✅ 명부에는 ✅ 만 적는다.** ❌ 를 적으면 저장소 진단이 안 선 도구를 「확인했다」로 읽는다. ❌ 는 따로 ❌ 명부
+  #   (`GDOWNED`)에 적는다 — 저장소 진단이 같은 실패를 저장소마다 또 세지 않게 인용한다(`render_decl`).
   # ⚠ **이름과 프로브 대상을 함께 적는다.** 이름만 적으면 대상이 다른 선언(같은 이름, 딴
-  #   모듈)이 같은 명제로 읽힌다 — 어긋나면 인용하지 않는 것이 규율이다.
-  # ⚠ 줄의 꼴(`이름 \t 프로브대상 \t 표식`)은 읽는 자 `global_verified` 와 **한 벌이다** —
-  #   한쪽만 고치면 인용이 조용히 끊기고, 끊긴 자리는 느려질 뿐이라 아무도 안 걸린다.
+  #   모듈)이 같은 명제로 읽힌다 — 어긋나면 인용하지 않는 것이 규율이다. 줄의 꼴은 `global_run_put` 이 든다.
   gverified_put() {  # gverified_put <이름> <probe-target>
-    [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 0
-    printf '%s\t%s\t%s\n' "$1" "$2" "$CLAUDE_CONFIG_RUN" >> "$GVERIFIED" 2>/dev/null || true
-    return 0
+    global_run_put "$GVERIFIED" "$1" "$2"
   }
   install_global() {
     _gseen=""; _gl="$(mktemp)"
     # 이번 실행의 명부는 **이번 실행이 처음부터 짓는다** — 이어 적으면 지난 실행에서 ✅ 였다가
-    # 이번에 ❌ 인 도구가 옛 줄로 살아남는다. 표식이 없으면 파일에 손도 안 댄다.
+    # 이번에 ❌ 인 도구가(❌ 명부는 그 반대가) 옛 줄로 살아남는다. 표식이 없으면 파일에 손도 안 댄다.
     [ -z "${CLAUDE_CONFIG_RUN:-}" ] || : > "$GVERIFIED" 2>/dev/null || true
+    [ -z "${CLAUDE_CONFIG_RUN:-}" ] || : > "$GDOWNED" 2>/dev/null || true
     global_conf_list > "$_gl" 2>/dev/null
     while IFS= read -r _gf; do
       [ -f "$_gf" ] || continue
@@ -3056,6 +3054,7 @@ EOF
               "$(awk -F'\t' -v k="$_gn" '$1==k{printf " · 설치 실패: %s", $2; exit}' "$GFAILS" 2>/dev/null)" \
               "$((SECONDS - _gt0))"
             GDOWN=$((GDOWN + 1))
+            global_run_put "$GDOWNED" "$_gn" "$_gtg"
           fi
         fi
         wire_global "$_gf" "$_gn"
@@ -3168,12 +3167,15 @@ install_bg() {
   echo "$PROJECT_NAME: 도구를 배경에서 맞춘다 ($(printf '%s' "${DO_GLOBAL:+전역형 도구 · }${DO_REPO:+이 저장소 도구 · }${UPGRADE:+새 판 견주기 · }" | sed 's/ · $//')) — 세션 시작은 안 기다린다. 이 세션에는 아직 안 선 도구가 있을 수 있고, 진 사유는 다음 세션이 말한다 · 기록 $INSTALL_BG_LOG"
 }
 
-gate() {  # gate <이름> <ok|ok-partial|off> <까닭> — 진단 줄 하나. off 는 꺼진 검사(`down`)로 센다
+gate() {  # gate <이름> <ok|ok-partial|held|off> <까닭> — 진단 줄 하나. off 는 꺼진 검사(`down`)로 센다
   # ok-partial 은 ✅ 이되 그 초록이 다 재지는 않은 줄이다 — 안 닿는데 안 세거나(on-demand · 못 타는 설치법)
   #   판을 못 쟀다. `down` 에는 안 들고, 저장소를 한 줄로 접을지(`gate_flush`)만 가른다.
+  # held 는 안 서는데 그 실패를 이미 다른 자리가 셌다는 줄이다(전역 걸음이 이 실행에서 ❌ 로 낸 전역형 도구). 서지 않았으니 ✅ 가
+  #   아니라 ⚠ 로 찍고, `down` 에는 안 들며, 접지도 않는다.
   case "$2" in
     ok)         _gate_line="  ✅ $1 — $3" ;;
     ok-partial) _gate_line="  ✅ $1 — $3"; GATE_PARTIAL=$((GATE_PARTIAL + 1)) ;;
+    held)       _gate_line="  ⚠ $1 — $3"; GATE_PARTIAL=$((GATE_PARTIAL + 1)) ;;
     *)          _gate_line="  ❌ $1 — $3"; down=$((down + 1)) ;;
   esac
   GATE_N=$((GATE_N + 1))
@@ -3264,6 +3266,23 @@ EOF
 #   (지난 실행의 명부는 이번 실행의 실측이 아니다). 배포 밖에서는 표식이 없어 한 줄도 안 바뀐다.
 # ⚠ **읽기는 셸 안에서 끝낸다** — 저장소마다 도구마다 도는 자리라, 여기서 프로세스를 띄우면
 #   줄이려던 값을 되돌려 놓는다. `read` 는 내장이다.
+# 명부는 둘이다 — 전역 걸음이 이 실행에서 ✅ 로 낸 도구(`GVERIFIED`)와 ❌ 로 낸 도구(`GDOWNED`). 줄의 꼴(`이름 \t 프로브대상 \t
+#   표식`)은 쓰는 자 `global_run_put` 과 읽는 자 `global_run_has` 한 벌만 안다 — 한쪽만 고치면 인용이 조용히 끊긴다. 표식이 없으면
+#   쓰지도 읽지도 않는다.
+global_run_put() {  # global_run_put <명부> <이름> <probe-target>
+  [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 0
+  printf '%s\t%s\t%s\n' "$2" "$3" "$CLAUDE_CONFIG_RUN" >> "$1" 2>/dev/null || true
+  return 0
+}
+global_run_has() {  # global_run_has <명부> <이름> <probe-target> — 통째로 견줘 셋 중 하나만 달라도 안 문다
+  [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 1
+  [ -f "$1" ] || return 1
+  _vq="$(printf '%s\t%s\t%s' "$2" "$3" "$CLAUDE_CONFIG_RUN")"
+  while IFS= read -r _vl; do
+    [ "$_vl" = "$_vq" ] && return 0
+  done < "$1"
+  return 1
+}
 global_verified() {  # global_verified <선언파일> <이름> <probe-target>
   [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 1
   [ -f "$GVERIFIED" ] || return 1
@@ -3279,12 +3298,7 @@ EOF
   #   끊겼다」)가 통째로 사라진다 — **인용은 같은 명제를 대신할 때만 선다.** 기계에 대고 묻는
   #   갈래(PATH 실행형)만 남기고 이 갈래는 옛 길 그대로 저장소마다 잰다.
   [ "$_gvk" = node-resolvable ] && return 1
-  # 줄의 꼴은 쓰는 자 `gverified_put` 과 한 벌이다 — 통째로 견줘 셋 중 하나만 달라도 안 문다.
-  _vq="$(printf '%s\t%s\t%s' "$2" "$3" "$CLAUDE_CONFIG_RUN")"
-  while IFS= read -r _vl; do
-    [ "$_vl" = "$_vq" ] && return 0
-  done < "$GVERIFIED"
-  return 1
+  global_run_has "$GVERIFIED" "$2" "$3"
 }
 
 # ── 설치 걸음이 **이 프로세스에서** 「이 저장소에서 닿나」를 이미 물었나 — 저장소 도구의 인용 (#130 ②) ──
@@ -3357,6 +3371,11 @@ EOF
     elif ! kind_here "$_inst"; then
       # 이 자리에서 못 타는 설치법 — 깔 손이 없으니 꺼진 검사로 안 센다(`kind_here` 곁말)
       gate "$_name" ok-partial "$_by ($2) — 안 닿는다 · 이 자리($OS)에서는 안 깐다 (설치법 $_inst)"
+    elif global_kind "$_inst" && global_run_has "$GDOWNED" "$_name" "$_target"; then
+      # 전역 걸음이 이 실행에서 이미 ❌ 로 내고 실패로 셌다 — 전역형 도구는 기계에 하나라 그 실패는 전역 걸음의 몫이다. 저장소마다
+      #   또 세면 한 고장이 저장소 수만큼 「저장소 설치가 오류로 끝났다」가 된다(PAISetup #30 · 실측 2026-10-14 회사 VDI: 하나가 일곱 번).
+      #   저장소의 프로브가 진 뒤에만 인용한다 — 저장소 안의 길로 서는 도구를 안 선 것으로 찍지 않는다.
+      gate "$_name" held "$_by ($2) — 안 닿는다 · 전역 걸음이 이 실행에서 이미 ❌ 로 냈다 — 이 저장소의 꺼진 검사로는 안 센다$(why "$_name" "$_step")"
     else
       gate "$_name" off "$_by ($2) — 안 닿는다$(why "$_name" "$_step")"
     fi
@@ -3384,6 +3403,8 @@ GSTAMP="$HOME/.claude/install-global-stamp"  # 전역형 선언의 지문 — �
 # 전역 걸음이 **이번 실행에서** ✅ 로 낸 도구들의 명부 (#57). 쓰는 자는 `install_global`,
 # 읽는 자는 아래 진단의 `global_verified` — 둘 다 이 한 자리를 가리킨다.
 GVERIFIED="$HOME/.claude/install-global-verified"
+# 같은 실행에서 ❌ 로 낸 도구들의 명부 (PAISetup #30). 쓰는 자는 `install_global`, 읽는 자는 진단의 `render_decl` 이다.
+GDOWNED="$HOME/.claude/install-global-down"
 FRESH="$PROJECT_DIR/.claude/install-upgraded"  # 마지막으로 도구의 새 판을 견준 날. 같은 자리, 커밋 안 한다
 UPGRADE_DAYS=7                                   # 그 뒤로 이만큼 지나면 한 번 견주고 새 판만 받는다
 
@@ -3729,8 +3750,8 @@ fi
 #    층 — 없음(재기)
 #    하는 일 — 전역 규율 · 홈 훅(설정 저장소 세션만) · 커밋 훅 배선과 게이트 · 선언 도구마다 닿나를 한 줄씩 내고,
 #      메모리 목차 한도를 잰다. `--install` 은 다 초록이면 그 줄들을 한 줄로 접는다(`gate_flush`)
-#    앞에서 받는 것 — 설치가 남긴 실패 기록(`install-fail` · `install-global-fail`) · 전역 걸음의 확인 명부(`GVERIFIED`) ·
-#      설치 걸음의 확인 기록(`REPO_VERIFIED`)
+#    앞에서 받는 것 — 설치가 남긴 실패 기록(`install-fail` · `install-global-fail`) · 전역 걸음의 확인 명부(`GVERIFIED`)와
+#      ❌ 명부(`GDOWNED`) · 설치 걸음의 확인 기록(`REPO_VERIFIED`)
 #    안 하는 것 — 깔기 · 심기 · 쓰기
 # ════════════════════════ 진단 — 지금 어느 검사가 도나 ════════════════════════
 # 판정 문구는 여기 한 자리에만 둔다. 위층이 죽으면 아래는 "실패"가 아니라 "못 잼"으로 낸다.
