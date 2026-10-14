@@ -9,6 +9,8 @@
   무엇을 할 수 있게 되나를 한두 문장으로만 적는다. 어디에 무엇이 깔리나(경로 · 조건 · 값)는
   README 「무엇이 깔리나」가 든다 — 여기 옮겨 적지 않는다(모델 이름 · 개수처럼 자주 바뀌는 값도).
   판마다 바뀐 것도 안 적는다 — 그 판의 릴리스 노트가 든다(결정 0099). 판이 바뀌어도 맞는 것만 적는다.
+  「일하는 방식 스킬」 칸은 배포본에 실리는 스킬(`dist.manifest.conf` 의 `[뺀다]` 를 뺀 `kit/skills`)을 손으로 옮긴 목록이다 —
+  스킬을 더하거나 걷거나 배포에서 빼면 이 칸도 고친다.
 
   ⚠ 배포 저장소 주소를 박지 않는다 — 그 주소의 계정 이름이 뽑기의 「새면 안 되는 글자」(dist.manifest.conf)라
     박으면 릴리스가 멈춘다. 이슈 안내는 설치 창의 「바뀐 것」 링크(주소를 값 파일의 `#update-repo` 에서 짓는다)를 가리킨다.
@@ -98,8 +100,14 @@
   .card b { display: block; font-size: 15.5px; margin-bottom: 4px; }
   .card b code { font-weight: 400; margin-left: 4px; white-space: nowrap; }
   .card span { color: var(--dim); font-size: 14.2px; }
+  .card small.id { display: block; margin-bottom: 2px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--dim); opacity: .8; }
+  .grid.ids > .card:not(.lead):not(:has(> small.id))::before { content: "\00a0"; display: block; margin-bottom: 2px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
   .card a { font-weight: 600; color: var(--k); }
   .card.lead { grid-column: 1 / -1; background: var(--kb); }
+  .card:has(> .tag) { position: relative; }
+  .card > .tag { position: absolute; top: 16px; right: 12px; margin: 0; font-size: 12px; color: var(--k); background: var(--kb); }
+  .card:has(> .tag) > b { padding-right: 92px; }
   .card em { display: block; font-style: normal; font-weight: 700; font-size: 12.5px; color: var(--k); margin-bottom: 3px; }
 
   .work  { --k: var(--c-work);  --kb: var(--c-work-bg); }
@@ -176,14 +184,14 @@
     </div>
   </div>
   <div class="grid">
-    <div class="card"><b>그림 문 <code>image-gate</code></b><span>스크린샷이나 큰 그림을 Claude 에 보내기 전에 크기를 잽니다. 너무 크면 막고 줄여서 다시 열게 해, 그림 한 장에 대화가 멈추지 않습니다.</span></div>
-    <div class="card"><b>웹 다시 찾기 <code>web-retry</code></b><span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 옆에 알려 줍니다. 막지는 않습니다.</span></div>
-    <div class="card"><b>DRM 길잡이 <code>drm-guide</code></b><span>회사 DRM 이 걸린 오피스 · PDF 를 붙이거나 경로를 적으면, Claude 가 그 파일을 DRM 문서 읽기(<code>drm-office-read</code>)로 열도록 길을 알려 줍니다. DRM 이 안 걸린 파일에는 아무것도 붙이지 않습니다.</span></div>
-    <div class="card"><b>Bash 겹역슬래시 보정 <code>bash-backslash-deny</code></b><span>윈도우에서 Bash 로 보낸 명령의 겹역슬래시는 셸에 닿기 전에 하나로 접혀 엉뚱한 경로가 됩니다. 그런 명령의 역슬래시를 미리 두 배로 늘려 쓴 그대로 닿게 합니다. 접힘을 아직 안 잰 새 Claude Code 판에서는 돌려보내 다시 짓게 합니다.</span></div>
-    <div class="card"><b>PowerShell 한글 지키기 <code>utf8-bom</code></b><span>윈도우 파워셸 5.1 은 BOM 없는 스크립트의 한글을 깨뜨려 읽습니다. 고친 <code>.ps1</code> 에 BOM 을 찍어 둡니다.</span></div>
-    <div class="card"><b>문서 스킬 <code>document-skills</code></b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
-    <div class="card"><b>DRM 문서 읽기 <code>drm-office-read</code></b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
-    <div class="card"><b>사내 앱 만들기 <code>inhouse-app</code></b><span>회사 디지털혁신그룹이 배포한 FastAPI 사내 앱 기준 문서를 읽어 주는 스킬입니다. 사내 앱에 LLM 게이트웨이 · SSO · 배포를 붙일 때 그 기준에서 필요한 장만 골라 엽니다.</span></div>
+    <div class="card"><small class="id">image-gate</small><b>그림 문</b><span>스크린샷이나 큰 그림을 Claude 에 보내기 전에 크기를 잽니다. 너무 크면 막고 줄여서 다시 열게 해, 그림 한 장에 대화가 멈추지 않습니다.</span></div>
+    <div class="card"><small class="id">web-retry</small><b>웹 다시 찾기</b><span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 옆에 알려 줍니다. 막지는 않습니다.</span></div>
+    <div class="card"><small class="id">drm-guide</small><b>DRM 길잡이</b><span>회사 DRM 이 걸린 오피스 · PDF 를 붙이거나 경로를 적으면, Claude 가 그 파일을 DRM 문서 읽기(<code>drm-office-read</code>)로 열도록 길을 알려 줍니다. DRM 이 안 걸린 파일에는 아무것도 붙이지 않습니다.</span></div>
+    <div class="card"><small class="id">bash-backslash-deny</small><b>Bash 겹역슬래시 보정</b><span>윈도우에서 Bash 로 보낸 명령의 겹역슬래시는 셸에 닿기 전에 하나로 접혀 엉뚱한 경로가 됩니다. 그런 명령의 역슬래시를 미리 두 배로 늘려 쓴 그대로 닿게 합니다. 접힘을 아직 안 잰 새 Claude Code 판에서는 돌려보내 다시 짓게 합니다.</span></div>
+    <div class="card"><small class="id">utf8-bom</small><b>PowerShell 한글 지키기</b><span>윈도우 파워셸 5.1 은 BOM 없는 스크립트의 한글을 깨뜨려 읽습니다. 고친 <code>.ps1</code> 에 BOM 을 찍어 둡니다.</span></div>
+    <div class="card"><small class="id">document-skills</small><b>문서 스킬</b><span>워드 · 엑셀 · 파워포인트 · PDF 를 읽고 만듭니다. Anthropic 공식 스킬을 공식 통로로 받습니다.</span></div>
+    <div class="card"><small class="id">drm-office-read</small><b>DRM 문서 읽기</b><span>회사 DRM 이 걸린 오피스 · PDF 에서 글자를 뽑습니다. 만든 슬라이드를 화면으로 떠서 넘친 곳도 봅니다.</span></div>
+    <div class="card"><small class="id">inhouse-app</small><b>사내 앱 만들기</b><span>회사 디지털혁신그룹이 배포한 FastAPI 사내 앱 기준 문서를 읽어 주는 스킬입니다. 사내 앱에 LLM 게이트웨이 · SSO · 배포를 붙일 때 그 기준에서 필요한 장만 골라 엽니다.</span></div>
   </div>
 </section>
 
@@ -197,12 +205,12 @@
          러너는 맡기는 쪽에만 깔려, 받는 도구가 제게 되맡기는 길은 생기지 않습니다.</p>
     </div>
   </div>
-  <div class="grid">
-    <div class="card lead"><b>맡기는 법 <code>agent-envelope</code></b><span>누구에게 맡길지 고르고, 받는 쪽이 읽을 작업 지시서를 짓고, 돌아온 결과를 확인해 거둡니다. 어느 도구를 고르든 깔리고, Claude 안의 서브에이전트에게 맡길 때도 이 절차를 씁니다. 아래 러너 셋은 이 스킬이 부르는 손입니다.</span></div>
-    <div class="card"><b>agy 에게 <code>agy-background</code></b><span><em>Claude · Codex → agy</em>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 넘깁니다. 한도에 걸리거나 서버가 몰리면 다음 모델로 다시 띄웁니다 — 사외는 제미나이를 먼저 쓰고 마지막에 Claude 로, 사내는 회사 키가 받는 모델을 일의 무게로 골라 씁니다.</span></div>
-    <div class="card"><b>Codex 에게 <code>codex-copilot-background</code></b><span><em>Claude · agy → Codex</em>긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 웹 조사를 넘깁니다. 사외에서는 Codex 가 실시간으로 웹을 찾고, 한도가 차면 Copilot 이 받습니다(Copilot CLI 는 Copilot 을 고르면 깔립니다). 사내에서는 회사 게이트웨이로 갑니다.</span></div>
-    <div class="card"><b>Claude 에게 <code>claude-background</code></b><span><em>Codex · agy → Claude</em>리뷰 · 조사 · 다른 모델의 의견을 Claude 에게 넘깁니다.</span></div>
-    <div class="card"><b>읽기가 기본</b><span>Codex · Claude 는 기본으로 읽기만 하고, 고치기를 맡길 때는 따로 세운 작업 폴더 안만 고칩니다. agy 는 맡길 때 세운 작업 폴더 안에서 씁니다.</span></div>
+  <div class="grid ids">
+    <div class="card lead"><small class="id">agent-envelope</small><b>맡기는 법</b><span>누구에게 맡길지 고르고, 받는 쪽이 읽을 작업 지시서를 짓고, 돌아온 결과를 확인해 거둡니다. 어느 도구를 고르든 깔리고, Claude 안의 서브에이전트에게 맡길 때도 이 절차를 씁니다. 아래 러너 셋은 이 스킬이 부르는 손입니다.</span></div>
+    <div class="card"><small class="id">agy-background</small><b>agy 에게</b><span><em>Claude · Codex → agy</em>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 넘깁니다. 한도에 걸리거나 서버가 몰리면 다음 모델로 다시 띄웁니다 — 사외는 제미나이를 먼저 쓰고 마지막에 Claude 로, 사내는 회사 키가 받는 모델을 일의 무게로 골라 씁니다.</span></div>
+    <div class="card"><small class="id">codex-copilot-background</small><b>Codex 에게</b><span><em>Claude · agy → Codex</em>긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 웹 조사를 넘깁니다. 사외에서는 Codex 가 실시간으로 웹을 찾고, 한도가 차면 Copilot 이 받습니다(Copilot CLI 는 Copilot 을 고르면 깔립니다). 사내에서는 회사 게이트웨이로 갑니다.</span></div>
+    <div class="card"><small class="id">claude-background</small><b>Claude 에게</b><span><em>Codex · agy → Claude</em>리뷰 · 조사 · 다른 모델의 의견을 Claude 에게 넘깁니다.</span></div>
+    <div class="card"><b>쓰는 자리는 작업 폴더 안</b><span>맡기는 일에 맞춰 권한을 줍니다 — 읽기만 할 일은 읽기만, 고치거나 적어 봐야 할 일은 따로 세운 작업 폴더 안에서만 씁니다. agy 도 맡길 때 세운 작업 폴더 안에서 씁니다.</span></div>
     <div class="card"><b>사외는 로그인 한 번씩</b><span>터미널에서 <code>codex login</code>(ChatGPT 계정)을 한 번 칩니다. Copilot 은 따로 로그인하지 않고 gh 로그인을 씁니다 — 설치 끝 검증이 그 로그인을 재서, 없거나 무효면 노란 줄로 <code>gh auth login</code> 한 번을 알립니다. agy 는 로그인 한도가 차도 <a href="https://aistudio.google.com/apikey">구글 무료 API 키</a>를 <code>setx GOOGLE_API_KEY &lt;키&gt;</code> 로 넣으면 제미나이를 더 씁니다. 사내는 회사 키로 서서 로그인이 없습니다.</span></div>
   </div>
 </section>
@@ -216,16 +224,16 @@
          PC 안의 작은 프록시가 그 사이에 서서, 게이트웨이가 그대로는 못 받는 요청을 고쳐 넘깁니다.<span class="fix">bug fix</span></p>
     </div>
   </div>
-  <div class="grid">
-    <div class="card"><b>Opus 5 · 1M 컨텍스트 <code>claude-opus-5[1m]</code></b><span>Claude Code 는 회사 게이트웨이를 거치면 100만 토큰을 믿지 않고 창을 20만으로 잡았습니다. 모델 이름에 <code>[1m]</code> 표시를 붙여 100만 토큰 창으로 엽니다. <code>/model</code> 의 다른 Claude 모델도 같습니다.</span></div>
-    <div class="card"><b>Opus 5 요청 거절 <code>prefill</code></b><span>게이트웨이(Bedrock)는 대화 끝에 Claude 가 미리 채운 답이 붙은 요청을 거절해(400), Opus 5 로 일을 못 했습니다. 프록시가 그 부분을 떼고 넘깁니다.</span></div>
+  <div class="grid ids">
+    <div class="card"><small class="id">claude-opus-5[1m]</small><b>Opus 5 · 1M 컨텍스트</b><span>Claude Code 는 회사 게이트웨이를 거치면 100만 토큰을 믿지 않고 창을 20만으로 잡았습니다. 모델 이름에 <code>[1m]</code> 표시를 붙여 100만 토큰 창으로 엽니다. <code>/model</code> 의 다른 Claude 모델도 같습니다.</span></div>
+    <div class="card"><small class="id">prefill</small><b>Opus 5 요청 거절</b><span>게이트웨이(Bedrock)는 대화 끝에 Claude 가 미리 채운 답이 붙은 요청을 거절해(400), Opus 5 로 일을 못 했습니다. 프록시가 그 부분을 떼고 넘깁니다.</span></div>
     <div class="card"><b>없는 모델 이름</b><span>Claude Code 가 곁일에 부르는 Haiku 와 기본 Sonnet 이름이 게이트웨이에 없어, 그 호출이 실패했습니다. 프록시가 게이트웨이에 있는 Sonnet 으로 바꿔 넘깁니다.</span></div>
-    <div class="card"><b>웹 검색 <code>WebSearch</code></b><span>Claude 요청은 회사 게이트웨이를 거쳐 AWS Bedrock 에서 도는데, 거기서는 Claude Code 의 웹 검색이 지원되지 않아 사내에서는 늘 빈손이었습니다. 프록시가 그 자리를 게이트웨이의 제미나이 검색으로 채워, 출처가 달린 결과가 옵니다.</span></div>
-    <div class="card"><b>웹 가져오기 <code>WebFetch</code></b><span>페이지를 받기 전에 그 주소가 안전한지 Anthropic 에 묻는데, 사내 망이 그 확인을 끊어 열리는 주소도 못 가져왔습니다. 그 확인을 건너뛰게 해 본문을 가져옵니다.</span></div>
-    <div class="card"><b>그림 보기 <code>Read</code></b><span>파일로 연 그림을 게이트웨이가 조용히 버려, 사내에서는 Claude 가 그림을 못 봤습니다. 프록시가 그림을 게이트웨이가 읽는 자리로 옮겨 넘깁니다.</span></div>
+    <div class="card"><small class="id">WebSearch</small><b>웹 검색</b><span>Claude 요청은 회사 게이트웨이를 거쳐 AWS Bedrock 에서 도는데, 거기서는 Claude Code 의 웹 검색이 지원되지 않아 사내에서는 늘 빈손이었습니다. 프록시가 그 자리를 게이트웨이의 제미나이 검색으로 채워, 출처가 달린 결과가 옵니다.</span></div>
+    <div class="card"><small class="id">WebFetch</small><b>웹 가져오기</b><span>페이지를 받기 전에 그 주소가 안전한지 Anthropic 에 묻는데, 사내 망이 그 확인을 끊어 열리는 주소도 못 가져왔습니다. 그 확인을 건너뛰게 해 본문을 가져옵니다.</span></div>
+    <div class="card"><small class="id">Read</small><b>그림 보기</b><span>파일로 연 그림을 게이트웨이가 조용히 버려, 사내에서는 Claude 가 그림을 못 봤습니다. 프록시가 그림을 게이트웨이가 읽는 자리로 옮겨 넘깁니다.</span></div>
     <div class="card"><b>생각하다 끊김</b><span>게이트웨이는 Claude 가 생각하는 동안 아무것도 흘리지 않아, Claude Code 가 연결이 죽은 줄 알고 끊었습니다. 프록시가 15초마다 살아 있다는 신호를 흘리고, 답 길이를 게이트웨이 시간 제한 안으로 맞춥니다.</span></div>
     <div class="card"><b>개인 키 새는 것</b><span>PC 에 개인 Anthropic 키가 있으면 Claude Code 가 그 키를 회사 키와 함께 보내, 암호화 안 된 사내 연결로 게이트웨이까지 갔습니다. 프록시가 개인 키를 떼고 넘깁니다.</span></div>
-    <div class="card"><b>늘 켜진 프록시 <code>PGPTProxy-Watchdog</code></b><span>프록시가 꺼지면 위 고침이 다 멈춥니다. 로그인할 때 감시 작업이 프록시를 띄우고, 꺼지면 다시 살립니다.</span></div>
+    <div class="card"><small class="id">PGPTProxy-Watchdog</small><b>늘 켜진 프록시</b><span>프록시가 꺼지면 위 고침이 다 멈춥니다. 로그인할 때 감시 작업이 프록시를 띄우고, 꺼지면 다시 살립니다.</span></div>
   </div>
 </section>
 
@@ -239,11 +247,11 @@
     </div>
   </div>
   <div class="grid">
-    <div class="card"><b>게이트웨이 배관 <code>gateway</code></b><span>회사 게이트웨이 기준에 맞게 설계된 파이썬 코드 한 벌과 그 검사입니다. Anthropic · OpenAI · Gemini 규격을 다 듭니다.</span></div>
-    <div class="card"><b>검사 <code>check</code></b><span>새 저장소가 처음 갖출 검사 한 벌입니다. 문서가 없는 파일을 가리키는지, 만든 HTML 이 깨졌는지 같은 것을 잡습니다.</span></div>
-    <div class="card"><b>설정 저장소 <code>config-repo</code></b><span>내 Claude Code 설정을 git 저장소로 들고 다니는 견본입니다. 새 PC 에서 설정과 여러 저장소를 한 번에 깔아 줍니다. <a href="config-repo-howto.html">만드는 법</a></span></div>
-    <div class="card"><b>사내 환경 문서 <code>~/.claude/posco/</code></b><span>게이트웨이 주소 · 모델 · 오류 기록입니다. 회사 게이트웨이에 무언가를 붙이기 전에 읽습니다.</span></div>
-    <div class="card"><b>사내 코딩 기준 <code>vibecoding</code></b><span>회사 디지털혁신그룹이 배포한 사내 앱(FastAPI) 기준입니다. 사내 앱 만들기 스킬이 이 안의 장을 엽니다.</span></div>
+    <div class="card"><small class="id">gateway</small><b>게이트웨이 배관</b><span>회사 게이트웨이 기준에 맞게 설계된 파이썬 코드 한 벌과 그 검사입니다. Anthropic · OpenAI · Gemini 규격을 다 듭니다.</span></div>
+    <div class="card"><small class="id">check</small><b>검사</b><span>새 저장소가 처음 갖출 검사 한 벌입니다. 문서가 없는 파일을 가리키는지, 만든 HTML 이 깨졌는지 같은 것을 잡습니다.</span></div>
+    <div class="card"><small class="id">config-repo</small><b>설정 저장소</b><span>내 Claude Code 설정을 git 저장소로 들고 다니는 견본입니다. 새 PC 에서 설정과 여러 저장소를 한 번에 깔아 줍니다. <a href="config-repo-howto.html">만드는 법</a></span></div>
+    <div class="card"><small class="id">~/.claude/posco/</small><b>사내 환경 문서</b><span>게이트웨이 주소 · 모델 · 오류 기록입니다. 회사 게이트웨이에 무언가를 붙이기 전에 읽습니다.</span></div>
+    <div class="card"><small class="id">vibecoding</small><b>사내 코딩 기준</b><span>회사 디지털혁신그룹이 배포한 사내 앱(FastAPI) 기준입니다. 사내 앱 만들기 스킬이 이 안의 장을 엽니다.</span></div>
   </div>
 </section>
 
@@ -268,16 +276,35 @@
     <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg></div>
     <div>
       <h2>제작자 칸을 켜면<span class="tag">설치 창의 「제작자의 … 깝니다」 — 도구마다 고른다</span></h2>
-      <p>만든 사람이 일하는 방식입니다. Claude · Codex · agy 가운데 받을 도구만 켭니다 — Claude 만 받고 나머지는 가볍게 써도 됩니다. 안 켜도 설치는 완전합니다. 설치 창에 내 설정 저장소 주소를 넣으면 같은 칸이 그 저장소의 규범 · 룰 · 스킬을 고른 도구에 보냅니다. 판마다 바뀐 것은 그 판의 릴리스 노트가 적습니다 — 설치 창의 「바뀐 것」 링크가 엽니다.</p>
+      <p>만든 사람이 일하는 방식입니다. Claude · Codex · agy 가운데 받을 도구만 켜면, 켠 도구마다 같은 규범 · 룰 · 스킬이 그 도구가 읽는 자리로 갑니다(보고서 덱은 Claude 에만). 부를 때마다 함께 실리니 직접 일을 시키는 도구에만 켜면 가볍습니다. 안 켜도 설치는 완전합니다. 설치 창에 내 설정 저장소 주소를 넣으면 같은 칸이 그 저장소의 규범 · 룰 · 스킬을 고른 도구에 보냅니다. 판마다 바뀐 것은 그 판의 릴리스 노트가 적습니다 — 설치 창의 「바뀐 것」 링크가 엽니다.</p>
     </div>
   </div>
   <div class="grid">
-    <div class="card"><b>규범 · 룰</b><span>생각하고, 글 쓰고, 코드를 고칠 때의 원칙입니다. Claude 가 세션마다 읽고, 룰은 코드나 문서를 만질 때만 걸립니다.</span></div>
-    <div class="card"><b>일하는 방식 스킬</b><span>결정 기록 · 세션 인계 · 이슈 쓰기 · 문서 점검 · 글 다듬기 같은 절차입니다.</span></div>
-    <div class="card"><b>보고서 덱 <code>ppt-report</code></b><span>회사 보고 양식으로 슬라이드 덱을 만듭니다. 받는 사람이 누구인지 먼저 묻고, 결론을 앞에 두는 보고서 꼴로 세웁니다.</span></div>
-    <div class="card"><b>agy 도 같은 규범으로</b><span>agy 가 Claude 와 같은 규범 · 룰을 읽고, 일하는 방식 스킬도 Codex 와 같이 다 받습니다.</span></div>
-    <div class="card"><b>Codex 도 같은 규범으로</b><span>Codex 의 지침 파일에 같은 규범을 싣고, 코드나 문서를 만질 때 읽을 룰을 가리킵니다. 일하는 방식 스킬도 Codex 가 읽는 자리에 깝니다. 그 파일에 직접 쓴 글은 그대로 둡니다.</span></div>
-    <div class="card"><b>주로 쓰는 도구에만 켜면 가볍습니다</b><span>규범 · 스킬 목록은 부를 때마다 함께 실립니다(agy 한 번에 약 11,700 → 16,000 토큰). 직접 일을 시키는 도구에만 켜고, 가끔 맡기기만 하는 도구는 꺼 둡니다.</span></div>
+    <div class="card lead"><em>규범 · 룰</em><b>생각하고, 글 쓰고, 코드를 고칠 때의 원칙</b><span>Claude 가 세션마다 읽고(Codex · agy 도 같은 것을 받습니다), 룰은 코드나 문서를 만질 때만 걸려 평소 대화에 짐이 되지 않습니다. 이런 것을 지킵니다.</span></div>
+    <div class="card"><b>본질까지 내려간다</b><span>겉 증상에서 멈추지 않고 근본 원인까지 내려간 뒤, 한 층 위에서 여러 일의 공통 원천을 찾습니다.</span></div>
+    <div class="card"><b>만들기 전에 부른다</b><span>이미 있는 표준 · 도구 · 지식을 먼저 쓰고, 새로 짓는 것은 우리만 다른 자리에 한합니다.</span></div>
+    <div class="card"><b>한 사실은 한 곳에</b><span>같은 내용을 두 곳에 손으로 적지 않습니다 — 원본을 가리키거나 원본에서 자동으로 만듭니다.</span></div>
+    <div class="card"><b>검사 통과를 그대로 믿지 않는다</b><span>초록은 「본 데까지는 없다」일 뿐이라, 어디까지 봤고 무엇을 안 봤는지를 같이 말합니다.</span></div>
+    <div class="card"><b>원인에서, 한 자리에서 고친다</b><span>같은 실패가 두 번 나면 세 번째로 가지 않고 전제를 다시 봅니다. 고치면 부르는 쪽까지 훑습니다.</span></div>
+    <div class="card"><b>보고 묻고, 위험한 일은 먼저 묻는다</b><span>볼 수 있는 것은 먼저 보고 나서 묻습니다. push · 삭제처럼 되돌리기 어려운 일은 방법 · 이유 · 영향을 말하고 승인을 받습니다.</span></div>
+    <div class="card"><b>큰 일은 나눠 맡긴다</b><span>갈래가 여럿이면 다른 에이전트에게 나눠 맡기고, 돌아온 결과는 직접 확인한 뒤 거둡니다.</span></div>
+    <div class="card"><b>한국어로 다시 짓는다</b><span>읽는 사람이 원본을 안 열어도 알게, 무엇을 위한 것인지부터 번역투 없이 씁니다.</span></div>
+    <div class="card lead"><em>일하는 방식 스킬</em><b>필요할 때 불러 쓰는 절차</b><span>부르는 말을 하면 그 절차가 실립니다. 보고서 덱만 Claude 전용이고, 나머지는 켠 도구가 다 받습니다. 맡기기 러너 · DRM 문서 읽기 · 사내 앱은 위 칸들이 적습니다.</span></div>
+    <div class="card"><span class="tag">Claude 전용</span><small class="id">ppt-report</small><b>보고서 덱</b><span>회사 보고 양식으로 슬라이드 덱을 만듭니다. 받는 사람이 누구인지 먼저 묻고, 결론을 앞에 두는 보고서 꼴로 세웁니다. 기대는 공식 PPT 스킬이 Claude 에만 있어, Codex · agy 는 이 일을 Claude 에 맡깁니다.</span></div>
+    <div class="card"><small class="id">adr-and-source-together</small><b>결정 기록</b><span>「이렇게 가기로 하자」를 결정 기록으로 남기고, 결정과 그 결정이 바꾼 원본을 함께 둡니다.</span></div>
+    <div class="card"><small class="id">session-handover</small><b>세션 인계</b><span>끝나지 않은 일을 다음 세션에 넘깁니다 — 헤맨 길과 버린 방향까지 적어 같은 길을 다시 안 헤매게 합니다.</span></div>
+    <div class="card"><small class="id">issue-write</small><b>이슈 쓰기</b><span>이슈를 실측 · 끝 조건 · 재는 법을 갖춰 쓰고, 진행되면 맨 위 「지금 상태」 칸을 고칩니다.</span></div>
+    <div class="card"><small class="id">explain-the-essence</small><b>글 다듬기</b><span>사람이 읽을 글을 내밀기 전에, 무엇을 위한 글인지부터 서고 번역투가 없게 다듬습니다.</span></div>
+    <div class="card"><small class="id">readme-standard</small><b>README</b><span>README 를 쓰거나 실물과 맞게 고칩니다.</span></div>
+    <div class="card"><small class="id">architecture-doc</small><b>설계도</b><span>아키텍처 문서를 쓰거나 고칩니다.</span></div>
+    <div class="card"><small class="id">doc-coordinate-audit</small><b>문서 좌표 점검</b><span>문서가 가리키는 경로 · 링크 · 숫자 · 사본이 실제로 있는지 검사합니다.</span></div>
+    <div class="card"><small class="id">doc-rederive-from-source</small><b>실물에서 문서 짚기</b><span>코드 · 설정을 먼저 읽고, 문서에 빠졌거나 낡은 문장을 거꾸로 찾습니다.</span></div>
+    <div class="card"><small class="id">agent-envelope</small><b>일 맡기기 계획</b><span>다른 에이전트에게 일을 맡길 때 누구에게 맡길지 고르고 작업 지시서를 씁니다.</span></div>
+    <div class="card"><small class="id">skill-from-standard</small><b>스킬 만들기</b><span>스킬을 만들거나 고칠 때 이미 있는 표준부터 찾아 그 위에 세웁니다.</span></div>
+    <div class="card"><small class="id">borrow-spec-as-pair</small><b>다른 저장소에서 옮겨 오기</b><span>형제 저장소의 코드 · 규격 · 검사를 옮겨 올 때, 같이 옮겨야 할 짝을 먼저 셉니다.</span></div>
+    <div class="card"><small class="id">automation-audit-ops</small><b>자동화 점검</b><span>작업 · 훅 · 커넥터를 고치기 전에 무엇이 있고 무엇이 겹치는지 근거부터 모읍니다.</span></div>
+    <div class="card"><small class="id">click-path-audit</small><b>클릭 경로 점검</b><span>화면의 버튼마다 상태가 바뀌는 과정을 따라가, 함수는 되는데 화면에서 안 되는 자리를 찾습니다.</span></div>
+    <div class="card"><small class="id">benchmark-optimization-loop</small><b>빠르게 만들기</b><span>여러 변형을 재 보며 되풀이해 더 빠른 쪽을 고릅니다.</span></div>
   </div>
 </section>
 
