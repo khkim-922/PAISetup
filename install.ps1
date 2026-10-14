@@ -91,8 +91,9 @@ $SwMark = 0
 #   deprecation 경고에 확장 칸에서 죽었다. **경고는 실패가 아니다.**
 #   ⚠ 합치면 판정도 망가진다: `Get-Ver` 가 판 대신 그 경고 줄을 읽어 갱신 여부를 헛짚는다.
 #
-# ⚠ **그렇다고 버리지도 않는다.** 판정만 재는 자리(`Test-Runs`·`Get-Ver`)는 `Get-Quiet` 으로
-#   버리되(맨 `2>$null` 은 방패가 아니다 — 그 함수 머리), **설치하는 자리는 실패했을 때 까닭이
+# ⚠ **그렇다고 버리지도 않는다.** 판정만 재는 자리는 버리되 — `Get-Ver` 는 `Get-Quiet` 으로(맨 `2>$null` 은
+#   방패가 아니다 — 그 함수 머리), 「도나」(`Test-Runs` · `Measure-Runs`)는 울타리 손(`Invoke-ProbeCapped`)이 따로 띄운
+#   자식의 두 스트림을 읽어 버린다 — **설치하는 자리는 실패했을 때 까닭이
 #   유일한 단서다.** 처음엔 다 버렸다가 확장이
 #   「! 설치 실패」 한 줄만 내고 왜인지 아무도 모르는 자리를 밟았다(실측 2026-09-09 · 사외 VDI).
 #   그래서 파일로 **잡아 두고 실패할 때만 편다** — winget 칸이 이미 쓰던 꼴이다.
@@ -224,6 +225,9 @@ $Clis = @(
   @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI'
      ReadVer = { (Get-Ver 'copilot' '--version') -replace '\.$', '' } }
 )
+# npm 이 전역에 깐 CLI 가 서는 자리 — 배선(`Update-RuntimePath`)이 이 창에 태우고, 「키와 값」 걸음이 사용자 PATH 에 심고,
+#   끝 검증이 사용자 PATH 에서 잰다(claude-config 결정 0143). 세 자리가 이 한 줄을 읽는다.
+$NpmGlobalDir = "$env:APPDATA\npm"
 
 # ── Node 가 말을 거는 자리 — **목록이 진본이다** ─────────────────────────────────
 # 신뢰를 이을 근거를 여기서 잰다(아래 `Wire-NodeTrust`). Node 를 태우는 곳이 늘면 한 줄 더한다.
@@ -564,6 +568,58 @@ function Get-Quiet([string]$File, [string[]]$CmdArgs) {
   finally { $ErrorActionPreference = $prev }
 }
 
+# 네이티브 명령을 **그 파일의 꼴대로** 띄울 채비를 짓는다 — `Process.Start` 로 띄우는 두 울타리(`Invoke-ProbeCapped` ·
+#   `Invoke-LoggedCapped`)가 이것 하나를 쓴다. 이름이 안 서거나 띄울 파일이 아니면 `$null` 이다.
+# ⚠ **윈도우가 프로세스로 만드는 것은 실행 파일뿐이다.** `Get-Command` 가 집은 자리를 그대로 넘기면 npm 이 깐 `.ps1`
+#   껍데기(`npm` · `claude` · `codex` · `copilot`)는 띄우기부터 `Win32Exception`(193)으로 지고, 그 판정은 「없다」로 읽혀
+#   깔린 것을 다시 깔러 간다. 파워셸 연산자(`&`)는 그 꼴을 알아서 돌리지만 울타리를 두를 손잡이를 안 준다. 그래서 꼴마다
+#   그 꼴을 읽는 호스트에 맡긴다(claude-config 결정 0141):
+#     `.ps1`        — Windows PowerShell 에 `-NoProfile -ExecutionPolicy Bypass -File` 로
+#     `.cmd` `.bat` — `cmd.exe /d /s /c` 로. `/d` 는 사람이 걸어 둔 cmd 의 AutoRun 을 안 태우고, `/s` 는 바깥 따옴표
+#                     한 쌍만 걷어 안의 따옴표를 그대로 둔다
+#     그 밖          — 그대로
+# ⚠ **인자는 MSVCRT 규칙으로 싼 한 줄이다**(`Join-NativeArgs` 가 짓는다). 세 호스트가 다 그 규칙으로 낱낱을 가른다.
+#   cmd 만 따옴표 밖의 `& | < > ^` 를 제 연산자로 읽어 `Join-NativeArgs` 가 그 글자를 든 낱도 감싼다. 따옴표 안의
+#   `%` 와 큰따옴표는 cmd 가 못 지켜 그 글자를 든 인자는 `.cmd` 에 못 넘긴다 — 지금 부르는 자리에는 없다.
+# ⚠ **들어오는 손잡이(stdin)는 돌려 받아 띄운 직후 닫는다** — 부르는 쪽이 `$p.StandardInput.Close()` 를 한다. npm 이 깐
+#   `.ps1` 껍데기는 들어오는 것이 있으면(`$MyInvocation.ExpectingInput`) 그것을 끝까지 읽고서야 node 를 부른다. 물려주면
+#   이 설치기의 stdin 이 안 닫히는 파이프인 자리(다른 프로그램이 이 설치기를 부른 판)에서 `npm --version` 이 그 끝을 기다리다
+#   울타리를 넘긴다 — 실측 2026-10-14: 물려준 판은 8초를 넘겨도 안 끝났고, 닫아 준 판은 0.6초에 섰다.
+function New-NativeStart([string]$File, [string]$ArgLine) {
+  $c = $null
+  try { $c = Get-Command $File -ErrorAction Stop | Select-Object -First 1 } catch { return $null }
+  if ($c.CommandType -eq 'Alias') { $c = $c.ResolvedCommand }
+  if ($c.CommandType -ne 'Application' -and $c.CommandType -ne 'ExternalScript') { return $null }
+  $path = $c.Source
+  $ext  = [IO.Path]::GetExtension($path).ToLowerInvariant()
+  $tail = if ($ArgLine) { ' ' + $ArgLine } else { '' }
+  $psi  = New-Object System.Diagnostics.ProcessStartInfo
+  if ($ext -eq '.ps1') {
+    $psi.FileName  = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $path + '"' + $tail
+  } elseif ($ext -eq '.cmd' -or $ext -eq '.bat') {
+    $psi.FileName  = Join-Path $env:SystemRoot 'System32\cmd.exe'
+    $psi.Arguments = '/d /s /c ""' + $path + '"' + $tail + '"'
+  } else {
+    $psi.FileName  = $path
+    $psi.Arguments = $ArgLine
+  }
+  $psi.UseShellExecute        = $false
+  $psi.RedirectStandardInput  = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError  = $true
+  return $psi
+}
+
+# 인자 낱낱을 한 줄로 싼다 — `ProcessStartInfo.ArgumentList` 가 이 파워셸(5.1 · .NET Framework)에 없어서다. 빈칸 · 따옴표 ·
+#   cmd 연산자(`& | < > ^`)가 든 낱과 빈 낱만 MSVCRT 규칙으로 감싼다. 감싸도 MSVCRT 를 따르는 쪽은 같은 낱을 받는다.
+function Join-NativeArgs([string[]]$CmdArgs) {
+  return (@($CmdArgs) | ForEach-Object {
+    if ("$_" -ne '' -and "$_" -notmatch '[\s"&|<>^]') { "$_" }
+    else { '"' + (("$_" -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"' }
+  }) -join ' '
+}
+
 # `Invoke-Logged` 와 같은 일을 하는데 **시간 울타리를 두른다.** 넘기면 나무째 거두고 -2 를 돌려준다.
 # 돌려주는 값 셋을 부르는 쪽이 가른다: 0 이상이면 그 종료코드 · -1 은 못 불렀다 · **-2 는 넘겼다.**
 # ⚠ **왜 이 자가 필요한가.** 갱신을 바깥 명령에 맡기는 칸들은 걸리는 시간이 **밀린 양에 달렸고 그
@@ -579,31 +635,23 @@ function Get-Quiet([string]$File, [string[]]$CmdArgs) {
 #   조용히 번진다. `Process.Start` 는 띄우는 순간의 손잡이를 쥐어 틈이 없다.
 # ⚠ **글자는 파일 둘로 받는다** — `Invoke-Logged` 는 `*>` 로 한 파일에 담지만, 이쪽은 자식을 따로
 #   띄우므로 두 스트림을 파이프로 받고 `CopyToAsync` 가 `$LogPath` 와 `$LogPath.err` 에 붓는다(파워셸
-#   스레드 없이 돈다). 늘 읽으므로 파이프 버퍼가 차서 자식이 멈추는 자리도 없다. `cmd /c` 로 감싸 파일로
-#   돌리지 않는다 — 그러면 아래 `Kill()` 이 자식 대신 cmd 만 죽인다.
-# ⚠ **나무째 거둔다.** `code` · `npm` 류는 제 자식을 띄우므로 부모만 죽이면 손자가 남아 돈다.
-#   `Kill($true)` 는 이 파워셸(5.1 · .NET Framework)에 없는 오버로드라 `taskkill /T` 가 든다.
-#   `ProcessStartInfo.ArgumentList` 도 같은 까닭으로 없다 — 인자는 한 줄로 싸되 빈칸 · 따옴표가 든
-#   낱낱만 MSVCRT 규칙으로 감싼다.
+#   스레드 없이 돈다). 늘 읽으므로 파이프 버퍼가 차서 자식이 멈추는 자리도 없다. 파일로 돌리려고 `cmd /c … >` 로
+#   감싸지 않는다 — 그러면 아래 `Kill()` 이 자식 대신 cmd 만 죽인다.
+# ⚠ **나무째 거둔다.** `code` · `npm` 류는 제 자식을 띄우고, 껍데기(`.cmd` · `.ps1`)는 그 호스트가 부모로 선다
+#   (`New-NativeStart`) — 부모만 죽이면 손자가 남아 돈다. `Kill($true)` 는 이 파워셸(5.1 · .NET Framework)에 없는
+#   오버로드라 `taskkill /T` 가 든다.
 function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec) {
-  $exe = $null
-  try { $exe = (Get-Command $File -ErrorAction Stop).Source } catch { return -1 }
+  $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
+  if (-not $psi) { return -1 }
   # 자식이 끝난 뒤 파이프의 꼬리를 다 붓기까지 기다리는 한도 — 그 끝은 파이프를 쥔 손자까지 다 나가야 온다.
   # 거둔 갈래는 안 기다린다 — 꼬리를 읽을 자리가 없고, 살아남은 손자가 울타리를 늘린다.
   $drainMs = 5000
   $sink = @()
   try {
-    $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
-    $psi.Arguments = (@($CmdArgs) | ForEach-Object {
-      if ("$_" -ne '' -and "$_" -notmatch '[\s"]') { "$_" }
-      else { '"' + (("$_" -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"' }
-    }) -join ' '
-    $psi.UseShellExecute        = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
     $sink = @([IO.File]::Open($LogPath, 'Create', 'Write', 'ReadWrite'),
               [IO.File]::Open("$LogPath.err", 'Create', 'Write', 'ReadWrite'))
     $p = [Diagnostics.Process]::Start($psi)
+    $p.StandardInput.Close()
     $pump = @($p.StandardOutput.BaseStream.CopyToAsync($sink[0]),
               $p.StandardError.BaseStream.CopyToAsync($sink[1]))
     if ($p.WaitForExit($CapSec * 1000)) {
@@ -623,7 +671,16 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
 #   그 초뿐이다 — 그래서 **의심스러우면 길게** 잡는다.
 $ProbeCap = 20
 
-# 「그 명령이 도나」를 묻는 유일한 자 — 설치기에서 스무 자리 넘게 부른다.
+# 울타리를 넘긴 프로브 — **넘김 하나가 한 줄이다.** 같은 명령이 여러 자리에서 넘기면 그 수만큼 서고, 줄마다 명령(`Probe`) ·
+#   부른 자리(`Site` — 이 파일의 행) · 한도(`Cap`)를 든다. 끝 검증이 이것을 명령마다 「몇 자리 · 몇 번」으로 센다.
+# ⚠ 두 목록 다 `List[hashtable]` 이다 — `List[object]` 는 `@(…)` 로 싸는 순간 이 파워셸(5.1)이 「Argument types do not
+#   match」로 던진다(실측).
+$script:ProbeTimedOut = New-Object System.Collections.Generic.List[hashtable]
+# 넘김 때문에 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`) — 끝 검증이 「안 한 걸음」 `[?]` 로 찍는다.
+$script:UnmeasuredSteps = New-Object System.Collections.Generic.List[hashtable]
+
+# 「그 명령이 도나」를 세 값으로 잰다 — `yes`(0 으로 끝났다) · `no`(이름이 없다 · 못 띄웠다 · 0 아닌 값으로 끝났다) ·
+#   `unmeasured`(울타리를 넘겼다). 설치기의 「도나」는 다 이 자를 거친다 — 참 · 거짓으로 묻는 자리는 `Test-Runs` 로.
 # ⚠ **울타리 없이 부르면 한 번의 멈춤이 설치를 영구히 세운다.** `Get-Quiet` 은 자식을 무한히
 #   기다리므로, `--version` 하나가 안 돌아오면 그 걸음에서 끝난다 — 실측 2026-10-14 회사 PC:
 #   검증 단계의 `python --version` 이 **CPU 0.28초만 쓰고 17분을 섰고**(`WaitReason:
@@ -632,40 +689,50 @@ $ProbeCap = 20
 #   그래서 멈추는 까닭을 쫓지 않고 **멈춰도 설치가 끝나게** 한다(#26).
 # ⚠ **울타리는 짧아도 된다.** 이 자가 부르는 것은 `--version` 류의 즉답뿐이라, 넉넉히 줘도
 #   멀쩡한 자리를 안 깎는다. 오래 걸리는 바깥 명령은 `Invoke-LoggedCapped` 가 따로 든다.
-# ⚠ **돌려주는 꼴은 참 · 거짓 그대로 둔다.** 부르는 자리가 스무 곳 넘고 다 `if` 의 조건으로 쓴다
-#   — 셋째 값을 돌려주면 그 전부를 훑어야 하고, `-not` 으로 읽는 자리에서 **「못 쟀다」가 조용히
-#   「된다」로 뒤집힌다.** 넘긴 것은 `$script:ProbeTimedOut` 에 **따로 적어** 검증이 그 이름을
-#   「못 쟀다」로 찍는다(아래 검증 칸) — 판정은 거짓으로 두되 **까닭이 남는다.**
-# ⚠ **거짓으로 두는 것이 거짓말이 아니다** — 「닿나」를 물었고 닿지 못했다. 다만 그 거짓이
-#   **「안 깔렸다」로 읽히면 사람이 깔러 간다**(#25 ② 가 든 그 결)라, 이름을 적어 두는 쪽이 든다.
-$script:ProbeTimedOut = @{}
-function Test-Runs([string]$Cmd, [string]$Arg) {
-  if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) { return $false }
+# ⚠ **넘김은 「없다」가 아니라 「못 쟀다」다.** 부재에 기대 상태를 바꾸는 자리 — 깔기 · 올리기를 건너뛰기 · 걷기를
+#   건너뛰기 — 는 참 · 거짓이 아니라 이 세 값으로 묻고, `unmeasured` 면 **하지도 건너뛰지도 않고** `Add-UnmeasuredStep`
+#   으로 남긴다. 「없다」를 세운 적이 없는 판정이 설치를 승인하거나 일을 조용히 빼면 안 된다(결정 0141).
+function Measure-Runs([string]$Cmd, [string]$Arg, [int]$Site = 0) {
+  if (-not $Site) { $Site = $MyInvocation.ScriptLineNumber }
+  if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) { return 'no' }
   $rc = Invoke-ProbeCapped $Cmd $Arg $ProbeCap
-  if ($rc -eq -2) { $script:ProbeTimedOut["$Cmd $Arg"] = $ProbeCap; return $false }
-  return ($rc -eq 0)
+  if ($rc -eq -2) { $script:ProbeTimedOut.Add(@{ Probe = "$Cmd $Arg"; Site = $Site; Cap = $ProbeCap }); return 'unmeasured' }
+  if ($rc -eq 0) { return 'yes' }
+  return 'no'
 }
 
-# `Test-Runs` 가 쓰는 울타리 — **종료코드만 쥐고 글자는 버린다.** `Invoke-LoggedCapped` 와 거두는
+# 「그 명령이 도나」를 참 · 거짓으로 — `Measure-Runs` 가 `yes` 일 때만 참이다. 스무 자리 넘게 `if` 의 조건으로 쓴다.
+# ⚠ **거짓은 「없다」가 아니다** — 넘김도 거짓이다. 거짓에 기대 깔거나 일을 빼는 자리는 이 자가 아니라 `Measure-Runs` 로
+#   묻는다(결정 0141). 넘긴 것은 그 자리와 함께 `$script:ProbeTimedOut` 에 남아 끝 검증이 센다.
+function Test-Runs([string]$Cmd, [string]$Arg) {
+  return ((Measure-Runs $Cmd $Arg $MyInvocation.ScriptLineNumber) -eq 'yes')
+}
+
+# 부재에 기대 상태를 바꾸는 자리가 `unmeasured` 를 받으면 부른다 — 그 자리에서 노란 줄을 찍고 끝 검증의 「안 한 걸음」에
+#   남긴다. `$Step` 은 안 한 걸음의 이름, `$Probe` 는 넘긴 명령, `$Held` 는 무엇을 안 했나다. 하나라도 남으면 설치는 성공이
+#   아니다(끝 검증).
+function Add-UnmeasuredStep([string]$Step, [string]$Probe, [string]$Held) {
+  $script:UnmeasuredSteps.Add(@{ Step = $Step; Probe = $Probe; Held = $Held })
+  Write-Host "  ! $Step — 못 쟀다: ``$Probe`` 이 ${ProbeCap}초 안에 안 끝나 $Held (없는 것이 아니다)" -ForegroundColor Yellow
+}
+
+# `Measure-Runs` 가 쓰는 울타리 — **종료코드만 쥐고 글자는 버린다.** `Invoke-LoggedCapped` 와 거두는
 # 길은 같지만 그쪽은 파일 둘을 열어 글자를 받는다: 판정만 재는 자리에서 그 파일이 설 까닭이 없고,
 # 스무 자리가 매번 임시 파일 둘을 열면 그 자체가 짐이다.
 # ⚠ **`Get-Quiet` 처럼 파워셸 연산자로 부르지 않는다** — `&` 로 부른 자식에는 울타리를 두를 손잡이가
-#   없다. `Process.Start` 가 쥐어 주는 그 손잡이가 `WaitForExit(ms)` 와 거둠의 전제다.
+#   없다. `Process.Start` 가 쥐어 주는 그 손잡이가 `WaitForExit(ms)` 와 거둠의 전제다. 그래서 파일의 꼴은
+#   `New-NativeStart` 가 가른다.
 # ⚠ **거둬도 안 죽는 자식이 있다** — 실측 2026-10-14: `taskkill /T /F` 가 「종료할 수 없습니다」로
 #   거절하고 관리자 `Stop-Process -Force` 가 성공을 돌려준 뒤에도 프로세스가 목록에 남았다.
 #   그래서 **거둠의 성공을 기다리지 않는다** — 걸어 보고 바로 -2 를 돌려준다. 남은 자식이 제 손으로
 #   나가든 말든 이 설치는 간다(손잡이를 `Dispose` 로 놓아 이 프로세스가 그것에 매이지 않는다).
 function Invoke-ProbeCapped([string]$File, [string]$Arg, [int]$CapSec) {
-  $exe = $null
-  try { $exe = (Get-Command $File -ErrorAction Stop).Source } catch { return -1 }
+  $psi = New-NativeStart $File $Arg
+  if (-not $psi) { return -1 }
   $p = $null
   try {
-    $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
-    $psi.Arguments              = $Arg
-    $psi.UseShellExecute        = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
     $p = [Diagnostics.Process]::Start($psi)
+    $p.StandardInput.Close()
     # ⚠ **두 스트림을 읽어 버린다.** 안 읽으면 파이프 버퍼가 차서 자식이 멈추고, 그러면
     #   **울타리가 우리 손으로 만든 멈춤을 재게 된다.** 비동기로 걸어 두고 결과는 안 쓴다.
     $null = $p.StandardOutput.ReadToEndAsync()
@@ -1355,7 +1422,7 @@ function New-CountCheck([string]$Name, [string]$From, [string]$To) {
 
 #endregion 파일
 
-#region 환경 — 사용자 환경변수를 심고 걷고, 걷어도 되는 값인지 가리고, PATH 를 태우고, 워드의 PDF 변환 안내를 끈다
+#region 환경 — 사용자 환경변수를 심고 걷고, 걷어도 되는 값인지 가리고, PATH 를 태우고 사용자 PATH 에 덧대고, 워드의 PDF 변환 안내를 끈다
 
 # ── 배선이 먼저다 ────────────────────────────────────────────────────────────────
 # ⚠ winget 이 심은 PATH 는 **이 창에 안 걸린다** — 이 창이 winget 보다 먼저 떴다.
@@ -1363,9 +1430,9 @@ function New-CountCheck([string]$Name, [string]$From, [string]$To) {
 #   설치 직후에도 다시 태운다.
 function Add-ToPath([string]$Dir) {
   if (-not $Dir) { return }
-  # ⚠ **레지스트리에서 온 자리는 아직 안 펴진 글자다.** PATH 는 `REG_EXPAND_SZ` 로 앉는 일이 잦아
-  #   `%USERPROFILE%\…` 가 원문 그대로 온다 — `[Environment]::GetEnvironmentVariable` 은 그것을
-  #   안 펴고 넘긴다. 아래 `Test-Path -LiteralPath` 는 받은 글자를 **글자 그대로** 찾으므로,
+  # ⚠ **레지스트리에서 온 자리는 안 펴진 글자일 수 있다.** 레지스트리 읽기는 `REG_EXPAND_SZ` 만 펴서
+  #   주므로, `REG_SZ` 로 앉은 PATH(.NET 의 사용자 환경변수 쓰기가 되쓴 PC 등)는
+  #   `%USERPROFILE%\…` 를 원문 그대로 넘긴다. 아래 `Test-Path -LiteralPath` 는 받은 글자를 **글자 그대로** 찾으므로,
   #   멀쩡히 있는 폴더가 「없다」로 읽혀 예외 하나 없이 조용히 버려진다 — 그리고 그 뒤는
   #   「깔았는데 안 잡힌다」로만 보인다. 그러니 **재기 전에 편다.** 이름으로 박은 자리
   #   (`$env:ProgramFiles\…`)는 이 창에서 이미 펴져 오므로 이 줄이 하는 일이 없다.
@@ -1406,12 +1473,101 @@ function Update-RuntimePath {
     Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag"
     Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag\Scripts"
   }
-  Add-ToPath "$env:APPDATA\npm"
+  # npm 전역 자리 — 여기서는 이 창만 태운다. 새 터미널이 보게 사용자 PATH 에 심는 것은 「키와 값」 걸음의 `Add-ToUserPath` 다.
+  Add-ToPath $NpmGlobalDir
   # ⚠ **`agy` 자리는 여기 안 적는다.** winget 이 portable 을 깔면서 **제 자리를 사용자 PATH 에
   #   제 손으로 넣는다** — 위 레지스트리 읽기가 그것을 태운다. 이름으로 박으면 저쪽이 자리를
   #   옮길 때 조용히 어긋나고(폴더 이름에 소스 해시가 박혀 있다), **확장이 따로 둔 사본**
   #   (`~/.gemini/bin`)을 박으면 그쪽이 앞에 서서 **진짜 CLI 를 가린다**(실측 2026-09-17 —
   #   둘은 같은 크기의 다른 파일이다).
+}
+
+# ── 영구 사용자 PATH — **새 터미널이 볼 자리에 한 자리를 덧댄다** (claude-config 결정 0143) ─────────────────
+# 위 배선은 이 창의 `$env:PATH` 만 고친다 — 설치가 끝나면 그 자리는 사라진다. 이 설치가 깐 것을 새 터미널이 이름만으로
+#   부르려면 그 자리가 사용자 PATH(`HKCU\Environment` 의 `Path`)에 서 있어야 한다. 아래 넷이 그 값을 읽고 · 재고 · 알리고 ·
+#   덧댄다. 기계 PATH 는 안 쓴다 — 관리자 권한이 들고 그 PC 의 다른 사용자에게 번진다.
+
+# 사용자 PATH 의 원문과 값의 꼴 — `@{ Raw; Kind }`, 값이 없으면 둘 다 `$null` 이다. 덧대는 손과 끝 검증이 같이 읽는다.
+# ⚠ **글자 그대로 읽는다**(`DoNotExpandEnvironmentNames`). 펴서 읽은 것을 되쓰면 남의 `%USERPROFILE%\…` 가 지금 이 PC 의
+#   경로로 굳는다.
+function Get-UserPath([string]$SubKey = 'Environment') {
+  $k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($SubKey, $false)
+  if (-not $k) { return @{ Raw = $null; Kind = $null } }
+  try {
+    if (@($k.GetValueNames()) -notcontains 'Path') { return @{ Raw = $null; Kind = $null } }
+    return @{ Raw  = $k.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+              Kind = $k.GetValueKind('Path') }
+  } finally { $k.Close() }
+}
+
+# 목록(`;` 로 이은 PATH 글자)에 그 자리가 서 있나 — 자리마다 **펴서** 견준다. 대소문자를 안 가리고 앞뒤 빈칸과 끝의
+#   `\` · `/` 를 뗀다 — `%APPDATA%\npm` 과 `C:\Users\…\AppData\Roaming\npm\` 은 같은 자리다.
+function Test-PathListHas([string]$List, [string]$Dir) {
+  $norm = { param([string]$p) [Environment]::ExpandEnvironmentVariables($p).Trim().TrimEnd('\', '/') }
+  $want = & $norm $Dir
+  if (-not $want) { return $false }
+  foreach ($e in ($List -split ';')) {
+    if ($e.Trim() -and ((& $norm $e) -ieq $want)) { return $true }
+  }
+  return $false
+}
+
+# 열린 프로그램에 「환경이 바뀌었다」를 알린다 — 탐색기가 이 알림을 받아 제 환경을 레지스트리에서 다시 짓고, 그 뒤 시작
+#   메뉴 · 작업 표시줄에서 여는 터미널이 새 PATH 를 받는다. 레지스트리에 쓰기만 하면 다음 로그온까지 아무도 모른다.
+# ⚠ **`[Environment]::SetEnvironmentVariable` 로 알리지 않는다** — 그 손은 알리기 앞에 값을 `REG_SZ` 로 되써서
+#   `REG_EXPAND_SZ` 의 `%…%` 자리를 깬다. 알림만 따로 보내고, 멎은 창은 건너뛴다.
+# 알렸으면 참이다. 못 알렸어도(정책이 `Add-Type` 을 막는 PC 등) 쓴 값은 다음 로그온부터 선다.
+function Send-EnvChanged {
+  $broadcast     = [IntPtr]0xffff   # HWND_BROADCAST — 모든 최상위 창
+  $settingChange = 0x1a             # WM_SETTINGCHANGE
+  $skipHung      = 0x2              # SMTO_ABORTIFHUNG — 멎은 창은 안 기다린다
+  $waitMs        = 1000             # 창 하나를 기다리는 한도
+  try {
+    if (-not ('PAISetup.EnvNotice' -as [type])) {
+      Add-Type -Namespace PAISetup -Name EnvNotice -MemberDefinition @'
+[DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);
+'@
+    }
+    $res = [UIntPtr]::Zero
+    return ([PAISetup.EnvNotice]::SendMessageTimeout($broadcast, $settingChange, [UIntPtr]::Zero, 'Environment', $skipHung, $waitMs, [ref]$res) -ne [IntPtr]::Zero)
+  } catch { return $false }
+}
+
+# 환경변수 하나의 한도 — 윈도우 API 가 받는 끝 널까지의 글자 수다. 사용자 PATH 에 덧댈 때 새 프로세스의 PATH 가 이것을 못 넘는다.
+$EnvVarMax = 32767
+
+# 사용자 PATH 끝에 그 자리를 **없을 때만** 덧댄다 — `@{ Did = 'kept' | 'added' | 'toolong' | 'failed'; Notified; Len; Err }`.
+# ⚠ **남의 자리는 한 글자도 안 바꾼다** — 원문 끝에 `;<자리>` 를 붙여 되쓸 뿐이라 빈 자리 · 겹친 자리 · 차례가 그대로다.
+#   값이 없으면 지어 쓴다.
+# ⚠ **값의 꼴을 지킨다** — `REG_EXPAND_SZ` 는 `REG_EXPAND_SZ` 로, `REG_SZ` 는 `REG_SZ` 로 되쓴다. 지을 때는 윈도우가 사용자
+#   PATH 에 쓰는 꼴인 `REG_EXPAND_SZ` 로 짓는다.
+# ⚠ **편 경로로 심는다**(`C:\Users\…\npm` — `%APPDATA%\npm` 이 아니다). 값이 `REG_SZ` 인 PC 에서도 서고, 로그온 때 윈도우가
+#   사용자 PATH 를 펴는 차례에 `APPDATA` 가 서 있나에 기대지 않는다(결정 0143).
+# ⚠ **길이** — 새 프로세스가 받는 PATH 는 기계 PATH 와 사용자 PATH 를 이어 편 것이고, 환경변수 하나는 `$EnvVarMax` 를 못
+#   넘는다. 덧대면 그것을 넘는 PC 에서는 안 쓰고 `toolong` 을 돌려준다.
+# 쓰고 나면 알린다(`$Notify` — 기본은 `Send-EnvChanged`). `$SubKey` · `$MachinePath` · `$Notify` 는 검사가 버릴 자리와 대역을
+#   넣는 손잡이다 — 설치는 기본값으로 부른다.
+function Add-ToUserPath([string]$Dir,
+                        [string]$SubKey = 'Environment',
+                        [string]$MachinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine'),
+                        [scriptblock]$Notify = { Send-EnvChanged }) {
+  try {
+    $entry = [Environment]::ExpandEnvironmentVariables($Dir).Trim().TrimEnd('\', '/')
+    if (-not $entry) { throw '덧댈 자리가 비었다' }
+    $now = Get-UserPath $SubKey
+    $raw = [string]$now.Raw
+    if (Test-PathListHas $raw $entry) { return @{ Did = 'kept' } }
+    $new = if (-not $raw) { $entry } elseif ($raw.EndsWith(';')) { $raw + $entry } else { "$raw;$entry" }
+    $len = [Environment]::ExpandEnvironmentVariables("$MachinePath;$new").Length
+    if ($len -ge $EnvVarMax) { return @{ Did = 'toolong'; Len = $len } }
+    $kind = if ($now.Kind) { $now.Kind } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
+    $k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($SubKey)
+    try { $k.SetValue('Path', $new, $kind) } finally { $k.Close() }
+    return @{ Did = 'added'; Notified = [bool](& $Notify) }
+  } catch {
+    return @{ Did = 'failed'; Err = $_ }
+  }
 }
 
 # **이 값이 로컬 프록시를 가리키나** — 이름이 아니라 **값**에서 판다.
@@ -2269,9 +2425,20 @@ function Install-Extension([string]$Id, [string]$Label, [hashtable]$Before, [has
 #   표가 든다). 도나(프로브)는 그대로 `--version` 이 든다 — 판 글자가 어긋나도 불리기는 한다.
 function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock]$ReadVer = $null) {
   if (-not $ReadVer) { $ReadVer = { Get-Ver $Cmd '--version' } }
-  if ((Test-Runs $Cmd '--version') -and ($NoUpgrade -or -not (Test-Runs 'npm' '--version'))) {
+  # ⚠ **두 물음 다 넘김을 「없다」로 안 읽는다**(결정 0141) — CLI 를 못 쟀는데 깔면 깔린 것 위에 다시 깔고, npm 을 못 쟀는데
+  #   「있음」으로 끝내면 올리기가 조용히 빠진다. 둘 다 하지도 건너뛰지도 않고 끝 검증에 남긴다.
+  $cliRuns = Measure-Runs $Cmd '--version'
+  if ($cliRuns -eq 'unmeasured') {
+    Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다'
+    return
+  }
+  $npmRuns = if ($cliRuns -eq 'yes' -and -not $NoUpgrade) { Measure-Runs 'npm' '--version' } else { '' }
+  if ($npmRuns -eq 'unmeasured') {
     Write-Host "  $Label — 있음 ($(& $ReadVer))"
-  } elseif (Test-Runs $Cmd '--version') {
+    Add-UnmeasuredStep "$Label 올리기" 'npm --version' '최신인지 안 묻고 올리지도 않았다'
+  } elseif ($cliRuns -eq 'yes' -and ($NoUpgrade -or $npmRuns -ne 'yes')) {
+    Write-Host "  $Label — 있음 ($(& $ReadVer))"
+  } elseif ($cliRuns -eq 'yes') {
     $b = & $ReadVer
     Say-Busy $Label 'upcheck' @('npm', "지금 $b")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
     # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
@@ -2348,7 +2515,13 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
 #   모른다. 그때 `--version` 은 서므로 「있음」으로 지나가고 `winget upgrade` 는 아무것도 안 한다.
 #   **그것을 실패로 안 찍는다**: 도구는 멀쩡히 서 있고, 걷어낼지는 사람이 정할 일이다.
 function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
-  if (Test-Runs $Cmd '--version') {
+  # ⚠ **못 쟀으면 깔지 않는다** — 넘김을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141).
+  $cliRuns = Measure-Runs $Cmd '--version'
+  if ($cliRuns -eq 'unmeasured') {
+    Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다'
+    return
+  }
+  if ($cliRuns -eq 'yes') {
     if (-not $NoUpgrade -and -not $noWinget) {
       Say-Busy $Label 'upcheck' @('winget')
       $ul = [IO.Path]::GetTempFileName()
@@ -3838,7 +4011,13 @@ foreach ($app in $Apps) {
       continue
     }
   }
-  if (Test-Runs $app.Cmd $app.Arg) {
+  # ⚠ **못 쟀으면 깔지도 올리지도 않는다** — 넘김을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141).
+  $appRuns = Measure-Runs $app.Cmd $app.Arg
+  if ($appRuns -eq 'unmeasured') {
+    Add-UnmeasuredStep $app.Name "$($app.Cmd) $($app.Arg)" '깔지도 올리지도 않았다'
+    continue
+  }
+  if ($appRuns -eq 'yes') {
     $before = Get-Ver $app.Cmd $app.Arg
     if ($NoUpgrade -or $noWinget) {
       Write-Host "  $($app.Name) — 있음  ($before)"
@@ -3892,9 +4071,14 @@ foreach ($app in $Apps) {
   #   **한 줄도 없었으며**, 설치기 창이 한참 **뒤에** 떴다. 셋 다 「먼저 돌아왔다」의 자국이다.
   #   그래서 몇 초를 더 준다. **이미 선 기계는 첫 물음에 서므로 느려지는 값이 없다.**
   # ⚠ 기다리는 동안 배선을 다시 태운다 — 설치가 끝나면서 그 폴더가 **그때 생긴다.**
+  # ⚠ **끝 시각으로 센다 — 묻는 횟수로 세지 않는다.** 한 번 묻는 데 울타리(`$ProbeCap`)까지 걸릴 수 있어, 횟수로 세면
+  #   기다림이 그 곱으로 는다. 끝 시각을 넘긴 뒤에는 더 묻지 않으므로 넘는 몫은 한 번의 물음뿐이다(결정 0141).
+  #   10초는 즉답하는 물음을 0.75초 틈으로 여남은 번 되풀이할 길이다 — 먼저 돌아온 설치가 서기를 기다리는 「몇 초」다.
   $ok = $false
-  for ($i = 0; $i -lt 8; $i++) {
+  $waitEnd = (Get-Date).AddSeconds(10)
+  while ($true) {
     if (Test-Runs $app.Cmd $app.Arg) { $ok = $true; break }
+    if ((Get-Date) -ge $waitEnd) { break }
     Start-Sleep -Milliseconds 750
     Update-RuntimePath
   }
@@ -4111,9 +4295,10 @@ Exit-Step 'cli'
 # ══ 걸음 「키와 값」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 환경
 #   하는 일 — 맡기기 모델 값(agy · Codex — 맡기기 모델 표에서) · Codex · Copilot 맡기기 값 · 값 파일의 이름들(게이트웨이 키 ·
-#     남은 이름) · 물러난 이름 걷기 · 회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 · 워드의 PDF 변환 안내 끄기(워드가
-#     깔린 PC) · 사외 Claude 구독 로그인
-#   앞에서 받는 것 — 준비의 자리(`$ModelSite`) · 맡기기 조건 · 짐(`$KitSkills`) · 값 파일, 「CLI」의 `claude`(구독 로그인)
+#     남은 이름) · 물러난 이름 걷기 · 회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 · npm 전역 자리를 사용자 PATH 에 ·
+#     워드의 PDF 변환 안내 끄기(워드가 깔린 PC) · 사외 Claude 구독 로그인
+#   앞에서 받는 것 — 준비의 자리(`$ModelSite`) · 맡기기 조건 · 짐(`$KitSkills`) · 값 파일, 「CLI」의 `claude`(구독 로그인) ·
+#     npm 전역 자리(`$NpmGlobalDir` — 「CLI」가 npm 으로 깔면 선다)
 #   안 하는 것 — 도구 홈 파일
 #   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)뿐이다 — 심는 자리를
 #     그 걸음 뒤로 옮기면 settings.json 이 바뀐다
@@ -4493,6 +4678,32 @@ if (-not $useGateway) {
   }
 }
 
+# ── npm 전역 자리 — **사용자 PATH 에 심어야 설치가 끝난 뒤에도 선다** (claude-config 결정 0143) ─────────────────
+# npm 으로 전역에 깐 CLI(고른 Claude · Codex · Copilot 과 사람이 따로 깐 것)는 이 자리에 선다. npm 은 이 자리를 PATH 에 안
+#   심고, 배선(`Update-RuntimePath`)은 이 창만 태운다 — 심지 않으면 새 터미널에서 깔린 CLI 가 이름으로 안 잡힌다.
+# 폴더가 있을 때만 심는다 — npm 이 전역에 무엇이든 깔아야 생기는 폴더다. 고른 제품과 상관없이 Node 는 늘 깔리므로 사람이
+#   깐 npm CLI 도 같이 선다. 걷는 손은 없다 — 같은 자리를 다른 설치나 사람이 넣었을 수 있다(결정 0143).
+if (Test-Path -LiteralPath $NpmGlobalDir) {
+  $npmPath = Add-ToUserPath $NpmGlobalDir
+  switch ($npmPath.Did) {
+    'kept'  { Write-Host "  npm 전역 자리 — 사용자 PATH 에 이미 있다 ($NpmGlobalDir)" }
+    'added' {
+      Write-Host "  npm 전역 자리 — 사용자 PATH 에 더했다 ($NpmGlobalDir) · 새로 여는 터미널부터 npm 으로 깐 CLI 가 이름만으로 선다" -ForegroundColor Green
+      if (-not $npmPath.Notified) {
+        Write-Host '    ! 열린 프로그램에 바뀐 것을 못 알렸다 — 다음 로그온부터 새 터미널이 본다' -ForegroundColor Yellow
+      }
+    }
+    'toolong' {
+      Write-Host ("  ! npm 전역 자리 — 사용자 PATH 에 안 더했다: 더하면 PATH 가 {0:N0} 자로 환경변수 한도({1:N0})를 넘는다 · 안 쓰는 자리를 걷고 다시 누른다" -f $npmPath.Len, $EnvVarMax) -ForegroundColor Red
+      $Fails.Add('npm 전역 자리 (PATH 길이 한도)')
+    }
+    default {
+      Write-Host "  ! npm 전역 자리 — 사용자 PATH 에 못 더했다 — $(Say-Why $npmPath.Err)" -ForegroundColor Red
+      $Fails.Add('npm 전역 자리 (사용자 PATH)')
+    }
+  }
+}
+
 # ── 워드의 PDF 변환 안내 — **워드가 깔린 PC 면 자리 · 고른 제품과 상관없이 끈다** ────────────────
 # 왜 끄나 · 무엇이 바뀌나는 라이브러리 「환경」의 워드 칸이 든다. 판은 깔린 워드에서 읽고(`Get-WordVersions`), 끝 검증이
 #   같은 판 목록(`$WordVersions`)으로 되읽는다 — 묻는 것은 한 번이다.
@@ -4559,13 +4770,20 @@ if ($offsite) {
       $cmdArgs = '/d /s /c ""' + $cc.Source + '" auth login"'
       $login = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
                  -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
-      for ($waited = 0; $waited -lt 180; $waited += 5) {
+      # ⚠ **180초는 끝 시각으로 센다 — 도는 횟수로 세지 않는다.** 한 번 재는 데 울타리(`$ProbeCap`)까지 걸릴 수 있어,
+      #   횟수에 제 쉬는 틈만 더해 세면 「최대 180초」가 그 곱으로 분을 넘긴다. 끝 시각을 넘긴 뒤에는 더 안 재므로
+      #   넘는 몫은 한 번의 재기와 아래 마지막 재기뿐이다(결정 0141).
+      $loginStart = Get-Date
+      $loginEnd   = $loginStart.AddSeconds(180)
+      $nextSay    = 15
+      while ((Get-Date) -lt $loginEnd) {
         Start-Sleep -Seconds 5
         if (Test-ClaudeLoggedIn) { $claudeLoggedIn = $true; break }
         if ($login.HasExited) { break }
-        $elapsed = $waited + 5
-        if (($elapsed % 15) -eq 0) {
+        $elapsed = [int]((Get-Date) - $loginStart).TotalSeconds
+        if ($elapsed -ge $nextSay) {
           Say-Busy 'Claude 구독 로그인' 'wait' @("${elapsed}초")
+          $nextSay += 15
         }
       }
       if (-not $claudeLoggedIn) { $claudeLoggedIn = Test-ClaudeLoggedIn }
@@ -5297,7 +5515,12 @@ $pipLine = Read-Directive $EnvFile 'pip-packages'
 $pipPkgs = @(if ($pipLine) { $pipLine -split '[,\s]+' | Where-Object { $_ } })
 if ($pipPkgs) {
   $pipNames = $pipPkgs -join ' · '
-  if (-not (Test-Runs 'python' '--version')) {
+  # ⚠ **못 쟀으면 건너뛰지 않는다** — 넘김을 「없다」로 읽고 건너뛰면 값 파일이 청한 패키지가 끝 검증에도 안 잡힌 채
+  #   초록으로 끝난다. 「안 한 걸음」으로 남긴다(결정 0141).
+  $pipPython = Measure-Runs 'python' '--version'
+  if ($pipPython -eq 'unmeasured') {
+    Add-UnmeasuredStep "파이썬 패키지($pipNames)" 'python --version' '깔지 않았다'
+  } elseif ($pipPython -ne 'yes') {
     Write-Host "  파이썬 패키지($pipNames) — 건너뛴다: 이 창에서 python 이 안 선다"
   } else {
     $pl = [IO.Path]::GetTempFileName()
@@ -5360,14 +5583,19 @@ if ([Environment]::GetEnvironmentVariable('PAISETUP_SITE', 'User') -eq $ModelSit
 # ⚠ **켠 칸이 없고 Claude 를 안 골랐고 python 이 안 서면 건너뛴다** — 그때 손이 할 일은 끈 칸 · 뺀 제품의 우리 것 걷기뿐이다.
 #   칸을 켰거나 Claude 를 골랐으면 python 은 「프로그램」 걸음이 `-NoDevTools` 여도 깔았으므로(`$needPythonWhy`), 여기서 안 서면
 #   빨강이다.
+# ⚠ **python 을 못 쟀으면 건너뛰지 않는다** — 넘김을 「없다」로 읽고 건너뛰면 끈 칸 · 뺀 제품의 우리 것이 안 걷힌 채
+#   초록으로 끝난다. 손을 부르지도 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141).
 $toolHomesHand   = Join-Path $Kit 'tool-homes.py'
-$toolHomesPython = Test-Runs 'python' '--version'
+$toolHomesProbe  = Measure-Runs 'python' '--version'
+$toolHomesPython = ($toolHomesProbe -eq 'yes')
 $toolHomesOn     = [bool]($personalAny -or $hostClaude -or $toolHomesPython)
-if (-not $toolHomesOn) {
+if (-not $toolHomesOn -and $toolHomesProbe -ne 'unmeasured') {
   Write-Host '  규범 · 룰 · 에이전트 · 스킬 — 건너뜀 (python 이 안 서고, 켠 제작자 칸도 고른 Claude 도 없다)'
 } elseif (-not (Test-Path -LiteralPath $toolHomesHand -PathType Leaf)) {
   Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 짐에 없다 ($toolHomesHand)" -ForegroundColor Red
   $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (짐에 없음)')
+} elseif ($toolHomesProbe -eq 'unmeasured') {
+  Add-UnmeasuredStep '규범 · 룰 · 에이전트 · 스킬' 'python --version' '손을 안 불렀다 — 놓기도, 끈 칸 · 뺀 제품의 우리 것 걷기도 안 했다'
 } elseif (-not $toolHomesPython) {
   Write-Host '  ! 규범 · 룰 · 에이전트 · 스킬 — python 이 안 서서 손을 못 댔다' -ForegroundColor Red
   $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (python 없음)')
@@ -5897,7 +6125,14 @@ if ($wantDocSkills) {
   Write-Host ''
   Write-Host '공식 문서 스킬' -ForegroundColor Cyan
 }
-if ($wantDocSkills -and -not (Test-Runs 'claude' '--version')) {
+# ⚠ **못 쟀으면 그 명령을 다시 부르지 않는다** — 까닭을 대려고 `--version` 을 한 번 더 부르는 손(`Invoke-Logged`)은 울타리가
+#   없어, 울타리를 넘긴 명령을 거기서 부르면 설치가 그 자리에 선다. 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141).
+$docClaude = if ($wantDocSkills) { Measure-Runs 'claude' '--version' } else { '' }
+if ($docClaude -eq 'unmeasured') {
+  Add-UnmeasuredStep '공식 문서 스킬' 'claude --version' '있는지 안 묻고 깔지도 않았다'
+  Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
+  $wantDocSkills = $false
+} elseif ($wantDocSkills -and $docClaude -ne 'yes') {
   Write-Host '  ! 공식 문서 스킬 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 · Claude Code 는 그대로 돈다' -ForegroundColor Yellow
   if (Get-Command 'claude' -ErrorAction SilentlyContinue) {
     $vl = [IO.Path]::GetTempFileName()
@@ -6097,13 +6332,14 @@ function Log([string]$msg) {
   Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
 }
 
-Log "=== PAISetup 자동 실행 시작 ==="
+# 첫 줄에 제 PID 를 적는다 — 뒤 회차의 가드가 이 기록을 이 회차가 글자를 내는 자리로 찾는다(아래 `Find-RunOutput`).
+Log "=== PAISetup 자동 실행 시작 (PID $PID) ==="
 
 # ── 단일 실행 가드 및 쿨다운 (겹침 방지) ───────────────────────────
 # ⚠ 부팅 스케줄러(AtelierServer)와 로그온 스케줄러(PAISetup-AutoRun)가 연달아 돌거나 겹치면
 #   동일 설치를 중복 수행하거나 대기 빗장(Mutex)에 걸린다.
-# 1) 다른 autorun 또는 install 프로세스가 이미 **일하고 있으면** 즉시 종료한다.
-# 2) 멎은 고아는 거두고 제 일을 잇는다.
+# 1) 다른 autorun 또는 install 프로세스가 있으면 멎었나 잰다 — 멎었다고 가르지 못한 것이 하나라도 있으면 즉시 종료한다.
+# 2) 다 멎었으면 거두고 제 일을 잇는다.
 # 3) 최근 10분 내에 이미 성공적으로 완료되었으면 건너뛴다.
 # ⚠ **「도는 것」과 「멎은 것」을 가른다.** 있나만 보면 **설치 하나가 멎을 때 이 PC 의 자동
 #   실행이 영구히 죽는다** — 로그온마다 돌긴 돌지만 매번 물러나고, 스케줄 작업은 `State: Ready` ·
@@ -6111,89 +6347,224 @@ Log "=== PAISetup 자동 실행 시작 ==="
 #   검증 단계에서 멎은 설치 하나에 08:03 · 08:13 두 회차가 연달아 물러났다 · #27).
 # ⚠ **사람용 가드와 짐이 다르다.** 설치기 쪽(`Find-EngineHolders` 아래)은 PID 와 경과를 대고
 #   **사람에게 물어** 고아를 가려낸다 — 그 곁말이 「고아는 기다려서 안 풀린다」고 적어 두었다.
-#   여기는 물을 사람이 없으므로 **기계가 가린다.** 가르는 자는 둘이다: 프로세스가 CPU 를 쓰고 있나,
-#   그 설치가 글자를 내고 있나. 둘 다 섰으면 멎은 것이다.
+#   여기는 물을 사람이 없으므로 **기계가 가린다.** 가르는 자는 둘이다: 그 회차가 낸 글자가 한도를 넘게
+#   안 자랐나, 그 프로세스와 자손이 CPU 를 쓰나. 둘 다 섰으면 멎은 것이다.
 # ⚠ **기본값은 「안 거둔다」다.** 겹쳐 돌면 반쪽 상태가 남는 것이 빗장이 선 까닭이라(#13),
-#   의심스러운 것을 거두면 **그 반쪽 상태를 우리가 만든다.** 그래서 한도를 넉넉히 두고, 가르지
-#   못한 것은 **옛 동작대로 물러난다.**
+#   의심스러운 것을 거두면 **그 반쪽 상태를 우리가 만든다.** 그래서 가르지 못한 것은 물러난다 —
+#   글자를 내는 자리가 없는 회차(콘솔로 깐 설치)는 CPU 하나로 가르지 않고 늘 둔다(claude-config 결정 0142).
 $myPid = $PID
 $myProc = Get-CimInstance Win32_Process -Filter "ProcessId = $myPid" -ErrorAction SilentlyContinue
 $parentPid = if ($myProc) { $myProc.ParentProcessId } else { 0 }
 $otherEngines = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
 
-# 멎었다고 보는 한도 — 이 분을 넘게 **CPU 도 글자도 안 움직였으면** 고아다.
-# 느린 칸(npm · 확장 갱신 · 큰 git)은 CPU 가 돌거나 글자가 자라므로 여기 안 걸린다.
-$orphanMin = 15
+# 멎었다고 보는 한도 — 그 회차의 글자가 이 분을 넘게 안 자랐어야 고아로 본다. 사람이 묻는 창 앞에서
+#   자리를 비운 설치를 멎은 것과 가를 길이 없어(관리자 승인 창은 그 프로세스 나무 밖에 뜬다) 점심 ·
+#   회의만큼 비워도 안 걸리게 넉넉히 둔다(결정 0142).
+$orphanMin = 180
+# 한 번 재는 창과, 그 사이 프로세스 나무가 쓴 CPU 가 이 초를 넘으면 「움직였다」로 보는 값.
+#   두 번 재어 견준다 — 한 번의 사진으로는 느린 것과 멎은 것이 같아 보인다.
+$stallWindowSec = 20
+$stallCpuSec    = 0.05
+$taskkillExe    = Join-Path $env:SystemRoot 'System32\taskkill.exe'
 
-# 한 프로세스가 멎었나 — 두 번 재어 견준다. 한 번의 사진으로는 **느린 것과 멎은 것이 같아 보인다.**
-function Test-EngineStalled($Proc) {
+# 지금 도는 프로세스 전부를 PID 로 찾는 표. 못 읽으면 던진다(부르는 쪽이 「못 쟀다」로 받는다).
+function Get-ProcTable {
+  $t = @{}
+  foreach ($x in @(Get-CimInstance Win32_Process -ErrorAction Stop)) { $t[[int]$x.ProcessId] = $x }
+  return $t
+}
+
+# 그 프로세스와 자손 — 자식은 부모보다 늦게 선 것만 잇는다. 부모 PID 만 따라가면 그 PID 를 앞서 쓴
+#   죽은 부모의 자식(먼저 선 남)이 끼어, 재기에도 거두기에도 남이 든다.
+# 내는 것 — Win32_Process 목록, 뿌리가 맨 앞. 뿌리가 표에 없으면 빈 목록.
+function Get-Tree($Table, [int]$RootId) {
+  $kids = @{}
+  foreach ($x in $Table.Values) {
+    $pp = [int]$x.ParentProcessId
+    if (-not $kids.ContainsKey($pp)) { $kids[$pp] = New-Object System.Collections.ArrayList }
+    [void]$kids[$pp].Add($x)
+  }
+  $tree = New-Object System.Collections.ArrayList
+  $seen = @{}
+  $todo = New-Object System.Collections.Queue
+  if ($Table.ContainsKey($RootId)) { $todo.Enqueue($Table[$RootId]) }
+  while ($todo.Count) {
+    $n = $todo.Dequeue()
+    $key = '{0}@{1}' -f $n.ProcessId, $n.CreationDate.Ticks
+    if ($seen.ContainsKey($key)) { continue }
+    $seen[$key] = $true
+    [void]$tree.Add($n)
+    if ($kids.ContainsKey([int]$n.ProcessId)) {
+      foreach ($c in $kids[[int]$n.ProcessId]) {
+        if ($c.ProcessId -ne $n.ProcessId -and $c.CreationDate -ge $n.CreationDate) { $todo.Enqueue($c) }
+      }
+    }
+  }
+  return @($tree)
+}
+
+# 그 프로세스와 자손의 CPU 초 — 설치는 일을 자식(git · npm · winget)에 맡기고 그 끝을 기다리므로,
+#   제 CPU 만 보면 일하는 설치가 멎은 것으로 보인다.
+# 내는 것 — @{ "<PID>@<시작 시각>" = CPU 초 }. 두 번 잰 것의 열쇠가 다르면 그 사이 자식이 서거나 졌다.
+function Get-TreeCpu($Table, [int]$RootId) {
+  $cpu = @{}
+  foreach ($n in (Get-Tree $Table $RootId)) {
+    # Win32_Process 의 두 시간은 100 나노초 단위다.
+    $cpu['{0}@{1}' -f $n.ProcessId, $n.CreationDate.Ticks] = ([double]$n.KernelModeTime + [double]$n.UserModeTime) / 1e7
+  }
+  return $cpu
+}
+
+# 그 회차가 글자를 내는 자리 — 제 자리와 부모를 본다.
+#   · 화면 껍데기는 몸통을 cmd 로 띄우며 출력을 `claude-setup-<번호>.out` 로 돌린다 — 그 경로는 cmd 의 명령줄에 든다
+#   · 자동 실행은 설치의 출력을 제 기록에 받아 적고, 그 기록의 첫 줄에 제 PID 를 적는다(위 「시작」 줄)
+# 그 프로세스가 서기 전에 쓰인 파일은 안 집는다 — 그 PID 를 앞서 쓴 남의 것이다.
+# 내는 것 — 파일 경로, 없으면 $null(그 회차는 멎음을 가를 축이 없다).
+function Find-RunOutput($Proc, $Table) {
+  $logsByPid = @{}
+  foreach ($l in @(Get-ChildItem -LiteralPath $logDir -Filter 'autorun-*.log' -File -ErrorAction SilentlyContinue)) {
+    $head = Get-Content -LiteralPath $l.FullName -TotalCount 1 -Encoding UTF8 -ErrorAction SilentlyContinue
+    if ("$head" -match '\(PID (\d+)\)') { $logsByPid[[int]$Matches[1]] = @($logsByPid[[int]$Matches[1]]) + $l.FullName }
+  }
+  $cur = $Proc
+  for ($up = 0; $up -lt 2 -and $cur; $up++) {
+    $files = @($logsByPid[[int]$cur.ProcessId])
+    if ("$($cur.CommandLine)" -match '"([^"]*\\claude-setup-\d+\.out)"') { $files += $Matches[1] }
+    foreach ($f in $files) {
+      if (-not $f) { continue }
+      $it = Get-Item -LiteralPath $f -ErrorAction SilentlyContinue
+      if ($it -and $it.LastWriteTime -ge $cur.CreationDate) { return $it.FullName }
+    }
+    $next = $Table[[int]$cur.ParentProcessId]
+    if (-not $next -or $next.CreationDate -gt $cur.CreationDate) { break }
+    $cur = $next
+  }
+  return $null
+}
+
+# 한 프로세스를 재어 판정한다 — 「멎었다」는 그 회차의 글자가 한도를 넘게 안 자랐고, 재는 창 동안
+#   프로세스 나무가 그대로이며 CPU 도 안 움직였을 때뿐이다. 나머지는 다 「둔다」다.
+# 내는 것 — @{ Verdict = 'stalled' | 'hold' | 'gone'; Why = 로그에 적을 까닭 }. 'gone' 은 재는 사이에
+#   끝난 것이다 — 일하는 것으로 세지 않고 목록에서 뺀다.
+function Measure-Engine($Proc) {
   try {
-    $ageMin = ((Get-Date) - $Proc.CreationDate).TotalMinutes
-    if ($ageMin -lt $orphanMin) { return $false }   # 아직 어리면 안 묻는다
-
-    # 그 설치가 글자를 내는 자리 — 화면 껍데기가 자식의 출력을 받는 임시 파일이다.
-    # 없으면(콘솔로 깐 회차) 이 줄은 비고, CPU 하나로만 가른다.
-    $outFile = Join-Path $env:TEMP ("claude-setup-{0}.out" -f $Proc.ParentProcessId)
-    $sizeBefore = if (Test-Path -LiteralPath $outFile) { (Get-Item -LiteralPath $outFile).Length } else { -1 }
-
-    $p = Get-Process -Id $Proc.ProcessId -ErrorAction Stop
-    $cpuBefore = $p.CPU
-    Start-Sleep -Seconds 20
-    $p.Refresh()
-    $cpuAfter = $p.CPU
-    $sizeAfter = if (Test-Path -LiteralPath $outFile) { (Get-Item -LiteralPath $outFile).Length } else { -1 }
-
-    # 둘 다 안 움직였으면 멎은 것이다. CPU 는 밀리초 단위로도 움직이므로 작은 값으로 가른다.
-    return (($cpuAfter - $cpuBefore) -lt 0.05 -and $sizeAfter -eq $sizeBefore)
+    $id = [int]$Proc.ProcessId
+    if (((Get-Date) - $Proc.CreationDate).TotalMinutes -lt $orphanMin) {
+      return @{ Verdict = 'hold'; Why = "한도(${orphanMin}분)가 안 됐다 — 안 잰다" }
+    }
+    $t1 = Get-ProcTable
+    $r1 = $t1[$id]
+    if (-not $r1 -or $r1.CreationDate -ne $Proc.CreationDate) { return @{ Verdict = 'gone'; Why = '재기 전에 끝났다 (목록에서 뺀다)' } }
+    $out = Find-RunOutput $r1 $t1
+    if (-not $out) { return @{ Verdict = 'hold'; Why = '글자를 내는 자리가 없어 멎었나를 못 가른다 — 안 거둔다' } }
+    $f1 = Get-Item -LiteralPath $out -ErrorAction Stop
+    $quietMin = ((Get-Date) - $f1.LastWriteTime).TotalMinutes
+    if ($quietMin -lt $orphanMin) {
+      return @{ Verdict = 'hold'; Why = ('글자가 {0}분 전에 자랐다 — 안 거둔다' -f [int]$quietMin) }
+    }
+    $c1 = Get-TreeCpu $t1 $id
+    Start-Sleep -Seconds $stallWindowSec
+    $t2 = Get-ProcTable
+    $r2 = $t2[$id]
+    if (-not $r2 -or $r2.CreationDate -ne $Proc.CreationDate) { return @{ Verdict = 'gone'; Why = '재는 사이에 끝났다 (목록에서 뺀다)' } }
+    $f2 = Get-Item -LiteralPath $out -ErrorAction Stop
+    if ($f2.Length -ne $f1.Length -or $f2.LastWriteTime -ne $f1.LastWriteTime) {
+      return @{ Verdict = 'hold'; Why = '재는 사이에 글자가 자랐다 — 일하고 있다' }
+    }
+    $c2 = Get-TreeCpu $t2 $id
+    $moved = 0.0
+    $changed = $c1.Count -ne $c2.Count
+    foreach ($k in $c1.Keys) {
+      if ($c2.ContainsKey($k)) { $moved += $c2[$k] - $c1[$k] } else { $changed = $true }
+    }
+    if ($changed) { return @{ Verdict = 'hold'; Why = '재는 사이에 자식이 서거나 졌다 — 일하고 있다' } }
+    if ($moved -ge $stallCpuSec) {
+      return @{ Verdict = 'hold'; Why = ('재는 사이에 프로세스 나무의 CPU 가 {0:N2}초 움직였다 — 일하고 있다' -f $moved) }
+    }
+    return @{ Verdict = 'stalled'; Why = ('글자가 {0}분째 안 자라고 프로세스 나무({1}개)의 CPU 도 안 움직인다 (멎은 것으로 본다)' -f [int]$quietMin, $c2.Count) }
   } catch {
     # 못 재면 안 거둔다 — 못 본 것을 끝내지 않는다(사람용 가드와 같은 규율).
-    return $false
+    return @{ Verdict = 'hold'; Why = "못 쟀다 — 안 거둔다 ($(($_.Exception.Message -split '\r?\n')[0]))" }
   }
 }
 
+# 그것이 아직 있나 — 같은 PID 에 같은 시작 시각이어야 그것이다. 못 재면 있는 것으로 본다.
+function Test-Alive($Proc) {
+  try {
+    $now = Get-CimInstance Win32_Process -Filter "ProcessId = $([int]$Proc.ProcessId)" -ErrorAction Stop
+    return [bool]($now -and $now.CreationDate -eq $Proc.CreationDate)
+  } catch { return $true }
+}
+
+# 멎은 것 하나를 나무째 거두고, 끄는 명령의 답이 아니라 **다시 잰 것**으로 답한다.
+# ⚠ 끄는 명령의 성공을 믿지 않는다 — 실측 2026-10-14: 멎은 자식에 `taskkill /T /F` 가 거절하고 관리자
+#   `Stop-Process -Force` 가 성공을 돌려준 뒤에도 프로세스가 목록에 남았다. `taskkill` 은 져도 안 던지므로
+#   종료코드를 읽는다.
+# ⚠ 끄는 것은 지금 재어 시작 시각으로 확인한 나무(`Get-Tree`)의 PID 하나하나다 — `taskkill /T` 는 부모 PID 만
+#   따라가 그 PID 를 앞서 쓴 죽은 부모의 자식(먼저 선 남)까지 끈다. 뿌리를 먼저 끈다 — 자식부터 끄면 그 끝을
+#   기다리던 뿌리가 다음 걸음으로 가 새 자식을 띄운다. 하나마다 끄기 직전에 아직 그것인지 다시 본다.
+# 내는 것 — @{ Gone = 다시 쟀을 때 뿌리가 없나; Why = 진 명령과 그 말의 첫 줄 }. 다시 재지 못하면 남은 것으로 본다.
+function Stop-Engine($Proc) {
+  # 먼저 거둔 나무에 딸려 이미 끝났으면 끄지 않는다 — 그 PID 를 남이 물려받았을 수 있다.
+  if (-not (Test-Alive $Proc)) { return @{ Gone = $true; Why = '끄기 전에 이미 없었다' } }
+  $why = @()
+  $tree = @()
+  try { $tree = @(Get-Tree (Get-ProcTable) ([int]$Proc.ProcessId)) } catch { $why += "나무를 못 읽어 뿌리만 끈다 — $(($_.Exception.Message -split '\r?\n')[0])" }
+  if (-not $tree) { $tree = @($Proc) }
+  foreach ($n in $tree) {
+    if (-not (Test-Alive $n)) { continue }
+    $nid = [int]$n.ProcessId
+    try { & $taskkillExe /PID $nid /F 2>$null | Out-Null; if ($LASTEXITCODE -ne 0) { $why += "taskkill 이 $LASTEXITCODE 로 끝났다 (PID $nid)" } } catch { $why += "taskkill 을 못 불렀다 (PID $nid) — $(($_.Exception.Message -split '\r?\n')[0])" }
+    if (Test-Alive $n) {
+      try { Stop-Process -Id $nid -Force -ErrorAction Stop } catch { $why += "Stop-Process (PID $nid) — $(($_.Exception.Message -split '\r?\n')[0])" }
+    }
+  }
+  $gone = $false
+  for ($i = 0; $i -lt 6; $i++) {
+    if (-not (Test-Alive $Proc)) { $gone = $true; break }
+    Start-Sleep -Milliseconds 500
+  }
+  return @{ Gone = $gone; Why = ($why -join ' · ') }
+}
+
 if ($otherEngines) {
-  Log "다른 자동 실행 또는 설치 프로세스가 있습니다 ($($otherEngines.ProcessId -join ', ')). 일하고 있나 잽니다..."
+  Log "다른 자동 실행 또는 설치 프로세스가 있습니다 ($($otherEngines.ProcessId -join ', ')). 멎었나 잽니다..."
   $stalled = @()
-  $live    = @()
+  $held    = @()
   foreach ($e in $otherEngines) {
+    $m = Measure-Engine $e
     $ageMin = [int]((Get-Date) - $e.CreationDate).TotalMinutes
-    if (Test-EngineStalled $e) {
-      Log "  PID $($e.ProcessId) · $($e.CreationDate.ToString('HH:mm:ss')) 시작 · ${ageMin}분째 — CPU 도 글자도 안 움직인다 (멎은 것으로 본다)"
-      $stalled += $e
-    } else {
-      Log "  PID $($e.ProcessId) · $($e.CreationDate.ToString('HH:mm:ss')) 시작 · ${ageMin}분째 — 일하고 있다"
-      $live += $e
-    }
+    Log "  PID $($e.ProcessId) · $($e.CreationDate.ToString('HH:mm:ss')) 시작 · ${ageMin}분째 — $($m.Why)"
+    if ($m.Verdict -eq 'stalled') { $stalled += $e }
+    elseif ($m.Verdict -ne 'gone') { $held += $e }
   }
 
-  # 일하는 것이 하나라도 있으면 물러난다 — 겹치면 반쪽 상태가 남는다.
-  if ($live) {
-    Log "일하고 있는 것이 $($live.Count) 개 있어 겹치지 않게 물러납니다 ($($live.ProcessId -join ', '))."
+  # 멎었다고 가르지 못한 것이 하나라도 있으면 물러난다 — 겹치면 반쪽 상태가 남는다.
+  if ($held) {
+    Log "멎었다고 가르지 못한 것이 $($held.Count) 개 있어 겹치지 않게 물러납니다 ($($held.ProcessId -join ', '))."
     exit 0
   }
 
-  # 다 멎었으면 거두고 잇는다.
-  # ⚠ **거둠의 성공을 전제하지 않는다** — 실측 2026-10-14: 멎은 자식에 `taskkill /T /F` 가 거절하고
-  #   관리자 `Stop-Process -Force` 가 성공을 돌려준 뒤에도 프로세스가 목록에 남았다. 그래서 끈 뒤
-  #   **다시 재어** 정말 사라졌나 보고, 안 사라졌으면 물러난다 — 거기까지가 우리가 할 수 있는 것이다.
-  foreach ($e in $stalled) {
-    try {
-      & "$env:SystemRoot\System32\taskkill.exe" /PID $e.ProcessId /T /F 2>$null | Out-Null
-      Stop-Process -Id $e.ProcessId -Force -ErrorAction SilentlyContinue
-      Log "  PID $($e.ProcessId) 을 거뒀다"
-    } catch {
-      Log "  ! PID $($e.ProcessId) 을 못 거뒀다 — $($_.Exception.Message)"
+  if ($stalled) {
+    # 다 멎었으면 거두고 잇는다. 「거뒀다」는 다시 재어 없을 때만 적는다(위 `Stop-Engine`).
+    foreach ($e in $stalled) {
+      $k = Stop-Engine $e
+      $said = if ($k.Why) { " ($($k.Why))" } else { '' }
+      if ($k.Gone) { Log "  PID $($e.ProcessId) 을 거뒀다 — 다시 재니 없다$said" }
+      else { Log "  ! PID $($e.ProcessId) 을 못 거뒀다 — 다시 재도 있다$said" }
     }
+    # 거둔 뒤 가드가 보는 것 전부를 다시 잰다 — 거두는 사이 새로 선 것도 여기서 걸린다.
+    $stillThere = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
+    if ($stillThere) {
+      Log "! 거두고 다시 쟀는데 $($stillThere.Count) 개가 남았습니다 ($($stillThere.ProcessId -join ', ')). 물러납니다 — 로그온할 때 다시 잽니다."
+      exit 0
+    }
+    Log "멎은 것을 다 거뒀습니다. 자동 실행을 잇습니다."
+  } else {
+    Log "재는 사이에 다 끝났습니다. 자동 실행을 잇습니다."
   }
-  Start-Sleep -Seconds 3
-  $stillThere = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
-  if ($stillThere) {
-    Log "! 거뒀는데도 $($stillThere.Count) 개가 남았습니다 ($($stillThere.ProcessId -join ', ')). 물러납니다 — 로그온할 때 다시 잽니다."
-    exit 0
-  }
-  Log "멎은 것을 다 거뒀습니다. 자동 실행을 잇습니다."
 }
 
 $stampFile = Join-Path $setupRoot '.autorun-stamp'
@@ -6441,7 +6812,11 @@ Write-Host '=== 검증 ===' -ForegroundColor Cyan
 #   위 「우리가 안 심은 `ANTHROPIC_*`」 검사가 영영 아무것도 못 문다. 이름만 갈라 두면 없어진다.
 $userEnv = [Environment]::GetEnvironmentVariables('User')
 # 한 번만 잰다 — 같은 물음을 두 번 물으면 두 답이 갈릴 자리가 나고, 아래 「연다」 칸도 이 값을 쓴다.
-$hasCode = Test-Runs 'code' '--version'
+# ⚠ **칸은 셋 가운데 하나다** — 섰다 · 졌다 · 못 쟀다(결정 0141). 섰다 · 졌다는 `@{ Name; Ok }` 로 들고, 못 잰 칸은
+#   `State = 'unmeasured'` 와 넘긴 명령(`Probe`)을 든다. 그 넘김에 딸린 칸은 전제의 이름(`Premise`)도 들어 **한 전제의 결과**로
+#   찍힌다 — `code --version` 하나를 못 쟀으면 VS Code 와 고른 확장이 다 그 하나에 걸린다.
+$codeRuns = Measure-Runs 'code' '--version'
+$hasCode = ($codeRuns -eq 'yes')
 $extList = @()
 if ($hasCode) { $extList = Get-Quiet 'code' '--list-extensions' }
 # ⚠ **안 고른 것은 안 잰다** — 켜지도 않은 것을 [X] 로 찍으면 **멀쩡한 설치가 빨갛게 끝난다.**
@@ -6450,13 +6825,22 @@ if ($hasCode) { $extList = Get-Quiet 'code' '--list-extensions' }
 # 확장과 CLI 는 **깔 때 본 표 그대로** 잰다 — 표에 한 줄을 더하면 검증도 따라온다.
 $checks = @()
 if (-not $NoVsCode) {
-  $checks += @{ Name='VS Code'; Ok = $hasCode }
-  foreach ($x in $ExtPicks) {
-    $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) }
+  if ($codeRuns -eq 'unmeasured') {
+    $checks += @{ Name = 'VS Code'; State = 'unmeasured'; Probe = 'code --version' }
+    foreach ($x in $ExtPicks) {
+      $checks += @{ Name = $x.Label; State = 'unmeasured'; Probe = 'code --version'; Premise = 'VS Code' }
+    }
+  } else {
+    $checks += @{ Name='VS Code'; Ok = $hasCode }
+    foreach ($x in $ExtPicks) {
+      $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) }
+    }
   }
 }
 foreach ($c in $CliPicks) {
-  $checks += @{ Name = $c.Label; Ok = (Test-Runs $c.Cmd '--version') }
+  $cliRuns = Measure-Runs $c.Cmd '--version'
+  if ($cliRuns -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = "$($c.Cmd) --version" } }
+  else                           { $checks += @{ Name = $c.Label; Ok = ($cliRuns -eq 'yes') } }
 }
 # 나르는 자리 — 7 칸의 자산. 재는 자는 위 `New-CountCheck` 하나다. 규범 · 룰 · 에이전트 · 스킬은 손의 `check` 가, 칸 없이
 #   까는 스킬은 아래에서 이름마다 잰다.
@@ -6667,12 +7051,14 @@ if ($useGateway) {
     $checks += @{ Name = $k.Name; Ok = [bool]$userEnv[$k.Name] }
   }
   if ($wantCodex) {
-    # 틀의 자리가 서 있나 — 「Codex · 안티그래비티 설정」 칸의 병합기(`$CodexCfgMerge`)를 판정만 하는 꼴로 부른다. 못 잰 것도 [X] 다.
+    # 틀의 자리가 서 있나 — 「Codex · 안티그래비티 설정」 칸의 병합기(`$CodexCfgMerge`)를 판정만 하는 꼴로 부른다. 못 잰 것도 [X] 다 —
+    #   python 이 울타리를 넘긴 것만 [?] 다(결정 0141).
     $cmWhy = '파일이 없다'
     $cmOk = $false
+    $cmPython = if ((Test-Path -LiteralPath $CodexCfg) -and (Test-Path -LiteralPath $CodexCfgMerge)) { Measure-Runs 'python' '--version' } else { '' }
     if (-not (Test-Path -LiteralPath $CodexCfg)) {
       # 위 「파일이 없다」 그대로
-    } elseif (-not (Test-Path -LiteralPath $CodexCfgMerge) -or -not (Test-Runs 'python' '--version')) {
+    } elseif ($cmPython -ne 'yes') {
       $cmWhy = '못 잼 — 틀 병합기나 python 이 안 선다'
     } else {
       $cmLog = [IO.Path]::GetTempFileName()
@@ -6685,7 +7071,8 @@ if ($useGateway) {
                elseif ($cmRc -eq 0) { '틀과 다른 자리 — ' + (@($cmOut | Where-Object { $_ -like 'SET=*' } | ForEach-Object { $_.Substring('SET='.Length) }) -join ' · ') }
                else { '못 잼 — ' + (@($cmOut | Where-Object { $_ -like 'ERROR=*' }) + @("종료 $cmRc") | Select-Object -First 1) }
     }
-    $checks += @{ Name = "Codex config.toml ($cmWhy)"; Ok = $cmOk }
+    if ($cmPython -eq 'unmeasured') { $checks += @{ Name = 'Codex config.toml'; State = 'unmeasured'; Probe = 'python --version' } }
+    else                            { $checks += @{ Name = "Codex config.toml ($cmWhy)"; Ok = $cmOk } }
   }
   if ($wantAgy)    { $checks += @{ Name = '안티그래비티 settings.json'; Ok = (Test-Path -LiteralPath $AgyCfg) } }
   # ⚠ **프록시는 「떠 있나」와 「문을 여나」를 따로 잰다.** 떠 있는 것만 보면 보정이 안 도는 판이
@@ -6742,26 +7129,40 @@ if ($useGateway) {
     $checks += @{ Name = "$k — 프록시 주소 없음 (사외)"; Ok = (-not (Test-ProxyValue $userEnv[$k])) }
   }
 }
+# npm 전역 자리 — 새 터미널이 볼 사용자 PATH 에 섰나(claude-config 결정 0143). 이 창의 PATH 는 배선이 태워 늘 서 있으므로
+#   이 칸 머리글대로 레지스트리를 읽는다. npm 으로 까는 CLI 를 골랐을 때만 잰다.
+if (@($CliPicks | Where-Object { $_.Via -ne 'winget' }).Count) {
+  $checks += @{ Name = "npm 전역 자리 — 사용자 PATH ($NpmGlobalDir)"; Ok = (Test-PathListHas ([string](Get-UserPath).Raw) $NpmGlobalDir) }
+}
 if ($wantAutoRun -eq $true) {
   $checks += @{ Name = "부팅 시 자동 실행 ($AutoRunTaskName)"; Ok = (Test-AutoRunTask $AutoRunTaskName) }
 }
+# 칸을 찍는다 — 섰다 `[O]` · 졌다 `[X]` · 못 쟀다 `[?]`(결정 0141).
+# ⚠ **못 쟀다를 `[X]` 로 찍지 않는다.** 사람은 `[X]` 를 「그 제품이 없다」로 읽고 깔러 간다 — 이미 깔린 것을 다시 까는
+#   헛걸음이다. `[X]` 밑에 덧댄 노란 줄로는 못 막는다 — 바로 다음에 서는 빨간 요약이 그 줄을 덮는다. 초록으로도 안
+#   올린다 — 못 쟀으면 선 것도 아니라, 올리면 **안 선 기계가 성공으로 보고된다**(이 칸 머리글이 든 그 규율).
 foreach ($c in $checks) {
-  if ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
-  else       { Write-Host "  [X] $($c.Name)" -ForegroundColor Red }
+  if ($c.State -eq 'unmeasured') {
+    $over = "``$($c.Probe)`` 이 ${ProbeCap}초 안에 안 끝났다"
+    $why  = if ($c.Premise) { "$($c.Premise) 와 한 전제 — $over" } else { $over }
+    Write-Host "  [?] $($c.Name) — 못 쟀다: $why" -ForegroundColor Yellow
+  }
+  elseif ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
+  else           { Write-Host "  [X] $($c.Name)" -ForegroundColor Red }
 }
-# ⚠ **못 쟀다를 안 깔렸다로 내보내지 않는다.** 위 [X] 는 「닿지 못했다」까지만 말하는데, 사람은
-#   그것을 **「그 제품이 없다」로 읽고 깔러 간다** — 이미 깔린 것을 다시 까는 헛걸음이고, 참값은
-#   「그 프로브가 울타리를 넘겼다」다. `Test-Runs` 가 넘긴 이름을 적어 두므로(그 함수의 곁말)
-#   여기서 **한 번에 거둔다** — 부른 자리가 스무 곳이라 자리마다 적으면 그 수만큼 빠뜨린다.
-# ⚠ **[X] 를 지우지 않고 덧댄다** — 못 쟀으면 선 것도 아니라, 초록으로 올리면 **안 선 기계가
-#   성공으로 보고된다**(이 칸 머리글이 든 그 규율).
+# 안 한 걸음 — 넘김 때문에 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`). 끝 검증에 짝 칸이 없어 여기서 따로 찍는다.
+foreach ($s in $script:UnmeasuredSteps) {
+  Write-Host "  [?] 안 한 걸음 · $($s.Step) — 못 쟀다: ``$($s.Probe)`` 이 ${ProbeCap}초 안에 안 끝나 $($s.Held)" -ForegroundColor Yellow
+}
+# 이 설치에서 울타리를 넘긴 프로브 — 명령마다 몇 자리에서 몇 번인가. 칸에 안 걸린 넘김(그 자리가 「안 선다 · 없음」을 적고
+#   지나간 것)도 여기서 보인다. 세기에는 안 든다 — 칸 · 걸음 · `$Fails` 가 제 몫으로 이미 셌다.
 if ($script:ProbeTimedOut.Count) {
   Write-Host ''
-  Write-Host "  ! 위 [X] 가운데 $($script:ProbeTimedOut.Count) 자리는 **안 깔린 것이 아니라 못 쟀다** — 그 명령이 울타리를 넘겼다:" -ForegroundColor Yellow
-  foreach ($k in $script:ProbeTimedOut.Keys) {
-    Write-Host "      · $k — $($script:ProbeTimedOut[$k])초 안에 안 끝나 거뒀다" -ForegroundColor Yellow
+  Write-Host "  ! 울타리(${ProbeCap}초)를 넘긴 프로브 — 그 탓에 「안 선다 · 없음 · 안 닿는다」로 적힌 줄은 없는 것이 아니라 못 잰 것이다:" -ForegroundColor Yellow
+  foreach ($g in @($script:ProbeTimedOut | Group-Object { $_.Probe })) {
+    $gSites = @($g.Group | ForEach-Object { $_.Site } | Sort-Object -Unique).Count
+    Write-Host "      · ``$($g.Name)`` — $gSites 자리 · $($g.Count)번" -ForegroundColor Yellow
   }
-  Write-Host '      다시 깔지 말고 그 명령을 터미널에서 한 번 쳐 본다 — 거기서도 멎으면 그 도구 · 보안 소프트 쪽이다.' -ForegroundColor Yellow
 }
 # gh 로그인 — 설정 저장소를 받는 PC 와 사외에서 Copilot 을 고른 PC 만 잰다. 그 둘이 이 로그인을 쓴다(개인 쪽 gh · git ·
 #   Copilot CLI · claude-config 결정 0137). 사내 Copilot 은 쓰임이 아직 정해지지 않아 안 잰다.
@@ -6782,7 +7183,10 @@ if ($repoUrl -or ((-not $inside) -and ($PickKeys -contains 'copilot'))) {
 #     찍고도 `[X]` 가 뜬다. 나머지 칸은 하는 걸음과 검증이 **같은 프로브**라 둘이 같이 빨개진다.
 # ⚠ **`$Fails` 에 합치지 않는다.** 합치면 같은 사고를 두 자가 각각 넣어 「N 개가 남았다」가
 #   겹쳐 센다(`[X] VS Code` 와 `VS Code 설치`). 세는 자를 갈라 두면 **종료코드만** 바로잡힌다.
-$redChecks = @($checks | Where-Object { -not $_.Ok }).Count
+# ⚠ **못 잰 칸은 빨강으로 안 세고 따로 센다** — 칸의 `[?]` 와 안 한 걸음을 합친 수다. 빨강이 아니어도 하나라도 서면 이
+#   설치는 안 끝난 것이다(맨 끝 종료코드 · 결정 0141).
+$redChecks = @($checks | Where-Object { -not $_.Ok -and $_.State -ne 'unmeasured' }).Count
+$unmeasuredChecks = @($checks | Where-Object { $_.State -eq 'unmeasured' }).Count + $script:UnmeasuredSteps.Count
 
 # ⚠ 옛 판은 여기서 **동봉 자산의 경로만 찍었다**(`posco/` · `seeds/gateway/`). 이제 그 둘은
 #   7 칸이 홈에 깔고 검증도 아래가 든다 — 찍기만 하는 자리를 남겨 두면 zip 폴더를 가리키는
@@ -6791,6 +7195,11 @@ $redChecks = @($checks | Where-Object { -not $_.Ok }).Count
 Write-Host ''
 if ($redChecks -gt 0) {
   Write-Host "검증에서 $redChecks 칸이 빨갛다 — 바로 위 [X] 가 그것이다" -ForegroundColor Red
+  Write-Host ''
+}
+if ($unmeasuredChecks -gt 0) {
+  Write-Host "검증에서 $unmeasuredChecks 칸을 못 쟀다 — 바로 위 [?] 가 그것이다. 없는 것이 아니라 그 명령이 ${ProbeCap}초 안에 안 끝났다" -ForegroundColor Yellow
+  Write-Host '  다시 깔지 말고 그 명령을 터미널에서 한 번 쳐 본다 — 거기서도 멎으면 그 도구 · 보안 소프트 쪽이다. 서면 설치를 다시 누른다' -ForegroundColor Yellow
   Write-Host ''
 }
 if ($Fails.Count -gt 0) {
@@ -7126,9 +7535,10 @@ Write-Host ("── 설치를 마쳤다 (" + [int]$Sw.Elapsed.TotalSeconds + "�
 # ── 빗장 해제 ────────────────────────────────────────────────────────────────
 try { if ($script:HasEngineMutex -and $script:EngineMutex) { $script:EngineMutex.ReleaseMutex(); $script:EngineMutex.Dispose() } } catch { }
 
-# ⚠ **둘 다 본다.** 하는 걸음이 진 것(`$Fails`)과 끝에 재서 빨간 것(`$redChecks`)은 겹치기도
-#   하고 한쪽만 서기도 한다 — **어느 쪽이든 하나라도 서면 이 설치는 안 끝난 것이다.**
-if ($Fails.Count -gt 0 -or $redChecks -gt 0) { exit 1 }
+# ⚠ **셋 다 본다.** 하는 걸음이 진 것(`$Fails`) · 끝에 재서 빨간 것(`$redChecks`) · 못 잰 것(`$unmeasuredChecks`)은
+#   겹치기도 하고 한쪽만 서기도 한다 — **어느 쪽이든 하나라도 서면 이 설치는 안 끝난 것이다.** 못 잰 것은 빨강이 아니지만
+#   선 것도 아니다(결정 0141).
+if ($Fails.Count -gt 0 -or $redChecks -gt 0 -or $unmeasuredChecks -gt 0) { exit 1 }
 # ⚠ **성공 경로에도 `exit` 가 있어야 한다.** 파일 끝으로 떨어지면 화면 갈래는 성하지만
 #   (`cmd /c` 가 `-File` 규약으로 0 을 낸다) **콘솔 갈래는 같은 런스페이스 안에서** 이 파일을
 #   부른 뒤 `$LASTEXITCODE` 를 읽는다 — 그 값은 이 파일이 마지막으로 부른 **네이티브 명령**이
