@@ -622,9 +622,65 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
   finally { foreach ($s in $sink) { try { $s.Dispose() } catch { } } }
 }
 
+# 「도나」를 묻는 한 번에 주는 한도 — `--version` 류의 즉답에 20초면 넉넉하다.
+# ⚠ **느린 기계를 재는 값이 아니라 멈춤을 가르는 값이다.** 짧게 잡아 멀쩡한 자리를 거두면
+#   **설치가 「그 제품이 없다」로 끝나** 사람이 깔러 간다. 길게 잡아도 잃는 것은 멎은 한 자리의
+#   그 초뿐이다 — 그래서 **의심스러우면 길게** 잡는다.
+$ProbeCap = 20
+
+# 「그 명령이 도나」를 묻는 유일한 자 — 설치기에서 스무 자리 넘게 부른다.
+# ⚠ **울타리 없이 부르면 한 번의 멈춤이 설치를 영구히 세운다.** `Get-Quiet` 은 자식을 무한히
+#   기다리므로, `--version` 하나가 안 돌아오면 그 걸음에서 끝난다 — 실측 2026-10-14 회사 PC:
+#   검증 단계의 `python --version` 이 **CPU 0.28초만 쓰고 17분을 섰고**(`WaitReason:
+#   ExecutionDelay`) 설치가 안 끝났다. 같은 python 이 같은 조건에서 평소 0.05초에 답하므로
+#   **까닭은 우리 밖에 있다**(그 프로세스에 사내 보안 소프트 모듈이 올라와 있었다 · 재현 안 됨).
+#   그래서 멈추는 까닭을 쫓지 않고 **멈춰도 설치가 끝나게** 한다(#26).
+# ⚠ **울타리는 짧아도 된다.** 이 자가 부르는 것은 `--version` 류의 즉답뿐이라, 넉넉히 줘도
+#   멀쩡한 자리를 안 깎는다. 오래 걸리는 바깥 명령은 `Invoke-LoggedCapped` 가 따로 든다.
+# ⚠ **돌려주는 꼴은 참 · 거짓 그대로 둔다.** 부르는 자리가 스무 곳 넘고 다 `if` 의 조건으로 쓴다
+#   — 셋째 값을 돌려주면 그 전부를 훑어야 하고, `-not` 으로 읽는 자리에서 **「못 쟀다」가 조용히
+#   「된다」로 뒤집힌다.** 넘긴 것은 `$script:ProbeTimedOut` 에 **따로 적어** 검증이 그 이름을
+#   「못 쟀다」로 찍는다(아래 검증 칸) — 판정은 거짓으로 두되 **까닭이 남는다.**
+# ⚠ **거짓으로 두는 것이 거짓말이 아니다** — 「닿나」를 물었고 닿지 못했다. 다만 그 거짓이
+#   **「안 깔렸다」로 읽히면 사람이 깔러 간다**(#25 ② 가 든 그 결)라, 이름을 적어 두는 쪽이 든다.
+$script:ProbeTimedOut = @{}
 function Test-Runs([string]$Cmd, [string]$Arg) {
   if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) { return $false }
-  $null = Get-Quiet $Cmd $Arg; return ($LASTEXITCODE -eq 0)
+  $rc = Invoke-ProbeCapped $Cmd $Arg $ProbeCap
+  if ($rc -eq -2) { $script:ProbeTimedOut["$Cmd $Arg"] = $ProbeCap; return $false }
+  return ($rc -eq 0)
+}
+
+# `Test-Runs` 가 쓰는 울타리 — **종료코드만 쥐고 글자는 버린다.** `Invoke-LoggedCapped` 와 거두는
+# 길은 같지만 그쪽은 파일 둘을 열어 글자를 받는다: 판정만 재는 자리에서 그 파일이 설 까닭이 없고,
+# 스무 자리가 매번 임시 파일 둘을 열면 그 자체가 짐이다.
+# ⚠ **`Get-Quiet` 처럼 파워셸 연산자로 부르지 않는다** — `&` 로 부른 자식에는 울타리를 두를 손잡이가
+#   없다. `Process.Start` 가 쥐어 주는 그 손잡이가 `WaitForExit(ms)` 와 거둠의 전제다.
+# ⚠ **거둬도 안 죽는 자식이 있다** — 실측 2026-10-14: `taskkill /T /F` 가 「종료할 수 없습니다」로
+#   거절하고 관리자 `Stop-Process -Force` 가 성공을 돌려준 뒤에도 프로세스가 목록에 남았다.
+#   그래서 **거둠의 성공을 기다리지 않는다** — 걸어 보고 바로 -2 를 돌려준다. 남은 자식이 제 손으로
+#   나가든 말든 이 설치는 간다(손잡이를 `Dispose` 로 놓아 이 프로세스가 그것에 매이지 않는다).
+function Invoke-ProbeCapped([string]$File, [string]$Arg, [int]$CapSec) {
+  $exe = $null
+  try { $exe = (Get-Command $File -ErrorAction Stop).Source } catch { return -1 }
+  $p = $null
+  try {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
+    $psi.Arguments              = $Arg
+    $psi.UseShellExecute        = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $p = [Diagnostics.Process]::Start($psi)
+    # ⚠ **두 스트림을 읽어 버린다.** 안 읽으면 파이프 버퍼가 차서 자식이 멈추고, 그러면
+    #   **울타리가 우리 손으로 만든 멈춤을 재게 된다.** 비동기로 걸어 두고 결과는 안 쓴다.
+    $null = $p.StandardOutput.ReadToEndAsync()
+    $null = $p.StandardError.ReadToEndAsync()
+    if ($p.WaitForExit($CapSec * 1000)) { return $p.ExitCode }
+    try { & "$env:SystemRoot\System32\taskkill.exe" /PID $p.Id /T /F 2>$null | Out-Null } catch { }
+    try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+    return -2
+  } catch { return -1 }
+  finally { if ($p) { try { $p.Dispose() } catch { } } }
 }
 
 function Test-ScheduledTaskExists([string]$Name) {
@@ -6070,16 +6126,98 @@ Log "=== PAISetup 자동 실행 시작 ==="
 # ── 단일 실행 가드 및 쿨다운 (겹침 방지) ───────────────────────────
 # ⚠ 부팅 스케줄러(AtelierServer)와 로그온 스케줄러(PAISetup-AutoRun)가 연달아 돌거나 겹치면
 #   동일 설치를 중복 수행하거나 대기 빗장(Mutex)에 걸린다.
-# 1) 다른 autorun 또는 install 프로세스가 이미 돌고 있으면 즉시 종료한다.
-# 2) 최근 10분 내에 이미 성공적으로 완료되었으면 건너뛴다.
+# 1) 다른 autorun 또는 install 프로세스가 이미 **일하고 있으면** 즉시 종료한다.
+# 2) 멎은 고아는 거두고 제 일을 잇는다.
+# 3) 최근 10분 내에 이미 성공적으로 완료되었으면 건너뛴다.
+# ⚠ **「도는 것」과 「멎은 것」을 가른다.** 있나만 보면 **설치 하나가 멎을 때 이 PC 의 자동
+#   실행이 영구히 죽는다** — 로그온마다 돌긴 돌지만 매번 물러나고, 스케줄 작업은 `State: Ready` ·
+#   `LastTaskResult: 0` 으로 초록이라 **작업 쪽을 봐도 단서가 없다**(실측 2026-10-14 회사 PC:
+#   검증 단계에서 멎은 설치 하나에 08:03 · 08:13 두 회차가 연달아 물러났다 · #27).
+# ⚠ **사람용 가드와 짐이 다르다.** 설치기 쪽(`Find-EngineHolders` 아래)은 PID 와 경과를 대고
+#   **사람에게 물어** 고아를 가려낸다 — 그 곁말이 「고아는 기다려서 안 풀린다」고 적어 두었다.
+#   여기는 물을 사람이 없으므로 **기계가 가린다.** 가르는 자는 둘이다: 프로세스가 CPU 를 쓰고 있나,
+#   그 설치가 글자를 내고 있나. 둘 다 섰으면 멎은 것이다.
+# ⚠ **기본값은 「안 거둔다」다.** 겹쳐 돌면 반쪽 상태가 남는 것이 빗장이 선 까닭이라(#13),
+#   의심스러운 것을 거두면 **그 반쪽 상태를 우리가 만든다.** 그래서 한도를 넉넉히 두고, 가르지
+#   못한 것은 **옛 동작대로 물러난다.**
 $myPid = $PID
 $myProc = Get-CimInstance Win32_Process -Filter "ProcessId = $myPid" -ErrorAction SilentlyContinue
 $parentPid = if ($myProc) { $myProc.ParentProcessId } else { 0 }
 $otherEngines = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
   Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
+
+# 멎었다고 보는 한도 — 이 분을 넘게 **CPU 도 글자도 안 움직였으면** 고아다.
+# 느린 칸(npm · 확장 갱신 · 큰 git)은 CPU 가 돌거나 글자가 자라므로 여기 안 걸린다.
+$orphanMin = 15
+
+# 한 프로세스가 멎었나 — 두 번 재어 견준다. 한 번의 사진으로는 **느린 것과 멎은 것이 같아 보인다.**
+function Test-EngineStalled($Proc) {
+  try {
+    $ageMin = ((Get-Date) - $Proc.CreationDate).TotalMinutes
+    if ($ageMin -lt $orphanMin) { return $false }   # 아직 어리면 안 묻는다
+
+    # 그 설치가 글자를 내는 자리 — 화면 껍데기가 자식의 출력을 받는 임시 파일이다.
+    # 없으면(콘솔로 깐 회차) 이 줄은 비고, CPU 하나로만 가른다.
+    $outFile = Join-Path $env:TEMP ("claude-setup-{0}.out" -f $Proc.ParentProcessId)
+    $sizeBefore = if (Test-Path -LiteralPath $outFile) { (Get-Item -LiteralPath $outFile).Length } else { -1 }
+
+    $p = Get-Process -Id $Proc.ProcessId -ErrorAction Stop
+    $cpuBefore = $p.CPU
+    Start-Sleep -Seconds 20
+    $p.Refresh()
+    $cpuAfter = $p.CPU
+    $sizeAfter = if (Test-Path -LiteralPath $outFile) { (Get-Item -LiteralPath $outFile).Length } else { -1 }
+
+    # 둘 다 안 움직였으면 멎은 것이다. CPU 는 밀리초 단위로도 움직이므로 작은 값으로 가른다.
+    return (($cpuAfter - $cpuBefore) -lt 0.05 -and $sizeAfter -eq $sizeBefore)
+  } catch {
+    # 못 재면 안 거둔다 — 못 본 것을 끝내지 않는다(사람용 가드와 같은 규율).
+    return $false
+  }
+}
+
 if ($otherEngines) {
-  Log "이미 다른 자동 실행 또는 설치 프로세스가 진행 중입니다 ($($otherEngines.ProcessId -join ', ')). 겹치지 않게 물러납니다."
-  exit 0
+  Log "다른 자동 실행 또는 설치 프로세스가 있습니다 ($($otherEngines.ProcessId -join ', ')). 일하고 있나 잽니다..."
+  $stalled = @()
+  $live    = @()
+  foreach ($e in $otherEngines) {
+    $ageMin = [int]((Get-Date) - $e.CreationDate).TotalMinutes
+    if (Test-EngineStalled $e) {
+      Log "  PID $($e.ProcessId) · $($e.CreationDate.ToString('HH:mm:ss')) 시작 · ${ageMin}분째 — CPU 도 글자도 안 움직인다 (멎은 것으로 본다)"
+      $stalled += $e
+    } else {
+      Log "  PID $($e.ProcessId) · $($e.CreationDate.ToString('HH:mm:ss')) 시작 · ${ageMin}분째 — 일하고 있다"
+      $live += $e
+    }
+  }
+
+  # 일하는 것이 하나라도 있으면 물러난다 — 겹치면 반쪽 상태가 남는다.
+  if ($live) {
+    Log "일하고 있는 것이 $($live.Count) 개 있어 겹치지 않게 물러납니다 ($($live.ProcessId -join ', '))."
+    exit 0
+  }
+
+  # 다 멎었으면 거두고 잇는다.
+  # ⚠ **거둠의 성공을 전제하지 않는다** — 실측 2026-10-14: 멎은 자식에 `taskkill /T /F` 가 거절하고
+  #   관리자 `Stop-Process -Force` 가 성공을 돌려준 뒤에도 프로세스가 목록에 남았다. 그래서 끈 뒤
+  #   **다시 재어** 정말 사라졌나 보고, 안 사라졌으면 물러난다 — 거기까지가 우리가 할 수 있는 것이다.
+  foreach ($e in $stalled) {
+    try {
+      & "$env:SystemRoot\System32\taskkill.exe" /PID $e.ProcessId /T /F 2>$null | Out-Null
+      Stop-Process -Id $e.ProcessId -Force -ErrorAction SilentlyContinue
+      Log "  PID $($e.ProcessId) 을 거뒀다"
+    } catch {
+      Log "  ! PID $($e.ProcessId) 을 못 거뒀다 — $($_.Exception.Message)"
+    }
+  }
+  Start-Sleep -Seconds 3
+  $stillThere = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
+  if ($stillThere) {
+    Log "! 거뒀는데도 $($stillThere.Count) 개가 남았습니다 ($($stillThere.ProcessId -join ', ')). 물러납니다 — 로그온할 때 다시 잽니다."
+    exit 0
+  }
+  Log "멎은 것을 다 거뒀습니다. 자동 실행을 잇습니다."
 }
 
 $stampFile = Join-Path $setupRoot '.autorun-stamp'
@@ -6635,6 +6773,20 @@ if ($wantAutoRun -eq $true) {
 foreach ($c in $checks) {
   if ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
   else       { Write-Host "  [X] $($c.Name)" -ForegroundColor Red }
+}
+# ⚠ **못 쟀다를 안 깔렸다로 내보내지 않는다.** 위 [X] 는 「닿지 못했다」까지만 말하는데, 사람은
+#   그것을 **「그 제품이 없다」로 읽고 깔러 간다** — 이미 깔린 것을 다시 까는 헛걸음이고, 참값은
+#   「그 프로브가 울타리를 넘겼다」다. `Test-Runs` 가 넘긴 이름을 적어 두므로(그 함수의 곁말)
+#   여기서 **한 번에 거둔다** — 부른 자리가 스무 곳이라 자리마다 적으면 그 수만큼 빠뜨린다.
+# ⚠ **[X] 를 지우지 않고 덧댄다** — 못 쟀으면 선 것도 아니라, 초록으로 올리면 **안 선 기계가
+#   성공으로 보고된다**(이 칸 머리글이 든 그 규율).
+if ($script:ProbeTimedOut.Count) {
+  Write-Host ''
+  Write-Host "  ! 위 [X] 가운데 $($script:ProbeTimedOut.Count) 자리는 **안 깔린 것이 아니라 못 쟀다** — 그 명령이 울타리를 넘겼다:" -ForegroundColor Yellow
+  foreach ($k in $script:ProbeTimedOut.Keys) {
+    Write-Host "      · $k — $($script:ProbeTimedOut[$k])초 안에 안 끝나 거뒀다" -ForegroundColor Yellow
+  }
+  Write-Host '      다시 깔지 말고 그 명령을 터미널에서 한 번 쳐 본다 — 거기서도 멎으면 그 도구 · 보안 소프트 쪽이다.' -ForegroundColor Yellow
 }
 # ⚠ **판정 목록이 둘인데 서로 몰랐다.** `$Fails` 는 「하는 걸음이 졌다」를 담고 이 `$checks` 는
 #   「끝에 다시 재 봤다」를 담는데, 종료코드는 `$Fails` 만 봤다 — 그래서 **검증이 빨간데 초록으로
