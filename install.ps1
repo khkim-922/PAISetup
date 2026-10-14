@@ -219,15 +219,23 @@ $Clis = @(
      Id='Google.AntigravityCLI' }
   # ⚠ **두 자리에 다 깐다 — 이 표의 다른 줄과 같다**(결정 0045 · 0093). Codex · Copilot 맡기기가 Copilot 을 쓰나는
   #   자리 값 `CC_BG_AGENTS` 가 가르는 래퍼의 몫이고, 프로그램은 그 값과 무관하게 제품을 고르면 선다.
-  # ⚠ **판은 `--version` 의 끝 마침표를 떼고 읽는다(`ReadVer`)** — `GitHub Copilot CLI 1.0.94.` 처럼 끝나서, 그대로
-  #   견주면 레지스트리 판과 늘 달라 매 실행 다시 깐다(`Install-NpmCli` 의 판 견주기는 판 뒤에 점이 오면 다른 판으로
-  #   친다). 판 읽는 손이 줄마다 다를 수 있어 그 갈림도 표 안에 둔다 — `Via` 와 같은 까닭이다.
-  @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI'
-     ReadVer = { (Get-Ver 'copilot' '--version') -replace '\.$', '' } }
+  @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI' }
 )
-# npm 이 전역에 깐 CLI 가 서는 자리 — 배선(`Update-RuntimePath`)이 이 창에 태우고, 「키와 값」 걸음이 사용자 PATH 에 심고,
-#   끝 검증이 사용자 PATH 에서 잰다(claude-config 결정 0143). 세 자리가 이 한 줄을 읽는다.
+# npm 이 전역에 깐 CLI 가 서는 자리 — 배선(`Update-RuntimePath`)이 이 창에 태우고, 마무리의 「사용자 범위 명령 자리」가 사용자
+#   PATH 에 심고, 끝 검증이 사용자 PATH 에서 잰다(claude-config 결정 0143 · PAISetup #30 ②). 세 자리가 이 한 줄을 읽는다.
 $NpmGlobalDir = "$env:APPDATA\npm"
+
+# ── VC++ 런타임 — 파이썬의 C++ 확장이 싣는 `msvcp140.dll` (claude-config 결정 0146) ─────────────────────────
+# markitdown → magika → onnxruntime 의 확장 모듈이 이 런타임을 싣는다 — 판이 낮으면 `import` 하는 순간 파이썬이 죽는다(PAISetup #30).
+#   공식 재배포 패키지를 winget 으로 받는다. 기계 범위라 관리자 승격이 든다(`Get-ElevationGo`).
+$VcRuntime = @{ Name = 'VC++ 런타임'; Id = 'Microsoft.VCRedist.2015+.x64'; Dll = 'msvcp140.dll' }
+# 받아들이는 가장 낮은 판 — 14.40 에서 STL 의 `std::mutex` 꼴이 바뀌어, 그 뒤 도구로 지은 모듈을 그보다 옛 런타임에서 돌리면 초기화 중에 죽는다.
+$VcRuntimeMin = [version]'14.40'
+# winget · 설치본이 낸 값 가운데 뜻이 정해진 것(결정 0146 — winget 「Return codes」 · Windows Installer 오류 값). 올랐나는 파일의 판이
+#   가르고, 이 값들은 안 오른 까닭의 말만 고른다.
+$VcRedistRcReboot    = @(3010, 1641, 0x8A150109, 0x8A15010A, 0x8A15010B)   # 다시 시작해야 끝난다 · 다시 시작한 뒤 다시 깐다
+$VcRedistRcCancelled = @(1602, 1223, 0x8A15010C, 0x800704C7)                # 사람이(승인 창에서) 물렸다
+$VcRedistRcNewer     = @(1638, 0x8A15002B, 0x8A150061, 0x8A15010D, 0x8A15010E)  # 같거나 더 새 판이 이미 깔렸다
 
 # ── Node 가 말을 거는 자리 — **목록이 진본이다** ─────────────────────────────────
 # 신뢰를 이을 근거를 여기서 잰다(아래 `Wire-NodeTrust`). Node 를 태우는 곳이 늘면 한 줄 더한다.
@@ -714,6 +722,8 @@ $ProbeCap = 20
 $WingetListCap = 120   # winget 의 첫 부름은 원본을 새로 받느라 수십 초를 쓰고, 막힌 소스를 붙든 사내 회선에서는 더 쓴다
 $NpmViewCap    = 60    # 레지스트리에 판 하나를 묻는 GET 이라 평소 1초 안팎이다 — 느린 프록시를 넉넉히 덮는다
 $ExtListCap    = 60    # `code` 가 node 를 띄워 깔린 확장을 읽는다 — VDI 에서 몇 초씩 걸리는 자리라 `--version` 울타리보다 길게 둔다
+# 상태를 바꾸는 바깥 명령의 한도 — 넘기면 거두고 「못 했다」로 간다. 무인 판이 사람을 기다리는 창 앞에서 영영 서지 않게 한다.
+$VcRedistCap   = 900   # VC++ 재배포 패키지를 받고(17.8 MB) 까는 한 번 — 사내 회선의 받기와 승인 창을 누를 사람의 몫까지 넉넉히 덮는다
 
 # 울타리를 넘긴 프로브 — **넘김 하나가 한 줄이다.** 같은 명령이 여러 자리에서 넘기면 그 수만큼 서고, 줄마다 명령(`Probe`) ·
 #   부른 자리(`Site` — 이 파일의 행) · 한도(`Cap`)를 든다. 끝 검증이 이것을 명령마다 「몇 자리 · 몇 번」으로 센다.
@@ -1483,7 +1493,7 @@ function New-CountCheck([string]$Name, [string]$From, [string]$To) {
 
 #endregion 파일
 
-#region 환경 — 사용자 환경변수를 심고 걷고, 걷어도 되는 값인지 가리고, PATH 를 태우고 사용자 PATH 에 덧대고, 워드의 PDF 변환 안내를 끈다
+#region 환경 — 사용자 환경변수를 심고 걷고, 걷어도 되는 값인지 가리고, PATH 를 태우고 사용자 PATH 에 덧대고(pip 사용자 자리를 묻는다), 워드의 PDF 변환 안내를 끈다
 
 # ── 배선이 먼저다 ────────────────────────────────────────────────────────────────
 # ⚠ winget 이 심은 PATH 는 **이 창에 안 걸린다** — 이 창이 winget 보다 먼저 떴다.
@@ -1534,7 +1544,7 @@ function Update-RuntimePath {
     Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag"
     Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag\Scripts"
   }
-  # npm 전역 자리 — 여기서는 이 창만 태운다. 새 터미널이 보게 사용자 PATH 에 심는 것은 「키와 값」 걸음의 `Add-ToUserPath` 다.
+  # npm 전역 자리 — 여기서는 이 창만 태운다. 새 터미널이 보게 사용자 PATH 에 심는 것은 마무리의 「사용자 범위 명령 자리」다.
   Add-ToPath $NpmGlobalDir
   # ⚠ **`agy` 자리는 여기 안 적는다.** winget 이 portable 을 깔면서 **제 자리를 사용자 PATH 에
   #   제 손으로 넣는다** — 위 레지스트리 읽기가 그것을 태운다. 이름으로 박으면 저쪽이 자리를
@@ -1629,6 +1639,27 @@ function Add-ToUserPath([string]$Dir,
   } catch {
     return @{ Did = 'failed'; Err = $_ }
   }
+}
+
+# pip 가 사용자 자리에 까는 명령의 폴더 — 이 설치와 넘긴 훅이 쓰는 그 `python`(PATH 의 것)에 `sysconfig` 의 사용자 꼴(`nt_user`)로 묻는다.
+#   `@{ State = yes · no · unmeasured; Dir; Probe; Why }`(`Add-UnmeasuredStep` 의 꼴) — python 이 안 서면 `no` 다. 띄우는 것은 python
+#   하나이고 울타리를 두른다. 폴더가 아직 없어도 그 자리를 낸다 — 있나는 부르는 쪽이 본다.
+# ⚠ **글자는 인터프리터가 선 뒤의 출력이라 DRM 이 끼는 PC 에서도 안 잃는다** — 삼켜지는 것은 `--version` 뿐이다(#32 · 결정 0144).
+$PipUserScriptsCode = "import sysconfig;print(sysconfig.get_path('scripts','nt_user'))"
+function Measure-PipUserScripts {
+  $runs = Measure-Runs 'python' '--version'
+  if ($runs -eq 'no') { return @{ State = 'no'; Dir = ''; Probe = ''; Why = '' } }
+  if ($runs -ne 'yes') { return @{ State = 'unmeasured'; Dir = ''; Probe = 'python --version'; Why = '' } }
+  $probe = "python -c `"$PipUserScriptsCode`""
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-LoggedCapped 'python' @('-c', $PipUserScriptsCode) $log $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow $probe $ProbeCap; return @{ State = 'unmeasured'; Dir = ''; Probe = $probe; Why = '' } }
+    if ($rc -ne 0)  { return @{ State = 'unmeasured'; Dir = ''; Probe = $probe; Why = (Format-ProbeWhy $rc $ProbeCap) } }
+    $dir = ("$(@(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0])").Trim()
+    if (-not $dir)  { return @{ State = 'unmeasured'; Dir = ''; Probe = $probe; Why = '글자를 안 내' } }
+    return @{ State = 'yes'; Dir = $dir; Probe = ''; Why = '' }
+  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
 # **이 값이 로컬 프록시를 가리키나** — 이름이 아니라 **값**에서 판다.
@@ -2055,7 +2086,7 @@ function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
 
 #endregion 망
 
-#region 깔기 — winget 을 되살리고, 프로그램 · VS Code 확장 · CLI 가 있나 묻고 깔고 올린다
+#region 깔기 — winget 을 되살리고, 프로그램 · VS Code 확장 · CLI · VC++ 런타임이 있나 묻고 깔고 올린다
 
 # ── winget 을 되살려 본다 — 없다고 바로 물러나기 전에 ────────────────────────────
 # ⚠ **가장 흔한 자리는 「안 깔림」이 아니라 「이 프로필에 등록 안 됨」이다.** winget 은 AppX
@@ -2633,24 +2664,56 @@ function Install-Extension([string]$Id, [string]$Label, [string]$Act, [hashtable
   Remove-Item $xl -ErrorAction SilentlyContinue
 }
 
-# ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 판정은 `--version` 이 도나(프로브)다.
-# ⚠ **판을 `--version` 이 그대로 못 대는 패키지가 있다** — 그 글자로 견주면 레지스트리 판과 늘 달라
-#   **매 실행 다시 깐다.** 그런 자리는 `$ReadVer` 로 판 읽는 손을 넘긴다(어느 줄이 왜 넘기나는 위 `$Clis`
-#   표가 든다). 도나(프로브)는 그대로 `--version` 이 든다 — 판 글자가 어긋나도 불리기는 한다.
-function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock]$ReadVer = $null) {
-  if (-not $ReadVer) { $ReadVer = { Get-Ver $Cmd '--version' } }
-  # ⚠ **두 물음 다 넘김을 「없다」로 안 읽는다**(결정 0141) — CLI 를 못 쟀는데 깔면 깔린 것 위에 다시 깔고, npm 을 못 쟀는데
-  #   「있음」으로 끝내면 올리기가 조용히 빠진다. 둘 다 하지도 건너뛰지도 않고 끝 검증에 남긴다.
-  $cliRuns = Measure-Runs $Cmd '--version'
-  $npmRuns = if ($cliRuns -eq 'yes' -and -not $NoUpgrade) { Measure-Runs 'npm' '--version' } else { '' }
-  # 깔린 판 — `--version` 이 빈 글자면 npm 의 기록에 다시 묻는다(그 글자는 node 가 다 선 뒤에 나온다 · #32).
-  $b = ''; $rv = ''; $vrc = 0
-  if ($cliRuns -eq 'yes') {
-    $b = & $ReadVer
-    if (-not $b -and $npmRuns -eq 'yes') { $b = Get-NpmGlobalVer $Pkg }
+# npm 이 제 기록에 적은 그 패키지 — `@{ State = yes · no · unmeasured; Ver = 깔린 판(모르면 빈 글자); Probe; Why }`(`Add-UnmeasuredStep` 의 꼴).
+#   `npm ls -g <pkg> --depth=0 --json` 의 `dependencies.<pkg>` 가 있으면 `yes`, JSON 을 냈는데 없으면 `no` 다. npm 으로 깐 CLI 가 깔렸나와
+#   그 판은 이 자 하나가 잰다 — 「CLI」 걸음과 끝 검증이 같이 쓴다(PAISetup #30 ③).
+# ⚠ **그 CLI 를 띄워 재지 않는다** — 첫 실행에 제 짐을 푸는 CLI 가 있다. 회사 PC 에서 Copilot CLI 의 첫 `--version` 이 19.7초를 써
+#   울타리(`$ProbeCap`)를 넘겼고, npm 이 성공한 설치가 「설치 실패」 · 끝 검증 `[?]` 로 섰다(PAISetup #30). 이 기록의 글자는 node 가 다
+#   선 뒤에 나와 DRM 이 끼는 PC 에서도 안 잃는다(#32).
+# ⚠ **종료코드로 안 가른다** — npm 은 그 패키지가 없거나 전역 폴더에 군더더기가 있으면 1 로 끝나면서도 JSON 은 온전히 낸다. 넘겼거나
+#   못 띄웠거나 JSON 을 못 읽었거나 npm 이 오류를 적었으면 `unmeasured` 다 — 「없다」가 아니다(결정 0141). 넘김의 `Why` 는 비운다
+#   (`Add-UnmeasuredStep` 이 `$ProbeCap` 넘김 글로 채운다).
+function Measure-NpmGlobal([string]$Pkg) {
+  $probe = "npm ls -g $Pkg --depth=0 --json"
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-LoggedCapped 'npm' @('ls','-g',$Pkg,'--depth=0','--json') $log $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow "npm ls -g $Pkg" $ProbeCap; return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '' } }
+    if ($rc -eq -1) { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = (Format-ProbeWhy $rc $ProbeCap) } }
+    $j = $null
+    try { $j = Get-Content -LiteralPath $log -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json } catch { }
+    if (-not $j)   { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = 'JSON 을 안 내' } }
+    if ($j.error)  { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '오류를 적어' } }
+    $d = if ($j.dependencies) { $j.dependencies.$Pkg } else { $null }
+    if (-not $d)   { return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
+    return @{ State = 'yes'; Ver = ("$($d.version)").Trim(); Probe = ''; Why = '' }
+  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+}
+
+# ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 깔렸나 · 깔린 판은 npm 의 기록(`Measure-NpmGlobal`)이 잰다 — 그 CLI 를
+#   띄우지 않는다(PAISetup #30 ③). 할 일은 한 표(`Get-InstallAction`)가 가른다.
+function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
+  # ⚠ **npm 을 못 쟀으면 손대지 않는다**(결정 0141) — 기록을 못 읽은 채 깔면 깔린 것 위에 다시 깔고, 「있음」으로 끝내면 올리기가
+  #   조용히 빠진다. 하지도 건너뛰지도 않고 끝 검증에 남긴다.
+  $npmRuns = Measure-Runs 'npm' '--version'
+  if ($npmRuns -eq 'unmeasured') {
+    Add-UnmeasuredStep $Label 'npm --version' '깔렸나 안 묻고 깔지도 올리지도 않았다'
+    return
   }
-  if ($cliRuns -eq 'yes' -and $npmRuns -eq 'yes') {
-    Say-Busy $Label 'upcheck' @('npm', "지금 $b")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
+  if ($npmRuns -ne 'yes') {
+    # npm 이 없으면 기록도 깔 길도 없다 — 그 이름이 서 있으면(npm 밖에서 깐 것) 있음으로 두고, 없으면 못 깐다. 이름은 찾기만 하고 안 띄운다.
+    if (Get-Command $Cmd -ErrorAction SilentlyContinue) {
+      Write-Host "  $Label — 있음 $(Format-VerPart '') — npm 이 안 서 그 기록을 못 읽었다"
+    } else {
+      Write-Host "  ! npm 이 없어 $Label 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
+      $Fails.Add("$Label (npm 이 안 닿는다)")
+    }
+    return
+  }
+  $rec = Measure-NpmGlobal $Pkg
+  $b = $rec.Ver; $rv = ''; $vrc = 0
+  if ($rec.State -eq 'yes' -and -not $NoUpgrade) {
+    Say-Busy $Label 'upcheck' @('npm', "지금 $(Format-VerPart $b)")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
     # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
     #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
     #   이 걸음이 셋 합쳐 121초였다(실측 v1.12.0 두 번째 판 · 사내 VDI · 설치기 전체의 40%).
@@ -2665,10 +2728,9 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
     if ($vrc -eq -2) { Add-ProbeOverflow "npm view $Pkg@latest version" $NpmViewCap }
     $rv  = if ($vrc -eq 0) { ("$rvo").Trim() } else { '' }
   }
-  # npm 이 안 서면(`no`) 올릴 길이 없다 — 있음으로 끝낸다. 못 쟀으면(`unmeasured`) 최신을 모르는 채 두고 안 한 걸음으로 남긴다.
-  $cliAct = Get-InstallAction $cliRuns $b $rv $null $false ($NoUpgrade -or $npmRuns -eq 'no')
+  $cliAct = Get-InstallAction $rec.State $b $rv $null $false ([bool]$NoUpgrade)
   if ($cliAct -eq 'hold') {
-    Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다'
+    Add-UnmeasuredStep $Label $rec.Probe '깔지도 올리지도 않았다' $rec.Why
   } elseif ($cliAct -eq 'present') {
     Write-Host "  $Label — 있음 $(Format-VerPart $b)"
   } elseif ($cliAct -eq 'latest') {
@@ -2677,14 +2739,11 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
     # ⚠ **여기서 지는 것을 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛 판으로 돈다 — 저장소 `pull` 이 졌을 때와 같은
     #   꼴이라 같은 규율로 든다: 말은 하되 빨강으로 안 끝낸다. 「최신」이라고도 안 찍는다 — 낡은 판이 도는 것과 못 가른다.
     # ⚠ **판을 모르면 다시 받지 않는다** — 빈 판을 「다르다」로 읽으면 매 실행 받는다. 못 닿는 레지스트리에는 install 도 못 닿는다.
-    if ($npmRuns -eq 'unmeasured') {
-      Write-Host "  $Label — 있음 $(Format-VerPart $b)"
-      Add-UnmeasuredStep "$Label 올리기" 'npm --version' '최신인지 안 묻고 올리지도 않았다'
-    } elseif ($vrc -eq -2) {
+    if ($vrc -eq -2) {
       Write-Host "  $Label — 있음 $(Format-VerPart $b)"
       Add-UnmeasuredStep "$Label 올리기" "npm view $Pkg@latest version" '최신인지 모른 채 올리지도 않았다' (Format-ProbeWhy $vrc $NpmViewCap)
     } elseif (-not $b) {
-      Write-Host "  ! $Label — 깔린 판을 못 읽었다 (``$Cmd --version`` · ``npm ls -g`` 다 빈 글자) · 깔린 그대로 간다" -ForegroundColor Yellow
+      Write-Host "  ! $Label — 깔린 판을 못 읽었다 (``npm ls -g`` 기록에 판이 없다) · 깔린 그대로 간다" -ForegroundColor Yellow
     } else {
       Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
     }
@@ -2695,8 +2754,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
     #   있지만, npm 은 지면 지는 값을 낸다. 버리고 판만 견주면 설치가 죽은 판에서도 판이 안 바뀌었으니 「최신」이 찍힌다.
     $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
     Update-RuntimePath
-    $a = & $ReadVer
-    if (-not $a) { $a = Get-NpmGlobalVer $Pkg }
+    $a = (Measure-NpmGlobal $Pkg).Ver
     if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
     elseif ($nrc -ne 0) {
       Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
@@ -2706,7 +2764,7 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
     Remove-Item $nl -ErrorAction SilentlyContinue
   } elseif ($cliAct -ne 'install') {
     # 깔기는 `install` 일 때만이다 — 이 갈래가 안 내는 할 일이 와도 깔린 것 위에 다시 깔지 않는다.
-  } elseif (Test-Runs 'npm' '--version') {
+  } else {
     Say-Busy $Label 'install' @('npm')
     $nl = [IO.Path]::GetTempFileName()
     $nrc = Invoke-Logged 'npm' @('install','-g',$Pkg) $nl
@@ -2714,33 +2772,22 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label, [scriptblock
     #   맨바닥 PC 에서는 앞의 배선이 조용히 지나가고 PATH 가 빈 채로 남는다. 두 번째부터는
     #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
     Update-RuntimePath
-    if (Test-Runs $Cmd '--version') {
-      Write-Host "  $Label — 깔았다 $(Format-VerPart (& $ReadVer))" -ForegroundColor Green
+    # 깔렸나는 npm 이 0 으로 끝났고 그 기록에 섰나다. 판을 못 쟀으면 깔린 것은 그대로 깔린 것이다 — 「설치 실패」로 안 찍는다.
+    $got = Measure-NpmGlobal $Pkg
+    if ($nrc -eq 0 -and $got.State -eq 'yes' -and $got.Ver) {
+      Write-Host "  $Label — 깔았다 $(Format-VerPart $got.Ver)" -ForegroundColor Green
+    } elseif ($nrc -eq 0 -and $got.State -ne 'no') {
+      $gotWhy = if ($got.State -eq 'yes') { 'npm 기록에 판이 없다' }
+                else { "``$($got.Probe)`` 이 $(if ($got.Why) { $got.Why } else { "${ProbeCap}초 안에 안 끝나" })서" }
+      Write-Host "  $Label — 깔았다 · 판을 못 쟀다 ($gotWhy) — npm 은 0 으로 끝났다" -ForegroundColor Yellow
     } else {
-      Write-Host "  ! $Label 설치 실패 (npm 이 $nrc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+      $failWhy = if ($nrc -ne 0) { "npm 이 $nrc 로 끝났다" } else { 'npm 은 0 으로 끝났는데 그 기록에 없다' }
+      Write-Host "  ! $Label 설치 실패 ($failWhy) — 뱉은 끝 줄:" -ForegroundColor Red
       Show-Log $nl
       $Fails.Add($Label)
     }
     Remove-Item $nl -ErrorAction SilentlyContinue
-  } else {
-    Write-Host "  ! npm 이 없어 $Label 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
-    $Fails.Add("$Label (npm 이 안 닿는다)")
   }
-}
-
-# npm 이 제 기록에 적은 깔린 판 — `npm ls -g <pkg> --depth=0 --json` 의 `dependencies.<pkg>.version`. 못 읽으면 빈 글자다.
-#   `--version` 이 빈 글자를 낸 판에 다시 묻는 자리다 — 이 글자는 node 가 다 선 뒤에 나와 DRM 이 끼는 PC 에서도 안 잃는다(#32).
-#   울타리를 두른 손(`Invoke-LoggedCapped`)으로 부르고, 넘기면 「도나」처럼 그 자리를 `$script:ProbeTimedOut` 에 남긴다.
-# ⚠ **종료코드로 안 가른다** — npm 은 전역 폴더에 군더더기가 있으면 1 로 끝나면서도 JSON 은 온전히 낸다.
-function Get-NpmGlobalVer([string]$Pkg) {
-  $log = [IO.Path]::GetTempFileName()
-  try {
-    $rc = Invoke-LoggedCapped 'npm' @('ls','-g',$Pkg,'--depth=0','--json') $log $ProbeCap
-    if ($rc -eq -2) { Add-ProbeOverflow "npm ls -g $Pkg" $ProbeCap }
-    $j = Get-Content -LiteralPath $log -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json
-    return [string]$j.dependencies.$Pkg.version
-  } catch { return '' }
-  finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
 # winget 이 내주는 CLI. 깔렸으면 프로그램 칸처럼 「올릴 것」 목록이 가른다(`Get-InstallAction`).
@@ -2790,6 +2837,141 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
     $Fails.Add("CLI ($Label)")
   }
   Remove-Item $wl -ErrorAction SilentlyContinue
+}
+
+# VC++ 런타임 파일의 자리 — 64 비트 `System32` 의 `msvcp140.dll`.
+# ⚠ **32 비트 파워셸은 `System32` 를 `SysWOW64`(32 비트 런타임)로 돌려 읽는다** — 그 판에서는 `Sysnative` 로 64 비트 자리를 연다.
+function Get-VcRuntimeDll {
+  $sys = if ([Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess) { 'Sysnative' } else { 'System32' }
+  return (Join-Path (Join-Path $env:SystemRoot $sys) $VcRuntime.Dll)
+}
+
+# 깔린 VC++ 런타임의 판을 그 파일에서 읽는다 — 아무것도 안 띄운다. `@{ State; Ver; Probe; Why }`(`Add-UnmeasuredStep` 의 꼴) — 파일이
+#   없으면 `no`, 판을 읽으면 `yes`, 파일이 있는데 판을 못 읽으면 `unmeasured` 다. `$Path` 는 검사가 대역 파일을 넣는 손잡이다.
+function Measure-VcRuntime([string]$Path = (Get-VcRuntimeDll)) {
+  $probe = "$Path 의 파일 판"
+  try {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf -ErrorAction Stop)) { return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
+    $v = [Diagnostics.FileVersionInfo]::GetVersionInfo($Path)
+    if ($v.FileMajorPart -le 0) { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '판 칸이 비어' } }
+    return @{ State = 'yes'; Ver = ('{0}.{1}.{2}.{3}' -f $v.FileMajorPart, $v.FileMinorPart, $v.FileBuildPart, $v.FilePrivatePart); Probe = ''; Why = '' }
+  } catch { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '오류를 던져' } }
+}
+
+# 관리자 승격이 이 PC 에서 어떻게 나나를 읽는다 — 상태만 읽고 아무것도 안 띄운다. `@{ Token; Lua; AdminPrompt; UserPrompt; AdminMode }`.
+#   `Token` — `elevated`(이미 승격된 토큰) · `filtered`(관리자인데 걸러진 토큰 — 관리자 그룹이 거부 전용으로 든다) · `standard`(관리자
+#   그룹이 없다) · 빈 글자(못 읽었다). 나머지 넷은 `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System` 의 `EnableLUA` ·
+#   `ConsentPromptBehaviorAdmin` · `ConsentPromptBehaviorUser` · `TypeOfAdminApprovalMode` 값이고 없으면 `$null` 이다. 하나라도 던지면
+#   `Token` 을 비운다 — 못 읽은 것은 창이 뜨는 판으로 친다(`Get-ElevationGo`).
+function Read-ElevationState {
+  $s = @{ Token = ''; Lua = $null; AdminPrompt = $null; UserPrompt = $null; AdminMode = $null }
+  $base = $null; $k = $null
+  try {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $admins = 'S-1-5-32-544'   # BUILTIN\Administrators
+    $token = if ((New-Object Security.Principal.WindowsPrincipal $id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { 'elevated' }
+             elseif (@($id.Claims | Where-Object { $_.Type -eq [Security.Claims.ClaimTypes]::DenyOnlySid -and $_.Value -eq $admins }).Count) { 'filtered' }
+             else { 'standard' }
+    $s.Token = $token
+    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64')
+    $k = $base.OpenSubKey('SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System', $false)
+    if (-not $k) { return $s }   # 키가 없으면 값이 다 없는 것이다 — 기본값으로 읽힌다
+    $s.Lua         = $k.GetValue('EnableLUA', $null)
+    $s.AdminPrompt = $k.GetValue('ConsentPromptBehaviorAdmin', $null)
+    $s.UserPrompt  = $k.GetValue('ConsentPromptBehaviorUser', $null)
+    $s.AdminMode   = $k.GetValue('TypeOfAdminApprovalMode', $null)
+  } catch {
+    $s.Token = ''
+  } finally { if ($k) { $k.Close() }; if ($base) { $base.Close() } }
+  return $s
+}
+
+# 기계 범위 설치(관리자 승격)를 이 판에서 걸어도 되나 — `go`(건다) · `later`(승인 창이 뜨는데 누를 사람이 없다 — 사람이 있는 판으로
+#   미룬다) · `denied`(이 PC 에서는 승격이 안 선다). `$State` 는 `Read-ElevationState` 의 꼴, `$Attended` 는 승인 창을 눌러 줄 사람이 있는
+#   판인가다.
+# ⚠ **창이 뜨나는 상태로 가른다 — 무인 판인가 하나로 안 가른다.** 관리자에 정책이 묻지 않고 올리는 PC(회사 VDI · 집 PC 실측
+#   `ConsentPromptBehaviorAdmin` 0)는 무인 판에서도 승격이 조용히 선다. 창이 뜨는 PC 의 무인 판만 그 창 앞에서 사람을 기다리며 선다
+#   (PAISetup #34 ③).
+# ⚠ **못 읽었으면 창이 뜨는 판으로 친다** — 무인 판을 세우는 것보다 한 판 미루는 것이 싸다.
+# 값의 뜻(결정 0146 — Microsoft 「User Account Control settings and configuration」 · 「Administrator protection」 · Policy CSP):
+#   `ConsentPromptBehaviorAdmin` 0 은 관리자를 묻지 않고 올린다 · 1~5 는 묻는다 · 없으면 5
+#   `ConsentPromptBehaviorUser` 0 은 표준 사용자의 승격을 자동으로 거절한다 · 1 · 3 은 관리자 자격을 묻는다 · 없으면 3
+#   `EnableLUA` 0 은 승인 모드가 꺼진 PC 다 — 관리자는 늘 승격된 토큰이고(`elevated`) 표준 사용자는 승격할 길이 없다 · 없으면 1
+#   `TypeOfAdminApprovalMode` 2 는 관리자 보호 — 승격마다 사람이 확인한다(자동 승격이 없다) · 없으면 1
+function Get-ElevationGo($State, [bool]$Attended) {
+  $way = 'prompt'
+  if ($State.Token -eq 'elevated') { $way = 'silent' }
+  elseif ($State.Token -eq 'filtered') { if ($State.AdminMode -ne 2 -and $State.AdminPrompt -eq 0) { $way = 'silent' } }
+  elseif ($State.Token -eq 'standard') { if ($State.Lua -eq 0 -or $State.UserPrompt -eq 0) { $way = 'denied' } }
+  if ($way -eq 'silent') { return 'go' }
+  if ($way -eq 'denied') { return 'denied' }
+  if ($Attended) { return 'go' }
+  return 'later'
+}
+
+# VC++ 런타임을 `$VcRuntimeMin` 이상으로 세운다 — 판은 그 파일에서 읽고(`Measure-VcRuntime`), 할 일은 한 표(`Get-InstallAction`)가 가르고,
+#   승격은 `Get-ElevationGo` 가 가른다. `$Attended` 는 승인 창을 눌러 줄 사람이 있는 판인가다. 오르면 초록 한 줄, 못 올리면 그 까닭 ·
+#   그대로 서는 것 · 사람이 할 일을 한 줄로 말하고 `$Fails` 에 하나를 넣는다 — 승인 창이 뜨는데 사람이 없는 판은 노란 줄만 낸다(끝 검증의
+#   `[X]` 가 그 판의 빨강을 든다).
+# ⚠ **올랐나는 파일이 가른다 — winget 이 낸 값이 아니다.** 낸 값은 안 오른 까닭의 말만 고른다(`$VcRedistRc*`).
+# ⚠ **`-NoUpgrade` 로 안 건너뛴다** — 새 판을 따라가는 일이 아니라 그 판 아래에서 죽는 것을 막는 일이다(Node 신뢰 배선과 같은 규율).
+function Install-VcRuntime([bool]$Attended) {
+  $L = $VcRuntime.Name
+  $hand = "winget install --id $($VcRuntime.Id) --exact --source winget"
+  $m = Measure-VcRuntime
+  # 「올릴 것인가」의 답은 winget 목록이 아니라 문턱이 든다
+  $below = if ($m.State -eq 'yes') { [version]$m.Ver -lt $VcRuntimeMin } else { $null }
+  $act = Get-InstallAction $m.State $m.Ver '' $below $false $false
+  if ($act -eq 'hold') { Add-UnmeasuredStep $L $m.Probe '깔지도 올리지도 않았다' $m.Why; return }
+  if ($act -eq 'latest') { Write-Host "  $L — 있음  $(Format-VerPart $m.Ver) · $VcRuntimeMin 이상"; return }
+  if ($act -ne 'install' -and $act -ne 'upgrade') { return }
+  $now = if ($m.Ver) { "지금 $($m.Ver)" } else { '없다' }
+  $still = '나머지 설치는 그대로 간다 · 이 런타임에 기대는 파이썬 패키지(markitdown · PPT 검수)만 이 PC 에서 import 하다 죽는다'
+  if ($noWinget) {
+    Write-Host "  ! $L — $now · $VcRuntimeMin 보다 낮은데 winget 이 없어 못 올린다 · $still · IT 에 「Microsoft Visual C++ 재배포 가능 패키지(x64) $VcRuntimeMin 이상」을 요청한다" -ForegroundColor Red
+    $Fails.Add("$L (winget 이 없다)")
+    return
+  }
+  $elevGo = Get-ElevationGo (Read-ElevationState) $Attended
+  if ($elevGo -eq 'denied') {
+    Write-Host "  ! $L — $now · $VcRuntimeMin 보다 낮은데 이 PC 는 관리자 승격이 안 선다 · $still · IT 에 「Microsoft Visual C++ 재배포 가능 패키지(x64) $VcRuntimeMin 이상」을 요청한다" -ForegroundColor Red
+    $Fails.Add("$L (관리자 승격이 안 서는 PC — IT 에 요청)")
+    return
+  }
+  if ($elevGo -eq 'later') {
+    Write-Host "  ! $L — $now · $VcRuntimeMin 보다 낮다 · 관리자 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이라 안 올렸다 · 설치 창으로 다시 누르면 승인 창이 한 번 뜬다 (손으로: $hand)" -ForegroundColor Yellow
+    return
+  }
+  Say-Busy $L $act @('winget', $now, '관리자 승인이 들 수 있다')
+  $log = [IO.Path]::GetTempFileName()
+  $rc = Invoke-LoggedCapped 'winget' (@('install','--id',$VcRuntime.Id) + $WG) $log $VcRedistCap
+  if ($rc -eq -2) { Add-ProbeOverflow "winget install --id $($VcRuntime.Id)" $VcRedistCap }
+  $after = Measure-VcRuntime
+  if ($after.State -eq 'yes' -and [version]$after.Ver -ge $VcRuntimeMin) {
+    if ($m.Ver) { Write-Host "  $L — 올렸다  $($m.Ver)  ->  $($after.Ver)" -ForegroundColor Green }
+    else        { Write-Host "  $L — 깔았다 $(Format-VerPart $after.Ver)" -ForegroundColor Green }
+  } else {
+    $fileNow = if ($after.State -eq 'yes') { "파일은 $($after.Ver)" } elseif ($after.State -eq 'no') { '파일이 없다' } else { '파일의 판을 못 읽었다' }
+    if ($rc -eq -2) {
+      Write-Host "  ! $L — 올리지 못했다: winget 이 $(Format-ProbeWhy $rc $VcRedistCap)서 거뒀다(승인 창이 사람을 기다렸을 수 있다) · $fileNow · $still · 설치 창으로 다시 누르거나 손으로: $hand" -ForegroundColor Red
+      $Fails.Add("$L (winget 이 ${VcRedistCap}초 안에 안 끝났다)")
+    } elseif ($VcRedistRcReboot -contains $rc) {
+      Write-Host "  ! $L — winget 이 PC 를 다시 시작해야 끝난다고 했다($(Format-ProbeWhy $rc 0)서) · $fileNow · 다시 시작한 뒤 설치를 다시 누르면 선다 · $still" -ForegroundColor Red
+      $Fails.Add("$L (PC 를 다시 시작해야 선다)")
+    } elseif ($VcRedistRcCancelled -contains $rc) {
+      Write-Host "  ! $L — 관리자 승인이 안 나서 못 올렸다($now) · $still · 승인할 수 있을 때 설치를 다시 누르거나 손으로: $hand" -ForegroundColor Red
+      $Fails.Add("$L (관리자 승인이 안 났다)")
+    } elseif ($VcRedistRcNewer -contains $rc) {
+      Write-Host "  ! $L — winget 은 같거나 더 새 판이 이미 깔렸다고 하는데 $fileNow — 다시 시작이 남았을 수 있다 · 다시 시작해도 그대로면 「설정 → 앱」에서 Microsoft Visual C++ 2015-2022 재배포 가능 패키지(x64)를 「수정」한다 · $still" -ForegroundColor Red
+      $Fails.Add("$L (winget 은 깔렸다는데 파일이 옛 판이다)")
+    } else {
+      Write-Host "  ! $L — 올리지 못했다(winget 이 $(Format-ProbeWhy $rc 0)서) · $fileNow · $still — 뱉은 끝 줄:" -ForegroundColor Red
+      Show-Log $log
+      Write-Host "     손으로:  $hand"
+      $Fails.Add("$L (winget 이 $rc 로 끝났다)")
+    }
+  }
+  Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
 }
 
 #endregion 깔기
@@ -3610,7 +3792,7 @@ function Stop-App($App) {
 
 #endregion 앱 열기
 
-#region 심기 · 제공기능 — 홈 씨앗 몸통의 `--plant` 를 부르고, 로그온 자동 실행이 새 큰 판을 처음 깐 PC 에 「제공기능」을 한 번 연다
+#region 심기 · 제공기능 — 홈 씨앗 몸통의 `--plant` 를 부르고, 새 작은 판을 처음 깐 PC 에서 설치 끝에 「제공기능」을 한 번 연다
 
 # 심기만 — 홈 씨앗의 세션 훅을 `--plant <작업 루트>` 로 부른다(claude-config 결정 0134 · 부르는 자리와 차례는 결정 0135). 저장소를
 #   받았든 안 받았든 같은 홈 씨앗을 부른다 — 홈 씨앗은 늘 서 있고, 몸통은 거기서 홈 훅 · 고른 도구의 폴더 신뢰 · 데스크탑 상태를 심는다.
@@ -3647,31 +3829,33 @@ function Invoke-Plant([string]$Bash, [string]$Root) {
   @{ Ran = $true; Ok = ($rc -eq 0); Why = "exit $rc" }
 }
 
-# 「제공기능」(곁의 `features.html`)을 큰 판(`VERSION` 의 첫 수)마다 한 번 연다 — 창 없이 돈 설치(로그온 자동 실행)가 새 큰 판을 처음 깐
-#   PC 에서다(claude-config 결정 0135). 창으로 깐 판은 창이 「제공기능」 링크를 들어 안 연다. 옛 제작자 칸 알림 창을 띄운 판은 그 창이
-#   닫힐 때 연다(결정 0099) — 두 번 안 연다.
-# 기록은 설치본 자리(`%LOCALAPPDATA%\Claude Code Setup`)의 한 줄 — 본 큰 판의 수다. 링크를 든 판(창)과 알림 창을 띄운 판도 적는다 —
-#   본 것은 같아, 다음 로그온이 또 열지 않는다. 열지 못했으면 안 적는다 — 다음 로그온이 다시 연다. 못 읽는 기록은 없는 것으로 본다.
-# 내는 것 — 한 낱말: opened · window · notice · seen · nopage · failed · nover. 화면 줄은 부르는 쪽이 든다.
-function Open-FeaturesOnce([string]$Version, [bool]$Unattended, [bool]$NoticeShown, [string]$Record, [string]$Page) {
-  if ($Version -notmatch '^(\d+)\.') { return 'nover' }
-  $major = [int]$Matches[1]
-  $seen = 0
+# 「제공기능」(곁의 `features.html`)을 작은 판(`VERSION` 의 앞 두 수 — `큰.작은`)마다 한 번 연다 — 설치 창 · 콘솔 · 로그온 자동 실행 어느
+#   판이든 설치 끝에서다(claude-config 결정 0147 — 0135 의 그 갈래를 대신한다). SemVer 의 가운데 자리가 기능이 더해진 판이라, 다시 깔면
+#   새것이 오는 판이 거기서 오른다. 옛 제작자 칸 알림 창을 띄운 판(`$NoticeShown`)은 그 창이 닫힐 때 연다(결정 0099) — 두 번 안 연다.
+# 기록은 설치본 자리(`%LOCALAPPDATA%\Claude Code Setup`)의 한 줄 — 본 작은 판(`큰.작은`)이다. 알림 창을 띄운 판도 적는다 — 본 것은 같아,
+#   다음 설치가 또 열지 않는다. 열지 못했으면 안 적는다 — 다음 설치가 다시 연다. 옛 기록(본 큰 판의 수 하나 · 0135)은 그 큰 판의 .0 을
+#   본 것으로 읽고, 못 읽는 기록은 없는 것으로 본다. 파일 이름(`features.major`)은 옛 기록을 이어 읽으려고 그대로 둔다.
+# 내는 것 — 한 낱말: opened · notice · seen · nopage · failed · nover. 화면 줄은 부르는 쪽이 든다.
+function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record, [string]$Page) {
+  if ($Version -notmatch '^(\d+)\.(\d+)') { return 'nover' }
+  $now = [version]"$($Matches[1]).$($Matches[2])"
+  $seen = $null
   try {
     if (Test-Path -LiteralPath $Record -PathType Leaf) {
       $txt = ([IO.File]::ReadAllText($Record) -replace "^$([char]0xFEFF)", '').Trim()
-      if ($txt -match '^\d+$') { $seen = [int]$txt }
+      if ($txt -match '^\d+\.\d+$') { $seen = [version]$txt }
+      elseif ($txt -match '^\d+$')  { $seen = [version]"$txt.0" }
     }
-  } catch { $seen = 0 }
-  if ($seen -ge $major) { return 'seen' }
-  $how = if (-not $Unattended) { 'window' } elseif ($NoticeShown) { 'notice' } else { '' }
-  if (-not $how) {
+  } catch { $seen = $null }
+  if ($seen -and $seen -ge $now) { return 'seen' }
+  $how = 'notice'
+  if (-not $NoticeShown) {
     if (-not (Test-Path -LiteralPath $Page -PathType Leaf)) { return 'nopage' }
     try { Start-Process -FilePath $Page | Out-Null; $how = 'opened' } catch { return 'failed' }
   }
   try {
     New-Item -ItemType Directory -Path (Split-Path -Parent $Record) -Force | Out-Null
-    [IO.File]::WriteAllText($Record, "$major", (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($Record, "$($now.Major).$($now.Minor)", (New-Object Text.UTF8Encoding($false)))
   } catch { }
   $how
 }
@@ -4242,7 +4426,7 @@ Write-Elapsed '준비'
 
 # ══ 걸음 「프로그램」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 기계
-#   하는 일 — winget 앱(VS Code · Node · Git · Python · gh) · 데스크탑 앱 · Node 신뢰
+#   하는 일 — winget 앱(VS Code · Node · Git · Python · gh) · VC++ 런타임(파이썬이 서는 판) · 데스크탑 앱 · Node 신뢰
 #   앞에서 받는 것 — 준비의 고른 제품 · 자리 · 올릴 것 목록 · winget 유무 · 파이썬이 필요한 까닭
 #   안 하는 것 — 홈 파일 · 키. 예외 하나 — Node 신뢰가 CA 경로(`NODE_EXTRA_CA_CERTS`)를 사용자 환경에 심는다.
 #     뒤의 확장 · CLI 가 그 값을 물고 받으므로 이 걸음에 선다
@@ -4335,6 +4519,16 @@ foreach ($app in $Apps) {
     $Fails.Add("$($app.Name) 설치")
   }
   Remove-Item $log -ErrorAction SilentlyContinue
+}
+
+# ── VC++ 런타임 — 파이썬이 서는 판이면 그 C++ 확장이 싣는 런타임을 `$VcRuntimeMin` 이상으로 세운다 (claude-config 결정 0146) ──
+# 파이썬 칸과 같은 문이다 — 개발도구를 끄고 파이썬이 필요한 까닭도 없는 판에는 이 런타임을 실을 것이 없고, 기계 범위 설치라 관리자
+#   승격이 드는 걸음을 괜히 걸지 않는다. 끝 검증의 그 줄도 이 값을 읽는다.
+# 승인 창을 눌러 줄 사람이 있나는 이 설치기가 이미 쓰는 두 자로 가른다 — 창 없이 돈 판(로그온 자동 실행이 늘 넘기는 `-Yes -NoLaunch` ·
+#   끝의 「제공기능」 칸과 같은 가름)과 누를 사람이 없는 세션(`UserInteractive` · `Ask-Restart` 와 같은 자).
+$wantVcRuntime = [bool](-not $NoDevTools -or $needPython)
+if ($wantVcRuntime) {
+  Install-VcRuntime ([bool]((-not ($Yes -and $NoLaunch)) -and [Environment]::UserInteractive))
 }
 
 # ── 2′. 데스크탑 앱 — **켤지는 값 파일이, 언제는 행이, 무엇을은 제품 칸이 정한다** ──────
@@ -4530,7 +4724,7 @@ $CliPicks = @($Clis | Where-Object { $PickKeys -contains $_.Key })
 if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
 foreach ($c in $CliPicks) {
   if ($c.Via -eq 'winget') { Install-WingetCli $c.Id  $c.Cmd $c.Label }
-  else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label $c.ReadVer }
+  else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label }
 }
 
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
@@ -4546,11 +4740,10 @@ Exit-Step 'cli'
 # ══ 걸음 「키와 값」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 환경
 #   하는 일 — 맡기기 모델 값(agy · Codex — 맡기기 모델 표에서) · Codex · Copilot 맡기기 값 · 값 파일의 이름들(게이트웨이 키 ·
-#     남은 이름) · 물러난 이름 걷기 · 회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 · npm 전역 자리를 사용자 PATH 에 ·
+#     남은 이름) · 물러난 이름 걷기 · 회사 키의 다른 이름 · 사외로 간 자리의 사내 잔재 걷기 ·
 #     워드의 PDF 변환 안내 끄기(워드가 깔린 PC) · 사외 Claude 구독 로그인
-#   앞에서 받는 것 — 준비의 자리(`$ModelSite`) · 맡기기 조건 · 짐(`$KitSkills`) · 값 파일, 「CLI」의 `claude`(구독 로그인) ·
-#     npm 전역 자리(`$NpmGlobalDir` — 「CLI」가 npm 으로 깔면 선다)
-#   안 하는 것 — 도구 홈 파일
+#   앞에서 받는 것 — 준비의 자리(`$ModelSite`) · 맡기기 조건 · 짐(`$KitSkills`) · 값 파일, 「CLI」의 `claude`(구독 로그인)
+#   안 하는 것 — 도구 홈 파일 · 사용자 PATH(마무리의 「사용자 범위 명령 자리」가 든다 — 뒤 걸음들이 그 폴더를 채운 뒤라야 한다)
 #   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)뿐이다 — 심는 자리를
 #     그 걸음 뒤로 옮기면 settings.json 이 바뀐다
 Enter-Step 'keys'
@@ -4925,32 +5118,6 @@ if (-not $useGateway) {
       Write-Host '     다음 로그인부터는 안 뜬다 — 지금 끄려면 작업 관리자에서 pythonw 를 끝낸다'
     } else {
       Write-Host "  프록시 사본 — 걷었다 ($oldProxyDir)" -ForegroundColor Green
-    }
-  }
-}
-
-# ── npm 전역 자리 — **사용자 PATH 에 심어야 설치가 끝난 뒤에도 선다** (claude-config 결정 0143) ─────────────────
-# npm 으로 전역에 깐 CLI(고른 Claude · Codex · Copilot 과 사람이 따로 깐 것)는 이 자리에 선다. npm 은 이 자리를 PATH 에 안
-#   심고, 배선(`Update-RuntimePath`)은 이 창만 태운다 — 심지 않으면 새 터미널에서 깔린 CLI 가 이름으로 안 잡힌다.
-# 폴더가 있을 때만 심는다 — npm 이 전역에 무엇이든 깔아야 생기는 폴더다. 고른 제품과 상관없이 Node 는 늘 깔리므로 사람이
-#   깐 npm CLI 도 같이 선다. 걷는 손은 없다 — 같은 자리를 다른 설치나 사람이 넣었을 수 있다(결정 0143).
-if (Test-Path -LiteralPath $NpmGlobalDir) {
-  $npmPath = Add-ToUserPath $NpmGlobalDir
-  switch ($npmPath.Did) {
-    'kept'  { Write-Host "  npm 전역 자리 — 사용자 PATH 에 이미 있다 ($NpmGlobalDir)" }
-    'added' {
-      Write-Host "  npm 전역 자리 — 사용자 PATH 에 더했다 ($NpmGlobalDir) · 새로 여는 터미널부터 npm 으로 깐 CLI 가 이름만으로 선다" -ForegroundColor Green
-      if (-not $npmPath.Notified) {
-        Write-Host '    ! 열린 프로그램에 바뀐 것을 못 알렸다 — 다음 로그온부터 새 터미널이 본다' -ForegroundColor Yellow
-      }
-    }
-    'toolong' {
-      Write-Host ("  ! npm 전역 자리 — 사용자 PATH 에 안 더했다: 더하면 PATH 가 {0:N0} 자로 환경변수 한도({1:N0})를 넘는다 · 안 쓰는 자리를 걷고 다시 누른다" -f $npmPath.Len, $EnvVarMax) -ForegroundColor Red
-      $Fails.Add('npm 전역 자리 (PATH 길이 한도)')
-    }
-    default {
-      Write-Host "  ! npm 전역 자리 — 사용자 PATH 에 못 더했다 — $(Say-Why $npmPath.Err)" -ForegroundColor Red
-      $Fails.Add('npm 전역 자리 (사용자 PATH)')
     }
   }
 }
@@ -6346,7 +6513,7 @@ Exit-Step 'repo'
 
 # ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
 #   층 — 등록
-#   하는 일 — 공식 문서 스킬 플러그인 · agy 로그인 안내 한 줄
+#   하는 일 — 공식 문서 스킬 플러그인 · agy 로그인 안내 한 줄(agy 회사 설정이 안 서는 자리)
 #   앞에서 받는 것 — 「키와 값」의 구독 로그인
 #   안 하는 것 — 없음
 Enter-Step 'register'
@@ -6420,7 +6587,9 @@ if ($wantDocSkills) {
   }
 }
 
-if ($wantAgyDelegate) {
+# agy 의 Google 로그인은 회사 설정이 안 서는 자리의 몫이다 — 사내는 회사 키로 게이트웨이를 타서(`$wantAgy` · 「Codex · 안티그래비티 설정」)
+#   로그인이 없다(실측 2026-10-14 회사 PC — Google 로그인 없이 agy 맡기기가 섰다).
+if ($wantAgyDelegate -and -not $wantAgy) {
   Write-Host '  agy 가 로그인 전이면 터미널에서 agy 를 한 번 띄워 Google 계정으로 로그인한다'
 }
 
@@ -6428,7 +6597,8 @@ Exit-Step 'register'
 
 # ══ 마무리 ═════════════════════════════════════════════════════════════════════════════════════
 #   층 — 없음(걸음 뒤)
-#   하는 일 — 넘겨받은 임시 값 파일 지우기 · 바로가기 · 로그온 자동 실행 · 끝 검증 · 앱 열기 · 끝 줄 · 종료 코드
+#   하는 일 — 넘겨받은 임시 값 파일 지우기 · 사용자 범위 명령 자리를 사용자 PATH 에 · 바로가기 · 로그온 자동 실행 · 끝 검증 · 앱 열기 ·
+#     끝 줄 · 종료 코드
 #   앞에서 받는 것 — 앞 걸음 전부
 #   안 하는 것 — 없음
 #   ⚠ 자동 실행 칸의 `Read-Directive $EnvFile 'autorun'` 은 임시 값 파일을 지운 뒤에 선다 — 그 파일을 넘기는 설치 창은
@@ -6466,6 +6636,39 @@ if ($PSBoundParameters.ContainsKey('EnvFile') -and $EnvFile) {
   if ($envFull -and $envFull.StartsWith($tmpRoot, [StringComparison]::OrdinalIgnoreCase) -and
       (Test-Path -LiteralPath $envFull)) {
     Remove-Item -LiteralPath $envFull -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# ── 사용자 범위 명령 자리 — **사용자 PATH 에 심어야 설치가 끝난 뒤에도 선다** (claude-config 결정 0143 · PAISetup #30 ②) ─────────────
+# 이 설치와 넘긴 훅이 사용자 범위에 깐 명령은 두 폴더에 선다 — npm 전역 자리(`$NpmGlobalDir` · 고른 CLI 와 훅의 npm 전역 도구)와 pip 의
+#   사용자 자리(`Measure-PipUserScripts` · 훅의 `pip install --user` 와, 기본 자리에 못 쓰는 파이썬에서 물러선 이 설치의 파이썬
+#   패키지). npm 도 pip 도 그 자리를 PATH 에 안 심고 배선(`Update-RuntimePath`)은 이 창만 태워서, 심지 않으면 새 터미널에서 깔린 명령이
+#   이름으로 안 잡힌다(PAISetup #29 · #30 — 공식 pptx 스킬이 `markitdown` 명령을 부른다).
+# ⚠ **두 폴더를 채우는 걸음이 다 지난 여기서 심는다** — 「CLI」 · 「공용 자산」(파이썬 패키지) · 「설정 저장소」(넘긴 훅의 전역 도구)가
+#   채운다. 그 앞에서 심으면 맨바닥 PC 의 첫 설치는 폴더가 아직 없어 못 심고 다음 로그온까지 비어 있다.
+# 폴더가 있을 때만 심는다 — 무엇이든 깔아야 생기는 폴더다. 걷는 손은 없다 — 같은 자리를 다른 설치나 사람이 넣었을 수 있다(결정 0143).
+$PipUser = Measure-PipUserScripts
+if ($PipUser.State -eq 'unmeasured') { Add-UnmeasuredStep 'pip 사용자 자리' $PipUser.Probe '사용자 PATH 에 안 더했다' $PipUser.Why }
+foreach ($ud in @(@{ Label = 'npm 전역 자리'; Dir = $NpmGlobalDir; What = 'npm 으로 깐 CLI 가' },
+                  @{ Label = 'pip 사용자 자리'; Dir = $PipUser.Dir; What = 'pip 가 사용자 자리에 깐 명령이' })) {
+  if (-not $ud.Dir -or -not (Test-Path -LiteralPath $ud.Dir)) { continue }
+  $udPath = Add-ToUserPath $ud.Dir
+  switch ($udPath.Did) {
+    'kept'  { Write-Host "  $($ud.Label) — 사용자 PATH 에 이미 있다 ($($ud.Dir))" }
+    'added' {
+      Write-Host "  $($ud.Label) — 사용자 PATH 에 더했다 ($($ud.Dir)) · 새로 여는 터미널부터 $($ud.What) 이름만으로 선다" -ForegroundColor Green
+      if (-not $udPath.Notified) {
+        Write-Host '    ! 열린 프로그램에 바뀐 것을 못 알렸다 — 다음 로그온부터 새 터미널이 본다' -ForegroundColor Yellow
+      }
+    }
+    'toolong' {
+      Write-Host ("  ! {0} — 사용자 PATH 에 안 더했다: 더하면 PATH 가 {1:N0} 자로 환경변수 한도({2:N0})를 넘는다 · 안 쓰는 자리를 걷고 다시 누른다" -f $ud.Label, $udPath.Len, $EnvVarMax) -ForegroundColor Red
+      $Fails.Add("$($ud.Label) (PATH 길이 한도)")
+    }
+    default {
+      Write-Host "  ! $($ud.Label) — 사용자 PATH 에 못 더했다 — $(Say-Why $udPath.Err)" -ForegroundColor Red
+      $Fails.Add("$($ud.Label) (사용자 PATH)")
+    }
   }
 }
 
@@ -7088,7 +7291,14 @@ if (-not $NoVsCode) {
     }
   }
 }
+# npm 으로 깐 CLI 는 「CLI」 걸음과 같은 자(npm 의 기록)로 잰다 — 띄우지 않는다(PAISetup #30 ③). winget CLI 는 이름이 서나를 띄워 잰다.
 foreach ($c in $CliPicks) {
+  if ($c.Via -ne 'winget') {
+    $rec = Measure-NpmGlobal $c.Pkg
+    if ($rec.State -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = $rec.Probe; Why = $rec.Why } }
+    else                             { $checks += @{ Name = $c.Label; Ok = ($rec.State -eq 'yes') } }
+    continue
+  }
   $cliRuns = Measure-Runs $c.Cmd '--version'
   if ($cliRuns -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = "$($c.Cmd) --version" } }
   else                           { $checks += @{ Name = $c.Label; Ok = ($cliRuns -eq 'yes') } }
@@ -7385,6 +7595,22 @@ if ($useGateway) {
 if (@($CliPicks | Where-Object { $_.Via -ne 'winget' }).Count) {
   $checks += @{ Name = "npm 전역 자리 — 사용자 PATH ($NpmGlobalDir)"; Ok = (Test-PathListHas ([string](Get-UserPath).Raw) $NpmGlobalDir) }
 }
+# pip 사용자 자리 — 그 폴더가 섰으면(pip 가 그 자리에 무엇을 깔았으면) 새 터미널이 볼 사용자 PATH 에 섰나. 마무리의 「사용자 범위 명령
+#   자리」가 물은 그 자리를 같은 자로 레지스트리에서 잰다(PAISetup #30 ②).
+if ($PipUser.Dir -and (Test-Path -LiteralPath $PipUser.Dir)) {
+  $checks += @{ Name = "pip 사용자 자리 — 사용자 PATH ($($PipUser.Dir))"; Ok = (Test-PathListHas ([string](Get-UserPath).Raw) $PipUser.Dir) }
+}
+# VC++ 런타임 — 「프로그램」 걸음과 같은 문 · 같은 자(파일의 판)로 문턱 위인가를 잰다(결정 0146).
+if ($wantVcRuntime) {
+  $vcNow = Measure-VcRuntime
+  if ($vcNow.State -eq 'unmeasured') {
+    $checks += @{ Name = "$($VcRuntime.Name) ($($VcRuntime.Dll) · $VcRuntimeMin 이상)"; State = 'unmeasured'; Probe = $vcNow.Probe; Why = $vcNow.Why }
+  } else {
+    $vcSaid = if ($vcNow.State -eq 'yes') { $vcNow.Ver } else { '없다' }
+    $checks += @{ Name = "$($VcRuntime.Name) ($($VcRuntime.Dll) $vcSaid · $VcRuntimeMin 이상)"
+                  Ok = [bool]($vcNow.State -eq 'yes' -and [version]$vcNow.Ver -ge $VcRuntimeMin) }
+  }
+}
 if ($wantAutoRun -eq $true) {
   $checks += @{ Name = "부팅 시 자동 실행 ($AutoRunTaskName)"; Ok = (Test-AutoRunTask $AutoRunTaskName) }
 }
@@ -7392,9 +7618,10 @@ if ($wantAutoRun -eq $true) {
 # ⚠ **못 쟀다를 `[X]` 로 찍지 않는다.** 사람은 `[X]` 를 「그 제품이 없다」로 읽고 깔러 간다 — 이미 깔린 것을 다시 까는
 #   헛걸음이다. `[X]` 밑에 덧댄 노란 줄로는 못 막는다 — 바로 다음에 서는 빨간 요약이 그 줄을 덮는다. 초록으로도 안
 #   올린다 — 못 쟀으면 선 것도 아니라, 올리면 **안 선 기계가 성공으로 보고된다**(이 칸 머리글이 든 그 규율).
+# 못 잰 칸의 까닭은 그 칸이 든 것(`Why` — 「``명령`` 이 …」 뒤에 이어 읽히는 꼴 · 결정 0145)이고, 없으면 `$ProbeCap` 넘김이다.
 foreach ($c in $checks) {
   if ($c.State -eq 'unmeasured') {
-    $over = "``$($c.Probe)`` 이 ${ProbeCap}초 안에 안 끝났다"
+    $over = if ($c.Why) { "``$($c.Probe)`` 이 $($c.Why)서" } else { "``$($c.Probe)`` 이 ${ProbeCap}초 안에 안 끝났다" }
     $why  = if ($c.Premise) { "$($c.Premise) 와 한 전제 — $over" } else { $over }
     Write-Host "  [?] $($c.Name) — 못 쟀다: $why" -ForegroundColor Yellow
   }
@@ -7764,17 +7991,17 @@ if ($PersonalUpgrade) {
   }
 }
 
-# ── 「제공기능」 — 로그온 자동 실행이 새 큰 판을 처음 깐 PC 에서 한 번 연다 (claude-config 결정 0135) ──────────
-# 창 없이 돈 판인가는 인자로 가른다 — 로그온 자동 실행의 스크립트(`autorun.ps1`)는 판마다 늘 `-Yes -NoLaunch` 로 부르고, 설치 창은
-#   늘 `-Yes` 만 넘긴다(`-NoLaunch` 를 안 넘긴다). 사람이 손으로 두 깃발을 다 준 판도 창이 없어 링크가 없으니 같이 연다.
+# ── 「제공기능」 — 새 작은 판을 처음 깐 PC 에서 설치 끝에 한 번 연다 (claude-config 결정 0147) ──────────
+# 설치 창 · 콘솔 · 로그온 자동 실행 어느 판이든 같다 — 창의 「제공기능」 링크는 다시 볼 때의 길로 남는다. 옛 제작자 칸 알림 창을 띄운
+#   판은 그 창이 연다(위 `$noticeShown`).
 # ⚠ **무엇을 던져도 설치를 못 끝낸다** — 안내 페이지는 덤이다(앱 열기 칸과 같은 규율).
 try {
-  $featHow = Open-FeaturesOnce $DistVersion ([bool]($Yes -and $NoLaunch)) $noticeShown `
+  $featHow = Open-FeaturesOnce $DistVersion $noticeShown `
                                (Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'features.major') (Join-Path $Here 'features.html')
   switch ($featHow) {
-    'opened' { Write-Host "  제공기능 — 이번 큰 판($DistVersion)에서 처음이라 브라우저로 열었다" -ForegroundColor Green }
-    'nopage' { Write-Host '  ! 제공기능 — 이 폴더에 features.html 이 없어 못 열었다 (다음 로그온에 다시 본다)' -ForegroundColor Yellow }
-    'failed' { Write-Host '  ! 제공기능 — 브라우저로 못 열었다 (다음 로그온에 다시 연다)' -ForegroundColor Yellow }
+    'opened' { Write-Host "  제공기능 — 이 판($DistVersion)의 앞 두 자리를 처음 깐 설치라 브라우저로 열었다" -ForegroundColor Green }
+    'nopage' { Write-Host '  ! 제공기능 — 이 폴더에 features.html 이 없어 못 열었다 (다음 설치 · 로그온에 다시 본다)' -ForegroundColor Yellow }
+    'failed' { Write-Host '  ! 제공기능 — 브라우저로 못 열었다 (다음 설치 · 로그온에 다시 연다)' -ForegroundColor Yellow }
   }
 } catch {
   Write-Host "  ! 제공기능 — $(Say-Why $_)" -ForegroundColor Yellow
