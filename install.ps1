@@ -64,9 +64,11 @@
 #   든다. **설치본 자체도 새 릴리스로 간다** — 값 파일의 `#update-repo` 가 가리키는 최신 릴리스를
 #   받아 지문을 대조한 뒤 풀고, 그 판의 엔진으로 설치를 잇는다(아래 자동 실행 칸의 「설치본 자신을
 #   새 릴리스로 간다」).
+# ⚠ `-GhLoginOnly <결과 파일>` — **사람이 주는 칸이 아니다.** 「프로그램」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
+#   (`Start-GhLoginChild`). 자식은 라이브러리만 읽고 빗장 앞에서 GitHub 로그인 창 하나를 띄운 뒤 결과를 그 파일에 적고 나간다.
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
-      [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun)
+      [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun, [string]$GhLoginOnly)
 
 $ErrorActionPreference = 'Stop'
 
@@ -230,7 +232,8 @@ $Clis = @(
   @{ Key='playwright'; Pkg='playwright'; Cmd='playwright'; Label='Playwright (브라우저 MCP)'; For=@('claude','codex','antigravity') }
   # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로는 lychee,
   #   마크다운 구조는 markdownlint-cli2 로 잰다. 설정 저장소의 세션 훅도 같은 둘을 까지만, 그 저장소를 안 붙인 PC 에는 그 걸음이
-  #   없다. lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 `WinGet\Links` 에 이름이 걸린다 — 관리자 승인이 안 든다.
+  #   없다. lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 그 자리가 사용자 PATH 에 걸린다(`WinGet\Links` 나 패키지 폴더
+  #   `WinGet\Packages\lycheeverse.lychee_…` — 어느 쪽인가는 winget 이 PC 마다 고른다) — 관리자 승인이 안 든다.
   @{ Key='lychee';       Via='winget'; Cmd='lychee'; Label='lychee'; Id='lycheeverse.lychee'; Maker=$true }
   @{ Key='markdownlint'; Pkg='markdownlint-cli2'; Cmd='markdownlint-cli2'; Label='markdownlint-cli2'; Maker=$true }
 )
@@ -544,10 +547,12 @@ function Exit-Step([string]$Key) {
 #   쥐고, 두 이름은 서로를 품지 않아 여기 안 걸린다.
 # ⚠ **못 읽는 것은 안 고른다** — 다른 사용자 것은 `CommandLine` 이 비어 오고 `-like` 가 거짓을
 #   낸다. 못 본 것을 끝내지 않는다.
+# ⚠ **로그인 창 자식(`-GhLoginOnly`)은 안 고른다** — 같은 파일로 떠 있지만 빗장 앞에서 나가 빗장을 안 쥐고, 저를 띄운 설치가
+#   살아 있으면 그 설치가 따로 잡힌다(`Start-GhLoginChild`).
 function Find-EngineHolders {
   try {
     @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction Stop |
-        Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*install.ps1*' })
+        Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*install.ps1*' -and $_.CommandLine -notlike '*-GhLoginOnly*' })
   } catch { @() }
 }
 
@@ -791,9 +796,20 @@ $VcRedistCap   = 900   # VC++ 재배포 패키지를 받고(17.8 MB) 까는 한 
 $script:ProbeTimedOut = New-Object System.Collections.Generic.List[hashtable]
 # 넘김 때문에 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`) — 끝 검증이 「안 한 걸음」 `[?]` 로 찍는다.
 $script:UnmeasuredSteps = New-Object System.Collections.Generic.List[hashtable]
+# `Measure-Runs` 가 `unmeasured` 를 낸 물음(「명령 인자」 글자)마다 그 까닭 — 「``명령`` 이 …」 뒤에 이어 읽히는 꼴(`Format-ProbeWhy`).
+#   못 잰 줄을 찍는 두 자리(`Add-UnmeasuredStep` · 끝 검증의 `[?]` 칸)가 `Get-ProbeWhy` 로 읽는다.
+$script:ProbeWhy = @{}
 
-# 「그 명령이 도나」를 세 값으로 잰다 — `yes`(0 으로 끝났다) · `no`(이름이 없다 · 못 띄웠다 · 0 아닌 값으로 끝났다) ·
-#   `unmeasured`(울타리를 넘겼다). 설치기의 「도나」는 다 이 자를 거친다 — 참 · 거짓으로 묻는 자리는 `Test-Runs` 로.
+# 「그 명령이 도나」를 세 값으로 잰다 — `yes`(0 으로 끝났다) · `no`(그 이름이 이 창에 없다) · `unmeasured`(이름은 서는데 울타리를
+#   넘겼거나 · 못 띄웠거나 · 0 아닌 값으로 끝났다). 설치기의 「도나」는 다 이 자를 거친다 — 참 · 거짓으로 묻는 자리는 `Test-Runs` 로.
+# ⚠ **「없다」는 이름이 없을 때만이다 — 선 이름이 진 것은 「못 쟀다」다**(claude-config 결정 0151). 이름이 서는데 울타리 손이 못
+#   띄우거나 0 아닌 값을 받은 것은 그 명령이 깔렸는지를 말하지 않는다 — 껍데기가 가리키는 자리가 바뀐 판 · 보안 소프트가 낀 판 ·
+#   띄우는 꼴이 어긋난 판이 다 그 꼴이다. 그것을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 건다(PAISetup #37). 까닭은
+#   `$script:ProbeWhy` 에 남는다.
+# ⚠ **예외 하나 — 윈도우의 앱 실행 별칭 자리(`…\Microsoft\WindowsApps\`)에서 0 아닌 값으로 끝났거나 못 띄운 것은 「없다」다.** 윈도우가
+#   그 자리에 스토어로 보내는 `python` 껍데기를 두고, 그 껍데기는 진짜가 없을 때 0 아닌 값을 내라고 있는 것이다 — 부른 답이 곧 부재다.
+#   낡아 못 띄우는 별칭도 같다. 이것을 못 쟀다로 읽으면 그 PC 에 파이썬이 영영 안 깔린다. 넘김은 그 자리에서도 못 쟀다다. 스토어로
+#   깐 진짜 파이썬도 그 자리에 서므로, 그것이 지면 winget 판을 곁에 하나 더 깐다(결정 0151).
 # ⚠ **울타리 없이 부르면 한 번의 멈춤이 설치를 영구히 세운다.** `Get-Quiet` 은 자식을 무한히
 #   기다리므로, `--version` 하나가 안 돌아오면 그 걸음에서 끝난다 — 실측 2026-10-14 회사 PC:
 #   검증 단계의 `python --version` 이 **CPU 0.28초만 쓰고 17분을 섰고**(`WaitReason:
@@ -807,29 +823,40 @@ $script:UnmeasuredSteps = New-Object System.Collections.Generic.List[hashtable]
 #   으로 남긴다. 「없다」를 세운 적이 없는 판정이 설치를 승인하거나 일을 조용히 빼면 안 된다(결정 0141).
 function Measure-Runs([string]$Cmd, [string]$Arg, [int]$Site = 0) {
   if (-not $Site) { $Site = $MyInvocation.ScriptLineNumber }
-  if (-not (Get-Command $Cmd -ErrorAction SilentlyContinue)) { return 'no' }
+  $c = Get-Command $Cmd -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $c) { return 'no' }
+  $probe = "$Cmd $Arg"
   $rc = Invoke-ProbeCapped $Cmd $Arg $ProbeCap
-  if ($rc -eq -2) { $script:ProbeTimedOut.Add(@{ Probe = "$Cmd $Arg"; Site = $Site; Cap = $ProbeCap }); return 'unmeasured' }
   if ($rc -eq 0) { return 'yes' }
-  return 'no'
+  if ($rc -eq -2) { $script:ProbeTimedOut.Add(@{ Probe = $probe; Site = $Site; Cap = $ProbeCap }) }
+  elseif ("$($c.Source)" -like '*\Microsoft\WindowsApps\*') { return 'no' }
+  $script:ProbeWhy[$probe] = Format-ProbeWhy $rc $ProbeCap
+  return 'unmeasured'
+}
+
+# `Measure-Runs` 가 그 물음에 `unmeasured` 를 낸 까닭 — 남은 것이 없으면 울타리 넘김 글이다.
+function Get-ProbeWhy([string]$Probe) {
+  if ($script:ProbeWhy -and $script:ProbeWhy.ContainsKey($Probe)) { return $script:ProbeWhy[$Probe] }
+  return "${ProbeCap}초 안에 안 끝나"
 }
 
 # 「그 명령이 도나」를 참 · 거짓으로 — `Measure-Runs` 가 `yes` 일 때만 참이다. 스무 자리 넘게 `if` 의 조건으로 쓴다.
-# ⚠ **거짓은 「없다」가 아니다** — 넘김도 거짓이다. 거짓에 기대 깔거나 일을 빼는 자리는 이 자가 아니라 `Measure-Runs` 로
-#   묻는다(결정 0141). 넘긴 것은 그 자리와 함께 `$script:ProbeTimedOut` 에 남아 끝 검증이 센다.
+# ⚠ **거짓은 「없다」가 아니다** — 넘김도, 선 이름이 진 것도 거짓이다. 거짓에 기대 깔거나 일을 빼는 자리는 이 자가 아니라
+#   `Measure-Runs` 로 묻는다(결정 0141 · 0151). 넘긴 것은 그 자리와 함께 `$script:ProbeTimedOut` 에 남아 끝 검증이 센다.
 function Test-Runs([string]$Cmd, [string]$Arg) {
   return ((Measure-Runs $Cmd $Arg $MyInvocation.ScriptLineNumber) -eq 'yes')
 }
 
 # 부재에 기대 상태를 바꾸는 자리가 `unmeasured` 를 받으면 부른다 — 그 자리에서 노란 줄을 찍고 끝 검증의 「안 한 걸음」에
 #   남긴다. `$Step` 은 안 한 걸음의 이름, `$Probe` 는 못 잰 물음, `$Held` 는 무엇을 안 했나, `$Why` 는 그 물음이 어떻게 졌나다
-#   (「``$Probe`` 이 …」 뒤에 이어 읽히는 꼴 — 비우면 `Measure-Runs` 의 넘김 「${ProbeCap}초 안에 안 끝나」). 하나라도 남으면
-#   설치는 성공이 아니다(끝 검증).
+#   (「``$Probe`` 이 …」 뒤에 이어 읽히는 꼴 — 비우면 `Measure-Runs` 가 그 물음에 남긴 까닭(`Get-ProbeWhy`)이다). 하나라도
+#   남으면 설치는 성공이 아니다(끝 검증). `$Redo` 는 그 프로그램이 깨졌을 때 사람이 손으로 다시 까는 명령이다 — 아는 자리(winget
+#   Id 를 든 행)만 넘기고, 끝 검증이 그 걸음 아래 찍는다.
 # ⚠ **넘김이 아닌 못 잼은 제 까닭을 넘긴다** — winget 의 종료 값 · 던진 오류 · 도구가 없음. 넘김 글로 찍으면 사람이 멎은 것을
 #   찾아 헤맨다(결정 0145).
-function Add-UnmeasuredStep([string]$Step, [string]$Probe, [string]$Held, [string]$Why = '') {
-  if (-not $Why) { $Why = "${ProbeCap}초 안에 안 끝나" }
-  $script:UnmeasuredSteps.Add(@{ Step = $Step; Probe = $Probe; Held = $Held; Why = $Why })
+function Add-UnmeasuredStep([string]$Step, [string]$Probe, [string]$Held, [string]$Why = '', [string]$Redo = '') {
+  if (-not $Why) { $Why = Get-ProbeWhy $Probe }
+  $script:UnmeasuredSteps.Add(@{ Step = $Step; Probe = $Probe; Held = $Held; Why = $Why; Redo = $Redo })
   Write-Host "  ! $Step — 못 쟀다: ``$Probe`` 이 $Why $Held (없는 것이 아니다)" -ForegroundColor Yellow
 }
 
@@ -1717,7 +1744,7 @@ function Add-ToUserPath([string]$Dir,
 }
 
 # pip 가 사용자 자리에 까는 명령의 폴더 — 이 설치와 넘긴 훅이 쓰는 그 `python`(PATH 의 것)에 `sysconfig` 의 사용자 꼴(`nt_user`)로 묻는다.
-#   `@{ State = yes · no · unmeasured; Dir; Probe; Why }`(`Add-UnmeasuredStep` 의 꼴) — python 이 안 서면 `no` 다. 띄우는 것은 python
+#   `@{ State = yes · no · unmeasured; Dir; Probe; Why }`(`Add-UnmeasuredStep` 의 꼴) — python 이 이 창에 없으면 `no` 다. 띄우는 것은 python
 #   하나이고 울타리를 두른다. 폴더가 아직 없어도 그 자리를 낸다 — 있나는 부르는 쪽이 본다.
 # ⚠ **글자는 인터프리터가 선 뒤의 출력이라 DRM 이 끼는 PC 에서도 안 잃는다** — 삼켜지는 것은 `--version` 뿐이다(#32 · 결정 0144).
 $PipUserScriptsCode = "import sysconfig;print(sysconfig.get_path('scripts','nt_user'))"
@@ -2899,12 +2926,12 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
 #   모른다. 그때 `--version` 은 서고 winget 목록에는 안 올라 「최신」으로 지나간다.
 #   **그것을 실패로 안 찍는다**: 도구는 멀쩡히 서 있고, 걷어낼지는 사람이 정할 일이다.
 function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
-  # ⚠ **못 쟀으면 깔지 않는다** — 넘김을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 · 0145).
+  # ⚠ **못 쟀으면 깔지 않는다** — 넘김이나 선 이름의 실패를 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 · 0145 · 0151).
   $cliRuns = Measure-Runs $Cmd '--version'
   $b = if ($cliRuns -eq 'yes') { Get-Ver $Cmd '--version' } else { '' }
   $cliAct = Get-InstallAction $cliRuns $b '' (Get-Listed $Id) $true ($NoUpgrade -or $noWinget)
   if ($cliAct -eq 'hold') {
-    Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다'
+    Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다' '' "winget install --id $Id --force"
     return
   }
   if ($cliAct -eq 'present') { Write-Host "  $Label — 있음 $(Format-VerPart $b)"; return }
@@ -3764,17 +3791,30 @@ function Get-GhKeyringLines($St, [string[]]$TokenVars) {
   }
 }
 
-# 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 초마다 남은 시간을
-# 줄이고 5초마다 로그인이 섰나 재서, 서면 닫는다. 돌려주는 값은 섰나(참/거짓).
+# 코드 창 — 코드가 나올 때까지 「기다리는 중」이고, 나오면 코드가 크게 선다. 남은 시간을 초마다 고쳐 찍고 5초마다 로그인이
+# 섰나 재서, 서면 닫는다. 돌려주는 값은 섰나(참/거짓).
+# ⚠ **남은 시간은 벽시계로 센다** — 틱을 세면 틱 사이에 낀 일만큼 창이 한도보다 오래 산다. 앞당겨 띄운 자식은 부모가 벽시계로
+#   거두므로(`Wait-GhLoginChild`), 창이 그보다 늦게 닫히면 사람이 코드를 넣는 중에 거둬진다.
+# ⚠ **틱 안에서 로그인을 기다리지 않는다** — 재기(`gh api user`)는 틱이 띄우고 다음 틱들이 끝을 본다(`Start-GhLoginProbe`).
+#   기다리면 그동안 창이 얼고 남은 시간도 안 준다. 판정은 `Test-GhLoggedIn` 과 같다(0 으로 끝나면 섰다) · 한도는 `$GhStatusCap`.
 # ⚠ **손잡이는 닫힘(closure)으로 넘긴다.** 폼 이벤트의 스크립트 블록은 이 함수의 변수를 못 본다 —
 #   `GetNewClosure()` 가 그 순간의 참조를 물려주고, 상태는 해시테이블이라 안에서 고친 것이 밖에 남는다.
-function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait) {
+# `-Raised` — 가운데 위쪽에 선다. 설치가 같은 때 띄우는 물음창(`Show-AskDialog`)은 화면 한가운데에 서므로, 앞당겨 띄운 창(`Invoke-GhLoginChild`)이
+#   그 자리를 덮지 않고 둘이 다 보이게 한다. 둘 다 맨 위(TopMost) 창이라 어느 것도 다른 창 뒤로 숨지 않는다.
+function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait, [switch]$Raised) {
   Add-Type -AssemblyName System.Windows.Forms
   Add-Type -AssemblyName System.Drawing
   $f = New-Object Windows.Forms.Form
   $f.Text = 'GitHub 로그인'; $f.TopMost = $true; $f.StartPosition = 'CenterScreen'
   $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false
   $f.ClientSize = New-Object Drawing.Size(420, 190)
+  if ($Raised) {
+    # 창 아래 끝을 화면 가운데보다 `$GhLoginRaise` 만큼 위에 둔다 — 작은 화면에서는 작업 영역 위 끝에 붙는다
+    $work = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $top  = $work.Top + [int]($work.Height / 2) - $f.Height - $GhLoginRaise
+    $f.StartPosition = 'Manual'
+    $f.Location = New-Object Drawing.Point(($work.Left + [int](($work.Width - $f.Width) / 2)), [Math]::Max($work.Top + 8, $top))
+  }
   $l1 = New-Object Windows.Forms.Label
   $l1.Text = '브라우저의 GitHub 창에 이 코드를 넣고 승인해 주세요.'
   $l1.Location = New-Object Drawing.Point(16, 14); $l1.Size = New-Object Drawing.Size(390, 20)
@@ -3793,14 +3833,15 @@ function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc,
   $bSkip = New-Object Windows.Forms.Button; $bSkip.Text = '건너뛰기'
   $bSkip.Location = New-Object Drawing.Point(286, 140); $bSkip.Size = New-Object Drawing.Size(120, 32)
   $f.Controls.AddRange(@($l1, $tCode, $lLeft, $bOpen, $bCopy, $bSkip))
-  $state = @{ Code = ''; Left = $Wait; Tick = 0; Ok = $false }
+  $state = @{ Code = ''; Ok = $false; Clock = [Diagnostics.Stopwatch]::StartNew(); NextProbe = 5; Probe = $null; ProbeClock = $null }
+  $probeCap = $GhStatusCap
   $bOpen.Add_Click({ Start-Process 'https://github.com/login/device' | Out-Null })
   $bCopy.Add_Click({ if ($state.Code) { try { Set-Clipboard -Value $state.Code } catch { } } }.GetNewClosure())
   $bSkip.Add_Click({ $f.Close() }.GetNewClosure())
   $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1000
   $timer.Add_Tick({
-    $state.Left--; $state.Tick++
-    $lLeft.Text = "남은 시간 $($state.Left)초 — 로그인이 서면 이 창은 스스로 닫힙니다"
+    $left = $Wait - [int][Math]::Floor($state.Clock.Elapsed.TotalSeconds)
+    $lLeft.Text = "남은 시간 $([Math]::Max(0, $left))초 — 로그인이 서면 이 창은 스스로 닫힙니다"
     if (-not $state.Code) {
       $said = ''
       foreach ($p in @($OutFile, "$OutFile.err")) {
@@ -3815,17 +3856,239 @@ function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc,
         try { Start-Process 'https://github.com/login/device' | Out-Null } catch { }
       }
     }
-    $done = ($Proc -and $Proc.HasExited)
-    if ($done -or ($state.Tick % 5) -eq 0) {
-      if (Test-GhLoggedIn) { $state.Ok = $true; $f.Close(); return }
+    if ($state.Probe) {
+      if ($state.Probe.HasExited) {
+        $ok = ($state.Probe.ExitCode -eq 0)
+        $state.Probe.Dispose(); $state.Probe = $null
+        if ($ok) { $state.Ok = $true; $f.Close(); return }
+      } elseif ($state.ProbeClock.Elapsed.TotalSeconds -ge $probeCap) {
+        Stop-GhLoginProbe $state.Probe
+        $state.Probe = $null
+      }
+    } elseif ($state.Clock.Elapsed.TotalSeconds -ge $state.NextProbe) {
+      $state.NextProbe = $state.Clock.Elapsed.TotalSeconds + 5
+      $state.Probe = Start-GhLoginProbe
+      $state.ProbeClock = [Diagnostics.Stopwatch]::StartNew()
     }
-    if ($done -or $state.Left -le 0) { $f.Close() }
+    # 로그인 프로세스가 끝났으면(섰든 졌든) 닫는다 — 섰나는 닫은 뒤 한 번 더 잰다
+    if (($Proc -and $Proc.HasExited) -or $left -le 0) { $f.Close() }
   }.GetNewClosure())
   $f.Add_Shown({ $f.Activate(); $timer.Start() }.GetNewClosure())
   $f.Add_FormClosed({ $timer.Stop() }.GetNewClosure())
   [void]$f.ShowDialog()
+  if ($state.Probe) {
+    Stop-GhLoginProbe $state.Probe
+    $state.Probe = $null
+  }
   if (-not $state.Ok) { $state.Ok = Test-GhLoggedIn }
   return $state.Ok
+}
+
+# 창의 틱이 띄우는 「로그인이 섰나」 한 번 — `gh api user` 를 띄우고 기다리지 않고 돌려준다(끝은 부르는 쪽이 `HasExited` 로 본다).
+#   못 띄우면 `$null`. 글자는 버린다 — 판정은 종료 코드다. 두 스트림을 끝까지 비워 자식이 파이프 버퍼에 막히지 않게 한다.
+function Start-GhLoginProbe {
+  $psi = New-NativeStart 'gh' (Join-NativeArgs @('api', 'user', '--jq', '.login'))
+  if (-not $psi) { return $null }
+  try {
+    $p = [Diagnostics.Process]::Start($psi)
+    $p.StandardInput.Close()
+    $null = $p.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
+    $null = $p.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+    return $p
+  } catch { return $null }
+}
+
+# 창의 재기 하나를 거두고 놓는다 — 나무째(`Stop-ProbeTree`), 프로세스 목록을 못 읽어 그것이 던지면 뿌리만 끈다(그 머리말이 부르는 쪽에 맡긴 몫).
+# ⚠ **창의 스레드에서 돈다** — 목록 묻기가 멎으면 창이 그 한도(`Stop-ProbeTree` 의 10초)만큼 언다. 거두는 것은 재기가 `$GhStatusCap` 을
+#   넘겼거나 창이 닫힐 때뿐이라 그 값을 받는다. 뿌리만 끄면 껍데기(`.cmd` · `.ps1`)로 선 gh 의 손자가 남는다.
+function Stop-GhLoginProbe([Diagnostics.Process]$Probe) {
+  if (-not $Probe) { return }
+  try {
+    if (-not $Probe.HasExited) {
+      try { Stop-ProbeTree $Probe } catch { try { if (-not $Probe.HasExited) { $Probe.Kill() } } catch { } }
+    }
+  } finally { $Probe.Dispose() }
+}
+
+# 코드 창이 사람을 기다리는 한도(초) — Claude 로그인 칸과 같은 값
+$GhLoginWait = 180
+# 앞당겨 띄운 자식에게 창의 한도 위로 더 주는 초 — 창은 자식이 뜬 때부터 벽시계로 `$GhLoginWait` 에 닫히고(`Invoke-GhLoginChild`),
+#   그 뒤 남는 것은 로그인을 한 번 더 재는 몫(`Test-GhLoggedIn` — `$ProbeCap` + `$GhStatusCap`)과 끝나는 몫이다. 이것까지 넘기면
+#   「설정 저장소」 걸음이 자식을 거둔다.
+$GhLoginGrace = 90
+# `-Raised` 창의 아래 끝과 화면 가운데 사이(픽셀) — 화면 한가운데 선 물음창의 위쪽 절반을 비켜 선다
+$GhLoginRaise = 140
+
+# 로그인 창을 띄울 판인가 — 「설정 저장소」 걸음의 로그인 칸과 「프로그램」 걸음의 앞당긴 띄우기가 같은 자를 쓴다.
+# 내는 것 — `open`(띄운다) · `nogh`(gh 가 안 닿는다) · `already`(이미 서 있다) · `unmeasured`(섰나를 울타리 안에 못 쟀다) ·
+#   `night`(밤 자동 실행 · 창을 안 띄운다) · `noreach`(github.com 에 못 닿는다). 그 칸 바깥의 조건(`#config-repo` · git · 개발 도구)은
+#   부르는 쪽이 든다.
+# ⚠ **못 쟀으면 · 망이 막혔으면 창을 안 띄운다** — 로그인이 선 PC 에 창을 띄우거나 못 열릴 브라우저를 사람에게 기다리게 하는
+#   꼴이다. 판정이 거짓인 까닭이 자격이 아니라 망이면 사람은 엉뚱한 데를 고치러 간다(결정 0141 · Claude 로그인 칸과 같은 규율).
+function Get-GhLoginGo {
+  if (-not (Test-Runs 'gh' '--version')) { return 'nogh' }
+  $timedBefore = $script:ProbeTimedOut.Count
+  if (Test-GhLoggedIn) { return 'already' }
+  if ($script:ProbeTimedOut.Count -gt $timedBefore) { return 'unmeasured' }
+  if ($NightRun) { return 'night' }
+  if (-not (Test-Reach 'github.com:443')) { return 'noreach' }
+  return 'open'
+}
+
+# `gh auth login` 을 숨은 cmd 자식으로 띄운다 — 코드 창(`Show-GhLoginWindow`)이 `$OutFile` 과 `$OutFile.err` 에서 코드를 읽는다.
+# ⚠ gh 는 「Enter 를 누르면 브라우저를 연다」고 묻고 기다린다 — 콘솔이 없는 자식이라 `echo.` 로 빈 줄 하나를 넣어 준다. gh 는 코드를
+#   오류 스트림에 찍으므로 두 스트림을 파일 둘로 받는다(한 파일로 합치는 꼴은 뽑기 검사가 막는다 — 파워셸 파일 안의 `2>&1` 은
+#   네이티브 stderr 를 오류로 둔갑시킨다).
+function Start-GhLoginProcess([string]$OutFile) {
+  $ghExe = (Get-Command gh -ErrorAction Stop).Source
+  $cmdArgs = '/d /s /c "echo.| "' + $ghExe + '" auth login --hostname github.com --git-protocol https --web > "' + $OutFile + '" 2> "' + $OutFile + '.err""'
+  $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
+  # 손잡이를 지금 쥔다 — 쥐고 있는 동안 이 PID 는 남에게 안 간다(`Stop-GhLoginProcess` 가 끝남을 믿고 나무를 따라갈 자리)
+  $null = $p.Handle
+  $p
+}
+
+# 로그인이 띄우는 것 가운데 거둘 이름 — 앞당긴 자식(powershell) · cmd · gh · 그 콘솔 호스트(창이 재려고 띄운 gh 와 그 껍데기도 든다)
+$GhLoginKillNames = @('powershell.exe', 'cmd.exe', 'gh.exe', 'conhost.exe')
+
+# 안 선 로그인을 거둔다 — 뿌리와, 그 아래 `$GhLoginKillNames` 에 든 이름만 나무를 따라 끈다. 목록을 못 읽으면 뿌리만 끈다.
+# ⚠ **브라우저는 안 끈다.** 창(코드가 오면 연다)과 gh(`--web`)가 브라우저를 띄우고, 브라우저가 안 떠 있던 PC 에서는 그 브라우저가
+#   이 나무 안에서 선다. 나무째 끄면 사람이 쓰던 브라우저 창까지 닫힌다. 이름 목록 밖의 것은 끄지도 그 아래로 내려가지도 않는다.
+# ⚠ **자손은 부모보다 늦게 선 것만 잇고, 뿌리를 먼저 끄고, 자손은 끄기 직전에 시작 시각을 다시 본다** — `Stop-ProbeTree` 와 같은 까닭이다.
+# ⚠ **끝난 뿌리는 나무를 안 따라간다** — 그 PID 는 이미 남의 것일 수 있다. cmd 는 gh 가 끝나야 끝나고(`cmd /c` 의 파이프), 앞당긴 자식은
+#   제 로그인을 거두고 끝나므로 끝난 뿌리 아래 거둘 것이 없다. 뿌리는 손잡이를 쥔 Process 로 받는다(`Start-GhLoginProcess` ·
+#   `Start-GhLoginChild`) — 쥔 동안은 `HasExited` 가 참이고 PID 가 안 간다.
+function Stop-GhLoginProcess([System.Diagnostics.Process]$Proc) {
+  if (-not $Proc) { return }
+  try { if ($Proc.HasExited) { return } } catch { return }
+  $tree = New-Object System.Collections.ArrayList
+  try {
+    $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, Name -OperationTimeoutSec 10 -ErrorAction Stop)
+    $kids = @{}
+    foreach ($x in $all) {
+      $pp = [int]$x.ParentProcessId
+      if (-not $kids.ContainsKey($pp)) { $kids[$pp] = New-Object System.Collections.ArrayList }
+      [void]$kids[$pp].Add($x)
+    }
+    $todo = New-Object System.Collections.Queue
+    $root = @($all | Where-Object { [int]$_.ProcessId -eq $Proc.Id }) | Select-Object -First 1
+    if ($root) { $todo.Enqueue($root) }
+    while ($todo.Count) {
+      $n = $todo.Dequeue()
+      if (-not $kids.ContainsKey([int]$n.ProcessId)) { continue }
+      foreach ($c in $kids[[int]$n.ProcessId]) {
+        if ($c.ProcessId -ne $n.ProcessId -and $c.CreationDate -ge $n.CreationDate -and
+            $GhLoginKillNames -contains "$($c.Name)".ToLowerInvariant() -and -not $tree.Contains($c)) {
+          [void]$tree.Add($c); $todo.Enqueue($c)
+        }
+      }
+    }
+  } catch { }
+  try { if (-not $Proc.HasExited) { $Proc.Kill() } } catch { }
+  foreach ($c in $tree) {
+    $h = $null
+    try {
+      $h = Get-Process -Id ([int]$c.ProcessId) -ErrorAction Stop
+      if ([Math]::Abs(($h.StartTime - $c.CreationDate).TotalMilliseconds) -lt 1) { $h.Kill() }
+    } catch { } finally { if ($h) { $h.Dispose() } }
+  }
+}
+
+# 자식 쪽 — 이 몸통이 `-GhLoginOnly` 로 떴을 때 하는 일의 전부다. 창 하나를 띄우고 답 한 줄을 결과 파일에 적는다:
+#   `ok`(창 안에서 섰다) · `no`(시간이 다 갔거나 [건너뛰기]) · `err <까닭>`(창을 못 세웠다 — 부모가 제 자리에서 다시 띄운다).
+# ⚠ **답을 다 쓴 뒤 이름을 옮긴다** — 부모는 파일이 있으면 답이 다 섰다고 읽는다. 반쯤 쓴 파일을 읽지 않게 한다.
+# ⚠ `gh auth setup-git` 은 부모가 한다 — 자격을 맡기는 일은 저장소를 받는 자리 바로 앞이 제자리다.
+function Invoke-GhLoginChild([string]$ResultFile) {
+  $said  = 'err 까닭을 못 적었다'
+  $gl    = [IO.Path]::GetTempFileName()
+  $login = $null
+  try {
+    $login = Start-GhLoginProcess $gl
+    # 창의 한도는 부모가 이 자식을 띄운 때부터 센다 — 부모가 그때부터 UTC 로 재어 거두므로(`Start-GhLoginChild` 의 `Deadline`),
+    #   라이브러리를 읽느라 늦게 선 몫만큼 창이 짧아져야 둘이 같은 끝을 본다
+    # 두 시각을 다 UTC 로 견준다 — 지역 시각은 서머타임 · 시간대가 바뀌면 그 차만큼 어긋난다
+    $age   = [int]([DateTime]::UtcNow - (Get-Process -Id $PID).StartTime.ToUniversalTime()).TotalSeconds
+    $said  = if (Show-GhLoginWindow $gl $login ([Math]::Max(1, $GhLoginWait - $age)) -Raised) { 'ok' } else { 'no' }
+  } catch {
+    $said = 'err ' + (Say-Why $_)
+  } finally {
+    if ($said -ne 'ok') { Stop-GhLoginProcess $login }
+    Remove-Item -LiteralPath $gl, "$gl.err" -ErrorAction SilentlyContinue
+  }
+  [IO.File]::WriteAllText("$ResultFile.tmp", $said, (New-Object Text.UTF8Encoding($false)))
+  Move-Item -LiteralPath "$ResultFile.tmp" -Destination $ResultFile -Force
+}
+
+# 부모 쪽 — 이 몸통(`$Engine` · 부르는 쪽이 제 파일 경로를 넘긴다)을 `-GhLoginOnly <결과 파일>` 로 숨겨 띄운다. 내는 것 —
+#   @{ Proc; Result; Deadline; Why } — `Deadline` 은 UTC 다(자식이 제 나이를 UTC 로 재는 것과 같은 자). 못 띄웠으면 `Proc` 이 비고 `Why` 가
+#   까닭을 든다.
+# ⚠ **손잡이를 하나도 안 물려준다**(`CreateProcess` 의 상속 끔 · 표준 손잡이 셋은 비움). 물려주면 이 설치의 출력 파이프를 자식이
+#   제 수명 동안 쥐어, 이 설치가 끝나도 읽는 쪽(자동 실행의 `… | ForEach-Object` · 화면 껍데기)이 끝을 못 받고 자식이 끝날 때까지 선다.
+#   그래서 자식의 글자는 자식 파워셸이 스스로 결과 파일 곁의 `.log` 에 쓴다(`*>`) — 답이 안 섰을 때 까닭으로 편다.
+# ⚠ **콘솔 없이 띄운다**(`CREATE_NO_WINDOW`) — 숨김 창(`-WindowStyle Hidden`)은 Windows Terminal 이 기본 터미널인 PC 에서 번쩍 뜬다(결정 0150).
+function Start-GhLoginChild([string]$Engine) {
+  $result = Join-Path ([IO.Path]::GetTempPath()) ('paisetup-gh-login-' + [guid]::NewGuid().ToString('N') + '.txt')
+  try {
+    if (-not ('PAISetupGh.Spawn' -as [type])) {
+      Add-Type -Namespace PAISetupGh -Name Spawn -MemberDefinition @'
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public struct SI { public int cb; public string r; public string d; public string t; public int x; public int y; public int xs; public int ys; public int xc; public int yc; public int fa; public int flags; public short show; public short r2; public System.IntPtr r3; public System.IntPtr i; public System.IntPtr o; public System.IntPtr e; }
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+public struct PI { public System.IntPtr hp; public System.IntPtr ht; public int pid; public int tid; }
+[System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+static extern bool CreateProcess(string app, System.Text.StringBuilder cmd, System.IntPtr pa, System.IntPtr ta, bool inherit, uint flags, System.IntPtr env, string dir, ref SI si, out PI pi);
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool CloseHandle(System.IntPtr h);
+// 손잡이를 안 물려주고(상속 끔 · STARTF_USESTDHANDLES 에 빈 손잡이 셋) 콘솔 없이(CREATE_NO_WINDOW) 띄운다. 내는 것 — 프로세스 손잡이(부르는 쪽이 닫는다). 못 띄우면 던진다.
+public static System.IntPtr StartBare(string app, string cmd, out int pid) {
+  SI si = new SI(); si.cb = System.Runtime.InteropServices.Marshal.SizeOf(si); si.flags = 0x100;
+  PI pi;
+  if (!CreateProcess(app, new System.Text.StringBuilder(cmd), System.IntPtr.Zero, System.IntPtr.Zero, false, 0x08000000, System.IntPtr.Zero, null, ref si, out pi))
+    throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+  CloseHandle(pi.ht); pid = pi.pid; return pi.hp;
+}
+'@
+    }
+    $ps  = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    # 파워셸은 ' 말고도 U+2018 ~ U+201B 를 작은따옴표로 읽는다 — 겹치기는 파워셸 자신의 손에 맡긴다
+    $q   = { param($t) "'" + [Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($t) + "'" }
+    # 던진 것(구문 오류 · 잡히지 않은 예외)은 `*>` 를 비켜 나가므로 잡아서 글로 남긴다
+    $cmd = '"' + $ps + '" -NoProfile -ExecutionPolicy Bypass -Command "& { try { & ' + (& $q $Engine) + ' -GhLoginOnly ' + (& $q $result) +
+           ' } catch { $_.ToString() } } *> ' + (& $q "$result.log") + '"'
+    $childPid = 0
+    $hp = [PAISetupGh.Spawn]::StartBare($ps, $cmd, [ref]$childPid)
+    # 손잡이를 쥔 채 Process 를 잡는다 — 그 사이 끝나 PID 가 남에게 가는 틈이 없다
+    try { $p = [Diagnostics.Process]::GetProcessById($childPid); $null = $p.Handle }
+    finally { $null = [PAISetupGh.Spawn]::CloseHandle($hp) }
+    return @{ Proc = $p; Result = $result; Why = ''; Deadline = [DateTime]::UtcNow.AddSeconds($GhLoginWait + $GhLoginGrace) }
+  } catch {
+    return @{ Proc = $null; Why = (Say-Why $_) }
+  }
+}
+
+# 앞당겨 띄운 자식의 답을 받는다 — 남은 시간(`Deadline` 까지)만 기다리고, 넘기면 거둔다(`-Now` 면 안 기다리고 바로). 내는 것 —
+#   @{ Said; Err }: `Said` 는 자식이 적은 답(`ok` · `no` · `err …`), 거뒀으면 `late`, 답 없이 끝났으면 빈 글자. `Err` 는 자식이
+#   제 `.log` 에 낸 첫 줄(답이 안 섰을 때의 까닭 — 파워셸 오류 기록은 첫 줄이 말이다). 결과 파일과 곁 파일은 지운다.
+function Wait-GhLoginChild($C, [switch]$Now) {
+  $said = ''
+  if (-not $C.Proc.HasExited) {
+    $left = if ($Now) { 0 } else { [int][Math]::Ceiling(($C.Deadline - [DateTime]::UtcNow).TotalSeconds) }
+    if ($left -gt 0) {
+      Say-Busy 'GitHub 로그인 창' 'wait' @('앞서 띄운 창', "남은 최대 ${left}초")
+      $null = $C.Proc.WaitForExit($left * 1000)
+    }
+    if (-not $C.Proc.HasExited) {
+      Stop-GhLoginProcess $C.Proc; $said = 'late'
+      # 끝이 와야 자식이 쥔 `.log` 가 풀려 아래에서 지워진다
+      $null = $C.Proc.WaitForExit(5000)
+    }
+  }
+  if (Test-Path -LiteralPath $C.Result) {
+    $said = ([string](Get-Content -LiteralPath $C.Result -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)).Trim()
+  }
+  # `*>` 가 쓴 파일이라 BOM 이 인코딩을 댄다 — 읽는 쪽이 인코딩을 박지 않는다
+  $err = @(Get-Content -LiteralPath "$($C.Result).log" -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() }) | Select-Object -First 1
+  Remove-Item -LiteralPath $C.Result, "$($C.Result).tmp", "$($C.Result).log" -ErrorAction SilentlyContinue
+  return @{ Said = $said; Err = "$err".Trim() }
 }
 
 #endregion 도구별 · gh
@@ -4086,6 +4349,14 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
 #endregion 심기 · 제공기능
 
 #endregion 라이브러리
+
+# ── GitHub 로그인 창만 띄우는 자식 — 「프로그램」 걸음이 띄운다(`Start-GhLoginChild`) ───────────────────────
+# 라이브러리를 다 읽은 뒤 · 빗장 **앞에서** 나간다. 빗장을 쥐면 저를 띄운 설치와 겹침으로 읽혀 물러나고, 아래 준비는 사람 환경을
+#   만진다 — 이 자식이 할 일은 창 하나와 답 한 줄뿐이다(`Invoke-GhLoginChild`).
+if ($GhLoginOnly) {
+  Invoke-GhLoginChild $GhLoginOnly
+  exit 0
+}
 
 # ══ 준비 ═══════════════════════════════════════════════════════════════════════════════════════
 #   층 — 없음(걸음 앞)
@@ -4718,12 +4989,13 @@ foreach ($app in $Apps) {
   }
   # 할 일은 한 자리(`Get-InstallAction`)가 가른다 — 올릴지는 맨 앞에서 한 번에 받은 목록이, 못 받았으면 앱마다 묻는다.
   #   판(`Get-Ver`)은 화면에만 쓴다 — 견주기는 winget 이 제 기록으로 한다.
-  # ⚠ **못 쟀으면 깔지도 올리지도 않는다** — 넘김을 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 · 0145).
+  # ⚠ **못 쟀으면 깔지도 올리지도 않는다** — 넘김이나 선 이름의 실패를 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 ·
+  #   0145 · 0151 · PAISetup #37).
   $appRuns = Measure-Runs $app.Cmd $app.Arg
   $before  = if ($appRuns -eq 'yes') { Get-Ver $app.Cmd $app.Arg } else { '' }
   $appAct  = Get-InstallAction $appRuns $before '' (Get-Listed $app.Id) $true ($NoUpgrade -or $noWinget)
   if ($appAct -eq 'hold') {
-    Add-UnmeasuredStep $app.Name "$($app.Cmd) $($app.Arg)" '깔지도 올리지도 않았다'
+    Add-UnmeasuredStep $app.Name "$($app.Cmd) $($app.Arg)" '깔지도 올리지도 않았다' '' "winget install --id $($app.Id) --force"
     continue
   }
   if ($appAct -eq 'present') { Write-Host "  $($app.Name) — 있음  $(Format-VerPart $before)"; continue }
@@ -4793,6 +5065,20 @@ foreach ($app in $Apps) {
     $Fails.Add("$($app.Name) 설치")
   }
   Remove-Item $log -ErrorAction SilentlyContinue
+}
+
+# ── GitHub 로그인 창을 앞당겨 띄운다 — gh 가 선 바로 뒤, 숨은 자식에 (PAISetup #35 A) ─────────────────────
+# 코드 창은 사람을 기다리는 동안 제 프로세스를 세운다(`ShowDialog()`). 「설정 저장소」 걸음에서 이 프로세스로 열면 그 사이 설치가 멎으므로,
+#   이 몸통을 `-GhLoginOnly` 로 다시 띄워 그 안에서 열고 설치는 잇는다. 답은 「설정 저장소」 걸음의 로그인 칸이 받는다.
+# gh 는 위 `$Apps` 의 마지막 줄이라 이보다 앞은 없고, 뒤로 남은 걸음(VC++ · 데스크탑 앱 · 확장 · CLI …)이 창의 한도를 덮는다.
+# 띄우는 조건은 그 칸과 같다 — `#config-repo` 가 있고 · git 이 닿고 · 개발 도구를 켰고 · 창을 띄울 판(`Get-GhLoginGo`)일 때. 안
+#   띄운 판은 그 칸이 제 자리에서 다시 잰다.
+$script:GhLoginChild = $null
+if ($repoUrl -and -not $NoDevTools -and (Test-Runs 'git' '--version') -and (Get-GhLoginGo) -eq 'open') {
+  $script:GhLoginChild = Start-GhLoginChild $MyInvocation.MyCommand.Path
+  if ($script:GhLoginChild.Proc) {
+    Write-Host "  GitHub 로그인 — 창을 띄웠다 · 코드는 팝업에 (최대 ${GhLoginWait}초) · 설치는 그대로 잇는다" -ForegroundColor Yellow
+  }
 }
 
 # ── VC++ 런타임 — 파이썬이 서는 판이면 그 C++ 확장이 싣는 런타임을 `$VcRuntimeMin` 이상으로 세운다 (claude-config 결정 0146) ──
@@ -4944,7 +5230,8 @@ $extCodeRuns = if ($NoVsCode) { '' } else { Measure-Runs 'code' '--version' }
 if ($NoVsCode) {
   Write-Host '  건너뜀 — VS Code 칸을 껐다 (확장은 VS Code 없이 설 자리가 없다)'
 } elseif ($extCodeRuns -ne 'no') {
-  # `code --version` 을 못 쟀으면 그 넘김이 까닭이다 — `Why` 를 비워 `Add-UnmeasuredStep` 의 넘김 글로 찍는다.
+  # `code --version` 을 못 쟀으면 `Measure-Runs` 가 남긴 그 까닭(넘김 · 못 띄움 · 종료 값)이 확장마다의 까닭이다 — `Why` 를 비워
+  #   `Add-UnmeasuredStep` 이 `Get-ProbeWhy` 로 찍게 한다.
   $extRead   = if ($extCodeRuns -eq 'yes') { Get-ExtVersions } else { @{ Vers = $null; Why = '' } }
   $extBefore = $extRead.Vers
   $extProbe  = if ($extCodeRuns -eq 'yes') { 'code --list-extensions --show-versions' } else { 'code --version' }
@@ -4980,7 +5267,7 @@ if ($NoVsCode) {
   if (-not $ExtPicks) { Write-Host '  고른 제품이 없어 확장을 안 깐다' }
   foreach ($x in $ExtPicks) { Install-Extension $x.Id $x.Label $extActs[$x.Id] $extBefore $extAfter $extProbe $extRead.Why }
 } else {
-  Write-Host '  ! code 를 못 불러 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
+  Write-Host '  ! code 가 이 창의 PATH 에 없어 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
 }
 
@@ -5729,12 +6016,15 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
       }
     } else { $a = [pscustomobject]@{} }
     if (-not $agyBroken) {
-      $before = $a | ConvertTo-Json -Depth 10
-      $a | Add-Member -NotePropertyName 'modelProvider' -NotePropertyValue 'gemini' -Force
-      $after = $a | ConvertTo-Json -Depth 10
-      if ($after -eq $before) {
+      # 맞나는 그 키 하나를 보고 가른다 — 통째 JSON 글을 견주지 않는다. `Add-Member -Force` 는 있던 키를 지우고 끝에 다시 붙여, 값이
+      #   같아도 그 키가 끝이 아니면 글이 달라져 매번 다시 쓰게 된다(PAISetup #38). 있으면 그 자리에서 값만 고쳐 사람 키의 차례를 둔다.
+      if ($null -eq $a) { $a = [pscustomobject]@{} }   # 빈 파일은 `ConvertFrom-Json` 이 아무것도 안 낸다
+      $mp = $a.PSObject.Properties['modelProvider']
+      if ($mp -and $mp.Value -is [string] -and $mp.Value -ceq 'gemini') {
         Write-Host '  안티그래비티 settings.json — 이미 맞다'
       } else {
+        if ($mp) { $mp.Value = 'gemini' } else { $a | Add-Member -NotePropertyName 'modelProvider' -NotePropertyValue 'gemini' }
+        $after = $a | ConvertTo-Json -Depth 10
         New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
         [IO.File]::WriteAllText($dst, $after, $noBom)
         Write-Host '  안티그래비티 settings.json — 썼다 (modelProvider · 키와 주소는 환경변수가 든다)' -ForegroundColor Green
@@ -6460,6 +6750,11 @@ if ($hostAgy) {
 # ⚠ **씨앗 자리의 것을 부른다** — 등록에 곁의 실행기(`browser-mcp.mjs`)의 절대 경로가 박힌다. 이 폴더의 사본을 부르면 내려받은
 #   임시 폴더를 가리키게 된다(agy 훅과 같은 까닭).
 # ⚠ **브라우저를 못 받아도 설치는 잇는다** — 노랑 한 줄을 남기고, 어댑터가 브라우저가 없으면 안 달고 SKIP 을 낸다.
+# ⚠ **개발 도구를 끈 PC(`-NoDevTools`)에 Git Bash 가 없으면 받기를 건너뛴다** — 받는 손이 Git Bash 로 도는데 Git 을 안 까는 것은
+#   그 사람이 고른 몫이다. 그래서 어댑터가 브라우저가 없어 안 단 것(SKIP)은 건너뜀으로 찍고 끝 검증 칸도 안 세운다
+#   (`$browserMcpSkipped`). 브라우저가 이미 있으면 어댑터가 그대로 달고 끝 검증도 그대로 잰다.
+$browserMcpSkipped = $false
+$browserGetSkipped = $false
 $browserMcpPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\browser-mcp.py'
 $browserGet      = Join-Path $homeDir 'seeds\config-repo\.claude\get-browser.sh'
 $browserMcpOn    = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -contains $_ }    | ForEach-Object { $BrowserMcpHosts[$_] })
@@ -6468,7 +6763,10 @@ $browserMcpOff   = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -notcontai
 $browserMcpPython = Measure-Runs 'python' '--version'
 if ($browserMcpOn.Count) {
   $gitBash = Find-GitBash
-  if (-not $gitBash) {
+  if (-not $gitBash -and $NoDevTools) {
+    Write-Host '  브라우저(크로미움) — 건너뜀 (-NoDevTools · 받는 손이 Git Bash 로 돈다)'
+    $browserGetSkipped = $true
+  } elseif (-not $gitBash) {
     Write-Host '  ! 브라우저(크로미움) — Git Bash 가 없어 못 받았다' -ForegroundColor Yellow
   } elseif (-not (Test-Path -LiteralPath $browserGet)) {
     Write-Host "  ! 브라우저(크로미움) — 씨앗에 받는 손이 없다 ($browserGet)" -ForegroundColor Red
@@ -6505,7 +6803,12 @@ if (-not (Test-Path -LiteralPath $browserMcpPlant)) {
     Write-Host '  ! 브라우저 MCP — 고르지 않았는데 python 이 안 서서 우리 등록을 못 걷었다' -ForegroundColor Yellow
   }
 } else {
-  if ($browserMcpOn.Count)  { Show-BrowserMcpLines '브라우저 MCP' (Invoke-BrowserMcp $browserMcpPlant (@('install') + @($browserMcpOn | ForEach-Object { '--host', $_ }))) }
+  if ($browserMcpOn.Count) {
+    $bmInstall = Invoke-BrowserMcp $browserMcpPlant (@('install') + @($browserMcpOn | ForEach-Object { '--host', $_ }))
+    $browserMcpSkipped = $browserGetSkipped -and $bmInstall.Rc -eq 0 -and @($bmInstall.Lines | Where-Object { $_ -like 'SKIP=*' }).Count -gt 0
+    if ($browserMcpSkipped) { Write-Host '  브라우저 MCP — 건너뜀 (-NoDevTools · 브라우저를 안 받아 안 달았다)' }
+    else                    { Show-BrowserMcpLines '브라우저 MCP' $bmInstall }
+  }
   if ($browserMcpOff.Count) { Show-BrowserMcpLines '브라우저 MCP 걷기' (Invoke-BrowserMcp $browserMcpPlant (@('remove') + @($browserMcpOff | ForEach-Object { '--host', $_ }))) }
 }
 
@@ -6613,10 +6916,10 @@ if (-not $repoUrl) {
   New-Item -ItemType Directory -Path $configRepoRoot -Force | Out-Null
 
   # ── 8′. GitHub CLI 로그인 — **받기 직전, 개인 계정이 서야 하는 자리** ─────────────
-  # ⚠ **왜 여기인가.** 이 칸은 **개인 계정이 있어야 서는 칸**이라, 회사 환경(프로그램 · 확장 ·
-  #   CLI · 키 · 프록시 · 회사 설정)이 다 선 뒤 개인 값 바로 앞이 제자리다. 옛 판은 이것을
-  #   4″ 자리(Claude 로그인 뒤 · 프록시 앞)에 두어, 회사 것이 아직 반도 안 선 자리에서 개인
-  #   계정을 먼저 물었다 — 거기서 멈춘 사람은 제 몫도 회사 몫도 못 받은 채로 남았다.
+  # ⚠ **왜 여기인가.** 이 칸은 **개인 계정이 있어야 서는 칸**이라, 로그인의 답은 개인 값을 받기 바로 앞에서 받는다.
+  #   **창을 여는 자리는 이 칸이 아니다** — 이 프로세스에서 창을 열면 사람을 기다리는 동안 설치가 멎으므로, 「프로그램」
+  #   걸음이 gh 가 선 바로 뒤 숨은 자식에 창을 띄우고(`Start-GhLoginChild`) 회사 환경(확장 · CLI · 키 · 프록시 · 회사 설정)은
+  #   그동안 그대로 선다. 사람이 창 앞에서 멈춰도 회사 몫은 안 멈춘다.
   # ⚠ **왜 저장소를 넣은 사람만인가.** gh 는 바로 아래가 비공개 저장소를 받을 때와 그 뒤 세션
   #   훅이 쓴다. 저장소를 안 넣은 사람은 GitHub 계정이 없을 수도 있어, 띄우면 가입부터 하라는
   #   말이 된다 — 그 사람에게 이 칸은 없는 칸이다. **그 물음은 이 자리가 이미 답한다** — 여기는
@@ -6630,57 +6933,90 @@ if (-not $repoUrl) {
   # ⚠ **서면 git 자격도 같이 맡긴다**(`gh auth setup-git`) — 그래야 아래 clone 이 자격 창을 또 안 띄운다.
   # ⚠ **안 누른 것은 실패가 아니다.** 시간이 다 가거나 [건너뛰기]면 「비었다」로 두고 간다 — 아래
   #   clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다. Claude 로그인 칸(4′)과 같은 규율.
-  $GhLoginWait = 180                      # 초 — Claude 로그인 칸과 같은 값
+  # ⚠ **창은 「프로그램」 걸음이 앞당겨 띄운다**(`Start-GhLoginChild` · PAISetup #35 A) — 이 칸은 그 답을 받는다. 앞서 띄우지 않은
+  #   판(조건이 그때 안 섰다)과 자식이 창을 못 세운 판만 이 자리에서 띄운다. 창의 한도는 `$GhLoginWait` 하나다.
 
   $ghLoggedIn = $false
   if (-not $NoDevTools) {
-    # ⚠ **이 구간은 사람을 기다린 시간이 섞인다** — 브라우저에서 코드를 누를 때까지 멎는다.
-    #   그래서 가르는 값이 크다: 이 줄이 없으면 그 대기가 「저장소 걸음이 느리다」로 읽힌다.
+    # ⚠ **이 구간은 사람을 기다린 시간이 섞인다** — 이 자리에서 창을 띄운 판은 브라우저에서 코드를 누를 때까지 멎는다.
+    #   그래서 가르는 값이 크다: 이 줄이 없으면 그 대기가 「저장소 걸음이 느리다」로 읽힌다. 앞당겨 띄운 판은 남은 기다림만 든다.
     $tGh = Get-Took
     Write-Host ''
     Write-Host '  GitHub CLI 로그인' -ForegroundColor Cyan
-    $ghTimedBefore = $script:ProbeTimedOut.Count
-    if (-not (Test-Runs 'gh' '--version')) {
-      Write-Host '  ! gh 가 안 닿아 로그인을 못 띄운다 — 위 프로그램 칸을 본다' -ForegroundColor Yellow
-    } elseif (Test-GhLoggedIn) {
-      $ghLoggedIn = $true
-      Write-Host '  이미 서 있다'
-    } elseif ($script:ProbeTimedOut.Count -gt $ghTimedBefore) {
-      # ⚠ **못 쟀으면 로그인하라고 하지 않는다** — 바로 아래 망 갈래와 같은 규율이다. 아래 clone 은 제 자격 창을 띄운다.
-      Write-Host "  ! 로그인이 섰나를 못 쟀다 — gh api user 가 ${GhStatusCap}초 안에 안 끝났다 · 창을 안 띄운다" -ForegroundColor Yellow
-    } elseif ($NightRun) {
-      Write-Host '  ! 밤 자동 실행이라 로그인 창을 안 띄운다 — 다음 로그온 · 설치 창이 띄운다' -ForegroundColor Yellow
-    } elseif (-not (Test-Reach 'github.com:443')) {
-      # ⚠ **못 쟀으면 로그인하라고 하지 않는다.** 판정이 거짓인 까닭이 자격이 아니라 망이면,
-      #   창을 띄워도 브라우저가 못 열리고 사람은 엉뚱한 데를 고치러 간다. 창을 아끼고 말만 한다 —
-      #   아래 clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다(안 누른 것과 같은 규율).
-      Write-Host '  ! github.com 에 못 닿아 로그인이 섰나를 못 쟀다 — 자격 문제가 아니라 망 문제다' -ForegroundColor Yellow
-    } else {
-      Write-Host "  브라우저 로그인을 띄운다 — 코드는 팝업에 (최대 ${GhLoginWait}초)" -ForegroundColor Yellow
-      $gl = [IO.Path]::GetTempFileName()
-      try {
-        $ghExe = (Get-Command gh -ErrorAction Stop).Source
-        # gh 는 「Enter 를 누르면 브라우저를 연다」고 묻고 기다린다 — 콘솔이 없는 자식이라 `echo.` 로
-        # 빈 줄 하나를 넣어 준다. 코드는 gh 가 찍는 것을 파일로 받아 창이 읽는다 — gh 는 코드를
-        # 오류 스트림에 찍으므로 두 스트림을 파일 둘로 받고 창이 둘 다 읽는다(한 파일로 합치는 꼴은
-        # 뽑기 검사가 막는다 — 파워셸 파일 안의 `2>&1` 은 네이티브 stderr 를 오류로 둔갑시킨다).
-        $cmdArgs = '/d /s /c "echo.| "' + $ghExe + '" auth login --hostname github.com --git-protocol https --web > "' + $gl + '" 2> "' + $gl + '.err""'
-        $login = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
-                   -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
-        $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait
-        if ($ghLoggedIn) {
+    # 이 자리에서 창을 띄울 판을 잴까 — 앞서 띄운 창이 답을 냈으면(섰든 안 섰든) 다시 안 띄운다
+    $ghHere = $true
+    if ($script:GhLoginChild -and $script:GhLoginChild.Proc) {
+      $ghAns = Wait-GhLoginChild $script:GhLoginChild
+      $script:GhLoginChild = $null
+      if (@('ok', 'no', 'late') -contains $ghAns.Said) {
+        $ghHere = $false
+        if ($ghAns.Said -eq 'late') {
+          Write-Host "  ! 앞서 띄운 로그인 창이 한도(${GhLoginWait}초 + ${GhLoginGrace}초) 안에 안 끝나 거뒀다" -ForegroundColor Yellow
+        }
+        $ghTimedBefore = $script:ProbeTimedOut.Count
+        if (Test-GhLoggedIn) {
+          $ghLoggedIn = $true
           Write-Host '  섰다' -ForegroundColor Green
           $null = Get-Quiet 'gh' @('auth','setup-git')
+        } elseif ($script:ProbeTimedOut.Count -gt $ghTimedBefore) {
+          Write-Host "  ! 로그인이 섰나를 못 쟀다 — gh api user 가 ${GhStatusCap}초 안에 안 끝났다" -ForegroundColor Yellow
         } else {
-          if ($login -and -not $login.HasExited) { try { $login.Kill() } catch { } }
           Write-Host '  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login (저장소 받기는 제 자격 창을 띄운다)' -ForegroundColor Yellow
         }
-      } catch {
-        Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
+      } else {
+        $why = if ($ghAns.Said -like 'err *') { $ghAns.Said.Substring(4) } elseif ($ghAns.Err) { $ghAns.Err } else { '답 없이 끝났다' }
+        Write-Host "  ! 앞서 띄운 로그인 창이 못 섰다 — $why · 이 자리에서 다시 잰다" -ForegroundColor Yellow
       }
-      Remove-Item $gl, "$gl.err" -ErrorAction SilentlyContinue
+    } elseif ($script:GhLoginChild) {
+      Write-Host "  ! 로그인 창을 앞서 못 띄웠다 — $($script:GhLoginChild.Why) · 이 자리에서 잰다" -ForegroundColor Yellow
+      $script:GhLoginChild = $null
     }
-    # 분기 넷(gh 없음 · 이미 섬 · 망 못 닿음 · 팝업)이 다 지나는 자리라 여기 하나면 된다.
+    # 「프로그램」 걸음에서 잰 답을 다시 쓰지 않고 여기서 잰다 — 그 사이 「키와 값」 걸음이 이 프로세스의 환경변수(`$GhEnvTokens` 도
+    #   값 파일에 들면 든다)를 심거나 걷어, 그때의 「이미 섰다」가 지금도 참인지 모른다.
+    if ($ghHere) {
+      switch (Get-GhLoginGo) {
+        'nogh' {
+          Write-Host '  ! gh 가 안 닿아 로그인을 못 띄운다 — 위 프로그램 칸을 본다' -ForegroundColor Yellow
+        }
+        'already' {
+          $ghLoggedIn = $true
+          Write-Host '  이미 서 있다'
+          $null = Get-Quiet 'gh' @('auth','setup-git')
+        }
+        'unmeasured' {
+          # 아래 clone 은 제 자격 창을 띄운다
+          Write-Host "  ! 로그인이 섰나를 못 쟀다 — gh api user 가 ${GhStatusCap}초 안에 안 끝났다 · 창을 안 띄운다" -ForegroundColor Yellow
+        }
+        'night' {
+          Write-Host '  ! 밤 자동 실행이라 로그인 창을 안 띄운다 — 다음 로그온 · 설치 창이 띄운다' -ForegroundColor Yellow
+        }
+        'noreach' {
+          # 창을 아끼고 말만 한다 — 아래 clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다(안 누른 것과 같은 규율)
+          Write-Host '  ! github.com 에 못 닿아 로그인이 섰나를 못 쟀다 — 자격 문제가 아니라 망 문제다' -ForegroundColor Yellow
+        }
+        default {
+          Write-Host "  브라우저 로그인을 띄운다 — 코드는 팝업에 (최대 ${GhLoginWait}초)" -ForegroundColor Yellow
+          $gl = [IO.Path]::GetTempFileName()
+          $login = $null
+          try {
+            $login = Start-GhLoginProcess $gl
+            $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait
+            if ($ghLoggedIn) {
+              Write-Host '  섰다' -ForegroundColor Green
+              $null = Get-Quiet 'gh' @('auth','setup-git')
+            } else {
+              Stop-GhLoginProcess $login
+              Write-Host '  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login (저장소 받기는 제 자격 창을 띄운다)' -ForegroundColor Yellow
+            }
+          } catch {
+            Stop-GhLoginProcess $login
+            Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
+          }
+          Remove-Item $gl, "$gl.err" -ErrorAction SilentlyContinue
+        }
+      }
+    }
+    # 갈래(앞서 띄운 창의 답 · gh 없음 · 이미 섬 · 못 잼 · 망 못 닿음 · 이 자리의 팝업)가 다 지나는 자리라 여기 하나면 된다.
     Write-Took 'GitHub CLI 로그인' $tGh
   }
 
@@ -6849,6 +7185,12 @@ $scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny (Join-Path $h
 $plant = Invoke-Plant $bash $configRepoRoot
 if (-not $plant.Ran) { Write-Host "  ! 심기 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 못 심었다" -ForegroundColor Yellow }
 elseif (-not $plant.Ok) { $Fails.Add("심기 --plant ($($plant.Why))") }
+# ── 앞당겨 띄운 로그인 창을 거둔다 — 로그인 칸에 안 닿은 판(그 사이 git 이 안 닿았다)의 자리 ────────────────────────────────
+# 로그인 칸이 답을 받았으면 비어 있어 아무것도 안 한다. 남았으면 저장소를 받을 길이 이미 끊긴 판이라 기다리지 않고 거두고 곁 파일을 지운다.
+if ($script:GhLoginChild) {
+  if ($script:GhLoginChild.Proc) { $null = Wait-GhLoginChild $script:GhLoginChild -Now }
+  $script:GhLoginChild = $null
+}
 Exit-Step 'repo'
 
 # ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
@@ -6883,24 +7225,16 @@ if ($wantDocSkills) {
   Write-Host ''
   Write-Host '공식 문서 스킬' -ForegroundColor Cyan
 }
-# ⚠ **못 쟀으면 그 명령을 다시 부르지 않는다** — 까닭을 대려고 `--version` 을 한 번 더 부르는 손(`Invoke-Logged`)은 울타리가
-#   없어, 울타리를 넘긴 명령을 거기서 부르면 설치가 그 자리에 선다. 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141).
+# ⚠ **못 쟀으면 그 명령을 다시 부르지 않는다** — 까닭(넘김 · 종료 값)은 `Measure-Runs` 가 남긴 것을 찍는다. 울타리 없는 손으로 다시
+#   부르면 넘긴 명령이 거기서 설치를 세운다. 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141 · 0151).
 $docClaude = if ($wantDocSkills) { Measure-Runs 'claude' '--version' } else { '' }
 if ($docClaude -eq 'unmeasured') {
   Add-UnmeasuredStep '공식 문서 스킬' 'claude --version' '있는지 안 묻고 깔지도 않았다'
   Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
   $wantDocSkills = $false
 } elseif ($wantDocSkills -and $docClaude -ne 'yes') {
-  Write-Host '  ! 공식 문서 스킬 — 건너뛴다: 이 창에서 `claude --version` 이 안 선다 · Claude Code 는 그대로 돈다' -ForegroundColor Yellow
-  if (Get-Command 'claude' -ErrorAction SilentlyContinue) {
-    $vl = [IO.Path]::GetTempFileName()
-    $vrc = Invoke-Logged 'claude' @('--version') $vl
-    Write-Host "     (claude --version 이 $vrc 로 끝났다 — 뱉은 끝 줄:)"
-    Show-Log $vl
-    Remove-Item $vl -ErrorAction SilentlyContinue
-  } else {
-    Write-Host '     (claude 가 이 창의 PATH 에 없다 — 위 CLI 줄을 먼저 본다)'
-  }
+  # `no` 는 그 이름이 이 창에 없다는 것뿐이다 — 이름이 서는데 진 판은 위 갈래가 그 종료 값과 함께 든다(결정 0151).
+  Write-Host '  ! 공식 문서 스킬 — 건너뛴다: claude 가 이 창의 PATH 에 없다 · 위 CLI 줄을 먼저 본다' -ForegroundColor Yellow
   Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
   $wantDocSkills = $false
 }
@@ -7229,9 +7563,11 @@ if ($Night -and $doneToday) {
 $myPid = $PID
 $myProc = Get-CimInstance Win32_Process -Filter "ProcessId = $myPid" -ErrorAction SilentlyContinue
 $parentPid = if ($myProc) { $myProc.ParentProcessId } else { 0 }
+# 로그인 창 자식(`-GhLoginOnly`)은 안 센다 — 빗장 앞에서 나가는 창 하나뿐이고, 저를 띄운 설치가 살아 있으면 그 설치가 따로 잡힌다.
+#   거둔 뒤 다시 재는 자리도 같은 자로 잰다.
 function Get-OtherEngines {
   @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
+    Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') -and $_.CommandLine -notlike '*-GhLoginOnly*' })
 }
 $otherEngines = @(Get-OtherEngines)
 
@@ -7458,7 +7794,7 @@ if ($otherEngines) {
     }
     # 거둔 뒤 가드가 보는 것 전부를 다시 잰다 — 거두는 사이 새로 선 것도 여기서 걸린다.
     $stillThere = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
+      Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') -and $_.CommandLine -notlike '*-GhLoginOnly*' })
     if ($stillThere) {
       Log "! 거두고 다시 쟀는데 $($stillThere.Count) 개가 남았습니다 ($($stillThere.ProcessId -join ', ')). 물러납니다 — 다음 자동 실행 때 다시 잽니다."
       exit 0
@@ -8241,8 +8577,9 @@ $checks += @{ Name = "자리 값 (PAISETUP_SITE = $ModelSite)"
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
 if ($toolHomesOn) { $checks += Get-ToolHomesCheck $toolHomesHand }
 # 브라우저 MCP — 어댑터의 `check` 한 번(claude-config 결정 0149). 고른 도구가 셋 가운데 없으면 칸을 안 세운다 —
-#   안 쓰기로 한 것을 [X] 로 찍지 않는다. python 이 안 서면 「도구별 홈」이 이미 빨강으로 셌고, 못 쟀으면 [?] 다.
-if ($browserMcpOn.Count -and $browserMcpPython -eq 'yes') {
+#   안 쓰기로 한 것을 [X] 로 찍지 않는다. python 이 안 서면 「도구별 홈」이 이미 빨강으로 셌고, 못 쟀으면 [?] 다. 개발 도구를 꺼
+#   브라우저를 안 받아 안 단 판(`$browserMcpSkipped`)도 칸을 안 세운다 — 안 깔기로 한 것이다.
+if ($browserMcpOn.Count -and $browserMcpPython -eq 'yes' -and -not $browserMcpSkipped) {
   $checks += Get-BrowserMcpCheck $browserMcpPlant $browserMcpOn $browserMcpOff
 } elseif ($browserMcpOn.Count -and $browserMcpPython -eq 'unmeasured') {
   $checks += @{ Name = '브라우저 MCP'; State = 'unmeasured'; Probe = 'python --version' }
@@ -8262,8 +8599,8 @@ if ($useGateway) {
     $checks += @{ Name = $k.Name; Ok = [bool]$userEnv[$k.Name] }
   }
   if ($wantCodex) {
-    # 틀의 자리가 서 있나 — 「Codex · 안티그래비티 설정」 칸의 병합기(`$CodexCfgMerge`)를 판정만 하는 꼴로 부른다. 못 잰 것도 [X] 다 —
-    #   python 이 울타리를 넘긴 것만 [?] 다(결정 0141).
+    # 틀의 자리가 서 있나 — 「Codex · 안티그래비티 설정」 칸의 병합기(`$CodexCfgMerge`)를 판정만 하는 꼴로 부른다. 병합기가 졌거나 python 이 없는 것은 [X] 다 —
+    #   `python --version` 을 못 잰 것(넘김 · 못 띄움 · 이름은 서는데 0 아닌 끝)만 [?] 다(결정 0141 · 0151).
     $cmWhy = '파일이 없다'
     $cmOk = $false
     $cmPython = if ((Test-Path -LiteralPath $CodexCfg) -and (Test-Path -LiteralPath $CodexCfgMerge)) { Measure-Runs 'python' '--version' } else { '' }
@@ -8370,10 +8707,11 @@ if ($wantAutoRun -eq $true) {
 # ⚠ **못 쟀다를 `[X]` 로 찍지 않는다.** 사람은 `[X]` 를 「그 제품이 없다」로 읽고 깔러 간다 — 이미 깔린 것을 다시 까는
 #   헛걸음이다. `[X]` 밑에 덧댄 노란 줄로는 못 막는다 — 바로 다음에 서는 빨간 요약이 그 줄을 덮는다. 초록으로도 안
 #   올린다 — 못 쟀으면 선 것도 아니라, 올리면 **안 선 기계가 성공으로 보고된다**(이 칸 머리글이 든 그 규율).
-# 못 잰 칸의 까닭은 그 칸이 든 것(`Why` — 「``명령`` 이 …」 뒤에 이어 읽히는 꼴 · 결정 0145)이고, 없으면 `$ProbeCap` 넘김이다.
+# 못 잰 칸의 까닭은 그 칸이 든 것(`Why` — 「``명령`` 이 …」 뒤에 이어 읽히는 꼴 · 결정 0145)이고, 없으면 `Measure-Runs` 가 그 물음에
+#   남긴 까닭(`Get-ProbeWhy` — 넘김 · 못 띄움 · 종료 값)이다.
 foreach ($c in $checks) {
   if ($c.State -eq 'unmeasured') {
-    $over = if ($c.Why) { "``$($c.Probe)`` 이 $($c.Why)서" } else { "``$($c.Probe)`` 이 ${ProbeCap}초 안에 안 끝났다" }
+    $over = "``$($c.Probe)`` 이 $(if ($c.Why) { $c.Why } else { Get-ProbeWhy $c.Probe })서"
     $why  = if ($c.Premise) { "$($c.Premise) 와 한 전제 — $over" } else { $over }
     Write-Host "  [?] $($c.Name) — 못 쟀다: $why" -ForegroundColor Yellow
   }
@@ -8384,6 +8722,7 @@ foreach ($c in $checks) {
 #   든 것(`Why` — 넘김 · 종료 값 · 던진 오류)을 그대로 찍는다.
 foreach ($s in $script:UnmeasuredSteps) {
   Write-Host "  [?] 안 한 걸음 · $($s.Step) — 못 쟀다: ``$($s.Probe)`` 이 $($s.Why) $($s.Held)" -ForegroundColor Yellow
+  if ($s.Redo) { Write-Host "      새 터미널에서도 오류로 끝나면 깨진 것이다 — 손으로 다시 깐다:  $($s.Redo)" -ForegroundColor Yellow }
 }
 # 이 설치에서 울타리를 넘긴 프로브 — 명령마다 몇 자리에서 몇 번인가. 칸에 안 걸린 넘김(그 자리가 「안 선다 · 없음」을 적고
 #   지나간 것)도 여기서 보인다. 세기에는 안 든다 — 칸 · 걸음 · `$Fails` 가 제 몫으로 이미 셌다.
@@ -8432,7 +8771,11 @@ if ($redChecks -gt 0) {
 }
 if ($unmeasuredChecks -gt 0) {
   Write-Host "검증에서 $unmeasuredChecks 칸을 못 쟀다 — 바로 위 [?] 가 그것이다. 없는 것이 아니라 그 명령이 답을 못 냈다(한도 · 까닭은 줄마다 위에 적혔다)" -ForegroundColor Yellow
-  Write-Host '  다시 깔지 말고 그 명령을 터미널에서 한 번 쳐 본다 — 거기서도 멎으면 그 도구 · 보안 소프트 쪽이다. 서면 설치를 다시 누른다' -ForegroundColor Yellow
+  # 세 갈래는 배포본 안내(claude-config `docs/dist-readme.md` 「검증 칸이 `[X]` 일 때」)와 같은 말이다 — 한쪽을 고치면 다른 쪽도 고친다.
+  Write-Host '  설치기는 그 위에 다시 깔지 않았다. 그 명령을 새 터미널에서 한 번 쳐 본다 —' -ForegroundColor Yellow
+  Write-Host '    · 멎으면 그 도구 · 보안 소프트 쪽이다' -ForegroundColor Yellow
+  Write-Host '    · 바로 답하면 설치를 다시 누른다' -ForegroundColor Yellow
+  Write-Host '    · 오류로 끝나면 그 프로그램이 깨진 것이라 손으로 다시 깐다 — winget install --id <Id> --force 나 그 벤더의 설치본(Id 를 아는 걸음은 그 줄 아래 명령을 적었다)' -ForegroundColor Yellow
   Write-Host ''
 }
 if ($Fails.Count -gt 0) {

@@ -1312,8 +1312,10 @@ if ($plan.Count) {
 }
 
 # 표식은 이 실행과 함께 걷는다 — 프로세스가 죽으면 어차피 사라지지만, 그 전에 이 셸에서 손으로
-# 부른 훅이 지난 걸음의 명부를 **제 실측으로** 읽는 자리를 안 만든다.
+# 부른 훅이 지난 걸음의 명부를 **제 실측으로** 읽는 자리를 안 만든다. 고리 표식도 같다 — 남으면 같은 셸에서
+# 손으로 부른 `--install` 이 고리 안의 부름으로 읽혀 deploy 에 안 넘기고 전역 설치도 안 한다.
 Remove-Item Env:CLAUDE_CONFIG_RUN -ErrorAction SilentlyContinue
+Remove-Item Env:CLAUDE_CONFIG_DEPLOYING -ErrorAction SilentlyContinue
 
 if (Test-Path $backup) { Write-Host "`n백업: $backup" }
 

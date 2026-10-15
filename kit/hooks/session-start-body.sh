@@ -21,7 +21,9 @@
 #                               PC 에서 밖(설치기 · 사람)이 부르면 사람에게 딸린 것(git 신원 ·
 #                               형제 저장소 · 개인 키 · 홈 개인 설정)을 세우고 deploy.ps1 에 넘긴다
 #                               deploy.ps1 이 부른 자리(CLAUDE_CONFIG_DEPLOYING)에서는 **저장소
-#                               몫만** 든다 — 전역형 도구는 아래 갈래가 이미 깔았다
+#                               몫만** 든다 — 전역형 도구는 아래 갈래가 이미 깔았다. 그 deploy.ps1 을
+#                               바깥 `--install` 이 불렀으면(CLAUDE_CONFIG_PC_WIDE_HELD) PC 전체 일도
+#                               안 든다 — 바깥이 한 번 한다 (0152)
 #   session-start.sh --install-global
 #                               **전역형 도구를 기계에 한 번 깐다** (#43) ← deploy.ps1 이 저장소
 #                               고리 **앞에** 한 번 부른다. 전역 선언과 작업 루트에 붙은 모든
@@ -1585,7 +1587,7 @@ home_hook_shape() {
 
 # ── 세션 상태를 심는다 — **한 프로세스가 둘을 다 한다** ────────────────────────
 #   드는 것: ① 홈 SessionStart 훅 ② 작업 루트 저장소들의 폴더 신뢰(고른 도구마다 · VS Code 자체)와 데스크탑 앱 상태(② 머리말).
-# ⚠ **명시한 설치(`--install`)와 심기만(`--plant`)이 부른다** — 설치기 · 로그온 자동 실행 · deploy.ps1 의 저장소마다 부름 ·
+# ⚠ **명시한 설치(`--install`)와 심기만(`--plant`)이 부른다** — 설치기 · 로그온 자동 실행 · 사람이 바로 돌린 deploy.ps1 의 저장소마다 부름 ·
 #   리눅스 설정 스크립트. 심기만은 설정 저장소가 없는 PC 에서도 돈다 — 그때 고른 제품은 몸통 곁의 손(홈 씨앗에 함께 실린다)이
 #   읽고, 부른 자리(홈 씨앗)는 저장소가 아니라 거는 집합에 안 넣는다(작업 루트 훑기만).
 #   세션은 안 부른다: 폴더 신뢰 창은 훅보다 먼저 떠 세션이 제 저장소에는 늘 늦고, VS Code 세션에서는 VS Code 가 떠 있어
@@ -2502,6 +2504,7 @@ install_step() {
   #   전체를 돌리면 세션이 그만큼 멎는다. 리모트는 deploy.ps1 이 없어 이 갈래를 안 탄다.
   # ⚠ **종료코드는 deploy 의 것이다.** 옛 부트스트랩이 그것을 안 재 「완료」를 찍고 0 으로 끝난 자리가
   #   있었다(실측 2026-09-07 · deploy 가 첫 MCP 조회에서 죽은 자리) — 부재가 통과로 읽히는 그 자리다.
+  #   deploy 가 0 인데 아래 심기가 졌으면 1 이다 — 고리 안의 저장소 훅은 심기를 이 갈래에 맡기고 안 심겼다를 안 센다(0152).
   if [ "$ASKED" = install ] && [ "$OS" = windows ] && [ -z "${CLAUDE_CONFIG_DEPLOYING:-}" ] &&
      [ -n "$CONFIG_ROOT" ] && [ -f "$CONFIG_ROOT/deploy.ps1" ]; then
     # 열쇠는 deploy 앞에서 읽는다 — deploy 가 민 것이 그 판이다. deploy 가 도는 사이 판이 움직였으면
@@ -2509,7 +2512,9 @@ install_step() {
     pc_wide_key; PC_WIDE_FAIL=""
     deploy_personal install
     echo "$PROJECT_NAME: deploy.ps1 에 넘긴다 — 저장소·메모리를 밀고 각 저장소 훅을 --install 로 부른다"
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$CONFIG_ROOT/deploy.ps1")" -Yes
+    # PC 전체 일은 이 갈래가 쥔다 — 표식을 그 부름 하나에만 실어, 고리 안의 저장소 훅이 그 일을 또 안 하게 한다(위 PC_WIDE · 0152)
+    CLAUDE_CONFIG_PC_WIDE_HELD=1 \
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$CONFIG_ROOT/deploy.ps1")" -Yes
     _drc=$?
     # ⚠ **홈 훅 · 신뢰를 여기서 심고 PC 전체 일의 표식을 남긴다** (0062). deploy.ps1 은 할 일이 없는 평소
     #   상태면 저장소 훅을 안 부르므로(`--needs-install` 이 0), 이 입구 — 로그인 자동 실행이 매번 지나는
@@ -2518,6 +2523,10 @@ install_step() {
     plant_session_state
     if [ "$_drc" -eq 0 ]; then
       pc_wide_mark
+      if [ -n "$PC_WIDE_FAIL" ]; then
+        echo "$PROJECT_NAME: ⚠ deploy.ps1 은 성공했는데 홈 훅 · 신뢰를 다 못 심었다 — 위 줄이 곧 고칠 자리"
+        exit 1
+      fi
     else
       echo "$PROJECT_NAME: ⚠ deploy.ps1 이 exit $_drc 로 끝났다 — 위 진단의 ❌ 줄이 곧 고칠 자리"
     fi
@@ -2578,7 +2587,8 @@ install_step() {
     wire_commit_hooks
   fi
   # ⚠ **PC 전체 일은 맡는 실행만 한다** (0062). 형제 저장소 세션이 도구 선언 어긋남으로 여기 온 판은
-  #   저장소 몫만 깐다 — 명시한 `--install` 은 어디서 불려도 맡는다(위 PC_WIDE).
+  #   저장소 몫만 깐다 — 명시한 `--install` 은 어디서 불려도 맡고, 바깥 `--install` 이 부른 deploy.ps1 의 고리 안만
+  #   안 맡는다(위 PC_WIDE · 0152).
   if [ -n "$DO_REPO" ] && [ -n "$PC_WIDE" ]; then
     # 설치 갈래는 열쇠를 안 믿고 다 한다 — 다 한 뒤 그 판을 적는다 (0065)
     pc_wide_key; PC_WIDE_FAIL=""
@@ -2586,7 +2596,7 @@ install_step() {
     deploy_personal auto  # 가벼운 것만 — 무거운 것(clone · 홈 설정 덮기)은 위 PC 분기가 이미 들었다
 
     # ── ②′ 전역 SessionStart 훅 · 신뢰 — 몸통은 위 plant_session_state 한 벌이다.
-    #    명시한 `--install` 로 들어온 갈래(deploy.ps1 의 저장소마다 · 리눅스 설정 스크립트)만 심는다. 세션(auto)이 지문
+    #    명시한 `--install` 로 들어온 갈래(사람이 바로 돌린 deploy.ps1 의 저장소마다 · 리눅스 설정 스크립트)만 심는다. 세션(auto)이 지문
     #    어긋남으로 이 갈래에 온 판은 `ASKED` 가 비어 안 심는다 — 심기는 세션의 일이 아니다(위 plant_session_state 머리말).
     #    멱등이라 겹쳐 불려도 항목은 하나다 (0028 이 쟀다).
     [ "$ASKED" = install ] && plant_session_state
@@ -2768,30 +2778,9 @@ install_step() {
           *) nogo "$_t" "$_asset — 모르는 자산 꼴이다(푸는 갈래는 .tar.gz · .tar.xz · .zip 셋뿐)"; return 1 ;;
         esac ;;
       npm-global)
-        _pkg="$(decl_get "$_f" "$_t" package)"
-        [ -n "$_pkg" ] || { nogo "$_t" "선언에 package 가 없다"; return 1; }
-        command -v npm >/dev/null 2>&1 ||
-          { nogo "$_t" "npm 이 없다 — 노드를 깔면 다음 설치가 깐다"; return 1; }
+        npm_ready "$_f" "$_t" || return 1
         try "$_t" npm install -g --no-audit --no-fund --silent "$_pkg" || true
-        # 브라우저는 패키지와 따로 온다 — 선언이 browsers 를 들 때만, 컨테이너가 미리
-        # 받아 둔 자리(skip-browsers-env)가 없을 때만 받는다.
-        _br="$(decl_get "$_f" "$_t" browsers)"
-        _skipname="$(decl_get "$_f" "$_t" skip-browsers-env)"
-        _skipval=""; [ -n "$_skipname" ] && _skipval="${!_skipname:-}"
-        if [ -n "$_br" ] && [ -z "$_skipval" ] && command -v "$_pkg" >/dev/null 2>&1; then
-          # ⚠ **뒷길(browsers-fallback)이 선언돼 있으면 제 CDN 을 아예 안 부른다.**
-          #   옛 판은 「첫 시도」로 한 번 불렀다. 그런데 그 명령은 받기 전에 **제 판과 안 맞는
-          #   브라우저를 「쓸모없다」며 먼저 지운다** — 받는 길이 막힌 자리에서는 지우기만 하고
-          #   못 받아 **멀쩡히 있던 것까지 없어진다.** 실측 2026-09-11(리모트 컨테이너):
-          #   이미지가 미리 들고 온 크로미움이 그 한 번에 사라졌고, 새 판은 403 이라 못 받아
-          #   그림 굽기가 그 세션 내내 죽었다.
-          #   **뒷길이 선언돼 있다는 것은 받는 길이 따로 서 있다는 뜻이다** — 여기서 헛되이 걸
-          #   값이 없고, 판을 맞추는 값도 없다(뒷길로 받은 것은 실행 파일을 직접 가리켜 쓰므로
-          #   playwright 의 판과 어긋나도 된다). 그래서 **뒷길이 없을 때만** 이 길로 간다.
-          if [ -z "$(decl_get "$_f" "$_t" browsers-fallback)" ]; then
-            try "$_t" "$_pkg" install $_br || true
-          fi
-        fi ;;
+        npm_browsers "$_f" "$_t" ;;
       apt-package)   # 배포판 저장소에서 깐다 — 자산 이름에 판이 안 물려 선언이 안 낡는다.
                      # github-release-binary 가 못 쓰이던 까닭이 이 갈래에는 없다.
         _pkg="$(decl_get "$_f" "$_t" package)"
@@ -2863,6 +2852,127 @@ install_step() {
       #   틀렸다는 말은 아무 데도 없었다. 이름을 그대로 되돌려 준다.
       *) nogo "$_t" "설치법(install)이 선언에 없거나 모르는 갈래다: $(decl_get "$_f" "$_t" install)"; return 1 ;;
     esac
+  }
+  # ── npm-global 갈래의 앞뒤 — 하나씩 까는 `install_tool` 과 묶어 까는 `install_npm_batch` 가 같이 쓴다 ──
+  npm_ready() {  # npm_ready <선언파일> <이름> — 깔 수 있으면 0 이고 $_pkg 가 선다 · 아니면 사유를 남기고 1
+    _pkg="$(decl_get "$1" "$2" package)"
+    [ -n "$_pkg" ] || { nogo "$2" "선언에 package 가 없다"; return 1; }
+    command -v npm >/dev/null 2>&1 ||
+      { nogo "$2" "npm 이 없다 — 노드를 깔면 다음 설치가 깐다"; return 1; }
+  }
+  npm_browsers() {  # npm_browsers <선언파일> <이름> — 패키지를 깐 뒤에 부른다 · 값은 늘 0
+    # 브라우저는 패키지와 따로 온다 — 선언이 browsers 를 들 때만, 컨테이너가 미리
+    # 받아 둔 자리(skip-browsers-env)가 없을 때만 받는다.
+    _pkg="$(decl_get "$1" "$2" package)"
+    _br="$(decl_get "$1" "$2" browsers)"
+    _skipname="$(decl_get "$1" "$2" skip-browsers-env)"
+    _skipval=""; [ -n "$_skipname" ] && _skipval="${!_skipname:-}"
+    if [ -n "$_br" ] && [ -z "$_skipval" ] && command -v "$_pkg" >/dev/null 2>&1; then
+      # ⚠ **뒷길(browsers-fallback)이 선언돼 있으면 제 CDN 을 아예 안 부른다.**
+      #   그 명령은 받기 전에 **제 판과 안 맞는 브라우저를 「쓸모없다」며 먼저 지운다** — 받는 길이
+      #   막힌 자리에서는 지우기만 하고 못 받아 **멀쩡히 있던 것까지 없어진다**(실측 2026-09-11 ·
+      #   리모트 컨테이너: 이미지가 미리 들고 온 크로미움이 그 한 번에 사라졌다).
+      #   **뒷길이 선언돼 있다는 것은 받는 길이 따로 서 있다는 뜻이다** — 여기서 헛되이 걸
+      #   값이 없고, 판을 맞추는 값도 없다(뒷길로 받은 것은 실행 파일을 직접 가리켜 쓰므로
+      #   playwright 의 판과 어긋나도 된다). 그래서 **뒷길이 없을 때만** 이 길로 간다.
+      if [ -z "$(decl_get "$1" "$2" browsers-fallback)" ]; then
+        # shellcheck disable=SC2086 # browsers 는 브라우저 이름 여럿을 한 줄에 든다 — 갈라야 인자가 된다
+        try "$2" "$_pkg" install $_br || true
+      fi
+    fi
+    return 0
+  }
+  install_one() {  # install_one <선언파일> <이름> — 하나씩 깐다 · 걸린 초를 `GQ_SECS` 에 이름과 함께 더한다
+    _io0=$SECONDS
+    install_tool "$1" "$2" || true
+    GQ_SECS="$GQ_SECS $2=$((SECONDS - _io0))"
+  }
+  # ── npm-global 을 한 번에 깐다 — `npm install -g` 한 번의 고정 값(노드 띄우기 · 레지스트리 묻기)을 도구마다 안 문다 ──
+  # ⚠ 한 패키지가 지면 npm 은 묶음 전체를 되돌린다 — 그때는 하나씩 다시 깔아 진 것을 제 이름으로 가른다.
+  #   묶음의 사유는 실패 기록에 안 적고 화면 한 줄로만 낸다: 기록은 도구 이름으로 읽히는데(진단 · 다음 설치의
+  #   「지난 실패」) 묶음은 도구가 아니고, 진 도구는 하나씩 깔 때 제 이름으로 적힌다.
+  install_npm_batch() {  # install_npm_batch <차례 파일> — 그 파일의 npm-global 줄만 깐다 · 판정은 안 낸다
+    _nbsrc="$1"; _nbq="$(mktemp)"; _nbn=''
+    set --
+    while IFS="$GQ_SEP" read -r _nbf _nbt _nbi _nbrest <&4; do
+      [ "$_nbi" = npm-global ] || continue
+      npm_ready "$_nbf" "$_nbt" || continue
+      set -- "$@" "$_pkg"
+      _nbn="$_nbn $_nbt"
+      printf '%s%s%s\n' "$_nbf" "$GQ_SEP" "$_nbt" >> "$_nbq"
+    done 4< "$_nbsrc"
+    if [ $# -le 1 ]; then
+      # 하나면 묶을 것이 없다 — 하나씩 까는 길 그대로다(지면 같은 것을 두 번 깔지 않는다)
+      while IFS="$GQ_SEP" read -r _nbf _nbt <&4; do install_one "$_nbf" "$_nbt"; done 4< "$_nbq"
+      rm -f "$_nbq"; return 0
+    fi
+    _nbt0=$SECONDS; _nbfl="$(mktemp)"; _nbsave="$FAILS"; FAILS="$_nbfl"
+    try "npm 전역 묶음" npm install -g --no-audit --no-fund --silent "$@"; _nbr=$?
+    FAILS="$_nbsave"
+    if [ "$_nbr" -eq 0 ]; then
+      printf '  · npm 전역 묶음 (%s) — 한 번에 깔았다 (%s초)\n' "${_nbn# }" "$((SECONDS - _nbt0))"
+      while IFS="$GQ_SEP" read -r _nbf _nbt <&4; do npm_browsers "$_nbf" "$_nbt"; done 4< "$_nbq"
+    else
+      printf '  · npm 전역 묶음 (%s) — 한 번에 못 깔아 하나씩 다시 깐다: %s (%s초)\n' "${_nbn# }" \
+        "$(awk -F'\t' '{print $2; exit}' "$_nbfl" 2>/dev/null)" "$((SECONDS - _nbt0))"
+      while IFS="$GQ_SEP" read -r _nbf _nbt <&4; do install_one "$_nbf" "$_nbt"; done 4< "$_nbq"
+    fi
+    rm -f "$_nbq" "$_nbfl"
+  }
+  # ── 깔 차례를 깐다 — 릴리스 자산은 배경에서 나란히, npm-global 은 한 번에, 나머지는 하나씩 ──────────
+  #    받기는 망을 기다리는 일이라 겹쳐도 서로 안 늦춘다 — 릴리스 자산을 먼저 배경에 띄우고 그동안 앞에서 나머지를 깐다.
+  # ⚠ 배경 작업은 출력 · 실패 기록 · 임시 파일을 **작업마다 제 자리**(`<작업 폴더>/<번호>.*`)에 둔다 — 한 파일에
+  #   같이 적으면 줄이 섞인다. 다 끝난 뒤 차례대로 붙이고 작업 폴더째 걷는다. 성패는 이 뒤 다시 재기가 도구마다
+  #   낸다 — 여기서는 판정을 안 낸다.
+  install_queue() {  # install_queue <차례 파일> — 표준 입력은 부르는 쪽이 뗀다(`</dev/null`)
+    _iqd="$(mktemp -d)"; _iqk=0; _iqpids=''; _iqn=''
+    while IFS="$GQ_SEP" read -r _iqf _iqt _iqi _iqrest <&4; do
+      [ "$_iqi" = github-release-binary ] || continue
+      _iqk=$((_iqk + 1)); _iqw="$_iqd/$_iqk"
+      mkdir -p "$_iqw.tmp"; printf '%s' "$_iqt" > "$_iqw.name"
+      # 받기의 초는 작업이 안에서 찍는다 — 바깥에서 재면 앞에서 도는 npm · winget 을 기다린 초가 섞인다.
+      # 4 번은 닫고 띄운다 — 차례 파일을 같이 쥐면 작업이 읽는 만큼 이 고리의 읽기 자리가 밀린다.
+      ( printf '%s\n' "$SECONDS" > "$_iqw.t0"
+        TMPDIR="$_iqw.tmp"; export TMPDIR; FAILS="$_iqw.fail"
+        install_tool "$_iqf" "$_iqt"; _iqr=$?
+        printf '%s\n' "$SECONDS" > "$_iqw.t1"
+        exit "$_iqr" ) 4<&- > "$_iqw.log" 2>&1 &
+      _iqpids="$_iqpids $!"; _iqn="$_iqn $_iqt"
+    done 4< "$1"
+    install_npm_batch "$1"
+    while IFS="$GQ_SEP" read -r _iqf _iqt _iqi _iqrest <&4; do
+      case "$_iqi" in github-release-binary|npm-global) continue ;; esac
+      install_one "$_iqf" "$_iqt"
+    done 4< "$1"
+    [ -n "$_iqpids" ] || { rm -rf "$_iqd"; return 0; }
+    _iqj=0; _iqs=''; _iqe=''
+    for _iqp in $_iqpids; do
+      _iqj=$((_iqj + 1)); _iqw="$_iqd/$_iqj"
+      wait "$_iqp"; _iqr=$?
+      # ⚠ 신호로 죽은 작업은 `try` · `nogo` 가 적을 틈이 없다 — 여기서 적지 않으면 ❌ 가 사유 없이 서고, 옛 판이
+      #   남은 자리에서는 다시 재기가 「앞선 옛 것이 가린다」로 읽어 진짜 까닭이 가려진다.
+      _iqm=''
+      if [ "$_iqr" -ge 128 ]; then _iqm="설치 작업이 신호로 끝났다 (rc $_iqr)"
+      elif [ "$_iqr" -ne 0 ] && [ ! -s "$_iqw.fail" ]; then _iqm="설치 작업이 사유를 안 남기고 끝났다 (rc $_iqr)"; fi
+      if [ -n "$_iqm" ]; then
+        IFS= read -r _iqnm < "$_iqw.name"
+        printf '%s\t%s\n' "$_iqnm" "$_iqm" >> "$_iqw.fail"
+      fi
+      # 받기의 초 — 가장 이른 시작부터 가장 늦은 끝까지(받고 풀어 놓기까지). 끝을 못 찍고 죽은 작업은 끝에 안 든다
+      _iqv=''; [ -s "$_iqw.t0" ] && IFS= read -r _iqv < "$_iqw.t0"
+      [ -n "$_iqv" ] && { [ -z "$_iqs" ] || [ "$_iqv" -lt "$_iqs" ]; } && _iqs="$_iqv"
+      _iqv=''; [ -s "$_iqw.t1" ] && IFS= read -r _iqv < "$_iqw.t1"
+      [ -n "$_iqv" ] && { [ -z "$_iqe" ] || [ "$_iqv" -gt "$_iqe" ]; } && _iqe="$_iqv"
+    done
+    _iqsec='?'; [ -n "$_iqs" ] && [ -n "$_iqe" ] && _iqsec=$((_iqe - _iqs))
+    printf '  · 릴리스 자산 (%s) — 나란히 받았다 (%s초)\n' "${_iqn# }" "$_iqsec"
+    _iqj=0
+    while [ "$_iqj" -lt "$_iqk" ]; do
+      _iqj=$((_iqj + 1))
+      [ -s "$_iqd/$_iqj.log" ] && cat "$_iqd/$_iqj.log"
+      [ -s "$_iqd/$_iqj.fail" ] && cat "$_iqd/$_iqj.fail" >> "$FAILS" 2>/dev/null
+    done
+    rm -rf "$_iqd"
   }
   browsers_ready() {  # browsers_ready <선언파일> <이름> — 브라우저는 패키지와 따로 온다
     # ⚠ **설치 안이 아니라 여기 서는 까닭.** 위 줄기는 `프로브 실패 → 설치`라, 패키지가
@@ -3002,13 +3112,24 @@ EOF
     global_run_put "$GVERIFIED" "$1" "$2"
   }
   install_global() {
-    _gseen=""; _gl="$(mktemp)"
+    _gseen=""; _gl="$(mktemp)"; _gq="$(mktemp)"; GQ_SECS=''
+    # 깔 차례의 칸 구분자 — 빈 칸(판을 못 읽었다)이 있어 공백류가 아닌 글자라야 칸이 안 접힌다
+    GQ_SEP="$(printf '\037')"
     # 이번 실행의 명부는 **이번 실행이 처음부터 짓는다** — 이어 적으면 지난 실행에서 ✅ 였다가
     # 이번에 ❌ 인 도구가(❌ 명부는 그 반대가) 옛 줄로 살아남는다. 표식이 없으면 파일에 손도 안 댄다.
     [ -z "${CLAUDE_CONFIG_RUN:-}" ] || : > "$GVERIFIED" 2>/dev/null || true
     [ -z "${CLAUDE_CONFIG_RUN:-}" ] || : > "$GDOWNED" 2>/dev/null || true
     global_conf_list > "$_gl" 2>/dev/null
-    while IFS= read -r _gf; do
+    # ── 걸음은 셋이다 — 다 재고 → 깔 것만 한꺼번에 깔고(`install_queue`) → 깐 것을 하나씩 다시 잰다.
+    #    닿는 도구의 줄은 재는 자리에서 바로 내고, 깐 도구의 줄은 다시 재는 자리에서 차례대로 낸다.
+    # ⚠ 걸린 초는 줄 끝에 붙는다 (#48) — 재는 자(installer · deploy)가 줄 앞을 보므로 앞은 안 바꾼다.
+    #   깐 도구의 줄은 제 두 번의 재기에 하나씩 깐 초(`install_one`)를 더한다. 묶어 깐 초는 묶음 줄이 든다 —
+    #   도구마다 붙이면 합이 실제보다 부푼다. `npm 전역 묶음` 은 그 한 번의 초고, `릴리스 자산` 은 작업들이 안에서
+    #   찍은 가장 이른 시작부터 가장 늦은 끝까지 — 받고 풀어 놓기까지다(앞에서 도는 npm · winget 과 겹친 초라 걸음
+    #   합에 더하지 않는다).
+    # ⚠ 고리들은 차례를 4 번으로 읽고 표준 입력을 뗀다 — 프로브 · 깔기 · 브라우저 뒷길이 표준 입력을 먹으면 남은
+    #   차례가 사라지고, 사람이 터미널에서 부른 판에서는 숨은 물음이 그 입력을 기다리며 멎는다.
+    while IFS= read -r _gf <&4; do
       [ -f "$_gf" ] || continue
       for _gn in $(decl_sections "$_gf"); do
         _gi=''; _god=''; _gcb=''; _gtg=''
@@ -3035,7 +3156,6 @@ EOF
         # 건너뛰는 규칙으로는 영영 안 올라간다. 그래서 깔린 판과 최신 판을 견주고 **다를 때만**
         # 다시 깐다(`tool_version_*`). 둘 중 하나라도 못 읽으면 옛 길대로 다시 깐다 — 견주기가
         # 져서 도구가 낡는 일은 없게 한다.
-        # 걸린 초는 줄 끝에 붙는다 (#48) — 재는 자(installer · deploy)가 줄 앞을 보므로 앞은 안 바꾼다
         _gt0=$SECONDS; _gvh=''; _gvw=''
         # 못 타는 설치법 — 있으면 초록, 없으면 비켜선다. 판 견주기도 안 한다(올릴 손이 없다).
         if ! kind_here "$_gi"; then
@@ -3054,40 +3174,48 @@ EOF
                [ -n "$_gvh" ] && [ "$_gvh" = "$_gvw" ]; }; }; then
           printf '  ✅ %s — 이미 닿는다 (전역)%s (%s초)\n' "$_gn" "${_gvh:+ · 최신 $_gvh}" "$((SECONDS - _gt0))"
           gverified_put "$_gn" "$_gtg"
+          wire_global "$_gf" "$_gn"
+          browsers_ready "$_gf" "$_gn"
         else
-          install_tool "$_gf" "$_gn" || true
-          if probe_global "$_gf" "$_gn"; then
-            # 민 자리면 무엇이 무엇으로 갔나를 적는다 — 새 판이 규칙을 바꿔 어제 통과한 파일이
-            # 막히면, 까닭을 짚을 자리가 이 한 줄이다.
-            # ⚠ **설치가 졌나는 종료코드가 아니라 실패 기록으로 가른다.** 갈래마다 끝 명령(`rm` 등)이
-            #   종료코드를 덮어 `install_tool` 의 값을 못 믿는다. 이 실행 머리에서 비운 기록에 이
-            #   도구의 줄이 섰으면 졌다 — 옛 실행파일이 남아 프로브는 참이어도, 그것을 「다시
-            #   깔았다」나 「옛 것이 가린다」로 읽으면 진짜 사유(받기가 막힌 망 등)가 가려진다.
-            _gvf="$(awk -F'\t' -v k="$_gn" '$1==k{print $2; exit}' "$GFAILS" 2>/dev/null)"
-            _gvn=''; [ -n "$_gvh" ] && _gvn="$(tool_version_have "$_gf" "$_gn" || true)"
-            if [ -n "$_gvf" ]; then _gvm="닿지만 설치가 졌다 — ${_gvf}${_gvn:+ · 지금 $_gvn}${_gvw:+ (최신 $_gvw)}"
-            elif [ -z "$_gvh" ]; then _gvm='이번에 깔았다'
-            elif [ "$_gvn" != "$_gvh" ]; then _gvm="새 판으로 올렸다: $_gvh → $_gvn"
-            elif [ -z "$_gvw" ]; then _gvm="다시 깔았다 — 최신 판을 못 읽었다 · 지금 $_gvn"
-            else
-              # 깔았는데 판이 그대로다 — 받은 자리보다 앞선 옛 것이 이름을 쥐고 있다.
-              _gvm="다시 깔았는데 여전히 $_gvn 다 (최신 $_gvw) — 앞선 옛 것: $(command -v "$_gtg" 2>/dev/null || echo '?')"
-            fi
-            printf '  ✅ %s — %s (전역) (%s초)\n' "$_gn" "$_gvm" "$((SECONDS - _gt0))"
-            gverified_put "$_gn" "$_gtg"
-          else
-            printf '  ❌ %s — 안 닿는다%s (%s초)\n' "$_gn" \
-              "$(awk -F'\t' -v k="$_gn" '$1==k{printf " · 설치 실패: %s", $2; exit}' "$GFAILS" 2>/dev/null)" \
-              "$((SECONDS - _gt0))"
-            GDOWN=$((GDOWN + 1))
-            global_run_put "$GDOWNED" "$_gn" "$_gtg"
-          fi
+          # 깔 차례 — 칸: 선언파일 · 이름 · 설치법 · 프로브 대상 · 깔린 판 · 최신 판 · 이 재기에 든 초
+          printf '%s\n' "$_gf$GQ_SEP$_gn$GQ_SEP$_gi$GQ_SEP$_gtg$GQ_SEP$_gvh$GQ_SEP$_gvw$GQ_SEP$((SECONDS - _gt0))" >> "$_gq"
         fi
-        wire_global "$_gf" "$_gn"
-        browsers_ready "$_gf" "$_gn"
       done
-    done < "$_gl"
-    rm -f "$_gl"
+    done 4< "$_gl" </dev/null
+    [ -s "$_gq" ] && install_queue "$_gq" </dev/null
+    while IFS="$GQ_SEP" read -r _gf _gn _gi _gtg _gvh _gvw _gtp <&4; do
+      case "$GQ_SECS" in *" $_gn="*) _gxs="${GQ_SECS##* "$_gn"=}"; _gxs="${_gxs%% *}" ;; *) _gxs=0 ;; esac
+      _gt0=$((SECONDS - _gtp - _gxs))
+      if probe_global "$_gf" "$_gn"; then
+        # 민 자리면 무엇이 무엇으로 갔나를 적는다 — 새 판이 규칙을 바꿔 어제 통과한 파일이
+        # 막히면, 까닭을 짚을 자리가 이 한 줄이다.
+        # ⚠ **설치가 졌나는 종료코드가 아니라 실패 기록으로 가른다.** 갈래마다 끝 명령(`rm` 등)이
+        #   종료코드를 덮어 `install_tool` 의 값을 못 믿는다. 이 실행 머리에서 비운 기록에 이
+        #   도구의 줄이 섰으면 졌다 — 옛 실행파일이 남아 프로브는 참이어도, 그것을 「다시
+        #   깔았다」나 「옛 것이 가린다」로 읽으면 진짜 사유(받기가 막힌 망 등)가 가려진다.
+        _gvf="$(awk -F'\t' -v k="$_gn" '$1==k{print $2; exit}' "$GFAILS" 2>/dev/null)"
+        _gvn=''; [ -n "$_gvh" ] && _gvn="$(tool_version_have "$_gf" "$_gn" || true)"
+        if [ -n "$_gvf" ]; then _gvm="닿지만 설치가 졌다 — ${_gvf}${_gvn:+ · 지금 $_gvn}${_gvw:+ (최신 $_gvw)}"
+        elif [ -z "$_gvh" ]; then _gvm='이번에 깔았다'
+        elif [ "$_gvn" != "$_gvh" ]; then _gvm="새 판으로 올렸다: $_gvh → $_gvn"
+        elif [ -z "$_gvw" ]; then _gvm="다시 깔았다 — 최신 판을 못 읽었다 · 지금 $_gvn"
+        else
+          # 깔았는데 판이 그대로다 — 받은 자리보다 앞선 옛 것이 이름을 쥐고 있다.
+          _gvm="다시 깔았는데 여전히 $_gvn 다 (최신 $_gvw) — 앞선 옛 것: $(command -v "$_gtg" 2>/dev/null || echo '?')"
+        fi
+        printf '  ✅ %s — %s (전역) (%s초)\n' "$_gn" "$_gvm" "$((SECONDS - _gt0))"
+        gverified_put "$_gn" "$_gtg"
+      else
+        printf '  ❌ %s — 안 닿는다%s (%s초)\n' "$_gn" \
+          "$(awk -F'\t' -v k="$_gn" '$1==k{printf " · 설치 실패: %s", $2; exit}' "$GFAILS" 2>/dev/null)" \
+          "$((SECONDS - _gt0))"
+        GDOWN=$((GDOWN + 1))
+        global_run_put "$GDOWNED" "$_gn" "$_gtg"
+      fi
+      wire_global "$_gf" "$_gn"
+      browsers_ready "$_gf" "$_gn"
+    done 4< "$_gq" </dev/null
+    rm -f "$_gl" "$_gq"
   }
   if [ -n "$DO_GLOBAL" ]; then
     echo "전역: 전역형 도구 — 기계에 한 번 깐다 · 깔리는 자리는 저장소가 아니라 홈이다 ($(home_hook_root) 에 붙은 저장소의 선언까지 합친다)"
@@ -3196,8 +3324,8 @@ install_bg() {
 gate() {  # gate <이름> <ok|ok-partial|held|off> <까닭> — 진단 줄 하나. off 는 꺼진 검사(`down`)로 센다
   # ok-partial 은 ✅ 이되 그 초록이 다 재지는 않은 줄이다 — 안 닿는데 안 세거나(on-demand · 못 타는 설치법)
   #   판을 못 쟀다. `down` 에는 안 들고, 저장소를 한 줄로 접을지(`gate_flush`)만 가른다.
-  # held 는 안 서는데 그 실패를 이미 다른 자리가 셌다는 줄이다(전역 걸음이 이 실행에서 ❌ 로 낸 전역형 도구). 서지 않았으니 ✅ 가
-  #   아니라 ⚠ 로 찍고, `down` 에는 안 들며, 접지도 않는다.
+  # held 는 안 서는데 그 실패를 다른 자리가 센다는 줄이다(전역 걸음이 이 실행에서 ❌ 로 낸 전역형 도구 · 바깥 `--install` 이 deploy
+  #   뒤에 심는 홈 훅). 서지 않았으니 ✅ 가 아니라 ⚠ 로 찍고, `down` 에는 안 들며, 접지도 않는다.
   case "$2" in
     ok)         _gate_line="  ✅ $1 — $3" ;;
     ok-partial) _gate_line="  ✅ $1 — $3"; GATE_PARTIAL=$((GATE_PARTIAL + 1)) ;;
@@ -3480,13 +3608,23 @@ fi
 #    저장소 밖에서 연 세션(홈 훅이 설정 저장소 훅을 부른다, 0043) · 리모트 설정 스크립트(`--install`).
 #    **형제 저장소를 연 세션(auto)은 안 맡는다** — 그 저장소 일만 하고, 맡는 자리가 오래 안 돌았거나
 #    홈 파일이 설정 저장소와 다르면 알리기만 한다(`pc_wide_notice`).
-# ⚠ 명시한 `--install` 은 어느 저장소에서 불려도 맡는다 — 위 넷 가운데 셋이 그 입구로 들어온다.
+# ⚠ 명시한 `--install` 은 어느 저장소에서 불려도 맡는다 — 위 넷 가운데 셋이 그 입구로 들어온다. 하나만 빠진다 — 바깥
+#   `--install` 이 부른 deploy.ps1 의 저장소 고리 안(아래 둘째 문 · 0152).
 # ⚠ **claude-config 가 이 PC 에 없으면 형제 세션도 맡는다.** 동료 PC(설치기만 쓰고 설정 저장소가 없는 자리)
 #   에는 위 넷 가운데 서는 자리가 없다 — 설치기는 설정 저장소가 없으면 이 몸통을 안 부르고, 설정 저장소
 #   세션도 없다. 그 PC 에서 형제 세션까지 빠지면 전역 도구(게이트가 쓰는 lint 들)를 아무도 안 깐다.
 PC_WIDE=""
 if [ "$MODE" != auto ] || [ -z "$CONFIG_ROOT" ] || [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
   PC_WIDE=1
+fi
+# ⚠ **deploy.ps1 의 저장소 고리 안이고, 그 deploy.ps1 을 바깥 `--install` 이 불렀으면 안 맡는다** (0152). 바깥이 deploy
+#   앞에서 개인 칸을, 뒤에서 심기와 표식을 한 번 하고, deploy 가 제 걸음으로 도구 홈 · 씨앗을 한 번 민다 — 고리 안의 저장소마다
+#   다시 하면 같은 일이 저장소 수만큼 돈다. 둘째 표식(`CLAUDE_CONFIG_PC_WIDE_HELD`)은 바깥이 deploy.ps1 을 부르는 그 한 줄에만
+#   세운다. 사람이 deploy.ps1 을 바로 돌린 판은 고리 표식(`CLAUDE_CONFIG_DEPLOYING`)만 서서 저장소마다 지금처럼 맡는다 —
+#   그 판에는 심기 · 개인 칸 · 표식을 할 바깥이 없다. 이 판이면 `PC_WIDE_HELD` 가 서고, 진단의 홈 훅 축이 그것을 읽는다.
+PC_WIDE_HELD=""
+if [ "$ASKED" = install ] && [ -n "${CLAUDE_CONFIG_DEPLOYING:-}" ] && [ -n "${CLAUDE_CONFIG_PC_WIDE_HELD:-}" ]; then
+  PC_WIDE=""; PC_WIDE_HELD=1
 fi
 # PC 전체 일이 마지막으로 돈 때 — 파일의 시각이 곧 값이고, 내용은 그때 맞춘 설정 저장소의 판이다(0065).
 # 쓰는 몸통은 `pc_wide_mark` 한 자리(부르는 자리는 PC 전체 일을 끝내는 곳마다)이고, 시각과 내용을 `pc_wide_key` 가
@@ -3832,9 +3970,16 @@ home_hook_gate() {
     3) gate "홈 훅" off "이 루트로는 심겼는데 **낡은 항목이 남아 있다**: $(printf '%s' "$2" | tr '\n' ' ') — 그 루트의 저장소를 세션마다 헛돈다. ~/.claude/settings.json 에서 그 항목을 지운다" ;;
   esac
 }
+# ⚠ 바깥 `--install` 이 쥔 deploy 고리 안(`PC_WIDE_HELD` · 0152)에서는 안 심겼거나 낡은 항목이 남은 것을 꺼진 검사로 안 센다 —
+#   심기는 그 바깥이 deploy.ps1 뒤에 하고, 못 심었으면 바깥의 종료 값이 센다(설치기는 이어 부르는 `--plant` 로도 센다). 세면 맨바닥 PC 에서 아직
+#   안 온 심기 때문에 deploy 가 1 로 끝나고, 바깥은 PC 전체 일의 표식을 못 적는다. 못 잼(2)은 그대로 센다.
 if [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
   _stale="$(home_hook_planted)"; _hh=$?
-  home_hook_gate "$_hh" "$_stale"
+  if [ -n "$PC_WIDE_HELD" ] && { [ "$_hh" -eq 1 ] || [ "$_hh" -eq 3 ]; }; then
+    gate "홈 훅" held "아직 안 맞다 — 이 deploy.ps1 을 부른 바깥 --install 이 끝에 심는다"
+  else
+    home_hook_gate "$_hh" "$_stale"
+  fi
 fi
 
 # 저장소 규약 축 — .githooks/ 의 존재가 곧 선언이다
