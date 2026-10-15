@@ -885,6 +885,29 @@ $lnkLog.Add_LinkClicked({
 })
 $F.Controls.Add($lnkLog)
 
+# 물어볼 곳 — 값 파일의 `#contact` 주소를 「설치기록」 바로 오른쪽에 띄운다. 누르면 메일 창이 열린다.
+# ⚠ **주소를 이 파일에 안 박는다** — `#update-repo` 와 같은 결로 값 파일이 든다. 지시가 없으면 링크를 안 세운다.
+# ⚠ 메일 프로그램이 없는 PC 에서는 `mailto:` 가 지므로, 그때는 주소를 클립보드에 넣고 그 말을 한다 — 눌렀는데
+#   아무 일도 안 나면 사람은 멈춘다(위 링크들과 같은 까닭).
+$Contact = Get-Directive 'contact'
+if ($Contact) {
+  $lnkMail = New-Object Windows.Forms.LinkLabel
+  $lnkMail.Text = "문의 $Contact"
+  $mailW = [Windows.Forms.TextRenderer]::MeasureText($lnkMail.Text, $F.Font).Width
+  $lnkMail.Size = New-Object Drawing.Size($mailW, 16)
+  $lnkMail.Location = New-Object Drawing.Point(($lnkLog.Left + $lnkLog.PreferredWidth + 14), $lnkLog.Top)
+  $lnkMail.Add_LinkClicked({
+    try { Start-Process -FilePath ("mailto:" + $Contact) | Out-Null }
+    catch {
+      try { [Windows.Forms.Clipboard]::SetText($Contact) } catch { }
+      [Windows.Forms.MessageBox]::Show(
+        "메일 창을 못 열었습니다 — 주소를 클립보드에 넣었습니다." + [Environment]::NewLine + $Contact,
+        $AppName, 'OK', 'Information') | Out-Null
+    }
+  })
+  $F.Controls.Add($lnkMail)
+}
+
 $bGo = New-Object Windows.Forms.Button
 $bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, (628 + $appRow + $optExtra))
 $bGo.Size = New-Object Drawing.Size(100, 30)
