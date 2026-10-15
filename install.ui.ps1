@@ -375,7 +375,7 @@ $defaultKey = [string]$Preset['ANTHROPIC_AUTH_TOKEN']
 if (-not $defaultKey) {
   # ⚠ **이미 심긴 회사 키를 읽어 온다** — 파일에 없어도 환경에 있으면 다시 칠 까닭이 없다.
   # ⚠ **같은 이름만 본다.** `OPENAI_API_KEY`·`GEMINI_API_KEY` 는 회사 키에서 **파생된 사본**
-  #   이지 진본이 아니라(몸통의 5″ 칸이 한 방향으로만 심는다), 거꾸로 읽으면 제 OpenAI 키를
+  #   이지 진본이 아니라(몸통의 「회사 키의 다른 이름 둘」 칸이 한 방향으로만 심는다), 거꾸로 읽으면 제 OpenAI 키를
   #   넣어 둔 사람의 값이 이 칸에 들어온다 — 게다가 칸이 가려져 있어 **무엇이 찼는지 본인도
   #   못 본다.** 몸통이 `GOOGLE_API_KEY` 에 대고 세운 「남의 값은 안 걷는다」와 같은 축이다.
   $defaultKey = [Environment]::GetEnvironmentVariable('ANTHROPIC_AUTH_TOKEN', 'User')
