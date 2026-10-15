@@ -437,7 +437,7 @@ foreach ($pt in @(@{ Key = 'claude'; Pick = 'claude'; Label = 'Claude' },
   $px += 90
 }
 # 제작자 칸이 지금 사나 — 그 제품 칸을 골랐나(제품 칸이 없는 판이면 늘 산다). 칸의 켜짐(`Sync-PersonalBoxes`)과
-#   [설치]가 넘길 값이 둘 다 이 함수에 묻는다. `scripts/check-ui-personal-boxes.ps1`(설정 저장소)이 떼어 잰다.
+#   [설치]가 넘길 값이 둘 다 이 함수에 묻는다.
 # ⚠ **넘길 값을 칸의 `Enabled` 로 고르지 않는다** — 윈도 폼은 묶음(`$gO`)을 잠그면 그 안 칸의 `Enabled` 도 거짓으로
 #   읽는다. [설치]는 값을 모으기 전에 묶음을 잠그므로, `Enabled` 로 모으면 무엇을 골라도 빈 값이 넘어간다.
 function Test-PersonalBoxLive($c) {
