@@ -31,17 +31,16 @@ agy 가 띄우는 명령 가운데 `USERPROFILE` 로 홈을 찾는 것(node · p
 홈만 옮겨서는 샌드박스 안의 agy 가 온전해지지 않는다. 그래서 자리는 두고, 러너는 샌드박스 밖에서 부르게 한다(스킬 본문).
 그래도 못 지으면 그 후보는 까닭을 단 실패(1)로 끝난다.
 
-**말은 전부 `--out` 파일로 간다** — pythonw 에는 표준 출력이 없다. 부른 쪽은 종료 코드로 갈래를
-알고 그 파일을 읽는다. 맨 끝 줄 `[agy-bg] …` 이 갈래 · 걸린 시간 · 모델 · 넘어간 자취 · 토큰 ·
-이어 묻기 id 를 든다:
-  0 답이 왔다 · 1 agy 가 실패했다(API 홈을 못 지은 것 · 러너가 멈춘 것 포함) · 2 한도 초과 · 과부하(넘어갈 모델까지
-  다) 또는 빈 답 · 3 시간 초과 · 4 부르는 법이 틀렸다
+**말은 전부 `--out` 파일로 간다** — pythonw 에는 표준 출력이 없다(`--help` 만 표준 출력에 찍는다). 부른 쪽은 종료 코드로
+갈래를 알고 그 파일을 읽는다. 맨 끝 줄 `[agy-bg] …` 의 칸과 종료 코드의 뜻은 `--help` 가 든다 — `FOOTER_FIELDS` ·
+`EXIT` · `STATUS_WORDS` 에서 지어 찍으니 여기에 다시 적지 않는다.
 `--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다. **이어 묻기 id 는 그 홈에 대화가 실제로 남았을 때만
 싣는다** — 제 홈에 못 쓰는 자리에서 돌면 agy 는 id 를 내도 대화를 못 남긴다.
 
 자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
 """
 import argparse
+import codecs
 import json
 import os
 import re
@@ -68,7 +67,24 @@ POLL_SEC = 2                # 로그를 훑고 agy 가 끝났나 보는 간격
 KILL_GRACE_SEC = 15         # agy 제 한도(--print-timeout) 뒤에 기다려 주는 여유
 LOG_CARRY_CHARS = 200       # 읽기 경계에 걸친 패턴을 놓치지 않게 남기는 꼬리
 MAX_PROMPT_CHARS = 30000    # 윈도 명령줄 한도(32,767자) 안에 인자 전체가 들게 남긴다
-EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'overload': 2, 'empty': 2, 'timeout': 3}
+EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'overload': 2, 'empty': 2, 'timeout': 3, 'usage': 4}
+# 갈래 낱말의 뜻 — `--help` 의 종료 코드 표가 `EXIT` 의 이름마다 단다. 갈래 낱말은 끝 줄의 첫 낱말이기도 하다
+STATUS_WORDS = {'ok': '답이 왔다', 'failed': 'agy 가 실패했다(API 홈을 못 지은 것 · 러너가 멈춘 것 포함)', 'quota': '한도 초과',
+                'overload': '과부하', 'empty': '빈 답', 'timeout': '시간 초과',
+                'usage': '부르는 법이 틀렸다(인자 · 작업 자리 · 프롬프트 파일의 인코딩 · 길이)'}
+FOOTER = '[agy-bg]'
+# 끝 줄의 칸 — (이름, 뜻). 끝 줄을 짓는 `footer_line` 과 `--help` 가 같이 읽고, 차례가 끝 줄의 차례다
+FOOTER_FIELDS = (
+    ('rc', 'agy 의 종료 코드. `-` 는 agy 를 못 띄운 것(API 홈을 못 지었다)'),
+    ('elapsed', '걸린 시간 — `<N>s` 꼴(초)'),
+    ('model', '마지막에 띄운 모델. `api:` 로 시작하면 API 키 방식, `agy 기본` 은 모델을 안 골라 띄운 것'),
+    ('failover', '한도나 과부하로 다음 모델로 넘어온 자취 `<모델>: <갈래>`(`;` 로 여럿) — 넘어왔을 때만'),
+    ('tokens', '`tokens in=<N> out=<N>` — 입력 · 출력 토큰. `-` 는 못 받은 것'),
+    ('conversation', '이어 묻기 id — 그 홈에 대화가 실제로 남았을 때만. 아니면 `-` 와 까닭'),
+    ('log', 'agy 의 로그 파일 경로 — 답이 안 온 갈래에서만'),
+)
+# 프롬프트 파일이 받는 인코딩 — `decode_prompt` 가 받는 것과 같은 말이고 거절 사유 · `--help` 가 이 글을 읽는다
+PROMPT_ENCODINGS = 'UTF-8(BOM 은 있어도 없어도) · UTF-16 LE/BE(BOM 이 있어야)'
 # agy 훅 표 — 「이름 → 설정」이라 `entries` 가 없다. 명령에는 설치기가 훅 파일의 절대 경로를 박아(`agy-hooks.py`
 # `command`) 홈을 가리키는 자리가 없어 그대로 옮긴다. 안 옮기면 API 키 방식 agy 는 DRM 길잡이 · BOM 훅 없이 돈다.
 HOOKS_FILE = 'hooks.json'
@@ -112,6 +128,27 @@ def out_arg(args):
         if x.startswith('--out='):
             return x[len('--out='):]
     return None
+
+
+def decode_prompt(raw):
+    """프롬프트 파일 바이트 → 글. 받는 인코딩은 `PROMPT_ENCODINGS` — 그 밖이면 UnicodeDecodeError. BOM 은 걷힌다.
+    글에 NUL 이 있어도 거절한다: BOM 없는 UTF-16 · BOM 있는 UTF-32 는 UTF-8 로도 읽혀 NUL 이 낀 채 명령줄로 간다."""
+    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        text = raw.decode('utf-16')
+    else:
+        text = raw.decode('utf-8-sig')
+    if '\x00' in text:
+        raise UnicodeDecodeError('utf-8', raw, 0, len(raw), 'NUL 문자가 든다')
+    return text
+
+
+def footer_line(status, cells):
+    """끝 줄 — `FOOTER <갈래>` 뒤에 칸을 `FOOTER_FIELDS` 의 차례로 ` · ` 로 잇는다. `cells` 는 {칸 이름: 꼴을 갖춘 글}이고 있는
+    칸만 든다. 이름이 `FOOTER_FIELDS` 에 없으면 KeyError — 칸을 더하면서 뜻을 안 다는 일을 막는다."""
+    unknown = set(cells) - {name for name, _ in FOOTER_FIELDS}
+    if unknown:
+        raise KeyError(f'FOOTER_FIELDS 에 없는 끝 줄 칸: {sorted(unknown)}')
+    return ' · '.join([f'{FOOTER} {status}'] + [cells[name] for name, _ in FOOTER_FIELDS if name in cells])
 
 
 def conversation_field(home, conv):
@@ -369,29 +406,93 @@ def run_once(a, prompt, model, log, raw_path, err_path, env=None):
     return status, proc.returncode, res, raw_text, err_text
 
 
+class HelpFormat(argparse.RawDescriptionHelpFormatter):
+    """`--help` 의 꼴 — 폭만 넓혀 플래그마다 한 줄에 둔다(아래쪽 절은 `help_epilog` 가 짠 그대로 간다)."""
+
+    def __init__(self, prog):
+        super().__init__(prog, max_help_position=26, width=140)
+
+
+def build_parser():
+    ap = Parser(add_help=False, formatter_class=HelpFormat,
+                description='agy(Antigravity CLI · 제미나이)에게 일을 맡기고, 답과 끝 줄을 --out 파일로 받는다.')
+    ap.add_argument('-h', '--help', action='store_true', help='이 도움말을 표준 출력에 찍고 끝낸다(파일은 안 쓴다)')
+    ap.add_argument('--prompt-file', required=True, metavar='FILE', help='맡길 프롬프트 파일 — 받는 인코딩은 아래 「프롬프트 파일」')
+    ap.add_argument('--out', required=True, metavar='FILE', help='답 파일 — 어느 갈래로 끝나든 답과 끝 줄을 여기 쓴다')
+    ap.add_argument('--cwd', required=True, metavar='DIR', help='agy 를 띄울 작업 자리 — 없는 폴더면 안 띄운다')
+    ap.add_argument('--model', metavar='NAME', help='이 모델 하나만 쓴다(안 넘어간다). 안 주면 자리 값(AGY_*)의 차례')
+    ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC, metavar='SEC',
+                    help=f'agy 한 번의 시간 한도(초). 기본 {DEFAULT_TIMEOUT_SEC}')
+    ap.add_argument('--conversation', metavar='ID', help='이어 묻기 — 끝 줄 conversation= 의 값을 그대로')
+    return ap
+
+
+def exit_table():
+    """종료 코드 표의 줄들 — `EXIT` 에서 같은 코드를 쓰는 이름끼리 묶고 `STATUS_WORDS` 로 뜻을 단다. 이름은 끝 줄의 갈래다."""
+    names = {}
+    for name, code in EXIT.items():
+        names.setdefault(code, []).append(name)
+    joined = {code: ' · '.join(ns) for code, ns in names.items()}
+    width = max(len(j) for j in joined.values())
+    return [f'  {code}  {joined[code]:<{width}}  ' + ' · '.join(STATUS_WORDS.get(n, n) for n in names[code])
+            for code in sorted(names)]
+
+
+def help_epilog():
+    """`--help` 의 아래쪽 — 모드 · 끝 줄 · 이어 묻기 · 프롬프트 파일 · 종료 코드. 끝 줄 칸은 `FOOTER_FIELDS` 에서, 종료 코드는
+    `EXIT` 에서 짓는다."""
+    return '\n'.join([
+        '모드: 없다 — agy 는 권한을 묻지 않고 돈다. 쓰기를 프롬프트로는 못 막으니 작업 자리(--cwd)로 막는다.',
+        '  조사만 시키면 --cwd 는 스크래치패드로 주고, 저장소를 줬으면 끝난 뒤 `git status --porcelain` 으로 남긴 것을 본다.',
+        '',
+        f'끝 줄: 답 파일의 맨 끝 줄이다. `{FOOTER} <갈래>` 뒤에 아래 칸이 " · " 로 이어진다(없는 칸은 빠진다).',
+        '  갈래는 아래 종료 코드 표의 이름이다. 인자가 틀렸거나 러너가 멈췄으면 칸 없이 `<갈래> · <까닭>` 만 든다.',
+        *[f'  {name:<13}{meaning}' for name, meaning in FOOTER_FIELDS],
+        '',
+        '이어 묻기: 끝 줄 `conversation=<id>` 의 값을 그대로 --conversation 으로 준다. 끝 줄 model= 이 `api:` 로 시작하면',
+        '  그 이름도 --model 로 준다(같은 방식으로 잇는다). `conversation=-` 는 대화가 안 남았다는 뜻이다 — 새로 맡긴다.',
+        '',
+        f'프롬프트 파일: {PROMPT_ENCODINGS} 만 받는다. 래퍼가 UTF-8 로 옮겨 agy 의 명령줄에 싣는다.',
+        '  그 밖(PowerShell 5.1 의 Set-Content 기본인 ANSI 따위)은 `usage` 로 끝나고 까닭이 --out 파일에 남는다.',
+        f'  프롬프트는 명령줄로 가므로 {MAX_PROMPT_CHARS}자를 넘으면 `usage` 다 — 큰 자료는 경로를 주고 agy 가 읽게 한다.',
+        '',
+        '종료 코드(끝 줄의 갈래 이름과 같다):',
+        *exit_table(),
+        '  한도 초과 · 과부하는 넘어갈 모델까지 다 막혔을 때다.',
+    ]) + '\n'
+
+
+def show_help(ap):
+    """`--help` — 도움말을 표준 출력에 찍고 0. 인자 검사보다 앞서고 파일은 안 쓴다."""
+    ap.epilog = help_epilog()
+    out = sys.stdout
+    if out is None:   # pythonw 에는 표준 출력이 없다 — 찍을 곳이 없다
+        return EXIT['ok']
+    if hasattr(out, 'reconfigure'):   # 윈도 파이프의 기본 인코딩(cp949)은 `—` 를 못 적어 죽는다 — 에이전트 셸은 UTF-8 로 읽는다
+        out.reconfigure(encoding='utf-8')
+    out.write(ap.format_help())
+    return EXIT['ok']
+
+
 def main():
-    ap = Parser(add_help=False)
-    ap.add_argument('--prompt-file', required=True)
-    ap.add_argument('--out', required=True)
-    ap.add_argument('--cwd', required=True)
-    ap.add_argument('--model')
-    ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC)
-    ap.add_argument('--conversation')
+    ap = build_parser()
     args = sys.argv[1:]
+    if '-h' in args or '--help' in args:
+        return show_help(ap)
     try:
         a = ap.parse_args(args)
     except Usage as e:
         out = out_arg(args)
         if out:
             try:
-                write(out, f'[agy-bg] usage · 인자가 틀렸다 — {e}\n')
+                write(out, f'{FOOTER} usage · 인자가 틀렸다 — {e}\n')
             except OSError:
                 pass
-        return 4
+        return EXIT['usage']
     try:
         return run(a)
     except Exception as e:   # 어디서 멈췄든 답 파일과 끝 줄을 남긴다 — 부른 쪽은 그것만 본다
-        write(a.out, f'{traceback.format_exc()}\n[agy-bg] failed · 러너가 멈췄다 — {type(e).__name__}: {e}\n')
+        write(a.out, f'{traceback.format_exc()}\n{FOOTER} failed · 러너가 멈췄다 — {type(e).__name__}: {e}\n')
         return EXIT['failed']
 
 
@@ -399,27 +500,27 @@ def run(a):
     # 자리는 `--cwd` 가 필수라 늘 오지만, 그 선언이 퇴행하면 `None` 이 여기로 와 멈춘다 — 멈춤은 갈래 1 이고
     # 부르는 쪽은 까닭을 못 읽는다. 관문이 제 갈래(4)로 내게 `None` 도 같이 문다
     if not (a.cwd and os.path.isdir(a.cwd)):
-        write(a.out, f'[agy-bg] usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
-        return 4
+        write(a.out, f'{FOOTER} usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
+        return EXIT['usage']
     try:
-        # BOM 은 걷는다 — PowerShell 5.1 의 `Set-Content -Encoding utf8` 은 BOM 을 붙이고, 프롬프트는 명령줄로 간다
-        with open(a.prompt_file, encoding='utf-8-sig') as f:
-            prompt = f.read()
+        # 글로 읽는다 — 프롬프트는 명령줄로 가니 UTF-8 로 옮기는 일은 파이썬이 한다. BOM 은 걷힌다(`decode_prompt`)
+        with open(a.prompt_file, 'rb') as f:
+            prompt = decode_prompt(f.read())
     except OSError as e:
-        write(a.out, f'[agy-bg] usage · 프롬프트 파일을 못 읽었다 — {e}\n')
-        return 4
+        write(a.out, f'{FOOTER} usage · 프롬프트 파일을 못 읽었다 — {e}\n')
+        return EXIT['usage']
     except UnicodeDecodeError:
-        write(a.out, f'[agy-bg] usage · 프롬프트 파일이 UTF-8 이 아니다 — PowerShell 5.1 이면 '
-                     f'`Set-Content -Encoding utf8` 로 쓴다: {a.prompt_file}\n')
-        return 4
+        write(a.out, f'{FOOTER} usage · 프롬프트 파일이 받는 인코딩이 아니다 — {PROMPT_ENCODINGS} 만 받는다. '
+                     f'PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {a.prompt_file}\n')
+        return EXIT['usage']
     if len(prompt) > MAX_PROMPT_CHARS:
-        write(a.out, f'[agy-bg] usage · 프롬프트가 {len(prompt)}자다 — {MAX_PROMPT_CHARS}자를 넘으면 '
+        write(a.out, f'{FOOTER} usage · 프롬프트가 {len(prompt)}자다 — {MAX_PROMPT_CHARS}자를 넘으면 '
                      '명령줄에 안 든다. 큰 자료는 파일 경로를 주고 agy 가 읽게 한다\n')
-        return 4
+        return EXIT['usage']
 
     if a.model and a.model.startswith(API_PREFIX) and not api_key():
-        write(a.out, '[agy-bg] usage · api: 후보는 키가 있어야 띄운다 — GOOGLE_API_KEY 나 GEMINI_API_KEY 가 없다\n')
-        return 4
+        write(a.out, f'{FOOTER} usage · api: 후보는 키가 있어야 띄운다 — GOOGLE_API_KEY 나 GEMINI_API_KEY 가 없다\n')
+        return EXIT['usage']
 
     log, raw_path, err_path = a.out + '.agy.log', a.out + '.raw.json', a.out + '.stderr.txt'
     started = time.monotonic()
@@ -437,7 +538,7 @@ def run(a):
             break
         status, rc, res, raw_text, err_text = run_once(a, prompt, agy_model, log, raw_path, err_path, env)
         if status == 'spawn':
-            write(a.out, f'[agy-bg] failed · agy 를 못 띄웠다 — {err_text}\n')
+            write(a.out, f'{FOOTER} failed · agy 를 못 띄웠다 — {err_text}\n')
             return 1
         if status not in FAILOVER or i == len(models) - 1:
             break
@@ -447,11 +548,14 @@ def run(a):
     answer = res.get('response') or ''
     usage = res.get('usage') or {}
     conv = res.get('conversation_id')
-    footer = (f'[agy-bg] {status} · rc={"-" if rc is None else rc} · {elapsed}s'
-              f' · model={model or "agy 기본"}'
-              + (f' · failover={"; ".join(tried)}' if tried else '') +
-              f' · tokens in={usage.get("input_tokens", "-")} out={usage.get("output_tokens", "-")}'
-              f' · {conversation_field(home, conv)}')
+    cells = {'rc': f'rc={"-" if rc is None else rc}', 'elapsed': f'{elapsed}s', 'model': f'model={model or "agy 기본"}',
+             'tokens': f'tokens in={usage.get("input_tokens", "-")} out={usage.get("output_tokens", "-")}',
+             'conversation': conversation_field(home, conv)}
+    if tried:
+        cells['failover'] = f'failover={"; ".join(tried)}'
+    if status != 'ok':
+        cells['log'] = f'log={log}'
+    footer = footer_line(status, cells)
     if status == 'ok':
         for p in (raw_path, err_path, log):
             try:
@@ -461,7 +565,7 @@ def run(a):
         write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
     else:
         # 답이 없으면 agy 가 낸 것을 그대로 둔다 — 까닭이 거기 있다. 로그도 남긴다.
-        write(a.out, f'{answer or raw_text}\n{err_text}\n{footer} · log={log}\n')
+        write(a.out, f'{answer or raw_text}\n{err_text}\n{footer}\n')
     return EXIT[status]
 
 

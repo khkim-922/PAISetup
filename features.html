@@ -7,7 +7,7 @@
 <!--
   설치 창의 「제공기능」 링크가 여는 한 장이다. 읽는 사람은 Claude Code 를 처음 까는 동료다 —
   무엇을 할 수 있게 되나를 한두 문장으로만 적는다. 어디에 무엇이 깔리나(경로 · 조건 · 값)는
-  README 「무엇이 깔리나」가 든다 — 여기 옮겨 적지 않는다(모델 이름 · 개수처럼 자주 바뀌는 값도).
+  곁의 `INSTALLED.md`(진본은 같은 `docs/` 의 그 이름)가 든다 — 여기 옮겨 적지 않는다(모델 이름 · 개수처럼 자주 바뀌는 값도).
   판마다 바뀐 것도 안 적는다 — 그 판의 릴리스 노트가 든다(결정 0099). 판이 바뀌어도 맞는 것만 적는다.
   「일하는 방식 스킬」 칸은 배포본에 실리는 스킬(`dist.manifest.conf` 의 `[뺀다]` 를 뺀 `kit/skills`)을 손으로 옮긴 목록이다 —
   스킬을 더하거나 걷거나 배포에서 빼면 이 칸도 고친다.
@@ -305,16 +305,16 @@
     <div class="card"><small class="id">skill-from-standard</small><b>스킬 만들기</b><span>스킬을 만들거나 고칠 때 이미 있는 표준부터 찾아 그 위에 세웁니다.</span></div>
     <div class="card"><small class="id">check-design</small><b>검사 짓기</b><span>검사를 새로 세우거나 걷기 전에, 영구로 남길 값이 있는지 · 어떤 꼴로 · 어느 층에 둘지 · 언제 걷을지를 가릅니다.</span></div>
     <div class="card"><small class="id">borrow-spec-as-pair</small><b>다른 저장소에서 옮겨 오기</b><span>형제 저장소의 코드 · 규격 · 검사를 옮겨 올 때, 같이 옮겨야 할 짝을 먼저 셉니다.</span></div>
-    <div class="card"><small class="id">automation-audit-ops</small><b>자동화 점검</b><span>작업 · 훅 · 커넥터를 고치기 전에 무엇이 있고 무엇이 겹치는지 근거부터 모읍니다.</span></div>
-    <div class="card"><small class="id">click-path-audit</small><b>클릭 경로 점검</b><span>화면의 버튼마다 상태가 바뀌는 과정을 따라가, 함수는 되는데 화면에서 안 되는 자리를 찾습니다.</span></div>
-    <div class="card"><small class="id">benchmark-optimization-loop</small><b>빠르게 만들기</b><span>여러 변형을 재 보며 되풀이해 더 빠른 쪽을 고릅니다.</span></div>
+    <div class="card"><span class="tag" title="ECC(everything-claude-code)에서 빌려 와 한국어로 옮긴 스킬 · MIT">ECC</span><small class="id">automation-audit-ops</small><b>자동화 점검</b><span>작업 · 훅 · 커넥터를 고치기 전에 무엇이 있고 무엇이 겹치는지 근거부터 모읍니다.</span></div>
+    <div class="card"><span class="tag" title="ECC(everything-claude-code)에서 빌려 와 한국어로 옮긴 스킬 · MIT">ECC</span><small class="id">click-path-audit</small><b>클릭 경로 점검</b><span>화면의 버튼마다 상태가 바뀌는 과정을 따라가, 함수는 되는데 화면에서 안 되는 자리를 찾습니다.</span></div>
+    <div class="card"><span class="tag" title="ECC(everything-claude-code)에서 빌려 와 한국어로 옮긴 스킬 · MIT">ECC</span><small class="id">benchmark-optimization-loop</small><b>빠르게 만들기</b><span>여러 변형을 재 보며 되풀이해 더 빠른 쪽을 고릅니다.</span></div>
   </div>
 </section>
 
 <footer>
   <p class="help"><b>막히거나 바라는 것이 있으면</b> 이 설치본이 나온 GitHub 저장소에 이슈로 남겨 주세요.
      설치 창의 「바뀐 것」 링크가 여는 페이지 위쪽에 Issues 탭이 있습니다 — 공개 저장소라 회사 문서 · 키 · 사내 주소는 적지 않습니다.</p>
-  어디에 무엇이 깔리는지는 같은 폴더의 <code>README.md</code> 「무엇이 깔리나」가 자세히 적습니다.
+  어디에 무엇이 깔리는지는 같은 폴더의 <a href="INSTALLED.md"><code>INSTALLED.md</code></a> 가 자세히 적습니다.
   이 페이지는 밖에서 불러오는 것이 없어 사내망에서도 열립니다.
 </footer>
 

@@ -47,11 +47,9 @@ JS 를 node 로 바로 부른다 — 인자는 고정 플래그뿐이다.
 Codex 의 `model` 은 `--model`(빈 값은 안 준 것) → 맡기기 모델 → 기본 모델 가운데 처음 선 것이고, 다 없으면 안 넘겨 Codex
 설정의 `model` 로 뜬다. Copilot 에는 모델을 안 넘긴다 — 이름이 Codex 의 것이다.
 
-**말은 전부 `--out` 파일로 간다** — pythonw 에는 표준 출력이 없다. 맨 끝 줄 `[cc-bg] …` 이 갈래 · 걸린 시간 ·
-맡은 쪽 · 모델(`model=` — Codex 에 넘긴 이름, 안 넘겼거나 Copilot 이면 `-`) · 넘어간 자취 · 토큰 · 웹 검색 수 · 이어 묻기
-값을 든다:
-  0 답이 왔다 · 1 실패했다(러너가 멈춘 것 포함) · 2 한도(받을 쪽까지 다) 또는 빈 답 · 3 시간 초과 · 4 부르는 법이
-  틀렸다 · 깔린 쪽이 없다
+**말은 전부 `--out` 파일로 간다** — pythonw 에는 표준 출력이 없다(`--help` 만 표준 출력에 찍는다). 맨 끝 줄
+`[cc-bg] …` 의 칸과 종료 코드의 뜻은 `--help` 가 든다 — `FOOTER_FIELDS` · `EXIT` · `STATUS_WORDS` 에서 지어 찍으니 여기에
+다시 적지 않는다.
 `--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다. **이어 묻기 값은 그쪽 대화 기록이 실제로 남았을 때만
 싣는다** — 제 홈에 못 쓰는 자리(부른 쪽의 샌드박스)에서 돌면 id 는 나와도 기록이 없어 이어 묻기가 진다.
 **Copilot 이 gh 로그인의 토큰이 무효라 졌으면 갈래 바로 뒤에 그 말과 되살리는 명령(`gh auth login`)을 싣는다** — Copilot
@@ -80,8 +78,28 @@ CREATE_NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
 DEFAULT_TIMEOUT_SEC = 1800      # 기본 한도 — 짧은 일도 그대로 둔다(끝나는 대로 돌아온다)
 POLL_SEC = 2                    # 끝났나 보는 간격
 STDERR_TAIL_CHARS = 2000        # 실패 때 답 파일에 옮기는 stderr 꼬리
-EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'empty': 2, 'timeout': 3}
+EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'empty': 2, 'timeout': 3, 'usage': 4}
 FOOTER = '[cc-bg]'
+# 갈래 낱말의 뜻 — `--help` 의 종료 코드 표가 `EXIT` 의 이름마다 단다. 갈래 낱말은 끝 줄의 첫 낱말이기도 하다
+STATUS_WORDS = {'ok': '답이 왔다', 'failed': '실패했다(러너가 멈춘 것 포함)', 'quota': '한도(받을 쪽까지 다)', 'empty': '빈 답',
+                'timeout': '시간 초과',
+                'usage': '부르는 법이 틀렸다(인자 · 자리 값 · 프롬프트 파일의 인코딩) 또는 띄울 쪽이 없다(안 깔렸거나 이 자리에서 안 쓴다)'}
+# 끝 줄의 칸 — (이름, 뜻). 끝 줄을 짓는 `footer_line` 과 `--help` 가 같이 읽고, 차례가 끝 줄의 차례다
+FOOTER_FIELDS = (
+    ('note', 'Copilot 이 쓰는 gh 로그인이 무효라 졌을 때만 — 그 말과 되살리는 명령(`gh auth login`)이 갈래 바로 뒤에 선다'),
+    ('rc', '받은 쪽 CLI 의 종료 코드'),
+    ('elapsed', '걸린 시간 — `<N>s` 꼴(초)'),
+    ('mode', '레인 — read(읽기만) · write(--write) · review(--review)'),
+    ('agent', '답한(마지막에 띄운) 쪽 — codex · copilot'),
+    ('model', 'Codex 에 넘긴 모델 이름. 안 넘겼거나 Copilot 이면 `-`'),
+    ('failover', 'Codex 한도로 다음 쪽에 넘어온 자취 `<쪽>: <갈래>`(`;` 로 여럿) — 있을 때만'),
+    ('tokens', '`tokens in=<N> out=<N>` — Copilot 은 `in=- out=-`'),
+    ('web', 'Codex 가 실제로 마친 웹 검색 수 — 0 이면 기억으로 낸 답이다. Copilot 은 `-`'),
+    ('resume', '이어 묻기 값 `<쪽>:<id>` — 그쪽 대화 기록이 실제로 남았을 때만. 아니면 `-` 와 까닭'),
+    ('raw', '날 출력(jsonl) 파일 경로 — 답이 안 온 갈래에서만'),
+)
+# 프롬프트 파일이 받는 인코딩 — `decode_prompt` 가 받는 것과 같은 말이고 거절 사유 · `--help` 가 이 글을 읽는다
+PROMPT_ENCODINGS = 'UTF-8(BOM 은 있어도 없어도) · UTF-16 LE/BE(BOM 이 있어야)'
 
 # 셔틀(`.cmd`)이 부르는 JS — npm 전역 자리(셔틀 곁의 `node_modules`) 기준
 NPM_ENTRY = {'codex': ('@openai', 'codex', 'bin', 'codex.js'),
@@ -194,17 +212,40 @@ def out_arg(args):
     return None
 
 
+def decode_prompt(raw):
+    """프롬프트 파일 바이트 → 글. 받는 인코딩은 `PROMPT_ENCODINGS` — 그 밖이면 UnicodeDecodeError. BOM 은 걷힌다.
+    글에 NUL 이 있어도 거절한다: BOM 없는 UTF-16 · BOM 있는 UTF-32 는 UTF-8 로도 읽혀 NUL 이 낀 채 표준 입력으로 간다."""
+    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        text = raw.decode('utf-16')
+    else:
+        text = raw.decode('utf-8-sig')
+    if '\x00' in text:
+        raise UnicodeDecodeError('utf-8', raw, 0, len(raw), 'NUL 문자가 든다')
+    return text
+
+
 def prompt_problem(path):
     """프롬프트 파일을 못 넘기는 까닭 — 없으면 None. 받는 쪽은 표준 입력을 UTF-8 로 읽는다: PowerShell 5.1 의
-    `Set-Content`(ANSI) · `Out-File`(UTF-16) 기본값으로 쓴 파일은 글자가 깨진 채 넘어가 답이 조용히 틀어진다."""
+    `Set-Content` 기본값(ANSI)으로 쓴 파일은 글자가 깨진 채 넘어가 답이 조용히 틀어진다. 그래서 `decode_prompt` 가 받는
+    인코딩만 넘기고, 넘길 때(`stdin_for`)는 UTF-8 로 옮긴다."""
     try:
         with open(path, 'rb') as f:
-            f.read().decode('utf-8')
+            decode_prompt(f.read())
     except OSError as e:
         return f'프롬프트 파일을 못 읽었다 — {e}'
     except UnicodeDecodeError:
-        return f'프롬프트 파일이 UTF-8 이 아니다 — PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {path}'
+        return (f'프롬프트 파일이 받는 인코딩이 아니다 — {PROMPT_ENCODINGS} 만 받는다. '
+                f'PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {path}')
     return None
+
+
+def footer_line(status, cells):
+    """끝 줄 — `FOOTER <갈래>` 뒤에 칸을 `FOOTER_FIELDS` 의 차례로 ` · ` 로 잇는다. `cells` 는 {칸 이름: 꼴을 갖춘 글}이고 있는
+    칸만 든다. 이름이 `FOOTER_FIELDS` 에 없으면 KeyError — 칸을 더하면서 뜻을 안 다는 일을 막는다."""
+    unknown = set(cells) - {name for name, _ in FOOTER_FIELDS}
+    if unknown:
+        raise KeyError(f'FOOTER_FIELDS 에 없는 끝 줄 칸: {sorted(unknown)}')
+    return ' · '.join([f'{FOOTER} {status}'] + [cells[name] for name, _ in FOOTER_FIELDS if name in cells])
 
 
 def resume_field(agent, conv):
@@ -309,14 +350,12 @@ def review_head(target):
 
 
 def stdin_for(a):
-    """표준 입력으로 넘길 파일 — 리뷰 모드면 머리를 얹은 임시 파일(닫으면 지워진다), 아니면 프롬프트 파일 그대로.
-    프롬프트 파일의 BOM 은 걷는다 — 머리 뒤에 남으면 본문 첫 글자가 된다."""
-    if not a.review:
-        return open(a.prompt_file, 'rb')
+    """표준 입력으로 넘길 파일 — 프롬프트를 UTF-8(BOM 없이)로 옮긴 임시 파일이고 닫으면 지워진다. 리뷰 모드면 앞에 머리를
+    얹는다. BOM 은 걷는다(`decode_prompt`) — 머리 뒤에 남으면 본문 첫 글자가 된다."""
     with open(a.prompt_file, 'rb') as f:
-        body = f.read().removeprefix(codecs.BOM_UTF8)
+        body = decode_prompt(f.read())
     tmp = tempfile.TemporaryFile()
-    tmp.write(review_head(a.review).encode('utf-8') + body)
+    tmp.write(((review_head(a.review) if a.review else '') + body).encode('utf-8'))
     tmp.seek(0)
     return tmp
 
@@ -441,18 +480,97 @@ def run_once(agent, cmd_head, a, resume):
     return status, proc.returncode, answer, conv, reason, tokens, searches, raw_path
 
 
+class HelpFormat(argparse.RawDescriptionHelpFormatter):
+    """`--help` 의 꼴 — 폭만 넓혀 플래그마다 한 줄에 둔다(아래쪽 절은 `help_epilog` 가 짠 그대로 간다)."""
+
+    def __init__(self, prog):
+        super().__init__(prog, max_help_position=26, width=140)
+
+
+def build_parser():
+    ap = Parser(add_help=False, formatter_class=HelpFormat,
+                description='Codex 에게 일을 맡기고(한도가 차면 자리 값이 허락할 때 Copilot 이 받는다), 답과 끝 줄을 --out 파일로 받는다.')
+    ap.add_argument('-h', '--help', action='store_true', help='이 도움말을 표준 출력에 찍고 끝낸다(파일은 안 쓴다)')
+    ap.add_argument('--prompt-file', required=True, metavar='FILE', help='맡길 프롬프트 파일 — 받는 인코딩은 아래 「프롬프트 파일」')
+    ap.add_argument('--out', required=True, metavar='FILE', help='답 파일 — 어느 갈래로 끝나든 답과 끝 줄을 여기 쓴다')
+    ap.add_argument('--cwd', required=True, metavar='DIR', help='띄울 작업 자리 — 없는 폴더면 안 띄운다. --write 가 고치는 범위이기도 하다')
+    ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC, metavar='SEC',
+                    help=f'한 쪽을 한 번 띄우는 시간 한도(초). 기본 {DEFAULT_TIMEOUT_SEC}')
+    ap.add_argument('--agent', choices=AGENTS, help='처음부터 이 쪽에 맡긴다(안 주면 차례대로). 차례에 없는 쪽은 안 띄운다')
+    ap.add_argument('--resume', metavar='AGENT:ID', help='이어 묻기 — 끝 줄 resume= 의 값을 그대로(<쪽>:<id>)')
+    ap.add_argument('--write', action='store_true', help='고치기 레인 — 작업 자리 안만 고친다(아래 「모드」)')
+    ap.add_argument('--model', default='', metavar='NAME',
+                    help='이 실행의 Codex 모델 — 빈 값은 안 준 것(자리 값이 고른다). Copilot 에는 안 간다')
+    ap.add_argument('--review', nargs='?', const=DEFAULT_REVIEW_TARGET, metavar='TARGET',
+                    help=f'리뷰 모드 — 대상은 {DEFAULT_REVIEW_TARGET}(기본) · base:<가지> · commit:<sha>')   # 대상은 `REVIEW_TARGET_RE`
+    return ap
+
+
+def exit_table():
+    """종료 코드 표의 줄들 — `EXIT` 에서 같은 코드를 쓰는 이름끼리 묶고 `STATUS_WORDS` 로 뜻을 단다. 이름은 끝 줄의 갈래다."""
+    names = {}
+    for name, code in EXIT.items():
+        names.setdefault(code, []).append(name)
+    joined = {code: ' · '.join(ns) for code, ns in names.items()}
+    width = max(len(j) for j in joined.values())
+    return [f'  {code}  {joined[code]:<{width}}  ' + ' · '.join(STATUS_WORDS.get(n, n) for n in names[code])
+            for code in sorted(names)]
+
+
+def help_epilog():
+    """`--help` 의 아래쪽 — 모드 · 차례 · 자리 값 · 끝 줄 · 이어 묻기 · 프롬프트 파일 · 종료 코드. 끝 줄 칸은 `FOOTER_FIELDS` 에서,
+    종료 코드는 `EXIT` 에서 짓는다."""
+    return '\n'.join([
+        '모드(끝 줄 mode= 에 적힌다):',
+        '  read(기본)       읽기만 한다. Codex 는 읽기 전용 샌드박스에 앱 · 플러그인 · MCP 를 끄고 승인 never, Copilot 은 읽기 · 웹 읽기 도구만 보인다.',
+        '  --write          고치기 레인 — 작업 자리(--cwd) 안만 고친다. Codex 는 쓰기 샌드박스에 임시 폴더를 이 실행만의 빈 폴더로 돌리고,',
+        '                   Copilot 은 편집 도구 + 쓰기 허락(셸은 안 보인다). 이어 물을 때도 다시 준다(안 주면 읽기 레인으로 이어진다).',
+        f'  --review [대상]  리뷰 — {REVIEW_AGENT} 만 받는다(한도여도 Copilot 으로 안 넘긴다). 읽기 레인 인자 그대로 리뷰 스킬을 프롬프트 머리로 부른다.',
+        f'                   대상은 {DEFAULT_REVIEW_TARGET}(기본) · base:<가지> · commit:<sha>. --write · --resume · --agent copilot 과 같이 못 준다(`usage`).',
+        '',
+        f'차례: 자리 값 {KNOB_AGENTS} 가 정한다(없으면 {" → ".join(AGENTS)}). 차례에 없는 쪽은 --agent · --resume 으로도 안 띄운다(`usage`).',
+        '  Codex 가 한도(사용 한도 · 할당량 · 용량 초과)면 다음 쪽이 받고, 그 밖의 실패 · 시간 초과는 그 자리에서 멈춘다.',
+        '',
+        '자리 값(환경변수 — 설치기가 자리마다 심고, 없으면 기본):',
+        f'  {KNOB_AGENTS:<27}차례이자 쓸 수 있는 쪽(쉼표)',
+        f'  {KNOB_WEB_SEARCH:<27}Codex web_search — {" · ".join(WEB_SEARCH_MODES)}(기본 {DEFAULT_WEB_SEARCH})',
+        f'  {KNOB_WIN_SANDBOX:<27}Codex windows.sandbox — {" · ".join(WIN_SANDBOX_MODES)}(없으면 Codex 설정을 따른다)',
+        f'  {KNOB_MODEL_DELEGATE:<27}맡기기 모델(깊은 판단) — --model 이 없으면 이것을 먼저 쓴다',
+        f'  {KNOB_MODEL:<27}기본 모델(심부름) — 맡기기 모델이 없을 때 쓴다. 값이 틀리면 그 이름을 대고 `usage` 로 멈춘다',
+        '',
+        f'끝 줄: 답 파일의 맨 끝 줄이다. `{FOOTER} <갈래>` 뒤에 아래 칸이 " · " 로 이어진다(없는 칸은 빠진다).',
+        '  갈래는 아래 종료 코드 표의 이름이다. 인자가 틀렸거나 러너가 멈췄으면 칸 없이 `<갈래> · <까닭>` 만 든다.',
+        *[f'  {name:<9}{meaning}' for name, meaning in FOOTER_FIELDS],
+        '',
+        '이어 묻기: 끝 줄 `resume=<쪽>:<id>` 의 값을 그대로 --resume 으로 준다 — 그 대화가 있는 쪽에서 잇는다. 끝 줄 model= 이 `-` 가 아니면',
+        '  그 이름도 --model 로 준다(안 주면 맡기기 모델로 잇는다). 고치기 레인이면 --write 도 다시 준다.',
+        '  `resume=-` 는 대화 기록이 안 남았다는 뜻이다 — 새로 맡긴다.',
+        '',
+        f'프롬프트 파일: {PROMPT_ENCODINGS} 만 받는다. 래퍼가 UTF-8 로 옮겨 표준 입력으로 넘긴다(길이 한도 없음).',
+        '  그 밖(PowerShell 5.1 의 Set-Content 기본인 ANSI 따위)은 `usage` 로 끝나고 까닭이 --out 파일에 남는다.',
+        '',
+        '종료 코드(끝 줄의 갈래 이름과 같다):',
+        *exit_table(),
+    ]) + '\n'
+
+
+def show_help(ap):
+    """`--help` — 도움말을 표준 출력에 찍고 0. 인자 검사보다 앞서고 파일은 안 쓴다."""
+    ap.epilog = help_epilog()
+    out = sys.stdout
+    if out is None:   # pythonw 에는 표준 출력이 없다 — 찍을 곳이 없다
+        return EXIT['ok']
+    if hasattr(out, 'reconfigure'):   # 윈도 파이프의 기본 인코딩(cp949)은 `—` 를 못 적어 죽는다 — 에이전트 셸은 UTF-8 로 읽는다
+        out.reconfigure(encoding='utf-8')
+    out.write(ap.format_help())
+    return EXIT['ok']
+
+
 def main():
-    ap = Parser(add_help=False)
-    ap.add_argument('--prompt-file', required=True)
-    ap.add_argument('--out', required=True)
-    ap.add_argument('--cwd', required=True)
-    ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC)
-    ap.add_argument('--agent', choices=AGENTS)
-    ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로 — `<쪽>:<id>`
-    ap.add_argument('--write', action='store_true')   # 고치기 레인 — 작업 자리 안만 고친다
-    ap.add_argument('--model', default='')   # 이 실행의 Codex 모델 — 빈 값은 안 준 것(자리 값이 고른다)
-    ap.add_argument('--review', nargs='?', const=DEFAULT_REVIEW_TARGET)   # 리뷰 모드 — 대상은 `REVIEW_TARGET_RE`
+    ap = build_parser()
     args = sys.argv[1:]
+    if '-h' in args or '--help' in args:
+        return show_help(ap)
     try:
         a = ap.parse_args(args)
     except Usage as e:
@@ -462,7 +580,7 @@ def main():
                 write(out, f'{FOOTER} usage · 인자가 틀렸다 — {e}\n')
             except OSError:
                 pass
-        return 4
+        return EXIT['usage']
     try:
         return run(a)
     except Exception as e:   # 어디서 멈췄든 답 파일과 끝 줄을 남긴다 — 부른 쪽은 그것만 본다
@@ -473,36 +591,36 @@ def main():
 def run(a):
     if not os.path.isfile(a.prompt_file):
         write(a.out, f'{FOOTER} usage · 프롬프트 파일이 없다 — {a.prompt_file}\n')
-        return 4
+        return EXIT['usage']
     bad = prompt_problem(a.prompt_file)
     if bad:
         write(a.out, f'{FOOTER} usage · {bad}\n')
-        return 4
+        return EXIT['usage']
     a.knobs, bad = read_knobs(os.environ)
     if bad:
         write(a.out, f'{FOOTER} usage · 자리 값이 틀렸다 — {bad}\n')
-        return 4
+        return EXIT['usage']
     a.model = a.model.strip()
     if a.model and not MODEL_NAME_RE.fullmatch(a.model):
         write(a.out, f'{FOOTER} usage · --model {a.model!r} — 모델 이름에 따옴표 · 공백이 든다\n')
-        return 4
+        return EXIT['usage']
     if a.review is not None:
         if not REVIEW_TARGET_RE.fullmatch(a.review):
             write(a.out, f'{FOOTER} usage · --review {a.review!r} — uncommitted · base:<가지> · commit:<sha> 가운데 하나\n')
-            return 4
+            return EXIT['usage']
         if a.write or a.resume:
             write(a.out, f'{FOOTER} usage · --review 는 --write · --resume 과 같이 못 준다 — 리뷰는 읽기만 하는 새 대화다\n')
-            return 4
+            return EXIT['usage']
         if a.agent not in (None, REVIEW_AGENT):
             write(a.out, f'{FOOTER} usage · --review 는 {REVIEW_AGENT} 만 받는다 — {a.agent} 셸은 읽기로 못 가둔다\n')
-            return 4
+            return EXIT['usage']
     allowed = a.knobs['agents']
     resume = None
     if a.resume:
         agent, _, resume = a.resume.partition(':')
         if agent not in AGENTS or not resume:
             write(a.out, f'{FOOTER} usage · --resume 은 `<쪽>:<id>` 꼴이다 — 쪽은 {" · ".join(AGENTS)}\n')
-            return 4
+            return EXIT['usage']
         # 대화가 그쪽에 있다 — 다른 쪽으로 넘기면 앞 맥락이 없다
         order = [agent]
     elif a.review is not None:
@@ -512,10 +630,10 @@ def run(a):
     # 자리가 안 쓰는 쪽은 손으로 골라도 안 띄운다 — 그쪽으로 보내지 않는 것이 그 자리의 선이다
     if any(x not in allowed for x in order):
         write(a.out, f'{FOOTER} usage · 이 자리에서 안 쓰는 쪽이다 — {KNOB_AGENTS}={",".join(allowed)}\n')
-        return 4
+        return EXIT['usage']
     if not (a.cwd and os.path.isdir(a.cwd)):
         write(a.out, f'{FOOTER} usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
-        return 4
+        return EXIT['usage']
 
     started = time.monotonic()
     tried = []
@@ -538,21 +656,25 @@ def run(a):
 
     if ran is None:
         write(a.out, f'{FOOTER} usage · 띄울 쪽이 없다 — {"; ".join(tried) or "차례가 비었다"}\n')
-        return 4
+        return EXIT['usage']
     agent, status, rc, answer, conv, reason, tokens, searches, raw_path = ran
     model = (codex_model(a.knobs, a.model) or '-') if agent == 'codex' else '-'
     said = gh_login_dead_say(agent, status, reason, os.environ)
-    footer = (f'{FOOTER} {status}' + (f' · {said}' if said else '') +
-              f' · rc={rc} · {elapsed}s · mode={"write" if a.write else "review" if a.review else "read"} · agent={agent}'
-              f' · model={model}'
-              + (f' · failover={"; ".join(tried)}' if tried else '') +
-              f' · tokens {tokens} · web={"-" if searches is None else searches}'
-              f' · {resume_field(agent, conv)}')
+    cells = {'rc': f'rc={rc}', 'elapsed': f'{elapsed}s', 'mode': f'mode={"write" if a.write else "review" if a.review else "read"}',
+             'agent': f'agent={agent}', 'model': f'model={model}', 'tokens': f'tokens {tokens}',
+             'web': f'web={"-" if searches is None else searches}', 'resume': resume_field(agent, conv)}
+    if said:
+        cells['note'] = said
+    if tried:
+        cells['failover'] = f'failover={"; ".join(tried)}'
+    if status != 'ok':
+        cells['raw'] = f'raw={raw_path}'
+    footer = footer_line(status, cells)
     if status == 'ok':
         write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
     else:
         # 날 출력은 길어(이벤트 수백 줄) 옮기지 않는다 — 까닭과 그 자리만 적는다
-        write(a.out, f'{answer.rstrip()}\n{reason}\n{footer} · raw={raw_path}\n')
+        write(a.out, f'{answer.rstrip()}\n{reason}\n{footer}\n')
     return EXIT[status]
 
 
