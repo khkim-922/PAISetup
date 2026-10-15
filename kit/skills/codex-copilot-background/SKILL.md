@@ -31,6 +31,21 @@ description: "Codex 에게 일을 맡기고 거둘 때 부른다 — Claude 에�
 - **이어 물을 때도 `--write` 를 다시 준다** — 안 주면 같은 대화가 읽기 레인으로 이어진다
 - 끝나면 맡긴 쪽이 그 자리의 diff 를 읽고 검사를 돌린다. 커밋 · 푸시 · 이슈는 맡긴 쪽이 한다
 
+## 리뷰 모드 — `--review [대상]`
+
+리뷰를 맡길 때 준다. Codex 의 공식 리뷰 기능(이번 변경이 만든 것만 · 등급 · 0건 허용이 이미 든다)으로 시키고, 띄우는 꼴은
+읽기 레인 그대로다 — 읽기 전용 샌드박스 안에서 git 읽기 명령이 돈다. 대상은 `uncommitted`(기본 — 스테이지 한 것 · 안 한 것 ·
+추적 안 하는 파일) · `base:<가지>` · `commit:<sha>` 이고, 래퍼가 봉투 앞에 리뷰 스킬 부르기(`$review-agent`)와 대상 한 줄을
+얹는다 — 봉투는 대상을 다시 말하지 않아도 된다. `codex exec review` 를 안 쓰는 까닭은 그것이 대상 깃발과 프롬프트를 같이 못
+받아 봉투가 리뷰어에게 안 닿아서다. 답은 `[P1] 제목 — 경로:줄` 꼴이고, 없으면 `No findings.` 다.
+
+- **Copilot 은 리뷰 모드를 안 받는다** — 리뷰에 드는 셸을 읽기로 가둘 길이 없다. 셸 허락은 명령 · 하위 명령까지만 가르고,
+  Copilot 이 제 손으로 읽기로 가르는 명령에 `git diff --output=<파일>` 이 들어 작업 자리에 파일을 쓴다. 그래서 `--review` 는
+  Codex 만 띄우고 Codex 가 한도여도 넘기지 않으며(2), `--agent copilot` 과 같이 주면 4 다. Copilot 에게 리뷰를 맡기려면 읽기
+  레인(셸 없음)에 봉투로 맡긴다
+- **`--write` · `--resume` 과 같이 못 준다**(4) — 리뷰는 읽기만 하는 새 대화다. 답을 더 물을 때는 `--review` 없이 `resume=`
+  값으로 잇는다(읽기 레인)
+
 ## 자리 값
 
 자리마다 다른 값은 설치기가 심는 환경변수(`CC_BG_*`)이고 래퍼가 읽는다.
@@ -52,7 +67,7 @@ description: "Codex 에게 일을 맡기고 거둘 때 부른다 — Claude 에�
 
    ```sh
    pythonw "<이 스킬 폴더>/scripts/codex_copilot_bg.py" --prompt-file <프롬프트> --out <답 파일> --cwd <작업 자리> \
-     [--timeout <초>] [--agent codex|copilot] [--resume <쪽>:<id>] [--write] [--model <이름>]
+     [--timeout <초>] [--agent codex|copilot] [--resume <쪽>:<id>] [--write | --review [대상]] [--model <이름>]
    ```
 
    **agy 에서는 같은 명령을 콘솔 있는 `python` 으로 부르고 끝날 때까지 기다린다** — `pythonw` 는 창 없는 프로그램이라
@@ -61,7 +76,7 @@ description: "Codex 에게 일을 맡기고 거둘 때 부른다 — Claude 에�
    자동 거절된다 — 권한 설정을 고쳐 뚫지 말고 거절됐다고 알리고 멈춘다. 헤드리스로 맡기는 길은 부르는 쪽이
    `--dangerously-skip-permissions` 를 붙여 띄운 agy 뿐이다(`agy-background` 러너의 꼴 · 결정 0114).
 
-3. **끝나면 `--out` 파일을 읽는다.** 끝 줄 `[cc-bg] <갈래> …` 이 레인(`mode=read|write`) · 맡은 쪽(`agent=`) · Codex 에 넘긴 모델(`model=` ·
+3. **끝나면 `--out` 파일을 읽는다.** 끝 줄 `[cc-bg] <갈래> …` 이 레인(`mode=read|write|review`) · 맡은 쪽(`agent=`) · Codex 에 넘긴 모델(`model=` ·
    안 넘겼거나 Copilot 이면 `-`) · 넘어간 자취 · Codex 가 마친 웹 검색 수
    (`web=` · Copilot 은 `-`) · 이어 묻기 값(`resume=`)을 든다. 인자가 틀렸거나 래퍼가 멈췄어도 `--out` 을 줬으면 그 파일에
    까닭과 끝 줄이 남는다. Copilot 이 쓰는 gh 로그인이 무효라 졌으면 갈래 바로 뒤에 그 말과 되살리는 명령(`gh auth login`)이

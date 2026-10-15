@@ -2,13 +2,25 @@
 
 **받는 Claude 는 기본이 읽기만 한다.** 쓸 수 있는 도구를 읽기 · 찾기 · 웹 읽기(`READ_TOOLS`)로 좁혀 띄운다 — 셸 · 쓰기
 도구는 모델에게 아예 안 보인다. 그래서 받는 쪽이 다른 에이전트를 다시 띄울 길(셸)도 없다. 묻지 않는 권한 방식(`dontAsk`)이라
-목록 밖 호출은 묻는 대신 거절되고, 거절이 하나라도 있으면 실패로 친다 — 답이 그 도구 없이 지어졌다는 뜻이다.
+목록 밖 호출은 묻는 대신 거절되고, 거절이 하나라도 있으면 실패로 친다 — 답이 그 도구 없이 지어졌다는 뜻이다(리뷰 모드는 아래).
 **`--write` 를 주면 고치기 레인이다** — 편집 도구 둘(`WRITE_TOOLS`)을 더 보이되 허락은 작업 자리 안(`./**`)만 건다. 그
 밖에 쓰려는 호출은 거절돼 실패로 남는다(실측 Claude Code 2.1.296 · 2026-10-10: 자리 안 `Edit` 은 섰고 자리 밖 `Write`
 는 `permission_denials` 로 거절됐다 · 그 띄우기를 자동 모드 분류기가 안 막았다). 셸은 그래도 안 연다 — 윈도에는 Claude
 샌드박스가 없어 셸이 자리를 못 지킨다. 검사 돌리기는 맡긴 쪽이 한다. 자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
-MCP 서버 · 슬래시 명령(스킬)은 끄고, 사용자 설정은 읽되 훅은 끈다 — 설정에는 자리 값(게이트웨이 주소 · 시간 한도 ·
-웹 가져오기 검증 건너뛰기)이 살고, 훅은 맡긴 일과 무관한 일(세션 시작 동기화 등)을 한다.
+**`--review [대상]` 을 주면 리뷰 모드다** — 내장 리뷰 스킬(`/code-review`)을 `REVIEW_LEVEL` 로 부르고, 여는 것은 그 스킬이
+드는 만큼이다: 스킬을 켜고(`--disable-slash-commands` 를 뺀다), 셸과 검증 단계가 띄우는 `Agent` 를 보인다. 셸에는 허락 규칙을
+안 건다 — Claude Code 가 읽기로 가르는 명령(`git diff` · `git log` · `cat` · `grep` 같은)만 서고, 코드 돌리기 · 파일로 내보내기
+(`git diff --output=<파일>` 포함)는 거절된다(실측 2.1.300 · 2026-10-15). 사용자 설정의 허락 규칙도 안 선다 — 설정 원천을 안
+싣고 그 파일에서 허락 규칙만 뺀 것을 넘긴다(`settings_args` · 세 레인이 다 그렇다). 그 거절은 울타리가 한 일이라 이 모드에서는 실패로 안
+치고 끝 줄 `denied=` 로 남긴다(`judge`). 표준 입력이 그 슬래시 명령이 되고, 봉투(프롬프트
+파일)는 시스템 프롬프트 덧붙이기(`--append-system-prompt-file`)로 간다 — 명령 뒤에 붙인 글은 리뷰 대상으로 읽힌다. 대상은
+그 스킬의 낱말(`<pr#>` · `<가지>` · `<경로>`)이고 없으면 지금의 diff 다. 고치기 · 올리기 · 클라우드 리뷰 깃발(`--fix` ·
+`--comment` · `ultra`)은 안 싣고, 대상 칸으로도 못 들어오게 깃발 꼴 · 등급 이름을 막는다. 고치기 레인 · 이어 묻기와는 같이
+못 준다(4).
+MCP 서버 · 슬래시 명령(스킬)은 끄고(리뷰 모드는 스킬을 켠다), 사용자 설정은 허락 규칙과 훅만 빼고 읽는다(`settings_args`) —
+설정에는 자리 값(게이트웨이 주소 · 시간 한도 · 웹 가져오기 검증 건너뛰기)이 살고, 훅은 맡긴 일과 무관한 일(세션 시작 동기화
+등)을 하며, 사람의 허락 규칙(이슈 닫기 · 다른 레인 띄우기 · 편집 자리)은 묻지 않는 권한 방식에서 그대로 서서 레인의 울타리를
+넓힌다.
 빌린 자리 — 상류 `pgpt-one-click-connect` 의 `app/optional-skills/pgpt-delegate/scripts/Invoke-PgptAgent.ps1` Claude
 작업자 갈래(커밋 65e981a · 2026-10-09). 플래그 다섯(`--strict-mcp-config` · `--disable-slash-commands` · `--permission-mode
 dontAsk` · `--tools` · `--allowedTools`)과 결과를 가르는 법(`subtype` · `is_error` · `permission_denials` · 빈 답)을
@@ -37,6 +49,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 
@@ -50,9 +63,20 @@ FOOTER = '[claude-bg]'
 READ_TOOLS = 'Read,Glob,Grep,WebFetch,WebSearch'   # 읽기 · 찾기 · 웹 읽기 — 셸 · 쓰기는 모델이 아예 못 본다
 WRITE_TOOLS = ('Edit', 'Write')                   # 고치기 레인에 더 보이는 것 — 셸은 끝내 안 연다
 WRITE_SCOPE = './**'                              # 허락은 작업 자리 안만 — 띄우는 자리(`--cwd`) 기준이다
-CLAUDE_ARGS = ['-p', '--output-format', 'stream-json', '--verbose',
-               '--setting-sources', 'user', '--settings', json.dumps({'disableAllHooks': True}),
-               '--strict-mcp-config', '--disable-slash-commands', '--permission-mode', 'dontAsk']
+NO_HOOKS = {'disableAllHooks': True}
+CLAUDE_ARGS = ['-p', '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--permission-mode', 'dontAsk']
+NO_SKILLS = '--disable-slash-commands'   # 리뷰 모드 밖에서는 스킬을 끈다
+# 리뷰 모드(`--review`) — 내장 리뷰 스킬과 그 등급. 등급은 후보마다 검증 에이전트를 띄우는 가장 낮은 것이다
+REVIEW_COMMAND = '/code-review'
+REVIEW_LEVEL = 'medium'
+# 리뷰 모드에 더 보이는 것 — git 읽기용 셸 · 검증 에이전트. 셸에는 허락 규칙을 안 건다 — Claude Code 가 읽기로 가르는 명령
+# (`git diff` · `git log` · `git show` · `git status`)만 서고, `git diff --output=<파일>` 같은 쓰기 꼴은 거절된다(실측 2.1.300 ·
+# 2026-10-15). `Bash(git diff:*)` 같은 접두 허락은 그 쓰기 꼴까지 연다.
+REVIEW_TOOLS = ('Bash', 'Agent')
+# 대상 칸 — 깃발 꼴(`--fix` · `--comment` …)과 등급 이름(`ultra` …)은 그 스킬이 대상이 아니라 다른 뜻으로 읽는다
+REVIEW_TARGET_RE = re.compile(r'[^\s-]\S*')
+REVIEW_LEVEL_NAMES = ('low', 'medium', 'high', 'xhigh', 'max', 'ultra')
+MAX_FINDINGS_RE = re.compile(r'[1-9][0-9]*|all')
 # 셔틀(`.cmd`)이 부르는 꾸러미 — npm 전역 자리(셔틀 곁의 `node_modules`) 기준. 실제로 띄울 것은 꾸러미의
 # `package.json` 의 `bin` 이 든다 — 판에 따라 JS(`cli.js`)이기도 하고 네이티브 실행 파일(`bin/claude.exe`)이기도 하다.
 NPM_PACKAGE = ('@anthropic-ai', 'claude-code')
@@ -164,8 +188,11 @@ def head():
     return resolve(found) if found else None
 
 
-def tool_args(write):
-    """보일 도구와 미리 허락한 도구. 고치기 레인이면 편집 도구를 더하되 허락은 작업 자리 안으로 가둔다."""
+def tool_args(write, review=False):
+    """보일 도구와 미리 허락한 도구. 고치기 레인이면 편집 도구를 더하되 허락은 작업 자리 안으로 가둔다. 리뷰 모드면 셸 ·
+    `Agent` 를 더하되 셸에는 허락 규칙을 안 건다(`REVIEW_TOOLS`)."""
+    if review:
+        return ['--tools', ','.join([READ_TOOLS, *REVIEW_TOOLS]), '--allowedTools', ','.join([READ_TOOLS, 'Agent'])]
     if not write:
         return ['--tools', READ_TOOLS, '--allowedTools', READ_TOOLS]
     shown = ','.join([READ_TOOLS, *WRITE_TOOLS])
@@ -173,9 +200,40 @@ def tool_args(write):
     return ['--tools', shown, '--allowedTools', allowed]
 
 
-def argv(model, resume, write=False):
-    """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다."""
-    out = list(CLAUDE_ARGS) + tool_args(write)
+def settings_args(dest):
+    """설정 인자 — 사용자 설정을 설정 원천으로 안 싣고(`--setting-sources ""`), 그 파일에서 허락 규칙(`permissions.allow`)만
+    빼고 훅을 끈 것을 `dest` 파일에 써서 그 경로를 `--settings` 로 준다. 레인의 울타리는 래퍼가 건 허락이 다여야 한다 —
+    사람의 허락 규칙이 서면 리뷰 모드의 셸(이슈 닫기 · 다른 레인 띄우기)과 고치기 레인의 편집(작업 자리 밖)이 묻지 않고
+    선다. 자리 값(`env` · 모델)과 막는 규칙은 그대로 간다. 파일은 띄울 때마다 다시 읽는다 — 사본을 안 든다.
+    ⚠ 설정을 명령줄에 JSON 으로 싣지 않는다 — `env` 에 키가 든 설정이면 그 키가 같은 사용자의 모든 프로세스 목록에 보이고,
+    명령줄 한도(32767 자)도 넘을 수 있다. `dest` 는 부르는 쪽(`run_once`)이 끝나면 지운다."""
+    path = os.path.join(os.environ.get(CONFIG_DIR_ENV) or os.path.join(os.path.expanduser('~'), '.claude'),
+                        'settings.json')
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            settings = json.load(f)
+    except FileNotFoundError:
+        settings = {}
+    permissions = dict(settings.get('permissions') or {})
+    permissions.pop('allow', None)
+    with open(dest, 'w', encoding='utf-8') as f:
+        json.dump({**settings, 'permissions': permissions, **NO_HOOKS}, f)
+    return ['--setting-sources', '', '--settings', dest]
+
+
+def review_command(target, max_findings):
+    """리뷰 모드의 표준 입력 — 내장 리뷰 스킬을 부르는 한 줄. 두 값은 `run` 이 꼴을 본 것이다."""
+    return ' '.join([REVIEW_COMMAND, REVIEW_LEVEL, *(['--max-findings', max_findings] if max_findings else []),
+                     *([target] if target else [])])
+
+
+def argv(model, resume, write=False, envelope=None, settings_file=None):
+    """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다.
+    `envelope` 는 리뷰 모드의 봉투 파일이다 — 주면 리뷰 모드로 띄운다. 넘길 설정은 `settings_file` 에 쓴다."""
+    review = envelope is not None
+    out = list(CLAUDE_ARGS) + settings_args(settings_file) + ([] if review else [NO_SKILLS]) + tool_args(write, review)
+    if review:
+        out += ['--append-system-prompt-file', envelope]
     if model:
         out += ['--model', model]
     if resume:
@@ -199,8 +257,10 @@ def read_jsonl(path):
     return out
 
 
-def judge(events, rc, err_text):
-    """(갈래, 답, 이어 묻기 id, 까닭, 토큰, 모델, 쓴 도구 {이름: 수}). 판정은 마지막 `result` 이벤트가 든다."""
+def judge(events, rc, err_text, review=False):
+    """(갈래, 답, 이어 묻기 id, 까닭, 토큰, 모델, 쓴 도구 {이름: 수}). 판정은 마지막 `result` 이벤트가 든다.
+    리뷰 모드(`review`)의 거절은 실패로 안 친다 — 셸을 git 읽기로만 연 울타리가 한 일이다(리뷰어가 코드를 돌려 보려는 호출이
+    거절된다). 답은 그대로 받고, 거절된 도구는 까닭 칸에 `<이름>:<수>` 로 실어 끝 줄이 `denied=` 로 남긴다."""
     result, model, tools = None, '-', {}
     for e in events:
         t = e.get('type')
@@ -223,7 +283,7 @@ def judge(events, rc, err_text):
         reason = answer or result.get('subtype') or '결과 이벤트가 없다'
         quota = result.get('api_error_status') in QUOTA_STATUS or QUOTA_RE.search(f'{reason}\n{err_text}')
         status = 'quota' if quota else 'failed'
-    elif denials:
+    elif denials and not review:
         status = 'denied'
         reason = '거절된 도구 호출 — 답이 그 도구 없이 지어졌다: ' + ', '.join(
             str(d.get('tool_name') or d) if isinstance(d, dict) else str(d) for d in denials)
@@ -231,31 +291,50 @@ def judge(events, rc, err_text):
         status = 'empty'
     else:
         status = 'ok'
+        if denials:
+            names = [str(d.get('tool_name') or '?') if isinstance(d, dict) else str(d) for d in denials]
+            reason = ','.join(f'{n}:{names.count(n)}' for n in sorted(set(names)))
     return status, answer, conv, reason, tokens, model, tools
 
 
 def run_once(cmd_head, a):
     """한 번 띄워 끝까지 지켜본다. 돌려주는 것 — (갈래, 종료 코드, 답, id, 까닭, 토큰, 모델, 도구, 날 출력 경로)."""
     raw_path, err_path = f'{a.out}.claude.jsonl', f'{a.out}.claude.stderr.txt'
+    settings_path = f'{a.out}.claude.settings.json'   # 넘길 설정 — 끝나면 지운다(`settings_args`)
     env = {k: v for k, v in os.environ.items() if k not in DROP_ENV}
     started = time.monotonic()
     status = None
+    # 리뷰 모드는 표준 입력이 슬래시 명령이고 봉투는 파일 경로로 간다 — 받는 쪽은 `--cwd` 에서 돌아 절대 경로로 준다
+    envelope = os.path.abspath(a.prompt_file) if a.review is not None else None
+    if envelope:
+        stdin_file = tempfile.TemporaryFile()
+        stdin_file.write(review_command(a.review, a.max_findings).encode('utf-8'))
+        stdin_file.seek(0)
+    else:
+        stdin_file = open(a.prompt_file, 'rb')
     # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
-    with open(a.prompt_file, 'rb') as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
+    try:
+        with stdin_file as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
+            try:
+                proc = subprocess.Popen(cmd_head + argv(a.model, a.resume, a.write, envelope, settings_path), cwd=a.cwd,
+                                        env=env, stdin=stdin, stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
+            except OSError as e:
+                return 'spawn', None, '', None, str(e), 'in=- out=-', '-', {}, raw_path
+            while proc.poll() is None:
+                if time.monotonic() > started + a.timeout:
+                    kill_tree(proc)
+                    status = 'timeout'
+                    break
+                time.sleep(POLL_SEC)
+    finally:
         try:
-            proc = subprocess.Popen(cmd_head + argv(a.model, a.resume, a.write), cwd=a.cwd, env=env, stdin=stdin,
-                                    stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
-        except OSError as e:
-            return 'spawn', None, '', None, str(e), 'in=- out=-', '-', {}, raw_path
-        while proc.poll() is None:
-            if time.monotonic() > started + a.timeout:
-                kill_tree(proc)
-                status = 'timeout'
-                break
-            time.sleep(POLL_SEC)
+            os.remove(settings_path)
+        except OSError:
+            pass
     with open(err_path, encoding='utf-8', errors='replace') as f:
         err_text = f.read()
-    judged, answer, conv, reason, tokens, model, tools = judge(read_jsonl(raw_path), proc.returncode, err_text)
+    judged, answer, conv, reason, tokens, model, tools = judge(read_jsonl(raw_path), proc.returncode, err_text,
+                                                               envelope is not None)
     if status is None:
         status = judged
     if status == 'ok':
@@ -278,6 +357,8 @@ def main():
     ap.add_argument('--model')
     ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로
     ap.add_argument('--write', action='store_true')   # 고치기 레인 — 작업 자리 안만 고친다
+    ap.add_argument('--review', nargs='?', const='')   # 리뷰 모드 — 값은 리뷰 대상, 없으면 지금의 diff
+    ap.add_argument('--max-findings')   # 리뷰 모드에서 그 스킬에 넘기는 한도 — 수나 `all`
     args = sys.argv[1:]
     try:
         a = ap.parse_args(args)
@@ -296,6 +377,19 @@ def main():
         return EXIT['failed']
 
 
+def review_problem(a):
+    """리뷰 모드 인자가 틀린 까닭 — 없으면 None."""
+    if a.review is None:
+        return '--max-findings 는 --review 와 같이 준다' if a.max_findings else None
+    if a.write or a.resume:
+        return '--review 는 --write · --resume 과 같이 못 준다 — 리뷰는 읽기만 하는 새 대화다'
+    if a.review and (not REVIEW_TARGET_RE.fullmatch(a.review) or a.review.lower() in REVIEW_LEVEL_NAMES):
+        return f'--review 대상 {a.review!r} — 빈칸 없는 <pr#> · <가지> · <경로> 하나(깃발 꼴 · 등급 이름은 안 받는다)'
+    if a.max_findings and not MAX_FINDINGS_RE.fullmatch(a.max_findings):
+        return f'--max-findings {a.max_findings!r} — 1 이상의 수나 all'
+    return None
+
+
 def run(a):
     if not os.path.isfile(a.prompt_file):
         write(a.out, f'{FOOTER} usage · 프롬프트 파일이 없다 — {a.prompt_file}\n')
@@ -310,6 +404,10 @@ def run(a):
     if a.model and not MODEL_NAME_RE.fullmatch(a.model):
         write(a.out, f'{FOOTER} usage · --model 에 따옴표 · 공백이 든다 — {a.model!r}\n')
         return 4
+    bad = review_problem(a)
+    if bad:
+        write(a.out, f'{FOOTER} usage · {bad}\n')
+        return 4
     cmd_head = head()
     if cmd_head is None:
         write(a.out, f'{FOOTER} usage · Claude Code CLI(`claude`)를 못 찾는다\n')
@@ -322,7 +420,9 @@ def run(a):
         write(a.out, f'{FOOTER} usage · 못 띄웠다 — {reason}\n')
         return 4
     used = ','.join(f'{k}:{v}' for k, v in sorted(tools.items())) or '-'
-    footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · model={model} · tools={used}'
+    lane = 'write' if a.write else 'review' if a.review is not None else 'read'
+    denied = f' · denied={reason}' if status == 'ok' and reason else ''   # 리뷰 모드의 거절 — `judge`
+    footer = (f'{FOOTER} {status} · rc={rc} · {elapsed}s · mode={lane} · model={model} · tools={used}{denied}'
               f' · tokens {tokens} · {resume_field(conv)}')
     if status == 'ok':
         write(a.out, f'{answer.rstrip()}\n\n{footer}\n')

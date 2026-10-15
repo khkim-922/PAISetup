@@ -161,7 +161,9 @@ def command_diff(entry):
     ⚠ 사람이 고른 `node` 경로라도 그 파일이 없으면(노드를 올리거나 옮겼다) 서버가 안 뜬다 — 그때는 맨 `node` 로 고친다."""
     args = entry.get('args') or []
     if not args or norm_path(args[0]) != norm_path(LAUNCHER.as_posix()):
-        return f'실행기 자리가 {args[0] if args else None!r} 다'
+        # 기대값을 같이 적는다 — 이 어댑터는 곁의 실행기를 기준으로 견주므로, 배포 자리가 아닌 사본(저장소 체크아웃)에서 돌리면
+        #   등록이 맞아도 어긋남이 나고, 등록된 값만 적으면 등록이 틀린 것처럼 읽힌다
+        return f'실행기 자리가 {args[0] if args else None!r} 다 — 이 어댑터 곁의 {LAUNCHER.as_posix()!r} 여야 한다'
     if not command_alive(entry.get('command')):
         return f'명령 {entry.get("command")!r} 이 없다'
     return ''

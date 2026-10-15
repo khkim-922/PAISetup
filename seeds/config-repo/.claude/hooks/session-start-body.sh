@@ -585,6 +585,44 @@ EOF
   probe_pin "$1" "$2"
 }
 
+# ── 다른 손이 든 릴리스 바이너리인가 — 그 이름이 winget 자리(`GRB_FOREIGN_ROOTS`)에서 PATH 에 닿나 (#176) ──────────
+#    닿으면 설치기의 winget 이 그 도구를 들고, 훅은 깔지도 올리지도 않는다 — 훅이 제 자리에 한 벌 더 놓으면 한 도구가
+#    두 길로 서고, 판이 갈리는 날 PATH 앞자리가 어느 쪽이냐에 따라 조용히 어긋난다.
+# ⚠ **다른 손은 winget 하나다 — PATH 의 다른 사본은 다른 손이 아니다.** 배포판의 낡은 판 · 켜진 venv · 저장소 감싸개는 훅이
+#   제 자리를 앞에 세워 일부러 가리는 것이라, 그것까지 다른 손으로 보면 훅이 도구를 안 깔거나 안 올린다. 리눅스는 그 자리가
+#   비어(`GRB_FOREIGN_ROOTS`) 이 가름이 통째로 없다 — 훅이 `/usr/local/bin` 에 놓아 배포판 것을 가린다.
+# ⚠ **PATH 의 모든 자리를 본다 — 첫 자리만이 아니다.** Git Bash 는 `~/bin` 을 PATH 앞에 세워 첫 자리가 늘 훅 것이라, 이미
+#   두 벌이 된 기계에서 첫 자리만 보면 winget 것을 못 본다.
+# ⚠ winget 자리에서 못 찾으면 사용자 PATH 를 따라잡고 한 번 더 본다(`path_catchup`) — 프로브가 「닿나」를 재는 것과 같은 자다.
+#   그래서 문장으로 부르고 값은 `GRB_FOREIGN` 에서 읽는다 — 명령 치환으로 부르면 따라잡은 PATH 가 서브셸에 갇힌다.
+# ⚠ 윈도우는 경로의 대소문자를 안 가린다 — 굳힌 자리(`pwd -P`)를 낮춰서 견준다.
+# ⚠ **`LOCALAPPDATA` 는 `cygpath -u` 로 옮긴다 — 글자 치환으로 안 옮긴다.** Git Bash 는 윈도 PATH 를 마운트 표대로 옮겨
+#   마운트 밑의 자리를 `/c/…` 가 아니라 마운트 꼴(`/tmp/…`)로 낸다 — 같은 자로 옮겨야 PATH 자리와 견줘진다. 프로세스라
+#   한 실행에 한 번만 옮긴다(`GRB_FOREIGN_LAD`).
+grb_foreign() {  # grb_foreign <실행 이름> — 0 = winget 의 것이 닿는다(그 경로가 `GRB_FOREIGN`) · 1 = 아니다
+  GRB_FOREIGN=''
+  { [ -n "$GRB_FOREIGN_ROOTS" ] && [ -n "${LOCALAPPDATA:-}" ]; } || return 1
+  if [ -z "${GRB_FOREIGN_LAD:-}" ]; then
+    GRB_FOREIGN_LAD="$(cygpath -u "$LOCALAPPDATA" 2>/dev/null)" || return 1
+    _gfp="$(cd "$GRB_FOREIGN_LAD" 2>/dev/null && pwd -P)" && GRB_FOREIGN_LAD="$_gfp"
+    GRB_FOREIGN_LAD="${GRB_FOREIGN_LAD,,}"
+  fi
+  _gfl="$GRB_FOREIGN_LAD"
+  while :; do
+    while IFS= read -r _gfp; do
+      [ -n "$_gfp" ] || continue
+      _gfd="$(cd "${_gfp%/*}" 2>/dev/null && pwd -P)" || continue
+      _gfd="${_gfd,,}/"
+      for _gfr in $GRB_FOREIGN_ROOTS; do
+        case "$_gfd" in "$_gfl/${_gfr,,}/"*) GRB_FOREIGN="$_gfp"; return 0 ;; esac
+      done
+    done <<EOF
+$(type -aP "$1" 2>/dev/null)
+EOF
+    path_catchup || return 1
+  done
+}
+
 # ── 커밋 훅 배선 — **맨 앞이다.** `.githooks/` 를 둔 저장소만, 존재가 곧 선언이다 ───────
 #    ⚠ **이 파일 머리의 순서(「가볍고 안 죽는 것을 앞에」)가 값을 하는 자리다.** 옛 판은 이
 #      한 줄이 `deploy_home_norms` 꼬리에 붙어 있었는데, 그 함수는 auto 갈래에서 **망을 타는
@@ -2763,38 +2801,38 @@ install_step() {
           _url="https://github.com/$_repo/releases/latest/download/$_asset"
         fi
         case "$_asset" in
-          *.tar.gz)   # 리눅스 — 풀어서 /usr/local/bin 에 놓는다
-            { [ "$OS" = linux ] && [ -w /usr/local/bin ]; } ||
-              { nogo "$_t" "$_asset 는 tar.gz 인데 여기는 $OS 이거나 /usr/local/bin 에 쓸 권한이 없다"; return 1; }
+          *.tar.gz)   # 리눅스 — 풀어서 훅 자리(`GRB_HOME`)에 놓는다
+            { [ "$OS" = linux ] && [ -w "$GRB_HOME" ]; } ||
+              { nogo "$_t" "$_asset 는 tar.gz 인데 여기는 $OS 이거나 $GRB_HOME 에 쓸 권한이 없다"; return 1; }
             _tgz="$(mktemp)"
             if try "$_t" gh_asset_get "$_tgz" "$_url"; then
-              try "$_t" tar xzf "$_tgz" --strip-components=1 -C /usr/local/bin "${_asset%.tar.gz}/$_bin" &&
-                chmod +x "/usr/local/bin/$_bin" 2>/dev/null
+              try "$_t" tar xzf "$_tgz" --strip-components=1 -C "$GRB_HOME" "${_asset%.tar.gz}/$_bin" &&
+                chmod +x "$GRB_HOME/$_bin" 2>/dev/null
             fi
             rm -f "$_tgz" ;;
           *.tar.xz)   # 리눅스 — 묶음 안 폴더 이름이 자산 이름과 다를 수 있어(판만 든다) 풀고 찾는다
-            { [ "$OS" = linux ] && [ -w /usr/local/bin ]; } ||
-              { nogo "$_t" "$_asset 는 tar.xz 인데 여기는 $OS 이거나 /usr/local/bin 에 쓸 권한이 없다"; return 1; }
+            { [ "$OS" = linux ] && [ -w "$GRB_HOME" ]; } ||
+              { nogo "$_t" "$_asset 는 tar.xz 인데 여기는 $OS 이거나 $GRB_HOME 에 쓸 권한이 없다"; return 1; }
             _work="$(mktemp -d)"
             if try "$_t" gh_asset_get "$_work/pkg.tar.xz" "$_url" &&
                try "$_t" tar xJf "$_work/pkg.tar.xz" -C "$_work"; then
               _found="$(find "$_work" -name "$_bin" -type f 2>/dev/null | head -1)"
               # 못 찾거나 못 놓으면 사유를 남긴다 — 안 남기면 진단이 사유 없는 ❌ 를 낸다
               if [ -z "$_found" ]; then nogo "$_t" "$_asset 을 풀었는데 안에 $_bin 이 없다 — 묶음 꼴이 바뀌었나 본다"
-              elif cp "$_found" "/usr/local/bin/$_bin" 2>/dev/null; then chmod +x "/usr/local/bin/$_bin"
-              else nogo "$_t" "$_bin 을 /usr/local/bin 에 못 놓았다 — 도는 중이거나 권한이 없다"; fi
+              elif cp "$_found" "$GRB_HOME/$_bin" 2>/dev/null; then chmod +x "$GRB_HOME/$_bin"
+              else nogo "$_t" "$_bin 을 $GRB_HOME 에 못 놓았다 — 도는 중이거나 권한이 없다"; fi
             fi
             rm -rf "$_work" ;;
-          *.zip)      # 윈도우 — Git Bash 에 unzip 이 없을 수 있어 PowerShell 로 풀고 $HOME/bin 에 놓는다
-            _work="$(mktemp -d)"; mkdir -p "$HOME/bin"
+          *.zip)      # 윈도우 — Git Bash 에 unzip 이 없을 수 있어 PowerShell 로 풀고 훅 자리(`GRB_HOME`)에 놓는다
+            _work="$(mktemp -d)"; mkdir -p "$GRB_HOME"
             if try "$_t" gh_asset_get "$_work/pkg.zip" "$_url"; then
               powershell.exe -NoProfile -Command \
                 "Expand-Archive -Force -Path '$(cygpath -w "$_work/pkg.zip")' -DestinationPath '$(cygpath -w "$_work")'" \
                 >/dev/null 2>&1
               _found="$(find "$_work" -name "$_bin.exe" -type f 2>/dev/null | head -1)"
               if [ -z "$_found" ]; then nogo "$_t" "$_asset 을 풀었는데 안에 $_bin.exe 가 없다 — 풀기가 졌거나 묶음 꼴이 바뀌었다"
-              elif ! cp "$_found" "$HOME/bin/$_bin.exe" 2>/dev/null; then
-                nogo "$_t" "$_bin.exe 를 $HOME/bin 에 못 놓았다 — 도는 중이면 창을 닫고 다시 연다"; fi
+              elif ! cp "$_found" "$GRB_HOME/$_bin.exe" 2>/dev/null; then
+                nogo "$_t" "$_bin.exe 를 $GRB_HOME 에 못 놓았다 — 도는 중이면 창을 닫고 다시 연다"; fi
             fi
             rm -rf "$_work" ;;
           *) nogo "$_t" "$_asset — 모르는 자산 꼴이다(푸는 갈래는 .tar.gz · .tar.xz · .zip 셋뿐)"; return 1 ;;
@@ -3154,14 +3192,15 @@ EOF
     while IFS= read -r _gf <&4; do
       [ -f "$_gf" ] || continue
       for _gn in $(decl_sections "$_gf"); do
-        _gi=''; _god=''; _gcb=''; _gtg=''
+        _gi=''; _god=''; _gcb=''; _gtg=''; _gbn=''
         {
           IFS= read -r _gi
           IFS= read -r _god
           IFS= read -r _gcb
           IFS= read -r _gtg
+          IFS= read -r _gbn
         } <<EOF
-$(decl_fields "$_gf" "$_gn" install on-demand called-by probe-target)
+$(decl_fields "$_gf" "$_gn" install on-demand called-by probe-target bin)
 EOF
         global_kind "$_gi" || continue
         case " $_gseen " in *" $_gn "*) continue ;; esac
@@ -3189,12 +3228,30 @@ EOF
           fi
           continue
         fi
+        # winget 이 든 릴리스 바이너리는 판을 견주지도 않는다 — 깔지도 올리지도 않는다(`grb_foreign`).
+        GRB_FOREIGN=''; _gvh=''   # 앞 도구의 판이 이 도구 줄에 안 묻게 — 다른 손 갈래는 판을 안 잰다
         if probe_global "$_gf" "$_gn" &&
-           { [ -z "${UPGRADE:-}" ] ||
+           { { [ "$_gi" = github-release-binary ] && grb_foreign "$_gtg"; } ||
+             [ -z "${UPGRADE:-}" ] ||
              { _gvh="$(tool_version_have "$_gf" "$_gn" || true)"
                _gvw="$(tool_version_latest "$_gf" "$_gn" || true)"
                [ -n "$_gvh" ] && [ "$_gvh" = "$_gvw" ]; }; }; then
-          printf '  ✅ %s — 이미 닿는다 (전역)%s (%s초)\n' "$_gn" "${_gvh:+ · 최신 $_gvh}" "$((SECONDS - _gt0))"
+          printf '  ✅ %s — 이미 닿는다 (전역)%s%s (%s초)\n' "$_gn" "${_gvh:+ · 최신 $_gvh}" \
+            "${GRB_FOREIGN:+ · 다른 손이 든다($GRB_FOREIGN) — 훅은 깔지도 올리지도 않는다}" "$((SECONDS - _gt0))"
+          # 다른 손이 드는데 훅 자리에도 제 사본이 남았으면 비킨다 — 안 비키면 PATH 앞에 선 그 사본(Git Bash 는 `~/bin` 이
+          #   앞이다)이 계속 불리면서 이제 아무도 안 올려 낡는다. 지우지 않고 이름만 바꾼다 — 이름이 바뀌면 PATH 에서 안 풀린다.
+          #   다른 손이 서는 것은 윈도뿐이라(`grb_foreign`) 훅이 놓는 이름(`<bin>.exe` · `install_tool`)만 본다.
+          if [ -n "$GRB_FOREIGN" ] && [ -n "$_gbn" ] && [ -e "$GRB_HOME/$_gbn.exe" ]; then
+            _gro="$GRB_HOME/$_gbn.exe"; _grn="$GRB_HOME/$_gbn.paisetup-retired"
+            # `-n` — 앞서 비킨 것이 있으면 덮지 않는다. 덮지 않았으면 원본이 남으므로 남았나로 가른다
+            mv -n "$_gro" "$_grn" 2>/dev/null
+            if [ -e "$_gro" ]; then
+              printf '  ⚠ %s — 훅 자리의 사본을 못 비켰다(%s) — 도는 중이거나 앞서 비킨 %s 가 있다. 두 벌이 PATH 에 남는다\n' \
+                "$_gn" "$_gro" "$_grn"
+            else
+              printf '  · %s — 훅 자리의 사본을 비켰다(%s → %s) — 이제 다른 손의 것만 닿는다\n' "$_gn" "$_gro" "$_grn"
+            fi
+          fi
           gverified_put "$_gn" "$_gtg"
           wire_global "$_gf" "$_gn"
           browsers_ready "$_gf" "$_gn"
@@ -3732,10 +3789,17 @@ esac
 #   인코딩(cp949)은 `—` 를 못 담아 **다 쓰고 나서 찍다가 죽는다.** deploy 가 심는 사용자 환경변수
 #   (PYTHONUTF8)는 비영속 VDI 의 첫 로그인과 리모트에는 없다 — 훅이 어디서 돌든 이 한 줄이 덮는다.
 export PYTHONUTF8=1
+# `GRB_HOME` — 릴리스 바이너리(github-release-binary)를 훅이 놓는 자리. 놓는 자(`install_tool`)와 제 사본을 비키는 자
+#   (`install_global`)가 이 한 값을 본다. 환경에 서 있으면 그 값이 이긴다 — 검사(`check-home-hook.sh` ⑰)가 시스템 폴더
+#   대신 임시 폴더를 가리키는 자리다.
+# `GRB_FOREIGN_ROOTS` — 다른 손이 릴리스 바이너리를 놓는 자리(`%LOCALAPPDATA%` 밑) — 설치기의 winget 하나다. 리눅스는
+#   비어 그 가름이 없다(`grb_foreign`).
 if [ "$OS" = windows ]; then
-  VENV_BIN="$VENV/Scripts"; PY_CMD=python
+  VENV_BIN="$VENV/Scripts"; PY_CMD=python;  GRB_HOME="${GRB_HOME:-$HOME/bin}"
+  GRB_FOREIGN_ROOTS="Microsoft/WinGet/Links Microsoft/WinGet/Packages"
 else
-  VENV_BIN="$VENV/bin";     PY_CMD=python3
+  VENV_BIN="$VENV/bin";     PY_CMD=python3; GRB_HOME="${GRB_HOME:-/usr/local/bin}"
+  GRB_FOREIGN_ROOTS=""
 fi
 
 # ══ 단계 · 「깔 게 있나」 답 — needs-install 만 ════════════════════════

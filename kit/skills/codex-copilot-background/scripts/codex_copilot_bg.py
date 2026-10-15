@@ -18,6 +18,14 @@
 help sandbox`). 예외 하나 — Copilot 이 실행마다 제 홈에 세우는 세션 폴더(`<COPILOT_HOME>/session-state/<id>/`)에는 쓴다.
 (실측 2026-10-11 · Copilot CLI 1.0.95 · apply_patch — 작업 자리 안은 섰고, 밖 · `%TEMP%` · 그 실행의 임시 폴더는 거절됐다.)
 자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
+**`--review [대상]` 을 주면 리뷰 모드다** — Codex 의 공식 리뷰 기능으로 시키고, 띄우는 인자는 읽기 레인 그대로다(읽기 전용
+샌드박스에서 git 읽기 명령이 돈다). 대상은 `uncommitted`(기본) · `base:<가지>` · `commit:<sha>` 이고, 래퍼가 프롬프트 앞에
+리뷰 스킬 부르기(`$review-agent`)와 대상 한 줄을 얹는다(`review_head`) — `codex exec review` 는 대상 깃발과 프롬프트를 같이
+못 받아 봉투가 리뷰어에게 안 닿는다. **Copilot 은 리뷰 모드를 안 받는다** — 리뷰에 드는 셸을 읽기로 가둘 길이 없다: 셸 허락은
+명령 · 하위 명령까지만 가르고, Copilot 이 제 손으로 읽기로 가르는 명령에 `git diff --output=<파일>` 이 들어 작업 자리에 파일을
+쓴다(실측 Copilot CLI 1.0.98 · 2026-10-15 — 허락 규칙 없이도 그 명령이 서서 파일이 생겼다). 그래서 리뷰 모드는 Codex 만
+띄우고, Codex 가 한도여도 Copilot 으로 안 넘긴다(2). `--agent copilot` 과 같이 주면 4. 고치기 레인 · 이어 묻기와도 같이 못
+준다(4).
 
 **프롬프트는 표준 입력으로 넘긴다** — 명령줄 길이 한도와 따옴표 해석을 안 탄다. 윈도에서 npm 이 까는
 실행 꼴은 `.cmd` 셔틀이라 명령줄 인자가 cmd.exe 를 거친다(8191자 · `& | % ^` 해석). 그래서 셔틀이 부르는
@@ -55,6 +63,7 @@ CLI 는 따로 로그인하지 않고 gh 로그인을 쓰는데, 그 토큰은 �
 Copilot 은 `-` 다 — 검색 도구가 없고, 주소를 연 횟수를 세는 이벤트 꼴은 아직 안 잡았다.
 """
 import argparse
+import codecs
 import glob
 import json
 import os
@@ -138,6 +147,14 @@ COPILOT_ARGS = ['--allow-tool=web_fetch', '--allow-all-urls', '--no-ask-user', '
 # 남는 허락 자리는 작업 자리와 Copilot 제 세션 폴더다. 경로 검사를 끄는 깃발(`--allow-all-paths` · `--allow-all` · `--yolo`)과
 # 자리를 더하는 `--add-dir` 은 싣지 않는다.
 COPILOT_WRITE = ['--allow-tool=write', '--disallow-temp-dir']
+# 리뷰 모드(`--review`)의 대상 — 값 꼴과 리뷰어에게 줄 한 줄. 문장은 `codex exec review` 의 세 대상과 같은 뜻이다.
+REVIEW_TARGET_RE = re.compile(r'uncommitted|(base|commit):([A-Za-z0-9._/@^~-]+)')
+REVIEW_TARGETS = {'uncommitted': 'Review the uncommitted changes: staged, unstaged and untracked.',
+                  'base': 'Review the changes this branch would merge into `{ref}` (diff against `git merge-base HEAD {ref}`).',
+                  'commit': 'Review the changes introduced by commit `{ref}`.'}
+DEFAULT_REVIEW_TARGET = 'uncommitted'
+REVIEW_SKILL = '$review-agent '   # Codex 의 리뷰 스킬을 이름으로 부르는 머리
+REVIEW_AGENT = 'codex'            # 리뷰 모드를 받는 쪽 — Copilot 은 안 받는다(머리말)
 # 저장된 로그인보다 앞서는 토큰 — Copilot 권한이 없는 토큰이면 인증부터 깨진다. `COPILOT_GITHUB_TOKEN` 은 Copilot 에
 # 쓰라고 둔 것이라 남긴다.
 COPILOT_DROP_ENV = ('GH_TOKEN', 'GITHUB_TOKEN')
@@ -272,7 +289,8 @@ def codex_config(knobs, model=''):
 
 def argv(agent, resume, knobs, write=False, model=''):
     """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다.
-    `model` 은 `--model` 로 받은 이름이고 Codex 에만 간다."""
+    `model` 은 `--model` 로 받은 이름이고 Codex 에만 간다. 리뷰 모드도 이 인자 그대로다 — 리뷰는 프롬프트 머리
+    (`review_head`)가 부른다."""
     if agent == 'codex':
         tail = ['-c', f'sandbox_mode="{CODEX_SANDBOX[write]}"', *(WRITE_SANDBOX if write else []), *CODEX_ARGS,
                 *codex_config(knobs, model)]
@@ -282,6 +300,25 @@ def argv(agent, resume, knobs, write=False, model=''):
     tools = COPILOT_TOOLS + (COPILOT_EDIT_TOOLS if write else ())
     return (['--available-tools', *tools, *COPILOT_ARGS, *(COPILOT_WRITE if write else [])]
             + ([f'--resume={resume}'] if resume else []))
+
+
+def review_head(target):
+    """리뷰 모드에서 프롬프트 앞에 얹을 글 — 리뷰 스킬 부르기 + 대상 한 줄. `target` 은 `REVIEW_TARGET_RE` 를 통과한 값이다."""
+    kind, _, ref = target.partition(':')
+    return f'{REVIEW_SKILL}{REVIEW_TARGETS[kind].format(ref=ref)}\n\n'
+
+
+def stdin_for(a):
+    """표준 입력으로 넘길 파일 — 리뷰 모드면 머리를 얹은 임시 파일(닫으면 지워진다), 아니면 프롬프트 파일 그대로.
+    프롬프트 파일의 BOM 은 걷는다 — 머리 뒤에 남으면 본문 첫 글자가 된다."""
+    if not a.review:
+        return open(a.prompt_file, 'rb')
+    with open(a.prompt_file, 'rb') as f:
+        body = f.read().removeprefix(codecs.BOM_UTF8)
+    tmp = tempfile.TemporaryFile()
+    tmp.write(review_head(a.review).encode('utf-8') + body)
+    tmp.seek(0)
+    return tmp
 
 
 def read_jsonl(path):
@@ -373,7 +410,7 @@ def run_once(agent, cmd_head, a, resume):
     status = None
     try:
         # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
-        with open(a.prompt_file, 'rb') as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
+        with stdin_for(a) as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
             try:
                 proc = subprocess.Popen(cmd_head + argv(agent, resume, a.knobs, a.write, a.model), cwd=a.cwd, env=env,
                                         stdin=stdin, stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
@@ -414,6 +451,7 @@ def main():
     ap.add_argument('--resume')   # 끝 줄의 `resume=` 값 그대로 — `<쪽>:<id>`
     ap.add_argument('--write', action='store_true')   # 고치기 레인 — 작업 자리 안만 고친다
     ap.add_argument('--model', default='')   # 이 실행의 Codex 모델 — 빈 값은 안 준 것(자리 값이 고른다)
+    ap.add_argument('--review', nargs='?', const=DEFAULT_REVIEW_TARGET)   # 리뷰 모드 — 대상은 `REVIEW_TARGET_RE`
     args = sys.argv[1:]
     try:
         a = ap.parse_args(args)
@@ -448,6 +486,16 @@ def run(a):
     if a.model and not MODEL_NAME_RE.fullmatch(a.model):
         write(a.out, f'{FOOTER} usage · --model {a.model!r} — 모델 이름에 따옴표 · 공백이 든다\n')
         return 4
+    if a.review is not None:
+        if not REVIEW_TARGET_RE.fullmatch(a.review):
+            write(a.out, f'{FOOTER} usage · --review {a.review!r} — uncommitted · base:<가지> · commit:<sha> 가운데 하나\n')
+            return 4
+        if a.write or a.resume:
+            write(a.out, f'{FOOTER} usage · --review 는 --write · --resume 과 같이 못 준다 — 리뷰는 읽기만 하는 새 대화다\n')
+            return 4
+        if a.agent not in (None, REVIEW_AGENT):
+            write(a.out, f'{FOOTER} usage · --review 는 {REVIEW_AGENT} 만 받는다 — {a.agent} 셸은 읽기로 못 가둔다\n')
+            return 4
     allowed = a.knobs['agents']
     resume = None
     if a.resume:
@@ -457,6 +505,8 @@ def run(a):
             return 4
         # 대화가 그쪽에 있다 — 다른 쪽으로 넘기면 앞 맥락이 없다
         order = [agent]
+    elif a.review is not None:
+        order = [REVIEW_AGENT]   # 한도여도 안 넘긴다 — 받는 쪽이 리뷰 모드를 안 받는다
     else:
         order = [a.agent] if a.agent else allowed
     # 자리가 안 쓰는 쪽은 손으로 골라도 안 띄운다 — 그쪽으로 보내지 않는 것이 그 자리의 선이다
@@ -493,7 +543,7 @@ def run(a):
     model = (codex_model(a.knobs, a.model) or '-') if agent == 'codex' else '-'
     said = gh_login_dead_say(agent, status, reason, os.environ)
     footer = (f'{FOOTER} {status}' + (f' · {said}' if said else '') +
-              f' · rc={rc} · {elapsed}s · mode={"write" if a.write else "read"} · agent={agent}'
+              f' · rc={rc} · {elapsed}s · mode={"write" if a.write else "review" if a.review else "read"} · agent={agent}'
               f' · model={model}'
               + (f' · failover={"; ".join(tried)}' if tried else '') +
               f' · tokens {tokens} · web={"-" if searches is None else searches}'
