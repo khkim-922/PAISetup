@@ -59,7 +59,7 @@
 #   안 깔린다」는 조용한 꼴로만 보인다. 목록의 진본은 아래 `$Products` 하나다.
 # ⚠ `-Pick claude,codex` — **고른 제품만 깐다**(안 주면 `$Products` 표의 기본값). `-NoVsCode` 는
 #   VS Code 자체와 확장을 통째로 건너뛴다 — 데스크탑 앱만 쓸 사람의 자리다.
-# ⚠ `-AutoRun` / `-NoAutoRun` — 로그온할 때 작업 스케줄러가 이 몸통을 보이는 콘솔 창으로 다시 돌려
+# ⚠ `-AutoRun` / `-NoAutoRun` — 로그온할 때(보이는 콘솔 창)와 밤마다(숨긴 창) 작업 스케줄러가 이 몸통을 다시 돌려
 #   **깔린 것을 최신으로 올리고 환경을 다시 맞춘다.** 값 파일의 `#autorun = yes|no` 가 기본값을
 #   든다. **설치본 자체도 새 릴리스로 간다** — 값 파일의 `#update-repo` 가 가리키는 최신 릴리스를
 #   받아 지문을 대조한 뒤 풀고, 그 판의 엔진으로 설치를 잇는다(아래 자동 실행 칸의 「설치본 자신을
@@ -91,8 +91,8 @@ $SwMark = 0
 #   deprecation 경고에 확장 칸에서 죽었다. **경고는 실패가 아니다.**
 #   ⚠ 합치면 판정도 망가진다: `Get-Ver` 가 판 대신 그 경고 줄을 읽어 갱신 여부를 헛짚는다.
 #
-# ⚠ **그렇다고 버리지도 않는다.** 판정만 재는 자리는 버리되 — `Get-Ver` 는 `Get-Quiet` 으로(맨 `2>$null` 은
-#   방패가 아니다 — 그 함수 머리), 「도나」(`Test-Runs` · `Measure-Runs`)는 울타리 손(`Invoke-ProbeCapped`)이 따로 띄운
+# ⚠ **그렇다고 버리지도 않는다.** 판정만 재는 자리는 버리되 — `Get-Ver` 는 울타리 손(`Invoke-LoggedCapped`)이 받은 나가는
+#   글만 읽고, 「도나」(`Test-Runs` · `Measure-Runs`)는 울타리 손(`Invoke-ProbeCapped`)이 따로 띄운
 #   자식의 두 스트림을 읽어 버린다 — **설치하는 자리는 실패했을 때 까닭이
 #   유일한 단서다.** 처음엔 다 버렸다가 확장이
 #   「! 설치 실패」 한 줄만 내고 왜인지 아무도 모르는 자리를 밟았다(실측 2026-09-09 · 사외 VDI).
@@ -172,10 +172,12 @@ $Apps = @(
   # ⚠ `Need='vscode'` 는 `core` 의 갈래다 — `-NoVsCode` 가 이 한 줄만 건너뛴다. 확장은 이것 없이
   #   설 자리가 없으므로 같이 꺼진다. Node 는 CLI 가 타므로 `core` 로 남는다.
   @{ Name='VS Code';    Id='Microsoft.VisualStudioCode'; Cmd='code';   Arg='--version'; Need='vscode' }
-  @{ Name='Node.js';    Id='OpenJS.NodeJS.LTS';          Cmd='node';   Arg='--version'; Need='core' }
+  # `Scope='machine'` — winget 이 이 꾸러미에 고르는 설치본이 기계 범위(MSI)라 승격이 든다(실측 2026-10-15 `winget show`). 승인 창이 뜨는
+  #   PC 의 무인 판에서는 안 걸고 노란 줄로 미룬다(결정 0146 의 VC++ 규칙과 같은 자 · PAISetup #34 ③)
+  @{ Name='Node.js';    Id='OpenJS.NodeJS.LTS';          Cmd='node';   Arg='--version'; Need='core'; Scope='machine' }
   @{ Name='Git';        Id='Git.Git';                    Cmd='git';    Arg='--version'; Need='dev'  }
   @{ Name='Python';     Id='Python.Python.3.14';         Cmd='python'; Arg='--version'; Need='dev'  }
-  @{ Name='GitHub CLI'; Id='GitHub.cli';                 Cmd='gh';     Arg='--version'; Need='dev'  }
+  @{ Name='GitHub CLI'; Id='GitHub.cli';                 Cmd='gh';     Arg='--version'; Need='dev';  Scope='machine' }
 )
 
 # ── 확장과 CLI — **목록이 진본이다.** 깔 때도 끝에 잴 때도 이 두 표에서 판다 (결정 0041 · 0045).
@@ -572,9 +574,16 @@ function Format-EngineHolder($H) {
 #   (`Test-Runs 'python' '--version'` · `Measure-Runs`)과 손들(`tool-homes` · TOML · 훅 걷기)은 종료 코드로
 #   판정하는데, 그 값은 75번을 재서 한 번도 안 틀렸다(0 · 1 · 3 을 그대로 냈다). 삼켜지는 것은 글자뿐이다.
 $PyVerCode = 'import sys;print(sys.version.split()[0])'
+# ⚠ **울타리를 두른다** — 「도나」가 `yes` 를 낸 뒤 같은 명령을 다시 부르는 자리라, 그 사이 멎으면 #26 의 멈춤이 여기서 돌아온다.
+#   넘기면 판을 못 읽은 것이고(빈 글자) 그 넘김을 끝 검증의 넘김 목록에 남긴다. 판은 화면에만 쓰므로 판정은 안 바뀐다.
 function Get-Ver([string]$Cmd, [string]$Arg) {
-  $o = if ($Cmd -eq 'python') { Get-Quiet $Cmd @('-c', $PyVerCode) | Where-Object { "$_".Trim() } }
-       else { Get-Quiet $Cmd $Arg }
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = if ($Cmd -eq 'python') { Invoke-LoggedCapped $Cmd @('-c', $PyVerCode) $log $ProbeCap }
+          else { Invoke-LoggedCapped $Cmd @($Arg) $log $ProbeCap }
+    if ($rc -eq -2) { Add-ProbeOverflow "$Cmd $Arg" $ProbeCap }
+    $o = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })
+  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
   $v = ("$(@($o) | Select-Object -First 1)").Trim()
   # 판 칸의 꼴을 다른 도구와 맞춘다 — 저쪽은 `Python 3.14.7` 처럼 이름을 들고 온다.
   if ($v -and $Cmd -eq 'python') { $v = "Python $v" }
@@ -694,7 +703,7 @@ function Join-NativeArgs([string[]]$CmdArgs) {
 #   감싸지 않는다 — 그러면 아래 `Kill()` 이 자식 대신 cmd 만 죽인다.
 # ⚠ **나무째 거둔다.** `code` · `npm` 류는 제 자식을 띄우고, 껍데기(`.cmd` · `.ps1`)는 그 호스트가 부모로 선다
 #   (`New-NativeStart`) — 부모만 죽이면 손자가 남아 돈다. `Kill($true)` 는 이 파워셸(5.1 · .NET Framework)에 없는
-#   오버로드라 `taskkill /T` 가 든다.
+#   오버로드라 `Stop-ProbeTree` 가 든다.
 function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec) {
   $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
   if (-not $psi) { return -1 }
@@ -713,11 +722,47 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
       try { $null = [Threading.Tasks.Task]::WaitAll($pump, $drainMs) } catch { }
       return $p.ExitCode
     }
-    try { & "$env:SystemRoot\System32\taskkill.exe" /PID $p.Id /T /F 2>$null | Out-Null } catch { }
+    try { Stop-ProbeTree $p } catch { }
     try { if (-not $p.HasExited) { $p.Kill() } } catch { }
     return -2
   } catch { return -1 }
   finally { foreach ($s in $sink) { try { $s.Dispose() } catch { } } }
+}
+
+# 울타리를 넘긴 프로브를 나무째 거둔다 — 두 울타리 손(`Invoke-LoggedCapped` · `Invoke-ProbeCapped`)이 이것 하나를 쓴다. 거둠의 성공은
+#   기다리지 않는다(`Invoke-ProbeCapped` 머리말). 프로세스 목록을 못 읽으면 던진다 — 부르는 쪽이 뿌리만 끈다.
+# ⚠ **자손은 부모보다 늦게 선 것만 잇는다** — 부모 PID 만 따라가면(`taskkill /T`) 그 PID 를 앞서 쥐었다 죽은 프로세스의 고아(먼저 선
+#   남)까지 끈다. 로그온 자동 실행의 가드가 같은 까닭으로 시작 시각을 본다(claude-config 결정 0142).
+# ⚠ **뿌리를 먼저 끈다** — 쥔 손잡이(`$Proc`)로 끄므로 PID 를 남이 물려받았을 틈이 없다. 자식부터 끄면 그 끝을 기다리던 뿌리가 새 자식을
+#   띄운다. 자손은 끄기 직전에 손잡이를 다시 쥐고 시작 시각이 목록의 것과 같을 때만 끈다 — 그 사이 끝나 PID 가 남에게 갔을 수 있다.
+function Stop-ProbeTree([Diagnostics.Process]$Proc) {
+  # 프로세스 목록 묻기에도 한도를 둔다 — 멎은 WMI 하나가 거둠을 세우면 울타리가 제 몫을 못 한다. 넘기면 던지고 부르는 쪽이 뿌리만 끈다
+  $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate -OperationTimeoutSec 10 -ErrorAction Stop)
+  $kids = @{}
+  foreach ($x in $all) {
+    $pp = [int]$x.ParentProcessId
+    if (-not $kids.ContainsKey($pp)) { $kids[$pp] = New-Object System.Collections.ArrayList }
+    [void]$kids[$pp].Add($x)
+  }
+  $tree = New-Object System.Collections.ArrayList
+  $todo = New-Object System.Collections.Queue
+  $root = @($all | Where-Object { [int]$_.ProcessId -eq $Proc.Id }) | Select-Object -First 1
+  if ($root) { $todo.Enqueue($root) }
+  while ($todo.Count) {
+    $n = $todo.Dequeue()
+    if (-not $kids.ContainsKey([int]$n.ProcessId)) { continue }
+    foreach ($c in $kids[[int]$n.ProcessId]) {
+      if ($c.ProcessId -ne $n.ProcessId -and $c.CreationDate -ge $n.CreationDate -and -not $tree.Contains($c)) { [void]$tree.Add($c); $todo.Enqueue($c) }
+    }
+  }
+  try { if (-not $Proc.HasExited) { $Proc.Kill() } } catch { }
+  foreach ($c in $tree) {
+    $h = $null
+    try {
+      $h = Get-Process -Id ([int]$c.ProcessId) -ErrorAction Stop
+      if ([Math]::Abs(($h.StartTime - $c.CreationDate).TotalMilliseconds) -lt 1) { $h.Kill() }
+    } catch { } finally { if ($h) { $h.Dispose() } }
+  }
 }
 
 # 「도나」를 묻는 한 번에 주는 한도 — `--version` 류의 즉답에 20초면 넉넉하다.
@@ -730,6 +775,9 @@ $ProbeCap = 20
 $WingetListCap = 120   # winget 의 첫 부름은 원본을 새로 받느라 수십 초를 쓰고, 막힌 소스를 붙든 사내 회선에서는 더 쓴다
 $NpmViewCap    = 60    # 레지스트리에 판 하나를 묻는 GET 이라 평소 1초 안팎이다 — 느린 프록시를 넉넉히 덮는다
 $ExtListCap    = 60    # `code` 가 node 를 띄워 깔린 확장을 읽는다 — VDI 에서 몇 초씩 걸리는 자리라 `--version` 울타리보다 길게 둔다
+$ClaudePluginCap = 60  # `claude plugin list` · `plugin marketplace list` — node 로 선 CLI 가 플러그인 기록을 읽는다. 첫 실행에 제 짐을 푸는 CLI 가 `--version` 에 20초 가까이 쓴 PC 가 있어(PAISetup #30) 넉넉히 둔다
+# 끝 검증이 묻는 바깥 명령의 한도 — 넘기면 그 칸이 「못 쟀다」다. 위와 같이 멈춤을 가르는 값이라 의심스러우면 길게 둔다.
+$ToolHomesCheckCap = 120   # 손(`tool-homes.py check`)이 도구 홈 넷의 규범 · 룰 · 에이전트 · 스킬을 표와 견준다 — 파일을 읽기만 하는데, 느린 디스크와 보안 소프트가 낀 VDI 를 넉넉히 덮는다
 # 상태를 바꾸는 바깥 명령의 한도 — 넘기면 거두고 「못 했다」로 간다. 무인 판이 사람을 기다리는 창 앞에서 영영 서지 않게 한다.
 $VcRedistCap   = 900   # VC++ 재배포 패키지를 받고(17.8 MB) 까는 한 번 — 사내 회선의 받기와 승인 창을 누를 사람의 몫까지 넉넉히 덮는다
 
@@ -817,7 +865,7 @@ function Invoke-ProbeCapped([string]$File, [string]$Arg, [int]$CapSec) {
     $null = $p.StandardOutput.ReadToEndAsync()
     $null = $p.StandardError.ReadToEndAsync()
     if ($p.WaitForExit($CapSec * 1000)) { return $p.ExitCode }
-    try { & "$env:SystemRoot\System32\taskkill.exe" /PID $p.Id /T /F 2>$null | Out-Null } catch { }
+    try { Stop-ProbeTree $p } catch { }
     try { if (-not $p.HasExited) { $p.Kill() } } catch { }
     return -2
   } catch { return -1 }
@@ -1219,9 +1267,12 @@ function Get-OutsideHop([string]$Root, [string]$Path) {
 #     값과 같아야 덮는다. 상태(`status`)로 묻지 않는다 — 건너뛰기 · 안 바뀐 셈 표시(skip-worktree · assume-unchanged)가 서면 바뀐 파일도
 #     깨끗하게 나와, 덮은 손질을 되돌릴 길이 없다. 고치는 길은 셋으로 갈린다: 커밋 안 한 손질(커밋 · stash) · 표시 아래 손질(표시를 걷고
 #     커밋 · stash — 표시가 서 있으면 둘 다 그 손질을 못 본다) · git 밖의 파일(지우거나 옮긴다 — 무시된 파일에 「커밋」은 안 맞는다)
+#   ⚠ 표시 아래 손질은 덮을 파일만이 아니라 저장소에 있는 우리 파일 전부(저장소 설정 포함 · 표지가 없어 둔 파일은 빼고)에서 본다 — 그런
+#     손질이 든 저장소는 하나도 안 간다. 저장소 설정의 합치기를 거절해 그 파일을 안 쓰는 판도 같다
 # 있는 파일은 머리말이 우리 표지를 댈 때만 덮고(`Test-OurMark`), 아니면 그 사람의 것이라 두고 Kept 에 댄다. 사람이 고쳐 커밋한 우리
 #   파일도 덮는다(결정 0129 — 사용자가 받아들인 위험). 저장소 설정(`.claude/settings.json`)은 덮지 않고 우리 항목만 고친다(`Merge-RepoSettings`) —
-#   뜻이 안 바뀌면 안 쓰고, JSON 으로 못 읽으면 그 파일만 두고 SettingsNote 에 까닭과 길을 댄다(다른 파일은 간다).
+#   뜻이 안 바뀌면 안 쓰고, JSON 으로 못 읽으면 그 파일만 두고 SettingsNote 에 까닭과 길을 댄다(다른 파일은 간다 — 위 표시 아래 손질이
+#   없을 때).
 # 훅(`.claude/hooks/session-start.sh`)은 맨 뒤에 쓴다 — 쓰다 지면 옛 훅이 남아 다음 실행이 다시 옛 판으로 읽고 이어 간다. 먼저 쓴 것은
 #   씨앗과 같아 그때 건너뛴다.
 # 내는 것 — @{ Ok; Why; Fix; Files; Overwrote; Edited; Kept; SettingsNote; Dropped }. Files 는 쓴 파일(저장소 상대 경로) · Overwrote 는 그
@@ -1245,7 +1296,7 @@ function Update-OurRepoFiles([string]$Repo, [string]$Seed) {
       $out.Why = 'git 저장소가 아닌 폴더라 안 갈았다 — 덮으면 되돌릴 길이 없다'
       return $out
     }
-    $todo = @()
+    $todo = @(); $present = @()
     foreach ($rel in @(Get-Content -LiteralPath $conf -Encoding UTF8 | ForEach-Object { ($_ -replace '#.*$', '').Trim() } | Where-Object { $_ })) {
       $from = Join-Path $Seed ($rel -replace '/', '\')
       if (-not (Test-Path -LiteralPath $from -PathType Leaf)) { continue }
@@ -1257,6 +1308,7 @@ function Update-OurRepoFiles([string]$Repo, [string]$Seed) {
         return $out
       }
       $has = Test-Path -LiteralPath $to -PathType Leaf
+      if ($has) { $present += @{ Rel = $rel; From = $from; To = $to } }
       if ($has -and (Get-FileHash -LiteralPath $from).Hash -eq (Get-FileHash -LiteralPath $to).Hash) { continue }
       if ($has -and $rel -eq '.claude/settings.json') {
         $m = Merge-RepoSettings $to $from $root (Join-Path $Seed '.claude\hooks')
@@ -1270,8 +1322,16 @@ function Update-OurRepoFiles([string]$Repo, [string]$Seed) {
     }
     $todo = @(@($todo | Where-Object { $_.Rel -ne $hookRel }) + @($todo | Where-Object { $_.Rel -eq $hookRel }))
     $over = @($todo | Where-Object { $_.Has })
-    if ($over.Count) {
-      $listed = @(Get-Quiet 'git' (@('-C', $root, 'ls-files', '-s', '--') + @($over | ForEach-Object { $_.Rel })))
+    $overRels = @($over | ForEach-Object { $_.Rel })
+    # 표시 아래 손질은 갈 목록 밖의 우리 파일에서도 막는다 — 계약이 저장소 단위다(표시 아래 손질이 든 저장소는 하나도 안 간다).
+    #   합치기를 거절했거나 뜻이 같아 안 쓰는 저장소 설정 · 씨앗과 같은 파일이 그 자리다. 표지가 없어 둔 파일(Kept)은 그 사람의 것이라 안 본다.
+    #   ⚠ 바이트가 지금 씨앗과 같은 파일은 표시 아래 달라도 그 사람의 손질로 안 친다 — 표시가 선 파일을 앞 판의 설치기가 갈았으면 그 쓴 것이
+    #   인덱스와 다르게 남는데(표시 탓에 `git add` 가 안 담는다), 그것을 손질로 치면 그 뒤로 그 저장소는 다른 우리 파일이 바뀔 때마다 막힌다.
+    #   그 파일은 안 쓰므로 잃는 것도 없다
+    $watch = @($present | Where-Object { $overRels -notcontains $_.Rel -and $out.Kept -notcontains $_.Rel })
+    $guard = if ($todo.Count) { @($over) + @($watch) } else { @() }
+    if ($guard.Count) {
+      $listed = @(Get-Quiet 'git' (@('-C', $root, 'ls-files', '-s', '--') + @($guard | ForEach-Object { $_.Rel })))
       if ($LASTEXITCODE -ne 0) {
         $out.Why = 'git 에 우리 파일의 인덱스를 못 물어 안 갈았다'
         $out.Fix = "그 폴더가 git 저장소로 서는지 본다(git -C `"$root`" status) — 고친 뒤 $again"
@@ -1280,20 +1340,24 @@ function Update-OurRepoFiles([string]$Repo, [string]$Seed) {
       $index = @{}
       foreach ($ln in $listed) { if ($ln -match '^\d+ ([0-9a-f]+) \d+\t(.+)$') { $index[$Matches[2]] = $Matches[1] } }
       $outside = @(); $differ = @()
-      foreach ($t in $over) {
+      foreach ($t in $guard) {
         $blob = $index[$t.Rel]
-        if (-not $blob) { $outside += $t.Rel; continue }
+        # git 밖의 파일은 덮을 것만 막는다 — 안 쓰는 파일에는 표시가 설 자리가 없다
+        if (-not $blob) { if ($overRels -contains $t.Rel) { $outside += $t.Rel }; continue }
+        if ($overRels -notcontains $t.Rel -and (Get-FileHash -LiteralPath $t.From).Hash -eq (Get-FileHash -LiteralPath $t.To).Hash) { continue }
         $now = [string](@(Get-Quiet 'git' @('-C', $root, 'hash-object', "--path=$($t.Rel)", '--', $t.To)) | Select-Object -Last 1)
         if ($LASTEXITCODE -ne 0 -or $now -cne $blob) { $differ += $t.Rel }
       }
-      if ($outside.Count -or $differ.Count) {
-        # 인덱스와 다른 것 가운데 표시가 선 것 — `ls-files -v` 의 꼬리표가 S(건너뛰기) · 작은 글자(안 바뀐 셈)다
-        $flagged = @()
-        if ($differ.Count) {
-          foreach ($ln in @(Get-Quiet 'git' (@('-C', $root, 'ls-files', '-v', '--') + $differ))) {
-            if ($ln -match '^(\S) (.+)$' -and @('S', 's', 'h') -ccontains $Matches[1]) { $flagged += $Matches[2] }
-          }
+      # 인덱스와 다른 것 가운데 표시가 선 것 — `ls-files -v` 의 꼬리표가 S(건너뛰기) · 작은 글자(안 바뀐 셈)다
+      $flagged = @()
+      if ($differ.Count) {
+        foreach ($ln in @(Get-Quiet 'git' (@('-C', $root, 'ls-files', '-v', '--') + $differ))) {
+          if ($ln -match '^(\S) (.+)$' -and @('S', 's', 'h') -ccontains $Matches[1]) { $flagged += $Matches[2] }
         }
+      }
+      # 안 쓰는 파일의 표시 없는 손질은 막지 않는다 — git 이 그대로 보이고 우리가 안 건드린다
+      $differ = @($differ | Where-Object { $flagged -contains $_ -or $overRels -contains $_ })
+      if ($outside.Count -or $differ.Count) {
         $plain = @($differ | Where-Object { $flagged -notcontains $_ })
         $whyParts = @(); $fixParts = @()
         if ($plain.Count) {
@@ -2641,15 +2705,27 @@ function Install-Extension([string]$Id, [string]$Label, [string]$Act, [hashtable
   # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
   #   명령은 바로 돌아온다 — 그때 목록을 물으면 「없다」가 나와 멀쩡한 설치가 실패로 찍힌다.
   #   몇 초를 두고 다시 묻는다. 없는 것을 오래 기다리지는 않는다.
-  $ext = Get-Quiet 'code' '--list-extensions'
-  if ($ext -notcontains $Id) {
-    for ($i = 0; $i -lt 5; $i++) {
-      Start-Sleep -Seconds 2
-      $ext = Get-Quiet 'code' '--list-extensions'
-      if ($ext -contains $Id) { break }
-    }
+  # ⚠ **묻는 한 번마다 울타리를 두른다**(`$ExtListCap`) — 멎은 `code` 하나가 설치를 영구히 세운다(#26 과 같은 꼴). 목록을 못 읽었으면
+  #   (넘김 · 0 아닌 값) 더 안 묻고 「깔았나를 못 쟀다」로 남긴다 — 못 읽은 목록은 빈 목록이 아니라 「설치 실패」가 아니다(결정 0141 · 0145).
+  $listExt = {
+    $ll = [IO.Path]::GetTempFileName()
+    try {
+      $lrc = Invoke-LoggedCapped 'code' @('--list-extensions') $ll $ExtListCap
+      @{ Rc = $lrc; Ids = @(Get-Content -LiteralPath $ll -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() }) }
+    } finally { Remove-Item -LiteralPath $ll, "$ll.err" -ErrorAction SilentlyContinue }
   }
-  if ($ext -contains $Id) {
+  #   다시 묻기는 다섯 번 · 2초 틈이다 — 느린 `code` 에서도 그 횟수는 묻는다(끝 시각으로 자르면 한 번이 몇 초 걸리는 PC 에서 다시 묻기가
+  #   한두 번으로 줄어 늦게 뜬 확장을 「설치 실패」로 찍는다). 목록을 못 읽은 물음이 하나라도 나면 그 자리에서 멈춘다 — 넘김이 횟수의 곱으로
+  #   쌓이지 않는다(결정 0141).
+  $ls = & $listExt
+  for ($i = 0; $i -lt 5 -and $ls.Ids -notcontains $Id -and $ls.Rc -eq 0; $i++) {
+    Start-Sleep -Seconds 2
+    $ls = & $listExt
+  }
+  if ($ls.Ids -notcontains $Id -and $ls.Rc -ne 0) {
+    if ($ls.Rc -eq -2) { Add-ProbeOverflow 'code --list-extensions' $ExtListCap }
+    Add-UnmeasuredStep $Label 'code --list-extensions' '깔았나를 못 쟀다' (Format-ProbeWhy $ls.Rc $ExtListCap)
+  } elseif ($ls.Ids -contains $Id) {
     Write-Host "  $Label — 깔았다" -ForegroundColor Green
   } else {
     # ⚠ **까닭을 편다.** 「! 설치 실패」 한 줄만 내면 다음 사람이 열어 볼 자리가 없다 —
@@ -3082,11 +3158,20 @@ function Install-FreeSkills([string]$Tool) {
 # 손을 한 번 부른다 — 돌려주는 것은 종료 값(`Rc` · 못 불렀으면 -1) · 뱉은 줄 전부(`Lines`) · `CHANGE=` 줄(`Changes`) ·
 #   `ERROR=` 의 까닭(`Errors`).
 # ⚠ 글자는 `Invoke-Logged` 로 파일에 받는다 — 판정이 종료 값에 서므로 `Start-Process -PassThru` 로 띄우지 않는다.
-function Invoke-ToolHomes([string]$Hand, [string[]]$HandArgs) {
+# `$CapSec` 를 주면 울타리 손(`Invoke-LoggedCapped`)으로 부른다 — 읽기만 하는 `check` 의 몫이다. 넘기면 `Rc` 가 -2 다. 홈을 쓰는 부름에는
+#   안 준다 — 쓰다 거두면 반쯤 놓인 홈이 남는다.
+function Invoke-ToolHomes([string]$Hand, [string[]]$HandArgs, [int]$CapSec = 0) {
   $log = [IO.Path]::GetTempFileName()
-  $rc = Invoke-Logged 'python' (@('-X', 'utf8', $Hand) + $HandArgs) $log
-  $lines = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | ForEach-Object { "$_".TrimEnd() } | Where-Object { $_ })
-  Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
+  if ($CapSec -gt 0) {
+    $rc = Invoke-LoggedCapped 'python' (@('-X', 'utf8', $Hand) + $HandArgs) $log $CapSec
+    # 갈라 받은 오류 줄을 한 파일 꼴로 잇는다 — 꼴 밖의 줄(파이썬이 못 뜬 까닭)이 까닭으로 쓰인다. 자식이 쓴 바이트 그대로라(`-X utf8`)
+    #   UTF-8 로 읽는다 — `*>` 가 짓는 파일과 달리 BOM 이 없어 이 파워셸의 기본(ANSI)으로 읽으면 한글이 깨진다
+    $lines = @(@(Get-Content -LiteralPath $log, "$log.err" -Encoding UTF8 -ErrorAction SilentlyContinue) | ForEach-Object { "$_".TrimEnd() } | Where-Object { $_ })
+  } else {
+    $rc = Invoke-Logged 'python' (@('-X', 'utf8', $Hand) + $HandArgs) $log
+    $lines = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | ForEach-Object { "$_".TrimEnd() } | Where-Object { $_ })
+  }
+  Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
   return @{
     Rc      = $rc
     Lines   = $lines
@@ -3116,11 +3201,17 @@ function Show-ToolHomesLines([string[]]$Lines) {
 }
 
 # 끝 검증 한 칸 — 손의 `check` 를 한 번 부르고 `$checks` 의 꼴로 돌려준다. 0 홈이 표대로다 · 1 다르다(바꿀 자리와 막힌
-#   까닭을 댄다) · 그 밖은 못 쟀다(짐에 손이 없다 · 층이나 표가 없다 · 손이 못 떴다) — 못 잰 것도 [X] 다.
+#   까닭을 댄다) · 그 밖은 못 쟀다(짐에 손이 없다 · 층이나 표가 없다 · 손이 못 떴다) — 못 잰 것도 [X] 다. 울타리를 넘긴 것만 [?] 다
+#   (그 칸이 든 물음이 멎었을 뿐 홈은 모른다 — 결정 0141).
 function Get-ToolHomesCheck([string]$Hand) {
   $name = '규범 · 룰 · 에이전트 · 스킬'
   if (-not (Test-Path -LiteralPath $Hand -PathType Leaf)) { return @{ Name = "$name (못 쟀다 — 짐에 손이 없다: $Hand)"; Ok = $false } }
-  $Result = Invoke-ToolHomes $Hand @('check')
+  # 울타리 안에서 묻는다(`$ToolHomesCheckCap`) — 멎은 python 하나가 검증을 영구히 세운다(#26 과 같은 꼴). 넘기면 「못 쟀다」 칸이다
+  $Result = Invoke-ToolHomes $Hand @('check') $ToolHomesCheckCap
+  if ($Result.Rc -eq -2) {
+    Add-ProbeOverflow 'python tool-homes.py check' $ToolHomesCheckCap
+    return @{ Name = $name; State = 'unmeasured'; Probe = 'python tool-homes.py check'; Why = (Format-ProbeWhy -2 $ToolHomesCheckCap) }
+  }
   if ($Result.Rc -eq 0) { return @{ Name = "$name (홈이 tool-homes.conf 대로다)"; Ok = $true } }
   if ($Result.Rc -eq 1) {
     $places = @($Result.Changes | ForEach-Object { @($_.Split("`t"))[1] } | Where-Object { $_ } | Select-Object -Unique)
@@ -3139,12 +3230,18 @@ function Get-ToolHomesCheck([string]$Hand) {
 
 #region 도구별 · Claude — 구독 로그인을 재고, 끝 검증이 Claude 홈 설정의 훅 등록을 되읽는다
 
+# ⚠ **울타리를 두른다** — `--version` 이 선 뒤 다시 부르는 자리라 그 사이 멎으면 #26 의 멈춤이 여기서 돌아온다. 넘기면 거짓이고 그 넘김이
+#   `$script:ProbeTimedOut` 에 남는다 — 부르는 자리가 그 수로 「못 쟀다」를 가른다(거짓을 「로그인 안 됨」으로 읽어 창을 띄우지 않게).
 function Test-ClaudeLoggedIn {
   if (-not (Test-Runs 'claude' '--version')) { return $false }
+  $log = [IO.Path]::GetTempFileName()
   try {
-    $said = (Get-Quiet 'claude' @('auth','status') | Out-String)
+    $rc = Invoke-LoggedCapped 'claude' @('auth','status') $log $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow 'claude auth status' $ProbeCap; return $false }
+    $said = (Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | Out-String)
     return ($said -match '"loggedIn"\s*:\s*true')
   } catch { return $false }
+  finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
 # Claude 훅 껍데기의 등록 머리말 — {열쇠: 값}. 파일을 못 읽으면 $null.
@@ -3238,8 +3335,16 @@ function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts,
     $script:Fails.Add("$Label 걷기 (씨앗이 없다)")
     return
   }
-  $null = Get-Quiet 'python' $Probe
-  if ($LASTEXITCODE -ne 0) {
+  # 파이썬을 묻는 한 번에도 울타리를 두른다 — 멎으면 그 판을 못 잰 것이라 걷지도 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141).
+  #   걷는 손(아래 `Invoke-Logged`)에는 안 두른다 — 쓰다 거두면 반쯤 고친 설정이 남는다
+  $pl = [IO.Path]::GetTempFileName()
+  try { $prc = Invoke-LoggedCapped 'python' $Probe $pl $ProbeCap } finally { Remove-Item -LiteralPath $pl, "$pl.err" -ErrorAction SilentlyContinue }
+  if ($prc -eq -2) {
+    Add-ProbeOverflow "python $($Probe -join ' ')" $ProbeCap
+    Add-UnmeasuredStep "$Label 걷기" "python $($Probe -join ' ')" '걷지도 건너뛰지도 않았다'
+    return
+  }
+  if ($prc -ne 0) {
     Write-Host "  ! $Label — 고르지 않았는데 $ProbeWhat 안 서서 못 걷었다 · 우리 훅이 $Config 에 남았을 수 있다" -ForegroundColor Yellow
     return
   }
@@ -3275,8 +3380,8 @@ function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts,
 #   Need(심기 전에 그 자리에 그 값으로 서 있어야 하는 키 · JSON 줄만 — 표의 앞 줄이 심은 뒤에 재므로 같은 파일의 앞 줄을 먼저 둔다).
 # 심는 규칙은 하나다 — **Guard 의 키가 하나라도 서 있으면 그 줄을 통째로 둔다.** 한 줄의 키들은 그 도구의 스위치 하나라, 사람이
 #   하나만 정해 둔 자리에 나머지를 채우면 그 사람이 고른 적 없는 조합이 선다(claude-config 결정 0127).
-# 내는 것 — @{ Did = set · kept · skipped(Need 가 안 섰다) · broken · nopython; Have = 서 있던 Guard 키와 값(「키 = 값」 글) ·
-#   Why = skipped · broken 의 까닭 }.
+# 내는 것 — @{ Did = set · kept · skipped(Need 가 안 섰다) · broken · nopython · unmeasured(파이썬 물음이 울타리를 넘겼다 — 안 건드렸다);
+#   Have = 서 있던 Guard 키와 값(「키 = 값」 글) · Why = skipped · broken · unmeasured 의 까닭 · Probe = unmeasured 의 물음 }.
 #   화면 · 실패 줄은 부르는 쪽이 든다. 파일을 못 읽으면 안 건드린다 — 사람이 손댄 것이 거기 들어 있을 수 있다.
 # ⚠ 표인가는 `[System.Management.Automation.PSCustomObject]` 로 가른다 — `[pscustomobject]` 는 `[psobject]` 라 파이프에서 온 글 · 목록도
 #   그 꼴로 읽혀, 맨 위가 목록인 파일을 표로 보고 덮는다.
@@ -3284,12 +3389,20 @@ function Set-ToolAutoRun($Row) {
   $guard = if ($Row.Guard) { @($Row.Guard) } else { @($Row.Set.Keys) }
   if ($Row.Toml) {
     if (-not (Test-Runs 'python' '--version')) { return @{ Did = 'nopython'; Why = 'python 이 안 선다' } }
-    $null = Get-Quiet 'python' @('-c', 'import tomllib')
-    if ($LASTEXITCODE -ne 0) { return @{ Did = 'nopython'; Why = '파이썬 3.11 이상(tomllib)이 안 선다' } }
+    # `--version` 이 선 뒤 다시 부르는 자리라 울타리를 두른다 — 넘기면 못 잰 것이라 심지도 건너뛰지도 않는다(결정 0141)
+    $tl = [IO.Path]::GetTempFileName()
+    try { $trc = Invoke-LoggedCapped 'python' @('-c', 'import tomllib') $tl $ProbeCap } finally { Remove-Item -LiteralPath $tl, "$tl.err" -ErrorAction SilentlyContinue }
+    if ($trc -eq -2) {
+      Add-ProbeOverflow 'python -c import tomllib' $ProbeCap
+      return @{ Did = 'unmeasured'; Probe = 'python -c import tomllib'; Why = (Format-ProbeWhy -2 $ProbeCap) }
+    }
+    if ($trc -ne 0) { return @{ Did = 'nopython'; Why = '파이썬 3.11 이상(tomllib)이 안 선다' } }
+    $tomlTimed = $script:ProbeTimedOut.Count
     $old = ''
     if (Test-Path -LiteralPath $Row.Path -PathType Leaf) {
       $old = [IO.File]::ReadAllText($Row.Path)
       $now = Read-TomlTopKeys $Row.Path $guard
+      if ($null -eq $now -and $script:ProbeTimedOut.Count -gt $tomlTimed) { return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
       if ($null -eq $now) { return @{ Did = 'broken'; Why = 'TOML 로 못 읽었다' } }
       $have = @($guard | Where-Object { $now.PSObject.Properties[$_] } | ForEach-Object { "$_ = $($now.$_ | ConvertTo-Json -Compress)" })
       if ($have.Count) { return @{ Did = 'kept'; Have = $have } }
@@ -3302,6 +3415,7 @@ function Set-ToolAutoRun($Row) {
       [IO.File]::WriteAllText($probe, $head + $old, (New-Object Text.UTF8Encoding($false)))
       # 얹은 결과를 다시 읽어 뜻을 잰 뒤에만 쓴다 — 같은 키가 둘이 되면 Codex 가 설정째 못 읽고 뜬다.
       $after = Read-TomlTopKeys $probe @($Row.Set.Keys)
+      if ($null -eq $after -and $script:ProbeTimedOut.Count -gt $tomlTimed) { return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
       $miss = @($Row.Set.Keys | Where-Object { -not ($after -and $after.PSObject.Properties[$_] -and $after.$_ -ceq $Row.Set[$_]) })
       if ($miss.Count) { return @{ Did = 'broken'; Why = "얹은 결과가 그 뜻으로 안 읽힌다 ($($miss -join ' · '))" } }
       New-Item -ItemType Directory -Path (Split-Path $Row.Path -Parent) -Force | Out-Null
@@ -3341,10 +3455,17 @@ function Set-ToolAutoRun($Row) {
 # TOML 파일의 맨 위 키 가운데 `$Keys` 에 든 것을 표로 낸다(못 읽으면 $null). 판정은 파이썬 `tomllib` 이 든다 — 첫 표 머리가 어디인가 ·
 #   여러 줄 배열과 글 안의 `[` 는 글자로는 못 가른다.
 # ⚠ 파이썬에 줄 코드에 큰따옴표를 안 쓴다 — 5.1 은 네이티브 인자 안의 큰따옴표를 깨뜨려 넘긴다.
+# ⚠ 울타리를 두른다 — 넘기면 $null 이고 그 넘김이 `$script:ProbeTimedOut` 에 남는다. 부르는 자리가 그 수로 「못 읽었다」와 「못 쟀다」를 가른다.
+$TomlReadProbe = 'python -c tomllib.load'
 function Read-TomlTopKeys([string]$Path, [string[]]$Keys) {
   $code = "import sys,json,tomllib;d=tomllib.load(open(sys.argv[1],'rb'));print(json.dumps({k:d[k] for k in sys.argv[2:] if k in d},default=str))"
-  $out = Get-Quiet 'python' (@('-X', 'utf8', '-c', $code, $Path) + $Keys)
-  if ($LASTEXITCODE -ne 0) { return $null }
+  $tl = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-LoggedCapped 'python' (@('-X', 'utf8', '-c', $code, $Path) + $Keys) $tl $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow $TomlReadProbe $ProbeCap; return $null }
+    if ($rc -ne 0) { return $null }
+    $out = @(Get-Content -LiteralPath $tl -Encoding UTF8 -ErrorAction SilentlyContinue)
+  } finally { Remove-Item -LiteralPath $tl, "$tl.err" -ErrorAction SilentlyContinue }
   try { return (($out -join "`n") | ConvertFrom-Json) } catch { return $null }
 }
 
@@ -3356,7 +3477,11 @@ function Get-ToolAutoRunCheck($Row) {
   $at = $null
   if (Test-Path -LiteralPath $Row.Path -PathType Leaf) {
     if ($Row.Toml) {
+      $tomlTimed = $script:ProbeTimedOut.Count
       $at = Read-TomlTopKeys $Row.Path $guard
+      if ($null -eq $at -and $script:ProbeTimedOut.Count -gt $tomlTimed) {
+        return @{ Name = "묻지 않고 돌기 · $($Row.Label) ($($Row.Path))"; State = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) }
+      }
     } else {
       try { $at = [IO.File]::ReadAllText($Row.Path) | ConvertFrom-Json } catch { $at = $null }
       if ($at -and $Row.Under) { $at = if ($at.PSObject.Properties[$Row.Under]) { $at.($Row.Under) } else { $null } }
@@ -3500,10 +3625,16 @@ function Get-ProxyVer([string]$text) {
 #   `gh api rate_limit` 도 자격을 가리면 4 로 끝난다) 망 문제와 자격 문제가 같은 코드로 온다.
 # ⚠ 환경변수 토큰(`$GhEnvTokens`)이 서 있으면 gh 는 그것을 쓰므로 이 판정도 그것을 잰다 — 그 토큰이 가린 키링 로그인의
 #   생사는 `Get-GhKeyringState` 가 따로 잰다(끝 검증).
+# ⚠ **울타리를 두른다** — 한도는 GitHub 에 한 번 묻는 `$GhStatusCap` 이다. 넘기면 거짓이고 그 넘김이 `$script:ProbeTimedOut` 에 남는다 —
+#   부르는 자리가 그 수로 「못 쟀다」를 가른다(`Test-ClaudeLoggedIn` 과 같은 규율).
 function Test-GhLoggedIn {
   if (-not (Test-Runs 'gh' '--version')) { return $false }
-  $null = Get-Quiet 'gh' @('api', 'user', '--jq', '.login')
-  return ($LASTEXITCODE -eq 0)
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-LoggedCapped 'gh' @('api', 'user', '--jq', '.login') $log $GhStatusCap
+    if ($rc -eq -2) { Add-ProbeOverflow 'gh api user' $GhStatusCap }
+    return ($rc -eq 0)
+  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
 # gh 가 키링의 로그인보다 먼저 쓰는 환경변수 토큰 — 이것이 선 셸에서는 `gh auth login` 이 로그인을 안 받는다.
@@ -3900,6 +4031,11 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
 #   **정상 진행과 멎은 고아를 못 가른다** — 쥔 쪽의 번호와 경과를 대면 사람이 그 둘을 가른다.
 #   그리고 사람이 있으면 **끝내고 이어갈 길을 준다**: 고아는 기다려서 안 풀리고, 지금까지는
 #   사람이 손으로 PID 를 찾아 죽이는 것 말고 방법이 없었다.
+# 밤 자동 실행이 부른 설치인가(`$NightRun`) — 자동 실행 몸통이 이 프로세스에만 넘기는 환경변수로 안다. 값 파일의 줄로 넘기지 않는
+#   까닭은 그 파일이 자동 실행용 사본으로 얼려져 다음 로그온 회차까지 따라가기 때문이다. 밤 회차는 어떤 창도 안 띄운다 — 겹침
+#   물음(아래) · 로그인 브라우저 · 알림 창 · 「제공기능」이 이 값을 보고 건너뛰거나 물러난다(PAISetup #36).
+$NightRun = ($env:PAISETUP_AUTORUN_NIGHT -eq '1')
+
 $script:EngineMutex = $null
 $script:HasEngineMutex = $false
 try {
@@ -3924,6 +4060,10 @@ if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
   #   (서비스 · 「로그온하지 않아도 실행」 스케줄러 · CI)뿐이고 `UserInteractive` 가 그것을 가른다.
   if (-not [Environment]::UserInteractive) {
     Write-Host '  물을 자리가 없다 (세션 0 · 서비스 · 스케줄러) — 겹치지 않게 물러납니다.' -ForegroundColor Yellow
+    exit 1
+  }
+  if ($NightRun) {
+    Write-Host '  밤 자동 실행이라 묻지도 기다리지도 않고 물러납니다 — 다음 회차가 잇는다.' -ForegroundColor Yellow
     exit 1
   }
 
@@ -4182,6 +4322,37 @@ if ($site -ne 'unknown') {
   Write-Host ("  자리 = {0}  ({1} {2})" -f
     $(if ($offsite) { '사외' } else { '사내' }), $probe, $siteBy)
   Write-Host ''
+}
+
+# ── 자동 실행을 켜나 · 자동 실행이 읽는 「지난 설치의 자리」 (PAISetup #36) ─────────────────────────────────
+# 켜나(`$wantAutoRun`)는 `-AutoRun` · `-NoAutoRun` 이 먼저고, 없으면 값 파일의 `#autorun = yes|no` 다. 여기서 정하는 까닭은 마무리
+#   칸이 넘겨받은 임시 값 파일을 지우기 전이어야 그 줄을 읽기 때문이다. 아래 자동 실행 칸이 이 값을 쓴다.
+# 밤 자동 실행은 자리 기록이 지금 잰 자리와 같은 `inside` · `outside` · `unknown` 일 때만 돈다(자동 실행 몸통의 「하루 한 번 ·
+#   자리」 칸). 이 설치가 자리를 **바꾸는** 판이면 자리에 기대는 걸음(프로그램 · 키와 값 · 사내 연결 · Claude 홈 설정 · 도구별
+#   홈)보다 먼저 `switching` 을 적는다 — 반쯤 돌다 지면 그 값이 남아 밤 회차는 건너뛴다. 기록과 같은 자리면 안 적는다(자리를 박은
+#   밤 회차가 그렇다) — 바꾸지 않는 설치가 지며 `switching` 을 남기면 다시 부팅하지 않는 PC 는 밤 회차가 영영 선다. 끝 값은 그
+#   걸음들을 다 지난 자동 실행 칸이 적는다. 자동 실행을 켜는 설치만 적고, 설치본 폴더가 없는 자리(저장소에서 바로 돌린 콘솔)는
+#   안 적는다. 못 적으면 지운다 — 옛 값이 남으면 밤 회차가 자리를 바꾼 설치를 못 알아본다.
+$autoDirective = Read-Directive $EnvFile 'autorun'
+$wantAutoRun   = $null
+if ($AutoRun) { $wantAutoRun = $true }
+elseif ($NoAutoRun) { $wantAutoRun = $false }
+elseif ($autoDirective -eq 'yes') { $wantAutoRun = $true }
+elseif ($autoDirective -eq 'no')  { $wantAutoRun = $false }
+
+$AutoRunSiteFile   = '.autorun-site'
+$AutoRunSiteRecord = Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') $AutoRunSiteFile
+$siteRecorded = ''
+if (Test-Path -LiteralPath $AutoRunSiteRecord) {
+  try { $siteRecorded = (Get-Content -LiteralPath $AutoRunSiteRecord -Raw -Encoding UTF8 -ErrorAction Stop).Trim() } catch { $siteRecorded = '' }
+}
+if ($wantAutoRun -eq $true -and $siteRecorded -ne $site -and (Test-Path -LiteralPath (Split-Path -Parent $AutoRunSiteRecord))) {
+  try {
+    Set-Content -LiteralPath $AutoRunSiteRecord -Value 'switching' -Encoding UTF8 -ErrorAction Stop
+  } catch {
+    Remove-Item -LiteralPath $AutoRunSiteRecord -Force -ErrorAction SilentlyContinue
+    Write-Host "  ! 자동 실행이 읽을 자리 기록을 못 적었다 — $(Say-Why $_) (밤 자동 실행은 다음 설치까지 건너뛴다)" -ForegroundColor Yellow
+  }
 }
 
 # ── 사내에서만 더 서는 것 — 로컬 프록시 · Codex 회사 설정 · 안티그래비티 회사 설정 (결정 0041 · 0045 · 0136) ──
@@ -4485,6 +4656,12 @@ foreach ($app in $Apps) {
   }
   if ($appAct -eq 'present') { Write-Host "  $($app.Name) — 있음  $(Format-VerPart $before)"; continue }
   if ($appAct -eq 'latest')  { Write-Host "  $($app.Name) — 최신  $(Format-VerPart $before)"; continue }
+  # 기계 범위 행 — 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이면 걸지 않는다(사람을 기다리며 서지 않게 · 결정 0146 과 같은 자 · 같은 누가 있나)
+  if ($app.Scope -eq 'machine' -and -not $noWinget -and
+      (Get-ElevationGo (Read-ElevationState) ([bool]((-not ($Yes -and $NoLaunch)) -and [Environment]::UserInteractive))) -eq 'later') {
+    Write-Host "  ! $($app.Name) — 관리자 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이라 안 $(if ($appAct -eq 'install') { '깔았다' } else { '올렸다' }) · 설치 창으로 다시 누르면 승인 창이 한 번 뜬다" -ForegroundColor Yellow
+    continue
+  }
   if ($appAct -eq 'upgrade' -or $appAct -eq 'upcheck') {
     Invoke-WingetUpgrade $app.Name $app.Id 'winget' $appAct @("지금 $before")
     Update-RuntimePath
@@ -5186,11 +5363,18 @@ $claudeLoggedIn = $false
 if ($offsite) {
   Write-Host ''
   Write-Host '  Claude 구독 로그인' -ForegroundColor Cyan
+  $loginTimedBefore = $script:ProbeTimedOut.Count
   if (-not (Test-Runs 'claude' '--version')) {
     Write-Host '  ! claude CLI 가 안 닿아 로그인을 못 띄운다 — 위 CLI 설치를 본다' -ForegroundColor Yellow
   } elseif (Test-ClaudeLoggedIn) {
     $claudeLoggedIn = $true
     Write-Host '  이미 서 있다 (loggedIn=true)'
+  } elseif ($script:ProbeTimedOut.Count -gt $loginTimedBefore) {
+    # ⚠ **못 쟀으면 로그인 창을 안 띄운다** — 로그인이 선 PC 에 브라우저를 띄우게 된다(결정 0141 · 아래 gh 칸과 같은 규율).
+    Write-Host '  ! 로그인이 섰나를 못 쟀다 — 그 물음이 울타리 안에 안 끝났다 · 브라우저를 안 띄운다' -ForegroundColor Yellow
+    Write-Host '     새 터미널에서 claude auth status 로 보고, 비었으면 claude auth login'
+  } elseif ($NightRun) {
+    Write-Host '  ! 밤 자동 실행이라 로그인 브라우저를 안 띄운다 — 다음 로그온 · 설치 창이 띄운다' -ForegroundColor Yellow
   } elseif (-not (Test-Reach 'claude.ai:443')) {
     # ⚠ **닿는지 먼저 잰다 — 막힌 자리에서 3분을 서 있지 않는다.** 로그인은 브라우저 콜백으로
     #   끝나므로 그 페이지에 못 닿으면 CLI 는 **죽지 않고 얌전히 기다린다** — 아래 루프의
@@ -6243,6 +6427,7 @@ foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) {
       else { Write-Host "  묻지 않고 돌기 · $($r.Label) — 사람이 정한 값($($res.Have -join ' · '))이라 둔다" }
     }
     'skipped' { Write-Host "  묻지 않고 돌기 · $($r.Label) — 안 심는다 ($($res.Why))" }
+    'unmeasured' { Add-UnmeasuredStep "묻지 않고 돌기 · $($r.Label)" $res.Probe '심지도 건너뛰지도 않았다' $res.Why }
     default {
       Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 안 건드렸다 ($($r.Path))" -ForegroundColor Red
       $Fails.Add("묻지 않고 돌기 · $($r.Label) ($($res.Why))")
@@ -6329,11 +6514,17 @@ if (-not $repoUrl) {
     $tGh = Get-Took
     Write-Host ''
     Write-Host '  GitHub CLI 로그인' -ForegroundColor Cyan
+    $ghTimedBefore = $script:ProbeTimedOut.Count
     if (-not (Test-Runs 'gh' '--version')) {
       Write-Host '  ! gh 가 안 닿아 로그인을 못 띄운다 — 위 프로그램 칸을 본다' -ForegroundColor Yellow
     } elseif (Test-GhLoggedIn) {
       $ghLoggedIn = $true
       Write-Host '  이미 서 있다'
+    } elseif ($script:ProbeTimedOut.Count -gt $ghTimedBefore) {
+      # ⚠ **못 쟀으면 로그인하라고 하지 않는다** — 바로 아래 망 갈래와 같은 규율이다. 아래 clone 은 제 자격 창을 띄운다.
+      Write-Host "  ! 로그인이 섰나를 못 쟀다 — gh api user 가 ${GhStatusCap}초 안에 안 끝났다 · 창을 안 띄운다" -ForegroundColor Yellow
+    } elseif ($NightRun) {
+      Write-Host '  ! 밤 자동 실행이라 로그인 창을 안 띄운다 — 다음 로그온 · 설치 창이 띄운다' -ForegroundColor Yellow
     } elseif (-not (Test-Reach 'github.com:443')) {
       # ⚠ **못 쟀으면 로그인하라고 하지 않는다.** 판정이 거짓인 까닭이 자격이 아니라 망이면,
       #   창을 띄워도 브라우저가 못 열리고 사람은 엉뚱한 데를 고치러 간다. 창을 아끼고 말만 한다 —
@@ -6589,25 +6780,49 @@ if ($docClaude -eq 'unmeasured') {
   $wantDocSkills = $false
 }
 if ($wantDocSkills) {
-  $has = ((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)
-  if ($has) {
+  # 목록을 묻는 두 물음(`plugin list` · `plugin marketplace list`)에 울타리를 두른다 — `--version` 이 선 뒤 다시 부르는 자리라 멎으면
+  #   #26 의 멈춤이 돌아온다. 넘기면 못 잰 것이라 깔지도 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141). 받아 까는 두 부름
+  #   (`marketplace add` · `plugin install`)에는 안 두른다 — 받다 거두면 반쯤 놓인 플러그인 자리가 남는다.
+  $askClaude = { param([string[]]$A)
+    $cl = [IO.Path]::GetTempFileName()
+    try {
+      $crc = Invoke-LoggedCapped 'claude' $A $cl $ClaudePluginCap
+      if ($crc -eq -2) { Add-ProbeOverflow "claude $($A -join ' ')" $ClaudePluginCap }
+      @{ Rc = $crc; Text = (@(Get-Content -LiteralPath $cl -Encoding UTF8 -ErrorAction SilentlyContinue) -join "`n") }
+    } finally { Remove-Item -LiteralPath $cl, "$cl.err" -ErrorAction SilentlyContinue }
+  }
+  $docHand = "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
+  $pl = & $askClaude @('plugin','list')
+  if ($pl.Rc -eq -2) {
+    Add-UnmeasuredStep '공식 문서 스킬' 'claude plugin list' '있는지 못 재 깔지도 않았다' (Format-ProbeWhy -2 $ClaudePluginCap)
+    Write-Host $docHand
+  } elseif ($pl.Text.Contains($DocSkills.Plugin)) {
     Write-Host '  공식 문서 스킬 — 있음'
   } else {
-    Say-Busy '공식 문서 스킬' 'install' @('claude plugin', 'pptx · docx · xlsx · pdf')
-    $dl = [IO.Path]::GetTempFileName()
-    $rc = 0
-    if (-not ((Get-Quiet 'claude' @('plugin','marketplace','list')) -join "`n").Contains($DocSkills.Market)) {
-      $rc = Invoke-Logged 'claude' @('plugin','marketplace','add',$DocSkills.Source) $dl
-    }
-    if ($rc -eq 0) { $rc = Invoke-Logged 'claude' @('plugin','install',$DocSkills.Plugin) $dl }
-    if (((Get-Quiet 'claude' @('plugin','list')) -join "`n").Contains($DocSkills.Plugin)) {
-      Write-Host '  공식 문서 스킬 — 깔았다' -ForegroundColor Green
+    $mk = & $askClaude @('plugin','marketplace','list')
+    if ($mk.Rc -eq -2) {
+      Add-UnmeasuredStep '공식 문서 스킬' 'claude plugin marketplace list' '깔지 않았다' (Format-ProbeWhy -2 $ClaudePluginCap)
+      Write-Host $docHand
     } else {
-      Write-Host "  ! 공식 문서 스킬 — 못 깔았다 ($rc) · Claude Code 는 그대로 돈다 — 뱉은 끝 줄:" -ForegroundColor Yellow
-      Show-Log $dl
-      Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
+      Say-Busy '공식 문서 스킬' 'install' @('claude plugin', 'pptx · docx · xlsx · pdf')
+      $dl = [IO.Path]::GetTempFileName()
+      $rc = 0
+      if (-not $mk.Text.Contains($DocSkills.Market)) {
+        $rc = Invoke-Logged 'claude' @('plugin','marketplace','add',$DocSkills.Source) $dl
+      }
+      if ($rc -eq 0) { $rc = Invoke-Logged 'claude' @('plugin','install',$DocSkills.Plugin) $dl }
+      $pl = & $askClaude @('plugin','list')
+      if ($pl.Rc -eq -2) {
+        Add-UnmeasuredStep '공식 문서 스킬' 'claude plugin list' '깔았나를 못 쟀다' (Format-ProbeWhy -2 $ClaudePluginCap)
+      } elseif ($pl.Text.Contains($DocSkills.Plugin)) {
+        Write-Host '  공식 문서 스킬 — 깔았다' -ForegroundColor Green
+      } else {
+        Write-Host "  ! 공식 문서 스킬 — 못 깔았다 ($rc) · Claude Code 는 그대로 돈다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+        Show-Log $dl
+        Write-Host $docHand
+      }
+      Remove-Item $dl -ErrorAction SilentlyContinue
     }
-    Remove-Item $dl -ErrorAction SilentlyContinue
   }
 }
 
@@ -6625,8 +6840,8 @@ Exit-Step 'register'
 #     끝 줄 · 종료 코드
 #   앞에서 받는 것 — 앞 걸음 전부
 #   안 하는 것 — 없음
-#   ⚠ 자동 실행 칸의 `Read-Directive $EnvFile 'autorun'` 은 임시 값 파일을 지운 뒤에 선다 — 그 파일을 넘기는 설치 창은
-#     `-AutoRun` · `-NoAutoRun` 가운데 하나를 늘 넘겨, 그 줄에 안 닿는다
+#   ⚠ 자동 실행을 켜나(`$wantAutoRun`)는 이 칸보다 앞(「자동 실행이 읽는 지난 설치의 자리」 칸)에서 값 파일을 읽어 정한다 — 이
+#     칸이 넘겨받은 임시 값 파일을 지운 뒤에는 그 줄을 못 읽는다
 # ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
 # ⚠ **화면 껍데기도 지우지만 그 손은 제 프로세스가 살아 있을 때만 돈다.** 작업 관리자로 끄거나
 #   VDI 가 세션을 끊거나 그것이 죽으면 **평문 토큰이 든 파일이 `%TEMP%` 에 눌러앉고**, 다음
@@ -6753,22 +6968,36 @@ if (Test-Path -LiteralPath $launcher) {
 }
 
 # ── 부팅 시 자동 실행 (작업 스케줄러) ─────────────────────────────────────────
-# ⚠ **로그온할 때 이 몸통을 보이는 콘솔 창으로 다시 돌린다** — 깔린 것을 최신으로 올리고 환경을
-#   다시 맞춘다. `-AutoRun` 이나 값 파일의 `#autorun = yes` 가 켜고, `-NoAutoRun` 이나 `no` 가 걷는다.
+# **로그온할 때와 밤마다 이 몸통을 다시 돌린다** — 깔린 것을 최신으로 올리고 환경을 다시 맞춘다. 둘 다 창 없이
+#   시작하고, 로그온 회차가 설치를 실제로 할 때만 기록 창을 띄운다(아래 「문지기 · 머리 없는 콘솔」).
+#   `-AutoRun` 이나 값 파일의 `#autorun = yes` 가 켜고, `-NoAutoRun` 이나 `no` 가 걷는다.
 # ⚠ **설치본 자체도 새 릴리스로 간다.** 아래 스크립트 본문의 「설치본 자신을 새 릴리스로 간다」
 #   칸이 `#update-repo` 의 최신 릴리스를 받아 `update-check.ps1` 로 지문을 대조하고, 맞으면
 #   `Setup.exe -Unattended` 로 풀어 그 판의 엔진으로 설치를 잇는다. 사람이 보는 설치 창의 자가
 #   갱신(「새 판이 있습니다」 물음)과 같은 자를 쓴다.
 
-$AutoRunTaskName = 'PAISetup-AutoRun'
-$autoDirective   = Read-Directive $EnvFile 'autorun'
-$wantAutoRun     = $null
+# 작업은 둘이다 — 로그온 작업과 밤 작업. 로그온은 다시 부팅할 때만 나서, 절전 · 화면 잠금으로 며칠을 잇는 PC 는 로그온
+#   하나로는 그 사이 한 번도 안 돈다(PAISetup #36). 밤 작업이 그 PC 를 날마다 한 번 돌리고, 그 시각에 꺼져 있거나 절전이면
+#   `StartWhenAvailable` 이 켜진 뒤 따라 돌린다. 깨우지는 않는다.
+#   · **작업을 가르는 까닭** — 작업 스케줄러는 어느 트리거가 불렀는지 실행에 안 넘긴다. 밤 회차는 자리(사내 · 사외)를 안
+#     바꾸고 창도 안 띄워야 하므로, 제 인자(`-Night`)와 제 창 모양을 든 작업을 따로 둔다
+#   · **밤 시각** — 부팅해 로그온 회차를 이미 받은 사람이 낮에 자동 실행 창을 다시 안 보게 사람이 고른 값이다
+#   · **흩는 폭** — 로그온은 사람마다 시각이 갈리지만 달력은 PC 전부를 한 분에 띄운다. 한 출구 주소를 같이 쓰는 회사 PC 들이
+#     같은 분에 릴리스를 묻지 않게 흩되, 이른 출근 전(05시)에 끝나는 폭으로 둔다. 잰 값이 아니라 판단이다
+#   · **문지기 · 머리 없는 콘솔** — 두 작업은 몸통을 바로 부르지 않고 곁의 문지기(`$AutoRunGate`)를 머리 없는 콘솔로 부른다.
+#     건너뛰는 회차는 아무 창도 안 띄우고, 로그온 회차가 설치를 실제로 할 때만 몸통이 기록 창을 띄운다. 밤 회차는 몸통이 밤
+#     회차를 아는 판(`$AutoRunNightMarker` 를 든다)일 때만 `-Night` 로 부르고, 아니면 밤 작업을 걷는다 — 옛 판 설치기가 몸통을
+#     다시 쓰면 그 몸통은 `-Night` 를 버리고 로그온 회차처럼 돌아 자리를 바꿀 수 있다
+# 하루 한 번 · 밤 회차의 자리는 몸통(아래 `autorun.ps1`)의 「하루 한 번 · 자리」 칸이 가른다. 그 칸이 읽는 지난 설치의 자리는
+#   위 「자동 실행이 읽는 지난 설치의 자리」 칸(`$AutoRunSiteRecord`)이 적는다.
+$AutoRunTaskName      = 'PAISetup-AutoRun'
+$AutoRunNightTaskName = 'PAISetup-AutoRun-Night'
+$AutoRunNightAt       = [datetime]::Today.AddHours(3)
+$AutoRunNightSpread   = New-TimeSpan -Hours 2
+$AutoRunGate          = 'autorun-gate.ps1'
+$AutoRunNightMarker   = 'param([switch]$Night)'
 
-if ($AutoRun) { $wantAutoRun = $true }
-elseif ($NoAutoRun) { $wantAutoRun = $false }
-elseif ($autoDirective -eq 'yes') { $wantAutoRun = $true }
-elseif ($autoDirective -eq 'no')  { $wantAutoRun = $false }
-
+# 켤지 걷을지(`$wantAutoRun`)는 위 「자동 실행을 켜나 · 자동 실행이 읽는 지난 설치의 자리」 칸이 정했다.
 if ($null -ne $wantAutoRun) {
   Write-Host ''
   if ($wantAutoRun) {
@@ -6777,6 +7006,8 @@ if ($null -ne $wantAutoRun) {
     $autoScript = Join-Path $setupRoot 'autorun.ps1'
 
     $autoScriptBody = @'
+# `-Night` — 밤 작업이 부른 회차다. 아래 「하루 한 번 · 자리」 칸이 자리를 안 바꾸게 다룬다. 없으면 로그온 회차다.
+param([switch]$Night)
 $ErrorActionPreference = 'SilentlyContinue'
 
 # ⚠ **이 창의 빠른 편집(QuickEdit)을 끈다.** 켜져 있으면 창을 한 번 누르는 것만으로 선택 모드가 되어
@@ -6802,7 +7033,8 @@ try {
 $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
 $logDir    = Join-Path $setupRoot 'logs'
 if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
-$logFile   = Join-Path $logDir ("autorun-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".log")
+# 이름에 PID 를 넣는다 — 부팅 뒤 밤 회차와 로그온 회차는 같은 초에 설 수 있고, 그러면 두 회차가 한 기록에 섞인다.
+$logFile   = Join-Path $logDir ("autorun-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + "-$PID.log")
 
 function Log([string]$msg) {
   $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg
@@ -6811,10 +7043,49 @@ function Log([string]$msg) {
 }
 
 # 첫 줄에 제 PID 를 적는다 — 뒤 회차의 가드가 이 기록을 이 회차가 글자를 내는 자리로 찾는다(아래 `Find-RunOutput`).
-Log "=== PAISetup 자동 실행 시작 (PID $PID) ==="
+$runKind = if ($Night) { '밤 작업' } else { '로그온 작업' }
+Log "=== PAISetup 자동 실행 시작 (PID $PID) · $runKind ==="
+
+# 기록은 최근 것만 둔다 — 건너뛰는 회차도 기록을 하나씩 남기므로 시작마다 거둔다. 지금 회차의 기록은 가장 새것이라 남는다.
+#   이름의 PID 가 아직 살아 있는 기록은 안 거둔다 — 아래 가드는 멎은 회차를 그 기록으로 가르므로(`Find-RunOutput`), 지우면 그
+#   회차를 영영 못 거둔다. PID 를 남이 물려받았으면 한 벌 더 남을 뿐이다.
+$keepLogs = 15
+try {
+  $livePids = @{}
+  foreach ($lp in @(Get-Process -ErrorAction SilentlyContinue)) { $livePids[[int]$lp.Id] = $true }
+  Get-ChildItem -LiteralPath $logDir -Filter 'autorun-*.log' -File -ErrorAction Stop | Sort-Object LastWriteTime -Descending |
+    Select-Object -Skip $keepLogs |
+    Where-Object { -not ($_.Name -match '-(\d+)\.log$' -and $livePids.ContainsKey([int]$Matches[1])) } |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+} catch { }
+
+# 지난 회차의 끝을 이 기록에 옮긴다 — 머리 없는 콘솔은 종료 코드를 작업 스케줄러에 안 넘겨, 작업의 「마지막 실행 결과」는 진 회차도
+#   0 이다. 진 것은 다음 회차의 기록(로그온 회차면 기록 창)에서 보인다.
+$lastFile = Join-Path $setupRoot '.autorun-last'
+if (Test-Path -LiteralPath $lastFile) {
+  try {
+    $prevSaid = (Get-Content -LiteralPath $lastFile -Raw -Encoding UTF8 -ErrorAction Stop).Trim()
+    if ($prevSaid -match '\s(\S+)$' -and $Matches[1] -ne '0') { Log "! 지난 회차가 성공으로 안 끝났다 — $prevSaid" }
+    else { Log "지난 회차 — $prevSaid" }
+  } catch { }
+}
+
+# 「오늘 끝났다」 — 자동 실행이 설치를 0 으로 끝내고 적은 `.autorun-stamp` 의 날짜가 이 PC 의 오늘인 것이다. 사람이 누른 설치는 이
+#   몸통을 안 지나므로 이 가름 없이 늘 돈다. 밤 회차는 여기서 바로 물러난다 — 가드도 자리 재기도 안 거친다. 로그온 회차의 가름은
+#   아래 「하루 한 번 · 자리」 칸이 든다.
+$stampFile = Join-Path $setupRoot '.autorun-stamp'
+$doneAt = $null
+if (Test-Path -LiteralPath $stampFile) {
+  try { $doneAt = [datetime]((Get-Content -LiteralPath $stampFile -Raw -Encoding UTF8 -ErrorAction Stop).Trim()) } catch { $doneAt = $null }
+}
+$doneToday = [bool]($doneAt -and $doneAt.Date -eq (Get-Date).Date)
+if ($Night -and $doneToday) {
+  Log "오늘 이미 자동 실행이 끝났습니다 ($($doneAt.ToString('HH:mm'))). 밤 회차는 건너뜁니다."
+  exit 0
+}
 
 # ── 단일 실행 가드 및 쿨다운 (겹침 방지) ───────────────────────────
-# ⚠ 부팅 스케줄러(AtelierServer)와 로그온 스케줄러(PAISetup-AutoRun)가 연달아 돌거나 겹치면
+# ⚠ 부팅 스케줄러(AtelierServer)와 자동 실행 스케줄러(PAISetup-AutoRun · PAISetup-AutoRun-Night)가 연달아 돌거나 겹치면
 #   동일 설치를 중복 수행하거나 대기 빗장(Mutex)에 걸린다.
 # 1) 다른 autorun 또는 install 프로세스가 있으면 멎었나 잰다 — 멎었다고 가르지 못한 것이 하나라도 있으면 즉시 종료한다.
 # 2) 다 멎었으면 거두고 제 일을 잇는다.
@@ -6833,8 +7104,11 @@ Log "=== PAISetup 자동 실행 시작 (PID $PID) ==="
 $myPid = $PID
 $myProc = Get-CimInstance Win32_Process -Filter "ProcessId = $myPid" -ErrorAction SilentlyContinue
 $parentPid = if ($myProc) { $myProc.ParentProcessId } else { 0 }
-$otherEngines = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
+function Get-OtherEngines {
+  @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
+}
+$otherEngines = @(Get-OtherEngines)
 
 # 멎었다고 보는 한도 — 그 회차의 글자가 이 분을 넘게 안 자랐어야 고아로 본다. 사람이 묻는 창 앞에서
 #   자리를 비운 설치를 멎은 것과 가를 길이 없어(관리자 승인 창은 그 프로세스 나무 밖에 뜬다) 점심 ·
@@ -7006,6 +7280,31 @@ function Stop-Engine($Proc) {
   return @{ Gone = $gone; Why = ($why -join ' · ') }
 }
 
+# ── 밤 회차와 로그온 회차가 겹치면 한쪽으로 기운다 (PAISetup #36) ──────────────────────────────
+# 밤 회차는 고아 한도(`$orphanMin`)보다 어린 것이 돌고 있으면 재지도 거두지도 않고 물러난다 — 그날 몫은 다른 회차가 든다. 그보다
+#   늙은 것만 있으면 아래 가드로 가 멎었나 재고 거둔다 — 안 그러면 다시 부팅하지 않는 PC 에서 멎은 설치를 아무도 안 거둔다
+#   (작업이 시간 한도로 끝나도 머리 없는 콘솔 밑의 손자는 남는다).
+# 로그온 회차가 막 선 밤 회차만 만나면 그것이 끝나기를 잠깐 기다린다. 부팅 뒤에는 놓친 밤 회차와 로그온 회차가 몇 초 사이로
+#   서는데, 밤 회차는 자리가 다르면 몇 초 안에 건너뛰고 자리를 바꿀 수 있는 것은 로그온 회차뿐이다 — 둘 다 물러나면 그날 아무도
+#   안 돈다. 기다려도 남아 있으면 밤 회차가 설치를 하는 중이고, 아래 가드가 로그온 회차를 물린다.
+$nightYoungSec = 120
+$nightWaitSec  = 30
+$youngOthers = @($otherEngines | Where-Object { ((Get-Date) - $_.CreationDate).TotalMinutes -lt $orphanMin })
+if ($Night -and $youngOthers) {
+  Log "다른 자동 실행 또는 설치가 돌고 있어 밤 회차는 물러납니다 ($($youngOthers.ProcessId -join ', '))."
+  exit 0
+}
+if ($otherEngines) {
+  $youngNight = @($otherEngines | Where-Object {
+    "$($_.CommandLine)" -match '\s-Night(\s|$)' -and ((Get-Date) - $_.CreationDate).TotalSeconds -lt $nightYoungSec })
+  if ($youngNight.Count -eq $otherEngines.Count) {
+    Log "막 선 밤 회차가 있습니다 ($($youngNight.ProcessId -join ', ')) — 끝나기를 최대 ${nightWaitSec}초 기다립니다."
+    $waitUntil = (Get-Date).AddSeconds($nightWaitSec)
+    while ((Get-Date) -lt $waitUntil -and @($youngNight | Where-Object { Test-Alive $_ }).Count) { Start-Sleep -Milliseconds 500 }
+    $otherEngines = @(Get-OtherEngines)
+  }
+}
+
 if ($otherEngines) {
   Log "다른 자동 실행 또는 설치 프로세스가 있습니다 ($($otherEngines.ProcessId -join ', ')). 멎었나 잽니다..."
   $stalled = @()
@@ -7036,7 +7335,7 @@ if ($otherEngines) {
     $stillThere = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
       Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') })
     if ($stillThere) {
-      Log "! 거두고 다시 쟀는데 $($stillThere.Count) 개가 남았습니다 ($($stillThere.ProcessId -join ', ')). 물러납니다 — 로그온할 때 다시 잽니다."
+      Log "! 거두고 다시 쟀는데 $($stillThere.Count) 개가 남았습니다 ($($stillThere.ProcessId -join ', ')). 물러납니다 — 다음 자동 실행 때 다시 잽니다."
       exit 0
     }
     Log "멎은 것을 다 거뒀습니다. 자동 실행을 잇습니다."
@@ -7045,7 +7344,6 @@ if ($otherEngines) {
   }
 }
 
-$stampFile = Join-Path $setupRoot '.autorun-stamp'
 if (Test-Path -LiteralPath $stampFile) {
   try {
     $lastRun = [datetime](Get-Content -LiteralPath $stampFile -Encoding UTF8 -ErrorAction Stop)
@@ -7082,6 +7380,135 @@ $targetEnvProbe = Join-Path $setupRoot 'install.env'
 if (-not (Test-Path -LiteralPath $targetEnvProbe)) {
   $targetEnvProbe = Join-Path $versionDirs[0].FullName 'install.env'
 }
+
+# ── 하루 한 번 · 자리 — 밤 회차는 자리를 안 바꾼다 (PAISetup #36) ────────────────────────────
+# 「지난 설치의 자리」는 설치가 남긴 `.autorun-site` 다 — `inside` · `outside` · `unknown`(프로브 없음), 자리에 기대는 걸음을 도는
+#   동안은 `switching`. 사람이 누른 설치도 적는다.
+# 「지금 자리」는 값 파일에 `#site-probe` 줄이 없으면 `unknown` 이고, 있으면 다음에 돌 엔진의 `Read-Directive` · `Test-Reach` 를
+#   떼어 와 잰다(같은 규칙을 여기 옮겨 적으면 한쪽만 낡는다). 떼어 온 둘은 알려진 답으로 먼저 시험하고, 못 들였거나 시험에 지면
+#   `unmeasured` 다. 줄이 있는지는 떼어 온 함수에 묻지 않는다 — 그 함수가 진 것을 「프로브 없음」으로 읽으면 자리를 바꾼다.
+# 가름 —
+#   · 밤 회차: 지금 자리가 잰 값(`inside` · `outside` · `unknown`)이고 지난 설치와 같을 때만 잇고, 사내 · 사외면 그 자리를 박는다
+#     (아래 「자리를 박는다」). 나머지는 아무것도 안 바꾸고 건너뛴다 — 집에서 깨어 있는 회사 노트북이 사외로 읽어 게이트웨이 값을
+#     걷으면 다음 날 회사에서 그 값 없이 서기 때문이다
+#   · 로그온 회차: 오늘 끝났으면 건너뛰되, 지금 자리를 재어 지난 설치와 다를 때만 다시 돈다 — 자리를 바꾸는 것은 로그온 회차와
+#     사람이 누른 설치의 몫이다. 못 쟀으면 건너뛴다
+$siteFile = Join-Path $setupRoot '.autorun-site'
+$siteWord = @{ inside = '사내'; outside = '사외'; unknown = '모름(프로브 없음)'; switching = '바꾸는 중에 멎음'; unmeasured = '못 쟀다' }
+
+$siteLast = ''
+if (Test-Path -LiteralPath $siteFile) {
+  try { $siteLast = (Get-Content -LiteralPath $siteFile -Raw -Encoding UTF8 -ErrorAction Stop).Trim() } catch { $siteLast = '' }
+}
+
+# 엔진에서 그 이름들의 함수 정의 글을 이름 차례로 낸다. 하나라도 못 찾으면 빈 목록.
+function Get-EngineFunctionText([string]$Engine, [string[]]$Names) {
+  $tk = $null; $er = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($Engine, [ref]$tk, [ref]$er)
+  $texts = New-Object System.Collections.ArrayList
+  foreach ($n in $Names) {
+    $fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq $n }.GetNewClosure(), $true)
+    if (-not $fn) { return }
+    [void]$texts.Add($fn.Extent.Text)
+  }
+  $texts
+}
+
+# 재는 값 파일은 뿌리의 것(`install.env`) 하나다 — 설치에 넘기는 것도 그것이다. 없으면 설치는 판 폴더의 것을 읽는데 그 판은
+#   아래 새 판 받기에서 바뀔 수 있어, 여기서 잰 줄이 설치가 읽을 줄과 같다고 못 한다 — 그때는 못 잰 것이다.
+$siteEnv = Join-Path $setupRoot 'install.env'
+$siteNow = ''
+if ($Night -or $doneToday) {
+  $hasProbe = $false
+  try {
+    $hasProbe = [bool](@(Get-Content -LiteralPath $siteEnv -Encoding UTF8 -ErrorAction Stop) -match '^\s*#\s*site-probe\s*=\s*\S')
+    $siteNow = 'unknown'
+  } catch { $siteNow = 'unmeasured' }
+  if ($hasProbe) {
+    $siteNow = 'unmeasured'
+    $defs = $null
+    try { $defs = @(Get-EngineFunctionText (Join-Path $versionDirs[0].FullName 'install.ps1') @('Read-Directive', 'Test-Reach')) } catch { $defs = $null }
+    if ($defs.Count -eq 2) {
+      # 이 스크립트 범위에 선다 — 함수 안에서 세우면 그 함수가 끝날 때 같이 사라진다.
+      foreach ($d in $defs) { try { . ([scriptblock]::Create($d)) } catch { } }
+      $selfOk = $false
+      $selfFile = Join-Path $setupRoot ".autorun-selftest-$PID.env"
+      $selfL = $null
+      try {
+        Set-Content -LiteralPath $selfFile -Value @('#autorun-selftest = ok') -Encoding UTF8 -ErrorAction Stop
+        $selfL = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
+        $selfL.Start()
+        $selfOk = ((Read-Directive $selfFile 'autorun-selftest') -eq 'ok') -and
+                  ((Test-Reach ('127.0.0.1:' + $selfL.LocalEndpoint.Port)) -eq $true)
+      } catch { $selfOk = $false } finally {
+        if ($selfL) { $selfL.Stop() }
+        Remove-Item -LiteralPath $selfFile -Force -ErrorAction SilentlyContinue
+      }
+      if ($selfOk) {
+        $probeAt = Read-Directive $siteEnv 'site-probe'
+        if ($probeAt) { $siteNow = if (Test-Reach $probeAt) { 'inside' } else { 'outside' } }
+      }
+    }
+  }
+  $nowSaid  = if ($siteWord[$siteNow]) { $siteWord[$siteNow] } else { $siteNow }
+  $lastSaid = if ($siteWord[$siteLast]) { $siteWord[$siteLast] } elseif ($siteLast) { $siteLast } else { '기록 없음' }
+  Log "자리 — 지금 $nowSaid · 지난 설치 $lastSaid"
+}
+$measured = ($siteNow -eq 'inside' -or $siteNow -eq 'outside' -or $siteNow -eq 'unknown')
+$sameSite = $measured -and ($siteNow -eq $siteLast)
+
+$pinSite = ''
+if ($doneToday -and -not ($measured -and -not $sameSite)) {
+  Log "오늘 이미 자동 실행이 끝났습니다 ($($doneAt.ToString('HH:mm'))). 건너뜁니다."
+  exit 0
+}
+if ($Night) {
+  if (-not $sameSite) {
+    Log "밤 회차는 자리를 안 바꿉니다 — 지금 자리가 지난 설치와 같다고 확인되지 않아 아무것도 안 바꾸고 건너뜁니다 (자리는 로그온 · 설치 창이 바꿉니다)."
+    exit 0
+  }
+  if ($siteNow -eq 'inside' -or $siteNow -eq 'outside') { $pinSite = $siteNow }
+}
+
+# 기록 창 — 머리 없는 콘솔로 뜬 로그온 회차(문지기가 `PAISETUP_AUTORUN_VIEWER=1` 을 넘긴다)는 제 창이 없다. 설치를 실제로 할 때만
+#   — 가드 · 하루 한 번 · 자리를 다 지난 여기서, 새 판을 받기 전에 — 이 회차의 기록을 따라 읽는 창을 하나 띄우고, 끝나면 그 창
+#   하나만 닫는다. 건너뛰는 회차는 아무 창도 안 띄운다. 창의 명령 줄에는 `autorun.ps1` · `install.ps1` 이 없다 — 있으면 가드들이
+#   그 창을 설치로 센다. 창을 멈춰도(빠른 편집) 설치는 안 멈춘다 — 따로 도는 프로세스다.
+# 창은 **최소화한 채 앞으로 안 가져오며** 띄운다(`SW_SHOWMINNOACTIVE`) — 일하는 사람의 입력을 빼앗지 않는다. `Start-Process` 로는 못
+#   한다: `-WindowStyle Minimized` 는 최소화하면서도 그 창을 앞 창으로 만들어(잰 값) 치던 글자가 그 창으로 간다. 그래서
+#   `CreateProcess` 에 보이기 값을 직접 넘긴다.
+# ⚠ 알려진 한계 — 이 몸통이 중간에 죽으면(작업 시간 한도 · 로그오프) 아래 닫기 칸에 안 닿아 이 창이 기록을 따라 읽은 채 남는다.
+#   사람이 닫으면 된다.
+$viewer = $null
+$viewerStart = $null
+if (-not $Night -and $env:PAISETUP_AUTORUN_VIEWER -eq '1') {
+  try {
+    Add-Type -Namespace PAISetup -Name Viewer -MemberDefinition @"
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public struct SI { public int cb; public string r; public string d; public string t; public int x; public int y; public int xs; public int ys; public int xc; public int yc; public int fa; public int flags; public short show; public short r2; public System.IntPtr r3; public System.IntPtr i; public System.IntPtr o; public System.IntPtr e; }
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+public struct PI { public System.IntPtr hp; public System.IntPtr ht; public int pid; public int tid; }
+[System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+static extern bool CreateProcess(string app, System.Text.StringBuilder cmd, System.IntPtr pa, System.IntPtr ta, bool inherit, uint flags, System.IntPtr env, string dir, ref SI si, out PI pi);
+[System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool CloseHandle(System.IntPtr h);
+// 새 콘솔(CREATE_NEW_CONSOLE)로, 최소화한 채 앞으로 안 가져오며(STARTF_USESHOWWINDOW · SW_SHOWMINNOACTIVE) 띄운다. 내는 것 — PID, 못 띄우면 0.
+public static int StartQuiet(string app, string cmd) {
+  SI si = new SI(); si.cb = System.Runtime.InteropServices.Marshal.SizeOf(si); si.flags = 1; si.show = 7;
+  PI pi;
+  if (!CreateProcess(app, new System.Text.StringBuilder(cmd), System.IntPtr.Zero, System.IntPtr.Zero, false, 0x10, System.IntPtr.Zero, null, ref si, out pi)) return 0;
+  CloseHandle(pi.ht); CloseHandle(pi.hp); return pi.pid;
+}
+"@
+    $viewExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $viewCmd = "`$host.UI.RawUI.WindowTitle = 'PAISetup 자동 실행'; Get-Content -LiteralPath '$($logFile.Replace("'", "''"))' -Encoding UTF8 -Wait -Tail 200"
+    $viewPid = [PAISetup.Viewer]::StartQuiet($viewExe, ('"' + $viewExe + '" -NoProfile -ExecutionPolicy Bypass -Command "' + $viewCmd.Replace('"', '\"') + '"'))
+    if ($viewPid) {
+      $viewer = Get-Process -Id $viewPid -ErrorAction Stop
+      $viewerStart = $viewer.StartTime
+    }
+  } catch { $viewer = $null }
+}
+Remove-Item Env:PAISETUP_AUTORUN_VIEWER -ErrorAction SilentlyContinue
 
 # ── 설치본 자신을 새 릴리스로 간다 ───────────────────────────────────────────
 # 제품만 올리고 설치본은 그대로 두면 한 번 깐 기계가 그 판에 영영 묶인다 — 사람이
@@ -7137,6 +7564,24 @@ if (-not (Test-Path -LiteralPath $targetEnv)) {
   $targetEnv = Join-Path $versionDirs[0].FullName 'install.env'
 }
 
+# 밤 회차가 잰 자리를 박는다 — 값 파일의 사본 맨 앞에 `#site` 를 둔다(지시는 먼저 적힌 줄이 이긴다). 설치는 그 줄을 보면 자리를
+#   다시 안 재고, 얼리는 사본에서는 `#site` 를 뺀다. 못 박으면 자리를 바꿀 수 있으므로 건너뛴다.
+# ⚠ 사본은 임시 폴더에 두지 않는다 — 설치는 임시 폴더로 넘겨받은 값 파일을 `#autorun` 을 읽기 전에 지우므로, 그러면 자동 실행
+#   칸을 건너뛰어 이 스크립트 · 두 작업 · 자리 기록이 밤 회차에서 안 갈린다. 사본에는 키가 없다(뿌리의 값 파일이 이미 뺐다).
+$runEnv = $targetEnv
+if ($pinSite) {
+  try {
+    $pinned = Join-Path $setupRoot '.autorun-night.env'
+    $kept = @(Get-Content -LiteralPath $targetEnv -Encoding UTF8 -ErrorAction Stop | Where-Object { $_ -notmatch '^\s*#\s*site\s*=' })
+    Set-Content -LiteralPath $pinned -Value (@("#site = $pinSite") + $kept) -Encoding UTF8 -ErrorAction Stop
+    $runEnv = $pinned
+    Log "자리를 $($siteWord[$pinSite])로 박고 잇습니다."
+  } catch {
+    Log "! 자리를 박은 값 파일을 못 만들었다 — 자리를 바꿀 수 있어 건너뜁니다 ($(($_.Exception.Message -split '\r?\n')[0]))"
+    exit 0
+  }
+}
+
 # 사람이 설치 때 고른 것 — 안 넘기면 껐던 제품이 매 로그온 표의 기본값으로 되살아난다.
 $extra    = @()
 $argsFile = Join-Path $setupRoot 'autorun.args'
@@ -7163,28 +7608,44 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 Log "install.ps1 실행: $($versionDirs[0].Name)  $($extra -join ' ')"
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $targetEnv @extra |
+# 밤 회차라는 것은 이 프로세스의 환경변수로만 넘긴다 — 설치가 사람을 부르는 걸음(로그인 · 알림 창 · 「제공기능」)을 이 값으로 건너뛴다.
+#   git · gh 도 묻지 않게 한다 — 자격 창(Git Credential Manager)이나 묻는 줄에서 사람 없이 멎지 않고 바로 지게 한다.
+if ($Night) {
+  $env:PAISETUP_AUTORUN_NIGHT = '1'
+  $env:GIT_TERMINAL_PROMPT    = '0'
+  $env:GCM_INTERACTIVE        = 'never'
+  $env:GH_PROMPT_DISABLED     = '1'
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch -EnvFile $runEnv @extra |
   ForEach-Object {
     Write-Host $_
     Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8
   }
 $rc = $LASTEXITCODE
+if ($runEnv -ne $targetEnv) { Remove-Item -LiteralPath $runEnv -Force -ErrorAction SilentlyContinue }
+foreach ($ev in 'PAISETUP_AUTORUN_NIGHT', 'GIT_TERMINAL_PROMPT', 'GCM_INTERACTIVE', 'GH_PROMPT_DISABLED') {
+  if ($Night) { Remove-Item "Env:$ev" -ErrorAction SilentlyContinue }
+}
 Log "=== PAISetup 자동 실행 완료 (코드 $rc) ==="
+try { [IO.File]::WriteAllText($lastFile, ("{0} {1} 코드 {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm'), $runKind, $rc), [System.Text.Encoding]::UTF8) } catch { }
 
 if ($rc -eq 0) {
   try { [IO.File]::WriteAllText($stampFile, (Get-Date -Format 'o'), [System.Text.Encoding]::UTF8) } catch { }
 }
 
-if ([Environment]::UserInteractive) {
+if ($viewer) {
+  Log 'PAISetup 자동 동기화가 끝났습니다. 3초 후 창이 닫힙니다...'
+  Start-Sleep -Seconds 3
+  # 띄운 그 프로세스만 닫는다 — 같은 번호에 같은 시작 시각일 때만 끈다(번호를 남이 물려받았으면 안 끈다).
+  try {
+    $viewNow = Get-Process -Id $viewer.Id -ErrorAction Stop
+    if ($viewNow.StartTime -eq $viewerStart) { $viewNow.Kill() }
+  } catch { }
+} elseif ([Environment]::UserInteractive) {
   Write-Host ''
   Write-Host '  PAISetup 자동 동기화가 완료되었습니다. 3초 후 창이 닫힙니다...' -ForegroundColor Green
   Start-Sleep -Seconds 3
 }
-
-try {
-  $old = Get-ChildItem -Path $logDir -Filter "autorun-*.log" | Sort-Object LastWriteTime -Descending | Select-Object -Skip 15
-  foreach ($f in $old) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue }
-} catch { }
 
 # 옛 판 폴더를 거둔다 — **푸는 자는 새 폴더만 만들고 옛 것을 안 지운다.** 그래서 판마다 3MB 가
 # 영구히 쌓이는데, 아무도 세지 않아 눈에 안 걸린다(실측: 열다섯 벌 50MB).
@@ -7224,7 +7685,7 @@ try {
         Write-Host "  ! 자동 실행이 읽을 값 파일을 못 남겼다 — $(Say-Why $_)" -ForegroundColor Yellow
       }
     } else {
-      Write-Host '  ! 자동 실행이 읽을 값 파일을 못 남겼다 — 값을 못 떴다 (다음 로그온은 딸려 온 기본값으로 돈다)' -ForegroundColor Yellow
+      Write-Host '  ! 자동 실행이 읽을 값 파일을 못 남겼다 — 값을 못 떴다 (다음 자동 실행은 딸려 온 기본값으로 돈다)' -ForegroundColor Yellow
     }
 
     # ⚠ **고른 제품도 같이 남긴다.** 안 남기면 자동 실행이 `-Pick` 없이 돌아 **사람이 끈 제품을
@@ -7242,36 +7703,149 @@ try {
       Write-Host "  ! 자동 실행이 읽을 선택 파일을 못 남겼다 — $(Say-Why $_)" -ForegroundColor Yellow
     }
 
+    # 지난 설치의 자리 — 자리에 기대는 걸음을 다 지난 여기서 끝 값을 적는다(그 앞은 「자동 실행이 읽는 지난 설치의 자리」 칸이
+    #   `switching` 을 적었다). 사람이 누른 설치도 여기를 지난다.
     try {
-      $action = New-ScheduledTaskAction -Execute "powershell.exe" `
-                  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$autoScript`""
-      $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-      $trigger.Delay = "PT1M"
-      $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
-      $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+      Set-Content -LiteralPath $AutoRunSiteRecord -Value $site -Encoding UTF8 -ErrorAction Stop
+    } catch {
+      Remove-Item -LiteralPath $AutoRunSiteRecord -Force -ErrorAction SilentlyContinue
+      Write-Host "  ! 이번 설치의 자리를 못 남겼다 — $(Say-Why $_) (밤 자동 실행은 다음 설치까지 건너뛴다)" -ForegroundColor Yellow
+    }
 
-      Register-ScheduledTask -TaskName $AutoRunTaskName -Action $action -Trigger $trigger `
+    # 두 작업 다 사용자 권한 그대로 돈다(`Interactive` · 승격 없음) — 사람이 로그온해 있을 때만 서고, 잠긴 세션에서도 선다.
+    # 한 작업이 아직 돌고 있으면 그 작업의 새 회차는 안 뜬다(`IgnoreNew`). 두 작업이 겹치면 몸통의 가드가 가른다.
+    # `-Force` 로 통째로 덮으므로, 옛 판이 건 로그온 작업도 다음 설치(자동 실행 포함)에서 이 꼴로 갈린다.
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+                  -MultipleInstances IgnoreNew
+    $psExe   = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
+
+    # 문지기 — 두 작업이 다 이것을 부른다. 로그온 회차는 몸통을 그대로 부르되 기록 창을 띄우라고 넘기고(`PAISETUP_AUTORUN_VIEWER`),
+    #   밤 회차는 몸통이 밤 회차를 아는 판일 때만 `-Night` 로 부른다. 몸통이 없거나 표지가 없으면 밤 작업을 걷는다. 몸통을 못
+    #   읽었으면(백신 · 백업의 잠금, 다시 쓰는 중) 걷지 않고 진 것으로 남기고 나간다 — 멀쩡한 PC 의 밤 작업이 저절로 사라지면 안 된다.
+    # ⚠ 알려진 한계 — 이 문지기 뒤에 옛 판 몸통(기록 창을 모른다)이 놓이면 로그온 회차는 머리 없는 콘솔에서 창 없이 돈다. 옛 판
+    #   설치기는 로그온 작업을 제 꼴로 다시 걸므로 그 판을 다시 누른 PC 에서는 안 생긴다.
+    $gateOk = $false
+    try {
+      $gateText = @'
+# PAISetup 자동 실행의 문지기 — 작업 스케줄러의 로그온 · 밤 작업이 부르고, 설치기가 쓴다.
+param([switch]$Night)
+$ErrorActionPreference = 'SilentlyContinue'
+$body  = Join-Path $PSScriptRoot 'autorun.ps1'
+$psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (-not $Night) {
+  if (-not (Test-Path -LiteralPath $body)) { exit 0 }
+  $env:PAISETUP_AUTORUN_VIEWER = '1'
+  & $psExe -NoProfile -ExecutionPolicy Bypass -File $body
+  exit $LASTEXITCODE
+}
+if (Test-Path -LiteralPath $body) {
+  $text = $null
+  try { $text = [IO.File]::ReadAllText($body) } catch {
+    $why = (($_.Exception.Message -split "`r?`n")[0]) -replace '\s+', ' '
+    try { [IO.File]::WriteAllText((Join-Path $PSScriptRoot '.autorun-last'), ((Get-Date -Format 'yyyy-MM-dd HH:mm') + " 밤 문지기 — 몸통을 못 읽어 건너뜀 ($why) 코드 unreadable"), [Text.Encoding]::UTF8) } catch { }
+    exit 1
+  }
+  if ($text.Contains('@@MARKER@@')) {
+    & $psExe -NoProfile -ExecutionPolicy Bypass -File $body -Night
+    exit $LASTEXITCODE
+  }
+}
+Unregister-ScheduledTask -TaskName '@@TASK@@' -Confirm:$false
+exit 0
+'@
+      $autoGate = Join-Path $setupRoot $AutoRunGate
+      [IO.File]::WriteAllText($autoGate, $gateText.Replace('@@MARKER@@', $AutoRunNightMarker).Replace('@@TASK@@', $AutoRunNightTaskName),
+                              [System.Text.Encoding]::UTF8)
+      $gateOk = $true
+    } catch {
+      Write-Host "  ! 자동 실행 문지기를 못 썼다 — $(Say-Why $_)" -ForegroundColor Yellow
+    }
+
+    # 창 없이 띄운다 — 머리 없는 콘솔(`conhost --headless`)은 창을 안 만든다. `powershell -WindowStyle Hidden` 은 기본 터미널이
+    #   Windows Terminal 인 PC 에서 창을 잠깐 띄운 뒤 작업 표시줄에 남는다. 이 PC 의 conhost 가 그 깃발을 아는지는 이름이 아니라
+    #   **돌려서** 본다 — 그 아래 자식이 파일을 쓰면 안다. 모르면 로그온 작업은 지금까지의 보이는 콘솔로, 밤 작업은
+    #   `-WindowStyle Hidden` 으로 간다(창이 잠깐 보일 수 있다). 밤 회차는 시험을 안 돌린다 — 그 깃발을 모르는 conhost 는 시험
+    #   중에 창을 띄울 수 있다. 지금 걸린 밤 작업의 꼴을 그대로 잇는다.
+    $headless = $false
+    $hf = Join-Path ([IO.Path]::GetTempPath()) "paisetup-headless-$PID.txt"
+    $hc = Join-Path ([IO.Path]::GetTempPath()) "paisetup-headless-$PID.ps1"
+    try {
+      if ($NightRun) {
+        $curNight = Get-ScheduledTask -TaskName $AutoRunNightTaskName -ErrorAction SilentlyContinue
+        $headless = [bool]($curNight -and "$($curNight.Actions[0].Execute)" -like '*\conhost.exe')
+      } elseif (Test-Path -LiteralPath $conhost) {
+        # 자식이 제 콘솔 창이 없는지(`GetConsoleWindow()` 가 0) 적는다 — 「돌았다」만 보면 깃발을 버리고 보이는 콘솔로 돈 conhost 도
+        #   지난다.
+        Set-Content -LiteralPath $hc -Encoding UTF8 -Value @(
+          'param([string]$Out)',
+          'Add-Type -Namespace PAISetupHead -Name K -MemberDefinition ''[System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();''',
+          'Set-Content -LiteralPath $Out -Value ([string]([PAISetupHead.K]::GetConsoleWindow() -eq [IntPtr]::Zero))')
+        $hp = Start-Process -FilePath $conhost -WindowStyle Hidden -PassThru -ArgumentList @(
+                '--headless', "`"$psExe`"", '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$hc`"", '-Out', "`"$hf`"")
+        if (-not $hp.WaitForExit(20000)) { try { $hp.Kill() } catch { } }
+        $headless = (Test-Path -LiteralPath $hf) -and ((Get-Content -LiteralPath $hf -Raw).Trim() -eq 'True')
+      }
+    } catch { $headless = $false } finally { Remove-Item -LiteralPath $hf, $hc -Force -ErrorAction SilentlyContinue }
+    $headless = $headless -and $gateOk
+    $gateArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $setupRoot $AutoRunGate)`""
+
+    try {
+      $action = if ($headless) {
+        New-ScheduledTaskAction -Execute $conhost -Argument "--headless `"$psExe`" $gateArgs"
+      } else {
+        New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$autoScript`""
+      }
+      $onLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+      $onLogon.Delay = "PT1M"
+      Register-ScheduledTask -TaskName $AutoRunTaskName -Action $action -Trigger $onLogon `
                              -Principal $principal -Settings $settings `
                              -Description "PAISetup background auto-update & environment sync on logon" -Force | Out-Null
-      Write-Host "  부팅 시 자동 실행 — 걸었다 (작업 스케줄러 · $AutoRunTaskName)" -ForegroundColor Green
+      Write-Host ("  부팅 시 자동 실행 — 걸었다 (작업 스케줄러 · $AutoRunTaskName · 로그온 1분 뒤 · " +
+                  $(if ($headless) { '설치할 때만 기록 창' } else { '보이는 콘솔 창' }) + ')') -ForegroundColor Green
     } catch {
       Write-Host "  ! 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
     }
-  } else {
+
     try {
-      if (Test-AutoRunTask $AutoRunTaskName) {
-        Unregister-ScheduledTask -TaskName $AutoRunTaskName -Confirm:$false -ErrorAction Stop
-        # 걷으면 저것이 읽던 것도 같이 걷는다 — 남겨 두면 다음에 켤 때 **옛 선택이 되살아난다.**
-        $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
-        foreach ($f in @('autorun.ps1', 'autorun.args', '.autorun-stamp')) {
-          Remove-Item -LiteralPath (Join-Path $setupRoot $f) -Force -ErrorAction SilentlyContinue
-        }
-        Write-Host "  부팅 시 자동 실행 — 걷었다 (작업 스케줄러 · $AutoRunTaskName)" -ForegroundColor Green
+      if (-not $gateOk) { throw '문지기가 없어 밤 작업을 안 건다' }
+      $nightAction = if ($headless) {
+        New-ScheduledTaskAction -Execute $conhost -Argument "--headless `"$psExe`" $gateArgs -Night"
       } else {
-        Write-Host "  부팅 시 자동 실행 — 등록되어 있지 않다"
+        New-ScheduledTaskAction -Execute $psExe -Argument "-WindowStyle Hidden $gateArgs -Night"
       }
+      $onNight = New-ScheduledTaskTrigger -Daily -At $AutoRunNightAt -RandomDelay $AutoRunNightSpread
+      Register-ScheduledTask -TaskName $AutoRunNightTaskName -Action $nightAction -Trigger $onNight `
+                             -Principal $principal -Settings $settings `
+                             -Description "PAISetup nightly auto-update & environment sync (never switches site)" -Force | Out-Null
+      Write-Host ("  밤 자동 실행 — 걸었다 (작업 스케줄러 · $AutoRunNightTaskName · 매일 $($AutoRunNightAt.ToString('HH:mm')) 무렵 · 놓치면 켜진 뒤 · " +
+                  $(if ($headless) { '창 없이' } else { '숨긴 창 — 잠깐 보일 수 있다' }) + ')') -ForegroundColor Green
     } catch {
-      Write-Host "  ! 자동 실행 스케줄러 등록 해제 실패 — $(Say-Why $_)" -ForegroundColor Yellow
+      Write-Host "  ! 밤 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
+    }
+  } else {
+    # 작업마다 따로 걷는다 — 하나를 못 걷어도 다른 하나는 걷는다.
+    $gone = @()
+    foreach ($tn in @($AutoRunTaskName, $AutoRunNightTaskName)) {
+      try {
+        if (Test-AutoRunTask $tn) {
+          Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction Stop
+          $gone += $tn
+        }
+      } catch {
+        Write-Host "  ! 자동 실행 스케줄러 등록 해제 실패 ($tn) — $(Say-Why $_)" -ForegroundColor Yellow
+      }
+    }
+    if ($gone) {
+      # 걷으면 저것이 읽던 것도 같이 걷는다 — 남겨 두면 다음에 켤 때 **옛 선택이 되살아난다.**
+      $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
+      foreach ($f in @('autorun.ps1', 'autorun.args', '.autorun-stamp', '.autorun-night.env', '.autorun-last', $AutoRunGate, (Split-Path -Leaf $AutoRunSiteRecord))) {
+        Remove-Item -LiteralPath (Join-Path $setupRoot $f) -Force -ErrorAction SilentlyContinue
+      }
+      Write-Host "  부팅 시 자동 실행 — 걷었다 (작업 스케줄러 · $($gone -join ' · '))" -ForegroundColor Green
+    } elseif (-not (Test-AutoRunTask $AutoRunTaskName) -and -not (Test-AutoRunTask $AutoRunNightTaskName)) {
+      Write-Host "  부팅 시 자동 실행 — 등록되어 있지 않다"
     }
   }
 }
@@ -7296,7 +7870,17 @@ $userEnv = [Environment]::GetEnvironmentVariables('User')
 $codeRuns = Measure-Runs 'code' '--version'
 $hasCode = ($codeRuns -eq 'yes')
 $extList = @()
-if ($hasCode) { $extList = Get-Quiet 'code' '--list-extensions' }
+# 깔린 확장 목록도 울타리 안에서 묻는다(`$ExtListCap`) — 못 읽었으면(넘김 · 0 아닌 값) 고른 확장 칸이 다 그 물음 하나에 걸린 「못 쟀다」다
+#   (못 읽은 목록은 빈 목록이 아니다 — 결정 0145).
+$extListRc = 0
+if ($hasCode) {
+  $el = [IO.Path]::GetTempFileName()
+  try {
+    $extListRc = Invoke-LoggedCapped 'code' @('--list-extensions') $el $ExtListCap
+    if ($extListRc -eq -2) { Add-ProbeOverflow 'code --list-extensions' $ExtListCap }
+    $extList = @(Get-Content -LiteralPath $el -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() })
+  } finally { Remove-Item -LiteralPath $el, "$el.err" -ErrorAction SilentlyContinue }
+}
 # ⚠ **안 고른 것은 안 잰다** — 켜지도 않은 것을 [X] 로 찍으면 **멀쩡한 설치가 빨갛게 끝난다.**
 #   VS Code 도 고르는 것이 됐으므로 이 줄이 그 문 아래 있어야 한다. 사외 기본이 「끔」이라,
 #   안 걸면 **기본값으로 돌린 사람마다 「끝내지 못했다 — VS Code」를 본다**(실측 2026-09-17).
@@ -7311,7 +7895,8 @@ if (-not $NoVsCode) {
   } else {
     $checks += @{ Name='VS Code'; Ok = $hasCode }
     foreach ($x in $ExtPicks) {
-      $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) }
+      if ($extListRc -ne 0) { $checks += @{ Name = $x.Label; State = 'unmeasured'; Probe = 'code --list-extensions'; Why = (Format-ProbeWhy $extListRc $ExtListCap) } }
+      else                   { $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) } }
     }
   }
 }
@@ -7645,7 +8230,9 @@ if ($wantVcRuntime) {
   }
 }
 if ($wantAutoRun -eq $true) {
-  $checks += @{ Name = "부팅 시 자동 실행 ($AutoRunTaskName)"; Ok = (Test-AutoRunTask $AutoRunTaskName) }
+  # 두 작업이 다 서야 선 것이다 — 로그온 작업만 서면 안 끄는 PC 는 여전히 날마다 안 돈다.
+  $checks += @{ Name = "부팅 시 자동 실행 ($AutoRunTaskName · $AutoRunNightTaskName)"
+                Ok   = ((Test-AutoRunTask $AutoRunTaskName) -and (Test-AutoRunTask $AutoRunNightTaskName)) }
 }
 # 칸을 찍는다 — 섰다 `[O]` · 졌다 `[X]` · 못 쟀다 `[?]`(결정 0141).
 # ⚠ **못 쟀다를 `[X]` 로 찍지 않는다.** 사람은 `[X]` 를 「그 제품이 없다」로 읽고 깔러 간다 — 이미 깔린 것을 다시 까는
@@ -7712,7 +8299,7 @@ if ($redChecks -gt 0) {
   Write-Host ''
 }
 if ($unmeasuredChecks -gt 0) {
-  Write-Host "검증에서 $unmeasuredChecks 칸을 못 쟀다 — 바로 위 [?] 가 그것이다. 없는 것이 아니라 그 명령이 ${ProbeCap}초 안에 안 끝났다" -ForegroundColor Yellow
+  Write-Host "검증에서 $unmeasuredChecks 칸을 못 쟀다 — 바로 위 [?] 가 그것이다. 없는 것이 아니라 그 명령이 답을 못 냈다(한도 · 까닭은 줄마다 위에 적혔다)" -ForegroundColor Yellow
   Write-Host '  다시 깔지 말고 그 명령을 터미널에서 한 번 쳐 본다 — 거기서도 멎으면 그 도구 · 보안 소프트 쪽이다. 서면 설치를 다시 누른다' -ForegroundColor Yellow
   Write-Host ''
 }
@@ -7967,7 +8554,16 @@ if ($NoLaunch) {
       #   기록 칸 한 줄에 드는 길이로 따로 낸다.
       if ($opened -contains 'VS Code') {
         $vsTrust = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\vscode-trust.py'
-        $vsSeen = if (Test-Path -LiteralPath $vsTrust) { @(Get-Quiet 'python' @('-X', 'utf8', $vsTrust, 'status')) -match '^SEEN=[1-9]' } else { @() }
+        # 묻는 한 번에 울타리를 두른다 — 넘기면 「못 물었다」라 줄을 낸다
+        $vsSeen = @()
+        if (Test-Path -LiteralPath $vsTrust) {
+          $vl = [IO.Path]::GetTempFileName()
+          try {
+            $vrc = Invoke-LoggedCapped 'python' @('-X', 'utf8', $vsTrust, 'status') $vl $ProbeCap
+            if ($vrc -eq -2) { Add-ProbeOverflow 'python vscode-trust.py status' $ProbeCap }
+            else { $vsSeen = @(@(Get-Content -LiteralPath $vl -Encoding UTF8 -ErrorAction SilentlyContinue) -match '^SEEN=[1-9]') }
+          } finally { Remove-Item -LiteralPath $vl, "$vl.err" -ErrorAction SilentlyContinue }
+        }
         if (-not $vsSeen) {
           Write-Host '  VS Code 가 이 폴더를 믿느냐고 물으면 Trust 한 번 — 확장이 함께 풀린다' -ForegroundColor Yellow
         }
@@ -7999,7 +8595,8 @@ if ($NoLaunch) {
 # ⚠ **창은 기다리지 않는다** — 따로 띄우고 이 몸통은 끝난다. 닫으면 그대로(Claude), 고르고 누르면 그 선택이 새 기록이 된다.
 # 알림 창을 띄웠나(`$noticeShown`) — 그 창이 닫힐 때 「제공기능」을 열므로 아래 「제공기능」 칸이 안 연다.
 $noticeShown = $false
-if ($PersonalUpgrade) {
+# 밤 자동 실행은 기록도 안 고친다 — 고치면 옛 칸이 사라져 알림 창을 띄울 다음 회차가 없다. 다음 로그온 · 설치 창이 둘 다 한다.
+if ($PersonalUpgrade -and -not $NightRun) {
   $upArgsFile = Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'autorun.args'
   try {
     if (Test-Path -LiteralPath $upArgsFile) {
@@ -8028,16 +8625,21 @@ if ($PersonalUpgrade) {
 # 설치 창 · 콘솔 · 로그온 자동 실행 어느 판이든 같다 — 창의 「제공기능」 링크는 다시 볼 때의 길로 남는다. 옛 제작자 칸 알림 창을 띄운
 #   판은 그 창이 연다(위 `$noticeShown`).
 # ⚠ **무엇을 던져도 설치를 못 끝낸다** — 안내 페이지는 덤이다(앱 열기 칸과 같은 규율).
-try {
-  $featHow = Open-FeaturesOnce $DistVersion $noticeShown `
-                               (Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'features.major') (Join-Path $Here 'features.html')
-  switch ($featHow) {
-    'opened' { Write-Host "  제공기능 — 이 판($DistVersion)의 앞 두 자리를 처음 깐 설치라 브라우저로 열었다" -ForegroundColor Green }
-    'nopage' { Write-Host '  ! 제공기능 — 이 폴더에 features.html 이 없어 못 열었다 (다음 설치 · 로그온에 다시 본다)' -ForegroundColor Yellow }
-    'failed' { Write-Host '  ! 제공기능 — 브라우저로 못 열었다 (다음 설치 · 로그온에 다시 연다)' -ForegroundColor Yellow }
+# 밤 자동 실행은 열지도 적지도 않는다 — 적으면 그 판을 본 것으로 남아 다음 로그온 · 설치 창이 안 연다.
+if ($NightRun) {
+  Write-Host '  제공기능 — 밤 자동 실행이라 안 연다 (다음 로그온 · 설치 창이 연다)'
+} else {
+  try {
+    $featHow = Open-FeaturesOnce $DistVersion $noticeShown `
+                                 (Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'features.major') (Join-Path $Here 'features.html')
+    switch ($featHow) {
+      'opened' { Write-Host "  제공기능 — 이 판($DistVersion)의 앞 두 자리를 처음 깐 설치라 브라우저로 열었다" -ForegroundColor Green }
+      'nopage' { Write-Host '  ! 제공기능 — 이 폴더에 features.html 이 없어 못 열었다 (다음 설치 · 로그온에 다시 본다)' -ForegroundColor Yellow }
+      'failed' { Write-Host '  ! 제공기능 — 브라우저로 못 열었다 (다음 설치 · 로그온에 다시 연다)' -ForegroundColor Yellow }
+    }
+  } catch {
+    Write-Host "  ! 제공기능 — $(Say-Why $_)" -ForegroundColor Yellow
   }
-} catch {
-  Write-Host "  ! 제공기능 — $(Say-Why $_)" -ForegroundColor Yellow
 }
 
 Write-Host ''

@@ -90,7 +90,17 @@ try {
 
 if (-not $uiOk) {
   Write-Host '화면을 못 띄운다 — 콘솔로 진행한다.' -ForegroundColor Yellow
-  & $Engine -NoDevTools:$NoDevTools -WithPersonalConfig:$WithPersonalConfig -PersonalFor $PersonalFor -NoUpgrade:$NoUpgrade
+  # ⚠ **몸통을 제 프로세스로 띄운다 — 이 프로세스 안에서 부르지 않는다.** 빗장을 쥔 설치를 찾는 두 자(몸통의 `Find-EngineHolders` ·
+  #   로그온 자동 실행의 가드)는 명령줄에 `install.ps1` 이 든 파워셸만 본다. 안에서 부르면 명령줄이 이 파일 이름이라 둘 다 못 보고,
+  #   빗장에 막힌 다음 판이 쥔 쪽을 못 댄다. 같은 콘솔을 물려받으므로 묻는 줄 · 찍는 줄은 그대로다.
+  # ⚠ **켠 스위치 · 빈 값이 아닌 것만 넘긴다** — `-File` 로 넘긴 `-NoDevTools:False` 는 스위치로 못 바뀌고(인자 변환 오류), 빈
+  #   `-PersonalFor` 는 값이 떨어져 「인자가 없다」로 진다 — 둘 다 몸통이 아예 안 뜬다(실측 2026-10-15 · Windows PowerShell 5.1).
+  $engineArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Engine)
+  if ($NoDevTools)         { $engineArgs += '-NoDevTools' }
+  if ($WithPersonalConfig) { $engineArgs += '-WithPersonalConfig' }
+  if ($PersonalFor)        { $engineArgs += @('-PersonalFor', $PersonalFor) }
+  if ($NoUpgrade)          { $engineArgs += '-NoUpgrade' }
+  & (Get-Process -Id $PID).Path @engineArgs
   # ⚠ **판정을 먼저 집는다.** `Hold-Console` 뒤에 읽으면 그 사이에 도는 것이 `$LASTEXITCODE`
   #   를 갈아치울 수 있고, 그러면 **몸통이 진 판이 0 으로 보고된다.**
   $rc = $LASTEXITCODE
@@ -449,20 +459,20 @@ function Sync-PersonalBoxes {
   foreach ($c in $cPers) { $c.Enabled = Test-PersonalBoxLive $c }
 }
 
-# ⚠ **로그온할 때 자동 실행** — 작업 스케줄러(`PAISetup-AutoRun`)가 설치 몸통을 **보이는 콘솔 창**
-#   으로 다시 돌려 깔린 것을 최신으로 올리고 환경을 다시 맞춘다. 설치본 자신도 `#update-repo` 의 최신
-#   릴리스를 받아 지문을 대조한 뒤 그 판으로 간다(몸통 머리말).
-# ⚠ **「백그라운드」라고 적지 않는다** — 창이 떠서 설치 기록이 흐른다. 옛 글자는 「백그라운드에서」였는데
-#   실물은 보이는 창이라, 사람은 그 창을 보고 무엇이 도는지 몰랐다. 글자가 실물과 다르면 그만큼이
-#   조용한 거짓이 된다. 보이는 창은 일부러 둔다 — 도는 것이 보이고 멈춘 걸음이 눈에 띈다.
+# ⚠ **로그온할 때 · 밤마다 자동 실행** — 작업 스케줄러가 로그온 때(`PAISetup-AutoRun`)와 매일 새벽
+#   (`PAISetup-AutoRun-Night`) 설치 몸통을 다시 돌려 깔린 것을 최신으로 올리고 환경을 다시 맞춘다 — 하루 한 번.
+#   설치본 자신도 `#update-repo` 의 최신 릴리스를 받아 지문을 대조한 뒤 그 판으로 간다(몸통 머리말).
+# ⚠ **「백그라운드」라고 적지 않는다** — 로그온 회차가 설치를 실제로 하면 기록 창이 떠서(작업 표시줄에 내려 둔 채)
+#   설치 기록이 흐른다. 글자가 실물과 다르면 그만큼이 조용한 거짓이 된다. 그 창은 일부러 둔다 — 도는 것이
+#   보이고 멈춘 걸음이 눈에 띈다. 밤 회차는 창 없이 돈다.
 $cAuto = New-Object Windows.Forms.CheckBox
-$cAuto.Text = '로그온할 때 설치 창을 띄워 깔린 것을 최신으로 올리고 환경을 맞춥니다'
+$cAuto.Text = '로그온할 때와 밤마다 깔린 것을 최신으로 올리고 환경을 맞춥니다 (하루 한 번)'
 $cAuto.Location = New-Object Drawing.Point(16, (72 + $appRow))
 $cAuto.Size = New-Object Drawing.Size(560, 22)
 # ⚠ **못 묻는 것을 「없다」로 읽는다** — 스케줄러 모듈이 없는 판에서 나는 「그런 명령이 없다」는
 #   `-ErrorAction` 으로 안 막히고, 이 줄은 창이 뜨기 **전**이라 그대로 두면 창이 아예 안 뜬다.
 $hasAutoTask = $false
-try { $hasAutoTask = [bool](Get-ScheduledTask -TaskName 'PAISetup-AutoRun' -ErrorAction SilentlyContinue) } catch { }
+try { $hasAutoTask = [bool](Get-ScheduledTask -TaskName 'PAISetup-AutoRun', 'PAISetup-AutoRun-Night' -ErrorAction SilentlyContinue) } catch { }
 $autoDirective = Get-Directive 'autorun'
 $cAuto.Checked = $hasAutoTask -or ($autoDirective -eq 'yes')
 $gO.Controls.Add($cAuto)
