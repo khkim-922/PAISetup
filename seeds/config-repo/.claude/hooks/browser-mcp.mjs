@@ -17,15 +17,20 @@
  *     「Browser is already in use」로 선다
  *   · `--output-dir` — 이름 없이 찍은 그림 · 스냅숏 파일을 임시 폴더 밑에 둔다. 기본은 작업 폴더의 `.playwright-mcp` 라
  *     저장소에 파일이 쌓인다
- * 위 넷은 서버가 제 환경변수(`PLAYWRIGHT_MCP_EXECUTABLE_PATH` · `_HEADLESS` · `_ISOLATED` · `_OUTPUT_DIR`)로도 받는다 —
- * 그 변수가 서 있으면 그 인자를 안 준다(인자가 변수를 이긴다). 사람이 바꾸는 손잡이는 서버의 것이고 여기 새로 안 만든다.
+ *   · `--config` — 브라우저에 `--disable-features=HttpsFirstBalancedMode` 를 싣는 설정 파일. 우리 스냅숏(크로미움 개발 판)은
+ *     평문 주소를 HTTPS 로 올려 보고 실패하면 평문으로 안 돌아가 `ERR_BLOCKED_BY_CLIENT` 로 막는다 — 인증서 이름이 안 맞는
+ *     사내 호스트가 평문으로도 HTTPS 로도 영영 안 열렸다(#179 · 사내 VDI 실측). 서버에 브라우저 인자를 넘기는 깃발은 없고
+ *     설정 파일뿐이라, 뜰 때마다 임시 폴더에 써서 넘긴다 — 박아 둔 경로는 비영속 VDI 에서 사라진다
+ * 위 다섯은 서버가 제 환경변수(`PLAYWRIGHT_MCP_EXECUTABLE_PATH` · `_HEADLESS` · `_ISOLATED` · `_OUTPUT_DIR` · `_CONFIG`)로도
+ * 받는다 — 그 변수가 서 있거나 사람이 같은 인자를 등록에 적었으면 우리 것을 안 준다(사람 것이 이긴다). 사람이 제 설정 파일을
+ * 주면 위 브라우저 인자도 그 파일이 들어야 한다. 사람이 바꾸는 손잡이는 서버의 것이고 여기 새로 안 만든다.
  *
  * playwright 의 자리 — `PW`(꼴은 `_browser.mjs` 머리말: 이름 · 폴더 · 파일) · 없으면 `npm root -g` 밑. `npx` 는 안 쓴다 —
  * 캐시가 빈 VDI 에서 뜰 때마다 받는다(결정 0117 이 걷은 Tavily 등록의 실측).
  * ⚠ 표준 출력은 MCP 통로다 — 이 파일은 거기 아무것도 안 쓴다(`--resolve` 만 빼고). 말은 표준 오류로.
  */
 import { execSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
@@ -41,6 +46,8 @@ const BROWSER_PICKERS = [
 const PW_PACKAGE = "playwright";
 const NPM_ROOT_CAP_MS = 20000;        // `npm root -g` 의 울타리 — 멎은 npm 하나가 세션의 MCP 시작을 영구히 세우지 않게
 const OUTPUT_SUBDIR = "playwright-mcp";
+const CONFIG_FILE = "browser-launch.json";   // `--config` 로 넘길 설정 — OUTPUT_SUBDIR 밑에 뜰 때마다 쓴다
+const BROWSER_ARGS = ["--disable-features=HttpsFirstBalancedMode"];   // 머리말 `--config` 칸
 const RESOLVE_FLAG = "--resolve";
 const EXIT_NO_PLAYWRIGHT = 3;
 const EXIT_NO_PICKER = 4;
@@ -94,6 +101,14 @@ async function plan() {
   if (headless && !envSet("PLAYWRIGHT_MCP_HEADLESS")) args.push("--headless");
   if (!envSet("PLAYWRIGHT_MCP_ISOLATED") && !envSet("PLAYWRIGHT_MCP_USER_DATA_DIR")) args.push("--isolated");
   if (!envSet("PLAYWRIGHT_MCP_OUTPUT_DIR")) args.push("--output-dir", join(tmpdir(), OUTPUT_SUBDIR));
+  if (!envSet("PLAYWRIGHT_MCP_CONFIG") && !process.argv.slice(2).some((a) => a === "--config" || a.startsWith("--config="))) {
+    const cfg = join(tmpdir(), OUTPUT_SUBDIR, CONFIG_FILE);
+    try {
+      mkdirSync(dirname(cfg), { recursive: true });
+      writeFileSync(cfg, JSON.stringify({ browser: { launchOptions: { args: BROWSER_ARGS } } }));
+      args.push("--config", cfg);
+    } catch (e) { say(`설정 파일을 못 썼다(${cfg}) — 평문 주소가 막힐 수 있다: ${e.message}`); }
+  }
   return { pw, exe: shown, exists: Boolean(shown && existsSync(shown)), source, headless, args };
 }
 
