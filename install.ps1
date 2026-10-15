@@ -2708,31 +2708,54 @@ function Get-ExtVersions {
   } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
-# ⚠ **하나를 까는 걸음이 한 자리다.** 확장이 셋으로 늘면서(결정 0041) 같은 걸음을 세 번 적으면
+# ⚠ **고른 확장을 까는 걸음이 한 자리다.** 확장이 셋으로 늘면서(결정 0041) 같은 걸음을 세 번 적으면
 #   한 번 겪은 사고(곧바로 물으면 아직 없다 · 인증서면 다른 병이다)가 두 사본에서 다시 난다.
+# 빠진 확장은 `code` 한 번에 넘긴다(`--install-extension` 여럿 · PAISetup #35 B) — `code` 를 띄울 때마다 node 가 새로 서고
+#   마켓플레이스에 한 번 묻는 값이 VDI 에서 몇 초씩이라, 확장마다 띄우면 그 값이 확장 수만큼 쌓인다. 깔았나도 목록 한 번으로 잰다.
+# ⚠ **묶음이 지면 하나씩 다시 깐다** — 묶음의 종료 값 하나로는 어느 확장이 졌는지 모른다. 하나씩 깔면 진 확장이 제 종료 값과 제
+#   끝 줄로 서고, 나머지는 그대로 깔린다. 하나만 넘긴 묶음은 다시 안 깐다 — 같은 명령을 되풀이할 뿐이다.
 # ⚠ **긴 명령 앞에 한 줄을 먼저 찍는다.** 화면 껍데기의 상태 줄은 마지막으로 나온 줄을 그대로
 #   보이므로, 끝나고 나서만 찍으면 그 몇십 초 동안 **직전 칸의 결과**가 「지금 하는 일」로 서 있다
 #   (실측 2026-09-15 · 사외 VDI: Codex 확장을 받는 동안 「클로드 확장 — 최신」이 떠 있었다).
 # ⚠ **`--force` 가 최신을 다시 받지는 않는다** — 실측 2026-09-15: 같은 판이면 `already installed` 만 찍고
-#   1초에 끝난다. 옛 주석이 「다시 깐다」고 적었던 것은 틀렸고, 느렸던 까닭은 위 횟수다.
-# `$Act` 는 「VS Code 확장」 걸음이 `Get-InstallAction` 에서 받은 할 일이다 — 올리기(`upcheck`)는 그 걸음이 깔린 확장을 한 번에
-#   묻고(`--update-extensions`) 여기는 앞뒤 판(`$Before` · `$After`)으로 결과만 찍는다. `$Probe` · `$Why` 는 못 쟀을 때 댈 물음과
-#   그 까닭이다(`Add-UnmeasuredStep` 의 꼴).
-function Install-Extension([string]$Id, [string]$Label, [string]$Act, [hashtable]$Before, [hashtable]$After, [string]$Probe, [string]$Why) {
-  if ($Act -eq 'hold') {
-    Add-UnmeasuredStep $Label $Probe '깔지도 올리지도 않았다' $Why
-    return
+#   1초에 끝난다. 느린 것은 `code` 를 띄우는 횟수다.
+# `$Rows` 는 고른 확장의 행(`Id` · `Label`), `$Acts` 는 「VS Code 확장」 걸음이 행마다 `Get-InstallAction` 에서 받은 할 일이다
+#   (`Id` → 할 일) — 올리기(`upcheck`)는 그 걸음이 깔린 확장을 한 번에 묻고(`--update-extensions`) 여기는 앞뒤 판(`$Before` · `$After`)으로
+#   결과만 찍는다. `$Probe` · `$Why` 는 못 쟀을 때 댈 물음과 그 까닭이다(`Add-UnmeasuredStep` 의 꼴).
+function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtable]$After, [string]$Probe, [string]$Why) {
+  $todo = @()
+  foreach ($x in @($Rows)) {
+    $Id = $x.Id; $Label = $x.Label; $Act = $Acts[$Id]
+    if ($Act -eq 'hold') {
+      Add-UnmeasuredStep $Label $Probe '깔지도 올리지도 않았다' $Why
+      continue
+    }
+    if ($Act -ne 'install') {
+      $b = $Before[$Id]; $a = if ($After) { $After[$Id] } else { '' }
+      if ($Act -eq 'present')     { Write-Host "  $Label — 있음  $(Format-VerPart $b)" }
+      elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+      else                        { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
+      continue
+    }
+    $todo += ,$x
   }
-  if ($Act -ne 'install') {
-    $b = $Before[$Id]; $a = if ($After) { $After[$Id] } else { '' }
-    if ($Act -eq 'present')     { Write-Host "  $Label — 있음  $(Format-VerPart $b)" }
-    elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-    else                        { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
-    return
-  }
-  Say-Busy $Label 'install' @('code')
+  if (-not $todo.Count) { return }
+  $ids = @($todo | ForEach-Object { $_.Id })
+  Say-Busy (@($todo | ForEach-Object { $_.Label }) -join ' · ') 'install' @('code')
   $xl = [IO.Path]::GetTempFileName()
-  $rc = Invoke-Logged 'code' @('--install-extension',$Id,'--force') $xl
+  $xa = @(); foreach ($i in $ids) { $xa += '--install-extension', $i }
+  $rc = Invoke-Logged 'code' ($xa + '--force') $xl
+  $rcs = @{}; $logs = @{}
+  if ($rc -ne 0 -and $todo.Count -gt 1) {
+    Write-Host "  (확장 $($todo.Count)개를 한 번에 깔다가 code 가 $rc 로 끝났다 — 하나씩 다시 깐다)"
+    foreach ($x in $todo) {
+      Say-Busy $x.Label 'install' @('code')
+      $logs[$x.Id] = [IO.Path]::GetTempFileName()
+      $rcs[$x.Id]  = Invoke-Logged 'code' @('--install-extension',$x.Id,'--force') $logs[$x.Id]
+    }
+  } else {
+    foreach ($x in $todo) { $rcs[$x.Id] = $rc; $logs[$x.Id] = $xl }
+  }
   # ⚠ **곧바로 물으면 아직 없을 수 있다.** VS Code 가 떠 있으면 설치가 그 인스턴스로 넘어가고
   #   명령은 바로 돌아온다 — 그때 목록을 물으면 「없다」가 나와 멀쩡한 설치가 실패로 찍힌다.
   #   몇 초를 두고 다시 묻는다. 없는 것을 오래 기다리지는 않는다.
@@ -2745,43 +2768,51 @@ function Install-Extension([string]$Id, [string]$Label, [string]$Act, [hashtable
       @{ Rc = $lrc; Ids = @(Get-Content -LiteralPath $ll -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() }) }
     } finally { Remove-Item -LiteralPath $ll, "$ll.err" -ErrorAction SilentlyContinue }
   }
-  #   다시 묻기는 다섯 번 · 2초 틈이다 — 느린 `code` 에서도 그 횟수는 묻는다(끝 시각으로 자르면 한 번이 몇 초 걸리는 PC 에서 다시 묻기가
-  #   한두 번으로 줄어 늦게 뜬 확장을 「설치 실패」로 찍는다). 목록을 못 읽은 물음이 하나라도 나면 그 자리에서 멈춘다 — 넘김이 횟수의 곱으로
-  #   쌓이지 않는다(결정 0141).
+  #   다시 묻기는 깐 확장이 다 뜰 때까지 다섯 번 · 2초 틈이다 — 느린 `code` 에서도 그 횟수는 묻는다(끝 시각으로 자르면 한 번이 몇 초 걸리는
+  #   PC 에서 다시 묻기가 한두 번으로 줄어 늦게 뜬 확장을 「설치 실패」로 찍는다). 목록을 못 읽은 물음이 하나라도 나면 그 자리에서 멈춘다 —
+  #   넘김이 횟수의 곱으로 쌓이지 않는다(결정 0141).
   $ls = & $listExt
-  for ($i = 0; $i -lt 5 -and $ls.Ids -notcontains $Id -and $ls.Rc -eq 0; $i++) {
+  $missing = { @($ids | Where-Object { $ls.Ids -notcontains $_ }).Count }
+  for ($i = 0; $i -lt 5 -and (& $missing) -and $ls.Rc -eq 0; $i++) {
     Start-Sleep -Seconds 2
     $ls = & $listExt
   }
-  if ($ls.Ids -notcontains $Id -and $ls.Rc -ne 0) {
-    if ($ls.Rc -eq -2) { Add-ProbeOverflow 'code --list-extensions' $ExtListCap }
-    Add-UnmeasuredStep $Label 'code --list-extensions' '깔았나를 못 쟀다' (Format-ProbeWhy $ls.Rc $ExtListCap)
-  } elseif ($ls.Ids -contains $Id) {
-    Write-Host "  $Label — 깔았다" -ForegroundColor Green
-  } else {
-    # ⚠ **까닭을 편다.** 「! 설치 실패」 한 줄만 내면 다음 사람이 열어 볼 자리가 없다 —
-    #   이 자리에서 실제로 그랬다(실측 2026-09-09 · 사외 VDI).
-    Write-Host "  ! $Label 설치 실패 (code 가 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
-    Show-Log $xl
-    Write-Host '     10초를 기다려도 목록에 안 떴다.'
-    # ⚠ **인증서면 다른 병이다.** 「self signed certificate」 는 VS Code 의 흠이 아니라
-    #   길에 TLS 를 가로채는 장비가 있는데 **Node 가 그 CA 를 모른다**는 말이다. 안 짚으면
-    #   사람은 영문 오류를 들고 VS Code 를 다시 깔러 간다 — 아무 상관 없는 자리다.
-    $said = (Get-Content -LiteralPath $xl -ErrorAction SilentlyContinue) -join "`n"
-    if ($said -match 'self.signed certificate|unable to (verify|get local issuer)|UNABLE_TO_|CERT_') {
-      Write-Host '     ↑ 인증서 문제다 — 길에 TLS 를 가로채는 장비가 있는데 Node 가 그 CA 를 모른다.' -ForegroundColor Yellow
-      Write-Host '        VS Code 를 다시 깔아도 안 낫는다. 위 「Node 신뢰 배선」 칸을 먼저 본다.'
+  # 넘김은 물음 하나에 한 줄이다 — 목록은 확장 모두가 한 번에 물었다.
+  if ($ls.Rc -eq -2 -and (& $missing)) { Add-ProbeOverflow 'code --list-extensions' $ExtListCap }
+  foreach ($x in $todo) {
+    $Id = $x.Id; $Label = $x.Label; $rc = $rcs[$Id]; $xlog = $logs[$Id]
+    if ($ls.Ids -notcontains $Id -and $ls.Rc -ne 0) {
+      Add-UnmeasuredStep $Label 'code --list-extensions' '깔았나를 못 쟀다' (Format-ProbeWhy $ls.Rc $ExtListCap)
+    } elseif ($ls.Ids -contains $Id) {
+      Write-Host "  $Label — 깔았다" -ForegroundColor Green
+    } else {
+      # ⚠ **까닭을 편다.** 「! 설치 실패」 한 줄만 내면 다음 사람이 열어 볼 자리가 없다 —
+      #   이 자리에서 실제로 그랬다(실측 2026-09-09 · 사외 VDI).
+      Write-Host "  ! $Label 설치 실패 (code 가 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+      Show-Log $xlog
+      Write-Host '     10초를 기다려도 목록에 안 떴다.'
+      # ⚠ **인증서면 다른 병이다.** 「self signed certificate」 는 VS Code 의 흠이 아니라
+      #   길에 TLS 를 가로채는 장비가 있는데 **Node 가 그 CA 를 모른다**는 말이다. 안 짚으면
+      #   사람은 영문 오류를 들고 VS Code 를 다시 깔러 간다 — 아무 상관 없는 자리다.
+      $said = (Get-Content -LiteralPath $xlog -ErrorAction SilentlyContinue) -join "`n"
+      if ($said -match 'self.signed certificate|unable to (verify|get local issuer)|UNABLE_TO_|CERT_') {
+        Write-Host '     ↑ 인증서 문제다 — 길에 TLS 를 가로채는 장비가 있는데 Node 가 그 CA 를 모른다.' -ForegroundColor Yellow
+        Write-Host '        VS Code 를 다시 깔아도 안 낫는다. 위 「Node 신뢰 배선」 칸을 먼저 본다.'
+      }
+      Write-Host '     VS Code 가 열려 있으면 전부 닫고 다시 눌러 본다.'
+      Write-Host "     손으로 재려면:  code --install-extension $Id --force"
+      $Fails.Add("VS Code 확장 ($Label)")
     }
-    Write-Host '     VS Code 가 열려 있으면 전부 닫고 다시 눌러 본다.'
-    Write-Host "     손으로 재려면:  code --install-extension $Id --force"
-    $Fails.Add("VS Code 확장 ($Label)")
   }
-  Remove-Item $xl -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (@($xl) + @($logs.Values) | Select-Object -Unique) -ErrorAction SilentlyContinue
 }
 
-# npm 이 제 기록에 적은 그 패키지 — `@{ State = yes · no · unmeasured; Ver = 깔린 판(모르면 빈 글자); Probe; Why }`(`Add-UnmeasuredStep` 의 꼴).
-#   `npm ls -g <pkg> --depth=0 --json` 의 `dependencies.<pkg>` 가 있으면 `yes`, JSON 을 냈는데 없으면 `no` 다. npm 으로 깐 CLI 가 깔렸나와
-#   그 판은 이 자 하나가 잰다 — 「CLI」 걸음과 끝 검증이 같이 쓴다(PAISetup #30 ③).
+# npm 이 제 기록에 적은 그 패키지들 — 패키지 이름마다 `@{ State = yes · no · unmeasured; Ver = 깔린 판(모르면 빈 글자); Probe; Why }`
+#   (`Add-UnmeasuredStep` 의 꼴)를 든 표. `npm ls -g <pkg…> --depth=0 --json` 의 `dependencies.<pkg>` 가 있으면 `yes`, JSON 을 냈는데
+#   없으면 `no` 다. npm 으로 깐 CLI 가 깔렸나와 그 판은 이 자 하나가 잰다 — 「CLI」 걸음과 끝 검증이 같이 쓴다(PAISetup #30 ③).
+# 고른 패키지를 한 번에 묻는다(PAISetup #35 C) — npm 을 띄울 때마다 node 가 새로 서는 값이 패키지 수만큼 쌓인다. 이름을 넘겨
+#   거르는 것은 하나씩 물을 때와 같다: 넘긴 이름의 꼴(있는 것만 `dependencies` 에 · 맨바닥의 `ENOENT`)이 하나씩 물을 때와 같고(실측
+#   2026-10-15 집 PC · npm 11), 넘긴 이름 밖의 전역 패키지는 이 물음에 안 든다. 물음이 지면 넘긴 패키지가 다 그 하나에 걸린 못 잼이다.
 # ⚠ **그 CLI 를 띄워 재지 않는다** — 첫 실행에 제 짐을 푸는 CLI 가 있다. 회사 PC 에서 Copilot CLI 의 첫 `--version` 이 19.7초를 써
 #   울타리(`$ProbeCap`)를 넘겼고, npm 이 성공한 설치가 「설치 실패」 · 끝 검증 `[?]` 로 섰다(PAISetup #30). 이 기록의 글자는 node 가 다
 #   선 뒤에 나와 DRM 이 끼는 PC 에서도 안 잃는다(#32).
@@ -2791,16 +2822,18 @@ function Install-Extension([string]$Id, [string]$Label, [string]$Act, [hashtable
 # ⚠ **맨바닥 PC 의 `ENOENT` 는 「없다」다** — 전역 폴더(`%APPDATA%\npm`)는 첫 `npm install -g` 가 만들어, 그 전에는 npm 이 그 자리를 못
 #   읽고 `error.code = ENOENT` 를 적는다. 그때 `npm root -g` 로 전역 패키지가 사는 폴더를 묻고, 그 폴더가 정말 없으면 깔린 것이
 #   없다는 잰 값이다. 폴더가 있는데 `ENOENT` 거나 그 물음이 졌으면 그대로 못 쟀다다.
-function Measure-NpmGlobal([string]$Pkg) {
-  $probe = "npm ls -g $Pkg --depth=0 --json"
+function Measure-NpmGlobal([string[]]$Pkgs) {
+  $probe = "npm ls -g $($Pkgs -join ' ') --depth=0 --json"
+  # 물음 하나가 낸 값을 넘긴 패키지마다 — 판은 없다
+  $each = { param([string]$State, [string]$P, [string]$W) $m = @{}; foreach ($k in $Pkgs) { $m[$k] = @{ State = $State; Ver = ''; Probe = $P; Why = $W } }; $m }
   $log = [IO.Path]::GetTempFileName()
   try {
-    $rc = Invoke-LoggedCapped 'npm' @('ls','-g',$Pkg,'--depth=0','--json') $log $ProbeCap
-    if ($rc -eq -2) { Add-ProbeOverflow "npm ls -g $Pkg" $ProbeCap; return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '' } }
-    if ($rc -eq -1) { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = (Format-ProbeWhy $rc $ProbeCap) } }
+    $rc = Invoke-LoggedCapped 'npm' (@('ls','-g') + $Pkgs + @('--depth=0','--json')) $log $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow "npm ls -g $($Pkgs -join ' ')" $ProbeCap; return (& $each 'unmeasured' $probe '') }
+    if ($rc -eq -1) { return (& $each 'unmeasured' $probe (Format-ProbeWhy $rc $ProbeCap)) }
     $j = $null
     try { $j = Get-Content -LiteralPath $log -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json } catch { }
-    if (-not $j)   { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = 'JSON 을 안 내' } }
+    if (-not $j)   { return (& $each 'unmeasured' $probe 'JSON 을 안 내') }
     if ($j.error) {
       if ("$($j.error.code)" -eq 'ENOENT') {
         $rl = [IO.Path]::GetTempFileName()
@@ -2808,101 +2841,145 @@ function Measure-NpmGlobal([string]$Pkg) {
           $rrc  = Invoke-LoggedCapped 'npm' @('root','-g') $rl $ProbeCap
           $root = ("$(@(Get-Content -LiteralPath $rl -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0])").Trim()
         } finally { Remove-Item -LiteralPath $rl, "$rl.err" -ErrorAction SilentlyContinue }
-        if ($rrc -eq -2) { Add-ProbeOverflow 'npm root -g' $ProbeCap; return @{ State = 'unmeasured'; Ver = ''; Probe = 'npm root -g'; Why = '' } }
-        if ($rrc -eq 0 -and $root -and -not (Test-Path -LiteralPath $root)) { return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
+        if ($rrc -eq -2) { Add-ProbeOverflow 'npm root -g' $ProbeCap; return (& $each 'unmeasured' 'npm root -g' '') }
+        if ($rrc -eq 0 -and $root -and -not (Test-Path -LiteralPath $root)) { return (& $each 'no' '' '') }
       }
-      return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = '오류를 적어' }
+      return (& $each 'unmeasured' $probe '오류를 적어')
     }
-    $d = if ($j.dependencies) { $j.dependencies.$Pkg } else { $null }
-    if (-not $d)   { return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
-    return @{ State = 'yes'; Ver = ("$($d.version)").Trim(); Probe = ''; Why = '' }
+    $m = @{}
+    foreach ($k in $Pkgs) {
+      $d = if ($j.dependencies) { $j.dependencies.$k } else { $null }
+      $m[$k] = if (-not $d) { @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
+               else { @{ State = 'yes'; Ver = ("$($d.version)").Trim(); Probe = ''; Why = '' } }
+    }
+    return $m
   } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
 # ⚠ **npm 으로 까는 걸음이 한 자리다** — 확장 칸과 같은 까닭. 깔렸나 · 깔린 판은 npm 의 기록(`Measure-NpmGlobal`)이 잰다 — 그 CLI 를
-#   띄우지 않는다(PAISetup #30 ③). 할 일은 한 표(`Get-InstallAction`)가 가른다.
-function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
+#   띄우지 않는다(PAISetup #30 ③). 할 일은 CLI 마다 한 표(`Get-InstallAction`)가 가른다. `$Rows` 는 고른 npm CLI 의 행(`Pkg` · `Cmd` · `Label`)이다.
+# 할 일이 같은 CLI 는 npm 한 번에 넘긴다(PAISetup #35 C) — npm 을 띄울 때마다 node 가 새로 서고 레지스트리를 풀이하는 값이 CLI
+#   마다 쌓인다. 묻기도 한 번씩이다: `npm --version` 하나 · 기록 읽기는 깔기 앞뒤로 하나씩. 최신 판을 묻는 `npm view` 는 패키지 하나만
+#   받아 깔린 CLI 마다 묻는다.
+# ⚠ **묶음이 지면 하나씩 다시 깐다** — npm 은 묶음 안의 하나가 지면 묶음을 다 되돌려 나머지도 안 깔린다. 하나씩 깔아야 진 CLI 가 제
+#   이름 · 제 종료 값 · 제 끝 줄로 서고 나머지는 깔린다. 하나만 넘긴 묶음은 다시 안 깐다 — 같은 명령을 되풀이할 뿐이다.
+function Install-NpmCli($Rows) {
   # ⚠ **npm 을 못 쟀으면 손대지 않는다**(결정 0141) — 기록을 못 읽은 채 깔면 깔린 것 위에 다시 깔고, 「있음」으로 끝내면 올리기가
   #   조용히 빠진다. 하지도 건너뛰지도 않고 끝 검증에 남긴다.
   $npmRuns = Measure-Runs 'npm' '--version'
   if ($npmRuns -eq 'unmeasured') {
-    Add-UnmeasuredStep $Label 'npm --version' '깔렸나 안 묻고 깔지도 올리지도 않았다'
+    foreach ($r in @($Rows)) { Add-UnmeasuredStep $r.Label 'npm --version' '깔렸나 안 묻고 깔지도 올리지도 않았다' }
     return
   }
   if ($npmRuns -ne 'yes') {
     # npm 이 없으면 기록도 깔 길도 없다 — 그 이름이 서 있으면(npm 밖에서 깐 것) 있음으로 두고, 없으면 못 깐다. 이름은 찾기만 하고 안 띄운다.
-    if (Get-Command $Cmd -ErrorAction SilentlyContinue) {
-      Write-Host "  $Label — 있음 $(Format-VerPart '') — npm 이 안 서 그 기록을 못 읽었다"
-    } else {
-      Write-Host "  ! npm 이 없어 $Label 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
-      $Fails.Add("$Label (npm 이 안 닿는다)")
+    foreach ($r in @($Rows)) {
+      if (Get-Command $r.Cmd -ErrorAction SilentlyContinue) {
+        Write-Host "  $($r.Label) — 있음 $(Format-VerPart '') — npm 이 안 서 그 기록을 못 읽었다"
+      } else {
+        Write-Host "  ! npm 이 없어 $($r.Label) 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
+        $Fails.Add("$($r.Label) (npm 이 안 닿는다)")
+      }
     }
     return
   }
-  $rec = Measure-NpmGlobal $Pkg
-  $b = $rec.Ver; $rv = ''; $vrc = 0
-  if ($rec.State -eq 'yes' -and -not $NoUpgrade) {
-    Say-Busy $Label 'upcheck' @('npm', "지금 $(Format-VerPart $b)")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
-    # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
-    #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
-    #   이 걸음이 셋 합쳐 121초였다(실측 v1.12.0 두 번째 판 · 사내 VDI · 설치기 전체의 40%).
-    #   판 하나 묻는 GET 은 어느 기계에서도 1초 안팎이다. 사외 VDI 는 **로그인마다** 이 걸음을 지난다.
-    # ⚠ **묻는 것도 `@latest` 로 묻는다.** install 이 보는 태그와 다른 것을 물으면 엉뚱한 판과
-    #   견주게 되고, 그 어긋남은 「올렸는데 또 올린다」로만 드러나 아무도 안 잡는다.
-    # ⚠ **울타리를 두른다** — 회선이 붙든 `npm view` 하나가 설치를 영구히 세운다(#26 과 같은 꼴). 넘기면 최신 판을 「못 쟀다」다.
-    $vl  = [IO.Path]::GetTempFileName()
-    $vrc = Invoke-LoggedCapped 'npm' @('view',"$Pkg@latest",'version') $vl $NpmViewCap
-    $rvo = @(Get-Content -LiteralPath $vl -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0]
-    Remove-Item -LiteralPath $vl, "$vl.err" -ErrorAction SilentlyContinue
-    if ($vrc -eq -2) { Add-ProbeOverflow "npm view $Pkg@latest version" $NpmViewCap }
-    $rv  = if ($vrc -eq 0) { ("$rvo").Trim() } else { '' }
-  }
-  $cliAct = Get-InstallAction $rec.State $b $rv $null $false ([bool]$NoUpgrade)
-  if ($cliAct -eq 'hold') {
-    Add-UnmeasuredStep $Label $rec.Probe '깔지도 올리지도 않았다' $rec.Why
-  } elseif ($cliAct -eq 'present') {
-    Write-Host "  $Label — 있음 $(Format-VerPart $b)"
-  } elseif ($cliAct -eq 'latest') {
-    Write-Host "  $Label — 최신  $(Format-VerPart $b)"
-  } elseif ($cliAct -eq 'keep') {
-    # ⚠ **여기서 지는 것을 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛 판으로 돈다 — 저장소 `pull` 이 졌을 때와 같은
-    #   꼴이라 같은 규율로 든다: 말은 하되 빨강으로 안 끝낸다. 「최신」이라고도 안 찍는다 — 낡은 판이 도는 것과 못 가른다.
-    # ⚠ **판을 모르면 다시 받지 않는다** — 빈 판을 「다르다」로 읽으면 매 실행 받는다. 못 닿는 레지스트리에는 install 도 못 닿는다.
-    if ($vrc -eq -2) {
+  $recs = Measure-NpmGlobal @($Rows | ForEach-Object { $_.Pkg })
+  $todo = @{ upgrade = @(); install = @() }
+  foreach ($r in @($Rows)) {
+    $Pkg = $r.Pkg; $Label = $r.Label
+    $rec = $recs[$Pkg]
+    $b = $rec.Ver; $rv = ''; $vrc = 0
+    if ($rec.State -eq 'yes' -and -not $NoUpgrade) {
+      Say-Busy $Label 'upcheck' @('npm', "지금 $(Format-VerPart $b)")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
+      # ⚠ **먼저 묻고 다르면 깐다 — 판정 수단으로 설치를 돌리지 않는다.** 옛 판은 「최신인가」를
+      #   알려고 `npm install` 을 돌렸다: 같은 판이어도 npm 이 풀이·다운로드·링크를 다시 밟아
+      #   이 걸음이 셋 합쳐 121초였다(실측 v1.12.0 두 번째 판 · 사내 VDI · 설치기 전체의 40%).
+      #   판 하나 묻는 GET 은 어느 기계에서도 1초 안팎이다. 사외 VDI 는 **로그인마다** 이 걸음을 지난다.
+      # ⚠ **묻는 것도 `@latest` 로 묻는다.** install 이 보는 태그와 다른 것을 물으면 엉뚱한 판과
+      #   견주게 되고, 그 어긋남은 「올렸는데 또 올린다」로만 드러나 아무도 안 잡는다.
+      # ⚠ **울타리를 두른다** — 회선이 붙든 `npm view` 하나가 설치를 영구히 세운다(#26 과 같은 꼴). 넘기면 최신 판을 「못 쟀다」다.
+      $vl  = [IO.Path]::GetTempFileName()
+      $vrc = Invoke-LoggedCapped 'npm' @('view',"$Pkg@latest",'version') $vl $NpmViewCap
+      $rvo = @(Get-Content -LiteralPath $vl -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0]
+      Remove-Item -LiteralPath $vl, "$vl.err" -ErrorAction SilentlyContinue
+      if ($vrc -eq -2) { Add-ProbeOverflow "npm view $Pkg@latest version" $NpmViewCap }
+      $rv  = if ($vrc -eq 0) { ("$rvo").Trim() } else { '' }
+    }
+    $cliAct = Get-InstallAction $rec.State $b $rv $null $false ([bool]$NoUpgrade)
+    if ($cliAct -eq 'hold') {
+      Add-UnmeasuredStep $Label $rec.Probe '깔지도 올리지도 않았다' $rec.Why
+    } elseif ($cliAct -eq 'present') {
       Write-Host "  $Label — 있음 $(Format-VerPart $b)"
-      Add-UnmeasuredStep "$Label 올리기" "npm view $Pkg@latest version" '최신인지 모른 채 올리지도 않았다' (Format-ProbeWhy $vrc $NpmViewCap)
-    } elseif (-not $b) {
-      Write-Host "  ! $Label — 깔린 판을 못 읽었다 (``npm ls -g`` 기록에 판이 없다) · 깔린 그대로 간다" -ForegroundColor Yellow
+    } elseif ($cliAct -eq 'latest') {
+      Write-Host "  $Label — 최신  $(Format-VerPart $b)"
+    } elseif ($cliAct -eq 'keep') {
+      # ⚠ **여기서 지는 것을 실패로 세지 않는다.** 그 CLI 는 이미 깔려 있고 옛 판으로 돈다 — 저장소 `pull` 이 졌을 때와 같은
+      #   꼴이라 같은 규율로 든다: 말은 하되 빨강으로 안 끝낸다. 「최신」이라고도 안 찍는다 — 낡은 판이 도는 것과 못 가른다.
+      # ⚠ **판을 모르면 다시 받지 않는다** — 빈 판을 「다르다」로 읽으면 매 실행 받는다. 못 닿는 레지스트리에는 install 도 못 닿는다.
+      if ($vrc -eq -2) {
+        Write-Host "  $Label — 있음 $(Format-VerPart $b)"
+        Add-UnmeasuredStep "$Label 올리기" "npm view $Pkg@latest version" '최신인지 모른 채 올리지도 않았다' (Format-ProbeWhy $vrc $NpmViewCap)
+      } elseif (-not $b) {
+        Write-Host "  ! $Label — 깔린 판을 못 읽었다 (``npm ls -g`` 기록에 판이 없다) · 깔린 그대로 간다" -ForegroundColor Yellow
+      } else {
+        Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
+      }
+    } elseif ($cliAct -eq 'upgrade' -or $cliAct -eq 'install') {
+      # 깔기는 `install` 일 때만이다 — 이 갈래가 안 내는 할 일이 와도 깔린 것 위에 다시 깔지 않는다. 올리기는 묻은 태그(`@latest`)를
+      #   그대로 받는다 — 위 `npm view` 와 같은 까닭.
+      $spec = if ($cliAct -eq 'upgrade') { "$Pkg@latest" } else { $Pkg }
+      $todo[$cliAct] += ,@{ Pkg = $Pkg; Cmd = $r.Cmd; Label = $Label; Spec = $spec; Before = $b; Latest = $rv }
+    }
+  }
+
+  # 할 일마다 npm 한 번 — 묶음이 지면 하나씩. 낸 값과 뱉은 글은 CLI 마다 든다(묶음이 섰으면 묶음의 것).
+  # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** winget 은 「올릴 것 없음」에도 0 이 아닌 값을 내서 버릴 까닭이
+  #   있지만, npm 은 지면 지는 값을 낸다. 버리고 판만 견주면 설치가 죽은 판에서도 판이 안 바뀌었으니 「최신」이 찍힌다.
+  $ran = @()
+  foreach ($act in 'upgrade', 'install') {
+    $grp = @($todo[$act])
+    if (-not $grp.Count) { continue }
+    $notes = @('npm')
+    if ($act -eq 'upgrade') {
+      $notes += @($grp | ForEach-Object { if ($grp.Count -gt 1) { "$($_.Label) $($_.Before) → $($_.Latest)" } else { "$($_.Before) → $($_.Latest)" } })
+    }
+    Say-Busy (@($grp | ForEach-Object { $_.Label }) -join ' · ') $act $notes
+    $nl  = [IO.Path]::GetTempFileName()
+    $nrc = Invoke-Logged 'npm' (@('install','-g') + @($grp | ForEach-Object { $_.Spec })) $nl
+    if ($nrc -ne 0 -and $grp.Count -gt 1) {
+      Write-Host "  (CLI $($grp.Count)개를 한 번에 깔다가 npm 이 $nrc 로 끝났다 — 하나씩 다시 깐다)"
+      foreach ($g in $grp) {
+        Say-Busy $g.Label $act @('npm')
+        $g.Log = [IO.Path]::GetTempFileName()
+        $g.Rc  = Invoke-Logged 'npm' @('install','-g',$g.Spec) $g.Log
+      }
     } else {
-      Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
+      foreach ($g in $grp) { $g.Rc = $nrc; $g.Log = $nl }
     }
-  } elseif ($cliAct -eq 'upgrade') {
-    Say-Busy $Label 'upgrade' @('npm', "$b → $rv")
-    $nl = [IO.Path]::GetTempFileName()
-    # ⚠ **종료코드를 안 버린다 — 여기는 winget 자리가 아니다.** winget 은 「올릴 것 없음」에도 0 이 아닌 값을 내서 버릴 까닭이
-    #   있지만, npm 은 지면 지는 값을 낸다. 버리고 판만 견주면 설치가 죽은 판에서도 판이 안 바뀌었으니 「최신」이 찍힌다.
-    $nrc = Invoke-Logged 'npm' @('install','-g',"$Pkg@latest") $nl
-    Update-RuntimePath
-    $a = (Measure-NpmGlobal $Pkg).Ver
-    if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-    elseif ($nrc -ne 0) {
-      Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
-      Show-Log $nl
+    foreach ($g in $grp) { $g.Act = $act }
+    $ran += $grp
+    if ($grp[0].Log -ne $nl) { Remove-Item -LiteralPath $nl -ErrorAction SilentlyContinue }
+  }
+  if (-not $ran.Count) { return }
+  # ⚠ **깔고 나서 한 번 더 태운다.** `%APPDATA%\npm` 은 이 설치가 **만드는** 폴더라,
+  #   맨바닥 PC 에서는 앞의 배선이 조용히 지나가고 PATH 가 빈 채로 남는다. 두 번째부터는
+  #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
+  Update-RuntimePath
+  $after = Measure-NpmGlobal @($ran | ForEach-Object { $_.Pkg })
+  foreach ($g in $ran) {
+    $Pkg = $g.Pkg; $Label = $g.Label; $b = $g.Before; $nrc = $g.Rc; $nl = $g.Log
+    if ($g.Act -eq 'upgrade') {
+      $a = $after[$Pkg].Ver
+      if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+      elseif ($nrc -ne 0) {
+        Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+        Show-Log $nl
+      }
+      else { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
+      continue
     }
-    else { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
-    Remove-Item $nl -ErrorAction SilentlyContinue
-  } elseif ($cliAct -ne 'install') {
-    # 깔기는 `install` 일 때만이다 — 이 갈래가 안 내는 할 일이 와도 깔린 것 위에 다시 깔지 않는다.
-  } else {
-    Say-Busy $Label 'install' @('npm')
-    $nl = [IO.Path]::GetTempFileName()
-    $nrc = Invoke-Logged 'npm' @('install','-g',$Pkg) $nl
-    # ⚠ **깔고 나서 한 번 더 태운다.** `%APPDATA%\npm` 은 이 설치가 **만드는** 폴더라,
-    #   맨바닥 PC 에서는 앞의 배선이 조용히 지나가고 PATH 가 빈 채로 남는다. 두 번째부터는
-    #   폴더가 있어 안 드러나는, 맨바닥에서만 나는 갈래다.
-    Update-RuntimePath
     # 깔렸나는 npm 이 0 으로 끝났고 그 기록에 섰나다. 판을 못 쟀으면 깔린 것은 그대로 깔린 것이다 — 「설치 실패」로 안 찍는다.
-    $got = Measure-NpmGlobal $Pkg
+    $got = $after[$Pkg]
     if ($nrc -eq 0 -and $got.State -eq 'yes' -and $got.Ver) {
       Write-Host "  $Label — 깔았다 $(Format-VerPart $got.Ver)" -ForegroundColor Green
     } elseif ($nrc -eq 0 -and $got.State -ne 'no') {
@@ -2915,8 +2992,8 @@ function Install-NpmCli([string]$Pkg, [string]$Cmd, [string]$Label) {
       Show-Log $nl
       $Fails.Add($Label)
     }
-    Remove-Item $nl -ErrorAction SilentlyContinue
   }
+  Remove-Item -LiteralPath (@($ran | ForEach-Object { $_.Log }) | Select-Object -Unique) -ErrorAction SilentlyContinue
 }
 
 # winget 이 내주는 CLI. 깔렸으면 프로그램 칸처럼 「올릴 것」 목록이 가른다(`Get-InstallAction`).
@@ -5231,7 +5308,8 @@ Exit-Step 'programs'
 # ⚠ **`code` 를 띄우는 횟수가 곧 시간이다.** 한 번 뜰 때마다 노드 프로세스가 새로 서고 마켓플레이스에
 #   한 번 묻는데, 이 값이 VDI 에서는 몇 초씩이다. 옛 판은 확장 하나마다 셋(판 번호 → `--force` → 판 번호)을
 #   띄워 셋이면 아홉이었다. 판 번호는 **한 번** 읽고, 깔린 것들은 `--update-extensions` **한 번**으로 올리고,
-#   다시 한 번 읽어 앞뒤로 「올렸다 · 최신」을 가른다 — 셋이 다 깔린 판에서 셋으로 준다.
+#   다시 한 번 읽어 앞뒤로 「올렸다 · 최신」을 가른다 — 셋이 다 깔린 판에서 셋으로 준다. 빠진 확장도 `code` 한 번에
+#   넘기고 목록 한 번으로 잰다(`Install-Extension`).
 # ⚠ **`--update-extensions` 는 깔린 확장 전부를 올린다** — 우리 셋만 고르는 스위치가 없다. VS Code 가
 #   스스로 하는 자동 갱신과 같은 일이라 더 하는 것은 없다.
 
@@ -5287,7 +5365,7 @@ if ($NoVsCode) {
     $extAfter = (Get-ExtVersions).Vers
   }
   if (-not $ExtPicks) { Write-Host '  고른 제품이 없어 확장을 안 깐다' }
-  foreach ($x in $ExtPicks) { Install-Extension $x.Id $x.Label $extActs[$x.Id] $extBefore $extAfter $extProbe $extRead.Why }
+  Install-Extension $ExtPicks $extActs $extBefore $extAfter $extProbe $extRead.Why
 } else {
   Write-Host '  ! code 가 이 창의 PATH 에 없어 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
@@ -5304,10 +5382,10 @@ Exit-Step 'extensions'
 
 Enter-Step 'cli'
 if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
-foreach ($c in $CliPicks) {
-  if ($c.Via -eq 'winget') { Install-WingetCli $c.Id  $c.Cmd $c.Label }
-  else                     { Install-NpmCli    $c.Pkg $c.Cmd $c.Label }
-}
+# npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
+$npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
+if ($npmCliPicks.Count) { Install-NpmCli $npmCliPicks }
+foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c.Id $c.Cmd $c.Label }
 
 # ⚠ **사외는 여기서 로그인 길을 댄다.** 회사 설정 칸(5⁗)이 안 서는 자리라 아무도 안 알려 주면
 #   깔린 채로 「왜 안 되지」가 된다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다.
@@ -8383,10 +8461,13 @@ if (-not $NoVsCode) {
     }
   }
 }
-# npm 으로 깐 CLI 는 「CLI」 걸음과 같은 자(npm 의 기록)로 잰다 — 띄우지 않는다(PAISetup #30 ③). winget CLI 는 이름이 서나를 띄워 잰다.
+# npm 으로 깐 CLI 는 「CLI」 걸음과 같은 자(npm 의 기록)로 잰다 — 띄우지 않고(PAISetup #30 ③) 기록은 한 번에 읽는다(#35 C). winget CLI 는
+#   이름이 서나를 띄워 잰다.
+$npmCheckPkgs = @($CliPicks | Where-Object { $_.Via -ne 'winget' } | ForEach-Object { $_.Pkg })
+$npmCheckRecs = if ($npmCheckPkgs.Count) { Measure-NpmGlobal $npmCheckPkgs } else { @{} }
 foreach ($c in $CliPicks) {
   if ($c.Via -ne 'winget') {
-    $rec = Measure-NpmGlobal $c.Pkg
+    $rec = $npmCheckRecs[$c.Pkg]
     if ($rec.State -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = $rec.Probe; Why = $rec.Why } }
     else                             { $checks += @{ Name = $c.Label; Ok = ($rec.State -eq 'yes') } }
     continue
