@@ -3877,6 +3877,9 @@ function Get-GhKeyringLines($St, [string[]]$TokenVars) {
 #   기다리면 그동안 창이 얼고 남은 시간도 안 준다. 판정은 `Test-GhLoggedIn` 과 같다(0 으로 끝나면 섰다) · 한도는 `$GhStatusCap`.
 # ⚠ **손잡이는 닫힘(closure)으로 넘긴다.** 폼 이벤트의 스크립트 블록은 이 함수의 변수를 못 본다 —
 #   `GetNewClosure()` 가 그 순간의 참조를 물려주고, 상태는 해시테이블이라 안에서 고친 것이 밖에 남는다.
+# ⚠ **닫힘 안에서 이 몸통의 함수를 이름으로 부르지 않는다** — 닫힘의 부모는 전역 범위라, 몸통이 `-Command "& { & … }"` 로
+#   뜬 자리(로그인 자식 · `Invoke-GhLoginChild`)에서는 스크립트 범위의 함수가 안 보여 틱마다 「인식되지 않습니다」로 진다.
+#   함수 블록(`${function:…}`)을 변수로 잡아 넘기면 그 블록은 몸통의 범위에서 돈다.
 # `-Raised` — 가운데 위쪽에 선다. 설치가 같은 때 띄우는 물음창(`Show-AskDialog`)은 화면 한가운데에 서므로, 앞당겨 띄운 창(`Invoke-GhLoginChild`)이
 #   그 자리를 덮지 않고 둘이 다 보이게 한다. 둘 다 맨 위(TopMost) 창이라 어느 것도 다른 창 뒤로 숨지 않는다.
 function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait, [switch]$Raised) {
@@ -3913,6 +3916,8 @@ function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc,
   $f.Controls.AddRange(@($l1, $tCode, $lLeft, $bOpen, $bCopy, $bSkip))
   $state = @{ Code = ''; Ok = $false; Clock = [Diagnostics.Stopwatch]::StartNew(); NextProbe = 5; Probe = $null; ProbeClock = $null }
   $probeCap = $GhStatusCap
+  $startProbe = ${function:Start-GhLoginProbe}
+  $stopProbe  = ${function:Stop-GhLoginProbe}
   $bOpen.Add_Click({ Start-Process 'https://github.com/login/device' | Out-Null })
   $bCopy.Add_Click({ if ($state.Code) { try { Set-Clipboard -Value $state.Code } catch { } } }.GetNewClosure())
   $bSkip.Add_Click({ $f.Close() }.GetNewClosure())
@@ -3940,12 +3945,12 @@ function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc,
         $state.Probe.Dispose(); $state.Probe = $null
         if ($ok) { $state.Ok = $true; $f.Close(); return }
       } elseif ($state.ProbeClock.Elapsed.TotalSeconds -ge $probeCap) {
-        Stop-GhLoginProbe $state.Probe
+        & $stopProbe $state.Probe
         $state.Probe = $null
       }
     } elseif ($state.Clock.Elapsed.TotalSeconds -ge $state.NextProbe) {
       $state.NextProbe = $state.Clock.Elapsed.TotalSeconds + 5
-      $state.Probe = Start-GhLoginProbe
+      $state.Probe = & $startProbe
       $state.ProbeClock = [Diagnostics.Stopwatch]::StartNew()
     }
     # 로그인 프로세스가 끝났으면(섰든 졌든) 닫는다 — 섰나는 닫은 뒤 한 번 더 잰다
