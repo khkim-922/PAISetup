@@ -1,14 +1,18 @@
 #!/bin/sh
-# 조각 — 담긴 셸 스크립트가 **문법으로 서고 정적 결함이 없나.** shellcheck 가 잰다(#91 ① ③).
+# 조각 — 바뀐 셸 스크립트가 **문법으로 서고 정적 결함이 없나.** shellcheck 가 잰다(#91 ① ③).
 #
-# 층 — 쓰는 사람의 계약
-# 걷는 조건 — 저장소에 담기는 `.sh` 가 사라지거나, shellcheck 가 커밋 전에 다른 자리에서 늘 돌면 걷는다
+# 층 — 만드는 사람의 흐름
+# 걷는 조건 — 저장소에 담기는 `.sh` 가 사라지거나, shellcheck 가 공유 전에 다른 자리에서 늘 돌면 걷는다
 #
 # 왜 이것인가 — 깨진 셸은 **깨졌다고 말하지 않고 반쯤 돈다.** 세션 훅 몸통은 모든 저장소 · 모든 PC 의
 #   세션 시작에서 돌고, 게이트 조각(`gates.d/*.sh`)이 문법 오류로 죽으면 러너가 2 를 「못 쟀다」로 받아
 #   **모든 형제에서** 그 검사가 빠진다(결정 0064). 인용 누락 · `set -u` 아래 빈 변수 · sh 파일에 든 bash
 #   전용 문법 · 빈 값이면 `/` 가 되는 `rm -rf "$x/…"` 는 파서를 지나가서 **돌려 봐야, 그것도 운 나쁜 값이
-#   올 때만** 드러난다. 둘 다 담는 자리에서 잡는다.
+#   올 때만** 드러난다. 깨진 셸이 남의 PC 에 닿는 길은 공유 · 배포 뒤라, 늦어도 공유 전에 잡는다.
+#
+# 어느 문에 서나는 저장소 선언이 정한다 — 커밋 문이면 **담긴 판**을, 푸시 문이면 **미는 판**(러너가 준 바뀐 경로의
+#   작업 나무 판)을 잰다. 푸시 판에서 러너가 바뀐 경로를 못 줬으면(올라갈 가지가 없다 등) 추적하는 `.sh` 를 다 잰다 —
+#   러너의 「모르면 다 띄운다」와 같은 뜻이다.
 #
 # 재는 자 — shellcheck 가 있으면 그것 하나다. 파서가 거부하는 것은 shellcheck 의 `error` 판정으로 오므로
 #   (안 닫힌 `if` · `case` · 괄호 · 따옴표 · 중괄호 — 0.11.0 에서 `bash -n` 이 거부하는 꼴을 다 1 로 거부했다)
@@ -28,7 +32,7 @@ set -f
 HAVE_SC=''
 command -v shellcheck >/dev/null 2>&1 && HAVE_SC=1
 
-# 담긴 판의 해석기 이름 — 셔뱅 첫 낱말의 끝 이름. `env` 를 거치면 그 다음 낱말. 셔뱅이 없으면 빈 값.
+# 잴 판의 해석기 이름 — 셔뱅 첫 낱말의 끝 이름. `env` 를 거치면 그 다음 낱말. 셔뱅이 없으면 빈 값.
 #   받는 것: 첫 줄(`\r` 은 걷어서 준다).
 interp_of() {
   case "$1" in '#!'*) ;; *) return 0 ;; esac
@@ -39,12 +43,25 @@ interp_of() {
   printf '%s' "${1##*/}"
 }
 
-# 스테이지된 것만 잰다 — 손대지 않은 파일로 커밋을 막지 않는다.
+# 이 판에서 바뀐 것만 잰다 — 손대지 않은 파일로 커밋 · 푸시를 막지 않는다.
 # ⚠ **`core.quotePath=false` 가 있어야 비ASCII 이름이 온다.** 기본값에서는 싸인 이름의 끝이 `"` 라
 #   `*.sh` 에 안 걸리고 **한 줄도 안 말하고 빠진다.**
 # ⚠ **`R` 도 든다.** `git diff` 는 이름 바꿈을 알아보므로, 옮기면서 고친 파일은 `A`·`M` 이 아니라
 #   `R` 로 온다 — 빼면 「옮기고 깨뜨린」 커밋이 그대로 지나간다.
-STAGED="$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR)"
+# ⚠ **푸시 판은 담긴 것을 안 묻는다** — 푸시 때 담긴 것은 비어 있어 `diff --cached` 로 물으면 늘 초록이다. 러너의 바뀐
+#   경로 목록에는 지운 자리 · 옮겨 떠난 자리도 들므로, 작업 나무에 없는 경로는 아래서 건너뛴다.
+if [ "${GATES_STAGE:-}" = pre-push ]; then
+  FROM=tree
+  if [ -n "${GATES_CHANGED:-}" ] && [ -f "$GATES_CHANGED" ]; then
+    STAGED="$(cat "$GATES_CHANGED")"
+  else
+    printf '· shellcheck — 러너가 바뀐 경로를 안 줘 추적하는 .sh 를 다 잰다.\n' >&2
+    STAGED="$(git -c core.quotePath=false ls-files -- '*.sh')"
+  fi
+else
+  FROM=index
+  STAGED="$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR)"
+fi
 [ -n "$STAGED" ] || exit 0
 
 FAIL=0; CANT=0; SYNTAX_ONLY=0
@@ -61,9 +78,16 @@ for f in $STAGED; do
 '; continue ;;
   esac
 
-  # ⚠ **작업 트리가 아니라 담긴 판을 잰다.** 커밋되는 것은 인덱스다 — 깨진 판을 담아 두고 작업
+  # ⚠ **커밋 판은 작업 트리가 아니라 담긴 판을 잰다.** 커밋되는 것은 인덱스다 — 깨진 판을 담아 두고 작업
   #   트리에서만 고치면(`git add -p` · 담고 나서 고친 자리) 초록이 나고 **깨진 판이 커밋된다.**
-  src="$(git show ":$f" 2>/dev/null)"
+  #   푸시 판은 작업 나무를 잰다 — 푸시 몸통이 정한 「재는 것은 작업 트리다」와 같다.
+  if [ "$FROM" = tree ]; then
+    [ -f "$f" ] || { IFS='
+'; continue; }
+    src="$(cat "$f")"
+  else
+    src="$(git show ":$f" 2>/dev/null)"
+  fi
   first="$(printf '%s\n' "$src" | head -n 1 | tr -d '\r')"
 
   if [ -n "$HAVE_SC" ]; then
@@ -135,6 +159,6 @@ if [ "$FAIL" != 0 ]; then
   exit 1
 fi
 [ "$SYNTAX_ONLY" = 0 ] ||
-  printf '· shellcheck 가 없어 담긴 .sh 의 **문법만** 쟀다(bash -n · sh -n) — 정적 결함은 못 쟀다.\n' >&2
+  printf '· shellcheck 가 없어 바뀐 .sh 의 **문법만** 쟀다(bash -n · sh -n) — 정적 결함은 못 쟀다.\n' >&2
 [ "$CANT" = 0 ] && [ "$SYNTAX_ONLY" = 0 ] || exit 2
 exit 0

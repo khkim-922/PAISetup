@@ -1,31 +1,83 @@
-"""검사 지도가 실물과 맞나 — 줄 ↔ 파일의 차집합 · 「무엇을 재나」 칸은 머리 첫 줄에서 낸다.
+"""검사 지도와 푸시 선언이 실물과 맞나 — 줄 ↔ 파일 · 칸 ↔ 머리 첫 줄 · 선언 ↔ 게이트 절과 트리.
 
-좌표 — 아뜰리에 #307 ⑥ · #322 ⑧ (이 자가 난 저장소) · 씨앗 규율은 claude-config 결정 0040.
+층 — 만드는 사람의 흐름(판정 ①–④ — 앞 문에서 막는다) · 물림(`--teeth`)은 검사의 검사라 정기 판에서 돈다
+걷는 조건 — 게이트 · 화면 명부가 지도(`README.md`)에서 선언 파일로 옮겨 가면 ①② 를, 「무엇을 재나」 칸이 사라지면
+③ 을, 푸시의 경로 고르기(`[push_when]`)를 걷으면 ④ 를 걷는다
 
-    python _check/map_check.py            # 이 폴더
-    python _check/map_check.py <폴더>     # 잴 `_check/` 를 지정 (병렬 작업나무)
+좌표 — 씨앗 규율은 claude-config 결정 0040 · 남기고 걷는 기준은 0148(스킬 check-design) · 푸시 판은 0073 · 경로
+고르기는 0076 · 도장과 묶음은 0077 · 물림을 정기 판으로 옮기고 ④ 를 세운 자리는 atelier #444 · #445.
+
+    python _check/map_check.py              # 판정 ①–④ 와 심은 표본의 물림 — 이 폴더
+    python _check/map_check.py <폴더>       # 잴 `_check/` 를 지정 (병렬 작업나무)
+    python _check/map_check.py --write      # ③ 의 칸을 머리 첫 줄에서 다시 쓴다
+    python _check/map_check.py --teeth      # 정기 판 — 물림 전부(심은 표본 · 실물 사본 · 러너 모의). 판정 ①–④ 는 안 낸다
     python _check/map_check.py --gates      # 게이트 절의 이름을 한 줄에 하나 — 줄끝은 늘 LF
     python _check/map_check.py --run-gates  # 그 목록을 차례로 돌리고 모아 판정한다
     python _check/map_check.py --run-gates --push --jobs 4  # 푸시 직전 판 — 곁 선언 `[push_skip]` 을 빼고 넷씩 동시에
     python _check/map_check.py --run-gates --push --changed <파일>  # 고친 경로(한 줄에 하나)로 `[push_when]` 을 가린다
     python _check/map_check.py --run-gates --only <이름> [--only <이름> …]  # 게이트 몇 개만 러너로 — 도장이 남는다
 
-**왜 태우는 자까지 여기 있나.** `--gates` 를 셸 루프에 먹이는 손 루프는 두 함정을 매번 새로
-연다 — ⓐ 윈도 파이썬은 표준출력의 `\n` 을 `\r\n` 으로 써서 `read -r` 이 이름 끝에 `\r` 을 붙이고,
-ⓑ 파이썬은 **파일을 못 열면 2 로 나간다** — 우리 종료코드 계약의 「못 쟀다」와 같은 숫자라
-「이름이 틀렸다 · 파일이 없다」가 「러너가 못 갖춘 자리」 경고로 둔갑한다. 그러면 게이트가 한 개도
-안 돌았는데 빨강이 안 선다(claude-config #103). 그래서 목록은 **플랫폼과 무관하게 LF** 로 내고,
-태우기는 **목록을 읽은 자가 파일이 있나를 먼저 묻고** 없으면 어긋남(1)으로 센다.
+내는 것 — 0 맞다 · 1 어긋났다(줄마다 무엇이 어디서 어긋났나를 댄다) · 2 못 쟀다(지도 · 곁 선언 · 트리 파일 목록을
+못 읽었거나, 표 줄 · 표식이 없어 판정이 안 선다). `--gates` 는 목록만 내고, `--run-gates` 는 게이트들의 판정을 같은
+셋으로 모은다. 정기 작업은 `python -X utf8 _check/map_check.py --teeth` 를 부른다 — 그 빨강은 「물림을 다시 지을 일」
+이지 지도의 빨강이 아니다.
+
+**판정 넷.** 지도는 *어느 검사가 있고 무엇을 재나*를 들고, 곁 선언(`map_check.conf`)은 *푸시에서 무엇을 언제
+돌리나*를 든다. 검사를 새로 짓거나 지우거나 이름을 바꿔도 아무 데서도 안 터진다 — 검사는 그대로 돌고 지도와 선언만
+조용히 낡는다. 낡은 자리가 「없는 검사를 있다고 말하는」 쪽이면 그 줄을 읽은 사람은 재지도 않은 자리를 봤다고 여긴다.
+  ① **표에 없는 검사** — 파일은 사는데 지도에 줄이 없다. 지도가 CI 와 푸시의 명부라 그 검사는 아무도 안 돌린다
+  ② **실물 없는 줄** — 지도에 줄은 있는데 파일이 없다. 읽는 사람이 없는 검사를 믿는다
+  ③ **「무엇을 재나」 칸** — 그 줄의 첫 곁칸이 검사 파일의 머리 첫 줄과 같나. 칸은 손사본이 되지 않게 **각 검사
+     파일의 머리 첫 줄을 진본으로** 거기서 낸다(`--write`)
+  ④ **푸시 선언** — 곁 선언이 게이트 절 · 트리와 맞나. 셋을 문다:
+     ㉠ **죽은 글롭** — `[push_when]` 의 글롭이 트리 파일(추적 파일 + 무시 안 된 새 파일) 한 장에도 안 걸린다. 그
+        글롭이 지키려던 자리를 고쳐도 게이트가 안 돌고 푸시는 초록으로 보인다
+     ㉡ **모르는 이름** — `[needs_arg]` · `[push_skip]` · `[push_when]` · `[push_fresh]` · `[push_always]` · `[serial]` 의
+        이름이 게이트 절에 없다. 오타면 선언한 사람은 가렸다고 믿는데 러너는 그 이름을 모른다
+     ㉢ **선언 없는 게이트** — `[needs_arg]` 밖의 게이트마다 `[push_when]` 글롭이나 `[push_always]` 의 「이름 = 까닭」
+        이 있어야 한다. 선언이 없으면 러너는 그 게이트를 늘 돌리고 도장 지문이 트리 전부라, 새 게이트가 말없이 푸시를
+        늘린다. ㉢ 은 **경로 고르기를 쓰는 저장소에서만** 선다 — `[push_when]` · `[push_always]` 가 하나도 없으면
+        러너가 모든 게이트를 늘 돌려 빠질 것이 없다(판정 곁에 그렇다고 말한다)
+
+**머리 첫 줄의 계약 둘** — ③ 이 문다:
+  · **표 한 칸에 드는 길이 안**(아래 `LIMIT`) — 넘치면 표가 문단이 되고, 사람이 다시 손으로 줄여 앉혀 손사본이
+    돌아온다
+  · **마침표로 닫힌다** — 「한 문장인가」를 기계가 가르는 유일한 눈금이다. 안 닫히면 다음 줄로 이어지는 문장이라
+    칸에 앉는 순간 **반 토막이 참말처럼 선다**
+
+⚠ **이슈·ADR 좌표는 첫 줄에 안 둔다** — 표 한 칸에 좌표가 되풀이되면 칸이 안 읽힌다. 둘째 줄 이하(`좌표 — …`)에 둔다.
+
+⚠ **첫 줄은 지도(`.md`)에 앉으므로 문서 검사의 그물에도 든다** — 백틱 조각은 `doc_span_check.py` 가 경로·식별자로
+  읽어 실물을 찾는다. 좌표만 백틱으로 감싸고 낱말(`image/webp` 같은 형식 이름)은 맨글자로 둔다.
+
+**칸 단위 파생이라 구간 표식이 아니다.** 이 표는 한 줄 안에서 **둘째 칸만** 기계 것이고 「언제 돌리나」·「무엇이
+있어야 도나」는 사람 것이다. 구간을 치면 손대지 말라는 말이 사람 칸까지 덮는다. 그래서 표식은 **표 머리 곁 한 줄**로
+서고 닫는 짝이 없다 — 표의 끝은 표가 스스로 말하고, 어느 칸인지는 그 표의 머리줄이 말한다.
+
+**물림은 둘로 갈린다** — 물림은 검사의 검사라 막는 문에 두지 않는다(스킬 check-design 3 절).
+  · **심은 표본** — 판정마다 일부러 틀린 작은 나무를 심어 빨강을 보인다. 싸서 판정 판에서 매번 돈다 — 탐지기가
+    아예 안 무는 판을 그 자리에서 잡는다(곁 `README.md` 폴더 규율 ①)
+  · **정기 판(`--teeth`)** — 실물 사본을 손대 보는 물림(③ 의 두 방향)과 러너 모의(태우기 · 줄끝 · 동시 · 고르기 ·
+    도장 · 묶음). 판정 판에서 빼고 정기 작업이 부른다
+
+**태우는 자도 여기 있다.** `--gates` 를 셸 루프에 먹이는 손 루프는 두 함정을 매번 새로 연다 — ⓐ 윈도 파이썬은
+표준출력의 `\n` 을 `\r\n` 으로 써서 `read -r` 이 이름 끝에 `\r` 을 붙이고, ⓑ 파이썬은 **파일을 못 열면 2 로
+나간다** — 종료코드 계약의 「못 쟀다」와 같은 숫자라 「이름이 틀렸다 · 파일이 없다」가 「러너가 못 갖춘 자리」 경고로
+둔갑한다. 그러면 게이트가 한 개도 안 돌았는데 빨강이 안 선다(claude-config #103). 그래서 목록은 **플랫폼과 무관하게
+LF** 로 내고, 태우기는 **목록을 읽은 자가 파일이 있나를 먼저 묻고** 없으면 어긋남(1)으로 센다.
 ⚠ 바닥 수(「목록이 줄었나」)와 인자를 받는 게이트는 여기서 안 든다 — 그 저장소 CI 의 몫이다.
 
-**푸시 직전 판(`--push`)은 저장소가 뺀 게이트를 뺀다.** 한 바퀴를 통째로 돌면 분 단위라 푸시마다 물 수
-없다 — 무엇을 뺄지는 저장소가 곁 선언 `[push_skip]` 에 `이름 = 까닭` 으로 적는다(`[needs_arg]` 와 같은
-꼴). 여기 적지 않은 게이트는 푸시에서도 돈다 — 새 게이트가 조용히 빠지지 않게 빼는 쪽을 선언한다.
-CI 는 `--gates` 로 목록 전부를 받으므로 여기서 뺀 게이트도 거기서는 돈다.
+**푸시 직전 판(`--push`)은 저장소가 뺀 게이트를 뺀다.** 한 바퀴를 통째로 돌면 분 단위라 푸시마다 물 수 없다 —
+무엇을 뺄지는 저장소가 곁 선언 `[push_skip]` 에 `이름 = 까닭` 으로 적는다(`[needs_arg]` 와 같은 꼴). 여기 적지 않은
+게이트는 푸시에서도 돈다 — 새 게이트가 조용히 빠지지 않게 빼는 쪽을 선언한다. CI 는 `--gates` 로 목록 전부를 받으므로
+여기서 뺀 게이트도 거기서는 돈다.
 **푸시 판은 고친 경로로도 가린다(`--changed`).** 게이트마다 지키는 경로를 곁 선언 `[push_when]` 에
-`이름 = 글롭 글롭 …` 으로 적으면, 고친 경로가 그 글롭에 하나도 안 걸린 게이트는 푸시에서 안 돈다.
-글롭은 저장소 뿌리 기준 `/` 경로에 `fnmatch` 로 대고, `*` 는 `/` 도 넘는다 — 넘치게 걸리는 쪽이
-모자라게 걸리는 쪽보다 싸다(더 도는 것은 시간이고, 덜 도는 것은 빨강을 CI 로 미룬다).
+`이름 = 글롭 글롭 …` 으로 적으면, 고친 경로가 그 글롭에 하나도 안 걸린 게이트는 푸시에서 안 돈다. 저장소 전체를
+보는 게이트처럼 늘 돌아야 하는 게이트는 `[push_always]` 에 `이름 = 까닭` 으로 적는다 — 러너에게는 선언이 없는 것과
+같고(늘 돈다), ④ ㉢ 에게는 「일부러 늘 돈다」는 선언이다. 러너는 이름을 댄 절만 읽으므로, 이 절을 모르는 러너
+사본도 그 절을 안 읽고 지나간다.
+글롭은 저장소 뿌리 기준 `/` 경로에 `fnmatch` 로 대고, `*` 는 `/` 도 넘는다 — 넘치게 걸리는 쪽이 모자라게 걸리는
+쪽보다 싸다(더 도는 것은 시간이고, 덜 도는 것은 빨강을 CI 로 미룬다).
 ⚠ **선언 없는 게이트는 경로로 안 빠진다** — 모르면 돈다. 빼는 쪽을 선언하던 `[push_skip]` 과 같은 까닭이다
   (같은 입력으로 이미 초록을 봤으면 아래 도장이 따로 뺀다).
 ⚠ **`[push_skip]` 이 이긴다** — 거기 적은 게이트는 경로가 걸려도 푸시에서 안 돈다.
@@ -55,58 +107,21 @@ CI 는 `--gates` 로 목록 전부를 받으므로 여기서 뺀 게이트도 �
 ⚠ **검사 파일을 직접 부르면 도장이 없다** — 레인 · 세션이 게이트를 돌릴 때는 `--run-gates --only <이름>` 으로
   러너를 거친다. git 밖에서 돌면(임시 나무) 도장을 안 남기고 안 읽는다.
 
-**왜 이 검사가 있나.** 이 폴더의 지도는 *어느 검사가 있고 무엇을 재나*를 든다. 그런데
-검사를 새로 짓거나 지우거나 이름을 바꿔도 **아무 데서도 안 터진다** — 검사는 그대로 돌고
-지도만 조용히 낡는다. 그리고 낡은 자리가 하필 「없는 검사를 있다고 말하는」 쪽이면, 그
-줄을 읽은 사람은 **재지도 않은 자리를 봤다고 여긴다.** 문서 낡음 중에 가장 비싼 꼴이다.
-
-재는 것은 **차집합 둘**이고, 둘은 서로 다른 사고다:
-  ① **표에 없는 검사** — 파일은 사는데 지도에 줄이 없다. 새로 지어 놓고 안 적었거나
-     이름을 바꾸고 한쪽만 고친 자리. 그 검사는 아무도 안 돌린다
-  ② **실물 없는 줄** — 지도에 줄은 있는데 파일이 없다. 지우거나 옮긴 자리. 읽는 사람이
-     없는 검사를 믿는다
-
-그 위에 ③ **「무엇을 재나」 칸**이 앉는다 — 줄이 있나가 아니라 **그 줄의 첫 곁칸이 실물과
-같나**다. 종전에는 사람이 파일을 읽고 표에 옮겨 적었고, 그 순간부터 손사본이라 검사를
-고쳐도 표가 안 따라왔다. 지금은 **각 검사 파일의 머리 첫 줄이 진본**이고 칸은 거기서 낸다:
-
-    python _check/map_check.py --write    # 표식이 이끄는 표의 둘째 칸을 다시 쓴다
-
-**머리 첫 줄의 계약 둘** — 이 자가 문다:
-  · **표 한 칸에 드는 길이 안**(아래 `LIMIT`) — 넘치면 표가 문단이 되고, 문단이 되면
-    사람이 다시 손으로 줄여 앉혀 손사본이 돌아온다
-  · **마침표로 닫힌다** — 「한 문장인가」를 기계가 가르는 유일한 눈금이다. 안 닫히면
-    다음 줄로 이어지는 문장이라 칸에 앉는 순간 **반 토막이 참말처럼 선다**
-
-⚠ **이슈·ADR 좌표는 첫 줄에 안 둔다** — 표 한 칸에 좌표가 89번 되풀이되면 칸이 안 읽힌다.
-  둘째 줄 이하(`좌표 — …`)로 내리되 **지우지는 않는다.**
-
-⚠ **첫 줄은 지도(`.md`)에 앉으므로 문서 검사의 그물에도 든다** — 백틱 조각은
-  `doc_span_check.py` 가 경로·식별자로 읽어 실물을 찾는다. 좌표만 백틱으로 감싸고
-  낱말(`image/webp` 같은 형식 이름)은 맨글자로 둔다 — 안 그러면 그 검사가 빨강을 낸다.
-
-**칸 단위 파생이라 구간 표식이 아니다.** 다른 생성물은 `<!-- generated: … -->` 와
-`<!-- /generated -->` 로 구간을 울타리 치는데, 이 표는 한 줄 안에서 **둘째 칸만** 기계 것이고
-「언제 돌리나」·「무엇이 있어야 도나」는 사람 것이다. 구간을 치면 손대지 말라는 말이 사람 칸까지
-덮는다. 그래서 표식은 **표 머리 곁 한 줄**로 서고 닫는 짝이 없다 — 표의 끝은 표가 스스로 말하고,
-어느 칸인지는 그 표의 머리줄이 말한다.
-
-**일부러 안 재는 것 셋** — 판정에 새겨 둔다:
-  · **밑줄로 시작하는 공용 부품**(`_verdict.py`·`_serve.py` 따위)은 검사가 아니라 부품이라
-    표의 대상이 아니다. **양쪽에서 함께 뺀다** — 한쪽만 빼면 그것이 곧 어긋남으로 뜬다
+**일부러 안 재는 것** — 판정에 새겨 둔다:
+  · **밑줄로 시작하는 공용 부품**(`_verdict.py`·`_serve.py` 따위)은 검사가 아니라 부품이라 표의 대상이 아니다.
+    **양쪽에서 함께 뺀다** — 한쪽만 빼면 그것이 곧 어긋남으로 뜬다
   · **`fixtures/`·`log/` 안**은 안 본다. 검체와 기록이지 검사가 아니다
-  · **`_check/` 밖의 검사**(`kb/`·`prompts/`·`.githooks/`)는 안 문다. 그 폴더들은 검사와
-    생성기가 섞여 있어 **파일 목록으로 전수를 못 뜬다** — 지도의 그 표는 손으로 유지되고,
-    그 사실이 지도의 「무엇을 안 재나」에 적혀 있다
+  · **`_check/` 밖의 검사**(`kb/`·`prompts/`·`.githooks/`)는 안 문다. 그 폴더들은 검사와 생성기가 섞여 있어 **파일
+    목록으로 전수를 못 뜬다** — 지도의 그 표는 손으로 유지되고, 그 사실이 지도의 「무엇을 안 재나」에 적혀 있다
+  · **지도 「언제 돌리나」 칸의 경로가 선언에 드나** — 칸을 기계가 읽는 명부로 만드는 일이라 보류다(atelier #444 ㉣).
+    선언한 글롭이 게이트가 실제로 읽는 자리를 다 덮나도 사람이 든다
 
-⚠ **③ 이 무는 것은 「같은 글자인가」까지다.** 그 문장이 *맞는 말을 하나*는 못 잰다 —
-  진본을 그대로 옮겼는지만 보므로, 머리 첫 줄이 틀리면 표도 나란히 틀린다. 그래도 값이
-  있는 것은 **틀릴 자리가 둘에서 하나로 준다**는 데 있다. 「언제 돌리나」·「무엇이 있어야
-  도나」 칸과 어느 갈래 절에 앉나는 여전히 사람이 실물을 읽고 적은 판단이다.
+⚠ **③ 이 무는 것은 「같은 글자인가」까지다.** 그 문장이 *맞는 말을 하나*는 못 잰다 — 머리 첫 줄이 틀리면 표도
+  나란히 틀린다. 그래도 **틀릴 자리가 둘에서 하나로 준다.** 「언제 돌리나」·「무엇이 있어야 도나」 칸과 어느 갈래
+  절에 앉나는 여전히 사람이 실물을 읽고 적은 판단이다.
 
-⚠ **어긋남 0 은 그 자체로 초록이 아니다.** 표를 못 읽어도 0 이 나온다. 그래서 아래 §2 가
-  **자기 이빨 열로 이 판정이 실제로 무는지**를 같은 판에서 보이고(아뜰리에 결정 0112 의 자기 이빨
-  규율), 양쪽이 빈손이거나 표식이 한 자리도 없으면 초록이 아니라 「못 쟀다」(2)로 나간다.
+⚠ **어긋남 0 은 그 자체로 초록이 아니다.** 표를 못 읽어도 0 이 나온다. 그래서 심은 표본이 판정마다 정말 무는지를
+  같은 판에서 보이고, 양쪽이 빈손이거나 표식이 한 자리도 없으면 초록이 아니라 「못 쟀다」(2)로 나간다.
 
 토큰도 네트워크도 브라우저도 안 쓴다.
 """
@@ -120,6 +135,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -132,7 +148,8 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-from _verdict import EXIT_MISMATCH, EXIT_OK, EXIT_UNMEASURED, edge, fails, passes, report  # noqa: E402
+from _verdict import (EXIT_MISMATCH, EXIT_OK, EXIT_UNMEASURED, edge, fails, passes, report,  # noqa: E402
+                      unmeasured, unmeasureds)
 
 MAP = "README.md"
 SUFFIXES = (".py", ".mjs", ".ps1")
@@ -220,6 +237,97 @@ def _push_fresh(check_dir):
 def _serial(check_dir):
     """곁 선언의 `[serial]` — 묶음 이름 → 같이 돌면 안 되는 게이트들(공백으로 가른다)."""
     return {n: v.split() for n, v in _conf_section(check_dir, "serial").items()}
+
+
+# ── ④ 푸시 선언 — 곁 선언이 게이트 절 · 트리와 맞나
+
+# 열쇠가 게이트 이름인 절. `[serial]` 은 열쇠가 묶음 이름이고 값이 게이트 이름들이라 따로 읽는다.
+# `[push_always]` 는 러너가 안 읽는다 — 러너에게는 선언이 없는 것과 같고(늘 돈다) ④ ㉢ 만 읽는다.
+NAMED_SECTIONS = ("needs_arg", "push_skip", "push_when", "push_fresh", "push_always")
+
+
+def read_decl(check_dir):
+    """곁 선언 전부 — `(절 → {열쇠: 값}, 못 읽은 까닭)`. 파일이 없으면 `({}, None)`, 못 읽으면 `(None, 까닭)`."""
+    conf = Path(check_dir) / CONF
+    if not conf.is_file():
+        return {}, None
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.optionxform = str            # 파일 이름은 대소문자가 뜻이다
+    try:
+        cp.read_string(conf.read_text(encoding="utf-8"), source=str(conf))
+    except (OSError, UnicodeDecodeError, configparser.Error) as e:
+        return None, f"{CONF} 를 못 읽었다 — {e.__class__.__name__}: {e}"
+    return {s: dict(cp[s]) for s in cp.sections()}, None
+
+
+def decl_gaps(rows, decl, files):
+    """④ 를 잰다 — `(죽은 글롭, 모르는 이름, 선언 없는 게이트, 경로 고르기를 쓰나)`. 판정은 안 찍는다.
+
+    받는 것 — `rows` 게이트 절 이름 · `decl` 곁 선언(`read_decl`) · `files` 트리 파일(뿌리 기준 `/` 경로 · 글롭이
+    없으면 None 이어도 된다). 본판과 심은 표본이 같은 자로 재게 하려고 재기와 판정을 갈랐다.
+    ⚠ 글롭은 러너와 같은 뜻(`fnmatch` · `*` 는 `/` 도 넘는다 · 대소문자를 가른다)으로 댄다 — 뜻이 갈리면 러너가
+      고르는 것과 다른 것을 잰다.
+    """
+    gates = set(rows)
+    when = {n: v.split() for n, v in decl.get("push_when", {}).items()}
+    always = decl.get("push_always", {})
+    needs = decl.get("needs_arg", {})
+    dead = []
+    for name, globs in when.items():
+        for g in globs:
+            if not any(map(re.compile(fnmatch.translate(g)).match, files or ())):
+                dead.append((name, g))
+    named = [(s, n) for s in NAMED_SECTIONS for n in decl.get(s, {})]
+    named += [("serial", n) for v in decl.get("serial", {}).values() for n in v.split()]
+    unknown = sorted({(s, n) for s, n in named if n not in gates})
+    used = bool(when) or bool(always)
+    undeclared = [n for n in rows if n not in needs and not when.get(n) and not always.get(n, "").strip()] \
+        if used else []
+    return dead, unknown, undeclared, used
+
+
+def judge_decl(check_dir, rows):
+    """④ 를 이 저장소의 곁 선언 · 게이트 절 · 트리로 판정한다 — 못 읽은 자리는 `unmeasured` 로 남긴다."""
+    print("\n--- ④ 푸시 선언이 실물과 맞나 — 죽은 글롭 · 모르는 이름 · 선언 없는 게이트")
+    decl, why = read_decl(check_dir)
+    if decl is None:
+        unmeasured("④ 푸시 선언", why)
+        return
+    if not decl:
+        edge(f"④ 는 잴 선언이 없다 — 곁 `{CONF}` 가 없거나 비어 러너는 모든 게이트를 늘 돌린다")
+        return
+    if not rows:
+        unmeasured("④ 푸시 선언", f"지도에 「{GATE_SECTION}」 절의 표 줄이 없다 — 선언의 이름을 견줄 명부가 없다")
+        return
+    globs = sum(len(v.split()) for v in decl.get("push_when", {}).values())
+    files = None
+    if globs:
+        top = _git(Path(check_dir).parent, "rev-parse", "--show-toplevel")
+        files = tree_files(Path(top.decode("utf-8", "replace").strip())) if top else None
+        if files is None:
+            unmeasured("④ ㉠ 죽은 글롭", "작업 트리 파일 목록을 못 뽑았다 — git 밖이거나 git 을 못 부른다")
+    dead, unknown, undeclared, used = decl_gaps(rows, decl, files)
+    if files is not None:
+        report(f"④ ㉠ 죽은 글롭이 없다 — 글롭 {globs}개마다 트리 파일이 걸린다", not dead,
+               [f"{n} — `{g}` 에 걸리는 트리 파일이 없다. 그 글롭으로는 푸시가 그 게이트를 안 고른다 — 옮긴 · 지운 "
+                "자리를 따라 글롭을 고친다" for n, g in dead])
+    if any(decl.get(s) for s in (*NAMED_SECTIONS, "serial")):
+        report("④ ㉡ 모르는 이름이 없다 — 선언의 이름이 다 게이트 절에 있다", not unknown,
+               [f"[{s}] {n} — 게이트 절에 없는 이름이다. 오타면 고치고, 걷은 게이트면 그 줄을 걷는다"
+                for s, n in unknown])
+    if used:
+        report(f"④ ㉢ 선언 없는 게이트가 없다 — `[needs_arg]` 밖의 게이트마다 `[push_when]` 이나 "
+               f"`[push_always]` 가 있다 (게이트 {len(rows)}개)", not undeclared,
+               [f"{n} — `[push_when] {n} = <지키는 경로 글롭>` 이나 `[push_always] {n} = <까닭>` 을 적는다"
+                for n in undeclared])
+    else:
+        edge("④ ㉢ 은 안 섰다 — `[push_when]` · `[push_always]` 가 하나도 없어 경로 고르기를 안 쓴다(러너는 모든 "
+             "게이트를 늘 돌린다)")
+    edge(f"쟀다: 게이트 {len(rows)}개 · 경로 선언 {len(decl.get('push_when', {}))}개(글롭 {globs}개) · "
+         f"늘 돈다 선언 {len(decl.get('push_always', {}))}개 · 인자가 드는 게이트 {len(decl.get('needs_arg', {}))}개 · "
+         f"트리 파일 {len(files) if files is not None else '안 뽑음'}")
+    edge("안 잰 것 — 지도 「언제 돌리나」 칸의 경로가 선언에 드나(보류) · 글롭이 게이트가 실제로 읽는 자리를 다 덮나. "
+         "사람이 든다")
 
 
 def serial_chains(groups, names):
@@ -831,7 +939,7 @@ def write_cells(check_dir):
     return hit
 
 
-# ── 자기 이빨 — 손댄 사본으로 이 판정이 정말 무는지 본다
+# ── 물림 — 심은 표본(판정 판에서 매번)과 실물 사본 · 러너 모의(`--teeth` 정기 판)
 
 def _plant(files, map_text):
     """검사 이름만 빈 파일로 세운 임시 나무 — 지도는 준 글자 그대로."""
@@ -903,6 +1011,82 @@ def _bend_cell(root):
     return name
 
 
+def _plant_cells():
+    """③ 의 심은 표본 — 칸이 머리 첫 줄과 같은 검사 하나 · 다른 검사 하나를 든 임시 나무. `(나무, 같은 쪽, 다른 쪽)`."""
+    root = Path(tempfile.mkdtemp(prefix="map-cell-"))
+    same, bent = "zz_same_check.py", "zz_bent_check.py"
+    (root / same).write_text('"""칸과 같은 머리 첫 줄이다."""\n', encoding="utf-8")
+    (root / bent).write_text('"""칸과 다른 머리 첫 줄이다."""\n', encoding="utf-8")
+    (root / MAP).write_text(f"## {GATE_SECTION} — 심은 표본\n\n{MARK}\n| 검사 | 무엇을 재나 |\n|---|---|\n"
+                            f"| `{same}` | 칸과 같은 머리 첫 줄이다 |\n| `{bent}` | 손으로 고친 칸 |\n",
+                            encoding="utf-8")
+    return root, same, bent
+
+
+# ④ 의 심은 표본 — 게이트 넷과 트리 파일 둘. 기대는 선언의 뜻에서 온다(아래 `main` 의 ④ 물림이 적는다).
+DECL_ROWS = ["a_check.py", "b_check.py", "c_check.py", "d_check.py"]
+DECL_FILES = ["docs/a.md", "_check/a_check.py"]
+DECL_BAD = ("[needs_arg]\nd_check.py = 인자가 든다\n"
+            "[push_when]\na_check.py = docs/*.md\nb_check.py = nowhere/*.txt\n"
+            "[push_always]\nzz_typo_check.py = 오타 난 이름\n"
+            "[serial]\ng = a_check.py yy_typo_check.py\n")
+DECL_GOOD = ("[needs_arg]\nd_check.py = 인자가 든다\n"
+             "[push_when]\na_check.py = docs/*.md\nb_check.py = _check/*\n"
+             "[push_always]\nc_check.py = 저장소 전체를 본다\n"
+             "[serial]\ng = a_check.py b_check.py\n")
+DECL_NONE = "[needs_arg]\nd_check.py = 인자가 든다\n"
+DECL_BROKEN = "절 머리가 없는 줄\n"
+
+
+def _read_planted_decl(text):
+    """곁 선언 글을 임시 폴더에 심고 `read_decl` 로 읽는다 — 읽는 손까지 같은 자로 잰다."""
+    root = Path(tempfile.mkdtemp(prefix="map-decl-"))
+    try:
+        (root / CONF).write_text(text, encoding="utf-8")
+        return read_decl(root)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def judge_map(check_dir, map_text, files, rows, marks, write):
+    """판정 ① ③ ④ — 이 저장소의 지도 · 검사 파일 · 곁 선언으로 잰다. 표식이 이끄는 표에 앉은 검사 이름들을 낸다.
+
+    `write` 면 ③ 의 칸을 머리 첫 줄에서 다시 쓰고 다시 잰다. 못 읽은 자리는 `unmeasured` 로 남긴다.
+    """
+    print("--- ① 실물 대조")
+    unlisted, ghost = compare(files, rows)
+    report("표에 없는 검사가 없다 — 파일마다 제 줄이 있다", not unlisted,
+           [f"{n} — 파일은 사는데 {MAP} 에 줄이 없다" for n in unlisted])
+    report("실물 없는 줄이 없다 — 줄마다 그 파일이 산다", not ghost,
+           [f"{n} — {MAP} 에 줄은 있는데 파일이 없다" for n in ghost])
+    edge(f"쟀다: 실물 {len(files)}개 ↔ 표 줄 {len(rows)}개 (첫 칸 기준)")
+
+    parts = sorted(p.name for p in check_dir.iterdir()
+                   if p.is_file() and p.name.startswith(PART) and p.suffix in SUFFIXES)
+    edge("일부러 뺐다 — 공용 부품 " + (" · ".join(parts) if parts else "이 나무에는 없다"))
+    edge("일부러 뺐다 — 하위 폴더(검체·기록)와 `_check/` 밖의 검사. 까닭은 이 파일 머리말")
+
+    print("\n--- ③ 「무엇을 재나」 칸이 머리 첫 줄에서 나오나")
+    seated, gaps, flaw = cell_gap(check_dir)
+    report("머리 첫 줄이 계약을 지킨다 — 길이 안에 들고 한 문장으로 닫힌다", not flaw, flaw)
+    if write:
+        hit = write_cells(check_dir)
+        _, gaps, _ = cell_gap(check_dir)
+        report(f"칸을 갈아 앉혔다 — {hit}줄 · 다시 재니 어긋남 {len(gaps)}건", not gaps, gaps)
+    else:
+        report(f"칸이 머리 첫 줄과 같다 — 파생 {len(seated)}줄", not gaps, gaps)
+
+    # 표식 밖에 사는 검사 줄은 이 자가 **통째로 못 본다** — 세는 자리를 센티널로 세운다.
+    stray = sorted(rows - set(seated))
+    report("검사 줄이 전부 표식이 이끄는 표 안에 산다", not stray,
+           [f"{n} — 표식 밖의 줄이라 칸이 생성도 대조도 안 된다" for n in stray])
+    edge(f"쟀다: 표식 {marks}개 · 파생 칸 {len(seated)}개 (진본은 그 파일의 머리 첫 줄)")
+    edge("안 잰 것 — 그 문장이 **맞는 말인가** · 「언제 돌리나」 칸 · 어느 갈래 절에 앉나. 사람이 든다")
+
+    judge_decl(check_dir, gate_rows(map_text))
+    return seated
+
+
 def main(argv):
     jobs = 1
     if "--jobs" in argv[1:]:
@@ -929,12 +1113,16 @@ def main(argv):
             return EXIT_UNMEASURED
         only.append(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
-    args = [a for a in argv[1:] if a not in ("--write", "--gates", "--run-gates", "--push")]
+    args = [a for a in argv[1:] if a not in ("--write", "--gates", "--run-gates", "--push", "--teeth")]
     write = "--write" in argv[1:]
     gates = "--gates" in argv[1:]
     run = "--run-gates" in argv[1:]
+    teeth = "--teeth" in argv[1:]   # 정기 판 — 물림 전부를 돌고 판정 ①–④ 는 안 낸다(머리말 「물림은 둘로 갈린다」)
     if only and not run:
         print("⚠ 못 쟀다 — `--only` 는 `--run-gates` 와 함께만 뜻이 선다", file=sys.stderr)
+        return EXIT_UNMEASURED
+    if teeth and (write or gates or run):
+        print("⚠ 못 쟀다 — `--teeth` 는 `--write` · `--gates` · `--run-gates` 없이 부를 때만 뜻이 선다", file=sys.stderr)
         return EXIT_UNMEASURED
     check_dir = Path(args[0]).resolve() if args else HERE
     map_path = check_dir / MAP
@@ -980,41 +1168,13 @@ def main(argv):
               f"칸을 어디서 낼지 모르므로 ③ 이 안 선다.", file=sys.stderr)
         return EXIT_UNMEASURED
 
-    print("--- ① 실물 대조")
-    unlisted, ghost = compare(files, rows)
-    report("표에 없는 검사가 없다 — 파일마다 제 줄이 있다", not unlisted,
-           [f"{n} — 파일은 사는데 {MAP} 에 줄이 없다" for n in unlisted])
-    report("실물 없는 줄이 없다 — 줄마다 그 파일이 산다", not ghost,
-           [f"{n} — {MAP} 에 줄은 있는데 파일이 없다" for n in ghost])
-    edge(f"쟀다: 실물 {len(files)}개 ↔ 표 줄 {len(rows)}개 (첫 칸 기준)")
-
-    parts = sorted(p.name for p in check_dir.iterdir()
-                   if p.is_file() and p.name.startswith(PART) and p.suffix in SUFFIXES)
-    edge("일부러 뺐다 — 공용 부품 " + (" · ".join(parts) if parts else "이 나무에는 없다"))
-    edge("일부러 뺐다 — 하위 폴더(검체·기록)와 `_check/` 밖의 검사. 까닭은 이 파일 머리말")
-
-    print("\n--- ③ 「무엇을 재나」 칸이 머리 첫 줄에서 나오나")
-    seated, gaps, flaw = cell_gap(check_dir)
-    report("머리 첫 줄이 계약을 지킨다 — 길이 안에 들고 한 문장으로 닫힌다", not flaw, flaw)
-    if write:
-        hit = write_cells(check_dir)
-        _, gaps, _ = cell_gap(check_dir)
-        report(f"칸을 갈아 앉혔다 — {hit}줄 · 다시 재니 어긋남 {len(gaps)}건", not gaps, gaps)
-    else:
-        report(f"칸이 머리 첫 줄과 같다 — 파생 {len(seated)}줄", not gaps, gaps)
-
-    # 표식 밖에 사는 검사 줄은 이 자가 **통째로 못 본다** — 세는 자리를 센티널로 세운다.
-    stray = sorted(rows - set(seated))
-    report("검사 줄이 전부 표식이 이끄는 표 안에 산다", not stray,
-           [f"{n} — 표식 밖의 줄이라 칸이 생성도 대조도 안 된다" for n in stray])
-    edge(f"쟀다: 표식 {marks}개 · 파생 칸 {len(seated)}개 (진본은 그 파일의 머리 첫 줄)")
-    edge("안 잰 것 — 그 문장이 **맞는 말인가** · 「언제 돌리나」 칸 · 어느 갈래 절에 앉나. 사람이 든다")
+    seated = [] if teeth else judge_map(check_dir, map_text, files, rows, marks, write)
 
     if write:
-        print(f"\n✅ 갈아 앉혔다 — 판정 {len(passes())}건 (자기 이빨은 `--write` 에서 안 돈다)")
-        return EXIT_MISMATCH if fails() else EXIT_OK
+        print(f"\n✅ 갈아 앉혔다 — 판정 {len(passes())}건 (물림은 `--write` 에서 안 돈다)")
+        return EXIT_MISMATCH if fails() else EXIT_UNMEASURED if unmeasureds() else EXIT_OK
 
-    print("\n--- ② 자기 이빨 — 손댄 사본이 정말 빨강을 내나")
+    print("\n--- 물림 — 심은 표본이 판정마다 정말 빨강을 내나")
     # ⚠ **사본의 파일 목록은 `rows` 로 세운다 — `files` 가 아니다.** 실물에서 뜨면 ①이
     #   빨간 날 사본도 같이 빨개져, 「손댄 탓」과 「원래 어긋나 있던 탓」이 안 갈린다.
     #   표에서 세우면 ㉮ 가 **짜임으로** 초록이라, 아래 셋의 빨강은 손댄 것만 가리킨다.
@@ -1048,232 +1208,267 @@ def main(argv):
                _survey(holed) == ([], [gone]),
                [f"실측 {_survey(holed)} — 기대 ([], [{gone!r}])"])
 
-        # ㉲㉳㉴ — ③ 의 이빨. 앞의 넷은 **빈 파일**로 세운 나무라 머리 첫 줄이 없어
-        #   칸 축이 통째로 안 물린다. 그래서 여기부터는 실물 사본을 뜬다.
-        keep = _copy(check_dir); tmps.append(keep)
-        report("㉲ 안 건드린 사본은 칸도 초록이다 (양성 대조)", cell_gap(keep)[1:] == ([], []))
+        # ③ 의 심은 표본 — 칸이 머리 첫 줄과 다른 줄 하나만 서야 한다. 앞의 넷은 **빈 파일**로 세운 나무라 머리 첫
+        #   줄이 없어 칸 축이 안 물리고, 실물 사본을 뜨는 ㉲㉳㉴ 는 정기 판이다 — 판정 판에서는 이것이 ③ 을 문다.
+        cells, same, bent_name = _plant_cells(); tmps.append(cells)
+        c_seated, c_gaps, c_flaw = cell_gap(cells)
+        report(f"③ 물림 — 칸을 머리 첫 줄과 다르게 심으면 그 줄만 빨강이다 ({bent_name})",
+               c_seated == [same, bent_name] and len(c_gaps) == 1 and c_gaps[0].startswith(f"{bent_name} — ")
+               and not c_flaw,
+               [f"실측 앉은 줄 {c_seated} · 어긋남 {c_gaps} · 흠 {c_flaw} — 기대 {bent_name} 한 줄만"])
 
-        # ㉳ 진본 쪽을 손댄다 → 칸이 어긋나야 한다
-        bent = _copy(check_dir); tmps.append(bent)
-        hurt = _bend_head(bent)
-        report(f"㉳ 머리 첫 줄을 바꾸면 칸이 빨강이다 ({hurt})",
-               bool(hurt) and any(str(hurt) in g for g in cell_gap(bent)[1]),
-               [f"실측 {cell_gap(bent)[1] or '어긋남 없음'} — {hurt} 가 서야 한다"])
+        # ④ 의 심은 표본 — 기대는 선언의 뜻에서 온다: 한 장에도 안 걸리는 글롭(`nowhere/*.txt`)만 죽은 글롭이고(㉠),
+        #   게이트 절에 없는 이름은 `[push_always]` 의 열쇠든 `[serial]` 의 값이든 모르는 이름이며(㉡), `[needs_arg]` 의
+        #   게이트는 빠지고 선언이 없는 `c_check.py` 만 선언 없는 게이트다(㉢). 다 맞은 선언은 셋 다 비고, 경로 고르기를
+        #   안 쓰면 ㉢ 이 안 서며, 못 읽는 선언은 「못 쟀다」로 간다. 선언은 임시 폴더에 심어 읽는 손까지 같은 자로 잰다.
+        bad_decl, _ = _read_planted_decl(DECL_BAD)
+        dead, unknown, undeclared, used = decl_gaps(DECL_ROWS, bad_decl or {}, DECL_FILES)
+        report("④ 물림 ㉠ — 죽은 글롭을 심으면 그 글롭만 빨강이다", dead == [("b_check.py", "nowhere/*.txt")],
+               [f"실측 {dead} — 기대 [('b_check.py', 'nowhere/*.txt')]"])
+        report("④ 물림 ㉡ — 모르는 이름을 심으면 그 이름만 빨강이다 (`[push_always]` · `[serial]`)",
+               unknown == [("push_always", "zz_typo_check.py"), ("serial", "yy_typo_check.py")],
+               [f"실측 {unknown} — 기대 [('push_always', 'zz_typo_check.py'), ('serial', 'yy_typo_check.py')]"])
+        report("④ 물림 ㉢ — 선언 없는 게이트를 심으면 그 게이트만 빨강이다 (`[needs_arg]` 는 빠진다)",
+               used and undeclared == ["c_check.py"], [f"실측 쓰나 {used} · {undeclared} — 기대 ['c_check.py']"])
+        good_decl, _ = _read_planted_decl(DECL_GOOD)
+        none_decl, _ = _read_planted_decl(DECL_NONE)
+        broken, broken_why = _read_planted_decl(DECL_BROKEN)
+        g_gaps = decl_gaps(DECL_ROWS, good_decl or {}, DECL_FILES)
+        n_gaps = decl_gaps(DECL_ROWS, none_decl or {}, DECL_FILES)
+        report("④ 음성 대조 — 다 맞은 선언은 셋 다 비고 · 경로 고르기를 안 쓰면 ㉢ 이 안 서고 · 못 읽는 선언은 못 쟀다다",
+               g_gaps == ([], [], [], True) and n_gaps == ([], [], [], False)
+               and broken is None and bool(broken_why),
+               [f"실측 다 맞음 {g_gaps} · 안 씀 {n_gaps} · 못 읽음 {broken!r} {broken_why!r} — "
+                "기대 ([], [], [], True) · ([], [], [], False) · None 과 까닭"])
 
-        # ㉴ 문서 쪽을 손댄다 → **반대 방향**이다. ㉳ 만 있으면 「사람이 칸을 고친 자리」는
-        #    이빨이 없다 — 손사본을 끊자는 것이 이 축의 본론이라 그쪽이 더 값이 크다.
-        hand = _copy(check_dir); tmps.append(hand)
-        touched = _bend_cell(hand)
-        report(f"㉴ 칸을 손으로 고치면 빨강이다 ({touched})",
-               bool(touched) and any(str(touched) in g for g in cell_gap(hand)[1]),
-               [f"실측 {cell_gap(hand)[1] or '어긋남 없음'} — {touched} 가 서야 한다"])
+        if teeth:
+            print("\n--- 정기 물림 — 실물 사본과 러너 모의 (`--teeth`)")
+            # ㉲㉳㉴ — ③ 의 실물 사본. 위 심은 표본이 탐지기를 매번 보이고, 여기는 실물 지도 · 실물 머리 꼴에서도 두 방향
+            #   으로 무는지 본다. 검사 파일 전부를 세 벌 떠 읽어 무거우므로 정기 판에서만 돈다.
+            keep = _copy(check_dir); tmps.append(keep)
+            report("㉲ 안 건드린 사본은 칸도 초록이다 (양성 대조)", cell_gap(keep)[1:] == ([], []))
 
-        # ㉵ 태울 목록의 줄끝 — 이 판의 파이썬이 실제로 낸 바이트를 잰다. 리눅스에서는 늘
-        #    초록이고, 이빨이 서는 자리는 윈도(머리말 ⓐ)다.
-        listed = subprocess.run([sys.executable, "-X", "utf8", str(Path(__file__).resolve()),
-                                 str(check_dir), "--gates"], capture_output=True)
-        crs = listed.stdout.count(b"\r")
-        report("㉵ `--gates` 목록 줄끝에 CR 이 없다 — 셸 루프가 이름을 그대로 받는다",
-               listed.returncode == EXIT_OK and bool(listed.stdout) and not crs,
-               [f"실측 종료코드 {listed.returncode} · {len(listed.stdout)}바이트 · CR {crs}개"])
+            # ㉳ 진본 쪽을 손댄다 → 칸이 어긋나야 한다
+            bent = _copy(check_dir); tmps.append(bent)
+            hurt = _bend_head(bent)
+            report(f"㉳ 머리 첫 줄을 바꾸면 칸이 빨강이다 ({hurt})",
+                   bool(hurt) and any(str(hurt) in g for g in cell_gap(bent)[1]),
+                   [f"실측 {cell_gap(bent)[1] or '어긋남 없음'} — {hurt} 가 서야 한다"])
 
-        # ㉶ 태우는 자의 갈래 — 목록에 있는데 파일이 없는 게이트는 「못 쟀다」가 아니라
-        #    어긋남이고, 2 를 낸 게이트는 못 쟀다로 남는다. 프로세스는 안 띄운다(`run` 갈아 끼움).
-        grows = [n for n in gate_rows(map_text) if n not in needs]
-        if len(grows) >= 2:
-            gone_g, cant_g = grows[0], grows[1]
-            fake = lambda _d, n: EXIT_UNMEASURED if n == cant_g else EXIT_OK  # noqa: E731
-            whole = _plant(rows | set(grows), map_text); tmps.append(whole)
-            hole = _plant((rows | set(grows)) - {gone_g}, map_text); tmps.append(hole)
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                got_whole = run_gates(whole, map_text, needs, run=lambda _d, _n: EXIT_OK)
-                got_hole = run_gates(hole, map_text, needs, run=fake)
-                got_none = run_gates(whole, map_text, {n: "시험" for n in gate_rows(map_text)},
-                                     run=lambda _d, _n: EXIT_OK)
-            report("㉶ 태우기 — 다 있으면 초록 · 없는 파일은 어긋남 · 2 는 못 쟀다 · 하나도 안 돌면 못 쟀다 "
-                   f"({gone_g} · {cant_g})",
-                   got_whole == (EXIT_OK, [], []) and got_hole == (EXIT_MISMATCH, [gone_g], [cant_g])
-                   and got_none == (EXIT_UNMEASURED, [], []),
-                   [f"실측 {got_whole} · {got_hole} · {got_none} — 기대 (0, [], []) · "
-                    f"(1, [{gone_g!r}], [{cant_g!r}]) · (2, [], [])"])
+            # ㉴ 문서 쪽을 손댄다 → **반대 방향**이다. ㉳ 만 있으면 「사람이 칸을 고친 자리」는
+            #    이빨이 없다 — 손사본을 끊자는 것이 이 축의 본론이라 그쪽이 더 값이 크다.
+            hand = _copy(check_dir); tmps.append(hand)
+            touched = _bend_cell(hand)
+            report(f"㉴ 칸을 손으로 고치면 빨강이다 ({touched})",
+                   bool(touched) and any(str(touched) in g for g in cell_gap(hand)[1]),
+                   [f"실측 {cell_gap(hand)[1] or '어긋남 없음'} — {touched} 가 서야 한다"])
 
-            # ㉷ 푸시 판 — 동시 판(`jobs`)이 차례 판과 같은 판정을 내나, `[push_skip]` 에 적은 게이트가 정말
-            #    안 도나. 곁 선언은 사본 나무에 심는다 — 진짜 저장소 선언을 안 건드린다.
-            (whole / CONF).write_text(f"[push_skip]\n{gone_g} = 시험\n", encoding="utf-8")
-            seen = []
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                got_par = run_gates(hole, map_text, needs, run=fake, jobs=3)
-                run_gates(whole, map_text, {**needs, **_push_skip(whole)},
-                          run=lambda _d, n: seen.append(n) or EXIT_OK)
-            report(f"㉷ 푸시 판 — 동시 판이 차례 판과 같고 · `[push_skip]` 의 게이트는 안 돈다 ({gone_g})",
-                   got_par == got_hole and gone_g not in seen and len(seen) == len(grows) - 1,
-                   [f"실측 동시 {got_par} · 차례 {got_hole} · 돈 것 {len(seen)}/{len(grows)} "
-                    f"· 뺀 것이 돌았나 {gone_g in seen}"])
+            # ㉵ 태울 목록의 줄끝 — 이 판의 파이썬이 실제로 낸 바이트를 잰다. 리눅스에서는 늘
+            #    초록이고, 이빨이 서는 자리는 윈도(머리말 ⓐ)다.
+            listed = subprocess.run([sys.executable, "-X", "utf8", str(Path(__file__).resolve()),
+                                     str(check_dir), "--gates"], capture_output=True)
+            crs = listed.stdout.count(b"\r")
+            report("㉵ `--gates` 목록 줄끝에 CR 이 없다 — 셸 루프가 이름을 그대로 받는다",
+                   listed.returncode == EXIT_OK and bool(listed.stdout) and not crs,
+                   [f"실측 종료코드 {listed.returncode} · {len(listed.stdout)}바이트 · CR {crs}개"])
 
-            # ㉸ 경로로 가리기 — `[push_when]` 에 적은 게이트는 고친 경로가 글롭에 걸릴 때만 돈다. 기대값은
-            #    선언의 뜻에서 온다: 문서 글롭만 지키는 게이트는 코드 경로를 고친 푸시에서 빠지고(ⓐ), `*` 는
-            #    `/` 를 넘어 깊은 문서에도 걸리며(ⓑ), 선언 없는 게이트는 늘 돌고(ⓐ 의 둘째), `[push_skip]` 이
-            #    이기고(ⓒ), 빈 글롭은 선언 없음과 같고(ⓓ), 경로를 못 받거나 빈 목록이면 안 가린다(ⓔ).
-            #    안 돌린 이름은 모음 곁 「안 돌렸다」 줄에 서야 한다(ⓕ) — 조각이 그 줄을 화면에 올린다.
-            doc_g, free_g = grows[0], grows[1]
-            when = {doc_g: ["docs/*.md"], "zzz_not_a_gate.py": ["src/*"]}
-            rows_g = gate_rows(map_text)
-            a_out, a_plan = push_scope(rows_g, when, ["src/app.py"], needs)
-            b_out, _ = push_scope(rows_g, when, ["docs/deep/x.md", "src/app.py"], needs)
-            c_skip = {**needs, doc_g: "푸시에서 뺀다 — 시험"}
-            c_out, _ = push_scope(rows_g, when, ["src/app.py"], c_skip)
-            c_why = {**c_skip, **c_out}.get(doc_g, "")
-            d_out, _ = push_scope(rows_g, {doc_g: []}, ["src/app.py"], needs)
-            e_out, e_plan = push_scope(rows_g, when, None, needs, "시험 — 못 받았다")
-            e2_out, _ = push_scope(rows_g, when, [], needs, "고친 경로 목록이 비었다")
-            f_buf, seen = io.StringIO(), []
-            with contextlib.redirect_stdout(f_buf), contextlib.redirect_stderr(io.StringIO()):
-                run_gates(whole, map_text, {**needs, **a_out}, run=lambda _d, n: seen.append(n) or EXIT_OK,
-                          plan=a_plan)
-            f_lines = f_buf.getvalue().splitlines()
-            named = any(ln.startswith("         · 안 돌렸다 ") and doc_g in ln.split(" — ", 1)[-1].split()
-                        for ln in f_lines)
-            planned = any(ln.startswith("         · 고른 판 — ") and "zzz_not_a_gate.py" in ln for ln in f_lines)
-            chg = Path(tempfile.mkdtemp(prefix="map-check-chg-")); tmps.append(chg)
-            (chg / "list").write_text(".\\docs\\a.md\n\n./src/b.py\n", encoding="utf-8")
-            got_list = read_changed(chg / "list")
-            (chg / "empty").write_text("\n", encoding="utf-8")
-            empty_list = read_changed(chg / "empty")
-            ok = (set(a_out) == {doc_g} and b_out == {} and c_why.startswith("푸시에서 뺀다") and d_out == {}
-                  and e_out == {} and e2_out == {} and "시험 — 못 받았다" in e_plan
-                  and free_g in seen and doc_g not in seen and named and planned
-                  and got_list == (["docs/a.md", "src/b.py"], None)
-                  and empty_list[0] == [] and empty_list[1]
-                  and read_changed(chg / "nope")[0] is None)
-            report(f"㉸ 경로로 가리기 — 걸린 게이트만 · 선언 없으면 늘 · `[push_skip]` 이 이긴다 · 못 받으면 전부 "
-                   f"· 안 돌린 이름이 모음에 선다 ({doc_g} · {free_g})",
-                   ok,
-                   [f"실측 ⓐ {sorted(a_out)} · ⓑ {sorted(b_out)} · ⓒ {c_why!r} · ⓓ {sorted(d_out)} "
-                    f"· ⓔ {sorted(e_out)} {sorted(e2_out)} · 돈 것에 {free_g} {free_g in seen} · {doc_g} {doc_g in seen} "
-                    f"· 이름 줄 {named} · 고른 판 줄 {planned} · 목록 {got_list} · 빈 목록 {empty_list} — "
-                    f"기대 ⓐ [{doc_g!r}] · ⓒ 까닭은 [push_skip] 것 · 나머지 빈 · {free_g} 돌고 {doc_g} 안 돈다 · 두 줄 선다"])
+            # ㉶ 태우는 자의 갈래 — 목록에 있는데 파일이 없는 게이트는 「못 쟀다」가 아니라
+            #    어긋남이고, 2 를 낸 게이트는 못 쟀다로 남는다. 프로세스는 안 띄운다(`run` 갈아 끼움).
+            grows = [n for n in gate_rows(map_text) if n not in needs]
+            if len(grows) >= 2:
+                gone_g, cant_g = grows[0], grows[1]
+                fake = lambda _d, n: EXIT_UNMEASURED if n == cant_g else EXIT_OK  # noqa: E731
+                whole = _plant(rows | set(grows), map_text); tmps.append(whole)
+                hole = _plant((rows | set(grows)) - {gone_g}, map_text); tmps.append(hole)
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    got_whole = run_gates(whole, map_text, needs, run=lambda _d, _n: EXIT_OK)
+                    got_hole = run_gates(hole, map_text, needs, run=fake)
+                    got_none = run_gates(whole, map_text, {n: "시험" for n in gate_rows(map_text)},
+                                         run=lambda _d, _n: EXIT_OK)
+                report("㉶ 태우기 — 다 있으면 초록 · 없는 파일은 어긋남 · 2 는 못 쟀다 · 하나도 안 돌면 못 쟀다 "
+                       f"({gone_g} · {cant_g})",
+                       got_whole == (EXIT_OK, [], []) and got_hole == (EXIT_MISMATCH, [gone_g], [cant_g])
+                       and got_none == (EXIT_UNMEASURED, [], []),
+                       [f"실측 {got_whole} · {got_hole} · {got_none} — 기대 (0, [], []) · "
+                        f"(1, [{gone_g!r}], [{cant_g!r}]) · (2, [], [])"])
 
-            # ㉹ 판정 도장 — 기대값은 도장의 뜻에서 온다: 돈 게이트는 도장을 남겨 같은 입력이면 믿히고(ⓐ),
-            #    `[push_fresh]` 는 안 믿고(ⓑ), 글롭 밖을 고치면 선언한 게이트만 믿히고 선언 없는 게이트(트리 전부)는
-            #    안 믿히고(ⓒ), 글롭 안을 고치면 안 믿히고(ⓓ), 같은 입력의 빨강이 앞의 초록을 덮고(ⓔ), 도는 사이
-            #    입력이 바뀐 게이트는 도장을 안 남기고 그렇다고 말하고(ⓕ), 게이트 파일을 고치면 안 믿히고(ⓖ),
-            #    전부 앞서 쟀으면 한 개도 안 돌고 초록이며 「앞서 쟀다」 줄이 선다(ⓗ). 도장 자리는 트리 밖 임시 폴더다.
-            sroot = Path(tempfile.mkdtemp(prefix="map-check-stamp-")); tmps.append(sroot)
-            shome = Path(tempfile.mkdtemp(prefix="map-check-home-")); tmps.append(shome)
-            sdir = sroot / "_check"
-            sdir.mkdir()
-            (sdir / MAP).write_text(map_text, encoding="utf-8")
-            for n in rows | set(grows):
-                (sdir / n).write_text("", encoding="utf-8")
-            (sroot / "docs").mkdir()
-            (sroot / "docs" / "a.md").write_text("문서\n", encoding="utf-8")
-            (sroot / "src").mkdir()
+                # ㉷ 푸시 판 — 동시 판(`jobs`)이 차례 판과 같은 판정을 내나, `[push_skip]` 에 적은 게이트가 정말
+                #    안 도나. 곁 선언은 사본 나무에 심는다 — 진짜 저장소 선언을 안 건드린다.
+                (whole / CONF).write_text(f"[push_skip]\n{gone_g} = 시험\n", encoding="utf-8")
+                seen = []
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    got_par = run_gates(hole, map_text, needs, run=fake, jobs=3)
+                    run_gates(whole, map_text, {**needs, **_push_skip(whole)},
+                              run=lambda _d, n: seen.append(n) or EXIT_OK)
+                report(f"㉷ 푸시 판 — 동시 판이 차례 판과 같고 · `[push_skip]` 의 게이트는 안 돈다 ({gone_g})",
+                       got_par == got_hole and gone_g not in seen and len(seen) == len(grows) - 1,
+                       [f"실측 동시 {got_par} · 차례 {got_hole} · 돈 것 {len(seen)}/{len(grows)} "
+                        f"· 뺀 것이 돌았나 {gone_g in seen}"])
 
-            def walk(r):
-                return sorted(p.relative_to(r).as_posix() for p in Path(r).rglob("*") if p.is_file())
+                # ㉸ 경로로 가리기 — `[push_when]` 에 적은 게이트는 고친 경로가 글롭에 걸릴 때만 돈다. 기대값은
+                #    선언의 뜻에서 온다: 문서 글롭만 지키는 게이트는 코드 경로를 고친 푸시에서 빠지고(ⓐ), `*` 는
+                #    `/` 를 넘어 깊은 문서에도 걸리며(ⓑ), 선언 없는 게이트는 늘 돌고(ⓐ 의 둘째), `[push_skip]` 이
+                #    이기고(ⓒ), 빈 글롭은 선언 없음과 같고(ⓓ), 경로를 못 받거나 빈 목록이면 안 가린다(ⓔ).
+                #    안 돌린 이름은 모음 곁 「안 돌렸다」 줄에 서야 한다(ⓕ) — 조각이 그 줄을 화면에 올린다.
+                doc_g, free_g = grows[0], grows[1]
+                when = {doc_g: ["docs/*.md"], "zzz_not_a_gate.py": ["src/*"]}
+                rows_g = gate_rows(map_text)
+                a_out, a_plan = push_scope(rows_g, when, ["src/app.py"], needs)
+                b_out, _ = push_scope(rows_g, when, ["docs/deep/x.md", "src/app.py"], needs)
+                c_skip = {**needs, doc_g: "푸시에서 뺀다 — 시험"}
+                c_out, _ = push_scope(rows_g, when, ["src/app.py"], c_skip)
+                c_why = {**c_skip, **c_out}.get(doc_g, "")
+                d_out, _ = push_scope(rows_g, {doc_g: []}, ["src/app.py"], needs)
+                e_out, e_plan = push_scope(rows_g, when, None, needs, "시험 — 못 받았다")
+                e2_out, _ = push_scope(rows_g, when, [], needs, "고친 경로 목록이 비었다")
+                f_buf, seen = io.StringIO(), []
+                with contextlib.redirect_stdout(f_buf), contextlib.redirect_stderr(io.StringIO()):
+                    run_gates(whole, map_text, {**needs, **a_out}, run=lambda _d, n: seen.append(n) or EXIT_OK,
+                              plan=a_plan)
+                f_lines = f_buf.getvalue().splitlines()
+                named = any(ln.startswith("         · 안 돌렸다 ") and doc_g in ln.split(" — ", 1)[-1].split()
+                            for ln in f_lines)
+                planned = any(ln.startswith("         · 고른 판 — ") and "zzz_not_a_gate.py" in ln for ln in f_lines)
+                chg = Path(tempfile.mkdtemp(prefix="map-check-chg-")); tmps.append(chg)
+                (chg / "list").write_text(".\\docs\\a.md\n\n./src/b.py\n", encoding="utf-8")
+                got_list = read_changed(chg / "list")
+                (chg / "empty").write_text("\n", encoding="utf-8")
+                empty_list = read_changed(chg / "empty")
+                ok = (set(a_out) == {doc_g} and b_out == {} and c_why.startswith("푸시에서 뺀다") and d_out == {}
+                      and e_out == {} and e2_out == {} and "시험 — 못 받았다" in e_plan
+                      and free_g in seen and doc_g not in seen and named and planned
+                      and got_list == (["docs/a.md", "src/b.py"], None)
+                      and empty_list[0] == [] and empty_list[1]
+                      and read_changed(chg / "nope")[0] is None)
+                report(f"㉸ 경로로 가리기 — 걸린 게이트만 · 선언 없으면 늘 · `[push_skip]` 이 이긴다 · 못 받으면 전부 "
+                       f"· 안 돌린 이름이 모음에 선다 ({doc_g} · {free_g})",
+                       ok,
+                       [f"실측 ⓐ {sorted(a_out)} · ⓑ {sorted(b_out)} · ⓒ {c_why!r} · ⓓ {sorted(d_out)} "
+                        f"· ⓔ {sorted(e_out)} {sorted(e2_out)} · 돈 것에 {free_g} {free_g in seen} · {doc_g} {doc_g in seen} "
+                        f"· 이름 줄 {named} · 고른 판 줄 {planned} · 목록 {got_list} · 빈 목록 {empty_list} — "
+                        f"기대 ⓐ [{doc_g!r}] · ⓒ 까닭은 [push_skip] 것 · 나머지 빈 · {free_g} 돌고 {doc_g} 안 돈다 · 두 줄 선다"])
 
-            book = StampBook(sdir, {doc_g: ["docs/*.md"]}, shome, lister=walk)
+                # ㉹ 판정 도장 — 기대값은 도장의 뜻에서 온다: 돈 게이트는 도장을 남겨 같은 입력이면 믿히고(ⓐ),
+                #    `[push_fresh]` 는 안 믿고(ⓑ), 글롭 밖을 고치면 선언한 게이트만 믿히고 선언 없는 게이트(트리 전부)는
+                #    안 믿히고(ⓒ), 글롭 안을 고치면 안 믿히고(ⓓ), 같은 입력의 빨강이 앞의 초록을 덮고(ⓔ), 도는 사이
+                #    입력이 바뀐 게이트는 도장을 안 남기고 그렇다고 말하고(ⓕ), 게이트 파일을 고치면 안 믿히고(ⓖ),
+                #    전부 앞서 쟀으면 한 개도 안 돌고 초록이며 「앞서 쟀다」 줄이 선다(ⓗ). 도장 자리는 트리 밖 임시 폴더다.
+                sroot = Path(tempfile.mkdtemp(prefix="map-check-stamp-")); tmps.append(sroot)
+                shome = Path(tempfile.mkdtemp(prefix="map-check-home-")); tmps.append(shome)
+                sdir = sroot / "_check"
+                sdir.mkdir()
+                (sdir / MAP).write_text(map_text, encoding="utf-8")
+                for n in rows | set(grows):
+                    (sdir / n).write_text("", encoding="utf-8")
+                (sroot / "docs").mkdir()
+                (sroot / "docs" / "a.md").write_text("문서\n", encoding="utf-8")
+                (sroot / "src").mkdir()
 
-            def quiet(**kw):
-                buf = io.StringIO()
-                with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
-                    got = run_gates(sdir, map_text, needs, book=book, **kw)
-                return got, buf.getvalue()
+                def walk(r):
+                    return sorted(p.relative_to(r).as_posix() for p in Path(r).rglob("*") if p.is_file())
 
-            def trust(fresh=None):
-                return set(book.trusted(grows, fresh or {}))
+                book = StampBook(sdir, {doc_g: ["docs/*.md"]}, shome, lister=walk)
 
-            quiet(run=lambda _d, _n: EXIT_OK)
-            s_a = trust() == set(grows)
-            s_b = free_g not in trust({free_g: "시험"}) and doc_g in trust({free_g: "시험"})
-            (sroot / "src" / "x.py").write_text("x\n", encoding="utf-8")
-            t_c = trust()
-            s_c = doc_g in t_c and free_g not in t_c
-            (sroot / "docs" / "a.md").write_text("문서를 고쳤다\n", encoding="utf-8")
-            s_d = doc_g not in trust()
-            # ⓔ 는 **같은 지문**에서 초록 → 빨강이어야 덮기를 잰다 — 새 지문의 빨강은 덮을 초록이 애초에 없다.
-            quiet(run=lambda _d, _n: EXIT_OK)
-            e_before = doc_g in trust()
-            quiet(run=lambda _d, n: EXIT_MISMATCH if n == doc_g else EXIT_OK)
-            t_e = trust()
-            s_e = e_before and doc_g not in t_e and free_g in t_e
-            (sroot / "src" / "z.py").write_text("z\n", encoding="utf-8")
-            fp_free = book.snap()(free_g)
+                def quiet(**kw):
+                    buf = io.StringIO()
+                    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+                        got = run_gates(sdir, map_text, needs, book=book, **kw)
+                    return got, buf.getvalue()
 
-            def touch(_d, n):
-                if n == free_g:
-                    (sroot / "src" / "y.py").write_text("도는 사이에 썼다\n", encoding="utf-8")
-                return EXIT_OK
-            _, f_out = quiet(run=touch)
-            s_f = (book.green(free_g, fp_free) is None and doc_g in trust()
-                   and any("안 남겼다" in ln and free_g in ln.split(":", 1)[-1].split() for ln in f_out.splitlines()))
-            (sdir / doc_g).write_text("# 게이트를 고쳤다\n", encoding="utf-8")
-            s_g = doc_g not in trust()
-            h_seen = []
-            h_got, h_out = quiet(run=lambda _d, n: h_seen.append(n) or EXIT_OK, known={n: "시험" for n in grows})
-            s_h = (h_got == (EXIT_OK, [], []) and not h_seen
-                   and any(ln.startswith(f"         · 앞서 쟀다 {len(grows)}개 ") for ln in h_out.splitlines()))
-            # ⓘ `_check/` 가 꼭대기에 없는 저장소 — 글롭은 꼭대기 기준이라 지문도 꼭대기에서 재야 문서 변경을 본다.
-            ndir = sroot / "sub" / "_check"
-            ndir.mkdir(parents=True)
-            (ndir / doc_g).write_text("", encoding="utf-8")
-            nbook = StampBook(ndir, {doc_g: ["docs/*.md"]}, Path(tempfile.mkdtemp(prefix="map-check-home-")),
-                              root=sroot, lister=walk)
-            tmps.append(nbook.home)
-            n_fp = nbook.snap()(doc_g)
-            nbook.put(doc_g, n_fp, EXIT_OK, 0.0)
-            (sroot / "docs" / "a.md").write_text("꼭대기 문서를 또 고쳤다\n", encoding="utf-8")
-            s_i = nbook.green(doc_g, n_fp) is not None and not nbook.trusted([doc_g], {})
-            report(f"㉹ 판정 도장 — 같은 입력의 초록만 믿는다 · `[push_fresh]` 는 안 믿는다 · 글롭 밖/안 · 빨강이 덮는다 "
-                   f"· 도는 사이 바뀌면 안 남긴다 · 게이트 파일도 입력이다 · 전부 앞서 쟀으면 초록 · 꼭대기 기준 "
-                   f"({doc_g} · {free_g})",
-                   all((s_a, s_b, s_c, s_d, s_e, s_f, s_g, s_h, s_i)),
-                   [f"실측 ⓐ {s_a} · ⓑ {s_b} · ⓒ {s_c} · ⓓ {s_d} · ⓔ {s_e} · ⓕ {s_f} · ⓖ {s_g} · ⓗ {s_h} {h_got} "
-                    f"돈 것 {h_seen} · ⓘ {s_i} — 기대 전부 True"])
+                def trust(fresh=None):
+                    return set(book.trusted(grows, fresh or {}))
 
-            # ㉺ 차례 묶음 · `--only` — 이름은 시험 지도에서 짓는다(재는 것은 러너의 짜기이지 실물 지도가 아니다).
-            #    묶음 안(ⓐ)은 동시 판에서도 겹치지 않고, 묶음 밖 둘은 서로를 기다리는 장벽을 넘어야 하므로 동시에
-            #    돌아야만 초록이다(ⓑ — 전부를 차례로 돌리는 러너는 여기서 빨개진다). 두 묶음이 한 게이트를 나누면 한
-            #    사슬로 잇고(ⓒ), 판정은 차례 판과 같다(ⓓ). `--only` 는 그 이름만 돌리고, 절에 없는 이름은 못 쟀다다(ⓔ).
-            names = ["sa_check.py", "sb_check.py", "sc_check.py", "sd_check.py"]
-            smap = ("## 게이트 — 시험\n\n| 검사 | 무엇을 재나 |\n|---|---|\n"
-                    + "".join(f"| `{n}` | 시험. |\n" for n in names))
-            stree = _plant(set(names), smap); tmps.append(stree)
-            lock, inside, overlap = threading.Lock(), [], []
-            wall = threading.Barrier(2, timeout=10)
+                quiet(run=lambda _d, _n: EXIT_OK)
+                s_a = trust() == set(grows)
+                s_b = free_g not in trust({free_g: "시험"}) and doc_g in trust({free_g: "시험"})
+                (sroot / "src" / "x.py").write_text("x\n", encoding="utf-8")
+                t_c = trust()
+                s_c = doc_g in t_c and free_g not in t_c
+                (sroot / "docs" / "a.md").write_text("문서를 고쳤다\n", encoding="utf-8")
+                s_d = doc_g not in trust()
+                # ⓔ 는 **같은 지문**에서 초록 → 빨강이어야 덮기를 잰다 — 새 지문의 빨강은 덮을 초록이 애초에 없다.
+                quiet(run=lambda _d, _n: EXIT_OK)
+                e_before = doc_g in trust()
+                quiet(run=lambda _d, n: EXIT_MISMATCH if n == doc_g else EXIT_OK)
+                t_e = trust()
+                s_e = e_before and doc_g not in t_e and free_g in t_e
+                (sroot / "src" / "z.py").write_text("z\n", encoding="utf-8")
+                fp_free = book.snap()(free_g)
 
-            def sched(_d, n):
-                if n in names[:2]:
-                    with lock:
-                        inside.append(n)
-                        if len(inside) > 1:
-                            overlap.append(tuple(inside))
-                    time.sleep(0.2)
-                    with lock:
-                        inside.remove(n)
+                def touch(_d, n):
+                    if n == free_g:
+                        (sroot / "src" / "y.py").write_text("도는 사이에 썼다\n", encoding="utf-8")
                     return EXIT_OK
-                try:
-                    wall.wait()
-                except threading.BrokenBarrierError:
-                    return EXIT_MISMATCH
-                return EXIT_OK
-            s_buf, o_seen = io.StringIO(), []
-            with contextlib.redirect_stdout(s_buf), contextlib.redirect_stderr(io.StringIO()):
-                s_got = run_gates(stree, smap, {}, run=sched, jobs=4, serial={"clip": names[:2]})
-                o_got = run_gates(stree, smap, {}, run=lambda _d, n: o_seen.append(n) or EXIT_OK, only=[names[2]])
-                o_bad = run_gates(stree, smap, {}, run=lambda _d, _n: EXIT_OK, only=["zzz_not_a_gate.py"])
-            chained = serial_chains({"x": ["a", "b"], "y": ["b", "e"], "z": ["q"]}, ["a", "b", "c", "e", "q"])
-            s_line = any(ln.startswith("         · 차례로 돈 묶음 — ") and " → ".join(names[:2]) in ln
-                         for ln in s_buf.getvalue().splitlines())
-            report("㉺ 차례 묶음 — 묶음 안은 안 겹치고 밖은 동시에 돈다 · 겹친 묶음은 한 사슬 · `--only` 는 그 이름만",
-                   (not overlap and s_got == (EXIT_OK, [], []) and s_line and chained == [["a", "b", "e"]]
-                    and o_seen == [names[2]] and o_got == (EXIT_OK, [], []) and o_bad[0] == EXIT_UNMEASURED),
-                   [f"실측 겹침 {overlap} · 판정 {s_got} · 줄 {s_line} · 사슬 {chained} · only 돈 것 {o_seen} {o_got} "
-                    f"· 없는 이름 {o_bad} — 기대 겹침 없음 · (0, [], []) · 줄 선다 · [['a', 'b', 'e']] · "
-                    f"[{names[2]!r}] · 없는 이름은 2"])
-        else:
-            report("㉶ 태우기 — 게이트 절에 이름이 둘 이상 있어야 이빨이 선다", False,
-                   [f"게이트 절 이름 {len(grows)}개 — 못 쟀다"])
+                _, f_out = quiet(run=touch)
+                s_f = (book.green(free_g, fp_free) is None and doc_g in trust()
+                       and any("안 남겼다" in ln and free_g in ln.split(":", 1)[-1].split() for ln in f_out.splitlines()))
+                (sdir / doc_g).write_text("# 게이트를 고쳤다\n", encoding="utf-8")
+                s_g = doc_g not in trust()
+                h_seen = []
+                h_got, h_out = quiet(run=lambda _d, n: h_seen.append(n) or EXIT_OK, known={n: "시험" for n in grows})
+                s_h = (h_got == (EXIT_OK, [], []) and not h_seen
+                       and any(ln.startswith(f"         · 앞서 쟀다 {len(grows)}개 ") for ln in h_out.splitlines()))
+                # ⓘ `_check/` 가 꼭대기에 없는 저장소 — 글롭은 꼭대기 기준이라 지문도 꼭대기에서 재야 문서 변경을 본다.
+                ndir = sroot / "sub" / "_check"
+                ndir.mkdir(parents=True)
+                (ndir / doc_g).write_text("", encoding="utf-8")
+                nbook = StampBook(ndir, {doc_g: ["docs/*.md"]}, Path(tempfile.mkdtemp(prefix="map-check-home-")),
+                                  root=sroot, lister=walk)
+                tmps.append(nbook.home)
+                n_fp = nbook.snap()(doc_g)
+                nbook.put(doc_g, n_fp, EXIT_OK, 0.0)
+                (sroot / "docs" / "a.md").write_text("꼭대기 문서를 또 고쳤다\n", encoding="utf-8")
+                s_i = nbook.green(doc_g, n_fp) is not None and not nbook.trusted([doc_g], {})
+                report(f"㉹ 판정 도장 — 같은 입력의 초록만 믿는다 · `[push_fresh]` 는 안 믿는다 · 글롭 밖/안 · 빨강이 덮는다 "
+                       f"· 도는 사이 바뀌면 안 남긴다 · 게이트 파일도 입력이다 · 전부 앞서 쟀으면 초록 · 꼭대기 기준 "
+                       f"({doc_g} · {free_g})",
+                       all((s_a, s_b, s_c, s_d, s_e, s_f, s_g, s_h, s_i)),
+                       [f"실측 ⓐ {s_a} · ⓑ {s_b} · ⓒ {s_c} · ⓓ {s_d} · ⓔ {s_e} · ⓕ {s_f} · ⓖ {s_g} · ⓗ {s_h} {h_got} "
+                        f"돈 것 {h_seen} · ⓘ {s_i} — 기대 전부 True"])
+
+                # ㉺ 차례 묶음 · `--only` — 이름은 시험 지도에서 짓는다(재는 것은 러너의 짜기이지 실물 지도가 아니다).
+                #    묶음 안(ⓐ)은 동시 판에서도 겹치지 않고, 묶음 밖 둘은 서로를 기다리는 장벽을 넘어야 하므로 동시에
+                #    돌아야만 초록이다(ⓑ — 전부를 차례로 돌리는 러너는 여기서 빨개진다). 두 묶음이 한 게이트를 나누면 한
+                #    사슬로 잇고(ⓒ), 판정은 차례 판과 같다(ⓓ). `--only` 는 그 이름만 돌리고, 절에 없는 이름은 못 쟀다다(ⓔ).
+                names = ["sa_check.py", "sb_check.py", "sc_check.py", "sd_check.py"]
+                smap = ("## 게이트 — 시험\n\n| 검사 | 무엇을 재나 |\n|---|---|\n"
+                        + "".join(f"| `{n}` | 시험. |\n" for n in names))
+                stree = _plant(set(names), smap); tmps.append(stree)
+                lock, inside, overlap = threading.Lock(), [], []
+                wall = threading.Barrier(2, timeout=10)
+
+                def sched(_d, n):
+                    if n in names[:2]:
+                        with lock:
+                            inside.append(n)
+                            if len(inside) > 1:
+                                overlap.append(tuple(inside))
+                        time.sleep(0.2)
+                        with lock:
+                            inside.remove(n)
+                        return EXIT_OK
+                    try:
+                        wall.wait()
+                    except threading.BrokenBarrierError:
+                        return EXIT_MISMATCH
+                    return EXIT_OK
+                s_buf, o_seen = io.StringIO(), []
+                with contextlib.redirect_stdout(s_buf), contextlib.redirect_stderr(io.StringIO()):
+                    s_got = run_gates(stree, smap, {}, run=sched, jobs=4, serial={"clip": names[:2]})
+                    o_got = run_gates(stree, smap, {}, run=lambda _d, n: o_seen.append(n) or EXIT_OK, only=[names[2]])
+                    o_bad = run_gates(stree, smap, {}, run=lambda _d, _n: EXIT_OK, only=["zzz_not_a_gate.py"])
+                chained = serial_chains({"x": ["a", "b"], "y": ["b", "e"], "z": ["q"]}, ["a", "b", "c", "e", "q"])
+                s_line = any(ln.startswith("         · 차례로 돈 묶음 — ") and " → ".join(names[:2]) in ln
+                             for ln in s_buf.getvalue().splitlines())
+                report("㉺ 차례 묶음 — 묶음 안은 안 겹치고 밖은 동시에 돈다 · 겹친 묶음은 한 사슬 · `--only` 는 그 이름만",
+                       (not overlap and s_got == (EXIT_OK, [], []) and s_line and chained == [["a", "b", "e"]]
+                        and o_seen == [names[2]] and o_got == (EXIT_OK, [], []) and o_bad[0] == EXIT_UNMEASURED),
+                       [f"실측 겹침 {overlap} · 판정 {s_got} · 줄 {s_line} · 사슬 {chained} · only 돈 것 {o_seen} {o_got} "
+                        f"· 없는 이름 {o_bad} — 기대 겹침 없음 · (0, [], []) · 줄 선다 · [['a', 'b', 'e']] · "
+                        f"[{names[2]!r}] · 없는 이름은 2"])
+            else:
+                report("㉶ 태우기 — 게이트 절에 이름이 둘 이상 있어야 이빨이 선다", False,
+                       [f"게이트 절 이름 {len(grows)}개 — 못 쟀다"])
     finally:
         for t in tmps:
             shutil.rmtree(t, ignore_errors=True)
@@ -1282,8 +1477,15 @@ def main(argv):
     if bad:
         print(f"\n❌ {len(bad)}건 실패 — {' · '.join(bad)}", file=sys.stderr)
         return EXIT_MISMATCH
-    print(f"\n✅ 지도와 실물이 맞는다 — 판정 {len(passes())}건 "
-          f"(실물 {len(files)} ↔ 표 줄 {len(rows)} · 파생 칸 {len(seated)} · 자기 이빨 열 포함)")
+    left = unmeasureds()
+    if left:
+        print(f"\n⚠ 못 쟀다 — {' · '.join(left)}", file=sys.stderr)
+        return EXIT_UNMEASURED
+    if teeth:
+        print(f"\n✅ 물림이 다 문다 — 판정 {len(passes())}건 (심은 표본 · 실물 사본 · 러너 모의 — 판정 ①–④ 는 기본 판이 든다)")
+    else:
+        print(f"\n✅ 지도와 선언이 실물과 맞는다 — 판정 {len(passes())}건 (실물 {len(files)} ↔ 표 줄 {len(rows)} · "
+              f"파생 칸 {len(seated)} · 심은 표본의 물림 포함 · 실물 사본과 러너 모의는 `--teeth`)")
     return EXIT_OK
 
 
