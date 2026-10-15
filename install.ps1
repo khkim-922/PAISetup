@@ -7428,16 +7428,19 @@ if ($PickKeys -contains 'codex') {
   $codexHookParts = @(
     (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\drm-guide.py'),
     (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-image-gate.py'),
+    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-context-alert.py'),
+    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\context-alert.py'),
     (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-safety-hooks.py'),
     (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py'),
     (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-trust.py'),
     (Join-Path $homeDir 'seeds\config-repo\codex-hooks.example.toml')
   )
-  $checks += @{ Name = 'Codex 훅 부품 (DRM · 그림 · Bash · BOM · 병합기 · 신뢰 도우미)'
+  $checks += @{ Name = 'Codex 훅 부품 (DRM · 그림 · 컨텍스트 · Bash · BOM · 병합기 · 신뢰 도우미)'
                 Ok = (@($codexHookParts | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -eq 0) }
-  $checks += @{ Name = 'Codex 훅 배선 (UserPromptSubmit · PreToolUse · PostToolUse)'
+  $checks += @{ Name = 'Codex 훅 배선 (UserPromptSubmit 둘 · PreToolUse · PostToolUse)'
                 Ok = ($codexHookText.Contains('drm-guide.py') -and
                       $codexHookText.Contains('codex-image-gate.py') -and
+                      $codexHookText.Contains('codex-context-alert.py') -and
                       $codexHookText.Contains('codex-safety-hooks.py bash-backslash') -and
                       $codexHookText.Contains('codex-safety-hooks.py utf8-bom')) }
   # 신뢰 — 설정의 글자가 아니라 **Codex 가 읽은 상태**를 잰다(claude-config 결정 0106). 배선이 다 서도 신뢰가 없으면
@@ -7476,27 +7479,32 @@ foreach ($t in $FreeSkillHomes.Keys) {
   $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $fh.Skills "$_\SKILL.md")) })
   $checks += @{ Name = "칸 없이 까는 스킬 — $($fh.Label) ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
 }
-# agy — 훅 둘이 우리 어댑터로 걸렸나 (결정 0099)
+# agy — 훅 셋이 우리 어댑터로 걸렸나 (결정 0099 · 컨텍스트 알림은 claude-config #173)
 if ($hostAgy) {
   $agyHooksNow = $null
   try { $agyHooksNow = Get-Content -LiteralPath (Join-Path $env:USERPROFILE '.gemini\config\hooks.json') -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
-  $agyWired = @('paisetup-drm-guide', 'paisetup-utf8-bom' | Where-Object {
+  $agyWired = @('paisetup-drm-guide', 'paisetup-utf8-bom', 'paisetup-context-alert' | Where-Object {
     $agyHooksNow -and $agyHooksNow.$_ -and (($agyHooksNow.$_ | ConvertTo-Json -Depth 8 -Compress) -match 'agy-hooks\.py')
   })
   # ⚠ **이름이 있다고 선 것이 아니다** — 명령의 따옴표 하나로 훅이 다 지는데 이름은 그대로 있다(claude-config #126). 그래서
   #   agy 가 돌리는 꼴 그대로 한 번씩 돌린다: cmd.exe 에 Go 식 인자(명령을 큰따옴표로 싸고 안의 큰따옴표는 `\"`)로 넘기고,
   #   일하는 자리는 hooks.json 의 폴더다(#126 실측). 아무 일 없는 입력(없는 파일)을 줘 0 으로 끝나나만 본다.
   $agyRan = @()
-  if ($agyWired.Count -eq 2) {
+  if ($agyWired.Count -eq 3) {
     foreach ($probe in @(
         @{ Name = 'paisetup-drm-guide'; Ev = 'PreToolUse'
            In = '{"toolCall":{"name":"view_file","args":{"AbsolutePath":"C:/paisetup-probe/none.txt"}}}' }
         @{ Name = 'paisetup-utf8-bom'; Ev = 'PostToolUse'
-           In = '{"toolCall":{"name":"write_to_file","args":{"TargetFile":"C:/paisetup-probe/none.txt"}}}' })) {
+           In = '{"toolCall":{"name":"write_to_file","args":{"TargetFile":"C:/paisetup-probe/none.txt"}}}' }
+        # PreInvocation 은 matcher 없는 납작한 꼴이다(항목 바로 아래 명령) — agy 문서 · claude-config #173 실측
+        @{ Name = 'paisetup-context-alert'; Ev = 'PreInvocation'; Flat = $true
+           In = '{"invocationNum":1,"conversationId":"paisetup-probe","transcriptPath":"C:/paisetup-probe/none.jsonl"}' })) {
       try {
         $psi = New-Object Diagnostics.ProcessStartInfo
         $psi.FileName = 'cmd.exe'
-        $psi.Arguments = '/c "' + ([string]@($agyHooksNow.($probe.Name).($probe.Ev))[0].hooks[0].command -replace '"', '\"') + '"'
+        $entry = @($agyHooksNow.($probe.Name).($probe.Ev))[0]
+        $cmd = if ($probe.Flat) { [string]$entry.command } else { [string]$entry.hooks[0].command }
+        $psi.Arguments = '/c "' + ($cmd -replace '"', '\"') + '"'
         $psi.WorkingDirectory = Join-Path $env:USERPROFILE '.gemini\config'
         $psi.UseShellExecute = $false
         $psi.CreateNoWindow = $true
@@ -7508,8 +7516,8 @@ if ($hostAgy) {
       } catch { }
     }
   }
-  $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · agy 가 돌리는 꼴로 돌려 본다)'
-                Ok = ($agyWired.Count -eq 2 -and $agyRan.Count -eq 2) }
+  $checks += @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · PreInvocation · agy 가 돌리는 꼴로 돌려 본다)'
+                Ok = ($agyWired.Count -eq 3 -and $agyRan.Count -eq 3) }
 }
 # 고른 도구 값 · 고른 제품 값 — 손 · 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0102 · 0107 · 0112)
 $checks += @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
