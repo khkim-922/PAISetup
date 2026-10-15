@@ -133,7 +133,9 @@ def read_entry(host):
         table = data.get('mcp_servers')
     else:
         with open(path, encoding='utf-8-sig') as f:
-            data = json.load(f)
+            text = f.read()
+        # 빈 파일은 등록이 없는 것이다 — agy 는 설정을 옮길 때 0 바이트 파일을 남기고, 제 CLI 도 그것을 「등록 없음」으로 읽는다
+        data = json.loads(text) if text.strip() else {}
         table = data.get('mcpServers') if isinstance(data, dict) else None
     entry = table.get(SERVER) if isinstance(table, dict) else None
     return entry if isinstance(entry, dict) else None
