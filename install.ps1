@@ -7358,6 +7358,7 @@ if ($hostClaude) {
       @{ Label = '그림 문';                   Shell = 'image-gate.sh';          Seed = @('image-gate.py', 'image-gate.sh') }
       @{ Label = '웹 다시 찾기';              Shell = 'web-retry.sh';           Seed = @('web-retry.sh') }
       @{ Label = 'DRM 길잡이';                Shell = 'drm-guide.sh';           Seed = @('drm-guide.py', 'drm-guide.sh'); Matcher = $true }
+      @{ Label = '컨텍스트 알림';             Shell = 'context-alert.sh';       Seed = @('context-alert.py', 'context-alert.sh'); Matcher = $true }
       @{ Label = 'Bash 겹역슬래시 보정';      Shell = 'bash-backslash-deny.sh'; Seed = @() }
       @{ Label = 'PowerShell UTF-8 BOM 보정'; Shell = 'utf8-bom.sh';            Seed = @() })) {
     foreach ($f in $w.Seed) {
