@@ -6992,7 +6992,7 @@ Exit-Step 'tools'
 #                 줄이라 VDI 와 리모트가 같은 자리로 선다. 그 뒤는 그 저장소가 든다. 이 설치기보다
 #                 옛 세대의 우리 사본이면 지금 판으로 갈고 부르거나, 못 갈면 안 부른다(아래 「넘길 자리」)
 #     · 없으면 → **받아 둔 것으로 끝낸다.** 저장소를 원한 사람에게 저장소는 왔다
-#   그 이름을 받는 사람에게 알리는 것은 `README.md` 가 든다.
+#   그 이름을 받는 사람에게 알리는 것은 `INSTALLED.md` 「내 저장소 받기를 채우면」이 든다.
 # ⚠ **옛 판은 없는 것을 실패로 찍었다.** 「넘길 자리가 없는 것을 성공으로 읽지 않는다」가
 #   까닭이었는데, 그것은 **이 칸의 목적을 「넘기기」 하나로 좁게 본 것**이다. 저장소만 들고
 #   다니려는 사람에게는 clone 이 곧 목적이고, 그 사람의 성공을 빨강으로 찍으면 **멀쩡한 PC 가
@@ -8883,7 +8883,7 @@ if ($redChecks -gt 0) {
 }
 if ($unmeasuredChecks -gt 0) {
   Write-Host "검증에서 $unmeasuredChecks 칸을 못 쟀다 — 바로 위 [?] 가 그것이다. 없는 것이 아니라 그 명령이 답을 못 냈다(한도 · 까닭은 줄마다 위에 적혔다)" -ForegroundColor Yellow
-  # 세 갈래는 배포본 안내(claude-config `docs/dist-readme.md` 「검증 칸이 `[X]` 일 때」)와 같은 말이다 — 한쪽을 고치면 다른 쪽도 고친다.
+  # 세 갈래는 배포본 안내 `TROUBLESHOOTING.md` 「노란 물음표는 못 쟀다는 뜻이다」(진본은 claude-config `docs/TROUBLESHOOTING.md`)와 같은 말이다 — 한쪽을 고치면 다른 쪽도 고친다.
   Write-Host '  설치기는 그 위에 다시 깔지 않았다. 그 명령을 새 터미널에서 한 번 쳐 본다 —' -ForegroundColor Yellow
   Write-Host '    · 멎으면 그 도구 · 보안 소프트 쪽이다' -ForegroundColor Yellow
   Write-Host '    · 바로 답하면 설치를 다시 누른다' -ForegroundColor Yellow

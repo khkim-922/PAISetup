@@ -28,6 +28,10 @@
     "posco/**",
     // `docs/dist-readme.md` 에서 온다
     "README.md",
+    // README 가 가리키는 참조 세 장. 진본은 설정 저장소 `docs/` 의 같은 이름
+    "INSTALLED.md",
+    "TROUBLESHOOTING.md",
+    "UNINSTALL.md",
     // 남의 코드가 들고 온 문서. markdownlint 는 `.gitignore` 를 안 본다
     "node_modules/**"
   ]

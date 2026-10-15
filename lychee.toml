@@ -23,6 +23,10 @@ exclude_path = [
   'posco',
   # `docs/dist-readme.md` 에서 온다
   'README\.md',
+  # README 가 가리키는 참조 세 장. 진본은 설정 저장소 `docs/` 의 같은 이름
+  'INSTALLED\.md',
+  'TROUBLESHOOTING\.md',
+  'UNINSTALL\.md',
   # 설치 창이 여는 안내 한 장. 진본은 `docs/config-repo-howto.html`
   'config-repo-howto\.html',
 ]
