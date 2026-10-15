@@ -20,7 +20,7 @@ command -v ruff >/dev/null 2>&1 || {
     exit 2
 }
 
-# ⚠ **`core.quotePath=false` 가 있어야 비ASCII 이름이 온다** — 마크다운 조각과 같은 자리다.
+# ⚠ **`core.quotePath=false` 가 있어야 비ASCII 이름이 온다** — 형제 조각 `encoding.sh` 와 같은 자리다.
 staged_py="$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACM |
              grep -E '\.py$' || true)"
 [ -n "$staged_py" ] || exit 0
@@ -36,8 +36,8 @@ IFS=$oldifs
 # 규칙 파일 — **저장소 것이 먼저다.** 저장소가 뿌리에 제 설정을 두면 그것이 진본이고, 전역
 #   배포본은 안 둔 저장소를 위한 자리다. 도구는 뿌리 설정을 제 손으로 찾으므로 저장소 것이
 #   있으면 아무것도 안 넘긴다. `pyproject.toml` 은 `[tool.ruff` 절이 있을 때만 설정이다.
-#   전역 배포본도 저장소 것이 먼저고, 없으면 이 조각이 선 자리의 `.claude/` 를 본다 — 까닭은
-#   마크다운 조각(`markdown.sh`)의 같은 자리가 든다.
+#   전역 배포본도 저장소 것이 먼저고, 없으면 이 조각이 선 자리의 `.claude/` 를 본다 — 저장소가
+#   설정 저장소의 원본 게이트를 바로 가리키면 저장소에는 전역 배포본이 없을 수 있다.
 CFG=""
 if [ ! -f ruff.toml ] && [ ! -f .ruff.toml ] &&
    ! { [ -f pyproject.toml ] && grep -q '^\[tool\.ruff' pyproject.toml; }; then

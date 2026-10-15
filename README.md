@@ -30,10 +30,11 @@
 | Git · Python · GitHub CLI | 코드를 짤 사람용이다. 설치 창에는 이 칸이 없어 늘 깔린다 — 빼려면 `Setup.exe -NoDevTools` 로 부른다. **다만 Python 으로 도는 것이 서는 자리면 Python 만은 깐다** — 사내 프록시와, 아래 「칸 없이 깔리는 스킬」의 맡기기 래퍼들과, Claude 를 고르면 심기는 DRM 길잡이 훅과, Codex 를 고르면 심기는 Codex 훅과, 제작자 칸을 하나라도 켜거나 Claude 를 고르면 규범 · 룰 · 스킬 · Claude 훅 등록을 놓는 프로그램(`tool-homes.py` — 아래 「규범 · 룰 · 스킬」)이다. 설치 창이 까닭을 그 줄에 적는다. 「내 저장소 받기」에 주소를 넣었고 GitHub CLI 로그인이 안 돼 있으면, **저장소를 받기 직전에** 설치가 브라우저 로그인을 띄운다 — 일회용 코드와 남은 시간(180초)이 팝업에 뜬다. pip 가 사용자 자리(`%APPDATA%\Python\Python<판>\Scripts`)에 깐 명령(`markitdown` 등)이 있으면 설치가 끝날 무렵 그 폴더를 **사용자 PATH 끝에 더한다** — npm 전역 자리와 같은 규칙이다(위 Node.js 줄 · 아래 「무를 때」) |
 | **VC++ 런타임** — Python 이 깔리는 판 | Microsoft 의 공식 「Visual C++ 재배포 가능 패키지(x64)」를 **14.40 이상으로 맞춘다** — 판은 `C:\Windows\System32\msvcp140.dll` 파일에서 읽고, 그보다 옛 판이면 winget 으로 올린다(없으면 깐다). PPT 검수 패키지(`markitdown`)가 기대는 부품이 옛 런타임에서는 여는 순간 파이썬째 죽는다. ⚠ **PC 전체에 까는 것이라 관리자 승인 창(UAC)이 한 번 뜰 수 있다** — 승인 없이 올리는 PC(관리자 계정에 회사 정책이 묻지 않게 둔 PC)는 창 없이 지나간다. 승인 창이 뜨는 PC 에서 **로그온 자동 실행**은 누를 사람이 없으니 창을 안 띄우고 노란 줄로 미룬다 — 설치 창으로 다시 누르면 그때 한 번 뜬다. 승인을 못 받거나 관리자 권한이 없는 PC 면 그 까닭을 한 줄로 알리고 나머지는 그대로 깔린다 — 그 PC 에서는 PPT 검수만 안 서니 IT 에 그 패키지를 요청한다 |
 | **lychee · markdownlint-cli2** — 제작자 칸을 켜면 | 제작자 칸이 보내는 문서 점검 스킬(`doc-coordinate-audit`)이 부르는 도구다 — 링크 · 경로는 lychee(winget 휴대용 · 사용자 범위라 승인이 안 든다), 마크다운 구조는 markdownlint-cli2(npm 전역). 칸을 끄면 안 깐다 |
+| **브라우저 MCP** — Claude · Codex · 구글 Antigravity 가운데 하나라도 고르면 | 모델이 웹 페이지를 띄우고 읽고(자바스크립트로 그리는 화면까지) 누르고 입력하고 찍는 손이다 — 브라우저 도구가 없는 자리에서 쓴다. playwright 를 npm 전역에 깔고, 브라우저(크로미움)는 **처음 한 번** 구글 공식 스냅샷에서 받는다(수백 MB · 이미 있으면 안 받는다). 고른 도구마다 MCP 서버 `playwright` 로 달고, 안 고른 도구에서는 설치가 단 것만 걷는다. **창을 띄운 채 돈다** — 모델이 하는 일을 보며 로그인 · 확인 창처럼 사람 손이 드는 자리에서 거든다. 세션마다 새 프로필로 뜨므로 **로그인은 세션을 넘어 안 남는다.** 같은 이름(`playwright`)으로 손수 붙인 서버가 있으면 그것을 두고 우리 것은 안 단다(노란 줄) |
 | **데스크탑 앱** | **앱마다 다르다.** 게이트웨이에 못 붙어 사내에서는 쓸모가 없는 것(Claude · Codex · Antigravity)은 **사외에서만** 깔리고, 제 계정으로 로그인해 쓰는 것(**GitHub Copilot**)은 **사내·사외 모두** 깔린다. 켠 도구의 것만 깔린다. **이미 깔렸는지는 시작 메뉴 → 윈도우 설치 목록 → winget 목록 차례로 잰다** — 깔린 앱 위에는 다시 깔지 않고(앱이 스스로 올린 판이 winget 목록의 판보다 앞서 있으면 그 판으로 내려간다), winget 이 더 새 판을 댈 때만 올린다. 셋 다 답을 못 내면 깔지도 올리지도 않고 끝 검증에 노란 `[?]` 로 남긴다. ⚠ Copilot 은 **WebView2 런타임**이 있어야 도는데 설치 목록에 그것이 딸려 오지 않는다 — 없는 기계(사내 VDI)면 **먼저 깔고**, 이미 있으면(사내 PC 에는 대개 있다) 건너뛴다. ⚠ **Gemini 데스크탑 앱은 안 깐다** — 회사 망이 설치 도중에 연결을 끊어 두 번 다 실패했다. 집에서는 깔리므로 필요하면 <https://gemini.google.com/app> 에서 손으로 받는다. ⚠ **Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다.** Antigravity 는 VS Code 를 대신하는 **별개 편집기**다. ⚠ **로그인은 사람이 한다** — Copilot 은 회사 계정으로 직접 인증하고, 사외 개인 PC 에서는 회사 계정이 막혀(등록 안 된 기기) 개인 계정으로 쓴다. Codex · Antigravity 데스크탑에는 설정 저장소들을 **프로젝트로 미리 더해** 둔다 — 앱이 떠 있었으면 다음 설치가 더하고, 사람이 목록에서 뺀 것은 다시 안 넣는다. Copilot 데스크탑의 프로젝트는 안 더한다 |
 | 게이트웨이 주소 · 모델 · **키** | 사용자 환경변수로 심는다. 키는 한 번만 넣으면 고른 도구가 읽는 이름에 같이 심긴다 — Claude 는 `ANTHROPIC_AUTH_TOKEN`, Codex 는 `OPENAI_API_KEY`, 안티그래비티는 `GEMINI_API_KEY`. **사외면 키를 안 묻고, 사내에서 쓰던 기계를 사외에서 다시 누르면 남아 있던 사내 값을 걷어 낸다** (아래 「무를 때」) |
 | **워드의 PDF 변환 안내 끄기** | 워드가 깔린 PC 면 자리 · 고른 도구와 상관없이, 깔린 판마다 `HKCU\Software\Microsoft\Office\<판>\Word\Options` 의 `DisableConvertPdfWarning` 을 1 로 둔다. 스킬 `drm-office-read` 가 숨겨 띄운 워드는 이 안내창이 뜨면 아무도 못 눌러 멈춘다. ⚠ **사람이 PDF 를 워드로 열 때도 그 안내가 안 뜬다** — 설치 창에 칸은 없고 설치 기록 한 줄과 끝 검증 한 줄이 밝힌다. 워드가 없으면 안 건드린다 (아래 「무를 때」) |
-| Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · 사내면 **웹페치 검증 건너뛰기**(`skipWebFetchPreflight` — 사내 망이 웹페치가 미리 묻는 Anthropic 차단 목록 조회를 끊어, 열리는 주소도 못 가져오던 것을 푼다. 사외는 그 검사가 서므로 안 켠다) · **자동 모드와 맡기기 러너 허락**(Claude 를 고르면 「permissions.defaultMode」를 `auto` 로 — 그 키가 이미 있으면 사람 값이라 안 덮는다. agy · Codex/Copilot 러너 스킬이 Claude 홈에 서면 그 러너를 부르는 `pythonw` 명령의 허락 한 줄씩을 `permissions.allow` 에 — 자동 모드 분류기가 뒤에서 러너를 띄우는 명령을 막기 때문이다. 심은 것은 설치기 폴더의 기록(`%LOCALAPPDATA%\Claude Code Setup\claude-settings.tsv`)에 적고, 조건이 빠지면 값이 그대로인 것만 걷는다. 지운 것은 다음 설치가 다시 심으니, 끄려면 다른 「defaultMode」 값이나 「permissions.deny」를 둔다) · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(Claude 를 고르면 — 모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅) · **웹 다시 찾기**(Claude 를 고르면 — 웹 검색 · 웹 가져오기가 못 닿았을 때 `curl` · Tavily · agy 에게 맡기기 같은 다른 길이 있다는 것을 결과 곁에 붙이는 훅 — 막지는 않는다) · **DRM 길잡이**(Claude 를 고르면 — 붙이거나 경로를 적은 오피스 · PDF 가 회사 DRM 에 감겼으면 스킬 `drm-office-read` 로 읽는 길을 곁에 붙이는 훅. VS Code 앱에서 「+」로 붙인 PDF 는 경로 없이 본문만 오므로, 감긴 바이트 그대로를 임시 폴더의 `drm-attach` 밑에 한 벌 떨궈 그 자리를 댄다. 감기지 않은 파일에는 아무것도 안 붙이고, 막지 않는다) · **Bash 겹역슬래시 보정**(Claude 를 고르면 — 윈도우에서 Bash 로 보낸 명령의 역슬래시는 셸에 닿기 전에 짝마다 하나로 접히므로, 명령의 역슬래시를 두 배로 늘려 쓴 그대로 닿게 고쳐 넘기는 훅. 접힘을 잰 Claude Code 판에서만 고치고, 처음 보는 판이면 명령을 돌려보낸다) · **PowerShell UTF-8 BOM 보정**(Claude 를 고르면 — 편집한 `.ps1` 에 BOM 이 없으면 찍는 훅. 윈도우 파워셸 5.1 은 BOM 없는 파일의 한글을 깨뜨려 읽는다). 사외로 가면 사내 전용 줄은 걷어 낸다. 훅 다섯의 등록은 `tool-homes.py` 가 놓는다 — 명령은 `~/.paisetup/` 두 층 가운데 이긴 층의 `hooks/` 를 가리키고(설정 저장소가 훅을 들면 개인 층, 아니면 짐이 채운 표준 층), 사람이 넣은 훅은 같은 항목에 있어도 둔다. 고른 제품은 사용자 환경변수 `PAISETUP_PICK` 에 남는다(예: `claude,codex,agy,copilot` · 넷 다 아니면 `none`). **Claude 를 빼고 다시 누르면 우리 훅 등록만 걷는다** |
+| Claude Code 홈 설정 — `~/.claude/settings.json` | 파일이 없으면 만들고, 있으면 그대로 두고 필요한 줄만 맞춘다: 기능 스위치 · 사내면 `/model` 에 뜰 모델 목록 · 사내면 **웹페치 검증 건너뛰기**(`skipWebFetchPreflight` — 사내 망이 웹페치가 미리 묻는 Anthropic 차단 목록 조회를 끊어, 열리는 주소도 못 가져오던 것을 푼다. 사외는 그 검사가 서므로 안 켠다) · **자동 모드와 맡기기 러너 허락**(Claude 를 고르면 「permissions.defaultMode」를 `auto` 로 — 그 키가 이미 있으면 사람 값이라 안 덮는다. agy · Codex/Copilot 러너 스킬이 Claude 홈에 서면 그 러너를 부르는 `pythonw` 명령의 허락 한 줄씩을 `permissions.allow` 에 — 자동 모드 분류기가 뒤에서 러너를 띄우는 명령을 막기 때문이다. 심은 것은 설치기 폴더의 기록(`%LOCALAPPDATA%\Claude Code Setup\claude-settings.tsv`)에 적고, 조건이 빠지면 값이 그대로인 것만 걷는다. 지운 것은 다음 설치가 다시 심으니, 끄려면 다른 「defaultMode」 값이나 「permissions.deny」를 둔다) · `install.env` 의 공통값(키는 빼고 — 키는 환경변수에만 둔다) · **그림 문**(Claude 를 고르면 — 모델이 그림을 받기 직전에 크기를 재고, 너무 큰 것은 막는 훅) · **웹 다시 찾기**(Claude 를 고르면 — 웹 검색 · 웹 가져오기가 못 닿았을 때 `curl` · Tavily · agy 에게 맡기기 같은 다른 길이 있다는 것을 결과 곁에 붙이는 훅 — 막지는 않는다) · **DRM 길잡이**(Claude 를 고르면 — 붙이거나 경로를 적은 오피스 · PDF 가 회사 DRM 에 감겼으면 스킬 `drm-office-read` 로 읽는 길을 곁에 붙이는 훅. VS Code 앱에서 「+」로 붙인 PDF 는 경로 없이 본문만 오므로, 감긴 바이트 그대로를 임시 폴더의 `drm-attach` 밑에 한 벌 떨궈 그 자리를 댄다. 감기지 않은 파일에는 아무것도 안 붙이고, 막지 않는다) · **Bash 겹역슬래시 보정**(Claude 를 고르면 — 윈도우에서 Bash 로 보낸 명령의 역슬래시는 셸에 닿기 전에 짝마다 하나로 접히므로, 명령의 역슬래시를 두 배로 늘려 쓴 그대로 닿게 고쳐 넘기는 훅. 접힘을 잰 Claude Code 판에서만 고치고, 처음 보는 판이면 명령을 돌려보낸다) · **PowerShell UTF-8 BOM 보정**(Claude 를 고르면 — 편집한 `.ps1` 에 BOM 이 없으면 찍는 훅. 윈도우 파워셸 5.1 은 BOM 없는 파일의 한글을 깨뜨려 읽는다). 사외로 가면 사내 전용 줄은 걷어 낸다. 훅 여섯의 등록은 `tool-homes.py` 가 놓는다 — 명령은 `~/.paisetup/` 두 층 가운데 이긴 층의 `hooks/` 를 가리키고(설정 저장소가 훅을 들면 개인 층, 아니면 짐이 채운 표준 층), 사람이 넣은 훅은 같은 항목에 있어도 둔다. 고른 제품은 사용자 환경변수 `PAISETUP_PICK` 에 남는다(예: `claude,codex,agy,copilot` · 넷 다 아니면 `none`). **Claude 를 빼고 다시 누르면 우리 훅 등록만 걷는다** |
 | Codex · 안티그래비티 설정 | 회사 연결 설정은 사내에서만 선다. `~/.codex/config.toml` 은 없으면 회사 틀(`posco/`)로 쓰고, 있으면 틀이 든 자리만 틀의 값으로 맞춘다 — 사람이 둔 키 · Codex 가 적는 훅 신뢰 · 폴더 신뢰는 그대로 두고, 바꾼 게 있으면 고치기 전 것을 `config.toml.before-pgpt-<시각>` 에 떠 둔다. `~/.gemini/antigravity-cli/settings.json` 에는 인증 방식 한 줄(`modelProvider`)을 둔다 — 같은 폴더의 `~/.gemini/settings.json` 은 Gemini CLI 의 것이라 안 건드린다. **Codex 훅은 자리와 관계없이 Codex를 고르면 선다** — DRM 길잡이 · 그림 문 · Windows Bash 겹역슬래시 차단 · PowerShell UTF-8 BOM 보정을 사람의 다른 Codex 설정을 두고 병합한다. 몸통은 설정 저장소 씨앗에서 오고, **설치가 우리 훅에 Codex 신뢰까지 적는다** — Codex 는 신뢰한 훅만 돌려, 신뢰가 없으면 대화형 시작은 묻고 `codex exec`(다른 도구가 Codex 에 일을 맡기는 길)는 말없이 건너뛴다. 신뢰는 Codex 제 설정 쓰기로 적고, 사람이 넣은 훅 · 사람이 끈 우리 훅은 안 건드린다. **Codex 를 빼고 다시 누르면 우리 훅만 걷는다** — 사람 훅과 뒤 항목의 자리 · 적어 둔 신뢰는 둔다. 걷는 손이 파이썬 3.11 이상으로 돌아, 없으면 노란 줄로 알리고 넘어간다. 키는 설정 파일에 안 들어가고 환경변수에만 있다. ⚠ **`GOOGLE_API_KEY` 가 이미 있으면 그 키가 회사 키보다 먼저 쓰인다** — 구글에 바로 붙는 키의 제 이름이라 설치는 지우지 않고 알리기만 한다. 회사 게이트웨이로 쓰려면 손으로 지운다 |
 | **묻지 않고 돌기** — 고른 agy · Copilot · Codex | 설치 창에 칸이 없다 — 그 도구를 고르면, 그 도구가 사람에게 묻던 자리를 스스로 진행하게 하는 **제 설정 하나**를 심는다(Claude 는 위 「자동 모드」가 같은 몫이다). agy · Copilot 은 자리와 상관없이, Codex 는 **사외에서만** 심는다 — 사내 게이트웨이에서 Codex 의 검토자가 서는지 아직 못 쟀다. agy CLI 는 `~/.gemini/antigravity-cli/settings.json` 의 `toolPermission` 을 `always-proceed` 로, agy 데스크탑 앱은 `~/.gemini/config/config.json` 의 `userSettings` 에 Turbo 세 칸(`autoExecutionPolicy` · `enableTerminalSandbox` · `nonWorkspaceFileAccessPolicy`)을 둔다 — 앱의 값은 CLI 에 안 먹어 둘 다 심는다. Copilot CLI 는 `~/.copilot/settings.json`(`COPILOT_HOME` 이 서면 그 안)의 `defaultPermissionMode` 를 `allow-all` 로, 그 값이 `allow-all` 이면 `defaultMode` 를 `autopilot` 으로 둔다 — 새 대화형 세션이 첫 프롬프트에서 일을 끝까지 스스로 이어 그만큼 AI 크레딧을 쓴다. 승인을 `manual` 로 둔 사람에게는 Autopilot 을 안 심는다(새 세션마다 확인이 뜬다). 둘 다 대화형 시작에만 먹고, `-p` 로 일을 맡기는 길은 그대로다. Codex CLI 는 `~/.codex/config.toml` 맨 위에 `approvals_reviewer = "auto_review"`(「Approve for me」)를 둔다 — 샌드박스를 넘는 요청을 사람 대신 검토자가 가르고, 샌드박스 모드는 안 바꾼다. Codex 데스크탑 앱에는 그 키가 앱이 권한을 저장하기 전까지만 먹는다 — 앱은 첫 샌드박스 설정(앱의 배너를 누르고 관리자 승인)을 마칠 때 「승인 요청」을 한 번 적어 두므로, 설치기는 **Codex 를 닫아 둔 때**(이번 설치가 깐 Codex 를 닫은 뒤 · 손으로 다시 돌려 Codex 다시 띄우기에 동의한 뒤) 지금 값과 상관없이 「나 대신 승인」을 써 둔다 — 상태 파일의 그 칸 하나만 쓰고, 파일이 없으면 안 만든다. 기다리지 않으므로 샌드박스 설정 전에 쓴 값은 앱이 되돌리고, 그 뒤 설치기를 다시 돌려 다시 띄우기에 동의하면 남는다. 로그온 자동 실행은 Codex 가 떠 있어 못 쓴다. **사람이 둔 값은 안 덮는다** — 그 키가 이미 있으면(agy 앱은 세 칸 가운데 하나라도, Codex 는 `approval_policy` 도) 그 도구 줄을 통째로 둔다. 못 읽는 파일은 안 건드리고 빨간 줄로 알린다. agy · Copilot 의 이 설정은 **위험을 가르는 판단 없이 다 돌린다** — agy 에 걸린 우리 훅 가운데 DRM 길잡이는 그대로 막고(감긴 파일을 읽기 전에), Copilot 에는 우리 훅이 안 걸린다. **도구를 빼고 다시 눌러도 안 걷는다** — 사람이 같은 값을 둔 것과 글자로 안 갈려서다. 끄려면 그 도구의 설정에서 다른 값을 고른다(다음 설치가 그 값을 안 덮는다 — Codex 데스크탑의 모드만 예외다) |
 | **사내 환경 문서** · **씨앗 넷** | `~/.claude/posco/` · `~/.claude/seeds/gateway/` · `~/.claude/seeds/check/` · `~/.claude/seeds/config-repo/` · `~/.claude/seeds/vibecoding/` 로 깔린다. 마지막 것은 회사가 쓴 사내 FastAPI 코딩 기준이다 — 들머리는 그 안의 `SEED.md` 고, 사내 앱을 짤 때는 스킬 `inhouse-app` 이 그 안의 장을 콕 집어 연다(Claude 또는 Codex 를 고르면 깔린다 — 아래 「칸 없이 깔리는 스킬」). 고를 것이 아니라 환경이라 스위치가 없다. **씨앗 넷은 거울로 깔려, 짐에서 빠진 파일은 홈에서도 빠진다** — 옛 판의 찌꺼기가 남아 원본인 척하지 않게. `posco/` 만은 덮어쓰기라 짐에서 빠진 파일이 홈에 남을 수 있다 — 프록시가 그 폴더에 제 기록 파일을 쓰고 있어 통째로 지우지 못한다. **설정 저장소를 넣은 PC 에서는 그 저장소의 `deploy.seeds.conf` 가 드는 폴더를 설치가 건드리지 않는다** — 그 자리는 저장소 배포가 최신판으로 밀고, 설치까지 깔면 둘이 판마다 번갈아 덮는다(홈에 그 폴더가 아직 없을 때만 설치가 먼저 깐다). **검사 씨앗의 그림 줄이기가 드는 파이썬 패키지(`pillow`)도 여기서 깐다** — 그림 문이 큰 그림을 「줄여서 연다」로 돌려보내면 그 부품이 돈다. 파이썬이 없으면 건너뛰고, 회사망이 막아 못 깔면 알리고 넘어간다(그때 줄이기는 원본 크기로 물러난다) |
@@ -184,13 +185,22 @@ claude.exe 지만 사는 폴더가 다르다.
 개발 도구(Git · Python · GitHub CLI)는 창에 칸이 없다 — 늘 깔린다. 빼려면 아래 「내 저장소 받기」 절
 끝의 `-NoDevTools` 깃발을 쓴다.
 
-### 로그온할 때 혼자 도는 것 — 켜면 무엇이 생기나
+### 로그온할 때 · 밤마다 혼자 도는 것 — 켜면 무엇이 생기나
 
-켜면 작업 스케줄러에 **`PAISetup-AutoRun`** 이 선다. 로그인하고 1분 뒤 콘솔 창을 열어 설치
-몸통을 다시 돌려 **깔린 것을 최신으로 올리고 환경변수·설정을 다시 맞춘다.** 창에 걸음마다
-진행이 찍히고, 끝나면 3초 뒤 스스로 닫힌다. 한 번 깔고 몇 달을 그냥 쓰는 기계가 아무도 모르게
-뒤처지는 것을 막는 칸이다.
+켜면 작업 스케줄러에 작업 둘이 선다. **`PAISetup-AutoRun`** 은 로그인하고 1분 뒤,
+**`PAISetup-AutoRun-Night`** 는 매일 새벽 3시 무렵(PC 마다 최대 2시간 흩뜨린다) 설치 몸통을 다시 돌려
+**깔린 것을 최신으로 올리고 환경변수·설정을 다시 맞춘다.** 둘 다 창 없이 시작한다 — 로그온 회차는
+설치를 실제로 할 때만 기록 창을 작업 표시줄에 내려 둔 채 띄우고(하던 일의 초점을 안 뺏는다), 끝나면
+3초 뒤 스스로 닫는다. 밤 회차는 끝까지 창이 없다. 밤 작업은 그 시각에 꺼져 있거나 절전이면 켜진 뒤
+따라 돌고, PC 를 깨우지는 않는다. 한 번 깔고 몇 달을 그냥 쓰는 기계, 다시 부팅하지 않고 절전으로 며칠을
+잇는 기계가 아무도 모르게 뒤처지는 것을 막는 칸이다. 창 없이 띄우는 콘솔을 모르는 옛 윈도에서는 로그온
+회차가 예전처럼 보이는 콘솔 창으로 돈다.
 
+- **하루에 한 번만 끝까지 간다.** 그날 이미 성공했으면 다음 회차는 창 없이 건너뛴다 — 사내 · 사외
+  자리가 지난 설치와 달라졌을 때만 로그온 회차가 다시 돈다.
+- **밤 회차는 자리를 안 바꾸고 아무것도 안 띄운다.** 지금 자리가 지난 설치와 같다고 확인될 때만 돌고,
+  아니면 아무것도 안 바꾸고 건너뛴다. 로그인 창 · 알림 창 · 「제공기능」 페이지도 안 띄운다 — 그 일은
+  다음 로그온 회차나 설치 창이 한다.
 - **설치본 자체도 새 판으로 간다.** 새 릴리스가 나와 있으면 `Setup.exe` 와 지문 파일을 받아 대조하고,
   맞으면 창 없이 풀어 그 새 판으로 설치를 잇는다. 지문이 없거나 다르면 새 판을 안 깔고 지금 판으로 간다 —
   까닭은 기록 파일에 남는다.
@@ -198,7 +208,7 @@ claude.exe 지만 사는 폴더가 다르다.
   사내에서 깔고 집에 간 노트북이 그곳에서는 안 도는 프록시 주소를 매번 심는다.
 - **고른 도구를 그대로 쓴다.** 껐던 도구는 되살아나지 않는다.
 - **키는 파일에 안 남긴다.** 이미 사용자 환경변수에 심긴 것을 읽어 쓴다.
-- 도는 기록은 `%LOCALAPPDATA%\Claude Code Setup\logs\autorun-<날짜-시각>.log` 에 남는다 (최근 15 개).
+- 도는 기록은 `%LOCALAPPDATA%\Claude Code Setup\logs\autorun-<날짜-시각>-<번호>.log` 에 남는다 (최근 15 개).
   옛 판 폴더는 최근 셋만 남기고 거둔다.
 - **설치가 겹치지 않게 막는다.** 다른 설치나 자동 실행이 이미 돌고 있으면 자동 실행은 물러나고,
   10분 안에 한 번 끝났으면 건너뛴다. 앞의 것이 멎어 있으면 거두고 제 일을 잇는데, 그 설치의 출력이
@@ -246,8 +256,8 @@ Codex 에게 맡기는 줄과 Codex 가 맡기는 줄은 사내에서는 Codex �
 | 무엇 | 어디에 |
 |---|---|
 | 스킬 — 위 「칸 없이 깔리는 스킬」의 agy 홈 줄(`drm-office-read` · `inhouse-app` · `agent-envelope`, 같이 고른 도구에게 맡기는 `codex-copilot-background` · `claude-background`) | `~/.gemini/config/skills/` — agy 가 목록 없이 싣는 기본 스킬 자리이고, 설정 폴더 가운데 agy 가 스킬 본문을 열 수 있는 자리가 여기뿐이다. 사람이 둔 스킬과 같이 산다(위 「칸 없이 깔리는 스킬」의 기록 · 비켜 두기). 옛 판이 깐 자리 `~/.gemini/config/paisetup-skills/` 와 그 자리를 여는 목록 `~/.gemini/config/skills.json` 은 `tool-homes.py` 가 걷는다 — 옛 기록에 든 이름의 폴더만 `~/.paisetup/backups/<시각>/` 으로 옮기고(다 옮겨 비면 그 자리도), 목록은 우리가 깐 꼴일 때만 옮긴다. 옛 자리에 기록에 없는 것은 두고, 목록에 사람 항목이 섞였으면 노란 줄로 알리고 둔다. 제작자 칸의 agy 칸을 켜면 새 자리에 짐의 스킬이 다 간다(아래 「규범 · 룰 · 스킬」) |
-| 훅 둘 — **DRM 길잡이**: agy 가 Fasoo DRM 에 감긴 파일을 열거나 그 경로를 적은 셸 명령으로 읽으려 하면 막고, 까닭에 스킬 `drm-office-read` 로 가는 길을 싣는다. **PowerShell UTF-8 BOM 보정**: agy 가 `.ps1` · `.psm1` · `.psd1` 을 쓰면 BOM 을 붙인다 | `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목. 사람이 넣은 다른 항목은 두고, 고치기 전 파일은 곁에 `hooks.json.before-paisetup-<시각>` 으로 떠 둔다. 우리 항목을 `"enabled": false` 로 꺼 두면 다음 설치도 꺼진 채 둔다. **안티그래비티를 빼고 다시 누르면 이 두 항목만 걷는다**(꺼 둔 것도) |
-| Python — 훅 둘이 돈다 | 개발도구 칸을 꺼도 깐다 |
+| 훅 셋 — **DRM 길잡이**: agy 가 Fasoo DRM 에 감긴 파일을 열거나 그 경로를 적은 셸 명령으로 읽으려 하면 막고, 까닭에 스킬 `drm-office-read` 로 가는 길을 싣는다. **PowerShell UTF-8 BOM 보정**: agy 가 `.ps1` · `.psm1` · `.psd1` 을 쓰면 BOM 을 붙인다. **컨텍스트 알림**: 사내 자리(창 1M)에서 대화가 창의 33 % · 66 % 를 처음 넘으면 모델에게 한 줄을 붙인다 — 사외 무료 자리(창 200k)는 침묵한다 | `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` · `paisetup-context-alert` 항목. 사람이 넣은 다른 항목은 두고, 고치기 전 파일은 곁에 `hooks.json.before-paisetup-<시각>` 으로 떠 둔다. 우리 항목을 `"enabled": false` 로 꺼 두면 다음 설치도 꺼진 채 둔다. **안티그래비티를 빼고 다시 누르면 이 세 항목만 걷는다**(꺼 둔 것도) |
+| Python — 훅 셋이 돈다 | 개발도구 칸을 꺼도 깐다 |
 
 Claude 홈에 서는 나머지 셋(그림 문 · Bash 겹역슬래시 보정 · 웹 다시 찾기)은 agy 에 안 간다 — agy 는 그림 크기로 비용이
 갈리지 않고 역슬래시를 접지 않아(결정 0083 실측), 막을 사고가 없다. agy 훅에는 사람의 글을 받는 자리가 없어 DRM 길잡이는
@@ -422,6 +432,10 @@ Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡�
   [O] DRM 길잡이 껍데기 (씨앗의 drm-guide.sh)
   [O] DRM 길잡이 배선 (홈 settings.json 의 UserPromptSubmit · PreToolUse · PostToolUseFailure)
   [O] DRM 길잡이 matcher (이벤트마다 진본과 같다)
+  [O] 컨텍스트 알림 몸통 (씨앗의 context-alert.py)
+  [O] 컨텍스트 알림 껍데기 (씨앗의 context-alert.sh)
+  [O] 컨텍스트 알림 배선 (홈 settings.json 의 UserPromptSubmit)
+  [O] 컨텍스트 알림 matcher (이벤트마다 진본과 같다)
   [O] Bash 겹역슬래시 보정 배선 (홈 settings.json 의 PreToolUse)
   [O] PowerShell UTF-8 BOM 보정 배선 (홈 settings.json 의 PostToolUse)
   [O] ANTHROPIC_BASE_URL
@@ -587,7 +601,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 |---|---|
 | `VS Code` | winget 이 못 깔았다. 위쪽 빨간 줄이 까닭을 든다 — 정책이면 IT, 아니면 다시 누른다 |
 | `클로드 확장` · `Codex 확장` · `안티그래비티 확장` | VS Code 가 먼저 안 선 것이다. 위 칸을 먼저 고치고 다시 누른다. VS Code 는 `[O]` 인데 확장만 `[X]` 면 사내망이 확장 장터를 막은 자리라 IT 에 문의한다 |
-| `Claude Code CLI` · `Codex CLI` · `Copilot CLI` | npm 이 못 깔았다. Node.js 줄이 위에서 실패했는지 먼저 보고, 멀쩡했으면 위쪽 「설치 실패」 빨간 줄이 npm 이 뱉은 끝 줄을 든다 — 망 · 인증서 문제면 그 줄대로 고치고 다시 누른다. 이 줄은 npm 의 기록(`npm ls -g`)으로 잰 것이다 — CLI 를 띄워 재지 않는다(첫 실행에 제 짐을 푸느라 수십 초를 쓰는 CLI 가 있다). 창을 닫은 뒤 새 터미널에서 이름으로 서나는 아래 `npm 전역 자리` 줄이 잰다 |
+| `Claude Code CLI` · `Codex CLI` · `Copilot CLI` · `Playwright (브라우저 MCP)` | npm 이 못 깔았다. Node.js 줄이 위에서 실패했는지 먼저 보고, 멀쩡했으면 위쪽 「설치 실패」 빨간 줄이 npm 이 뱉은 끝 줄을 든다 — 망 · 인증서 문제면 그 줄대로 고치고 다시 누른다. 이 줄은 npm 의 기록(`npm ls -g`)으로 잰 것이다 — CLI 를 띄워 재지 않는다(첫 실행에 제 짐을 푸느라 수십 초를 쓰는 CLI 가 있다). 창을 닫은 뒤 새 터미널에서 이름으로 서나는 아래 `npm 전역 자리` 줄이 잰다 |
 | `안티그래비티 CLI` | 이것만은 npm 이 아니라 winget 이 깐다. 위쪽 빨간 줄이 까닭을 든다 — 정책이면 IT. 그 줄이 「안 잡힌다」면 그 줄대로 새 터미널에서 `agy --version` 을 다시 쳐 보고, 그래도 없으면 그 줄의 `winget install` 명령을 친다 |
 | `npm 전역 자리 — 사용자 PATH (…)` | npm 으로 깐 CLI 가 서는 폴더가 사용자 PATH 에 없다 — 설치 창 안에서는 CLI 가 서도 **창을 닫고 새로 연 터미널에서는 이름으로 안 잡힌다.** 위쪽 「npm 전역 자리」 빨간 줄이 까닭을 든다: 「한도를 넘는다」면 사용자 PATH 에서 안 쓰는 자리를 걷고 다시 누르고, 그 밖이면 그 줄을 그대로 보낸다. 그 줄이 없으면 폴더가 아직 없는 것이다 — 위 CLI 줄을 먼저 본다 |
 | `pip 사용자 자리 — 사용자 PATH (…)` | pip 가 사용자 자리에 깐 명령(`markitdown` 등)이 서는 폴더가 사용자 PATH 에 없다 — 새로 연 터미널에서 그 명령이 이름으로 안 잡힌다. 바로 위 `npm 전역 자리` 줄과 같다 — 위쪽 「pip 사용자 자리」 빨간 줄이 까닭을 든다 |
@@ -599,19 +613,21 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `웹 다시 찾기 배선 (…)` | 그림 문 배선 줄과 같다. 두 이벤트 가운데 하나만 서도 `[X]` 다 — 다시 누른다 |
 | `DRM 길잡이 몸통 …` · `DRM 길잡이 껍데기 …` | 그림 문 몸통 · 껍데기 줄과 같다 — 설정 저장소 씨앗이 덜 깔렸다 |
 | `DRM 길잡이 배선 (…)` · `DRM 길잡이 matcher (…)` | 웹 다시 찾기 배선 줄과 같다. 세 이벤트 가운데 하나만 빠지거나, 이벤트마다의 matcher 가 등록이 가리키는 껍데기(`drm-guide.sh`)의 머리말과 어긋나도 `[X]` 다 — 괄호가 어느 이벤트인지 댄다. 다시 누른다 |
+| `컨텍스트 알림 몸통 …` · `껍데기 …` · `배선 (…)` · `matcher (…)` | DRM 길잡이의 같은 줄들과 같다 — 몸통 · 껍데기면 씨앗이 덜 깔렸고, 배선 · matcher 면 다시 누른다 |
 | `Bash 겹역슬래시 보정 배선 (…)` · `PowerShell UTF-8 BOM 보정 배선 (…)` | 그림 문 배선 줄과 같다 — 다시 누른다 |
 | `워드 PDF 변환 안내 끔 (…)` | 워드의 PDF 변환 안내를 끄는 값이 1 이 아닌 판이 남았다. 위쪽 「워드 PDF 변환 안내 끄기 실패」 빨간 줄이 까닭을 든다 — 회사 정책이 홈의 오피스 키를 막았으면 IT, 아니면 다시 누른다 |
 | `Codex 훅 부품 (…)` | 설정 저장소 씨앗에 DRM · 그림 어댑터와 Bash · BOM 보정, 병합기 · 신뢰 도우미 · 예시 중 빠진 것이 있다. `설정 저장소 씨앗 (n/m)` 줄을 먼저 보고 다시 누른다 |
-| `Codex 훅 배선 (…)` | `~/.codex/config.toml` 에 네 훅의 명령이 다 서지 않았다. 설치는 우리 항목만 갈고 사람이 넣은 훅은 둔다. 훅을 `[hooks]` 표의 `이벤트 = [ … ]` 가 아닌 꼴(`[[hooks.이벤트]]` 등)로 적었으면 그 이벤트는 건드리지 않고 위에 노란 줄로 알린다 — 그 이벤트에 우리 훅을 직접 더한 뒤 다시 누른다. 빨간 「병합 실패」 줄이면 `~/.codex/config.toml` 은 그대로이고 그 아래 줄이 까닭을 댄다 |
+| `Codex 훅 배선 (…)` | `~/.codex/config.toml` 에 다섯 훅의 명령이 다 서지 않았다. 설치는 우리 항목만 갈고 사람이 넣은 훅은 둔다. 훅을 `[hooks]` 표의 `이벤트 = [ … ]` 가 아닌 꼴(`[[hooks.이벤트]]` 등)로 적었으면 그 이벤트는 건드리지 않고 위에 노란 줄로 알린다 — 그 이벤트에 우리 훅을 직접 더한 뒤 다시 누른다. 빨간 「병합 실패」 줄이면 `~/.codex/config.toml` 은 그대로이고 그 아래 줄이 까닭을 댄다 |
 | `Codex 훅 신뢰 (Codex 가 읽은 것 — 배선 n/m · 신뢰 n/m)` | Codex 가 실제로 싣는 우리 훅 가운데 신뢰된 것이 모자라다 — 그 훅은 `codex exec` 에서 안 돈다. 사람이 끈 우리 훅은 모자람으로 안 센다. 위쪽 「Codex 훅 신뢰 — 못 적었다」 빨간 줄이 까닭을 든다. 다시 누르거나 Codex 를 열어 새 훅을 한 번 신뢰한다. 「Codex 가 안 싣는다: not-loaded」 면 Codex 의 훅 기능이 꺼졌거나 관리 정책이 사용자 훅을 막는다 |
 | `Codex 훅 신뢰 (못 잼 — …)` | Codex 에 신뢰 상태를 못 물었다(Codex 가 없다 · 안 뜬다 · 시간 초과 · 모르는 답). 훅이 도는지 모르는 판이라 초록으로 안 센다. 괄호의 까닭을 보고 Codex 를 한 번 띄운 뒤 다시 누른다 |
 | `칸 없이 까는 스킬 — Claude 홈 (…)` · `… — Codex 홈 (…)` · `… — agy 홈 (…)` | 제작자 칸을 끈 그 도구의 스킬 자리(Claude `~/.claude/skills/` · Codex `~/.agents/skills/` · agy `~/.gemini/config/skills/`)에 괄호의 스킬이 다 서지 않았다. 위쪽에 「짐에 없다」 빨간 줄이 있으면 짐이 깨진 것이다 — 그 줄을 그대로 보낸다. 아니면 그 폴더가 읽기 전용인지 보고 다시 누른다 |
-| `agy 훅 배선 (…)` | `~/.gemini/config/hooks.json` 에 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목이 다 서지 않았다. 그 파일이 JSON 으로 안 읽히면 설치가 안 건드린다 — 위쪽 빨간 줄이 까닭을 든다. 고치고 다시 누른다 |
+| `agy 훅 배선 (…)` | `~/.gemini/config/hooks.json` 에 `paisetup-drm-guide` · `paisetup-utf8-bom` · `paisetup-context-alert` 항목이 다 서지 않았다. 그 파일이 JSON 으로 안 읽히면 설치가 안 건드린다 — 위쪽 빨간 줄이 까닭을 든다. 고치고 다시 누른다 |
 | `제작자 세트 도구 값 (PAISETUP_PERSONAL = …)` | 고른 도구를 사용자 환경변수에 못 심었다 — 규범 · 룰 · 스킬을 놓는 `tool-homes.py` 와 설정 저장소의 배포가 옛 값으로 돈다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 |
 | `고른 제품 값 (PAISETUP_PICK = …)` | 고른 제품을 사용자 환경변수에 못 심었다 — `tool-homes.py` 가 옛 값으로 Claude 훅을 놓거나 걷는다(설정 저장소의 세션 훅이 부를 때도). 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 |
 | `자리 값 (PAISETUP_SITE = …)` | 잰 자리를 사용자 환경변수에 못 심었다 — 일을 맡기는 세션이 맡기기 모델 표의 다른 자리 줄을 읽는다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 |
 | `규범 · 룰 · 에이전트 · 스킬 (홈이 tool-homes.conf 와 다르다 — …)` | 켠 도구의 홈이 짐의 갈 곳 표대로 서지 않았다 — 괄호가 다른 자리를 댄다. 위쪽 「규범 · 룰 · 에이전트 · 스킬」 줄의 빨간 까닭을 먼저 본다. 표지 줄(`<!-- paisetup:norms BEGIN -->` · `END`)이 하나만 남았거나 둘 이상인 `~/.claude/CLAUDE.md` · `~/.codex/AGENTS.md` 는 설치가 안 건드린다 — 남은 표지를 지우고 다시 누른다. 그 밖이면 그 폴더가 읽기 전용인지, 다른 프로그램이 그 파일을 열어 두지 않았는지 보고 다시 누른다 |
 | `규범 · 룰 · 에이전트 · 스킬 (못 쟀다 — …)` | `tool-homes.py` 를 못 돌렸다 — 괄호가 까닭을 댄다. 「python 을 못 불렀다」면 위쪽 Python 줄을 먼저 본다(제작자 칸을 켰거나 Claude 를 골랐으면 `-NoDevTools` 여도 Python 을 깐다). 「짐에 손이 없다」(손 = `tool-homes.py`)면 짐이 깨진 것이다 — 그 줄을 그대로 보낸다 |
+| `브라우저 MCP (…)` | 고른 도구의 `playwright` 등록이 어긋났거나 브라우저가 안 떴다 — 괄호가 도구와 까닭을 댄다. 「브라우저가 뜨나」를 못 넘었으면 위쪽 「브라우저(크로미움)」 줄(못 받았나)과 「CLI」 걸음의 Playwright 줄(못 깔았나)을 먼저 본다. 같은 이름의 남의 서버 때문이면 노란 줄이 그 도구를 댄다 — 그 서버를 두려면 그대로 쓰고, 우리 것을 쓰려면 그 서버를 지우고 다시 누른다. 「씨앗에 어댑터가 없다」면 짐이 깨진 것이다 — 그 줄을 그대로 보낸다. 그 밖이면 다시 누른다 |
 | `agy 모델 (…)` | 괄호의 환경변수를 못 심었다 — 이름은 자리마다 다르다. 위쪽 「심기 실패」 빨간 줄이 까닭을 든다 — 다시 누르고, 같으면 그 줄을 그대로 보낸다. 괄호가 「맡기기 모델 표를 못 읽었다」면 짐이 깨진 것이다 — 위쪽 빨간 줄(까닭을 댄다)을 그대로 보낸다 |
 | `Codex · Copilot 맡기기 값 (…)` | 괄호의 환경변수를 못 심었다 — `agy 모델` 줄과 같다. 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
 | `ANTHROPIC_BASE_URL` · `ANTHROPIC_AUTH_TOKEN` | 키를 안 넣었거나 빈 값이다. 다시 눌러 넣는다 |
@@ -623,7 +639,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | `로컬 프록시 (/health)` | **프록시가 안 떴다** — 사내에서 Claude Code 와 안티그래비티가 게이트웨이에 못 붙는다. Python 이 제대로 깔렸는지 보고 다시 누른다. 왜 이 프록시가 있고 손으로 어떻게 세우나는 `~/.claude/posco/pgpt-proxy/README.md` 가 든다 |
 | `Opus 5 문 — prefill …` | **프록시는 떴는데 Opus 5 요청이 안 통한다** — 뜬 것과 통하는 것은 다른 문제라 따로 잰다. 괄호 안 숫자가 게이트웨이가 돌려준 응답 코드다: **500 이상이면 게이트웨이 너머에서 끊은 것이라 이 PC 문제가 아니고**(잠시 뒤 다시 누른다), 그보다 작으면 프록시가 제 일을 못 한 것이다. 재는 법은 같은 `~/.claude/posco/pgpt-proxy/README.md` 가 든다 |
 | `로컬 프록시 단일 프로세스 …` · `와치독 감시 등록 …` | 프록시가 둘 이상 떴거나, 감시 작업이 윈도우 스토어의 가짜 `python` 껍데기(`WindowsApps`)를 가리킨다 — 그러면 프록시가 죽어도 감시 작업이 모른다. 다시 누르고, 같으면 그 줄을 그대로 보낸다 |
-| `부팅 시 자동 실행 (PAISetup-AutoRun)` | 로그온 자동 실행 작업을 못 걸었다. 위쪽 「자동 실행 스케줄러 등록 실패」 줄이 까닭을 든다 — 회사 정책이 작업 스케줄러를 막았으면 IT 에 문의한다 |
+| `부팅 시 자동 실행 (PAISetup-AutoRun · PAISetup-AutoRun-Night)` | 자동 실행 작업 둘 가운데 하나라도 못 걸었다. 위쪽 「자동 실행 스케줄러 등록 실패」 · 「밤 자동 실행 스케줄러 등록 실패」 줄이 까닭을 든다 — 회사 정책이 작업 스케줄러를 막았으면 IT 에 문의한다 |
 | `… 없음 (사외)` · `… — 프록시 주소 없음 (사외)` | 사외인데 사내에서 쓰던 값이 남아 있다. 설치가 우리 것인지 못 가려 안 지운 것이다 — 위쪽 「사내 잔재」 칸이 무엇을 지우고 무엇을 남겼는지 댄다. 남은 것이 사내 값이 맞으면 아래 「무를 때」 표대로 손으로 지운다 |
 
 ## 무를 때
@@ -644,19 +660,20 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | **로그인마다 뜨는 프록시 감시 작업** — 작업 이름은 `PGPTProxy-Watchdog` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false`. 프록시가 도는 폴더 `%LOCALAPPDATA%\PGPT-Proxy` 도 지운다. (옛 판이 남긴 것은 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 의 `PGPTProxy`) |
 | **홈에 깔린 환경 자료** | `~/.claude/posco/` · `~/.claude/seeds/` 폴더를 지운다. 씨앗 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` — 다른 프로그램도 쓸 수 있으니 필요할 때만 |
 | **칸 없이 깔린 스킬** — 제작자 칸을 끈 도구의 홈 | 홈마다 기록에 적힌 이름의 폴더 · 그 기록 · 걷은 스킬을 옮겨 둔 `backups/install-skills-*` · 같은 이름이라 비켜 둔 `backups/install-aside-*`(사람 것이면 되살린다). Claude 는 `~/.claude/skills/` · 기록 `~/.claude/.paisetup-skills` · `~/.claude/backups/`, Codex 는 `~/.agents/skills/` · `~/.agents/.paisetup-skills` · `~/.agents/backups/`, 안티그래비티는 `~/.gemini/config/skills/` · `~/.gemini/.paisetup-skills` · `~/.gemini/backups/` 다. 스킬 폴더에는 사람이 둔 스킬도 사니 기록에 없는 이름은 둔다 |
-| **안티그래비티의 훅** | 설치 창에서 안티그래비티를 빼고 한 번 더 누르면 설치가 걷는다. 손으로는 `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` 항목. 다른 항목은 사람이 넣은 것일 수 있으니 둔다. 고치기 전 것은 곁의 `hooks.json.before-paisetup-*` |
+| **안티그래비티의 훅** | 설치 창에서 안티그래비티를 빼고 한 번 더 누르면 설치가 걷는다. 손으로는 `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` · `paisetup-context-alert` 항목. 다른 항목은 사람이 넣은 것일 수 있으니 둔다. 고치기 전 것은 곁의 `hooks.json.before-paisetup-*` |
+| **브라우저 MCP** | 설치 창에서 그 도구를 빼고 한 번 더 누르면 설치가 우리 등록만 걷는다. 손으로는 `claude mcp remove -s user playwright` · `codex mcp remove playwright` · `agy mcp remove playwright` — 지우기 전에 그 항목이 우리 것(명령 `node` · 첫 인자가 `browser-mcp.mjs`)인지 본다. Codex 를 고치기 전 것은 `config.toml.before-browser-mcp-<시각>` 에 있다. 꾸러미는 `npm uninstall -g playwright`, 받은 브라우저는 `%USERPROFILE%\.cache\ms-playwright\chromium-snapshot-*` 폴더 |
 | **묻지 않고 돌기** — 고른 agy · Copilot · Codex | 설치가 걷지 않는다. 손으로는 `~/.gemini/antigravity-cli/settings.json` 의 `toolPermission` · `~/.gemini/config/config.json` 의 `userSettings` 세 칸 · `~/.copilot/settings.json` 의 `defaultPermissionMode` · `defaultMode` · `~/.codex/config.toml` 맨 위의 `approvals_reviewer` 줄을 지우거나, 그 도구의 설정 화면에서 다른 값을 고른다 |
 | **제작자 칸의 규범 · 룰 · 에이전트 · 스킬** — `tool-homes.py` 가 놓은 것 | 설치 창에서 제작자 칸을 다 끄고 한 번 더 누르면 `tool-homes.py` 가 제가 놓은 것을 걷는다 — `~/.claude/CLAUDE.md` 와 `~/.codex/AGENTS.md` 의 표지(`<!-- paisetup:norms BEGIN -->` · `END`) 사이, `~/.gemini/config/AGENTS.md` · `~/.gemini/config/rules.json`, 기록 `~/.paisetup/placed.tsv` 에 든 룰 · 에이전트 · 스킬 사본. 손으로 할 때도 이 자리들이다 — 표지 밖은 사람이 쓴 글이다 |
 | **규범 · 룰 한 벌 · 고른 도구 값** | `~/.paisetup/` 폴더(두 층 `~/.paisetup/standard/` · `~/.paisetup/personal/` · 기록 `~/.paisetup/placed.tsv` · 덮거나 걷기 전에 떠 둔 백업 `~/.paisetup/backups/` — 사람 것이 들었으면 되살린다)와 사용자 환경변수 `PAISETUP_PERSONAL` · `PAISETUP_PICK` · `PAISETUP_SITE`. 위 칸을 먼저 하고 지운다 — 홈의 가져오기 줄 · 가리킴 파일 · Claude 훅 등록이 이 폴더를 가리킨다 |
 | **agy 묶음** (Claude · 안티그래비티를 골랐을 때) | 사용자 환경변수 `AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE` · 옛 판이 옛 스킬 목록을 떠 둔 `~/.claude/backups/install-agy-*` |
 | **Codex · Copilot 맡기기** (Claude · Codex 를 골랐을 때) | 사용자 환경변수 `CC_BG_AGENTS` · `CC_BG_CODEX_WEB_SEARCH` · `CC_BG_CODEX_WIN_SANDBOX` · 맡기기 모델 표가 Codex 모델 이름을 준 자리면 `CC_BG_CODEX_MODEL` · `CC_BG_CODEX_MODEL_DELEGATE` |
-| **Codex 훅** | 설치 창에서 Codex 를 빼고 한 번 더 누르면 설치가 우리 훅만 걷는다(파이썬 3.11 이상이 있을 때 — 없으면 노란 줄로 알리고 남긴다). 뒤에 사람 항목이 남으면 그 자리를 지키느라 빈 항목(`{ hooks = [] }`)을 두고, 적어 둔 신뢰(`[hooks.state]` 의 우리 훅 열쇠)는 둔다 — 남아도 해가 없다. 손으로는 `~/.codex/config.toml` 의 `[hooks]` 안에서 `drm-guide.py` · `codex-image-gate.py` · `codex-safety-hooks.py` 를 가리키는 UserPromptSubmit · PreToolUse · PostToolUse 항목과 그 빈 항목을 지운다. 다른 Codex 설정과 사람이 넣은 훅은 둔다 |
+| **Codex 훅** | 설치 창에서 Codex 를 빼고 한 번 더 누르면 설치가 우리 훅만 걷는다(파이썬 3.11 이상이 있을 때 — 없으면 노란 줄로 알리고 남긴다). 뒤에 사람 항목이 남으면 그 자리를 지키느라 빈 항목(`{ hooks = [] }`)을 두고, 적어 둔 신뢰(`[hooks.state]` 의 우리 훅 열쇠)는 둔다 — 남아도 해가 없다. 손으로는 `~/.codex/config.toml` 의 `[hooks]` 안에서 `drm-guide.py` · `codex-context-alert.py` · `codex-image-gate.py` · `codex-safety-hooks.py` 를 가리키는 UserPromptSubmit · PreToolUse · PostToolUse 항목과 그 빈 항목을 지운다. 다른 Codex 설정과 사람이 넣은 훅은 둔다 |
 | **Codex · 안티그래비티 회사 설정** | `~/.codex/config.toml` · `~/.gemini/antigravity-cli/settings.json`. Codex 는 회사 틀이 든 자리만 지우면 된다 — 맞추기 전 것은 `config.toml.before-pgpt-<시각>` 에 있다. 안티그래비티 것은 `modelProvider` 줄만 지우면 로그인 갈래로 돌아간다 |
 | **옛 판이 깐 Gemini CLI** — 옛 판에서 Gemini 칸을 켰던 PC | 이 설치는 깔지도 걷지도 않는다 — 안 쓰면 손으로 지운다: `npm uninstall -g @google/gemini-cli` · VS Code 확장 「Gemini CLI Companion」 · `~/.gemini/settings.json`. 같은 폴더의 `~/.gemini/antigravity-cli/` · `~/.gemini/config/` 는 안티그래비티 것이라 둔다 |
 | **사용자 PATH 의 npm 전역 자리 · pip 사용자 자리 줄** — `%APPDATA%\npm` · `%APPDATA%\Python\Python<판>\Scripts`(펴진 경로 `C:\Users\<이름>\AppData\Roaming\…` 으로 적힌다) | 설치가 걷지 않는다 — 같은 자리를 Node · Python 설치나 사람이 넣었을 수 있어 누가 넣었는지 못 가른다. npm · pip 로 깐 명령을 남기면(아래 「남겨도 된다」) 이 줄도 둔다. 지우려면 시작 메뉴에 「환경 변수」로 검색 → 「계정의 환경 변수 편집」 → `Path` → 그 줄을 지우고 창을 새로 연다. 그 폴더가 남아 있으면 설치를 다시 누를 때(로그온 자동 실행도) 다시 더한다 |
 | **바탕화면·시작 메뉴의 「PAI Setup Wizard」** | 바로가기를 지운다 |
-| **로그온마다 도는 자동 실행** — 작업 이름은 `PAISetup-AutoRun` | 「작업 스케줄러」를 열어 그 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PAISetup-AutoRun -Confirm:$false`. **폴더보다 이것을 먼저 지운다** — 짐을 먼저 지우면 작업만 남아 로그인마다 헛돈다 |
-| **펴 둔 짐** — 판마다 폴더가 하나씩 쌓인다(로그온 자동 실행을 켰으면 최근 셋만 남는다) | `%LOCALAPPDATA%\Claude Code Setup\` 를 통째로 지운다 (자동 실행이 쓰던 `autorun.ps1` · `autorun.args` · `install.env` 사본과 설치 기록 폴더도 그 안이다) |
+| **로그온 · 밤마다 도는 자동 실행** — 작업 이름은 `PAISetup-AutoRun` · `PAISetup-AutoRun-Night` | 「작업 스케줄러」를 열어 두 이름을 지운다. 명령으로는 `Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night -Confirm:$false`. **폴더보다 이것을 먼저 지운다** — 짐을 먼저 지우면 작업만 남아 로그인 · 밤마다 헛돈다 |
+| **펴 둔 짐** — 판마다 폴더가 하나씩 쌓인다(로그온 자동 실행을 켰으면 최근 셋만 남는다) | `%LOCALAPPDATA%\Claude Code Setup\` 를 통째로 지운다 (자동 실행이 쓰던 `autorun.ps1` · `autorun-gate.ps1` · `autorun.args` · `.autorun-site` · `.autorun-night.env` · `.autorun-last` · `install.env` 사본과 설치 기록 폴더도 그 안이다) |
 
 프로그램(VS Code · Node · Git · Python · GitHub CLI · 고른 도구의 CLI · 데스크탑 앱)은 **남겨도 된다** — 회사와 무관한 것들이고,
 지우려면 윈도우의 「앱」 화면이나 `winget uninstall` 이 든다. **VC++ 런타임은 지우지 않는다** — 그 PC 의 다른 프로그램도 같은 런타임을 쓴다.

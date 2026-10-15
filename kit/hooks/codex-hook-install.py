@@ -57,7 +57,7 @@ except ImportError:   # 3.10 이하 — 읽는 자가 없으면 뜻을 못 재�
 EVENTS = ('UserPromptSubmit', 'PreToolUse', 'PostToolUse')
 # 우리 몸통은 늘 씨앗 자리에서 부른다 — 이름만 보면 사람의 `my-drm-guide.py` 도 우리 것으로 읽힌다
 MARKER_DIR = 'config-repo/.claude/hooks/'
-MARKERS = ('drm-guide.py', 'codex-image-gate.py', 'codex-safety-hooks.py')
+MARKERS = ('drm-guide.py', 'codex-image-gate.py', 'codex-safety-hooks.py', 'codex-context-alert.py')
 HOOKS_TABLE = 'hooks'
 COMMAND_KEYS = ('command', 'commandWindows')
 NESTED_HOOKS_KEY = 'hooks'

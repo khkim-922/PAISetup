@@ -51,12 +51,13 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 | `.claude/hooks/image-gate.py` · `image-gate.sh` | **그림 문.** 모델이 그림을 받기 직전에 치수를 재는 훅 — `scale` 을 안 고른 도구 스크린샷과, 상류가 어차피 깎을 만큼 큰 그림 파일은 막는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 저장소가 아니라 **홈** `~/.claude/settings.json` 에 등록된다 — 갈 곳 표의 손이 껍데기 머리말(어느 이벤트에 무엇을 맞춰 거나)대로 짓고, **설치 창에서 Claude 를 고른 PC 에만** 놓는다(설치를 안 거친 자리는 고른 것으로 본다). 치수 눈금은 검사 씨앗의 `_vision.py` 가 든다 |
 | `.claude/hooks/web-retry.sh` | **웹 다시 찾기.** 웹 검색 · 웹 가져오기가 못 닿았을 때 다른 길(`curl` · Tavily · agy)이 있다는 것을 결과 곁에 붙이는 훅 — 막지 않는다. 그림 문처럼 손이 껍데기 머리말대로 **홈** `~/.claude/settings.json` 에 놓는다 |
 | `.claude/hooks/drm-guide.py` · `drm-guide.sh` | **DRM 길잡이.** 글에 붙이거나 적은 오피스 · PDF 가 DRM 에 감겼으면 그것을 읽는 스킬 `drm-office-read` 로 가는 길을 곁에 붙이는 훅 — 막지 않는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 그림 문처럼 손이 껍데기 머리말대로 **홈** `~/.claude/settings.json` 에 놓는다 |
-| `.claude/hooks/codex-image-gate.py` · `codex-safety-hooks.py` · `codex-hook-install.py` · `codex-hook-trust.py` · `codex-config-merge.py` · `codex-hooks.example.toml` | **Codex 훅 배선.** `view_image` 그림 문 · DRM 길잡이 · Windows Bash 겹역슬래시 차단 · PowerShell UTF-8 BOM 보정을 Codex 입력 꼴에 맞추는 어댑터들, `~/.codex/config.toml` 의 TOML 블록, 사람의 다른 설정을 두고 그 블록을 병합하는 설치 손, Codex 가 그 훅을 실제로 믿나 재고 우리 훅에만 신뢰를 적는 손(Codex 제 설정 쓰기로), 사내 설치가 회사 틀의 자리만 틀의 값으로 맞추는 손 |
+| `.claude/hooks/context-alert.py` · `context-alert.sh` | **컨텍스트 알림.** 세션의 컨텍스트가 창의 33 % · 66 % 를 처음 넘을 때 한 번씩 모델 곁에 한 줄을 붙이는 UserPromptSubmit 훅 — 막지 않는다. 33 % 는 진행 · 남은 일을 보고하라는 것만, 66 % 는 끊는 길(사내 자리는 인계 뒤 새 세션 · 그 밖은 압축)을 더한다. 인계를 쓸지는 스킬 `session-handover` 가 가른다. 그림 문처럼 손이 껍데기 머리말대로 **홈** `~/.claude/settings.json` 에 놓는다 |
+| `.claude/hooks/codex-image-gate.py` · `codex-context-alert.py` · `codex-safety-hooks.py` · `codex-hook-install.py` · `codex-hook-trust.py` · `codex-config-merge.py` · `codex-hooks.example.toml` | **Codex 훅 배선.** `view_image` 그림 문 · DRM 길잡이 · 컨텍스트 알림(창이 1M 인 자리만 — 몸통 `context-alert.py` 를 부른다) · Windows Bash 겹역슬래시 차단 · PowerShell UTF-8 BOM 보정을 Codex 입력 꼴에 맞추는 어댑터들, `~/.codex/config.toml` 의 TOML 블록, 사람의 다른 설정을 두고 그 블록을 병합하는 설치 손, Codex 가 그 훅을 실제로 믿나 재고 우리 훅에만 신뢰를 적는 손(Codex 제 설정 쓰기로), 사내 설치가 회사 틀의 자리만 틀의 값으로 맞추는 손 |
 | `.claude/tools.global.conf` | 전역 도구 선언 — 훅이 이것을 읽고 돈다 |
 | `.claude/get-browser.sh` | 브라우저를 받아 오는 **뒷길**. 저장소 도구 선언(`.claude/tools.conf`)의 `[playwright]` 블록이 `browsers-fallback` 칸에 저장소 기준 경로로 적어 가리킨다 |
 | `.githooks/pre-commit` · `commit-msg` · `pre-push` | **커밋·푸시 게이트 몸통 — 문지기.** 익명이다 — 무엇을 재는지 모르고, 러너를 찾아 부른다. 저장소마다 한 벌씩 가는 것은 이것이다 |
 | `.githooks/gates-run.sh` | 몸통 셋이 같이 쓰는 러너. 선언을 읽어 조각을 부른다. **저장소마다 사본을 두지 않는다** — 몸통이 러너를 설정 저장소에서 찾고, 없으면 홈 씨앗에서 찾는다. 설정 저장소로 알아보는 폴더는 커밋하는 저장소 자신이거나, 곁 · `/workspace` · 홈에 선 `claude-config` 폴더 가운데 `deploy.ps1` 과 `memory/` 를 함께 든 것이다 |
-| `.githooks/gates.d/` | **검사 조각** — 인코딩 · 셸 문법 · 마크다운 · 링크 · 결정 색인 · 커밋 형식 · 파이썬 결함 · 빌린 부품 · 저장소 게이트 목록. 러너와 같이 여기에만 산다 |
+| `.githooks/gates.d/` | **검사 조각** — 인코딩 · 셸 문법과 정적 결함 · 링크 · 결정 색인 · 파이썬 결함 · 빌린 부품 · 저장소 게이트 목록. 러너와 같이 여기에만 산다 |
 | `.githooks/claude-config-path.sh` | 설정 저장소가 이 기계 어디 붙었나, 게이트 러너가 어디 섰나를 **한 자리에서** 잰다 |
 | `.claude/markdownlint.global.jsonc` | 우리 글 문체 때문에 마크다운 검사가 잘못 무는 규칙을 끄는 설정 |
 | `.claude/commitlint.global.mjs` | 같은 결 — 커밋 제목 문체 때문에 잘못 무는 규칙을 끄는 설정 |
@@ -116,13 +117,9 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 ```ini
 [pre-commit]
 encoding      # .ps1 에 BOM 이 있나 · .cmd 에 없나 — 남의 PC 에서만 깨지는 자리
-markdown      # 담긴 .md 만 잰다
 links         # 깨진 링크·앵커 (--offline)
 adr-index     # 결정 목록이 결정 기록의 머리말과 어긋났나
 python        # 담긴 .py 만 — 결함 부류만 잰다. 파이썬이 없는 저장소는 안 켠다
-
-[commit-msg]
-commit-format # Conventional Commits + 제목 BOM
 
 [pre-push]
 repo-gates    # 저장소 검사 지도의 게이트 절 — 분 단위라 커밋이 아니라 푸시 직전에 돈다(뺄 것 · 고친 경로로 고르기는 곁 map_check.conf)

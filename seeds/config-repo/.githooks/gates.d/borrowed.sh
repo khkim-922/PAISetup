@@ -1,25 +1,28 @@
 #!/bin/sh
 # 조각 — 빌려 온 사본이 진본과 같은가.
 #
-# 씨앗에서 빌려 온 사본(머리말에 「빌려 온 자다」가 있는 파일)과 `.githooks/` 배포본이
-# 진본과 어긋나지 않았나를 `borrowed_check.py` 로 잰다.
+# 층 — 만드는 사람의 흐름
+# 걷는 조건 — 씨앗 사본을 진본에서 만들어 내 손으로 받는 길이 사라지면 걷는다
 #
-# 이 저장소(claude-config)에서는 게이트웨이 가족 둘을 물고,
-# 형제 저장소(atelier 등)에서는 `_check/` 사본 22장과 `.githooks/` 조각들을 문다.
+# 씨앗에서 빌려 온 사본(머리말에 「빌려 온 자다」가 있는 파일)이 진본과 어긋나지 않았나를
+# `borrowed_check.py` 로 잰다.
 #
-# ⚠ 담긴 것에 `_check/` · `.githooks/` · `seeds/` 가 있을 때만 돈다 (repo-copies.sh · dist.sh 와 같은 자).
+# 이 저장소(claude-config)에서는 게이트웨이 가족 둘을 물고, 형제 저장소에서는 `_check/` 사본을 문다.
+#
+# ⚠ 담긴 것에 `_check/` · `seeds/` 가 있을 때만 돈다 (repo-copies.sh · dist.sh 와 같은 자).
 # ⚠ 형제가 없는 기계에서는 2 (안 잰 자리)로 말하고 넘어간다.
 set -u
 
 # ── 담긴 것 확인 ─────────────────────────────────────────────────────────────
-staged="$(git -c core.quotePath=false diff --cached --name-only 2>/dev/null || true)"
+# `--no-renames` — 옮긴 파일은 떠난 자리도 바뀐 것이다(`_check/` 밖으로 옮긴 사본도 문을 연다).
+staged="$(git -c core.quotePath=false diff --cached --name-only --no-renames 2>/dev/null || true)"
 [ -n "$staged" ] || exit 0
 
 nl='
 '
 has_target=0
 case "$nl$staged$nl" in
-    *"${nl}_check/"*|*"${nl}.githooks/"*|*"${nl}seeds/"*) has_target=1 ;;
+    *"${nl}_check/"*|*"${nl}seeds/"*) has_target=1 ;;
 esac
 
 [ "$has_target" -eq 1 ] || exit 0

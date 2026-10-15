@@ -62,8 +62,10 @@ const EXE_MATCH = new Set([...EXE_NAMES, ...EXE_NAMES.map(n => `${n}.exe`)]);
 // 헤드리스 셸을 쓰기 때문이다 — 이름만 맞춰 `chrome.exe` 를 집으면 **잘 돌던 기계를
 // 망가뜨린다**(atelier #313 을 고치다 실제로 그렇게 됐다). 파이썬 쌍둥이가 같은 순서를 든다(아뜰리에 0175).
 // ⚠ 차례(①②③④)는 안 바꾼다 — 여기서 정하는 것은 ② **안에서** 무엇을 먼저 집나뿐이다.
+// 내보내는 까닭 — 브라우저 MCP 실행기(claude-config `.claude/hooks/browser-mcp.mjs`)가 집힌 파일이 헤드리스 셸이면
+// 창 없이 띄워야 해서 같은 이름표로 묻는다. 이름을 그쪽에 베끼면 여기서 이름이 늘 때 저쪽만 낡는다.
 const HEADLESS_FIRST = ["chrome-headless-shell", "headless_shell"];
-const HEADLESS_MATCH = new Set([...HEADLESS_FIRST, ...HEADLESS_FIRST.map(n => `${n}.exe`)]);
+export const HEADLESS_MATCH = new Set([...HEADLESS_FIRST, ...HEADLESS_FIRST.map(n => `${n}.exe`)]);
 // ⚠ **`chrome` 은 이 목록에 안 넣는다.** 이름을 맞추면 회사 PC 에서 `chrome.exe` 가 걸리는데
 //   그 파일은 `spawn UNKNOWN` 으로 **못 뜬다**(atelier #313 을 고치다 잘 돌던 검사를 실제로 죽였다).
 //   여기는 배포판이 깔아 두는 이름만 든다 — 확장자는 아래 `PATH_EXTS` 가 든다.
@@ -76,7 +78,7 @@ const PATH_EXTS = process.platform === "win32"
 
 // ⚠ 윈도우에서는 확장자가 실행 가능성의 일부다 — `X_OK` 는 거기서 아무것도 안 거른다. 확장자 없는
 //   사본이 실행 파일로 집히면 `spawn` 이 ENOENT 로 진다. 쌍둥이는 설정 저장소(claude-config)의
-//   `scripts/pw-resolve.mjs` 에 살고 같은 줄을 든다.
+//   `scripts/pw-resolve.mjs` 와 `.claude/get-browser.sh` 의 `runnable` 에 살고 같은 줄을 든다 — 바뀌면 셋 다 바꾼다.
 function runnable(p) {
   if (process.platform === "win32" && !p.toLowerCase().endsWith(".exe")) return false;
   try {

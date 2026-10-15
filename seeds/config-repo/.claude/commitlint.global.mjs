@@ -3,8 +3,8 @@
 // 진본은 claude-config/.claude/commitlint.global.mjs 다. 각 저장소의 것은 deploy.ps1 이
 // 뿌린 배포본이다 — 배포본을 고치면 다음 배포에 덮인다.
 //
-// 실제 강제는 커밋 게이트(.githooks/gates.d/commit-format.sh)가 부른다. 저장소가 제
-// 규칙을 더하려면 뿌리에 `commitlint.config.mjs` 를 두면 되고, 조각이 그쪽을 먼저 본다.
+// 이 파일을 읽는 것은 형제 저장소 CI 의 PR 판 commitlint 다(`--config .claude/commitlint.global.mjs`) —
+// 커밋 게이트는 메시지 형식을 안 잰다.
 //
 // 낱말 목록(type-enum)은 여기 안 적는다 — `@commitlint/config-conventional` 이 명세대로
 // 든다(규범 [Conventional Commits]). 우리가 쓴 적 없다고 빼지 않는다: 이력에 맞춰 좁히면

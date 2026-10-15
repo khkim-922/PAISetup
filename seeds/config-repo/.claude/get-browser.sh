@@ -37,8 +37,7 @@ FORCE="${1:-}"
 #   파일 메타데이터로 묻는다 — 안 띄우고도 판은 알 수 있다.
 say_version() {
   case "$PLATFORM" in
-    Win_x64) powershell.exe -NoProfile -Command                "(Get-Item -LiteralPath '$(cygpath -w "$1")').VersionInfo.ProductVersion"                2>/dev/null | tr -d '
-' | head -1 ;;
+    Win_x64) powershell.exe -NoProfile -Command                "(Get-Item -LiteralPath '$(cygpath -w "$1")').VersionInfo.ProductVersion"                2>/dev/null | tr -d '\r\n' | head -1 ;;
     *)       "$1" --version 2>/dev/null | head -1 ;;
   esac
 }
@@ -54,11 +53,20 @@ esac
 # 「이미 있나」는 **플랫폼의 자리**로 본다 — 위 `INNER` 가 이미 그 자리를 안다. 옛 판은 유닉스
 # 이름(`chrome`·`chromium`)만 `find` 로 댔는데 윈도우 실행 파일은 `chrome.exe` 라 **영영 못 찾아**
 # 전역 걸음이 설 때마다 ~300MB 를 새로 받았다(실측 2026-09-16: 이 PC 에 스냅샷 다섯 · #58).
-# playwright 제 배치(`chromium-<n>/chrome-linux/chrome`)도 같은 글롭에 든다. 마지막 것이 이긴다 —
+# playwright 제 배치(`chromium-<n>/chrome-linux/chrome`)도 같은 글롭에 든다. 띄울 수 있는 것 가운데 마지막 것이 이긴다 —
 # 판 번호가 같은 자릿수라 사전순이 곧 새 판이다.
+# ⚠ **「있다」는 「띄울 수 있다」다** — 윈도에서 확장자 없는 `$ROOT/chromium`(지름길 링크가 복사로 내려앉은 것 · 아래
+#   「지름길 링크」)은 DLL 곁을 떠난 사본이라 못 뜨는데, 파일만 보면 맨 끝 후보라 늘 이겨 스냅숏이 사라져도 다시 안 받는다.
+#   판정은 `_check/_browser.mjs` 의 `runnable` 과 같은 줄이다 — 바뀌면 둘 다 바꾼다.
+runnable() {
+  if [ "$PLATFORM" = Win_x64 ]; then
+    case "$(printf %s "$1" | tr '[:upper:]' '[:lower:]')" in *.exe) ;; *) return 1 ;; esac
+  fi
+  [ -f "$1" ] && [ -x "$1" ]
+}
 found=""
 for _c in "$ROOT"/*/"$INNER" "$ROOT/chromium"; do
-  [ -f "$_c" ] && found="$_c"
+  runnable "$_c" && found="$_c"
 done
 
 # ⚠ **「있나」를 제 자리에서만 물으면 안 된다.** playwright 가 제 CDN 에서 이미 받아 둔

@@ -225,6 +225,9 @@ $Clis = @(
   # ⚠ **두 자리에 다 깐다 — 이 표의 다른 줄과 같다**(결정 0045 · 0093). Codex · Copilot 맡기기가 Copilot 을 쓰나는
   #   자리 값 `CC_BG_AGENTS` 가 가르는 래퍼의 몫이고, 프로그램은 그 값과 무관하게 제품을 고르면 선다.
   @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI' }
+  # 브라우저 MCP 의 꾸러미 — 고른 제품이 `For` 가운데 하나라도 있으면 깐다. 그 제품들에 다는 서버(`playwright mcp`)가 이 전역
+  #   꾸러미에 들어 있다(claude-config 결정 0149). 브라우저 받기와 등록은 「도구별 홈」 걸음의 브라우저 MCP 칸이 든다.
+  @{ Key='playwright'; Pkg='playwright'; Cmd='playwright'; Label='Playwright (브라우저 MCP)'; For=@('claude','codex','antigravity') }
   # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로는 lychee,
   #   마크다운 구조는 markdownlint-cli2 로 잰다. 설정 저장소의 세션 훅도 같은 둘을 까지만, 그 저장소를 안 붙인 PC 에는 그 걸음이
   #   없다. lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 `WinGet\Links` 에 이름이 걸린다 — 관리자 승인이 안 든다.
@@ -3373,6 +3376,73 @@ function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts,
 
 #endregion 도구별 · Codex · agy 훅
 
+#region 도구별 · 브라우저 MCP — 고른 도구에 우리 크로미움을 물린 playwright MCP 를 달고 안 고른 도구에서 걷는다 (claude-config 결정 0149)
+
+# 고른 제품 키 → 어댑터(`browser-mcp.py`)의 도구 이름. 표 밖의 제품은 브라우저 MCP 와 무관하다.
+$BrowserMcpHosts = [ordered]@{ claude = 'claude'; codex = 'codex'; antigravity = 'agy' }
+# 브라우저 받기(`get-browser.sh`)의 울타리(초) — 받는 것이 크로미움 스냅숏 하나(수백 MB)라 느린 회선에서도 끝나는 값이다.
+#   넘기면 노랑으로 남기고 잇는다 — 어댑터는 브라우저가 없으면 안 단다.
+$BrowserGetCap = 900
+# 끝 검증의 어댑터 `check` 의 울타리(초) — 그 안에서 도는 실행기 확인 판이 제 울타리 120 초를 들고, 넘기면 나무째 끊는 데 15 초를
+#   더 쓴다. 등록 파일 읽기는 순간이다. 넘기면 [?] 다(결정 0141).
+$BrowserMcpCheckCap = 240
+
+# Git Bash — 짐의 bash 몸통(브라우저 받기 · 「설정 저장소」 걸음의 심기)을 부르는 자리들이 같이 찾는다. 못 찾으면 빈 값.
+function Find-GitBash {
+  @("$env:ProgramFiles\Git\bin\bash.exe", "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe") |
+    Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+}
+
+# 어댑터를 한 번 부른다 — `@{ Rc; Lines }`(-2 는 `$CapSec` 을 넘겨 나무째 거뒀다). 줄 계약은 어댑터의 머리말이 든다.
+#   install · remove 는 어댑터가 도구 CLI 마다 제 울타리를 두르므로 울타리 없이 부른다.
+function Invoke-BrowserMcp([string]$Adapter, [string[]]$AdapterArgs, [int]$CapSec = 0) {
+  $log = [IO.Path]::GetTempFileName()
+  $pyArgs = @('-X', 'utf8', $Adapter) + $AdapterArgs
+  $rc = if ($CapSec -gt 0) { Invoke-LoggedCapped 'python' $pyArgs $log $CapSec } else { Invoke-Logged 'python' $pyArgs $log }
+  $lines = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+  Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
+  return @{ Rc = $rc; Lines = $lines }
+}
+
+# 어댑터의 install · remove 줄을 이 설치기의 꼴로 찍고, ERROR 가 있으면 `$Fails` 에 센다. SKIP 은 노랑 — 꾸러미나 브라우저가
+#   없어 안 단 것이라, 그 까닭(「CLI」 걸음의 playwright 줄 · 위 브라우저 받기 줄)이 이미 찍혔다.
+function Show-BrowserMcpLines([string]$Label, $Result) {
+  foreach ($ln in @($Result.Lines)) {
+    if ($ln -like 'CHANGE=*')    { Write-Host "  $Label — $($ln.Substring('CHANGE='.Length))" -ForegroundColor Green }
+    elseif ($ln -like 'WARN=*')  { Write-Host "  ! $Label — $($ln.Substring('WARN='.Length))" -ForegroundColor Yellow }
+    elseif ($ln -like 'SKIP=*')  { Write-Host "  ! $Label — 안 달았다: $($ln.Substring('SKIP='.Length))" -ForegroundColor Yellow }
+    elseif ($ln -like 'ERROR=*') { Write-Host "  ! $Label — $($ln.Substring('ERROR='.Length))" -ForegroundColor Red }
+  }
+  if ($Result.Rc -ne 0 -or @($Result.Lines | Where-Object { $_ -like 'ERROR=*' }).Count) {
+    $script:Fails.Add("$Label (종료 $($Result.Rc))")
+  } elseif ($Result.Lines -contains 'CHANGED=0' -and -not @($Result.Lines | Where-Object { $_ -match '^(WARN|SKIP)=' }).Count) {
+    Write-Host "  $Label — 이미 맞다"
+  }
+}
+
+# 끝 검증 한 칸 — 어댑터의 `check` 를 한 번 부른다: 고른 도구의 등록 꼴 · 안 고른 도구에 우리 등록이 없나 · 실행기를 MCP 로
+#   띄워 이동 · 그림 한 장(「우리 크로미움이 여기서 뜨나」). 0 맞다 `[O]` · 1 어긋났다 `[X]` · 2 못 쟀다 `[?]`(결정 0141).
+function Get-BrowserMcpCheck([string]$Adapter, [string[]]$Picked, [string[]]$Unpicked) {
+  $name = '브라우저 MCP'
+  if (-not (Test-Path -LiteralPath $Adapter -PathType Leaf)) { return @{ Name = "$name (씨앗에 어댑터가 없다: $Adapter)"; Ok = $false } }
+  $hostArgs = @()
+  foreach ($h in $Picked)   { $hostArgs += @('--host', $h) }
+  foreach ($h in $Unpicked) { $hostArgs += @('--gone', $h) }
+  $r = Invoke-BrowserMcp $Adapter (@('check') + $hostArgs) $BrowserMcpCheckCap
+  if ($r.Rc -eq -2) {
+    Add-ProbeOverflow 'browser-mcp.py check' $BrowserMcpCheckCap
+    return @{ Name = $name; State = 'unmeasured'; Probe = 'browser-mcp.py check'; Why = "${BrowserMcpCheckCap}초 안에 안 끝나" }
+  }
+  $said = @($r.Lines | Where-Object { $_ -match '^(DIFF|UNMEASURED)=' -or $_ -like 'LIVE=fail*' } | ForEach-Object { $_ -replace '^[A-Z]+=', '' })
+  $live = @($r.Lines | Where-Object { $_ -like 'LIVE=ok*' } | ForEach-Object { $_.Substring('LIVE=ok '.Length) }) | Select-Object -First 1
+  if ($r.Rc -eq 0) { return @{ Name = "$name (등록이 맞고 브라우저가 뜬다$(if ($live) { " — $live" }))"; Ok = $true } }
+  if ($r.Rc -eq 2) { return @{ Name = "$name ($($said -join ' · '))"; State = 'unmeasured'; Probe = 'browser-mcp.py check'; Why = '끝까지 못 재' } }
+  $why = if ($said.Count) { $said -join ' · ' } elseif ($r.Rc -eq -1) { 'python 을 못 불렀다' } else { "종료 $($r.Rc)" }
+  return @{ Name = "$name ($why)"; Ok = $false }
+}
+
+#endregion 도구별 · 브라우저 MCP
+
 #region 도구별 · 묻지 않고 돌기 — 고른 도구의 제 승인 설정을 사람 값을 안 덮고 심고, 끝 검증이 되읽는다
 
 # 표 한 줄(`$ToolAutoRun` — 「도구별 홈」 걸음)이 받는 꼴 — Label · Want · Path(설정 파일) · Under(그 안의 표 이름 · 맨 위면 빈 글) ·
@@ -4536,6 +4606,7 @@ if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감�
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'Claude 훅 등록을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
 # 제작자 칸을 켰으면 고른 기능이 손(`tool-homes.py`)으로 선다 — 칸을 켠 도구가 위 까닭을 이미 들어도 이 까닭은 따로 적는다
 if ($personalAny) { $needPythonWhy += '제작자 칸의 규범 · 룰 · 스킬을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
+if (@($BrowserMcpHosts.Keys | Where-Object { $PickKeys -contains $_ }).Count) { $needPythonWhy += '브라우저 MCP 를 다는 어댑터(browser-mcp.py)가 파이썬으로 돈다' }
 $needPython = [bool]$needPythonWhy.Count
 # ⚠ **안티그래비티는 틀 파일이 없다** — 심을 것이 `modelProvider` 한 줄이라 틀을 실을 값이 없다.
 #   그래서 무는 것은 「사내인가」와 「이 제품을 켰나」뿐이다.
@@ -4582,9 +4653,10 @@ if ($proxyRel -or $codexTpl) {
 # ⚠ **winget 이 올리는 갈래는 다 이 목록에 묻는다** — 프로그램 · 고른 데스크탑 앱 · winget CLI. 목록에 없는 Id 를 「올릴 것
 #   없음」으로 읽으므로(`Get-Listed`), 여기서 안 물은 갈래는 목록을 받은 판에서 영영 안 올라간다(결정 0145).
 $upgradable = $null
-# CLI 표에서 이번 설치가 깔 줄 — 고른 제품의 CLI 와, 제작자 칸을 켰을 때 그 칸의 스킬이 부르는 도구(`Maker`). 올리기를 묻는
-#   이 덩어리와 「CLI」 걸음이 같은 목록을 쓴다.
-$CliPicks = @($Clis | Where-Object { ($PickKeys -contains $_.Key) -or ($_.Maker -and $personalAny) })
+# CLI 표에서 이번 설치가 깔 줄 — 고른 제품의 CLI 와, 제작자 칸을 켰을 때 그 칸의 스킬이 부르는 도구(`Maker`), 고른 제품이 쓰는
+#   꾸러미(`For`). 올리기를 묻는 이 덩어리와 「CLI」 걸음이 같은 목록을 쓴다.
+$CliPicks = @($Clis | Where-Object { ($PickKeys -contains $_.Key) -or ($_.Maker -and $personalAny) -or
+                                     ($_.For -and @($_.For | Where-Object { $PickKeys -contains $_ }).Count) })
 if (-not ($NoUpgrade -or $noWinget)) {
   Say-Busy '프로그램 판' 'upcheck' @('winget · 한 번에')
   # ⚠ **울타리를 두른다** — 멎은 winget 하나가 설치를 영구히 세운다(#26 과 같은 꼴). 넘기면 목록을 못 받은 것(`$null`)이라 앱마다 묻는다.
@@ -6382,6 +6454,61 @@ if ($hostAgy) {
                        @('remove', '--config', $AgyHooksCfg) @('--version') 'python 이'
 }
 
+# ── 브라우저 MCP — 고른 도구에 `playwright` 서버를 달고, 안 고른 도구에서 우리 것만 걷는다 (claude-config 결정 0149) ─────────
+# 서버는 「CLI」 걸음이 깐 전역 playwright 에 들어 있고, 브라우저는 씨앗의 `get-browser.sh`(구글 스냅숏)가 받는다. 무엇을 어떻게
+#   다나 · 우리 것을 무엇으로 가리나 · 꾸러미나 브라우저가 없으면 안 다는 것은 씨앗의 어댑터 `browser-mcp.py` 의 머리말이 든다.
+# ⚠ **씨앗 자리의 것을 부른다** — 등록에 곁의 실행기(`browser-mcp.mjs`)의 절대 경로가 박힌다. 이 폴더의 사본을 부르면 내려받은
+#   임시 폴더를 가리키게 된다(agy 훅과 같은 까닭).
+# ⚠ **브라우저를 못 받아도 설치는 잇는다** — 노랑 한 줄을 남기고, 어댑터가 브라우저가 없으면 안 달고 SKIP 을 낸다.
+$browserMcpPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\browser-mcp.py'
+$browserGet      = Join-Path $homeDir 'seeds\config-repo\.claude\get-browser.sh'
+$browserMcpOn    = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -contains $_ }    | ForEach-Object { $BrowserMcpHosts[$_] })
+$browserMcpOff   = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -notcontains $_ } | ForEach-Object { $BrowserMcpHosts[$_] })
+# python 은 `Measure-Runs` 로 묻는다 — 넘김을 「없다」로 읽으면 멀쩡한 PC 가 빨강이 된다(결정 0141).
+$browserMcpPython = Measure-Runs 'python' '--version'
+if ($browserMcpOn.Count) {
+  $gitBash = Find-GitBash
+  if (-not $gitBash) {
+    Write-Host '  ! 브라우저(크로미움) — Git Bash 가 없어 못 받았다' -ForegroundColor Yellow
+  } elseif (-not (Test-Path -LiteralPath $browserGet)) {
+    Write-Host "  ! 브라우저(크로미움) — 씨앗에 받는 손이 없다 ($browserGet)" -ForegroundColor Red
+    $Fails.Add('브라우저 받기 (씨앗이 없다)')
+  } else {
+    Say-Busy '브라우저(크로미움)' 'fetch' @('get-browser.sh · 없을 때만')
+    $gbLog = [IO.Path]::GetTempFileName()
+    $gbRc = Invoke-LoggedCapped $gitBash @(($browserGet -replace '\\', '/')) $gbLog $BrowserGetCap
+    $gbLast = @(Get-Content -LiteralPath $gbLog -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() }) | Select-Object -Last 1
+    if ($gbRc -eq 0) {
+      Write-Host "  $("$gbLast".Trim())"
+    } elseif ($gbRc -eq -2) {
+      Write-Host "  ! 브라우저(크로미움) — ${BrowserGetCap}초 안에 못 받아 거뒀다" -ForegroundColor Yellow
+    } else {
+      Write-Host "  ! 브라우저(크로미움) — 못 받았다 (종료 $gbRc) — 뱉은 끝 줄:" -ForegroundColor Yellow
+      Show-Log $gbLog
+    }
+    Remove-Item -LiteralPath $gbLog, "$gbLog.err" -ErrorAction SilentlyContinue
+  }
+}
+if (-not (Test-Path -LiteralPath $browserMcpPlant)) {
+  if ($browserMcpOn.Count) {
+    Write-Host '  ! 브라우저 MCP — 씨앗의 어댑터가 없어 안 단다' -ForegroundColor Red
+    $Fails.Add('브라우저 MCP (씨앗이 없다)')
+  }
+} elseif ($browserMcpPython -eq 'unmeasured') {
+  if ($browserMcpOn.Count)      { Add-UnmeasuredStep '브라우저 MCP' 'python --version' '달지도 걷지도 않았다' }
+  elseif ($browserMcpOff.Count) { Add-UnmeasuredStep '브라우저 MCP 걷기' 'python --version' '우리 등록을 안 걷었다' }
+} elseif ($browserMcpPython -ne 'yes') {
+  if ($browserMcpOn.Count) {
+    Write-Host '  ! 브라우저 MCP — python 이 안 서서 안 단다' -ForegroundColor Red
+    $Fails.Add('브라우저 MCP (python 없음)')
+  } else {
+    Write-Host '  ! 브라우저 MCP — 고르지 않았는데 python 이 안 서서 우리 등록을 못 걷었다' -ForegroundColor Yellow
+  }
+} else {
+  if ($browserMcpOn.Count)  { Show-BrowserMcpLines '브라우저 MCP' (Invoke-BrowserMcp $browserMcpPlant (@('install') + @($browserMcpOn | ForEach-Object { '--host', $_ }))) }
+  if ($browserMcpOff.Count) { Show-BrowserMcpLines '브라우저 MCP 걷기' (Invoke-BrowserMcp $browserMcpPlant (@('remove') + @($browserMcpOff | ForEach-Object { '--host', $_ }))) }
+}
+
 # ── 묻지 않고 돌기 — 고른 도구마다 그 도구 제 승인 설정을 심는다 (claude-config #158 · 결정 0127) ─────────────────────
 # 설치 창에 칸이 없다 — 그 도구를 고르면 선다(Codex 만 아직 사외에서만). Claude 의 자동 모드는 「Claude 홈 설정」의 표가 든다.
 # 무엇을 심나 — 그 도구가 대화형에서 사람에게 묻는 대신 스스로 진행하게 하는 제 설정 하나씩이다. 폴더 신뢰(세션 훅) · 러너 허락
@@ -6470,9 +6597,7 @@ $oldHooks = @(); $got = @()
 #   PC 의 `--plant` 에도 서야 해서다.
 $handOff = $false
 # ⚠ **Git Bash 로 부른다.** 저쪽은 bash 몸통이고, PowerShell 에서 직접 못 부른다. 칸이 비어도 찾는다 — 걸음 끝의 `--plant` 가 쓴다.
-$bash = @("$env:ProgramFiles\Git\bin\bash.exe",
-          "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe") |
-        Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+$bash = Find-GitBash
 # 주소(`$repoUrl` · `$configRepoUrls`)와 자리(`Get-ConfigRepoDir`)는 7 칸 앞에서 한 벌로 섰다.
 if (-not $repoUrl) {
   Write-Host '  건너뜀 — install.env 에 #config-repo 가 없다'
@@ -8115,6 +8240,13 @@ $checks += @{ Name = "자리 값 (PAISETUP_SITE = $ModelSite)"
 # 규범 · 룰 · 에이전트 · 스킬 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
 if ($toolHomesOn) { $checks += Get-ToolHomesCheck $toolHomesHand }
+# 브라우저 MCP — 어댑터의 `check` 한 번(claude-config 결정 0149). 고른 도구가 셋 가운데 없으면 칸을 안 세운다 —
+#   안 쓰기로 한 것을 [X] 로 찍지 않는다. python 이 안 서면 「도구별 홈」이 이미 빨강으로 셌고, 못 쟀으면 [?] 다.
+if ($browserMcpOn.Count -and $browserMcpPython -eq 'yes') {
+  $checks += Get-BrowserMcpCheck $browserMcpPlant $browserMcpOn $browserMcpOff
+} elseif ($browserMcpOn.Count -and $browserMcpPython -eq 'unmeasured') {
+  $checks += @{ Name = '브라우저 MCP'; State = 'unmeasured'; Probe = 'python --version' }
+}
 # ⚠ **안 쓰기로 한 것을 [X] 로 찍지 않는다.** 그러면 멀쩡한 사외 PC 가 매번 빨갛게 보고되고,
 #   빨강이 흔해지면 진짜 빨강이 안 보인다.
 # ⚠ **키는 `#config-repo` 가 있어도 여기서 잰다.** 옛 판은 그 판에서 키 검사를 저쪽에 맡겼는데,

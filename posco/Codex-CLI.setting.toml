@@ -10,6 +10,9 @@ UserPromptSubmit = [
   { hooks = [
     { type = "command", command = "python -X utf8 ~/.claude/seeds/config-repo/.claude/hooks/drm-guide.py", commandWindows = "python -X utf8 \"$env:USERPROFILE/.claude/seeds/config-repo/.claude/hooks/drm-guide.py\"", async = false, timeout = 10, statusMessage = "DRM 파일 확인 중" },
   ] },
+  { hooks = [
+    { type = "command", command = "python -X utf8 ~/.claude/seeds/config-repo/.claude/hooks/codex-context-alert.py", commandWindows = "python -X utf8 \"$env:USERPROFILE/.claude/seeds/config-repo/.claude/hooks/codex-context-alert.py\"", async = false, timeout = 10, statusMessage = "컨텍스트 사용량 확인 중" },
+  ] },
 ]
 PreToolUse = [
   { matcher = "view_image|functions.view_image", hooks = [

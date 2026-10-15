@@ -40,6 +40,7 @@
 #   (또는 홈 씨앗)에 살아, 못 찾는 것은 대개 이 PC 의 claude-config 가 뒤처진 탓이고 저장소가 고칠
 #   일이 아니다. 막으면 그 저장소 커밋이 통째로 서고 `--no-verify` 가 습관이 된다. 조용히 넘기지는
 #   않는다 — 이름을 대며 말하고 「못 쟀다」 목록에 올린다. 대가: 선언의 오타도 막히지 않는다.
+#   걷은 조각(`_GATES_RETIRED`)은 예외다 — 못 찾아도 말없이 지나간다.
 #
 # ── 고르기([when]) ──────────────────────────────────────────────────────────
 #   바뀐 경로 — pre-commit 은 담긴 것(`git diff --cached`), pre-push 는 올라갈 가지와 갈라진 자리부터 작업
@@ -161,6 +162,14 @@ gates_wakes() {
     return "$_gw_rc"
 }
 
+# 걷은 조각 — 옛 씨앗 틀로 만든 저장소의 선언에 아직 남은 이름(#170). 그 선언은 그 저장소 것이라 우리가 안 고치므로, 조각을
+#   못 찾아도 「못 쟀다」로 안 세고 말없이 지나간다 — 매 커밋 「당겨 온다」를 내면 고칠 것이 없는 사람에게 소음만 쌓인다.
+#   저장소가 제 조각을 들고 있으면 그것은 그대로 돈다. 세션 진단도 이 목록을 묻는다(`gate_retired`) — 목록은 이 한 자리다.
+_GATES_RETIRED=' markdown commit-format shell-syntax rule-globs agy-desktop-projects word-pdf-quiet python-version ui-personal-boxes gh-keyring '
+
+# gate_retired <이름> — 걷은 조각이면 0.
+gate_retired() { case "$_GATES_RETIRED" in *" $1 "*) return 0 ;; esac; return 1; }
+
 # _gates_now — 지금을 마이크로초로 _gn 에 둔다. 못 재면 빈 값.
 _gates_now() {
     _gn=${EPOCHREALTIME:-}
@@ -261,7 +270,7 @@ run_gates() {
     # ⚠ 안 넘어오면 저장소 자리로 물러난다 — 이 값을 모르는 옛 몸통이 새 러너를 부르는 자리다.
     _home="${GATES_DIR:-$PROJECT_DIR/.githooks}"
 
-    _fail=0; _cant=''; _ran=0; _skip=''; _nskip=0; _plan=''; _tmpd=''
+    _fail=0; _cant=''; _ran=0; _skip=''; _nskip=0; _plan=''; _tmpd=''; _retired=''
     _gates_now; _gw0=$_gn
 
     # 저장소 조각 폴더와 러너 곁이 같은 자리인가 — 같으면(설정 저장소 자신) 가림을 잴 까닭이 없다.
@@ -317,7 +326,9 @@ EOF
         # 저장소 조각이 먼저다 — 저장소가 제 판을 든 자리는 그 판이 돈다.
         _f="$PROJECT_DIR/.githooks/gates.d/$_g.sh"; _own=1
         [ -f "$_f" ] || { _f="$_home/gates.d/$_g.sh"; _own=''; }
-        if [ ! -f "$_f" ]; then
+        if [ ! -f "$_f" ] && gate_retired "$_g"; then
+            _st=skip; _retired=1
+        elif [ ! -f "$_f" ]; then
             _st=gone
         elif [ -n "$_sel" ] && ! gates_wakes "$_g" "$_tmpd/changed"; then
             _st=skip; _skip="$_skip $_g"; _nskip=$((_nskip + 1))
@@ -438,7 +449,7 @@ EOF
     [ -z "$_skip" ] || printf '· 안 돌렸다 %s개 — 바뀐 경로가 지키는 자리([when]) 밖이다:%s\n' "$_nskip" "$_skip" >&2
     [ -z "$_plan" ] || printf '· %s\n' "$_plan" >&2
     [ -z "$_cant" ] || printf '· 못 쟀다:%s — 위 까닭을 본다. 초록은 여기까지다.\n' "$_cant" >&2
-    [ "$_ran" -gt 0 ] || [ -n "$_cant" ] || [ -n "$_skip" ] ||
+    [ "$_ran" -gt 0 ] || [ -n "$_cant" ] || [ -n "$_skip" ] || [ -n "$_retired" ] ||
         printf '· [%s] 절에 켜진 조각이 없다 — 이 단계는 아무것도 안 잰다.\n' "$_stage" >&2
     _gates_times
 

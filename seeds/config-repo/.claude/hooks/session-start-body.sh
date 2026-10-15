@@ -715,9 +715,8 @@ deploy_home_norms() {
     # 홈으로 미는 손은 안 도니 커밋이 쌓이는 만큼 홈만 낡았다. 그리고 홈을 진본으로 믿는
     # 검사(`borrowed_check`)는 낡은 판을 보고 **초록을 냈다** — 부재보다 나쁘다
     # (실측 2026-09-13: 홈 씨앗이 나무와 12 자리 갈려 있었다).
-    # ⚠ **어느 폴더를 미나는 선언이 든다 — `$CONFIG_ROOT/deploy.seeds.conf`**(deploy.ps1 과 재는 자
-    #   `check-global-copies.sh` 가 같은 줄을 읽는다 · `seeds/config-repo` 를 일부러 안 미는 까닭도
-    #   그 머리말이 든다). 어떻게 미나(`__pycache__` 제외 · 덮어쓰기만)는 deploy.ps1 의 같은 칸과
+    # ⚠ **어느 폴더를 미나는 선언이 든다 — `$CONFIG_ROOT/deploy.seeds.conf`**(deploy.ps1 이 같은 줄을
+    #   읽는다 · `seeds/config-repo` 를 일부러 안 미는 까닭도 그 머리말이 든다). 어떻게 미나(`__pycache__` 제외 · 덮어쓰기만)는 deploy.ps1 의 같은 칸과
     #   같은 뜻이고, 제외 한 낱말은 선언으로 안 뽑는다 — 선언이 좌표만 늘린다.
     #   선언이 없는 저장소를 위한 **후퇴 목록은 없다** — 그 저장소는 위 문에서 끝난다. 목록을 여기 한 벌
     #   더 두면 그것이 곧 손사본이다.
@@ -1487,36 +1486,63 @@ global_conf_list() {
 #   ⚠ **정렬은 이 자리 안에서 끝낸다.** `global_conf_list` 에 정렬을 넣으면 선언을 읽는 순서가
 #     바뀌어 「제 저장소의 선언이 이긴다」가 깨진다 — 같은 이름의 절을 형제가 들 때 누가 이길지가
 #     알파벳순이 된다. 고칠 것은 **무는 방식**이지 목록이 아니다.
-# ── 한 글자를 대문자로 — **프로세스 없이** (#78) ──────────────────────────────────
-#   드라이브 문자를 굳히는 자리에서만 쓴다. `tr` 을 띄우면 파일마다 프로세스가 하나 더 붙고
-#   (윈도우 실측: 열한 번에 2.8초 — `cygpath` 와 같은 값), `${v^}` 는 bash 4 전용이라
-#   `sh` 로 불린 자리에서 죽는다. `case` 는 내장이라 둘을 다 피한다.
-_upper_one() {
+# ── 한 글자를 대문자로 — **프로세스도 서브셸도 없이** (#78) ──────────────────────────
+#   드라이브 문자를 굳히는 자리에서만 쓴다. 답은 `_cpu` 에 둔다. `tr` 을 띄우면 파일마다 프로세스가 하나 더 붙고
+#   (윈도우 실측: 열한 번에 2.8초 — `cygpath` 와 같은 값), `${v^}` 는 bash 4 전용이라 `sh` 로 불린 자리에서 죽고,
+#   `$( )` 로 받으면 부를 때마다 서브셸이 선다. `case` 는 내장이라 셋을 다 피한다.
+_upper_one() {   # _upper_one <한 글자> — 대문자를 `_cpu` 에 둔다
   case "$1" in
-    a) printf A ;; b) printf B ;; c) printf C ;; d) printf D ;; e) printf E ;;
-    f) printf F ;; g) printf G ;; h) printf H ;; i) printf I ;; j) printf J ;;
-    k) printf K ;; l) printf L ;; m) printf M ;; n) printf N ;; o) printf O ;;
-    p) printf P ;; q) printf Q ;; r) printf R ;; s) printf S ;; t) printf T ;;
-    u) printf U ;; v) printf V ;; w) printf W ;; x) printf X ;; y) printf Y ;;
-    z) printf Z ;; *) printf '%s' "$1" ;;
+    a) _cpu=A ;; b) _cpu=B ;; c) _cpu=C ;; d) _cpu=D ;; e) _cpu=E ;;
+    f) _cpu=F ;; g) _cpu=G ;; h) _cpu=H ;; i) _cpu=I ;; j) _cpu=J ;;
+    k) _cpu=K ;; l) _cpu=L ;; m) _cpu=M ;; n) _cpu=N ;; o) _cpu=O ;;
+    p) _cpu=P ;; q) _cpu=Q ;; r) _cpu=R ;; s) _cpu=S ;; t) _cpu=T ;;
+    u) _cpu=U ;; v) _cpu=V ;; w) _cpu=W ;; x) _cpu=X ;; y) _cpu=Y ;;
+    z) _cpu=Z ;; *) _cpu="$1" ;;
   esac
 }
 
+# ── 경로 꼴 굳히기 — `/c/…` → `C:/…` (#78) ──────────────────────────────────────────
+#   드라이브 문자는 대문자로 눌러 글롭이 내는 꼴(`home_hook_root` 의 `cygpath -m`)과 맞춘다. 답은 `_cpath` 에 둔다 —
+#   `$( )` 로 받으면 부를 때마다 서브셸이 서고, 지문 한 번에 이 손을 경로마다 부른다.
+_canon_path() {   # _canon_path <경로> — 굳힌 꼴을 `_cpath` 에 둔다
+  _cpath="$1"
+  case "$_cpath" in
+    /?/*) _cpd="${_cpath#/}"; _cpd="${_cpd%%/*}"
+          case "$_cpd" in
+            [a-z]) _upper_one "$_cpd"; _cpd="$_cpu" ;;
+          esac
+          _cpath="$_cpd:/${_cpath#/?/}" ;;
+  esac
+}
+
+# ── ⚠ **한 저장소는 한 자리로 문다 — 작업 트리에서 연 세션도** (#172) ─────────────────────────
+#   글롭은 작업 루트 바로 아래만 본다. 본 클론 안에 선 작업 트리(`.claude/worktrees/<이름>` — 데스크탑 앱 · 레인 격리)는
+#   글롭에 안 잡히고 그 저장소는 본 클론 자리로 잡히므로, 제 선언(`$GCONF` · `$PCONF`)을 제 경로로 물면 한 저장소가 두
+#   자리로 들어 같은 바이트를 두 번 씹는다 — 지문이 본 클론 세션과 갈리고, 도장은 기계 하나라 둘이 번갈아 서로를 깬다.
+#   그래서 그 세션의 제 선언은 **본 클론의 자리**에 세우고, 그 자리의 바이트는 **제 파일**에서 읽는다. 선언이 같으면 본
+#   클론 세션과 같은 바이트 · 같은 차례라 지문이 같고, 고친 선언이면 지문이 달라 그 선언이 깔린다.
+#   작업 루트 바로 아래 선 나무(본 클론 · 형제 자리에 둔 작업 트리)는 글롭이 제 경로로 이미 보므로 자리를 안 옮긴다 —
+#   옮기면 다른 세션들이 따로 세는 형제 작업 트리를 이 세션만 본 클론 자리에 겹쳐 집합이 갈린다. 그 자리에서는 git 을
+#   안 띄운다.
+#   ⚠ 옮기는 것은 **연결된 작업 트리의 뿌리**(`.git` 이 파일)일 때뿐이다. 세션 자리가 본 클론의 하위 폴더(`<본 클론>/sub`
+#     — 위 `CLAUDE_PROJECT_DIR` 물러섬)면 `main_worktree` 가 본 클론을 내는데, 그때 옮기면 되읽기가 본 클론 자리를 없는
+#     하위 폴더 파일로 돌려 본 클론의 선언이 지문에서 빠진다.
+#   ⚠ 겹침을 내용으로 걷지 않는다 — `tools.global.conf` 는 저장소마다 같은 바이트의 사본이라, 내용으로 걸으면 이미 깔린
+#     모든 기계의 도장이 한 번씩 어긋난다(위 「무는 바이트와 그 차례」).
 global_fingerprint() {
+  _canon_path "$PROJECT_DIR"; _gown="$_cpath"; _gmain="$_gown"
+  _canon_path "${SIBLING_BASE:-}"
+  [ "${_gown%/*}" = "$_cpath" ] || [ ! -f "$PROJECT_DIR/.git" ] ||
+    { _canon_path "$(main_worktree "$PROJECT_DIR")"; _gmain="$_cpath"; }
   global_conf_list | {
     while IFS= read -r _gf; do
-      # 꼴 굳히기 — `/c/…` → `C:/…`. 드라이브 문자는 대문자로 눌러 글롭이 내는 꼴과 맞춘다.
-      case "$_gf" in
-        /?/*) _gd="${_gf#/}"; _gd="${_gd%%/*}"
-              case "$_gd" in
-                [a-z]) _gd="$(_upper_one "$_gd")" ;;
-              esac
-              _gf="$_gd:/${_gf#/?/}" ;;
-      esac
+      _canon_path "$_gf"; _gf="$_cpath"
+      case "$_gf" in "$_gown"/*) _gf="$_gmain${_gf#"$_gown"}" ;; esac
       printf '%s\n' "$_gf"
     done
   } | sort -u | {
     while IFS= read -r _gf; do
+      case "$_gf" in "$_gmain"/*) _gf="$_gown${_gf#"$_gmain"}" ;; esac
       [ -f "$_gf" ] || continue
       _gln=""
       while IFS= read -r _gln; do printf '%s\n' "$_gln"; done < "$_gf"
@@ -3845,6 +3871,7 @@ if [ -d "$PROJECT_DIR/.githooks" ]; then
       for _stage in pre-commit commit-msg pre-push; do
         for _g in $(gate_list "$_stage" "$_gc"); do
           if [ -f "$PROJECT_DIR/.githooks/gates.d/$_g.sh" ] || [ -f "$GATES_HOME/gates.d/$_g.sh" ]; then _on="$_on $_g"
+          elif command -v gate_retired >/dev/null 2>&1 && gate_retired "$_g"; then :   # 걷은 조각 — 러너도 말없이 지나간다
           else _gone="$_gone $_g"; fi
         done
       done

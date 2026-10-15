@@ -51,4 +51,9 @@ GATES_DIR="$GATES_HOME"   # 러너가 조각을 찾는 「곁」은 러너가 �
 #   말하는 것 자체는 반드시 서야 한다 — 그 자리가 `run_gates` 다.
 
 . "$GATES_DIR/gates-run.sh"
+# `[commit-msg]` 절이 없거나 비면 조용히 지나간다 — 메시지 형식을 커밋 때 안 재는 것이 이 저장소들의 기본 상태라,
+#   러너의 「켜진 조각이 없다」 줄은 매 커밋 소음일 뿐이다. 선언 파일 자체가 없는 자리는 위 판정대로 러너가 말한다.
+if [ -f "$CONF" ] && command -v gate_list >/dev/null 2>&1 && [ -z "$(gate_list commit-msg "$CONF")" ]; then
+    exit 0
+fi
 run_gates commit-msg "$MSGFILE"

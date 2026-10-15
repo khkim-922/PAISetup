@@ -255,7 +255,7 @@ def blank(src, suffix):
 
     꼴은 사본에서 찾고 값은 원문의 같은 자리에서 읽는다. 이 짝이 이 자의 밑판이다 —
     주석에 적힌 `process.exit` 이나 글자로 찍는 `exit 1` 을 나가는 자리로 세면 실물
-    전수가 통째로 거짓이 된다(실측: `check-rails.mjs:48` · `check-deploy-probes.sh:65`).
+    전수가 통째로 거짓이 된다.
     """
     out, strings = list(src), []
     lc, bc, quotes = LINE_COMMENT[suffix], BLOCK_COMMENT.get(suffix), QUOTES[suffix]

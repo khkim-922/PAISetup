@@ -1,7 +1,8 @@
-"""agy(Antigravity CLI) 훅 어댑터 — DRM 길잡이와 PowerShell UTF-8 BOM 보정을 agy 의 꼴로 건넨다 (결정 0099).
+"""agy(Antigravity CLI) 훅 어댑터 — DRM 길잡이 · PowerShell UTF-8 BOM 보정 · 컨텍스트 알림을 agy 의 꼴로 건넨다 (결정 0099 · #173).
 
-    python -X utf8 agy-hooks.py drm-guide    < PreToolUse 입력   (matcher `view_file` · `run_command`)
-    python -X utf8 agy-hooks.py utf8-bom     < PostToolUse 입력  (matcher 쓰기 도구 셋)
+    python -X utf8 agy-hooks.py drm-guide     < PreToolUse 입력     (matcher `view_file` · `run_command`)
+    python -X utf8 agy-hooks.py utf8-bom      < PostToolUse 입력    (matcher 쓰기 도구 셋)
+    python -X utf8 agy-hooks.py context-alert < PreInvocation 입력  (matcher 없음)
     python -X utf8 agy-hooks.py install --config ~/.gemini/config/hooks.json
     python -X utf8 agy-hooks.py remove  --config ~/.gemini/config/hooks.json
 
@@ -9,12 +10,15 @@
 경로 열쇠도 다르다(`AbsolutePath` · `TargetFile` · 셸은 `CommandLine` · `Cwd`). 판정은 몸통의 것을 불러 쓰고 여기서는 꼴만
 바꾼다 — 같은 판정을 두 벌 두면 한쪽만 낡는다. 입력 꼴은 agy 문서 「Hooks」의 것이다(<https://antigravity.google/docs/hooks>).
 
-**홈 훅 다섯 가운데 둘만 건다.** 그림 문 · Bash 겹역슬래시 보정 · 웹 다시 찾기는 Claude 쪽 사정(그림 크기 비용 · Git Bash 가
+**홈 훅 여섯 가운데 셋을 건다.** 그림 문 · Bash 겹역슬래시 보정 · 웹 다시 찾기는 Claude 쪽 사정(그림 크기 비용 · Git Bash 가
 접는 역슬래시 · WebFetch 실패)에서 나온 훅이라 agy 에서는 막을 사고가 없다(결정 0083 실측 · 0099).
 
-**DRM 길잡이는 읽기 전에 막는다.** agy 의 PreToolUse 는 결정(`decision`)과 까닭(`reason`)만 받는다 — 도구 뒤 훅은 모델에
-말을 붙일 수 없고, 사람의 글을 받는 훅도 없다. 그래서 감긴 파일을 읽으려는 도구 호출을 막고 까닭에 스킬로 가는 길을 싣는다.
-감긴 파일은 열어도 글자가 안 나오니 막아서 잃는 것이 없다. 읽는 길은 둘이다:
+**모델에게 말이 닿는 자리는 하나다.** agy 의 PreToolUse 는 결정(`decision`)과 까닭(`reason`)만 받고, PostToolUse 도 모델에
+말을 붙일 수 없다. 모델에 닿는 것은 PreInvocation 의 `injectSteps` 다 — 모델을 부를 때마다 돌고, 거기 낸 `ephemeralMessage`
+를 모델이 읽는다(#173 실측). 사람의 글을 받는 훅은 없다.
+
+**DRM 길잡이는 읽기 전에 막는다.** 감긴 파일을 읽으려는 그 도구 호출을 잡는 자리가 PreToolUse 다 — 막고 까닭에 스킬로 가는
+길을 싣는다. 감긴 파일은 열어도 글자가 안 나오니 막아서 잃는 것이 없다. 읽는 길은 둘이다:
   · `view_file` — 경로 칸 하나
   · `run_command` — 명령 글. 그냥 「읽어 줘」라고 하면 모델은 셸로 먼저 간다(claude-config #137 실측). 명령의 뜻은 짐작하지
     않는다 — 글에서 경로 꼴의 낱말을 뽑아(몸통의 `candidates` 에 따옴표 안 · 맨 낱말을 더한다 — `shell_words`) 그 가운데
@@ -29,6 +33,23 @@
 ⚠ **둘 것에는 아무것도 안 낸다** — `"allow"` 는 agy 의 권한 묻기를 건너뛰게 한다. 우리 훅이 사람의 권한 설정을 넓히면 안
    된다. 빈 출력이면 agy 는 묻지도 막지도 않고 도구를 돌린다(claude-config #126 실측).
 ⚠ **재다 져도 막지 않는다** — 몸통과 같은 규율이다. 진 사실은 stderr 한 줄로 남긴다.
+
+**컨텍스트 알림은 모델을 부르기 전에 붙인다.** 문턱 · 한 번씩 · 다시 무장 · 창이 작아 알리지 않는 판정은 몸통
+(`context-alert.py` 의 `step`)이 들고, 여기서는 사용량과 창을 재서 알릴 한 줄을 `injectSteps` 에 싣는다.
+  · 사용량 — 훅 입력의 `transcriptPath` 가 이름 대는 기록에서 `input_tokens` 가 선 마지막 `PLANNER_RESPONSE` 줄의
+    `input_tokens` + `cache_read_tokens`. 1.3.3 CLI 는 `<대화 폴더>/.system_generated/logs/transcript_full.jsonl` 을 대고
+    (문서는 곁의 `transcript.jsonl`), 두 기록의 응답 줄 토큰 수는 같다(#173 실측) — 그래서 이름을 고르지 않고 대는 파일을
+    읽는다. 캐시가 붙은 응답은 `input_tokens` 가 캐시 몫만큼 줄고 둘의 합이 앞 응답의 합에서 이어 는다 — 캐시 읽은 몫은
+    `input_tokens` 밖에 있다(#173 실측)
+  · 창 — agy 는 창을 어디에도 안 적는다(기록 · 설정 · 훅 입력 · `agy models`). 그래서 자리 값(`PAISETUP_SITE` — 설치기가
+    심는다)으로 가른다: 사외는 무료 판이라 200k, 사내는 회사 판이라 1M(사용자가 정한 값 · 모델별 표는 안 둔다). 자리를
+    모르면 아무것도 안 붙인다. 값을 읽는 차례는 갈 곳 표의 손(`tool-homes.py` 의 `user_value`)을 불러 쓴다 — 사용자 값을
+    먼저 읽어, 설치 전에 뜬 창에서 연 agy 도 자리를 안다
+  · 한 번씩 — 모델을 부를 때마다 돌지만 몸통의 상태 파일이 대화(`conversationId`)마다 알린 문턱을 쥐어 같은 문턱에 두 번
+    안 붙인다. 첫 부르기(`invocationNum` 0)도 잰다 — 그 번호는 사람의 글마다 0 부터 다시 세고(#173 실측), 도구 없이 한 번에
+    답하는 턴은 0 하나뿐이다. 새 대화의 첫 부르기는 기록에 응답이 아직 없어 저절로 말이 없다
+  ⚠ 재다 지면 아무 말 없이 빈 표(`{}`)를 낸다 — 모델을 부를 때마다 도는 훅이라 실패 줄은 매번 되풀이된다(몸통과 같은 규율).
+  ⚠ 안티그래비티 앱의 기록(`~/.gemini/antigravity/brain/`)에는 응답 줄에 토큰 수가 없다 — 거기서 돌면 늘 말이 없다.
 
 **배선도 이 파일이 든다** — `install` 이 agy 전역 훅 자리(`~/.gemini/config/hooks.json`)에 우리 이름(`paisetup-…`)의 항목만
 얹는다. 그 파일은 「이름 → 설정」의 표라 남의 항목과 섞이지 않는다. 명령에는 이 파일의 절대 경로를 슬래시로 박고, 윈도에서는
@@ -68,6 +89,14 @@ NAME_PREFIX = 'paisetup-'          # 우리 항목의 이름 머리 — 이 머�
 BACKUP_SUFFIX = '.before-paisetup-'
 MERGER_FILE = 'codex-hook-install.py'   # 원본을 떠 두는 손(`backup_copy`)의 진본 — 이 파일 곁에 같이 실린다
 ENABLED_KEY = 'enabled'
+CONTEXT_EVENT = 'PreInvocation'
+CONTEXT_BODY = 'context-alert.py'   # 문턱 판정의 진본(`step`)
+HOMES_HAND = 'tool-homes.py'        # 사용자 값을 읽는 차례의 진본(`user_value`) — 둘 다 이 파일 곁에 같이 실린다
+SITE_VAR = 'PAISETUP_SITE'
+# 자리 → agy 의 창(토큰) — 사용자가 정한 값이다(#173). 사외는 무료 판, 사내는 회사 판. 표에 없는 자리는 알리지 않는다
+SITE_WINDOW = {'outside': 200000, 'inside': 1000000}
+PLANNER = 'PLANNER_RESPONSE'
+PLANNER_USED_KEYS = ('input_tokens', 'cache_read_tokens')   # 둘의 합이 모델이 본 입력이다(머리말 「컨텍스트 알림」)
 # 명령 글의 낱말 — 따옴표 안은 통째로(빈칸 든 이름 · 겹따옴표 안의 홑따옴표도 따로), 그 밖은 셸이 가르는 글자 사이의 맨 낱말.
 # 몸통의 `candidates` 는 절대 경로 꼴만 뽑아 셸의 상대 낱말(`Expand-Archive 보고서.docx`)을 못 본다
 QUOTED_SPANS = (re.compile(r'"([^"\r\n]+)"'), re.compile(r"'([^'\r\n]+)'"))
@@ -124,7 +153,7 @@ def calls_reader(drm, words, cwd):
     return False
 
 
-# ── 훅 둘 ────────────────────────────────────────────────────────────────────────
+# ── 훅 셋 ────────────────────────────────────────────────────────────────────────
 def drm_guide(data):
     name, args = tool_call(data)
     if name in VIEW_TOOLS:
@@ -159,6 +188,47 @@ def utf8_bom(data):
     if name in WRITE_TOOLS and raw:
         load('codex_safety_hooks', 'codex-safety-hooks.py').add_bom(raw, base_dir(data))
     sys.stdout.write('{}')   # agy 문서의 PostToolUse 출력 — 빈 표
+
+
+def planner_used(ca, path):
+    """agy 기록 → 마지막 응답이 본 입력 토큰 수 · 못 찾으면 None. 꼬리를 거꾸로 읽는 손은 몸통의 것이다."""
+    for raw in ca.tail_lines(path):
+        if PLANNER.encode() not in raw:
+            continue
+        try:
+            o = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(o, dict) or o.get('type') != PLANNER or not isinstance(o.get('input_tokens'), int):
+            continue
+        return sum(int(o.get(k) or 0) for k in PLANNER_USED_KEYS)
+    return None
+
+
+def context_line(data):
+    """PreInvocation 입력 → 알릴 한 줄 · 없으면 None(머리말 「컨텍스트 알림」)."""
+    tp = os.path.expanduser(str(data.get('transcriptPath') or ''))
+    if not tp or not os.path.isfile(tp):
+        return None
+    ca = load('context_alert', CONTEXT_BODY)
+    used = planner_used(ca, tp)
+    if used is None:
+        return None
+    window = SITE_WINDOW.get(load('tool_homes', HOMES_HAND).user_value(SITE_VAR).strip().lower())
+    if window is None:
+        return None
+    return ca.step(data.get('conversationId'), used, window)
+
+
+def context_alert(data):
+    try:
+        line = context_line(data)
+    except Exception:  # noqa: BLE001 — 재다 지면 조용히 빈 표를 낸다(머리말 「컨텍스트 알림」 ⚠)
+        line = None
+    sys.stdout.write(json.dumps({'injectSteps': [{'ephemeralMessage': line}]}, ensure_ascii=False) if line else '{}')
+
+
+HOOKS = {'drm-guide': drm_guide, 'utf8-bom': utf8_bom, 'context-alert': context_alert}   # 훅 갈래 → 손
 
 
 # ── 배선 ─────────────────────────────────────────────────────────────────────────
@@ -202,12 +272,16 @@ def command(mode):
 
 
 def wanted():
-    """우리 항목 — 이름 → agy 훅 설정. matcher 는 정규식이라 `^…$` 로 묶어 이름이 닮은 도구에 안 걸리게 한다."""
+    """우리 항목 — 이름 → agy 훅 설정. matcher 는 정규식이라 `^…$` 로 묶어 이름이 닮은 도구에 안 걸리게 한다.
+    PreInvocation 은 matcher 를 안 받아 처리기를 이벤트 밑에 바로 둔다(agy 문서 「Hooks」의 꼴)."""
+    def handler(mode):
+        return {'type': 'command', 'command': command(mode), 'timeout': HOOK_TIMEOUT}
+
     def entry(event, tools, mode):
-        return {event: [{'matcher': '^(%s)$' % '|'.join(tools),
-                         'hooks': [{'type': 'command', 'command': command(mode), 'timeout': HOOK_TIMEOUT}]}]}
+        return {event: [{'matcher': '^(%s)$' % '|'.join(tools), 'hooks': [handler(mode)]}]}
     return {NAME_PREFIX + 'drm-guide': entry('PreToolUse', GUIDE_TOOLS, 'drm-guide'),
-            NAME_PREFIX + 'utf8-bom': entry('PostToolUse', WRITE_TOOLS, 'utf8-bom')}
+            NAME_PREFIX + 'utf8-bom': entry('PostToolUse', WRITE_TOOLS, 'utf8-bom'),
+            NAME_PREFIX + 'context-alert': {CONTEXT_EVENT: [handler('context-alert')]}}
 
 
 def merge(current):
@@ -298,7 +372,7 @@ def save(config, table, changed):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('mode', choices=('drm-guide', 'utf8-bom', 'install', 'remove'))
+    ap.add_argument('mode', choices=tuple(HOOKS) + ('install', 'remove'))
     ap.add_argument('--config')
     args = ap.parse_args()
     if args.mode in ('install', 'remove'):
@@ -316,7 +390,7 @@ def main():
     if not isinstance(data, dict):
         return 0
     try:
-        (drm_guide if args.mode == 'drm-guide' else utf8_bom)(data)
+        HOOKS[args.mode](data)
     except BaseException as e:  # noqa: BLE001 — 재다 져도 막지 않는다. 몸통을 한 프로세스에 불러 그쪽의 종료까지 받는다
         sys.stderr.write('agy 훅 %s — 재다 졌다(%s)\n' % (args.mode, type(e).__name__))
     return 0
