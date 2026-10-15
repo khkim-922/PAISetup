@@ -6193,9 +6193,10 @@ if (Test-Path -LiteralPath $homeCfg) {
 }
 
 # ── 기본 권한 모드 · 맡기기 러너 허락 — 심는 표 (claude-config #147 · #142 ㉲) ─────────────────────────────────────────
-# 기본 권한 모드(`permissions.defaultMode = acceptEdits` — 편집은 묻지 않고, 허락 목록 밖 셸 명령은 사람에게 묻는다)는 Claude 를
-#   고르면 심는다. 자동 모드(`auto`)는 판정마다 분류기 모델을 불러, 그 모델이 없는 회사 게이트웨이에서 판정이 자주 끊겨
-#   느렸다(claude-config #180 · 사용자 2.2). 러너를 부르는 Bash 명령의 허락은 그 러너 스킬이 Claude 홈에 서는 조건(`$FreeSkills` 의
+# 기본 권한 모드(`permissions.defaultMode`)는 Claude 를 고르면 자리마다 심는다 — 사내는 편집 자동 승인(`acceptEdits` — 편집은
+#   묻지 않고, 허락 목록 밖 셸 명령은 사람에게 묻는다), 그 밖은 자동 모드(`auto`). 자동 모드는 판정마다 분류기 모델을 불러, 그
+#   모델이 없는 회사 게이트웨이에서만 판정이 자주 끊겨 느렸다(claude-config #180). 자리가 바뀌면 아래 「물러난 우리 값」 걷기가
+#   옛 자리의 값을 걷고 새 값을 심는다. 러너를 부르는 Bash 명령의 허락은 그 러너 스킬이 Claude 홈에 서는 조건(`$FreeSkills` 의
 #   Claude 칸)에서 심는다 — 허락이 없으면 스킬이 시킨 호출마다 묻거나(편집 자동 승인) 분류기가 막는다(자동 모드 · #142).
 # ⚠ **스킬이 Claude 에게 시키는 꼴(`pythonw "<스킬 폴더>/scripts/<러너>" …`)만 연다** — `python` 꼴을 열면 `python -c "…" agy_bg.py`
 #   처럼 러너가 아닌 명령까지 분류기를 건너뛴다. 스킬 폴더는 홈마다 달라 `*` 로 파일 이름만 문다.
@@ -6207,7 +6208,7 @@ if (Test-Path -LiteralPath $homeCfg) {
 #   들면 안 된다(결정 0112 · 갈 곳 표 손 검사 ⑰).
 $ClaudePlantLedger = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\claude-settings.tsv'
 $ClaudeHomePlants = @(
-  @{ Label = '기본 권한 모드';            Key = 'defaultMode'; Value = 'acceptEdits'; Want = [bool]$hostClaude }
+  @{ Label = '기본 권한 모드';            Key = 'defaultMode'; Value = $(if ($inside) { 'acceptEdits' } else { 'auto' }); Want = [bool]$hostClaude }
   @{ Label = 'agy 러너 허락';             Key = 'allow';       Value = 'Bash(pythonw *agy_bg.py *)'
      Want = [bool]($FreeSkills -and $FreeSkills['agy-background'].Claude) }
   @{ Label = 'Codex · Copilot 러너 허락'; Key = 'allow';       Value = 'Bash(pythonw *codex_copilot_bg.py *)'
@@ -6287,7 +6288,7 @@ if ($cfg) {
     $planOld = @([IO.File]::ReadAllLines($ClaudePlantLedger) | Where-Object { $_ -match "^[^`t]+`t." })
   }
   $planNew = New-Object System.Collections.Generic.List[string]
-  # ⚠ **물러난 우리 값을 먼저 걷는다** — 표의 값이 바뀌면(옛 `auto` → `acceptEdits`) 새 값이 먼저 돌 때 옛 값을 「사람이 정한 값」으로
+  # ⚠ **물러난 우리 값을 먼저 걷는다** — 표의 값이 바뀌면(판이 바꾸거나 자리가 바뀌어 `auto` ↔ `acceptEdits`) 새 값이 먼저 돌 때 옛 값을 「사람이 정한 값」으로
   #   읽어 비켜 서고, 뒤에서 옛 값만 걷혀 다음 설치에야 새 값이 선다. 걷고 나면 그 칸이 비어 새 값이 같은 판에 선다.
   $planRows = @($planOld | Where-Object { $ln = $_; -not @($ClaudeHomePlants | Where-Object { "$($_.Key)`t$($_.Value)" -ceq $ln }).Count } |
                            ForEach-Object { $kv = $_ -split "`t", 2; @{ Label = '우리가 심었던 값'; Key = $kv[0]; Value = $kv[1]; Want = $false } }) + @($ClaudeHomePlants)
