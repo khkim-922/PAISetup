@@ -284,7 +284,11 @@ $F.Size = New-Object Drawing.Size(640, (710 + $appRow + $optExtra))
 $F.StartPosition = 'CenterScreen'
 $F.FormBorderStyle = 'FixedDialog'
 $F.MaximizeBox = $false
-$F.Font = New-Object Drawing.Font('Malgun Gothic', 9)
+# ⚠ **글꼴은 픽셀로 박는다(12 px = 100 % 화면의 9 pt).** 칸 자리 · 크기를 100 % 화면의 픽셀로 적었는데, pt 글꼴은 화면 배율만큼
+#   커져 배율 125 % 인 VDI 에서 긴 글이 옆 칸을 덮고(제작자 칸의 Claude 상자) 줄끝이 잘렸다(#39). 픽셀 글꼴은 배율과 상관없이
+#   같은 크기라 칸과 늘 맞는다 — 그 화면에서는 이 창의 글자가 다른 앱보다 조금 작아 보인다. 폼의 자동 배율(`AutoScaleMode`)로
+#   칸을 늘리는 길은 창이 1080p 화면보다 길어져 아래 단추가 잘린다.
+$F.Font = New-Object Drawing.Font('Malgun Gothic', 12, [Drawing.GraphicsUnit]::Pixel)
 
 function New-Label($text, $x, $y, $w, $bold) {
   $l = New-Object Windows.Forms.Label
@@ -838,7 +842,7 @@ $log.Multiline = $true; $log.ReadOnly = $true
 $log.ScrollBars = 'Vertical'; $log.WordWrap = $false
 $log.BackColor = [Drawing.Color]::FromArgb(30, 30, 30)
 $log.ForeColor = [Drawing.Color]::Gainsboro
-$log.Font = New-Object Drawing.Font('Consolas', 9)
+$log.Font = New-Object Drawing.Font('Consolas', 12, [Drawing.GraphicsUnit]::Pixel)   # 픽셀로 — 위 폼 글꼴과 같은 까닭
 $F.Controls.Add($log)
 
 # ── 기록 폴더로 가는 문 — 단추 줄 왼쪽 ──────────────────────────────────────────
@@ -893,8 +897,7 @@ $Contact = Get-Directive 'contact'
 if ($Contact) {
   $lnkMail = New-Object Windows.Forms.LinkLabel
   $lnkMail.Text = "문의 $Contact"
-  $mailW = [Windows.Forms.TextRenderer]::MeasureText($lnkMail.Text, $F.Font).Width
-  $lnkMail.Size = New-Object Drawing.Size($mailW, 16)
+  $lnkMail.AutoSize = $true   # 너비를 글자로 재서 박으면 링크 그리기의 여백만큼 끝 글자가 잘린다
   $lnkMail.Location = New-Object Drawing.Point(($lnkLog.Left + $lnkLog.PreferredWidth + 14), $lnkLog.Top)
   $lnkMail.Add_LinkClicked({
     try { Start-Process -FilePath ("mailto:" + $Contact) | Out-Null }
