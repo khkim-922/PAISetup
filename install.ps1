@@ -178,7 +178,8 @@ $Apps = @(
   #   PC 의 무인 판에서는 안 걸고 노란 줄로 미룬다(결정 0146 의 VC++ 규칙과 같은 자 · PAISetup #34 ③)
   @{ Name='Node.js';    Id='OpenJS.NodeJS.LTS';          Cmd='node';   Arg='--version'; Need='core'; Scope='machine' }
   @{ Name='Git';        Id='Git.Git';                    Cmd='git';    Arg='--version'; Need='dev'  }
-  @{ Name='Python';     Id='Python.Python.3.14';         Cmd='python'; Arg='--version'; Need='dev'  }
+  # 판은 이 줄에 안 적는다 — 값 파일의 `#python-version` 이 들고, 흐름 머리의 「파이썬 판」 칸이 이 줄의 Id 를 짓는다
+  @{ Name='Python';     Id=$null;                        Cmd='python'; Arg='--version'; Need='dev'  }
   @{ Name='GitHub CLI'; Id='GitHub.cli';                 Cmd='gh';     Arg='--version'; Need='dev';  Scope='machine' }
 )
 
@@ -4599,6 +4600,27 @@ Write-Host ''
 Write-Host '=== Claude Code 환경 설치 ===' -ForegroundColor Cyan
 Write-Host ''
 
+# ── 배포본의 사실을 읽는 값 파일 — **이 엔진 곁에 딸려 온 `install.env` 다.** 없을 때만 넘겨받은 값 파일을 읽는다 ──
+# 판 · 깔 파이썬 패키지처럼 뽑는 자가 진본에서 싣는 값은 배포본의 사실이지 사람이 고른 값이 아니다. 자동 실행이 넘기는
+#   뿌리의 값 파일은 설치 때 얼린 사본이라, 새 배포본이 풀려도 옛 값을 든다.
+# ⚠ **줄이 아니라 파일로 물러선다.** 딸려 온 파일에 줄이 없으면 그 배포본이 그 값을 안 든 것이다 — 얼린 사본의 줄로
+#   메우면 새 배포본이 뺀 패키지가 되살아난다.
+$DistEnvFile = Join-Path $Here 'install.env'
+if (-not (Test-Path -LiteralPath $DistEnvFile)) { $DistEnvFile = $EnvFile }
+
+# ── 파이썬 판 — **진본은 설정 저장소의 전역 도구 선언이고, 뽑는 자가 값 파일의 `#python-version` 으로 싣는다** ──
+# 그 값으로 `$Apps` 의 Python 줄 Id(`Python.Python.<판>`)를 짓는다 — winget 에는 판 없는 CPython id 가 없다. 배선
+#   (`Update-RuntimePath`)의 파이썬 폴더 이름도 이 Id 에서 판다.
+# ⚠ **못 정하면 Python 줄을 빼고 실패로 적는다** — 판을 박은 기본값을 두면 그것이 선언의 손사본이라 판을 올리는 날 조용히 갈린다.
+$PyVersion = Read-Directive $DistEnvFile 'python-version'
+if ($PyVersion -match '^\d+\.\d+$') {
+  ($Apps | Where-Object { $_.Cmd -eq 'python' }).Id = "Python.Python.$PyVersion"
+} else {
+  $Apps = @($Apps | Where-Object { $_.Cmd -ne 'python' })
+  Write-Host "  ! Python — 값 파일의 #python-version 이 없거나 꼴(예: 3.14)이 아니라 판을 못 정했다 — 깔지도 올리지도 않는다" -ForegroundColor Yellow
+  $Fails.Add('Python (값 파일에 #python-version 이 없어 판을 못 정했다)')
+}
+
 # ── 1. winget ────────────────────────────────────────────────────────────────────
 # ⚠ **없다고 여기서 죽지 않는다.** winget 이 없으면 **못 까는 것**이지 아무것도 못 하는 것이
 #   아니다 — 확장·CLI·키 심기·홈 설정은 winget 없이 다 선다. 그리고 사내 PC 에는 런타임이
@@ -6492,14 +6514,14 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
 # 위 그림 문이다 — 그림이 크면 **누구의 PC 에서든** 「줄여서 연다」로 돌려보낸다. 그래서 규범·룰·
 # 스킬 칸이 아니라 여기 선다: 부품도 문도 스위치를 안 타니 의존성도 안 탄다.
 # ⚠ **이름은 이 파일에 없다.** 값 파일의 `#pip-packages = 이름 …` 이 든다 — 몸통은 무엇을 까는지
-#   모르고 까는 법만 안다(`#gateway-proxy` · `#codex-config` 와 같은 결).
+#   모르고 까는 법만 안다(`#gateway-proxy` · `#codex-config` 와 같은 결). 읽는 값 파일은 배포본의 것이다(`$DistEnvFile` 곁말).
 # ⚠ **`pip` 가 아니라 `python -m pip` 로 깐다.** `pip` 를 따로 부르면 어느 파이썬의 것인지 PATH 가
 #   따로 정해, 부품을 부르는 `python` 과 갈릴 수 있다.
 # ⚠ **못 깔아도 빨강으로 안 끝낸다.** 회사망이 패키지 저장소를 막는 자리가 있을 수 있고, 없으면
 #   줄이기가 「PIL 이 없다」와 까는 명령을 대며 원본 치수로 물러난다 — 조용히 무너지는 자리가
 #   아니다. 말은 하고 뱉은 끝 줄을 편다. 막힌 망에 오래 붙잡히지 않게 기다림과 되풀이를 줄인다.
 # ⚠ 이미 있으면 pip 가 망에 안 묻고 「이미 있다」로 끝난다 — 로그온 자동 실행이 매번 불러도 된다.
-$pipLine = Read-Directive $EnvFile 'pip-packages'
+$pipLine = Read-Directive $DistEnvFile 'pip-packages'
 $pipPkgs = @(if ($pipLine) { $pipLine -split '[,\s]+' | Where-Object { $_ } })
 if ($pipPkgs) {
   $pipNames = $pipPkgs -join ' · '

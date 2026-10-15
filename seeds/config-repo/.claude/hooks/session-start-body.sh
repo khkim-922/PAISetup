@@ -230,6 +230,28 @@ ver_num() {  # ver_num <"3.12"> — 선언의 바닥 문자열을 같은 자로.
   esac
 }
 
+# ── uv 를 새 판으로 — 파이썬을 받기 전에 한 실행에 한 번. ③ 파이썬 축과 ⑤′ 세션의 python3 가 부른다 ──
+#    낡은 uv 는 낡은 목록으로 rc 판까지만 안다(실측 2026-08-24: 0.8 이 3.14.0rc2 를 최신으로 알았다). self update 는
+#    GitHub API 라 프록시 제한에 걸리고(rate limit 실측) astral.sh 는 403 — PyPI 경로가 뒤를 받친다. venv 에 물린
+#    파이썬은 --user 를 거부하므로 시스템 해석기를 명시한다. 셋 다 막히면 있는 목록으로 간다.
+uv_fresh() {
+  [ -n "${UV_FRESHED:-}" ] && return 0
+  UV_FRESHED=1
+  uv self update >/dev/null 2>&1 ||
+    /usr/bin/python3 -m pip install -q --user --upgrade uv >/dev/null 2>&1 || true
+}
+
+# ── uv 가 세운 링크인가 — `uv python install --default` 가 `~/.local/bin` 에 세우는 것은 uv 의 파이썬 자리를 가리키는
+#    심링크다. 그 밖의 것(저장소 venv 감싸개 · 남이 둔 파일)은 uv 가 안 덮는다 ──
+uv_link() {  # uv_link <경로> — 0 uv 의 파이썬 자리 밑을 가리키는 심링크다 · 1 아니다 · 2 uv 의 자리를 못 읽어 모른다
+  [ -L "$1" ] || return 1
+  # 색을 끈다 — FORCE_COLOR · CLICOLOR_FORCE 가 선 환경에서는 경로 앞에 색 부호가 붙어 어느 링크도 그 밑으로 안 읽힌다
+  _uvd="$(NO_COLOR=1 uv --color never python dir 2>/dev/null)" && [ -n "$_uvd" ] || return 2
+  _uvd="$(readlink -f "$_uvd" 2>/dev/null)" || return 2
+  case "$(readlink -f "$1" 2>/dev/null)" in "$_uvd"/*) return 0 ;; esac
+  return 1
+}
+
 # ── 선언 파서 — sh 순정. [절] + KEY = VALUE, '#' 주석, \r 방어(CRLF 체크아웃 대비) ──
 decl_sections() {
   [ -f "$1" ] || return 0
@@ -2291,9 +2313,14 @@ wire_python_path() {
       printf 'export PATH="%s:$PATH"\n' "$VENV_BIN" > "/etc/profile.d/${PROJECT_NAME}-venv.sh"
     # 리눅스는 이 함대에서 리모트 컨테이너 계열뿐이라(0009 의 넷) PC 파이썬을 덮을 일이 없다
     mkdir -p "$HOME/.local/bin" 2>/dev/null || return 0
+    # ⚠ **자리를 갈아 끼운다 — 그 자리로 써 넣지 않는다.** 그 이름이 uv 의 링크면(⑤′ 의 `--default` 가 세운다) `>` 는
+    #   링크를 따라가 uv 의 해석기 실물을 감싸개로 덮는다. 그 실물로 선 venv 가 감싸개를 다시 부르니 python3 가 저를
+    #   끝없이 exec 한다. 곁에 쓰고 옮기면 링크 자리만 감싸개로 바뀐다.
     for _wn in python python3; do
-      printf '#!/bin/sh\nexec "%s/python" "$@"\n' "$VENV_BIN" > "$HOME/.local/bin/$_wn" 2>/dev/null &&
-        chmod +x "$HOME/.local/bin/$_wn" 2>/dev/null
+      _wt="$HOME/.local/bin/.$_wn.wire.$$"
+      if printf '#!/bin/sh\nexec "%s/python" "$@"\n' "$VENV_BIN" > "$_wt" 2>/dev/null &&
+         chmod +x "$_wt" 2>/dev/null && mv -f "$_wt" "$HOME/.local/bin/$_wn" 2>/dev/null; then :
+      else rm -f "$_wt" 2>/dev/null; fi
     done
   fi
   return 0
@@ -2634,26 +2661,21 @@ install_step() {
           _found="$(py "-${_ma}.${_mi}" -c 'import sys; print(sys.executable)' 2>/dev/null)"
           [ -n "$_found" ] && [ "$(py_num "$_found")" = "$PY_TGT" ] && PY_CMD="$_found"
         # ② uv 로 내려받는다 — 패치판은 uv 목록의 최신이 정한다 (선언은 부판까지만 문다).
-        #    낡은 uv 는 낡은 목록으로 rc 판까지만 알아(실측 2026-08-24: 0.8 이 3.14.0rc2
-        #    를 최신으로 알았다) 받기 전에 uv 부터 갱신을 시도한다. self update 는
-        #    GitHub API 라 프록시 제한에 걸리고(rate limit 실측) astral.sh 는 403 —
-        #    PyPI 경로가 뒤를 받친다. venv 에 물린 파이썬은 --user 를 거부하므로
-        #    시스템 해석기를 명시한다. 셋 다 막히면 있는 목록으로 간다.
+        #    받기 전에 uv 부터 새 판으로 올린다(`uv_fresh` 곁말).
         elif command -v uv >/dev/null 2>&1; then
-          uv self update >/dev/null 2>&1 ||
-            /usr/bin/python3 -m pip install -q --user --upgrade uv >/dev/null 2>&1 || true
+          uv_fresh
           try "$PY_TGT_BY" uv python install "$PY_TGT_STR" || true
           _found="$(uv python find "$PY_TGT_STR" 2>/dev/null)"
           [ -n "$_found" ] && [ "$(py_num "$_found")" = "$PY_TGT" ] && PY_CMD="$_found"
         fi
       fi
-      # 고른 해석기의 심링크를 실경로로 편다 — uv 의 shim(~/.local/bin)이 venv 의
-      # home 으로 앉으면 표준 라이브러리를 못 찾아 venv 가 깨진다 (실측 2026-08-24:
-      # encodings 부재로 즉사). 윈도우는 venv 를 복사로 만들어 이 함정이 없다.
+      # 고른 해석기를 실물로 편다 — 그 이름이 uv 의 링크(~/.local/bin)면 그것이 venv 의 home 으로 앉아 표준 라이브러리를
+      # 못 찾고 venv 가 깨진다(실측 2026-08-24: encodings 부재로 즉사). 다른 venv 의 감싸개(`wire_python_path`)면 남의
+      # venv 를 거쳐 선다 — 감싸개는 보통 파일이라 링크 풀기로는 안 펴진다. 그래서 해석기에게 제 바탕 실행파일의
+      # 실경로를 묻는다: 링크도 감싸개도 같은 실물로 펴진다. 윈도우는 venv 를 복사로 만들어 이 함정이 없다.
       if [ "$OS" = linux ]; then
-        _rp="$(command -v "$PY_CMD" 2>/dev/null)"
-        [ -n "$_rp" ] && _rp="$(readlink -f "$_rp" 2>/dev/null)" &&
-          [ -x "$_rp" ] && PY_CMD="$_rp"
+        _rp="$("$PY_CMD" -c 'import os, sys; print(os.path.realpath(getattr(sys, "_base_executable", "") or sys.executable))' 2>/dev/null)"
+        [ -n "$_rp" ] && [ -x "$_rp" ] && PY_CMD="$_rp"
       fi
       if [ "$(py_num "$PY_CMD")" != "$PY_TGT" ]; then
         printf '%s\t%s\n' "$PY_TGT_BY" \
@@ -3225,6 +3247,60 @@ EOF
     FAILS="$_savefails"
   fi
 
+  # ── ⑤′ 세션의 python3 — 리눅스는 전역 선언(`probe = python-version`)의 판을 기계 파이썬으로 세운다 ──────────────
+  #    설치기가 안 도는 자리(클라우드 컨테이너)라 이 걸음이 든다 — 윈도우는 설치기가 같은 선언에서 winget id 를 지어 깐다.
+  #    uv 의 `--default` 가 `~/.local/bin` 에 `python3` · `python` 링크를 세우고 시스템 파이썬은 그대로 둔다. 판을 올리면
+  #    전역 지문이 바뀌어 다음 세션이 이 걸음을 다시 돈다.
+  #    재는 자리는 `~/.local/bin/python3` 다 — 도구 셸은 그 폴더가 PATH 맨 앞이라(`wire_python_path` 곁말) 거기 선 것이
+  #    세션의 python3 다. 그 자리의 꼴로 가른다:
+  #      비었다          PATH 의 python3 이 그 판이면 둔다 · 아니면 uv 로 세운다
+  #      uv 의 링크다    그 판이면 둔다 · 아니면 uv 로 다시 세운다
+  #      그 밖의 것이다  안 건드리고 그렇다고 한 줄 낸다 — 저장소 venv 감싸개면 그 자리의 python3 는 그 venv 이고 venv 의
+  #                      판은 ③ 이 맞춘다. uv 는 제가 안 세운 파일을 안 덮고 경고만 남긴 채 0 으로 끝나므로, 불러도
+  #                      같은 거절이 매번 되풀이될 뿐이다
+  # ⚠ **전역 선언만 읽는다** — 저장소 선언이 이기는 것은 그 저장소의 venv 까지고, 기계에 하나인 python3 는 전역 판을 따른다.
+  # ⚠ **진 것은 까닭을 달고 꺼진 검사로 센다** — `PY3_WHY` 를 아래 진단이 「세션의 python3」 줄로 내고, `--install` 의
+  #   종료코드가 그 수에서 나온다(`--check` 는 이 걸음을 안 돈다). uv 의 자리를 못 읽은 링크는 「uv 것이 아니다」로 안 보고
+  #   다시 세우는 쪽으로 간다 — 모르는 것을 둘 쪽으로 읽으면 틀린 판이 소리 없이 남는다. 저장소를 안 드는 갈래는 진단에 안 가므로 `GDOWN` 이 같은 몫을 든다.
+  if [ -n "$DO_GLOBAL" ] && [ "$OS" = linux ]; then
+    _gpv=''; _gpn=''
+    for _rpn in $(decl_sections "$GCONF"); do
+      [ "$(decl_get "$GCONF" "$_rpn" probe)" = python-version ] || continue
+      _gpv="$(decl_get "$GCONF" "$_rpn" probe-target)"; _gpn="$_rpn"
+    done
+    _gl3="$HOME/.local/bin/python3"
+    if [ "$(ver_num "$_gpv")" -eq 0 ]; then
+      echo "  · python3 — 전역 선언에 판 일치 절(probe = python-version)이 없어 세션의 python3 를 안 맞춘다"
+    elif { [ -e "$_gl3" ] || [ -L "$_gl3" ]; } && { _ul=0; uv_link "$_gl3" || _ul=$?; [ "$_ul" -eq 1 ]; }; then
+      printf '  · %s — %s 가 uv 의 링크가 아니라(저장소 venv 감싸개 등) 기계 파이썬을 안 건드린다 · 그 자리는 지금 %s\n' \
+        "$_gpn" "$_gl3" "$("$_gl3" -V 2>&1 | tail -1)"
+    else
+      _gt0=$SECONDS
+      _gpc=python3; { [ -e "$_gl3" ] || [ -L "$_gl3" ]; } && _gpc="$_gl3"
+      if [ "$(py_num "$_gpc")" = "$(ver_num "$_gpv")" ]; then
+        printf '  ✅ %s — 세션의 python3 가 선언한 판(%s)이다 (전역) (%s초)\n' "$_gpn" "$_gpv" "$((SECONDS - _gt0))"
+      else
+        _savefails="$FAILS"; FAILS="$GFAILS"; TRY_LAST=''
+        if ! command -v uv >/dev/null 2>&1; then
+          nogo "$_gpn" "uv 가 없어 python3 를 $_gpv 로 못 세운다 — 전역 선언의 [uv] 가 서야 한다" || true
+        elif uv_fresh && try "$_gpn" uv python install "$_gpv" --default; then
+          _gpc=python3; { [ -e "$_gl3" ] || [ -L "$_gl3" ]; } && _gpc="$_gl3"
+          [ "$(py_num "$_gpc")" = "$(ver_num "$_gpv")" ] ||
+            nogo "$_gpn" "uv 가 0 으로 끝났는데 세션의 python3 가 그 판이 아니다 — uv 끝 줄: ${TRY_LAST:-없음}" || true
+        fi
+        FAILS="$_savefails"
+        _gpw="$(awk -F'\t' -v k="$_gpn" '$1==k{print $2; exit}' "$GFAILS" 2>/dev/null)"
+        if [ -z "$_gpw" ]; then
+          printf '  ✅ %s — 세션의 python3 를 선언한 판(%s)으로 세웠다 (전역) (%s초)\n' "$_gpn" "$_gpv" "$((SECONDS - _gt0))"
+        else
+          PY3_WHY="선언한 판($_gpv)이 아니다 · 지금 $("$_gpc" -V 2>&1 | tail -1) · 설치 실패: $_gpw"
+          printf '  ❌ %s — 세션의 python3 가 %s (%s초)\n' "$_gpn" "$PY3_WHY" "$((SECONDS - _gt0))"
+          GDOWN=$((GDOWN + 1))
+        fi
+      fi
+    fi
+  fi
+
   # ── ⑥ 저장소 배선 — **깔지 않는다. 잇기만 한다** (#43) ────────────────────────
   #    전역 설치는 저장소 `node_modules` 밖이라 import 가 못 찾는다 — 그 한 칸을 잇는 것이
   #    저장소의 몫이다. 도구가 닿나는 아래 진단 절이 **도구마다 한 번** 든다 — 잇는 걸음이 정션을
@@ -3493,6 +3569,17 @@ render_decl() {  # render_decl <선언파일> <층라벨>
     } <<EOF
 $(decl_fields "$1" "$_name" probe probe-target called-by on-demand install)
 EOF
+    # 판 일치 갈래는 저장소 venv 를 잰다 — venv 가 안 서는 저장소(`requirements.txt` 없음)에는 잴 것이 없어 안 그린다.
+    #   전역 선언의 것은 저장소 선언이 같은 갈래를 두면 그쪽이 venv 의 판을 정하므로(③ 파이썬 축) 안 그린다 — 그리면
+    #   저장소 판으로 선 venv 를 전역 판으로 재는 헛빨강이 선다.
+    if [ "$_probe" = python-version ]; then
+      [ -f "$PROJECT_DIR/requirements.txt" ] || continue
+      if [ "$1" = "$GCONF" ]; then
+        for _rpn in $(decl_sections "$PCONF"); do
+          [ "$(decl_get "$PCONF" "$_rpn" probe)" = python-version ] && continue 2
+        done
+      fi
+    fi
     # 까는 걸음의 이름 — project-axis 도구는 이 이름으로 실패가 남는다 (why 곁주석). `try` 가
     # 적는 그 이름 그대로여야 한다 — 갈리면 사유가 또 안 붙는다.
     case "$_probe" in
@@ -3719,6 +3806,8 @@ NPM_ROOT_G=''; NPM_ROOT_G_ASKED=''
 # 설치 걸음이 이 프로세스에서 닿는다고 확인한 저장소 도구 — 진단이 인용한다(`repo_verified`). 여기서 비운다:
 #   환경에서 같은 이름이 들어와도 인용이 서면 안 된다.
 REPO_VERIFIED=''
+# 이 실행의 전역 걸음(⑤′)이 세션의 python3 를 못 맞춘 까닭 — 진단이 꺼진 검사로 낸다. 여기서 비운다(위와 같은 결).
+PY3_WHY=''
 
 # GitHub 에 닿는 기다림(초) — **연결 마감 하나만 뜻한다.** 아래 두 함수가 같이 쓴다.
 #   되풀이 창에 이 값을 겹쳐 쓰지 않는다 — 한 값이 두 뜻을 지면, 연결을 넉넉히 하려고 올린 손이
@@ -4043,6 +4132,8 @@ fi
 # 선언 축 — 전역·프로젝트 두 층. 이름·뜻은 전부 선언에서 온다
 render_decl "$GCONF" "전역"
 render_decl "$PCONF" "프로젝트"
+# 세션의 python3 — 이 실행의 전역 걸음(⑤′)이 못 맞췄을 때만 선다. 그 걸음을 돈 실행만 센다(전역 걸음이 없는 실행은 안 잰다)
+[ -n "$PY3_WHY" ] && gate "세션의 python3" off "$PY3_WHY"
 gate_flush
 
 if [ "$down" -gt 0 ]; then
