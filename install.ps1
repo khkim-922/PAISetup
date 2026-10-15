@@ -3645,7 +3645,7 @@ function Read-TomlTopKeys([string]$Path, [string[]]$Keys) {
 }
 
 # 끝 검증 한 줄 — 심은 뒤의 파일을 되읽어, Guard 의 키가 하나라도 서 있으면 [O] 다(사람이 정한 값은 그 사람의 기본값이라 안
-#   덮었고 줄에 그 값을 적는다 · 자동 모드 줄과 같은 자). Need 의 키가 다른 값으로 서 있으면 안 심은 것이 맞아 [O] 고, 그 키가
+#   덮었고 줄에 그 값을 적는다 · 기본 권한 모드 줄과 같은 자). Need 의 키가 다른 값으로 서 있으면 안 심은 것이 맞아 [O] 고, 그 키가
 #   없으면 앞 줄이 못 심은 것이라 [X] 다.
 function Get-ToolAutoRunCheck($Row) {
   $guard = if ($Row.Guard) { @($Row.Guard) } else { @($Row.Set.Keys) }
@@ -6142,7 +6142,7 @@ Exit-Step 'site'
 
 # ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
 #   층 — 홈
-#   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · 자동 모드와 맡기기 러너 허락 ·
+#   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · 기본 권한 모드와 맡기기 러너 허락 ·
 #     env 밀기와 걷기 · 옛 판의 Tavily 안내 걷기
 #   앞에서 받는 것 — 「키와 값」의 심은 값 · 값 파일 · 게이트웨이를 쓰나 · settings 에 안 밀 이름 · 물러난 이름 · 고른 제품
 #     (`$hostClaude`) · 칸 없이 까는 스킬 표(`$FreeSkills`)
@@ -6192,13 +6192,14 @@ if (Test-Path -LiteralPath $homeCfg) {
   Write-Host '  없어서 씨앗을 깐다'
 }
 
-# ── 자동 모드 · 맡기기 러너 허락 — 심는 표 (claude-config #147 · #142 ㉲) ─────────────────────────────────────────
-# 자동 모드(`permissions.defaultMode = auto` — 위험한 동작은 분류기가 따로 가른다)는 Claude 를 고르면 심는다. 러너를 부르는 Bash
-#   명령의 허락은 그 러너 스킬이 Claude 홈에 서는 조건(`$FreeSkills` 의 Claude 칸)에서 심는다 — 자동 모드 분류기가 창 없이 뒤에서
-#   러너를 띄우는 명령을 막아, 허락이 없으면 스킬이 시킨 호출이 시작조차 안 된다(#142).
+# ── 기본 권한 모드 · 맡기기 러너 허락 — 심는 표 (claude-config #147 · #142 ㉲) ─────────────────────────────────────────
+# 기본 권한 모드(`permissions.defaultMode = acceptEdits` — 편집은 묻지 않고, 허락 목록 밖 셸 명령은 사람에게 묻는다)는 Claude 를
+#   고르면 심는다. 자동 모드(`auto`)는 판정마다 분류기 모델을 불러, 그 모델이 없는 회사 게이트웨이에서 판정이 자주 끊겨
+#   느렸다(claude-config #180 · 사용자 2.2). 러너를 부르는 Bash 명령의 허락은 그 러너 스킬이 Claude 홈에 서는 조건(`$FreeSkills` 의
+#   Claude 칸)에서 심는다 — 허락이 없으면 스킬이 시킨 호출마다 묻거나(편집 자동 승인) 분류기가 막는다(자동 모드 · #142).
 # ⚠ **스킬이 Claude 에게 시키는 꼴(`pythonw "<스킬 폴더>/scripts/<러너>" …`)만 연다** — `python` 꼴을 열면 `python -c "…" agy_bg.py`
 #   처럼 러너가 아닌 명령까지 분류기를 건너뛴다. 스킬 폴더는 홈마다 달라 `*` 로 파일 이름만 문다.
-# ⚠ **우리 것은 기록(`$ClaudePlantLedger` · 한 줄에 `키<탭>값`)에 든 것뿐이다** — 사람이 자동 모드를 받아들이면 Claude 도 같은
+# ⚠ **우리 것은 기록(`$ClaudePlantLedger` · 한 줄에 `키<탭>값`)에 든 것뿐이다** — 사람이 그 모드를 고르면 Claude 도 같은
 #   값을 적어, 값이 같다는 것으로는 못 가른다. 그래서 없을 때만 심고 그때 적는다. 조건이 빠지면 기록에 든 것 가운데 지금 값이
 #   우리 값 그대로인 것만 걷고, 사람이 바꾼 것은 값을 두고 기록에서만 뺀다. 기록에 있는데 이 표에 없는 줄(물러난 것)도 같은
 #   자로 걷는다. 지워진 것은 다음 설치가 다시 심는다 — 끄는 길은 다른 `defaultMode` 값이나 `permissions.deny` 다.
@@ -6206,7 +6207,7 @@ if (Test-Path -LiteralPath $homeCfg) {
 #   들면 안 된다(결정 0112 · 갈 곳 표 손 검사 ⑰).
 $ClaudePlantLedger = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\claude-settings.tsv'
 $ClaudeHomePlants = @(
-  @{ Label = '자동 모드 기본값';          Key = 'defaultMode'; Value = 'auto'; Want = [bool]$hostClaude }
+  @{ Label = '기본 권한 모드';            Key = 'defaultMode'; Value = 'acceptEdits'; Want = [bool]$hostClaude }
   @{ Label = 'agy 러너 허락';             Key = 'allow';       Value = 'Bash(pythonw *agy_bg.py *)'
      Want = [bool]($FreeSkills -and $FreeSkills['agy-background'].Claude) }
   @{ Label = 'Codex · Copilot 러너 허락'; Key = 'allow';       Value = 'Bash(pythonw *codex_copilot_bg.py *)'
@@ -6278,7 +6279,7 @@ if ($cfg) {
     Write-Host '  WebFetch 검증 건너뛰기 — 걷었다 (사외는 그 검사가 선다)' -ForegroundColor Green
   }
 
-  # 자동 모드 · 맡기기 러너 허락 — 위 표(`$ClaudeHomePlants`)대로 심고 기록에 든 우리 것만 걷는다. 기록은 설정을 쓴 뒤에 맞춘다
+  # 기본 권한 모드 · 맡기기 러너 허락 — 위 표(`$ClaudeHomePlants`)대로 심고 기록에 든 우리 것만 걷는다. 기록은 설정을 쓴 뒤에 맞춘다
   #   (이 걸음 끝) — 쓰다 지면 기록이 설정보다 앞서지 않아, 우리 것을 남의 것으로 세는 쪽으로만 진다.
   # ⚠ `permissions` 가 표가 아니거나 `allow` 가 목록이 아니면 그 칸을 안 건드리고 기록은 잇는다 — 사람이 고친 뒤 다음 설치가 맞춘다.
   $planOld = @()
@@ -6286,8 +6287,10 @@ if ($cfg) {
     $planOld = @([IO.File]::ReadAllLines($ClaudePlantLedger) | Where-Object { $_ -match "^[^`t]+`t." })
   }
   $planNew = New-Object System.Collections.Generic.List[string]
-  $planRows = @($ClaudeHomePlants) + @($planOld | Where-Object { $ln = $_; -not @($ClaudeHomePlants | Where-Object { "$($_.Key)`t$($_.Value)" -ceq $ln }).Count } |
-                                       ForEach-Object { $kv = $_ -split "`t", 2; @{ Label = '우리가 심었던 값'; Key = $kv[0]; Value = $kv[1]; Want = $false } })
+  # ⚠ **물러난 우리 값을 먼저 걷는다** — 표의 값이 바뀌면(옛 `auto` → `acceptEdits`) 새 값이 먼저 돌 때 옛 값을 「사람이 정한 값」으로
+  #   읽어 비켜 서고, 뒤에서 옛 값만 걷혀 다음 설치에야 새 값이 선다. 걷고 나면 그 칸이 비어 새 값이 같은 판에 선다.
+  $planRows = @($planOld | Where-Object { $ln = $_; -not @($ClaudeHomePlants | Where-Object { "$($_.Key)`t$($_.Value)" -ceq $ln }).Count } |
+                           ForEach-Object { $kv = $_ -split "`t", 2; @{ Label = '우리가 심었던 값'; Key = $kv[0]; Value = $kv[1]; Want = $false } }) + @($ClaudeHomePlants)
   $perm = if ($cfg.PSObject.Properties['permissions']) { $cfg.permissions } else { $null }
   $planDone = 0
   foreach ($p in $planRows) {
@@ -6337,7 +6340,7 @@ if ($cfg) {
       Write-Host "  $($p.Label) — 사람이 바꿔 둔다 (우리 기록에서만 뺐다)"
     }
   }
-  if (-not $planDone -and @($ClaudeHomePlants | Where-Object { $_.Want }).Count) { Write-Host '  자동 모드 · 러너 허락 — 이미 맞다' }
+  if (-not $planDone -and @($ClaudeHomePlants | Where-Object { $_.Want }).Count) { Write-Host '  기본 권한 모드 · 러너 허락 — 이미 맞다' }
 
   if ($wantEnv -and $Planted.Count -gt 0) {
     $pushed = 0
@@ -6457,7 +6460,7 @@ if ($cfg) {
     Write-Host '  이미 맞다 — 안 건드림'
   }
 
-  # 자동 모드 · 러너 허락의 기록 — 위에서 설정을 쓴 뒤에만 여기 닿는다. 바뀐 것이 없으면 안 쓴다(심은 적 없는 홈에는 안 짓는다).
+  # 기본 권한 모드 · 러너 허락의 기록 — 위에서 설정을 쓴 뒤에만 여기 닿는다. 바뀐 것이 없으면 안 쓴다(심은 적 없는 홈에는 안 짓는다).
   if ((@($planOld) -join "`n") -cne (@($planNew) -join "`n")) {
     New-Item -ItemType Directory -Path (Split-Path $ClaudePlantLedger -Parent) -Force | Out-Null
     [IO.File]::WriteAllLines($ClaudePlantLedger, [string[]]@($planNew), (New-Object Text.UTF8Encoding($false)))
@@ -6918,7 +6921,7 @@ if (-not (Test-Path -LiteralPath $browserMcpPlant)) {
 }
 
 # ── 묻지 않고 돌기 — 고른 도구마다 그 도구 제 승인 설정을 심는다 (claude-config #158 · 결정 0127) ─────────────────────
-# 설치 창에 칸이 없다 — 그 도구를 고르면 선다(Codex 만 아직 사외에서만). Claude 의 자동 모드는 「Claude 홈 설정」의 표가 든다.
+# 설치 창에 칸이 없다 — 그 도구를 고르면 선다(Codex 만 아직 사외에서만). Claude 의 기본 권한 모드는 「Claude 홈 설정」의 표가 든다.
 # 무엇을 심나 — 그 도구가 대화형에서 사람에게 묻는 대신 스스로 진행하게 하는 제 설정 하나씩이다. 폴더 신뢰(세션 훅) · 러너 허락
 #   (Claude 홈 설정) · 헤드리스의 건너뛰기 깃발(부르는 쪽)과는 다른 층이다. 값마다 무엇을 여나는 결정 0127 이 든다.
 #   * agy CLI — `toolPermission = always-proceed`. 앱의 값은 CLI 에 안 먹어 둘 다 심는다
@@ -8543,7 +8546,7 @@ if ($inside) {
   try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
-# 자동 모드 · 러너 허락 — 「Claude 홈 설정」의 표(`$ClaudeHomePlants`)에서 이번에 심을 것을 되읽는다. 자동 모드는 키가 서 있으면
+# 기본 권한 모드 · 러너 허락 — 「Claude 홈 설정」의 표(`$ClaudeHomePlants`)에서 이번에 심을 것을 되읽는다. 기본 권한 모드는 키가 서 있으면
 #   [O] 다 — 사람이 정한 값은 그 사람의 기본값이라 안 덮고, 줄에 그 값을 적는다.
 $planCfg = $null
 try { $planCfg = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
