@@ -37,8 +37,8 @@
 #     목록의 진본은 `$Products` 하나다.
 #   `-Pick claude,codex` — 고른 제품만 깐다(안 주면 `$Products` 의 기본값). `-NoVsCode` 는 VS Code 와 확장을 통째로 건너뛴다.
 #   `-AutoRun` / `-NoAutoRun` — 로그온(보이는 콘솔 창)과 밤(숨긴 창)마다 작업 스케줄러가 이 몸통을 다시 돌려 깔린 것을
-#     올리고 환경을 다시 맞춘다. 기본값은 값 파일의 `#autorun = yes|no`. 설치본도 `#update-repo` 의 최신 릴리스로 간다
-#     (「마무리」의 「설치본 자신을 새 릴리스로 간다」 칸).
+#     올리고 환경을 다시 맞춘다. 기본값은 값 파일의 `#autorun = yes|no` 인데, `-NoAutoRun` 으로 끈 PC 는 작업이 없는 한 `yes` 여도
+#     안 건다(「자동 실행을 켜나」 칸). 설치본도 `#update-repo` 의 최신 릴리스로 간다(「마무리」의 「설치본 자신을 새 릴리스로 간다」 칸).
 #   `-GhLoginOnly <결과 파일>` — 사람이 주는 칸이 아니다. 「프로그램」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
 #     (`Start-GhLoginChild`). 자식은 라이브러리만 읽고 빗장 앞에서 GitHub 로그인 창 하나를 띄운 뒤 결과를 그 파일에 적고 나간다.
 # ⚠ **`install.cmd` 에 한글을 넣지 않는다.** cmd.exe 는 배치 파일을 콘솔 OEM 코드페이지(한국은 cp949)로 읽어, UTF-8 한글이
@@ -4374,17 +4374,29 @@ if ($site -ne 'unknown') {
 # ── 자동 실행을 켜나 · 자동 실행이 읽는 「지난 설치의 자리」 (PAISetup #36) ─────────────────────────────────
 # 켜나(`$wantAutoRun`)는 `-AutoRun` · `-NoAutoRun` 이 먼저고, 없으면 값 파일의 `#autorun = yes|no` 다. 여기서 정한다 — 「마무리」가
 #   넘겨받은 임시 값 파일을 지우기 전이어야 그 줄을 읽는다. 「부팅 시 자동 실행」 칸이 이 값을 쓴다.
+# ⚠ **사람이 끈 PC 는 `yes` 로 다시 안 켠다** — 짐이 늘 `yes` 를 실어 지시만으로는 끈 것을 못 기억한다. 끈 기록(`$AutoRunOffRecord`)은
+#   「부팅 시 자동 실행」 칸이 `-NoAutoRun`(설치 창의 꺼진 칸)으로 걷을 때 적고, 다시 걸 때 지운다. 깃발 없는 판(로그온 · 밤 자동 실행 ·
+#   손으로 친 `-Yes -NoLaunch` · 화면이 못 선 콘솔)은 설치 창이 칸을 그대로 두고 누른 판과 같게 간다 — 작업이 서 있거나 기록이 없으면
+#   켜고, 기록이 있고 작업이 없으면 그대로 둔다. 설치 창의 칸도 같은 자로 선다(`install.ui.ps1` 의 `$cAuto`).
 # 밤 자동 실행은 자리 기록이 지금 잰 자리와 같은 `inside` · `outside` · `unknown` 일 때만 돈다(자동 실행 몸통의 「하루 한 번 ·
 #   자리」 칸). 이 설치가 자리를 바꾸는 판이면 자리에 기대는 걸음(프로그램 · 키와 값 · 사내 연결 · Claude 홈 설정 · 도구별
 #   홈)보다 먼저 `switching` 을 적는다 — 반쯤 돌다 지면 그 값이 남아 밤 회차는 건너뛴다. 기록과 같은 자리면 안 적는다(자리를 박은
 #   밤 회차가 그렇다) — 바꾸지 않는 설치가 지며 `switching` 을 남기면 다시 부팅하지 않는 PC 는 밤 회차가 영영 선다. 끝 값은 그
 #   걸음들을 다 지난 「부팅 시 자동 실행」 칸이 적는다. 자동 실행을 켜는 설치만 적고, 설치본 폴더가 없는 자리(저장소에서 바로 돌린
 #   콘솔)는 안 적는다. 못 적으면 지운다 — 앞선 값이 남으면 밤 회차가 자리를 바꾼 설치를 못 알아본다.
+$AutoRunTaskName      = 'PAISetup-AutoRun'
+$AutoRunNightTaskName = 'PAISetup-AutoRun-Night'
+$AutoRunOffRecord     = Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') '.autorun-off'
 $autoDirective = Read-Directive $EnvFile 'autorun'
 $wantAutoRun   = $null
+$autoKeptOff   = $false
 if ($AutoRun) { $wantAutoRun = $true }
 elseif ($NoAutoRun) { $wantAutoRun = $false }
-elseif ($autoDirective -eq 'yes') { $wantAutoRun = $true }
+elseif ($autoDirective -eq 'yes') {
+  if (-not (Test-Path -LiteralPath $AutoRunOffRecord) -or (Test-AutoRunTask $AutoRunTaskName) -or (Test-AutoRunTask $AutoRunNightTaskName)) {
+    $wantAutoRun = $true
+  } else { $autoKeptOff = $true }
+}
 elseif ($autoDirective -eq 'no')  { $wantAutoRun = $false }
 
 $AutoRunSiteFile   = '.autorun-site'
@@ -6950,7 +6962,8 @@ if (Test-Path -LiteralPath $launcher) {
 # ── 부팅 시 자동 실행 (작업 스케줄러) ─────────────────────────────────────────
 # **로그온할 때와 밤마다 이 몸통을 다시 돌린다** — 깔린 것을 최신으로 올리고 환경을 다시 맞춘다. 둘 다 창 없이
 #   시작하고, 로그온 회차가 설치를 실제로 할 때만 기록 창을 띄운다(아래 「문지기 · 머리 없는 콘솔」).
-#   `-AutoRun` 이나 값 파일의 `#autorun = yes` 가 켜고, `-NoAutoRun` 이나 `no` 가 걷는다.
+#   `-AutoRun` 이나 값 파일의 `#autorun = yes` 가 켜고, `-NoAutoRun` 이나 `no` 가 걷는다. `-NoAutoRun` 으로 걷으면 끈 기록을 적어
+#   `yes` 가 다시 켜지 못하게 한다(위 「자동 실행을 켜나」 칸).
 # 설치본 자체도 새 릴리스로 간다 — 아래 스크립트 본문의 「설치본 자신을 새 릴리스로 간다」 칸이 `#update-repo` 의 최신 릴리스를
 #   받아 `update-check.ps1` 로 지문을 대조하고, 맞으면 `Setup.exe -Unattended` 로 풀어 그 판의 엔진으로 설치를 잇는다. 설치 창의
 #   자가 갱신(「새 판이 있습니다」 물음)과 같은 자를 쓴다.
@@ -6969,8 +6982,8 @@ if (Test-Path -LiteralPath $launcher) {
 #     다시 쓰면 그 몸통은 `-Night` 를 버리고 로그온 회차처럼 돌아 자리를 바꿀 수 있다
 # 하루 한 번 · 밤 회차의 자리는 몸통(아래 `autorun.ps1`)의 「하루 한 번 · 자리」 칸이 가른다. 그 칸이 읽는 지난 설치의 자리는
 #   위 「자동 실행을 켜나」 칸과 아래 「지난 설치의 자리」 줄(`$AutoRunSiteRecord`)이 적는다.
-$AutoRunTaskName      = 'PAISetup-AutoRun'
-$AutoRunNightTaskName = 'PAISetup-AutoRun-Night'
+# 작업 이름 둘(`$AutoRunTaskName` · `$AutoRunNightTaskName`)과 끈 기록의 자리(`$AutoRunOffRecord`)는 위 「자동 실행을 켜나」 칸이 든다 —
+#   그 칸이 먼저 읽는다.
 $AutoRunNightAt       = [datetime]::Today.AddHours(3)
 $AutoRunNightSpread   = New-TimeSpan -Hours 2
 $AutoRunGate          = 'autorun-gate.ps1'
@@ -6982,6 +6995,8 @@ if ($null -ne $wantAutoRun) {
   if ($wantAutoRun) {
     $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
     if (-not (Test-Path -LiteralPath $setupRoot)) { New-Item -ItemType Directory -Path $setupRoot -Force | Out-Null }
+    # 거는 판은 끈 기록을 지운다 — 사람이 다시 켰다(깃발 없는 판이 여기 오는 것도 작업이 서 있거나 기록이 없을 때뿐이다).
+    Remove-Item -LiteralPath $AutoRunOffRecord -Force -ErrorAction SilentlyContinue
     $autoScript = Join-Path $setupRoot 'autorun.ps1'
 
     $autoScriptBody = @'
@@ -7806,7 +7821,22 @@ exit 0
     } elseif (-not (Test-AutoRunTask $AutoRunTaskName) -and -not (Test-AutoRunTask $AutoRunNightTaskName)) {
       Write-Host "  부팅 시 자동 실행 — 등록되어 있지 않다"
     }
+    # 사람이 끈 판(`-NoAutoRun`)이면 끈 것을 적는다 — 작업을 못 걷었어도 적는다(끈 것은 사람의 뜻이다). 값 파일의 `no` 로 걷은 판은
+    #   안 적는다 — 그것은 짐의 기본값이지 이 PC 에서 고른 것이 아니다. 위 걷기가 지우는 목록에 이 기록을 넣지 않는다.
+    if ($NoAutoRun) {
+      try {
+        $offDir = Split-Path -Parent $AutoRunOffRecord
+        if (-not (Test-Path -LiteralPath $offDir)) { New-Item -ItemType Directory -Path $offDir -Force | Out-Null }
+        Set-Content -LiteralPath $AutoRunOffRecord -Encoding UTF8 -ErrorAction Stop `
+          -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm') + ' 자동 실행을 껐다 — 설치 창에서 칸을 켜고 설치하면 이 파일을 지우고 다시 건다')
+      } catch {
+        Write-Host "  ! 끈 것을 못 적었다 — $(Say-Why $_) (다음 설치 창은 자동 실행 칸을 켜진 채로 띄울 수 있다)" -ForegroundColor Yellow
+      }
+    }
   }
+} elseif ($autoKeptOff) {
+  Write-Host ''
+  Write-Host '  부팅 시 자동 실행 — 이 PC 에서 꺼 두었다 (설치 창에서 칸을 켜고 설치하면 다시 건다)'
 }
 
 # ── 검증 — **재고 나서 말한다** ─────────────────────────────────────────────────

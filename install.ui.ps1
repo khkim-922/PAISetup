@@ -432,10 +432,14 @@ $cAuto.Location = New-Object Drawing.Point(16, (72 + $appRow))
 $cAuto.Size = New-Object Drawing.Size(560, 22)
 # ⚠ **못 묻는 것을 「없다」로 읽는다(`try`)** — 스케줄러 모듈이 없는 PC 에서 나는 「그런 명령이 없다」는 `-ErrorAction` 으로
 #   안 막히고, 이 줄은 창이 뜨기 **전**이라 그대로 두면 창이 아예 안 뜬다.
+# ⚠ **지시 `yes` 만 보고 켜지 않는다** — 짐이 늘 `yes` 를 실어, 끄고 설치한 PC 에서도 칸이 다시 켜지고 그대로 누르면 도로 걸린다.
+#   칸은 작업이 서 있거나, 지시가 `yes` 이고 끈 기록이 없을 때 켜진다. 끈 기록은 몸통이 꺼진 칸(`-NoAutoRun`)으로 걷을 때 적고 다시
+#   걸 때 지운다 — 자리와 이름은 몸통의 `$AutoRunOffRecord` 가 든다. 몸통의 깃발 없는 판(로그온 · 밤 자동 실행)도 같은 자로 간다.
 $hasAutoTask = $false
 try { $hasAutoTask = [bool](Get-ScheduledTask -TaskName 'PAISetup-AutoRun', 'PAISetup-AutoRun-Night' -ErrorAction SilentlyContinue) } catch { }
+$autoOff = Test-Path -LiteralPath (Join-Path $env:LOCALAPPDATA 'Claude Code Setup\.autorun-off')
 $autoDirective = Get-Directive 'autorun'
-$cAuto.Checked = $hasAutoTask -or ($autoDirective -eq 'yes')
+$cAuto.Checked = $hasAutoTask -or ($autoDirective -eq 'yes' -and -not $autoOff)
 $gO.Controls.Add($cAuto)
 
 # 이미 깔린 것도 올리는 칸(기본 켬) — 집 · 회사 PC 처럼 프로필이 남는 기계는 프로그램이 이미 다 있어, 「있으면 건너뛴다」만
