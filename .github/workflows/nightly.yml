@@ -1,0 +1,109 @@
+# 밤 판 — 막는 문에 안 서는 검사를 기계가 밤마다 돌린다 · 손으로도 (설정 저장소 #170 · 결정 0148).
+#
+#   돌리는 자는 진본의 `scripts/nightly-checks.sh` 다. 무엇을 돌리나 · 왜 막는 문에서 뺐나 · 판정의 뜻은 그 머리말이 든다 —
+#   여기 걸음 이름을 옮겨 적지 않는다(고를 때는 `nightly-checks.sh --list` 가 댄다).
+#
+# ⚠ **이 파일은 뽑기의 생성물이 아니라 「여기가 집인 진본」이다** — 워크플로는 제가 도는 저장소에만 산다. 진본의
+#   `dist.manifest.conf` 의 `[배포본이 집이다]` 가 이 경로를 든다.
+# ⚠ **이 판은 아무것도 막지 않는다** — 다른 워크플로가 이것을 기다리지 않고, 결과는 잡 상태와 잡 요약의 걸음 표로만 말한다.
+#   빨강은 고칠 일이거나 물림을 다시 지을 일이지 릴리스를 멈출 일이 아니다.
+# ⚠ **못 쟀다(2)도 잡을 붉힌다** — 검사가 기대는 것(파워셸 5.1 · Git Bash · 파이썬 · node · playwright 와 크로미움 · Codex CLI)을
+#   아래 걸음이 다 세운다. 그래서 여기 2 는 준비가 깨졌다는 말이다.
+# ⚠ **윈도우 러너여야 한다** — 설치기와 그것을 무는 검사가 파워셸 5.1(`powershell.exe`)로 돌고, 셸 검사는 Git Bash 로 돈다.
+#   인라인 걸음은 `bash`(Git Bash)다 — 5.1 인라인이 한국어를 깨는 까닭은 `release.yml` 머리말이 든다.
+# ⚠ **진본 저장소는 비공개다** — 받으려면 읽기 전용 토큰이 이 저장소의 시크릿 `CLAUDE_CONFIG_TOKEN` 에 있어야 한다
+#   (`release.yml` 이 쓰는 그것이다). 없으면 둘째 걸음에서 바로 진다.
+# ⚠ **잡 벽은 판정이 아니라 매달림을 끊는 자리다** — 가장 긴 걸음은 멎음 견디기 물림이다(돌연변이마다 검사를 한 판씩 돈다).
+name: 밤 판
+
+on:
+  schedule:
+    - cron: "17 17 * * *" # 매일 17:17 UTC = 02:17 KST
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '배포본에서 무엇을 재나 — 브랜치·태그·커밋'
+        required: false
+        default: main
+      source-ref:
+        description: '진본 저장소의 ref. 비우면 기본 브랜치'
+        required: false
+        default: ''
+      only:
+        description: '돌릴 걸음 — 쉼표로 가른 이름(진본의 nightly-checks.sh --list 가 댄다). 비우면 다 돈다'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  nightly:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    env:
+      # 두 저장소를 형제로 나란히 받는다 — 진본의 검사가 형제 자리(`scripts/sibling_base.py`)로 서로를 찾는다.
+      DIST_DIR: repos/${{ github.event.repository.name }}
+      SRC_DIR: repos/claude-config
+
+    steps:
+      - name: 배포본을 받는다
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          path: ${{ env.DIST_DIR }}
+          persist-credentials: false
+
+      - name: 진본을 곁에 받는다 (비공개 — 시크릿이 든다)
+        uses: actions/checkout@v7
+        with:
+          # ⚠ **계정 이름을 글자로 안 적는다** — 까닭은 `release.yml` 의 같은 걸음 곁말이 든다.
+          repository: ${{ github.repository_owner }}/claude-config
+          ref: ${{ inputs.source-ref }}
+          token: ${{ secrets.CLAUDE_CONFIG_TOKEN }}
+          path: ${{ env.SRC_DIR }}
+          persist-credentials: false
+
+      # 판의 진본은 진본 저장소의 도구 선언이고, 읽는 자도 거기 한 벌(`scripts/decl-python-version.sh`)이다. 못 읽으면 멈춘다.
+      - id: pyver
+        run: |
+          v="$(sh "$SRC_DIR/scripts/decl-python-version.sh" "$SRC_DIR/.claude/tools.global.conf" "$SRC_DIR/.claude/tools.conf")"
+          [ -n "$v" ] || { echo "::error::파이썬 판을 못 읽었다 — 진본의 도구 선언 어디에도 probe = python-version 절이 없다"; exit 1; }
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ steps.pyver.outputs.v }}
+
+      # 설치기가 동료 PC 에 까는 것과 같은 결(LTS)이다.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      # 흐름 그림을 굽고 재는 자 — 꾸러미 · 모듈 자리 변수 · 브라우저 뒷길이 다 진본의 도구 선언(`.claude/tools.conf` `[playwright]`)
+      #   에서 온다. 브라우저는 PC 와 같은 뒷길(구글 스냅샷)로 받고, 재는 자(`scripts/pw-resolve.mjs`)가 그 자리를 훑는다.
+      - name: 흐름 그림을 재는 자 — playwright 와 크로미움
+        run: |
+          pw() { awk -F' *= *' -v k="$1" '/^\[playwright\]/{f=1; next} /^\[/{f=0} f && $1==k{print $2; exit}' "$SRC_DIR/.claude/tools.conf"; }
+          export "$(pw skip-browsers-env)=1"
+          npm i -g --no-audit --no-fund "$(pw package)"
+          echo "$(pw wiring-env)=$(npm root -g)/$(pw package)" >> "$GITHUB_ENV"
+          bash "$SRC_DIR/$(pw browsers-fallback)"
+
+      # 홈 훅 검사의 「사람이 막은 자리는 안 덮는다」 갈래가 Codex 를 띄운다 — 꾸러미 이름의 진본은 설치기의 도구 표다.
+      - name: Codex CLI
+        run: |
+          pkg="$(sed -n "s/.*Key='codex'; *Pkg='\([^']*\)'.*/\1/p" "$DIST_DIR/install.ps1" | head -n 1)"
+          [ -n "$pkg" ] || { echo "::error::설치기 도구 표에서 Codex 꾸러미 이름을 못 읽었다 ($DIST_DIR/install.ps1)"; exit 1; }
+          npm i -g --no-audit --no-fund "$pkg"
+
+      # ⚠ **사람이 친 값을 본문에 끼워 넣지 않는다** — 환경변수로 건넨다(까닭은 `release.yml` 의 같은 곁말).
+      - name: 밤 판
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          set -- "$PWD/$DIST_DIR/install.ps1"
+          [ -z "$ONLY" ] || set -- --only "$ONLY" "$@"
+          sh "$SRC_DIR/scripts/nightly-checks.sh" "$@"
