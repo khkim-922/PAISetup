@@ -207,7 +207,7 @@ Claude · Codex 를 같이 골랐으면 사용자 환경변수 `CC_BG_AGENTS` ·
 
 회사 설정은 `~/.codex/config.toml` 과 `~/.gemini/antigravity-cli/settings.json` 에 있다.
 
-- Codex 는 회사 틀이 든 자리만 지우면 된다 — 맞추기 전 것은 `config.toml.before-pgpt-<시각>` 에 있다
+- Codex 는 회사 틀이 든 자리만 지우면 된다 — 맞추기 전 것은 `config.toml.before-pgpt-<시각>` 에 있다(가장 새 다섯만 둔다 · 사내 ↔ 사외를 많이 오갔으면 더 옛 것은 걷혔다)
 - 안티그래비티 것은 `modelProvider` 줄만 지우면 로그인 갈래로 돌아간다
 
 ### 옛 판이 깐 Gemini CLI
@@ -237,9 +237,9 @@ Claude · Codex 를 같이 골랐으면 사용자 환경변수 `CC_BG_AGENTS` ·
 
 판마다 폴더가 하나씩 쌓이는 `%LOCALAPPDATA%\Claude Code Setup\` 를 통째로 지운다.
 
-로그온 자동 실행을 켰으면 옛 판 폴더는 몇 개만 남아 있다. 자동 실행이 쓰던 `autorun.ps1` · `autorun-gate.ps1` · `autorun.args` ·
-`.autorun-site` · `.autorun-night.env` · `.autorun-last` · `install.env` 사본과 설치 기록 폴더도 그 안이다. 자동 실행 칸을 끄고
-설치한 PC 면 끈 것을 적어 둔 `.autorun-off` 도 그 안이다.
+로그온 자동 실행을 켰으면 옛 판 폴더는 몇 개만 남아 있다. 자동 실행이 쓰던 `autorun.ps1` · `autorun-gate.ps1` · `.autorun-site` ·
+`.autorun-night.env` · `.autorun-last` 와 고른 것의 기록 `%LOCALAPPDATA%\Claude Code Setup\choices.env` · 회사 키의 암호화 사본 · 설치 기록 폴더도 그 안이다. 자동 실행
+칸을 끄고 설치한 PC 면 끈 것을 적어 둔 `.autorun-off` 도 그 안이다.
 
 ## 남겨도 되는 것
 
@@ -255,6 +255,6 @@ Claude · Codex 를 같이 골랐으면 사용자 환경변수 `CC_BG_AGENTS` ·
 
 사내에서 쓰던 기계를 사외에서 다시 누르면 이 글에 적은 사내 값은 설치가 걷어 낸다.
 
-걷는 것은 게이트웨이 주소 · 키 · 사내 전용 값(환경변수와 홈 설정 양쪽)과 프록시 감시 작업 · 그 폴더다. 옛 값이 남아 새 값을 가리는
+걷는 것은 게이트웨이 주소 · 키 · 사내 전용 값(환경변수와 홈 설정 양쪽)과 프록시 감시 작업 · 그 폴더, Codex · 안티그래비티의 회사 연결(`~/.codex/config.toml` 의 `model_provider` 와 그 제공자 표 · `~/.gemini/antigravity-cli/settings.json` 의 `modelProvider`)이다. 걷은 회사 키는 이 사용자만 푸는 암호화 사본(`%LOCALAPPDATA%\Claude Code Setup\company-key.dpapi`)으로 남아 사내로 돌아오면 다시 서고, 그 폴더를 지우면 같이 사라진다. 옛 값이 남아 새 값을 가리는
 것은 값이 없는 것보다 나빠서다. 다만 우리가 넣은 값이라는 근거가 설 때만 지우고, 모르는 값은 알리기만 한다 — 그렇게 가릴 수 없는
 경우(회사를 아주 떠날 때)를 위해 이 글을 둔다.

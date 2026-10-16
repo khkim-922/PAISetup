@@ -122,7 +122,8 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 칸은 창에서 고르지만, 여러 대를 같은 값으로 세울 때는 `Setup.exe` 에 깃발을 붙여 칸을 미리 채워 둔다 — 창은 그대로 뜬다.
 
 ```powershell
-.\Setup.exe -NoDevTools                # 개발 도구(Git · Python · GitHub CLI)를 빼고 깐다 — 창에는 이 칸이 없다
+.\Setup.exe -NoDevTools                # 개발 도구(Git · Python · GitHub CLI)를 빼고 깐다 — 창에는 이 칸이 없고, 뺀 것은 다음 설치에도 이어진다
+.\Setup.exe -DevTools                  # 위로 뺀 개발 도구를 다시 깐다(한 번이면 된다)
 .\Setup.exe -PersonalFor claude,codex  # 제작자 칸에서 그 도구를 켠 채로 연다(claude · codex · agy)
 .\Setup.exe -WithPersonalConfig        # 제작자 칸을 Claude 만 켠 채로 연다
 .\Setup.exe -NoUpgrade                 # 갱신 칸을 끈 채로 연다
