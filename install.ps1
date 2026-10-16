@@ -6691,47 +6691,57 @@ Exit-Step 'repo'
 
 # ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
 #   층 — 등록
-#   하는 일 — 공식 문서 스킬 플러그인 · agy 로그인 안내 한 줄(agy 회사 설정이 안 서는 자리)
+#   하는 일 — Anthropic 공식 스킬 플러그인 둘 · agy 로그인 안내 한 줄(agy 회사 설정이 안 서는 자리)
 #   앞에서 받는 것 — 「키와 값」의 구독 로그인
-#   안 하는 것 — 없음
+#   안 하는 것 — 꺼진 플러그인 켜기(사람 몫)
 Enter-Step 'register'
 
-# ── 공식 문서 스킬 — **자격이 설 자리가 다 선 뒤에 돈다** ────────────────────────
+# ── Anthropic 공식 스킬 — **자격이 설 자리가 다 선 뒤에 돈다** ────────────────────────
 # 「CLI」 걸음이 아니라 여기서 돈다 — CLI 를 깔자마자 붙이면 사외는 「사외 Claude 구독 로그인」 칸 전이고 사내는 「로컬 프록시」
 #   칸 · 「Claude 홈 설정」 걸음 전이라 「Not logged in」으로 질 수 있다. 원인이 로그인 하나인지는 못 박지 않는다 — 자격이 끼어들
 #   수 있는 칸을 다 지난 뒤에 두면 어느 쪽이어도 선다.
-# pptx · docx · xlsx · pdf 를 다루는 Anthropic 공식 스킬은 플러그인 `document-skills` 로, 각자 공식 마켓플레이스에서 받는다.
-# ⚠ **배포본에 싣지 않는다** — 그 스킬의 라이선스는 복제 · 파생 · 제3자 배포를 막고(상업 여부와 상관없다), 이 배포본은 공개
+# 공식 마켓플레이스 `anthropics/skills` 의 플러그인 둘을 각자 받는다 — `document-skills`(pptx · docx · xlsx · pdf)와
+#   `example-skills`(skill-creator · frontend-design · mcp-builder · webapp-testing 등 열둘). 같은 마켓의 나머지 셋은 안 받는다 —
+#   `claude-api` 는 Claude Code 바이너리에 같은 스킬이 묶여 받으면 어느 PC 에서나 두 벌이 되고, `academy-guide` ·
+#   `discernment-nudge` 는 답의 끝에 끼어든다(결정 0157).
+# ⚠ **배포본에 싣지 않는다** — 문서 스킬의 라이선스는 복제 · 파생 · 제3자 배포를 막고(상업 여부와 상관없다), 이 배포본은 공개
 #   저장소라 실으면 누구나 받는 자리에 올라간다.
-# 먼저 묻고 없을 때만 깐다 — 자동 실행이 날마다 이 걸음을 지나므로 판정은 `plugin list` 한 번이다. 판정 글자는 그 목록이 찍는
-#   `이름@마켓플레이스` 다.
-# ⚠ **`-y` 를 안 넘긴다** — 그 스위치는 마켓플레이스가 선언한 명령을 대신 승인한다. 이 플러그인은 git 에서 받는 꼴이라 필요 없고,
-#   모르는 명령을 대신 승인하는 손을 두지 않는다.
-# 지면 실패로 세지 않는다 — 문서 스킬 없이도 Claude Code 는 돈다. 사내망이 GitHub 을 막는 자리에서 날 수 있어 말은 하고 빨강으로
+# 같은 스킬이 다른 통로로도 온다 — claude.ai 구독 로그인 PC 는 계정 동기화가 문서 넷과 skill-creator 를 `anthropic-skills:<이름>`
+#   으로 싣는다. 겹쳐도 깔고, 끄지도 건너뛰지도 않는다 — 동기화본은 로그인한 Claude Code 가 돌 때 생겨 설치 시점에 못 가르고,
+#   사내 PC 는 이 플러그인이 유일한 통로다.
+# 먼저 묻고 없는 것만 깐다 — 자동 실행이 날마다 이 걸음을 지나므로 판정은 `plugin list --json` 한 번이다. 행마다 `id` 와
+#   `enabled` 를 읽는다. ⚠ **꺼진 플러그인은 켜지 않는다** — 켜는 명령만 찍는다. 사람이 끈 것을 날마다 되살리면 그 사람의 결정을
+#   설치기가 뒤집는다.
+# ⚠ **`-y` 를 안 넘긴다** — 그 스위치는 마켓플레이스가 선언한 명령을 대신 승인한다. 이 플러그인들은 git 에서 받는 꼴이라 필요
+#   없고, 모르는 명령을 대신 승인하는 손을 두지 않는다.
+# 지면 실패로 세지 않는다 — 공식 스킬 없이도 Claude Code 는 돈다. 사내망이 GitHub 을 막는 자리에서 날 수 있어 말은 하고 빨강으로
 #   안 끝낸다.
-$DocSkills = @{ Source = 'anthropics/skills'; Market = 'anthropic-agent-skills'; Plugin = 'document-skills@anthropic-agent-skills' }
+$OfficialSkills = @{ Source = 'anthropics/skills'; Market = 'anthropic-agent-skills'; Plugins = @('document-skills', 'example-skills') }
+$officialIds = @($OfficialSkills.Plugins | ForEach-Object { "$_@$($OfficialSkills.Market)" })
+$officialHand = "     손으로:  claude plugin marketplace add $($OfficialSkills.Source)  →  " +
+                (@($officialIds | ForEach-Object { "claude plugin install $_" }) -join '  →  ')
 # ⚠ **두 문을 한 `-and` 로 묶지 않는다** — 묶으면 「Claude 를 안 골랐다」와 「골랐는데 `claude` 가 안 선다」가 똑같이 한 글자
 #   없이 지나간다. 앞엣것은 조용해야 맞지만 뒤엣것은 깔 것을 못 깐 자리라 말해야 한다.
-$wantDocSkills = $PickKeys -contains 'claude'
+$wantOfficialSkills = $PickKeys -contains 'claude'
 # 머리는 고른 판에만 선다 — 안 고른 판에 빈 머리만 찍히면 「왜 비었나」를 찾게 된다.
-if ($wantDocSkills) {
+if ($wantOfficialSkills) {
   Write-Host ''
-  Write-Host '공식 문서 스킬' -ForegroundColor Cyan
+  Write-Host 'Anthropic 공식 스킬' -ForegroundColor Cyan
 }
 # ⚠ **못 쟀으면 그 명령을 다시 부르지 않는다** — 까닭(넘김 · 종료 값)은 `Measure-Runs` 가 남긴 것을 찍는다. 울타리 없는 손으로 다시
 #   부르면 넘긴 명령이 거기서 설치를 세운다. 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141 · 0151).
-$docClaude = if ($wantDocSkills) { Measure-Runs 'claude' '--version' } else { '' }
-if ($docClaude -eq 'unmeasured') {
-  Add-UnmeasuredStep '공식 문서 스킬' 'claude --version' '있는지 안 묻고 깔지도 않았다'
-  Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
-  $wantDocSkills = $false
-} elseif ($wantDocSkills -and $docClaude -ne 'yes') {
+$officialClaude = if ($wantOfficialSkills) { Measure-Runs 'claude' '--version' } else { '' }
+if ($officialClaude -eq 'unmeasured') {
+  Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude --version' '있는지 안 묻고 깔지도 않았다'
+  Write-Host $officialHand
+  $wantOfficialSkills = $false
+} elseif ($wantOfficialSkills -and $officialClaude -ne 'yes') {
   # `no` 는 그 이름이 이 창에 없다는 것뿐이다 — 이름이 서는데 진 판은 위 갈래가 그 종료 값과 함께 든다(결정 0151).
-  Write-Host '  ! 공식 문서 스킬 — 건너뛴다: claude 가 이 창의 PATH 에 없다 · 위 CLI 줄을 먼저 본다' -ForegroundColor Yellow
-  Write-Host "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
-  $wantDocSkills = $false
+  Write-Host '  ! Anthropic 공식 스킬 — 건너뛴다: claude 가 이 창의 PATH 에 없다 · 위 CLI 줄을 먼저 본다' -ForegroundColor Yellow
+  Write-Host $officialHand
+  $wantOfficialSkills = $false
 }
-if ($wantDocSkills) {
+if ($wantOfficialSkills) {
   # 목록을 묻는 두 물음(`plugin list` · `plugin marketplace list`)에 울타리를 두른다 — `--version` 이 선 뒤 다시 부르는 자리라 멎으면
   #   PAISetup #26 의 멈춤이 돌아온다. 넘기면 못 잰 것이라 깔지도 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141).
   #   받아 까는 두 부름(`marketplace add` · `plugin install`)에는 안 두른다 — 받다 거두면 반쯤 놓인 플러그인 자리가 남는다.
@@ -6743,37 +6753,68 @@ if ($wantDocSkills) {
       @{ Rc = $crc; Text = (@(Get-Content -LiteralPath $cl -Encoding UTF8 -ErrorAction SilentlyContinue) -join "`n") }
     } finally { Remove-Item -LiteralPath $cl, "$cl.err" -ErrorAction SilentlyContinue }
   }
-  $docHand = "     손으로:  claude plugin marketplace add $($DocSkills.Source)  →  claude plugin install $($DocSkills.Plugin)"
-  $pl = & $askClaude @('plugin','list')
-  if ($pl.Rc -eq -2) {
-    Add-UnmeasuredStep '공식 문서 스킬' 'claude plugin list' '있는지 못 재 깔지도 않았다' (Format-ProbeWhy -2 $ClaudePluginCap)
-    Write-Host $docHand
-  } elseif ($pl.Text.Contains($DocSkills.Plugin)) {
-    Write-Host '  공식 문서 스킬 — 있음'
+  # 깔린 플러그인 표 — `plugin list --json` 이 0 으로 끝나 낸 글에서 `id` → 켜졌나. 못 읽으면 $null(못 잰 것)이다.
+  # ⚠ **빈 글은 못 잰 것이다** — PowerShell 5.1 의 `ConvertFrom-Json` 은 빈 글에 던지지 않고 빈 값을 내, 그대로 두면 「아무것도
+  #   안 깔렸다」로 읽혀 목록을 못 받은 판에 다 다시 깐다. 깔린 것이 없는 목록은 `[]` 로 온다.
+  # ⚠ **배열을 파이프로 한 번 더 풀어 센다** — 같은 판의 `ConvertFrom-Json` 은 JSON 배열을 한 덩어리로 내, 그대로 돌면 행이
+  #   아니라 배열 하나를 돈다.
+  $readPlugins = { param($Ask)
+    if ($Ask.Rc -ne 0) { return $null }
+    try { $parsed = ConvertFrom-Json -InputObject $Ask.Text -ErrorAction Stop } catch { return $null }
+    if ($null -eq $parsed) { return $null }
+    $t = @{}
+    foreach ($r in @($parsed | ForEach-Object { $_ })) { if ($r -and $r.id) { $t[[string]$r.id] = ($r.enabled -eq $true) } }
+    $t
+  }
+  $plWhy = { param($Ask) if ($Ask.Rc -eq 0) { '낸 글이 JSON 으로 안 읽혀' } else { Format-ProbeWhy $Ask.Rc $ClaudePluginCap } }
+  $pl = & $askClaude @('plugin','list','--json')
+  $have = & $readPlugins $pl
+  if ($null -eq $have) {
+    Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin list --json' '있는지 못 재 깔지도 않았다' (& $plWhy $pl)
+    Write-Host $officialHand
   } else {
-    $mk = & $askClaude @('plugin','marketplace','list')
-    if ($mk.Rc -eq -2) {
-      Add-UnmeasuredStep '공식 문서 스킬' 'claude plugin marketplace list' '깔지 않았다' (Format-ProbeWhy -2 $ClaudePluginCap)
-      Write-Host $docHand
-    } else {
-      Say-Busy '공식 문서 스킬' 'install' @('claude plugin', 'pptx · docx · xlsx · pdf')
-      $dl = [IO.Path]::GetTempFileName()
-      $rc = 0
-      if (-not $mk.Text.Contains($DocSkills.Market)) {
-        $rc = Invoke-Logged 'claude' @('plugin','marketplace','add',$DocSkills.Source) $dl
-      }
-      if ($rc -eq 0) { $rc = Invoke-Logged 'claude' @('plugin','install',$DocSkills.Plugin) $dl }
-      $pl = & $askClaude @('plugin','list')
-      if ($pl.Rc -eq -2) {
-        Add-UnmeasuredStep '공식 문서 스킬' 'claude plugin list' '깔았나를 못 쟀다' (Format-ProbeWhy -2 $ClaudePluginCap)
-      } elseif ($pl.Text.Contains($DocSkills.Plugin)) {
-        Write-Host '  공식 문서 스킬 — 깔았다' -ForegroundColor Green
+    foreach ($id in $officialIds) {
+      if (-not $have.ContainsKey($id)) { continue }
+      if ($have[$id]) { Write-Host "  Anthropic 공식 스킬 — 있음: $id" }
+      else { Write-Host "  Anthropic 공식 스킬 — 깔렸는데 꺼져 있다: $id · 켜려면  claude plugin enable $id" }
+    }
+    $missing = @($officialIds | Where-Object { -not $have.ContainsKey($_) })
+    if ($missing.Count) {
+      $mk = & $askClaude @('plugin','marketplace','list')
+      if ($mk.Rc -eq -2) {
+        Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin marketplace list' '깔지 않았다' (Format-ProbeWhy -2 $ClaudePluginCap)
+        Write-Host $officialHand
       } else {
-        Write-Host "  ! 공식 문서 스킬 — 못 깔았다 ($rc) · Claude Code 는 그대로 돈다 — 뱉은 끝 줄:" -ForegroundColor Yellow
-        Show-Log $dl
-        Write-Host $docHand
+        Say-Busy 'Anthropic 공식 스킬' 'install' @('claude plugin', ($missing -join ' · '))
+        # 부름마다 제 로그 — `Invoke-Logged` 는 로그를 덮어써, 하나에 모으면 앞서 진 것의 끝 줄이 뒤엣것에 지워진다.
+        $logs = @{}
+        $rc = 0
+        if (-not $mk.Text.Contains($OfficialSkills.Market)) {
+          $logs['market'] = [IO.Path]::GetTempFileName()
+          $rc = Invoke-Logged 'claude' @('plugin','marketplace','add',$OfficialSkills.Source) $logs['market']
+        }
+        if ($rc -eq 0) {
+          foreach ($id in $missing) {
+            $logs[$id] = [IO.Path]::GetTempFileName()
+            $irc = Invoke-Logged 'claude' @('plugin','install',$id) $logs[$id]
+            if ($irc -ne 0) { $rc = $irc }
+          }
+        }
+        $pl = & $askClaude @('plugin','list','--json')
+        $have = & $readPlugins $pl
+        if ($null -eq $have) {
+          Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin list --json' '깔았나를 못 쟀다' (& $plWhy $pl)
+        } else {
+          foreach ($id in @($missing | Where-Object { $have.ContainsKey($_) })) { Write-Host "  Anthropic 공식 스킬 — 깔았다: $id" -ForegroundColor Green }
+          $still = @($missing | Where-Object { -not $have.ContainsKey($_) })
+          if ($still.Count) {
+            Write-Host "  ! Anthropic 공식 스킬 — 못 깔았다 ($rc): $($still -join ' · ') · Claude Code 는 그대로 돈다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+            foreach ($k in @(@('market') + $still)) { if ($logs.ContainsKey($k)) { Show-Log $logs[$k] } }
+            Write-Host $officialHand
+          }
+        }
+        foreach ($f in $logs.Values) { Remove-Item -LiteralPath $f -ErrorAction SilentlyContinue }
       }
-      Remove-Item $dl -ErrorAction SilentlyContinue
     }
   }
 }
