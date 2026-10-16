@@ -1628,7 +1628,8 @@ function Plant-Var([string]$Name, [string]$Value) {
   try {
     [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
     Set-Item -Path "Env:$Name" -Value $Value
-    # 자리가 그러라고 하면 「Claude 홈 설정」 걸음이 이 표의 값을 홈 설정에도 민다 — 한 번 정한 값을 두 자리로 민다.
+    # 자리가 그러라고 하면 「Claude 홈 설정」 걸음이 이 표의 값을 홈 설정에도 민다 — 한 번 정한 값을 두 자리로 민다(키와 맡기기
+    #   러너 값은 빼고 — 그 걸음의 `env` 칸).
     $script:Planted[$Name] = $Value
     Write-Host "  $Name — 심었다" -ForegroundColor Green
   } catch {
@@ -4967,8 +4968,8 @@ Exit-Step 'cli'
 #     워드의 PDF 변환 안내 끄기(워드가 깔린 PC) · 사외 Claude 구독 로그인
 #   앞에서 받는 것 — 준비의 자리(`$ModelSite`) · 맡기기 조건 · 짐(`$KitSkills`) · 값 파일, 「CLI」의 `claude`(구독 로그인)
 #   안 하는 것 — 도구 홈 파일 · 사용자 PATH(마무리의 「사용자 범위 명령 자리」가 든다 — 뒤 걸음들이 그 폴더를 채운 뒤라야 한다)
-#   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)뿐이다 — 심는 자리를
-#     그 걸음 뒤로 옮기면 settings.json 이 바뀐다
+#   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)에서 키와 맡기기 러너 값을 뺀
+#     것뿐이다 — 심는 자리를 그 걸음 뒤로 옮기면 settings.json 이 바뀐다
 Enter-Step 'keys'
 # 맡기기 모델 — agy · Codex 러너가 고를 모델을 맡기기 모델 표(짐의 스킬 `agent-envelope` 폴더의 `models.conf`)에서 옮겨
 #   사용자 환경변수로 심는다(claude-config 결정 0123). 자리 · 도구 · 무게마다 무엇을 대나와 그 까닭은 표가 들고, 여기는 이
@@ -5623,7 +5624,7 @@ Exit-Step 'site'
 #   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · 기본 권한 모드와 맡기기 러너 허락 ·
 #     env 밀기와 걷기 · 걷힌 Tavily 안내 걷기
 #   앞에서 받는 것 — 「키와 값」의 심은 값 · 값 파일 · 게이트웨이를 쓰나 · settings 에 안 밀 이름 · 물러난 이름 · 고른 제품
-#     (`$hostClaude`) · 칸 없이 까는 스킬 표(`$FreeSkills`)
+#     (`$hostClaude`) · 칸 없이 까는 스킬 표(`$FreeSkills`) · 맡기기 러너 값의 두 자리 표(`$AgyModelVarsBySite` · `$CcBgVarsBySite`)
 #   안 하는 것 — 스킬 · 규범 · 훅 등록. 훅 등록은 「도구별 홈」의 손(`tool-homes.py`)이 이 걸음이 쓴 파일 위에 놓는다
 #   ⚠ **이 설치기가 이 파일을 쓰는 자리는 이 걸음 하나다** — 손이 놓은 뒤에 이 걸음의 `$cfg`(손 앞에서 읽은 것)로 다시 쓰면 손이
 #     놓은 등록이 그 앞 판으로 되돌아간다. 이 파일을 고칠 일은 여기서 하고 손 앞에서 한 번 쓴다
@@ -5633,9 +5634,12 @@ Exit-Step 'site'
 # `env` 칸은 다르다 — 값 파일이 `#settings-env` 를 들면 있는 파일에도 민다(몸통은 자리 이름을 모른다). 사내에서는 환경변수와 이
 #   파일을 둘 다 봐야 한다 — 환경변수만 두면 모델 고르는 자리가 엉뚱한 값으로 서고, 파일만 두면 같은 변수를 읽는 다른 앱이 키를
 #   잃는다. 값의 진본은 `install.env` 하나고 여기로는 파생해 밀려온다.
-# ⚠ **그 안에서 키만은 안 민다 — `$SettingsEnvSkip`.** 이 파일은 설정 저장소가 동기화하는 종류라, 여기 든 값은 평문으로 저장소까지
+# ⚠ **그 안에서 키는 안 민다 — `$SettingsEnvSkip`.** 이 파일은 설정 저장소가 동기화하는 종류라, 여기 든 값은 평문으로 저장소까지
 #   흘러간다. 키를 읽는 세 이름은 사용자 환경변수가 이미 들고(「회사 키의 다른 이름 둘」 칸) CLI 는 거기서 읽는다 — 주소 · 모델은
 #   밀고 토큰과 그 별명 둘은 뺀다(PAISetup #2).
+# 맡기기 러너 값(두 자리 표 `$AgyModelVarsBySite` · `$CcBgVarsBySite` 의 이름)도 안 민다 — 러너는 사용자 환경변수를 읽어 여기 둘
+#   까닭이 없고, 여기 든 값은 CLI · VS Code 세션에서 물려받은 값을 이겨 그 세션이 띄운 러너가 이 사본으로 나간다. 사본은 기록
+#   (`$ClaudePlantLedger`) 밖이라, 자리를 옮기거나 표가 바뀐 다음 판이 그 줄을 우리 것으로 못 알아본다(PAISetup #41).
 Enter-Step 'home'
 $homeCfg = Join-Path $homeDir 'settings.json'
 New-Item -ItemType Directory -Path $homeDir -Force | Out-Null
@@ -5682,6 +5686,20 @@ $ClaudeHomePlants = @(
   @{ Label = 'Codex · Copilot 러너 허락'; Key = 'allow';       Value = 'Bash(pythonw *codex_copilot_bg.py *)'
      Want = [bool]($FreeSkills -and $FreeSkills['codex-copilot-background'].Claude) }
 )
+
+# 맡기기 러너 값 — 이름마다 두 자리 표가 그 이름에 준 값들(이름 → 값 목록). 위 「`env` 칸」이 이 이름들을 안 밀고, 아래 「러너 값
+#   사본」이 이 값으로 우리 것을 가른다. ⚠ 손 목록으로 적지 않는다 — 표에 이름이 느는 날 손 목록만 안 늘어 그 이름이 다시 밀린다.
+#   표를 이번 판에 안 읽었으면(맡기기를 안 골랐으면) 맡기기 모델 표의 이름은 비어 온다(「키와 값」).
+$RunnerEnvValues = @{}
+foreach ($bySite in @($AgyModelVarsBySite, $CcBgVarsBySite)) {
+  if (-not $bySite) { continue }
+  foreach ($s in @($bySite.Keys)) {
+    foreach ($k in @($bySite[$s].Keys)) {
+      if (-not $RunnerEnvValues.ContainsKey($k)) { $RunnerEnvValues[$k] = @() }
+      $RunnerEnvValues[$k] += [string]$bySite[$s][$k]
+    }
+  }
+}
 
 if ($cfg) {
   $wantEnv = (Read-Directive $EnvFile 'settings-env') -eq 'yes'
@@ -5813,6 +5831,7 @@ if ($cfg) {
     $pushed = 0
     foreach ($k in $Planted.Keys) {
       if ($SettingsEnvSkip -contains $k) { continue }
+      if ($RunnerEnvValues.ContainsKey($k)) { continue }
       $pushed++
       $old = if ($cfg.env.PSObject.Properties[$k]) { $cfg.env.$k } else { $null }
       if ($old -ne $Planted[$k]) {
@@ -5820,9 +5839,29 @@ if ($cfg) {
         $dirty = $true
       }
     }
-    Write-Host "  env 에 $pushed 개를 맞췄다 (#settings-env = yes · 키는 환경변수에만 둔다)" -ForegroundColor Green
+    if ($pushed) { Write-Host "  env 에 $pushed 개를 맞췄다 (#settings-env = yes · 키와 맡기기 러너 값은 환경변수에만 둔다)" -ForegroundColor Green }
   } elseif (-not $wantEnv) {
     Write-Host '  env 는 안 민다 — 값 파일이 #settings-env 를 안 든다'
+  }
+
+  # 러너 값 사본 — 이 파일에 맡기기 러너 이름(`$RunnerEnvValues`)이 있으면 판마다 맞춘다. 이 칸은 그 이름을 안 밀지만, 그 이름을
+  #   밀던 판이 남긴 줄이나 사람이 넣은 줄이 있을 수 있다.
+  # ⚠ **`$Planted` 도 `#settings-env` 도 안 묻는다.** 사용자 환경이 이미 맞는 재설치는 아무것도 안 심어, 심은 이름만 훑는 아래 키
+  #   걷기 꼴로는 바로 그 판에 사본이 그대로 남는다.
+  # 우리 것이라는 근거는 값이다 — 두 자리 표 어느 쪽이든 그 이름의 값과 글자까지 같으면 걷는다. 다르면 사람이 고른 값으로 보고 둔 채
+  #   알린다 — 사람의 선택이 이기고 실패가 아니다. 이 파일의 값이 이기므로 그 세션의 러너가 그 값으로 나간다는 것까지 말한다.
+  if ($cfg.PSObject.Properties['env']) {
+    foreach ($p in @($cfg.env.PSObject.Properties)) {
+      if (-not $RunnerEnvValues.ContainsKey($p.Name)) { continue }
+      if ($p.Value -is [string] -and $RunnerEnvValues[$p.Name] -ccontains $p.Value) {
+        $cfg.env.PSObject.Properties.Remove($p.Name)
+        $dirty = $true
+        Write-Host "  $($p.Name) — settings.json 에서 걷었다 (맡기기 러너 값은 사용자 환경변수가 든다)" -ForegroundColor Green
+      } else {
+        Write-Host "  ! $($p.Name) 이 settings.json 에 우리 표에 없는 값($($p.Value))으로 있다 — 사람이 고른 값으로 보고 둔다" -ForegroundColor Yellow
+        Write-Host "     CLI · VS Code 세션이 띄운 러너는 이 값으로 나간다. 우리 값으로 돌리려면 이 줄을 지운다 — 볼 자리: $homeCfg  (env 칸)"
+      }
+    }
   }
 
   # 안 밀기로 한 이름(`$SettingsEnvSkip`)이 남아 있으면 걷는다 — 심는 자리를 줄였으면 걷는 자리가 선다. 안 걷으면 그 이름을 밀던
