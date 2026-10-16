@@ -147,30 +147,28 @@ if (-not $NoConsole) {
   } catch { }
 }
 
-# ── 옆에 온 값 파일 — 회사 공통값은 이미 채워져 온다 ────────────────────────────
-# 뽑는 자(claude-config `scripts/build-dist.sh`)가 자리 파일에서 파생해 넣는다. 사람은 키만 넣으면 된다.
-$EnvPath = Join-Path $Here 'install.env'
-$Preset  = @{}
-if (Test-Path -LiteralPath $EnvPath) {
-  foreach ($line in Get-Content -LiteralPath $EnvPath -Encoding UTF8) {
-    $t = $line.Trim()
-    if (-not $t -or $t.StartsWith('#') -or ($t -notmatch '=')) { continue }
-    $k = $t.Substring(0, $t.IndexOf('=')).Trim()
-    $v = $t.Substring($t.IndexOf('=') + 1).Trim()
-    if ($k) { $Preset[$k] = $v }
+# ── 값 파일을 읽는 손 — **몸통의 함수를 그대로 싣는다** ────────────────────────────
+# 지시 줄(`Read-Directive`)과 값 줄(`Read-EnvFile`)을 읽는 규칙은 몸통 하나가 든다 — 여기 옮겨 적으면 규칙을 고치는 날 창과 몸통이
+#   같은 파일에서 다른 값을 읽는다. `-Describe` 로 받지 않는 까닭은 값 줄에 사람이 적어 둔 키(`ANTHROPIC_AUTH_TOKEN`)가 들 수 있어서다 —
+#   키가 표준 출력을 지나게 두지 않는다. 그래서 몸통 파일을 구문으로 읽어 그 두 함수의 정의만 이 창에 세운다(자동 실행 몸통이 엔진에서
+#   자리 재기를 떼어 쓰는 것과 같은 꼴). 몸통을 통째로 점으로 부르면 몸통이 돌아 버린다.
+# 못 세우면 빈 손으로 선다 — 지시는 없고 값 파일은 빈 표다. 그 판은 아래 `-Describe` 도 못 받아 창이 설치를 안 받는다.
+$EngineFns = @('Read-Directive', 'Read-EnvFile')
+try {
+  $engineAst = [System.Management.Automation.Language.Parser]::ParseFile($Engine, [ref]$null, [ref]$null)
+  foreach ($fnName in $EngineFns) {
+    $fnAst = $engineAst.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq $fnName }.GetNewClosure(), $true)
+    if ($fnAst) { . ([scriptblock]::Create($fnAst.Extent.Text)) }
   }
-}
+} catch { }
+if (-not (Get-Command Read-Directive -CommandType Function -ErrorAction SilentlyContinue)) { function Read-Directive { return $null } }
+if (-not (Get-Command Read-EnvFile -CommandType Function -ErrorAction SilentlyContinue)) { function Read-EnvFile { return @{} } }
 
-# `Get-Directive <이름> [파일]` → 값 파일의 `# <이름> = <값>` 줄의 값, 줄이나 파일이 없으면 `$null`. 파일을 안 주면 옆에 온
-#   값 파일(짐)을 본다. 지난번에 고른 것은 값 파일이 아니라 몸통이 내준다(아래 「지난번에 고른 것」).
-# 값 파일을 읽은 바로 다음에 선다 — 창 제목(앱 이름)부터 아래 화면 칸들이 이 답 위에 선다.
-function Get-Directive([string]$Key, [string]$File = $EnvPath) {
-  if (-not $File -or -not (Test-Path -LiteralPath $File)) { return $null }
-  foreach ($line in Get-Content -LiteralPath $File -Encoding UTF8) {
-    if ($line -match "^\s*#\s*$([regex]::Escape($Key))\s*=\s*(.+?)\s*$") { return $Matches[1] }
-  }
-  return $null
-}
+# ── 옆에 온 값 파일 — 회사 공통값은 이미 채워져 온다 ────────────────────────────
+# 뽑는 자(claude-config `scripts/build-dist.sh`)가 자리 파일에서 파생해 넣는다. 사람은 키만 넣으면 된다. 지난번에 고른 것은 값 파일이
+#   아니라 몸통이 내준다(아래 「지난번에 고른 것」).
+$EnvPath = Join-Path $Here 'install.env'
+$Preset  = Read-EnvFile $EnvPath
 
 # ── 기록이 쌓이는 자리 — **이 파일에 한 번만 적는다** ───────────────────────────
 # 쓰는 자(`Save-RunLog`)와 거기로 가는 문(아래 단추 줄의 「설치기록」 링크)이 같은 자리를 가리켜야 한다 — 자리를 둘에
@@ -178,18 +176,10 @@ function Get-Directive([string]$Key, [string]$File = $EnvPath) {
 # 판 폴더 밖이다 — 까닭은 `Save-RunLog` 머리말이 든다.
 $LogDir = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\logs'
 
-# ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
-# 여기 든 글자는 진본이 아니라 그 줄이 없을 때의 울타리다. 이름은 창 제목 · 상자 제목 · 기록 창 제목에 다 `$AppName` 으로만
-#   찍는다 — 자리마다 글자를 박으면 이름을 바꾸는 날 그 갈래를 밟은 사람만 보는 자리가 낡는다.
-# 몸통도 같은 줄에서 판다(`install.ps1` 의 `$AppName`) — 따로 박으면 창 제목과 바로가기 이름이 갈린다.
-$AppNameDefault = 'PAI Setup Wizard'
-$AppName = Get-Directive 'app-name'
-if (-not $AppName) { $AppName = $AppNameDefault }
-
-# ── 고를 제품 · 지난번에 고른 것 — **목록도 기본값도 기록도 몸통이 든다** ──────────────────────────────────
-# 여기 옮겨 적지 않고 몸통에 묻는다 — `-Describe` 가 내는 `product|키|이름|on·off` · `config-repo-root|경로` ·
-#   `record|이름|값` 줄. 옮겨 적으면 제품이 늘 때 한쪽만 고쳐져 「골랐는데 안 깔린다」로만 보이고, 기록 자리 · 꼴을 창이 다시 지으면
-#   창을 띄운 폴더에 따라 기록을 못 찾는다.
+# ── 고를 제품 · 지난번에 고른 것 · 몸통만 아는 사실 — **목록도 기본값도 기록도 자리도 몸통이 든다** ─────────────────────
+# 여기 옮겨 적지 않고 몸통에 묻는다 — `-Describe` 가 내는 줄(꼴과 뜻은 몸통의 「`-Describe` 갈래」 머리말이 든다). 옮겨 적으면 제품이
+#   늘 때 한쪽만 고쳐져 「골랐는데 안 깔린다」로만 보이고, 기록 자리 · 꼴을 창이 다시 지으면 창을 띄운 폴더에 따라 기록을 못 찾고,
+#   자리 · 규칙 · 기본값을 창이 다시 지으면 같은 PC 가 창 회차와 로그온 회차에서 다른 자리 · 다른 칸으로 돈다(PAISetup #46).
 # ⚠ **자식으로 띄워 묻는다.** 이 창 안에서 그 파일을 부르면 저쪽의 `exit` 가 **이 창까지** 끌고 나간다.
 $Choices = @()
 # 저장소를 받는 자리 — 몸통이 내준다(바로 아래 곁말). 못 받으면 빈 값이고, 그때 아래 저장소 칸은 링크 대신 글자만 세운다.
@@ -199,8 +189,18 @@ $Recorded = @{}
 # 이 PC 에 맡겨 둔 회사 키가 있나(몸통의 회사 키 덩이 · 값은 안 온다). 있으면 사내 키 칸이 비어도 설치를 받는다 — 몸통이 그 덩이를
 #   풀어 심는다. 못 받으면 없는 것으로 읽는다 — 키 칸을 비운 채 누르면 지금처럼 막는다.
 $KeySaved = $false
+# 이 PC 의 자리(`inside` · `outside`)와 그 프로브 — 몸통이 잰 것을 받는다. 못 받거나 몸통이 못 정했으면 자리가 빈 값이고 까닭이
+#   `$SiteWhy` 에 서며, 창은 설치를 안 받는다(아래 「자리를 못 정한 판」). 창은 따로 안 잰다.
+$Site = ''; $SiteWhy = '설치 몸통에 자리를 못 물었다 (install.ps1 -Describe)'; $probe = ''
+# 이 자리에서 VS Code 가 필수인가 · 깃발 없는 판의 자동 실행 · 데스크탑 앱 행이 어디서 깔리나(키 → yes · outside · no)
+$VsRequired = $false; $AutoRunOn = $false; $AppHere = @{}
+# 제작자 칸의 도구(도구 · 제품 · 글자) · 「올리기」 칸이 드는 VC++ 런타임 판 · 앱 이름
+$PersonalTools = @(); $VcRuntimeMin = ''; $AppName = ''
+# 몸통이 끝까지 답했나 — 종료 값과, 칸이 기대는 줄(`site|` · `vscode|` · `autorun|`)을 받았나. 아래 묻기 끝에서 가른다.
+$DescribeRc = $null; $DescribeSeen = @{}
 try {
   $raw = & powershell -NoProfile -ExecutionPolicy Bypass -File $Engine -Describe
+  $DescribeRc = $LASTEXITCODE
   foreach ($ln in @($raw)) {
     if ("$ln" -match '^\s*product\|([a-z0-9-]+)\|(.+?)\|(on|off)\s*$') {
       $Choices += ,@{ Key = $Matches[1]; Label = $Matches[2]; On = ($Matches[3] -eq 'on') }
@@ -210,8 +210,29 @@ try {
     elseif ("$ln" -match '^\s*config-repo-root\|(.+?)\s*$') { $RepoRoot = $Matches[1] }
     elseif ("$ln" -match '^\s*record\|([a-z-]+)\|(.+?)\s*$') { $Recorded[$Matches[1]] = $Matches[2] }
     elseif ("$ln" -match '^\s*company-key\|(yes|no)\s*$') { $KeySaved = ($Matches[1] -eq 'yes') }
+    # 몸통만 아는 사실 — 글자를 가려 맞춘다(`-cmatch`). 몸통이 내는 꼴 그대로가 아니면(대문자 · 빈 프로브) 안 받은 줄이다.
+    elseif ("$ln" -cmatch '^\s*site\|(inside|outside)\|(.+?)\s*$') { $Site = $Matches[1]; $probe = $Matches[2]; $SiteWhy = ''; $DescribeSeen['site'] = $true }
+    elseif ("$ln" -cmatch '^\s*site\|error\|(.+?)\s*$') { $Site = ''; $SiteWhy = $Matches[1]; $DescribeSeen['site'] = $true }
+    elseif ("$ln" -cmatch '^\s*vscode\|(required|optional)\s*$') { $VsRequired = ($Matches[1] -ceq 'required'); $DescribeSeen['vscode'] = $true }
+    elseif ("$ln" -cmatch '^\s*autorun\|(on|off)\s*$') { $AutoRunOn = ($Matches[1] -ceq 'on'); $DescribeSeen['autorun'] = $true }
+    elseif ("$ln" -cmatch '^\s*app\|([a-z0-9-]+)\|(yes|outside|no)\s*$') { $AppHere[$Matches[1]] = $Matches[2] }
+    elseif ("$ln" -cmatch '^\s*personal\|([a-z0-9-]+)\|([a-z0-9-]+)\|(.+?)\s*$') {
+      $PersonalTools += ,@{ Key = $Matches[1]; Pick = $Matches[2]; Label = $Matches[3] }
+    }
+    elseif ("$ln" -cmatch '^\s*vcruntime-min\|(.+?)\s*$') { $VcRuntimeMin = $Matches[1] }
+    elseif ("$ln" -cmatch '^\s*app-name\|(.+?)\s*$') { $AppName = $Matches[1] }
+  }
+  # ⚠ **몸통이 끝까지 답하지 않았으면 자리를 못 받은 판이다** — 0 으로 안 끝났거나 `site|` · `vscode|` · `autorun|` 가운데 하나라도
+  #   없으면 `site|error` 와 같이 잠근다. 중간에 끊긴 답을 그대로 쓰면 못 받은 칸이 기본값(자동 실행 끔)으로 서, 그대로 누른 판이
+  #   `-NoAutoRun` 을 넘겨 사람이 안 끈 자동 실행을 걷고 끈 기록까지 적는다.
+  if ($DescribeRc -ne 0 -or -not ($DescribeSeen['site'] -and $DescribeSeen['vscode'] -and $DescribeSeen['autorun'])) {
+    $missing = @('site', 'vscode', 'autorun' | Where-Object { -not $DescribeSeen[$_] })
+    $Site = ''
+    $SiteWhy = "설치 몸통의 답이 모자라다 (install.ps1 -Describe 종료 $DescribeRc$(if ($missing.Count) { ' · 없는 줄 ' + ($missing -join ', ') }))"
   }
 } catch { }
+# 앱 이름이 안 왔으면(몸통에 못 물은 판) 그 판은 설치를 안 받는다 — 상자 제목에만 쓰는 이름이라 일반 낱말로 선다.
+if (-not $AppName) { $AppName = '설치' }
 
 # ── 지난번에 고른 것 — 칸의 첫 상태 ─────────────────────────────────────────────
 # ⚠ **칸은 이것으로 채운다 — 없을 때만 기본값이다.** 설치가 끝날 때 「다음에는 이것을 누르면 됩니다」로 보낸 사람이 창을 다시
@@ -224,11 +245,8 @@ if ($Recorded.ContainsKey('vscode'))   { $Saved.NoVsCode = ($Recorded['vscode'] 
 if ($Recorded.ContainsKey('personal')) { $Saved.Personal = @($Recorded['personal'] -split '[,\s]+' | Where-Object { $_ -and $_ -ne 'none' }) }
 if ($Recorded.ContainsKey('config-repo')) { $Saved.Repo = $(if ($Recorded['config-repo'] -ne 'none') { $Recorded['config-repo'] } else { '' }) }
 if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.GatewayUrl = $Recorded['gateway-url'] }
-# 데스크탑 앱을 **언제** 까나는 값 파일의 `#desktop-app` 이 든다(`:` 가 있으면 그 앞) — 무엇을 까나는 위 제품 목록이 든다.
-$appWhen = Get-Directive 'desktop-app'
-if ($appWhen -and $appWhen -match '^\s*([A-Za-z]+)\s*:') { $appWhen = $Matches[1] }
 # 제품 목록이 없으면 옵션 칸을 안 늘린다 — 빈 줄만큼 창이 길어지면 작은 화면에서 단추가 잘린다. `$appRow` 는 제품 줄 ·
-#   안내 줄 · VS Code 줄 셋이다. 안내 줄은 자리와 상관없이 늘 두고 글만 갈린다 — 창 높이는 자리(`$offsite`)를 재기 전에 정해진다.
+#   안내 줄 · VS Code 줄 셋이다. 안내 줄은 자리와 상관없이 늘 두고 글만 갈린다.
 $appRow = if ($Choices.Count) { 78 } else { 0 }
 $optExtra = 26   # 옵션 칸의 자동 실행 줄
 
@@ -269,17 +287,9 @@ $lTop = New-Label '고른 도구의 CLI 와 데스크탑 앱을, 원하면 VS Co
 $urlPreset = [string]$Preset['ANTHROPIC_BASE_URL']
 
 # 자리가 값보다 먼저다 — 배포본은 사내 값을 들고 오는데 그 폴더를 사외 PC 에서 돌리기도 한다. 그때 주소와 키를 물으면 안 쓸
-#   것을 넣으라는 꼴이고, 넣으면 안 닿는 곳을 가리킨 채 「설정됐다」로 보인다.
-#   ⚠ 이름이 아니라 **닿음**으로 가른다: DNS 는 사외에서도 사내 IP 를 풀어 준다(결정 0026).
-$offsite = $false
-$probe = Get-Directive 'site-probe'
-if ($probe -and ($probe -match '^(.+):(\d+)$')) {
-  $c = New-Object Net.Sockets.TcpClient
-  try { $offsite = -not ($c.ConnectAsync($Matches[1], [int]$Matches[2]).Wait(3000) -and $c.Connected) }
-  catch { $offsite = $true } finally { $c.Dispose() }
-}
-$more = @()
-if (Get-Directive 'codex-config')  { $more += 'Codex' }
+#   것을 넣으라는 꼴이고, 넣으면 안 닿는 곳을 가리킨 채 「설정됐다」로 보인다. 자리는 위 `-Describe` 가 준 것이다(몸통의 `Measure-Site`).
+#   자리를 못 정한 판은 사외가 아니다 — 칸은 사내 꼴로 서고 설치는 안 받는다(아래 「자리를 못 정한 판」).
+$offsite = ($Site -eq 'outside')
 $gV = New-Object Windows.Forms.GroupBox
 $noAsk = $offsite
 # 키 칸은 자리마다 줄 수가 다르다 — 사외는 「사외입니다」 한 줄, 사내는 주소 · 키 · 안내 셋이고 둘 다 아래에 링크 줄이 붙는다.
@@ -393,9 +403,8 @@ $personalWant = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Objec
                 else { @($Saved.Personal) }
 $cPers = @()
 $px = 250
-foreach ($pt in @(@{ Key = 'claude'; Pick = 'claude'; Label = 'Claude' },
-                  @{ Key = 'codex';  Pick = 'codex';  Label = 'Codex' },
-                  @{ Key = 'agy';    Pick = 'antigravity'; Label = 'agy' })) {
+# 칸은 몸통의 제작자 도구 표(`-Describe` 의 `personal|도구|제품|글자` 줄)에서 짓는다 — 도구 이름 ↔ 제품은 그 표 하나가 든다.
+foreach ($pt in $PersonalTools) {
   $c = New-Object Windows.Forms.CheckBox
   $c.Text = $pt.Label
   $c.AutoSize = $true
@@ -419,8 +428,8 @@ function Sync-PersonalBoxes {
   foreach ($c in $cPers) { $c.Enabled = Test-PersonalBoxLive $c }
 }
 
-# 로그온할 때 · 밤마다 자동 실행 — 작업 스케줄러가 로그온 때(`PAISetup-AutoRun`)와 매일 새벽(`PAISetup-AutoRun-Night`) 설치
-#   몸통을 다시 돌려 깔린 것을 최신으로 올리고 환경을 다시 맞춘다 — 하루 한 번. 설치본 자신도 `#update-repo` 의 최신 릴리스를
+# 로그온할 때 · 밤마다 자동 실행 — 작업 스케줄러가 로그온 때와 매일 새벽 설치 몸통을 다시 돌려(작업 이름은 몸통의
+#   `$AutoRunTaskName` · `$AutoRunNightTaskName`) 깔린 것을 최신으로 올리고 환경을 다시 맞춘다 — 하루 한 번. 설치본 자신도 `#update-repo` 의 최신 릴리스를
 #   받아 지문을 대조한 뒤 그 판으로 간다(몸통의 「부팅 시 자동 실행」 칸).
 # 글에 「백그라운드」라고 적지 않는다 — 로그온 회차가 설치를 실제로 하면 기록 창이 (작업 표시줄에 내려 둔 채) 떠서 설치 기록이
 #   흐른다. 그 창은 일부러 둔다 — 도는 것이 보이고 멈춘 걸음이 눈에 띈다. 밤 회차는 창 없이 돈다.
@@ -428,24 +437,18 @@ $cAuto = New-Object Windows.Forms.CheckBox
 $cAuto.Text = '로그온할 때와 밤마다 깔린 것을 최신으로 올리고 환경을 맞춥니다 (하루 한 번)'
 $cAuto.Location = New-Object Drawing.Point(16, (72 + $appRow))
 $cAuto.Size = New-Object Drawing.Size(560, 22)
-# ⚠ **못 묻는 것을 「없다」로 읽는다(`try`)** — 스케줄러 모듈이 없는 PC 에서 나는 「그런 명령이 없다」는 `-ErrorAction` 으로
-#   안 막히고, 이 줄은 창이 뜨기 **전**이라 그대로 두면 창이 아예 안 뜬다.
-# ⚠ **지시 `yes` 만 보고 켜지 않는다** — 짐이 늘 `yes` 를 실어, 끄고 설치한 PC 에서도 칸이 다시 켜지고 그대로 누르면 도로 걸린다.
-#   칸은 작업이 서 있거나, 지시가 `yes` 이고 끈 기록이 없을 때 켜진다. 끈 기록은 몸통이 꺼진 칸(`-NoAutoRun`)으로 걷을 때 적고 다시
-#   걸 때 지운다 — 있나는 몸통이 `record|autorun|off` 로 내준다(자리와 이름은 몸통의 `$AutoRunOffRecord` 가 든다). 몸통의 깃발 없는
-#   판(로그온 · 밤 자동 실행)도 같은 자로 간다.
-$hasAutoTask = $false
-try { $hasAutoTask = [bool](Get-ScheduledTask -TaskName 'PAISetup-AutoRun', 'PAISetup-AutoRun-Night' -ErrorAction SilentlyContinue) } catch { }
-$autoOff = ($Recorded['autorun'] -eq 'off')
-$autoDirective = Get-Directive 'autorun'
-$cAuto.Checked = $hasAutoTask -or ($autoDirective -eq 'yes' -and -not $autoOff)
+# 칸의 첫 상태는 몸통이 깃발 없는 판에 내릴 답이다(`-Describe` 의 `autorun|on·off` — 몸통의 `Get-AutoRunDefault`) — 작업이 서
+#   있나 · 짐의 `#autorun` · 사람이 끈 기록을 창이 따로 읽어 규칙을 다시 지으면 지시가 `no` 인 판에서 창은 켠 채 뜨고 로그온 회차는
+#   걷는다(PAISetup #46 ③). 몸통에 못 물은 판은 꺼진 채 뜬다 — 그 판은 설치를 안 받는다.
+$cAuto.Checked = $AutoRunOn
 $gO.Controls.Add($cAuto)
 
 # 이미 깔린 것도 올리는 칸(기본 켬) — 집 · 회사 PC 처럼 프로필이 남는 기계는 프로그램이 이미 다 있어, 「있으면 건너뛴다」만
 #   두면 판이 영영 안 올라간다. 비영속 VDI 는 늘 맨바닥이라 이 칸이 안 걸린다.
-# 괄호는 이 칸이 못 막는 하나다 — 몸통의 `-NoUpgrade` 칸별 설명과 같은 말이고, 판은 몸통의 `$VcRuntimeMin` 을 글자로 든다.
+# 괄호는 이 칸이 못 막는 하나다 — 몸통의 `-NoUpgrade` 칸별 설명과 같은 말이고, 판은 몸통의 `$VcRuntimeMin` 을 `-Describe` 로 받는다.
 $cUpg = New-Object Windows.Forms.CheckBox
-$cUpg.Text = '이미 깔린 것도 최신으로 올립니다  (꺼도 VC++ 런타임은 14.40 아래면 올립니다)'
+$cUpg.Text = if ($VcRuntimeMin) { "이미 깔린 것도 최신으로 올립니다  (꺼도 VC++ 런타임은 $VcRuntimeMin 아래면 올립니다)" }
+             else { '이미 깔린 것도 최신으로 올립니다' }
 $cUpg.Location = New-Object Drawing.Point(16, 22)
 $cUpg.Size = New-Object Drawing.Size(560, 22)
 $cUpg.Checked = -not $NoUpgrade
@@ -480,30 +483,38 @@ if ($Choices.Count) {
 
   # 제품 칸이 까는 것은 바로 그 줄 아래 적는다 — 확장은 빼고. 확장은 VS Code 칸이 켜졌을 때만 깔리므로 그 칸의 글이 든다.
   #   이 줄이 VS Code 칸 아래 서면 그 칸의 설명으로 읽혀 「VS Code 를 켜면 CLI · 데스크탑 앱이 깔린다」로 보인다.
-  # 고르기는 자리를 안 가리는데 깔기는 가린다(데스크탑 앱을 사외에서만 까는 자리) — 안 적으면 사내에서 켜 놓고 「왜 안
+  # 고르기는 자리를 안 가리는데 깔기는 가린다(데스크탑 앱을 사외에서만 까는 행) — 안 적으면 사내에서 켜 놓고 「왜 안
   #   깔렸지」가 된다. 줄은 늘 두고 글만 갈린다(위 `$appRow` 곁말).
+  # 글은 몸통이 행마다 낸 답(`-Describe` 의 `app|키|yes·outside·no` — 몸통의 `Test-DesktopAppHere`)에서 짓는다 — 짐의 `#desktop-app`
+  #   과 행의 `When` 을 창이 따로 풀면 사내에서도 깔리는 행(Copilot)에 「사외에서만」이라 적는다(PAISetup #46 ⑤).
+  $appYes = @($Choices | Where-Object { $AppHere[$_.Key] -eq 'yes' })
+  $appOut = @($Choices | Where-Object { $AppHere[$_.Key] -eq 'outside' })
   $lApp2 = New-Object Windows.Forms.Label
-  $lApp2.Text = if ($appWhen -eq 'offsite' -and -not $offsite) {
-    '켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 깔립니다.'
-  } elseif ($appWhen) {
-    '켠 것의 CLI · 데스크탑 앱이 깔립니다.'
-  } else {
+  $lApp2.Text = if (-not $appYes.Count -and -not $appOut.Count) {
     '켠 것의 CLI 가 깔립니다.'
+  } elseif (-not $appOut.Count) {
+    '켠 것의 CLI · 데스크탑 앱이 깔립니다.'
+  } elseif (-not $appYes.Count) {
+    '켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 깔립니다.'
+  } else {
+    "켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 ($(@($appYes | ForEach-Object { $_.Label }) -join ' · ') 만 여기서도)"
   }
   $lApp2.Location = New-Object Drawing.Point(104, 76)
   $lApp2.Size = New-Object Drawing.Size(472, 20)
   $lApp2.ForeColor = [Drawing.Color]::DimGray
   $gO.Controls.Add($lApp2)
 
-  # 사외 기본은 끔이다 — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다. 지난번에 고른 것(`$Saved`)이 있으면 그것을
-  #   따른다. 사내는 VS Code 가 주 무대라 켠 채로 잠근다 — 글에 「필수」라 적었으니 못 꺼야 그 글이 참이다. 자리는 위에서
-  #   이미 쟀다(`$offsite`).
+  # 필수인 자리(사내)는 켠 채로 잠근다 — 몸통이 칸과 상관없이 깐다(`-Describe` 의 `vscode|required` · 몸통의 `Test-VsCodeRequired`).
+  #   글에 「필수」라 적었으니 못 꺼야 그 글이 참이다. 잠근 칸은 사람의 값을 안 바꾼다 — [설치 시작]은 지난번에 고른 것을 그대로 넘겨
+  #   기록이 사외에서 다시 선다.
+  # 필수가 아닌 자리의 기본은 끔이다 — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다. 지난번에 고른 것(`$Saved`)이 있으면
+  #   그것을 따른다.
   $cVsc = New-Object Windows.Forms.CheckBox
   $cVsc.Text = 'VS Code 와 켠 것의 확장도 깝니다  (사내는 필수, 사외는 선택)'
   $cVsc.Location = New-Object Drawing.Point(16, 100)
   $cVsc.Size = New-Object Drawing.Size(560, 22)
-  $cVsc.Checked = if (-not $offsite) { $true } elseif ($null -ne $Saved.NoVsCode) { -not $Saved.NoVsCode } else { $false }
-  $cVsc.Enabled = $offsite
+  $cVsc.Checked = if ($VsRequired) { $true } elseif ($null -ne $Saved.NoVsCode) { -not $Saved.NoVsCode } else { $false }
+  $cVsc.Enabled = -not $VsRequired
   $gO.Controls.Add($cVsc)
 }
 
@@ -535,7 +546,7 @@ $tRepo.Size = New-Object Drawing.Size(558, 24)
 #   같은 결이다(위 「이미 심긴 회사 키를 읽어 온다」). 이 주소는 배포본에 안 실려 와 한 번 넣은 사람에게만 있다. 칸이 비어 뜨고 그대로
 #   누르면 **그 판은 저장소를 안 본다** — `config-repo` 는 화면이 적는 이름이라(아래 [설치 시작]) 빈 칸이 곧 「저장소 없음」이고,
 #   몸통은 그것을 다음 회차의 기록으로 남긴다.
-$tRepo.Text = if ($null -ne $Saved.Repo) { [string]$Saved.Repo } else { [string](Get-Directive 'config-repo') }
+$tRepo.Text = if ($null -ne $Saved.Repo) { [string]$Saved.Repo } else { [string](Read-Directive $EnvPath 'config-repo') }
 $gR.Controls.Add($tRepo)
 # 주소를 넣고 빼는 대로 제작자 칸 앞 글자가 무엇이 가나를 따라 바뀐다(위 「제작자 칸」 곁말)
 function Sync-PersonalLabel {
@@ -738,7 +749,7 @@ $lnkFeat.BringToFront()
 #   묻기와 같은 결). 둘 중 하나가 없으면 링크를 안 세운다 — 못 짓는 주소를 열게 두지 않는다. 자리는 「제공기능」 글자 바로
 #   왼쪽이고 글자를 재서 선다(위 링크와 같은 규율).
 $ReleasePage = $null
-$relRepo = Get-Directive 'update-repo'
+$relRepo = Read-Directive $EnvPath 'update-repo'
 if ($relRepo -and $DistVersion) { $ReleasePage = "https://github.com/$relRepo/releases/tag/v$DistVersion" }
 if ($ReleasePage) {
   $lnkNews = New-Object Windows.Forms.LinkLabel
@@ -809,7 +820,7 @@ $F.Controls.Add($lnkLog)
 # 물어볼 곳 — 값 파일의 `#contact` 주소를 「설치기록」 바로 오른쪽에 띄운다. 누르면 메일 창이 열린다. 주소를 이 파일에 안
 #   박는다(`#update-repo` 와 같은 결) — 지시가 없으면 링크를 안 세운다. 메일 프로그램이 없어 `mailto:` 가 지면 주소를 클립보드에
 #   넣고 그 말을 한다(위 링크들과 같은 까닭).
-$Contact = Get-Directive 'contact'
+$Contact = Read-Directive $EnvPath 'contact'
 if ($Contact) {
   $lnkMail = New-Object Windows.Forms.LinkLabel
   $lnkMail.Text = "문의 $Contact"
@@ -837,6 +848,17 @@ $bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, (628 +
 $bClose.Size = New-Object Drawing.Size(84, 30)
 $F.Controls.Add($bClose)
 
+# ── 자리를 못 정한 판 — 설치를 안 받는다 ─────────────────────────────────────────
+# 몸통이 자리를 못 정했으면(`site|error|까닭`) · 몸통에 못 물었으면 그 까닭을 빨갛게 띄우고 [설치 시작]을 잠근다 — 그대로 누르면 몸통도
+#   같은 까닭으로 멈추고, 창이 한 갈래를 골라 넘기면 사내 PC 의 회사 연결을 걷거나 닿지 않는 주소를 심는다(PAISetup #46).
+if (-not $Site) {
+  $lState.Text = '자리(사내 · 사외)를 못 정해 설치를 못 합니다 — 아래 까닭을 봅니다'
+  $lState.ForeColor = [Drawing.Color]::Firebrick
+  $log.AppendText("! 자리를 못 정했다 — $SiteWhy`r`n")
+  $log.AppendText("  설치 묶음(Setup.exe)을 새로 받아 다시 누릅니다. 값 파일을 손으로 만들었으면 #site-probe = 호스트:포트 줄을 넣습니다.`r`n")
+  $bGo.Enabled = $false
+}
+
 # ── 돌리는 자 ───────────────────────────────────────────────────────────────────
 # 몸통의 출력을 파일로 받고 타이머가 그 파일을 **따라 읽는다.** 타이머는 창의 메시지 루프가 돌리므로 `ShowDialog()` 안에서도
 #   산다. 읽는 쪽은 파일을 열어 둔 채 `ReadLine()` 이 null 을 낼 때까지 읽고 다음 틱에 잇는다 — 자식이 쓰는 중인 파일이라
@@ -858,6 +880,8 @@ function Add-Log([string]$line) {
 }
 
 $bGo.Add_Click({
+  # 자리를 못 정한 판은 안 받는다 — 단추는 이미 잠겼고(위 「자리를 못 정한 판」), 여기는 그 잠금이 풀린 자리의 마지막 울타리다.
+  if (-not $Site) { return }
   # ⚠ **비어 있는 것은 안 막는다** — 사외는 둘 다 비우는 것이 맞는 답이다. 막는 것은
   #   **반만 넣은 것** 하나다: 한쪽만 있으면 게이트웨이가 안 서는데 화면은 멀쩡해 보인다.
   #   주소만 있고 키 칸이 빈 것은 이 PC 에 맡겨 둔 회사 키(`$KeySaved`)가 있으면 반이 아니다 — 몸통이 그 키를 풀어 심는다.
@@ -894,12 +918,10 @@ $bGo.Add_Click({
   if ($key) { $lines.Add("ANTHROPIC_AUTH_TOKEN=$key") }
   $repo = $tRepo.Text.Trim()
   if ($repo) { $lines.Add("#config-repo = $repo") }
-  # ⚠ **자리는 이 화면이 이미 쟀다 — 몸통에 넘긴다(`#site`).** 몸통이 또 물으면 두 프로세스 · 두 시점이라 답이 갈릴 수 있고
-  #   (프록시가 흔들리는 VDI · 무선 전환 · 회사망 재인증), 갈리면 여기서 받은 키를 몸통이 버리거나 주소가 빈 채로 게이트웨이를
-  #   쓴다고 서는데 **둘 다 초록으로 끝난다.** 재는 자를 하나로 둔다.
-  # ⚠ **못 잰 판에서는 안 넘긴다.** 프로브 줄이 없으면 `$offsite` 는 「사외가 아니다」지 「사내다」가 아니다 — 넘기면 안 잰 것이
-  #   「사내」 판정이 된다. 자리는 셋(사내 · 사외 · 모름)이고 모름은 몸통이 제 자리에서 모름으로 든다.
-  if ($probe) { $lines.Add('#site = ' + $(if ($offsite) { 'outside' } else { 'inside' })) }
+  # ⚠ **이 창이 칸을 지은 자리를 몸통에 넘긴다(`#site`).** 몸통은 다시 재고, 이 값과 다르면 아무것도 안 심고 「창을 연 뒤 자리가
+  #   바뀌었다」로 멈춘다 — 창을 연 뒤 망이 바뀌면(무선 전환 · 회사망 재인증) 여기서 받은 키를 몸통이 버리거나 사외 칸이 안 받은
+  #   주소 없이 게이트웨이를 써, **둘 다 초록으로 끝나기 때문이다.**
+  if ($Site) { $lines.Add('#site = ' + $Site) }
   Set-Content -LiteralPath $script:tmpEnv -Value $lines -Encoding UTF8
 
   $argv = @('-NoProfile','-ExecutionPolicy','Bypass','-File', $Engine, '-Yes',
@@ -925,7 +947,8 @@ $bGo.Add_Click({
     $picked = @($cApps | Where-Object { $_.Checked } | ForEach-Object { [string]$_.Tag })
     $argv += @('-Pick', $(if ($picked.Count) { $picked -join ',' } else { 'none' }), '-ChoicesFull')
   }
-  if ($cVsc -and -not $cVsc.Checked) { $argv += '-NoVsCode' }
+  # VS Code — 잠근 칸(사내 필수)은 사람의 값이 아니라 지난번에 고른 것을 넘긴다. 몸통은 사내면 칸과 상관없이 깔고 넘긴 값을 기록에 둔다.
+  if ($cVsc -and $(if ($VsRequired) { [bool]$Saved.NoVsCode } else { -not $cVsc.Checked })) { $argv += '-NoVsCode' }
 
   # 싸는 규칙은 위 `Quote-Argv` 하나다 — 되띄우기 자리와 같은 자를 쓴다.
   $argLine = Quote-Argv $argv
@@ -1340,7 +1363,7 @@ $F.Add_FormClosed({
 #   (`#site-probe` · `#config-repo` 와 같은 결).
 $script:upPs = $null
 $script:upHandle = $null
-$UpdateRepo = Get-Directive 'update-repo'
+$UpdateRepo = Read-Directive $EnvPath 'update-repo'
 # 묻고 재는 손은 곁의 조각(`update-check.ps1`)이 든다 — 자동 실행도 같은 자를 부른다. 여기 붙박이로 두면 그쪽이 베껴 손사본
 # 둘이 된다. 조각이 없으면 안 묻는다 — 새 판을 못 보는 것보다 창이 안 서는 것이 값이 크다.
 $UpdateLib = Join-Path $Here 'update-check.ps1'

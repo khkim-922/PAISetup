@@ -15,8 +15,9 @@
 #   다루는 `deploy.ps1` 의 몫이다.
 #
 # 값은 이 파일에 없다 — 이름과 설명만 들고, 값은 옆의 `install.env`(`이름=값` 한 줄씩 · `secrets.env` 와 같은 꼴)나 사람의
-#   입력에서 온다. 그래서 한 몸통이 두 갈래를 다 든다: 값 파일을 든 사람은 아무것도 안 묻고 지나가고, 이것만 받은 사람은
-#   묻는 것에 답하면 선다(**몸통은 이름을 모른다**).
+#   입력에서 온다. 그래서 한 몸통이 두 갈래를 다 든다: 값 파일을 든 사람은 아무것도 안 묻고 지나가고, 값이 모자란 사람은
+#   묻는 것에 답하면 선다(**몸통은 이름을 모른다**). 다만 자리를 재는 줄(`#site-probe`)은 값 파일이 꼭 든다 — 없으면 사내 · 사외를
+#   못 갈라 아무것도 안 깔고 멈춘다(「준비」의 「자리」 칸).
 #   값 파일이 `#config-repo` 를 들면 다 세운 뒤 그 저장소를 받고, 뿌리에 훅(`.claude/hooks/session-start.sh` — 우리 옛 세대
 #   사본이면 지금 판으로 간 뒤)이 있으면 `--install` 로 부른다 — 사람에게 딸린 것(git 신원 · 형제 저장소 · 개인 키 · 배포)은
 #   그쪽이 든다.
@@ -34,7 +35,8 @@
 #     떠 있는 것이 있으면 여는 자리가 끌지 묻는 창을 띄우는데, 아무도 안 보는 자리에서는 영영 안 눌린다.
 #     ⚠ **그 물음을 `-Yes` 에 걸지 않는다** — 화면 껍데기가 사람을 앞에 두고도 몸통을 `-Yes` 로 부르므로, 걸면 화면으로
 #     깐 사람이 안 물어지게 된다. 누를 사람이 없는 자리(세션 0 · 서비스 · 스케줄러)는 `Ask-Restart` 가 잰다.
-#   `-Describe` — 아무것도 안 깔고 고를 목록 · 저장소 자리 · 지난번에 고른 것만 내주고 나간다(라이브러리 뒤 `if ($Describe)`).
+#   `-Describe` — 아무것도 안 깔고 고를 목록 · 저장소 자리 · 지난번에 고른 것 · 몸통만 아는 사실(자리 · 기본값 · 데스크탑 앱 행)만
+#     내주고 나간다(라이브러리 뒤 `if ($Describe)` — 줄의 꼴은 그 머리말이 든다).
 #     화면 껍데기가 칸을 짓는 목록의 진본은 `$Products` 하나다.
 #   `-Pick claude,codex` — 고른 제품만 깐다. `none` 은 「하나도 안 고름」이다. `-NoVsCode` 는 VS Code 와 확장을 통째로 건너뛴다.
 #     준 깃발이 먼저고 안 준 것은 지난번 기록이 채운다(「준비」의 「지난번에 고른 것」 칸). 기록도 없으면 `$Products` 의 기본값이다.
@@ -83,7 +85,7 @@ if (Test-Path -LiteralPath $OpenPageLib) { . $OpenPageLib }
 if (-not $EnvFile) { $EnvFile = Join-Path $Here 'install.env' }
 # ── 짐의 사실을 읽는 값 파일 — **이 엔진 곁에 딸려 온 `install.env` 다.** 없을 때만 넘겨받은 값 파일을 읽는다 (PAISetup #45) ──
 # 지시(`#이름 = 값`)와 값 줄은 뽑는 자가 진본에서 싣는 배포본의 사실이지 사람이 고른 것이 아니라, 판마다 그 판의 짐에서 읽는다.
-#   넘겨받은 값 파일(`$EnvFile`)에서 읽는 것은 이 회차가 받은 것뿐이다 — 화면이 잰 자리(`#site`) · 사람이 넣은 키와 주소 ·
+#   넘겨받은 값 파일(`$EnvFile`)에서 읽는 것은 이 회차가 받은 것뿐이다 — 화면 · 밤 자동 실행이 넘긴 자리(`#site`) · 사람이 넣은 키와 주소 ·
 #   설정 저장소 주소(「준비」의 「지난번에 고른 것」 칸 · `Read-RunValues`).
 # ⚠ **줄이 아니라 파일로 물러선다.** 딸려 온 파일에 줄이 없으면 그 배포본이 그 값을 안 든 것이다 — 넘겨받은 파일의 줄로
 #   메우면 새 배포본이 뺀 값이 되살아난다. 옛 자동 실행이 넘기는 얼린 사본은 지난 판 짐의 줄을 다 든다.
@@ -140,9 +142,17 @@ $ChoiceNone       = 'none'
 # 사람이 끈 자동 실행의 기록 — `-Describe` 가 `record|autorun|off` 로 내고, 「자동 실행을 켜나」 칸과 「부팅 시 자동 실행」 칸이
 #   읽고 쓴다. 언제 적고 지우나는 그 두 칸이 든다.
 $AutoRunOffRecord = Join-Path $RecordRoot '.autorun-off'
+# 자동 실행 작업 이름 둘 — 「부팅 시 자동 실행」 칸이 이 이름으로 걸고 걷고, 깃발 없는 판의 켜나(`Get-AutoRunDefault`)가 이 이름으로
+#   작업이 있나 묻는다. 설치 창은 이름을 모른다 — `-Describe` 의 `autorun|on·off` 줄로 그 답만 받는다.
+$AutoRunTaskName      = 'PAISetup-AutoRun'
+$AutoRunNightTaskName = 'PAISetup-AutoRun-Night'
 # 회사 키 덩이 — 이 사용자만 푸는 암호(DPAPI)로 둔 회사 키다. 「키와 값」이 맞추고 푼다(PAISetup #44). `-Describe` 는 풀리는 덩이가 있나만
 #   `company-key|yes·no` 로 낸다 — 값은 안 낸다. 창은 그 답으로 사내 키 칸이 비어도 설치를 받는다.
 $CompanyKeyBlob   = Join-Path $RecordRoot 'company-key.dpapi'
+# 장부 — 설치기가 심은 것이다(사람이 고른 것이 아니다). 걸음마다 제 자리를 맞춘 뒤 다시 쓰고, 다음 판이 걷을 것을 이것으로 가른다 —
+#   꼴과 읽고 쓰는 손은 라이브러리의 「장부」 칸이 든다(PAISetup #44). 이름 · 자리는 옛 판의 「Claude 홈 설정」 기록 그대로다 — 설정
+#   저장소의 세션 훅이 그 permissions 줄을 읽고(claude-config 결정 0119), 옛 판이 남긴 줄을 이어 읽는다.
+$ClaudePlantLedger = Join-Path $RecordRoot 'claude-settings.tsv'
 
 # ── 고르는 축 — **제품이다.** 표 셋(CLI · 확장 · 데스크탑 앱)은 같은 축의 세 단면이고, 한 제품이 그 셋에 한 줄씩 든다 ──
 # 사람은 「어느 도구를 쓰나」로 고르지 「CLI 냐 확장이냐」로 안 고른다. 기본값도 이 표가 든다 — 화면이 제 값을 따로 들면 두
@@ -157,6 +167,13 @@ $Products = @(
 # 걷은 제품 이름 — 지난 설치가 고른 값(로그온 자동 실행이 든 `-Pick`)에 남아 들어온다. 「준비」의 「고른 제품」 칸이 이 이름을
 #   말없이 빼고, 「모르는 제품 이름」 노란 줄은 이 목록 밖의 이름에만 선다(claude-config 결정 0136).
 $RetiredProducts = @('gemini')
+# 제작자 세트를 받는 도구 — 도구 이름(`-PersonalFor` · `PAISETUP_PERSONAL` 에 드는 글자) · 그 도구의 홈이 서는 제품 · 화면 글자.
+#   「제작자 세트를 받을 도구」 칸이 이 표로 고른 도구를 가르고, `-Describe` 가 `personal|도구|제품|글자` 줄로 내 설치 창이 칸을 짓는다.
+$PersonalTools = @(
+  @{ Tool = 'claude'; Product = 'claude';      Label = 'Claude' }
+  @{ Tool = 'codex';  Product = 'codex';       Label = 'Codex' }
+  @{ Tool = 'agy';    Product = 'antigravity'; Label = 'agy' }
+)
 
 # ── 공용 프로그램 — **목록이 진본이다.** 늘리려면 한 줄을 더한다 ────────────────
 #    `Need` — core = 확장이 돌기까지 없으면 안 되는 것 · dev = 코드를 짤 사람에게만(`-NoDevTools` 가 건너뛴다) ·
@@ -222,7 +239,8 @@ $NpmGlobalDir = "$env:APPDATA\npm"
 #   공식 재배포 패키지를 winget 으로 받는다. 기계 범위라 관리자 승격이 든다(`Get-ElevationGo`).
 $VcRuntime = @{ Name = 'VC++ 런타임'; Id = 'Microsoft.VCRedist.2015+.x64'; Dll = 'msvcp140.dll' }
 # 받아들이는 가장 낮은 판 — 14.40 에서 STL 의 `std::mutex` 꼴이 바뀌어, 그 뒤 도구로 지은 모듈을 그보다 옛 런타임에서 돌리면 초기화 중에 죽는다.
-#   `-NoUpgrade` 칸별 설명과 설치 창의 「올리기」 칸 글자가 이 판을 글자로 든다 — 옮기면 그 둘도 고친다.
+#   설치 창의 「올리기」 칸 글자는 이 값을 `-Describe` 의 `vcruntime-min|` 줄로 받는다. `-NoUpgrade` 칸별 설명은 이 판을 글자로 든다 —
+#   옮기면 그것도 고친다.
 $VcRuntimeMin = [version]'14.40'
 # winget · 설치본이 낸 값 가운데 뜻이 정해진 것(결정 0146 — winget 「Return codes」 · Windows Installer 오류 값). 올랐나는 파일의 판이
 #   가르고, 이 값들은 안 오른 까닭의 말만 고른다.
@@ -768,6 +786,20 @@ function Test-AutoRunTask([string]$Name) {
   return (Test-ScheduledTaskExists $Name)
 }
 
+# 깃발 없는 판의 자동 실행 — 짐의 `#autorun` 지시로 켬(`$true`) · 걷음(`$false` — 지시가 `no`) · 그대로 둠(`$null`)을 낸다. 「자동
+#   실행을 켜나」 칸이 `-AutoRun` · `-NoAutoRun` 이 없을 때 이 답을 쓰고, `-Describe` 가 같은 답을 `autorun|on·off` 로 내 설치 창의 칸이
+#   그대로 뜬다(그대로 둠은 작업이 있나로) — 창이 규칙을 따로 지으면 지시가 `no` 인 판에서 둘이 갈린다(PAISetup #46 ③).
+# ⚠ **`yes` 여도 사람이 끈 PC 는 다시 안 켠다** — 짐이 늘 `yes` 를 실어 지시만으로는 끈 것을 못 기억한다. 끈 기록(`$AutoRunOffRecord`)이
+#   있고 작업이 없으면 그대로 둠이다. 작업이 서 있으면 기록보다 작업이 이긴다. 지시가 없어도 그대로 둠이다.
+function Get-AutoRunDefault([string]$Directive) {
+  if ($Directive -eq 'yes') {
+    if (-not (Test-Path -LiteralPath $AutoRunOffRecord) -or (Test-AutoRunTask $AutoRunTaskName) -or (Test-AutoRunTask $AutoRunNightTaskName)) { return $true }
+    return $null
+  }
+  if ($Directive -eq 'no') { return $false }
+  return $null
+}
+
 #endregion 프로세스
 
 #region 파일 — 값 파일을 읽고, 백업 자리와 설정 저장소를 받는 자리를 잡고, 나른 파일 수를 센다
@@ -919,6 +951,109 @@ function Get-FreePath([string]$Path) {
   $p = $Path; $i = 2
   while (Test-Path -LiteralPath $p) { $p = "$Path-$i"; $i++ }
   return $p
+}
+
+# 바이트를 글로 — `[IO.File]::ReadAllText` 와 같은 자다(UTF-8 · 앞의 BOM 을 읽고 뺀다). 쓰는 손(`Write-FileSafely`)에 넘길 원래 바이트와
+#   읽은 글이 한 번 읽은 것에서 나오게, 부르는 쪽은 바이트를 한 번 읽고 이것으로 글을 얻는다.
+function Read-TextOf([byte[]]$Bytes) {
+  $sr = New-Object IO.StreamReader((New-Object IO.MemoryStream(, $Bytes)), [Text.Encoding]::UTF8, $true)
+  try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
+}
+
+# 설정 · 장부 · 기록 파일을 갈아 끼워 쓴다 — 설치기가 사람과 같이 쓰는 파일을 쓰는 손은 이것 하나다(PAISetup #44 ⑱).
+# 받는 것 — 자리 · 새 바이트 · 원래 바이트(부르는 쪽이 읽어 둔 것 · 그때 파일이 없었으면 $null) · 끼우기 전에 곁 파일을 재는 손(`$Check` —
+#   곁 파일 자리를 받아 참이면 끼운다 · 안 주면 안 잰다).
+# 내는 것 — @{ Did; Why }. Did — same(원래와 같아 안 썼다) · written · raced(재는 사이 다른 프로그램이 고쳤거나 지었다 — 안 썼다) ·
+#   overrun(썼는데 되읽으니 다른 글이다 — 그 사이 다른 프로그램이 썼다 · 그 글을 둔다) · refused(`$Check` 가 거절했다 — 안 썼다) ·
+#   linked(그 자리가 링크다 — 안 썼다) · left(못 썼다 — Why 가 까닭과 원래 파일을 되돌렸나를 든다). 화면 줄은 부르는 쪽이 든다 — 못 지운
+#   임시 사본 줄만 여기서 낸다. linked 는 노란 줄이다 — 사람이 둔 꼴이라 실패가 아니고, 그 자리는 그 사람이 손으로 맞춘다.
+# · 곁 파일(`<자리>.paisetup-<무작위>.new`)에 다 쓴 뒤 `File.Replace` 로 끼우고 원래 파일은 곁 사본(`….old`)으로 받는다 — 쓰다 멎어도
+#   반쪽 파일이 제자리에 안 남는다. 원래 파일이 없던 판은 그 자리가 아직 비었을 때만 옮겨 놓는다
+# · 끼울 때마다 원래 바이트와 다시 견준다 — 재는 사이 · 기다리는 사이 다른 프로그램(그 도구 · 사람의 편집기)이 고친 글을 말없이 덮지
+#   않는다. 잠깐 붙잡힌 파일(백신 · 색인 · 동기화)은 세 번까지 다시 끼운다
+# · 끼우다 지면 곁 사본을 제자리로 옮기고, 못 옮기면 쥐고 있던 원래 바이트를 쓴다(곁 사본은 둔다). 곁 사본은 제자리의 파일이 우리가
+#   아는 글(원래 글 · 새 글)일 때만 걷는다 — 아니면 그것이 원래 글의 하나뿐인 사본일 수 있다
+# · 링크는 안 건드린다(linked) — 재분석 지점(심볼릭 링크 · 정션)은 갈아 끼우면 링크가 끊기고, 하드 링크는 갈아 끼우면 다른 이름이 옛 글을 든 채
+#   갈라진다(어느 쪽이든 말없이). `Set-CodexSandboxKey` 와 같은 자다 — 링크 자리는 그 사람이 손으로 맞춘다. 하드 링크는 파워셸이 그 파일에
+#   붙이는 `LinkType`(이름이 둘 이상이면 HardLink)으로 가린다
+# ⚠ **곁 사본 자리를 꼭 준다** — 안 주면 끼우기가 중간에 질 때(ERROR_UNABLE_TO_MOVE_REPLACEMENT) 원래 파일이 사라진다.
+# ⚠ **원래 바이트는 메서드의 반환을 바로 받아 넘긴다** — `$x = if (…) { [IO.File]::ReadAllBytes(…) }` 처럼 파이프를 지나면 바이트 목록이
+#   풀려 빈 파일은 $null(「없던 파일」)이 되고 나머지는 글자 목록이 된다.
+function Write-FileSafely([string]$Path, [byte[]]$New, $Old, [scriptblock]$Check) {
+  $oldB64 = if ($null -ne $Old) { [Convert]::ToBase64String([byte[]]$Old) } else { $null }
+  $newB64 = [Convert]::ToBase64String($New)
+  if ($null -ne $oldB64 -and $oldB64 -ceq $newB64) { return @{ Did = 'same' } }
+  $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+  if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return @{ Did = 'linked'; Why = '그 자리가 링크(재분석 지점)다 — 갈아 끼우면 링크가 끊겨 안 썼다' } }
+  if ($item -and -not $item.PSIsContainer -and [string]$item.LinkType -ceq 'HardLink') { return @{ Did = 'linked'; Why = '그 파일이 하드 링크다 — 갈아 끼우면 다른 이름과 갈라져 안 썼다' } }
+  if ($item -and $item.PSIsContainer) { return @{ Did = 'left'; Why = '그 자리가 폴더다' } }
+  $tag = "$Path.paisetup-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+  $side = "$tag.new"; $bak = "$tag.old"
+  $out = @{ Did = 'written' }
+  try {
+    New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force | Out-Null
+    [IO.File]::WriteAllBytes($side, $New)
+    if ($Check -and -not (& $Check $side)) { return @{ Did = 'refused'; Why = '쓸 글을 재니 그 뜻이 아니다' } }
+    for ($i = 1; ; $i++) {
+      $now = $null
+      if (Test-Path -LiteralPath $Path -PathType Leaf) { $now = [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) }
+      if ($now -cne $oldB64) {
+        return @{ Did = 'raced'; Why = $(if ($null -eq $oldB64) { '쓰려는 사이 다른 프로그램이 그 자리에 파일을 지었다' } else { '재는 사이 다른 프로그램이 그 파일을 고쳤다' }) }
+      }
+      try {
+        if ($null -eq $oldB64) { [IO.File]::Move($side, $Path) } else { [IO.File]::Replace($side, $Path, $bak) }
+        break
+      } catch [IO.IOException] {
+        if ($i -ge 3 -or ($null -ne $oldB64 -and -not (Test-Path -LiteralPath $Path))) { throw }
+        Start-Sleep -Milliseconds 300
+      }
+    }
+    # 끼운 뒤에는 원래 글로 덮어쓰지 않는다 — 되읽은 글이 다르면 그 사이 다른 프로그램이 쓴 것이라 그 글을 둔다
+    $back = try { [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) } catch { $null }
+    if ($null -ne $back -and $back -cne $newB64) { $out = @{ Did = 'overrun'; Why = '쓴 뒤 되읽으니 다른 글이다 — 그 사이 다른 프로그램이 썼다' } }
+  } catch {
+    $why = "못 썼다 ($($_.Exception.Message))"
+    if ($null -ne $oldB64 -and -not (Test-Path -LiteralPath $Path)) {
+      $restored = $false
+      if (Test-Path -LiteralPath $bak) { try { Move-Item -LiteralPath $bak -Destination $Path; $restored = $true } catch { } }
+      if (-not $restored) { try { [IO.File]::WriteAllBytes($Path, [byte[]]$Old); $restored = $true } catch { } }
+      $why += $(if ($restored) { ' — 끼우다 진 자리를 원래 파일로 되돌렸다' } else { " — 원래 파일을 못 되돌렸다$(if (Test-Path -LiteralPath $bak) { " · 원래 글은 $bak 에 있다" })" })
+    }
+    return @{ Did = 'left'; Why = $why }
+  } finally {
+    $cur = try { [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) } catch { $null }
+    $known = $null -ne $cur -and ($cur -ceq $newB64 -or $cur -ceq $oldB64)
+    foreach ($f in @($side) + @(if ($known) { $bak })) {
+      for ($j = 0; $j -lt 3 -and (Test-Path -LiteralPath $f); $j++) {
+        if ($j) { Start-Sleep -Milliseconds 300 }
+        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+      }
+      if (Test-Path -LiteralPath $f) { Write-Host "  ! 임시 사본이 남았다 — 그 파일의 글을 그대로 든 사본이라 손으로 지운다: $f" -ForegroundColor Yellow }
+    }
+  }
+  return $out
+}
+
+# 홈 설정 씨앗을 읽는다 — 짐에 실린 `vdi-home-settings.json`(claude-config 의 그 파일을 뽑은 것). 받는 것: 자리. 내는 것 — @{ Obj = <맨 위 표 ·
+#   못 읽었으면 $null>; Why = <못 읽은 까닭> }. 「Claude 홈 설정」이 그 파일이 없을 때 이것으로 짓고, 기능 스위치(`$Features`)가 그 `env` 를 읽는다.
+function Read-HomeSeed([string]$Path) {
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return @{ Obj = $null; Why = "씨앗이 없다 ($Path)" } }
+  $o = $null
+  try { $o = [IO.File]::ReadAllText($Path) | ConvertFrom-Json } catch { return @{ Obj = $null; Why = "씨앗을 JSON 으로 못 읽었다 ($Path)" } }
+  if ($o -isnot [System.Management.Automation.PSCustomObject]) { return @{ Obj = $null; Why = "씨앗의 맨 위가 표가 아니다 ($Path)" } }
+  return @{ Obj = $o; Why = '' }
+}
+
+# 씨앗의 `env` 를 기능 스위치 표(이름 → 글)로 낸다 — 못 읽은 씨앗은 $null 이다(빈 표가 아니다 — 빈 표면 장부가 우리 스위치를 다 걷는다).
+#   글이 아닌 값은 그 JSON 글로 옮긴다(env 의 값은 글이다).
+function Get-SeedSwitches($Seed) {
+  if (-not $Seed -or -not $Seed.Obj) { return $null }
+  $out = [ordered]@{}
+  $e = $Seed.Obj.PSObject.Properties['env']
+  if ($e -and $e.Value -is [System.Management.Automation.PSCustomObject]) {
+    foreach ($p in $e.Value.PSObject.Properties) { $out[$p.Name] = $(if ($p.Value -is [string]) { $p.Value } else { [string]($p.Value | ConvertTo-Json -Compress) }) }
+  }
+  return $out
 }
 
 # 설정 저장소를 받는 자리 — 주소의 끝 이름을 `$configRepoRoot` 아래에 붙여 낸다. 「설정 저장소」 걸음이 clone 하는 자리이자, 씨앗
@@ -1501,6 +1636,513 @@ function New-CountCheck([string]$Name, [string]$From, [string]$To) {
 
 #endregion 파일
 
+#region 장부 — 설치기가 심은 것을 적고, 선언 · 장부 · 지금 값으로 그 자리를 맞추고(심기 · 걷기 · 사람 값은 두고 알리기), 끝 검증이 장부와 실물을 견준다
+
+# 장부의 꼴(`$ClaudePlantLedger` · PAISetup #44) — UTF-8(BOM 없음) · 첫 줄은 머리(`Read-PlantLedger` 의 Head · 첫 쓰기가 세운다 —
+#   `Save-PlantLedger` 의 ⚠), 그 뒤 한 줄에 하나씩 `자리<탭>그 안의 자리<탭>이름<탭>심은 손<탭>값`.
+#   · 자리 — user-env(사용자 환경) · settings-env(홈 settings.json 의 env) · settings(홈 settings.json 의 맨 위 키와 permissions) ·
+#     tool(도구 설정 파일의 키)
+#   · 그 안의 자리 — 사용자 환경은 `HKCU`, 파일은 그 자리(홈 아래면 `~\…`)에 표가 있으면 `|표이름`
+#   · 심은 손 — 그 줄을 선언하는 무리: agy-model · ccbg · values(「키와 값」) · env-push · features · model-picker · permissions
+#     (「Claude 홈 설정」) · autorun · codex-sandbox(「도구별 홈」). `seen` 은 우리가 알린 사람 값이다 — 같은 값을 판마다 다시 알리지 않으려고 적는다
+#   · 값 — 그 자리에 심은 글(JSON 칸의 표 · 참거짓은 압축 JSON 글). 탭 · 줄바꿈이 든 값은 안 적는다 — 그 값은 우리 것으로 못 알아본다
+# ⚠ **permissions 의 두 줄(`defaultMode` · `allow`)은 옛 꼴 `키<탭>값` 으로 쓴다** — 설정 저장소의 세션 훅(`home_settings_seed`)이 그 꼴을 읽어
+#   홈을 씨앗으로 덮을 때 우리 권한을 넘겨 준다(claude-config 결정 0119). 머리 없는 파일은 옛 판의 기록이다 — 두 칸 줄을 permissions
+#   줄로 읽고, 이 판이 장부를 처음 세우는 판(`Migrating`)으로 본다.
+# ⚠ **비밀은 안 적는다** — 회사 키와 그 별칭(`$SettingsEnvSkip`)은 값으로 임자를 가른다(`Test-CompanyKey`). 적으면 평문이 하나 더 는다.
+# 장부 손(`Sync-Planted`)은 값으로 임자를 가르는 손(회사 키 · 우리 주소 · 오늘 표 · 오늘 값 파일 — 첫 물결)이 그 판에 이미 가른 이름에는
+#   기록만 잇는다(`-Owned`) — 그 손이 못 보는 것(표 · 값 파일에서 빠진 이름 · 바뀐 값 · 끈 자리)을 장부가 든다.
+
+# 두 글이 글자까지 같은가 — 순서 견줌(ordinal)이다. 빈 값($null)은 빈 값과만 같다. `-ceq` 는 문화권 견줌이라 앞에 붙은 BOM(U+FEFF) 같은
+#   빈 글자를 건너뛴다(`Read-CompanyKeyBlob` 의 ⚠).
+function Test-SameText($A, $B) {
+  if ($null -eq $A -or $null -eq $B) { return ($null -eq $A -and $null -eq $B) }
+  return [string]::Equals([string]$A, [string]$B, [StringComparison]::Ordinal)
+}
+
+# 장부의 「그 안의 자리」 — 파일 자리를 홈(`USERPROFILE`) 아래면 `~\…` 로 적고, 표가 있으면 `|표` 를 붙인다(`|` 는 윈도 경로에 못 선다).
+#   `ConvertFrom-LedgerAt` 이 거꾸로 푼다 — @{ Path; Under }.
+function ConvertTo-LedgerAt([string]$Path, [string]$Table) {
+  if (-not $Path) { return '' }
+  $h = [IO.Path]::GetFullPath($env:USERPROFILE).TrimEnd('\') + '\'
+  $p = try { [IO.Path]::GetFullPath($Path) } catch { $Path }
+  if ($p.StartsWith($h, [StringComparison]::OrdinalIgnoreCase)) { $p = '~\' + $p.Substring($h.Length) }
+  if ($Table) { return "$p|$Table" }
+  return $p
+}
+function ConvertFrom-LedgerAt([string]$At) {
+  $under = ''
+  $i = $At.IndexOf('|')
+  if ($i -ge 0) { $under = $At.Substring($i + 1); $At = $At.Substring(0, $i) }
+  if ($At.StartsWith('~\')) { $At = Join-Path $env:USERPROFILE $At.Substring(2) }
+  return @{ Path = $At; Under = $under }
+}
+
+# 장부를 읽는다 — 받는 것: 자리. 내는 것 — @{ Path; Head; Rows(줄 목록 — @{ Place; At; Name; By; Value }); Bytes(읽은 바이트 · 없으면 $null);
+#   Migrating(머리가 없다 — 이 판이 처음 세운다); Why(못 읽은 까닭 · 읽었으면 빈 글) }. 꼴에 안 맞는 줄은 버린다(다음 쓰기에 사라진다).
+#   못 읽은 장부(Why)는 쓰지 않는다(`Save-PlantLedger`) — 쓰면 그 줄들이 사라진다. 그 판은 기록 없이 심기만 한다.
+function Read-PlantLedger([string]$Path) {
+  $L = @{ Path = $Path; Rows = New-Object System.Collections.Generic.List[hashtable]; Bytes = $null; Migrating = $true; Why = ''
+          Head = '# PAISetup 장부 2 — 설치기가 심은 것: 자리 · 그 안의 자리 · 이름 · 심은 손 · 값 (탭으로 가른다 · 설치기가 판마다 다시 쓴다 · 손으로 고치지 않는다)' }
+  if (-not $Path) { $L.Why = '장부 자리가 안 섰다'; return $L }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $L }
+  try { $L.Bytes = [IO.File]::ReadAllBytes($Path) } catch { $L.Why = Say-Why $_; return $L }
+  $mark = $L.Head.Substring(0, $L.Head.IndexOf(' —'))
+  $homeAt = ConvertTo-LedgerAt (Join-Path $homeDir 'settings.json')
+  foreach ($ln in @((Read-TextOf $L.Bytes) -split "`r?`n")) {
+    if (-not $ln) { continue }
+    if ($ln.StartsWith('#')) { if ($ln.StartsWith($mark)) { $L.Migrating = $false }; continue }
+    $f = $ln.Split("`t")
+    if ($f.Count -eq 5 -and $f[0] -and $f[2] -and $f[3]) {
+      $L.Rows.Add(@{ Place = $f[0]; At = $f[1]; Name = $f[2]; By = $f[3]; Value = $f[4] })
+    } elseif ($f.Count -eq 2 -and $f[0] -and $f[1]) {
+      $L.Rows.Add(@{ Place = 'settings'; At = $homeAt; Name = "permissions.$($f[0])"; By = 'permissions'; Value = $f[1] })
+    }
+  }
+  return $L
+}
+
+# 이 판의 장부를 읽는다 — 처음 세우는 판인가(Migrating)는 판의 첫 읽기(「키와 값」 · `$script:LedgerMigrating` 를 세운다)가 한 번 정하고, 뒤
+#   걸음은 머리가 선 장부를 읽어도 그 판정을 잇는다 — 첫 쓰기가 머리를 세우므로(`Save-PlantLedger` 의 ⚠) 판정을 걸음마다 다시 하면 같은 판의
+#   뒤 걸음이 옛 판이 심은 값을 안 받는다. 첫 읽기가 없는 판(걸음 하나만 떼어 돌린 판)은 그 장부의 머리로 가른다.
+function Read-RunLedger([string]$Path) {
+  $L = Read-PlantLedger $Path
+  if ($null -ne $script:LedgerMigrating) { $L.Migrating = [bool]$script:LedgerMigrating }
+  return $L
+}
+
+# 장부를 쓴다 — 받는 것: 장부. 머리를 세우고 줄을 한 차례로 늘어 쓴다(같으면 안 쓴다). 내는 것 — 썼거나 같으면 $true.
+#   못 쓰면 노란 줄과 $false 다 — 이 판에 심은 것을 다음 판이 사람 값으로 읽어 안 걷을 수 있다(우리 것을 남의 것으로 세는 쪽으로만 진다).
+# ⚠ **머리는 첫 쓰기가 세운다** — 머리가 곧 「처음 세우는 판이 지났다」는 표지다. 판이 중간에 져도 그 앞 걸음이 쓴 줄은 우리가 심은 것이라,
+#   다음 판이 다시 처음 세우는 판이 되면 그 사이 사람이 고친 값을 옛 판의 값으로 받아 덮는다(PAISetup #44 끝 조건 「앞 판이 중간에 진 뒤」).
+#   같은 판의 뒤 걸음은 머리가 선 장부를 읽어도 그 판의 판정을 잇는다(`Read-RunLedger`).
+function Save-PlantLedger($Ledger) {
+  if ($Ledger.Why) { return $false }
+  $homeAt = ConvertTo-LedgerAt (Join-Path $homeDir 'settings.json')
+  $lines = foreach ($r in @($Ledger.Rows | Sort-Object -CaseSensitive -Property @{ Expression = { "$($_.Place)`t$($_.At)`t$($_.Name)`t$($_.By)`t$($_.Value)" } })) {
+    if ($r.Place -ceq 'settings' -and $r.At -ceq $homeAt -and $r.By -ceq 'permissions' -and $r.Name -cmatch '^permissions\.(defaultMode|allow)$') {
+      "$($Matches[1])`t$($r.Value)"
+    } else {
+      "$($r.Place)`t$($r.At)`t$($r.Name)`t$($r.By)`t$($r.Value)"
+    }
+  }
+  $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes(((@($Ledger.Head) + @($lines)) -join "`n") + "`n")
+  $w = Write-FileSafely $Ledger.Path $bytes $Ledger.Bytes
+  if ($w.Did -ceq 'written' -or $w.Did -ceq 'same') { $Ledger.Bytes = $bytes; return $true }
+  if ($w.Did -ceq 'overrun') { try { $Ledger.Bytes = [IO.File]::ReadAllBytes($Ledger.Path) } catch { } }
+  Write-Host "  ! 장부를 못 썼다 — $($w.Why) · 다음 판은 이번에 심은 것을 사람 값으로 읽어 안 걷을 수 있다 ($($Ledger.Path))" -ForegroundColor Yellow
+  $script:LedgerSaveWhy = $w.Why
+  return $false
+}
+
+# 장부 줄을 다룬다 — 한 자리 · 그 안의 자리 · 심은 손의 줄을 고르고(`Find-LedgerRows`), 한 이름의 줄을 갈고(`Set-LedgerRow` — 목록 칸이 아닌
+#   이름), 줄을 더한다(`Add-LedgerRow` — 같은 줄이 있으면 안 더한다). 탭 · 줄바꿈이 든 값은 안 적고 그렇다고 말한다.
+#   `Get-LedgerSlice` · `Set-LedgerSlice` 는 한 자리의 줄을 떠 두고 되돌린다 — 그 자리를 못 썼으면 장부가 실물보다 앞서지 않게 한다.
+function Find-LedgerRows($Ledger, [string]$Place, [string]$At, [string]$By) {
+  return @($Ledger.Rows | Where-Object { $_.Place -ceq $Place -and $_.At -ceq $At -and $_.By -ceq $By })
+}
+function Add-LedgerRow($Ledger, [string]$Place, [string]$At, [string]$Name, [string]$By, [string]$Value) {
+  if ($Value -match "[`t`r`n]" -or $Name -match "[`t`r`n]") { Write-Host "  ($Name — 탭 · 줄바꿈이 든 값이라 장부에 못 적는다 · 다음 판은 이 값을 우리 것으로 못 알아본다)" -ForegroundColor DarkGray; return }
+  foreach ($r in $Ledger.Rows) {
+    if ($r.Place -ceq $Place -and $r.At -ceq $At -and $r.Name -ceq $Name -and $r.By -ceq $By -and (Test-SameText $r.Value $Value)) { return }
+  }
+  $Ledger.Rows.Add(@{ Place = $Place; At = $At; Name = $Name; By = $By; Value = $Value })
+}
+function Set-LedgerRow($Ledger, [string]$Place, [string]$At, [string]$Name, [string]$By, [string]$Value) {
+  foreach ($r in @($Ledger.Rows | Where-Object { $_.Place -ceq $Place -and $_.At -ceq $At -and $_.Name -ceq $Name -and $_.By -ceq $By })) { [void]$Ledger.Rows.Remove($r) }
+  Add-LedgerRow $Ledger $Place $At $Name $By $Value
+}
+function Get-LedgerSlice($Ledger, [string[]]$Places, [string]$At) {
+  return @($Ledger.Rows | Where-Object { $Places -ccontains $_.Place -and (-not $At -or $_.At -ceq $At) } | ForEach-Object { $_.Clone() })
+}
+function Set-LedgerSlice($Ledger, [string[]]$Places, [string]$At, [object[]]$Rows) {
+  foreach ($r in @($Ledger.Rows | Where-Object { $Places -ccontains $_.Place -and (-not $At -or $_.At -ceq $At) })) { [void]$Ledger.Rows.Remove($r) }
+  foreach ($r in @($Rows)) { $Ledger.Rows.Add($r) }
+}
+
+# 자리마다 표가 준 값 — 받는 것: 자리마다 `[ordered]@{<이름> = <값>}` 인 표들(`$AgyModelVarsBySite` 꼴). 내는 것 — 이름 → 어느 자리든 그 이름에
+#   준 값 목록. 맡기기 러너 값이 오늘 표의 값인가를 묻는 자리(걷는 손 · settings.json 의 러너 사본 · 장부 손의 `-Owned`)가 이것 하나로 묻는다.
+function Get-SiteValues([object[]]$Tables) {
+  $vals = @{}
+  foreach ($bySite in @($Tables)) {
+    if (-not $bySite) { continue }
+    foreach ($s in @($bySite.Keys | Sort-Object)) {
+      foreach ($k in @($bySite[$s].Keys)) {
+        if (-not $vals.ContainsKey($k)) { $vals[$k] = @() }
+        $vals[$k] += [string]$bySite[$s][$k]
+      }
+    }
+  }
+  return $vals
+}
+
+# 장부 손 — 한 자리 · 한 손(`$By`)의 선언 · 장부 · 지금 값으로 그 자리를 맞춘다.
+# 받는 것 —
+#   · 장부(`Read-PlantLedger`) · 자리(`$Place` · `$At` — 장부 칸 그대로) · 심은 손 이름 · 선언(`$Want` — 이름 → 값 글 · `-List` 면 이름 → 값 글 목록)
+#   · 자리를 읽고 쓰는 손 셋 — `$Get`(이름 → $null 없음 · 글 · `@{ Unread = 까닭 }` 못 읽음 · `-List` 면 `@{ List = 글 목록 }`) · `$Set`(이름 · 값 →
+#     참이면 섰다) · `$Remove`(이름 · 값 → 참이면 걷었다)
+#   · 맞추는 꼴(`$Mode`) — overwrite 는 선언이 이긴다(지금 값이 달라도 덮는다 · 같은 값은 우리 것으로 적는다), guard 는 사람 값이 이긴다(장부의
+#     우리 값 그대로일 때만 바꾸고, 다른 값은 두고 알린다)
+#   · `$Plant`(거짓이면 없는 이름을 안 심는다 — 심는 손이 따로 있는 자리) · `$Adopt`(guard 꼴에서 같은 값을 우리 것으로 적을 이름 — 이 판이
+#     방금 심었거나, 장부를 처음 세우는 판) · `$Complete`(선언이 이 손의 전부인가 — 거짓이면 아무것도 안 걷는다) · `$Hold`(이번 판에 못 가른
+#     이름 — 안 걷는다) · `$Owned`(이름 · 지금 값 → 참이면 값으로 가르는 손이 이 판에 이미 가른 이름 — 장부는 기록만 잇는다) ·
+#     `$Names`(주면 이 이름들의 줄만 본다 — 한 손의 줄을 칸마다 나눠 맞출 때)
+#   · 화면 — `$Label`(이름 → 글) · `$Where`(줄 끝 괄호) · `-Speak`(심고 걷은 줄을 여기서 찍는다 — 안 주면 쓰는 손이 찍는다) ·
+#     `-SayKept`(사람 값이라 둔 줄을 판마다 찍는다) · `-ShowValue`(그 줄에 사람 값을 찍는다 — 비밀이 아닌 자리만)
+# 내는 것 — @{ Planted; Replaced; Removed; Kept; Failed; Unread }(이름 목록). 장부는 메모리에서만 고친다 — 쓰는 것은 부르는 쪽이 그 자리를
+#   다 쓴 뒤 `Save-PlantLedger` 로 한다(자리보다 장부가 앞서지 않게).
+# 규칙 — 선언에 든 이름: 지금 값이 선언과 같으면 둔다(overwrite 꼴 · `$Adopt` 이름은 우리 것으로 적는다) · 없으면 심고 적는다 · 다르면 장부의
+#   우리 값 그대로일 때 바꾸고 적는다 — 아니면 overwrite 꼴은 덮고 적고, guard 꼴은 사람 값으로 두고 알린다. 장부에만 든 이름(선언이 전부일
+#   때만): 지금 값이 장부의 값 그대로면 걷는다 · 다르면 사람이 바꾼 것이라 두고 그 이름을 한 번 대고 장부에서 뺀다 · 없으면 장부에서만 뺀다.
+# ⚠ **넘기는 손 안에서 이 함수의 이름을 쓰지 않는다** — 손은 부르는 쪽의 변수를 그대로 본다(동적 범위). 이 함수의 지역 이름은 `sp` 로 시작한다.
+function Sync-Planted {
+  param($Ledger, [string]$Place, [string]$At, [string]$By, [System.Collections.IDictionary]$Want,
+        [scriptblock]$Get, [scriptblock]$Set, [scriptblock]$Remove,
+        [ValidateSet('overwrite', 'guard')][string]$Mode = 'overwrite', [bool]$Plant = $true, [string[]]$Adopt = @(),
+        [bool]$Complete = $true, [string[]]$Hold = @(), [scriptblock]$Owned, [switch]$List, [string[]]$Names,
+        [System.Collections.IDictionary]$Label = @{}, [string]$Where = '', [switch]$Speak, [switch]$SayKept, [switch]$ShowValue)
+  $spRes = @{ Planted = @(); Replaced = @(); Removed = @(); Kept = @(); Failed = @(); Unread = @() }
+  $spTail = if ($Where) { " ($Where)" } else { '' }
+  $spMine = @(Find-LedgerRows $Ledger $Place $At $By)
+  if ($Names) { $spMine = @($spMine | Where-Object { $Names -ccontains $_.Name }) }
+  if ($List) {
+    foreach ($spN in @($Want.Keys)) {
+      $spNm = if ($Label.Contains($spN)) { $Label[$spN] } else { $spN }
+      foreach ($spD in @($Want[$spN])) {
+        $spCur = & $Get $spN
+        if ($spCur -and $spCur.Unread) { $spRes.Unread += $spN; Write-Host "  ! $spNm — $($spCur.Unread) · 안 건드렸다$spTail" -ForegroundColor Yellow; break }
+        $spHave = @(if ($spCur) { $spCur.List })
+        $spRow = @($spMine | Where-Object { $_.Name -ceq $spN -and (Test-SameText $_.Value $spD) }) | Select-Object -First 1
+        if ($spHave -ccontains $spD) {
+          if (-not $spRow -and ($Mode -ceq 'overwrite' -or $Adopt -ccontains $spN)) { Add-LedgerRow $Ledger $Place $At $spN $By $spD }
+          continue
+        }
+        if (-not $Plant) { continue }
+        if (& $Set $spN $spD) {
+          Add-LedgerRow $Ledger $Place $At $spN $By $spD
+          $spRes.Planted += $spN
+          if ($Speak) { Write-Host "  $spNm — 심었다 ($spD)$spTail" -ForegroundColor Green }
+        } else { $spRes.Failed += $spN }
+      }
+    }
+    if ($Complete) {
+      foreach ($spRow in $spMine) {
+        if ($Want.Contains($spRow.Name) -and @($Want[$spRow.Name]) -ccontains $spRow.Value) { continue }
+        if ($Hold -ccontains $spRow.Name) { continue }
+        $spNm = if ($Label.Contains($spRow.Name)) { $Label[$spRow.Name] } else { $spRow.Name }
+        $spCur = & $Get $spRow.Name
+        if ($spCur -and $spCur.Unread) { $spRes.Unread += $spRow.Name; continue }
+        if (@(if ($spCur) { $spCur.List }) -ccontains $spRow.Value) {
+          if (& $Remove $spRow.Name $spRow.Value) {
+            [void]$Ledger.Rows.Remove($spRow); $spRes.Removed += $spRow.Name
+            if ($Speak) { Write-Host "  $spNm — 걷었다 (우리가 심은 $($spRow.Value) · 이번에는 안 심는다)$spTail" -ForegroundColor Green }
+          } else { $spRes.Failed += $spRow.Name }
+        } else {
+          [void]$Ledger.Rows.Remove($spRow)
+          Write-Host "  $spNm — 사람이 걷어 둔다 (우리 기록에서만 뺐다)$spTail"
+        }
+      }
+    }
+    return $spRes
+  }
+  foreach ($spN in @($Want.Keys)) {
+    $spNm = if ($Label.Contains($spN)) { $Label[$spN] } else { $spN }
+    $spD = [string]$Want[$spN]
+    $spC = & $Get $spN
+    if ($spC -is [hashtable]) { $spRes.Unread += $spN; Write-Host "  ! $spNm — $($spC.Unread) · 안 건드렸다$spTail" -ForegroundColor Yellow; continue }
+    $spRow = @($spMine | Where-Object { $_.Name -ceq $spN }) | Select-Object -First 1
+    $spOurs = [bool]($spRow -and $null -ne $spC -and (Test-SameText $spRow.Value $spC))
+    if ($null -ne $spC -and (Test-SameText $spC $spD)) {
+      if ($spRow -and (Test-SameText $spRow.Value $spD)) { continue }
+      if ($Mode -ceq 'overwrite' -or $Adopt -ccontains $spN) { Set-LedgerRow $Ledger $Place $At $spN $By $spD }
+      elseif ($spRow) { [void]$Ledger.Rows.Remove($spRow) }
+      continue
+    }
+    if ($null -eq $spC -and -not $Plant) { if ($spRow) { [void]$Ledger.Rows.Remove($spRow) }; continue }   # 심는 손이 따로다 — 사라진 값은 장부에서만 뺀다
+    if ($null -ne $spC -and -not $spOurs -and ($Mode -ceq 'guard' -or -not $Plant)) {
+      $spRes.Kept += $spN
+      if ($SayKept) { Write-Host "  $spNm — 사람이 정한 값$(if ($ShowValue) { "($spC)" })이라 둔다$spTail" }
+      if ($spRow) { [void]$Ledger.Rows.Remove($spRow) }
+      continue
+    }
+    if (& $Set $spN $spD) {
+      Set-LedgerRow $Ledger $Place $At $spN $By $spD
+      if ($null -eq $spC) { $spRes.Planted += $spN } else { $spRes.Replaced += $spN }
+      if ($Speak) {
+        $spDid = if ($null -eq $spC) { '심었다' } elseif ($spOurs) { '우리가 심은 옛 값을 새 값으로 바꿨다' } else { '맞췄다' }
+        Write-Host "  $spNm — $spDid$spTail" -ForegroundColor Green
+      }
+    } else { $spRes.Failed += $spN }
+  }
+  if ($Complete) {
+    foreach ($spRow in $spMine) {
+      if ($Want.Contains($spRow.Name) -or $Hold -ccontains $spRow.Name) { continue }
+      $spNm = if ($Label.Contains($spRow.Name)) { $Label[$spRow.Name] } else { $spRow.Name }
+      $spC = & $Get $spRow.Name
+      if ($spC -is [hashtable]) { $spRes.Unread += $spRow.Name; continue }
+      if ($null -eq $spC) { [void]$Ledger.Rows.Remove($spRow); continue }
+      $spSame = Test-SameText $spC $spRow.Value
+      if ($Owned -and (& $Owned $spRow.Name $spC)) { if (-not $spSame) { [void]$Ledger.Rows.Remove($spRow) }; continue }
+      if ($spSame) {
+        if (& $Remove $spRow.Name $spRow.Value) {
+          [void]$Ledger.Rows.Remove($spRow); $spRes.Removed += $spRow.Name
+          if ($Speak) { Write-Host "  $spNm — 걷었다 (우리가 심은 값 · 이번에는 안 심는다)$spTail" -ForegroundColor Green }
+        } else { $spRes.Failed += $spRow.Name }
+      } else {
+        $spRes.Kept += $spRow.Name
+        Write-Host "  $spNm — 우리가 심은 뒤 사람이 바꾼 값이라 둔다 (우리 기록에서만 뺐다)$spTail"
+        [void]$Ledger.Rows.Remove($spRow)
+      }
+    }
+  }
+  return $spRes
+}
+
+# 홈 settings.json 의 한 칸을 장부 손의 꼴로 읽는다 — 받는 것: 읽은 표 · 자리(settings-env 면 `env` 의 이름, settings 면 `modelPicker` ·
+#   `permissions.defaultMode` · `permissions.allow`) · 이름. 내는 것 — 없음 $null · 값 글(글이 아닌 값은 압축 JSON) · `permissions.allow` 는
+#   `@{ List = 글 목록 }` · 꼴이 틀린 칸은 `@{ Unread = 까닭 }`. 키 이름은 설치기의 다른 칸처럼 대소문자를 안 가린다.
+function Get-SettingsSlot($Cfg, [string]$Place, [string]$Name) {
+  $text = { param($v) if ($v -is [string]) { $v } else { [string]($v | ConvertTo-Json -Depth 10 -Compress) } }
+  if ($Place -ceq 'settings-env') {
+    $e = $Cfg.PSObject.Properties['env']
+    if (-not $e) { return $null }
+    if ($e.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Unread = 'env 가 표가 아니다' } }
+    $p = $e.Value.PSObject.Properties[$Name]
+    if (-not $p) { return $null }
+    return (& $text $p.Value)
+  }
+  if ($Name -ceq 'modelPicker') {
+    $p = $Cfg.PSObject.Properties['modelPicker']
+    if (-not $p) { return $null }
+    return (& $text $p.Value)
+  }
+  if ($Name -cmatch '^permissions\.(.+)$') {
+    $key = $Matches[1]
+    $perm = $Cfg.PSObject.Properties['permissions']
+    if (-not $perm) { return $null }
+    if ($perm.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Unread = 'permissions 가 표 꼴이 아니다' } }
+    $p = $perm.Value.PSObject.Properties[$key]
+    if ($key -ceq 'allow') {
+      if (-not $p -or $null -eq $p.Value) { return @{ List = @() } }
+      if ($p.Value -isnot [array]) { return @{ Unread = 'permissions.allow 가 목록 꼴이 아니다' } }
+      return @{ List = @($p.Value | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ }) }
+    }
+    if (-not $p) { return $null }
+    return (& $text $p.Value)
+  }
+  return @{ Unread = "모르는 칸 $Name" }
+}
+
+# 도구 설정 파일 하나를 장부 손이 읽고 고치는 꼴로 연다 — 받는 것: 파일 자리 · 표 이름(맨 위면 빈 글) · TOML 인가 · 읽을 키(TOML 만 —
+#   파이썬 `tomllib` 로 읽는다 · `Read-TomlTopKeys`).
+# 내는 것 — @{ Path; Under; Toml; Bytes(원래 바이트 · 없으면 $null); Obj(JSON 의 맨 위 표 · 없는 파일은 빈 표); Text(TOML 글); Now(TOML 의 그 표 —
+#   맨 위면 읽은 키들); Edits(TOML 고침 목록); Why(못 읽은 까닭 · 읽었으면 빈 글); Changed }. 못 읽은 파일은 Why 가 서고 장부 손이 안 건드린다
+#   (`Get-ToolDocValue` 가 못 읽음으로 낸다). 고친 것은 `Save-ToolDoc` 이 쓴다.
+# ⚠ TOML 의 키는 대소문자를 가린다 — `Get-PropExact` 로 찾는다(`Set-CodexSandboxKey` 와 같은 자).
+function Get-PropExact($Obj, [string]$Name) {
+  if ($null -eq $Obj) { return $null }
+  return (@($Obj.PSObject.Properties | Where-Object { $_.Name -ceq $Name }) | Select-Object -First 1)
+}
+function Open-ToolDoc([string]$Path, [string]$Under, [bool]$Toml, [string[]]$Keys) {
+  $d = @{ Path = $Path; Under = $Under; Toml = $Toml; Bytes = $null; Obj = $null; Text = ''; Now = $null
+          Edits = New-Object System.Collections.Generic.List[object]; Why = ''; Changed = $false }
+  if (Test-Path -LiteralPath $Path -PathType Leaf) {
+    try { $d.Bytes = [IO.File]::ReadAllBytes($Path) } catch { $d.Why = "못 읽었다 ($(Say-Why $_))"; return $d }
+  }
+  if ($Toml) {
+    $d.Now = [pscustomobject]@{}
+    if ($null -eq $d.Bytes) { return $d }
+    $d.Text = Read-TextOf $d.Bytes
+    $timed = $script:ProbeTimedOut.Count
+    $now = Read-TomlTopKeys $Path $(if ($Under) { @($Under) } else { @($Keys) })
+    if ($null -eq $now) {
+      $d.Why = if ($script:ProbeTimedOut.Count -gt $timed) { 'TOML 을 읽는 파이썬이 울타리 안에 안 끝났다' } else { 'TOML 로 못 읽었다(깨진 파일이거나 파이썬 3.11 이상이 안 선다)' }
+      return $d
+    }
+    if ($Under) {
+      $u = Get-PropExact $now $Under
+      if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = "$Under 가 표가 아니다"; return $d }
+      if ($u) { $d.Now = $u.Value }
+    } else { $d.Now = $now }
+    return $d
+  }
+  $obj = $null
+  if ($null -ne $d.Bytes) {
+    $text = Read-TextOf $d.Bytes
+    if ($text.Trim()) {
+      try { $obj = $text | ConvertFrom-Json } catch { $d.Why = 'JSON 으로 못 읽었다'; return $d }
+      if ($obj -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = '맨 위가 표가 아니다'; return $d }
+    }
+  }
+  if ($null -eq $obj) { $obj = [pscustomobject]@{} }
+  $d.Obj = $obj
+  if ($Under) {
+    $u = $obj.PSObject.Properties[$Under]
+    if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = "$Under 가 표가 아니다" }
+  }
+  return $d
+}
+# 그 문서의 한 키 — 장부 손의 `$Get` 꼴(없음 $null · 압축 JSON 글 · 못 읽음 `@{ Unread }`).
+function Get-ToolDocValue($Doc, [string]$Name) {
+  if ($Doc.Why) { return @{ Unread = $Doc.Why } }
+  if ($Doc.Toml) { $p = Get-PropExact $Doc.Now $Name }
+  else {
+    $at = $Doc.Obj
+    if ($Doc.Under) { $u = $Doc.Obj.PSObject.Properties[$Doc.Under]; $at = if ($u) { $u.Value } else { $null } }
+    $p = if ($at) { $at.PSObject.Properties[$Name] } else { $null }
+  }
+  if (-not $p) { return $null }
+  return [string]($p.Value | ConvertTo-Json -Depth 32 -Compress)
+}
+# 그 문서의 한 키를 바꾸거나(`Set-ToolDocValue` — 값은 압축 JSON 글) 걷는다(`Remove-ToolDocValue`). 내는 것 — 참이면 메모리에서 고쳤다.
+#   TOML 은 글 값만 · 그 키가 이미 선 줄만 고친다(`Edit-TomlLine`) — 줄을 못 찾거나 꼴이 겹치면 거짓이고 안 고친다.
+function Set-ToolDocValue($Doc, [string]$Name, [string]$Value) {
+  if ($Doc.Why) { return $false }
+  $v = $Value | ConvertFrom-Json
+  if ($Doc.Toml) {
+    $p = Get-PropExact $Doc.Now $Name
+    if (-not $p -or $p.Value -isnot [string] -or $v -isnot [string]) { return $false }
+    $t = Edit-TomlLine $Doc.Text $Doc.Under $Name $p.Value $v
+    if ($null -eq $t) { return $false }
+    $Doc.Text = $t; $p.Value = $v
+    $Doc.Edits.Add(@('set', $(if ($Doc.Under) { $Doc.Under } else { '-' }), $Name, $v))
+    $Doc.Changed = $true
+    return $true
+  }
+  $at = $Doc.Obj
+  if ($Doc.Under) {
+    if (-not $Doc.Obj.PSObject.Properties[$Doc.Under]) { $Doc.Obj | Add-Member -NotePropertyName $Doc.Under -NotePropertyValue ([pscustomobject]@{}) }
+    $at = $Doc.Obj.($Doc.Under)
+  }
+  $at | Add-Member -NotePropertyName $Name -NotePropertyValue $v -Force
+  $Doc.Changed = $true
+  return $true
+}
+function Remove-ToolDocValue($Doc, [string]$Name) {
+  if ($Doc.Why) { return $false }
+  if ($Doc.Toml) {
+    $p = Get-PropExact $Doc.Now $Name
+    if (-not $p -or $p.Value -isnot [string]) { return $false }
+    $t = Edit-TomlLine $Doc.Text $Doc.Under $Name $p.Value $null
+    if ($null -eq $t) { return $false }
+    $Doc.Text = $t; $Doc.Now.PSObject.Properties.Remove($p.Name)
+    $Doc.Edits.Add(@('del', $(if ($Doc.Under) { $Doc.Under } else { '-' }), $Name, '-'))
+    $Doc.Changed = $true
+    return $true
+  }
+  $at = $Doc.Obj
+  if ($Doc.Under) { $u = $Doc.Obj.PSObject.Properties[$Doc.Under]; if (-not $u) { return $true }; $at = $u.Value }
+  $at.PSObject.Properties.Remove($Name)
+  $Doc.Changed = $true
+  return $true
+}
+# TOML 글에서 한 키의 줄(`키 = "값"` · `키 = '값'` — 한 줄짜리 글 값)을 바꾸거나 걷는다 — 받는 것: 글 · 표 이름(맨 위면 빈 글) · 키 · 지금 값 ·
+#   새 값($null 이면 걷는다). 그 구역(맨 위면 첫 표 머리 앞 · 표면 그 머리 다음부터 다음 머리 앞)에 그 줄이 꼭 하나일 때만 고친다 — 아니면 $null.
+#   고친 줄 밖의 글은 바이트째 그대로다 — 줄마다 제 줄끝(CRLF · LF)을 든 채 나누고 이어 붙인다. 바꾼 줄은 `=` 앞뒤 꼴 · 따옴표 · 줄 끝 주석을 지킨다.
+#   표에서 걷어 그 구역에 빈 줄만 남고 머리가 맨 `[표]` 면 머리와 그 빈 줄을 함께 걷는다 — 머리만 남으면 `Set-CodexSandboxKey` 가 그 표를 사람이
+#   둔 것으로 읽어 다시 안 심는다. 구역에 주석이 남았거나 머리 줄에 주석이 붙었으면 사람의 글이라 머리째 둔다(빈 표로 남는다) — 머리만 걷으면
+#   그 주석이 앞 표 밑으로 넘어간다. 뜻은 쓰기 앞에 파이썬이 잰다(`Save-ToolDoc`) — 여기는 글자만 고친다. 따옴표 · 역슬래시가 든 새 값은 안 다룬다.
+function Edit-TomlLine([string]$Text, [string]$Table, [string]$Key, [string]$Old, $New) {
+  if ($null -ne $New -and ([string]$New).IndexOfAny([char[]]@('"', "'", '\', "`r", "`n")) -ge 0) { return $null }
+  $lines = New-Object System.Collections.Generic.List[string]
+  foreach ($ln in [regex]::Split($Text, '(?<=\n)')) { if ($ln.Length) { $lines.Add($ln) } }
+  $headPat = "^\[\s*$([regex]::Escape($Table))\s*\]"
+  $from = 0; $head = -1
+  if ($Table) {
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i].TrimEnd("`n").TrimEnd("`r") -cmatch "$headPat\s*(#.*)?$") { $head = $i; break } }
+    if ($head -lt 0) { return $null }
+    $from = $head + 1
+  }
+  $to = $lines.Count
+  for ($i = $from; $i -lt $lines.Count; $i++) { if ($lines[$i] -cmatch '^\[') { $to = $i; break } }
+  $o = [regex]::Escape($Old)
+  $pat = "^(\s*$([regex]::Escape($Key))\s*=\s*)(`"$o`"|'$o')(\s*(#.*)?)$"
+  $hit = @(for ($i = $from; $i -lt $to; $i++) { if ($lines[$i].TrimEnd("`n").TrimEnd("`r") -cmatch $pat) { $i } })
+  if ($hit.Count -ne 1) { return $null }
+  $at = $hit[0]
+  if ($null -ne $New) {
+    $b = $lines[$at].TrimEnd("`n").TrimEnd("`r")
+    $m = [regex]::Match($b, $pat)
+    $q = $m.Groups[2].Value.Substring(0, 1)
+    $lines[$at] = $m.Groups[1].Value + $q + $New + $q + $m.Groups[3].Value + $lines[$at].Substring($b.Length)
+  } else {
+    $lines.RemoveAt($at); $to--
+    if ($Table) {
+      $rest = @(for ($i = $from; $i -lt $to; $i++) { if ($lines[$i].Trim()) { $i } })
+      if (-not $rest.Count -and $lines[$head].Trim() -cmatch "$headPat$") {
+        for ($i = $to - 1; $i -ge $head; $i--) { $lines.RemoveAt($i) }
+      }
+    }
+  }
+  return (-join $lines)
+}
+# 고친 문서를 쓴다 — 바이트는 갈아 끼우는 손(`Write-FileSafely`)이 쓴다. JSON 은 `Set-ToolAutoRun` 과 같은 꼴(`-Depth 32` · BOM 없음)로 다시 짓고,
+#   TOML 은 고친 글을 원래 파일과 견줘 파이썬이 그 고침만 든 뜻인가를 잰 뒤에만 끼운다(못 재면 안 쓴다). 내는 것 — `Write-FileSafely` 의 꼴
+#   (안 고쳤으면 same).
+function Save-ToolDoc($Doc) {
+  if (-not $Doc.Changed) { return @{ Did = 'same' } }
+  $utf8 = New-Object Text.UTF8Encoding($false)
+  if (-not $Doc.Toml) { return (Write-FileSafely $Doc.Path ($utf8.GetBytes(($Doc.Obj | ConvertTo-Json -Depth 32))) $Doc.Bytes) }
+  # 큰따옴표 없이 적는다 — 값은 글로 받고(`set`), 걷어 빈 표가 그 글에서 사라졌으면 그것도 뜻이 같다
+  $code = "import sys,tomllib`na=tomllib.load(open(sys.argv[1],'rb'));b=tomllib.load(open(sys.argv[2],'rb'));e=sys.argv[3:]`n" +
+          "for i in range(0,len(e),4):`n  op,t,k,v=e[i:i+4]`n  d=a if t=='-' else a.setdefault(t,{})`n" +
+          "  if op=='set':`n    d[k]=v`n  else:`n    d.pop(k,None)`n    if t!='-' and not d and t not in b: a.pop(t,None)`n" +
+          "sys.exit(0 if a==b else 3)"
+  $orig = $Doc.Path
+  $edits = @($Doc.Edits | ForEach-Object { $_ })
+  $check = {
+    param($side)
+    $tl = [IO.Path]::GetTempFileName()
+    try { $rc = Invoke-LoggedCapped 'python' (@('-I', '-X', 'utf8', '-c', $code, $orig, $side) + $edits) $tl $ProbeCap }
+    finally { Remove-Item -LiteralPath $tl, "$tl.err" -ErrorAction SilentlyContinue }
+    if ($rc -eq -2) { Add-ProbeOverflow $TomlReadProbe $ProbeCap }
+    return ($rc -eq 0)
+  }
+  return (Write-FileSafely $Doc.Path ($utf8.GetBytes($Doc.Text)) $Doc.Bytes -Check $check)
+}
+
+# 끝 검증 — 장부에 든 우리 값이 실물에 그대로 섰나를 자리마다 한 칸씩 잰다. 받는 것: 장부 · 사용자 환경(레지스트리에서 읽은 표) · 홈
+#   settings.json 자리. 내는 것 — 검증 칸 목록(@{ Name; Ok } · 못 잰 자리는 State unmeasured). 어긋난 칸은 자리와 이름만 댄다 — 값은 안 찍는다.
+#   알린 사람 값(`seen`)은 우리 것이 아니라 안 잰다. 이 판에 장부를 못 썼으면(`$script:LedgerSaveWhy`) 그것도 한 칸이다.
+function Get-PlantLedgerChecks($Ledger, [System.Collections.IDictionary]$UserEnv, [string]$HomeCfg) {
+  $out = @()
+  if ($Ledger.Why) { return @(@{ Name = "장부 (못 읽었다 — $($Ledger.Why) · $($Ledger.Path))"; Ok = $false }) }
+  if ($script:LedgerSaveWhy) { $out += @{ Name = "장부 (이 판에 못 썼다 — $($script:LedgerSaveWhy) · $($Ledger.Path))"; Ok = $false } }
+  $rows = @($Ledger.Rows | Where-Object { $_.By -cne 'seen' })
+  $say = { param([string]$what, [int]$n, [string[]]$bad) "장부와 실물 — $what ($n 줄$(if ($bad.Count) { ' · 어긋남: ' + ($bad -join ' · ') }))" }
+  $u = @($rows | Where-Object { $_.Place -ceq 'user-env' })
+  if ($u.Count) {
+    $bad = @($u | Where-Object { -not (Test-SameText $(if ($UserEnv.Contains($_.Name)) { [string]$UserEnv[$_.Name] } else { $null }) $_.Value) } | ForEach-Object { $_.Name })
+    $out += @{ Name = (& $say '사용자 환경' $u.Count $bad); Ok = (-not $bad.Count) }
+  }
+  $s = @($rows | Where-Object { $_.Place -ceq 'settings-env' -or $_.Place -ceq 'settings' })
+  if ($s.Count) {
+    $cfg = $null; $why = ''
+    try { $t = [IO.File]::ReadAllText($HomeCfg); $cfg = if ($t.Trim()) { $t | ConvertFrom-Json } else { [pscustomobject]@{} } } catch { $why = '못 읽었다' }
+    $bad = @(foreach ($r in $s) {
+      if ($why) { "$($r.Name)($why)"; continue }
+      $c = Get-SettingsSlot $cfg $r.Place $r.Name
+      if ($r.Name -ceq 'permissions.allow') { if (-not ($c -and $c.List -and (@($c.List) -ccontains $r.Value))) { $r.Name } }
+      elseif ($c -is [hashtable] -or -not (Test-SameText $c $r.Value)) { $(if ($r.Place -ceq 'settings-env') { "env.$($r.Name)" } else { $r.Name }) }
+    })
+    $out += @{ Name = (& $say "홈 settings.json ($HomeCfg)" $s.Count $bad); Ok = (-not $bad.Count) }
+  }
+  foreach ($g in @($rows | Where-Object { $_.Place -ceq 'tool' } | Group-Object { $_.At })) {
+    $at = ConvertFrom-LedgerAt $g.Name
+    $toml = $at.Path -like '*.toml'
+    $doc = Open-ToolDoc $at.Path $at.Under $toml @($g.Group | ForEach-Object { $_.Name })
+    if ($doc.Why -and $toml -and $doc.Why.Contains('울타리')) {
+      $out += @{ Name = "장부와 실물 — $($g.Name)"; State = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) }
+      continue
+    }
+    $bad = @($g.Group | Where-Object { $c = Get-ToolDocValue $doc $_.Name; $c -is [hashtable] -or -not (Test-SameText $c $_.Value) } | ForEach-Object { $_.Name })
+    $out += @{ Name = (& $say $g.Name $g.Count $bad); Ok = (-not $bad.Count) }
+  }
+  return $out
+}
+
+#endregion 장부
+
 #region 환경 — 사용자 환경변수를 심고 걷고, 걷어도 되는 값인지 가리고(회사 키는 값으로), 회사 키를 이 사용자만 푸는 암호로 두고, PATH 를 태우고 사용자 PATH 에 덧대고(pip 사용자 자리를 묻는다), 워드의 PDF 변환 안내를 끈다
 
 # ── 배선이 먼저다 ────────────────────────────────────────────────────────────────
@@ -1857,14 +2499,8 @@ function Remove-OtherSiteVars([hashtable]$BySite, [string]$Site) {
 #   자리 표의 그 이름 값과 글자까지 같게 사용자 환경에 남았을 때만 걷고, 다른 값은 사람이 둔 것이라 두고 그 이름을 댄다. 진 것은
 #   `Remove-UserVar` 가 든다.
 function Remove-OurRunnerVars([hashtable]$BySite, [string]$Why) {
-  $vals = [ordered]@{}
-  foreach ($s in @($BySite.Keys | Sort-Object)) {
-    foreach ($k in @($BySite[$s].Keys)) {
-      if (-not $vals.Contains($k)) { $vals[$k] = @() }
-      $vals[$k] += [string]$BySite[$s][$k]
-    }
-  }
-  foreach ($k in @($vals.Keys)) {
+  $vals = Get-SiteValues @(, $BySite)
+  foreach ($k in @($vals.Keys | Sort-Object)) {
     $cur = [Environment]::GetEnvironmentVariable($k, 'User')
     if (-not $cur) { continue }
     if ($vals[$k] -ccontains $cur) { Remove-UserVar $k $Why }
@@ -1941,17 +2577,42 @@ function Get-WordPdfQuietCheck([string[]]$Versions) {
 
 #region 망 — 닿는지 묻고, 큰 것을 받고, 이 PC 가 믿는 TLS 뿌리를 Node 에 잇는다
 
-# 자리를 **닿음으로** 가른다 — `호스트:포트` 에 TCP 로 물어 붙으면 참이다(꼴이 틀리거나 한도 안에 못 붙으면 거짓). 재는 대상은
-#   값 파일의 `#site-probe` 한 줄이다.
+# `호스트:포트` 에 TCP 로 물어 한도 안에 붙으면 참, 못 붙으면 거짓이다. 꼴이 `호스트:포트` 가 아니면 `$null` 이다 — 못 붙은 것과 못 묻는
+#   것은 다른 명제라, 자리를 가르는 자(`Measure-Site`)가 뒤엣것을 「사외」로 읽지 않게 갈라 낸다. 호스트는 이름이나 IPv4 이고(ASCII
+#   글자 · 숫자 · `.` · `-` · `_`) 포트는 1–65535 다. `-ShapeOnly` 는 망에 안 묻고 꼴만 잰다 — 꼴이 맞으면 참이다.
+# 꼴의 진본은 이 함수 하나다 — 배포본을 뽑는 자(claude-config `scripts/build-dist.sh`)가 이 함수를 `-ShapeOnly` 로 떼어 불러 틀린
+#   `#site-probe` 가 실려 나가지 않게 막는다. 자동 실행 몸통도 이름으로 떼어 쓰므로 다른 함수에 기대지 않는다.
+# ⚠ **글자 묶음은 `[0-9]` · `[A-Za-z]` 로 쓰고 대소문자를 가려 맞춘다(`-cnotmatch`).** `\d` 는 전각 숫자(`８０`)도 물어 아래 `[int]` 가
+#   잡히지 않는 오류로 몸통을 죽이고, 대소문자를 안 가리는 맞춤은 `[A-Za-z]` 에 켈빈 기호(U+212A) 같은 글자를 들인다.
 # ⚠ **이름으로 안 가른다** — DNS 는 사외에서도 사내 호스트를 사내 IP 로 풀어 주고 포트만 안 열린다(결정 0026).
-function Test-Reach([string]$HostPort, [int]$TimeoutMs = 3000) {
-  if ($HostPort -notmatch '^(.+):(\d+)$') { return $false }
+function Test-Reach([string]$HostPort, [int]$TimeoutMs = 3000, [switch]$ShapeOnly) {
+  if ($HostPort -cnotmatch '^([A-Za-z0-9._-]+):([0-9]{1,5})$') { return $null }
   $h = $Matches[1]; $p = [int]$Matches[2]
+  if ($p -lt 1 -or $p -gt 65535) { return $null }
+  if ($ShapeOnly) { return $true }
   $c = New-Object Net.Sockets.TcpClient
   try {
     if ($c.ConnectAsync($h, $p).Wait($TimeoutMs)) { return $c.Connected }
     return $false
   } catch { return $false } finally { $c.Dispose() }
+}
+
+# 이 PC 의 자리 — 짐의 `#site-probe` 에 닿으면 `inside`, 안 닿으면 `outside` 다. 자리는 이 둘뿐이고 재는 자는 `Test-Reach` 하나다 —
+#   몸통(「준비」의 「자리」 칸) · 설치 창(`-Describe` 의 `site|` 줄) · 자동 실행(엔진에서 이 함수를 떼어 쓴다)이 다 이 손을 지난다.
+# 받는 것 — 프로브 값(`Read-Directive … 'site-probe'` 의 답 · 없으면 빈 값). 내는 것 — @{ Site = inside · outside · `$null`; Why = 못
+#   정한 까닭 }. 프로브가 없거나 꼴이 틀리면 `Site` 가 `$null` 이다 — 부르는 쪽은 그것을 빨강으로 말하고 어느 갈래로도 안 간다. 안 재고
+#   한 갈래를 고르면 같은 PC 가 회차마다 다른 자리로 돌아 키와 주소를 잃는다(PAISetup #46).
+function Measure-Site([string]$Probe) {
+  if (-not $Probe) { return @{ Site = $null; Why = '짐의 값 파일(install.env)에 #site-probe 가 없다' } }
+  $r = Test-Reach $Probe
+  if ($null -eq $r) { return @{ Site = $null; Why = "짐의 값 파일의 #site-probe 가 호스트:포트 꼴이 아니다 ($Probe)" } }
+  return @{ Site = $(if ($r) { 'inside' } else { 'outside' }); Why = $null }
+}
+
+# 이 자리에서 VS Code 가 필수인가 — 사내는 VS Code 가 주 무대라 참이다. 「준비」의 「자리」 칸이 참이면 VS Code 칸을 꺼도 깔고(기록은
+#   사람이 고른 값 그대로 둔다), `-Describe` 가 `vscode|required` 로 내 설치 창의 칸을 켠 채 잠근다(PAISetup #46 ④).
+function Test-VsCodeRequired([string]$Site) {
+  return ($Site -eq 'inside')
 }
 
 # 한 호스트(443)에 TLS 를 걸어 @{ Root = 체인의 뿌리; Trusted = 윈도우가 그 체인을 믿나 } 를 낸다. 못 닿으면 `$null` — 못 닿은
@@ -2081,12 +2742,13 @@ function Wire-NodeTrust {
 
   # ⚠ **BOM 을 안 찍는다** — PEM 파서는 바이트로 읽어, 앞에 BOM 이 붙으면 첫 줄이 어긋난다.
   $target = Join-Path $homeDir 'node-ca.pem'
-  try {
-    $dir = Split-Path -Parent $target
-    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-    [IO.File]::WriteAllText($target, $sb.ToString(), (New-Object Text.UTF8Encoding($false)))
-  } catch {
-    Write-Host "  ! CA 묶음을 못 썼다 — $(Say-Why $_)" -ForegroundColor Red
+  # 갈아 끼워 쓴다(`Write-FileSafely`) — 쓰다 멎어도 반쪽 묶음이 남지 않는다. 같으면 안 쓴다.
+  $pemOld = $null
+  try { if (Test-Path -LiteralPath $target -PathType Leaf) { $pemOld = [IO.File]::ReadAllBytes($target) } } catch { }
+  $pemWrote = Write-FileSafely $target ((New-Object Text.UTF8Encoding($false)).GetBytes($sb.ToString())) $pemOld
+  if ($pemWrote.Did -ceq 'linked') { Write-Host "  ! CA 묶음 — $($pemWrote.Why) · 안 심었다 ($target)" -ForegroundColor Yellow; return }
+  if ($pemWrote.Did -cne 'written' -and $pemWrote.Did -cne 'same') {
+    Write-Host "  ! CA 묶음을 못 썼다 — $($pemWrote.Why)" -ForegroundColor Red
     $script:Fails.Add('Node 신뢰 배선 (파일 쓰기)')
     return
   }
@@ -2407,6 +3069,21 @@ function Get-UninstallEntries {
     }
   }
   return $out
+}
+
+# 짐의 데스크탑 앱 스위치를 읽는다 — 받는 것은 `#desktop-app` 의 값(없으면 빈 값), 내는 것은 @{ When = `:` 앞 낱말(offsite · yes ·
+#   그 밖은 아무것도 안 깐다); Extra = `:` 뒤 목록(이제 안 쓴다 — 「데스크탑 앱 설치」 칸이 그것을 말하고 지나간다) }.
+function Read-DesktopAppSwitch([string]$Directive) {
+  if ($Directive -and $Directive -match '^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$') { return @{ When = $Matches[1]; Extra = $Matches[2].Trim() } }
+  return @{ When = [string]$Directive; Extra = '' }
+}
+
+# 데스크탑 앱 행이 이 자리에서 깔리나 — 받는 것은 `$DesktopApps` 의 행 · 스위치(`Read-DesktopAppSwitch` 의 `When`) · 사외인가, 내는
+#   것은 참 · 거짓. 스위치 `yes` 는 행을 안 보고 깔고, `offsite` 는 행의 `When`(안 적으면 `offsite`)을 따른다 — `any` 는 늘, `offsite`
+#   는 사외에서만. 「데스크탑 앱 설치」 칸과 `-Describe` 의 `app|` 줄이 이 한 자를 쓴다(설치 창의 안내 줄이 그 줄로 선다).
+function Test-DesktopAppHere($Row, [string]$When, [bool]$Offsite) {
+  $rowWhen = if ($Row.When) { $Row.When } else { 'offsite' }
+  return [bool]($When -eq 'yes' -or ($When -eq 'offsite' -and ($rowWhen -eq 'any' -or $Offsite)))
 }
 
 # 데스크탑 앱이 깔렸나를 세 값으로 잰다 — `@{ State = yes · no · unmeasured; Ver = 깔린 판(모르면 빈 글자); Probe = 못 잰 물음;
@@ -3468,7 +4145,8 @@ function Get-BrowserMcpCheck([string]$Adapter, [string[]]$Picked, [string[]]$Unp
 #   Need(심기 전에 그 자리에 그 값으로 서 있어야 하는 키 · JSON 줄만 — 표의 앞 줄이 심은 뒤에 재므로 같은 파일의 앞 줄을 먼저 둔다).
 # 심는 규칙은 하나다 — **Guard 의 키가 하나라도 서 있으면 그 줄을 통째로 둔다.** 한 줄의 키들은 그 도구의 스위치 하나라, 사람이
 #   하나만 정해 둔 자리에 나머지를 채우면 그 사람이 고른 적 없는 조합이 선다(claude-config 결정 0127).
-# 내는 것 — @{ Did = set · kept · skipped(Need 가 안 섰다) · broken · nopython · unmeasured(파이썬 물음이 울타리를 넘겼다 — 안 건드렸다);
+# 내는 것 — @{ Did = set · kept · skipped(Need 가 안 섰다) · broken · nopython · unmeasured(파이썬 물음이 울타리를 넘겼다 — 안 건드렸다) ·
+#   raced(쓰는 사이 다른 프로그램이 그 파일을 고쳤다 — 그 글을 둔다 · `Write-FileSafely`) · linked(그 파일이 링크다 — 안 썼다);
 #   Have = 서 있던 Guard 키와 값(「키 = 값」 글) · Why = skipped · broken · unmeasured 의 까닭 · Probe = unmeasured 의 물음 }.
 #   화면 · 실패 줄은 부르는 쪽이 든다. 파일을 못 읽으면 안 건드린다 — 사람이 손댄 것이 거기 들어 있을 수 있다.
 # ⚠ 표인가는 `[System.Management.Automation.PSCustomObject]` 로 가른다 — `[pscustomobject]` 는 `[psobject]` 라 파이프에서 온 글 · 목록도
@@ -3487,8 +4165,10 @@ function Set-ToolAutoRun($Row) {
     if ($trc -ne 0) { return @{ Did = 'nopython'; Why = '파이썬 3.11 이상(tomllib)이 안 선다' } }
     $tomlTimed = $script:ProbeTimedOut.Count
     $old = ''
+    $oldBytes = $null
     if (Test-Path -LiteralPath $Row.Path -PathType Leaf) {
-      $old = [IO.File]::ReadAllText($Row.Path)
+      $oldBytes = [IO.File]::ReadAllBytes($Row.Path)
+      $old = Read-TextOf $oldBytes
       $now = Read-TomlTopKeys $Row.Path $guard
       if ($null -eq $now -and $script:ProbeTimedOut.Count -gt $tomlTimed) { return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
       if ($null -eq $now) { return @{ Did = 'broken'; Why = 'TOML 로 못 읽었다' } }
@@ -3506,14 +4186,18 @@ function Set-ToolAutoRun($Row) {
       if ($null -eq $after -and $script:ProbeTimedOut.Count -gt $tomlTimed) { return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
       $miss = @($Row.Set.Keys | Where-Object { -not ($after -and $after.PSObject.Properties[$_] -and $after.$_ -ceq $Row.Set[$_]) })
       if ($miss.Count) { return @{ Did = 'broken'; Why = "얹은 결과가 그 뜻으로 안 읽힌다 ($($miss -join ' · '))" } }
-      New-Item -ItemType Directory -Path (Split-Path $Row.Path -Parent) -Force | Out-Null
-      [IO.File]::WriteAllText($Row.Path, $head + $old, (New-Object Text.UTF8Encoding($false)))
+      $w = Write-FileSafely $Row.Path ((New-Object Text.UTF8Encoding($false)).GetBytes($head + $old)) $oldBytes
     } finally { Remove-Item -LiteralPath $probe -ErrorAction SilentlyContinue }
+    if ($w.Did -ceq 'linked') { return @{ Did = 'linked'; Why = $w.Why } }
+    if ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun') { return @{ Did = 'raced'; Why = $w.Why } }
+    if ($w.Did -cne 'written') { return @{ Did = 'broken'; Why = $w.Why } }
     return @{ Did = 'set' }
   }
   $obj = $null
+  $oldBytes = $null
   if (Test-Path -LiteralPath $Row.Path -PathType Leaf) {
-    $text = [IO.File]::ReadAllText($Row.Path)
+    $oldBytes = [IO.File]::ReadAllBytes($Row.Path)
+    $text = Read-TextOf $oldBytes
     if ($text.Trim()) {
       try { $obj = $text | ConvertFrom-Json } catch { return @{ Did = 'broken'; Why = 'JSON 으로 못 읽었다' } }
       if ($obj -isnot [System.Management.Automation.PSCustomObject]) { return @{ Did = 'broken'; Why = '맨 위가 표가 아니다' } }
@@ -3534,9 +4218,11 @@ function Set-ToolAutoRun($Row) {
     if ($unmet.Count) { return @{ Did = 'skipped'; Why = (@($unmet | ForEach-Object { "$_ 가 $($Row.Need[$_] | ConvertTo-Json -Compress) 가 아니다" }) -join ' · ') } }
   }
   foreach ($k in $Row.Set.Keys) { $at | Add-Member -NotePropertyName $k -NotePropertyValue $Row.Set[$k] }
-  New-Item -ItemType Directory -Path (Split-Path $Row.Path -Parent) -Force | Out-Null
   # ⚠ `-Depth` 를 준다 — 5.1 의 기본 깊이는 2 라 사람이 둔 깊은 표가 글자로 뭉개진다.
-  [IO.File]::WriteAllText($Row.Path, ($obj | ConvertTo-Json -Depth 32), (New-Object Text.UTF8Encoding($false)))
+  $w = Write-FileSafely $Row.Path ((New-Object Text.UTF8Encoding($false)).GetBytes(($obj | ConvertTo-Json -Depth 32))) $oldBytes
+  if ($w.Did -ceq 'linked') { return @{ Did = 'linked'; Why = $w.Why } }
+  if ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun') { return @{ Did = 'raced'; Why = $w.Why } }
+  if ($w.Did -cne 'written') { return @{ Did = 'broken'; Why = $w.Why } }
   return @{ Did = 'set' }
 }
 
@@ -4293,12 +4979,27 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
 
 #endregion 라이브러리
 
-# ── `-Describe` 갈래 — 고를 목록 · 저장소 자리 · 지난번에 고른 것을 내주고 나간다 ──────────────────────
+# ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
+# 이름이 찍히는 자리(바로가기 이름 · 바로가기 설명 · 물음 상자 제목 · 설치 창의 제목)는 다 `$AppName` 에서 판다 — 자리마다 글자를
+#   박으면 이름을 바꾸는 날 한 자리만 낡는다. 설치 창은 `-Describe` 의 `app-name|` 줄로 받으므로 그 갈래보다 앞에 선다.
+#   여기 든 글자는 진본이 아니라 울타리다: 값 파일이 그 줄을 안 들면(이전 배포본 · 이 파일만 떼어 받은 사람) 바로가기가 `.lnk` 라는
+#   이름 없는 아이콘으로 서고 상자 제목이 빈칸이 된다.
+$AppNameDefault = 'PAI Setup Wizard'
+$AppName = Read-Directive $DistEnvFile 'app-name'
+if (-not $AppName) { $AppName = $AppNameDefault }
+
+# ── `-Describe` 갈래 — 고를 목록 · 저장소 자리 · 지난번에 고른 것 · 몸통만 아는 사실을 내주고 나간다 ──────────────────────
 # 내는 줄 — `product|키|글자|기본값`(제품마다) · `config-repo-root|자리` · `record|이름|값`(기록에 든 것마다 · `Read-ChoiceRecord`) ·
-#   `company-key|yes·no`(이 사용자가 풀 수 있는 회사 키 덩이가 있나 · 값은 안 낸다). 종료 0. 여기까지는 선언과 함수 정의뿐이라
-#   부수효과가 없다 — 빗장 앞이라 다른 설치가 돌아도 답한다.
-#   자리와 기록을 같이 내주는 것은 화면이 `~/repos` · 기록 자리 · 기록 꼴을 제 글자로 다시 적지 않게 하려는 것이다
-#   (`$configRepoRoot` · 「회차를 넘기는 기록의 자리」 곁말).
+#   `company-key|yes·no`(이 사용자가 풀 수 있는 회사 키 덩이가 있나 · 값은 안 낸다), 그 뒤에 몸통만 아는 사실(PAISetup #46):
+#     · `app-name|이름` · `vcruntime-min|판` · `personal|도구|제품|글자`(`$PersonalTools` 마다) — 설치 창의 제목 · 「올리기」 칸 글자 ·
+#       제작자 칸
+#     · `site|inside·outside|프로브` 나 `site|error|까닭` — 이 PC 의 자리(`Measure-Site`). `error` 면 창은 설치를 안 받는다
+#     · `vscode|required·optional` — 이 자리에서 VS Code 가 필수인가(`Test-VsCodeRequired`)
+#     · `autorun|on·off` — 깃발 없는 판의 자동 실행(`Get-AutoRunDefault` · 그대로 둠은 작업이 있나로)
+#     · `app|키|yes·outside·no` — 데스크탑 앱 행이 이 자리에서 깔리나 · 사외에서만 깔리나 · 안 깔리나(`Test-DesktopAppHere`)
+#   종료 0. 여기까지는 선언과 함수 정의뿐이라 부수효과가 없다 — 빗장 앞이라 다른 설치가 돌아도 답한다.
+#   이것들을 내주는 것은 화면이 몸통의 자리 · 규칙 · 기본값 · 기록 자리 · 기록 꼴을 제 글자로 다시 짓지 않게 하려는 것이다 — 다시
+#   지으면 같은 PC 가 창 회차와 로그온 회차에서 다른 자리 · 다른 칸으로 돈다(`$configRepoRoot` · 「회차를 넘기는 기록의 자리」 곁말).
 # 덩이는 「키와 값」과 같은 손(`Convert-CompanyKeyBlob`)으로 풀어 보고, 풀려 빈 키가 아닐 때만 `yes` 다 — 다른 사용자 · 다른 PC 의
 #   덩이나 깨진 덩이에 `yes` 라 하면 창이 빈 키 칸을 받고 그 판은 「미입력」 빨강으로 끝난다. 푼 바이트는 바로 지운다. 못 푸는 덩이를
 #   여기서 지우지 않는다 — 지우는 것은 그 덩이를 다시 쓸 수 있는 「키와 값」의 몫이다(`Read-CompanyKeyBlob`).
@@ -4318,6 +5019,22 @@ if ($Describe) {
     }
   } catch { $keySaved = $false } finally { if ($keyPlain) { [Array]::Clear($keyPlain, 0, $keyPlain.Length) } }
   'company-key|{0}' -f $(if ($keySaved) { 'yes' } else { 'no' })
+  'app-name|{0}' -f $AppName
+  'vcruntime-min|{0}' -f $VcRuntimeMin
+  $PersonalTools | ForEach-Object { 'personal|{0}|{1}|{2}' -f $_.Tool, $_.Product, $_.Label }
+  $descProbe = Read-Directive $DistEnvFile 'site-probe'
+  $descSite  = Measure-Site $descProbe
+  if ($descSite.Site) { 'site|{0}|{1}' -f $descSite.Site, $descProbe } else { 'site|error|{0}' -f $descSite.Why }
+  'vscode|{0}' -f $(if (Test-VsCodeRequired $descSite.Site) { 'required' } else { 'optional' })
+  $descAuto = Get-AutoRunDefault (Read-Directive $DistEnvFile 'autorun')
+  if ($null -eq $descAuto) { $descAuto = (Test-AutoRunTask $AutoRunTaskName) -or (Test-AutoRunTask $AutoRunNightTaskName) }
+  'autorun|{0}' -f $(if ($descAuto) { 'on' } else { 'off' })
+  $descApp = Read-DesktopAppSwitch (Read-Directive $DistEnvFile 'desktop-app')
+  foreach ($da in $DesktopApps) {
+    $here = if (Test-DesktopAppHere $da $descApp.When ($descSite.Site -eq 'outside')) { 'yes' }
+            elseif (Test-DesktopAppHere $da $descApp.When $true) { 'outside' } else { 'no' }
+    'app|{0}|{1}' -f $da.Key, $here
+  }
   exit 0
 }
 
@@ -4444,6 +5161,8 @@ if (-not $ChoicesGiven) {
   if (-not $PersonalFor -and -not $WithPersonalConfig -and $Recorded['personal']) { $PersonalFor = $Recorded['personal'] }
 }
 if ($DevTools) { $NoDevTools = $false }
+# 사람이 고른 VS Code 끔 — 「회차를 넘기는 기록」 칸이 이 값을 적는다. 깔 때의 `$NoVsCode` 는 「자리」 칸이 사내에서 내린다(사내는 필수).
+$NoVsCodeChosen = [bool]$NoVsCode
 $repoChoice = Read-Directive $EnvFile 'config-repo'
 if ($null -eq $repoChoice -and -not $ChoicesGiven) { $repoChoice = $Recorded['config-repo'] }
 $TypedGatewayUrl = ''
@@ -4493,16 +5212,16 @@ $Vars = @(
   @{ Name='ANTHROPIC_MODEL';      Desc='기본 모델 이름 (비우면 CLI 기본값으로 둔다)';                Gateway=$false }
 )
 
-# ── 클라이언트 기능 스위치 — **씨앗이 아니라 늘 맞춘다** ────────────────────────
-# 씨앗은 settings.json 이 없을 때만 깔려, 한 번 돌린 기계는 그 뒤에 늘어난 스위치를 씨앗으로는 못 받는다 — 그래서 여기서 늘
-#   맞춘다. 게이트웨이 값(`#settings-env` 가 묻는다)과 달리 켜거나 안 켜거나뿐이라 늘 맞춰도 사람에게서 뺏는 것이 없다.
-# 스위치가 늘면 여기 한 줄을 더한다.
-# ⚠ **저장소의 `vdi-home-settings.json` 도 같이 고친다.** 그것은 배포 묶음에 안 실려 이 파일이 못 읽고 설정 저장소의 훅이 민다.
-#   자리 파일이 `#home-settings = overwrite` 를 드는 자리(사외 VDI)에서는 그 덮기가 이 설치보다 나중이라 씨앗이 최종 승자다 —
-#   여기만 늘리면 그 자리에서 조용히 잃는다.
-$Features = @{
-  ENABLE_TOOL_SEARCH = 'true'    # 도구를 미리 다 안 싣고 필요할 때 찾아 쓴다
-}
+# ── 클라이언트 기능 스위치 — **씨앗이 아니라 늘 맞춘다 · 진본은 홈 설정 씨앗의 `env` 다** (PAISetup #47 ⑦) ────────────────────────
+# 씨앗은 settings.json 이 없을 때만 깔려, 한 번 돌린 기계는 그 뒤에 늘어난 스위치를 씨앗으로는 못 받는다 — 그래서 「Claude 홈 설정」이
+#   판마다 맞추고, 씨앗에서 뺀 스위치는 장부로 걷는다. 게이트웨이 값(`#settings-env` 가 묻는다)과 달리 켜거나 안 켜거나뿐이라 늘 맞춰도
+#   사람에게서 뺏는 것이 없다.
+# 진본은 짐에 실린 홈 설정 씨앗(`$HomeSeed` — claude-config 의 `vdi-home-settings.json` 을 뽑은 것)이다. 사외 VDI 의 세션 훅이 홈을 덮는
+#   바탕도 그 씨앗이라, 여기 또 적으면 두 저장소가 같은 사실을 따로 들어 한쪽만 는다. 스위치가 늘면 그 씨앗의 `env` 에 한 줄을 더한다.
+#   「Claude 홈 설정」이 settings.json 이 없을 때 짓는 바탕도 이 씨앗이다(그 걸음 머리).
+# 씨앗을 못 읽으면 `$Features` 는 `$null` 이다 — 그 판은 스위치를 안 건드리고 노란 줄을 낸다(빈 표로 읽으면 장부가 우리 스위치를 다 걷는다).
+$HomeSeed = Read-HomeSeed (Join-Path $Here 'seeds\config-repo\vdi-home-settings.json')
+$Features = Get-SeedSwitches $HomeSeed
 
 # ── 고를 모델 목록 — **자리를 탄다. 게이트웨이에 닿는 자리에만 선다** (결정 0047 · 0048) ────
 # `/model` 목록에 설 줄을 우리가 선언한다. 접미사 `[1m]` 이 창을 1M 으로 연다 — 게이트웨이는 그만큼을 주고 CLI 가 깎는다.
@@ -4547,16 +5266,54 @@ $BusyVerbs = [ordered]@{
 $InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE',
                 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL')
 
-# ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
-# 이름이 찍히는 자리(바로가기 이름 · 바로가기 설명 · 물음 상자 제목)는 다 `$AppName` 에서 판다 — 자리마다 글자를 박으면 이름을
-#   바꾸는 날 한 자리만 낡는다. 여기 든 글자는 진본이 아니라 울타리다: 값 파일이 그 줄을 안 들면(이전 배포본 · 이 파일만 떼어 받은
-#   사람) 바로가기가 `.lnk` 라는 이름 없는 아이콘으로 서고 상자 제목이 빈칸이 된다.
-$AppNameDefault = 'PAI Setup Wizard'
-$AppName = Read-Directive $DistEnvFile 'app-name'
-if (-not $AppName) { $AppName = $AppNameDefault }
-
 Write-Host ''
 Write-Host '=== Claude Code 환경 설치 ===' -ForegroundColor Cyan
+Write-Host ''
+
+# ── 자리 — **무엇이든 깔기 전이다** — 무엇을 깔지가 자리에 달렸고(데스크탑 앱), 못 정한 판은 아무것도 안 깔아야 한다 ──
+#    아래 걸음들의 갈래가 다 이 한 값에서 난다 — 게이트웨이를 쓰나(`$useGateway`) · 주소 심기 · 프록시와 감시 작업 · Codex · agy 회사
+#    설정 · 구독 로그인 · WebFetch · 모델 목록 · 사외 잔재 걷기 · 「사내는 VS Code 필수」. 한 번 재고 다 나눠 쓴다. winget 되살리기보다
+#    앞에 서는 까닭은 못 정한 판이 그것도 안 깔게 하려는 것이다.
+# ⚠ **자리는 둘이다 — 사내 · 사외.** 재는 자는 `Measure-Site`(짐의 `#site-probe` 에 닿나) 하나고, 프로브가 없거나 꼴이 틀리면 어느
+#   갈래로도 안 가고 빨강으로 멈춘다 — 안 재고 한 갈래를 고르면 같은 PC 가 회차마다 다른 자리로 돌아, 사내 PC 의 회사 연결을 걷거나
+#   사외 PC 에 닿지 않는 주소를 심은 채 초록으로 끝난다(PAISetup #46).
+# ⚠ **넘겨받은 자리(`#site`)가 있어도 회차마다 다시 잰다 — 다르면 아무것도 안 심고 멈춘다.** 넘기는 자는 설치 창(`-Describe` 로 연
+#   때 잰 자리)과 밤 자동 실행(잰 자리를 박는다)이다. 창을 연 뒤 망이 바뀌면(무선 전환 · 회사망 재인증 · 집에 가져간 노트북) 창이
+#   보여 준 칸과 지금 자리가 갈려, 그대로 가면 창이 받은 키를 버리거나(사내→사외) 사외 칸이 안 받은 주소 없이 게이트웨이를 쓴다
+#   (사외→사내). 밤 회차는 자리를 안 바꾸므로 그 회차도 멈춘다. 프로브의 있음 · 꼴도 넘겨받은 판에서 같이 잰다(`Measure-Site`).
+# 프로브는 짐의 사실이라 짐에서, `#site` 는 이 회차가 받은 것이라 넘겨받은 값 파일에서 읽는다.
+$probe      = Read-Directive $DistEnvFile 'site-probe'
+$sitePassed = Read-Directive $EnvFile 'site'
+$siteFact   = Measure-Site $probe
+if (-not $siteFact.Site) {
+  Write-Host "  ! 자리를 못 정했다 — $($siteFact.Why)" -ForegroundColor Red
+  Write-Host '    아무것도 안 깔고 멈춘다 — 사내인지 사외인지 모르고 깔면 회사 연결을 걷거나 닿지 않는 주소를 심는다'
+  Write-Host '    설치 묶음(Setup.exe)을 새로 받아 다시 누른다 · 값 파일을 손으로 만들었으면 #site-probe = 호스트:포트 줄을 넣는다'
+  exit 1
+}
+$site    = $siteFact.Site
+$offsite = ($site -eq 'outside')
+$siteSaid = @{ inside = '사내'; outside = '사외' }
+if ($sitePassed -and $sitePassed -cne $site) {
+  $passedSaid = if ($siteSaid.ContainsKey($sitePassed)) { $siteSaid[$sitePassed] } else { $sitePassed }
+  if ($NightRun) {
+    Write-Host "  ! 밤 회차가 잰 뒤 자리가 바뀌었다 — 밤 회차는 $passedSaid · 지금은 $($siteSaid[$site]) ($probe)" -ForegroundColor Red
+    Write-Host '    밤 회차는 자리를 안 바꾼다 — 아무것도 안 깔고 멈춘다 (다음 로그온 회차 · 설치 창이 잇는다)'
+  } else {
+    Write-Host "  ! 창을 연 뒤 자리가 바뀌었다 — 창을 다시 연다 (창은 $passedSaid · 지금은 $($siteSaid[$site]) · $probe)" -ForegroundColor Red
+    Write-Host '    아무것도 안 깔고 멈춘다 — 창이 보여 준 칸(주소 · 키)과 지금 자리가 다르면 받은 키를 버리거나 닿지 않는 주소를 심는다'
+  }
+  exit 1
+}
+$siteBy = if ($offsite) { '안 닿음' } else { '닿음' }
+if ($sitePassed) { $siteBy += ' · 넘겨받은 자리와 같다' }
+Write-Host ("  자리 = {0}  ({1} {2})" -f $siteSaid[$site], $probe, $siteBy)
+# 사내는 VS Code 가 필수다(`Test-VsCodeRequired`) — 칸을 꺼도 깐다. 기록은 사람이 고른 값(`$NoVsCodeChosen`) 그대로 둔다 — 사외로
+#   나가면 그 값이 다시 선다.
+if ($NoVsCode -and (Test-VsCodeRequired $site)) {
+  $NoVsCode = $false
+  Write-Host '  VS Code — 사내는 필수라 칸을 껐어도 깐다 (고른 「끔」은 기록에 그대로 둔다)'
+}
 Write-Host ''
 
 # ── 파이썬 판 — **진본은 설정 저장소의 전역 도구 선언이고, 뽑는 자가 값 파일의 `#python-version` 으로 싣는다** ──
@@ -4601,58 +5358,29 @@ $WG = @('--source','winget') + $WGOpts
 #   의 0 아닌 값 가운데 이것만 「없다」다 —소스를 못 열었거나(인증서 `0x8A15005E`) 그 밖으로 진 값은 「못 쟀다」다(결정 0145).
 $WingetNotInstalled = 0x8A150014
 
-# ── 자리 — **「프로그램」 걸음보다 앞이다** — 무엇을 깔지가 자리에 달렸다(데스크탑 앱) ──
-#    아래 「키와 값」 걸음의 키 판정도 이 값을 다시 쓴다 — 한 번 재고 둘이 나눠 쓴다.
-# ⚠ **자리는 셋이다 — 사내 · 사외 · 모름.** 프로브가 없으면 「사내」가 아니라 모르는 것이다. 둘로만 가르면 안 재고 사내라고 말하게
-#   되고, 그 거짓 위에서 데스크탑 앱 같은 판정이 선다.
-# ⚠ **화면이 이미 쟀으면(`#site`) 다시 안 잰다.** 두 프로세스가 각각 물으면 답이 갈릴 수 있고(프록시가 흔들리는 VDI · 무선 전환 ·
-#   회사망 재인증 순간), 갈리면 화면이 넘긴 키를 몸통이 버리거나(사내→사외) 주소가 빈 채 게이트웨이를 쓴다고 서는데(사외→사내)
-#   둘 다 초록으로 끝난다. 넘어온 글자는 아는 둘(`inside` · `outside`) 가운데 하나일 때만 받는다 — 모르는 값은 「모름」이다.
-# 콘솔 갈래에는 그 줄이 없어 여기서 잰다 — 재는 자리가 둘이어도 자는 하나(`#site-probe` 에 닿나)다. 프로브는 짐의 사실이라 짐에서,
-#   `#site` 는 이 회차가 받은 것이라 넘겨받은 값 파일에서 읽는다(밤 자동 실행이 박은 자리도 그 줄로 온다).
-$probe   = Read-Directive $DistEnvFile 'site-probe'
-$site    = 'unknown'
-$siteBy  = ''
-$sitePassed = Read-Directive $EnvFile 'site'
-if ($sitePassed -eq 'inside' -or $sitePassed -eq 'outside') {
-  $site   = $sitePassed
-  $siteBy = '화면이 쟀다'
-} elseif ($probe) {
-  $site   = if (Test-Reach $probe) { 'inside' } else { 'outside' }
-  $siteBy = if ($site -eq 'inside') { '닿음' } else { '안 닿음' }
-}
-$offsite = ($site -eq 'outside')
-if ($site -ne 'unknown') {
-  Write-Host ("  자리 = {0}  ({1} {2})" -f
-    $(if ($offsite) { '사외' } else { '사내' }), $probe, $siteBy)
-  Write-Host ''
-}
-
 # ── 자동 실행을 켜나 · 자동 실행이 읽는 「지난 설치의 자리」 (PAISetup #36) ─────────────────────────────────
-# 켜나(`$wantAutoRun`)는 `-AutoRun` · `-NoAutoRun` 이 먼저고, 없으면 짐의 `#autorun = yes|no` 다. 「부팅 시 자동 실행」 칸이 이 값을 쓴다.
-# ⚠ **사람이 끈 PC 는 `yes` 로 다시 안 켠다** — 짐이 늘 `yes` 를 실어 지시만으로는 끈 것을 못 기억한다. 끈 기록(`$AutoRunOffRecord`)은
-#   「부팅 시 자동 실행」 칸이 `-NoAutoRun`(설치 창의 꺼진 칸)으로 걷을 때 적고, 다시 걸 때 지운다. 깃발 없는 판(로그온 · 밤 자동 실행 ·
-#   손으로 친 `-Yes -NoLaunch` · 화면이 못 선 콘솔)은 설치 창이 칸을 그대로 두고 누른 판과 같게 간다 — 작업이 서 있거나 기록이 없으면
-#   켜고, 기록이 있고 작업이 없으면 그대로 둔다. 설치 창의 칸도 같은 자로 선다(`install.ui.ps1` 의 `$cAuto`).
-# 밤 자동 실행은 자리 기록이 지금 잰 자리와 같은 `inside` · `outside` · `unknown` 일 때만 돈다(자동 실행 몸통의 「하루 한 번 ·
-#   자리」 칸). 이 설치가 자리를 바꾸는 판이면 자리에 기대는 걸음(프로그램 · 키와 값 · 사내 연결 · Claude 홈 설정 · 도구별
-#   홈)보다 먼저 `switching` 을 적는다 — 반쯤 돌다 지면 그 값이 남아 밤 회차는 건너뛴다. 기록과 같은 자리면 안 적는다(자리를 박은
-#   밤 회차가 그렇다) — 바꾸지 않는 설치가 지며 `switching` 을 남기면 다시 부팅하지 않는 PC 는 밤 회차가 영영 선다. 끝 값은 그
-#   걸음들을 다 지난 「부팅 시 자동 실행」 칸이 적는다. 자동 실행을 켜는 설치만 적고, 설치본 폴더가 없는 자리(저장소에서 바로 돌린
-#   콘솔)는 안 적는다. 못 적으면 지운다 — 앞선 값이 남으면 밤 회차가 자리를 바꾼 설치를 못 알아본다.
-$AutoRunTaskName      = 'PAISetup-AutoRun'
-$AutoRunNightTaskName = 'PAISetup-AutoRun-Night'
+# 켜나(`$wantAutoRun`)는 `-AutoRun` · `-NoAutoRun` 이 먼저고, 없으면 짐의 `#autorun = yes|no` 를 `Get-AutoRunDefault` 가 푼다. 「부팅 시
+#   자동 실행」 칸이 이 값을 쓴다.
+# 끈 기록(`$AutoRunOffRecord`)은 「부팅 시 자동 실행」 칸이 `-NoAutoRun`(설치 창의 꺼진 칸)으로 걷을 때 적고, 다시 걸 때 지운다. 깃발
+#   없는 판(로그온 · 밤 자동 실행 · 손으로 친 `-Yes -NoLaunch` · 화면이 못 선 콘솔)은 설치 창이 칸을 그대로 두고 누른 판과 같게 간다 —
+#   설치 창의 칸이 같은 손의 답(`-Describe` 의 `autorun|` 줄)으로 서기 때문이다. `yes` 인데 끈 기록이 있고 작업이 없는 PC 는 「꺼 두었다」
+#   한 줄만 남기고 그대로 둔다(`$autoKeptOff`).
+# 밤 자동 실행은 자리 기록이 지금 잰 자리와 같은 `inside` · `outside` 일 때만 돈다(자동 실행 몸통의 「하루 한 번 · 자리」 칸). 이
+#   설치가 자리를 바꾸는 판이면 자리에 기대는 걸음(프로그램 · 키와 값 · 사내 연결 · Claude 홈 설정 · 도구별 홈)보다 먼저 `switching`
+#   을 적는다 — 반쯤 돌다 지면 그 값이 남아 밤 회차는 건너뛴다. 기록과 같은 자리면 안 적는다(자리를 박은 밤 회차가 그렇다) — 바꾸지
+#   않는 설치가 지며 `switching` 을 남기면 다시 부팅하지 않는 PC 는 밤 회차가 영영 선다. 끝 값은 그 걸음들을 다 지난 「부팅 시 자동
+#   실행」 칸이 적는다. 자동 실행을 켜는 설치만 적고, 설치본 폴더가 없는 자리(저장소에서 바로 돌린 콘솔)는 안 적는다. 못 적으면
+#   지운다 — 앞선 값이 남으면 밤 회차가 자리를 바꾼 설치를 못 알아본다.
+# 작업 이름 둘(`$AutoRunTaskName` · `$AutoRunNightTaskName`)은 파일 머리의 「회차를 넘기는 기록의 자리」 칸이 든다.
 $autoDirective = Read-Directive $DistEnvFile 'autorun'
 $wantAutoRun   = $null
 $autoKeptOff   = $false
 if ($AutoRun) { $wantAutoRun = $true }
 elseif ($NoAutoRun) { $wantAutoRun = $false }
-elseif ($autoDirective -eq 'yes') {
-  if (-not (Test-Path -LiteralPath $AutoRunOffRecord) -or (Test-AutoRunTask $AutoRunTaskName) -or (Test-AutoRunTask $AutoRunNightTaskName)) {
-    $wantAutoRun = $true
-  } else { $autoKeptOff = $true }
+else {
+  $wantAutoRun = Get-AutoRunDefault $autoDirective
+  $autoKeptOff = [bool]($autoDirective -eq 'yes' -and $null -eq $wantAutoRun)
 }
-elseif ($autoDirective -eq 'no')  { $wantAutoRun = $false }
 
 $AutoRunSiteFile   = '.autorun-site'
 $AutoRunSiteRecord = Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') $AutoRunSiteFile
@@ -4672,7 +5400,7 @@ if ($wantAutoRun -eq $true -and $siteRecorded -ne $site -and (Test-Path -Literal
 # ── 사내에서만 더 서는 것 — 로컬 프록시 · Codex 회사 설정 · 안티그래비티 회사 설정 (결정 0041 · 0045 · 0136) ──
 # 몸통은 파일 이름도 모델 이름도 모른다 — 짐의 값 파일이 `#gateway-proxy = <프록시 파일>` · `#codex-config = <틀>` 로 이 폴더 안의
 #   자리를 가리키고, 몸통은 있고 사내면 그것을 세운다. 안티그래비티는 틀이 없다(아래 `$wantAgy`). 사외는 다 안 선다 — 구독 · 개인 로그인으로 서는
-#   자리다. 자리를 모르면 안 선다 — 모르는 자리에 프록시를 세우면 아무 데도 안 닿는 주소를 심은 채 초록으로 끝난다.
+#   자리다.
 # 프로그램은 이 스위치 밖이다 — Codex · 안티그래비티 확장과 CLI 는 위 표대로 어디서나 깔린다. 여기가 가르는 것은 그 프로그램을
 #   회사 키로 게이트웨이에 물리나뿐이다(결정 0045).
 # ⚠ **`#config-repo` 가 있어도 여기서 세운다.** 그 저장소의 부트스트랩은 설정 파일만 쓰고 프로그램은 안 깔아, 이 스위치를 그 줄에
@@ -4681,7 +5409,7 @@ $proxyRel   = Read-Directive $DistEnvFile 'gateway-proxy'
 $codexTpl   = Read-Directive $DistEnvFile 'codex-config'
 $inside     = ($site -eq 'inside')
 # 맡기기 모델 표에서 읽는 자리 줄 — 「키와 값」이 그 줄로 러너의 자리 값을 심고, 「도구별 홈」이 `PAISETUP_SITE` 로 남겨 맡기는
-#   세션이 같은 줄을 읽는다. 자리를 모르면 사외 줄이다(claude-config 결정 0086).
+#   세션이 같은 줄을 읽는다(claude-config 결정 0086).
 $ModelSite  = if ($inside) { 'inside' } else { 'outside' }
 $wantProxy  = [bool]($proxyRel  -and $inside)
 # 회사 설정도 제품 칸을 탄다 — 안 켠 제품에 회사 설정만 심으면 쓰지도 않는 파일이 남아 「깔렸나 보다」로 읽힌다.
@@ -4719,9 +5447,11 @@ $configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
 #   `$personal*` 은 고른 값이고, `$personalByRepo` 는 설정 저장소를 넣었나다(끝의 안내 한 줄이 가른다).
 $personalAsked  = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { $_.ToLower() }) }
                   elseif ($WithPersonalConfig) { @('claude') } else { @() }
-$personalClaude = [bool](($personalAsked -contains 'claude') -and ($PickKeys -contains 'claude'))
-$personalCodex  = [bool](($personalAsked -contains 'codex') -and ($PickKeys -contains 'codex'))
-$personalAgy    = [bool](($personalAsked -contains 'agy') -and $hostAgy)
+# 칸이 사는 도구 — 고른 도구 가운데 그 도구의 홈이 서는 제품(`$PersonalTools` 의 `Product`)도 고른 것만. 도구 ↔ 제품은 그 표 하나가 든다.
+$personalOn     = @($PersonalTools | Where-Object { ($personalAsked -contains $_.Tool) -and ($PickKeys -contains $_.Product) } | ForEach-Object { $_.Tool })
+$personalClaude = [bool]($personalOn -contains 'claude')
+$personalCodex  = [bool]($personalOn -contains 'codex')
+$personalAgy    = [bool]($personalOn -contains 'agy')
 $personalAny    = [bool]($personalClaude -or $personalCodex -or $personalAgy)
 # ⚠ **값은 표를 지나 고른다 — `$(if …)` 를 늘어놓아 배열을 짓지 않는다.** 아무것도 안 낸 `$()` 둘이 앞자리에 서면 5.1 의 파이프가
 #   뒤의 값까지 삼켜, agy 하나만 고른 판이 빈 값(→ `none`)이 된다. 아래 `$PickValue` 도 같다.
@@ -4743,7 +5473,7 @@ $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
 # Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
 # 맡기는 쪽과 받는 쪽(Codex)이 다 있어야 선다 — 맡기는 쪽 조건은 아래 `$wantCcBg*` 가 든다. 사내는 Codex 를 회사 게이트웨이에
 #   물린 자리(`$wantCodex`)에서만 받는다 — 사내 Codex 는 ChatGPT 로그인이 아니라 회사 설정 틀로 게이트웨이를 타서, 틀이 안 심긴
-#   사내 PC 에서는 붙을 데가 없다. 자리를 모르면 사외다(결정 0086). Copilot 은 조건에 안 든다 — 받는 쪽일 뿐이라, 래퍼는 Copilot
+#   사내 PC 에서는 붙을 데가 없다(결정 0086). Copilot 은 조건에 안 든다 — 받는 쪽일 뿐이라, 래퍼는 Copilot
 #   CLI 가 없으면 Codex 만으로 돈다.
 # 자리마다 다른 값은 래퍼가 읽는 사용자 환경변수로 심는다 — 래퍼는 자리를 모르고 이 값만 읽는다(agy 의 `$AgyModelVarsBySite` 와
 #   같은 꼴). 받는 값은 래퍼 머리말이 들고, 래퍼 검사(claude-config `scripts/check-codex-copilot-bg.py`)가 이 표를 읽어 두 자리
@@ -5077,16 +5807,15 @@ $script:InstalledAppRows = @{}
 #   종료코드는 0 이라 성공으로 보인다.
 $WebView2Guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
 
-# 짐의 `#desktop-app` 을 읽는다 — `:` 뒤 목록은 위 머리말대로 말하고 지나간다.
-$wantApp = Read-Directive $DistEnvFile 'desktop-app'
-$appWhen = $wantApp
-if ($wantApp -and $wantApp -match '^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$') {
-  $appWhen = $Matches[1]
-  if ($Matches[2].Trim()) {
-    Write-Host ''
-    Write-Host ('  ! #desktop-app 의 : 뒤 목록은 이제 안 쓴다 — 무엇을 깔지는 제품 칸이 든다 (준 값: {0})' -f
-                $Matches[2].Trim()) -ForegroundColor Yellow
-  }
+# 짐의 `#desktop-app` 을 읽는다(`Read-DesktopAppSwitch` — `-Describe` 의 `app|` 줄도 같은 손을 지난다). `:` 뒤 목록은 위 머리말대로
+#   말하고 지나간다.
+$wantApp   = Read-Directive $DistEnvFile 'desktop-app'
+$appSwitch = Read-DesktopAppSwitch $wantApp
+$appWhen   = $appSwitch.When
+if ($appSwitch.Extra) {
+  Write-Host ''
+  Write-Host ('  ! #desktop-app 의 : 뒤 목록은 이제 안 쓴다 — 무엇을 깔지는 제품 칸이 든다 (준 값: {0})' -f
+              $appSwitch.Extra) -ForegroundColor Yellow
 }
 $appPicks = @($DesktopApps | Where-Object { $PickKeys -contains $_.Key })
 
@@ -5101,11 +5830,11 @@ $appPicks = @($DesktopApps | Where-Object { $PickKeys -contains $_.Key })
 #   키가 뜻 그대로이고 더해진 것이 그 표 하나일 때만, 그 사이 원래 파일이 안 바뀌었을 때만 곁 사본을 두고 갈아 끼운다.
 # ⚠ 점 키(`windows.sandbox = …`)로 쓰지 않고 파일 머리에 얹지도 않는다 — 회사 틀과 사람이 쓰는 꼴이 `[windows]` 표라 한 파일에 두 꼴이
 #   서면 TOML 이 설정째 거절하고, 표 머리를 앞에 얹으면 그 뒤의 맨 위 키가 그 표로 들어간다.
-# ⚠ 갈아 끼우기(`File.Replace`)에 곁 사본 자리를 꼭 준다 — 안 주면 끼우기가 중간에 질 때(ERROR_UNABLE_TO_MOVE_REPLACEMENT) 원래 파일이
-#   사라진다. 사본 자리를 주면 원래 파일은 제 이름이나 사본 자리에 남고, 진 판은 그것을 제자리로 돌린다.
+# 짓기 · 붙이기는 갈아 끼우는 손(`Write-FileSafely`)이 든다 — 곁 사본 · 다시 견주기 · 진 판의 되돌리기는 그 손의 머리가 든다.
 # 내는 것 — @{ Did = made · added · kept · raced(쓴 뒤 다른 프로그램이 고쳤다 — 그 글을 둔다) · left(안 건드렸다) · unmeasured(파이썬
 #   물음이 울타리를 넘겼다 — 안 건드렸다); Have = kept 의 그 값; Why = left · raced · unmeasured 의 까닭; Probe = unmeasured 의 물음 }.
-#   화면 줄은 부르는 쪽이 든다 — 못 지운 임시 사본(원래 설정을 그대로 든다) 줄만 여기서 낸다.
+#   화면 줄은 부르는 쪽이 든다 — 못 지운 임시 사본(원래 설정을 그대로 든다) 줄만 갈아 끼우는 손이 낸다. 무엇을 심었나의 장부는 「도구별 홈」의
+#   「Codex 데스크탑의 샌드박스 키의 장부」 칸이 이 결과(`$sbx`)로 맞춘다.
 $CodexSandboxMode = 'elevated'
 function Set-CodexSandboxKey([string]$Path) {
   $utf8 = New-Object Text.UTF8Encoding($false)
@@ -5122,12 +5851,10 @@ function Set-CodexSandboxKey([string]$Path) {
     return @{ Did = 'left'; Why = '설정 파일이 링크다 — 갈아 끼우면 링크가 끊긴다' }
   }
   if (-not (Test-Path -LiteralPath $Path)) {
-    try {
-      New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force | Out-Null
-      [IO.File]::WriteAllText($Path, $block, $utf8)
-      if ([IO.File]::ReadAllText($Path) -cne $block) { return @{ Did = 'left'; Why = '지은 파일을 되읽으니 그 두 줄이 아니다' } }
-    } catch { return @{ Did = 'left'; Why = "못 지었다 ($($_.Exception.Message))" } }
-    return @{ Did = 'made' }
+    $w = Write-FileSafely $Path ($utf8.GetBytes($block)) $null
+    if ($w.Did -ceq 'written') { return @{ Did = 'made' } }
+    if ($w.Did -ceq 'overrun') { return @{ Did = 'left'; Why = '지은 파일을 되읽으니 그 두 줄이 아니다' } }
+    return @{ Did = 'left'; Why = $w.Why }
   }
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return @{ Did = 'left'; Why = '그 자리가 파일이 아니다' } }
   $timed = $script:ProbeTimedOut.Count
@@ -5149,9 +5876,9 @@ function Set-CodexSandboxKey([string]$Path) {
   $new = [byte[]]($old + $utf8.GetBytes($lead + $block.Replace("`n", $nl)))
   # 붙인 글의 뜻 — 원래 표에서 `windows` 하나만 늘었나. 큰따옴표 없이 적는다(5.1 이 네이티브 인자 안의 큰따옴표를 깨뜨린다).
   $same = "import sys,tomllib;a=tomllib.load(open(sys.argv[1],'rb'));b=tomllib.load(open(sys.argv[2],'rb'));w=b.pop('windows',None);sys.exit(0 if a==b and w=={'sandbox':sys.argv[3]} else 3)"
-  # 붙인 글은 곁의 임시 파일에 먼저 쓰고 뜻을 잰 뒤 그 파일로 갈아 끼운다 — 쓰다 져도 원래 파일이 반쯤 잘린 채 남지 않는다.
-  $tag = "$Path.paisetup-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
-  $probe = "$tag.new"; $bak = "$tag.old"
+  # 붙인 글은 곁의 임시 파일에 먼저 써 뜻을 잰 뒤에만 갈아 끼운다(`Write-FileSafely` — 끼우기 바로 앞에 원래 바이트와 다시 견주고, 지면
+  #   원래 파일로 되돌린다). 쓰다 져도 원래 파일이 반쯤 잘린 채 남지 않는다.
+  $probe = "$Path.paisetup-$([guid]::NewGuid().ToString('N').Substring(0, 8)).probe"
   $tl = [IO.Path]::GetTempFileName()
   try {
     [IO.File]::WriteAllBytes($probe, $new)
@@ -5159,47 +5886,15 @@ function Set-CodexSandboxKey([string]$Path) {
     $rc = Invoke-LoggedCapped 'python' @('-I', '-X', 'utf8', '-c', $same, $Path, $probe, $CodexSandboxMode) $tl $ProbeCap
     if ($rc -eq -2) { Add-ProbeOverflow $TomlReadProbe $ProbeCap; return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
     if ($rc -ne 0) { return @{ Did = 'left'; Why = "붙인 결과가 그 뜻으로 안 읽힌다 (python $rc)" } }
-    # 잠깐 붙잡힌 파일(백신 · 색인 · 동기화)은 세 번까지 다시 끼운다. 원래 파일이 이미 제 자리를 떠났으면 다시 안 하고 아래에서 되돌린다.
-    # 끼울 때마다 원래 파일이 잴 때 그대로인지 본다 — 재는 사이 · 기다리는 사이 다른 프로그램(Codex CLI · 확장)이 고쳤으면, 끼우면 그
-    #   편집이 말없이 사라진다. 붙잡았다 저장하는 프로그램이 바로 다시 끼우기가 기다리는 상대다
-    for ($i = 1; ; $i++) {
-      if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) -cne [Convert]::ToBase64String($old)) {
-        return @{ Did = 'left'; Why = '재는 사이 다른 프로그램이 그 파일을 고쳤다' }
-      }
-      try { [IO.File]::Replace($probe, $Path, $bak); break }
-      catch [IO.IOException] { if ($i -ge 3 -or -not (Test-Path -LiteralPath $Path)) { throw }; Start-Sleep -Milliseconds 300 }
-    }
-    # 끼운 뒤에는 원래 글로 덮어쓰지 않는다 — 되읽은 글이 다르면 그 사이 다른 프로그램이 쓴 것이라 그 글을 둔다
-    $back = try { [IO.File]::ReadAllBytes($Path) } catch { $null }
-    if ($null -ne $back -and [Convert]::ToBase64String($back) -cne [Convert]::ToBase64String($new)) {
-      return @{ Did = 'raced'; Why = '쓴 뒤 되읽으니 다른 글이다 — 그 사이 다른 프로그램이 썼다' }
-    }
-  } catch {
-    $why = "못 썼다 ($($_.Exception.Message))"
-    if (-not (Test-Path -LiteralPath $Path)) {
-      # 곁 사본을 제자리로 옮기고, 못 옮기면 쥐고 있던 원래 바이트를 쓴다(곁 사본은 그대로 둔다)
-      $restored = $false
-      if (Test-Path -LiteralPath $bak) { try { Move-Item -LiteralPath $bak -Destination $Path; $restored = $true } catch { } }
-      if (-not $restored) { try { [IO.File]::WriteAllBytes($Path, $old); $restored = $true } catch { } }
-      $why += $(if ($restored) { ' — 끼우다 진 자리를 원래 파일로 되돌렸다' } else { " — 원래 파일을 못 되돌렸다$(if (Test-Path -LiteralPath $bak) { " · 원래 글은 $bak 에 있다" })" })
-    }
-    return @{ Did = 'left'; Why = $why }
   } finally {
-    Remove-Item -LiteralPath $tl, "$tl.err" -ErrorAction SilentlyContinue
-    # 곁 사본은 제자리의 파일이 우리가 아는 글(원래 글 · 붙인 글)일 때만 걷는다 — 아니면 그것이 원래 글의 하나뿐인 사본일 수 있다
-    $cur = try { [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) } catch { $null }
-    $known = $cur -and ($cur -ceq [Convert]::ToBase64String($new) -or $cur -ceq [Convert]::ToBase64String($old))
-    foreach ($f in @($probe) + @(if ($known) { $bak })) {
-      for ($j = 0; $j -lt 3 -and (Test-Path -LiteralPath $f); $j++) {
-        if ($j) { Start-Sleep -Milliseconds 300 }
-        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
-      }
-      if (Test-Path -LiteralPath $f) { Write-Host "  ! Codex 설정의 임시 사본이 남았다 — 설정 글을 그대로 든 파일이라 손으로 지운다: $f" -ForegroundColor Yellow }
-    }
+    Remove-Item -LiteralPath $tl, "$tl.err", $probe -ErrorAction SilentlyContinue
   }
-  return @{ Did = 'added' }
+  # 재는 사이 다른 프로그램(Codex CLI · 확장)이 고쳤으면 안 끼우고(left), 끼운 뒤 되읽은 글이 다르면 그 글을 둔다(raced)
+  $w = Write-FileSafely $Path $new $old
+  if ($w.Did -ceq 'written') { return @{ Did = 'added' } }
+  if ($w.Did -ceq 'overrun') { return @{ Did = 'raced'; Why = $w.Why } }
+  return @{ Did = 'left'; Why = $w.Why }
 }
-
 # ── 자리 판정 — **행마다 묻는다** (PAISetup #16 · 결정 0059) ──────────────────────────────────
 # 스위치의 두 값은 위 「데스크탑 앱 설치」 머리말이 든다. 안 깐 까닭을 행마다 댄다 — 같은 판에서 어떤 행은 깔리고 어떤 행은
 #   안 깔려, 안 깔린 줄이 침묵하면 고른 사람이 제 선택이 죽은 줄 모른다.
@@ -5210,9 +5905,8 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
     Write-Host '  데스크탑 앱 — 켠 제품이 없어 안 깐다'
   }
   foreach ($da in $appPicks) {
-    # 행이 「언제」를 안 적으면 `offsite` 다 — 「언제」 칸이 없는 행도 고치지 않고 선다.
-    $daWhen = if ($da.When) { $da.When } else { 'offsite' }
-    if ($appWhen -eq 'yes' -or $daWhen -eq 'any' -or $offsite) {
+    # 행이 「언제」를 안 적으면 `offsite` 다 — 그 자는 `Test-DesktopAppHere` 하나가 든다(설치 창의 안내 줄도 그 답으로 선다).
+    if (Test-DesktopAppHere $da $appWhen $offsite) {
       # Codex 는 데스크탑의 앱 서버가 처음 뜨기 전에 샌드박스 키가 서야 한다(위 `Set-CodexSandboxKey`)
       if ($da.Key -eq 'codex') {
         $sbx = Set-CodexSandboxKey $CodexCfg
@@ -5233,13 +5927,8 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
     }
     Write-Host ''
     Write-Host "  $($da.Label)" -ForegroundColor Cyan
-    # 「사내라」와 「자리를 몰라」는 다른 명제고, 뒤엣것은 고칠 수 있는 것이다 —
-    # 값 파일에 `#site-probe` 를 넣으면 잰다.
-    if ($site -eq 'inside') {
-      Write-Host '      · 사내라 안 깐다 (게이트웨이를 못 문다)'
-    } else {
-      Write-Host '      · 자리를 몰라 안 깐다 (값 파일에 #site-probe 가 없다)'
-    }
+    # 자리는 둘뿐이라(「준비」의 「자리」 칸) 안 깐 까닭은 사내 하나다.
+    Write-Host '      · 사내라 안 깐다 (게이트웨이를 못 문다)'
   }
 }
 
@@ -5349,9 +6038,9 @@ Exit-Step 'cli'
 # ══ 걸음 「키와 값」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 환경
 #   하는 일 — 맡기기 모델 값(agy · Codex — 맡기기 모델 표에서 · 안 세우는 맡기기는 우리 값을 걷는다) · Codex · Copilot 맡기기 값 ·
-#     회사 키로 아는 값과 설치기 폴더의 회사 키 덩이 · 값 파일의 이름들(게이트웨이 키 · 남은 이름) · 물러난 이름 걷기 · 회사 키의 다른
-#     이름(안 세우는 이름의 회사 키는 걷는다) · 사외로 간 자리의 사내 잔재 걷기 · 워드의 PDF 변환 안내 끄기(워드가 깔린 PC) · 사외
-#     Claude 구독 로그인
+#     회사 키로 아는 값과 설치기 폴더의 회사 키 덩이 · 값 파일의 이름들(게이트웨이 키 · 남은 이름) · 회사 키의 다른
+#     이름(안 세우는 이름의 회사 키는 걷는다) · 사외로 간 자리의 사내 잔재 걷기 · 심은 것의 장부와 장부로 걷기(표 · 값 파일에서 빠진
+#     이름) · 워드의 PDF 변환 안내 끄기(워드가 깔린 PC) · 사외 Claude 구독 로그인
 #   앞에서 받는 것 — 준비의 자리(`$ModelSite`) · 맡기기 조건 · 짐(`$KitSkills` · 우리 주소를 든 `$DistEnvFile`) · 값 파일, 「CLI」의
 #     `claude`(구독 로그인). 사외 판은 홈 settings.json 의 env 를 읽기만 한다(회사 키 짝 — 「회사 키」 칸)
 #   안 하는 것 — 도구 홈 파일 쓰기 · 사용자 PATH(마무리의 「사용자 범위 명령 자리」가 든다 — 뒤 걸음들이 그 폴더를 채운 뒤라야 한다)
@@ -5408,6 +6097,26 @@ if ($wantCcBg) {
   Remove-OurRunnerVars $CcBgVarsBySite 'Codex · Copilot 맡기기를 안 세운다'
 }
 
+# ── 맡기기 러너 값의 장부 — 표에서 빠지거나 `-` 가 된 이름 · 값이 바뀐 이름은 장부로 걷는다 (PAISetup #44 ⑤) ─────────────────
+# 위 두 손은 오늘 표의 값으로만 우리 것을 가른다 — 표에서 빠진 이름과 표가 값을 바꾼 이름의 옛 값은 그 손이 못 본다. 장부 손이 그 몫을
+#   든다: 오늘 표의 어느 자리 값과 같은 것은 위 손의 몫으로 두고(`-Owned`), 장부의 우리 값 그대로인 나머지를 걷는다. 심는 것은 위 고리가
+#   이미 했다 — 장부 손은 그것을 적고, 대소문자만 다른 값을 맞춘다(그 고리는 대소문자를 안 가려 「이미 맞다」로 지난다). 표를 못 읽은
+#   판은 안 걷는다 — 그 판의 선언이 반쪽이다.
+# 사용자 환경을 읽고 쓰는 손 셋 — 「값 파일 이름의 장부」 칸도 쓴다. 심기 · 걷기는 `Plant-Var` · `Remove-UserVar` 가 들고 줄도 그 둘이 찍는다.
+$Ledger = Read-PlantLedger $ClaudePlantLedger
+$script:LedgerMigrating = $Ledger.Migrating   # 이 판이 장부를 처음 세우나 — 판에 한 번 정한다(`Read-RunLedger`)
+if ($Ledger.Why) { Write-Host "  ! 장부를 못 읽었다 ($($Ledger.Why)) — 이번 판은 심기만 하고 장부로 걷지 않는다 ($ClaudePlantLedger)" -ForegroundColor Yellow }
+$UserEnvGet    = { param($n) $v = [Environment]::GetEnvironmentVariable($n, 'User'); if ($v) { $v } else { $null } }
+$UserEnvSet    = { param($n, $v) $f0 = $script:Fails.Count; Plant-Var $n $v; $script:Fails.Count -eq $f0 }
+$UserEnvRemove = { param($n, $v) $f0 = $script:Fails.Count; Remove-UserVar $n '장부의 우리 값 · 이번 판은 안 심는다'; $script:Fails.Count -eq $f0 }
+foreach ($g in @(@{ By = 'agy-model'; On = $wantAgyDelegate; Want = $AgyModelVars; Known = (Get-SiteValues @(, $AgyModelVarsBySite)) },
+                 @{ By = 'ccbg';      On = $wantCcBg;        Want = $CcBgVars;     Known = (Get-SiteValues @(, $CcBgVarsBySite)) })) {
+  $RunnerKnown = $g.Known
+  $null = Sync-Planted -Ledger $Ledger -Place 'user-env' -At 'HKCU' -By $g.By -Want $(if ($g.On -and $g.Want) { $g.Want } else { [ordered]@{} }) `
+            -Complete (-not $ModelTable.Why) -Get $UserEnvGet -Set $UserEnvSet -Remove $UserEnvRemove `
+            -Owned { param($n, $c) @($RunnerKnown[$n]) -ccontains $c }
+}
+
 # ── 값 — 파일이 들면 읽고, 없으면 묻는다 ─────────────────────────────────────
 # ⚠ **`#config-repo` 가 있어도 여기서 받는다.** 회사 키는 설치 창(또는 `install.env`)이 받고 이 파일이 심는다 — 저장소에 넘기면
 #   설치 몸통이 없는 저장소를 쓰는 사람은 키가 어디에도 안 심긴다. 저장소가 드는 것은 사람에게 딸린 것(개인 키 · 형제 저장소)이다.
@@ -5415,43 +6124,27 @@ if ($wantCcBg) {
 $fromFile  = Read-RunValues $DistEnvFile $EnvFile $TypedGatewayUrl
 if ($fromFile.Count -gt 0) { Write-Host "  install.env 가 $($fromFile.Count)개를 든다" }
 
-# 주소가 곧 판정이다 — 주소가 없으면 게이트웨이를 안 쓰는 자리라 키도 안 묻고 없다고 물지도 않는다(사외 VDI · 구독 로그인).
-$useGateway = $true
+# 게이트웨이를 쓰나 — **자리에서 난다**(「준비」의 `$inside`). 사내면 쓰고, 사외면 값 파일이 주소를 들어도 안 쓴다.
+# ⚠ **주소로 가르지 않는다.** 사내인데 주소가 없는 판(집에서 처음 깐 노트북의 회사 회차)을 「게이트웨이를 안 쓰는 자리」로 읽으면
+#   아래 「사외로 간 자리의 사내 잔재」 칸이 회사 PC 의 감시 작업 · 프록시를 걷고 구독 로그인도 안 서서, 아무 데도 못 붙은 채
+#   끝난다(PAISetup #46 ①). 그 판은 아래 표 갈래가 주소를 묻고(콘솔) · 비었으면 「미입력」 빨강으로 끝난다. 감시 작업을 심는
+#   문(`$wantProxy`)과 걷는 문(「사외로 간 자리의 사내 잔재」)이 이 한 사실을 묻는다.
+# ⚠ **자리가 값보다 먼저다.** 배포본은 사내용으로 뽑혀 그 값 파일을 사외 PC 에서 돌리는 일이 난다 — 사내에 안 닿는 자리에 사내
+#   주소를 심으면 안 닿는 곳을 가리킨 채 「설정됐다」로 보인다.
+$useGateway = $inside
 # 값 파일이 든 게이트웨이 값 — **버리기 전에 쥔다.** 아래 「사외로 간 자리의 사내 잔재」 칸이 「사용자 환경에 남은 이것이 우리
 #   것인가」를 이 값으로 가른다 — 버린 뒤에는 남의 키와 우리 키를 못 갈라 걷어도 되는 것만 걷을 수 없다.
 $ourGateway = @{}
-
-# ⚠ **자리가 값보다 먼저다.** 배포본은 사내용으로 뽑혀 그 값 파일을 사외 PC 에서 돌리는 일이 난다 — 사내에 안 닿는 자리에 사내
-#   주소를 심으면 안 닿는 곳을 가리킨 채 「설정됐다」로 보인다.
-if ($probe) {
-  if ($site -eq 'inside') {
-    Write-Host "  사내다 — 게이트웨이를 쓴다"
-  } else {
-    Write-Host "  사외다 — 게이트웨이를 안 쓴다"
-    Write-Host '    구독 로그인으로 섭니다 (claude auth login)'
-    $useGateway = $false
-    # 값 파일이 든 사내 값을 버린다 — 안 버리면 아래 루프가 그대로 심는다.
-    foreach ($v in $Vars) {
-      if (-not $v.Gateway) { continue }
-      if ($fromFile[$v.Name]) { $ourGateway[$v.Name] = $fromFile[$v.Name] }
-      $fromFile.Remove($v.Name)
-    }
-  }
-}
-
 if ($useGateway) {
-  $u = $fromFile['ANTHROPIC_BASE_URL']
-  if (-not $u -and -not $Yes) {
-    Write-Host ''
-    Write-Host '  게이트웨이를 씁니까?' -ForegroundColor Yellow
-    Write-Host '    사내면 주소를 넣습니다. 사외면 그냥 Enter — 구독 로그인으로 섭니다.'
-    Write-Host '    (끝에 /v1 을 붙이지 않습니다. CLI 가 붙입니다)'
-    $u = (Read-Host '    >').Trim()
-    if ($u) { $fromFile['ANTHROPIC_BASE_URL'] = $u }
-  }
-  if (-not $u) {
-    $useGateway = $false
-    Write-Host '  게이트웨이를 안 씁니다 — 구독 로그인으로 섭니다 (claude auth login)'
+  Write-Host "  사내다 — 게이트웨이를 쓴다"
+} else {
+  Write-Host "  사외다 — 게이트웨이를 안 쓴다"
+  Write-Host '    구독 로그인으로 섭니다 (claude auth login)'
+  # 값 파일이 든 사내 값을 버린다 — 안 버리면 아래 루프가 그대로 심는다.
+  foreach ($v in $Vars) {
+    if (-not $v.Gateway) { continue }
+    if ($fromFile[$v.Name]) { $ourGateway[$v.Name] = $fromFile[$v.Name] }
+    $fromFile.Remove($v.Name)
   }
 }
 
@@ -5495,7 +6188,7 @@ foreach ($v in $Vars) {
   $val = $fromFile[$v.Name]
 
   # 파일에 없는 비밀은 환경변수에 이미 심긴 값을 쓴다 — 사람이 매번 다시 칠 까닭이 없고, 자동 실행이 키 없는 값 파일로 서는 것도
-  #   이 줄 덕이다. 묻는 것은 `Secret` 이다 — 주소가 비면 위 칸이 이미 `$useGateway` 를 내려놓아, `Gateway` 로 물으면 안 도는 줄이 된다.
+  #   이 줄 덕이다. 묻는 것은 `Secret` 이다 — 환경에서 되읽는 것은 사람마다 다른 키뿐이고, 주소는 짐의 사실이라(`Read-RunValues`) 환경에 남은 옛 주소로 메우지 않는다.
   # ⚠ **같은 이름만 본다 — 별칭은 안 본다.** `OPENAI_API_KEY` · `GEMINI_API_KEY` 는 회사 키에서 파생된 사본이다(아래 「회사 키의
   #   다른 이름 둘」 칸이 한 방향으로만 심는다). 거꾸로 읽으면 제 OpenAI 키를 넣어 둔 사람의 값이 회사 키 자리에 심기는데, 칸이
   #   가려져 있어 무엇이 들어갔는지 아무도 못 본다.
@@ -5570,39 +6263,10 @@ foreach ($k in $fromFile.Keys) {
   Plant-Var $k $val
 }
 
-# ── 물러난 이름 — **심는 것만으로는 못 걷는다** ─────────────────────────────
-# 심기는 더하기만 한다 — 진본에서 이름 하나를 걷어도 한 번 깔았던 기계에는 그 값이 남아, 설치는 초록인데 어긋남은 그 사람
-#   화면에서만 보인다. 씨앗이 없을 때만 깔려 오래 쓴 기계가 뒤처지는 것(「클라이언트 기능 스위치」)과 같은 병이고, 이쪽은 지우는
-#   손이 없어서 난다. 그래서 값이 아니라 이름만 든다 — 값을 적으면 걷은 것을 다시 심는 목록이 된다.
-# ⚠ **걷는 자리가 둘이다 — 여기(사용자 환경)와 아래 홈 설정 칸(`settings.json` 의 `env`).** `Plant-Var` 가 두 자리에 심으므로
-#   걷기도 둘이어야 한다. 한쪽만 걷으면 나머지가 남아, 「우리가 안 심은 `ANTHROPIC_` 이름」 검사가 그것을 물어 설치가 빨강으로 끝난다.
-# 이름을 영영 두지 않는다 — 다 걷힌 뒤에도 남으면 같은 이름을 제 뜻으로 쓰는 사람의 값을 지우는 손이 된다. 두 판쯤 지나면 지운다.
-# 이름이 늘면 여기 한 줄. `install.env` 가 그 이름을 들면 위 칸이 이기고 여기는 비켜선다 — 진본이 되살린 것을 이 목록이 지우면
-#   두 자리가 싸운다.
-$Retired = @(
-  # 결정 0048 — 고를 모델은 `$ModelPicker`(「고를 모델 목록」 칸)가 든다. 이 이름은 게이트웨이 갈래에서 창을 200k 로 묶어 같은
-  #        모델을 1M 으로 못 냈다.
-  'ANTHROPIC_CUSTOM_MODEL_OPTION',
-  # 노력 수준 — 고르는 자는 사람이다. 심어 두면 화면에서 고른 값과 둘이 되어, 고른 대로 안 도는 것이 오류처럼 보인다.
-  'CLAUDE_CODE_EFFORT_LEVEL'
-)
-foreach ($k in $Retired) {
-  if ($fromFile.ContainsKey($k)) { continue }   # 진본이 되살렸으면 안 건드린다
-  if (-not [Environment]::GetEnvironmentVariable($k, 'User')) { continue }
-  try {
-    [Environment]::SetEnvironmentVariable($k, $null, 'User')
-    Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
-    Write-Host "  $k — 걷었다 (이제 안 쓰는 이름)" -ForegroundColor Green
-  } catch {
-    Write-Host "  ! $k 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
-    $Fails.Add("$k 걷기")
-  }
-}
-
 # ── 회사 키의 다른 이름 둘 — **한 번 받은 것을 이름만 바꿔 심는다** ─────────────
 # 회사 키는 하나인데 읽는 이름이 셋이다 — Claude Code 는 `ANTHROPIC_AUTH_TOKEN`, Codex CLI 는 `config.toml` 의 `env_key` 가 가리키는
 #   `OPENAI_API_KEY`, 안티그래비티(`agy`)는 `GEMINI_API_KEY`. 세 번 묻지 않고 한 번 받아 파생한다(결정 0041).
-# ⚠ **필요한 것만 심는다.** 그 CLI 를 안 세우는 자리(사외 · 자리 모름)에 이 이름을 심으면, 같은
+# ⚠ **필요한 것만 심는다.** 그 CLI 를 안 세우는 자리(사외)에 이 이름을 심으면, 같은
 #   이름을 다른 뜻으로 쓰는 도구(구글 직결 키)가 회사 키를 집어 조용히 죽는다.
 $KeyAliases = @(
   @{ Name='OPENAI_API_KEY'; Need='codex';  Tool='Codex' }
@@ -5648,7 +6312,7 @@ $SettingsEnvSkip = @($Vars | Where-Object { $_.Secret } | ForEach-Object { $_.Na
 # ── 사외로 간 자리의 사내 잔재 — **심은 자리마다 걷는 자가 있다** ───────────────
 # 위 칸들은 이번 판에 심을 목록에서만 게이트웨이 이름을 빼서, 이미 `HKCU\Environment` 에 박힌 값은 안 건드린다 — 사내에서 깐
 #   노트북을 사외에서 다시 돌리면 검증은 그 이름들을 빼고(끝 검증의 `if ($useGateway)`) [O] 인데, CLI 는 남은 `ANTHROPIC_BASE_URL`
-#   을 물고 닿지 않는 루프백으로 나간다. 「물러난 이름」 칸의 규율을 여기 마저 쓴다.
+#   을 물고 닿지 않는 루프백으로 나간다. 심은 자리마다 걷는 자가 있어야 한다는 「값 파일 이름의 장부」 칸의 규율을 여기 마저 쓴다.
 # ⚠ **남의 값은 안 걷는다 — 우리 것이라는 근거가 설 때만 걷는다.** 같은 이름을 제 뜻으로 쓰는 사람이 있고(제 로컬 프록시와 그 키를
 #   두는 사람도), 별칭 둘은 구글 · 오픈AI 직결 키의 이름이기도 하다.
 #     · 주소 — 우리 주소와 글자까지 같을 때만(`Test-OurGatewayUrl` · `$OurGatewayUrls`). 루프백이라는 것은 근거가 아니다.
@@ -5662,7 +6326,7 @@ if (-not $useGateway) {
   Write-Host '  사내 잔재' -ForegroundColor Cyan
 
   # 사내 전용 이름도 여기서 걷는다 — 「값 파일이 든 나머지 이름」 칸은 이번 판에 심을 목록에서만 빼서, 사내에서 한 번 깐 기계에
-  #   박힌 값은 다시 깔아도 산다(「물러난 이름」 칸이 든 그 병). 이 값들은 프로그램을 안 죽이고 화면만 좁혀 조용하다.
+  #   박힌 값은 다시 깔아도 산다(「값 파일 이름의 장부」 칸이 든 그 병). 이 값들은 프로그램을 안 죽이고 화면만 좁혀 조용하다.
   foreach ($k in $InsideOnly) {
     if (-not (Test-OurInsideOnlyEntry $k $fromFile)) { continue }
     if (-not [Environment]::GetEnvironmentVariable($k, 'User')) { continue }
@@ -5739,6 +6403,31 @@ if (-not $useGateway) {
     }
   }
 }
+
+# ── 값 파일 이름의 장부 — 값 파일 · 표에서 빠진 이름은 장부로 걷는다 (PAISetup #44 ⑧) ─────────────────
+# 심기는 더하기만 한다 — 진본이 이름 하나를 걷어도 한 번 깐 기계에는 그 값이 남아, 설치는 초록인데 어긋남은 그 사람 화면에서만 보인다.
+#   그래서 이번 판에 심은 이름(`$Vars` · 값 파일의 이름 — 키와 그 별칭은 값으로 가르는 몫이라 장부 밖)을 장부에 적고, 장부에만 남은 이름을
+#   걷는다 — 장부의 우리 값 그대로일 때만이고, 사람이 바꾼 값은 두고 이름을 댄다. 홈 settings.json 쪽은 「Claude 홈 설정」의 env 칸이 같은 자로 걷는다.
+# 사외 판에서 오늘 짐의 값 파일이 들었는데 이 자리가 안 심는 이름(게이트웨이 · 프록시 · 사내 전용)은 위 「사외로 간 자리의 사내 잔재」 칸이
+#   값으로 가른다 — 장부는 기록만 잇는다(`-Owned`). 짐의 값 파일이 없는 판은 걷지 않는다 — 그 판의 선언이 반쪽이다.
+# ⚠ **우리 것은 짐의 값 파일이 든 값 그대로 심은 이름뿐이다** — 물음에 사람이 친 값(`Read-Host` · 창이 넘긴 주소)은 사람 값이라 장부에 안
+#   적는다. 적으면 그 이름이 없는 값 파일로 도는 다음 판(`-Yes` · 자동 실행)이 그 값을 우리 것으로 걷는다. 그 이름은 「Claude 홈 설정」의
+#   env 로도 안 민다(`$HumanValueNames`) — 밀면 우리가 적지 않은 사본이 그 파일에 남아 다음 판의 「홀로 있다」가 판마다 문다.
+# 「Claude 홈 설정」도 이 값들(`$DistNames` · `$DistComplete` · `$HumanValueNames`)로 settings.json 의 env 를 가른다.
+$DistComplete    = Test-Path -LiteralPath $DistEnvFile -PathType Leaf
+$DistValues      = Read-EnvFile $DistEnvFile
+$DistNames       = @($DistValues.Keys)
+$valueNames      = @($Vars | ForEach-Object { $_.Name }) + @($fromFile.Keys)
+$valuesWant      = [ordered]@{}
+$HumanValueNames = @()
+foreach ($k in @($Planted.Keys | Sort-Object)) {
+  if ($valueNames -notcontains $k -or $SettingsEnvSkip -contains $k) { continue }
+  if ($DistValues.ContainsKey($k) -and (Test-SameText $DistValues[$k] $Planted[$k])) { $valuesWant[$k] = $Planted[$k] } else { $HumanValueNames += $k }
+}
+$null = Sync-Planted -Ledger $Ledger -Place 'user-env' -At 'HKCU' -By 'values' -Want $valuesWant -Complete $DistComplete `
+          -Get $UserEnvGet -Set $UserEnvSet -Remove $UserEnvRemove `
+          -Owned { param($n, $c) (-not $useGateway) -and ($DistNames -contains $n) -and -not $Planted.ContainsKey($n) }
+$null = Save-PlantLedger $Ledger
 
 # ── 워드의 PDF 변환 안내 — **워드가 깔린 PC 면 자리 · 고른 제품과 상관없이 끈다** ────────────────
 # 왜 끄나 · 무엇이 바뀌나는 라이브러리의 「워드의 PDF 변환 안내」 칸이 든다. 판은 깔린 워드에서 읽고(`Get-WordVersions`), 끝 검증이
@@ -5997,9 +6686,10 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
       Write-Host "  ! Codex 틀이 이 폴더에 없다 — $codexTpl" -ForegroundColor Red
       $Fails.Add('Codex 설정 (틀이 없다)')
     } elseif (-not (Test-Path -LiteralPath $dst)) {
-      New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
-      [IO.File]::WriteAllText($dst, (Get-Content -LiteralPath $src -Raw -Encoding UTF8), $noBom)
-      Write-Host '  Codex config.toml — 틀로 썼다 (키는 파일이 아니라 OPENAI_API_KEY 에서 읽는다)' -ForegroundColor Green
+      $w = Write-FileSafely $dst ($noBom.GetBytes([string](Get-Content -LiteralPath $src -Raw -Encoding UTF8))) $null
+      if ($w.Did -ceq 'written') { Write-Host '  Codex config.toml — 틀로 썼다 (키는 파일이 아니라 OPENAI_API_KEY 에서 읽는다)' -ForegroundColor Green }
+      elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! Codex config.toml — $($w.Why) · 그 글을 둔다 (다음 판이 틀의 자리를 맞춘다)" -ForegroundColor Yellow }
+      else { Write-Host "  ! Codex config.toml — 틀로 못 썼다 ($($w.Why))" -ForegroundColor Red; $Fails.Add('Codex 설정 (틀로 못 썼다)') }
     } elseif (-not (Test-Path -LiteralPath $CodexCfgMerge)) {
       Write-Host "  ! Codex config.toml — 틀 병합기가 이 폴더에 없어 안 건드렸다 ($CodexCfgMerge)" -ForegroundColor Red
       $Fails.Add('Codex 설정 (틀 병합기가 없다)')
@@ -6037,9 +6727,10 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
   if ($wantAgy) {
     $dst = $AgyCfg
     $a = $null
+    $agyOld = $null
     $agyBroken = $false
     if (Test-Path -LiteralPath $dst) {
-      try { $a = Get-Content -LiteralPath $dst -Raw -Encoding UTF8 | ConvertFrom-Json } catch {
+      try { $agyOld = [IO.File]::ReadAllBytes($dst); $agyText = Read-TextOf $agyOld; if ($agyText.Trim()) { $a = $agyText | ConvertFrom-Json } } catch {
         Write-Host '  ! 안티그래비티 settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
         $Fails.Add('안티그래비티 설정 (settings.json 이 깨졌다)')
         $agyBroken = $true
@@ -6055,9 +6746,10 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
       } else {
         if ($mp) { $mp.Value = $AgyProvider } else { $a | Add-Member -NotePropertyName 'modelProvider' -NotePropertyValue $AgyProvider }
         $after = $a | ConvertTo-Json -Depth 10
-        New-Item -ItemType Directory -Path (Split-Path $dst -Parent) -Force | Out-Null
-        [IO.File]::WriteAllText($dst, $after, $noBom)
-        Write-Host '  안티그래비티 settings.json — 썼다 (modelProvider · 키와 주소는 환경변수가 든다)' -ForegroundColor Green
+        $w = Write-FileSafely $dst ($noBom.GetBytes($after)) $agyOld
+        if ($w.Did -ceq 'written') { Write-Host '  안티그래비티 settings.json — 썼다 (modelProvider · 키와 주소는 환경변수가 든다)' -ForegroundColor Green }
+        elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! 안티그래비티 settings.json — $($w.Why) · 그 글을 둔다 (다음 판이 맞춘다)" -ForegroundColor Yellow }
+        else { Write-Host "  ! 안티그래비티 settings.json 을 못 썼다 — $($w.Why)" -ForegroundColor Red; $Fails.Add('안티그래비티 설정 (못 썼다)') }
       }
     }
   }
@@ -6118,8 +6810,9 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
   }
   if ($offAgy) {
     $a = $null
+    $agyOld = $null
     $agyBroken = $false
-    try { $a = Get-Content -LiteralPath $AgyCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch {
+    try { $agyOld = [IO.File]::ReadAllBytes($AgyCfg); $agyText = Read-TextOf $agyOld; if ($agyText.Trim()) { $a = $agyText | ConvertFrom-Json } } catch {
       Write-Host '  ! 안티그래비티 settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
       $Fails.Add('안티그래비티 설정 (settings.json 이 깨졌다)')
       $agyBroken = $true
@@ -6127,8 +6820,10 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
     $mp = if ($a) { $a.PSObject.Properties['modelProvider'] } else { $null }
     if (Test-AgyCompanyLink $a) {
       $a.PSObject.Properties.Remove('modelProvider')
-      [IO.File]::WriteAllText($AgyCfg, ($a | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
-      Write-Host '  안티그래비티 settings.json — 회사 연결(modelProvider)을 걷었다 · 처음 실행할 때 Google 로그인으로 쓴다' -ForegroundColor Green
+      $w = Write-FileSafely $AgyCfg ((New-Object Text.UTF8Encoding($false)).GetBytes(($a | ConvertTo-Json -Depth 10))) $agyOld
+      if ($w.Did -ceq 'written') { Write-Host '  안티그래비티 settings.json — 회사 연결(modelProvider)을 걷었다 · 처음 실행할 때 Google 로그인으로 쓴다' -ForegroundColor Green }
+      elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! 안티그래비티 settings.json — $($w.Why) · 그 글을 둔다 (다음 판이 걷는다)" -ForegroundColor Yellow }
+      else { Write-Host "  ! 안티그래비티 settings.json — 회사 연결을 못 걷었다 ($($w.Why))" -ForegroundColor Red; $Fails.Add('안티그래비티 설정 (회사 연결 걷기 실패)') }
     } elseif ($mp -and $mp.Value -is [string] -and $mp.Value -ceq $AgyProvider) {
       Write-Host '  안티그래비티 settings.json — modelProvider 는 둔다 · GEMINI_API_KEY 가 회사 키가 아니라 그 사람의 API 키 갈래로 본다'
     } elseif (-not $agyBroken) {
@@ -6142,15 +6837,16 @@ Exit-Step 'site'
 # ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
 #   층 — 홈
 #   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · 기본 권한 모드와 맡기기 러너 허락 ·
-#     env 밀기와 걷기 · 걷힌 Tavily 안내 걷기
-#   앞에서 받는 것 — 「키와 값」의 심은 값 · 값 파일 · 게이트웨이를 쓰나 · settings 에 안 밀 이름 · 물러난 이름 · 회사 키로 아는 값
-#     (`Test-CompanyKey`) · 우리 게이트웨이 주소(`$OurGatewayUrls`) · 고른 제품
-#     (`$hostClaude`) · 칸 없이 까는 스킬 표(`$FreeSkills`) · 맡기기 러너 값의 두 자리 표(`$AgyModelVarsBySite` · `$CcBgVarsBySite`)
+#     env 밀기와 걷기 · 걷힌 Tavily 안내 걷기. 심은 것은 장부(`$ClaudePlantLedger`)에 적고, 선언에서 빠진 우리 것은 장부로 걷는다
+#   앞에서 받는 것 — 「키와 값」의 심은 값(`$Planted`) · 값 파일(`$fromFile` · 짐의 값 파일 이름 `$DistNames` · 그 파일이 있나 `$DistComplete`) ·
+#     게이트웨이를 쓰나 · settings 에 안 밀 이름 · 회사 키로 아는 값(`Test-CompanyKey`) · 우리 게이트웨이 주소(`$OurGatewayUrls`) · 고른 제품
+#     (`$hostClaude`) · 칸 없이 까는 스킬 표(`$FreeSkills`) · 맡기기 러너 값의 두 자리 표(`$AgyModelVarsBySite` · `$CcBgVarsBySite`) ·
+#     기능 스위치와 홈 설정 씨앗(`$Features` · `$HomeSeed`)
 #   안 하는 것 — 스킬 · 규범 · 훅 등록. 훅 등록은 「도구별 홈」의 손(`tool-homes.py`)이 이 걸음이 쓴 파일 위에 놓는다
 #   ⚠ **이 설치기가 이 파일을 쓰는 자리는 이 걸음 하나다** — 손이 놓은 뒤에 이 걸음의 `$cfg`(손 앞에서 읽은 것)로 다시 쓰면 손이
 #     놓은 등록이 그 앞 판으로 되돌아간다. 이 파일을 고칠 일은 여기서 하고 손 앞에서 한 번 쓴다
 # 씨앗은 없을 때만 깐다 — 사람이 앱에서 바꾼 값을 재실행이 지우면 안 된다. 담는 것도 공용으로 서는 것뿐이다 — `permissions` 는
-#   특정 저장소의 스크립트 이름을 들어 씨앗에 안 담는다. 이 걸음이 `permissions` 에 심는 것은 아래 `$ClaudeHomePlants` 표뿐이다 —
+#   특정 저장소의 스크립트 이름을 들어 씨앗에서 안 옮긴다. 이 걸음이 `permissions` 에 심는 것은 아래 `$ClaudeHomePlants` 표뿐이다 —
 #   러너는 이 설치기가 까는 스킬이라 그 이름은 배포본이 낸 길이다.
 # `env` 칸은 다르다 — 값 파일이 `#settings-env` 를 들면 있는 파일에도 민다(몸통은 자리 이름을 모른다). 사내에서는 환경변수와 이
 #   파일을 둘 다 봐야 한다 — 환경변수만 두면 모델 고르는 자리가 엉뚱한 값으로 서고, 파일만 두면 같은 변수를 읽는 다른 앱이 키를
@@ -6159,28 +6855,46 @@ Exit-Step 'site'
 #   흘러간다. 키를 읽는 세 이름은 사용자 환경변수가 이미 들고(「회사 키의 다른 이름 둘」 칸) CLI 는 거기서 읽는다 — 주소 · 모델은
 #   밀고 토큰과 그 별명 둘은 뺀다(PAISetup #2).
 # 맡기기 러너 값(두 자리 표 `$AgyModelVarsBySite` · `$CcBgVarsBySite` 의 이름)도 안 민다 — 러너는 사용자 환경변수를 읽어 여기 둘
-#   까닭이 없고, 여기 든 값은 CLI · VS Code 세션에서 물려받은 값을 이겨 그 세션이 띄운 러너가 이 사본으로 나간다. 사본은 기록
-#   (`$ClaudePlantLedger`) 밖이라, 자리를 옮기거나 표가 바뀐 다음 판이 그 줄을 우리 것으로 못 알아본다(PAISetup #41).
+#   까닭이 없고, 여기 든 값은 CLI · VS Code 세션에서 물려받은 값을 이겨 그 세션이 띄운 러너가 이 사본으로 나간다. 장부가 서기 전 판이
+#   민 사본은 장부 밖이라, 아래 「러너 값 사본」 칸이 오늘 표의 값으로 가른다(PAISetup #41).
 Enter-Step 'home'
 $homeCfg = Join-Path $homeDir 'settings.json'
+$homeAt  = ConvertTo-LedgerAt $homeCfg
 New-Item -ItemType Directory -Path $homeDir -Force | Out-Null
+$Ledger = Read-RunLedger $ClaudePlantLedger
 
+# 읽기 — 바이트를 한 번 읽어 그 글을 고치고, 쓸 때 그 바이트와 다시 견준다(`Write-FileSafely`). 빈 파일은 빈 표로 읽는다 — 반쪽 쓰기의
+#   가장 흔한 끝이 빈 파일이라, 「있음」으로 읽고 이 칸을 건너뛰면 사람이 둔 것을 잃은 자리가 그대로 남는다(PAISetup #44 ⑱).
 $cfg = $null
+$homeOld = $null
+$homeBlank = $false
 if (Test-Path -LiteralPath $homeCfg) {
   try {
-    $cfg = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-    Write-Host '  있음 — 그대로 두고 필요한 것만 민다'
+    $homeOld = [IO.File]::ReadAllBytes($homeCfg)
+    $homeText = Read-TextOf $homeOld
+    if ($homeText.Trim()) { $cfg = $homeText | ConvertFrom-Json } else { $cfg = [pscustomobject]@{}; $homeBlank = $true }
+    if ($cfg -isnot [System.Management.Automation.PSCustomObject]) { throw '맨 위가 표가 아니다' }
+    if ($homeBlank) { Write-Host '  ! 비어 있다 — 빈 설정으로 읽고 필요한 것을 민다' -ForegroundColor Yellow }
+    else { Write-Host '  있음 — 그대로 두고 필요한 것만 민다' }
   } catch {
+    $cfg = $null
     # ⚠ **깨진 파일을 덮지 않는다.** 사람이 손댄 것이 거기 들어 있을 수 있고, 지우면 무엇을 잃었는지 물을 자리가 없다. 말하고 물러난다.
     Write-Host '  ! settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
     $Fails.Add('홈 settings.json 을 못 읽었다')
   }
 } else {
-  # env 를 여기 안 적는다 — 스위치의 진본은 위 `$Features` 하나이고 아래에서 늘 맞춘다. 씨앗에도 적으면 두 자리가 되어, 하나만
-  #   늘어난 날 새 기계와 헌 기계가 갈린다.
-  $cfg = [pscustomobject]@{
-    agentPushNotifEnabled   = $true
-    inputNeededNotifEnabled = $true
+  # 새 파일에 옮기는 것은 이 걸음이 고른 씨앗의 맨 위 키뿐이다(`$HomeSeedKeys` — 이름은 여기, 값은 씨앗 `$HomeSeed` · PAISetup #47 ⑦). 씨앗은
+  #   사외 VDI 의 홈을 통째로 덮는 바탕이라 그 사람 취향의 키(테마 따위)도 들어, 다 옮기면 이 설치가 고른 적 없는 값을 심는다. `env` 는
+  #   아래 기능 스위치 칸이 장부에 적으며 심고, `permissions` 는 아래 표(`$ClaudeHomePlants`)가 심는다 — 씨앗의 허용 줄은 설정 저장소의
+  #   배포 스크립트를 여는 것이라 그 저장소의 세션 훅이 든다.
+  $HomeSeedKeys = @('agentPushNotifEnabled', 'inputNeededNotifEnabled')
+  $cfg = [pscustomobject]@{}
+  if ($HomeSeed -and $HomeSeed.Obj) {
+    foreach ($p in $HomeSeed.Obj.PSObject.Properties) {
+      if ($HomeSeedKeys -ccontains $p.Name) { $cfg | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value }
+    }
+  } elseif ($HomeSeed) {
+    Write-Host "  ! 홈 설정 씨앗을 못 읽었다 — $($HomeSeed.Why) · 빈 설정으로 짓는다" -ForegroundColor Yellow
   }
   Write-Host '  없어서 씨앗을 깐다'
 }
@@ -6188,18 +6902,17 @@ if (Test-Path -LiteralPath $homeCfg) {
 # ── 기본 권한 모드 · 맡기기 러너 허락 — 심는 표 (claude-config #147 · claude-config #142 ㉲)─────────────────────────────────────────
 # 기본 권한 모드(`permissions.defaultMode = auto` — 자동 모드)는 Claude 를 고르면 심는다. 서브에이전트가 묻지 않고 돌려면 이 모드가
 #   기본이어야 한다 — 편집 자동 승인(`acceptEdits`)은 허락 목록 밖 셸 명령마다 사람에게 물어 레인이 거기서 멈춘다. 회사 게이트웨이에서
-#   분류기 판정이 가끔 끊기는 값은 그보다 작다고 보았다(claude-config #180). 판이 값을 바꾸면 아래 「물러난 우리 값」 걷기가 옛 값을
-#   걷고 새 값을 심는다. 러너를 부르는 Bash 명령의 허락은 그 러너 스킬이 Claude 홈에 서는 조건(`$FreeSkills` 의
-#   Claude 칸)에서 심는다 — 허락이 없으면 스킬이 시킨 호출마다 묻거나(편집 자동 승인) 분류기가 막는다(자동 모드 · claude-config #142).
+#   분류기 판정이 가끔 끊기는 값은 그보다 작다고 보았다(claude-config #180). 판이 값을 바꾸면 장부에 든 옛 우리 값 그대로인 것만 새 값으로
+#   간다. 러너를 부르는 Bash 명령의 허락은 그 러너 스킬이 Claude 홈에 서는 조건(`$FreeSkills` 의 Claude 칸)에서 심는다 — 허락이 없으면
+#   스킬이 시킨 호출마다 묻거나(편집 자동 승인) 분류기가 막는다(자동 모드 · claude-config #142).
 # ⚠ **스킬이 Claude 에게 시키는 꼴(`pythonw "<스킬 폴더>/scripts/<러너>" …`)만 연다** — `python` 꼴을 열면 `python -c "…" agy_bg.py`
 #   처럼 러너가 아닌 명령까지 분류기를 건너뛴다. 스킬 폴더는 홈마다 달라 `*` 로 파일 이름만 문다.
-# ⚠ **우리 것은 기록(`$ClaudePlantLedger` · 한 줄에 `키<탭>값`)에 든 것뿐이다** — 사람이 그 모드를 고르면 Claude 도 같은
-#   값을 적어, 값이 같다는 것으로는 못 가른다. 그래서 없을 때만 심고 그때 적는다. 조건이 빠지면 기록에 든 것 가운데 지금 값이
-#   우리 값 그대로인 것만 걷고, 사람이 바꾼 것은 값을 두고 기록에서만 뺀다. 기록에 있는데 이 표에 없는 줄(물러난 것)도 같은
-#   자로 걷는다. 지워진 것은 다음 설치가 다시 심는다 — 끄는 길은 다른 `defaultMode` 값이나 `permissions.deny` 다.
-# 기록은 설치기 제 자리(자동 실행 기록 · 값 파일이 사는 폴더)에 둔다 — 중립 한 벌은 갈 곳 표의 손 몫이라 설치기가 그 자리를
+# ⚠ **우리 것은 장부에 든 것뿐이다** — 사람이 그 모드를 고르면 Claude 도 같은 값을 적어, 값이 같다는 것으로는 못 가른다. 그래서 없을
+#   때만 심고 그때 적는다(guard 꼴 · 같은 값을 우리 것으로 안 받는다). 조건이 빠지면 장부에 든 것 가운데 지금 값이 우리 값 그대로인 것만
+#   걷고, 사람이 바꾼 것은 값을 두고 장부에서만 뺀다. 장부에 있는데 이 표에 없는 줄(물러난 것)도 같은 자로 걷는다. 지워진 것은 다음
+#   설치가 다시 심는다 — 끄는 길은 다른 `defaultMode` 값이나 `permissions.deny` 다.
+# 장부는 설치기 제 자리(자동 실행 기록 · 값 파일이 사는 폴더)에 둔다 — 중립 한 벌은 갈 곳 표의 손 몫이라 설치기가 그 자리를
 #   들면 안 된다(결정 0112 · 갈 곳 표 손 검사 ⑰).
-$ClaudePlantLedger = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\claude-settings.tsv'
 $ClaudeHomePlants = @(
   @{ Label = '기본 권한 모드';            Key = 'defaultMode'; Value = 'auto'; Want = [bool]$hostClaude }
   @{ Label = 'agy 러너 허락';             Key = 'allow';       Value = 'Bash(pythonw *agy_bg.py *)'
@@ -6208,68 +6921,63 @@ $ClaudeHomePlants = @(
      Want = [bool]($FreeSkills -and $FreeSkills['codex-copilot-background'].Claude) }
 )
 
-# 맡기기 러너 값 — 이름마다 두 자리 표가 그 이름에 준 값들(이름 → 값 목록). 위 「`env` 칸」이 이 이름들을 안 밀고, 아래 「러너 값
-#   사본」이 이 값으로 우리 것을 가른다. ⚠ 손 목록으로 적지 않는다 — 표에 이름이 느는 날 손 목록만 안 늘어 그 이름이 다시 밀린다.
-#   맡기기 모델 표는 맡기기를 안 고른 판에도 읽는다(「키와 값」) — 못 읽은 판에만 그 표의 이름이 비어 온다.
-$RunnerEnvValues = @{}
-foreach ($bySite in @($AgyModelVarsBySite, $CcBgVarsBySite)) {
-  if (-not $bySite) { continue }
-  foreach ($s in @($bySite.Keys)) {
-    foreach ($k in @($bySite[$s].Keys)) {
-      if (-not $RunnerEnvValues.ContainsKey($k)) { $RunnerEnvValues[$k] = @() }
-      $RunnerEnvValues[$k] += [string]$bySite[$s][$k]
-    }
-  }
-}
+# 맡기기 러너 값 — 이름마다 두 자리 표가 그 이름에 준 값들(이름 → 값 목록 · `Get-SiteValues`). 아래 「env 밀기」가 이 이름들을 안 밀고,
+#   「러너 값 사본」이 이 값으로 우리 것을 가른다. ⚠ 손 목록으로 적지 않는다 — 표에 이름이 느는 날 손 목록만 안 늘어 그 이름이 다시
+#   밀린다. 맡기기 모델 표는 맡기기를 안 고른 판에도 읽는다(「키와 값」) — 못 읽은 판에만 그 표의 이름이 비어 온다.
+$RunnerEnvValues = Get-SiteValues @($AgyModelVarsBySite, $CcBgVarsBySite)
 
+$homeWrote = $null
 if ($cfg) {
   $wantEnv = (Read-Directive $DistEnvFile 'settings-env') -eq 'yes'
-  $dirty = $false
+  $dirty = $homeBlank
 
   # env 칸을 먼저 세운다 — 아래 둘(기능 스위치 · 게이트웨이 값)이 같은 자리에 쓴다.
   if (-not $cfg.PSObject.Properties['env']) {
     $cfg | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) -Force
   }
+  # 이 파일의 칸을 읽고 쓰는 손 — 장부 손이 부른다. 메모리의 `$cfg` 만 고치고 파일은 이 걸음 끝에서 한 번 쓴다. 장부 손이 무엇을 바꿨으면
+  #   그 파일을 쓴다(`$HomeChanged`).
+  $EnvGet    = { param($n) Get-SettingsSlot $cfg 'settings-env' $n }
+  $EnvSet    = { param($n, $v) $cfg.env | Add-Member -NotePropertyName $n -NotePropertyValue $v -Force; $true }
+  $EnvRemove = { param($n, $v) $cfg.env.PSObject.Properties.Remove($n); $true }
+  $HomeChanged = { param($r) [bool]($r.Planted.Count + $r.Replaced.Count + $r.Removed.Count) }
 
-  # 클라이언트 기능 스위치 — 자리도 값 파일도 안 탄다. 없으면 넣고 다르면 맞춘다.
-  $fx = 0
-  foreach ($k in $Features.Keys) {
-    $old = if ($cfg.env.PSObject.Properties[$k]) { $cfg.env.$k } else { $null }
-    if ($old -ne $Features[$k]) {
-      $cfg.env | Add-Member -NotePropertyName $k -NotePropertyValue $Features[$k] -Force
-      $dirty = $true; $fx++
-    }
+  # 클라이언트 기능 스위치 — 자리도 값 파일도 안 탄다. 선언은 홈 설정 씨앗의 `env`(`$Features`)이고, 씨앗에서 뺀 스위치는 장부로 걷는다(PAISetup #44 ⑨).
+  #   씨앗을 못 읽은 판은 안 건드린다 — 그 판의 선언이 없다.
+  if ($null -eq $Features) {
+    Write-Host "  ! 기능 스위치 — 홈 설정 씨앗을 못 읽어 안 건드렸다$(if ($HomeSeed -and $HomeSeed.Why) { " ($($HomeSeed.Why))" })" -ForegroundColor Yellow
   }
-  if ($fx) { Write-Host "  기능 스위치 $fx 개를 맞췄다 ($($Features.Keys -join ' · '))" -ForegroundColor Green }
+  $fx = Sync-Planted -Ledger $Ledger -Place 'settings-env' -At $homeAt -By 'features' -Want $(if ($null -ne $Features) { $Features } else { [ordered]@{} }) `
+          -Complete ($null -ne $Features) -Get $EnvGet -Set $EnvSet -Remove $EnvRemove -Where '기능 스위치 · env' -Speak
+  if (& $HomeChanged $fx) { $dirty = $true }
 
-  # 고를 모델 목록 — **게이트웨이에 닿는 자리에만 쓴다** (선언은 위 `$ModelPicker`).
-  # `$useGateway` 가 자리 판정을 이미 들고 있다 — 사외면 거짓이라 이 칸이 안 선다. 두 자리가 재면 한쪽이 낡아 여기서 다시 안 잰다.
-  # 사외에 남은 줄도 걷는다 — 사내에서 쓰고 사외로 간 기계(또는 씨앗이 이 줄을 깔던 배포본으로 깐 기계)에는 그 줄이 남아, 구독으로
-  #   못 부르는 것이 목록에 선다.
+  # 고를 모델 목록 — **게이트웨이에 닿는 자리에만 선다** (선언은 위 `$ModelPicker`). 사외면 선언이 비어 우리가 둔 목록을 걷는다 — 사내에서
+  #   쓰고 사외로 간 기계에 그 줄이 남으면 구독으로 못 부르는 것이 목록에 선다.
+  # `$useGateway` 가 자리 판정을 이미 들고 있다 — 두 자리가 재면 한쪽이 낡아 여기서 다시 안 잰다.
+  # ⚠ **사람이 둔 목록은 안 덮고 안 걷는다** — 우리 것은 장부에 든 목록 그대로인 것뿐이다(PAISetup #44 ⑫). 판이 목록을 바꾸면 장부의 옛 목록
+  #   그대로인 것만 새 목록으로 간다. 장부를 처음 세우는 판은 옛 판처럼 덮고 적는다 — 옛 판이 둔 목록은 기록이 없어 사람 것과 못 가르고,
+  #   그대로 두면 옛 판의 목록이 사람 것으로 굳는다.
+  $pickWant = [ordered]@{}
   if ($useGateway) {
     $want = $ModelPicker | ForEach-Object { [pscustomobject]$_ }
     $pickerObj = [pscustomobject]@{ options = @($want); replaceBuiltInOptions = $ModelPickerOnly }
-    # 있는 것과 견준다 — 같으면 안 쓴다(매 설치마다 「썼다」가 찍히면 눈이 그 줄을 흘린다).
-    $old = if ($cfg.PSObject.Properties['modelPicker']) { $cfg.modelPicker | ConvertTo-Json -Depth 10 -Compress } else { $null }
-    if ($old -ne ($pickerObj | ConvertTo-Json -Depth 10 -Compress)) {
-      $cfg | Add-Member -NotePropertyName modelPicker -NotePropertyValue $pickerObj -Force
-      $dirty = $true
-      Write-Host "  모델 목록 $($want.Count) 줄을 맞췄다 (다 1M · 내장 줄은 숨긴다)" -ForegroundColor Green
-    } else {
-      Write-Host '  모델 목록 — 이미 맞다'
-    }
-  } elseif ($cfg.PSObject.Properties['modelPicker']) {
-    $cfg.PSObject.Properties.Remove('modelPicker')
-    $dirty = $true
-    Write-Host '  모델 목록 — 걷었다 (게이트웨이를 안 쓰는 자리다)' -ForegroundColor Green
+    $pickWant['modelPicker'] = [string]($pickerObj | ConvertTo-Json -Depth 10 -Compress)
   }
+  $pick = Sync-Planted -Ledger $Ledger -Place 'settings' -At $homeAt -By 'model-picker' -Want $pickWant `
+            -Mode $(if ($Ledger.Migrating) { 'overwrite' } else { 'guard' }) `
+            -Get { param($n) Get-SettingsSlot $cfg 'settings' $n } `
+            -Set { param($n, $v) $cfg | Add-Member -NotePropertyName modelPicker -NotePropertyValue ($v | ConvertFrom-Json) -Force; $true } `
+            -Remove { param($n, $v) $cfg.PSObject.Properties.Remove('modelPicker'); $true } `
+            -Label @{ modelPicker = '모델 목록' } -Where 'modelPicker' -Speak -SayKept
+  if (& $HomeChanged $pick) { $dirty = $true }
+  elseif ($useGateway -and -not $pick.Kept.Count -and -not $pick.Unread.Count) { Write-Host '  모델 목록 — 이미 맞다' }
 
   # WebFetch 검증 건너뛰기 — **사내 자리에만 켠다** (claude-config #118 · 결정 0087).
   # 사내 망이 `api.anthropic.com` 을 SNI 로 끊어, WebFetch 가 가져오기 전에 묻는 Anthropic 차단 목록 조회
   # (`/api/web/domain_info`)가 늘 져 열리는 주소도 못 가져온다. 이 키가 그 조회를 건너뛴다(Claude Code 설정 스키마의 키 · 2.1.293 에서 확인).
   # ⚠ **망 자리로 가른다 — 게이트웨이가 아니다.** 끊는 것은 사내 망 장비라 `$inside` 를 본다.
-  # 잃는 것은 Anthropic 의 페치 차단 목록 검사다 — 그래서 사외에서는 안 켜고, 우리가 켠 값(참)이 남았으면 걷는다(위 모델 목록과
-  #   같은 규율 · 거짓이나 다른 값은 사람이 둔 것이라 안 건드린다).
+  # 잃는 것은 Anthropic 의 페치 차단 목록 검사다 — 그래서 사외에서는 안 켜고, 우리가 켠 값(참)이 남았으면 걷는다(거짓이나 다른 값은 사람이
+  #   둔 것이라 안 건드린다).
   $skipOn = $cfg.PSObject.Properties['skipWebFetchPreflight'] -and ($cfg.skipWebFetchPreflight -eq $true)
   if ($inside) {
     if ($skipOn) {
@@ -6285,93 +6993,51 @@ if ($cfg) {
     Write-Host '  WebFetch 검증 건너뛰기 — 걷었다 (사외는 그 검사가 선다)' -ForegroundColor Green
   }
 
-  # 기본 권한 모드 · 맡기기 러너 허락 — 위 표(`$ClaudeHomePlants`)대로 심고 기록에 든 우리 것만 걷는다. 기록은 설정을 쓴 뒤에 맞춘다
-  #   (이 걸음 끝) — 쓰다 지면 기록이 설정보다 앞서지 않아, 우리 것을 남의 것으로 세는 쪽으로만 진다.
-  # `permissions` 가 표가 아니거나 `allow` 가 목록이 아니면 그 칸을 안 건드리고 기록은 잇는다 — 사람이 고친 뒤 다음 설치가 맞춘다.
-  $planOld = @()
-  if (Test-Path -LiteralPath $ClaudePlantLedger -PathType Leaf) {
-    $planOld = @([IO.File]::ReadAllLines($ClaudePlantLedger) | Where-Object { $_ -match "^[^`t]+`t." })
+  # 기본 권한 모드 · 맡기기 러너 허락 — 위 표(`$ClaudeHomePlants`)대로 장부 손이 심고 장부에 든 우리 것만 걷는다(guard 꼴 · 표의 값이 바뀌면
+  #   장부의 옛 우리 값 그대로인 것만 새 값으로 간다). `permissions` 가 표가 아니거나 `allow` 가 목록이 아니면 그 칸을 안 건드리고 장부는
+  #   잇는다 — 사람이 고친 뒤 다음 설치가 맞춘다. 장부는 설정을 쓴 뒤에 쓴다(이 걸음 끝).
+  $permWant = [ordered]@{}; $allowWant = [ordered]@{}
+  foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
+    if ($p.Key -ceq 'allow') {
+      if (-not $allowWant.Contains('permissions.allow')) { $allowWant['permissions.allow'] = @() }
+      $allowWant['permissions.allow'] += $p.Value
+    } else { $permWant["permissions.$($p.Key)"] = $p.Value }
   }
-  $planNew = New-Object System.Collections.Generic.List[string]
-  # ⚠ **물러난 우리 값을 먼저 걷는다** — 표의 값이 바뀌면(예: `acceptEdits` → `auto`) 새 값이 먼저 돌 때 옛 값을 「사람이 정한 값」으로
-  #   읽어 비켜 서고, 뒤에서 옛 값만 걷혀 다음 설치에야 새 값이 선다. 걷고 나면 그 칸이 비어 새 값이 같은 판에 선다.
-  $planRows = @($planOld | Where-Object { $ln = $_; -not @($ClaudeHomePlants | Where-Object { "$($_.Key)`t$($_.Value)" -ceq $ln }).Count } |
-                           ForEach-Object { $kv = $_ -split "`t", 2; @{ Label = '우리가 심었던 값'; Key = $kv[0]; Value = $kv[1]; Want = $false } }) + @($ClaudeHomePlants)
-  $perm = if ($cfg.PSObject.Properties['permissions']) { $cfg.permissions } else { $null }
-  $planDone = 0
-  foreach ($p in $planRows) {
-    $line = "$($p.Key)`t$($p.Value)"
-    $ours = $planOld -ccontains $line
-    $asList = $p.Key -ceq 'allow'
-    if (-not $asList -and $p.Key -cne 'defaultMode') { if ($ours) { $planNew.Add($line) }; continue }   # 이 판이 모르는 칸 — 기록만 잇는다
-    $has = [bool]($perm -and $perm.PSObject.Properties[$p.Key])
-    # ⚠ 목록은 `$x = if …` 로 받지 않는다 — 파이프가 한 줄짜리 목록을 글자 하나로 풀어 「목록이 아니다」로 읽힌다
-    $cur = $null
-    if ($has) { $cur = $perm.($p.Key) }
-    if (($null -ne $perm -and $perm -isnot [pscustomobject]) -or ($asList -and $null -ne $cur -and $cur -isnot [array])) {
-      Write-Host "  ! $($p.Label) — permissions$(if ($asList) { '.allow' }) 가 표 · 목록 꼴이 아니라 안 건드렸다 ($homeCfg)" -ForegroundColor Yellow
-      if ($ours) { $planNew.Add($line) }
-      continue
-    }
-    $hit = if ($asList) { @($cur) -ccontains $p.Value } else { $has -and ($cur -ceq $p.Value) }
-    if ($p.Want) {
-      if (-not $hit -and ($asList -or -not $has)) {
-        if ($null -eq $perm) {
-          $cfg | Add-Member -NotePropertyName permissions -NotePropertyValue ([pscustomobject]@{}) -Force
-          $perm = $cfg.permissions
-        }
-        $val = $p.Value
-        if ($asList) { $val = @(@($cur | Where-Object { $null -ne $_ }) + $p.Value) }
-        $perm | Add-Member -NotePropertyName $p.Key -NotePropertyValue $val -Force
-        $planNew.Add($line); $dirty = $true; $planDone++
-        Write-Host "  $($p.Label) — 심었다 (permissions.$($p.Key)$(if ($asList) { ' 에 ' } else { ' = ' })$($p.Value))" -ForegroundColor Green
-      } elseif ($hit) {
-        if ($ours) { $planNew.Add($line) }
-      } else {
-        Write-Host "  $($p.Label) — 사람이 정한 값($cur)이라 둔다"
-      }
-    } elseif ($ours -and $hit) {
-      if ($asList) {
-        $left = @(@($cur) | Where-Object { $_ -cne $p.Value })
-        if ($left.Count) { $perm | Add-Member -NotePropertyName $p.Key -NotePropertyValue $left -Force }
-        else { $perm.PSObject.Properties.Remove($p.Key) }
-      } else {
-        $perm.PSObject.Properties.Remove($p.Key)
-      }
-      if (-not @($perm.PSObject.Properties).Count) { $cfg.PSObject.Properties.Remove('permissions'); $perm = $null }
-      $dirty = $true; $planDone++
-      Write-Host "  $($p.Label) — 걷었다 (우리가 심은 permissions.$($p.Key) · 이번에는 안 심는다)" -ForegroundColor Green
-    } elseif ($ours) {
-      $planDone++
-      Write-Host "  $($p.Label) — 사람이 바꿔 둔다 (우리 기록에서만 뺐다)"
-    }
+  $PermGet = { param($n) Get-SettingsSlot $cfg 'settings' $n }
+  $PermBox = {
+    if (-not $cfg.PSObject.Properties['permissions']) { $cfg | Add-Member -NotePropertyName permissions -NotePropertyValue ([pscustomobject]@{}) -Force }
+    $cfg.permissions
   }
-  if (-not $planDone -and @($ClaudeHomePlants | Where-Object { $_.Want }).Count) { Write-Host '  기본 권한 모드 · 러너 허락 — 이미 맞다' }
-
-  if ($wantEnv -and $Planted.Count -gt 0) {
-    $pushed = 0
-    foreach ($k in $Planted.Keys) {
-      if ($SettingsEnvSkip -contains $k) { continue }
-      if ($RunnerEnvValues.ContainsKey($k)) { continue }
-      $pushed++
-      $old = if ($cfg.env.PSObject.Properties[$k]) { $cfg.env.$k } else { $null }
-      if ($old -ne $Planted[$k]) {
-        $cfg.env | Add-Member -NotePropertyName $k -NotePropertyValue $Planted[$k] -Force
-        $dirty = $true
-      }
-    }
-    if ($pushed) { Write-Host "  env 에 $pushed 개를 맞췄다 (#settings-env = yes · 키와 맡기기 러너 값은 환경변수에만 둔다)" -ForegroundColor Green }
-  } elseif (-not $wantEnv) {
-    Write-Host '  env 는 안 민다 — 값 파일이 #settings-env 를 안 든다'
+  $PermTidy = { if ($cfg.PSObject.Properties['permissions'] -and -not @($cfg.permissions.PSObject.Properties).Count) { $cfg.PSObject.Properties.Remove('permissions') } }
+  $pm = Sync-Planted -Ledger $Ledger -Place 'settings' -At $homeAt -By 'permissions' -Names @('permissions.defaultMode') -Want $permWant -Mode 'guard' `
+          -Get $PermGet -Set { param($n, $v) (& $PermBox) | Add-Member -NotePropertyName defaultMode -NotePropertyValue $v -Force; $true } `
+          -Remove { param($n, $v) $cfg.permissions.PSObject.Properties.Remove('defaultMode'); & $PermTidy; $true } `
+          -Label @{ 'permissions.defaultMode' = '기본 권한 모드' } -Where 'permissions.defaultMode' -Speak -SayKept -ShowValue
+  $pa = Sync-Planted -Ledger $Ledger -Place 'settings' -At $homeAt -By 'permissions' -Names @('permissions.allow') -Want $allowWant -Mode 'guard' -List `
+          -Get $PermGet `
+          -Set { param($n, $v) $box = & $PermBox; $box | Add-Member -NotePropertyName allow -NotePropertyValue @(@($box.allow | Where-Object { $null -ne $_ }) + $v) -Force; $true } `
+          -Remove {
+            param($n, $v)
+            $left = @(@($cfg.permissions.allow) | Where-Object { $null -ne $_ -and $_ -cne $v })
+            if ($left.Count) { $cfg.permissions | Add-Member -NotePropertyName allow -NotePropertyValue $left -Force }
+            else { $cfg.permissions.PSObject.Properties.Remove('allow') }
+            & $PermTidy; $true } `
+          -Label @{ 'permissions.allow' = '맡기기 러너 허락' } -Where 'permissions.allow' -Speak -SayKept
+  if ((& $HomeChanged $pm) -or (& $HomeChanged $pa)) { $dirty = $true }
+  elseif (@($ClaudeHomePlants | Where-Object { $_.Want }).Count -and -not ($pm.Kept.Count + $pm.Unread.Count + $pa.Unread.Count)) {
+    Write-Host '  기본 권한 모드 · 러너 허락 — 이미 맞다'
   }
 
   # 러너 값 사본 — 이 파일에 맡기기 러너 이름(`$RunnerEnvValues`)이 있으면 판마다 맞춘다. 이 칸은 그 이름을 안 밀지만, 그 이름을
-  #   밀던 판이 남긴 줄이나 사람이 넣은 줄이 있을 수 있다.
-  # ⚠ **`$Planted` 도 `#settings-env` 도 안 묻는다.** 사용자 환경이 이미 맞는 재설치는 아무것도 안 심어, 심은 이름만 훑는 아래 키
-  #   걷기 꼴로는 바로 그 판에 사본이 그대로 남는다.
+  #   밀던 판(장부가 서기 전)이 남긴 줄이나 사람이 넣은 줄이 있을 수 있다.
+  # ⚠ **`$Planted` 도 `#settings-env` 도 안 묻는다.** 사용자 환경이 이미 맞는 재설치는 아무것도 안 심어, 심은 이름만 훑는 꼴로는 바로
+  #   그 판에 사본이 그대로 남는다.
   # 우리 것이라는 근거는 값이다 — 두 자리 표 어느 쪽이든 그 이름의 값과 글자까지 같으면 걷는다. 다르면 사람이 고른 값으로 보고 둔 채
   #   알린다 — 사람의 선택이 이기고 실패가 아니다. 이 파일의 값이 이기므로 그 세션의 러너가 그 값으로 나간다는 것까지 말한다.
+  # ⚠ **알리는 것은 한 번이다(PAISetup #44 ②)** — 알린 값은 장부에 `seen` 으로 적고, 그 값 그대로면 다음 판은 다시 안 알린다. 값이
+  #   바뀌거나 사라지면 그 기록을 뺀다(다시 서면 다시 알린다).
   if ($cfg.PSObject.Properties['env']) {
+    $seenRows = @(Find-LedgerRows $Ledger 'settings-env' $homeAt 'seen')
     foreach ($p in @($cfg.env.PSObject.Properties)) {
       if (-not $RunnerEnvValues.ContainsKey($p.Name)) { continue }
       if ($p.Value -is [string] -and $RunnerEnvValues[$p.Name] -ccontains $p.Value) {
@@ -6379,18 +7045,24 @@ if ($cfg) {
         $dirty = $true
         Write-Host "  $($p.Name) — settings.json 에서 걷었다 (맡기기 러너 값은 사용자 환경변수가 든다)" -ForegroundColor Green
       } else {
+        $shown = Get-SettingsSlot $cfg 'settings-env' $p.Name
+        if (@($seenRows | Where-Object { $_.Name -ceq $p.Name -and (Test-SameText $_.Value $shown) }).Count) { continue }
         Write-Host "  ! $($p.Name) 이 settings.json 에 우리 표에 없는 값($($p.Value))으로 있다 — 사람이 고른 값으로 보고 둔다" -ForegroundColor Yellow
         Write-Host "     CLI · VS Code 세션이 띄운 러너는 이 값으로 나간다. 우리 값으로 돌리려면 이 줄을 지운다 — 볼 자리: $homeCfg  (env 칸)"
+        Set-LedgerRow $Ledger 'settings-env' $homeAt $p.Name 'seen' $shown
       }
+    }
+    foreach ($r in $seenRows) {
+      if (-not (Test-SameText (Get-SettingsSlot $cfg 'settings-env' $r.Name) $r.Value)) { [void]$Ledger.Rows.Remove($r) }
     }
   }
 
   # 안 밀기로 한 이름(`$SettingsEnvSkip` — 회사 키와 그 별칭 둘)이 남아 있으면 걷는다 — 심는 자리를 줄였으면 걷는 자리가 선다. 안
-  #   걷으면 그 이름을 밀던 배포본으로 깐 기계는 키를 그대로 든다. 「물러난 이름」 칸과 같은 규율이고, 여기는 이름 대신 자리가 물러난 것이다.
+  #   걷으면 그 이름을 밀던 배포본으로 깐 기계는 키를 그대로 든다. 여기는 이름 대신 자리가 물러난 것이다.
   # ⚠ **회사 키일 때만 걷고, 이번 판에 심었나는 안 묻는다.** 우리 것인가는 값이 가른다(`Test-CompanyKey` · 「키와 값」의 「회사 키」
   #   칸) — 심은 이름만 훑으면 그 도구를 안 세우는 판과 사외 판에 회사 키가 이 파일에 남는다. 다른 값은 사람 것이다. 이번에 심은
   #   이름이면 이 파일의 값이 이겨 방금 심은 키를 가리므로 빨갛게 문다. 안 심은 이름은 두고 이름을 댄다(`ANTHROPIC_` 는 아래 「홀로
-  #   있다」 칸이 든다).
+  #   있다」 칸이 든다). 키는 장부 밖이다 — 평문을 하나 더 두지 않는다.
   # 이 파일에서 우리 주소와 짝으로 선 키(사외 판)는 「키와 값」의 「회사 키」 칸이 이미 회사 키로 세우고 덩이에 두었다.
   if ($cfg.PSObject.Properties['env']) {
     foreach ($k in $SettingsEnvSkip) {
@@ -6409,26 +7081,13 @@ if ($cfg) {
     }
   }
 
-  # 우리가 안 심은 `ANTHROPIC_` 이름이 남아 있으면 문다(아래 「홀로 있다」) — 사내 안내 문서가 손으로 적으라고 하는 자리라, 앞선
-  #   값이 남으면 그쪽이 이겨 방금 심은 것이 가려진다. 지우지는 않는다 — 사람이 뜻을 두고 넣었을 수 있다.
-  # ⚠ **단 `$Retired` 는 먼저 걷는다 — 심는 자리가 둘이면 걷는 자리도 둘이다.** 그 이름들은 우리가 심어 놓고 물러난 것이라,
-  #   여기 남으면 「홀로 있다」가 그것을 물어 설치가 빨강으로 끝난다.
-  if ($cfg.PSObject.Properties['env']) {
-    foreach ($k in $Retired) {
-      if ($fromFile.ContainsKey($k)) { continue }              # 진본이 되살렸으면 안 건드린다
-      if (-not $cfg.env.PSObject.Properties[$k]) { continue }
-      $cfg.env.PSObject.Properties.Remove($k)
-      $dirty = $true
-      Write-Host "  $k — settings.json 에서도 걷었다" -ForegroundColor Green
-    }
-  }
-
-  # 사외면 프록시 주소와 사내 전용 이름도 이 파일에서 걷는다 — 걷는 자리가 둘이라는 위 말이 여기에도 선다. 밀기는 더하기만 해서
+  # 사외면 프록시 주소와 사내 전용 이름도 이 파일에서 걷는다 — 걷는 자리가 둘이라는 말이 여기에도 선다. 밀기는 더하기만 해서
   #   안 밀기로 한 이름은 스스로 사라지지 않고, 아래 「홀로 있다」는 `ANTHROPIC_` 만 물어 `GOOGLE_GEMINI_BASE_URL` 같은 것을 못 잡는다.
   # ⚠ **걷어도 되나는 `Test-OurGatewayUrl` · `Test-OurProxyEntry` · `Test-OurInsideOnlyEntry` 가 판다 — 「사외로 간 자리의 사내 잔재」
   #   칸과 같은 문이다.** 판정을 여기 따로 적으면 이름 울타리가 한쪽에서 빠져 남의 값을 지운다. 왜 그 물음인지는 그 함수 머리가 든다.
   #   게이트웨이 주소는 「키와 값」이 사외에서 값 파일 표(`$fromFile`)에서 버린 이름이라 `Test-OurProxyEntry` 로는 못 가르고, 「회사 키」
   #   칸이 모은 우리 주소(`$OurGatewayUrls`)와 글자로 견준다. 다른 주소는 루프백이어도 두고, 아래 「홀로 있다」가 그 이름을 댄다.
+  #   이 칸이 든 이름(짐의 값 파일이 든 이름 가운데 이 자리가 안 심은 것)은 아래 「env 밀기」의 장부 손이 기록만 잇는다.
   # ⚠ **훑는 목록을 먼저 뜬다** — 도는 중에 지우면 열거가 깨진다.
   if (-not $useGateway -and $cfg.PSObject.Properties['env']) {
     foreach ($p in @($cfg.env.PSObject.Properties)) {
@@ -6447,10 +7106,36 @@ if ($cfg) {
     }
   }
 
+  # env 밀기 — 선언은 이번 판에 사용자 환경에 심은 값(`$Planted`)에서 키 · 맡기기 러너 값 · 물음에 사람이 친 값을 뺀 것이다(`#settings-env = yes` 일 때만 ·
+  #   PAISetup #44 ①). 장부 손이 민 것을 적고, 선언에서 빠진 우리 값(값 파일 · 표에서 걷힌 이름 · `#settings-env` 를 뺀 판 · 이 자리가 안
+  #   심는 이름)을 장부의 그 값 그대로일 때 걷는다(⑦ ⑧). 사외 판에서 짐의 값 파일이 든 이름인데 이 자리가 안 심은 것은 바로 위 칸이 값으로
+  #   가른다 — 장부는 기록만 잇는다(`-Owned`). 짐의 값 파일이 없는 판은 걷지 않는다(`$DistComplete`).
+  # 게이트웨이에서 그 값이 세션에 실제로 이기나는 사내 PC 에서 사람이 한 판 잰다(PAISetup #44 가-1 끝).
+  $pushWant = [ordered]@{}
+  if ($wantEnv) {
+    foreach ($k in @($Planted.Keys | Sort-Object)) {
+      if ($SettingsEnvSkip -contains $k) { continue }
+      if ($RunnerEnvValues.ContainsKey($k)) { continue }
+      if ($HumanValueNames -contains $k) { continue }   # 물음에 사람이 친 값 — 「값 파일 이름의 장부」의 ⚠
+      $pushWant[$k] = $Planted[$k]
+    }
+  }
+  $push = Sync-Planted -Ledger $Ledger -Place 'settings-env' -At $homeAt -By 'env-push' -Want $pushWant -Complete ([bool]$DistComplete) `
+            -Get $EnvGet -Set $EnvSet -Remove $EnvRemove -Where 'settings.json 의 env' `
+            -Owned { param($n, $c) (-not $useGateway) -and ($DistNames -contains $n) -and -not $Planted.ContainsKey($n) }
+  if (& $HomeChanged $push) { $dirty = $true }
+  if ($pushWant.Count) { Write-Host "  env 에 $($pushWant.Count) 개를 맞췄다 (#settings-env = yes · 키와 맡기기 러너 값은 환경변수에만 둔다)" -ForegroundColor Green }
+  elseif (-not $wantEnv) { Write-Host '  env 는 안 민다 — 값 파일이 #settings-env 를 안 든다 · 앞 판이 민 우리 값은 걷는다' }
+  foreach ($k in $push.Removed) { Write-Host "  $k — settings.json 에서 걷었다 (앞 판이 민 우리 값 · 이번 판은 안 민다)" -ForegroundColor Green }
+
+  # 우리가 안 민 `ANTHROPIC_` 이름이 남아 있으면 문다(「홀로 있다」) — 사내 안내 문서가 손으로 적으라고 하는 자리라, 앞선 값이 남으면 그쪽이
+  #   이겨 방금 심은 것이 가려진다. 지우지는 않는다 — 사람이 뜻을 두고 넣었을 수 있다. 우리 것은 장부에 든 밀기 줄이다(바로 위 칸이 이번
+  #   판에 민 것을 적었다).
   if ($cfg.PSObject.Properties['env']) {
+    $pushedNow = @(Find-LedgerRows $Ledger 'settings-env' $homeAt 'env-push' | ForEach-Object { $_.Name })
     foreach ($p in $cfg.env.PSObject.Properties) {
       if ($p.Name -notlike 'ANTHROPIC_*') { continue }
-      if ($Planted.ContainsKey($p.Name)) { continue }
+      if ($pushedNow -contains $p.Name) { continue }
       Write-Host "  ! $($p.Name) 이 settings.json 에만 있다 — 우리가 심은 값을 가릴 수 있다" -ForegroundColor Red
       Write-Host "     볼 자리: $homeCfg  (env 칸)"
       $Fails.Add("$($p.Name) 이 settings.json 에 홀로 있다")
@@ -6479,18 +7164,25 @@ if ($cfg) {
   if ($dirty -or -not (Test-Path -LiteralPath $homeCfg)) {
     # ⚠ **BOM 없이 쓴다.** PowerShell 5.1 의 `Set-Content -Encoding UTF8` 은 BOM 을 붙이는데,
     #   JSON 을 읽는 쪽이 그 세 바이트에 걸릴 수 있다. 설정이 통째로 안 읽히면 고장이 조용하다.
+    # 갈아 끼워 쓴다(`Write-FileSafely`) — 읽은 뒤 Claude · 사람이 그 파일을 고쳤으면(raced) 이 판은 안 쓰고, 다음 판이 그 글 위에서 맞춘다.
     $json = $cfg | ConvertTo-Json -Depth 10
-    [IO.File]::WriteAllText($homeCfg, $json, (New-Object Text.UTF8Encoding($false)))
-    Write-Host '  썼다' -ForegroundColor Green
+    $homeWrote = Write-FileSafely $homeCfg ((New-Object Text.UTF8Encoding($false)).GetBytes($json)) $homeOld
+    switch ($homeWrote.Did) {
+      'written' { Write-Host '  썼다' -ForegroundColor Green }
+      'raced'   { Write-Host "  ! settings.json — $($homeWrote.Why) · 이 판은 안 썼다 (다음 판이 맞춘다 · $homeCfg)" -ForegroundColor Yellow }
+      'linked'  { Write-Host "  ! settings.json — $($homeWrote.Why) · 그 자리는 손으로 맞춘다 ($homeCfg)" -ForegroundColor Yellow }
+      'overrun' { Write-Host "  ! settings.json — $($homeWrote.Why) · 그 글을 둔다 ($homeCfg)" -ForegroundColor Yellow }
+      default {
+        Write-Host "  ! settings.json 을 못 썼다 — $($homeWrote.Why) ($homeCfg)" -ForegroundColor Red
+        $Fails.Add('홈 settings.json 을 못 썼다')
+      }
+    }
   } else {
     Write-Host '  이미 맞다 — 안 건드림'
   }
 
-  # 기본 권한 모드 · 러너 허락의 기록 — 위에서 설정을 쓴 뒤에만 여기 닿는다. 바뀐 것이 없으면 안 쓴다(심은 적 없는 홈에는 안 짓는다).
-  if ((@($planOld) -join "`n") -cne (@($planNew) -join "`n")) {
-    New-Item -ItemType Directory -Path (Split-Path $ClaudePlantLedger -Parent) -Force | Out-Null
-    [IO.File]::WriteAllLines($ClaudePlantLedger, [string[]]@($planNew), (New-Object Text.UTF8Encoding($false)))
-  }
+  # 장부 — 설정을 쓴 뒤에만 이 걸음의 줄을 쓴다(못 썼으면 디스크의 장부 그대로다 — 장부가 설정보다 앞서지 않게).
+  if (-not $homeWrote -or $homeWrote.Did -ceq 'written' -or $homeWrote.Did -ceq 'same') { $null = Save-PlantLedger $Ledger }
 }
 
 Exit-Step 'home'
@@ -6506,7 +7198,7 @@ Exit-Step 'home'
 #   이 자리를 갱신하고 `check-global-copies.sh` 가 바이트로 잰다 — 재는 자가 붙은 사본이라 조용히 안 낡는다.
 Enter-Step 'assets'
 # ⚠ **씨앗 넷은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 원본에 없는 파일을 안 지운다. 진본에서 부품
-#   하나를 걷어도 한 번 깐 기계에는 영영 남고, 씨앗은 있으면 복사되는 자리라 걷힌 것이 계속 새 프로젝트로 퍼진다(「물러난 이름」
+#   하나를 걷어도 한 번 깐 기계에는 영영 남고, 씨앗은 있으면 복사되는 자리라 걷힌 것이 계속 새 프로젝트로 퍼진다(「값 파일 이름의 장부」
 #   칸의 「심기는 더하기만 한다」와 같은 병).
 # ⚠ **설정 저장소가 미는 자리에서는 비켜선다.** 그 저장소의 배포(`deploy.ps1`)가 `deploy.seeds.conf` 에 적힌 폴더를 저장소
 #   최신판으로 같은 자리에 민다 — 둘 다 깔면 이 칸이 릴리스 판으로 되돌리고 「설정 저장소」 걸음의 배포가 다시 미는 일이 자동
@@ -6644,7 +7336,8 @@ Exit-Step 'assets'
 #   층 — 홈
 #   하는 일 — 제작자 칸 값 · 고른 제품 값 · 자리 값 · 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록(짐의 손 `tool-homes.py` 를 부른다 —
 #     표준 층과 세 도구 홈) · 칸 없이 까는 스킬(제작자 칸에 안 든 도구의 홈) · Claude(걷힌 룰) · agy(훅 — 안 골랐으면 걷기) ·
-#     Codex(훅 병합과 신뢰 — 안 골랐으면 걷기) · 묻지 않고 돌기(고른 agy · Copilot · Codex 의 제 승인 설정)
+#     Codex(훅 병합과 신뢰 — 안 골랐으면 걷기) · 묻지 않고 돌기(고른 agy · Copilot · Codex 의 제 승인 설정) · 그 값과 Codex 데스크탑 샌드박스
+#     키의 장부(안 고르게 되면 장부의 우리 값만 걷는다) · 이 판의 마지막 장부 쓰기
 #   앞에서 받는 것 — 준비의 짐(`$Kit` — 손과 그 표가 뿌리에 실린다), 「공용 자산」의 씨앗(훅 몸통 · 병합기 · 어댑터)
 #   안 하는 것 — 설정 저장소를 안 받는다 · 홈 `settings.json` 을 쓰지 않는다(손만 쓴다 — 「Claude 홈 설정」 머리의 ⚠)
 #   ⚠ 제작자 칸 값(`PAISETUP_PERSONAL`)과 고른 제품 값(`PAISETUP_PICK`)은 사용자 환경에 심지만 이 걸음에 선다 — 「Claude 홈
@@ -6935,8 +7628,11 @@ if (-not (Test-Path -LiteralPath $browserMcpPlant)) {
 #     승인 층을 정한 것이라 둔다. 데스크탑 앱에는 앱이 권한을 저장하기 전, 곧 첫 샌드박스 설정이 `auto` 를 적기 전까지만 먹는다 —
 #     데스크탑의 「나 대신 승인」은 Codex 가 닫힌 채 도는 심기(「설정 저장소」 걸음의 `--install` · `--plant`, 끝의 다시 띄우기
 #     동의 뒤의 `--plant`)가 그 상태 파일에 쓴다(결정 0127 · 0135)
-# 고르지 않게 돼도 안 걷는다 — 심은 값은 사람이 같은 값을 둔 것과 글자로 안 갈리고, 기록을 따로 두면 그 기록이 또 하나의
-#   사본이 된다. 끄는 길은 그 도구의 설정에서 다른 값을 고르는 것이다(다음 설치가 그 값을 안 덮는다).
+# 심은 값은 장부(`$ClaudePlantLedger`)에 적는다 — 사람이 같은 값을 둔 것과 글자로는 안 갈려, 우리 것은 장부에 든 값 그대로인 것뿐이다
+#   (결정 0127 의 고침 · PAISetup #44 ⑬). 판이 `Set` 값을 바꾸면 장부의 옛 값 그대로인 키만 새 값으로 가고(심는 손 앞에서 — 그래야 그 손이
+#   「이미 맞다」로 읽는다), 그 도구를 빼거나 그 자리가 안 심게 되면(사내의 Codex 줄) 장부의 값 그대로인 키를 걷는다. 사람이 바꾼 값은
+#   두고 이름을 댄다. 장부를 처음 세우는 판은 지금 값이 이 표의 값 그대로인 키를 우리 것으로 받는다 — 그 앞 판들이 기록 없이 심었다.
+#   끄는 길은 그 도구의 설정에서 다른 값을 고르는 것이다(다음 설치가 그 값을 안 덮는다).
 # Copilot 홈은 Copilot 이 고르는 차례(`COPILOT_HOME` → `~/.copilot`)를 따른다 — 세션 훅이 폴더 신뢰를 거는 자리와 같다(결정 0122).
 $CopilotCfg = Join-Path $(if ($env:COPILOT_HOME) { $env:COPILOT_HOME } else { Join-Path $env:USERPROFILE '.copilot' }) 'settings.json'
 $ToolAutoRun = @(
@@ -6958,7 +7654,36 @@ $ToolAutoRun = @(
   @{ Label = 'Codex'; Want = [bool]($hostCodex -and -not $inside); Path = $CodexCfg; Under = ''; Toml = $true
      Set = [ordered]@{ approvals_reviewer = 'auto_review' }; Guard = @('approval_policy', 'approvals_reviewer') }
 )
+# 도구 설정 파일 하나(`$ToolDoc` — `Open-ToolDoc`)를 장부 손이 읽고 고치는 손 셋 — 아래 세 칸이 같이 쓴다. 파일은 그 칸이 다 고친 뒤 한 번 쓴다
+#   (`Save-ToolDoc`). 못 쓰면 그 자리의 장부 줄을 고치기 앞으로 되돌린다 — 장부가 실물보다 앞서지 않게.
+$ToolDocGet    = { param($n) Get-ToolDocValue $ToolDoc $n }
+$ToolDocSet    = { param($n, $v) Set-ToolDocValue $ToolDoc $n $v }
+$ToolDocRemove = { param($n, $v) Remove-ToolDocValue $ToolDoc $n }
+$Ledger = Read-RunLedger $ClaudePlantLedger
+$autoWant = @{}   # 그 안의 자리 → 이번 판에 선 키 → 장부 칸 글(압축 JSON)
+$autoHold = @{}   # 그 안의 자리 → 이번 판에 못 가른 키(안 걷는다 — 못 읽었거나 조건이 안 섰다)
 foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) {
+  $at = ConvertTo-LedgerAt $r.Path $r.Under
+  if (-not $autoWant.ContainsKey($at)) { $autoWant[$at] = [ordered]@{}; $autoHold[$at] = @() }
+  $vals = [ordered]@{}
+  foreach ($k in $r.Set.Keys) { $vals[$k] = [string]($r.Set[$k] | ConvertTo-Json -Compress) }
+  # 판이 값을 바꿨으면 장부의 옛 우리 값 그대로인 키를 새 값으로 — 심는 손 앞에서. 처음 세우는 장부는 이 표의 값 그대로인 키를 받는다
+  $snap = Get-LedgerSlice $Ledger @('tool') $at
+  # 처음 세우는 장부가 받는 것은 이 줄의 값 그대로인 키뿐이고, `Set` 밖의 지키는 키(Codex 의 `approval_policy`)가 서 있으면 아무것도 안 받는다 —
+  #   그 키는 사람이 승인 층을 정했다는 표지라, 곁의 우리 값과 같은 키도 그 사람이 고른 것으로 본다(`Set-ToolAutoRun` 의 「한 줄은 한 스위치」)
+  $guardOut = @(@($r.Guard) | Where-Object { $_ -and $r.Set.Keys -notcontains $_ })
+  $ToolDoc = Open-ToolDoc $r.Path $r.Under ([bool]$r.Toml) (@($r.Set.Keys) + $guardOut)
+  if (-not $ToolDoc.Why) {
+    $guardSet = @($guardOut | Where-Object { $null -ne (Get-ToolDocValue $ToolDoc $_) })
+    $null = Sync-Planted -Ledger $Ledger -Place 'tool' -At $at -By 'autorun' -Want $vals -Names @($vals.Keys) -Mode 'guard' -Plant $false -Complete $false `
+              -Adopt $(if ($Ledger.Migrating -and -not $guardSet.Count) { @($vals.Keys) } else { @() }) -Get $ToolDocGet -Set $ToolDocSet -Remove $ToolDocRemove `
+              -Where "묻지 않고 돌기 · $($r.Label)" -Speak
+    $sv = Save-ToolDoc $ToolDoc
+    if ($sv.Did -cne 'same' -and $sv.Did -cne 'written') {
+      Set-LedgerSlice $Ledger @('tool') $at $snap
+      Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — 장부의 옛 우리 값을 새 값으로 못 바꿨다 ($($sv.Why)) · 안 건드렸다 ($($r.Path))" -ForegroundColor Yellow
+    }
+  }
   $res = Set-ToolAutoRun $r
   $ours = @($r.Set.Keys | ForEach-Object { "$_ = $($r.Set[$_] | ConvertTo-Json -Compress)" }) -join ' · '
   switch ($res.Did) {
@@ -6968,13 +7693,67 @@ foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) {
       else { Write-Host "  묻지 않고 돌기 · $($r.Label) — 사람이 정한 값($($res.Have -join ' · '))이라 둔다" }
     }
     'skipped' { Write-Host "  묻지 않고 돌기 · $($r.Label) — 안 심는다 ($($res.Why))" }
+    'raced'   { Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 이 판은 안 썼다 ($($r.Path))" -ForegroundColor Yellow }
+    'linked'  { Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 그 자리는 손으로 맞춘다 ($($r.Path))" -ForegroundColor Yellow }
     'unmeasured' { Add-UnmeasuredStep "묻지 않고 돌기 · $($r.Label)" $res.Probe '심지도 건너뛰지도 않았다' $res.Why }
     default {
       Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 안 건드렸다 ($($r.Path))" -ForegroundColor Red
       $Fails.Add("묻지 않고 돌기 · $($r.Label) ($($res.Why))")
     }
   }
+  if ($res.Did -eq 'set') { foreach ($k in $vals.Keys) { Set-LedgerRow $Ledger 'tool' $at $k 'autorun' $vals[$k] } }
+  if ($res.Did -eq 'set' -or $res.Did -eq 'kept') { foreach ($k in $vals.Keys) { $autoWant[$at][$k] = $vals[$k] } }
+  else { $autoHold[$at] += @($vals.Keys) }
 }
+# 안 고른 줄 · 그 자리가 안 심는 줄 · 표에서 빠진 키 — 장부에 든 우리 값 그대로면 걷는다(사람이 바꾼 값은 두고 이름을 댄다).
+$autoAts = @(@($autoWant.Keys) + @($Ledger.Rows | Where-Object { $_.Place -ceq 'tool' -and $_.By -ceq 'autorun' } | ForEach-Object { $_.At }) | Sort-Object -Unique)
+foreach ($at in $autoAts) {
+  $want = if ($autoWant.ContainsKey($at)) { $autoWant[$at] } else { [ordered]@{} }
+  $hold = if ($autoHold.ContainsKey($at)) { @($autoHold[$at]) } else { @() }
+  $gone = @(Find-LedgerRows $Ledger 'tool' $at 'autorun' | Where-Object { -not $want.Contains($_.Name) -and $hold -cnotcontains $_.Name } | ForEach-Object { $_.Name })
+  if (-not $gone.Count) { continue }
+  $where = ConvertFrom-LedgerAt $at
+  $snap = Get-LedgerSlice $Ledger @('tool') $at
+  $ToolDoc = Open-ToolDoc $where.Path $where.Under ($where.Path -like '*.toml') $gone
+  $res = Sync-Planted -Ledger $Ledger -Place 'tool' -At $at -By 'autorun' -Want ([ordered]@{}) -Names $gone -Mode 'guard' -Plant $false -Complete $true `
+           -Get $ToolDocGet -Set $ToolDocSet -Remove $ToolDocRemove -Where "묻지 않고 돌기 · $($where.Path)" -Speak
+  if ($res.Unread.Count -or $res.Failed.Count) {
+    Write-Host "  ! 묻지 않고 돌기 — 우리가 심은 값($(@($res.Unread) + @($res.Failed) -join ' · '))을 못 걷었다$(if ($ToolDoc.Why) { " ($($ToolDoc.Why))" }) · 다음 판이 다시 본다 ($($where.Path))" -ForegroundColor Yellow
+  }
+  $sv = Save-ToolDoc $ToolDoc
+  if ($sv.Did -cne 'same' -and $sv.Did -cne 'written') {
+    Set-LedgerSlice $Ledger @('tool') $at $snap
+    Write-Host "  ! 묻지 않고 돌기 — 우리가 심은 값을 못 걷었다 ($($sv.Why)) · 안 건드렸다 ($($where.Path))" -ForegroundColor Yellow
+  }
+}
+
+# ── Codex 데스크탑의 샌드박스 키의 장부 (PAISetup #44 ⑳) ─────────────────────────────────────
+# 심는 손은 「프로그램」 걸음의 데스크탑 칸(`Set-CodexSandboxKey` · 그 칸이 낸 `$sbx`)이다 — 데스크탑을 깔기 앞이라 거기 산다. 여기서는 그 결과로
+#   장부를 맞춘다: 이번 판에 지었거나 더했으면 우리 것으로 적고, 판이 `$CodexSandboxMode` 를 바꿨으면 장부의 옛 값 그대로일 때 새 값으로 간다.
+#   Codex 를 안 고르게 되면 장부의 값 그대로인 그 키를 걷는다(그 표에 남은 키가 없으면 머리째). 사람이 바꾼 값은 둔다.
+# 고른 채 이번 판에 데스크탑을 안 깐 자리(사내)는 심지도 걷지도 않고 장부만 실물에 맞춘다(guard · 걷기 없음) — 키는 이미 깐 데스크탑이 읽고,
+#   앱 · 사람이 바꾼 값을 장부에 그대로 두면 끝 검증이 판마다 거짓 빨강을 낸다. 그래서 바뀐 값 · 사라진 값은 장부에서만 뺀다.
+$sbxAt   = ConvertTo-LedgerAt $CodexCfg 'windows'
+$sbxDid  = if ($sbx) { [string]$sbx.Did } else { '' }
+$sbxOn   = ($sbxDid -ceq 'made' -or $sbxDid -ceq 'added' -or $sbxDid -ceq 'kept')
+$sbxGone = -not ($PickKeys -contains 'codex')
+$sbxRows = @(Find-LedgerRows $Ledger 'tool' $sbxAt 'codex-sandbox').Count
+if ($sbxOn -or $sbxRows) {
+  $snap = Get-LedgerSlice $Ledger @('tool') $sbxAt
+  $ToolDoc = Open-ToolDoc $CodexCfg 'windows' $true @('sandbox')
+  $sbxWant = [ordered]@{}
+  if (-not $sbxGone) { $sbxWant['sandbox'] = [string]($CodexSandboxMode | ConvertTo-Json -Compress) }
+  $res = Sync-Planted -Ledger $Ledger -Place 'tool' -At $sbxAt -By 'codex-sandbox' -Want $sbxWant -Mode 'guard' -Plant $false -Complete ($sbxOn -or $sbxGone) `
+           -Adopt $(if ($sbxDid -ceq 'made' -or $sbxDid -ceq 'added' -or ($sbxOn -and $Ledger.Migrating)) { @('sandbox') } else { @() }) `
+           -Get $ToolDocGet -Set $ToolDocSet -Remove $ToolDocRemove -Label @{ sandbox = 'Codex 데스크탑 · 샌드박스 키' } -Where "$CodexCfg 의 [windows]" -Speak
+  if ($res.Failed.Count) { Write-Host "  ! Codex 데스크탑 · 샌드박스 키 — 장부의 우리 값을 못 고쳤다 (그 줄의 꼴이 우리가 쓴 꼴이 아니다) · 안 건드렸다 ($CodexCfg)" -ForegroundColor Yellow }
+  $sv = Save-ToolDoc $ToolDoc
+  if ($sv.Did -cne 'same' -and $sv.Did -cne 'written') {
+    Set-LedgerSlice $Ledger @('tool') $sbxAt $snap
+    Write-Host "  ! Codex 데스크탑 · 샌드박스 키 — 못 썼다 ($($sv.Why)) · 안 건드렸다 ($CodexCfg)" -ForegroundColor Yellow
+  }
+}
+$null = Save-PlantLedger $Ledger
 
 Exit-Step 'tools'
 
@@ -7420,12 +8199,13 @@ if ($PSBoundParameters.ContainsKey('EnvFile') -and $EnvFile) {
 #   정한 것)을 적는다 — 자동 실행을 켰나 · 밤 회차인가와 상관없다. 짐의 줄 · `#site` · 키는 안 적는다(키는 사용자 환경에만 산다).
 # 오타뿐인 `-Pick`(「고른 제품」 칸이 빨강으로 센 판)은 제품을 못 정한 판이라 지난 기록의 제품과 그에 매인 제작자 칸을 잇는다 — 제작자
 #   칸은 고른 제품에서만 서서, 그 판의 값(`none`)을 적으면 오타 한 번에 제작자 칸이 지워진다.
+# VS Code 는 사람이 고른 값(`$NoVsCodeChosen`)을 적는다 — 사내에서 필수라 깐 판(「준비」의 「자리」 칸)도 사람의 「끔」을 지우지 않는다.
 # 새 기록을 쓴 뒤 옛 꼴 둘을 걷는다 — 남겨 두면 그 꼴을 읽는 옛 자동 실행 스크립트가 지난 판 짐의 줄과 낡은 선택을 다시 넘긴다.
 #   못 쓰면 옛 꼴을 두고 말한다 — 다음 회차가 그것을 다시 읽는다.
 $recValue = @{
   'pick'        = $(if ($PickUnreadable -and $Recorded['pick']) { $Recorded['pick'] }
                     elseif ($PickKeys.Count) { $PickKeys -join ',' } else { $ChoiceNone })
-  'vscode'      = $(if ($NoVsCode) { 'no' } else { 'yes' })
+  'vscode'      = $(if ($NoVsCodeChosen) { 'no' } else { 'yes' })
   'devtools'    = $(if ($NoDevTools) { 'no' } else { 'yes' })
   'personal'    = $(if ($PickUnreadable -and $Recorded['personal']) { $Recorded['personal'] } else { $PersonalValue })
   'config-repo' = $(if ($configRepoUrls.Count) { $configRepoUrls -join ' ' } else { $ChoiceNone })
@@ -7435,12 +8215,15 @@ try {
   if (-not (Test-Path -LiteralPath $RecordRoot)) { New-Item -ItemType Directory -Path $RecordRoot -Force -ErrorAction Stop | Out-Null }
   $recLines = @('# PAISetup — 사람이 고른 것. 설치기가 회차마다 다시 쓴다 (설치 창 · 자동 실행이 읽는다)') +
               @($ChoiceKeys | ForEach-Object { '{0}={1}' -f $_, $recValue[$_] })
-  # 곁 파일에 다 쓴 뒤 갈아 끼운다 — 쓰다 멎으면(전원 · 잠금 · 디스크) 반쪽 기록 대신 지난 기록이 그대로 남는다
-  Set-Content -LiteralPath "$ChoiceRecord.new" -Value $recLines -Encoding UTF8 -ErrorAction Stop
-  Move-Item -LiteralPath "$ChoiceRecord.new" -Destination $ChoiceRecord -Force -ErrorAction Stop
+  # 갈아 끼워 쓴다(`Write-FileSafely`) — 쓰다 멎으면(전원 · 잠금 · 디스크) 반쪽 기록 대신 지난 기록이 그대로 남는다. 바이트 꼴은 옛 판이
+  #   `Set-Content -Encoding UTF8` 로 쓰던 그대로다(BOM · CRLF · 끝 줄바꿈).
+  $recOld = $null
+  if (Test-Path -LiteralPath $ChoiceRecord -PathType Leaf) { $recOld = [IO.File]::ReadAllBytes($ChoiceRecord) }
+  $recBytes = [byte[]]((New-Object Text.UTF8Encoding($true)).GetPreamble() + (New-Object Text.UTF8Encoding($false)).GetBytes((($recLines -join "`r`n") + "`r`n")))
+  $recWrote = Write-FileSafely $ChoiceRecord $recBytes $recOld
+  if ($recWrote.Did -cne 'written' -and $recWrote.Did -cne 'same') { throw $recWrote.Why }
   Remove-Item -LiteralPath $LegacyChoiceArgs, $LegacyChoiceEnv -Force -ErrorAction SilentlyContinue
 } catch {
-  Remove-Item -LiteralPath "$ChoiceRecord.new" -Force -ErrorAction SilentlyContinue
   Write-Host "  ! 고른 것을 다음 회차에 남기지 못했다 — $(Say-Why $_) (다음 회차는 지난 기록으로 간다)" -ForegroundColor Yellow
 }
 
@@ -7547,8 +8330,8 @@ if (Test-Path -LiteralPath $launcher) {
 #     다시 쓰면 그 몸통은 `-Night` 를 버리고 로그온 회차처럼 돌아 자리를 바꿀 수 있다
 # 하루 한 번 · 밤 회차의 자리는 몸통(아래 `autorun.ps1`)의 「하루 한 번 · 자리」 칸이 가른다. 그 칸이 읽는 지난 설치의 자리는
 #   위 「자동 실행을 켜나」 칸과 아래 「지난 설치의 자리」 줄(`$AutoRunSiteRecord`)이 적는다.
-# 작업 이름 둘(`$AutoRunTaskName` · `$AutoRunNightTaskName`)은 위 「자동 실행을 켜나」 칸이 든다 — 그 칸이 먼저 읽는다. 끈 기록의
-#   자리(`$AutoRunOffRecord`)는 파일 머리의 「회차를 넘기는 기록의 자리」 칸이 든다.
+# 작업 이름 둘(`$AutoRunTaskName` · `$AutoRunNightTaskName`)과 끈 기록의 자리(`$AutoRunOffRecord`)는 파일 머리의 「회차를 넘기는 기록의
+#   자리」 칸이 든다 — `-Describe` 와 「자동 실행을 켜나」 칸이 먼저 읽는다.
 # 사람이 고른 것의 기록은 자동 실행의 몫이 아니다 — 켜든 끄든 「회차를 넘기는 기록」 칸이 쓰고, 몸통이 회차마다 그 기록을 읽는다.
 $AutoRunNightAt       = [datetime]::Today.AddHours(3)
 $AutoRunNightSpread   = New-TimeSpan -Hours 2
@@ -7935,19 +8718,19 @@ if (-not $versionDirs) {
 $targetEnvProbe = Join-Path $versionDirs[0].FullName 'install.env'
 
 # ── 하루 한 번 · 자리 — 밤 회차는 자리를 안 바꾼다 (PAISetup #36) ────────────────────────────
-# 「지난 설치의 자리」는 설치가 남긴 `.autorun-site` 다 — `inside` · `outside` · `unknown`(프로브 없음), 자리에 기대는 걸음을 도는
-#   동안은 `switching`. 사람이 누른 설치도 적는다.
-# 「지금 자리」는 값 파일에 `#site-probe` 줄이 없으면 `unknown` 이고, 있으면 다음에 돌 엔진의 `Read-Directive` · `Test-Reach` 를
-#   떼어 와 잰다(같은 규칙을 여기 옮겨 적으면 한쪽만 낡는다). 떼어 온 둘은 알려진 답으로 먼저 시험하고, 못 들였거나 시험에 지면
-#   `unmeasured` 다. 줄이 있는지는 떼어 온 함수에 묻지 않는다 — 그 함수가 진 것을 「프로브 없음」으로 읽으면 자리를 바꾼다.
+# 「지난 설치의 자리」는 설치가 남긴 `.autorun-site` 다 — `inside` · `outside`, 자리에 기대는 걸음을 도는 동안은 `switching`. 사람이
+#   누른 설치도 적는다.
+# 「지금 자리」는 다음에 돌 엔진의 자리 재기(`Read-Directive` · `Test-Reach` · `Measure-Site`)를 떼어 와 잰다 — 설치 · 설치 창과 같은
+#   자다(같은 규칙을 여기 옮겨 적으면 한쪽만 낡는다). 떼어 온 셋은 알려진 답으로 먼저 시험하고, 못 들였거나 시험에 지면 `unmeasured` 다.
+#   짐의 `#site-probe` 가 없거나 꼴이 틀리면 `broken` 이고 그 까닭을 빨간 줄로 남긴다 — 그 짐의 설치도 같은 까닭으로 멈춘다.
 # 가름 —
-#   · 밤 회차: 지금 자리가 잰 값(`inside` · `outside` · `unknown`)이고 지난 설치와 같을 때만 잇고, 사내 · 사외면 그 자리를 박는다
-#     (아래 「자리를 박는다」). 나머지는 아무것도 안 바꾸고 건너뛴다 — 집에서 깨어 있는 회사 노트북이 사외로 읽어 게이트웨이 값을
-#     걷으면 다음 날 회사에서 그 값 없이 서기 때문이다
+#   · 밤 회차: 지금 자리가 잰 값(`inside` · `outside`)이고 지난 설치와 같을 때만 잇고, 그 자리를 박는다(아래 「자리를 박는다」).
+#     나머지는 아무것도 안 바꾸고 건너뛴다 — 집에서 깨어 있는 회사 노트북이 사외로 읽어 게이트웨이 값을 걷으면 다음 날 회사에서 그
+#     값 없이 서기 때문이다
 #   · 로그온 회차: 오늘 끝났으면 건너뛰되, 지금 자리를 재어 지난 설치와 다를 때만 다시 돈다 — 자리를 바꾸는 것은 로그온 회차와
 #     사람이 누른 설치의 몫이다. 못 쟀으면 건너뛴다
 $siteFile = Join-Path $setupRoot '.autorun-site'
-$siteWord = @{ inside = '사내'; outside = '사외'; unknown = '모름(프로브 없음)'; switching = '바꾸는 중에 멎음'; unmeasured = '못 쟀다' }
+$siteWord = @{ inside = '사내'; outside = '사외'; switching = '바꾸는 중에 멎음'; unmeasured = '못 쟀다'; broken = '못 정함' }
 
 $siteLast = ''
 if (Test-Path -LiteralPath $siteFile) {
@@ -7968,47 +8751,45 @@ function Get-EngineFunctionText([string]$Engine, [string[]]$Names) {
 }
 
 # 재는 값 파일은 지금 가장 높은 판의 짐(`install.env`)이다 — 설치(그 판의 몸통)도 프로브를 제 짐에서 읽는다. 아래 새 판 받기가
-#   판을 바꾸면 설치는 새 짐의 프로브를 읽지만, 밤 회차는 여기서 잰 자리를 박아 넘기므로(`#site`) 설치가 다시 안 잰다. 파일을 못
-#   읽으면 못 잰 것이다.
+#   판을 바꾸면 설치는 새 짐의 프로브를 읽고, 밤 회차는 여기서 잰 자리를 박아 넘긴다(`#site`) — 설치는 다시 재고, 박은 자리와 다르면
+#   아무것도 안 심고 멈춘다(밤 회차는 자리를 안 바꾼다). 파일을 못 읽으면 못 잰 것이다.
 $siteEnv = Join-Path $versionDirs[0].FullName 'install.env'
 $siteNow = ''
 if ($Night -or $doneToday) {
-  $hasProbe = $false
-  try {
-    $hasProbe = [bool](@(Get-Content -LiteralPath $siteEnv -Encoding UTF8 -ErrorAction Stop) -match '^\s*#\s*site-probe\s*=\s*\S')
-    $siteNow = 'unknown'
-  } catch { $siteNow = 'unmeasured' }
-  if ($hasProbe) {
-    $siteNow = 'unmeasured'
-    $defs = $null
-    try { $defs = @(Get-EngineFunctionText (Join-Path $versionDirs[0].FullName 'install.ps1') @('Read-Directive', 'Test-Reach')) } catch { $defs = $null }
-    if ($defs.Count -eq 2) {
-      # 이 스크립트 범위에 선다 — 함수 안에서 세우면 그 함수가 끝날 때 같이 사라진다.
-      foreach ($d in $defs) { try { . ([scriptblock]::Create($d)) } catch { } }
-      $selfOk = $false
-      $selfFile = Join-Path $setupRoot ".autorun-selftest-$PID.env"
-      $selfL = $null
-      try {
-        Set-Content -LiteralPath $selfFile -Value @('#autorun-selftest = ok') -Encoding UTF8 -ErrorAction Stop
-        $selfL = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
-        $selfL.Start()
-        $selfOk = ((Read-Directive $selfFile 'autorun-selftest') -eq 'ok') -and
-                  ((Test-Reach ('127.0.0.1:' + $selfL.LocalEndpoint.Port)) -eq $true)
-      } catch { $selfOk = $false } finally {
-        if ($selfL) { $selfL.Stop() }
-        Remove-Item -LiteralPath $selfFile -Force -ErrorAction SilentlyContinue
-      }
-      if ($selfOk) {
-        $probeAt = Read-Directive $siteEnv 'site-probe'
-        if ($probeAt) { $siteNow = if (Test-Reach $probeAt) { 'inside' } else { 'outside' } }
-      }
+  $siteNow = 'unmeasured'
+  $siteWhy = ''
+  $defs = $null
+  try { $defs = @(Get-EngineFunctionText (Join-Path $versionDirs[0].FullName 'install.ps1') @('Read-Directive', 'Test-Reach', 'Measure-Site')) } catch { $defs = $null }
+  if ($defs.Count -eq 3) {
+    # 이 스크립트 범위에 선다 — 함수 안에서 세우면 그 함수가 끝날 때 같이 사라진다.
+    foreach ($d in $defs) { try { . ([scriptblock]::Create($d)) } catch { } }
+    $selfOk = $false
+    $selfFile = Join-Path $setupRoot ".autorun-selftest-$PID.env"
+    $selfL = $null
+    try {
+      Set-Content -LiteralPath $selfFile -Value @('#autorun-selftest = ok') -Encoding UTF8 -ErrorAction Stop
+      $selfL = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
+      $selfL.Start()
+      $selfAt = '127.0.0.1:' + $selfL.LocalEndpoint.Port
+      $selfOk = ((Read-Directive $selfFile 'autorun-selftest') -eq 'ok') -and ((Test-Reach $selfAt) -eq $true) -and
+                ((Measure-Site $selfAt).Site -eq 'inside')
+    } catch { $selfOk = $false } finally {
+      if ($selfL) { $selfL.Stop() }
+      Remove-Item -LiteralPath $selfFile -Force -ErrorAction SilentlyContinue
+    }
+    if ($selfOk) {
+      $fact = $null
+      try { $fact = Measure-Site (Read-Directive $siteEnv 'site-probe') } catch { $fact = $null }
+      if ($fact -and $fact.Site) { $siteNow = $fact.Site }
+      elseif ($fact) { $siteNow = 'broken'; $siteWhy = $fact.Why }
     }
   }
   $nowSaid  = if ($siteWord[$siteNow]) { $siteWord[$siteNow] } else { $siteNow }
   $lastSaid = if ($siteWord[$siteLast]) { $siteWord[$siteLast] } elseif ($siteLast) { $siteLast } else { '기록 없음' }
   Log "자리 — 지금 $nowSaid · 지난 설치 $lastSaid"
+  if ($siteWhy) { Log "! 자리를 못 정했다 — $siteWhy · 이 짐의 설치도 같은 까닭으로 멈춘다 (설치 묶음을 새로 받는다)" }
 }
-$measured = ($siteNow -eq 'inside' -or $siteNow -eq 'outside' -or $siteNow -eq 'unknown')
+$measured = ($siteNow -eq 'inside' -or $siteNow -eq 'outside')
 $sameSite = $measured -and ($siteNow -eq $siteLast)
 
 $pinSite = ''
@@ -8113,8 +8894,8 @@ $targetEngine = Join-Path $versionDirs[0].FullName 'install.ps1'
 
 # 설치에 넘기는 것은 밤 회차가 박은 자리뿐이다. 짐의 줄은 설치가 제 짐에서 읽고, 사람이 고른 것은 설치가 기록에서 읽는다(설치기의
 #   「회차를 넘기는 기록의 자리」 · PAISetup #45) — 여기서 넘기면 넘긴 판의 사본이 다음 판에도 따라간다.
-# 밤 회차가 잰 자리를 박는다 — `#site` 한 줄만 든 값 파일을 넘긴다. 설치는 그 줄을 보면 자리를 다시 안 잰다. 못 박으면 자리를 바꿀
-#   수 있으므로 건너뛴다.
+# 밤 회차가 잰 자리를 박는다 — `#site` 한 줄만 든 값 파일을 넘긴다. 설치는 그 줄과 제가 다시 잰 자리가 다르면 멈춘다. 못 박으면
+#   자리를 바꿀 수 있으므로 건너뛴다.
 $runArgs = @()
 $pinned  = ''
 if ($pinSite) {
@@ -8503,6 +9284,9 @@ foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
 }
 # 묻지 않고 돌기 — 「도구별 홈」의 표(`$ToolAutoRun`)에서 이번에 심을 것을 파일에서 되읽는다.
 foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) { $checks += Get-ToolAutoRunCheck $r }
+# 장부와 실물 — 장부에 든 우리 값이 자리마다 그대로 섰나를 디스크에서 다시 읽어 잰다(PAISetup #44 가-1 · `Get-PlantLedgerChecks`). 어긋나면
+#   쓰기가 안 닿았거나 다른 손이 고친 것이다 — 그 칸은 자리와 이름만 대고 값(비밀일 수 있다)은 안 찍는다.
+$checks += @(Get-PlantLedgerChecks (Read-PlantLedger $ClaudePlantLedger) $userEnv $homeCfg)
 # agy 묶음 — 맡기기(모델 값). 심는 조건 그대로 잰다(위 `$wantAgyDelegate` 곁말). agy 설정 둘은 손의 `check` 가 잰다.
 # ⚠ 맡기기 모델 표를 못 읽은 판은 [X] 다 — 견줄 값이 비어 그대로 재면 빈 목록이 [O] 로 찍힌다.
 if ($wantAgyDelegate) {
@@ -8881,8 +9665,7 @@ if (-not $personalAny -and -not $personalByRepo) {
 # 안내로 끝내지 않고 여기서 띄운다 — 창은 뜰 때 PATH 와 환경변수를 한 번 복사하고 그 뒤에 바뀐 것은 안 따라온다. 이 창은 심은
 #   값을 제 프로세스에도 들고 있어(`Plant-Var`), 여기서 난 자식은 로그아웃 없이 그 값을 문다.
 # 무엇을 띄우나는 자리가 아니라 깐 것이 정한다(아래 「열 것을 모은다」). 자리(`$offsite`)는 끝 줄의 기본값만 고른다 — 사외는 구독
-#   로그인이라 데스크탑 앱 · VS Code 를, 그 밖은 방금 심은 키를 물게 VS Code 를 새로 열라고 한다. 자리는 `$useGateway` 가 아니라
-#   `$offsite` 로 읽는다 — 「사내인가」와 「게이트웨이를 쓰나」는 다른 물음이다.
+#   로그인이라 데스크탑 앱 · VS Code 를, 사내는 방금 심은 키를 물게 VS Code 를 새로 열라고 한다.
 # 못 열어도 실패로 안 센다 — 설치는 이미 선 것이고 창은 사람이 손으로도 연다. 빨강으로 세면 멀쩡히 깔린 기계가 빨갛게 보고된다.
 
 # 찾는 자(`Find-DesktopApps` · `Find-VSCode`)는 「무엇을」이 아니라 「어떻게 띄우나」를 돌려준다 — VS Code 는 실행 파일을 직접
