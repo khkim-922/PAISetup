@@ -3349,7 +3349,7 @@ function Read-TomlTopKeys([string]$Path, [string[]]$Keys) {
   $code = "import sys,json,tomllib;d=tomllib.load(open(sys.argv[1],'rb'));print(json.dumps({k:d[k] for k in sys.argv[2:] if k in d},default=str))"
   $tl = [IO.Path]::GetTempFileName()
   try {
-    $rc = Invoke-LoggedCapped 'python' (@('-X', 'utf8', '-c', $code, $Path) + $Keys) $tl $ProbeCap
+    $rc = Invoke-LoggedCapped 'python' (@('-I', '-X', 'utf8', '-c', $code, $Path) + $Keys) $tl $ProbeCap
     if ($rc -eq -2) { Add-ProbeOverflow $TomlReadProbe $ProbeCap; return $null }
     if ($rc -ne 0) { return $null }
     $out = @(Get-Content -LiteralPath $tl -Encoding UTF8 -ErrorAction SilentlyContinue)
@@ -4830,6 +4830,116 @@ if ($wantApp -and $wantApp -match '^\s*([A-Za-z]+)\s*:\s*(.*?)\s*$') {
 }
 $appPicks = @($DesktopApps | Where-Object { $PickKeys -contains $_.Key })
 
+# ── Codex 데스크탑의 샌드박스 키 — 데스크탑을 깔기 **앞에** `config.toml` 에 `[windows]` 의 `sandbox` 를 둔다 (claude-config 결정 0127) ──
+# 데스크탑의 앱 서버는 뜰 때 이 키를 한 번 읽어 샌드박스 판을 굳힌다. 키 없이 뜨면 앱은 샌드박스 「첫 설정」 길을 타고, 그 길 끝에서
+#   새 대화의 기본 권한을 「승인 요청」(`auto`)으로 덮어 설치가 심는 「나 대신 승인」이 사라진다. 키가 있으면 「업데이트」 길이라 권한을
+#   안 쓴다(배너를 누르고 관리자 승인 한 번은 같다). 데스크탑은 깔리자마자 스스로 떠 그 서버를 세우므로 설치 앞이다.
+# 값은 `elevated` — 앱이 고르는 기본이고 회사 틀의 `[windows]` 표와 같다. `unelevated` 는 승인 창이 없는 대신 샌드박스가 약하다.
+# 사람의 것을 지킨다 — 파일이 없으면 그 두 줄로 짓고, `windows.sandbox` 가 이미 서 있으면 둔다(TOML 처럼 대소문자를 가린다). `[windows]` 가
+#   있는데 `sandbox` 가 없거나, 파일을 못 읽거나(깨진 TOML · 파이썬 3.11 이상이 안 선다), 파일이 링크이거나, `CODEX_HOME` 이 다른 자리를
+#   가리키면(앱이 그 자리의 설정을 읽는다) 안 건드린다. 그 밖은 원래 바이트 뒤에 그 표를 붙이되, 붙인 글을 임시 파일에서 TOML 로 읽어 원래
+#   키가 뜻 그대로이고 더해진 것이 그 표 하나일 때만, 그 사이 원래 파일이 안 바뀌었을 때만 곁 사본을 두고 갈아 끼운다.
+# ⚠ 점 키(`windows.sandbox = …`)로 쓰지 않고 파일 머리에 얹지도 않는다 — 회사 틀과 사람이 쓰는 꼴이 `[windows]` 표라 한 파일에 두 꼴이
+#   서면 TOML 이 설정째 거절하고, 표 머리를 앞에 얹으면 그 뒤의 맨 위 키가 그 표로 들어간다.
+# ⚠ 갈아 끼우기(`File.Replace`)에 곁 사본 자리를 꼭 준다 — 안 주면 끼우기가 중간에 질 때(ERROR_UNABLE_TO_MOVE_REPLACEMENT) 원래 파일이
+#   사라진다. 사본 자리를 주면 원래 파일은 제 이름이나 사본 자리에 남고, 진 판은 그것을 제자리로 돌린다.
+# 내는 것 — @{ Did = made · added · kept · raced(쓴 뒤 다른 프로그램이 고쳤다 — 그 글을 둔다) · left(안 건드렸다) · unmeasured(파이썬
+#   물음이 울타리를 넘겼다 — 안 건드렸다); Have = kept 의 그 값; Why = left · raced · unmeasured 의 까닭; Probe = unmeasured 의 물음 }.
+#   화면 줄은 부르는 쪽이 든다 — 못 지운 임시 사본(원래 설정을 그대로 든다) 줄만 여기서 낸다.
+$CodexSandboxMode = 'elevated'
+function Set-CodexSandboxKey([string]$Path) {
+  $utf8 = New-Object Text.UTF8Encoding($false)
+  $block = "[windows]`nsandbox = `"$CodexSandboxMode`"`n"
+  if ($env:CODEX_HOME) {
+    $there = try { [IO.Path]::GetFullPath($env:CODEX_HOME).TrimEnd('\') } catch { $env:CODEX_HOME }
+    if ($there -ne [IO.Path]::GetFullPath((Split-Path $Path -Parent)).TrimEnd('\')) {
+      return @{ Did = 'left'; Why = "CODEX_HOME($env:CODEX_HOME) 이 서 있어 앱은 그 자리의 설정을 읽는다" }
+    }
+  }
+  # 링크는 짓기 앞에서 가린다 — 끊긴 링크는 「없는 파일」로 읽혀 짓기가 링크 너머에 쓴다
+  $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+  if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    return @{ Did = 'left'; Why = '설정 파일이 링크다 — 갈아 끼우면 링크가 끊긴다' }
+  }
+  if (-not (Test-Path -LiteralPath $Path)) {
+    try {
+      New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force | Out-Null
+      [IO.File]::WriteAllText($Path, $block, $utf8)
+      if ([IO.File]::ReadAllText($Path) -cne $block) { return @{ Did = 'left'; Why = '지은 파일을 되읽으니 그 두 줄이 아니다' } }
+    } catch { return @{ Did = 'left'; Why = "못 지었다 ($($_.Exception.Message))" } }
+    return @{ Did = 'made' }
+  }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return @{ Did = 'left'; Why = '그 자리가 파일이 아니다' } }
+  $timed = $script:ProbeTimedOut.Count
+  $now = Read-TomlTopKeys $Path @('windows')
+  if ($null -eq $now) {
+    if ($script:ProbeTimedOut.Count -gt $timed) { return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
+    return @{ Did = 'left'; Why = 'TOML 로 못 읽었다(깨진 파일이거나 파이썬 3.11 이상이 안 선다)' }
+  }
+  $w = $now.PSObject.Properties['windows']
+  if ($w) {
+    if ($w.Value -is [System.Management.Automation.PSCustomObject] -and @($w.Value.PSObject.Properties | Where-Object { $_.Name -ceq 'sandbox' }).Count) {
+      return @{ Did = 'kept'; Have = "windows.sandbox = $($w.Value.sandbox | ConvertTo-Json -Compress)" }
+    }
+    return @{ Did = 'left'; Why = $(if ($w.Value -is [System.Management.Automation.PSCustomObject]) { '[windows] 표에 sandbox 가 없다' } else { 'windows 가 표가 아니다' }) }
+  }
+  $old = [IO.File]::ReadAllBytes($Path)
+  $nl = if ($utf8.GetString($old).Contains("`r`n")) { "`r`n" } else { "`n" }
+  $lead = if (-not $old.Length) { '' } elseif ($old[-1] -eq 10) { $nl } else { $nl + $nl }
+  $new = [byte[]]($old + $utf8.GetBytes($lead + $block.Replace("`n", $nl)))
+  # 붙인 글의 뜻 — 원래 표에서 `windows` 하나만 늘었나. 큰따옴표 없이 적는다(5.1 이 네이티브 인자 안의 큰따옴표를 깨뜨린다).
+  $same = "import sys,tomllib;a=tomllib.load(open(sys.argv[1],'rb'));b=tomllib.load(open(sys.argv[2],'rb'));w=b.pop('windows',None);sys.exit(0 if a==b and w=={'sandbox':sys.argv[3]} else 3)"
+  # 붙인 글은 곁의 임시 파일에 먼저 쓰고 뜻을 잰 뒤 그 파일로 갈아 끼운다 — 쓰다 져도 원래 파일이 반쯤 잘린 채 남지 않는다.
+  $tag = "$Path.paisetup-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+  $probe = "$tag.new"; $bak = "$tag.old"
+  $tl = [IO.Path]::GetTempFileName()
+  try {
+    [IO.File]::WriteAllBytes($probe, $new)
+    # `-I` — 작업 폴더의 같은 이름 모듈(`tomllib.py` · `json.py`)을 안 집는다
+    $rc = Invoke-LoggedCapped 'python' @('-I', '-X', 'utf8', '-c', $same, $Path, $probe, $CodexSandboxMode) $tl $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow $TomlReadProbe $ProbeCap; return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
+    if ($rc -ne 0) { return @{ Did = 'left'; Why = "붙인 결과가 그 뜻으로 안 읽힌다 (python $rc)" } }
+    # 잠깐 붙잡힌 파일(백신 · 색인 · 동기화)은 세 번까지 다시 끼운다. 원래 파일이 이미 제 자리를 떠났으면 다시 안 하고 아래에서 되돌린다.
+    # 끼울 때마다 원래 파일이 잴 때 그대로인지 본다 — 재는 사이 · 기다리는 사이 다른 프로그램(Codex CLI · 확장)이 고쳤으면, 끼우면 그
+    #   편집이 말없이 사라진다. 붙잡았다 저장하는 프로그램이 바로 다시 끼우기가 기다리는 상대다
+    for ($i = 1; ; $i++) {
+      if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) -cne [Convert]::ToBase64String($old)) {
+        return @{ Did = 'left'; Why = '재는 사이 다른 프로그램이 그 파일을 고쳤다' }
+      }
+      try { [IO.File]::Replace($probe, $Path, $bak); break }
+      catch [IO.IOException] { if ($i -ge 3 -or -not (Test-Path -LiteralPath $Path)) { throw }; Start-Sleep -Milliseconds 300 }
+    }
+    # 끼운 뒤에는 원래 글로 덮어쓰지 않는다 — 되읽은 글이 다르면 그 사이 다른 프로그램이 쓴 것이라 그 글을 둔다
+    $back = try { [IO.File]::ReadAllBytes($Path) } catch { $null }
+    if ($null -ne $back -and [Convert]::ToBase64String($back) -cne [Convert]::ToBase64String($new)) {
+      return @{ Did = 'raced'; Why = '쓴 뒤 되읽으니 다른 글이다 — 그 사이 다른 프로그램이 썼다' }
+    }
+  } catch {
+    $why = "못 썼다 ($($_.Exception.Message))"
+    if (-not (Test-Path -LiteralPath $Path)) {
+      # 곁 사본을 제자리로 옮기고, 못 옮기면 쥐고 있던 원래 바이트를 쓴다(곁 사본은 그대로 둔다)
+      $restored = $false
+      if (Test-Path -LiteralPath $bak) { try { Move-Item -LiteralPath $bak -Destination $Path; $restored = $true } catch { } }
+      if (-not $restored) { try { [IO.File]::WriteAllBytes($Path, $old); $restored = $true } catch { } }
+      $why += $(if ($restored) { ' — 끼우다 진 자리를 원래 파일로 되돌렸다' } else { " — 원래 파일을 못 되돌렸다$(if (Test-Path -LiteralPath $bak) { " · 원래 글은 $bak 에 있다" })" })
+    }
+    return @{ Did = 'left'; Why = $why }
+  } finally {
+    Remove-Item -LiteralPath $tl, "$tl.err" -ErrorAction SilentlyContinue
+    # 곁 사본은 제자리의 파일이 우리가 아는 글(원래 글 · 붙인 글)일 때만 걷는다 — 아니면 그것이 원래 글의 하나뿐인 사본일 수 있다
+    $cur = try { [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) } catch { $null }
+    $known = $cur -and ($cur -ceq [Convert]::ToBase64String($new) -or $cur -ceq [Convert]::ToBase64String($old))
+    foreach ($f in @($probe) + @(if ($known) { $bak })) {
+      for ($j = 0; $j -lt 3 -and (Test-Path -LiteralPath $f); $j++) {
+        if ($j) { Start-Sleep -Milliseconds 300 }
+        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+      }
+      if (Test-Path -LiteralPath $f) { Write-Host "  ! Codex 설정의 임시 사본이 남았다 — 설정 글을 그대로 든 파일이라 손으로 지운다: $f" -ForegroundColor Yellow }
+    }
+  }
+  return @{ Did = 'added' }
+}
+
 # ── 자리 판정 — **행마다 묻는다** (PAISetup #16 · 결정 0059) ──────────────────────────────────
 # 스위치의 두 값은 위 「데스크탑 앱 설치」 머리말이 든다. 안 깐 까닭을 행마다 댄다 — 같은 판에서 어떤 행은 깔리고 어떤 행은
 #   안 깔려, 안 깔린 줄이 침묵하면 고른 사람이 제 선택이 죽은 줄 모른다.
@@ -4843,6 +4953,21 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
     # 행이 「언제」를 안 적으면 `offsite` 다 — 「언제」 칸이 없는 행도 고치지 않고 선다.
     $daWhen = if ($da.When) { $da.When } else { 'offsite' }
     if ($appWhen -eq 'yes' -or $daWhen -eq 'any' -or $offsite) {
+      # Codex 는 데스크탑의 앱 서버가 처음 뜨기 전에 샌드박스 키가 서야 한다(위 `Set-CodexSandboxKey`)
+      if ($da.Key -eq 'codex') {
+        $sbx = Set-CodexSandboxKey $CodexCfg
+        $sbxName = 'Codex 데스크탑 · 샌드박스 키'
+        switch ($sbx.Did) {
+          'made'       { Write-Host "  $sbxName — 데스크탑보다 먼저 지었다 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
+          'added'      { Write-Host "  $sbxName — 데스크탑보다 먼저 설정 끝에 더했다 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
+          'kept'       { Write-Host "  $sbxName — 이미 서 있어 둔다 ($($sbx.Have))" }
+          'raced'      { Write-Host "  ! $sbxName — 설정 끝에 더했는데 $($sbx.Why) · 그 글을 둔다 ($CodexCfg)" -ForegroundColor Yellow }
+          'unmeasured' { Add-UnmeasuredStep $sbxName $sbx.Probe '쓰지도 건너뛰지도 않았다' $sbx.Why }
+          default {
+            Write-Host "  ! $sbxName — $($sbx.Why) · 안 건드렸다 ($CodexCfg) — 앱의 샌드박스 첫 설정이 새 대화 권한을 「승인 요청」으로 덮을 수 있다" -ForegroundColor Yellow
+          }
+        }
+      }
       Install-DesktopApp $da
       continue
     }
@@ -6451,7 +6576,7 @@ Exit-Step 'tools'
 # ══ 걸음 「설정 저장소」 ═══════════════════════════════════════════════════════════════════════
 #   층 — 저장소
 #   하는 일 — GitHub CLI 로그인 · 설정 저장소 받기 · 옛 우리 사본을 갈고 그 저장소 훅을 `--install` 로 부르기 · 작업 루트의 옛 우리 사본
-#     훑기(claude-config 결정 0129) · 이번 실행이 깐 Codex 데스크탑 닫기 · PC 마다 홈 씨앗의 `--plant`(claude-config 결정 0134 · 0135)
+#     훑기(claude-config 결정 0129) · PC 마다 홈 씨앗의 `--plant`(claude-config 결정 0134 · 0135)
 #   앞에서 받는 것 — 준비의 주소 · 자리(`$configRepoUrls` · `$configRepoRoot`), 제작자 칸(`$personalAny`), 「도구별 홈」이 이 프로세스에 둔 `PAISETUP_PERSONAL` ·
 #     `PAISETUP_PICK`, 「공용 자산」이 깐 홈 씨앗
 #   안 하는 것 — 그 뒤의 개인화. 그 저장소의 배포가 든다
@@ -6471,8 +6596,7 @@ Enter-Step 'repo'
 # 옛 판 훅을 든 받은 저장소 — 아래 넘길 자리를 고르는 줄이 채우고, 끝의 요약이 그 가운데 세션마다 도는 것을 알린다. 받은 저장소(`$got`)는
 #   걸음 끝의 작업 루트 훑기가 건너뛸 목록이라 칸이 비어도 서 있어야 한다.
 $oldHooks = @(); $got = @()
-# 받은 저장소의 훅으로 넘기나 — 넘길 자리를 고르는 줄 끝에서 선다. 부름은 칸 밖에 선다 — 그 앞의 Codex 데스크탑 닫기가 칸이 빈
-#   PC 의 `--plant` 에도 서야 해서다.
+# 받은 저장소의 훅으로 넘기나 — 넘길 자리를 고르는 줄 끝에서 선다. 부름은 칸 밖에 선다.
 $handOff = $false
 # 훅은 bash 몸통이라 Git Bash 로 부른다. 칸이 비어도 찾는다 — 걸음 끝의 `--plant` 가 쓴다.
 $bash = Find-GitBash
@@ -6688,27 +6812,10 @@ if (-not $repoUrl) {
     $handOff = $true
   }
 }
-# ── 이번 실행이 깐 Codex 데스크탑을 닫는다 — 아래 두 부름(넘긴 훅의 `--install` · 홈 씨앗의 `--plant`)이 그 상태 파일을 쓴다 ──
-# 두 부름이 Codex 데스크탑의 상태 파일(`~/.codex/.codex-global-state.json`)에 작업 루트 저장소(claude-config 결정 0126)와 새 대화의
-#   기본 권한(결정 0127)을 적는데, 데스크탑이 떠 있으면 닫힐 때 제 기억으로 그 파일을 덮어 적은 것이 사라진다. 칸 밖에 서는 것은
-#   칸이 빈 PC 의 `--plant` 앞에도 서야 해서다. Git Bash 가 없으면 두 부름이 다 못 서므로 안 닫는다.
-# ⚠ **이번 실행에서 깔았고 떠 있는 것만 닫는다** — 설치본이 깔자마자 스스로 띄운 창이다. 사람이 띄운 창은 묻지 않고 안 닫는다
-#   (「연다」 칸) — 그 앱의 심기는 미뤄졌다가 「연다」 칸에서 사람이 다시 띄우기에 동의하면 그 자리에서 선다(결정 0135).
-#   닫은 것은 「연다」 칸이 다시 띄운다(`-NoLaunch` 면 안 띄운다).
-if ($bash) {
-  $codexRow = $DesktopApps | Where-Object { $_.Key -eq 'codex' }
-  if ($codexRow -and $script:JustInstalledApps.ContainsKey($codexRow.App)) {
-    $codexApp = @(Find-DesktopApps | Where-Object { $_.App -eq $codexRow.App }) | Select-Object -First 1
-    if ($codexApp -and (Test-AppUp $codexApp)) {
-      if (Stop-App $codexApp) {
-        $codexBack = if ($NoLaunch) { '다음에 열면 프로젝트 · 권한이 서 있다' } else { '프로젝트 · 권한을 적고 끝에서 다시 띄운다' }
-        Write-Host "  Codex 데스크탑 — 이번 설치가 띄운 창을 잠깐 닫는다($codexBack)"
-      } else {
-        Write-Host '  ! Codex 데스크탑 — 이번 설치가 띄운 창을 못 닫았다 — 프로젝트 · 권한은 다음 설치가 적는다' -ForegroundColor Yellow
-      }
-    }
-  }
-}
+# Codex 데스크탑은 여기서 닫지 않는다 — 이번 실행이 띄운 창에서 사람이 로그인하는 중일 수 있고, 마치기 전에 닫으면 그 로그인이 날아가
+#   다시 띄운 창이 또 묻는다(#164). 그 앱이 떠 있으면 아래 두 부름(넘긴 훅의 `--install` · 홈 씨앗의 `--plant`)은 그 상태 파일
+#   (`~/.codex/.codex-global-state.json` — 작업 루트 저장소 0126 · 새 대화 기본 권한 0127)을 미루고, 「연다」 칸이 로그인이 선 것을 본
+#   뒤에만 닫고 심고 다시 띄운다(claude-config 결정 0135).
 if ($handOff) {
   Write-Host "  훅으로 넘긴다 — $boot --install" -ForegroundColor Green
   Write-Host ''
@@ -8377,6 +8484,27 @@ $tail = if ($offsite) {
   '열려 있는 VS Code 를 전부 닫고 새로 여세요 — 낡은 창은 방금 심은 키를 못 봅니다'
 }
 
+# ── 이번 실행이 깐 Codex 데스크탑 — 로그인이 서 있을 때만 닫고 · 심고 · 다시 띄운다 (claude-config 결정 0135) ──────────────────────
+# 데스크탑의 로그인은 앱 서버 안에서 돌아, 마치기 전에 닫으면 날아가 다시 띄운 창이 또 묻는다(#164). 그래서 설치 중에는 안 닫고, 아래
+#   띄우기 칸에서 로그인이 자격 저장소에 섰을 때만 닫고 심기(`--plant` — 작업 루트 저장소 0126 · 새 대화 기본 권한 0127)를 부르며,
+#   닫은 것은 그 칸의 띄우기 고리가 다시 띄운다. 로그인 전이거나 그것을 못 쟀으면 안 닫는다 — 그 앱의 심기는 다음 설치(사람이 다시
+#   띄우기에 동의한 판)가 한다. 창을 안 띄우는 판(`-NoLaunch`)도 안 닫는다 — 닫고 다시 못 띄우면 방금 로그인한 앱이 사라진다.
+# 섰는지는 데스크탑과 같은 꾸러미의 Codex 실행 파일에 `login status` 로 묻는다 — 데스크탑과 같은 홈(`CODEX_HOME` → `~/.codex`)의 같은
+#   자격을 읽어, 0 이면 다시 띄운 앱도 로그인을 안 묻는다. 1 은 「안 섰다」다(자격을 못 읽은 것도 1 이고, 그때는 다시 띄운 앱도 묻는다).
+#   표준입력으로 말을 주고받지 않아 5.1 이 자식의 표준입력에 넣는 BOM 에 안 걸린다.
+# 내는 것 — @{ State = in · out · unmeasured; Why = 화면 줄에 이어 읽히는 까닭 }.
+$CodexDesktopCli = 'app\resources\codex.exe'
+function Get-CodexDesktopLogin($App) {
+  $exe = if ($App.Dir) { Join-Path $App.Dir $CodexDesktopCli } else { '' }
+  if (-not $exe -or -not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+    return @{ State = 'unmeasured'; Why = "로그인을 못 재(꾸러미에서 $CodexDesktopCli 를 못 찾아)" }
+  }
+  $rc = Invoke-ProbeCapped $exe 'login status' $ProbeCap
+  if ($rc -eq 0) { return @{ State = 'in'; Why = '' } }
+  if ($rc -eq 1) { return @{ State = 'out'; Why = '로그인 전이라' } }
+  return @{ State = 'unmeasured'; Why = "로그인을 못 재(``codex.exe login status`` 이 $(Format-ProbeWhy $rc $ProbeCap))" }
+}
+
 # ⚠ **이 칸은 무엇을 던져도 설치를 못 끝낸다** — `Stop` 아래에서 한 줄이 던지면 마지막 `exit` 까지 못 가고, 화면 껍데기는
 #   종료코드를 못 읽어 멀쩡한 설치를 빨갛게 낸다. 창을 여는 것은 덤이라 여기서 진 것은 여기서 삼킨다.
 try {
@@ -8421,6 +8549,28 @@ if ($NoLaunch) {
   if (-not $apps) {
     Write-Host '  ! 열 것을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
   } else {
+    # 이번 실행이 깐 Codex 데스크탑 — 로그인이 서 있으면 닫고 심는다(위 `Get-CodexDesktopLogin` 머리말). 닫은 것은 아래 고리가 다시
+    #   띄우고, 안 닫은 것은 아래 「이미 실행되었다」 줄로 지나간다. 여기서 진 것은 실패로 안 센다(이 칸의 규율).
+    if ($bash) {
+      $codexRow = $DesktopApps | Where-Object { $_.Key -eq 'codex' }
+      if ($codexRow -and $script:JustInstalledApps.ContainsKey($codexRow.App)) {
+        $codexApp = @($apps | Where-Object { $_.App -eq $codexRow.App }) | Select-Object -First 1
+        if ($codexApp -and (Test-AppUp $codexApp)) {
+          $codexLogin = Get-CodexDesktopLogin $codexApp
+          if ($codexLogin.State -eq 'in') {
+            if (Stop-App $codexApp) {
+              $codexPlant = Invoke-Plant $bash $configRepoRoot
+              if ($codexPlant.Ok) { Write-Host '  Codex 데스크탑 — 로그인이 서 있어 닫고 심기를 불렀다(무엇을 심었나는 위 몸통 줄) · 다시 띄운다' -ForegroundColor Green }
+              else { Write-Host "  ! 심기 — $($codexPlant.Why) · Codex 데스크탑의 프로젝트 · 기본 권한은 다음 설치가 적는다 · 다시 띄운다" -ForegroundColor Yellow }
+            } else {
+              Write-Host '  ! Codex 데스크탑 — 못 닫았다 · 프로젝트 · 기본 권한은 다음 설치가 적는다' -ForegroundColor Yellow
+            }
+          } else {
+            Write-Host "  Codex 데스크탑 — $($codexLogin.Why) 안 닫는다 · 프로젝트 · 기본 권한은 다음 설치가 적는다"
+          }
+        }
+      }
+    }
     # 방금 깐 앱을 인스톨러(스토어 스텁 · Squirrel 등)가 제 손으로 띄우기도 한다 — 또 띄우면 창이 두세 번 뜬다.
     # ⚠ **「방금 깔았다」는 「떠 있다」가 아니다** — 무인 설치(`SilentArgs`)로 깐 갈래는 창을 안 띄우는 것이 정상이라, 깐 것만으로
     #   빼면 로그는 초록인데 화면에는 아무것도 안 뜬다. `Test-AppUp` 으로 정말 떠 있는 것만 빼고, 나머지는 아래 고리가 띄운다.
