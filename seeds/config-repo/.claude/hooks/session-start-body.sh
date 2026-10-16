@@ -11,10 +11,10 @@
 # 도구가 늘면 선언에 블록을 더한다. 이 파일을 고치는 것은 새 설치법 · 새 프로브 갈래가 필요할 때뿐이다.
 #
 # 부르는 꼴 — 하는 일 · 끝 값:
-#   session-start.sh            세션(auto). 리모트면 깐다. PC 면 당겨 오고(ff-only · main 만) 홈 규범을 새로 민 뒤,
-#                               선언 지문이 어긋날 때만 깐다 — 까는 것은 배경에서 돌아 세션 시작이 안 기다린다.
-#                               홈 밀기 같은 PC 전체 일은 설정 저장소 세션 · 저장소 밖 세션만 하고, 형제 저장소
-#                               세션은 그 저장소 일만 한다. 늘 0
+#   session-start.sh            세션(auto). 리모트면 깐다. PC 면 당겨 오고(ff-only · main 만 · 저장소가 고른 커밋에서
+#                               멈출 수 있다) 홈 규범을 새로 민 뒤, 선언 지문이 어긋날 때만 깐다 — 까는 것은 배경에서
+#                               돌아 세션 시작이 안 기다린다. 홈 밀기 같은 PC 전체 일은 설정 저장소 세션 · 저장소 밖
+#                               세션만 하고, 형제 저장소 세션은 그 저장소 일만 한다. 늘 0
 #   session-start.sh --install  기계를 안 가리고 깐다        ← deploy.ps1 이 저장소마다 이걸로 부른다
 #                               PC 에서 밖(설치기 · 사람)이 부르면 사람에게 딸린 것(git 신원 · 형제 저장소 · 개인 키 ·
 #                               홈 개인 설정)을 세우고 deploy.ps1 에 넘긴다 — 끝 값은 deploy 의 것이다.
@@ -2290,7 +2290,54 @@ sync_main_bg() {  # sync_main_bg <저장소>
   ( sync_main "$1" >"$_lg" 2>&1 </dev/null & )
 }
 
+# 당김이 어디서 멈출지 저장소에 묻는다 — 저장소가 둔 손(`.claude/hooks/pull-target.sh`)이 있을 때. 늘 0.
+#   몸통은 어느 커밋이 좋은지 모른다 — 기전만 여기 살고 정책은 저장소가 든다(`run_repo_start` 와 같은 갈림 · 결정 0155).
+#   받는 것 — 저장소 · 추적 원격 이름 · `.git` 자리. fetch 가 이긴 뒤에 부른다. 내는 것 — 병합할 자리 한 줄(받은 커밋, 아니면
+#   `<원격>/main`). 부작용 — 판정 한 줄(`<까닭> <병합할 커밋> — <원격>/main <그 커밋> · 덧말`)을 `.git/claude-pull-target.last`
+#   에 덮어 쓴다. 까닭은 no-script · no-opinion · accepted · rejected 넷이다.
+#   손과의 약속 — `sh pull-target.sh <원격>/main` · 자리는 저장소 뿌리 · stdin 은 비었다. 0 으로 끝나며 온전한 커밋 sha 한 줄을
+#   내면 「거기까지」, 빈 출력이나 0 이 아닌 끝은 「의견 없음」이다. 받는 것은 그 sha 가 이 저장소의 커밋이고 `<원격>/main` 의
+#   조상(같아도 된다)일 때뿐이다 — 의견이 없거나 답을 못 받으면 원격 끝을 병합한다. 손이 지거나 틀려도 당김은 그대로 선다.
+#   손의 stderr 는 당김 로그로 흐른다 — 말이 있으면 다음 세션이 실패로 말한다.
+# ⚠ 판정은 당김 로그에 안 쓴다 — 그 로그는 「비면 성공」이라(`bg_fail_report`) 판정 한 줄이 들면 성공한 당김이 실패로 읽힌다.
+#   답을 재는 git 의 stderr 도 같은 까닭으로 버린다.
+# ⚠ 꼴(16진 40 · 64자)부터 본다 — 답은 git 의 인자로 들어가, 이름(`HEAD` · 갈래)이나 `-` 로 시작하는 답이 거기 닿으면 엉뚱한
+#   자리나 옵션으로 읽힌다. 끝의 CR 하나는 걷는다 — 윈도우에서 난 도구는 줄을 CRLF 로 끝내고 `$(…)` 는 LF 만 걷는다.
+_pull_target() {  # _pull_target <저장소> <원격> <.git 자리>
+  _ptip="$2/main"; _ptw="$_ptip"; _ptn=""
+  _pts="$1/.claude/hooks/pull-target.sh"
+  if [ ! -f "$_pts" ]; then
+    _ptk=no-script
+  else
+    _pta="$(cd "$1" && sh "$_pts" "$_ptip" </dev/null)"; _ptx=$?
+    _pta="${_pta%"$(printf '\r')"}"
+    if [ "$_ptx" -ne 0 ] || [ -z "$_pta" ]; then
+      _ptk=no-opinion; _ptn="손의 끝 값 $_ptx"
+    else
+      _ptk=rejected; _ptn="답 '$(printf '%s\n' "$_pta" | head -n 1 | cut -c1-80)'"
+      case "$_pta" in
+        *[!0-9a-f]*) _ptn="$_ptn — sha 꼴이 아니다" ;;
+        *) if [ "${#_pta}" -ne 40 ] && [ "${#_pta}" -ne 64 ]; then
+             _ptn="$_ptn — sha 꼴이 아니다"
+           elif [ "$(git -C "$1" rev-parse -q --verify "$_pta^{commit}" 2>/dev/null)" != "$_pta" ]; then
+             _ptn="$_ptn — 이 저장소의 커밋이 아니다"
+           elif ! git -C "$1" merge-base --is-ancestor "$_pta" "$_ptip" 2>/dev/null; then
+             _ptn="$_ptn — $_ptip 위에 없다"
+           else
+             _ptk=accepted; _ptw="$_pta"; _ptn=""
+           fi ;;
+      esac
+    fi
+  fi
+  _ptt="$(git -C "$1" rev-parse -q --verify "$_ptip^{commit}" 2>/dev/null)" || _ptt="?"
+  if [ "$_ptk" = accepted ]; then _ptm="$_ptw"; else _ptm="$_ptt"; fi
+  printf '%s %s — %s %s%s\n' "$_ptk" "$_ptm" "$_ptip" "$_ptt" "${_ptn:+ · $_ptn}" 2>/dev/null >"$3/claude-pull-target.last" || true
+  printf '%s\n' "$_ptw"
+}
+
 # 원격을 당긴다 — main 체크아웃일 때만 · 빨리감기로만 · 배경에서. 늘 0.
+#   어디까지 — 원격 main 의 끝이다. 저장소가 손을 두면 그 손이 고른 그 위의 커밋이다(`_pull_target`). 빨리감기만이라 이미 그
+#   커밋을 지난 나무는 그 자리에 선다.
 #   타임아웃은 안 씌운다 — 왕복이 원래 느린 자리(당김 하나가 몇 초인 망)가 있어 느린 것과 막힌 것이 시간으로는 안 갈린다.
 #   자르면 되던 당김까지 실패로 찍혀, 진단을 세우려다 없던 고장을 만든다 — 가르는 것은 사유다.
 #   기다리지도 않는다 — 배경으로 띄우고 결과는 다음 세션이 본다. 세션 시작에 당김이 둘 서는데 확장은 초기화를 60초만
@@ -2312,10 +2359,13 @@ pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기
   #   `fatal: Cannot fast-forward to multiple branches.` 로 진다. `merge` 에 이름 있는 자리(추적 갈래)를 주면 남이 그
   #   파일에 무엇을 쓰든 무관해진다.
   # 원격 이름을 안 박는다 — 추적 설정에서 읽는다. 못 읽으면 당길 자리가 없다는 뜻이라 조용히 물러난다.
-  # 둘을 `&&` 로 한 덩이에 둔다 — 어느 쪽이 져도 로그에 남아야 「로그가 비면 성공」이 선다.
+  # fetch · 멈출 자리 고르기 · merge 를 `&&` 로 한 덩이에 둔다 — 어느 쪽이 져도 로그에 남아야 「로그가 비면 성공」이 선다.
+  #   고르기는 fetch 뒤라야 한다 — 손과 몸통이 이번에 받은 `<원격>/main` 을 같이 본다.
   _rm="$(git -C "$1" config --get branch.main.remote 2>/dev/null)" || true
   [ -n "$_rm" ] || return 0
-  ( { git -C "$1" fetch -q "$_rm" main && git -C "$1" merge --ff-only -q "$_rm/main"; } >"$_lg" 2>&1 </dev/null & )
+  ( { git -C "$1" fetch -q "$_rm" main &&
+      _to="$(_pull_target "$1" "$_rm" "$_gd")" &&
+      git -C "$1" merge --ff-only -q "$_to"; } >"$_lg" 2>&1 </dev/null & )
 }
 
 # 저장소가 제 세션 시작 일을 두는 자리(`.claude/hooks/repo-start.sh`) — 있으면 부르고 없으면 조용하다. 늘 0.
@@ -3643,7 +3693,8 @@ fi
 #    안 하는 것 — 깔기(설치 단계가 배경에서 든다) · 진단 줄. 형제 저장소 세션은 홈에 안 쓰고 견주어 알리기만 한다
 #    걸음 — 당김과 홈 밀기는 매 세션, 설치는 지문이 어긋나거나 도구가 낡았을 때만:
 #      당김     원격을 ff-only 로, main 체크아웃일 때만. 로컬을 다치게 하지 않는다 — 갈라졌거나 오프라인이면 그대로 두고
-#               사유까지 말한다(배경이라 다음 세션이 말한다)
+#               사유까지 말한다(배경이라 다음 세션이 말한다). 저장소가 손(`pull-target.sh`)을 두면 원격 main 위의 그
+#               손이 고른 커밋까지만 간다(`_pull_target`)
 #      홈 밀기  홈 규범 · 훅 배선을 새로 민다 — 멱등 · 싼 것이라 매 세션. PC 전체 일이라 설정 저장소 세션과 저장소 밖
 #               세션만 한다(준비 단계의 PC_WIDE). 형제 저장소 세션은 게이트 배선만 하고 홈은 견주기만 해서, 맞출 것이
 #               있으면 한 줄로 알린다(`pc_wide_notice`)
