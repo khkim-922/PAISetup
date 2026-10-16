@@ -444,11 +444,11 @@ $gO.Controls.Add($cAuto)
 
 # 이미 깔린 것도 올리는 칸(기본 켬) — 집 · 회사 PC 처럼 프로필이 남는 기계는 프로그램이 이미 다 있어, 「있으면 건너뛴다」만
 #   두면 판이 영영 안 올라간다. 비영속 VDI 는 늘 맨바닥이라 이 칸이 안 걸린다.
+# 괄호는 이 칸이 못 막는 하나다 — 몸통의 `-NoUpgrade` 칸별 설명과 같은 말이고, 판은 몸통의 `$VcRuntimeMin` 을 글자로 든다.
 $cUpg = New-Object Windows.Forms.CheckBox
 $cUpg.Text = '이미 깔린 것도 최신으로 올립니다  (꺼도 VC++ 런타임은 14.40 아래면 올립니다)'
 $cUpg.Location = New-Object Drawing.Point(16, 22)
 $cUpg.Size = New-Object Drawing.Size(560, 22)
-# 괄호는 이 칸이 못 막는 하나다 — 몸통의 `-NoUpgrade` 칸별 설명과 같은 말이고, 판은 몸통의 `$VcRuntimeMin` 을 글자로 든다.
 $cUpg.Checked = -not $NoUpgrade
 $gO.Controls.Add($cUpg)
 
