@@ -120,6 +120,10 @@ if (Test-Path -LiteralPath $DistVersionPath) {
 # 걸음들이 이 아래에 파일을 쓰고 끝의 검증이 같은 자리를 다시 잰다 — 글자를 자리마다 박으면 한쪽만 고쳐지는 날 재는 자가
 #   딴 자리를 보고 [O] 를 찍는다 (#3).
 $homeDir = Join-Path $env:USERPROFILE '.claude'
+# 홈 씨앗 — 짐의 설정 저장소 씨앗이 「공용 자산」 걸음에서 거울로 깔리는 자리(그 걸음의 `$envAssets` 줄이 이 값을 쓴다)와 그 훅 폴더.
+#   씨앗의 손 · 훅 · 예시를 부르는 자리와 끝 검증은 다 이 둘에서 잇는다(PAISetup #47 ③).
+$ConfigSeedHome  = Join-Path $homeDir 'seeds\config-repo'
+$ConfigSeedHooks = Join-Path $ConfigSeedHome '.claude\hooks'
 # 저장소를 받는 자리 — `-Describe` 갈래가 이 값을 `config-repo-root` 줄로 내주고, 화면이 그 줄로 자리를 보여 주고 폴더를 연다.
 # ⚠ **넘겨받는 쪽의 `ROOT` 와 짝이다** — 자리를 옮기면 둘을 같이 고친다. 하나만 고치면 설치는 한 데로 받고 다른 쪽은 딴
 #   데서 찾는다.
@@ -470,14 +474,46 @@ function Exit-Step([string]$Key) {
 
 #region 프로세스 — 네이티브 명령을 부르고, 빗장을 쥔 설치기와 작업 스케줄러의 작업을 묻는다
 
-# 빗장을 쥔 쪽을 찾는다 — 명령줄에 `install.ps1` 을 든 다른 파워셸 프로세스의 목록을 낸다(못 물으면 빈 목록).
-#   이름(`powershell.exe`)만으로 고르면 치고 있는 이 창과 화면 껍데기까지 들어, 몸통이 뜬 꼴(`-File …install.ps1`)로 고른다.
-#   `install.ui.ps1` 은 빗장을 안 쥐고 그 꼴에 안 걸린다. 다른 사용자 것은 `CommandLine` 이 비어 와 안 골라진다 — 못 본 것을
-#   끝내지 않는다. 로그인 창 자식(`-GhLoginOnly`)은 빗장 앞에서 나가 빗장을 안 쥐므로 뺀다(`Start-GhLoginChild`).
+# 「우리 엔진인가」 — 프로세스 하나(Win32_Process)를 받아 `install`(설치 몸통) · `autorun`(자동 실행 몸통) · 빈 글자(우리 것이
+#   아니다)를 낸다. **이 자는 하나다** — 몸통의 겹침 찾기(`Find-EngineHolders`)와 자동 실행 몸통의 가드(`Get-OtherEngines` — 가장 높은
+#   판의 엔진에서 이 함수를 떼어 들인다)가 다 이것으로 가른다. 따로 적으면 한쪽만 고친 판이 나와 두 가드가 다른 것을 센다.
+#   · 돌리는 스크립트는 `-File` 의 인자다(5.1 이 받는 줄임 `-f` · `-fi` · `-fil` 도). `-File` 이 없는 꼴(`-Command "& '…'"`)은 명령줄에서
+#     두 이름으로 끝나는 첫 낱말이다. 그 스크립트 이름이 `install.ps1` · `autorun.ps1` 이 아니면 우리 것이 아니다 — 남의 스크립트가
+#     우리 설치기 자리를 인자로 받는 판(검사가 `-Installer …\install.ps1` 을 넘긴다)을 안 센다
+#   · 같은 이름의 남 스크립트(scoop · 사내 도구의 `install.ps1`)는 그 파일에 우리 표지(`$mark`)가 없는 것으로 가른다 — 빗장을 쥐는
+#     판의 몸통과 자동 실행 몸통은 다 그 글자를 든다(빗장 이름 · 이 함수 자신)
+#   · **못 가르면 우리 것으로 센다** — 상대 경로(그 프로세스의 작업 폴더를 모른다) · 못 읽는 파일(지워진 옛 판 폴더). 놓치면 겹쳐 돌아
+#     반쪽 상태가 남고, 더 센 것은 기다리고 묻는 것으로 끝난다
+#   · 로그인 창 자식(`-GhLoginOnly`)은 빗장 앞에서 나가 빗장을 안 쥐므로 우리 엔진으로 안 센다(`Start-GhLoginChild`). 다른 사용자
+#     것은 `CommandLine` 이 비어 와 안 골라진다 — 못 본 것을 끝내지 않는다
+# ⚠ **이 함수는 다른 함수에 기대지 않는다** — 자동 실행 몸통이 이름으로 떼어 혼자 세운다.
+function Get-EngineKind($Proc) {
+  $mark = 'PAISetup'
+  $cl = [string]$Proc.CommandLine
+  if (-not $cl -or $cl -like '*-GhLoginOnly*') { return '' }
+  $m = [regex]::Match($cl, '(?i)(?:^|\s)-f(?:i(?:le?)?)?\s+(?:"([^"]+)"|(\S+))')
+  if (-not $m.Success) {
+    $m = [regex]::Match($cl, '(?i)(?:"([^"]*(?:install|autorun)\.ps1)"|''([^'']*(?:install|autorun)\.ps1)''|([^\s"'']*(?:install|autorun)\.ps1))(?=["''\s]|$)')
+  }
+  if (-not $m.Success) { return '' }
+  $path = @(for ($g = 1; $g -lt $m.Groups.Count; $g++) { if ($m.Groups[$g].Success) { $m.Groups[$g].Value } })[0]
+  $leaf = ''
+  try { $leaf = [IO.Path]::GetFileName($path) } catch { return '' }
+  $kind = if ($leaf -ieq 'install.ps1') { 'install' } elseif ($leaf -ieq 'autorun.ps1') { 'autorun' } else { '' }
+  if (-not $kind -or -not [IO.Path]::IsPathRooted($path)) { return $kind }
+  $text = $null
+  try { $text = [IO.File]::ReadAllText($path) } catch { return $kind }
+  if ($text.Contains($mark)) { return $kind }
+  return ''
+}
+
+# 빗장을 쥔 쪽을 찾는다 — 우리 설치 몸통(`Get-EngineKind` 가 `install`)인 다른 파워셸 프로세스의 목록을 낸다(못 물으면 빈 목록).
+#   이름(`powershell.exe`)만으로 고르면 치고 있는 이 창과 화면 껍데기까지 든다. 자동 실행 몸통은 안 센다 — 그것이 이 몸통을 자식으로
+#   띄우므로, 세면 자동 실행이 띄운 설치가 제 부모를 겹침으로 읽고 물러난다. `install.ui.ps1` 은 빗장을 안 쥐고 그 이름에 안 걸린다.
 function Find-EngineHolders {
   try {
     @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction Stop |
-        Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*install.ps1*' -and $_.CommandLine -notlike '*-GhLoginOnly*' })
+        Where-Object { $_.ProcessId -ne $PID -and (Get-EngineKind $_) -eq 'install' })
   } catch { @() }
 }
 
@@ -1641,6 +1677,106 @@ function New-CountCheck([string]$Name, [string]$From, [string]$To) {
   return @{ Name = "$Name ($dstN/$srcN$extra)"; Ok = ($srcN -gt 0 -and $dstN -ge $srcN) }
 }
 
+# 한 폴더 아래 파일 — 상대 자리(`\` 로 · 대소문자를 안 가리는 표의 열쇠) → 온 자리. `__pycache__` 아래는 안 센다 — 파이썬이 남긴 그 PC 의
+#   부산물이지 자산이 아니다(설정 저장소의 배포 · 세션 훅도 안 민다). 폴더가 없으면 빈 표다.
+function Get-AssetFiles([string]$Dir) {
+  $out = @{}
+  if (-not (Test-Path -LiteralPath $Dir -PathType Container)) { return $out }
+  $base = (Get-Item -LiteralPath $Dir -Force).FullName.TrimEnd('\')
+  foreach ($f in @(Get-ChildItem -LiteralPath $base -Recurse -File -Force -ErrorAction SilentlyContinue)) {
+    $rel = $f.FullName.Substring($base.Length + 1)
+    if (('\' + $rel) -match '[\\]__pycache__[\\]') { continue }
+    $out[$rel] = $f.FullName
+  }
+  return $out
+}
+
+# 놓은 자리가 원본과 같은가 — 원본의 파일마다 그 자리에 바이트까지 같은 파일이 있나(모자람 · 다름), 그 자리에만 있는 파일(여분)이 있나.
+#   여분은 `-ExtraOk` 면 판정에 안 든다 — 남이 쓰는 파일이 같이 사는 자리(사내 환경 문서)다. 내는 것 — @{ Ok; Say(어긋난 것을 짧게) }.
+#   `-Only` 를 주면 원본은 그 상대 자리의 파일뿐이다 — 원본 폴더에 원본이 아닌 파일(git 이 무시하는 런타임 기록)이 같이 사는 자리다.
+function Compare-AssetTree([string]$From, [string]$To, [switch]$ExtraOk, [string[]]$Only) {
+  $src = Get-AssetFiles $From
+  if ($PSBoundParameters.ContainsKey('Only')) {
+    $keep = @{}; foreach ($k in @($Only)) { $keep[$k] = $true }
+    foreach ($k in @($src.Keys)) { if (-not $keep.ContainsKey($k)) { $src.Remove($k) } }
+  }
+  $dst = Get-AssetFiles $To
+  $miss = @(); $diff = @()
+  foreach ($k in $src.Keys) {
+    if (-not $dst.ContainsKey($k)) { $miss += $k; continue }
+    if ((Get-FileHash -LiteralPath $src[$k] -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $dst[$k] -Algorithm SHA256).Hash) { $diff += $k }
+  }
+  $extra = @($dst.Keys | Where-Object { -not $src.ContainsKey($_) })
+  $say = @()
+  if (-not $src.Count) { $say += '원본이 비었다' }
+  if ($miss.Count)  { $say += "모자람 $($miss.Count): $((@($miss | Sort-Object | Select-Object -First 3)) -join ', ')" }
+  if ($diff.Count)  { $say += "다름 $($diff.Count): $((@($diff | Sort-Object | Select-Object -First 3)) -join ', ')" }
+  if ($extra.Count) { $say += "여분 $($extra.Count)$(if (-not $ExtraOk) { ': ' + ((@($extra | Sort-Object | Select-Object -First 3)) -join ', ') })" }
+  return @{ Ok = ($src.Count -gt 0 -and -not $miss.Count -and -not $diff.Count -and ($ExtraOk -or -not $extra.Count)); Say = ($say -join ' · ')
+            N = $src.Count }
+}
+
+# 남의 파일이 같이 사는 공용 자산(사내 환경 문서)을 장부로 맞춘다 (PAISetup #44 ⑭) — 원본을 덮어 깐 뒤 부른다. 받는 것: 「공용 자산」의
+#   자산 한 줄(@{ From; To; Name }). 내는 것: 걷은 파일 수. 장부 줄의 꼴은 「장부」 칸이 든다 — 자리 `file` · 그 안의 자리는 그 폴더 ·
+#   이름은 폴더 안의 상대 자리 · 심은 손 `assets` · 값은 놓은 바이트의 SHA256.
+#   · 우리 것은 장부의 그 자리 줄에 든 파일뿐이다 — 프록시의 기록(`proxy.log` · `*.pid`) · 시험 결과 · 사람이 둔 파일은 줄이 없어 안
+#     건드린다. 런타임 파일 이름을 여기 따로 적지 않는 까닭이다
+#   · 줄에 있는데 원본에서 빠진 파일은 놓은 바이트 그대로면 지우고, 바뀌었으면 사람 것으로 두고 노란 줄로 알린다(줄은 뺀다 — 다시
+#     안 알린다). 못 지웠으면 빨간 줄 · `$Fails` 이고 줄을 둔다 — 다음 판이 다시 걷는다
+#   · 그 자리 줄이 하나도 없으면(장부 앞에 깐 판) 원본에 없는 파일을 노란 줄로 한 번 알리고 둔다 — 우리가 깐 것인지 알 길이 없다
+#   · 그 뒤 원본의 파일마다 놓인 바이트로 줄을 갈아 쓴다. `-Drop` 이면 걷지도 놓지도 않고 그 자리 줄만 뺀다(설정 저장소가 든 판)
+#   · 장부를 못 읽었으면 걷지 않고 쓰지 않는다 — 노란 줄
+function Sync-AssetLedger($Asset, [switch]$Drop) {
+  $L = Read-RunLedger $ClaudePlantLedger
+  if ($L.Why) {
+    if (-not $Drop) { Write-Host "  ! $($Asset.Name) — 장부를 못 읽어 원본에서 빠진 파일을 안 걷었다 ($($L.Why) · $($L.Path))" -ForegroundColor Yellow }
+    return 0
+  }
+  $at = ConvertTo-LedgerAt $Asset.To
+  $rows = @(Find-LedgerRows $L 'file' $at 'assets')
+  if ($Drop) {
+    if ($rows.Count) { foreach ($r in $rows) { [void]$L.Rows.Remove($r) }; $null = Save-PlantLedger $L }
+    return 0
+  }
+  $src = Get-AssetFiles $Asset.From
+  $swept = 0; $kept = @(); $fail = @()
+  foreach ($r in $rows) {
+    if ($src.ContainsKey($r.Name)) { continue }
+    $p = Join-Path $Asset.To $r.Name
+    if (Test-Path -LiteralPath $p -PathType Leaf) {
+      if ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -cne $r.Value) { $kept += $r.Name }
+      else {
+        try { Remove-Item -LiteralPath $p -Force -ErrorAction Stop; $swept++ } catch { $fail += $r.Name; continue }
+        # 걷은 파일의 빈 폴더를 위로 걷는다 — 그 자산 폴더 자체는 둔다
+        $up = Split-Path $p -Parent
+        while ($up.Length -gt $Asset.To.Length -and -not (Get-ChildItem -LiteralPath $up -Force -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+          Remove-Item -LiteralPath $up -Force -ErrorAction SilentlyContinue
+          $up = Split-Path $up -Parent
+        }
+      }
+    }
+    [void]$L.Rows.Remove($r)
+  }
+  if (-not $rows.Count) {
+    $odd = @((Get-AssetFiles $Asset.To).Keys | Where-Object { -not $src.ContainsKey($_) } | Sort-Object)
+    if ($odd.Count) {
+      Write-Host "  ! $($Asset.Name) — 원본에 없는 파일 $($odd.Count)개가 있다 · 장부 앞에 깔린 자리라 우리 것인지 몰라 둔다(한 번만 알린다): $((@($odd | Select-Object -First 5)) -join ' · ')$(if ($odd.Count -gt 5) { ' …' })" -ForegroundColor Yellow
+      Write-Host "     $($Asset.To)"
+    }
+  }
+  if ($kept.Count) { Write-Host "  ! $($Asset.Name) — 원본에서 빠졌는데 우리가 놓은 뒤 바뀐 파일이라 둔다: $($kept -join ' · ')" -ForegroundColor Yellow }
+  if ($fail.Count) {
+    Write-Host "  ! $($Asset.Name) — 원본에서 빠진 파일을 못 걷었다: $($fail -join ' · ')" -ForegroundColor Red
+    $Fails.Add("$($Asset.Name) (원본에서 빠진 파일 걷기)")
+  }
+  foreach ($k in $src.Keys) {
+    $p = Join-Path $Asset.To $k
+    if (Test-Path -LiteralPath $p -PathType Leaf) { Set-LedgerRow $L 'file' $at $k 'assets' (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash }
+  }
+  $null = Save-PlantLedger $L
+  return $swept
+}
+
 #endregion 파일
 
 #region 장부 — 설치기가 심은 것을 적고, 선언 · 장부 · 지금 값으로 그 자리를 맞추고(심기 · 걷기 · 사람 값은 두고 알리기), 끝 검증이 장부와 실물을 견준다
@@ -2291,7 +2427,9 @@ function Add-ToUserPath([string]$Dir,
 #   `@{ State = yes · no · unmeasured; Dir; Probe; Why }`(`Add-UnmeasuredStep` 의 꼴) — python 이 이 창에 없으면 `no` 다. 띄우는 것은 python
 #   하나이고 울타리를 두른다. 폴더가 아직 없어도 그 자리를 낸다 — 있나는 부르는 쪽이 본다.
 #   글자는 인터프리터가 선 뒤의 출력이라 DRM 이 끼는 PC 에서도 안 잃는다(#32 · 결정 0144 — `Get-Ver` 곁말).
-$PipUserScriptsCode = "import sysconfig;print(sysconfig.get_path('scripts','nt_user'))"
+# ⚠ **작업 폴더의 같은 이름 모듈을 안 집는다** — `-c` 는 작업 폴더(`''`)를 `sys.path` 맨 앞에 둬, 그 폴더의 `sysconfig.py` 가 돈다.
+#   `-I` 는 `PYTHONUSERBASE` 까지 버려 다른 답을 내고 `-P` 는 3.11 앞 판이 못 받으므로, 빈 자리를 지운 뒤 가져온다(`sys` 는 내장이라 안 집힌다).
+$PipUserScriptsCode = "import sys;sys.path[:]=[p for p in sys.path if p];import sysconfig;print(sysconfig.get_path('scripts','nt_user'))"
 function Measure-PipUserScripts {
   $runs = Measure-Runs 'python' '--version'
   if ($runs -eq 'no') { return @{ State = 'no'; Dir = ''; Probe = ''; Why = '' } }
@@ -3783,25 +3921,63 @@ function Install-VcRuntime([bool]$Attended) {
 
 #region 칸 없이 까는 스킬 — 제작자 칸에 안 든 도구의 홈에 고른 제품이 부르는 스킬을 깔고, 우리 기록에서 이번에 안 까는 것을 걷는다
 
-# 그 도구 홈에 깔 이름 — `$FreeSkills` 의 그 도구 칸(`Claude` · `Codex` · `Agy`)이 참인 것. 까는 칸과 끝 검증이 같은 목록을 쓴다.
-function Get-FreeSkillNames([string]$Tool) {
-  return @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Tool })
+# 짐의 갈 곳 표(`tool-homes.conf`)에서 칸 없이 까는 걸음이 쓰는 두 사실을 읽는다 — 도구마다 스킬 홈과 기록 자리(`was <대상> <기록>
+#   shared` 줄 · 그 대상으로 가는 `route <항목> <도구> copy <대상>` 줄이 도구 이름을 댄다)와, 그 홈에 안 놓는 이름(`not <항목> <이름>
+#   <도구 | *>`). 두 사실은 손(`tool-homes.py`)이 칸을 켠 홈에서 같은 줄로 쓴다 — 칸을 켜고 끌 때 손과 이 걸음이 같은 기록을 넘겨받고,
+#   받는 쪽 홈에 러너가 안 가는 것이 두 손에서 같다. 그래서 여기 다시 적지 않고 표에서 짓는다(PAISetup #47 ⑤).
+# 표의 꼴(주석은 `#` 로 여는 줄 전체 · 칸은 빈칸으로 가른다)은 표 머리가 든다. 여기는 세 낱말의 줄만 읽고 나머지 줄은 안 본다 —
+#   표의 다른 줄을 가르는 것은 손의 몫이다. 파이썬을 안 부른다 — 칸 없이 까는 걸음은 Codex · agy 만 고른 PC(파이썬이 안 깔릴 수
+#   있다)에서도 돈다.
+# 내는 것 — @{ Homes = @{ <도구> = @{ Skills; Ledger; Root; Not } }; Why }. Root 는 기록이 든 폴더(백업의 뿌리)다. 표가 없거나 못
+#   읽으면 Homes 가 비고 Why 가 까닭이다 — 그 홈은 부르는 쪽이 빨간 줄로 댄다.
+function Read-FreeSkillTable([string]$Table) {
+  $t = @{ Homes = @{}; Why = '' }
+  $lines = $null
+  try { $lines = [IO.File]::ReadAllLines($Table, [Text.Encoding]::UTF8) } catch { $t.Why = "갈 곳 표를 못 읽었다 ($Table · $(Say-Why $_))"; return $t }
+  $expand = { param([string]$p)
+    $p = $p.TrimEnd('/')
+    if ($p.StartsWith('~/')) { $p = Join-Path $env:USERPROFILE ($p.Substring(2).Replace('/', '\')) }
+    $p }
+  $routes = @(); $wases = @(); $nots = @()
+  foreach ($ln in $lines) {
+    $s = $ln.Trim()
+    if (-not $s -or $s.StartsWith('#')) { continue }
+    $f = @($s -split '\s+')
+    if ($f[0] -ceq 'route' -and $f.Count -ge 6 -and $f[3] -ceq 'copy') { $routes += @{ Item = $f[1]; Tool = $f[2]; At = $f[4].TrimEnd('/') } }
+    elseif ($f[0] -ceq 'was' -and $f.Count -ge 4 -and $f[3] -ceq 'shared') { $wases += @{ At = $f[1].TrimEnd('/'); Ledger = $f[2] } }
+    elseif ($f[0] -ceq 'not' -and $f.Count -ge 4) { $nots += @{ Item = $f[1]; Name = $f[2]; Tool = $f[3] } }
+  }
+  foreach ($w in $wases) {
+    $r = @($routes | Where-Object { $_.At -ceq $w.At }) | Select-Object -First 1
+    if (-not $r) { continue }
+    $ledger = & $expand $w.Ledger
+    $t.Homes[$r.Tool] = @{ Skills = (& $expand $w.At); Ledger = $ledger; Root = (Split-Path $ledger -Parent)
+                           Not = @($nots | Where-Object { $_.Item -ceq $r.Item -and ($_.Tool -ceq $r.Tool -or $_.Tool -ceq '*') } | ForEach-Object { $_.Name }) }
+  }
+  if (-not $t.Homes.Count) { $t.Why = "갈 곳 표에 칸 없이 까는 걸음이 쓸 기록 줄(was … shared)이 없다 ($Table)" }
+  return $t
 }
 
-# 한 도구 홈의 칸 없이 까는 걸음 — 고르기(`Get-FreeSkillNames`) · 깔기 · 기록 맞추기. 홈의 자리는 `$FreeSkillHomes` 가 든다. 짐에
-#   없는 스킬은 빨간 줄 · `$Fails` 다.
+# 그 도구 홈에 깔 이름 — `$FreeSkills` 의 그 도구 칸(`Claude` · `Codex` · `Agy`)이 참이고, 갈 곳 표가 그 홈에 안 놓는다고 하지 않은
+#   것. 까는 칸과 끝 검증이 같은 목록을 쓴다.
+function Get-FreeSkillNames([string]$Tool) {
+  $not = @($FreeSkillHomes[$Tool].Place.Not)
+  return @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Tool -and $not -notcontains $_ })
+}
+
+# 한 도구 홈의 칸 없이 까는 걸음 — 고르기(`Get-FreeSkillNames`) · 깔기 · 기록 맞추기. 홈의 자리는 `$FreeSkillHomes` 의 `Place`(갈 곳
+#   표에서 지었다)가 든다. 짐에 없는 스킬 · 표에 자리가 없는 홈은 빨간 줄 · `$Fails` 다.
 # ⚠ **한 스킬 폴더에 쓰는 자는 하나다.** 그 도구가 제작자 칸에 들면(`Box`) 손(`tool-homes.py`)이 짐 · 저장소의 스킬을 다 놓으므로
 #   이 함수는 그 홈을 안 건드린다 — 안 깔고 · 안 걷고 · 기록을 안 쓴다. 칸에 안 들면 이 함수만 그 홈에 스킬을 쓴다.
 #   · 우리 것은 이 설치기의 기록(`.paisetup-skills`)에 든 이름뿐이다 — 그 홈에는 사람이나 다른 도구가 둔 스킬이 섞여 산다. 깔
 #     자리에 기록에 없는 같은 이름의 폴더가 있으면 통째로 백업 자리(`<Root>/backups/install-aside-<시각>/`)로 옮긴 뒤 깔고(그 위에
-#     복사하면 남의 파일과 섞인다) 노란 줄로 알린다
+#     복사하면 남의 파일과 섞인다) 노란 줄로 알린다. 기록이 없는 홈에는 우리 것이 없다 — 깔 이름이 아닌 폴더는 이름이 무엇이든
+#     안 건드린다
+#   · 우리 폴더는 거울로 깐다 — 짐의 그 스킬에서 빠진 파일은 홈의 그 폴더에서도 빠진다(`__pycache__` 는 안 본다). 덧붙이기만 하면
+#     짐이 스킬 안의 파일을 걷은 날부터 낡은 파일이 그 스킬에 남는다(PAISetup #44 ⑮). 못 걷은 파일은 빨간 줄 · `$Fails` 다
 #   · 남길 목록은 이번에 깔 목록뿐이다 — 기록에 있는데 이번 목록에 없는 이름(짐에서 빠진 것 · 지난 판이 짐에서 깐 제작자 스킬 ·
 #     고른 제품이 더는 안 부르는 것)은 `<Root>/backups/install-skills-<시각>/` 로 옮긴다. 지우지 않는다 — 같은 이름을 사람이 손수
 #     두었을 수도 있다. 깔 것이 없는 판도 기록을 맞추고, 기록도 깔 것도 없는 홈은 안 건드린다(그 도구를 안 쓰는 PC 에 홈을 안 짓는다)
-#   · 기록이 없는 Claude 홈은 과도기 목록(`Transition`)을 기록 대신 쓴다 — 기록은 1.25.0 부터 적히고, 그 전 판이 Claude 홈에
-#     깔았다가 배포본에서 빠진 이름을 배포본 이력(`git log --diff-filter=D -- .claude/skills`)에서 센 목록이다. 모든 기계가 1.25.0
-#     이상을 한 번 돌면 할 일이 없어 걷는다(걷는 날은 사람이 정한다). 다른 홈은 안 쓴다 — 그 판이 깐 적이 없고, 같은 이름의 사람
-#     스킬이 걷힌다
 # 기록에 적는 것 — 이번에 깐 이름 더하기, 앞 기록 가운데 이번 목록에 남은 이름(짐에 없어 못 깐 이름도 빠지지 않는다). BOM
 #   없는 UTF-8 · 한 줄에 이름 하나(이름이 한글이어도 읽힌다). 백업 자리는 매번 새로 잡는다(`Get-FreePath`) — 같은 초에 두 번
 #   돌아도 앞 백업 안으로 옮겨 들어가지 않는다.
@@ -3809,13 +3985,21 @@ function Get-FreeSkillNames([string]$Tool) {
 function Install-FreeSkills([string]$Tool) {
   $h = $FreeSkillHomes[$Tool]
   if ($h.Box) { return }
-  $names     = @(Get-FreeSkillNames $Tool)
-  $ledger    = Join-Path $h.Root '.paisetup-skills'
+  $names = @(Get-FreeSkillNames $Tool)
+  $p     = $h.Place
+  if (-not $p) {
+    if ($names.Count) {
+      $why = if ($FreeSkillTable.Why) { $FreeSkillTable.Why } else { '갈 곳 표에 이 홈의 기록 줄(was … shared)이 없다' }
+      Write-Host "  ! $($h.Label) — 스킬 자리를 몰라 못 깐다: $why" -ForegroundColor Red
+      $Fails.Add("$($h.Label) 스킬 (갈 곳 표에 자리가 없음)")
+    }
+    return
+  }
+  $ledger    = $p.Ledger
   $hasLedger = Test-Path -LiteralPath $ledger -PathType Leaf
   if (-not $hasLedger -and -not $names.Count) { return }
   $ours    = @(if ($hasLedger) { [IO.File]::ReadAllLines($ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ } })
-  $before  = if ($hasLedger) { $ours } else { @($h.Transition | Where-Object { $_ }) }
-  $backups = Join-Path $h.Root 'backups'
+  $backups = Join-Path $p.Root 'backups'
   $aside   = $null
   $done    = @()
   foreach ($n in $names) {
@@ -3825,7 +4009,7 @@ function Install-FreeSkills([string]$Tool) {
       $Fails.Add("$($h.Label) 스킬 $n (짐에 없음)")
       continue
     }
-    $to = Join-Path $h.Skills $n
+    $to = Join-Path $p.Skills $n
     if ((Test-Path -LiteralPath $to) -and ($ours -notcontains $n)) {
       if (-not $aside) {
         $aside = Get-FreePath (Join-Path $backups ('install-aside-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
@@ -3836,21 +4020,41 @@ function Install-FreeSkills([string]$Tool) {
     }
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
-    Write-Host "  $($h.Label) 스킬 $n — 깔았다" -ForegroundColor Green
+    # 거울 — 여기까지 온 폴더는 우리 것이다(없었다 · 기록에 들었다 · 방금 비켜 두고 새로 지었다)
+    $toFull = (Get-Item -LiteralPath $to).FullName.TrimEnd('\')
+    $stale = @(Get-ChildItem -LiteralPath $toFull -Recurse -File -Force -ErrorAction SilentlyContinue |
+               Where-Object { $_.FullName -notmatch '[\\]__pycache__[\\]' -and
+                              -not (Test-Path -LiteralPath (Join-Path $from $_.FullName.Substring($toFull.Length + 1)) -PathType Leaf) })
+    $staleFail = @()
+    foreach ($x in $stale) {
+      try { Remove-Item -LiteralPath $x.FullName -Force -ErrorAction Stop }
+      catch { $staleFail += $x.FullName.Substring($toFull.Length + 1) }
+    }
+    foreach ($d in @(Get-ChildItem -LiteralPath $toFull -Recurse -Directory -Force -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending)) {
+      if (-not (Get-ChildItem -LiteralPath $d.FullName -Force -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+        Remove-Item -LiteralPath $d.FullName -Force -ErrorAction SilentlyContinue
+      }
+    }
+    if ($staleFail.Count) {
+      Write-Host "  ! $($h.Label) 스킬 $n — 짐에서 빠진 파일을 못 걷었다: $($staleFail -join ' · ')" -ForegroundColor Red
+      $Fails.Add("$($h.Label) 스킬 $n (짐에서 빠진 파일 걷기)")
+    }
+    $swept = $stale.Count - $staleFail.Count
+    Write-Host "  $($h.Label) 스킬 $n — 깔았다$(if ($swept) { " (짐에서 빠진 파일 $swept 개를 걷었다)" })" -ForegroundColor Green
     $done += $n
   }
-  $gone = @($before | Where-Object { $names -notcontains $_ } |
-            Where-Object { Test-Path -LiteralPath (Join-Path $h.Skills $_) -PathType Container })
+  $gone = @($ours | Where-Object { $names -notcontains $_ } |
+            Where-Object { Test-Path -LiteralPath (Join-Path $p.Skills $_) -PathType Container })
   if ($gone.Count) {
     $bk = Get-FreePath (Join-Path $backups ('install-skills-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
     New-Item -ItemType Directory -Path $bk -Force | Out-Null
     foreach ($n in $gone) {
-      Move-Item -LiteralPath (Join-Path $h.Skills $n) -Destination (Join-Path $bk $n) -Force
+      Move-Item -LiteralPath (Join-Path $p.Skills $n) -Destination (Join-Path $bk $n) -Force
       Write-Host "  $($h.Label) 스킬 $n — 이번에 깔 목록에 없어 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
     }
   }
-  $keep = @(@($before | Where-Object { $names -contains $_ }) + $done | Select-Object -Unique)
-  New-Item -ItemType Directory -Path $h.Root -Force | Out-Null
+  $keep = @(@($ours | Where-Object { $names -contains $_ }) + $done | Select-Object -Unique)
+  New-Item -ItemType Directory -Path $p.Root -Force | Out-Null
   [IO.File]::WriteAllLines($ledger, [string[]]$keep, (New-Object Text.UTF8Encoding($false)))
 }
 
@@ -4162,10 +4366,14 @@ function Get-BrowserMcpCheck([string]$Adapter, [string[]]$Picked, [string[]]$Unp
 function Set-ToolAutoRun($Row) {
   $guard = if ($Row.Guard) { @($Row.Guard) } else { @($Row.Set.Keys) }
   if ($Row.Toml) {
-    if (-not (Test-Runs 'python' '--version')) { return @{ Did = 'nopython'; Why = 'python 이 안 선다' } }
+    # 「python 이 서나」는 세 값으로 묻는다 — 못 잰 것(넘김 · 선 이름이 짐)을 「없다」로 읽지 않는다(결정 0141 · `Test-Runs` 곁말)
+    $tpy = Measure-Runs 'python' '--version'
+    if ($tpy -eq 'unmeasured') { return @{ Did = 'unmeasured'; Probe = 'python --version'; Why = (Get-ProbeWhy 'python --version') } }
+    if ($tpy -ne 'yes') { return @{ Did = 'nopython'; Why = 'python 이 안 선다' } }
     # `--version` 이 선 뒤 다시 부르는 자리라 울타리를 두른다 — 넘기면 못 잰 것이라 심지도 건너뛰지도 않는다(결정 0141)
     $tl = [IO.Path]::GetTempFileName()
-    try { $trc = Invoke-LoggedCapped 'python' @('-c', 'import tomllib') $tl $ProbeCap } finally { Remove-Item -LiteralPath $tl, "$tl.err" -ErrorAction SilentlyContinue }
+    # `-I` — 작업 폴더의 `tomllib.py` 를 안 집는다(3.11 이 전제라 받는다)
+    try { $trc = Invoke-LoggedCapped 'python' @('-I', '-c', 'import tomllib') $tl $ProbeCap } finally { Remove-Item -LiteralPath $tl, "$tl.err" -ErrorAction SilentlyContinue }
     if ($trc -eq -2) {
       Add-ProbeOverflow 'python -c import tomllib' $ProbeCap
       return @{ Did = 'unmeasured'; Probe = 'python -c import tomllib'; Why = (Format-ProbeWhy -2 $ProbeCap) }
@@ -4320,9 +4528,9 @@ function Test-PrefillDoor([string]$Base, [string]$Token, [string]$Model,
   return $code
 }
 
-# 로컬 프록시를 끈다 — 그 포트(루프백)를 듣는 파이썬 프로세스와 남은 `opus5_proxy.py` 프로세스를 끄고 0.5초 기다린다. 못 하는
-#   것은 조용히 넘긴다.
-function Stop-ProxyOnPort([int]$Port) {
+# 로컬 프록시를 끈다 — 그 포트(루프백)를 듣는 파이썬 프로세스와 명령줄에 그 프록시 파일 이름(`$Leaf` — 값 파일의 `#gateway-proxy`
+#   에서 지은 `$ProxyFile`)을 든 남은 파이썬 프로세스를 끄고 0.5초 기다린다. 못 하는 것은 조용히 넘긴다.
+function Stop-ProxyOnPort([int]$Port, [string]$Leaf) {
   try {
     $owners = @(Get-NetTCPConnection -LocalAddress '127.0.0.1' -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
                 Select-Object -ExpandProperty OwningProcess -Unique)
@@ -4331,9 +4539,11 @@ function Stop-ProxyOnPort([int]$Port) {
       if ($pr -and $pr.ProcessName -match '^pythonw?$') { Stop-Process -Id $o -Force -ErrorAction SilentlyContinue }
     }
     # 포트를 안 듣는 남은 프로세스(죽은 자식의 부모 껍데기 등)도 끈다 (#21)
-    Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.CommandLine -like '*opus5_proxy.py*' } |
-      ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    if ($Leaf) {
+      Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like "*$Leaf*" } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    }
     Start-Sleep -Milliseconds 500
   } catch { }
 }
@@ -4928,7 +5138,7 @@ function Stop-App($App) {
 #   bash 에 `…\"` 가 간다(그러면 몸통이 그 자리로 못 들어가 2로 끝난다). 훅 자리도 `--install` 처럼 `/` 꼴로 넘긴다.
 # 내는 것 — @{ Ran = 불렀나; Ok = 0 으로 끝났나; Why = 안 불렀거나 0 이 아닌 까닭 }. 실패로 셀지는 부르는 쪽이 든다.
 function Invoke-Plant([string]$Bash, [string]$Root) {
-  $hook = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\session-start.sh'
+  $hook = Join-Path $ConfigSeedHooks 'session-start.sh'
   if (-not $Bash) { return @{ Ran = $false; Ok = $false; Why = 'Git Bash 가 없다' } }
   if (-not (Test-Path -LiteralPath $hook -PathType Leaf)) { return @{ Ran = $false; Ok = $false; Why = "홈 씨앗에 훅이 없다 ($hook)" } }
   $rootArg = ($Root -replace '\\', '/').TrimEnd('/')
@@ -5147,6 +5357,23 @@ if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
     exit 1
   }
 }
+
+# ── 남은 임시 값 파일을 치운다 — 빗장을 쥔 첫 자리 (PAISetup #49 ⑩) ─────────────────────────────
+# 설치 창이 몸통에 값을 건네는 `%TEMP%\claude-setup-<창 PID>.env` 에는 평문 키가 든다. 창과 몸통(「마무리」)이 다 지우지만 둘 다 멎은
+#   판(전원 · 강제 종료)에는 남고, 다음 창은 PID 가 달라 그 이름을 다시 안 써 아무도 안 지운다. 여기서 이름의 PID 가 살아 있지 않은
+#   것을 지운다 — 산 창의 파일은 그 창이 아직 쓰는 중이다(이 회차가 받은 파일도 그렇고, 「마무리」가 지운다). PID 를 남이 물려받았으면
+#   한 회차 더 남을 뿐이다. 못 훑으면 조용히 넘긴다 — 설치를 막을 일이 아니다.
+# ⚠ **이 회차가 받은 값 파일(`-EnvFile`)은 안 지운다** — 그 창이 이미 죽었어도(PID 가 안 산다) 몸통은 이 뒤 걸음에서 그 파일을 읽는다.
+try {
+  $liveIds = @{}
+  foreach ($lp in @(Get-Process -ErrorAction SilentlyContinue)) { $liveIds["$($lp.Id)"] = $true }
+  $ownEnv = ''
+  try { if ($EnvFile) { $ownEnv = [IO.Path]::GetFullPath($EnvFile) } } catch { $ownEnv = '' }
+  Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Filter 'claude-setup-*.env' -File -ErrorAction Stop |
+    Where-Object { $_.Name -match '^claude-setup-(\d+)\.env$' -and -not $liveIds.ContainsKey($Matches[1]) -and
+                   -not [string]::Equals($_.FullName, $ownEnv, [StringComparison]::OrdinalIgnoreCase) } |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+} catch { }
 
 # ── 지난번에 고른 것 — 이번 회차의 사람 값을 정한다 (PAISetup #45) ──────────────────────────────
 # 준 깃발과 넘겨받은 값 파일의 줄이 먼저고, 안 준 것은 기록(`Read-ChoiceRecord`)이 채운다 — `-Pick` 을 준 판도 그렇다. 콘솔에서
@@ -5414,6 +5641,8 @@ if ($wantAutoRun -eq $true -and $siteRecorded -ne $site -and (Test-Path -Literal
 # ⚠ **`#config-repo` 가 있어도 여기서 세운다.** 그 저장소의 부트스트랩은 설정 파일만 쓰고 프로그램은 안 깔아, 이 스위치를 그 줄에
 #   걸면 확장 · CLI 를 아무도 안 깐다. 그 줄은 「다 세운 뒤 저장소를 더 받는다」는 뜻일 뿐이다.
 $proxyRel   = Read-Directive $DistEnvFile 'gateway-proxy'
+# 프록시 파일 이름 — 실행 폴더의 파일 · 끄기 · 끝 검증의 「단일 프로세스」가 다 이 값으로 그 프로세스를 가린다(값 파일의 줄이 진본이다).
+$ProxyFile  = if ($proxyRel) { Split-Path $proxyRel -Leaf } else { '' }
 $codexTpl   = Read-Directive $DistEnvFile 'codex-config'
 $inside     = ($site -eq 'inside')
 # 맡기기 모델 표에서 읽는 자리 줄 — 「키와 값」이 그 줄로 러너의 자리 값을 심고, 「도구별 홈」이 `PAISETUP_SITE` 로 남겨 맡기는
@@ -5527,13 +5756,20 @@ $wantCcBg       = [bool]($wantCcBgClaude -or $wantCcBgAgy)
 $wantClaudeBgCodex = $wantCcBgClaude
 $wantClaudeBgAgy   = [bool](($PickKeys -contains 'claude') -and $hostAgy)
 $wantClaudeBg      = [bool]($wantClaudeBgCodex -or $wantClaudeBgAgy)
+# ── 도구 홈 짐 — `kit/` (claude-config 결정 0101) ────────────────────────────────────────────
+# 받는 PC 의 도구 홈 여럿에 나눠 깔 것(규범 · 룰 · 스킬)과 그것을 놓는 손(`tool-homes.py` · 그 표 `tool-homes.conf`)이 한
+# 폴더에 산다. 도구가 스스로 읽는 자리 이름(`.claude/skills` · `.agents/skills`)에 안 두는 것이 요점이다 — 이 폴더를
+# Claude Code · Codex 로 열면 그 자리가 그 세션의 스킬로 실린다.
+$Kit = Join-Path $Here 'kit'
+$KitSkills = Join-Path $Kit 'skills'
 # ── 칸 없이 까는 스킬 — 일하는 환경에 딸린 도구라 제작자의 사유 방식과 갈린다 (결정 0091 · 0097) ──────
 # 키는 스킬 이름, 값은 홈마다 까는 조건이다 — 도구마다 제 홈을 든다(아래 `$FreeSkillHomes`). Codex 나 안티그래비티를
-# 고르면 Claude 를 고른 자리와 같은 기본기를 받는다(결정 0097 · 0099). 맡기기 러너만 홈이 갈린다 — 러너는 맡기는 쪽 칸만 들고
-# 받는 쪽 칸이 없다(받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다
-# 둔다. 모두 규범을 안 읽어도 홀로 선다.
+# 고르면 Claude 를 고른 자리와 같은 기본기를 받는다(결정 0097 · 0099). 맡기기 러너만 홈이 갈린다 — 러너의 칸은 맡기는 쪽의
+# 조건만 든다. 받는 쪽 홈에 안 가는 것은 갈 곳 표의 `not` 줄이 정하고(받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을 든다 · 결정
+# 0097), 이 걸음은 그 줄을 따른다(`Get-FreeSkillNames`). 홈을 같이 쓰면 이 갈림을 못 하므로 홈을 도구마다 둔다. 모두 규범을 안
+# 읽어도 홀로 선다.
 # 이 표는 제작자 칸에 안 든 도구의 홈에서만 일을 한다(`Install-FreeSkills`) — 칸에 든 도구의 홈은 손(`tool-homes.py`)이 짐 ·
-#   저장소의 스킬을 다 놓는다(이 표의 스킬 포함 · 러너는 손의 갈 곳 표가 받는 쪽 홈에서 뺀다).
+#   저장소의 스킬을 다 놓는다(이 표의 스킬 포함 · 러너는 같은 `not` 줄로 받는 쪽 홈에서 빠진다).
 $hostClaude = [bool]($PickKeys -contains 'claude')
 $hostCodex  = [bool]($PickKeys -contains 'codex')
 $FreeSkills = [ordered]@{
@@ -5550,31 +5786,23 @@ $FreeSkills = [ordered]@{
   # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy
   'claude-background'        = @{ Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy }
 }
-# 칸 없이 까는 스킬의 홈 — 위 표의 칸 이름마다 그 도구의 스킬 홈(`Skills`) · 기록과 백업이 사는 자리(`Root`) · 그 도구가
-#   제작자 칸에 드나(`Box` — 들면 그 홈은 손이 쓴다) · 기록이 없을 때 기록 대신 쓸 이름(`Transition` — `Install-FreeSkills`
-#   곁말). Codex 홈은 Codex 공식 문서 「Build skills」의 사용자 범위 자리고(`~/.claude/skills` 사본만으로는 못 찾는다), agy
-#   홈은 agy 가 목록 없이 싣는 기본 전역 스킬 자리다(claude-config 결정 0111).
+# 칸 없이 까는 스킬의 홈 — 위 표의 칸 이름마다 화면의 이름(`Label`) · 그 도구가 제작자 칸에 드나(`Box` — 들면 그 홈은 손이
+#   쓴다) · 자리(`Place` — 스킬 홈 · 기록 · 기록이 든 폴더 · 안 놓는 이름). 자리는 짐의 갈 곳 표에서 짓는다(`Read-FreeSkillTable`) —
+#   칸을 켜면 손이 같은 기록을 넘겨받으므로 그 자리의 원본은 그 표 하나다. Codex 홈이 Codex 공식 문서 「Build skills」의 사용자 범위
+#   자리이고 agy 홈이 agy 가 목록 없이 싣는 기본 전역 스킬 자리라는 것도 표가 든다(claude-config 결정 0111).
+$FreeSkillTable = Read-FreeSkillTable (Join-Path $Kit 'tool-homes.conf')
 $FreeSkillHomes = [ordered]@{
-  Claude = @{ Label = 'Claude 홈'; Box = $personalClaude; Root = $homeDir; Skills = (Join-Path $homeDir 'skills')
-              Transition = @('pptx', 'roadmap-doc') }
-  Codex  = @{ Label = 'Codex 홈'; Box = $personalCodex; Root = (Join-Path $env:USERPROFILE '.agents')
-              Skills = (Join-Path $env:USERPROFILE '.agents\skills'); Transition = @() }
-  Agy    = @{ Label = 'agy 홈'; Box = $personalAgy; Root = (Join-Path $env:USERPROFILE '.gemini')
-              Skills = (Join-Path $env:USERPROFILE '.gemini\config\skills'); Transition = @() }
+  Claude = @{ Label = 'Claude 홈'; Box = $personalClaude; Place = $FreeSkillTable.Homes['claude'] }
+  Codex  = @{ Label = 'Codex 홈'; Box = $personalCodex; Place = $FreeSkillTable.Homes['codex'] }
+  Agy    = @{ Label = 'agy 홈'; Box = $personalAgy; Place = $FreeSkillTable.Homes['agy'] }
 }
-# ── 도구 홈 짐 — `kit/` (claude-config 결정 0101) ────────────────────────────────────────────
-# 받는 PC 의 도구 홈 여럿에 나눠 깔 것(규범 · 룰 · 스킬)과 그것을 놓는 손(`tool-homes.py` · 그 표 `tool-homes.conf`)이 한
-# 폴더에 산다. 도구가 스스로 읽는 자리 이름(`.claude/skills` · `.agents/skills`)에 안 두는 것이 요점이다 — 이 폴더를
-# Claude Code · Codex 로 열면 그 자리가 그 세션의 스킬로 실린다.
-$Kit = Join-Path $Here 'kit'
-$KitSkills = Join-Path $Kit 'skills'
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 「프로그램」 걸음이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
 if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
 if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
 if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 맡기기 래퍼가 파이썬으로 돈다' }
 if ($wantClaudeBg)    { $needPythonWhy += 'Claude 맡기기 래퍼가 python 으로 돈다' }
-if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex DRM · 그림 훅이 파이썬으로 돈다' }
+if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex 훅이 파이썬으로 돈다' }
 if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 파이썬으로 돈다' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'Claude 훅 등록을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
@@ -6584,18 +6812,27 @@ if ($wantProxy) {
         $Fails.Add('로컬 프록시 (파이썬이 없다)')
       } else {
         $proxyDir  = Join-Path $env:LOCALAPPDATA $ProxyDirName
-        $proxyPath = Join-Path $proxyDir (Split-Path $proxySrc -Leaf)
+        $proxyPath = Join-Path $proxyDir $ProxyFile
         $ourPair = Get-ProxyVer (Get-Content -LiteralPath $proxySrc -Raw -Encoding UTF8)
         $ourVer = '{0}.{1}' -f $ourPair[0], $ourPair[1]
-        New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
-        Copy-Item -LiteralPath $proxySrc -Destination $proxyPath -Force
         $watchdogSrc = Join-Path (Split-Path $proxySrc -Parent) 'watchdog.ps1'
         $watchdogPath = Join-Path $proxyDir 'watchdog.ps1'
-        if (Test-Path -LiteralPath $watchdogSrc) {
-          Copy-Item -LiteralPath $watchdogSrc -Destination $watchdogPath -Force
-        }
-        Write-Host "  실행 폴더 — $proxyDir (v$ourVer)"
 
+        # ⚠ **판을 쓰기 앞에 견준다** — 실행 폴더에 둘 것은 그 폴더의 파일과 이 짐의 것 가운데 새 판이다. 견주기 전에 베끼면, 더 옛
+        #   짐(남은 zip · 옛 바탕화면 폴더)을 직접 돌린 PC 에서 실행 폴더가 옛 판으로 덮여 감시자가 다음에 띄우는 것이 옛 판이 된다.
+        #   도는 판은 끌지만 가른다 — 실행 폴더에 남을 판보다 낡았을 때만 끄고 그 판으로 새로 띄운다. 도는 판이 더 새로워도 실행 폴더는
+        #   이 가름대로 둔다(감시자가 다시 띄울 것은 실행 폴더의 파일이다). 프록시와 감시자는 한 짐에서 온 짝이라 함께 둔다 — 실행 폴더의
+        #   판을 두는 판은 감시자가 없을 때만 이 짐의 것을 놓는다.
+        $keepPair = $null
+        if (Test-Path -LiteralPath $proxyPath -PathType Leaf) {
+          $diskPair = $null
+          try { $diskPair = Get-ProxyVer (Get-Content -LiteralPath $proxyPath -Raw -Encoding UTF8) } catch { $diskPair = $null }
+          if ($diskPair -and (($diskPair[0] -gt $ourPair[0]) -or (($diskPair[0] -eq $ourPair[0]) -and ($diskPair[1] -gt $ourPair[1])))) {
+            $keepPair = $diskPair
+          }
+        }
+        $setPair = if ($keepPair) { $keepPair } else { $ourPair }
+        $setVer  = '{0}.{1}' -f $setPair[0], $setPair[1]
         $up = Get-ProxyHealth $proxyHealthUrl
         $start = $true
         if ($up) {
@@ -6608,14 +6845,27 @@ if ($wantProxy) {
             if ($rm.Groups[2].Success) { $runOurs = [int]$rm.Groups[2].Value }
             else { $runUp = 0 }   # 정수 한 칸은 이 축의 값이 아니다 — 갈아 끼운다
           }
-          $newer = ($runUp -gt $ourPair[0]) -or (($runUp -eq $ourPair[0]) -and ($runOurs -ge $ourPair[1]))
+          $newer = ($runUp -gt $setPair[0]) -or (($runUp -eq $setPair[0]) -and ($runOurs -ge $setPair[1]))
           if ($newer) {
             Write-Host "  이미 돈다 — v$runVer · 그대로 쓴다"
             $start = $false
           } else {
-            Write-Host "  낡은 프록시 v$runVer 이 돈다 — 끄고 v$ourVer 로 새로 띄운다"
-            Stop-ProxyOnPort $u.Port
+            Write-Host "  낡은 프록시 v$runVer 이 돈다 — 끄고 v$setVer 로 새로 띄운다"
+            Stop-ProxyOnPort $u.Port $ProxyFile
           }
+        }
+        New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
+        if ($keepPair) {
+          Write-Host "  실행 폴더 — $proxyDir (실행 폴더의 판 v$setVer 이 이 짐의 v$ourVer 보다 새로워 안 덮었다)"
+          if (-not (Test-Path -LiteralPath $watchdogPath) -and (Test-Path -LiteralPath $watchdogSrc)) {
+            Copy-Item -LiteralPath $watchdogSrc -Destination $watchdogPath -Force
+          }
+        } else {
+          Copy-Item -LiteralPath $proxySrc -Destination $proxyPath -Force
+          if (Test-Path -LiteralPath $watchdogSrc) {
+            Copy-Item -LiteralPath $watchdogSrc -Destination $watchdogPath -Force
+          }
+          Write-Host "  실행 폴더 — $proxyDir (v$ourVer)"
         }
         if ($start) {
           Start-Process -FilePath $pyw -ArgumentList ('"' + $proxyPath + '"') -WindowStyle Hidden | Out-Null
@@ -6690,6 +6940,8 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
   if ($wantCodex) {
     $src = Join-Path $Here $codexTpl
     $dst = $CodexCfg
+    # python 은 병합기를 부를 갈래에서만 세 값으로 묻는다 — 못 잰 것을 「python 없음」 빨강으로 읽지 않는다(결정 0141)
+    $cmPython = if ((Test-Path -LiteralPath $src) -and (Test-Path -LiteralPath $dst) -and (Test-Path -LiteralPath $CodexCfgMerge)) { Measure-Runs 'python' '--version' } else { '' }
     if (-not (Test-Path -LiteralPath $src)) {
       Write-Host "  ! Codex 틀이 이 폴더에 없다 — $codexTpl" -ForegroundColor Red
       $Fails.Add('Codex 설정 (틀이 없다)')
@@ -6701,7 +6953,9 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
     } elseif (-not (Test-Path -LiteralPath $CodexCfgMerge)) {
       Write-Host "  ! Codex config.toml — 틀 병합기가 이 폴더에 없어 안 건드렸다 ($CodexCfgMerge)" -ForegroundColor Red
       $Fails.Add('Codex 설정 (틀 병합기가 없다)')
-    } elseif (-not (Test-Runs 'python' '--version')) {
+    } elseif ($cmPython -eq 'unmeasured') {
+      Add-UnmeasuredStep 'Codex config.toml 틀 맞추기' 'python --version' '맞추지도 건너뛰지도 않았다'
+    } elseif ($cmPython -ne 'yes') {
       Write-Host '  ! Codex config.toml — python 이 안 서서 틀을 못 맞췄다 (안 건드렸다)' -ForegroundColor Red
       $Fails.Add('Codex 설정 (python 없음)')
     } else {
@@ -7228,16 +7482,16 @@ Enter-Step 'assets'
 # ⚠ **씨앗 넷은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 원본에 없는 파일을 안 지운다. 진본에서 부품
 #   하나를 걷어도 한 번 깐 기계에는 영영 남고, 씨앗은 있으면 복사되는 자리라 걷힌 것이 계속 새 프로젝트로 퍼진다(「값 파일 이름의 장부」
 #   칸의 「심기는 더하기만 한다」와 같은 병).
-# ⚠ **설정 저장소가 미는 자리에서는 비켜선다.** 그 저장소의 배포(`deploy.ps1`)가 `deploy.seeds.conf` 에 적힌 폴더를 저장소
-#   최신판으로 같은 자리에 민다 — 둘 다 깔면 이 칸이 릴리스 판으로 되돌리고 「설정 저장소」 걸음의 배포가 다시 미는 일이 자동
-#   실행마다 되풀이되어, 매번 「덮어씀」과 백업 폴더가 쌓이고 판 줄(`seeds/.version`)이 튄다. 무엇을 미나는 저장소의 선언
-#   (`deploy.seeds.conf` — 배포 · 세션 훅 · 재는 자가 같은 줄을 읽는다)을 읽는다 — 목록을 따로 들면 저쪽이 폴더를 더하거나 뺀 날
-#   조용히 어긋난다. 홈 자리가 비었으면 비켜서지 않는다 — 우리가 깔고, 뒤따르는 배포가 새 판으로 덮는다.
-# ⚠ **`posco` 만은 덮어쓰기로 둔다.** 그 자리는 진본이 둘이고 런타임 파일이 섞인다 — 설정 저장소의 `deploy.ps1` 이 같은 자리를
-#   갱신하고, 프록시가 제 곁에 `opus5_proxy.pid` 와 `proxy.log` 를 쓴다. 거울로 걷으면 남이 심은 것과 도는 프로세스가 쓰는 파일을
-#   지운다.
+# ⚠ **설정 저장소가 미는 자리에서는 비켜선다.** 그 저장소의 배포(`deploy.ps1`)와 세션 훅이 `deploy.seeds.conf` 에 적힌 폴더를 저장소
+#   최신판으로 같은 자리에 민다 — 둘 다 깔면 이 칸이 릴리스 판으로 되돌리고 저쪽이 다시 미는 일이 자동 실행마다 되풀이되어, 매번
+#   「덮어씀」과 백업 폴더가 쌓이고 판 줄(`seeds/.version`)이 튄다. 무엇을 미나는 저장소의 선언(`deploy.seeds.conf` — 배포 · 세션 훅이
+#   같은 줄을 읽는다)을 읽는다 — 목록을 따로 들면 저쪽이 폴더를 더하거나 뺀 날 조용히 어긋난다. 홈 자리가 비었으면 비켜서지 않는다 —
+#   우리가 깔고, 뒤따르는 배포가 새 판으로 덮는다. 비켜선 자리에서 원본이 걷은 파일을 걷는 손은 저쪽 배포다(`deploy.ps1` 씨앗 칸).
+# ⚠ **`posco` 는 거울이 아니라 장부로 맞춘다** (PAISetup #44 ⑭). 그 자리에는 남의 파일이 같이 산다 — 프록시가 제 곁에
+#   `opus5_proxy.pid` 와 `proxy.log` 를 쓰고, 시험이 제 결과를 쓴다. 거울로 걷으면 그 파일을 지운다. 그래서 덮어 깔고, 우리가 놓았다고
+#   장부에 적은 파일 가운데 원본에서 빠진 것만 걷는다(`Sync-AssetLedger`).
 $envAssets = @(
-  @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'; Mirror = $false
+  @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'; Mirror = $false; Ledger = $true
      Name = '사내 환경 문서'; Desc = '게이트웨이·API·오류 기록 — 붙이기 전에 읽는다' }
   @{ From = Join-Path $Here 'seeds\gateway'; To = Join-Path $homeDir 'seeds\gateway'; Mirror = $true
      Name = '게이트웨이 씨앗'; Desc = '새 프로젝트가 복사해서 출발한다' }
@@ -7245,7 +7499,7 @@ $envAssets = @(
      Name = '검사 씨앗';       Desc = '검사 부품과 어느 저장소에서나 도는 게이트의 진본 — 받아 간 사본은 여기를 가리킨다' }
   # 이것도 스위치를 안 둔다 — 설치 창의 「설정 저장소」 칸을 쓸 사람만 보지만, 칸을 채우려면 저장소가 이미 있어야 하고 그 저장소를
   #   만드는 골든이 이것이다. 켜는 칸으로 두면 안 켠 사람은 그 칸을 채울 길을 못 찾는다.
-  @{ From = Join-Path $Here 'seeds\config-repo'; To = Join-Path $homeDir 'seeds\config-repo'; Mirror = $true
+  @{ From = Join-Path $Here 'seeds\config-repo'; To = $ConfigSeedHome; Mirror = $true
      Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
   # 회사가 쓴 사내 FastAPI 코딩 기준 — 스킬 `inhouse-app`(제작자 칸을 켠 사람)이 이 자리의 장을 연다.
   # 스킬을 안 켠 사람에게도 깐다 — 사내 환경 문서(`posco/README.md`)와 이 씨앗의 `SEED.md` 가 이 자리를 가리키므로, 그 좌표가
@@ -7253,13 +7507,32 @@ $envAssets = @(
   @{ From = Join-Path $Here 'seeds\vibecoding'; To = Join-Path $homeDir 'seeds\vibecoding'; Mirror = $true
      Name = '사내 코딩 기준 씨앗'; Desc = '사내 앱을 회사 방식으로 배포할 때 스킬 inhouse-app 이 여는 회사 기준 본문 — 들머리는 SEED.md' }
 )
-# 설정 저장소가 홈으로 미는 자리 — `seeds\gateway` 꼴의 홈 상대 경로 → 그것을 든 저장소.
-# 저장소 자리는 「설정 저장소」 걸음이 받는 자리와 같은 함수가 댄다(`Get-ConfigRepoDir`).
+# ── 홈 씨앗의 임자 — 찾는 자 하나가 정한다 (PAISetup #48 ①) ──────────────────────────────────
+# 임자는 설정 저장소 찾는 자(`.githooks/claude-config-path.sh` 의 `CONFIG_ROOT`)가 찾은 저장소이고, 그 저장소가 그 폴더를 선언했을 때만이다
+#   — 세션 훅과 그 훅이 넘기는 `deploy.ps1` 이 같은 자를 쓴다. 값 파일의 주소(`#config-repo`)로 가르면 주소 없는 판(콘솔로 깐 판)이 씨앗을
+#   릴리스 판으로 되돌리고, 세션 훅은 바뀐 파일만 밀어 다음 통째 판까지 일부가 옛 판에 머문다.
+# 찾는 자는 이 짐의 것을 부른다(`Get-ConfigRootGen` — 「설정 저장소」 걸음이 넘길 자리를 재는 그 손) — 홈 사본은 이 걸음이 바로 아래에서
+#   같은 판으로 깐다. 묻는 자리는 세션이 열릴 자리다 — 받을 저장소마다, 그리고 작업 루트(`$configRepoRoot`) 아래 아무 자리(찾는 자는 그
+#   자리 곁의 저장소를 본다 · 그 자리는 없어도 된다). 처음 까는 판은 저장소가 아직 없어 임자가 없고, 뒤따르는 배포가 새 판으로 덮는다.
+# Git Bash 가 없으면 묻지 않는다 — 세션 훅도 bash 라 그 PC 에서는 밀 자가 없다. 묻다 졌으면 노란 줄을 내고 설치 묶음 판으로 깐다 —
+#   비켜서면 임자 없는 PC 의 씨앗이 영영 안 바뀐다.
+$ownerBash  = Find-GitBash
+$ownerRoots = @(); $ownerWhy = ''
+if ($ownerBash) {
+  $ownerFinder = Join-Path $Here 'seeds\config-repo\.githooks\claude-config-path.sh'
+  foreach ($pd in @(@($configRepoUrls | ForEach-Object { Get-ConfigRepoDir $_ }) + @(Join-Path $configRepoRoot '.paisetup-owner-probe'))) {
+    $c = Get-ConfigRootGen $pd $ownerBash $ownerFinder
+    if ($c.Root -and (Test-Path -LiteralPath $c.Root -PathType Container)) {
+      if (-not @($ownerRoots | Where-Object { $_ -ieq $c.Root }).Count) { $ownerRoots += $c.Root }
+    } elseif (-not $c.Current -and -not $ownerWhy) { $ownerWhy = $c.Why }
+  }
+}
+if ($ownerWhy -and -not $ownerRoots.Count) { Write-Host "  ! 씨앗의 임자(설정 저장소)를 못 가렸다 — 설치 묶음 판으로 깐다 ($ownerWhy)" -ForegroundColor Yellow }
+# 임자가 홈으로 미는 자리 — `seeds\gateway` 꼴의 홈 상대 경로 → 그것을 든 저장소. 세션 훅의 문과 같다: 선언에 든 줄이고 그 저장소에 그 폴더가 있다.
 $ownedHome = @{}
-foreach ($u in $configRepoUrls) {
-  $d = Get-ConfigRepoDir $u
+foreach ($d in $ownerRoots) {
   $conf = Join-Path $d 'deploy.seeds.conf'
-  if (-not (Test-Path -LiteralPath $conf)) { continue }
+  if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { continue }
   foreach ($ln in (Get-Content -LiteralPath $conf -Encoding UTF8)) {
     $rel = (($ln -replace '#.*$', '').Trim()) -replace '/', '\'
     if ($rel -and -not $ownedHome.ContainsKey($rel) -and (Test-Path -LiteralPath (Join-Path $d $rel))) {
@@ -7269,9 +7542,12 @@ foreach ($u in $configRepoUrls) {
 }
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없다"; continue }
-  $owner = $ownedHome[$a.To.Substring($homeDir.Length).TrimStart('\')]
+  $a.Rel = $a.To.Substring($homeDir.Length).TrimStart('\')
+  $owner = $ownedHome[$a.Rel]
   if ($owner -and @(Get-ChildItem -LiteralPath $a.To -Recurse -File -ErrorAction SilentlyContinue).Count) {
     $a.Owner = $owner
+    # 장부의 그 자리 줄은 걷는다 — 그 자리는 이제 저쪽이 미는 판이라, 줄을 두면 임자가 사라진 뒤의 판이 저쪽이 고친 파일을 사람 것으로 읽는다
+    if ($a.Ledger) { $null = Sync-AssetLedger $a -Drop }
     Write-Host "  $($a.Name) — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
     Write-Host "     $owner"
     continue
@@ -7287,7 +7563,8 @@ foreach ($a in $envAssets) {
   }
   New-Item -ItemType Directory -Path $a.To -Force | Out-Null
   Copy-Item -Path (Join-Path $a.From '*') -Destination $a.To -Recurse -Force
-  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '거울로 깔았다' } else { '깔았다' })" -ForegroundColor Green
+  $swept = if ($a.Ledger) { Sync-AssetLedger $a } else { 0 }
+  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '거울로 깔았다' } elseif ($swept) { "깔았다 (원본에서 빠진 파일 $swept 개를 걷었다)" } else { '깔았다' })" -ForegroundColor Green
   Write-Host "     $($a.To)"
   Write-Host "     $($a.Desc)"
 }
@@ -7347,7 +7624,18 @@ if ($pipPkgs) {
     $pl = [IO.Path]::GetTempFileName()
     $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
                  '--timeout', '15', '--retries', '1') + $pipPkgs
-    $prc = Invoke-Logged 'python' $pipArgs $pl
+    # ⚠ **빈 작업 폴더에서 부른다** — `-m` 은 작업 폴더를 `sys.path` 맨 앞에 둬, 그 폴더의 `pip.py` · `pip/` 가 돈다. `-P` 는 3.11 앞
+    #   판이 못 받고 `-I` 는 사용자 자리(`--user` 꼴 설치의 자리)를 버리므로, 이 회차가 지은 빈 폴더로 옮겨 부른다.
+    $pipCwd = Join-Path ([IO.Path]::GetTempPath()) ("claude-setup-pip-$PID")
+    $prc = -1
+    try {
+      New-Item -ItemType Directory -Path $pipCwd -Force | Out-Null
+      Push-Location -LiteralPath $pipCwd
+      try { $prc = Invoke-Logged 'python' $pipArgs $pl } finally { Pop-Location }
+    } catch {
+      # 빈 폴더를 못 지었거나 못 옮겼다 — 작업 폴더째 부르지 않고 못 깐 것으로 남긴다(아래 노란 줄이 종료 -1 로 말한다).
+      [IO.File]::WriteAllText($pl, "빈 작업 폴더를 못 지어 안 불렀다 ($pipCwd) — $($_.Exception.Message)")
+    } finally { Remove-Item -LiteralPath $pipCwd -Recurse -Force -ErrorAction SilentlyContinue }
     if ($prc -eq 0) {
       Write-Host "  파이썬 패키지 — $pipNames 섰다" -ForegroundColor Green
     } else {
@@ -7464,43 +7752,48 @@ if ($staleRules.Count -gt 0) {
   }
 }
 
-# ── Codex 훅 — DRM 길잡이 · 그림 문 · Bash 겹역슬래시 · BOM 을 config.toml 에 병합한다 ─────────
+# ── Codex 훅 — 씨앗 예시의 우리 훅을 config.toml 에 병합한다 ─────────
+# 무엇을 거나는 예시(`codex-hooks.example.toml`)가 든다 — 여기 이름을 늘어놓지 않는다. 늘어놓으면 예시에 훅이 는 날 이 글만 낡는다.
 # 두 자리 다 돈다 — 사내는 위 틀이 이미 같은 블록을 들어 고칠 것이 없고, 사외는 사람이 쓴 설정에 우리 항목만
 # 얹는다. 병합 규칙의 진본은 씨앗의 `codex-hook-install.py` · `codex-hooks.example.toml` 이다 — 우리 항목만
 # 갈고 남의 훅 · 다른 표는 뜻 그대로 두며, 결과가 그 뜻으로 다시 읽힐 때만 쓴다. 못 알아보는 꼴로 적힌
 # 이벤트는 건너뛰고(SKIP), 끝 검증이 그 빠진 배선을 [X] 로 알린다.
 # ⚠ **stderr 를 합치지 않는다** — 맨 위 규칙(`2>&1`). 글자는 `Invoke-Logged` 가 파일로 받고, 실패했을 때만 편다.
 if ($PickKeys -contains 'codex') {
-  $codexHookDir = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
+  $codexHookDir = $ConfigSeedHooks
   $codexHookPlant = Join-Path $codexHookDir 'codex-hook-install.py'
-  $codexHookExample = Join-Path $homeDir 'seeds\config-repo\codex-hooks.example.toml'
+  $codexHookExample = Join-Path $ConfigSeedHome 'codex-hooks.example.toml'
   if (-not (Test-Path -LiteralPath $codexHookPlant) -or -not (Test-Path -LiteralPath $codexHookExample)) {
     Write-Host '  ! Codex 훅 — 씨앗의 병합기나 예시가 없어 안 심는다' -ForegroundColor Red
     $Fails.Add('Codex 훅 (씨앗이 없다)')
-  } elseif (-not (Test-Runs 'python' '--version')) {
+  } elseif (($codexHookPython = Measure-Runs 'python' '--version') -eq 'unmeasured') {
+    Add-UnmeasuredStep 'Codex 훅' 'python --version' '심지도 건너뛰지도 않았다'
+  } elseif ($codexHookPython -ne 'yes') {
     Write-Host '  ! Codex 훅 — python 이 안 서서 안 심는다' -ForegroundColor Red
     $Fails.Add('Codex 훅 (python 없음)')
   } else {
     $codexHookLog = [IO.Path]::GetTempFileName()
-    $codexHookRc = Invoke-Logged 'python' @('-X', 'utf8', $codexHookPlant, '--config', $CodexCfg, '--example', $codexHookExample) $codexHookLog
-    $codexHookOut = @(Get-Content -LiteralPath $codexHookLog -ErrorAction SilentlyContinue |
-                      ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-    if ($codexHookRc -ne 0) {
-      Write-Host '  ! Codex 훅 병합 실패 — config.toml 은 그대로다. 병합기가 뱉은 끝 줄:' -ForegroundColor Red
-      Show-Log $codexHookLog
-      $Fails.Add('Codex 훅 (config.toml 병합 실패)')
-    } else {
-      $skipped = @($codexHookOut | Where-Object { $_ -like 'SKIP=*' })
-      if ($skipped.Count) {
-        Write-Host "  ! Codex 훅 — 못 알아보는 꼴로 적힌 이벤트는 안 건드렸다: $($skipped -join ' ')" -ForegroundColor Yellow
-      } elseif ($codexHookOut -contains 'CHANGED=1') {
-        Write-Host '  Codex 훅 — DRM 길잡이 · 그림 문 · Bash 겹역슬래시 · BOM 을 config.toml 에 심었다' -ForegroundColor Green
-        $codexHookBak = @($codexHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
-        if ($codexHookBak) { Write-Host "     고치기 전 것은 $($codexHookBak.Substring(7)) 에 떠 뒀다" }
+    try {
+      $codexHookRc = Invoke-Logged 'python' @('-X', 'utf8', $codexHookPlant, '--config', $CodexCfg, '--example', $codexHookExample) $codexHookLog
+      $codexHookOut = @(Get-Content -LiteralPath $codexHookLog -ErrorAction SilentlyContinue |
+                        ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+      if ($codexHookRc -ne 0) {
+        Write-Host '  ! Codex 훅 병합 실패 — config.toml 은 그대로다. 병합기가 뱉은 끝 줄:' -ForegroundColor Red
+        Show-Log $codexHookLog
+        $Fails.Add('Codex 훅 (config.toml 병합 실패)')
       } else {
-        Write-Host '  Codex 훅 — 이미 맞다'
+        $skipped = @($codexHookOut | Where-Object { $_ -like 'SKIP=*' })
+        if ($skipped.Count) {
+          Write-Host "  ! Codex 훅 — 못 알아보는 꼴로 적힌 이벤트는 안 건드렸다: $($skipped -join ' ')" -ForegroundColor Yellow
+        } elseif ($codexHookOut -contains 'CHANGED=1') {
+          Write-Host '  Codex 훅 — 씨앗 예시(codex-hooks.example.toml)의 우리 훅을 config.toml 에 심었다' -ForegroundColor Green
+          $codexHookBak = @($codexHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
+          if ($codexHookBak) { Write-Host "     고치기 전 것은 $($codexHookBak.Substring(7)) 에 떠 뒀다" }
+        } else {
+          Write-Host '  Codex 훅 — 이미 맞다'
+        }
       }
-    }
+    } finally { Remove-Item -LiteralPath $codexHookLog -ErrorAction SilentlyContinue }
     # ── 신뢰 — Codex 를 고르면 우리 훅에 신뢰까지 적는다 (claude-config 결정 0106) ──
     # Codex 는 신뢰한 사용자 훅만 돌린다 — 대화형 시작은 묻지만 `codex exec`(다른 도구가 Codex 에 일을 맡기는 길)는
     # 말없이 건너뛴다. 배선만 세우면 고른 기능이 반쯤 죽은 채 끝나서, 신뢰 적기까지가 이 칸의 일이다. 씨앗의
@@ -7514,9 +7807,11 @@ if ($PickKeys -contains 'codex') {
       $Fails.Add('Codex 훅 신뢰 (씨앗이 없다)')
     } else {
       $codexTrustLog = [IO.Path]::GetTempFileName()
-      $codexTrustRc = Invoke-Logged 'python' @('-X', 'utf8', $codexTrustPlant, 'trust', '--example', $codexHookExample) $codexTrustLog
-      $codexTrustOut = @(Get-Content -LiteralPath $codexTrustLog -Encoding UTF8 -ErrorAction SilentlyContinue |
-                         ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+      try {
+        $codexTrustRc = Invoke-Logged 'python' @('-X', 'utf8', $codexTrustPlant, 'trust', '--example', $codexHookExample) $codexTrustLog
+        $codexTrustOut = @(Get-Content -LiteralPath $codexTrustLog -Encoding UTF8 -ErrorAction SilentlyContinue |
+                           ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+      } finally { Remove-Item -LiteralPath $codexTrustLog -ErrorAction SilentlyContinue }
       $codexTrustNow = @($codexTrustOut | Where-Object { $_ -like 'TRUSTED_NOW=*' })
       foreach ($ln in $codexTrustNow) {
         Write-Host "  Codex 훅 신뢰 — 적었다: $($ln.Substring('TRUSTED_NOW='.Length))" -ForegroundColor Green
@@ -7533,46 +7828,50 @@ if ($PickKeys -contains 'codex') {
 } else {
   # 안 골랐으면 우리 훅만 걷는다 — 병합기의 걷기 판이 뒤 항목의 자리(신뢰 열쇠)를 그대로 두고(결정 0103), Codex 가 적은 신뢰
   #   (`[hooks.state]`)는 안 건드린다. 병합기는 고친 결과를 TOML 로 다시 읽어 뜻을 잰 뒤에만 써서 파이썬 3.11(`tomllib`)이 든다.
-  Remove-UnpickedHooks 'Codex 훅' $CodexCfg @((Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py')) `
-                       @('--config', $CodexCfg, '--remove') @('-c', 'import tomllib') '파이썬 3.11 이상(tomllib)이'
+  Remove-UnpickedHooks 'Codex 훅' $CodexCfg @((Join-Path $ConfigSeedHooks 'codex-hook-install.py')) `
+                       @('--config', $CodexCfg, '--remove') @('-I', '-c', 'import tomllib') '파이썬 3.11 이상(tomllib)이'
 }
 
-# ── agy 훅 — DRM 길잡이 · BOM 보정을 ~/.gemini/config/hooks.json 에 얹는다 (결정 0099) ─────────────────
+# ── agy 훅 — 씨앗 어댑터의 우리 훅을 ~/.gemini/config/hooks.json 에 얹는다 (결정 0099) ─────────────────
 # 안티그래비티를 고르면 선다 — 자리는 안 가린다(사내 agy CLI 도 같은 홈 설정을 읽는다 · 결정 0086). 배선의 진본은 씨앗의
 # `agy-hooks.py` 다: 우리 이름(`paisetup-…`)의 항목만 얹고 남의 항목은 두며, 사람이 끈 우리 항목은 꺼진 채 둔다.
 # ⚠ **씨앗 자리의 것을 부른다** — 배선 명령에 부른 파일의 절대 경로가 박힌다. 이 폴더의 사본을 부르면 내려받은
 #   임시 폴더를 가리키게 된다.
-# 홈 훅 가운데 둘만 agy 에 간다 — 나머지가 안 가는 까닭은 그 파일의 머리말이 든다.
-$agyHookPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\agy-hooks.py'
+# 홈 훅 가운데 무엇이 agy 에 가고 나머지가 왜 안 가나는 어댑터의 머리말(`wanted()`)이 든다 — 여기 이름을 늘어놓지 않는다.
+$agyHookPlant = Join-Path $ConfigSeedHooks 'agy-hooks.py'
 $AgyHooksCfg  = Join-Path $env:USERPROFILE '.gemini\config\hooks.json'
 if ($hostAgy) {
   if (-not (Test-Path -LiteralPath $agyHookPlant)) {
     Write-Host '  ! agy 훅 — 씨앗의 어댑터가 없어 안 심는다' -ForegroundColor Red
     $Fails.Add('agy 훅 (씨앗이 없다)')
-  } elseif (-not (Test-Runs 'python' '--version')) {
+  } elseif (($agyHookPython = Measure-Runs 'python' '--version') -eq 'unmeasured') {
+    Add-UnmeasuredStep 'agy 훅' 'python --version' '심지도 건너뛰지도 않았다'
+  } elseif ($agyHookPython -ne 'yes') {
     Write-Host '  ! agy 훅 — python 이 안 서서 안 심는다' -ForegroundColor Red
     $Fails.Add('agy 훅 (python 없음)')
   } else {
     $agyHookLog = [IO.Path]::GetTempFileName()
-    $agyHookRc = Invoke-Logged 'python' @('-X', 'utf8', $agyHookPlant, 'install', '--config', $AgyHooksCfg) $agyHookLog
-    $agyHookOut = @(Get-Content -LiteralPath $agyHookLog -ErrorAction SilentlyContinue |
-                    ForEach-Object { "$_".Trim() } | Where-Object { $_ })
-    if ($agyHookRc -ne 0) {
-      Write-Host '  ! agy 훅 — hooks.json 은 그대로다. 어댑터가 뱉은 끝 줄:' -ForegroundColor Red
-      Show-Log $agyHookLog
-      $Fails.Add('agy 훅 (hooks.json 병합 실패)')
-    } elseif ($agyHookOut -contains 'CHANGED=1') {
-      Write-Host '  agy 훅 — DRM 길잡이 · BOM 보정을 hooks.json 에 심었다' -ForegroundColor Green
-      $agyHookBak = @($agyHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
-      if ($agyHookBak) { Write-Host "     고치기 전 것은 $($agyHookBak.Substring(7)) 에 떠 뒀다" }
-    } else {
-      Write-Host '  agy 훅 — 이미 맞다'
-    }
+    try {
+      $agyHookRc = Invoke-Logged 'python' @('-X', 'utf8', $agyHookPlant, 'install', '--config', $AgyHooksCfg) $agyHookLog
+      $agyHookOut = @(Get-Content -LiteralPath $agyHookLog -ErrorAction SilentlyContinue |
+                      ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+      if ($agyHookRc -ne 0) {
+        Write-Host '  ! agy 훅 — hooks.json 은 그대로다. 어댑터가 뱉은 끝 줄:' -ForegroundColor Red
+        Show-Log $agyHookLog
+        $Fails.Add('agy 훅 (hooks.json 병합 실패)')
+      } elseif ($agyHookOut -contains 'CHANGED=1') {
+        Write-Host '  agy 훅 — 씨앗 어댑터(agy-hooks.py)의 우리 훅을 hooks.json 에 심었다' -ForegroundColor Green
+        $agyHookBak = @($agyHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
+        if ($agyHookBak) { Write-Host "     고치기 전 것은 $($agyHookBak.Substring(7)) 에 떠 뒀다" }
+      } else {
+        Write-Host '  agy 훅 — 이미 맞다'
+      }
+    } finally { Remove-Item -LiteralPath $agyHookLog -ErrorAction SilentlyContinue }
   }
 } else {
   # 안 골랐으면 우리 이름(`paisetup-…`)의 항목만 걷는다 — 어댑터의 걷기 판. 고치기 전 원본을 떠 두는 손은 곁의 Codex 병합기라
   #   둘 다 있어야 부른다.
-  Remove-UnpickedHooks 'agy 훅' $AgyHooksCfg @($agyHookPlant, (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py')) `
+  Remove-UnpickedHooks 'agy 훅' $AgyHooksCfg @($agyHookPlant, (Join-Path $ConfigSeedHooks 'codex-hook-install.py')) `
                        @('remove', '--config', $AgyHooksCfg) @('--version') 'python 이'
 }
 
@@ -7587,8 +7886,8 @@ if ($hostAgy) {
 #   (`$browserMcpSkipped`). 브라우저가 이미 있으면 어댑터가 그대로 달고 끝 검증도 그대로 잰다.
 $browserMcpSkipped = $false
 $browserGetSkipped = $false
-$browserMcpPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\browser-mcp.py'
-$browserGet      = Join-Path $homeDir 'seeds\config-repo\.claude\get-browser.sh'
+$browserMcpPlant = Join-Path $ConfigSeedHooks 'browser-mcp.py'
+$browserGet      = Join-Path $ConfigSeedHome '.claude\get-browser.sh'
 $browserMcpOn    = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -contains $_ }    | ForEach-Object { $BrowserMcpHosts[$_] })
 $browserMcpOff   = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -notcontains $_ } | ForEach-Object { $BrowserMcpHosts[$_] })
 # python 은 `Measure-Runs` 로 묻는다 — 넘김을 「없다」로 읽으면 멀쩡한 PC 가 빨강이 된다(결정 0141).
@@ -7980,7 +8279,7 @@ if (-not $repoUrl) {
   # ⚠ **한 실행에 훅 하나만 부르고 나머지는 이름으로 말한다** — 둘을 잇달아 부르면 뒤엣것이 앞엣것의 키 · 설정을 사람이 안 정한
   #   순서로 덮는다. 훅은 제 자리에서 전역 저장소를 찾아 형제까지 밀므로 하나만 불러도 나머지가 선다.
   $hookRel = '.claude\hooks\session-start.sh'
-  $seedDir = Join-Path $homeDir 'seeds\config-repo'
+  $seedDir = $ConfigSeedHome
   $hookGen = @($got | ForEach-Object { Get-SessionHookGen $_ } | Where-Object { $_ })
   foreach ($g in @($hookGen | Where-Object { $_.Ours -and -not $_.Current -and $_.Shape -eq 'sibling' })) { Invoke-HookRefresh $g $seedDir }
   if ($bash) {
@@ -8043,7 +8342,7 @@ if ($handOff) {
 # 칸이 비어도 돈다 — 칸에 저장소를 안 넣은 동료도 옛 설치 · 배포가 놓은 우리 훅을 작업 저장소에 든다. 칸에서 받은 저장소는 위에서 다뤘다.
 #   넘긴 훅의 배포가 형제를 먼저 맞추도록 넘기기 뒤에 선다 — 배포가 맞춘 형제는 지금 판으로 읽혀 지나간다. 무엇을 하고 안 하나는
 #   `Invoke-WorkRootScan` 이 든다.
-$scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny (Join-Path $homeDir 'seeds\config-repo')
+$scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny $ConfigSeedHome
 # ── 심기만 — PC 마다 홈 씨앗의 `--plant` (claude-config 결정 0134 · 부르는 차례는 결정 0135) ──────────────────────────────────
 # 칸이 비어도 돈다 — 설정 저장소를 안 받은 PC 는 이 부름 말고는 홈 SessionStart 훅 · 폴더 신뢰 · 데스크탑 상태를 심는 길이 없다.
 #   넘긴 훅의 `--install` 이 이미 심었어도 또 부른다 — 같은 값을 다시 쓸 뿐이고(겹쳐 안 쌓인다), 넘긴 훅이 남의 것이거나 중간에 져도
@@ -8310,7 +8609,8 @@ if (Test-Path -LiteralPath $launcher) {
     )
     # 우리가 예전에 쓴 이름의 아이콘을 걷는다 — `.lnk` 는 파일 이름이 곧 표시 이름이라, 이름을 바꾸면 옛 것이 그대로 남아 같은
     #   `Setup.exe` 를 가리키는 아이콘이 둘 선다.
-    # ⚠ **앱 이름을 바꾸면 그 옛 이름을 이 목록에 더한다** — 남이 만든 바로가기를 안 지우려고 아무 `.lnk` 가 아니라 목록으로 걷는다.
+    # ⚠ **값 파일의 `#app-name` 을 바꾸는 판에 지금 이름을 이 목록에 더한다** — 지금 이름은 그 줄이 진본이고(`$AppName`), 옛 이름은
+    #   어느 원본에도 안 남는 이력이라 여기만 든다. 남이 만든 바로가기를 안 지우려고 아무 `.lnk` 가 아니라 목록으로 걷는다.
     $OldLnkNames = @('Claude Code 설치')
     foreach ($spot in $spots) {
       if (-not $spot.Dir -or -not (Test-Path -LiteralPath $spot.Dir)) { continue }
@@ -8454,6 +8754,34 @@ if ($Night -and $doneToday) {
   exit 0
 }
 
+function Normalize-Version([string]$v) {
+  $v = ($v -replace '^[vV]', '').Trim()
+  $parts = $v -split '\.'
+  while ($parts.Count -lt 4) { $parts += '0' }
+  return [version]($parts[0..3] -join '.')
+}
+
+# 판 폴더 — 몸통과 짐(`install.env`)이 다 선 것만 센다. 반만 풀린 폴더를 가장 높은 판으로 고르면 `#update-repo` · `#site-probe` 를
+#   못 읽어 새 판을 영영 안 묻고, 몸통도 짐 없이 돈다. 아래 가드가 엔진의 자를 떼어 오려고 먼저 부른다.
+function Find-Versions {
+  return @(Get-ChildItem -Path $setupRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^\d+(\.\d+)+' -and (Test-Path (Join-Path $_.FullName 'install.ps1')) -and (Test-Path (Join-Path $_.FullName 'install.env')) } |
+    Sort-Object { Normalize-Version $_.Name } -Descending)
+}
+
+# 엔진에서 그 이름들의 함수 정의 글을 이름 차례로 낸다. 하나라도 못 찾으면 빈 목록. 가드(엔진 알아보기)와 「하루 한 번 · 자리」 칸이 쓴다.
+function Get-EngineFunctionText([string]$Engine, [string[]]$Names) {
+  $tk = $null; $er = $null
+  $ast = [System.Management.Automation.Language.Parser]::ParseFile($Engine, [ref]$tk, [ref]$er)
+  $texts = New-Object System.Collections.ArrayList
+  foreach ($n in $Names) {
+    $fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq $n }.GetNewClosure(), $true)
+    if (-not $fn) { return }
+    [void]$texts.Add($fn.Extent.Text)
+  }
+  $texts
+}
+
 # ── 단일 실행 가드 및 쿨다운 (겹침 방지) ───────────────────────────
 # 로그온 · 밤 작업과 밖의 부팅 자동화가 연달아 돌거나 겹치면 같은 설치를 두 번 하거나 설치기의 빗장(Mutex)에 걸린다(PAISetup #13).
 # 1) 다른 autorun 또는 install 프로세스가 있으면 멎었나 잰다 — 멎었다고 가르지 못한 것이 하나라도 있으면 즉시 종료한다.
@@ -8468,11 +8796,27 @@ if ($Night -and $doneToday) {
 $myPid = $PID
 $myProc = Get-CimInstance Win32_Process -Filter "ProcessId = $myPid" -ErrorAction SilentlyContinue
 $parentPid = if ($myProc) { $myProc.ParentProcessId } else { 0 }
-# 로그인 창 자식(`-GhLoginOnly`)은 안 센다 — 빗장 앞에서 나가는 창 하나뿐이고, 저를 띄운 설치가 살아 있으면 그 설치가 따로 잡힌다.
-#   거둔 뒤 다시 재는 자리도 같은 자로 잰다.
+# 「우리 엔진인가」는 엔진의 자(`Get-EngineKind`)를 떼어 와 가른다 — 설치 몸통의 겹침 찾기와 같은 자다(같은 규칙을 여기 옮겨 적으면
+#   한쪽만 낡는다). 그 자가 우리 설치 몸통과 자동 실행 몸통을 다 알아보고, 같은 이름의 남 스크립트와 로그인 창 자식(`-GhLoginOnly`)은
+#   뺀다. 떼어 올 엔진은 가장 높은 판 폴더의 몸통이다(아래 새 판 받기가 돌릴 그 몸통).
+# ⚠ 못 들였으면 넓게 센다 — 명령줄에 두 이름(`install.ps1` · `autorun.ps1`)을 든 것을 다 우리 것으로 본다. 못 가른 것을 세는 쪽이
+#   가드의 기본값(물러난다)과 같고, 그 판은 기록에 그렇다고 남는다.
+# 거둔 뒤 다시 재는 자리도 같은 자로 잰다.
+$engineRuleOk = $false
+try {
+  $ruleEngine = @(Find-Versions)[0]
+  if ($ruleEngine) {
+    $ruleNames = @('Get-EngineKind')
+    $ruleDef = @(Get-EngineFunctionText (Join-Path $ruleEngine.FullName 'install.ps1') $ruleNames)
+    if ($ruleDef.Count -eq 1) { . ([scriptblock]::Create($ruleDef[0])); $engineRuleOk = $true }
+  }
+} catch { $engineRuleOk = $false }
+if (-not $engineRuleOk) { Log "! 엔진을 알아보는 자(Get-EngineKind)를 가장 높은 판의 몸통에서 못 들였다 — 명령줄에 install.ps1 · autorun.ps1 을 든 것을 다 센다" }
 function Get-OtherEngines {
   @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') -and $_.CommandLine -notlike '*-GhLoginOnly*' })
+    Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and $(
+      if ($engineRuleOk) { [bool](Get-EngineKind $_) }
+      else { "$($_.CommandLine)" -match '(?i)(install|autorun)\.ps1' -and "$($_.CommandLine)" -notlike '*-GhLoginOnly*' }) })
 }
 $otherEngines = @(Get-OtherEngines)
 
@@ -8697,8 +9041,7 @@ if ($otherEngines) {
       else { Log "  ! PID $($e.ProcessId) 을 못 거뒀다 — 다시 재도 있다$said" }
     }
     # 거둔 뒤 가드가 보는 것 전부를 다시 잰다 — 거두는 사이 새로 선 것도 여기서 걸린다.
-    $stillThere = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and ($_.CommandLine -like '*autorun.ps1*' -or $_.CommandLine -like '*install.ps1*') -and $_.CommandLine -notlike '*-GhLoginOnly*' })
+    $stillThere = @(Get-OtherEngines)
     if ($stillThere) {
       Log "! 거두고 다시 쟀는데 $($stillThere.Count) 개가 남았습니다 ($($stillThere.ProcessId -join ', ')). 물러납니다 — 다음 자동 실행 때 다시 잽니다."
       exit 0
@@ -8720,20 +9063,6 @@ if (Test-Path -LiteralPath $stampFile) {
   } catch { }
 }
 
-function Normalize-Version([string]$v) {
-  $v = ($v -replace '^[vV]', '').Trim()
-  $parts = $v -split '\.'
-  while ($parts.Count -lt 4) { $parts += '0' }
-  return [version]($parts[0..3] -join '.')
-}
-
-# 판 폴더 — 몸통과 짐(`install.env`)이 다 선 것만 센다. 반만 풀린 폴더를 가장 높은 판으로 고르면 `#update-repo` · `#site-probe` 를
-#   못 읽어 새 판을 영영 안 묻고, 몸통도 짐 없이 돈다.
-function Find-Versions {
-  return @(Get-ChildItem -Path $setupRoot -Directory -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -match '^\d+(\.\d+)+' -and (Test-Path (Join-Path $_.FullName 'install.ps1')) -and (Test-Path (Join-Path $_.FullName 'install.env')) } |
-    Sort-Object { Normalize-Version $_.Name } -Descending)
-}
 $versionDirs = Find-Versions
 
 if (-not $versionDirs) {
@@ -8763,19 +9092,6 @@ $siteWord = @{ inside = '사내'; outside = '사외'; switching = '바꾸는 중
 $siteLast = ''
 if (Test-Path -LiteralPath $siteFile) {
   try { $siteLast = (Get-Content -LiteralPath $siteFile -Raw -Encoding UTF8 -ErrorAction Stop).Trim() } catch { $siteLast = '' }
-}
-
-# 엔진에서 그 이름들의 함수 정의 글을 이름 차례로 낸다. 하나라도 못 찾으면 빈 목록.
-function Get-EngineFunctionText([string]$Engine, [string[]]$Names) {
-  $tk = $null; $er = $null
-  $ast = [System.Management.Automation.Language.Parser]::ParseFile($Engine, [ref]$tk, [ref]$er)
-  $texts = New-Object System.Collections.ArrayList
-  foreach ($n in $Names) {
-    $fn = $ast.Find({ param($x) $x -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $x.Name -eq $n }.GetNewClosure(), $true)
-    if (-not $fn) { return }
-    [void]$texts.Add($fn.Extent.Text)
-  }
-  $texts
 }
 
 # 재는 값 파일은 지금 가장 높은 판의 짐(`install.env`)이다 — 설치(그 판의 몸통)도 프로브를 제 짐에서 읽는다. 아래 새 판 받기가
@@ -9238,11 +9554,41 @@ foreach ($c in $CliPicks) {
 #   까는 스킬은 아래에서 이름마다 잰다.
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { continue }
-  # 비켜선 자리는 동봉본과 안 견주고 비지 않았나만 센다 — 거기 든 것은 설정 저장소의 최신판이라, 저쪽이 부품을 걷은 날 동봉본보다
-  #   적어 멀쩡한 자리가 [X] 로 선다. 저쪽 몫은 저쪽 재는 자가 문다.
+  # 비켜선 자리는 동봉본이 아니라 임자의 그 폴더와 견준다 — 거기 든 것은 설정 저장소의 최신판이라, 동봉본과 견주면 저쪽이 부품을
+  #   걷은 날 멀쩡한 자리가 [X] 로 선다. 여분은 판정에 안 든다 — 저쪽 배포는 원본 이력이 걷은 파일만 걷고, 프록시 기록 같은 남의
+  #   파일은 둔다(`deploy.ps1` 씨앗 칸).
+  # ⚠ **원본은 그 저장소가 추적하는 파일이다** — 저장소의 그 폴더에도 git 이 무시하는 런타임 기록(`posco/pgpt-proxy/proxy.log`)이 살고, 홈의
+  #   같은 이름 파일은 도는 프록시가 따로 덧쓴다. 작업 나무 전부와 견주면 그 한 파일로 판마다 [X] 다. git 이 답을 못 내면 못 잰 것이다.
   if ($a.Owner) {
-    $n = @(Get-ChildItem -LiteralPath $a.To -Recurse -File -ErrorAction SilentlyContinue).Count
-    $checks += @{ Name = "$($a.Name) ($n · 설정 저장소가 든다)"; Ok = ($n -gt 0) }
+    $ownDir = Join-Path $a.Owner $a.Rel
+    $tracked = $null
+    $saveOut = [Console]::OutputEncoding
+    try {
+      [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+      $tracked = @(& git -C $ownDir -c core.quotepath=false ls-files 2>$null)
+      if ($LASTEXITCODE -ne 0) { $tracked = $null }
+    } catch { $tracked = $null } finally { [Console]::OutputEncoding = $saveOut }
+    if ($null -eq $tracked) {
+      $checks += @{ Name = "$($a.Name) (설정 저장소가 든다 · $($a.Owner))"; State = 'unmeasured'; Probe = "git -C `"$ownDir`" ls-files"
+                    Why = '그 저장소가 추적하는 파일을 git 이 못 댔다' }
+      continue
+    }
+    $cmp = Compare-AssetTree $ownDir $a.To -ExtraOk -Only @($tracked | Where-Object { $_ } | ForEach-Object { $_.Replace('/', '\') })
+    $checks += @{ Name = "$($a.Name) (설정 저장소가 든다 · 원본 $($cmp.N) 파일$(if ($cmp.Say) { ' · ' + $cmp.Say }) · $($a.Owner))"; Ok = $cmp.Ok }
+    continue
+  }
+  # 장부로 맞추는 자리 — 원본의 파일이 바이트까지 섰나와, 장부에 든 우리 파일 가운데 원본에서 빠졌는데 놓은 그대로 남은 것이 없나를
+  #   잰다. 여분(남의 파일)은 판정에 안 든다.
+  if ($a.Ledger) {
+    $cmp = Compare-AssetTree $a.From $a.To -ExtraOk
+    $srcNames = Get-AssetFiles $a.From
+    $lgr = Read-PlantLedger $ClaudePlantLedger
+    $left = @(Find-LedgerRows $lgr 'file' (ConvertTo-LedgerAt $a.To) 'assets' | Where-Object { -not $srcNames.ContainsKey($_.Name) } | Where-Object {
+      $p = Join-Path $a.To $_.Name
+      (Test-Path -LiteralPath $p -PathType Leaf) -and ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ceq $_.Value) } | ForEach-Object { $_.Name })
+    $say = @(@($cmp.Say) + @($(if ($left.Count) { "원본에서 빠진 우리 파일 $($left.Count): $((@($left | Select-Object -First 3)) -join ', ')" })) +
+             @($(if ($lgr.Why) { "장부를 못 읽었다 — $($lgr.Why)" })) | Where-Object { $_ })
+    $checks += @{ Name = "$($a.Name) (원본 $($cmp.N) 파일$(if ($say.Count) { ' · ' + ($say -join ' · ') }))"; Ok = ($cmp.Ok -and -not $left.Count -and -not $lgr.Why) }
     continue
   }
   $checks += New-CountCheck $a.Name $a.From $a.To
@@ -9255,35 +9601,48 @@ foreach ($a in $envAssets) {
 # ⚠ **배선은 등록이 가리키는 폴더로 잰다** — 껍데기 머리말의 이벤트마다 우리 훅이 있고 그 훅이 가리키는 폴더에 그 껍데기가
 #   있어야 선 것이다. 한 이벤트만 빠져도 그 갈래(오류로 끝난 꼴 · 첨부 쪽 따위)를 조용히 놓친다(`Get-ClaudeHookWiring`).
 # 씨앗의 몸통 · 껍데기 줄은 씨앗을 잰다 — Claude 등록이 부르는 사본은 배선 줄이 재고, 이 줄들은 설정 저장소 씨앗이 그 부품을
-#   실었나를 잰다. 고칠 자리가 다르다(뽑기 선언 · 손).
+#   실었나를 잰다(씨앗으로 만든 저장소는 제 훅 폴더로 개인 층을 채워 통째로 이기므로, 씨앗에 빠진 껍데기는 그 PC 에서 안 심긴다).
+#   고칠 자리가 다르다(뽑기 선언 · 손).
+# ⚠ **잴 껍데기 목록은 짐의 훅 폴더에서 짓는다 — 손으로 적지 않는다.** 등록 머리말(`events`)을 든 껍데기마다 한 벌이고, 씨앗 줄은 그
+#   껍데기와 그것이 제 변수로 부르는 곁 파일(주석 밖 `"$<변수>/<이름>"`)이다 — 손(`tool-homes.py`)이 등록을 짓고 층에 싣는 것과 같은
+#   자다(꼴은 표 `tool-homes.conf` 의 hook 꼴). 적어 둔 목록은 원본에 훅이 는 날 안 따라와, 심긴 훅이 끝 검증에 없다(PAISetup #47 ②).
+#   껍데기를 하나도 못 찾으면 그것이 [X] 다 — 빈 목록을 초록으로 지나가지 않는다.
 if ($hostClaude) {
   $gc = $null; $gcWhy = ''
   try { $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $gcWhy = '홈 설정을 못 읽었다' }
-  $seedHooks = Join-Path $homeDir 'seeds\config-repo\.claude\hooks'
-  foreach ($w in @(
-      @{ Label = '그림 문';                   Shell = 'image-gate.sh';          Seed = @('image-gate.py', 'image-gate.sh') }
-      @{ Label = '웹 다시 찾기';              Shell = 'web-retry.sh';           Seed = @('web-retry.sh') }
-      @{ Label = 'DRM 길잡이';                Shell = 'drm-guide.sh';           Seed = @('drm-guide.py', 'drm-guide.sh'); Matcher = $true }
-      @{ Label = '컨텍스트 알림';             Shell = 'context-alert.sh';       Seed = @('context-alert.py', 'context-alert.sh'); Matcher = $true }
-      @{ Label = 'Bash 겹역슬래시 보정';      Shell = 'bash-backslash-deny.sh'; Seed = @() }
-      @{ Label = 'PowerShell UTF-8 BOM 보정'; Shell = 'utf8-bom.sh';            Seed = @() })) {
-    foreach ($f in $w.Seed) {
-      $kind = if ($f -like '*.py') { '몸통' } else { '껍데기' }
-      $checks += @{ Name = "$($w.Label) $kind (씨앗의 $f)"; Ok = (Test-Path -LiteralPath (Join-Path $seedHooks $f)) }
+  $seedHooks = $ConfigSeedHooks
+  $kitHooks = Join-Path $Kit 'hooks'
+  $hookShells = @(Get-ChildItem -LiteralPath $kitHooks -Filter '*.sh' -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object {
+      $hh = Get-HookHead $_.FullName
+      if ($hh -and $hh.ContainsKey('events')) { @{ Shell = $_.Name; Path = $_.FullName; Var = $hh['var'] } } })
+  if (-not $hookShells.Count) { $checks += @{ Name = "Claude 훅 목록 (짐의 훅 폴더에 등록 머리말을 든 껍데기가 없다 — $kitHooks)"; Ok = $false } }
+  foreach ($w in $hookShells) {
+    $label = "Claude 훅 $($w.Shell)"
+    $seedFiles = @($w.Shell)
+    if ($w.Var) {
+      $reach = '"\$' + [regex]::Escape($w.Var) + '/([^"/]+)"'
+      $shLines = @()
+      try { $shLines = [IO.File]::ReadAllLines($w.Path) } catch { }
+      foreach ($ln in $shLines) {
+        if ($ln.TrimStart().StartsWith('#')) { continue }
+        foreach ($rm in [regex]::Matches($ln, $reach)) { if ($seedFiles -notcontains $rm.Groups[1].Value) { $seedFiles += $rm.Groups[1].Value } }
+      }
     }
-    $wr = Get-ClaudeHookWiring $gc $w.Shell (Join-Path $Kit "hooks\$($w.Shell)")
+    foreach ($f in $seedFiles) {
+      $kind = if ($f -ceq $w.Shell) { '껍데기' } else { '곁 파일' }
+      $checks += @{ Name = "$label $kind (씨앗의 $f)"; Ok = (Test-Path -LiteralPath (Join-Path $seedHooks $f)) }
+    }
+    $wr = Get-ClaudeHookWiring $gc $w.Shell $w.Path
     $wrWhy = if ($gcWhy) { $gcWhy } else { $wr.Why }
     if ($wrWhy) {
-      $checks += @{ Name = "$($w.Label) 배선 (홈 settings.json — $wrWhy)"; Ok = $false }
+      $checks += @{ Name = "$label 배선 (홈 settings.json — $wrWhy)"; Ok = $false }
     } else {
       $miss = if ($wr.Missing.Count) { " — 빠진 이벤트 $($wr.Missing -join ' · ')" } else { '' }
-      $checks += @{ Name = "$($w.Label) 배선 (홈 settings.json 의 $($wr.Events -join ' · ')$miss)"; Ok = ($wr.Missing.Count -eq 0) }
+      $checks += @{ Name = "$label 배선 (홈 settings.json 의 $($wr.Events -join ' · ')$miss)"; Ok = ($wr.Missing.Count -eq 0) }
     }
-    if ($w.Matcher) {
-      $bad = @($wr.BadMatcher) + @($(if ($wrWhy) { $wrWhy }))
-      $checks += @{ Name = ("$($w.Label) matcher (이벤트마다 진본과 같다" + $(if ($bad.Count) { ' — ' + ($bad -join ' · ') } else { '' }) + ')')
-                    Ok = ($bad.Count -eq 0) }
-    }
+    $bad = @($wr.BadMatcher) + @($(if ($wrWhy) { $wrWhy }))
+    $checks += @{ Name = ("$label matcher (이벤트마다 진본과 같다" + $(if ($bad.Count) { ' — ' + ($bad -join ' · ') } else { '' }) + ')')
+                  Ok = ($bad.Count -eq 0) }
   }
 }
 # 워드의 PDF 변환 안내 — 「키와 값」 걸음이 읽은 판 목록 그대로 되읽는다. 워드가 없으면 줄이 없다.
@@ -9334,35 +9693,36 @@ if ($PickKeys -contains 'codex') {
   if (Test-Path -LiteralPath $CodexCfg) {
     try { $codexHookText = Get-Content -LiteralPath $CodexCfg -Raw -Encoding UTF8 } catch { $codexHookText = '' }
   }
-  $codexHookParts = @(
-    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\drm-guide.py'),
-    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-image-gate.py'),
-    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-context-alert.py'),
-    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\context-alert.py'),
-    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-safety-hooks.py'),
-    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-install.py'),
-    (Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-trust.py'),
-    (Join-Path $homeDir 'seeds\config-repo\codex-hooks.example.toml')
-  )
-  $checks += @{ Name = 'Codex 훅 부품 (DRM · 그림 · 컨텍스트 · Bash · BOM · 병합기 · 신뢰 도우미)'
-                Ok = (@($codexHookParts | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -eq 0) }
-  $checks += @{ Name = 'Codex 훅 배선 (UserPromptSubmit 둘 · PreToolUse · PostToolUse)'
-                Ok = ($codexHookText.Contains('drm-guide.py') -and
-                      $codexHookText.Contains('codex-image-gate.py') -and
-                      $codexHookText.Contains('codex-context-alert.py') -and
-                      $codexHookText.Contains('codex-safety-hooks.py bash-backslash') -and
-                      $codexHookText.Contains('codex-safety-hooks.py utf8-bom')) }
+  # 무엇을 거나는 씨앗의 예시(`codex-hooks.example.toml`)가 든다 — 여기 이름을 적지 않고 예시의 명령(`command = "… hooks/<파일> [<판>]"`)에서
+  #   짓는다. 부품은 그 명령이 부르는 파일과 병합기 · 신뢰 도우미 · 예시 자신이고, 배선은 그 명령 글이 config.toml 에 다 섰나다. 예시를
+  #   못 읽거나 명령이 하나도 안 잡히면 두 줄 다 [X] 다.
+  $codexEx = Join-Path $ConfigSeedHome 'codex-hooks.example.toml'
+  $codexExText = ''
+  try { $codexExText = [IO.File]::ReadAllText($codexEx) } catch { $codexExText = '' }
+  $codexExCmds = @([regex]::Matches($codexExText, '(?m)^\s*\{[^\r\n]*?\bcommand\s*=\s*"[^"\r\n]*?/\.claude/hooks/([^"\s/]+)((?: [^"\s]+)*)"') |
+                   ForEach-Object { @{ File = $_.Groups[1].Value; Said = ($_.Groups[1].Value + $_.Groups[2].Value) } })
+  $codexHookParts = @(@($codexExCmds | ForEach-Object { $_.File } | Select-Object -Unique) + @('codex-hook-install.py', 'codex-hook-trust.py') |
+                      ForEach-Object { Join-Path $ConfigSeedHooks $_ }) + @($codexEx)
+  $codexPartsGone = @($codexHookParts | Where-Object { -not (Test-Path -LiteralPath $_) } | ForEach-Object { Split-Path $_ -Leaf })
+  $checks += @{ Name = ("Codex 훅 부품 (예시가 부르는 $(@($codexExCmds | ForEach-Object { $_.File } | Select-Object -Unique).Count) 개 · 병합기 · 신뢰 도우미 · 예시" +
+                       $(if ($codexPartsGone.Count) { ' — 없는 것 ' + ($codexPartsGone -join ' · ') } else { '' }) + ')')
+                Ok = ($codexExCmds.Count -gt 0 -and $codexPartsGone.Count -eq 0) }
+  $codexUnwired = @($codexExCmds | Where-Object { -not $codexHookText.Contains($_.Said) } | ForEach-Object { $_.Said })
+  $checks += @{ Name = ("Codex 훅 배선 (예시의 명령 $($codexExCmds.Count) 개가 config.toml 에" + $(if ($codexUnwired.Count) { ' — 빠진 것 ' + ($codexUnwired -join ' · ') } else { '' }) + ')')
+                Ok = ($codexExCmds.Count -gt 0 -and $codexUnwired.Count -eq 0) }
   # 신뢰 — 설정의 글자가 아니라 **Codex 가 읽은 상태**를 잰다(claude-config 결정 0106). 배선이 다 서도 신뢰가 없으면
   #   `codex exec` 가 그 훅을 말없이 건너뛴다 — 글자만 보면 그 판이 [O] 로 지나간다. 분모는 예시가 싣는 우리 훅 수다.
   # ⚠ **못 잰 것은 [?] 가 아니라 [X] 다** — Codex 에 못 물었으면 훅이 도는지 모른다. 그 줄이 까닭과 손으로 신뢰하는 길을 댄다.
   # 사람이 끈 우리 훅은 그 사람의 뜻이라 모자람으로 안 센다 — 줄에 따로 적는다.
-  $codexTrustPlant = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\codex-hook-trust.py'
-  $codexTrustExample = Join-Path $homeDir 'seeds\config-repo\codex-hooks.example.toml'
+  $codexTrustPlant = Join-Path $ConfigSeedHooks 'codex-hook-trust.py'
+  $codexTrustExample = $codexEx
   if ((Test-Path -LiteralPath $codexTrustPlant) -and (Test-Path -LiteralPath $codexTrustExample)) {
     $ctLog = [IO.Path]::GetTempFileName()
-    $ctRc = Invoke-Logged 'python' @('-X', 'utf8', $codexTrustPlant, 'status', '--example', $codexTrustExample) $ctLog
-    $ctOut = @(Get-Content -LiteralPath $ctLog -Encoding UTF8 -ErrorAction SilentlyContinue |
-               ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    try {
+      $ctRc = Invoke-Logged 'python' @('-X', 'utf8', $codexTrustPlant, 'status', '--example', $codexTrustExample) $ctLog
+      $ctOut = @(Get-Content -LiteralPath $ctLog -Encoding UTF8 -ErrorAction SilentlyContinue |
+                 ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    } finally { Remove-Item -LiteralPath $ctLog -ErrorAction SilentlyContinue }
     $ctVal = @{}
     foreach ($ln in $ctOut) { if ($ln -match '^(EXPECTED|WIRED|TRUSTED|NONE_LISTED|UNMEASURED|ERROR)=(.*)$') { $ctVal[$Matches[1]] = $Matches[2] } }
     $ctOff = @($ctOut | Where-Object { $_ -like 'HOOK=*' -and $_ -like '*|disabled' }).Count
@@ -9380,13 +9740,18 @@ if ($PickKeys -contains 'codex') {
   }
 }
 # 칸 없이 까는 스킬 — 제작자 칸에 안 든 도구의 홈만 잰다(칸에 든 홈은 손의 `check` 가 잰다). 까는 칸과 같은 목록
-#   (`Get-FreeSkillNames`)으로 잰다 — 따로 지으면 까는 것과 재는 것이 갈린다.
+#   (`Get-FreeSkillNames`)으로 잰다 — 따로 지으면 까는 것과 재는 것이 갈린다. 스킬마다 짐의 그 스킬과 파일 묶음 · 바이트가 같은가를
+#   잰다(거울 — `Compare-AssetTree`) — SKILL.md 가 있나만 보면 짐에서 빠진 파일이 남은 판이 초록이다.
 foreach ($t in $FreeSkillHomes.Keys) {
   $fh = $FreeSkillHomes[$t]
   $freeWant = @(Get-FreeSkillNames $t)
   if ($fh.Box -or -not $freeWant.Count) { continue }
-  $freeMiss = @($freeWant | Where-Object { -not (Test-Path -LiteralPath (Join-Path $fh.Skills "$_\SKILL.md")) })
-  $checks += @{ Name = "칸 없이 까는 스킬 — $($fh.Label) ($($freeWant -join ' · '))"; Ok = ($freeMiss.Count -eq 0) }
+  if (-not $fh.Place) { $checks += @{ Name = "칸 없이 까는 스킬 — $($fh.Label) (갈 곳 표에 자리가 없다)"; Ok = $false }; continue }
+  $freeBad = @(foreach ($n in $freeWant) {
+    $cmp = Compare-AssetTree (Join-Path $KitSkills $n) (Join-Path $fh.Place.Skills $n)
+    if (-not $cmp.Ok) { "$n($($cmp.Say))" }
+  })
+  $checks += @{ Name = "칸 없이 까는 스킬 — $($fh.Label) ($($freeWant -join ' · ')$(if ($freeBad.Count) { ' · 어긋남: ' + ($freeBad -join ' · ') }))"; Ok = ($freeBad.Count -eq 0) }
 }
 # agy — 훅 셋이 우리 어댑터로 걸렸나 (결정 0099 · 컨텍스트 알림은 claude-config #173)
 if ($hostAgy) {
@@ -9500,7 +9865,7 @@ if ($useGateway) {
     # ⚠ **프록시 프로세스는 하나여야 하고 껍데기가 아니어야 한다**(PAISetup #21) — 런처(WindowsApps\pythonw.exe)가 박히면 부모-자식
     #   두 프로세스가 뜨고, 자식이 죽어도 껍데기가 남아 와치독이 눈먼다.
     $proxyProcs = @(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" -ErrorAction SilentlyContinue |
-      Where-Object { $_.CommandLine -like '*opus5_proxy.py*' })
+      Where-Object { $_.CommandLine -like "*$ProxyFile*" })
     $singleProc = ($proxyProcs.Count -eq 1)
     $notShell = $false
     if ($singleProc) {
@@ -9907,7 +10272,7 @@ if ($NoLaunch) {
       #   씨앗의 도우미가 들고 여기는 그 `status` 를 묻는다 — 못 물으면 줄을 낸다. 끝 줄은 창의 한 줄 칸에 떠 길게 못 붙이므로
       #   기록 칸 한 줄에 드는 길이로 따로 낸다.
       if ($opened -contains 'VS Code') {
-        $vsTrust = Join-Path $homeDir 'seeds\config-repo\.claude\hooks\vscode-trust.py'
+        $vsTrust = Join-Path $ConfigSeedHooks 'vscode-trust.py'
         # 묻는 한 번에 울타리를 두른다 — 넘기면 「못 물었다」라 줄을 낸다
         $vsSeen = @()
         if (Test-Path -LiteralPath $vsTrust) {

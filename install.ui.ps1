@@ -199,7 +199,9 @@ $PersonalTools = @(); $VcRuntimeMin = ''; $AppName = ''
 # 몸통이 끝까지 답했나 — 종료 값과, 칸이 기대는 줄(`site|` · `vscode|` · `autorun|`)을 받았나. 아래 묻기 끝에서 가른다.
 $DescribeRc = $null; $DescribeSeen = @{}
 try {
-  $raw = & powershell -NoProfile -ExecutionPolicy Bypass -File $Engine -Describe
+  # 지금 나를 돌린 그 파워셸로 묻는다 — 되띄우기 · 몸통 띄우기와 같은 꼴이다. 이름(`powershell`)으로 부르면 PATH 가 깨진 PC 에서 이
+  #   자리만 못 띄운다.
+  $raw = & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $Engine -Describe
   $DescribeRc = $LASTEXITCODE
   foreach ($ln in @($raw)) {
     if ("$ln" -match '^\s*product\|([a-z0-9-]+)\|(.+?)\|(on|off)\s*$') {
@@ -230,7 +232,12 @@ try {
     $Site = ''
     $SiteWhy = "설치 몸통의 답이 모자라다 (install.ps1 -Describe 종료 $DescribeRc$(if ($missing.Count) { ' · 없는 줄 ' + ($missing -join ', ') }))"
   }
-} catch { }
+} catch {
+  # 못 띄웠거나 답을 읽다 던졌다 — 자리를 못 받은 판으로 잠그고 진 것을 한 줄로 말한다(아래 「자리를 못 정한 판」이 띄운다). 삼키면
+  #   제품 목록 없이 기본값 칸이 서고, 그대로 누른 판이 `-Pick` 없이 몸통을 띄워 사람이 끈 제품을 되살린다.
+  $Site = ''
+  $SiteWhy = "설치 몸통에 못 물었다 (install.ps1 -Describe — $(("$($_.Exception.Message)" -split '\r?\n')[0]))"
+}
 # 앱 이름이 안 왔으면(몸통에 못 물은 판) 그 판은 설치를 안 받는다 — 상자 제목에만 쓰는 이름이라 일반 낱말로 선다.
 if (-not $AppName) { $AppName = '설치' }
 
