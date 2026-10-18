@@ -93,6 +93,10 @@ $DistEnvFile = Join-Path $Here 'install.env'
 if (-not (Test-Path -LiteralPath $DistEnvFile)) { $DistEnvFile = $EnvFile }
 $Fails   = New-Object System.Collections.Generic.List[string]
 $Planted = @{}
+# 도중에 멎은 칸 — 칸 열쇠(걸음은 `$Steps` 의 열쇠 · 그 밖은 칸 이름) → 던진 자리. 걸음 경계(`Write-StepFault`)가 채운다.
+$StepFaults = [ordered]@{}
+# 끝 검증의 칸 목록 — 「검증」 칸이 채운다. 칸 경계 밖에서 비워 둔다 — 검증이 첫 칸 앞에서 멎으면 빈 값이 끝 셈에서 빨간 칸 하나로 읽힌다.
+$checks = @()
 
 # ── 옛 제작자 칸으로 창 없이 불리면 — 설치는 그대로 가고, 끝나면 한 번만 알린다 (claude-config 결정 0099) ──────────
 # 옛 자동 실행 기록(`autorun.args`)은 도구별로 갈리기 전의 `-WithPersonalConfig` 하나를 들고, 옛 자동 실행 스크립트가 그 기록으로
@@ -462,12 +466,54 @@ function Get-StepTitle([string]$Key) {
 }
 
 function Enter-Step([string]$Key) {
+  $script:StepNow = $Key
   Write-Host ''
   Write-Host (Get-StepTitle $Key) -ForegroundColor Cyan
 }
 
 function Exit-Step([string]$Key) {
   Write-Elapsed (Get-StepTitle $Key)
+  $script:StepNow = ''
+}
+
+# ── 칸 경계 — **한 칸 안의 던짐은 그 칸에서 끝난다** (PAISetup #49 ④) ─────────────────────────────────
+# 몸통은 전역 `Stop` 아래 돈다. 경계가 없으면 칸 안의 쓰기 하나가 던질 때(사람이 읽기 전용으로 둔 파일 · 다른 프로세스가 공유 없이 쥔
+#   파일 · 파일 이름이 선 폴더 자리) 그 뒤 걸음 · 마무리 · 끝 검증이 다 빠지고 몸통이 1 로 죽는다 — 자동 실행만 도는 PC 는 원인이 남는
+#   동안 회차마다 같은 자리에서 멎는다. 그래서 흐름의 칸마다 `try` 하나가 그 칸의 몸을 두르고, 받은 던짐을 이 손이 그 칸의 빨간 줄과
+#   `$Fails` 한 줄로 낸다. 다음 칸은 그대로 돈다. 칸은 열 걸음(`Enter-Step` 바로 뒤부터 `Exit-Step` 바로 앞까지 — 걸린 초 줄은 진 걸음도
+#   찍는다)과 「마무리」 · 「검증」이다. 「준비」는 안 두른다 — 거기서 지면 뒤 칸이 설 바탕이 없다.
+# ⚠ **경계는 쓰기마다가 아니라 칸마다다** — 쓰기마다 두르면 새로 붙는 쓰기가 또 빠진다. 제 꼴로 받는 손(`Write-FileSafely` · 칸 안의
+#   `catch`)은 그대로 두고, 경계는 거기서 못 받은 것만 받는다. 흐름에 칸을 더하면 경계도 함께 짓는다.
+# ⚠ 진 칸의 나머지는 안 돈다 — 그 칸이 반쯤 지은 값을 뒤 칸이 읽는다. 앞 걸음이 지은 값으로 걷거나 심는 걸음은 몸의 첫 문장에서
+#   그 걸음이 끝났나 묻고(`Assert-StepsDone`), 멎었으면 통째로 안 한다 — 반쪽 값은 「없다」로 읽혀 걷기가 되고, 빠진 거름 목록은 걸러야
+#   할 것을 민다. 장부는 걸음마다 디스크에서 다시 읽고 자리를 쓴 뒤에만 써서(`Read-RunLedger` · `Save-PlantLedger`) 진 걸음의 장부 줄은
+#   안 남는다.
+# 받는 것 — 받은 오류 기록 · 칸 열쇠(안 주면 지금 걸음 — `Enter-Step` 이 둔다). 줄에 던진 자리(파일:줄)를 단다 — 다음 회차도 같은
+#   자리에서 지면 로그가 그 자리를 댄다. ⚠ **이 손은 안 던진다** — 경계의 `catch` 안이라 여기서 던지면 몸통이 그대로 죽는다.
+function Write-StepFault($Err, [string]$Key = $script:StepNow) {
+  $title = $Key
+  try { $title = Get-StepTitle $Key } catch { }
+  $at = ''
+  try {
+    $ii = $Err.InvocationInfo
+    if ($ii -and $ii.ScriptName) { $at = '{0}:{1}' -f (Split-Path -Leaf $ii.ScriptName), $ii.ScriptLineNumber }
+  } catch { }
+  $where = if ($at) { " ($at)" } else { '' }
+  Write-Host "  ! $title — 도중에 멎었다: $(Say-Why $Err)$where · 이 칸의 나머지는 안 하고 다음으로 간다" -ForegroundColor Red
+  $script:Fails.Add("$title (도중에 멎었다$(if ($at) { " · $at" }))")
+  $script:StepFaults[$Key] = $at
+}
+
+# 앞 걸음이 끝났나 — 받는 것: 걸음 열쇠들. 그 가운데 도중에 멎은 것이 있으면 던져, 부른 걸음의 경계가 그 걸음을 빨간 줄 · `$Fails` 로
+#   끝내게 한다(아무것도 안 하고). 부르는 자리는 앞 걸음이 지은 값(자리 · 심은 값 · 안 밀 이름 목록)으로 걷거나 심는 걸음의 첫 문장이다.
+function Assert-StepsDone([string[]]$Keys) {
+  foreach ($k in $Keys) {
+    if ($script:StepFaults -and $script:StepFaults.Contains($k)) {
+      $t = $k
+      try { $t = Get-StepTitle $k } catch { }
+      throw "앞 걸음 「$t」이 도중에 멎어 이 걸음을 안 했다 — 그 걸음이 반쯤 지은 값으로 걷거나 심지 않는다 (다음 판이 다시 한다)"
+    }
+  }
 }
 
 #endregion 화면
@@ -5900,6 +5946,7 @@ Write-Elapsed '준비'
 #   안 하는 것 — 홈 파일 · 키. 예외 하나 — Node 신뢰가 CA 경로(`NODE_EXTRA_CA_CERTS`)를 사용자 환경에 심는다.
 #     뒤의 확장 · CLI 가 그 값을 물고 받으므로 이 걸음에 선다
 Enter-Step 'programs'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 foreach ($app in $Apps) {
   # VS Code 를 끄면 VS Code 만 안 깐다 — Node 는 CLI 가 타므로 `core` 로 남아 그대로 깔린다.
   if ($NoVsCode -and $app.Need -eq 'vscode') {
@@ -6176,6 +6223,7 @@ Write-Host ''
 Write-Host '  Node 신뢰 배선' -ForegroundColor Cyan
 Wire-NodeTrust
 
+} catch { Write-StepFault $_ }
 Exit-Step 'programs'
 
 # ══ 걸음 「VS Code 확장」 ═══════════════════════════════════════════════════════════════════════
@@ -6191,6 +6239,7 @@ Exit-Step 'programs'
 # `--update-extensions` 는 깔린 확장 전부를 올린다 — 우리 것만 고르는 스위치가 없다. VS Code 가 스스로 하는 자동 갱신과 같은 일이다.
 
 Enter-Step 'extensions'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 확장 갱신 한 호출에 두르는 울타리 — 초. **갱신은 곁일이라 포기할 수 있다**(까닭은 아래 호출 자리).
 # 평소 1~14초지만 밀린 회차는 수백 초를 써 정상이 꽤 느릴 수 있는 자리다 — 넉넉히 두되 부르는 쪽 울타리(10분)를 혼자 다 먹지
 #   못하게 그 절반 아래로 둔다.
@@ -6245,6 +6294,7 @@ if ($NoVsCode) {
   $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
 }
 
+} catch { Write-StepFault $_ }
 Exit-Step 'extensions'
 
 # ══ 걸음 「CLI」 ═══════════════════════════════════════════════════════════════════════════════
@@ -6255,6 +6305,7 @@ Exit-Step 'extensions'
 #     이름 둘」 · 「Codex · 안티그래비티 설정」 칸이 가른다
 
 Enter-Step 'cli'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
 # npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
 $npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
@@ -6269,6 +6320,7 @@ if (-not $inside) {
 # Copilot CLI 는 따로 로그인하지 않고 gh 로그인을 쓴다(claude-config 결정 0137) — 그 로그인이 서 있나는 끝 검증의 gh 로그인
 #   줄이 잰다(`Get-GhKeyringLines`).
 
+} catch { Write-StepFault $_ }
 Exit-Step 'cli'
 
 # ══ 걸음 「키와 값」 ═══════════════════════════════════════════════════════════════════════════
@@ -6283,6 +6335,7 @@ Exit-Step 'cli'
 #   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)에서 키와 맡기기 러너 값을 뺀
 #     것뿐이다 — 심는 자리를 그 걸음 뒤로 옮기면 settings.json 이 바뀐다
 Enter-Step 'keys'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 맡기기 모델 — agy · Codex 러너가 고를 모델을 맡기기 모델 표(짐의 스킬 `agent-envelope` 폴더의 `models.conf`)에서 옮겨
 #   사용자 환경변수로 심는다(claude-config 결정 0123). 자리 · 도구 · 무게마다 무엇을 대나와 그 까닭은 표가 들고, 여기는 이
 #   자리(`$ModelSite`)의 줄을 러너의 자리 값으로 옮기기만 한다(`Read-ModelTable`). 표는 이 설치가 홈에 놓는 그 스킬의 것이다.
@@ -6760,6 +6813,7 @@ if ($offsite) {
   }
 }
 
+} catch { Write-StepFault $_ }
 Exit-Step 'keys'
 
 # ══ 걸음 「사내 연결」 ═════════════════════════════════════════════════════════════════════════
@@ -6770,6 +6824,8 @@ Exit-Step 'keys'
 #     (`$CodexCfg` · `$AgyCfg` · `$CodexCfgMerge` · `$AgyProvider`)
 #   안 하는 것 — Claude 홈 · 스킬
 Enter-Step 'site'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
+Assert-StepsDone 'keys'   # 자리(`$useGateway`)와 심은 주소 · 키(`$Planted`)로 회사 설정을 심고 걷는다
 # ── 로컬 프록시 — **사내에서 Claude 와 안티그래비티가 지나는 문** (결정 0041) ─────────────
 # 왜 프록시인가 — 게이트웨이가 Opus 5 에서 assistant prefill 을 400 으로 거절하고, 안티그래비티는 곁 호출에 게이트웨이에 없는 모델
 #   이름을 못박아 둔다. 둘 다 클라이언트 파일을 못 고치는 자리라 사이에 한 겹을 둔다. 프록시가 무엇을 고치고 무엇은 안 건드리는지는
@@ -7094,6 +7150,7 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
   }
 }
 
+} catch { Write-StepFault $_ }
 Exit-Step 'site'
 
 # ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
@@ -7120,6 +7177,8 @@ Exit-Step 'site'
 #   까닭이 없고, 여기 든 값은 CLI · VS Code 세션에서 물려받은 값을 이겨 그 세션이 띄운 러너가 이 사본으로 나간다. 장부가 서기 전 판이
 #   민 사본은 장부 밖이라, 아래 「러너 값 사본」 칸이 오늘 표의 값으로 가른다(PAISetup #41).
 Enter-Step 'home'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
+Assert-StepsDone 'keys'   # 자리 · 심은 값 · 안 밀 이름 목록(키 · 러너 값 · 사람이 친 값)으로 settings.json 에 밀고 걷는다
 $homeCfg = Join-Path $homeDir 'settings.json'
 $homeAt  = ConvertTo-LedgerAt $homeCfg
 New-Item -ItemType Directory -Path $homeDir -Force | Out-Null
@@ -7467,6 +7526,7 @@ if ($cfg) {
   if (-not $homeWrote -or $homeWrote.Did -ceq 'written' -or $homeWrote.Did -ceq 'same') { $null = Save-PlantLedger $Ledger }
 }
 
+} catch { Write-StepFault $_ }
 Exit-Step 'home'
 
 # ══ 걸음 「공용 자산」 ═════════════════════════════════════════════════════════════════════════
@@ -7479,6 +7539,7 @@ Exit-Step 'home'
 #   저장소가 없는 기계에 없다. 규범 · 룰 · 스킬과 같은 꼴이다 — 진본은 저장소, 로드 자리는 홈. 저장소를 든 사람은 `deploy.ps1` 이
 #   이 자리를 갱신하고 `check-global-copies.sh` 가 바이트로 잰다 — 재는 자가 붙은 사본이라 조용히 안 낡는다.
 Enter-Step 'assets'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # ⚠ **씨앗 넷은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 원본에 없는 파일을 안 지운다. 진본에서 부품
 #   하나를 걷어도 한 번 깐 기계에는 영영 남고, 씨앗은 있으면 복사되는 자리라 걷힌 것이 계속 새 프로젝트로 퍼진다(「값 파일 이름의 장부」
 #   칸의 「심기는 더하기만 한다」와 같은 병).
@@ -7646,6 +7707,7 @@ if ($pipPkgs) {
   }
 }
 
+} catch { Write-StepFault $_ }
 Exit-Step 'assets'
 
 # ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
@@ -7662,6 +7724,7 @@ Exit-Step 'assets'
 #   선다. 손이 칸을 읽어 도구마다 놓는다.
 
 Enter-Step 'tools'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 고른 도구와 고른 제품 — 손(`tool-homes.py`) · 설정 저장소의 배포(`deploy.ps1`) · 세션 훅이 같은 값을 읽는다. 제작자 칸은 어느
 # 도구 홈을 개인화할지를(결정 0107 · 0112), 고른 제품은 어느 도구에 우리 훅을 놓을지를(결정 0102) 정한다.
 foreach ($pv in @(@{ Name = 'PAISETUP_PERSONAL'; Value = $PersonalValue }, @{ Name = 'PAISETUP_PICK'; Value = $PickValue })) {
@@ -8082,6 +8145,7 @@ if ($sbxOn -or $sbxRows) {
 }
 $null = Save-PlantLedger $Ledger
 
+} catch { Write-StepFault $_ }
 Exit-Step 'tools'
 
 # ══ 걸음 「설정 저장소」 ═══════════════════════════════════════════════════════════════════════
@@ -8104,6 +8168,7 @@ Exit-Step 'tools'
 # 넘긴 뒤 저쪽이 드는 것은 사람에게 딸린 것뿐이다 — git 신원 · 형제 저장소 · 개인 키 · 규범·룰·메모리 배포. 회사 키·주소·프록시·
 #   Codex/안티그래비티 설정·확장·CLI 는 앞 걸음들이 이미 세웠고, 무엇을 깔지는 이 파일 하나가 든다(런타임을 두 번 깔지 않는다).
 Enter-Step 'repo'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 옛 판 훅을 든 받은 저장소 — 아래 넘길 자리를 고르는 줄이 채우고, 끝의 요약이 그 가운데 세션마다 도는 것을 알린다. 받은 저장소(`$got`)는
 #   걸음 끝의 작업 루트 훑기가 건너뛸 목록이라 칸이 비어도 서 있어야 한다.
 $oldHooks = @(); $got = @()
@@ -8353,11 +8418,14 @@ $scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny $ConfigSeedHo
 $plant = Invoke-Plant $bash $configRepoRoot
 if (-not $plant.Ran) { Write-Host "  ! 심기 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 못 심었다" -ForegroundColor Yellow }
 elseif (-not $plant.Ok) { $Fails.Add("심기 --plant ($($plant.Why))") }
-# ── 앞당겨 띄운 로그인 창을 거둔다 — 로그인 칸에 안 닿은 판(그 사이 git 이 안 닿았다)의 자리 ────────────────────────────────
+} catch { Write-StepFault $_ } finally {
+# ── 앞당겨 띄운 로그인 창을 거둔다 — 로그인 칸에 안 닿은 판(그 사이 git 이 안 닿았다 · 이 걸음이 도중에 멎었다)의 자리 ──────────────────
 # 로그인 칸이 답을 받았으면 비어 있어 아무것도 안 한다. 남았으면 저장소를 받을 길이 이미 끊긴 판이라 기다리지 않고 거두고 곁 파일을 지운다.
+# 걸음 경계의 `finally` 에 선다 — 걸음이 도중에 멎어도 숨은 자식이 띄운 로그인 창이 사람 앞에 남지 않는다.
 if ($script:GhLoginChild) {
   if ($script:GhLoginChild.Proc) { $null = Wait-GhLoginChild $script:GhLoginChild -Now }
   $script:GhLoginChild = $null
+}
 }
 Exit-Step 'repo'
 
@@ -8367,6 +8435,7 @@ Exit-Step 'repo'
 #   앞에서 받는 것 — 「키와 값」의 구독 로그인
 #   안 하는 것 — 꺼진 플러그인 켜기(사람 몫)
 Enter-Step 'register'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 
 # ── Anthropic 공식 스킬 — **자격이 설 자리가 다 선 뒤에 돈다** ────────────────────────
 # 「CLI」 걸음이 아니라 여기서 돈다 — CLI 를 깔자마자 붙이면 사외는 「사외 Claude 구독 로그인」 칸 전이고 사내는 「로컬 프록시」
@@ -8497,6 +8566,7 @@ if ($wantAgyDelegate -and -not $wantAgy) {
   Write-Host '  agy 가 로그인 전이면 터미널에서 agy 를 한 번 띄워 Google 계정으로 로그인한다'
 }
 
+} catch { Write-StepFault $_ }
 Exit-Step 'register'
 
 # ══ 마무리 ═════════════════════════════════════════════════════════════════════════════════════
@@ -8505,6 +8575,9 @@ Exit-Step 'register'
 #     실행 · 끝 검증 · 앱 열기 · 끝 줄 · 종료 코드
 #   앞에서 받는 것 — 앞 걸음 전부
 #   안 하는 것 — 없음
+#   경계 — 끝 검증 앞까지(임시 값 파일 · 기록 · 사용자 PATH · 아이콘 · 자동 실행)가 칸 「마무리」, 끝 검증의 재기가 칸 「검증」이다.
+#     둘 다 걸음과 같은 경계(`Write-StepFault`)를 둘러 마무리에서 진 것도 끝 검증을 안 빼고, 검증에서 진 것도 끝 줄 · 종료 코드를 안 뺀다
+try {  # 칸 경계 「마무리」 — 아래 catch 까지가 이 칸이다(`Write-StepFault`)
 # ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
 # 화면 껍데기도 지우지만 그 손은 제 프로세스가 살아 있을 때만 돈다 — 껍데기가 죽으면 평문 토큰이 든 파일이 `%TEMP%` 에
 #   눌러앉고, 다음 판은 PID 가 달라 그 이름을 다시 안 써 아무도 안 지운다. 그래서 몸통도 지운다 — 값을 다 읽은 자리가 가장
@@ -9488,6 +9561,8 @@ exit 0
   Write-Host '  부팅 시 자동 실행 — 이 PC 에서 꺼 두었다 (설치 창에서 칸을 켜고 설치하면 다시 건다)'
 }
 
+} catch { Write-StepFault $_ '마무리' }
+
 # ── 검증 — **재고 나서 말한다** ─────────────────────────────────────────────────
 # 안 재고 「됐다」로 끝내면 안 선 기계도 성공으로 보고된다 — 부재가 통과로 읽히는 것을 막는 것이 이 스크립트의 규율이라,
 #   마지막 칸이 그것을 든다.
@@ -9495,6 +9570,7 @@ exit 0
 #   판정이 참이 된다.
 Write-Host ''
 Write-Host '=== 검증 ===' -ForegroundColor Cyan
+try {  # 칸 경계 「검증」 — 아래 catch 까지가 재는 칸이다. 그 뒤의 셈 · 남은 것 줄 · 종료 코드는 진 판에도 돈다(`Write-StepFault`)
 # ⚠ **이름을 `$Planted` 와 갈라 둔다** — 파워셸 변수는 대소문자를 안 가려, 여기서 `$planted` 를 쓰면 「우리가 심은 것」이 「사용자
 #   환경 전부」로 갈리고, 그 뒤에 `$Planted` 를 읽는 줄이 들어오는 날 「우리가 심었나」가 「사용자 환경에 있나」로 조용히 바뀐다.
 $userEnv = [Environment]::GetEnvironmentVariables('User')
@@ -9518,8 +9594,7 @@ if ($hasCode) {
 }
 # 안 고른 것은 안 잰다 — 켜지도 않은 것을 [X] 로 찍으면 멀쩡한 설치가 빨갛게 끝난다. VS Code 도 고르는 것이라(사외 기본은
 #   「끔」) 그 문(`-not $NoVsCode`) 아래에서 잰다.
-# 확장과 CLI 는 깔 때 본 표 그대로 잰다 — 표에 한 줄을 더하면 검증도 따라온다.
-$checks = @()
+# 확장과 CLI 는 깔 때 본 표 그대로 잰다 — 표에 한 줄을 더하면 검증도 따라온다. 칸 목록(`$checks`)은 파일 머리가 비워 둔다.
 if (-not $NoVsCode) {
   if ($codeRuns -eq 'unmeasured') {
     $checks += @{ Name = 'VS Code'; State = 'unmeasured'; Probe = 'code --version' }
@@ -10000,6 +10075,7 @@ if ($repoUrl -or ((-not $inside) -and ($PickKeys -contains 'copilot'))) {
   $ghKr = Get-GhKeyringLines (Get-GhKeyringState) $ghTokVars
   foreach ($l in $ghKr.Lines) { Write-Host $l -ForegroundColor $(if ($ghKr.Ok) { 'Green' } else { 'Yellow' }) }
 }
+} catch { Write-StepFault $_ '검증' }
 # 판정 목록은 둘이다 — `$Fails` 는 「하는 걸음이 졌다」, `$checks` 는 「끝에 다시 재 봤다」. 종료코드는 둘 다 본다(맨 끝).
 # ⚠ **`$checks` 의 빨강을 종료코드에서 빼지 않는다** — `$Fails` 로 안 새는 자리가 있다: 자산 나르기(「공용 자산」 걸음)는 `$Fails` 에
 #   아무것도 안 넣고, 값 심기는 던졌을 때만 넣는데 검증은 레지스트리를 다시 읽는다. 그 자리는 검증만 빨개지므로, 빼면 빨간 검증이
