@@ -9,7 +9,10 @@
 #   그때 사람이 승인하면 지나간다. 묻는 까닭과 갈음할 길(게이트 몸통을 커밋과 떼어 바로 부르기)을 곁에 댄다.
 # ⚠ **git 명령과 그 글자가 함께 있을 때만** 문다 — `--no-verify` 를 설명하거나 찾는 명령
 #   (grep · echo)까지 물면 묻기가 잦아져 아무도 안 읽는다.
-j=$(cat)
+# ⚠ **셸 밖의 프로세스를 하나도 안 띄운다** — 회사에서는 프로세스 하나가 약 0.3 초이고 이 훅은 Bash 호출마다 돈다. 그래서 입력은
+#   `cat` 이 아니라 셸 `read` 로 받고, 등록(`.claude/settings.json`)은 이 파일을 실행하지 않고 점(`.`)으로 읽는다 — 실행하면
+#   `sh -c` 가 셔뱅으로 `sh` 를 하나 더 세운다. 점으로 읽히면 끝의 `exit 0` 이 훅을 끝낸다. 셔뱅은 직접 돌릴 때를 위해 둔다.
+j=; while IFS= read -r _l || [ -n "$_l" ]; do j="$j$_l"; done
 case "$j" in
   *git*--no-verify*|*git*core.hooksPath=*)
     printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"커밋 게이트를 건너뛰는 git 명령이다(--no-verify 또는 core.hooksPath 덮어쓰기). 갈음할 길 — 담은 채로 게이트 몸통을 커밋과 떼어 바로 부른다: sh .githooks/pre-commit (다른 사본의 게이트를 재려면 그 사본의 .githooks/pre-commit). 거기서 무엇이 막는지 보고 고친 뒤 그냥 커밋하고, 알면서 넘길 때만 승인한다."}}'
