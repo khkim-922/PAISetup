@@ -223,6 +223,11 @@ $Clis = @(
   # 브라우저 MCP 의 꾸러미 — 고른 제품이 `For` 가운데 하나라도 있으면 깐다. 그 제품들에 다는 서버(`playwright mcp`)가 이 전역
   #   꾸러미에 들어 있다(claude-config 결정 0149). 브라우저 받기와 등록은 「도구별 홈」 걸음의 「브라우저 MCP」 칸이 든다.
   @{ Key='playwright'; Pkg='playwright'; Cmd='playwright'; Label='Playwright (브라우저 MCP)'; For=@('claude','codex','antigravity') }
+  # Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로 그리는 손 — poppler 의 `pdftoppm`. 없으면 Read 가 「pdftoppm is not installed」로
+  #   지고, 사내 게이트웨이는 `document` 블록을 삼키므로 PDF 가 모델에 보이는 길은 그림뿐이다(claude-config #193 ③㉡ · 회사 실측
+  #   2026-10-18). winget 휴대용(zip · 사용자 범위)이라 승인이 안 들고, winget 이 패키지의 `bin` 자리를 사용자 PATH 에 심는다.
+  #   ⚠ `Arg='-v'` — pdftoppm 은 `--version` 을 모르는 옵션으로 받아 0 아닌 값을 내니, 그 자로 재면 「못 쟀다」로 접혀 영영 안 깔린다.
+  @{ Key='poppler'; Via='winget'; Cmd='pdftoppm'; Arg='-v'; Label='poppler (PDF 를 그림으로)'; Id='oschwartz10612.Poppler'; For=@('claude') }
   # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로는 lychee,
   #   마크다운 구조는 markdownlint-cli2 로 잰다(설정 저장소의 세션 훅도 둘을 까지만, 그 저장소를 안 붙인 PC 에도 서야 해서
   #   여기서도 깐다). lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 그 자리(`WinGet\Links`
@@ -497,6 +502,8 @@ function Get-Ver([string]$Cmd, [string]$Arg) {
           else { Invoke-LoggedCapped $Cmd @($Arg) $log $ProbeCap }
     if ($rc -eq -2) { Add-ProbeOverflow "$Cmd $Arg" $ProbeCap }
     $o = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })
+    # 판을 stderr 로 찍는 도구(poppler 의 pdftoppm)가 있다 — stdout 이 비면 stderr 쪽을 읽는다. 판정은 종료 코드가 들고 여기는 글자만 든다
+    if (-not $o.Count) { $o = @(Get-Content -LiteralPath "$log.err" -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() }) }
   } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
   $v = ("$(@($o) | Select-Object -First 1)").Trim()
   # 판 칸의 꼴을 다른 도구와 맞춘다 — 저쪽은 `Python 3.14.7` 처럼 이름을 들고 온다.
@@ -3594,16 +3601,17 @@ function Install-NpmCli($Rows) {
 
 # winget 이 내주는 CLI(`$Clis` 의 `Via='winget'` 행)를 재고 할 일대로 깔거나 올린다. 깔렸으면 프로그램처럼 「올릴 것」 목록이
 #   가른다(`Get-InstallAction`). 깔고도 이름이 안 서면 빨간 줄 · `$Fails` 다.
-#   재는 자는 `winget list` 가 아니라 `--version` 이다 — CLI 는 사람이 쓸 이름이 실제로 서는가가 판정이라(winget 이 「깔았다」 해도
+#   재는 자는 `winget list` 가 아니라 행의 `Arg`(없으면 `--version`)다 — CLI 는 사람이 쓸 이름이 실제로 서는가가 판정이라(winget 이 「깔았다」 해도
 #   PATH 에 안 서면 못 쓴다), GUI 라 PATH 로 못 재는 데스크탑 앱(`Measure-DesktopApp`)과 다르다. winget 밖의 길로 깐 `agy` 는
 #   winget 목록에 안 올라 「최신」으로 지나간다 — 도구는 멀쩡히 서 있으니 실패로 안 찍는다(`$Clis` 곁말).
-function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
+function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label, [string]$Arg = '--version') {
+  if (-not $Arg) { $Arg = '--version' }
   # ⚠ **못 쟀으면 깔지 않는다** — 넘김이나 선 이름의 실패를 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 · 0145 · 0151).
-  $cliRuns = Measure-Runs $Cmd '--version'
-  $b = if ($cliRuns -eq 'yes') { Get-Ver $Cmd '--version' } else { '' }
+  $cliRuns = Measure-Runs $Cmd $Arg
+  $b = if ($cliRuns -eq 'yes') { Get-Ver $Cmd $Arg } else { '' }
   $cliAct = Get-InstallAction $cliRuns $b '' (Get-Listed $Id) $true ($NoUpgrade -or $noWinget)
   if ($cliAct -eq 'hold') {
-    Add-UnmeasuredStep $Label "$Cmd --version" '깔지도 올리지도 않았다' '' "winget install --id $Id --force"
+    Add-UnmeasuredStep $Label "$Cmd $Arg" '깔지도 올리지도 않았다' '' "winget install --id $Id --force"
     return
   }
   if ($cliAct -eq 'present') { Write-Host "  $Label — 있음 $(Format-VerPart $b)"; return }
@@ -3611,7 +3619,7 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
   if ($cliAct -eq 'upgrade' -or $cliAct -eq 'upcheck') {
     Invoke-WingetUpgrade $Label $Id 'winget' $cliAct @("지금 $b")
     Update-RuntimePath
-    Write-UpgradeResult $Label $b (Get-Ver $Cmd '--version')
+    Write-UpgradeResult $Label $b (Get-Ver $Cmd $Arg)
     return
   }
   if ($cliAct -ne 'install') { return }
@@ -3625,8 +3633,8 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label) {
   $rc = Invoke-Logged 'winget' (@('install','--id',$Id) + $WG) $wl
   # 깐 직후에는 이 창이 그 자리를 모른다 — winget 이 portable 을 심으며 손댄 PATH 는 레지스트리에만 있다.
   Update-RuntimePath
-  if (Test-Runs $Cmd '--version') {
-    Write-Host "  $Label — 깔았다 $(Format-VerPart (Get-Ver $Cmd '--version'))" -ForegroundColor Green
+  if (Test-Runs $Cmd $Arg) {
+    Write-Host "  $Label — 깔았다 $(Format-VerPart (Get-Ver $Cmd $Arg))" -ForegroundColor Green
   } else {
     # 「됐다는데 안 잡힌다」를 「안 됐다」와 갈라 적는다 — winget 이 PATH 를 안 들어 준 자리이고, 다음에 어디를 팔지가 갈린다.
     Write-Host "  ! $Label — 설치가 $rc 로 끝났는데 $Cmd 가 안 잡힌다 — 뱉은 끝 줄:" -ForegroundColor Red
@@ -6023,7 +6031,7 @@ if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' 
 # npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
 $npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
 if ($npmCliPicks.Count) { Install-NpmCli $npmCliPicks }
-foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c.Id $c.Cmd $c.Label }
+foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c.Id $c.Cmd $c.Label $c.Arg }
 
 # 사외는 여기서 로그인 길을 댄다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다. 사내에서 심은 회사 연결이 남아 있으면 그
 #   로그인이 안 서는데, 그 연결은 「사내 연결」 걸음의 「Codex · 안티그래비티 설정」 칸이 걷고 못 걷으면 그 칸이 제 줄을 세운다.
@@ -9201,8 +9209,9 @@ foreach ($c in $CliPicks) {
     else                             { $checks += @{ Name = $c.Label; Ok = ($rec.State -eq 'yes') } }
     continue
   }
-  $cliRuns = Measure-Runs $c.Cmd '--version'
-  if ($cliRuns -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = "$($c.Cmd) --version" } }
+  $cliArg = if ($c.Arg) { $c.Arg } else { '--version' }
+  $cliRuns = Measure-Runs $c.Cmd $cliArg
+  if ($cliRuns -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = "$($c.Cmd) $cliArg" } }
   else                           { $checks += @{ Name = $c.Label; Ok = ($cliRuns -eq 'yes') } }
 }
 # 나르는 자리 — 「공용 자산」 걸음의 자산. 재는 자는 위 `New-CountCheck` 하나다. 규범 · 룰 · 에이전트 · 스킬은 손의 `check` 가, 칸 없이
