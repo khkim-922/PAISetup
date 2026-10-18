@@ -6844,7 +6844,7 @@ Exit-Step 'site'
 
 # ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
 #   층 — 홈
-#   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · 기본 권한 모드와 맡기기 러너 허락 ·
+#   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · 기본 권한 모드와 허용 규칙(러너 허락 포함) ·
 #     env 밀기와 걷기 · 걷힌 Tavily 안내 걷기. 심은 것은 장부(`$ClaudePlantLedger`)에 적고, 선언에서 빠진 우리 것은 장부로 걷는다
 #   앞에서 받는 것 — 「키와 값」의 심은 값(`$Planted`) · 값 파일(`$fromFile` · 짐의 값 파일 이름 `$DistNames` · 그 파일이 있나 `$DistComplete`) ·
 #     게이트웨이를 쓰나 · settings 에 안 밀 이름 · 회사 키로 아는 값(`Test-CompanyKey`) · 우리 게이트웨이 주소(`$OurGatewayUrls`) · 고른 제품
@@ -6907,7 +6907,7 @@ if (Test-Path -LiteralPath $homeCfg) {
   Write-Host '  없어서 씨앗을 깐다'
 }
 
-# ── 기본 권한 모드 · 맡기기 러너 허락 — 심는 표 (claude-config #147 · claude-config #142 ㉲)─────────────────────────────────────────
+# ── 기본 권한 모드 · 허용 규칙 — 심는 표 (claude-config #147 · claude-config #142 ㉲ · PAISetup #50)─────────────────────────────────────────
 # 기본 권한 모드(`permissions.defaultMode = auto` — 자동 모드)는 Claude 를 고르면 심는다. 서브에이전트가 묻지 않고 돌려면 이 모드가
 #   기본이어야 한다 — 편집 자동 승인(`acceptEdits`)은 허락 목록 밖 셸 명령마다 사람에게 물어 레인이 거기서 멈춘다. 회사 게이트웨이에서
 #   분류기 판정이 가끔 끊기는 값은 그보다 작다고 보았다(claude-config #180). 판이 값을 바꾸면 장부에 든 옛 우리 값 그대로인 것만 새 값으로
@@ -6915,6 +6915,11 @@ if (Test-Path -LiteralPath $homeCfg) {
 #   스킬이 시킨 호출마다 묻거나(편집 자동 승인) 분류기가 막는다(자동 모드 · claude-config #142).
 # ⚠ **스킬이 Claude 에게 시키는 꼴(`pythonw "<스킬 폴더>/scripts/<러너>" …`)만 연다** — `python` 꼴을 열면 `python -c "…" agy_bg.py`
 #   처럼 러너가 아닌 명령까지 분류기를 건너뛴다. 스킬 폴더는 홈마다 달라 `*` 로 파일 이름만 문다.
+# 끝의 일곱 줄(`허용 규칙 — …`)은 러너와 상관없이 Claude 를 고른 모든 PC 에 심는다 — 자동 모드는 허용 목록에 안 맞는 도구 호출마다 분류기를 타는데
+#   좁은 허용 규칙은 분류기 앞에서 풀려 그 시간을 던다. 연 것은 읽기 전용이거나 로컬에서 멱등인 꼴(이슈 읽기 · 원격 추적 참조만 바꾸는 `git fetch` ·
+#   별표 없는 버전 · 도움말 명령 · 임시 폴더 읽기)뿐이고, 도구가 없는 PC 에서는 맞는 호출이 없어 해롭지 않으니 조건은 Claude 를 고른 것 하나다.
+# ⚠ **쓰기 동사와 해석기 와일드카드는 이 표에 안 든다** — `gh issue comment` · `git push` · `python -c` 꼴을 규칙으로 열면 분류기를 건너뛰어 그대로
+#   돈다. 접두 규칙이 못 막는 깃발(`git fetch --upload-pack=<명령>`)이 남는 줄은 알고 연다. `Label` 은 설치 창과 끝 검증이 그 줄을 부르는 이름이다.
 # ⚠ **우리 것은 장부에 든 것뿐이다** — 사람이 그 모드를 고르면 Claude 도 같은 값을 적어, 값이 같다는 것으로는 못 가른다. 그래서 없을
 #   때만 심고 그때 적는다(guard 꼴 · 같은 값을 우리 것으로 안 받는다). 조건이 빠지면 장부에 든 것 가운데 지금 값이 우리 값 그대로인 것만
 #   걷고, 사람이 바꾼 것은 값을 두고 장부에서만 뺀다. 장부에 있는데 이 표에 없는 줄(물러난 것)도 같은 자로 걷는다. 지워진 것은 다음
@@ -6927,6 +6932,13 @@ $ClaudeHomePlants = @(
      Want = [bool]($FreeSkills -and $FreeSkills['agy-background'].Claude) }
   @{ Label = 'Codex · Copilot 러너 허락'; Key = 'allow';       Value = 'Bash(pythonw *codex_copilot_bg.py *)'
      Want = [bool]($FreeSkills -and $FreeSkills['codex-copilot-background'].Claude) }
+  @{ Label = '허용 규칙 — gh issue view (읽기)';     Key = 'allow'; Value = 'Bash(gh issue view *)';           Want = [bool]$hostClaude }
+  @{ Label = '허용 규칙 — git fetch (원격 추적만)';  Key = 'allow'; Value = 'Bash(git fetch *)';               Want = [bool]$hostClaude }
+  @{ Label = '허용 규칙 — codex --version';          Key = 'allow'; Value = 'Bash(codex --version)';           Want = [bool]$hostClaude }
+  @{ Label = '허용 규칙 — agy --version';            Key = 'allow'; Value = 'Bash(agy --version)';             Want = [bool]$hostClaude }
+  @{ Label = '허용 규칙 — agy --help';               Key = 'allow'; Value = 'Bash(agy --help)';                Want = [bool]$hostClaude }
+  @{ Label = '허용 규칙 — Git Bash 임시 폴더 읽기';  Key = 'allow'; Value = 'Read(//tmp/**)';                  Want = [bool]$hostClaude }
+  @{ Label = '허용 규칙 — 윈도 임시 폴더 읽기';      Key = 'allow'; Value = 'Read(~/AppData/Local/Temp/**)';   Want = [bool]$hostClaude }
 )
 
 # 맡기기 러너 값 — 이름마다 두 자리 표가 그 이름에 준 값들(이름 → 값 목록 · `Get-SiteValues`). 아래 「env 밀기」가 이 이름들을 안 밀고,
@@ -7001,7 +7013,7 @@ if ($cfg) {
     Write-Host '  WebFetch 검증 건너뛰기 — 걷었다 (사외는 그 검사가 선다)' -ForegroundColor Green
   }
 
-  # 기본 권한 모드 · 맡기기 러너 허락 — 위 표(`$ClaudeHomePlants`)대로 장부 손이 심고 장부에 든 우리 것만 걷는다(guard 꼴 · 표의 값이 바뀌면
+  # 기본 권한 모드 · 허용 규칙 — 위 표(`$ClaudeHomePlants`)대로 장부 손이 심고 장부에 든 우리 것만 걷는다(guard 꼴 · 표의 값이 바뀌면
   #   장부의 옛 우리 값 그대로인 것만 새 값으로 간다). `permissions` 가 표가 아니거나 `allow` 가 목록이 아니면 그 칸을 안 건드리고 장부는
   #   잇는다 — 사람이 고친 뒤 다음 설치가 맞춘다. 장부는 설정을 쓴 뒤에 쓴다(이 걸음 끝).
   $permWant = [ordered]@{}; $allowWant = [ordered]@{}
@@ -7021,19 +7033,27 @@ if ($cfg) {
           -Get $PermGet -Set { param($n, $v) (& $PermBox) | Add-Member -NotePropertyName defaultMode -NotePropertyValue $v -Force; $true } `
           -Remove { param($n, $v) $cfg.permissions.PSObject.Properties.Remove('defaultMode'); & $PermTidy; $true } `
           -Label @{ 'permissions.defaultMode' = '기본 권한 모드' } -Where 'permissions.defaultMode' -Speak -SayKept -ShowValue
+  # 허용 줄은 줄마다 표의 `Label` 로 알린다 — `Sync-Planted` 의 이름표는 이름(`permissions.allow`) 하나뿐이라 줄을 못 가른다. 그래서 `-Speak` 를
+  #   빼고 심고 걷는 손이 찍는다. 표에 없는 줄(물러난 것)과 칸 전체의 말(못 읽음 · 사람이 걷어 둠)은 이름표 `Claude 허용 규칙` 이다.
+  $AllowSay = {
+    param([string]$v, [bool]$planted)
+    $row = @($ClaudeHomePlants | Where-Object { $_.Key -ceq 'allow' -and $_.Value -ceq $v }) | Select-Object -First 1
+    $what = if ($planted) { "심었다 ($v)" } else { "걷었다 (우리가 심은 $v · 이번에는 안 심는다)" }
+    Write-Host "  $(if ($row) { $row.Label } else { 'Claude 허용 규칙' }) — $what (permissions.allow)" -ForegroundColor Green
+  }
   $pa = Sync-Planted -Ledger $Ledger -Place 'settings' -At $homeAt -By 'permissions' -Names @('permissions.allow') -Want $allowWant -Mode 'guard' -List `
           -Get $PermGet `
-          -Set { param($n, $v) $box = & $PermBox; $box | Add-Member -NotePropertyName allow -NotePropertyValue @(@($box.allow | Where-Object { $null -ne $_ }) + $v) -Force; $true } `
+          -Set { param($n, $v) $box = & $PermBox; $box | Add-Member -NotePropertyName allow -NotePropertyValue @(@($box.allow | Where-Object { $null -ne $_ }) + $v) -Force; & $AllowSay $v $true; $true } `
           -Remove {
             param($n, $v)
             $left = @(@($cfg.permissions.allow) | Where-Object { $null -ne $_ -and $_ -cne $v })
             if ($left.Count) { $cfg.permissions | Add-Member -NotePropertyName allow -NotePropertyValue $left -Force }
             else { $cfg.permissions.PSObject.Properties.Remove('allow') }
-            & $PermTidy; $true } `
-          -Label @{ 'permissions.allow' = '맡기기 러너 허락' } -Where 'permissions.allow' -Speak -SayKept
+            & $PermTidy; & $AllowSay $v $false; $true } `
+          -Label @{ 'permissions.allow' = 'Claude 허용 규칙' } -Where 'permissions.allow' -SayKept
   if ((& $HomeChanged $pm) -or (& $HomeChanged $pa)) { $dirty = $true }
   elseif (@($ClaudeHomePlants | Where-Object { $_.Want }).Count -and -not ($pm.Kept.Count + $pm.Unread.Count + $pa.Unread.Count)) {
-    Write-Host '  기본 권한 모드 · 러너 허락 — 이미 맞다'
+    Write-Host '  기본 권한 모드 · 허용 규칙 — 이미 맞다'
   }
 
   # 러너 값 사본 — 이 파일에 맡기기 러너 이름(`$RunnerEnvValues`)이 있으면 판마다 맞춘다. 이 칸은 그 이름을 안 밀지만, 그 이름을
@@ -9275,7 +9295,7 @@ if ($inside) {
   try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
-# 기본 권한 모드 · 러너 허락 — 「Claude 홈 설정」의 표(`$ClaudeHomePlants`)에서 이번에 심을 것을 되읽는다. 기본 권한 모드는 키가 서 있으면
+# 기본 권한 모드 · 허용 규칙 — 「Claude 홈 설정」의 표(`$ClaudeHomePlants`)에서 이번에 심을 것을 되읽는다. 기본 권한 모드는 키가 서 있으면
 #   [O] 다 — 사람이 정한 값은 그 사람의 기본값이라 안 덮고, 줄에 그 값을 적는다.
 $planCfg = $null
 try { $planCfg = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
