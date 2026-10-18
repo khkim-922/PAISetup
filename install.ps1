@@ -9348,10 +9348,9 @@ if ($Night) {
 # ⚠ **자식의 stderr 도 같은 줄로 받는다(`2>&1`)** — 잡히지 않은 예외로 죽은 설치는 그 글을 stderr 로만 내므로, 안 받으면 로그에
 #   종료 코드만 남는다. 이 부름만 `Continue` 아래서 돈다 — 이 몸통의 `SilentlyContinue` 아래서는 `2>&1` 이 stderr 줄을 로그에도
 #   창에도 안 남기고 버린다. 그 줄은 오류 레코드로 오지만 `Stop` 이 아니라 회차를 안 끊는다(설치기의 `2>&1` 금지는 `Stop` 아래 이야기다).
-& {
-  $ErrorActionPreference = 'Continue'
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch @runArgs 2>&1
-} | ForEach-Object {
+#   `Continue` 는 같은 줄에서 세운다 — 배포본 뽑기의 건넴 전 문이 같은 줄만 보고 `2>&1` 을 살린다.
+& { $ErrorActionPreference = 'Continue'; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch @runArgs 2>&1 } |
+  ForEach-Object {
     Write-Host $_
     Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8
   }
@@ -9640,8 +9639,8 @@ foreach ($a in $envAssets) {
     $saveOut = [Console]::OutputEncoding
     try {
       [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
-      $tracked = @(& git -C $ownDir -c core.quotepath=false ls-files 2>$null)
-      if ($LASTEXITCODE -ne 0) { $tracked = $null }
+      try { $tracked = @(& git -C $ownDir -c core.quotepath=false ls-files 2>$null) } catch { $tracked = $null }
+      if ($null -ne $tracked -and $LASTEXITCODE -ne 0) { $tracked = $null }
     } catch { $tracked = $null } finally { [Console]::OutputEncoding = $saveOut }
     if ($null -eq $tracked) {
       $checks += @{ Name = "$($a.Name) (설정 저장소가 든다 · $($a.Owner))"; State = 'unmeasured'; Probe = "git -C `"$ownDir`" ls-files"
