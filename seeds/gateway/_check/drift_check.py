@@ -2,13 +2,18 @@
 
     python -X utf8 _check/drift_check.py <앱 나무>            # 그 앱의 app/ 과 이 씨앗을 견준다
 
-**왜 있나.** 씨앗은 복사해 출발하는 밑판이라 앱은 갈려도 된다 — 다만 **왜 갈렸나를 모른 채**
-갈리는 것이 문제다. 이 자는 갈린 자리를 이름으로 세워 사람이 판정할 목록을 준다:
-같음(코드가 같다) · 갈림(코드가 다르다 — 왜인지 그 자리의 곁말이 들어야 한다) · 없음(한쪽에만
-있다). **판정은 안 낸다.** 갈림이 곧 결함이 아니고, 같음이 곧 맞음도 아니다.
+내는 것 — 이름마다 한 줄(같음 · 갈림(닮은 정도) · 없음(앱))과 합계. 종료 0 견줬다(판정은 안 낸다) ·
+2 못 쟀다(인자가 하나가 아니다 — 이 도움말을 찍는다 · 앱 나무에 app/ 이 없다).
+견주는 짝은 씨앗 `app/gateway.py` ↔ 앱 `app/gateway.py`+`app/config.py`, 씨앗 `app/providers.py` ↔ 앱
+`app/providers.py` 다. 맨 윗자리의 함수와 대문자 상수만 세고, 함수는 머리 독스트링을 걷고 견준다.
 
-⚠ 이름으로 세우므로 **한쪽에만 이름이 있는 값과 손글자는 안 잡힌다** — 그 자리는 절을 통째로
-  읽는 수밖에 없다(claude-config 스킬 `borrow-spec-as-pair` 1절).
+왜 있나 — 씨앗은 복사해 출발하는 밑판이라 앱은 갈려도 된다. 다만 **왜 갈렸나를 모른 채**
+갈리는 것이 문제다. 이 자는 갈린 자리를 이름으로 세워 사람이 판정할 목록을 준다:
+같음(코드가 같다) · 갈림(코드가 다르다 — 왜인지 그 자리의 곁말이 들어야 한다) · 없음(씨앗에만
+있다 · 앱에만 있는 이름은 수만 센다). 판정은 안 낸다 — 갈림이 곧 결함이 아니고, 같음이 곧 맞음도 아니다.
+
+이름으로 세우므로 한쪽에만 이름이 있는 값과 손글자는 안 잡힌다 — 그 자리는 절을 통째로
+읽는 수밖에 없다(claude-config 스킬 `borrow-spec-as-pair` 「낱말이 아니라 자리로 읽는다」).
 """
 import ast
 import difflib
@@ -24,6 +29,11 @@ PAIRS = [("gateway.py", ("gateway.py", "config.py")), ("providers.py", ("provide
 
 
 def defs(path):
+    """원문 한 장의 맨 윗자리 이름들 — ({함수: (줄, 원문)}, {대문자 상수: (줄, 값 원문)}).
+
+    함수는 머리 독스트링을 걷고 `ast.unparse` 로 다시 쓴 원문이라 주석 · 띄어쓰기는 견주기에 안 든다.
+    클래스 · async 함수 · 주석 단 대입(`X: int = …`)은 안 센다.
+    """
     src = io.open(path, encoding="utf-8").read()
     tree = ast.parse(src)
     fns, consts = {}, {}
@@ -42,6 +52,7 @@ def defs(path):
 
 
 def compare(kind, ours, theirs, seed_file, app_file):
+    """두 이름표를 맞대 (이름, 갈래, 씨앗 자리, 앱 자리) 줄들을 이름 차례로 낸다 — 갈림은 줄 단위 닮은 정도를 단다."""
     rows = []
     for name in sorted(set(ours) | set(theirs)):
         if name not in theirs:
@@ -59,6 +70,7 @@ def compare(kind, ours, theirs, seed_file, app_file):
 
 
 def main(app_root):
+    """짝마다 견준 줄과 합계를 찍고 종료 값을 낸다 — 0, 또는 `app/` 이 없으면 2."""
     app = Path(app_root).resolve() / "app"
     if not app.is_dir():
         print(f"앱 나무에 app/ 이 없다: {app}", file=sys.stderr)

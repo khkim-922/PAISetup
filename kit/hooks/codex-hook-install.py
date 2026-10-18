@@ -24,7 +24,9 @@
 사라진 채 쓰이는 일은 없다 — 그 자리는 쓰지 않고 오류로 끝난다.
 ⚠ **다시 지은 배열의 글꼴은 바뀐다** — 그 배열 안의 주석(주석으로 막아 둔 항목 포함)은 뜻이 아니라 TOML 이 안 든다.
   그래서 고쳐 쓰기 전에 원본을 곁에 떠 둔다(`BACKUP=`). 뜬 원본은 판마다 제 이름을 얻어, 같은 초에 두 번 돌아도
-  앞 판의 원본을 덮지 않는다(`backup_copy`).
+  앞 판의 원본을 덮지 않는다(`backup_copy`). 원본은 쓴 판에만 남고(못 쓰는 설정이면 뜨지 않고, 쓰기가 지면 뜬 것을 걷는다)
+  같은 설정 · 같은 머리의 원본은 새것부터 `BACKUP_KEEP` 개만 둔다(`replace_with_backup`) — 판마다 고쳐 쓰는 자리(회사 틀
+  병합기의 사내 ↔ 사외)에서 원본이 끝없이 쌓이지 않는다.
 
 **못 알아보는 꼴은 안 건드린다.** 훅을 `[hooks]` 표의 `이벤트 = [ … ]` 가 아닌 꼴(`[[hooks.이벤트]]` · 맨 위의
 점 이름 · 인라인 표)로 적은 설정은 줄 위치를 확정할 수 없다. 그 이벤트는 건너뛰고 까닭을 낸다.
@@ -37,6 +39,7 @@
 """
 
 import argparse
+import contextlib
 import copy
 import datetime
 import itertools
@@ -64,6 +67,8 @@ NESTED_HOOKS_KEY = 'hooks'
 PLACEHOLDER = {NESTED_HOOKS_KEY: []}   # 예시가 버린 우리 항목의 자리를 잇는 빈 항목 — 맨 위 「있던 항목은 제자리를 지킨다」
 BOM = '﻿'
 BACKUP_SUFFIX = '.before-hooks-'
+BACKUP_TIME = '%Y%m%d-%H%M%S'   # 원본 이름의 시각 꼴 — `backup_copy` 가 짓고 `prune_backups` 가 읽는다
+BACKUP_KEEP = 5                 # 같은 설정 · 같은 머리의 원본을 새것부터 몇 개 두나
 
 KEY_HEAD = re.compile(r'^\s*([A-Za-z0-9_-]+)\s*=\s*')
 # 맨 위에서 `hooks` 를 표 머리 없이 정의하는 꼴 — 점 이름(`hooks.x = …`)과 인라인 표(`hooks = { … }`)
@@ -432,11 +437,16 @@ def backup_copy(config, suffix=BACKUP_SUFFIX):
 
     ⚠ **시각은 초 단위라 같은 초의 두 판은 같은 이름을 고른다** — 그대로 쓰면 뒤 판이 앞 판의 원본을 덮고, 사용자의
       고치기 전 설정이 소리 없이 사라진다. 그래서 「없을 때만 만든다」로 열고, 있으면 다음 번호로 간다 — 두 프로세스가
-      겹쳐도 한 이름은 하나만 얻는다. 심볼릭 링크면 가리키는 파일 곁에 링크의 이름으로 뜬다.
+      겹쳐도 한 이름은 하나만 얻는다. 번호는 같은 초의 원본 가운데 가장 큰 번호 다음에서 연다 — `prune_backups` 가 걷은 빈
+      번호를 다시 쓰면 새 원본이 가장 옛것으로 읽혀 바로 걷힌다. 심볼릭 링크면 가리키는 파일 곁에 링크의 이름으로 뜬다.
     """
     src = config.resolve()
-    base = src.with_name(config.name + suffix + datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
-    for n in itertools.count(1):
+    head = config.name + suffix
+    stamp = datetime.datetime.now().strftime(BACKUP_TIME)
+    base = src.with_name(head + stamp)
+    when = datetime.datetime.strptime(stamp, BACKUP_TIME)
+    used = [o[1] for o in (backup_order(p.name, head) for p in src.parent.iterdir()) if o and o[0] == when]
+    for n in itertools.count(max(used, default=0) + 1):
         path = base if n == 1 else base.with_name(f'{base.name}-{n}')
         try:
             out = open(path, 'xb')
@@ -451,6 +461,60 @@ def backup_copy(config, suffix=BACKUP_SUFFIX):
                 os.remove(path)
             raise
         return path
+
+
+def backup_order(name, head):
+    """`backup_copy` 가 지은 이름이면 그 차례 `(시각, 번호)`, 아니면 None — 머리 뒤의 꼬리가 `<시각>` 이거나 `<시각>-<번호>` 다."""
+    if not name.startswith(head):
+        return None
+    tail = name[len(head):]
+    tries = [(tail, '1')]
+    if '-' in tail:
+        tries.append(tuple(tail.rsplit('-', 1)))
+    for stamp, n in tries:
+        if not n.isdigit():
+            continue
+        try:
+            return datetime.datetime.strptime(stamp, BACKUP_TIME), int(n)
+        except ValueError:
+            continue
+    return None
+
+
+def prune_backups(config, suffix=BACKUP_SUFFIX, keep=BACKUP_KEEP):
+    """같은 설정 · 같은 머리의 원본을 새것부터 `keep` 개만 두고 걷는다. 이름 꼴이 다른 파일은 사람 것이라 둔다 ·
+    못 걷는 것은 넘어간다(다음 판이 다시 걷는다)."""
+    src = config.resolve()
+    head = config.name + suffix
+    ours = []
+    for p in src.parent.iterdir():
+        order = backup_order(p.name, head)
+        if order is not None and p.is_file() and not p.is_symlink():
+            ours.append((order, p))
+    for _, p in sorted(ours, reverse=True)[keep:]:
+        with contextlib.suppress(OSError):
+            p.unlink()
+
+
+def replace_with_backup(config, text, suffix=BACKUP_SUFFIX):
+    """있는 설정의 원본을 떠 둔 뒤 고쳐 쓰고 원본 자리를 돌려준다 — 원본은 쓴 판에만 남는다.
+
+    ⚠ **못 쓰는 설정(읽기 전용)은 뜨기 전에 던진다** — 안 그러면 판마다 원본만 쌓이고 쓰기는 늘 진다. 그 밖의 까닭으로
+      쓰기가 지면 뜬 원본을 걷고 던진다(설정은 그대로라 원본이 남을 까닭이 없다). 쓰고 나면 같은 머리의 원본을 새것부터
+      `BACKUP_KEEP` 개만 둔다. 심볼릭 링크면 가리키는 파일을 묻는다.
+    """
+    target = config.resolve() if config.is_symlink() else config
+    if not os.access(target, os.W_OK):
+        raise PermissionError(f'설정이 읽기 전용이라 고쳐 쓸 수 없다 — 원본도 안 떴다({target})')
+    bak = backup_copy(config, suffix)
+    try:
+        write_atomic(config, text)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(bak)
+        raise
+    prune_backups(config, suffix)
+    return bak
 
 
 def main():
@@ -473,8 +537,8 @@ def main():
                 wanted_text = f.read()
             new, changed, skipped = merge(current, wanted_text)
         if changed and config.exists():
-            print('BACKUP=' + str(backup_copy(config)))
-        if changed:
+            print('BACKUP=' + str(replace_with_backup(config, new)))
+        elif changed:
             write_atomic(config, new)
         if skipped:
             print('SKIP=' + ','.join(skipped))

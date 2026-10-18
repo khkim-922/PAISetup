@@ -3,8 +3,8 @@
 층 — 쓰는 사람의 계약(회사 PC 에서 상태 문이 넘어지지 않고 까닭을 말한다)
 걷는 조건 — 배관의 `_probe` 가 TLS 실패의 까닭을 더는 가르지 않거나, 앱이 OS 신뢰 저장소(truststore)를 안 끼면 걷는다
 
-좌표 — 배관 씨앗은 claude-config 결정 0033 · 사본 규율은 0040 · 남기고 걷는 기준은 0148(스킬 check-design) — 전제를
-재던 두 절과 닫힌 표 대조를 걷은 판정은 atelier #445(레인 B1) · 지키는 결함은 AI-prompt-helper #183.
+좌표 — 배관 씨앗은 claude-config 결정 0033 · 사본 규율은 0040 · 남기고 걷는 기준은 0148(스킬 check-design) — 이
+검사가 드는 판정의 범위는 atelier #445(레인 B1) · 지키는 결함은 AI-prompt-helper #183.
 
     python -X utf8 _check/probe_words_check.py
 
@@ -15,20 +15,20 @@
 
 **왜 이 검사가 있나.** `gateway._probe` 는 *"인증서를 검사 장비가 갈아 끼웠을 수 있어요"* 라고 말하려고 있는
 함수다(사내 SSL 검사 장비가 바깥 도메인을 가로채 파이썬만 죽는 그 자리). 그 말의 괄호 안을 채우는 칸이
-**검증기마다 다르다**:
+검증기마다 다르다:
 
   · OpenSSL 이 직접 거부      → `reason` 이 찬다 (`CERTIFICATE_VERIFY_FAILED`)
-  · OS 신뢰 저장소를 낀 갈래   → 예외를 **손으로 지어** `verify_message`·`verify_code` 만
-                                 달고 **`reason` 은 속성 자체가 없다**
+  · OS 신뢰 저장소를 낀 갈래   → 예외를 손으로 지어 `verify_message`·`verify_code` 만
+                                 달고 `reason` 은 속성 자체가 없다
 
-`e.reason` 을 바로 읽으면 뒤엣 갈래에서 `AttributeError` 가 나고, 그것이 `except` 절 **안**에서 난 예외라 뒤의
-`except OSError` 가 안 받아 `_probe` 밖으로 나간다 — **까닭을 말하려던 자리가 말 대신 넘어지고** 상태
+`e.reason` 을 바로 읽으면 뒤엣 갈래에서 `AttributeError` 가 나고, 그것이 `except` 절 안에서 난 예외라 뒤의
+`except OSError` 가 안 받아 `_probe` 밖으로 나간다 — 까닭을 말하려던 자리가 말 대신 넘어지고 상태
 문(`/api/status`)이 500 이 된다.
 
-⚠ **깨지는 자리와 도는 자리가 갈린다.** 리눅스에서는 OS 신뢰 저장소를 끼워도 OpenSSL 판정이 그대로 남아 `reason`
-  이 차므로 **아무리 돌려도 안 보인다.** 그래서 OS 갈래는 그 예외를 흉내 내 실물 `_probe` 의 `except` 절에 먹인다.
+⚠ **깨지는 자리와 도는 자리가 갈린다** — 리눅스에서는 OS 신뢰 저장소를 끼워도 OpenSSL 판정이 그대로 남아 `reason`
+  이 차므로 아무리 돌려도 안 보인다. 그래서 OS 갈래는 그 예외를 흉내 내 실물 `_probe` 의 `except` 절에 먹인다.
 
-**무는 것 둘**
+무는 것 둘:
   까닭 고르기 — `gateway._ssl_why` 가 칸마다 무엇을 고르나(넘어지는 것까지 값으로 받는다)
   실물 말     — 실물 `gateway._probe` 가 갈래 다섯에서 넘어지지 않고 말을 내나
 """
@@ -52,8 +52,8 @@ from _plumb import gateway  # noqa: E402 — 배관은 선언이 고른다
 print("까닭 고르기 — gateway._ssl_why 가 칸마다 무엇을 고르나")
 why_of = getattr(gateway, "_ssl_why", None)
 report("까닭을 고르는 자가 있다 (gateway._ssl_why)", callable(why_of),
-       ["없으면 `except ssl.SSLError` 가 e.reason 을 바로 읽던 그 판이다 —",
-        "OS 검증기를 끼우는 날 AttributeError 로 넘어진다"])
+       ["없으면 `except ssl.SSLError` 가 e.reason 을 바로 읽는 꼴이다 —",
+        "OS 검증기를 끼우면 AttributeError 로 넘어진다"])
 
 if callable(why_of):
     def err(**kw):
@@ -63,9 +63,9 @@ if callable(why_of):
         return e
 
     def why(e):
-        """`_ssl_why` 를 부르되 **넘어지는 것까지 값으로 받는다.**
+        """`_ssl_why` 를 부르되 넘어지는 것까지 값으로 받는다 — 고른 글자, 또는 `<넘어졌다: 예외 이름: 말>`.
 
-        `e.reason` 직독 꼴이 살아 있으면 바로 아래 줄에서 `AttributeError` 가 난다. 그대로 두면 이 검사가 판정
+        `e.reason` 직독 꼴이 살아 있으면 `why_of(e)` 안에서 `AttributeError` 가 난다. 그대로 두면 이 검사가 판정
         대신 역추적을 뱉고 거기서 죽어 실물 말 절이 한 줄도 안 돌고, 종료코드 1 이 「어긋났다」와 「검사가
         죽었다」를 뭉갠다. 넘어진 것도 값이라 표에 세워 빨강으로 받고, 뒤엣 갈래는 계속 잰다.
         """
@@ -89,7 +89,7 @@ if callable(why_of):
     # 여느 OSError 가지 — 인자 두 칸으로 서면 strerror 가 말을 든다
     show("두 칸 꼴은 strerror 가 든다", why(ssl.SSLError(1, "악수가 끊겼다")), "악수가 끊겼다")
     # 아무 칸도 없으면 인자 첫 칸 — ⚠ `str(e)` 면 여기서 `"('악수가 끊겼다',)"` 가 나온다.
-    # `ssl.SSLError` 가 인자 하나짜리를 튜플째 찍어 **괄호 안에 파이썬 문법이 샌다.**
+    # `ssl.SSLError` 가 인자 하나짜리를 튜플째 찍어 괄호 안에 파이썬 문법이 샌다.
     show("칸이 하나도 없으면 인자 첫 칸", why(ssl.SSLError("악수가 끊겼다")), "악수가 끊겼다")
     show("  그 자리에 튜플 문법이 안 샌다", "(" in why(ssl.SSLError("악수가 끊겼다")), False)
     show("인자도 없으면 SSL", why(ssl.SSLError()), "SSL")
@@ -103,7 +103,7 @@ CLIENT_HELLO_WAIT_S = 3
 
 
 def plaintext_listener(reply=b"HTTP/1.1 400 Bad Request\r\n\r\n"):
-    """루프백에 **평문으로** 듣는 자리 하나 — (소켓, 포트).
+    """루프백에 평문으로 듣는 자리 하나 — (소켓, 포트). 곁줄기 하나가 첫 연결을 받아 `reply` 를 보내고 닫는다.
 
     자가서명 인증서를 굽지 않는 까닭: 그러려면 `openssl` 실행 파일이나 선언 안 된 의존이
     있어야 하는데 **씨앗 배관에는 실행 의존이 없고**, 이 결함이 사는 자리가 하필 윈도우라
@@ -111,12 +111,12 @@ def plaintext_listener(reply=b"HTTP/1.1 400 Bad Request\r\n\r\n"):
     거부하면 `ssl.SSLError` 가 `reason`(`WRONG_VERSION_NUMBER`)을 달고 온다 — 여기 필요한
     것은 그 「reason 이 찬 꼴」 하나다.
 
-    ⚠ **답하기 전에 ClientHello 를 먼저 읽는다.** 안 읽은 수신 버퍼를 둔 채 닫으면 TCP 는
-      FIN 이 아니라 RST 로 끊고, **윈도우는 그 RST 를 받은 쪽에 이미 와 있던 바이트를
-      버린다** — 방금 보낸 400 이 사라져 OpenSSL 이 읽을 것이 없고, `SSLError` 대신
+    ⚠ **답하기 전에 ClientHello 를 먼저 읽는다** — 안 읽은 수신 버퍼를 둔 채 닫으면 TCP 는
+      FIN 이 아니라 RST 로 끊고, 윈도우는 그 RST 를 받은 쪽에 이미 와 있던 바이트를
+      버린다. 방금 보낸 400 이 사라져 OpenSSL 이 읽을 것이 없고, `SSLError` 대신
       `ConnectionAbortedError(10053)` 이 올라와 `except OSError` 로 샌다. 그러면 이
-      기준선은 악수 실패가 아니라 **연결 끊김**을 재게 된다. 먼저 비워 두면 닫기가 어느
-      OS 에서든 그냥 FIN 이라, **이 함수는 OS 를 안 가른다.**
+      기준선은 악수 실패가 아니라 연결 끊김을 재게 된다. 먼저 비워 두면 닫기가 어느
+      OS 에서든 그냥 FIN 이라, 이 함수는 OS 를 안 가른다.
     """
     srv = socket.socket()
     srv.bind(("127.0.0.1", 0))
@@ -147,7 +147,7 @@ def plaintext_listener(reply=b"HTTP/1.1 400 Bad Request\r\n\r\n"):
 print("\n실물 말 — 실물 _probe 가 갈래마다 말을 내나 (루프백만 · 바깥으로 안 나간다)")
 srv, port = plaintext_listener()
 try:
-    # 기준선 ① — **진짜** 악수 실패. reason 이 찬 꼴이 그대로 말에 실리나.
+    # 기준선 ① — 진짜 악수 실패. reason 이 찬 꼴이 그대로 말에 실리나.
     ok, why = gateway._probe(f"https://127.0.0.1:{port}/")
     show("진짜 악수 실패 — 안 닿았다고 한다", ok, False)
     show("  그 까닭이 말에 실린다", "WRONG_VERSION_NUMBER" in why, True)
@@ -156,7 +156,7 @@ try:
 finally:
     srv.close()
 
-# 기준선 ② — **음성 대조.** 평문(http)은 악수를 안 하므로 이 갈래로 안 온다. 이 줄이
+# 기준선 ② — 음성 대조. 평문(http)은 악수를 안 하므로 이 갈래로 안 온다. 이 줄이
 # 없으면 위 초록이 「늘 그렇게 말한다」인지 「악수 갈래에서만 그렇다」인지 못 가른다.
 srv2, port2 = plaintext_listener()
 try:
@@ -165,11 +165,11 @@ try:
 finally:
     srv2.close()
 
-# 기준선 ③ — **아무도 안 듣는 자리.** 열리지도 않았으니 악수 이야기가 나오면 안 된다.
-# ⚠ **어느 갈래로 오나는 OS 가 정한다.** 리눅스는 곧바로 거절(`ConnectionRefusedError`)이
-#   오지만 **윈도우는 닫힌 루프백 포트에도 SYN 을 되쏘아 두어 초를 쓴다** — 손잡이
+# 기준선 ③ — 아무도 안 듣는 자리. 열리지도 않았으니 악수 이야기가 나오면 안 된다.
+# ⚠ **어느 갈래로 오나는 OS 가 정한다** — 리눅스는 곧바로 거절(`ConnectionRefusedError`)이
+#   오지만 윈도우는 닫힌 루프백 포트에도 SYN 을 되쏘아 두어 초를 쓴다. 손잡이
 #   `REACH_TIMEOUT_S` 가 그보다 짧으면 거기서는 시간 초과 갈래로 떨어진다. 그래서 판정은
-#   **어느 말이 오나가 아니라 악수 이야기를 안 하나**로 세운다: 저 갈림은 우리 결함이 아니고
+#   어느 말이 오나가 아니라 악수 이야기를 안 하나로 세운다: 저 갈림은 우리 결함이 아니고
 #   손잡이를 우리가 못 정한다.
 dead = socket.socket()
 dead.bind(("127.0.0.1", 0))
@@ -180,9 +180,9 @@ show("아무도 안 듣는 자리는 안 닿았다고 한다", ok3, False)
 show("  악수 이야기를 안 한다 — 열리지도 않은 자리다", "보안 악수" in why3, False)
 print(f"     └ {why3}")
 
-# 기준선 ④ — **이름이 안 풀리는 자리.** RFC 2606 이 못박은 예약 이름이라 안 풀려야 한다.
-# ⚠ 가로채는 리졸버가 있는 망에서는 풀린다 — 그때는 **빨강이 아니라 「못 쟀다」**다.
-#   판정을 그대로 두면 망 사정이 우리 결함으로 찍힌다.
+# 기준선 ④ — 이름이 안 풀리는 자리. RFC 2606 이 못박은 예약 이름이라 안 풀려야 한다.
+# 가로채는 리졸버가 있는 망에서는 풀리므로 그때는 빨강이 아니라 「못 쟀다」로 물러난다 —
+# 판정을 그대로 두면 망 사정이 우리 결함으로 찍힌다.
 BAD_NAME = "seed-no-such-host-4f2a.invalid"
 try:
     socket.getaddrinfo(BAD_NAME, 80)
@@ -195,14 +195,14 @@ except socket.gaierror:
          "이름이 안 풀려요" in why4, True)
     print(f"     └ {why4}")
 
-# 기준선 ⑤ — OS 검증기 갈래. 손으로 지은 예외가 **실물 `_probe` 의 except 절**을 지나 말이
+# 기준선 ⑤ — OS 검증기 갈래. 손으로 지은 예외가 실물 `_probe` 의 except 절을 지나 말이
 # 되나. 저쪽 두 걸음(악수 동안 검증 끄기 · 뒤에 OS 검증기로 판정)은 여기서 못 밟으므로
-# **악수 한 자리만** 갈아 끼운다 — `_probe` 도 `_ssl_why` 도 손 안 댄 실물이다.
+# 악수 한 자리(`ssl.create_default_context`)만 갈아 끼운다 — `_probe` 도 `_ssl_why` 도 손 안 댄 실물이다.
 #
 # ⚠ **문장의 내용은 안 잡는다 — 그건 로케일 몫이다.** 이 자리에 실제로 오는 것은 OS
-#   검증기가 **그 기계의 언어로** 낸 문장이라, 영문 한 줄을 박아 두고 그 영문을 다시 찾으면
+#   검증기가 그 기계의 언어로 낸 문장이라, 영문 한 줄을 박아 두고 그 영문을 다시 찾으면
 #   *제가 먹인 것을 제가 찾는* 꼴이면서 로케일이 다른 기계의 실물과는 어긋난다. 붙잡는 것은
-#   로케일을 안 타는 둘뿐이다 — 예외의 **꼴**과, 먹인 문장이 골라 버려지지 않고 실려 나오나.
+#   로케일을 안 타는 둘뿐이다 — 예외의 꼴과, 먹인 문장이 골라 버려지지 않고 실려 나오나.
 OS_VERIFY_CODE = 0x800B0109      # CERT_E_UNTRUSTEDROOT — 뿌리가 안 믿긴다
 OS_SENTENCE = "OS 검증기가 그 기계의 언어로 낸 문장"
 
@@ -218,8 +218,8 @@ class _OsVerifierCtx:
 
 
 print()
-# 흉내가 **실물 꼴**인가 — 여기가 어긋나면 아래 초록은 실물이 아닌 것을 통과시킨다.
-# 넷 다 로케일을 안 탄다. 값은 흉내가 아니라 **그 흉내가 실제로 낸 예외**에서 읽는다.
+# 흉내가 실물 꼴인가 — 여기가 어긋나면 아래 초록은 실물이 아닌 것을 통과시킨다.
+# 넷 다 로케일을 안 탄다. 값은 흉내가 아니라 그 흉내가 실제로 낸 예외에서 읽는다.
 try:
     _OsVerifierCtx().wrap_socket(None)
     raise AssertionError("흉내가 예외를 안 냈다 — 아래 판정이 잴 것이 없다")
@@ -240,8 +240,8 @@ try:
         show("  안 닿았다고 한다", ok5, False)
         show("  이 함수의 존재 이유가 그 갈래에서도 선다",
              "검사 장비가 갈아 끼웠을" in why5, True)
-        # **괄호가 비면 안 된다** — 넘어지지만 않고 "SSL" 만 뱉으면 고친 값이 없다.
-        # 찾는 것은 그 예외가 실제로 든 문장이다(문장의 **내용**은 로케일 몫이라 안 잰다).
+        # 괄호가 비면 안 된다 — 넘어지지만 않고 "SSL" 만 뱉으면 고친 값이 없다.
+        # 찾는 것은 그 예외가 실제로 든 문장이다(문장의 내용은 로케일 몫이라 안 잰다).
         show("  OS 가 낸 문장을 골라 버리지 않고 싣는다",
              os_exc.verify_message in why5, True)
         print(f"     └ {why5}")

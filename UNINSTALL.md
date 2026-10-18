@@ -84,7 +84,7 @@ Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night -Conf
 
 | `hooks` 의 이벤트 | 지울 줄 |
 |---|---|
-| `PreToolUse` | `image-gate` · `bash-backslash-deny` · `drm-guide` |
+| `PreToolUse` | `image-gate` · `bash-backslash-deny` · `shell-slip` · `drm-guide` |
 | `PostToolUse` | `utf8-bom` · `web-retry` |
 | `PostToolUseFailure` | `web-retry` · `drm-guide` |
 | `UserPromptSubmit` | `drm-guide` · `context-alert` |

@@ -9,56 +9,69 @@
 「못 쟀다」(2) 로 나간다 — 초록이 아니다. `--key` 로 줄 수도 있다. 사내 밖에서는 닿음 판정이
 갈래를 먼저 비켜 세운다(2).
 
-⚠ **유래** — atelier `_check/claude_thinking_probe.py`(2026-09-09 판)를 이 씨앗의 배관
-  위에 다시 세웠다. 저쪽은 그 앱의 `config` 에 묶여 있어 떼어 오면 안 돈다. 앞으로는 **여기가
-  진본**이고 아뜰리에는 제 앱 사정(도구·베타·중계 잡기)이 더 있어 일부러 갈렸다. 원 실측
-  좌표는 아래 곁말과 claude-config `posco/ENV-posco.md` 「Claude 갈래의 생각」이 든다.
+내는 것 — 종료코드 0 판정이 다 초록 · 1 어긋남(벽에 걸린 판은 「벽에 걸린 판이 없다」가, `thinking` 을 400
+으로 되받은 판은 계약 판정이 여기로 센다) · 2 못 쟀다(키 없음 · 안 닿음 · anthropic 계약이 아닌 갈래 · 판정이
+읽는 판이 벽에 걸렸거나 예외로 끝나 그 판정이 안 섰다 · ④ 를 돌릴 `claude` 가 이 PC 에 없다). 예외로 끝난
+판은 거절(401 · 429 · 5xx)이든 망이든 우리 쪽 결함이든 **아무것도 못 잰 판**이다 — 400 만 예외로, 그것은 계약
+판정이 재려던 답 자체다. 어긋남이 하나라도 있으면 못 잰 자리가 있어도 1 이다. 이 게이트웨이에서는
+「③ 생각이 선을 탄다」가 빨강인 것이 실측이라 1 로 끝난다(아래 「이 게이트웨이에서 잰 값」).
 
-실측된 사고(2026-08-27 · 09-09 · ENV-posco 「스트림 180초 컷」): Claude Code 클라이언트가 이
+유래 — atelier `_check/claude_thinking_probe.py`(`d704d469`)를 이 씨앗의 배관 위에 다시 세웠다.
+저쪽은 그 앱의 `config` 에 묶여 떼어 오면 안 돈다. 게이트웨이 거동을 재는 몫은 여기가 진본이고,
+아뜰리에 판은 제 앱 사정(도구 · 베타 · 중계 잡기)이 더 있어 일부러 갈렸다. 잰 값의 좌표는 아래
+곁말과 claude-config `posco/ENV-posco.md` 「우리가 잰 것」 절의 「Claude 쪽에서 생각을 하느냐는
+모델이 정한다」 문단이 든다.
+⚠ **두 판을 견주는 검사가 없다** — 아뜰리에 판은 `borrowed_check` 가 견주는 사본이 아니라, 여기
+  고친 게이트웨이 쪽 거동은 저쪽에 저절로 안 가고 두 판이 조용히 어긋난다.
+
+사고(claude-config `posco/ENV-posco.md` 「스트림 180초 컷」) — Claude Code 클라이언트가 이
 게이트웨이에서 `message_start` 하나만 받고 **180초를 조용히 있다가** 빈 채 끊겨 비스트리밍으로
-되받았다 — 간단한 요청에서도. 그 침묵이 무엇인지는 화면에서 안 갈린다:
+되받는다 — 간단한 요청에서도. 그 침묵이 무엇인지는 화면에서 안 갈린다:
 
-  ㉮ **생각 침묵** — 모델이 생각하는 동안 게이트웨이가 `thinking_delta` 조각을 **안 넘긴다.**
+  ㉮ **생각 침묵** — 모델이 생각하는 동안 게이트웨이가 `thinking_delta` 조각을 안 넘긴다.
      첫 글자까지의 침묵 = 생각 시간. 생각을 끄면 첫 조각이 곧 온다
   ㉯ **게이트웨이 버퍼링** — 생각과 무관하게 응답을 다 만든 뒤 한꺼번에 뱉는다. 끄나 켜나 같다
 
-**길이 둘이다 — 같은 게이트웨이를 다른 몸으로 지난다.** 사고가 난 클라이언트(Claude Code)는
+길이 둘이다 — 같은 게이트웨이를 다른 몸으로 지난다. 사고가 난 클라이언트(Claude Code)는
 `ANTHROPIC_BASE_URL` 로 이 게이트웨이에 붙고, 이 배관의 anthropic 갈래도 같은 주소에 붙는다.
-다른 것은 **요청의 꼴**이다 — 저쪽은 생각·도구·베타를 싣고 이쪽은 안 싣는다. 그래서 둘로 잰다:
-  · **HTTP 갈래**(①②③⑤) — 이 배관의 봉투에 `thinking` 낱말 하나만 얹는다. 사고의 꼴을 **흉내**낸다
-  · **CLI 갈래**(④) — 이 PC 의 `claude` 실행파일을 파이프로 부른다. 그 실행파일은 **셸의
-    `ANTHROPIC_BASE_URL` 을 그대로 따르므로** 회사 PC 에서는 사고가 난 클라이언트와 같은 몸(요청 꼴
+다른 것은 **요청의 꼴**이다 — 저쪽은 생각 · 도구 · 베타를 싣고 이쪽은 안 싣는다. 그래서 둘로 잰다:
+  · HTTP 갈래(①②③⑤) — 이 배관의 봉투에 `thinking` 낱말 하나만 얹는다. 사고의 꼴을 흉내낸다
+  · CLI 갈래(④) — 이 PC 의 `claude` 실행파일을 파이프로 부른다. 그 실행파일은 셸의
+    `ANTHROPIC_BASE_URL` 을 그대로 따르므로 회사 PC 에서는 사고가 난 클라이언트와 같은 몸(요청 꼴
     · 헤더)으로 같은 게이트웨이를 지난다. 그 변수가 없으면 구독으로 나가 견줄 수 없다
 
-**흔들어 보면 갈린다** — 같은 물음을 다섯으로 보낸다:
+흔들어 보면 갈린다 — 같은 물음을 다섯으로 보낸다:
   ① 간단한 물음 · 생각 끔 · HTTP  — 대조군. 첫 조각이 몇 초에 오나
   ② 간단한 물음 · 생각 켬 · HTTP  — 여기서 침묵이 길면 ㉮가 아니라 게이트웨이가 `thinking` 든
                                    요청을 다르게 다루는 것이다
-  ③ 생각할 거리 · 생각 켬 · HTTP  — 생각이 **선을 타나**(심장박동). 넘어오면 선이 산다
-  ④ 생각할 거리 · CLI              — 같은 물음을 사고가 난 클라이언트의 몸으로. `claude` 가 없으면 건너뛴다
-  ⑤ 생각할 거리 · 생각 끔 · HTTP  — 낱말 없이도 생각이 나면 **모델 기본값**이 켠 것이다(Opus 5 는 기본이
+  ③ 생각할 거리 · 생각 켬 · HTTP  — 생각이 선을 타나(심장박동). 넘어오면 선이 산다
+  ④ 생각할 거리 · CLI              — 같은 물음을 사고가 난 클라이언트의 몸으로. `claude` 가 없으면 못 쟀다
+                                   (안 돌리려면 `--no-cli`)
+  ⑤ 생각할 거리 · 생각 끔 · HTTP  — 낱말 없이도 생각이 나면 모델 기본값이 켠 것이다(Opus 5 는 기본이
                                    켬). ③과 ⑤가 같으면 낱말은 아무 일도 안 한 것이다
-⚠ 모델이 곧 변수다 — Claude Code 의 `opus` 별칭은 이 게이트웨이에서 `claude-opus-5` 로 풀린다(잡은 몸 실측
-  2026-09-09). ④를 ①②③과 견주려면 `--model` 을 같은 이름으로 맞춘다.
+⚠ 모델이 곧 변수다 — Claude Code 의 `opus` 별칭은 이 게이트웨이에서 `claude-opus-5` 로 풀린다(중계로
+  잡은 몸에서 본 이름). ④를 ①②③과 견주려면 `--model` 을 같은 이름으로 맞춘다.
 
-**생각이 났나는 세 자리에서 읽는다** — 조각만 세면 못 본다. Opus 4.7 부터 생각 표시 기본이
+생각이 났나는 세 자리에서 읽는다 — 조각만 세면 못 본다. Opus 4.7 부터 생각 표시 기본이
 `omitted` 라 생각 블록이 **빈 글자로** 흐른다(문서). 그래서 `content_block_start` 의 `thinking`
 블록 · `thinking_delta` 조각 · `message_delta` 의 `output_tokens`(글자보다 훨씬 크면 생각이 났다 —
 표시와 무관하게 셈에 든다) 셋을 다 적는다.
 
 재는 것 — 헤더 시각 · 첫 조각(무엇이든) 시각 · 첫 생각 신호 · 첫 `text_delta` · 조각 수 · 총 시간 ·
-stop · 출력 토큰. **빈 채 끝나면 벽**이다(`stop=None` · 글자 0) — 그 시각이 곧 벽의 실측이고 벽에
-걸린 판은 「생각 조각이 없다」가 아니라 **「못 쟀다」** 다.
-⚠ 배관의 파서를 그대로 지나되 원형은 따로 갈라 둔다(`Tee`) — `_anthropic_once` 는 `thinking_delta`
-  를 안 읽으므로 조각 수는 원형에서 센다.
+stop · 출력 토큰. **예외 없이 빈 채 끝나면 벽**이다(`stop=None` · 글자 0) — 그 시각이 곧 벽의
+실측이다. 벽에 걸린 판은 「생각 조각이 없다」로 안 읽고 그 판정을 「못 쟀다」로 남긴다 — 벽 자체는
+「벽에 걸린 판이 없다」가 빨강(1)으로 센다. 예외로 끝난 판도 그 판을 읽는 판정을 「못 쟀다」로 남긴다(`judge`).
+⚠ 조각 수는 원형에서 센다(`Tee`) — 배관의 파서(`_anthropic_once`)는 `thinking_delta` 를 안 읽어,
+  거기서 세면 생각 조각이 와도 늘 0 이다. 배관의 파서는 그대로 지나고 원형만 따로 갈라 둔다.
 
-**실측 2026-09-09(사내 · atelier 판)** — 두 모델 × 낱말 있이·없이 × 세 판:
-  · `claude-opus-4.7` 은 어떤 몸으로도 생각이 안 난다(초과 5~20 · 켜도 꺼도 CLI 몸으로도 같다).
+이 게이트웨이에서 잰 값(사내 · atelier 판 프로브 · 좌표는 위 ENV-posco 문단 · 초과 토큰 수는
+`THINK_EXCESS_TOKENS` 곁말이 든다) — 두 모델 × 낱말 있이·없이 × 세 판:
+  · `claude-opus-4.7` 은 어떤 몸으로도 생각이 안 난다(켜도 꺼도 CLI 몸으로도 같다).
     옛 꼴 `enabled+budget_tokens` 는 문서상 400 인데 200 이 온다 — 낱말이 모델에 닿기 전에 떨어진다
-  · `claude-opus-5` 는 어떤 몸으로도 생각이 난다(초과 78~151) — 모델 기본값이 켠 것이다
+  · `claude-opus-5` 는 어떤 몸으로도 생각이 난다 — 모델 기본값이 켠 것이다
   · 생각 조각은 어느 판에도 없다 — 생각한 판에도 `thinking` 블록·`thinking_delta` 가 0.
     **모델이 생각하는 동안 게이트웨이는 아무 조각도 안 흘린다.** 바깥 API 는 같은 몸에 신호를 준다
-  ➔ 그래서 판정 「③ 생각이 선을 탄다」는 이 게이트웨이에서 **빨강이 실측**이다. 초록이 나오면
+  ➔ 그래서 판정 「③ 생각이 선을 탄다」는 이 게이트웨이에서 빨강이 실측이다. 초록이 나오면
     게이트웨이가 바뀐 것이고, 그것이 이 자를 다시 돌리는 까닭이다.
 
 원형은 `_check/log/claude-thinking-probe-{판}.log`, 계열은 `claude-thinking-probe-runs.log` 에
@@ -73,7 +86,8 @@ import time
 import urllib.request
 from pathlib import Path
 
-from _verdict import Unmeasured, edge, fails, passes, report
+from _verdict import (EXIT_MISMATCH, EXIT_UNMEASURED, Unmeasured, edge, fails, passes, report,
+                      unmeasured, unmeasureds)
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -89,10 +103,11 @@ RUNS_HEAD = ("# 판마다 실측 한 줄이 쌓인다 — 이 파일만 안 덮�
 STAMP = time.strftime("%Y-%m-%d %H:%M")
 
 CLI_PROVIDER = "claude-cli"
-# 자/토큰 — 한국어 산문 실측(이 씨앗 `live_probe.py ratio` 2026-09-09 · anthropic 1.26). 어림에만 쓴다.
+# 자/토큰 — 한국어 산문을 이 씨앗 `live_probe.py ratio` 로 잰 anthropic 값. 어림에만 쓴다.
 CHARS_PER_TOKEN = 1.26
-# 생각이 났다고 볼 초과 토큰 — 출력 토큰에서 글자 몫을 뺀 것. 실측(2026-09-09 사내): 생각 없는 판은
-# 5~20, 생각이 난 판은 69~151(바깥 API 는 신호와 함께 97). 그 사이에 둔다.
+# 생각이 났다고 볼 초과 토큰 — 출력 토큰에서 글자 몫을 뺀 것. 사내 게이트웨이의 판 기록(atelier
+# `_check/log/claude-thinking-probe-runs.log` 의 「초과」 칸)에서 생각 없는 판이 2~20, 생각이 난 판이
+# 69~151 이라 그 사이에 둔다. 바깥 API 에서 잰 판의 값은 머리말이 가리키는 ENV-posco 문단이 든다.
 THINK_EXCESS_TOKENS = 40
 
 SYSTEM = "짧고 정확하게 답한다."
@@ -106,9 +121,10 @@ def thinking_param(a):
 
 
 def with_thinking(req, a, on):
-    """배관이 지은 요청에 `thinking` 을 얹는다 — 봉투는 배관 것 그대로, 낱말 하나만 더한다.
+    """배관이 지은 요청에 `thinking` 을 얹은 새 요청 — 봉투는 배관 것 그대로, 낱말 하나만 더한다.
 
-    옛 꼴의 예산은 `max_tokens` 보다 작아야 한다(문서 규칙) — 모자라면 상한을 예산 위로 올린다.
+    `on` 이 거짓이면 받은 요청을 그대로 돌려준다. 옛 꼴의 예산은 `max_tokens` 보다 작아야 한다
+    (문서 규칙) — 모자라면 상한을 예산 위로 올린다.
     """
     if not on:
         return req
@@ -154,6 +170,18 @@ def thought(r):
 def signalled(r):
     """생각이 선을 탔다 — 블록이든 조각이든 신호가 **흐르는 동안** 왔다."""
     return bool(r["n_think_blocks"] or r["n_think"])
+
+
+def judge(runs, tags, name, ok, detail=()):
+    """판정 하나 — 읽는 판(`tags`) 가운데 예외로 끝난 것이 있으면 판정 대신 「못 쟀다」로 센다.
+
+    예외로 끝난 판은 칸이 다 빈 채라, 그 위에서 판정을 내면 재지도 않은 것을 빨강으로 센다.
+    """
+    broke = [f"{t}: {runs[t]['error']}" for t in tags if runs[t]["error"]]
+    if broke:
+        unmeasured(name, "예외로 끝나 아무것도 못 쟀다 — " + " · ".join(broke))
+    else:
+        report(name, ok, detail)
 
 
 def count(got, s, at):
@@ -202,7 +230,12 @@ def _keep(tag, model, knob, got, f):
 
 
 def call(a, c, tag, ask, on):
-    """HTTP 갈래 한 바퀴 — 배관으로, 요청에 `thinking` 만 얹고 원형을 갈라 조각을 센다."""
+    """HTTP 갈래 한 바퀴 — 배관으로, 요청에 `thinking` 만 얹고 원형을 갈라 조각을 센다.
+
+    `fresh()` 꼴의 판 하나를 돌려준다 — 예외는 판의 `error` 칸에 담고 안 올린다. 원형은
+    `LOG` 아래 제 파일을 덮어쓰고 계열(`RUNS`)에 한 줄을 더한다. 도는 동안
+    `providers.urllib.request.urlopen` 을 갈아 끼웠다가 끝에 되돌린다.
+    """
     log = LOG / f"{LOG_PREFIX}-{tag}.log"
     got = fresh()
     real = providers.urllib.request.urlopen
@@ -265,7 +298,11 @@ def call(a, c, tag, ask, on):
 
 
 def call_cli(a, tag, ask):
-    """CLI 갈래 한 바퀴 — 사고가 난 클라이언트의 몸으로. 생각은 `on_think` 신호(누적 추정 토큰)로 센다."""
+    """CLI 갈래 한 바퀴 — 사고가 난 클라이언트의 몸으로. 생각은 `on_think` 신호(누적 추정 토큰)로 센다.
+
+    판과 기록은 `call` 과 같은 꼴이다. 이 PC 에 `claude` 가 없으면 「… 가 없다」 예외를 판의
+    `error` 칸에 담는다 — `main` 은 예외로 끝난 판을 다 「못 쟀다」로 가른다.
+    """
     log = LOG / f"{LOG_PREFIX}-{tag}.log"
     got = fresh()
     f = log.open("w", encoding="utf-8")
@@ -361,53 +398,62 @@ def main():
     off, on, hard, hard_off = runs["simple-off"], runs["simple-on"], runs["hard-on"], runs["hard-off"]
     cli = runs.get("hard-cli")
     print("\n--- 판정")
-    report("계약이 `thinking` 을 받는다 — 400 으로 되받지 않는다",
-           not any("HTTP 400" in (r["error"] or "") for r in (on, hard)),
-           [f"② {on['error']}", f"③ {hard['error']}",
-            "400 이면 이 프록시는 그 꼴을 안 받는다 — --budget-form 을 뒤집어 다른 꼴도 재 본다"])
-    # ③ 은 상태 셋이다 — 신호가 왔다 · 글자는 왔는데 생각 신호가 없다 · 벽에 걸려 아무것도
-    # 안 왔다. 셋째를 둘째로 읽으면 「게이트웨이가 생각을 안 던진다」는 거짓 결론이 선다.
-    if walled(hard):
-        report("③ 생각이 선을 탄다 — **벽에 걸려 못 쟀다**", False,
-               [f"③ 실측 {line(hard)}",
-                "생각 신호가 없어서가 아니라 아무것도 안 왔다 — 「생각 켠 요청이 벽에 걸린다」가 실측이다"])
+    contract = "계약이 `thinking` 을 받는다 — 400 으로 되받지 않는다"
+    contract_detail = [f"② {on['error']}", f"③ {hard['error']}",
+                       "400 이면 이 프록시는 그 꼴을 안 받는다 — --budget-form 을 뒤집어 다른 꼴도 재 본다"]
+    if any("HTTP 400" in (r["error"] or "") for r in (on, hard)):
+        report(contract, False, contract_detail)       # 400 은 예외로 왔어도 이 판정이 재려던 답이다
     else:
-        report("③ 생각이 났다 — 블록·조각이 있거나 출력 토큰이 글자보다 훨씬 크다",
-               thought(hard),
-               [f"③ 실측 {line(hard)}",
-                "안 났으면 `thinking` 낱말이 어딘가에서 삼켜진 것이다 — 이 판은 생각 없는 요청을 잰 셈이라 "
-                "침묵의 물음에 답을 못 준다. 꼴을 바꿔(--budget-form) 다시 잰다. "
-                "claude-opus-4.7 은 이 게이트웨이에서 안 나는 것이 실측(2026-09-09)이다"])
-        report("③ 생각이 선을 탄다 — 생각 블록·조각이 흐르는 동안 온다(심장박동)",
-               signalled(hard),
-               ["생각은 났는데(출력 토큰) 신호가 없다 — 생각하는 동안 선이 조용하다. 그것이 곧 "
-                "180초 벽에 걸리는 침묵이다(㉮). **이 빨강이 2026-09-09 실측이다** — 초록이면 게이트웨이가 바뀐 것",
-                f"③ 실측 {line(hard)}"])
-    if not walled(hard) and not walled(hard_off):
-        report("⑤ 낱말이 일을 한다 — 생각 켠 판(③)과 끈 판(⑤)이 갈린다",
-               thought(hard) != thought(hard_off),
-               [f"③ 초과 {excess(hard)} · ⑤ 초과 {excess(hard_off)} (문턱 {THINK_EXCESS_TOKENS})",
-                "둘 다 났으면 모델 기본값이 켠 것이고(낱말은 삼켜져도 상관없다), 둘 다 안 났으면 낱말이 삼켜진 "
-                "것이다 — 어느 쪽이든 `thinking` 낱말은 이 게이트웨이에서 아무 일도 안 한다(2026-09-09 실측)"])
+        judge(runs, ("simple-on", "hard-on"), contract, True, contract_detail)
+    # ③ 은 상태 넷이다 — 신호가 왔다 · 글자는 왔는데 생각 신호가 없다 · 벽에 걸려 아무것도
+    # 안 왔다 · 예외로 끝났다. 셋째 · 넷째를 둘째로 읽으면 「게이트웨이가 생각을 안 던진다」는 거짓 결론이 선다.
+    if walled(hard):
+        unmeasured("③ 생각이 선을 탄다",
+                   f"벽에 걸려 아무것도 안 왔다 — 생각 신호가 없는 것과 다르다 · ③ 실측 {line(hard)}")
+    else:
+        judge(runs, ("hard-on",), "③ 생각이 났다 — 블록·조각이 있거나 출력 토큰이 글자보다 훨씬 크다",
+              thought(hard),
+              [f"③ 실측 {line(hard)}",
+               "안 났으면 `thinking` 낱말이 어딘가에서 삼켜진 것이다 — 이 판은 생각 없는 요청을 잰 셈이라 "
+               "침묵의 물음에 답을 못 준다. 꼴을 바꿔(--budget-form) 다시 잰다. "
+               "claude-opus-4.7 은 이 게이트웨이에서 안 나는 것이 실측이다(머리말 「이 게이트웨이에서 잰 값」)"])
+        judge(runs, ("hard-on",), "③ 생각이 선을 탄다 — 생각 블록·조각이 흐르는 동안 온다(심장박동)",
+              signalled(hard),
+              ["생각은 났는데(출력 토큰) 신호가 없다 — 생각하는 동안 선이 조용하다. 그것이 곧 "
+               "180초 벽에 걸리는 침묵이다(㉮). **이 게이트웨이에서는 이 빨강이 실측이다** — 초록이면 게이트웨이가 바뀐 것",
+               f"③ 실측 {line(hard)}"])
+    if walled(hard) or walled(hard_off):
+        unmeasured("⑤ 낱말이 일을 한다", f"견줄 판이 벽에 걸렸다 · ③ 실측 {line(hard)} · ⑤ 실측 {line(hard_off)}")
+    else:
+        judge(runs, ("hard-on", "hard-off"), "⑤ 낱말이 일을 한다 — 생각 켠 판(③)과 끈 판(⑤)이 갈린다",
+              thought(hard) != thought(hard_off),
+              [f"③ 초과 {excess(hard)} · ⑤ 초과 {excess(hard_off)} (문턱 {THINK_EXCESS_TOKENS})",
+               "둘 다 났으면 모델 기본값이 켠 것이고(낱말은 삼켜져도 상관없다), 둘 다 안 났으면 낱말이 삼켜진 "
+               "것이다 — 어느 쪽이든 `thinking` 낱말은 이 게이트웨이에서 아무 일도 안 한다(실측 · 머리말 「이 게이트웨이에서 잰 값」)"])
     if cli is not None:
-        if cli["error"] and "없다" in cli["error"]:
-            edge(f"④ 안 돌았다 — {cli['error']}. 사고가 난 클라이언트의 몸은 못 쟀다")
+        if cli["error"]:
+            unmeasured("④ CLI 갈래", f"{cli['error']} — 사고가 난 클라이언트의 몸은 못 쟀다"
+                       + ("" if shutil.which(gateway.CLI_EXE) else ". 안 돌리려면 --no-cli"))
         elif walled(cli):
-            report("④ CLI 갈래 — **벽에 걸려 못 쟀다**", False, [f"④ 실측 {line(cli)}"])
+            unmeasured("④ CLI 갈래", f"벽에 걸려 아무것도 안 왔다 · ④ 실측 {line(cli)}")
         else:
             report("④ CLI 갈래에서 생각 신호가 온다 — 사고가 난 클라이언트의 몸으로 같은 게이트웨이를 지나",
                    cli["n_think"] > 0,
                    [f"④ 실측 {line(cli)}",
                     "③은 오고 ④는 안 오면 갈림은 게이트웨이가 아니라 **요청 꼴**(도구·베타·표시)이다. "
                     "둘 다 안 오면 게이트웨이다. ANTHROPIC_BASE_URL 이 없으면 ④는 구독으로 나간 판이라 견줄 수 없다"])
-    report("② 간단한 물음은 생각을 켜도 첫 조각이 곧 온다 — 켠 판이 끈 판의 3배 안",
-           on["first"] is not None and off["first"] is not None and on["first"] <= max(off["first"] * 3, 5.0),
-           [f"① 첫 조각 {_at(off['first'])} · ② {_at(on['first'])}",
-            "②가 길면 생각 시간이 아니라 `thinking` 든 요청을 게이트웨이가 다르게 다루는 것이다(㉯ 쪽)"])
+    judge(runs, ("simple-off", "simple-on"), "② 간단한 물음은 생각을 켜도 첫 조각이 곧 온다 — 켠 판이 끈 판의 3배 안",
+          on["first"] is not None and off["first"] is not None and on["first"] <= max(off["first"] * 3, 5.0),
+          [f"① 첫 조각 {_at(off['first'])} · ② {_at(on['first'])}",
+           "②가 길면 생각 시간이 아니라 `thinking` 든 요청을 게이트웨이가 다르게 다루는 것이다(㉯ 쪽)"])
     hit = [t for t, r in runs.items() if walled(r)]
-    report("벽에 걸린 판이 없다 — 빈 채 끝난 스트림 없음",
-           not hit, [f"벽: {hit} — 그 판의 총 시간이 곧 벽의 실측이다. 끈 판(①)은 흐르고 켠 판만 "
-                     "걸리면 침묵의 원인은 생각이 아니라 `thinking` 든 요청을 다루는 꼴이다(㉯)"])
+    wall = "벽에 걸린 판이 없다 — 빈 채 끝난 스트림 없음"
+    wall_detail = [f"벽: {hit} — 그 판의 총 시간이 곧 벽의 실측이다. 끈 판(①)은 흐르고 켠 판만 "
+                   "걸리면 침묵의 원인은 생각이 아니라 `thinking` 든 요청을 다루는 꼴이다(㉯)"]
+    if hit:
+        report(wall, False, wall_detail)               # 벽에 걸린 판이 하나라도 있으면 나머지와 무관하게 빨강이다
+    else:
+        judge(runs, tuple(runs), wall, True, wall_detail)
     edge("첫 조각 시각은 판마다 흔들린다 — 한 판으로 정하지 않는다. 계열은 "
          f"{RUNS.relative_to(ROOT)} 에 쌓인다")
     edge("①②③⑤는 사고가 난 클라이언트의 요청과 같지 않다 — 도구·interleaved 베타 헤더는 여기 없다. "
@@ -418,7 +464,11 @@ def main():
     bad = fails()
     if bad:
         print(f"❌ {len(bad)}건 어긋남 — {' · '.join(bad)}")
-        raise SystemExit(1)
+        raise SystemExit(EXIT_MISMATCH)
+    if unmeasureds():
+        print(f"판정 {len(passes())}건 초록 · 못 잰 자리 {len(unmeasureds())} — 초록이 아니다 "
+              f"({' · '.join(unmeasureds())})")
+        raise SystemExit(EXIT_UNMEASURED)
     print(f"✅ 판정 {len(passes())}건 초록 — 숫자는 runs 로그에 있다")
 
 

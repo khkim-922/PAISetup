@@ -11,15 +11,16 @@
 #   바꿀 것이 없거나 승인이 안 서면 아무것도 안 바꾸고 돌아간다 — 당김만은 승인 앞에서 이미 돌았다.
 #
 # 하는 일 — 차례대로
-#   당김 — 형제 저장소를 원격까지 맞춘다(main 위에서만 · 빨리감기로만 · 저장소마다 판정 한 줄). 계획과 설치 판정이 지문을
-#     보므로 계획 앞에 서고, 져도 던지지 않는다 (결정 0078)
+#   당김 — 형제 저장소를 원격 쪽으로 맞춘다(main 위에서만 · 빨리감기로만 · 저장소마다 판정 한 줄 · 어디까지는 세션 훅
+#     몸통의 `--pull-target` 이 정한다 — 원격 끝, 저장소가 당김 문을 두었으면 그 문이 고른 커밋). 계획과 설치 판정이 지문을
+#     보므로 계획 앞에 서고(밀 것이 없는 회차에도 돈다), 져도 던지지 않는다
 #   배선 — .githooks/ 를 둔 저장소에 core.hooksPath 를 건다(git 훅은 clone 을 안 따라온다). 바꾸는 걸음 가운데 맨 앞이다 —
 #     뒤가 무엇으로 죽든 커밋 게이트만은 서야 한다(아래 「실행 순서」 칸)
 #   배포 — 진본을 홈과 형제 저장소로 민다. 무엇이 어디로 가나의 표는 `docs/deploy-targets.md` 가 든다(여기 옮겨 적지 않는다).
 #     목록의 진본은 선언 둘 — deploy.repofiles.conf(저장소로 가는 파일) · deploy.seeds.conf(홈으로 폴더째) — 이고, 어느
-#     저장소 · 슬러그로 가나는 personal.conf 의 REPOS · ROOT 에서 파생한다 (결정 0072)
+#     저장소 · 슬러그로 가나는 personal.conf 의 REPOS · ROOT 에서 파생한다 — 새 PC 가 적을 것 없이 선다
 #   도구 홈 — 규범 · 룰 · 에이전트 · 스킬은 손 하나(`.claude/hooks/tool-homes.py`)가 갈 곳 표대로 놓는다. 이 스크립트는 손을
-#     부르고 손이 바꿀 줄을 계획에 싣는다 (결정 0112)
+#     부르고 손이 바꿀 줄을 계획에 싣는다 — 놓는 손이 하나라 설치 · 배포 · 세션 훅이 따로 놓다 어긋나지 않는다
 #   설치 — 전역 설치 한 번(이 저장소 훅의 `--install-global` · npm 전역 · 릴리스 바이너리 · winget · 브라우저) 다음에
 #     저장소마다(각 저장소 훅의 `--install` · 프로젝트 축(venv · npm ci)과 배선). 무엇을 깔지는 훅이 알고 이 스크립트는 모른다
 #   사용자 환경변수 — 이 PC 전체에 걸려야 하는 인코딩 값(아래 「사용자 환경변수」 칸)
@@ -28,8 +29,9 @@
 # 이름이 같아 헷갈리는 자리 하나 — ~/.claude/settings.json 은 홈의 개인 설정(모델 · 테마 등)이라 PC 마다 달라 손으로 둔다.
 #   저장소의 .claude/settings.json 은 훅 등록 파일이라 배포한다.
 #
-# 기본 실행은 제 손으로 지우는 것이 없다. 원본에 없는 씨앗 · 메모리 파일은 -Prune 을 줄 때만 걷고, 기본 실행에서는 후보만
-# 알린다. 규범 · 룰 · 에이전트 · 스킬은 -Prune 을 안 탄다 — 손이 제가 놓았다고 기록한 것만 기본 실행에서 걷는다(손의 머리말).
+# 기본 실행이 걷는 것은 우리 것이라는 기록이 있는 것뿐이다 — 홈 씨앗 · 사내 환경 문서는 이 저장소 이력이 그 자리에서 지운 파일을
+# (`Get-SeedColumn`), 규범 · 룰 · 에이전트 · 스킬은 손이 제가 놓았다고 기록한 것을(손의 머리말) 걷는다. 기록 없이 원본에만 없는
+# 씨앗 · 메모리 파일은 -Prune 을 줄 때만 걷고, 기본 실행에서는 후보만 알린다.
 # 이미 맞는 것은 건드리지 않아 몇 번을 돌려도 안전하다. 덮거나 걷는 파일은 ~/.claude/backups/deploy-<시각>/ 에 원본을
 # 남기고, 손이 덮거나 걷는 것은 손이 제 백업 자리에 남긴다.
 
@@ -81,7 +83,8 @@ function Get-ProjectMemDst($project) {
 function Get-GitWhy($file) {
     # git 의 stderr 파일 → 사유 한 줄. 첫 `fatal:`/`error:` 줄이고, 없으면 끝줄, 그것도 없으면 「사유가 안 나왔다」다(훅
     #   `git_why` 와 같은 자). 끝줄을 먼저 안 집는다 — 로컬 수정 갈래는 끝줄이 `Aborting` 이라 사유가 안 갈린다.
-    $raw   = (Get-Content $file -Raw -ErrorAction SilentlyContinue)
+    #   파일은 자식이 낸 바이트 그대로라 UTF-8 로 읽는다 — 파워셸 5.1 의 기본(시스템 코드페이지)으로 읽으면 몸통의 한국어 사유가 깨진다.
+    $raw   = (Get-Content $file -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)
     $lines = @(("$raw" -split "`r?`n") | Where-Object { $_.Trim() })
     $why   = @($lines | Where-Object { $_ -match '^(fatal|error):' })[0]
     if (-not $why) { $why = $lines[-1] }
@@ -89,9 +92,10 @@ function Get-GitWhy($file) {
     return "$why".Trim()
 }
 
-function Start-GitChild($gitArgs) {
+function Start-GitChild($gitArgs, $exe) {
     # git 하나를 자식으로 띄우기만 한다 — 기다리는 꼴이 둘(fetch 는 묶음 · merge 는 하나씩)이라 기다리기는 부르는 쪽이,
-    #   거두기는 `Complete-GitChild` 가 한다. 받는 것: git 인자 배열 · 내는 것: @{ Proc; Err; Out; Pump; Sink } · 못 띄웠으면
+    #   거두기는 `Complete-GitChild` 가 한다. 받는 것: git 인자 배열 · (선택) 실행 파일 — 주면 git 대신 그것을 같은 규율로
+    #   띄운다(몸통을 부르는 Git Bash) · 내는 것: @{ Proc; Err; Out; Pump; Sink } · 못 띄웠으면
     #   @{ Why = 사유 } · 부작용: 임시 파일 둘(stdout · stderr)을 세운다.
     # ⚠ `Start-Process -PassThru` 로 띄우지 않는다 — 그것이 주는 Process 는 손잡이를 안 쥐어, 손잡이를 잡기 전에 자식이 끝나면
     #   `ExitCode` 가 빈 값이다. 할 일 없는 fetch · merge 는 그 틈 안에 끝나 거짓 「못 당김 — 사유가 안 나왔다」로 떨어진다.
@@ -106,7 +110,7 @@ function Start-GitChild($gitArgs) {
     $sink = @()
     try {
         $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName  = @(Get-Command git -CommandType Application -ErrorAction Stop)[0].Source
+        $psi.FileName  = if ($exe) { $exe } else { @(Get-Command git -CommandType Application -ErrorAction Stop)[0].Source }
         $psi.Arguments = (@($gitArgs) | ForEach-Object {
             if ("$_" -ne '' -and "$_" -notmatch '[\s"]') { "$_" }
             else { '"' + (("$_" -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"' }
@@ -138,7 +142,7 @@ function Stop-GitChild($job) {
 }
 
 function Complete-GitChild($job) {
-    # 끝난 자식의 종료코드와 사유 한 줄을 읽고 임시 파일을 걷는다 — 내는 것: @{ Code; Why }.
+    # 끝난 자식의 종료코드 · 사유 한 줄 · stdout 을 읽고 임시 파일을 걷는다 — 내는 것: @{ Code; Why; Out }.
     # ⚠ Code 가 $null 이면 「못 쟀다」다 — 부르는 쪽이 0 으로 접지 않는다.
     # 붓기가 끝나야 파일이 다 찬다 — 자식이 끝나도 파이프의 꼬리는 그것을 쥔 손자까지 다 나가야 오므로 기다림에 한도를
     #   둔다. 넘기면 사유에서 꼬리만 빠지고 판정은 종료코드가 든다.
@@ -148,14 +152,16 @@ function Complete-GitChild($job) {
     try { $null = [System.Threading.Tasks.Task]::WaitAll($job.Pump, $drainMs) } catch { }
     foreach ($s in $job.Sink) { try { $s.Dispose() } catch { } }
     $why = Get-GitWhy $job.Err
+    $out = ''
+    try { $out = [System.IO.File]::ReadAllText($job.Out) } catch { }
     Remove-Item $job.Err, $job.Out -Force -ErrorAction SilentlyContinue
-    return @{ Code = $code; Why = $why }
+    return @{ Code = $code; Why = $why; Out = $out }
 }
 
-function Invoke-GitWait($gitArgs, $timeoutSec) {
-    # git 하나를 띄워 한도(초) 안에서 기다린다 — 내는 것은 `Complete-GitChild` 와 같은 @{ Code; Why } 이고, 못 띄웠거나
-    #   한도를 넘기면(거두고 「시간 초과」) Code 가 $null 이다.
-    $job = Start-GitChild $gitArgs
+function Invoke-GitWait($gitArgs, $timeoutSec, $exe) {
+    # git 하나(`$exe` 를 주면 그것)를 띄워 한도(초) 안에서 기다린다 — 내는 것은 `Complete-GitChild` 와 같은
+    #   @{ Code; Why; Out } 이고, 못 띄웠거나 한도를 넘기면(거두고 「시간 초과」) Code 가 $null 이다.
+    $job = Start-GitChild $gitArgs $exe
     if ($job.Why) { return @{ Code = $null; Why = $job.Why } }
     $done = $false
     try { $done = $job.Proc.WaitForExit($timeoutSec * 1000) } catch { $done = $true }
@@ -165,6 +171,45 @@ function Invoke-GitWait($gitArgs, $timeoutSec) {
         return @{ Code = $null; Why = "시간 초과 (${timeoutSec}초)" }
     }
     return Complete-GitChild $job
+}
+
+function Get-PullTarget($repo, $remote) {
+    # 당김이 멈출 커밋을 세션 훅 몸통에 묻는다(`--pull-target` · fetch 가 이긴 뒤). 받는 것: 저장소 · 원격 이름 · 읽는 것: 준비의
+    #   `$bash` · `$src` · 내는 것: @{ Sha; Note } — Sha 는 병합할 커밋, Note 는 원격 끝 앞에 멈췄을 때만 서는 덧말. 원격 끝을
+    #   못 읽으면 `!` 줄을 내고 $null(못 당김).
+    # 저장소의 손(`.claude/hooks/pull-target.sh`)에 묻고 답을 재고 판정을 `.git/claude-pull-target.last` 에 적는 규칙은 몸통 한
+    #   자리에 산다 — 세션 당김 · 부팅 라인도 같은 자리를 부른다. 여기 옮겨 적으면 한쪽이 바뀌는 날 이 당김만 다른 커밋에 선다.
+    # 몸통을 못 부르거나 답을 못 믿으면 원격 끝으로 가고 그 까닭을 `!` 줄로 낸다 — 손이 없을 때와 같은 자리이고 몸통의 바닥도
+    #   그것이다. 문이 못 선 것을 당김을 멈추는 것으로 갚으면 그 저장소는 영영 안 받는다.
+    # ⚠ 몸통의 답을 다시 잰다 — sha 꼴이고 원격 끝의 조상(같아도 된다)이어야 받는다. 손의 답을 재는 규칙의 사본이 아니라 두
+    #   프로세스 사이 약속의 확인이다: 몸통이 옛 판이거나 고장 나 원격 main 밖의 커밋을 내도 빨리감기는 그 커밋을 그대로 받는다.
+    $t = Invoke-GitWait @('-C', $repo, 'rev-parse', '-q', '--verify', "refs/remotes/$remote/main^{commit}") $PullMergeTimeoutSec
+    $tip = "$($t.Out)".Trim()
+    if ($t.Code -ne 0 -or -not $tip) {
+        Write-Host "! 못 당김  $repo — $remote/main 을 못 읽었다" -ForegroundColor Red
+        return $null
+    }
+    $why = ''
+    $body = Join-Path $src '.claude\hooks\session-start-body.sh'
+    if (-not $bash) { $why = 'Git Bash 를 못 찾았다' }
+    elseif (-not (Test-Path $body)) { $why = "몸통이 없다 ($body)" }
+    else {
+        # 경로는 슬래시로 넘긴다 — 역슬래시는 bash 가 이스케이프로 먹는다
+        $a = Invoke-GitWait @(($body -replace '\\', '/'), '--pull-target', ($repo -replace '\\', '/'), $remote) `
+                            $PullTargetTimeoutSec $bash
+        $sha = "$($a.Out)".Trim()
+        # 끝 값이 없으면($null) 못 띄웠거나 한도를 넘긴 것이다 — 사유가 그것을 말한다
+        if ($a.Code -ne 0) { $why = "몸통이 답을 못 냈다 (끝 값 $(if ($null -eq $a.Code) { '없음' } else { $a.Code })): $($a.Why)" }
+        elseif ($sha -cnotmatch '^[0-9a-f]{40}([0-9a-f]{24})?$') { $why = "몸통의 답이 sha 꼴이 아니다: '$sha'" }
+        elseif ($sha -eq $tip) { return @{ Sha = $tip; Note = '' } }
+        else {
+            $c = Invoke-GitWait @('-C', $repo, 'merge-base', '--is-ancestor', $sha, $tip) $PullMergeTimeoutSec
+            if ($c.Code -eq 0) { return @{ Sha = $sha; Note = " · 당김 문이 원격 끝 $($tip.Substring(0, 7)) 앞에 세웠다" } }
+            $why = "몸통의 답 $sha 이 $remote/main 위에 없다"
+        }
+    }
+    Write-Host "! 당김 문을 못 물었다  $repo — $why · 원격 끝으로 간다" -ForegroundColor Red
+    return @{ Sha = $tip; Note = '' }
 }
 
 function Sync-Repos($repos) {
@@ -248,8 +293,12 @@ function Sync-Repos($repos) {
                 $pulledRepos[$repo] = $false
                 continue
             }
-            $m = Invoke-GitWait @('-C', $repo, 'merge', '--ff-only', '-q',
-                                  "refs/remotes/$($f.Remote)/main") $PullMergeTimeoutSec
+            $to = Get-PullTarget $repo $f.Remote
+            if (-not $to) {
+                $pulledRepos[$repo] = $false
+                continue
+            }
+            $m = Invoke-GitWait @('-C', $repo, 'merge', '--ff-only', '-q', $to.Sha) $PullMergeTimeoutSec
             if ($m.Code -ne 0) {
                 Write-Host "! 못 당김  $repo — $($m.Why)" -ForegroundColor Red
                 $pulledRepos[$repo] = $false
@@ -258,10 +307,18 @@ function Sync-Repos($repos) {
             try { $now = (& git -C $repo rev-parse --short HEAD 2>$null) } catch { $now = '' }
             $now = "$now".Trim()
             # 전진했나를 같이 낸다 — 「당겼다」만 적으면 새 코드가 들어온 회차와 아무것도 안 온 회차가 한 줄로 같아진다.
+            #   당김 문이 원격 끝 앞에 세웠으면 그것도 붙인다. 나무가 이미 그 답보다 앞이면 빨리감기는 뒤로 안 가 나무가 그 자리에
+            #   남는다 — 그때는 「앞에 세웠다」 대신 그렇다고 말한다. 짝 — `scripts/startup-pipeline.ps1` 의 `Sync-Repo` 가 같은 줄을
+            #   글자까지 같게 든다(0158). 고치면 둘을 같이 고친다.
+            $note = $to.Note
+            if ($note) {
+                try { $at = (& git -C $repo rev-parse HEAD 2>$null) } catch { $at = '' }
+                if ("$at".Trim() -ne $to.Sha) { $note = " · 나무가 당김 문의 답 $($to.Sha.Substring(0, 7)) 보다 앞이라 그 자리에 둔다" }
+            }
             if ($now -and $f.Was -and ($now -ne $f.Was)) {
-                Write-Host "↓ 당김  $repo  ($($f.Was) → $now)" -ForegroundColor DarkGray
+                Write-Host "↓ 당김  $repo  ($($f.Was) → $now$note)" -ForegroundColor DarkGray
             } else {
-                Write-Host "↓ 당김  $repo  (이미 최신)" -ForegroundColor DarkGray
+                Write-Host "↓ 당김  $repo  (이미 최신$note)" -ForegroundColor DarkGray
             }
             $pulledRepos[$repo] = $true
         }
@@ -276,7 +333,7 @@ function Sync-Repos($repos) {
 
 #region 손 부르기 — 규범 · 룰 · 에이전트 · 스킬을 도구 홈에 놓는 손(`.claude/hooks/tool-homes.py`)을 부르고, 그 줄을 계획 걸음과 할 일로 가른다
 # 무엇이 어느 홈에 어떤 꼴로 가나는 갈 곳 표(`tool-homes.conf`)와 손만 안다 — 이 스크립트는 손을 부르고 그 줄을 옮겨 싣기만
-#   한다. 부르는 꼴 · 출력 계약 · 종료 값 · 제작자 칸 읽기 · 백업 자리는 손의 머리말이 든다 (결정 0112)
+#   한다. 부르는 꼴 · 출력 계약 · 종료 값 · 제작자 칸 읽기 · 백업 자리는 손의 머리말이 든다 — 여기 옮겨 적으면 손사본이 된다
 function Invoke-ToolHomes {
     # 손을 한 번 부른다 — 이 저장소로 개인 층을 채우고 놓는다. `-DryRun` 이면 홈 아래 아무것도 안 쓰고 바꿀 줄만 받는다.
     # 돌려주는 것: @{ Lines; Code; Rerun } · 못 불렀으면 @{ Why } — 읽는 자는 `ConvertFrom-ToolHomesOutput` 이다
@@ -363,6 +420,38 @@ function Get-SeedColumn {
         ForEach-Object { $_ -replace '/', '\' })
     if ($col.Dirs.Count -eq 0) {
         $col.Notes += 'deploy.seeds.conf 가 비었다 — 홈으로 폴더째 미는 씨앗·사내 환경 문서가 하나도 안 깔린다'
+    }
+    # ── 원본이 걷은 파일 — 기본 실행이 걷는다 (PAISetup #44 ⑭) ────────────
+    # 이 저장소가 홈 씨앗의 원본인 PC 에서는 설치기가 그 폴더를 비켜선다 — 원본에서 걷은 파일을 홈에서 걷는 손은 여기 하나다. 덮어쓰기만
+    #   하면 한 번 민 파일이 홈에 영영 남는다(씨앗은 새 프로젝트로 퍼지고, 사내 환경 문서는 틀린 안내가 된다).
+    # 우리 것의 기록은 이 저장소의 이력이다 — 홈에만 남은 파일 가운데 이 저장소가 그 자리에서 지운 적이 있는 것(`git log --diff-filter=D`)만
+    #   걷는다. 이력에 없는 파일(프록시의 `proxy.log` · `*.pid` · 시험 결과 · 사람이 둔 것)은 안 건드린다 — 그것은 `-Prune` 의 후보로 남는다.
+    #   이름이 바뀐 파일은 옛 이름을 지운 것으로 센다(`--no-renames`). 걷는 걸음은 백업 자리에 원본을 뜬다(실행 단계의 `remove`).
+    # 이력을 못 물으면(git 이 없다 · 얕은 클론이 그 커밋을 안 든다 · git 이 졌다) 걷지 않는다 — 못 물은 것은 할 일 한 줄이고, 얕은
+    #   클론에서 못 본 이력은 안 걷힌 채 남는다(우리 것을 남의 것으로 세는 쪽으로만 진다).
+    $col.Gone = @()
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($col.Dirs.Count -and -not $git) { $col.Notes += 'git 이 없어 원본이 걷은 씨앗 · 사내 환경 문서 파일을 못 가렸다 — 홈에 남는다' }
+    elseif ($col.Dirs.Count) {
+        $hist = $null
+        try { $hist = @(& git -C $Src -c core.quotepath=false log --no-renames --diff-filter=D --name-only --format= -- @($col.Dirs | ForEach-Object { $_ -replace '\\', '/' }) 2>$null) } catch { $hist = $null }
+        if ($null -eq $hist -or $LASTEXITCODE -ne 0) {
+            $col.Notes += '원본 이력을 못 물어(git log) 원본이 걷은 씨앗 · 사내 환경 문서 파일을 못 가렸다 — 홈에 남는다'
+        } else {
+            $deleted = @{}
+            foreach ($l in $hist) { $l = "$l".Trim(); if ($l) { $deleted[($l -replace '/', '\')] = $true } }
+            foreach ($sd in $col.Dirs) {
+                $sSrc = Join-Path $Src $sd
+                $sDst = Join-Path $Dst $sd
+                if (-not (Test-Path -LiteralPath $sSrc) -or -not (Test-Path -LiteralPath $sDst)) { continue }
+                $base = (Get-Item -LiteralPath $sDst -Force).FullName.TrimEnd('\')
+                foreach ($f in @(Get-ChildItem -LiteralPath $base -Recurse -File -Force | Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
+                    $rel = $f.FullName.Substring($base.Length + 1)
+                    if ((Test-Path -LiteralPath (Join-Path $sSrc $rel)) -or -not $deleted["$sd\$rel"]) { continue }
+                    $col.Gone += @{ Kind = 'remove'; Path = $f.FullName; Text = "- 제거  $($f.FullName)  (원본이 걷었다 — $($sd -replace '\\', '/')/)" }
+                }
+            }
+        }
     }
     # ── 씨앗의 판 줄 — 홈 사본이 어느 판에서 왔나를 그 자리에 남긴다 ────────────
     # 홈 사본을 진본으로 믿고 재는 자(`seeds/check/_check/borrowed_check.py` 의 `_stamp()`)가 판을 이 줄에서 읽는다 — 홈
@@ -457,7 +546,8 @@ $prunable = @()  # 제거 후보 — 원본에 없는 것 (-Prune 없이는 세�
 $gateReport = @()  # 저장소마다 마지막 CI 한 줄 — 초록·빨강·못 쟀다
 
 # 배포 대상은 PC 마다 적지 않고 `personal.conf` 에서 파생한다 — 저장소 목록과 자리는 `personal.conf`(REPOS · ROOT)가 들고
-#   세션 훅도 그것으로 clone 하고 슬러그 폴더를 세우므로, PC 마다 따로 적으면 같은 사실의 사본이 된다 (결정 0072)
+#   세션 훅도 그것으로 clone 하고 슬러그 폴더를 세우므로, PC 마다 따로 적으면 같은 사실의 사본이 된다 —
+#   그 사본이 없는 새 PC 는 대상이 통째로 비어 배포 · 설치가 한 번도 안 돈다
 # ⚠ 슬러그는 제품의 규칙대로 짓는다 — 윈도 경로에서 영숫자가 아닌 글자를 글자마다(뭉치지 않고) `-` 로. PowerShell 의 `-replace`
 #   는 UTF-16 글자로 세므로 한글 한 자가 대시 하나다(세션 훅의 같은 규율 · `C:\Users\홍길동\repos` → `C--Users-----repos`).
 # 메모리 폴더와 자리의 짝은 셋이다:
@@ -495,7 +585,7 @@ if ($repoNames.Count -gt 0 -and -not ($globalRuleTargets | Where-Object { Test-P
 #   헤매게 한다.
 if ((Test-Path (Join-Path $src 'deploy.targets.conf')) -or
     @(Get-ChildItem (Join-Path $src 'deploy.targets.d') -Filter *.conf -File -ErrorAction SilentlyContinue).Count) {
-    $todo += 'deploy.targets.d/ · deploy.targets.conf 는 더 안 읽는다 — 대상은 personal.conf 의 REPOS · ROOT 에서 파생한다(결정 0072). 지운다'
+    $todo += 'deploy.targets.d/ · deploy.targets.conf 는 더 안 읽는다 — 대상은 personal.conf 의 REPOS · ROOT 에서 파생한다. 지운다'
 }
 
 # PATH 의 bash 는 WSL 일 수 있다(배포판이 없으면 진다) — git.exe 자리에서 Git Bash 를 바로 찾는다.
@@ -508,14 +598,16 @@ $bash = @(
 
 
 # ============================ 당김 ============================
-# 층 — 저장소. 형제 저장소의 main 을 원격까지 빨리감기로 맞춘다
-# 하는 일 — `.git` 을 든 형제 저장소마다 fetch 를 동시에 띄우고 `merge --ff-only` 를 차례로 한다. 저장소마다 판정 한 줄
-#   (`↓ 당김` · `· 당김 건너뜀` · `! 못 당김`)을 내고, 그 판정을 `$pulledRepos` 에 남긴다
-# 앞에서 받는 것 — 준비의 `$globalRuleTargets`
+# 층 — 저장소. 형제 저장소의 main 을 원격 쪽으로 빨리감기로 맞춘다
+# 하는 일 — `.git` 을 든 형제 저장소마다 fetch 를 동시에 띄우고, 저장소마다 어디까지 갈지 세션 훅 몸통에 물은 뒤
+#   (`Get-PullTarget` — 원격 끝, 저장소가 당김 문을 두었으면 그 문이 고른 커밋) `merge --ff-only` 를 차례로 한다. 저장소마다
+#   판정 한 줄(`↓ 당김` · `· 당김 건너뜀` · `! 못 당김` · 문을 못 물었으면 `! 당김 문을 못 물었다`)을 내고, 그 판정을
+#   `$pulledRepos` 에 남긴다
+# 앞에서 받는 것 — 준비의 `$globalRuleTargets` · `$bash`(몸통을 부른다)
 # 안 하는 것 — 승인을 안 묻는다 · 던지지 않고 종료코드를 안 올린다 · 밀지 않는다(실행 단계의 `copy` 걸음이 `$pulledRepos` 를
 #   읽기만 한다) · 세션 훅의 당김 표식(`.git/claude-pull-attempted`)을 안 읽고 안 쓴다
 
-# ── 당김 — 계획을 짓기 앞에 형제 저장소를 원격까지 맞춘다 (결정 0078) ──
+# ── 당김 — 계획을 짓기 앞에 형제 저장소를 원격까지 맞춘다 ──
 # 계획(`$targets` · `$plan`)과 설치 판정(`--needs-install`)은 지금 그 저장소에 있는 파일의 지문을 본다 — 당김이 그 뒤에 서면
 #   새로 들어온 선언이 이번 회차가 아니라 다음 회차에 깔린다. 밀 것이 하나도 없는 회차에도 저장소마다 판정 한 줄이 서고,
 #   `$plan` 에는 안 들어 승인 밖에서 돈다(다 최신이면 안 묻는다).
@@ -528,10 +620,12 @@ $bash = @(
 #   최신인가」라 남이 90초 안에 시도했다는 사실로는 답이 안 된다.
 # 기다림에 한도가 있다 — 이 자리가 첫 걸음이라 여기서 안 끝나면 배선 · 계획 · 배포 · 설치가 통째로 안 돈다. 걸리는 길 둘(창을
 #   띄우려는 자격증명 도움꾼 · 답을 안 주는 망)을 비대화 고정(`Sync-Repos` 머리) · 묶음 전체의 벽시계 한도 · 넘긴 자식 거두기로
-#   막는다. 한도는 정상 왕복(사내 망 6~7초)의 열 배를 넘는 자리라 걸린 것에만 걸리고, 배선이 늦는 폭의 최대가 곧 이 한도다.
-# 한도는 이름 둘이 든다 — 값을 아래 고리에 박으면 화면에 찍는 초와 재는 초가 갈린다.
+#   막는다. 한도는 정상 왕복(사내 망 6~7초)의 열 배를 넘는 자리라 걸린 것에만 걸린다. 배선이 늦는 폭의 최대는 묶음 한도에
+#   저장소마다 문 묻기 · merge 한도를 더한 것이다 — 문 묻기와 merge 는 차례로 돈다.
+# 한도는 이름 셋이 든다 — 값을 아래 고리에 박으면 화면에 찍는 초와 재는 초가 갈린다.
 $PullBatchTimeoutSec = 120   # fetch 묶음 전체의 벽시계 한도. 넘긴 자식만 거둔다
 $PullMergeTimeoutSec = 30    # merge 하나의 한도 — 디스크 일이라 망을 안 탄다(걸리면 잠금이다)
+$PullTargetTimeoutSec = 60   # 몸통에 멈출 커밋을 묻는 한도(저장소마다) — 저장소의 손이 망(CI 조회)을 탈 수 있어 fetch 자리다
 $pulledRepos = @{}   # 저장소 -> 이번 회차에 그 저장소로 밀어도 되나 (당김 판정)
 
 # 대상은 `personal.conf` 의 REPOS 중 이 PC 에 `.git` 을 든 것이다 — 목록을 여기 안 적는다. 이 저장소 자신은 대상이 아니다 —
@@ -554,11 +648,11 @@ $memSrc   = Join-Path $src 'memory'
 $targets  = @()
 
 # 전역 규범 · 룰은 저장소로 안 간다 — 저장소가 사본을 지면 「이 저장소 것」과 「전역 것」이 한 폴더에서 섞인다. 홈이 빈 채
-#   뜨는 리모트 컨테이너는 claude-config 를 함께 붙여 받는다 (결정 0014 · 0001 · 0010)
+#   뜨는 리모트 컨테이너는 claude-config 를 함께 붙여 받으므로 저장소가 사본을 질 까닭이 없다
 
-# 저장소마다 한 벌씩 있어야 하는 것들은 각 저장소로 간다 — 홈이 아니라 그 저장소 안에서 읽히는 자리(훅과 그 등록 · 깃허브가
-#   편집창을 채울 때 여는 이슈 템플릿)다. 몸통은 익명이라 저장소마다 바이트가 같다. 여기의 `.claude\settings.json` 은 저장소의
-#   훅 등록 파일이지 홈의 개인 설정이 아니다(머리글) (결정 0004 · 0021)
+# 저장소마다 한 벌씩 있어야 하는 것들은 각 저장소로 간다 — 홈이 아니라 그 저장소 안에서 읽히는 자리(훅과 그 등록)다.
+#   몸통은 익명이라 저장소마다 바이트가 같다. 여기의 `.claude\settings.json` 은 저장소의 훅 등록 파일이지 홈의 개인
+#   설정이 아니다(머리글)
 # 목록은 선언이 든다 — 재는 자(scripts/check-global-copies.sh)도 같은 파일을 읽어, 배열로 박으면 두 자가 손사본이 된다.
 $repoFilesConf = Join-Path $src 'deploy.repofiles.conf'
 $repoFiles = @()
@@ -583,7 +677,7 @@ foreach ($bootFile in $repoFiles) {
 }
 
 # ADR 색인 생성기는 저장소로 안 나른다 — 찾는 자(`claude-config-path.sh`)가 홈 스킬 · 붙은 claude-config 의 스킬로 찾고,
-#   리모트는 늘 claude-config 를 붙인다 (결정 0064 · 0061)
+#   리모트는 늘 claude-config 를 붙이므로 단독 세션용 사본이 필요 없다
 
 # 프로젝트별 메모리: memory/<project>/*.md -> ~/.claude/projects/<슬러그>/memory/
 if (Test-Path $memSrc) {
@@ -591,7 +685,7 @@ if (Test-Path $memSrc) {
         $memDsts = Get-ProjectMemDst $proj.Name
         if ($memDsts.Count -eq 0) {
             # 조용히 넘어가지 않는다 — 배포된 줄 알고 있으면 어긋난 것을 나중에야 안다
-            $todo += "memory/$($proj.Name)/ 배포 안 됨 — 딸린 폴더가 이 PC 에 없다(personal.conf 의 REPOS · ROOT 로 짓는다 · 결정 0072)"
+            $todo += "memory/$($proj.Name)/ 배포 안 됨 — 딸린 폴더가 이 PC 에 없다(personal.conf 의 REPOS · ROOT 로 짓는다)"
             continue
         }
         foreach ($f in (Get-ChildItem $proj.FullName -Filter *.md)) {
@@ -632,7 +726,7 @@ foreach ($t in $targets) {
     }
 }
 
-# --- 도구 홈의 규범 · 룰 · 에이전트 · 스킬 — 손 하나가 놓는다 (결정 0112) ---
+# --- 도구 홈의 규범 · 룰 · 에이전트 · 스킬 — 손 하나가 놓는다 ---
 # 이 저장소로 PC 의 개인 층을 채우고 갈 곳 표대로 도구 홈에 놓는 일은 손이 한다 — 여기서는 손에게 `--dry-run` 으로 묻고 그
 #   바꿀 줄을 계획에 싣는다. 승인 뒤 실행 단계의 `homes` 걸음이 같은 명령을 `--dry-run` 없이 돌린다. 무엇을 어떻게 놓고 걷고
 #   백업하나, 그리고 제작자 칸(`PAISETUP_PERSONAL`)으로 어느 도구 홈에 놓나는 손의 머리말이 든다 — 이 스크립트는 그 값을 안 본다.
@@ -646,6 +740,8 @@ if ($homes.Same) { $same += '= 동일  도구 홈의 규범 · 룰 · 에이전�
 # 걸음과 그 까닭은 `Get-SeedColumn` 이 든다(위 씨앗 칸에서 지었다). 이 저장소가 홈 씨앗의 원본이 아니면 둘 다 비었다.
 # ⚠ 계획에 싣는 자리는 씨앗 복사 뒤인 여기다 — 계획은 순서대로 돌아, 위 씨앗 칸에서 실으면 이 줄이 복사보다 먼저 서서 복사가
 #   지거나 건너뛰어도 「그 판이 깔렸다」고 말한다.
+# 원본이 걷은 파일의 걷기도 여기서 싣는다 — 민 뒤 · 판 줄 앞. 무엇을 걷나는 `Get-SeedColumn` 이 든다.
+$plan += @($seedCol.Gone)
 if ($seedCol.Stamp) { $plan += $seedCol.Stamp }
 if ($seedCol.Same)  { $same += $seedCol.Same }
 
@@ -723,7 +819,7 @@ foreach ($repoRoot in @(@($src) + $globalRuleTargets)) {
     # ⚠ 묻는 훅은 그 저장소의 사본이 아니라 진본이다 — 사본은 이 배포가 덮으러 가는 낡은 판일 수 있고, 낡은 판은
     #   `--needs-install` 을 몰라 auto 갈래로 빠져 저장소마다 오래 돌고 엉뚱한 줄을 사유로 낸다. 그래서 이 저장소의 몸통
     #   (`session-start-body.sh`)을 바로 부르고 대상 저장소는 `SESSION_START_REPO` 로 넘긴다 — 문지기가 몸통을 부를 때 쓰는
-    #   입구다 (결정 0061)
+    #   입구다(형제 저장소의 훅은 몸통을 부르는 문지기로 줄었다)
     $needsProbe = Join-Path $src '.claude\hooks\session-start-body.sh'
     $env:SESSION_START_REPO = $repoRoot -replace '\\', '/'
     try { $needs = & $bash ($needsProbe -replace '\\', '/') --needs-install; $needsRc = $LASTEXITCODE }
@@ -811,12 +907,15 @@ if ($installSteps.Count -gt 0) {
 # --- 제거 후보: 원본에 없는 씨앗 파일 ---
 # ⚠ 씨앗 폴더(`seeds\…`)만 센다 — `posco` 는 프록시가 제 기록(`proxy.log` · `*.pid`)을 쓰는 자리라 원본에 없는 파일이 곧
 #   쓰레기가 아니다. 씨앗은 새 프로젝트가 복사해 출발하는 자리라 원본에서 걷은 부품이 홈에 남으면 계속 퍼지고, 설정 저장소를
-#   든 PC 에서는 설치기가 이 폴더를 비켜서므로(PAISetup install.ps1 「공용 자산」 걸음) 걷는 손이 여기다.
+#   든 PC 에서는 설치기가 이 폴더를 비켜서므로(PAISetup install.ps1 「공용 자산」 걸음) 걷는 손이 여기다. 원본 이력이 걷은 파일은
+#   이미 기본 실행의 걸음이라(`Get-SeedColumn` 의 Gone) 여기서 다시 안 센다 — 두 번 실으면 `-Prune` 판의 둘째 걷기가 없는 파일에 진다.
+$goneSet = @{}
+foreach ($g in @($seedCol.Gone)) { $goneSet[$g.Path] = $true }
 foreach ($sd in ($seedDirs | Where-Object { $_ -like 'seeds\*' })) {
     $sSrc = Join-Path $src $sd
     $sDst = Join-Path $dst $sd
     if (-not (Test-Path $sSrc) -or -not (Test-Path $sDst)) { continue }
-    Get-ChildItem $sDst -Recurse -File | Where-Object { $_.FullName -notmatch '\\__pycache__\\' } | ForEach-Object {
+    Get-ChildItem $sDst -Recurse -File | Where-Object { $_.FullName -notmatch '\\__pycache__\\' -and -not $goneSet[$_.FullName] } | ForEach-Object {
         $rel = $_.FullName.Substring($sDst.Length + 1)
         if (-not (Test-Path -LiteralPath (Join-Path $sSrc $rel))) {
             $prunable += @{ Kind = 'remove'; Path = $_.FullName; Text = "- 제거  $($_.FullName)  ($($sd -replace '\\', '/')/에 없음)" }
@@ -866,7 +965,7 @@ foreach ($k in $userEnvWant.Keys) {
 #   안 걸렸다고 말할 자도 없고, 게이트를 안 탄 커밋은 되돌릴 수 없다. 뒤가 무엇으로 죽든 게이트만은 서게 둔다.
 # 화면에 내는 목록도 이 순서다 — 계획을 굳힌 뒤에 세우니 사람이 읽는 차례와 실제로 도는 차례가 같다.
 # 배선보다 앞에 서는 것은 당김 하나다 — 당김은 던지지 않으므로 「뒤가 무엇으로 죽든」은 그대로 서지만, 느린 망은 배선을
-#   `$PullBatchTimeoutSec` 만큼까지 늦춘다. 커밋 게이트 배선의 임자는 매 세션 거는 세션 훅이고, 이 자리는 그 뒤를 받는다 (결정 0078)
+#   `$PullBatchTimeoutSec` 만큼까지 늦춘다. 커밋 게이트 배선의 임자는 매 세션 거는 세션 훅이고, 이 자리는 그 뒤를 받는다
 $plan = @($plan | Where-Object { $_.Kind -eq 'githooks' }) +
         @($plan | Where-Object { $_.Kind -ne 'githooks' })
 
@@ -1013,7 +1112,7 @@ foreach ($step in $plan) {
         'copy' {
             # 저장소 배포본은 그 저장소를 당긴 뒤에 밀고, 못 당겼으면 안 민다.
             # ⚠ 여기서 당기지 않는다 — 당김은 계획 앞에서 이미 돌았고 이 걸음은 그 판정(`$pulledRepos`)을 읽기만 한다. 여기 두면
-            #   밀 것이 없는 회차에는 당김도 함께 사라진다 (결정 0078)
+            #   밀 것이 없는 회차에는 당김도 함께 사라진다
             # 판정에 없는 저장소는 당길 것이 없던 자리(`.git` 이 없다)라 막을 까닭도 없다.
             $skip = $false
             if ($step.Repo -and $pulledRepos.ContainsKey($step.Repo) -and -not $pulledRepos[$step.Repo]) {

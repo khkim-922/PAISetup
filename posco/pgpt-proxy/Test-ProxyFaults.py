@@ -2,7 +2,7 @@
 
 게이트웨이를 흉내 내는 작은 서버를 띄우고, 복사한 프록시를 다른 포트에서 돌려 확인한다.
 
-    python3 tests/Test-ProxyFaults.py
+    python -X utf8 posco/pgpt-proxy/Test-ProxyFaults.py
 
 * 도중에 끊긴 응답은 클라이언트도 잘린 응답으로 받는다(전에는 정상 종료처럼 보였다)
 * 본문을 다 보내기 전에 온 응답(413)은 그대로 넘기고, 다시 보내지 않는다
@@ -356,6 +356,53 @@ def main() -> int:
         for bad in (f"{base}/../other", f"{base}/%2e%2e/other"):
             status, _, _ = request(proxy_port, "GET", bad)
             check(status == 403, f"점 세그먼트 경로는 막는다: {bad} ({status})")
+
+        # (v29) 길이가 숫자가 아니거나 덜 온 본문은 상류로 보내지 않고 400 으로 답한다
+        def raw(head: bytes, body: bytes, close_early: bool) -> bytes:
+            with socket.create_connection(("127.0.0.1", proxy_port), timeout=5) as sock:
+                sock.sendall(head + body)
+                if close_early:
+                    sock.shutdown(socket.SHUT_WR)
+                data = b""
+                while True:
+                    try:
+                        chunk = sock.recv(65536)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    data += chunk
+                return data
+        bad_len = raw(f"POST {base}/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n".encode(), b"{}", False)
+        check(bad_len.startswith(b"HTTP/1.0 400") or bad_len.startswith(b"HTTP/1.1 400"),
+              f"숫자가 아닌 Content-Length 는 400 ({bad_len[:20]!r})")
+        short = raw(f"POST {base}/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: 100\r\n\r\n".encode(), b'{"model":', True)
+        check(short.startswith(b"HTTP/1.0 400") or short.startswith(b"HTTP/1.1 400"),
+              f"덜 온 본문은 상류로 보내지 않고 400 ({short[:20]!r})")
+        # (v29) 다른 모델로 바꿔 보낸 응답에는 머리글이 붙고 /health 에 따로 센다(v0.7.2 오판 방지).
+        # 앞 시험에 기대지 않게 이 자리에서 직접 보내고 앞뒤 값을 견준다
+        before = json.loads(request(proxy_port, "GET", "/health")[1])
+        conn = http.client.HTTPConnection("127.0.0.1", proxy_port, timeout=10)
+        conn.request("POST", f"{base}/v1/messages", haiku, {"Content-Type": "application/json"})
+        sub_response = conn.getresponse()
+        sub_header = sub_response.getheader("x-pgpt-model-substituted") or ""
+        sub_response.read()
+        conn.close()
+        after = json.loads(request(proxy_port, "GET", "/health")[1])
+        check(sub_header == "claude-haiku-4-5-20251001 -> claude-sonnet-4.6",
+              f"바꿔 보낸 응답에 x-pgpt-model-substituted 가 붙는다 ({sub_header!r})")
+        check(after.get("model_substitutions", 0) - before.get("model_substitutions", 0) == 1,
+              "바꿔 보낸 요청을 model_substitutions 로 하나 센다")
+        check("max_request_bytes" in after and "execution_cuts_300" in after,
+              "/health 에 max_request_bytes · execution_cuts_300 칸이 있다")
+        plain = http.client.HTTPConnection("127.0.0.1", proxy_port, timeout=10)
+        plain.request("POST", f"{base}/v1/messages", b'{"model":"claude-opus-4-7","messages":[{"role":"user","content":"hi"}]}',
+                      {"Content-Type": "application/json"})
+        plain_response = plain.getresponse()
+        check(plain_response.getheader("x-pgpt-model-substituted") is None,
+              "표기만 고친 요청(4-7 → 4.7)에는 머리글이 붙지 않는다")
+        plain_response.read()
+        plain.close()
     finally:
         proc.terminate()
         try:

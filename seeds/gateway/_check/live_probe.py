@@ -10,19 +10,23 @@
 
 재는 것 셋 — 씨앗 곁말의 「안 쟀다」와 하나씩 짝이다:
   ① **환산비**(자/토큰) — 준 글 파일을 system 층 하나로 실어 보내고 저쪽이 센 입력 토큰으로
-     나눈다. 봉투 상한(`MAX_ENVELOPE_CHARS`)은 이 비로 벽에서 되짚으므로 **제 봉투의 결로**
+     나눈다. 봉투 상한(`MAX_ENVELOPE_CHARS`)은 이 비로 벽에서 되짚으므로 제 봉투의 결로
      잰 값이 있어야 한다. 계약마다 토크나이저가 달라 셋 다 잰다 — 가장 낮은 벽은 GPT 다
   ② **층 셋 이상의 캐시 적중** — system 층 셋(각각 계약의 캐시 최소 길이를 넘는 글)을 같은
-     봉투로 두 번 보낸다. 첫 판은 `cache_write`, 둘째 판은 `cache_read` 가 **첫 층과 둘째 층을
-     합친 몫**이면 둘째 고정 층도 캐시에 든 것이다. 첫 층 몫만이면 둘째 층은 캐시 밖이다
+     봉투로 두 번 보낸다. 첫 판은 `cache_write`, 둘째 판은 `cache_read` 가 첫 층과 둘째 층을
+     합친 몫이면 둘째 고정 층도 캐시에 든 것이다. 첫 층 몫만이면 둘째 층은 캐시 밖이다
   ③ **생각 조각** — gemini 갈래에 생각을 흘려 달라고 요청한 판에서 씀씀이에 `thinking_tokens`
      칸이 서나, 첫 조각이 몇 초에 오나. 앞단 무응답 자(300초)를 되돌리는 박동이 실물에서 서나
 
 **판정을 안 낸다 — 숫자를 찍고 그 뜻을 한 줄 단다.** 결과는 `_check/log/live-probe.log` 에
 쌓인다(날짜 · 나무 지문 · 숫자) — 그 줄을 씨앗 곁말의 「안 쟀다」 자리에 옮겨 적는 것은 사람이다.
 
-⚠ 키는 갈래 표의 키 묶음이 든 환경변수를 읽는다(배관의 `env_token` — 이름이 갈리는 자리라
-  선언이 좌표를 든다). 없으면 「못 쟀다」로 나간다 — 초록이 아니다. `--key` 로 줄 수도 있다.
+내는 것 — 종료코드 0 숫자를 찍었다 · 2 못 쟀다(검체 없음 · 모르는 갈래나 로컬 갈래 · 계약이 다른
+갈래 · 표에 그 계약이 없음 · 키 없음 · 봉투 예산을 못 찾음 · 거절 · 못 닿음 · 씀씀이가 안 왔다). 판정을
+안 내므로 어긋남(1)은 안 낸다. 씀씀이가 안 온 판은 「못 쟀다」를 찍고 다음 판으로 넘어가며, 끝에 2 로 나간다.
+
+키는 갈래 표의 키 묶음이 든 환경변수를 읽는다(배관의 `env_token` — 이름이 갈리는 자리라 선언이
+좌표를 든다). 없으면 「못 쟀다」로 나간다 — 초록이 아니다. `--key` 로 줄 수도 있다.
 ⚠ ②는 캐시를 **쓴다** — 1시간 수명의 캐시 쓰기 비용이 든다. 세 번 이상 돌릴 일이 아니다.
 """
 import argparse
@@ -36,16 +40,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from _plumb import Missing, gateway, get, providers  # noqa: E402 — 배관은 선언이 고른다
-from _verdict import EXIT_UNMEASURED, Unmeasured  # noqa: E402
+from _verdict import EXIT_UNMEASURED, Unmeasured, unmeasured, unmeasureds  # noqa: E402
 
 LOG = ROOT / "_check" / "log" / "live-probe.log"
-# 기본 검체 — 없다. 씨앗은 복사해 나가는 밑판이라 「이 저장소의 어느 파일」을 가리킬 수 없다
-# (옛 판은 claude-config `agents/lean.md` 를 가리켰고, 복사된 뒤엔 뿌리 밖의 없는 자리였다 — #25).
-# 검체는 인자로 받는다 — 한국어 산문 한 벌이면 헬퍼 결에 가깝고, 제 봉투의 결이면 제 값이다.
+# 기본 검체 — 없다. 씨앗은 복사해 나가는 밑판이라 「이 저장소의 어느 파일」을 가리키면 복사된
+# 뒤에는 뿌리 밖의 없는 자리가 된다(#25). 검체는 인자로 받는다 — 한국어 산문 한 벌이면 헬퍼 결에
+# 가깝고, 제 봉투의 결이면 제 값이다.
 DEFAULT_SPECIMEN = None
 ASK = "배관 측정 중이다. 「확인」 한 낱말만 답해라."
-# ②의 층 하나 크기 — 계약의 캐시 최소 길이(anthropic 1,024토큰 · 일부 모델 2,048)를 어느
-# 환산비에서도 넘게. 자/토큰 2.1 로 잡아도 1,900토큰이다.
+# ②의 층 하나 크기 — 계약의 캐시 최소 길이를 넘게. anthropic 1,024토큰은 자/토큰 2.1 로 잡아도
+# 1,900토큰이라 넘는다. 2,048 을 요구하는 일부 모델은 비가 1.95 아래일 때만 넘는다.
 LAYER_CHARS = 4000
 
 
@@ -70,9 +74,9 @@ def _creds(provider, key, **kw):
         raise Unmeasured(f"[안 잼] 모르는 갈래다 — {provider} (있는 것: {', '.join(gateway._GATEWAY)})")
     if row.get("local"):
         raise Unmeasured(f"[안 잼] {provider} 는 로컬 CLI 갈래라 이 프로브 밖이다")
-    # ⚠ **키를 읽는 손은 이름이 갈린다** — 밑줄을 붙여 두는 저장소가 있어(`_env_token`)
-    #   선언이 좌표를 든다. `--key` 를 준 판은 애초에 안 부르므로, 그 손이 없는 저장소도
-    #   키를 손으로 주면 그대로 돈다.
+    # 키를 읽는 손은 이름이 갈린다 — 밑줄을 붙여 두는 저장소가 있어(`_env_token`) 선언이
+    #   좌표를 든다. `--key` 를 준 판은 애초에 안 부르므로, 그 손이 없는 저장소도 키를 손으로
+    #   주면 그대로 돈다.
     try:
         token = key or get("env_token")(row["key_group"])
     except Missing as why:
@@ -93,7 +97,11 @@ def _first_of(contract):
 
 
 def _call(c, system, ask):
-    """한 바퀴 — (글자, stop, 마지막 씀씀이, 첫 조각 초, 총 초, 생각 신호들)."""
+    """한 바퀴 — (글자, stop, 마지막 씀씀이, 첫 조각 초, 총 초, 생각 신호들).
+
+    거절(배관이 사람 말로 옮긴 HTTP 4xx·5xx)은 그 말을 찍고, 망이 답을 안 준 것은 `Unmeasured` 로 —
+    둘 다 「못 쟀다」(2)로 나가 돌아오지 않는다.
+    """
     used, thinks, t0 = [], [], time.monotonic()
     first = [None]
 
@@ -108,15 +116,15 @@ def _call(c, system, ask):
     except RuntimeError as exc:
         print(f"[거절] {exc}")
         raise SystemExit(EXIT_UNMEASURED) from exc
-    # ⚠ **망이 답을 안 준 것은 「못 쟀다」(2)지 「어긋났다」(1)가 아니다.** 이 프로브는 애초에
-    #   판정을 안 내고 숫자만 찍는다 — 길이 막혔을 때 1 로 나가면 훅·CI 가 배관이 어긋난
-    #   것으로 읽는다. `URLError`·소켓 시간초과·SSL·연결 끊김이 다 `OSError` 자손이라 한
-    #   자리에서 받는다. 거부(HTTP 4xx·5xx)는 위 `RuntimeError` 가 이미 든다 —
-    #   배관이 `HTTPError` 를 사람 말로 옮겨 던지므로 여기까지 안 온다.
+    # 망이 답을 안 준 것은 「못 쟀다」(2)지 「어긋났다」(1)가 아니다 — 이 프로브는 판정을 안
+    #   내고 숫자만 찍으므로, 길이 막혔을 때 1 로 나가면 훅·CI 가 배관이 어긋난 것으로 읽는다.
+    #   `URLError`·소켓 시간초과·SSL·연결 끊김이 다 `OSError` 자손이라 한 자리에서 받는다.
+    #   거부(HTTP 4xx·5xx)는 위 `RuntimeError` 가 이미 든다 — 배관이 `HTTPError` 를 사람 말로
+    #   옮겨 던지므로 여기까지 안 온다.
     # ⚠ **`http.client.HTTPException` 은 `OSError` 자손이 아니라 따로 적는다.** 답이 오다
     #   끊긴 자리(`IncompleteRead`)·머리가 깨진 자리(`BadStatusLine`)가 그쪽이라, 소켓
-    #   갈래만 받으면 **같은 「망이 끊겼다」가 여기서만 1** 로 새 나간다. 자손 관계가 아니라
-    #   **뜻이 같은가**로 묶이는 자리다 — 둘 다 답을 못 받은 것이지 값이 어긋난 것이 아니다.
+    #   갈래만 받으면 같은 「망이 끊겼다」가 여기서만 1 로 새 나간다. 자손 관계가 아니라
+    #   뜻이 같은가로 묶이는 자리다 — 둘 다 답을 못 받은 것이지 값이 어긋난 것이 아니다.
     except (OSError, http.client.HTTPException) as exc:
         raise Unmeasured(f"[안 잼] 게이트웨이에 못 닿았다 — {type(exc).__name__}: {exc}") from exc
     return text, stop, (used[-1] if used else None), first[0], round(time.monotonic() - t0, 1), thinks
@@ -137,7 +145,7 @@ def ratio(path, contracts, key):
         c = _creds(pid, key, max_tokens=16)
         _, stop, u, _, secs, _ = _call(c, [text], ASK)
         if not u:
-            print(f"  {pid:14s} 씀씀이가 안 왔다 — 게이트웨이가 안 실었다. 못 쟀다")
+            unmeasured(f"① 환산비 {pid}", "씀씀이가 안 왔다 — 게이트웨이가 안 실었다")
             continue
         total = u["total_input"]
         r = round(chars / total, 2) if total else None
@@ -155,8 +163,8 @@ def cache_layers(provider, key):
         raise Unmeasured(f"[안 잼] {pid} 는 anthropic 계약이 아니다 — 표를 우리가 다는 계약만 잰다")
     # 층마다 글이 달라야 한다 — 같으면 둘째 층이 첫 층으로 오인된다. 번호를 박아 가른다.
     layers = [(f"[층 {i}] 이 층은 캐시 적중을 재는 채움 글이다. " * 200)[:LAYER_CHARS] for i in range(3)]
-    # ⚠ **봉투 예산은 이름이 갈린다** — 이 절에서만 드므로 여기서 문다. 위에 올려 두면
-    #   그 이름이 없는 저장소에서 ①③까지 같이 못 쟀다로 떨어진다.
+    # 봉투 예산은 이름이 갈리고 이 절에서만 들어 여기서 문다 — 위에 올려 두면 그 이름이 없는
+    #   저장소에서 ①③까지 같이 못 쟀다로 떨어진다.
     try:
         budget = get("SYSTEM_MARKS_BUDGET")
     except Missing as why:
@@ -170,7 +178,7 @@ def cache_layers(provider, key):
     for n in (1, 2):
         _, _, u, _, secs, _ = _call(c, layers, ASK)
         if not u:
-            print(f"  {n}판: 씀씀이가 안 왔다 — 못 쟀다")
+            unmeasured(f"② 층 셋의 캐시 {n}판", "씀씀이가 안 왔다")
             return
         rows.append(u)
         print(f"  {n}판: in={u['input_tokens']:,} · cache_write={u['cache_write']:,} · "
@@ -204,6 +212,9 @@ def thoughts(provider, key):
     print(f"  씀씀이 thinking_tokens={tk!r} · 생각 신호 {len(thinks)}번 (마지막 {thinks[-1] if thinks else '없음'})")
     _log(f"thoughts provider={pid} model={c.model} on={gateway.GEMINI_THOUGHTS} first={first} "
          f"secs={secs} thinking_tokens={tk} signals={len(thinks)}")
+    if not u:
+        unmeasured(f"③ 생각 조각 {pid}", "씀씀이가 안 왔다 — 생각 칸이 왔나를 볼 자리가 없다")
+        return
     if isinstance(tk, int):
         print("  뜻 — 생각 몫이 씀씀이까지 내려왔다 → 기전이 실물에서 선다. 「생각으로 예산을 다 썼나」에")
         print("       답할 재료가 기록에 남는다. 504 를 없앤다는 뜻은 아니다 — 죽는 판은 재현이 안 됐다.")
@@ -231,6 +242,9 @@ def main():
         print()
         thoughts(a.provider if a.what == "thoughts" else None, a.key)
     print(f"\n숫자는 {LOG.relative_to(ROOT)} 에 쌓였다 — 그 줄을 붙여 보내면 곁말에 옮겨 적는다.")
+    if unmeasureds():
+        print(f"못 잰 판 {len(unmeasureds())} — {' · '.join(unmeasureds())}")
+        sys.exit(EXIT_UNMEASURED)
 
 
 if __name__ == "__main__":

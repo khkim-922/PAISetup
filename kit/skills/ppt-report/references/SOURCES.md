@@ -14,7 +14,7 @@
 
 | 무엇 | 어디가 드나 |
 |---|---|
-| 덱 생성 · 엔진 선택 · pptxgenjs 함정 · 템플릿 편집 · QA 3갈래 · 디자인 원칙 | 공식 스킬 `document-skills:pptx`(Anthropic 플러그인) |
+| 덱 생성 · 엔진 선택 · pptxgenjs 함정 · 템플릿 편집 · QA 3갈래 · 디자인 원칙 | 공식 pptx 스킬 — `anthropic-skills:pptx`(claude.ai 계정 동기화) 또는 `document-skills:pptx`(마켓 플러그인) |
 | 감긴 오피스 문서 읽기 · 배치 검사 · 슬라이드 화면 캡처 | `drm-office-read` |
 | 분석 문서의 글결 · 번역투 재기 | `explain-the-essence` |
 

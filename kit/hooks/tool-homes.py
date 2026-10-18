@@ -14,10 +14,11 @@
 채우고 홈에 놓는다. 어느 도구도 그 한 벌을 스스로 안 읽어서, 제작자 칸이 도구마다 뜻을 갖는다.
 
 sync  — 한 층을 채운다. standard 는 짐에서 표의 층 안의 자리로, personal 은 설정 저장소에서 표의 저장소 자리로. 손과
-        표도 제 몸을 층 뿌리에 싣는다. 층에는 표의 항목과 손 · 표만 든다 — 짐의 다른 것은 안 싣고, 층에 남은 다른 것은
-        걷는다. 원본에 그 자리가 없거나 실을 파일이 하나도 없으면(표 머리) 그 항목은 그 층에서 조용히 빠지고(층에 있었으면
-        걷는다) 다른 층이 이긴다 — 짐이 안 싣는 항목(local)이 있고, 씨앗으로 만든 저장소는 제가 둔 원본만 든다. 층을 읽을 때도
-        파일 없는 항목 폴더는 없는 것으로 본다. 저장소 자리가 여럿이면(폴더 항목) 그 자리들의 내용을 한 폴더로 합치고, 같은
+        표도 제 몸을 층 뿌리에 싣고, personal 은 원본 기록(아래 「원본이 사라진 개인 층」)도 적는다. 층에는 표의 항목과
+        손 · 표(개인 층은 원본 기록도)만 든다 — 짐의 다른 것은 안 싣고, 층에 남은 다른 것은 걷는다. 원본에 그 자리가
+        없거나 실을 파일이 하나도 없으면(표 머리) 그 항목은 그 층에서 조용히 빠지고(층에 있었으면 걷는다) 다른 층이
+        이긴다 — 짐이 안 싣는 항목(local)이 있고, 씨앗으로 만든 저장소는 제가 둔 원본만 든다. 층을 읽을 때도 파일 없는 항목
+        폴더는 없는 것으로 본다. 저장소 자리가 여럿이면(폴더 항목) 그 자리들의 내용을 한 폴더로 합치고, 같은
         이름(항목 폴더 바로 밑)이 두 자리에 다 있으면 그 이름만 ERROR 를 내고 개인
         층에 안 싣는다(다른 층이 이긴다). each 항목의 뿌리에 바로 든 파일은 단위가 아니라 WARN 을 내고 안 싣는다. hook 길의
         항목은 등록 머리말을 든 껍데기와 그 껍데기가 표 머리의 꼴로 부르는 곁 파일만 싣고, 껍데기가 없으면 그 층에서 빠진다. 원본은
@@ -30,7 +31,8 @@ sync  — 한 층을 채운다. standard 는 짐에서 표의 층 안의 자리�
         개인 층을 안 든다 — 아무것도 안 쓰고 넘기지도 않는다(`CHANGED=0` · 종료 0). 짐에 표가 없으면 짐이 깨진 것이라
         ERROR 다.
 place — 길마다 조건이 서면 항목을 그 항목의 이긴 층에서 놓고, 안 서면 우리 것만 걷는다. 그 뒤 옛 기록(was)의 이름을 가르고,
-        옛 자리를 백업으로 옮기고, 옛 기록 파일을 옮기고, 받는 쪽 홈의 러너를 알린다(아래 차례대로).
+        옛 자리를 백업으로 옮기고, 옛 기록 파일을 옮기고, 받는 쪽 홈의 러너를 알리고, 원본이 사라진 개인 층을 백업으로
+        옮긴다(아래 차례대로).
         import 는 한 자리에 길이 여럿일 수 있다 — 표지 사이에 조건이 서고 이긴 층이 있는 길마다 가져오기 한 줄을 표의
         차례로 두고, 줄이 하나도 없으면 블록을 걷는다. 폴더 항목의 길은 이긴 층의 항목 폴더 안 가져올 파일을 가리키고,
         그 파일이 없으면 그 줄을 빼고 WARN 을 낸다 — 없는 파일을 가리키는 가져오기는 Claude 가 말없이 건너뛴다.
@@ -71,13 +73,26 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
 **놓는 손은 개인 층 표의 도장 줄로 가른다** — 개인 층에 손이 섰고 그 층 표에 도장 줄(`stamp` 로 여는 줄 · 뽑는 자가 짐과
   씨앗에 실리는 사본에 찍는다)이 없으면(사람이 작업하는 저장소) 저장소의 손이, 있으면(씨앗에서 복사한 저장소) 짐의 손이
   놓는다. 도장 줄은 「배포본의 사본」이라는 표시라 값을 안 읽고, 표의 어디에 있어도 된다. 개인 층이 없거나 그 표 파일을 못
-  열면 짐의 손이고, 표준 층에 손이 없으면 선 손이 놓는다. 한 PC 에 짐의 손(설치기)과 저장소의 손(배포)이 같이 있어, 부른 쪽 손으로
-  놓으면 둘이 홈을 번갈아 고친다. 그래서 place · check 를 다른 손이 받으면 같은 인자로 그 손을 띄워 넘기고, 그 줄을 이어
+  열거나 그 원본이 사라졌으면(아래) 짐의 손이고, 표준 층에 손이 없으면 선 손이 놓는다. 한 PC 에 짐의 손(설치기)과 저장소의
+  손(배포)이 같이 있어, 부른 쪽 손으로 놓으면 둘이 홈을 번갈아 고친다. 그래서 place · check 를 다른 손이 받으면 같은 인자로 그 손을 띄워 넘기고, 그 줄을 이어
   낸다. 넘겨받은 손은 다시 고르지 않고 제가 놓는다(넘김의 표지 값은 넘긴 손의 자리다). sync --dry-run 은 안 넘기고 부른 손이
   셈한다 — 채운 뒤 놓기를 맡을 층의 표로 놓을 줄을 셈하고, 그 표를 못 읽으면 ERROR 다.
 **개인 층 표를 못 읽으면 그 층을 뺀다** — 놓는 손이 개인 층의 표를 못 읽으면(표가 없다 · 모르는 꼴이 든다) 그 층을 빼고
   표준 층만 놓고, 그 자리를 댄 WARN 한 줄을 낸다(ERROR 가 아니다). 씨앗 사본의 표는 만든 사람 것이라 짐의 손이 그 문법을 다
   읽어 주지 않는다 — 다만 그 사본이 같은 PC 에서 돌아도 설치기가 놓은 것은 안 망가진다(결정 0115).
+**원본이 사라진 개인 층은 이기지 않는다**(결정 0161) — 개인 층을 채우는 sync 는 그 층 뿌리에 원본 기록(`source.txt` — 채운
+  원본 뿌리 `--from` 을 링크까지 푼 절대 자리 한 줄 · BOM 없는 UTF-8 · 끝에 줄바꿈 하나)을 적는다. `--from` 이 git 의 딸린 작업
+  트리면 그 저장소의 본 작업 폴더를 적는다 — 그 폴더에 표가 없거나 git 을 못 부르면 받은 자리다. 지금 기록이 한 줄의 절대 자리이고
+  그 글이 적을 글과 같으면(대소문자 · 구분자는 안 가린다) 안 쓰고, 아니면(상대 자리 · 여러 줄 · 다른 글자 꼴) 견주지 않고 갈아
+  쓴다. 놓는 판(place · check · 표준 층의 sync)은 기록의 자리에 표가 없으면(원본을 지웠다 · 옮겼다 · 표를 걷었다) 그 층을 원본이
+  사라진 층으로 본다 — 놓기를 안 맡고(표준 층에 손이 없을 때만 맡는다) 어느 항목에서도 이기지 않는다. 다만 그 자리의 드라이브(UNC
+  면 공유) 뿌리에 REACH_WAIT 초 안에 못 닿으면 못 가린 것이라 층을 두고 그 뿌리를 댄 WARN 한 줄을 낸다 — 빠진 USB · 꺼진 공유는
+  원본을 지운 것과 가려지지 않는다. place 는 끝에 원본이 사라진 층을 통째로 백업 자리로 옮기고 그 원본 자리를 댄 backup 한 줄을
+  낸다(check 는 그 줄과 함께 1). 그 층의 껍데기 이름도 우리 것으로 알아봐 그 등록을 걷는다. 옮기기가 막히면 ERROR 이고 층은
+  그대로이며 백업 자리에 빈 폴더를 안 남긴다. 개인 층을 채우러 온 sync 는 이 판정을 안 받는다 — 그 판이 기록을 새로 적는다.
+  기록이 없는 개인 층(기록을 안 쓰는 손이 채웠다)은 원본을 못 가려 그대로 이긴다. 판정은 기록의 자리뿐이고 찾는
+  자(`claude-config-path.sh`)에게 안 묻는다 — 그 후보는 세션을 연 저장소마다 달라 손이 물을 한 사실이 아니고, 배포는 제 뿌리로
+  채운다.
 **우리 것만 걷는다** — 표지 사이, 기록(`~/.paisetup/placed.tsv`)에 적은 해시 그대로인 파일, 우리가 써 온 옛 꼴(아래 OLD_*),
   옛 기록(was · old 의 기록 칸)이 말하는 이름의 폴더, 명령 꼴이 우리 것인 훅 등록(표 머리의 hook 꼴)만 우리 것이다. 표지가
   우리 것을 말하는 import · block 대상과 훅 등록은 기록에 안 든다. 놓을 것이 없는 도구 폴더는 짓지 않는다.
@@ -104,8 +119,8 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
   바꿀 줄을 같은 꼴로 낸다.
 종료 — 0 됐다 · 1 ERROR 가 있었다(다른 대상은 계속 갔다). check 는 위의 0 · 1 · 2.
 파이썬 3.12 이상 · 표준 라이브러리만 — 원격 컨테이너의 기본 파이썬은 3.13(3.12 · 3.11 이 함께 있다) · 설치기가 까는 PC 는 3.14 다.
-정한 자리 — 결정 0112 · 0113 · 0115 · claude-config#133 「2 단계 첫 걸음 「규범 · 룰」」 코멘트와 그 뒤의 「계약 보탬」 코멘트들 ·
-  「2 단계 둘째 걸음 「스킬」」 · 「2 단계 셋째 걸음 「훅」」 코멘트.
+정한 자리 — 결정 0112 · 0113 · 0115 · 0161 · claude-config#133 「2 단계 첫 걸음 「규범 · 룰」」 코멘트와 그 뒤의 「계약 보탬」 코멘트들 ·
+  「2 단계 둘째 걸음 「스킬」」 · 「2 단계 셋째 걸음 「훅」」 코멘트 · PAISetup#48 ②(원본이 사라진 개인 층).
 """
 import argparse
 import collections
@@ -122,6 +137,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 # ── 이름 붙인 값 — 한 벌 · 층 · 기록 · 표지 · 표의 낱말은 이 한 자리에 둔다 ─────────────────────────────────
@@ -131,6 +147,13 @@ LAYERS = (PERSONAL, STANDARD)          # 이기는 차례 — 앞이 이긴다
 TABLE = 'tool-homes.conf'              # 갈 곳 표 — 저장소 · 짐 · 층 뿌리가 다 같은 자리에 든다
 HAND = 'tool-homes.py'                 # 층 뿌리에 실리는 손의 이름
 LEDGER = 'placed.tsv'                  # 놓은 파일 기록 — `<홈 기준 자리>\t<sha256>` · 정렬 · BOM 없는 UTF-8
+SOURCE = 'source.txt'                  # 개인 층 뿌리의 원본 기록 — 그 층을 채운 원본 뿌리의 절대 자리 한 줄 · BOM 없는 UTF-8
+GIT_MARK = '.git'                      # 작업 폴더 뿌리의 git 표지 — 파일이면 딸린 작업 트리(또는 하위 모듈)이고, 공통 git 폴더의 이름이다
+GIT_ENV_PREFIX = 'GIT_'                # 부른 자가 물려준 git 값 — 남기면 git 이 받은 자리가 아니라 그 값의 저장소를 답한다
+GIT_WAIT = 10.0                        # 초 — git 에 한 번 묻는 데 넉넉하다. 넘기면 받은 자리를 그대로 적는다
+GONE, UNREACHED = 'gone', 'unreached'  # 원본 판정 — 사라졌다 · 그 자리의 드라이브에 못 닿아 못 가린다(judge_source)
+REACH_WAIT = 2.0                       # 초 — 기록 자리의 드라이브 · 공유 뿌리에 닿나를 기다린다. 꺼진 UNC 는 몇십 초를 막는다
+REACHED = {}                           # 뿌리 → 닿나 — 한 판(프로세스)에 뿌리마다 한 번만 묻는다(reachable)
 BACKUPS = 'backups'
 BACKUP_STAMP = '%Y%m%d-%H%M%S'         # 같은 초에 두 번 돌면 `-2` · `-3` … 을 단다
 LOCK = '.lock'
@@ -786,8 +809,9 @@ def take_out(dest):
         dest.unlink()
 
 
-def strays(root, table):
-    """층 안에서 표의 항목 · 손 · 표가 아닌 자리 — 층에는 그것들만 든다. 짓는 자리는 sweep_stage 몫이라 뺀다."""
+def strays(root, table, own):
+    """층 안에서 표의 항목도 뿌리의 제 것(own — 손 · 표 · 개인 층의 원본 기록)도 아닌 자리 — 층에는 그것들만 든다. 짓는 자리는
+    sweep_stage 몫이라 뺀다."""
     items = set(i.path.rstrip('/') for i in table.items.values())
     above = set()
     for p in items:
@@ -798,7 +822,7 @@ def strays(root, table):
     def visit(d, prefix):
         for e in sorted(d.iterdir(), key=lambda x: x.name):
             rel = prefix + e.name
-            if e.name.startswith(STAGE) or rel in items or (not prefix and e.name in (TABLE, HAND)):
+            if e.name.startswith(STAGE) or rel in items or (not prefix and e.name in own):
                 continue
             if rel in above and e.is_dir() and not is_link(e):
                 visit(e, rel + '/')
@@ -809,11 +833,13 @@ def strays(root, table):
     return found
 
 
-def fill_layer(home, layer, table, fills, selves, out, dry):
+def fill_layer(home, layer, table, fills, selves, out, dry, origin):
+    """한 층을 채운다 — 표의 항목 · 개인 층이면 원본 기록(origin — 채우는 원본 뿌리) · 손과 표(selves) 차례다."""
     root = home / HUB / layer
     if not dry:
         sweep_stage(root, table)
-    for e in strays(root, table):
+    own = (TABLE, HAND) + ((SOURCE,) if layer == PERSONAL else ())
+    for e in strays(root, table, own):
         shown = '%s%s/%s/%s%s' % (TILDE, HUB, layer, pathlib.PurePath(os.path.relpath(str(e), str(root))).as_posix(),
                                   '/' if e.is_dir() and not is_link(e) else '')
         try:
@@ -840,6 +866,8 @@ def fill_layer(home, layer, table, fills, selves, out, dry):
                 out.change('fill', shown, '층에 없다' if cur is None else '원본과 다르다')
         except Exception as e:  # noqa: BLE001 — 한 항목이 막혀도 나머지는 간다
             out.error('%s — 바꿔 끼우지 못했다 · 옛 항목을 그대로 둔다 (%s: %s)' % (shown, type(e).__name__, e))
+    if layer == PERSONAL:
+        note_source(root, origin, out, dry)
     for name, src in selves:   # 손을 마지막에 — 손이 서야 이 층이 놓기를 맡는다
         dest = root / name
         data = src.read_bytes()
@@ -851,6 +879,99 @@ def fill_layer(home, layer, table, fills, selves, out, dry):
             out.change('fill', '%s%s/%s/%s' % (TILDE, HUB, layer, name), '제 몸을 층 뿌리에 싣는다')
         except Exception as e:  # noqa: BLE001
             out.error('%s%s/%s/%s — 못 실었다 (%s: %s)' % (TILDE, HUB, layer, name, type(e).__name__, e))
+
+
+def recorded_source(root):
+    """개인 층 뿌리(root)의 원본 기록 — 적힌 자리(글 그대로) · 기록이 없거나 비었거나 못 읽으면 None."""
+    try:
+        return (root / SOURCE).read_text(encoding='utf-8-sig').strip() or None
+    except (OSError, ValueError):
+        return None
+
+
+def main_checkout(origin):
+    """원본 기록에 적을 자리 — origin 이 git 의 딸린 작업 트리면 그 저장소의 본 작업 폴더, 아니면 origin. 작업 트리는 앱이
+    세션마다 짓고 걷어서, 그 자리를 적으면 걷는 날 살아 있는 저장소로 채운 층이 원본이 사라진 층이 된다.
+    딸린 작업 트리는 뿌리의 `.git` 이 파일이다. 그때만 git 에게 공통 git 폴더를 묻고(상대 답은 origin 에서 푼다 — 2.31 앞의 git 은
+    `--path-format` 을 몰라 그 글자를 답으로 되돌린다) 그 이름이 `.git` 이면 그 부모가 본 작업 폴더다. 하위 모듈 · 따로 둔 git
+    폴더 · 본 작업 폴더에 표가 없음 · git 을 못 부름은 다 origin 이다. 물려받은 git 값(GIT_*)은 걷고 묻는다."""
+    if not (origin / GIT_MARK).is_file():
+        return origin
+    env = dict((k, v) for k, v in os.environ.items() if not k.startswith(GIT_ENV_PREFIX))
+    try:
+        p = subprocess.run(['git', '-C', str(origin), 'rev-parse', '--git-common-dir'], stdout=subprocess.PIPE,
+                           stderr=subprocess.DEVNULL, env=env, timeout=GIT_WAIT, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return origin
+    text = p.stdout.decode('utf-8', 'replace').strip()
+    if p.returncode != 0 or not text:
+        return origin
+    common = pathlib.Path(text) if os.path.isabs(text) else origin / text
+    main = pathlib.Path(os.path.abspath(str(common.parent)))
+    return main if common.name == GIT_MARK and (main / TABLE).is_file() else origin
+
+
+def note_source(root, origin, out, dry):
+    """개인 층 뿌리에 원본 기록을 적는다 — 적을 글은 main_checkout 의 자리를 링크까지 푼 것(realpath)이라 정션 · 링크로 채운 판의
+    글자가 남지 않는다. 지금 기록이 한 줄의 절대 자리이고 그 글이 적을 글과 같으면(대소문자 · 구분자는 안 가린다) 안 쓴다 —
+    상대 자리 · 여러 줄 · 다른 글자 꼴의 기록은 견주지 않고 갈아 쓴다."""
+    shown = '%s%s/%s/%s' % (TILDE, HUB, PERSONAL, SOURCE)
+    want = os.path.realpath(str(main_checkout(origin)))
+    cur = recorded_source(root)
+    if cur is not None and '\n' not in cur and os.path.isabs(cur) and os.path.normcase(cur) == os.path.normcase(want):
+        return
+    try:
+        if not dry:
+            write_atomic(root / SOURCE, ('%s\n' % want).encode('utf-8'))
+        out.change('fill', shown, '이 층을 채운 원본 뿌리의 자리를 적는다')
+    except Exception as e:  # noqa: BLE001
+        out.error('%s — 못 적었다 (%s: %s)' % (shown, type(e).__name__, e))
+
+
+def reachable(top):
+    """그 뿌리(드라이브 · UNC 공유의 뿌리)에 닿나 — REACH_WAIT 초 안에 폴더로 보이면 참. 꺼진 공유의 stat 은 몇십 초를 막아
+    곁 실(데몬)에서 묻고 그 실을 기다리지 않는다. 한 판에 뿌리마다 한 번 묻는다(REACHED)."""
+    if top not in REACHED:
+        seen = []
+        t = threading.Thread(target=lambda: seen.append(os.path.isdir(top)), daemon=True)
+        t.start()
+        t.join(REACH_WAIT)
+        REACHED[top] = bool(seen and seen[0])
+    return REACHED[top]
+
+
+def judge_source(home):
+    """개인 층 원본의 판정 — (판정, 기록의 자리, 그 자리의 드라이브 뿌리 또는 None). 판정은 GONE · UNREACHED · None(기록이
+    없다 · 원본이 있다). 기록이 절대 자리가 아니면(손은 그렇게 안 쓴다) GONE 이다. 드라이브(UNC 면 공유) 뿌리에 못 닿으면
+    UNREACHED — 빠진 USB · 꺼진 공유 · 안 붙은 망 드라이브는 원본을 지운 것과 가려지지 않아 기록이 없는 층처럼 둔다. 닿는데 그
+    자리에 표가 없으면 GONE 이다(표가 있는 뿌리가 개인 층을 드는 원본이다 — sync)."""
+    where = recorded_source(home / HUB / PERSONAL)
+    if where is None:
+        return None, None, None
+    if not os.path.isabs(where):
+        return GONE, where, None
+    drive = os.path.splitdrive(where)[0]
+    top = os.path.join(drive, os.sep) if drive else None
+    if top is not None and not reachable(top):
+        return UNREACHED, where, top
+    return (None if (pathlib.Path(where) / TABLE).is_file() else GONE), where, top
+
+
+def gone_source(home):
+    """원본이 사라진 개인 층의 기록 자리 — 판정(judge_source)이 GONE 일 때만, 아니면 None."""
+    state, where, _ = judge_source(home)
+    return where if state == GONE else None
+
+
+def retire_personal(run):
+    """원본이 사라진 개인 층(run.retire)을 백업 자리로 옮긴다 — 그 층은 이번 판에 이기지 않았다(layer_views). 막히면 ERROR
+    이고 층은 그대로이며, 그 옮기기가 백업 자리에 지은 빈 폴더는 걷는다 — 다음 판이 다시 옮긴다."""
+    root, where = run.retire
+    try:
+        run.backup(root, True, '개인 층의 원본이 없다(%s) · 표준 층이 이긴다' % where)
+    except Exception as e:  # noqa: BLE001
+        run.drop_empty_backup(root)
+        run.out.error('%s%s/%s/ — 원본이 사라진 개인 층을 못 옮겼다 (%s: %s)' % (TILDE, HUB, PERSONAL, type(e).__name__, e))
 
 
 # ── 놓기 ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -866,6 +987,7 @@ class Run:
         self._backup_root = None
         self.gone = set()       # 이번 판에 지웠거나 옮긴 자리(홈 기준) — --dry-run 도 세어, 뒤 판정이 바뀐 뒤의 홈을 본다
         self.keeps = []         # keep 자리(홈 기준 · 끝 / 없이 · fold 로)
+        self.retire = None      # 원본이 사라진 개인 층 — (층 뿌리, 기록의 자리). layer_views 가 세우고 place 가 끝에 옮긴다
 
     def gone_at(self, rel):
         parts = rel.rstrip('/').split('/')
@@ -937,6 +1059,21 @@ class Run:
         if moved:
             self.gone.add(self.rel(p))
         self.out.change('backup', shown, why)
+
+    def drop_empty_backup(self, p):
+        """p 를 옮기려다 막힌 뒤 — 그 백업 자리에 지은 빈 폴더를 위로 걷는다. 이번 판의 백업 자리와 백업 폴더도 비면 걷는다."""
+        if self.dry or self._backup_root is None:
+            return
+        top = self.hub / BACKUPS
+        d = (self._backup_root / self.rel(p)).parent
+        while at_or_under(str(d), str(top)):
+            try:
+                os.rmdir(str(d))
+            except OSError:
+                return
+            if d == self._backup_root:
+                self._backup_root = None
+            d = d.parent
 
     def write(self, p, data, why):
         if not self.dry:
@@ -1649,7 +1786,8 @@ def warn_runners(run, table):
 def place(run, table, views, conds):
     """표대로 놓는다. views — 층 → (항목 → 파일들 또는 None) · conds — 조건 → 켠 도구들.
 
-    차례 — 길마다 놓기 · 기록 훑기(걷기 · 빈 폴더) · 옛 기록(was)의 이름 · 옛 자리(old) · 옛 기록 파일 · 받는 쪽 홈의 러너.
+    차례 — 길마다 놓기 · 기록 훑기(걷기 · 빈 폴더) · 옛 기록(was)의 이름 · 옛 자리(old) · 옛 기록 파일 · 받는 쪽 홈의 러너 ·
+    원본이 사라진 개인 층 옮기기(run.retire).
     옛 기록은 첫머리에 한 번 읽는다 — old 줄도 같은 기록을 읽고, 기록 파일은 옛 자리까지 끝난 뒤 옮긴다."""
     run.keeps = [fold(k[len(TILDE):].rstrip('/')) for k in table.keeps]
     won, each_won = {}, {}
@@ -1697,7 +1835,10 @@ def place(run, table, views, conds):
                 text = ('%s\n%s\n%s\n' % (BEGIN, '\n'.join(lines), END)) if lines else ''
                 place_marked(run, path, text, True)
             elif first.form == HOOK:
-                place_hooks(run, path, item, chosen(first), [views[layer](item) for layer in LAYERS])
+                seen = [views[layer](item) for layer in LAYERS]
+                if run.retire is not None:   # 옮길 개인 층의 껍데기도 우리 것으로 알아본다 — 그 등록이 걷힌다
+                    seen.append(item_files(run.retire[0], item.path))
+                place_hooks(run, path, item, chosen(first), seen)
             elif first.form == BLOCK:
                 got = chosen(first)
                 text = ''
@@ -1730,6 +1871,8 @@ def place(run, table, views, conds):
             except Exception as e:  # noqa: BLE001
                 run.out.error('%s — 옛 기록을 못 옮겼다 (%s: %s)' % (x, type(e).__name__, e))
     warn_runners(run, table)
+    if run.retire is not None:
+        retire_personal(run)
     run.save()
 
 
@@ -1746,18 +1889,30 @@ def unreadable(root):
     return bad[0] if bad else None
 
 
-def layer_views(home, out, filled=None):
+def layer_views(run, filled=None):
     """층 → (항목 → 파일들 또는 None). filled=(층, 항목 → 파일들) — sync --dry-run 이 그 층을 원본으로 셈한다.
-    개인 층의 표를 못 읽으면 그 층을 빼고 WARN 한 줄을 낸다 — 원본으로 셈하는 개인 층의 표는 부른 손이 이미 읽었다."""
+    개인 층의 원본이 사라졌으면(judge_source 가 GONE) 그 층을 빼고 run.retire 를 세운다 — place 가 끝에 그 층을 옮긴다. 원본
+    자리의 드라이브에 못 닿으면(UNREACHED) 그 뿌리를 댄 WARN 한 줄을 내고 층을 둔다. 개인 층의 표를 못 읽으면 그 층을 빼고 WARN
+    한 줄을 낸다. 개인 층을 원본으로 셈하는 판(filled 가 개인 층)은 둘 다 안 본다 — 부른 손이
+    그 원본의 표를 이미 읽었고, 그 판이 기록을 새로 적는다."""
+    home, out = run.home, run.out
     views = dict((layer, (lambda item, root=home / HUB / layer: item_files(root, item.path))) for layer in LAYERS)
     if filled is not None:
         views[filled[0]] = lambda item: filled[1][item.name]
     if filled is None or filled[0] != PERSONAL:
-        why = unreadable(home / HUB / PERSONAL)
-        if why:
-            out.warn('%s%s/%s/%s — 개인 층의 표를 이 손이 못 읽는다(%s) · 그 층을 빼고 표준 층만 놓는다'
-                     % (TILDE, HUB, PERSONAL, TABLE, why))
+        state, where, top = judge_source(home)
+        if state == GONE:
+            run.retire = (home / HUB / PERSONAL, where)
             views[PERSONAL] = lambda item: None
+        else:
+            if state == UNREACHED:
+                out.warn('%s%s/%s/%s — 원본 자리(%s)의 드라이브 %s 에 닿지 못해 원본이 사라졌는지 못 가린다 · 개인 층을 그대로 둔다'
+                         % (TILDE, HUB, PERSONAL, SOURCE, where, top))
+            why = unreadable(home / HUB / PERSONAL)
+            if why:
+                out.warn('%s%s/%s/%s — 개인 층의 표를 이 손이 못 읽는다(%s) · 그 층을 빼고 표준 층만 놓는다'
+                         % (TILDE, HUB, PERSONAL, TABLE, why))
+                views[PERSONAL] = lambda item: None
     return views
 
 
@@ -1772,16 +1927,20 @@ def shipped(table_path):
 
 
 def placing_layer(home, own=None):
-    """놓기를 맡을 층 — 개인 층에 손이 섰고 그 표가 도장 줄 없이 읽히면 개인 층, 아니면 표준 층. 표준 층에 손이 없으면 손이
-    선 층이고, 손이 선 층이 없으면 None.
+    """놓기를 맡을 층 — 개인 층에 손이 섰고 그 표가 도장 줄 없이 읽히고 그 원본이 안 사라졌으면 개인 층, 아니면 표준 층. 표준
+    층에 손이 없으면 손이 선 층이고, 손이 선 층이 없으면 None.
 
-    own=(층, 표 자리) — sync --dry-run 이 채운 뒤를 셈할 때 그 층에 손이 서고 그 표가 실린다고 본다.
+    own=(층, 표 자리) — sync --dry-run 이 채운 뒤를 셈할 때 그 층에 손이 서고 그 표가 실린다고 본다. 그 층이 개인 층이면 원본이
+    사라졌나를 안 본다 — 그 판이 기록을 새로 적는다.
     """
     def table_at(layer):
         return own[1] if own is not None and layer == own[0] else home / HUB / layer / TABLE
 
     has = dict((layer, (own is not None and layer == own[0]) or (home / HUB / layer / HAND).is_file()) for layer in LAYERS)
-    if has[PERSONAL] and (shipped(table_at(PERSONAL)) is False or not has[STANDARD]):
+    refill = own is not None and own[0] == PERSONAL
+    # 원본 판정은 도장 없는 표일 때만 묻는다 — 도장 표면 어차피 짐의 손이라, 꺼진 공유를 기다릴 까닭이 없다
+    if has[PERSONAL] and (not has[STANDARD] or (shipped(table_at(PERSONAL)) is False
+                                                 and (refill or gone_source(home) is None))):
         return PERSONAL
     return STANDARD if has[STANDARD] else None
 
@@ -1850,11 +2009,13 @@ def cmd_place(a, home, out, dry, check):
         return absent
     conds = read_conds(a, table, out)
     if dry:
-        place(Run(home, True, out), table, layer_views(home, out), conds)
+        run = Run(home, True, out)
+        place(run, table, layer_views(run), conds)
     else:
         try:
             with Lock(home / HUB):
-                place(Run(home, False, out), table, layer_views(home, out), conds)
+                run = Run(home, False, out)
+                place(run, table, layer_views(run), conds)
         except Busy as e:
             out.error(e)
     if check:
@@ -1878,11 +2039,11 @@ def cmd_sync(a, home, out):
                  for item in table.items.values())
     selves = ((TABLE, root / TABLE), (HAND, pathlib.Path(__file__).resolve()))
     if a.dry_run:
-        fill_layer(home, a.layer, table, fills, selves, out, True)
+        fill_layer(home, a.layer, table, fills, selves, out, True, root)
         return dry_place(a, home, table, fills, placing_layer(home, (a.layer, root / TABLE)), out)
     try:
         with Lock(home / HUB):
-            fill_layer(home, a.layer, table, fills, selves, out, False)
+            fill_layer(home, a.layer, table, fills, selves, out, False, root)
     except Busy as e:
         out.error(e)
         return 1
@@ -1900,8 +2061,9 @@ def dry_place(a, home, table, fills, winner, out):
         if table is None or bad:
             out.error('놓기를 맡을 층의 표가 없거나 틀렸다 — %s' % path)
             return 1
-    views = layer_views(home, out, (a.layer, fills))
-    place(Run(home, True, out), table, views, read_conds(a, table, out))
+    run = Run(home, True, out)
+    views = layer_views(run, (a.layer, fills))
+    place(run, table, views, read_conds(a, table, out))
     return 1 if out.failed else 0
 
 

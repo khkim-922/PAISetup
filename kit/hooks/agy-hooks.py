@@ -10,8 +10,9 @@
 경로 열쇠도 다르다(`AbsolutePath` · `TargetFile` · 셸은 `CommandLine` · `Cwd`). 판정은 몸통의 것을 불러 쓰고 여기서는 꼴만
 바꾼다 — 같은 판정을 두 벌 두면 한쪽만 낡는다. 입력 꼴은 agy 문서 「Hooks」의 것이다(<https://antigravity.google/docs/hooks>).
 
-**홈 훅 여섯 가운데 셋을 건다.** 그림 문 · Bash 겹역슬래시 보정 · 웹 다시 찾기는 Claude 쪽 사정(그림 크기 비용 · Git Bash 가
-접는 역슬래시 · WebFetch 실패)에서 나온 훅이라 agy 에서는 막을 사고가 없다(결정 0083 실측 · 0099).
+**홈 훅 가운데 셋을 건다.** 그림 문 · Bash 겹역슬래시 보정 · 웹 다시 찾기는 Claude 쪽 사정(그림 크기 비용 · Git Bash 가
+접는 역슬래시 · WebFetch 실패)에서 나온 훅이라 agy 에서는 막을 사고가 없다(결정 0083 실측 · 0099). 셸 실수 문은 몸통이
+Claude 의 Bash · PowerShell 도구 입력(`tool_input.command`)만 읽어 agy 셸 꼴(`CommandLine`)로는 안 건다.
 
 **모델에게 말이 닿는 자리는 하나다.** agy 의 PreToolUse 는 결정(`decision`)과 까닭(`reason`)만 받고, PostToolUse 도 모델에
 말을 붙일 수 없다. 모델에 닿는 것은 PreInvocation 의 `injectSteps` 다 — 모델을 부를 때마다 돌고, 거기 낸 `ephemeralMessage`

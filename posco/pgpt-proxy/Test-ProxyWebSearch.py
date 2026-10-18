@@ -1,15 +1,15 @@
-"""웹서치 메움 검사 — 프록시가 Claude Code 의 웹서치 하위 요청을 제미나이 검색으로 메우나 (claude-config #118).
+"""웹서치 메움 검사 — 프록시가 Claude Code 의 웹서치 하위 요청을 제미나이 검색으로 메우나 (v27 · v28).
 
 가짜 게이트웨이와 프록시를 이 프로세스 안에 띄우고 **CLI 가 보내는 꼴 그대로** 하위 요청을 보낸다. 돌아온
 SSE 를 SDK 처럼 칸으로 다시 짓고, CLI 가 그 칸을 읽는 규칙(2.1.293 바이너리의 `hs()` 와 결과 글 짓기)을 그대로
 옮겨 **모델이 받을 글**을 만든 뒤 그 글을 잰다. 망도 회사 키도 안 쓴다.
 
-    python -X utf8 websearch_check.py
+    python -X utf8 posco/pgpt-proxy/Test-ProxyWebSearch.py
 
 ⚠ **양방향이다.** 메우는 것만 재면 「안 건드릴 요청까지 가로채는」 결함이 안 잡힌다 — 서버 웹서치 선언이 없는
   요청 · 손잡이를 끈 판은 원래 길(`/v1/messages`)로 그대로 가야 한다.
 ⚠ **상류가 무엇을 받았나도 잰다** — 경로(제미나이 모델) · 쿼리(Anthropic 쪽 것은 뺐다) · 머리(회사 키가 두
-  이름으로) · 본문(검색 도구 · 질의가 UTF-8 그대로). 한국어 질의가 다른 인코딩으로 가면 게이트웨이 너머에서 깨진다(#118 실측).
+  이름으로) · 본문(검색 도구 · 질의가 UTF-8 그대로). 한국어 질의가 다른 인코딩으로 가면 게이트웨이 너머에서 깨진다(실측).
 ⚠ **가짜 게이트웨이는 실물이 거절하는 것을 거절한다** — 제미나이 경로에 모르는 쿼리가 오면 실물과 같은 400 을 낸다.
   CLI 는 하위 요청을 `/v1/messages?beta=true` 로 보내는데(사내 PC 실측), 그 쿼리를 빼고 재면 메움이 실물에서만 진다.
 ⚠ **집에서 초록인 것은 모양까지다** — 게이트웨이의 제미나이가 grounding 으로 실제 웹을 찾는 것은 회사에서만 잰다.
@@ -17,17 +17,20 @@ SSE 를 SDK 처럼 칸으로 다시 짓고, CLI 가 그 칸을 읽는 규칙(2.1
 from __future__ import annotations
 
 import http.client
+import importlib.util
 import json
 import sys
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-import opus5_proxy as proxy  # noqa: E402
+ROOT = Path(__file__).resolve().parent
+spec = importlib.util.spec_from_file_location("proxy", ROOT / "opus5_proxy.py")
+proxy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(proxy)
 
 KEY = "test-key-0000"
 QUERY_EN = "python 3.13 release notes"
@@ -77,6 +80,11 @@ class Gateway(BaseHTTPRequestHandler):
             status = 400
         elif MODE["answer"] == "error":
             data, status = b'{"error":{"code":500,"message":"boom"}}', 500
+        elif MODE["answer"] == "ratelimit":
+            data, status = b'{"error":{"code":429,"message":"slow down"}}', 429
+        elif MODE["answer"] == "slow":
+            time.sleep(2.0)
+            data, status = json.dumps(GROUNDED).encode(), 200
         elif MODE["answer"] == "garbage":
             data, status = b"<html>not json</html>", 200
         else:
@@ -172,6 +180,8 @@ def main() -> int:
         threading.Thread(target=s.serve_forever, daemon=True).start()
     port = server.server_port
     fails: list[str] = []
+    # 출처 주소 풀기(v28)는 밖(구글)으로 HEAD 를 보낸다 — 이 검사는 망을 안 쓰므로 끄고, ⑥ 에서 가짜로 잰다
+    proxy.WEB_SEARCH_RESOLVE = False
 
     def check(name: str, ok: bool, detail: object = "") -> None:
         print(("✓ " if ok else "✗ ") + name + ("" if ok else f" — {detail}"))
@@ -238,6 +248,67 @@ def main() -> int:
             proxy.WEB_SEARCH = True
         log = proxy.LOG_PATH.read_text(encoding="utf-8") if proxy.LOG_PATH.exists() else ""
         check("기록에 갈래가 남는다(kind=web_search · sources=2)", "kind=web_search" in log and "sources=2" in log, log[-400:])
+
+        # ⑥ (v28) 서버 웹서치를 선언했어도 CLI 머리가 없는 여러 턴 대화는 가로채지 않는다
+        multi = cli_request(QUERY_EN)
+        multi["messages"] = [{"role": "user", "content": "Hello, what is new in python?"},
+                             {"role": "assistant", "content": [{"type": "text", "text": "Let me check."}]},
+                             {"role": "user", "content": "thanks, also search rust"}]
+        post(port, multi)
+        check("CLI 머리가 없는 여러 턴 대화는 원래 길로 간다", SEEN[-1]["path"].endswith("/v1/messages"), SEEN[-1]["path"])
+        reminder = cli_request(QUERY_EN)
+        reminder["messages"][0]["content"].insert(0, {"type": "text", "text": "<system-reminder>ctx</system-reminder>"})
+        post(port, reminder)
+        sent = json.loads(SEEN[-1]["body"])["contents"][0]["parts"][0]["text"]
+        check("머리 앞에 붙은 다른 글 조각은 질의에 안 섞인다", QUERY_EN in sent and "system-reminder" not in sent, sent)
+
+        # ⑦ (v28) 출처 주소를 원래 주소로 푼다(가짜 HEAD) — 못 푼 것은 경유 주소 그대로
+        real = {"https://vertexaisearch.cloud.google.com/grounding-api-redirect/AAA": "https://www.python.org/downloads/"}
+        original = proxy._resolve_grounding_url
+        proxy._resolve_grounding_url = lambda url: real.get(url)
+        proxy.WEB_SEARCH_RESOLVE = True
+        try:
+            status, _, data = post(port, cli_request(QUERY_EN))
+            text = cli_tool_result(QUERY_EN, blocks_from_sse(data))
+            check("푼 출처는 원래 주소로, 못 푼 출처는 경유 주소로 실린다",
+                  "https://www.python.org/downloads/" in text and "grounding-api-redirect/AAA" not in text
+                  and "grounding-api-redirect/BBB" in text, text)
+        finally:
+            proxy._resolve_grounding_url = original
+            proxy.WEB_SEARCH_RESOLVE = False
+
+        # ⑧ (v28) 상태별 오류 코드 · 시한 · 연결 실패도 검색 오류 칸(502 아님)
+        MODE["answer"] = "ratelimit"
+        status, _, data = post(port, cli_request(QUERY_EN))
+        text = cli_tool_result(QUERY_EN, blocks_from_sse(data))
+        check("상류가 429 면 「Web search error: too_many_requests」", status == 200 and "too_many_requests" in text, text)
+        MODE["answer"] = "slow"
+        saved_timeout = proxy.WEB_SEARCH_TIMEOUT
+        proxy.WEB_SEARCH_TIMEOUT = 0.5
+        try:
+            started = time.monotonic()
+            status, _, data = post(port, cli_request(QUERY_EN))
+            took = time.monotonic() - started
+            text = cli_tool_result(QUERY_EN, blocks_from_sse(data))
+            check("검색 시한을 넘기면 시한 안에 「Web search error」로 답한다",
+                  status == 200 and "Web search error: unavailable" in text and took < 1.8, (status, round(took, 2), text))
+        finally:
+            proxy.WEB_SEARCH_TIMEOUT = saved_timeout
+            MODE["answer"] = "ok"
+        dead = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
+        dead_port = dead.server_port
+        dead.server_close()
+        saved_pool = proxy._UPSTREAM_POOL
+        proxy._UPSTREAM_POOL = proxy.UpstreamPool(f"http://127.0.0.1:{dead_port}")
+        try:
+            failed = proxy.stats()["web_search_failed"]
+            status, _, data = post(port, cli_request(QUERY_EN))
+            text = cli_tool_result(QUERY_EN, blocks_from_sse(data))
+            check("게이트웨이에 닿지 않으면 502 대신 200 · 「Web search error」",
+                  status == 200 and "Web search error: unavailable" in text, (status, data[:200]))
+            check("닿지 않은 것도 진 수로 센다", proxy.stats()["web_search_failed"] == failed + 1)
+        finally:
+            proxy._UPSTREAM_POOL = saved_pool
     finally:
         for s in (server, gateway):
             s.shutdown()
@@ -248,4 +319,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 회사 PC 콘솔은 cp949 라 ✓ 를 못 찍고 첫 줄에서 죽었다(VM 실측) — 못 적는 글자는 물음표로 바꿔 끝까지 돈다
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, OSError):
+        pass
     sys.exit(main())

@@ -1,40 +1,49 @@
 """외곽과 동일값으로 녹은 카드 행이 노출 모서리 처리를 실었나 — 인자로 준 HTML.
 
-좌표 — 이 자가 난 자리는 아뜰리에 결정 0157(2026-08-24 실측)이다. 규칙의 진본은 **받는
-저장소의 지면 지시문**이고 여기는 그 규칙의 결정론 갈래만 든다. 판정 손과 종료코드 계약은
-곁 `_verdict.py` 가, 계약의 뜻은 곁 `README.md` §종료코드 가 든다.
+좌표 — 이 자가 난 자리는 아뜰리에 결정 0157 이다. 규칙의 진본은 **받는 저장소의 지면 지시문**이고
+여기는 그 규칙의 결정론 갈래만 든다. 판정 손과 종료코드 계약은 곁 `_verdict.py` 가, 계약의 뜻은 곁
+`README.md` §종료코드 가 든다.
 
     python -X utf8 _check/boundary_edge_check.py                        # 자검만
     python -X utf8 _check/boundary_edge_check.py --width 840 <html…>    # 자검 + 파일 판정
     BOUNDARY_CARD_WIDTH=840 python -X utf8 _check/boundary_edge_check.py <html…>
 
-**무엇을 재나.** HTML 에서 **외곽 배경과 동일값인 카드 직계 행**을 찾아, 그 행이 외곽과
-맞닿는 노출 모서리(첫 행: 위·좌·우 / 끝 행: 아래·좌·우 / 중간 행: 좌·우)에 border 를
-실었는지, 또는 카드 `<table>` 자체가 outline/border 를 실었는지 잰다.
+내는 것 — 종료코드 0 초록 · 1 어긋남(한 장이라도 어긋났으면 못 잰 장이 있어도 1) · 2 못 쟀다(파일을
+줬는데 폭이 없다 · 준 파일을 못 읽었거나 외곽 배경·카드·카드 행을 못 찾았다).
 
-**왜 코드가 재나.** 이 결함은 눈 없는 자체 점검이 설계상 못 본다 — 그림을 안 싣기 때문이다.
-동일값 비교는 의미 판단이 아니라 결정론이라 코드 몫이다. 난 자리의 실측에서는 카드 첫 행이
-외곽과 같은 값인데 선이 **아래** 모서리에만 실려, 정작 외곽과 만나는 위·좌·우가 비어 그
-행이 지면에 통째로 녹았다. 자리 이름마다 모서리를 배정하는 열거식이 틀린 모서리를 짚은 것이다.
+무엇을 재나 — HTML 에서 외곽 배경과 동일값인 카드 직계 행을 찾아, 그 행이 외곽과 맞닿는 노출
+모서리(첫 행: 위·좌·우 / 끝 행: 아래·좌·우 / 중간 행: 좌·우)에 선을 그었는지, 또는 카드
+`<table>` 자체가 네 변 다 outline/border 를 그었는지 잰다(한 변만 선 카드는 폭이 안 선다). 선이냐는
+값이 가른다 — 긋는 꼴(solid · dashed …)이 서고 굵기가 0 이 아니어야 선이다. `border:0` · `border:none` ·
+꼴 없는 `1px #ccc` 는 CSS 가 안 긋는 값이라 선이 아니고, 한 style 안의 선언은 적힌 차례로 덮는다.
 
-**받는 저장소가 무엇을 줘야 도나 — 카드 폭 하나다.** 카드 `<table>` 을 집는 유일한 열쇠가
-`width` 속성값이라, 그 값만 `--width` 나 환경변수 `BOUNDARY_CARD_WIDTH` 로 받으면 나머지는
-메일 HTML 일반의 것이다. 폭을 박아 두지 않는 까닭은 그 값이 저장소마다 다른 유일한 자리이기
-때문이다 — 박으면 이 파일이 그 저장소의 것이 된다.
+왜 코드가 재나 — 이 결함은 눈 없는 자체 점검이 설계상 못 본다. 그림을 안 싣기 때문이다. 동일값
+비교는 의미 판단이 아니라 결정론이라 코드 몫이다. 자리 이름마다 모서리를 배정하는 열거식은 틀린
+모서리를 짚기 쉽다 — 첫 행이 외곽과 같은 값인데 선이 아래 모서리에만 서면, 정작 외곽과 만나는
+위·좌·우가 비어 **그 행이 지면에 통째로 녹는다**(§1 의 첫 검체가 그 꼴이다).
 
-⚠ **인자 없이 돌면 자검만 돌고 초록이다** — 검출 논리가 사는지를 잰 것이고 파일은 0장 판정이다.
-  초록 줄이 잰 파일 수를 파생으로 찍으므로 그 초록이 한 장도 안 잰 판을 덮지 않는다.
-⚠ **파일을 주고 폭을 안 주면 「못 쟀다」(2)로 나간다.** 폭이 없으면 어느 파일이든 카드를 못
-  집어 「구조를 못 찾았다」가 되는데, 그 침묵은 초록과 구별이 안 된다 — 일반화가 새로 낸
-  사고라 이 갈래와 아래 센티널이 함께 문다.
-⚠ **양성 대조가 실물 판정보다 먼저 선다.** §1 이 일부러 어긋난 검체로 검출이 실제로 무는지
-  보이고, §2 가 처방이 선 검체와 **폭이 안 맞는 판**(센티널)을 안 무는지 보인다.
+받는 저장소가 무엇을 줘야 도나 — 카드 폭 하나다. 카드 `<table>` 을 집는 유일한 열쇠가 `width`
+속성값이라, 그 값만 `--width` 나 환경변수 `BOUNDARY_CARD_WIDTH` 로 받으면 나머지는 메일 HTML
+일반의 것이다. 폭을 박아 두지 않는 까닭은 그 값이 저장소마다 다른 유일한 자리이기 때문이다 —
+박으면 이 파일이 그 저장소의 것이 된다.
 
-**안 재는 것** — 인접 톤(동일값이 아닌 이웃 값)은 안 잰다. 그 층은 눈이 드는 자리라 사람
-몫이다 · 배경 없는 행(카드 바탕이 비치는 행)은 동일값 후보가 아니라 안 잰다 · `background`
-축약형·이미지 배경은 안 읽는다(`background-color` 와 `bgcolor` 만) · 카드 `<table>` 이 여럿이면
-**처음 만난 하나만** 본다 · 선의 **색**이 대비를 이루는가는 안 잰다(그 값은 지시문이 든다) ·
-실제로 브라우저가 그 선을 그리나는 안 잰다 — 원문의 꼴까지다.
+⚠ **인자 없이 게이트에 걸면 실물을 안 잰다** — 자검만 돌고 초록이다. 검출 논리가 사는지를 잰 것이고
+  파일은 0장 판정이다. 초록 줄이 잰 파일 수를 파생으로 찍지만 종료코드는 0 이라, 코드만 읽는 훅은
+  그 갈림을 못 본다.
+
+파일을 주고 폭을 안 주면 「못 쟀다」(2)로 나간다 — 폭이 없으면 어느 파일이든 카드를 못 집어 「구조를
+못 찾았다」가 되는데, 그 침묵은 초록과 구별이 안 된다. 이 갈래와 §2 의 센티널(폭이 안 맞는 판)이 함께
+문다.
+
+양성 대조가 실물 판정보다 먼저 선다 — §1 이 일부러 어긋난 검체로 검출이 실제로 무는지 보이고, §2 가
+처방이 선 검체와 폭이 안 맞는 판(센티널)을 안 무는지 보인다.
+
+안 재는 것 — 인접 톤(동일값이 아닌 이웃 값)은 안 잰다. 그 층은 눈이 드는 자리라 사람 몫이다 · 배경
+없는 행(카드 바탕이 비치는 행)은 동일값 후보가 아니라 안 잰다 · `background` 축약형·이미지 배경은 안
+읽는다(`background-color` 와 `bgcolor` 만) · 카드 `<table>` 이 여럿이면 처음 만난 하나만 본다 · 선은
+축약형(`border` · `border-<변>` · `outline`)만 읽는다 — 긴 이름(`border-style` · `border-top-width` …)과
+HTML `border` 속성은 안 읽는다 · 선의 색이 대비를 이루는가는 안 잰다(그 값은 지시문이 든다) · 실제로
+브라우저가 그 선을 그리나는 안 잰다 — 원문의 꼴까지다.
 
 토큰도 망도 브라우저도 안 쓴다.
 """
@@ -48,8 +57,13 @@ from _verdict import (EXIT_MISMATCH, EXIT_OK, EXIT_UNMEASURED, Unmeasured,
 
 ENV_WIDTH = "BOUNDARY_CARD_WIDTH"   # 카드 폭을 주는 두 번째 길 — `--width` 와 같은 값이다
 SIDES = ("top", "bottom", "left", "right")
+# 선을 긋는 꼴 — CSS `border-style` 값에서 안 긋는 둘(none · hidden)을 뺀 여덟. `outline` 은 `auto` 도 긋는다.
+LINE_STYLES = frozenset({"solid", "dashed", "dotted", "double", "groove", "ridge", "inset", "outset"})
+OUTLINE_STYLES = LINE_STYLES | {"auto"}
 
 _TAG = re.compile(r"<(/?)(table|tr|td)\b[^>]*>", re.I)
+_ZERO = re.compile(r"[+-]?(?:0+\.?0*|\.0+)(?:[a-z]+)?")    # 굵기 0 — `0` · `0px` · `0.0em`
+_CALL = re.compile(r"[a-z-]+\([^)]*\)")                      # `rgb(0 0 0)` 같은 함수 값 — 그 안의 0 은 굵기가 아니다
 
 
 # ── 검출 ──────────────────────────────────────────────────────────────────────
@@ -71,16 +85,35 @@ def _bg(tag):
     return _norm(m.group(1)) if m else None
 
 
+def _draws(value, styles=LINE_STYLES):
+    """선 축약형 값 하나가 선을 긋나 — 긋는 꼴이 섰고 굵기가 0 이 아니다.
+
+    CSS 는 축약형에서 꼴을 빼면 `none` 으로 친다 — 그래서 `border:0` · `border:none` · `1px #ccc` 는 선이 아니다.
+    """
+    toks = _CALL.sub(" ", value.lower().replace("!important", " ")).split()
+    return any(t in styles for t in toks) and not any(_ZERO.fullmatch(t) for t in toks)
+
+
 def _borders(tag):
-    """태그 style 에 선 처방이 선 모서리들 — `border`·`outline` 축약형은 네 모서리 전부다."""
+    """태그 style 이 선을 긋는 모서리들 — 값을 읽고, 선언은 적힌 차례로 덮는다(뒤엣것이 이긴다).
+
+    `border` 는 네 모서리를, `border-<변>` 은 그 변을, `outline` 은 네 모서리를 따로 정한다.
+    """
     style = (re.search(r'style\s*=\s*"([^"]*)"', tag, re.I) or
              re.search(r"style\s*=\s*'([^']*)'", tag, re.I))
     if not style:
         return set()
-    s = style.group(1).lower()
-    if re.search(r"(?:^|;)\s*(?:border|outline)\s*:", s):
-        return set(SIDES)
-    return {side for side in SIDES if re.search(rf"(?:^|;)\s*border-{side}\s*:", s)}
+    border, outline = dict.fromkeys(SIDES, False), False
+    for decl in style.group(1).split(";"):
+        prop, _, value = decl.partition(":")
+        prop = prop.strip().lower()
+        if prop == "border":
+            border = dict.fromkeys(SIDES, _draws(value))
+        elif prop == "outline":
+            outline = _draws(value, OUTLINE_STYLES)
+        elif prop.startswith("border-") and prop[len("border-"):] in SIDES:
+            border[prop[len("border-"):]] = _draws(value)
+    return set(SIDES) if outline else {side for side in SIDES if border[side]}
 
 
 def _card_rows(html, width):
@@ -119,8 +152,8 @@ def check(html, width):
     card, rows = _card_rows(html, width)
     if not outer or not card or not rows:
         return None
-    if _borders(card):              # 카드 outline/border — 카드 폭을 세우는 처방이 이미 섰다
-        return []
+    if _borders(card) == set(SIDES):    # 카드 outline/border 가 네 변에 다 섰다 — 카드 폭을 세우는 처방이다
+        return []                       # 한 변만이면 카드 폭이 안 서므로 아래 행 판정으로 간다
     bad = []
     last = len(rows) - 1
     for i, td in enumerate(rows):
@@ -157,13 +190,24 @@ def _page(hero_td, tail="", card_extra=""):
 
 
 RED = [
-    ("첫 행 동일값 + 아래 선만 → 빨강 (난 자리의 실측 재현 모양)",
+    ("첫 행 동일값 + 아래 선만 → 빨강 (위·좌·우가 비어 행이 녹는 꼴)",
      _page(f'<td style="background-color:{OUTER}; border-bottom:1px solid {LINE};">'), 1),
     ("끝 행 동일값 + 처리 없음 → 빨강",
      _page(f'<td style="background-color:{CARD};">',
            f'<tr><td style="background-color:{OUTER};">동일값 끝 행</td></tr>'), 1),
     ("`bgcolor` 속성 · 세 자리 축약 · 대문자도 같은 값으로 읽는다",
      _page('<td bgcolor="#EEE">'), 1),
+    ("첫 행 동일값 + 카드에 아래 선만 → 빨강 (카드 outline 은 네 변이 다 서야 폭이 선다)",
+     _page(f'<td style="background-color:{OUTER};">', card_extra=f"border-bottom:1px solid {LINE}; "), 1),
+    ("첫 행 동일값 + 카드에 `border:0` → 빨강 (굵기 0 은 선이 아니다)",
+     _page(f'<td style="background-color:{OUTER};">', card_extra="border:0; "), 1),
+    ("첫 행 동일값 + 카드에 `border:none` → 빨강 (꼴 none 은 선이 아니다)",
+     _page(f'<td style="background-color:{OUTER};">', card_extra="border:none; "), 1),
+    ("첫 행 동일값 + 변마다 `none` · `0` · 꼴 없는 굵기 → 빨강 (값이 선을 안 긋는다)",
+     _page(f'<td style="background-color:{OUTER}; border-top:none; border-left:0;'
+           f' border-right:1px {LINE};">'), 1),
+    ("첫 행 동일값 + 네 변 선 뒤에 `border-top:none` → 빨강 (뒤 선언이 앞을 덮는다)",
+     _page(f'<td style="background-color:{OUTER}; border:1px solid {LINE}; border-top:none;">'), 1),
 ]
 
 GREEN = [
@@ -174,13 +218,17 @@ GREEN = [
      _page(f'<td style="background-color:{CARD};">')),
     ("동일값이어도 카드 outline 이 서면 → 초록 (카드 폭을 세우는 처방)",
      _page(f'<td style="background-color:{OUTER};">', card_extra=f"border:1px solid {LINE}; ")),
+    ("첫 행 동일값 + `border:0` 뒤에 위·좌·우 선 → 초록 (뒤 선언이 앞을 덮는다)",
+     _page(f'<td style="background-color:{OUTER}; border:0; border-top:1px solid {LINE};'
+           f' border-left:1px solid {LINE}; border-right:1px solid {LINE};">')),
 ]
 
 WRONG_WIDTH = "9999"    # 어느 검체에도 없는 폭 — 센티널이 이 값으로 「못 찾음」을 확인한다
 
 
 def positive_control():
-    """검체가 실제로 그 꼴인지부터 묻는다 — 이 절이 빨강이면 아래 파일 판정의 초록은 뜻이 없다."""
+    """§1 양성 · §2 음성 대조와 센티널 — 검체가 실제로 그 꼴인지부터 묻는다. 이 절이 빨강이면
+    아래 파일 판정의 초록은 뜻이 없다."""
     print(f"--- §1 양성 대조 — 일부러 어긋난 검체 {len(RED)}이 정말 빨개지나")
     for name, html, want in RED:
         got = check(html, SELF_WIDTH)
@@ -191,9 +239,9 @@ def positive_control():
     for name, html in GREEN:
         got = check(html, SELF_WIDTH)
         report(name, got == [], [f"실측 {got!r} ← 기대 빨강 없음"])
-    # 센티널 — 일반화가 새로 낸 사고다. 폭이 틀리면 카드를 못 집는데, 그 자리가 빈 목록을
-    # 돌려주면 **어느 파일이든 조용히 초록**이 되어 「안 걸렸다」와 「안 쟀다」가 한 칸에
-    # 뭉개진다. None 이라야 아래 `survey` 가 그 판을 「못 쟀다」로 내보낸다.
+    # 센티널 — 폭이 틀리면 카드를 못 집는다. 그 자리가 빈 목록을 돌려주면 **어느 파일이든
+    # 조용히 초록**이 되어 「안 걸렸다」와 「안 쟀다」가 한 칸에 뭉개진다. None 이라야 아래
+    # `survey` 가 그 판을 「못 쟀다」로 내보낸다.
     report("폭이 안 맞으면 초록이 아니라 「못 찾음」이다 (센티널)",
            check(GREEN[0][1], WRONG_WIDTH) is None)
 

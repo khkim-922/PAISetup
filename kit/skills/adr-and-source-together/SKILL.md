@@ -11,7 +11,8 @@ MADR 을 따르되 아래 선택과 덮어쓰기만 달리하고, 이 스킬의 
 *(➔ 규범 [Root Cause Fix] — 여럿이 함께 쓰는 자리를 함께 고친다 · [Single Source · Point or Derive] — 사실은 원본에, 기록은
 좌표로 · [Docs-as-Code · State Only] — 결정 기록은 굳는 문서라 예외)*
 
-- **파일명·폴더** — `NNNN-title-with-dashes.md`, `decisions/` 아래(MADR 규약)
+- **파일명·폴더** — `NNNN-title-with-dashes.md`, `decisions/` 아래(MADR 규약). 번호는 fetch 한 원격의 `decisions/` 에서
+  다음 것을 잡는다 — 병행 세션이 같은 번호를 먼저 쓸 수 있고, 커밋 메시지에 박힌 번호는 못 고친다
 - **[ADR One-File]** — 결정 하나에 파일 하나. 뒤집히면 새 파일을 쓰고 옛 파일은 아래 덮어쓰기의 두 칸으로 닫는다.
   한 파일에 개정 이력을 쌓지 않는다
 

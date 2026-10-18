@@ -2,6 +2,7 @@
 
     python -X utf8 codex-config-merge.py --config ~/.codex/config.toml --template posco/Codex-CLI.setting.toml
     python -X utf8 codex-config-merge.py --config ~/.codex/config.toml --template posco/Codex-CLI.setting.toml --check
+    python -X utf8 codex-config-merge.py --config ~/.codex/config.toml --template posco/Codex-CLI.setting.toml --remove-provider [--check]
 
 `--check` 는 같은 판정을 하되 아무것도 안 쓴다 — 설치기의 끝 검증이 부른다.
 
@@ -19,12 +20,24 @@ Codex 가 적는 훅 신뢰(`[hooks.state]`)와 폴더 신뢰(`[projects.*]`), �
 
 **뜻으로 재고 나서만 쓴다.** 원본과 결과를 둘 다 TOML 로 읽어, 결과가 「원본 + 틀의 자리마다 틀의 값」과 뜻이 같을 때만
 갈아 끼운다. 원본을 TOML 로 못 읽거나, 틀의 자리가 못 알아보는 꼴(인라인 표 · 배열 표 안 · 원본에서는 표인 자리)이면
-아무것도 안 쓰고 오류로 끝난다. 고쳐 쓰기 전 원본은 곁에 떠 둔다(`<설정 이름>.before-pgpt-<시각>`). 줄 나누기 · 원본 떠 두기 ·
-옆 파일에 쓰고 옮기기는 곁의 병합기 것을 불러 쓴다.
+아무것도 안 쓰고 오류로 끝난다. 고쳐 쓰기 전 원본은 곁에 떠 둔다(`<설정 이름>.before-pgpt-<시각>` · 쓴 판에만 · 새것부터 다섯 —
+사내 ↔ 사외를 오가는 노트북은 판마다 고쳐 쓴다). 읽기 전용 설정은 원본을 안 뜨고 오류다. 줄 나누기 · 원본 떠 두기와 그 수 ·
+옆 파일에 쓰고 옮기기는 곁의 병합기 것(`replace_with_backup`)을 불러 쓴다.
 설정 파일이 없으면 오류다 — 없는 자리에는 설치기가 틀을 그대로 쓴다.
+
+**걷기 판(`--remove-provider`)은 사외의 것이다.** 틀이 고른 제공자 — `model_provider` 와 그 이름의 `[model_providers.<이름>]` — 를
+걷어 Codex 가 제 로그인으로 돌게 한다. 사외에는 그 표가 가리키는 루프백 프록시도 `env_key` 가 읽는 회사 키도 없어, 남으면 Codex 가
+닿지 않는 주소로 간다. 걷는 것은 틀의 값 그대로인 것뿐이다 — 고른 키는 값이 틀의 이름일 때, 표는 뜻이 틀의 표와 통째로 같을 때.
+⚠ **표는 통째로만 걷는다** — 키마다 걷으면 사람이 더하거나 고친 키만 남은 반쪽 제공자 표가 선다. 틀과 다른 표(사람이 고쳤거나
+  옛 판의 틀이 심었다)는 두고 그 키를 `KEPT=` 로 댄다. 걷는 고르기는 맨 위의 것 하나다 — 그 표를 고르는 프로필(`[profiles.*]`)은
+  사람이 둔 것이라 안 건드린다.
+틀의 다른 자리(모델 · 샌드박스 · `[hooks]`)는 안 걷는다 — 사외에서도 서는 값이거나 다른 손의 몫이다. 문장 줄을 통째로 걷고 뜻은
+맞추기 판과 같은 자로 잰다. 설정 파일이 없으면 걷을 것이 없다(CHANGED=0 · 짓지 않는다).
 
 표준 출력 — 한 줄에 하나:
   SET=<자리>         틀의 값으로 맞춘 자리(`--check` 면 맞출 자리) — 이름을 점으로 이었다(보이기만 한다)
+  UNSET=<자리>       걷기 판이 걷은 자리(`--check` 면 걷을 자리)
+  KEPT=<자리>        걷기 판이 틀과 달라 둔 제공자 표의 키
   CHANGED=0|1        고쳐 썼나(`--check` 면 고칠 것이 있나)
   BACKUP=<경로>       고쳐 쓰기 전 원본을 떠 둔 자리
   ERROR=<종류>:<말>   아무것도 안 썼다 — 종료 코드 1. 종류 = config · template · shape · verify (그 밖은 예외 이름)
@@ -44,6 +57,8 @@ except ImportError:   # 3.10 이하 — 읽는 자가 없으면 뜻을 못 재�
 
 MERGER_FILE = 'codex-hook-install.py'   # 줄 나누기 · 원본 떠 두기 · 옆 파일 쓰기의 진본 — 이 파일 곁에 같이 실린다
 KEEP_TABLES = ('hooks',)                # 맞추지 않는 맨 위 표 — 맨 위 「[hooks] 는 안 맞춘다」
+SELECT_KEY = 'model_provider'           # Codex 가 제공자를 고르는 맨 위 키 — 걷기 판
+PROVIDERS_TABLE = 'model_providers'     # Codex 의 제공자 표 묶음 — 걷기 판
 BACKUP_SUFFIX = '.before-pgpt-'
 M = None                                # 곁의 병합기 — main 이 싣는다
 
@@ -264,28 +279,118 @@ def merge(config_text, template_text):
     return (M.BOM + new if bom else new), True, sets
 
 
+def provider_of(template_text):
+    """틀이 고른 제공자 — `(이름, 그 표의 뜻)`. 틀이 이름을 안 고르거나 그 표가 없으면 Fail."""
+    try:
+        data = tomllib.loads(template_text)
+    except tomllib.TOMLDecodeError as exc:
+        raise Fail('template', f'틀을 TOML 로 못 읽는다({exc})') from exc
+    name = data.get(SELECT_KEY)
+    providers = data.get(PROVIDERS_TABLE)
+    table = providers.get(name) if isinstance(name, str) and isinstance(providers, dict) else None
+    if not isinstance(table, dict):
+        raise Fail('template', f'틀이 제공자를 안 고른다({SELECT_KEY} · [{PROVIDERS_TABLE}.<이름>]) — 걷을 것을 모른다')
+    return name, table
+
+
+def remove_provider(config_text, template_text):
+    """사외 — 틀이 고른 제공자를 걷은 `(새 글, 고쳤나, 걷은 자리, 둔 자리)`. 못 알아보는 꼴 · 뜻 어긋남이면 Fail."""
+    if tomllib is None:
+        raise Fail('config', 'tomllib 이 없다 — 파이썬 3.11 이상이 든다')
+    name, ours = provider_of(template_text.lstrip(M.BOM))
+    bom = config_text.startswith(M.BOM)
+    text = config_text[1:] if bom else config_text
+    nl = '\r\n' if '\r\n' in text else '\n'
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise Fail('config', f'설정을 TOML 로 못 읽는다 — 안 건드린다({exc})') from exc
+
+    select, table = (SELECT_KEY,), (PROVIDERS_TABLE, name)
+    gone, kept = [], []
+    if SELECT_KEY in data and M.comparable(data[SELECT_KEY]) == M.comparable(name):
+        gone.append(select)
+    providers = data.get(PROVIDERS_TABLE)
+    have = providers.get(name) if isinstance(providers, dict) else None
+    if have is not None:
+        if isinstance(have, dict) and M.comparable(have) == M.comparable(ours):
+            gone.append(table)
+        elif isinstance(have, dict):
+            kept = sorted('.'.join(table + (k,)) for k in set(have) | set(ours)
+                          if k not in have or k not in ours or M.comparable(have[k]) != M.comparable(ours[k]))
+        else:
+            kept = ['.'.join(table)]
+    if not gone:
+        return config_text, False, [], kept
+
+    cuts, heads = [], []
+    for item in walk(text):
+        if item[0] in ('table', 'array-table'):
+            heads.append(item[1])
+            if table in gone and (item[1] == table or is_prefix(table, item[1])):
+                cuts.append((item[2], item[3]))
+            continue
+        _, section, rel, start, end, _, _, _, _ = item
+        full = section + rel
+        if (select in gone and full == select) or (table in gone and (full == table or is_prefix(table, full))):
+            cuts.append((start, end))
+        elif table in gone and is_prefix(full, table):
+            raise Fail('shape', f'{".".join(table)} 이 인라인 값 안에 있다 — 그 자리만 못 걷는다')
+    new = text
+    for start, end in sorted(cuts, reverse=True):   # 뒤에서부터 걷어 앞의 자리가 안 밀린다 — 문장 줄을 줄끝까지
+        stop = text.find('\n', end)
+        new = new[:start] + new[len(text) if stop < 0 else stop + 1:]
+
+    expect = copy.deepcopy(data)
+    if select in gone:
+        del expect[SELECT_KEY]
+    if table in gone:
+        del expect[PROVIDERS_TABLE][name]
+        if not expect[PROVIDERS_TABLE] and (PROVIDERS_TABLE,) not in heads:   # 머리 없이 그 표로만 섰던 묶음은 같이 사라진다
+            del expect[PROVIDERS_TABLE]
+    try:
+        result = tomllib.loads(new)
+    except tomllib.TOMLDecodeError as exc:
+        raise Fail('verify', f'걷은 결과가 TOML 로 안 읽힌다 — 쓰지 않았다({exc})') from exc
+    if M.comparable(result) != M.comparable(expect):
+        raise Fail('verify', '걷은 결과가 뜻과 다르다 — 쓰지 않았다')
+    if nl == '\r\n' and M.bare_lf(new) > M.bare_lf(text):
+        raise Fail('verify', '걷은 결과에 줄끝이 섞였다 — 쓰지 않았다')
+    return (M.BOM + new if bom else new), True, ['.'.join(p) for p in gone], kept
+
+
 def main():
     global M
     ap = argparse.ArgumentParser()
     ap.add_argument('--config', required=True)
     ap.add_argument('--template', required=True)
     ap.add_argument('--check', action='store_true')
+    ap.add_argument('--remove-provider', action='store_true')
     args = ap.parse_args()
     try:
         M = load_merger()
         config = pathlib.Path(args.config).expanduser()
         if not config.is_file():
+            if args.remove_provider:
+                print('CHANGED=0')
+                return 0
             raise Fail('config', f'설정 파일이 없다({config}) — 없는 자리에는 설치기가 틀을 그대로 쓴다')
         with open(config, encoding='utf-8', newline='') as f:
             current = f.read()
         with open(pathlib.Path(args.template), encoding='utf-8', newline='') as f:
             template = f.read()
-        new, changed, sets = merge(current, template)
-        for s in sets:
-            print('SET=' + s)
+        if args.remove_provider:
+            new, changed, unset, kept = remove_provider(current, template)
+            for s in unset:
+                print('UNSET=' + s)
+            for k in kept:
+                print('KEPT=' + k)
+        else:
+            new, changed, sets = merge(current, template)
+            for s in sets:
+                print('SET=' + s)
         if changed and not args.check:
-            print('BACKUP=' + str(M.backup_copy(config, BACKUP_SUFFIX)))
-            M.write_atomic(config, new)
+            print('BACKUP=' + str(M.replace_with_backup(config, new, BACKUP_SUFFIX)))
         print('CHANGED=' + ('1' if changed else '0'))
         return 0
     except Fail as exc:

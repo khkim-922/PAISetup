@@ -1,28 +1,30 @@
 """산출물 HTML 의 인라인 스크립트가 문법에 맞나 — 깨진 것을 잡고 못 재면 못 쟀다고 한다.
 
-좌표 — 아뜰리에 #335 ㉯ 에서 받아 익명화했다. 씨앗 규율은 claude-config 결정 0040.
+좌표 — 원본은 아뜰리에 #335 ㉯ · 씨앗 규율은 claude-config 결정 0040.
 
     python -X utf8 _check/script_syntax_check.py               # 자검만 — 검체는 이 파일이 든다
     python -X utf8 _check/script_syntax_check.py <판.html> …   # 그 산출물까지 잰다
 
-**왜 이 검사가 있나.** 글자 유실을 세는 무결 대조는 `<script>` 가 깨져도 조용하다 — 난 자리의
-실측(2026-09-05): 이어쓰기 이음매의 코드 펜스가 JS 템플릿 리터럴 안에 박혀 판이 통째로 죽었는데
-저장에도 화면에도 아무것도 안 찍혔다(「유실 20」은 전부 이모지 치환이었다). **글자는 다 있는데
-판이 안 도는** 자리라, 글자를 세는 눈으로는 영영 안 보인다. 막는 자가 아니라 말하는 자다.
+내는 것 — 종료코드 0 초록 · 1 어긋남 · 2 못 쟀다(node 가 없다 · 판을 받았는데 한 장도 못 읽었다 · 받은 판
+하나에서 `node --check` 가 안 돌았다 — 시간 초과 따위). 어긋난 판이 하나라도 있으면 못 잰 판이 있어도 1 이다.
 
-**판정 함수를 제 안에 들었다 — 앱에서 인자로 안 받는다.** 난 자리는 앱의 함수를 불렀고 그
-결합을 인자로 바꾸는 길도 있었다. 안 그런 까닭 셋 —
+왜 이 검사가 있나 — 글자 유실을 세는 무결 대조는 `<script>` 가 깨져도 조용하다. 이어쓰기 이음매의
+코드 펜스가 JS 템플릿 리터럴 안에 박히면 판이 통째로 죽는데 저장도 화면도 아무 말을 안 한다(아뜰리에
+#335). **글자는 다 있는데 판이 안 도는** 자리라, 글자를 세는 눈으로는 안 보인다. 막는 자가 아니라
+말하는 자다.
 
-  · **자검이 선다.** 받는 꼴이면 아래 양성 대조가 *앱의* 함수를 재는데, 갓 복사한 저장소에는
+판정 함수를 제 안에 들었다 — 앱에서 인자로 안 받는다. 까닭 셋 —
+
+  · 자검이 선다. 받는 꼴이면 아래 양성 대조가 *앱의* 함수를 재는데, 갓 복사한 저장소에는
     그 함수가 없어 이 자는 첫날부터 「못 쟀다」만 낸다. **양성 대조가 못 서는 씨앗은 씨앗이
     아니다** — 무는 이빨을 한 번도 안 보이고 초록만 내는 자가 된다
-  · **결합이 한 줄이 아니었다.** 난 자리의 임포트 한 줄이 앱 꾸러미의 머리와 설정 모듈을 함께
-    들여, 앱이 켜질 때 하는 일(TLS 주입)과 바깥 의존성 하나를 이 검사에 얹었다 — 실측: 그
-    꾸러미가 안 깔린 파이썬에서는 검사가 아예 안 섰다. 「node 하나만 부른다」가 거기서 깨진다
-  · **재는 것이 다르다.** 앱의 함수는 *저장할 때 값을 찍는* 자이고 이 자는 *나온 판을 무는*
+  · 결합이 한 줄로 안 끝난다. 앱의 함수를 들이면 앱 꾸러미의 머리와 설정 모듈이 함께 들어와,
+    앱이 켜질 때 하는 일(TLS 주입 따위)과 바깥 의존성이 이 검사에 얹힌다 — 그 꾸러미가 안 깔린
+    파이썬에서는 검사가 아예 안 선다. 「node 하나만 부른다」가 거기서 깨진다
+  · 재는 것이 다르다. 앱의 함수는 *저장할 때 값을 찍는* 자이고 이 자는 *나온 판을 무는*
     게이트다 — 부르는 자리도 계약도 달라, 같은 일을 둘이 드는 것이 손사본이 아니다
 
-값은 치른다 — **앱이 제 판정 함수를 이미 들었으면 문법을 재는 손이 그 저장소에 둘이 된다.**
+값은 치른다 — 앱이 제 판정 함수를 이미 들었으면 문법을 재는 손이 그 저장소에 둘이 된다.
 그 자리는 앱의 함수를 무는 검사를 저장소가 따로 세워 가른다. 그 검사는 앱의 계약이라 씨앗이
 안 든다 — 여기는 *판이 성한가*만 묻고 *앱이 그것을 옳게 찍나*는 안 묻는다.
 
@@ -35,13 +37,14 @@
   ⑥ 스크립트가 없는 판은 node 를 **안 부른다** — 부르는 자리를 세어 그것까지 본다
   ⑦ node 를 못 찾으면 「못 쟀다」가 서고 오류 목록은 빈다 — 초록이 아니라 회색이다
 
-⚠ **양성 대조가 실물보다 먼저 선다.** ② 가 실제로 빨개지는 것을 보인 다음에야 실물 판정이 뜻을
-  갖는다 — ② 가 죽으면 실물이 몇 장이든 「오류 0」 초록이 난다.
+양성 대조가 실물보다 먼저 선다 — 탐지가 죽으면 실물이 몇 장이든 「오류 0」 초록이 나므로, ② 의 깨진
+검체가 실제로 오류를 내는 것을 같은 판에서 먼저 보인다.
 
-⚠ **인자를 안 주면 실물은 안 잰 것이다.** 자검만 돌고 초록이 나는데, 그 초록은 *이 검사가 성하다*
-  는 말이지 *이 저장소의 판이 성하다*는 말이 아니다. 그 갈림은 마지막 경계 줄이 든다.
+⚠ **인자 없이 게이트에 걸면 실물을 안 잰다** — 자검만 돌고 초록이 난다. 그 초록은 *이 검사가 성하다*
+  는 말이지 *이 저장소의 판이 성하다*는 말이 아니다. 그 갈림은 「안 잰 것」 절의 「실물을 한 장도 안
+  쟀다」 경계 줄이 든다.
 
-**안 재는 것** — 스크립트가 *무슨 일을 하나*(문법만 본다) · 속성에 박힌 `on…` 처리기와 바깥
+안 재는 것 — 스크립트가 *무슨 일을 하나*(문법만 본다) · 속성에 박힌 `on…` 처리기와 바깥
 `.js` 파일(`<script>` 몸통만 뗀다) · 브라우저에서 실제로 도나(`node --check` 는 파싱까지다 —
 없는 이름을 불러도 초록이다) · 판을 내는 자리가 이 값을 응답·장부에 싣나(그 저장소의 계약이라
 여기가 아니다) · 화면이 이 값을 어떻게 말하나 · HTML 이 성한가(스크립트만 본다).
@@ -56,19 +59,21 @@ import sys
 import tempfile
 from pathlib import Path
 
-from _verdict import EXIT_MISMATCH, EXIT_OK, Unmeasured, edge, fails, passes, report
+from _verdict import (EXIT_MISMATCH, EXIT_OK, EXIT_UNMEASURED, Unmeasured, edge, fails, passes, report,
+                      unmeasured, unmeasureds)
 
 # 안 재는 종류 — JS 가 아니라 node 가 늘 빨강이다. 그 밖의 `type`(빈 것 · `text/javascript` ·
-# `module` · 저장소가 제 손으로 지은 이름)은 **잰다.** 난 자리에서 실제로 깨진 스크립트가 바로
-# 그 손수 지은 종류였다 — 「아는 종류만 잰다」로 뒤집으면 그 사고가 그대로 다시 빠져나간다.
+# `module` · 저장소가 제 손으로 지은 이름)은 **잰다.** 「아는 종류만 잰다」로 뒤집으면 손수 지은
+# 종류가 대조 밖으로 빠진다 — 아뜰리에 #335 에서 깨진 스크립트가 그 종류이고, ② 의 검체가 그 꼴로 문다.
 SCRIPT_TYPES_NOT_JS = {
     "application/json", "application/ld+json", "importmap", "speculationrules",
     "text/html", "text/template", "text/x-template", "text/x-handlebars-template",
     "text/babel", "text/jsx", "text/typescript", "application/typescript",
 }
 NODE_CHECK_TIMEOUT_S = 20
-# `shutil.which` 가 빈손일 때 마지막으로 두드리는 자리 — 윈도우 기본 설치 자리. 도구를 띄운
-# 셸의 PATH 에 node 가 없는 PC 가 실재한다(난 자리의 커밋 훅이 거기서 넘어졌다).
+# `shutil.which` 가 빈손일 때 마지막으로 두드리는 자리 — 윈도우 기본 설치 자리.
+# 우회 범위 — 윈도우에서 도구가 띄운 셸(커밋 훅 따위)의 PATH 에 node 가 빠진 PC.
+# 걷는 조건 — 이 검사를 부르는 모든 자리의 PATH 에 node 가 서면 걷는다.
 NODE_FALLBACKS = (r"C:\Program Files\nodejs\node.exe",)
 # node 의 말에서 싣는 글자 수 — 스택 전체가 실리면 판정 줄이 덮여 무엇이 깨졌는지가 안 보인다.
 SAID_MAX = 200
@@ -152,8 +157,8 @@ def script_syntax(html_text, find_node=node_exe):
 NL = chr(10)
 FENCE = "```"
 OK_JS = "<html><body><script>const a = `x ${1 + 1}`; console.log(a);</script></body></html>"
-# ② 의 검체 — 템플릿 리터럴 `${` 뒤에 펜스 한 줄이 끼었다. 난 자리의 실물 그대로의 꼴이고,
-#   종류도 그때처럼 저장소가 제 손으로 지은 이름이다(그 종류를 안 재면 이 사고가 샌다).
+# ② 의 검체 — 템플릿 리터럴 `${` 뒤에 펜스 한 줄이 끼었다. 아뜰리에 #335 의 꼴 그대로이고,
+#   종류도 저장소가 제 손으로 지은 이름이다 — 그 종류를 안 재게 바뀌면 ② 가 빨개진다.
 BROKEN_JS = ("<html><body><script type=\"text/x-own\">const t = `물음: ${" + FENCE + NL
              + "picks[0].text}`;</script></body></html>")
 DATA = "<html><body><script type=\"application/json\">{\"a\": [1, 2]}</script></body></html>"
@@ -237,8 +242,10 @@ def survey(paths):
             continue
         seen += 1
         r = script_syntax(text)
-        report(f"실물 {p.name} — 인라인 스크립트 문법 오류 0",
-               not r["errors"] and not r["unmeasured"], [repr(r)])
+        if r["errors"] or not r["unmeasured"]:
+            report(f"실물 {p.name} — 인라인 스크립트 문법 오류 0", not r["errors"], [repr(r)])
+        if r["unmeasured"]:
+            unmeasured(f"실물 {p.name} — 인라인 스크립트 문법", r["unmeasured"])
         edge(f"실물 {p.name} — 잰 스크립트 {r['checked']}개 · 비켜 세운 것 {r['skipped']}개")
     return seen, unreadable
 
@@ -279,6 +286,9 @@ def main(argv):
     if fails():
         print(f"{len(fails())}건 어긋남 — {' · '.join(fails())}")
         return EXIT_MISMATCH
+    if unmeasureds():
+        print(f"못 쟀다 {len(unmeasureds())}건 — {' · '.join(unmeasureds())} (판정 {len(passes())}건 초록)")
+        return EXIT_UNMEASURED
     print(f"전부 통과 (판정 {len(passes())}건 — 검체 일곱 · 실물 {seen}장)")
     return EXIT_OK
 

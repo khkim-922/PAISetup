@@ -54,7 +54,7 @@ SITE_POSCO = "posco"
 SITE_OUTSIDE = "outside"
 
 # --- 키 묶음 — **한 키를 같이 쓰는 갈래들.** 회사 키는 사람마다 하나고 계약만
-# 갈리므로(ENV-posco 22–23행), 갈래마다 따로 받으면 같은 키를 두 번 넣게 된다.
+# 갈리므로(ENV-posco 「우리가 쓰는 인증」 항목), 갈래마다 따로 받으면 같은 키를 두 번 넣게 된다.
 KEY_GROUP_POSCO = "posco"
 KEY_GROUP_GEMINI = "gemini"
 KEY_GROUP_ANTHROPIC = "anthropic"
@@ -89,11 +89,11 @@ CONTRACT_CLI = "cli"                # HTTP 아님 — 이 PC 의 실행파일을
 CACHE_TTL = _env("CACHE_TTL", "1h")
 CACHE_TTL_BETA = "extended-cache-ttl-2025-04-11"   # 1시간을 여는 낱말
 OUTPUT_128K_BETA = "output-128k-2025-02-19"        # 128K 출력 상한을 여는 낱말
-# 두 낱말 다 **사내 문서 머리 표에 없다**(ENV-posco 73–75행) — 흘려지면 상한은 옛 값이고
-# 캐시 수명은 5분이다. 그래서 갈래마다 무엇을 싣나를 아래 표의 `betas` 칸이 든다.
+# 두 낱말 다 **사내 문서 머리 표에 없다**(ENV-posco 「아직 안 잰 것」 절의 `anthropic-beta` 항목) — 흘려지면
+# 상한은 옛 값이고 캐시 수명은 5분이다. 그래서 갈래마다 무엇을 싣나를 아래 표의 `betas` 칸이 든다.
 _CACHE_BETAS = (CACHE_TTL_BETA,) if CACHE_TTL and CACHE_TTL != "5m" else ()
 
-ANTHROPIC_VERSION = "2023-06-01"   # Claude-Posco.setting.md 14행 (기본값)
+ANTHROPIC_VERSION = "2023-06-01"   # Claude-Posco.setting.md 「Headers」 표의 `anthropic-version` 기본값
 
 # --- 회사 방식 배포(SR → 회사 GitLab → CI/CD)가 CI 변수로 심는 이름. 이름은 회사 기준 씨앗
 # `seeds/vibecoding/` 의 `docs/references/futurem-adapters.md`(llm_gateway 절)가 정했고, 등록은
@@ -103,16 +103,17 @@ COMPANY_URL_ENV = "AI_GW_URL"
 COMPANY_TOKEN_ENV = "AI_GW_TOKEN"
 
 # 계약 경로 — 바닥 주소 뒤에 붙는다. Gemini 계약은 경로에 모델 이름이 들어가 `providers` 가 짓는다.
-MESSAGES_PATH = "/v1/messages"      # Claude-Posco.setting.md 10–14행
-RESPONSES_PATH = "/v1/responses"    # OpenAI.-Posco.Setting.md 394–420행
+MESSAGES_PATH = "/v1/messages"      # Claude-Posco.setting.md 「Messages API (Anthropic)」의 `POST /v1/messages`
+RESPONSES_PATH = "/v1/responses"    # OpenAI.-Posco.Setting.md 「Responses API (OpenAI)」의 `POST /v1/responses`
 
 
 def _base(value, names):
     """바닥 주소 — 계약 경로를 붙이기 **전**까지. `/v1` 마디가 있으면 그 앞에서 자른다.
 
     ⚠ **회사 문서끼리 바닥의 꼴이 갈린다.** Claude · Gemini 문서는 `/v1` 을 안 붙이고
-      (Claude-Posco.setting.md 172행 · Gemini-Posco.setting.md 108행) OpenAI 문서와 Codex 틀은
-      붙인다(OpenAI.-Posco.Setting.md 48행 · Codex-CLI.setting.toml `base_url`). `AI_GW_URL` 이
+      (Claude-Posco.setting.md 「커스텀 설정 항목」 표의 `ANTHROPIC_BASE_URL` · Gemini-Posco.setting.md
+      「3. 환경변수 설정」 표의 `GOOGLE_GEMINI_BASE_URL`) OpenAI 문서와 Codex 틀은 붙인다(OpenAI.-Posco.Setting.md
+      「Chat Completions API (OpenAI)」 절의 `PGPT_BASE_URL` 문장 · Codex-CLI.setting.toml `base_url`). `AI_GW_URL` 이
       어느 꼴로 올지는 회사 문서가 안 정했다 — 그래서 어느 꼴로 와도 같은 바닥으로 받는다.
       계약 셋이 한 바닥을 나눠 쓰므로 뗀 자리는 갈래 표가 다시 붙인다. 마디 단위라 `/v1beta`
       는 안 뗀다.
@@ -135,12 +136,12 @@ def _base(value, names):
 #   **완성된** 주소다. 같은 이름이면 갈림 목록(`_check/drift_check.py`)이 다른 것을 짝짓는다.
 GATEWAY_BASE_URL = _base(
     _env("GATEWAY_BASE_URL", "") or os.environ.get(COMPANY_URL_ENV, "")
-    or "http://aigpt.posco.net/gpgpta01-gpt",           # Claude-Posco.setting.md 10–14행
+    or "http://aigpt.posco.net/gpgpta01-gpt",           # Claude-Posco.setting.md 「환경별 URL」 표의 운영계
     f"{ENV_PREFIX}_GATEWAY_BASE_URL · {COMPANY_URL_ENV}")
 # 바깥 갈래는 제 손잡이로만 옮긴다.
 # ⚠ **SDK 표준 이름(`ANTHROPIC_BASE_URL` · `GOOGLE_GEMINI_BASE_URL`)은 안 읽는다.** 회사 PC 에서는
 #   Claude Code · Gemini CLI 가 그 이름으로 회사 게이트웨이나 루프백 프록시를 보므로
-#   (Claude-Posco.setting.md 172행 · ENV-posco 의 프록시 절), 읽으면 「내 키」 갈래가 개인 키를
+#   (Claude-Posco.setting.md 「커스텀 설정 항목」 표의 `ANTHROPIC_BASE_URL` · ENV-posco 의 프록시 절), 읽으면 「내 키」 갈래가 개인 키를
 #   회사 쪽으로 보낸다 — 아래 `_KEY_ENV` 가 `ANTHROPIC_API_KEY` 를 안 읽는 것과 같은 결이다.
 ANTHROPIC_API_BASE_URL = _base(_env("ANTHROPIC_API_BASE_URL", "https://api.anthropic.com"),
                                f"{ENV_PREFIX}_ANTHROPIC_API_BASE_URL")
@@ -149,13 +150,13 @@ GEMINI_API_BASE_URL = _base(
     f"{ENV_PREFIX}_GEMINI_API_BASE_URL")
 
 _GATEWAY = {
-    # 회사 Claude — 주소·머리는 Claude-Posco.setting.md 10–14행 · 270–277행.
+    # 회사 Claude — 주소·머리는 Claude-Posco.setting.md 「환경별 URL」 · 「Headers」 표.
     # ⚠ **첫 항이 곧 기본이다** — 기본을 따로 적으면 목록과 어긋나고 어긋난 줄 아무도 모른다.
     #   순서의 뜻은 앱마다 다르다: 품질 우선이면 최상위가 앞(헬퍼), 비용 우선이면 싼 것이
     #   앞(아뜰리에). 여기는 최상위가 앞이다 — 복사한 앱이 제 뜻대로 돌린다.
     "anthropic": {"url": f"{GATEWAY_BASE_URL}{MESSAGES_PATH}",
-                  # `claude-opus-5` 는 사내 「지원 모델」 표(같은 문서 279–284행) 밖인데
-                  # 실제로 돈다 — 사용자 확인(ENV-posco 26–29행 · atelier 갈래 표).
+                  # `claude-opus-5` 는 같은 문서 「지원 모델」 표 밖인데 실제로 돈다 —
+                  # 사용자 확인(ENV-posco 「우리가 쓰는 모델」 항목 · atelier 갈래 표).
                   "models": ("claude-opus-5",
                              "claude-opus-4.7",
                              "claude-sonnet-4.6"),
@@ -163,10 +164,10 @@ _GATEWAY = {
                   "key_group": KEY_GROUP_POSCO,
                   "contract": CONTRACT_ANTHROPIC,
                   "betas": (OUTPUT_128K_BETA, *_CACHE_BETAS)},
-    # 회사 GPT — `/v1/responses` (OpenAI.-Posco.Setting.md 394–420행). 옛 문
+    # 회사 GPT — `/v1/responses` (OpenAI.-Posco.Setting.md 「Responses API (OpenAI)」 절). 옛 문
     # (`/v1/chat/completions`)은 안 쓴다: 이 게이트웨이가 **다 만든 뒤 몰아 줘서**
     # 렌더가 길수록 사용자가 빈 화면을 본다(atelier #123 실측 · 커밋 2be4432).
-    # 상한을 실을 이름이 이 계약만 다르다(같은 문서 415행).
+    # 상한을 실을 이름이 이 계약만 다르다(같은 절 Request Body 표의 `max_output_tokens`).
     "openai":    {"url": f"{GATEWAY_BASE_URL}{RESPONSES_PATH}",
                   # 사내 문서 예시는 `gpt-5.2` 계열이고 이 둘은 표 밖 · 사용자 확인
                   # (atelier config.py 주석 · 커밋 2be4432). 최상위가 앞이다.
@@ -176,11 +177,11 @@ _GATEWAY = {
                   "contract": CONTRACT_OPENAI,
                   "max_tokens_field": "max_output_tokens"},
     # 회사 Gemini — 같은 호스트인데 **계약도 인증도 다르다.** P-GPT 가 구글 네이티브
-    # 표면을 그대로 연다(Gemini-Posco.setting.md 12행 · 인증 17–18행).
+    # 표면을 그대로 연다(Gemini-Posco.setting.md 「Gemini Native API (Gemini)」의 `POST …:streamGenerateContent` · 「인증」 표).
     # `url` 은 **바닥 주소**다 — 이 계약만 경로에 모델 이름이 들어가서(providers 의
     # `_gemini_envelope`) 완성된 주소를 여기 적을 수가 없다.
     "gemini-posco": {"url": GATEWAY_BASE_URL,
-                     # 등록 목록은 같은 문서 36–41행인데 「관리자 설정에 따라 다를 수
+                     # 등록 목록은 같은 문서 「사용 가능한 모델」인데 「관리자 설정에 따라 다를 수
                      # 있다」고 저쪽이 든다 — `gemini-3.6-flash` 가 목록 밖 · 사용자
                      # 확인이다(atelier config.py 주석 · 커밋 2be4432).
                      "models": ("gemini-3.1-pro-preview", "gemini-3.6-flash"),
@@ -294,13 +295,14 @@ if not site_allowed(DEFAULT_PROVIDER):
 #   깔면 띄운 사람의 키로 남이 마구 쓴다. 안 실어 온 요청은 드라이런이다. 서버가 까는 길은
 #   하나 — 로그인을 선언한 앱의 앱 토큰이고, 그 이름은 이 표에 없다(아래 `server_token`).
 _KEY_ENV = {
-    # 회사 묶음이 둘을 보는 까닭 — 키는 하나인데 클라이언트마다 읽는 이름이 다르다
-    # (ENV-posco 22–23행: 앱은 `ANTHROPIC_AUTH_TOKEN`, CLI 는 `ANTHROPIC_API_KEY`).
+    # 회사 묶음이 둘을 보는 까닭 — 키는 하나인데 클라이언트마다 읽는 이름이 다르다. 사내 PC 의 앱과
+    # Claude Code 는 `ANTHROPIC_AUTH_TOKEN` 을 읽고(ENV-posco 「우리가 쓰는 인증」 항목), Codex 는 같은 키를
+    # `OPENAI_API_KEY` 로 읽는다(OpenAI.-Posco.Setting.md 「Codex CLI 설정 방법」의 커스텀 설정 표).
     KEY_GROUP_POSCO: ("ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY"),
     # 구글은 제 SDK 관례로 `GOOGLE_API_KEY` 를 쓴다 — 우리 이름이 앞, 별칭이 뒤다.
     KEY_GROUP_GEMINI: ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
     # ⚠ **이 묶음은 환경변수를 안 읽는다 — 빈 것이 곧 규율이다.** 표준 이름
-    #   (`ANTHROPIC_API_KEY`)이 회사 PC 에서는 **게이트웨이 키**라(ENV-posco 22–23행),
+    #   (`ANTHROPIC_API_KEY`)이 회사 PC 에서는 **게이트웨이 키**라(ENV-posco 「우리가 쓰는 인증」 항목),
     #   읽으면 사내 키를 그대로 `api.anthropic.com` 으로 보낸다. 이 갈래의 키는
     #   프로브에 `--key` 로 손으로 준다.
     KEY_GROUP_ANTHROPIC: (),

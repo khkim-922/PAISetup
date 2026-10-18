@@ -15,7 +15,7 @@ import re
 import sys
 
 # 접힘을 잰 판 가운데 가장 새것 — 이 판 이하만 고친다. 판이 오르면 `scripts/probe-bash-collapse.sh` 로 다시 재고 올린다.
-COLLAPSE_MEASURED_UPTO = (2, 1, 296)
+COLLAPSE_MEASURED_UPTO = (2, 1, 302)
 TAIL_BYTES = 262144                     # 기록 끝에서 판을 찾을 창 — 줄마다 판이 들어 끝 몇 줄이면 된다
 VERSION = re.compile(r'"version"\s*:\s*"(\d+)\.(\d+)\.(\d+)"')
 BS = chr(92)

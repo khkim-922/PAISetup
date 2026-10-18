@@ -1,12 +1,12 @@
 ---
 name: ppt-report
-description: 회사 보고용 슬라이드 덱(.pptx)을 만들 때 부른다. "보고서 PPT 만들어줘"·"한 장으로 정리해줘"·"임원 보고 장표"·"발표자료"·"이 분석 PPT 로"·자료를 주며 "이걸로 보고서". 재료를 읽고 분석 문서를 세운 뒤 덱을 짓는 순서와, 받는 사람의 맥락을 먼저 묻는 자리를 든다. 생성·검수는 공식 문서 스킬(document-skills:pptx)이, 감긴 문서 읽기는 drm-office-read 가 맡는다.
+description: 회사 보고용 슬라이드 덱(.pptx)을 만들 때 부른다. "보고서 PPT 만들어줘"·"한 장으로 정리해줘"·"임원 보고 장표"·"발표자료"·"이 분석 PPT 로"·자료를 주며 "이걸로 보고서". 재료를 읽고 분석 문서를 세운 뒤 덱을 짓는 순서와, 받는 사람의 맥락을 먼저 묻는 자리를 든다. 생성·검수는 공식 pptx 스킬(anthropic-skills:pptx 또는 document-skills:pptx)이, 감긴 문서 읽기는 drm-office-read 가 맡는다.
 ---
 
 # 보고용 덱
 
-**Claude 전용이다** — 생성과 검수를 기대는 공식 스킬(`document-skills:pptx`)이 Claude 플러그인이고 독점 라이선스라
-다른 도구에는 없다. Codex · agy 가 이 스킬을 읽었다면 덱 만들기를 Claude 에 맡긴다(맡기기 러너 `claude-background`).
+**Claude 전용이다** — 생성과 검수를 기대는 공식 pptx 스킬은 Claude 로만 오고(claude.ai 계정 동기화 · 마켓 플러그인) 독점
+라이선스라 다른 도구에는 없다. Codex · agy 가 이 스킬을 읽었다면 덱 만들기를 Claude 에 맡긴다(맡기기 러너 `claude-background`).
 
 **덱은 마지막에 만든다.** 재료 → 분석 문서 → 받는 사람의 맥락 → 구성 → 덱. 앞 단계를 건너뛰고 덱부터
 그리면 내용과 배치를 함께 고치게 되고, 그 고침은 늘 덱에서 가장 비싸다.
@@ -127,8 +127,9 @@ python -X utf8 "<이 스킬>/scripts/build_template.py" report-a4 base.pptx
 
 ## 6. 덱을 짓고 검수한다
 
-**생성과 검수는 공식 스킬(`document-skills:pptx`)이 든다** — 엔진 선택 · pptxgenjs 함정 · 템플릿 편집 ·
-QA 3갈래를 그쪽이 안다. 이 문서는 그것을 되풀이하지 않는다. 다만 **그쪽 QA 의 기본 길(LibreOffice 로
+**생성과 검수는 공식 pptx 스킬이 든다** — 세션의 스킬 목록에 `anthropic-skills:pptx`(claude.ai 계정 동기화)나
+`document-skills:pptx`(마켓 플러그인)로 뜨고, 둘 다 뜨면 어느 쪽이든 같은 스킬이다. 엔진 선택 · pptxgenjs 함정 ·
+템플릿 편집 · QA 3갈래를 그쪽이 안다. 이 문서는 그것을 되풀이하지 않는다. 다만 **그쪽 QA 의 기본 길(LibreOffice 로
 PDF 를 거쳐 그림을 얻는 것)은 이 스킬이 덮어쓴다** — 아래 셋이 이긴다.
 
 - **결과물은 .pptx 하나다 — PDF 로 바꾸지 않는다(검수용 중간 단계로도).**

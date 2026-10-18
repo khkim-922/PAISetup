@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.parse
@@ -101,9 +100,8 @@ def post_json(url: str, headers: dict[str, str], payload: dict, timeout: int = 7
 
 
 def family(model: str) -> str:
-    # Hermes uses Anthropic Messages for Claude providers and OpenAI-compatible
-    # chat_completions for the rest.  The local proxy translates gemini-* chat
-    # requests to P-GPT's Gemini native /v1beta route internally.
+    # Hermes 는 Claude 공급자에 Anthropic Messages 를, 나머지에 OpenAI 호환 chat_completions 를 쓴다.
+    # 로컬 프록시는 gemini-* chat 요청을 P-GPT 의 Gemini native /v1beta 경로로 옮긴다.
     if model.startswith("claude-"):
         return "claude_messages"
     return "chat_completions"

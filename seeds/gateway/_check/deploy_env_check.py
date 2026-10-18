@@ -2,30 +2,33 @@
 
     python -X utf8 _check/deploy_env_check.py
 
-**왜 이 검사가 있나.** 회사 방식 배포(SR → 회사 GitLab → CI/CD)는 운영팀이 CI 변수로 게이트웨이
+왜 이 검사가 있나 — 회사 방식 배포(SR → 회사 GitLab → CI/CD)는 운영팀이 CI 변수로 게이트웨이
 주소와 앱 토큰을 심는다(`AI_GW_URL` · `AI_GW_TOKEN`). 배관이 그 이름을 안 읽으면 그 앱은 사내
 게이트웨이를 한 번도 못 부르고 드라이런에 머무는데, **아무 데서도 안 운다** — 드라이런은 오류가
 아니라 봉투 명세를 돌려주는 정상 응답이라서다.
 
 재는 것 셋 — 손잡이는 적재 시점에 굳으므로 판마다 배관을 **자식 프로세스에서** 새로 올린다.
-  [1] 주소 — 손잡이가 비면 회사 갈래 셋이 한 바닥을 나눠 쓴다 · 회사 바닥 손잡이(앱 것 ·
+  [1] 주소 — 손잡이가 비면 회사 갈래가 한 바닥을 나눠 쓴다 · 회사 바닥 손잡이(앱 것 ·
       회사 이름)는 회사 갈래만 옮긴다 · 둘 다 있으면 앱 것이 이긴다 · `/v1` 을 붙여 와도 같은
       바닥이다 · 바깥 갈래는 제 손잡이로만 옮긴다 · SDK 표준 이름은 안 읽는다 · 주소가 아닌
       값은 뜰 때 죽는다
   [2] 서버 토큰 — 로그인을 선언 안 한 앱(기본)은 토큰이 있어도 안 쓴다 · 선언한 앱은 회사
       갈래에만 깐다 · 실어 온 키가 이긴다 · 담장에서 내린 요청과 드라이런 강제는 그대로
-      드라이런이다 · 토큰이 없으면 지금처럼 드라이런이다
+      드라이런이다 · 토큰이 없으면 드라이런이다
   [3] 끝에서 끝 — 로그인을 선언한 앱에 두 이름을 루프백 가짜 게이트웨이로 주면 회사 갈래마다
       요청이 그 바닥 아래 계약 경로로 그 토큰을 싣고 닿는다. 선언 안 한 앱은 한 건도 안 보낸다
 
 **기대값은 회사 문서에서 온다** — 계약 경로와 변수 이름이다. 배관의 상수를 기대값으로 쓰면
 배관이 틀릴 때 기대값도 같이 틀려 초록이 난다.
 
-⚠ **로그인 선언(`LOGIN_REQUIRED`)이 배관에 없으면 [2]·[3] 은 「못 쟀다」(2)다** — 빨강이
-  아니다(`_plumb` 의 「없다」 규율). 로그인 없는 형제는 이 검사를 받아 가지 않는다. [1] 은
-  이름이 아니라 동작을 보므로 주소 손잡이가 없는 배관에서는 빨강이 난다.
+로그인 선언(`LOGIN_REQUIRED`)이 배관에 없으면 [2]·[3] 은 「못 쟀다」(2)다 — 빨강이 아니다
+(`_plumb` 의 「없다」 규율). 로그인 없는 형제는 이 검사를 받아 가지 않는다. [1] 은 이름이 아니라
+동작을 보므로 주소 손잡이가 없는 배관에서는 빨강이 난다.
 
-**안 재는 것** — 사내 게이트웨이가 그 토큰을 실제로 받나 · 운영팀이 `AI_GW_URL` 에 어느 꼴을
+내는 것 — 종료코드 0 판정이 다 초록 · 1 어긋남 · 2 못 쟀다(접두어를 못 읽었다 · 표에 회사 갈래가
+없다 · 로그인 선언이 없다 · 자식 프로세스가 졌다). 어긋남이 하나라도 있으면 못 잰 자리가 있어도 1 이다.
+
+안 재는 것 — 사내 게이트웨이가 그 토큰을 실제로 받나 · 운영팀이 `AI_GW_URL` 에 어느 꼴을
 적나(회사 문서가 안 정했다) · 앱의 문이 정말 모든 요청을 로그인으로 거르나(선언의 참은 적는
 사람이 든다). 망을 안 탄다 — [3] 의 상대는 이 PC 의 루프백이다.
 """
@@ -46,19 +49,20 @@ sys.path.insert(0, str(ROOT))
 from _plumb import MODULE, PROVIDERS_MODULE, Missing, gateway, get, slot  # noqa: E402 — 배관은 선언이 고른다
 from gateway_probe import SAY, _Fake  # noqa: E402 — 가짜 게이트웨이는 한 벌이다(지어 옮기지 않는다)
 
-# ⚠ **접두어를 못 읽으면 못 쟀다(2)다** — 재는 손잡이의 이름이 접두어에서 나온다. 지어내면
-#   자식이 아무 손잡이도 안 받은 채 돌아 「비운 판」이 초록으로 선다.
+# ⚠ **접두어를 지어내지 않는다** — 재는 손잡이의 이름이 접두어에서 나온다. 지어내면 자식이
+#   아무 손잡이도 안 받은 채 돌아 「비운 판」이 초록으로 선다. 못 읽으면 못 쟀다(2)다.
 try:
     P = get("ENV_PREFIX")
 except Missing as why:
     raise Unmeasured(f"⚠ 손잡이 이름을 못 지었다 — {why}") from why
 
 # 회사가 정한 이름 — 회사 기준 씨앗 `seeds/vibecoding/` 의 `docs/references/futurem-adapters.md`
-# (llm_gateway 절). 배관의 상수가 아니라 이 글자를 쓴다 — 머리말의 「기대값은 회사 문서에서」.
+# (`llm_gateway.py` 절). 배관의 상수가 아니라 이 글자를 쓴다 — 머리말의 「기대값은 회사 문서에서」.
 COMPANY_URL = "AI_GW_URL"
 COMPANY_TOKEN = "AI_GW_TOKEN"
-# 계약 경로 — 바닥 뒤에 붙는 것. Claude-Posco.setting.md 10–14행 · OpenAI.-Posco.Setting.md
-# 394–420행 · Gemini 는 바닥이 곧 갈래 주소다(Gemini-Posco.setting.md 12행 · 경로는 봉투가 짓는다).
+# 계약 경로 — 바닥 뒤에 붙는 것. Claude-Posco.setting.md 「Messages API (Anthropic)」 절의 `POST` 줄 ·
+# OpenAI.-Posco.Setting.md 「Responses API (OpenAI)」 절의 `POST` 줄 · Gemini 는 바닥이 곧 갈래 주소다
+# (Gemini-Posco.setting.md 「Gemini Native API (Gemini)」 절의 `POST` 줄 · 경로는 봉투가 짓는다).
 PATH_OF = {gateway.CONTRACT_ANTHROPIC: "/v1/messages",
            gateway.CONTRACT_OPENAI: "/v1/responses",
            gateway.CONTRACT_GEMINI: ""}
@@ -171,7 +175,8 @@ def urls_section():
         report(f"둘 다 있으면 {P}_GATEWAY_BASE_URL 이 이긴다 — 앱의 선언이 더 좁다", not bad, bad)
 
     # 회사 문서끼리 바닥의 꼴이 갈린다 — OpenAI 문서와 Codex 틀은 `/v1` 까지 적는다
-    # (OpenAI.-Posco.Setting.md 48행). 운영팀이 그 꼴로 심어도 같은 게이트웨이다.
+    # (OpenAI.-Posco.Setting.md 「Chat Completions API (OpenAI)」 절의 `PGPT_BASE_URL` 문장). 운영팀이 그 꼴로 심어도
+    # 같은 게이트웨이다.
     got = urls("[1] /v1 붙은 꼴", **{COMPANY_URL: co_base + "/v1/"})
     if got is not None:
         bad = moved(got, COMPANY, co_base)
@@ -191,7 +196,10 @@ def urls_section():
 # ---------- [2] 서버 토큰 ----------
 
 def login_slot():
-    """로그인 선언의 좌표 — 배관에 없으면 `Missing` 의 까닭을 「못 쟀다」로 찍고 None."""
+    """로그인 선언의 좌표 `(모듈 이름, 속성 이름)`.
+
+    배관에 없으면 `Missing` 의 까닭을 「못 쟀다」로 찍고 None.
+    """
     try:
         mod, attr = slot("LOGIN_REQUIRED")
         get("LOGIN_REQUIRED")          # 그 자리에 실제로 있나 — 없으면 까닭을 든다

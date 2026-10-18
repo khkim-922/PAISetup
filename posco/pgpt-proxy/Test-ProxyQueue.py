@@ -1,6 +1,6 @@
-"""v21/v22 queue/cancellation regressions against a local, event-controlled gateway.
+"""큰 요청 줄 세우기 · 취소의 회귀 검사 — 사건을 손으로 쥐는 가짜 게이트웨이로 잰다.
 
-Run: python tests/Test-ProxyQueue.py. No company gateway or credentials are used.
+부르는 꼴: python -X utf8 Test-ProxyQueue.py. 회사 게이트웨이와 키를 안 쓴다.
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ class Gateway(BaseHTTPRequestHandler):
         try:
             super().handle()
         except ConnectionError:
-            pass  # Expected when cancellation tests close a pooled connection.
+            pass  # 취소 시험이 풀 연결을 닫으면 나는 것이 맞다.
 
     def do_POST(self):
         payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -194,7 +194,7 @@ class QueueTests(unittest.TestCase):
         env = dict(os.environ, PGPT_PROXY_PORT=str(port),
                    PGPT_PROXY_UPSTREAM=f"http://127.0.0.1:{self.gateway.server_port}",
                    PGPT_PROXY_HEAVY_CONCURRENCY="1", PGPT_PROXY_HEAVY_QUEUE_TIMEOUT_SEC="0")
-        env.pop("PGPT_PROXY_HEAVY_BYTES", None)  # exercise the shipped default
+        env.pop("PGPT_PROXY_HEAVY_BYTES", None)  # 실리는 기본값을 그대로 잰다
         proc = subprocess.Popen([sys.executable, str(source)], env=env)
         try:
             for _ in range(50):
@@ -302,7 +302,7 @@ class QueueTests(unittest.TestCase):
         before = self.health()["execution_cuts"]
         queued, second = self.start("clock_fast500", status=500)
         self.wait_for(lambda: self.health()["heavy_waiting"] == 1)
-        time.sleep(0.7)  # longer than fake execution limit; entirely local queue time
+        time.sleep(0.7)  # 가짜 실행 시한보다 길다 — 다 로컬 대기 시간이다
         holder.release.set()
         self.assertEqual(first.result(2)[0], 200)
         self.assertEqual(second.result(2)[0], 500)
@@ -353,7 +353,7 @@ class QueueTests(unittest.TestCase):
         futures = []
         for index in range(4):
             futures.append(self.pool.submit(take, index))
-            self.wait_for(lambda: gate.stats()["heavy_waiting"] == index + 1)
+            self.wait_for(lambda index=index: gate.stats()["heavy_waiting"] == index + 1)
         gate.release()
         for future in futures:
             future.result(3)

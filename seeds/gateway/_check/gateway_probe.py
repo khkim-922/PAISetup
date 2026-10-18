@@ -1,6 +1,6 @@
 """어댑터가 응답을 읽는 쪽 — 가짜 게이트웨이로 계약 셋, 실호출로 한 갈래를 잰다.
 
-봉투를 **짓는** 쪽은 `envelope_check.py` 가 문다(순수 함수라 바깥으로 안 나간다). 여기는
+봉투를 짓는 쪽은 `envelope_check.py` 가 문다(순수 함수라 바깥으로 안 나간다). 여기는
 그 반대쪽이다 — 응답이 들어와 **어댑터가 그것을 어떻게 읽나**. 그 자리는 계약마다 어휘가
 달라(`stop_reason` · `finishReason` · `status`, 씀씀이 이름 셋) 통일이 무너져도 봉투는
 멀쩡하고, 무너진 것은 위층의 기록과 이어받기에서야 보인다.
@@ -18,18 +18,21 @@
 (`providers.spec`), 그것을 찍고 「못 쟀다」(2)로 나간다 — 초록이 아니다. 명세를 여기서 다시
 짓지 않는 까닭이 그것이다: 두 자리에 지으면 한쪽만 낡는다.
 
+내는 것 — 종료코드 0 판정이 다 초록 · 1 어긋남 · 2 못 쟀다(키가 없어 안 보냈다 · 키를 읽는 손이
+배관에 없다 · 게이트웨이가 거절했다 · 고른 갈래가 표에 없거나 계약이 다르거나 이 프로브 밖이거나 담장이 닫혔다).
+
 ## 곁의 프로브와 어떻게 갈리나 — 넷이 같은 부름을 다른 축으로 쓴다
 
     gateway_probe.py     어댑터가 읽는 쪽의 계약 — 씀씀이 어휘 · 종료 어휘 · 이어받기 · 끊김
-    stream_probe.py      글자가 **언제** 오나 — 첫 글자까지 · 버퍼링인가 · 벽은 어디
-    live_probe.py        **숫자**를 얻는다 — 환산비 · 층 셋의 캐시 · 생각 조각 (판정을 안 낸다)
+    stream_probe.py      글자가 언제 오나 — 첫 글자까지 · 버퍼링인가 · 벽은 어디
+    live_probe.py        숫자를 얻는다 — 환산비 · 층 셋의 캐시 · 생각 조각 (판정을 안 낸다)
     claude_thinking_probe.py   Claude 갈래의 생각이 선을 타나
 
 **CLI 계약은 여기 안 온다.** 저쪽은 주소도 머리도 없어(`providers.CliEnvelope`) 봉투가 통째로
 다르다 — `--contract` 가 그 이름을 안 받는 것이 곧 그 경계고, 파이프 배관은 `cli_pipe_check.py`
-가 문다. **그래서 이 프로브는 어떤 인자로도 진짜 CLI 를 안 부른다.**
+가 문다. 그래서 이 프로브는 어떤 인자로도 진짜 CLI 를 안 부른다.
 
-**안 재는 것** — 캐시 경계가 **어디 서나**(봉투를 짓는 축이라 `envelope_check.py` [1] 이 든다) ·
+안 재는 것 — 캐시 경계가 어디 서나(봉투를 짓는 축이라 `envelope_check.py` [1] 이 든다) ·
 캐시가 실제로 걸리나(`live_probe.py` ②) · 시각과 벽(`stream_probe.py`) · 게이트웨이가 모르는
 낱말을 삼키나 · 사외 갈래의 출력 상한. `--self-check` 의 초록은 **「어댑터가 이 응답을 이렇게
 읽는다」까지**고, 저쪽이 무엇을 주는지는 한 자도 안 잰다 — 그것을 재는 자는 실호출뿐이다.
@@ -47,7 +50,7 @@ from _verdict import EXIT_MISMATCH, EXIT_OK, Unmeasured, edge, fails, passes, re
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from _plumb import gateway, get, providers  # noqa: E402 — 배관은 선언이 고른다
+from _plumb import Missing, gateway, get, providers  # noqa: E402 — 배관은 선언이 고른다
 
 # 재는 검체 — 짧다. 고정 층은 앱이 얹는 것이라 씨앗이 지어낼 재료가 없고, 여기서 캐시
 # 적중을 재려 들면 없는 재료를 짓는 것이 된다(그 자리는 `live_probe.py` ② 가 든다).
@@ -62,11 +65,13 @@ SELF_CONTRACTS = (gateway.CONTRACT_ANTHROPIC, gateway.CONTRACT_OPENAI,
 
 
 def pick(contract=None, provider=None):
-    """부를 갈래 하나 — 안 고르면 기본 갈래, 계약만 고르면 표에서 그 계약의 첫 줄.
+    """부를 갈래 하나 — 안 고르면 기본 갈래, 계약만 고르면 표에서 담장이 여는 그 계약의 첫 줄.
+
+    모르는 갈래 · 계약이 다른 갈래 · 이 프로브 밖 계약(CLI) · 담장이 닫힌 갈래는 `Unmeasured`(2)다.
 
     ⚠ **담장이 닫힌 갈래를 여기서 거른다.** `gateway.creds` 는 그런 갈래를 말없이 기본
-      갈래로 내리고 키·모델까지 비운다(그 자리의 곁말). 안 거르면 **재려던 계약이 아닌
-      것을 재는데 초록 줄은 재려던 계약의 이름을 댄다** — 빨강도 초록도 아닌 거짓말이다.
+      갈래로 내리고 키·모델까지 비운다(그 자리의 곁말). 안 거르면 재려던 계약이 아닌
+      것을 재는데 초록 줄은 재려던 계약의 이름을 댄다 — 빨강도 초록도 아닌 거짓말이다.
     """
     table = gateway._GATEWAY
     if provider is None and contract is None:
@@ -98,7 +103,13 @@ def pick(contract=None, provider=None):
 
 def live(slug, key):
     row = gateway._GATEWAY[slug]
-    c = gateway.creds(provider=slug, token=key or get("env_token")(row["key_group"]))
+    # 키를 읽는 손은 저장소마다 이름이 갈려 선언이 좌표를 든다 — 그 자리가 없으면 못 쟀다(2)다.
+    #   `--key` 를 준 판은 그 손을 안 부르므로 손이 없는 저장소에서도 돈다.
+    try:
+        token = key or get("env_token")(row["key_group"])
+    except Missing as why:
+        raise Unmeasured(f"[안 잼] 키를 읽는 손을 못 찾았다 — {why}") from why
+    c = gateway.creds(provider=slug, token=token)
     msgs = [{"role": "user", "content": ASK}]
     if c.dry_run:
         # **키가 없으면 배관이 안 보내고 명세를 돌려준다** — 여기서 다시 짓지 않는다.
@@ -118,8 +129,8 @@ def live(slug, key):
     except RuntimeError as exc:
         # 거절(HTTP 4xx·5xx)은 어댑터가 사람 말로 접어 올린다 — 트레이스백이 아니라 그
         # 말을 그대로 보인다. 할당량 0(429)·모르는 모델(404)이 여기로 온다.
-        # ⚠ **판정이 아니라 「못 쟀다」다.** 저쪽이 문을 안 열어 준 것이라 우리 배관이
-        #   어긋났다는 말을 할 근거가 없다 — 빨강으로 세면 키가 만료된 날마다 빨강이다.
+        # 판정이 아니라 「못 쟀다」다 — 저쪽이 문을 안 열어 준 것이라 우리 배관이 어긋났다는
+        #   말을 할 근거가 없다. 빨강으로 세면 키가 만료된 날마다 빨강이다.
         print(f"\n[거절] {exc}")
         raise Unmeasured("[안 잼] 게이트웨이가 거절했다 — 위 한 줄이 저쪽의 말이다") from exc
     seen = used[-1] if used else {}
@@ -197,8 +208,8 @@ class _Fake(BaseHTTPRequestHandler):
     경로를 붙이므로(`providers._gm_envelope`) 앞에서 읽어야 계약 셋이 한 서버를 쓴다.
 
     ⚠ **청크로 보낸다 — 길이를 미리 부르지 않는다.** 스트리밍 문은 다 만들기 전에
-      머리를 내보내므로 길이를 알 수가 없고, 실물이 안 쓰는 꼴로 재면 **끊김이 오는
-      모양부터 달라진다**: 잘린 Content-Length 는 예외 없이 조용히 끝나고 잘린 청크는
+      머리를 내보내므로 길이를 알 수가 없고, 실물이 안 쓰는 꼴로 재면 끊김이 오는
+      모양부터 달라진다: 잘린 Content-Length 는 예외 없이 조용히 끝나고 잘린 청크는
       `IncompleteRead` 로 온다. 끊김을 재는 국면 둘이 그 차이 위에 선다.
     """
     hits = {}
@@ -238,7 +249,7 @@ class _Fake(BaseHTTPRequestHandler):
         if scene == "split":
             # **봉투 하나를 두 `data:` 줄로 갈라 보낸다** — 이 게이트웨이가 긴 몸통에 하는
             # 짓이고 그 까닭은 `providers._sse_events` 곁말이 든다. 여미는 자가 없으면
-            # 못 읽은 조각이 조용히 버려져 **씀씀이도 종료 사유도 통째로 증발한다.**
+            # 못 읽은 조각이 조용히 버려져 씀씀이도 종료 사유도 통째로 증발한다.
             first, second = _split_tail(tail)
             self._chunk(f"data: {first}\n\n")
             self._chunk(f"data: {second}\n\n")
@@ -249,10 +260,10 @@ class _Fake(BaseHTTPRequestHandler):
 
 
 def _split_tail(tail):
-    """봉투 한 줄을 두 `data:` 조각으로 가른다 — split 국면과 **그 이빨이 같은 자를 쓴다.**
+    """봉투 한 줄을 두 `data:` 조각 `(앞, 뒤)` 로 가른다 — split 국면과 **그 이빨이 같은 자를 쓴다.**
 
-    가르는 규칙을 두 자리에 적으면 이빨이 국면과 다른 데를 갈라, **국면은 안 갈린 봉투를
-    보내는데 이빨만 갈린 것을 보고 초록**이 난다.
+    가르는 규칙을 두 자리에 적으면 이빨이 국면과 다른 데를 갈라, 국면은 안 갈린 봉투를
+    보내는데 이빨만 갈린 것을 보고 초록이 난다.
     """
     payload = tail[len("data: "):].rstrip("\n")
     k = len(payload) // 2
@@ -299,7 +310,7 @@ def self_check():
             msgs = [{"role": "user", "content": ASK}]
 
             # ① 봉투에 키가 안 들어간다 — 짓기와 보내기가 갈렸나.
-            # ⚠ 무는 것은 **키 자리 하나**다. 나머지 머리(content-type·accept…)는 값이
+            #   무는 것은 **키 자리 하나**다 — 나머지 머리(content-type·accept…)는 값이
             #   있는 것이 정상이라, 「다 비었나」로 물으면 재려던 것이 아닌 자리가 걸린다.
             env = providers.envelope(SYSTEM, msgs, gateway.creds(provider=slug, token=""))
             ok("봉투의 키 자리가 비었다", env.headers.get(env.key_header) == "",
@@ -363,9 +374,9 @@ def self_check():
                (used[-1] if used else {}).get("total_input") == IN_TOTAL, str(used))
             ok("갈라 온 봉투 — 버린 조각이 없다", not cuts, str(cuts))
 
-            # ⑥ **이빨** — ⑤ 가 여미기를 재고 있나, 아니면 애초에 안 갈린 봉투를 재고
-            #    있나. 갈린 두 줄이 **따로는 어느 쪽도 안 열린다**는 것이 그 증거다.
-            #    안 보이면 ⑤ 는 「여몄다」가 아니라 무엇이든 초록이다.
+            # ⑥ 이빨 — 위 「두 줄로 갈라 온 봉투」 판이 여미기를 재고 있나, 아니면 애초에 안
+            #    갈린 봉투를 재고 있나. 갈린 두 줄이 **따로는 어느 쪽도 안 열린다**는 것이 그
+            #    증거다. 안 보이면 그 판은 「여몄다」가 아니라 무엇이든 초록이다.
             halves = _split_tail(_frames(contract, "split", 1)[1])
             ok("이빨 — 갈린 두 줄은 따로 읽으면 어느 쪽도 안 열린다",
                not _reads_alone(halves), str(halves))
@@ -378,7 +389,10 @@ def self_check():
 
 
 def _exit(scope):
-    """초록 줄은 **건수와 범위**를 달고 나간다 — 건수는 `passes()` 가 센다(손글자를 안 둔다)."""
+    """초록 줄은 **건수와 범위**를 달고 나간다 — 어긋남이 있으면 1, 없으면 0 으로 나가 돌아오지 않는다.
+
+    건수는 `passes()` 가 센다(손글자를 안 둔다).
+    """
     bad = fails()
     if bad:
         print(f"\n❌ {len(bad)}건 어긋남 — {' · '.join(bad)}")

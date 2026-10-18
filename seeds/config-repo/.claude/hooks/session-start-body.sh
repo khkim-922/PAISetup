@@ -41,6 +41,12 @@
 #   session-start.sh --needs-install
 #                               「깔 게 있나」에 예/아니오만 낸다 ← deploy.ps1 의 계획 단계가 이걸로 묻는다. 파일만
 #                               보고 1초 안에 끝난다 — 프로브도 망도 안 탄다. 0 안 깐다 · 1 깐다 · 2 못 쟀다
+#   session-start.sh --pull-target <저장소> <원격>
+#                               당김이 멈출 커밋을 묻는다 ← PowerShell 의 당김(deploy.ps1 · 부팅 라인)이 fetch 뒤 ·
+#                               merge 앞에서 몸통을 바로 부른다. 세션 당김과 같은 자(`_pull_target`)로 저장소의 손에
+#                               묻고 답을 재고 판정을 `.git/claude-pull-target.last` 에 적는다 — 같은 원격을 당기는
+#                               자리가 다 같은 커밋에서 선다. stdout 에 병합할 커밋의 온전한 sha 한 줄과 0 · 저장소나
+#                               `<원격>/main` 을 못 읽으면 stderr 한 줄과 2
 #   session-start.sh <그 밖의 인자>
 #                               아무것도 안 하고 stderr 한 줄과 2 로 끝난다 — 오타(`--chek`)가 인자 없는 갈래(당김 ·
 #                               홈 밀기 · 설치)로 새지 않는다. 2 는 「답을 못 냈다」다 — 1 은 갈래마다 잰 판정(꺼진
@@ -64,7 +70,8 @@ set -uo pipefail
 #      끝낸다), 대상 저장소(`PROJECT_DIR` · `PROJECT_NAME`)를 문지기가 넘긴 값 → 제 경로 → `CLAUDE_PROJECT_DIR`(없으면
 #      지금 폴더) 차례로 잡는다. 명시한 갈래(`--install` · `--install-global` · `--plant`)의 바깥 실행은 기록 파일을 열고
 #      저를 다시 띄워 그 줄을 받은 뒤, 안쪽의 종료코드로 끝난다
-#    앞에서 받는 것 — 인자 하나(`--plant` 는 작업 루트 하나 더 · `PLANT_ROOT`) · `SESSION_START_REPO`(문지기 · deploy.ps1) ·
+#    앞에서 받는 것 — 인자 하나(`--plant` 는 작업 루트 하나 더 · `PLANT_ROOT` · `--pull-target` 은 저장소와 원격 둘 더 ·
+#      `PT_REPO` · `PT_REMOTE`) · `SESSION_START_REPO`(문지기 · deploy.ps1) ·
 #      `SESSION_LOG`(바깥이 받고 있다는 표식) · `CLAUDE_PROJECT_DIR`
 #    안 하는 것 — 함수를 부르지 않는다(라이브러리는 이 단계 뒤에 선다). 깔지도 홈에 밀지도 않는다 — 쓰는 것은
 #      바깥 실행의 기록 파일(`~/.claude/logs/`) 하나다
@@ -78,10 +85,11 @@ case "${1:-}" in
   --install)        MODE=install; ASKED=install ;;
   --install-global) MODE=install; ASKED=install-global ;;
   --plant)          MODE=plant; ASKED=plant; PLANT_ROOT="${2:-}" ;;
+  --pull-target)    MODE=pull-target; PT_REPO="${2:-}"; PT_REMOTE="${3:-}" ;;
   # 모르는 인자는 무엇도 하기 전에 끝낸다 — 기본 갈래가 없으면 오타 하나가 auto 를 통째로 돈다.
   #   stderr 로 낸다 — 세션 문맥에 실을 말이 아니라 부른 자의 실수이고, 훅으로 걸렸으면 하네스가 0 아닌
   #   끝의 stderr 를 사람에게 보인다
-  *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global · --plant)\n' "$1" >&2
+  *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global · --plant · --pull-target)\n' "$1" >&2
      exit 2 ;;
 esac
 # `--plant` 의 작업 루트는 무엇도 하기 전에 굳힌다 — 없거나 폴더가 아니면 모르는 인자와 같이 2 로 끝낸다.
@@ -590,7 +598,8 @@ wire_commit_hooks() {
 #    없으면 민다 · 원본이 새것이면 민다 · 아니면 넘긴다 — 빈 홈(리모트)에서는 전부 밀리고 이미 선 홈(PC)에서는 아무것도 안
 #    밀린다. 파일마다 프로세스 둘(폴더 짓기 + 복사)이라 같은 것을 매 세션 다시 옮기지 않으려는 문이다.
 #    내용을 안 견주고 자리와 때로 본다 — `cmp` 는 파일마다 프로세스다. `cp` 는 사본에 지금 시각을 찍으므로 다음 세션엔
-#    사본이 새것이고, 원본이 당겨져 바뀌면 그때 원본이 새것이 된다. 덮어쓰기만 한다 — 홈에만 남은 파일은 안 지운다.
+#    사본이 새것이고, 원본이 당겨져 바뀌면 그때 원본이 새것이 된다. 덮어쓰기만 한다 — 홈에만 남은 파일은 안 지운다(걷는 손은
+#    deploy.ps1 씨앗 칸 하나다 — 원본 이력이 지운 파일을 기본 실행에서 걷는다).
 #    판이 둘 더 있다. 견주기만 하는 판(`HOME_SYNC=check`)은 형제 저장소 세션이 홈에 밀지 않고 밀었다면 옮겼을 파일을
 #    `HOME_STALE` 에 적기만 한다 — 견주는 목록을 따로 두면 미는 목록과 갈리므로 같은 문을 지난다. 바뀐 것만 보는 판
 #    (`PUSH_ONLY`)은 그 목록(설정 저장소 뿌리에서 본 상대경로 · 줄로 감싼 꼴 — `pc_wide_key` 가 짓는다)에 든 원본만 본다.
@@ -709,8 +718,9 @@ deploy_home_norms() {
     #   진본으로 믿는 검사(`borrowed_check`)도 있다 — 홈 사본을 사람이 부르는 deploy.ps1 만 갱신하면 커밋이 쌓이는 만큼 홈만
     #   낡고, 그 검사는 낡은 판과 견준 초록을 낸다(부재보다 나쁘다).
     # 어느 폴더를 미나는 선언(`$CONFIG_ROOT/deploy.seeds.conf`)이 든다 — deploy.ps1 이 같은 줄을 읽고, `seeds/config-repo` 를
-    #   일부러 안 미는 까닭도 그 머리말이 든다. 어떻게 미나(`__pycache__` 제외 · 덮어쓰기만 — 홈에만 남은 파일은 안 지운다)는
-    #   deploy.ps1 의 같은 칸과 같은 뜻이고, 제외 한 낱말은 선언으로 안 뽑는다(선언이 좌표만 늘린다). 선언이 없는 저장소를
+    #   일부러 안 미는 까닭도 그 머리말이 든다. 어떻게 미나(`__pycache__` 제외 · 덮어쓰기만)는 deploy.ps1 의 같은 칸과 같은 뜻이고,
+    #   홈에만 남은 파일은 여기서 안 지운다 — 원본 이력으로 걷는 손은 deploy.ps1 씨앗 칸 하나다(손을 둘 두면 걷는 규칙이 갈린다).
+    #   제외 한 낱말은 선언으로 안 뽑는다(선언이 좌표만 늘린다). 선언이 없는 저장소를
     #   위한 후퇴 목록은 없다 — 그 저장소는 위 문에서 끝난다. 목록을 여기 한 벌 더 두면 그것이 곧 손사본이다.
     # 씨앗이 폴더를 지므로(`seeds/gateway/app` · `_check/log`) 파일을 훑어 상대 경로를 지어 옮긴다 — deploy.ps1 이 같은
     #   자리에서 `-Recurse` + 상대경로로 하는 것과 같은 셈이다.
@@ -1054,6 +1064,7 @@ deploy_personal() {   # deploy_personal auto|install
 
   # 형제 저장소 — **없는 것만 받는다.** 당김은 각 저장소의 세션(auto)과 deploy.ps1 이 든다. `--install` 만 —
   # 망을 타고, 맨바닥 VDI 의 첫 판은 설치기가 부르는 이 갈래가 지지 세션 훅의 시간 한도가 지지 않는다.
+  # 받은 나무는 당김 문의 답에 세운다(`gate_fresh_clone`) — clone 은 원격 끝을 받고 그 뒤의 당김은 뒤로 못 간다.
   if [ "$1" = install ] && [ -n "$_repos" ]; then
     if [ -z "$_url" ]; then
       echo "$PROJECT_NAME: ⚠ personal.conf 에 REPOS 는 있는데 REPO_URL 이 없다 — 어디서 받을지 모른다"
@@ -1068,6 +1079,7 @@ deploy_personal() {   # deploy_personal auto|install
         git clone "$(printf '%s' "$_url" | sed "s|<이름>|$_r|g")" "$_root/$_r" ||
           echo "$PROJECT_NAME: ⚠ $_r clone 실패 — 주소 · 계정 · 망을 본다"
         printf '  · %s clone — %s초\n' "$_r" "$((SECONDS - _ct0))"
+        if [ -d "$_root/$_r/.git" ]; then gate_fresh_clone "$_root/$_r"; fi
       done
     fi
   fi
@@ -1730,7 +1742,7 @@ def disk_spelling(p):
 
 
 def typed_spellings(p):
-    """사람이 그 자리를 여는 흔한 철자 — 디스크 철자와 통째 소문자에 드라이브 글자 두 벌(윈도 · 0122). 철자 그대로 맞추는
+    """사람이 그 자리를 여는 흔한 철자 — 디스크 철자와 통째 소문자에 드라이브 글자 두 벌(윈도). 철자 그대로 맞추는
     도구(Claude · agy)에 이 꼴을 다 건다 — 탐색기 · VS Code · 탭 완성은 디스크 철자를, 손으로 친 경로는 대개 통째 소문자를
     준다. 대소문자를 섞어 친 꼴은 못 덮는다. 윈도 밖은 철자가 하나다."""
     d = disk_spelling(p)
@@ -1852,7 +1864,7 @@ def plant_codex_desktop(mod):
 
 # Codex 데스크탑 권한 — 같은 상태 파일의 로컬 호스트 권한 모드를 「나 대신 승인」으로 쓴다(도우미 `plant_desktop_agent_mode`).
 #   지금 값이 무엇이든 그 한 칸만 쓰고 기록은 안 남긴다 — 설치마다 다시 쓴다. 상태 파일이 없으면 안 짓고, 데스크탑이 떠 있으면 미룬다
-#   (설치기가 그 앞에서 닫는다). 못 심어도 진 것으로 안 돌린다 — 프로젝트 칸과 같은 까닭이다.
+#   (설치기는 이번에 깐 Codex 를 설치 끝에 로그인이 섰을 때만 닫고 부른다). 못 심어도 진 것으로 안 돌린다 — 프로젝트 칸과 같은 까닭이다.
 def plant_codex_desktop_mode(mod):
     label = "  권한(Codex 데스크탑) — "
     try:
@@ -2291,9 +2303,12 @@ sync_main_bg() {  # sync_main_bg <저장소>
 }
 
 # 당김이 어디서 멈출지 저장소에 묻는다 — 저장소가 둔 손(`.claude/hooks/pull-target.sh`)이 있을 때. 늘 0.
-#   몸통은 어느 커밋이 좋은지 모른다 — 기전만 여기 살고 정책은 저장소가 든다(`run_repo_start` 와 같은 갈림 · 결정 0155).
-#   받는 것 — 저장소 · 추적 원격 이름 · `.git` 자리. fetch 가 이긴 뒤에 부른다. 내는 것 — 병합할 자리 한 줄(받은 커밋, 아니면
-#   `<원격>/main`). 부작용 — 판정 한 줄(`<까닭> <병합할 커밋> — <원격>/main <그 커밋> · 덧말`)을 `.git/claude-pull-target.last`
+#   몸통은 어느 커밋이 좋은지 모른다 — 기전만 여기 살고 정책은 저장소가 든다(`run_repo_start` 와 같은 갈림).
+#   부르는 자리는 셋이다 — 세션 당김(`pull_ff`) · 당김 문 갈래(`--pull-target` — PowerShell 의 당김이 부른다) · 맨바닥 설치의
+#   형제 받기(`gate_fresh_clone`). 같은 원격을 받는 자리가 다 이 한 자를 지나야 같은 커밋에서 선다.
+#   받는 것 — 저장소 · 추적 원격 이름 · `.git` 자리. fetch 가 이긴 뒤에 부른다. 내는 것 — 판정에 적은 병합할 커밋의 sha 한 줄
+#   (받은 커밋, 아니면 원격 끝) — 원격 끝을 못 읽었으면 `<원격>/main` 이름을 그대로 내 병합이 git 의 사유로 진다.
+#   부작용 — 판정 한 줄(`<까닭> <병합할 커밋> — <원격>/main <그 커밋> · 덧말`)을 `.git/claude-pull-target.last`
 #   에 덮어 쓴다. 까닭은 no-script · no-opinion · accepted · rejected 넷이다.
 #   손과의 약속 — `sh pull-target.sh <원격>/main` · 자리는 저장소 뿌리 · stdin 은 비었다. 0 으로 끝나며 온전한 커밋 sha 한 줄을
 #   내면 「거기까지」, 빈 출력이나 0 이 아닌 끝은 「의견 없음」이다. 받는 것은 그 sha 가 이 저장소의 커밋이고 `<원격>/main` 의
@@ -2332,7 +2347,29 @@ _pull_target() {  # _pull_target <저장소> <원격> <.git 자리>
   _ptt="$(git -C "$1" rev-parse -q --verify "$_ptip^{commit}" 2>/dev/null)" || _ptt="?"
   if [ "$_ptk" = accepted ]; then _ptm="$_ptw"; else _ptm="$_ptt"; fi
   printf '%s %s — %s %s%s\n' "$_ptk" "$_ptm" "$_ptip" "$_ptt" "${_ptn:+ · $_ptn}" 2>/dev/null >"$3/claude-pull-target.last" || true
-  printf '%s\n' "$_ptw"
+  if [ "$_ptm" = "?" ]; then printf '%s\n' "$_ptw"; else printf '%s\n' "$_ptm"; fi
+}
+
+# 갓 받은 나무를 당김 문의 답에 세운다 — 맨바닥 설치가 형제를 막 clone 한 뒤. 늘 0.
+#   clone 은 원격 끝을 받고, 그 뒤의 당김은 빨리감기만이라 뒤로 못 간다 — 끝이 빨갛고 손이 그 앞의 초록을 골라도 나무는
+#   빨간 끝에 남는다. 그래서 이 자리도 세션 · 부팅 · 배포의 당김과 같은 자(`_pull_target`)에 묻는다.
+#   받는 것 — 저장소. 내는 것 — 옮겼거나 못 옮겼을 때 한 줄(설치기 기록에 든다). 부작용 — 판정 한 줄(`_pull_target`) · main 의 자리.
+#   옮기는 것은 갓 받은 꼴일 때뿐이다 — main 체크아웃이고 HEAD 가 원격 끝과 같다. `reset --keep` 이라 편집이 끼어 있으면 git 이
+#   거절하고 나무는 원격 끝에 남는다.
+gate_fresh_clone() {  # gate_fresh_clone <저장소>
+  [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" = main ] || return 0
+  _gfg="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+  _gfr="$(git -C "$1" config --get branch.main.remote 2>/dev/null)" || return 0
+  _gfh="$(git -C "$1" rev-parse -q --verify HEAD 2>/dev/null)" || return 0
+  [ "$_gfh" = "$(git -C "$1" rev-parse -q --verify "$_gfr/main^{commit}" 2>/dev/null)" ] || return 0
+  _gft="$(_pull_target "$1" "$_gfr" "$_gfg")"
+  [ "$_gft" != "$_gfh" ] || return 0
+  if git -C "$1" reset -q --keep "$_gft" >/dev/null 2>&1; then
+    printf '%s: %s — 당김 문이 원격 끝 %.7s 앞 %.7s 에 세웠다\n' "$PROJECT_NAME" "$(basename "$1")" "$_gfh" "$_gft"
+  else
+    printf '%s: ⚠ %s — 당김 문의 답 %.7s 로 못 옮겨 원격 끝 %.7s 에 둔다\n' "$PROJECT_NAME" "$(basename "$1")" "$_gft" "$_gfh"
+  fi
+  return 0
 }
 
 # 원격을 당긴다 — main 체크아웃일 때만 · 빨리감기로만 · 배경에서. 늘 0.
@@ -2352,6 +2389,13 @@ pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기
   _lg="$_gd/claude-pull.log"
   # 원문 보관과 경고는 `bg_fail_report` 한 자리다 — main 맞추기도 같은 것을 쓴다.
   bg_fail_report "$1" "$_lg" "$_gd/claude-pull.last-fail" "지난 세션의 원격 당김이 졌다"
+  # 지난 당김이 저장소 손의 답을 물리쳤으면 한 줄 말한다 — 물리친 당김은 문이 꺼진 채 원격 끝까지 간 것이라, 판정 파일에만
+  #   두면 손이 틀린 줄을 아무도 모른다. 판정은 저장소에 한 장이라 어느 당김(세션 · `--pull-target`)이 적었든 여기서 읽힌다.
+  #   덧말(첫 ` · ` 뒤)이 답과 물리친 까닭이다.
+  _ptl=""; [ -f "$_gd/claude-pull-target.last" ] && IFS= read -r _ptl < "$_gd/claude-pull-target.last"
+  case "$_ptl" in
+    rejected\ *) echo "$(basename "$1"): ⚠ 지난 당김이 저장소 손(.claude/hooks/pull-target.sh)의 답을 물리치고 원격 끝까지 갔다 — ${_ptl#* · } · 판정 $_gd/claude-pull-target.last" ;;
+  esac
   pull_due "$1" || return 0
   : > "$_lg" 2>/dev/null || true
   # ⚠ `pull` 이 아니라 `fetch` + `merge` 다. `pull` 은 제 fetch 뒤 `FETCH_HEAD` 를 읽어 무엇을 병합할지 정하는데, 그 파일은
@@ -2372,14 +2416,14 @@ pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기
 #   몸통은 무엇을 할지 모른다 — 기전만 여기 살고 정책은 저장소가 든다. 목록을 안 들므로 쓰는 저장소가 늘어도 안 낡는다.
 #   자리가 여기인 까닭 — `.claude/settings.json` 은 배포가 통째로 덮는 파일이라(`deploy.repofiles.conf`), 저장소 제 훅을
 #   거기 등록하면 다음 배포가 지운다. claude-config 를 안 붙인 세션은 그 파일이 관리 대상인 줄 알 길이 없다.
-#   진다고 세션을 안 죽인다 — 저장소 제 일이라 사유만 내고 간다(`set -e` 가 없어도 `||` 로 명시해 둔다). 타임아웃은 안
-#   씌운다(당김과 같은 결) — 오래 끄는 손은 세션 시작을 그만큼 늦추므로 막는 것은 저장소 몫이다.
+#   진다고 세션을 안 죽인다 — 저장소 제 일이라 사유만 내고 간다(`set -e` 가 없어도 `||` 로 명시해 둔다). 그 말은 stdout
+#   이다 — 세션이 읽어야 손이 진 줄을 안다(머리말 「말은 stdout 으로」). 타임아웃은 안 씌운다(당김과 같은 결) — 오래 끄는
+#   손은 세션 시작을 그만큼 늦추므로 막는 것은 저장소 몫이다.
 #   auto 에만 선다 — 이 자리의 뜻이 「당김이 설 수 있는 꼴로 만든다」라 당김이 없는 갈래에는 지킬 것이 없다.
 run_repo_start() {
   _rs="$PROJECT_DIR/.claude/hooks/repo-start.sh"
   [ -f "$_rs" ] || return 0
-  sh "$_rs" || printf '  ! repo-start.sh 가 졌다 — 저장소 제 일이라 넘어간다
-' >&2
+  sh "$_rs" || echo "$PROJECT_NAME: ⚠ 저장소 제 시작 일(.claude/hooks/repo-start.sh)이 졌다 — 저장소 제 일이라 넘어간다"
 }
 
 # ── 설치 걸음 — 설치 단계가 기다려 부르고, 세션(auto)은 `install_bg` 가 배경으로 부른다 ──
@@ -3464,6 +3508,32 @@ EOF
 
 #endregion 라이브러리
 
+# ══ 단계 · 당김 문 답 — pull-target 만 ════════════════════════
+#    층 — 없음(묻는 갈래). 쓰는 것은 판정 한 줄(`.git/claude-pull-target.last`)뿐이다
+#    하는 일 — 이미 받아 온 `<원격>/main` 을 놓고 당김이 어디서 멈출지를 세션 당김과 같은 자(`_pull_target`)로 정해, 병합할
+#      커밋의 온전한 sha 한 줄을 내고 0 으로 끝난다. PowerShell 의 당김(deploy.ps1 · 부팅 라인)이 fetch 뒤 · merge 앞에서
+#      부른다 — 손에 묻고 답을 재고 판정을 적는 규칙이 여기 한 벌이라, 같은 원격을 당기는 자리가 다 같은 커밋에서 선다
+#    앞에서 받는 것 — 부름의 `PT_REPO` · `PT_REMOTE`
+#    안 하는 것 — fetch · merge(부른 쪽이 한다) · 준비 단계부터의 모든 것(상태 파일 · 파이썬 · 알림 줄)
+#    ⚠ 준비 단계 앞에 선다 — 준비 단계는 stdout 에 알림 줄을 낼 수 있는데, 부른 쪽은 stdout 을 통째로 병합할 커밋으로 읽는다.
+#    못 답하면(저장소 · `<원격>/main` 을 못 읽는다) 까닭을 stderr 한 줄로 내고 2 다 — 부른 쪽은 그때 원격 끝으로 간다.
+#    빈 저장소 인자는 여기서 막는다 — `git -C ""` 는 지금 폴더를 저장소로 읽는다.
+if [ "$MODE" = pull-target ]; then
+  if [ -z "$PT_REPO" ] || [ -z "$PT_REMOTE" ] ||
+     ! _ptg="$(git -C "$PT_REPO" rev-parse --absolute-git-dir 2>/dev/null)"; then
+    printf '세션 훅: --pull-target — 저장소 「%s」 를 못 읽는다(원격 「%s」) — 아무것도 안 하고 끝낸다\n' "$PT_REPO" "$PT_REMOTE" >&2
+    exit 2
+  fi
+  _pto="$(_pull_target "$PT_REPO" "$PT_REMOTE" "$_ptg")"
+  # 원격 끝을 못 읽은 판은 sha 가 아니라 `<원격>/main` 이름이 온다(`_pull_target` 머리말)
+  case "$_pto" in
+    ''|*[!0-9a-f]*) printf '세션 훅: --pull-target — %s 에서 %s/main 을 못 읽는다(fetch 뒤에 부른다)\n' "$PT_REPO" "$PT_REMOTE" >&2
+                    exit 2 ;;
+  esac
+  printf '%s\n' "$_pto"
+  exit 0
+fi
+
 # ══ 단계 · 준비 — 모든 갈래 ════════════════════════
 #    층 — 없음(준비). 뒤 단계가 읽을 자리와 값을 세운다
 #    하는 일 — 기계 상태 파일 자리(`install-*`)를 세우고 옛 이름(`bootstrap-*`)을 옮긴다. 선언이 하나도 없으면 한 줄
@@ -3694,7 +3764,7 @@ fi
 #    걸음 — 당김과 홈 밀기는 매 세션, 설치는 지문이 어긋나거나 도구가 낡았을 때만:
 #      당김     원격을 ff-only 로, main 체크아웃일 때만. 로컬을 다치게 하지 않는다 — 갈라졌거나 오프라인이면 그대로 두고
 #               사유까지 말한다(배경이라 다음 세션이 말한다). 저장소가 손(`pull-target.sh`)을 두면 원격 main 위의 그
-#               손이 고른 커밋까지만 간다(`_pull_target`)
+#               손이 고른 커밋까지만 간다(`_pull_target`) — 손의 답을 물리쳤으면 그것도 다음 세션이 한 줄 말한다
 #      홈 밀기  홈 규범 · 훅 배선을 새로 민다 — 멱등 · 싼 것이라 매 세션. PC 전체 일이라 설정 저장소 세션과 저장소 밖
 #               세션만 한다(준비 단계의 PC_WIDE). 형제 저장소 세션은 게이트 배선만 하고 홈은 견주기만 해서, 맞출 것이
 #               있으면 한 줄로 알린다(`pc_wide_notice`)

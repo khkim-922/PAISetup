@@ -3,28 +3,30 @@
  * 좌표 — 아뜰리에 #93(봉투 머리) · #146(부르는 화면 검사) · 아뜰리에 결정 0191(못 싣는
  * 그림) · 씨앗 규율은 claude-config 결정 0040.
  *
+ * 부르는 꼴 — `import { testPng, testEmf, testDocx, drmFile, pyBytesLiteral } from "./_bake.mjs"`.
+ * 사본을 뜨지 않는다 — 이 폴더의 부품 규율이다. 내는 것 — 굽는 손 넷(`drmFile` 은 `{ head, file }`,
+ * 나머지는 Buffer)과 원문에서 바이트를 읽는 손 하나. 잘못 부르면 던진다. 부품이라 평소엔 종료코드를
+ * 안 내고, 자검(`node _check/_bake.mjs --self`)만 0 맞다 · 1 어긋났다 · 2 못 쟀다로 나간다.
+ *
  * 두면 무엇이 왜 들었는지 아무도 못 열어 보고, 「이 판정의 근거가 이 바이트다」가
- * 말로만 남는다. 여기 있는 것은 전부 **몇 줄로 지어지는 최소 꼴**이라, 무엇을 재려고
+ * 말로만 남는다. 여기 있는 것은 전부 몇 줄로 지어지는 최소 꼴이라, 무엇을 재려고
  * 무엇을 넣었나가 코드에 그대로 보인다.
  *
- * ⚠ **원본은 실물 규격이다** — 여기 지은 것이 안 열리면 지은 쪽이 틀린 것이지 읽개가
- *   틀린 것이 아니다. 규격을 바꾸지 말고 이 파일을 고친다.
- *
- * ⚠ **새 검사는 여기서 import 하지 사본을 뜨지 않는다** — 이 폴더의 부품 규율이다.
+ * 원본은 실물 규격이다 — 여기 지은 것이 안 열리면 지은 쪽이 틀린 것이지 읽개가 틀린 것이
+ * 아니다. 규격을 바꾸지 말고 이 파일을 고친다.
  *
  * ⚠ **앱의 값을 이 파일에 옮겨 적지 않는다 — 그래서 `drmFile` 이 머리를 인자로 받는다.**
- *   옮겨 적으면 봉투 규격이 갈릴 때 검사만 옛 머리를 물고 초록을 낸다. 그 규율은 여기서
- *   **사라진 것이 아니라 자리를 옮겼다**: 진본의 좌표(어느 파일 · 어느 이름)는 그 저장소만
- *   알므로 **부르는 쪽**이 들고, 그 값을 **원문에서 읽어 내는 손**은 여기 `pyBytesLiteral`
- *   이 든다. 부르는 쪽이 바이트를 손으로 쳐 넣으면 그 순간 규율이 깨지는데, 깨진 것을
- *   여기서는 못 본다 — **부르는 검사가 제 진본에서 읽어 넘기는 꼴이어야 원칙이 산다.**
+ *   옮겨 적으면 봉투 규격이 갈릴 때 검사만 낡은 머리를 물고 초록을 낸다. 진본의 좌표(어느 파일 ·
+ *   어느 이름)는 그 저장소만 알므로 부르는 쪽이 들고, 그 값을 원문에서 읽어 내는 손은
+ *   `pyBytesLiteral` 이 든다. 부르는 쪽이 바이트를 손으로 쳐 넣어도 여기서는 못 본다 — 부르는
+ *   검사가 제 진본에서 읽어 넘기는 꼴이어야 원칙이 산다.
  *
- * ⚠ **`zlib.crc32` 가 없는 판에서는 굽기가 안 선다** — PNG 도 zip 도 CRC 를 물어서다.
- *   자검이 그 자리를 「못 쟀다」(2)로 먼저 말한다. 없으면 침묵이 아니라 `TypeError` 다.
+ * 노드의 `zlib.crc32` 가 든다 — PNG 도 zip 도 CRC 를 문다. 없는 판에서 굽는 손을 부르면 `TypeError`
+ * 로 서고, 자검은 그 자리를 「못 쟀다」(2)로 먼저 말한다.
  */
 import zlib from "node:zlib";
 
-/** 시험 PNG — 회색 줄무늬 한 장. 폭 판정(원본 크기를 실물에서 재나)의 재료다. */
+/** 시험 PNG — W×H 회색 줄무늬 한 장(Buffer). 폭 판정(원본 크기를 실물에서 재나)의 재료다. */
 export function testPng(W = 300, H = 200) {
   const rows = Buffer.concat(Array.from({ length: H }, (_, y) =>
     Buffer.concat([Buffer.from([0]), Buffer.alloc(W, (y * 7) % 256)])));
@@ -43,7 +45,7 @@ export function testPng(W = 300, H = 200) {
                         chunk("IEND", Buffer.alloc(0))]);
 }
 
-/** 못 싣는 그림 한 장 — EMF. 판별은 **머리 바이트**다: 0..4 가 `01 00 00 00`,
+/** 못 싣는 그림 한 장 — EMF 88 바이트(Buffer). 판별은 **머리 바이트**다: 0..4 가 `01 00 00 00`,
  *  40..44 가 ` EMF`. 그림으로서 유효할 필요는 없다 — 재는 것은 「이 형식을 화면이
  *  어떻게 다루나」지 그림 내용이 아니다. */
 export function testEmf() {
@@ -86,21 +88,21 @@ function zipStore(entries) {
 const NS_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main";
 // ⚠ 그림 이름칸은 `main` 아래가 아니다 — `…/drawingml/2006/picture` 다.
-//   `NS_A + "/picture"` 로 지으면 읽개가 구조는 알아보고도 그림을 못 잇는다(실측).
+//   `NS_A + "/picture"` 로 지으면 읽개가 구조는 알아보고도 그림을 못 잇는다.
 const NS_PIC = "http://schemas.openxmlformats.org/drawingml/2006/picture";
 const NS_WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
 const NS_R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const NS_P = "http://schemas.openxmlformats.org/package/2006/relationships";
 
-/** 워드 한 장 — 문단 하나와 그림 여럿. `figs` 는 [{ name, data }] 순서대로 선다.
+/** 워드 한 장(zip 저장 방식 Buffer) — 문단 하나와 그림 여럿. `figs` 는 [{ name, data }] 순서대로 선다.
  *
  * 읽개는 본문(`word/document.xml`)과 그 rels 위에 곁 파트도 연다 — 번호 매기기·스타일·
- * 각주·차트. 이 검체는 **본문 한 벌**만 지으므로 **그림 한 장이 서는 최소 꼴**이고,
+ * 각주·차트. 이 검체는 본문 한 벌만 지으므로 **그림 한 장이 서는 최소 꼴**이고,
  * 곁 파트가 있어야 서는 것(목록 표식 · 차트 밑자료)은 여기서 안 난다. */
 export function testDocx(figs, line = "첫 문단입니다") {
   // ⚠ **맨몸 `a:blip` 으로는 안 된다.** 규격대로 `w:drawing` 안에 `wp:inline` →
-  //   `a:graphic` → `pic:pic` 이 서야 그림으로 친다. 안 그러면 **글자는 오는데 그림이
-  //   0장**으로 조용히 빠진다(실측). 규격을 아무 데서나 주운 `a:blip` 으로 줄이지 않는다.
+  //   `a:graphic` → `pic:pic` 이 서야 그림으로 친다. 안 그러면 글자는 오는데 그림이
+  //   0장으로 조용히 빠진다. 규격을 아무 데서나 주운 `a:blip` 으로 줄이지 않는다.
   const body = figs.map((f, i) =>
     `<w:p><w:r><w:drawing><wp:inline>`
     + `<wp:extent cx="2857500" cy="1905000"/>`
@@ -143,9 +145,9 @@ export function testDocx(figs, line = "첫 문단입니다") {
  * 바이트로 바꾸는 일은 여기가 든다. 부르는 쪽은 `readFileSync(…, "latin1")` 로 읽은
  * 글자를 그대로 넘긴다 — `latin1` 이라야 한 바이트가 한 글자로 선다.
  *
- * ⚠ **`\xNN` 말고 다른 이스케이프는 안 푼다** — `\n`·`\t`·`\\` 가 든 값을 조용히 틀린
- *   바이트로 내주는 대신 **그 자리에서 선다.** 그런 값을 넘겨야 하면 이 손을 넓히지,
- *   부르는 쪽에서 바이트를 쳐 넣지 않는다.
+ * 읽는 꼴은 줄 머리의 `<이름> = b"…"` 한 줄(큰따옴표 · `=` 앞뒤 한 칸)이다. 이름이 식별자가 아니거나,
+ * 그 줄을 못 찾거나, `\xNN` 말고 다른 이스케이프(`\n`·`\t`·`\\`)가 들면 던진다 — 조용히 틀린 바이트를
+ * 내주지 않는다. 그런 값을 넘겨야 하면 이 손을 넓히지, 부르는 쪽에서 바이트를 쳐 넣지 않는다.
  */
 export function pyBytesLiteral(source, name) {
   if (!/^[A-Za-z_]\w*$/.test(name)) throw new Error(`이름이 식별자가 아니다: ${name}`);
@@ -159,9 +161,9 @@ export function pyBytesLiteral(source, name) {
 
 /** 못 여는 봉투 한 장 — **머리 바이트만 진짜**고 속은 아무 덩이나.
  *
- * `head` 는 부르는 쪽이 제 앱의 진본에서 읽어 넘긴다(위 `pyBytesLiteral` · 머리말 ⚠).
- * 돌려주는 `head` 는 넘어온 바로 그 바이트라, 부르는 검사가 「무엇으로 쟀나」를 찍을 수
- * 있다. */
+ * `head` 는 부르는 쪽이 제 앱의 진본에서 읽어 넘긴다(위 `pyBytesLiteral` · 머리말 「앱의 값을
+ * 옮겨 적지 않는다」). 빈 것이나 Buffer 가 아닌 것을 받으면 던진다. `{ head, file }` 을 내고,
+ * 돌려주는 `head` 는 넘어온 바로 그 바이트라 부르는 검사가 「무엇으로 쟀나」를 찍을 수 있다. */
 export function drmFile(head) {
   if (!Buffer.isBuffer(head) || head.length === 0)
     throw new Error("머리 바이트를 안 받았다 — 부르는 쪽이 제 진본에서 읽어 넘긴다");
@@ -169,7 +171,8 @@ export function drmFile(head) {
 }
 
 // ── 자검 — `node _check/_bake.mjs --self`. 부품이라 평소엔 아무 판정도 안 낸다.
-//    굽는 넷이 **실제로 그 꼴의 바이트를 내나**만 본다. 종료코드 0/1/2 계약.
+//    굽는 넷과 읽는 손이 실제로 그 꼴의 바이트를 내나만 보고 읽개는 안 건다.
+//    0 맞다 · 1 어긋났다 · 2 이 노드에 `zlib.crc32` 가 없다.
 if (process.argv.includes("--self")) {
   const EXIT_OK = 0, EXIT_MISMATCH = 1, EXIT_UNMEASURED = 2;
 

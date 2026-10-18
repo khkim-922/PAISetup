@@ -27,7 +27,12 @@ _find_py() {
     fi
 
     # ② .venv 탐색 (현재 폴더 또는 git 작업나무 뿌리)
-    _top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    #   뿌리는 `.git`(폴더든 작업 나무의 파일이든)을 위로 거슬러 셸 안에서 찾는다 — git 을 띄우면 고를 때마다
+    #   프로세스가 하나 는다. 윈도 Git Bash 에서는 고른 값이 `/c/…` 철자로 서고, 셸이 그대로 부른다.
+    _top=${PWD:-}
+    while [ -n "$_top" ] && [ ! -e "$_top/.git" ]; do
+        case "$_top" in */*) _top=${_top%/*} ;; *) _top='' ;; esac
+    done
     for _v in ${dir:+"$dir/.venv/Scripts/python.exe"} \
               ${_top:+"$_top/.venv/Scripts/python.exe"} \
               .venv/Scripts/python.exe \
@@ -41,10 +46,11 @@ _find_py() {
     done
 
     # ③ 시스템 해석기 — 있나가 아니라 도나로 고른다
-    _candidates="python python3"
-    case "$(uname -s 2>/dev/null || echo Windows)" in
-        Linux*|Darwin*) _candidates="python3 python" ;;
-        *) _candidates="python python3" ;;
+    #   윈도는 python 이 먼저다. 판은 윈도가 모든 프로세스에 심는 OS=Windows_NT 로 가른다 — uname 을 안 띄운다.
+    #   그 값이 없는 윈도는 python3 부터 불러 본다 — 스토어 껍데기면 지고 python 으로 넘어간다.
+    case "${OS:-}" in
+        Windows_NT) _candidates="python python3" ;;
+        *) _candidates="python3 python" ;;
     esac
     for _p in $_candidates; do
         if "$_p" -X utf8 -c "" >/dev/null 2>&1; then

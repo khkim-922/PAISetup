@@ -21,7 +21,7 @@
 # ⚠ **점(`.`)으로 부른다** — 같은 셸 안에서 돌아 프로세스가 안 는다. 그래서 끝의 `exit 0` 이 훅을 끝낸다.
 # ⚠ **파이썬은 낌새가 있을 때만 띄운다** — UserPromptSubmit 과 PreToolUse 는 사람이 글을 보낼 때마다 · 도구를 부를
 #   때마다 걸려, 매번 띄우면 그 값이 모든 턴의 머리에 붙는다. 낌새는 둘이다:
-#   ① 입력에 오피스 · PDF 확장자 — 소문자로 눌러 재므로 확장자는 한 벌만 든다.
+#   ① 입력에 오피스 · PDF 확장자 — 대소문자는 글자 묶음(`[Pp][Dd][Ff]`)으로 가리므로 확장자는 한 벌만 든다.
 #     ⚠ **글롭은 스킬의 확장자 표(`read-drm.ps1` 의 `$HANDLER`)를 다 덮어야 한다** — 표에 확장자가 늘었는데 여기
 #       없으면 그 파일은 조용히 안 걸린다. `scripts/check-drm-guide.py` 가 표의 확장자마다 이 껍데기를 지나 걸리나를 잰다.
 #   ② (UserPromptSubmit · PreToolUse) 기록에 **이 턴의** 문서 블록 표지 — 앱의 「+」 PDF 는 입력에 아무 낌새도 안
@@ -39,6 +39,15 @@
 #     기록 자리는 입력의 `transcript_path` 를 JSON 글자 그대로 쓴다 — 윈도우 경로의 역슬래시가 겹쳐(`\\`) 오지만 Git
 #     Bash 는 겹친 구분자를 하나로 읽는다(검사가 윈도우 경로로 잰다). 기록은 늘 홈의 `.claude/projects` 밑이라 UNC
 #     경로가 안 온다.
+#     ⚠ **② 의 판정은 턴 도장이 나른다** — `$TMPDIR`(없으면 `$TEMP` · `$TMP` · `/tmp`)의 `drm-guide.<session_id>` 한 줄
+#       `<prompt_id> <doc|none>` 이다. PreToolUse 는 도장의 `prompt_id` 가 이 호출 것이면 기록을 안 읽고 도장대로 간다
+#       (`doc` 이면 몸통을 띄운다). 도장이 없거나 다른 턴의 것이면 기록을 읽고 그 판정을 도장으로 남긴다.
+#       UserPromptSubmit 은 도장을 비우고 첨부를 찾았을 때만 `doc` 을 쓴다 — 제출 때 그 줄이 아직 안 써진 턴(위 「언제 보느냐」)에
+#       `none` 이 남으면 첫 도구 호출이 막힌다. 도장 자리가 없거나 못 써도 기록을 읽는 길로 돌아갈 뿐 **문서를 놓치지 않는다.**
+#       ① 은 도장이 안 든다 — 호출마다 입력에서 잰다. 지우는 손은 안 둔다 — 세션마다 한 줄이고 임시 폴더 밑이다.
+# ⚠ **낌새 앞 구간은 `sh` 밖의 프로세스를 하나도 안 띄운다** — 입력은 셸 `read` 로 받고(`cat` 없이) 확장자는 글자 묶음
+#   글롭으로 가린다(`tr` 없이). 회사 PC 에서는 프로세스 하나가 약 0.3 초이고 이 훅은 도구를 부를 때마다 돌아, 호출마다 그 수만큼
+#   값이 붙는다. `tail` · `grep` 은 ② 의 기록 읽기에만 남는다.
 # ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** — 윈도우의 `python3` 는 스토어 껍데기라 49 로 죽는다.
 #   못 뜨면 「못 쟀다」 한 줄을 직접 낸다 — 길잡이가 죽은 사실이 어디에도 안 남는 것이 침묵보다 비싸다.
 #   막지는 않는다 — 이 훅은 길을 가리키기만 한다.
@@ -46,17 +55,51 @@
 # 시험 — `python -X utf8 scripts/check-drm-guide.py` (감긴 표본 · 지은 평문 머리 · 지은 기록을 먹여 걸 것과 둘 것을 문다).
 # shellcheck shell=sh  # 점으로 읽혀 셔뱅이 없다 — 어느 셸이 읽어도 서게 POSIX 로 잰다
 DRM_TAIL_LINES=64          # 기록 끝에서 볼 줄 수 — 이 턴의 줄이 드는 창(머리말 ⚠). 줄 단위라 긴 줄도 통째로 든다
-j=$(cat)
-l=$(printf %s "$j" | tr A-Z a-z)
+j=; while IFS= read -r _l || [ -n "$_l" ]; do j="$j$_l"; done
 run=
-case "$l" in
-  *.doc*|*.xls*|*.ppt*|*.pdf*|*.rtf*|*.csv*) run=1 ;;
+case "$j" in
+  *.[Dd][Oo][Cc]*|*.[Xx][Ll][Ss]*|*.[Pp][Pp][Tt]*|*.[Pp][Dd][Ff]*|*.[Rr][Tt][Ff]*|*.[Cc][Ss][Vv]*) run=1 ;;
+esac
+# 턴 도장 자리 — 머리말 ⚠. 키 둘이 있고 session_id 가 파일 이름에 안전할 때만 선다. 아니면 도장 없이 늘 기록을 읽는다
+stamp=
+case "$j" in
+  *'"hook_event_name":"UserPromptSubmit"'*|*'"hook_event_name":"PreToolUse"'*)
+    pid=${j#*'"prompt_id":"'}
+    sid=${j#*'"session_id":"'}
+    if [ "$pid" != "$j" ] && [ "$sid" != "$j" ]; then
+      pid=${pid%%'"'*}
+      sid=${sid%%'"'*}
+      case "$sid" in
+        ''|*[!A-Za-z0-9_-]*) ;;
+        *) [ -z "$pid" ] || stamp="${TMPDIR:-${TEMP:-${TMP:-/tmp}}}/drm-guide.$sid" ;;
+      esac
+    fi
+    # 제출은 도장을 비운다 — 앞 턴의 판정이 같은 값의 새 턴을 가리지 않게. 도장 쪽 리다이렉트는 `2>/dev/null` 이 앞이어야 열기
+    # 실패의 메시지도 삼킨다. `:` 는 안 쓴다 — 특수 내장이라 리다이렉트가 지면 점으로 읽는 이 훅의 셸이 통째로 끝난다
+    case "$j" in
+      *'"hook_event_name":"UserPromptSubmit"'*) [ -z "$stamp" ] || printf '' 2>/dev/null > "$stamp" ;;
+    esac ;;
 esac
 if [ -z "$run" ]; then
   case "$j" in
     *'"hook_event_name":"UserPromptSubmit"'*|*'"hook_event_name":"PreToolUse"'*)
+      known=
+      sp=
+      sv=
+      if [ -n "$stamp" ]; then
+        case "$j" in
+          *'"hook_event_name":"PreToolUse"'*)
+            IFS=' ' read -r sp sv 2>/dev/null < "$stamp"
+            if [ "$sp" = "$pid" ]; then
+              case "$sv" in
+                doc) run=1; known=1 ;;
+                none) known=1 ;;
+              esac
+            fi ;;
+        esac
+      fi
       t=${j#*'"transcript_path":"'}
-      if [ "$t" != "$j" ]; then
+      if [ -z "$known" ] && [ "$t" != "$j" ]; then
         t=${t%%'"'*}
         if [ -f "$t" ]; then
           w=$(tail -n "$DRM_TAIL_LINES" "$t" 2>/dev/null)
@@ -72,6 +115,13 @@ if [ -z "$run" ]; then
           if [ -z "$run" ]; then
             printf %s "$w" | grep -F '"humanTurn":true' 2>/dev/null \
               | grep -q -F '"type":"document"' && run=1
+          fi
+          # 읽은 판정을 도장으로 남긴다 — PreToolUse 는 못 찾은 것도(다음 호출이 안 읽게), 제출은 찾았을 때만
+          if [ -n "$stamp" ]; then
+            v=
+            case "$j" in *'"hook_event_name":"PreToolUse"'*) v=none ;; esac
+            [ -z "$run" ] || v=doc
+            [ -z "$v" ] || printf '%s %s\n' "$pid" "$v" 2>/dev/null > "$stamp"
           fi
         fi
       fi

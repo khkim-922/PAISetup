@@ -141,7 +141,7 @@ https://github.com/나/설정.git  https://github.com/나/메모.git
 | [Node.js](INSTALLED.md#nodejs-와-npm-전역-자리) | 늘(`-NoDevTools` 를 줘도 깐다) |
 | [개발 도구](INSTALLED.md#개발-도구) Git · Python · GitHub CLI | 늘(`-NoDevTools` 로 빼도 필요한 Python 은 깐다) |
 | [회사 게이트웨이 연결](INSTALLED.md#회사-게이트웨이-연결) — 주소 · 모델 · 키 · 로컬 프록시 | 사내에서만 |
-| [Claude Code 홈 설정](INSTALLED.md#claude-code-홈-설정)과 Claude 훅 여섯 | 홈 설정은 늘 맞추고, 훅은 Claude 를 고르면 |
+| [Claude Code 홈 설정](INSTALLED.md#claude-code-홈-설정)과 Claude 훅 | 홈 설정은 늘 맞추고, 훅은 Claude 를 고르면 |
 | [Codex 훅](INSTALLED.md#codex-훅) 다섯 | Codex 를 고르면 |
 | [브라우저 MCP](INSTALLED.md#브라우저-mcp) | Claude · Codex · Antigravity 가운데 하나라도 고르면 |
 | [칸 없이 깔리는 스킬](INSTALLED.md#칸-없이-깔리는-스킬) — 회사 DRM 문서 읽기 · 사내 앱 · 일 맡기기 | 고른 도구마다, 제작자 칸과 상관없이 |

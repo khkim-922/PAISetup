@@ -1,7 +1,7 @@
 """끝까지 재기 — 고친 프록시를 **거쳐** 보내면 `Read` 꼴 그림이 보이나 (claude-config #76).
 
 앞선 것들과 재는 자리가 다르다:
-  · `hoist_check.py`        — 함수가 본문 모양을 옳게 바꾸나 (망 없음 · 모양만)
+  · `Test-ProxyImages.py`   — 함수가 본문 모양을 옳게 바꾸나 (망 없음 · 모양만)
   · `image_lane_probe.py`   — 게이트웨이가 어느 자리의 그림을 보나 (직결 · 자리 고름)
   · `image_tail_probe.py`   — `tool_result` 가 **마지막**일 때 어디에 두면 보나
   · 이 파일                 — **둘을 이어 붙인 것이 실제로 도나** (프록시 너머 · 눈가림)
@@ -95,7 +95,7 @@ def call(base: str, body: dict, token: str) -> tuple[int, str]:
 def hoisted_count(base: str) -> int | None:
     try:
         with urllib.request.urlopen(base.rstrip("/").rsplit("/", 1)[0] + "/health", timeout=5) as resp:
-            return json.load(resp).get("hoisted_images")
+            return json.load(resp).get("hoisted_tool_images")
     except Exception:  # noqa: BLE001
         return None
 
@@ -124,7 +124,7 @@ def main() -> int:
         said[label] = text
         print("%s\n   %s · 상태 %s\n   답: %s\n" % (label, base, status, text[:160]))
     after = hoisted_count(patched)
-    print("프록시 계수 hoisted_images: %s → %s" % (before, after))
+    print("프록시 계수 hoisted_tool_images: %s → %s" % (before, after))
 
     # 판정 — 정답 글자가 답에 다 들었나로 본다(사람 눈 대신).
     color, shape = answer.split(" · ")
@@ -138,7 +138,7 @@ def main() -> int:
     if saw_direct:
         bad.append("대조군이 봤다 — 게이트웨이가 바뀌었거나 이 검사가 보정을 안 재고 있다")
     if before is not None and after is not None and after <= before:
-        bad.append("hoisted_images 가 안 늘었다 — 프록시가 이 본문을 안 만졌다")
+        bad.append("hoisted_tool_images 가 안 늘었다 — 프록시가 이 본문을 안 만졌다")
     if bad:
         print()
         print("어긋남 %d" % len(bad))
