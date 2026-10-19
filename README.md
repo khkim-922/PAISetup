@@ -5,7 +5,7 @@ Posco Futurem AI setup Wizard — `Setup.exe` 하나로 윈도우 PC 에 Claude 
 1분 소개 영상입니다. 말소리 없이 한국어 자막과 잔잔한 배경음악이 나옵니다.
 
 <!-- markdownlint-disable-next-line MD034 -- 주소 한 줄만 둬야 GitHub 이 블록 플레이어로 그린다(video 태그는 폭 0 으로 접힌다) -->
-https://github.com/user-attachments/assets/7e609549-ce25-4ce6-88e6-2a2ad81afde0
+https://github.com/user-attachments/assets/7b51b4dd-1c3f-45c6-9dcb-8cf614a356b3
 
 ## 목차
 
