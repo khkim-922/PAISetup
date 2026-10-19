@@ -40,7 +40,7 @@ param(
     [string]$Slides = "1",
     [string]$OutDir,
     [int]$MaxEdge = 1280,
-    [int]$Wait = 1000
+    [int]$Wait = 4000          # 회사 PC 는 1초 안에 첫 프레임이 안 그려져 빈 화면이 찍힌다
 )
 
 $ErrorActionPreference = 'Stop'
