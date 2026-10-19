@@ -1460,7 +1460,7 @@ $script:upTimer.Add_Tick({
   $F.Close()
 })
 
-$bClose.Add_Click({ $F.Close() })
+# 닫기는 `IsCancel` 하나로 닫는다 — 클릭에서 또 닫으면 `ShowDialog` 의 취소 명령이 한 번 더 닫아 「멈추고 닫을까요」가 두 번 뜬다
 
 # 몸통이 옛 제작자 칸(`-WithPersonalConfig`)을 이어받아 설치한 뒤 이 창을 `-PersonalNotice` 로 한 번 띄운 판 — 무엇이 바뀌었나를
 #   먼저 알린다(몸통 끝의 「옛 제작자 칸을 이어받은 판의 마무리」 · 결정 0099). 몸통의 그 칸을 걷을 때 같이 걷는다.

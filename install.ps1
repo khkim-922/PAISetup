@@ -587,6 +587,14 @@ function Format-EngineHolder($H) {
     [int]((Get-Date) - $H.CreationDate).TotalMinutes
 }
 
+# ── 프록시가 밖에 남기는 자리 둘 — **이름은 여기 한 자리다** ─────────────────────
+# ⚠ **심는 자와 걷는 자가 같은 이름을 봐야 한다.** 아래 「로컬 프록시」 칸이 이 자리들을 만들고 「사외로 간 자리의 사내 잔재」 칸이
+#   걷는다 — 두 자리에 글자를 따로 박으면 한쪽만 고쳐지는 날 걷는 손이 딴 자리를 지우고 진짜 잔재는 그대로 돈다. 지우는 손은 헛도는
+#   줄도 안 남긴다.
+$ProxyRunName  = 'PGPTProxy'          # HKCU\...\Run 의 등록 이름 (이전 판 잔재 정리용)
+$ProxyTaskName = 'PGPTProxy-Watchdog' # 작업 스케줄러의 프록시 감시 작업 이름
+$ProxyDirName  = 'PGPT-Proxy'         # %LOCALAPPDATA% 아래 실행 폴더 이름
+
 # 겹친 엔진 하나를 나무째 끈다 — 사람이 겹침 물음에 「끝내고 새로 시작」을 골랐을 때만 부른다. 받는 것: Win32_Process 하나.
 # 내는 것: @{ Ended = 끝난 것들의 한 줄; Left = 못 끝낸 것들의 한 줄 } — 둘 다 끄는 명령의 답이 아니라 **다시 잰** 답이다. 뿌리만 끄면
 #   그 손자(배포)가 살아남아 파일을 쥔 채 다음 설치를 깬다(claude-config #198).
@@ -596,6 +604,14 @@ function Format-EngineHolder($H) {
 # ⚠ 프로세스 목록을 못 읽으면 뿌리만 끄고 「자손을 못 쟀다」를 Left 에 둔다 — 못 본 자손이 살았는지 모르는 채 들어가지 않는다.
 function Stop-HolderTree($Holder) {
   $rootId = [int]$Holder.ProcessId
+  $same = {
+    param($n)
+    $h = $null
+    try { $h = Get-Process -Id ([int]$n.ProcessId) -ErrorAction Stop; return ([Math]::Abs(($h.StartTime - $n.CreationDate).TotalMilliseconds) -lt 1) }
+    catch { return $false } finally { if ($h) { $h.Dispose() } }
+  }
+  # 물음 창이 떠 있는 사이 겹친 엔진이 끝나 PID 가 남에게 갔으면 그 남의 자식을 따라가지 않는다 — 끝난 것으로 본다
+  if (-not (& $same $Holder)) { return @{ Ended = @('PID {0} (이미 끝났다)' -f $rootId); Left = @() } }
   $all = $null; $why = ''
   try { $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, Name, CommandLine -OperationTimeoutSec 10 -ErrorAction Stop) }
   catch { $why = ($_.Exception.Message -split '\r?\n')[0] }
@@ -614,6 +630,8 @@ function Stop-HolderTree($Holder) {
       foreach ($c in $kids[[int]$n.ProcessId]) {
         $seen = @($nodes | Where-Object { [int]$_.ProcessId -eq [int]$c.ProcessId }).Count
         if ([int]$c.ProcessId -eq [int]$n.ProcessId -or $c.CreationDate -lt $n.CreationDate -or $seen) { continue }
+        # 로컬 프록시는 설치가 띄웠어도 그 PC 의 Claude 세션이 기대어 돈다 — 같이 끄면 세션이 다 끊긴다. 새 판이 낡은 것만 갈아 띄운다
+        if ($ProxyDirName -and [string]$c.CommandLine -like "*\$ProxyDirName\*") { continue }
         # 창을 든 자손은 사람의 것이다 — 설치가 띄운 브라우저(gh 로그인) · VS Code · 데스크탑 앱을 같이 닫지 않게, 넣지도 그 밑으로 내려가지도 않는다
         $win = $null
         try { $win = Get-Process -Id ([int]$c.ProcessId) -ErrorAction Stop; if ($win.MainWindowHandle -ne [IntPtr]::Zero) { continue } }
@@ -621,12 +639,6 @@ function Stop-HolderTree($Holder) {
         [void]$nodes.Add($c)
       }
     }
-  }
-  $same = {
-    param($n)
-    $h = $null
-    try { $h = Get-Process -Id ([int]$n.ProcessId) -ErrorAction Stop; return ([Math]::Abs(($h.StartTime - $n.CreationDate).TotalMilliseconds) -lt 1) }
-    catch { return $false } finally { if ($h) { $h.Dispose() } }
   }
   foreach ($n in $nodes) {
     if (& $same $n) { try { Stop-Process -Id ([int]$n.ProcessId) -Force -ErrorAction Stop } catch { } }
@@ -5364,7 +5376,8 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
   }
   try {
     New-Item -ItemType Directory -Path (Split-Path -Parent $Record) -Force | Out-Null
-    [IO.File]::WriteAllText($Record, "$($now.Major).$($now.Minor)", (New-Object Text.UTF8Encoding($false)))
+    $mark = if ($now -ge $FeaturesRenewed) { $now } else { $FeaturesRenewed }   # 2.4 앞 판이 적은 기록을 다음 판마다 「안 봤다」로 읽지 않게
+    [IO.File]::WriteAllText($Record, "$($mark.Major).$($mark.Minor)", (New-Object Text.UTF8Encoding($false)))
   } catch { }
   $how
 }
@@ -6018,14 +6031,6 @@ $wantAgy    = [bool]($inside -and ($PickKeys -contains 'antigravity'))
 #   없다 — 안 심기면 `agy` 가 «GEMINI_API_KEY environment variable is not set» 으로 안 뜬다.
 # 이 한 칸이 세 자리(심는 문 `$KeyAliases` 고리 · `GOOGLE_API_KEY` 충돌 경고 · 끝 검증)를 문다 — 조건은 여기 하나만 고친다.
 $wantNeed = @{ codex = $wantCodex; gemini = $wantAgy }
-# ── 프록시가 밖에 남기는 자리 둘 — **이름은 여기 한 자리다** ─────────────────────
-# ⚠ **심는 자와 걷는 자가 같은 이름을 봐야 한다.** 아래 「로컬 프록시」 칸이 이 자리들을 만들고 「사외로 간 자리의 사내 잔재」 칸이
-#   걷는다 — 두 자리에 글자를 따로 박으면 한쪽만 고쳐지는 날 걷는 손이 딴 자리를 지우고 진짜 잔재는 그대로 돈다. 지우는 손은 헛도는
-#   줄도 안 남긴다.
-$ProxyRunName  = 'PGPTProxy'          # HKCU\...\Run 의 등록 이름 (이전 판 잔재 정리용)
-$ProxyTaskName = 'PGPTProxy-Watchdog' # 작업 스케줄러의 프록시 감시 작업 이름
-$ProxyDirName  = 'PGPT-Proxy'         # %LOCALAPPDATA% 아래 실행 폴더 이름
-
 # ── 회사 설정 둘이 앉는 자리 — **같은 까닭으로 여기 한 자리다** ─────────────────
 # 아래 「Codex · 안티그래비티 설정」 칸이 이 둘에 쓰고 끝의 검증이 이 둘을 다시 재므로, 글자를 두 자리에 박지 않는다 (PAISetup #3).
 $CodexCfg  = Join-Path $env:USERPROFILE '.codex\config.toml'
