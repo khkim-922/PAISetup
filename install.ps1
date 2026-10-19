@@ -7316,7 +7316,7 @@ Exit-Step 'site'
 # ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
 #   층 — 홈
 #   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · 기본 권한 모드와 허용 규칙(러너 허락 포함) ·
-#     서브에이전트 캐시 수명(env) ·
+#     서브에이전트 캐시 수명(env) · 메인 대화 캐시(env · 게이트웨이 자리) ·
 #     env 밀기와 걷기 · 걷힌 Tavily 안내 걷기. 심은 것은 장부(`$ClaudePlantLedger`)에 적고, 선언에서 빠진 우리 것은 장부로 걷는다
 #   앞에서 받는 것 — 「키와 값」의 심은 값(`$Planted`) · 값 파일(`$fromFile` · 짐의 값 파일 이름 `$DistNames` · 그 파일이 있나 `$DistComplete`) ·
 #     게이트웨이를 쓰나 · settings 에 안 밀 이름 · 회사 키로 아는 값(`Test-CompanyKey`) · 우리 게이트웨이 주소(`$OurGatewayUrls`) · 고른 제품
@@ -7410,6 +7410,9 @@ if (Test-Path -LiteralPath $homeCfg) {
 # 그 줄은 사내 · 사외 어디서나 심는다 — 1시간 요청은 일부가 `anthropic-beta` 헤더로 가, 회사 게이트웨이가 그 헤더를 버리면 캐시가 5분으로
 #   돌아갈 뿐이다. 그 게이트웨이는 모르는 것을 200 으로 삼켜(`posco/ENV-posco.md`) 요청이 깨지지 않으니 잃을 것이 없다. 사내에서 1시간이 실제로
 #   서는지는 안 쟀다 — 수명별 캐시 항을 안 돌려줘 응답으로 못 가리고, 같은 요청을 6분 넘게 사이를 두고 두 번 불러야 잰다(같은 문서 「아직 안 잰 것」).
+# 메인 대화의 1시간(`ENABLE_PROMPT_CACHING_1H = 1`)은 게이트웨이를 쓰는 자리(`$useGateway`)에만 심는다 — 구독 로그인은 메인 대화가 이미 1시간이고,
+#   API 키로 붙는 자리만 5분이라 사람이 몇 분 쉴 때마다 대화 전체를 캐시 없이 다시 읽는다. 사외의 개인 API 키에는 쓰기 값이 그 사람 몫이라 안 심는다.
+#   게이트웨이가 버려도 5분으로 돌아갈 뿐인 것은 위 줄과 같다. 그 자리를 떠나면 장부로 걷는다.
 $ClaudeHomePlants = @(
   @{ Label = '기본 권한 모드';            Key = 'defaultMode'; Value = 'auto'; Want = [bool]$hostClaude }
   @{ Label = 'agy 러너 허락';             Key = 'allow';       Value = 'Bash(pythonw *agy_bg.py *)'
@@ -7425,6 +7428,8 @@ $ClaudeHomePlants = @(
   @{ Label = '허용 규칙 — 윈도 임시 폴더 읽기';      Key = 'allow'; Value = 'Read(~/AppData/Local/Temp/**)';   Want = [bool]$hostClaude }
   @{ Label = '서브에이전트 캐시 1시간'; Key = 'CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL'; Value = '1h'; Env = $true; Yield = 'subagentPromptCacheTtl'
      Want = [bool]$hostClaude }
+  @{ Label = '메인 대화 캐시 1시간';   Key = 'ENABLE_PROMPT_CACHING_1H'; Value = '1'; Env = $true
+     Want = [bool]($hostClaude -and $useGateway) }
 )
 
 # 맡기기 러너 값 — 이름마다 두 자리 표가 그 이름에 준 값들(이름 → 값 목록 · `Get-SiteValues`). 아래 「env 밀기」가 이 이름들을 안 밀고,
