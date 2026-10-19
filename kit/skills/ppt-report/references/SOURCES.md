@@ -14,7 +14,7 @@
 
 | 무엇 | 어디가 드나 |
 |---|---|
-| 덱 생성 · 엔진 선택 · pptxgenjs 함정 · 템플릿 편집 · QA 3갈래 · 디자인 원칙 | 공식 pptx 스킬 — `anthropic-skills:pptx`(claude.ai 계정 동기화) 또는 `document-skills:pptx`(마켓 플러그인) |
+| 덱 생성 · 엔진 선택 · pptxgenjs 함정 · 템플릿 편집 · QA 3갈래 · 디자인 원칙 | 공식 pptx 스킬 — `anthropic-skills:pptx`(claude.ai 계정 동기화) 또는 `document-skills:pptx`(마켓 플러그인 `document-skills`). 두 통로의 판은 같지 않다 — 동기화본이 앞서고(테마 · 레이아웃 · 자리표시자로 짓는 절, `apply_theme.js`, 장 사이 일관성 검사가 거기만 있다) 플러그인본은 마켓 상류가 올려야 따라온다. 회사 PC 는 플러그인본뿐이라 그 차이는 SKILL.md 3절 · 6절이 메운다 |
 | 감긴 오피스 문서 읽기 · 배치 검사 · 슬라이드 화면 캡처 | `drm-office-read` |
 | 분석 문서의 글결 · 번역투 재기 | `explain-the-essence` |
 
@@ -24,10 +24,13 @@
 |---|---|---|---|
 | `frontend-design.md` · `frontend-design.LICENSE.txt` | 공식 스킬 `frontend-design`(마켓플레이스 `anthropics/skills`) — 설치 자리는 `~/.claude/plugins/cache/anthropic-agent-skills/…/skills/frontend-design/` | 2026-10-14 · 해시 `7d6df6b2e98e38f8b86046325dc6afd0` | Apache 2.0 |
 
-**이 문서 5절이 가져온 것** — AI 가 짓는 디자인의 기본값 목록(그 스킬의 「Process: plan, review against the
-brief, build, critique」 절) · 구조는 내용이 순서일 때만 · 색·활자를 먼저 적고 의심하기 · 대담함은 한 곳에만.
-**안 가져온 것** — 모션 · 반응형 · 키보드 포커스 · CSS 선택자 특이성 · 웹 히어로 구조 · UI 문구 쓰기
-(보고서 말투는 개조식·두괄식이 들어 겹치지 않는다).
+**이 문서 5절이 가져온 것** — 기본값에 이름을 붙여 피하는 법(그 스킬의 「Process: plan, review against the
+brief, build, critique」 절) · 색·활자를 먼저 적고 의심하기 · 대담함은 한 곳에만. 「구조는 내용이 순서일 때만」은
+5절 장치 표의 흐름 행이 든다.
+**안 가져온 것** — 웹 쪽 기본값 목록(검정 대신 쓰는 색 · 고정폭 수치 · 크림 배경 · 장식 문자열 — 덱에서 나는
+기본값은 다르다) · 모션 · 반응형 · 키보드 포커스 · CSS 선택자 특이성 · 웹 히어로 구조 · UI 문구 쓰기
+(보고서 말투는 개조식·두괄식이 들어 겹치지 않는다). A4 사다리와 장치 표는 이 원문에 없다 — 한국 보고서 관행과
+회사 양식 위에서 우리가 세운 값이다.
 
 ## 본 후보와 가른 자리
 

@@ -167,7 +167,9 @@ try {
 
     foreach ($n in $slideList) {
         $show.View.GotoSlide($n)
-        $proc = Get-Process POWERPNT | Sort-Object StartTime -Descending | Select-Object -First 1
+        # 다른 보안 맥락에서 뜬 POWERPNT 는 StartTime 을 못 읽어 정렬을 통째로 깨뜨린다 — 읽히는 것만 고른다
+        $proc = Get-Process POWERPNT | Where-Object { $_.StartTime } |
+            Sort-Object StartTime -Descending | Select-Object -First 1
 
         # 전경으로 올라왔는지 **확인하고** 찍는다 — 안 올라오면 다른 창이 찍히는데 파일은 멀쩡히 생긴다
         $front = $false
