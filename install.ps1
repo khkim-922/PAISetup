@@ -5337,12 +5337,14 @@ function Invoke-Plant([string]$Bash, [string]$Root) {
 }
 
 # 「제공기능」(곁의 `features.html`)을 그 PC 에서 한 번만 연다 — 설치 창 · 콘솔 · 로그온 자동 실행 어느 판이든 설치 끝에서다(claude-config
-#   결정 0147 덧붙임). 판이 올라도 다시 안 연다 — 다시 볼 길은 설치 창의 「제공기능」 링크다. 옛 제작자 칸 알림 창을 띄운 판
+#   결정 0147 덧붙임). 판이 올라도 다시 안 연다 — 다시 볼 길은 설치 창의 「제공기능」 링크다. 다만 페이지를 통째로 새로 지은 판
+#   (`$FeaturesRenewed`) 앞의 판만 본 PC 는 한 번 더 연다 — 다시 통째로 지으면 그 값을 올린다. 옛 제작자 칸 알림 창을 띄운 판
 #   (`$NoticeShown`)은 그 창이 닫힐 때 연다(결정 0099) — 두 번 안 연다.
-# 기록은 설치본 자리(`%LOCALAPPDATA%\Claude Code Setup`)의 한 줄 — 본 판(`큰.작은`)이다. 읽히는 기록이 있으면 본 것이다(옛 기록 — 큰 판의
-#   수 하나 · 0135 — 도 같다). 알림 창을 띄운 판도 적는다. 열지 못했으면 안 적는다 — 다음 설치가 다시 연다. 못 읽는 기록은 없는 것으로
+# 기록은 설치본 자리(`%LOCALAPPDATA%\Claude Code Setup`)의 한 줄 — 본 판(`큰.작은`)이다. 읽히는 기록의 판이 `$FeaturesRenewed` 와 같거나
+#   크면 본 것이다(옛 기록 — 큰 판의 수 하나 · 0135 — 는 그 큰 판의 .0 으로 읽는다). 알림 창을 띄운 판도 적는다. 열지 못했으면 안 적는다 — 다음 설치가 다시 연다. 못 읽는 기록은 없는 것으로
 #   본다. 파일 이름(`features.major`)은 옛 기록을 이어 읽으려고 그대로 둔다.
 # 내는 것 — 한 낱말: opened · notice · seen · nopage · failed · nover. 화면 줄은 부르는 쪽이 든다.
+$FeaturesRenewed = [version]'2.4'   # 제공기능 페이지를 통째로 새로 지은 판 — 이 앞 판만 본 PC 는 한 번 더 연다
 function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record, [string]$Page) {
   if ($Version -notmatch '^(\d+)\.(\d+)') { return 'nover' }
   $now = [version]"$($Matches[1]).$($Matches[2])"
@@ -5354,7 +5356,7 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
       elseif ($txt -match '^\d+$')  { $seen = [version]"$txt.0" }
     }
   } catch { $seen = $null }
-  if ($seen) { return 'seen' }
+  if ($seen -and $seen -ge $FeaturesRenewed) { return 'seen' }
   $how = 'notice'
   if (-not $NoticeShown) {
     if (-not (Test-Path -LiteralPath $Page -PathType Leaf)) { return 'nopage' }
@@ -10460,7 +10462,7 @@ $persLabels = @($PersonalTools | Where-Object { ",$PersonalValue," -like "*,$($_
 $persHomes  = ($persLabels -join ' · ') + ' 홈'
 $persRepo   = if ($dest) { Split-Path -Leaf $dest } else { '' }
 $persHanded = [bool]$handOff   # 훅에 넘겼나 — 이름을 따로 둔다: 넘김 칸의 그 갈래 머리는 훅 검사(check-dist-hooks)가 글자로 한 곳만 찾는다
-$persSaid = if (-not $persLabels.Count) { '받을 도구를 안 골라 어느 홈에도 안 놓았다' }
+$persSaid = if (-not $persLabels.Count) { '받을 모델을 안 골라 어느 홈에도 안 놓았다' }
             elseif ($persHanded -and -not @($Fails | Where-Object { "$_" -like '훅 --install*' }).Count) { "내 저장소($persRepo)의 훅에 넘겼다 — 그 저장소의 deploy 가 $($persHomes)에 푼다" }
             elseif ($persHanded) { "내 저장소($persRepo)의 훅이 져 $($persHomes)에는 설치 묶음의 제작자 세트만 있다" }
             elseif ($configRepoUrls.Count) { "내 저장소를 받았지만 넘길 훅이 없어 $($persHomes)에 설치 묶음의 제작자 세트를 놓았다" }

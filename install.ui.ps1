@@ -326,6 +326,7 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#005FB8"/></Trigger>
             <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#005FB8"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value></Setter>
@@ -427,14 +428,15 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
   </Window.Resources>
 
   <DockPanel>
-    <!-- 아래 띠 — 한 줄이다. 왼쪽은 상태 칸(높이가 박힌 두 줄 · 넘치는 글은 줄임표와 툴팁 · 알림이 없으면 빈다), 오른쪽은 문제가 생겼을 때
-         가는 데(설치기록)와 할 일. 알림이 서고 걷혀도 창의 크기와 칸 자리가 안 바뀐다 -->
+    <!-- 아래 띠 — 한 줄이다. 윈도 마법사 · 대화상자의 관례대로 오른쪽은 할 일이 먼저, 그다음 닫기([설치 시작] = Enter · [닫기] = Esc).
+         왼쪽 끝은 문제가 생겼을 때 가는 데(설치기록), 그 사이는 상태 칸(높이가 박힌 두 줄 · 넘치는 글은 줄임표와 툴팁 · 알림이 없으면 빈다).
+         알림이 서고 걷혀도 창의 크기와 칸 자리가 안 바뀐다 -->
     <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="20,12">
       <DockPanel Height="36">
-        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-          <Button x:Name="LnkLog" Style="{StaticResource Link}" Content="설치기록" FontSize="12" VerticalAlignment="Center" Margin="12,0,14,0"/>
-          <Button x:Name="BClose" Style="{StaticResource Secondary}" Content="닫기" Margin="0,0,8,0"/>
-          <Button x:Name="BGo" Style="{StaticResource Primary}" Content="설치 시작" IsDefault="True"/>
+        <Button x:Name="LnkLog" DockPanel.Dock="Left" Style="{StaticResource Link}" Content="설치기록" FontSize="12" VerticalAlignment="Center" Margin="0,0,14,0"/>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+          <Button x:Name="BGo" Style="{StaticResource Primary}" Content="설치 시작" IsDefault="True" Margin="0,0,8,0"/>
+          <Button x:Name="BClose" Style="{StaticResource Secondary}" Content="닫기" IsCancel="True"/>
         </StackPanel>
         <TextBlock x:Name="StatusText" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34" VerticalAlignment="Center"/>
       </DockPanel>
@@ -464,7 +466,6 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
           <Button x:Name="LnkFeat" Style="{StaticResource Pill}" Tag="&#xE71D;" Content="제공기능"/>
           <Button x:Name="LnkFlow" Style="{StaticResource Pill}" Tag="&#xE8AB;" Content="설치흐름"/>
           <Button x:Name="LnkNews" Style="{StaticResource Pill}" Tag="&#xE81C;" Content="바뀐 것"/>
-          <Button x:Name="LnkHome" Style="{StaticResource Pill}" Tag="&#xE8B7;" Content="사내환경문서"/>
         </WrapPanel>
 
         <!-- 설치하는 중 — [설치 시작] 뒤에 선다. 도는 동안 아래 칸들은 접히고, 끝나면 판정을 든 채 남고 칸들이 다시 선다 -->
@@ -474,10 +475,7 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
             <ProgressBar x:Name="Bar" Height="6" Minimum="0" Maximum="100" Foreground="#005FB8" Background="#E5E5E5" BorderThickness="0"/>
             <TextBlock x:Name="State" TextWrapping="Wrap" Margin="0,8,0,10"/>
             <ToggleButton x:Name="LogFold" Style="{StaticResource Fold}">
-              <DockPanel>
-                <TextBlock Text="큰 기록 창이 뒤에 같이 뜹니다" Style="{StaticResource Note}" DockPanel.Dock="Right" VerticalAlignment="Center"/>
-                <TextBlock Text="기록 펼치기" Foreground="{StaticResource Accent}"/>
-              </DockPanel>
+              <TextBlock Text="기록 펼치기" Foreground="{StaticResource Accent}"/>
             </ToggleButton>
             <TextBox x:Name="Log" Visibility="Collapsed" Margin="0,8,0,0" Height="200" IsReadOnly="True" TextWrapping="NoWrap"
                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
@@ -499,16 +497,19 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
               <TextBlock x:Name="KeyHint" Grid.Row="2" Grid.Column="1" Style="{StaticResource Note}" Margin="0,6,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
             </Grid>
             <DockPanel Margin="0,14,0,4">
-              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock x:Name="RepoLabel" Text="내 저장소 받기" DockPanel.Dock="Left"/>
+              <TextBlock x:Name="RepoWhat" Style="{StaticResource Note}" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                         Text="적은 저장소를 받아 둡니다 — 내 설정은 설정 저장소로 옮깁니다"/>
+            </DockPanel>
+            <TextBox x:Name="RepoBox"/>
+            <DockPanel Margin="0,4,0,0">
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
                 <Button x:Name="LnkRepo" Style="{StaticResource Link}" Content="받는자리" FontSize="12"/>
                 <TextBlock Text="  ·  " Style="{StaticResource Note}"/>
                 <Button x:Name="LnkHowto" Style="{StaticResource Link}" Content="설정저장소 만드는 법" FontSize="12"/>
               </StackPanel>
-              <TextBlock x:Name="RepoLabel" Text="내 저장소 받기"/>
-              <TextBlock Text="  · 비워 두는 것이 기본입니다" Style="{StaticResource Note}" VerticalAlignment="Center"/>
+              <TextBlock x:Name="RepoNote" Style="{StaticResource Note}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="저장소 주소를 붙여 넣습니다 · 여러 개는 빈칸으로"/>
             </DockPanel>
-            <TextBox x:Name="RepoBox"/>
-            <TextBlock x:Name="RepoNote" Style="{StaticResource Note}" Margin="0,4,0,0" Text="저장소 페이지 주소를 붙여 넣습니다. 여러 개면 빈칸으로 띄웁니다."/>
           </StackPanel>
         </Border>
 
@@ -542,7 +543,7 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
               <CheckBox x:Name="UpgBox">
                 <TextBlock TextWrapping="Wrap"><Run Text="이미 깔린 것도 최신으로 올립니다"/><Run x:Name="UpgWhy" Foreground="#5F5F5F" FontSize="12"/></TextBlock>
               </CheckBox>
-              <TextBlock x:Name="CfgLabel" Text="규범 · 룰 · 스킬을 받을 도구" Margin="0,12,0,2"/>
+              <TextBlock x:Name="CfgLabel" Text="규범 · 룰 · 스킬을 받을 모델" Margin="0,12,0,2"/>
               <TextBlock x:Name="CfgSource" Style="{StaticResource Note}" Margin="0,0,0,2" Height="32" TextTrimming="CharacterEllipsis"><Run x:Name="CfgSourceText"/><Run Text="  "/><Hyperlink x:Name="LnkCfgDoc" Foreground="#005FB8" TextDecorations="{x:Null}" FontWeight="SemiBold" Cursor="Hand"><Run Text="?"/></Hyperlink></TextBlock>
               <WrapPanel x:Name="PersPanel"/>
               <!-- 늘 서는 한 줄 알림 칸(결정 0167 의 박힌 자리) -->
@@ -776,7 +777,7 @@ Add-FormFace $cUpg
 if ($VcRuntimeMin) { (Get-El 'UpgWhy').Text = "  · 꺼도 VC++ 런타임은 $VcRuntimeMin 아래면 올립니다" }
 $cUpg.Checked = -not $NoUpgrade
 
-# 제작자 칸 — **도구마다 고른다**(결정 0099). 칸 이름은 하는 일(「규범 · 룰 · 스킬을 받을 도구」)로 박고, 무엇이 가나(출처)는 칸
+# 제작자 칸 — **도구마다 고른다**(결정 0099). 칸 이름은 하는 일(「규범 · 룰 · 스킬을 받을 모델」)로 박고, 무엇이 가나(출처)는 칸
 #   바로 아래 한 줄이 저장소 칸을 따라 말한다(`Sync-PersonalSource`) — 같은 칸이 저장소 주소 하나로 뜻이 바뀌는데(결정 0107: 비면
 #   설치 묶음의 제작자 세트, 차면 설치 끝에 그 저장소의 배포가 고른 도구 홈에 푼다) 그것이 화면에 안 보이면 숨은 설정이 된다(#53).
 #   고른 것은 몸통이 사용자 환경변수 `PAISETUP_PERSONAL` 로 심어 설정 저장소의 배포 · 세션 훅도 같은 값을 따른다.
@@ -829,7 +830,7 @@ $advSummary = Get-El 'AdvSummary'
 (Get-El 'CfgTested').ToolTip = (Get-El 'CfgTested').Text
 function Update-AdvSummary {
   $pers = @($cPers | Where-Object { $_.Checked -and (Test-PersonalBoxLive $_) } | ForEach-Object { [string]$_.Content })
-  $src  = if (Get-RepoName $tRepo.Text) { '내 저장소' } else { '제작자 세트' }
+  $src  = if (Get-RepoName $tRepo.Text) { '내 저장소' } else { '제작자' }
   $advSummary.Text = @(
     $(if ($cAuto.Checked) { '자동 업데이트 켬' } else { '자동 업데이트 끔' })
     $(if ($cUpg.Checked) { '깔린 것도 올림' } else { '깔린 것은 둠' })
@@ -837,11 +838,11 @@ function Update-AdvSummary {
   ) -join '  ·  '
   $advSummary.ToolTip = $advSummary.Text
 }
-# 출처 줄 — 저장소 칸을 따라 바뀐다. 칸 이름은 그대로다.
+# 출처 줄 — 무엇이 깔리나를 한 문장으로, 저장소 칸을 따라 바뀐다. 칸 이름은 그대로다.
 function Sync-PersonalSource {
   $name = Get-RepoName $tRepo.Text
-  $lSrcText.Text = if ($name) { "출처 — 내 저장소($name) · 설치 끝에 그 저장소의 deploy 가 켠 도구 홈에 푼다" }
-               else { '출처 — 설치 묶음의 제작자 세트' }
+  $lSrcText.Text = if ($name) { "설정 저장소를 넣었으니, 고른 모델에 내 규범 · 룰 · 스킬($name)이 깔립니다" }
+               else { '설정 저장소를 넣지 않았으니, 고른 모델에 제작자의 규범 · 룰 · 스킬이 깔립니다' }
   $lSrc.ToolTip = "$($lSrcText.Text)`n`n$cfgTip"
   Update-AdvSummary
 }
@@ -859,13 +860,12 @@ $logFold.Add_Click({ $log.Visibility = $(if ($logFold.IsChecked) { 'Visible' } e
 # 툴팁은 「무엇을 하는 칸인가」와 갈래 둘, 그리고 더 볼 데가 있다는 것만 든다 — 자세한 것은 옆 링크의 안내 한 장이 든다. 같은
 #   글을 두 벌 두면 고칠 때 한쪽만 고쳐진다. 꺼진 칸에도 뜬다(`ShowOnDisabled`).
 $tipText = @'
-아무 git 저장소나 받아 두는 자리입니다 — 코드 저장소도, 설정 저장소도.
-비워 두는 것이 기본이고 맞는 답입니다: 프로그램·확장·CLI·키·주소·프록시·
-사내 문서·씨앗·그림 문은 이 칸과 무관하게 다 깔립니다.
+적은 git 저장소를 이 PC 로 받습니다 — 코드 저장소도, 설정 저장소도.
+저장소마다 내 폴더 아래 repos\<저장소 이름> 으로 받고, 「받는자리」가 그 폴더를
+열어 보여 줍니다. 여러 개는 빈칸으로 가릅니다. 프로그램·확장·CLI·키·프록시는
+이 칸과 상관없이 다 깔립니다.
 
-받는 자리는 「받는자리」가 열어서 보여 줍니다. 저장소마다 제 이름
-으로 한 폴더를 만듭니다. 여러 개는 빈칸으로 가릅니다.
-코드 저장소는 그것으로 끝입니다. 설정 저장소만 한 걸음 더 갑니다:
+코드 저장소는 받아 두는 것으로 끝입니다. 설정 저장소만 한 걸음 더 갑니다:
 
 받은 뒤 갈래가 둘이고 둘 다 정당합니다. 가르는 자는 파일 이름 하나 —
 받아온 저장소 뿌리의 .claude/hooks/session-start.sh 입니다.
@@ -876,12 +876,13 @@ $tipText = @'
 설정 저장소가 무엇이고 어떻게 만드나는 「설정저장소 만드는 법」이 한 장으로 답합니다.
 '@
 $cfgTip = @'
-고른 도구의 홈에 규범 · 룰 · 스킬을 놓습니다. 제품 칸에서 고른 도구만 켜집니다.
-「연결」의 저장소 칸이 비었으면 설치 묶음의 제작자 세트가 갑니다. 설정 저장소
-주소를 넣으면 설치 끝에 그 저장소의 deploy 가 고른 도구 홈에 그 저장소의 것을
-풉니다 — 그 저장소의 배포가 같은 칸을 읽어 밉니다. 끈 도구에는 어느 쪽도 안 갑니다.
+고른 모델의 홈에 규범 · 룰 · 스킬을 놓습니다. 「설치할 도구」에서 고른 것만 켜집니다.
+설정 저장소를 넣으면 내 것이, 안 넣으면 제작자의 것이 깔립니다 — 넣었으면 설치 끝에
+그 저장소의 deploy 가 고른 모델의 홈에 그 저장소의 것을 풉니다. 끈 모델에는 어느 쪽도
+안 갑니다.
 '@
-foreach ($t in @(@{ El = $tRepo; Text = $tipText }, @{ El = $lCfg; Text = $cfgTip }, @{ El = $lSrc; Text = $cfgTip })) {
+foreach ($t in @(@{ El = $tRepo; Text = $tipText }, @{ El = (Get-El 'RepoWhat'); Text = $tipText }, @{ El = (Get-El 'RepoNote'); Text = $tipText },
+                 @{ El = $lCfg; Text = $cfgTip }, @{ El = $lSrc; Text = $cfgTip })) {
   $t.El.ToolTip = $t.Text
   [Windows.Controls.ToolTipService]::SetShowDuration($t.El, 30000)   # 긴 글이라 오래 띄운다
   [Windows.Controls.ToolTipService]::SetShowOnDisabled($t.El, $true)
@@ -907,7 +908,7 @@ function Open-Thing([string]$Path, [string]$What, [switch]$Folder, [switch]$Page
   }
 }
 
-# 「알아보기」 — 누르기 전에 읽을 것 넷. 스위치 없이 놓이는 것(사내 문서 · 씨앗)일수록 누르기 전에 말한다 — 그 말은 「제공기능」
+# 「알아보기」 — 누르기 전에 읽을 것 셋(제공기능 · 설치흐름 · 바뀐 것). 스위치 없이 놓이는 것(사내 문서 · 씨앗)일수록 누르기 전에 말한다 — 그 말은 「제공기능」
 #   페이지가 든다(결정 0091). 무엇이 어디에 놓이나의 진본은 install.ps1 「공용 자산」 걸음과 `INSTALLED.md` 라 목록을 여기 옮기지 않는다.
 (Get-El 'LnkFeat').Add_Click({ Open-Thing (Join-Path $Here 'features.html') '안내 페이지(features.html)' -Page })
 # 설치 흐름 그림 — 같은 폴더의 `install-flow.svg`(README 가 든 그 그림).
@@ -915,26 +916,25 @@ function Open-Thing([string]$Path, [string]$What, [switch]$Folder, [switch]$Page
 # 이 판에서 바뀐 것 — 그 판의 릴리스 노트(결정 0099). 판마다 바뀐 것은 판마다 낡으므로 「제공기능」 페이지에 안 적고 릴리스가 든다.
 #   주소는 값 파일의 `#update-repo` 와 곁의 `VERSION` 에서 짓는다 — 이 파일에 저장소를 안 박는다. 둘 중 하나가 없으면 링크를 안
 #   세운다 — 못 짓는 주소를 열게 두지 않는다.
+# 알약은 판을 다 든 릴리스 목록을 연다 — 이 판만이 아니라 앞뒤 판에서 무엇이 바뀌었나를 한 자리에서 본다. 판 하나의 노트(`$ReleasePage`)는
+#   옛 제작자 칸 알림이 「이 판에서 바뀐 것」으로 쓴다. 저장소를 모르면 알약은 제자리에서 잠그고 까닭을 단다(결정 0167 의 한 판).
 $ReleasePage = $null
 $relRepo = Read-Directive $EnvPath 'update-repo'
 if ($relRepo -and $DistVersion) { $ReleasePage = "https://github.com/$relRepo/releases/tag/v$DistVersion" }
+$ReleaseList = if ($relRepo) { "https://github.com/$relRepo/releases" } else { $null }
 $lnkNews = Get-El 'LnkNews'
-if ($ReleasePage) {
+if ($ReleaseList) {
   $lnkNews.Add_Click({
-    try { Start-Process -FilePath $ReleasePage | Out-Null }
+    try { Start-Process -FilePath $ReleaseList | Out-Null }
     catch {
-      [void][Windows.MessageBox]::Show($F, "릴리스 노트를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $ReleasePage,
-        $AppName, 'OK', 'Warning')
+      [void][Windows.MessageBox]::Show($F, "릴리스 목록을 못 열었습니다 — $($_.Exception.Message)", $AppName, 'OK', 'Warning')
     }
   })
-} else { $lnkNews.Visibility = 'Collapsed' }
-# 「사내환경문서」는 풀어 둔 이 폴더의 `posco` 를 연다 — 홈 쪽(`~/.claude/posco`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
-#   그 폴더가 없는 짐이면 이 폴더로 물러난다. 사외에서도 보인다(#52 마감).
-(Get-El 'LnkHome').Add_Click({
-  $docs = Join-Path $Here 'posco'
-  if (-not (Test-Path -LiteralPath $docs -PathType Container)) { $docs = $Here }
-  Open-Thing $docs '사내환경문서 폴더' -Folder
-})
+} else {
+  $lnkNews.IsEnabled = $false
+  $lnkNews.ToolTip = '설치 묶음의 값 파일에 #update-repo 가 없어 열 곳을 모릅니다'
+  [Windows.Controls.ToolTipService]::SetShowOnDisabled($lnkNews, $true)
+}
 
 # 「받는자리」 — 경로를 글자로 띄우지 않고 눌러서 열어 보여 준다. 경로는 사람마다 길이가 달라 한 줄을 넘고, `~` · `<>` 같은 기호는
 #   받는 사람이 제 PC 의 어디인지 못 읽는다. 「설치 위치」라 적지 않는다 — 여기는 저장소를 받는 폴더고, 설치가 짐을 푸는 곳
@@ -1039,7 +1039,6 @@ $script:sw = $null; $script:last = ''   # 흐른 시간과 마지막 줄 — 창
 $script:done = ''                       # 몸통이 낸 마무리 문장 — 끝났을 때 이것을 띄운다
 $script:outFile = $null; $script:errFile = $null
 $script:rdOut = $null;  $script:rdErr = $null
-$script:con = $null; $script:raise = 0   # 뒤에 서는 기록 창과, 이 창을 다시 올릴 남은 틱 수
 
 # 기록 칸에 한 줄 — 늘 끝으로 내린다(WPF 글 칸은 스스로 안 내린다).
 function Add-Log([string]$line) {
@@ -1127,8 +1126,7 @@ $bGo.Add_Click({
   $script:outFile = "$base.out"; $script:errFile = "$base.err"
   $script:rdOut = $null; $script:rdErr = $null
 
-  # 나가는 것과 오류는 두 파일로 받고 타이머가 둘 다 읽는다 — 기록 창은 오류 줄을 따로 칠하고 `Save-RunLog` 는 둘 사이에
-  #   경계를 박는다.
+  # 나가는 것과 오류는 두 파일로 받고 타이머가 둘 다 읽는다 — `Save-RunLog` 는 둘 사이에 경계를 박는다.
   # 무엇을 돌리는지 먼저 찍는다 — 자식이 한 줄도 안 뱉는 판에서 「멈췄나 안 떴나」를 가를 자리가 된다.
   Add-Log "돌립니다: $argLine"
   Add-Log ''
@@ -1163,16 +1161,8 @@ $bGo.Add_Click({
     return
   }
 
-  # ── 뒤에 서는 큰 기록 창 (`Start-ConsoleTail` 머리말) ──
-  # 못 띄워도 설치는 간다 — 이 창의 기록 칸이 같은 줄을 이미 든다. 대신 못 띄운 것을 기록에 말한다.
-  try {
-    $script:con = Start-ConsoleTail $script:outFile $script:errFile $script:proc.Id
-    # 새 콘솔은 뜨면서 맨 앞을 차지해 이 창을 덮는다 — 뜨는 데 걸리는 시간이 콘솔마다 달라(옛 콘솔은 곧바로, Terminal 은 1 초
-    #   남짓) 몇 초에 걸쳐 이 창을 다시 위로 올린다(타이머의 `$script:raise`).
-    $script:raise = 20
-  } catch {
-    Add-Log "! 큰 기록 창을 못 띄웠다 — 이 창의 기록으로 그대로 본다: $($_.Exception.Message)"
-  }
+  # 기록은 이 창의 「설치하는 중」 칸이 든다 — 몸통은 콘솔 없이 돌고(`CreateNoWindow`), 같은 캡처를 따로 흘리는 창을 더 띄우지
+  #   않는다. 끝난 뒤의 기록은 「설치기록」이 집어 준다(결정 0167).
   $timer.Start()
 })
 
@@ -1210,9 +1200,8 @@ function Step-Line([string]$line) {
 
 # `Open-Tail <경로>` → 공유 열기한 UTF-8 StreamReader, 파일이 없거나 못 열면 `$null`. 자식이 **쓰는 중인** 파일을 읽으므로
 #   쓰기를 막지 않게 연다.
-# ⚠ **지우기까지 열어 준다(`Delete`).** 이 함수는 뒤에 서는 기록 창(`Start-ConsoleTail`)에도 글자째 실려 가는데, 그 창은 따로
-#   사는 프로세스라 이 창이 캡처 파일을 지우는 순간에도 쥐고 있을 수 있다. `Delete` 가 없으면 지우기가 조용히 지고
-#   (`-ErrorAction SilentlyContinue`) 키 없는 캡처라도 임시 폴더에 눌러앉는다. 이 창 자신은 지우기 전에 늘 닫는다.
+# ⚠ **지우기까지 열어 준다(`Delete`).** 읽개가 아직 쥐고 있어도 캡처를 지우는 자리(타이머 끝 · 창 닫기)가 지지 않게 한다 — 지우기는
+#   조용히 지는 자리라(`-ErrorAction SilentlyContinue`) 지면 캡처가 임시 폴더에 눌러앉는다. 이 창은 지우기 전에 늘 닫는다.
 function Open-Tail([string]$Path) {
   if (-not (Test-Path -LiteralPath $Path)) { return $null }
   try {
@@ -1233,124 +1222,6 @@ function Pump-Tail($Reader) {
     Step-Line $line; $n++
   }
   return $n
-}
-
-# ── 뒤에 서는 큰 기록 창 — **같은 캡처를 따로 한 번 더 읽을 뿐이다** ───────────────
-# `Start-ConsoleTail <나가는 것> <오류> <몸통 PID> [설치 창 PID]` → 띄운 파워셸의 Process 객체(못 띄우면 던진다). 새 콘솔 창을
-#   하나 띄워 몸통이 찍는 줄을 **통째로, 큰 글씨로** 흘린다 — 이 창은 막대와 마지막 한 줄만 보이므로, 무엇을 하는 중인지 ·
-#   어디서 멈췄는지를 그 창에서 바로 보게 한다.
-#
-# 출력을 새로 만들지 않는다 — 몸통은 숨은 채 두 캡처 파일에 쓰고, 그 창은 `Open-Tail` 로 같은 파일을 따로 따라 읽어 제 콘솔에
-#   옮긴다. 통로를 하나 더 내면(몸통을 보이게 띄우거나 `Tee` 로 갈라 쓰거나) 두 갈래가 서로 다른 것을 보여 주는 날이 온다.
-#   여는 법도 글자째 실어 간다(`${function:Open-Tail}`) — 공유 깃발을 두 벌 두지 않는다.
-# ⚠ **아무것도 안 돌린 제 콘솔에 `Write-Host` 로 쓴다.** 창을 가진 프로세스의 출력이 파일로 돌려지면 창이 아니라 파일에 써져
-#   빈 창만 뜬다 — 몸통을 보이게 띄우면 `1>` 가 걸려 있어 꼭 그렇다. 그래서 `Start-Process`(셸 실행)로 새 콘솔을 따로 붙이고
-#   `-NoNewWindow` 도 `-Redirect*` 도 안 준다. 부모인 이 창은 콘솔이 없어도 된다.
-# ⚠ **몸통의 출력을 그 창에 파이프로 잇지 않는다** — 파이프는 읽는 쪽이 멈추면 쓰는 쪽까지 세운다. 사람이 콘솔 안을 끌어
-#   선택하면(빠른 편집) 그 창의 쓰기가 멈추는데, 파일을 사이에 두면 몸통은 그것을 모른 채 간다.
-# ⚠ **명령 줄에 스크립트 이름이 드러나면 안 된다 — `-EncodedCommand` 로 싣는다.** 몸통의 겹침 검사(`Find-EngineHolders`)와
-#   자동 실행의 겹침 가드는 `powershell.exe` 명령 줄에서 `install.ps1` 을 글자로 찾는다. 그 창은 설치가 끝나도 설치 창이 닫힐
-#   때까지 살므로, 그 이름이 비치면 다음 설치나 로그온 자동 실행이 **그 창을 설치 중으로 읽고 물러난다.** base64 로 실으면 이름이
-#   안 서고 지울 임시 .ps1 도 안 생긴다.
-#
-# 언제 끝나나 — 설치 창보다 오래 살지 않는다. 사람이 손으로 닫을 일이 없어야 한다.
-#   · 설치 창(`$UiPid`)이 사라지면 곧바로 나간다 — [닫기] · X · 도는 중 멈춤 · 죽음이 다 이 한 사건으로 모인다.
-#   · 몸통(`$EnginePid`)이 끝나면 흘리기를 멈추고 끝났다는 줄을 찍은 뒤 설치 창이 닫힐 때까지 남는다 — 사람이 마지막 줄을 읽을
-#     틈이고, 설치 창을 닫는 것이 곧 「다 봤다」는 신호다(위 「콘솔에 남은 글」 머리말과 같은 결).
-#   · [다시 설치] 면 앞 회차의 창은 비킨다 — 끝에 지운 캡처 파일이 다시 서면 새 회차가 시작된 것이고 그 회차는 새 창이 든다.
-#   ⚠ **끝낼 때 죽이지 않고 제풀에 `exit 0` 으로 나가게 한다.** Windows Terminal 은 0 이 아닌 코드로 끝난 탭을 닫지 않고 남겨,
-#     `Kill()` 로 끝내면 「코드 1 로 끝났다」는 빈 탭을 사람이 손으로 닫아야 한다. 설치 창이 닫힐 때 거는 것은 `CloseMainWindow()`
-#     뿐이다 — 옛 콘솔 창은 바로 닫히고, Terminal 에서는 아무것도 안 하므로 위 PID 감시가 맡는다.
-#
-# 글씨 크기는 안 만진다 — `SetCurrentConsoleFontEx` 를 P/Invoke 로 불러야 하고 Windows Terminal 은 그것을 무시한다. 창 크기
-#   (120×40)도 옛 콘솔에서만 먹는다 — 둘 다 편의지 조건이 아니다.
-function Start-ConsoleTail([string]$Out, [string]$Err, [int]$EnginePid, [int]$UiPid = $PID) {
-  # 값은 머리 줄에 작은따옴표 글자로 박는다 — 경로에 작은따옴표가 들면 둘로 늘린다.
-  $lit  = { param($s) "'" + ([string]$s -replace "'", "''") + "'" }
-  $head = '$Out = {0}; $Err = {1}; $UiPid = {2}; $EnginePid = {3}; $Title = {4}' -f `
-            (& $lit $Out), (& $lit $Err), $UiPid, $EnginePid, (& $lit "$AppName — 설치 기록")
-  $body = @'
-$ErrorActionPreference = 'Continue'
-# ⚠ 캡처는 UTF-8 이다(몸통이 제 머리에서 세운다). 읽기는 `Open-Tail` 이 UTF-8 로 하고,
-#   쓰기 쪽 코드 페이지도 맞춘다 — 못 맞춰도 흘리기는 간다.
-$OutputEncoding = [Text.Encoding]::UTF8
-try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
-try { $Host.UI.RawUI.WindowTitle = $Title } catch { }
-try {
-  $raw = $Host.UI.RawUI
-  $w = [Math]::Min(120, $raw.MaxPhysicalWindowSize.Width)
-  $h = [Math]::Min(40,  $raw.MaxPhysicalWindowSize.Height)
-  # 창 너비는 버퍼 너비를 못 넘는다 — 줄일 때는 창을 먼저, 늘릴 때는 버퍼를 먼저.
-  if ($raw.WindowSize.Width -gt $w) {
-    $raw.WindowSize = New-Object Management.Automation.Host.Size($w, $raw.WindowSize.Height)
-  }
-  $raw.BufferSize = New-Object Management.Automation.Host.Size($w, 9999)
-  $raw.WindowSize = New-Object Management.Automation.Host.Size($w, $h)
-} catch { }
-
-# 손잡이를 쥐어 둔다 — PID 가 딴 프로세스에 다시 쓰여도 끝난 것을 끝난 것으로 본다.
-function Get-Watched([int]$Id) {
-  try { $p = [Diagnostics.Process]::GetProcessById($Id) } catch { return $null }
-  try { $null = $p.Handle } catch { }
-  return $p
-}
-function Test-Gone($P) {
-  if (-not $P) { return $true }
-  try { return $P.HasExited }
-  catch { return -not (Get-Process -Id $P.Id -ErrorAction SilentlyContinue) }
-}
-function Show-Lines($Reader, [bool]$IsErr) {
-  if (-not $Reader) { return 0 }
-  $n = 0
-  while ($null -ne ($line = $Reader.ReadLine())) {
-    $n++
-    if ($IsErr)                      { Write-Host $line -ForegroundColor Red }
-    elseif ($line -match '^\[\d+/\d+\]') { Write-Host $line -ForegroundColor Cyan }
-    elseif ($line -match '^===')     { Write-Host $line -ForegroundColor Yellow }
-    else                             { Write-Host $line }
-  }
-  return $n
-}
-
-$ui = Get-Watched $UiPid; $eng = Get-Watched $EnginePid
-$rdOut = $null; $rdErr = $null; $shown = 0
-while ($true) {
-  if (Test-Gone $ui) { exit 0 }
-  if (-not $rdOut) { $rdOut = Open-Tail $Out }
-  if (-not $rdErr) { $rdErr = Open-Tail $Err }
-  $shown += (Show-Lines $rdOut $false) + (Show-Lines $rdErr $true)
-  if (Test-Gone $eng) {
-    Start-Sleep -Milliseconds 300      # 마지막 쓰기가 파일에 닿을 틈 — 설치 창과 같은 자리
-    if (-not $rdOut) { $rdOut = Open-Tail $Out }
-    if (-not $rdErr) { $rdErr = Open-Tail $Err }
-    $shown += (Show-Lines $rdOut $false) + (Show-Lines $rdErr $true)
-    break
-  }
-  Start-Sleep -Milliseconds 200
-}
-# 다 읽었으면 곧바로 놓는다 — 설치 창이 곧 지운다.
-foreach ($r in @($rdOut, $rdErr)) { if ($r) { try { $r.Dispose() } catch { } } }
-
-# ⚠ 됐나 안 됐나는 여기서 말하지 않는다 — 판정은 설치 창 한 자리가 든다(종료코드를 쥔 쪽).
-Write-Host ''
-if ($shown -eq 0) {
-  Write-Host '기록을 한 줄도 못 읽었습니다 — 설치 창의 기록을 보세요.' -ForegroundColor DarkYellow
-}
-Write-Host '설치가 끝났습니다 — 결과는 설치 창에 있습니다. 이 창은 설치 창을 닫으면 같이 닫힙니다.' -ForegroundColor Green
-
-$wasGone = $false
-while (-not (Test-Gone $ui)) {
-  if (-not (Test-Path -LiteralPath $Out)) { $wasGone = $true }
-  elseif ($wasGone) { break }          # 캡처가 다시 섰다 — [다시 설치], 새 창이 든다
-  Start-Sleep -Milliseconds 250
-}
-exit 0
-'@
-  $code = $head + "`n" + "function Open-Tail {`n" + ${function:Open-Tail} + "`n}`n" + $body
-  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($code))
-  $psExe = (Get-Process -Id $PID).Path
-  return Start-Process -FilePath $psExe -PassThru -WindowStyle Normal `
-           -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $enc)
 }
 
 # ── 창이 닫혀도 사는 기록 ───────────────────────────────────────────────────────
@@ -1402,15 +1273,6 @@ function Save-RunLog {
 $timer = New-Object Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(150)
 $timer.Add_Tick({
-  # ⚠ **앞에 세우기는 `Topmost` 를 켰다 끄는 것으로 한다 — `Activate()` 가 아니다.** 콘솔이 뜨며 포그라운드를 가져간 뒤라
-  #   `Activate()` 는 포그라운드 잠금에 걸려 작업표시줄만 깜빡이고 안 올라올 수 있다. 맨 위 띠로 옮겼다 되돌리면 잠금과 무관하게
-  #   z-순서가 바뀌고, 되돌린 뒤에는 보통 창들 중 맨 위(콘솔 위, 맨 위 띠 아래)에 선다.
-  # 몸통의 물음창은 안 가린다 — `Show-AskDialog` 는 맨 위 띠의 창을 임자로 세우므로 늘 이 창보다 위고, 켜 둔 한순간만 그 위로
-  #   겹친다. 600ms 마다 한 번, 3 초 동안.
-  if ($script:raise -gt 0) {
-    $script:raise--
-    if (($script:raise % 4) -eq 0) { $F.Topmost = $true; $F.Topmost = $false }
-  }
   if (-not $script:rdOut) { $script:rdOut = Open-Tail $script:outFile }
   if (-not $script:rdErr) { $script:rdErr = Open-Tail $script:errFile }
   $got = (Pump-Tail $script:rdOut) + (Pump-Tail $script:rdErr)
@@ -1516,14 +1378,6 @@ $F.Add_Closing({
     }
   }
 })
-# ⚠ **뒤의 기록 창은 닫힘이 확정된 뒤(`Closed`)에만 닫는다.** `Closing` 은 위에서 「아니오」로 무를 수 있어, 거기서
-#   닫으면 설치 창은 남고 기록 창만 사라진다. 주 길은 저쪽이 이 프로세스가 사라진 것을 보고 제풀에 나가는 것이고, 여기는 옛 콘솔
-#   창에서 그것을 앞당기는 덧줄이다 — **`Kill()` 이 아니다**(`Start-ConsoleTail` 머리말: Terminal 이 빈 탭을 남긴다).
-$F.Add_Closed({
-  if ($script:con -and -not $script:con.HasExited) {
-    try { [void]$script:con.CloseMainWindow() } catch { }
-  }
-})
 # ── 새 판이 있나 — 창이 뜬 뒤에 배경으로 물어본다 ──────────────────────────────
 # 앞을 막지 않는다 — 묻는 데 몇 초가 들 수 있어(사내 프록시가 막으면 시간이 다 갈 때까지) 창이 먼저 서고 이것은 딴 실에서
 #   돈다. 답은 타이머(`upTimer`)가 화면 실에서 집는다.
@@ -1615,7 +1469,7 @@ function Show-PersonalNotice {
     ('이번 판부터 제작자의 규범 · 룰 · 스킬을 도구마다 고릅니다 — Claude · Codex · agy.' + [Environment]::NewLine + [Environment]::NewLine +
      '자동 실행이 예전 칸을 Claude 로 이어받아 방금 설치했습니다. 그대로 두려면 이 창을 닫으면 됩니다 — 다시 묻지 않습니다.' +
      [Environment]::NewLine + [Environment]::NewLine +
-     '바꾸려면 「자세히 설정」의 「규범 · 룰 · 스킬을 받을 도구」를 고르고 [설치 시작]을 누릅니다. 예전 칸은 agy 를 같이 고른 PC 의 ' +
+     '바꾸려면 「자세히 설정」의 「규범 · 룰 · 스킬을 받을 모델」을 고르고 [설치 시작]을 누릅니다. 예전 칸은 agy 를 같이 고른 PC 의 ' +
      'agy 에도 규범을 깔았는데, 이번 설치에서 그것은 백업 자리로 옮겨졌습니다 — agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
      '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 이 상자를 닫으면 여는 「제공기능」 페이지에 있습니다.' +
      $(if ($ReleasePage) { [Environment]::NewLine + [Environment]::NewLine + '이 판에서 바뀐 것을 릴리스 노트에서 자세히 볼까요?' } else { '' })),
