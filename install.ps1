@@ -5381,7 +5381,7 @@ $AppName = Read-Directive $DistEnvFile 'app-name'
 if (-not $AppName) { $AppName = $AppNameDefault }
 
 # ── `-Describe` 갈래 — 고를 목록 · 저장소 자리 · 지난번에 고른 것 · 몸통만 아는 사실을 내주고 나간다 ──────────────────────
-# 내는 줄 — `product|키|글자|기본값`(이 자리에서 내놓는 제품마다 · `Test-ProductHere`) · `config-repo-root|자리` · `record|이름|값`(기록에 든 것마다 · `Read-ChoiceRecord`) ·
+# 내는 줄 — `product|키|글자|기본값`(제품마다) · `product-here|키|no`(이 자리에서 안 내놓는 제품 · `Test-ProductHere`) · `config-repo-root|자리` · `record|이름|값`(기록에 든 것마다 · `Read-ChoiceRecord`) ·
 #   `company-key|yes·no`(이 사용자가 풀 수 있는 회사 키 덩이가 있나 · 값은 안 낸다), 그 뒤에 몸통만 아는 사실(PAISetup #46):
 #     · `app-name|이름` · `vcruntime-min|판` · `personal|도구|제품|글자`(`$PersonalTools` 마다) — 설치 창의 제목 · 「올리기」 칸 글자 ·
 #       제작자 칸
@@ -5396,11 +5396,13 @@ if (-not $AppName) { $AppName = $AppNameDefault }
 #   덩이나 깨진 덩이에 `yes` 라 하면 창이 빈 키 칸을 받고 그 판은 「미입력」 빨강으로 끝난다. 푼 바이트는 바로 지운다. 못 푸는 덩이를
 #   여기서 지우지 않는다 — 지우는 것은 그 덩이를 다시 쓸 수 있는 「키와 값」의 몫이다(`Read-CompanyKeyBlob`).
 if ($Describe) {
-  # 자리를 먼저 잰다 — 제품 줄이 그 답을 따른다(`Test-ProductHere` · 이 자리에서 안 내놓는 제품은 줄을 안 낸다)
+  # 자리를 먼저 잰다 — 안 내놓는 제품은 줄을 빼지 않고 `product-here|키|no` 로 알린다(`Test-ProductHere`). 창은 칸을 그 자리에 둔 채
+  #   잠근다 — 자리마다 칸이 생기고 사라지면 사내 · 사외를 오가는 사람에게 다른 창이 된다(claude-config 결정 0167).
   $descProbe = Read-Directive $DistEnvFile 'site-probe'
   $descSite  = Measure-Site $descProbe
-  $Products | Where-Object { Test-ProductHere $_ ($descSite.Site -eq 'outside') } | ForEach-Object {
+  $Products | ForEach-Object {
     'product|{0}|{1}|{2}' -f $_.Key, $_.Label, $(if ($_.Default) { 'on' } else { 'off' })
+    if (-not (Test-ProductHere $_ ($descSite.Site -eq 'outside'))) { 'product-here|{0}|no' -f $_.Key }
   }
   'config-repo-root|{0}' -f $configRepoRoot
   $described = Read-ChoiceRecord $ChoiceRecord $LegacyChoiceArgs $LegacyChoiceEnv $AutoRunOffRecord
@@ -10451,7 +10453,20 @@ foreach ($c in $checks) {
   elseif ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
   else           { Write-Host "  [X] $($c.Name)" -ForegroundColor Red }
 }
-# 안 한 걸음 — 못 재서 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`). 끝 검증에 짝 칸이 없어 여기서 따로 찍는다. 까닭은 걸음이
+# 규범 · 룰 · 스킬이 어디서 와 어느 홈에 갔나 — 제작자 칸은 저장소 칸 하나로 뜻이 바뀌어(비면 설치 묶음의 제작자 세트, 차면 그
+#   저장소의 배포 · 결정 0107) 창의 출처 줄이 그것을 말하고(PAISetup #53), 끝에서도 같은 말을 한 줄로 한다. 판정은 위 칸들
+#   (`PAISETUP_PERSONAL` · 손의 check)이 든다 — 이 줄은 무엇이 돌았나만 말하고 세지 않는다.
+$persLabels = @($PersonalTools | Where-Object { ",$PersonalValue," -like "*,$($_.Tool),*" } | ForEach-Object { $_.Label })
+$persHomes  = ($persLabels -join ' · ') + ' 홈'
+$persRepo   = if ($dest) { Split-Path -Leaf $dest } else { '' }
+$persHanded = [bool]$handOff   # 훅에 넘겼나 — 이름을 따로 둔다: 넘김 칸의 그 갈래 머리는 훅 검사(check-dist-hooks)가 글자로 한 곳만 찾는다
+$persSaid = if (-not $persLabels.Count) { '받을 도구를 안 골라 어느 홈에도 안 놓았다' }
+            elseif ($persHanded -and -not @($Fails | Where-Object { "$_" -like '훅 --install*' }).Count) { "내 저장소($persRepo)의 훅에 넘겼다 — 그 저장소의 deploy 가 $($persHomes)에 푼다" }
+            elseif ($persHanded) { "내 저장소($persRepo)의 훅이 져 $($persHomes)에는 설치 묶음의 제작자 세트만 있다" }
+            elseif ($configRepoUrls.Count) { "내 저장소를 받았지만 넘길 훅이 없어 $($persHomes)에 설치 묶음의 제작자 세트를 놓았다" }
+            else { "설치 묶음의 제작자 세트를 $($persHomes)에 놓았다" }
+Write-Host "  · 규범 · 룰 · 스킬 — $persSaid"
+# 안 한 걸음 —못 재서 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`). 끝 검증에 짝 칸이 없어 여기서 따로 찍는다. 까닭은 걸음이
 #   든 것(`Why` — 넘김 · 종료 값 · 던진 오류)을 그대로 찍는다.
 foreach ($s in $script:UnmeasuredSteps) {
   Write-Host "  [?] 안 한 걸음 · $($s.Step) — 못 쟀다: ``$($s.Probe)`` 이 $($s.Why) $($s.Held)" -ForegroundColor Yellow

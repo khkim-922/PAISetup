@@ -3,8 +3,8 @@
 #   부르는 꼴  `install.cmd` · `Setup.exe` 가 `powershell -File install.ui.ps1 [-NoDevTools | -DevTools] [-PersonalFor <도구,…>]
 #              [-WithPersonalConfig] [-NoUpgrade]` 로 띄운다. 나머지 스위치는 사람이 칠 것이 아니다(바로 아래).
 #   내는 것    몸통을 `-Yes -EnvFile <임시 값 파일>` 로 돌려 판정을 창에 띄우고, 기록을
-#              `%LOCALAPPDATA%\Claude Code Setup\logs\install-<시각>.log` 로 남긴다. 화면이 못 서면(윈도 폼을 못 싣는 PC)
-#              같은 콘솔에서 몸통을 돌린다.
+#              `%LOCALAPPDATA%\Claude Code Setup\logs\install-<시각>.log` 로 남긴다. 화면이 못 서면(WPF 를 못 싣는 PC ·
+#              STA 가 아닌 셸) 같은 콘솔에서 몸통을 돌린다.
 #   종료 값    몸통이 옆에 없으면 1 · 콘솔 갈래는 몸통의 값 · 그 밖은 0(판정은 창이 말한다).
 #
 # 여기에는 설치 로직이 없다 — 무엇을 어떻게 깔지는 `install.ps1` 한 자리가 든다. 로직을 여기 옮기면 화면 갈래와 콘솔
@@ -12,6 +12,9 @@
 # ⚠ **진행 막대의 신호는 몸통이 이미 찍는 `[n/N]` 줄이다** — 통로를 따로 내면 걸음이 늘 때 한쪽만 고쳐져 막대가 조용히
 #   안 찬다. 분모도 그 줄에서 받으므로(N 은 몸통의 `$Steps` 표 길이) 걸음이 늘어도 여기는 고칠 것이 없다. 읽는 줄 꼴은
 #   `Step-Line` 이 든다.
+# 화면은 WPF 를 인라인 XAML 로 짓는다(PAISetup #53 · claude-config 결정 0167) — .NET Framework 에 든 어셈블리 셋만 실어 남의 DLL 이
+#   없고, 창이 화면 배율을 알아(시스템 DPI 인식) 125 · 150 % 에서 윈도가 늘려 흐리게 하지 않는다. 옛 윈도 폼 창은 배율을 몰라
+#   (잰 DPI 인식 0) 늘려 그려졌다(PAISetup #52).
 
 # 사람이 칠 것이 아닌 스위치 셋:
 #   `-NoConsole` — 「이 프로세스에는 보여 줄 콘솔이 없다」는 상태. 이 파일이 제 자신을 숨김으로 다시 띄울 때와 `Setup.exe` 가
@@ -76,9 +79,14 @@ if ($Unattended) { exit 0 }
 #   사람은 「화면이 뜨는 줄 알았는데 왜」에서 멈춘다.
 $uiOk = $true
 try {
-  Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-  Add-Type -AssemblyName System.Drawing -ErrorAction Stop
-  [System.Windows.Forms.Application]::EnableVisualStyles()
+  # ⚠ **STA 가 아니면 화면을 안 세운다** — WPF 창은 STA 실에서만 선다. 이 파일을 띄우는 셋(`install.cmd` · `Setup.exe` · 몸통의 알림
+  #   띄우기)은 다 `powershell -File` 이라 Windows PowerShell 5.1 의 기본값 STA 로 서지만, `-MTA` 로 불린 판에서 창을 지으면 그 자리에서
+  #   던지고 사람은 아무것도 못 본다 — 그 판은 아래 콘솔 갈래로 간다.
+  if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') { throw 'STA 가 아닌 셸이다' }
+  Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase -ErrorAction Stop
+  # ⚠ **소프트웨어 그리기로 고정한다 — 창을 하나라도 짓기 전에.** 하드웨어 그리기 창은 화면 복사(사람이 찍어 보내는 화면 ·
+  #   PrintWindow)에 내용이 빈 흰 판으로 찍혔다(PAISetup #52 실측). 정적인 서식이라 잃는 것이 없다.
+  [Windows.Media.RenderOptions]::ProcessRenderMode = [Windows.Interop.RenderMode]::SoftwareOnly
 } catch { $uiOk = $false }
 
 if (-not $uiOk) {
@@ -182,6 +190,8 @@ $LogDir = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\logs'
 #   자리 · 규칙 · 기본값을 창이 다시 지으면 같은 PC 가 창 회차와 로그온 회차에서 다른 자리 · 다른 칸으로 돈다(PAISetup #46).
 # ⚠ **자식으로 띄워 묻는다.** 이 창 안에서 그 파일을 부르면 저쪽의 `exit` 가 **이 창까지** 끌고 나간다.
 $Choices = @()
+# 이 자리에서 안 내놓는 제품(키 → 참) — 몸통의 `product-here|키|no`(`Test-ProductHere`). 칸은 제자리에 두고 잠근다(결정 0167).
+$NotHere = @{}
 # 저장소를 받는 자리 — 몸통이 내준다(바로 아래 곁말). 못 받으면 빈 값이고, 그때 아래 저장소 칸은 링크 대신 글자만 세운다.
 $RepoRoot = ''
 # 지난번에 고른 것 — 이름 → 값(몸통의 기록 꼴 그대로 · 「하나도 안 고름」은 `none`). 못 받으면 빈 표고 칸은 기본값으로 선다.
@@ -209,6 +219,7 @@ try {
     }
     # 이 자리는 받아 쓴다 — 화면이 `~/repos` 를 제 글자로 박으면 몸통이 자리를 옮기는 날 설치는 새 데로 받는데 화면은
     #   다른 데를 연다.
+    elseif ("$ln" -cmatch '^\s*product-here\|([a-z0-9-]+)\|no\s*$') { $NotHere[$Matches[1]] = $true }
     elseif ("$ln" -match '^\s*config-repo-root\|(.+?)\s*$') { $RepoRoot = $Matches[1] }
     elseif ("$ln" -match '^\s*record\|([a-z-]+)\|(.+?)\s*$') { $Recorded[$Matches[1]] = $Matches[2] }
     elseif ("$ln" -match '^\s*company-key\|(yes|no)\s*$') { $KeySaved = ($Matches[1] -eq 'yes') }
@@ -252,41 +263,348 @@ if ($Recorded.ContainsKey('vscode'))   { $Saved.NoVsCode = ($Recorded['vscode'] 
 if ($Recorded.ContainsKey('personal')) { $Saved.Personal = @($Recorded['personal'] -split '[,\s]+' | Where-Object { $_ -and $_ -ne 'none' }) }
 if ($Recorded.ContainsKey('config-repo')) { $Saved.Repo = $(if ($Recorded['config-repo'] -ne 'none') { $Recorded['config-repo'] } else { '' }) }
 if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.GatewayUrl = $Recorded['gateway-url'] }
-# 제품 목록이 없으면 옵션 칸을 안 늘린다 — 빈 줄만큼 창이 길어지면 작은 화면에서 단추가 잘린다. `$appRow` 는 제품 줄 ·
-#   안내 줄 · VS Code 줄 셋이다. 안내 줄은 자리와 상관없이 늘 두고 글만 갈린다.
-$appRow = if ($Choices.Count) { 78 } else { 0 }
-$optExtra = 26   # 옵션 칸의 자동 실행 줄
 
 # ── 화면 ────────────────────────────────────────────────────────────────────────
-$F = New-Object Windows.Forms.Form
-# 제목이 판을 든다 — 사람이 「내가 몇 판을 들고 있나」를 볼 자리가 여기밖에 없다.
-$F.Text = if ($DistVersion) { "$AppName — $DistVersion" } else { $AppName }
-# 제목줄과 작업표시줄의 얼굴 — 없으면 파워셸 아이콘이 서서 「이게 무슨 창인가」를 한 번 더 묻게 한다. 파일이 없거나 못
-# 읽으면 그냥 간다 — 그림 한 장 때문에 설치를 막지 않는다.
+# 차례는 처음 까는 사람이 묻는 차례다 — 무엇을 하는 창인가(머리 · 「알아보기」) → 넣을 것이 있나(「연결」) → 무엇을 깔까(「설치할
+#   도구」) → 더 손볼 것(접힌 「자세히 설정」 · 접혀도 지금 값을 한 줄로 보인다) → 누른다(아래 띠). 문서 링크는 「알아보기」 한 줄,
+#   저장소 링크는 그 칸 곁, 기록은 아래 띠 — 링크마다 하는 일이 같은 무리에 산다(PAISetup #52 배치안 · #53).
+# 칸은 스타일만으로 그린다 — 남의 테마 DLL 을 안 싣는다(claude-config 결정 0167). 다크 모드는 안 한다 — .NET Framework 의 WPF 에는
+#   시스템 테마를 따르는 사전이 없어 붓을 두 벌 둬야 한다.
+# ⚠ **자리 수를 박지 않는다.** 줄 · 칸은 쌓는 판(StackPanel · WrapPanel · Grid)이 자리를 잡는다 — 옛 창은 링크를 글자 폭으로 재
+#   오른쪽에서 쌓고 서로 가려 앞으로 내야 했다. 글을 고치거나 링크를 더해도 셈이 없다.
+[xml]$ScreenXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="600" SizeToContent="Height" ResizeMode="CanMinimize" WindowStartupLocation="CenterScreen"
+        Background="#F3F3F3" Foreground="#1B1B1B" FontSize="13"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Malgun Gothic"
+        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True">
+  <Window.Resources>
+    <SolidColorBrush x:Key="Accent" Color="#005FB8"/>
+    <SolidColorBrush x:Key="Muted" Color="#5F5F5F"/>
+    <SolidColorBrush x:Key="Line" Color="#E5E5E5"/>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Padding" Value="16,14"/><Setter Property="Margin" Value="0,0,0,10"/>
+    </Style>
+    <Style x:Key="CardTitle" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style x:Key="Note" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource Muted}"/><Setter Property="FontSize" Value="12"/><Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style x:Key="Glyph" TargetType="TextBlock">
+      <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="12"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <!-- 글자 링크 — 누르면 파일 · 폴더 · 페이지가 열린다 -->
+    <Style x:Key="Link" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="Foreground" Value="{StaticResource Accent}"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <TextBlock x:Name="T" Text="{TemplateBinding Content}" Background="Transparent"/>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="T" Property="TextDecorations" Value="Underline"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="T" Property="TextDecorations" Value="Underline"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource Muted}"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
+    <!-- 문서 한 장을 여는 알약 — 「알아보기」 줄. Tag 가 그림 글자다 -->
+    <Style x:Key="Pill" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="0,0,6,6"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="B" Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="14" Padding="10,4">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="{TemplateBinding Tag}" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="#005FB8" VerticalAlignment="Center" Margin="0,0,6,0"/>
+              <ContentPresenter VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#005FB8"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#005FB8"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
+    <Style TargetType="CheckBox">
+      <Setter Property="Margin" Value="0,4"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="CheckBox">
+          <!-- 칸 글이 남은 폭 안에서 접히게 DockPanel 로 둔다 — 가로 StackPanel 은 폭을 끝없이 줘 글이 잘린다 -->
+          <DockPanel Background="Transparent">
+            <Border x:Name="Box" DockPanel.Dock="Left" Width="18" Height="18" CornerRadius="4" BorderThickness="1" BorderBrush="#8A8A8A" Background="White" VerticalAlignment="Top" Margin="0,1,0,0">
+              <TextBlock x:Name="Mark" Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="11" Foreground="White"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+            </Border>
+            <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
+          </DockPanel>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Box" Property="Background" Value="#005FB8"/><Setter TargetName="Box" Property="BorderBrush" Value="#005FB8"/>
+              <Setter TargetName="Mark" Property="Visibility" Value="Visible"/>
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="#1B1B1B"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
+    <!-- 도구 칩 — 한 칩이 그 제품의 CLI · 확장 · 데스크탑 앱을 통째로 든다 -->
+    <Style x:Key="Chip" TargetType="ToggleButton">
+      <Setter Property="Margin" Value="0,0,8,8"/><Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="ToggleButton">
+          <Border x:Name="B" CornerRadius="6" BorderThickness="1" BorderBrush="#D1D1D1" Background="White" Padding="12,7">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock x:Name="M" Text="&#xE739;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#8A8A8A" VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <ContentPresenter VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="B" Property="Background" Value="#EAF3FB"/><Setter TargetName="B" Property="BorderBrush" Value="#005FB8"/>
+              <Setter TargetName="M" Property="Text" Value="&#xE73A;"/><Setter TargetName="M" Property="Foreground" Value="#005FB8"/>
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderThickness" Value="2"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.55"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
+    <!-- 접는 머리 — 「자세히 설정」 · 「기록 펼치기」 -->
+    <Style x:Key="Fold" TargetType="ToggleButton">
+      <Setter Property="Cursor" Value="Hand"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="ToggleButton">
+          <DockPanel Background="Transparent">
+            <TextBlock x:Name="A" DockPanel.Dock="Left" Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <ContentPresenter VerticalAlignment="Center"/>
+          </DockPanel>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True"><Setter TargetName="A" Property="Text" Value="&#xE70D;"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
+    <Style x:Key="Primary" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="B" Background="#005FB8" CornerRadius="4" Padding="20,7">
+            <ContentPresenter HorizontalAlignment="Center" TextElement.Foreground="White" TextElement.FontWeight="SemiBold"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="#0A6CC6"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="Background" Value="#004C93"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Background" Value="#9EBFE0"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
+    <Style x:Key="Secondary" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="B" Background="White" BorderBrush="#D1D1D1" BorderThickness="1" CornerRadius="4" Padding="18,6">
+            <ContentPresenter HorizontalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="#F5F5F5"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#1B1B1B"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
+    <!-- 잠긴 칸은 회색 바탕 — 그 자리에서 안 쓰는 칸이 제자리에 남아 있다는 것이 한눈에 보인다(결정 0167 의 한 판) -->
+    <Style TargetType="TextBox"><Setter Property="Padding" Value="6,5"/><Setter Property="BorderBrush" Value="#C8C8C8"/>
+      <Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#F0F0F0"/><Setter Property="BorderBrush" Value="#E0E0E0"/></Trigger></Style.Triggers></Style>
+    <Style TargetType="PasswordBox"><Setter Property="Padding" Value="6,5"/><Setter Property="BorderBrush" Value="#C8C8C8"/>
+      <Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#F0F0F0"/><Setter Property="BorderBrush" Value="#E0E0E0"/></Trigger></Style.Triggers></Style>
+  </Window.Resources>
+
+  <DockPanel>
+    <!-- 아래 띠 — 한 줄이다. 왼쪽은 상태 칸(높이가 박힌 두 줄 · 넘치는 글은 줄임표와 툴팁 · 알림이 없으면 빈다), 오른쪽은 문제가 생겼을 때
+         가는 데(설치기록)와 할 일. 알림이 서고 걷혀도 창의 크기와 칸 자리가 안 바뀐다 -->
+    <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="20,12">
+      <DockPanel Height="36">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="LnkLog" Style="{StaticResource Link}" Content="설치기록" FontSize="12" VerticalAlignment="Center" Margin="12,0,14,0"/>
+          <Button x:Name="BClose" Style="{StaticResource Secondary}" Content="닫기" Margin="0,0,8,0"/>
+          <Button x:Name="BGo" Style="{StaticResource Primary}" Content="설치 시작" IsDefault="True"/>
+        </StackPanel>
+        <TextBlock x:Name="StatusText" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34" VerticalAlignment="Center"/>
+      </DockPanel>
+    </Border>
+
+    <!-- 몸 — 화면보다 길어지면(작은 화면 · 큰 배율에서 「자세히 설정」을 펼친 판) 이 칸만 스크롤하고 아래 띠는 늘 보인다 -->
+    <ScrollViewer x:Name="Scroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+      <StackPanel Margin="20,18,20,8">
+        <!-- 머리 — 이름 · 판 · 자리 배지 · 한 줄 설명 · 「알아보기」 -->
+        <DockPanel>
+          <Border x:Name="SiteBadge" DockPanel.Dock="Right" CornerRadius="10" Padding="10,2" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="SiteDot" Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,6,0"/>
+              <TextBlock x:Name="SiteText" FontSize="12"/>
+            </StackPanel>
+          </Border>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock x:Name="AppTitle" FontSize="20" FontWeight="SemiBold"/>
+            <Border x:Name="VerPill" Background="#E5E5E5" CornerRadius="9" Padding="8,1" Margin="10,4,0,0" VerticalAlignment="Center">
+              <TextBlock x:Name="VerText" FontSize="11" Foreground="{StaticResource Muted}"/>
+            </Border>
+          </StackPanel>
+        </DockPanel>
+        <TextBlock Text="고른 도구의 CLI 와 데스크탑 앱을, 원하면 VS Code 와 확장까지 세웁니다." Style="{StaticResource Note}" FontSize="13" Margin="0,4,0,10"/>
+        <WrapPanel Margin="0,0,0,8">
+          <TextBlock Text="알아보기" Style="{StaticResource Note}" VerticalAlignment="Center" Margin="0,0,10,6"/>
+          <Button x:Name="LnkFeat" Style="{StaticResource Pill}" Tag="&#xE71D;" Content="제공기능"/>
+          <Button x:Name="LnkFlow" Style="{StaticResource Pill}" Tag="&#xE8AB;" Content="설치흐름"/>
+          <Button x:Name="LnkNews" Style="{StaticResource Pill}" Tag="&#xE81C;" Content="바뀐 것"/>
+          <Button x:Name="LnkHome" Style="{StaticResource Pill}" Tag="&#xE8B7;" Content="사내환경문서"/>
+        </WrapPanel>
+
+        <!-- 설치하는 중 — [설치 시작] 뒤에 선다. 도는 동안 아래 칸들은 접히고, 끝나면 판정을 든 채 남고 칸들이 다시 선다 -->
+        <Border x:Name="RunCard" Style="{StaticResource Card}" Visibility="Collapsed">
+          <StackPanel>
+            <TextBlock x:Name="RunTitle" Text="설치하는 중" Style="{StaticResource CardTitle}" Margin="0,0,0,8"/>
+            <ProgressBar x:Name="Bar" Height="6" Minimum="0" Maximum="100" Foreground="#005FB8" Background="#E5E5E5" BorderThickness="0"/>
+            <TextBlock x:Name="State" TextWrapping="Wrap" Margin="0,8,0,10"/>
+            <ToggleButton x:Name="LogFold" Style="{StaticResource Fold}">
+              <DockPanel>
+                <TextBlock Text="큰 기록 창이 뒤에 같이 뜹니다" Style="{StaticResource Note}" DockPanel.Dock="Right" VerticalAlignment="Center"/>
+                <TextBlock Text="기록 펼치기" Foreground="{StaticResource Accent}"/>
+              </DockPanel>
+            </ToggleButton>
+            <TextBox x:Name="Log" Visibility="Collapsed" Margin="0,8,0,0" Height="200" IsReadOnly="True" TextWrapping="NoWrap"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                     Background="#1E1E1E" Foreground="#DCDCDC" BorderThickness="0" Padding="8,6" FontFamily="Consolas" FontSize="12"/>
+          </StackPanel>
+        </Border>
+
+        <!-- 연결 — 게이트웨이 · 키(사내) · 내 저장소 주소 -->
+        <Border x:Name="ConnCard" Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="연결" Style="{StaticResource CardTitle}" Margin="0,0,0,8"/>
+            <Grid x:Name="KeyGrid">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+              <TextBlock x:Name="GwLabel" Text="주소" Style="{StaticResource Note}" FontSize="13" VerticalAlignment="Center" Margin="0,0,0,8" Visibility="Collapsed"/>
+              <TextBox x:Name="GwBox" Grid.Column="1" Margin="0,0,0,8" Visibility="Collapsed"/>
+              <TextBlock Grid.Row="1" Text="API 키" Style="{StaticResource Note}" FontSize="13" VerticalAlignment="Center"/>
+              <PasswordBox x:Name="KeyBox" Grid.Row="1" Grid.Column="1"/>
+              <TextBlock x:Name="KeyHint" Grid.Row="2" Grid.Column="1" Style="{StaticResource Note}" Margin="0,6,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+            </Grid>
+            <DockPanel Margin="0,14,0,4">
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="LnkRepo" Style="{StaticResource Link}" Content="받는자리" FontSize="12"/>
+                <TextBlock Text="  ·  " Style="{StaticResource Note}"/>
+                <Button x:Name="LnkHowto" Style="{StaticResource Link}" Content="설정저장소 만드는 법" FontSize="12"/>
+              </StackPanel>
+              <TextBlock x:Name="RepoLabel" Text="내 저장소 받기"/>
+              <TextBlock Text="  · 비워 두는 것이 기본입니다" Style="{StaticResource Note}" VerticalAlignment="Center"/>
+            </DockPanel>
+            <TextBox x:Name="RepoBox"/>
+            <TextBlock x:Name="RepoNote" Style="{StaticResource Note}" Margin="0,4,0,0" Text="저장소 페이지 주소를 붙여 넣습니다. 여러 개면 빈칸으로 띄웁니다."/>
+          </StackPanel>
+        </Border>
+
+        <!-- 설치할 도구 -->
+        <Border x:Name="ToolsCard" Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="설치할 도구" Style="{StaticResource CardTitle}" Margin="0,0,0,8"/>
+            <!-- 두 칸 고정 판 — 글자 폭(배지 · 긴 이름)이 줄바꿈을 정하면 자리마다 줄 수가 달라진다(결정 0167 의 한 판) -->
+            <UniformGrid x:Name="AppChips" Columns="2"/>
+            <TextBlock x:Name="AppNote" Style="{StaticResource Note}"/>
+            <CheckBox x:Name="VscBox" Margin="0,10,0,0">
+              <TextBlock TextWrapping="Wrap"><Run Text="VS Code 와 켠 것의 확장도 깝니다"/><Run x:Name="VscWhy" Foreground="#5F5F5F" FontSize="12"/></TextBlock>
+            </CheckBox>
+          </StackPanel>
+        </Border>
+
+        <!-- 자세히 설정 — 기본값이 맞는 손잡이들. 접혀도 머리에 지금 값을 한 줄로 보인다 -->
+        <Border x:Name="AdvCard" Style="{StaticResource Card}" Padding="16,10">
+          <StackPanel>
+            <ToggleButton x:Name="AdvFold" Style="{StaticResource Fold}">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                <TextBlock Text="자세히 설정" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="AdvSummary" Grid.Column="1" Style="{StaticResource Note}" VerticalAlignment="Center" TextAlignment="Right" Margin="12,0,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+              </Grid>
+            </ToggleButton>
+            <StackPanel x:Name="AdvBody" Visibility="Collapsed" Margin="21,10,0,4">
+              <CheckBox x:Name="AutoBox">
+                <TextBlock TextWrapping="Wrap" Text="로그온할 때와 밤마다 깔린 것을 최신으로 올리고 환경을 맞춥니다 (하루 한 번)"/>
+              </CheckBox>
+              <CheckBox x:Name="UpgBox">
+                <TextBlock TextWrapping="Wrap"><Run Text="이미 깔린 것도 최신으로 올립니다"/><Run x:Name="UpgWhy" Foreground="#5F5F5F" FontSize="12"/></TextBlock>
+              </CheckBox>
+              <TextBlock x:Name="CfgLabel" Text="규범 · 룰 · 스킬을 받을 도구" Margin="0,12,0,2"/>
+              <TextBlock x:Name="CfgSource" Style="{StaticResource Note}" Margin="0,0,0,2" Height="32" TextTrimming="CharacterEllipsis"><Run x:Name="CfgSourceText"/><Run Text="  "/><Hyperlink x:Name="LnkCfgDoc" Foreground="#005FB8" TextDecorations="{x:Null}" FontWeight="SemiBold" Cursor="Hand"><Run Text="?"/></Hyperlink></TextBlock>
+              <WrapPanel x:Name="PersPanel"/>
+              <!-- 늘 서는 한 줄 알림 칸(결정 0167 의 박힌 자리) -->
+              <TextBlock x:Name="CfgTested" Style="{StaticResource Note}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                         Text="Claude 에 최적화되어 있습니다 — Codex · agy 에서도 받아 씁니다"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>
+'@
+$F = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $ScreenXaml))
+function Get-El([string]$Name) { $F.FindName($Name) }
+# 색 — 판정 글과 배지가 쓴다
+$Brush = @{}
+foreach ($kv in @{ Ok = '#0F7B0F'; Bad = '#A4262C'; Warn = '#9D5D00'; Muted = '#5F5F5F'; Ink = '#1B1B1B'
+                   OkBg = '#DFF6DD'; BadBg = '#FDE7E9'; GreyBg = '#EBEBEB'; OkInk = '#0F5A0F'; Grey = '#8A8A8A' }.GetEnumerator()) {
+  $Brush[$kv.Key] = (New-Object Windows.Media.BrushConverter).ConvertFromString($kv.Value)
+}
+
+# ── 칸의 낱말 — **설치 로직이 쓰는 이름은 도구를 안 탄다** ─────────────────────────
+# `Add-FormFace <칸>` — 칸에 `Enabled` · `Checked`(켜고 끄는 칸) · `Text`(가린 키 칸 · 단추) 를 그 칸의 WPF 이름(`IsEnabled` ·
+#   `IsChecked` · `Password` · `Content`)으로 잇는다. 내는 것 없음.
+# ⚠ **[설치 시작]이 넘길 값을 모으는 문장 · 칸의 첫 상태를 짓는 문장은 이 낱말로 쓴다.** 그 문장들은 회차 기록 · 자리 · 자동 실행
+#   검사(claude-config `check-dist-records` · `-site` · `-stall-guard`)가 이 파일에서 떼어 같은 낱말의 대역 칸 위에 돌린다 — WPF 이름을
+#   그대로 쓰면 검사의 대역과 창이 다른 말을 해, 검사가 초록이어도 창이 무엇을 넘기는지는 아무도 안 잰 것이 된다.
+function Add-FormFace($El) {
+  Add-Member -InputObject $El -MemberType ScriptProperty -Name Enabled -Force `
+    -Value { [bool]$this.IsEnabled } -SecondValue { param($v) $this.IsEnabled = [bool]$v }
+  if ($El -is [Windows.Controls.Primitives.ToggleButton]) {
+    Add-Member -InputObject $El -MemberType ScriptProperty -Name Checked -Force `
+      -Value { [bool]$this.IsChecked } -SecondValue { param($v) $this.IsChecked = [bool]$v }
+  }
+  if ($El -is [Windows.Controls.PasswordBox]) {
+    Add-Member -InputObject $El -MemberType ScriptProperty -Name Text -Force `
+      -Value { [string]$this.Password } -SecondValue { param($v) $this.Password = [string]$v }
+  }
+  if ($El -is [Windows.Controls.Button]) {
+    Add-Member -InputObject $El -MemberType ScriptProperty -Name Text -Force `
+      -Value { [string]$this.Content } -SecondValue { param($v) $this.Content = [string]$v }
+  }
+}
+
+# 제목이 판을 든다 — 사람이 「내가 몇 판을 들고 있나」를 볼 자리다(제목줄 · 머리의 알약).
+$F.Title = if ($DistVersion) { "$AppName — $DistVersion" } else { $AppName }
+(Get-El 'AppTitle').Text = $AppName
+if ($DistVersion) { (Get-El 'VerText').Text = $DistVersion } else { (Get-El 'VerPill').Visibility = 'Collapsed' }
+# 제목줄과 작업표시줄의 얼굴 — 없으면 파워셸 아이콘이 서서 「이게 무슨 창인가」를 한 번 더 묻게 한다. 파일이 없거나 못 읽으면 그냥
+#   간다 — 그림 한 장 때문에 설치를 막지 않는다.
 $IconPath = Join-Path $Here 'setup-icon.ico'
 if (Test-Path -LiteralPath $IconPath) {
-  try { $F.Icon = New-Object Drawing.Icon($IconPath) } catch { }
+  try { $F.Icon = [Windows.Media.Imaging.BitmapFrame]::Create((New-Object Uri $IconPath)) } catch { }
 }
-$F.Size = New-Object Drawing.Size(640, (710 + $appRow + $optExtra))
-$F.StartPosition = 'CenterScreen'
-$F.FormBorderStyle = 'FixedDialog'
-$F.MaximizeBox = $false
-# ⚠ **글꼴은 픽셀로 박는다(12 px = 100 % 화면의 9 pt).** 칸 자리 · 크기가 100 % 화면의 픽셀로 적혀 있어, pt 글꼴이면 화면
-#   배율만큼 커져 배율 125 % 화면에서 긴 글이 옆 칸을 덮고 줄끝이 잘린다(PAISetup #39). 그런 화면에서는 이 창의 글자가 다른
-#   앱보다 조금 작다. 폼의 자동 배율(`AutoScaleMode`)로 칸까지 늘리면 창이 1080p 화면보다 길어져 아래 단추가 잘린다.
-$F.Font = New-Object Drawing.Font('Malgun Gothic', 12, [Drawing.GraphicsUnit]::Pixel)
-
-function New-Label($text, $x, $y, $w, $bold) {
-  $l = New-Object Windows.Forms.Label
-  $l.Text = $text; $l.Location = New-Object Drawing.Point($x, $y)
-  $l.Size = New-Object Drawing.Size($w, 20); $l.AutoSize = $false
-  if ($bold) { $l.Font = New-Object Drawing.Font($F.Font, [Drawing.FontStyle]::Bold) }
-  $F.Controls.Add($l); return $l
-}
-
-# 첫 줄은 자리를 안 가른다 — 고른 것은 어디서나 선다(결정 0045). 자리가 가르는 것(회사 키로 붙나 각자 로그인인가)은 아래
-#   키 칸의 안내가 든다. 한 줄 칸이라 글을 더 붙이면 넘친다.
-$lTop = New-Label '고른 도구의 CLI 와 데스크탑 앱을, 원하면 VS Code 와 확장까지 세웁니다.' 18 14 560 $true
+# 창은 화면의 일하는 자리보다 길어지지 않는다 — 넘치면 몸만 스크롤하고 아래 띠(단추)는 늘 보인다. 「자세히 설정」을 펼쳐 창이 자라
+#   아래로 넘치면 위로 올린다. 값은 WPF 단위(1/96 인치)라 배율을 따로 셈하지 않는다.
+$F.MaxHeight = [Windows.SystemParameters]::WorkArea.Height
+$F.Add_SizeChanged({
+  $wa = [Windows.SystemParameters]::WorkArea
+  if ($F.Top + $F.ActualHeight -gt $wa.Bottom) { $F.Top = [Math]::Max($wa.Top, $wa.Bottom - $F.ActualHeight) }
+})
 
 # ── 값 ──────────────────────────────────────────────────────────────────────────
 # 주소는 사람이 넣을 것이 아니다 — 회사 안에서 모두 같은 값이라 입력칸으로 두면 저마다 다르게 칠 자리를 연다(한 글자만
@@ -297,51 +615,31 @@ $urlPreset = [string]$Preset['ANTHROPIC_BASE_URL']
 #   것을 넣으라는 꼴이고, 넣으면 안 닿는 곳을 가리킨 채 「설정됐다」로 보인다. 자리는 위 `-Describe` 가 준 것이다(몸통의 `Measure-Site`).
 #   자리를 못 정한 판은 사외가 아니다 — 칸은 사내 꼴로 서고 설치는 안 받는다(아래 「자리를 못 정한 판」).
 $offsite = ($Site -eq 'outside')
-$gV = New-Object Windows.Forms.GroupBox
 $noAsk = $offsite
-# 키 칸은 자리마다 줄 수가 다르다 — 사외는 「사외입니다」 한 줄, 사내는 주소 · 키 · 안내 셋이고 둘 다 아래에 링크 줄이 붙는다.
-#   줄인 만큼(`$gvCut`)은 아래 칸들을 당기고 로그 창이 받는다 — 창 높이와 단추 자리는 그대로다.
-# ⚠ **`$gvTopBase` · `$gvHBase` 는 아래 자리 수(190 · 278 · 388 · 410 · 432)가 전제한 꼭대기와 높이다.** 키 칸을 옮기거나
-#   늘릴 때는 `$gvTop` · `$gvH` 를 고친다 — 당김이 그 둘과의 차이로 파생되므로 자리 수는 안 만진다. 기준 둘을 고치면 아래 칸들이
-#   화면에서만 보이게 어긋난다.
-$gvTopBase = 62
-$gvHBase   = 124
-# 첫 줄(34 에서 끝난다) 바로 아래.
-$gvTop = 44
-$gvH   = if ($noAsk) { 84 } else { 138 }   # 사외는 한 줄 + 링크 · 사내는 주소·키·안내 + 링크
-$gvCut = ($gvTopBase - $gvTop) + ($gvHBase - $gvH)
-$gV.Text = if ($noAsk) { '키와 주소' } elseif ($urlPreset) { 'API 키' } else { '게이트웨이 (사내만)' }
-$gV.Location = New-Object Drawing.Point(16, $gvTop)
-$gV.Size = New-Object Drawing.Size(592, $gvH)
-$F.Controls.Add($gV)
 
-$lUrl = New-Object Windows.Forms.Label
-$lUrl.Text = '게이트웨이'; $lUrl.Location = New-Object Drawing.Point(14, 28)
-$lUrl.Size = New-Object Drawing.Size(110, 20); $gV.Controls.Add($lUrl)
-
-if ($noAsk) {
-  $vUrl = New-Object Windows.Forms.Label
-  $vUrl.Text = "사외입니다 ($probe 안 닿음) — 개인 구독으로 씁니다"
-  $vUrl.Location = New-Object Drawing.Point(128, 28)
-  $vUrl.Size = New-Object Drawing.Size(444, 20)
-  $vUrl.ForeColor = [Drawing.Color]::DimGray
-  $gV.Controls.Add($vUrl)
-  $tUrl = $null
-} elseif ($urlPreset) {
-  $vUrl = New-Object Windows.Forms.Label
-  $vUrl.Text = $urlPreset
-  $vUrl.Location = New-Object Drawing.Point(128, 28)
-  $vUrl.Size = New-Object Drawing.Size(444, 20)
-  $vUrl.ForeColor = [Drawing.Color]::DimGray
-  $gV.Controls.Add($vUrl)
-  $tUrl = $null
+# ⚠ **판은 하나다 — 자리가 칸을 세우거나 걷지 않는다**(claude-config 결정 0167). 자리가 가르는 칸은 제자리에 둔 채 잠그고 짧은
+#   까닭을 단다. 자리를 말하는 것은 머리의 배지 하나다 — 칸 안에서 자리 · 주소를 다시 말하지 않는다(주소는 창 어디에도 안 띄운다).
+# 머리의 자리 배지 — 몸통이 잰 판정을 그대로 보인다.
+$siteBadge = Get-El 'SiteBadge'; $siteDot = Get-El 'SiteDot'; $siteText = Get-El 'SiteText'
+if ($Site -eq 'inside') {
+  $siteBadge.Background = $Brush.OkBg; $siteDot.Fill = $Brush.Ok; $siteText.Foreground = $Brush.OkInk
+  $siteText.Text = '사내 — 회사 게이트웨이로 붙습니다'
+} elseif ($offsite) {
+  $siteBadge.Background = $Brush.GreyBg; $siteDot.Fill = $Brush.Grey; $siteText.Foreground = $Brush.Muted
+  $siteText.Text = '사외 — 개인 구독으로 씁니다'
 } else {
-  $tUrl = New-Object Windows.Forms.TextBox
-  $tUrl.Location = New-Object Drawing.Point(128, 25)
-  $tUrl.Size = New-Object Drawing.Size(444, 24)
-  # 짐이 주소를 안 들 때 지난번에 친 주소(몸통의 기록)를 넣어 둔다 — 키 칸이 이 기계에 심긴 키를 넣어 두는 것과 같은 결이다.
-  $tUrl.Text = $Saved.GatewayUrl
-  $gV.Controls.Add($tUrl)
+  $siteBadge.Background = $Brush.BadBg; $siteDot.Fill = $Brush.Bad; $siteText.Foreground = $Brush.Bad
+  $siteText.Text = '자리를 못 정했습니다'
+}
+
+# 주소 칸은 짐이 주소를 안 들 때만 선다 — 자리가 아니라 짐이 가른다(사내 · 사외가 같은 판이다). 짐이 들면 보여 주지도 않는다 — 그
+#   값은 이 PC 의 로컬 프록시 자리라 사람이 볼 까닭이 없다. 안 들 때 지난번에 친 주소(몸통의 기록)를 넣어 둔다 — 키 칸이 이 기계에
+#   심긴 키를 넣어 두는 것과 같은 결이다. 사외는 칸을 잠그고 비운다(아래 키 칸과 같다).
+$tUrl = $null
+if (-not $urlPreset) {
+  $gwBox = Get-El 'GwBox'
+  (Get-El 'GwLabel').Visibility = 'Visible'; $gwBox.Visibility = 'Visible'
+  if ($noAsk) { $gwBox.IsEnabled = $false } else { $tUrl = $gwBox; $tUrl.Text = $Saved.GatewayUrl }
 }
 
 $tKey = $null
@@ -354,78 +652,161 @@ if (-not $defaultKey) {
   $defaultKey = [Environment]::GetEnvironmentVariable('ANTHROPIC_AUTH_TOKEN', 'User')
   if (-not $defaultKey) { $defaultKey = $env:ANTHROPIC_AUTH_TOKEN }
 }
-
-if (-not $noAsk) {
-  $lKey = New-Object Windows.Forms.Label
-  $lKey.Text = 'API 키'; $lKey.Location = New-Object Drawing.Point(14, 60)
-  $lKey.Size = New-Object Drawing.Size(110, 20); $gV.Controls.Add($lKey)
-  $tKey = New-Object Windows.Forms.TextBox
-  $tKey.Location = New-Object Drawing.Point(128, 57)
-  $tKey.Size = New-Object Drawing.Size(444, 24)
-  $tKey.UseSystemPasswordChar = $true
+# 키 칸은 어느 자리에서나 선다 — 사외는 잠그고 비운 채 짧은 까닭만 단다(자리를 다시 말하지 않는다 · 그 말은 배지가 든다).
+$keyHint = Get-El 'KeyHint'
+if ($noAsk) {
+  (Get-El 'KeyBox').IsEnabled = $false
+  $keyHint.Text = '사외에서는 안 씁니다'
+} else {
+  $tKey = Get-El 'KeyBox'
+  Add-FormFace $tKey
   $tKey.Text = [string]$defaultKey
-  $gV.Controls.Add($tKey)
-}
-
-# 안내 줄은 사내에서만 세운다 — 사외에서는 넣을 것이 없고(게이트웨이를 안 타고 제 구독으로 선다), 그 말은 위 「사외입니다」
-#   한 줄이 한다.
-if (-not $offsite) {
-  $lHint = New-Object Windows.Forms.Label
-  $lHint.Location = New-Object Drawing.Point(128, 86)
-  $lHint.Size = New-Object Drawing.Size(444, 18)
-  $lHint.ForeColor = [Drawing.Color]::DimGray
-  # 「채워져 있다」는 둘 다 찼을 때만 하는 말이다 — 주소 칸이 빈 채로 「바로 누르면 된다」고 하면, 누른 사람은 [설치 시작]의
+  # 「채워져 있다」는 둘 다 찼을 때만 하는 말이다 — 주소가 빈 채로 「바로 누르면 된다」고 하면, 누른 사람은 [설치 시작]의
   #   「둘 다 넣거나 둘 다 비워야」에 막혀 안내가 거짓이 된다. 맡겨 둔 회사 키(`$KeySaved`)가 있으면 키 칸이 비어도 그 막음이 안 선다.
+  #   짐이 주소를 들면 주소 칸이 없으니 주소를 말하지 않는다.
   $urlShown = if ($urlPreset) { $urlPreset } else { $Saved.GatewayUrl }
-  $lHint.Text = if ($defaultKey -and $urlShown) { '주소와 API 키가 채워져 있습니다 — 바로 [설치 시작]을 누르면 됩니다.' }
-                elseif ($KeySaved -and $urlShown) { '키를 비워 두면 이 PC 에 맡겨 둔 회사 키를 씁니다 — 바로 누르면 됩니다.' }
-                elseif ($urlShown)   { '주소는 채워져 있습니다 — API 키만 넣으면 됩니다.' }
-                elseif ($defaultKey) { 'API 키는 이 기계에 있던 것을 넣었습니다 — 사내면 주소를 넣습니다.' }
-                elseif ($KeySaved)   { '사내면 주소를 넣습니다 — 키는 이 PC 에 맡겨 둔 것을 씁니다.' }
-                else                 { '사내면 주소와 키를 넣습니다.' }
-  $gV.Controls.Add($lHint)
+  $keyHint.Text = if ($defaultKey -and $urlPreset) { 'API 키가 채워져 있습니다 — 바로 [설치 시작]을 누르면 됩니다.' }
+                  elseif ($defaultKey -and $urlShown) { '주소와 API 키가 채워져 있습니다 — 바로 [설치 시작]을 누르면 됩니다.' }
+                  elseif ($KeySaved -and $urlShown) { '키를 비워 두면 이 PC 에 맡겨 둔 회사 키를 씁니다 — 바로 누르면 됩니다.' }
+                  elseif ($urlPreset)  { 'API 키를 넣습니다.' }
+                  elseif ($urlShown)   { '주소는 채워져 있습니다 — API 키만 넣으면 됩니다.' }
+                  elseif ($defaultKey) { 'API 키는 이 기계에 있던 것을 넣었습니다 — 사내면 주소를 넣습니다.' }
+                  elseif ($KeySaved)   { '사내면 주소를 넣습니다 — 키는 이 PC 에 맡겨 둔 것을 씁니다.' }
+                  else                 { '사내면 주소와 키를 넣습니다.' }
+}
+$keyHint.ToolTip = $keyHint.Text   # 한 줄 칸이라 잘린 글의 전문
+
+# ── 내 저장소 주소 (선택) — 「연결」 칸 ─────────────────────────────────────────
+# 이 칸이 드는 일은 저장소를 「받아 둔다」 하나다 — 훅을 든 설정 저장소를 전제로 이름 짓지 않는다. 보통 사람은 그런 저장소가
+#   없고, 이름이 전제를 깔면 안 맞는 사람이 「나는 못 쓰는 칸」으로 읽고 지나친다.
+# 넣어도 위 키 칸은 그대로 산다 — 설치는 자리만 보고 전부 세우고 저장소는 그 뒤에 받는다. 받은 뿌리에 SessionStart 훅
+#   (`.claude/hooks/session-start.sh`)이 있으면 `--install` 로 불러 사람에게 딸린 것을 잇게 하고, 없으면 받아 둔 것으로 끝난다.
+# 여럿은 빈칸으로 가른다 — 주소에는 빈칸이 없다. 배포본에는 이 값이 안 실려 온다 — 남에게 갈 파일에 내 저장소 주소를 박지 않는다.
+# 글에 「git 주소」 · 「GitHub 주소」라 적지 않는다 — 설치는 `git clone` 을 그대로 불러 사내 GitLab 같은 주소도 받으므로
+#   「GitHub」는 코드보다 좁고, `git` 은 도구 이름이라 사람이 제 주소가 그건지 못 가른다. 사람이 하는 일(저장소 페이지 주소를
+#   붙여 넣기)을 적는다.
+$tRepo = Get-El 'RepoBox'
+# ⚠ **지난번에 넣은 주소(몸통의 기록)로 채운다 — 기록이 없을 때만 옆에 온 값 파일을 본다.** 키 칸이 환경변수로 되돌아가는 것과
+#   같은 결이다. 이 주소는 배포본에 안 실려 와 한 번 넣은 사람에게만 있다. 칸이 비어 뜨고 그대로 누르면 **그 판은 저장소를 안
+#   본다** — `config-repo` 는 화면이 적는 이름이라(아래 [설치 시작]) 빈 칸이 곧 「저장소 없음」이고, 몸통은 그것을 다음 회차의 기록으로 남긴다.
+$tRepo.Text = if ($null -ne $Saved.Repo) { [string]$Saved.Repo } else { [string](Read-Directive $EnvPath 'config-repo') }
+
+# ── 옵션 칸 ─────────────────────────────────────────────────────────────────────
+# 제품 칸의 글자도 기본값도 몸통이 준 것을 그대로 쓴다 — 여기서 다시 지으면 두 벌이 된다. 한 칸이 그 제품의 CLI · 확장 ·
+# 데스크탑 앱을 통째로 든다 — 확장은 아래 VS Code 칸까지 켜야 선다. **뺀 것은 아무 데도 안 깔린다.** 이 자리에서 안 내놓는 제품
+# (사내의 Copilot)은 몸통이 줄을 안 내 칸이 안 선다.
+$cApps = @()
+$cVsc  = $null
+$chips = Get-El 'AppChips'
+if ($Choices.Count) {
+  foreach ($choice in $Choices) {
+    $c = New-Object Windows.Controls.Primitives.ToggleButton
+    $c.Style = $F.FindResource('Chip')
+    $c.Content = $choice.Label
+    $c.Tag = $choice.Key
+    Add-FormFace $c
+    $c.Checked = if ($null -ne $Saved.Pick) { $Saved.Pick -contains $choice.Key } else { [bool]$choice.On }
+    # 이 자리에서 안 내놓는 제품 — 칸은 제자리에 두고 잠그며 「사내 지원 전」 배지를 단다. 고른 기록은 그대로 보이고 그대로 넘어간다 —
+    #   몸통이 이 자리에서는 안 깔고 기록은 둔다(`$PickHeld`). 사람이 여기서 못 바꾸는 것은 지금까지와 같다.
+    if ($NotHere[$choice.Key]) {
+      $c.Enabled = $false
+      $face = New-Object Windows.Controls.StackPanel; $face.Orientation = 'Horizontal'
+      $name = New-Object Windows.Controls.TextBlock; $name.Text = $choice.Label; $name.VerticalAlignment = 'Center'
+      $badge = New-Object Windows.Controls.Border; $badge.Background = $Brush.GreyBg; $badge.CornerRadius = New-Object Windows.CornerRadius(8)
+      $badge.Padding = New-Object Windows.Thickness(6, 0, 6, 1); $badge.Margin = New-Object Windows.Thickness(8, 0, 0, 0)
+      $badgeText = New-Object Windows.Controls.TextBlock; $badgeText.Text = '사내 지원 전'; $badgeText.FontSize = 11; $badgeText.Foreground = $Brush.Muted
+      $badge.Child = $badgeText
+      [void]$face.Children.Add($name); [void]$face.Children.Add($badge)
+      $c.Content = $face
+      $c.ToolTip = '이 자리에서는 안 깝니다 — 고른 기록은 그대로 둡니다.'
+      [Windows.Controls.ToolTipService]::SetShowOnDisabled($c, $true)
+    }
+    [void]$chips.Children.Add($c)
+    $cApps += ,$c
+  }
+
+  # 제품 칸이 까는 것은 바로 그 줄 아래 적는다 — 확장은 빼고. 확장은 VS Code 칸이 켜졌을 때만 깔리므로 그 칸의 글이 든다.
+  #   이 줄이 VS Code 칸 아래 서면 그 칸의 설명으로 읽혀 「VS Code 를 켜면 CLI · 데스크탑 앱이 깔린다」로 보인다.
+  # 고르기는 자리를 안 가리는데 깔기는 가린다(데스크탑 앱을 사외에서만 까는 행) — 안 적으면 사내에서 켜 놓고 「왜 안 깔렸지」가 된다.
+  # 글은 몸통이 행마다 낸 답(`-Describe` 의 `app|키|yes·outside·no` — 몸통의 `Test-DesktopAppHere`)에서 짓는다 — 짐의 `#desktop-app`
+  #   과 행의 `When` 을 창이 따로 풀면 사내에서도 깔리는 행에 「사외에서만」이라 적는다(PAISetup #46 ⑤).
+  # 이 자리에서 안 내놓는 제품은 세지 않는다 — 그 칸은 잠겨 아무것도 안 깔린다.
+  $appYes = @($Choices | Where-Object { -not $NotHere[$_.Key] -and $AppHere[$_.Key] -eq 'yes' })
+  $appOut = @($Choices | Where-Object { -not $NotHere[$_.Key] -and $AppHere[$_.Key] -eq 'outside' })
+  (Get-El 'AppNote').Text = if (-not $appYes.Count -and -not $appOut.Count) {
+    '켠 것의 CLI 가 깔립니다.'
+  } elseif (-not $appOut.Count) {
+    '켠 것의 CLI · 데스크탑 앱이 깔립니다.'
+  } elseif (-not $appYes.Count) {
+    '켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 깔립니다.'
+  } else {
+    "켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 ($(@($appYes | ForEach-Object { $_.Label }) -join ' · ') 만 여기서도)"
+  }
+
+  # 필수인 자리(사내)는 켠 채로 잠근다 — 몸통이 칸과 상관없이 깐다(`-Describe` 의 `vscode|required` · 몸통의 `Test-VsCodeRequired`).
+  #   글에 「필수」라 적었으니 못 꺼야 그 글이 참이다. 잠근 칸은 사람의 값을 안 바꾼다 — [설치 시작]은 지난번에 고른 것을 그대로 넘겨
+  #   기록이 사외에서 다시 선다.
+  # 필수가 아닌 자리의 기본은 끔이다 — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다. 지난번에 고른 것(`$Saved`)이 있으면
+  #   그것을 따른다.
+  $cVsc = Get-El 'VscBox'
+  Add-FormFace $cVsc
+  (Get-El 'VscWhy').Text = if ($VsRequired) { '  · 사내는 필수' } elseif ($offsite) { '  · 사외는 선택' } else { '  · 사내는 필수, 사외는 선택' }
+  $cVsc.Checked = if ($VsRequired) { $true } elseif ($null -ne $Saved.NoVsCode) { -not $Saved.NoVsCode } else { $false }
+  $cVsc.Enabled = -not $VsRequired
+} else {
+  (Get-El 'ToolsCard').Visibility = 'Collapsed'
 }
 
-# 옵션
-$gO = New-Object Windows.Forms.GroupBox
-$gO.Text = '옵션'; $gO.Location = New-Object Drawing.Point(16, (190 - $gvCut))
-$gO.Size = New-Object Drawing.Size(592, (76 + $appRow + $optExtra))
-$F.Controls.Add($gO)
+# 로그온할 때 · 밤마다 자동 실행 — 작업 스케줄러가 로그온 때와 매일 새벽 설치 몸통을 다시 돌려(작업 이름은 몸통의
+#   `$AutoRunTaskName` · `$AutoRunNightTaskName`) 깔린 것을 최신으로 올리고 환경을 다시 맞춘다 — 하루 한 번. 설치본 자신도 `#update-repo` 의 최신 릴리스를
+#   받아 지문을 대조한 뒤 그 판으로 간다(몸통의 「부팅 시 자동 실행」 칸).
+# 글에 「백그라운드」라고 적지 않는다 — 로그온 회차가 설치를 실제로 하면 작은 진행 창이 떠서 도는 것이 보인다.
+# 칸의 첫 상태는 몸통이 깃발 없는 판에 내릴 답이다(`-Describe` 의 `autorun|on·off` — 몸통의 `Get-AutoRunDefault`) — 작업이 서
+#   있나 · 짐의 `#autorun` · 사람이 끈 기록을 창이 따로 읽어 규칙을 다시 지으면 지시가 `no` 인 판에서 창은 켠 채 뜨고 로그온 회차는
+#   걷는다(PAISetup #46 ③). 몸통에 못 물은 판은 꺼진 채 뜬다 — 그 판은 설치를 안 받는다.
+$cAuto = Get-El 'AutoBox'
+Add-FormFace $cAuto
+$cAuto.Checked = $AutoRunOn
 
-# 제작자 칸 — **도구마다 고른다**(결정 0099). Claude 만 규범을 받고 Codex · agy 는 가볍게 쓰는 사람이 있다. 고른 것은
-#   몸통이 사용자 환경변수 `PAISETUP_PERSONAL` 로 심어 설정 저장소의 배포 · 세션 훅도 같은 값을 따른다.
-# 설정 저장소를 넣어도 이 칸이 스위치다(결정 0107) — 무엇이 가나만 바뀐다: 저장소가 없으면 만든 사람의 꾸러미, 있으면 그
-#   저장소의 규범 · 룰 · 스킬. 몸통은 늘 꾸러미로 표준 층을 채우고 저장소의 것이 개인 층에서 이긴다 — 규범 · 룰은 항목마다,
-#   스킬은 스킬 하나마다(claude-config 결정 0112). 칸 앞 글자가 그것을 따라 바뀐다(`Sync-PersonalLabel`).
-# ⚠ **자리는 앱 줄만큼 민다(`$appRow`).** 고정 수로 박으면 앱 줄이 없는 판(`-Describe` 가 제품을 한 줄도 안 낸 자리)에서
-#   칸 높이 밖으로 나가, 이 칸이 통째로 안 보인 채 기본값으로 돈다.
+# 이미 깔린 것도 올리는 칸(기본 켬) — 집 · 회사 PC 처럼 프로필이 남는 기계는 프로그램이 이미 다 있어, 「있으면 건너뛴다」만
+#   두면 판이 영영 안 올라간다. 비영속 VDI 는 늘 맨바닥이라 이 칸이 안 걸린다.
+# 괄호는 이 칸이 못 막는 하나다 — 몸통의 `-NoUpgrade` 칸별 설명과 같은 말이고, 판은 몸통의 `$VcRuntimeMin` 을 `-Describe` 로 받는다.
+$cUpg = Get-El 'UpgBox'
+Add-FormFace $cUpg
+if ($VcRuntimeMin) { (Get-El 'UpgWhy').Text = "  · 꺼도 VC++ 런타임은 $VcRuntimeMin 아래면 올립니다" }
+$cUpg.Checked = -not $NoUpgrade
+
+# 제작자 칸 — **도구마다 고른다**(결정 0099). 칸 이름은 하는 일(「규범 · 룰 · 스킬을 받을 도구」)로 박고, 무엇이 가나(출처)는 칸
+#   바로 아래 한 줄이 저장소 칸을 따라 말한다(`Sync-PersonalSource`) — 같은 칸이 저장소 주소 하나로 뜻이 바뀌는데(결정 0107: 비면
+#   설치 묶음의 제작자 세트, 차면 설치 끝에 그 저장소의 배포가 고른 도구 홈에 푼다) 그것이 화면에 안 보이면 숨은 설정이 된다(#53).
+#   고른 것은 몸통이 사용자 환경변수 `PAISETUP_PERSONAL` 로 심어 설정 저장소의 배포 · 세션 훅도 같은 값을 따른다.
+# **첫 상태 — 기록이 있으면 기록, 없으면 Claude 만 켠다**(#52 마감). Claude 가 주로 일하는 도구라 처음 온 사람도 규율을 받고,
+#   가끔 맡기는 도구(Codex · agy)는 부를 때 가볍게 둔다. 다 끈 기록(`personal=none`)도 기록이다 — 기록이 없는 것과 가른다.
 # 제품 칸에서 안 고른 도구는 끈다 — 깔 홈이 없다. 꺼진 칸은 켜져 있어도 넘기지 않는다.
-$lCfg = New-Object Windows.Forms.Label
-$lCfg.Text = '제작자의 규범 · 룰 · 스킬도 깝니다:'
-$lCfg.Location = New-Object Drawing.Point(16, (51 + $appRow))
-$lCfg.AutoSize = $true
-$gO.Controls.Add($lCfg)
+$lCfg = Get-El 'CfgLabel'
+$lSrc = Get-El 'CfgSource'
+$lSrcText = Get-El 'CfgSourceText'
 $personalWant = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Object { $_ }) }
                 elseif ($WithPersonalConfig) { @('claude') }
-                else { @($Saved.Personal) }
+                elseif ($Recorded.ContainsKey('personal')) { @($Saved.Personal) }
+                else { @('claude') }
 $cPers = @()
-$px = 250
+$persPanel = Get-El 'PersPanel'
 # 칸은 몸통의 제작자 도구 표(`-Describe` 의 `personal|도구|제품|글자` 줄)에서 짓는다 — 도구 이름 ↔ 제품은 그 표 하나가 든다.
 foreach ($pt in $PersonalTools) {
-  $c = New-Object Windows.Forms.CheckBox
-  $c.Text = $pt.Label
-  $c.AutoSize = $true
-  $c.Location = New-Object Drawing.Point($px, (48 + $appRow))
-  $c.Checked = $personalWant -contains $pt.Key
+  $c = New-Object Windows.Controls.CheckBox
+  $c.Content = $pt.Label
+  $c.Margin = New-Object Windows.Thickness(0, 2, 18, 2)
   $c.Tag = $pt
-  $gO.Controls.Add($c)
+  Add-FormFace $c
+  $c.Checked = $personalWant -contains $pt.Key
+  [void]$persPanel.Children.Add($c)
   $cPers += ,$c
-  $px += 90
 }
 # `Test-PersonalBoxLive <제작자 칸>` → 그 칸이 지금 사나: 짝 제품 칸을 골랐나(제품 칸이 없는 판이면 늘 참). 칸의 켜짐
 #   (`Sync-PersonalBoxes`)과 [설치 시작]이 넘길 값이 둘 다 이 함수에 묻는다.
-# ⚠ **넘길 값을 칸의 `Enabled` 로 고르지 않는다** — 윈도 폼은 묶음(`$gO`)을 잠그면 그 안 칸의 `Enabled` 도 거짓으로 읽는다.
-#   [설치 시작]은 값을 모으기 전에 묶음을 잠그므로, `Enabled` 로 모으면 무엇을 골라도 빈 값이 넘어간다.
+# ⚠ **넘길 값을 칸의 `Enabled` 로 고르지 않는다** — 칸을 잠그는 판([설치 시작]이 도는 동안)에 켜짐이 거짓으로 읽혀, 무엇을 골라도
+#   빈 값이 넘어간다.
 function Test-PersonalBoxLive($c) {
   $prod = @($cApps | Where-Object { [string]$_.Tag -eq $c.Tag.Pick }) | Select-Object -First 1
   return [bool]((-not $cApps.Count) -or ($prod -and $prod.Checked))
@@ -435,215 +816,54 @@ function Sync-PersonalBoxes {
   foreach ($c in $cPers) { $c.Enabled = Test-PersonalBoxLive $c }
 }
 
-# 로그온할 때 · 밤마다 자동 실행 — 작업 스케줄러가 로그온 때와 매일 새벽 설치 몸통을 다시 돌려(작업 이름은 몸통의
-#   `$AutoRunTaskName` · `$AutoRunNightTaskName`) 깔린 것을 최신으로 올리고 환경을 다시 맞춘다 — 하루 한 번. 설치본 자신도 `#update-repo` 의 최신 릴리스를
-#   받아 지문을 대조한 뒤 그 판으로 간다(몸통의 「부팅 시 자동 실행」 칸).
-# 글에 「백그라운드」라고 적지 않는다 — 로그온 회차가 설치를 실제로 하면 기록 창이 (작업 표시줄에 내려 둔 채) 떠서 설치 기록이
-#   흐른다. 그 창은 일부러 둔다 — 도는 것이 보이고 멈춘 걸음이 눈에 띈다. 밤 회차는 창 없이 돈다.
-$cAuto = New-Object Windows.Forms.CheckBox
-$cAuto.Text = '로그온할 때와 밤마다 깔린 것을 최신으로 올리고 환경을 맞춥니다 (하루 한 번)'
-$cAuto.Location = New-Object Drawing.Point(16, (72 + $appRow))
-$cAuto.Size = New-Object Drawing.Size(560, 22)
-# 칸의 첫 상태는 몸통이 깃발 없는 판에 내릴 답이다(`-Describe` 의 `autorun|on·off` — 몸통의 `Get-AutoRunDefault`) — 작업이 서
-#   있나 · 짐의 `#autorun` · 사람이 끈 기록을 창이 따로 읽어 규칙을 다시 지으면 지시가 `no` 인 판에서 창은 켠 채 뜨고 로그온 회차는
-#   걷는다(PAISetup #46 ③). 몸통에 못 물은 판은 꺼진 채 뜬다 — 그 판은 설치를 안 받는다.
-$cAuto.Checked = $AutoRunOn
-$gO.Controls.Add($cAuto)
-
-# 이미 깔린 것도 올리는 칸(기본 켬) — 집 · 회사 PC 처럼 프로필이 남는 기계는 프로그램이 이미 다 있어, 「있으면 건너뛴다」만
-#   두면 판이 영영 안 올라간다. 비영속 VDI 는 늘 맨바닥이라 이 칸이 안 걸린다.
-# 괄호는 이 칸이 못 막는 하나다 — 몸통의 `-NoUpgrade` 칸별 설명과 같은 말이고, 판은 몸통의 `$VcRuntimeMin` 을 `-Describe` 로 받는다.
-$cUpg = New-Object Windows.Forms.CheckBox
-$cUpg.Text = if ($VcRuntimeMin) { "이미 깔린 것도 최신으로 올립니다  (꺼도 VC++ 런타임은 $VcRuntimeMin 아래면 올립니다)" }
-             else { '이미 깔린 것도 최신으로 올립니다' }
-$cUpg.Location = New-Object Drawing.Point(16, 22)
-$cUpg.Size = New-Object Drawing.Size(560, 22)
-$cUpg.Checked = -not $NoUpgrade
-$gO.Controls.Add($cUpg)
-
-# 제품 칸의 글자도 기본값도 몸통이 준 것을 그대로 쓴다 — 여기서 다시 지으면 두 벌이 된다. 한 칸이 그 제품의 CLI · 확장 ·
-# 데스크탑 앱을 통째로 든다 — 확장은 아래 VS Code 칸까지 켜야 선다. **뺀 것은 아무 데도 안 깔린다.**
-$cApps = @()
-$cVsc  = $null
-if ($Choices.Count) {
-  $lApp = New-Object Windows.Forms.Label
-  $lApp.Text = '설치할 것'
-  $lApp.Location = New-Object Drawing.Point(16, 50)
-  $lApp.Size = New-Object Drawing.Size(84, 20)
-  $gO.Controls.Add($lApp)
-  $x = 104
-  foreach ($choice in $Choices) {
-    $c = New-Object Windows.Forms.CheckBox
-    $c.Text = $choice.Label
-    # ⚠ **글자를 재서 칸을 맞춘다(`AutoSize`).** 폭을 박으면 이름이 긴 제품에서 뒷글자가 잘리는데, 잘린 줄은 **화면에서만
-    #   보이고** 아무 검사에도 안 걸린다.
-    $c.AutoSize = $true
-    $c.Location = New-Object Drawing.Point($x, 48)
-    $c.Checked = if ($null -ne $Saved.Pick) { $Saved.Pick -contains $choice.Key } else { [bool]$choice.On }
-    $c.Tag = $choice.Key
-    $gO.Controls.Add($c)
-    $cApps += ,$c
-    $x += $c.Width + 14
-  }
-  # 제작자 칸을 제품 칸에 묶는다(위 「제작자 칸」) — 제품 칸이 여기서야 서므로 묶기도 여기다
-  foreach ($a in $cApps) { $a.Add_CheckedChanged({ Sync-PersonalBoxes }) }
-
-  # 제품 칸이 까는 것은 바로 그 줄 아래 적는다 — 확장은 빼고. 확장은 VS Code 칸이 켜졌을 때만 깔리므로 그 칸의 글이 든다.
-  #   이 줄이 VS Code 칸 아래 서면 그 칸의 설명으로 읽혀 「VS Code 를 켜면 CLI · 데스크탑 앱이 깔린다」로 보인다.
-  # 고르기는 자리를 안 가리는데 깔기는 가린다(데스크탑 앱을 사외에서만 까는 행) — 안 적으면 사내에서 켜 놓고 「왜 안
-  #   깔렸지」가 된다. 줄은 늘 두고 글만 갈린다(위 `$appRow` 곁말).
-  # 글은 몸통이 행마다 낸 답(`-Describe` 의 `app|키|yes·outside·no` — 몸통의 `Test-DesktopAppHere`)에서 짓는다 — 짐의 `#desktop-app`
-  #   과 행의 `When` 을 창이 따로 풀면 사내에서도 깔리는 행에 「사외에서만」이라 적는다(PAISetup #46 ⑤).
-  $appYes = @($Choices | Where-Object { $AppHere[$_.Key] -eq 'yes' })
-  $appOut = @($Choices | Where-Object { $AppHere[$_.Key] -eq 'outside' })
-  $lApp2 = New-Object Windows.Forms.Label
-  $lApp2.Text = if (-not $appYes.Count -and -not $appOut.Count) {
-    '켠 것의 CLI 가 깔립니다.'
-  } elseif (-not $appOut.Count) {
-    '켠 것의 CLI · 데스크탑 앱이 깔립니다.'
-  } elseif (-not $appYes.Count) {
-    '켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 깔립니다.'
-  } else {
-    "켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 ($(@($appYes | ForEach-Object { $_.Label }) -join ' · ') 만 여기서도)"
-  }
-  $lApp2.Location = New-Object Drawing.Point(104, 76)
-  $lApp2.Size = New-Object Drawing.Size(472, 20)
-  $lApp2.ForeColor = [Drawing.Color]::DimGray
-  $gO.Controls.Add($lApp2)
-
-  # 필수인 자리(사내)는 켠 채로 잠근다 — 몸통이 칸과 상관없이 깐다(`-Describe` 의 `vscode|required` · 몸통의 `Test-VsCodeRequired`).
-  #   글에 「필수」라 적었으니 못 꺼야 그 글이 참이다. 잠근 칸은 사람의 값을 안 바꾼다 — [설치 시작]은 지난번에 고른 것을 그대로 넘겨
-  #   기록이 사외에서 다시 선다.
-  # 필수가 아닌 자리의 기본은 끔이다 — 데스크탑 앱만으로 서는 자리라 VS Code 를 안 받아도 된다. 지난번에 고른 것(`$Saved`)이 있으면
-  #   그것을 따른다.
-  $cVsc = New-Object Windows.Forms.CheckBox
-  $cVsc.Text = 'VS Code 와 켠 것의 확장도 깝니다  (사내는 필수, 사외는 선택)'
-  $cVsc.Location = New-Object Drawing.Point(16, 100)
-  $cVsc.Size = New-Object Drawing.Size(560, 22)
-  $cVsc.Checked = if ($VsRequired) { $true } elseif ($null -ne $Saved.NoVsCode) { -not $Saved.NoVsCode } else { $false }
-  $cVsc.Enabled = -not $VsRequired
-  $gO.Controls.Add($cVsc)
+# `Get-RepoName <저장소 칸 글>` → 첫 주소의 저장소 이름(끝마디 · `.git` 뗌), 여럿이면 「이름 외 N개」, 비었으면 ''.
+function Get-RepoName([string]$Urls) {
+  $u = @("$Urls".Trim() -split '\s+' | Where-Object { $_ })
+  if (-not $u.Count) { return '' }
+  $n = (($u[0].TrimEnd('/') -split '[/:\\]') | Where-Object { $_ } | Select-Object -Last 1) -replace '\.git$', ''
+  if ($u.Count -gt 1) { "$n 외 $($u.Count - 1)개" } else { $n }
 }
-
-# ── 내 저장소 받기 (선택) ───────────────────────────────────────────────────────
-# 이 칸이 드는 일은 저장소를 「받아 둔다」 하나다 — 훅을 든 설정 저장소를 전제로 이름 짓지 않는다. 보통 사람은 그런 저장소가
-#   없고, 이름이 전제를 깔면 안 맞는 사람이 「나는 못 쓰는 칸」으로 읽고 지나친다.
-# 넣어도 위 키 칸은 그대로 산다 — 설치는 자리만 보고 전부 세우고 저장소는 그 뒤에 받는다. 받은 뿌리에 SessionStart 훅
-#   (`.claude/hooks/session-start.sh`)이 있으면 `--install` 로 불러 사람에게 딸린 것을 잇게 하고, 없으면 받아 둔 것으로 끝난다.
-# 여럿은 빈칸으로 가른다 — 주소에는 빈칸이 없다. 제 훅 선언에 목록을 든 사람은 여기 그 하나만 적는다 — 두 자리에 적으면
-#   저장소가 늘 때 한쪽이 낡는다.
-# 배포본에는 이 값이 안 실려 온다 — 남에게 갈 파일에 내 저장소 주소를 박지 않는다. 받는 사람에게는 이 칸이 빈 것이 정상이다.
-# 글에 「git 주소」 · 「GitHub 주소」라 적지 않는다 — 설치는 `git clone` 을 그대로 불러 사내 GitLab 같은 주소도 받으므로
-#   「GitHub」는 코드보다 좁고, `git` 은 도구 이름이라 사람이 제 주소가 그건지 못 가른다. 사람이 하는 일(저장소 페이지 주소를
-#   붙여 넣기)을 적는다.
-$gR = New-Object Windows.Forms.GroupBox
-$gR.Text = '내 저장소 받기 (선택) — 저장소 주소를 붙여 넣습니다. 여러 개면 빈칸으로 띄웁니다'
-$gR.Location = New-Object Drawing.Point(16, (278 + $appRow + $optExtra - $gvCut))
-# 칸 높이는 링크 줄의 아래끝(y 70)에 여백 하나다. 98 은 아래 자리 수(388 · 410 · 432)가 전제한 높이라, 줄인 만큼(`$grCut`)은
-#   아래 칸들을 당기고 로그 창이 받는다 — 키 칸의 `$gvCut` 과 같은 식이다.
-$grH   = 78
-$grCut = 98 - $grH
-$gR.Size = New-Object Drawing.Size(592, $grH)
-$F.Controls.Add($gR)
-
-$tRepo = New-Object Windows.Forms.TextBox
-$tRepo.Location = New-Object Drawing.Point(14, 24)
-$tRepo.Size = New-Object Drawing.Size(558, 24)
-# ⚠ **지난번에 넣은 주소(몸통의 기록)로 채운다 — 기록이 없을 때만 옆에 온 값 파일을 본다.** 키 칸이 환경변수로 되돌아가는 것과
-#   같은 결이다(위 「이미 심긴 회사 키를 읽어 온다」). 이 주소는 배포본에 안 실려 와 한 번 넣은 사람에게만 있다. 칸이 비어 뜨고 그대로
-#   누르면 **그 판은 저장소를 안 본다** — `config-repo` 는 화면이 적는 이름이라(아래 [설치 시작]) 빈 칸이 곧 「저장소 없음」이고,
-#   몸통은 그것을 다음 회차의 기록으로 남긴다.
-$tRepo.Text = if ($null -ne $Saved.Repo) { [string]$Saved.Repo } else { [string](Read-Directive $EnvPath 'config-repo') }
-$gR.Controls.Add($tRepo)
-# 주소를 넣고 빼는 대로 제작자 칸 앞 글자가 무엇이 가나를 따라 바뀐다(위 「제작자 칸」 곁말)
-function Sync-PersonalLabel {
-  $lCfg.Text = if ("$($tRepo.Text)".Trim()) { '내 저장소의 규범 · 룰 · 스킬을 받을 도구:' } else { '제작자의 규범 · 룰 · 스킬도 깝니다:' }
+# 접힌 머리의 한 줄 — 자동 실행(작업 스케줄러에 작업을 세우는 일이라 맨 앞) · 올리기 · 규범이 어느 도구에 어디서 가나.
+$advSummary = Get-El 'AdvSummary'
+# 제작자 세트는 Claude 에 맞춰 지었다 — 그 말은 칸 아래 한 줄이 늘 같은 색으로 든다(알림이지 경고가 아니다).
+(Get-El 'CfgTested').ToolTip = (Get-El 'CfgTested').Text
+function Update-AdvSummary {
+  $pers = @($cPers | Where-Object { $_.Checked -and (Test-PersonalBoxLive $_) } | ForEach-Object { [string]$_.Content })
+  $src  = if (Get-RepoName $tRepo.Text) { '내 저장소' } else { '제작자 세트' }
+  $advSummary.Text = @(
+    $(if ($cAuto.Checked) { '자동 업데이트 켬' } else { '자동 업데이트 끔' })
+    $(if ($cUpg.Checked) { '깔린 것도 올림' } else { '깔린 것은 둠' })
+    $(if ($pers.Count) { "규범: $($pers -join ' · ') ← $src" } else { '규범: 안 받음' })
+  ) -join '  ·  '
+  $advSummary.ToolTip = $advSummary.Text
 }
-$tRepo.Add_TextChanged({ Sync-PersonalLabel })
-
-$lRepo = New-Object Windows.Forms.LinkLabel
-$lRepo.Location = New-Object Drawing.Point(16, 52)
-# 글자를 재서 칸을 맞춘다 — 위 제품 칸과 같은 까닭.
-$lRepo.AutoSize = $true
-# 경로를 글자로 띄우지 않고 눌러서 열어 보여 준다 — 경로는 사람마다 길이가 달라 한 줄을 넘어 옆 링크까지 뻗고, `~` · `<>` 같은
-#   기호는 받는 사람이 제 PC 의 어디인지 못 읽는다. 열어 보이면 자리가 PC 마다 다른 것도 저절로 맞는다. 무엇이 이어지나 같은
-#   긴 설명은 옆 링크의 안내 한 장과 툴팁이 든다.
-# 「설치 위치」라 적지 않는다 — 여기는 저장소를 받는 폴더고, 설치가 짐을 푸는 곳(`%LOCALAPPDATA%\Claude Code Setup\<판>`)은
-#   딴 데다. 한 이름이 두 자리를 가리키면 기록을 찾는 사람이 엉뚱한 폴더를 열고 「없다」고 읽는다.
-# 자리를 모르면(몸통이 `config-repo-root` 를 못 내준 판) 링크를 안 세운다 — LinkLabel 은 그대로 쓰되 링크 영역을 비워 글자만
-#   선다. 누를 데가 없으니 눌렀는데 아무 일도 안 나는 자리가 안 생긴다.
-if ($RepoRoot) {
-  $lRepo.Text = '받는자리'
-  $lRepo.Add_LinkClicked({
-    # 아직 없는 것이 정상이다(저장소를 한 번도 안 받은 PC) — 여기서 만들지 않고(설치가 제 때 만든다) 그 말을 경로와 함께 한다.
-    #   경로는 눌렀을 때 말하므로 줄 길이를 걱정할 자리가 아니다.
-    if (Test-Path -LiteralPath $RepoRoot) {
-      try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $RepoRoot + '"') | Out-Null }
-      catch {
-        [Windows.Forms.MessageBox]::Show(
-          "폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $RepoRoot,
-          $AppName, 'OK', 'Warning') | Out-Null
-      }
-    } else {
-      [Windows.Forms.MessageBox]::Show(
-        '아직 없습니다 — 주소를 넣고 설치하면 이 자리에 만들어집니다.' +
-        [Environment]::NewLine + $RepoRoot,
-        $AppName, 'OK', 'Information') | Out-Null
-    }
-  })
-} else {
-  # 누를 데가 없으니 글이 자리를 말한다 — 위 갈래는 열어서 보여 주므로 이름만 들지만, 여기서 이름만 두면 아무 말도 안 한
-  #   줄이 된다.
-  $lRepo.Text = '받는자리 — 내 폴더 아래 repos'
-  $lRepo.LinkArea = New-Object Windows.Forms.LinkArea(0, 0)
-  $lRepo.ForeColor = [Drawing.Color]::DimGray
+# 출처 줄 — 저장소 칸을 따라 바뀐다. 칸 이름은 그대로다.
+function Sync-PersonalSource {
+  $name = Get-RepoName $tRepo.Text
+  $lSrcText.Text = if ($name) { "출처 — 내 저장소($name) · 설치 끝에 그 저장소의 deploy 가 켠 도구 홈에 푼다" }
+               else { '출처 — 설치 묶음의 제작자 세트' }
+  $lSrc.ToolTip = "$($lSrcText.Text)`n`n$cfgTip"
+  Update-AdvSummary
 }
-$gR.Controls.Add($lRepo)
+foreach ($a in $cApps) { $a.Add_Click({ Sync-PersonalBoxes; Update-AdvSummary }) }
+foreach ($b in @($cAuto, $cUpg) + $cPers) { $b.Add_Click({ Update-AdvSummary }) }
+$tRepo.Add_TextChanged({ Sync-PersonalSource })
 
-# ── 안내 한 장을 여는 링크 ──────────────────────────────────────────────────────
-# 안내(`config-repo-howto.html`)는 이 스크립트와 같은 폴더에 같이 온다 — 사람이 어디에 풀었는지 모르므로 `$Here` 에서
-#   파생한다. 없으면 무엇이 어디에 없는지를 경로까지 대고 말한다 — 눌렀는데 아무 일도 안 나면 사람은 「내 컴퓨터가 이상한가」
-#   에서 멈춘다.
-$lnkRepo = New-Object Windows.Forms.LinkLabel
-$lnkRepo.Text = '설정저장소 만드는 법'
-# 왼쪽 링크와 같은 줄(y 52)에 선다 — 칸 높이(`$grH`)가 그 한 줄을 전제로 한다.
-# ⚠ **오른쪽 끝을 상자 안에 세운다** — 이 링크는 창이 아니라 `$gR`(너비 592) 안에 산다. 오른쪽 정렬이라 폭은 글 길이가
-#   아니라 남은 자리가 정한다: 왼쪽 링크의 여백 14 를 맞춰 592-14-184 = 394 다(`$lnkFlow` 와 같은 셈). 상자 너비를 고치면
-#   이 수도 같이 고친다.
-$lnkRepo.Location = New-Object Drawing.Point(394, 52)
-$lnkRepo.Size = New-Object Drawing.Size(184, 18)
-$lnkRepo.TextAlign = 'MiddleRight'
-$lnkRepo.Add_LinkClicked({
-  $howto = Join-Path $Here 'config-repo-howto.html'
-  if (Test-Path -LiteralPath $howto) {
-    try { Start-Process -FilePath $howto | Out-Null }
-    catch {
-      [Windows.Forms.MessageBox]::Show(
-        "안내를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $howto,
-        $AppName, 'OK', 'Warning') | Out-Null
-    }
-  } else {
-    [Windows.Forms.MessageBox]::Show(
-      '안내 파일이 이 폴더에 없습니다 — ' + [Environment]::NewLine + $howto,
-      $AppName, 'OK', 'Warning') | Out-Null
-  }
-})
-$gR.Controls.Add($lnkRepo)
+# 접는 칸 둘
+$advFold = Get-El 'AdvFold'; $advBody = Get-El 'AdvBody'
+$advFold.Add_Click({ $advBody.Visibility = $(if ($advFold.IsChecked) { 'Visible' } else { 'Collapsed' }) })
+$log = Get-El 'Log'; $logFold = Get-El 'LogFold'
+$logFold.Add_Click({ $log.Visibility = $(if ($logFold.IsChecked) { 'Visible' } else { 'Collapsed' }) })
 
 # ── 후버로 조금 더 내린다 ────────────────────────────────────────────────────────
 # 툴팁은 「무엇을 하는 칸인가」와 갈래 둘, 그리고 더 볼 데가 있다는 것만 든다 — 자세한 것은 옆 링크의 안내 한 장이 든다. 같은
-#   글을 두 벌 두면 고칠 때 한쪽만 고쳐진다.
-$tip = New-Object Windows.Forms.ToolTip
-$tip.AutoPopDelay = 30000      # 긴 글이라 오래 띄운다
-$tip.InitialDelay = 400
-$tip.ReshowDelay  = 200
-$tip.ShowAlways   = $true
+#   글을 두 벌 두면 고칠 때 한쪽만 고쳐진다. 꺼진 칸에도 뜬다(`ShowOnDisabled`).
 $tipText = @'
 아무 git 저장소나 받아 두는 자리입니다 — 코드 저장소도, 설정 저장소도.
 비워 두는 것이 기본이고 맞는 답입니다: 프로그램·확장·CLI·키·주소·프록시·
 사내 문서·씨앗·그림 문은 이 칸과 무관하게 다 깔립니다.
 
-받는 자리는 아래 「받는자리」가 열어서 보여 줍니다. 저장소마다 제 이름
+받는 자리는 「받는자리」가 열어서 보여 줍니다. 저장소마다 제 이름
 으로 한 폴더를 만듭니다. 여러 개는 빈칸으로 가릅니다.
 코드 저장소는 그것으로 끝입니다. 설정 저장소만 한 걸음 더 갑니다:
 
@@ -653,157 +873,101 @@ $tipText = @'
   · 든 저장소가 있으면  --install 로 부릅니다. 그 뒤는 그 저장소가 잇습니다
   · 어디에도 없으면      받아 둔 것으로 끝냅니다
 
-설정 저장소가 무엇이고 어떻게 만드나는 오른쪽 링크가 한 장으로 답합니다.
+설정 저장소가 무엇이고 어떻게 만드나는 「설정저장소 만드는 법」이 한 장으로 답합니다.
 '@
-$tip.SetToolTip($tRepo, $tipText)
-$tip.SetToolTip($lRepo, $tipText)
-# 제작자 칸이 왜 꺼졌나 — 꺼진 칸에는 윈도 폼이 툴팁을 안 띄워, 칸 앞 글자에 단다
-$tip.SetToolTip($lCfg, @'
-고른 도구에 규범 · 룰 · 스킬을 깝니다. 제품 칸에서 고른 도구만 켜집니다.
-저장소 칸이 비었으면 만든 사람의 것을 깝니다. 설정 저장소 주소를 넣으면 고른 도구에
-그 저장소의 것이 갑니다 — 그 저장소의 배포가 같은 칸을 읽어 밉니다.
-끈 도구에는 어느 쪽도 안 갑니다.
-'@)
+$cfgTip = @'
+고른 도구의 홈에 규범 · 룰 · 스킬을 놓습니다. 제품 칸에서 고른 도구만 켜집니다.
+「연결」의 저장소 칸이 비었으면 설치 묶음의 제작자 세트가 갑니다. 설정 저장소
+주소를 넣으면 설치 끝에 그 저장소의 deploy 가 고른 도구 홈에 그 저장소의 것을
+풉니다 — 그 저장소의 배포가 같은 칸을 읽어 밉니다. 끈 도구에는 어느 쪽도 안 갑니다.
+'@
+foreach ($t in @(@{ El = $tRepo; Text = $tipText }, @{ El = $lCfg; Text = $cfgTip }, @{ El = $lSrc; Text = $cfgTip })) {
+  $t.El.ToolTip = $t.Text
+  [Windows.Controls.ToolTipService]::SetShowDuration($t.El, 30000)   # 긴 글이라 오래 띄운다
+  [Windows.Controls.ToolTipService]::SetShowOnDisabled($t.El, $true)
+}
 
-# 진행
-$bar = New-Object Windows.Forms.ProgressBar
-$bar.Location = New-Object Drawing.Point(16, (388 + $appRow + $optExtra - $gvCut - $grCut))   # 저장소 칸 아래
-$bar.Size = New-Object Drawing.Size(592, 20)
-$bar.Minimum = 0; $bar.Maximum = 100
-$F.Controls.Add($bar)
-
-# ── 키 칸의 링크 줄 — 사내환경문서 · 바뀐 것 · 제공기능 · 설치흐름 ─────────────────────
-# 스위치 없이 놓이는 것(사내 문서 · 씨앗)일수록 누르기 전에 말한다 — 그 말은 「제공기능」 페이지가 든다. 무엇이 어디에 놓이나의
-#   진본은 install.ps1 「공용 자산」 걸음과 `INSTALLED.md` 라 목록을 여기 옮기지 않는다.
-# 「사내환경문서」는 풀어 둔 이 폴더의 `posco` 를 연다 — 홈 쪽(`~/.claude/posco`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
-#   그 폴더가 없는 짐이면 이 폴더로 물러난다.
-# 링크 글은 「무엇이 있는 데인가」만 든다 — 「열기」 · 「위치」를 안 붙인다. 밑줄 친 파란 글자가 이미 눌러서 간다는 말을 하고,
-#   창의 링크들이 같은 결로 서야 눈이 한 무리로 읽는다. 동작을 낱낱이 적으면 긴 줄이 되어 글도 자리도 안 읽힌다.
-$lnkHome = New-Object Windows.Forms.LinkLabel
-$lnkHome.Text = '사내환경문서'
-# 글자를 재서 칸을 맞춘다 — 위 제품 칸과 같은 까닭.
-$lnkHome.AutoSize = $true
-$lnkHome.Location = New-Object Drawing.Point(14, $(if ($noAsk) { 54 } else { 110 }))
-$lnkHome.Add_LinkClicked({
-  $docs = Join-Path $Here 'posco'
-  if (-not (Test-Path -LiteralPath $docs -PathType Container)) { $docs = $Here }
-  try { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $docs + '"') | Out-Null }
-  catch {
-    [Windows.Forms.MessageBox]::Show(
-      "폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $docs,
-      $AppName, 'OK', 'Warning') | Out-Null
+# ── 링크 — 파일 · 폴더 · 페이지를 연다 ───────────────────────────────────────────
+# 링크 글은 「무엇이 있는 데인가」만 든다 — 「열기」 · 「위치」를 안 붙인다. 없으면 무엇이 어디에 없는지를 경로까지 대고 말한다 —
+#   눌렀는데 아무 일도 안 나면 사람은 「내 컴퓨터가 이상한가」에서 멈춘다.
+# `Open-Thing <경로> <무엇 — 이름만, 토씨 없이> [-Folder] [-Page]` — 폴더는 탐색기로, 페이지(`.html`)는 기본 브라우저(`Open-InBrowser`)로, 나머지는 그
+#   파일의 기본 프로그램으로 연다. 없거나 못 열면 그 말을 경로와 함께 한다. 내는 것 없음.
+function Open-Thing([string]$Path, [string]$What, [switch]$Folder, [switch]$Page) {
+  if (-not (Test-Path -LiteralPath $Path)) {
+    [void][Windows.MessageBox]::Show($F, "$What — 이 폴더에 없습니다" + [Environment]::NewLine + $Path, $AppName, 'OK', 'Warning')
+    return
   }
-})
-$gV.Controls.Add($lnkHome)
-
-# 설치 흐름 그림 — 같은 폴더의 `install-flow.svg`(README 가 든 그 그림). 브라우저가 연다. 없으면 경로를 대고 말한다(위 안내
-#   링크와 같은 까닭).
-$lnkFlow = New-Object Windows.Forms.LinkLabel
-$lnkFlow.Text = '설치흐름'
-# ⚠ **오른쪽 끝이 담는 상자 안에 들어야 한다** — 이 링크는 창이 아니라 `$gV`(너비 592) 안에 산다. 왼쪽 링크(`$lnkHome`)의
-#   여백 14 를 맞춰 592-14-140 = 438 에 세운다. **상자 너비를 고치면 이 수도 같이 고친다** — 안 고치면 끝이 조용히 잘린다.
-$lnkFlow.Location = New-Object Drawing.Point(438, $(if ($noAsk) { 54 } else { 110 }))
-$lnkFlow.Size = New-Object Drawing.Size(140, 16)
-$lnkFlow.TextAlign = 'MiddleRight'
-$lnkFlow.Add_LinkClicked({
-  $svg = Join-Path $Here 'install-flow.svg'
-  if (Test-Path -LiteralPath $svg) {
-    try { Start-Process -FilePath $svg | Out-Null }
-    catch {
-      [Windows.Forms.MessageBox]::Show(
-        "그림을 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $svg,
-        $AppName, 'OK', 'Warning') | Out-Null
-    }
-  } else {
-    [Windows.Forms.MessageBox]::Show(
-      '그림 파일이 이 폴더에 없습니다 — ' + [Environment]::NewLine + $svg,
-      $AppName, 'OK', 'Warning') | Out-Null
+  try {
+    if ($Folder) { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $Path + '"') | Out-Null }
+    elseif ($Page -and (Get-Command Open-InBrowser -ErrorAction SilentlyContinue)) { Open-InBrowser $Path }
+    else { Start-Process -FilePath $Path | Out-Null }
+  } catch {
+    [void][Windows.MessageBox]::Show($F, "$What — 못 열었습니다: $($_.Exception.Message)" + [Environment]::NewLine + $Path,
+      $AppName, 'OK', 'Warning')
   }
-})
-$gV.Controls.Add($lnkFlow)
+}
 
-# 설치하면 생기는 기능 한 장 — 같은 폴더의 `features.html`(결정 0091). 기본 브라우저가 연다(`Open-InBrowser`).
-# 「설치흐름」 글자 바로 왼쪽에 세운다 — 두 글자를 재서. 저 링크는 칸 오른쪽에 글을 붙이므로 그 글자 폭 앞에서 한 칸(14) 띈
-#   자리가 이 링크의 오른쪽 끝이다. 수를 박으면 글을 고치는 날 겹치거나 벌어진다.
-$lnkFeat = New-Object Windows.Forms.LinkLabel
-$lnkFeat.Text = '제공기능'
-$featW = [Windows.Forms.TextRenderer]::MeasureText($lnkFeat.Text, $F.Font).Width
-$flowW = [Windows.Forms.TextRenderer]::MeasureText($lnkFlow.Text, $F.Font).Width
-$lnkFeat.Size = New-Object Drawing.Size($featW, 16)
-$lnkFeat.Location = New-Object Drawing.Point((438 + 140 - $flowW - 14 - $featW), $(if ($noAsk) { 54 } else { 110 }))
-$lnkFeat.Add_LinkClicked({
-  $page = Join-Path $Here 'features.html'
-  if (Test-Path -LiteralPath $page) {
-    try { Open-InBrowser $page }
-    catch {
-      [Windows.Forms.MessageBox]::Show(
-        "안내 페이지를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $page,
-        $AppName, 'OK', 'Warning') | Out-Null
-    }
-  } else {
-    [Windows.Forms.MessageBox]::Show(
-      '안내 페이지가 이 폴더에 없습니다 — ' + [Environment]::NewLine + $page,
-      $AppName, 'OK', 'Warning') | Out-Null
-  }
-})
-$gV.Controls.Add($lnkFeat)
-# ⚠ **앞으로 낸다** — 이 자리는 「설치흐름」 링크 칸(폭 140 · 글은 오른쪽 끝)의 빈 왼쪽 안이다. 나중에 더한 컨트롤은 뒤에
-#   깔려, 그대로 두면 저 칸의 바탕이 이 글자를 통째로 가려 링크가 안 보인다. 아래 「바뀐 것」도 같다.
-$lnkFeat.BringToFront()
-
-# 이 판에서 바뀐 것 — 그 판의 릴리스 노트(결정 0099). 판마다 바뀐 것은 판마다 낡으므로 「제공기능」 페이지에 안 적고
-#   릴리스가 든다. 주소는 값 파일의 `#update-repo` 와 곁의 `VERSION` 에서 짓는다 — 이 파일에 저장소를 안 박는다(아래 새 판
-#   묻기와 같은 결). 둘 중 하나가 없으면 링크를 안 세운다 — 못 짓는 주소를 열게 두지 않는다. 자리는 「제공기능」 글자 바로
-#   왼쪽이고 글자를 재서 선다(위 링크와 같은 규율).
+# 「알아보기」 — 누르기 전에 읽을 것 넷. 스위치 없이 놓이는 것(사내 문서 · 씨앗)일수록 누르기 전에 말한다 — 그 말은 「제공기능」
+#   페이지가 든다(결정 0091). 무엇이 어디에 놓이나의 진본은 install.ps1 「공용 자산」 걸음과 `INSTALLED.md` 라 목록을 여기 옮기지 않는다.
+(Get-El 'LnkFeat').Add_Click({ Open-Thing (Join-Path $Here 'features.html') '안내 페이지(features.html)' -Page })
+# 설치 흐름 그림 — 같은 폴더의 `install-flow.svg`(README 가 든 그 그림).
+(Get-El 'LnkFlow').Add_Click({ Open-Thing (Join-Path $Here 'install-flow.svg') '설치 흐름 그림(install-flow.svg)' })
+# 이 판에서 바뀐 것 — 그 판의 릴리스 노트(결정 0099). 판마다 바뀐 것은 판마다 낡으므로 「제공기능」 페이지에 안 적고 릴리스가 든다.
+#   주소는 값 파일의 `#update-repo` 와 곁의 `VERSION` 에서 짓는다 — 이 파일에 저장소를 안 박는다. 둘 중 하나가 없으면 링크를 안
+#   세운다 — 못 짓는 주소를 열게 두지 않는다.
 $ReleasePage = $null
 $relRepo = Read-Directive $EnvPath 'update-repo'
 if ($relRepo -and $DistVersion) { $ReleasePage = "https://github.com/$relRepo/releases/tag/v$DistVersion" }
+$lnkNews = Get-El 'LnkNews'
 if ($ReleasePage) {
-  $lnkNews = New-Object Windows.Forms.LinkLabel
-  $lnkNews.Text = '바뀐 것'
-  $newsW = [Windows.Forms.TextRenderer]::MeasureText($lnkNews.Text, $F.Font).Width
-  $lnkNews.Size = New-Object Drawing.Size($newsW, 16)
-  $lnkNews.Location = New-Object Drawing.Point(($lnkFeat.Left - 14 - $newsW), $lnkFeat.Top)
-  $lnkNews.Add_LinkClicked({
+  $lnkNews.Add_Click({
     try { Start-Process -FilePath $ReleasePage | Out-Null }
     catch {
-      [Windows.Forms.MessageBox]::Show(
-        "릴리스 노트를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $ReleasePage,
-        $AppName, 'OK', 'Warning') | Out-Null
+      [void][Windows.MessageBox]::Show($F, "릴리스 노트를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $ReleasePage,
+        $AppName, 'OK', 'Warning')
     }
   })
-  $gV.Controls.Add($lnkNews)
-  $lnkNews.BringToFront()
+} else { $lnkNews.Visibility = 'Collapsed' }
+# 「사내환경문서」는 풀어 둔 이 폴더의 `posco` 를 연다 — 홈 쪽(`~/.claude/posco`)은 설치 뒤에야 서서 누르기 전엔 열 것이 없다.
+#   그 폴더가 없는 짐이면 이 폴더로 물러난다. 사외에서도 보인다(#52 마감).
+(Get-El 'LnkHome').Add_Click({
+  $docs = Join-Path $Here 'posco'
+  if (-not (Test-Path -LiteralPath $docs -PathType Container)) { $docs = $Here }
+  Open-Thing $docs '사내환경문서 폴더' -Folder
+})
+
+# 「받는자리」 — 경로를 글자로 띄우지 않고 눌러서 열어 보여 준다. 경로는 사람마다 길이가 달라 한 줄을 넘고, `~` · `<>` 같은 기호는
+#   받는 사람이 제 PC 의 어디인지 못 읽는다. 「설치 위치」라 적지 않는다 — 여기는 저장소를 받는 폴더고, 설치가 짐을 푸는 곳
+#   (`%LOCALAPPDATA%\Claude Code Setup\<판>`)은 딴 데다.
+# 자리를 모르면(몸통이 `config-repo-root` 를 못 내준 판) 누를 데가 없으니 글이 자리를 말하고 링크를 잠근다.
+$lnkRepo = Get-El 'LnkRepo'
+if ($RepoRoot) {
+  $lnkRepo.Add_Click({
+    # 아직 없는 것이 정상이다(저장소를 한 번도 안 받은 PC) — 여기서 만들지 않고(설치가 제 때 만든다) 그 말을 경로와 함께 한다.
+    if (Test-Path -LiteralPath $RepoRoot) { Open-Thing $RepoRoot '받는자리 폴더' -Folder }
+    else {
+      [void][Windows.MessageBox]::Show($F, '아직 없습니다 — 주소를 넣고 설치하면 이 자리에 만들어집니다.' + [Environment]::NewLine + $RepoRoot,
+        $AppName, 'OK', 'Information')
+    }
+  })
+} else {
+  $lnkRepo.IsEnabled = $false
+  $lnkRepo.ToolTip = '내 폴더 아래 repos 에 받습니다'
+  [Windows.Controls.ToolTipService]::SetShowOnDisabled($lnkRepo, $true)
 }
+# 안내 한 장 — `config-repo-howto.html` 은 이 스크립트와 같은 폴더에 같이 온다.
+(Get-El 'LnkHowto').Add_Click({ Open-Thing (Join-Path $Here 'config-repo-howto.html') '설정저장소 안내(config-repo-howto.html)' })
+# 출처 줄 끝의 「?」 — 곁의 `INSTALLED.md` 를 연다. 그 글의 「설치 창의 칸 › 제작자 칸」이 이 칸을 든다. 파일 하나라 그 절로 바로
+#   뛰지는 못해 절 이름은 툴팁이 말한다.
+$lnkCfgDoc = Get-El 'LnkCfgDoc'
+$lnkCfgDoc.ToolTip = 'INSTALLED.md 를 엽니다 — 「설치 창의 칸 › 제작자 칸」'
+$lnkCfgDoc.Add_Click({ Open-Thing (Join-Path $Here 'INSTALLED.md') '설치 안내(INSTALLED.md)' })
 
-$lState = New-Label '' 18 (410 + $appRow + $optExtra - $gvCut - $grCut) 500 $false
-
-# 기록 — 몸통이 찍는 줄을 그대로 옮긴다
-$log = New-Object Windows.Forms.TextBox
-$log.Location = New-Object Drawing.Point(16, (432 + $appRow + $optExtra - $gvCut - $grCut))
-$log.Size = New-Object Drawing.Size(592, (186 + $gvCut + $grCut))   # 위 칸들이 비운 만큼 받는다
-$log.Multiline = $true; $log.ReadOnly = $true
-$log.ScrollBars = 'Vertical'; $log.WordWrap = $false
-$log.BackColor = [Drawing.Color]::FromArgb(30, 30, 30)
-$log.ForeColor = [Drawing.Color]::Gainsboro
-$log.Font = New-Object Drawing.Font('Consolas', 12, [Drawing.GraphicsUnit]::Pixel)   # 픽셀로 — 위 폼 글꼴과 같은 까닭
-$F.Controls.Add($log)
-
-# ── 기록 폴더로 가는 문 — 단추 줄 왼쪽 ──────────────────────────────────────────
+# ── 기록 폴더로 가는 문 — 아래 띠 왼쪽 ──────────────────────────────────────────
 # 창을 닫은 뒤에 물어볼 거리가 남을 때의 문이다 — 기록은 회차마다 파일로 남는데(`Save-RunLog`), `%LOCALAPPDATA%` 를 손으로
-#   칠 줄 모르는 사람도 화면에서 닿게 한다.
-# 자리는 단추와 같은 줄이다 — 바로 위 `$lState` 의 판정을 읽은 눈이 다음으로 가는 데다. 단추 왼쪽은 비어 있어 당김(`$gvCut`)과
-#   무관하게 단추와 같은 고정 자리로 선다.
-# 폴더만 열지 않고 가장 최근 파일(쓴 시각)을 집어 준다 — 열어 놓고 고르게 하면 지난 기록을 보고 말한다. 없으면 그 말을 한다
-#   (설치를 한 번도 안 돌린 PC 에서는 폴더가 없는 것이 정상이다).
-# 글은 「누르면 무엇이 나오나」 하나만 든다 — 기록을 보내 달라는 말은 받는 사람이 물을 때 할 말이라 `TROUBLESHOOTING.md` 와
-#   README 「문의」가 든다. 링크 글에 사정을 붙이면 긴 줄이 되어 둘 다 안 읽힌다.
-$lnkLog = New-Object Windows.Forms.LinkLabel
-$lnkLog.Text = '설치기록'
-$lnkLog.Location = New-Object Drawing.Point(18, (636 + $appRow + $optExtra))
-# 글자를 재서 칸을 맞춘다 — 위 제품 칸과 같은 까닭.
-$lnkLog.AutoSize = $true
-$lnkLog.Add_LinkClicked({
+#   칠 줄 모르는 사람도 화면에서 닿게 한다. 폴더만 열지 않고 가장 최근 파일(쓴 시각)을 집어 준다 — 열어 놓고 고르게 하면 지난
+#   기록을 보고 말한다. 없으면 그 말을 한다(설치를 한 번도 안 돌린 PC 에서는 폴더가 없는 것이 정상이다).
+(Get-El 'LnkLog').Add_Click({
   if (Test-Path -LiteralPath $LogDir) {
     # ⚠ **`/select,` 뒤에 빈칸을 두지 않는다** — explorer 는 그 꼴 그대로를 본다.
     $latest = Get-ChildItem -LiteralPath $LogDir -Filter 'install-*.log' -File -ErrorAction SilentlyContinue |
@@ -811,63 +975,58 @@ $lnkLog.Add_LinkClicked({
     $argv = if ($latest) { '/select,"' + $latest.FullName + '"' } else { '"' + $LogDir + '"' }
     try { Start-Process -FilePath 'explorer.exe' -ArgumentList $argv | Out-Null }
     catch {
-      [Windows.Forms.MessageBox]::Show(
-        "기록 폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $LogDir,
-        $AppName, 'OK', 'Warning') | Out-Null
+      [void][Windows.MessageBox]::Show($F, "기록 폴더를 못 열었습니다 — $($_.Exception.Message)" + [Environment]::NewLine + $LogDir,
+        $AppName, 'OK', 'Warning')
     }
   } else {
-    [Windows.Forms.MessageBox]::Show(
-      '아직 기록이 없습니다 — 설치를 한 판 돌리면 이 폴더에 남습니다.' +
-      [Environment]::NewLine + $LogDir,
-      $AppName, 'OK', 'Information') | Out-Null
+    [void][Windows.MessageBox]::Show($F, '아직 기록이 없습니다 — 설치를 한 판 돌리면 이 폴더에 남습니다.' + [Environment]::NewLine + $LogDir,
+      $AppName, 'OK', 'Information')
   }
 })
-$F.Controls.Add($lnkLog)
 
-# 물어볼 곳 — 값 파일의 `#contact` 주소를 「설치기록」 바로 오른쪽에 띄운다. 누르면 메일 창이 열린다. 주소를 이 파일에 안
-#   박는다(`#update-repo` 와 같은 결) — 지시가 없으면 링크를 안 세운다. 메일 프로그램이 없어 `mailto:` 가 지면 주소를 클립보드에
-#   넣고 그 말을 한다(위 링크들과 같은 까닭).
-$Contact = Read-Directive $EnvPath 'contact'
-if ($Contact) {
-  $lnkMail = New-Object Windows.Forms.LinkLabel
-  $lnkMail.Text = "문의 $Contact"
-  $lnkMail.AutoSize = $true   # 너비를 글자로 재서 박으면 링크 그리기의 여백만큼 끝 글자가 잘린다
-  $lnkMail.Location = New-Object Drawing.Point(($lnkLog.Left + $lnkLog.PreferredWidth + 14), $lnkLog.Top)
-  $lnkMail.Add_LinkClicked({
-    try { Start-Process -FilePath ("mailto:" + $Contact) | Out-Null }
-    catch {
-      try { [Windows.Forms.Clipboard]::SetText($Contact) } catch { }
-      [Windows.Forms.MessageBox]::Show(
-        "메일 창을 못 열었습니다 — 주소를 클립보드에 넣었습니다." + [Environment]::NewLine + $Contact,
-        $AppName, 'OK', 'Information') | Out-Null
-    }
-  })
-  $F.Controls.Add($lnkMail)
+# ── 설치하는 중 칸 ──────────────────────────────────────────────────────────────
+$bar = Get-El 'Bar'
+$lState = Get-El 'State'
+$runCard = Get-El 'RunCard'; $runTitle = Get-El 'RunTitle'
+# `Set-Status <글> [색]` — 아래 띠의 상태 줄. 높이가 박힌 두 줄이라 긴 글은 줄임표로 끊기고 전문은 툴팁이 든다 — 알림이 창을 안 늘린다.
+$statusText = Get-El 'StatusText'
+function Set-Status([string]$Text, [string]$Tone = 'Ink') {
+  $statusText.Text = $Text; $statusText.Foreground = $Brush[$Tone]; $statusText.ToolTip = $(if ($Text) { $Text } else { $null })
+}
+# `Hide-Address <글>` → 글 속의 주소(호스트 · IP · 그 뒤 `:포트`)를 「주소」로 가린 글. 파일 이름(.ps1 · .env · .exe …)은 둔다. 몸통이 낸 까닭을
+#   창에 띄울 때 지난다 — 창은 주소를 어디에도 안 띄운다(결정 0167). 원문은 설치 기록 · 콘솔이 든다.
+function Hide-Address([string]$Text) {
+  [regex]::Replace($Text, '(?<![\w.-])(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z][\w-]*(?:\.[\w-]+)+)(?::\d+)?(?![\w.-])',
+    { param($m) if ($m.Value -match '\.(ps1|env|exe|md|html|svg)$') { $m.Value } else { '주소' } })
+}
+# `Set-State <글> [색]` — 「설치하는 중」 칸의 상태 줄. 색은 `$Brush` 의 이름(Ink · Ok · Bad · Warn).
+function Set-State([string]$Text, [string]$Tone = 'Ink') { $lState.Text = $Text; $lState.Foreground = $Brush[$Tone] }
+# `Show-Form <켬>` — 고르는 칸들(연결 · 도구 · 자세히)을 세우거나 접는다. 도는 동안은 접어 「설치하는 중」 칸이 앞에 서고, 끝나면
+#   다시 세워 [다시 설치] 앞에 고칠 수 있게 한다.
+function Show-Form([bool]$On) {
+  foreach ($n in 'ConnCard', 'ToolsCard', 'AdvCard') {
+    $card = Get-El $n
+    if ($n -eq 'ToolsCard' -and -not $Choices.Count) { continue }
+    $card.Visibility = $(if ($On) { 'Visible' } else { 'Collapsed' })
+  }
 }
 
-$bGo = New-Object Windows.Forms.Button
-$bGo.Text = '설치 시작'; $bGo.Location = New-Object Drawing.Point(416, (628 + $appRow + $optExtra))
-$bGo.Size = New-Object Drawing.Size(100, 30)
-$F.Controls.Add($bGo); $F.AcceptButton = $bGo
-
-$bClose = New-Object Windows.Forms.Button
-$bClose.Text = '닫기'; $bClose.Location = New-Object Drawing.Point(524, (628 + $appRow + $optExtra))
-$bClose.Size = New-Object Drawing.Size(84, 30)
-$F.Controls.Add($bClose)
+$bGo = Get-El 'BGo'
+Add-FormFace $bGo
+$bClose = Get-El 'BClose'
 
 # ── 자리를 못 정한 판 — 설치를 안 받는다 ─────────────────────────────────────────
 # 몸통이 자리를 못 정했으면(`site|error|까닭`) · 몸통에 못 물었으면 그 까닭을 빨갛게 띄우고 [설치 시작]을 잠근다 — 그대로 누르면 몸통도
 #   같은 까닭으로 멈추고, 창이 한 갈래를 골라 넘기면 사내 PC 의 회사 연결을 걷거나 닿지 않는 주소를 심는다(PAISetup #46).
 if (-not $Site) {
-  $lState.Text = '자리(사내 · 사외)를 못 정해 설치를 못 합니다 — 아래 까닭을 봅니다'
-  $lState.ForeColor = [Drawing.Color]::Firebrick
-  $log.AppendText("! 자리를 못 정했다 — $SiteWhy`r`n")
-  $log.AppendText("  설치 묶음(Setup.exe)을 새로 받아 다시 누릅니다. 값 파일을 손으로 만들었으면 #site-probe = 호스트:포트 줄을 넣습니다.`r`n")
+  $siteErr = "자리(사내 · 사외)를 못 정해 설치를 못 합니다 — 설치 묶음(Setup.exe)을 새로 받아 다시 누릅니다. 까닭: $(Hide-Address $SiteWhy)" +
+             ' · 값 파일을 손으로 만들었으면 #site-probe = 호스트:포트 줄을 넣습니다.'
+  Set-Status $siteErr 'Bad'
   $bGo.Enabled = $false
 }
 
 # ── 돌리는 자 ───────────────────────────────────────────────────────────────────
-# 몸통의 출력을 파일로 받고 타이머가 그 파일을 **따라 읽는다.** 타이머는 창의 메시지 루프가 돌리므로 `ShowDialog()` 안에서도
+# 몸통의 출력을 파일로 받고 타이머가 그 파일을 **따라 읽는다.** 타이머는 창의 디스패처가 돌리므로 `ShowDialog()` 안에서도
 #   산다. 읽는 쪽은 파일을 열어 둔 채 `ReadLine()` 이 null 을 낼 때까지 읽고 다음 틱에 잇는다 — 자식이 쓰는 중인 파일이라
 #   공유 열기다(`Open-Tail`).
 # ⚠ **`Register-ObjectEvent -Action` 을 안 쓴다.** 그 블록은 파워셸이 한가할 때만 도는데, 창이 떠 있는 동안 런스페이스는
@@ -882,8 +1041,10 @@ $script:outFile = $null; $script:errFile = $null
 $script:rdOut = $null;  $script:rdErr = $null
 $script:con = $null; $script:raise = 0   # 뒤에 서는 기록 창과, 이 창을 다시 올릴 남은 틱 수
 
+# 기록 칸에 한 줄 — 늘 끝으로 내린다(WPF 글 칸은 스스로 안 내린다).
 function Add-Log([string]$line) {
   $log.AppendText($line + "`r`n")
+  $log.ScrollToEnd()
 }
 
 $bGo.Add_Click({
@@ -895,14 +1056,16 @@ $bGo.Add_Click({
   $url = if ($noAsk) { '' } elseif ($tUrl) { $tUrl.Text.Trim() } else { $urlPreset }
   $key = if ($tKey) { $tKey.Text.Trim() } else { '' }
   if (-not $noAsk -and (($url -and -not $key -and -not $KeySaved) -or ($key -and -not $url))) {
-    [Windows.Forms.MessageBox]::Show(
-      '게이트웨이 주소와 API 키는 둘 다 넣거나 둘 다 비워야 합니다.' + [Environment]::NewLine +
-      '사외면 둘 다 비워 두세요 — 구독 로그인으로 섭니다.',
-      $AppName, 'OK', 'Warning') | Out-Null
+    [void][Windows.MessageBox]::Show($F,
+      $(if ($urlPreset) { 'API 키를 넣습니다 — 키가 없으면 붙지 못합니다.' } else { '주소와 API 키는 둘 다 넣거나 둘 다 비워야 합니다.' }),
+      $AppName, 'OK', 'Warning')
     return
   }
-  $bGo.Enabled = $false; $gV.Enabled = $false; $gO.Enabled = $false; $gR.Enabled = $false
-  $log.Clear(); $bar.Value = 0; $lState.Text = '시작합니다…'
+  # 도는 동안 고르는 칸들은 접고 「설치하는 중」 칸이 앞에 선다 — 접힌 칸은 못 만지므로 따로 잠그지 않는다.
+  $bGo.Enabled = $false
+  Show-Form $false
+  $runCard.Visibility = 'Visible'; $runTitle.Text = '설치하는 중'
+  $log.Clear(); $bar.Value = 0; Set-State '시작합니다…'
   # 준비 구간(0–8)을 미리 연다 — 첫 `[n/N]` 이 나오기 전에도 할 일이 있다(winget 이 없으면 되살리느라 수십 MB 를 받는다).
   #   그동안 구간이 0/0 이면 심장박동이 못 뛰어 막대가 0 에 박히고, 사람은 아무것도 안 하는 줄 안다.
   $script:segLo = 0; $script:segHi = 8; $script:idle = 0
@@ -993,10 +1156,10 @@ $bGo.Add_Click({
   } catch {
     # 예외를 삼키지 않고 말한다 — 삼키면 창이 「시작합니다」에서 굳고 아무도 까닭을 모른다.
     Add-Log "! 못 띄웠다 — $($_.Exception.Message)"
-    $lState.Text = '못 띄웠습니다 — 위 기록을 보세요.'
-    $lState.ForeColor = [Drawing.Color]::Firebrick
+    $runTitle.Text = '못 띄웠습니다'
+    Set-State '못 띄웠습니다 — 기록을 펼쳐 봅니다.' 'Bad'
     $bGo.Text = '다시 설치'; $bGo.Enabled = $true
-    $gV.Enabled = $true; $gO.Enabled = $true; $gR.Enabled = $true
+    Show-Form $true
     return
   }
 
@@ -1203,8 +1366,8 @@ exit 0
 function Save-RunLog {
   # 남길 것이 **실제로 있는** 판만 쓴다 — 이미 지운 뒤 다시 불려도 빈 파일을 안 만든다.
   $any = $false
-  foreach ($f in @($script:outFile, $script:errFile)) {
-    if ($f -and (Test-Path -LiteralPath $f)) { $any = $true }
+  foreach ($tmpFile in @($script:outFile, $script:errFile)) {
+    if ($tmpFile -and (Test-Path -LiteralPath $tmpFile)) { $any = $true }
   }
   if (-not $any) { return '' }
   try {
@@ -1234,18 +1397,19 @@ function Save-RunLog {
   }
 }
 
+
 # ── 파일을 따라 읽는 타이머 — 화면 실에서만 화면을 만진다 ──────────────────────
-$timer = New-Object Windows.Forms.Timer
-$timer.Interval = 150
+$timer = New-Object Windows.Threading.DispatcherTimer
+$timer.Interval = [TimeSpan]::FromMilliseconds(150)
 $timer.Add_Tick({
-  # ⚠ **앞에 세우기는 `TopMost` 를 켰다 끄는 것으로 한다 — `Activate()` 가 아니다.** 콘솔이 뜨며 포그라운드를 가져간 뒤라
+  # ⚠ **앞에 세우기는 `Topmost` 를 켰다 끄는 것으로 한다 — `Activate()` 가 아니다.** 콘솔이 뜨며 포그라운드를 가져간 뒤라
   #   `Activate()` 는 포그라운드 잠금에 걸려 작업표시줄만 깜빡이고 안 올라올 수 있다. 맨 위 띠로 옮겼다 되돌리면 잠금과 무관하게
   #   z-순서가 바뀌고, 되돌린 뒤에는 보통 창들 중 맨 위(콘솔 위, 맨 위 띠 아래)에 선다.
   # 몸통의 물음창은 안 가린다 — `Show-AskDialog` 는 맨 위 띠의 창을 임자로 세우므로 늘 이 창보다 위고, 켜 둔 한순간만 그 위로
   #   겹친다. 600ms 마다 한 번, 3 초 동안.
   if ($script:raise -gt 0) {
     $script:raise--
-    if (($script:raise % 4) -eq 0) { $F.TopMost = $true; $F.TopMost = $false }
+    if (($script:raise % 4) -eq 0) { $F.Topmost = $true; $F.Topmost = $false }
   }
   if (-not $script:rdOut) { $script:rdOut = Open-Tail $script:outFile }
   if (-not $script:rdErr) { $script:rdErr = Open-Tail $script:errFile }
@@ -1287,9 +1451,11 @@ $timer.Add_Tick({
     # 지우기 전에 옮긴다 — 나가는 것·오류는 여기가 마지막 독자다 (`Save-RunLog` 머리말).
     Save-RunLog | Out-Null
     # ⚠ **키가 든 임시 파일을 반드시 지운다.** 남기면 사람 임시 폴더에 평문으로 눌러앉는다.
-    foreach ($f in @($script:tmpEnv, $script:outFile, $script:errFile)) {
-      if ($f -and (Test-Path -LiteralPath $f)) {
-        Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+    # ⚠ 고리 이름을 `$f` 로 두지 않는다 — 파워셸 이름은 대소문자를 안 가려 이 손 안에서 창(`$F`)을 가리고, 뒤의 `Show-Form` 이 창 대신
+    #   글자를 받아 손째 던진다.
+    foreach ($tmpFile in @($script:tmpEnv, $script:outFile, $script:errFile)) {
+      if ($tmpFile -and (Test-Path -LiteralPath $tmpFile)) {
+        Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
       }
     }
     $script:proc = $null
@@ -1300,29 +1466,27 @@ $timer.Add_Tick({
     # 「못 읽었다」를 「실패했다」로 뭉치지 않는다 — 종료코드가 없는 것은 실패가 아니라 재는 자가 고장났다는 뜻이라, 같은
     #   문장으로 말하면 멀쩡한 설치가 실패로 보고된다.
     if ($null -eq $rc) {
-      $lState.Text = '끝났는데 종료코드를 못 읽었습니다 — 위 기록의 마지막 줄로 판단하세요.'
-      $lState.ForeColor = [Drawing.Color]::DarkOrange
+      $runTitle.Text = '끝났는데 판정을 못 읽었습니다'
+      Set-State '끝났는데 종료코드를 못 읽었습니다 — 기록의 마지막 줄로 판단하세요.' 'Warn'
     } elseif ($rc -eq 0) {
       $bar.Value = 100
+      $runTitle.Text = '끝났습니다'
       # 마무리 문장을 못 받았으면(몸통이 `=== 끝 ===` 줄 전에 끊긴 판) 지어 내지 않고 기록을 보라고 한다 — 안 한 일을 했다고
       #   말하지 않게.
-      $lState.Text = if ($script:done) { $script:done }
-                     else { '됐습니다 — 아래 기록의 마지막 줄을 보세요.' }
-      $lState.ForeColor = [Drawing.Color]::ForestGreen
+      Set-State $(if ($script:done) { $script:done } else { '됐습니다 — 기록의 마지막 줄을 보세요.' }) 'Ok'
     } else {
-      $lState.Text = "끝내지 못했습니다 (코드 $rc) — 위 기록의 ! 줄을 보세요."
-      $lState.ForeColor = [Drawing.Color]::Firebrick
+      $runTitle.Text = '끝내지 못했습니다'
+      Set-State "끝내지 못했습니다 (코드 $rc) — 기록을 펼쳐 ! 줄을 보세요." 'Bad'
     }
     $bGo.Text = '다시 설치'; $bGo.Enabled = $true
-    $gV.Enabled = $true; $gO.Enabled = $true; $gR.Enabled = $true
-    }
+    Show-Form $true
+  }
 })
 
 # 창을 닫을 때 도는 자식을 두고 가지 않는다 — 물어서 「예」면 나무째 끄고, 기록을 옮긴 뒤 임시 파일을 지운다.
-$F.Add_FormClosing({
+$F.Add_Closing({
   if ($script:proc -and -not $script:proc.HasExited) {
-    $ans = [Windows.Forms.MessageBox]::Show('설치가 도는 중입니다. 멈추고 닫을까요?',
-      $AppName, 'YesNo', 'Warning')
+    $ans = [Windows.MessageBox]::Show($F, '설치가 도는 중입니다. 멈추고 닫을까요?', $AppName, 'YesNo', 'Warning')
     if ($ans -ne 'Yes') { $_.Cancel = $true; return }
     # ⚠ **나무째 끈다.** `$script:proc` 는 몸통이 아니라 그것을 감싼 `cmd.exe` 라, 그것만 죽이면 **몸통 PowerShell 과 그
     #   자식(winget · npm)이 남아 계속 돈다** — 창은 사라졌는데 뒤에서 설치가 이어지고, 다음 판은 빗장에 막힌다.
@@ -1346,16 +1510,16 @@ $F.Add_FormClosing({
   # 끝까지 못 간 판이야말로 기록이 필요하다 — 여기서도 지우기 전에 옮긴다. 위 갈래가 이미
   # 옮겼으면 파일이 없어 `Save-RunLog` 가 빈 자리를 돌려주고 만다(빈 파일을 안 만든다).
   Save-RunLog | Out-Null
-  foreach ($f in @($script:tmpEnv, $script:outFile, $script:errFile)) {
-    if ($f -and (Test-Path -LiteralPath $f)) {
-      Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+  foreach ($tmpFile in @($script:tmpEnv, $script:outFile, $script:errFile)) {
+    if ($tmpFile -and (Test-Path -LiteralPath $tmpFile)) {
+      Remove-Item -LiteralPath $tmpFile -Force -ErrorAction SilentlyContinue
     }
   }
 })
-# ⚠ **뒤의 기록 창은 닫힘이 확정된 뒤(`FormClosed`)에만 닫는다.** `FormClosing` 은 위에서 「아니오」로 무를 수 있어, 거기서
+# ⚠ **뒤의 기록 창은 닫힘이 확정된 뒤(`Closed`)에만 닫는다.** `Closing` 은 위에서 「아니오」로 무를 수 있어, 거기서
 #   닫으면 설치 창은 남고 기록 창만 사라진다. 주 길은 저쪽이 이 프로세스가 사라진 것을 보고 제풀에 나가는 것이고, 여기는 옛 콘솔
 #   창에서 그것을 앞당기는 덧줄이다 — **`Kill()` 이 아니다**(`Start-ConsoleTail` 머리말: Terminal 이 빈 탭을 남긴다).
-$F.Add_FormClosed({
+$F.Add_Closed({
   if ($script:con -and -not $script:con.HasExited) {
     try { [void]$script:con.CloseMainWindow() } catch { }
   }
@@ -1391,8 +1555,8 @@ if ($UpdateRepo -and $DistVersion -and (Test-Path -LiteralPath $UpdateLib)) {
   } catch { $script:upPs = $null; $script:upHandle = $null }
 }
 
-$script:upTimer = New-Object Windows.Forms.Timer
-$script:upTimer.Interval = 400
+$script:upTimer = New-Object Windows.Threading.DispatcherTimer
+$script:upTimer.Interval = [TimeSpan]::FromMilliseconds(400)
 $script:upTimer.Add_Tick({
   if (-not $script:upHandle -or -not $script:upHandle.IsCompleted) { return }
   $script:upTimer.Stop()
@@ -1402,7 +1566,7 @@ $script:upTimer.Add_Tick({
   $script:upPs = $null; $script:upHandle = $null
   if (-not $found) { return }
 
-  $ans = [Windows.Forms.MessageBox]::Show(
+  $ans = [Windows.MessageBox]::Show($F,
     "새 판 $($found.Ver) 이 나와 있습니다. 지금 것은 $DistVersion 입니다.`n`n" +
     "새 판으로 설치할까요?`n받는 동안 이 창은 잠깐 멈춥니다 — 2MB 남짓입니다.",
     $AppName, 'YesNo', 'Question')
@@ -1410,14 +1574,14 @@ $script:upTimer.Add_Tick({
 
   # 받아서 재는 손은 곁의 조각이 든다(`update-check.ps1`) — **왜 해시가 이 자리를 드는지**도
   # 거기 곁말이 든다. 여기가 드는 것은 **진 까닭마다 사람에게 뭐라 할까** 하나다.
-  $F.Cursor = [Windows.Forms.Cursors]::WaitCursor
-  $F.Enabled = $false
+  $F.Cursor = [Windows.Input.Cursors]::Wait
+  $F.IsEnabled = $false
   try { . $UpdateLib } catch { }
   $v = $null
   try { $v = Get-VerifiedSetup -Found $found }
   catch { $v = @{ Ok = $false; Status = 'download-failed'; Detail = $_.Exception.Message } }
-  $F.Enabled = $true
-  $F.Cursor = [Windows.Forms.Cursors]::Default
+  $F.IsEnabled = $true
+  $F.Cursor = $null
 
   if (-not $v.Ok) {
     # 「못 쟀다」와 「다르다」를 한 말로 묶지 않는다 — 앞은 대조할 값이 릴리스에 없거나 못 읽은 것이고(`no-hash-asset` ·
@@ -1433,7 +1597,7 @@ $script:upTimer.Add_Tick({
              "파일: $($v.Path)`n릴리스가 든 값: $($v.Want)`n받은 것의 값: $($v.Have)`n`n" +
              "지금 것으로 계속 하셔도 됩니다."
     }
-    [void][Windows.Forms.MessageBox]::Show($say, $AppName, 'OK', $ico)
+    [void][Windows.MessageBox]::Show($F, $say, $AppName, 'OK', $ico)
     return
   }
 
@@ -1444,33 +1608,37 @@ $script:upTimer.Add_Tick({
 
 $bClose.Add_Click({ $F.Close() })
 
-$F.Add_Shown({
+# 몸통이 옛 제작자 칸(`-WithPersonalConfig`)을 이어받아 설치한 뒤 이 창을 `-PersonalNotice` 로 한 번 띄운 판 — 무엇이 바뀌었나를
+#   먼저 알린다(몸통 끝의 「옛 제작자 칸을 이어받은 판의 마무리」 · 결정 0099). 몸통의 그 칸을 걷을 때 같이 걷는다.
+function Show-PersonalNotice {
+  $ans = [Windows.MessageBox]::Show($F,
+    ('이번 판부터 제작자의 규범 · 룰 · 스킬을 도구마다 고릅니다 — Claude · Codex · agy.' + [Environment]::NewLine + [Environment]::NewLine +
+     '자동 실행이 예전 칸을 Claude 로 이어받아 방금 설치했습니다. 그대로 두려면 이 창을 닫으면 됩니다 — 다시 묻지 않습니다.' +
+     [Environment]::NewLine + [Environment]::NewLine +
+     '바꾸려면 「자세히 설정」의 「규범 · 룰 · 스킬을 받을 도구」를 고르고 [설치 시작]을 누릅니다. 예전 칸은 agy 를 같이 고른 PC 의 ' +
+     'agy 에도 규범을 깔았는데, 이번 설치에서 그것은 백업 자리로 옮겨졌습니다 — agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
+     '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 이 상자를 닫으면 여는 「제공기능」 페이지에 있습니다.' +
+     $(if ($ReleasePage) { [Environment]::NewLine + [Environment]::NewLine + '이 판에서 바뀐 것을 릴리스 노트에서 자세히 볼까요?' } else { '' })),
+    $AppName, $(if ($ReleasePage) { 'YesNo' } else { 'OK' }), 'Information')
+  if ($ReleasePage -and $ans -eq 'Yes') { try { Start-Process -FilePath $ReleasePage | Out-Null } catch { } }
+  # 「제공기능」도 같이 연다(결정 0099) — 못 열면 창의 링크가 그대로 남는다
+  $featPage = Join-Path $Here 'features.html'
+  if (Test-Path -LiteralPath $featPage) { try { Open-InBrowser $featPage } catch { } }
+}
+
+# 처음 그려진 뒤 한 번 — 새 판 묻기를 집는 타이머를 켜고, 빈 칸으로 손을 보내고, 알림 판이면 알린다.
+$script:shown = $false
+$F.Add_ContentRendered({
+  if ($script:shown) { return }
+  $script:shown = $true
   if ($script:upHandle) { $script:upTimer.Start() }
   # 빈 칸이 있으면 거기로 간다 — 주소 칸이 먼저다. 키가 채워져 왔다고 곧장 단추로 보내면, 비어 있는 주소 칸을 건너뛴 채 손이
   #   [설치 시작] 위에 놓인다.
-  if ($tUrl -and $tUrl.Enabled -and -not $tUrl.Text.Trim())      { $tUrl.Focus() | Out-Null }
-  elseif ($tKey -and $tKey.Enabled -and -not $tKey.Text.Trim())  { $tKey.Focus() | Out-Null }
-  else { $bGo.Focus() | Out-Null }
+  if ($tUrl -and $tUrl.IsEnabled -and -not $tUrl.Text.Trim())     { [void]$tUrl.Focus() }
+  elseif ($tKey -and $tKey.IsEnabled -and -not $tKey.Text.Trim()) { [void]$tKey.Focus() }
+  else { [void]$bGo.Focus() }
+  if ($PersonalNotice) { Show-PersonalNotice }
 })
-Sync-PersonalBoxes   # 제작자 칸의 켜짐을 제품 칸 첫 상태에 맞춘다
-Sync-PersonalLabel   # 칸 앞 글자를 저장소 칸 첫 값에 맞춘다
-# 몸통이 옛 제작자 칸(`-WithPersonalConfig`)을 이어받아 설치한 뒤 이 창을 `-PersonalNotice` 로 한 번 띄운 판 — 무엇이 바뀌었나를
-#   먼저 알린다(몸통 끝의 「옛 제작자 칸을 이어받은 판의 마무리」 · 결정 0099). 몸통의 그 칸을 걷을 때 같이 걷는다.
-if ($PersonalNotice) {
-  $F.Add_Shown({
-    $ans = [Windows.Forms.MessageBox]::Show(
-      ('이번 판부터 제작자의 규범 · 룰 · 스킬을 도구마다 고릅니다 — Claude · Codex · agy.' + [Environment]::NewLine + [Environment]::NewLine +
-       '자동 실행이 예전 칸을 Claude 로 이어받아 방금 설치했습니다. 그대로 두려면 이 창을 닫으면 됩니다 — 다시 묻지 않습니다.' +
-       [Environment]::NewLine + [Environment]::NewLine +
-       '바꾸려면 받을 도구를 고르고 [설치 시작]을 누릅니다. 예전 칸은 agy 를 같이 고른 PC 의 agy 에도 규범을 깔았는데, ' +
-       '이번 설치에서 그것은 백업 자리로 옮겨졌습니다 — agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
-       '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 이 상자를 닫으면 여는 「제공기능」 페이지에 있습니다.' +
-       $(if ($ReleasePage) { [Environment]::NewLine + [Environment]::NewLine + '이 판에서 바뀐 것을 릴리스 노트에서 자세히 볼까요?' } else { '' })),
-      $AppName, $(if ($ReleasePage) { 'YesNo' } else { 'OK' }), 'Information')
-    if ($ReleasePage -and $ans -eq 'Yes') { try { Start-Process -FilePath $ReleasePage | Out-Null } catch { } }
-    # 「제공기능」도 같이 연다(결정 0099) — 못 열면 창의 링크가 그대로 남는다
-    $featPage = Join-Path $Here 'features.html'
-    if (Test-Path -LiteralPath $featPage) { try { Open-InBrowser $featPage } catch { } }
-  })
-}
+Sync-PersonalBoxes    # 제작자 칸의 켜짐을 제품 칸 첫 상태에 맞춘다
+Sync-PersonalSource   # 출처 줄 · 접힌 머리의 한 줄을 저장소 칸 첫 값에 맞춘다
 [void]$F.ShowDialog()
