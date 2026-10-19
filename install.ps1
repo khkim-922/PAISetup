@@ -165,12 +165,16 @@ $ClaudePlantLedger = Join-Path $RecordRoot 'claude-settings.tsv'
 # ── 고르는 축 — **제품이다.** 표 셋(CLI · 확장 · 데스크탑 앱)은 같은 축의 세 단면이고, 한 제품이 그 셋에 한 줄씩 든다 ──
 # 사람은 「어느 도구를 쓰나」로 고르지 「CLI 냐 확장이냐」로 안 고른다. 기본값도 이 표가 든다 — 화면이 제 값을 따로 들면 두
 #   벌이 된다.
+# `When` — 이 제품을 어느 자리에서 내놓나(`Test-ProductHere`). 안 적으면 `any`(자리를 안 가린다) · `offsite` 는 사외에서만이다. 사내에서
+#   안 내놓는 제품은 설치 창에 칸이 안 서고(`-Describe` 의 `product|` 줄), 고른 기록이 있어도 그 판의 걸음 · 끝 검증에서 빠진다 —
+#   깔린 것을 걷지도 기록에서 지우지도 않는다(「준비」의 「자리」 칸 뒤 `$PickHeld`).
 $Products = @(
   @{ Key='claude';      Label='Claude';      Default=$true  }
   @{ Key='codex';       Label='Codex';       Default=$true  }
   @{ Key='antigravity'; Label='구글 Antigravity'; Default=$true  }
   # 기본이 꺼져 있다 — 파일럿이라 켜는 사람만 받는다(이슈 #16). 데스크탑 앱과 CLI 에 한 줄씩 들고 확장 표에는 없다.
-  @{ Key='copilot';     Label='GitHub Copilot'; Default=$false }
+  # 사내 지원 전 — 지원되면 any 로
+  @{ Key='copilot';     Label='GitHub Copilot'; Default=$false; When='offsite' }
 )
 # 걷은 제품 이름 — 지난 설치가 고른 값(로그온 자동 실행이 든 `-Pick`)에 남아 들어온다. 「준비」의 「고른 제품」 칸이 이 이름을
 #   말없이 빼고, 「모르는 제품 이름」 노란 줄은 이 목록 밖의 이름에만 선다(claude-config 결정 0136).
@@ -225,8 +229,8 @@ $Clis = @(
   #   (`…\WinGet\Packages\Google.AntigravityCLI_…\agy.exe`)에 두고 그 자리를 사용자 PATH 에 심는다.
   @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'
      Id='Google.AntigravityCLI' }
-  # 자리를 안 가리고 깐다(결정 0045 · 0093). Codex · Copilot 맡기기가 Copilot 을 쓰나는 자리 값 `CC_BG_AGENTS` 를 읽는 래퍼의
-  #   몫이다. winget 의 `GitHub.Copilot` 은 이름이 비슷한 딴 물건이라 npm 꾸러미로 받는다.
+  # 이 줄은 자리를 안 가린다(결정 0045 · 0093) — 사내에서 안 까는 것은 제품 표의 `When` 이 든다. Codex · Copilot 맡기기가 Copilot 을
+  #   쓰나는 자리 값 `CC_BG_AGENTS` 를 읽는 래퍼의 몫이다. winget 의 `GitHub.Copilot` 은 이름이 비슷한 딴 물건이라 npm 꾸러미로 받는다.
   @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI' }
   # 브라우저 MCP 의 꾸러미 — 고른 제품이 `For` 가운데 하나라도 있으면 깐다. 그 제품들에 다는 서버(`playwright mcp`)가 이 전역
   #   꾸러미에 들어 있다(claude-config 결정 0149). 브라우저 받기와 등록은 「도구별 홈」 걸음의 「브라우저 MCP」 칸이 든다.
@@ -327,7 +331,8 @@ $DesktopApps = @(
   #   뒤에 숫자가 오는 꼴만 잡는다.
   @{ Key = 'antigravity'; Label = 'Antigravity 데스크탑'; App = 'Antigravity'; Reg = 'Antigravity [0-9]*'
      Via = 'winget'; Id = 'Google.Antigravity'; Source = 'winget' }
-  # `When = 'any'` — 게이트웨이를 안 타고 제 인증으로 GitHub 에 붙어 사내에서도 깔 값이 있다.
+  # `When = 'any'` — 게이트웨이를 안 타고 제 인증으로 GitHub 에 붙어 사내에서도 깔 값이 있다. 제품이 사내에서 안 서는 동안(제품 표의
+  #   `When`)은 이 행도 안 깐다.
   # ⚠ **id 는 `GitHub.CopilotApp` 이다** — `GitHub.Copilot` 은 CLI 쪽 딴 물건이다. 지문은 winget 매니페스트의
   #   `InstallerSha256` 이 든다.
   # `Requires` — WebView2 를 타는데 매니페스트에 `Dependencies` 가 없어, 없는 기계(사내 VDI 이미지)에서는 설치가 그 자리에서
@@ -457,7 +462,8 @@ function Say-Get([string]$What, $Asset) {
 # `Get-StepTitle` 은 열쇠를 받아 `[번호/분모] 이름` 을 내고, 표에 없는 열쇠는 던진다. `Enter-Step` 은 빈 줄 하나 뒤에 그 줄을
 #   찍고, `Exit-Step` 은 같은 글자로 걸린 초 한 줄을 찍는다(`Write-Elapsed`).
 # ⚠ **머리줄의 꼴을 바꾸지 않는다** — 화면 껍데기가 그 줄을 `^\[(\d+)/(\d+)\]\s*(.*)$` 로 읽어 막대를 밀고 셋째 묶음을
-#   걸음 이름으로 쓴다. 꼴이 어긋나면 설치는 멀쩡히 돌고 막대만 멈춘다.
+#   걸음 이름으로 쓴다. 꼴이 어긋나면 설치는 멀쩡히 돌고 막대만 멈춘다. 로그온 자동 실행의 진행 창(`$AutoRunProgress`)도 이
+#   줄과 마침 줄(`Write-Elapsed`) · 멎음 줄(`Write-StepFault`)을 기록에서 같은 꼴로 읽는다.
 function Get-StepTitle([string]$Key) {
   for ($i = 0; $i -lt $Steps.Count; $i++) {
     if ($Steps[$i].Key -ceq $Key) { return ('[{0}/{1}] {2}' -f ($i + 1), $Steps.Count, $Steps[$i].Title) }
@@ -520,14 +526,16 @@ function Assert-StepsDone([string[]]$Keys) {
 
 #region 프로세스 — 네이티브 명령을 부르고, 빗장을 쥔 설치기와 작업 스케줄러의 작업을 묻는다
 
-# 「우리 엔진인가」 — 프로세스 하나(Win32_Process)를 받아 `install`(설치 몸통) · `autorun`(자동 실행 몸통) · 빈 글자(우리 것이
-#   아니다)를 낸다. **이 자는 하나다** — 몸통의 겹침 찾기(`Find-EngineHolders`)와 자동 실행 몸통의 가드(`Get-OtherEngines` — 가장 높은
-#   판의 엔진에서 이 함수를 떼어 들인다)가 다 이것으로 가른다. 따로 적으면 한쪽만 고친 판이 나와 두 가드가 다른 것을 센다.
+# 「우리 엔진인가」 — 프로세스 하나(Win32_Process)를 받아 `install`(설치 몸통) · `autorun`(자동 실행 몸통) · `deploy`(설정 저장소의
+#   배포 — 설치의 손자로 서서 홈 사본을 쓴다) · 빈 글자(우리 것이 아니다)를 낸다. **이 자는 하나다** — 몸통의 겹침 찾기
+#   (`Find-EngineHolders`)와 자동 실행 몸통의 가드(`Get-OtherEngines` — 가장 높은 판의 엔진에서 이 함수를 떼어 들인다)가 다 이것으로
+#   가른다. 따로 적으면 한쪽만 고친 판이 나와 두 가드가 다른 것을 센다.
 #   · 돌리는 스크립트는 `-File` 의 인자다(5.1 이 받는 줄임 `-f` · `-fi` · `-fil` 도). `-File` 이 없는 꼴(`-Command "& '…'"`)은 명령줄에서
-#     두 이름으로 끝나는 첫 낱말이다. 그 스크립트 이름이 `install.ps1` · `autorun.ps1` 이 아니면 우리 것이 아니다 — 남의 스크립트가
-#     우리 설치기 자리를 인자로 받는 판(검사가 `-Installer …\install.ps1` 을 넘긴다)을 안 센다
-#   · 같은 이름의 남 스크립트(scoop · 사내 도구의 `install.ps1`)는 그 파일에 우리 표지(`$mark`)가 없는 것으로 가른다 — 빗장을 쥐는
-#     판의 몸통과 자동 실행 몸통은 다 그 글자를 든다(빗장 이름 · 이 함수 자신)
+#     세 이름으로 끝나는 첫 낱말이다. 그 스크립트 이름이 `install.ps1` · `autorun.ps1` · `deploy.ps1` 이 아니면 우리 것이 아니다 — 남의 스크립트가 우리 설치기 자리를 인자로 받는
+#     판(검사가 `-Installer …\install.ps1` 을 넘긴다)을 안 센다
+#   · 같은 이름의 남 스크립트(scoop · 사내 도구의 `install.ps1` · 팀의 `deploy.ps1`)는 우리 표지로 가른다. 설치 · 자동 실행 몸통은
+#     그 파일에 `$mark` 를 든다(빗장 이름 · 이 함수 자신). 배포는 설정 저장소 뿌리의 것이다 — 곁에 `memory/` 가 서고(찾는 자
+#     `claude-config-path.sh` 의 지문) 파일이 제 이름 줄(`$markDeploy` — 첫 판부터 머리 줄이다)을 든다
 #   · **못 가르면 우리 것으로 센다** — 상대 경로(그 프로세스의 작업 폴더를 모른다) · 못 읽는 파일(지워진 옛 판 폴더). 놓치면 겹쳐 돌아
 #     반쪽 상태가 남고, 더 센 것은 기다리고 묻는 것으로 끝난다
 #   · 로그인 창 자식(`-GhLoginOnly`)은 빗장 앞에서 나가 빗장을 안 쥐므로 우리 엔진으로 안 센다(`Start-GhLoginChild`). 다른 사용자
@@ -535,39 +543,128 @@ function Assert-StepsDone([string[]]$Keys) {
 # ⚠ **이 함수는 다른 함수에 기대지 않는다** — 자동 실행 몸통이 이름으로 떼어 혼자 세운다.
 function Get-EngineKind($Proc) {
   $mark = 'PAISetup'
+  $markDeploy = '# claude-config -> '
   $cl = [string]$Proc.CommandLine
   if (-not $cl -or $cl -like '*-GhLoginOnly*') { return '' }
   $m = [regex]::Match($cl, '(?i)(?:^|\s)-f(?:i(?:le?)?)?\s+(?:"([^"]+)"|(\S+))')
   if (-not $m.Success) {
-    $m = [regex]::Match($cl, '(?i)(?:"([^"]*(?:install|autorun)\.ps1)"|''([^'']*(?:install|autorun)\.ps1)''|([^\s"'']*(?:install|autorun)\.ps1))(?=["''\s]|$)')
+    $m = [regex]::Match($cl, '(?i)(?:"([^"]*(?:install|autorun|deploy)\.ps1)"|''([^'']*(?:install|autorun|deploy)\.ps1)''|([^\s"'']*(?:install|autorun|deploy)\.ps1))(?=["''\s]|$)')
   }
   if (-not $m.Success) { return '' }
   $path = @(for ($g = 1; $g -lt $m.Groups.Count; $g++) { if ($m.Groups[$g].Success) { $m.Groups[$g].Value } })[0]
   $leaf = ''
   try { $leaf = [IO.Path]::GetFileName($path) } catch { return '' }
-  $kind = if ($leaf -ieq 'install.ps1') { 'install' } elseif ($leaf -ieq 'autorun.ps1') { 'autorun' } else { '' }
+  $kind = if ($leaf -ieq 'install.ps1') { 'install' } elseif ($leaf -ieq 'autorun.ps1') { 'autorun' } elseif ($leaf -ieq 'deploy.ps1') { 'deploy' } else { '' }
   if (-not $kind -or -not [IO.Path]::IsPathRooted($path)) { return $kind }
   $text = $null
   try { $text = [IO.File]::ReadAllText($path) } catch { return $kind }
+  if ($kind -eq 'deploy') {
+    $repoMemory = $false
+    try { $repoMemory = [IO.Directory]::Exists([IO.Path]::Combine([IO.Path]::GetDirectoryName($path), 'memory')) } catch { return $kind }
+    if ($repoMemory -and $text.Contains($markDeploy)) { return $kind }
+    return ''
+  }
   if ($text.Contains($mark)) { return $kind }
   return ''
 }
 
-# 빗장을 쥔 쪽을 찾는다 — 우리 설치 몸통(`Get-EngineKind` 가 `install`)인 다른 파워셸 프로세스의 목록을 낸다(못 물으면 빈 목록).
-#   이름(`powershell.exe`)만으로 고르면 치고 있는 이 창과 화면 껍데기까지 든다. 자동 실행 몸통은 안 센다 — 그것이 이 몸통을 자식으로
-#   띄우므로, 세면 자동 실행이 띄운 설치가 제 부모를 겹침으로 읽고 물러난다. `install.ui.ps1` 은 빗장을 안 쥐고 그 이름에 안 걸린다.
+# 빗장을 쥔 쪽을 찾는다 — 우리 설치 몸통 · 배포(`Get-EngineKind` 가 `install` · `deploy`)인 다른 파워셸 프로세스의 목록을 낸다(못 물으면
+#   빈 목록). 이름(`powershell.exe`)만으로 고르면 치고 있는 이 창과 화면 껍데기까지 든다. 배포는 설치의 손자로 서서 홈 사본을 쓰고, 그
+#   설치가 끝나도 고아로 남아 파일을 쥘 수 있다(claude-config #198) — 그것만 돌아도 겹침이다. 자동 실행 몸통은 안 센다 — 그것이 이 몸통을
+#   자식으로 띄우므로, 세면 자동 실행이 띄운 설치가 제 부모를 겹침으로 읽고 물러난다. `install.ui.ps1` 은 빗장을 안 쥐고 그 이름에 안 걸린다.
 function Find-EngineHolders {
   try {
     @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction Stop |
-        Where-Object { $_.ProcessId -ne $PID -and (Get-EngineKind $_) -eq 'install' })
+        Where-Object { $_.ProcessId -ne $PID -and @('install', 'deploy') -contains (Get-EngineKind $_) })
   } catch { @() }
 }
 
-# 쥔 쪽 한 줄 — 화면과 물음창이 같은 문장을 쓴다
+# 쥔 쪽 한 줄 — 화면과 물음창이 같은 문장을 쓴다. 무엇인지(설치 · 배포)를 댄다 — 번호만으로는 사람이 고아 배포를 못 알아본다.
 function Format-EngineHolder($H) {
-  '  PID {0} · {1} 시작 · {2}분째' -f
-    $H.ProcessId, $H.CreationDate.ToString('HH:mm:ss'),
+  $what = switch (Get-EngineKind $H) { 'install' { '설치' } 'deploy' { '배포(deploy.ps1)' } default { [string]$H.Name } }
+  '  PID {0} · {1} · {2} 시작 · {3}분째' -f
+    $H.ProcessId, $what, $H.CreationDate.ToString('HH:mm:ss'),
     [int]((Get-Date) - $H.CreationDate).TotalMinutes
+}
+
+# 겹친 엔진 하나를 나무째 끈다 — 사람이 겹침 물음에 「끝내고 새로 시작」을 골랐을 때만 부른다. 받는 것: Win32_Process 하나.
+# 내는 것: @{ Ended = 끝난 것들의 한 줄; Left = 못 끝낸 것들의 한 줄 } — 둘 다 끄는 명령의 답이 아니라 **다시 잰** 답이다. 뿌리만 끄면
+#   그 손자(배포)가 살아남아 파일을 쥔 채 다음 설치를 깬다(claude-config #198).
+# 나무는 그 프로세스와, 부모보다 늦게 선 자식을 따라간 자손이다 — 부모 PID 만 따르면(`taskkill /T`) 그 PID 를 앞서 쓴 죽은 프로세스의
+#   고아(먼저 선 남)까지 끈다(`Stop-ProbeTree` 와 같은 자 · claude-config 결정 0142). 뿌리를 먼저 끈다 — 자식부터 끄면 그 끝을 기다리던
+#   뿌리가 다음 걸음으로 가 새 자식을 띄운다. 하나마다 끄기 직전에 시작 시각을 다시 본다 — 그 사이 PID 가 남에게 갔을 수 있다.
+# ⚠ 프로세스 목록을 못 읽으면 뿌리만 끄고 「자손을 못 쟀다」를 Left 에 둔다 — 못 본 자손이 살았는지 모르는 채 들어가지 않는다.
+function Stop-HolderTree($Holder) {
+  $rootId = [int]$Holder.ProcessId
+  $all = $null; $why = ''
+  try { $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, Name, CommandLine -OperationTimeoutSec 10 -ErrorAction Stop) }
+  catch { $why = ($_.Exception.Message -split '\r?\n')[0] }
+  $nodes = New-Object System.Collections.ArrayList
+  [void]$nodes.Add($Holder)
+  if ($null -ne $all) {
+    $kids = @{}
+    foreach ($x in $all) {
+      $pp = [int]$x.ParentProcessId
+      if (-not $kids.ContainsKey($pp)) { $kids[$pp] = New-Object System.Collections.ArrayList }
+      [void]$kids[$pp].Add($x)
+    }
+    for ($i = 0; $i -lt $nodes.Count; $i++) {
+      $n = $nodes[$i]
+      if (-not $kids.ContainsKey([int]$n.ProcessId)) { continue }
+      foreach ($c in $kids[[int]$n.ProcessId]) {
+        $seen = @($nodes | Where-Object { [int]$_.ProcessId -eq [int]$c.ProcessId }).Count
+        if ([int]$c.ProcessId -eq [int]$n.ProcessId -or $c.CreationDate -lt $n.CreationDate -or $seen) { continue }
+        # 창을 든 자손은 사람의 것이다 — 설치가 띄운 브라우저(gh 로그인) · VS Code · 데스크탑 앱을 같이 닫지 않게, 넣지도 그 밑으로 내려가지도 않는다
+        $win = $null
+        try { $win = Get-Process -Id ([int]$c.ProcessId) -ErrorAction Stop; if ($win.MainWindowHandle -ne [IntPtr]::Zero) { continue } }
+        catch { } finally { if ($win) { $win.Dispose() } }
+        [void]$nodes.Add($c)
+      }
+    }
+  }
+  $same = {
+    param($n)
+    $h = $null
+    try { $h = Get-Process -Id ([int]$n.ProcessId) -ErrorAction Stop; return ([Math]::Abs(($h.StartTime - $n.CreationDate).TotalMilliseconds) -lt 1) }
+    catch { return $false } finally { if ($h) { $h.Dispose() } }
+  }
+  foreach ($n in $nodes) {
+    if (& $same $n) { try { Stop-Process -Id ([int]$n.ProcessId) -Force -ErrorAction Stop } catch { } }
+  }
+  $alive = @($nodes)
+  for ($t = 0; $t -lt 10 -and $alive.Count; $t++) {
+    if ($t) { Start-Sleep -Milliseconds 500 }
+    $alive = @($alive | Where-Object { & $same $_ })
+  }
+  $label = {
+    param($n)
+    $what = Get-EngineKind $n
+    if (-not $what) { $what = [string]$n.Name }
+    'PID {0} ({1})' -f $n.ProcessId, $what
+  }
+  $ended = @($nodes | Where-Object { $alive -notcontains $_ } | ForEach-Object { & $label $_ })
+  $left  = @($alive | ForEach-Object { & $label $_ })
+  if ($why) { $left += "PID $rootId 의 자손 (프로세스 목록을 못 읽어 못 쟀다 — $why)" }
+  return @{ Ended = $ended; Left = $left }
+}
+
+# 이 폴더 밑에서 지금 누가 쥔 파일 — 홀로 열기(`FileShare.None`)가 「다른 프로세스가 쓰는 중」으로 지는 파일이다. 겹침을 끝낸 뒤
+#   그 나무가 쥐던 잠금이 풀렸나를 잰다 — 멈춘 배포는 홈 씨앗 파일을 0 바이트로 쥔 채 섰다(claude-config #198). 잠깐 쥐는 손(백신
+#   검사)에 헛걸리지 않게 진 파일만 사이를 두고 다시 연다. 없는 파일(그 사이 지워졌다) · 권한으로 못 여는 파일은 쥔 것이 아니다.
+# 받는 것: 폴더 · 다시 여는 횟수 · 사이(밀리초). 내는 것: 쥔 파일의 자리들(폴더가 없으면 빈 목록).
+function Find-LockedFiles([string]$Root, [int]$Tries = 3, [int]$GapMs = 1000) {
+  if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return @() }
+  $left = @(Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  for ($t = 0; $t -lt $Tries -and $left.Count; $t++) {
+    if ($t) { Start-Sleep -Milliseconds $GapMs }
+    $left = @(foreach ($p in $left) {
+      $fs = $null
+      try { $fs = [IO.File]::Open($p, 'Open', 'Read', 'None') }
+      catch [IO.FileNotFoundException] { } catch [IO.DirectoryNotFoundException] { } catch [IO.IOException] { $p } catch { }
+      finally { if ($fs) { $fs.Dispose() } }
+    })
+  }
+  return $left
 }
 
 # 판을 한 줄로 읽는다 — 명령 · 인자를 받아 나가는 글의 첫 줄을 낸다. 못 읽거나 `$ProbeCap` 을 넘기면 빈 글자이고, 넘김은
@@ -1197,8 +1294,8 @@ function ConvertTo-PlainJson($Value, [string]$Pad = '') {
 #     안 고친다 — PowerShell 의 표는 그 둘을 한 이름으로 다뤄 엉뚱한 키에 쓴다. 한 표에 대소문자만 다른 두 키가 함께 서면(`hooks` 와 `Hooks`)
 #     PowerShell 5.1 의 `ConvertFrom-Json` 이 던져 못 고친다 — 그 말이 두 키 이름을 댄다. `env` 안의 키만은 대소문자를 안 가린다 — 윈도의
 #     환경 변수 이름이 그렇다(사람의 `pythonutf8` 은 같은 변수다)
-#   · 우리 항목 — 훅 명령 객체의 명령이 따옴표를 벗기면 `$CLAUDE_PROJECT_DIR/.claude/hooks/<이름>` 이고, 그 이름이 홈 씨앗이 싣는 훅
-#     (`<씨앗>/.claude/hooks/` 의 파일)이거나 · 저장소에 그 파일이 없거나(걷은 우리 훅의 남은 등록 — Dropped 에 댄다) · 저장소의
+#   · 우리 항목 — 훅 명령 객체의 명령이 홈 씨앗 저장소 설정의 등록 명령과 글이 같은 것, 또는 앞의 점(`. `) · 따옴표를 벗기면
+#     `$CLAUDE_PROJECT_DIR/.claude/hooks/<이름>` 이고 그 이름이 홈 씨앗이 싣는 훅(`<씨앗>/.claude/hooks/` 의 파일)이거나 · 저장소에 그 파일이 없거나(걷은 우리 훅의 남은 등록 — Dropped 에 댄다) · 저장소의
 #     그 파일이 우리 표지를 든 것. 그 파일이 있고 표지가 없으면 그 사람의 훅이라 말없이 둔다. 이름에 경로에 못 쓰는 글자가
 #     들면 파일일 수 없어 우리 것이 아니다
 #   · 우리 명령 객체를 제 묶음에서 걷고 — 우리 것을 걷어 비게 된 묶음과 이벤트만 걷는다(사람의 훅이 같은 묶음에 있을 수 있다) — 씨앗의
@@ -1256,9 +1353,14 @@ function Merge-RepoSettings([string]$Path, [string]$SeedPath, [string]$Repo, [st
   if ($envProp -and $envProp.Value -isnot $pso) { return (& $refuse 'env 가 표가 아니라' $shapeFix) }
   $before = ConvertTo-PlainJson $obj
   $shipped = @(Get-ChildItem -LiteralPath $SeedHooks -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-  # 우리 꼴의 명령이면 훅 이름, 아니면 빈 글
+  # 씨앗이 등록한 명령 — 글이 같으면 꼴을 안 묻고 우리 것이다. 지금 판의 꼴을 씨앗 파일 하나가 들어, 씨앗이 등록 꼴을 바꿔도 이미 지금
+  #   판인 등록을 사람 것으로 두고 씨앗의 것을 또 더하지 않는다
+  $seedCmds = @(foreach ($sev in @($seedObj.hooks.PSObject.Properties)) { foreach ($sg in @($sev.Value)) { foreach ($sh in @($sg.hooks)) { if ($sh.command) { [string]$sh.command } } } })
+  # 우리 꼴의 명령이면 훅 이름, 아니면 빈 글 — 옛 판의 등록을 알아보는 자다. 앞의 점(`. `)도 벗긴다 — 셔뱅의 둘째 sh 를 안 세우려고 점으로
+  #   읽게 한 우리 등록 꼴이라, 씨앗이 다른 꼴로 옮기면 남은 점 꼴 등록이 옛 판이 된다
   $nameOf = { param($cmd)
     $c = ([string]$cmd).Trim()
+    if ($c -match '^\.\s+(\S.*)$') { $c = $Matches[1] }
     if ($c.Length -ge 2 -and (($c[0] -eq '"' -and $c[-1] -eq '"') -or ($c[0] -eq "'" -and $c[-1] -eq "'"))) { $c = $c.Substring(1, $c.Length - 2) }
     if ($c -match '^\$CLAUDE_PROJECT_DIR/\.claude/hooks/([^/\\\s"'']+)$' -and $Matches[1].IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -lt 0) { $Matches[1] } else { '' } }
   # 걷기 — 이벤트마다 우리 명령 객체를 걷고, 우리 것을 걷어 비게 된 묶음은 뺀다. 우리 것을 걷은 이벤트를 적어 둔다(비면 뒤에서 뺀다)
@@ -1272,6 +1374,7 @@ function Merge-RepoSettings([string]$Path, [string]$SeedPath, [string]$Repo, [st
           $rest = @()
           foreach ($h in @($hp.Value)) {
             $cp = if ($h -is $pso) { & $propOf $h 'command' } else { $null }
+            if ($cp -and $seedCmds -ccontains [string]$cp.Value) { $removed = $true; continue }
             $n = if ($cp) { & $nameOf $cp.Value } else { '' }
             if ($n) {
               $file = Join-Path $Repo ".claude\hooks\$n"
@@ -1394,7 +1497,7 @@ function Get-SessionHookGen([string]$Repo) {
   }
   if ($r.Current) { return $r }
   if ($r.Shape -eq 'config') {
-    $r.Fix = '설정 저장소 꼴이라 설치기가 안 고친다 — 원본에서 받은 저장소면 당기고(git pull), 씨앗으로 만든 저장소면 ~/.claude/seeds/config-repo/ 의 지금 판으로 손수 올린다 · 그 훅을 안 쓰면 그 파일과 .claude/settings.json 의 SessionStart 줄을 함께 걷는다'
+    $r.Fix = "설정 저장소 꼴이라 설치기가 안 고친다 — 원본에서 받은 저장소면 당기고(git pull), 씨앗으로 만든 저장소면 $ConfigSeedHome 의 지금 판으로 손수 올린다 · 그 훅을 안 쓰면 그 파일과 .claude/settings.json 의 SessionStart 줄을 함께 걷는다"
   }
   return $r
 }
@@ -1658,13 +1761,15 @@ function Invoke-WorkRootScan([string]$Root, [string[]]$Handled, [bool]$CreatorOn
 # 찾기는 홈 씨앗의 찾는 자(`.githooks/claude-config-path.sh` — 문지기와 몸통이 읽는 그 자)를 Git Bash 로 불러 맡긴다 — 후보를 여기
 #   옮겨 적지 않는다. 답은 파일로 받아 UTF-8 로 읽는다 — 자식의 표준 출력은 이 창의 콘솔 코드 페이지로 풀려, 그것이 UTF-8 이 아니면
 #   한글 자리가 깨진다.
+# 부르는 자리는 둘이다 — 「설정 저장소」 걸음(넘길 자리를 고른다)과 「공용 자산」 걸음(홈 씨앗의 임자를 가른다). Why 는 두 자리에 다 서는
+#   글이고, 어느 일이었나는 부르는 쪽의 머리줄이 댄다.
 # 내는 것 — @{ Root; Current; Why; Fix }. 설정 저장소가 없거나 그 저장소 자신이면 Current 다(자신의 판은 `Get-SessionHookGen` 이 쟀다).
 #   못 잰 것은 Current 가 아니다 — Git Bash · 찾는 자가 없다 · 찾는 자가 졌다 · 찾은 자리가 있는 폴더가 아니다 · 읽다 졌다
 function Get-ConfigRootGen([string]$Repo, [string]$Bash, [string]$Finder) {
   $r = @{ Root = ''; Current = $true; Why = ''; Fix = '' }
   $unmeasured = { param([string]$why)
     $r.Current = $false
-    $r.Why = "넘기면 잡힐 곁의 설정 저장소를 못 쟀다 — $why"
+    $r.Why = "곁의 설정 저장소를 못 쟀다 — $why"
     $r.Fix = '설치를 다시 누른다 — 같으면 이 줄을 그대로 보낸다'
     $r }
   $tag = [guid]::NewGuid().ToString('N')
@@ -1740,6 +1845,9 @@ function Get-AssetFiles([string]$Dir) {
 # 놓은 자리가 원본과 같은가 — 원본의 파일마다 그 자리에 바이트까지 같은 파일이 있나(모자람 · 다름), 그 자리에만 있는 파일(여분)이 있나.
 #   여분은 `-ExtraOk` 면 판정에 안 든다 — 남이 쓰는 파일이 같이 사는 자리(사내 환경 문서)다. 내는 것 — @{ Ok; Say(어긋난 것을 짧게) }.
 #   `-Only` 를 주면 원본은 그 상대 자리의 파일뿐이다 — 원본 폴더에 원본이 아닌 파일(git 이 무시하는 런타임 기록)이 같이 사는 자리다.
+# ⚠ **못 읽는 파일 하나에 던지지 않는다** — 다른 프로세스가 공유 없이 쥔 파일(백신 · DRM)은 해시가 던지고, 부르는 칸(끝 검증)이 통째로
+#   멎는다. 그 파일은 `Unread`(못 읽은 자리)에 들고 Ok 가 아니다 — 끝 검증은 다른 어긋남(`Bad`)이 없으면 못 잰 칸으로 낸다(`New-AssetRow`).
+# 내는 것 — @{ Ok; Bad(잰 어긋남이 있다); Say(어긋난 것을 짧게); N(원본 파일 수); Unread(못 읽은 파일의 온 자리 목록) }.
 function Compare-AssetTree([string]$From, [string]$To, [switch]$ExtraOk, [string[]]$Only) {
   $src = Get-AssetFiles $From
   if ($PSBoundParameters.ContainsKey('Only')) {
@@ -1747,10 +1855,15 @@ function Compare-AssetTree([string]$From, [string]$To, [switch]$ExtraOk, [string
     foreach ($k in @($src.Keys)) { if (-not $keep.ContainsKey($k)) { $src.Remove($k) } }
   }
   $dst = Get-AssetFiles $To
-  $miss = @(); $diff = @()
+  $miss = @(); $diff = @(); $unread = @(); $unreadSay = @()
   foreach ($k in $src.Keys) {
     if (-not $dst.ContainsKey($k)) { $miss += $k; continue }
-    if ((Get-FileHash -LiteralPath $src[$k] -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $dst[$k] -Algorithm SHA256).Hash) { $diff += $k }
+    $hash = @()
+    foreach ($p in @($src[$k], $dst[$k])) {
+      try { $hash += (Get-FileHash -LiteralPath $p -Algorithm SHA256 -ErrorAction Stop).Hash }
+      catch { $unread += $p; $unreadSay += $k; break }
+    }
+    if ($hash.Count -eq 2 -and $hash[0] -ne $hash[1]) { $diff += $k }
   }
   $extra = @($dst.Keys | Where-Object { -not $src.ContainsKey($_) })
   $say = @()
@@ -1758,8 +1871,17 @@ function Compare-AssetTree([string]$From, [string]$To, [switch]$ExtraOk, [string
   if ($miss.Count)  { $say += "모자람 $($miss.Count): $((@($miss | Sort-Object | Select-Object -First 3)) -join ', ')" }
   if ($diff.Count)  { $say += "다름 $($diff.Count): $((@($diff | Sort-Object | Select-Object -First 3)) -join ', ')" }
   if ($extra.Count) { $say += "여분 $($extra.Count)$(if (-not $ExtraOk) { ': ' + ((@($extra | Sort-Object | Select-Object -First 3)) -join ', ') })" }
-  return @{ Ok = ($src.Count -gt 0 -and -not $miss.Count -and -not $diff.Count -and ($ExtraOk -or -not $extra.Count)); Say = ($say -join ' · ')
-            N = $src.Count }
+  if ($unread.Count) { $say += "못 읽음 $($unread.Count): $((@($unreadSay | Sort-Object | Select-Object -First 3)) -join ', ')" }
+  $bad = (-not $src.Count) -or $miss.Count -or $diff.Count -or (-not $ExtraOk -and $extra.Count)
+  return @{ Ok = (-not $bad -and -not $unread.Count); Bad = [bool]$bad; Say = ($say -join ' · '); N = $src.Count; Unread = $unread }
+}
+
+# 나른 자리의 끝 검증 칸 하나 — 받는 것: 칸 이름 · 판정 · 잰 어긋남이 있나 · 못 읽은 파일 목록(`Compare-AssetTree` 의 Unread 꼴). 잰 어긋남이
+#   있으면 못 읽은 파일이 있어도 진 칸이고, 못 읽은 파일만 있으면 못 잰 칸이다(결정 0141) — 넘긴 물음은 그 파일의 해시다.
+function New-AssetRow([string]$Name, [bool]$Ok, [bool]$Bad, [object[]]$Unread) {
+  $u = @($Unread | Where-Object { $_ })
+  if ($u.Count -and -not $Bad) { return @{ Name = $Name; State = 'unmeasured'; Probe = "Get-FileHash $($u[0])"; Why = '다른 프로세스가 쥐었거나 읽기를 막아 파일을 못 읽어' } }
+  return @{ Name = $Name; Ok = $Ok }
 }
 
 # 남의 파일이 같이 사는 공용 자산(사내 환경 문서)을 장부로 맞춘다 (PAISetup #44 ⑭) — 원본을 덮어 깐 뒤 부른다. 받는 것: 「공용 자산」의
@@ -3275,6 +3397,12 @@ function Read-DesktopAppSwitch([string]$Directive) {
 function Test-DesktopAppHere($Row, [string]$When, [bool]$Offsite) {
   $rowWhen = if ($Row.When) { $Row.When } else { 'offsite' }
   return [bool]($When -eq 'yes' -or ($When -eq 'offsite' -and ($rowWhen -eq 'any' -or $Offsite)))
+}
+
+# 제품을 이 자리에서 내놓나 — 받는 것은 `$Products` 의 행 · 사외인가, 내는 것은 참 · 거짓. 행의 `When` 이 `offsite` 면 사외에서만이고
+#   그 밖(안 적음 · `any`)은 늘이다. `-Describe` 의 `product|` 줄과 「자리」 칸 뒤의 `$PickHeld` 가 이 한 자를 쓴다.
+function Test-ProductHere($Row, [bool]$Offsite) {
+  return [bool]($Row.When -ne 'offsite' -or $Offsite)
 }
 
 # 데스크탑 앱이 깔렸나를 세 값으로 잰다 — `@{ State = yes · no · unmeasured; Ver = 깔린 판(모르면 빈 글자); Probe = 못 잰 물음;
@@ -5171,7 +5299,7 @@ function Stop-App($App) {
 
 #endregion 앱 열기
 
-#region 심기 · 제공기능 — 홈 씨앗 몸통의 `--plant` 를 부르고, 새 작은 판을 처음 깐 PC 에서 설치 끝에 「제공기능」을 한 번 연다
+#region 심기 · 제공기능 — 홈 씨앗 몸통의 `--plant` 를 부르고, 처음 까는 PC 에서 설치 끝에 「제공기능」을 한 번 연다
 
 # 심기만 — 홈 씨앗의 세션 훅을 `--plant <작업 루트>` 로 부른다(claude-config 결정 0134 · 부르는 자리와 차례는 결정 0135). 저장소를
 #   받았든 안 받았든 같은 홈 씨앗을 부른다 — 홈 씨앗은 늘 서 있고, 몸통은 거기서 홈 훅 · 고른 도구의 폴더 신뢰 · 데스크탑 상태를 심는다.
@@ -5208,12 +5336,12 @@ function Invoke-Plant([string]$Bash, [string]$Root) {
   @{ Ran = $true; Ok = ($rc -eq 0); Why = "exit $rc" }
 }
 
-# 「제공기능」(곁의 `features.html`)을 작은 판(`VERSION` 의 앞 두 수 — `큰.작은`)마다 한 번 연다 — 설치 창 · 콘솔 · 로그온 자동 실행 어느
-#   판이든 설치 끝에서다(claude-config 결정 0147 — 0135 의 그 갈래를 대신한다). SemVer 의 가운데 자리가 기능이 더해진 판이라, 다시 깔면
-#   새것이 오는 판이 거기서 오른다. 옛 제작자 칸 알림 창을 띄운 판(`$NoticeShown`)은 그 창이 닫힐 때 연다(결정 0099) — 두 번 안 연다.
-# 기록은 설치본 자리(`%LOCALAPPDATA%\Claude Code Setup`)의 한 줄 — 본 작은 판(`큰.작은`)이다. 알림 창을 띄운 판도 적는다 — 본 것은 같아,
-#   다음 설치가 또 열지 않는다. 열지 못했으면 안 적는다 — 다음 설치가 다시 연다. 옛 기록(본 큰 판의 수 하나 · 0135)은 그 큰 판의 .0 을
-#   본 것으로 읽고, 못 읽는 기록은 없는 것으로 본다. 파일 이름(`features.major`)은 옛 기록을 이어 읽으려고 그대로 둔다.
+# 「제공기능」(곁의 `features.html`)을 그 PC 에서 한 번만 연다 — 설치 창 · 콘솔 · 로그온 자동 실행 어느 판이든 설치 끝에서다(claude-config
+#   결정 0147 덧붙임). 판이 올라도 다시 안 연다 — 다시 볼 길은 설치 창의 「제공기능」 링크다. 옛 제작자 칸 알림 창을 띄운 판
+#   (`$NoticeShown`)은 그 창이 닫힐 때 연다(결정 0099) — 두 번 안 연다.
+# 기록은 설치본 자리(`%LOCALAPPDATA%\Claude Code Setup`)의 한 줄 — 본 판(`큰.작은`)이다. 읽히는 기록이 있으면 본 것이다(옛 기록 — 큰 판의
+#   수 하나 · 0135 — 도 같다). 알림 창을 띄운 판도 적는다. 열지 못했으면 안 적는다 — 다음 설치가 다시 연다. 못 읽는 기록은 없는 것으로
+#   본다. 파일 이름(`features.major`)은 옛 기록을 이어 읽으려고 그대로 둔다.
 # 내는 것 — 한 낱말: opened · notice · seen · nopage · failed · nover. 화면 줄은 부르는 쪽이 든다.
 function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record, [string]$Page) {
   if ($Version -notmatch '^(\d+)\.(\d+)') { return 'nover' }
@@ -5226,7 +5354,7 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
       elseif ($txt -match '^\d+$')  { $seen = [version]"$txt.0" }
     }
   } catch { $seen = $null }
-  if ($seen -and $seen -ge $now) { return 'seen' }
+  if ($seen) { return 'seen' }
   $how = 'notice'
   if (-not $NoticeShown) {
     if (-not (Test-Path -LiteralPath $Page -PathType Leaf)) { return 'nopage' }
@@ -5253,7 +5381,7 @@ $AppName = Read-Directive $DistEnvFile 'app-name'
 if (-not $AppName) { $AppName = $AppNameDefault }
 
 # ── `-Describe` 갈래 — 고를 목록 · 저장소 자리 · 지난번에 고른 것 · 몸통만 아는 사실을 내주고 나간다 ──────────────────────
-# 내는 줄 — `product|키|글자|기본값`(제품마다) · `config-repo-root|자리` · `record|이름|값`(기록에 든 것마다 · `Read-ChoiceRecord`) ·
+# 내는 줄 — `product|키|글자|기본값`(이 자리에서 내놓는 제품마다 · `Test-ProductHere`) · `config-repo-root|자리` · `record|이름|값`(기록에 든 것마다 · `Read-ChoiceRecord`) ·
 #   `company-key|yes·no`(이 사용자가 풀 수 있는 회사 키 덩이가 있나 · 값은 안 낸다), 그 뒤에 몸통만 아는 사실(PAISetup #46):
 #     · `app-name|이름` · `vcruntime-min|판` · `personal|도구|제품|글자`(`$PersonalTools` 마다) — 설치 창의 제목 · 「올리기」 칸 글자 ·
 #       제작자 칸
@@ -5268,7 +5396,10 @@ if (-not $AppName) { $AppName = $AppNameDefault }
 #   덩이나 깨진 덩이에 `yes` 라 하면 창이 빈 키 칸을 받고 그 판은 「미입력」 빨강으로 끝난다. 푼 바이트는 바로 지운다. 못 푸는 덩이를
 #   여기서 지우지 않는다 — 지우는 것은 그 덩이를 다시 쓸 수 있는 「키와 값」의 몫이다(`Read-CompanyKeyBlob`).
 if ($Describe) {
-  $Products | ForEach-Object {
+  # 자리를 먼저 잰다 — 제품 줄이 그 답을 따른다(`Test-ProductHere` · 이 자리에서 안 내놓는 제품은 줄을 안 낸다)
+  $descProbe = Read-Directive $DistEnvFile 'site-probe'
+  $descSite  = Measure-Site $descProbe
+  $Products | Where-Object { Test-ProductHere $_ ($descSite.Site -eq 'outside') } | ForEach-Object {
     'product|{0}|{1}|{2}' -f $_.Key, $_.Label, $(if ($_.Default) { 'on' } else { 'off' })
   }
   'config-repo-root|{0}' -f $configRepoRoot
@@ -5286,8 +5417,6 @@ if ($Describe) {
   'app-name|{0}' -f $AppName
   'vcruntime-min|{0}' -f $VcRuntimeMin
   $PersonalTools | ForEach-Object { 'personal|{0}|{1}|{2}' -f $_.Tool, $_.Product, $_.Label }
-  $descProbe = Read-Directive $DistEnvFile 'site-probe'
-  $descSite  = Measure-Site $descProbe
   if ($descSite.Site) { 'site|{0}|{1}' -f $descSite.Site, $descProbe } else { 'site|error|{0}' -f $descSite.Why }
   'vscode|{0}' -f $(if (Test-VsCodeRequired $descSite.Site) { 'required' } else { 'optional' })
   $descAuto = Get-AutoRunDefault (Read-Directive $DistEnvFile 'autorun')
@@ -5381,14 +5510,26 @@ if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
              "그것을 끝내고 새로 시작할까요?`n`n" +
              "아직 일하는 중이면 반쯤 깔린 상태가 남을 수 있습니다."
       if (Show-AskDialog '설치가 겹쳤습니다' $msg) {
+        # 나무째 끄고 **다시 재어** 말한다(`Stop-HolderTree`) — 뿌리만 끄면 손자 배포가 살아 파일을 쥔 채 이 판을 깬다(claude-config #198).
+        #   다 끝났으면 그 나무가 쥐던 잠금이 풀렸나를 홈 씨앗(`~/.claude/seeds` — 배포가 쓰다 멈춘 자리)의 파일마다 재고, 다른 자리의
+        #   잠금은 그 프로세스들이 다 사라진 것으로 갈음한다. 남은 것이 하나라도 있으면 이름을 대고 들어가지 않는다.
+        $treeLeft = @()
         foreach ($h in $holders) {
-          try {
-            Stop-Process -Id $h.ProcessId -Force -ErrorAction Stop
-            Write-Host ('  PID {0} 을 끝냈다' -f $h.ProcessId)
-          } catch {
-            Write-Host ('  ! PID {0} 을 못 끝냈다 — {1}' -f $h.ProcessId, $_.Exception.Message) `
-              -ForegroundColor Yellow
-          }
+          $tr = Stop-HolderTree $h
+          foreach ($x in $tr.Ended) { Write-Host "  $x — 끝냈다 (다시 재니 없다)" }
+          foreach ($x in $tr.Left)  { Write-Host "  ! $x — 못 끝냈다 (다시 재도 있다)" -ForegroundColor Red }
+          $treeLeft += $tr.Left
+        }
+        $seedLocks = @()
+        if (-not $treeLeft) {
+          $seedRoot = Join-Path $homeDir 'seeds'
+          $seedLocks = @(Find-LockedFiles $seedRoot)
+          if ($seedLocks) { foreach ($x in $seedLocks) { Write-Host "  ! 아직 누가 쥔 파일 — $x" -ForegroundColor Red } }
+          else { Write-Host "  잠금 — 홈 씨앗($seedRoot)의 파일을 다 홀로 열 수 있다 (풀렸다)" }
+        }
+        if ($treeLeft -or $seedLocks) {
+          Write-Host '  ! 끝내지 못한 것이 있어 들어가지 않습니다 — 위 이름을 작업 관리자에서 끝내고 다시 누릅니다.' -ForegroundColor Red
+          exit 1
         }
         # 주인이 죽으면 윈도우가 빗장을 놓는다 — 그 버려진 빗장을 여기서 받는다(위 「버려진 빗장」과 같다).
         try { $script:HasEngineMutex = $script:EngineMutex.WaitOne(10000, $false) }
@@ -5595,6 +5736,15 @@ if ($NoVsCode -and (Test-VsCodeRequired $site)) {
   $NoVsCode = $false
   Write-Host '  VS Code — 사내는 필수라 칸을 껐어도 깐다 (고른 「끔」은 기록에 그대로 둔다)'
 }
+# 이 자리에서 안 내놓는 제품(`$Products` 의 `When` · `Test-ProductHere`) — 이번에 고른 것과 지난 기록에서 그 이름을 모아 이 판의 걸음에서만
+#   뺀다. 깔린 것은 안 걷고, 기록에는 「회차를 넘기는 기록」 칸이 다시 적는다 — 이 자리의 창에는 그 칸이 없어 사람이 끌 길이 없었고, 사외로
+#   나가면 지난번 그대로 선다. 아래 걸음은 다 `$PickKeys` 를 읽으므로 CLI · 데스크탑 앱 · 올리기 · 폴더 신뢰(`PAISETUP_PICK`) · 끝 검증이
+#   한꺼번에 따르고, 안 고르면 걷는 칸(묻지 않고 돌기)은 이 이름으로 심지도 걷지도 않는다.
+$recPickKeys = @([string]$Recorded['pick'] -split '[,\s]+' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+$PickHeld = @($Products | Where-Object { -not (Test-ProductHere $_ $offsite) -and (($PickKeys -contains $_.Key) -or ($recPickKeys -contains $_.Key)) } |
+              ForEach-Object { $_.Key })
+foreach ($heldRow in @($Products | Where-Object { $PickHeld -contains $_.Key })) { Write-Host "  $($heldRow.Label) — 사내에서는 안 받는다(사내 지원 전) · 고른 기록은 둔다" }
+$PickKeys = @($PickKeys | Where-Object { $PickHeld -notcontains $_ })
 Write-Host ''
 
 # ── 파이썬 판 — **진본은 설정 저장소의 전역 도구 선언이고, 뽑는 자가 값 파일의 `#python-version` 으로 싣는다** ──
@@ -5763,7 +5913,7 @@ $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
 #   값이 래퍼에서 서는지 잰다.
 #   * `CC_BG_AGENTS` — 차례이자 쓸 수 있는 쪽. 사내는 Codex 만 —Copilot 은 GitHub(회사 밖)로 가고, 사내에서 개인
 #     구독은 막혀 보이며 회사 계정으로 CLI 를 쓰는 정책은 정해진 것이 없다. 이 값은 래퍼가 무엇을 띄우나만 가른다 —
-#     Copilot CLI 는 이 값과 무관하게 Copilot 제품을 고르면 두 자리에 깔린다(제품 표 `$Clis`)
+#     Copilot CLI 가 깔리나는 이 값이 아니라 제품 칸과 제품 표의 `When` 이 가른다(지금은 사외에서만)
 #   * `CC_BG_CODEX_WEB_SEARCH` — Codex 의 `web_search`. 두 자리 다 `live`(실시간 검색) —사내는 회사 설정 틀이 Codex 를
 #     로컬 프록시에 물리고, 프록시가 그 검색을 게이트웨이 Responses 로 잇는다(claude-config #121). 래퍼가 이 값을 `-c` 로
 #     넘겨 틀의 값보다 앞서므로, 검색을 끌 자리는 여기서 `disabled` 로 끈다(`cached` 도 검색 도구를 싣는다)
@@ -8032,12 +8182,13 @@ $ToolAutoRun = @(
      Set = [ordered]@{ autoExecutionPolicy          = 'CASCADE_COMMANDS_AUTO_EXECUTION_EAGER'
                        enableTerminalSandbox        = $false
                        nonWorkspaceFileAccessPolicy = 'AGENT_SETTING_POLICY_ALLOW' } }
-  @{ Label = 'Copilot CLI'; Want = [bool]($PickKeys -contains 'copilot'); Path = $CopilotCfg; Under = ''
+  # `Hold` — 고른 제품을 이 자리에서 안 내놓는 판(`$PickHeld`)은 심지도 걷지도 않는다
+  @{ Label = 'Copilot CLI'; Want = [bool]($PickKeys -contains 'copilot'); Hold = [bool]($PickHeld -contains 'copilot'); Path = $CopilotCfg; Under = ''
      Set = [ordered]@{ defaultPermissionMode = 'allow-all' } }
   # Autopilot — 새 대화형 세션이 첫 프롬프트에서 일을 끝까지 스스로 잇는 모드다(`-p` · 서버 · ACP 실행에는 안 먹는다). 승인이
   #   `allow-all` 일 때만 심는다 — 사람이 `manual` 을 골랐는데 Autopilot 이면 새 세션마다 그 확인이 뜬다. 바로 위 줄이 심은 뒤에
   #   재므로 그 줄 뒤에 선다. 모드는 승인 층이 아니라 승인 줄을 안 막는다(결정 0127).
-  @{ Label = 'Copilot CLI(Autopilot)'; Want = [bool]($PickKeys -contains 'copilot'); Path = $CopilotCfg; Under = ''
+  @{ Label = 'Copilot CLI(Autopilot)'; Want = [bool]($PickKeys -contains 'copilot'); Hold = [bool]($PickHeld -contains 'copilot'); Path = $CopilotCfg; Under = ''
      Set = [ordered]@{ defaultMode = 'autopilot' }; Need = [ordered]@{ defaultPermissionMode = 'allow-all' } }
   # Codex 는 사외에서만 심는다 — 사내 Codex 는 게이트웨이로 가 검토자가 쓸 모델이 그 목록에 없을 수 있고, 그러면 샌드박스를 넘는
   #   요청마다 검토가 져 묻는 것보다 나쁘다. 사내 PC 에서 검토가 서는 것을 재면 `-not $inside` 를 걷는다(결정 0127).
@@ -8095,7 +8246,13 @@ foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) {
   if ($res.Did -eq 'set' -or $res.Did -eq 'kept') { foreach ($k in $vals.Keys) { $autoWant[$at][$k] = $vals[$k] } }
   else { $autoHold[$at] += @($vals.Keys) }
 }
-# 안 고른 줄 · 그 자리가 안 심는 줄 · 표에서 빠진 키 — 장부에 든 우리 값 그대로면 걷는다(사람이 바꾼 값은 두고 이름을 댄다).
+# 안 고른 줄 · 그 자리가 안 심는 줄 · 표에서 빠진 키 — 장부에 든 우리 값 그대로면 걷는다(사람이 바꾼 값은 두고 이름을 댄다). `Hold` 줄의
+#   키는 안 걷는다.
+foreach ($r in @($ToolAutoRun | Where-Object { $_.Hold })) {
+  $at = ConvertTo-LedgerAt $r.Path $r.Under
+  if (-not $autoHold.ContainsKey($at)) { $autoHold[$at] = @() }
+  $autoHold[$at] += @($r.Set.Keys)
+}
 $autoAts = @(@($autoWant.Keys) + @($Ledger.Rows | Where-Object { $_.Place -ceq 'tool' -and $_.By -ceq 'autorun' } | ForEach-Object { $_.At }) | Sort-Object -Unique)
 foreach ($at in $autoAts) {
   $want = if ($autoWant.ContainsKey($at)) { $autoWant[$at] } else { [ordered]@{} }
@@ -8372,7 +8529,7 @@ if (-not $repoUrl) {
     $got | ForEach-Object { Write-Host "     $_" }
     if ($oldHooks) { Write-Host '    넘겨도 되는 훅을 든 뿌리가 없어 훅은 안 돌았다 — 까닭은 위 「이 저장소의 훅으로 넘기지 않는다」 줄이 든다.' }
     else           { Write-Host "    어느 뿌리에도 $hookRel 가 없어 훅은 안 돌았다." }
-    Write-Host '    자동화까지 원하면 ~/.claude/seeds/config-repo/ 를 복사해 그 이름으로 둔다.'
+    Write-Host "    자동화까지 원하면 $ConfigSeedHome 를 복사해 그 이름으로 둔다."
   } elseif (-not $bash) {
     Write-Host '  ! Git Bash 를 못 찾았다' -ForegroundColor Red
     $Fails.Add('개인 값 저장소 (Git Bash 가 없다)')
@@ -8599,12 +8756,13 @@ if ($PSBoundParameters.ContainsKey('EnvFile') -and $EnvFile) {
 #   정한 것)을 적는다 — 자동 실행을 켰나 · 밤 회차인가와 상관없다. 짐의 줄 · `#site` · 키는 안 적는다(키는 사용자 환경에만 산다).
 # 오타뿐인 `-Pick`(「고른 제품」 칸이 빨강으로 센 판)은 제품을 못 정한 판이라 지난 기록의 제품과 그에 매인 제작자 칸을 잇는다 — 제작자
 #   칸은 고른 제품에서만 서서, 그 판의 값(`none`)을 적으면 오타 한 번에 제작자 칸이 지워진다.
+# 제품은 이 자리에서 안 내놓아 걸음에서 뺀 것(`$PickHeld`)도 적는다 — 그 칸이 없는 자리의 판이 사람의 고름을 지우지 않게.
 # VS Code 는 사람이 고른 값(`$NoVsCodeChosen`)을 적는다 — 사내에서 필수라 깐 판(「준비」의 「자리」 칸)도 사람의 「끔」을 지우지 않는다.
 # 새 기록을 쓴 뒤 옛 꼴 둘을 걷는다 — 남겨 두면 그 꼴을 읽는 옛 자동 실행 스크립트가 지난 판 짐의 줄과 낡은 선택을 다시 넘긴다.
 #   못 쓰면 옛 꼴을 두고 말한다 — 다음 회차가 그것을 다시 읽는다.
 $recValue = @{
   'pick'        = $(if ($PickUnreadable -and $Recorded['pick']) { $Recorded['pick'] }
-                    elseif ($PickKeys.Count) { $PickKeys -join ',' } else { $ChoiceNone })
+                    else { $recPick = @(@($PickKeys) + @($PickHeld) | Where-Object { $_ }); if ($recPick.Count) { $recPick -join ',' } else { $ChoiceNone } })
   'vscode'      = $(if ($NoVsCodeChosen) { 'no' } else { 'yes' })
   'devtools'    = $(if ($NoDevTools) { 'no' } else { 'yes' })
   'personal'    = $(if ($PickUnreadable -and $Recorded['personal']) { $Recorded['personal'] } else { $PersonalValue })
@@ -8710,7 +8868,7 @@ if (Test-Path -LiteralPath $launcher) {
 
 # ── 부팅 시 자동 실행 (작업 스케줄러) ─────────────────────────────────────────
 # **로그온할 때와 밤마다 이 몸통을 다시 돌린다** — 깔린 것을 최신으로 올리고 환경을 다시 맞춘다. 둘 다 창 없이
-#   시작하고, 로그온 회차가 설치를 실제로 할 때만 기록 창을 띄운다(아래 「문지기 · 머리 없는 콘솔」).
+#   시작하고, 로그온 회차가 설치를 실제로 할 때만 작은 진행 창을 띄운다(아래 「문지기 · 머리 없는 콘솔」).
 #   `-AutoRun` 이나 값 파일의 `#autorun = yes` 가 켜고, `-NoAutoRun` 이나 `no` 가 걷는다. `-NoAutoRun` 으로 걷으면 끈 기록을 적어
 #   `yes` 가 다시 켜지 못하게 한다(위 「자동 실행을 켜나」 칸).
 # 설치본 자체도 새 릴리스로 간다 — 아래 스크립트 본문의 「설치본 자신을 새 릴리스로 간다」 칸이 `#update-repo` 의 최신 릴리스를
@@ -8726,7 +8884,7 @@ if (Test-Path -LiteralPath $launcher) {
 #   · 흩는 폭 — 로그온은 사람마다 시각이 갈리지만 달력은 PC 전부를 한 분에 띄운다. 한 출구 주소를 같이 쓰는 회사 PC 들이
 #     같은 분에 릴리스를 묻지 않게 흩되, 이른 출근 전(05시)에 끝나는 폭으로 둔다. 잰 값이 아니라 판단이다
 #   · 문지기 · 머리 없는 콘솔 — 두 작업은 몸통을 바로 부르지 않고 곁의 문지기(`$AutoRunGate`)를 머리 없는 콘솔로 부른다.
-#     건너뛰는 회차는 아무 창도 안 띄우고, 로그온 회차가 설치를 실제로 할 때만 몸통이 기록 창을 띄운다. 밤 회차는 몸통이 밤
+#     건너뛰는 회차는 아무 창도 안 띄우고, 로그온 회차가 설치를 실제로 할 때만 몸통이 곁의 진행 창(`$AutoRunProgress`)을 띄운다. 밤 회차는 몸통이 밤
 #     회차를 아는 판(`$AutoRunNightMarker` 를 든다)일 때만 `-Night` 로 부르고, 아니면 밤 작업을 걷는다 — 옛 판 설치기가 몸통을
 #     다시 쓰면 그 몸통은 `-Night` 를 버리고 로그온 회차처럼 돌아 자리를 바꿀 수 있다
 # 하루 한 번 · 밤 회차의 자리는 몸통(아래 `autorun.ps1`)의 「하루 한 번 · 자리」 칸이 가른다. 그 칸이 읽는 지난 설치의 자리는
@@ -8737,6 +8895,7 @@ if (Test-Path -LiteralPath $launcher) {
 $AutoRunNightAt       = [datetime]::Today.AddHours(3)
 $AutoRunNightSpread   = New-TimeSpan -Hours 2
 $AutoRunGate          = 'autorun-gate.ps1'
+$AutoRunProgress      = 'autorun-progress.ps1'
 $AutoRunNightMarker   = 'param([switch]$Night)'
 
 # 켤지 걷을지(`$wantAutoRun`)는 위 「자동 실행을 켜나」 칸이 정했다.
@@ -8779,10 +8938,13 @@ if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path 
 # 이름에 PID 를 넣는다 — 부팅 뒤 밤 회차와 로그온 회차는 같은 초에 설 수 있고, 그러면 두 회차가 한 기록에 섞인다.
 $logFile   = Join-Path $logDir ("autorun-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + "-$PID.log")
 
+# ⚠ **기록은 읽기를 나눠 여는 덧붙이기(`[IO.File]::AppendAllText`)로 쓴다** — `Add-Content` 는 다른 프로세스가 읽으려고 연 파일에
+#   못 쓰고(진행 창 · 사람이 연 기록 · 뒤 회차의 가드가 첫 줄을 읽는 사이), 이 몸통의 `SilentlyContinue` 아래서 그 줄을 조용히 버린다.
+#   아래 자식 설치기의 줄을 받는 자리도 같은 자로 쓴다. 새 파일의 첫 줄에는 BOM 이 선다(`Add-Content -Encoding UTF8` 과 같다).
 function Log([string]$msg) {
   $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg
   Write-Host $line
-  Add-Content -LiteralPath $logFile -Value $line -Encoding UTF8
+  try { [IO.File]::AppendAllText($logFile, $line + "`r`n", [System.Text.Encoding]::UTF8) } catch { }
 }
 
 # 첫 줄에 제 PID 를 적는다 — 뒤 회차의 가드가 이 기록을 이 회차가 글자를 내는 자리로 찾는다(아래 `Find-RunOutput`).
@@ -8803,7 +8965,7 @@ try {
 } catch { }
 
 # 지난 회차의 끝을 이 기록에 옮긴다 — 머리 없는 콘솔은 종료 코드를 작업 스케줄러에 안 넘겨, 작업의 「마지막 실행 결과」는 진 회차도
-#   0 이다. 진 것은 다음 회차의 기록(로그온 회차면 기록 창)에서 보인다.
+#   0 이다. 진 것은 다음 회차의 기록에서 보인다.
 $lastFile = Join-Path $setupRoot '.autorun-last'
 if (Test-Path -LiteralPath $lastFile) {
   try {
@@ -8870,9 +9032,9 @@ $myPid = $PID
 $myProc = Get-CimInstance Win32_Process -Filter "ProcessId = $myPid" -ErrorAction SilentlyContinue
 $parentPid = if ($myProc) { $myProc.ParentProcessId } else { 0 }
 # 「우리 엔진인가」는 엔진의 자(`Get-EngineKind`)를 떼어 와 가른다 — 설치 몸통의 겹침 찾기와 같은 자다(같은 규칙을 여기 옮겨 적으면
-#   한쪽만 낡는다). 그 자가 우리 설치 몸통과 자동 실행 몸통을 다 알아보고, 같은 이름의 남 스크립트와 로그인 창 자식(`-GhLoginOnly`)은
+#   한쪽만 낡는다). 그 자가 우리 설치 몸통 · 자동 실행 몸통 · 설정 저장소의 배포를 다 알아보고, 같은 이름의 남 스크립트와 로그인 창 자식(`-GhLoginOnly`)은
 #   뺀다. 떼어 올 엔진은 가장 높은 판 폴더의 몸통이다(아래 새 판 받기가 돌릴 그 몸통).
-# ⚠ 못 들였으면 넓게 센다 — 명령줄에 두 이름(`install.ps1` · `autorun.ps1`)을 든 것을 다 우리 것으로 본다. 못 가른 것을 세는 쪽이
+# ⚠ 못 들였으면 넓게 센다 — 명령줄에 세 이름(`install.ps1` · `autorun.ps1` · `deploy.ps1`)을 든 것을 다 우리 것으로 본다. 못 가른 것을 세는 쪽이
 #   가드의 기본값(물러난다)과 같고, 그 판은 기록에 그렇다고 남는다.
 # 거둔 뒤 다시 재는 자리도 같은 자로 잰다.
 $engineRuleOk = $false
@@ -8884,12 +9046,12 @@ try {
     if ($ruleDef.Count -eq 1) { . ([scriptblock]::Create($ruleDef[0])); $engineRuleOk = $true }
   }
 } catch { $engineRuleOk = $false }
-if (-not $engineRuleOk) { Log "! 엔진을 알아보는 자(Get-EngineKind)를 가장 높은 판의 몸통에서 못 들였다 — 명령줄에 install.ps1 · autorun.ps1 을 든 것을 다 센다" }
+if (-not $engineRuleOk) { Log "! 엔진을 알아보는 자(Get-EngineKind)를 가장 높은 판의 몸통에서 못 들였다 — 명령줄에 install.ps1 · autorun.ps1 · deploy.ps1 을 든 것을 다 센다" }
 function Get-OtherEngines {
   @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and $(
       if ($engineRuleOk) { [bool](Get-EngineKind $_) }
-      else { "$($_.CommandLine)" -match '(?i)(install|autorun)\.ps1' -and "$($_.CommandLine)" -notlike '*-GhLoginOnly*' }) })
+      else { "$($_.CommandLine)" -match '(?i)(install|autorun|deploy)\.ps1' -and "$($_.CommandLine)" -notlike '*-GhLoginOnly*' }) })
 }
 $otherEngines = @(Get-OtherEngines)
 
@@ -9222,20 +9384,21 @@ if ($Night) {
   if ($siteNow -eq 'inside' -or $siteNow -eq 'outside') { $pinSite = $siteNow }
 }
 
-# 기록 창 — 머리 없는 콘솔로 뜬 로그온 회차(문지기가 `PAISETUP_AUTORUN_VIEWER=1` 을 넘긴다)는 제 창이 없다. 설치를 실제로 할 때만
-#   — 가드 · 하루 한 번 · 자리를 다 지난 여기서, 새 판을 받기 전에 — 이 회차의 기록을 따라 읽는 창을 하나 띄우고, 끝나면 그 창
-#   하나만 닫는다. 건너뛰는 회차는 아무 창도 안 띄운다. 창의 명령 줄에는 `autorun.ps1` · `install.ps1` 이 없다 — 있으면 가드들이
-#   그 창을 설치로 센다. 창을 멈춰도(빠른 편집) 설치는 안 멈춘다 — 따로 도는 프로세스다.
-# 창은 **최소화한 채 앞으로 안 가져오며** 띄운다(`SW_SHOWMINNOACTIVE`) — 일하는 사람의 입력을 빼앗지 않는다. `Start-Process` 로는 못
-#   한다: `-WindowStyle Minimized` 는 최소화하면서도 그 창을 앞 창으로 만들어 치던 글자가 그 창으로 간다. 그래서
-#   `CreateProcess` 에 보이기 값을 직접 넘긴다.
-# 알려진 한계 — 이 몸통이 중간에 죽으면(작업 시간 한도 · 로그오프) 아래 닫기 칸에 안 닿아 이 창이 기록을 따라 읽은 채 남는다.
-#   사람이 닫으면 된다.
-$viewer = $null
-$viewerStart = $null
-if (-not $Night -and $env:PAISETUP_AUTORUN_VIEWER -eq '1') {
+# 진행 창 — 머리 없는 콘솔로 뜬 로그온 회차(문지기가 `PAISETUP_AUTORUN_VIEWER=1` 을 넘긴다)는 제 창이 없다. 설치를 실제로 할 때만
+#   — 가드 · 하루 한 번 · 자리를 다 지난 여기서, 새 판을 받기 전에 — 곁의 진행 창(`@@PROGRESS@@` · 설치기가 이 몸통과 함께 쓴다)을
+#   띄운다. 그 창이 이 회차의 기록을 따라 읽어 걸음과 끝만 보이고 제풀에 닫힌다 — 여기서는 띄우기만 하고 기다리지도 끄지도 않는다.
+#   건너뛰는 회차와 밤 회차는 아무 창도 안 띄운다.
+# 창의 명령 줄에는 `autorun.ps1` · `install.ps1` 이 없다 — 있으면 가드들이 그 창을 설치로 센다.
+# 콘솔 없이(`CREATE_NO_WINDOW`) 앞으로 안 가져오며(`SW_SHOWNOACTIVATE`) 띄운다 — 일하는 사람의 입력을 빼앗지 않는다. `Start-Process` 로는
+#   못 한다: 숨김 창은 Windows Terminal 이 기본 터미널인 PC 에서 번쩍 뜨고, 보이기 값은 앞 창을 빼앗는다. 그래서 `CreateProcess` 에
+#   깃발과 보이기 값을 직접 넘긴다.
+# 못 띄우면 창 없이 잇는다 — 기록은 그대로 쓰고, 못 띄운 까닭을 기록에 한 줄 남긴다.
+$progressAsked = (-not $Night -and $env:PAISETUP_AUTORUN_VIEWER -eq '1')
+if ($progressAsked) {
   try {
-    Add-Type -Namespace PAISetup -Name Viewer -MemberDefinition @"
+    $progressScript = Join-Path $setupRoot '@@PROGRESS@@'
+    if (-not (Test-Path -LiteralPath $progressScript)) { throw "진행 창 스크립트가 없다 ($progressScript)" }
+    Add-Type -ErrorAction Stop -Namespace PAISetup -Name Progress -MemberDefinition @"
 [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
 public struct SI { public int cb; public string r; public string d; public string t; public int x; public int y; public int xs; public int ys; public int xc; public int yc; public int fa; public int flags; public short show; public short r2; public System.IntPtr r3; public System.IntPtr i; public System.IntPtr o; public System.IntPtr e; }
 [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
@@ -9243,22 +9406,22 @@ public struct PI { public System.IntPtr hp; public System.IntPtr ht; public int 
 [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
 static extern bool CreateProcess(string app, System.Text.StringBuilder cmd, System.IntPtr pa, System.IntPtr ta, bool inherit, uint flags, System.IntPtr env, string dir, ref SI si, out PI pi);
 [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool CloseHandle(System.IntPtr h);
-// 새 콘솔(CREATE_NEW_CONSOLE)로, 최소화한 채 앞으로 안 가져오며(STARTF_USESHOWWINDOW · SW_SHOWMINNOACTIVE) 띄운다. 내는 것 — PID, 못 띄우면 0.
+// 콘솔 없이(CREATE_NO_WINDOW), 앞으로 안 가져오며(STARTF_USESHOWWINDOW · SW_SHOWNOACTIVATE) 띄운다. 내는 것 — PID, 못 띄우면 0.
 public static int StartQuiet(string app, string cmd) {
-  SI si = new SI(); si.cb = System.Runtime.InteropServices.Marshal.SizeOf(si); si.flags = 1; si.show = 7;
+  SI si = new SI(); si.cb = System.Runtime.InteropServices.Marshal.SizeOf(si); si.flags = 1; si.show = 4;
   PI pi;
-  if (!CreateProcess(app, new System.Text.StringBuilder(cmd), System.IntPtr.Zero, System.IntPtr.Zero, false, 0x10, System.IntPtr.Zero, null, ref si, out pi)) return 0;
+  if (!CreateProcess(app, new System.Text.StringBuilder(cmd), System.IntPtr.Zero, System.IntPtr.Zero, false, 0x08000000, System.IntPtr.Zero, null, ref si, out pi)) return 0;
   CloseHandle(pi.ht); CloseHandle(pi.hp); return pi.pid;
 }
 "@
-    $viewExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $viewCmd = "`$host.UI.RawUI.WindowTitle = 'PAISetup 자동 실행'; Get-Content -LiteralPath '$($logFile.Replace("'", "''"))' -Encoding UTF8 -Wait -Tail 200"
-    $viewPid = [PAISetup.Viewer]::StartQuiet($viewExe, ('"' + $viewExe + '" -NoProfile -ExecutionPolicy Bypass -Command "' + $viewCmd.Replace('"', '\"') + '"'))
-    if ($viewPid) {
-      $viewer = Get-Process -Id $viewPid -ErrorAction Stop
-      $viewerStart = $viewer.StartTime
-    }
-  } catch { $viewer = $null }
+    # 몸통 PID 를 넘긴다 — 창은 이 회차가 끝나면 따라 끝난다. 지금 판을 넘긴다 — 창이 「지금 판 → 새 판」을 그 판과 기록의 판으로 짓는다.
+    $progExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $progCmd = '"{0}" -NoProfile -ExecutionPolicy Bypass -File "{1}" -Log "{2}" -WatchPid {3} -From "{4}"' -f
+                 $progExe, $progressScript, $logFile, $PID, $versionDirs[0].Name
+    if (-not [PAISetup.Progress]::StartQuiet($progExe, $progCmd)) { throw "CreateProcess 가 졌다 ($([Runtime.InteropServices.Marshal]::GetLastWin32Error()))" }
+  } catch {
+    Log "진행 창을 못 띄웠다 — 창 없이 잇는다 ($(($_.Exception.Message -split '\r?\n')[0]))"
+  }
 }
 Remove-Item Env:PAISETUP_AUTORUN_VIEWER -ErrorAction SilentlyContinue
 
@@ -9352,7 +9515,7 @@ if ($Night) {
 & { $ErrorActionPreference = 'Continue'; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $targetEngine -Yes -NoLaunch @runArgs 2>&1 } |
   ForEach-Object {
     Write-Host $_
-    Add-Content -LiteralPath $logFile -Value ([string]$_) -Encoding UTF8
+    try { [IO.File]::AppendAllText($logFile, [string]$_ + "`r`n", [System.Text.Encoding]::UTF8) } catch { }
   }
 $rc = $LASTEXITCODE
 if ($pinned) { Remove-Item -LiteralPath $pinned -Force -ErrorAction SilentlyContinue }
@@ -9366,15 +9529,8 @@ if ($rc -eq 0) {
   try { [IO.File]::WriteAllText($stampFile, (Get-Date -Format 'o'), [System.Text.Encoding]::UTF8) } catch { }
 }
 
-if ($viewer) {
-  Log 'PAISetup 자동 동기화가 끝났습니다. 3초 후 창이 닫힙니다...'
-  Start-Sleep -Seconds 3
-  # 띄운 그 프로세스만 닫는다 — 같은 번호에 같은 시작 시각일 때만 끈다(번호를 남이 물려받았으면 안 끈다).
-  try {
-    $viewNow = Get-Process -Id $viewer.Id -ErrorAction Stop
-    if ($viewNow.StartTime -eq $viewerStart) { $viewNow.Kill() }
-  } catch { }
-} elseif ([Environment]::UserInteractive) {
+# 끝 말을 잠깐 두는 것은 보이는 콘솔로 뜬 회차뿐이다 — 진행 창을 부른 회차는 머리 없는 콘솔이라 볼 사람이 없고, 끝은 그 창이 든다.
+if (-not $progressAsked -and [Environment]::UserInteractive) {
   Write-Host ''
   Write-Host '  PAISetup 자동 동기화가 완료되었습니다. 3초 후 창이 닫힙니다...' -ForegroundColor Green
   Start-Sleep -Seconds 3
@@ -9395,7 +9551,246 @@ try {
   }
 } catch { }
 '@
-    [IO.File]::WriteAllText($autoScript, $autoScriptBody, [System.Text.Encoding]::UTF8)
+    [IO.File]::WriteAllText($autoScript, $autoScriptBody.Replace('@@PROGRESS@@', $AutoRunProgress), [System.Text.Encoding]::UTF8)
+
+    # 진행 창 — 로그온 회차가 설치를 할 때 몸통이 띄우는 작은 창(몸통의 「진행 창」 칸). 못 쓰면 그 회차는 창 없이 돈다 — 기록은
+    #   그대로 남는다.
+    $progressText = @'
+# PAISetup 로그온 자동 실행의 진행 창 — 자동 실행 몸통이 설치를 실제로 할 때 띄우고, 설치기가 몸통 곁에 쓴다.
+# 부르는 꼴: powershell -NoProfile -ExecutionPolicy Bypass -File <이 파일> -Log <이 회차 기록> -WatchPid <몸통 PID> -From <지금 판>
+# 하는 일: 그 기록을 따라 읽어 설치가 이미 찍는 줄만 갈라 주 화면 오른쪽 아래의 작은 창에 지금 걸음 · 막대 · 마지막 한 줄을 보인다.
+#   읽는 줄과 그 꼴의 주인 — 걸음 머리줄 `[n/N] 이름`(설치기 `Get-StepTitle`) · 걸음 마침 줄 `── [n/N] 이름 — 마쳤다 (N초)`
+#   (`Write-Elapsed`) · 걸음 멎음 줄 `! [n/N] 이름 — 도중에 멎었다…`(`Write-StepFault`) · `=== 검증` · `끝내지 못했다` ·
+#   `── 설치를 마쳤다`(설치기 끝) · 몸통의 `install.ps1 실행: <판>` · `새 판 <판> 을 받는다` · `자동 실행 완료 (코드 N)`(몸통 `Log`).
+#   꼴이 어긋나면 설치는 멀쩡히 돌고 이 창의 막대만 선다.
+# 안 하는 것: 설치에 아무것도 안 넘기고 빗장을 안 쥔다. 기록은 쓰기 · 지우기를 막지 않게 연다. 무엇이 지든 조용히 나간다 — 몸통은
+#   이 창을 기다리지 않는다.
+# 끝: 몸통이 `자동 실행 완료 (코드 0)` 을 적으면 「끝났다」를 보이고 몇 초 뒤 스스로 닫는다. 0 이 아니거나 그 줄 없이 몸통이 끝나면
+#   「끝내지 못했다」를 보이고 사람이 누를 때까지 남는다. 「숨기기」는 이 창만 닫고 설치는 그대로 간다.
+param([string]$Log, [int]$WatchPid, [string]$From, [switch]$Detached)
+$ErrorActionPreference = 'Stop'
+
+# ⚠ **몸통의 프로세스 나무에서 빠진다** — 몸통이 띄운 첫 회는 같은 인자에 `-Detached` 를 붙여 저를 한 번 더 띄우고 바로 나간다. 뒤
+#   회차의 멎음 가드는 몸통과 그 자손의 CPU 로 멎었나를 가르는데(몸통의 `Get-Tree` · `Get-TreeCpu`), 이 창이 자손으로 남으면 창의 틱이
+#   멎은 회차를 「움직인다」로 읽혀 영영 안 거둔다. 부모가 끝난 창은 그 나무에 안 닿는다.
+if (-not $Detached) {
+  try {
+    $psi = New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Log "{1}" -WatchPid {2} -From "{3}" -Detached' -f $PSCommandPath, $Log, $WatchPid, $From
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    [void][Diagnostics.Process]::Start($psi)
+  } catch { }
+  exit 0
+}
+
+# 틱 — 기록이 자랄 때는 1초마다, 이 초 넘게 조용하면 5초마다 읽는다.
+$TickFastMs = 1000
+$TickSlowMs = 5000
+$QuietSec   = 120
+# 「끝났다」를 보이고 닫기까지의 초.
+$CloseOkSec = 4
+# 창 크기와 화면 가장자리에서 띄우는 거리(픽셀 · 100 % 화면 기준).
+$WinW = 360
+$WinH = 112
+$Edge = 12
+$StepsDefault = 10
+
+try {
+  try { [Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal' } catch { }
+  Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+  # 앞으로 안 가져오는 맨 위 창 — 뜰 때도 눌릴 때도 일하는 창의 입력을 안 빼앗는다. `TopMost` 속성은 안 쓴다 — 그 설정이 창을
+  #   앞 창으로 만든다. 맨 위는 창 꼴(WS_EX_TOPMOST)로 준다.
+  Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @"
+public class PAISetupProgressForm : System.Windows.Forms.Form {
+  protected override bool ShowWithoutActivation { get { return true; } }
+  protected override System.Windows.Forms.CreateParams CreateParams {
+    get {
+      System.Windows.Forms.CreateParams p = base.CreateParams;
+      p.ExStyle |= 0x08000000 | 0x00000008 | 0x00000080; // WS_EX_NOACTIVATE · WS_EX_TOPMOST · WS_EX_TOOLWINDOW
+      return p;
+    }
+  }
+}
+"@
+  [Windows.Forms.Application]::EnableVisualStyles()
+
+  $script:watch = $null
+  try { $script:watch = [Diagnostics.Process]::GetProcessById($WatchPid); $null = $script:watch.Handle } catch { $script:watch = $null }
+
+  $script:reader  = $null
+  $script:pending = ''
+  $script:to      = ''
+  $script:cell    = '새 판이 있는지 보는 중'
+  $script:last    = ''
+  $script:steps   = $StepsDefault
+  $script:done    = 0
+  $script:hurt    = $false
+  $script:rc      = $null
+  $script:final   = ''
+  $script:closeAt = $null
+  $script:grewAt  = Get-Date
+
+  $font = New-Object Drawing.Font('Malgun Gothic', 12, [Drawing.GraphicsUnit]::Pixel)
+  $f = New-Object PAISetupProgressForm
+  $f.Text = 'PAISetup 자동 업데이트'
+  $f.FormBorderStyle = 'None'
+  $f.ShowInTaskbar = $false
+  $f.StartPosition = 'Manual'
+  $f.Font = $font
+  $f.Size = New-Object Drawing.Size($WinW, $WinH)
+  $wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+  $f.Location = New-Object Drawing.Point(($wa.Right - $WinW - $Edge), ($wa.Bottom - $WinH - $Edge))
+  $f.BackColor = [Drawing.Color]::FromArgb(170, 170, 170)
+  $f.Padding = New-Object Windows.Forms.Padding(1)
+  $pane = New-Object Windows.Forms.Panel
+  $pane.Dock = 'Fill'
+  $pane.BackColor = [Drawing.Color]::White
+  $f.Controls.Add($pane)
+
+  function New-Line([int]$Y, [bool]$Bold) {
+    $l = New-Object Windows.Forms.Label
+    $l.AutoSize = $false; $l.AutoEllipsis = $true
+    $l.Location = New-Object Drawing.Point(12, $Y); $l.Size = New-Object Drawing.Size(($WinW - 26), 18)
+    if ($Bold) { $l.Font = New-Object Drawing.Font($font, [Drawing.FontStyle]::Bold) }
+    $pane.Controls.Add($l); return $l
+  }
+  $lTitle = New-Line 8 $true
+  $lCell  = New-Line 30 $false
+  $bar = New-Object Windows.Forms.ProgressBar
+  $bar.Location = New-Object Drawing.Point(12, 52); $bar.Size = New-Object Drawing.Size(($WinW - 26), 10)
+  $bar.Minimum = 0; $bar.Maximum = $StepsDefault
+  $pane.Controls.Add($bar)
+  $lLast = New-Line 68 $false
+  $lLast.ForeColor = [Drawing.Color]::DimGray
+  function New-Link([string]$Text, [int]$X) {
+    $a = New-Object Windows.Forms.LinkLabel
+    $a.Text = $Text; $a.AutoSize = $true; $a.Location = New-Object Drawing.Point($X, 88)
+    $pane.Controls.Add($a); return $a
+  }
+  $aLog  = New-Link '기록 보기' ($WinW - 128)
+  $aHide = New-Link '숨기기' ($WinW - 62)
+
+  function Open-Log {
+    if (-not $Log -or -not (Test-Path -LiteralPath $Log)) { return $null }
+    try {
+      $fs = New-Object IO.FileStream($Log, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+      return New-Object IO.StreamReader($fs, [Text.Encoding]::UTF8)
+    } catch { return $null }
+  }
+
+  # 한 줄을 상태에 반영한다. 몸통의 `Log` 줄은 `[날짜 시각] ` 머리를 떼고 읽는다 — 설치의 줄은 그 머리 없이 그대로 온다.
+  function Step-Line([string]$Raw) {
+    $line = $Raw.TrimEnd("`r").TrimStart([char]0xFEFF)
+    $own = $false
+    if ($line -match '^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\] (.*)$') { $line = $Matches[1]; $own = $true }
+    $text = $line.Trim()
+    if (-not $text) { return }
+    # 마지막 한 줄은 머리줄(걸음 · 검증)을 안 든다 — 그 글은 바로 위 지금 걸음 칸이 이미 든다.
+    if ($own -or $line -notmatch '^(\[\d+/\d+\]|=== 검증)') { $script:last = $text }
+    if ($own) {
+      if ($text -match '^새 판 (\S+) 을 받는다') { $script:to = $Matches[1]; $script:cell = "새 판 $($Matches[1]) 을 받는 중" }
+      elseif ($text -match '^install\.ps1 실행: (\S+)') { $script:to = $Matches[1]; $script:cell = '준비' }
+      elseif ($text -match '^=== PAISetup 자동 실행 완료 \(코드 (\S+)\) ===') { $script:rc = $Matches[1] }
+      return
+    }
+    if ($line -match '^\[(\d+)/(\d+)\]\s*(.*)$') {
+      $script:steps = [int]$Matches[2]; $script:done = [int]$Matches[1] - 1
+      $script:cell = "[$($Matches[1])/$($Matches[2])] $($Matches[3])"
+    } elseif ($line -match '^\s*── \[(\d+)/(\d+)\] .* — 마쳤다 \(') {
+      $script:steps = [int]$Matches[2]; $script:done = [int]$Matches[1]
+    } elseif ($line -match '^\s*! \[(\d+)/(\d+)\] .* — 도중에 멎었다') {
+      $script:steps = [int]$Matches[2]; $script:done = [int]$Matches[1]; $script:hurt = $true
+    } elseif ($line -match '^=== 검증') {
+      $script:done = $script:steps; $script:cell = '검증'
+    } elseif ($line -match '^끝내지 못했다') {
+      $script:hurt = $true
+    } elseif ($line -match '^── 설치를 마쳤다') {
+      $script:done = $script:steps; $script:cell = '마무리'
+    }
+  }
+
+  function Pump {
+    if (-not $script:reader) { $script:reader = Open-Log }
+    if (-not $script:reader) { return $false }
+    $chunk = $script:reader.ReadToEnd()
+    if (-not $chunk) { return $false }
+    $parts = ($script:pending + $chunk) -split "`n"
+    # 줄끝 없이 끝난 조각은 다음 틱에 이어 읽는다 — 쓰는 쪽이 한 줄을 다 쓰기 전에 읽었을 수 있다.
+    $script:pending = $parts[-1]
+    for ($i = 0; $i -lt $parts.Count - 1; $i++) { Step-Line $parts[$i] }
+    return $true
+  }
+
+  function Show-State {
+    $lTitle.Text = if ($script:to -and $script:to -ne $From) { "PAISetup 자동 업데이트 · $From → $($script:to)" } else { "PAISetup 자동 점검 · $From" }
+    $bar.Maximum = [Math]::Max(1, $script:steps)
+    $bar.Value = [Math]::Max(0, [Math]::Min($bar.Maximum, $script:done))
+    switch ($script:final) {
+      'ok'  { $lCell.Text = '끝났다'; $lCell.ForeColor = [Drawing.Color]::ForestGreen; $lLast.Text = '이 창은 곧 닫힌다' }
+      'bad' { $lCell.Text = '끝내지 못했다 — 기록 보기'; $lCell.ForeColor = [Drawing.Color]::Firebrick }
+      default {
+        $lCell.Text = $script:cell
+        $lCell.ForeColor = if ($script:hurt) { [Drawing.Color]::Firebrick } else { [Drawing.Color]::Black }
+        $lLast.Text = $script:last
+      }
+    }
+  }
+
+  function Set-Final([string]$Why) {
+    if ($script:rc -eq '0' -and -not $Why) {
+      $script:final = 'ok'; $script:done = $script:steps; $script:closeAt = (Get-Date).AddSeconds($CloseOkSec)
+    } else {
+      $script:final = 'bad'
+      $lLast.Text = if ($Why) { $Why } else { "코드 $($script:rc) 로 끝났다 — 남은 것은 기록 끝에 있다" }
+    }
+  }
+
+  $timer = New-Object Windows.Forms.Timer
+  $timer.Interval = $TickFastMs
+  $timer.Add_Tick({
+    try {
+      if ($script:final) {
+        if ($script:closeAt -and (Get-Date) -ge $script:closeAt) { $timer.Stop(); $f.Close() }
+        return
+      }
+      $gone = $true
+      try { $gone = (-not $script:watch) -or $script:watch.HasExited } catch { $gone = $true }
+      if (Pump) { $script:grewAt = Get-Date; $timer.Interval = $TickFastMs }
+      elseif (((Get-Date) - $script:grewAt).TotalSeconds -gt $QuietSec) { $timer.Interval = $TickSlowMs }
+      if ($null -ne $script:rc) { Set-Final '' }
+      elseif ($gone) {
+        # 끝난 뒤에 쓴 줄까지 마저 읽고 가른다.
+        [void](Pump)
+        if ($script:pending) { Step-Line $script:pending; $script:pending = '' }
+        if ($null -ne $script:rc) { Set-Final '' } else { Set-Final '자동 실행이 끝 줄 없이 끝났다 — 기록 끝을 본다' }
+      }
+      Show-State
+      if ($script:final -eq 'bad') { $timer.Stop() }
+      elseif ($script:final -eq 'ok') { $timer.Interval = $TickFastMs }
+    } catch { }
+  })
+
+  $aLog.Add_LinkClicked({
+    try { Start-Process -FilePath $Log } catch { try { Start-Process -FilePath 'notepad.exe' -ArgumentList ('"' + $Log + '"') } catch { } }
+    if ($script:final -eq 'bad') { $f.Close() }
+  })
+  $aHide.Add_LinkClicked({ $f.Close() })
+  $f.Add_Shown({ Show-State; $timer.Start() })
+
+  [void](Pump)
+  Show-State
+  [Windows.Forms.Application]::Run($f)
+} catch { }
+try { if ($script:reader) { $script:reader.Dispose() } } catch { }
+exit 0
+'@
+    try {
+      [IO.File]::WriteAllText((Join-Path $setupRoot $AutoRunProgress), $progressText, [System.Text.Encoding]::UTF8)
+    } catch {
+      Write-Host "  ! 자동 실행 진행 창을 못 썼다 — $(Say-Why $_) (로그온 자동 실행은 창 없이 돈다)" -ForegroundColor Yellow
+    }
 
     # 지난 설치의 자리 — 자리에 기대는 걸음을 다 지난 여기서 끝 값을 적는다(그 앞은 「자동 실행을 켜나」 칸이 `switching` 을
     #   적었다). 사람이 누른 설치도 여기를 지난다.
@@ -9415,10 +9810,10 @@ try {
     $psExe   = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
 
-    # 문지기 — 두 작업이 다 이것을 부른다. 로그온 회차는 몸통을 그대로 부르되 기록 창을 띄우라고 넘기고(`PAISETUP_AUTORUN_VIEWER`),
+    # 문지기 — 두 작업이 다 이것을 부른다. 로그온 회차는 몸통을 그대로 부르되 진행 창을 띄우라고 넘기고(`PAISETUP_AUTORUN_VIEWER`),
     #   밤 회차는 몸통이 밤 회차를 아는 판일 때만 `-Night` 로 부른다. 몸통이 없거나 표지가 없으면 밤 작업을 걷는다. 몸통을 못
     #   읽었으면(백신 · 백업의 잠금, 다시 쓰는 중) 걷지 않고 진 것으로 남기고 나간다 — 멀쩡한 PC 의 밤 작업이 저절로 사라지면 안 된다.
-    # 알려진 한계 — 이 문지기 뒤에 옛 판 몸통(기록 창을 모른다)이 놓이면 로그온 회차는 머리 없는 콘솔에서 창 없이 돈다. 옛 판
+    # 알려진 한계 — 이 문지기 뒤에 옛 판 몸통이 놓이면 로그온 회차는 그 판의 꼴로 돈다 — 진행 창 앞의 판은 큰 기록 창을, 그것도 모르는 판은 머리 없는 콘솔에서 창 없이. 옛 판
     #   설치기는 로그온 작업을 제 꼴로 다시 걸므로 그 판을 다시 누른 PC 에서는 안 생긴다.
     $gateOk = $false
     try {
@@ -9497,7 +9892,7 @@ exit 0
                              -Principal $principal -Settings $settings `
                              -Description "PAISetup background auto-update & environment sync on logon" -Force | Out-Null
       Write-Host ("  부팅 시 자동 실행 — 걸었다 (작업 스케줄러 · $AutoRunTaskName · 로그온 1분 뒤 · " +
-                  $(if ($headless) { '설치할 때만 기록 창' } else { '보이는 콘솔 창' }) + ')') -ForegroundColor Green
+                  $(if ($headless) { '설치할 때만 진행 창' } else { '보이는 콘솔 창' }) + ')') -ForegroundColor Green
     } catch {
       Write-Host "  ! 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
     }
@@ -9535,7 +9930,7 @@ exit 0
       # 걷으면 저것이 쓰던 파일도 같이 걷는다 — 남겨 두면 다음에 켤 때 지난 회차의 표지(「오늘 끝났다」 · 지난 자리)를 물려받는다.
       #   사람이 고른 것의 기록(`$ChoiceRecord`)은 자동 실행의 것이 아니라 안 걷는다 — 다음 설치 창 · 콘솔이 그것을 읽는다(PAISetup #45).
       $setupRoot = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
-      foreach ($f in @('autorun.ps1', '.autorun-stamp', '.autorun-night.env', '.autorun-last', $AutoRunGate, (Split-Path -Leaf $AutoRunSiteRecord))) {
+      foreach ($f in @('autorun.ps1', '.autorun-stamp', '.autorun-night.env', '.autorun-last', $AutoRunGate, $AutoRunProgress, (Split-Path -Leaf $AutoRunSiteRecord))) {
         Remove-Item -LiteralPath (Join-Path $setupRoot $f) -Force -ErrorAction SilentlyContinue
       }
       Write-Host "  부팅 시 자동 실행 — 걷었다 (작업 스케줄러 · $($gone -join ' · '))" -ForegroundColor Green
@@ -9648,7 +10043,7 @@ foreach ($a in $envAssets) {
       continue
     }
     $cmp = Compare-AssetTree $ownDir $a.To -ExtraOk -Only @($tracked | Where-Object { $_ } | ForEach-Object { $_.Replace('/', '\') })
-    $checks += @{ Name = "$($a.Name) (설정 저장소가 든다 · 원본 $($cmp.N) 파일$(if ($cmp.Say) { ' · ' + $cmp.Say }) · $($a.Owner))"; Ok = $cmp.Ok }
+    $checks += New-AssetRow "$($a.Name) (설정 저장소가 든다 · 원본 $($cmp.N) 파일$(if ($cmp.Say) { ' · ' + $cmp.Say }) · $($a.Owner))" $cmp.Ok $cmp.Bad $cmp.Unread
     continue
   }
   # 장부로 맞추는 자리 — 원본의 파일이 바이트까지 섰나와, 장부에 든 우리 파일 가운데 원본에서 빠졌는데 놓은 그대로 남은 것이 없나를
@@ -9657,12 +10052,18 @@ foreach ($a in $envAssets) {
     $cmp = Compare-AssetTree $a.From $a.To -ExtraOk
     $srcNames = Get-AssetFiles $a.From
     $lgr = Read-PlantLedger $ClaudePlantLedger
-    $left = @(Find-LedgerRows $lgr 'file' (ConvertTo-LedgerAt $a.To) 'assets' | Where-Object { -not $srcNames.ContainsKey($_.Name) } | Where-Object {
-      $p = Join-Path $a.To $_.Name
-      (Test-Path -LiteralPath $p -PathType Leaf) -and ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash -ceq $_.Value) } | ForEach-Object { $_.Name })
+    $left = @(); $leftUnread = @()
+    foreach ($r in @(Find-LedgerRows $lgr 'file' (ConvertTo-LedgerAt $a.To) 'assets' | Where-Object { -not $srcNames.ContainsKey($_.Name) })) {
+      $p = Join-Path $a.To $r.Name
+      if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+      try { if ((Get-FileHash -LiteralPath $p -Algorithm SHA256 -ErrorAction Stop).Hash -ceq $r.Value) { $left += $r.Name } }
+      catch { $leftUnread += $p }
+    }
     $say = @(@($cmp.Say) + @($(if ($left.Count) { "원본에서 빠진 우리 파일 $($left.Count): $((@($left | Select-Object -First 3)) -join ', ')" })) +
+             @($(if ($leftUnread.Count) { "못 읽음(원본에서 빠진 우리 파일) $($leftUnread.Count)" })) +
              @($(if ($lgr.Why) { "장부를 못 읽었다 — $($lgr.Why)" })) | Where-Object { $_ })
-    $checks += @{ Name = "$($a.Name) (원본 $($cmp.N) 파일$(if ($say.Count) { ' · ' + ($say -join ' · ') }))"; Ok = ($cmp.Ok -and -not $left.Count -and -not $lgr.Why) }
+    $checks += New-AssetRow "$($a.Name) (원본 $($cmp.N) 파일$(if ($say.Count) { ' · ' + ($say -join ' · ') }))" ($cmp.Ok -and -not $left.Count -and -not $lgr.Why -and -not $leftUnread.Count) `
+                 ($cmp.Bad -or [bool]$left.Count -or [bool]$lgr.Why) (@($cmp.Unread) + @($leftUnread))
     continue
   }
   $checks += New-CountCheck $a.Name $a.From $a.To
@@ -9821,11 +10222,14 @@ foreach ($t in $FreeSkillHomes.Keys) {
   $freeWant = @(Get-FreeSkillNames $t)
   if ($fh.Box -or -not $freeWant.Count) { continue }
   if (-not $fh.Place) { $checks += @{ Name = "칸 없이 까는 스킬 — $($fh.Label) (갈 곳 표에 자리가 없다)"; Ok = $false }; continue }
+  $freeUnread = @(); $freeUnreadSay = @()
   $freeBad = @(foreach ($n in $freeWant) {
     $cmp = Compare-AssetTree (Join-Path $KitSkills $n) (Join-Path $fh.Place.Skills $n)
-    if (-not $cmp.Ok) { "$n($($cmp.Say))" }
+    if ($cmp.Bad) { "$n($($cmp.Say))" }
+    elseif ($cmp.Unread.Count) { $freeUnread += @($cmp.Unread); $freeUnreadSay += "$n($($cmp.Say))" }
   })
-  $checks += @{ Name = "칸 없이 까는 스킬 — $($fh.Label) ($($freeWant -join ' · ')$(if ($freeBad.Count) { ' · 어긋남: ' + ($freeBad -join ' · ') }))"; Ok = ($freeBad.Count -eq 0) }
+  $checks += New-AssetRow "칸 없이 까는 스킬 — $($fh.Label) ($($freeWant -join ' · ')$(if ($freeBad.Count) { ' · 어긋남: ' + ($freeBad -join ' · ') })$(if ($freeUnreadSay.Count) { ' · ' + ($freeUnreadSay -join ' · ') }))" `
+               ($freeBad.Count -eq 0 -and -not $freeUnread.Count) ($freeBad.Count -gt 0) $freeUnread
 }
 # agy — 훅 셋이 우리 어댑터로 걸렸나 (결정 0099 · 컨텍스트 알림은 claude-config #173)
 if ($hostAgy) {
@@ -10064,11 +10468,11 @@ if ($script:ProbeTimedOut.Count) {
     Write-Host "      · ``$($g.Name)`` — $gSites 자리 · $($g.Count)번 (한도 ${gCap}초)" -ForegroundColor Yellow
   }
 }
-# gh 로그인 — 설정 저장소를 받는 PC 와 사외에서 Copilot 을 고른 PC 만 잰다. 그 둘이 이 로그인을 쓴다(개인 쪽 gh · git ·
-#   Copilot CLI · claude-config 결정 0137). 사내 Copilot 은 쓰임이 아직 정해지지 않아 안 잰다.
+# gh 로그인 — 설정 저장소를 받는 PC 와 Copilot 을 고른 PC 만 잰다. 그 둘이 이 로그인을 쓴다(개인 쪽 gh · git ·
+#   Copilot CLI · claude-config 결정 0137). 사내에서 안 내놓는 Copilot 은 `$PickKeys` 에서 이미 빠졌다(제품 표의 `When`).
 # `$checks` 에 안 넣는다 — 무효 · 없음은 노란 줄이다. 다른 기기의 gh 로그인에 밀려 죽은 토큰은 이 설치가 못 세운 것이
 #   아니고 되살리는 것은 사람의 명령 한 번이라, 빨강으로 세면 멀쩡히 깔린 PC 가 실패로 끝난다.
-if ($repoUrl -or ((-not $inside) -and ($PickKeys -contains 'copilot'))) {
+if ($repoUrl -or ($PickKeys -contains 'copilot')) {
   $ghTokVars = @($GhEnvTokens | Where-Object {
     [Environment]::GetEnvironmentVariable($_, 'User') -or [Environment]::GetEnvironmentVariable($_, 'Machine') })
   $ghKr = Get-GhKeyringLines (Get-GhKeyringState) $ghTokVars
@@ -10403,19 +10807,19 @@ if ($PersonalUpgrade -and -not $NightRun) {
   }
 }
 
-# ── 「제공기능」 — 새 작은 판을 처음 깐 PC 에서 설치 끝에 한 번 연다 (claude-config 결정 0147) ──────────
+# ── 「제공기능」 — 처음 까는 PC 에서 설치 끝에 한 번 연다 (claude-config 결정 0147 덧붙임) ──────────
 # 설치 창 · 콘솔 · 로그온 자동 실행 어느 판이든 같다 — 창의 「제공기능」 링크는 다시 볼 때의 길로 남는다. 옛 제작자 칸 알림 창을 띄운
 #   판은 그 창이 연다(위 `$noticeShown`).
 # ⚠ **무엇을 던져도 설치를 못 끝낸다** — 안내 페이지는 덤이다(「연다」 칸과 같은 규율).
 # 밤 자동 실행은 열지도 적지도 않는다 — 적으면 그 판을 본 것으로 남아 다음 로그온 · 설치 창이 안 연다.
 if ($NightRun) {
-  Write-Host '  제공기능 — 밤 자동 실행이라 안 연다 (다음 로그온 · 설치 창이 연다)'
+  Write-Host '  제공기능 — 밤 자동 실행이라 안 연다 (이 PC 에서 아직 안 열었으면 다음 로그온 · 설치 창이 연다)'
 } else {
   try {
     $featHow = Open-FeaturesOnce $DistVersion $noticeShown `
                                  (Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'features.major') (Join-Path $Here 'features.html')
     switch ($featHow) {
-      'opened' { Write-Host "  제공기능 — 이 판($DistVersion)의 앞 두 자리를 처음 깐 설치라 브라우저로 열었다" -ForegroundColor Green }
+      'opened' { Write-Host "  제공기능 — 이 PC 에서 처음 여는 설치라 브라우저로 열었다 (다시 볼 때는 설치 창의 「제공기능」 링크)" -ForegroundColor Green }
       'nopage' { Write-Host '  ! 제공기능 — 이 폴더에 features.html 이 없어 못 열었다 (다음 설치 · 로그온에 다시 본다)' -ForegroundColor Yellow }
       'failed' { Write-Host '  ! 제공기능 — 브라우저로 못 열었다 (다음 설치 · 로그온에 다시 연다)' -ForegroundColor Yellow }
     }

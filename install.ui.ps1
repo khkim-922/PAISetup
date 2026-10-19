@@ -493,7 +493,7 @@ if ($Choices.Count) {
   # 고르기는 자리를 안 가리는데 깔기는 가린다(데스크탑 앱을 사외에서만 까는 행) — 안 적으면 사내에서 켜 놓고 「왜 안
   #   깔렸지」가 된다. 줄은 늘 두고 글만 갈린다(위 `$appRow` 곁말).
   # 글은 몸통이 행마다 낸 답(`-Describe` 의 `app|키|yes·outside·no` — 몸통의 `Test-DesktopAppHere`)에서 짓는다 — 짐의 `#desktop-app`
-  #   과 행의 `When` 을 창이 따로 풀면 사내에서도 깔리는 행(Copilot)에 「사외에서만」이라 적는다(PAISetup #46 ⑤).
+  #   과 행의 `When` 을 창이 따로 풀면 사내에서도 깔리는 행에 「사외에서만」이라 적는다(PAISetup #46 ⑤).
   $appYes = @($Choices | Where-Object { $AppHere[$_.Key] -eq 'yes' })
   $appOut = @($Choices | Where-Object { $AppHere[$_.Key] -eq 'outside' })
   $lApp2 = New-Object Windows.Forms.Label
