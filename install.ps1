@@ -1954,8 +1954,8 @@ function Sync-AssetLedger($Asset, [switch]$Drop) {
 #   · 자리 — user-env(사용자 환경) · settings-env(홈 settings.json 의 env) · settings(홈 settings.json 의 맨 위 키와 permissions) ·
 #     tool(도구 설정 파일의 키)
 #   · 그 안의 자리 — 사용자 환경은 `HKCU`, 파일은 그 자리(홈 아래면 `~\…`)에 표가 있으면 `|표이름`
-#   · 심은 손 — 그 줄을 선언하는 무리: agy-model · ccbg · values(「키와 값」) · env-push · features · model-picker · permissions
-#     (「Claude 홈 설정」) · autorun · codex-sandbox(「도구별 홈」). `seen` 은 우리가 알린 사람 값이다 — 같은 값을 판마다 다시 알리지 않으려고 적는다
+#   · 심은 손 — 그 줄을 선언하는 무리: agy-model · ccbg · values(「키와 값」) · env-push · features · model-picker · permissions ·
+#     plants-env(「Claude 홈 설정」) · autorun · codex-sandbox(「도구별 홈」). `seen` 은 우리가 알린 사람 값이다 — 같은 값을 판마다 다시 알리지 않으려고 적는다
 #   · 값 — 그 자리에 심은 글(JSON 칸의 표 · 참거짓은 압축 JSON 글). 탭 · 줄바꿈이 든 값은 안 적는다 — 그 값은 우리 것으로 못 알아본다
 # ⚠ **permissions 의 두 줄(`defaultMode` · `allow`)은 옛 꼴 `키<탭>값` 으로 쓴다** — 설정 저장소의 세션 훅(`home_settings_seed`)이 그 꼴을 읽어
 #   홈을 씨앗으로 덮을 때 우리 권한을 넘겨 준다(claude-config 결정 0119). 머리 없는 파일은 옛 판의 기록이다 — 두 칸 줄을 permissions
@@ -7311,6 +7311,7 @@ Exit-Step 'site'
 # ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
 #   층 — 홈
 #   하는 일 — `~/.claude/settings.json` 의 기능 스위치 · 모델 목록 · WebFetch 검증 건너뛰기 · 기본 권한 모드와 허용 규칙(러너 허락 포함) ·
+#     서브에이전트 캐시 수명(env) ·
 #     env 밀기와 걷기 · 걷힌 Tavily 안내 걷기. 심은 것은 장부(`$ClaudePlantLedger`)에 적고, 선언에서 빠진 우리 것은 장부로 걷는다
 #   앞에서 받는 것 — 「키와 값」의 심은 값(`$Planted`) · 값 파일(`$fromFile` · 짐의 값 파일 이름 `$DistNames` · 그 파일이 있나 `$DistComplete`) ·
 #     게이트웨이를 쓰나 · settings 에 안 밀 이름 · 회사 키로 아는 값(`Test-CompanyKey`) · 우리 게이트웨이 주소(`$OurGatewayUrls`) · 고른 제품
@@ -7394,6 +7395,16 @@ if (Test-Path -LiteralPath $homeCfg) {
 #   설치가 다시 심는다 — 끄는 길은 다른 `defaultMode` 값이나 `permissions.deny` 다.
 # 장부는 설치기 제 자리(자동 실행 기록 · 값 파일이 사는 폴더)에 둔다 — 중립 한 벌은 갈 곳 표의 손 몫이라 설치기가 그 자리를
 #   들면 안 된다(결정 0112 · 갈 곳 표 손 검사 ⑰).
+# `Env` 인 줄은 `permissions` 밖, 이 파일의 `env` 칸에 서는 이름이다 — 같은 guard 꼴 · 같은 장부(자리 settings-env · 심은 손 `plants-env`)로
+#   심고 걷는다. 서브에이전트 캐시 수명(`CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL = 1h` · Claude Code 2.1.242 부터)이 그 줄이다. 서브에이전트 · 맡긴
+#   레인은 구독에서도 캐시가 5분이라(메인 대화는 1시간), 사람이 몇 분 사이를 두고 레인에 말을 이으면 이어 받을 때마다 대화 전체를 캐시 없이 다시
+#   읽는다. 1시간은 캐시 쓰기 값이 더 비싸 한 시간 안에 다시 잇는 레인에서 값을 한다. 설정 키(`subagentPromptCacheTtl`)가 아니라 환경변수로 두는
+#   것은 레인을 잇는 훅이 같은 값을 환경에서 읽기 때문이다 — 하네스도 환경변수를 그 키보다 먼저 본다(`FORCE_PROMPT_CACHING_5M` 만 이긴다).
+# ⚠ **사람이 둔 그 설정 키는 지우지 않고 이기지도 않는다** — 환경변수가 키를 이기므로, 키가 우리 값과 다른 값으로 서 있으면 그 사람의 선택으로
+#   보고 이 이름을 안 심는다(`Yield` · 이미 심은 우리 값은 장부로 걷는다). 같은 값이면 심는다 — 훅이 환경에서 그 값을 읽는다.
+# 그 줄은 사내 · 사외 어디서나 심는다 — 1시간 요청은 일부가 `anthropic-beta` 헤더로 가, 회사 게이트웨이가 그 헤더를 버리면 캐시가 5분으로
+#   돌아갈 뿐이다. 그 게이트웨이는 모르는 것을 200 으로 삼켜(`posco/ENV-posco.md`) 요청이 깨지지 않으니 잃을 것이 없다. 사내에서 1시간이 실제로
+#   서는지는 안 쟀다 — 수명별 캐시 항을 안 돌려줘 응답으로 못 가리고, 같은 요청을 6분 넘게 사이를 두고 두 번 불러야 잰다(같은 문서 「아직 안 잰 것」).
 $ClaudeHomePlants = @(
   @{ Label = '기본 권한 모드';            Key = 'defaultMode'; Value = 'auto'; Want = [bool]$hostClaude }
   @{ Label = 'agy 러너 허락';             Key = 'allow';       Value = 'Bash(pythonw *agy_bg.py *)'
@@ -7407,6 +7418,8 @@ $ClaudeHomePlants = @(
   @{ Label = '허용 규칙 — agy --help';               Key = 'allow'; Value = 'Bash(agy --help)';                Want = [bool]$hostClaude }
   @{ Label = '허용 규칙 — Git Bash 임시 폴더 읽기';  Key = 'allow'; Value = 'Read(//tmp/**)';                  Want = [bool]$hostClaude }
   @{ Label = '허용 규칙 — 윈도 임시 폴더 읽기';      Key = 'allow'; Value = 'Read(~/AppData/Local/Temp/**)';   Want = [bool]$hostClaude }
+  @{ Label = '서브에이전트 캐시 1시간'; Key = 'CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL'; Value = '1h'; Env = $true; Yield = 'subagentPromptCacheTtl'
+     Want = [bool]$hostClaude }
 )
 
 # 맡기기 러너 값 — 이름마다 두 자리 표가 그 이름에 준 값들(이름 → 값 목록 · `Get-SiteValues`). 아래 「env 밀기」가 이 이름들을 안 밀고,
@@ -7481,12 +7494,18 @@ if ($cfg) {
     Write-Host '  WebFetch 검증 건너뛰기 — 걷었다 (사외는 그 검사가 선다)' -ForegroundColor Green
   }
 
-  # 기본 권한 모드 · 허용 규칙 — 위 표(`$ClaudeHomePlants`)대로 장부 손이 심고 장부에 든 우리 것만 걷는다(guard 꼴 · 표의 값이 바뀌면
+  # 기본 권한 모드 · 허용 규칙 · env 의 이름 — 위 표(`$ClaudeHomePlants`)대로 장부 손이 심고 장부에 든 우리 것만 걷는다(guard 꼴 · 표의 값이 바뀌면
   #   장부의 옛 우리 값 그대로인 것만 새 값으로 간다). `permissions` 가 표가 아니거나 `allow` 가 목록이 아니면 그 칸을 안 건드리고 장부는
   #   잇는다 — 사람이 고친 뒤 다음 설치가 맞춘다. 장부는 설정을 쓴 뒤에 쓴다(이 걸음 끝).
-  $permWant = [ordered]@{}; $allowWant = [ordered]@{}
+  $permWant = [ordered]@{}; $allowWant = [ordered]@{}; $envWant = [ordered]@{}
   foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
-    if ($p.Key -ceq 'allow') {
+    if ($p.Env) {
+      if ($p.Yield -and $cfg.PSObject.Properties[$p.Yield] -and -not (Test-SameText ([string]$cfg.($p.Yield)) $p.Value)) {
+        Write-Host "  $($p.Label) — 사람이 둔 $($p.Yield)($($cfg.($p.Yield)))가 있어 $($p.Key) 를 안 심는다 (그 키를 이길 이름이다)"; continue
+      }
+      $envWant[$p.Key] = $p.Value
+    }
+    elseif ($p.Key -ceq 'allow') {
       if (-not $allowWant.Contains('permissions.allow')) { $allowWant['permissions.allow'] = @() }
       $allowWant['permissions.allow'] += $p.Value
     } else { $permWant["permissions.$($p.Key)"] = $p.Value }
@@ -7519,9 +7538,15 @@ if ($cfg) {
             else { $cfg.permissions.PSObject.Properties.Remove('allow') }
             & $PermTidy; & $AllowSay $v $false; $true } `
           -Label @{ 'permissions.allow' = 'Claude 허용 규칙' } -Where 'permissions.allow' -SayKept
-  if ((& $HomeChanged $pm) -or (& $HomeChanged $pa)) { $dirty = $true }
-  elseif (@($ClaudeHomePlants | Where-Object { $_.Want }).Count -and -not ($pm.Kept.Count + $pm.Unread.Count + $pa.Unread.Count)) {
-    Write-Host '  기본 권한 모드 · 허용 규칙 — 이미 맞다'
+  # env 칸의 이름(`Env` 줄) — 이름표는 표의 `Label` 에 이름을 붙인다. 표에서 물러난 이름은 이름표가 없어 이름으로 알린다.
+  $envLabel = @{}
+  foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Env })) { $envLabel[$p.Key] = "$($p.Label) ($($p.Key))" }
+  $pe = Sync-Planted -Ledger $Ledger -Place 'settings-env' -At $homeAt -By 'plants-env' -Want $envWant -Mode 'guard' `
+          -Get $EnvGet -Set $EnvSet -Remove $EnvRemove -Label $envLabel -Where 'settings.json 의 env' -Speak -SayKept -ShowValue
+  if ((& $HomeChanged $pm) -or (& $HomeChanged $pa) -or (& $HomeChanged $pe)) { $dirty = $true }
+  elseif (@($ClaudeHomePlants | Where-Object { $_.Want }).Count -and
+          -not ($pm.Kept.Count + $pm.Unread.Count + $pa.Unread.Count + $pe.Kept.Count + $pe.Unread.Count)) {
+    Write-Host '  기본 권한 모드 · 허용 규칙 · env 의 이름 — 이미 맞다'
   }
 
   # 러너 값 사본 — 이 파일에 맡기기 러너 이름(`$RunnerEnvValues`)이 있으면 판마다 맞춘다. 이 칸은 그 이름을 안 밀지만, 그 이름을
@@ -10134,20 +10159,26 @@ if ($inside) {
   try { $skipSet = ((Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json).skipWebFetchPreflight -eq $true) } catch { }
   $checks += @{ Name = 'WebFetch 검증 건너뛰기 (홈 settings.json 의 skipWebFetchPreflight · 사내)'; Ok = $skipSet }
 }
-# 기본 권한 모드 · 허용 규칙 — 「Claude 홈 설정」의 표(`$ClaudeHomePlants`)에서 이번에 심을 것을 되읽는다. 기본 권한 모드는 키가 서 있으면
-#   [O] 다 — 사람이 정한 값은 그 사람의 기본값이라 안 덮고, 줄에 그 값을 적는다.
+# 기본 권한 모드 · 허용 규칙 · env 의 이름 — 「Claude 홈 설정」의 표(`$ClaudeHomePlants`)에서 이번에 심을 것을 되읽는다. 허용 줄이 아닌 것은
+#   서 있으면 [O] 다 — 사람이 정한 값은 그 사람의 기본값이라 안 덮고, 줄에 그 값을 적는다. `Env` 줄은 `env` 칸에서 읽고, 그 이름이 없어도 사람이
+#   둔 `Yield` 키가 다른 값으로 서 있으면 [O] 다(그 키를 이기지 않으려고 안 심었다).
 $planCfg = $null
 try { $planCfg = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch { }
-$planPerm = $null
+$planPerm = $null; $planEnv = $null
 if ($planCfg -and $planCfg.PSObject.Properties['permissions']) { $planPerm = $planCfg.permissions }
+if ($planCfg -and $planCfg.PSObject.Properties['env']) { $planEnv = $planCfg.env }
 foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
+  $box  = if ($p.Env) { $planEnv } else { $planPerm }
+  $slot = if ($p.Env) { "env.$($p.Key)" } else { "permissions.$($p.Key)" }
   $pv = $null
-  if ($planPerm -and $planPerm.PSObject.Properties[$p.Key]) { $pv = $planPerm.($p.Key) }
+  if ($box -and $box.PSObject.Properties[$p.Key]) { $pv = $box.($p.Key) }
   if ($p.Key -ceq 'allow') {
     $checks += @{ Name = "$($p.Label) (홈 settings.json 의 permissions.allow 에 $($p.Value))"; Ok = (@($pv) -ccontains $p.Value) }
+  } elseif ($null -eq $pv -and $p.Yield -and $planCfg -and $planCfg.PSObject.Properties[$p.Yield] -and -not (Test-SameText ([string]$planCfg.($p.Yield)) $p.Value)) {
+    $checks += @{ Name = "$($p.Label) (홈 settings.json 의 $($p.Yield) = $($planCfg.($p.Yield)) · 사람이 정한 키라 $slot 를 안 심었다)"; Ok = $true }
   } else {
     $pvShow = if ($null -eq $pv) { '없다' } elseif ($pv -ceq $p.Value) { $pv } else { "$pv · 사람이 정한 값이라 안 덮었다" }
-    $checks += @{ Name = "$($p.Label) (홈 settings.json 의 permissions.$($p.Key) = $pvShow)"; Ok = ($null -ne $pv) }
+    $checks += @{ Name = "$($p.Label) (홈 settings.json 의 $slot = $pvShow)"; Ok = ($null -ne $pv) }
   }
 }
 # 묻지 않고 돌기 — 「도구별 홈」의 표(`$ToolAutoRun`)에서 이번에 심을 것을 파일에서 되읽는다.
