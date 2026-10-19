@@ -597,7 +597,7 @@
 
   <section id="settings">
     <h3 class="sec"><span class="ico"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></span>그 밖에 맞춰 두는 설정</h3>
-    <p class="h3-sub">자리와 상관없이 심는 값입니다. 사람이 이미 둔 값을 어떻게 다루는지는 줄마다 적었습니다.</p>
+    <p class="h3-sub">자리 배지가 없는 줄은 자리와 상관없이 심는 값입니다. 사람이 이미 둔 값을 어떻게 다루는지는 줄마다 적었습니다.</p>
     <div class="rows">
       <div class="row"><b>회사 인증서<span class="tag"><code class="nm">NODE_EXTRA_CA_CERTS</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t copilot">Copilot</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 Node 로 도는 CLI(Claude · Codex · Copilot)가 회사 인증서를 몰라 연결이 끊깁니다.</span> Node 는 윈도우의 인증서 목록을 안 읽어서, 회사 루트 인증서와 필요한 인증서를 한 파일에 모아 가리킵니다.
@@ -605,6 +605,9 @@
       <div class="row"><b>맡긴 일의 캐시 한 시간<span class="tag"><code class="nm">CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 맡긴 일(서브에이전트)에 몇 분 뒤 말을 이을 때마다, 그 일이 5분 넘게 쉬어 그동안의 대화를 캐시 없이 처음부터 다시 읽습니다.</span> 구독에서도 서브에이전트의 캐시는 5분이라 한 시간으로 늘려 둡니다. 캐시에 쓰는 값이 조금 더 비싸, 한 시간 안에 다시 말을 잇는 일에서 값을 합니다.
           이미 둔 값도, 설정 파일에 따로 적어 둔 다른 수명(<code>subagentPromptCacheTtl</code>)도 덮지 않습니다.</div></div>
+      <div class="row"><b>대화의 캐시 한 시간 <span class="s in">사내</span><span class="tag"><code class="nm">ENABLE_PROMPT_CACHING_1H</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
+        <div><span class="why">없으면 회사 게이트웨이로 붙은 대화에서 몇 분 쉴 때마다, 그동안의 대화를 캐시 없이 처음부터 다시 읽습니다.</span> 구독 로그인은 대화의 캐시가 이미 한 시간이라 회사 게이트웨이로 붙는 자리에만 둡니다.
+          이미 둔 값은 덮지 않습니다.</div></div>
       <div class="row"><b>명령을 이름만으로 부르기<span class="tag"><code class="nm">PATH</code><span class="k setting">Setting</span><span class="t all">모든 도구</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 새 터미널에서 <code>claude</code> · <code>codex</code> · <code>pdftoppm</code> 같은 명령을 못 찾아, 그 CLI 를 부르는 VS Code 확장과 PDF 읽기가 집니다.</span> npm · pip · winget 이 깐 자리를 사용자 PATH 끝에 더하기만 하고 다른 자리는 그대로 둡니다.</div></div>
       <div class="row"><b>워드의 PDF 변환 안내 끄기<span class="tag"><code class="nm">DisableConvertPdfWarning</code><span class="k setting">Setting</span><span class="t all">워드</span><span class="src pai">PAI</span></span></b>
