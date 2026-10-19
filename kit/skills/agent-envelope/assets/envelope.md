@@ -3,11 +3,15 @@
 (Hints in angle brackets are for the parent; delete them as you fill. Everything the lane must know is in this
 envelope — the conversation does not travel with it.)
 
+(Parent, before filling: is this a review? Then this file is not the vehicle — Claude → `/code-review`, Codex and
+Claude runner → `--review` with the git tree as cwd, agy and Copilot → this file. A cross-model review is each
+harness's own review feature on the same tree, never one packet folder for every carrier.)
+
 ## Task
 - Source: <issue URL or path — the lane opens it itself; never paste its body here>
 - Goal in one line: <what the lane must deliver>
 - Weight: <deep | errand>
-- Carrier · model: <e.g. Claude subagent · sonnet | agy | Codex --write | Claude runner --review>
+- Carrier · model: <e.g. Claude subagent · sonnet | agy | Codex --write — a review goes to /code-review or --review, see the line above>
 
 ## Ownership (writing lanes only — finding and measuring lanes get the goal and the criteria, not a fence)
 - Files or areas you may edit: <paths>

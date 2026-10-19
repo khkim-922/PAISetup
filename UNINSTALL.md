@@ -84,7 +84,7 @@ Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night -Conf
 
 | `hooks` 의 이벤트 | 지울 줄 |
 |---|---|
-| `PreToolUse` | `image-gate` · `bash-backslash-deny` · `shell-slip` · `drm-guide` |
+| `PreToolUse` | `image-gate` · `bash-backslash-deny` · `shell-slip` · `lane-resume` · `drm-guide` |
 | `PostToolUse` | `utf8-bom` · `web-retry` |
 | `PostToolUseFailure` | `web-retry` · `drm-guide` |
 | `UserPromptSubmit` | `drm-guide` · `context-alert` |
@@ -255,6 +255,6 @@ Claude · Codex 를 같이 골랐으면 사용자 환경변수 `CC_BG_AGENTS` ·
 
 사내에서 쓰던 기계를 사외에서 다시 누르면 이 글에 적은 사내 값은 설치가 걷어 낸다.
 
-걷는 것은 게이트웨이 주소 · 키 · 사내 전용 값(환경변수와 홈 설정 양쪽)과 프록시 감시 작업 · 그 폴더, Codex · 안티그래비티의 회사 연결(`~/.codex/config.toml` 의 `model_provider` 와 그 제공자 표 · `~/.gemini/antigravity-cli/settings.json` 의 `modelProvider`)이다. 걷은 회사 키는 이 사용자만 푸는 암호화 사본(`%LOCALAPPDATA%\Claude Code Setup\company-key.dpapi`)으로 남아 사내로 돌아오면 다시 서고, 그 폴더를 지우면 같이 사라진다. 옛 값이 남아 새 값을 가리는
+걷는 것은 게이트웨이 주소 · 키 · 사내 전용 값(환경변수와 홈 설정 양쪽)과 프록시 감시 작업 · 그 폴더, Codex · 안티그래비티의 회사 연결(`~/.codex/config.toml` 의 `model_provider` 와 그 제공자 표 · 회사 값 그대로인 창 두 줄 · `~/.gemini/antigravity-cli/settings.json` 의 `modelProvider`)이다. 걷은 회사 키는 이 사용자만 푸는 암호화 사본(`%LOCALAPPDATA%\Claude Code Setup\company-key.dpapi`)으로 남아 사내로 돌아오면 다시 서고, 그 폴더를 지우면 같이 사라진다. 옛 값이 남아 새 값을 가리는
 것은 값이 없는 것보다 나빠서다. 다만 우리가 넣은 값이라는 근거가 설 때만 지우고, 모르는 값은 알리기만 한다 — 그렇게 가릴 수 없는
 경우(회사를 아주 떠날 때)를 위해 이 글을 둔다.

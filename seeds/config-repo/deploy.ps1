@@ -411,7 +411,9 @@ function Get-SeedColumn {
     # `scripts/check-tool-homes.py` ⑳ 이 이 함수를 떼어 동료 저장소로 부른다 — 홈 씨앗의 판 줄 · 씨앗 목록을 이름 대는 문자열은
     #   이 함수 밖에 두지 않는다(그 검사가 이 함수 밖의 문자열을 잰다).
     param([string]$Src, [string]$Dst)
-    $col  = @{ Dirs = @(); Notes = @(); Stamp = $null; Same = $null }
+    # 문을 못 지난 판도 같은 열쇠를 다 든다 — `Gone` 이 없으면 흐름의 `@($seedCol.Gone)` 이 `$null` 하나를 든 배열이 되어 계획에
+    #   빈 걸음이 서고, 제거 후보 칸의 `$goneSet[$g.Path]` 가 널 열쇠로 던져 배포가 죽는다.
+    $col  = @{ Dirs = @(); Gone = @(); Notes = @(); Stamp = $null; Same = $null }
     $conf = Join-Path $Src 'deploy.seeds.conf'
     if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { return $col }
     $col.Dirs = @(Get-Content -LiteralPath $conf -Encoding UTF8 |
@@ -429,7 +431,6 @@ function Get-SeedColumn {
     #   이름이 바뀐 파일은 옛 이름을 지운 것으로 센다(`--no-renames`). 걷는 걸음은 백업 자리에 원본을 뜬다(실행 단계의 `remove`).
     # 이력을 못 물으면(git 이 없다 · 얕은 클론이 그 커밋을 안 든다 · git 이 졌다) 걷지 않는다 — 못 물은 것은 할 일 한 줄이고, 얕은
     #   클론에서 못 본 이력은 안 걷힌 채 남는다(우리 것을 남의 것으로 세는 쪽으로만 진다).
-    $col.Gone = @()
     $git = Get-Command git -ErrorAction SilentlyContinue
     if ($col.Dirs.Count -and -not $git) { $col.Notes += 'git 이 없어 원본이 걷은 씨앗 · 사내 환경 문서 파일을 못 가렸다 — 홈에 남는다' }
     elseif ($col.Dirs.Count) {
@@ -500,6 +501,138 @@ function Save-Backup($path) {
 }
 #endregion 백업 손
 
+#region 지문 손 — 못 읽는 파일 하나가 배포를 끝내지 않게 지문을 뜬다
+function Get-HashOrWhy([string]$Path) {
+    # 받는 것: 파일 · 내는 것: @{ Hash } 또는 못 읽었으면 @{ Why = 까닭 한 줄 } · 던지지 않는다.
+    # ⚠ 홈 사본은 다른 프로그램(백신 · 보안 에이전트)이 읽기 공유 없이 쥐고 있을 수 있다 — `Get-FileHash` 가 그 자리에서 던지면
+    #   `$ErrorActionPreference = 'Stop'` 아래 배포가 통째로 죽는다. 부르는 쪽은 그 파일 하나를 포기한 것으로 빨강(`$envDown`)에
+    #   이름째 남기고 다음으로 간다.
+    try { return @{ Hash = (Get-FileHash -LiteralPath $Path -ErrorAction Stop).Hash } }
+    catch { return @{ Why = $_.Exception.Message.Split([char]10)[0].Trim() } }
+}
+#endregion 지문 손
+
+#region 파일 쓰기 손 — 씨앗 복사를 끌 수 있는 일꾼 자식 하나에 차례로 맡기고, 한도는 이 프로세스가 쥔다
+# 백신의 행위 차단(실시간 감시)은 파일을 쓰는 프로세스를 통째로 멈춰 세운다 — 스레드가 다 「대기 · 중단」에 걸려 그 안의 코드는
+#   다시 안 돈다. 그래서 복사는 이 프로세스가 아니라 자식(일꾼)이 하고, 한도와 판정은 멈추지 않은 이 프로세스가 든다.
+# 일꾼은 한 회차에 하나를 띄워 건마다 다시 쓴다 — 복사 한 건의 값은 거의 다 자식이 뜨는 값이라, 건마다 띄우면 씨앗을 처음 다
+#   까는 판이 그 수만큼 는다(`$FileOpLimitSec` 곁의 잰 값). 한도와 멈춤 살피기는 건마다 든다 — 한 건이 한도(`$FileOpLimitSec`)를
+#   넘기거나 일꾼의 스레드가 다 중단에 걸린 것이 보이면 그 일꾼만 끄고(쥔 손잡이가 같이 풀린다) 그 파일을 포기하고, 다음 건은 새
+#   일꾼이 받는다. 부르는 쪽은 진 파일을 빨강에 이름째 남기고 다음 파일로 간다. 일꾼은 하위 프로세스를 안 띄워 그 하나만 끄면 된다.
+# 일꾼은 지금 도는 이 파워셸과 같은 실행 파일이다 — 백신의 예외는 프로그램 실행 파일로 걸려, 사람이 이 파워셸을 예외로 둔 PC 에서
+#   다른 실행 파일(`cmd.exe` 같은)이 쓰면 그 예외 밖이라 같은 차단이 다시 걸린다. `Copy-Item -Force` 라 읽기 전용 대상도 덮는다.
+# 대상에 바로 덮어쓴다 — 멎은 복사가 남긴 사본은 다음 회차의 지문 대조가 원본과 다르다고 보고 다시 덮는다.
+# 주고받는 꼴 — 건은 일꾼의 표준 입력에 한 줄 `<번호> <원본> <대상>`, 답은 표준 출력에 한 줄 `<번호> ok` 또는 `<번호> err <까닭>`.
+#   번호가 이 건과 다른 줄은 이 건의 답으로 안 읽는다.
+# ⚠ 자리와 까닭은 UTF-8 바이트의 base64 로 오간다 — 줄 속의 글자를 아무 파서도 다시 안 읽어 이름 속의 따옴표 · `$` · `%` · 빈칸이
+#   안 풀리고, 양쪽 콘솔 코드페이지와 무관하게 한글 까닭이 읽힌다. 일꾼은 BOM 을 알아보고 넘기며 읽는다 — 이 프로세스의 표준
+#   입력 쓰개는 콘솔 입력 인코딩을 따라 BOM 을 앞에 붙일 수 있다.
+# ⚠ 일꾼의 세 스트림은 파이프다(자식 프로세스의 스트림 돌리기라 파워셸이 감싸지 않는다 — 당김 손 머리의 「리다이렉트가 곧
+#   위험이다」 밖이다). stderr 는 비우며 받아 두고, 일꾼이 끝나 버린 건의 까닭에 붙인다.
+# ⚠ 끄는 것은 이 프로세스가 띄운 그 일꾼의 손잡이다 — PID 로 다시 찾지 않아 그 사이 같은 번호를 받은 남의 프로세스를 안 끈다.
+# 고리가 끝나면 `Stop-FileWorker` 가 일꾼을 거둔다. 이 프로세스가 도중에 죽으면 일꾼은 표준 입력의 끝을 읽고 스스로 끝난다.
+
+function Start-FileWorker {
+    # 받는 것: 없다 · 내는 것: 일꾼 @{ P = 프로세스; Err = stderr 를 다 읽는 일; Seq = 0 } 또는 못 띄웠으면 @{ Why } · 던지지 않는다.
+    $exe = $null
+    try { $exe = (Get-Process -Id $PID).Path } catch { $exe = $null }
+    if (-not $exe) { $exe = Join-Path $PSHOME 'powershell.exe' }
+    $body = '$ErrorActionPreference = ''Stop''; $ProgressPreference = ''SilentlyContinue''; $u = New-Object Text.UTF8Encoding($false); $in = New-Object IO.StreamReader([Console]::OpenStandardInput(), $u, $true); $o = [Console]::OpenStandardOutput(); while ($null -ne ($l = $in.ReadLine())) { $f = $l.Trim().Split([char]32); if ($f.Count -ne 3) { continue }; try { Copy-Item -LiteralPath $u.GetString([Convert]::FromBase64String($f[1])) -Destination $u.GetString([Convert]::FromBase64String($f[2])) -Force -ErrorAction Stop; $r = $f[0] + '' ok'' } catch { $r = $f[0] + '' err '' + [Convert]::ToBase64String($u.GetBytes(($_.Exception.Message -replace ''\s+'', '' '').Trim())) }; $b = [Text.Encoding]::ASCII.GetBytes($r + [char]10); $o.Write($b, 0, $b.Length); $o.Flush() }'
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $exe
+    $psi.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command `"$body`""
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = New-Object Text.UTF8Encoding($false)
+    $psi.StandardErrorEncoding = New-Object Text.UTF8Encoding($false)
+    try { $p = [System.Diagnostics.Process]::Start($psi) }
+    catch { return @{ Why = "복사를 맡을 일꾼($exe)을 못 띄웠다: $($_.Exception.Message.Split([char]10)[0].Trim())" } }
+    return @{ P = $p; Err = $p.StandardError.ReadToEndAsync(); Seq = 0 }
+}
+
+function Stop-FileWorker([switch]$Kill) {
+    # 받는 것: `-Kill` 이면 끝나기를 안 기다리고 바로 끈다 · 내는 것: 없다 · 던지지 않는다.
+    # 부작용: `$script:fileWorker` 를 비운다. `-Kill` 이 없으면 표준 입력을 닫아 스스로 끝나기를 5 초 기다리고, 안 끝나면 끈다.
+    $w = $script:fileWorker
+    $script:fileWorker = $null
+    if (-not $w) { return }
+    $p = $w.P
+    if (-not $Kill) {
+        try { $p.StandardInput.Close() } catch { }
+        try { if ($p.WaitForExit(5000)) { return } } catch { }
+    }
+    try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+    try { $null = $p.WaitForExit(5000) } catch { }
+}
+
+function Invoke-FileWorker {
+    # 받는 것: 원본 · 대상 · 한도(초) · 살피는 간격(밀리초) · 내는 것: @{ Ok = $true } 또는 @{ Ok = $false; Why } · 던지지 않는다.
+    # 부작용: 일꾼(`$script:fileWorker`)이 없거나 끝나 있으면 새로 띄운다 · 이 건에서 멎거나 끝나 버린 일꾼은 끄고 비운다.
+    # 한도는 이 건을 넘긴 때부터 센다 — 일꾼을 새로 띄운 건은 뜨는 값까지 든다.
+    param([string]$From, [string]$To, [int]$LimitSec, [int]$PollMs)
+    $u = New-Object Text.UTF8Encoding($false)
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+    if ($script:fileWorker -and $script:fileWorker.P.HasExited) { Stop-FileWorker -Kill }
+    if (-not $script:fileWorker) {
+        $w = Start-FileWorker
+        if ($w.Why) { return @{ Ok = $false; Why = $w.Why } }
+        $script:fileWorker = $w
+    }
+    $w = $script:fileWorker
+    $w.Seq++
+    $id = [string]$w.Seq
+    try {
+        $w.P.StandardInput.WriteLine("$id $([Convert]::ToBase64String($u.GetBytes($From))) $([Convert]::ToBase64String($u.GetBytes($To)))")
+        $w.P.StandardInput.Flush()
+    } catch {
+        Stop-FileWorker -Kill
+        return @{ Ok = $false; Why = "복사를 맡은 일꾼에게 이 건을 못 넘겼다: $($_.Exception.Message.Split([char]10)[0].Trim())" }
+    }
+    $read = $w.P.StandardOutput.ReadLineAsync()
+    $held = 0   # 스레드가 다 중단에 걸린 것을 잇달아 본 횟수 — 뜨는 순간의 짧은 중단을 멈춤으로 안 읽는다
+    while ($true) {
+        # ⚠ 읽기가 던지면(일꾼이 끝나며 파이프가 닫힌 것) 끝나 버린 것으로 읽는다 — 이 함수가 던지면 배포가 통째로 죽는다.
+        $done = $false
+        $line = $null
+        try { $done = $read.Wait($PollMs); if ($done) { $line = $read.Result } } catch { $done = $true; $line = $null }
+        if ($done) {
+            if ($null -eq $line) {
+                $text = ''
+                try { if ($w.Err.Wait(2000)) { $text = ($w.Err.Result -replace '\s+', ' ').Trim() } } catch { }
+                $code = '?'
+                try { if ($w.P.WaitForExit(2000)) { $code = $w.P.ExitCode } } catch { }
+                Stop-FileWorker -Kill
+                return @{ Ok = $false; Why = "복사를 맡은 일꾼이 이 파일에서 끝나 버렸다 (exit $code)$(if ($text) { ": $text" })" }
+            }
+            $f = $line.Trim().Split([char]32)
+            if ($f[0] -eq $id -and $f[1] -eq 'ok') { return @{ Ok = $true } }
+            if ($f[0] -eq $id -and $f[1] -eq 'err') {
+                $text = ''
+                try { $text = $u.GetString([Convert]::FromBase64String($f[2])) } catch { }
+                return @{ Ok = $false; Why = "복사가 졌다$(if ($text) { ": $text" })" }
+            }
+            $read = $w.P.StandardOutput.ReadLineAsync()
+        }
+        $why = $null
+        try {
+            $w.P.Refresh()
+            $ts = @($w.P.Threads)
+            $free = @($ts | Where-Object { -not ($_.ThreadState -eq 'Wait' -and $_.WaitReason -eq 'Suspended') })
+            if ($ts.Count -and -not $free.Count) { $held++ } else { $held = 0 }
+        } catch { $held = 0 }
+        if ($held -ge 3) { $why = '백신이 이 파일에서 멈춰 세웠다 — 복사하던 일꾼의 스레드가 다 중단에 걸렸다' }
+        elseif ($clock.Elapsed.TotalSeconds -gt $LimitSec) { $why = "${LimitSec}초 안에 안 끝나 포기했다 — 다른 프로그램(백신 같은)이 그 파일을 쥐었을 수 있다" }
+        if ($why) {
+            Stop-FileWorker -Kill
+            return @{ Ok = $false; Why = $why }
+        }
+    }
+}
+#endregion 파일 쓰기 손
+
 #region 본 작업 폴더 손 — 형제 저장소가 서는 자리는 이 저장소 본 작업 폴더의 부모다
 # 받는 것: 폴더 · 내는 것: 그 저장소의 본 작업 폴더. 연결된 작업 트리(`.claude\worktrees\<이름>` — 데스크탑 앱이 세션마다
 #   만든다)에서 돌면 `$src` 의 부모는 형제 자리가 아니라서 쓴다. 본 작업 폴더는 git 이 댄다 — 공통 git 폴더
@@ -533,6 +666,15 @@ function Get-MainWorktree([string]$Dir) {
 $src    = $PSScriptRoot
 $dst    = Join-Path $HOME '.claude'
 $backup = Join-Path $dst ('backups\deploy-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+# 씨앗 복사 한 건의 한도 — 넘기면 그 건을 포기하고 빨강에 이름째 남긴다(`Invoke-FileWorker` 머리). 미는 파일은 몇 MB 안쪽이라
+#   초당 100 KB 로 기는 디스크에서도 수십 초 안에 끝나고, 실시간 감시가 한 파일을 훑는 값은 1 초 안쪽이다 — 멀쩡한 느린 디스크는
+#   안 걸리는 자리에 둔다. 낚아챈 건 하나가 배포를 이만큼 늦춘다(멈춰 세운 것이 보이면 그 자리에서 끈다).
+$FileOpLimitSec = 60
+$FileOpPollMs   = 50     # 복사하는 일꾼이 멎었나 살피는 간격 — 답은 오는 그 자리에서 받아, 정상 건은 이 값만큼 안 기다린다
+# 복사 값은 일꾼이 뜨는 값이 거의 다다 — 일꾼은 회차마다 한 번 뜨고, 멈춰 끈 건이 있으면 그 뒤로 한 번씩 더 뜬다. 잰 값(집 PC ·
+#   씨앗 · 사내 환경 문서 · 메모리 128 건): 일꾼 하나가 차례로 받으면 0.6 초(뜨는 데 0.4 초 · 건마다 2 ms 안팎)이고, 건마다 자식을
+#   띄우면 32 초(건마다 0.25 초)다. 백신이 프로세스가 뜨는 것을 늦추는 PC 에서는 뜨는 몫만 그만큼 는다.
+$fileWorker     = $null  # 복사 일꾼 — `Invoke-FileWorker` 가 첫 건에서 띄우고, 실행 고리 뒤 `Stop-FileWorker` 가 거둔다
 
 $plan    = @()   # 바꿀 것
 $same    = @()   # 이미 맞는 것
@@ -718,10 +860,16 @@ foreach ($sd in $seedDirs) {
 }
 
 foreach ($t in $targets) {
-    if ((Test-Path $t.To) -and ((Get-FileHash $t.From).Hash -eq (Get-FileHash $t.To).Hash)) {
+    # 못 읽는 쪽이 있으면 그 파일만 못 견준 것이다 — 계획에 안 싣고 빨강에 이름째 남긴다(`Get-HashOrWhy` 머리)
+    $hFrom = Get-HashOrWhy $t.From
+    $hTo   = if (Test-Path -LiteralPath $t.To) { Get-HashOrWhy $t.To } else { $null }
+    $unread = if ($hFrom.Why) { "$($t.From) — $($hFrom.Why)" } elseif ($hTo -and $hTo.Why) { "$($t.To) — $($hTo.Why)" } else { '' }
+    if ($unread) {
+        $envDown += "못 견줘 안 민 파일 — $unread"
+    } elseif ($hTo -and $hFrom.Hash -eq $hTo.Hash) {
         $same += "= 동일  $($t.To)"
     } else {
-        $verb = if (Test-Path $t.To) { '덮어씀' } else { '새로 만듦' }
+        $verb = if ($hTo) { '덮어씀' } else { '새로 만듦' }
         $plan += @{ Kind = 'copy'; From = $t.From; To = $t.To; Repo = $t.Repo; Text = "+ 배포  $($t.To)  ($verb)" }
     }
 }
@@ -1038,10 +1186,16 @@ if ($gateReport.Count -gt 0) {
 }
 
 if ($plan.Count -eq 0) {
-    Write-Host "`n바꿀 것이 없습니다. 이미 최신입니다." -ForegroundColor Green
+    # 계획이 비어도 안 선 것(`$envDown` — 못 견줘 포기한 파일 같은)이 있으면 초록으로 안 끝난다 — 머리말의 종료 값 계약이다
+    if ($envDown.Count -eq 0) { Write-Host "`n바꿀 것이 없습니다. 이미 최신입니다." -ForegroundColor Green }
     if ($todo.Count -gt 0) {
         Write-Host "`n남은 수동 작업:" -ForegroundColor Yellow
         $todo | ForEach-Object { Write-Host "  - $_" -ForegroundColor Yellow }
+    }
+    if ($envDown.Count -gt 0) {
+        Write-Host "`n! 실행 환경이 안 섰습니다 — $($envDown.Count)곳:" -ForegroundColor Red
+        $envDown | ForEach-Object { Write-Host "  - $_" -ForegroundColor Red }
+        exit 1
     }
     return
 }
@@ -1121,20 +1275,35 @@ foreach ($step in $plan) {
             }
             # 계획 뒤에 다른 손(VS Code 로 연 세션의 배경 당김)이 같은 파일을 앉혔을 수 있어 한 번 더 견준다 — 같은 것을 다시
             #   쓰면 백업만 쌓인다.
-            if (-not $skip -and (Test-Path $step.To) -and
-                ((Get-FileHash $step.From).Hash -eq (Get-FileHash $step.To).Hash)) {
-                Write-Host "= 동일  $($step.To)  (그 사이 같아졌다)" -ForegroundColor DarkGray
-                $skip = $true
+            #   계획 뒤에 다른 프로그램이 그 파일을 쥐었으면 못 견준 것이라 포기한다(`Get-HashOrWhy` 머리).
+            if (-not $skip -and (Test-Path -LiteralPath $step.To)) {
+                $hFrom = Get-HashOrWhy $step.From
+                $hTo   = Get-HashOrWhy $step.To
+                $unread = if ($hFrom.Why) { "$($step.From) — $($hFrom.Why)" } elseif ($hTo.Why) { "$($step.To) — $($hTo.Why)" } else { '' }
+                if ($unread) {
+                    Write-Host "! 포기  $($step.To) — 못 읽어 견주지 못했다" -ForegroundColor Red
+                    $envDown += "배포를 포기한 파일 — $unread"
+                    $skip = $true
+                } elseif ($hFrom.Hash -eq $hTo.Hash) {
+                    Write-Host "= 동일  $($step.To)  (그 사이 같아졌다)" -ForegroundColor DarkGray
+                    $skip = $true
+                }
             }
             if (-not $skip) {
                 if (Test-Path $step.To) { Save-Backup $step.To }
-                # ⚠ 대상이 링크면 링크를 걷고 쓴다 — `Copy-Item` 은 링크를 따라가 가리키는 원본을 덮어, 손으로 링크를 걸어 둔
-                #   PC(대상 → 이 저장소의 진본)에서는 진본을 덮는다. 내용은 위 백업이 이미 떴다.
+                # ⚠ 대상이 링크면 링크를 걷고 쓴다 — 링크를 따라 쓰면 손으로 링크를 걸어 둔 PC(대상 → 이 저장소의 진본)에서는
+                #   진본을 덮는다. 내용은 위 백업이 이미 떴다.
                 $toItem = Get-Item -LiteralPath $step.To -Force -ErrorAction SilentlyContinue
                 if ($toItem -and $toItem.LinkType) { Remove-Item -LiteralPath $step.To -Force }
                 New-Item -ItemType Directory -Force -Path (Split-Path $step.To -Parent) | Out-Null
-                Copy-Item $step.From $step.To -Force
-                Write-Host "+ 배포  $($step.To)"
+                # 복사는 끌 수 있는 일꾼이 한다(`Invoke-FileWorker` 머리) — 진 파일은 빨강에 이름째 남기고 다음 파일로 간다
+                $r = Invoke-FileWorker -From $step.From -To $step.To -LimitSec $FileOpLimitSec -PollMs $FileOpPollMs
+                if ($r.Ok) {
+                    Write-Host "+ 배포  $($step.To)"
+                } else {
+                    Write-Host "! 포기  $($step.To) — $($r.Why)" -ForegroundColor Red
+                    $envDown += "배포를 포기한 파일 — $($step.To): $($r.Why)"
+                }
             }
         }
 
@@ -1226,6 +1395,8 @@ foreach ($step in $plan) {
     }
     $stepSecs[$step.Kind] = [double]$stepSecs[$step.Kind] + ($deploySw.Elapsed.TotalMilliseconds - $tStep)
 }
+# 복사 일꾼을 거둔다(`Invoke-FileWorker` 머리) — 고리 안의 마지막 복사 뒤로는 쓸 데가 없다.
+Stop-FileWorker
 
 # 걸음 종류별 초 — 큰 것부터. 0.1 초에 못 미치는 종류는 안 낸다 — 줄만 늘고 가르는 값이 없다.
 # ⚠ 밀리초로 세고 초로 낸다 — 정수 초로 세면 한 걸음이 1 초 미만인 종류가 전부 0 으로 깎여, 수백 개를 밀어도 합이 0 이다.

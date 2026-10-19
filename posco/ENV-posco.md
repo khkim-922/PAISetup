@@ -23,8 +23,8 @@
 
 - 백엔드는 **AWS Bedrock**이다 (문서가 밝힌다) — Anthropic 고유 기능 중 Bedrock 이 가진
   것만 건너간다고 보면 관측이 대체로 맞아떨어진다
-- 우리가 쓰는 인증 — 사내 PC 에서는 앱(Anthropic SDK · atelier)도 Claude Code CLI 도 `ANTHROPIC_AUTH_TOKEN` 을
-  읽어 `Authorization: Bearer` 로 보낸다(자리 파일 `secrets.d/posco.env`). 회사 문서는 `ANTHROPIC_API_KEY` →
+- 우리가 쓰는 인증 — 사내 PC 에서 Claude Code CLI 와 Anthropic SDK 앱은 `ANTHROPIC_AUTH_TOKEN` 을 읽어
+  `Authorization: Bearer` 로 보내고(자리 파일 `secrets.d/posco.env`), atelier 는 제 배관이 `x-api-key` 로 보낸다. 회사 문서는 `ANTHROPIC_API_KEY` →
   `x-api-key` 길도 적는다(`Claude-Posco.setting.md` 헤더 표). **게이트웨이는 둘 다 받는다** — 클라이언트마다
   읽는 이름이 다를 뿐이라, 하나를 「이게 아니다」로 못 박으면 다른 클라이언트를 못 붙인다.
   ⚠ 둘이 함께 실리면 프록시가 `x-api-key` 를 뗀다 — 개인 키가 평문 HTTP 로 사내에 새지 않게(`pgpt-proxy/README.md`)
@@ -63,7 +63,7 @@
 | `image` 블록 (user content) | **본다** — 픽셀로 그린 숫자를 읽어 냈다 (찍어서 못 맞히는 값) |
 | `image` 를 **`tool_result` 안**에 | **삼킨다** — 받아 놓고 버리고 **색을 지어낸다**(빨강을 「흰색」). ⚠ **여기가 `Read` 가 그림을 싣는 자리다** — 그래서 사내에서 그림을 여는 것이 통째로 눈멀어 있었다. **프록시가 비켜간다**(아래 ⚠) |
 | `document` 블록 (PDF·워드·엑셀 원형) | **삼킨다** — 입력 토큰이 첨부 없을 때와 **같다** |
-| **오류 코드의 HTTP 상태** | **문서의 매핑을 안 따를 수 있다.** 오류 명세는 `P003`(프로바이더 응답 오류)을 **502** 로 두는데, 실측은 **503** 으로 왔다 — 프로바이더가 낸 상태(구글 `503 UNAVAILABLE` · `Deadline expired before operation could complete.`)를 **그대로 흘린 꼴**이다. **코드로 갈라야지 상태로 갈리면 안 된다** |
+| **오류 코드의 HTTP 상태** | **문서의 매핑을 안 따를 수 있다.** 오류 명세는 `P003`(프로바이더 응답 오류)을 **502** 로 두는데, 실측은 **503** 으로 왔다 — 프로바이더가 낸 상태(구글 `503 UNAVAILABLE` · `Deadline expired before operation could complete.`)를 **그대로 흘린 꼴**이다. **OpenAI 봉투 경로는 코드로 갈라야지 상태로 갈리면 안 된다** — Claude 경로(`/v1/messages`)의 거절 본문에는 코드가 없어 상태와 본문 `error` 의 type 으로 가른다(`errors-Posco.setting.md` 「Messages API 에는 P-GPT 코드」) |
 | **스트림 180초 컷** (문서에 없다 · **게이트웨이가 제 입으로 든다**) | 스트림이 열려도 **요청부터 180.1초**에 신호(`stop_reason`) 없이 끊긴다. **생성량과 무관하다** — 초당 51토큰이 쉬지 않고 흐르던 판(9,182토큰)도, **한 토큰도 안 나온 판**도 같은 자리에서 잘렸다. 절단의 마지막 바이트가 사유를 적는다: `{"type":"error","error":{"type":"api_error","message":"내부 서버 오류: HTTP request execution did not complete before the specified timeout configuration: 180000 millis"}}` (회사 PC 실측 2026-09-17 · 직결 `stream:true` · 26,836바이트가 흐르던 중). 아래 ⚠ 절이 「어느 겹인가」를 든다 |
 | **`cache_control`** (문서에 없다) | **걸린다.** 프로브 쓰기 8,355 → 재호출 읽기 8,355. 실사용에서도 — 렌더가 계획이 데운 판을 읽었다(`cache_read` 35,857 · `cache_write` 0), 도구 루프 왕복도 읽는다(바퀴1 쓰기 36,190 → 바퀴2 읽기 36,190) |
 | **비스트리밍의 큰 `tool_use.input`** (문서에 없다) | **삼킨다** — `stream:false` 로 받으면 큰 도구 인자가 `{}` 로 오면서도 `stop_reason` 은 정상 `tool_use` 다. 출력 토큰이 한도에 한참 못 미쳐도(78/64,000) 그렇고, 같은 답의 작은 인자(163B)는 멀쩡하다. 같은 요청을 **스트림**으로 보내면 온전히 온다 — 경로가 갈리는 자리다(실측 2026-09-17 · 재현 3회 · `pgpt-proxy` 결함 추적). ⚠ **오류가 안 나므로 거절하지 않는 클라이언트는 빈 인자로 도구를 실행한다** — 파일을 빈 내용으로 덮을 자리다 |

@@ -31,6 +31,9 @@ Codex 가 적는 훅 신뢰(`[hooks.state]`)와 폴더 신뢰(`[projects.*]`), �
 ⚠ **표는 통째로만 걷는다** — 키마다 걷으면 사람이 더하거나 고친 키만 남은 반쪽 제공자 표가 선다. 틀과 다른 표(사람이 고쳤거나
   옛 판의 틀이 심었다)는 두고 그 키를 `KEPT=` 로 댄다. 걷는 고르기는 맨 위의 것 하나다 — 그 표를 고르는 프로필(`[profiles.*]`)은
   사람이 둔 것이라 안 건드린다.
+창 키(`WINDOW_KEYS` — 창 · 자동 압축 문턱)도 같이 걷는다. 사내 게이트웨이 모델에서 잰 한도라, 남으면 사외 직접 연결의 다른 모델에
+재지 않은 창을 건다. 값이 틀의 값 그대로인 맨 위의 것만 걷고, 사람이 둔 다른 값은 두고 대지 않는다(`KEPT=` 는 제공자 표의 몫이다).
+틀이 그 키를 안 들면 걷을 것이 없다.
 틀의 다른 자리(모델 · 샌드박스 · `[hooks]`)는 안 걷는다 — 사외에서도 서는 값이거나 다른 손의 몫이다. 문장 줄을 통째로 걷고 뜻은
 맞추기 판과 같은 자로 잰다. 설정 파일이 없으면 걷을 것이 없다(CHANGED=0 · 짓지 않는다).
 
@@ -59,6 +62,7 @@ MERGER_FILE = 'codex-hook-install.py'   # 줄 나누기 · 원본 떠 두기 · 
 KEEP_TABLES = ('hooks',)                # 맞추지 않는 맨 위 표 — 맨 위 「[hooks] 는 안 맞춘다」
 SELECT_KEY = 'model_provider'           # Codex 가 제공자를 고르는 맨 위 키 — 걷기 판
 PROVIDERS_TABLE = 'model_providers'     # Codex 의 제공자 표 묶음 — 걷기 판
+WINDOW_KEYS = ('model_context_window', 'model_auto_compact_token_limit')   # 걷기 판이 같이 걷는 맨 위 키 — 값은 틀이 든다
 BACKUP_SUFFIX = '.before-pgpt-'
 M = None                                # 곁의 병합기 — main 이 싣는다
 
@@ -280,7 +284,7 @@ def merge(config_text, template_text):
 
 
 def provider_of(template_text):
-    """틀이 고른 제공자 — `(이름, 그 표의 뜻)`. 틀이 이름을 안 고르거나 그 표가 없으면 Fail."""
+    """틀이 고른 제공자 — `(이름, 그 표의 뜻, 틀이 든 창 키의 뜻)`. 틀이 이름을 안 고르거나 그 표가 없으면 Fail."""
     try:
         data = tomllib.loads(template_text)
     except tomllib.TOMLDecodeError as exc:
@@ -290,14 +294,14 @@ def provider_of(template_text):
     table = providers.get(name) if isinstance(name, str) and isinstance(providers, dict) else None
     if not isinstance(table, dict):
         raise Fail('template', f'틀이 제공자를 안 고른다({SELECT_KEY} · [{PROVIDERS_TABLE}.<이름>]) — 걷을 것을 모른다')
-    return name, table
+    return name, table, {k: data[k] for k in WINDOW_KEYS if k in data}
 
 
 def remove_provider(config_text, template_text):
-    """사외 — 틀이 고른 제공자를 걷은 `(새 글, 고쳤나, 걷은 자리, 둔 자리)`. 못 알아보는 꼴 · 뜻 어긋남이면 Fail."""
+    """사외 — 틀이 고른 제공자와 틀 값 그대로인 창 키를 걷은 `(새 글, 고쳤나, 걷은 자리, 둔 자리)`. 못 알아보는 꼴 · 뜻 어긋남이면 Fail."""
     if tomllib is None:
         raise Fail('config', 'tomllib 이 없다 — 파이썬 3.11 이상이 든다')
-    name, ours = provider_of(template_text.lstrip(M.BOM))
+    name, ours, windows = provider_of(template_text.lstrip(M.BOM))
     bom = config_text.startswith(M.BOM)
     text = config_text[1:] if bom else config_text
     nl = '\r\n' if '\r\n' in text else '\n'
@@ -310,6 +314,8 @@ def remove_provider(config_text, template_text):
     gone, kept = [], []
     if SELECT_KEY in data and M.comparable(data[SELECT_KEY]) == M.comparable(name):
         gone.append(select)
+    gone += [(k,) for k, v in windows.items() if k in data and M.comparable(data[k]) == M.comparable(v)]
+    tops = {p for p in gone if len(p) == 1}   # 맨 위에서 줄째 걷는 대입 — 고른 키 · 창 키
     providers = data.get(PROVIDERS_TABLE)
     have = providers.get(name) if isinstance(providers, dict) else None
     if have is not None:
@@ -332,7 +338,7 @@ def remove_provider(config_text, template_text):
             continue
         _, section, rel, start, end, _, _, _, _ = item
         full = section + rel
-        if (select in gone and full == select) or (table in gone and (full == table or is_prefix(table, full))):
+        if full in tops or (table in gone and (full == table or is_prefix(table, full))):
             cuts.append((start, end))
         elif table in gone and is_prefix(full, table):
             raise Fail('shape', f'{".".join(table)} 이 인라인 값 안에 있다 — 그 자리만 못 걷는다')
@@ -342,8 +348,8 @@ def remove_provider(config_text, template_text):
         new = new[:start] + new[len(text) if stop < 0 else stop + 1:]
 
     expect = copy.deepcopy(data)
-    if select in gone:
-        del expect[SELECT_KEY]
+    for (k,) in tops:
+        del expect[k]
     if table in gone:
         del expect[PROVIDERS_TABLE][name]
         if not expect[PROVIDERS_TABLE] and (PROVIDERS_TABLE,) not in heads:   # 머리 없이 그 표로만 섰던 묶음은 같이 사라진다
