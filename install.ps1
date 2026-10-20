@@ -4751,9 +4751,9 @@ function Test-PrefillDoor([string]$Base, [string]$Token, [string]$Model,
           ConvertTo-Json -Depth 5 -Compress
   $hdr = @{ 'x-api-key' = $Token; 'Authorization' = "Bearer $Token"; 'anthropic-version' = '2023-06-01' }
   # 다시 묻나는 받은 것의 뜻이 정한다 — 게이트웨이가 prefill 을 두고 판정한 것(200 열렸다 · 4xx 거절했다)이면 멈추고, 그 판정에
-  #   닿지도 못한 것(5xx 상류가 끊었다 · 0 못 갔다)만 다시 묻는다.
-  # ⚠ **4xx 를 다시 묻지 않는다** — 400 이 이 검사가 찾는 그 결함이라(결정 0041) 재시도로 덮으면 재는 자가 제가 재려던 것을
-  #   지운다. 늦게 빨강인 편이 가짜 초록보다 낫다.
+  #   닿지도 못한 것(5xx 상류가 끊었다 · 429 한도라 돌려보냈다 · 0 못 갔다)만 다시 묻는다.
+  # ⚠ **429 밖의 4xx 를 다시 묻지 않는다** — 400 이 이 검사가 찾는 그 결함이라(결정 0041) 재시도로 덮으면 재는 자가 제가 재려던 것을
+  #   지운다. 늦게 빨강인 편이 가짜 초록보다 낫다. 429 는 판정이 아니라 「아직 못 물었다」라 끝 검증이 [?] 로 찍는다.
   $code = 0
   for ($i = 1; $i -le $Tries; $i++) {
     if ($i -gt 1) { Start-Sleep -Milliseconds $GapMs }
@@ -4765,7 +4765,7 @@ function Test-PrefillDoor([string]$Base, [string]$Token, [string]$Model,
       $code = 0
       try { $code = [int]$_.Exception.Response.StatusCode } catch { }
     }
-    if (-not (($code -eq 0) -or ($code -ge 500))) { break }
+    if (-not (($code -eq 0) -or ($code -eq 429) -or ($code -ge 500))) { break }
   }
   return $code
 }
@@ -4833,6 +4833,19 @@ function Get-ProxyVer([string]$text) {
   if ($mu.Success) { $up = [int]$mu.Groups[1].Value }
   if ($mo.Success) { $ours = [int]$mo.Groups[1].Value }
   return @($up, $ours)
+}
+
+# 도는 프록시가 `/health` 로 낸 판(`version`)을 같은 두 수로 읽는다 — `33.7` 꼴이면 @(33, 7), 옛 프록시의 정수 한 칸이나 못 읽은 글은
+#   @(0, 0)이라 늘 낡은 판으로 친다(위와 같은 쪽으로 기운다).
+function ConvertFrom-ProxyHealthVer([string]$Version) {
+  $m = [regex]::Match($Version, '^(\d+)\.(\d+)$')
+  if ($m.Success) { return @([int]$m.Groups[1].Value, [int]$m.Groups[2].Value) }
+  return @(0, 0)
+}
+
+# 두 수 판(`Get-ProxyVer` · `ConvertFrom-ProxyHealthVer` 의 꼴)이 다른 판 이상인가 — 위 칸부터 차례로 견준다.
+function Test-ProxyVerAtLeast($Have, $Want) {
+  return (($Have[0] -gt $Want[0]) -or (($Have[0] -eq $Want[0]) -and ($Have[1] -ge $Want[1])))
 }
 
 #endregion 도구별 · 로컬 프록시
@@ -7107,23 +7120,15 @@ if ($wantProxy) {
         $setVer  = '{0}.{1}' -f $setPair[0], $setPair[1]
         $up = Get-ProxyHealth $proxyHealthUrl
         $start = $true
+        $proxyStale = $false
         if ($up) {
-          # 도는 판이 낸 `version` — `15.4` 꼴이거나, 이전 프록시 판의 정수 하나다. 둘 다 이 자리가 받는다.
-          $runUp = 0; $runOurs = 0
+          # 도는 판이 낸 `version` — `15.4` 꼴이거나, 이전 프록시 판의 정수 하나다(`ConvertFrom-ProxyHealthVer` 가 둘 다 받는다).
           $runVer = [string]$up.version
-          $rm = [regex]::Match($runVer, '^(\d+)(?:\.(\d+))?$')
-          if ($rm.Success) {
-            $runUp = [int]$rm.Groups[1].Value
-            if ($rm.Groups[2].Success) { $runOurs = [int]$rm.Groups[2].Value }
-            else { $runUp = 0 }   # 정수 한 칸은 이 축의 값이 아니다 — 갈아 끼운다
-          }
-          $newer = ($runUp -gt $setPair[0]) -or (($runUp -eq $setPair[0]) -and ($runOurs -ge $setPair[1]))
-          if ($newer) {
+          if (Test-ProxyVerAtLeast (ConvertFrom-ProxyHealthVer $runVer) $setPair) {
             Write-Host "  이미 돈다 — v$runVer · 그대로 쓴다"
             $start = $false
           } else {
-            Write-Host "  낡은 프록시 v$runVer 이 돈다 — 끄고 v$setVer 로 새로 띄운다"
-            Stop-ProxyOnPort $u.Port $ProxyFile
+            $proxyStale = $true
           }
         }
         New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
@@ -7139,11 +7144,35 @@ if ($wantProxy) {
           }
           Write-Host "  실행 폴더 — $proxyDir (v$ourVer)"
         }
+        # ⚠ **새 파일을 놓은 뒤에 끈다** — 감시 작업(`$ProxyTaskName`)은 5초마다 프록시가 안 돌면 실행 폴더의 파일로 다시 띄운다. 끄고
+        #   나서 베끼면 그 틈에 깬 감시자가 옛 파일을 띄우고, 이 판이 띄운 새 판은 포트를 기다리다(프록시의 bind 재시도 15초) 물러난다.
+        if ($proxyStale) {
+          Write-Host "  낡은 프록시 v$runVer 이 돈다 — 끄고 v$setVer 로 새로 띄운다"
+          Stop-ProxyOnPort $u.Port $ProxyFile
+        }
         if ($start) {
-          Start-Process -FilePath $pyw -ArgumentList ('"' + $proxyPath + '"') -WindowStyle Hidden | Out-Null
+          # 실행 폴더의 판(`$setPair`)이 도는 것을 봐야 띄웠다고 한다 — 떴나만 보면 옛 판이 그 포트를 쥔 채 초록이 된다. 옛 판이 보이면
+          #   한 번 더 끄고 띄운다(이 판이 띄운 새 프로세스도 명령줄로 같이 꺼진다). 한 판의 기다림은 프록시의 bind 재시도(15초)를 넘긴다.
           $up = $null
-          for ($i = 0; $i -lt 30 -and -not $up; $i++) { Start-Sleep -Milliseconds 500; $up = Get-ProxyHealth $proxyHealthUrl }
-          if ($up) { Write-Host "  띄웠다 — $($u.Host):$($u.Port) v$($up.version)" -ForegroundColor Green }
+          $atSet = $false
+          for ($round = 1; $round -le 2; $round++) {
+            if ($round -gt 1) {
+              if ($atSet -or -not $up) { break }   # 다시 띄우는 것은 옛 판이 쥔 자리뿐이다 — 아예 안 떴으면 아래 줄이 말한다
+              Stop-ProxyOnPort $u.Port $ProxyFile
+            }
+            Start-Process -FilePath $pyw -ArgumentList ('"' + $proxyPath + '"') -WindowStyle Hidden | Out-Null
+            for ($i = 0; $i -lt 40 -and -not $atSet; $i++) {
+              Start-Sleep -Milliseconds 500
+              $up = Get-ProxyHealth $proxyHealthUrl
+              $atSet = [bool]$up -and (Test-ProxyVerAtLeast (ConvertFrom-ProxyHealthVer ([string]$up.version)) $setPair)
+            }
+          }
+          if ($atSet) { Write-Host "  띄웠다 — $($u.Host):$($u.Port) v$($up.version)" -ForegroundColor Green }
+          elseif ($up) {
+            $pidSaid = if ($up.pid) { " · PID $($up.pid)" } else { '' }
+            Write-Host "  ! 옛 판 v$($up.version) 이 그대로 돈다 — 끄지 못했다 (포트 $($u.Port)$pidSaid) · 실행 폴더는 v$setVer 라 다음 로그인부터 새 판이 선다" -ForegroundColor Red
+            $Fails.Add("로컬 프록시 (옛 판 v$($up.version) 이 그대로 돈다)")
+          }
           else {
             Write-Host "  ! 안 떴다 — $proxyDir\proxy.log 를 본다 (포트를 딴 프로그램이 잡고 있을 수 있다)" -ForegroundColor Red
             $Fails.Add('로컬 프록시 (안 떴다)')
@@ -10411,15 +10440,36 @@ if ($useGateway) {
   if ($wantAgy)    { $checks += @{ Name = '안티그래비티 settings.json'; Ok = (Test-Path -LiteralPath $AgyCfg) } }
   # ⚠ **프록시는 「떠 있나」와 「문을 여나」를 따로 잰다** — 떠 있는 것만 보면 보정이 안 도는 판이 초록이 된다. 문은 assistant 로
   #   끝나는 본문을 프록시 너머로 보내 200 이 오는가로 잰다 — 이 게이트웨이가 Opus 5 에서 그 본문을 400 으로 거절하는 것이 프록시가
-  #   있는 까닭이라(결정 0041), 짧은 답이 오나가 아니라 그 400 이 사라졌나를 묻는다. 모델 이름은 그 결함의 이름이다.
+  #   있는 까닭이라(결정 0041), 짧은 답이 오나가 아니라 그 400 이 사라졌나를 묻는다. 모델 이름은 그 결함의 이름이다. 429(한도)는
+  #   게이트웨이가 prefill 을 판정하기 전에 돌려보낸 것이라 [?] 다.
+  # 떠 있나는 판까지 견준다 — 떴나만 보면 옛 판이 그 포트를 쥔 PC 가 초록이 된다. 견줄 판은 실행 폴더의 파일이다(감시 작업이 다음에
+  #   띄울 것).
   if ($wantProxy -and $proxyHealthUrl) {
     $h = Get-ProxyHealth $proxyHealthUrl
-    $checks += @{ Name = '로컬 프록시 (/health)'; Ok = [bool]$h }
+    $hName = '로컬 프록시 (/health)'
+    $hOk = [bool]$h
+    if ($h) {
+      $hVer = [string]$h.version
+      $runDisk = $null
+      try { $runDisk = Get-ProxyVer (Get-Content -LiteralPath (Join-Path (Join-Path $env:LOCALAPPDATA $ProxyDirName) $ProxyFile) -Raw -Encoding UTF8) } catch { }
+      if ($runDisk) {
+        $hName = "로컬 프록시 (/health · 도는 판 v$hVer · 실행 폴더 v$($runDisk[0]).$($runDisk[1]))"
+        $hOk = Test-ProxyVerAtLeast (ConvertFrom-ProxyHealthVer $hVer) $runDisk
+      } else {
+        $hName = "로컬 프록시 (/health · v$hVer)"
+      }
+    }
+    $checks += @{ Name = $hName; Ok = $hOk }
     $door = 0
     if ($h -and $userEnv['ANTHROPIC_AUTH_TOKEN']) {
       $door = Test-PrefillDoor $userEnv['ANTHROPIC_BASE_URL'] $userEnv['ANTHROPIC_AUTH_TOKEN'] 'claude-opus-5'
     }
-    $checks += @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (받은 것: $door$(if ($door -ge 500) { " — 상류가 끊었다 · prefill 이 아니다" }))"; Ok = ($door -eq 200) }
+    if ($door -eq 429) {
+      $checks += @{ Name = 'Opus 5 문 — prefill 본문이 프록시 너머로 200'; State = 'unmeasured'; Probe = 'POST /v1/messages (prefill 본문)'
+                    Why = 'API 한도에 걸려 429 를 받아' }
+    } else {
+      $checks += @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (받은 것: $door$(if ($door -ge 500) { " — 상류가 끊었다 · prefill 이 아니다" }))"; Ok = ($door -eq 200) }
+    }
 
     # ⚠ **프록시 프로세스는 하나여야 하고 껍데기가 아니어야 한다**(PAISetup #21) — 런처(WindowsApps\pythonw.exe)가 박히면 부모-자식
     #   두 프로세스가 뜨고, 자식이 죽어도 껍데기가 남아 와치독이 눈먼다.
