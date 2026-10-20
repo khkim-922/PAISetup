@@ -899,8 +899,9 @@ def main_checkout(origin):
         return origin
     env = dict((k, v) for k, v in os.environ.items() if not k.startswith(GIT_ENV_PREFIX))
     try:
-        p = subprocess.run(['git', '-C', str(origin), 'rev-parse', '--git-common-dir'], stdout=subprocess.PIPE,
-                           stderr=subprocess.DEVNULL, env=env, timeout=GIT_WAIT, check=False)
+        # 입력은 비워 준다 — 물려주면 입력 핸들이 없는 사슬에서 OSError 로 져 origin 으로 물러난다(launch 와 같은 까닭)
+        p = subprocess.run(['git', '-C', str(origin), 'rev-parse', '--git-common-dir'], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, timeout=GIT_WAIT, check=False)
     except (OSError, subprocess.SubprocessError):
         return origin
     text = p.stdout.decode('utf-8', 'replace').strip()
@@ -1973,7 +1974,10 @@ def launch(hand, args):
     sys.stdout.flush()
     env = dict(os.environ)
     env[RELAYED] = str(pathlib.Path(__file__).resolve())
-    p = subprocess.run([sys.executable or 'python', '-X', 'utf8', str(hand)] + args, stdout=subprocess.PIPE, env=env)
+    # 입력은 비워 준다 — 물려주면 윈도 CPython 이 부모의 입력 핸들을 집는데, 그 핸들이 없는 사슬(세션 훅 → 배포)에서는
+    #   자식을 띄우기도 전에 WinError 6 으로 진다(#201). 손은 입력을 안 읽는다
+    p = subprocess.run([sys.executable or 'python', '-X', 'utf8', str(hand)] + args, stdin=subprocess.DEVNULL,
+                       stdout=subprocess.PIPE, env=env)
     return p.returncode, p.stdout.decode('utf-8', 'replace').splitlines()
 
 
