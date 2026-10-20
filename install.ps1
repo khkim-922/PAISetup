@@ -240,6 +240,18 @@ $Clis = @(
   #   2026-10-18). winget 휴대용(zip · 사용자 범위)이라 승인이 안 들고, winget 이 패키지의 `bin` 자리를 사용자 PATH 에 심는다.
   #   ⚠ `Arg='-v'` — pdftoppm 은 `--version` 을 모르는 옵션으로 받아 0 아닌 값을 내니, 그 자로 재면 「못 쟀다」로 접혀 영영 안 깔린다.
   @{ Key='poppler'; Via='winget'; Cmd='pdftoppm'; Arg='-v'; Label='poppler (PDF 를 그림으로)'; Id='oschwartz10612.Poppler'; For=@('claude') }
+  # 공식 pptx 스킬이 덱을 그림으로 보는 길(soffice → PDF → pdftoppm)의 앞 손 — LibreOffice 의 `soffice`. 그 스킬이 이 이름을 PATH 에서
+  #   부르고, 회사 PC 에서 LibreOffice 가 쓴 PDF 는 10분까지 DRM 에 안 감겼다(claude-config #204 · 결정 0172). 덱 스킬이 Claude 에만
+  #   서서 `For` 가 Claude 하나다.
+  #   `Scope='machine'` — winget 이 이 꾸러미에 내는 설치본이 기계 범위(MSI)뿐이라 승격이 든다. 문은 `$Apps` 의 같은 칸과 같다.
+  #   `PathDir` — winget 도 그 MSI 도 이 자리를 PATH 에 안 심는다. 배선(`Update-RuntimePath`)이 이 창 끝에, 마무리의 「사용자 범위
+  #   명령 자리」가 사용자 PATH 끝에 붙이고, 끝 검증이 사용자 PATH 에서 잰다. ⚠ 그 폴더에 LibreOffice 의 `python.exe` 가 같이 서서
+  #   앞에 끼우면 진짜 파이썬을 가린다 — 늘 끝에 붙인다.
+  #   ⚠ `Cmd` 는 콘솔 껍데기 `soffice.com` 이다 — `soffice.exe --version` 은 따로 콘솔 창을 띄워 판을 찍고 Enter 를 기다려, 프로브가
+  #   사람이 누를 때까지 선다. 맨 이름(`soffice`)은 파워셸 · cmd 가 PATHEXT 차례로 `.com` 을 집지만 그 차례에 기대지 않는다.
+  #   `Arg` 는 기본(`--version`)이다 — `soffice.com` 은 이 창에 판을 찍고 0 으로 끝난다.
+  @{ Key='libreoffice'; Via='winget'; Cmd='soffice.com'; Label='LibreOffice (덱을 그림으로)'; Id='TheDocumentFoundation.LibreOffice'
+     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude') }
   # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로는 lychee,
   #   마크다운 구조는 markdownlint-cli2 로 잰다(설정 저장소의 세션 훅도 둘을 까지만, 그 저장소를 안 붙인 PC 에도 서야 해서
   #   여기서도 깐다). lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 그 자리(`WinGet\Links`
@@ -2471,8 +2483,8 @@ function Get-PlantLedgerChecks($Ledger, [System.Collections.IDictionary]$UserEnv
 # ── 배선이 먼저다 ────────────────────────────────────────────────────────────────
 # ⚠ **winget 이 심은 PATH 는 이 창에 안 걸린다** — 이 창이 winget 보다 먼저 떴다. 배선 없이 물으면 깔린 것도 「없음」이
 #   나와 재설치로 새므로, 묻기 전에도 설치 직후에도 다시 태운다(`Update-RuntimePath`).
-# 이 창의 PATH 앞에 그 자리를 끼운다 — 있는 폴더이고 아직 안 든 자리만. 여러 번 불려도 PATH 가 안 분다.
-function Add-ToPath([string]$Dir) {
+# 이 창의 PATH 앞에 그 자리를 끼운다(`-Back` 이면 끝에 붙인다) — 있는 폴더이고 아직 안 든 자리만. 여러 번 불려도 PATH 가 안 분다.
+function Add-ToPath([string]$Dir, [switch]$Back) {
   if (-not $Dir) { return }
   # ⚠ **재기 전에 편다.** 레지스트리 읽기는 `REG_EXPAND_SZ` 만 펴 주므로 `REG_SZ` 로 앉은 PATH 는 `%USERPROFILE%\…` 를 원문
   #   그대로 넘기고, `Test-Path -LiteralPath` 는 그 글자를 그대로 찾아 멀쩡한 폴더를 조용히 버린다 — 「깔았는데 안 잡힌다」로만
@@ -2483,7 +2495,7 @@ function Add-ToPath([string]$Dir) {
   #   읽는 것과 없는 것은 답이 같다 — PATH 에 안 더한다.
   try { if (-not (Test-Path -LiteralPath $Dir -ErrorAction Stop)) { return } } catch { return }
   if (($env:PATH -split ';') -contains $Dir) { return }   # 여러 번 불려도 PATH 가 안 분다
-  $env:PATH = "$Dir;$env:PATH"
+  if ($Back) { $env:PATH = "$($env:PATH.TrimEnd(';'));$Dir" } else { $env:PATH = "$Dir;$env:PATH" }
 }
 
 # 이 창의 PATH 를 다시 태운다 — 기계 · 사용자 PATH(레지스트리)를 덧대고, 아는 설치 자리를 이름으로 덧댄다. 레지스트리가
@@ -2492,6 +2504,10 @@ function Add-ToPath([string]$Dir) {
 function Update-RuntimePath {
   # ⚠ **순서가 뜻이다 — 레지스트리가 먼저, 이름이 나중.** `Add-ToPath` 는 앞에 끼우므로 나중에 부른 쪽이 앞에 선다 — 사용자
   #   PATH 의 `WindowsApps` 에 스토어행 파이썬 껍데기가 있어도 진짜 파이썬이 그 앞에 서야 한다.
+  # winget 이 PATH 에 안 심는 CLI 자리(`$Clis` 의 `PathDir`)는 그보다 먼저 이 창 **끝**에 붙인다 — 그 폴더에 남의 `python.exe` 가 같이
+  #   서서(LibreOffice) 앞에 끼우면 진짜 파이썬을 가린다. 먼저 붙여야 그 자리가 사용자 PATH 에 이미 심긴 판에도 아래 레지스트리
+  #   읽기가 「이미 있다」로 지나가 앞으로 못 당긴다.
+  foreach ($pd in @($Clis | Where-Object { $_.PathDir })) { Add-ToPath $pd.PathDir -Back }
   foreach ($sc in @('Machine','User')) {
     $v = [Environment]::GetEnvironmentVariable('Path', $sc)
     if ($v) { foreach ($d in ($v -split ';')) { Add-ToPath $d } }
@@ -3928,7 +3944,9 @@ function Install-NpmCli($Rows) {
 #   재는 자는 `winget list` 가 아니라 행의 `Arg`(없으면 `--version`)다 — CLI 는 사람이 쓸 이름이 실제로 서는가가 판정이라(winget 이 「깔았다」 해도
 #   PATH 에 안 서면 못 쓴다), GUI 라 PATH 로 못 재는 데스크탑 앱(`Measure-DesktopApp`)과 다르다. winget 밖의 길로 깐 `agy` 는
 #   winget 목록에 안 올라 「최신」으로 지나간다 — 도구는 멀쩡히 서 있으니 실패로 안 찍는다(`$Clis` 곁말).
-function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label, [string]$Arg = '--version') {
+#   `$Scope` 가 `machine` 인 행(MSI)은 「프로그램」 걸음의 기계 범위 행과 같은 문을 지난다 — 승인 창이 뜨는 PC 인데 누를 사람이 없는
+#   판이면 깔지도 올리지도 않고 노란 줄로 미룬다(결정 0146 · PAISetup #34 ③).
+function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label, [string]$Arg = '--version', [string]$Scope = '') {
   if (-not $Arg) { $Arg = '--version' }
   # ⚠ **못 쟀으면 깔지 않는다** — 넘김이나 선 이름의 실패를 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 · 0145 · 0151).
   $cliRuns = Measure-Runs $Cmd $Arg
@@ -3940,6 +3958,11 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label, [string]$A
   }
   if ($cliAct -eq 'present') { Write-Host "  $Label — 있음 $(Format-VerPart $b)"; return }
   if ($cliAct -eq 'latest')  { Write-Host "  $Label — 최신  $(Format-VerPart $b)"; return }
+  if ($Scope -eq 'machine' -and -not $noWinget -and
+      (Get-ElevationGo (Read-ElevationState) ([bool]((-not ($Yes -and $NoLaunch)) -and [Environment]::UserInteractive))) -eq 'later') {
+    Write-Host "  ! $Label — 관리자 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이라 안 $(if ($cliAct -eq 'install') { '깔았다' } else { '올렸다' }) · 설치 창으로 다시 누르면 승인 창이 한 번 뜬다" -ForegroundColor Yellow
+    return
+  }
   if ($cliAct -eq 'upgrade' -or $cliAct -eq 'upcheck') {
     Invoke-WingetUpgrade $Label $Id 'winget' $cliAct @("지금 $b")
     Update-RuntimePath
@@ -3952,7 +3975,8 @@ function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label, [string]$A
     $Fails.Add("$Label (winget 이 없다)")
     return
   }
-  Say-Busy $Label 'install' @('winget')
+  # 기계 범위 MSI 는 받고 까는 몇 분이 조용하다 — 「프로그램」 걸음처럼 미리 말한다(그 침묵을 멎음으로 읽고 창을 닫는다)
+  Say-Busy $Label 'install' @('winget', $(if ($Scope -eq 'machine') { '몇 분 조용할 수 있다' }))
   $wl = [IO.Path]::GetTempFileName()
   $rc = Invoke-Logged 'winget' (@('install','--id',$Id) + $WG) $wl
   # 깐 직후에는 이 창이 그 자리를 모른다 — winget 이 portable 을 심으며 손댄 PATH 는 레지스트리에만 있다.
@@ -6470,7 +6494,7 @@ if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' 
 # npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
 $npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
 if ($npmCliPicks.Count) { Install-NpmCli $npmCliPicks }
-foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c.Id $c.Cmd $c.Label $c.Arg }
+foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c.Id $c.Cmd $c.Label $c.Arg $c.Scope }
 
 # 사외는 여기서 로그인 길을 댄다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다. 사내에서 심은 회사 연결이 남아 있으면 그
 #   로그인이 안 서는데, 그 연결은 「사내 연결」 걸음의 「Codex · 안티그래비티 설정」 칸이 걷고 못 걷으면 그 칸이 제 줄을 세운다.
@@ -8833,10 +8857,12 @@ try {
 # ⚠ **두 폴더를 채우는 걸음이 다 지난 여기서 심는다** — 「CLI」 · 「공용 자산」(파이썬 패키지) · 「설정 저장소」(넘긴 훅의 전역 도구)가
 #   채운다. 그 앞에서 심으면 맨바닥 PC 의 첫 설치는 폴더가 아직 없어 못 심고 다음 로그온까지 비어 있다.
 # 폴더가 있을 때만 심는다 — 무엇이든 깔아야 생기는 폴더다. 걷는 손은 없다 — 같은 자리를 다른 설치나 사람이 넣었을 수 있다(결정 0143).
+# 고른 CLI 가운데 winget 이 PATH 에 안 심는 것(`$Clis` 의 `PathDir` · LibreOffice)도 같은 손으로 심는다 — 「CLI」 걸음이 깔아야 그 폴더가 선다.
 $PipUser = Measure-PipUserScripts
 if ($PipUser.State -eq 'unmeasured') { Add-UnmeasuredStep 'pip 사용자 자리' $PipUser.Probe '사용자 PATH 에 안 더했다' $PipUser.Why }
 foreach ($ud in @(@{ Label = 'npm 전역 자리'; Dir = $NpmGlobalDir; What = 'npm 으로 깐 CLI 가' },
-                  @{ Label = 'pip 사용자 자리'; Dir = $PipUser.Dir; What = 'pip 가 사용자 자리에 깐 명령이' })) {
+                  @{ Label = 'pip 사용자 자리'; Dir = $PipUser.Dir; What = 'pip 가 사용자 자리에 깐 명령이' }) +
+                @($CliPicks | Where-Object { $_.PathDir } | ForEach-Object { @{ Label = "$($_.Label) 자리"; Dir = $_.PathDir; What = "``$($_.Cmd)`` 명령이" } })) {
   if (-not $ud.Dir -or -not (Test-Path -LiteralPath $ud.Dir)) { continue }
   $udPath = Add-ToUserPath $ud.Dir
   switch ($udPath.Did) {
@@ -10464,6 +10490,11 @@ if (@($CliPicks | Where-Object { $_.Via -ne 'winget' }).Count) {
 #   자리」가 물은 그 자리를 같은 자로 레지스트리에서 잰다(PAISetup #30 ②).
 if ($PipUser.Dir -and (Test-Path -LiteralPath $PipUser.Dir)) {
   $checks += @{ Name = "pip 사용자 자리 — 사용자 PATH ($($PipUser.Dir))"; Ok = (Test-PathListHas ([string](Get-UserPath).Raw) $PipUser.Dir) }
+}
+# winget 이 PATH 에 안 심는 CLI 자리(`$Clis` 의 `PathDir`) — 그 폴더가 섰으면 새 터미널이 볼 사용자 PATH 에 섰나. 이 창의 CLI 칸은 배선이
+#   그 자리를 끝에 붙여 늘 서므로 새 터미널을 못 잰다 — 마무리가 심은 자리를 같은 자로 레지스트리에서 잰다. 폴더가 없으면 위 CLI 칸이 말한다.
+foreach ($pd in @($CliPicks | Where-Object { $_.PathDir -and (Test-Path -LiteralPath $_.PathDir) })) {
+  $checks += @{ Name = "$($pd.Label) 자리 — 사용자 PATH ($($pd.PathDir))"; Ok = (Test-PathListHas ([string](Get-UserPath).Raw) $pd.PathDir) }
 }
 # VC++ 런타임 — 「프로그램」 걸음과 같은 문 · 같은 자(파일의 판)로 문턱 위인가를 잰다(결정 0146).
 if ($wantVcRuntime) {
