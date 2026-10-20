@@ -234,15 +234,15 @@
         <text x="899" y="1214" font-size="7px" text-anchor="middle" fill="rgb(5, 150, 105)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 이 한 줄이 없으면 훅 파일만 있고 아무것도 안 걸린다</text>
         </g>
 
-        <g id="node-n12" tabindex="0" role="button" aria-label="Focus 12. 게이트 도구를 갖춘다 — 전역은 한 번, 저장소는 배선만, npm 전역 · ~/bin · winget · 브라우저는 기계에 한 번 · 정션은 저장소마다, deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 형제 저장소" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">12. 게이트 도구를 갖춘다 — 전역은 한 번, 저장소는 배선만 · npm 전역 · ~/bin · winget · 브라우저는 기계에 한 번 · 정션은 저장소마다 · deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 형제 저장소 · ⚠ 전역이 지면 배선이 걸 물건이 없다 · 꺼진 검사가 남으면 exit 1</title>
+        <g id="node-n12" tabindex="0" role="button" aria-label="Focus 12. 게이트 도구를 갖춘다 — 전역은 한 번, 저장소는 배선만, 전역 도구 · 브라우저 · 홈 정션은 기계에 한 번 · 정션은 저장소마다, deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 형제 저장소" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">12. 게이트 도구를 갖춘다 — 전역은 한 번, 저장소는 배선만 · 전역 도구 · 브라우저 · 홈 정션은 기계에 한 번 · 정션은 저장소마다 · deploy.ps1 을 돌리면 무엇이 어디로 가나 — 위에서 아래로 › 형제 저장소 · ⚠ 전역이 지면 배선이 걸 물건이 없다 · 꺼진 검사가 남으면 exit 1</title>
           <rect x="711.5" y="1266" width="375" height="68" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
           <rect x="711.5" y="1266" width="375" height="68" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
           <g aria-hidden="true" transform="translate(717.5 1272) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
           </g>
           <text x="899" y="1287" font-size="10.9px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">12. 게이트 도구를 갖춘다 — 전역은 한 번, 저장소는 배선만</text>
-          <text x="899" y="1304" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">npm 전역 · ~/bin · winget · 브라우저는 기계에 한 번 · 정션은 저장소마다</text>
+          <text x="899" y="1304" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">전역 도구 · 브라우저 · 홈 정션은 기계에 한 번 · 정션은 저장소마다</text>
         <text x="899" y="1322" font-size="7px" text-anchor="middle" fill="rgb(5, 150, 105)" stroke-width="1px" opacity="1" display="block" visibility="visible">⚠ 전역이 지면 배선이 걸 물건이 없다 · 꺼진 검사가 남으면 exit 1</text>
         </g>
 

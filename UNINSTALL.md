@@ -115,6 +115,11 @@ Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false
 
 `~/.claude/posco/` 와 `~/.claude/seeds/` 폴더를 지운다.
 
+`~/.node_modules/` 안의 연결(pptxgenjs · @commitlint 폴더 안의 config-conventional)도 지운다 — 저장소 밖에 사는 스킬 스크립트가 npm
+전역 패키지를 찾게 설치가 걸어 둔 정션이다. 연결만 지우면 npm 전역의 실물은 남는다. ⚠ `Remove-Item -Recurse` 로 지우지 않는다 —
+정션 너머 실물까지 지울 수 있다. `cmd /c rmdir "%USERPROFILE%\.node_modules\pptxgenjs"` 처럼 연결을 하나씩 걷고, 빈 폴더가
+남으면 그것만 지운다.
+
 견본 폴더 곁에 깔린 파이썬 패키지는 `python -m pip uninstall pillow` 로 지운다 — 다른 프로그램도 쓸 수 있으니 필요할 때만 지운다.
 
 ### 칸 없이 깔린 스킬

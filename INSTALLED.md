@@ -220,6 +220,21 @@ Read 가 「pdftoppm is not installed」로 지고, 사내 게이트웨이는 PD
   열어야 그 이름이 잡힌다
 - 감긴(DRM) PDF 는 이 길로 안 열린다 — 그 자리는 DRM 길잡이가 `drm-office-read` 로 가리킨다
 
+### 덱을 그림으로 보는 LibreOffice
+
+Claude 를 고르면 LibreOffice 를 winget 으로 깐다 — 공식 pptx 스킬이 만든 덱을 눈으로 확인할 때 덱을 PDF 로 바꾸는 손(`soffice`)이다.
+그 PDF 를 페이지 그림으로 그리는 것은 위 poppler 다. 회사 PC 에서도 LibreOffice 가 쓴 PDF 는 DRM 이 감싸지 않아(재 본 10분 동안), 덱을
+보는 기본 길이 이것이다.
+
+- PC 전체에 까는 설치본(MSI)이라 관리자 승인 창(UAC)이 한 번 뜰 수 있다. 승인 창이 뜨는 PC 에서 로그온 자동 실행은 누를 사람이
+  없으니 창을 안 띄우고 노란 줄로 미룬다 — 설치 창으로 다시 누르면 그때 한 번 뜬다
+- 받는 것만 수백 MB 라 그 줄에서 몇 분 조용할 수 있다
+- LibreOffice 는 제 폴더(`C:\Program Files\LibreOffice\program`)를 PATH 에 안 심는다. 그래서 설치가 끝날 무렵 그 자리를 사용자 PATH
+  끝에 더해, 새로 여는 터미널에서 `soffice` 가 이름만으로 선다 — [npm 전역 자리](#nodejs-와-npm-전역-자리)와 같은 규칙이다. 이미 떠
+  있던 터미널 · 세션은 다시 열어야 잡힌다
+- 그 폴더에는 LibreOffice 가 쓰는 `python.exe` 도 들어 있어 늘 끝에 둔다 — 앞에 두면 깔린 Python 대신 그것이 잡힌다
+- pptx 가 이미 DRM 에 감겨 `soffice` 가 못 여는 자리는 `drm-office-read` 가 화면 캡처로 든다
+
 ### 데스크탑 앱
 
 데스크탑 앱은 앱마다 깔리는 자리가 다르고, 켠 도구의 것만 깔린다.

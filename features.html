@@ -151,10 +151,17 @@
   .kv td:nth-child(3) { width: 15%; color: var(--fg); }
   .panel p.lead-line { font-size: 14.5px; }
   .panel .ex-h { margin: 12px 0 0; font-size: 12.5px; font-weight: 700; color: var(--dim); letter-spacing: .02em; }
-  .repo-lead { margin: 0 0 10px 42px; font-size: 16px; font-weight: 700; color: var(--fg); max-width: 760px; }
-  .repo-intro { margin: 0 0 14px 42px; max-width: 760px; color: var(--dim); font-size: 14.5px; }
-  .repo-intro p + p { margin-top: 8px; }
-  .repo-intro b { color: var(--fg); }
+  .start {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 12px;
+    padding: 10px 12px 10px 16px; border-radius: 12px; background: var(--kb); font-size: 14px;
+  }
+  .start > b { color: var(--k); font-size: 13px; letter-spacing: .02em; }
+  .start .tag { margin: 0; }
+  .start a {
+    margin-left: auto; padding: 3px 13px; border-radius: 999px; font-weight: 700; font-size: 13.5px;
+    text-decoration: none; white-space: nowrap; background: var(--k); color: var(--surface);
+  }
+  .start a:hover, .start a:focus-visible { box-shadow: var(--lift); }
   .t {
     display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border-radius: 999px;
     font-size: 11.5px; font-weight: 600; line-height: 19px; color: var(--dim);
@@ -328,7 +335,7 @@
     .hero h1 { font-size: 26px; }
     .first, .tiles, .legend-grid { grid-template-columns: 1fr; }
     .legend .kinds dl { grid-template-columns: auto 1fr; }
-    .layer > .sub, .h3-sub, .repo-intro, .repo-lead { margin-left: 0; }
+    .layer > .sub, .h3-sub { margin-left: 0; }
     .row { grid-template-columns: 1fr; }
     .kv thead { display: none; }
     .kv, .kv tbody, .kv tr, .kv td { display: block; width: auto !important; }
@@ -633,31 +640,29 @@
 
   <section id="repo">
     <h3 class="sec"><span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M4 20V6a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 13l3 3 5-6"/></svg></span>내 설정 저장소 <span class="scope">설정 저장소</span></h3>
-    <p class="repo-lead">내 설정 저장소 주소를 넣으면, 어느 PC · VDI 에 설치하든 내 규범 · 룰 · 스킬 · 설정이 그대로 함께 깔립니다.</p>
-    <div class="repo-intro">
-      <p>Claude Code 의 규범 · 스킬 · 메모리 · 개인 키 · git 이름 같은 설정은 PC 마다 홈 폴더에 따로 삽니다. PC 가 둘이면 따로 놀고,
-         로그인마다 비워지는 VDI 에서는 사라집니다. <b>설정 저장소</b>는 그것을 내 비공개 git 저장소 하나에 담아 두는 방법입니다 —
-         내 규범 · 룰 · 스킬 · 에이전트 · 메모리 · 홈 설정 · 개인 키(<code>secrets.env</code>)가 들어갑니다.</p>
-      <p>설치 창에 그 주소를 넣으면 설치가 저장소를 받아 그 안의 세션 훅을 부릅니다. 훅이 git 신원 · 함께 쓰는 저장소 · 개인 키를 맞추고,
-         저장소의 <code>deploy.ps1</code> 이 내 세트를 도구마다 제 자리에 놓습니다. 그래서 <b>새 PC 나 비워진 VDI 에서도 설치 한 번이면 같은 환경</b>이고,
-         저장소에 고쳐 올리면 그 저장소를 연 세션과 로그온 자동 실행이 다음 번에 새 값을 들입니다. 설정 저장소를 넣으면 고른 모델에 내 규범 · 룰 · 스킬이 깔리고, 넣지 않으면 제작자의 규범 · 룰 · 스킬이 깔립니다 — 내 저장소에 없는 것은 제작자의 것이 채웁니다.
-         출발점은 설치가 깔아 둔 견본입니다 — 복사해 내 값만 적으면 되고, 그 법은 <a href="config-repo-howto.html">설정 저장소 만들기</a>가 적습니다. 아래 여섯만 주소를 넣었을 때 생기고, 이 페이지의 나머지는 누구나 받습니다.</p>
-      <p class="tag"><b>출발점 견본</b> <code class="nm">config-repo</code><span class="k seed">Seed</span><span class="t all">누구에게나</span><span class="src pai">PAI</span></p>
+    <p class="h3-sub"><span class="why">없으면 내 규범 · 스킬 · 메모리 · 개인 키가 PC 마다 따로 놀고, 로그인할 때마다 비워지는 VDI 에서는 사라집니다.</span>
+       그것을 내 비공개 git 저장소 하나에 담아 두고 설치 창에 주소를 넣으면, 어느 PC 에서든 설치 한 번으로 아래 여섯이 생깁니다.
+       저장소에 고쳐 올린 것은 다른 PC 에도 다음 번에 들어옵니다.</p>
+    <div class="start">
+      <b>시작하기</b>
+      <span class="tag"><code class="nm">config-repo</code><span class="k seed">Seed</span><span class="t all">누구에게나</span><span class="src pai">PAI</span></span>
+      <span>설치가 깔아 둔 견본을 복사해 내 값만 적으면 됩니다.</span>
+      <a href="config-repo-howto.html">설정 저장소 만들기 →</a>
     </div>
-    <div class="rows">
-      <div class="row"><b>내 규범 · 룰 · 스킬<span class="tag"><code class="nm">~/.paisetup/personal/</code><span class="k norm">Norm</span><span class="k rule">Rule</span><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="scope">설정 저장소</span></span></b>
-        <div>어느 PC 에서나 내가 다듬은 원칙과 절차로 일합니다. 같은 이름이면 내 것이 제작자의 것을 이기고, 저장소에 없는 것은 제작자의 것이 채웁니다. 「규범 · 룰 · 스킬을 받을 모델」로 고른 모델에만 갑니다.</div></div>
-      <div class="row"><b>에이전트와 메모리<span class="tag"><code class="nm">~/.claude/agents/</code><code class="nm">memory/global/</code><span class="k agent">Agent</span><span class="k memory">Memory</span><span class="t claude">Claude</span><span class="scope">설정 저장소</span></span></b>
-        <div>내가 정의한 서브에이전트와 쌓아 둔 메모리를 Claude 가 어느 PC 에서나 씁니다. 설치본에는 없고 저장소가 들 때만 섭니다.</div></div>
-      <div class="row"><b>git 신원과 함께 쓰는 저장소<span class="tag"><code class="nm">session-start.sh --install</code><code class="nm">personal.conf</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="scope">설정 저장소</span></span></b>
-        <div>새 PC 에서도 커밋 이름 · 메일이 바로 맞고, 적어 둔 저장소들이 <code>repos</code> 아래에 받아져 있습니다. 이미 있는 저장소는 건너뜁니다.</div></div>
-      <div class="row"><b>내 키 · 내 홈 설정<span class="tag"><code class="nm">secrets.env</code><code class="nm">vdi-home-settings.json</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="scope">설정 저장소</span></span></b>
-        <div>GitHub 토큰 같은 개인 키를 PC 마다 다시 칠 일 없이 사용자 환경변수로 심습니다. 홈 설정에는 저장소에 적어 둔 허용 규칙을 더하고(통째로 덮는 것은 그렇게 적어 둔 자리에서만), 설치가 심은 훅 · 환경 값은 지킵니다.</div></div>
-      <div class="row"><b>처음 열어도 안 묻는 저장소<span class="tag"><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="t copilot">Copilot</span><span class="scope">설정 저장소</span></span></b>
-        <div>설정 저장소와 그 저장소가 설정을 깔아 둔 저장소(<code>~/repos</code> 바로 아래)는 고른 도구와 VS Code 가 처음 열 때 「이 폴더를 믿나」를 묻지 않고 바로 일합니다 — 안 그러면 VS Code 는 제한 모드로 열려 도구 확장이 다 꺼집니다.
-          Codex · Antigravity 앱에는 프로젝트로도 올려 둡니다.</div></div>
-      <div class="row"><b>옛 판 파일은 지금 판으로<span class="tag"><span class="k inst">Installer</span><span class="scope">설정 저장소</span></span></b>
-        <div>그 저장소들에 깔린 우리 파일(세션 훅 등)을 늘 지금 판으로 맞춰, 옛 판이 방금 놓은 설정을 덮어쓰지 않게 합니다. 커밋은 안 하니, 저장소에 바뀐 파일이 보이면 그것입니다.</div></div>
+    <div class="chips-grid">
+      <div class="mini"><b>내 규범 · 룰 · 스킬</b><span class="tag"><code class="nm">~/.paisetup/personal/</code><span class="k norm">Norm</span><span class="k rule">Rule</span><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="scope">설정 저장소</span></span>
+        <span>「규범 · 룰 · 스킬을 받을 모델」로 고른 모델에 내 것이 갑니다. 같은 이름이면 내 것이 제작자의 것을 이기고, 저장소에 없는 것은 제작자의 것이 채웁니다.</span></div>
+      <div class="mini"><b>에이전트와 메모리</b><span class="tag"><code class="nm">~/.claude/agents/</code><code class="nm">memory/global/</code><span class="k agent">Agent</span><span class="k memory">Memory</span><span class="t claude">Claude</span><span class="scope">설정 저장소</span></span>
+        <span>내가 정의한 서브에이전트와 쌓아 둔 메모리를 Claude 가 어느 PC 에서나 씁니다.</span></div>
+      <div class="mini"><b>git 신원과 함께 쓰는 저장소</b><span class="tag"><code class="nm">session-start.sh --install</code><code class="nm">personal.conf</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="scope">설정 저장소</span></span>
+        <span>새 PC 에서도 커밋 이름 · 메일이 바로 맞고, 적어 둔 저장소들이 <code>repos</code> 아래에 받아져 있습니다. 이미 있는 저장소는 건너뜁니다.</span></div>
+      <div class="mini"><b>내 키 · 내 홈 설정</b><span class="tag"><code class="nm">secrets.env</code><code class="nm">vdi-home-settings.json</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="scope">설정 저장소</span></span>
+        <span>GitHub 토큰 같은 개인 키를 PC 마다 다시 칠 일 없이 환경변수로 심습니다. 홈 설정에는 저장소에 적어 둔 허용 규칙을 더하되, 설치가 심은 훅 · 환경 값은 지킵니다.</span></div>
+      <div class="mini"><b>처음 열어도 안 묻는 저장소</b><span class="tag"><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="t copilot">Copilot</span><span class="scope">설정 저장소</span></span>
+        <span>설정 저장소와 그 저장소가 설정을 깔아 둔 <code>~/repos</code> 바로 아래 저장소는 고른 도구와 VS Code 가 「이 폴더를 믿나」를 묻지 않고 엽니다 — 안 그러면 VS Code 가 제한 모드로 열려 도구 확장이 꺼집니다.
+          Codex · Antigravity 앱에는 프로젝트로도 올려 둡니다.</span></div>
+      <div class="mini"><b>옛 판 파일은 지금 판으로</b><span class="tag"><span class="k inst">Installer</span><span class="scope">설정 저장소</span></span>
+        <span>그 저장소들에 깔린 우리 파일(세션 훅 등)을 늘 지금 판으로 맞춰, 옛 판이 방금 놓은 설정을 덮지 않게 합니다. 커밋은 안 하니, 저장소에 바뀐 파일이 보이면 그것입니다.</span></div>
     </div>
   </section>
 

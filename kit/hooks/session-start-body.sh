@@ -2186,6 +2186,78 @@ wire_python_path() {
   return 0
 }
 
+# ── 홈 배선의 자리와 이름 — 전역 선언의 node-link 이름이 저장소 밖에서도 풀리게 하는 자리 ──
+#    저장소 배선(`wire_tool`)은 저장소 `node_modules` 안만 잇는다. 저장소 밖의 소비자(전역 스킬이 제 자리에 둔 스크립트)는 제
+#    자리에서 위로 · NODE_PATH · Node 전역 폴더로만 이름을 찾고, npm 전역 자리는 그 어디에도 안 든다. Node 전역 폴더 가운데
+#    홈의 `.node_modules` 는 환경변수 없이 모든 node 가 보는 자리라 거기 잇는다 — 이미 열린 셸에도 바로 든다. 잇는 것은
+#    설치의 전역 걸음(`wire_node_home`)이 든다. 여기는 그 자리 · 이름과, 세션이 매번 보는 대조(`node_home_missing`)다.
+#    전역 선언만 홈에 잇는다 — 저장소 선언(`tools.conf`)의 node-link 는 그 저장소 안의 소비자 몫이다. 잇는 것은 선언한 이름
+#    하나씩이다 — npm 전역 폴더를 통째로 이으면 선언 안 한 패키지까지 모든 node 의 해석에 끼어든다.
+#    ⚠ 이 자리는 CommonJS `require` 만 본다 — ESM `import` 는 Node 전역 폴더를 안 본다.
+
+# node_home_dir — Node 가 보는 홈을 `NODE_HOME` 에 세운다 · 홈이 없으면 1
+#   Node 가 고르는 법을 따른다 — 윈도는 USERPROFILE, 그 밖은 HOME. Git Bash 의 HOME 은 USERPROFILE 과 갈릴 수 있다. 어긋나면
+#   잇고 나서 node 에 되묻는 자리(`wire_node_home`)가 진다. 프로세스를 안 띄운다 — 세션마다 도는 대조가 부른다.
+node_home_dir() {
+  if [ "$OS" = windows ]; then NODE_HOME="${USERPROFILE:-}"; NODE_HOME="${NODE_HOME//\\//}"
+  else NODE_HOME="${HOME:-}"; fi
+  [ -n "$NODE_HOME" ]
+}
+
+# node_home_wanted <선언파일> — 홈에 이을 이름을 「절 이름<탭>모듈」 줄로 낸다 · 늘 0
+#   `wiring = node-link` 이고 on-demand 가 아닌 절이다 — on-demand 는 훅이 안 까는 도구라 이을 실물이 없다. 모듈은
+#   `probe-target` 이다(`wire_tool` 이 저장소에 잇는 이름과 같다). 읽는 자는 `decl_fields` 와 같다 — 줄 머리의 키 · 첫 값이
+#   이긴다 · `#` 뒤는 주석 · CRLF 를 걷는다. 파일을 한 번만 읽는다 — 세션마다 도는 대조가 부르므로 절마다 awk 를 안 띄운다.
+node_home_wanted() {
+  [ -f "$1" ] || return 0
+  awk '
+    function flush() { if (sec != "" && w == "node-link" && od != "yes" && t != "") printf "%s\t%s\n", sec, t }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+    }
+    line ~ /^\[/ {
+      flush()
+      sec = line; gsub(/[][]/, "", sec); gsub(/[[:space:]]+$/, "", sec)
+      w = ""; t = ""; od = ""; gw = 0; gt = 0; god = 0
+      next
+    }
+    sec != "" {
+      sub(/[[:space:]]*#.*$/, "", line)
+      v = line; sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v)
+      if (!gw && line ~ /^wiring[[:space:]]*=/)       { w = v; gw = 1 }
+      if (!gt && line ~ /^probe-target[[:space:]]*=/) { t = v; gt = 1 }
+      if (!god && line ~ /^on-demand[[:space:]]*=/)   { od = v; god = 1 }
+    }
+    END { flush() }
+  ' "$1"
+}
+
+# node_home_missing — 0 = 홈 배선이 빠진 이름이 있다 · 1 = 다 섰거나 볼 것이 없다. 세션(auto)의 지문 게이트가 부른다
+#   지문이 아니라 그 자리를 본다 — 링크는 선언이 그대로여도 사라진다(비영속 홈 · 사람의 정리 · 지워진 전역 패키지). 지문만
+#   보면 도장이 남은 기계는 영영 다시 안 건다.
+#   있나만 본다(`-e` — 링크면 따라간다). 무엇을 가리키나는 설치가 가른다 — 여기서 물으면 `npm root -g` 가 세션마다 뜬다.
+#   지난 전역 설치가 그 이름의 실패를 적었으면 빠진 것으로 안 센다 — 막힌 자리를 매 세션 다시 띄우면 비용만 든다. 그 실패는
+#   침묵 갈래가 매 세션 알리고, 다시 까는 손은 deploy.ps1 · --install 이 든다(전역 지문을 실패가 남아도 굳히는 것과 같은 결).
+node_home_missing() {
+  node_home_dir || return 1
+  _nhq="$(node_home_wanted "$GCONF")"
+  [ -n "$_nhq" ] || return 1
+  while IFS="$_TAB" read -r _nhn _nhm; do
+    [ -e "$NODE_HOME/.node_modules/$_nhm" ] && continue
+    _nhf=''
+    if [ -s "$GFAILS" ]; then
+      while IFS="$_TAB" read -r _nhk _nhr; do
+        [ "$_nhk" = "$_nhn" ] && { _nhf=1; break; }
+      done < "$GFAILS"
+    fi
+    [ -n "$_nhf" ] || return 0
+  done <<EOF
+$_nhq
+EOF
+  return 1
+}
+
 # ── 전역 축 — claude-config 가 붙어 있나. 판정도 문구도 여기 한 자리다 ──
 #    지문이 맞는 세션은 설치를 통째로 건너뛰고 침묵 갈래는 진단 단계 앞에서 나가므로, 설치 걸음이나 진단에만 두면 조용히
 #    도는 세션이 경고를 못 받는다. 그래서 따로 세우고 세 자리(세션의 침묵 갈래 · 배경 설치를 띄운 갈래 · 진단)가 낸다.
@@ -2978,10 +3050,11 @@ EOF
     fi
     return 0
   }
-  # ── 전역 자리의 배선 — 정션이 아니라 값 하나다. 늘 0 ──
+  # ── 전역 자리의 값 배선 — 정션이 아니라 값 하나다. 늘 0 ──
   #    저장소 배선(`wire_tool`)은 `node_modules` 에 정션을 걸어 저장소 안에서 이름이 풀리게 한다. 전역 갈래에는 걸 저장소가
   #    없다 — 여기서 서야 하는 것은 바로 뒤의 브라우저 뒷길이 「playwright 가 이미 브라우저를 들고 있나」를 그 모듈에 물을
-  #    수 있게 하는 것뿐이다. 그 값의 이름은 선언이 든다(`wiring-env`) — 몸통은 여기서도 도구 이름을 모른다.
+  #    수 있게 하는 것뿐이다. 그 값의 이름은 선언이 든다(`wiring-env`) — 몸통은 여기서도 도구 이름을 모른다. 홈에 거는
+  #    정션은 따로 선다(`wire_node_home`).
   wire_global() {  # wire_global <선언파일> <이름>
     _wf="$1"; _wn="$2"
     _we=''; _wm=''
@@ -2994,6 +3067,64 @@ EOF
     _wr="$NPM_ROOT_G"
     [ -d "$_wr/$_wm" ] || return 0
     export "$_we=$_wr/$_wm"
+  }
+  # ── 홈 배선 — 전역 선언의 node-link 이름을 홈 `.node_modules` 에 잇는다. 늘 0 · 진 것은 실패 기록과 `GDOWN` ──
+  #    자리 · 이름 · 까닭은 `node_home_wanted` 곁말이 든다. 전역 설치 뒤에 선다 — 이을 실물이 npm 전역에 서 있어야 한다.
+  #    자리의 꼴로 가른다:
+  #      없다                잇는다
+  #      매달린 링크다        걷고 다시 잇는다 — 가리키는 것이 없어 걷어도 잃는 것이 없다(npm 전역 자리가 옮겨 갔다 등)
+  #      그 실물을 가리킨다    둔다
+  #      그 밖의 것이다        안 덮고 실패로 적는다 — 사람이 둔 사본이나 다른 자리의 판일 수 있고, 덮으면 그것이 사라진다.
+  #                          두면 저장소 밖의 소비자는 설치가 안 올리는 그것을 쓴다
+  #    잇고 나면 node 에 묻는다 — 거는 것과 풀리는 것은 다른 명제다. 파일 시스템 뿌리에서 NODE_PATH 를 걷고 맨 이름을
+  #    `require.resolve` 로 푼다 — 그 자리에는 Node 전역 폴더만 남아, 홈을 잘못 골랐거나 링크가 안 섰으면 여기서 진다.
+  #    npm 전역에 그 패키지가 없으면 잇지 않고 기록만 남긴다 — 줄은 그 도구의 ❌ 가 이미 냈다. 기록은 세션의 대조
+  #    (`node_home_missing`)가 같은 자리를 매 세션 다시 띄우지 않게 하려는 것이다.
+  #    ⚠ 고리는 차례를 4 번으로 읽고 표준 입력을 뗀다 — `npm` · `node` · `cmd` 가 표준 입력을 먹으면 남은 차례가 사라진다.
+  wire_node_home() {
+    _nht0=$SECONDS; _nhok=''
+    _nhq="$(node_home_wanted "$GCONF")"
+    [ -n "$_nhq" ] || return 0
+    node_home_dir
+    while IFS="$_TAB" read -r _nhn _nhm <&4; do
+      if [ -z "$NODE_HOME" ]; then
+        _nhw="홈 배선을 못 걸었다 — Node 가 볼 홈이 없다(USERPROFILE · HOME 이 비었다)"
+        printf '  ❌ %s — %s\n' "$_nhn" "$_nhw"; nogo "$_nhn" "$_nhw"; GDOWN=$((GDOWN + 1)); continue
+      fi
+      if ! npm_root_g || [ ! -d "$NPM_ROOT_G/$_nhm" ]; then
+        nogo "$_nhn" "홈 배선을 못 걸었다 — npm 전역에 $_nhm 가 없다. 전역 설치가 선 뒤 다음 설치가 잇는다"
+        continue
+      fi
+      _nhg="$NPM_ROOT_G/$_nhm"; _nhl="$NODE_HOME/.node_modules/$_nhm"
+      if [ -L "$_nhl" ] && [ ! -e "$_nhl" ]; then rm -f "$_nhl" 2>/dev/null; fi
+      if [ -e "$_nhl" ] || [ -L "$_nhl" ]; then
+        # 같은 자리인가는 글자가 아니라 파일로 견준다(`-ef`) — Git Bash 는 링크 너머를 마운트 꼴(`/tmp/…`)로 내기도 해서
+        #   글자로 견주면 같은 자리가 다르게 읽힌다.
+        if [ ! "$_nhl" -ef "$_nhg" ]; then
+          _nhw="홈 배선을 못 걸었다 — $_nhl 에 다른 것이 서 있다(안 덮는다). 치우면 다음 설치가 잇는다"
+          printf '  ❌ %s — %s\n' "$_nhn" "$_nhw"; nogo "$_nhn" "$_nhw"; GDOWN=$((GDOWN + 1)); continue
+        fi
+      else
+        # ⚠ 스코프 패키지는 중간 폴더가 먼저 서야 한다 — `wire_tool` 과 같은 함정이다.
+        mkdir -p "$(dirname "$_nhl")" 2>/dev/null
+        if [ "$OS" = linux ]; then
+          ln -sfn "$_nhg" "$_nhl" 2>/dev/null || true
+        else
+          # Git Bash 는 심링크를 못 건다 — 정션(관리자 권한 불요)이고, 인자는 낱개로 넘긴다(`wire_tool` 과 같은 함정).
+          cmd //c mklink //J "$(cygpath -w "$_nhl")" "$(cygpath -w "$_nhg")" >/dev/null 2>&1 || true
+        fi
+      fi
+      if ( cd / && env -u NODE_PATH node -e 'require.resolve(process.argv[1])' "$_nhm" ) >/dev/null 2>&1; then
+        _nhok="$_nhok $_nhn"
+      else
+        _nhw="홈 배선을 걸었는데 저장소 밖에서 $_nhm 가 안 풀린다 — node 가 $NODE_HOME/.node_modules 를 안 보거나 링크가 안 섰다"
+        printf '  ❌ %s — %s\n' "$_nhn" "$_nhw"; nogo "$_nhn" "$_nhw"; GDOWN=$((GDOWN + 1))
+      fi
+    done 4<<EOF </dev/null
+$_nhq
+EOF
+    printf '  · 홈 배선 — 전역 선언의 node-link 이름을 %s 에 잇는다%s (%s초)\n' \
+      "${NODE_HOME:-?}/.node_modules" "${_nhok:+ · 풀린다:$_nhok}" "$((SECONDS - _nht0))"
   }
 
   # ── 전역형 도구 — 기계에 한 번이다 ─────────────────────────────────
@@ -3143,6 +3274,7 @@ EOF
     # 전역 갈래의 실패는 기계 한 자리에 적는다 — `try`·`nogo` 가 보는 이름을 그 동안만 바꾼다
     _savefails="$FAILS"; FAILS="$GFAILS"
     install_global
+    wire_node_home
     FAILS="$_savefails"
   fi
 
@@ -3759,11 +3891,11 @@ fi
 #    층 — 저장소(커밋 훅 배선 · 저장소 제 시작 일 · 당김 · venv 를 세션 셸에 잇기) · 홈과 환경(PC 전체 일을 맡을
 #      때 — 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록 · 씨앗 밀기 · 개인 칸의 가벼운 것). 홈 훅과 신뢰 심기는 명시한 설치만 한다
 #    하는 일 — 매 세션 일을 하고(리눅스는 붙은 저장소마다 당김 · main 맞추기를 배경으로 더한다), 낡음과 선언 지문(전역 ·
-#      저장소)을 견준다. 깔 것이 없으면 여기서 0 으로 끝나고, 있으면 `MODE=install` · `INSTALL_BG=1` 로 설치
-#      단계에 넘긴다
+#      저장소)을 견주고 홈 배선이 섰나를 본다. 깔 것이 없으면 여기서 0 으로 끝나고, 있으면 `MODE=install` · `INSTALL_BG=1` 로
+#      설치 단계에 넘긴다
 #    앞에서 받는 것 — 준비의 `PC_WIDE` · `CONFIG_ROOT` · 상태 파일 자리, 고른 해석기, 처음 값
 #    안 하는 것 — 깔기(설치 단계가 배경에서 든다) · 진단 줄. 형제 저장소 세션은 홈에 안 쓰고 견주어 알리기만 한다
-#    걸음 — 당김과 홈 밀기는 매 세션, 설치는 지문이 어긋나거나 도구가 낡았을 때만:
+#    걸음 — 당김과 홈 밀기는 매 세션, 설치는 지문이 어긋나거나 도구가 낡았거나 홈 배선이 빠졌을 때만:
 #      당김     원격을 ff-only 로, main 체크아웃일 때만. 로컬을 다치게 하지 않는다 — 갈라졌거나 오프라인이면 그대로 두고
 #               사유까지 말한다(배경이라 다음 세션이 말한다). 저장소가 손(`pull-target.sh`)을 두면 원격 main 위의 그
 #               손이 고른 커밋까지만 간다(`_pull_target`) — 손의 답을 물리쳤으면 그것도 다음 세션이 한 줄 말한다
@@ -3844,6 +3976,9 @@ if [ "$MODE" = auto ]; then
   if [ -n "$PC_WIDE" ] && { [ -n "$PW_REST" ] || [ -n "$UPGRADE" ]; }; then
     { [ -z "$UPGRADE" ] && [ "$(global_fingerprint)" = "$(cat "$GSTAMP" 2>/dev/null)" ]; } || DO_GLOBAL=1
   fi
+  # 홈 배선은 지문이 아니라 그 자리를 본다(`node_home_missing`) — 위 대조는 열쇠를 타서 맞춘 홈에서는 안 돌고, 돌아도 선언만
+  #   견준다. 빠졌으면 전역 걸음을 배경에서 한 번 돌려 다시 잇는다(`wire_node_home`). 홈은 PC 전체 일이라 맡는 세션만 본다.
+  if [ -n "$PC_WIDE" ] && [ -z "$DO_GLOBAL" ] && node_home_missing; then DO_GLOBAL=1; fi
   { [ -z "$UPGRADE" ] && [ "$(decl_fingerprint)"   = "$(cat "$STAMP"  2>/dev/null)" ]; } || DO_REPO=1
   # ⚠ PC 전체 일의 표식은 여기서 적는다 — 전역 도구를 깔 판이면 미룬다. 대조가 어긋나 설치로 가는 세션이 먼저 판을 적고
   #   설치 도중 죽으면(창을 닫았다 · 느린 망에서 끊겼다), 다음 세션은 판이 맞아 대조를 아예 안 하고 새 도구가 안 깔린 채

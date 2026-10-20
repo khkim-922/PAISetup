@@ -115,6 +115,8 @@ try {
     # 경로 · ReadOnly=$true · Untitled=$false · WithWindow=$true — 사람이 연 덱이면 그 발표로 쇼만 띄우고 안 닫는다
     $session = Open-OwnedDocument -Kind 'PPT' -Collection $ppt.Presentations -Open { $ppt.Presentations.Open($full, $true, $false, $true) }
     $pres = $session.Document
+    # 모니터가 둘이면 파워포인트가 발표자 보기를 띄워 이 창에는 잘린 슬라이드와 다음 장 미리보기가 찍힌다 — 쇼를 띄우기 전에 끈다
+    $pres.SlideShowSettings.ShowPresenterView = 0
     $pres.SlideShowSettings.Run() | Out-Null
 
     # 슬라이드쇼 창이 설 때까지 기다린다 — 바로 물으면 null 이 온다
