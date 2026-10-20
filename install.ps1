@@ -1835,6 +1835,38 @@ function Get-ConfigRootGen([string]$Repo, [string]$Bash, [string]$Finder) {
   }
 }
 
+# 홈 씨앗의 임자 — 찾는 자 하나가 정한다 (PAISetup #48 ①). 임자는 설정 저장소 찾는 자(`.githooks/claude-config-path.sh` 의
+#   `CONFIG_ROOT`)가 찾은 저장소이고, 그 저장소가 그 폴더를 선언했을 때만이다(`deploy.seeds.conf` 에 든 줄이고 그 저장소에 그 폴더가
+#   있다) — 세션 훅과 그 훅이 넘기는 `deploy.ps1` 이 같은 자 · 같은 문을 쓴다. 값 파일의 주소(`#config-repo`)로 가르면 주소 없는 판(콘솔로
+#   깐 판)이 씨앗을 릴리스 판으로 되돌리고, 세션 훅은 바뀐 파일만 밀어 다음 통째 판까지 일부가 옛 판에 머문다.
+# 묻는 자리는 세션이 열릴 자리다 — 받을 저장소마다, 그리고 작업 루트 아래 아무 자리(찾는 자는 그 자리 곁의 저장소를 본다 · 그 자리는
+#   없어도 된다). Git Bash 가 없으면 묻지 않는다 — 세션 훅도 bash 라 그 PC 에서는 밀 자가 없다.
+# 부르는 자리는 둘이다 — 「공용 자산」 걸음(비켜설지 가른다)과 끝 검증(무엇과 견줄지 가른다). 답은 부른 그때의 것이다 — 맨바닥 판은
+#   「공용 자산」 때 저장소가 아직 없어 임자가 없고, 「설정 저장소」 걸음이 받은 저장소의 배포가 그 뒤에 같은 자리를 덮는다.
+# 받는 것 — Git Bash(없으면 빈 값) · 찾는 자 · 받을 저장소의 주소 목록 · 작업 루트. 내는 것 — @{ Map(`seeds\gateway` 꼴의 홈 상대 경로
+#   → 그것을 든 저장소); Roots(찾은 저장소들); Why(못 잰 까닭 — 첫 것만) }.
+function Get-OwnedHome([string]$Bash, [string]$Finder, [string[]]$RepoUrls, [string]$WorkRoot) {
+  $roots = @(); $why = ''
+  if ($Bash) {
+    foreach ($pd in @(@($RepoUrls | ForEach-Object { Get-ConfigRepoDir $_ }) + @(Join-Path $WorkRoot '.paisetup-owner-probe'))) {
+      $c = Get-ConfigRootGen $pd $Bash $Finder
+      if ($c.Root -and (Test-Path -LiteralPath $c.Root -PathType Container)) {
+        if (-not @($roots | Where-Object { $_ -ieq $c.Root }).Count) { $roots += $c.Root }
+      } elseif (-not $c.Current -and -not $why) { $why = $c.Why }
+    }
+  }
+  $map = @{}
+  foreach ($d in $roots) {
+    $conf = Join-Path $d 'deploy.seeds.conf'
+    if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { continue }
+    foreach ($ln in (Get-Content -LiteralPath $conf -Encoding UTF8)) {
+      $rel = (($ln -replace '#.*$', '').Trim()) -replace '/', '\'
+      if ($rel -and -not $map.ContainsKey($rel) -and (Test-Path -LiteralPath (Join-Path $d $rel))) { $map[$rel] = $d }
+    }
+  }
+  return @{ Map = $map; Roots = $roots; Why = $why }
+}
+
 # 나른 것을 동봉본과 견주는 자 — 이름 · 원본 · 나른 자리를 받아 @{ Name = '이름 (나른 수/원본 수 · 여분 N)'; Ok } 를 낸다.
 #   「공용 자산」 걸음의 자산이 다 이 자를 쓴다.
 # ⚠ **폴더가 있나로 묻지 않고 파일 수를 센다** — `New-Item` 이 먼저 도니 복사가 실패해도 폴더는 남아, 빈 폴더를 [O] 로 찍으면
@@ -7778,39 +7810,15 @@ $envAssets = @(
   @{ From = Join-Path $Here 'seeds\vibecoding'; To = Join-Path $homeDir 'seeds\vibecoding'; Mirror = $true
      Name = '사내 코딩 기준 씨앗'; Desc = '사내 앱을 회사 방식으로 배포할 때 스킬 inhouse-app 이 여는 회사 기준 본문 — 들머리는 SEED.md' }
 )
-# ── 홈 씨앗의 임자 — 찾는 자 하나가 정한다 (PAISetup #48 ①) ──────────────────────────────────
-# 임자는 설정 저장소 찾는 자(`.githooks/claude-config-path.sh` 의 `CONFIG_ROOT`)가 찾은 저장소이고, 그 저장소가 그 폴더를 선언했을 때만이다
-#   — 세션 훅과 그 훅이 넘기는 `deploy.ps1` 이 같은 자를 쓴다. 값 파일의 주소(`#config-repo`)로 가르면 주소 없는 판(콘솔로 깐 판)이 씨앗을
-#   릴리스 판으로 되돌리고, 세션 훅은 바뀐 파일만 밀어 다음 통째 판까지 일부가 옛 판에 머문다.
+# ── 홈 씨앗의 임자 — 찾는 자 하나가 정한다 (`Get-OwnedHome` · PAISetup #48 ①) ──────────────────────────────────
 # 찾는 자는 이 짐의 것을 부른다(`Get-ConfigRootGen` — 「설정 저장소」 걸음이 넘길 자리를 재는 그 손) — 홈 사본은 이 걸음이 바로 아래에서
-#   같은 판으로 깐다. 묻는 자리는 세션이 열릴 자리다 — 받을 저장소마다, 그리고 작업 루트(`$configRepoRoot`) 아래 아무 자리(찾는 자는 그
-#   자리 곁의 저장소를 본다 · 그 자리는 없어도 된다). 처음 까는 판은 저장소가 아직 없어 임자가 없고, 뒤따르는 배포가 새 판으로 덮는다.
-# Git Bash 가 없으면 묻지 않는다 — 세션 훅도 bash 라 그 PC 에서는 밀 자가 없다. 묻다 졌으면 노란 줄을 내고 설치 묶음 판으로 깐다 —
-#   비켜서면 임자 없는 PC 의 씨앗이 영영 안 바뀐다.
-$ownerBash  = Find-GitBash
-$ownerRoots = @(); $ownerWhy = ''
-if ($ownerBash) {
-  $ownerFinder = Join-Path $Here 'seeds\config-repo\.githooks\claude-config-path.sh'
-  foreach ($pd in @(@($configRepoUrls | ForEach-Object { Get-ConfigRepoDir $_ }) + @(Join-Path $configRepoRoot '.paisetup-owner-probe'))) {
-    $c = Get-ConfigRootGen $pd $ownerBash $ownerFinder
-    if ($c.Root -and (Test-Path -LiteralPath $c.Root -PathType Container)) {
-      if (-not @($ownerRoots | Where-Object { $_ -ieq $c.Root }).Count) { $ownerRoots += $c.Root }
-    } elseif (-not $c.Current -and -not $ownerWhy) { $ownerWhy = $c.Why }
-  }
-}
-if ($ownerWhy -and -not $ownerRoots.Count) { Write-Host "  ! 씨앗의 임자(설정 저장소)를 못 가렸다 — 설치 묶음 판으로 깐다 ($ownerWhy)" -ForegroundColor Yellow }
-# 임자가 홈으로 미는 자리 — `seeds\gateway` 꼴의 홈 상대 경로 → 그것을 든 저장소. 세션 훅의 문과 같다: 선언에 든 줄이고 그 저장소에 그 폴더가 있다.
-$ownedHome = @{}
-foreach ($d in $ownerRoots) {
-  $conf = Join-Path $d 'deploy.seeds.conf'
-  if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { continue }
-  foreach ($ln in (Get-Content -LiteralPath $conf -Encoding UTF8)) {
-    $rel = (($ln -replace '#.*$', '').Trim()) -replace '/', '\'
-    if ($rel -and -not $ownedHome.ContainsKey($rel) -and (Test-Path -LiteralPath (Join-Path $d $rel))) {
-      $ownedHome[$rel] = $d
-    }
-  }
-}
+#   같은 판으로 깐다. 처음 까는 판은 저장소가 아직 없어 임자가 없고, 뒤따르는 배포가 새 판으로 덮는다 — 끝 검증이 그때의 임자를 다시 묻는다.
+# 묻다 졌으면 노란 줄을 내고 설치 묶음 판으로 깐다 — 비켜서면 임자 없는 PC 의 씨앗이 영영 안 바뀐다.
+$ownerBash   = Find-GitBash
+$ownerFinder = Join-Path $Here 'seeds\config-repo\.githooks\claude-config-path.sh'
+$homeOwners = Get-OwnedHome $ownerBash $ownerFinder $configRepoUrls $configRepoRoot
+if ($homeOwners.Why -and -not $homeOwners.Roots.Count) { Write-Host "  ! 씨앗의 임자(설정 저장소)를 못 가렸다 — 설치 묶음 판으로 깐다 ($($homeOwners.Why))" -ForegroundColor Yellow }
+$ownedHome = $homeOwners.Map
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없다"; continue }
   $a.Rel = $a.To.Substring($homeDir.Length).TrimStart('\')
@@ -10083,15 +10091,20 @@ foreach ($c in $CliPicks) {
 }
 # 나르는 자리 — 「공용 자산」 걸음의 자산. 재는 자는 위 `New-CountCheck` 하나다. 규범 · 룰 · 에이전트 · 스킬은 손의 `check` 가, 칸 없이
 #   까는 스킬은 아래에서 이름마다 잰다.
+# 임자는 지금 다시 묻는다(`Get-OwnedHome`) — 「공용 자산」 걸음의 답은 그때의 것이다. 맨바닥 판은 그때 저장소가 없어 동봉본을 깔았고,
+#   그 뒤 「설정 저장소」 걸음이 받은 저장소의 배포가 같은 자리를 저장소 판으로 덮었다 — 그 답으로 견주면 멀쩡한 자리가 [X] 다.
+$homeOwnersNow = (Get-OwnedHome $ownerBash $ownerFinder $configRepoUrls $configRepoRoot).Map
 foreach ($a in $envAssets) {
   if (-not (Test-Path -LiteralPath $a.From)) { continue }
-  # 비켜선 자리는 동봉본이 아니라 임자의 그 폴더와 견준다 — 거기 든 것은 설정 저장소의 최신판이라, 동봉본과 견주면 저쪽이 부품을
+  $assetRel = $a.To.Substring($homeDir.Length).TrimStart('\')
+  $owner = $homeOwnersNow[$assetRel]
+  # 임자가 든 자리는 동봉본이 아니라 임자의 그 폴더와 견준다 — 거기 든 것은 설정 저장소의 최신판이라, 동봉본과 견주면 저쪽이 부품을
   #   걷은 날 멀쩡한 자리가 [X] 로 선다. 여분은 판정에 안 든다 — 저쪽 배포는 원본 이력이 걷은 파일만 걷고, 프록시 기록 같은 남의
   #   파일은 둔다(`deploy.ps1` 씨앗 칸).
   # ⚠ **원본은 그 저장소가 추적하는 파일이다** — 저장소의 그 폴더에도 git 이 무시하는 런타임 기록(`posco/pgpt-proxy/proxy.log`)이 살고, 홈의
   #   같은 이름 파일은 도는 프록시가 따로 덧쓴다. 작업 나무 전부와 견주면 그 한 파일로 판마다 [X] 다. git 이 답을 못 내면 못 잰 것이다.
-  if ($a.Owner) {
-    $ownDir = Join-Path $a.Owner $a.Rel
+  if ($owner) {
+    $ownDir = Join-Path $owner $assetRel
     $tracked = $null
     $saveOut = [Console]::OutputEncoding
     try {
@@ -10100,12 +10113,12 @@ foreach ($a in $envAssets) {
       if ($null -ne $tracked -and $LASTEXITCODE -ne 0) { $tracked = $null }
     } catch { $tracked = $null } finally { [Console]::OutputEncoding = $saveOut }
     if ($null -eq $tracked) {
-      $checks += @{ Name = "$($a.Name) (설정 저장소가 든다 · $($a.Owner))"; State = 'unmeasured'; Probe = "git -C `"$ownDir`" ls-files"
+      $checks += @{ Name = "$($a.Name) (설정 저장소가 든다 · $owner)"; State = 'unmeasured'; Probe = "git -C `"$ownDir`" ls-files"
                     Why = '그 저장소가 추적하는 파일을 git 이 못 댔다' }
       continue
     }
     $cmp = Compare-AssetTree $ownDir $a.To -ExtraOk -Only @($tracked | Where-Object { $_ } | ForEach-Object { $_.Replace('/', '\') })
-    $checks += New-AssetRow "$($a.Name) (설정 저장소가 든다 · 원본 $($cmp.N) 파일$(if ($cmp.Say) { ' · ' + $cmp.Say }) · $($a.Owner))" $cmp.Ok $cmp.Bad $cmp.Unread
+    $checks += New-AssetRow "$($a.Name) (설정 저장소가 든다 · 원본 $($cmp.N) 파일$(if ($cmp.Say) { ' · ' + $cmp.Say }) · $owner)" $cmp.Ok $cmp.Bad $cmp.Unread
     continue
   }
   # 장부로 맞추는 자리 — 원본의 파일이 바이트까지 섰나와, 장부에 든 우리 파일 가운데 원본에서 빠졌는데 놓은 그대로 남은 것이 없나를
