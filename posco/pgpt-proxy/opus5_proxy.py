@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 5
+VERSION_OURS = 7
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -261,6 +261,8 @@ _STATS_LOCK = threading.Lock()
 _PATCHED_TOTAL = 0
 _TRIMMED_PREFILLS = 0
 _HOISTED_TOOL_IMAGES = 0
+_HOIST_CACHE_MARKS = 0
+_HOIST_CACHE_MARKS_SKIPPED = 0
 _GROK_DROPPED_TOTAL = 0
 _SLOW_TOTAL = 0
 _KEEPALIVE_TOTAL = 0
@@ -577,6 +579,17 @@ def _count_hoisted(count: int) -> None:
         _HOISTED_TOOL_IMAGES += count
 
 
+def _count_hoist_cache_mark(added: bool | None) -> None:
+    global _HOIST_CACHE_MARKS, _HOIST_CACHE_MARKS_SKIPPED
+    if added is None:
+        return
+    with _STATS_LOCK:
+        if added:
+            _HOIST_CACHE_MARKS += 1
+        else:
+            _HOIST_CACHE_MARKS_SKIPPED += 1
+
+
 def _count_grok_dropped(count: int) -> None:
     global _GROK_DROPPED_TOTAL
     with _STATS_LOCK:
@@ -599,6 +612,47 @@ def _count_stream_error() -> None:
     global _STREAM_ERROR_TOTAL
     with _STATS_LOCK:
         _STREAM_ERROR_TOTAL += 1
+
+
+# 사용량 칸 — 캐시를 놓친 턴 · 1시간이 서나 · 곁 호출(자동 모드 분류기 등)의 값을 회사 로그에서 가리는 자다(결정 0175). 숫자만 남긴다.
+_USAGE_KEYS = (("input_tokens", "in"), ("cache_read_input_tokens", "cache_read"), ("cache_creation_input_tokens", "cache_write"))
+
+
+def merge_usage(seen: dict, usage: object) -> None:
+    """Anthropic usage 를 seen 에 모은다 — 칸마다 큰 값을 둔다.
+
+    게이트웨이는 message_start 에 0 을 싣고 message_delta 에 실제 값을 싣는다. Anthropic 직결은 입력을 message_start 에 싣는다.
+    TTL 별 쓰기 항(`cache_creation`)은 값이 있을 때만 둔다.
+    """
+    if not isinstance(usage, dict):
+        return
+    for key, _ in _USAGE_KEYS:
+        value = usage.get(key)
+        if type(value) is int:
+            seen[key] = max(seen.get(key, 0), value)
+    split = usage.get("cache_creation")
+    if isinstance(split, dict) and any(type(value) is int and value for value in split.values()):
+        seen["cache_creation"] = {key: value for key, value in split.items() if type(value) is int}
+
+
+def usage_text(seen: dict) -> str:
+    """로그 칸 — `in= cache_read= cache_write= cache_write_ttl=`. 못 본 칸은 unknown, TTL 별 쓰기 항이 없으면 none."""
+    fields = [f"{label}={seen[key] if key in seen else 'unknown'}" for key, label in _USAGE_KEYS]
+    split = seen.get("cache_creation")
+    ttl = ",".join(f"{key.removeprefix('ephemeral_').removesuffix('_input_tokens')}:{value}"
+                   for key, value in split.items()) if split else "none"
+    return " ".join(fields) + f" cache_write_ttl={ttl}"
+
+
+def _json_usage(body: bytes | bytearray | None) -> dict:
+    seen: dict = {}
+    try:
+        message = json.loads(body) if body else None
+    except (ValueError, UnicodeDecodeError):
+        return seen
+    if isinstance(message, dict):
+        merge_usage(seen, message.get("usage"))
+    return seen
 
 
 def _json_stop_reason(body: bytes | bytearray | None) -> str:
@@ -655,6 +709,9 @@ def stats() -> dict[str, object]:
             "trimmed_prefills": _TRIMMED_PREFILLS,
             "hoist_tool_images": HOIST_TOOL_IMAGES,
             "hoisted_tool_images": _HOISTED_TOOL_IMAGES,
+            "hoist_cache_marks": _HOIST_CACHE_MARKS,
+            # 표식 한도(4)가 차 못 단 수 — 오르면 그림 많은 턴이 캐시를 놓친다
+            "hoist_cache_marks_skipped": _HOIST_CACHE_MARKS_SKIPPED,
             "grok_strip": GROK_STRIP,
             "grok_params_dropped": _GROK_DROPPED_TOTAL,
             "web_search": WEB_SEARCH,
@@ -751,6 +808,7 @@ class SseObserver:
         self.first_text_at: float | None = None
         self.output_tokens: int | None = None
         self.stop_reason = "none"
+        self.usage: dict = {}
 
     @property
     def can_keepalive(self) -> bool:
@@ -764,7 +822,8 @@ class SseObserver:
         return (f"events={self.events} last_event={self.last_event} "
                 f"first_event={elapsed(self.first_event_at)} first_text={elapsed(self.first_text_at)} "
                 f"output_tokens={self.output_tokens if self.output_tokens is not None else 'unknown'} "
-                f"stop_reason={self.stop_reason}")
+                f"stop_reason={self.stop_reason}"
+                + (f" {usage_text(self.usage)}" if self.protocol == "anthropic" else ""))
 
     def feed(self, chunk: bytes) -> None:
         # 디코딩 전에 자른다 — UTF-8 한 글자가 소켓 읽기 둘에 걸칠 수 있다.
@@ -841,6 +900,10 @@ class SseObserver:
         usage = payload.get("usage")
         if isinstance(usage, dict) and type(usage.get("output_tokens")) is int:
             self.output_tokens = usage["output_tokens"]
+        merge_usage(self.usage, usage)
+        started_message = payload.get("message")  # message_start 는 usage 를 message 안에 싣는다
+        if isinstance(started_message, dict):
+            merge_usage(self.usage, started_message.get("usage"))
         if ((self.protocol == "anthropic" and kind == "message_stop") or
                 (self.protocol == "responses" and kind == "response.completed")):
             self.terminal = True
@@ -1451,6 +1514,52 @@ def _hoist_tool_images(content: list) -> int:
 # 그림만 옮긴다 — PDF(document)는 게이트웨이가 자리와 상관없이 삼킨다(회사 실측 #193 ③㉡ · 결정 0165).
 # ⚠ PDF 를 옮기면 tool_result 에는 「붙였다」는 표지만 남아 모델이 PDF 가 왔다고 믿는다.
 _HOISTED_BLOCKS = {"image"}
+# Anthropic 이 한 요청에 받는 cache_control 수 — 넘기면 400 이다
+_CACHE_MARK_LIMIT = 4
+
+
+def _cache_mark_count(payload: dict, messages: list) -> int:
+    """요청이 쓰는 캐시 표식 수 — 최상위 자동 캐시 · tools · system · 메시지 블록 · tool_result 안 블록."""
+    count = 1 if "cache_control" in payload else 0
+    for group in (payload.get("tools"), payload.get("system")):
+        if isinstance(group, list):
+            count += sum(1 for block in group if isinstance(block, dict) and "cache_control" in block)
+    for message in messages:
+        for block in message["content"] if isinstance(message["content"], list) else []:
+            if not isinstance(block, dict):
+                continue
+            count += "cache_control" in block
+            inner = block.get("content") if block.get("type") == "tool_result" else None
+            if isinstance(inner, list):
+                count += sum(1 for item in inner if isinstance(item, dict) and "cache_control" in item)
+    return count
+
+
+def _mark_hoisted_run(payload: dict, messages: list, moved: int) -> bool | None:
+    """마지막 user 메시지에서 옮긴 그림 묶음의 양쪽에 캐시 표식이 서게, 빠진 쪽에 그 메시지의 표식을 본떠 단다.
+
+    캐시는 표식에서 뒤로 20 칸까지만 앞 요청의 저장 지점을 찾는데, 옮기기는 tool_result 안의 한 칸을 그림마다 두 칸으로
+    늘려 그 창을 넘긴다(README 「그림 끌어내기」). 묶음 앞(마지막 tool_result)의 표식은 이번 요청이 앞 저장 지점을 읽게 하고,
+    묶음 끝의 표식은 다음 요청이 읽을 자리를 남긴다. 그 메시지에 표식이 없으면 클라이언트가 캐시를 안 쓰는 자리라 안 단다.
+    ⚠ 묶음 끝 표식은 마지막 그림이 아니라 그 앞 이름표 글에 단다 — 게이트웨이는 표식을 Converse 의 `cachePoint` 블록으로 옮기는데
+    그림 바로 뒤의 `cachePoint` 는 문서에도 실측에도 없다. 글 뒤는 표준 자리다(결정 0175).
+    돌려주는 것: 달았으면 True · 한도가 차 못 달았으면 False · 달 까닭이 없으면 None.
+    """
+    content = messages[-1]["content"]
+    last_result = max(i for i, block in enumerate(content) if isinstance(block, dict) and block.get("type") == "tool_result")
+    run_end = last_result + 2 * moved
+    marks = [i for i, block in enumerate(content) if isinstance(block, dict) and "cache_control" in block]
+    if not marks:
+        return None
+    # 표식은 묶음 안에 없다(옮길 때 뗐다) — 그래서 한쪽은 이미 서 있고 빠진 쪽은 많아야 하나다
+    if any(i <= last_result for i in marks) and any(i >= run_end for i in marks):
+        return None
+    if _cache_mark_count(payload, messages) >= _CACHE_MARK_LIMIT:
+        return False
+    # 같은 메시지의 표식을 본뜬다 — TTL 이 그 표식과 같아야 「긴 TTL 이 앞」 차례가 안 깨진다
+    target = run_end - 1 if marks[-1] <= last_result else last_result
+    content[target] = {**content[target], "cache_control": dict(content[marks[-1]]["cache_control"])}
+    return True
 
 
 def sanitize_payload(payload: dict[str, object]) -> dict[str, object]:
@@ -1488,10 +1597,12 @@ def sanitize_payload(payload: dict[str, object]) -> dict[str, object]:
         if trimmed_prefill:
             _count_trimmed()
         if HOIST_TOOL_IMAGES:
-            hoisted = sum(_hoist_tool_images(m["content"]) for m in cleaned
-                          if m["role"] == "user" and isinstance(m["content"], list))
-            if hoisted:
-                _count_hoisted(hoisted)
+            moved = [_hoist_tool_images(m["content"]) if m["role"] == "user" and isinstance(m["content"], list) else 0
+                     for m in cleaned]
+            if any(moved):
+                _count_hoisted(sum(moved))
+            if moved and moved[-1]:
+                _count_hoist_cache_mark(_mark_hoisted_run(payload, cleaned, moved[-1]))
         payload["messages"] = cleaned
 
     return payload
@@ -2392,6 +2503,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 if stop_reason == "max_tokens":
                     _count_max_tokens_hit(getattr(self, "_compact_request", False))
                     log(f"reached max_tokens {self._request_context}{self._gw()}")
+                if observer is None:
+                    # 그대로 중계한 비스트리밍 응답(자동 모드 분류기 등)은 stream 줄이 없다 — 사용량은 그 요청의 complete 줄에 실린다
+                    self._request_context += f" stop_reason={stop_reason or 'unknown'} {usage_text(_json_usage(compact_copy))}"
             sent = self._keepalives_sent - keepalives_before
             if sent:
                 log(f"keepalive x{sent} (upstream silent > {keepalive_interval:g}s){self._gw()}")
@@ -2767,7 +2881,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     events = anthropic_message_events(message, tools=claude_tools, allow_tools=not compact_request)
                     for event in events:
                         self._emit(event)
-                    self._request_context += f" output_tokens={message['usage'].get('output_tokens', 'unknown')} stop_reason={message['stop_reason']}"
+                    seen: dict = {}
+                    merge_usage(seen, message.get("usage"))
+                    self._request_context += (f" output_tokens={message['usage'].get('output_tokens', 'unknown')}"
+                                              f" stop_reason={message['stop_reason']} {usage_text(seen)}")
                     if message["stop_reason"] == "max_tokens":
                         _count_max_tokens_hit(compact_request)
                         log(f"reached max_tokens {self._request_context}{self._gw()}")
@@ -2941,6 +3058,53 @@ def self_test() -> None:
     assert not any("document" in str(item.get("text", "")) for item in kept)
     assert [b["type"] for b in turn] == ["tool_result", "text", "image"] and turn[2] == img
     assert "toolu_h" in turn[1]["text"]
+
+    # 옮긴 묶음의 캐시 표식: 끝에 표식이 있으면 묶음 앞 tool_result 에 같은 표식을 단다 · 표식이 앞에 있으면 마지막 이름표에 ·
+    # 한도(4)가 찼거나 메시지에 표식이 없으면 안 단다 · 마지막이 아닌 user 메시지는 안 본다
+    mark = {"type": "ephemeral", "ttl": "1h"}
+    system = [{"type": "text", "text": "a"}, {"type": "text", "text": "b", "cache_control": mark},
+              {"type": "text", "text": "c", "cache_control": mark}]
+
+    def image_turn(tail_mark: bool, on_result: bool = False) -> dict:
+        result = {"type": "tool_result", "tool_use_id": "toolu_m", "content": [dict(img), dict(img)]}
+        if on_result:
+            result["cache_control"] = {"type": "ephemeral"}
+        tail = [{"type": "text", "text": "<system-reminder>", **({"cache_control": {"type": "ephemeral"}} if tail_mark else {})}]
+        return {"system": [dict(b) for b in system], "messages": [
+            {"role": "user", "content": [{"type": "text", "text": "go"}]},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_m", "name": "Read", "input": {}}]},
+            {"role": "user", "content": [result, *([] if on_result else tail)]}]}
+
+    marked = sanitize_payload(image_turn(tail_mark=True))["messages"][-1]["content"]
+    assert [b["type"] for b in marked] == ["tool_result", "text", "image", "text", "image", "text"]
+    assert marked[0]["cache_control"] == {"type": "ephemeral"} and marked[0]["cache_control"] is not marked[-1]["cache_control"]
+    assert sum("cache_control" in b for b in marked) == 2
+    marked = sanitize_payload(image_turn(tail_mark=False, on_result=True))["messages"][-1]["content"]
+    assert [i for i, b in enumerate(marked) if "cache_control" in b] == [0, 3] and marked[3]["type"] == "text"
+    assert "cache_control" not in sanitize_payload(image_turn(tail_mark=False))["messages"][-1]["content"][0]
+    full = image_turn(tail_mark=True)
+    full["tools"] = [{"name": "Read", "cache_control": mark}]
+    assert "cache_control" not in sanitize_payload(full)["messages"][-1]["content"][0]
+    older = image_turn(tail_mark=True)
+    older["messages"] += [{"role": "assistant", "content": [{"type": "text", "text": "ok"}]},
+                          {"role": "user", "content": [{"type": "text", "text": "next", "cache_control": mark}]}]
+    assert "cache_control" not in sanitize_payload(older)["messages"][2]["content"][0]
+
+    # 사용량 칸: 게이트웨이 꼴(message_start 0 · message_delta 실제 값)과 직결 꼴(message_start 실제 값)을 다 잡고, TTL 별 쓰기 항은
+    # 있을 때만 적는다. 생성 글은 안 남긴다
+    gateway_like = SseObserver("anthropic")
+    gateway_like.feed(b'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":0,'
+                      b'"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}\n\n'
+                      b'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":'
+                      b'{"input_tokens":12,"cache_read_input_tokens":3400,"cache_creation_input_tokens":56,"output_tokens":7}}\n\n')
+    assert "in=12 cache_read=3400 cache_write=56 cache_write_ttl=none" in gateway_like.diagnostics(0.0)
+    direct = SseObserver("anthropic")
+    direct.feed(b'data: {"type":"message_start","message":{"usage":{"input_tokens":9,"cache_read_input_tokens":800,'
+                b'"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":0,'
+                b'"ephemeral_1h_input_tokens":100},"output_tokens":1}}}\n\n')
+    assert direct.diagnostics(0.0).endswith("in=9 cache_read=800 cache_write=100 cache_write_ttl=5m:0,1h:100")
+    assert usage_text(_json_usage(b'{"usage":{"input_tokens":5}}')) == "in=5 cache_read=unknown cache_write=unknown cache_write_ttl=none"
+    assert "in=" not in SseObserver("responses").diagnostics(0.0)
 
     # patch: 최상위 tools 보정 (sanitize 이후 단일 소유자)
     assert patch_tool_descriptions(result) == 1

@@ -156,11 +156,15 @@ class StreamingTests(unittest.TestCase):
         self.assertIsNotNone(observer.first_event_at)
         self.assertIsNone(observer.first_text_at)
         frame = event("content_block_delta", delta={"type": "text_delta", "text": "private-summary-text"})
-        delta = event("message_delta", delta={"stop_reason": "end_turn"}, usage={"output_tokens": 123})
+        delta = event("message_delta", delta={"stop_reason": "end_turn"},
+                      usage={"output_tokens": 123, "input_tokens": 40, "cache_read_input_tokens": 9000,
+                             "cache_creation_input_tokens": 300})
         self.run_case("diagnostics", [START, frame, delta, STOP])
         log = proxy.LOG_PATH.read_text(encoding="utf-8")
         lines = [line for line in log.splitlines() if "test-diagnostics" in line]
         self.assertTrue(any("first_text=" in line and "output_tokens=123 stop_reason=end_turn" in line for line in lines))
+        # 사용량 칸 — 캐시를 놓친 턴과 곁 호출의 값을 회사 로그에서 가린다(결정 0175)
+        self.assertTrue(any("in=40 cache_read=9000 cache_write=300 cache_write_ttl=none" in line for line in lines))
         self.assertNotIn("private-summary-text", log)
 
     def test_compact_with_runtime_system_tail_is_tuned_on_messages_route(self):

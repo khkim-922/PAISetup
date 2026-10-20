@@ -16,7 +16,8 @@
 #   · 식었다 — 그 기록의 마지막 쓰기가 서브에이전트 캐시 수명보다 오래다. 수명은 하네스의 차례 그대로 고른다(Claude Code 문서
 #     「prompt caching · Choose the TTL yourself」): `FORCE_PROMPT_CACHING_5M=1` → 환경변수 `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL`
 #     → 설정 `subagentPromptCacheTtl` → `ENABLE_PROMPT_CACHING_1H=1` → 기본 5 분. 값은 `5m` · `1h` 만 받는다.
-#     설정 `env` 블록의 값은 훅 프로세스에 내려온다(잰 값 — 결정 0168) — 설치기가 심는 환경변수가 그 길이다.
+#     설정 `env` 블록의 값은 훅 프로세스에 내려온다(잰 값 — 결정 0168) — 사외에서 설치기가 심는 환경변수가 그 길이다(사내는
+#     안 심어 기본 5 분이다 — 결정 0174).
 #     설정 파일은 키가 든 줄까지만 읽고, 값은 그 줄에서 찾는다 — Claude Code 가 쓰는 꼴(키와 값이 한 줄)이다.
 #     ⚠ 설정은 사용자 층 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json` 하나만 읽는다 — 관리 · 프로젝트 층의 같은 키와
 #     에이전트 앞머리의 `cacheTtl` 은 안 본다. 그 자리로 1 시간을 둔 곳에서는 5 분과 1 시간 사이에 헛막음이 난다

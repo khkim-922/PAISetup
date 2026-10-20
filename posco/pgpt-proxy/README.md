@@ -24,7 +24,7 @@
 | `Test-ProxyCompaction.py` | 상류 `tests/` | 압축 알아보기 · 출력 상한 · thinking 예산 · 간결 지시(켠 판) |
 | `Test-ProxyUnstream.py` | 상류 `tests/` | 비스트리밍 갈래 — 압축이 비스트리밍·18,000 으로 가나 · 짓는 SSE · 필수 도구 인자 검증 |
 | `Test-ProxyQueue.py` | 상류 `tests/` | 큰 요청 줄 세우기(기본 꺼짐) — 꺼진 채 큰 요청 둘이 동시에 통하나 · 켠 판의 차례 |
-| `Test-ProxyImages.py` | 상류 `tests/` | 그림 끌어내기 — 본문 모양 · 짝 · 계수 · 끄는 스위치 (망 없음) |
+| `Test-ProxyImages.py` | 상류 `tests/` + 우리 칸 | 그림 끌어내기 — 본문 모양 · 짝 · 계수 · 끄는 스위치 · 옮긴 묶음의 캐시 표식(Claude Code 실물 꼴로 앞 저장 지점이 20 칸 안에 드나) (망 없음) |
 | `Test-ProxyModelMap.py` | 상류 `tests/` | 모델 대체 — 게이트웨이 목록 조회 · 담아 두기 · 못 읽을 때의 규칙 · `PGPT_PROXY_MODEL_MAP` |
 | `Test-ProxyWebSearch.py` | 상류 `tests/` | Claude 웹서치 메움 — 알아보기 · 답 짓기 · 출처 주소 풀기(가짜로) · 도메인 필터 · 오류 갈래 |
 | `Test-ProxyGrok.py` | 상류 `tests/` | Grok 4 가 거부하는 필드 떼기 · chat 꼴 도구 설명 |
@@ -32,20 +32,22 @@
 | `codex_websearch_check.py` | (우리 것) | Codex 검색 메움 — `/v1/alpha/search` 요청이 Responses 웹 검색으로 가고 `SearchResponse` 로 돌아오나 · hosted 도구에 설명을 안 붙이나 |
 | `hoist_live_check.py` | (우리 것) | 그림 끌어내기를 **실호출로** — 직결은 못 보고 프록시 너머는 그림을 맞히나 (눈가림) |
 | `image_lane_probe.py` | (우리 것) | 게이트웨이가 **어느 자리**의 그림을 보나 — 다섯 갈래를 한 그림으로 재는 눈가림 프로브 |
+| `cache_ttl_probe.py` | (우리 것) | 캐시 1시간이 게이트웨이 너머에서 서나 — 1시간 갈래와 대조 갈래를 시작 간격 8분으로 두 번씩 스트리밍으로 부른다(캐시 쓰기 항은 스트리밍에만 온다 · 회사 · 결정 0174). 결과는 곁 `cache-ttl-probe-<시각>.json` |
+| `cache_usage_report.py` | (우리 것) | 실제 세션이 캐시를 얼마나 읽고 다시 썼나 — Claude Code 대화 기록(`~/.claude/projects`)의 사용량을 요청마다 읽어 5분 안의 다시 쓰기(깨짐)와 5분 넘게 쉰 뒤의 읽기(1시간)를 센다. 프록시 판과 무관하다 |
 | `image_tail_probe.py` | (우리 것) | `tool_result` 가 **마지막**일 때(= `Read` 의 실제 꼴) 어디에 두면 보나 |
 | `watchdog.ps1` | (우리 것 · PAISetup `284757c`) | 감시자 — 5초마다 `opus5_proxy.py` 를 돌리는 파이썬 프로세스가 있나 보고, 없으면 `pythonw` 로 창 없이 다시 띄운다. 뮤텍스(이름 `PGPTProxy-Supervisor`)로 한 개만 돌고, 프록시 파일과 같은 폴더에 감시 기록(watchdog.log)을 남긴다 |
 
 ## 판과 우리 덩어리
 
-- **판 번호는 두 칸이다 — 지금 `33.5`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 마지막으로 받은 상류 판이라
+- **판 번호는 두 칸이다 — 지금 `33.7`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 마지막으로 받은 상류 판이라
   33 에 선다. 뒤 칸은 그 위에 우리가 얹은 덩어리 수고, 앞으로 우리 고침은 이 칸이 센다
-  ⚠ **`/health` 는 사람이 읽기 좋게 `33.5` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
+  ⚠ **`/health` 는 사람이 읽기 좋게 `33.7` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
   점 찍힌 문자열을 그대로 견주면 `"9" > "10"` 이 되기 때문이다. 설치기는 그렇게 견주어 낮으면 갈아 끼운다
   (`install.ps1` 프록시 칸)
   ⚠ **정수 한 칸(`17`·`26`)이 도는 자리도 받는다** — 옛 판과 상류 판은 두 이름이 없어 「못 읽었다」로 떨어지고,
   그때는 **갈아 끼우는 쪽으로 기운다.** 반대로 두면 옛 프록시가 영영 안 바뀐다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **우리 덩어리 다섯** — 상류 v33 에 없는 것이다.
+- **우리 덩어리 일곱** — 상류 v33 에 없는 것이다.
   ⑴ **압축 간결 지시 끔**(`COMPACT_CONCISE` 의 기본값 `"0"` · 자체 검사 한 칸) — 상류는 켬이다. 우리는 1M 창이라
   압축이 드물고, 드물게 하는 압축을 짧게 줄이면 잃는 것이 더 크다(결정 0082). `Test-ProxyStreaming.py` 의 압축 HTTP
   경로 시험이 이 기본값을 단언한다
@@ -69,6 +71,20 @@
   클라우드를 200 차단 페이지로 받아 한 주소도 못 풀고, 켜 두면 검색 턴마다 차단될 바깥 요청이 필터 로그에 쌓인다.
   `PGPT_PROXY_WEB_SEARCH_RESOLVE=1` 이 켠다. 자체 검사의 기본값 줄이 이를 단언하고, `Test-ProxyWebSearch.py` 는
   스위치를 손으로 세워 기본값과 무관하게 돈다
+  ⑹ **옮긴 그림 묶음의 캐시 표식**(`_mark_hoisted_run` · 결정 0175) — 마지막 user 메시지에서 그림을 옮겼으면 그 묶음의
+  빠진 쪽에 그 메시지의 표식을 본떠 단다(끝에 표식이 있으면 묶음 앞 `tool_result` 에, 앞에 있으면 묶음의 마지막 이름표에). 캐시는
+  표식에서 뒤로 20 칸까지만 앞 요청의 저장 지점을 찾는데, 옮기기가 그림 한 장을 두 칸(이름표 · 그림)으로 늘려 그림 많은 턴이
+  그 창을 넘긴다 — 그 턴은 대화 전체를 캐시 없이 다시 쓴다. 표식 한도(4)가 찼거나 그 메시지에 표식이 없으면 안 단다.
+  ⚠ 게이트웨이는 요청을 Bedrock Converse 로 옮긴다(`../Claude-Posco.setting.md`) — Converse 의 캐시 표식은 `cachePoint` 블록뿐이고
+  게이트웨이 너머 캐시가 걸리는 것은 실측이니(`../ENV-posco.md`), 표식은 그 블록으로 옮겨 선다. 그래서 표식은
+  `tool_result` 뒤 · 글 뒤에만 단다. 그림 바로 뒤의 `cachePoint` 는 문서에도 실측에도 없다. ⚠ Bedrock 은 잇단 `tool_use` ·
+  `tool_result` 를 한 칸으로 안 묶고 블록마다 센다는 남의 실측이 있다 — 그 셈법에서는 도구를 열 개 넘게 병렬로 부른 턴이 그림 없이도
+  창 밖이고, 그것은 프록시가 못 구한다. 이 덩어리가 구하는 것은 한 도구 결과에 그림이 몰린 턴(PDF 쪽 · 캡처)이다.
+  자체 검사의 표식 칸과 `Test-ProxyImages.py` 의 실물 꼴 칸(Claude Code 2.1.304 의 표식 배치 · 그림 12장에서 고치기 전 28 칸 →
+  고친 뒤 20 칸 안 · Read 한 번에 그림 20장은 두 셈법 다 44 칸 → 20 칸 안)이 이를 단언한다
+  ⑺ **사용량 칸**(`merge_usage` · `usage_text` · 결정 0175) — Claude 응답의 입력 · 캐시 읽기 · 캐시 쓰기 · TTL 별 쓰기 항을 기존
+  `stream …` · `complete …` 줄에 숫자로 싣는다(아래 「진단」 칸). 자체 검사의 사용량 칸(게이트웨이 꼴 · 직결 꼴)과
+  `Test-ProxyStreaming.py` 의 진단 줄 시험이 이를 단언한다
 - **우리가 먼저 재고 지은 셋은 상류가 같은 꼴로 들여 상류 코드가 든다** — 제미나이 이름 표(v30) · 그림
   끌어내기(v31 · 이슈 #76) · Claude 웹서치 메움(v27 · 이슈 #118 · 결정 0087). 무엇이 같았고 무엇을 더 받았나는 결정 0163.
   그 가운데 그림 끌어내기가 옮기는 블록과 웹서치 메움의 출처 풀기 기본값은 위 ⑸ 가 바꾼다
@@ -98,7 +114,7 @@
 | 빈 도구 `description` 채우기 — chat 꼴(`{"type":"function","function":{…}}`)은 `function` 안에(v33) · **(우리 것)** 이름 없는 hosted 도구는 건너뛴다(위 ⑶) | **쓴다 · 6회** (Claude Code) · Codex 를 루프백에 태우면 `/v1/responses` 에서도 걸린다(탐침 `tool_descriptions_filled=1`) |
 | **Claude 웹서치 메움**(v27 · v28) — 서버 도구 `web_search_*` 를 선언하고 마지막 user 글이 하위 요청 머리(「Perform a web search for the query:」)로 시작하는 요청을 게이트웨이의 제미나이 검색(`googleSearch` grounding · `PGPT_PROXY_WEB_SEARCH_MODEL` · 기본 `gemini-3.6-flash`)으로 메워 `server_tool_use` · `web_search_tool_result` · `text` 세 칸으로 지어 돌려준다. 출처는 구글 경유 주소 그대로 싣는다 — `PGPT_PROXY_WEB_SEARCH_RESOLVE=1` 이면 PC 에서 HEAD 로 풀어 원래 주소로 싣는다(하나에 4초 · 합 5초 · 기본 끔 · 우리 것 ⑸). 허용 · 막는 도메인은 눕혀 견준다. 게이트웨이에 못 닿거나 90초를 넘기면 검색 오류 칸으로 답한다 · `/health` 의 `web_search_filled` · `web_search_failed` · `web_search_empty` · `web_search_resolve` · 끄려면 `PGPT_PROXY_WEB_SEARCH=0` | **쓴다** — 게이트웨이가 그 선언을 클라이언트 `tool_use` 로 되돌려 아무도 검색하지 않아 결과 0 건이던 자리다(사내 실측 2026-10-08 · #118). 제미나이 grounding 이 실제 웹을 찾는 것은 실측됐다. 머리로 알아보는 조건과 허용 도메인 견주기는 회사에서 섰다(2026-10-18 · `web_search_filled` 4 · `empty` 0 · `failed` 0 · 허용 도메인 칸의 출처 셋이 다 python.org · #193 ③㉢). 출처 풀기는 회사에서 못 선다 — 사내 웹필터가 구글 클라우드를 200 차단 페이지로 받아, 3xx 와 `Location` 을 기다리는 풀기가 출처 14 개에 하나도 못 풀었다(한 건 0.17초에 진다). 그래서 기본 끔이다(결정 0165). Claude 를 안 거치므로 상류 호출은 하나다. ⚠ 출처 풀기를 켜면 PC 에서 `vertexaisearch.cloud.google.com` 으로 직접 나간다 — 질의 글은 안 나가고 리디렉트 토큰만 나간다. ⚠ 게이트웨이가 왜 그 선언을 바꾸는지는 밖에서 안 보여, 게이트웨이가 바뀌면 이 칸이 조용히 어긋날 수 있다 |
 | **(우리 것)** Codex 의 `/v1/alpha/search`를 게이트웨이의 `/v1/responses` + `web_search`로 메워 `output` · `results`를 돌려준다(위 ⑵) · 못 닿음 · 90초 · 상태 코드 가르기는 위 칸의 갈래를 함께 탄다 | **쓴다 · 상류 능력 사내 실측 2026-10-09** — 같은 게이트웨이의 Responses 웹 검색이 `search`와 `open_page`를 수행하고 URL 인용을 돌려주는 것을 확인했다(#121). Codex 설정은 루프백 `base_url` · `supports_standalone_web_search=true` · `web_search="live"`. 계수는 Claude 웹서치와 같은 `web_search_*` 를 쓴다 — `/health` 로는 둘이 안 갈린다 |
-| **그림 끌어내기**(v31 · `_hoist_tool_images`) — `tool_result` 안의 `image` 를 같은 user 메시지의 마지막 `tool_result` **바로 뒤**로 옮기고, 옮긴 그림마다 앞에 `[image from tool result <id>]` 이름표를, 빈 자리에 「[image attached after this tool result]」를 적는다. `document`(PDF)는 안 옮기고 그 자리에 둔다(우리 것 ⑸). 역할 합치기 **뒤**에 돌고, 옮기는 그림의 `cache_control` 은 뗀다 · `/health` 의 `hoisted_tool_images`(옮긴 그림 수) · 끄려면 `PGPT_PROXY_HOIST_TOOL_IMAGES=0` | **쓴다** — 게이트웨이가 `tool_result` 안의 그림만 200 에 버리고 같은 바이트가 형제 블록으로 서면 읽는다(눈가림 실측 2026-09-22 · 이슈 #76). ⚠ 그림을 `tool_result` **앞**에 끼우면 짝 검사가 400 을 낸다 — 그래서 뒤로만 간다. 이 자리(이름표 · 뒤따르는 글 앞)는 회사에서 섰다(2026-10-18 · 눈가림 어긋남 0 · Claude Code 가 PNG 글자 `KRAKEN-7391-VOLT` 를 맞혔다 · #193 ③㉠). ⚠ **PDF(`document`)는 옮기지 않는다** — 게이트웨이가 자리와 상관없이 삼킨다(직결 · `tool_result` 안 · 옮긴 자리 셋 다 「안 보인다」 · #193 ③㉡ · 결정 0165). 옮기면 `tool_result` 에 「붙였다」는 표지만 남아 모델이 PDF 가 왔다고 믿는다. 회사에서 PDF 를 읽는 길은 페이지를 그림으로 그려 여는 것이다 — Read 가 poppler(`pdftoppm` · 설치기가 Claude 와 함께 깐다)로 스스로 그렇게 열어 이 그림 옮기기를 탄다(회사 실측 2026-10-18 · 두 판 다 첫 표의 값을 맞혔다 · #193 ③㉡ 뒤집기 코멘트). 감긴 PDF 는 `drm-office-read`(결정 0094) |
+| **그림 끌어내기**(v31 · `_hoist_tool_images`) — `tool_result` 안의 `image` 를 같은 user 메시지의 마지막 `tool_result` **바로 뒤**로 옮기고, 옮긴 그림마다 앞에 `[image from tool result <id>]` 이름표를, 빈 자리에 「[image attached after this tool result]」를 적는다. `document`(PDF)는 안 옮기고 그 자리에 둔다(우리 것 ⑸). 역할 합치기 **뒤**에 돌고, 옮기는 그림의 `cache_control` 은 뗀다 · 마지막 user 메시지의 묶음 양쪽에 캐시 표식을 세운다(우리 것 ⑹) · `/health` 의 `hoisted_tool_images`(옮긴 그림 수) · `hoist_cache_marks`(단 표식 수) · `hoist_cache_marks_skipped`(한도가 차 못 단 수) · 끄려면 `PGPT_PROXY_HOIST_TOOL_IMAGES=0` | **쓴다** — 게이트웨이가 `tool_result` 안의 그림만 200 에 버리고 같은 바이트가 형제 블록으로 서면 읽는다(눈가림 실측 2026-09-22 · 이슈 #76). ⚠ 그림을 `tool_result` **앞**에 끼우면 짝 검사가 400 을 낸다 — 그래서 뒤로만 간다. 이 자리(이름표 · 뒤따르는 글 앞)는 회사에서 섰다(2026-10-18 · 눈가림 어긋남 0 · Claude Code 가 PNG 글자 `KRAKEN-7391-VOLT` 를 맞혔다 · #193 ③㉠). ⚠ **PDF(`document`)는 옮기지 않는다** — 게이트웨이가 자리와 상관없이 삼킨다(직결 · `tool_result` 안 · 옮긴 자리 셋 다 「안 보인다」 · #193 ③㉡ · 결정 0165). 옮기면 `tool_result` 에 「붙였다」는 표지만 남아 모델이 PDF 가 왔다고 믿는다. 회사에서 PDF 를 읽는 길은 페이지를 그림으로 그려 여는 것이다 — Read 가 poppler(`pdftoppm` · 설치기가 Claude 와 함께 깐다)로 스스로 그렇게 열어 이 그림 옮기기를 탄다(회사 실측 2026-10-18 · 두 판 다 첫 표의 값을 맞혔다 · #193 ③㉡ 뒤집기 코멘트). 감긴 PDF 는 `drm-office-read`(결정 0094). ⚠ **옮기면 블록 수가 늘어 캐시가 앞 요청을 못 찾을 수 있다** — 캐시는 표식에서 뒤로 20 칸까지만 찾고, `tool_result` 안에서 한 칸이던 그림이 밖에서는 이름표와 두 칸이 된다. 그래서 묶음 양쪽에 표식을 세운다(우리 것 ⑹). `hoist_cache_marks_skipped` 가 오르면 그 턴들은 대화 전체를 캐시 없이 다시 쓴 것이다 |
 | 상류 연결 풀 — 30초(`UPSTREAM_IDLE_TTL`) 넘게 논 연결은 재사용하지 않고 닫는다 · `/health` 의 `upstream_expired` | **쓴다** — 게이트웨이가 keep-alive 를 끊은 뒤 남은 연결을 집어 첫 요청이 지던 자리. 실측 `upstream_expired=8` · 재사용 82 |
 | Anthropic · OpenAI SSE 가 침묵하면 `KEEPALIVE_SEC`(기본 15초)마다 `: keepalive` 주석 한 줄을 클라이언트에 흘린다(상류 v18) — 게이트웨이가 생각 조각을 안 흘려 Claude Code 의 바이트 유휴 워치독이 끊던 자리. **완성된 이벤트 사이에만 끼운다**(v24). `PGPT_PROXY_KEEPALIVE_SEC=0` 이면 끈다 | **쓴다 · 132회** (Claude Code · 옛 판 실측). ⚠ 180초 벽은 못 넘는다 — 유휴가 아니라 요청 실행 시계다(`../ENV-posco.md`) |
 | **스트림 무결성**(v23 · v24) — SSE 는 늘 chunked 로 다시 싼다 · 끝 이벤트(`message_stop` · `response.completed` · `[DONE]`)를 확인하고, 없이 닫히면 끝 표시 없이 닫아 클라이언트가 잘린 응답으로 안다 · 오류 이벤트는 그대로 넘기고 센다 | **쓴다** — 옛 판에서 가짜 게이트웨이로 재현한 결함 둘을 막는다(2026-10-07): 이벤트 도중에 쉬면 주석이 이벤트 한가운데 끼어 그 이벤트가 깨지던 것 · 길이를 선언한 SSE 에 주석이 얹혀 끝 이벤트가 잘리던 것. 실제 게이트웨이에서 얼마나 잦은지는 모른다 |
@@ -106,7 +122,7 @@
 | **압축만 비스트리밍**(v25 · `PGPT_PROXY_COMPACT_UNSTREAM` · 기본 켬) — Claude Code 의 압축 요청을 알아보면(v26: 마지막 user 글이 `CRITICAL: Respond with TEXT ONLY` 로 시작하고 앞 4,000자 안에 요약 과제 문장) 상류엔 `"stream": false` 로 보내고 답을 다 받아 SSE 로 지어 낸다. 압축 안의 「Output token limit hit」 이어 쓰기도 같은 길(`kind=compact_continue`) | **쓴다 · 회사 실측 아직**(결정 0082) — 비스트리밍 경로에는 180초 상한이 없다(앞단 300초까지 산다 · 0051 실측). 압축은 도구를 안 부르니 그 경로의 도구 인자 유실과 무관하고, 압축 답에 도구 호출이 섞여 오면 내보내지 않고 오류로 돌린다. ⚠ **응답 머리가 올 때까지(최대 300초) 클라이언트로 바이트가 안 간다** — Claude Code 의 바이트 유휴 워치독이 그보다 길어야 하고, 자리 파일이 10분으로 심는다(0044 에서 사는 것) |
 | 압축 간결 지시(v24 · `PGPT_PROXY_COMPACT_CONCISE`) — 압축 지시 끝에 「3000토큰 안팎 · 분석은 다섯 문장 안」을 덧붙인다 | **끔 (우리 것 · 결정 0082)** — 상류는 켬이다. 켜려면 `=1`. ⚠ 끈 대가로 압축 출력이 18,000 상한에 닿을 수 있다 — 닿으면 Claude Code 가 같은 압축 안에서 이어 쓴다 |
 | 전체 비스트리밍(`PGPT_PROXY_CLAUDE_UNSTREAM=1` · 기본 끔) — 압축이 아닌 Claude 턴까지 위 길로 보낸다. 필수 도구 인자가 빠진 도구 호출은 내보내지 않고 오류로 돌린다 | **논다** — ⚠ **도구를 쓰는 클라이언트에는 켜지 않는다 — 큰 도구 인자가 빈다**(결정 0051 실측 2026-09-17: 켠 판에서 `Edit` 호출이 `input={}` 로 오고 `stop_reason` 은 정상 `tool_use`, 같은 판의 작은 `Bash` 는 멀쩡, 끄면 통한다 · 재현 3회 · 까닭은 게이트웨이 안). 도구를 안 쓰는 쪽(아뜰리에)은 켜서 180초 벽을 비껴갈 수 있다. 옛 우리 스위치 이름은 `PGPT_PROXY_UNSTREAM` 이었다 |
-| 진단(v19 · v21 · v23 · v24 · v29) — 시한 근방의 절단을 `execution_cuts`(스트림 180초) · `execution_cuts_300`(비스트리밍 300초) 으로 · 오류 이벤트·잘린 스트림을 `stream_errors` · `stream_incomplete` 로 센다. 생성 요청마다 `request …`(모델 · effort · thinking · `max_tokens`) · `stream …`(첫 이벤트 · 첫 글자 시각 · 출력 토큰 · 종료 사유) · `complete …`(대기 · 머리 · 상류 · 전체 초) 줄과 게이트웨이 요청 번호(`gw=`)를 `proxy.log` 에 남긴다 | **쓴다** — 위 상한과 압축 길이 맞나를 회사에서 재는 자다. 프롬프트·응답 글자·인증 헤더는 안 남긴다. 요청 번호는 게이트웨이 팀이 제 장부를 찾는 열쇠다(옛 판에서 우리가 얹던 것 · #67) |
+| 진단(v19 · v21 · v23 · v24 · v29) — 시한 근방의 절단을 `execution_cuts`(스트림 180초) · `execution_cuts_300`(비스트리밍 300초) 으로 · 오류 이벤트·잘린 스트림을 `stream_errors` · `stream_incomplete` 로 센다. 생성 요청마다 `request …`(모델 · effort · thinking · `max_tokens`) · `stream …`(첫 이벤트 · 첫 글자 시각 · 출력 토큰 · 종료 사유 · 사용량) · `complete …`(대기 · 머리 · 상류 · 전체 초) 줄과 게이트웨이 요청 번호(`gw=`)를 `proxy.log` 에 남긴다. **(우리 것)** 사용량은 Claude 응답의 `in=`(입력) · `cache_read=` · `cache_write=` · `cache_write_ttl=`(TTL 별 쓰기 항 · 게이트웨이가 안 주면 `none`) 네 칸이다 — 스트림은 `stream …` 줄에, 그대로 중계한 비스트리밍(자동 모드 분류기 등)과 압축은 `complete …` 줄에 실린다 | **쓴다** — 위 상한과 압축 길이 맞나를 회사에서 재는 자다. 사용량 칸은 어느 턴이 캐시를 놓치나(`cache_write` 가 대화 크기만큼 튄다) · 곁 호출(`model=claude-sonnet-5` 등)이 캐시를 타나 · 1시간이 서나를 가리는 자다(결정 0175). 회사 실측(사외 VDI 2026-10-20 · #206) — 분류기 곁 호출은 매번 약 5만을 읽고(`cache_write` 는 비스트리밍이라 `unknown`), `cache_write_ttl` 은 늘 `none` 이다. 프롬프트·응답 글자·인증 헤더는 안 남긴다. 요청 번호는 게이트웨이 팀이 제 장부를 찾는 열쇠다(옛 판에서 우리가 얹던 것 · #67) |
 | **기록 보존**(v29) — `proxy.log` 가 1 MB 를 넘으면 `proxy.log.1` 로 넘기고, 넘기기가 막히면 2 MB 에서 멈춘다 · 처리기에서 안 잡힌 예외를 `unhandled error …` 한 줄로, 클라이언트 끊김을 짧은 한 줄로 남긴다 · 숫자 아닌 · 음수 `Content-Length` 와 짧은 본문은 넘기지 않고 400 · `/health` 의 `max_request_bytes` | **쓴다** — 요청 바이트는 안 바뀐다. `pythonw` 아래에는 stderr 가 없어 안 잡힌 예외가 어디에도 안 남던 자리다. 180초 절단 줄을 몇 시간 뒤에 읽어도 남는다 |
 | 입력 크기로 출력 상한 낮추기(v29 · `PGPT_PROXY_INPUT_READ_SEC_PER_MTOK` · 기본 `0`) | **논다** — 꺼져 있다. 값은 회사 `/health` 가 큰 `max_request_bytes` 곁에 `execution_cuts` 를 보인 뒤에 가른다. ⚠ 본문 바이트에는 base64 그림이 들어 그림 많은 대화를 길게 잰다 |
 | 응답 머리를 기다리다 클라이언트가 끊으면 상류 연결도 닫는다(v21) · `/health` 의 `client_cancellations` | **쓴다** — 게이트웨이가 이미 시작한 생성까지 멈춘다는 보장은 없다 |
@@ -141,7 +157,7 @@
   켜면(기본 끔) 그것만 게이트웨이가 아니라 `vertexaisearch.cloud.google.com` 으로 나간다(위 웹서치 칸)
 - `proxy.log` · `proxy.log.1` 과 `opus5_proxy.pid` 를 **제 파일 곁에** 쓴다 — 그래서 설치기는 이 파일을 실행 폴더로 복사해 띄운다.
   저장소·홈 사본에서 바로 띄우면 그 곁에 남고, 저장소는 `.gitignore` 가 받는다
-- `GET /health` — `status` · `service` · `version` · `pid` · 계수(`trimmed_prefills` · `hoisted_tool_images` · `web_search_filled` · `web_search_failed` ·
+- `GET /health` — `status` · `service` · `version` · `pid` · 계수(`trimmed_prefills` · `hoisted_tool_images` · `hoist_cache_marks` · `hoist_cache_marks_skipped` · `web_search_filled` · `web_search_failed` ·
   `web_search_empty` · `model_substitutions` · `execution_cuts` · `execution_cuts_300` · `max_tokens_hits` 등) · 모델 목록(`model_list_size` ·
   `model_list_fetches` · `model_list_failures`)과 지금 걸린 손잡이(`compact_concise` · `compact_unstream` · `stream_max_tokens` · `hoist_tool_images` ·
   `web_search_resolve` · `model_list` 등)
@@ -171,6 +187,8 @@ PGPT_PROXY_PORT=18907 python -X utf8 posco/pgpt-proxy/opus5_proxy.py &
 python -X utf8 posco/pgpt-proxy/hoist_live_check.py 18907      # 보정 없는 판은 못 보고 이 판은 맞히나
 python -X utf8 posco/pgpt-proxy/image_lane_probe.py claude-opus-5 gpt-5.2   # 어느 자리의 그림을 보나
 python -X utf8 posco/pgpt-proxy/image_tail_probe.py claude-opus-5           # tool_result 가 마지막일 때
+python -X utf8 posco/pgpt-proxy/cache_ttl_probe.py                         # 캐시 1시간이 서나 — 8분 남짓 걸린다 (결정 0174)
+python -X utf8 posco/pgpt-proxy/cache_usage_report.py                      # 오늘 세션이 캐시를 읽었나 · 어디서 다시 썼나 (결정 0174 · 0175)
 ```
 
 ⚠ **눈가림 셋(`hoist_live_check.py` · `image_lane_probe.py` · `image_tail_probe.py`)은 정답을 화면에 안 찍는다** —

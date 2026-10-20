@@ -13,6 +13,8 @@ user 턴에 바로 붙인 그림은 모델에 넘기지만 tool_result 안의 �
 ⚠ 본문을 고치는 갈래(모델 이름 복원 · 출력 상한 · 빈 글 조각 정리 · 끝 assistant 자르기 · user 턴 합치기)를 모두
   타게 짰다 — 고치는 갈래가 그림을 떨어뜨려도 여기서 걸린다.
 ⚠ 손잡이(PGPT_PROXY_HOIST_TOOL_IMAGES=0)를 끄면 tool_result 를 건드리지 않는 것도 잰다.
+⚠ 옮긴 묶음은 캐시 표식 사이에 서야 한다 — 그림 한 장이 밖에서는 두 칸이라, 그림 많은 턴은 앞 요청의 저장 지점이 캐시가 찾는
+  20 칸 밖으로 밀린다(결정 0175). 그 칸들은 Claude Code 2.1.304 가 실제로 보낸 표식 배치를 본뜬 꼴로 칸 수를 센다.
 """
 from __future__ import annotations
 
@@ -156,6 +158,75 @@ def hoist_problem(sent: list, got: list) -> str:
     return ""
 
 
+def claude_code_turn(images: list[dict], mark: dict, *, system_mark: dict | None = None) -> dict:
+    """Claude Code 2.1.304 가 그림 여러 장을 한 턴에 Read 한 다음 요청의 꼴 — 2026-10-20 가짜 게이트웨이로 잰 배치를 본떴다.
+
+    표식 셋: system 블록 셋 가운데 뒤 둘 · 끝의 대화 중간 system 메시지(그 턴의 알림). 첫 user 뒤에도 표식 없는 system
+    메시지가 선다. 프록시는 system 메시지를 앞 user 에 합치므로 끝 표식이 옮긴 그림 묶음 **뒤**에 선다.
+    """
+    ids = [f"toolu_p{n:02d}" for n in range(len(images))]
+    head = system_mark or mark
+    return {
+        "model": "claude-opus-5", "max_tokens": 64000, "stream": False,
+        "system": [{"type": "text", "text": "billing"}, {"type": "text", "text": "You are Claude Code.", "cache_control": head},
+                   {"type": "text", "text": "# Doing tasks", "cache_control": head}],
+        "tools": [{"name": "Read", "description": "Read a file", "input_schema": {"type": "object"}}],
+        "messages": [
+            {"role": "user", "content": [{"type": "text", "text": "<system-reminder>ctx</system-reminder>"},
+                                         {"type": "text", "text": "슬라이드 그림들을 읽어 줘"}]},
+            {"role": "system", "content": "# Environment"},
+            {"role": "assistant", "content": [{"type": "text", "text": "그림을 연다."},
+                                              *[{"type": "tool_use", "id": i, "name": "Read", "input": {"file_path": f"C:/t/p{n}.png"}}
+                                                for n, i in enumerate(ids)]]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": i, "content": [image]}
+                                         for i, image in zip(ids, images)]},
+            {"role": "system", "content": [{"type": "text", "text": "<total_tokens>9</total_tokens>", "cache_control": mark}]},
+        ],
+    }
+
+
+# 프롬프트 캐시는 표식에서 뒤로 20 칸까지만 앞 요청의 저장 지점을 찾는다(Anthropic · Bedrock 문서). 잇단 tool_use · tool_result 를
+# 한 칸으로 치는 것은 Anthropic 이 Claude API 에만 적었고, Bedrock 에서는 블록마다 세더라는 남의 실측이 있다(결정 0175) — 그래서
+# 칸 수는 두 셈법으로 다 잰다.
+LOOKBACK = 20
+
+
+def lookback_gap(messages: list, saved_block: int = -1, *, collapse: bool = True) -> int | None:
+    """앞 요청의 저장 지점에서 이번 마지막 user 메시지의 가장 가까운 표식까지 칸 수. 표식이 없으면 None.
+
+    앞 요청의 저장 지점은 끝에서 둘째 user 메시지의 `saved_block` 번째 블록 — 앞 요청이 그 메시지에 단 마지막 표식 자리다.
+    그 표식은 다음 요청에는 실려 오지 않으니 부르는 쪽이 댄다. 기본은 마지막 블록(Claude Code 가 매 요청 마지막 메시지의 마지막
+    블록에 표식을 단다). `collapse` 가 참이면 잇단 tool_use · tool_result 를 한 칸으로, 거짓이면 블록마다 센다. 캐시는 이 수가
+    LOOKBACK 이하여야 앞 요청을 읽는다.
+    """
+    spots, pos = [], -1
+    for index, message in enumerate(messages):
+        previous = None
+        for block in message["content"] if isinstance(message["content"], list) else [{"type": "text"}]:
+            kind = block.get("type")
+            if not (collapse and kind in ("tool_use", "tool_result") and kind == previous):
+                pos += 1
+            previous = kind
+            spots.append((index, pos, "cache_control" in block))
+    users = [i for i, m in enumerate(messages) if m["role"] == "user"]
+    saved = [pos for index, pos, _ in spots if index == users[-2]]
+    marks = [pos for index, pos, marked in spots if index == users[-1] and marked]
+    if not saved or not marks:
+        return None
+    return min(pos - saved[saved_block] for pos in marks if pos >= saved[saved_block])
+
+
+def mark_order(body: dict) -> list[str]:
+    """요청이 캐시에 놓이는 차례(tools → system → messages)대로 표식의 TTL. 긴 TTL 이 짧은 것보다 앞에 서야 한다."""
+    blocks = [*(body.get("tools") or []), *(body.get("system") or [])]
+    for message in body["messages"]:
+        for block in message["content"]:
+            blocks.append(block)
+            if block.get("type") == "tool_result" and isinstance(block.get("content"), list):
+                blocks += block["content"]
+    return [b["cache_control"].get("ttl", "5m") for b in blocks if "cache_control" in b]
+
+
 def main() -> int:
     work = tempfile.TemporaryDirectory()
     proxy.LOG_PATH = Path(work.name) / "proxy.log"
@@ -247,6 +318,79 @@ def main() -> int:
     got = SEEN[-1]["messages"][-1]["content"]
     check("연속 user 턴 합치기에서 그림 유지", status == 200 and got[-1] == small and big in got
           and not any(i.get("type") == "image" for i in got[0]["content"]), f"HTTP {status}")
+
+    # 옮긴 묶음의 캐시 표식 — 그림이 많아도 앞 요청의 저장 지점이 20 칸 안에 들어야 캐시를 읽는다(그림 한 장이 두 칸이다)
+    one_hour, five_min = {"type": "ephemeral", "ttl": "1h"}, {"type": "ephemeral"}
+
+    def marks_of(name: str) -> int:
+        return proxy.stats().get(name, 0)
+
+    for ttl_name, mark in (("1h", one_hour), ("5m", five_min)):
+        payload = claude_code_turn([small] * 12, mark)
+        before = marks_of("hoist_cache_marks")
+        status = post(port, payload)
+        body = SEEN[-1]
+        got = body["messages"][-1]["content"]
+        gap = lookback_gap(body["messages"])
+        problem = f"HTTP {status}" if status != 200 else hoist_problem(payload["messages"][3]["content"], got)
+        if not problem and (gap is None or gap > LOOKBACK):
+            problem = f"앞 저장 지점까지 {gap} 칸 — 캐시가 읽는 창은 {LOOKBACK} 칸"
+        if not problem and len(mark_order(body)) > 4:
+            problem = f"표식이 {len(mark_order(body))} 개 — 한도 4"
+        if not problem and (marks_of("hoist_cache_marks") - before != 1 or got[11].get("cache_control") != mark):
+            problem = f"묶음 앞 tool_result 의 표식 {got[11].get('cache_control')} · 계수 {marks_of('hoist_cache_marks') - before}"
+        # ⚠ 블록마다 세는 셈법에서는 도구 12개를 병렬로 부른 턴이 그림이 없어도 창 밖이다(tool_use 12 + tool_result 12) — 프록시
+        #   몫 밖이라 이 칸은 묶어 세는 셈법으로만 잰다. 그림이 한 도구 결과에 몰린 꼴은 아래 PDF 칸이 두 셈법으로 다 잰다
+        check(f"Claude Code 실물 꼴 · 그림 12장 · {ttl_name} — 묶음 앞에 같은 표식, 앞 저장 지점이 {LOOKBACK} 칸 안", not problem, problem)
+
+    # Read 한 번이 PDF 20 쪽을 그림 20장으로 돌려준 턴 — 두 셈법 다 창 안이어야 한다
+    payload = claude_code_turn([small], one_hour)
+    payload["messages"][3]["content"][0]["content"] = [small] * 20
+    post(port, payload)
+    body = SEEN[-1]
+    gaps = {rule: lookback_gap(body["messages"], collapse=rule) for rule in (True, False)}
+    check(f"Read 한 번에 그림 20장(PDF 쪽) — 두 셈법 다 앞 저장 지점이 {LOOKBACK} 칸 안",
+          all(gap is not None and gap <= LOOKBACK for gap in gaps.values()), f"묶어 세기 {gaps[True]} · 블록마다 {gaps[False]} 칸")
+
+    payload = claude_code_turn([small] * 12, five_min, system_mark=one_hour)
+    post(port, payload)
+    order = mark_order(SEEN[-1])
+    check("system 1h · 끝 5m — 더한 표식은 5m 라 긴 TTL 이 앞에 선다",
+          order == ["1h", "1h", "5m", "5m"], order)
+
+    # 표식이 tool_result 에 있는 꼴(대화 중간 system 메시지가 없는 클라이언트) — 묶음의 마지막 이름표에 달려 다음 턴이 읽는다.
+    # 마지막 그림 뒤가 아니라 이름표 글 뒤다 — 게이트웨이가 옮기는 Converse cachePoint 의 그림 바로 뒤 자리는 문서에 없다(결정 0175)
+    payload = claude_code_turn([small] * 12, five_min)
+    payload["messages"].pop()
+    payload["messages"][-1]["content"][-1]["cache_control"] = five_min
+    post(port, payload)
+    first = SEEN[-1]["messages"][-1]["content"]
+    nxt = {**payload, "messages": [*SEEN[-1]["messages"],
+                                   {"role": "assistant", "content": [{"type": "text", "text": "봤다"}]},
+                                   {"role": "user", "content": [{"type": "text", "text": "다음", "cache_control": five_min}]}]}
+    post(port, nxt)
+    gap = lookback_gap(SEEN[-1]["messages"], max(i for i, b in enumerate(first) if "cache_control" in b))
+    check(f"표식이 tool_result 에 있는 꼴 — 마지막 이름표에 달리고 다음 턴이 {LOOKBACK} 칸 안",
+          first[-2].get("type") == "text" and first[-2].get("cache_control") == five_min
+          and "cache_control" not in first[-1] and gap is not None and gap <= LOOKBACK,
+          f"끝 둘째 블록 {first[-2].get('type')} {first[-2].get('cache_control')} · 다음 턴 {gap} 칸")
+
+    # 표식이 이미 넷이면 안 단다(400 을 안 만든다) · 못 단 수를 센다
+    payload = claude_code_turn([small] * 12, one_hour)
+    payload["tools"][0]["cache_control"] = one_hour
+    skipped = marks_of("hoist_cache_marks_skipped")
+    status = post(port, payload)
+    check("표식 넷이 찼으면 안 달고 못 단 수를 센다",
+          status == 200 and len(mark_order(SEEN[-1])) == 4 and marks_of("hoist_cache_marks_skipped") - skipped == 1,
+          f"HTTP {status} · 표식 {len(mark_order(SEEN[-1]))} · 못 단 수 {marks_of('hoist_cache_marks_skipped') - skipped}")
+
+    # 끝에 표식이 없으면(클라이언트가 캐시를 안 쓴다) 안 단다
+    payload = claude_code_turn([small] * 12, one_hour)
+    payload["messages"][-1]["content"][0].pop("cache_control")
+    before = marks_of("hoist_cache_marks")
+    post(port, payload)
+    check("마지막 메시지에 표식이 없으면 안 단다",
+          len(mark_order(SEEN[-1])) == 2 and marks_of("hoist_cache_marks") == before, mark_order(SEEN[-1]))
 
     # 손잡이를 끄면 tool_result 를 그대로 보낸다
     proxy.HOIST_TOOL_IMAGES = False

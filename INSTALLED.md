@@ -362,8 +362,7 @@ Python 이 깔리는 판에서는 Microsoft 의 「Visual C++ 재배포 가능 �
 | 기본 권한 모드 「permissions.defaultMode」 | Claude 를 고르면 `auto`(자동 모드 — 서브에이전트가 묻지 않고 돈다)로 둔다 |
 | 맡기기 러너 허락 `permissions.allow` | agy · Codex/Copilot 러너 스킬이 Claude 홈에 서면 그 러너를 부르는 `pythonw` 명령을 한 줄씩 허락한다 |
 | 일반 허용 규칙 일곱 `permissions.allow` | Claude 를 고르면 읽기 전용이거나 로컬에서 멱등인 호출을 허락해 자동 모드의 판정을 건너뛴다 — `gh issue view` · `git fetch` · `codex --version` · `agy --version` · `agy --help` 와 Git Bash · 윈도 임시 폴더 읽기. 쓰기 명령과 해석기 와일드카드는 안 든다 |
-| 서브에이전트 캐시 1시간 `env` 의 `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` | Claude 를 고르면 `1h` 로 둔다 — 서브에이전트(맡긴 레인)는 구독에서도 캐시가 5분이라, 몇 분 뒤 말을 이으면 대화 전체를 캐시 없이 다시 읽는다. 사내도 같다 — 회사 게이트웨이가 1시간 요청의 `anthropic-beta` 헤더를 버려도 캐시가 5분으로 돌아갈 뿐이고, 모르는 것을 200 으로 삼켜 요청은 안 깨진다 |
-| 메인 대화 캐시 1시간 `env` 의 `ENABLE_PROMPT_CACHING_1H` | 사내에서 Claude 를 고르면 `1` 로 둔다 — 회사 게이트웨이에 API 키로 붙으면 메인 대화도 캐시가 5분이라, 몇 분 쉴 때마다 대화 전체를 캐시 없이 다시 읽는다. 구독 로그인은 이미 1시간이라 사외에는 안 둔다(개인 API 키의 쓰기 값은 그 사람 몫이다). 사외로 옮기면 걷는다 |
+| 서브에이전트 캐시 1시간 `env` 의 `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` | 사외에서 Claude 를 고르면 `1h` 로 둔다 — 서브에이전트(맡긴 레인)는 구독에서도 캐시가 5분이라, 몇 분 뒤 말을 이으면 대화 전체를 캐시 없이 다시 읽는다. 사내에는 서브에이전트도 메인 대화(`ENABLE_PROMPT_CACHING_1H`)도 1시간을 안 둔다 — 1시간 캐시 쓰기는 5분보다 비싼데 회사 게이트웨이는 1시간 표식을 옮기지 않아 수명이 5분이다(결정 0174 · 실측은 `posco/ENV-posco.md` 「캐시 1시간」). 사내로 옮기면 우리가 둔 값을 걷는다 |
 | `env` 칸 | 설치가 심은 사용자 환경변수 가운데 `install.env` 의 공통값 · `NODE_EXTRA_CA_CERTS` 를 같이 두고, 키 · 맡기기 러너 값(`AGY_*` · `CC_BG_*`) · 설치가 물을 때 친 값은 환경변수에만 둔다. 앞 판이 둔 값이 `install.env` 에서 빠졌거나 `#settings-env` 가 빠지면 걷는다 |
 | 훅의 등록 | Claude 를 고르면 놓는다 — [아래 표](#claude-훅) |
 | 홈 SessionStart 훅 | Git Bash 가 있으면 칸과 상관없이 두며, Claude 세션을 연 저장소나 `~/repos` 의 설정 저장소가 든 세션 훅을 부른다 |
