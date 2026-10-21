@@ -27,7 +27,6 @@
 | 글의 결 · 번역투 되읽기 | `explain-the-essence` |
 | 감긴 오피스 문서에서 글자 뽑기 | `drm-office-read` |
 | 구성안을 회사 양식 덱으로 | `ppt-report` |
-| 구성안을 메일 · 웹 지면으로 | 아뜰리에(에이전트 `atelier`) |
 
 ## 본 후보와 가른 자리
 
