@@ -12,8 +12,9 @@
 #
 # 하는 일 — 차례대로
 #   당김 — 형제 저장소를 원격 쪽으로 맞춘다(main 위에서만 · 빨리감기로만 · 저장소마다 판정 한 줄 · 어디까지는 세션 훅
-#     몸통의 `--pull-target` 이 정한다 — 원격 끝, 저장소가 당김 문을 두었으면 그 문이 고른 커밋). 계획과 설치 판정이 지문을
-#     보므로 계획 앞에 서고(밀 것이 없는 회차에도 돈다), 져도 던지지 않는다
+#     몸통의 `--pull-target` 이 정한다 — 원격 끝, 저장소가 당김 문을 두었으면 그 문이 고른 커밋). 빨리감기를 막는 것이 이 배포가
+#     전에 심은 사본뿐이면 그것을 걷고 당긴다. 계획과 설치 판정이 지문을 보므로 계획 앞에 서고(밀 것이 없는 회차에도 돈다),
+#     져도 던지지 않는다
 #   배선 — .githooks/ 를 둔 저장소에 core.hooksPath 를 건다(git 훅은 clone 을 안 따라온다). 바꾸는 걸음 가운데 맨 앞이다 —
 #     뒤가 무엇으로 죽든 커밋 게이트만은 서야 한다(아래 「실행 순서」 칸)
 #   배포 — 진본을 홈과 형제 저장소로 민다. 무엇이 어디로 가나의 표는 `docs/deploy-targets.md` 가 든다(여기 옮겨 적지 않는다).
@@ -30,10 +31,12 @@
 #   저장소의 .claude/settings.json 은 훅 등록 파일이라 배포한다.
 #
 # 기본 실행이 걷는 것은 우리 것이라는 기록이 있는 것뿐이다 — 홈 씨앗 · 사내 환경 문서는 이 저장소 이력이 그 자리에서 지운 파일을
-# (`Get-SeedColumn`), 규범 · 룰 · 에이전트 · 스킬은 손이 제가 놓았다고 기록한 것을(손의 머리말) 걷는다. 기록 없이 원본에만 없는
+# (`Get-SeedColumn`), 규범 · 룰 · 에이전트 · 스킬은 손이 제가 놓았다고 기록한 것을(손의 머리말) 걷는다. 형제 저장소에 커밋 안 된 채
+# 남아 당김을 막는 사본은 내용이 이 저장소 이력의 어느 판과 바이트로 같을 때만 되돌리거나 지운다(`Clear-PlantedCopies`). 기록 없이 원본에만 없는
 # 씨앗 · 메모리 파일은 -Prune 을 줄 때만 걷고, 기본 실행에서는 후보만 알린다.
 # 이미 맞는 것은 건드리지 않아 몇 번을 돌려도 안전하다. 덮거나 걷는 파일은 ~/.claude/backups/deploy-<시각>/ 에 원본을
-# 남기고, 손이 덮거나 걷는 것은 손이 제 백업 자리에 남긴다.
+# 남기고, 손이 덮거나 걷는 것은 손이 제 백업 자리에 남긴다. 당김이 걷는 사본만은 안 남긴다 — 그 내용은 진본 커밋에 바이트로 있고
+# `↺` 줄이 그 커밋을 댄다.
 
 param([switch]$Yes, [switch]$Prune, [switch]$ShowUnchanged)
 
@@ -212,6 +215,66 @@ function Get-PullTarget($repo, $remote) {
     return @{ Sha = $tip; Note = '' }
 }
 
+function Clear-PlantedCopies($repo, $sha) {
+    # 당김을 막는 파일이 배포가 전에 심은 사본뿐이면 그것을 걷는다(#209). 받는 것: 저장소 · 병합할 커밋 · 읽는 것: `$src`(진본) ·
+    #   `$repoFiles`(배포 목록) · `$PullMergeTimeoutSec` · 내는 것: @{ Cleared; Why } — Cleared 는 걷은 파일마다 @{ Path; Rev }
+    #   (Rev 는 그 내용이 선 진본 커밋), Why 는 막는 파일을 두고 물러선 까닭이다. merge 는 안 한다 — 부른 쪽이 그대로 한다.
+    # 막는 파일 — 들어올 커밋이 건드리는 파일 가운데 작업나무에서 바뀌었거나 git 이 모르는(untracked) 것. 들어올 커밋이 안
+    #   건드리는 변경은 빨리감기를 안 막으니 보지도 않는다.
+    # 우리 사본 — 배포 목록에 들고, 스테이징 안 된 채(배포는 스테이징을 안 한다) 내용이 진본 이력의 어느 판과 바이트로 같은 것.
+    #   사람의 손질은 진본의 어느 판과도 안 맞는다. 해시는 진본의 줄끝 규칙으로 뜬다(`hash-object --path`) — 배포가 옮기는
+    #   것은 진본 작업나무의 바이트라, 같은 규칙으로 떠야 진본 이력의 blob 과 견줄 수 있다.
+    # ⚠ 하나라도 우리 것이 아니면 아무것도 안 걷는다 — 남은 하나가 어차피 당김을 막아, 걷기만 하고 전진은 못 한다.
+    # ⚠ 들어올 판과 같게 덮어써서는 안 풀린다 — git 은 작업나무를 들어올 내용이 아니라 인덱스와 견준다. 그래서 고친 파일은
+    #   되돌리고 untracked 파일은 지운다. 어느 쪽이든 그 내용은 진본 이력(Rev)에 남아 있다.
+    # ⚠ 빨리감기가 설 때(HEAD 가 그 커밋의 조상일 때)만 본다 — 갈라진 나무는 걷어도 merge 가 지고, 진 저장소에는 `copy` 걸음이
+    #   안 밀어 걷은 사본이 다시 안 선다. 나무가 앞서 있으면 merge 가 할 일이 없어 막을 것도 없다.
+    $a = Invoke-GitWait @('-C', $repo, 'merge-base', '--is-ancestor', 'HEAD', $sha) $PullMergeTimeoutSec
+    if ($a.Code -ne 0) { return @{ Cleared = @(); Why = "HEAD 가 $($sha.Substring(0, 7)) 의 조상이 아니라 빨리감기가 안 선다" } }
+    $d = Invoke-GitWait @('-C', $repo, 'diff', '--name-only', '-z', '--no-renames', 'HEAD', $sha) $PullMergeTimeoutSec
+    if ($d.Code -ne 0) { return @{ Cleared = @(); Why = "들어올 파일을 못 쟀다: $($d.Why)" } }
+    $incoming = @("$($d.Out)" -split "`0" | Where-Object { $_ })
+    if ($incoming.Count -eq 0) { return @{ Cleared = @(); Why = '' } }
+    $s = Invoke-GitWait @('-C', $repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames') $PullMergeTimeoutSec
+    if ($s.Code -ne 0) { return @{ Cleared = @(); Why = "작업나무를 못 쟀다: $($s.Why)" } }
+    $dirty = @{}   # 경로 -> 두 글자 상태(XY)
+    foreach ($e in @("$($s.Out)" -split "`0" | Where-Object { $_ })) { $dirty[$e.Substring(3)] = $e.Substring(0, 2) }
+    $blockers = @($incoming | Where-Object { $dirty.ContainsKey($_) })
+    if ($blockers.Count -eq 0) { return @{ Cleared = @(); Why = '' } }
+
+    $ours = @()
+    foreach ($p in $blockers) {
+        $xy = $dirty[$p]
+        if ($xy -ne ' M' -and $xy -ne '??') { return @{ Cleared = @(); Why = "$p 는 배포가 남기는 꼴이 아니다(상태 '$xy')" } }
+        if ($repoFiles -notcontains ($p -replace '/', '\')) { return @{ Cleared = @(); Why = "$p 는 배포 목록 밖의 파일이다" } }
+        $h = Invoke-GitWait @('-C', $src, 'hash-object', "--path=$p", '--', (Join-Path $repo $p)) $PullMergeTimeoutSec
+        $blob = "$($h.Out)".Trim()
+        if ($h.Code -ne 0 -or -not $blob) { return @{ Cleared = @(); Why = "$p 의 내용을 못 쟀다: $($h.Why)" } }
+        $l = Invoke-GitWait @('-C', $src, 'log', '--format=%H', '--raw', '--no-abbrev', '--no-renames', '--', $p) $PullMergeTimeoutSec
+        if ($l.Code -ne 0) { return @{ Cleared = @(); Why = "진본에서 $p 의 이력을 못 읽었다: $($l.Why)" } }
+        # 이력은 새것부터 온다 — 커밋 줄 다음에 그 커밋이 남긴 blob 줄(`:<옛 모드> <새 모드> <옛 blob> <새 blob> <상태>`)이 선다
+        $rev = ''; $at = ''
+        foreach ($ln in ("$($l.Out)" -split "`n")) {
+            if ($ln -match '^([0-9a-f]{40})\s*$') { $at = $Matches[1] }
+            elseif ($ln -match '^:\S+ \S+ \S+ ([0-9a-f]{40}) ' -and $Matches[1] -eq $blob) { $rev = $at; break }
+        }
+        if (-not $rev) { return @{ Cleared = @(); Why = "$p 는 진본의 어느 판과도 안 맞는다 — 사람이 고친 것으로 본다" } }
+        $ours += @{ Path = $p; Rev = $rev; Untracked = ($xy -eq '??') }
+    }
+
+    $done = @($ours | Where-Object { -not $_.Untracked })
+    if ($done.Count) {
+        $c = Invoke-GitWait (@('-C', $repo, 'checkout', '-q', '--') + @($done | ForEach-Object { $_.Path })) $PullMergeTimeoutSec
+        if ($c.Code -ne 0) { return @{ Cleared = @(); Why = "사본을 되돌리지 못했다: $($c.Why)" } }
+    }
+    foreach ($o in @($ours | Where-Object { $_.Untracked })) {
+        try { Remove-Item -LiteralPath (Join-Path $repo $o.Path) -Force -ErrorAction Stop }
+        catch { return @{ Cleared = $done; Why = "$($o.Path) 를 지우지 못했다: $($_.Exception.Message)" } }
+        $done += $o
+    }
+    return @{ Cleared = $done; Why = '' }
+}
+
 function Sync-Repos($repos) {
     # 받는 것: 저장소 뿌리 목록 · 내는 것: 없다 — 저장소마다 판정 한 줄(`↓ 당김` · `· 당김 건너뜀` · `! 못 당김`)을 반드시
     #   찍고, `$pulledRepos[<저장소>]` 에 「이번 회차에 밀어도 되나」를 적는다(`.git` 이 없는 저장소는 안 적는다). 던지지 않는다.
@@ -298,9 +361,17 @@ function Sync-Repos($repos) {
                 $pulledRepos[$repo] = $false
                 continue
             }
+            # 이 배포가 전에 심은 사본이 빨리감기를 막으면 걷는다 — 커밋 안 된 사본은 진본이 다음에 바뀌어 형제 커밋이 들어올 때마다
+            #   당김을 막고, 당김이 지면 아래 `copy` 걸음도 비켜서 저절로는 안 풀린다. 걷은 것은 줄에 진본 판과 함께 남긴다.
+            $planted = Clear-PlantedCopies $repo $to.Sha
+            foreach ($x in $planted.Cleared) {
+                $r7 = $x.Rev.Substring(0, 7)
+                Write-Host "↺ 사본 걷음  $repo — $($x.Path)  (진본 $r7 판의 사본 · 그 내용: git -C `"$src`" show ${r7}:$($x.Path))" -ForegroundColor Yellow
+            }
             $m = Invoke-GitWait @('-C', $repo, 'merge', '--ff-only', '-q', $to.Sha) $PullMergeTimeoutSec
             if ($m.Code -ne 0) {
-                Write-Host "! 못 당김  $repo — $($m.Why)" -ForegroundColor Red
+                $kept = if ($planted.Why) { " · 사본을 안 걷었다: $($planted.Why)" } else { '' }
+                Write-Host "! 못 당김  $repo — $($m.Why)$kept" -ForegroundColor Red
                 $pulledRepos[$repo] = $false
                 continue
             }
@@ -659,7 +730,7 @@ function Get-MainWorktree([string]$Dir) {
 # 층 — 없다. 아무것도 안 바꾼다
 # 하는 일 — 경로(`$src` · `$dst` · `$backup`)와 계획을 담을 통(`$plan` · `$same` · `$todo` · `$envDown` · `$prunable` ·
 #   `$gateReport`)을 세운다. `personal.conf` 의 REPOS · ROOT 에서 형제 저장소 자리(`$globalRuleTargets`)와 메모리
-#   자리(`$memTargets`)를 파생하고, Git Bash(`$bash`)를 찾는다
+#   자리(`$memTargets`)를 파생하고, 저장소마다 미는 파일 목록(`$repoFiles`)을 읽고, Git Bash(`$bash`)를 찾는다
 # 앞에서 받는 것 — 매개변수 셋(`-Yes` · `-Prune` · `-ShowUnchanged`) · 머리의 `$ErrorActionPreference = 'Stop'` 과 UTF-8 출력
 # 안 하는 것 — 저장소를 안 받는다(clone 은 세션 훅의 `--install` 이 한다) · 화면에 안 찍는다 — 걸리는 것은 `$todo` 에 쌓는다
 
@@ -730,6 +801,21 @@ if ((Test-Path (Join-Path $src 'deploy.targets.conf')) -or
     $todo += 'deploy.targets.d/ · deploy.targets.conf 는 더 안 읽는다 — 대상은 personal.conf 의 REPOS · ROOT 에서 파생한다. 지운다'
 }
 
+# 저장소마다 한 벌씩 미는 파일 목록 — 계획이 미는 목록을 짓고, 그보다 앞서 당김이 「당김을 막는 파일이 우리 사본인가」를 가를 때
+#   읽는다(`Clear-PlantedCopies`). 그래서 당김 앞인 여기서 읽는다.
+# 목록은 선언이 든다 — 재는 자(scripts/check-global-copies.sh)도 같은 파일을 읽어, 배열로 박으면 두 자가 손사본이 된다.
+$repoFilesConf = Join-Path $src 'deploy.repofiles.conf'
+$repoFiles = @()
+if (Test-Path $repoFilesConf) {
+    $repoFiles = @(Get-Content $repoFilesConf -Encoding UTF8 |
+        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+        Where-Object   { $_ } |
+        ForEach-Object { $_ -replace '/', '\' })
+}
+if ($repoFiles.Count -eq 0) {
+    $todo += 'deploy.repofiles.conf 없음(또는 빔) — 저장소 배포본이 하나도 안 깔린다'
+}
+
 # PATH 의 bash 는 WSL 일 수 있다(배포판이 없으면 진다) — git.exe 자리에서 Git Bash 를 바로 찾는다.
 $bash = @(
     (Get-Command git -ErrorAction SilentlyContinue |
@@ -742,19 +828,24 @@ $bash = @(
 # ============================ 당김 ============================
 # 층 — 저장소. 형제 저장소의 main 을 원격 쪽으로 빨리감기로 맞춘다
 # 하는 일 — `.git` 을 든 형제 저장소마다 fetch 를 동시에 띄우고, 저장소마다 어디까지 갈지 세션 훅 몸통에 물은 뒤
-#   (`Get-PullTarget` — 원격 끝, 저장소가 당김 문을 두었으면 그 문이 고른 커밋) `merge --ff-only` 를 차례로 한다. 저장소마다
-#   판정 한 줄(`↓ 당김` · `· 당김 건너뜀` · `! 못 당김` · 문을 못 물었으면 `! 당김 문을 못 물었다`)을 내고, 그 판정을
-#   `$pulledRepos` 에 남긴다
-# 앞에서 받는 것 — 준비의 `$globalRuleTargets` · `$bash`(몸통을 부른다)
+#   (`Get-PullTarget` — 원격 끝, 저장소가 당김 문을 두었으면 그 문이 고른 커밋) `merge --ff-only` 를 차례로 한다. merge 앞에서
+#   빨리감기를 막는 파일이 이 배포가 전에 심은 사본뿐이면 그것을 걷는다(`Clear-PlantedCopies`). 저장소마다 판정 한 줄(`↓ 당김` ·
+#   `· 당김 건너뜀` · `! 못 당김` · 문을 못 물었으면 `! 당김 문을 못 물었다`)을 내고 — 사본을 걷었으면 그 앞에 `↺ 사본 걷음`
+#   — 그 판정을 `$pulledRepos` 에 남긴다
+# 앞에서 받는 것 — 준비의 `$globalRuleTargets` · `$bash`(몸통을 부른다) · `$repoFiles`(걷을 수 있는 파일의 목록)
 # 안 하는 것 — 승인을 안 묻는다 · 던지지 않고 종료코드를 안 올린다 · 밀지 않는다(실행 단계의 `copy` 걸음이 `$pulledRepos` 를
-#   읽기만 한다) · 세션 훅의 당김 표식(`.git/claude-pull-attempted`)을 안 읽고 안 쓴다
+#   읽기만 한다) · 우리 사본이 아닌 변경(사람의 손질 · 목록 밖 파일 · 스테이징된 것 · 들어올 커밋과 무관한 것)은 안 건드린다 ·
+#   세션 훅의 당김 표식(`.git/claude-pull-attempted`)을 안 읽고 안 쓴다
 
 # ── 당김 — 계획을 짓기 앞에 형제 저장소를 원격까지 맞춘다 ──
 # 계획(`$targets` · `$plan`)과 설치 판정(`--needs-install`)은 지금 그 저장소에 있는 파일의 지문을 본다 — 당김이 그 뒤에 서면
 #   새로 들어온 선언이 이번 회차가 아니라 다음 회차에 깔린다. 밀 것이 하나도 없는 회차에도 저장소마다 판정 한 줄이 서고,
 #   `$plan` 에는 안 들어 승인 밖에서 돈다(다 최신이면 안 묻는다).
-# ⚠ 못 당기면 안 민다 — 뒤처진 저장소에 새 진본이 앉으면 그것이 M 이 되어 다음 세션 훅의 당김(`merge --ff-only`)을 막고,
-#   사람이 되돌리기 전까지 안 풀린다. 판정은 `$pulledRepos` 가 들고 `copy` 걸음은 그것을 읽기만 한다.
+# ⚠ 못 당기면 안 민다 — 뒤처진 저장소에 새 진본이 앉으면 그것이 M 이 되어 다음 당김(`merge --ff-only`)을 막는다. 이 당김은
+#   막는 것이 제 사본뿐이면 걷고 지나가지만, 세션 훅 · 부팅 라인의 당김은 못 걷어 다음 배포까지 막힌다. 판정은
+#   `$pulledRepos` 가 들고 `copy` 걸음은 그것을 읽기만 한다.
+# 당겨도 사본이 커밋 안 된 채 남는 자리는 이 규칙이 못 막는다 — 진본이 형제 커밋보다 앞서 있으면 `copy` 걸음이 새 진본을 심고,
+#   그 사본은 형제 커밋이 들어올 때 당김을 막는다. 그 자물쇠를 다음 회차의 `Clear-PlantedCopies` 가 푼다(#209).
 # main 위에서만 당긴다 — 작업 중인 브랜치를 건드리지 않는다(훅 `pull_ff` 와 같은 자). 배경이 아니라 동기다 — 자동 실행 라인은
 #   이 직후에 서버를 띄우므로, 당긴 것이 이번 회차에 실려야 한다.
 # 져도 던지지 않고 종료코드를 안 올린다 — 한 저장소의 실패는 그 저장소의 밀기만 막고, 낡은 판으로라도 뒤가 다 돈다.
@@ -794,19 +885,7 @@ $targets  = @()
 
 # 저장소마다 한 벌씩 있어야 하는 것들은 각 저장소로 간다 — 홈이 아니라 그 저장소 안에서 읽히는 자리(훅과 그 등록)다.
 #   몸통은 익명이라 저장소마다 바이트가 같다. 여기의 `.claude\settings.json` 은 저장소의 훅 등록 파일이지 홈의 개인
-#   설정이 아니다(머리글)
-# 목록은 선언이 든다 — 재는 자(scripts/check-global-copies.sh)도 같은 파일을 읽어, 배열로 박으면 두 자가 손사본이 된다.
-$repoFilesConf = Join-Path $src 'deploy.repofiles.conf'
-$repoFiles = @()
-if (Test-Path $repoFilesConf) {
-    $repoFiles = @(Get-Content $repoFilesConf -Encoding UTF8 |
-        ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
-        Where-Object   { $_ } |
-        ForEach-Object { $_ -replace '/', '\' })
-}
-if ($repoFiles.Count -eq 0) {
-    $todo += 'deploy.repofiles.conf 없음(또는 빔) — 저장소 배포본이 하나도 안 깔린다'
-}
+#   설정이 아니다(머리글). 목록(`$repoFiles`)은 준비가 읽는다
 foreach ($bootFile in $repoFiles) {
     $bootSrc = Join-Path $src $bootFile
     if (-not (Test-Path $bootSrc)) { continue }

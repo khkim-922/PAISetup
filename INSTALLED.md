@@ -242,7 +242,7 @@ Claude 를 고르면 LibreOffice 를 winget 으로 깐다 — 공식 pptx 스킬
 | 앱 | 깔리는 자리 |
 |---|---|
 | Claude · Codex · Antigravity | 사외에서만 깔린다 — 게이트웨이에 못 붙어 사내에서는 쓸모가 없다 |
-| GitHub Copilot | 사외에서만 깔린다 — 회사 지원 전이라 사내에서는 제품 칸이 안 뜬다. 제 계정으로 로그인해 쓴다 |
+| GitHub Copilot | 사외에서만 깔린다 — 회사 지원 전이라 사내에서는 제품 칸이 「사내 지원 전」 배지를 단 채 잠긴다. 제 계정으로 로그인해 쓴다 |
 | Gemini | 안 깐다 — 필요하면 <https://gemini.google.com/app> 에서 손으로 받는다 |
 
 - 이미 깔렸는지는 시작 메뉴 → 윈도우 설치 목록 → winget 목록 차례로 잰다. 깔린 앱 위에는 다시 깔지 않고 winget 이 더 새 판을 댈
