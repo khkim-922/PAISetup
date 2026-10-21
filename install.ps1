@@ -4915,7 +4915,7 @@ function Get-GhKeyringState {
 #   선 환경변수 토큰의 이름들. 내는 것 — @{ Ok = 살아 있나; Lines = 줄들 }. 무효 · 없음이면 되살리는 명령을 붙이고, 이름이
 #   있으면 그 셸에서 먼저 비우는 명령을 더한다(값은 안 싣는다).
 function Get-GhKeyringLines($St, [string[]]$TokenVars) {
-  $fix = @('    새 터미널에서 gh auth login 한 번이면 된다')
+  $fix = @("    새 터미널에서 gh auth login -s $GhLoginScopes 한 번이면 된다")
   if (@($TokenVars).Count) {
     $fix += ("    환경변수 토큰($(@($TokenVars) -join ' · '))이 선 셸에서는 gh 가 로그인을 안 받는다 — 그 셸에서 먼저 비운다" +
              "(PowerShell: Remove-Item $((@($TokenVars) | ForEach-Object { "Env:$_" }) -join ', '))")
@@ -5053,6 +5053,10 @@ function Stop-GhLoginProbe([Diagnostics.Process]$Probe) {
 
 # 코드 창이 사람을 기다리는 한도(초) — Claude 로그인 칸과 같은 값
 $GhLoginWait = 180
+# gh 로그인이 기본 범위(repo · read:org · gist) 위로 더 받는 범위 — `workflow` 가 없으면 `.github/workflows/` 를 고친 커밋의
+#   push 를 GitHub 가 거절한다. 로그인 창(`Start-GhLoginProcess`)과 사람에게 주는 되살리는 명령이 이 값을 같이 쓴다.
+#   이미 로그인이 선 PC 는 다시 묻지 않으므로(`Get-GhLoginGo` 의 already) 그 범위 그대로 간다 — 더하려면 `gh auth refresh -s workflow`.
+$GhLoginScopes = 'workflow'
 # 앞당겨 띄운 자식에게 창의 한도 위로 더 주는 초 — 창은 자식이 뜬 때부터 벽시계로 `$GhLoginWait` 에 닫히고(`Invoke-GhLoginChild`),
 #   그 뒤 남는 것은 로그인을 한 번 더 재는 몫(`Test-GhLoggedIn` — `$ProbeCap` + `$GhStatusCap`)과 끝나는 몫이다. 이것까지 넘기면
 #   「설정 저장소」 걸음이 자식을 거둔다.
@@ -5082,7 +5086,7 @@ function Get-GhLoginGo {
 #   파워셸 파일 안의 `2>&1` 은 네이티브 stderr 를 오류로 둔갑시킨다).
 function Start-GhLoginProcess([string]$OutFile) {
   $ghExe = (Get-Command gh -ErrorAction Stop).Source
-  $cmdArgs = '/d /s /c "echo.| "' + $ghExe + '" auth login --hostname github.com --git-protocol https --web > "' + $OutFile + '" 2> "' + $OutFile + '.err""'
+  $cmdArgs = '/d /s /c "echo.| "' + $ghExe + '" auth login --hostname github.com --git-protocol https --scopes ' + $GhLoginScopes + ' --web > "' + $OutFile + '" 2> "' + $OutFile + '.err""'
   $p = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
   # 손잡이를 지금 쥔다 — 쥐고 있는 동안 이 PID 는 남에게 안 간다(`Stop-GhLoginProcess` 가 끝남을 믿고 나무를 따라갈 자리)
   $null = $p.Handle
@@ -8482,7 +8486,7 @@ if (-not $repoUrl) {
         } elseif ($script:ProbeTimedOut.Count -gt $ghTimedBefore) {
           Write-Host "  ! 로그인이 섰나를 못 쟀다 — gh api user 가 ${GhStatusCap}초 안에 안 끝났다" -ForegroundColor Yellow
         } else {
-          Write-Host '  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login (저장소 받기는 제 자격 창을 띄운다)' -ForegroundColor Yellow
+          Write-Host "  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login -s $GhLoginScopes (저장소 받기는 제 자격 창을 띄운다)" -ForegroundColor Yellow
         }
       } else {
         $why = if ($ghAns.Said -like 'err *') { $ghAns.Said.Substring(4) } elseif ($ghAns.Err) { $ghAns.Err } else { '답 없이 끝났다' }
@@ -8527,7 +8531,7 @@ if (-not $repoUrl) {
               $null = Get-Quiet 'gh' @('auth','setup-git')
             } else {
               Stop-GhLoginProcess $login
-              Write-Host '  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login (저장소 받기는 제 자격 창을 띄운다)' -ForegroundColor Yellow
+              Write-Host "  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login -s $GhLoginScopes (저장소 받기는 제 자격 창을 띄운다)" -ForegroundColor Yellow
             }
           } catch {
             Stop-GhLoginProcess $login
