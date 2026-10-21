@@ -695,7 +695,7 @@ $tRepo.Text = if ($null -ne $Saved.Repo) { [string]$Saved.Repo } else { [string]
 # ── 옵션 칸 ─────────────────────────────────────────────────────────────────────
 # 제품 칸의 글자도 기본값도 몸통이 준 것을 그대로 쓴다 — 여기서 다시 지으면 두 벌이 된다. 한 칸이 그 제품의 CLI · 확장 ·
 # 데스크탑 앱을 통째로 든다 — 확장은 아래 VS Code 칸까지 켜야 선다. **뺀 것은 아무 데도 안 깔린다.** 이 자리에서 안 내놓는 제품
-# (사내의 Copilot)은 몸통이 줄을 안 내 칸이 안 선다.
+# (사내의 Copilot)은 몸통이 `product-here|키|no` 를 내 칸을 잠근다(아래 `$NotHere`).
 $cApps = @()
 $cVsc  = $null
 $chips = Get-El 'AppChips'

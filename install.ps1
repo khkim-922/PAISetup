@@ -166,7 +166,7 @@ $ClaudePlantLedger = Join-Path $RecordRoot 'claude-settings.tsv'
 # 사람은 「어느 도구를 쓰나」로 고르지 「CLI 냐 확장이냐」로 안 고른다. 기본값도 이 표가 든다 — 화면이 제 값을 따로 들면 두
 #   벌이 된다.
 # `When` — 이 제품을 어느 자리에서 내놓나(`Test-ProductHere`). 안 적으면 `any`(자리를 안 가린다) · `offsite` 는 사외에서만이다. 사내에서
-#   안 내놓는 제품은 설치 창에 칸이 안 서고(`-Describe` 의 `product|` 줄), 고른 기록이 있어도 그 판의 걸음 · 끝 검증에서 빠진다 —
+#   안 내놓는 제품은 설치 창에 칸이 잠긴 채 서고(`-Describe` 의 `product-here|키|no` 줄), 고른 기록이 있어도 그 판의 걸음 · 끝 검증에서 빠진다 —
 #   깔린 것을 걷지도 기록에서 지우지도 않는다(「준비」의 「자리」 칸 뒤 `$PickHeld`).
 $Products = @(
   @{ Key='claude';      Label='Claude';      Default=$true  }
