@@ -9541,11 +9541,17 @@ $updLib = Join-Path $versionDirs[0].FullName 'update-check.ps1'
 if ($updRepo -and (Test-Path -LiteralPath $updLib)) {
   $mine = $versionDirs[0].Name
   try { . $updLib } catch { }
-  $found = $null
-  try { $found = Find-NewerRelease -Repo $updRepo -Mine $mine } catch { }
-  if (-not $found) {
-    Log "설치본은 그대로 간다 ($mine) — 새 판이 없거나 못 물었다"
+  $probe = $null
+  try { $probe = Measure-NewerRelease -Repo $updRepo -Mine $mine } catch { }
+  if (-not $probe) { $probe = @{ State = 'unmeasured'; Why = '묻는 손(Measure-NewerRelease)을 못 불렀다' } }
+  if ($probe.State -eq 'latest') {
+    Log "설치본은 그대로 간다 ($mine) — 최신이다"
+  } elseif ($probe.State -eq 'no-asset') {
+    Log "! 설치본은 그대로 간다 ($mine) — $($probe.Why)"
+  } elseif ($probe.State -ne 'newer') {
+    Log "! 설치본은 그대로 간다 ($mine) — 새 판이 있나 못 물었다: $($probe.Why)"
   } else {
+    $found = $probe.Found
     Log "새 판 $($found.Ver) 을 받는다 (지금 $mine · 릴리스 $($found.Rel))"
     $v = $null
     try { $v = Get-VerifiedSetup -Found $found } catch { }

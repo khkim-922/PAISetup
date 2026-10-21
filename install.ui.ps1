@@ -1382,8 +1382,8 @@ $F.Add_Closing({
 # 앞을 막지 않는다 — 묻는 데 몇 초가 들 수 있어(사내 프록시가 막으면 시간이 다 갈 때까지) 창이 먼저 서고 이것은 딴 실에서
 #   돈다. 답은 타이머(`upTimer`)가 화면 실에서 집는다.
 #   ⚠ **딴 실에서 창을 만지면 그 자리에서 죽는다** — 창은 타이머 안에서만 만진다.
-# 「못 물었다」를 「최신이다」로 읽지 않는다 — 못 물었으면 아무 말도 안 한다. 막힌 망에서 조용히 최신이라고 하면 낡은 판을 든
-#   사람이 낡은 줄 모른 채 간다.
+# 「못 물었다」를 「최신이다」로 읽지 않는다 — 못 물었으면 머리의 알약이 「새 판 확인 못 함」을 들고, 「최신」은 물어서 그렇다는
+#   답을 받았을 때만 단다. 막힌 망에서 조용히 최신이라고 하면 낡은 판을 든 사람이 낡은 줄 모른 채 간다.
 # 자리를 여기 안 박는다 — 값 파일의 `#update-repo` 가 든다. 박으면 이 파일이 특정 저장소의 것이 되어 남에게 그대로 못 준다
 #   (`#site-probe` · `#config-repo` 와 같은 결).
 $script:upPs = $null
@@ -1400,7 +1400,7 @@ if ($UpdateRepo -and $DistVersion -and (Test-Path -LiteralPath $UpdateLib)) {
     #   조용히 못 본다.
     [void]$script:upPs.AddScript({
       param($lib, $repo, $mine)
-      try { . $lib; return Find-NewerRelease -Repo $repo -Mine $mine } catch { return $null }
+      try { . $lib; return Measure-NewerRelease -Repo $repo -Mine $mine } catch { return $null }
     })
     [void]$script:upPs.AddArgument($UpdateLib)
     [void]$script:upPs.AddArgument($UpdateRepo)
@@ -1414,11 +1414,21 @@ $script:upTimer.Interval = [TimeSpan]::FromMilliseconds(400)
 $script:upTimer.Add_Tick({
   if (-not $script:upHandle -or -not $script:upHandle.IsCompleted) { return }
   $script:upTimer.Stop()
-  $found = $null
-  try { $found = @($script:upPs.EndInvoke($script:upHandle))[0] } catch { }
+  $probe = $null
+  try { $probe = @($script:upPs.EndInvoke($script:upHandle))[0] } catch { }
   try { $script:upPs.Dispose() } catch { }
   $script:upPs = $null; $script:upHandle = $null
-  if (-not $found) { return }
+  # 머리의 알약이 답을 든다 — 물음창은 새 판일 때만 뜨므로, 못 물은 판은 여기서만 보인다
+  $verText = Get-El 'VerText'
+  if ($probe -and $probe.State -eq 'latest') { $verText.Text = "$DistVersion · 최신" }
+  elseif (-not $probe -or $probe.State -ne 'newer') {
+    $why = if ($probe -and $probe.Why) { $probe.Why } else { '묻는 손을 못 불렀다' }
+    $verText.Text = "$DistVersion · 새 판 확인 못 함"
+    (Get-El 'VerPill').ToolTip = "새 판이 있나 확인하지 못했습니다 — $why`n「바뀐 것」에서 최신 판 번호를 볼 수 있습니다."
+  }
+  if (-not $probe -or $probe.State -ne 'newer') { return }
+  $found = $probe.Found
+  $verText.Text = "$DistVersion · 새 판 $($found.Ver) 있음"
 
   $ans = [Windows.MessageBox]::Show($F,
     "새 판 $($found.Ver) 이 나와 있습니다. 지금 것은 $DistVersion 입니다.`n`n" +
