@@ -3202,6 +3202,10 @@ function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
 #      네트워크 없이 선다
 #   ② 마이크로소프트가 문서에 적어 둔 길 — PSGallery 의 WinGet 모듈로 `Repair-WinGetPackageManager` 를 돌린다(사내 VDI 에서 선다)
 #   ③ GitHub 릴리스에서 내려받기 — 사내 환경 문서가 GitHub HTTPS 는 열려 있다고 적는다
+# ③ 이 받는 자리와 두 파일 이름 — 최신 릴리스의 받는 주소에서 이름으로 바로 받는다(그 갈래의 머리말).
+$WingetRelSite   = 'https://github.com/microsoft/winget-cli/releases/latest/download'
+$WingetRelDeps   = 'DesktopAppInstaller_Dependencies.zip'
+$WingetRelBundle = 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'
 function Restore-Winget {
   Write-Host '  winget 이 없다 — 되살려 본다.' -ForegroundColor Yellow
   # ⚠ **TLS 1.2 는 함수 머리에서 세운다 — 세 갈래가 다 HTTPS 를 탄다.** 5.1 의 기본은 기계에 따라 아직 SSL3/TLS1.0 이고 PSGallery
@@ -3268,57 +3272,49 @@ function Restore-Winget {
 
   # ③ GitHub 릴리스에서 받아 깐다
   # 걸음마다 제 실패 문장(`$step`)을 들고 catch 가 그것을 그대로 쓴다 — 받기 · 풀기 · 깔기가 한 문장으로 뭉개지면 다 받고 깔다 진
-  #   것도 망 탓으로 읽힌다. 문장을 통째로 드는 것은 조사를 붙여 짓지 않게 하려는 것이다.
+  #   것도 망 탓으로 읽힌다. 문장을 통째로 드는 것은 조사를 붙여 짓지 않게 하려는 것이다. 받기 문장은 주소를 든다 — 이름이 바뀌어
+  #   404 로 지면 그 주소가 까닭이다.
+  # ⚠ **자산 목록을 API 로 묻지 않는다.** 로그인 없는 GitHub API 는 출구 IP 하나에 시간당 60 번이라, 출구를 여럿이 같이 쓰는
+  #   회사망 · VDI 에서는 남이 쓴 몫에 걸려 403 이 난다. 이 갈래가 도는 PC 에는 winget 도 gh 도 없어 로그인한 길로 물을 수도 없다.
+  #   받을 두 파일은 이름이 판마다 같아(v1.9 부터) 최신 릴리스의 받는 주소(`$WingetRelSite`)에서 이름으로 바로 받는다. 라이선스
+  #   파일은 안 받는다 — 이 사용자에게만 까는 `Add-AppxPackage` 는 그것을 안 쓴다.
   $step = '셋째 갈래에서 졌다'
   try {
     Write-Host '    · GitHub 릴리스에서 받아 본다'
-    $step = '릴리스 목록을 못 물었다'
-    # 묻는 것은 빨리 포기한다 — 작은 JSON 하나라 안 오는 것은 느린 것이 아니라 막힌 것이고, 길게 주면 막힌 망에서 설치가 말없이
-    #   오래 멎는다.
-    $rel = Invoke-RestMethod 'https://api.github.com/repos/microsoft/winget-cli/releases/latest' `
-             -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
     $step = '받을 자리를 못 만들었다'
     $work = Join-Path ([IO.Path]::GetTempPath()) "winget-$PID"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
-    # 갈래 밖에서 비워 둔다 — 딸린 것 자산이 릴리스에 없어 아래 갈래가 통째로 안 도는 판에도 본체 설치가 이 값을 읽는다.
-    $depPaths = @()
-
     # 딸린 것이 먼저다 — 없으면 본체 설치가 그 자리에서 진다
-    $dep = $rel.assets | Where-Object { $_.name -like '*Dependencies.zip' } | Select-Object -First 1
-    if ($dep) {
-      $z = Join-Path $work 'dep.zip'
-      $step = '딸린 것 zip 을 못 받았다'
-      Say-Get 'winget 딸린 것' $dep
-      Get-Download $dep.browser_download_url $z
-      $step = '딸린 것 zip 을 못 풀었다'
-      Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $work 'dep') -Force
-      $step = '딸린 것을 못 깔았다'
-      $deps = @(Get-ChildItem (Join-Path $work 'dep') -Recurse -Filter '*.appx' |
-                Where-Object { $_.FullName -match 'x64' })
-      # 하나도 못 골랐으면 그것부터 말한다 — 고를 것이 없는 것과 다 깐 것은 화면에서 똑같이 조용하고, 본체 설치가 「딸린 것이
-      #   없다」로 진다. zip 은 `x64/` · `x86/` · `arm64/` 에 `.appx` 를 든다 — 0 이면 저쪽 꼴이 바뀐 것이니 사람이 본다.
-      if (-not $deps.Count) {
-        Write-Host '      ! 딸린 것에서 x64 를 하나도 못 골랐다 — 본체 설치가 질 수 있다' `
-          -ForegroundColor Yellow
-      } else {
-        Say-Busy 'winget 딸린 것' 'install' @("$($deps.Count)개")
-      }
-      foreach ($d in $deps) {
-        # 하나가 져도 다음 것으로 간다 — 더 새것이 깔린 기계는 윈도우가 무는데 그건 「할 일 없음」이다. 삼키지는 않고 이름과
-        #   사유를 댄다 — 본체가 지는 가장 흔한 원인이 여기다.
-        try { Add-AppxPackage -Path $d.FullName -ErrorAction Stop }
-        catch { Write-Host "        ($($d.Name) — $(Say-Why $_))" }
-      }
-      $depPaths = @($deps | ForEach-Object { $_.FullName })
+    $z = Join-Path $work 'dep.zip'
+    $step = "딸린 것 zip 을 못 받았다 ($WingetRelSite/$WingetRelDeps)"
+    Say-Get 'winget 딸린 것' @{ name = $WingetRelDeps }
+    Get-Download "$WingetRelSite/$WingetRelDeps" $z
+    $step = '딸린 것 zip 을 못 풀었다'
+    Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $work 'dep') -Force
+    $step = '딸린 것을 못 깔았다'
+    $deps = @(Get-ChildItem (Join-Path $work 'dep') -Recurse -Filter '*.appx' |
+              Where-Object { $_.FullName -match 'x64' })
+    # 하나도 못 골랐으면 그것부터 말한다 — 고를 것이 없는 것과 다 깐 것은 화면에서 똑같이 조용하고, 본체 설치가 「딸린 것이
+    #   없다」로 진다. zip 은 `x64/` · `x86/` · `arm64/` 에 `.appx` 를 든다 — 0 이면 저쪽 꼴이 바뀐 것이니 사람이 본다.
+    if (-not $deps.Count) {
+      Write-Host '      ! 딸린 것에서 x64 를 하나도 못 골랐다 — 본체 설치가 질 수 있다' `
+        -ForegroundColor Yellow
+    } else {
+      Say-Busy 'winget 딸린 것' 'install' @("$($deps.Count)개")
     }
+    foreach ($d in $deps) {
+      # 하나가 져도 다음 것으로 간다 — 더 새것이 깔린 기계는 윈도우가 무는데 그건 「할 일 없음」이다. 삼키지는 않고 이름과
+      #   사유를 댄다 — 본체가 지는 가장 흔한 원인이 여기다.
+      try { Add-AppxPackage -Path $d.FullName -ErrorAction Stop }
+      catch { Write-Host "        ($($d.Name) — $(Say-Why $_))" }
+    }
+    $depPaths = @($deps | ForEach-Object { $_.FullName })
 
-    $pkg = $rel.assets | Where-Object { $_.name -like '*.msixbundle' } | Select-Object -First 1
-    if (-not $pkg) { throw '릴리스에 msixbundle 이 없다' }
-    $b = Join-Path $work $pkg.name
-    $step = '본체를 못 받았다'
-    Say-Get 'winget' $pkg
-    Get-Download $pkg.browser_download_url $b
+    $b = Join-Path $work $WingetRelBundle
+    $step = "본체를 못 받았다 ($WingetRelSite/$WingetRelBundle)"
+    Say-Get 'winget' @{ name = $WingetRelBundle }
+    Get-Download "$WingetRelSite/$WingetRelBundle" $b
     # 깔기는 수백 MB 를 푸는 동안 한 글자도 안 내므로 들어가기 전에 말한다 — 조용하면 사람은 멎은 줄 알고 창을 닫는다.
     Say-Busy 'winget' 'install' @('몇 분 걸릴 수 있다')
     $step = '본체를 못 깔았다'
@@ -3329,7 +3325,7 @@ function Restore-Winget {
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 
     if (& $reach) {
-      Write-Host "  되살렸다 (GitHub 릴리스 $($rel.tag_name))" -ForegroundColor Green
+      Write-Host '  되살렸다 (GitHub 최신 릴리스)' -ForegroundColor Green
       return $true
     }
     Write-Host '    · 깔았는데 winget 이 안 잡힌다 — 새 창에서는 잡힐 수 있다'
