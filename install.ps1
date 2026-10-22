@@ -259,9 +259,13 @@ $Clis = @(
   @{ Key='lychee';       Via='winget'; Cmd='lychee'; Label='lychee'; Id='lycheeverse.lychee'; Maker=$true }
   @{ Key='markdownlint'; Pkg='markdownlint-cli2'; Cmd='markdownlint-cli2'; Label='markdownlint-cli2'; Maker=$true }
 )
-# npm 이 전역에 깐 CLI 가 서는 자리 — 배선(`Update-RuntimePath`)이 이 창에 태우고, 마무리의 「사용자 범위 명령 자리」가 사용자
-#   PATH 에 심고, 끝 검증이 사용자 PATH 에서 잰다(claude-config 결정 0143 · PAISetup #30 ②). 세 자리가 이 한 줄을 읽는다.
+# npm 이 전역에 깐 CLI 가 서는 자리 — 배선(`Update-RuntimePath`)이 이 창에 태우고, 마무리의 「사용자 범위 명령 자리」가 새 터미널의
+#   PATH 에 심고, 끝 검증이 거기서 잰다(claude-config 결정 0143 · PAISetup #30 ② · #56). 세 자리가 이 한 값을 읽는다.
+# 값은 npm 에 묻는다(`Update-NpmGlobalDir` — `npm prefix -g`). 사람이 `npm config set prefix` 를 했거나 Node 가 다른 길(nvm 류 · 다른
+#   계정의 MSI)로 선 PC 는 npm 의 기본 자리와 갈린다. 아래 줄은 묻기 전 · 못 물은 판의 물러설 값(npm 의 윈도 기본 자리)이고, 끝 검증은
+#   못 물은 판을 「못 쟀다」로 찍는다.
 $NpmGlobalDir = "$env:APPDATA\npm"
+$script:NpmGlobalAsk = @{ State = 'unasked'; Probe = 'npm prefix -g'; Why = '띄우지 못해' }
 
 # ── VC++ 런타임 — 파이썬의 C++ 확장이 싣는 `msvcp140.dll` (claude-config 결정 0146) ─────────────────────────
 # markitdown → magika → onnxruntime 의 확장 모듈이 이 런타임을 싣는다 — 판이 낮으면 `import` 하는 순간 파이썬이 죽는다(PAISetup #30).
@@ -2530,6 +2534,29 @@ function Add-ToPath([string]$Dir, [switch]$Back) {
   if ($Back) { $env:PATH = "$($env:PATH.TrimEnd(';'));$Dir" } else { $env:PATH = "$Dir;$env:PATH" }
 }
 
+# npm 전역 자리(`$NpmGlobalDir`)를 npm 에 한 번 묻는다 — 답을 얻으면 그 값으로 바꾸고(`State = 'asked'`) 다시 안 묻는다. npm 이 이 창에
+#   아직 없으면(맨바닥 PC 의 Node 앞) 안 묻고 다음 부름에 맡긴다. 진 물음은 `unmeasured` 와 까닭을 남기고 다시 안 묻는다 — 배선은 한
+#   회차에 열 번 남짓 불려, 멎는 npm 을 부름마다 다시 띄우면 울타리(`$ProbeCap`)가 그만큼 쌓인다. 윈도에서는 `prefix` 가 곧 명령
+#   껍데기(`.cmd` · `.ps1`)가 서는 폴더다(전역 패키지는 그 아래 `node_modules`).
+function Update-NpmGlobalDir {
+  if ($script:NpmGlobalAsk.State -ne 'unasked') { return }
+  if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { return }
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-LoggedCapped 'npm' @('prefix', '-g') $log $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow 'npm prefix -g' $ProbeCap }
+    $dir = ("$(@(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0])").Trim()
+    if ($rc -ne 0) {
+      $script:NpmGlobalAsk = @{ State = 'unmeasured'; Probe = 'npm prefix -g'; Why = $(if ($rc -eq -2) { '' } else { Format-ProbeWhy $rc $ProbeCap }) }
+    } elseif (-not $dir) {
+      $script:NpmGlobalAsk = @{ State = 'unmeasured'; Probe = 'npm prefix -g'; Why = '글자를 안 내' }
+    } else {
+      $script:NpmGlobalDir = $dir
+      $script:NpmGlobalAsk = @{ State = 'asked'; Probe = ''; Why = '' }
+    }
+  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+}
+
 # 이 창의 PATH 를 다시 태운다 — 기계 · 사용자 PATH(레지스트리)를 덧대고, 아는 설치 자리를 이름으로 덧댄다. 레지스트리가
 #   본이고 이름 박은 목록은 보험이다 — 이 창이 뜬 뒤 깔린 것의 PATH 는 레지스트리에만 있다. 덧대기라 이 창이 들고 있던 자리는 안
 #   잃는다.
@@ -2557,6 +2584,8 @@ function Update-RuntimePath {
     Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag\Scripts"
   }
   # npm 전역 자리 — 여기서는 이 창만 태운다. 새 터미널이 보게 사용자 PATH 에 심는 것은 마무리의 「사용자 범위 명령 자리」다.
+  #   위에서 Node 자리를 태운 뒤라야 맨바닥 PC 의 Node 를 깐 다음 부름에서 npm 이 잡혀 물을 수 있다.
+  Update-NpmGlobalDir
   Add-ToPath $NpmGlobalDir
   # ⚠ **`agy` 자리는 여기 안 적는다** — winget 이 portable 을 깔며 제 자리를 사용자 PATH 에 넣고 위 레지스트리 읽기가 태운다.
   #   이름으로 박으면 저쪽이 자리를 옮길 때(폴더 이름에 소스 해시가 든다) 조용히 어긋나고, 확장이 따로 둔 사본(`~/.gemini/bin`)을
@@ -2649,6 +2678,91 @@ function Add-ToUserPath([string]$Dir,
   } catch {
     return @{ Did = 'failed'; Err = $_ }
   }
+}
+
+# ── 새 터미널 — **다시 로그인한 뒤 새로 연 창이 보는 것** (PAISetup #56) ─────────────────
+# 이 창에서 잰 「돈다」는 새 터미널의 답이 아니다 — 이 창의 PATH 는 레지스트리 위에 이름 박은 보험(`Update-RuntimePath`)을 얹었고, 이 창은
+#   Bypass 로 떠 그 값이 `PSExecutionPolicyPreference` 로 자식에게까지 물린다(끝의 「연다」가 띄운 VS Code 의 터미널도 그렇다). 아래 손은
+#   새 창이 읽는 자리(레지스트리)만 읽는다. 「사용자 범위 명령 자리」와 끝 검증이 부른다.
+
+# 새 터미널의 PATH 에 그 자리가 섰나 — 새 프로세스는 기계 PATH 와 사용자 PATH 를 이어 받으므로 둘 다 펴서 견준다(`Test-PathListHas`).
+function Test-NewShellPathHas([string]$Dir) {
+  return ((Test-PathListHas ([string][Environment]::GetEnvironmentVariable('Path', 'Machine')) $Dir) -or
+          (Test-PathListHas ([string](Get-UserPath).Raw) $Dir))
+}
+
+# 실행 정책 범위의 차례 — 그룹 정책 둘이 먼저, 그다음 현재 사용자 · 기계. `Process` 는 이 창의 것이라 안 든다.
+$ShellPolicyScopes = 'MachinePolicy', 'UserPolicy', 'CurrentUser', 'LocalMachine'
+
+# 새로 연 PowerShell 의 실행 정책 — `@{ State = yes · unmeasured; Value; Scope; Blocks; Probe; Why }`.
+# ⚠ **범위 없이 묻는 `Get-ExecutionPolicy` 는 이 창의 `Process`(Bypass)를 답해 늘 열려 보인다** — 범위마다 묻고 처음 정해진 값을 쓴다.
+#   다 비었으면(또는 `Default`) 윈도의 기본값이다 — 클라이언트 Restricted · 서버 RemoteSigned. `Blocks` 는 npm 이 까는 서명 없는 로컬
+#   `.ps1` 을 막나다(Restricted · AllSigned).
+function Get-ShellScriptPolicy {
+  try {
+    $value = if ((Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\ProductOptions' -ErrorAction Stop).ProductType -eq 'WinNT') { 'Restricted' } else { 'RemoteSigned' }
+    $scope = '윈도 기본값'
+    foreach ($s in $ShellPolicyScopes) {
+      $v = "$(Get-ExecutionPolicy -Scope $s -ErrorAction Stop)"
+      if ($v -ne 'Undefined') { $scope = $s; if ($v -ne 'Default') { $value = $v }; break }
+    }
+    return @{ State = 'yes'; Value = $value; Scope = $scope; Blocks = ($value -eq 'Restricted' -or $value -eq 'AllSigned') }
+  } catch {
+    return @{ State = 'unmeasured'; Probe = 'Get-ExecutionPolicy -List'; Why = '오류를 던져' }
+  }
+}
+
+# 새 터미널이 그 이름을 어디서 집나 — `@{ Path; Ps1 }`, 못 집으면 `$null`. 새 터미널의 PATH(기계 다음 사용자)를 차례대로 펴서 폴더마다
+#   PATHEXT 의 꼴과 `.ps1` 을 보고, 처음 걸린 폴더에서 멈춘다. `Ps1` 은 그 폴더에 `<이름>.ps1` 이 섰나다 — PowerShell 은 PATH 차례가
+#   먼저이고 한 폴더 안에서는 `.ps1` 을 집는다(cmd · Git Bash 는 안 집는다). 이름이 꼴을 들었으면(`soffice.com`) 그 이름 그대로만 본다.
+# ⚠ **묻기부터 거절당하는 자리가 있다** — SYSTEM 프로필의 `…\WindowsApps` 는 `Test-Path` 에 예외를 던진다. 못 읽는 것은 없는 것과 답이 같다.
+# `$List` 는 검사가 버릴 PATH 를 넣는 손잡이다 — 설치는 기본값(새 터미널의 PATH)으로 부른다.
+function Find-NewShellCommand([string]$Name,
+                              [string]$List = "$([Environment]::GetEnvironmentVariable('Path', 'Machine'));$([string](Get-UserPath).Raw)") {
+  $bare  = -not [IO.Path]::GetExtension($Name)
+  $tails = if ($bare) { @("$env:PATHEXT".ToLowerInvariant() -split ';' | Where-Object { $_ }) } else { @('') }
+  foreach ($e in ($List -split ';')) {
+    $dir = [Environment]::ExpandEnvironmentVariables($e).Trim().TrimEnd('\', '/')
+    if (-not $dir) { continue }
+    try {
+      $ps1 = $bare -and (Test-Path -LiteralPath "$dir\$Name.ps1" -PathType Leaf -ErrorAction Stop)
+      foreach ($t in $tails) {
+        if (Test-Path -LiteralPath "$dir\$Name$t" -PathType Leaf -ErrorAction Stop) { return @{ Path = "$dir\$Name$t"; Ps1 = $ps1 } }
+      }
+      if ($ps1) { return @{ Path = "$dir\$Name.ps1"; Ps1 = $true } }
+    } catch { continue }
+  }
+  return $null
+}
+
+# 새 터미널에서 그 이름이 풀려 도나 — `@{ State = yes · no · unmeasured; Say; Probe; Why }`. `Say` 는 진 까닭이고 칸 이름 곁에 붙는다.
+#   띄우지 않는다(PAISetup #30 ③ — 첫 실행이 수십 초인 CLI 가 있다). 예외 하나 — 집은 것이 앱 실행 별칭 자리(`…\Microsoft\WindowsApps\`)
+#   면 그 경로로 `$Arg` 를 띄워 0 으로 끝나야 선다. 스토어행 `python` 껍데기는 진짜가 없을 때 0 아닌 값을 낸다(`Measure-Runs` 의 예외와
+#   같은 자). 그 폴더에 `.ps1` 이 섰고 실행 정책(`$Policy` — `Get-ShellScriptPolicy` 의 답)이 막으면 PowerShell 에서 진다.
+function Measure-NewShellCommand([string]$Name, [string]$Arg, $Policy) {
+  $hit = Find-NewShellCommand $Name
+  if (-not $hit) {
+    $here = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
+    $tail = if ($here -and $here.Source) { " · 이 창은 $(Split-Path -Parent $here.Source) 에서 집는다 — 설치 창만 아는 자리다" } else { '' }
+    return @{ State = 'no'; Say = "새 터미널의 PATH 에 ``$Name`` 이 없다$tail" }
+  }
+  if ($hit.Path -like '*\Microsoft\WindowsApps\*') {
+    $probe = "$($hit.Path) $Arg"
+    $rc = Invoke-ProbeCapped $hit.Path $Arg $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow $probe $ProbeCap; return @{ State = 'unmeasured'; Probe = $probe; Why = '' } }
+    if ($rc -ne 0)  { return @{ State = 'no'; Say = "새 터미널은 앱 실행 별칭($($hit.Path))을 집는데 그것이 안 돈다 — 스토어 껍데기다" } }
+  }
+  if ($hit.Ps1) {
+    if ($Policy.State -ne 'yes') { return @{ State = 'unmeasured'; Probe = $Policy.Probe; Why = $Policy.Why } }
+    if ($Policy.Blocks) { return @{ State = 'no'; Say = "PowerShell 은 $Name.ps1 을 집고 실행 정책($($Policy.Value) · $($Policy.Scope))이 막는다 — cmd · Git Bash 에서는 돈다" } }
+  }
+  return @{ State = 'yes'; Say = '' }
+}
+
+# 새 터미널 판정(`Measure-NewShellCommand`)을 끝 검증의 칸으로 — 못 쟀으면 「못 쟀다」 칸, 아니면 진 까닭을 이름 곁에 붙인다.
+function New-NewShellRow([string]$Label, $M) {
+  if ($M.State -eq 'unmeasured') { return @{ Name = $Label; State = 'unmeasured'; Probe = $M.Probe; Why = $M.Why } }
+  return @{ Name = $(if ($M.Say) { "$Label — $($M.Say)" } else { $Label }); Ok = ($M.State -eq 'yes') }
 }
 
 # pip 가 사용자 자리에 까는 명령의 폴더 — 이 설치와 넘긴 훅이 쓰는 그 `python`(PATH 의 것)에 `sysconfig` 의 사용자 꼴(`nt_user`)로 묻는다.
@@ -3793,7 +3907,7 @@ function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtab
 # ⚠ **종료코드로 안 가른다** — npm 은 그 패키지가 없거나 전역 폴더에 군더더기가 있으면 1 로 끝나면서도 JSON 은 온전히 낸다. 넘겼거나
 #   못 띄웠거나 JSON 을 못 읽었거나 npm 이 오류를 적었으면 `unmeasured` 다 — 「없다」가 아니다(결정 0141). 넘김의 `Why` 는 비운다
 #   (`Add-UnmeasuredStep` 이 `$ProbeCap` 넘김 글로 채운다).
-# 맨바닥 PC 의 `ENOENT` 는 「없다」다 — 전역 폴더(`%APPDATA%\npm`)는 첫 `npm install -g` 가 만들어, 그 전에는 npm 이 그 자리를 못
+# 맨바닥 PC 의 `ENOENT` 는 「없다」다 — 전역 폴더(`$NpmGlobalDir`)는 첫 `npm install -g` 가 만들어, 그 전에는 npm 이 그 자리를 못
 #   읽고 `error.code = ENOENT` 를 적는다. 그때 `npm root -g` 로 전역 패키지가 사는 폴더를 묻고, 그 폴더가 정말 없으면 깔린 것이
 #   없다는 잰 값이다. 폴더가 있는데 `ENOENT` 거나 그 물음이 졌으면 그대로 못 쟀다다.
 function Measure-NpmGlobal([string[]]$Pkgs) {
@@ -3933,7 +4047,7 @@ function Install-NpmCli($Rows) {
     if ($grp[0].Log -ne $nl) { Remove-Item -LiteralPath $nl -ErrorAction SilentlyContinue }
   }
   if (-not $ran.Count) { return }
-  # ⚠ **깔고 나서 한 번 더 태운다** — `%APPDATA%\npm` 은 첫 설치가 만드는 폴더라, 맨바닥 PC 에서는 앞의 배선이 조용히 지나가고
+  # ⚠ **깔고 나서 한 번 더 태운다** — npm 전역 자리(`$NpmGlobalDir`)는 첫 설치가 만드는 폴더라, 맨바닥 PC 에서는 앞의 배선이 조용히 지나가고
   #   PATH 가 빈 채로 남는다. 두 번째부터는 폴더가 있어 안 드러난다.
   Update-RuntimePath
   $after = Measure-NpmGlobal @($ran | ForEach-Object { $_.Pkg })
@@ -6173,23 +6287,24 @@ Write-Elapsed '준비'
 #   앞에서 받는 것 — 준비의 고른 제품 · 자리 · 올릴 것 목록 · winget 유무 · 파이썬이 필요한 까닭
 #   안 하는 것 — 홈 파일 · 키. 예외 하나 — Node 신뢰가 CA 경로(`NODE_EXTRA_CA_CERTS`)를 사용자 환경에 심는다.
 #     뒤의 확장 · CLI 가 그 값을 물고 받으므로 이 걸음에 선다
+# 이 판이 그 앱을 안 까는 까닭 — 까는 판이면 빈 글자다. 이 걸음과 끝 검증(안 깐 것은 안 잰다)이 같이 읽는다.
+#   VS Code 를 끄면 VS Code 만 안 깐다 — Node 는 CLI 가 타므로 `core` 로 남아 그대로 깔린다. 개발도구를 꺼도 파이썬으로 도는 것(사내 로컬
+#   프록시 · 맡기기 래퍼 · 훅 · 손)을 고른 판이면 파이썬만은 깐다(결정 0041 — 까닭은 `$needPythonWhy` 가 든다).
+function Get-AppSkip($App) {
+  if ($NoVsCode -and $App.Need -eq 'vscode') { return 'VS Code 칸을 껐다' }
+  if ($NoDevTools -and $App.Need -eq 'dev' -and -not ($needPython -and $App.Cmd -eq 'python')) { return '-NoDevTools' }
+  return ''
+}
 Enter-Step 'programs'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 foreach ($app in $Apps) {
-  # VS Code 를 끄면 VS Code 만 안 깐다 — Node 는 CLI 가 타므로 `core` 로 남아 그대로 깔린다.
-  if ($NoVsCode -and $app.Need -eq 'vscode') {
-    Write-Host "  $($app.Name) — 건너뜀 (VS Code 칸을 껐다)"
+  $appSkip = Get-AppSkip $app
+  if ($appSkip) {
+    Write-Host "  $($app.Name) — 건너뜀 ($appSkip)"
     continue
   }
   if ($NoDevTools -and $app.Need -eq 'dev') {
-    # 파이썬만은 예외가 선다 — 개발도구를 꺼도 파이썬으로 도는 것(사내 로컬 프록시 · 맡기기 래퍼 · 훅 · 손)을 고른 판이면
-    #   이것만 깐다(결정 0041). 까닭은 `$needPythonWhy` 가 든다.
-    if ($needPython -and $app.Cmd -eq 'python') {
-      Write-Host "  $($app.Name) — 개발도구를 껐지만 깐다 ($($needPythonWhy -join ' · '))"
-    } else {
-      Write-Host "  $($app.Name) — 건너뜀 (-NoDevTools)"
-      continue
-    }
+    Write-Host "  $($app.Name) — 개발도구를 껐지만 깐다 ($($needPythonWhy -join ' · '))"
   }
   # 할 일은 한 자리(`Get-InstallAction`)가 가른다 — 올릴지는 맨 앞에서 한 번에 받은 목록이, 못 받았으면 앱마다 묻는다.
   #   판(`Get-Ver`)은 화면에만 쓴다 — 견주기는 winget 이 제 기록으로 한다.
@@ -8825,11 +8940,11 @@ Exit-Step 'register'
 
 # ══ 마무리 ═════════════════════════════════════════════════════════════════════════════════════
 #   층 — 없음(걸음 뒤)
-#   하는 일 — 넘겨받은 임시 값 파일 지우기 · 회차를 넘기는 기록 · 사용자 범위 명령 자리를 사용자 PATH 에 · 바로가기 · 로그온 자동
-#     실행 · 끝 검증 · 앱 열기 · 끝 줄 · 종료 코드
+#   하는 일 — 넘겨받은 임시 값 파일 지우기 · 회차를 넘기는 기록 · 사용자 범위 명령 자리를 사용자 PATH 에 · PowerShell 의 스크립트
+#     실행(현재 사용자 범위) · 바로가기 · 로그온 자동 실행 · 끝 검증 · 앱 열기 · 끝 줄 · 종료 코드
 #   앞에서 받는 것 — 앞 걸음 전부
 #   안 하는 것 — 없음
-#   경계 — 끝 검증 앞까지(임시 값 파일 · 기록 · 사용자 PATH · 아이콘 · 자동 실행)가 칸 「마무리」, 끝 검증의 재기가 칸 「검증」이다.
+#   경계 — 끝 검증 앞까지(임시 값 파일 · 기록 · 사용자 PATH · 실행 정책 · 아이콘 · 자동 실행)가 칸 「마무리」, 끝 검증의 재기가 칸 「검증」이다.
 #     둘 다 걸음과 같은 경계(`Write-StepFault`)를 둘러 마무리에서 진 것도 끝 검증을 안 빼고, 검증에서 진 것도 끝 줄 · 종료 코드를 안 뺀다
 try {  # 칸 경계 「마무리」 — 아래 catch 까지가 이 칸이다(`Write-StepFault`)
 # ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
@@ -8897,6 +9012,11 @@ foreach ($ud in @(@{ Label = 'npm 전역 자리'; Dir = $NpmGlobalDir; What = 'n
                   @{ Label = 'pip 사용자 자리'; Dir = $PipUser.Dir; What = 'pip 가 사용자 자리에 깐 명령이' }) +
                 @($CliPicks | Where-Object { $_.PathDir } | ForEach-Object { @{ Label = "$($_.Label) 자리"; Dir = $_.PathDir; What = "``$($_.Cmd)`` 명령이" } })) {
   if (-not $ud.Dir -or -not (Test-Path -LiteralPath $ud.Dir)) { continue }
+  # 기계 PATH 에 선 자리(nvm 류가 npm 자리를 거기 둔다)는 새 터미널이 이미 본다 — 사용자 PATH 에 겹쳐 심지 않는다.
+  if (Test-PathListHas ([string][Environment]::GetEnvironmentVariable('Path', 'Machine')) $ud.Dir) {
+    Write-Host "  $($ud.Label) — 기계 PATH 에 이미 있다 ($($ud.Dir))"
+    continue
+  }
   $udPath = Add-ToUserPath $ud.Dir
   switch ($udPath.Did) {
     'kept'  { Write-Host "  $($ud.Label) — 사용자 PATH 에 이미 있다 ($($ud.Dir))" }
@@ -8915,6 +9035,29 @@ foreach ($ud in @(@{ Label = 'npm 전역 자리'; Dir = $NpmGlobalDir; What = 'n
       $Fails.Add("$($ud.Label) (사용자 PATH)")
     }
   }
+}
+# PowerShell 의 스크립트 실행 — npm 은 명령마다(`npm` 자신도) `.ps1` 껍데기를 깔고 PowerShell 은 그것을 먼저 집어, 실행 정책이 막는 PC 의
+#   새 터미널(VS Code 의 기본 터미널 포함)에서는 깔린 CLI 가 「스크립트를 실행할 수 없으므로」로 진다(PAISetup #56 · claude-config 결정
+#   0177). 정책이 Restricted(다 비어 윈도 기본값인 판 포함)면 **현재 사용자 범위만** RemoteSigned 로 올린다 — 이 PC 에서 생긴 스크립트는
+#   돌고 내려받은 스크립트는 서명을 그대로 묻는다. 그룹 정책이 쥔 값과 사람이 고른 AllSigned 는 안 바꾸고 알린다 — 끝 검증이 그 칸을
+#   [X] 로 든다. 걷는 손은 없다 — 사람이 그 뒤에 고른 값과 갈라 낼 수 없다(배포본 UNINSTALL 이 되돌리는 명령을 든다).
+$psPolicy = Get-ShellScriptPolicy
+if ($psPolicy.State -ne 'yes') {
+  Add-UnmeasuredStep 'PowerShell 스크립트 실행' $psPolicy.Probe '실행 정책을 안 바꿨다' $psPolicy.Why
+} elseif ($psPolicy.Blocks -and $psPolicy.Value -eq 'Restricted' -and $psPolicy.Scope -notlike '*Policy') {
+  # ⚠ **던짐이 아니라 읽은 값으로 가른다** — Bypass 로 뜬 이 창에서는 값을 쓰고도 「더 좁은 범위(Process)가 덮는다」 오류를 던질 수 있다.
+  $setErr = $null
+  try { Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop } catch { $setErr = $_ }
+  if ("$(Get-ExecutionPolicy -Scope CurrentUser)" -eq 'RemoteSigned') {
+    Write-Host "  PowerShell 스크립트 실행 — 현재 사용자만 RemoteSigned 로 올렸다 (앞은 $($psPolicy.Value) · $($psPolicy.Scope)) · 새로 여는 PowerShell 에서 npm 이 깐 명령이 돈다" -ForegroundColor Green
+  } else {
+    Write-Host "  ! PowerShell 스크립트 실행 — 현재 사용자 범위를 못 올렸다 — $(if ($setErr) { Say-Why $setErr } else { '쓴 값이 안 남았다' })" -ForegroundColor Red
+    $Fails.Add('PowerShell 스크립트 실행 (현재 사용자 범위)')
+  }
+} elseif ($psPolicy.Blocks) {
+  Write-Host "  ! PowerShell 스크립트 실행 — $($psPolicy.Value) ($($psPolicy.Scope)) 가 막는다 · 그 값은 안 바꾼다(정책이 쥐었거나 사람이 고른 값) — PowerShell 에서는 ``claude.cmd`` 처럼 .cmd 로 부르거나 cmd · Git Bash 를 쓴다" -ForegroundColor Yellow
+} else {
+  Write-Host "  PowerShell 스크립트 실행 — 이미 열려 있다 ($($psPolicy.Value) · $($psPolicy.Scope))"
 }
 
 # ── 바탕화면·시작 메뉴 아이콘 ───────────────────────────────────────────────────
@@ -10079,6 +10222,8 @@ $userEnv = [Environment]::GetEnvironmentVariables('User')
 #   찍힌다 — `code --version` 하나를 못 쟀으면 VS Code 와 고른 확장이 다 그 하나에 걸린다.
 $codeRuns = Measure-Runs 'code' '--version'
 $hasCode = ($codeRuns -eq 'yes')
+# 명령 칸은 이 창에서 서나에 더해 새 터미널에서 서나를 잰다(`Measure-NewShellCommand` · PAISetup #56) — 그 판정이 읽는 실행 정책을 한 번 읽는다.
+$psNow = Get-ShellScriptPolicy
 $extList = @()
 # 깔린 확장 목록도 울타리 안에서 묻는다(`$ExtListCap`) — 못 읽었으면(넘김 · 0 아닌 값) 고른 확장 칸이 다 그 물음 하나에 걸린 「못 쟀다」다
 #   (못 읽은 목록은 빈 목록이 아니다 — 결정 0145).
@@ -10101,7 +10246,9 @@ if (-not $NoVsCode) {
       $checks += @{ Name = $x.Label; State = 'unmeasured'; Probe = 'code --version'; Premise = 'VS Code' }
     }
   } else {
-    $checks += @{ Name='VS Code'; Ok = $hasCode }
+    # 확장 목록은 이 창의 `code` 로 읽고, VS Code 칸 자체는 새 터미널에서 `code` 가 서나까지 잰다(PAISetup #56).
+    if ($hasCode) { $checks += New-NewShellRow 'VS Code' (Measure-NewShellCommand 'code' '--version' $psNow) }
+    else          { $checks += @{ Name = 'VS Code'; Ok = $false } }
     foreach ($x in $ExtPicks) {
       if ($extListRc -ne 0) { $checks += @{ Name = $x.Label; State = 'unmeasured'; Probe = 'code --list-extensions'; Why = (Format-ProbeWhy $extListRc $ExtListCap) } }
       else                   { $checks += @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) } }
@@ -10109,21 +10256,36 @@ if (-not $NoVsCode) {
   }
 }
 # npm 으로 깐 CLI 는 「CLI」 걸음과 같은 자(npm 의 기록)로 잰다 — 띄우지 않고(PAISetup #30 ③) 기록은 한 번에 읽는다
-#   (PAISetup #35 C). winget CLI 는 이름이 서나를 띄워 잰다.
+#   (PAISetup #35 C). winget CLI 는 이름이 서나를 띄워 잰다. 섰으면 새 터미널에서 그 이름이 서나를 잰다(PAISetup #56) — 기록에
+#   있거나 이 창에서 도는 것은 새 터미널에서 불린다는 말이 아니다.
 $npmCheckPkgs = @($CliPicks | Where-Object { $_.Via -ne 'winget' } | ForEach-Object { $_.Pkg })
 $npmCheckRecs = if ($npmCheckPkgs.Count) { Measure-NpmGlobal $npmCheckPkgs } else { @{} }
 foreach ($c in $CliPicks) {
+  $cliArg = if ($c.Arg) { $c.Arg } else { '--version' }
   if ($c.Via -ne 'winget') {
     $rec = $npmCheckRecs[$c.Pkg]
     if ($rec.State -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = $rec.Probe; Why = $rec.Why } }
-    else                             { $checks += @{ Name = $c.Label; Ok = ($rec.State -eq 'yes') } }
+    elseif ($rec.State -ne 'yes')    { $checks += @{ Name = $c.Label; Ok = $false } }
+    else                             { $checks += New-NewShellRow $c.Label (Measure-NewShellCommand $c.Cmd $cliArg $psNow) }
     continue
   }
-  $cliArg = if ($c.Arg) { $c.Arg } else { '--version' }
   $cliRuns = Measure-Runs $c.Cmd $cliArg
   if ($cliRuns -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = "$($c.Cmd) $cliArg" } }
-  else                           { $checks += @{ Name = $c.Label; Ok = ($cliRuns -eq 'yes') } }
+  elseif ($cliRuns -ne 'yes')    { $checks += @{ Name = $c.Label; Ok = $false } }
+  else                           { $checks += New-NewShellRow $c.Label (Measure-NewShellCommand $c.Cmd $cliArg $psNow) }
 }
+# 공용 프로그램(Node · Git · Python · gh) — 「프로그램」 걸음이 깔거나 있던 것으로 지나간 것이 새 터미널에서 서나(PAISetup #56 ④). 이 창은
+#   보험 PATH 로 이름을 집어 「있음」으로 지나가지만, 훅은 새 창의 PATH 로 `python` 을 부르고 못 찾으면 조용히 안 돈다. VS Code 는 위
+#   칸이 든다. 안 까는 판은 안 잰다(`Get-AppSkip`) · 이 창에서도 안 잡히면 「프로그램」 걸음이 이미 말했다.
+foreach ($app in @($Apps | Where-Object { $_.Need -ne 'vscode' })) {
+  if (Get-AppSkip $app) { continue }
+  if (-not (Get-Command $app.Cmd -ErrorAction SilentlyContinue)) { continue }
+  $checks += New-NewShellRow "$($app.Name) (새 터미널의 ``$($app.Cmd)``)" (Measure-NewShellCommand $app.Cmd $app.Arg $psNow)
+}
+# PowerShell 스크립트 실행 — 새 터미널의 실행 정책이 npm 의 `.ps1` 껍데기를 막나(PAISetup #56 · 「사용자 범위 명령 자리」가 올린다). Node 가
+#   늘 서는 판이라 `npm` 자신의 껍데기가 늘 있어 늘 잰다.
+if ($psNow.State -ne 'yes') { $checks += @{ Name = 'PowerShell 스크립트 실행 (새 터미널)'; State = 'unmeasured'; Probe = $psNow.Probe; Why = $psNow.Why } }
+else { $checks += @{ Name = "PowerShell 스크립트 실행 (새 터미널 — $($psNow.Value) · $($psNow.Scope))"; Ok = (-not $psNow.Blocks) } }
 # 나르는 자리 — 「공용 자산」 걸음의 자산. 재는 자는 위 `New-CountCheck` 하나다. 규범 · 룰 · 에이전트 · 스킬은 손의 `check` 가, 칸 없이
 #   까는 스킬은 아래에서 이름마다 잰다.
 # 임자는 지금 다시 묻는다(`Get-OwnedHome`) — 「공용 자산」 걸음의 답은 그때의 것이다. 맨바닥 판은 그때 저장소가 없어 동봉본을 깔았고,
@@ -10546,20 +10708,25 @@ if ($useGateway) {
     $checks += @{ Name = "안티그래비티 settings.json (사외 — $oaWhy)"; Ok = $oaOk }
   }
 }
-# npm 전역 자리 — 새 터미널이 볼 사용자 PATH 에 섰나(claude-config 결정 0143). 이 창의 PATH 는 배선이 태워 늘 서 있으므로
-#   검증 칸 머리대로 레지스트리를 읽는다. npm 으로 까는 CLI 를 골랐을 때만 잰다.
+# npm 전역 자리 — 새 터미널이 볼 PATH(기계 · 사용자)에 섰나(claude-config 결정 0143 · PAISetup #56). 이 창의 PATH 는 배선이 태워 늘
+#   서 있으므로 검증 칸 머리대로 레지스트리를 읽는다. 자리는 npm 에 물은 값이고, 못 물었으면 물러선 값을 재지 않고 「못 쟀다」다.
+#   npm 으로 까는 CLI 를 골랐을 때만 잰다.
 if (@($CliPicks | Where-Object { $_.Via -ne 'winget' }).Count) {
-  $checks += @{ Name = "npm 전역 자리 — 사용자 PATH ($NpmGlobalDir)"; Ok = (Test-PathListHas ([string](Get-UserPath).Raw) $NpmGlobalDir) }
+  if ($script:NpmGlobalAsk.State -ne 'asked') {
+    $checks += @{ Name = 'npm 전역 자리 — 새 터미널의 PATH'; State = 'unmeasured'; Probe = $script:NpmGlobalAsk.Probe; Why = $script:NpmGlobalAsk.Why }
+  } else {
+    $checks += @{ Name = "npm 전역 자리 — 새 터미널의 PATH ($NpmGlobalDir)"; Ok = (Test-NewShellPathHas $NpmGlobalDir) }
+  }
 }
-# pip 사용자 자리 — 그 폴더가 섰으면(pip 가 그 자리에 무엇을 깔았으면) 새 터미널이 볼 사용자 PATH 에 섰나. 마무리의 「사용자 범위 명령
+# pip 사용자 자리 — 그 폴더가 섰으면(pip 가 그 자리에 무엇을 깔았으면) 새 터미널이 볼 PATH 에 섰나. 마무리의 「사용자 범위 명령
 #   자리」가 물은 그 자리를 같은 자로 레지스트리에서 잰다(PAISetup #30 ②).
 if ($PipUser.Dir -and (Test-Path -LiteralPath $PipUser.Dir)) {
-  $checks += @{ Name = "pip 사용자 자리 — 사용자 PATH ($($PipUser.Dir))"; Ok = (Test-PathListHas ([string](Get-UserPath).Raw) $PipUser.Dir) }
+  $checks += @{ Name = "pip 사용자 자리 — 새 터미널의 PATH ($($PipUser.Dir))"; Ok = (Test-NewShellPathHas $PipUser.Dir) }
 }
-# winget 이 PATH 에 안 심는 CLI 자리(`$Clis` 의 `PathDir`) — 그 폴더가 섰으면 새 터미널이 볼 사용자 PATH 에 섰나. 이 창의 CLI 칸은 배선이
+# winget 이 PATH 에 안 심는 CLI 자리(`$Clis` 의 `PathDir`) — 그 폴더가 섰으면 새 터미널이 볼 PATH 에 섰나. 이 창의 CLI 칸은 배선이
 #   그 자리를 끝에 붙여 늘 서므로 새 터미널을 못 잰다 — 마무리가 심은 자리를 같은 자로 레지스트리에서 잰다. 폴더가 없으면 위 CLI 칸이 말한다.
 foreach ($pd in @($CliPicks | Where-Object { $_.PathDir -and (Test-Path -LiteralPath $_.PathDir) })) {
-  $checks += @{ Name = "$($pd.Label) 자리 — 사용자 PATH ($($pd.PathDir))"; Ok = (Test-PathListHas ([string](Get-UserPath).Raw) $pd.PathDir) }
+  $checks += @{ Name = "$($pd.Label) 자리 — 새 터미널의 PATH ($($pd.PathDir))"; Ok = (Test-NewShellPathHas $pd.PathDir) }
 }
 # VC++ 런타임 — 「프로그램」 걸음과 같은 문 · 같은 자(파일의 판)로 문턱 위인가를 잰다(결정 0146).
 if ($wantVcRuntime) {
