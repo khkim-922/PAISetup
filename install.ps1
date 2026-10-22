@@ -245,7 +245,7 @@ $Clis = @(
   #   서서 `For` 가 Claude 하나다.
   #   `Scope='machine'` — winget 이 이 꾸러미에 내는 설치본이 기계 범위(MSI)뿐이라 승격이 든다. 문은 `$Apps` 의 같은 칸과 같다.
   #   `PathDir` — winget 도 그 MSI 도 이 자리를 PATH 에 안 심는다. 배선(`Update-RuntimePath`)이 이 창 끝에, 마무리의 「사용자 범위
-  #   명령 자리」가 사용자 PATH 끝에 붙이고, 끝 검증이 사용자 PATH 에서 잰다. ⚠ 그 폴더에 LibreOffice 의 `python.exe` 가 같이 서서
+  #   명령 자리」가 사용자 PATH 끝에 붙이고, 끝 검증이 새 터미널의 PATH(기계 · 사용자)에서 잰다. ⚠ 그 폴더에 LibreOffice 의 `python.exe` 가 같이 서서
   #   앞에 끼우면 진짜 파이썬을 가린다 — 늘 끝에 붙인다.
   #   ⚠ `Cmd` 는 콘솔 껍데기 `soffice.com` 이다 — `soffice.exe --version` 은 따로 콘솔 창을 띄워 판을 찍고 Enter 를 기다려, 프로브가
   #   사람이 누를 때까지 선다. 맨 이름(`soffice`)은 파워셸 · cmd 가 PATHEXT 차례로 `.com` 을 집지만 그 차례에 기대지 않는다.
@@ -2760,9 +2760,12 @@ function Measure-NewShellCommand([string]$Name, [string]$Arg, $Policy) {
 }
 
 # 새 터미널 판정(`Measure-NewShellCommand`)을 끝 검증의 칸으로 — 못 쟀으면 「못 쟀다」 칸, 아니면 진 까닭을 이름 곁에 붙인다.
+#   진 칸은 알림(`Advice` — `[!]`)이다. 새 터미널에서 안 서는 까닭(사람의 PATH · 회사 정책 · AllSigned)은 이 설치가 일부러 안 바꾸는
+#   자리라 실패로 안 센다 — 세면 종료코드가 1 이라 자동 실행이 도장을 못 찍고 로그온과 밤마다 설치를 통째로 되풀이한다. 이 설치가
+#   고칠 자리(사용자 PATH 심기 · 실행 정책 올리기)가 진 것은 `$Fails` 와 PATH 칸이 빨강으로 든다.
 function New-NewShellRow([string]$Label, $M) {
   if ($M.State -eq 'unmeasured') { return @{ Name = $Label; State = 'unmeasured'; Probe = $M.Probe; Why = $M.Why } }
-  return @{ Name = $(if ($M.Say) { "$Label — $($M.Say)" } else { $Label }); Ok = ($M.State -eq 'yes') }
+  return @{ Name = $(if ($M.Say) { "$Label — $($M.Say)" } else { $Label }); Ok = ($M.State -eq 'yes'); Advice = ($M.State -ne 'yes') }
 }
 
 # pip 가 사용자 자리에 까는 명령의 폴더 — 이 설치와 넘긴 훅이 쓰는 그 `python`(PATH 의 것)에 `sysconfig` 의 사용자 꼴(`nt_user`)로 묻는다.
@@ -10285,7 +10288,7 @@ foreach ($app in @($Apps | Where-Object { $_.Need -ne 'vscode' })) {
 # PowerShell 스크립트 실행 — 새 터미널의 실행 정책이 npm 의 `.ps1` 껍데기를 막나(PAISetup #56 · 「사용자 범위 명령 자리」가 올린다). Node 가
 #   늘 서는 판이라 `npm` 자신의 껍데기가 늘 있어 늘 잰다.
 if ($psNow.State -ne 'yes') { $checks += @{ Name = 'PowerShell 스크립트 실행 (새 터미널)'; State = 'unmeasured'; Probe = $psNow.Probe; Why = $psNow.Why } }
-else { $checks += @{ Name = "PowerShell 스크립트 실행 (새 터미널 — $($psNow.Value) · $($psNow.Scope))"; Ok = (-not $psNow.Blocks) } }
+else { $checks += @{ Name = "PowerShell 스크립트 실행 (새 터미널 — $($psNow.Value) · $($psNow.Scope))"; Ok = (-not $psNow.Blocks); Advice = [bool]$psNow.Blocks } }
 # 나르는 자리 — 「공용 자산」 걸음의 자산. 재는 자는 위 `New-CountCheck` 하나다. 규범 · 룰 · 에이전트 · 스킬은 손의 `check` 가, 칸 없이
 #   까는 스킬은 아래에서 이름마다 잰다.
 # 임자는 지금 다시 묻는다(`Get-OwnedHome`) — 「공용 자산」 걸음의 답은 그때의 것이다. 맨바닥 판은 그때 저장소가 없어 동봉본을 깔았고,
@@ -10756,8 +10759,9 @@ foreach ($c in $checks) {
     $why  = if ($c.Premise) { "$($c.Premise) 와 한 전제 — $over" } else { $over }
     Write-Host "  [?] $($c.Name) — 못 쟀다: $why" -ForegroundColor Yellow
   }
-  elseif ($c.Ok) { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
-  else           { Write-Host "  [X] $($c.Name)" -ForegroundColor Red }
+  elseif ($c.Ok)     { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
+  elseif ($c.Advice) { Write-Host "  [!] $($c.Name)" -ForegroundColor Yellow }
+  else               { Write-Host "  [X] $($c.Name)" -ForegroundColor Red }
 }
 # 규범 · 룰 · 스킬이 어디서 와 어느 홈에 갔나 — 제작자 칸은 저장소 칸 하나로 뜻이 바뀌어(비면 설치 묶음의 제작자 세트, 차면 그
 #   저장소의 배포 · 결정 0107) 창의 출처 줄이 그것을 말하고(PAISetup #53), 끝에서도 같은 말을 한 줄로 한다. 판정은 위 칸들
@@ -10808,7 +10812,8 @@ if ($repoUrl -or ($PickKeys -contains 'copilot')) {
 # `$Fails` 에 합치지는 않는다 — 합치면 같은 사고를 두 자가 각각 넣어 「N 개가 남았다」가 겹쳐 센다(`[X] VS Code` 와 `VS Code 설치`).
 # 못 잰 칸은 빨강으로 안 세고 따로 센다 — 칸의 `[?]` 와 안 한 걸음을 합친 수다. 하나라도 서면 이 설치는 안 끝난 것이다(맨 끝
 #   종료코드 · 결정 0141).
-$redChecks = @($checks | Where-Object { -not $_.Ok -and $_.State -ne 'unmeasured' }).Count
+# 알림 칸(`Advice` — `New-NewShellRow`)은 빨강으로 안 센다 — 이 설치가 일부러 안 바꾸는 자리다.
+$redChecks = @($checks | Where-Object { -not $_.Ok -and -not $_.Advice -and $_.State -ne 'unmeasured' }).Count
 $unmeasuredChecks = @($checks | Where-Object { $_.State -eq 'unmeasured' }).Count + $script:UnmeasuredSteps.Count
 
 Write-Host ''
