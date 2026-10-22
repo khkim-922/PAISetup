@@ -206,8 +206,12 @@ PAISetup 설치본이 이 PC 의 어디에 무엇을 어떤 조건으로 까는�
 Claude · Codex · Copilot 의 CLI 가 Node.js 로 돌아서, 무엇을 골랐든 늘 깔린다.
 
 - 안티그래비티 CLI(`agy`)만은 Node 가 아니라 winget 이 깐다
-- npm 으로 전역에 깐 CLI 가 서는 폴더 `%APPDATA%\npm` 가 있으면 그 자리를 사용자 PATH 끝에 더한다. 이미 있으면 안 건드리고, 다른
-  자리는 그대로 둔다
+- npm 으로 전역에 깐 CLI 가 서는 폴더는 npm 에 물어 정한다(`npm prefix -g` — 보통 `%APPDATA%\npm` 이고, 사람이 npm 의 자리를 바꿨거나
+  Node 를 다른 길로 깐 PC 는 그 자리다). 그 폴더가 있고 새 터미널의 PATH(기계 · 사용자)에 없으면 사용자 PATH 끝에 더한다. 이미 있으면
+  안 건드리고, 다른 자리는 그대로 둔다
+- npm 은 명령마다 PowerShell 용 껍데기(`.ps1` 파일)를 깔고 PowerShell 은 그것을 먼저 부른다. PowerShell 의 스크립트 실행이
+  윈도 기본값(Restricted)으로 막혀 있으면 **이 계정만** RemoteSigned 로 올린다 — 이 PC 에서 생긴 스크립트는 돌고, 인터넷에서 받은
+  스크립트는 서명을 그대로 묻는다. 회사 정책(그룹 정책)이 정했거나 사람이 고른 AllSigned 는 안 바꾸고 끝 검증이 알린다
 - 그래서 설치가 끝난 뒤 새로 여는 터미널에서도 `claude` · `codex` · `copilot` 과 사람이 npm 으로 깐 CLI 가 이름만으로 선다
 - Node 는 윈도우가 믿는 인증서 목록을 안 읽는다. 설치는 그 목록에서 설치 중에 여는 사이트들의 뿌리 인증서를 골라 회사 루트 CA
   (`corp-ca.pem`)와 함께 `~/.claude/node-ca.pem` 한 파일에 모으고, 사용자 환경변수 `NODE_EXTRA_CA_CERTS` 가 그 파일을 가리키게 한다.
