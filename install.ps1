@@ -223,7 +223,9 @@ $Extensions = @(
 #   VS Code 의 안티그래비티 확장이 받는 `agy` 는 PATH 에 안 서므로 확장을 깐 기계도 이 줄을 건너뛰지 않는다(같은 것을 두 번
 #   받는다 — 줄이려면 제품 칸을 끈다).
 $Clis = @(
-  @{ Key='claude'; Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI' }
+  # `NativeBin` — 진짜 실행 파일을 선택 꾸러미로 받아 이 자리의 자리표시를 덮는 꾸러미의 그 자리(전역 꾸러미 폴더 기준).
+  #   선택 꾸러미 받기가 지면 npm 은 0 으로 끝나고 자리표시만 남는다 — 「CLI」 걸음과 끝 검증이 `Test-NpmNativeStub` 로 잰다.
+  @{ Key='claude'; Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI'; NativeBin='bin\claude.exe' }
   @{ Key='codex';  Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
   # `Cmd` 는 winget 매니페스트의 `Commands:` 가 정한다 — winget 이 받은 `cli_windows_x64.exe` 를 `agy` 로 세워 제 패키지 자리
   #   (`…\WinGet\Packages\Google.AntigravityCLI_…\agy.exe`)에 두고 그 자리를 사용자 PATH 에 심는다.
@@ -773,6 +775,13 @@ function New-NativeStart([string]$File, [string]$ArgLine) {
   $path = $c.Source
   $ext  = [IO.Path]::GetExtension($path).ToLowerInvariant()
   $tail = if ($ArgLine) { ' ' + $ArgLine } else { '' }
+  # ⚠ **npm 이 곁에 `.cmd` 를 같이 깔았으면 그쪽으로 띄운다.** `.ps1` 껍데기는 부른 exe 가 아예 안 떠도(자리표시 파일 ·
+  #   깨진 바이너리) `exit $LASTEXITCODE` 가 0 을 내, 깨진 CLI 가 「돈다」로 서고 그 뒤 걸음이 그 CLI 를 부른다. `.cmd` 는
+  #   같은 실패를 0 이 아닌 값으로 낸다. `.cmd` 가 못 지키는 글자(`%` · 낱 안의 큰따옴표)를 든 인자면 `.ps1` 그대로다.
+  if ($ext -eq '.ps1' -and $ArgLine -notmatch '%|\\"') {
+    $cmdSib = [IO.Path]::ChangeExtension($path, '.cmd')
+    if (Test-Path -LiteralPath $cmdSib -PathType Leaf) { $path = $cmdSib; $ext = '.cmd' }
+  }
   $psi  = New-Object System.Diagnostics.ProcessStartInfo
   if ($ext -eq '.ps1') {
     $psi.FileName  = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -3972,6 +3981,17 @@ function Measure-NpmGlobal([string[]]$Pkgs) {
   } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
+# npm 이 「깔았다」 한 CLI 가 진짜 실행 파일 대신 자리표시만 들었나 — 행의 `NativeBin` 이 있고 그 파일이 4 KB 밑이면 참이다
+#   (꾸러미의 postinstall 이 자리표시로 보는 문턱과 같다). 파일이 없거나 행에 `NativeBin` 이 없으면 거짓 — 깔렸나는 npm 의 기록이 든다.
+# ⚠ **띄워서 재지 않는다** — 자리표시는 실행 파일이 아니라 띄우면 윈도가 「지원되지 않는 16비트 응용 프로그램」 창을 띄운다.
+function Test-NpmNativeStub($Row) {
+  if (-not $Row.NativeBin) { return $false }
+  try {
+    $f = Join-Path (Join-Path (Join-Path $NpmGlobalDir 'node_modules') $Row.Pkg) $Row.NativeBin
+    return ((Get-Item -LiteralPath $f -ErrorAction Stop).Length -lt 4096)
+  } catch { return $false }
+}
+
 # npm 으로 까는 한 자리 — 확장과 같은 까닭이다. `$Rows` 는 고른 npm CLI 의 행(`Pkg` · `Cmd` · `Label`)이다. 깔렸나 · 깔린 판은 npm 의
 #   기록(`Measure-NpmGlobal`)이 재고 그 CLI 를 띄우지 않는다(PAISetup #30 ③). 할 일은 CLI 마다 한 표(`Get-InstallAction`)가 가른다.
 #   못 깐 CLI 는 빨간 줄 · `$Fails`, 못 올린 CLI 는 노란 줄이다.
@@ -4006,6 +4026,13 @@ function Install-NpmCli($Rows) {
     $Pkg = $r.Pkg; $Label = $r.Label
     $rec = $recs[$Pkg]
     $b = $rec.Ver; $rv = ''; $vrc = 0
+    # 기록에는 섰는데 자리표시만 든 CLI 는 「최신」이어도 다시 깐다 — 같은 판을 다시 받으면 빠진 선택 꾸러미가 들어온다.
+    if ($rec.State -eq 'yes' -and (Test-NpmNativeStub $r)) {
+      Write-Host "  ! $Label — 진짜 실행 파일이 빠지고 자리표시만 있다 · 다시 깐다" -ForegroundColor Yellow
+      $spec = if ($b) { "$Pkg@$b" } else { $Pkg }
+      $todo['install'] += ,@{ Pkg = $Pkg; Cmd = $r.Cmd; Label = $Label; Spec = $spec; Before = $b; Latest = ''; NativeBin = $r.NativeBin }
+      continue
+    }
     if ($rec.State -eq 'yes' -and -not $NoUpgrade) {
       Say-Busy $Label 'upcheck' @('npm', "지금 $(Format-VerPart $b)")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
       # 먼저 묻고 다르면 깐다 — 판정하려고 `npm install` 을 돌리면 같은 판이어도 풀이 · 받기 · 링크를 다시 밟고, 판 하나 묻는 GET 은
@@ -4042,7 +4069,7 @@ function Install-NpmCli($Rows) {
       # 깔기는 `install` 일 때만이다 — 이 갈래가 안 내는 할 일이 와도 깔린 것 위에 다시 깔지 않는다. 올리기는 묻은 태그(`@latest`)를
       #   그대로 받는다 — 위 `npm view` 와 같은 까닭.
       $spec = if ($cliAct -eq 'upgrade') { "$Pkg@latest" } else { $Pkg }
-      $todo[$cliAct] += ,@{ Pkg = $Pkg; Cmd = $r.Cmd; Label = $Label; Spec = $spec; Before = $b; Latest = $rv }
+      $todo[$cliAct] += ,@{ Pkg = $Pkg; Cmd = $r.Cmd; Label = $Label; Spec = $spec; Before = $b; Latest = $rv; NativeBin = $r.NativeBin }
     }
   }
 
@@ -4075,12 +4102,30 @@ function Install-NpmCli($Rows) {
     if ($grp[0].Log -ne $nl) { Remove-Item -LiteralPath $nl -ErrorAction SilentlyContinue }
   }
   if (-not $ran.Count) { return }
+  # npm 이 0 으로 끝났어도 진짜 실행 파일이 빠졌을 수 있다 — 선택 꾸러미 받기가 지면 npm 은 그것을 실패로 안 센다. 그 CLI 만
+  #   한 번 다시 받고(다시 받으면 대개 들어온다), 그래도 자리표시면 실패다.
+  $oldLogs = @()
+  foreach ($g in @($ran | Where-Object { $_.Rc -eq 0 -and (Test-NpmNativeStub $_) })) {
+    Write-Host "  ! $($g.Label) — npm 은 깔았다는데 진짜 실행 파일이 빠졌다 · 한 번 다시 받는다" -ForegroundColor Yellow
+    Say-Busy $g.Label 'install' @('npm')
+    $oldLogs += $g.Log
+    $g.Log = [IO.Path]::GetTempFileName()
+    $g.Rc  = Invoke-Logged 'npm' @('install','-g',$g.Spec) $g.Log
+    if ($g.Rc -eq 0 -and (Test-NpmNativeStub $g)) { $g.Stub = $true }
+  }
   # ⚠ **깔고 나서 한 번 더 태운다** — npm 전역 자리(`$NpmGlobalDir`)는 첫 설치가 만드는 폴더라, 맨바닥 PC 에서는 앞의 배선이 조용히 지나가고
   #   PATH 가 빈 채로 남는다. 두 번째부터는 폴더가 있어 안 드러난다.
   Update-RuntimePath
   $after = Measure-NpmGlobal @($ran | ForEach-Object { $_.Pkg })
   foreach ($g in $ran) {
     $Pkg = $g.Pkg; $Label = $g.Label; $b = $g.Before; $nrc = $g.Rc; $nl = $g.Log
+    if ($g.Stub) {
+      Write-Host "  ! $Label 설치 실패 (npm 은 0 으로 끝났는데 두 번 다 진짜 실행 파일이 안 들어왔다 — $($g.NativeBin) 가 자리표시다) — 뱉은 끝 줄:" -ForegroundColor Red
+      Show-Log $nl
+      Write-Host "     새 터미널에서:  npm install -g $($g.Spec)"
+      $Fails.Add("$Label (진짜 실행 파일이 빠졌다)")
+      continue
+    }
     if ($g.Act -eq 'upgrade') {
       $a = $after[$Pkg].Ver
       if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
@@ -4106,7 +4151,7 @@ function Install-NpmCli($Rows) {
       $Fails.Add($Label)
     }
   }
-  Remove-Item -LiteralPath (@($ran | ForEach-Object { $_.Log }) | Select-Object -Unique) -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath (@(@($ran | ForEach-Object { $_.Log }) + $oldLogs) | Select-Object -Unique) -ErrorAction SilentlyContinue
 }
 
 # winget 이 내주는 CLI(`$Clis` 의 `Via='winget'` 행)를 재고 할 일대로 깔거나 올린다. 깔렸으면 프로그램처럼 「올릴 것」 목록이
@@ -10315,6 +10360,7 @@ foreach ($c in $CliPicks) {
     $rec = $npmCheckRecs[$c.Pkg]
     if ($rec.State -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = $rec.Probe; Why = $rec.Why } }
     elseif ($rec.State -ne 'yes')    { $checks += @{ Name = $c.Label; Ok = $false } }
+    elseif (Test-NpmNativeStub $c)   { $checks += @{ Name = "$($c.Label) (진짜 실행 파일이 빠지고 자리표시만 있다 — $($c.NativeBin))"; Ok = $false } }
     else                             { $checks += New-NewShellRow $c.Label (Measure-NewShellCommand $c.Cmd $cliArg $psNow) }
     continue
   }
