@@ -32,7 +32,8 @@
 #
 # 기본 실행이 걷는 것은 우리 것이라는 기록이 있는 것뿐이다 — 홈 씨앗 · 사내 환경 문서는 이 저장소 이력이 그 자리에서 지운 파일을
 # (`Get-SeedColumn`), 규범 · 룰 · 에이전트 · 스킬은 손이 제가 놓았다고 기록한 것을(손의 머리말) 걷는다. 형제 저장소에 커밋 안 된 채
-# 남아 당김을 막는 사본은 내용이 이 저장소 이력의 어느 판과 바이트로 같을 때만 되돌리거나 지운다(`Clear-PlantedCopies`). 기록 없이 원본에만 없는
+# 남아 당김을 막는 사본은 내용이 이 저장소 이력의 어느 판과 바이트로 같을 때만 되돌리거나 지운다(`Clear-PlantedCopies`). 회사 PC 의 DRM 이
+# 감싸 당김을 막는 오피스 · PDF 는 감싼 판을 백업하고 커밋본으로 되돌린다(`Clear-DrmWrapped` — 판정은 세션 훅 몸통). 기록 없이 원본에만 없는
 # 씨앗 · 메모리 파일은 -Prune 을 줄 때만 걷고, 기본 실행에서는 후보만 알린다.
 # 이미 맞는 것은 건드리지 않아 몇 번을 돌려도 안전하다. 덮거나 걷는 파일은 ~/.claude/backups/deploy-<시각>/ 에 원본을
 # 남기고, 손이 덮거나 걷는 것은 손이 제 백업 자리에 남긴다. 당김이 걷는 사본만은 안 남긴다 — 그 내용은 진본 커밋에 바이트로 있고
@@ -275,6 +276,23 @@ function Clear-PlantedCopies($repo, $sha) {
     return @{ Cleared = $done; Why = '' }
 }
 
+function Clear-DrmWrapped($repo, $sha) {
+    # 빨리감기를 막는 파일이 다 DRM 이 감싼 사본이면 백업하고 커밋본으로 되돌린다. 받는 것: 저장소 · 병합할 커밋 · 읽는 것: 준비의
+    #   `$bash` · `$src` · `$DrmClearTimeoutSec` · 내는 것: @{ Lines; Why } — Lines 는 되돌린 파일마다 몸통이 낸 줄(`<경로> — 감싼 판:
+    #   <백업 자리>`), Why 는 안 되돌린 까닭(막는 것이 없거나 다 되돌렸으면 빈 값). merge 는 안 한다 — 부른 쪽이 그대로 한다.
+    # 판정 · 백업 · 되돌리기는 세션 훅 몸통 한 자리(`--clear-drm`)에 산다 — 설치기의 설정 저장소 당김도 그 자리를 불러, 두 당김이 같은
+    #   파일을 같은 까닭으로 되돌린다. 여기 옮겨 적으면 한쪽이 바뀌는 날 이 당김만 다른 파일을 버린다.
+    # 몸통을 못 부르면 까닭만 남기고 지나간다 — 이 손이 없을 때와 같은 자리라 merge 가 git 의 사유로 진다.
+    $body = Join-Path $src '.claude\hooks\session-start-body.sh'
+    if (-not $bash) { return @{ Lines = @(); Why = 'Git Bash 를 못 찾았다' } }
+    if (-not (Test-Path $body)) { return @{ Lines = @(); Why = "몸통이 없다 ($body)" } }
+    $a = Invoke-GitWait @(($body -replace '\\', '/'), '--clear-drm', ($repo -replace '\\', '/'), $sha) $DrmClearTimeoutSec $bash
+    $lines = @("$($a.Out)" -split "`r?`n" | Where-Object { $_ })
+    if ($a.Code -eq 0) { return @{ Lines = $lines; Why = '' } }
+    $why = if ($null -eq $a.Code) { "몸통이 답을 못 냈다: $($a.Why)" } else { $a.Why }
+    return @{ Lines = $lines; Why = $why }
+}
+
 function Sync-Repos($repos) {
     # 받는 것: 저장소 뿌리 목록 · 내는 것: 없다 — 저장소마다 판정 한 줄(`↓ 당김` · `· 당김 건너뜀` · `! 못 당김`)을 반드시
     #   찍고, `$pulledRepos[<저장소>]` 에 「이번 회차에 밀어도 되나」를 적는다(`.git` 이 없는 저장소는 안 적는다). 던지지 않는다.
@@ -369,8 +387,20 @@ function Sync-Repos($repos) {
                 Write-Host "↺ 사본 걷음  $repo — $($x.Path)  (진본 $r7 판의 사본 · 그 내용: git -C `"$src`" show ${r7}:$($x.Path))" -ForegroundColor Yellow
             }
             $m = Invoke-GitWait @('-C', $repo, 'merge', '--ff-only', '-q', $to.Sha) $PullMergeTimeoutSec
+            # 회사 PC 의 DRM 이 감싼 오피스 · PDF 가 빨리감기를 막았으면 백업하고 되돌린 뒤 한 번 더 merge 한다 — git 은 감싼 바이트를
+            #   손질로 읽어, 원격이 그 파일을 바꾸거나 지우는 당김을 날마다 멈춘다. merge 가 진 뒤에만 묻는다 — 몸통을 띄우는 값(저장소마다
+            #   1초 가까이)을 막힌 적 없는 당김마다 치르지 않는다. 되돌린 것은 줄에 백업 자리와 함께 남긴다.
+            $drm = $null
+            if ($m.Code -ne 0) {
+                $drm = Clear-DrmWrapped $repo $to.Sha
+                foreach ($l in $drm.Lines) { Write-Host "↺ 감싼 사본 되돌림  $repo — $l" -ForegroundColor Yellow }
+                if (-not $drm.Why -and $drm.Lines.Count) {
+                    $m = Invoke-GitWait @('-C', $repo, 'merge', '--ff-only', '-q', $to.Sha) $PullMergeTimeoutSec
+                }
+            }
             if ($m.Code -ne 0) {
                 $kept = if ($planted.Why) { " · 사본을 안 걷었다: $($planted.Why)" } else { '' }
+                if ($drm -and $drm.Why) { $kept += " · 감싼 사본을 안 되돌렸다: $($drm.Why)" }
                 Write-Host "! 못 당김  $repo — $($m.Why)$kept" -ForegroundColor Red
                 $pulledRepos[$repo] = $false
                 continue
@@ -829,12 +859,12 @@ $bash = @(
 # 층 — 저장소. 형제 저장소의 main 을 원격 쪽으로 빨리감기로 맞춘다
 # 하는 일 — `.git` 을 든 형제 저장소마다 fetch 를 동시에 띄우고, 저장소마다 어디까지 갈지 세션 훅 몸통에 물은 뒤
 #   (`Get-PullTarget` — 원격 끝, 저장소가 당김 문을 두었으면 그 문이 고른 커밋) `merge --ff-only` 를 차례로 한다. merge 앞에서
-#   빨리감기를 막는 파일이 이 배포가 전에 심은 사본뿐이면 그것을 걷는다(`Clear-PlantedCopies`). 저장소마다 판정 한 줄(`↓ 당김` ·
-#   `· 당김 건너뜀` · `! 못 당김` · 문을 못 물었으면 `! 당김 문을 못 물었다`)을 내고 — 사본을 걷었으면 그 앞에 `↺ 사본 걷음`
-#   — 그 판정을 `$pulledRepos` 에 남긴다
+#   빨리감기를 막는 파일이 이 배포가 전에 심은 사본뿐이면 그것을 걷고(`Clear-PlantedCopies`), merge 가 졌는데 막은 파일이 다 DRM 이
+#   감싼 사본이면 백업하고 되돌린 뒤 한 번 더 merge 한다(`Clear-DrmWrapped`). 저장소마다 판정 한 줄(`↓ 당김` · `· 당김 건너뜀` · `! 못 당김` · 문을 못 물었으면 `! 당김 문을 못
+#   물었다`)을 내고 — 되돌렸으면 그 앞에 `↺ 감싼 사본 되돌림`, 걷었으면 `↺ 사본 걷음` — 그 판정을 `$pulledRepos` 에 남긴다
 # 앞에서 받는 것 — 준비의 `$globalRuleTargets` · `$bash`(몸통을 부른다) · `$repoFiles`(걷을 수 있는 파일의 목록)
 # 안 하는 것 — 승인을 안 묻는다 · 던지지 않고 종료코드를 안 올린다 · 밀지 않는다(실행 단계의 `copy` 걸음이 `$pulledRepos` 를
-#   읽기만 한다) · 우리 사본이 아닌 변경(사람의 손질 · 목록 밖 파일 · 스테이징된 것 · 들어올 커밋과 무관한 것)은 안 건드린다 ·
+#   읽기만 한다) · 우리 사본도 감싼 사본도 아닌 변경(사람의 손질 · 목록 밖 파일 · 스테이징된 것 · 들어올 커밋과 무관한 것)은 안 건드린다 ·
 #   세션 훅의 당김 표식(`.git/claude-pull-attempted`)을 안 읽고 안 쓴다
 
 # ── 당김 — 계획을 짓기 앞에 형제 저장소를 원격까지 맞춘다 ──
@@ -859,6 +889,7 @@ $bash = @(
 $PullBatchTimeoutSec = 120   # fetch 묶음 전체의 벽시계 한도. 넘긴 자식만 거둔다
 $PullMergeTimeoutSec = 30    # merge 하나의 한도 — 디스크 일이라 망을 안 탄다(걸리면 잠금이다)
 $PullTargetTimeoutSec = 60   # 몸통에 멈출 커밋을 묻는 한도(저장소마다) — 저장소의 손이 망(CI 조회)을 탈 수 있어 fetch 자리다
+$DrmClearTimeoutSec = 60     # 몸통이 감싼 사본을 백업하고 되돌리는 한도(저장소마다) — 디스크 일이지만 몸통을 Git Bash 로 띄우는 값이 든다
 $pulledRepos = @{}   # 저장소 -> 이번 회차에 그 저장소로 밀어도 되나 (당김 판정)
 
 # 대상은 `personal.conf` 의 REPOS 중 이 PC 에 `.git` 을 든 것이다 — 목록을 여기 안 적는다. 이 저장소 자신은 대상이 아니다 —

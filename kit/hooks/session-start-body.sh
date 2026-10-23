@@ -47,6 +47,11 @@
 #                               묻고 답을 재고 판정을 `.git/claude-pull-target.last` 에 적는다 — 같은 원격을 당기는
 #                               자리가 다 같은 커밋에서 선다. stdout 에 병합할 커밋의 온전한 sha 한 줄과 0 · 저장소나
 #                               `<원격>/main` 을 못 읽으면 stderr 한 줄과 2
+#   session-start.sh --clear-drm <저장소> <병합할 커밋>
+#                               빨리감기를 막는 파일이 다 DRM 이 감싼 사본이면 백업하고 커밋본으로 되돌린다 ← 배포
+#                               (deploy.ps1)와 설치기의 설정 저장소 당김이 merge 앞에서 몸통을 바로 부른다. 되돌린
+#                               파일마다 stdout 한 줄과 0 · 막는 것이 없어도 0 · 감싼 사본이 아닌 막는 파일이 있으면
+#                               아무것도 안 건드리고 stderr 한 줄과 1 · 못 쟀거나 백업 · 되돌리기가 지면 stderr 한 줄과 2
 #   session-start.sh <그 밖의 인자>
 #                               아무것도 안 하고 stderr 한 줄과 2 로 끝난다 — 오타(`--chek`)가 인자 없는 갈래(당김 ·
 #                               홈 밀기 · 설치)로 새지 않는다. 2 는 「답을 못 냈다」다 — 1 은 갈래마다 잰 판정(꺼진
@@ -86,10 +91,11 @@ case "${1:-}" in
   --install-global) MODE=install; ASKED=install-global ;;
   --plant)          MODE=plant; ASKED=plant; PLANT_ROOT="${2:-}" ;;
   --pull-target)    MODE=pull-target; PT_REPO="${2:-}"; PT_REMOTE="${3:-}" ;;
+  --clear-drm)      MODE=clear-drm; CD_REPO="${2:-}"; CD_TARGET="${3:-}" ;;
   # 모르는 인자는 무엇도 하기 전에 끝낸다 — 기본 갈래가 없으면 오타 하나가 auto 를 통째로 돈다.
   #   stderr 로 낸다 — 세션 문맥에 실을 말이 아니라 부른 자의 실수이고, 훅으로 걸렸으면 하네스가 0 아닌
   #   끝의 stderr 를 사람에게 보인다
-  *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global · --plant · --pull-target)\n' "$1" >&2
+  *) printf '세션 훅: 모르는 인자 「%s」 — 아무것도 안 하고 끝낸다 (아는 것: 인자 없음 · --check · --needs-install · --install · --install-global · --plant · --pull-target · --clear-drm)\n' "$1" >&2
      exit 2 ;;
 esac
 # `--plant` 의 작업 루트는 무엇도 하기 전에 굳힌다 — 없거나 폴더가 아니면 모르는 인자와 같이 2 로 끝낸다.
@@ -2446,6 +2452,103 @@ gate_fresh_clone() {  # gate_fresh_clone <저장소>
   return 0
 }
 
+# 빨리감기를 막는 파일이 다 DRM 이 감싼 사본이면 백업하고 커밋본으로 되돌린다 — 갈래 `--clear-drm` 이 부른다.
+#   회사 PC 의 Fasoo DRM 은 작업 트리의 오피스 · PDF 를 감싸 바이트를 바꾸고, git 은 그것을 손질로 읽어 그 파일을 바꾸거나
+#   지우는 당김을 「덮어쓰면 날아간다」로 멈춘다 — 설치 · 배포의 당김이 날마다 같은 자리에서 지고 그 PC 는 옛 판에 묶인다.
+#   받는 것 — 저장소 · 병합할 커밋(이름이나 sha). 내는 것 — 되돌린 파일마다 stdout 한 줄(`<경로> — 감싼 판: <백업 자리>`),
+#   아무것도 안 건드린 까닭은 stderr 한 줄. 끝 — 0 막는 것이 없다 · 다 되돌렸다 / 1 감싼 사본이 아닌 막는 파일이 있어 아무것도
+#   안 건드렸다 / 2 못 쟀다(커밋 · 표지 · 작업 트리를 못 읽었다 · 백업이나 되돌리기가 졌다).
+#   부작용 — 감싼 판을 백업 자리(`~/.paisetup/backups/<시각>/<홈 기준 자리>` — 손 `tool-homes.py` 의 백업과 같은 규약)에 두고
+#   그 파일을 HEAD 의 판으로 되돌린다.
+# 감싼 사본은 둘을 다 채운 파일이다 — 작업 파일의 머리에 감싼 표지가 들고, HEAD 의 그 파일 머리에는 안 든다. 커밋본부터 감싼
+#   채 담긴 파일(DRM 시험 재료)은 다시 감싸여도 손질로 안 뜨고, 표지 없는 손질은 사람의 것이다. 표지와 머리 길이는 곁의 DRM
+#   길잡이(`drm-guide.py` 의 `FASOO_MARK` · `HEAD_BYTES`)에서 읽는다 — 여기 따로 적으면 길잡이가 표지를 고친 날 이쪽만 낡는다.
+# ⚠ 감싼 판은 풀어 견줄 수 없어 그 안에 사람이 고친 것이 있는지 모른다 — 그래서 버리지 않고 늘 백업한다.
+# ⚠ 하나라도 감싼 사본이 아니면 아무것도 안 건드린다 — 남은 하나가 어차피 당김을 막아, 되돌리기만 하고 전진은 못 한다(배포의
+#   `Clear-PlantedCopies` 와 같은 규칙). 막는 파일은 들어올 커밋이 건드리는 파일 가운데 작업 트리 · 인덱스에서 바뀌었거나 git 이
+#   모르는 것이다(작업 트리에서 지운 것은 뺀다) — 들어올 커밋이 안 건드리는 감싼 파일은 빨리감기를 안 막으니 두고 본다.
+# ⚠ 경로는 글자 그대로 넘긴다(`--literal-pathspecs`) — 받아 온 재료의 이름에는 `[기타]` 같은 글롭 글자가 든다.
+# ⚠ 머리를 재는 파이프는 `pipefail` 밖에서 돈다 — 표지를 찾은 grep 이 먼저 끝나면 앞의 git 이 SIGPIPE 로 지고, 그 끝 값이 판정을
+#   「표지 없음」으로 뒤집는다.
+clear_drm_wrapped() {  # clear_drm_wrapped <저장소> <병합할 커밋>
+  _cdg="$(dirname "$_self")/drm-guide.py"
+  _cdm="$(sed -n "s/^FASOO_MARK = b'\([A-Za-z0-9]*\)'.*/\1/p" "$_cdg" 2>/dev/null)"
+  _cdn="$(sed -n 's/^HEAD_BYTES = \([0-9][0-9]*\).*/\1/p' "$_cdg" 2>/dev/null)"
+  if [ -z "$_cdm" ] || [ -z "$_cdn" ]; then
+    printf '감싼 표지를 못 읽었다(%s)\n' "$_cdg" >&2; return 2
+  fi
+  if ! _cdt="$(git -C "$1" rev-parse -q --verify "$2^{commit}" 2>/dev/null)"; then
+    printf '병합할 커밋 「%s」 을 못 읽었다\n' "$2" >&2; return 2
+  fi
+  # 앞서 있거나 갈라진 나무 — 앞서 있으면 merge 가 할 일이 없고, 갈라졌으면 되돌려도 빨리감기가 안 선다
+  git -C "$1" merge-base --is-ancestor HEAD "$_cdt" 2>/dev/null || return 0
+  # 두 목록 다 `-z` 로 받는다 — 상태 줄은 빈칸이 든 경로를 따옴표로 감싸고 이름 목록은 안 감싸, 그대로 견주면 안 맞는다
+  if ! _cdi="$(git -C "$1" diff -z --name-only --no-renames HEAD "$_cdt" 2>/dev/null | tr '\0' '\n')"; then
+    printf '들어올 파일을 못 쟀다\n' >&2; return 2
+  fi
+  [ -n "$_cdi" ] || return 0
+  if ! _cds="$(git -C "$1" status -z --porcelain=v1 --untracked-files=all --no-renames 2>/dev/null | tr '\0' '\n')"; then
+    printf '작업 트리를 못 쟀다\n' >&2; return 2
+  fi
+  # 막는 파일 — 들어올 파일 가운데 상태 줄에 뜬 것. 줄은 `XY <경로>` 이고 경로는 글자 그대로다. 작업 트리에서 지운 파일(` D`)은
+  #   빨리감기가 그대로 받아 막지 않는다.
+  # ⚠ 들어올 목록에 드나는 파이프 없이 가른다(`case`) — 목록이 파이프 버퍼를 넘으면 `grep -q` 가 먼저 끝나 앞의 printf 가 SIGPIPE
+  #   로 지고, pipefail 아래서 그 막는 파일이 「안 들어온다」로 빠진다. 상태 줄마다 프로세스를 띄우지 않는 값도 든다.
+  _cdi="
+$_cdi
+"
+  _cdw=""; _cdk=""
+  while IFS= read -r _cde; do
+    [ -n "$_cde" ] || continue
+    _cdp="${_cde#???}"
+    case "$_cdi" in *"
+$_cdp
+"*) ;; *) continue ;; esac
+    _cdxy="${_cde%"${_cde#??}"}"
+    [ "$_cdxy" != " D" ] || continue
+    if [ "$_cdxy" != " M" ]; then
+      _cdk="$_cdp 는 감싼 사본의 꼴이 아니다(상태 '$_cdxy')"; break
+    fi
+    if ! ( set +o pipefail; head -c "$_cdn" -- "$1/$_cdp" 2>/dev/null | LC_ALL=C grep -qaF -- "$_cdm" ); then
+      _cdk="$_cdp 는 머리에 감싼 표지가 없다 — 사람이 고친 것으로 본다"; break
+    fi
+    if ( set +o pipefail; git -C "$1" cat-file blob "HEAD:$_cdp" 2>/dev/null | head -c "$_cdn" | LC_ALL=C grep -qaF -- "$_cdm" ); then
+      _cdk="$_cdp 는 커밋본부터 감싼 채 담겼다 — 감싼 사본과 손질이 안 갈린다"; break
+    fi
+    _cdw="$_cdw$_cdp
+"
+  done <<EOF
+$_cds
+EOF
+  if [ -n "$_cdk" ]; then printf '%s\n' "$_cdk" >&2; return 1; fi
+  [ -n "$_cdw" ] || return 0
+
+  # 백업 자리 — 한 번 부를 때 한 자리. 같은 초에 또 서면 `-2` · `-3` … 을 단다(손의 백업과 같은 규약)
+  _cdr="$(cd "$1" && pwd)"
+  case "$_cdr/" in "$HOME"/*) _cdh="${_cdr#"$HOME"/}" ;; *) _cdh="$(basename "$_cdr")" ;; esac
+  _cdb="$HOME/.paisetup/backups/$(date +%Y%m%d-%H%M%S)"; _cdb0="$_cdb"; _cdx=2
+  while [ -e "$_cdb" ]; do _cdb="$_cdb0-$_cdx"; _cdx=$((_cdx + 1)); done
+  while IFS= read -r _cdp; do
+    [ -n "$_cdp" ] || continue
+    if ! { mkdir -p "$(dirname "$_cdb/$_cdh/$_cdp")" && cp -p -- "$1/$_cdp" "$_cdb/$_cdh/$_cdp"; }; then
+      printf '%s 를 백업하지 못했다(%s) — 아무것도 안 되돌렸다\n' "$_cdp" "$_cdb" >&2; return 2
+    fi
+  done <<EOF
+$_cdw
+EOF
+  while IFS= read -r _cdp; do
+    [ -n "$_cdp" ] || continue
+    _cdbw="$(cygpath -w "$_cdb/$_cdh/$_cdp" 2>/dev/null)" || _cdbw="$_cdb/$_cdh/$_cdp"
+    if ! git --literal-pathspecs -C "$1" checkout -q -- "$_cdp" 2>/dev/null; then
+      printf '%s 를 되돌리지 못했다 — 감싼 판은 %s 에 있다\n' "$_cdp" "$_cdbw" >&2; return 2
+    fi
+    printf '%s — 감싼 판: %s\n' "$_cdp" "$_cdbw"
+  done <<EOF
+$_cdw
+EOF
+  return 0
+}
+
 # 원격을 당긴다 — main 체크아웃일 때만 · 빨리감기로만 · 배경에서. 늘 0.
 #   어디까지 — 원격 main 의 끝이다. 저장소가 손을 두면 그 손이 고른 그 위의 커밋이다(`_pull_target`). 빨리감기만이라 이미 그
 #   커밋을 지난 나무는 그 자리에 선다.
@@ -3666,6 +3769,24 @@ if [ "$MODE" = pull-target ]; then
   esac
   printf '%s\n' "$_pto"
   exit 0
+fi
+
+# ══ 단계 · 감싼 사본 되돌리기 — clear-drm 만 ════════════════════════
+#    층 — 없음(당김을 돕는 갈래). 쓰는 것은 백업 자리와 되돌린 작업 파일뿐이다
+#    하는 일 — 병합할 커밋을 놓고 빨리감기를 막는 파일이 다 DRM 이 감싼 사본이면 백업하고 되돌린다(`clear_drm_wrapped`).
+#      PowerShell 의 당김(deploy.ps1)과 설치기의 설정 저장소 당김이 merge 앞에서 부른다 — 판정이 여기 한 벌이라, 두 당김이
+#      같은 파일을 같은 까닭으로 되돌린다
+#    앞에서 받는 것 — 부름의 `CD_REPO` · `CD_TARGET`
+#    안 하는 것 — fetch · merge(부른 쪽이 한다) · 준비 단계부터의 모든 것(상태 파일 · 파이썬 · 알림 줄)
+#    ⚠ 준비 단계 앞에 선다 — 준비 단계는 stdout 에 알림 줄을 낼 수 있는데, 부른 쪽은 stdout 을 되돌린 파일의 줄로 읽는다.
+#    빈 저장소 인자는 여기서 막는다 — `git -C ""` 는 지금 폴더를 저장소로 읽는다.
+if [ "$MODE" = clear-drm ]; then
+  if [ -z "$CD_REPO" ] || [ -z "$CD_TARGET" ] || ! git -C "$CD_REPO" rev-parse --git-dir >/dev/null 2>&1; then
+    printf '세션 훅: --clear-drm — 저장소 「%s」 를 못 읽는다(병합할 커밋 「%s」) — 아무것도 안 하고 끝낸다\n' "$CD_REPO" "$CD_TARGET" >&2
+    exit 2
+  fi
+  clear_drm_wrapped "$CD_REPO" "$CD_TARGET"
+  exit $?
 fi
 
 # ══ 단계 · 준비 — 모든 갈래 ════════════════════════
