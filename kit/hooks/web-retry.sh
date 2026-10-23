@@ -62,17 +62,26 @@ esac
 # 차례가 도구마다 다르다 — 웹페치는 `curl` 이 맨 앞이다(직결로는 열리는데 웹페치만 못 가는 주소가 있고 가장
 #   싸다). 웹서치는 `curl` 로 못 한다. agy 를 Tavily 보다 앞에 두는 까닭은 사내에서 agy 가 게이트웨이 안의
 #   길이고 Tavily 는 질의가 회사 밖으로 나가서다(#118). agy 는 백그라운드로 맡긴다(스킬 `agy-background` · 결정 0088).
+# ⚠ **에이전트 프록시 자리에서는 프록시를 비키라고 하지 않는다** — 클라우드 컨테이너는 바깥 접속이 에이전트 프록시 하나로만
+#   나가고 직접 DNS 가 없어 `-x ''` 은 어디에도 못 닿는다. 거기서 웹페치의 「getaddrinfo ENOTFOUND」는 대개 환경 네트워크
+#   정책의 거절이라, 그 거절이 남는 자리(프록시 상태)를 댄다. 자리는 프록시가 홈에 두는 안내 파일로 가른다.
 AGY_SKILL=agy-background
+CCR_GUIDE="$HOME/.ccr/README.md"
 has() { command -v "$1" >/dev/null 2>&1; }
 has_agy() { has agy && [ -f "$HOME/.claude/skills/$AGY_SKILL/SKILL.md" ]; }
 alts=
 add() { if [ -n "$alts" ]; then alts="$alts · $1"; else alts=$1; fi; }
 case "$j" in
   *'"tool_name":"WebFetch"'*)
-    has curl && add "같은 주소를 Bash 의 \`curl\` 로(프록시 환경변수를 비끼려면 \`-x ''\`)"
+    if [ -f "$CCR_GUIDE" ]; then
+      has curl && add "같은 주소를 Bash 의 \`curl\` 로(에이전트 프록시를 그대로 탄다)"
+      note=" 이 자리는 바깥 접속이 에이전트 프록시 하나로만 나간다 — 웹페치의 「getaddrinfo ENOTFOUND」나 curl 의 CONNECT 403 은 대개 환경 네트워크 정책의 거절이고, 막힌 주소는 프록시 상태(\`\$HTTPS_PROXY/__agentproxy/status\` 의 recentRelayFailures)에 남는다. 그 도메인은 사용자가 환경 설정의 Network access 에서 연다."
+    else
+      has curl && add "같은 주소를 Bash 의 \`curl\` 로(프록시 환경변수를 비끼려면 \`-x ''\`)"
+    fi
     has tavily-mcp && add "같은 주소를 Tavily 의 \`tavily_extract\` 로"
     has_agy && add "같은 주소를 agy 에게 백그라운드로 읽히기(스킬 \`$AGY_SKILL\`)"
-    head="웹 다시 찾기 — WebFetch 가 이 주소의 본문을 못 받았다($why)." ;;
+    head="웹 다시 찾기 — WebFetch 가 이 주소의 본문을 못 받았다($why).$note" ;;
   *)
     has_agy && add "같은 물음을 agy 에게 백그라운드로 맡기기(스킬 \`$AGY_SKILL\`)"
     has tavily-mcp && add "같은 물음을 Tavily 의 \`tavily_search\` 로"
