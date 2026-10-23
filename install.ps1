@@ -95,7 +95,7 @@ $Fails   = New-Object System.Collections.Generic.List[string]
 $Planted = @{}
 # 도중에 멎은 칸 — 칸 열쇠(걸음은 `$Steps` 의 열쇠 · 그 밖은 칸 이름) → 던진 자리. 걸음 경계(`Write-StepFault`)가 채운다.
 $StepFaults = [ordered]@{}
-# 끝 검증의 칸 목록 — 「검증」 칸이 채운다. 칸 경계 밖에서 비워 둔다 — 검증이 첫 칸 앞에서 멎으면 빈 값이 끝 셈에서 빨간 칸 하나로 읽힌다.
+# 끝 검증의 칸 목록 — 「검증」 칸이 채우고, 「설정 저장소」 걸음이 당김을 막은 손질을 알림 칸으로 더한다. 칸 경계 밖에서 비워 둔다 — 검증이 첫 칸 앞에서 멎으면 빈 값이 끝 셈에서 빨간 칸 하나로 읽힌다.
 $checks = @()
 
 # ── 옛 제작자 칸으로 창 없이 불리면 — 설치는 그대로 가고, 끝나면 한 번만 알린다 (claude-config 결정 0099) ──────────
@@ -1274,6 +1274,31 @@ function Get-SeedSwitches($Seed) {
 #   칸이 그 저장소가 홈으로 미는 자리를 찾는 자리다 — 자리를 짓는 자를 한 벌로 둔다(「준비」의 「설정 저장소의 주소와 자리」).
 function Get-ConfigRepoDir([string]$Url) {
   return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
+}
+
+# 받아 둔 저장소의 당김이 졌을 때, 빨리감기를 막는 파일이 다 DRM 이 감싼 사본이면 백업하고 커밋본으로 되돌린다 — 회사 PC 의 DRM 은
+#   작업 트리의 오피스 · PDF 를 감싸 바이트를 바꾸고, git 은 그것을 손질로 읽어 원격이 그 파일을 바꾸거나 지우는 당김을 날마다 멈춘다.
+#   그러면 그 PC 는 설정 저장소의 옛 판(형제 목록 · 규범 · 룰)에 묶인다.
+#   받는 것 — 저장소 · Git Bash. 내는 것 — @{ Code; Lines }. Code 는 몸통의 끝 값이다 — 0 다 되돌렸거나 막는 것이 없다 · 1 감싼 사본이
+#   아닌 막는 파일이 있어 아무것도 안 건드렸다 · 2 못 쟀다 · 몸통을 못 불렀으면 $null 이나 -1. Lines 는 몸통이 낸 줄(되돌린 파일과 그 백업
+#   자리, 안 되돌린 까닭)이다. 당기지는 않는다 — 부른 쪽이 다시 당긴다.
+# 판정 · 백업 · 되돌리기는 홈 씨앗의 세션 훅 몸통(`--clear-drm`)이 든다 — 배포(deploy.ps1)의 형제 당김도 같은 자리를 불러, 두 당김이
+#   같은 파일을 같은 까닭으로 되돌린다. 받아 둔 저장소의 몸통이 아니라 씨앗의 몸통을 부른다 — 막힌 저장소는 옛 판이라 그 갈래를 모를 수 있다.
+# 병합할 커밋은 그 갈래가 따르는 원격 갈래의 끝이다 — 바로 앞의 `pull` 이 그 끝까지 받아 놓았다.
+# ⚠ 원격 갈래 이름(`@{u}`)을 몸통에 그대로 넘기지 않는다 — 윈도 프로세스가 Git Bash 를 부르면 MSYS 가 인자의 중괄호를 펼쳐 `@u` 가
+#   된다. git 에 물어 sha 로 풀어 넘긴다.
+# ⚠ 몸통의 말은 `2>&1` 로 받아 줄마다 글로 바꾼다 — `Invoke-Logged` 의 `*>` 는 stderr 를 오류 레코드 꼴(「위치 …」 · 「+ CategoryInfo …」)로
+#   적어 까닭 한 줄이 장식에 묻힌다.
+function Clear-RepoDrmWrapped([string]$Repo, [string]$Bash) {
+  $body = Join-Path $ConfigSeedHome '.claude\hooks\session-start-body.sh'
+  if (-not $Bash -or -not (Test-Path -LiteralPath $body -PathType Leaf)) { return @{ Code = $null; Lines = @() } }
+  $to = "$(@(Get-Quiet 'git' @('-C', $Repo, 'rev-parse', '-q', '--verify', '@{u}^{commit}'))[0])".Trim()
+  if ($to -cnotmatch '^[0-9a-f]{40}([0-9a-f]{24})?$') { return @{ Code = $null; Lines = @('따르는 원격 갈래의 끝을 못 읽었다') } }
+  try {
+    $lines = @(& { $ErrorActionPreference = 'Continue'; & $Bash ($body -replace '\\', '/') --clear-drm ($Repo -replace '\\', '/') $to 2>&1 } |
+               ForEach-Object { "$_" } | Where-Object { $_.Trim() })
+    return @{ Code = $LASTEXITCODE; Lines = $lines }
+  } catch { return @{ Code = -1; Lines = @("몸통을 못 불렀다: $(Say-Why $_)") } }
 }
 
 # JSON 을 두 칸 들여쓰기 · `"키": 값` 꼴로 쓴다 — 씨앗 저장소 설정과 같은 꼴이다. ASCII 밖의 글자(한글 등)는 그대로 두고 따옴표 · 역슬래시 ·
@@ -8675,12 +8700,33 @@ if (-not $repoUrl) {
     if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
       Say-Busy (Split-Path $dest -Leaf) 'upgrade' @('git pull', $dest)
       $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
+      # 진 당김을 막은 것이 다 DRM 이 감싼 사본이면 백업하고 되돌린 뒤 한 번 더 당긴다(`Clear-RepoDrmWrapped`). 망이 끊겨 진 판은 막는
+      #   파일이 없다는 답(0 · 줄 없음)이 와 다시 안 당긴다.
+      $drm = $null
+      if ($rc -ne 0) {
+        $drm = Clear-RepoDrmWrapped $dest $bash
+        if ($drm.Code -eq 0 -and $drm.Lines.Count) {
+          Write-Host '  ↺ DRM 이 감싼 사본이 당김을 막아, 감싼 판을 백업하고 커밋본으로 되돌린 뒤 다시 당긴다' -ForegroundColor Yellow
+          $drm.Lines | ForEach-Object { Write-Host "      $_" }
+          $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
+        }
+      }
       # pull 이 져도 실패로 세지 않는다 — 저장소는 이미 있어 넘길 자리가 살아 있고, 망이 끊긴 VDI 에서 받아 둔 판으로라도 훅이
       #   도는 것이 낫다. 이 설치기보다 옛 세대면 아래 넘길 자리를 고르는 줄이 가른다(`Get-SessionHookGen`). 진 것은 줄로 말한다.
+      # 사람의 손질(감싼 사본이 아닌 것)이 막았으면 끝 검증의 알림 칸(`[!]`)으로도 올린다 — 고칠 때까지 날마다 같은 자리에서 지는데,
+      #   이 걸음의 노란 줄은 기록에 묻힌다. 빨강으로는 안 센다 — 그 손질을 커밋할지 버릴지는 사람이 정한다.
       $got += $dest
       if ($rc -ne 0) {
         Write-Host '  ! pull 이 졌다 — 이미 받아 둔 판으로 간다' -ForegroundColor Yellow
         Show-Log $log
+        if ($drm -and $drm.Code -eq 1) {
+          $drm.Lines | ForEach-Object { Write-Host "      $_" }
+          Write-Host "    손질을 커밋하거나 되돌린 뒤 설치를 다시 돌린다 — 볼 자리: git -C `"$dest`" status" -ForegroundColor Yellow
+          $checks += @{ Name = "$(Split-Path $dest -Leaf) 당김 — 커밋 안 된 손질이 막아 옛 판에 머문다 (git -C `"$dest`" status)"; Ok = $false; Advice = $true }
+        } elseif ($drm -and $drm.Code -ne 0) {
+          $why = if ($drm.Lines.Count) { $drm.Lines -join ' · ' } else { '홈 씨앗의 세션 훅 몸통을 못 불렀다' }
+          Write-Host "    DRM 이 감싼 사본인지 못 가렸다 — $why" -ForegroundColor Yellow
+        }
       }
       Write-Took ((Split-Path $dest -Leaf) + ' 당김') $tRepo
     } else {
