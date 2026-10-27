@@ -268,10 +268,13 @@ $Extensions = @(
 #   (`Install-NodeHomeLink`).
 # 안티그래비티 CLI 는 벤더 설치 스크립트가 아니라 winget(`Google.AntigravityCLI`)으로 받는다 — 매니페스트가 `InstallerSha256`
 #   을 들어 지문을 잴 수 있고(벤더 스크립트는 해시를 안 낸다) arm64 도 함께 든다. winget 판이 벤더 판보다 한 판 뒤처질 수 있다.
-#   ⚠ **winget 밖의 길로 깐 `agy` 는 안 올라간다** — `Install-WingetCli` 가 `agy` 가 잡히면 「있음」으로 지나가는데 그 설치본을
-#   winget 은 모르므로 올리기도 조용히 지나간다. 옮기려면 사람이 그것을 한 번 걷는다 — 남의 설치본은 우리가 안 지운다.
+#   깔린 뒤 올리기는 `agy update`(제 갱신기 · 제 지문을 재고 묻지 않고 돈다)가 든다 — `Upgrade` 칸.
+#   ⚠ **winget 으로는 못 올린다** — agy 는 돌 때 제 손으로 `agy.exe` 를 갈아 끼우고(곁에 `agy.exe.<수>.old`), winget 은 장부의 지문과
+#   다른 휴대용 파일을 「바뀌었다」(`0x8a150057`)로 보고 받은 판을 버린다. 장부의 판도 처음 깐 판에 머물러 「올릴 것」에 늘 뜬다(PAISetup #58).
 #   VS Code 의 안티그래비티 확장이 받는 `agy` 는 PATH 에 안 서므로 확장을 깐 기계도 이 줄을 건너뛰지 않는다(같은 것을 두 번
 #   받는다 — 줄이려면 제품 칸을 끈다).
+# `Upgrade` — 깔린 CLI 를 무엇이 올리나. 안 적으면 winget 「올릴 것」 목록이다(`Get-UpgradeRoute`). `@{ Via = 'updater'; Args }` 는 그 명령
+#   자신을 `Args` 로 부른다(`Invoke-CliUpdater`) — 어느 길로 깔렸든 같은 손이 올리고, 그 행은 「올릴 것」 목록에 안 묻는다.
 $Clis = @(
   # `NativeBin` — 진짜 실행 파일을 선택 꾸러미로 받아 이 자리의 자리표시를 덮는 꾸러미의 그 자리(전역 꾸러미 폴더 기준).
   #   선택 꾸러미 받기가 지면 npm 은 0 으로 끝나고 자리표시만 남는다 — 「CLI」 걸음과 끝 검증이 `Test-NpmNativeStub` 로 잰다.
@@ -280,7 +283,7 @@ $Clis = @(
   # `Cmd` 는 winget 매니페스트의 `Commands:` 가 정한다 — winget 이 받은 `cli_windows_x64.exe` 를 `agy` 로 세워 제 패키지 자리
   #   (`…\WinGet\Packages\Google.AntigravityCLI_…\agy.exe`)에 두고 그 자리를 사용자 PATH 에 심는다.
   @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'
-     Id='Google.AntigravityCLI' }
+     Id='Google.AntigravityCLI'; Upgrade = @{ Via = 'updater'; Args = @('update') } }
   # 이 줄은 자리를 안 가린다(결정 0045 · 0093) — 사내에서 안 까는 것은 제품 표의 `When` 이 든다. Codex · Copilot 맡기기가 Copilot 을
   #   쓰나는 자리 값 `CC_BG_AGENTS` 를 읽는 래퍼의 몫이다. winget 의 `GitHub.Copilot` 은 이름이 비슷한 딴 물건이라 npm 꾸러미로 받는다.
   @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI' }
@@ -989,7 +992,7 @@ $ClaudePluginCap = 60  # `claude plugin list` · `plugin marketplace list` — n
 $ToolHomesCheckCap = 120   # 손(`tool-homes.py check`)이 도구 홈 넷의 규범 · 룰 · 에이전트 · 스킬을 표와 견준다 — 파일을 읽기만 하는데, 느린 디스크와 보안 소프트가 낀 VDI 를 넉넉히 덮는다
 # 상태를 바꾸는 바깥 명령의 한도 — 넘기면 거두고 「못 했다」로 간다. 무인 판이 사람을 기다리는 창 앞에서 영영 서지 않게 한다.
 $VcRedistCap   = 900   # VC++ 재배포 패키지를 받고(17.8 MB) 까는 한 번 — 사내 회선의 받기와 승인 창을 누를 사람의 몫까지 넉넉히 덮는다
-$AppUpdaterCap = 900   # 앱의 제 갱신기(`Invoke-AppUpdater`)가 새 판을 받아 펼치는 한 번 — Claude 의 통짜 꾸러미가 수백 MB 라 사내 회선의 받기를 넉넉히 덮는다
+$AppUpdaterCap = 900   # 제 갱신기(`Invoke-AppUpdater` · `Invoke-CliUpdater`)가 새 판을 받아 펼치는 한 번 — Claude 의 통짜 꾸러미가 수백 MB 라 사내 회선의 받기를 넉넉히 덮는다
 $WingetRemoveCap = 300 # 벤더 사본이 갈음한 winget 휴대용 꾸러미 하나를 걷는 한 번(`Remove-WingetCopy`) — 파일을 지우고 PATH 줄을 걷는다. 원본을 새로 받는 첫 부름까지 덮는다
 
 # 울타리를 넘긴 프로브 — **넘김 하나가 한 줄이다.** 같은 명령이 여러 자리에서 넘기면 그 수만큼 서고, 줄마다 명령(`Probe`) ·
@@ -3895,7 +3898,8 @@ function Invoke-VendorWay([string]$Label, $Row, $Way, $Found, [string]$Act) {
 
 # 깔린 행을 무엇이 올리나 — 프로그램 · 데스크탑 앱 · winget CLI 가 이 한 자리에 묻고, 답을 판정 표(`Get-InstallAction`)에 넣는다(결정
 #   0145 · 0179). 내는 것 `@{ Via; Way; Found; Listed; Off; Ahead }`:
-#   · `Via` — `none`(올리지 않는다 — `-NoUpgrade` 이거나 행의 `Upgrade` 가 none) · `updater`(앱의 제 갱신기 — 그 파일이 있을 때) ·
+#   · `Via` — `none`(올리지 않는다 — `-NoUpgrade` 이거나 행의 `Upgrade` 가 none) · `updater`(제 갱신기 — 그 파일이 있을 때. `Exe` 가 없는
+#     CLI 행은 그 명령이 선 자리다) ·
 #     `vendor`(벤더 판을 읽었다 — `Found.Ver` 가 표의 최신 판이다 · `Way` 가 그 길) · `winget`(「올릴 것」 목록의 답 `Listed` 가 가른다)
 #   · `Off` — 표의 「올리기 안 함」. `none` 이거나, winget 길인데 winget 이 없을 때다 — 갱신기와 벤더 길은 winget 없이 돈다
 #   · `Ahead` — 벤더 판으로 가른 행을 winget 목록도 「올릴 것」으로 댄다(`Write-WingetAhead`)
@@ -3904,8 +3908,10 @@ function Get-UpgradeRoute($Row, [string]$Installed) {
   $r = @{ Via = 'winget'; Way = $null; Found = @{ Ver = ''; Url = ''; Sha512 = '' }; Listed = $null; Off = $false; Ahead = $false }
   if ($Installed -ne 'yes') { return $r }
   if ($NoUpgrade -or $Row.Upgrade.Via -eq 'none') { $r.Via = 'none'; $r.Off = $true; return $r }
-  if ($Row.Upgrade.Via -eq 'updater' -and (Test-Path -LiteralPath ([Environment]::ExpandEnvironmentVariables("$($Row.Upgrade.Exe)")))) {
-    $r.Via = 'updater'; return $r
+  if ($Row.Upgrade.Via -eq 'updater') {
+    $upExe = if ($Row.Upgrade.Exe) { [Environment]::ExpandEnvironmentVariables("$($Row.Upgrade.Exe)") }
+             else { "$((Get-Command $Row.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)" }
+    if ($upExe -and (Test-Path -LiteralPath $upExe)) { $r.Via = 'updater'; return $r }
   }
   $r.Way = Get-VendorWay $Row $Installed
   if ($r.Way) {
@@ -3985,6 +3991,24 @@ function Invoke-AppUpdater($A, [string]$Before) {
   }
   Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
   return $true
+}
+
+# CLI 의 제 갱신기(행의 `Upgrade` — `Via = 'updater'` · `Exe` 없이 `Args` 만)를 그 명령으로 한 번 부르고 결과 한 줄을 낸다. 갱신기는 새 판이
+#   없으면 받지 않고 끝난다. 지거나 울타리를 넘기면 노란 줄과 로그 끝이다 — 깔린 CLI 는 그대로 서 있으니 실패로 안 센다.
+function Invoke-CliUpdater($C, [string]$Before, [string]$VerArg) {
+  $exe = "$((Get-Command $C.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
+  Say-Busy $C.Label 'upgrade' @('제 갱신기', "지금 $(if ($Before) { $Before } else { '판 모름' })")
+  $log = [IO.Path]::GetTempFileName()
+  $rc = Invoke-LoggedCapped $exe @($C.Upgrade.Args) $log $AppUpdaterCap
+  if ($rc -eq -2) { Add-ProbeOverflow "$($C.Cmd) $($C.Upgrade.Args -join ' ')" $AppUpdaterCap }
+  $after = Get-Ver $C.Cmd $VerArg
+  if ($rc -ne 0) {
+    Write-Host "  ! $($C.Label) — 제 갱신기가 $(Format-ProbeWhy $rc $AppUpdaterCap) — 깔린 판 그대로다 $(Format-VerPart $after)" -ForegroundColor Yellow
+    Show-Log $log 3
+  } else {
+    Write-UpgradeResult $C.Label $Before $after
+  }
+  Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
 }
 
 # winget 으로 올리기를 물은 뒤의 한 줄 — 프로그램 · 데스크탑 앱 · winget CLI 가 이 한 자리를 쓴다.
@@ -4697,8 +4721,8 @@ function Measure-NodeResolvable([string]$Module) {
 # winget 이 내주는 CLI(`$Clis` 의 `Via='winget'` 행)를 재고 할 일대로 깔거나 올린다. 깔렸으면 프로그램처럼 「올릴 것」 목록이
 #   가른다(`Get-InstallAction`). 깔고도 이름이 안 서면 빨간 줄 · `$Fails` 다.
 #   재는 자는 `winget list` 가 아니라 행의 `Arg`(없으면 `--version`)다 — CLI 는 사람이 쓸 이름이 실제로 서는가가 판정이라(winget 이 「깔았다」 해도
-#   PATH 에 안 서면 못 쓴다), GUI 라 PATH 로 못 재는 데스크탑 앱(`Measure-DesktopApp`)과 다르다. winget 밖의 길로 깐 `agy` 는
-#   winget 목록에 안 올라 「최신」으로 지나간다 — 도구는 멀쩡히 서 있으니 실패로 안 찍는다(`$Clis` 곁말).
+#   PATH 에 안 서면 못 쓴다), GUI 라 PATH 로 못 재는 데스크탑 앱(`Measure-DesktopApp`)과 다르다. 제 갱신기를 든 행(`Upgrade`)은
+#   어느 길로 깔렸든 그 갱신기가 올린다(`Invoke-CliUpdater`) — winget 은 깔 때만 쓴다(`$Clis` 곁말).
 #   `Scope` 가 `machine` 인 행(MSI)은 「프로그램」 걸음의 기계 범위 행과 같은 문(`Test-ElevationDoor`)을 지난다.
 #   벤더 길(`Ways`)이 있는 행은 그 길이 앞이다 — 올리기는 `Get-UpgradeRoute`, 깔기는 벤더 길 다음 winget 이다. zip 으로 고정 자리에 선
 #   사본이 갈음한 winget 사본은 행이 `RetireWinget` 을 들 때만 걷는다(`Remove-WingetCopy`의 조건 셋).
@@ -4720,7 +4744,8 @@ function Install-WingetCli($C) {
   if ($cliAct -eq 'latest')  { Write-Host "  $($C.Label) — 최신  $(Format-VerPart $b)"; Write-WingetAhead $C.Label $route; return }
   if ($C.Scope -eq 'machine' -and -not $noWinget -and -not (Test-ElevationDoor $C.Label $cliAct (Test-Attended) ($cliAct -eq 'install'))) { return }
   if ($cliAct -eq 'upgrade' -or $cliAct -eq 'upcheck') {
-    $srcBefore = "$((Get-Command $C.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
+    if ($route.Via -eq 'updater') { Invoke-CliUpdater $C $b $arg; return }
+    $srcBefore ="$((Get-Command $C.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
     # 고정 자리의 벤더 사본이 이미 그 판이면 다시 받지 않는다 — 이름으로 잰 판은 앞 PATH 줄의 winget 사본 것이라, 그 사본을 못 걷은
     #   PC 는 이 가름이 없으면 회차마다 같은 zip 을 받는다. 그 사본이 판을 찍었으면 도는 것도 잰 것이라 아래 걷기의 조건이 선다.
     $placed = if ($cliAct -eq 'upgrade' -and $route.Via -eq 'vendor' -and $route.Way.Unzip -and $C.PathDir) {
@@ -6923,7 +6948,8 @@ if ($proxyRel -or $codexTpl) {
 # ⚠ **winget 이 올리는 갈래는 다 이 목록에 묻는다** — 프로그램 · 고른 데스크탑 앱 · winget CLI. 목록에 없는 Id 를 「올릴 것
 #   없음」으로 읽으므로(`Get-Listed`), 여기서 안 물은 갈래는 목록을 받은 판에서 영영 안 올라간다(결정 0145). 벤더 길이 있는 줄도
 #   묻는다 — 그 줄은 벤더 판으로 가르고, 그 판을 못 읽은 회차에만 이 답으로 물러서며, 읽은 회차에는 winget 이 더 높은 판을 대나만
-#   본다(`Write-WingetAhead`). 제 갱신기 행도 묻는다 — 갱신기 파일이 없는 PC 는 이 답으로 올린다. 올리지 않는 행(`Upgrade = none`)만 뺀다.
+#   본다(`Write-WingetAhead`). 제 갱신기 행도 묻는다 — 갱신기 파일이 없는 PC 는 이 답으로 올린다. 올리지 않는 행(`Upgrade = none`)과,
+#   제 갱신기를 든 CLI 행(갱신기가 그 명령 자신이라 깔렸으면 늘 있다 · winget 장부는 처음 깐 판에 머문다 — PAISetup #58)은 뺀다.
 $upgradable = $null
 # CLI 표에서 이번 설치가 깔 줄 — 고른 제품의 CLI 와, 제작자 칸을 켰을 때 그 칸의 스킬이 부르는 도구(`Maker`), 고른 제품이 쓰는
 #   꾸러미(`For`), 늘 까는 것(`Always`). 올리기를 묻는 이 덩어리와 「CLI」 걸음이 같은 목록을 쓴다.
@@ -6943,7 +6969,7 @@ if (-not ($NoUpgrade -or $noWinget)) {
     $asked = @($Apps) +
              @($DesktopApps | Where-Object { ($PickKeys -contains $_.Key) -and $_.Upgrade.Via -ne 'none' } |
                ForEach-Object { @{ Name = $_.App; Id = $_.Id } }) +
-             @($CliPicks | Where-Object { $_.Via -eq 'winget' } |
+             @($CliPicks | Where-Object { $_.Via -eq 'winget' -and $_.Upgrade.Via -ne 'updater' } |
                ForEach-Object { @{ Name = $_.Label; Id = $_.Id } })
     $hits = @()
     foreach ($a in $asked) {

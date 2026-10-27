@@ -211,7 +211,8 @@ VS Code 는 Microsoft 의 공식 「최신」 주소에서 받는다 — winget 
 
 Claude · Codex · Copilot 의 CLI 가 Node.js 로 돌아서, 무엇을 골랐든 늘 깔린다.
 
-- 안티그래비티 CLI(`agy`)만은 Node 가 아니라 winget 이 깐다
+- 안티그래비티 CLI(`agy`)만은 Node 가 아니라 winget 이 깐다. 깔린 뒤 새 판은 winget 이 아니라 `agy update`(agy 제 갱신기)가 받는다 —
+  agy 는 돌 때 제 파일을 스스로 갈아 끼워서, winget 은 그 파일을 「바뀌었다」고 보고 올리기를 거부한다
 - npm 으로 전역에 깐 CLI 가 서는 폴더는 npm 에 물어 정한다(`npm prefix -g` — 보통 `%APPDATA%\npm` 이고, 사람이 npm 의 자리를 바꿨거나
   Node 를 다른 길로 깐 PC 는 그 자리다). 그 폴더가 있고 새 터미널의 PATH(기계 · 사용자)에 없으면 사용자 PATH 끝에 더한다. 이미 있으면
   안 건드리고, 다른 자리는 그대로 둔다
