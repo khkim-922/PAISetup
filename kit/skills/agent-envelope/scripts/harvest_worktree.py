@@ -1,12 +1,14 @@
 """레인 작업 트리 거두기 — 레인이 손댄 파일을 본 사본에 복사하고, 본 사본도 그 사이 바꾼 파일은 손에 남긴다.
 
-    python harvest_worktree.py <트리> [--into <본 사본>] [--dry-run] [--remove [--force]]
+    python harvest_worktree.py <트리> [--into <본 사본>] [--merge] [--dry-run] [--remove [--force]]
 
 차례
   1. 트리의 출발점(본 사본 HEAD 와의 공통 조상)을 잡고, 레인이 손댄 파일을 센다 — 커밋 안 한 것과 출발점 뒤에 커밋한 것
   2. 본 사본이 그 사이 바꾼 파일을 센다 — 출발점 뒤의 커밋과 지금 작업 사본의 변경
   3. 본 사본과 레인이 이미 같은 파일은 「같다」로 두고(앞서 거둔 것), 겹치지 않는 파일은 바이트 그대로 복사하고(레인이 지운 것은
-     지운다) 해시로 같음을 본다. 겹친 파일은 손대지 않고 양쪽을 볼 명령을 댄다 — 어떻게 얹나는 사람의 판단이다
+     지운다) 해시로 같음을 본다. 겹친 파일은 손대지 않고 양쪽을 볼 명령을 댄다 — 어떻게 얹나는 사람의 판단이다.
+     `--merge` 면 겹친 파일 가운데 양쪽이 고치기만 한 것을 파일마다 3-way 로 얹는다(`git merge-file` — 출발점 판이 바탕). 충돌이
+     난 파일은 표식을 남긴 채 손에 남긴다. 본 사본에 커밋 안 한 변경이 있는 파일과 더하기 · 지우기가 엇갈린 파일은 안 얹는다
   4. 복사한 글 파일에서 충돌 표식(`<<<<<<<` 로 열리고 `=======` · `>>>>>>>` 가 따르는 것)을 찾는다
   5. `--remove` 면 겹침 · 어긋남 · 표식이 없을 때만 트리와 그 브랜치를 걷는다. 겹친 파일을 손으로 얹은 뒤에는 `--force` 를 같이
      준다 — 얹었는지는 기계가 못 가른다. 잠긴 트리(레인이 도는 중)는 `--force` 로도 안 걷고 말한다
@@ -15,7 +17,9 @@
 
 복사이지 패치가 아닌 까닭 — 작업 사본의 줄끝이 색인과 다른 설정에서는 트리에서 뽑은 diff 가 본 사본에 안 붙고, 붙어도 줄끝을
 바꿔 쓴다. 바이트 복사는 레인이 쓴 그대로를 옮기고, 본 사본의 커밋이 훅을 그대로 탄다. 본 사본의 작업 사본 변경도 「그 사이
-바뀐 것」으로 세는 까닭 — 커밋 안 한 변경을 덮으면 되돌릴 데가 없다.
+바뀐 것」으로 세는 까닭 — 커밋 안 한 변경을 덮으면 되돌릴 데가 없다. 겹친 파일을 레인 브랜치에 임시 커밋을 만들어 옮기지
+않고 `--merge` 로 파일마다 합치는 까닭 — 임시 커밋은 커밋 훅(메시지 형식 · 게이트)을 우회하게 만들고, 파일 합치기는 커밋 없이
+같은 3-way 를 낸다. 게이트는 본 사본의 커밋에서 돈다.
 """
 import argparse
 import hashlib
@@ -23,6 +27,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 MARK_OPEN, MARK_MID, MARK_CLOSE = '<<<<<<< ', '=======', '>>>>>>> '
@@ -60,6 +65,28 @@ def git(cwd, *args):
     if p.returncode != 0:
         raise GitFailed(f'git {" ".join(args)} → {p.returncode}: {p.stderr.decode("utf-8", "replace").strip()}')
     return p.stdout.decode('utf-8', 'replace')
+
+
+def git_bytes(cwd, *args):
+    """git 의 답을 바이트 그대로 — 파일 내용(`show <판>:<경로>`)을 줄끝째 옮길 때."""
+    p = subprocess.run(['git', '-C', str(cwd), *args], capture_output=True, env=ENV)
+    if p.returncode != 0:
+        raise GitFailed(f'git {" ".join(args)} → {p.returncode}: {p.stderr.decode("utf-8", "replace").strip()}')
+    return p.stdout
+
+
+def merge_one(main, base, path, src, dst):
+    """겹친 파일 하나를 3-way 로 얹는다 — 바탕은 출발점 판. 충돌 수를 낸다(0 이면 깨끗하다). 안 얹었으면 그 까닭(글)을 낸다."""
+    if subprocess.run(['git', '-C', str(main), 'diff', '--quiet', 'HEAD', '--', path], env=ENV).returncode != 0:
+        return '본 사본에 커밋 안 한 변경이 있다 — 합치다 틀리면 되돌릴 데가 없다'
+    with tempfile.TemporaryDirectory() as d:
+        b = Path(d) / 'base'
+        b.write_bytes(git_bytes(main, 'show', f'{base}:{path}'))
+        p = subprocess.run(['git', 'merge-file', '-L', 'main', '-L', f'base {base[:7]}', '-L', 'lane', str(dst), str(b), str(src)],
+                           capture_output=True, env=ENV)
+    if p.returncode < 0:
+        return f'git merge-file 이 졌다 — {p.stderr.decode("utf-8", "replace").strip()}'
+    return p.returncode
 
 
 def zsplit(out):
@@ -228,6 +255,26 @@ def run(a):
         if not same:
             pending.append(path)
         copied.append((path, dst))
+    if a.merge and overlaps:
+        for path in list(overlaps):
+            src, dst = tree / path, main / path
+            if lane[path] != 'M' or path not in moved or not (src.is_file() and dst.is_file()):
+                print(f'겹침 그대로  {path} — 양쪽이 고치기만 한 파일만 합친다(더하기 · 지우기가 엇갈렸다)')
+                continue
+            if a.dry_run:
+                print(f'{tag}합침  {path}')
+                continue
+            got = merge_one(main, base, path, src, dst)
+            if isinstance(got, str):
+                print(f'겹침 그대로  {path} — {got}')
+                continue
+            overlaps.remove(path)
+            if got:
+                print(f'⚠ 합침 · 충돌 {got}  {path} — 표식을 갈라 얹는다')
+                pending.append(path)
+            else:
+                print(f'합침  {path}')
+                copied.append((path, dst))
     for path, dst in copied:
         hits = marker_lines(dst)
         if hits is None:
@@ -277,6 +324,7 @@ def main():
     ap = argparse.ArgumentParser(description='레인 작업 트리의 변경을 본 사본에 복사하고, 본 사본도 그 사이 바꾼 파일은 손에 남긴다')
     ap.add_argument('tree', help='레인의 작업 트리(저장소 뿌리)')
     ap.add_argument('--into', help='본 사본 — 없으면 트리가 매인 본 사본')
+    ap.add_argument('--merge', action='store_true', help='겹친 파일 가운데 양쪽이 고치기만 한 것을 파일마다 3-way 로 얹는다(git merge-file)')
     ap.add_argument('--dry-run', action='store_true', help='무엇을 할지만 찍고 아무것도 안 바꾼다')
     ap.add_argument('--remove', action='store_true', help='다 거뒀으면 트리와 그 브랜치를 걷는다')
     ap.add_argument('--force', action='store_true', help='--remove 와 함께 — 겹친 파일을 손으로 얹었으면 겹침이 남아도 걷는다')

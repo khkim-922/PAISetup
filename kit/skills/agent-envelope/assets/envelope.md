@@ -48,3 +48,4 @@ harness's own review feature on the same tree, never one packet folder for every
 ⑥ Never run commands that print the environment or the process list (env, printenv, set, ps aux, pgrep -af) — they write secrets into the transcript.
 ⑦ A check and its specimen are one pair — when tightening a check turns a specimen red, fix both in the same pass.
 ⑧ Lanes share one machine. Run your long checks one at a time, in the background, and wait for the finish notification instead of polling or starting a second copy — overlapping copies slow every run.
+⑨ The goal measures the work, not the letter — within your ownership, wherever the best expert in this field would do it better (design, missed cases, how it is measured, the flow the user goes through), do so and list every addition with its reason in the report. Anything that widens the scope — a new feature, a new decision, a file you do not own — goes into the report as a proposal, not into the tree.
