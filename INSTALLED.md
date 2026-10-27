@@ -225,13 +225,30 @@ Claude · Codex · Copilot 의 CLI 가 Node.js 로 돌아서, 무엇을 골랐�
 
 ### PDF 를 그림으로 여는 poppler
 
-Claude 를 고르면 poppler(`pdftoppm`)를 winget 으로 깐다 — Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로 그리는 손이다. 없으면
+Claude 를 고르면 poppler(`pdftoppm`)를 깐다 — Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로 그리는 손이다. 없으면
 Read 가 「pdftoppm is not installed」로 지고, 사내 게이트웨이는 PDF 블록(`document`)을 그대로 보내면 삼키므로 PDF 가 모델에 보이는 길은
 그림뿐이다.
 
-- winget 휴대용(zip · 사용자 범위)이라 승인이 안 들고, 패키지의 `bin` 자리가 사용자 PATH 에 선다. 이미 떠 있던 터미널 · 세션은 다시
-  열어야 그 이름이 잡힌다
+- 배포처(GitHub 의 poppler-windows 릴리스)의 최신 zip 을 `%LOCALAPPDATA%\Programs\poppler` 에 풀고, 그 안의
+  Library\bin 폴더를 사용자 PATH 끝에 더한다. 사용자 범위라 승인이 안 든다. 이미 떠 있던 터미널 · 세션은 다시 열어야 그 이름이 잡힌다
+- 실행 파일에 서명이 없어, 받는 주소가 https 인 것을 울타리로 삼는다
+- 새 판은 곁 폴더에 풀어 실제로 도는 것을 잰 뒤에만 갈아 끼운다. 못 돌면 옛 사본을 그대로 둔다
+- winget 이 깐 옛 사본이 있으면 새 사본이 선 뒤 그 꾸러미 하나만 지운다. 그 사본의 PATH 줄이 앞에 서 있어 옛
+  `pdftoppm` 이 계속 잡히기 때문이다. 설치기가 프로그램을 지우는 자리는 여기 하나뿐이다
+- 배포처를 못 열거나 VC++ 런타임이 없는 PC 는 winget 으로 깐다. winget 은 런타임을 짝으로 함께 깐다
 - 감긴(DRM) PDF 는 이 길로 안 열린다 — 그 자리는 DRM 길잡이가 `drm-office-read` 로 가리킨다
+
+### 덱을 짓는 pptxgenjs
+
+Claude 를 고르면 pptxgenjs 를 npm 전역에 깔고, 새 판이 있으면 올린다. 공식 pptx 스킬이 덱(.pptx)을 짓는 스크립트가
+`require('pptxgenjs')` 로 부르는 꾸러미다. 없으면 그 스킬이 양식을 풀어 XML 을 손으로 쓰는 길로 물러나, 덱에 글상자와 표만 남는다.
+
+- npm 전역 자리는 Node 가 이름을 찾는 자리가 아니라서, 깐 것을 `%USERPROFILE%\.node_modules\pptxgenjs` 에 이어 둔다(정션이라
+  관리자 승인이 안 든다). 그래야 저장소 밖에 사는 스킬 스크립트도, 아무 폴더에서 짠 덱 스크립트도 그 이름을 찾는다
+- 그 자리에 다른 것이 이미 서 있으면 덮지 않고 노란 줄로 알린다 — 그때는 그것이 불리고, 설치는 그것을 올리지 않는다
+- `require` 로 부르는 스크립트에서만 풀린다 — `import` 로 부르는 스크립트(`.mjs`)는 이 자리를 안 본다
+- 끝 검증은 저장소 밖에서 `require` 가 이 이름을 푸나를 잰다
+- 설정 저장소를 붙인 PC 는 그 저장소의 세션 훅도 같은 자리에 같은 것을 잇는다
 
 ### 덱을 그림으로 보는 LibreOffice
 
@@ -265,7 +282,8 @@ Claude 를 고르면 LibreOffice 를 winget 으로 깐다 — 공식 pptx 스킬
   - Copilot — GitHub 의 최신 릴리스에서 받고, 깔린 판보다 높을 때만 올린다. 받은 설치본은 GitHub 서명을 확인하고 돌리며, 막히면 winget 이다
   - Claude — 공식 설치본 주소가 스크립트에 안 열려 winget 이 처음 한 번 깔고, 깐 자리에서 Claude 의 제 갱신기가 곧바로 최신으로 올린다.
     이미 있으면 회차마다 그 갱신기를 한 번 부른다(새 판이 없으면 받지 않는다). 새 판은 앱을 다시 열 때 뜬다 — 줄이 그렇게 알린다
-  - Antigravity — winget 이 깔고 올린다. 판 번호 없는 공식 주소가 없고, 앱도 스스로 따라간다
+  - Antigravity — 앱이 스스로 올릴 때 묻는 갱신 피드에서 판과 설치본 주소를 읽어 받는다. 받은 설치본은 Google 서명과 피드가 준
+    지문(SHA512)을 둘 다 확인하고 돌리며, 막히면 winget 이다
   - Codex — 스토어로 깔고, 있으면 둔다
 - Copilot 은 WebView2 런타임이 있어야 도는데 설치 목록에 딸려 오지 않는다. 없는 기계면 먼저 깔고, 있으면 건너뛴다
 - Codex 는 ChatGPT 앱 안에 들어 있어 시작 메뉴에 「ChatGPT」로 뜬다. Antigravity 는 VS Code 를 대신하는 별개 편집기다
@@ -277,6 +295,12 @@ Claude 를 고르면 LibreOffice 를 winget 으로 깐다 — 공식 pptx 스킬
 ## 개발 도구
 
 Git · Python · GitHub CLI 는 코드를 짤 사람용이고, 설치 창에 칸이 없어 늘 깔린다.
+
+- Python 은 python.org 에서 받는다. 판 줄(`3.14` — 설정 저장소의 도구 선언이 정한다) 안에서 설치본이 있는 가장 높은 판을 고르고,
+  깔린 판보다 높을 때만 그 위에 올린다. 받은 설치본은 Python Software Foundation 서명을 확인하고 돌린다. python.org 를 못 열면
+  winget 이다
+- Node.js · GitHub CLI 는 PC 전체에 깔려 관리자 승인이 든다. 승격이 안 서는 PC(표준 사용자)에서는 걸지 않는다. 없는 것은 빨간
+  줄로 IT 에 요청할 이름을 알리고, 깔린 것 올리기는 노란 줄로 넘긴다
 
 빼려면 `Setup.exe -NoDevTools` 로 부른다. 다만 Python 으로 도는 것이 서는 자리면 Python 만은 깐다 — 설치 창이 까닭을 그 줄에
 적는다. 뺀 것은 고른 것의 기록에 남아 다음 설치 창 · 자동 실행도 빼고, 다시 깔려면 `Setup.exe -DevTools` 로 한 번 부른다.

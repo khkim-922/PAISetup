@@ -614,7 +614,7 @@
           사내에는 두지 않습니다. 회사 게이트웨이는 한 시간 표식을 넘기지 않아 캐시가 5분이면 끝나는데(실측), 캐시에 쓰는 값만 더 들 수 있기 때문입니다.
           이미 둔 값도, 설정 파일에 따로 적어 둔 다른 수명(<code>subagentPromptCacheTtl</code>)도 덮지 않습니다.</div></div>
       <div class="row"><b>명령을 이름만으로 부르기<span class="tag"><code class="nm">PATH</code><span class="k setting">Setting</span><span class="t all">모든 도구</span><span class="src pai">PAI</span></span></b>
-        <div><span class="why">없으면 새 터미널에서 <code>claude</code> · <code>codex</code> · <code>pdftoppm</code> 같은 명령을 못 찾아, 그 CLI 를 부르는 VS Code 확장과 PDF 읽기가 집니다.</span> npm · pip · winget 이 깐 자리를 사용자 PATH 끝에 더하기만 하고 다른 자리는 그대로 둡니다.</div></div>
+        <div><span class="why">없으면 새 터미널에서 <code>claude</code> · <code>codex</code> · <code>pdftoppm</code> 같은 명령을 못 찾아, 그 CLI 를 부르는 VS Code 확장과 PDF 읽기가 집니다.</span> npm · pip · winget 과 설치기가 깐 자리를 사용자 PATH 끝에 더하기만 하고 다른 자리는 그대로 둡니다.</div></div>
       <div class="row"><b>PowerShell 에서 npm 명령 부르기<span class="tag"><code class="nm">ExecutionPolicy</code><span class="k setting">Setting</span><span class="t all">모든 도구</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 스크립트 실행이 윈도 기본값으로 막힌 PC 의 PowerShell(VS Code 의 터미널 포함)에서 <code>claude</code> · <code>npm</code> 같은 명령이 「스크립트를 실행할 수 없으므로」로 집니다.</span> 막혀 있을 때만 이 계정을 RemoteSigned 로 올립니다. 인터넷에서 받은 스크립트는 서명을 그대로 묻고, 회사 정책이 정한 값과 사람이 고른 값은 바꾸지 않습니다.</div></div>
       <div class="row"><b>워드의 PDF 변환 안내 끄기<span class="tag"><code class="nm">DisableConvertPdfWarning</code><span class="k setting">Setting</span><span class="t all">워드</span><span class="src pai">PAI</span></span></b>
