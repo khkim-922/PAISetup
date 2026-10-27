@@ -5218,7 +5218,8 @@ function Get-HookHead([string]$Path) {
 }
 
 # 껍데기 하나의 등록을 홈 설정에서 되읽는다 — 끝 검증의 배선 · matcher 줄이 쓴다. 머리말의 이벤트마다 우리 꼴의 훅이 있고 그 훅이
-#   가리키는 폴더에 이 껍데기가 있나, 우리 항목의 matcher 가 머리말과 같나를 잰다.
+#   가리키는 폴더에 이 껍데기가 있나, 우리 항목의 matcher 가 머리말과 같나, 우리 등록의 거름(`if`) 묶음이 머리말의 `if.<이벤트>`
+#   규칙 묶음과 같나를 잰다.
 #   머리말은 등록이 가리키는 폴더의 껍데기에서 읽는다 — 이긴 층(사용자 PC 는 개인 층)의 머리말로 놓였기 때문이다. 가리키는
 #   껍데기가 없으면 짐의 사본(`$KitShell`)에서 읽는다.
 #   우리 꼴은 표 머리의 hook 명령 꼴이다 — `<변수>="<폴더>"; [ -f "$<변수>/<껍데기>" ] || exit 0; . "$<변수>/<껍데기>"`(가드와 끝
@@ -5226,7 +5227,7 @@ function Get-HookHead([string]$Path) {
 # ⚠ **UserPromptSubmit 항목에는 matcher 키가 없어야 한다** — 그 이벤트는 matcher 를 안 받고, 키가 있으면 거는 자가 항목째
 #   걸러낸다(claude-config #120). 손이 고정으로 드는 규칙이라 머리말에 안 든다.
 # `$Cfg` 는 `ConvertFrom-Json` 으로 읽은 홈 설정(못 읽었으면 $null)이다. 돌려주는 것 — Events(머리말의 이벤트) · Missing(우리 훅이
-#   없거나 그 훅이 껍데기 없는 폴더를 가리키는 이벤트) · BadMatcher(어긋난 matcher 의 까닭) · Why(머리말을 못 읽은 까닭).
+#   없거나 그 훅이 껍데기 없는 폴더를 가리키는 이벤트) · BadMatcher(어긋난 matcher · 거름의 까닭) · Why(머리말을 못 읽은 까닭).
 function Get-ClaudeHookWiring($Cfg, [string]$Shell, [string]$KitShell) {
   $form = '^\s*([A-Za-z_][A-Za-z0-9_]*)="([^"]*)";\s*(?:\[ -f "\$\1/([^"/]+)" \] \|\| exit 0;\s*)?\.\s+"\$\1/([^"/]+)"\s*(?:#.*)?$'
   $ours = @()
@@ -5242,7 +5243,8 @@ function Get-ClaudeHookWiring($Cfg, [string]$Shell, [string]$KitShell) {
           # 문자열로 잇는다 — `Join-Path` 는 없는 드라이브(`Q:/…`)에서 던지고, 전역 Stop 아래라 설치가 통째로 선다.
           $there = $false
           try { $there = Test-Path -LiteralPath "$($m.Groups[2].Value)/$Shell" -PathType Leaf } catch { $there = $false }
-          $ours += @{ Event = $ev.Name; Entry = $entry; Folder = $m.Groups[2].Value; There = $there }
+          $ours += @{ Event = $ev.Name; Entry = $entry; Folder = $m.Groups[2].Value; There = $there
+                      If = $(if ($h.PSObject.Properties['if']) { [string]$h.if } else { '' }) }
         }
       }
     }
@@ -5267,6 +5269,13 @@ function Get-ClaudeHookWiring($Cfg, [string]$Shell, [string]$KitShell) {
       $want = if ($head.ContainsKey("matcher.$ev")) { $head["matcher.$ev"] } else { $head['matcher'] }
       $got = if ($hasKey) { [string]$o.Entry.matcher } else { '<키 없음>' }
       if ($got -cne $want) { $out.BadMatcher += "$ev matcher 가 '$got' — 머리말은 '$want'" }
+    }
+    # 거름(`if.<이벤트>`) — 규칙마다 등록 하나다. 거는 자는 맞는 호출에만 껍데기를 띄우므로, 빠지거나 틀린 규칙은 그 호출에서
+    #   훅이 조용히 안 돈다. 우리 등록의 거름 묶음이 머리말의 규칙 묶음과 같아야 한다(규칙이 없으면 거름 없는 등록 하나)
+    $wantIf = @(if ($head.ContainsKey("if.$ev")) { $head["if.$ev"].Split('|') | ForEach-Object { $_.Trim() } } else { '' }) | Sort-Object
+    $gotIf = @($ours | Where-Object { $_.Event -ceq $ev } | ForEach-Object { $_.If }) | Sort-Object
+    if (@($gotIf).Count -and (($gotIf -join "`n") -cne ($wantIf -join "`n"))) {
+      $out.BadMatcher += "$ev 거름이 $(@($gotIf).Count) 개('$(($gotIf | Select-Object -First 2) -join ''' · ''')' …) — 머리말은 $(@($wantIf).Count) 개"
     }
   }
   return $out
