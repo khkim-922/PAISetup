@@ -277,7 +277,7 @@ $Extensions = @(
 #   자신을 `Args` 로 부른다(`Invoke-CliUpdater`) — 어느 길로 깔렸든 같은 손이 올리고, 그 행은 「올릴 것」 목록에 안 묻는다.
 $Clis = @(
   # `NativeBin` — 진짜 실행 파일을 선택 꾸러미로 받아 이 자리의 자리표시를 덮는 꾸러미의 그 자리(전역 꾸러미 폴더 기준).
-  #   선택 꾸러미 받기가 지면 npm 은 0 으로 끝나고 자리표시만 남는다 — 「CLI」 걸음과 끝 검증이 `Test-NpmNativeStub` 로 잰다.
+  #   선택 꾸러미 받기가 지면 npm 은 0 으로 끝나고 자리표시만 남는다 — 「CLI」 걸음과 끝 검증이 `Measure-NpmNativeStub` 로 잰다.
   @{ Key='claude'; Pkg='@anthropic-ai/claude-code'; Cmd='claude'; Label='Claude Code CLI'; NativeBin='bin\claude.exe' }
   @{ Key='codex';  Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
   # `Cmd` 는 winget 매니페스트의 `Commands:` 가 정한다 — winget 이 받은 `cli_windows_x64.exe` 를 `agy` 로 세워 제 패키지 자리
@@ -2982,8 +2982,9 @@ function Test-CompanyKey([string]$Value) {
 # 안티그래비티 설정의 인증 방식 줄이 우리가 심은 회사 연결인가 — 받는 것: 그 설정을 읽은 것(`ConvertFrom-Json` 의 결과 · 빈 파일이면
 #   $null). 내는 것: 회사 연결이면 $true. 값이 회사 값(`$AgyProvider`)이라는 것만으로는 안 선다 — 그 값은 agy 의 API 키 갈래라 제 Gemini
 #   키를 둔 사람도 같은 줄을 쓴다(claude-config 결정 0085). 그래서 키가 가른다: 남은 `GEMINI_API_KEY`(사용자 환경 · 없으면 머신 환경)가
-#   회사 키이거나(`Test-CompanyKey`) 아예 없으면 회사 연결이고, 다른 키면 사람의 갈래다. 사외 갈래가 걷기 앞에서, 끝 검증이 같은 자로
-#   묻는다 — 「사외로 간 자리의 사내 잔재」가 회사 키 사본을 걷은 뒤라야 「남은」 키다.
+#   회사 키이거나(`Test-CompanyKey`) 아예 없으면 회사 연결이고, 다른 키면 사람의 갈래다. 「사내 연결」의 「안 세우는 도구」 칸이 걷기
+#   앞에서, 끝 검증이 같은 자로 묻는다 — 「키와 값」이 회사 키 사본을 걷은 뒤라야(사외는 「사외로 간 자리의 사내 잔재」 · 사내는 「안 세우는
+#   회사 키 이름」) 「남은」 키다.
 function Test-AgyCompanyLink($Settings) {
   if (-not $Settings) { return $false }
   $mp = $Settings.PSObject.Properties['modelProvider']
@@ -4441,15 +4442,20 @@ function Measure-NpmGlobal([string[]]$Pkgs) {
   } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
-# npm 이 「깔았다」 한 CLI 가 진짜 실행 파일 대신 자리표시만 들었나 — 행의 `NativeBin` 이 있고 그 파일이 4 KB 밑이면 참이다
-#   (꾸러미의 postinstall 이 자리표시로 보는 문턱과 같다). 파일이 없거나 행에 `NativeBin` 이 없으면 거짓 — 깔렸나는 npm 의 기록이 든다.
+# npm 이 「깔았다」 한 CLI 가 진짜 실행 파일 대신 자리표시만 들었나 — `@{ State; Probe; Why }`. 행의 `NativeBin` 파일이 4 KB 밑이면
+#   `yes`(꾸러미의 postinstall 이 자리표시로 보는 문턱과 같다)이고, 그보다 크거나 없거나 행에 `NativeBin` 이 없으면 `no` 다 — 깔렸나는
+#   npm 의 기록이 든다. npm 전역 자리를 못 물었으면(`$script:NpmGlobalAsk` 가 `asked` 가 아니다) `unmeasured` 와 그 물음 · 까닭이다
+#   (결정 0141) — 그때의 `$NpmGlobalDir` 는 물러선 값이라 그 PC 의 전역 자리가 아닐 수 있고, 거기 없는 파일은 「자리표시 아님」이 아니다.
 # ⚠ **띄워서 재지 않는다** — 자리표시는 실행 파일이 아니라 띄우면 윈도가 「지원되지 않는 16비트 응용 프로그램」 창을 띄운다.
-function Test-NpmNativeStub($Row) {
-  if (-not $Row.NativeBin) { return $false }
+function Measure-NpmNativeStub($Row) {
+  if (-not $Row.NativeBin) { return @{ State = 'no'; Probe = ''; Why = '' } }
+  if ($script:NpmGlobalAsk.State -ne 'asked') { return @{ State = 'unmeasured'; Probe = $script:NpmGlobalAsk.Probe; Why = $script:NpmGlobalAsk.Why } }
+  $stub = $false
   try {
     $f = Join-Path (Join-Path (Join-Path $NpmGlobalDir 'node_modules') $Row.Pkg) $Row.NativeBin
-    return ((Get-Item -LiteralPath $f -ErrorAction Stop).Length -lt 4096)
-  } catch { return $false }
+    $stub = ((Get-Item -LiteralPath $f -ErrorAction Stop).Length -lt 4096)
+  } catch { }
+  return @{ State = $(if ($stub) { 'yes' } else { 'no' }); Probe = ''; Why = '' }
 }
 
 # npm 으로 까는 한 자리 — 확장과 같은 까닭이다. `$Rows` 는 고른 npm CLI 의 행(`Pkg` · `Cmd` · `Label`)이다. 깔렸나 · 깔린 판은 npm 의
@@ -4488,7 +4494,13 @@ function Install-NpmCli($Rows) {
     $rec = $recs[$Pkg]
     $b = $rec.Ver; $rv = ''; $vrc = 0
     # 기록에는 섰는데 자리표시만 든 CLI 는 「최신」이어도 다시 깐다 — 같은 판을 다시 받으면 빠진 선택 꾸러미가 들어온다.
-    if ($rec.State -eq 'yes' -and (Test-NpmNativeStub $r)) {
+    #   자리표시인지 못 쟀으면 그 행은 다시 받지도 올리지도 않고 안 한 걸음으로 남긴다(결정 0141).
+    $stub = if ($rec.State -eq 'yes') { Measure-NpmNativeStub $r } else { @{ State = 'no' } }
+    if ($stub.State -eq 'unmeasured') {
+      Add-UnmeasuredStep $Label $stub.Probe '진짜 실행 파일이 섰나 모른 채 다시 받지도 올리지도 않았다' $stub.Why
+      continue
+    }
+    if ($stub.State -eq 'yes') {
       Write-Host "  ! $Label — 진짜 실행 파일이 빠지고 자리표시만 있다 · 다시 깐다" -ForegroundColor Yellow
       $spec = if ($b) { "$Pkg@$b" } else { $Pkg }
       $todo['install'] += ,@{ Pkg = $Pkg; Cmd = $r.Cmd; Label = $Label; Spec = $spec; Before = $b; Latest = ''; NativeBin = $r.NativeBin }
@@ -4564,15 +4576,22 @@ function Install-NpmCli($Rows) {
   }
   if (-not $ran.Count) { return }
   # npm 이 0 으로 끝났어도 진짜 실행 파일이 빠졌을 수 있다 — 선택 꾸러미 받기가 지면 npm 은 그것을 실패로 안 센다. 그 CLI 만
-  #   한 번 다시 받고(다시 받으면 대개 들어온다), 그래도 자리표시면 실패다.
+  #   한 번 다시 받고(다시 받으면 대개 들어온다), 그래도 자리표시면 실패다. 자리표시인지 못 쟀으면 다시 받지 않고 안 한 걸음으로
+  #   남긴다 — 깔기 결과 줄은 그대로 선다.
   $oldLogs = @()
-  foreach ($g in @($ran | Where-Object { $_.Rc -eq 0 -and (Test-NpmNativeStub $_) })) {
+  foreach ($g in @($ran | Where-Object { $_.Rc -eq 0 })) {
+    $stub = Measure-NpmNativeStub $g
+    if ($stub.State -eq 'unmeasured') {
+      Add-UnmeasuredStep $g.Label $stub.Probe '진짜 실행 파일이 섰나 모른 채 다시 받지 않았다' $stub.Why
+      continue
+    }
+    if ($stub.State -ne 'yes') { continue }
     Write-Host "  ! $($g.Label) — npm 은 깔았다는데 진짜 실행 파일이 빠졌다 · 한 번 다시 받는다" -ForegroundColor Yellow
     Say-Busy $g.Label 'install' @('npm')
     $oldLogs += $g.Log
     $g.Log = [IO.Path]::GetTempFileName()
     $g.Rc  = Invoke-Logged 'npm' @('install','-g',$g.Spec) $g.Log
-    if ($g.Rc -eq 0 -and (Test-NpmNativeStub $g)) { $g.Stub = $true }
+    if ($g.Rc -eq 0 -and (Measure-NpmNativeStub $g).State -eq 'yes') { $g.Stub = $true }
   }
   # ⚠ **깔고 나서 한 번 더 태운다** — npm 전역 자리(`$NpmGlobalDir`)는 첫 설치가 만드는 폴더라, 맨바닥 PC 에서는 앞의 배선이 조용히 지나가고
   #   PATH 가 빈 채로 남는다. 두 번째부터는 폴더가 있어 안 드러난다.
@@ -5019,11 +5038,14 @@ function Get-FreeSkillNames([string]$Tool) {
 #     자리에 기록에 없는 같은 이름의 폴더가 있으면 통째로 백업 자리(`<Root>/backups/install-aside-<시각>/`)로 옮긴 뒤 깔고(그 위에
 #     복사하면 남의 파일과 섞인다) 노란 줄로 알린다. 기록이 없는 홈에는 우리 것이 없다 — 깔 이름이 아닌 폴더는 이름이 무엇이든
 #     안 건드린다
-#   · 우리 폴더는 거울로 깐다 — 짐의 그 스킬에서 빠진 파일은 홈의 그 폴더에서도 빠진다(`__pycache__` 는 안 본다). 덧붙이기만 하면
-#     짐이 스킬 안의 파일을 걷은 날부터 낡은 파일이 그 스킬에 남는다(PAISetup #44 ⑮). 못 걷은 파일은 빨간 줄 · `$Fails` 다
+#   · 우리 폴더는 거울로 깐다 — 짐의 그 스킬에 없는 파일은 홈의 그 폴더에서도 빠진다(`__pycache__` 는 안 본다). 덧붙이기만 하면
+#     짐이 스킬 안의 파일을 걷은 날부터 낡은 파일이 그 스킬에 남는다(PAISetup #44 ⑮). 빼는 파일은 지우지 않고
+#     `<Root>/backups/install-skills-<시각>/<이름>/` 아래 같은 상대 자리로 옮기고 그 자리를 찍는다 — 짐이 걷은 옛 파일인지 사람이
+#     우리 폴더에 둔 메모인지 가를 기록(놓은 바이트의 해시)이 없다. 못 옮긴 파일은 빨간 줄 · `$Fails` 다
 #   · 남길 목록은 이번에 깔 목록뿐이다 — 기록에 있는데 이번 목록에 없는 이름(짐에서 빠진 것 · 지난 판이 짐에서 깐 제작자 스킬 ·
-#     고른 제품이 더는 안 부르는 것)은 `<Root>/backups/install-skills-<시각>/` 로 옮긴다. 지우지 않는다 — 같은 이름을 사람이 손수
-#     두었을 수도 있다. 깔 것이 없는 판도 기록을 맞추고, 기록도 깔 것도 없는 홈은 안 건드린다(그 도구를 안 쓰는 PC 에 홈을 안 짓는다)
+#     고른 제품이 더는 안 부르는 것)은 같은 `<Root>/backups/install-skills-<시각>/` 로 폴더째 옮긴다. 지우지 않는다 — 같은 이름을
+#     사람이 손수 두었을 수도 있다. 거울이 옮긴 파일과 한 자리에 서도 안 겹친다(이 이름은 이번에 깔 이름이 아니다). 깔 것이 없는
+#     판도 기록을 맞추고, 기록도 깔 것도 없는 홈은 안 건드린다(그 도구를 안 쓰는 PC 에 홈을 안 짓는다)
 # 기록에 적는 것 — 이번에 깐 이름 더하기, 앞 기록 가운데 이번 목록에 남은 이름(짐에 없어 못 깐 이름도 빠지지 않는다). BOM
 #   없는 UTF-8 · 한 줄에 이름 하나(이름이 한글이어도 읽힌다). 백업 자리는 매번 새로 잡는다(`Get-FreePath`) — 같은 초에 두 번
 #   돌아도 앞 백업 안으로 옮겨 들어가지 않는다.
@@ -5047,6 +5069,8 @@ function Install-FreeSkills([string]$Tool) {
   $ours    = @(if ($hasLedger) { [IO.File]::ReadAllLines($ledger) | ForEach-Object { $_.Trim() } | Where-Object { $_ } })
   $backups = Join-Path $p.Root 'backups'
   $aside   = $null
+  # 걷는 것의 백업 자리 — 이름만 여기서 잡고, 폴더는 옮길 것이 생길 때 짓는다
+  $bk      = Get-FreePath (Join-Path $backups ('install-skills-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
   $done    = @()
   foreach ($n in $names) {
     $from = Join-Path $KitSkills $n
@@ -5071,10 +5095,17 @@ function Install-FreeSkills([string]$Tool) {
     $stale = @(Get-ChildItem -LiteralPath $toFull -Recurse -File -Force -ErrorAction SilentlyContinue |
                Where-Object { $_.FullName -notmatch '[\\]__pycache__[\\]' -and
                               -not (Test-Path -LiteralPath (Join-Path $from $_.FullName.Substring($toFull.Length + 1)) -PathType Leaf) })
-    $staleFail = @()
+    $staleKept = Join-Path $bk $n
+    $staleMoved = @(); $staleFail = @()
     foreach ($x in $stale) {
-      try { Remove-Item -LiteralPath $x.FullName -Force -ErrorAction Stop }
-      catch { $staleFail += $x.FullName.Substring($toFull.Length + 1) }
+      $rel = $x.FullName.Substring($toFull.Length + 1)
+      $dst = Join-Path $staleKept $rel
+      try {
+        [IO.Directory]::CreateDirectory((Split-Path $dst -Parent)) | Out-Null
+        Move-Item -LiteralPath $x.FullName -Destination $dst -Force -ErrorAction Stop
+        $staleMoved += $rel
+      }
+      catch { $staleFail += $rel }
     }
     foreach ($d in @(Get-ChildItem -LiteralPath $toFull -Recurse -Directory -Force -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending)) {
       if (-not (Get-ChildItem -LiteralPath $d.FullName -Force -ErrorAction SilentlyContinue | Select-Object -First 1)) {
@@ -5082,17 +5113,18 @@ function Install-FreeSkills([string]$Tool) {
       }
     }
     if ($staleFail.Count) {
-      Write-Host "  ! $($h.Label) 스킬 $n — 짐에서 빠진 파일을 못 걷었다: $($staleFail -join ' · ')" -ForegroundColor Red
-      $Fails.Add("$($h.Label) 스킬 $n (짐에서 빠진 파일 걷기)")
+      Write-Host "  ! $($h.Label) 스킬 $n — 짐에 없는 파일을 못 옮겼다: $($staleFail -join ' · ')" -ForegroundColor Red
+      $Fails.Add("$($h.Label) 스킬 $n (짐에 없는 파일 옮기기)")
     }
-    $swept = $stale.Count - $staleFail.Count
-    Write-Host "  $($h.Label) 스킬 $n — 깔았다$(if ($swept) { " (짐에서 빠진 파일 $swept 개를 걷었다)" })" -ForegroundColor Green
+    Write-Host "  $($h.Label) 스킬 $n — 깔았다" -ForegroundColor Green
+    if ($staleMoved.Count) {
+      Write-Host "    짐에 없는 파일 $($staleMoved.Count) 개를 옮겨 두었다: $($staleMoved -join ' · ') (옮긴 자리: $staleKept)" -ForegroundColor Green
+    }
     $done += $n
   }
   $gone = @($ours | Where-Object { $names -notcontains $_ } |
             Where-Object { Test-Path -LiteralPath (Join-Path $p.Skills $_) -PathType Container })
   if ($gone.Count) {
-    $bk = Get-FreePath (Join-Path $backups ('install-skills-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
     New-Item -ItemType Directory -Path $bk -Force | Out-Null
     foreach ($n in $gone) {
       Move-Item -LiteralPath (Join-Path $p.Skills $n) -Destination (Join-Path $bk $n) -Force
@@ -6927,8 +6959,11 @@ $wantAgy    = [bool]($inside -and ($PickKeys -contains 'antigravity'))
 # ⚠ **`gemini` 칸은 안티그래비티의 것이다 — 이름만 구글이 정한 키 이름을 따른다.** `agy` 는 `modelProvider: "gemini"` 아래에서
 #   `GEMINI_API_KEY` 를 읽는다. 설치기만 돌린 기계에는 세션 훅의 `secrets.d/<자리>.env` 가 없어 이 칸 말고는 그 키를 심는 자가
 #   없다 — 안 심기면 `agy` 가 «GEMINI_API_KEY environment variable is not set» 으로 안 뜬다.
-# 이 한 칸이 세 자리(심는 문 `$KeyAliases` 고리 · `GOOGLE_API_KEY` 충돌 경고 · 끝 검증)를 문다 — 조건은 여기 하나만 고친다.
+# 이 한 칸이 네 자리(심고 걷는 문 `$KeyAliases` 고리 · `GOOGLE_API_KEY` 충돌 경고 · 「사내 연결」의 「안 세우는 도구」 칸 · 끝 검증)를
+#   문다 — 회사 키 사본과 설정 파일의 회사 연결이 같은 문으로 걷혀야 한쪽만 남지 않는다. 조건은 여기 하나만 고친다.
 $wantNeed = @{ codex = $wantCodex; gemini = $wantAgy }
+# 회사 키로 안 세우는 도구의 회사 연결을 걷는 까닭 — 「사내 연결」의 「안 세우는 도구」 칸과 끝 검증의 그 줄이 같은 글로 댄다
+$OffLinkWhy = if ($inside) { '이 판은 회사 키로 안 세운다' } else { '사외' }
 # ── 회사 설정 둘이 앉는 자리 — **같은 까닭으로 여기 한 자리다** ─────────────────
 # 아래 「Codex · 안티그래비티 설정」 칸이 이 둘에 쓰고 끝의 검증이 이 둘을 다시 재므로, 글자를 두 자리에 박지 않는다 (PAISetup #3).
 $CodexCfg  = Join-Path $env:USERPROFILE '.codex\config.toml'
@@ -7387,7 +7422,7 @@ if ($npmLinkPicks.Count) { Install-NodeHomeLink $npmLinkPicks }
 foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c }
 
 # 사외는 여기서 로그인 길을 댄다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다. 사내에서 심은 회사 연결이 남아 있으면 그
-#   로그인이 안 서는데, 그 연결은 「사내 연결」 걸음의 「Codex · 안티그래비티 설정」 칸이 걷고 못 걷으면 그 칸이 제 줄을 세운다.
+#   로그인이 안 서는데, 그 연결은 「사내 연결」 걸음의 「안 세우는 도구」 칸이 걷고 못 걷으면 그 칸이 제 줄을 세운다.
 if (-not $inside) {
   Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), 안티그래비티는 `agy` 첫 실행의 Google 로그인으로 쓴다 · 사내에서 심은 회사 연결은 「사내 연결」이 걷는다'
 }
@@ -7658,7 +7693,7 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
 # 위 칸은 필요한 이름에만 심어, 그 제품을 끄거나 회사 설정 틀(`#codex-config`)이 빠진 판에는 앞 판이 심은 사본이 그대로 남는다 —
 #   남은 회사 키를 OpenAI · 구글이 정한 그 이름으로 그 회사에 바로 붙는 도구가 집는다. 우리 것인가는 값으로 가른다(`Test-CompanyKey`) —
 #   사람이 그 이름에 둔 제 키는 두고 이름을 댄다. 사외 판은 아래 「사외로 간 자리의 사내 잔재」 칸이 든다(그 칸이 우리 주소와 짝인
-#   키를 회사 키로 세운 뒤에 걷어야 한다).
+#   키를 회사 키로 세운 뒤에 걷어야 한다). 그 도구 설정 파일의 회사 연결은 「사내 연결」의 「안 세우는 도구」 칸이 같은 문으로 걷는다.
 if ($useGateway) {
   foreach ($k in $KeyAliases) {
     if ($wantNeed[$k.Need]) { continue }
@@ -8074,7 +8109,7 @@ if ($wantProxy) {
 #   파일이 없을 때만 틀을 그대로 쓴다.
 # ⚠ **문에 두 제품을 다 적는다 — 안티그래비티가 이 칸 안에 산다.** 문이 Codex 만 물으면 안티그래비티만 켠
 #   자리에서 칸이 통째로 건너뛰어지는데, 끝의 검증은 `$wantAgy` 로 따로 물어 그 항목이 늘 빨갛게 끝난다.
-# 게이트웨이를 안 쓰는 자리는 사내에서 심은 연결을 걷는다 — 아래 `elseif` 갈래가 까닭을 든다.
+# 이 판이 회사 키로 안 세우는 도구는 사내에서 심은 연결을 걷는다 — 아래 「안 세우는 도구」 칸이 까닭을 든다.
 if ($useGateway -and ($wantCodex -or $wantAgy)) {
   Write-Host ''
   # 제목은 이번에 실제로 서는 것만 든다 — 안 켠 제품 이름을 부르면 그것도 깔린 줄로 읽힌다.
@@ -8161,20 +8196,28 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
       }
     }
   }
-} elseif (-not $useGateway) {
-  # ── 사외 — **사내에서 심은 회사 연결을 걷는다** (PAISetup #44) ─────────
-  # 이 자리에는 그 연결이 가리키는 루프백 프록시도 그것이 읽는 회사 키도 없다(「사외로 간 자리의 사내 잔재」 칸이 걷는다). 남으면
-  #   Codex 는 닿지 않는 주소로 가고 agy 는 키가 없어 안 떠, 로그인을 해도 안 선다.
-  # ⚠ **우리 값 그대로인 것만 걷는다** — 무엇을 심었나의 기록이 없어 값이 회사 값과 같다는 것이 근거다. Codex 는 병합기의 걷기 판
-  #   (`--remove-provider` — 무엇을 걷고 무엇을 두나는 그 머리말)이, agy 는 `modelProvider` 가 회사 값이고 남은 키가 회사 키이거나 없을
-  #   때만(`Test-AgyCompanyLink` — 그 값은 사람의 API 키 갈래이기도 하다). 사람이 고친 값은 두고 그 이름을 댄다.
-  # 고른 제품을 안 묻는다 — 연결은 파일에 남아 그 도구를 다시 띄우는 날 살아난다. 파일이 없으면 짓지 않는다. 사내로 돌아오면 위
-  #   갈래가 다시 심는다.
-  $offCodex = [bool]($codexTpl -and (Test-Path -LiteralPath $CodexCfg -PathType Leaf))
-  $offAgy   = Test-Path -LiteralPath $AgyCfg -PathType Leaf
+}
+# ── 안 세우는 도구 — **사내에서 심은 회사 연결을 걷는다** (PAISetup #44 · #59) ─────────
+# 그 도구를 회사 키로 안 세우는 판(`$wantNeed` 의 그 칸이 거짓 — 사외이거나, 사내에서 그 제품을 껐거나 짐이 `#codex-config` 를 뺐다)은
+#   그 연결이 읽는 회사 키 사본이 없다 — 사외는 「사외로 간 자리의 사내 잔재」 칸이, 사내는 「안 세우는 회사 키 이름」 칸이 걷는다.
+#   설정 파일의 연결이 남으면 Codex 는 사외에서 닿지 않는 주소로, 사내에서 키 없이 게이트웨이로 가고 agy 는 키가 없어 안 떠, 로그인을
+#   해도 안 선다. 그래서 문은 키 사본을 걷는 문과 같은 `$wantNeed` 다 — 다른 문을 물으면 한쪽만 걷힌다.
+# ⚠ **우리 값 그대로인 것만 걷는다** — 무엇을 심었나의 기록이 없어 값이 회사 값과 같다는 것이 근거다. Codex 는 병합기의 걷기 판
+#   (`--remove-provider` — 무엇을 걷고 무엇을 두나는 그 머리말)이, agy 는 `modelProvider` 가 회사 값이고 남은 키가 회사 키이거나 없을
+#   때만(`Test-AgyCompanyLink` — 그 값은 사람의 API 키 갈래이기도 하다). 사람이 고친 값은 두고 그 이름을 댄다. 남은 키를 읽는 것은
+#   키 사본을 걷는 칸(「키와 값」)이 이 걸음 앞에 돌아서다.
+# 고른 제품을 따로 안 묻는다 — 연결은 파일에 남아 그 도구를 다시 띄우는 날 살아난다. 파일이 없으면 짓지 않는다. 짐에 회사 틀이 없으면
+#   무엇이 회사 값인지 몰라 Codex 는 안 건드린다. 그 도구를 다시 회사 키로 세우는 판이 위 칸에서 다시 심는다.
+if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하나라도 회사 키로 안 세운다
+  $offCodex = [bool]((-not $wantNeed['codex']) -and $codexTpl -and (Test-Path -LiteralPath $CodexCfg -PathType Leaf))
+  $offAgy   = [bool]((-not $wantNeed['gemini']) -and (Test-Path -LiteralPath $AgyCfg -PathType Leaf))
   if ($offCodex -or $offAgy) {
     Write-Host ''
-    Write-Host '  Codex · 안티그래비티 회사 연결 (사외)' -ForegroundColor Cyan
+    # 제목은 이번에 걷기를 보는 도구만 든다 — 사내에서 세우는 도구 이름을 부르면 그것도 걷힌 줄로 읽힌다.
+    $offWho = @()
+    if ($offCodex) { $offWho += 'Codex' }
+    if ($offAgy)   { $offWho += '안티그래비티' }
+    Write-Host ('  ' + ($offWho -join ' · ') + " 회사 연결 ($OffLinkWhy)") -ForegroundColor Cyan
   }
   if ($offCodex) {
     $src = Join-Path $Here $codexTpl
@@ -8187,7 +8230,7 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
     } elseif ($ocPython -eq 'unmeasured') {
       Add-UnmeasuredStep 'Codex 회사 연결 걷기' 'python --version' '걷지도 건너뛰지도 않았다'
     } elseif ($ocPython -ne 'yes') {
-      Write-Host '  ! Codex config.toml — python 이 안 서서 회사 연결을 못 걷었다 · 남았으면 Codex 가 닿지 않는 주소로 간다' -ForegroundColor Yellow
+      Write-Host '  ! Codex config.toml — python 이 안 서서 회사 연결을 못 걷었다 · 남았으면 Codex 가 로그인 대신 그 연결로 가서 진다' -ForegroundColor Yellow
     } else {
       $cmLog = [IO.Path]::GetTempFileName()
       $cmRc = Invoke-Logged 'python' @('-X', 'utf8', $CodexCfgMerge, '--config', $CodexCfg, '--template', $src, '--remove-provider') $cmLog
@@ -11008,16 +11051,19 @@ if (-not $NoVsCode) {
 }
 # npm 으로 깐 CLI 는 「CLI」 걸음과 같은 자(npm 의 기록)로 잰다 — 띄우지 않고(PAISetup #30 ③) 기록은 한 번에 읽는다
 #   (PAISetup #35 C). winget CLI 는 이름이 서나를 띄워 잰다. 섰으면 새 터미널에서 그 이름이 서나를 잰다(PAISetup #56) — 기록에
-#   있거나 이 창에서 도는 것은 새 터미널에서 불린다는 말이 아니다.
+#   있거나 이 창에서 도는 것은 새 터미널에서 불린다는 말이 아니다. 자리표시인지 못 쟀으면 그 칸은 「못 쟀다」고 새 터미널에서도 안
+#   띄운다 — 자리표시일 수 있는 것을 띄우면 16비트 창이 사람을 기다린다(`Measure-NpmNativeStub`).
 $npmCheckPkgs = @($CliPicks | Where-Object { $_.Via -ne 'winget' } | ForEach-Object { $_.Pkg })
 $npmCheckRecs = if ($npmCheckPkgs.Count) { Measure-NpmGlobal $npmCheckPkgs } else { @{} }
 foreach ($c in $CliPicks) {
   $cliArg = if ($c.Arg) { $c.Arg } else { '--version' }
   if ($c.Via -ne 'winget') {
     $rec = $npmCheckRecs[$c.Pkg]
+    $stub = if ($rec.State -eq 'yes') { Measure-NpmNativeStub $c } else { @{ State = 'no' } }
     if ($rec.State -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = $rec.Probe; Why = $rec.Why } }
     elseif ($rec.State -ne 'yes')    { $checks += @{ Name = $c.Label; Ok = $false } }
-    elseif (Test-NpmNativeStub $c)   { $checks += @{ Name = "$($c.Label) (진짜 실행 파일이 빠지고 자리표시만 있다 — $($c.NativeBin))"; Ok = $false } }
+    elseif ($stub.State -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = $stub.Probe; Why = $stub.Why } }
+    elseif ($stub.State -eq 'yes')   { $checks += @{ Name = "$($c.Label) (진짜 실행 파일이 빠지고 자리표시만 있다 — $($c.NativeBin))"; Ok = $false } }
     elseif ($c.Module) {
       # 명령이 없는 꾸러미 — 저장소 밖의 스크립트가 `require` 로 푸나를 잰다. 못 풀리면 이 설치가 이을 자리(홈 배선)가 진 것이라 빨강이다
       $nr = Measure-NodeResolvable $c.Module
@@ -11336,8 +11382,13 @@ if ($useGateway) {
     if (-not $v.Gateway) { continue }
     $checks += @{ Name = $v.Name; Ok = [bool]$userEnv[$v.Name] }
   }
+  # 안 세우는 도구의 이름은 「회사 키 사본이 없나」를 잰다 — 걷는 자(`Remove-CompanyKeyCopy`)와 같은 자(`Test-CompanyKey`)로 묻는다.
+  #   사람이 그 이름에 둔 제 키는 [O] 다. 그 도구의 설정 파일 쪽은 아래 「안 세우는 도구」 칸이 잰다.
   foreach ($k in $KeyAliases) {
-    if (-not $wantNeed[$k.Need]) { continue }
+    if (-not $wantNeed[$k.Need]) {
+      $checks += @{ Name = "$($k.Name) — 회사 키 사본 없음 ($OffLinkWhy)"; Ok = (-not (Test-CompanyKey ([string]$userEnv[$k.Name]))) }
+      continue
+    }
     $checks += @{ Name = $k.Name; Ok = [bool]$userEnv[$k.Name] }
   }
   if ($wantCodex) {
@@ -11431,14 +11482,17 @@ if ($useGateway) {
     if (-not (Test-ProxyValue $fromFile[$k])) { continue }
     $checks += @{ Name = "$k — 프록시 주소 없음 (사외)"; Ok = (-not (Test-ProxyValue $userEnv[$k])) }
   }
-  # Codex · 안티그래비티 — 사내에서 심은 회사 연결이 걷혔나(「Codex · 안티그래비티 설정」 칸의 사외 갈래). 걷는 자와 같은 자(병합기의
-  #   걷기 판 · `Test-AgyCompanyLink`)로 「걷을 것이 남았나」를 묻는다 — 틀과 다른 제공자 표는 맨 위 고르기가 걷혀 남아도 [O] 다(그 표를
-  #   고르는 프로필은 사람 몫이다) · 사람의 API 키 갈래로 둔 `modelProvider` 도 [O] 다. 파일이 없으면 칸을 안 세운다. python 을 못
-  #   쟀으면 [?], 병합기나 python 이 안 서면 [X] 다(사내 칸과 같은 자).
-  if ($codexTpl -and (Test-Path -LiteralPath $CodexCfg -PathType Leaf)) {
+}
+# Codex · 안티그래비티 — 이 판이 회사 키로 안 세우는 도구에 사내에서 심은 회사 연결이 걷혔나(「사내 연결」의 「안 세우는 도구」 칸 —
+#   사외 · 사내에서 끈 도구가 다 여기다). 걷는 자와 같은 문(`$wantNeed`)과 같은 자(병합기의 걷기 판 · `Test-AgyCompanyLink`)로 「걷을
+#   것이 남았나」를 묻는다 — 틀과 다른 제공자 표는 맨 위 고르기가 걷혀 남아도 [O] 다(그 표를 고르는 프로필은 사람 몫이다) · 사람의
+#   API 키 갈래로 둔 `modelProvider` 도 [O] 다. 파일이 없으면 칸을 안 세운다. python 을 못 쟀으면 [?], 병합기나 python 이 안 서면 [X]
+#   다(사내 칸과 같은 자).
+if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하나라도 회사 키로 안 세운다
+  if ((-not $wantNeed['codex']) -and $codexTpl -and (Test-Path -LiteralPath $CodexCfg -PathType Leaf)) {
     $ocPython = if (Test-Path -LiteralPath $CodexCfgMerge) { Measure-Runs 'python' '--version' } else { '' }
     if ($ocPython -eq 'unmeasured') {
-      $checks += @{ Name = 'Codex config.toml — 회사 연결 없음 (사외)'; State = 'unmeasured'; Probe = 'python --version' }
+      $checks += @{ Name = "Codex config.toml — 회사 연결 없음 ($OffLinkWhy)"; State = 'unmeasured'; Probe = 'python --version' }
     } else {
       $ocOk = $false
       $ocWhy = '못 잼 — 틀 병합기나 python 이 안 선다'
@@ -11453,10 +11507,10 @@ if ($useGateway) {
                  elseif ($ocRc -eq 0) { '회사 연결이 남았다 — ' + (@($ocOut | Where-Object { $_ -like 'UNSET=*' } | ForEach-Object { $_.Substring('UNSET='.Length) }) -join ' · ') }
                  else { '못 잼 — ' + (@($ocOut | Where-Object { $_ -like 'ERROR=*' }) + @("종료 $ocRc") | Select-Object -First 1) }
       }
-      $checks += @{ Name = "Codex config.toml (사외 — $ocWhy)"; Ok = $ocOk }
+      $checks += @{ Name = "Codex config.toml ($OffLinkWhy — $ocWhy)"; Ok = $ocOk }
     }
   }
-  if (Test-Path -LiteralPath $AgyCfg -PathType Leaf) {
+  if ((-not $wantNeed['gemini']) -and (Test-Path -LiteralPath $AgyCfg -PathType Leaf)) {
     $oaOk = $true
     $oaWhy = '회사 연결 없음'
     try {
@@ -11464,7 +11518,7 @@ if ($useGateway) {
       if (Test-AgyCompanyLink $oa) { $oaOk = $false; $oaWhy = '회사 연결이 남았다 — modelProvider' }
       elseif ($oa -and $oa.PSObject.Properties['modelProvider']) { $oaWhy = '회사 연결 없음 — modelProvider 는 사람의 갈래' }
     } catch { $oaOk = $false; $oaWhy = '못 읽었다' }
-    $checks += @{ Name = "안티그래비티 settings.json (사외 — $oaWhy)"; Ok = $oaOk }
+    $checks += @{ Name = "안티그래비티 settings.json ($OffLinkWhy — $oaWhy)"; Ok = $oaOk }
   }
 }
 # npm 전역 자리 — 새 터미널이 볼 PATH(기계 · 사용자)에 섰나(claude-config 결정 0143 · PAISetup #56). 이 창의 PATH 는 배선이 태워 늘

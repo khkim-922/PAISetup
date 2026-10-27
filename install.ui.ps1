@@ -74,6 +74,22 @@ if (-not (Test-Path -LiteralPath $Engine)) {
 #   비키고, 새 판으로 설치하는 것은 부르는 쪽(`autorun.ps1`)이 제 로그 안에서 든다.
 if ($Unattended) { exit 0 }
 
+# ── 창이 받은 깃발 — **넘기는 줄은 이 배열 하나다** ─────────────────────────────
+# 사람이 이 창에 준 깃발(파일 머리 「부르는 꼴」) 가운데 켠 것만 든다. 받는 자리가 셋이다 — 콘솔 갈래의 몸통 · 제 자신 되띄우기 ·
+#   새 판 묻기가 띄우는 새 `Setup.exe`(그 exe 는 제 인자를 그대로 새 창에 붙인다). 셋이 같은 줄을 받아야 어느 길로 넘어가도 깃발이
+#   안 샌다.
+# ⚠ **켠 스위치 · 빈 값이 아닌 것만 넣는다** — Windows PowerShell 5.1 의 `-File` 은 `-NoDevTools:False` 를 스위치로 못 바꾸고
+#   (인자 변환 오류), 빈 `-PersonalFor` 는 값이 떨어져 「인자가 없다」로 진다 — 둘 다 받는 쪽이 아예 안 뜬다.
+# 사람이 칠 것이 아닌 셋(`-NoConsole` · `-Unattended` · `-PersonalNotice`)은 안 든다 — 이 프로세스의 상태 · 한 번만 띄우는 알림이라
+#   받는 자리마다 따로 정한다.
+$PassArgs = @(
+  if ($NoDevTools)         { '-NoDevTools' }
+  if ($DevTools)           { '-DevTools' }
+  if ($WithPersonalConfig) { '-WithPersonalConfig' }
+  if ($PersonalFor)        { '-PersonalFor'; $PersonalFor }
+  if ($NoUpgrade)          { '-NoUpgrade' }
+)
+
 # ── 화면이 설 수 있나 ───────────────────────────────────────────────────────────
 # 못 서면 말하고 같은 콘솔에서 몸통을 돌린다 — 화면이 안 서는 것과 설치가 안 되는 것은 다른 명제인데, 말없이 내려가면
 #   사람은 「화면이 뜨는 줄 알았는데 왜」에서 멈춘다.
@@ -93,15 +109,8 @@ if (-not $uiOk) {
   Write-Host '화면을 못 띄운다 — 콘솔로 진행한다.' -ForegroundColor Yellow
   # ⚠ **몸통을 제 프로세스로 띄운다 — 이 프로세스 안에서 부르지 않는다.** 빗장을 쥔 설치를 찾는 두 자(몸통의 `Find-EngineHolders` ·
   #   로그온 자동 실행의 가드)는 명령줄에 `install.ps1` 이 든 파워셸만 본다. 안에서 부르면 명령줄이 이 파일 이름이라 둘 다 못 보고,
-  #   빗장에 막힌 다음 판이 쥔 쪽을 못 댄다. 같은 콘솔을 물려받으므로 묻는 줄 · 찍는 줄은 그대로다.
-  # ⚠ **켠 스위치 · 빈 값이 아닌 것만 넘긴다** — Windows PowerShell 5.1 의 `-File` 은 `-NoDevTools:False` 를 스위치로 못 바꾸고
-  #   (인자 변환 오류), 빈 `-PersonalFor` 는 값이 떨어져 「인자가 없다」로 진다 — 둘 다 몸통이 아예 안 뜬다.
-  $engineArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Engine)
-  if ($NoDevTools)         { $engineArgs += '-NoDevTools' }
-  if ($DevTools)           { $engineArgs += '-DevTools' }
-  if ($WithPersonalConfig) { $engineArgs += '-WithPersonalConfig' }
-  if ($PersonalFor)        { $engineArgs += @('-PersonalFor', $PersonalFor) }
-  if ($NoUpgrade)          { $engineArgs += '-NoUpgrade' }
+  #   빗장에 막힌 다음 판이 쥔 쪽을 못 댄다. 같은 콘솔을 물려받으므로 묻는 줄 · 찍는 줄은 그대로다. 넘기는 깃발은 위 `$PassArgs` 다.
+  $engineArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Engine) + $PassArgs
   & (Get-Process -Id $PID).Path @engineArgs
   # ⚠ **판정을 먼저 집는다.** `Hold-Console` 뒤에 읽으면 그 사이에 도는 것이 `$LASTEXITCODE`
   #   를 갈아치울 수 있고, 그러면 **몸통이 진 판이 0 으로 보고된다.**
@@ -136,13 +145,8 @@ function Quote-Argv([string[]]$Argv) {
 #   설치 화면은 제 크기로 가운데 뜬다.
 # ⚠ **숨었나는 `Visible` 로 잰다 — `WindowState` 가 아니다.** 숨은 창도 `Normal` 이라 그 값으로 재면 초록으로 읽힌다.
 if (-not $NoConsole) {
-  $again = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path, '-NoConsole')
-  if ($NoDevTools)         { $again += '-NoDevTools' }
-  if ($DevTools)           { $again += '-DevTools' }
-  if ($WithPersonalConfig) { $again += '-WithPersonalConfig' }
-  if ($PersonalFor)        { $again += @('-PersonalFor', $PersonalFor) }
-  if ($PersonalNotice)     { $again += '-PersonalNotice' }
-  if ($NoUpgrade)          { $again += '-NoUpgrade' }
+  $again = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path, '-NoConsole') + $PassArgs
+  if ($PersonalNotice) { $again += '-PersonalNotice' }
   try {
     $psi = New-Object Diagnostics.ProcessStartInfo
     $psi.FileName         = (Get-Process -Id $PID).Path     # 지금 나를 돌린 그 파워셸
@@ -1409,26 +1413,40 @@ if ($UpdateRepo -and $DistVersion -and (Test-Path -LiteralPath $UpdateLib)) {
   } catch { $script:upPs = $null; $script:upHandle = $null }
 }
 
+# `$script:upFound` — 거둔 새 판(`Measure-NewerRelease` 의 `Found`). 물을 때까지 든다 — 설치가 도는 동안 온 답은 여기서 기다린다.
+$script:upFound = $null
 $script:upTimer = New-Object Windows.Threading.DispatcherTimer
 $script:upTimer.Interval = [TimeSpan]::FromMilliseconds(400)
 $script:upTimer.Add_Tick({
-  if (-not $script:upHandle -or -not $script:upHandle.IsCompleted) { return }
-  $script:upTimer.Stop()
-  $probe = $null
-  try { $probe = @($script:upPs.EndInvoke($script:upHandle))[0] } catch { }
-  try { $script:upPs.Dispose() } catch { }
-  $script:upPs = $null; $script:upHandle = $null
-  # 머리의 알약이 답을 든다 — 물음창은 새 판일 때만 뜨므로, 못 물은 판은 여기서만 보인다
-  $verText = Get-El 'VerText'
-  if ($probe -and $probe.State -eq 'latest') { $verText.Text = "$DistVersion · 최신" }
-  elseif (-not $probe -or $probe.State -ne 'newer') {
-    $why = if ($probe -and $probe.Why) { $probe.Why } else { '묻는 손을 못 불렀다' }
-    $verText.Text = "$DistVersion · 새 판 확인 못 함"
-    (Get-El 'VerPill').ToolTip = "새 판이 있나 확인하지 못했습니다 — $why`n「바뀐 것」에서 최신 판 번호를 볼 수 있습니다."
+  # 답을 한 번 거둔다 — 머리의 알약은 거둔 그 틱에 단다(설치가 도는 중이어도)
+  if ($script:upHandle) {
+    if (-not $script:upHandle.IsCompleted) { return }
+    $probe = $null
+    try { $probe = @($script:upPs.EndInvoke($script:upHandle))[0] } catch { }
+    try { $script:upPs.Dispose() } catch { }
+    $script:upPs = $null; $script:upHandle = $null
+    # 머리의 알약이 답을 든다 — 물음창은 새 판일 때만 뜨므로, 못 물은 판은 여기서만 보인다
+    $verText = Get-El 'VerText'
+    if ($probe -and $probe.State -eq 'latest') { $verText.Text = "$DistVersion · 최신" }
+    elseif (-not $probe -or $probe.State -ne 'newer') {
+      $why = if ($probe -and $probe.Why) { $probe.Why } else { '묻는 손을 못 불렀다' }
+      $verText.Text = "$DistVersion · 새 판 확인 못 함"
+      (Get-El 'VerPill').ToolTip = "새 판이 있나 확인하지 못했습니다 — $why`n「바뀐 것」에서 최신 판 번호를 볼 수 있습니다."
+    }
+    if ($probe -and $probe.State -eq 'newer') {
+      $script:upFound = $probe.Found
+      $verText.Text = "$DistVersion · 새 판 $($script:upFound.Ver) 있음"
+    }
   }
-  if (-not $probe -or $probe.State -ne 'newer') { return }
-  $found = $probe.Found
-  $verText.Text = "$DistVersion · 새 판 $($found.Ver) 있음"
+  if (-not $script:upFound) { $script:upTimer.Stop(); return }
+  # ⚠ **설치 회차가 열려 있는 동안은 안 묻는다 — 타이머는 돌려 둔 채 기다린다.** 도는 중에 물으면 「예」가 새 `Setup.exe` 를 띄우고
+  #   이 창을 닫으려다 닫기 손의 「멈추고 닫을까요」에 걸린다 — 아니오면 창이 둘 서고 새 몸통은 빗장에 막힌다. 회차가 닫히는 것은
+  #   파일을 따라 읽는 타이머의 끝 갈래가 `$script:proc` 를 비울 때라(끝 판정 · 기록 옮기기 뒤), 끝난 화면이 선 다음 틱에 묻는다.
+  #   그 전에 창을 닫으면 다음 실행이 다시 묻는다.
+  if ($script:proc) { return }
+  $script:upTimer.Stop()
+  $found = $script:upFound
+  $script:upFound = $null
 
   $ans = [Windows.MessageBox]::Show($F,
     "새 판 $($found.Ver) 이 나와 있습니다. 지금 것은 $DistVersion 입니다.`n`n" +
@@ -1465,7 +1483,12 @@ $script:upTimer.Add_Tick({
     return
   }
 
-  Start-Process -FilePath $v.Path | Out-Null
+  # 이 창이 받은 깃발을 새 판에 그대로 넘긴다(`$PassArgs`) — 새 `Setup.exe` 는 제 인자를 새 창에 붙이므로, 안 넘기면 `-DevTools` ·
+  #   `-PersonalFor` 같은 사람의 뜻이 판을 건너며 사라진다. 싸는 규칙은 `Quote-Argv` 하나다. 넘길 것이 없으면 인자를 안 준다 —
+  #   `Start-Process` 는 빈 `-ArgumentList` 를 받지 않는다.
+  $relaunch = @{ FilePath = $v.Path }
+  if ($PassArgs.Count) { $relaunch.ArgumentList = Quote-Argv $PassArgs }
+  Start-Process @relaunch | Out-Null
   # 이 창을 닫는다 — 새 판이 제 화면을 띄우므로 둘이 같이 서 있으면 어느 것에 값을 넣었는지가 흐려진다.
   $F.Close()
 })
