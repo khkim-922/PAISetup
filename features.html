@@ -449,7 +449,7 @@
   <div class="tiles">
     <article class="tile">
       <div class="top"><span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span><h4>회사 문서 읽고 만들기</h4></div>
-      <p class="desc">DRM 이 걸린 오피스 · PDF 도 붙이기만 하면 읽는 길로 갑니다(회사 PC 에서). 표 · 배치는 페이지를 그림으로 떠서 봅니다.
+      <p class="desc">DRM 이 걸린 오피스 · PDF 도 파일 경로를 글에 적으면 읽는 길로 갑니다(회사 PC 에서). 표 · 배치는 페이지를 그림으로 떠서 봅니다.
          워드 · 엑셀 · 파워포인트 · PDF 를 새로 만들 수도 있습니다.</p>
       <div class="say"><span>이렇게 말해 보세요</span><q>(파일을 붙이고) 이 보고서 핵심만 세 줄로</q><q>이 표로 발표 슬라이드 한 장 만들어 줘</q></div>
       <div class="parts">
@@ -549,7 +549,7 @@
       <div class="mini"><b>큰 그림 먼저 재기</b><span class="tag"><code class="nm">image-gate</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="src pai">PAI</span></span>
         <span>스크린샷이나 큰 그림은 보내기 전에 크기를 재고, 너무 크면 막고 줄여서 다시 열게 합니다. 그림 한 장에 대화가 멈추지 않습니다.</span></div>
       <div class="mini"><b>DRM 길잡이</b><span class="tag"><code class="nm">drm-guide</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
-        <span>DRM 이 걸린 오피스 · PDF 를 붙이거나 경로를 적으면 DRM 문서 읽기로 가는 길을 알려 줍니다. agy 에서는 그 파일을 열려는 순간 막고 길을 알려 줍니다.</span></div>
+        <span>DRM 이 걸린 오피스 · PDF 의 경로를 적거나 그 파일을 읽다 막히면 DRM 문서 읽기로 가는 길을 알려 줍니다. Claude 의 VS Code 앱에서 「+」로 붙인 PDF 는 놓치니 경로를 적어 주세요. agy 에서는 그 파일을 열려는 순간 막고 길을 알려 줍니다.</span></div>
       <div class="mini"><b>컨텍스트 알림</b><span class="tag"><code class="nm">context-alert</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         <span>대화가 한 번에 기억할 수 있는 양의 66&nbsp;% 를 넘으면, 지금까지 한 일과 남은 일을 정리하고 압축할지 새 세션으로 옮길지 까닭과 함께 권합니다. 사내에서는 새 세션 쪽으로 기웁니다. 기억 창이 작은 모델에서는 조용합니다.</span></div>
       <div class="mini"><b>웹 다시 찾기</b><span class="tag"><code class="nm">web-retry</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span>
@@ -561,7 +561,7 @@
       <div class="mini"><b>경로 역슬래시 지키기</b><span class="tag"><code class="nm">bash-backslash-deny</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="src pai">PAI</span></span>
         <span>윈도우에서 Bash 로 보낸 명령의 겹역슬래시는 셸에 닿기 전에 하나로 접혀 엉뚱한 경로가 됩니다. Claude 는 미리 두 배로 늘려 쓴 그대로 닿게 하고, Codex 는 그런 명령을 막고 다시 짓게 합니다.</span></div>
       <div class="mini"><b>PowerShell 한글 지키기</b><span class="tag"><code class="nm">utf8-bom</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
-        <span>윈도우 파워셸 5.1 은 BOM 없는 스크립트의 한글을 깨뜨려 읽습니다. 고친 <code>.ps1</code> 에 BOM 을 찍어 둡니다.</span></div>
+        <span>윈도우 파워셸 5.1 은 BOM 없는 스크립트의 한글을 깨뜨려 읽습니다. 고친 <code>.ps1</code> · <code>.psm1</code> · <code>.psd1</code> 에 BOM 을 찍어 둡니다.</span></div>
       <div class="mini none"><b>Copilot 은 빠집니다</b><span>Copilot 에는 이 문들이 걸리지 않습니다 — 묻지 않고 도는 만큼 지켜보며 씁니다.</span></div>
     </div>
   </section>
@@ -573,9 +573,9 @@
     <div class="rows">
       <div class="row"><b>회사 키 하나로 셋<span class="tag"><code class="nm">ANTHROPIC_AUTH_TOKEN</code><code class="nm">OPENAI_API_KEY</code><code class="nm">GEMINI_API_KEY</code><code class="nm">ANTHROPIC_BASE_URL</code><code class="nm">GOOGLE_GEMINI_BASE_URL</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 도구가 회사 게이트웨이에 못 붙습니다.</span> 도구마다 읽는 이름이 달라 한 번 넣은 키를 셋으로 심고, 주소는 PC 안의 프록시를 가리킵니다. 키는 설정 파일에 안 들어가고 환경변수에만 있습니다.
-          사외로 나가면 걷습니다 — 남으면 같은 이름을 다른 뜻으로 쓰는 도구가 회사 키를 잘못 집습니다. 사내로 돌아오면 다시 묻지 않고 심습니다.</div></div>
+          사외로 나가면 걷고(사내에서도 Codex · agy 를 끄면 그 이름은 걷습니다) — 남으면 같은 이름을 다른 뜻으로 쓰는 도구가 회사 키를 잘못 집습니다. 사내로 돌아오면 다시 묻지 않고 심습니다.</div></div>
       <div class="row"><b>Codex · Antigravity 회사 연결<span class="tag"><code class="nm">model_provider</code><code class="nm">modelProvider</code><span class="k setting">Setting</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></b>
-        <div><span class="why">없으면 Codex · agy 가 회사 게이트웨이가 아니라 제 계정 쪽으로 나가 회사 키로 쓸 수 없습니다.</span> 사람이 둔 다른 Codex 설정은 그대로 두고, 사외로 나가면 이 연결만 걷어 각자 로그인으로 돌립니다.</div></div>
+        <div><span class="why">없으면 Codex · agy 가 회사 게이트웨이가 아니라 제 계정 쪽으로 나가 회사 키로 쓸 수 없습니다.</span> 사람이 둔 다른 Codex 설정은 그대로 두고, 사외로 나가거나 사내에서 그 도구를 끄면 이 연결만 걷어 각자 로그인으로 돌립니다.</div></div>
       <div class="row"><b><code>/model</code> 목록<span class="tag"><code class="nm">modelPicker</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">기본 목록에는 게이트웨이에 없는 이름이 섞이고 100만 토큰 창 표시도 없습니다.</span> 그래서 게이트웨이가 받는 모델만 100만 토큰 창으로 고르게 합니다. 사람이 고친 목록은 덮지 않습니다.</div></div>
       <div class="row"><b>회사망 밖으로 안 보내기<span class="tag"><code class="nm">DISABLE_TELEMETRY</code><code class="nm">DISABLE_ERROR_REPORTING</code><code class="nm">CLAUDE_CODE_DISABLE_FAST_MODE</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>

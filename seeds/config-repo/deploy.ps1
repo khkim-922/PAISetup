@@ -502,9 +502,9 @@ function ConvertFrom-ToolHomesOutput {
 
 #region 홈 씨앗 손 — 이 저장소가 홈 씨앗의 원본이면 홈으로 폴더째 미는 목록과 「씨앗의 판 줄」 걸음을 짓는다
 function Get-SeedColumn {
-    # 받는 것: 이 저장소 뿌리(`-Src`) · 홈(`-Dst`). 아무것도 안 쓴다(git 으로 판만 묻는다). 내는 것: @{ Dirs — 홈으로 폴더째
-    #   미는 폴더(뿌리 기준 · `\` 로) · Notes — 할 일 줄 · Stamp — 「씨앗의 판 줄」 걸음(안 쓰면 $null) · Same — 판 줄이 이미
-    #   이 판일 때의 「= 동일」 줄(아니면 $null) }
+    # 받는 것: 이 저장소 뿌리(`-Src`) · 홈(`-Dst`). 아무것도 안 쓴다(git 으로 추적 목록 · 이력 · 판만 묻는다). 내는 것: @{ Dirs — 홈으로
+    #   폴더째 미는 폴더(뿌리 기준 · `\` 로) · Files — 그 폴더에서 홈으로 미는 파일(뿌리 기준 · `\` 로) · Gone — 원본이 걷은 파일을 홈에서
+    #   걷는 걸음 · Notes — 할 일 줄 · Stamp — 「씨앗의 판 줄」 걸음(안 쓰면 $null) · Same — 판 줄이 이미 이 판일 때의 「= 동일」 줄(아니면 $null) }
     # ⚠ 문은 「이 저장소가 홈 씨앗의 원본인가」 — 뿌리에 deploy.seeds.conf 가 있나다. 그 선언은 씨앗에 안 실려 씨앗으로 만든
     #   동료 저장소에는 없고, 그 PC 의 홈 씨앗과 판 줄은 설치기가 짐에서 깐 그대로여야 한다 — 문 없이 돌면 판 줄을 동료 저장소의
     #   커밋으로 덮는다. 문을 못 지나면 아무것도 안 하고 아무 말도 안 한다. 동료가 그 파일을 두면 그 저장소가 홈 씨앗의
@@ -514,7 +514,7 @@ function Get-SeedColumn {
     param([string]$Src, [string]$Dst)
     # 문을 못 지난 판도 같은 열쇠를 다 든다 — `Gone` 이 없으면 흐름의 `@($seedCol.Gone)` 이 `$null` 하나를 든 배열이 되어 계획에
     #   빈 걸음이 서고, 제거 후보 칸의 `$goneSet[$g.Path]` 가 널 열쇠로 던져 배포가 죽는다.
-    $col  = @{ Dirs = @(); Gone = @(); Notes = @(); Stamp = $null; Same = $null }
+    $col  = @{ Dirs = @(); Files = @(); Gone = @(); Notes = @(); Stamp = $null; Same = $null }
     $conf = Join-Path $Src 'deploy.seeds.conf'
     if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { return $col }
     $col.Dirs = @(Get-Content -LiteralPath $conf -Encoding UTF8 |
@@ -524,6 +524,29 @@ function Get-SeedColumn {
     if ($col.Dirs.Count -eq 0) {
         $col.Notes += 'deploy.seeds.conf 가 비었다 — 홈으로 폴더째 미는 씨앗·사내 환경 문서가 하나도 안 깔린다'
     }
+    # ── 미는 파일 — 그 폴더에서 이 저장소가 추적하는 파일 (#212) ────────────
+    # 원본은 이 저장소가 추적하는 파일이다(`git ls-files`) — 설치기 끝 검증의 「원본」과 같은 자다. 선언 폴더에는 git 이 무시하는 런타임
+    #   기록도 산다(저장소 안에서 돌린 프록시의 `posco/pgpt-proxy/proxy.log` · `*.pid` · 파이썬의 `__pycache__`) — 작업 나무를 다 밀면 그
+    #   낡은 사본이 홈에서 도는 프록시의 살아 있는 기록을 덮는다. 내용은 작업 나무의 것이다(커밋 안 한 편집도 간다) · 추적하는데 작업
+    #   나무에서 지운 파일은 안 민다 · 아직 `git add` 안 한 새 파일은 안 민다.
+    # 추적 목록을 못 물으면(git 이 없다 · git 이 졌다 · 색인이 깨졌다) 이 칸은 홈에 아무것도 안 한다 — 할 일 한 줄만 내고 돌아간다.
+    #   무엇이 남의 것인지 모른 채 밀면 남의 파일을 덮고, 안 민 판에 판 줄을 적으면 판 줄을 믿는 검사가 낡은 홈을 이 판으로 읽는다.
+    #   원본이 걷은 파일 걷기도 미룬다 — 할 일 줄의 「홈은 그대로다」가 참이어야 한다.
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($col.Dirs.Count) {
+        $tracked = $null
+        if ($git) {
+            try { $tracked = @(& git -C $Src -c core.quotepath=false ls-files -- @($col.Dirs | ForEach-Object { $_ -replace '\\', '/' }) 2>$null) } catch { $tracked = $null }
+            if ($null -ne $tracked -and $LASTEXITCODE -ne 0) { $tracked = $null }
+        }
+        if ($null -eq $tracked) {
+            $col.Notes += '이 저장소가 추적하는 파일을 못 물어(git ls-files) 씨앗 · 사내 환경 문서를 하나도 안 밀었다 — 홈은 그대로다'
+            return $col
+        } else {
+            $col.Files = @($tracked | Where-Object { $_ } | ForEach-Object { $_ -replace '/', '\' } |
+                Where-Object { Test-Path -LiteralPath (Join-Path $Src $_) -PathType Leaf })
+        }
+    }
     # ── 원본이 걷은 파일 — 기본 실행이 걷는다 (PAISetup #44 ⑭) ────────────
     # 이 저장소가 홈 씨앗의 원본인 PC 에서는 설치기가 그 폴더를 비켜선다 — 원본에서 걷은 파일을 홈에서 걷는 손은 여기 하나다. 덮어쓰기만
     #   하면 한 번 민 파일이 홈에 영영 남는다(씨앗은 새 프로젝트로 퍼지고, 사내 환경 문서는 틀린 안내가 된다).
@@ -532,7 +555,6 @@ function Get-SeedColumn {
     #   이름이 바뀐 파일은 옛 이름을 지운 것으로 센다(`--no-renames`). 걷는 걸음은 백업 자리에 원본을 뜬다(실행 단계의 `remove`).
     # 이력을 못 물으면(git 이 없다 · 얕은 클론이 그 커밋을 안 든다 · git 이 졌다) 걷지 않는다 — 못 물은 것은 할 일 한 줄이고, 얕은
     #   클론에서 못 본 이력은 안 걷힌 채 남는다(우리 것을 남의 것으로 세는 쪽으로만 진다).
-    $git = Get-Command git -ErrorAction SilentlyContinue
     if ($col.Dirs.Count -and -not $git) { $col.Notes += 'git 이 없어 원본이 걷은 씨앗 · 사내 환경 문서 파일을 못 가렸다 — 홈에 남는다' }
     elseif ($col.Dirs.Count) {
         $hist = $null
@@ -953,20 +975,14 @@ if (Test-Path $memSrc) {
 # 홈에도 두는 까닭 — 진본은 저장소이고 스킬 · 형제 저장소 문서가 그 좌표를 가리키는데, 설치본만 받은 사람에게는 저장소가
 #   없다. 그래서 설치(`install.ps1` 「공용 자산」 걸음)가 홈에 깔고, 이 자리가 그 사본을 진본과 맞춘다 — 갱신을 안 하면 사본이
 #   조용히 낡는다.
-# 이 칸의 문 · 목록 · 할 일 · 판 줄은 `Get-SeedColumn` 이 든다 — 이 저장소가 홈 씨앗의 원본이 아니면(씨앗으로 만든 동료
-#   저장소) 이 칸은 아무것도 안 하고 아무 말도 안 한다. 여기는 그 답을 계획에 싣기만 한다.
+# 이 칸의 문 · 목록 · 미는 파일 · 할 일 · 판 줄은 `Get-SeedColumn` 이 든다 — 이 저장소가 홈 씨앗의 원본이 아니면(씨앗으로 만든 동료
+#   저장소) 이 칸은 아무것도 안 하고 아무 말도 안 한다. 여기는 그 답을 계획에 싣기만 한다. 미는 파일은 그 폴더에서 이 저장소가
+#   추적하는 것뿐이다 — git 이 무시하는 런타임 기록은 안 가고, 홈의 같은 이름 파일도 안 덮는다.
 $seedCol  = Get-SeedColumn -Src $src -Dst $dst
 $seedDirs = $seedCol.Dirs
 $todo    += $seedCol.Notes
-foreach ($sd in $seedDirs) {
-    $aSrc = Join-Path $src $sd
-    if (-not (Test-Path $aSrc)) { continue }
-    # 파이썬이 남긴 캐시(`__pycache__\`)는 안 민다 — 씨앗의 검사를 돌리면 생기는데, git 은 무시해도 이 복사는 모른다. 그것은
-    #   자산이 아니라 그 PC 의 부산물이다.
-    foreach ($f in (Get-ChildItem $aSrc -Recurse -File | Where-Object { $_.FullName -notmatch '\\__pycache__\\' })) {
-        $rel = $f.FullName.Substring($aSrc.Length + 1)
-        $targets += @{ From = $f.FullName; To = Join-Path $dst "$sd\$rel" }
-    }
+foreach ($rel in @($seedCol.Files)) {
+    $targets += @{ From = Join-Path $src $rel; To = Join-Path $dst $rel }
 }
 
 foreach ($t in $targets) {
@@ -995,7 +1011,8 @@ $todo += $homes.Notes
 if ($homes.Same) { $same += '= 동일  도구 홈의 규범 · 룰 · 에이전트 · 스킬  (손이 바꿀 것이 없다고 답했다)' }
 
 # ── 씨앗의 판 줄 — 홈 사본이 어느 판에서 왔나를 그 자리에 남긴다 ────────────
-# 걸음과 그 까닭은 `Get-SeedColumn` 이 든다(위 씨앗 칸에서 지었다). 이 저장소가 홈 씨앗의 원본이 아니면 둘 다 비었다.
+# 걸음과 그 까닭은 `Get-SeedColumn` 이 든다(위 씨앗 칸에서 지었다). 이 저장소가 홈 씨앗의 원본이 아니거나 추적 목록을 못 물은
+#   판(안 민 판)이면 둘 다 비었다.
 # ⚠ 계획에 싣는 자리는 씨앗 복사 뒤인 여기다 — 계획은 순서대로 돌아, 위 씨앗 칸에서 실으면 이 줄이 복사보다 먼저 서서 복사가
 #   지거나 건너뛰어도 「그 판이 깔렸다」고 말한다.
 # 원본이 걷은 파일의 걷기도 여기서 싣는다 — 민 뒤 · 판 줄 앞. 무엇을 걷나는 `Get-SeedColumn` 이 든다.

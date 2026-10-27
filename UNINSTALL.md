@@ -80,11 +80,11 @@ Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night -Conf
   `pythonw` 러너 줄 — 과 그 기록 파일
 - `hooks` 의 `SessionStart` 에서 `command` 에 `/*/.claude/hooks/session-start.sh` 가 든 우리 항목 하나 — 설치가 매번 다시 심고,
   설치 창에서 무엇을 빼도 안 걷힌다
-- `hooks` 의 우리 훅 줄 — 아래 표. 이 줄들은 설치 창에서 Claude 를 빼고 한 번 더 누르면 놓는 프로그램이 우리 것만 걷는다
+- `hooks` 의 우리 훅 줄 — 아래 표. 한 훅이 거름(`if`)마다 줄을 따로 세우므로(`image-gate` · `utf8-bom`) 이름이 든 줄을 다 지운다. 이 줄들은 설치 창에서 Claude 를 빼고 한 번 더 누르면 놓는 프로그램이 우리 것만 걷는다
 
 | `hooks` 의 이벤트 | 지울 줄 |
 |---|---|
-| `PreToolUse` | `image-gate` · `bash-backslash-deny` · `shell-slip` · `lane-resume` · `drm-guide` |
+| `PreToolUse` | `image-gate` · `bash-backslash-deny` · `shell-slip` · `lane-resume` · 옛 판이 심은 `drm-guide` |
 | `PostToolUse` | `utf8-bom` · `web-retry` |
 | `PostToolUseFailure` | `web-retry` · `drm-guide` |
 | `UserPromptSubmit` | `drm-guide` · `context-alert` |
@@ -132,7 +132,7 @@ Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false
 | Codex | `~/.agents/skills/` | `~/.agents/.paisetup-skills` | `~/.agents/backups/` |
 | 안티그래비티 | `~/.gemini/config/skills/` | `~/.gemini/.paisetup-skills` | `~/.gemini/backups/` |
 
-- 백업 자리의 `install-skills-*` 는 걷은 스킬을 옮겨 둔 것이고, `install-aside-*` 는 같은 이름이라 비켜 둔 것이다 — 사람 것이면 되살린다
+- 백업 자리의 `install-skills-*` 는 걷은 스킬과 우리 스킬 폴더에서 설치 묶음에 없던 파일을 옮겨 둔 것이고, `install-aside-*` 는 같은 이름이라 비켜 둔 것이다 — 사람 것이면 되살린다
 - 스킬 폴더에는 사람이 둔 스킬도 사니 기록에 없는 이름은 둔다
 
 ### 안티그래비티의 훅

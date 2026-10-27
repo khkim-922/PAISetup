@@ -19,6 +19,8 @@
       먼저 쓰지만 VS Code 앱은 **훅이 1.4 초 이르고**, 그 줄은 뒤따르는 메타 줄과 함께 **덩어리로** 닿는다
       (#120 실측 — 382→388 줄 · 42 KB 가 한 번에). 그래서 제출 때 못 찾은 턴을 **첫 도구 호출 때** 다시 본다:
       그 시점엔 반드시 써져 있다(착지보다 2.9 초 뒤). 한 턴에 한 번만 알린다(아래 「이 턴의 사용자 줄」).
+      ⚠ Claude 홈 등록은 PreToolUse 에 안 건다 — 도구를 못 가려 모든 호출에 걸어야 하는 값이 커서다(claude-config #213 ·
+      `drm-guide.sh` 머리말). 그래서 Claude 의 VS Code 앱에서는 이 늦은 첨부를 놓친다. 이 갈래는 agy · Codex 어댑터가 쓴다
     오피스는 앱이 첨부를 형식으로 거절해 이 길에 안 온다 — 글에 경로를 적는 길(위)이 든다
   · PostToolUseFailure(Read) — `tool_input.file_path`. 이 그물에 닿는 것은 PDF 다: Read 는 감긴 PDF 를 실행 단계에서
     지고(「missing %PDF- header」) 이 이벤트를 낸다. 오피스는 입력 검증에서 져(「cannot read binary files」) 어느 훅도
@@ -58,7 +60,7 @@
 ⚠ **재다 져도 막지 않는다** — 뜻밖의 예외는 그 이름만 대는 한 줄로 바꾸고 0 으로 끝낸다. 길잡이가 죽은 사실은 남기되
    사람이 보낸 글은 그대로 간다.
 
-부르는 자리 — 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PreToolUse · PostToolUseFailure. 앞에 셸
+부르는 자리 — 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PostToolUseFailure(agy · Codex 는 PreToolUse). 앞에 셸
 껍데기(`drm-guide.sh` · 곁 파일)가 서서, 입력에 오피스 · PDF 확장자가 있거나 기록에 이 턴의 문서 블록이 있을 때만
 이 몸통을 띄운다. 심는 손과 주인 규율은 그림 문과 같다(`image-gate.py` 머리말).
 

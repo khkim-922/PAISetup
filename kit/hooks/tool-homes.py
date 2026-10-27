@@ -100,7 +100,8 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
   있을 때만)로 떠 두거나 옮긴다. 대상이 링크면 링크를 백업으로 옮기고 쓴다 — 링크 너머의 원본을 고치지 않는다.
   표지 짝이 안 맞으면 그 파일은 안 건드린다. 블록을 걷고 남은 글이 없으면 파일을 지운다.
 **훅 등록(hook)** — 이긴 층의 껍데기 머리말로 등록을 짓고, 설정 파일을 JSON 으로 읽어(BOM 을 안 가린다) 훅 하나 단위로
-  고친다. 우리 것의 첫 자리가 등록을 잇고(그 항목의 matcher 가 다르면 그 바로 뒤의 새 항목으로) 나머지 우리 것은 걷는다.
+  고친다. 등록 하나는 (껍데기, 거름 규칙)이다 — 머리말의 `if.<이벤트>` 규칙마다 하나씩 선다. 등록마다 우리 것의 첫 자리가
+  그것을 잇고(그 항목의 matcher 가 다르면 그 바로 뒤의 새 항목으로) 나머지 우리 것은 걷는다.
   우리 것을 알아보는 껍데기 이름은 두 층에서 다 모은다 — 한 층에서 빠진 껍데기의 등록도 걷힌다. 걷은 뒤 빈 자리 · 있던 BOM ·
   줄끝 · 목록이 아닌 이벤트 값은 표 머리의 hook 꼴이 정한다 — 처음부터 비었던 항목 · 목록은 둔다. 바뀐 것이 없으면 안 쓴다.
   못 읽는 파일(JSON 이 아님 · 맨 위가 표가 아님) · hooks 가 표가 아님 · 이긴 층의 틀린 머리말은 ERROR 이고 그 파일을 안
@@ -224,8 +225,11 @@ OLD_LIST = ('../../.claude/rules', '../../.paisetup/norms/rules', '~/.paisetup/n
 # hook — 등록 머리말의 꼴 · 명령 꼴 · 우리 것의 꼴은 표 머리의 hook 꼴이 든다
 HEAD_LINE = re.compile(r'# ([A-Za-z]+(?:\.[A-Za-z]+)?) = (\S.*?)\s*$')
 SHEBANG = '#!'
-HEAD_EVENTS, HEAD_VAR, HEAD_MATCHER = 'events', 'var', 'matcher'
+HEAD_EVENTS, HEAD_VAR, HEAD_MATCHER, HEAD_IF = 'events', 'var', 'matcher', 'if'
 EVENT_SPLIT = ','
+IF_SPLIT = '|'
+# `if` 를 받는 이벤트 — 다른 이벤트의 `if` 든 훅은 거는 자가 영영 안 띄운다(https://code.claude.com/docs/en/hooks)
+IF_EVENTS = ('PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'PermissionDenied')
 VAR_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
 HOOK_TIMEOUT = 10
 HOOK_COMMAND = '%(v)s="%(d)s"; [ -f "$%(v)s/%(s)s" ] || exit 0; . "$%(v)s/%(s)s"'
@@ -556,7 +560,8 @@ def hook_head(path):
 
 
 def hook_spec(name, head, twice):
-    """머리말 → ((변수, [(이벤트, matcher 또는 None)]), 틀린 까닭들). 등록을 안 든 파일은 (None, [])."""
+    """머리말 → ((변수, [(이벤트, matcher 또는 None, [거름 규칙 또는 None …])]), 틀린 까닭들). 등록을 안 든 파일은 (None, []).
+    거름이 없는 이벤트의 규칙 목록은 `[None]` 이다 — 등록 하나 · `if` 없음."""
     if HEAD_EVENTS not in head:
         return None, []
     bad = ['%s 열쇠가 겹친다' % k for k in twice]
@@ -567,14 +572,21 @@ def hook_spec(name, head, twice):
     bad += ['%s 는 손이 안 건드리는 이벤트다' % e for e in events if e in NOT_OURS]
     if not VAR_NAME.match(var):
         bad.append('%s 가 셸 변수 이름이 아니다(%r)' % (HEAD_VAR, var))
-    known = set([HEAD_EVENTS, HEAD_VAR, HEAD_MATCHER]) | set('%s.%s' % (HEAD_MATCHER, e) for e in events if e not in NO_MATCHER)
+    known = (set([HEAD_EVENTS, HEAD_VAR, HEAD_MATCHER]) | set('%s.%s' % (HEAD_MATCHER, e) for e in events if e not in NO_MATCHER)
+             | set('%s.%s' % (HEAD_IF, e) for e in events if e in IF_EVENTS))
     bad += ['모르는 열쇠다(%s)' % k for k in head if k not in known]
     pairs = []
     for e in events:
         m = None if e in NO_MATCHER else head.get('%s.%s' % (HEAD_MATCHER, e), head.get(HEAD_MATCHER))
         if m is None and e not in NO_MATCHER:
             bad.append('%s 의 matcher 가 없다 — 빈 matcher 는 모든 도구에 걸린다' % e)
-        pairs.append((e, m))
+        ifs = [None]
+        raw_if = head.get('%s.%s' % (HEAD_IF, e))
+        if raw_if is not None:
+            ifs = [r.strip() for r in raw_if.split(IF_SPLIT)]
+            if not all(ifs) or len(set(ifs)) != len(ifs):
+                bad.append('%s 의 거름 규칙이 비었거나 겹친다(%s)' % (e, raw_if))
+        pairs.append((e, m, ifs))
     return ((var, pairs), ['%s — 등록 머리말이 틀렸다: %s' % (name, why) for why in bad])
 
 
@@ -1316,8 +1328,11 @@ def hook_entry(matcher, hook):
 def rewire_event(ev, cur, wanted, shells, bodies, notes):
     """이벤트 하나의 새 목록 — 우리 훅만 고치고 남의 훅 · 항목은 자리 · 꼴 그대로 둔다. 우리 것의 첫 자리가 바라는 등록을
     잇고(matcher 가 다르면 그 항목 바로 뒤의 새 항목으로), 나머지 우리 것은 걷는다. wanted — [(껍데기, matcher, 훅)] ·
-    notes 에 (동사, 껍데기, 이벤트)를 더한다."""
-    want = collections.OrderedDict((s, (m, h)) for s, m, h in wanted)
+    notes 에 (동사, 껍데기, 이벤트)를 더한다. 등록 하나는 (껍데기, 거름 규칙)으로 가린다 — 한 껍데기가 규칙마다 등록을 든다."""
+    want = collections.OrderedDict(((s, h.get(HEAD_IF)), (m, h)) for s, m, h in wanted)
+    # 이미 선 등록 — 거름이 다른 우리 것(옛 꼴 · 규칙이 바뀐 판)은 이것과 안 겹치는 같은 껍데기의 등록으로 그 자리에서 잇는다
+    present = set((ours_hook(h, shells, bodies), h.get(HEAD_IF)) for e in cur if isinstance(e, dict)
+                  for h in (e.get(HOOKS_KEY) if isinstance(e.get(HOOKS_KEY), list) else []) if isinstance(h, dict))
     placed, out = set(), []
     for e in cur:
         hooks = e.get(HOOKS_KEY) if isinstance(e, dict) else None
@@ -1330,9 +1345,12 @@ def rewire_event(ev, cur, wanted, shells, bodies, notes):
             if s is None:
                 keep.append(h)
                 continue
-            if s in want and s not in placed:
-                placed.add(s)
-                m, wh = want[s]
+            k = (s, h.get(HEAD_IF))
+            if k not in want:
+                k = next((x for x in want if x[0] == s and x not in placed and x not in present), k)
+            if k in want and k not in placed:
+                placed.add(k)
+                m, wh = want[k]
                 fits = e.get(ENTRY_MATCHER) == m if m is not None else ENTRY_MATCHER not in e
                 if fits and h == wh:
                     keep.append(h)
@@ -1343,7 +1361,7 @@ def rewire_event(ev, cur, wanted, shells, bodies, notes):
                 else:
                     after.append(hook_entry(m, wh))
             else:
-                notes.append(('겹친 것을 걷는다' if s in want else '걷는다', s, ev))
+                notes.append(('겹친 것을 걷는다' if k in want else '걷는다', s, ev))
             changed = True
         if not changed:
             out.append(e)
@@ -1351,9 +1369,9 @@ def rewire_event(ev, cur, wanted, shells, bodies, notes):
         if keep:
             out.append(dict((k, keep if k == HOOKS_KEY else v) for k, v in e.items()))
         out.extend(after)
-    for s, (m, wh) in want.items():
-        if s not in placed:
-            notes.append(('심는다', s, ev))
+    for k, (m, wh) in want.items():
+        if k not in placed:
+            notes.append(('심는다', k[0], ev))
             out.append(hook_entry(m, wh))
     return out
 
@@ -1410,8 +1428,9 @@ def place_hooks(run, path, item, got, layers):
             return
         for shell, (var, pairs) in specs.items():
             hook = {'type': 'command', 'command': HOOK_COMMAND % {'v': var, 'd': folder, 's': shell}, 'timeout': HOOK_TIMEOUT}
-            for ev, m in pairs:
-                want.setdefault(ev, []).append((shell, m, hook))
+            for ev, m, ifs in pairs:
+                for rule in ifs:
+                    want.setdefault(ev, []).append((shell, m, dict(hook, **{HEAD_IF: rule}) if rule else hook))
     if not want and not shells:
         return
     link = is_link(path)

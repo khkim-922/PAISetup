@@ -34,6 +34,7 @@ harness's own review feature on the same tree, never one packet folder for every
 - Screens: the image path and what is visible, in plain words.
 - Probes take the tree as an argument; never hardcode a path.
 - Checks you ran: counts, the mutation result (a deliberately wrong specimen went red) and the tree fingerprint (commit or hash).
+- Checks you added, if any: for each, which of the four keep-criteria of check-design §1 it meets. If you verified once without adding a check, say so, with the command and its result.
 - Report in English as your final message. Files a human will open directly: Korean.
 
 ## This run only
@@ -46,6 +47,6 @@ harness's own review feature on the same tree, never one packet folder for every
 ④ Never derive expected values from what you measured, and never bless goldens or snapshots — a human approves those. Write why the value must be what it is; if the measurement differs, report it.
 ⑤ Before reporting "absent", run a positive control — first ask whether the specimen really has that shape.
 ⑥ Never run commands that print the environment or the process list (env, printenv, set, ps aux, pgrep -af) — they write secrets into the transcript.
-⑦ A check and its specimen are one pair — when tightening a check turns a specimen red, fix both in the same pass.
+⑦ Add a permanent check only when all four keep-criteria of check-design §1 hold (the defect really happened or has a clear path · it is silent or irreversible when it breaks · it harms the user badly · nothing else already catches it); otherwise verify once and report the command and its result. A check and its specimen are one pair — when tightening a check turns a specimen red, fix both in the same pass.
 ⑧ Lanes share one machine. Run your long checks one at a time, in the background, and wait for the finish notification instead of polling or starting a second copy — overlapping copies slow every run.
 ⑨ The goal measures the work, not the letter — within your ownership, wherever the best expert in this field would do it better (design, missed cases, how it is measured, the flow the user goes through), do so and list every addition with its reason in the report. Anything that widens the scope — a new feature, a new decision, a file you do not own — goes into the report as a proposal, not into the tree.

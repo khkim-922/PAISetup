@@ -616,7 +616,7 @@ _push_file() {   # _push_file <원본> <홈 사본>
 ${1#"$CONFIG_ROOT"/}
 "*) ;; *) return 0 ;; esac
   fi
-  [ -f "$1" ] || return 0                       # 글롭이 안 맞으면 패턴 그대로 온다
+  [ -f "$1" ] || return 0                       # 추적하는데 작업 나무에서 지운 파일은 안 민다
   if [ "$HOME_SYNC" = check ]; then
     { [ -f "$2" ] && [ ! "$1" -nt "$2" ]; } || HOME_STALE="$HOME_STALE ${2#"$HOME/.claude/"}"
     return 0
@@ -711,7 +711,8 @@ EOF
 }
 
 deploy_home_norms() {
-  # 홈 밀기 — 읽는 값 CONFIG_ROOT · HOME_SYNC · PUSH_ONLY · 쓰는 값 HOME_STALE · PC_WIDE_FAIL · 늘 0.
+  # 홈 밀기 — 읽는 값 CONFIG_ROOT · HOME_SYNC · PUSH_ONLY · 쓰는 값 HOME_STALE · HOME_UNMEASURED(견주기 판 · 못 잰 것과 그 까닭 —
+  #   부르는 쪽이 비워 두고 부른다) · PC_WIDE_FAIL · 늘 0.
   # 규범 · 룰 · 에이전트 · 스킬 — 설정 저장소마다 손을 부른다. 씨앗에서 만든 동료 저장소도 그 갈 곳 표로 제 것을 댄다.
   #   아래 씨앗 칸의 문과 무관하다.
   [ -n "$CONFIG_ROOT" ] && tool_homes
@@ -726,45 +727,63 @@ deploy_home_norms() {
     #   진본으로 믿는 검사(`borrowed_check`)도 있다 — 홈 사본을 사람이 부르는 deploy.ps1 만 갱신하면 커밋이 쌓이는 만큼 홈만
     #   낡고, 그 검사는 낡은 판과 견준 초록을 낸다(부재보다 나쁘다).
     # 어느 폴더를 미나는 선언(`$CONFIG_ROOT/deploy.seeds.conf`)이 든다 — deploy.ps1 이 같은 줄을 읽고, `seeds/config-repo` 를
-    #   일부러 안 미는 까닭도 그 머리말이 든다. 어떻게 미나(`__pycache__` 제외 · 덮어쓰기만)는 deploy.ps1 의 같은 칸과 같은 뜻이고,
+    #   일부러 안 미는 까닭도 그 머리말이 든다. 어떻게 미나(이 저장소가 추적하는 파일만 · 덮어쓰기만)는 deploy.ps1 의 같은 칸
+    #   (`Get-SeedColumn`)과 같은 뜻이고,
     #   홈에만 남은 파일은 여기서 안 지운다 — 원본 이력으로 걷는 손은 deploy.ps1 씨앗 칸 하나다(손을 둘 두면 걷는 규칙이 갈린다).
-    #   제외 한 낱말은 선언으로 안 뽑는다(선언이 좌표만 늘린다). 선언이 없는 저장소를
+    #   무엇을 안 미나는 git 이 든다(`.gitignore`) — 제외 목록을 따로 두지 않는다. 선언이 없는 저장소를
     #   위한 후퇴 목록은 없다 — 그 저장소는 위 문에서 끝난다. 목록을 여기 한 벌 더 두면 그것이 곧 손사본이다.
-    # 씨앗이 폴더를 지므로(`seeds/gateway/app` · `_check/log`) 파일을 훑어 상대 경로를 지어 옮긴다 — deploy.ps1 이 같은
-    #   자리에서 `-Recurse` + 상대경로로 하는 것과 같은 셈이다.
+    # 미는 파일은 그 폴더에서 이 저장소가 추적하는 파일이다(`git ls-files`) — git 이 무시하는 런타임 기록(저장소 안에서 돌린 프록시의
+    #   `proxy.log` · `*.pid`)은 안 가고, 홈의 같은 이름 파일(도는 프록시의 살아 있는 기록)도 안 덮는다. 씨앗이 폴더를 지므로
+    #   (`seeds/gateway/app` · `_check/log`) 추적 목록의 뿌리 상대 경로 그대로 옮긴다. 목록은 낱개 문까지 가는 첫 폴더에서 폴더를 다
+    #   아울러 한 번 묻는다(프로세스 하나) — 폴더 문이 다 「같다」를 내거나 바뀐 것만 보는 판의 목록이 씨앗 폴더를 안 건드리면 안 묻는다.
+    #   못 물으면 하나도 안 민다 — 무엇이 남의 것인지 모른 채 밀면 남의 파일을 덮는다. 밀기 판이면 열쇠를 안 적게 해 다음 세션이 다시
+    #   보고 판 줄도 안 적는다(안 민 판을 「깔렸다」로 적으면 판 줄을 믿는 검사가 낡은 홈과 견준다). 견주기 판이면 못 잰 것으로
+    #   `HOME_UNMEASURED` 에 적는다 — 「다른 것이 없다」로 세면 부르는 쪽이 「같다」로 읽는다.
     # 문은 셋이다. 열쇠(`pc_wide_key`)가 먼저 서서, 홈이 같은 판으로 이미 맞춰졌으면 이 함수가 아예 안 불리고 그 뒤 바뀐
-    #   것만 있으면 폴더 문 대신 `PUSH_ONLY` 목록을 걷는다 — 아래 두 문이 도는 것은 열쇠를 못 믿는 판(표식이 없다 · 판이
-    #   저장소에 없다 · 오래됐다)과 열쇠를 안 보는 설치 갈래뿐이다. 폴더 문은 폴더 한 벌을 `diff` 로 견주어 같으면 `find` 와
+    #   것만 있으면 폴더 문을 건너뛰고 낱개 문이 `PUSH_ONLY` 목록 밖을 넘긴다 — 폴더 문이 도는 것은 열쇠를 못 믿는 판(표식이
+    #   없다 · 판이 저장소에 없다 · 오래됐다)과 열쇠를 안 보는 설치 갈래뿐이다. 폴더 문은 폴더 한 벌을 `diff` 로 견주어 같으면
     #   고리를 통째로 아끼고, 낱개 문(`_push_file`)은 폴더 문이 「다르다」를 낼 때 정말 다른 파일만 남긴다. 정상 상태의
     #   홈은 이미 같다 — 밀 것이 없는데 매 세션 파일마다 프로세스를 띄우면 그 비용이 곧 이 칸을 걷어내자는 말이 된다.
     #   deploy.ps1 도 파일마다 해시를 견주어 같으면 복사 계획에서 뺀다 — 여기는 그 견줌을 폴더 단위로 한 벌 할 뿐이다.
-    # 홈에만 남은 파일(이름이 바뀐 씨앗의 옛 사본)이 있으면 `diff -rq` 가 그것도 「다르다」로 세어 그 폴더는 매 세션 폴더
-    #   문을 못 지난다 — 그래도 낱개 문이 받아 실제로 밀리는 파일은 없다(느려지는 값은 `find` 하나와 고리뿐이다). 산문을
-    #   읽어 「홈에만 있음」 줄만 걸러내려 들지 않는다: 그 문구는 로케일이 든다.
+    # 홈에만 남은 파일(이름이 바뀐 씨앗의 옛 사본 · 프록시의 기록)이나 저장소에만 있는 무시 파일이 있으면 `diff -rq` 가 그것도
+    #   「다르다」로 세어 그 폴더는 매 세션 폴더 문을 못 지난다 — 그래도 낱개 문이 받아 실제로 밀리는 파일은 없다(느려지는 값은
+    #   추적 목록 묻기 하나와 고리다 — 고리는 셸 안에서 돌아 프로세스를 안 띄운다). 산문을 읽어 「홈에만 있음」 줄만 걸러내려 들지 않는다: 그 문구는 로케일이 든다.
     _seed_dirs="$(awk '{ sub(/#.*/, ""); sub(/^[[:space:]]*/, ""); sub(/[[:space:]]*$/, ""); if (length) print }' "$_seeds_conf")"
+    _seed_files=""; _seed_list=""   # 추적 목록 — 빈 값 = 아직 안 물었다 · ok · fail
     for _sd in $_seed_dirs; do
       [ -d "$CONFIG_ROOT/$_sd" ] || continue
-      # 바뀐 것만 보는 판은 폴더를 안 견주고 안 훑는다 — 목록이 곧 밀 후보라 그 폴더 아래 줄만 문에 댄다(폴더 견주기는
-      #   느린 파일시스템에서 폴더마다 초 단위다).
+      # 바뀐 것만 보는 판은 폴더를 안 견준다 — 목록이 곧 밀 후보라 그 폴더 아래 줄이 없으면 넘기고, 있으면 낱개 문이 목록 밖을
+      #   넘긴다(폴더 견주기는 느린 파일시스템에서 폴더마다 초 단위다).
       if [ -n "$PUSH_ONLY" ]; then
-        while IFS= read -r _sr; do
-          case "$_sr" in */__pycache__/*) continue ;; "$_sd"/*) _push_file "$CONFIG_ROOT/$_sr" "$HOME/.claude/$_sr" ;; esac
-        done <<EOF
-$PUSH_ONLY
-EOF
-        continue
+        case "$PUSH_ONLY" in *"$_NL$_sd/"*) ;; *) continue ;; esac
+      else
+        diff -rq -x __pycache__ "$CONFIG_ROOT/$_sd" "$HOME/.claude/$_sd" >/dev/null 2>&1 && continue
       fi
-      diff -rq -x __pycache__ "$CONFIG_ROOT/$_sd" "$HOME/.claude/$_sd" >/dev/null 2>&1 && continue
+      if [ -z "$_seed_list" ]; then
+        # shellcheck disable=SC2086 # 폴더 목록을 낱말로 편다(위 고리와 같은 가름)
+        if _seed_files="$(git -C "$CONFIG_ROOT" -c core.quotepath=false ls-files -- $_seed_dirs 2>/dev/null)"; then
+          _seed_list=ok
+        else
+          _seed_list=fail
+        fi
+      fi
+      [ "$_seed_list" = ok ] || break
       # ⚠ 파이프로 먹이지 않는다 — 고리가 하위 셸에서 돌면 견주기 판의 `HOME_STALE` 이 밖으로 안 나온다.
-      while IFS= read -r _sf; do
-        [ -n "$_sf" ] || continue
-        case "$_sf" in */__pycache__/*) continue ;; esac
-        _sr="${_sf#"$CONFIG_ROOT"/}"
-        _push_file "$_sf" "$HOME/.claude/$_sr"
+      while IFS= read -r _sr; do
+        case "$_sr" in "$_sd"/*) _push_file "$CONFIG_ROOT/$_sr" "$HOME/.claude/$_sr" ;; esac
       done <<EOF
-$(find "$CONFIG_ROOT/$_sd" -type f 2>/dev/null)
+$_seed_files
 EOF
     done
+    if [ "$_seed_list" = fail ]; then
+      if [ "$HOME_SYNC" = check ]; then
+        HOME_UNMEASURED="$HOME_UNMEASURED${HOME_UNMEASURED:+ · }씨앗 · 사내 환경 문서 (추적 파일을 git 이 못 댔다: git -C $CONFIG_ROOT ls-files)"
+        return 0
+      fi
+      PC_WIDE_FAIL=1
+      echo "$PROJECT_NAME: ⚠ 씨앗 · 사내 환경 문서를 홈에 안 밀었다 — 추적 파일을 git 이 못 댔다 (git -C $CONFIG_ROOT ls-files · 다음 세션이 다시 해 본다)"
+      return 0
+    fi
     # 견주기 판은 여기까지다 — 아래 판 줄은 「민 뒤에 적는다」가 뜻이라 안 민 판에는 적을 것이 없다.
     [ "$HOME_SYNC" = push ] || return 0
     # ── 씨앗의 판 줄 — 홈 사본이 어느 판에서 왔나를 그 자리에 남긴다 ────────
@@ -916,7 +935,7 @@ pc_wide_mark() {
 #    홈이 설치 때 판에 머문다. 「돌았다」는 맞춘 때(`PC_WIDE_STAMP`)와 할 일이 없다고 본 때(`PC_WIDE_SEEN`) 가운데 새것이다.
 #    표식의 판이 설정 저장소의 판과 같다는 것으로는 안 가린다 — 맡는 자리가 안 돌면 설정 저장소도 안 당겨져 둘이 같이
 #    낡은 채로 같다. 둘, 홈 파일이 이 PC 의 설정 저장소와 다른가 — 미는 문을 견주기 판으로 한 번 지나게 해 밀었다면
-#    옮겼을 파일만 센다.
+#    옮겼을 파일만 센다. 못 잰 자리(`HOME_UNMEASURED`)는 다른 자리와 따로 「못 쟀다」로 말한다.
 #    막지 않는다 — 한 줄씩 말만 한다(stdout). 문구는 쉬운 말로 쓴다 — 읽는 사람이 이 훅의 낱말(「PC 전체 일」 · 「판」)을
 #    모른다. 날수 기준은 도구 낡음과 같은 값(`UPGRADE_DAYS`)이다 — 둘 다 「이만큼 안 맞추면 낡았다」를 재는 자다.
 #    설정 저장소가 안 붙은 자리(동료 PC · 단독 리모트)는 이 함수에 안 온다 — 그 자리는 형제 세션이 PC 전체 일을 맡는다
@@ -934,9 +953,12 @@ pc_wide_notice() {
   pc_wide_key
   [ -n "$PW_RUN" ] || return 0
   [ "$PW_RUN" = part ] && PUSH_ONLY="$PW_CHANGED"
-  HOME_SYNC=check; HOME_STALE=""
+  HOME_SYNC=check; HOME_STALE=""; HOME_UNMEASURED=""
   deploy_home_norms
   HOME_SYNC=push; PUSH_ONLY=""
+  # 못 잰 것은 「같다」도 「다르다」도 아니다 — 말 없이 넘기면 읽는 사람은 홈이 맞는 줄 안다
+  [ -z "$HOME_UNMEASURED" ] ||
+    echo "$PROJECT_NAME: ⚠ 이 PC 홈에 깔린 것 가운데 일부가 claude-config 의 최신과 같은지 못 쟀다 — $HOME_UNMEASURED. 같다는 뜻이 아니다 — 괄호 속 명령을 직접 돌리면 까닭이 나온다"
   [ -n "$HOME_STALE" ] || return 0
   # shellcheck disable=SC2086 # 이름 목록을 낱말로 편다(홈 아래 상대경로라 공백이 없다)
   set -- $HOME_STALE
