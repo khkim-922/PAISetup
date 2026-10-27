@@ -262,6 +262,10 @@ $Extensions = @(
 # `Via` — 없으면 npm, `winget` 이면 `Install-WingetCli` 가 든다. 구글이 `agy` 를 npm 으로 안 내주고(그 이름은 남이 올린
 #   자리표시자다), 갈림이 표 안에 있어 CLI 가 늘 때 볼 자리가 한 곳이다. winget 줄은 `Ways` 로 벤더 길을 앞에 둘 수 있다(`$Apps` 머리의
 #   「길 목록」).
+# 누가 받나 — `Key` 의 제품을 골랐거나 · `Maker` 면 제작자 칸을 하나라도 켰거나 · `For` 의 제품 가운데 하나를 골랐거나 · `Always` 면
+#   늘(`$CliPicks`). npm 행에서 `Cmd` 대신 `Module` 을 든 줄은 명령이 없는 꾸러미(스크립트가 `require` 로 부른다)라 끝 검증이 새 터미널의
+#   이름 대신 저장소 밖의 `require` 가 풀리나를 잰다(`Measure-NodeResolvable`). `Link` 는 Node 가 보는 홈 자리에 이을 이름이다
+#   (`Install-NodeHomeLink`).
 # 안티그래비티 CLI 는 벤더 설치 스크립트가 아니라 winget(`Google.AntigravityCLI`)으로 받는다 — 매니페스트가 `InstallerSha256`
 #   을 들어 지문을 잴 수 있고(벤더 스크립트는 해시를 안 낸다) arm64 도 함께 든다. winget 판이 벤더 판보다 한 판 뒤처질 수 있다.
 #   ⚠ **winget 밖의 길로 깐 `agy` 는 안 올라간다** — `Install-WingetCli` 가 `agy` 가 잡히면 「있음」으로 지나가는데 그 설치본을
@@ -315,12 +319,13 @@ $Clis = @(
   #   `Arg` 는 기본(`--version`)이다 — `soffice.com` 은 이 창에 판을 찍고 0 으로 끝난다.
   @{ Key='libreoffice'; Via='winget'; Cmd='soffice.com'; Label='LibreOffice (덱을 그림으로)'; Id='TheDocumentFoundation.LibreOffice'
      Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude') }
-  # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로는 lychee,
-  #   마크다운 구조는 markdownlint-cli2 로 잰다(설정 저장소의 세션 훅도 둘을 까지만, 그 저장소를 안 붙인 PC 에도 서야 해서
-  #   여기서도 깐다). lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 그 자리(`WinGet\Links`
-  #   나 패키지 폴더 — winget 이 PC 마다 고른다)가 사용자 PATH 에 걸린다 — 관리자 승인이 안 든다.
+  # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로를 lychee 로 잰다(설정
+  #   저장소의 세션 훅도 까지만, 그 저장소를 안 붙인 PC 에도 서야 해서 여기서도 깐다). 선언의 설치법이 GitHub 릴리스라 winget id 를 이
+  #   줄이 든다. lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 그 자리(`WinGet\Links` 나 패키지 폴더 — winget 이 PC 마다 고른다)가
+  #   사용자 PATH 에 걸린다 — 관리자 승인이 안 든다.
   @{ Key='lychee';       Via='winget'; Cmd='lychee'; Label='lychee'; Id='lycheeverse.lychee'; Maker=$true }
-  @{ Key='markdownlint'; Pkg='markdownlint-cli2'; Cmd='markdownlint-cli2'; Label='markdownlint-cli2'; Maker=$true }
+  # 설정 저장소의 전역 도구 선언이 든 npm 도구는 여기 안 적는다 — 「준비」의 「선언의 npm 도구」 칸이 값 파일의 `#npm-global` 줄을
+  #   이 표의 npm 행으로 붙인다(`ConvertFrom-NpmDirective`). 손으로 적으면 선언에만 더한 도구가 이 PC 에서 조용히 빠진다.
 )
 # npm 이 전역에 깐 CLI 가 서는 자리 — 배선(`Update-RuntimePath`)이 이 창에 태우고, 마무리의 「사용자 범위 명령 자리」가 새 터미널의
 #   PATH 에 심고, 끝 검증이 거기서 잰다(claude-config 결정 0143 · PAISetup #30 ② · #56). 세 자리가 이 한 값을 읽는다.
@@ -329,6 +334,13 @@ $Clis = @(
 #   못 물은 판을 「못 쟀다」로 찍는다.
 $NpmGlobalDir = "$env:APPDATA\npm"
 $script:NpmGlobalAsk = @{ State = 'unasked'; Probe = 'npm prefix -g'; Why = '띄우지 못해' }
+# Node 가 환경변수 없이 보는 홈의 전역 폴더 — 윈도에서 Node 는 홈을 `USERPROFILE` 로 잡는다. npm 전역 자리는 Node 의 이름 찾기에 안 들어,
+#   저장소 밖의 스크립트가 `require` 로 부르는 꾸러미(행의 `Link`)는 여기 잇는다(`Install-NodeHomeLink`). 설정 저장소를 붙인 PC 의 세션
+#   훅(`wire_node_home`)도 같은 자리에 같은 것을 잇는다. 홈이 비면 빈 값이고 잇지 않는다.
+$NodeHomeModules = if ($env:USERPROFILE) { Join-Path $env:USERPROFILE '.node_modules' } else { '' }
+# 저장소 밖의 `require` 가 그 이름을 푸나 — 파일 시스템 뿌리를 자리로 삼아 맨 이름을 푼다. 그 자리에는 Node 전역 폴더만 남는다(세션
+#   훅의 재는 법과 같다). 이름은 첫 인자로 받는다.
+$NodeResolveCode = "require('module').createRequire(require('path').parse(process.execPath).root + 'noop.js').resolve(process.argv[1])"
 
 # ── VC++ 런타임 — 파이썬의 C++ 확장이 싣는 `msvcp140.dll` (claude-config 결정 0146) ─────────────────────────
 # markitdown → magika → onnxruntime 의 확장 모듈이 이 런타임을 싣는다 — 판이 낮으면 `import` 하는 순간 파이썬이 죽는다(PAISetup #30).
@@ -1112,13 +1124,14 @@ function Get-AutoRunDefault([string]$Directive) {
 #region 파일 — 값 파일을 읽고, 백업 자리와 설정 저장소를 받는 자리를 잡고, 나른 파일 수를 센다
 
 # `#이름 = 값` 꼴 지시를 읽는다 — 파일 · 이름을 받아 처음 맞는 줄의 값을 내고, 파일이나 줄이 없으면 `$null` 이다. 값(`이름=값`)과
-#   달리 지시는 어디로 갈지를 든다 — 몸통은 주소를 모르고 파일이 든다.
-function Read-Directive([string]$Path, [string]$Key) {
-  if (-not (Test-Path -LiteralPath $Path)) { return $null }
+#   달리 지시는 어디로 갈지를 든다 — 몸통은 주소를 모르고 파일이 든다. `-All` 이면 맞는 줄의 값을 차례대로 다 낸다(없으면 아무것도
+#   안 낸다) — 한 줄이 한 항목인 지시(`#npm-global`)의 꼴이다.
+function Read-Directive([string]$Path, [string]$Key, [switch]$All) {
+  if (-not (Test-Path -LiteralPath $Path)) { if ($All) { return }; return $null }
   foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8) {
-    if ($line -match "^\s*#\s*$([regex]::Escape($Key))\s*=\s*(.+?)\s*$") { return $Matches[1] }
+    if ($line -match "^\s*#\s*$([regex]::Escape($Key))\s*=\s*(.+?)\s*$") { if (-not $All) { return $Matches[1] }; $Matches[1] }
   }
-  return $null
+  if (-not $All) { return $null }
 }
 
 # 값 파일을 이름 → 값 표로 읽는다(없으면 빈 표) — `이름=값` 한 줄씩, `#` 로 시작하는 줄은 주석, 값에 따옴표를 안 씌운다
@@ -4433,8 +4446,9 @@ function Install-NpmCli($Rows) {
   }
   if ($npmRuns -ne 'yes') {
     # npm 이 없으면 기록도 깔 길도 없다 — 그 이름이 서 있으면(npm 밖에서 깐 것) 있음으로 두고, 없으면 못 깐다. 이름은 찾기만 하고 안 띄운다.
+    #   명령이 없는 꾸러미 행(`Module`)은 찾을 이름이 없어 못 깐 것이다.
     foreach ($r in @($Rows)) {
-      if (Get-Command $r.Cmd -ErrorAction SilentlyContinue) {
+      if ($r.Cmd -and (Get-Command $r.Cmd -ErrorAction SilentlyContinue)) {
         Write-Host "  $($r.Label) — 있음 $(Format-VerPart '') — npm 이 안 서 그 기록을 못 읽었다"
       } else {
         Write-Host "  ! npm 이 없어 $($r.Label) 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
@@ -4575,6 +4589,109 @@ function Install-NpmCli($Rows) {
     }
   }
   Remove-Item -LiteralPath (@(@($ran | ForEach-Object { $_.Log }) + $oldLogs) | Select-Object -Unique) -ErrorAction SilentlyContinue
+}
+
+# 값 파일의 `#npm-global` 한 줄을 CLI 표(`$Clis`)의 npm 행으로 — `@{ Row; Why }`, 못 읽으면 `Row` 없이 까닭만 낸다. 줄은 뽑는 자
+#   (claude-config `scripts/build-dist.sh`)가 전역 도구 선언의 `npm-global` 절 하나로 짓는 `<절> dist=<값> package=<값> [probe=<값>]
+#   [probe-target=<값>] [wiring=<값>]` 이고, 칸의 뜻은 그 선언의 머리말이 든다. 같은 칸이 둘이면 앞의 것이다.
+#   `dist` — 누가 받나: `all` 늘(`Always`) · `maker` 제작자 칸(`Maker`) · 제품 키(`$ProductKeys`) 그 제품(`For`). 그 밖은 못 읽은 줄이다
+#   `probe` — `exec-on-path` · `exec-npm-bin` 은 명령(`Cmd`), `node-resolvable` 은 `require` 로 부르는 꾸러미(`Module`)다
+#   `wiring = node-link` — `probe-target` 을 Node 가 보는 홈 자리에 잇는다(`Link` · `Install-NodeHomeLink`)
+function ConvertFrom-NpmDirective([string]$Line, [string[]]$ProductKeys) {
+  $parts = @("$Line".Trim() -split '\s+' | Where-Object { $_ })
+  if (-not $parts.Count -or $parts[0] -match '=') { return @{ Why = '절 이름이 없다' } }
+  $name = $parts[0]
+  $f = @{}
+  foreach ($p in @($parts | Select-Object -Skip 1)) {
+    if ($p -notmatch '^([a-z-]+)=(.+)$') { return @{ Why = "$name — 칸 꼴이 아니다($p)" } }
+    if (-not $f.ContainsKey($Matches[1])) { $f[$Matches[1]] = $Matches[2] }
+  }
+  if (-not $f['package'])      { return @{ Why = "$name — package 가 없다" } }
+  if (-not $f['probe-target']) { return @{ Why = "$name — probe-target 이 없다" } }
+  $row = @{ Label = $name; Pkg = $f['package'] }
+  if ($f['dist'] -eq 'all')                     { $row.Always = $true }
+  elseif ($f['dist'] -eq 'maker')               { $row.Maker = $true }
+  elseif ($ProductKeys -contains $f['dist'])    { $row.For = @($f['dist']) }
+  else                                          { return @{ Why = "$name — dist 값을 모른다($($f['dist']))" } }
+  if ($f['probe'] -eq 'node-resolvable')        { $row.Module = $f['probe-target'] }
+  elseif ($f['probe'] -in 'exec-on-path', 'exec-npm-bin') { $row.Cmd = $f['probe-target'] }
+  else                                          { return @{ Why = "$name — probe 값을 모른다($($f['probe']))" } }
+  if ($f['wiring'] -eq 'node-link') { $row.Link = $f['probe-target'] }
+  return @{ Row = $row }
+}
+
+# 행의 `Link` 이름을 Node 가 보는 홈 자리(`$NodeHomeModules`)에 잇는다 — 정션이라 관리자 권한이 안 든다. 그 자리의 꼴로 가른다(설정
+#   저장소를 붙인 PC 의 세션 훅 `wire_node_home` 과 같은 표 — 둘이 한 자리를 서로 걷지 않게):
+#     없다                        잇는다
+#     가리키는 것이 없는 링크        걷고 다시 잇는다 — 걷어도 잃는 것이 없다(npm 전역 자리가 옮겨 갔다 등)
+#     그 전역 사본을 가리키는 링크    둔다
+#     그 밖의 것                   안 덮는다 — 사람이 둔 사본이나 다른 자리의 판일 수 있다. 노란 줄만 내고, 풀리나는 끝 검증이 잰다
+#   npm 전역 자리를 못 물었으면 잇지 않고 「안 한 걸음」으로 남긴다. npm 이 이 창에 없거나 전역에 그 꾸러미가 없으면 아무것도 안 한다 —
+#   그 줄은 npm 갈래(`Install-NpmCli`)가 이미 냈다. 못 이으면 빨간 줄 · `$Fails` 다.
+# ⚠ **PS 5.1 은 가리키는 것이 없는 정션에도 `Test-Path` 가 참이다** — 링크인지는 속성(ReparsePoint)으로, 살았나는 그 `Target` 으로 잰다.
+# ⚠ 이 자리는 CommonJS `require` 만 푼다 — ESM `import` 는 Node 전역 폴더를 안 본다.
+function Install-NodeHomeLink($Rows) {
+  if (-not $NodeHomeModules) {
+    foreach ($r in @($Rows)) {
+      Write-Host "  ! $($r.Label) — 홈에 못 잇는다: Node 가 볼 홈(USERPROFILE)이 비었다" -ForegroundColor Red
+      $Fails.Add("$($r.Label) (홈 배선 — 홈이 없다)")
+    }
+    return
+  }
+  if ($script:NpmGlobalAsk.State -eq 'unmeasured') {
+    foreach ($r in @($Rows)) { Add-UnmeasuredStep "$($r.Label) 홈 배선" $script:NpmGlobalAsk.Probe '홈에 잇지 않았다' $script:NpmGlobalAsk.Why }
+    return
+  }
+  if ($script:NpmGlobalAsk.State -ne 'asked') { return }
+  foreach ($r in @($Rows)) {
+    $g = Join-Path (Join-Path $NpmGlobalDir 'node_modules') ($r.Link -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $g -PathType Container)) { continue }
+    $l = Join-Path $NodeHomeModules ($r.Link -replace '/', '\')
+    try {
+      $it = Get-Item -LiteralPath $l -Force -ErrorAction SilentlyContinue
+      if ($it -and ($it.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        $to = "$(@($it.Target)[0])".TrimEnd('\')
+        if ($to -and (Test-Path -LiteralPath $to)) {
+          if ($to -ieq $g.TrimEnd('\')) { Write-Host "  $($r.Label) — 홈에 이어져 있다"; continue }
+          Write-Host "  ! $($r.Label) — $l 이 다른 자리($to)를 가리켜 안 덮는다 · 저장소 밖 스크립트는 그것을 부르고 이 설치는 그것을 안 올린다" -ForegroundColor Yellow
+          continue
+        }
+        [IO.Directory]::Delete($l)   # 정션만 걷힌다 — 따라 들어가지 않는다
+        $it = $null
+      }
+      if ($it) {
+        Write-Host "  ! $($r.Label) — $l 에 다른 것이 서 있어 안 덮는다 · 저장소 밖 스크립트는 그것을 부르고 이 설치는 그것을 안 올린다" -ForegroundColor Yellow
+        continue
+      }
+      New-Item -ItemType Directory -Path (Split-Path -Parent $l) -Force -ErrorAction Stop | Out-Null
+      New-Item -ItemType Junction -Path $l -Target $g -ErrorAction Stop | Out-Null
+      Write-Host "  $($r.Label) — 홈에 이었다 ($l)" -ForegroundColor Green
+    } catch {
+      Write-Host "  ! $($r.Label) — 홈에 못 이었다 ($l): $($_.Exception.Message)" -ForegroundColor Red
+      $Fails.Add("$($r.Label) (홈 배선)")
+    }
+  }
+}
+
+# 그 꾸러미를 저장소 밖의 `require` 가 푸나 — `@{ State = yes · no · unmeasured; Probe; Why }`(`Add-UnmeasuredStep` 의 꼴). 끝 검증이 부른다.
+#   NODE_PATH 를 이 물음에서만 걷는다 — 남은 것은 Node 전역 폴더라, 홈 배선이 안 섰으면 여기서 진다. `no` 는 Node 가 「그런 모듈이 없다」
+#   (`MODULE_NOT_FOUND`)를 적었을 때만이다 — 다른 까닭으로 진 것은 없는 것이 아니라 못 잰 것이다.
+function Measure-NodeResolvable([string]$Module) {
+  $probe = "node -e <require.resolve> $Module"
+  $log = [IO.Path]::GetTempFileName()
+  $np = $env:NODE_PATH
+  try {
+    Remove-Item Env:NODE_PATH -ErrorAction SilentlyContinue
+    $rc = Invoke-LoggedCapped 'node' @('-e', $NodeResolveCode, $Module) $log $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow $probe $ProbeCap; return @{ State = 'unmeasured'; Probe = $probe; Why = '' } }
+    if ($rc -eq 0) { return @{ State = 'yes'; Probe = ''; Why = '' } }
+    $err = "$(Get-Content -LiteralPath "$log.err" -Raw -Encoding UTF8 -ErrorAction SilentlyContinue)"
+    if ($rc -gt 0 -and $err -match 'MODULE_NOT_FOUND') { return @{ State = 'no'; Probe = ''; Why = '' } }
+    return @{ State = 'unmeasured'; Probe = $probe; Why = (Format-ProbeWhy $rc $ProbeCap) }
+  } finally {
+    if ($null -ne $np) { $env:NODE_PATH = $np }
+    Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
+  }
 }
 
 # winget 이 내주는 CLI(`$Clis` 의 `Via='winget'` 행)를 재고 할 일대로 깔거나 올린다. 깔렸으면 프로그램처럼 「올릴 것」 목록이
@@ -6512,6 +6629,18 @@ foreach ($lineRow in @($Apps | Where-Object { $_.LineFrom })) {
   $Fails.Add("$($lineRow.Name) (값 파일에 #$($lineRow.LineFrom) 이 없어 판을 못 정했다)")
 }
 
+# ── 선언의 npm 도구 — **목록은 설정 저장소의 전역 도구 선언이 든다** (PAISetup #57 ⑨) ──
+# 뽑는 자가 그 선언의 `npm-global` 절 가운데 `dist` 를 단 것을 값 파일의 `#npm-global` 한 줄씩으로 싣는다. 여기서 그 줄을 CLI 표의 npm
+#   행으로 붙이고(`ConvertFrom-NpmDirective`), 그 뒤로는 손으로 적은 npm 행과 같은 길이다 — 깔 목록(`$CliPicks`) · 「CLI」 걸음 · 끝 검증.
+#   누가 받나는 줄의 `dist` 가 정한다 — 이 몸통은 도구 이름을 모른다.
+# ⚠ **못 읽은 줄은 빼고 실패로 적는다** — 판 줄과 같은 결. 짐이 틀렸다는 뜻이라 노란 줄로 넘기면 그 도구가 조용히 빠진다.
+foreach ($npmLine in @(Read-Directive $DistEnvFile 'npm-global' -All)) {
+  $npmRow = ConvertFrom-NpmDirective $npmLine @($Products | ForEach-Object { $_.Key })
+  if ($npmRow.Row) { $Clis += $npmRow.Row; continue }
+  Write-Host "  ! 값 파일의 #npm-global 줄을 못 읽었다 — $($npmRow.Why) · 그 도구를 깔지도 올리지도 않는다" -ForegroundColor Yellow
+  $Fails.Add("선언의 npm 도구 (값 파일의 #npm-global 줄을 못 읽었다 — $($npmRow.Why))")
+}
+
 # ── winget ────────────────────────────────────────────────────────────────────
 # 없다고 여기서 죽지 않는다 — winget 이 없으면 못 까는 것이지, 확장 · CLI · 키 심기 · 홈 설정은 winget 없이 다 선다. 사내 PC 에는
 #   런타임이 이미 깔린 일이 흔하다. 조용히 넘기지도 않는다 — 못 깐 것은 아래에서 이름을 대고 실패로 적힌다.
@@ -6797,8 +6926,8 @@ if ($proxyRel -or $codexTpl) {
 #   본다(`Write-WingetAhead`). 제 갱신기 행도 묻는다 — 갱신기 파일이 없는 PC 는 이 답으로 올린다. 올리지 않는 행(`Upgrade = none`)만 뺀다.
 $upgradable = $null
 # CLI 표에서 이번 설치가 깔 줄 — 고른 제품의 CLI 와, 제작자 칸을 켰을 때 그 칸의 스킬이 부르는 도구(`Maker`), 고른 제품이 쓰는
-#   꾸러미(`For`). 올리기를 묻는 이 덩어리와 「CLI」 걸음이 같은 목록을 쓴다.
-$CliPicks = @($Clis | Where-Object { ($PickKeys -contains $_.Key) -or ($_.Maker -and $personalAny) -or
+#   꾸러미(`For`), 늘 까는 것(`Always`). 올리기를 묻는 이 덩어리와 「CLI」 걸음이 같은 목록을 쓴다.
+$CliPicks = @($Clis | Where-Object { ($PickKeys -contains $_.Key) -or ($_.Maker -and $personalAny) -or $_.Always -or
                                      ($_.For -and @($_.For | Where-Object { $PickKeys -contains $_ }).Count) })
 if (-not ($NoUpgrade -or $noWinget)) {
   Say-Busy '프로그램 판' 'upcheck' @('winget · 한 번에')
@@ -7217,6 +7346,9 @@ if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' 
 # npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
 $npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
 if ($npmCliPicks.Count) { Install-NpmCli $npmCliPicks }
+# 저장소 밖의 스크립트가 `require` 로 부르는 꾸러미(`Link`)는 Node 가 보는 홈 자리에 잇는다 — npm 전역 자리는 Node 의 이름 찾기에 안 든다
+$npmLinkPicks = @($npmCliPicks | Where-Object { $_.Link })
+if ($npmLinkPicks.Count) { Install-NodeHomeLink $npmLinkPicks }
 foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c }
 
 # 사외는 여기서 로그인 길을 댄다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다. 사내에서 심은 회사 연결이 남아 있으면 그
@@ -10851,6 +10983,13 @@ foreach ($c in $CliPicks) {
     if ($rec.State -eq 'unmeasured') { $checks += @{ Name = $c.Label; State = 'unmeasured'; Probe = $rec.Probe; Why = $rec.Why } }
     elseif ($rec.State -ne 'yes')    { $checks += @{ Name = $c.Label; Ok = $false } }
     elseif (Test-NpmNativeStub $c)   { $checks += @{ Name = "$($c.Label) (진짜 실행 파일이 빠지고 자리표시만 있다 — $($c.NativeBin))"; Ok = $false } }
+    elseif ($c.Module) {
+      # 명령이 없는 꾸러미 — 저장소 밖의 스크립트가 `require` 로 푸나를 잰다. 못 풀리면 이 설치가 이을 자리(홈 배선)가 진 것이라 빨강이다
+      $nr = Measure-NodeResolvable $c.Module
+      $nrName = "$($c.Label) — 저장소 밖의 require"
+      if ($nr.State -eq 'unmeasured') { $checks += @{ Name = $nrName; State = 'unmeasured'; Probe = $nr.Probe; Why = $nr.Why } }
+      else                            { $checks += @{ Name = $nrName; Ok = ($nr.State -eq 'yes') } }
+    }
     else                             { $checks += New-NewShellRow $c.Label (Measure-NewShellCommand $c.Cmd $cliArg $psNow) }
     continue
   }
