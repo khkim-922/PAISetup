@@ -190,21 +190,60 @@ $PersonalTools = @(
 # ── 공용 프로그램 — **목록이 진본이다.** 늘리려면 한 줄을 더한다 ────────────────
 #    `Need` — core = 확장이 돌기까지 없으면 안 되는 것 · dev = 코드를 짤 사람에게만(`-NoDevTools` 가 건너뛴다) ·
 #    vscode = core 의 갈래로 `-NoVsCode` 가 이 한 줄과 확장을 같이 건너뛴다. CLI 들은 npm 이나 winget 이 깔아 `$Clis` 가 든다.
-#    `Latest` — 벤더 직통 「최신」 주소(판 없는 주소가 그 판의 설치본으로 넘긴다). 있으면 판 확인도 받기도 거기서 하고, 판을 못 읽거나
-#    못 받으면 winget 으로 물러선다(`Get-VendorLatest` · claude-config 결정 0179). `SilentArgs` 는 winget 이 그 설치본에 주는 인자와
-#    같다. `Signer` 는 받은 설치본의 서명자(인증서 CN) — 서명이 유효하고 이 이름일 때만 돌린다(winget 의 지문 대신 서는 울타리 ·
-#    `Invoke-VendorSetup`). 주소는 x64 사용자 범위 설치본이라 기계 범위로 깔린 PC · ARM PC 에서는 안 탄다(`Test-VendorRow`).
+#    `Dirs` — 그 프로그램이 서는 폴더. 배선(`Update-RuntimePath`)이 레지스트리 PATH 를 태운 뒤 이 창 앞에 끼우는 보험이다 — 깐 직후 이
+#    창은 설치본이 레지스트리에 쓴 PATH 를 못 본다. 있는 폴더만 든다.
+#    `LineFrom` — 판 줄(부판까지 · `3.14`)을 행에 박지 않고 값 파일의 그 지시에서 받는다. 「준비」의 「판 줄」 칸이 행의 글자 칸에 든
+#    `{line}` 을 `3.14` 로, `{line_nodot}` 을 `314` 로 채운다(`Set-RowLine` — CPython 의 `py_version_nodot` 꼴). 못 받으면 그 줄을 뺀다.
+#    `VerArgs` — 판을 찍는 인자가 `Arg` 와 다를 때(`Get-Ver`). `Arg` 는 「도나」를 재고, 판 글자는 이 인자로 읽는다.
+#
+# ── 길 목록(`Ways`) — **세 표(`$Apps` · `$DesktopApps` · `$Clis` 의 winget 줄)가 같은 꼴로 든다** (claude-config 결정 0180) ──
+#   깔 때는 앞에서부터 차례로 가고, 앞길이 지면 다음 길이다. 안 적으면 `@(@{ Via = 'winget' })` 하나다.
+#   · `@{ Via = 'winget' }` — 행의 `Id`(데스크탑 앱은 `Source` 도)로 winget 이 깐다
+#   · `@{ Via = 'vendor'; … }` — 벤더 주소에서 받아 깐다. `Read` 가 있으면 벤더의 최신 판을 읽는 길이고(아래), 없으면 판 없는 고정 주소
+#     (`Url`)다 — 판을 모르니 깔 때만 쓴다
+#   벤더가 판을 내는 꼴 — `Read` 의 낱말이 가르고 읽는 손은 하나다(`Get-VendorLatest`). 행은 이름이 아니라 이 꼴로 갈린다:
+#     · `redirect` — `Url` 이 판 없는 주소이고 그 판의 파일로 넘긴다. 넘김 주소의 경로에서 판을 읽고, 받기는 `Url` 그대로다
+#     · `listing`  — `List` 가 판마다 폴더를 둔 목록이다. 행의 판 줄(`Line`)에 든 판 가운데 받을 파일(`Url` 의 `{ver}` 틀)이 있는
+#       가장 높은 판이다 — 보안 고침만 낸 판은 설치본이 없어 받기 전에 그 주소가 있나를 묻는다
+#     · `feed`     — `Feed` 가 앱의 갱신 피드(electron-builder 의 `latest-*.yml`)다. 판 · 받을 주소 · SHA512 를 피드가 댄다
+#     · `github`   — `Repo` 의 GitHub 릴리스 `latest` 가 넘기는 태그에서 판을 읽고, 자산 이름은 `Asset` 틀이다(`{tag}` 는 태그에서 머리
+#       `v` 를 뗀 글자). 자산 이름에 판이 박힌 릴리스라 `latest/download/<이름>` 으로는 못 받는다
+#   받은 것을 까는 꼴 — `SilentArgs` 면 설치본을 무음으로 돌리고(winget 이 그 설치본에 주는 인자와 같다), `Unzip` 이면 zip 을 고정
+#     자리(`Dir`)에 푼다 — zip 안에서 판마다 이름이 바뀌는 폴더가 `Root`(`{ver}` 틀)다(`Install-VendorZip`)
+#   울타리 — `Signer` 면 받은 파일의 Authenticode 서명이 유효하고 서명자(인증서 CN)가 그 이름일 때만 돌린다(winget 의 지문 대신 서는
+#     울타리). 서명이 없는 배포는 `Unsigned` 에 그래도 받는 까닭을 적고, 그 길은 https 주소에서만 받는다. 피드가 SHA512 를 대면 그것도
+#     맞아야 한다(`Test-VendorFence`). 둘 다 없는 벤더 길은 안 돌린다
+#   판을 읽는 벤더 길은 x64 사용자 범위 설치본 · 꾸러미를 가리킨다 — ARM PC 와, 깔린 것이 사용자 범위 밖(기계 범위 · 앱 실행 별칭
+#     자리)에 선 PC 에서는 안 탄다(`Get-VendorWay`). 그 위에 돌리면 두 벌이 된다.
+# 깔린 것을 올리는 길은 따로 안 적으면 이 목록을 따른다 — 벤더 판을 읽었으면 그 판으로 가르고 그 길에서 받으며, 못 읽었으면 winget
+#   「올릴 것」 목록이다(`Get-UpgradeRoute`). 다른 길은 데스크탑 앱 표의 `Upgrade` 가 든다.
 $Apps = @(
   @{ Name='VS Code';    Id='Microsoft.VisualStudioCode'; Cmd='code';   Arg='--version'; Need='vscode'
-     Latest='https://update.code.visualstudio.com/latest/win32-x64-user/stable'; Signer='Microsoft Corporation'
-     SilentArgs=@('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/MERGETASKS=!runcode') }
+     Dirs=@("$env:ProgramFiles\Microsoft VS Code\bin", "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin")
+     Ways=@(@{ Via='vendor'; Read='redirect'; Url='https://update.code.visualstudio.com/latest/win32-x64-user/stable'; Signer='Microsoft Corporation'
+               SilentArgs=@('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/MERGETASKS=!runcode') }
+            @{ Via='winget' }) }
   # `Scope='machine'` — winget 이 이 꾸러미에 고르는 설치본이 기계 범위(MSI)라 승격이 든다. 승인 창이 뜨는 PC 의 무인 판에서는
-  #   안 걸고 노란 줄로 미룬다(결정 0146 의 VC++ 규칙과 같은 자 · PAISetup #34 ③)
-  @{ Name='Node.js';    Id='OpenJS.NodeJS.LTS';          Cmd='node';   Arg='--version'; Need='core'; Scope='machine' }
-  @{ Name='Git';        Id='Git.Git';                    Cmd='git';    Arg='--version'; Need='dev'  }
-  # 판은 이 줄에 안 적는다 — 값 파일의 `#python-version` 이 들고, 「준비」의 「파이썬 판」 칸이 이 줄의 Id 를 짓는다
-  @{ Name='Python';     Id=$null;                        Cmd='python'; Arg='--version'; Need='dev'  }
-  @{ Name='GitHub CLI'; Id='GitHub.cli';                 Cmd='gh';     Arg='--version'; Need='dev';  Scope='machine' }
+  #   안 걸고 노란 줄로 미루고, 승격이 안 서는 PC 에서는 안 건다(`Test-ElevationDoor` · 결정 0146 의 VC++ 규칙과 같은 자 · PAISetup #34 ③)
+  @{ Name='Node.js';    Id='OpenJS.NodeJS.LTS';          Cmd='node';   Arg='--version'; Need='core'; Scope='machine'
+     Dirs=@("$env:ProgramFiles\nodejs") }
+  @{ Name='Git';        Id='Git.Git';                    Cmd='git';    Arg='--version'; Need='dev'
+     Dirs=@("$env:ProgramFiles\Git\cmd") }
+  # 판 줄은 값 파일의 `#python-version` 이 든다 — 진본은 설정 저장소의 전역 도구 선언이고 뽑는 자가 싣는다. winget 에는 판 없는 CPython
+  #   id 가 없어 Id 도 그 줄로 짓는다.
+  # `VerArgs` — DRM(Fasoo)이 프로세스 초기화를 가로채는 PC 에서 `--version` 의 글자가 자주 사라지고 종료 0 만 남는다(#32). 인터프리터가
+  #   다 선 뒤의 출력은 안 잃어 판은 `-c` 로 찍는다. 「도나」는 종료 코드라 `Arg` 그대로다.
+  # 벤더 길 — 설치본은 사용자 범위(`InstallAllUsers=0`)이고 winget 의 설치본과 같은 UpgradeCode 라 깔린 판 위에서 제자리로 오른다. 무음
+  #   인자는 winget 이 그 설치본에 주는 것이다.
+  @{ Name='Python';     Id='Python.Python.{line}';       Cmd='python'; Arg='--version'; Need='dev'
+     LineFrom='python-version'; VerArgs=@('-c', 'import sys;print(sys.version.split()[0])')
+     Dirs=@("$env:LOCALAPPDATA\Programs\Python\Python{line_nodot}", "$env:LOCALAPPDATA\Programs\Python\Python{line_nodot}\Scripts")
+     Ways=@(@{ Via='vendor'; Read='listing'; List='https://www.python.org/ftp/python/'; Line='{line}'
+               Url='https://www.python.org/ftp/python/{ver}/python-{ver}-amd64.exe'; Signer='Python Software Foundation'
+               SilentArgs=@('/quiet', '/norestart', 'InstallAllUsers=0', 'PrependPath=1') }
+            @{ Via='winget' }) }
+  @{ Name='GitHub CLI'; Id='GitHub.cli';                 Cmd='gh';     Arg='--version'; Need='dev';  Scope='machine'
+     Dirs=@("$env:ProgramFiles\GitHub CLI") }
 )
 
 # ── 확장과 CLI — **목록이 진본이다.** 깔 때도 끝에 잴 때도 이 두 표에서 판다 (결정 0041 · 0045) ──
@@ -221,7 +260,8 @@ $Extensions = @(
   @{ Key='antigravity'; Id='Google.google-antigravity';              Label='안티그래비티 확장'          }
 )
 # `Via` — 없으면 npm, `winget` 이면 `Install-WingetCli` 가 든다. 구글이 `agy` 를 npm 으로 안 내주고(그 이름은 남이 올린
-#   자리표시자다), 갈림이 표 안에 있어 CLI 가 늘 때 볼 자리가 한 곳이다.
+#   자리표시자다), 갈림이 표 안에 있어 CLI 가 늘 때 볼 자리가 한 곳이다. winget 줄은 `Ways` 로 벤더 길을 앞에 둘 수 있다(`$Apps` 머리의
+#   「길 목록」).
 # 안티그래비티 CLI 는 벤더 설치 스크립트가 아니라 winget(`Google.AntigravityCLI`)으로 받는다 — 매니페스트가 `InstallerSha256`
 #   을 들어 지문을 잴 수 있고(벤더 스크립트는 해시를 안 낸다) arm64 도 함께 든다. winget 판이 벤더 판보다 한 판 뒤처질 수 있다.
 #   ⚠ **winget 밖의 길로 깐 `agy` 는 안 올라간다** — `Install-WingetCli` 가 `agy` 가 잡히면 「있음」으로 지나가는데 그 설치본을
@@ -245,9 +285,24 @@ $Clis = @(
   @{ Key='playwright'; Pkg='playwright'; Cmd='playwright'; Label='Playwright (브라우저 MCP)'; For=@('claude','codex','antigravity') }
   # Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로 그리는 손 — poppler 의 `pdftoppm`. 없으면 Read 가 「pdftoppm is not installed」로
   #   지고, 사내 게이트웨이는 `document` 블록을 삼키므로 PDF 가 모델에 보이는 길은 그림뿐이다(claude-config #193 ③㉡ · 회사 실측
-  #   2026-10-18). winget 휴대용(zip · 사용자 범위)이라 승인이 안 들고, winget 이 패키지의 `bin` 자리를 사용자 PATH 에 심는다.
+  #   2026-10-18). 사용자 범위라 승인이 안 든다.
   #   ⚠ `Arg='-v'` — pdftoppm 은 `--version` 을 모르는 옵션으로 받아 0 아닌 값을 내니, 그 자로 재면 「못 쟀다」로 접혀 영영 안 깔린다.
-  @{ Key='poppler'; Via='winget'; Cmd='pdftoppm'; Arg='-v'; Label='poppler (PDF 를 그림으로)'; Id='oschwartz10612.Poppler'; For=@('claude') }
+  #   벤더 길 — GitHub 릴리스의 zip 을 고정 자리에 푼다. zip 안의 폴더 이름이 판마다 바뀌어(`poppler-<판>`) 그대로 풀면 PATH 줄이 판마다
+  #   갈리므로, 그 폴더를 `Dir` 하나로 옮겨 PATH 는 `PathDir` 한 줄로 둔다(아래 LibreOffice 줄의 `PathDir` 와 같은 손이 심는다).
+  #   `Unsigned` — 실행 파일에 서명이 없다. winget 사본도 같은 자산의 해시를 옮겨 적을 뿐이라, 벤더 길의 울타리는 그 자산을 https 로
+  #   받는 것이다.
+  #   `RetireWinget` — winget 사본은 패키지 폴더(판 폴더)를 사용자 PATH 에 심어 두어, 새 줄을 끝에 덧대면 옛 `pdftoppm` 이 이긴다. 그래서 이
+  #   길로 더 높은 판을 세우고 그 사본이 도는 것을 잰 뒤에는 이 행의 winget 꾸러미(`Id`) 하나를 걷는다 — 「프로그램은 지우지 않는다」의
+  #   예외다(`Remove-WingetCopy`).
+  #   `NeedsVcRuntime` — winget 매니페스트가 드는 짝(VC++ 런타임)을 벤더 zip 은 안 싣는다. 그 런타임이 없는 PC 에서 새 사본을 재면 로더의
+  #   「DLL 이 없다」 창이 사람을 기다려 무인 회차가 선다 — 그래서 받기 전에 런타임을 재고(`Measure-VcRuntime`), 없으면 짝을 함께 까는
+  #   winget 길로 간다.
+  @{ Key='poppler'; Via='winget'; Cmd='pdftoppm'; Arg='-v'; Label='poppler (PDF 를 그림으로)'; Id='oschwartz10612.Poppler'; For=@('claude')
+     PathDir="$env:LOCALAPPDATA\Programs\poppler\Library\bin"
+     Ways=@(@{ Via='vendor'; Read='github'; Repo='oschwartz10612/poppler-windows'; Asset='Release-{tag}.zip'
+               Unzip=@{ Root='poppler-{ver}'; Dir="$env:LOCALAPPDATA\Programs\poppler" }; RetireWinget=$true; NeedsVcRuntime=$true
+               Unsigned='실행 파일에 서명이 없다 — GitHub 릴리스 자산을 https 로 받는다' }
+            @{ Via='winget' }) }
   # 공식 pptx 스킬이 덱을 그림으로 보는 길(soffice → PDF → pdftoppm)의 앞 손 — LibreOffice 의 `soffice`. 그 스킬이 이 이름을 PATH 에서
   #   부르고, 회사 PC 에서 LibreOffice 가 쓴 PDF 는 10분까지 DRM 에 안 감겼다(claude-config #204 · 결정 0172). 덱 스킬이 Claude 에만
   #   서서 `For` 가 Claude 하나다.
@@ -308,9 +363,13 @@ $TlsHosts = @(
 
 # ── 데스크탑 앱 — **목록이 진본이다.** 「프로그램」의 「데스크탑 앱 설치」 칸이 깔 때도, 「마무리」의 「연다」 칸이 띄울 것을
 #    찾을 때도 이 표에서 판다 ──
-# 앱마다 설치 길이 달라 표가 id 만이 아니라 길(`Via`)까지 든다 — 갈림이 설치 칸 안에 숨으면 앱이 늘 때 표만 고쳐서는 안 걸린다.
-#   · `winget` — winget 이 깔고 winget 이 잰다. `Source` 가 어느 소스인지 든다
-#   · `setup`  — 제 설치본을 받아 조용히 돌린다. winget 이 모르는 앱이다
+# 앱마다 설치 길이 달라 표가 id 만이 아니라 길 목록(`Ways` — `$Apps` 머리의 「길 목록」과 같은 꼴)까지 든다 — 갈림이 설치 칸 안에
+#   숨으면 앱이 늘 때 표만 고쳐서는 안 걸린다. `Id` · `Source` 는 winget 이 이 앱을 아는 이름과 소스다 — 깔렸나 · 「올릴 것」 목록 ·
+#   winget 길이 다 이 둘로 묻는다.
+# `Upgrade` — 깔린 앱을 무엇이 올리나. 안 적으면 길 목록을 따른다(벤더 판으로 가르고 못 읽으면 winget 「올릴 것」 목록 · `Get-UpgradeRoute`).
+#   · `@{ Via = 'none' }` — 올리지 않는다. 있으면 두고 없으면 깐다
+#   · `@{ Via = 'updater'; Exe; Args }` — 앱의 제 갱신기를 깐 직후와 이미 있을 때 한 번씩 부른다(`Invoke-AppUpdater`). 갱신기는 새 판이
+#     없으면 받지 않고 끝난다. 갱신기 파일이 없는 PC(다른 꼴로 깔린 앱)는 길 목록 그대로다. winget 이 없는 PC 에서도 돈다
 # `App` — 시작 메뉴에 뜨는 이름(띄울 때 찾는 글자). 패키지 id 와 다른 것을 가리켜 따로 적는다 — 스토어 제품은 id 가
 #   `9PLM9XGG6VKS` 꼴이라 거기서 팔 것이 없다.
 # 「깔렸나」는 시작 메뉴 이름(`App`) → 윈도우의 설치 목록 → winget 목록 차례로 묻는다(`Measure-DesktopApp` · 결정 0145).
@@ -324,10 +383,6 @@ $TlsHosts = @(
 #     · `any`     — 자리를 안 가린다. 제 인증으로 서는 앱
 # `Requires` — 짝으로 먼저 깔 런타임. winget 매니페스트의 `Dependencies` 가 비어 winget 이 안 챙기는 자리를 우리가 챈다.
 #   공용 목록(`$Apps`)에 안 넣어 그 앱을 고른 사람만 받는다.
-# `Latest` · `SilentArgs` · `Signer` — 벤더 직통 「최신」 주소와 그 설치본의 무음 인자 · 서명자(`$Apps` 의 같은 칸과 같은 뜻). 깔 때는 이 길이 앞길이고
-#   winget 이 뒷길이다. 올리기도 이 주소가 넘기는 판이 깔린 판보다 높을 때 이 주소에서 받는다(claude-config 결정 0179).
-# `Updater` — 앱이 스스로 올릴 때 쓰는 제 갱신기(`Exe` · `Args`). 있으면 winget 으로 올리지 않고 이것을 부른다 — 깐 직후와 이미 있을
-#   때 한 번씩. 갱신기는 새 판이 없으면 받지 않고 끝난다. 갱신기 파일이 없는 PC(다른 꼴로 깔린 앱)는 winget 길 그대로다.
 $DesktopApps = @(
   # Claude 는 판 없는 공식 주소가 둘인데 다 안 맞는다 — 다운로드 페이지의 설치본 주소는 스크립트에 403(브라우저 전용)이고, 조직
   #   배포용 MSIX 주소는 열려 있지만 꼴이 다르다(관리자 승인이 드는 꾸러미 서비스를 싣고, 제 갱신기가 없으며, 설정 자리가 지금
@@ -335,38 +390,45 @@ $DesktopApps = @(
   #   공식 배포 주소는 그 갱신기가 읽는 공개 목록(`RELEASES`)이 선 자리다 — 앱이 제 안에서 쓰는 주소는 기기 값이 붙어야 열린다.
   # `Reg` — 설치 목록 이름이 `Claude` 그대로다(HKCU · Squirrel 이 판을 올릴 때 같이 고친다). 이름 전체로 건다.
   @{ Key = 'claude'; Label = 'Claude 데스크탑'; App = 'Claude'; Reg = 'Claude'
-     Via = 'winget'; Id = 'Anthropic.Claude'; Source = 'winget'
-     Updater = @{ Exe = '%LOCALAPPDATA%\AnthropicClaude\Update.exe'
+     Id = 'Anthropic.Claude'; Source = 'winget'
+     Upgrade = @{ Via = 'updater'; Exe = '%LOCALAPPDATA%\AnthropicClaude\Update.exe'
                   Args = @('--update=https://downloads.claude.ai/releases/win32/x64') } }
   # ⚠ **코덱스는 ChatGPT 앱 안에 산다 — `App` 은 `ChatGPT` 여야 한다.** 사람 눈에 닿는 이름(시작 메뉴 · 매니페스트
   #   `DisplayName` · 실행 파일 `app/ChatGPT.exe`)이 다 `ChatGPT` 이고 `Codex` 는 꾸러미 이름(`OpenAI.Codex_…!App`)에만 남는다.
   #   `Codex` 로 두면 멀쩡히 깔아 놓고 이름으로 되찾지 못해 「설치 실패」로 찍는다.
-  # 길이 둘이고 두 길이 지는 자리가 엇갈린다 — 앞길이 흔한 갈래를 들고 지면 뒷길(`Fallback`)로 간다:
+  # 길이 둘이고 두 길이 지는 자리가 엇갈린다 — 앞길이 흔한 갈래를 들고 지면 뒷길로 간다:
   #     · winget msstore — TLS 를 가로채는 회선에서는 고정 인증서 검사가 `0x8a15005e` 로 져 소스를 못 연다 · 열린 회선에서는
   #       조용히 깐다
   #     · 스토어 설치 스텁(`StoreInstaller.exe /S` · 웹의 [다운로드] 단추가 주는 공식 길) — 스토어가 막힌 회선에서는 넘길 곳이
-  #       없어 제가 조용히 깐다 · 열린 회선에서는 스토어 창으로 넘기고 빠진다
-  # `NoSelfUpgrade` — 올리기는 안 한다. 스토어 앱 갱신은 윈도우 업데이트를 타는데 사내에서 그쪽이 끊긴다(`0x80072EFD`) — 없으면
-  #   깔고 있으면 둔다.
+  #       없어 제가 조용히 깐다 · 열린 회선에서는 스토어 창으로 넘기고 빠진다. 판 없는 고정 주소라 깔 때만 쓴다. 서명자는 아직 안
+  #       쟀다(`Unsigned`)
+  # `Upgrade = none` — 스토어 앱 갱신은 윈도우 업데이트를 타는데 사내에서 그쪽이 끊긴다(`0x80072EFD`) — 없으면 깔고 있으면 둔다.
   # 깔렸나는 꾸러미 가족(`Appx`)이 잰다 — msstore 의 winget 목록은 깔린 채로 「안 깔렸다」를 내고, 막힌 회선에서는 열리지도
   #   않는다. 가족 이름은 시작 메뉴 손잡이(`OpenAI.Codex_2p2nqsd0c76g0!App`)의 앞마디다.
   @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'ChatGPT'; Appx = 'OpenAI.Codex_2p2nqsd0c76g0'
-     Via = 'winget'; Id = '9PLM9XGG6VKS'; Source = 'msstore'; NoSelfUpgrade = $true
-     Fallback = @{ Via = 'setup'; SilentArgs = @('/S')
-                   Url = 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS' } }
+     Id = '9PLM9XGG6VKS'; Source = 'msstore'; Upgrade = @{ Via = 'none' }
+     Ways = @(@{ Via = 'winget' }
+              @{ Via = 'vendor'; Url = 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS'; SilentArgs = @('/S')
+                 Unsigned = '스토어 설치 스텁 — 서명자를 아직 안 쟀다' }) }
   # Gemini 데스크탑은 안 깐다 — 사내 회선에서 구글 스텁(11.8MB)은 받아지는데 그 스텁이 알맹이를 받으러 갈 때 끊기고
   #   (`0x80072EFE` 연결 중단), 구글 갱신기가 제 작업을 지우고 되돌아 나간다. 집에서는 깔리므로 필요하면 사람이
   #   <https://gemini.google.com/app> 에서 받는다 — 그 자리는 안티그래비티가 든다.
-  # 안티그래비티는 winget 이 판 없는 주소와 설치 꼴(nullsoft · `/S`)을 댄다. 깔린 뒤에는 앱이 제 자동 갱신(electron-builder ·
-  #   `resources/app-update.yml`)으로 따라가고, winget 갱신은 그 위의 보험이다. `Latest` 를 안 다는 까닭 — 판 없는 공식 주소가 없다
-  #   (공식 다운로드 페이지도 판 · 빌드 번호가 박힌 주소를 준다).
+  # 안티그래비티는 판 없는 공식 주소가 없다(공식 다운로드 페이지도 판 · 빌드 번호가 박힌 주소를 준다). 대신 앱이 제 자동 갱신
+  #   (electron-builder · 설치본 안의 `resources/app-update.yml` · 채널 `latest-${arch}-win`)에 쓰는 피드가 판 · 받을 주소 · SHA512 를
+  #   댄다(`Read = 'feed'`). 설치본은 winget 이 돌리는 그 nullsoft 설치본이다(사용자 범위 · `/S`).
+  #   ⚠ 피드 주소는 공개 약속이 아니다(Cloud Run 프로젝트 번호가 든 호스트) — 바뀌면 판을 못 읽어 winget 으로 물러선다. 피드는 앱 판
+  #   머리(`x-app-version`)와 단계 배포 값(`x-user-staging-id`)에 따라 답을 가른다 — 머리 없이 묻는 우리는 단계 배포를 앞질러 받을 수 있다.
   # ⚠ **패키지 이름을 바꿀 때 받는 호스트를 다시 본다.** `Google.Antigravity`(「Antigravity 2.0」)는 `storage.googleapis.com`
   #   에서 와 사내 회선에서 열리고, 같은 페이지의 「Antigravity IDE (Standalone)」은 `edgedl.me.gvt1.com` 에서 와 사내에서
   #   TLS 악수부터 진다 — 둘은 판 번호도 계보도 다른 별개 물건이다.
   # `Reg` — 설치 목록 이름에 판이 붙는다(`Antigravity 2.22.0` · HKCU). 곁에 같은 머리의 딴 물건 `Antigravity CLI` 가 서므로 이름
   #   뒤에 숫자가 오는 꼴만 잡는다.
   @{ Key = 'antigravity'; Label = 'Antigravity 데스크탑'; App = 'Antigravity'; Reg = 'Antigravity [0-9]*'
-     Via = 'winget'; Id = 'Google.Antigravity'; Source = 'winget' }
+     Id = 'Google.Antigravity'; Source = 'winget'
+     Ways = @(@{ Via = 'vendor'; Read = 'feed'
+                 Feed = 'https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-x64-win.yml'
+                 SilentArgs = @('/S'); Signer = 'Google LLC' }
+              @{ Via = 'winget' }) }
   # `When = 'any'` — 게이트웨이를 안 타고 제 인증으로 GitHub 에 붙어 사내에서도 깔 값이 있다. 제품이 사내에서 안 서는 동안(제품 표의
   #   `When`)은 이 행도 안 깐다.
   # ⚠ **id 는 `GitHub.CopilotApp` 이다** — `GitHub.Copilot` 은 CLI 쪽 딴 물건이다. 지문은 winget 매니페스트의
@@ -376,11 +438,13 @@ $DesktopApps = @(
   # 로그인은 사람이 한다 — 대화형 인증(회사 IdP · MFA · 기기 조건)이라 설치기가 낄 자리가 없다. 사외 개인 PC 에서 회사 계정은
   #   조건부 액세스가 막고(기기 미등록 `53003`) 그때는 개인 계정으로 쓴다 — 설치의 실패가 아니다.
   # `Reg` — 설치 목록 이름은 `GitHub Copilot` 그대로다(HKCU). 기계 범위의 `Copilot` 은 Microsoft Copilot 이라 이름 전체로 건다.
-  # `Latest` — GitHub 릴리스의 `latest/download/<자산>` 은 API 를 안 묻고(공용 출구 IP 의 API 한도) 그 판의 자산으로 넘긴다. 자산 이름에
-  #   판이 없어 주소가 판마다 같다. 설치본은 winget 이 돌리는 그 nullsoft 설치본이다(사용자 범위 · `/S`).
+  # 벤더 길(`redirect`) — GitHub 릴리스의 `latest/download/<자산>` 은 API 를 안 묻고(공용 출구 IP 의 API 한도) 그 판의 자산으로 넘긴다.
+  #   자산 이름에 판이 없어 주소가 판마다 같다. 설치본은 winget 이 돌리는 그 nullsoft 설치본이다(사용자 범위 · `/S`).
   @{ Key = 'copilot'; Label = 'GitHub Copilot 데스크탑'; App = 'GitHub Copilot'; Reg = 'GitHub Copilot'
-     Via = 'winget'; Id = 'GitHub.CopilotApp'; Source = 'winget'; When = 'any'
-     Latest = 'https://github.com/github/app/releases/latest/download/GitHub-Copilot-windows-x64-setup.exe'; SilentArgs = @('/S'); Signer = 'GitHub, Inc.'
+     Id = 'GitHub.CopilotApp'; Source = 'winget'; When = 'any'
+     Ways = @(@{ Via = 'vendor'; Read = 'redirect'; Url = 'https://github.com/github/app/releases/latest/download/GitHub-Copilot-windows-x64-setup.exe'
+                 SilentArgs = @('/S'); Signer = 'GitHub, Inc.' }
+              @{ Via = 'winget' })
      Requires = @('Microsoft.EdgeWebView2Runtime') }
 )
 
@@ -721,24 +785,18 @@ function Find-LockedFiles([string]$Root, [int]$Tries = 3, [int]$GapMs = 1000) {
 # 판을 한 줄로 읽는다 — 명령 · 인자를 받아 나가는 글의 첫 줄을 낸다. 못 읽거나 `$ProbeCap` 을 넘기면 빈 글자이고, 넘김은
 #   끝 검증의 넘김 목록에 남는다(`Add-ProbeOverflow`). 판은 화면에만 쓰므로 판정은 안 바뀐다. 「도나」가 `yes` 를 낸 뒤 같은
 #   명령을 다시 부르는 자리라 울타리를 두른다(#26).
-# ⚠ **파이썬은 `--version` 대신 `-c` 로 판을 찍는다**(#32). DRM(Fasoo)이 프로세스 초기화를 가로채는 PC 에서 `--version` 의
-#   글자가 자주 사라지고 종료 0 만 남는다 — 까닭은 파이썬 밖이라 재설치로 안 고쳐지고, 인터프리터가 다 선 뒤의 출력은 안
-#   잃는다. 종료 코드는 참이라, 종료 코드로 판정하는 다른 python 걸음(`Test-Runs` · `Measure-Runs` · 손들)은 그대로 둔다.
-$PyVerCode = 'import sys;print(sys.version.split()[0])'
-function Get-Ver([string]$Cmd, [string]$Arg) {
+# `$VerArgs` — 판을 찍는 인자가 「도나」의 인자와 다른 행(`$Apps` 의 `VerArgs`)이 준다. 비면 `$Arg` 하나로 부른다.
+function Get-Ver([string]$Cmd, [string]$Arg, [string[]]$VerArgs = @()) {
   $log = [IO.Path]::GetTempFileName()
+  $verArgv = if (@($VerArgs).Count) { @($VerArgs) } else { @($Arg) }
   try {
-    $rc = if ($Cmd -eq 'python') { Invoke-LoggedCapped $Cmd @('-c', $PyVerCode) $log $ProbeCap }
-          else { Invoke-LoggedCapped $Cmd @($Arg) $log $ProbeCap }
-    if ($rc -eq -2) { Add-ProbeOverflow "$Cmd $Arg" $ProbeCap }
+    $rc = Invoke-LoggedCapped $Cmd $verArgv $log $ProbeCap
+    if ($rc -eq -2) { Add-ProbeOverflow "$Cmd $($verArgv -join ' ')" $ProbeCap }
     $o = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })
     # 판을 stderr 로 찍는 도구(poppler 의 pdftoppm)가 있다 — stdout 이 비면 stderr 쪽을 읽는다. 판정은 종료 코드가 들고 여기는 글자만 든다
     if (-not $o.Count) { $o = @(Get-Content -LiteralPath "$log.err" -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() }) }
   } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
-  $v = ("$(@($o) | Select-Object -First 1)").Trim()
-  # 판 칸의 꼴을 다른 도구와 맞춘다 — 저쪽은 `Python 3.14.7` 처럼 이름을 들고 온다.
-  if ($v -and $Cmd -eq 'python') { $v = "Python $v" }
-  return $v
+  return ("$(@($o) | Select-Object -First 1)").Trim()
 }
 
 # 판 번호를 결과 줄의 괄호에 넣는다 — 비면 `(판을 못 읽었다)` 를 낸다. 빈 괄호 `()` 는 「값만 못 읽었다」와 「판정이
@@ -911,13 +969,16 @@ $ProbeCap = 20
 $WingetListCap = 120   # winget 의 첫 부름은 원본을 새로 받느라 수십 초를 쓰고, 막힌 소스를 붙든 사내 회선에서는 더 쓴다
 $NpmViewCap    = 60    # 레지스트리에 판 하나를 묻는 GET 이라 평소 1초 안팎이다 — 느린 프록시를 넉넉히 덮는다
 $ExtListCap    = 60    # `code` 가 node 를 띄워 깔린 확장을 읽는다 — VDI 에서 몇 초씩 걸리는 자리라 `--version` 울타리보다 길게 둔다
-$VendorHeadCap = 15    # 벤더 직통 「최신」 주소에 넘김 주소만 묻는 요청 한 번(`Get-VendorLatest`) — 받지 않으므로 평소 1초 안팎이다. 넘기면 「모른다」로 winget 목록에 물러선다
+$VendorHeadCap = 15    # 벤더에 판을 묻는 요청 한 번(`Invoke-VendorAsk` — 넘김 주소 · 목록 쪽 · 피드) — 받지 않으므로 평소 1초 안팎이다. 넘기면 「모른다」로 winget 목록에 물러선다
+$VendorPageMax = 1MB   # 판을 읽으려고 GET 하는 쪽(목록 · 피드)에서 읽는 몸통의 끝 — 목록 쪽이 수십 KB 다. 넘는 꼬리는 안 읽는다
+$VendorListTries = 3   # 목록 쪽(`listing`)에서 받을 파일이 있나를 HEAD 로 묻는 판의 수 — 높은 판부터 묻는다. 보안 고침만 낸 판이 이보다 많이 이어지면 winget 으로 물러선다
 $ClaudePluginCap = 60  # `claude plugin list` · `plugin marketplace list` — node 로 선 CLI 가 플러그인 기록을 읽는다. 첫 실행에 제 짐을 푸는 CLI 가 `--version` 에 20초 가까이 쓴 PC 가 있어(PAISetup #30) 넉넉히 둔다
 # 끝 검증이 묻는 바깥 명령의 한도 — 넘기면 그 칸이 「못 쟀다」다. 위와 같이 멈춤을 가르는 값이라 의심스러우면 길게 둔다.
 $ToolHomesCheckCap = 120   # 손(`tool-homes.py check`)이 도구 홈 넷의 규범 · 룰 · 에이전트 · 스킬을 표와 견준다 — 파일을 읽기만 하는데, 느린 디스크와 보안 소프트가 낀 VDI 를 넉넉히 덮는다
 # 상태를 바꾸는 바깥 명령의 한도 — 넘기면 거두고 「못 했다」로 간다. 무인 판이 사람을 기다리는 창 앞에서 영영 서지 않게 한다.
 $VcRedistCap   = 900   # VC++ 재배포 패키지를 받고(17.8 MB) 까는 한 번 — 사내 회선의 받기와 승인 창을 누를 사람의 몫까지 넉넉히 덮는다
 $AppUpdaterCap = 900   # 앱의 제 갱신기(`Invoke-AppUpdater`)가 새 판을 받아 펼치는 한 번 — Claude 의 통짜 꾸러미가 수백 MB 라 사내 회선의 받기를 넉넉히 덮는다
+$WingetRemoveCap = 300 # 벤더 사본이 갈음한 winget 휴대용 꾸러미 하나를 걷는 한 번(`Remove-WingetCopy`) — 파일을 지우고 PATH 줄을 걷는다. 원본을 새로 받는 첫 부름까지 덮는다
 
 # 울타리를 넘긴 프로브 — **넘김 하나가 한 줄이다.** 같은 명령이 여러 자리에서 넘기면 그 수만큼 서고, 줄마다 명령(`Probe`) ·
 #   부른 자리(`Site` — 이 파일의 행) · 한도(`Cap`)를 든다. 끝 검증이 이것을 명령마다 「몇 자리 · 몇 번」으로 센다.
@@ -2628,18 +2689,9 @@ function Update-RuntimePath {
     $v = [Environment]::GetEnvironmentVariable('Path', $sc)
     if ($v) { foreach ($d in ($v -split ';')) { Add-ToPath $d } }
   }
-  # 파이썬 폴더 이름은 선언에서 판다 — 판을 여기 또 적으면 표와 어긋난다
-  $pyId  = ($Apps | Where-Object { $_.Cmd -eq 'python' }).Id
-  $pyTag = if ($pyId -match '(\d+)\.(\d+)$') { "Python$($Matches[1])$($Matches[2])" } else { $null }
-  Add-ToPath "$env:ProgramFiles\nodejs"
-  Add-ToPath "$env:ProgramFiles\Git\cmd"
-  Add-ToPath "$env:ProgramFiles\GitHub CLI"
-  Add-ToPath "$env:ProgramFiles\Microsoft VS Code\bin"
-  Add-ToPath "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin"
-  if ($pyTag) {
-    Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag"
-    Add-ToPath "$env:LOCALAPPDATA\Programs\Python\$pyTag\Scripts"
-  }
+  # 이름의 보험은 공용 프로그램 표의 `Dirs` 가 든다 — 판 줄이 든 자리(파이썬 폴더)는 「준비」의 「판 줄」 칸이 채운 뒤의 글자다. 채우기
+  #   전에 불리면 그 자리는 없는 폴더라 안 더해진다.
+  foreach ($runApp in @($Apps)) { foreach ($runDir in @($runApp.Dirs)) { Add-ToPath $runDir } }
   # npm 전역 자리 — 여기서는 이 창만 태운다. 새 터미널이 보게 사용자 PATH 에 심는 것은 마무리의 「사용자 범위 명령 자리」다.
   #   위에서 Node 자리를 태운 뒤라야 맨바닥 PC 의 Node 를 깐 다음 부름에서 npm 이 잡혀 물을 수 있다.
   Update-NpmGlobalDir
@@ -3325,6 +3377,8 @@ function Wire-NodeTrust {
 #   · `ReadWriteTimeout` 손잡이가 없다 — `-TimeoutSec` 는 응답 머리가 오기까지만 들어, 느린 링크에서 몸통을 읽다 진다
 #   두 시계를 다 못박는다 — `Timeout` 은 프록시가 파일을 통째로 받아 검사하고 머리를 내주기까지, `ReadWriteTimeout` 은 그다음 한 번
 #   읽는 사이다.
+# ⚠ **https 로 물은 받기가 넘김 끝에 http 에 닿으면 던진다** — 이 파워셸(.NET Framework)의 넘김 따라가기는 그 내려앉음을 막지 않는다.
+#   서명이 없는 벤더 길은 https 로 받는 것이 울타리라(`Test-VendorFence`) 여기서 끊는다.
 function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
   $req = [Net.HttpWebRequest]::Create($Url)
   $req.Timeout          = $WaitSec * 1000
@@ -3332,6 +3386,7 @@ function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
   $req.UserAgent        = 'PAISetup'
   $res = $req.GetResponse()
   try {
+    if ($Url -like 'https:*' -and $res.ResponseUri.Scheme -ne 'https') { throw "https 로 물었는데 $($res.ResponseUri.Scheme) 로 넘겨졌다 ($($res.ResponseUri.Host))" }
     $total = 0.0
     try { $total = [double]$res.ContentLength } catch { }
     $in  = $res.GetResponseStream()
@@ -3587,85 +3642,326 @@ function Invoke-WingetUpgrade([string]$Label, [string]$Id, [string]$Source, [str
   Remove-Item $log -ErrorAction SilentlyContinue
 }
 
-# 벤더 직통 「최신」 주소(`Latest`)가 지금 넘기는 판 — 받지 않고 넘김 주소(`Location`)의 경로에서 `n.n.n[.n]` 첫 토막을 읽는다. 못
-#   물었거나 꼴이 안 맞으면 빈 글자(「모른다」)다. 부르는 쪽은 그때 winget 목록의 답으로 물러선다(claude-config 결정 0179).
-#   경로만 읽는다 — 호스트 이름에는 판이 없고, 경로의 지문(16진)에는 점이 없어 걸리지 않는다.
-function Get-VendorLatest([string]$Url) {
+# 행의 글자 칸에 판 줄을 채운다 — 행(표 · 목록 안까지 내려간다)의 글자에 든 `{line}` 은 `$Line`(`3.14`)으로, `{line_nodot}` 은 점을 뺀
+#   글자(`314` — CPython 의 `py_version_nodot` 꼴)로 바꾼다. 받은 마디를 그 자리에서 고치고 그 마디를 낸다. 「준비」의 「판 줄」 칸이 부른다.
+function Set-RowLine($Node, [string]$Line) {
+  if ($Node -is [string]) { return $Node.Replace('{line_nodot}', $Line.Replace('.', '')).Replace('{line}', $Line) }
+  if ($Node -is [hashtable]) { foreach ($k in @($Node.Keys)) { $Node[$k] = Set-RowLine $Node[$k] $Line }; return $Node }
+  if ($Node -is [array]) { return , @(foreach ($x in $Node) { Set-RowLine $x $Line }) }
+  return $Node
+}
+
+# 행의 길 목록 — `Ways` 를 안 적은 행은 winget 하나다(`$Apps` 머리의 「길 목록」). 부르는 쪽은 `@(…)` 로 받는다.
+function Get-RowWays($Row) {
+  $w = @($Row.Ways | Where-Object { $_ })
+  if ($w.Count) { return $w }
+  return @(@{ Via = 'winget' })
+}
+
+# 이 행이 지금 탈 벤더 길 — 길 목록에서 판을 읽는 첫 벤더 길(`Read` 가 든 것)을 낸다. 없거나 이 PC 에서 못 타면 `$null` 이다: x64 가
+#   아니다 · 깔린 것(`$Installed` 가 `yes` 이고 행에 `Cmd` 가 있을 때 그 이름이 서는 자리)이 사용자 범위(`%LOCALAPPDATA%` 밑) 밖이거나 앱
+#   실행 별칭 자리(`…\Microsoft\WindowsApps\` — 스토어 꼴 앱)다. 벤더의 사용자 범위 설치본은 같은 사용자 범위 설치만 제자리로 올리고,
+#   다른 자리에 깔린 것 위에 돌리면 두 벌이 된다. 자리를 모르는 데스크탑 앱은 사용자 범위 설치본에만 벤더 길을 단다.
+#   기계의 판은 `PROCESSOR_ARCHITEW6432` 가 먼저다 — 32 비트 파워셸에서는 `PROCESSOR_ARCHITECTURE` 가 x86 으로 보인다.
+function Get-VendorWay($Row, [string]$Installed = '') {
+  $way = @(Get-RowWays $Row | Where-Object { $_.Via -eq 'vendor' -and $_.Read })[0]
+  if (-not $way) { return $null }
+  $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+  if ($arch -ne 'AMD64') { return $null }
+  if ($Installed -ne 'yes' -or -not $Row.Cmd) { return $way }
+  $src = "$((Get-Command $Row.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
+  if ($src -like "$env:LOCALAPPDATA\*" -and $src -notlike '*\Microsoft\WindowsApps\*') { return $way }
+  return $null
+}
+
+# 벤더에 한 번 묻는다 — 받지 않는다. 내는 것 `@{ Code; Location; Text }` — `Code` 는 HTTP 상태(못 물었으면 0) · `Location` 은 넘김 주소
+#   (넘김을 따라가지 않는다 — 판은 넘김 주소에서 읽는다) · `Text` 는 `-Body` 일 때 200 의 몸통 앞 `$VendorPageMax` 바이트(UTF-8)다. `-Body`
+#   가 아니면 HEAD 다. 한 번에 `$VendorHeadCap` 초 — 넘기면 못 물은 것이다.
+function Invoke-VendorAsk([string]$Url, [switch]$Body) {
+  $o = @{ Code = 0; Location = ''; Text = '' }
+  $res = $null
   try {
     $req = [Net.HttpWebRequest]::Create($Url)
     $req.AllowAutoRedirect = $false
-    $req.Method = 'HEAD'
+    $req.Method = if ($Body) { 'GET' } else { 'HEAD' }
     $req.UserAgent = 'PAISetup'
     $req.Timeout = $VendorHeadCap * 1000
-    $res = $req.GetResponse()
-    try { $loc = $res.Headers['Location'] } finally { $res.Close() }
-    if (-not $loc) { return '' }
-    $path = (New-Object Uri ([Uri]$Url), $loc).AbsolutePath
-    if ($path -match '(?<![\d.])(\d+(?:\.\d+){2,3})(?!\.?\d)') { return $Matches[1] }
-  } catch { }
-  return ''
+    $req.ReadWriteTimeout = $VendorHeadCap * 1000
+    try { $res = $req.GetResponse() } catch [Net.WebException] { $res = $_.Exception.Response }
+    if (-not $res) { return $o }
+    $o.Code = [int]$res.StatusCode
+    $o.Location = [string]$res.Headers['Location']
+    if ($Body -and $o.Code -eq 200) {
+      $in = $res.GetResponseStream()
+      $buf = New-Object byte[] $VendorPageMax
+      $got = 0
+      while ($got -lt $buf.Length -and ($n = $in.Read($buf, $got, $buf.Length - $got)) -gt 0) { $got += $n }
+      $o.Text = [Text.Encoding]::UTF8.GetString($buf, 0, $got)
+    }
+  } catch { } finally { if ($res) { $res.Close() } }
+  return $o
 }
 
-# 이 줄이 벤더 직통 길을 타나 — `Latest` 가 있고, 이 PC 가 x64 이고, 깔려 있으면 사용자 범위(`%LOCALAPPDATA%` 밑)일 때. 주소가 x64 사용자
-#   범위 설치본이라, 기계 범위로 깔린 앱 위에 돌리면 두 벌이 된다. 자리를 모르는 데스크탑 앱은 `Latest` 를 사용자 범위 설치본에만 단다.
-#   기계의 판은 `PROCESSOR_ARCHITEW6432` 가 먼저다 — 32 비트 파워셸에서는 `PROCESSOR_ARCHITECTURE` 가 x86 으로 보인다.
-function Test-VendorRow($Row, [string]$Runs = '') {
-  if (-not $Row.Latest) { return $false }
-  $arch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
-  if ($arch -ne 'AMD64') { return $false }
-  if ($Runs -ne 'yes' -or -not $Row.Cmd) { return $true }
-  $src = "$((Get-Command $Row.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
-  return ($src -like "$env:LOCALAPPDATA\*")
-}
-
-# 받은 설치본의 서명이 그 벤더의 것인가 — 맞으면 빈 글자, 아니면 어긋난 까닭. 서명이 유효하고 서명자 인증서의 CN 이 `$Signer`
-#   일 때만 맞다. `$Signer` 가 비면 어긋난 것이다 — 벤더 직통 행은 서명자를 들어야 돈다. winget 의 지문 대신 서는 울타리다(결정 0179).
-function Test-VendorSigner([string]$Path, [string]$Signer) {
-  if (-not $Signer) { return '행에 서명자가 없다' }
-  try { $sig = Get-AuthenticodeSignature -LiteralPath $Path } catch { return "서명을 못 읽었다 — $(Say-Why $_)" }
-  $cn = if ("$($sig.SignerCertificate.Subject)" -match '^CN=(?:"([^"]+)"|([^,]+))') { "$($Matches[1])$($Matches[2])" } else { '' }
-  if ("$($sig.Status)" -ne 'Valid') { return "서명이 $($sig.Status) 다" }
-  if ($cn -ne $Signer) { return "서명자가 $(if ($cn) { $cn } else { '(없음)' }) 다 — $Signer 여야 한다" }
-  return ''
-}
-
-# 벤더 직통 행(`$Row` 의 `Latest` · `SilentArgs` · `Signer`)의 주소에서 받아 서명을 가르고 무음으로 돌린다 — 설치본이 낸 값을 낸다.
-#   못 받았거나 서명이 어긋났거나 못 띄웠으면 `$null` 이다. 0 이 아니면 그 까닭을 한 줄 남긴다 — 부르는 쪽은 0 이 아닌 값(`$null`
-#   포함)이면 winget 으로 물러선다. 받는 손과 돌리는 꼴은 데스크탑 앱의 설치본 길과 같다.
-function Invoke-VendorSetup([string]$Label, $Row, [string]$Act) {
-  $exe = Join-Path ([IO.Path]::GetTempPath()) ('PAISetup-' + ($Label -replace '[^\w.-]', '') + '-setup.exe')
-  try {
-    Say-Busy $Label 'fetch' @('벤더 최신')
-    Get-Download $Row.Latest $exe
-  } catch {
-    Write-Host "      · 벤더 주소에서 못 받았다 — $(Say-Why $_) · winget 으로" -ForegroundColor Yellow
-    Remove-Item -LiteralPath $exe -ErrorAction SilentlyContinue
-    return $null
+# 벤더의 지금 최신 판과 그 판을 받을 주소 — 길(`$Way`)의 `Read` 꼴로 읽는다(`$Apps` 머리의 「길 목록」). 내는 것 `@{ Ver; Url; Sha512 }` —
+#   `Ver` 가 비면 판을 못 읽은 것이고(부르는 쪽이 winget 목록으로 물러선다), `Url` 이 비면 받을 주소도 모른다. `redirect` 는 판을 못 읽어도
+#   받을 주소(`Url` 그대로)는 안다. `Sha512` 는 피드가 댄 지문(base64)이다. 받을 주소를 못 지은 꼴(`listing` · `feed` · `github`)은 판도
+#   비운다 — 판만 읽고 못 받는 길로 올리기를 가르면 회차마다 받으러 나갔다 진다.
+# 판은 `n.n.n[.n]` 첫 토막이다 — 넘김 주소에서는 경로만 읽는다(호스트에는 판이 없고 경로의 지문(16진)에는 점이 없다).
+# 이 손은 앱 이름을 모른다 — 새 앱은 꼴이 맞으면 행 하나로 선다. 망에 묻는 것은 `Invoke-VendorAsk` 하나다.
+function Get-VendorLatest($Way) {
+  $found = @{ Ver = ''; Url = ''; Sha512 = '' }
+  $verIn = { param([string]$Text) if ($Text -match '(?<![\d.])(\d+(?:\.\d+){2,3})(?!\.?\d)') { $Matches[1] } else { '' } }
+  switch ("$($Way.Read)") {
+    'redirect' {
+      $found.Url = $Way.Url
+      $a = Invoke-VendorAsk $Way.Url
+      if ($a.Location) { try { $found.Ver = & $verIn (New-Object Uri ([Uri]$Way.Url), $a.Location).AbsolutePath } catch { } }
+    }
+    'github' {
+      # 태그는 넘김 주소의 끝마디다(`…/releases/tag/v26.09.0-0`). `{tag}` 는 머리 `v` 를 뗀 글자다 — 자산 이름이 그 꼴이다
+      $a = Invoke-VendorAsk "https://github.com/$($Way.Repo)/releases/latest"
+      if ($a.Location -match '/releases/tag/([^/?#]+)$') {
+        $tag = [Uri]::UnescapeDataString($Matches[1])
+        $ver = & $verIn $tag
+        if ($ver) {
+          $found.Ver = $ver
+          $found.Url = "https://github.com/$($Way.Repo)/releases/download/$tag/$($Way.Asset.Replace('{tag}', ($tag -replace '^v', '')))"
+        }
+      }
+    }
+    'listing' {
+      # 판 폴더(`href="n.n.n/"`)를 판 줄(`Line` — `3.14`)로 거르고 높은 판부터 `$VendorListTries` 개만 받을 파일이 있나 묻는다. 판 줄을 판으로
+      #   못 읽으면(채우지 못한 `{line}`) 묻지 않는다 — 거르지 않으면 다른 줄의 판을 고른다.
+      $line = $null
+      if ($Way.Line) { try { $line = [version]"$($Way.Line)" } catch { return $found } }
+      $a = Invoke-VendorAsk $Way.List -Body
+      $vers = @([regex]::Matches($a.Text, 'href="(\d+\.\d+\.\d+)/"') | ForEach-Object { [version]$_.Groups[1].Value } |
+                Where-Object { -not $line -or ($_.Major -eq $line.Major -and $_.Minor -eq $line.Minor) } | Sort-Object -Descending -Unique)
+      foreach ($v in @($vers | Select-Object -First $VendorListTries)) {
+        $u = $Way.Url.Replace('{ver}', "$v")
+        if ((Invoke-VendorAsk $u).Code -eq 200) { $found.Ver = "$v"; $found.Url = $u; break }
+      }
+    }
+    'feed' {
+      # electron-builder 의 `latest-*.yml` — 머리의 `version:`, `files:` 의 첫 `- url:` 과 그 항목의 `sha512:`(들여 쓴 줄). 주소가 이름뿐이면
+      #   피드 자리에 잇는다
+      $a = Invoke-VendorAsk $Way.Feed -Body
+      $ver = ''; $url = ''; $sha = ''
+      foreach ($l in @($a.Text -split "`r?`n")) {
+        if (-not $ver -and $l -match '^version:\s*[''"]?([^''"\s]+)') { $ver = & $verIn $Matches[1] }
+        elseif (-not $url -and $l -match '^\s*-\s*url:\s*[''"]?([^''"\s]+)') { $url = $Matches[1] }
+        elseif ($url -and -not $sha -and $l -match '^\s+sha512:\s*[''"]?([^''"\s]+)') { $sha = $Matches[1] }
+      }
+      if ($ver -and $url) {
+        try {
+          $found.Url = (New-Object Uri ([Uri]$Way.Feed), $url).AbsoluteUri
+          $found.Ver = $ver
+          $found.Sha512 = $sha
+        } catch { }
+      }
+    }
   }
+  return $found
+}
+
+# 받은 파일이 그 벤더의 것인가 — 맞으면 빈 글자, 아니면 어긋난 까닭. 길(`$Way`)이 울타리 하나를 꼭 든다(결정 0179 — winget 의 지문 대신
+#   서는 울타리):
+#   · `Signer` — Authenticode 서명이 유효하고 서명자 인증서의 CN 이 그 이름일 때만 맞다
+#   · `Unsigned` — 서명이 없는 배포라고 행이 까닭을 적은 길. 받은 주소가 https 일 때만 맞다(넘김이 http 로 내려앉으면 받는 손이 던진다 ·
+#     `Get-Download`)
+#   피드가 지문을 댔으면(`$Found.Sha512`) 받은 파일의 SHA512 도 같아야 한다. 울타리를 안 든 길은 어긋난 것이다.
+function Test-VendorFence([string]$Path, $Way, $Found) {
+  if ($Way.Signer) {
+    try { $sig = Get-AuthenticodeSignature -LiteralPath $Path } catch { return "서명을 못 읽었다 — $(Say-Why $_)" }
+    $cn = if ("$($sig.SignerCertificate.Subject)" -match '^CN=(?:"([^"]+)"|([^,]+))') { "$($Matches[1])$($Matches[2])" } else { '' }
+    if ("$($sig.Status)" -ne 'Valid') { return "서명이 $($sig.Status) 다" }
+    if ($cn -ne $Way.Signer) { return "서명자가 $(if ($cn) { $cn } else { '(없음)' }) 다 — $($Way.Signer) 여야 한다" }
+  } elseif ($Way.Unsigned) {
+    if ("$($Found.Url)" -notlike 'https://*') { return "서명이 없는 길인데 주소가 https 가 아니다 ($($Found.Url))" }
+  } else {
+    return '행에 울타리(서명자 · 서명 없는 까닭)가 없다'
+  }
+  if ($Found.Sha512) {
+    $got = ''
+    try {
+      $fs = [IO.File]::OpenRead($Path)
+      try { $got = [Convert]::ToBase64String([Security.Cryptography.SHA512]::Create().ComputeHash($fs)) } finally { $fs.Dispose() }
+    } catch { return "지문을 못 쟀다 — $(Say-Why $_)" }
+    if ($got -cne $Found.Sha512) { return '받은 파일의 SHA512 가 피드의 것과 다르다' }
+  }
+  return ''
+}
+
+# 벤더 zip 을 고정 자리(`$Way.Unzip.Dir`)에 갈아 끼운다 — 내는 것 `@{ Rc; Why }`(`Rc` 0 이면 새 사본이 섰고 돈다 · `$null` 이면 `Why` 가
+#   까닭). 곁 자리(`<Dir>.new-*`)에 풀고, 그 안의 판 폴더(`Root` 의 `{ver}` 틀)에서 행의 명령(`PathDir` 자리의 `Cmd` · 행의 `Arg`)이 도는 것을
+#   잰 뒤에만 옛 자리를 곁(`<Dir>.old-*`)으로 비키고 판 폴더를 그 이름으로 옮긴다 — 같은 볼륨이라 이름 바꾸기다. 못 돌거나 못 비키면 옛
+#   사본을 그대로 둔다. 지난 회차가 남긴 곁 자리는 우리 이름이라 먼저 걷는다. 행의 `PathDir` 는 `Dir` 밑이어야 한다 — 그 자리를 새 사본
+#   안에서 잰다.
+function Install-VendorZip([string]$Zip, $Row, $Way, $Found) {
+  $dir = [Environment]::ExpandEnvironmentVariables("$($Way.Unzip.Dir)").TrimEnd('\')
+  $bin = [Environment]::ExpandEnvironmentVariables("$($Row.PathDir)").TrimEnd('\')
+  if (-not $bin.StartsWith("$dir\", [StringComparison]::OrdinalIgnoreCase)) { return @{ Rc = $null; Why = "행의 PathDir($bin)가 풀 자리($dir) 밑이 아니다" } }
+  $rel = $bin.Substring($dir.Length + 1)
+  $parent = Split-Path -Parent $dir
+  $leaf = Split-Path -Leaf $dir
+  $mark = [guid]::NewGuid().ToString('N').Substring(0, 8)
+  $stage = Join-Path $parent "$leaf.new-$mark"
+  $old = Join-Path $parent "$leaf.old-$mark"
   try {
-    $bad = Test-VendorSigner $exe $Row.Signer
-    if ($bad) { Write-Host "      · 벤더 설치본을 안 돌렸다 — $bad · winget 으로" -ForegroundColor Yellow; return $null }
-    Say-Busy $Label $Act @('벤더 설치본', '몇 분 걸릴 수 있다')
-    $rc = (Start-Process -FilePath $exe -ArgumentList $Row.SilentArgs -PassThru -Wait).ExitCode
-    if ($rc -ne 0) { Write-Host "      · 벤더 설치본이 $rc 로 끝났다 — winget 으로" -ForegroundColor Yellow }
-    return $rc
-  } catch {
-    Write-Host "      · 벤더 설치본을 못 띄웠다 — $(Say-Why $_) · winget 으로" -ForegroundColor Yellow
-    return $null
+    try {
+      New-Item -ItemType Directory -Path $parent -Force | Out-Null
+      foreach ($left in @(Get-ChildItem -LiteralPath $parent -Directory -ErrorAction SilentlyContinue |
+                          Where-Object { $_.Name -like "$leaf.new-*" -or $_.Name -like "$leaf.old-*" })) {
+        Remove-Item -LiteralPath $left.FullName -Recurse -Force -ErrorAction SilentlyContinue
+      }
+      # 5.1 은 막대를 그리느라 풀기가 몇 배 느려진다 — 함수 안의 대입이라 나오면 저절로 돌아온다
+      $ProgressPreference = 'SilentlyContinue'
+      Expand-Archive -LiteralPath $Zip -DestinationPath $stage -Force
+    } catch { return @{ Rc = $null; Why = "zip 을 못 풀었다 — $(Say-Why $_)" } }
+    $root = Join-Path $stage ("$($Way.Unzip.Root)".Replace('{ver}', $Found.Ver))
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { return @{ Rc = $null; Why = "zip 안에 $(Split-Path -Leaf $root) 가 없다" } }
+    $arg = if ($Row.Arg) { $Row.Arg } else { '--version' }
+    $probe = Join-Path (Join-Path $root $rel) $Row.Cmd
+    $runs = Measure-Runs $probe $arg
+    if ($runs -ne 'yes') {
+      $runWhy = if ($runs -eq 'no') { '그 자리에 없어' } else { Get-ProbeWhy "$probe $arg" }
+      return @{ Rc = $null; Why = "새 사본이 안 돈다 — ``$($Row.Cmd) $arg`` 이 ${runWhy}서 옛 사본을 그대로 둔다" }
+    }
+    if (Test-Path -LiteralPath $dir) {
+      try { Rename-Item -LiteralPath $dir -NewName (Split-Path -Leaf $old) -ErrorAction Stop }
+      catch { return @{ Rc = $null; Why = "옛 사본을 못 비켰다(쓰이는 중일 수 있다) — $(Say-Why $_)" } }
+    }
+    try { Move-Item -LiteralPath $root -Destination $dir -ErrorAction Stop }
+    catch {
+      if (Test-Path -LiteralPath $old) { Rename-Item -LiteralPath $old -NewName $leaf -ErrorAction SilentlyContinue }
+      return @{ Rc = $null; Why = "새 사본을 그 자리로 못 옮겼다 — $(Say-Why $_)" }
+    }
+    Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue
+    return @{ Rc = 0; Why = '' }
   } finally {
-    Remove-Item -LiteralPath $exe -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
 
-# 앱의 제 갱신기(`Updater`)를 한 번 부르고 결과 한 줄을 낸다 — 갱신기 파일이 없으면 `$false`(부르는 쪽이 winget 길로 간다), 불렀으면
-#   `$true`. 새 판이 없으면 갱신기는 받지 않고 끝난다. 새 판은 앱을 다시 열 때 뜬다 — 떠 있는 앱은 제 판 그대로라 그 말을 붙인다.
+# 벤더 길 하나로 받아 깐다 — 프로그램 · 데스크탑 앱 · winget CLI 가 이 한 손을 쓴다. `$Found`(`Get-VendorLatest` 의 답 · 판을 안 읽는 길은
+#   `@{ Url = 길의 Url }`)의 주소에서 받아 울타리(`Test-VendorFence`)를 지나면 설치본을 무음으로 돌리거나(`SilentArgs`) 고정 자리에
+#   푼다(`Unzip` · `Install-VendorZip`).
+#   내는 것 `@{ Rc; Why }` — `Rc` 0 이면 섰다(zip 은 새 사본이 도는 것까지 쟀다), 0 이 아니면 설치본이 낸 값, `$null` 이면 받기 · 울타리 ·
+#   띄우기 · 풀기에서 졌고 `Why` 가 까닭이다. 0 이 아니면 그 까닭을 노란 한 줄로 남긴다 — 부르는 쪽은 다음 길로 간다.
+#   받는 파일 이름은 행의 이름에서 짓는다(`<이름>Setup.exe` · `.zip`) — 받아 놓을 이름이 사람에게 뜻이 있게.
+function Invoke-VendorWay([string]$Label, $Row, $Way, $Found, [string]$Act) {
+  $base = @($Row.App, $Row.Name, $Row.Key, $Row.Cmd) | Where-Object { $_ } | Select-Object -First 1
+  $file = Join-Path ([IO.Path]::GetTempPath()) (("$base" -replace '[^\w.-]', '') + 'Setup' + $(if ($Way.Unzip) { '.zip' } else { '.exe' }))
+  $r = @{ Rc = $null; Why = '' }
+  try {
+    if (-not $Found.Url) { $r.Why = '벤더의 받을 주소를 못 읽었다' }
+    elseif ($Way.NeedsVcRuntime -and (Measure-VcRuntime).State -ne 'yes') { $r.Why = 'VC++ 런타임이 없어 벤더 사본이 못 돈다 — 짝을 함께 까는 winget 으로' }
+    else {
+      try {
+        Say-Busy $Label 'fetch' @((Split-Path $file -Leaf), $(if ($Found.Ver) { "벤더 $($Found.Ver)" } else { '벤더' }))
+        Get-Download $Found.Url $file
+      } catch { $r.Why = "벤더 주소에서 못 받았다 — $(Say-Why $_)" }
+      if (-not $r.Why) { $bad = Test-VendorFence $file $Way $Found; if ($bad) { $r.Why = "벤더 파일을 안 썼다 — $bad" } }
+      if (-not $r.Why) {
+        if ($Way.Unzip) {
+          Say-Busy $Label $Act @('벤더 zip', [Environment]::ExpandEnvironmentVariables("$($Way.Unzip.Dir)"))
+          $r = Install-VendorZip $file $Row $Way $Found
+        } else {
+          Say-Busy $Label $Act @('벤더 설치본', '몇 분 걸릴 수 있다')
+          try {
+            $r.Rc = (Start-Process -FilePath $file -ArgumentList $Way.SilentArgs -PassThru -Wait).ExitCode
+            if ($r.Rc -ne 0) { $r.Why = "벤더 설치본이 $($r.Rc) 로 끝났다" }
+          } catch { $r.Why = "벤더 설치본을 못 띄웠다 — $(Say-Why $_)" }
+        }
+      }
+    }
+  } finally { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue }
+  if ($r.Rc -ne 0) { Write-Host "      · $($r.Why)" -ForegroundColor Yellow }
+  return $r
+}
+
+# 깔린 행을 무엇이 올리나 — 프로그램 · 데스크탑 앱 · winget CLI 가 이 한 자리에 묻고, 답을 판정 표(`Get-InstallAction`)에 넣는다(결정
+#   0145 · 0179). 내는 것 `@{ Via; Way; Found; Listed; Off; Ahead }`:
+#   · `Via` — `none`(올리지 않는다 — `-NoUpgrade` 이거나 행의 `Upgrade` 가 none) · `updater`(앱의 제 갱신기 — 그 파일이 있을 때) ·
+#     `vendor`(벤더 판을 읽었다 — `Found.Ver` 가 표의 최신 판이다 · `Way` 가 그 길) · `winget`(「올릴 것」 목록의 답 `Listed` 가 가른다)
+#   · `Off` — 표의 「올리기 안 함」. `none` 이거나, winget 길인데 winget 이 없을 때다 — 갱신기와 벤더 길은 winget 없이 돈다
+#   · `Ahead` — 벤더 판으로 가른 행을 winget 목록도 「올릴 것」으로 댄다(`Write-WingetAhead`)
+#   깔리지 않았거나 못 잰 행(`$Installed` 가 `yes` 가 아니다)은 묻지 않는다 — 표가 그 자리를 가른다.
+function Get-UpgradeRoute($Row, [string]$Installed) {
+  $r = @{ Via = 'winget'; Way = $null; Found = @{ Ver = ''; Url = ''; Sha512 = '' }; Listed = $null; Off = $false; Ahead = $false }
+  if ($Installed -ne 'yes') { return $r }
+  if ($NoUpgrade -or $Row.Upgrade.Via -eq 'none') { $r.Via = 'none'; $r.Off = $true; return $r }
+  if ($Row.Upgrade.Via -eq 'updater' -and (Test-Path -LiteralPath ([Environment]::ExpandEnvironmentVariables("$($Row.Upgrade.Exe)")))) {
+    $r.Via = 'updater'; return $r
+  }
+  $r.Way = Get-VendorWay $Row $Installed
+  if ($r.Way) {
+    $r.Found = Get-VendorLatest $r.Way
+    if ($r.Found.Ver) { $r.Via = 'vendor'; $r.Ahead = [bool](Get-Listed $Row.Id); return $r }
+  }
+  $r.Listed = Get-Listed $Row.Id
+  $r.Off = [bool]$noWinget
+  return $r
+}
+
+# 깔린 행을 올린다 — 판정 표가 `upgrade` · `upcheck` 를 낸 갈래(프로그램 · 데스크탑 앱 · winget CLI)가 부른다. 벤더 판으로 가른 `upgrade`
+#   면 그 길에서 받고(`Invoke-VendorWay`), 판을 모르는 채(`upcheck` — 받으면 같은 판을 회차마다 다시 깐다)거나 벤더 길이 지면 winget 이
+#   올린다. winget 이 없으면 노란 줄 하나다. 벤더 길이 섰으면 참이다 — 올랐나는 부르는 쪽이 앞뒤 판으로 가른다(`Write-UpgradeResult`).
+function Invoke-RowUpgrade([string]$Label, $Row, $Route, [string]$Act, [string]$Source = 'winget', [string[]]$Notes = @()) {
+  if ($Act -eq 'upgrade' -and $Route.Via -eq 'vendor' -and (Invoke-VendorWay $Label $Row $Route.Way $Route.Found 'upgrade').Rc -eq 0) { return $true }
+  if ($noWinget) { Write-Host "  ! $Label — winget 이 없어 못 올렸다" -ForegroundColor Yellow; return $false }
+  Invoke-WingetUpgrade $Label $Row.Id $Source $Act $Notes
+  return $false
+}
+
+# 벤더 판으로 「최신」인 행을 winget 목록은 「올릴 것」으로 댄다 — winget 이 더 높은 판을 댄다는 말이다. 노란 줄만 남기고 winget 으로는
+#   안 올린다 — 거기까지 가면 winget 사본이 틀린 날 같은 판을 회차마다 다시 까는 고리(결정 0179)가 다시 돈다. 벤더가 늦는지 winget 이
+#   틀렸는지는 사람이 본다.
+function Write-WingetAhead([string]$Label, $Route) {
+  if ($Route.Via -eq 'vendor' -and $Route.Ahead) {
+    Write-Host "  ! $Label — winget 목록은 이보다 높은 판을 올릴 것으로 댄다 · 벤더 판 $($Route.Found.Ver) 을 따르고 winget 으로는 안 올린다" -ForegroundColor Yellow
+  }
+}
+
+# 벤더 사본으로 갈음한 winget 사본을 걷는다 — 「프로그램은 지우지 않는다」의 예외 하나다(행의 `RetireWinget`). 부르는 쪽이 조건 셋을 다
+#   세운 뒤에만 부른다: 같은 도구를 더 높은 벤더 판으로 갈았다(`upgrade` 로 벤더 길이 섰다) · 새 사본이 도는 것을 쟀다(zip 길은 갈기 전에
+#   잰다) · 갈기 전에 돌던 사본이 winget 꾸러미 자리(`%LOCALAPPDATA%\Microsoft\WinGet\`)에 있었다. 걷는 것은 이 행의 winget id 하나다
+#   (`--id … --exact`). 못 걷으면 노란 줄과 손으로 칠 명령이다.
+function Remove-WingetCopy($Row) {
+  $hand = "winget uninstall --id $($Row.Id) --exact --source winget"
+  if ($noWinget) { Write-Host "  ! $($Row.Label) — winget 이 없어 winget 사본을 못 걷었다 · 손으로: $hand" -ForegroundColor Yellow; return }
+  Say-Busy $Row.Label 'remove' @('winget', "$($Row.Id) — 벤더 사본이 섰다")
+  $log = [IO.Path]::GetTempFileName()
+  $rc = Invoke-LoggedCapped 'winget' @('uninstall', '--id', $Row.Id, '--exact', '--source', 'winget', '--silent',
+                                       '--accept-source-agreements', '--disable-interactivity') $log $WingetRemoveCap
+  if ($rc -eq -2) { Add-ProbeOverflow "winget uninstall --id $($Row.Id)" $WingetRemoveCap }
+  if ($rc -eq 0) { Write-Host "  $($Row.Label) — winget 사본을 걷었다 ($($Row.Id))" }
+  else {
+    Write-Host "  ! $($Row.Label) — winget 사본을 못 걷었다(winget 이 $(Format-ProbeWhy $rc $WingetRemoveCap)서) · 손으로: $hand" -ForegroundColor Yellow
+    Show-Log $log 3
+  }
+  Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
+}
+
+# 벤더 zip 사본이 그 이름으로 잡히나 — 다른 자리의 같은 이름이 PATH 앞에 서 있으면 노란 줄로 그 자리를 댄다. 새 터미널도 같은 차례로
+#   찾는다(사용자 PATH 의 앞 줄이 이긴다).
+function Write-ShadowedCopy($Row) {
+  $src = "$((Get-Command $Row.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
+  $bin = [Environment]::ExpandEnvironmentVariables("$($Row.PathDir)").TrimEnd('\')
+  if ($src -and -not $src.StartsWith("$bin\", [StringComparison]::OrdinalIgnoreCase)) {
+    Write-Host "  ! $($Row.Label) — 새 사본은 $bin 에 섰는데 이름으로는 $src 가 먼저 잡힌다 · 그 사본을 걷거나 PATH 에서 뺀다" -ForegroundColor Yellow
+  }
+}
+
+# 앱의 제 갱신기(행의 `Upgrade` — `Via = 'updater'`)를 한 번 부르고 결과 한 줄을 낸다 — 갱신기 파일이 없으면 `$false`, 불렀으면 `$true`.
+#   새 판이 없으면 갱신기는 받지 않고 끝난다. 새 판은 앱을 다시 열 때 뜬다 — 떠 있는 앱은 제 판 그대로라 그 말을 붙인다.
 function Invoke-AppUpdater($A, [string]$Before) {
-  $exe = [Environment]::ExpandEnvironmentVariables($A.Updater.Exe)
+  $exe = [Environment]::ExpandEnvironmentVariables($A.Upgrade.Exe)
   if (-not (Test-Path -LiteralPath $exe)) { return $false }
   Say-Busy $A.Label 'upgrade' @('앱 갱신기', "지금 $(if ($Before) { $Before } else { '판 모름' })")
   $log = [IO.Path]::GetTempFileName()
-  $rc = Invoke-LoggedCapped $exe @($A.Updater.Args) $log $AppUpdaterCap
-  if ($rc -eq -2) { Add-ProbeOverflow "$exe $($A.Updater.Args -join ' ')" $AppUpdaterCap }
+  $rc = Invoke-LoggedCapped $exe @($A.Upgrade.Args) $log $AppUpdaterCap
+  if ($rc -eq -2) { Add-ProbeOverflow "$exe $($A.Upgrade.Args -join ' ')" $AppUpdaterCap }
   $after = (Measure-DesktopApp $A).Ver
   if ($rc -ne 0) {
     Write-Host "  ! 앱 갱신기가 $(Format-ProbeWhy $rc $AppUpdaterCap) — 판은 앱이 스스로 따라간다 $(Format-VerPart $after)" -ForegroundColor Yellow
@@ -3781,7 +4077,7 @@ function Measure-DesktopApp($A) {
     return @{ State = 'no'; Ver = ''; Probe = ''; Why = '' }
   }
   $probe = "winget list --id $($A.Id) --exact --source $($A.Source)"
-  if ($A.Via -ne 'winget' -or $noWinget) { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = 'winget 이 없어 안 불려' } }
+  if (-not $A.Id -or $noWinget) { return @{ State = 'unmeasured'; Ver = ''; Probe = $probe; Why = 'winget 이 없어 안 불려' } }
   # `$WingetListCap` 울타리를 두른다 — 멎은 `winget list` 하나가 설치를 영구히 세우지 않게(#26). 넘기면 「못 쟀다」다.
   $tl = [IO.Path]::GetTempFileName()
   $rc = Invoke-LoggedCapped 'winget' @('list','--id',$A.Id,'--exact','--source',$A.Source) $tl $WingetListCap
@@ -3860,16 +4156,12 @@ function Install-DesktopApp($A) {
   Write-Host ''
   Write-Host "  $($A.Label)" -ForegroundColor Cyan
   $m = Measure-DesktopApp $A
-  # 벤더 직통 주소(`Latest`)가 있는 행은 그 주소가 넘기는 판을 최신 판으로 삼고 winget 목록에는 안 묻는다 — 판을 못 읽으면 목록으로
-  #   물러선다(claude-config 결정 0179). 판은 깔린 앱을 올릴지 가를 때만 묻는다 — 깔 때는 그 주소에서 늘 최신을 받는다.
-  $vendor = ''
-  if ($m.State -eq 'yes' -and -not $NoUpgrade -and (Test-VendorRow $A)) { $vendor = Get-VendorLatest $A.Latest }
-  $listed = if ($vendor) { $null } else { Get-Listed $A.Id }
-  # 올리기는 winget 길의 행만 한다 — `NoSelfUpgrade` 행(스토어 앱)은 있으면 둔다.
-  $deskAct = Get-InstallAction $m.State $m.Ver $vendor $listed $true `
-               ($NoUpgrade -or $noWinget -or $A.Via -ne 'winget' -or [bool]$A.NoSelfUpgrade)
-  # 뒷길이 있으면 winget 이 없어도 여기서 안 끝낸다 — 뒷길은 winget 을 안 탄다. 깔린 앱은 winget 없이도 「있음」이다.
-  if (($deskAct -eq 'install' -or $deskAct -eq 'hold') -and $A.Via -eq 'winget' -and $noWinget -and -not $A.Fallback) {
+  # 올리는 길은 한 자리가 가른다(`Get-UpgradeRoute`) — 갱신기 · 벤더 판 · winget 목록 · 올리지 않음. 깔 때는 길 목록을 앞에서부터 간다.
+  $route = Get-UpgradeRoute $A $m.State
+  $deskAct = Get-InstallAction $m.State $m.Ver $route.Found.Ver $route.Listed $true $route.Off
+  $ways = @(Get-RowWays $A)
+  # winget 을 안 타는 길이 있으면 winget 이 없어도 여기서 안 끝낸다. 깔린 앱은 winget 없이도 「있음」이다.
+  if (($deskAct -eq 'install' -or $deskAct -eq 'hold') -and $noWinget -and -not @($ways | Where-Object { $_.Via -ne 'winget' }).Count) {
     Write-Host '  ! winget 이 없어 못 깐다' -ForegroundColor Red
     $script:Fails.Add("$($A.Label) (winget 이 없다)")
     return
@@ -3882,13 +4174,11 @@ function Install-DesktopApp($A) {
   }
   if ($deskAct -ne 'install') {
     if ($deskAct -eq 'present')    { Write-Host "  있음  $(Format-VerPart $m.Ver)" }
-    # 제 갱신기가 있는 행은 winget 이 아니라 그것이 올린다 — 갱신기 파일이 없으면(다른 꼴로 깔린 앱) 아래 winget 길로 간다.
-    elseif ($A.Updater -and (Invoke-AppUpdater $A $m.Ver)) { }
-    elseif ($deskAct -eq 'latest') { Write-Host "  최신  $(Format-VerPart $m.Ver)" }
+    # 제 갱신기가 있는 행은 winget 이 아니라 그것이 올린다 — 갱신기 파일이 없는 PC(다른 꼴로 깔린 앱)는 길이 가른 대로 간다.
+    elseif ($route.Via -eq 'updater') { [void](Invoke-AppUpdater $A $m.Ver) }
+    elseif ($deskAct -eq 'latest') { Write-Host "  최신  $(Format-VerPart $m.Ver)"; Write-WingetAhead $A.Label $route }
     elseif ($deskAct -eq 'upgrade' -or $deskAct -eq 'upcheck') {
-      # 벤더 직통은 두 판을 다 알고 새 판이 높을 때(`upgrade`)만 탄다 — 판을 모르는 채(`upcheck`) 받으면 같은 판을 회차마다 다시 깐다.
-      $vrc = if ($deskAct -eq 'upgrade' -and $vendor) { Invoke-VendorSetup $A.Label $A 'upgrade' } else { $null }
-      if ($vrc -ne 0) { Invoke-WingetUpgrade $A.Label $A.Id $A.Source $deskAct }
+      [void](Invoke-RowUpgrade $A.Label $A $route $deskAct $A.Source)
       Write-UpgradeResult $A.Label $m.Ver (Measure-DesktopApp $A).Ver
     }
     $script:InstalledAppRows[$A.Label] = $A
@@ -3897,69 +4187,44 @@ function Install-DesktopApp($A) {
   # 짝이 먼저다 — 앱이 없을 때만 온다(앱이 섰으면 짝도 선 것이라 위에서 나갔다). 짝이 지면 앱을 시도하지 않는다 — 시도하면
   #   실패가 앱 이름으로 찍혀 까닭이 한 겹 숨는다.
   if ($A.Requires -and -not (Install-Requires $A)) { return }
-  # 길이 둘일 수 있다 — 앞길부터, 지면 뒷길. 뒷길은 제 몫(`Via`·`Url`·`SilentArgs`)만 들고 이름 둘(`App`·`Label`)은 앞길에서
-  #   물려받는다.
-  #   벤더 직통 주소가 있는 행은 그 주소가 맨 앞길이다 — 늘 최신을 받고, 막히면 winget 이 받는다.
-  $ways = @($A)
-  if (Test-VendorRow $A) {
-    $ways = @(@{ App = $A.App; Label = $A.Label; Via = 'setup'; Url = $A.Latest; SilentArgs = $A.SilentArgs; Signer = $A.Signer; Vendor = $true }) + $ways
-  }
-  if ($A.Fallback) { $ways += (@{ App = $A.App; Label = $A.Label } + $A.Fallback) }
-
+  # 길 목록을 앞에서부터 간다 — 지면 다음 길이다. 판을 읽는 벤더 길은 이 PC 에서 탈 때만(`Get-VendorWay`) 가고, 늘 최신을 받는다.
+  $vendorHere = Get-VendorWay $A $m.State
   $al = $null
   $rc = $null
+  $wayWhy = ''
   foreach ($W in $ways) {
    if ($al) { Remove-Item $al -ErrorAction SilentlyContinue }
    $al = [IO.Path]::GetTempFileName()
+   $wayWhy = ''
    if ($W.Via -eq 'winget') {
     if ($noWinget) { Write-Host '      · winget 이 없다 — 다음 길로'; continue }
     # 오래 걸리는 걸음은 들어가기 전에 말한다 — winget 은 `--silent` 로 수백 MB 를 받는 1~2분 동안 화면을 안 바꿔, 「도는 중」과
     #   「멈췄다」가 같은 화면이 된다. 소스는 기본(`winget`)이 아닐 때만 댄다(「winget · winget」이 안 찍히게).
-    $via = if ($W.Source -and $W.Source -ne 'winget') { "winget · $($W.Source)" } else { 'winget' }
+    $via = if ($A.Source -and $A.Source -ne 'winget') { "winget · $($A.Source)" } else { 'winget' }
     Say-Busy $A.Label 'install' @($via, '수백 MB · 1~2분 걸릴 수 있다')
-    $rc = Invoke-Logged 'winget' (@('install','--id',$W.Id,'--source',$W.Source) + $WGOpts) $al
+    $rc = Invoke-Logged 'winget' (@('install','--id',$A.Id,'--source',$A.Source) + $WGOpts) $al
    } else {
-    # 받기와 돌리기를 가른다 — 못 받은 것과 받았는데 진 것은 다른 명제라, 섞으면 회선이 막은 자리에서 「설치가 실패했다」만 남는다.
-    $exe = Join-Path ([IO.Path]::GetTempPath()) ("{0}Setup.exe" -f $W.App)
-    try {
-      # 받아 놓을 파일 이름을 댄다 — 주소의 끝마디는 제품 번호(`9PLM9XGG6VKS`)일 수 있어 받는 사람에게 뜻이 없다.
-      Say-Busy $A.Label 'fetch' @((Split-Path $exe -Leaf))
-      Get-Download $W.Url $exe
-    } catch {
-      # 뒤에 길이 남았으면 거기로 간다 — 벤더 주소를 막은 회선에서도 winget 이 받는다.
-      if ($W -ne $ways[-1]) {
-        Write-Host "      · 설치본을 못 받았다 — $(Say-Why $_) · 다음 길로" -ForegroundColor Yellow
-        continue
-      }
-      Write-Host '  ! 설치본을 못 받았다' -ForegroundColor Red
-      Say-Why $_
-      $script:Fails.Add("$($A.Label) (설치본을 못 받았다)")
-      Remove-Item $al -ErrorAction SilentlyContinue
-      return
-    }
-    # 벤더 직통 길은 서명이 그 벤더의 것일 때만 돌린다 — 어긋나면 다음 길(winget)로 간다(`Test-VendorSigner`).
-    if ($W.Vendor) {
-      $bad = Test-VendorSigner $exe $W.Signer
-      if ($bad) {
-        Write-Host "      · 벤더 설치본을 안 돌렸다 — $bad · 다음 길로" -ForegroundColor Yellow
-        Remove-Item $exe -ErrorAction SilentlyContinue
-        continue
-      }
-    }
-    Say-Busy $A.Label 'install' @('설치본', '몇 분 걸릴 수 있다')
-    $pr = Start-Process -FilePath $exe -ArgumentList $W.SilentArgs -PassThru -Wait
-    $rc = $pr.ExitCode
-    Remove-Item $exe -ErrorAction SilentlyContinue
+    if ($W.Read -and $W -ne $vendorHere) { continue }
+    # 받기 · 울타리 · 돌리기는 한 손이 가르고 진 까닭을 댄다 — 못 받은 것과 받았는데 진 것은 다른 명제라, 섞으면 회선이 막은 자리에서
+    #   「설치가 실패했다」만 남는다.
+    $found = if ($W.Read) { Get-VendorLatest $W } else { @{ Ver = ''; Url = $W.Url; Sha512 = '' } }
+    $vr = Invoke-VendorWay $A.Label $A $W $found 'install'
+    $rc = $vr.Rc
+    $wayWhy = $vr.Why
    }
    if (Test-DesktopApp $A) { break }
-   if ($W -ne $ways[-1]) { Write-Host ('      · 이 길이 졌다 (낸 값 {0}) — 다음 길로' -f $rc) }
+   if ($W -ne $ways[-1]) { Write-Host ('      · 이 길이 졌다{0} — 다음 길로' -f $(if ($null -ne $rc) { " (낸 값 $rc)" } else { '' })) }
   }
   if (Test-DesktopApp $A) {
     Write-Host '  깔았다' -ForegroundColor Green
     $script:JustInstalledApps[$A.App] = $true
     $script:InstalledAppRows[$A.Label] = $A
     # winget 이 깐 판은 벤더보다 늦을 수 있다 — 제 갱신기가 있는 행은 깐 자리에서 바로 최신으로 올린다.
-    if ($A.Updater) { [void](Invoke-AppUpdater $A (Measure-DesktopApp $A).Ver) }
+    if ($A.Upgrade.Via -eq 'updater') { [void](Invoke-AppUpdater $A (Measure-DesktopApp $A).Ver) }
+  } elseif ($null -eq $rc -and $wayWhy) {
+    # 마지막 길이 받기 · 울타리 · 띄우기에서 졌다 — 그 까닭은 위 노란 줄이 댔다.
+    Write-Host "  ! 설치 실패 — 마지막 길이 졌다: $wayWhy" -ForegroundColor Red
+    $script:Fails.Add("$($A.Label) ($wayWhy)")
   } elseif ($rc -eq 0) {
     # 종료 0 인데 앱이 없다 = 설치본이 제 일을 남에게 넘긴 것이다(스토어 스텁이 스토어 창을 띄우고 빠지는 갈래). 「설치 실패」로
     #   찍으면 거짓이고 사람이 눌러야 할 일 때문에 설치가 빨갛게 끝난다 — 진짜 실패는 0 이 아닌 값을 낸다.
@@ -4317,53 +4582,81 @@ function Install-NpmCli($Rows) {
 #   재는 자는 `winget list` 가 아니라 행의 `Arg`(없으면 `--version`)다 — CLI 는 사람이 쓸 이름이 실제로 서는가가 판정이라(winget 이 「깔았다」 해도
 #   PATH 에 안 서면 못 쓴다), GUI 라 PATH 로 못 재는 데스크탑 앱(`Measure-DesktopApp`)과 다르다. winget 밖의 길로 깐 `agy` 는
 #   winget 목록에 안 올라 「최신」으로 지나간다 — 도구는 멀쩡히 서 있으니 실패로 안 찍는다(`$Clis` 곁말).
-#   `$Scope` 가 `machine` 인 행(MSI)은 「프로그램」 걸음의 기계 범위 행과 같은 문을 지난다 — 승인 창이 뜨는 PC 인데 누를 사람이 없는
-#   판이면 깔지도 올리지도 않고 노란 줄로 미룬다(결정 0146 · PAISetup #34 ③).
-function Install-WingetCli([string]$Id, [string]$Cmd, [string]$Label, [string]$Arg = '--version', [string]$Scope = '') {
-  if (-not $Arg) { $Arg = '--version' }
+#   `Scope` 가 `machine` 인 행(MSI)은 「프로그램」 걸음의 기계 범위 행과 같은 문(`Test-ElevationDoor`)을 지난다.
+#   벤더 길(`Ways`)이 있는 행은 그 길이 앞이다 — 올리기는 `Get-UpgradeRoute`, 깔기는 벤더 길 다음 winget 이다. zip 으로 고정 자리에 선
+#   사본이 갈음한 winget 사본은 행이 `RetireWinget` 을 들 때만 걷는다(`Remove-WingetCopy`의 조건 셋).
+# 깐 뒤 한 번만 잰다 — 프로그램 걸음이 기다리는 까닭(winget 이 일을 떼어 놓고 먼저 돌아온다)은 exe 설치본(VS Code)에서 본 것이고, 이 표의
+#   winget 줄은 winget 이 제 손으로 푸는 휴대용 꾸러미와 msiexec 가 끝까지 도는 MSI 다 — 이 꼴에서 먼저 돌아온 것은 아직 못 봤다. 벤더 zip 은
+#   이 손이 푼 뒤에 잰다.
+function Install-WingetCli($C) {
+  $arg = if ($C.Arg) { $C.Arg } else { '--version' }
   # ⚠ **못 쟀으면 깔지 않는다** — 넘김이나 선 이름의 실패를 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 · 0145 · 0151).
-  $cliRuns = Measure-Runs $Cmd $Arg
-  $b = if ($cliRuns -eq 'yes') { Get-Ver $Cmd $Arg } else { '' }
-  $cliAct = Get-InstallAction $cliRuns $b '' (Get-Listed $Id) $true ($NoUpgrade -or $noWinget)
+  $cliRuns = Measure-Runs $C.Cmd $arg
+  $b = if ($cliRuns -eq 'yes') { Get-Ver $C.Cmd $arg } else { '' }
+  $route = Get-UpgradeRoute $C $cliRuns
+  $cliAct = Get-InstallAction $cliRuns $b $route.Found.Ver $route.Listed $true $route.Off
   if ($cliAct -eq 'hold') {
-    Add-UnmeasuredStep $Label "$Cmd $Arg" '깔지도 올리지도 않았다' '' "winget install --id $Id --force"
+    Add-UnmeasuredStep $C.Label "$($C.Cmd) $arg" '깔지도 올리지도 않았다' '' "winget install --id $($C.Id) --force"
     return
   }
-  if ($cliAct -eq 'present') { Write-Host "  $Label — 있음 $(Format-VerPart $b)"; return }
-  if ($cliAct -eq 'latest')  { Write-Host "  $Label — 최신  $(Format-VerPart $b)"; return }
-  if ($Scope -eq 'machine' -and -not $noWinget -and
-      (Get-ElevationGo (Read-ElevationState) ([bool]((-not ($Yes -and $NoLaunch)) -and [Environment]::UserInteractive))) -eq 'later') {
-    Write-Host "  ! $Label — 관리자 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이라 안 $(if ($cliAct -eq 'install') { '깔았다' } else { '올렸다' }) · 설치 창으로 다시 누르면 승인 창이 한 번 뜬다" -ForegroundColor Yellow
-    return
-  }
+  if ($cliAct -eq 'present') { Write-Host "  $($C.Label) — 있음 $(Format-VerPart $b)"; return }
+  if ($cliAct -eq 'latest')  { Write-Host "  $($C.Label) — 최신  $(Format-VerPart $b)"; Write-WingetAhead $C.Label $route; return }
+  if ($C.Scope -eq 'machine' -and -not $noWinget -and -not (Test-ElevationDoor $C.Label $cliAct (Test-Attended) ($cliAct -eq 'install'))) { return }
   if ($cliAct -eq 'upgrade' -or $cliAct -eq 'upcheck') {
-    Invoke-WingetUpgrade $Label $Id 'winget' $cliAct @("지금 $b")
+    $srcBefore = "$((Get-Command $C.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
+    # 고정 자리의 벤더 사본이 이미 그 판이면 다시 받지 않는다 — 이름으로 잰 판은 앞 PATH 줄의 winget 사본 것이라, 그 사본을 못 걷은
+    #   PC 는 이 가름이 없으면 회차마다 같은 zip 을 받는다. 그 사본이 판을 찍었으면 도는 것도 잰 것이라 아래 걷기의 조건이 선다.
+    $placed = if ($cliAct -eq 'upgrade' -and $route.Via -eq 'vendor' -and $route.Way.Unzip -and $C.PathDir) {
+      Join-Path ([Environment]::ExpandEnvironmentVariables("$($C.PathDir)")) $C.Cmd } else { '' }
+    $placedVer = if ($placed -and (Test-Path -LiteralPath "$placed.exe")) { ConvertTo-Ver (Get-Ver $placed $arg) } else { $null }
+    $foundVer = ConvertTo-Ver $route.Found.Ver
+    $vendorDid = if ($placedVer -and $foundVer -and $placedVer -ge $foundVer) { $true }
+                 else { Invoke-RowUpgrade $C.Label $C $route $cliAct 'winget' @("지금 $b") }
+    if ($vendorDid -and $route.Way.RetireWinget -and $cliAct -eq 'upgrade' -and $srcBefore -like "$env:LOCALAPPDATA\Microsoft\WinGet\*") {
+      Remove-WingetCopy $C
+    }
     Update-RuntimePath
-    Write-UpgradeResult $Label $b (Get-Ver $Cmd $Arg)
+    if ($vendorDid -and $route.Way.Unzip) { Write-ShadowedCopy $C }
+    Write-UpgradeResult $C.Label $b (Get-Ver $C.Cmd $arg)
     return
   }
   if ($cliAct -ne 'install') { return }
-  if ($noWinget) {
-    Write-Host "  ! winget 이 없어 $Label 를 못 깐다" -ForegroundColor Red
-    $Fails.Add("$Label (winget 이 없다)")
-    return
+  # 벤더 길이 있으면 거기서 먼저 깐다 — 늘 최신이다. 판을 못 읽었거나 진 길은 winget 이 받는다.
+  $placed = $null
+  $vw = Get-VendorWay $C $cliRuns
+  if ($vw) {
+    $found = Get-VendorLatest $vw
+    if (-not $found.Url) { Write-Host '      · 벤더 판을 못 읽었다 — winget 으로' -ForegroundColor Yellow }
+    elseif ((Invoke-VendorWay $C.Label $C $vw $found 'install').Rc -eq 0) { $placed = $vw }
   }
-  # 기계 범위 MSI 는 받고 까는 몇 분이 조용하다 — 「프로그램」 걸음처럼 미리 말한다(그 침묵을 멎음으로 읽고 창을 닫는다)
-  Say-Busy $Label 'install' @('winget', $(if ($Scope -eq 'machine') { '몇 분 조용할 수 있다' }))
-  $wl = [IO.Path]::GetTempFileName()
-  $rc = Invoke-Logged 'winget' (@('install','--id',$Id) + $WG) $wl
-  # 깐 직후에는 이 창이 그 자리를 모른다 — winget 이 portable 을 심으며 손댄 PATH 는 레지스트리에만 있다.
+  $wl = $null
+  $rc = 0
+  if (-not $placed) {
+    if ($noWinget) {
+      Write-Host "  ! winget 이 없어 $($C.Label) 를 못 깐다" -ForegroundColor Red
+      $Fails.Add("$($C.Label) (winget 이 없다)")
+      return
+    }
+    # 기계 범위 MSI 는 받고 까는 몇 분이 조용하다 — 「프로그램」 걸음처럼 미리 말한다(그 침묵을 멎음으로 읽고 창을 닫는다)
+    Say-Busy $C.Label 'install' @('winget', $(if ($C.Scope -eq 'machine') { '몇 분 조용할 수 있다' }))
+    $wl = [IO.Path]::GetTempFileName()
+    $rc = Invoke-Logged 'winget' (@('install','--id',$C.Id) + $WG) $wl
+  }
+  # 깐 직후에는 이 창이 그 자리를 모른다 — winget 이 portable 을 심으며 손댄 PATH 는 레지스트리에만 있고, 벤더 zip 의 자리(`PathDir`)는
+  #   배선이 이 창 끝에 붙인다.
   Update-RuntimePath
-  if (Test-Runs $Cmd $Arg) {
-    Write-Host "  $Label — 깔았다 $(Format-VerPart (Get-Ver $Cmd $Arg))" -ForegroundColor Green
+  if ($placed -and $placed.Unzip) { Write-ShadowedCopy $C }
+  if (Test-Runs $C.Cmd $arg) {
+    Write-Host "  $($C.Label) — 깔았다 $(Format-VerPart (Get-Ver $C.Cmd $arg))" -ForegroundColor Green
   } else {
     # 「됐다는데 안 잡힌다」를 「안 됐다」와 갈라 적는다 — winget 이 PATH 를 안 들어 준 자리이고, 다음에 어디를 팔지가 갈린다.
-    Write-Host "  ! $Label — 설치가 $rc 로 끝났는데 $Cmd 가 안 잡힌다 — 뱉은 끝 줄:" -ForegroundColor Red
-    Show-Log $wl
-    Write-Host "     새 터미널에서 다시 보고, 그래도 없으면:  winget install --id $Id --source winget"
-    $Fails.Add("CLI ($Label)")
+    $how = if ($placed) { '벤더 사본이 섰는데' } else { "설치가 $rc 로 끝났는데" }
+    Write-Host "  ! $($C.Label) — $how $($C.Cmd) 가 안 잡힌다$(if ($wl) { ' — 뱉은 끝 줄:' })" -ForegroundColor Red
+    if ($wl) { Show-Log $wl }
+    Write-Host "     새 터미널에서 다시 보고, 그래도 없으면:  winget install --id $($C.Id) --source winget"
+    $Fails.Add("CLI ($($C.Label))")
   }
-  Remove-Item $wl -ErrorAction SilentlyContinue
+  if ($wl) { Remove-Item $wl -ErrorAction SilentlyContinue }
 }
 
 # VC++ 런타임 파일의 자리 — 64 비트 `System32` 의 `msvcp140.dll`.
@@ -4435,6 +4728,43 @@ function Get-ElevationGo($State, [bool]$Attended) {
   return 'later'
 }
 
+# 승인 창을 눌러 줄 사람이 있는 판인가 — 창 없이 돈 판(로그온 자동 실행이 늘 넘기는 `-Yes -NoLaunch` · 끝의 「제공기능」 칸과 같은
+#   가름)이 아니고 누를 사람이 있는 세션(`UserInteractive` · `Ask-Restart` 와 같은 자)일 때다. 기계 범위 설치의 문이 이 답을 받는다.
+function Test-Attended {
+  return [bool]((-not ($Yes -and $NoLaunch)) -and [Environment]::UserInteractive)
+}
+
+# 기계 범위 설치(관리자 승격)의 문 — 프로그램 · winget CLI · VC++ 런타임이 이 한 손을 지난다(결정 0146). 걸어도 되면 참이고, 아니면
+#   까닭 한 줄을 찍고 거짓을 낸다(`Get-ElevationGo` 의 답대로):
+#   · `later` — 승인 창이 뜨는 PC 인데 누를 사람이 없는 판. 노란 줄이다 — 설치 창으로 다시 누르면 승인 창이 한 번 뜨고, 그 사이 빠진
+#     것은 끝 검증이 든다
+#   · `denied` — 이 PC 는 승격이 안 선다(표준 사용자의 자동 거절 · 승인 모드가 꺼진 PC). 걸면 회차마다 진다. `$Must`(안 하면 깨진 채로
+#     남는 일 — 없는 것 깔기 · 문턱 아래 VC++)면 빨간 줄 · `$Fails` 이고 IT 에 요청할 것을 댄다. 아니면(깔린 것 올리기) 노란 줄이다 —
+#     깔린 것은 그대로 돈다
+#   `$Why` 는 줄 머리에 붙일 지금 상태 · `$Ask` 는 IT 에 요청할 이름(비면 `$Label`) · `$Hand` 는 사람이 손으로 칠 명령 · `$Still` 은 못
+#   했을 때 그대로 서는 것이다.
+function Test-ElevationDoor([string]$Label, [string]$Act, [bool]$Attended, [bool]$Must,
+                            [string]$Why = '', [string]$Ask = '', [string]$Hand = '', [string]$Still = '') {
+  $go = Get-ElevationGo (Read-ElevationState) $Attended
+  if ($go -eq 'go') { return $true }
+  $did = if ($Act -eq 'install') { '안 깔았다' } else { '안 올렸다' }
+  $head = if ($Why) { "$Why · " } else { '' }
+  $tail = (@($Still, $(if ($Hand) { "손으로: $Hand" })) | Where-Object { $_ } | ForEach-Object { " · $_" }) -join ''
+  if ($go -eq 'later') {
+    Write-Host "  ! $Label — ${head}관리자 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이라 $did · 설치 창으로 다시 누르면 승인 창이 한 번 뜬다$tail" -ForegroundColor Yellow
+    return $false
+  }
+  $ask = if ($Ask) { $Ask } else { $Label }
+  $line = "  ! $Label — ${head}이 PC 는 관리자 승격이 안 서 $did$tail · IT 에 「$ask」 설치를 요청한다"
+  if ($Must) {
+    Write-Host $line -ForegroundColor Red
+    $Fails.Add("$Label (관리자 승격이 안 서는 PC — IT 에 요청)")
+  } else {
+    Write-Host $line -ForegroundColor Yellow
+  }
+  return $false
+}
+
 # VC++ 런타임을 `$VcRuntimeMin` 이상으로 세운다 — 판은 그 파일에서 읽고(`Measure-VcRuntime`), 할 일은 한 표(`Get-InstallAction`)가 가르고,
 #   승격은 `Get-ElevationGo` 가 가른다. `$Attended` 는 승인 창을 눌러 줄 사람이 있는 판인가다. 오르면 초록 한 줄, 못 올리면 그 까닭 ·
 #   그대로 서는 것 · 사람이 할 일을 한 줄로 말하고 `$Fails` 에 하나를 넣는다 — 승인 창이 뜨는데 사람이 없는 판은 노란 줄만 낸다(끝 검증의
@@ -4458,16 +4788,7 @@ function Install-VcRuntime([bool]$Attended) {
     $Fails.Add("$L (winget 이 없다)")
     return
   }
-  $elevGo = Get-ElevationGo (Read-ElevationState) $Attended
-  if ($elevGo -eq 'denied') {
-    Write-Host "  ! $L — $now · $VcRuntimeMin 보다 낮은데 이 PC 는 관리자 승격이 안 선다 · $still · IT 에 「Microsoft Visual C++ 재배포 가능 패키지(x64) $VcRuntimeMin 이상」을 요청한다" -ForegroundColor Red
-    $Fails.Add("$L (관리자 승격이 안 서는 PC — IT 에 요청)")
-    return
-  }
-  if ($elevGo -eq 'later') {
-    Write-Host "  ! $L — $now · $VcRuntimeMin 보다 낮다 · 관리자 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이라 안 올렸다 · 설치 창으로 다시 누르면 승인 창이 한 번 뜬다 (손으로: $hand)" -ForegroundColor Yellow
-    return
-  }
+  if (-not (Test-ElevationDoor $L $act $Attended $true "$now · $VcRuntimeMin 보다 낮다" "Microsoft Visual C++ 재배포 가능 패키지(x64) $VcRuntimeMin 이상" $hand $still)) { return }
   Say-Busy $L $act @('winget', $now, '관리자 승인이 들 수 있다')
   $log = [IO.Path]::GetTempFileName()
   $rc = Invoke-LoggedCapped 'winget' (@('install','--id',$VcRuntime.Id) + $WG) $log $VcRedistCap
@@ -6104,6 +6425,7 @@ $BusyVerbs = [ordered]@{
   upcheck = '갱신 확인중'
   fetch   = '받는중'
   wait    = '기다리는 중'
+  remove  = '걷는중'
 }
 
 # 사내에서만 뜻이 있는 이름 — **값이 주소가 아니라 프록시 걷기(`Test-OurProxyEntry`)가 못 가른다.** 저쪽은 「값이 죽은 포트를
@@ -6178,17 +6500,16 @@ foreach ($heldRow in @($Products | Where-Object { $PickHeld -contains $_.Key }))
 $PickKeys = @($PickKeys | Where-Object { $PickHeld -notcontains $_ })
 Write-Host ''
 
-# ── 파이썬 판 — **진본은 설정 저장소의 전역 도구 선언이고, 뽑는 자가 값 파일의 `#python-version` 으로 싣는다** ──
-# 그 값으로 `$Apps` 의 Python 줄 Id(`Python.Python.<판>`)를 짓는다 — winget 에는 판 없는 CPython id 가 없다. 배선
-#   (`Update-RuntimePath`)의 파이썬 폴더 이름도 이 Id 에서 판다.
-# ⚠ **못 정하면 Python 줄을 빼고 실패로 적는다** — 판을 박은 기본값을 두면 그것이 선언의 손사본이라 판을 올리는 날 조용히 갈린다.
-$PyVersion = Read-Directive $DistEnvFile 'python-version'
-if ($PyVersion -match '^\d+\.\d+$') {
-  ($Apps | Where-Object { $_.Cmd -eq 'python' }).Id = "Python.Python.$PyVersion"
-} else {
-  $Apps = @($Apps | Where-Object { $_.Cmd -ne 'python' })
-  Write-Host "  ! Python — 값 파일의 #python-version 이 없거나 꼴(예: 3.14)이 아니라 판을 못 정했다 — 깔지도 올리지도 않는다" -ForegroundColor Yellow
-  $Fails.Add('Python (값 파일에 #python-version 이 없어 판을 못 정했다)')
+# ── 판 줄 — **행이 판을 박지 않고 값 파일의 지시 한 줄(`LineFrom`)을 따른다** ──
+# 그 값(부판까지 · `3.14`)으로 행의 글자 칸을 채운다(`Set-RowLine`) — Id · 서는 폴더 · 벤더 길의 판 줄. 지시의 진본은 설정 저장소의 전역
+#   도구 선언이고 뽑는 자가 값 파일에 싣는다(파이썬은 `#python-version`).
+# ⚠ **못 정하면 그 줄을 빼고 실패로 적는다** — 판을 박은 기본값을 두면 그것이 선언의 손사본이라 판을 올리는 날 조용히 갈린다.
+foreach ($lineRow in @($Apps | Where-Object { $_.LineFrom })) {
+  $lineVal = Read-Directive $DistEnvFile $lineRow.LineFrom
+  if ($lineVal -match '^\d+\.\d+$') { $null = Set-RowLine $lineRow $lineVal; continue }
+  $Apps = @($Apps | Where-Object { $_ -ne $lineRow })
+  Write-Host "  ! $($lineRow.Name) — 값 파일의 #$($lineRow.LineFrom) 이 없거나 꼴(예: 3.14)이 아니라 판을 못 정했다 — 깔지도 올리지도 않는다" -ForegroundColor Yellow
+  $Fails.Add("$($lineRow.Name) (값 파일에 #$($lineRow.LineFrom) 이 없어 판을 못 정했다)")
 }
 
 # ── winget ────────────────────────────────────────────────────────────────────
@@ -6471,8 +6792,9 @@ if ($proxyRel -or $codexTpl) {
 # ⚠ **못 읽으면 앱마다 묻는 길로 물러선다.** 이 출력은 표라서 로케일 · 콘솔 너비 · 잘린 Id 에 흔들린다. 못 읽은 것을 「올릴 것
 #   없음」으로 읽으면 판이 낡은 채로 초록이 된다 — 그래서 `$upgradable` 의 `$null` 은 「못 쟀다」다.
 # ⚠ **winget 이 올리는 갈래는 다 이 목록에 묻는다** — 프로그램 · 고른 데스크탑 앱 · winget CLI. 목록에 없는 Id 를 「올릴 것
-#   없음」으로 읽으므로(`Get-Listed`), 여기서 안 물은 갈래는 목록을 받은 판에서 영영 안 올라간다(결정 0145). 벤더 직통 주소가 있는
-#   줄(`Latest`)도 묻는다 — 그 줄은 벤더가 넘기는 판으로 가르고, 그 판을 못 읽은 회차에만 이 답으로 물러선다(결정 0179).
+#   없음」으로 읽으므로(`Get-Listed`), 여기서 안 물은 갈래는 목록을 받은 판에서 영영 안 올라간다(결정 0145). 벤더 길이 있는 줄도
+#   묻는다 — 그 줄은 벤더 판으로 가르고, 그 판을 못 읽은 회차에만 이 답으로 물러서며, 읽은 회차에는 winget 이 더 높은 판을 대나만
+#   본다(`Write-WingetAhead`). 제 갱신기 행도 묻는다 — 갱신기 파일이 없는 PC 는 이 답으로 올린다. 올리지 않는 행(`Upgrade = none`)만 뺀다.
 $upgradable = $null
 # CLI 표에서 이번 설치가 깔 줄 — 고른 제품의 CLI 와, 제작자 칸을 켰을 때 그 칸의 스킬이 부르는 도구(`Maker`), 고른 제품이 쓰는
 #   꾸러미(`For`). 올리기를 묻는 이 덩어리와 「CLI」 걸음이 같은 목록을 쓴다.
@@ -6490,7 +6812,7 @@ if (-not ($NoUpgrade -or $noWinget)) {
   if ($urc -eq 0 -and $utxt -and $utxt.Length -gt 40) {
     # 이름 칸은 데스크탑 앱이 시작 메뉴 이름(`App`), winget CLI 가 제 글자(`Label`)다 — 판정은 Id 가 든다.
     $asked = @($Apps) +
-             @($DesktopApps | Where-Object { ($PickKeys -contains $_.Key) -and $_.Via -eq 'winget' -and -not $_.NoSelfUpgrade } |
+             @($DesktopApps | Where-Object { ($PickKeys -contains $_.Key) -and $_.Upgrade.Via -ne 'none' } |
                ForEach-Object { @{ Name = $_.App; Id = $_.Id } }) +
              @($CliPicks | Where-Object { $_.Via -eq 'winget' } |
                ForEach-Object { @{ Name = $_.Label; Id = $_.Id } })
@@ -6538,51 +6860,40 @@ foreach ($app in $Apps) {
   if ($NoDevTools -and $app.Need -eq 'dev') {
     Write-Host "  $($app.Name) — 개발도구를 껐지만 깐다 ($($needPythonWhy -join ' · '))"
   }
-  # 할 일은 한 자리(`Get-InstallAction`)가 가른다 — 올릴지는 맨 앞에서 한 번에 받은 목록이, 못 받았으면 앱마다 묻는다.
-  #   판(`Get-Ver`)은 화면에만 쓴다 — 견주기는 winget 이 제 기록으로 한다.
+  # 할 일은 한 자리(`Get-InstallAction`)가 가른다. 올리는 길은 `Get-UpgradeRoute` 가 가른다 — 벤더 판을 읽은 줄은 그 판이 최신 판이고,
+  #   못 읽은 줄은 맨 앞에서 한 번에 받은 「올릴 것」 목록이(못 받았으면 앱마다 묻는다) 가른다. winget 목록은 남이 옮겨 적는 사본이라 새
+  #   판에 늦고, 판 번호와 설치본이 어긋난 채 머물면 같은 판을 회차마다 다시 깐다(claude-config 결정 0179).
   # ⚠ **못 쟀으면 깔지도 올리지도 않는다** — 넘김이나 선 이름의 실패를 「없다」로 읽으면 깔린 것 위에 `winget install` 을 돌린다(결정 0141 ·
   #   0145 · 0151 · PAISetup #37).
   $appRuns = Measure-Runs $app.Cmd $app.Arg
-  $before  = if ($appRuns -eq 'yes') { Get-Ver $app.Cmd $app.Arg } else { '' }
-  # 벤더 직통 주소(`Latest`)가 있는 줄은 그 주소가 넘기는 판을 최신 판으로 삼고 winget 목록에는 안 묻는다 — 판을 못 읽으면 목록으로
-  #   물러선다(claude-config 결정 0179). winget 목록은 남이 옮겨 적는 사본이라 새 판에 늦고, 판 번호와 설치본이 어긋난 채 머물면
-  #   같은 판을 회차마다 다시 깐다.
-  $useVendor = Test-VendorRow $app $appRuns
-  $vendor = if ($useVendor -and $appRuns -eq 'yes' -and -not $NoUpgrade) { Get-VendorLatest $app.Latest } else { '' }
-  $listed = if ($vendor) { $null } else { Get-Listed $app.Id }
-  $appAct  = Get-InstallAction $appRuns $before $vendor $listed $true ($NoUpgrade -or ($noWinget -and -not $vendor))
+  $before  = if ($appRuns -eq 'yes') { Get-Ver $app.Cmd $app.Arg $app.VerArgs } else { '' }
+  $route   = Get-UpgradeRoute $app $appRuns
+  $appAct  = Get-InstallAction $appRuns $before $route.Found.Ver $route.Listed $true $route.Off
   if ($appAct -eq 'hold') {
     Add-UnmeasuredStep $app.Name "$($app.Cmd) $($app.Arg)" '깔지도 올리지도 않았다' '' "winget install --id $($app.Id) --force"
     continue
   }
   if ($appAct -eq 'present') { Write-Host "  $($app.Name) — 있음  $(Format-VerPart $before)"; continue }
-  if ($appAct -eq 'latest')  { Write-Host "  $($app.Name) — 최신  $(Format-VerPart $before)"; continue }
-  # 기계 범위 행 — 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이면 걸지 않는다(사람을 기다리며 서지 않게 · 누를 사람이 있나는 결정 0146 과 같은 자)
-  if ($app.Scope -eq 'machine' -and -not $noWinget -and
-      (Get-ElevationGo (Read-ElevationState) ([bool]((-not ($Yes -and $NoLaunch)) -and [Environment]::UserInteractive))) -eq 'later') {
-    Write-Host "  ! $($app.Name) — 관리자 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이라 안 $(if ($appAct -eq 'install') { '깔았다' } else { '올렸다' }) · 설치 창으로 다시 누르면 승인 창이 한 번 뜬다" -ForegroundColor Yellow
-    continue
-  }
+  if ($appAct -eq 'latest')  { Write-Host "  $($app.Name) — 최신  $(Format-VerPart $before)"; Write-WingetAhead $app.Name $route; continue }
+  # 기계 범위 행 — 승격이 이 판에 안 서면 걸지 않는다(사람을 기다리며 서지 않게 · 회차마다 지지 않게 · 결정 0146 과 같은 문)
+  if ($app.Scope -eq 'machine' -and -not $noWinget -and -not (Test-ElevationDoor $app.Name $appAct (Test-Attended) ($appAct -eq 'install'))) { continue }
   if ($appAct -eq 'upgrade' -or $appAct -eq 'upcheck') {
-    # 벤더 직통은 두 판을 다 알고 새 판이 높을 때(`upgrade`)만 탄다 — 판을 모르는 채(`upcheck`) 받으면 같은 판을 회차마다 다시 깐다.
-    $vrc = if ($appAct -eq 'upgrade' -and $vendor) { Invoke-VendorSetup $app.Name $app 'upgrade' } else { $null }
-    if ($vrc -ne 0) {
-      if ($noWinget) { Write-Host "  ! $($app.Name) — winget 이 없어 못 올렸다" -ForegroundColor Yellow }
-      else { Invoke-WingetUpgrade $app.Name $app.Id 'winget' $appAct @("지금 $before") }
-    }
+    [void](Invoke-RowUpgrade $app.Name $app $route $appAct 'winget' @("지금 $before"))
     Update-RuntimePath
-    Write-UpgradeResult $app.Name $before (Get-Ver $app.Cmd $app.Arg)
+    Write-UpgradeResult $app.Name $before (Get-Ver $app.Cmd $app.Arg $app.VerArgs)
     continue
   }
   if ($appAct -ne 'install') { continue }
 
-  # 벤더 직통 주소가 있으면 거기서 먼저 깐다 — 늘 최신이다. 못 받았거나 설치본이 0 이 아닌 값으로 끝나면 winget 으로 간다.
+  # 벤더 길이 있으면 거기서 먼저 깐다 — 늘 최신이다. 판을 못 읽었거나 받기 · 울타리 · 설치본이 지면 winget 으로 간다.
   $rc = $null
   $via = 'winget'
   $log = $null
-  if ($useVendor) {
-    $rc = Invoke-VendorSetup $app.Name $app 'install'
-    if ($rc -eq 0) { $via = '벤더 설치본' } else { $rc = $null }
+  $vw = Get-VendorWay $app $appRuns
+  if ($vw) {
+    $found = Get-VendorLatest $vw
+    if (-not $found.Url) { Write-Host '      · 벤더 판을 못 읽었다 — winget 으로' -ForegroundColor Yellow }
+    elseif ((Invoke-VendorWay $app.Name $app $vw $found 'install').Rc -eq 0) { $rc = 0; $via = '벤더 설치본' }
   }
   if ($null -eq $rc) {
     if ($noWinget) {
@@ -6646,11 +6957,10 @@ if ($repoUrl -and -not $NoDevTools -and (Test-Runs 'git' '--version') -and (Get-
 # ── VC++ 런타임 — 파이썬이 서는 판이면 그 C++ 확장이 싣는 런타임을 `$VcRuntimeMin` 이상으로 세운다 (claude-config 결정 0146) ──
 # 파이썬 칸과 같은 문이다 — 개발도구를 끄고 파이썬이 필요한 까닭도 없는 판에는 이 런타임을 실을 것이 없고, 기계 범위 설치라 관리자
 #   승격이 드는 걸음을 괜히 걸지 않는다. 끝 검증의 그 줄도 이 값을 읽는다.
-# 승인 창을 눌러 줄 사람이 있나는 이 설치기가 이미 쓰는 두 자로 가른다 — 창 없이 돈 판(로그온 자동 실행이 늘 넘기는 `-Yes -NoLaunch` ·
-#   끝의 「제공기능」 칸과 같은 가름)과 누를 사람이 없는 세션(`UserInteractive` · `Ask-Restart` 와 같은 자).
+# 승인 창을 눌러 줄 사람이 있나는 기계 범위 행들과 같은 자(`Test-Attended`)가 가른다.
 $wantVcRuntime = [bool](-not $NoDevTools -or $needPython)
 if ($wantVcRuntime) {
-  Install-VcRuntime ([bool]((-not ($Yes -and $NoLaunch)) -and [Environment]::UserInteractive))
+  Install-VcRuntime (Test-Attended)
 }
 
 # ── 데스크탑 앱 설치 — **켤지는 값 파일이, 언제는 행이, 무엇을은 제품 칸이 정한다** ──────
@@ -6907,7 +7217,7 @@ if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' 
 # npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
 $npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
 if ($npmCliPicks.Count) { Install-NpmCli $npmCliPicks }
-foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c.Id $c.Cmd $c.Label $c.Arg $c.Scope }
+foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c }
 
 # 사외는 여기서 로그인 길을 댄다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다. 사내에서 심은 회사 연결이 남아 있으면 그
 #   로그인이 안 서는데, 그 연결은 「사내 연결」 걸음의 「Codex · 안티그래비티 설정」 칸이 걷고 못 걷으면 그 칸이 제 줄을 세운다.
