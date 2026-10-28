@@ -46,7 +46,7 @@ Setup script 도 **같은 한 줄**로 이 훅을 부르므로, PC 와 리모트
 | `.claude/hooks/session-start-body.sh` | **익명 몸통.** 세션이 열릴 때 도구를 재고 갖춘다. 설치가 `--install` 로 부르면 개인 칸까지. 저장소마다 사본을 두지 않는다 |
 | `.claude/hooks/utf8-bom.sh` | 편집 뒤 인코딩을 지키는 훅 — 손이 껍데기 머리말대로 **홈** `~/.claude/settings.json` 에 건다 |
 | `.claude/hooks/gate-bypass-ask.sh` | 커밋 게이트를 건너뛰는 git 명령(`--no-verify` · `core.hooksPath` 덮어쓰기)이면 막지 않고 묻는 훅 |
-| `.claude/hooks/bash-backslash-deny.sh` | 윈도우에서 Bash 명령에 겹역슬래시가 들면 역슬래시를 두 배로 늘려 셸에 쓴 그대로 닿게 넘기는 훅 — 셸에 닿기 전에 하나로 접혀 명령이 성공한 채 결과만 틀리기 때문이다(접힘을 안 잰 새 판에서는 돌려보낸다). 손이 **홈** `~/.claude/settings.json` 에 건다 |
+| `.claude/hooks/bash-backslash-deny.sh` | 윈도우에서 Bash 명령에 겹역슬래시가 들면 역슬래시를 두 배로 늘려 셸에 쓴 그대로 닿게 넘기는 훅 — 셸에 닿기 전에 하나로 접혀 명령이 성공한 채 결과만 틀리기 때문이다. 손이 **홈** `~/.claude/settings.json` 에 건다 |
 | `.claude/hooks/shell-slip.sh` · `shell-slip.py` | **셸 실수 문.** Bash · PowerShell 명령이 이름 · 창 제목으로 프로세스를 끄면 묻고, 설치기 · 배포 스크립트의 출력을 `head` · `Select-Object -First` 로 끊으면 막는 훅 — 같은 이름의 남의 프로그램이 닫히고, 스크립트가 쓰기 전에 멈추기 때문이다. 읽기만 하는 판(설치기 `-Describe` · 뽑기 `--check` · 배포의 `-Yes` 없는 계획)은 둔다. 손이 껍데기 머리말대로 **홈** `~/.claude/settings.json` 에 건다 |
 | `.claude/settings.json` | 문지기 `session-start.sh` 와 `gate-bypass-ask.sh` 둘을 **거는** 자리 — 나머지 훅은 손이 홈에 건다(거는 쪽이 둘이면 도구 호출마다 두 번 돈다) |
 | `.claude/hooks/image-gate.py` · `image-gate.sh` | **그림 문.** 모델이 그림을 받기 직전에 치수를 재는 훅 — `scale` 을 안 고른 도구 스크린샷과, 상류가 어차피 깎을 만큼 큰 그림 파일은 막는다(`.py` 가 몸통, `.sh` 가 앞에서 거르는 껍데기). 저장소가 아니라 **홈** `~/.claude/settings.json` 에 등록된다 — 갈 곳 표의 손이 껍데기 머리말(어느 이벤트에 무엇을 맞춰 거나)대로 짓고, **설치 창에서 Claude 를 고른 PC 에만** 놓는다(설치를 안 거친 자리는 고른 것으로 본다). 치수 눈금은 검사 씨앗의 `_vision.py` 가 든다 |

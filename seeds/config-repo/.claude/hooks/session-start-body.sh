@@ -129,11 +129,19 @@ fi
 unset SESSION_START_REPO
 if [ -z "$PROJECT_DIR" ]; then
   case "$_self" in
-    */.claude/hooks/*) PROJECT_DIR="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" ;;
+    */.claude/hooks/*) PROJECT_DIR="$(cd "${_self%/*}/../.." 2>/dev/null && pwd)" ;;   # 꼴이 `/` 를 보장한다 — dirname 을 안 띄운다
   esac
 fi
 [ -n "$PROJECT_DIR" ] || PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
-PROJECT_NAME="$(basename "$PROJECT_DIR")"   # 진단 머리줄·profile.d 파일명이 여기서 파생된다
+# 진단 머리줄·profile.d 파일명이 여기서 파생된다. `basename` 의 답을 셸이 낸다 — 경로가 `/` 만 쓰는 꼴일 때만이다.
+#   ⚠ 이 PC 의 coreutils 는 `\` 를 구분자로 읽고 드라이브(`C:`)와 머리 `//` 를 따로 다룬다 — 그 꼴(하네스 값으로 물러선 판)은
+#   셸이 같은 답을 못 내므로 `basename` 에 그대로 묻는다.
+case "$PROJECT_DIR" in
+  *\\*|*:*|//*) PROJECT_NAME="$(basename "$PROJECT_DIR")" ;;
+  *) PROJECT_NAME="$PROJECT_DIR"
+     while :; do case "$PROJECT_NAME" in /) break ;; */) PROJECT_NAME="${PROJECT_NAME%/}" ;; *) break ;; esac; done
+     case "$PROJECT_NAME" in /) ;; *) PROJECT_NAME="${PROJECT_NAME##*/}" ;; esac ;;
+esac
 # ── 명시한 갈래(`--install` · `--install-global` · `--plant`)는 찍는 줄을 파일에도 남긴다 ─────────────
 #    설치 화면이 닫히면 화면의 줄은 사라진다 — 걸음마다 붙는 `(n초)` 도 이 파일에서 읽는다. 세션마다 도는 auto 갈래는
 #    안 쓴다(매 세션 파일이 는다).
@@ -163,9 +171,31 @@ _migrate_name() {   # $1 옛 이름 · $2 새 이름
 #    있었나)이 아니라 상태(선언과 설치가 같은 세대인가) 위에 선다. 값은 기계 밖으로 안 나가 줄끝을 안 탄다.
 #    이것은 저장소 몫의 지문이다 — 전역형 도구는 기계 하나에 서므로 그 짝(`global_fingerprint`)이 따로 있고 게이트도
 #    둘로 갈린다.
+#    프로세스는 둘이다(`cat` · `sha256sum`) — 첫 칸은 `read` 가 떼어 낸다. 해시를 못 냈으면 아무것도 안 낸다(빈 줄도 안 쓴다 —
+#    도장 파일이 그 바이트를 받는다).
+#    ⚠ 「도장이 선언보다 새것이면 안 잰다」는 지름길을 두지 않는다 — 배포(`deploy.ps1` 의 Copy-Item)가 선언을 옮길 때 원본의
+#      수정 시각을 그대로 얹어, 내용이 바뀌고도 도장보다 옛 시각인 선언이 실제로 선다. 시각으로 가르면 그 판이 「같다」로 읽힌다.
 decl_fingerprint() {
   cat "$PROJECT_DIR/requirements.txt" "$PROJECT_DIR/package-lock.json" \
-      "$GCONF" "$PCONF" 2>/dev/null | sha256sum | awk '{print $1}'
+      "$GCONF" "$PCONF" 2>/dev/null | sha256sum | { read -r _dfh _ && printf '%s\n' "$_dfh"; }
+}
+
+# ── 파일이 그 값을 드나 — `[ "$(cat <파일>)" = <값> ]` 과 같은 답을 프로세스 없이 낸다 ──
+#    없거나 못 읽는 파일 · 폴더는 빈 값이다(`cat` 이 지고 아무것도 안 낸다). 꼬리 줄바꿈은 다 떼고 견준다(명령 치환의 규칙).
+#    도장(`STAMP` · `GSTAMP`)처럼 작은 파일에 쓴다 — 줄마다 셸이 읽는다.
+#    ⚠ CR 을 든 파일은 `cat` 에 묻는다 — 명령 치환이 CR 을 다루는 법이 bash 마다 다르다(Git Bash 는 CR+LF 의 CR 을 걷고 리눅스
+#      bash 는 남긴다). 셸이 읽은 글자로 견주면 한쪽에서 답이 갈린다.
+file_holds() {  # file_holds <파일> <값> — 0 같다 · 1 다르다
+  _fhv=''; _fhl=''
+  if [ -f "$1" ] && [ -r "$1" ]; then
+    while IFS= read -r _fhl; do _fhv="$_fhv$_fhl
+"; done < "$1"
+    _fhv="$_fhv$_fhl"
+  fi
+  case "$_fhv" in *$'\r'*) [ "$(cat "$1" 2>/dev/null)" = "$2" ]; return ;; esac
+  while :; do case "$_fhv" in *"
+") _fhv="${_fhv%?}" ;; *) break ;; esac; done
+  [ "$_fhv" = "$2" ]
 }
 
 # ── 파일로 재는 자 둘 — 배선이 섰나 · venv 가 닿나 ─────────────────────────────────
@@ -198,7 +228,7 @@ hooks_wired() {  # 0 이면 이 저장소의 .githooks 로 배선돼 있다. 걸
 #   (만들기를 건너뛰고, 의존성 칸도 조용히 지나가고, 실패는 한 줄도 안 남는다).
 venv_ready() { [ -x "$VENV_BIN/pip" ] || [ -f "$VENV_BIN/pip.exe" ]; }
 
-# py_resolve — PY_CMD 를 진짜 해석기로 고쳐 세운다 · 늘 0. needs-install 을 뺀 갈래마다 파이썬이 한 번 뜬다.
+# py_resolve — PY_CMD 를 진짜 해석기로 고쳐 세운다 · 늘 0. 부르는 자는 `py_ready` 하나다(파이썬이 한 번 뜬다).
 # ⚠ 윈도우의 `python` 이름은 스토어 껍데기일 수 있다. PATH 앞의 `WindowsApps\python.exe` 는 스토어를 여는 자리표라
 #   비대화에서 지고, 설치기가 같은 실행에서 파이썬을 막 깔았어도 이 셸의 PATH 는 그 전 것이라 껍데기가 먼저 걸린다.
 #   그래서 이름을 믿지 않고 한 번 불러 보고 진짜를 고른다: 이름 → `py -3` 런처(python.org · winget 설치가 등록한다) →
@@ -214,6 +244,18 @@ py_resolve() {
     [ -x "$_pf" ] && "$_pf" -c '' >/dev/null 2>&1 && { PY_CMD="$_pf"; return 0; }
   done
   return 0
+}
+
+# py_ready — 해석기를 한 실행에 한 번 고르고(`py_resolve`) PC 파이썬(`PC_PY`)을 그 답으로 굳힌다 · 늘 0.
+#   세션(auto)은 파이썬을 쓰는 걸음 앞에서만 부른다 — 할 일이 없는 세션은 파이썬을 안 쓰므로 안 띄운다. 그 밖의 갈래는
+#   「해석기와 처음 값」 단계가 바로 부른다.
+#   ⚠ `PY_CMD` 를 바꾸는 걸음(설치의 「파이썬 축」) 앞에서 불려야 한다 — `PC_PY` 는 고른 그대로의 이름이라야 전역 파이썬
+#     패키지를 깔고 재는 자리가 같다. 그래서 auto 는 설치로 넘기기 전에도 부른다.
+py_ready() {
+  [ -n "${PY_READY:-}" ] && return 0
+  PY_READY=1
+  py_resolve
+  PC_PY="$PY_CMD"
 }
 
 # ── 파이썬 판 자 — 선언(probe = python-version)이 바닥을 들면 이 자로 잰다 ──
@@ -251,41 +293,89 @@ uv_link() {  # uv_link <경로> — 0 uv 의 파이썬 자리 밑을 가리키�
   return 1
 }
 
-# ── 선언 파서 — sh 순정. [절] + KEY = VALUE, '#' 주석, \r 방어(CRLF 체크아웃 대비) ──
-decl_sections() {
-  [ -f "$1" ] || return 0
-  # CRLF 정리는 awk 안에서 같이 한다 — 선언 하나를 읽을 때 sed 프로세스를 따로 띄우지 않는다.
-  awk '{
-         sub(/\r$/, "", $0)
-         if ($0 ~ /^\[[^]]+\][[:space:]]*$/) {
-           line = $0
-           gsub(/[][]/, "", line)
-           gsub(/[[:space:]]+$/, "", line)
-           print line
-         }
-       }' "$1"
+# ── 선언 파서 — 셸 내장만 쓴다. [절] + KEY = VALUE, '#' 주석, \r 방어(CRLF 체크아웃 대비) ──
+#    조회 하나가 외부 프로세스를 안 띄운다 — 파일을 `$(<파일)` 로 통째로 한 번 읽어 셸 안에서 줄로 쪼개 훑는다. 부르는
+#    자리는 다 명령 치환(`$(…)`) 안이라 조회마다 제 서브셸에서 파일을 한 번 읽고 끝난다. 서브셸은 값을 부모로 못 돌려주므로
+#    조회를 넘나드는 캐시는 두지 않는다.
+#    읽는 규칙은 셋이 같다.
+#    - 줄 끝 `\r` 하나를 걷는다. 빈 줄은 뜻이 없다.
+#    - `[` 로 여는 줄은 절 머리다 — 괄호를 다 빼고 꼬리 공백을 걷은 글자가 절 이름이고, 다음 머리까지가 그 절이다. 같은
+#      이름이 두 번 서면 두 덩어리가 다 그 절이다.
+#    - 키 줄은 첫 `#` 부터 걷은 뒤 줄 머리가 `키 [공백] =` 인 줄이다. 키는 글자 그대로 견주고(공백 없는 낱말), 줄 머리에
+#      공백이 있으면 키 줄이 아니다. 값은 첫 `=` 뒤의 앞뒤 공백을 걷은 글자고, 같은 키가 여럿이면 파일에서 먼저 선 줄이
+#      이긴다.
+# ⚠ 절 머리 줄에는 주석을 달지 않는다 — `[이름] # …` 은 `decl_sections` 가 안 내고(머리는 `[이름]` 과 꼬리 공백뿐이어야
+#   한다), 조회 쪽은 그 줄을 `이름 # …` 이라는 절로 읽어 그 밑의 키가 다 안 잡힌다. 오류 없이 빈 값이 된다.
+
+# _decl_lines <파일> — 파일의 줄을 배열 `_dla` 에 둔다(빈 줄은 빠진다). 파일이 있는지는 부르는 자가 먼저 가른다.
+#   줄마다 `read`(또는 `mapfile`)로 읽으면 MSYS 에서 선언 하나에 awk 하나를 띄우는 만큼 든다 — 통째로 읽고 쪼갠다.
+#   쪼개는 동안만 IFS 를 줄바꿈으로 · 글롭을 끈다(`local -`) — 안 끄면 글롭 글자(`[…]` · `*`)가 든 줄이 그 자리의 파일
+#   이름으로 바뀐다.
+_decl_lines() {
+  local - IFS=$'\n'
+  set -f
+  # shellcheck disable=SC2207 # 줄로 쪼개려고 일부러 따옴표를 뺀다 — mapfile 은 위 까닭으로 안 쓰고, 글롭은 위에서 껐다
+  _dla=($(<"$1"))
 }
 
-decl_get() {  # decl_get <파일> <절> <키>
+# _decl_pick <파일> <절> <키…> — 키마다 값을 `_dpv[번째]` 에 둔다(0 부터 · 없는 키는 칸이 비어 있지 않고 아예 없다) · 늘 0
+_decl_pick() {
+  _dps="$2"; _decl_lines "$1"; shift 2
+  _dpv=(); _dpleft=$#; _dpin=0
+  [ "$_dpleft" -gt 0 ] || return 0
+  for _dpl in "${_dla[@]}"; do
+    _dpl="${_dpl%$'\r'}"
+    case "$_dpl" in
+      '['*) _dpl="${_dpl//[][]/}"; _dpl="${_dpl%"${_dpl##*[![:space:]]}"}"
+            if [ "$_dpl" = "$_dps" ]; then _dpin=1; else _dpin=0; fi
+            continue ;;
+    esac
+    [ "$_dpin" = 1 ] || continue
+    _dpl="${_dpl%%#*}"
+    case "$_dpl" in *=*) ;; *) continue ;; esac
+    _dpi=0
+    for _dpk in "$@"; do
+      if [ -z "${_dpv[_dpi]+x}" ]; then
+        case "$_dpl" in
+          "$_dpk"*) _dpr="${_dpl#"$_dpk"}"; _dpr="${_dpr#"${_dpr%%[![:space:]]*}"}"
+                    case "$_dpr" in
+                      =*) _dpr="${_dpl#*=}"; _dpr="${_dpr#"${_dpr%%[![:space:]]*}"}"
+                          _dpv[_dpi]="${_dpr%"${_dpr##*[![:space:]]}"}"; _dpleft=$((_dpleft - 1)) ;;
+                    esac ;;
+        esac
+      fi
+      _dpi=$((_dpi + 1))
+    done
+    [ "$_dpleft" -gt 0 ] || break
+  done
+  return 0
+}
+
+decl_sections() {  # decl_sections <파일> — 절 이름을 파일 차례로 한 줄씩(겹친 이름은 겹친 만큼) · 파일이 없으면 빈 출력
   [ -f "$1" ] || return 0
-  awk -v sec="$2" -v key="$3" '
-    {
-      line = $0
-      sub(/\r$/, "", line)
-    }
-    line ~ /^\[/ { s = line; gsub(/[][]/, "", s); gsub(/[[:space:]]+$/, "", s); insec = (s == sec); next }
-    insec {
-      sub(/[[:space:]]*#.*$/, "", line)
-      if (line ~ "^"key"[[:space:]]*=") {
-        sub(/^[^=]*=[[:space:]]*/, "", line); sub(/[[:space:]]+$/, "", line)
-        print line; exit
-      }
-    }' "$1"
+  _decl_lines "$1"
+  for _dsl in "${_dla[@]}"; do
+    _dsl="${_dsl%$'\r'}"
+    case "$_dsl" in '['*) ;; *) continue ;; esac
+    _dst="${_dsl%"${_dsl##*[![:space:]]}"}"
+    case "$_dst" in '['?*']') ;; *) continue ;; esac
+    _dst="${_dst#[}"; _dst="${_dst%]}"
+    case "$_dst" in *']'*) continue ;; esac
+    _dsl="${_dsl//[][]/}"; printf '%s\n' "${_dsl%"${_dsl##*[![:space:]]}"}"
+  done
+  return 0
+}
+
+decl_get() {  # decl_get <파일> <절> <키> — 값 한 줄 · 키가 없거나 파일이 없으면 빈 출력
+  [ -f "$1" ] || return 0
+  _decl_pick "$1" "$2" "$3"
+  [ -z "${_dpv[0]+x}" ] || printf '%s\n' "${_dpv[0]}"
+  return 0
 }
 
 # ── 절 하나를 한 번 읽어 달라는 키를 달라는 순서로 낸다 ─────────────────────
-#    `decl_get` 은 키 하나에 awk 한 프로세스라, 프로브 · 판 검사 · 진단이 도구마다 키를 물으면 선언 조회가 세션에서
-#    수십 번이 된다. 자리 메타(`_site_meta`)와 같은 꼴로 파일당 한 번 읽어 필요한 값을 같이 낸다.
+#    프로브 · 판 검사 · 진단이 한 도구의 키 여럿을 물을 때 `decl_get` 을 키마다 부르지 않고 이것 하나로 묻는다 — 명령 치환
+#    하나 · 파일 읽기 한 번이다.
 #    키 목록은 부르는 자가 제 자리에서 댄다 — 선언의 낱말을 이 함수가 들면 그 목록이 손사본이 되어 키가 늘 때 조용히 낡는다.
 # ⚠ 줄 수는 달라는 키 수와 같고, 없는 키는 빈 줄이다 — 값을 자리로 읽으므로 한 칸이 비면 그 뒤가 다 밀린다. 그래서
 #   부르는 자는 읽기 전에 변수를 다 비운다: 명령 치환이 끝 개행을 깎아 꼬리의 빈 값은 줄째로 사라지고 `read` 가 EOF 를
@@ -293,25 +383,10 @@ decl_get() {  # decl_get <파일> <절> <키>
 decl_fields() {  # decl_fields <파일> <절> <키…>
   _dff="$1"; _dfs="$2"; shift 2
   [ -f "$_dff" ] || { for _dfk in "$@"; do echo; done; return 0; }
-  awk -v sec="$_dfs" -v keys="$*" '
-    BEGIN { n = split(keys, k, " ") }
-    {
-      line = $0
-      sub(/\r$/, "", line)
-    }
-    line ~ /^\[/ { s = line; gsub(/[][]/, "", s); gsub(/[[:space:]]+$/, "", s); insec = (s == sec); next }
-    insec {
-      sub(/[[:space:]]*#.*$/, "", line)
-      for (i = 1; i <= n; i++) {
-        if (!(i in got) && line ~ "^"k[i]"[[:space:]]*=") {
-          v = line
-          sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v)
-          got[i] = v
-        }
-      }
-    }
-    END { for (i = 1; i <= n; i++) printf "%s\n", (i in got ? got[i] : "") }
-  ' "$_dff"
+  _decl_pick "$_dff" "$_dfs" "$@"
+  _dfi=0
+  for _dfk in "$@"; do printf '%s\n' "${_dpv[_dfi]:-}"; _dfi=$((_dfi + 1)); done
+  return 0
 }
 
 # ── 사용자 PATH 따라잡기 — 윈도우에서만 · 프로브가 질 때 · 프로세스에 한 번 ──────────────
@@ -589,9 +664,47 @@ EOF
 #      타는 당김 뒤에 서면 느린 저장소에서 훅이 여기 닿기 전에 끊기고, 게이트가 안 걸린 채 커밋이 지나간다 — 그 부재는
 #      조용하다. 로컬 `git config` 한 줄이라 앞에 둬서 잃는 것이 없다.
 #    `--check` 는 이것을 안 부른다 — 재는 갈래가 상태를 바꾸면 판정이 늘 초록이 된다.
+#    이미 그 값이면 안 쓴다 — 쓰는 자리(공통 git 폴더의 `config`)를 읽어 `[core]` 의 `hooksPath = .githooks` 한 줄만 있으면
+#    `git config` 를 띄워도 바뀌는 것이 없다. 읽는 것은 쓰기가 닿는 그 파일 하나다 — 실제로 걸린 값(`hooks_wired`)이 아니다:
+#    같은 폴더를 절대경로로 건 저장소도 이 걸음은 `.githooks` 로 고쳐 쓴다.
+#    ⚠ 확실하지 않으면 쓴다 — 그 키가 둘 이상 · 따옴표 · 주석 · 이어 쓴 줄(`\`) · CR 을 든 줄 · 머리 줄에 붙은 키 · 못 읽는 파일 · `.git` 을
+#      못 읽는 꼴(`git_dirs`) · `GIT_CONFIG` 가 선 환경. 더 쓰는 쪽이 틀리면 프로세스 하나가 들 뿐이다.
 wire_commit_hooks() {
   [ -d "$PROJECT_DIR/.githooks" ] || return 0
+  hooks_path_written && return 0
   git -C "$PROJECT_DIR" config core.hooksPath .githooks 2>/dev/null || true
+}
+hooks_path_written() {  # 0 = 쓰는 자리에 이미 `core.hooksPath = .githooks` 하나뿐이다 · 1 = 모른다 · 다르다
+  _HP_KEY=hooksPath   # 읽는 키 — 값은 이 글자 길이 뒤에서 시작한다
+  [ -z "${GIT_CONFIG+x}" ] || return 1
+  git_dirs "$PROJECT_DIR" || return 1
+  [ -f "$_gdc/config" ] && [ -r "$_gdc/config" ] || return 1
+  _hpcore=''; _hpn=0; _hpok=''
+  while IFS= read -r _hpl || [ -n "$_hpl" ]; do
+    case "$_hpl" in *\\|*$'\r'*) return 1 ;; esac
+    while :; do case "$_hpl" in [[:space:]]*) _hpl="${_hpl#?}" ;; *) break ;; esac; done
+    case "$_hpl" in
+      '['*)
+        _hps="${_hpl%%]*}"; _hpt="${_hpl#*]}"
+        while :; do case "$_hpt" in [[:space:]]*) _hpt="${_hpt#?}" ;; *) break ;; esac; done
+        case "$_hpt" in ''|'#'*|';'*) ;; *) return 1 ;; esac
+        _hps="${_hps#[}"; _hps="${_hps,,}"
+        _hpcore=''; [ "$_hps" = core ] && _hpcore=1 ;;
+      '#'*|';'*|'') ;;
+      *)
+        [ -n "$_hpcore" ] || continue
+        _hpk="${_hpl,,}"
+        case "$_hpk" in hookspath|hookspath[[:space:]=]*) ;; *) continue ;; esac
+        _hpn=$((_hpn + 1)); _hpok=''
+        _hpv="${_hpl:${#_HP_KEY}}"
+        while :; do case "$_hpv" in [[:space:]]*) _hpv="${_hpv#?}" ;; *) break ;; esac; done
+        case "$_hpv" in =*) _hpv="${_hpv#=}" ;; *) continue ;; esac
+        while :; do case "$_hpv" in [[:space:]]*) _hpv="${_hpv#?}" ;; *) break ;; esac; done
+        while :; do case "$_hpv" in *[[:space:]]) _hpv="${_hpv%?}" ;; *) break ;; esac; done
+        [ "$_hpv" = .githooks ] && _hpok=1 ;;
+    esac
+  done < "$_gdc/config"
+  [ "$_hpn" -eq 1 ] && [ -n "$_hpok" ]
 }
 
 # ── 홈 규범 · 룰 · 에이전트 · 씨앗 — 가볍고 멱등이라 설치 걸음만이 아니라 PC 매 세션(auto)에도 민다 ──
@@ -827,6 +940,7 @@ EOF
 claude_picked() {
   _cpf="$CONFIG_ROOT/.claude/hooks/tool-homes.py"
   [ -f "$_cpf" ] || return 1
+  py_ready
   _cpo="$("$PY_CMD" - "$_cpf" 2>/dev/null <<'CPEOF'
 import importlib.util, sys
 
@@ -845,6 +959,34 @@ sys.stdout.write("yes" if "claude" in mod.read_cond(mod.COND_PICK, None, ("claud
 CPEOF
 )"
   [ "$_cpo" != no ]
+}
+
+# ── 표식이 날수를 넘겼나 — `find <파일> -mtime +<날수>` 가 그 파일을 내나와 같은 답이다 ──────────────────
+#    `-mtime +N` 은 지난 시간을 24시간으로 나눈 몫(버림)이 N 보다 큰 파일이다 — 곧 (N+1)×24시간 이상 지난 파일이다.
+#    세션(auto)은 표식 셋(`PC_WIDE_STAMP` · `PC_WIDE_SEEN` · `FRESH`)의 시각을 처음 물을 때 `stat` 하나로 같이 읽어 두고 그 값으로
+#    답한다(`MT_SNAP` 이 서 있을 때 · 표식마다 `find` 를 띄우면 셋이다). 그 세션 안에서 셋을 고쳐 쓰는 자리는 다 그 셋을 읽은
+#    뒤에 선다 — 열쇠 적기(`pc_wide_mark`) · 「돌고 있다」(`PC_WIDE_SEEN` — 읽는 자는 형제 세션 갈래뿐이다) · 처음 표식(`FRESH` —
+#    없을 때만 쓰고 그때는 안 읽는다).
+#    ⚠ 읽어 둔 값이 없으면(그 갈래가 아니다 · 그때 없던 파일 · `stat` 이 숫자를 안 냈다) 그 파일에 `find` 를 띄운다 — 답을 지어내지 않는다.
+#    지금 시각은 bash 가 낸다(`EPOCHSECONDS` — 5.0 부터 · 그 앞 판은 `date` 에 묻는다).
+mtime_over() {  # mtime_over <파일> <날수> — 0 = 넘겼다 · 1 = 안 넘겼다 · 없는 파일
+  if [ -n "${MT_SNAP:-}" ]; then
+    if [ "$MT_SNAP" = want ]; then
+      MT_SNAP=got; MT_LINES="$(stat -c '%Y %n' -- "${PC_WIDE_STAMP:-}" "${PC_WIDE_SEEN:-}" "${FRESH:-}" 2>/dev/null)"
+    fi
+    _mtv=''
+    while IFS= read -r _mtl; do
+      [ "${_mtl#* }" = "$1" ] && { _mtv="${_mtl%% *}"; break; }
+    done <<EOF
+${MT_LINES:-}
+EOF
+    case "$_mtv" in
+      ''|*[!0-9]*) ;;
+      *) _mtn="${EPOCHSECONDS:-$(date +%s)}"
+         [ $((_mtn - _mtv)) -ge $(( ($2 + 1) * 86400 )) ]; return ;;
+    esac
+  fi
+  [ -n "$(find "$1" -mtime "+$2" 2>/dev/null)" ]
 }
 
 pc_wide_key() {
@@ -869,7 +1011,7 @@ $_pwst
 EOF
   case "$PW_OID" in ''|*[!0-9a-f]*) PW_OID=""; return 0 ;; esac   # `(initial)` · 모르는 꼴
   [ -s "$PC_WIDE_STAMP" ] || return 0
-  [ -z "$(find "$PC_WIDE_STAMP" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ] || return 0
+  mtime_over "$PC_WIDE_STAMP" "$UPGRADE_DAYS" && return 0
   _pwso=""; _pwsd=""
   {
     IFS= read -r _pwso
@@ -943,8 +1085,8 @@ pc_wide_mark() {
 pc_wide_notice() {
   if [ ! -f "$PC_WIDE_STAMP" ]; then
     echo "$PROJECT_NAME: ⚠ 이 PC 의 공통 설정(홈에 까는 규범 · 룰 · 스킬 · 개인 설정 · 전역 도구)을 맞춘 기록이 아직 없다 — 보통은 로그인할 때 자동으로 맞춰진다. 지금 맞추려면 claude-config 를 한 번 열거나 deploy.ps1 을 돌린다"
-  elif [ -n "$(find "$PC_WIDE_STAMP" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ] &&
-       { [ ! -f "$PC_WIDE_SEEN" ] || [ -n "$(find "$PC_WIDE_SEEN" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ]; }; then
+  elif mtime_over "$PC_WIDE_STAMP" "$UPGRADE_DAYS" &&
+       { [ ! -f "$PC_WIDE_SEEN" ] || mtime_over "$PC_WIDE_SEEN" "$UPGRADE_DAYS"; }; then
     echo "$PROJECT_NAME: ⚠ 이 PC 의 공통 설정을 ${UPGRADE_DAYS}일 넘게 안 맞췄다 — 로그인할 때 도는 자동 실행이 꺼졌거나 실패하고 있는 것 같다. claude-config 를 한 번 열거나 deploy.ps1 을 돌리면 맞춰진다"
   fi
   [ -n "$CONFIG_ROOT" ] || return 0
@@ -954,6 +1096,7 @@ pc_wide_notice() {
   [ -n "$PW_RUN" ] || return 0
   [ "$PW_RUN" = part ] && PUSH_ONLY="$PW_CHANGED"
   HOME_SYNC=check; HOME_STALE=""; HOME_UNMEASURED=""
+  py_ready   # 견주기의 손(`tool_homes --dry-run`)이 파이썬을 쓴다
   deploy_home_norms
   HOME_SYNC=push; PUSH_ONLY=""
   # 못 잰 것은 「같다」도 「다르다」도 아니다 — 말 없이 넘기면 읽는 사람은 홈이 맞는 줄 안다
@@ -1353,12 +1496,80 @@ PYMERGE
 #      되돌려 틀린 자리가 조용히 선다. 맨 꼴의 답은 상대 경로(`.git`)일 수 있어 저장소 자리에서 푼다.
 #    git 이 없거나 · git 나무가 아니거나 · 공통 git 폴더가 `.git` 이 아니면(맨 저장소 · 따로 둔 git 폴더 · 하위 모듈) 제
 #    자리를 본 작업 폴더로 본다. 본 작업 폴더에서는 받은 글자를 그대로 낸다 — 꼴 굳히기는 `home_hook_root` 한 자리가 든다.
+#    git 에 묻기 전에 `.git` 을 읽는다(`git_dirs`) — 그 손이 못 가르는 꼴만 git 이 답한다. 찾는 자의 같은 손도 같은 차례다.
 main_worktree() {   # main_worktree <저장소 뿌리> — 그 저장소의 본 작업 폴더를 낸다
+  main_worktree_v "$1"; printf '%s' "$_mwv"
+}
+main_worktree_v() {   # main_worktree_v <저장소 뿌리> — 같은 답을 `_mwv` 에 둔다(부른 쪽에 명령 치환이 없다)
+  if git_dirs "$1"; then
+    # 본 작업 폴더의 `.git` 폴더 — git 은 상대 꼴(`.git`)로 답하고, 그 답이면 받은 글자가 본 작업 폴더다
+    [ -n "$_gdmain" ] && { _mwv="$1"; return 0; }
+    # `.git` 파일 — git 은 공통 git 폴더를 실경로로 답한다. 읽은 자리는 `..` 를 든 날 글자라 `cd -P` 로 같은 실경로에 세운다.
+    #   읽은 자리는 부른 자리에서 본 경로다(상대 `gitdir:` 는 `<뿌리>/` 를 붙여 두었다) — 먼저 `<뿌리>` 로 들어가지 않는다
+    _mwv="$( (cd -P "$_gdc" && case "$PWD" in */.git) cd .. && pwd ;; *) exit 1 ;; esac) 2>/dev/null)" || _mwv="$1"
+    return 0
+  fi
   _mw="$(git -C "$1" rev-parse --git-common-dir 2>/dev/null)" || _mw=""
   case "$_mw" in
-    */.git) (cd "$1" && cd "${_mw%/.git}" && pwd) 2>/dev/null || printf '%s' "$1" ;;
-    *)      printf '%s' "$1" ;;
+    */.git) _mwv="$( (cd "$1" && cd "${_mw%/.git}" && pwd) 2>/dev/null)" || _mwv="$1" ;;
+    *)      _mwv="$1" ;;
   esac
+}
+
+# ── `dirname` 의 답을 `_dir` 에 둔다 — 경로가 `/` 만 쓰는 꼴이면 셸이 낸다 ─────────────
+#    규칙은 POSIX 그대로다: 꼬리 `/` 를 떼고 · 마지막 토막을 떼고 · 꼬리 `/` 를 다시 뗀다. 남는 것이 없으면 `/`, `/` 가 없었으면 `.`.
+#    ⚠ 이 PC 의 coreutils 는 `\` 를 구분자로 읽고 드라이브(`C:` → `C:`)와 머리 `//`(→ `//`)를 따로 다룬다 — 그 꼴은 셸이 같은 답을
+#      못 내므로 `dirname` 에 그대로 묻는다.
+_dir_of() {  # _dir_of <경로>
+  case "$1" in *\\*|*:*|//*) _dir="$(dirname "$1")"; return 0 ;; esac
+  _dir="$1"
+  while :; do case "$_dir" in /) break ;; */) _dir="${_dir%/}" ;; *) break ;; esac; done
+  case "$_dir" in
+    /)   return 0 ;;
+    */*) _dir="${_dir%/*}" ;;
+    *)   _dir=.; return 0 ;;
+  esac
+  while :; do case "$_dir" in */) _dir="${_dir%/}" ;; *) break ;; esac; done
+  [ -n "$_dir" ] || _dir=/
+}
+
+# ── git 폴더 둘을 `.git` 에서 읽는다 — git 을 안 띄운다 ──────────────────────────
+#    `git rev-parse --git-dir` · `--git-common-dir` 의 답을 그 근거인 파일에서 바로 읽는다. 매 세션 도는 자리(본 작업 폴더 ·
+#    커밋 훅 배선)가 이 손을 먼저 부른다.
+#    읽는 꼴은 둘이다 — 저장소 뿌리의 `.git` 폴더(HEAD · objects · refs 를 든다), 그리고 `gitdir: <자리>` 한 줄을 든 `.git` 파일
+#    (연결된 작업 트리 · 하위 모듈 · 따로 둔 git 폴더 — 공통 폴더는 그 자리의 `commondir` 가 가리키고, 없으면 그 자리 자신이다).
+#    ⚠ 그 밖은 1 이다 — 부른 쪽이 git 에 묻는다. git 이 이 파일 말고도 보는 것이 있는 자리라서다: 환경이 git 폴더를 정한 판
+#      (`GIT_DIR` · `GIT_COMMON_DIR`), 뿌리에 `.git` 이 없는 판(하위 폴더 — git 은 위로 찾아 올라간다 · 맨 저장소), 가리킨 자리가
+#      git 폴더가 아닌 판(지운 작업 트리 — git 은 못 읽는다고 진다).
+#    낸다: `_gdg` git 폴더 · `_gdc` 공통 git 폴더(둘 다 읽은 글자 그대로 — `..` 를 들 수 있다) · `_gdmain` 본 작업 폴더의 `.git`
+#    폴더면 1. 쓰는 자는 경로로 파일을 열거나 `cd` 할 뿐 글자를 사람에게 안 낸다.
+git_dirs() {  # git_dirs <저장소 뿌리> — 0 읽었다 · 1 git 에 물어야 한다
+  _gdg=''; _gdc=''; _gdmain=''
+  [ -z "${GIT_DIR+x}${GIT_COMMON_DIR+x}" ] || return 1
+  if [ -d "$1/.git" ]; then
+    { [ -f "$1/.git/HEAD" ] && [ -d "$1/.git/objects" ] && [ -d "$1/.git/refs" ] && [ ! -e "$1/.git/commondir" ]; } || return 1
+    _gdg="$1/.git"; _gdc="$_gdg"; _gdmain=1
+    return 0
+  fi
+  [ -f "$1/.git" ] || return 1
+  _gd1 "$1/.git" || return 1
+  case "$_gdl" in 'gitdir: '?*) _gdg="${_gdl#gitdir: }" ;; *) return 1 ;; esac
+  case "$_gdg" in /*|[A-Za-z]:/*) ;; *) _gdg="$1/$_gdg" ;; esac
+  [ -f "$_gdg/HEAD" ] || return 1
+  if [ -f "$_gdg/commondir" ]; then
+    _gd1 "$_gdg/commondir" || return 1
+    case "$_gdl" in '') return 1 ;; /*|[A-Za-z]:/*) _gdc="$_gdl" ;; *) _gdc="$_gdg/$_gdl" ;; esac
+  else
+    _gdc="$_gdg"
+  fi
+  return 0
+}
+# 한 줄짜리 파일을 git 이 읽듯 `_gdl` 에 읽는다 — 꼬리 CR 은 다 뗀다. 둘째 줄이 있으면 1(git 은 그 꼴을 통째로 한 값으로 본다)
+_gd1() {  # _gd1 <파일>
+  _gdl=''; _gdx=''
+  { IFS= read -r _gdl || [ -n "$_gdl" ] || return 1
+    ! IFS= read -r _gdx && [ -z "$_gdx" ] || return 1; } < "$1"
+  while :; do case "$_gdl" in *$'\r') _gdl="${_gdl%?}" ;; *) break ;; esac; done
 }
 
 # ── 전역 SessionStart 훅을 홈에 심는다 — 심는 명령(`home_hook_cmd`) · 그 루트 · 우리 꼴 · 심기(`plant_session_state`) ──
@@ -1515,6 +1726,13 @@ home_hook_cmd() {
     "$(home_hook_root)"
 }
 
+# 홈 SessionStart 항목이 걸리는 사건 — 진본은 여기 한 자리다. 저장소 설정(`.claude/settings.json`)의 같은 값은 배포 파일이라 손으로
+#   같게 둔다 — 어긋나면 한쪽만 압축에 뜬다. 압축(compact)은 같은 프로세스라 당김 · 홈 밀기 · 배선이 새로 필요 없는데 세션 시작 한
+#   번 값(회사 PC 7 초 · #216)을 또 문다 — 그래서 세션이 새로 서는 셋에만 건다.
+home_hook_matcher() {
+  printf '%s' 'startup|resume|clear'
+}
+
 # 홈 SessionStart 의 어느 항목이 우리 것인가 — 파이썬 정규식 하나를 낸다. 심기(`plant_session_state` 가 옛 꼴을 걷는다)와
 #   재기(`home_hook_planted` 가 낡은 항목을 댄다)가 이 한 자를 받는다.
 #   우리 꼴은 작업 루트를 훑는 고리다 — 이 몸통이 심어 온 홈 명령은 판마다 다 그 고리를 들었다(위 `home_hook_cmd`). 이름에
@@ -1548,12 +1766,12 @@ plant_session_state() {
     [ -n "$_psh" ] || _psh="${_self%/*}/tool-homes.py"
   fi
   _pss="$("$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$_psp" "$(home_hook_root)" \
-    "$_psh" "${_self%/*}/codex-hook-trust.py" "$MODE" "$(home_hook_shape)" \
+    "$_psh" "${_self%/*}/codex-hook-trust.py" "$MODE" "$(home_hook_shape)" "$(home_hook_matcher)" \
     <<'PSSEOF' 2>"$_pse"
 import contextlib, functools, importlib.util, json, os, pathlib, re, sys, tempfile
 
 sys.dont_write_bytecode = True   # 불러 쓰는 손 · 도우미 곁에 캐시를 흘리지 않는다 — 씨앗 자리는 거울로 깔린다
-settings, cmd, proj, root, hand, codex_helper, mode, shape = sys.argv[1:9]
+settings, cmd, proj, root, hand, codex_helper, mode, shape, matcher = sys.argv[1:10]
 if not shape:   # 빈 자는 모든 항목에 맞아 사람의 SessionStart 까지 걷는다 — 쓰기 전에 죽는다
     sys.exit("홈 훅 꼴(home_hook_shape)을 못 받았다")
 install = mode in ("install", "plant")   # 명시한 설치 · 심기만 — 할 일이 없는 칸도 줄을 남기고, Codex 를 띄워 신뢰를 적을 수 있다
@@ -1629,14 +1847,23 @@ def plant_home_hook():
         cfg, cfg_ok, failed = {}, False, True
         msgs.append("  ! 홈 settings.json 을 못 읽었다 — 덮어쓰지 않았다. JSON 문법을 고치면 다음 설치가 훅을 심는다")
     entries = cfg.setdefault("hooks", {}).setdefault("SessionStart", [])
-    have, dropped = False, []
+    have, dropped, fixed = False, [], False
     for e in entries:
         keep = []
         for h in e.get("hooks", []):
             c = h.get("command", "")
             if c == cmd:
-                have = True
-                keep.append(h)
+                # 글자는 지금 것인데 걸리는 사건(matcher)이 다른 항목 — 한 항목의 사건은 그 안의 훅 모두에 걸리므로, 우리만 든
+                #   항목은 사건을 고치고 사람 훅과 같이 든 항목은 우리 것만 떼어 제 항목으로 다시 심는다(아래 `not have`)
+                if e.get("matcher") == matcher:
+                    have = True
+                    keep.append(h)
+                elif len(e.get("hooks", [])) == 1:
+                    e["matcher"] = matcher
+                    have, fixed = True, True
+                    keep.append(h)
+                else:
+                    fixed = True
             elif OUR_HOME_CMD.search(c):
                 dropped.append(c)
             else:
@@ -1644,11 +1871,13 @@ def plant_home_hook():
         e["hooks"] = keep
     entries[:] = [e for e in entries if e.get("hooks")]
     if not have:
-        entries.append({"hooks": [{"type": "command", "command": cmd, "timeout": 600}]})
-    if cfg_ok and (not have or dropped):
+        entries.append({"matcher": matcher, "hooks": [{"type": "command", "command": cmd, "timeout": 600}]})
+    if cfg_ok and (not have or dropped or fixed):
         if save(settings, cfg):
             if not have:
                 msgs.append("  홈 SessionStart 훅 — 심었다")
+            elif fixed:
+                msgs.append("  홈 SessionStart 훅 — 걸리는 사건을 %s 로 맞췄다" % matcher)
             for c in dropped:
                 msgs.append("  홈 SessionStart 훅 — 옛 항목을 걷었다: %s" % c[:70])
         else:
@@ -2158,9 +2387,9 @@ PSSEOF
 #      작업 루트를 둘 둔 기계가 정당하고, 사람이 손댄 설정을 말없이 지우는 것은 이 훅의 일이 아니다. 자리를 말하고 간다.
 home_hook_planted() {   # 0=이 루트로 심김 · 1=안 심김 · 2=못 잼 · 3=심겼는데 낡은 항목이 남음
   [ -n "$(py_num "$PY_CMD")" ] || return 2
-  "$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$(home_hook_shape)" <<'HOOKEOF'
+  "$PY_CMD" - "$HOME/.claude/settings.json" "$(home_hook_cmd)" "$(home_hook_shape)" "$(home_hook_matcher)" <<'HOOKEOF'
 import json, re, sys
-path, cmd, shape = sys.argv[1:4]
+path, cmd, shape, matcher = sys.argv[1:5]
 try:
     cfg = json.load(open(path, encoding="utf-8"))
 except (OSError, ValueError):
@@ -2170,9 +2399,10 @@ for e in cfg.get("hooks", {}).get("SessionStart", []):
     for h in e.get("hooks", []):
         c = h.get("command", "")
         ours = re.search(shape, c)
-        if c == cmd:
+        if c == cmd and e.get("matcher") == matcher:
             found = True
         elif ours:
+            # 글자가 옛 꼴이거나, 글자는 지금 것인데 걸리는 사건이 다른 항목 — 둘 다 다음 심기가 갈아 심는다.
             # 우리 꼴이면 그 루트(꼴의 첫 묶음)를 댄다 — 「파일을 열어 보라」는 말은 안 열린다. 그 사람의 항목은 안 센다
             stale.append(ours.group(1))
 for s in stale:
@@ -2236,29 +2466,51 @@ node_home_dir() {
 #   `wiring = node-link` 이고 on-demand 가 아닌 절이다 — on-demand 는 훅이 안 까는 도구라 이을 실물이 없다. 모듈은
 #   `probe-target` 이다(`wire_tool` 이 저장소에 잇는 이름과 같다). 읽는 자는 `decl_fields` 와 같다 — 줄 머리의 키 · 첫 값이
 #   이긴다 · `#` 뒤는 주석 · CRLF 를 걷는다. 파일을 한 번만 읽는다 — 세션마다 도는 대조가 부르므로 절마다 awk 를 안 띄운다.
+#   읽는 것은 셸이다(`read` 고리 · 프로세스 없음). 줄마다 하는 일 — 꼬리 CR 하나를 떼고, `[` 로 열면 새 절(이름은 `[` · `]` 를 다
+#   걷고 꼬리 공백을 뗀 글자), 절 안의 줄은 첫 `#` 과 그 앞 공백부터 끝까지 떼고(그 뒤 꼬리 공백은 안 뗀다 — `#` 이 없으면
+#   그대로다), 값은 첫 `=` 과 뒤따르는 공백까지 떼고 꼬리 공백을 뗀 글자다. 키는 줄 머리에서 읽는다(앞 공백이 있으면 안 맞는다).
+#   절 이름을 부르는 고리 밖 한 번만 낸다(`_nhw_flush`).
 node_home_wanted() {
   [ -f "$1" ] || return 0
-  awk '
-    function flush() { if (sec != "" && w == "node-link" && od != "yes" && t != "") printf "%s\t%s\n", sec, t }
-    {
-      line = $0
-      sub(/\r$/, "", line)
-    }
-    line ~ /^\[/ {
-      flush()
-      sec = line; gsub(/[][]/, "", sec); gsub(/[[:space:]]+$/, "", sec)
-      w = ""; t = ""; od = ""; gw = 0; gt = 0; god = 0
-      next
-    }
-    sec != "" {
-      sub(/[[:space:]]*#.*$/, "", line)
-      v = line; sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v)
-      if (!gw && line ~ /^wiring[[:space:]]*=/)       { w = v; gw = 1 }
-      if (!gt && line ~ /^probe-target[[:space:]]*=/) { t = v; gt = 1 }
-      if (!god && line ~ /^on-demand[[:space:]]*=/)   { od = v; god = 1 }
-    }
-    END { flush() }
-  ' "$1"
+  _nws=''; _nww=''; _nwt=''; _nwo=''; _nwgw=''; _nwgt=''; _nwgo=''
+  while IFS= read -r _nwl || [ -n "$_nwl" ]; do
+    _nwl="${_nwl%$'\r'}"
+    case "$_nwl" in
+      '['*)
+        _nhw_flush
+        _nws="${_nwl//[][]/}"
+        while :; do case "$_nws" in *[[:space:]]) _nws="${_nws%?}" ;; *) break ;; esac; done
+        _nww=''; _nwt=''; _nwo=''; _nwgw=''; _nwgt=''; _nwgo=''
+        continue ;;
+    esac
+    [ -n "$_nws" ] || continue
+    case "$_nwl" in
+      *'#'*) _nwl="${_nwl%%#*}"
+             while :; do case "$_nwl" in *[[:space:]]) _nwl="${_nwl%?}" ;; *) break ;; esac; done ;;
+    esac
+    case "$_nwl" in
+      *=*) _nwv="${_nwl#*=}"
+           while :; do case "$_nwv" in [[:space:]]*) _nwv="${_nwv#?}" ;; *) break ;; esac; done ;;
+      *)   _nwv="$_nwl" ;;
+    esac
+    while :; do case "$_nwv" in *[[:space:]]) _nwv="${_nwv%?}" ;; *) break ;; esac; done
+    for _nwk in wiring probe-target on-demand; do
+      case "$_nwl" in "$_nwk"*) ;; *) continue ;; esac
+      _nwr="${_nwl#"$_nwk"}"
+      while :; do case "$_nwr" in [[:space:]]*) _nwr="${_nwr#?}" ;; *) break ;; esac; done
+      case "$_nwr" in =*) ;; *) continue ;; esac
+      case "$_nwk" in
+        wiring)       [ -n "$_nwgw" ] || { _nww="$_nwv"; _nwgw=1; } ;;
+        probe-target) [ -n "$_nwgt" ] || { _nwt="$_nwv"; _nwgt=1; } ;;
+        on-demand)    [ -n "$_nwgo" ] || { _nwo="$_nwv"; _nwgo=1; } ;;
+      esac
+    done
+  done < "$1"
+  _nhw_flush
+}
+_nhw_flush() {  # 고리가 읽은 절 하나를 낸다 — node-link 이고 on-demand 가 아니고 모듈이 있을 때만
+  [ -n "$_nws" ] && [ "$_nww" = node-link ] && [ "$_nwo" != yes ] && [ -n "$_nwt" ] && printf '%s\t%s\n' "$_nws" "$_nwt"
+  return 0
 }
 
 # node_home_missing — 0 = 홈 배선이 빠진 이름이 있다 · 1 = 다 섰거나 볼 것이 없다. 세션(auto)의 지문 게이트가 부른다
@@ -2325,12 +2577,19 @@ git_why() {   # git_why <붙잡은 stderr> — 층이 갈리는 한 줄
 #    시도를 적는 것이라 이름도 그렇게 둔다.
 #    ⚠ 표식은 `.git` 안에 둔다 — 작업 트리를 더럽히면 그 더러움이 다음 세션의 당김을 막아, 이 함수가 줄이려는 실패를 이
 #      함수가 만든다.
-pull_due() {   # pull_due <저장소> — 0=당길 차례 · 1=방금 다른 프로세스가 해 봤다
-  _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+#    git 폴더는 부른 쪽이 넘긴다 — 부르는 자리(`pull_ff` · `sync_main_bg`)가 같은 물음(`--absolute-git-dir`)을 바로 앞에서 했다.
+#    표식의 시각은 부르는 그 순간에 읽는다(`stat` 하나 · 지금 시각은 bash 의 `EPOCHSECONDS`) — 같은 순간에 뜬 다른 훅이 찍은
+#    표식을 봐야 이 함수의 뜻이 선다. 시각을 못 읽으면 0 이다(아주 옛 표식 — 당길 차례).
+#    ⚠ sh 로도 돈다 — 당김 검사(`scripts/check-home-hook.sh`)가 이 함수를 떼어 sh 에서 부른다. bash 의 값이 없는 셸은 `date` 에 묻는다.
+pull_due() {   # pull_due <저장소> <git 폴더> — 0=당길 차례 · 1=방금 다른 프로세스가 해 봤다
+  _gd="${2:-}"
   [ -n "$_gd" ] || return 0
   _st="$_gd/claude-pull-attempted"
   if [ -f "$_st" ]; then
-    _age=$(( $(date +%s) - $(date -r "$_st" +%s 2>/dev/null || echo 0) ))
+    _stm="$(stat -L -c %Y -- "$_st" 2>/dev/null)"
+    case "$_stm" in ''|*[!0-9]*) _stm=0 ;; esac
+    _stn="${EPOCHSECONDS:-$(date +%s)}"
+    _age=$(( _stn - _stm ))
     [ "$_age" -ge 0 ] && [ "$_age" -lt "$PULL_TTL" ] && return 1
   fi
   : > "$_st" 2>/dev/null || true
@@ -2345,7 +2604,7 @@ bg_fail_report() {  # bg_fail_report <저장소> <로그> <원문 보관> <무�
   if [ -s "$2" ]; then
     cp "$2" "$3" 2>/dev/null || true
     echo "$(basename "$1"): ⚠ $4 — $(git_why "$(cat "$2")") · 원문 $3"
-  else
+  elif [ -e "$3" ] || [ -L "$3" ]; then   # 걷을 것이 있을 때만 `rm` 을 띄운다 — 성한 판(늘)은 없다
     rm -f "$3" 2>/dev/null || true
   fi
 }
@@ -2399,7 +2658,7 @@ sync_main_bg() {  # sync_main_bg <저장소>
   _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
   _lg="$_gd/claude-main-sync.log"
   bg_fail_report "$1" "$_lg" "$_gd/claude-main-sync.last-fail" "지난 세션에 로컬 main 을 원격에 못 맞췄다"
-  pull_due "$1" || return 0
+  pull_due "$1" "$_gd" || return 0
   : > "$_lg" 2>/dev/null || true
   ( sync_main "$1" >"$_lg" 2>&1 </dev/null & )
 }
@@ -2581,10 +2840,21 @@ EOF
 #   `.git/claude-pull.log` 에 남고 다음 세션이 그것을 말한다 — 성공은 빈 파일이라 조용하다.
 # ⚠ stdout · stderr · stdin 을 다 뗀다 — 하나라도 훅의 파이프를 물고 있으면 Claude Code 가 그 자식이 끝날 때까지 훅을
 #   기다려 배경으로 뺀 뜻이 없어진다.
+# git 폴더와 지금 갈래는 한 번에 묻는다 — `rev-parse --absolute-git-dir --abbrev-ref=loose HEAD` 의 두 줄이다. `loose` 는
+#   `symbolic-ref --short` 와 같은 줄임 규칙(앞선 규칙의 이름만 피한다 — `core.warnAmbiguousRefs` 를 안 탄다)이다.
+#   갈래 줄이 `HEAD` 이거나 비면 `symbolic-ref` 에 다시 묻는다 — rev-parse 는 떨어진 HEAD 와 아직 커밋이 없는 갈래를 둘 다
+#   `HEAD` 로 답하는데, 뒤엣것은 main 일 수 있다(`symbolic-ref` 가 그 이름을 낸다). 떨어진 HEAD 는 `symbolic-ref` 가 져서
+#   빈 값이고 main 이 아니다. 그 두 꼴에서만 git 이 하나 더 뜬다.
 pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기로만, 배경에서
   [ -e "$1/.git" ] || return 0
-  [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" = main ] || return 0
-  _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
+  _gdh="$(git -C "$1" rev-parse --absolute-git-dir --abbrev-ref=loose HEAD 2>/dev/null)"
+  _nl='
+'
+  _gd="${_gdh%%"$_nl"*}"; _hb=""
+  case "$_gdh" in *"$_nl"?*) _hb="${_gdh#*"$_nl"}" ;; esac
+  case "$_hb" in ''|HEAD) _hb="$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" ;; esac
+  [ "$_hb" = main ] || return 0
+  [ -n "$_gd" ] || _gd="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
   _lg="$_gd/claude-pull.log"
   # 원문 보관과 경고는 `bg_fail_report` 한 자리다 — main 맞추기도 같은 것을 쓴다.
   bg_fail_report "$1" "$_lg" "$_gd/claude-pull.last-fail" "지난 세션의 원격 당김이 졌다"
@@ -2595,7 +2865,7 @@ pull_ff() {  # pull_ff <저장소> — main 체크아웃일 때만, 빨리감기
   case "$_ptl" in
     rejected\ *) echo "$(basename "$1"): ⚠ 지난 당김이 저장소 손(.claude/hooks/pull-target.sh)의 답을 물리치고 원격 끝까지 갔다 — ${_ptl#* · } · 판정 $_gd/claude-pull-target.last" ;;
   esac
-  pull_due "$1" || return 0
+  pull_due "$1" "$_gd" || return 0
   : > "$_lg" 2>/dev/null || true
   # ⚠ `pull` 이 아니라 `fetch` + `merge` 다. `pull` 은 제 fetch 뒤 `FETCH_HEAD` 를 읽어 무엇을 병합할지 정하는데, 그 파일은
   #   저장소당 한 장이라 다른 git 이 같은 순간에 끼어들면 갈래가 두 줄 적히고 pull 이 그것을 병합 대상 둘로 읽어
@@ -3858,8 +4128,8 @@ unset -f _migrate_name
   echo "$PROJECT_NAME: ⚠ 선언이 하나도 없다(requirements.txt · package-lock.json · tools*.conf) — $PROJECT_DIR 를 저장소로 보고 있다. 자리가 맞나 본다."
 
 # 형제가 서는 자리 — 이 저장소 본 작업 폴더의 부모(`main_worktree`). 아래 설정 저장소 후보 · 작업 루트(`home_hook_root`) ·
-# 리눅스의 붙은 저장소 훑기가 다 이 값을 읽는다 — git 은 한 번만 띄운다.
-SIBLING_BASE="$(dirname "$(main_worktree "$PROJECT_DIR")")"
+# 리눅스의 붙은 저장소 훑기가 다 이 값을 읽는다 — 묻는 것은 한 번이고, 성한 꼴이면 `.git` 을 읽을 뿐 아무것도 안 띄운다.
+SIBLING_BASE=""; main_worktree_v "$PROJECT_DIR"; _dir_of "$_mwv"; SIBLING_BASE="$_dir"
 # claude-config 가 어디 붙었나 — 커밋 게이트와 같은 자리(.githooks 의 경로 스크립트)를 본다.
 # 그 스크립트가 없거나 못 찾은 저장소(작업 트리를 모르는 옛 배포본 포함)는 아래서 직접 짚는다.
 CONFIG_ROOT=""; ADR_GEN=""; GATES_HOME=""
@@ -3951,7 +4221,7 @@ if [ "$MODE" = needs-install ]; then
       { echo "배선을 못 쟀다 — git 이 $PROJECT_DIR 를 저장소로 안 읽는다"; exit 2; }
     echo "커밋 훅 배선이 없다 (core.hooksPath=${HOOKS_PATH:-빈 값})"; exit 1
   fi
-  [ "$_nfp" = "$(cat "$STAMP" 2>/dev/null)" ] ||
+  file_holds "$STAMP" "$_nfp" ||
     { echo "선언 지문이 어긋난다 — 선언이 바뀌었거나 아직 안 깔렸다"; exit 1; }
   if [ -f "$PROJECT_DIR/requirements.txt" ] && ! venv_ready; then
     echo "venv 에 pip 이 안 닿는다 — 파이썬 선언이 있는데 .venv 가 없거나 반쯤 섰다"; exit 1
@@ -3970,16 +4240,17 @@ fi
 
 # ══ 단계 · 해석기와 처음 값 — needs-install 을 뺀 갈래 다 ════════════════════════
 #    층 — 없음(준비)
-#    하는 일 — 파이썬 이름을 한 번 불러 보고 진짜를 고른다(`py_resolve`). PC 파이썬(`PC_PY`) · venv 파이썬 · 저장소
+#    하는 일 — 파이썬 이름을 한 번 불러 보고 진짜를 고른다(`py_ready`). PC 파이썬(`PC_PY`) · venv 파이썬 · 저장소
 #      npm 자리를 굳히고, 라이브러리 함수가 읽고 쓰는 전역 값의 처음 값을 세운다
 #    앞에서 받는 것 — 준비의 `OS` · `PY_CMD` · `VENV_BIN` · `PROJECT_DIR`
-#    안 하는 것 — 깔기 · 쓰기. 파이썬이 한 번 뜰 뿐이다
-py_resolve
-# PC 의 파이썬 — 전역 파이썬 패키지(`pip-user`)가 사는 자리라 여기서 굳혀 둔다.
+#    안 하는 것 — 깔기 · 쓰기. 파이썬이 한 번 뜰 뿐이고, 세션(auto)은 여기서 안 띄운다 — 세션 단계가 파이썬을 쓰는 걸음
+#      (홈 밀기 · 고른 제품 묻기 · 형제 세션의 견주기 · 설치로 넘기기) 앞에서 부른다
+# PC 의 파이썬 — 전역 파이썬 패키지(`pip-user`)가 사는 자리라 고른 그 자리에서 굳힌다(`py_ready`).
 # ⚠ `PY_CMD` 를 그대로 안 쓴다 — 「파이썬 축」이 선언한 판(`probe = python-version`)으로 venv 를 세우려고 그 이름을 다른
 #   해석기로 바꿔 끼운다. 전역 패키지를 부르는 자는 저장소와 무관하게 PATH 의 파이썬으로 돈다 — 깔고 재는 자리도 그것이어야
 #   명제가 같다.
-PC_PY="$PY_CMD"
+PC_PY="$PY_CMD"; PY_READY=''
+[ "$MODE" = auto ] || py_ready
 VENV_PY="$VENV_BIN/python"; [ -x "$VENV_PY" ] || VENV_PY="$VENV_BIN/python.exe"
 NPM_BIN="$PROJECT_DIR/node_modules/.bin"
 
@@ -4007,12 +4278,12 @@ PUSH_ONLY=""
 #   파일만 보면 새 칸이 빈 채로 표식이 「맞췄다」를 적는다.
 PW_INPUTS=".claude/hooks/ personal.conf secrets.env .claude/tools.global.conf .claude/tools.conf"
 PW_FULL_IF="deploy.seeds.conf .claude/hooks/session-start-body.sh"
-_TAB=$(printf '\t')   # 옮김 줄의 두 경로를 가르는 글자 — 글자로 박으면 편집기가 공백으로 바꿔도 모른다
+printf -v _TAB '\t'   # 옮김 줄의 두 경로를 가르는 글자 — 글자로 박으면 편집기가 공백으로 바꿔도 모른다 · `-v` 라 하위 셸이 없다
 _NL='
 '
 PW_RUN=full; PW_CHANGED=""; PW_REST=1; PW_HOMESET=1; PW_OID=""; PW_DIRTY=""; PC_WIDE_FAIL=""; PW_DEFER=""
 
-_CR=$(printf '\r')   # 고리 밖에서 한 번 — `$'\r'` 은 sh 에 없다
+printf -v _CR '\r'   # 고리 밖에서 한 번
 _SITE=''; _SITE_FILE=''; _SITE_MODE=''; _SITE_DONE=''
 PULL_TTL=90   # 초. 훅 둘(저장소·홈)이 한 세션에서 40여 초 걸러 도는 것을 한 창으로 덮는다
 
@@ -4052,6 +4323,7 @@ fi
 if [ "$MODE" = auto ]; then
   wire_commit_hooks  # 당김 앞이다 — 망이 느리거나 훅이 잘려도 게이트만은 선다
   run_repo_start     # 당김 앞이다 — 저장소가 제 나무를 당김이 설 수 있는 꼴로 만든다
+  MT_SNAP=want       # 표식 셋의 시각을 처음 물을 때 한 번에 읽는다(`mtime_over`) — 저장소 제 시작 일 뒤라야 그 손이 고친 것도 본다
   # 열쇠는 당김 앞에서 읽는다 — 배경 병합이 작업 나무를 바꾸기 전의 판을 잡는다. 그래도 도는 사이 판이
   #   움직이면 `pc_wide_mark` 가 열쇠를 안 적는다.
   [ -n "$PC_WIDE" ] && pc_wide_key
@@ -4083,6 +4355,7 @@ if [ "$MODE" = auto ]; then
     if [ -n "$PW_RUN" ]; then
       PC_WIDE_FAIL=""
       [ "$PW_RUN" = part ] && PUSH_ONLY="$PW_CHANGED"
+      py_ready           # 홈 밀기의 손(`tool_homes`)과 개인 칸(`home_settings_seed`)이 파이썬을 쓴다
       deploy_home_norms  # 당김이 배경이라 이번엔 지난 판을 민다 — 방금 당긴 것은 다음 세션이 민다
       PUSH_ONLY=""
       [ -n "$PW_REST" ] && deploy_personal auto  # 가벼운 것만 — git 신원 · 슬러그 · 값이 바뀐 개인 키
@@ -4103,9 +4376,11 @@ if [ "$MODE" = auto ]; then
   #    표식이 없으면 안 밀고 표식만 남긴다 — 컨테이너는 세션마다 새로 나서 표식이 늘 없는데, 거기서 밀면 매 세션 수십 초를
   #    문다(도구는 이미지만큼만 낡았고 이미지는 이 훅이 관리하는 것이 아니다). 영속 기계는 표식이 남아 제때 낡고, 그때 한 번 민다.
   UPGRADE=""
+  # 홈 밀기 · 견주기가 돌았으면 초 단위가 지났다 — 그 사이 다른 세션의 설치가 표식을 고쳤을 수 있어 시각을 다시 읽는다
+  [ -z "$PW_RUN" ] || MT_SNAP=want
   if [ ! -f "$FRESH" ]; then
     : > "$FRESH" 2>/dev/null || true
-  elif [ -n "$(find "$FRESH" -mtime "+$UPGRADE_DAYS" 2>/dev/null)" ]; then
+  elif mtime_over "$FRESH" "$UPGRADE_DAYS"; then
     UPGRADE=1
     echo "$PROJECT_NAME: 도구의 새 판을 견준다 (마지막 견주기가 ${UPGRADE_DAYS}일을 넘었다 · 새 판이 있는 것만 받는다)"
   fi
@@ -4117,12 +4392,12 @@ if [ "$MODE" = auto ]; then
   #   탄다 — 같은 판으로 맞춘 홈이면 그때 이미 대조했다. 형제 저장소의 전역 선언이 바뀐 것은 이 열쇠에 안 잡히고, 로그인
   #   자동 실행의 설치가 잡는다.
   if [ -n "$PC_WIDE" ] && { [ -n "$PW_REST" ] || [ -n "$UPGRADE" ]; }; then
-    { [ -z "$UPGRADE" ] && [ "$(global_fingerprint)" = "$(cat "$GSTAMP" 2>/dev/null)" ]; } || DO_GLOBAL=1
+    { [ -z "$UPGRADE" ] && file_holds "$GSTAMP" "$(global_fingerprint)"; } || DO_GLOBAL=1
   fi
   # 홈 배선은 지문이 아니라 그 자리를 본다(`node_home_missing`) — 위 대조는 열쇠를 타서 맞춘 홈에서는 안 돌고, 돌아도 선언만
   #   견준다. 빠졌으면 전역 걸음을 배경에서 한 번 돌려 다시 잇는다(`wire_node_home`). 홈은 PC 전체 일이라 맡는 세션만 본다.
   if [ -n "$PC_WIDE" ] && [ -z "$DO_GLOBAL" ] && node_home_missing; then DO_GLOBAL=1; fi
-  { [ -z "$UPGRADE" ] && [ "$(decl_fingerprint)"   = "$(cat "$STAMP"  2>/dev/null)" ]; } || DO_REPO=1
+  { [ -z "$UPGRADE" ] && file_holds "$STAMP" "$(decl_fingerprint)"; } || DO_REPO=1
   # ⚠ PC 전체 일의 표식은 여기서 적는다 — 전역 도구를 깔 판이면 미룬다. 대조가 어긋나 설치로 가는 세션이 먼저 판을 적고
   #   설치 도중 죽으면(창을 닫았다 · 느린 망에서 끊겼다), 다음 세션은 판이 맞아 대조를 아예 안 하고 새 도구가 안 깔린 채
   #   조용히 남는다. 미룬 표식은 설치 걸음이 전역 지문을 굳힌 뒤(「선언 지문 굳히기」) 적는다.
@@ -4148,6 +4423,8 @@ if [ "$MODE" = auto ]; then
     exit 0
   fi
   # 선언이 어긋났거나 도구가 낡았다 — 배경에서 깐다(`install_bg`). 지문은 설치 걸음 끝(「선언 지문 굳히기」)에 굳는다
+  py_ready   # 설치 걸음은 고른 해석기와 `PC_PY` 위에 선다
+  MT_SNAP=''   # 읽어 둔 표식 시각은 세션 단계 안에서만 맞다 — 설치 걸음은 표식을 고쳐 쓰고 다시 읽는다
   MODE=install; INSTALL_BG=1
 fi
 

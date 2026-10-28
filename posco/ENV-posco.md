@@ -147,6 +147,15 @@
   신호 99 가 맞는다 · 원형 기록은 안 남았다). 즉 **모델이 생각하는 동안 게이트웨이는 아무 조각도 안 흘린다.** 게이트웨이는
   요청을 Bedrock Converse 로 옮긴다(`Claude-Posco.setting.md` · 도구 호출 id 가 Converse 꼴 `tooluse_` + 22자 — 결정 0175) —
   Converse 스트림의 생각 조각(`reasoningContent`)을 게이트웨이가 안 옮기는 꼴과 맞는다
+- **자동 모드의 서버 검토는 이 게이트웨이 너머로 못 온다 — 그래서 사내 세션마다 「분류기 과금」 경고가 뜬다(2026-10-27 · #215).**
+  Claude Code 2.1.278 부터 자동 모드의 분류기 판정을 Anthropic 서버가 본 요청 안에서 대신하는데, 그 부탁(`safeguards` 요청
+  항목 · 짝인 `anthropic-beta` 값)과 답(응답의 safeguard_results 항목)은 그대로 통과하는 게이트웨이에서만 산다. Converse 변환은 그 항목을
+  못 싣고 도구 호출 id 도 바꿔 쓰므로 부탁이 떨어지고, Claude Code 는 종전처럼 제 분류기 요청(`claude-sonnet-5` → 프록시가
+  4.6 으로)으로 물러난 뒤 경고를 띄운다. 루프백 프록시는 헤더 · 모르는 본문 항목 · 응답 이벤트를 그대로 통과시키므로 막는 쪽이
+  아니다. 경고는 게이트웨이를 이름으로 대므로 기계마다 24시간에 한 번이고, Continue 는 아무것도 안 바꾼다(종전 그대로 · 과금
+  같음). **끄는 손잡이(`CLAUDE_CODE_AUTO_MODE_SERVER=0`)는 일부러 안 심는다** — 경고가 계속 뜨는 것이 「게이트웨이가 아직
+  Converse 그대로」라는 탐침이고, 심으면 게이트웨이가 바뀌어도 모른다. 문서는 그 손잡이를 임시라고도 적는다. 안 뜨기 시작하면
+  `/status` 의 「Auto mode server」 행을 본다
 - **따라서 위 두 표본(Claude Code · `claude-opus-4.7`)의 180초 침묵은 생각이 아니다.** 4.7 은 이 게이트웨이에서
   생각을 안 한다. 첫 바이트 뒤 아무것도 안 온 채 벽에 닿은 원인은 게이트웨이 안쪽이고 밖에서 못 가른다.
   잡는 길은 하나다 — VS Code 를 `capture_proxy.py serve` 너머로 두면 멈추는 그 요청이 본문과 응답 시각
@@ -225,6 +234,13 @@
     통한다
   - **게이트웨이는 `POST /v1/messages/count_tokens` 를 404(`E006`)로 되돌린다** — 같은 로그. Claude Code 는
     「count unavailable, estimating locally」로 넘어가 해는 없다. 게이트웨이 팀 보고에 얹을 한 줄
+  - **라우터는 `/gpgpta01-gpt` 아래를 둘로 가른다 — Bedrock 꼴 끝점은 없다(회사 실측 2026-10-28 · #215).**
+    `/gpgpta01-gpt/**`(루트 포함)는 세션 · SSO 영역이라 모르는 경로가 302 → SSO 로그인 오류 페이지(errors/ssoLoginError)로, Bearer 를 주면
+    `C090`(토큰 꼴 거절)으로 온다 — 지어낸 경로와 구별되지 않아 거기서 두드린 400 은 아무것도 안 가른다.
+    `/gpgpta01-gpt/v1/**` 는 API 키 영역이라 **아는 길은 400 · 405, 모르는 길은 404 `E006`** 으로 갈린다(위 `/v1/messages/count_tokens`
+    의 404 도 같은 자). 그 영역에 Bedrock 꼴(`/v1/model/<모델>/invoke` · `…/invoke-with-response-stream` · `/v1/bedrock/…` ·
+    `/v1/converse`)을 넣으면 전부 404 라, Claude Code 의 Bedrock 길(`CLAUDE_CODE_USE_BEDROCK=1` · `ANTHROPIC_BEDROCK_BASE_URL`)
+    로 붙을 끝점은 P-GPT 가 열어야 생긴다. `/v1` 이 아닌 다른 접두사에 사는지는 밖에서 못 본다
 
 ⚠ 위 두 표본(2026-08-27 · 09-09)에서 비스트리밍 재요청이 빨리 온 것(4.80초 · 10.4초)은 둘 다 캐시나 짧은 답
 덕일 수도 있다 — 스트림을 접은 길이 정말 빠른지는 표본 둘로 못 가른다.
@@ -247,6 +263,10 @@
 
 - GitHub **HTTPS만 가능** (`github.com`, `api.github.com`, `raw.githubusercontent.com` 전부 200). 프록시 없음, 직결.
 - GitHub **SSH는 차단** (22번, 443번 대체 포트 모두 타임아웃) → 리모트는 반드시 `https://...` 형식
+- **`code.claude.com`(Claude Code 공식 문서)은 차단** — 차단 장비가 카테고리 「Claude」 · `[차단][전사] 기본정책` 으로 막아
+  HTTPS 는 TLS 가 아예 안 서고(`WRONG_VERSION_NUMBER`) 평문은 안내 페이지가 온다(2026-10-27 · #215). docs.claude.com ·
+  platform.claude.com · anthropic.com 은 열린다. 그 문서가 필요하면 사외에서 `.md` 를 붙여 받는다
+  (`https://code.claude.com/docs/en/<쪽>.md`) — 해제 요청은 자주 읽게 되는 날 낸다
 - Git 인증 세팅 완료: `credential.helper=manager` (GCM + OAuth 방식, PAT 불필요, 첫 push 때 브라우저 로그인)
 - Git 신원·기본 브랜치·`core.autocrlf` 는 **세션 훅이 심는다** — 원본은 훅 몸통
   `claude-config/.claude/hooks/session-start-body.sh` 의 개인 칸(`deploy_personal`)이다(`session-start.sh` 는

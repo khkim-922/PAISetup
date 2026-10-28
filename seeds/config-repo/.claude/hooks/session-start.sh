@@ -25,7 +25,7 @@ set -u
 _self="${BASH_SOURCE[0]:-$0}"
 _repo=""
 case "$_self" in
-  */.claude/hooks/*) _repo="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" ;;
+  */.claude/hooks/*) _repo="$(cd "${_self%/*}/../.." 2>/dev/null && pwd)" ;;   # 꼴이 `/` 를 보장한다 — dirname 을 안 띄운다
 esac
 [ -n "$_repo" ] || _repo="${CLAUDE_PROJECT_DIR:-$PWD}"
 
