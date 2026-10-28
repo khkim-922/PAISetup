@@ -27,12 +27,64 @@
 #   되돌려 틀린 자리가 조용히 선다. 맨 꼴의 답은 상대 경로(`.git`)일 수 있어 저장소 자리에서 푼다.
 # git 이 없거나 · git 나무가 아니거나 · 공통 git 폴더가 `.git` 이 아니면(맨 저장소 · 따로 둔 git 폴더 · 하위 모듈) 제 자리를
 #   본 작업 폴더로 본다. 본 작업 폴더에서는 받은 글자를 그대로 낸다.
-_ccp_main_worktree() {   # _ccp_main_worktree <저장소 뿌리> — 그 저장소의 본 작업 폴더를 낸다
+# git 에 묻기 전에 `.git` 을 읽는다 — 매 세션 · 매 커밋 도는 자리라 git 을 안 띄운다. 읽는 꼴은 둘이다: 저장소 뿌리의 `.git`
+#   폴더(HEAD · objects · refs 를 든다 — git 은 상대 꼴 `.git` 으로 답하고, 그러면 받은 글자가 답이다), 그리고 `gitdir: <자리>`
+#   한 줄을 든 `.git` 파일(그 자리의 `commondir` 가 공통 폴더를 가리키고 없으면 그 자리 자신이다 — git 은 그것을 실경로로
+#   답하므로 `cd -P` 로 같은 자리에 선다). 그 밖은 git 이 답한다 — 환경이 git 폴더를 정한 판(`GIT_DIR` · `GIT_COMMON_DIR`) ·
+#   뿌리에 `.git` 이 없는 판(하위 폴더 · 맨 저장소) · 가리킨 자리가 git 폴더가 아닌 판. 세션 훅 몸통의 `git_dirs` 가 같은 손이다.
+# 낸다: `_ccp_mw` 에 둔다(명령 치환의 하위 셸 없이 부른다).
+_ccp_main_worktree() {   # _ccp_main_worktree <저장소 뿌리> — 그 저장소의 본 작업 폴더를 `_ccp_mw` 에 둔다
+    _ccp_mw="$1"; _ccp_cd=""
+    if [ -z "${GIT_DIR+x}${GIT_COMMON_DIR+x}" ]; then
+        if [ -d "$1/.git" ]; then
+            [ -f "$1/.git/HEAD" ] && [ -d "$1/.git/objects" ] && [ -d "$1/.git/refs" ] && [ ! -e "$1/.git/commondir" ] &&
+                return 0
+        elif [ -f "$1/.git" ]; then
+            _ccp_gitfile "$1" || _ccp_cd=""
+        fi
+    fi
+    if [ -n "$_ccp_cd" ]; then
+        _ccp_mw="$( (cd -P "$_ccp_cd" && case "$PWD" in */.git) cd .. && pwd ;; *) exit 1 ;; esac) 2>/dev/null)" || _ccp_mw="$1"
+        return 0
+    fi
     _ccp_cd="$(git -C "$1" rev-parse --git-common-dir 2>/dev/null)" || _ccp_cd=""
     case "$_ccp_cd" in
-        */.git) (cd "$1" && cd "${_ccp_cd%/.git}" && pwd) 2>/dev/null || printf '%s' "$1" ;;
-        *)      printf '%s' "$1" ;;
+        */.git) _ccp_mw="$( (cd "$1" && cd "${_ccp_cd%/.git}" && pwd) 2>/dev/null)" || _ccp_mw="$1" ;;
     esac
+}
+# `.git` 파일이 가리키는 공통 git 폴더(읽은 글자 — `..` 를 들 수 있다)를 `_ccp_cd` 에 둔다 · 못 읽는 꼴이면 1(부른 쪽이 git 에
+#   묻는다). 한 줄짜리 파일을 git 이 읽듯 읽는다(`_ccp_line1`).
+_ccp_gitfile() {   # _ccp_gitfile <저장소 뿌리>
+    _ccp_cr="$(printf '\r')"
+    _ccp_line1 "$1/.git" || return 1
+    case "$_ccp_l" in 'gitdir: '?*) _ccp_g="${_ccp_l#gitdir: }" ;; *) return 1 ;; esac
+    case "$_ccp_g" in /*|[A-Za-z]:/*) ;; *) _ccp_g="$1/$_ccp_g" ;; esac
+    [ -f "$_ccp_g/HEAD" ] || return 1
+    [ -f "$_ccp_g/commondir" ] || { _ccp_cd="$_ccp_g"; return 0; }
+    _ccp_line1 "$_ccp_g/commondir" || return 1
+    case "$_ccp_l" in '') return 1 ;; /*|[A-Za-z]:/*) _ccp_cd="$_ccp_l" ;; *) _ccp_cd="$_ccp_g/$_ccp_l" ;; esac
+}
+# 한 줄을 `_ccp_l` 에 — 꼬리 CR 은 다 뗀다(git 과 같다). 둘째 줄이 있으면 1 — git 은 그 꼴을 통째로 한 값으로 본다.
+#   sh 에는 `$'\r'` 이 없어 부른 쪽이 그 글자(`_ccp_cr`)를 한 번 지어 둔다(이 꼴에서만 · 하위 셸 하나).
+_ccp_line1() {   # _ccp_line1 <파일>
+    _ccp_l=""; _ccp_x=""
+    { IFS= read -r _ccp_l || [ -n "$_ccp_l" ] || return 1
+      ! IFS= read -r _ccp_x && [ -z "$_ccp_x" ] || return 1; } < "$1"
+    while :; do case "$_ccp_l" in *"$_ccp_cr") _ccp_l="${_ccp_l%?}" ;; *) break ;; esac; done
+}
+# `dirname` 의 답을 `_ccp_dir` 에 둔다 — 경로가 `/` 만 쓰는 꼴이면 셸이 낸다(POSIX 의 규칙 그대로).
+#   ⚠ Git Bash 의 coreutils 는 `\` 를 구분자로 읽고 드라이브(`C:`)와 머리 `//` 를 따로 다룬다 — 그 꼴은 `dirname` 에 묻는다.
+_ccp_dirname() {   # _ccp_dirname <경로>
+    case "$1" in *\\*|*:*|//*) _ccp_dir="$(dirname "$1")"; return 0 ;; esac
+    _ccp_dir="$1"
+    while :; do case "$_ccp_dir" in /) break ;; */) _ccp_dir="${_ccp_dir%/}" ;; *) break ;; esac; done
+    case "$_ccp_dir" in
+        /)   return 0 ;;
+        */*) _ccp_dir="${_ccp_dir%/*}" ;;
+        *)   _ccp_dir=.; return 0 ;;
+    esac
+    while :; do case "$_ccp_dir" in */) _ccp_dir="${_ccp_dir%/}" ;; *) break ;; esac; done
+    [ -n "$_ccp_dir" ] || _ccp_dir=/
 }
 
 # ⚠ **이름이 아니라 지문으로 확인한다.** 이름만 보면 그 이름의 빈 폴더도 잡히고, 반대로
@@ -41,8 +93,9 @@ _ccp_main_worktree() {   # _ccp_main_worktree <저장소 뿌리> — 그 저장�
 # ⚠ **자기 자신이 첫 후보다.** 이 저장소는 역할이 둘이라(전역 자산의 진본 · 게이트를 쓰는
 #   자 — 결정 0035) 제 안에서 이 스크립트가 돌 때 형제를 찾으면 영영 못 찾는다.
 CONFIG_ROOT=""
+_ccp_main_worktree "$PROJECT_DIR"; _ccp_dirname "$_ccp_mw"
 for _d in "$PROJECT_DIR" \
-          "$(dirname "$(_ccp_main_worktree "$PROJECT_DIR")")/claude-config" \
+          "$_ccp_dir/claude-config" \
           /workspace/claude-config \
           "$HOME/claude-config"; do
     # 자기 자신  — 역할이 둘인 저장소. 그 저장소의 작업 트리에서는 그 작업 트리 자신이다
@@ -80,7 +133,14 @@ done
 #   다 없으면 몸통이 「러너를 못 찾았다」고 알리고 지나간다.
 # ⚠ 홈 씨앗은 설치기가 모든 PC 에 깐다(`~/.claude/seeds/config-repo/`) — claude-config 가 없는
 #   동료 PC 가 이 자리로 선다. 세션 훅 문지기가 몸통을 찾는 차례와 같다(0063).
-_gates_ok() { [ -f "$1/gates-run.sh" ] && grep -q '^# gates-contract: [2-9]' "$1/gates-run.sh" 2>/dev/null; }
+#   표식은 셸이 줄마다 읽어 찾는다(`grep` 의 `^# gates-contract: [2-9]` 와 같은 줄 머리) — 매 세션 · 매 커밋 도는 자리다.
+_gates_ok() {
+    [ -f "$1/gates-run.sh" ] || return 1
+    while IFS= read -r _ccp_g || [ -n "$_ccp_g" ]; do
+        case "$_ccp_g" in '# gates-contract: '[2-9]*) return 0 ;; esac
+    done 2>/dev/null < "$1/gates-run.sh"
+    return 1
+}
 _h_own="$(cd "$PROJECT_DIR/.githooks" 2>/dev/null && pwd -P)"
 GATES_HOME=""
 if [ -n "${GATES_CALLER:-}" ] && [ "$(cd "$GATES_CALLER" 2>/dev/null && pwd -P)" != "$_h_own" ] &&
@@ -93,5 +153,5 @@ else
     done
 fi
 
-unset _d _g _h _h_own _skill
-unset -f _ccp_main_worktree   # 점으로 읽은 쪽(게이트 몸통 · 문지기 · 세션 훅 몸통)에 이 손을 남기지 않는다
+unset _d _g _h _h_own _skill _ccp_mw _ccp_cd _ccp_dir _ccp_g _ccp_l _ccp_x _ccp_cr
+unset -f _ccp_main_worktree _ccp_gitfile _ccp_line1 _ccp_dirname   # 점으로 읽은 쪽(게이트 몸통 · 문지기 · 세션 훅 몸통)에 이 손을 남기지 않는다
