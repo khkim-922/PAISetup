@@ -9902,6 +9902,37 @@ if (Test-Path -LiteralPath $launcher) {
   else { Write-Host '    ! 아이콘을 못 만들었다 — 설치에는 지장이 없다' -ForegroundColor Yellow }
 }
 
+# ── VS Code 바탕화면 아이콘 — VS Code 가 주 무대인 자리(`Test-VsCodeRequired` · 사내)에만 ──
+#   winget 의 조용한 설치는 VS Code 설치본의 기본 칸만 켜고, 바탕화면 아이콘은 기본이 꺼져 있어 안 생긴다. 회사가 미리 깐 VS Code
+#   에도 서게 설치 옵션이 아니라 바로가기로 둔다. 가리키는 곳은 끝에 띄우는 자리와 같은 `Find-VSCode` 의 `Code.exe` 다.
+#   내 바탕화면이나 공용 바탕화면에 그 `Code.exe` 를 가리키는 바로가기가 이미 있으면 안 만든다 — 이름이 아니라 가리키는 곳으로 가린다
+#   (사람이 이름을 바꿨거나 VS Code 설치본이 공용 자리에 둔 것도 겹치지 않게). 비영속 VDI 는 로그온 자동 실행이 다시 세운다.
+#   진 것은 실패로 세지 않는다 — 위 아이콘과 같은 덤이다.
+if (-not $NoVsCode -and (Test-VsCodeRequired $site)) {
+  $vs = Find-VSCode
+  $desk = [Environment]::GetFolderPath('Desktop')
+  if ($vs -and $desk -and (Test-Path -LiteralPath $desk)) {
+    try {
+      $sh = New-Object -ComObject WScript.Shell
+      $have = $false
+      foreach ($d in @($desk, [Environment]::GetFolderPath('CommonDesktopDirectory'))) {
+        if (-not $d -or -not (Test-Path -LiteralPath $d)) { continue }
+        foreach ($f in @(Get-ChildItem -LiteralPath $d -Filter '*.lnk' -ErrorAction SilentlyContinue)) {
+          try { if ($sh.CreateShortcut($f.FullName).TargetPath -eq $vs.Exe) { $have = $true; break } } catch { }
+        }
+        if ($have) { break }
+      }
+      if (-not $have) {
+        $lnk = $sh.CreateShortcut((Join-Path $desk 'Visual Studio Code.lnk'))
+        $lnk.TargetPath       = $vs.Exe
+        $lnk.WorkingDirectory = $vs.Dir
+        $lnk.Save()
+        Write-Host '    VS Code — 바탕화면에 아이콘을 두었다' -ForegroundColor Green
+      }
+    } catch { Write-Host '    ! VS Code 바탕화면 아이콘을 못 만들었다 — 설치에는 지장이 없다' -ForegroundColor Yellow }
+  }
+}
+
 # ── 부팅 시 자동 실행 (작업 스케줄러) ─────────────────────────────────────────
 # **로그온할 때와 밤마다 이 몸통을 다시 돌린다** — 깔린 것을 최신으로 올리고 환경을 다시 맞춘다. 둘 다 창 없이
 #   시작하고, 로그온 회차가 설치를 실제로 할 때만 작은 진행 창을 띄운다(아래 「문지기 · 머리 없는 콘솔」).
