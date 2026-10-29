@@ -282,6 +282,12 @@ uv_fresh() {
     /usr/bin/python3 -m pip install -q --user --upgrade uv >/dev/null 2>&1 || true
 }
 
+# ── uv_env <명령…> — uv 가 망을 거치는 자리(저장소 venv · 파이썬 전역 묶음)의 손잡이 셋. pip 이 서는 망에서 uv 도 서게 한다 ──
+#    인증서는 OS 저장소를 쓴다 — pip(24.2 뒤)은 그것을 믿는데 uv 는 제 묶음만 믿어, 사내망의 TLS 가로채기에서 uv 만 진다.
+#    기다림 15초 · 되풀이 한 번은 pip 갈래(`pip-user`)와 같다 — 막힌 망에서 물러나기 전에 무는 값이 그만큼이다.
+#    uv 는 `pip.ini` 를 안 읽는다 — 미러를 거기만 둔 PC 는 uv 가 지고 pip 이 받는다.
+uv_env() { UV_SYSTEM_CERTS=1 UV_HTTP_TIMEOUT=15 UV_HTTP_RETRIES=1 "$@"; }
+
 # ── uv 가 세운 링크인가 — `uv python install --default` 가 `~/.local/bin` 에 세우는 것은 uv 의 파이썬 자리를 가리키는
 #    심링크다. 그 밖의 것(저장소 venv 감싸개 · 남이 둔 파일)은 uv 가 안 덮는다 ──
 uv_link() {  # uv_link <경로> — 0 uv 의 파이썬 자리 밑을 가리키는 심링크다 · 1 아니다 · 2 uv 의 자리를 못 읽어 모른다
@@ -3075,10 +3081,24 @@ install_step() {
       #   `[WinError 6]` 으로 죽는다. 부르는 자리마다 고치면 다음 런처에서 또 만나므로 여기서 막는다 — `/dev/null` 은
       #   윈도우에서 NUL 로 서서 어느 부모 밑에서도 성한 손잡이가 된다.
       _vt0=$SECONDS
-      if try "venv" "$PY_CMD" -m venv "$VENV" </dev/null; then
-        printf '  · venv — 만들었다 (%s초)\n' "$((SECONDS - _vt0))"
+      # uv 가 있으면 uv 로 세운다 — 빈 캐시에서 venv + 설치가 4–5 배 빠르다(#219). 지면 남은 것을 걷고 `python -m venv`
+      #   로 물러나며, 뒷길이 받으므로 uv 의 실패는 사유로 안 적고 줄 끝에 물러났다고만 단다. 손잡이 셋(`uv_env`)은 pip 과
+      #   같은 망에 서게 한다. 리눅스도 같은 길이다 — uv 는 venv 의 python 을 해석기 실물로 걸어 `~/.local/bin` 의 감싸개
+      #   (`wire_python_path`)를 거치지 않으므로, 감싸개가 저를 되부르는 고리가 안 선다(링크를 끝까지 따라간 실측 · #219).
+      _vuv=''
+      if command -v uv >/dev/null 2>&1; then
+        if uv_env uv venv --quiet --seed --no-python-downloads --python "$PY_CMD" "$VENV" </dev/null >/dev/null 2>&1 &&
+           venv_ready; then _vuv=ok; else _vuv=fell; fi
+      fi
+      if [ "$_vuv" = ok ]; then
+        printf '  · venv — 만들었다 · uv (%s초)\n' "$((SECONDS - _vt0))"
       else
-        printf '  · venv — 못 만들었다 (%s초)\n' "$((SECONDS - _vt0))"
+        [ -d "$VENV" ] && rm -rf "$VENV"
+        if try "venv" "$PY_CMD" -m venv "$VENV" </dev/null; then
+          printf '  · venv — 만들었다%s (%s초)\n' "${_vuv:+ · uv 가 져 물러났다}" "$((SECONDS - _vt0))"
+        else
+          printf '  · venv — 못 만들었다 (%s초)\n' "$((SECONDS - _vt0))"
+        fi
       fi
     fi
     # 방금 만든 venv 를 프로브가 보게 한다 — VENV_PY 는 「해석기와 처음 값」 단계(venv 가 아직 없던 때)에 굳었다. 안 풀면
@@ -3087,9 +3107,19 @@ install_step() {
     if venv_ready; then
       _pip="$VENV_BIN/pip"; [ -x "$_pip" ] || _pip="$VENV_BIN/pip.exe"
       _pt0=$SECONDS
-      if try "파이썬 의존성" "$_pip" install --quiet --disable-pip-version-check \
+      # venv 와 같은 차례다 — uv 가 먼저 깔고, 지면 pip 이 받는다(uv 의 실패는 줄 끝에만 단다).
+      # ⚠ uv 에는 해석기가 아니라 venv 폴더를 준다 — Git Bash 는 `.exe` 없는 이름도 `-x` 로 참이라 윈도우의 VENV_PY 가
+      #   `Scripts/python` 으로 서는데, uv 는 그 이름을 못 찾아 진다.
+      _puv=''
+      if command -v uv >/dev/null 2>&1; then
+        if uv_env uv pip install --quiet --python "$VENV" -r "$PROJECT_DIR/requirements.txt" </dev/null >/dev/null 2>&1
+        then _puv=ok; else _puv=fell; fi
+      fi
+      if [ "$_puv" = ok ]; then
+        printf '  · 파이썬 의존성 — 깔았다 · uv (%s초)\n' "$((SECONDS - _pt0))"
+      elif try "파이썬 의존성" "$_pip" install --quiet --disable-pip-version-check \
            -r "$PROJECT_DIR/requirements.txt"; then
-        printf '  · 파이썬 의존성 — 깔았다 (%s초)\n' "$((SECONDS - _pt0))"
+        printf '  · 파이썬 의존성 — 깔았다%s (%s초)\n' "${_puv:+ · uv 가 져 물러났다}" "$((SECONDS - _pt0))"
       else
         printf '  · 파이썬 의존성 — 못 깔았다 (%s초)\n' "$((SECONDS - _pt0))"
       fi
@@ -3296,6 +3326,8 @@ install_step() {
       rm -f "$_nbq"; return 0
     fi
     _nbt0=$SECONDS; _nbfl="$(mktemp)"; _nbsave="$FAILS"; FAILS="$_nbfl"
+    # 받는 동안 한 줄 흘린다 — `try` 는 끝나야 한 줄을 내므로 그 사이 화면이 멈춘 것으로 읽힌다
+    printf '  · npm 전역 묶음 (%s) — 받는 중 (끝나면 한 줄 낸다)\n' "${_nbn# }"
     try "npm 전역 묶음" npm install -g --no-audit --no-fund --silent "$@"; _nbr=$?
     FAILS="$_nbsave"
     if [ "$_nbr" -eq 0 ]; then
@@ -3308,7 +3340,48 @@ install_step() {
     fi
     rm -f "$_nbq" "$_nbfl"
   }
-  # ── 깔 차례를 깐다 — 릴리스 자산은 배경에서 나란히, npm-global 은 한 번에, 나머지는 하나씩 ──────────
+  # ── pip-user 를 uv 로 한 번에 깐다 — 받고 푸는 것이 pip 보다 빠르고, 묶으면 해석기 띄우기 · 색인 묻기를 도구마다 안 문다(#219) ──
+  #    uv 에는 사용자 자리(`--user`)가 없어 그 해석기의 site 에 깐다 — PC_PY 가 venv 면 venv 에, 기계 파이썬이면 그 site 에.
+  #    부르는 자 · 탐침(machine-python-importable)이 같은 PC_PY 로 돌아 보이는 자리는 같다. 못 쓰는 site(관리자가 든 파이썬) ·
+  #    uv 없음 · 막힌 망이면 지고, 그때는 하나씩 까는 pip 길(`install_tool` 의 pip-user)이 받는다 — npm 묶음과 같은 차례다.
+  #    묶음의 사유는 실패 기록에 안 적고 화면 한 줄로만 낸다(npm 묶음과 같은 까닭). `--upgrade` · `--break-system-packages` 는
+  #    pip 길의 `--upgrade` · PIP_BREAK_SYSTEM_PACKAGES 와 같은 몫이다 — 판이 다를 때도 불리고, 배포판 파이썬의 잠금(PEP 668)을 연다.
+  install_pip_batch() {  # install_pip_batch <차례 파일> — 그 파일의 pip-user 줄만 깐다 · 판정은 안 낸다
+    _pbsrc="$1"; _pbq="$(mktemp)"; _pbn=''
+    set --
+    while IFS="$GQ_SEP" read -r _pbf _pbt _pbi _pbrest <&4; do
+      [ "$_pbi" = pip-user ] || continue
+      _pbp="$(decl_get "$_pbf" "$_pbt" package)"
+      # 선언이 빈 것은 묶음에 못 든다 — 하나씩 길이 그 사유를 제 이름으로 적는다
+      [ -n "$_pbp" ] || { install_one "$_pbf" "$_pbt"; continue; }
+      set -- "$@" "$_pbp"
+      _pbn="$_pbn $_pbt"
+      printf '%s%s%s\n' "$_pbf" "$GQ_SEP" "$_pbt" >> "$_pbq"
+    done 4< "$_pbsrc"
+    [ $# -ge 1 ] || { rm -f "$_pbq"; return 0; }
+    if ! command -v uv >/dev/null 2>&1 || ! "$PC_PY" -c '' >/dev/null 2>&1; then
+      while IFS="$GQ_SEP" read -r _pbf _pbt <&4; do install_one "$_pbf" "$_pbt"; done 4< "$_pbq"
+      rm -f "$_pbq"; return 0
+    fi
+    # ⚠ uv 에는 이름이 아니라 경로를 준다 — 이름(`python3`)은 uv 가 판 요청으로 읽어 venv 를 찾다 「venv 가 없다」로 진다.
+    #   경로는 해석기에게 묻는다(`sys.executable`) — `command -v` 는 Git Bash 에서 `.exe` 없는 이름을 내고 uv 는 그것을 못
+    #   찾아 윈도우에서 늘 진다. 감싸개(`wire_python_path`)는 그 venv 의 실물로 풀린다.
+    _pbpy="$("$PC_PY" -c 'import sys; print(sys.executable)' 2>/dev/null)"; _pbpy="${_pbpy%$'\r'}"
+    [ -n "$_pbpy" ] || _pbpy="$PC_PY"
+    _pbt0=$SECONDS; _pbfl="$(mktemp)"; _pbsave="$FAILS"; FAILS="$_pbfl"
+    printf '  · 파이썬 전역 묶음 (%s) — uv 로 받는 중 (끝나면 한 줄 낸다)\n' "${_pbn# }"
+    try "파이썬 전역 묶음" uv_env uv pip install --quiet --python "$_pbpy" --upgrade --break-system-packages "$@"; _pbr=$?
+    FAILS="$_pbsave"
+    if [ "$_pbr" -eq 0 ]; then
+      printf '  · 파이썬 전역 묶음 (%s) — uv 로 한 번에 깔았다 (%s초)\n' "${_pbn# }" "$((SECONDS - _pbt0))"
+    else
+      printf '  · 파이썬 전역 묶음 (%s) — uv 가 져 pip 으로 하나씩 다시 깐다: %s (%s초)\n' "${_pbn# }" \
+        "$(awk -F'\t' '{print $2; exit}' "$_pbfl" 2>/dev/null)" "$((SECONDS - _pbt0))"
+      while IFS="$GQ_SEP" read -r _pbf _pbt <&4; do install_one "$_pbf" "$_pbt"; done 4< "$_pbq"
+    fi
+    rm -f "$_pbq" "$_pbfl"
+  }
+  # ── 깔 차례를 깐다 — 릴리스 자산은 배경에서 나란히, npm-global · pip-user 는 한 번에, 나머지는 하나씩 ──────────
   #    받기는 망을 기다리는 일이라 겹쳐도 서로 안 늦춘다 — 릴리스 자산을 먼저 배경에 띄우고 그동안 앞에서 나머지를 깐다.
   #    ⚠ 배경 작업은 출력 · 실패 기록 · 임시 파일을 작업마다 제 자리(`<작업 폴더>/<번호>.*`)에 둔다 — 한 파일에 같이
   #      적으면 줄이 섞인다. 다 끝난 뒤 차례대로 붙이고 작업 폴더째 걷는다. 성패는 이 뒤 다시 재기가 도구마다 낸다 —
@@ -3329,8 +3402,9 @@ install_step() {
       _iqpids="$_iqpids $!"; _iqn="$_iqn $_iqt"
     done 4< "$1"
     install_npm_batch "$1"
+    install_pip_batch "$1"
     while IFS="$GQ_SEP" read -r _iqf _iqt _iqi _iqrest <&4; do
-      case "$_iqi" in github-release-binary|npm-global) continue ;; esac
+      case "$_iqi" in github-release-binary|npm-global|pip-user) continue ;; esac
       install_one "$_iqf" "$_iqt"
     done 4< "$1"
     [ -n "$_iqpids" ] || { rm -rf "$_iqd"; return 0; }
@@ -3753,7 +3827,10 @@ EOF
   #    없다. 맞추는 몸통은 `sync_main` 한 자리다 — 리눅스 auto 도 같은 것을 배경으로 부른다.
   #    ⚠ auto 에서 배경 맞추기가 이미 떴으면 건너뛴다 — auto 가 설치로 넘어온 판에 여기서 또 부르면 같은 저장소에 fetch 둘이
   #      겹쳐 참조 잠금에서 한쪽이 지고, 거짓 「못 맞췄다」가 선다.
-  if [ -n "$DO_REPO" ] && [ -z "${SYNC_BG:-}" ]; then
+  #    리눅스(리모트 컨테이너)는 여기서 안 맞춘다 — 세션마다 새로 받은 클론이라 main 이 이미 지금이고, 설정 스크립트가 도는
+  #      때는 git 자격이 아직 안 실려 fetch 가 「Username 을 못 읽는다」로 질 뿐이다. 같은 머신에서 훅이 다시 도는 판은 auto 의
+  #      배경 맞추기(`sync_main_bg`)가 자격이 실린 세션 안에서 든다.
+  if [ -n "$DO_REPO" ] && [ -z "${SYNC_BG:-}" ] && [ "$OS" != linux ]; then
     # 사유를 삼키지 않는다 — 여기가 조용히 지면 낡은 main 을 든 채 세션이 돈다. 당김과 같은 자(`git_why`)로 낸다.
     if ! _fe="$(sync_main "$PROJECT_DIR")"; then
       echo "$PROJECT_NAME: ⚠ 로컬 main 을 원격에 못 맞췄다 — $(git_why "$_fe"). 스냅샷 시점의 낡은 main 이 그대로 남는다."
