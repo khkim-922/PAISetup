@@ -4593,7 +4593,7 @@ home_hook_gate() {
 if [ -n "$CONFIG_ROOT" ] && [ "$CONFIG_ROOT" = "$PROJECT_DIR" ]; then
   _stale="$(home_hook_planted)"; _hh=$?
   if [ -n "$PC_WIDE_HELD" ] && { [ "$_hh" -eq 1 ] || [ "$_hh" -eq 3 ]; }; then
-    gate "홈 훅" held "아직 안 맞다 — 이 deploy.ps1 을 부른 바깥 --install 이 끝에 심는다"
+    gate "홈 훅" held "설치 끝에 심는다 — 지금은 deploy.ps1 이 도는 중이라 아직 안 심겼다(실패 아님)"
   else
     home_hook_gate "$_hh" "$_stale"
   fi
