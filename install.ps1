@@ -5455,9 +5455,21 @@ function Invoke-BrowserMcp([string]$Adapter, [string[]]$AdapterArgs, [int]$CapSe
 
 # 어댑터의 install · remove 줄을 이 설치기의 꼴로 찍고, ERROR 가 있으면 `$Fails` 에 센다. SKIP 은 노랑 — 꾸러미나 브라우저가
 #   없어 안 단 것이라, 그 까닭(「CLI」 걸음의 playwright 줄 · 위 브라우저 받기 줄)이 이미 찍혔다.
+# `CHANGE=<도구> <동사>` 는 한국어 한 줄로 옮긴다 — 동사 목록은 어댑터 머리말의 줄 계약이 든다. 그대로 찍으면 `codex timeout` 처럼
+#   「시간을 넘겼다」로 읽힌다(뜻은 「도구 시간 한도를 맞췄다」다). 모르는 동사는 그대로 낸다.
 function Show-BrowserMcpLines([string]$Label, $Result) {
+  $hostName = @{ claude = 'Claude'; codex = 'Codex'; agy = 'agy' }
+  $verb = @{ add = ' 에 달았다'; readd = ' 에 다시 달았다'; fix = ' 등록을 고쳤다'; remove = ' 에서 걷었다'
+             timeout = ' 의 도구 시간 한도(tool_timeout_sec)를 맞췄다' }
   foreach ($ln in @($Result.Lines)) {
-    if ($ln -like 'CHANGE=*')    { Write-Host "  $Label — $($ln.Substring('CHANGE='.Length))" -ForegroundColor Green }
+    if ($ln -like 'CHANGE=*') {
+      $c = $ln.Substring('CHANGE='.Length)
+      $say = if ($c -match '^(\S+) (\S+)$' -and $verb.ContainsKey($Matches[2])) {
+        $h = if ($hostName.ContainsKey($Matches[1])) { $hostName[$Matches[1]] } else { $Matches[1] }
+        "$h$($verb[$Matches[2]])"
+      } else { $c }
+      Write-Host "  $Label — $say" -ForegroundColor Green
+    }
     elseif ($ln -like 'WARN=*')  { Write-Host "  ! $Label — $($ln.Substring('WARN='.Length))" -ForegroundColor Yellow }
     elseif ($ln -like 'SKIP=*')  { Write-Host "  ! $Label — 안 달았다: $($ln.Substring('SKIP='.Length))" -ForegroundColor Yellow }
     elseif ($ln -like 'ERROR=*') { Write-Host "  ! $Label — $($ln.Substring('ERROR='.Length))" -ForegroundColor Red }
