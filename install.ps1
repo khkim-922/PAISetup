@@ -823,14 +823,43 @@ function Format-VerPart([string]$Ver) {
 
 # 네이티브 명령을 돌리고 모든 스트림을 `$LogPath` 에 잡는다 — 종료코드를 내고, 못 부르면 -1 이다. 실패했을 때 그 파일을
 #   펴는 것은 부르는 쪽의 몫이다(성공한 판의 잡소리까지 찍지 않으려고).
-function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath) {
+# `$OnLine` 을 주면 줄이 나오는 대로 그 손에도 넘긴다 — 한 번에 오래 도는 명령이 그동안 무엇을 하나를 화면에 흘리는 자리다.
+#   그때 파일은 BOM 붙은 UTF-8 로 쓴다(읽는 쪽 `Get-Content` 가 BOM 으로 가린다).
+function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath, [scriptblock]$OnLine) {
   # ⚠ **여기서만 `Stop` 을 푼다.** 네이티브의 stderr 는 `*>` 로 파일에 돌려도 오류 레코드로 올라와 바깥의 `Stop` 이 그
   #   자리에서 던진다 — 경고 한 줄이 설치를 끊는다. 판정은 종료코드가 들고, 글자는 파일에 쌓아 실패했을 때만 편다.
   $prev = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
-  try { & $File @CmdArgs *> $LogPath; return $LASTEXITCODE }
+  $w = $null
+  try {
+    if (-not $OnLine) { & $File @CmdArgs *> $LogPath; return $LASTEXITCODE }
+    $w = New-Object IO.StreamWriter($LogPath, $false, (New-Object Text.UTF8Encoding($true)))
+    & $File @CmdArgs *>&1 | ForEach-Object { $s = "$_"; $w.WriteLine($s); $w.Flush(); & $OnLine $s }
+    return $LASTEXITCODE
+  }
   catch { return -1 }
-  finally { $ErrorActionPreference = $prev }
+  finally { if ($w) { $w.Dispose() }; $ErrorActionPreference = $prev }
+}
+
+# 자라는 로그 파일에서 지난번 뒤로 붙은 줄을 `$OnLine` 에 넘긴다 — 울타리 손(`Invoke-LoggedCapped`)이 기다리는 동안 부른다.
+#   `$Tail` 은 @{ Path; Pos = 읽은 바이트; Rest = 줄 끝을 아직 못 본 꼬리 } 이고 이 손이 고쳐 쓴다. 끝난 뒤의 마지막 판은
+#   `-Flush` 로 꼬리까지 넘긴다. 못 읽으면 조용히 지나간다 — 흘리기는 덤이고 판정은 종료코드가 든다.
+function Read-LogTail([hashtable]$Tail, [scriptblock]$OnLine, [switch]$Flush) {
+  $n = 0
+  try {
+    $fs = [IO.File]::Open($Tail.Path, 'Open', 'Read', 'ReadWrite')
+    try {
+      $null = $fs.Seek($Tail.Pos, 'Begin')
+      $buf = New-Object byte[] ([Math]::Max(0, $fs.Length - $Tail.Pos))
+      if ($buf.Length) { $n = $fs.Read($buf, 0, $buf.Length) }
+    } finally { $fs.Dispose() }
+  } catch { return }
+  $text = $Tail.Rest
+  if ($n) { $Tail.Pos += $n; $text += [Text.Encoding]::UTF8.GetString($buf, 0, $n) }
+  $parts = $text -split "`r?`n"
+  $Tail.Rest = if ($Flush) { '' } else { $parts[-1] }
+  $last = if ($Flush) { $parts.Count } else { $parts.Count - 1 }
+  for ($i = 0; $i -lt $last; $i++) { if ($parts[$i]) { & $OnLine $parts[$i] } }
 }
 
 # 네이티브 명령을 판정만 하려고 돌린다 — stdout 은 줄 배열로 내고 stderr 는 버린다. 종료코드는 `$LASTEXITCODE` 에 남는다
@@ -914,7 +943,8 @@ function Join-NativeArgs([string[]]$CmdArgs) {
 #   멈추지 않는다. `cmd /c … >` 로 감싸 파일로 돌리지 않는다 — 그러면 `Kill()` 이 자식 대신 cmd 만 죽인다.
 # 나무째 거둔다 — `code` · `npm` 류는 제 자식을 띄우고 껍데기(`.cmd` · `.ps1`)는 그 호스트가 부모로 서서, 부모만 죽이면
 #   손자가 남아 돈다. `Kill($true)` 는 이 파워셸(5.1 · .NET Framework)에 없어 `Stop-ProbeTree` 가 든다.
-function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec) {
+# `$OnLine` 을 주면 기다리는 동안 stdout 에 붙은 줄을 그 손에 넘긴다(`Read-LogTail` · 반 초 틈) — `Invoke-Logged` 의 같은 칸과 같은 몫이다.
+function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec, [scriptblock]$OnLine) {
   $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
   if (-not $psi) { return -1 }
   # 자식이 끝난 뒤 파이프의 꼬리를 다 붓기까지 기다리는 한도 — 그 끝은 파이프를 쥔 손자까지 다 나가야 온다.
@@ -922,14 +952,23 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
   $drainMs = 5000
   $sink = @()
   try {
-    $sink = @([IO.File]::Open($LogPath, 'Create', 'Write', 'ReadWrite'),
-              [IO.File]::Open("$LogPath.err", 'Create', 'Write', 'ReadWrite'))
+    # 흘릴 때는 stdout 파일에 버퍼를 안 둔다 — 파일 스트림의 버퍼(4 KB)가 차기 전에는 짧은 줄이 파일에 안 닿아 `Read-LogTail` 이 못 본다
+    $out  = if ($OnLine) { New-Object IO.FileStream($LogPath, 'Create', 'Write', 'ReadWrite', 1) }
+            else { [IO.File]::Open($LogPath, 'Create', 'Write', 'ReadWrite') }
+    $sink = @($out, [IO.File]::Open("$LogPath.err", 'Create', 'Write', 'ReadWrite'))
     $p = [Diagnostics.Process]::Start($psi)
     $p.StandardInput.Close()
     $pump = @($p.StandardOutput.BaseStream.CopyToAsync($sink[0]),
               $p.StandardError.BaseStream.CopyToAsync($sink[1]))
-    if ($p.WaitForExit($CapSec * 1000)) {
+    $done = $false
+    if ($OnLine) {
+      $tail = @{ Path = $LogPath; Pos = 0; Rest = '' }
+      $until = (Get-Date).AddSeconds($CapSec)
+      while (-not ($done = $p.WaitForExit(500)) -and (Get-Date) -lt $until) { Read-LogTail $tail $OnLine }
+    } else { $done = $p.WaitForExit($CapSec * 1000) }
+    if ($done) {
       try { $null = [Threading.Tasks.Task]::WaitAll($pump, $drainMs) } catch { }
+      if ($OnLine) { $sink[0].Flush(); Read-LogTail $tail $OnLine -Flush }
       return $p.ExitCode
     }
     try { Stop-ProbeTree $p } catch { }
@@ -4311,6 +4350,22 @@ function Get-ExtVersions {
 # `$Rows` 는 고른 확장의 행(`Id` · `Label`), `$Acts` 는 「VS Code 확장」 걸음이 행마다 `Get-InstallAction` 에서 받은 할 일이다
 #   (`Id` → 할 일) — 올리기(`upcheck`)는 그 걸음이 깔린 확장을 한 번에 묻고(`--update-extensions`) 여기는 앞뒤 판(`$Before` · `$After`)으로
 #   결과만 찍는다. `$Probe` · `$Why` 는 못 쟀을 때 댈 물음과 그 까닭이다(`Add-UnmeasuredStep` 의 꼴).
+# `code` 가 확장을 깔고 올리며 뱉는 줄을 진행 줄로 옮긴다 — 묶음 한 번이 끝나야 결과 줄이 서므로 그동안 확장마다 무엇을 하나를
+#   흘린다. `code` 는 묶음 안의 확장을 나란히 받아 「받았다」 줄이 거의 한꺼번에 온다(실측 1.143). 판정은 안 한다 — 깔았나는 뒤의
+#   목록이 잰다. 이름은 확장 표(`$Extensions`)의 `Label` 로 옮기고, 표에 없는 것(딸려 오는 확장)은 Id 그대로 둔다. 모르는
+#   줄(node 경고 · 머리 줄)은 안 낸다.
+function Show-ExtProgress([string]$Line) {
+  $name = { param($id) $r = @($Extensions | Where-Object { $_.Id -eq $id })[0]; if ($r) { $r.Label } else { $id } }
+  if ($Line -match "^Installing extension '([^']+)'") {
+    Write-Host "    · $(& $name $Matches[1]) — 받는 중" -ForegroundColor DarkGray
+  } elseif ($Line -match '^Updating extensions: (.+)$') {
+    Write-Host "    · $((@($Matches[1] -split ',\s*') | ForEach-Object { & $name $_ }) -join ' · ') — 새 판 받는 중" -ForegroundColor DarkGray
+  } elseif ($Line -match "^Extension '([^']+)' v(\S+) was successfully (installed|updated)") {
+    $verb = if ($Matches[3] -eq 'installed') { '받았다' } else { '올렸다' }
+    Write-Host "    · $(& $name $Matches[1]) $($Matches[2]) — $verb" -ForegroundColor DarkGray
+  }
+}
+
 function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtable]$After, [string]$Probe, [string]$Why) {
   $todo = @()
   foreach ($x in @($Rows)) {
@@ -4333,14 +4388,14 @@ function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtab
   Say-Busy (@($todo | ForEach-Object { $_.Label }) -join ' · ') 'install' @('code')
   $xl = [IO.Path]::GetTempFileName()
   $xa = @(); foreach ($i in $ids) { $xa += '--install-extension', $i }
-  $rc = Invoke-Logged 'code' ($xa + '--force') $xl
+  $rc = Invoke-Logged 'code' ($xa + '--force') $xl ${function:Show-ExtProgress}
   $rcs = @{}; $logs = @{}
   if ($rc -ne 0 -and $todo.Count -gt 1) {
     Write-Host "  (확장 $($todo.Count)개를 한 번에 깔다가 code 가 $rc 로 끝났다 — 하나씩 다시 깐다)"
     foreach ($x in $todo) {
       Say-Busy $x.Label 'install' @('code')
       $logs[$x.Id] = [IO.Path]::GetTempFileName()
-      $rcs[$x.Id]  = Invoke-Logged 'code' @('--install-extension',$x.Id,'--force') $logs[$x.Id]
+      $rcs[$x.Id]  = Invoke-Logged 'code' @('--install-extension',$x.Id,'--force') $logs[$x.Id] ${function:Show-ExtProgress}
     }
   } else {
     foreach ($x in $todo) { $rcs[$x.Id] = $rc; $logs[$x.Id] = $xl }
@@ -7378,7 +7433,7 @@ if ($NoVsCode) {
     Say-Busy "깔린 확장 $($extHave.Count)개" 'upcheck' @('code')
     $xl = [IO.Path]::GetTempFileName()
     $t0 = Get-Date
-    $rc = Invoke-LoggedCapped 'code' @('--update-extensions') $xl $ExtUpdateCap
+    $rc = Invoke-LoggedCapped 'code' @('--update-extensions') $xl $ExtUpdateCap ${function:Show-ExtProgress}
     $took = [int]((Get-Date) - $t0).TotalSeconds
     Remove-Item $xl, "$xl.err" -ErrorAction SilentlyContinue
     # 넘긴 것은 실패가 아니다 — 확장은 이미 깔려 있어 본일(세우기)이 안 깨지고, 못 올린 판은 VS Code 가 제 자동 갱신으로 올린다.
