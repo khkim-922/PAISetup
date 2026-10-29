@@ -3232,7 +3232,12 @@ install_step() {
         #   통째로 지고, 환경변수는 모르는 판이 그냥 지나친다.
         # 기다림 15초 · 되풀이 한 번 — 되풀이는 순간 결함을 건지는 몫이라 없애지 않는다. 패킷을 떨구는 망에서는 한 번 묻는 데
         #   `기다림 × (되풀이 + 1)` 이 들지만 세션의 설치는 배경에서 돌아(`install_bg`) 세션 시작을 안 잡는다.
-        try "$_t" env PIP_BREAK_SYSTEM_PACKAGES=1 "$PC_PY" -m pip install --user --upgrade \
+        # venv 에 물린 파이썬에는 `--user` 를 안 단다 — venv 는 user site 를 안 보고(ENABLE_USER_SITE 꺼짐) `--user` 를
+        #   거절한다. 리눅스의 세션 python3 는 저장소 venv 감싸개(`wire_python_path`)라 PC_PY 가 venv 이고, 전역 패키지를
+        #   부르는 자도 그 venv 로 돌아 깔고 재고 부르는 자리가 같다. 「관리자 없이」는 venv 안에서는 걸릴 일이 없다.
+        if "$PC_PY" -c 'import sys; sys.exit(0 if sys.prefix != sys.base_prefix else 1)' >/dev/null 2>&1; then _pu=''
+        else _pu='--user'; fi
+        try "$_t" env PIP_BREAK_SYSTEM_PACKAGES=1 "$PC_PY" -m pip install ${_pu:+"$_pu"} --upgrade \
           --disable-pip-version-check --no-input --timeout 15 --retries 1 "$_pkg" ;;
       project-axis) : ;;   # 설치 없음 — 판의 진본은 package.json·requirements.txt 다
       # 모르는 갈래도 사유를 남긴다 — 선언에 `install` 을 빠뜨리거나 오타를 내면 아무것도 안 하고 지나가, 진단은 「안
