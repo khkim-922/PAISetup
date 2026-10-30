@@ -6862,8 +6862,10 @@ $BusyVerbs = [ordered]@{
 # 모델 고정 둘도 사내 전용이다 — 게이트웨이가 설정 `model` 키의 `[1m]` 을 벗겨 1M 창을 환경변수로 여는 우회라(claude-config 결정
 #   0049), 구독 로그인으로 서는 사외에서는 열 것이 없다. 남으면 시작 모델이 그 값에 묶여 `/model` 로 고른 것이 새 창마다 밀린다.
 #   `ANTHROPIC_MODEL` 은 위 `$Vars` 표에도 있어 표 루프도 이 목록을 묻는다.
+# 안티그래비티의 주소도 사내 전용이다 — 루프백이 아니라 게이트웨이를 바로 가리켜(claude-config 결정 0203) 프록시 걷기가 못 가르고,
+#   사외에서는 닿지 않는 회사 주소라 남으면 그 사람의 키로 도는 agy 가 죽은 곳으로 나간다.
 $InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE',
-                'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL')
+                'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'GOOGLE_GEMINI_BASE_URL')
 
 # ── 설치 기록 — 화면은 지금 읽을 것만, 기록은 그보다 많이 ─────────────────────────────────────────
 # 화면은 사람이 지금 읽을 것을 든다 — 자식 줄은 `Show-ChildLine` 이 걸러 흘린다. 기록은 거른 것까지 든다 — 하는 부름마다 명령 ·
@@ -7948,7 +7950,7 @@ foreach ($v in $Vars) {
 # 위 표(`$Vars`)는 「물을 것」이라 회사 공통 설정을 다 들지 않는다 — 표에 있는 것만 심으면 파일이 실어 보낸 나머지가 조용히
 #   버려진다. 그래서 표를 안 보고 파일을 본다.
 # ⚠ **여기에도 자리 게이트가 선다.** 위 표 갈래는 `Gateway` 표시로 사외를 거르지만 이 칸에는 그 표시가 없다 — 사외로 판정한
-#   기계에 프록시 주소(`GOOGLE_GEMINI_BASE_URL` 등)를 심으면 프로그램은 멀쩡히 서고 나갈 때만 죽은 포트로 나간다. 가르는 것은
+#   기계에 프록시 주소(루프백 값)를 심으면 프로그램은 멀쩡히 서고 나갈 때만 죽은 포트로 나간다. 가르는 것은
 #   표시가 아니라 값이다(`Test-ProxyValue`) — 값 파일은 늘어나고 표는 안 늘어난다.
 $known = $Vars | ForEach-Object { $_.Name }
 foreach ($k in $fromFile.Keys) {
@@ -8240,21 +8242,20 @@ Exit-Step 'keys'
 Enter-Step 'site'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 Assert-StepsDone 'keys'   # 자리(`$useGateway`)와 심은 주소 · 키(`$Planted`)로 회사 설정을 심고 걷는다
-# ── 로컬 프록시 — **사내에서 Claude 와 안티그래비티가 지나는 문** (결정 0041) ─────────────
+# ── 로컬 프록시 — **사내에서 Claude Code 와 Codex 가 지나는 문** (결정 0041) ─────────────
 # 왜 프록시인가 — 게이트웨이에 바로 붙으면 Claude Code 의 Read 그림이 안 실리고 WebSearch 가 0건이며 Opus 5 가 `temperature` ·
-#   `top_p` 를 400 으로 거절한다(claude-config #226). 안티그래비티는 곁 호출에 게이트웨이에 없는 모델 이름을 못박아 둔다. 다 클라이언트
-#   파일을 못 고치는 자리라 사이에 한 겹을 둔다. 프록시가 무엇을 고치고 무엇은 안 건드리는지는
-#   그 폴더의 README 가 든다(`posco/pgpt-proxy/`).
+#   `top_p` 를 400 으로 거절한다(claude-config #226). Codex 의 내장 검색은 게이트웨이에 없는 경로로 나간다. 다 클라이언트 파일을
+#   못 고치는 자리라 사이에 한 겹을 둔다. 안티그래비티는 이 문을 안 지나고 게이트웨이에 바로 붙는다(claude-config 결정 0203) —
+#   프록시가 안 떠도 선다. 프록시가 무엇을 고치고 무엇은 안 건드리는지는 그 폴더의 README 가 든다(`posco/pgpt-proxy/`).
 # 프록시는 로그 · pid 를 제 곁에 쓰므로 홈 사본(「공용 자산」 걸음이 까는 `~/.claude/posco/`)에서 바로 띄우지 않고 실행 폴더로
 #   복사해 띄운다. 로그인마다 띄우는 것은 작업 스케줄러의 감시 작업(`$ProxyTaskName`)이고, 사용자 Run 키 등록은 걷는다.
 # ⚠ **이미 도는 것을 함부로 안 죽인다.** 동료 설치본이 같은 프록시를 같은 포트에 띄워 둔 PC 가 있다. `/health` 의 판이 이 판
 #   이상이면 그대로 쓰고, 낡았으면 그 포트를 잡은 파이썬만 끄고 새로 띄운다.
 # 포트 · 주소는 심은 `ANTHROPIC_BASE_URL` 에서 판다 — 파일에 못박힌 18901 을 여기 또 적으면 사본이다.
-# 문은 여러 번 두드린다 — 게이트웨이가 유휴 keep-alive 연결을 조용히 닫아 두면 프록시가 그 위에 쓰다 `RemoteDisconnected` 를 맞고
-#   스스로 502 를 내고, 그쪽 재시도(`opus5_proxy.py` 의 `range(2)`)는 새로 집은 연결도 죽어 있으면 그대로 나온다. 단발로 재면
-#   상류의 운이 설치 판정이 된다.
+# 문은 여러 번 두드린다 — 상류가 응답 전에 끊으면(앞단 · 게이트웨이 재시작) 프록시는 그 요청을 다시 보내지 않고 502 로 돌린다
+#   (claude-config 결정 0202). 단발로 재면 상류의 운이 설치 판정이 된다.
 $DoorTries = 3                          # 문을 두드리는 횟수 — 상류가 끊은 것만 다시 묻는다
-$DoorGapMs = 700                        # 사이 쉼 — 죽은 연결이 풀에서 빠질 만큼
+$DoorGapMs = 700                        # 사이 쉼 — 상류가 숨을 고를 만큼
 
 $proxyHealthUrl = $null
 if ($wantProxy) {
