@@ -81,7 +81,7 @@ class StreamingTests(unittest.TestCase):
         proxy.EXECUTION_LIMIT_SEC = 0.3
         proxy.EXECUTION_LIMIT_MARGIN_SEC = 0.02
         cls.gateway = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
-        proxy._UPSTREAM_POOL = proxy.UpstreamPool(f"http://127.0.0.1:{cls.gateway.server_port}")
+        proxy._UPSTREAM = proxy.UpstreamTarget(f"http://127.0.0.1:{cls.gateway.server_port}")
         cls.server = proxy.ProxyServer(("127.0.0.1", 0), proxy.ProxyHandler)
         for server in (cls.gateway, cls.server):
             threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -164,7 +164,7 @@ class StreamingTests(unittest.TestCase):
         lines = [line for line in log.splitlines() if "test-diagnostics" in line]
         self.assertTrue(any("first_text=" in line and "output_tokens=123 stop_reason=end_turn" in line for line in lines))
         # 사용량 칸 — 캐시를 놓친 턴과 곁 호출의 값을 회사 로그에서 가린다(결정 0175)
-        self.assertTrue(any("in=40 cache_read=9000 cache_write=300 cache_write_ttl=none" in line for line in lines))
+        self.assertTrue(any("in=40 cache_read=9000 cache_write=300" in line for line in lines))
         self.assertNotIn("private-summary-text", log)
 
     def test_compact_with_runtime_system_tail_is_tuned_on_messages_route(self):
@@ -183,9 +183,6 @@ class StreamingTests(unittest.TestCase):
         # v26: only the output ceiling changes; this request is not streaming, so the 300s cap applies.
         self.assertEqual(sent["max_tokens"], 18000)
         self.assertEqual(sent["thinking"], {"type": "adaptive"})
-        # (우리 것 · claude-config 결정 0082) 간결 지시는 기본으로 꺼져 있다 — 압축 지시문이 글자 그대로 간다.
-        # 상류는 이 자리에서 `+ proxy._COMPACT_SUFFIX` 를 기대한다. 켠 판의 동작은 Test-ProxyCompaction 이 잰다.
-        self.assertEqual(sent["messages"][0]["content"][0]["text"], p["messages"][0]["content"])
         self.run_case("normal_route", [b'data: [DONE]\n\n'], path="/v1/chat/completions", payload=p)
         self.assertEqual(CASES["normal_route"]["received"]["output_config"]["effort"], "xhigh")
 
@@ -223,10 +220,11 @@ class StreamingTests(unittest.TestCase):
                 self.assertEqual(proxy.stats()["stream_errors"], before + (kind != "response.completed"))
         self.assertEqual(self.run_case("responses_missing", [event("response.created")], path="/v1/responses")[3], "IncompleteRead")
 
-    def test_chat_done_and_cr_only_lines(self):
-        frame = b'data: {"choices":[]}\r\rdata: [DONE]\r\r'
-        self.assertIsNone(self.run_case("chat_done", [frame], path="/v1/chat/completions")[3])
-        self.assertEqual(self.run_case("chat_missing", [b'data: {"choices":[]}\n\n'], path="/v1/chat/completions")[3], "IncompleteRead")
+    def test_cr_only_lines(self):
+        # SSE 는 CR 하나로도 줄을 끝낸다(HTML 표준 「Server-sent events」) — 그 꼴에서도 끝 이벤트를 알아본다
+        cr_start, cr_stop = (frame.replace(b"\n", b"\r") for frame in (START, STOP))
+        self.assertIsNone(self.run_case("cr_done", [cr_start + cr_stop])[3])
+        self.assertEqual(self.run_case("cr_missing", [cr_start])[3], "IncompleteRead")
 
     def test_non_sse_length_and_body_remain_unchanged(self):
         body = b'{"ok":true}'
@@ -279,7 +277,7 @@ class StreamingTests(unittest.TestCase):
         handler._request_context = "keepalive-isolation"
         handler._gw_request_id = "keepalive-isolation"
         handler._chunked_out = True
-        self.assertTrue(handler._relay_stream(Response(), gemini_sse=False, sse=True, protocol="anthropic"))
+        self.assertTrue(handler._relay_stream(Response(), sse=True, protocol="anthropic"))
         self.assertNotIn(b": keepalive", handler.wfile.getvalue())
         text = proxy.LOG_PATH.read_text(encoding="utf-8") if proxy.LOG_PATH.exists() else ""
         self.assertFalse(any("keepalive x" in line and "keepalive-isolation" in line

@@ -5,9 +5,9 @@
 
     python -X utf8 mock_gateway.py 18902
 
-* 모든 경로에서 ``Authorization: Bearer <key>`` 를 요구한다.
-  Gemini 경로(/v1beta)도 마찬가지 — 프록시가 ``x-goog-api-key`` 를 Bearer 로
-  덧붙이지 못하면 여기서 401 이 나므로 회귀가 바로 드러난다.
+* 모든 경로에서 ``Authorization: Bearer <key>`` 를 요구한다. Gemini 경로(/v1beta)는
+  ``x-goog-api-key: <key>`` 도 받는다 — 실물 게이트웨이가 두 방식을 다 받는다
+  (``../Gemini-Posco.setting.md`` 인증 절).
 """
 
 from __future__ import annotations
@@ -70,8 +70,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _authorized(self, query: str) -> bool:
         header = self.headers.get("Authorization", "")
+        key = header[7:] if header.startswith("Bearer ") else ""
+        if not key and urlsplit(self.path).path.startswith(f"{PREFIX}/v1beta/"):
+            key = self.headers.get("x-goog-api-key", "")
         # "bad-" 로 시작하는 키는 게이트웨이가 거부하는 키로 본다(키 교체 전 검증 시험용)
-        if not header.startswith("Bearer ") or len(header) < 24 or header[7:].startswith("bad-"):
+        if len(key) < 17 or key.startswith("bad-"):
             self._send(401, {"error": {"code": "P001", "message": "인증 실패"}})
             return False
         return True
@@ -96,7 +99,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlsplit(self.path)
         # 인증 실패로 401 을 보내더라도 본문은 먼저 읽어 둔다. 안 읽으면 keep-alive
-        # 연결에 본문이 남아 프록시 풀이 재사용하는 다음 요청이 501 로 깨진다.
+        # 연결에 본문이 남아 같은 연결의 다음 요청이 501 로 깨진다.
         body = self._body()
         if not self._authorized(parsed.query):
             return
@@ -111,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
                 "answer": ANSWER,
                 "raw": self.raw_body.decode("utf-8", "replace"),
             })
-            # 프록시가 prefill 을 떼지 못하면 실제 게이트웨이처럼 400 을 낸다
+            # 프록시가 prefill 을 떼지 못하면 400 을 낸다 — 떼기가 도는지 드러내는 표지다(실물 게이트웨이는 지금 prefill 을 받는다 · #226)
             messages = body.get("messages") or []
             if messages and messages[-1].get("role") != "user":
                 self._send(400, {"type": "error", "error": {"message": "assistant prefill 은 허용되지 않습니다."}})

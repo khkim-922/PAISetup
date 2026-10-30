@@ -30,9 +30,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 COUNT: dict[str, int] = {}
 FAILURES = 0
-# (v20) 모의 게이트웨이가 본 동시 가동 — 게이트가 큰 요청을 직렬로 보내는지 확인하는 데 쓴다
-_OVERLAP = {"now": 0, "max": 0}
-_OVERLAP_LOCK = threading.Lock()
 
 
 def check(condition: bool, message: str) -> None:
@@ -97,11 +94,6 @@ def handle(conn: socket.socket) -> None:
                 conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: 500\r\n\r\n" + event)
                 conn.close()
                 return
-            if key.endswith(":generateContent"):
-                # 변환(chat → Gemini)이 본문 전체를 기다리는 경로 — 모자라게 끊는다
-                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 500\r\n\r\n" + b'{"candidates":[')
-                conn.close()
-                return
             if key == "both":
                 # 규칙 위반이지만 실제로 보이는 응답: chunked 와 틀린 Content-Length 를 함께 보낸다
                 conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 999\r\nTransfer-Encoding: chunked\r\n\r\n"
@@ -154,19 +146,9 @@ def handle(conn: socket.socket) -> None:
                 time.sleep(0.5)   # 짧은 keep-alive 뒤 닫는 게이트웨이
                 conn.close()
                 return
-            # (v20) 그 밖의 경로는 본문을 되울린다. 겹침을 세어 게이트가 큰 요청을 직렬로 보내는지 본다 —
-            # 큰 본문에만 잠깐 머물러 겹칠 틈을 만든다(게이트웨이의 180초 시한을 흉내 내지는 않는다).
-            with _OVERLAP_LOCK:
-                _OVERLAP["now"] += 1
-                _OVERLAP["max"] = max(_OVERLAP["max"], _OVERLAP["now"])
-            try:
-                if len(body) >= 4096:
-                    time.sleep(0.6)
-                data = json.dumps({"ok": True, "body": body.decode("utf-8", "replace")}).encode()
-                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n" % len(data) + data)
-            finally:
-                with _OVERLAP_LOCK:
-                    _OVERLAP["now"] -= 1
+            # 그 밖의 경로는 본문을 되울린다
+            data = json.dumps({"ok": True, "body": body.decode("utf-8", "replace")}).encode()
+            conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n" % len(data) + data)
     except OSError:
         pass
     finally:
@@ -218,10 +200,7 @@ def main() -> int:
     env = dict(os.environ, PGPT_PROXY_UPSTREAM=f"http://127.0.0.1:{up_port}", PGPT_PROXY_PORT=str(proxy_port),
                PGPT_PROXY_KEEPALIVE_SEC="0.3",
                # (v19) 180초를 기다릴 수 없어 시한을 0.5초로 줄여 절단 자리를 만든다. 폭은 0.2초.
-               PGPT_PROXY_EXECUTION_LIMIT_SEC="0.5", PGPT_PROXY_EXECUTION_LIMIT_MARGIN_SEC="0.2",
-               # (v20) 200KB 짜리 본문을 시험마다 만들지 않도록 큰 요청 임계를 4KB 로 낮춘다
-               PGPT_PROXY_HEAVY_BYTES="4096", PGPT_PROXY_HEAVY_CONCURRENCY="1",
-               PGPT_PROXY_HEAVY_QUEUE_TIMEOUT_SEC="30")
+               PGPT_PROXY_EXECUTION_LIMIT_SEC="0.5", PGPT_PROXY_EXECUTION_LIMIT_MARGIN_SEC="0.2")
     proc = subprocess.Popen([sys.executable, str(work / "opus5_proxy.py")], env=env)
     try:
         for _ in range(50):
@@ -242,9 +221,6 @@ def main() -> int:
         check(error == "IncompleteRead", f"도중에 끊긴 스트림은 잘린 것으로 받는다 ({status} {error or '정상 종료'})")
         status, _, error = request(proxy_port, "POST", f"{base}/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse", b"{}")
         check(error == "IncompleteRead", f"길이를 선언한 Gemini 스트림이 모자라게 끝나도 잘린 것으로 받는다 ({status} {error or '정상 종료'})")
-        chat = b'{"model":"gemini-3.5-flash","messages":[{"role":"user","content":"hi"}]}'
-        status, _, _ = request(proxy_port, "POST", f"{base}/v1/chat/completions", chat)
-        check(status == 502, f"Gemini 변환 중 업스트림이 끊기면 잘린 답을 만들지 않고 502 ({status})")
         status, data, error = request(proxy_port, "GET", f"{base}/both")
         check(status == 200 and not error and data == b"0123456789", f"chunked 와 틀린 길이를 함께 보낸 응답도 온전히 넘긴다 ({status} {data!r} {error})")
         status, data, error = request(proxy_port, "GET", f"{base}/sse-ok")
@@ -301,57 +277,6 @@ def main() -> int:
         lone = b'{"model":"claude-opus-5","messages":[{"role":"user","content":"a\\ud83d b"}]}'
         status, data, _ = request(proxy_port, "POST", f"{base}/v1/messages", lone)
         check(status == 200 and b"ud83d" in data, f"짝 없는 surrogate 가 든 요청도 중계한다 ({status})")
-
-        # (v20) 큰 요청(압축)의 직렬화 게이트. 회사 PC 에서 탭 네 개가 동시에 압축하자 모두 180초에 잘렸다.
-        # 시험은 임계를 4KB 로 낮춰(PGPT_PROXY_HEAVY_BYTES) 큰 요청 자리를 만든다.
-        def post(path: str, payload: bytes) -> None:
-            request(proxy_port, "POST", path, payload)
-
-        big = b'{"model":"claude-opus-5","pad":"' + b"x" * 8192 + b'","messages":[]}'
-        with _OVERLAP_LOCK:
-            _OVERLAP["max"] = 0
-        before = json.loads(request(proxy_port, "GET", "/health")[1])
-        threads = [threading.Thread(target=post, args=(f"{base}/v1/messages", big)) for _ in range(4)]
-        started = time.monotonic()
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-        elapsed = time.monotonic() - started
-        after = json.loads(request(proxy_port, "GET", "/health")[1])
-        with _OVERLAP_LOCK:
-            peak = _OVERLAP["max"]
-        check(peak == 1, f"큰 요청 4건이 동시에 와도 게이트웨이는 한 번에 하나만 본다 (겹침 최대 {peak})")
-        # 한 판 0.6초 × 4 = 2.4초 — 직렬이면 그만큼 걸린다(병렬이면 1초 안)
-        check(elapsed >= 2.0, f"그만큼 차례를 기다린다 ({elapsed:.1f}초)")
-        check(after.get("heavy_serialized", 0) - before.get("heavy_serialized", 0) == 4,
-              f"게이트를 탄 수를 센다 (heavy_serialized={after.get('heavy_serialized')})")
-        check(after.get("heavy_active") == 0 and after.get("heavy_waiting") == 0,
-              f"다 끝나면 게이트는 비어 있다 (active={after.get('heavy_active')}, waiting={after.get('heavy_waiting')})")
-        log_text = (work / "proxy.log").read_text(encoding="utf-8", errors="replace")
-        check("heavy gate" in log_text and "waited=" in log_text,
-              "기다린 요청은 기다린 시간을 로그에 남긴다")
-
-        # 작은 호출은 게이트를 타지 않는다 — 압축 뒤에 줄서면 곁 호출(서브에이전트 · 요약)이 더 느려진다
-        before = json.loads(request(proxy_port, "GET", "/health")[1])
-        threads = [threading.Thread(target=post, args=(f"{base}/v1/messages", b'{"model":"claude-opus-5","messages":[]}')) for _ in range(4)]
-        started = time.monotonic()
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-        elapsed = time.monotonic() - started
-        after = json.loads(request(proxy_port, "GET", "/health")[1])
-        check(elapsed < 2.0, f"작은 호출 4건은 차례를 기다리지 않는다 ({elapsed:.1f}초 — 직렬이면 2.4초)")
-        check(after.get("heavy_serialized") == before.get("heavy_serialized"),
-              "작은 호출은 게이트 수에 들지 않는다")
-
-        # 큰 조회(/v1/models 류)는 생성 호출이 아니라 게이트를 타지 않는다
-        before = json.loads(request(proxy_port, "GET", "/health")[1])
-        request(proxy_port, "POST", f"{base}/v1/models", big)
-        after = json.loads(request(proxy_port, "GET", "/health")[1])
-        check(after.get("heavy_serialized") == before.get("heavy_serialized"),
-              "생성 호출이 아닌 큰 요청은 게이트를 타지 않는다")
 
         for bad in (f"{base}/../other", f"{base}/%2e%2e/other"):
             status, _, _ = request(proxy_port, "GET", bad)

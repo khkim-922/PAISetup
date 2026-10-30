@@ -244,6 +244,14 @@ PowerShell 의 스크립트 실행이 윈도 기본값으로 막혀 있던 PC �
 - 되돌리면 PowerShell 에서 `claude` · `npm` 같은 npm 명령이 다시 「스크립트를 실행할 수 없으므로」로 진다 — cmd · Git Bash 에서는 돈다
 - 설치를 다시 누르면(로그온 자동 실행도) 다시 올린다
 
+### winget 받는 손
+
+설치가 winget 설정에 심은 받기 엔진 값은 설치가 걷지 않는다.
+
+- 자리는 `%LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json` 의 `network` 안 `"downloader": "wininet"` 줄이다
+- 그 줄을 지우면 winget 이 다시 제가 고른다. 설치를 다시 누르면 다시 심는다 — 영영 안 쓰려면 `"downloader": "default"` 로 적어 둔다(사람이 정한
+  값이라 설치가 안 덮는다)
+
 ### 바로가기
 
 바탕화면과 시작 메뉴의 「PAI Setup Wizard」 바로가기를 지운다.

@@ -114,6 +114,18 @@ PAISetup 설치본이 이 PC 의 어디에 무엇을 어떤 조건으로 까는�
 - ⚠ **[예] 를 누르기 전에 저장한다.** 먼저 창을 닫으라고 보내고, 그래도 안 꺼지면 강제로 끝낸다. Claude 데스크탑 앱은 창만 닫으면
   트레이(시계 옆)로 내려가 안 꺼진다
 
+### winget 받는 손
+
+프로그램을 winget 으로 깔기 전에 winget 이 받는 엔진을 WinINet 으로 심는다 — 기본값이 고르는 전달 최적화(Delivery Optimization)는
+사내망에서 어떤 배포 서버(LibreOffice 가 그렇다)에서 한 바이트도 못 받은 채 몇 분을 서고, WinINet 으로는 같은 받기가 끝까지 닿는다.
+자리는 사용자 winget 설정 파일
+`%LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json` 의 `network` 안 `downloader` 칸이다.
+
+- 사람이 `downloader` 를 정해 뒀으면 그 값을 둔다 — 설치 화면에 「사람이 정한 값 … 이라 둔다」가 선다
+- 그 파일이 주석 든 JSON(사람이 `winget settings` 를 한 번 연 PC)이면 설치가 못 읽어 안 건드리고 노란 줄을 남긴다. 그 PC 는 그 파일의
+  `network` 에 `"downloader": "wininet"` 을 손으로 넣는다
+- 설치는 이 값을 걷지 않는다 — 지울 자리는 [UNINSTALL](UNINSTALL.md#winget-받는-손)이 든다
+
 ## 설치 창의 칸
 
 설치 창의 칸은 대개 그대로 두면 되고, 여기는 칸마다 고르면 무엇이 달라지나를 든다.
@@ -348,7 +360,8 @@ Python 이 깔리는 판에서는 Microsoft 의 「Visual C++ 재배포 가능 �
 
 ### 로컬 프록시
 
-사내에서만 이 PC 안에 프록시를 띄워 Claude Code(Opus 5) · Codex · 안티그래비티의 요청을 게이트웨이로 넘긴다.
+사내에서만 이 PC 안에 프록시를 띄워 Claude Code(Opus 5) · Codex 의 요청을 게이트웨이로 넘긴다. 안티그래비티는 프록시를 안 지나고
+게이트웨이에 바로 붙는다.
 
 - 주소는 `install.env` 의 `ANTHROPIC_BASE_URL` 이 든다
 - 두 도구가 묻는 꼴을 게이트웨이가 그대로는 안 받아서, Claude Code 의 웹 검색은 게이트웨이의 제미나이 검색으로, Codex 의 웹 검색은

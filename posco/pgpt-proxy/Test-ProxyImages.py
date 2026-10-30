@@ -8,8 +8,9 @@ user 턴에 바로 붙인 그림은 모델에 넘기지만 tool_result 안의 �
     python -X utf8 posco/pgpt-proxy/Test-ProxyImages.py
 
 ⚠ **그림 바이트는 한 바이트도 안 바뀌어야 한다** — 자리만 옮긴다. tool_result 는 턴 앞에 그대로 남고 비지 않는다.
-⚠ **PDF(`document`)는 안 옮긴다** — 게이트웨이가 자리와 상관없이 삼켜(결정 0165), tool_result 안에 바이트 그대로
-  남고 「붙였다」는 표지도 계수도 안 생기는지 잰다. 같은 tool_result 의 그림은 그대로 옮겨져야 한다.
+⚠ **PDF(`document`)는 안 옮긴다** — 게이트웨이가 자리와 상관없이 삼켜(결정 0165), 같은 자리에서 프록시의 안내 글
+  (`_document_note` 가 짓는 꼴)로 바뀌고 「붙였다」는 표지도 옮긴 수도 안 생기는지 잰다. 같은 tool_result 의 그림은 그대로 옮겨져야
+  한다. 안내 글 손잡이(PGPT_PROXY_DOCUMENT_NOTE=0)를 끄면 PDF 가 바이트 그대로 남는 것도 잰다.
 ⚠ 본문을 고치는 갈래(모델 이름 복원 · 출력 상한 · 빈 글 조각 정리 · 끝 assistant 자르기 · user 턴 합치기)를 모두
   타게 짰다 — 고치는 갈래가 그림을 떨어뜨려도 여기서 걸린다.
 ⚠ 손잡이(PGPT_PROXY_HOIST_TOOL_IMAGES=0)를 끄면 tool_result 를 건드리지 않는 것도 잰다.
@@ -94,21 +95,10 @@ def read_turn(model: str, blocks: list[dict], *, extra_user: list[dict] | None =
     }
 
 
-def post(port: int, payload: dict, *, chunked: bool = False) -> int:
+def post(port: int, payload: dict) -> int:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
-    if chunked:
-        conn.putrequest("POST", PATH)
-        conn.putheader("Authorization", "Bearer test-key-xxxx")
-        conn.putheader("Content-Type", "application/json")
-        conn.putheader("Transfer-Encoding", "chunked")
-        conn.endheaders()
-        for start in range(0, len(body), 65536):
-            part = body[start:start + 65536]
-            conn.send(b"%x\r\n" % len(part) + part + b"\r\n")
-        conn.send(b"0\r\n\r\n")
-    else:
-        conn.request("POST", PATH, body, {"Authorization": "Bearer test-key-xxxx", "Content-Type": "application/json"})
+    conn.request("POST", PATH, body, {"Authorization": "Bearer test-key-xxxx", "Content-Type": "application/json"})
     response = conn.getresponse()
     response.read()
     conn.close()
@@ -130,6 +120,10 @@ def hoist_problem(sent: list, got: list) -> str:
              for b in results if isinstance(b.get("content"), list)
              for item in b["content"] if item.get("type") in HOISTED]
     others = [b for b in sent if b.get("type") != "tool_result"]
+
+    def stays(item: dict) -> dict:
+        # PDF 는 제자리에서 안내 글로 바뀐다 — 기대값은 프록시가 짓는 꼴에서 끌어온다
+        return proxy._document_note(item) if proxy.DOCUMENT_NOTE and item.get("type") == "document" else item
     if got[:len(results)] and any(b.get("type") != "tool_result" for b in got[:len(results)]):
         return "tool_result 가 턴 앞에 없다"
     for want, have in zip(results, got):
@@ -141,7 +135,7 @@ def hoist_problem(sent: list, got: list) -> str:
                 return "tool_result 가 비었다"
             if any(item.get("type") in HOISTED for item in inner):
                 return "tool_result 안에 그림이 남았다"
-            if [i for i in inner if not is_marker(i)] != [i for i in want["content"] if i.get("type") not in HOISTED]:
+            if [i for i in inner if not is_marker(i)] != [stays(i) for i in want["content"] if i.get("type") not in HOISTED]:
                 return "tool_result 에 남을 블록(글 · PDF)이 빠지거나 바뀌었다"
             markers = [i["text"] for i in inner if is_marker(i)]
             if len(markers) != sum(i.get("type") in HOISTED for i in want["content"]) \
@@ -231,7 +225,7 @@ def main() -> int:
     work = tempfile.TemporaryDirectory()
     proxy.LOG_PATH = Path(work.name) / "proxy.log"
     gateway = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
-    proxy._UPSTREAM_POOL = proxy.UpstreamPool(f"http://127.0.0.1:{gateway.server_port}")
+    proxy._UPSTREAM = proxy.UpstreamTarget(f"http://127.0.0.1:{gateway.server_port}")
     server = proxy.ProxyServer(("127.0.0.1", 0), proxy.ProxyHandler)
     for s in (gateway, server):
         threading.Thread(target=s.serve_forever, daemon=True).start()
@@ -250,24 +244,23 @@ def main() -> int:
                                            "data": base64.b64encode(b"%PDF-1.4\n%%EOF\n").decode("ascii")}}
     print(f"그림 본문: {len(big['source']['data']) / 1_000_000:.1f} MB(base64)")
 
-    # (이름, 본문, chunked 로 보내나, 계약이 옮기는 수 — tool_result 안의 그림 수 · PDF 는 0)
+    # (이름, 본문, 계약이 옮기는 수 — tool_result 안의 그림 수 · PDF 는 0)
     cases = [
-        ("tool_result 안의 PNG(원본 크기)", read_turn("claude-opus-5", [big]), False, 1),
-        ("tool_result 안의 PNG · chunked 본문", read_turn("claude-opus-5", [big]), True, 1),
-        ("tool_result 안의 축소 PNG + 글", read_turn("claude-opus-5", [{"type": "text", "text": "slide 1"}, small]), False, 1),
-        ("tool_result 안의 JPEG", read_turn("claude-opus-5", [jpeg]), False, 1),
-        ("tool_result 안의 PDF document 는 제자리", read_turn("claude-opus-5", [pdf]), False, 0),
-        ("tool_result 안의 PDF + PNG — 그림만 옮긴다", read_turn("claude-opus-5", [pdf, small]), False, 1),
-        ("user 턴에 바로 붙인 PNG", read_turn("claude-opus-5", [{"type": "text", "text": "x"}], extra_user=[big]), False, 0),
-        ("tool_result 그림 + 바깥 그림", read_turn("claude-opus-5", [small], extra_user=[big]), False, 1),
-        ("대시 표기 모델(이름 복원 갈래)", read_turn("claude-opus-4-7", [big]), False, 1),
-        ("스트리밍 요청(stream: true)", {**read_turn("claude-opus-5", [big]), "stream": True}, False, 1),
-        ("cache_control 이 붙은 그림은 떼고 옮긴다", read_turn("claude-opus-5", [{**big, "cache_control": {"type": "ephemeral"}}]), False, 1),
+        ("tool_result 안의 PNG(원본 크기)", read_turn("claude-opus-5", [big]), 1),
+        ("tool_result 안의 축소 PNG + 글", read_turn("claude-opus-5", [{"type": "text", "text": "slide 1"}, small]), 1),
+        ("tool_result 안의 JPEG", read_turn("claude-opus-5", [jpeg]), 1),
+        ("tool_result 안의 PDF document 는 제자리", read_turn("claude-opus-5", [pdf]), 0),
+        ("tool_result 안의 PDF + PNG — 그림만 옮긴다", read_turn("claude-opus-5", [pdf, small]), 1),
+        ("user 턴에 바로 붙인 PNG", read_turn("claude-opus-5", [{"type": "text", "text": "x"}], extra_user=[big]), 0),
+        ("tool_result 그림 + 바깥 그림", read_turn("claude-opus-5", [small], extra_user=[big]), 1),
+        ("대시 표기 모델(이름 복원 갈래)", read_turn("claude-opus-4-7", [big]), 1),
+        ("스트리밍 요청(stream: true)", {**read_turn("claude-opus-5", [big]), "stream": True}, 1),
+        ("cache_control 이 붙은 그림은 떼고 옮긴다", read_turn("claude-opus-5", [{**big, "cache_control": {"type": "ephemeral"}}]), 1),
     ]
-    for name, payload, chunked, moves in cases:
+    for name, payload, moves in cases:
         sent = payload["messages"][-1]["content"]
         before = proxy.stats()["hoisted_tool_images"]
-        status = post(port, payload, chunked=chunked)
+        status = post(port, payload)
         counted = proxy.stats()["hoisted_tool_images"] - before
         got = SEEN[-1]["messages"][-1]["content"] if SEEN else []
         problem = f"HTTP {status}" if status != 200 else hoist_problem(sent, got)
@@ -391,6 +384,19 @@ def main() -> int:
     post(port, payload)
     check("마지막 메시지에 표식이 없으면 안 단다",
           len(mark_order(SEEN[-1])) == 2 and marks_of("hoist_cache_marks") == before, mark_order(SEEN[-1]))
+
+    # 안내 글 손잡이를 끄면 PDF 는 바이트 그대로 남고, 켜면 계수가 오른다
+    before = proxy.stats()["documents_noted"]
+    post(port, read_turn("claude-opus-5", [pdf]))
+    check("PDF 안내 글 계수(documents_noted)", proxy.stats()["documents_noted"] - before == 1,
+          proxy.stats()["documents_noted"] - before)
+    proxy.DOCUMENT_NOTE = False
+    payload = read_turn("claude-opus-5", [pdf, small])
+    sent = payload["messages"][-1]["content"]
+    status = post(port, payload)
+    problem = f"HTTP {status}" if status != 200 else hoist_problem(sent, SEEN[-1]["messages"][-1]["content"])
+    check("안내 글 손잡이 끔(PGPT_PROXY_DOCUMENT_NOTE=0) → PDF 바이트 그대로", not problem, problem)
+    proxy.DOCUMENT_NOTE = True
 
     # 손잡이를 끄면 tool_result 를 그대로 보낸다
     proxy.HOIST_TOOL_IMAGES = False

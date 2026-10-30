@@ -206,9 +206,8 @@
     낸다(결정 0051 실측 · 지금 구현은 상류 v25 · 결정 0082).** 회사 PC 실측 2026-09-16(이슈 #46): 직결 `stream:false` 는
     119초에 `200`, 300.04초에야 **앞단 HAProxy** 가 `504`(HTML) — 비스트리밍 경로에는 180초 상한이 없다. 그래서
     프록시는 **압축 요청**의 `stream:true` 를 상류엔 `stream:false` 로 보내고 답을 다 받아 SSE 로 짓는다(`/health` 의
-    `compact_unstream` · 기본 켬). 압축이 아닌 턴까지 그 길로 보내는 스위치는 `PGPT_PROXY_CLAUDE_UNSTREAM=1` 이고 기본은
-    끔이다. 다음 벽은 앞단의 300초다.
-    ⚠ **압축이 아닌 턴까지 켜면 큰 도구 인자가 빈다 — 그래서 도구를 쓰는 클라이언트에는 안 켠다**(실측 2026-09-17 ·
+    `compact_unstream` · 기본 켬). 압축이 아닌 턴은 그 길로 안 보낸다(결정 0201). 다음 벽은 앞단의 300초다.
+    ⚠ **압축이 아닌 턴까지 비스트리밍으로 보내면 큰 도구 인자가 빈다 — 그래서 그 길을 두지 않는다**(실측 2026-09-17 ·
     재현 3회). 켠 판에서 `Edit` 호출이 `input={}` 로 오고(`out=78/64000` 이라 한도와 무관 · `stop_reason` 은 정상
     `tool_use`) 같은 판의 작은 `Bash`(163B)는 멀쩡하다. **SSE 를 짓는 코드 탓은 아니다** — 그때 6,642자 도구 입력이 SSE
     왕복해 글자 대 글자로 살아남았다. 까닭은 게이트웨이 안이라 밖에서 못 본다. 곧 **스트림 경로와 비스트리밍 경로가
@@ -218,22 +217,29 @@
     게이트웨이에 실제로 붙는 것은 확장이 받아 오는 `agy`(`~/.gemini/bin/agy.exe`)다. 확장 설정에는 주소 칸이 없어
     거기만 보면 「못 붙인다」로 읽히는데,
     `agy` 쪽에 셋이 있다 — `~/.gemini/antigravity-cli/settings.json` 의 `modelProvider: "gemini"` ·
-    `GEMINI_API_KEY` · `GOOGLE_GEMINI_BASE_URL`(Gemini CLI 와 **같은 이름을 공유해** 루프백 프록시를 그대로 탄다).
+    `GEMINI_API_KEY` · `GOOGLE_GEMINI_BASE_URL`(Gemini CLI 와 **같은 이름을 공유한다** — 값이 게이트웨이 주소라 `agy` 는
+    로컬 프록시를 안 지나고, 프록시가 꺼져도 선다 · 결정 0203).
     그 셋으로 `agy` 가 `authenticated via gemini_api_key` 를 찍고 게이트웨이가 답했다(실측 2026-09-17 ·
     `gemini-3.6-flash --effort medium`). **게이트웨이가 답했다는 근거**는 게이트웨이만 내는 이 문구다 —
     「모델을 찾을 수 없습니다 … 회사코드: 02」
     ⚠ **`GOOGLE_API_KEY` 가 사용자 환경에 있으면 회사 키를 제친다** — `agy` 가 스스로 알린다(`Both GOOGLE_API_KEY and
     GEMINI_API_KEY are set. Using GOOGLE_API_KEY.`). 그러면 **답은 오는데 구글에서 온다** — 답이 왔다는 것과
-    게이트웨이가 답했다는 것이 다른 명제라, 여기서 두 번 잘못 짚었다. 가른 것은 프록시 로그에 그 호출이 없다는 사실이었다
-    ⚠ **제목 짓기는 못박힌 이름으로 나간다 — 프록시가 고친다.** `agy` 가 대화 제목 생성에
-    `gemini-3.1-flash-lite-preview` 를 쓰는데 게이트웨이에는 `-preview` 없는 판만 있어 그 곁 호출만 `400`
-    이었다. 고를 모델을 바꿔도 이 이름은 그대로다(실측: `3.6-flash` · `3.1-pro-low` · `3.8-flash-low` 세 판 다
-    같은 이름) — 바이너리 상수라 `agy` 쪽에 갈 손잡이가 없다. 프록시가 이름을 갈아 보낸다
-    (`_GEMINI_MODEL_ALIASES` · `pgpt-proxy/README.md` 의 제미나이 이름 표 칸).
-    ⚠ **접미사를 규칙으로 떼지 않는다** — `gemini-3.1-pro-preview` 는 게이트웨이에 실제로 있고 본 턴이 그 이름으로
+    게이트웨이가 답했다는 것이 다른 명제다. 가르는 것은 위의 게이트웨이만 내는 문구다
+    ⚠ **제목 짓기는 못박힌 이름으로 나가 `400` 으로 진다 — 제목만 안 붙고 본 턴은 선다.** `agy` 가 대화 제목 생성에
+    `gemini-3.1-flash-lite-preview` 를 쓰는데 게이트웨이에는 `-preview` 없는 판만 있다(직결 `400 P002 모델을 찾을 수
+    없습니다` · 회사 실측 2026-10-30 · #226 ⑯). 고를 모델을 바꿔도 이 이름은 그대로다(실측: `3.6-flash` · `3.1-pro-low` ·
+    `3.8-flash-low` 세 판 다 같은 이름) — 바이너리 상수라 `agy` 쪽에 갈 손잡이가 없다. 프록시가 이름을 갈아 보내는 길은
+    `agy` 를 프록시에 매어 두는 값이라 안 둔다(결정 0203).
+    ⚠ **`-preview` 라고 다 없는 것이 아니다** — `gemini-3.1-pro-preview` 는 게이트웨이에 실제로 있고 본 턴이 그 이름으로
     통한다
   - **게이트웨이는 `POST /v1/messages/count_tokens` 를 404(`E006`)로 되돌린다** — 같은 로그. Claude Code 는
     「count unavailable, estimating locally」로 넘어가 해는 없다. 게이트웨이 팀 보고에 얹을 한 줄
+  - **Gemini 길(`/v1beta`)의 답은 Gemini API(AI Studio) 꼴이다 — Vertex AI 꼴이 아니다(회사 실측 2026-10-30 · #226 ⑯).** 맨 위 칸이
+    candidates · modelVersion · responseId · usageMetadata 넷이고 usageMetadata 에 serviceTier · thoughtsTokenCount 가 실린다.
+    Vertex 의 답에 서는 createTime · usageMetadata.trafficType 은 없다 — 이 길의 답을 견줄 공개 문서는 Gemini API 의 것이다
+  - **게이트웨이 앞단의 타이머는 둘이다(회사 실측 2026-10-30 · #226 ⑦ ⑧).** 쉬는 keep-alive 연결은 30.0초에 닫고(FIN),
+    응답이 300초 안에 안 끝나면 `504 Gateway Time-out` HTML 을 낸다 — 프록시 없이 보낸 `max_tokens=64000` 생각 턴이 300.1초에
+    그렇게 졌다(n=1). 프록시는 연결을 요청마다 새로 열어 앞엣것을 안 만나고, 뒤엣것을 출력 상한으로 피한다(`pgpt-proxy/README.md`)
   - **라우터는 `/gpgpta01-gpt` 아래를 둘로 가른다 — Bedrock 꼴 끝점은 없다(회사 실측 2026-10-28 · #215).**
     `/gpgpta01-gpt/**`(루트 포함)는 세션 · SSO 영역이라 모르는 경로가 302 → SSO 로그인 오류 페이지(errors/ssoLoginError)로, Bearer 를 주면
     `C090`(토큰 꼴 거절)으로 온다 — 지어낸 경로와 구별되지 않아 거기서 두드린 400 은 아무것도 안 가른다.

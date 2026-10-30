@@ -1,11 +1,12 @@
 """사내 게이트웨이(P-GPT) 앞의 로컬 호환 프록시.
 
-한 프로세스가 클라이언트 셋의 길을 받아, 본문을 게이트웨이가 받는 꼴로 고쳐 같은 경로로 넘기고 응답은 거의
+한 프로세스가 클라이언트 둘의 길을 받아, 본문을 게이트웨이가 받는 꼴로 고쳐 같은 경로로 넘기고 응답은 거의
 그대로 중계한다::
 
     Claude Code           -> http://127.0.0.1:18901/gpgpta01-gpt          (끝에 /v1 없음)
     Codex · OpenAI 호환   -> http://127.0.0.1:18901/gpgpta01-gpt/v1
-    agy(Gemini)           -> http://127.0.0.1:18901/gpgpta01-gpt/v1beta
+
+안티그래비티(agy)는 게이트웨이에 바로 붙는다. 이 문으로 온 Gemini(``/v1beta``) 요청은 고치지 않고 그대로 넘긴다.
 
 부르는 꼴::
 
@@ -34,7 +35,6 @@ import sys
 import threading
 import time
 import traceback
-from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
@@ -49,16 +49,13 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 7
+VERSION_OURS = 14
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
 LOG_MAX_BYTES = 1_000_000
-MAX_CHUNK_SIZE = 0x7FFFFFFF
 MAX_SSE_EVENT_BYTES = 2 * 1024 * 1024
-UPSTREAM_POOL_SIZE = 8
 UPSTREAM_TIMEOUT = 600
-UPSTREAM_IDLE_TTL = 30.0
 SLOW_REQUEST_SEC = 5.0
 
 
@@ -72,27 +69,15 @@ def _env_float(name: str, default: float) -> float:
 # 게이트웨이는 생각 구간의 조각을 안 흘린다 — 침묵 동안 주석이 없으면 Claude Code 의 바이트 유휴 워치독이 끊는다.
 KEEPALIVE_SEC = _env_float("PGPT_PROXY_KEEPALIVE_SEC", 15.0)
 _KEEPALIVE_LINE = b": keepalive\n\n"
-# 기본 끔(결정 0082) — 우리는 1M 창이라 압축이 드물고, 드문 압축을 짧게 줄이면 잃는 것이 더 크다.
-COMPACT_CONCISE = os.environ.get("PGPT_PROXY_COMPACT_CONCISE", "0").lower() not in {"0", "false", "off"}
-# ⚠ 진단용 — 비스트리밍 경로에서는 큰 도구 인자가 {} 로 빈다(결정 0051). 도구를 쓰는 클라이언트에는 켜지 않는다.
-CLAUDE_UNSTREAM = os.environ.get("PGPT_PROXY_CLAUDE_UNSTREAM", "0").lower() in {"1", "true", "on"}
 COMPACT_UNSTREAM = os.environ.get("PGPT_PROXY_COMPACT_UNSTREAM", "1").lower() not in {"0", "false", "off"}
 MAX_UNSTREAM_BYTES = 32 * 1024 * 1024
 # ── 웹서치 메움 — 왜 메우나는 README 「Claude 웹서치 메움」 칸 ─────────────────────────────────
 WEB_SEARCH = os.environ.get("PGPT_PROXY_WEB_SEARCH", "1").lower() not in {"0", "false", "off"}
 HOIST_TOOL_IMAGES = os.environ.get("PGPT_PROXY_HOIST_TOOL_IMAGES", "1").lower() not in {"0", "false", "off"}
-GROK_STRIP = os.environ.get("PGPT_PROXY_GROK_STRIP", "1").lower() not in {"0", "false", "off"}
-# -customtools 는 게이트웨이에 없는 이름이다(normalize_gemini_model_path 와 같은 자).
-WEB_SEARCH_MODEL = os.environ.get("PGPT_PROXY_WEB_SEARCH_MODEL", "gemini-3.6-flash").strip().removesuffix("-customtools")
+DOCUMENT_NOTE = os.environ.get("PGPT_PROXY_DOCUMENT_NOTE", "1").lower() not in {"0", "false", "off"}
+WEB_SEARCH_MODEL = os.environ.get("PGPT_PROXY_WEB_SEARCH_MODEL", "gemini-3.6-flash").strip()
 # 상류 기본 시한(600초)을 따르면 막힌 게이트웨이 앞에서 CLI 가 10분씩 묶인다.
 WEB_SEARCH_TIMEOUT = _env_float("PGPT_PROXY_WEB_SEARCH_TIMEOUT", 90.0)
-# 출처 풀기는 기본 끔(결정 0165) — 회사 웹필터가 구글 클라우드를 200 차단 페이지로 받아 3xx · Location 이 안 오고,
-# 켜 두면 검색 턴마다 차단될 바깥 요청이 필터 로그에 쌓인다. 정책이 풀리면 PGPT_PROXY_WEB_SEARCH_RESOLVE=1 로 켠다.
-# ⚠ 켜면 HEAD 는 게이트웨이가 아니라 PC 에서 vertexaisearch.cloud.google.com 으로 직접 나간다(질의 글은 안 실리고
-#   리디렉트 토큰만 나간다). 못 풀면 구글 경유 주소를 그대로 둔다.
-WEB_SEARCH_RESOLVE = os.environ.get("PGPT_PROXY_WEB_SEARCH_RESOLVE", "0").lower() not in {"0", "false", "off"}
-WEB_SEARCH_RESOLVE_TIMEOUT = _env_float("PGPT_PROXY_WEB_SEARCH_RESOLVE_TIMEOUT", 4.0)
-_GROUNDING_REDIRECT_HOST = "vertexaisearch.cloud.google.com"
 # CLI 2.1.293 의 문구다 — CLI 가 바꾸면 메움이 멎는다(/health 의 web_search_filled 가 안 오른다).
 _WEB_SEARCH_PROMPT_HEAD = "Perform a web search for the query: "
 # 경로 시한(180 · 300초) 안에 끝나는 크기 — 셈은 README 「출력 상한」 칸. 0 이면 클라이언트 값 그대로.
@@ -124,13 +109,6 @@ _COMPACT_PREAMBLE = (
 _COMPACT_PREAMBLE_HEAD = "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools."
 _COMPACT_TASK_HEAD = "Your task is to create a detailed summary of "
 _COMPACT_TASK_WINDOW = 4000
-_COMPACT_SUFFIX = (
-    "\n\nKeep this handoff concise, ideally within 3000 output tokens. "
-    "Keep <analysis> brief (at most 5 sentences) and put the useful handoff in <summary>. "
-    "Preserve the user goal, constraints, file paths, key decisions, errors, verified results, "
-    "unfinished work and next steps. Remove repetition and long code excerpts. "
-    "Do not perform the work or call tools.\n"
-)
 # 게이트웨이가 응답 머리에 실어 주는 요청 번호 — slow·오류 로그에 붙여 운영팀 문의에 쓴다. 없으면 비운다.
 GATEWAY_REQUEST_ID_HEADER = "x-pgpt-request-id"
 # 180초 절단은 SSE error 프레임 없이 `HTTP 500` 으로도 온다 — 경과가 이 창에 든 비-2xx 를 따로 센다(execution_cuts).
@@ -139,11 +117,6 @@ EXECUTION_LIMIT_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_SEC", STREAM_LIMIT_
 EXECUTION_LIMIT_MARGIN_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_MARGIN_SEC", 5.0)
 # 게이트웨이 목록을 못 읽었을 때 하이쿠가 갈 자리 — 목록을 읽으면 목록이 먼저다(resolve_claude_model).
 CLAUDE_HAIKU_SUBSTITUTE = "claude-sonnet-4.6"
-# 기본 0(끔) — 켜면 자리 없는 요청이 429 를 받아 긴 압축 중에 다른 탭의 재시도를 소진한다.
-HEAVY_REQUEST_BYTES = int(_env_float("PGPT_PROXY_HEAVY_BYTES", 0))
-HEAVY_CONCURRENCY = int(_env_float("PGPT_PROXY_HEAVY_CONCURRENCY", 1))
-# 응답 머리 전에는 SSE 주석을 못 보내니 오래 붙잡지 않는다 — 시한이 지나면 429 로 재시도를 알린다.
-HEAVY_QUEUE_TIMEOUT_SEC = max(0.0, _env_float("PGPT_PROXY_HEAVY_QUEUE_TIMEOUT_SEC", 10.0))
 CLIENT_POLL_SEC = 0.25
 HOP_BY_HOP = {
     "connection",
@@ -157,37 +130,23 @@ HOP_BY_HOP = {
 }
 
 
-class UpstreamPool:
-    """P-GPT 게이트웨이로 가는 keep-alive 연결 풀.
+class UpstreamTarget:
+    """P-GPT 게이트웨이로 가는 연결을 요청마다 새로 열고 닫는다.
 
-    요청마다 TCP 를 새로 열면 사내망에서 핸드셰이크만 수십 ms 가 들고, 도구 루프 대화는 그 값을 되풀이해 낸다. 연결은 사내
-    HTTP_PROXY 를 안 타고 게이트웨이로 직결한다.
+    연결을 다시 쓰지 않는다 — 다시 써서 아끼는 것은 접속 한 번의 손잡기(회사 실측 p50 15 ms · #226 ⑧)뿐이고, 다시 쓰면
+    앞단이 쉬는 연결을 30.0초에 닫는 경합과 그 뒤의 다시 보내기를 진다(결정 0202). 연결은 사내 HTTP_PROXY 를 안 타고
+    게이트웨이로 직결한다.
     """
 
-    def __init__(self, base_url: str, max_idle: int = UPSTREAM_POOL_SIZE) -> None:
+    def __init__(self, base_url: str) -> None:
         parts = urlsplit(base_url if "://" in base_url else f"http://{base_url}")
         if parts.scheme not in {"http", "https"} or not parts.hostname:
             raise ValueError(f"invalid upstream URL: {base_url!r}")
         self._scheme = parts.scheme
         self._host = parts.hostname
         self._port = parts.port or (443 if parts.scheme == "https" else 80)
-        self._max_idle = max_idle
-        self._lock = threading.Lock()
-        self._idle: list[tuple[http.client.HTTPConnection, float]] = []
-        self._created = 0
-        self._reused = 0
-        self._expired = 0
 
-    def stats(self) -> dict[str, int]:
-        with self._lock:
-            return {
-                "upstream_idle": len(self._idle),
-                "upstream_created": self._created,
-                "upstream_reused": self._reused,
-                "upstream_expired": self._expired,
-            }
-
-    def _open(self) -> http.client.HTTPConnection:
+    def open(self) -> http.client.HTTPConnection:
         if self._scheme == "https":
             conn = http.client.HTTPSConnection(
                 self._host, self._port, timeout=UPSTREAM_TIMEOUT
@@ -203,67 +162,34 @@ class UpstreamPool:
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             except OSError:
                 pass
-        with self._lock:
-            self._created += 1
         return conn
 
-    def acquire(self, *, fresh: bool = False) -> http.client.HTTPConnection:
-        """풀에서 연결을 꺼낸다. ``conn.pgpt_reused`` 가 유휴 풀에서 왔는지를 든다.
-
-        ``fresh=True`` 면 풀을 건너뛴다 — 죽은 풀 연결 뒤의 재시도가 같은 까닭(게이트웨이 재시작 · LB 전환)으로 죽은 다른
-        연결을 집으면 안 된다.
-        """
-        with self._lock:
-            while self._idle and not fresh:
-                conn, released_at = self._idle.pop()
-                if conn.sock is not None and time.monotonic() - released_at < UPSTREAM_IDLE_TTL:
-                    self._reused += 1
-                    conn.pgpt_reused = True  # type: ignore[attr-defined]
-                    return conn
-                self._expired += 1
-                try:
-                    conn.close()
-                except OSError:
-                    pass
-        conn = self._open()
-        conn.pgpt_reused = False  # type: ignore[attr-defined]
-        return conn
-
-    def release(self, conn: http.client.HTTPConnection | None, *, reuse: bool) -> None:
+    @staticmethod
+    def close(conn: http.client.HTTPConnection | None) -> None:
         if conn is None:
             return
-        if not reuse:
-            # keepalive 판독 스레드가 read1() 에 막혀 있을 수 있다 — close() 만으로는 리눅스에서 안 깨어난다
-            sock = conn.sock
-            if sock is not None:
-                try:
-                    sock.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
+        # keepalive 판독 스레드가 read1() 에 막혀 있을 수 있다 — close() 만으로는 리눅스에서 안 깨어난다
+        sock = conn.sock
+        if sock is not None:
             try:
-                conn.close()
+                sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
-            return
-        with self._lock:
-            if len(self._idle) < self._max_idle and conn.sock is not None:
-                self._idle.append((conn, time.monotonic()))
-                return
         try:
             conn.close()
         except OSError:
             pass
 
 
-_UPSTREAM_POOL = UpstreamPool(UPSTREAM)
+_UPSTREAM = UpstreamTarget(UPSTREAM)
 _LOG_LOCK = threading.Lock()
 _STATS_LOCK = threading.Lock()
 _PATCHED_TOTAL = 0
 _TRIMMED_PREFILLS = 0
 _HOISTED_TOOL_IMAGES = 0
+_DOCUMENTS_NOTED = 0
 _HOIST_CACHE_MARKS = 0
 _HOIST_CACHE_MARKS_SKIPPED = 0
-_GROK_DROPPED_TOTAL = 0
 _SLOW_TOTAL = 0
 _KEEPALIVE_TOTAL = 0
 _STREAM_ERROR_TOTAL = 0
@@ -275,10 +201,6 @@ _EXECUTION_CUT_TOTAL = 0
 _EXECUTION_CUT_300_TOTAL = 0
 _MAX_REQUEST_BYTES = 0
 _MODEL_SUBSTITUTION_TOTAL = 0
-_HEAVY_SERIALIZED_TOTAL = 0
-_HEAVY_QUEUE_TIMEOUT_TOTAL = 0
-_HEAVY_WAIT_SEC_TOTAL = 0.0
-_HEAVY_WAIT_MAX_SEC = 0.0
 _CLIENT_CANCELLED_TOTAL = 0
 _ACTIVE_REQUESTS = 0
 _WEB_SEARCH_FILLED = 0
@@ -290,58 +212,13 @@ class _ClientDisconnected(Exception):
     """응답을 보내기 전에 클라이언트가 끊었다."""
 
 
-class HeavyGate:
-    """서비스별 큰 요청 FIFO. 취소와 대기 만료는 상류로 보내지 않는다."""
-
-    def __init__(self, limit: int) -> None:
-        self._limit = max(1, limit)
-        self._cond = threading.Condition()
-        self._active = 0
-        self._tickets: deque[object] = deque()
-
-    def stats(self) -> dict[str, int]:
-        with self._cond:
-            return {"heavy_active": self._active, "heavy_waiting": len(self._tickets)}
-
-    def acquire(self, timeout: float, cancelled: Callable[[], bool] | None = None) -> tuple[bool, float]:
-        """(들어왔나, 기다린 초)를 돌려준다. 취소되면 — 들어가기 직전이라도 — 예외를 낸다."""
-        started = time.monotonic()
-        deadline = started + max(0.0, timeout)
-        ticket = object()
-        with self._cond:
-            self._tickets.append(ticket)
-            try:
-                while True:
-                    if cancelled is not None and cancelled():
-                        raise _ClientDisconnected()
-                    if self._tickets[0] is ticket and self._active < self._limit:
-                        self._active += 1
-                        return True, time.monotonic() - started
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        return False, time.monotonic() - started
-                    self._cond.wait(min(remaining, CLIENT_POLL_SEC))
-            finally:
-                self._tickets.remove(ticket)
-                self._cond.notify_all()
-
-    def release(self) -> None:
-        with self._cond:
-            self._active -= 1
-            self._cond.notify_all()
-
-
-_HEAVY_GATES = {name: HeavyGate(HEAVY_CONCURRENCY) for name in ("anthropic", "openai", "gemini", "xai")}
-
-
 def request_provider(path: str, model: str) -> str:
+    """로그 칸 ``provider=`` — 요청이 어느 공급자 길로 가나."""
     model = model.lower()
     if "/v1beta/" in path or model.startswith("gemini-"):
         return "gemini"
     if path.rstrip("/").endswith("/v1/messages") or model.startswith("claude-"):
         return "anthropic"
-    if model.startswith("grok-"):
-        return "xai"
     return "openai"
 
 
@@ -466,43 +343,6 @@ def output_cap(*, unstream: bool, body_bytes: int = 0) -> int:
     return cap
 
 
-def tune_claude_compaction(payload: dict) -> str:
-    """압축 요청 끝에 간결 지시를 덧붙인다 — 원래 요청은 그대로 둔다.
-
-    지시는 부드러운 목표라 출력을 자르거나 지어내지 않는다. 딱딱한 상한은 cap_claude_output 의 몫이다. 바꿨으면 로그용
-    설명(값만)을 돌려준다.
-    """
-    if not COMPACT_CONCISE or not is_claude_compaction(payload):
-        return ""
-    last = payload["messages"][-1]
-    content = last["content"]
-    if isinstance(content, str):
-        if content.endswith(_COMPACT_SUFFIX):
-            return ""
-        content = content + _COMPACT_SUFFIX
-    else:
-        blocks = list(content)
-        for index, block in enumerate(blocks):
-            if not isinstance(block, dict) or block.get("type") != "text":
-                continue
-            text = block.get("text")
-            if _is_compact_text(text):
-                if text.endswith(_COMPACT_SUFFIX):
-                    return ""
-                blocks[index] = {**block, "text": text + _COMPACT_SUFFIX}
-                break
-        content = blocks
-    payload["messages"] = [*payload["messages"][:-1], {**last, "content": content}]
-    return "compact_concise=true"
-
-
-def is_heavy_request(path: str, body: bytes | None) -> bool:
-    """이 요청이 게이트를 타야 하는가 — 모델 생성 호출이고 본문이 임계보다 큰가."""
-    if HEAVY_REQUEST_BYTES <= 0 or not body or len(body) < HEAVY_REQUEST_BYTES:
-        return False
-    return is_generation_request(path)
-
-
 def is_generation_request(path: str) -> bool:
     stripped = path.rstrip("/")
     # 생성 호출만 센다. /v1/models 같은 조회는 커도 시한에 걸리지 않는다.
@@ -514,20 +354,6 @@ def is_generation_request(path: str) -> bool:
         or ":generateContent" in stripped
         or ":streamGenerateContent" in stripped
     )
-
-
-def _count_heavy_serialized(waited: float) -> None:
-    global _HEAVY_SERIALIZED_TOTAL, _HEAVY_WAIT_SEC_TOTAL, _HEAVY_WAIT_MAX_SEC
-    with _STATS_LOCK:
-        _HEAVY_SERIALIZED_TOTAL += 1
-        _HEAVY_WAIT_SEC_TOTAL += waited
-        _HEAVY_WAIT_MAX_SEC = max(_HEAVY_WAIT_MAX_SEC, waited)
-
-
-def _count_heavy_queue_timeout() -> None:
-    global _HEAVY_QUEUE_TIMEOUT_TOTAL
-    with _STATS_LOCK:
-        _HEAVY_QUEUE_TIMEOUT_TOTAL += 1
 
 
 def _count_client_cancelled() -> None:
@@ -579,6 +405,12 @@ def _count_hoisted(count: int) -> None:
         _HOISTED_TOOL_IMAGES += count
 
 
+def _count_documents_noted(count: int) -> None:
+    global _DOCUMENTS_NOTED
+    with _STATS_LOCK:
+        _DOCUMENTS_NOTED += count
+
+
 def _count_hoist_cache_mark(added: bool | None) -> None:
     global _HOIST_CACHE_MARKS, _HOIST_CACHE_MARKS_SKIPPED
     if added is None:
@@ -588,12 +420,6 @@ def _count_hoist_cache_mark(added: bool | None) -> None:
             _HOIST_CACHE_MARKS += 1
         else:
             _HOIST_CACHE_MARKS_SKIPPED += 1
-
-
-def _count_grok_dropped(count: int) -> None:
-    global _GROK_DROPPED_TOTAL
-    with _STATS_LOCK:
-        _GROK_DROPPED_TOTAL += count
 
 
 def _count_slow() -> None:
@@ -622,7 +448,6 @@ def merge_usage(seen: dict, usage: object) -> None:
     """Anthropic usage 를 seen 에 모은다 — 칸마다 큰 값을 둔다.
 
     게이트웨이는 message_start 에 0 을 싣고 message_delta 에 실제 값을 싣는다. Anthropic 직결은 입력을 message_start 에 싣는다.
-    TTL 별 쓰기 항(`cache_creation`)은 값이 있을 때만 둔다.
     """
     if not isinstance(usage, dict):
         return
@@ -630,18 +455,11 @@ def merge_usage(seen: dict, usage: object) -> None:
         value = usage.get(key)
         if type(value) is int:
             seen[key] = max(seen.get(key, 0), value)
-    split = usage.get("cache_creation")
-    if isinstance(split, dict) and any(type(value) is int and value for value in split.values()):
-        seen["cache_creation"] = {key: value for key, value in split.items() if type(value) is int}
 
 
 def usage_text(seen: dict) -> str:
-    """로그 칸 — `in= cache_read= cache_write= cache_write_ttl=`. 못 본 칸은 unknown, TTL 별 쓰기 항이 없으면 none."""
-    fields = [f"{label}={seen[key] if key in seen else 'unknown'}" for key, label in _USAGE_KEYS]
-    split = seen.get("cache_creation")
-    ttl = ",".join(f"{key.removeprefix('ephemeral_').removesuffix('_input_tokens')}:{value}"
-                   for key, value in split.items()) if split else "none"
-    return " ".join(fields) + f" cache_write_ttl={ttl}"
+    """로그 칸 — `in= cache_read= cache_write=`. 못 본 칸은 unknown."""
+    return " ".join(f"{label}={seen[key] if key in seen else 'unknown'}" for key, label in _USAGE_KEYS)
 
 
 def _json_usage(body: bytes | bytearray | None) -> dict:
@@ -701,32 +519,27 @@ def at_execution_limit(elapsed: float) -> bool:
 def stats() -> dict[str, object]:
     with _STATS_LOCK:
         base = {
-            "heavy_gate_enabled": HEAVY_REQUEST_BYTES > 0,
-            "heavy_request_bytes": HEAVY_REQUEST_BYTES,
             "active_requests": _ACTIVE_REQUESTS,
             "client_cancellations": _CLIENT_CANCELLED_TOTAL,
             "patched_tools": _PATCHED_TOTAL,
             "trimmed_prefills": _TRIMMED_PREFILLS,
             "hoist_tool_images": HOIST_TOOL_IMAGES,
             "hoisted_tool_images": _HOISTED_TOOL_IMAGES,
+            "document_note": DOCUMENT_NOTE,
+            "documents_noted": _DOCUMENTS_NOTED,
             "hoist_cache_marks": _HOIST_CACHE_MARKS,
             # 표식 한도(4)가 차 못 단 수 — 오르면 그림 많은 턴이 캐시를 놓친다
             "hoist_cache_marks_skipped": _HOIST_CACHE_MARKS_SKIPPED,
-            "grok_strip": GROK_STRIP,
-            "grok_params_dropped": _GROK_DROPPED_TOTAL,
             "web_search": WEB_SEARCH,
             "web_search_model": WEB_SEARCH_MODEL,
             "web_search_filled": _WEB_SEARCH_FILLED,
             "web_search_failed": _WEB_SEARCH_FAILED,
             "web_search_empty": _WEB_SEARCH_EMPTY,
-            "web_search_resolve": WEB_SEARCH_RESOLVE,
             "slow_requests": _SLOW_TOTAL,
             "keepalives": _KEEPALIVE_TOTAL,
             "stream_errors": _STREAM_ERROR_TOTAL,
             "stream_incomplete": _STREAM_INCOMPLETE_TOTAL,
             "stream_unverified": _STREAM_UNVERIFIED_TOTAL,
-            "compact_concise": COMPACT_CONCISE,
-            "claude_unstream": CLAUDE_UNSTREAM,
             "compact_unstream": COMPACT_UNSTREAM,
             "stream_max_tokens": output_cap(unstream=False),
             "nonstream_max_tokens": output_cap(unstream=True),
@@ -737,20 +550,7 @@ def stats() -> dict[str, object]:
             "execution_cuts_300": _EXECUTION_CUT_300_TOTAL,
             "max_request_bytes": _MAX_REQUEST_BYTES,
             "model_substitutions": _MODEL_SUBSTITUTION_TOTAL,
-            "heavy_serialized": _HEAVY_SERIALIZED_TOTAL,
-            "heavy_queue_timeouts": _HEAVY_QUEUE_TIMEOUT_TOTAL,
-            "heavy_wait_max_sec": round(_HEAVY_WAIT_MAX_SEC, 1),
-            "heavy_wait_avg_sec": (
-                round(_HEAVY_WAIT_SEC_TOTAL / _HEAVY_SERIALIZED_TOTAL, 1)
-                if _HEAVY_SERIALIZED_TOTAL
-                else 0
-            ),
         }
-    gates = {name: gate.stats() for name, gate in _HEAVY_GATES.items()}
-    base["heavy_by_provider"] = gates
-    base["heavy_active"] = sum(gate["heavy_active"] for gate in gates.values())
-    base["heavy_waiting"] = sum(gate["heavy_waiting"] for gate in gates.values())
-    base.update(_UPSTREAM_POOL.stats())
     base.update(_GATEWAY_MODELS.stats())
     return base
 
@@ -775,7 +575,11 @@ def log(message: str) -> None:
 
 
 class _BadRequestBody(Exception):
-    """클라이언트의 요청 본문이 깨졌거나 덜 왔다 — 400 으로 답하고 상류로 안 보낸다."""
+    """클라이언트의 요청 본문을 받지 못한다 — ``status``(깨졌거나 덜 오면 400 · 길이를 안 밝히면 411)로 답하고 상류로 안 보낸다."""
+
+    def __init__(self, message: str, status: int = 400) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 class _UpstreamReadError(Exception):
@@ -871,9 +675,6 @@ class SseObserver:
         if not self._data:
             return
         data = b"\n".join(self._data)
-        if self.protocol == "chat" and data == b"[DONE]":
-            self.terminal = True
-            return
         try:
             payload = json.loads(data)
         except (UnicodeDecodeError, ValueError):
@@ -890,6 +691,14 @@ class SseObserver:
                  "response.created", "response.completed", "response.failed", "response.incomplete"}
         self.last_event = kind if isinstance(kind, str) and kind in known else "other"
         delta = payload.get("delta")
+        # Responses 는 글 조각을 문자열 delta 로, 사용량을 response.completed 의 response.usage 에 싣는다
+        if (kind == "response.output_text.delta" and isinstance(delta, str) and delta
+                and self.first_text_at is None):
+            self.first_text_at = now
+        finished = payload.get("response")
+        if isinstance(finished, dict) and isinstance(finished.get("usage"), dict):
+            if type(finished["usage"].get("output_tokens")) is int:
+                self.output_tokens = finished["usage"]["output_tokens"]
         if isinstance(delta, dict):
             if (delta.get("type") == "text_delta" and isinstance(delta.get("text"), str)
                     and delta["text"] and self.first_text_at is None):
@@ -929,12 +738,6 @@ def sse_error_message(chunk: bytes) -> str | None:
     return observer.error
 
 
-def _keeps_alive(response: http.client.HTTPResponse) -> bool:
-    """업스트림 연결을 풀에 돌려도 되는가. HTTP/1.1 기본은 keep-alive — close 토큰이 있을 때만 버린다."""
-    conn_hdr = (response.headers.get("Connection") or "").lower()
-    return "close" not in {part.strip() for part in conn_hdr.split(",") if part.strip()}
-
-
 def _json_bytes(payload: dict[str, object]) -> bytes:
     try:
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -946,171 +749,39 @@ def _json_bytes(payload: dict[str, object]) -> bytes:
 
 GEMINI_PREFIX = "/gpgpta01-gpt/v1beta"
 
-# Gemini ``tools[*]`` 는 이 키들만 갖는다(google.ai.generativelanguage.v1beta.Tool).
-# 전부 name/description 이 없는 형태라, 우리 보정이 들어가면 400 이 난다.
-GEMINI_TOOL_KEYS = {
-    "functionDeclarations",
-    "function_declarations",
-    "googleSearch",
-    "google_search",
-    "googleSearchRetrieval",
-    "google_search_retrieval",
-    "codeExecution",
-    "code_execution",
-    "urlContext",
-    "url_context",
-    "fileSearch",
-    "file_search",
-    "googleMaps",
-    "google_maps",
-    "computerUse",
-    "computer_use",
-    "retrieval",
-}
 
+def patch_tool_descriptions(payload: dict) -> int:
+    """Claude Messages 본문의 최상위 ``tools`` 에서 빈/누락 description 을 채우고 채운 수를 돌려준다.
 
-def _is_gemini_tool(tool: dict) -> bool:
-    """Gemini Tool 형태인가. 그렇다면 description 보정 대상이 아니다."""
-    return any(key in tool for key in GEMINI_TOOL_KEYS)
-
-
-def _fill_tool_list(tools: list) -> int:
-    """빈/누락 description 을 채운다. namespace 도구의 중첩 tools 까지 내려간다.
-
-    Gemini 형태(``{"functionDeclarations": [...]}``)는 건너뛴다 — 그 스키마에는
-    ``description`` 필드가 없어서 넣으면 게이트웨이가
-    ``Unknown name "description" at 'tools[0]'`` 로 400 을 낸다.
+    게이트웨이는 Messages 를 Bedrock Converse 로 옮기고, Converse 의 ``ToolSpecification.description`` 은 길이가 1 이상이다.
+    Messages 의 도구는 다 ``name`` 을 단다. 부르는 쪽은 Claude Messages 갈래뿐이다 — Responses 는 빈 설명을 namespace 안쪽까지 그대로 받고(회사 실측
+    #226 ⑮ ⑰), 웹서치 · Codex 검색 메움이 지은 본문은 이 갈래를 안 탄다.
+    ⚠ 본문 전체를 훑지 않는다 — 대화 이력(tool_use input 등)에 우연히 든 "tools" 까지 바뀐다.
     """
+    tools = payload.get("tools")
+    if not isinstance(tools, list):
+        return 0
     patched = 0
     for index, tool in enumerate(tools):
         if not isinstance(tool, dict):
             continue
-        if _is_gemini_tool(tool):
-            continue
-        function = tool.get("function")
-        if tool.get("type") == "function" and isinstance(function, dict):
-            # chat/completions 꼴은 description 이 function 안에 있다 — 바깥에 넣으면 도구마다 모르는 칸이 붙는다.
-            inner = function.get("description")
-            if inner is None or (isinstance(inner, str) and not inner.strip()):
-                function["description"] = f"{function.get('name') or f'tool_{index}'} tool"
-                patched += 1
-            continue
-        if not isinstance(tool.get("name"), str) and not isinstance(tool.get("tools"), list):
-            continue  # hosted 도구({"type": "web_search"} 등)에는 description 칸이 없다 — 붙이면 게이트웨이가 요청을 거절한다(#121)
         description = tool.get("description")
-        if description is None or (
-            isinstance(description, str) and not description.strip()
-        ):
+        if description is None or (isinstance(description, str) and not description.strip()):
             label = tool.get("name") or tool.get("type") or f"tool_{index}"
             tool["description"] = f"{label} tool"
             patched += 1
-        nested = tool.get("tools")
-        if isinstance(nested, list):
-            patched += _fill_tool_list(nested)
     return patched
 
 
-def patch_tool_descriptions(payload: dict, path: str = "") -> int:
-    """도구 정의가 실리는 문서화된 자리 둘 — 최상위 ``tools`` 와 Responses 의 ``input[*].tools`` — 의 빈
-    description 을 채우고 채운 수를 돌려준다.
-
-    ⚠ 본문 전체를 훑지 않는다 — 대화 이력(tool_use input 등)에 우연히 든 "tools" 까지 바뀐다. Gemini 경로는
-    부르는 쪽이 건너뛴다(그 스키마에는 description 칸이 없다).
-    """
-    if path and path.startswith(GEMINI_PREFIX):
-        return 0
-    patched = 0
-    tools = payload.get("tools")
-    if isinstance(tools, list):
-        patched += _fill_tool_list(tools)
-    items = payload.get("input")
-    if isinstance(items, list):
-        for item in items:
-            if isinstance(item, dict) and isinstance(item.get("tools"), list):
-                patched += _fill_tool_list(item["tools"])
-    return patched
-
-
-def normalize_openai_token_limit(payload: dict[str, object], path: str = "") -> bool:
-    """GPT-5 · GPT-6 · o 계열 경로의 옛 토큰 한도 이름을 바꾼다.
-
-    새 GPT 5.x · 6.x 와 o 계열 chat 경로는 max_tokens 를 「Unsupported parameter:
-    'max_tokens'」로 거절하고, GPT-4.x · Grok 경로는 아직 받는다. 새 이름이 드는 모델 계열의 OpenAI 호환 생성
-    요청만 바꾸고, Claude · Gemini 경로는 안 건드린다.
-    """
-    normalized_path = path.rstrip("/")
-    if not (
-        normalized_path.endswith("/v1/chat/completions")
-        or normalized_path.endswith("/v1/responses")
-    ):
-        return False
-    model = str(payload.get("model") or "")
-    if not re.match(r"^(?:gpt-[56](?:[.\-]|$)|o[34](?:-|$))", model):
-        return False
-    target = "max_output_tokens" if normalized_path.endswith("/v1/responses") else "max_completion_tokens"
-    if "max_tokens" not in payload:
-        return False
-    legacy_limit = payload.pop("max_tokens")
-    payload.setdefault(target, legacy_limit)
-    return True
-
-
-# Grok 4 계열 추론 모델이 받지 않는 필드. 하나라도 있으면 xAI 가 턴 전체를 400 으로 돌려준다.
-_GROK_REASONING_REJECTS = ("presence_penalty", "frequency_penalty", "stop")
-# reasoning_effort 까지 거부하는 옛 ID(게이트웨이 목록의 grok-4-1-fast-* 가 여기 든다). grok-4.3 이후는 low/medium/high 를 받는다.
-_GROK_LEGACY_EFFORT = re.compile(r"^grok-4(?:-0709|-latest|-1-fast(?:-.*)?|-fast(?:-.*)?)?$", re.IGNORECASE)
-
-
-def normalize_grok_params(payload: dict[str, object], path: str = "") -> list[str]:
-    """Grok 4 추론 경로가 거부하는 필드를 떼고, 뗀 이름을 돌려준다.
-
-    OpenAI 호환 생성 경로의 grok-4* 모델에만 건다. -non-reasoning 판은 penalty · stop 을 그대로 둔다.
-    없는 필드는 안 세므로, 깨끗한 Grok Build 요청은 바이트 그대로 지나간다.
-    """
-    if not GROK_STRIP:
-        return []
-    normalized_path = path.rstrip("/")
-    if not (normalized_path.endswith("/v1/chat/completions") or normalized_path.endswith("/v1/responses")):
-        return []
-    model = str(payload.get("model") or "").strip().lower()
-    if not model.startswith("grok-4"):
-        return []
-    dropped: list[str] = []
-    if "non-reasoning" not in model:
-        for name in _GROK_REASONING_REJECTS:
-            if name in payload:
-                payload.pop(name)
-                dropped.append(name)
-    if _GROK_LEGACY_EFFORT.match(model):
-        if "reasoning_effort" in payload:
-            payload.pop("reasoning_effort")
-            dropped.append("reasoning_effort")
-        reasoning = payload.get("reasoning")
-        if isinstance(reasoning, dict) and "effort" in reasoning:
-            reasoning.pop("effort")
-            if not reasoning:
-                payload.pop("reasoning")
-            dropped.append("reasoning.effort")
-    return dropped
-
-
-# 게이트웨이는 점 표기(claude-opus-4.6)만 받는데 Hermes 는 대시 표기로 바꿔 보낸다. 계열 이름은 고정하지 않는다 —
+# 게이트웨이는 점 표기(claude-opus-4.6)만 받는데 Claude Code 의 곁 호출은 대시 표기(claude-opus-4-7)로 보낸다. 계열 이름은 고정하지 않는다 —
 # 새 계열이 나와도 프록시를 안 고치게.
 _CLAUDE_DASH_VERSION = re.compile(
     r"^(claude-[a-z]+-\d+)-(\d+)(.*)$",
     re.IGNORECASE,
 )
 
-# 게이트웨이 목록을 못 읽었을 때의 고정 규칙 — 목록을 읽으면 목록에서 고른다.
-_CLAUDE_MODEL_ALIASES = {
-    "claude-sonnet-5": "claude-sonnet-4.6",
-    "claude-sonnet-latest": "claude-sonnet-4.6",
-    "claude-3-7-sonnet-latest": "claude-sonnet-4.6",
-    "claude-3-5-sonnet-latest": "claude-sonnet-4.5",
-    "claude-opus-latest": "claude-opus-5",
-}
 # 대체할 이름이 목록에 없을 때 고를 계열. 대체는 Claude Code 가 곁 호출에 제 손으로 보내는 이름(하이쿠 ·
-# claude-sonnet-5*)과 판을 안 박은 별칭(-latest)에만 건다 — 사람이 고르는 이름(claude-fable-* 등)을 구해 주면 400 이
+# claude-sonnet-5*)에만 건다 — 사람이 고르는 이름(claude-fable-* · 판을 안 박은 -latest 등)을 구해 주면 400 이
 # 보여야 할 자리에 다른 모델이 200 으로 답한다(결정 0164).
 _CLAUDE_FALLBACK_FAMILIES = {"haiku": ("haiku", "sonnet")}
 
@@ -1132,12 +803,12 @@ MODEL_MAP = parse_model_map(os.environ.get("PGPT_PROXY_MODEL_MAP", ""))
 
 
 def claude_family_version(model: str) -> tuple[str, tuple[int, ...]] | None:
-    """``claude-sonnet-4.6`` → ("sonnet", (4, 6)), ``claude-3-5-sonnet-latest`` → ("sonnet", (3, 5)). 날짜 꼬리는 뺀다."""
+    """``claude-sonnet-4.6`` → ("sonnet", (4, 6)), ``claude-3-5-haiku-20241022`` → ("haiku", (3, 5)). 날짜 꼬리는 뺀다."""
     lower = re.sub(r"-\d{8}$", "", model.strip().lower())
     tokens = re.split(r"[-.]", lower)
     if len(tokens) < 2 or tokens[0] != "claude":
         return None
-    family = next((token for token in tokens[1:] if token.isalpha() and token != "latest"), None)
+    family = next((token for token in tokens[1:] if token.isalpha()), None)
     if not family:
         return None
     version = tuple(int(token) for token in tokens[1:] if token.isdigit() and len(token) <= 2)
@@ -1154,12 +825,11 @@ def _dotted_claude_name(name: str) -> str:
 
 
 def needs_model_list(model: object) -> bool:
-    """대체 대상 이름(하이쿠 · claude-sonnet-5* · ``_CLAUDE_MODEL_ALIASES``)인가 — 이런 요청에만 목록을 읽는다."""
+    """대체 대상 이름(하이쿠 · claude-sonnet-5*)인가 — 이런 요청에만 목록을 읽는다."""
     if not isinstance(model, str):
         return False
     lower = model.strip().lower()
-    return ("haiku" in lower or lower.startswith("claude-sonnet-5")
-            or lower in _CLAUDE_MODEL_ALIASES)
+    return "haiku" in lower or lower.startswith("claude-sonnet-5")
 
 
 def newest_listed_claude(family: str, listed: frozenset[str]) -> str | None:
@@ -1194,14 +864,11 @@ def resolve_claude_model(model: str, listed: frozenset[str] | None = None) -> tu
                 pick = newest_listed_claude(family, listed)
                 if pick:
                     return pick, "list"
-    alias = _CLAUDE_MODEL_ALIASES.get(lower)
-    if alias:
-        return alias, "fixed"
     # 하이쿠는 게이트웨이에 없다 — 대시→점 변환보다 먼저 본다(그쪽을 먼저 타면 claude-haiku-4.5 가 되어
     # 여전히 없는 이름이다)
     if "haiku" in lower:
         return CLAUDE_HAIKU_SUBSTITUTE, "fixed"
-    # 날짜 박힌 Anthropic ID: claude-sonnet-5-20260219
+    # 목록을 못 읽었을 때 — claude-sonnet-5 와 날짜 박힌 claude-sonnet-5-20260219
     if lower.startswith("claude-sonnet-5"):
         return "claude-sonnet-4.6", "fixed"
     return _dotted_claude_name(name), "spelling"
@@ -1338,131 +1005,6 @@ def normalize_claude_model_id(payload: dict[str, object], path: str = "",
     return True
 
 
-def _text_from_openai_content(content: object) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                text = item.get("text") or item.get("content")
-                if isinstance(text, str):
-                    parts.append(text)
-            elif isinstance(item, str):
-                parts.append(item)
-        return "\n".join(part for part in parts if part)
-    return ""
-
-
-def openai_chat_to_gemini_payload(payload: dict[str, object]) -> dict[str, object]:
-    """단순한 OpenAI chat completion 본문을 Gemini native JSON 으로 옮긴다."""
-    contents: list[dict[str, object]] = []
-    system_parts: list[str] = []
-    for message in payload.get("messages") or []:
-        if not isinstance(message, dict):
-            continue
-        role = str(message.get("role") or "user")
-        text = _text_from_openai_content(message.get("content"))
-        if not text.strip():
-            continue
-        if role == "system":
-            system_parts.append(text)
-            continue
-        gemini_role = "model" if role == "assistant" else "user"
-        contents.append({"role": gemini_role, "parts": [{"text": text}]})
-    if system_parts:
-        contents.insert(0, {"role": "user", "parts": [{"text": "\n".join(system_parts)}]})
-    if not contents:
-        contents = [{"role": "user", "parts": [{"text": ""}]}]
-
-    generation_config: dict[str, object] = {}
-    max_tokens = payload.get("max_completion_tokens", payload.get("max_tokens"))
-    if isinstance(max_tokens, int) and max_tokens > 0:
-        generation_config["maxOutputTokens"] = max_tokens
-    for src, dst in (("temperature", "temperature"), ("top_p", "topP")):
-        value = payload.get(src)
-        if isinstance(value, (int, float)):
-            generation_config[dst] = value
-
-    out: dict[str, object] = {"contents": contents}
-    if generation_config:
-        out["generationConfig"] = generation_config
-    return out
-
-
-def gemini_response_to_openai_chat(raw: bytes, model: str) -> bytes:
-    """Gemini generateContent JSON 을 OpenAI chat completion JSON 으로 옮긴다."""
-    try:
-        data = json.loads(raw.decode("utf-8")) if raw else {}
-    except (UnicodeDecodeError, ValueError):
-        return raw
-    if not isinstance(data, dict) or "candidates" not in data:
-        return raw
-    parts = []
-    finish_reason = "stop"
-    candidates = data.get("candidates") or []
-    if candidates and isinstance(candidates[0], dict):
-        cand = candidates[0]
-        finish = str(cand.get("finishReason") or "STOP").lower()
-        finish_reason = "length" if finish == "max_tokens" else "stop"
-        content = cand.get("content") or {}
-        if isinstance(content, dict):
-            for part in content.get("parts") or []:
-                if isinstance(part, dict) and isinstance(part.get("text"), str):
-                    parts.append(part["text"])
-    payload = {
-        "id": f"chatcmpl-gemini-{int(time.time() * 1000)}",
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": model,
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": "".join(parts)},
-            "finish_reason": finish_reason,
-        }],
-    }
-    usage = data.get("usageMetadata")
-    if isinstance(usage, dict):
-        payload["usage"] = {
-            "prompt_tokens": usage.get("promptTokenCount", 0),
-            "completion_tokens": usage.get("candidatesTokenCount", 0),
-            "total_tokens": usage.get("totalTokenCount", 0),
-        }
-    return _json_bytes(payload)
-
-
-def gemini_response_to_openai_stream(raw: bytes, model: str) -> bytes:
-    """Gemini 응답 하나를 완결된 OpenAI SSE 스트림으로 옮긴다."""
-    converted = gemini_response_to_openai_chat(raw, model)
-    try:
-        chat = json.loads(converted.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError):
-        return converted
-    choices = chat.get("choices") or []
-    choice = choices[0] if choices and isinstance(choices[0], dict) else {}
-    message = choice.get("message") or {}
-    content = message.get("content") if isinstance(message, dict) else ""
-    finish_reason = choice.get("finish_reason") or "stop"
-    base = {
-        "id": chat.get("id"),
-        "object": "chat.completion.chunk",
-        "created": chat.get("created"),
-        "model": model,
-    }
-    chunks: list[bytes] = []
-    if content:
-        item = dict(base)
-        item["choices"] = [{"index": 0, "delta": {"role": "assistant", "content": content}, "finish_reason": None}]
-        chunks.append(b"data: " + _json_bytes(item) + b"\n\n")
-    final = dict(base)
-    final["choices"] = [{"index": 0, "delta": {}, "finish_reason": finish_reason}]
-    if isinstance(chat.get("usage"), dict):
-        final["usage"] = chat["usage"]
-    chunks.append(b"data: " + _json_bytes(final) + b"\n\n")
-    chunks.append(b"data: [DONE]\n\n")
-    return b"".join(chunks)
-
-
 def _content_blocks(content: object) -> list[dict[str, object]]:
     if isinstance(content, str):
         return [{"type": "text", "text": content}] if content.strip() else []
@@ -1511,11 +1053,54 @@ def _hoist_tool_images(content: list) -> int:
     return len(moved) // 2
 
 
-# 그림만 옮긴다 — PDF(document)는 게이트웨이가 자리와 상관없이 삼킨다(회사 실측 #193 ③㉡ · 결정 0165).
-# ⚠ PDF 를 옮기면 tool_result 에는 「붙였다」는 표지만 남아 모델이 PDF 가 왔다고 믿는다.
+# 그림만 옮긴다 — PDF(document)는 게이트웨이가 자리와 상관없이 삼킨다(회사 실측 #193 ③㉡ · 결정 0165). 옮기는 대신
+# _note_documents 가 안내 글로 바꾼다. ⚠ PDF 를 옮기면 tool_result 에는 「붙였다」는 표지만 남아 모델이 PDF 가 왔다고 믿는다.
 _HOISTED_BLOCKS = {"image"}
+# 모델이 읽는 글이라 영어로 둔다. Read 의 pages 는 페이지를 그림으로 그려 보내고, 그 그림은 게이트웨이를 지난다(#193 ③㉡ 뒤집기)
+_DOCUMENT_NOTE_TEXT = (
+    "[PDF/document attachment not delivered: the P-GPT gateway drops document blocks, so the model cannot see "
+    "this file. Do not guess its contents. Read the PDF again with the Read tool's pages parameter (for example "
+    "pages \"1-5\"); that renders the pages as images, which do get through. If the file is DRM-protected (its "
+    "first bytes are not %PDF), use the drm-office-read skill instead.]"
+)
 # Anthropic 이 한 요청에 받는 cache_control 수 — 넘기면 400 이다
 _CACHE_MARK_LIMIT = 4
+
+
+def _document_note(block: dict) -> dict:
+    """document 블록 하나를 모델이 읽을 글로 바꾼다 — 글 원본(source.type text)이면 그 글을, 아니면 안내를 싣는다.
+
+    cache_control 은 그 자리에 남긴다 — 캐시 경계가 옮겨지면 앞 요청이 데운 접두사를 못 찾는다.
+    """
+    source = block.get("source")
+    title = block.get("title") if isinstance(block.get("title"), str) else ""
+    if isinstance(source, dict) and source.get("type") == "text" and isinstance(source.get("data"), str):
+        text = (f"[document: {title}]\n" if title else "[document]\n") + source["data"]
+    else:
+        text = _DOCUMENT_NOTE_TEXT if not title else f"{_DOCUMENT_NOTE_TEXT[:-1]} Title: {title}]"
+    note: dict = {"type": "text", "text": text}
+    if "cache_control" in block:
+        note["cache_control"] = block["cache_control"]
+    return note
+
+
+def _note_documents(content: list) -> int:
+    """user 턴과 그 안의 tool_result 에 든 document 블록을 글로 바꾸고 바꾼 수를 돌려준다(상류 v34 `3b1b3ad`)."""
+    noted = 0
+    for index, block in enumerate(content):
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "document":
+            content[index] = _document_note(block)
+            noted += 1
+            continue
+        inner = block.get("content") if block.get("type") == "tool_result" else None
+        if isinstance(inner, list) and any(isinstance(item, dict) and item.get("type") == "document" for item in inner):
+            content[index] = {**block, "content": [
+                _document_note(item) if isinstance(item, dict) and item.get("type") == "document" else item
+                for item in inner]}
+            noted += sum(1 for item in inner if isinstance(item, dict) and item.get("type") == "document")
+    return noted
 
 
 def _cache_mark_count(payload: dict, messages: list) -> int:
@@ -1596,6 +1181,11 @@ def sanitize_payload(payload: dict[str, object]) -> dict[str, object]:
             trimmed_prefill = True
         if trimmed_prefill:
             _count_trimmed()
+        if DOCUMENT_NOTE:
+            noted = sum(_note_documents(m["content"]) for m in cleaned
+                        if m["role"] == "user" and isinstance(m["content"], list))
+            if noted:
+                _count_documents_noted(noted)
         if HOIST_TOOL_IMAGES:
             moved = [_hoist_tool_images(m["content"]) if m["role"] == "user" and isinstance(m["content"], list) else 0
                      for m in cleaned]
@@ -1606,34 +1196,6 @@ def sanitize_payload(payload: dict[str, object]) -> dict[str, object]:
         payload["messages"] = cleaned
 
     return payload
-
-
-def normalize_gemini_auth(
-    path: str, query: str, headers: dict[str, str]
-) -> tuple[str, dict[str, str]]:
-    """Gemini 계열 요청에 ``Authorization: Bearer`` 를 덧붙인다 — ``x-goog-api-key`` ·
-    ``?key=`` 의 키로.
-
-    ⚠ 원래 헤더 · 쿼리는 떼지 않는다 — 그것을 보는 게이트웨이 경로에서 401 이 난다.
-    """
-    if not path.startswith(GEMINI_PREFIX):
-        return query, headers
-    if any(name.lower() == "authorization" for name in headers):
-        return query, headers
-
-    key = None
-    for part in query.split("&"):
-        if part.startswith("key="):
-            key = unquote_plus(part[4:])
-    for name, value in headers.items():
-        if name.lower() == "x-goog-api-key" and value.strip():
-            key = value.strip()
-            break
-
-    if key:
-        headers = dict(headers)
-        headers["Authorization"] = f"Bearer {key}"
-    return query, headers
 
 
 def normalize_anthropic_auth(headers: dict[str, str]) -> dict[str, str]:
@@ -1661,125 +1223,12 @@ def normalize_anthropic_auth(headers: dict[str, str]) -> dict[str, str]:
     return headers
 
 
-# 안티그래비티가 제목 짓기에 박아 둔 이름 → 게이트웨이 등록 이름(README 「제미나이 이름 표」 칸).
-# ⚠ `-preview` 를 규칙으로 떼지 않는다 — 게이트웨이에 실제로 있는 `gemini-3.1-pro-preview` 가 깨진다.
-# 걷는 조건: 게이트웨이 /v1/models 에 왼쪽 이름이 서면 그 줄을 지운다.
-_GEMINI_MODEL_ALIASES = {
-    "gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
-}
-
-
-def normalize_gemini_model_path(path: str) -> str:
-    """Gemini CLI 의 가상 접미사(-customtools)를 떼고, 안티그래비티가 박아 둔 이름을 게이트웨이 등록 이름으로 바꾼다.
-
-    Gemini CLI 0.55 는 도구를 켜면 이 접미사를 붙이는데 P-GPT 는 바탕 모델 ID 만 등록한다 — 접미사는 클라이언트 쪽
-    경로 표시이지 따로 있는 게이트웨이 모델이 아니다. 이름 표는 _GEMINI_MODEL_ALIASES 가 든다.
-    """
-    if not path.startswith(f"{GEMINI_PREFIX}/models/"):
-        return path
-    marker = ":"
-    model_start = path.find("/models/") + len("/models/")
-    model_end = path.find(marker, model_start)
-    if model_end < 0:
-        model_end = len(path)
-    model = path[model_start:model_end]
-    suffix = "-customtools"
-    base_model = model[: -len(suffix)] if model.endswith(suffix) else model
-    base_model = _GEMINI_MODEL_ALIASES.get(base_model, base_model)
-    if base_model == model:
-        return path
-    normalized = path[:model_start] + base_model + path[model_end:]
-    log(f"Gemini model alias normalized: {model} -> {base_model}")
-    return normalized
-
-
-class GeminiSseJoiner:
-    """게이트웨이가 쪼갠 Gemini ``data:`` 조각을 바이트가 오는 대로 잇는다.
-
-    게이트웨이는 큰 JSON(긴 ``thoughtSignature`` 등)을 ``data:`` 줄 여럿에 걸쳐 싸고, Gemini CLI 는
-    줄마다 완결된 JSON 으로 읽어 진다. 다 받고 내보내면 첫 글자가 생성 시간 전체를 기다리므로 JSON 이 풀리는 대로 이벤트를
-    내보낸다.
-    """
-
-    def __init__(self) -> None:
-        self.pending = b""
-        self.fragment_count = 0
-        self.joined_fragments = 0
-        self._buf = b""
-
-    def feed(self, chunk: bytes) -> list[bytes]:
-        if not chunk:
-            return []
-        self._buf += chunk
-        events: list[bytes] = []
-        while True:
-            nl = self._buf.find(b"\n")
-            if nl < 0:
-                break
-            line = self._buf[:nl]
-            self._buf = self._buf[nl + 1 :]
-            if line.endswith(b"\r"):
-                line = line[:-1]
-            events.extend(self._feed_line(line))
-        return events
-
-    def finish(self) -> list[bytes]:
-        events: list[bytes] = []
-        if self._buf.strip():
-            events.extend(self._feed_line(self._buf.strip()))
-            self._buf = b""
-        if self.pending:
-            events.append(b"data: " + self.pending + b"\n\n")
-            self.pending = b""
-        return events
-
-    def _feed_line(self, line: bytes) -> list[bytes]:
-        if not line:
-            return []
-        if line.startswith(b"data:"):
-            fragment = line[5:].lstrip()
-        elif self.pending:
-            fragment = line
-        else:
-            return []
-
-        if fragment == b"[DONE]":
-            out: list[bytes] = []
-            if self.pending:
-                out.append(b"data: " + self.pending + b"\n\n")
-                self.pending = b""
-                self.fragment_count = 0
-            out.append(b"data: [DONE]\n\n")
-            return out
-
-        self.pending += fragment
-        self.fragment_count += 1
-        try:
-            json.loads(self.pending.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
-            return []
-
-        if self.fragment_count > 1:
-            self.joined_fragments += self.fragment_count - 1
-        event = b"data: " + self.pending + b"\n\n"
-        self.pending = b""
-        self.fragment_count = 0
-        return [event]
-
-
-def reframe_gemini_sse(raw: bytes) -> tuple[bytes, int]:
-    """자체 검사가 쓰는, 한꺼번에 모아 잇는 도우미. 실제 트래픽은 GeminiSseJoiner 를 쓴다."""
-    joiner = GeminiSseJoiner()
-    parts = joiner.feed(raw)
-    parts.extend(joiner.finish())
-    return b"".join(parts), joiner.joined_fragments
-
-
-def anthropic_message_events(message: object, *, tools: list | None = None, allow_tools: bool = True) -> list[bytes]:
-    """완결된 message 를 SSE 이벤트로 바꾼다 — 도구 호출을 내보내기 전에 전부 검증한다.
+def anthropic_message_events(message: object, *, allow_tools: bool = True) -> list[bytes]:
+    """완결된 message 를 SSE 이벤트로 바꾼다 — 이벤트를 내보내기 전에 블록을 전부 검증한다.
 
     입력 JSON(큰 유니코드 문자열 포함)은 input_json_delta 로 싣는다 — SDK 가 버리는 빈 tool_use 시작 칸에는
-    안 싣는다. 모르는 블록 종류는 모델 출력을 조용히 잃지 않고 드러내 실패한다.
+    안 싣는다. 모르는 블록 종류는 모델 출력을 조용히 잃지 않고 드러내 실패한다. ``allow_tools=False``(압축)면 도구
+    호출 블록이 오는 대로 실패한다.
     """
     if not isinstance(message, dict) or message.get("type") != "message":
         raise ValueError("Expected an Anthropic message")
@@ -1812,18 +1261,6 @@ def anthropic_message_events(message: object, *, tools: list | None = None, allo
                 raise ValueError("Compaction must not execute tools")
             if not block.get("id") or not block.get("name") or not isinstance(block.get("input"), dict):
                 raise ValueError("Invalid tool input")
-            if tools is not None and kind == "tool_use":
-                definition = next((tool for tool in tools if isinstance(tool, dict) and tool.get("name") == block["name"]), None)
-                if definition is None:
-                    raise ValueError("Unknown tool")
-                schema = definition.get("input_schema")
-                if not isinstance(schema, dict):
-                    raise ValueError("Invalid tool schema")
-                required = schema.get("required", [])
-                if not isinstance(required, list):
-                    raise ValueError("Invalid required tool fields")
-                if any(key not in block["input"] for key in required):
-                    raise ValueError("Missing required tool arguments from gateway")
             initial["input"] = {}
             deltas.append(("input_json_delta", "partial_json", json.dumps(block["input"], ensure_ascii=False)))
         elif kind == "thinking":
@@ -1914,8 +1351,8 @@ def web_search_gemini_payload(query: str, tool: dict) -> dict:
 def web_search_headers(headers: dict[str, str]) -> dict[str, str]:
     """Anthropic 요청 머리를 제미나이 경로 꼴로 — 회사 키 하나가 두 경로에 다 선다.
 
-    `Authorization: Bearer` 는 그대로 두고 같은 키를 `x-goog-api-key` 로도 싣는다(제미나이 클라이언트가 쓰는
-    이름 · 위 `normalize_gemini_auth` 와 같은 자). Anthropic 전용 머리와 본문 길이는 뺀다 — 본문이 바뀐다.
+    `Authorization: Bearer` 는 그대로 두고 같은 키를 `x-goog-api-key` 로도 싣는다 — 게이트웨이의 Gemini 길이 받는
+    인증 머리 둘이다(`../Gemini-Posco.setting.md` 인증 절). Anthropic 전용 머리와 본문 길이는 뺀다 — 본문이 바뀐다.
     """
     out = {name: value for name, value in headers.items()
            if not name.lower().startswith("anthropic-") and name.lower() not in {"content-type", "x-api-key"}}
@@ -1926,12 +1363,12 @@ def web_search_headers(headers: dict[str, str]) -> dict[str, str]:
     return out
 
 
-def _source_ok(site: str, allowed: list[str], blocked: list[str], exact: bool) -> bool:
-    """grounding 출처 거르기. `site` 는 출처의 도메인 — 원래 주소를 풀었으면 그 호스트(exact), 못 풀었으면 제미나이가
-    준 제목(대개 등록 도메인 `python.org`)이다. 도메인을 모르면(빈 값) 허용 목록이 있을 때 걷고, 차단 목록만 있으면 둔다.
+def _source_ok(site: str, allowed: list[str], blocked: list[str]) -> bool:
+    """grounding 출처 거르기. `site` 는 제미나이가 준 출처 도메인이나 제목(대개 등록 도메인 `python.org`)이다 — 출처
+    주소는 구글 경유 주소라 호스트로는 못 가린다. 도메인을 모르면(빈 값) 허용 목록이 있을 때 걷고, 차단 목록만 있으면 둔다.
 
-    제목만 알 때는 허용 `docs.python.org` 에 제목 `python.org` 도 들인다 — 제미나이가 하위 도메인을 떼고 주므로
-    가릴 수 없고, 다 걷으면 결과가 늘 빈다. 차단은 그렇게 넓히지 않는다(정확한 호스트일 때만 하위 도메인까지).
+    허용 `docs.python.org` 에 제목 `python.org` 도 들인다 — 제미나이가 하위 도메인을 떼고 주므로 가릴 수 없고, 다
+    걷으면 결과가 늘 빈다. 차단은 그렇게 넓히지 않는다(그 도메인과 그 아래만).
     """
     site = _bare_domain(site) if site else ""
     if not site:
@@ -1940,50 +1377,9 @@ def _source_ok(site: str, allowed: list[str], blocked: list[str], exact: bool) -
     def under(domain: str) -> bool:
         return site == domain or site.endswith("." + domain)
 
-    if allowed and not any(under(d) or (not exact and d.endswith("." + site)) for d in allowed):
+    if allowed and not any(under(d) or d.endswith("." + site) for d in allowed):
         return False
     return not any(under(d) for d in blocked)
-
-
-def _resolve_grounding_url(url: str) -> str | None:
-    """구글 경유 출처 주소의 원래 주소(Location). 경유 주소가 아니거나 못 풀면 None — 받은 주소를 그대로 쓴다."""
-    parts = urlsplit(url)
-    if parts.scheme != "https" or parts.hostname != _GROUNDING_REDIRECT_HOST:
-        return None
-    conn = http.client.HTTPSConnection(parts.hostname, parts.port or 443, timeout=WEB_SEARCH_RESOLVE_TIMEOUT)
-    try:
-        conn.request("HEAD", parts.path + (f"?{parts.query}" if parts.query else ""),
-                     headers={"User-Agent": "pgpt-proxy"})
-        response = conn.getresponse()
-        location = response.getheader("Location") or ""
-        if 300 <= response.status < 400 and location.lower().startswith(("http://", "https://")):
-            return location
-    except (OSError, http.client.HTTPException, ValueError):
-        pass
-    finally:
-        conn.close()
-    return None
-
-
-def resolve_grounding_urls(urls: list[str]) -> dict[str, str]:
-    """경유 주소들을 한꺼번에 푼다(스레드 몇 개 · 전체 시한 WEB_SEARCH_RESOLVE_TIMEOUT + 1초). 푼 것만 돌려준다."""
-    targets = [url for url in dict.fromkeys(urls) if urlsplit(url).hostname == _GROUNDING_REDIRECT_HOST]
-    if not WEB_SEARCH_RESOLVE or not targets:
-        return {}
-    resolved: dict[str, str] = {}
-
-    def work(url: str) -> None:
-        real = _resolve_grounding_url(url)
-        if real:
-            resolved[url] = real
-
-    threads = [threading.Thread(target=work, args=(url,), daemon=True) for url in targets[:10]]
-    for thread in threads:
-        thread.start()
-    deadline = time.monotonic() + WEB_SEARCH_RESOLVE_TIMEOUT + 1.0
-    for thread in threads:
-        thread.join(max(0.0, deadline - time.monotonic()))
-    return dict(resolved)
 
 
 def _web_search_message(query: str, model: str, result: list | dict, text: str, usage: dict) -> dict:
@@ -1998,11 +1394,10 @@ def _web_search_message(query: str, model: str, result: list | dict, text: str, 
             "content": content, "stop_reason": "end_turn", "stop_sequence": None, "usage": usage}
 
 
-def gemini_grounding_to_anthropic(raw: bytes, query: str, model: str, tool: dict,
-                                  resolve=resolve_grounding_urls) -> dict:
+def gemini_grounding_to_anthropic(raw: bytes, query: str, model: str, tool: dict) -> dict:
     """제미나이 grounding 답을 CLI 가 읽는 세 칸으로 — 출처는 `groundingChunks`, 본문은 생각 아닌 글 조각.
 
-    출처 주소는 원래 주소로 풀어 싣고(못 풀면 경유 주소), 도메인 거르기는 푼 주소의 호스트로 한다.
+    출처 주소는 제미나이가 준 구글 경유 주소 그대로 싣고, 도메인 거르기는 제미나이가 준 도메인 · 제목으로 한다.
     """
     data = json.loads(raw)
     if not isinstance(data, dict):
@@ -2023,19 +1418,16 @@ def gemini_grounding_to_anthropic(raw: bytes, query: str, model: str, tool: dict
         title = web.get("title") if isinstance(web.get("title"), str) else ""
         domain = web.get("domain") if isinstance(web.get("domain"), str) else ""
         sources.append((url, title.strip(), domain.strip()))
-    real_urls = resolve([url for url, _, _ in sources]) if sources else {}
     results: list[dict] = []
     seen: set[str] = set()
     for url, title, domain in sources:
-        real = real_urls.get(url, url)
-        if real in seen:
+        if url in seen:
             continue
-        # 푼 원래 주소면 그 호스트가 가장 정확하다. 못 풀었으면 제미나이가 준 도메인 → 제목(대개 도메인) 차례로 본다
-        site, exact = (urlsplit(real).hostname or "", True) if url in real_urls else (domain or title, False)
-        if not _source_ok(site, allowed, blocked, exact):
+        site = domain or title  # 제미나이가 준 도메인 → 제목(대개 도메인) 차례로 본다
+        if not _source_ok(site, allowed, blocked):
             continue
-        seen.add(real)
-        results.append({"type": "web_search_result", "title": title or _bare_domain(site) or real, "url": real,
+        seen.add(url)
+        results.append({"type": "web_search_result", "title": title or _bare_domain(site) or url, "url": url,
                         "encrypted_content": "", "page_age": None})
     usage_meta = data.get("usageMetadata") or {}
     searches = meta.get("webSearchQueries") if isinstance(meta.get("webSearchQueries"), list) else []
@@ -2077,18 +1469,9 @@ def codex_web_search(payload: dict, path: str) -> dict[str, object] | None:
     if len(lines) == 1:
         # 드문 꼴 · 빈 명령에는 최근 대화를 맥락으로 싣는다.
         lines.append("Context: " + json.dumps(payload.get("input") or "", ensure_ascii=False)[:12000])
-
-    settings = payload.get("settings")
-    filters = settings.get("filters") if isinstance(settings, dict) else None
-    tool: dict[str, object] = {}
-    if isinstance(filters, dict):
-        for key in ("allowed_domains", "blocked_domains"):
-            if isinstance(filters.get(key), list):
-                tool[key] = filters[key]
     return {
         "query": "\n".join(lines),
         "model": str(payload.get("model") or "codex"),
-        "tool": tool,
         "stream": False,
         "response": "codex",
         "upstream": "responses",
@@ -2215,35 +1598,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.close_connection = not keep_alive
 
     def _read_body(self) -> bytes | None:
-        """요청 본문을 읽는다 — chunked 전송도 받는다.
+        """요청 본문을 ``Content-Length`` 만큼 읽는다.
 
-        Claude Code 와 Codex 는 큰 본문을 chunked 로 올린다. Content-Length 만 읽으면 그 본문이 조용히
-        빠진다.
+        이 문을 지나는 클라이언트 둘은 큰 본문도 ``Content-Length`` 로 올린다(회사 실측 #226 ⑨ — Codex, 사외 실측 — Claude Code
+        2.1.314). ``Transfer-Encoding`` 이 붙은 요청은 본문을 읽지 않고 411 로 돌린다(RFC 9110 §15.5.12) — 그대로 두면
+        본문이 길이 0 으로 읽혀 빈 요청이 상류로 간다.
         """
-        transfer_encoding = self.headers.get("Transfer-Encoding", "")
-        codings = [part.strip().lower() for part in transfer_encoding.split(",") if part.strip()]
-        if codings and codings[-1] == "chunked":
-            chunks: list[bytes] = []
-            while True:
-                line = self.rfile.readline(65536).strip()
-                if not line:
-                    break
-                try:
-                    size = int(line.split(b";")[0], 16)
-                except ValueError:
-                    log(f"chunked parse error: {line!r}")
-                    break
-                # 음수/과대 크기는 read(-1) 블록·메모리 폭주로 이어진다
-                if size < 0 or size > MAX_CHUNK_SIZE:
-                    log(f"chunked size rejected: {size}")
-                    break
-                if size == 0:
-                    self.rfile.readline(65536)
-                    break
-                chunks.append(self.rfile.read(size))
-                self.rfile.read(2)
-            return b"".join(chunks)
-
+        if self.headers.get("Transfer-Encoding") is not None:
+            raise _BadRequestBody("Transfer-Encoding 본문은 받지 않습니다 — Content-Length 로 보내 주세요", status=411)
         # 길이가 숫자가 아니거나 덜 받은 본문은 상류로 보내지 않고 400 으로 돌려준다
         try:
             length = int(self.headers.get("Content-Length", "0") or "0")
@@ -2330,44 +1692,30 @@ class ProxyHandler(BaseHTTPRequestHandler):
         headers: dict[str, str],
         timeout: float | None = None,
     ) -> tuple[http.client.HTTPResponse, http.client.HTTPConnection]:
-        """풀의 keep-alive 연결로 게이트웨이에 POST · GET 한다. ``timeout`` 은 이 요청의 응답 시한(초) — 준 연결은
-        풀에 돌려보내지 말 것(부른 쪽 몫).
+        """새 연결로 게이트웨이에 POST · GET 한다. ``timeout`` 은 이 요청의 응답 시한(초) — 준 연결은 부른 쪽이
+        다 읽은 뒤 닫는다(``_UPSTREAM.close``). 실패하면 닫고 다시 보내지 않는다 — 게이트웨이가 이미 요청을 처리 중일 수 있어
+        다시 보내면 생성이 두 번 돈다(비용 두 배).
         """
         upstream_headers = {
             key: value
             for key, value in headers.items()
             if key.lower() not in HOP_BY_HOP and key.lower() not in {"host", "content-length"}
         }
-        upstream_headers["Connection"] = "keep-alive"
         if body is not None:
             upstream_headers["Content-Length"] = str(len(body))
         elif method.upper() in {"POST", "PUT", "PATCH"}:
             upstream_headers["Content-Length"] = "0"
 
-        log_path = path.split("?", 1)[0]   # 쿼리(?key=...)는 로그에 남기지 않는다
-        for attempt in range(2):
-            if self._client_disconnected():
-                raise _ClientDisconnected()
-            conn = _UPSTREAM_POOL.acquire(fresh=attempt > 0)
-            reused = bool(getattr(conn, "pgpt_reused", False))
-            if timeout is not None and conn.sock is not None:
-                conn.sock.settimeout(timeout)
-            try:
-                return self._exchange_upstream(conn, method, path, body, upstream_headers), conn
-            except _ClientDisconnected:
-                _UPSTREAM_POOL.release(conn, reuse=False)
-                raise
-            except (http.client.HTTPException, OSError, TimeoutError) as error:
-                _UPSTREAM_POOL.release(conn, reuse=False)
-                # 다시 보내도 되는 경우는 하나뿐: 풀에서 꺼낸(오래 쉰) 연결이 응답 전에 끊긴 것. 새 연결이 실패했거나
-                # 시간 초과면 게이트웨이가 이미 요청을 처리 중일 수 있어 다시 보내면 생성이 두 번 돈다(비용 두 배).
-                stale = isinstance(error, (http.client.RemoteDisconnected, BrokenPipeError,
-                                           ConnectionResetError, ConnectionAbortedError))
-                if attempt == 0 and reused and stale:
-                    log(f"{method} {log_path} upstream retry on a fresh connection after {error!r}")
-                    continue
-                raise
-        raise RuntimeError("unreachable")
+        if self._client_disconnected():
+            raise _ClientDisconnected()
+        conn = _UPSTREAM.open()
+        if timeout is not None and conn.sock is not None:
+            conn.sock.settimeout(timeout)
+        try:
+            return self._exchange_upstream(conn, method, path, body, upstream_headers), conn
+        except (_ClientDisconnected, http.client.HTTPException, OSError, TimeoutError):
+            _UPSTREAM.close(conn)
+            raise
 
     def _emit(self, data: bytes) -> None:
         if not data:
@@ -2431,7 +1779,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self,
         response: http.client.HTTPResponse,
         *,
-        gemini_sse: bool,
         sse: bool = False,
         keepalive_interval: float = 0.0,
         protocol: str = "",
@@ -2442,12 +1789,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
         한다 — Connection: close 로만 끝내면 정상 종료와 안 갈린다. ``sse``(Anthropic · OpenAI 스트림)면
         게이트웨이의 ``error`` 프레임을 세고 기록한다 — 180초 시한의 자국이다.
         """
-        joiner = GeminiSseJoiner() if gemini_sse else None
         observer = SseObserver(protocol) if sse else None
         # 그대로 중계하는 Claude 비스트리밍 응답(클라이언트가 청한 판 — 「Retrying without streaming」)은 드물고 작다 —
         # stop_reason 을 읽으려고 한도 있는 사본을 둔다.
         claude_messages = getattr(self, "_claude_messages", False)
-        compact_copy = bytearray() if (claude_messages and not sse and not gemini_sse) else None
+        compact_copy = bytearray() if (claude_messages and not sse) else None
         keepalives_before = self._keepalives_sent
         self._stream_outcome = "complete"
 
@@ -2473,20 +1819,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         compact_copy.extend(chunk)
                     else:
                         compact_copy = None
-                if joiner is not None:
-                    for event in joiner.feed(chunk):
-                        self._emit(event)
-                else:
-                    self._emit(chunk)
+                self._emit(chunk)
             # 길이를 선언한 응답이 모자라게 끝나면 read1() 은 예외 없이 빈 바이트를 돌려준다 — 남은 길이로 가린다
             remaining = getattr(response, "length", None)
             if remaining:
                 return incomplete(f"ended {remaining} bytes early")
-            if joiner is not None:
-                for event in joiner.finish():
-                    self._emit(event)
-                if joiner.joined_fragments:
-                    log(f"Gemini SSE fragments joined={joiner.joined_fragments}")
             if observer is not None and protocol and not observer.terminal and observer.error is None:
                 if observer.limited:
                     self._stream_outcome = "stream_unverified"
@@ -2574,17 +1911,15 @@ class ProxyHandler(BaseHTTPRequestHandler):
             body = self._read_body()
         except _BadRequestBody as error:
             log(f"bad request body {self.command} {parsed.path}: {error}")
-            self._send_json(400, {"type": "error", "error": {"type": "invalid_request_error", "message": str(error)}},
+            self._send_json(error.status,
+                            {"type": "error", "error": {"type": "invalid_request_error", "message": str(error)}},
                             keep_alive=False)
             return
         if body:
             _note_request_bytes(len(body))
         model_name = ""
-        gemini_chat_model: str | None = None
-        gemini_chat_stream = False
         claude_unstream = False
         compact_request = False
-        claude_tools = None
         web_search: dict[str, object] | None = None
         if body:
             stripped_path = parsed.path.rstrip("/")
@@ -2595,7 +1930,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 or stripped_path.endswith("/v1/responses")
             )
             # tools 가 아예 없는 본문은 파싱 자체를 건너뛴다 (요청당 비용 절감).
-            # 단 GPT-5/o 계열 토큰 파라미터 보정과 Gemini chat 변환은 짧은 호출에도 필요하다.
+            # 단 생성 경로는 짧은 호출도 읽는다 — request 줄의 모델 · effort 를 남긴다.
             if is_messages or is_openai_generation or is_codex_search or b'"tools"' in body:
                 try:
                     payload_obj = json.loads(body)
@@ -2644,49 +1979,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             self._request_context += " kind=compact"
                         self._compact_request = compact_request
                         self._claude_messages = True
-                        if compact_request:
-                            adjustment = tune_claude_compaction(payload_obj)
-                            if adjustment:
-                                self._request_context += " " + adjustment
                         changed = True
-                        if (CLAUDE_UNSTREAM or (COMPACT_UNSTREAM and compact_request)) and payload_obj.get("stream") is True:
+                        if COMPACT_UNSTREAM and compact_request and payload_obj.get("stream") is True:
                             payload_obj["stream"] = False
                             claude_unstream = True
-                            claude_tools = payload_obj.get("tools", [])
                             self._request_context += " transport=unstream"
                         ceiling = cap_claude_output(payload_obj, unstream=payload_obj.get("stream") is not True,
                                                     body_bytes=len(body))
                         if ceiling:
                             self._request_context += " " + ceiling
-                    elif stripped_path.endswith("/v1/chat/completions") and model_name.startswith("gemini-"):
-                        # /v1/responses 는 프롬프트가 input · instructions 에 있어 이 변환(messages 만 읽음)을 타면
-                        # 빈 프롬프트가 된다 — chat/completions 만 바꾼다
-                        gemini_chat_model = model_name
-                        gemini_chat_stream = bool(payload_obj.get("stream"))
-                        payload_obj = openai_chat_to_gemini_payload(payload_obj)
-                        changed = True
-                        log(f"{parsed.path} model={model_name} openai-chat->gemini-native")
-                    if normalize_openai_token_limit(payload_obj, parsed.path):
-                        changed = True
-                        limit_field = (
-                            "max_output_tokens"
-                            if parsed.path.rstrip("/").endswith("/v1/responses")
-                            else "max_completion_tokens"
-                        )
-                        log(f"{parsed.path} model={payload_obj.get('model')} max_tokens->{limit_field}")
-                    grok_dropped = normalize_grok_params(payload_obj, parsed.path)
-                    if grok_dropped:
-                        changed = True
-                        _count_grok_dropped(len(grok_dropped))
-                        log(f"{parsed.path} model={payload_obj.get('model')} grok_dropped={','.join(grok_dropped)}")
-                    filled = patch_tool_descriptions(payload_obj, parsed.path)
-                    if filled:
-                        changed = True
-                        _count_patched(filled)
-                        log(
-                            f"{parsed.path} model={payload_obj.get('model')} "
-                            f"tool_descriptions_filled={filled}"
-                        )
+                        filled = patch_tool_descriptions(payload_obj)
+                        if filled:
+                            _count_patched(filled)
+                            log(
+                                f"{parsed.path} model={payload_obj.get('model')} "
+                                f"tool_descriptions_filled={filled}"
+                            )
                     if changed:
                         body = _json_bytes(payload_obj)
 
@@ -2696,68 +2004,36 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if key.lower() not in HOP_BY_HOP
             and key.lower() not in {"host", "content-length", "accept-encoding", "expect"}
         }
-        query, headers = normalize_gemini_auth(parsed.path, parsed.query, headers)
+        query = parsed.query
         headers = normalize_anthropic_auth(headers)
         codex_fill = bool(web_search) and web_search.get("response") == "codex"
         if web_search and not codex_fill:
             headers = web_search_headers(headers)
-        if gemini_chat_model:
-            upstream_path = f"{GEMINI_PREFIX}/models/{quote(gemini_chat_model, safe='')}:generateContent"
-        elif codex_fill:
+        if codex_fill:
             upstream_path = parsed.path.rstrip("/")[:-len("/alpha/search")] + "/responses"
             query = ""
         elif web_search:
-            upstream_path = normalize_gemini_model_path(
-                f"{GEMINI_PREFIX}/models/{quote(WEB_SEARCH_MODEL, safe='')}:generateContent")
+            upstream_path = f"{GEMINI_PREFIX}/models/{quote(WEB_SEARCH_MODEL, safe='')}:generateContent"
             # ⚠ Claude Code 의 `?beta=true` 를 제미나이 경로에 실으면 400(`Unknown name "beta"`)이다 — `?key=` 만 남긴다.
             query = "&".join(part for part in query.split("&") if part.startswith("key="))
         else:
-            upstream_path = normalize_gemini_model_path(parsed.path)
+            upstream_path = parsed.path
         if query:
             upstream_path += f"?{query}"
 
         conn: http.client.HTTPConnection | None = None
         response: http.client.HTTPResponse | None = None
-        reuse = False
         upstream_status = 0
         client_status = 0
         outcome = "complete"
-        waited = 0.0
         headers_sec = 0.0
         provider = ("openai" if codex_fill else "gemini" if web_search
                     else request_provider(parsed.path, model_name))
-        gate = _HEAVY_GATES[provider]
         self._request_context += f" provider={provider} bytes={len(body or b'')}"
         generation = is_generation_request(parsed.path)
         if generation:
             log(f"request {self.command} {parsed.path} {self._request_context}")
-        heavy = is_heavy_request(parsed.path, body)
-        heavy_held = False
-        queue_started = time.monotonic()
         try:
-            if heavy:
-                try:
-                    heavy_held, waited = gate.acquire(HEAVY_QUEUE_TIMEOUT_SEC, self._client_disconnected)
-                finally:
-                    waited = time.monotonic() - queue_started
-                if not heavy_held:
-                    _count_heavy_queue_timeout()
-                    outcome = "queue_timeout"
-                    client_status = 429
-                    log(
-                        f"heavy gate timeout {self.command} {parsed.path} "
-                        f"waited={waited:.1f}s HTTP 429 {self._request_context}"
-                    )
-                    self._send_json(429, {
-                        "type": "error", "error": {
-                            "type": "rate_limit_error", "code": "proxy_queue_timeout",
-                            "message": f"Local P-GPT proxy {provider} queue is busy. Retry shortly.",
-                        },
-                    }, keep_alive=False, retry_after=5)
-                    return
-                _count_heavy_serialized(waited)
-                if waited >= 1.0:
-                    log(f"heavy gate {self.command} {parsed.path} waited={waited:.1f}s {self._request_context}")
             self._upstream_started = time.monotonic()
             try:
                 response, conn = self._write_upstream(
@@ -2799,8 +2075,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 error_code = "unavailable"
                 try:
                     raw = response.read()
-                    # 시한을 줄인 연결은 풀에 돌려보내지 않는다 — 다음 긴 Claude 요청이 그 시한으로 끊긴다
-                    reuse = False
                     if response.status < 400 and codex_fill:
                         message = responses_web_search_to_codex(raw)
                     elif response.status < 400:
@@ -2827,37 +2101,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self._send_web_search(web_search, message)
                 return
 
-            if gemini_chat_model and response.status < 400:
-                try:
-                    raw = response.read()
-                except (OSError, http.client.HTTPException) as error:
-                    outcome = "incomplete"
-                    client_status = 502
-                    # 변환하려면 본문 전체가 필요하다 — 끊기면 잘린 답을 만들지 말고 502 로 알린다
-                    log(f"{self.command} {parsed.path} -> upstream read aborted before Gemini conversion: {error!r}")
-                    self._send_json(502, {"type": "error", "error": {"message": f"upstream read aborted: {error}"}}, keep_alive=False)
-                    return
-                if gemini_chat_stream:
-                    converted = gemini_response_to_openai_stream(raw, gemini_chat_model)
-                    content_type = "text/event-stream; charset=utf-8"
-                else:
-                    converted = gemini_response_to_openai_chat(raw, gemini_chat_model)
-                    content_type = "application/json; charset=utf-8"
-                self.send_response(200)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(converted)))
-                self.send_header("Connection", "close")
-                self.end_headers()
-                self.wfile.write(converted)
-                reuse = _keeps_alive(response)
-                return
-
             # ⚠ 3xx 는 따라가지 않고 그대로 중계한다 — 따라가면 Authorization 을 Location 의 호스트로 다시 보낸다.
-            is_gemini_stream = (
-                upstream_path.startswith(f"{GEMINI_PREFIX}/models/")
-                and ":streamGenerateContent" in upstream_path
-                and response.status < 400
-            )
 
             content_type = (response.getheader("Content-Type") or "").lower()
             if claude_unstream and 200 <= response.status < 300 and not content_type.startswith("text/event-stream"):
@@ -2878,7 +2122,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     if response.length not in (None, 0):
                         raise ValueError("Truncated nonstream response")
                     message = json.loads(raw)
-                    events = anthropic_message_events(message, tools=claude_tools, allow_tools=not compact_request)
+                    events = anthropic_message_events(message, allow_tools=False)
                     for event in events:
                         self._emit(event)
                     seen: dict = {}
@@ -2888,7 +2132,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     if message["stop_reason"] == "max_tokens":
                         _count_max_tokens_hit(compact_request)
                         log(f"reached max_tokens {self._request_context}{self._gw()}")
-                    reuse = _keeps_alive(response)
                 except (_UpstreamReadError, ValueError, TypeError):
                     outcome = "stream_error"
                     _count_stream_error()
@@ -2898,7 +2141,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"0\r\n\r\n")
                 self.wfile.flush()
                 return
-            is_sse = content_type.startswith("text/event-stream") and not is_gemini_stream
+            # Gemini(`/v1beta`) 스트림은 바이트 그대로 옮긴다 — keepalive 주석 · 끝 이벤트 확인은 Anthropic · OpenAI 스트림의 것이고,
+            # Gemini 파서가 주석 줄을 받는지는 안 쟀다.
+            is_sse = content_type.startswith("text/event-stream") and not upstream_path.startswith(GEMINI_PREFIX)
             protocol = ""
             if is_sse and response.status < 400:
                 route = parsed.path.rstrip("/")
@@ -2906,8 +2151,6 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     protocol = "anthropic"
                 elif route.endswith("/v1/responses"):
                     protocol = "responses"
-                elif route.endswith("/v1/chat/completions"):
-                    protocol = "chat"
 
             self.send_response(response.status)
             for key, value in response.headers.items():
@@ -2930,7 +2173,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._chunked_out = False
             if no_body:
                 pass
-            elif upstream_length is not None and not is_gemini_stream and not is_sse and not getattr(response, "chunked", False):
+            elif upstream_length is not None and not is_sse and not getattr(response, "chunked", False):
                 # chunked 와 Content-Length 를 함께 보낸 업스트림은 http.client 가 chunked 로 읽는다 — 그 길이는 틀린 값이다
                 self.send_header("Content-Length", upstream_length)
             else:
@@ -2946,11 +2189,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 except (OSError, http.client.HTTPException):
                     fully_read = False
             else:
-                # Anthropic · OpenAI 스트림에만 주석을 흘린다. Gemini 는 재조립기가 조각을 쥐고 있어 뺀다.
+                # Anthropic · OpenAI 스트림에만 주석을 흘린다(위 `is_sse`).
                 keepalive_interval = KEEPALIVE_SEC if (is_sse and response.status < 400 and KEEPALIVE_SEC > 0) else 0.0
                 fully_read = self._relay_stream(
                     response,
-                    gemini_sse=is_gemini_stream,
                     sse=is_sse,
                     keepalive_interval=keepalive_interval,
                     protocol=protocol,
@@ -2959,16 +2201,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 outcome = self._stream_outcome
             elif not fully_read:
                 outcome = "incomplete"
-            reuse = fully_read and _keeps_alive(response)
         except (_ClientDisconnected, BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-            # 클라이언트가 응답을 받기 전에 끊었다(취소 · 시간 초과) — 조용히 끝낸다. 업스트림 연결은 버린다.
-            reuse = False
+            # 클라이언트가 응답을 받기 전에 끊었다(취소 · 시간 초과) — 조용히 끝낸다.
             outcome = "client_cancelled"
             _count_client_cancelled()
         finally:
-            _UPSTREAM_POOL.release(conn, reuse=reuse)
-            if heavy_held:
-                gate.release()
+            _UPSTREAM.close(conn)
             self.close_connection = True
             elapsed = time.monotonic() - started
             upstream_sec = time.monotonic() - self._upstream_started if self._upstream_started else 0.0
@@ -2984,7 +2222,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 )
             if generation or outcome != "complete":
                 log(f"complete {self.command} {parsed.path} HTTP {client_status} result={outcome} "
-                    f"queue={waited:.3f}s headers={headers_sec:.3f}s upstream={upstream_sec:.3f}s "
+                    f"headers={headers_sec:.3f}s upstream={upstream_sec:.3f}s "
                     f"total={elapsed:.3f}s {self._request_context}{self._gw()}")
             if elapsed >= SLOW_REQUEST_SEC and parsed.path != "/health":
                 _count_slow()
@@ -3059,6 +2297,21 @@ def self_test() -> None:
     assert [b["type"] for b in turn] == ["tool_result", "text", "image"] and turn[2] == img
     assert "toolu_h" in turn[1]["text"]
 
+    # PDF 안내 글: tool_result 안 · user 턴 바로 · 글 원본 셋을 글로 바꾸고 cache_control 은 제자리에 둔다. 그 뒤 그림만 옮긴다
+    turn = [{"type": "tool_result", "tool_use_id": "toolu_h", "content": [doc, img]},
+            {**doc, "cache_control": {"type": "ephemeral"}},
+            {"type": "document", "title": "memo", "source": {"type": "text", "media_type": "text/plain", "data": "본문"}}]
+    assert _note_documents(turn) == 3
+    assert turn[0]["content"][0] == {"type": "text", "text": _DOCUMENT_NOTE_TEXT}
+    assert "pages" in _DOCUMENT_NOTE_TEXT and "drm-office-read" in _DOCUMENT_NOTE_TEXT
+    assert turn[1] == {"type": "text", "text": _DOCUMENT_NOTE_TEXT, "cache_control": {"type": "ephemeral"}}
+    assert turn[2] == {"type": "text", "text": "[document: memo]\n본문"}
+    assert _hoist_tool_images(turn) == 1
+    assert [b["type"] for b in turn] == ["tool_result", "text", "image", "text", "text"] and turn[2] == img
+    assert _note_documents(turn) == 0
+    noted = sanitize_payload({"model": "claude-opus-5", "messages": [{"role": "user", "content": [doc]}]})
+    assert noted["messages"][0]["content"] == [{"type": "text", "text": _DOCUMENT_NOTE_TEXT}]
+
     # 옮긴 묶음의 캐시 표식: 끝에 표식이 있으면 묶음 앞 tool_result 에 같은 표식을 단다 · 표식이 앞에 있으면 마지막 이름표에 ·
     # 한도(4)가 찼거나 메시지에 표식이 없으면 안 단다 · 마지막이 아닌 user 메시지는 안 본다
     mark = {"type": "ephemeral", "ttl": "1h"}
@@ -3090,42 +2343,32 @@ def self_test() -> None:
                           {"role": "user", "content": [{"type": "text", "text": "next", "cache_control": mark}]}]
     assert "cache_control" not in sanitize_payload(older)["messages"][2]["content"][0]
 
-    # 사용량 칸: 게이트웨이 꼴(message_start 0 · message_delta 실제 값)과 직결 꼴(message_start 실제 값)을 다 잡고, TTL 별 쓰기 항은
-    # 있을 때만 적는다. 생성 글은 안 남긴다
+    # 사용량 칸: 게이트웨이 꼴(message_start 0 · message_delta 실제 값)과 직결 꼴(message_start 실제 값)을 다 잡는다.
+    # 생성 글은 안 남긴다
     gateway_like = SseObserver("anthropic")
     gateway_like.feed(b'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":0,'
                       b'"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}\n\n'
                       b'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":'
                       b'{"input_tokens":12,"cache_read_input_tokens":3400,"cache_creation_input_tokens":56,"output_tokens":7}}\n\n')
-    assert "in=12 cache_read=3400 cache_write=56 cache_write_ttl=none" in gateway_like.diagnostics(0.0)
+    assert gateway_like.diagnostics(0.0).endswith("in=12 cache_read=3400 cache_write=56")
     direct = SseObserver("anthropic")
     direct.feed(b'data: {"type":"message_start","message":{"usage":{"input_tokens":9,"cache_read_input_tokens":800,'
-                b'"cache_creation_input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":0,'
-                b'"ephemeral_1h_input_tokens":100},"output_tokens":1}}}\n\n')
-    assert direct.diagnostics(0.0).endswith("in=9 cache_read=800 cache_write=100 cache_write_ttl=5m:0,1h:100")
-    assert usage_text(_json_usage(b'{"usage":{"input_tokens":5}}')) == "in=5 cache_read=unknown cache_write=unknown cache_write_ttl=none"
+                b'"cache_creation_input_tokens":100,"output_tokens":1}}}\n\n')
+    assert direct.diagnostics(0.0).endswith("in=9 cache_read=800 cache_write=100")
+    assert usage_text(_json_usage(b'{"usage":{"input_tokens":5}}')) == "in=5 cache_read=unknown cache_write=unknown"
     assert "in=" not in SseObserver("responses").diagnostics(0.0)
+    # Responses 진단: 글 첫 조각(문자열 delta)과 response.completed 의 출력 토큰을 집는다. 글은 안 남긴다
+    responses = SseObserver("responses")
+    responses.feed(b'event: response.created\ndata: {"type":"response.created","response":{"usage":null}}\n\n'
+                   b'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"QZXV"}\n\n'
+                   b'event: response.completed\ndata: {"type":"response.completed","response":{"usage":'
+                   b'{"input_tokens":20,"output_tokens":5}}}\n\n')
+    seen = responses.diagnostics(time.monotonic() - 1.0)
+    assert "first_text=none" not in seen and "output_tokens=5" in seen and "QZXV" not in seen, seen
 
-    # patch: 최상위 tools 보정 (sanitize 이후 단일 소유자)
+    # patch: Claude Messages 의 최상위 tools 보정 (sanitize 이후 단일 소유자)
     assert patch_tool_descriptions(result) == 1
     assert result["tools"][0]["description"] == "Read tool"
-
-    # Codex Responses: input[*].tools 의 중첩 namespace 까지
-    codex = {
-        "model": "gpt-5.6-sol",
-        "input": [{"tools": [
-            {"type": "namespace", "name": "functions", "description": "", "tools": [
-                {"name": "shell", "description": ""},
-                {"name": "apply_patch", "description": "이미 있음"},
-            ]},
-        ]}],
-    }
-    assert patch_tool_descriptions(codex) == 2  # namespace 자신 + 중첩 shell
-    namespace = codex["input"][0]["tools"][0]
-    assert namespace["description"] == "functions tool"
-    assert namespace["tools"][0]["description"] == "shell tool"
-    assert namespace["tools"][1]["description"] == "이미 있음"
-    assert patch_tool_descriptions(codex) == 0
 
     # 대화 데이터는 절대 변조하지 않는다 — tool_use input 안의 "tools" 리스트
     conversation = {
@@ -3139,75 +2382,7 @@ def self_test() -> None:
     assert patch_tool_descriptions(conversation) == 0
     assert "description" not in conversation["messages"][0]["content"][0]["input"]["tools"][0]
 
-    # Gemini tools 는 절대 보정하지 않는다 — description 필드가 없는 스키마라
-    #    넣으면 "Unknown name \"description\" at 'tools[0]'" 400 이 난다.
-    gemini = {
-        "contents": [{"role": "user", "parts": [{"text": "hi"}]}],
-        "tools": [
-            {"functionDeclarations": [{"name": "list_directory", "description": ""}]},
-            {"googleSearch": {}},
-            {"urlContext": {}},
-        ],
-    }
-    gemini_path = "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:generateContent"
-    assert patch_tool_descriptions(gemini, gemini_path) == 0
-    for tool in gemini["tools"]:
-        assert "description" not in tool, tool
-    # 경로를 몰라도 형태만으로 걸러낸다 (functionDeclarations 안쪽까지 무수정)
-    assert patch_tool_descriptions(gemini) == 0
-    assert gemini["tools"][0]["functionDeclarations"][0]["description"] == ""
-    for tool in gemini["tools"]:
-        assert "description" not in tool, tool
-    # Gemini 경로에서는 Codex 형태가 섞여 있어도 손대지 않는다
-    assert patch_tool_descriptions({"tools": [{"name": "shell", "description": ""}]},
-                                   gemini_path) == 0
-
-    # GPT-5/o 계열 chat 경로는 max_tokens 를 max_completion_tokens 로 바꾼다.
-    token_payload = {"model": "gpt-5.6-sol", "max_tokens": 8}
-    assert normalize_openai_token_limit(token_payload, "/gpgpta01-gpt/v1/chat/completions")
-    assert "max_tokens" not in token_payload and token_payload["max_completion_tokens"] == 8
-    old_payload = {"model": "gpt-4o", "max_tokens": 8}
-    assert not normalize_openai_token_limit(old_payload, "/gpgpta01-gpt/v1/chat/completions")
-    assert old_payload["max_tokens"] == 8
-    # GPT-6(아스트라) 도 같은 보정을 받고, /v1/responses 는 max_output_tokens 로 간다.
-    astra_payload = {"model": "gpt-6-astra", "max_tokens": 8}
-    assert normalize_openai_token_limit(astra_payload, "/gpgpta01-gpt/v1/chat/completions")
-    assert "max_tokens" not in astra_payload and astra_payload["max_completion_tokens"] == 8
-    responses_payload = {"model": "gpt-6-astra", "max_tokens": 8}
-    assert normalize_openai_token_limit(responses_payload, "/gpgpta01-gpt/v1/responses")
-    assert "max_tokens" not in responses_payload and responses_payload["max_output_tokens"] == 8
-    # 둘 다 있으면 legacy 만 떼고 이미 있는 새 필드 값을 지킨다.
-    both_payload = {"model": "gpt-5.6-sol", "max_tokens": 8, "max_completion_tokens": 32}
-    assert normalize_openai_token_limit(both_payload, "/gpgpta01-gpt/v1/chat/completions")
-    assert "max_tokens" not in both_payload and both_payload["max_completion_tokens"] == 32
-    assert not normalize_openai_token_limit({"model": "gpt-4o", "max_tokens": 8}, "/gpgpta01-gpt/v1/responses")
-
-    # chat/completions 꼴 도구는 function 안의 description 만 본다 — 바깥에 칸을 붙이지 않는다.
-    chat_tools = {"tools": [{"type": "function", "function": {"name": "read_file", "description": "Read"}},
-                            {"type": "function", "function": {"name": "ls", "description": ""}}]}
-    assert patch_tool_descriptions(chat_tools, "/gpgpta01-gpt/v1/chat/completions") == 1
-    assert [sorted(t) for t in chat_tools["tools"]] == [["function", "type"], ["function", "type"]]
-    assert chat_tools["tools"][0]["function"]["description"] == "Read"
-    assert chat_tools["tools"][1]["function"]["description"] == "ls tool"
-
-    # Grok 4 추론 경로가 거부하는 필드를 뗀다. 옛 ID 는 reasoning_effort 까지.
-    chat_path = "/gpgpta01-gpt/v1/chat/completions"
-    grok_payload = {"model": "grok-4-1-fast-reasoning", "reasoning_effort": "high", "stop": ["x"],
-                    "presence_penalty": 0.1, "temperature": 0.2}
-    assert normalize_grok_params(grok_payload, chat_path) == [
-        "presence_penalty", "stop", "reasoning_effort"]
-    assert grok_payload == {"model": "grok-4-1-fast-reasoning", "temperature": 0.2}
-    grok_plain = {"model": "grok-4-1-fast-non-reasoning", "stop": ["x"], "reasoning_effort": "low"}
-    assert normalize_grok_params(grok_plain, chat_path) == ["reasoning_effort"]
-    assert grok_plain["stop"] == ["x"]
-    grok_new = {"model": "grok-4.3", "reasoning_effort": "low", "frequency_penalty": 0.5}
-    assert normalize_grok_params(grok_new, chat_path) == ["frequency_penalty"]
-    assert grok_new["reasoning_effort"] == "low"
-    assert normalize_grok_params({"model": "gpt-5.6-sol", "stop": ["x"]}, chat_path) == []
-    assert normalize_grok_params({"model": "grok-4-1-fast-reasoning", "stop": ["x"]},
-                                 "/gpgpta01-gpt/v1/messages") == []
-
-    # Hermes가 점을 대시로 바꾼 Claude 소수 버전 ID를 복원한다.
+    # 대시로 온 Claude 소수 판 ID 를 점 표기로 되살린다.
     claude_alias = {"model": "claude-opus-4-6"}
     assert normalize_claude_model_id(claude_alias, "/gpgpta01-gpt/v1/messages")
     assert claude_alias["model"] == "claude-opus-4.6"
@@ -3223,45 +2398,6 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-sonnet-5-20260219") == "claude-sonnet-4.6"
     assert normalize_claude_model_id({"model": "claude-opus-5"}, "/gpgpta01-gpt/v1/messages") is False
 
-    # Hermes/OpenAI 호환 Gemini 호출은 Gemini native 응답을 chat completion 으로 되돌린다.
-    converted = gemini_response_to_openai_chat(
-        _json_bytes({"candidates": [{"content": {"parts": [{"text": "OK"}]}, "finishReason": "STOP"}]}),
-        "gemini-3.6-flash",
-    )
-    converted_obj = json.loads(converted.decode("utf-8"))
-    assert converted_obj["choices"][0]["message"]["content"] == "OK"
-
-    # Gemini: 원래 헤더·쿼리는 그대로 두고 Bearer 만 덧붙인다
-    query, headers = normalize_gemini_auth(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:streamGenerateContent",
-        "alt=sse&key=SECRET",
-        {"Content-Type": "application/json"},
-    )
-    assert query == "alt=sse&key=SECRET", query
-    assert headers["Authorization"] == "Bearer SECRET"
-
-    query, headers = normalize_gemini_auth(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:generateContent",
-        "",
-        {"x-goog-api-key": "HEADERKEY"},
-    )
-    assert headers["x-goog-api-key"] == "HEADERKEY"  # 게이트웨이가 이걸 볼 수도 있다
-    assert headers["Authorization"] == "Bearer HEADERKEY"
-
-    # 이미 Authorization 이 있으면 그쪽이 이긴다
-    _, headers = normalize_gemini_auth(
-        "/gpgpta01-gpt/v1beta/models/x:generateContent",
-        "key=SECRET",
-        {"Authorization": "Bearer REAL"},
-    )
-    assert headers["Authorization"] == "Bearer REAL"
-
-    # Gemini 경로가 아니면 아무것도 건드리지 않는다 (Claude·Codex 무영향)
-    query, headers = normalize_gemini_auth(
-        "/gpgpta01-gpt/v1/messages", "key=SECRET", {"x-goog-api-key": "K"}
-    )
-    assert query == "key=SECRET" and headers == {"x-goog-api-key": "K"}
-
     # Hermes anthropic_messages: x-api-key → Bearer 보강 (원래 헤더 유지)
     headers = normalize_anthropic_auth({"x-api-key": "pgpt-tok", "Content-Type": "application/json"})
     assert headers["Authorization"] == "Bearer pgpt-tok"
@@ -3272,74 +2408,6 @@ def self_test() -> None:
     assert normalize_anthropic_auth({"Content-Type": "application/json"}) == {
         "Content-Type": "application/json"
     }
-
-    # Gemini CLI 0.55 의 도구용 가상 모델명은 P-GPT 등록 모델로 되돌린다.
-    assert normalize_gemini_model_path(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview-customtools:generateContent"
-    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:generateContent"
-    assert normalize_gemini_model_path(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:generateContent"
-    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.6-flash:generateContent"
-    # 안티그래비티의 제목 모델 이름은 게이트웨이 등록 이름으로, 실제로 있는 -preview 판은 그대로 둔다.
-    assert normalize_gemini_model_path(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview:streamGenerateContent"
-    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:streamGenerateContent"
-    assert normalize_gemini_model_path(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite-preview-customtools:generateContent"
-    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-flash-lite:generateContent"
-    assert normalize_gemini_model_path(
-        "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:generateContent"
-    ) == "/gpgpta01-gpt/v1beta/models/gemini-3.1-pro-preview:generateContent"
-
-    # P-GPT 가 JSON 하나를 여러 data: 줄로 잘라도 완전한 이벤트로 합친다.
-    broken_sse = (
-        b'data: {"candidates":[{"content":{"parts":[{"text":"","thoughtSignature":"abc\n'
-        b'data: def"}]}}]}\n\n'
-        b'data: {"candidates":[{"content":{"parts":[{"text":"OK"}]}}]}\n\n'
-    )
-    reframed, joined = reframe_gemini_sse(broken_sse)
-    events = [line[6:] for line in reframed.splitlines() if line.startswith(b"data: ")]
-    assert joined == 1 and len(events) == 2
-    for event in events:
-        json.loads(event.decode("utf-8"))
-
-    # 스트리밍 joiner 도 같은 결과를 낸다 (바이트가 한 글자씩 와도).
-    joiner = GeminiSseJoiner()
-    streamed: list[bytes] = []
-    for byte in broken_sse:
-        streamed.extend(joiner.feed(bytes([byte])))
-    streamed.extend(joiner.finish())
-    assert b"".join(streamed) == reframed
-    assert joiner.joined_fragments == 1
-
-    # 풀은 직접 연결(사내 HTTP_PROXY 무시) + 생성 카운터만 확인
-    pool = UpstreamPool("http://127.0.0.1:9", max_idle=2)
-    assert pool.stats()["upstream_idle"] == 0
-
-    # 유휴 연결은 UPSTREAM_IDLE_TTL 이 지나면 재사용하지 않고 닫는다 (서버 keep-alive 만료 대비).
-    class _FakeConn:
-        def __init__(self) -> None:
-            self.sock: object | None = object()
-            self.closed = False
-
-        def close(self) -> None:
-            self.closed = True
-            self.sock = None
-
-    fresh = _FakeConn()
-    pool.release(fresh, reuse=True)  # type: ignore[arg-type]
-    assert pool.stats()["upstream_idle"] == 1
-    assert pool.acquire() is fresh
-    assert pool.stats()["upstream_reused"] == 1
-    stale = _FakeConn()
-    pool.release(stale, reuse=True)  # type: ignore[arg-type]
-    pool._idle[-1] = (stale, time.monotonic() - UPSTREAM_IDLE_TTL - 1)  # type: ignore[list-item]
-    try:
-        pool.acquire()
-    except OSError:
-        pass  # 만료 뒤 새 연결을 127.0.0.1:9 에 열다 거부되는 것은 정상
-    assert stale.closed
-    assert pool.stats()["upstream_expired"] == 1 and pool.stats()["upstream_idle"] == 0
 
     # 짝 없는 surrogate 는 UTF-8 로 못 쓴다 — \uXXXX 로 되돌려 보낸다(예외로 연결이 끊기지 않게)
     lone = json.loads('{"t":"a\\ud83d b"}')
@@ -3431,25 +2499,20 @@ def self_test() -> None:
     assert web_search_query({"messages": [{"role": "user", "content": "Hello, what is new in python?"},
                                           {"role": "assistant", "content": "..."},
                                           {"role": "user", "content": "thanks, also search rust"}]}) is None
-    # 도메인 견주기는 scheme · 경로 · www 를 떼고, 푼 주소면 그 호스트로
+    # 도메인 견주기는 scheme · 경로 · www 를 떼고, 출처는 구글 경유 주소 그대로 싣고 제미나이가 준 제목으로 거른다
     norm_tool = {"allowed_domains": ["https://www.python.org/blog"], "blocked_domains": ["Bad.example"]}
     assert _domain_list(norm_tool, "allowed_domains") == ["python.org"]
+    redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/"
     redirected = json.dumps({"candidates": [{"content": {"parts": [{"text": "t"}]}, "groundingMetadata": {"groundingChunks": [
-        {"web": {"uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/A", "title": "python.org"}},
-        {"web": {"uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/B", "title": "python.org"}},
-        {"web": {"uri": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/C"}}]}}]}).encode()
-    fake_resolve = {"https://vertexaisearch.cloud.google.com/grounding-api-redirect/A": "https://docs.python.org/3/whatsnew/",
-                    "https://vertexaisearch.cloud.google.com/grounding-api-redirect/B": "https://sub.bad.example/x"}
-    msg = gemini_grounding_to_anthropic(redirected, "q", "m", {"allowed_domains": ["www.python.org"]},
-                                        resolve=lambda urls: fake_resolve)
-    assert [r["url"] for r in msg["content"][1]["content"]] == ["https://docs.python.org/3/whatsnew/"]  # 원래 주소 · 남은 걷음
-    msg = gemini_grounding_to_anthropic(redirected, "q", "m", {"blocked_domains": ["bad.example"]},
-                                        resolve=lambda urls: fake_resolve)
-    assert [r["url"] for r in msg["content"][1]["content"]] == [
-        "https://docs.python.org/3/whatsnew/", "https://vertexaisearch.cloud.google.com/grounding-api-redirect/C"]
+        {"web": {"uri": redirect + "A", "title": "python.org"}},
+        {"web": {"uri": redirect + "B", "title": "sub.bad.example"}},
+        {"web": {"uri": redirect + "C"}}]}}]}).encode()
+    msg = gemini_grounding_to_anthropic(redirected, "q", "m", {"allowed_domains": ["www.python.org"]})
+    assert [r["url"] for r in msg["content"][1]["content"]] == [redirect + "A"]  # 도메인 모르는 C 도 걷는다
+    msg = gemini_grounding_to_anthropic(redirected, "q", "m", {"blocked_domains": ["bad.example"]})
+    assert [r["url"] for r in msg["content"][1]["content"]] == [redirect + "A", redirect + "C"]  # 그 아래 도메인까지 막는다
     assert web_search_error_code(429) == "too_many_requests" and web_search_error_code(400) == "invalid_input"
     assert web_search_error_code(503) == "unavailable"
-    assert resolve_grounding_urls(["https://r/1"]) == {}  # 경유 주소가 아니면 밖으로 안 나간다
     ws_err = web_search_error_message("q", "claude-opus-5")
     assert ws_err["content"][1]["content"] == {"type": "web_search_tool_result_error", "error_code": "unavailable"}
     assert anthropic_message_events(ws_err)
@@ -3462,7 +2525,8 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-fable-5-1", today) == "claude-fable-5.1"  # 사람이 고르는 이름은 구하지 않는다(0164)
     assert not needs_model_list("claude-fable-5.1") and needs_model_list("claude-haiku-4-5")
     assert normalize_pgpt_claude_model("claude-fable-5-1") == "claude-fable-5.1"
-    assert normalize_pgpt_claude_model("claude-opus-latest", today) == "claude-opus-5"
+    assert normalize_pgpt_claude_model("claude-opus-latest", today) == "claude-opus-latest"  # 대상이 아니다 — 400 이 보인다
+    assert not needs_model_list("claude-opus-latest")
     assert normalize_pgpt_claude_model("claude-opus-6", today) == "claude-opus-6"  # 대상 아닌 이름은 그대로
     later = today | {"claude-sonnet-5", "claude-sonnet-5.5", "claude-haiku-4.5", "claude-fable-5.1"}
     assert normalize_pgpt_claude_model("claude-sonnet-5", later) == "claude-sonnet-5"
@@ -3471,20 +2535,12 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-haiku-4-5-20251001", later) == "claude-haiku-4.5"
     assert normalize_pgpt_claude_model("claude-haiku-5", later) == "claude-haiku-4.5"
     assert normalize_pgpt_claude_model("claude-fable-5-1", later) == "claude-fable-5.1"
-    assert normalize_pgpt_claude_model("claude-sonnet-latest", later) == "claude-sonnet-5.5"
-    assert claude_family_version("claude-3-5-sonnet-latest") == ("sonnet", (3, 5))
+    assert claude_family_version("claude-3-5-haiku-20241022") == ("haiku", (3, 5))
     assert parse_model_map(" claude-haiku*=claude-opus-5 ; bad ;x=") == [("claude-haiku*", "claude-opus-5")]
     assert bearer_token({"Authorization": "Bearer k1", "x-api-key": "k2"}) == "k1"
     assert bearer_token({"x-api-key": "k2"}) == "k2" and bearer_token({}) is None
     assert GatewayModelList(UPSTREAM, ttl=0, retry=1, timeout=1).get("k") is None  # 끄면 묻지 않는다
     assert "model_list_fetches" in stats()
-
-    # 압축 간결 지시는 기본으로 꺼져 있다(결정 0082) — 압축은 알아보되 본문은 안 고친다.
-    assert COMPACT_CONCISE is False or os.environ.get("PGPT_PROXY_COMPACT_CONCISE")
-    assert stats()["compact_concise"] is COMPACT_CONCISE
-    # 출처 풀기도 기본으로 꺼져 있다(결정 0165) — 회사 웹필터가 구글을 막아 풀 수 있는 주소가 없다.
-    assert WEB_SEARCH_RESOLVE is False or os.environ.get("PGPT_PROXY_WEB_SEARCH_RESOLVE")
-    assert stats()["web_search_resolve"] is WEB_SEARCH_RESOLVE
 
     print("Self-test: OK")
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -100,11 +101,18 @@ def post_json(url: str, headers: dict[str, str], payload: dict, timeout: int = 7
 
 
 def family(model: str) -> str:
-    # Hermes 는 Claude 공급자에 Anthropic Messages 를, 나머지에 OpenAI 호환 chat_completions 를 쓴다.
-    # 로컬 프록시는 gemini-* chat 요청을 P-GPT 의 Gemini native /v1beta 경로로 옮긴다.
+    # Claude 는 Anthropic Messages, Gemini 는 P-GPT 의 Gemini native /v1beta, 나머지는 OpenAI 호환 chat completions 로 부른다.
     if model.startswith("claude-"):
         return "claude_messages"
+    if model.startswith("gemini-"):
+        return "gemini_native"
     return "chat_completions"
+
+
+def chat_token_field(model: str) -> str:
+    # GPT-5 · GPT-6 · o 계열 chat 경로는 max_tokens 를 「Unsupported parameter: 'max_tokens'」로 거절하고
+    # max_completion_tokens 만 받는다. GPT-4.x · Grok · Gemma 경로는 max_tokens 를 받는다.
+    return "max_completion_tokens" if re.match(r"^(?:gpt-[56](?:[.\-]|$)|o[34](?:-|$))", model) else "max_tokens"
 
 
 def test_model(model: str, token: str) -> dict:
@@ -139,7 +147,7 @@ def test_model(model: str, token: str) -> dict:
         payload = {
             "model": model,
             "messages": [{"role": "user", "content": "Reply exactly OK"}],
-            "max_tokens": 8,
+            chat_token_field(model): 8,
             "stream": False,
         }
     status, elapsed, parsed = post_json(url, headers, payload)

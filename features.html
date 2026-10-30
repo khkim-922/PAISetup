@@ -568,11 +568,11 @@
 
   <section id="inside">
     <h3 class="sec"><span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M4 21V5l8-2v18M12 8l8 2v11M3 21h18M7.5 8h1M7.5 12h1M7.5 16h1M15.5 13h1M15.5 17h1"/></svg></span>사내에서도 밖처럼 됩니다 <span class="s in">사내</span></h3>
-    <p class="h3-sub">사내에서는 Claude Code · Codex · Antigravity 가 회사 키 하나로 게이트웨이에 붙습니다. 게이트웨이가 그대로는 못 받는 요청이 있어,
-       PC 안의 작은 프록시가 그 사이에 서서 고쳐 넘깁니다.</p>
+    <p class="h3-sub">사내에서는 Claude Code · Codex · Antigravity 가 회사 키 하나로 게이트웨이에 붙습니다. Claude Code · Codex 는 게이트웨이가 그대로는 못 받는 요청이 있어,
+       PC 안의 작은 프록시가 그 사이에 서서 고쳐 넘깁니다. Antigravity 는 게이트웨이에 바로 붙습니다.</p>
     <div class="rows">
       <div class="row"><b>회사 키 하나로 셋<span class="tag"><code class="nm">ANTHROPIC_AUTH_TOKEN</code><code class="nm">OPENAI_API_KEY</code><code class="nm">GEMINI_API_KEY</code><code class="nm">ANTHROPIC_BASE_URL</code><code class="nm">GOOGLE_GEMINI_BASE_URL</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></b>
-        <div><span class="why">없으면 도구가 회사 게이트웨이에 못 붙습니다.</span> 도구마다 읽는 이름이 달라 한 번 넣은 키를 셋으로 심고, 주소는 PC 안의 프록시를 가리킵니다. 키는 설정 파일에 안 들어가고 환경변수에만 있습니다.
+        <div><span class="why">없으면 도구가 회사 게이트웨이에 못 붙습니다.</span> 도구마다 읽는 이름이 달라 한 번 넣은 키를 셋으로 심고, 주소는 Claude Code · Codex 는 PC 안의 프록시를, Antigravity 는 게이트웨이를 바로 가리킵니다. 키는 설정 파일에 안 들어가고 환경변수에만 있습니다.
           사외로 나가면 걷고(사내에서도 Codex · agy 를 끄면 그 이름은 걷습니다) — 남으면 같은 이름을 다른 뜻으로 쓰는 도구가 회사 키를 잘못 집습니다. 사내로 돌아오면 다시 묻지 않고 심습니다.</div></div>
       <div class="row"><b>Codex · Antigravity 회사 연결<span class="tag"><code class="nm">model_provider</code><code class="nm">modelProvider</code><span class="k setting">Setting</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 Codex · agy 가 회사 게이트웨이가 아니라 제 계정 쪽으로 나가 회사 키로 쓸 수 없습니다.</span> 사람이 둔 다른 Codex 설정은 그대로 두고, 사외로 나가거나 사내에서 그 도구를 끄면 이 연결만 걷어 각자 로그인으로 돌립니다.</div></div>
@@ -584,7 +584,7 @@
         <div><span class="why">없으면 게이트웨이를 거친 Claude Code 가 대화 창을 20만 토큰으로 잡습니다.</span> 모델 이름의 표시로 100만 토큰 창을 엽니다. <code>/model</code> 의 다른 Claude 모델도 같습니다.
           Codex 도 그냥 두면 26만 토큰 남짓이라 회사 설정이 창을 100만 토큰으로 엽니다. 사외로 나가면 걷습니다.</div></div>
       <div class="row"><b>가장 새 모델로 일하기<span class="tag"><code class="nm">pgpt-proxy</code><span class="k proxy">Proxy</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
-        <div>게이트웨이가 받지 않는 부분(대화 끝에 미리 채워 둔 답)을 프록시가 떼고 넘겨, 가장 새 Opus 로도 일합니다.</div></div>
+        <div>가장 새 Opus 가 거절하는 값(1 이 아닌 <code>temperature</code> · 모든 <code>top_p</code>)을 프록시가 떼고 넘겨, 가장 새 Opus 로도 일합니다.</div></div>
       <div class="row"><b>서브에이전트 · 요약의 모델<span class="tag"><code class="nm">pgpt-proxy</code><span class="k proxy">Proxy</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
         <div>Claude Code 가 서브에이전트 · 요약에 따로 부르는 모델이 게이트웨이에 없으면, 있는 가까운 모델로 바꿔 넘깁니다.</div></div>
       <div class="row"><b>웹 검색<span class="tag"><code class="nm">pgpt-proxy</code><span class="k proxy">Proxy</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="src pai">PAI</span></span></b>
@@ -592,7 +592,7 @@
       <div class="row"><b>웹 가져오기<span class="tag"><code class="nm">skipWebFetchPreflight</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 열리는 주소도 못 가져옵니다</span> — 페이지를 받기 전에 Anthropic 에 묻는 안전 확인을 사내 망이 끊어서입니다. 사내에서만 그 확인을 건너뛰고, 사외에서는 걷습니다.</div></div>
       <div class="row"><b>그림 · PDF 보기<span class="tag"><code class="nm">pgpt-proxy</code><span class="k proxy">Proxy</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
-        <div>파일로 연 그림을 게이트웨이가 읽는 자리로 옮겨 넘깁니다. PDF 는 페이지를 그림으로 그려 엽니다.</div></div>
+        <div>파일로 연 그림을 게이트웨이가 읽는 자리로 옮겨 넘깁니다. PDF 는 게이트웨이가 버리므로, 페이지를 정해 다시 열라는 안내로 바꿔 넘겨 모델이 페이지를 그림으로 열게 합니다.</div></div>
       <div class="row"><b>오래 생각해도 안 끊김<span class="tag"><code class="nm">pgpt-proxy</code><span class="k proxy">Proxy</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="src pai">PAI</span></span></b>
         <div>생각하는 동안 살아 있다는 신호를 흘려 연결이 끊긴 줄 아는 것을 막고, 답 길이를 게이트웨이 시간 제한 안으로 맞춥니다.</div></div>
       <div class="row"><b>개인 키 지키기<span class="tag"><code class="nm">pgpt-proxy</code><span class="k proxy">Proxy</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
@@ -617,6 +617,8 @@
         <div><span class="why">없으면 새 터미널에서 <code>claude</code> · <code>codex</code> · <code>pdftoppm</code> 같은 명령을 못 찾아, 그 CLI 를 부르는 VS Code 확장과 PDF 읽기가 집니다.</span> npm · pip · winget 과 설치기가 깐 자리를 사용자 PATH 끝에 더하기만 하고 다른 자리는 그대로 둡니다.</div></div>
       <div class="row"><b>PowerShell 에서 npm 명령 부르기<span class="tag"><code class="nm">ExecutionPolicy</code><span class="k setting">Setting</span><span class="t all">모든 도구</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 스크립트 실행이 윈도 기본값으로 막힌 PC 의 PowerShell(VS Code 의 터미널 포함)에서 <code>claude</code> · <code>npm</code> 같은 명령이 「스크립트를 실행할 수 없으므로」로 집니다.</span> 막혀 있을 때만 이 계정을 RemoteSigned 로 올립니다. 인터넷에서 받은 스크립트는 서명을 그대로 묻고, 회사 정책이 정한 값과 사람이 고른 값은 바꾸지 않습니다.</div></div>
+      <div class="row"><b>winget 받기 엔진<span class="tag"><code class="nm">network.downloader</code><span class="k setting">Setting</span><span class="t all">winget</span><span class="src pai">PAI</span></span></b>
+        <div><span class="why">없으면 사내망에서 winget 으로 까는 프로그램이 받기에서 한 바이트도 못 받은 채 몇 분씩 섭니다.</span> winget 의 받기 엔진을 WinINet 으로 정해 둡니다. 사람이 정해 둔 받기 엔진은 바꾸지 않습니다.</div></div>
       <div class="row"><b>워드의 PDF 변환 안내 끄기<span class="tag"><code class="nm">DisableConvertPdfWarning</code><span class="k setting">Setting</span><span class="t all">워드</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 DRM 문서 읽기가 숨겨 띄운 워드가 그 안내창에서 아무도 못 누른 채 멈춥니다.</span> 사람이 PDF 를 워드로 열 때도 안 뜹니다. 워드가 깔린 PC 에서만입니다.</div></div>
     </div>
@@ -742,7 +744,7 @@
           <div class="mini"><b>메모리 정리</b><span class="tag"><code class="nm">memory-stocktake</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span>
             <span>쌓인 메모리를 통째로 훑어 끝난 것은 걷고, 두 번 걸린 교훈은 규칙 자리로 올리고, 목차를 「언제 → 무엇」 한 줄씩으로 다듬습니다.</span></div>
           <div class="mini"><b>이슈 쓰기</b><span class="tag"><code class="nm">issue-write</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
-            <span>이슈를 실측 · 끝 조건 · 재는 법을 갖춰 쓰고, 진행되면 맨 위 「지금 상태」 칸을 고칩니다.</span></div>
+            <span>이슈를 실측 · 끝 조건 · 재는 법을 갖춰 쓰고, 진행은 코멘트로 달다가 한 판을 닫을 때 맨 위 「지금 상태」 칸을 고칩니다.</span></div>
           <div class="mini"><b>다른 저장소에서 옮겨 오기</b><span class="tag"><code class="nm">borrow-spec-as-pair</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
             <span>형제 저장소의 코드 · 규격 · 검사를 옮겨 올 때, 같이 옮겨야 할 짝을 먼저 셉니다.</span></div>
         </div>

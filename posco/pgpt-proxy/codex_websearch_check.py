@@ -7,6 +7,7 @@ import json
 import sys
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -87,7 +88,7 @@ def main() -> int:
     work = tempfile.TemporaryDirectory(prefix="pgpt-codex-websearch-")
     proxy.LOG_PATH = Path(work.name) / "proxy.log"
     gateway = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
-    proxy._UPSTREAM_POOL = proxy.UpstreamPool(f"http://127.0.0.1:{gateway.server_port}")
+    proxy._UPSTREAM = proxy.UpstreamTarget(f"http://127.0.0.1:{gateway.server_port}")
     server = proxy.ProxyServer(("127.0.0.1", 0), proxy.ProxyHandler)
     for service in (gateway, server):
         threading.Thread(target=service.serve_forever, daemon=True).start()
@@ -113,19 +114,20 @@ def main() -> int:
         check("상류는 사내 게이트웨이의 Responses 웹 검색 길을 탄다",
               sent["path"].endswith("/v1/responses")
               and sent_body.get("tools") == [{"type": "web_search"}], sent)
-        check("질의와 도메인 제한이 상류 프롬프트에 실린다",
+        check("search_query 의 질의 · domains 와 open 명령이 상류 프롬프트에 실린다",
               QUERY in sent_body["input"] and "github.com" in sent_body["input"]
               and "Open" in sent_body["input"], sent_body)
         check("회사 키가 Responses 머리에 실리고 Gemini 키로 복제되지 않는다",
               sent["headers"].get("authorization") == f"Bearer {KEY}"
               and "x-goog-api-key" not in sent["headers"], sent["headers"])
 
-        hosted = {"model": "gpt-5.6-sol", "tools": [{"type": "web_search"}]}
-        check("Responses 내장 web_search 에 description 을 붙이지 않는다",
-              proxy.patch_tool_descriptions(hosted, "/gpgpta01-gpt/v1/responses") == 0
-              and hosted == {"model": "gpt-5.6-sol", "tools": [{"type": "web_search"}]}, hosted)
-
-        log = proxy.LOG_PATH.read_text(encoding="utf-8") if proxy.LOG_PATH.exists() else ""
+        # complete 줄은 답을 보낸 뒤에 적힌다 — 잠깐 기다려 읽는다
+        log = ""
+        for _ in range(40):
+            log = proxy.LOG_PATH.read_text(encoding="utf-8") if proxy.LOG_PATH.exists() else ""
+            if "sources=" in log:
+                break
+            time.sleep(0.05)
         check("기록에 Codex 검색 갈래와 출처 수가 남는다",
               "kind=codex_web_search upstream=responses" in log and "sources=1" in log, log[-600:])
     finally:

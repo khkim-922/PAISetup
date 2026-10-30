@@ -174,14 +174,12 @@ def main() -> int:
     work = tempfile.TemporaryDirectory(prefix="pgpt-websearch-")
     proxy.LOG_PATH = Path(work.name) / "proxy.log"
     gateway = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
-    proxy._UPSTREAM_POOL = proxy.UpstreamPool(f"http://127.0.0.1:{gateway.server_port}")
+    proxy._UPSTREAM = proxy.UpstreamTarget(f"http://127.0.0.1:{gateway.server_port}")
     server = proxy.ProxyServer(("127.0.0.1", 0), proxy.ProxyHandler)
     for s in (gateway, server):
         threading.Thread(target=s.serve_forever, daemon=True).start()
     port = server.server_port
     fails: list[str] = []
-    # 출처 주소 풀기(v28)는 밖(구글)으로 HEAD 를 보낸다 — 이 검사는 망을 안 쓰므로 끄고, ⑥ 에서 가짜로 잰다
-    proxy.WEB_SEARCH_RESOLVE = False
 
     def check(name: str, ok: bool, detail: object = "") -> None:
         print(("✓ " if ok else "✗ ") + name + ("" if ok else f" — {detail}"))
@@ -262,22 +260,7 @@ def main() -> int:
         sent = json.loads(SEEN[-1]["body"])["contents"][0]["parts"][0]["text"]
         check("머리 앞에 붙은 다른 글 조각은 질의에 안 섞인다", QUERY_EN in sent and "system-reminder" not in sent, sent)
 
-        # ⑦ (v28) 출처 주소를 원래 주소로 푼다(가짜 HEAD) — 못 푼 것은 경유 주소 그대로
-        real = {"https://vertexaisearch.cloud.google.com/grounding-api-redirect/AAA": "https://www.python.org/downloads/"}
-        original = proxy._resolve_grounding_url
-        proxy._resolve_grounding_url = lambda url: real.get(url)
-        proxy.WEB_SEARCH_RESOLVE = True
-        try:
-            status, _, data = post(port, cli_request(QUERY_EN))
-            text = cli_tool_result(QUERY_EN, blocks_from_sse(data))
-            check("푼 출처는 원래 주소로, 못 푼 출처는 경유 주소로 실린다",
-                  "https://www.python.org/downloads/" in text and "grounding-api-redirect/AAA" not in text
-                  and "grounding-api-redirect/BBB" in text, text)
-        finally:
-            proxy._resolve_grounding_url = original
-            proxy.WEB_SEARCH_RESOLVE = False
-
-        # ⑧ (v28) 상태별 오류 코드 · 시한 · 연결 실패도 검색 오류 칸(502 아님)
+        # ⑦ (v28) 상태별 오류 코드 · 시한 · 연결 실패도 검색 오류 칸(502 아님)
         MODE["answer"] = "ratelimit"
         status, _, data = post(port, cli_request(QUERY_EN))
         text = cli_tool_result(QUERY_EN, blocks_from_sse(data))
@@ -298,8 +281,8 @@ def main() -> int:
         dead = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
         dead_port = dead.server_port
         dead.server_close()
-        saved_pool = proxy._UPSTREAM_POOL
-        proxy._UPSTREAM_POOL = proxy.UpstreamPool(f"http://127.0.0.1:{dead_port}")
+        saved_upstream = proxy._UPSTREAM
+        proxy._UPSTREAM = proxy.UpstreamTarget(f"http://127.0.0.1:{dead_port}")
         try:
             failed = proxy.stats()["web_search_failed"]
             status, _, data = post(port, cli_request(QUERY_EN))
@@ -308,7 +291,7 @@ def main() -> int:
                   status == 200 and "Web search error: unavailable" in text, (status, data[:200]))
             check("닿지 않은 것도 진 수로 센다", proxy.stats()["web_search_failed"] == failed + 1)
         finally:
-            proxy._UPSTREAM_POOL = saved_pool
+            proxy._UPSTREAM = saved_upstream
     finally:
         for s in (server, gateway):
             s.shutdown()

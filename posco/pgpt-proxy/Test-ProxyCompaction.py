@@ -19,33 +19,14 @@ def compact():
 
 
 class CompactionTests(unittest.TestCase):
-    def setUp(self):
-        self.original = proxy.COMPACT_CONCISE
-        proxy.COMPACT_CONCISE = True
-
-    def tearDown(self):
-        proxy.COMPACT_CONCISE = self.original
-
-    def test_compact_preserves_effort_budget_history_and_original_prompt(self):
-        for stream in (True, False):
-            p = compact(); p["stream"] = stream
-            expected = copy.deepcopy(p)
-            expected["messages"][-1]["content"][0]["text"] += proxy._COMPACT_SUFFIX
-            self.assertEqual(proxy.tune_claude_compaction(p), "compact_concise=true")
-            self.assertEqual(p, expected)
-
     def test_generic_summary_size_and_nonstream_are_not_compact(self):
         p = compact(); p["stream"] = False
         p["messages"][-1]["content"][0]["text"] = "Please summarize " + "a" * 250000
-        before = copy.deepcopy(p)
-        self.assertEqual(proxy.tune_claude_compaction(p), "")
-        self.assertEqual(p, before)
+        self.assertFalse(proxy.is_claude_compaction(p))
 
     def test_old_compact_in_history_does_not_change_normal_turn(self):
         p = compact(); p["messages"].append({"role": "user", "content": "Continue implementing the feature."})
         self.assertFalse(proxy.is_claude_compaction(p))
-        self.assertEqual(proxy.tune_claude_compaction(p), "")
-        self.assertEqual(p["output_config"]["effort"], "xhigh")
 
     def test_quoted_marker_and_assistant_are_not_compact(self):
         p = compact(); p["messages"][-1]["role"] = "assistant"
@@ -53,33 +34,11 @@ class CompactionTests(unittest.TestCase):
         p = compact(); p["messages"][-1]["content"][0]["text"] = "Explain this prompt: " + p["messages"][-1]["content"][0]["text"]
         self.assertFalse(proxy.is_claude_compaction(p))
 
-    def test_opt_out_preserves_request(self):
-        p = compact(); proxy.COMPACT_CONCISE = False
-        before = copy.deepcopy(p)
-        self.assertEqual(proxy.tune_claude_compaction(p), "")
-        self.assertEqual(p, before)
-
-    def test_thinking_and_all_effort_levels_are_preserved(self):
-        for effort in (None, "low", "medium", "future", 42):
-            p = compact(); p["output_config"]["effort"] = effort
-            p["thinking"] = {"type": "enabled", "budget_tokens": 12000}
-            self.assertEqual(proxy.tune_claude_compaction(p), "compact_concise=true")
-            self.assertEqual(p["output_config"]["effort"], effort)
-            self.assertEqual(p["thinking"]["budget_tokens"], 12000)
-
-    def test_instruction_is_not_duplicated(self):
-        p = compact()
-        proxy.tune_claude_compaction(p)
-        before = copy.deepcopy(p)
-        self.assertEqual(proxy.tune_claude_compaction(p), "")
-        self.assertEqual(p, before)
-
     def test_known_prompt_variants_and_reworded_bullets_are_compact(self):
         for task in ("Your task is to create a detailed summary of this conversation. This summary will be placed at the start of a continuing session.",
                      "Your task is to create a detailed summary of the RECENT portion of the conversation \u2014 the messages that follow earlier retained context."):
             p = compact(); p["messages"][-1]["content"][0]["text"] = proxy._COMPACT_PREAMBLE + task
             self.assertTrue(proxy.is_claude_compaction(p))
-            self.assertEqual(proxy.tune_claude_compaction(p), "compact_concise=true")
         p = compact()
         p["messages"][-1]["content"][0]["text"] = (proxy._COMPACT_PREAMBLE_HEAD + "\n\n- A new bullet a future client added.\n\n"
                                                    + proxy._COMPACT_TASK)
@@ -99,7 +58,6 @@ class CompactionTests(unittest.TestCase):
                           {"role": "user", "content": [{"type": "text", "text": resume}]}]
         self.assertFalse(proxy.is_claude_compaction(p))
         self.assertTrue(proxy.is_compaction_continuation(p))
-        self.assertEqual(proxy.tune_claude_compaction(p), "")  # the resume text itself is never rewritten
         # The same nudge in an ordinary conversation is a normal turn.
         normal = {"messages": [{"role": "user", "content": "Write the report."},
                                {"role": "assistant", "content": "partial"},

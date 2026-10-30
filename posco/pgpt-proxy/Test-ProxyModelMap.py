@@ -94,7 +94,7 @@ def main() -> int:
     proxy.LOG_PATH = Path(work.name) / "proxy.log"
     gateway = ThreadingHTTPServer(("127.0.0.1", 0), Gateway)
     upstream = f"http://127.0.0.1:{gateway.server_port}"
-    proxy._UPSTREAM_POOL = proxy.UpstreamPool(upstream)
+    proxy._UPSTREAM = proxy.UpstreamTarget(upstream)
     proxy._GATEWAY_MODELS = proxy.GatewayModelList(upstream, ttl=600, retry=60, timeout=5)
     server = proxy.ProxyServer(("127.0.0.1", 0), proxy.ProxyHandler)
     for s in (gateway, server):
@@ -118,9 +118,9 @@ def main() -> int:
           (status, sent, header, STATE["list_calls"]) == (400, "claude-fable-5.1", "", 0),
           (status, sent, header, STATE["list_calls"]))
 
-    # 2. 오늘 목록(#147): 하이쿠 · 소네트 5 → 소네트 4.6, 오퍼스 별칭 → 오퍼스 5
+    # 2. 오늘 목록(#147): 하이쿠 · 소네트 5 → 소네트 4.6
     for model, want in (("claude-haiku-4-5-20251001", "claude-sonnet-4.6"), ("claude-sonnet-5", "claude-sonnet-4.6"),
-                        ("claude-sonnet-5-5", "claude-sonnet-4.6"), ("claude-opus-latest", "claude-opus-5")):
+                        ("claude-sonnet-5-5", "claude-sonnet-4.6")):
         status, sent, header = post(port, model)
         check(f"{model} → {want}", (status, sent) == (200, want) and header == f"{model} -> {want}", (status, sent, header))
     check("목록은 키당 한 번만 읽는다(캐시)", STATE["list_calls"] == 1, STATE["list_calls"])
