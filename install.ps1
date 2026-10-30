@@ -7003,6 +7003,29 @@ if ($noWinget) {
 
 Update-RuntimePath
 
+# ── winget 받는 손 ─────────────────────────────────────────────────────────────
+# 앱 · CLI 걸음 앞에서 winget 의 받기 엔진을 WinINet 으로 심는다 — 기본값(`default`)은 winget 이 고르는데, 사내망에서 그 고름이 어느
+#   프로그램이든 받기를 늦춘다(#65). 칸은 winget 문서(winget-cli `doc/Settings.md` 의 `network.downloader`)가 든다. winget 은 부를 때마다
+#   이 파일을 읽어, 심은 뒤의 걸음부터 든다.
+# 심는 손은 도구 설정을 사람 값을 안 덮고 심는 손(`Set-ToolAutoRun`)이다 — 사람이 `downloader` 를 정해 뒀으면 둔다. 그 파일이 주석 든
+#   JSON 이라 못 읽으면 안 건드리고 노란 줄로 남긴다(winget 은 `winget settings` 를 연 PC 에만 그 파일을 주석과 함께 짓는다).
+# 장부에 안 적는다 — 걷지 않는 설정이고, 지울 자리는 UNINSTALL 「winget 받는 손」이 든다.
+if (-not $noWinget) {
+  $WingetCfg = @{ Label = 'winget 받는 손'; Under = 'network'; Set = [ordered]@{ downloader = 'wininet' }
+                  Path = (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json') }
+  $wgRes = Set-ToolAutoRun $WingetCfg
+  switch ($wgRes.Did) {
+    'set' { Write-Host '  winget 받는 손 — WinINet 으로 심었다 (network.downloader = "wininet")' -ForegroundColor Green }
+    'kept' {
+      if ((@($wgRes.Have) -join ' · ') -ceq 'downloader = "wininet"') { Write-Host '  winget 받는 손 — 이미 WinINet 이다' }
+      else { Write-Host "  winget 받는 손 — 사람이 정한 값($($wgRes.Have -join ' · '))이라 둔다" }
+    }
+    default {
+      Write-Host "  ! winget 받는 손 — $($wgRes.Why) · 안 건드렸다 ($($WingetCfg.Path)) · 받기가 느리면 그 파일의 network 에 downloader 를 wininet 으로 넣는다" -ForegroundColor Yellow
+    }
+  }
+}
+
 # ── 앱 ────────────────────────────────────────────────────────────────────────
 # ⚠ `--source winget` 을 박는다 — 사내에서 빼면 인증서 검증에 걸린다.
 # 판정은 종료코드가 아니라 프로브다 — winget 은 이미 깔려 있으면 「올릴 것이 없다」로 0 이 아닌 값을 낸다.
