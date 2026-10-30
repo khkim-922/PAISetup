@@ -555,21 +555,35 @@ function Show-Log([string]$LogPath, [int]$Lines = 8) {
     $t = @(Get-Content -LiteralPath $LogPath -Tail $Lines -ErrorAction SilentlyContinue |
            Where-Object { $_ -and $_.Trim() })
   }
-  if ($t.Count) { $t | ForEach-Object { Write-Host "      $_" } }
+  if ($t.Count) { $t | ForEach-Object { Write-Host "      $($_ -replace $UrlCredential, '***@')" } }
   else { Write-Host '      (한 줄도 안 뱉었다 — 명령이 글자 없이 졌다)' }
 }
 
-# 사람이 읽을 줄이 아닌 것 — 아래 `Show-ChildLine` 이 거른다. 진행 막대 · 스피너(덮어쓴 끝 판이 막대 글자나 `-\|/` 뿐인 줄) ·
-#   줄 계약(`KEY=값` — 부르는 쪽이 다 모은 뒤 제 꼴로 옮겨 찍는다).
-$ChildLineNoise = '^[\s\-\\|/.]*$|[▀-▟─-╿⠀-⣿]|^[A-Z][A-Z0-9_]*='
+# 사람이 읽을 줄이 아닌 것 — 아래 `Show-ChildLine` 이 거른다(대소문자를 가린다). 스피너뿐인 줄(`-\|/.` · 점자 스피너) · 막대(막대 ·
+#   상자 글자가 다섯 넘게 이어지고 그 뒤가 숫자나 줄 끝 — 사람 줄의 `── 진단을 마쳤다` 같은 짧은 표지는 산다) · 숫자가 붙은 글자 막대
+#   (pip 의 `---------- 7.3/7.3 MB`) · 줄 계약(`KEY=값` — 부르는 쪽이 다 모은 뒤 제 꼴로 옮겨 찍는다).
+$ChildLineNoise = '^[\s\-\\|/.]*$|[▀-▟─-╿]{5,}(\s*[\d.]|\s*$)|[⠀-⣿]|^\s*[-=#]{10,}\s+\d|^[A-Z][A-Z0-9_]*='
+# 색 · 창 제목을 바꾸는 이스케이프(CSI · OSC) — 화면에 글자로 남지 않게 걷는다.
+$ChildLineEscape = '\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)'
+# 주소에 박힌 자격(`https://사람:토큰@`) — 자식이 낸 글을 화면 · 기록에 옮기는 자리(`Show-ChildLine` · `Show-Log` · `Add-RunDetail`)가
+#   `***@` 로 가린다. git 은 받기가 지면 그 주소를 그대로 찍는다.
+$UrlCredential = '(?<=://)[^/@\s]+@'
 
-# 바깥 명령이 흘린 한 줄을 화면에 찍는다 — 두 러너(`Invoke-Logged` · `Invoke-LoggedCapped`)가 `$OnLine` 없이 불렸을 때의 손이다.
-#   `\r` 로 덮어쓴 줄은 마지막 판만 남기고, 색 바꾸는 이스케이프를 걷고, 빈 줄과 `$ChildLineNoise` 는 버린다. 들여 쓰고 흐린 색이라
-#   걸음 머리줄 · 결과 줄과 갈린다.
-# ⚠ **들여쓰기를 걷지 않는다** — 화면 껍데기 · 자동 실행 진행 창이 머리줄을 `^\[n/N\]` 로 읽어, 자식이 `[1/4] …` 를 찍으면 막대가 뛴다.
+# 바깥 명령이 흘린 한 줄을 화면에 찍는다 — 자식 줄이 화면에 닿는 문은 이것 하나다(러너 둘이 `$OnLine` 없이 불렸을 때 · 훅 몸통에
+#   넘긴 판까지). 줄 꼴이 정해진 도구의 번역 손(`Show-ExtProgress` · `Show-ToolHomesLine` · `Show-BrowserMcpLine`)만 따로 선다.
+#   · `\r` 로 덮어쓴 줄은 끝 판만 남기고, 이스케이프를 걷고, 빈 줄과 `$ChildLineNoise` 는 버린다
+#   · **진행 판은 접는다** — 숫자를 지우고 빈칸을 하나로 접은 꼴이 바로 앞에 찍은 줄과 같으면 안 찍는다(`Updating files: N% (a/b)` 는 첫 판과 `, done.`
+#     판만 선다). 파워셸은 자식 출력을 `\r` 에서도 끊어 넘기므로 덮어쓰기만으로는 판이 안 접힌다. 앞 꼴(`$script:ChildLineShape`)은 러너가 부름마다 비운다
+#   · 자식 줄 안의 들여쓰기는 지키고, 그 앞에 6칸을 더 들여 흐린 색으로 찍는다
+# ⚠ **6칸 들여쓰기를 걷지 않는다** — 설치 창 · 자동 실행 진행 창이 앞 공백 셋 이상인 줄을 흐름 줄로 읽어 상태 글의 주제를 안 갈고,
+#   머리줄은 `^\[n/N\]` 로 읽는다(자식이 `[1/4] …` 를 찍어도 막대가 안 뛴다).
+$script:ChildLineShape = ''
 function Show-ChildLine([string]$Line) {
-  $s = @("$Line" -split "`r" | ForEach-Object { ($_ -replace '\x1b\[[0-9;?]*[A-Za-z]', '').Trim() } | Where-Object { $_ })
-  if (-not $s.Count -or $s[-1] -match $ChildLineNoise) { return }
+  $s = @("$Line" -split "`r" | ForEach-Object { (($_ -replace $ChildLineEscape, '') -replace $UrlCredential, '***@').TrimEnd() } | Where-Object { $_.Trim() })
+  if (-not $s.Count -or $s[-1] -cmatch $ChildLineNoise) { return }
+  $shape = ($s[-1] -replace '\d+', '#') -replace '\s+', ' '
+  if ($shape -ceq $script:ChildLineShape) { return }
+  $script:ChildLineShape = $shape
   Write-Host "      $($s[-1])" -ForegroundColor DarkGray
 }
 
@@ -840,20 +854,47 @@ function Format-VerPart([string]$Ver) {
 # **하는 부름은 흘리고, 재는 부름(판정용 조회 — `--version` · `list` · `status` · `--check`)은 `-Quiet` 다.** 흘리는 손은 `$OnLine`(줄 꼴이
 #   정해진 도구가 제 번역 손을 넘긴다)이고, 안 주면 `Show-ChildLine` 이다. 기본값이 흘림인 까닭 — 새로 붙는 자리가 깜빡하면 조용한
 #   기본값은 「멈춘 화면」이 되풀이되고, 흘리는 기본값은 눈에 보이는 잡음이라 바로 잡힌다.
+# 하는 부름(`-Quiet` 아님)은 끝난 뒤 세부 기록에 명령 · 종료 값 · 걸린 초 · 받은 글 원문을 남긴다(`Add-RunDetail`).
 function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath, [scriptblock]$OnLine, [switch]$Quiet) {
   # ⚠ **여기서만 `Stop` 을 푼다.** 네이티브의 stderr 는 `*>&1` 로 합쳐도 오류 레코드로 올라와 바깥의 `Stop` 이 그
   #   자리에서 던진다 — 경고 한 줄이 설치를 끊는다. 판정은 종료코드가 들고, 글자는 파일에 쌓아 실패했을 때 다시 편다.
   $prev = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   if (-not $OnLine -and -not $Quiet) { $OnLine = ${function:Show-ChildLine} }
-  $w = $null
+  $script:ChildLineShape = ''
+  $w = $null; $rc = -1; $took = [Diagnostics.Stopwatch]::StartNew()
   try {
     $w = New-Object IO.StreamWriter($LogPath, $false, (New-Object Text.UTF8Encoding($true)))
     & $File @CmdArgs *>&1 | ForEach-Object { $s = "$_"; $w.WriteLine($s); $w.Flush(); if ($OnLine) { & $OnLine $s } }
-    return $LASTEXITCODE
+    $rc = $LASTEXITCODE
   }
-  catch { return -1 }
-  finally { if ($w) { $w.Dispose() }; $ErrorActionPreference = $prev }
+  catch { $rc = -1 }
+  finally {
+    if ($w) { $w.Dispose() }
+    $ErrorActionPreference = $prev
+    if (-not $Quiet) { try { Add-RunDetail $File $CmdArgs $rc $took.Elapsed.TotalSeconds @($LogPath) } catch { } }
+  }
+  return $rc
+}
+
+# 하는 부름 한 번을 세부 기록(`$script:DetailLog`)에 덧붙인다 — 명령 · 받은 글 원문 전체 · 종료 값 · 걸린 초. 화면의 거름
+#   (`Show-ChildLine`)은 화면에만 걸리고 여기는 다 남는다. `$Paths` 는 러너가 받은 파일(stdout · stderr 차례)이다.
+#   주소에 박힌 자격(`https://사람:토큰@`)은 명령과 글 둘 다에서 가린다. 세부 기록 자리가 안 섰으면 아무것도 안 한다.
+function Add-RunDetail([string]$File, [string[]]$CmdArgs, $Rc, [double]$Sec, [string[]]$Paths) {
+  if (-not $script:DetailLog) { return }
+  $hide = $UrlCredential
+  $sb = New-Object Text.StringBuilder
+  [void]$sb.AppendLine("──── $(Get-Date -Format 'HH:mm:ss') $(((@($File) + @($CmdArgs)) -join ' ') -replace $hide, '***@')")
+  for ($i = 0; $i -lt @($Paths).Count; $i++) {
+    if (-not (Test-Path -LiteralPath $Paths[$i])) { continue }
+    $t = [IO.File]::ReadAllText($Paths[$i], [Text.Encoding]::UTF8) -replace $hide, '***@'
+    if (-not $t) { continue }
+    if ($i) { [void]$sb.AppendLine('── stderr') }
+    [void]$sb.Append($t)
+    if (-not $t.EndsWith("`n")) { [void]$sb.AppendLine() }
+  }
+  [void]$sb.AppendLine(('──── 종료 {0} · {1:N1}초' -f $Rc, $Sec))
+  [IO.File]::AppendAllText($script:DetailLog, $sb.ToString(), (New-Object Text.UTF8Encoding($false)))
 }
 
 # 자라는 로그 파일에서 지난번 뒤로 붙은 줄을 `$OnLine` 에 넘긴다 — 울타리 손(`Invoke-LoggedCapped`)이 기다리는 동안 부른다.
@@ -964,6 +1005,8 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
   $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
   if (-not $psi) { return -1 }
   if (-not $OnLine -and -not $Quiet) { $OnLine = ${function:Show-ChildLine} }
+  $script:ChildLineShape = ''
+  $rc = -1; $took = [Diagnostics.Stopwatch]::StartNew()
   # 자식이 끝난 뒤 파이프의 꼬리를 다 붓기까지 기다리는 한도 — 그 끝은 파이프를 쥔 손자까지 다 나가야 온다.
   # 거둔 갈래는 안 기다린다 — 꼬리를 읽을 자리가 없고, 살아남은 손자가 울타리를 늘린다.
   $drainMs = 5000
@@ -986,13 +1029,19 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
     if ($done) {
       try { $null = [Threading.Tasks.Task]::WaitAll($pump, $drainMs) } catch { }
       if ($OnLine) { foreach ($s in $sink) { $s.Flush() }; foreach ($t in $tails) { Read-LogTail $t $OnLine -Flush } }
-      return $p.ExitCode
+      $rc = $p.ExitCode
+    } else {
+      try { Stop-ProbeTree $p } catch { }
+      try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+      $rc = -2
     }
-    try { Stop-ProbeTree $p } catch { }
-    try { if (-not $p.HasExited) { $p.Kill() } } catch { }
-    return -2
-  } catch { return -1 }
-  finally { foreach ($s in $sink) { try { $s.Dispose() } catch { } } }
+  } catch { $rc = -1 }
+  finally {
+    foreach ($s in $sink) { try { $s.Dispose() } catch { } }
+    # 세부 기록은 파일을 닫은 뒤에 읽는다 — 쓰는 손이 쥔 동안은 읽기가 공유 위반으로 진다
+    if (-not $Quiet) { try { Add-RunDetail $File $CmdArgs $rc $took.Elapsed.TotalSeconds @($LogPath, "$LogPath.err") } catch { } }
+  }
+  return $rc
 }
 
 # 울타리를 넘긴 프로브를 나무째 거둔다 — 두 울타리 손(`Invoke-LoggedCapped` · `Invoke-ProbeCapped`)이 쓴다. 거둠의 성공은
@@ -6371,10 +6420,11 @@ function Invoke-Plant([string]$Bash, [string]$Root) {
     New-Item -ItemType Directory -Path $Root -Force | Out-Null
     Write-Host "  심기만 — $hook --plant $rootArg" -ForegroundColor Green
     Write-Host ''
-    # ⚠ 몸통의 줄은 `Out-Host` 로 화면에 낸다 — 함수 안에서 그냥 부르면 bash 의 stdout 이 이 함수가 내는 값에 섞여, 설치 화면 ·
-    #   자동 실행 로그에 한 줄도 안 남는다(심었다 · 미뤘다 · 진 까닭). 종료값은 그대로 `$LASTEXITCODE` 가 든다.
-    & $Bash ($hook -replace '\\', '/') --plant $rootArg | Out-Host
-    $rc = $LASTEXITCODE
+    # 몸통의 줄은 러너로 받아 자식 줄의 문(`Show-ChildLine`)으로 흘린다 — 함수 안에서 그냥 부르면 bash 의 stdout 이 이 함수가 내는
+    #   값에 섞여 설치 화면 · 자동 실행 로그에 한 줄도 안 남는다(심었다 · 미뤘다 · 진 까닭). 러너는 줄을 화면에만 내고 종료값을 돌려준다.
+    $plantLog = [IO.Path]::GetTempFileName()
+    try { $rc = Invoke-Logged $Bash @(($hook -replace '\\', '/'), '--plant', $rootArg) $plantLog }
+    finally { Remove-Item -LiteralPath $plantLog -ErrorAction SilentlyContinue }
   } catch {
     return @{ Ran = $true; Ok = $false; Why = (Say-Why $_) }
   } finally {
@@ -6743,9 +6793,32 @@ $BusyVerbs = [ordered]@{
 $InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE',
                 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL')
 
+# ── 설치 기록 — 화면은 지금 읽을 것만, 기록은 그보다 많이 ─────────────────────────────────────────
+# 화면은 사람이 지금 읽을 것을 든다 — 자식 줄은 `Show-ChildLine` 이 걸러 흘린다. 기록은 거른 것까지 든다 — 하는 부름마다 명령 ·
+#   원문 · 종료 값 · 걸린 초를 세부 기록(`$script:DetailLog`)에 덧붙인다(`Add-RunDetail`).
+# 화면 기록은 출력을 받는 쪽이 남긴다 — 설치 창(`install.ui.ps1` 의 `Save-RunLog`) · 로그온 자동 실행(`autorun-*.log`). 출력이 콘솔인
+#   판(사람이 `install.ps1` 을 직접 돌린 판)은 받는 쪽이 없어 여기서 화면을 옮겨 적는다(`Start-Transcript`).
+# 자리는 그 둘과 같은 폴더다. 못 지으면 기록 없이 간다 — 기록은 설치를 안 막는다.
+# ⚠ **세부 기록은 `install-` 로 시작하지 않는다** — 설치 창의 「설치기록」이 `install-*.log` 가운데 가장 새 것을 화면 기록으로 집는다.
+#   콘솔 판의 화면 기록은 그 무늬에 들어 그 단추가 그대로 집는다.
+$RunLogDir  = Join-Path $RecordRoot 'logs'
+$RunLogKeep = 15   # 세부 기록을 몇 판까지 두나 — 자동 실행 기록(`autorun-*.log`)과 같은 수. 화면 기록은 설치 창 기록처럼 안 걷는다
+$script:DetailLog = ''
+try {
+  New-Item -ItemType Directory -Path $RunLogDir -Force -ErrorAction Stop | Out-Null
+  Get-ChildItem -LiteralPath $RunLogDir -Filter 'detail-*.log' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending |
+    Select-Object -Skip ($RunLogKeep - 1) | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+  $runStamp = "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID"
+  $script:DetailLog = Join-Path $RunLogDir "detail-$runStamp.log"
+  [IO.File]::WriteAllText($script:DetailLog, "PAISetup $DistVersion 설치 세부 기록 — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') · 하는 부름마다 명령 · 원문 · 종료 값 · 걸린 초`r`n",
+                          (New-Object Text.UTF8Encoding($false)))
+  if (-not [Console]::IsOutputRedirected) { Start-Transcript -LiteralPath (Join-Path $RunLogDir "install-$runStamp.log") | Out-Null }
+} catch { $script:DetailLog = '' }
+
 Write-Host ''
 Write-Host '=== Claude Code 환경 설치 ===' -ForegroundColor Cyan
 Write-Host ''
+if ($script:DetailLog) { Write-Host "  세부 기록 — $script:DetailLog"; Write-Host '' }
 
 # ── 자리 — **무엇이든 깔기 전이다** — 무엇을 깔지가 자리에 달렸고(데스크탑 앱), 못 정한 판은 아무것도 안 깔아야 한다 ──
 #    아래 걸음들의 갈래가 다 이 한 값에서 난다 — 게이트웨이를 쓰나(`$useGateway`) · 주소 심기 · 프록시와 감시 작업 · Codex · agy 회사
@@ -8935,6 +9008,7 @@ if ($pipPkgs) {
   } elseif ($pipPython -ne 'yes') {
     Write-Host "  파이썬 패키지($pipNames) — 건너뛴다: 이 창에서 python 이 안 선다"
   } else {
+    Say-Busy "파이썬 패키지($pipNames)" 'install' @('pip')
     $pl = [IO.Path]::GetTempFileName()
     $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
                  '--timeout', '15', '--retries', '1') + $pipPkgs
@@ -9222,9 +9296,9 @@ if ($browserMcpOn.Count) {
     Say-Busy '브라우저(크로미움)' 'fetch' @('get-browser.sh · 없을 때만')
     $gbLog = [IO.Path]::GetTempFileName()
     $gbRc = Invoke-LoggedCapped $gitBash @(($browserGet -replace '\\', '/')) $gbLog $BrowserGetCap
-    $gbLast = @(Get-Content -LiteralPath $gbLog -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() }) | Select-Object -Last 1
+    # 받은 자리 · 판은 받는 손의 줄이 위에 이미 흘렀다 — 결과 줄은 그 줄을 되풀이하지 않고 섰다는 것만 말한다
     if ($gbRc -eq 0) {
-      Write-Host "  $("$gbLast".Trim())"
+      Write-Host '  브라우저(크로미움) — 섰다'
     } elseif ($gbRc -eq -2) {
       Write-Host "  ! 브라우저(크로미움) — ${BrowserGetCap}초 안에 못 받아 거뒀다" -ForegroundColor Yellow
     } else {
@@ -9685,9 +9759,12 @@ if ($handOff) {
   # `--install` 은 리모트 Setup script 가 부르는 것과 같은 갈래다 — 지문을 안 보고 깐다. 맨바닥 VDI 의 첫 판(형제 저장소 clone)은
   #   세션 훅의 시간 한도가 아니라 여기서 진다. 이 한 부름에 형제 clone · 전역 도구 · 배포 · 저장소 설치 · 진단이 다 들어 있고,
   #   저쪽이 제 안을 가르는 줄을 내므로 여기는 그 전체를 감싼 값 하나만 잰다.
+  #   몸통의 줄은 러너로 받아 자식 줄의 문(`Show-ChildLine`)으로 흘린다 — 형제 저장소 받기의 진행 판이 접히고, 원문은 세부 기록에 남는다.
   $tHook = Get-Took
-  & $bash ($boot -replace '\\','/') --install
-  if ($LASTEXITCODE -ne 0) { $Fails.Add("훅 --install (exit $LASTEXITCODE)") }
+  $hookLog = [IO.Path]::GetTempFileName()
+  $hookRc = Invoke-Logged $bash @(($boot -replace '\\','/'), '--install') $hookLog
+  Remove-Item -LiteralPath $hookLog -ErrorAction SilentlyContinue
+  if ($hookRc -ne 0) { $Fails.Add("훅 --install (exit $hookRc)") }
   Write-Took '훅 --install 전체' $tHook
 }
 # ── 작업 루트 훑기 — 칸에서 안 받은 저장소의 옛 우리 사본(claude-config 결정 0129 · PAISetup #25 사용자 결정 ①) ──────────────
@@ -10821,6 +10898,7 @@ public class PAISetupProgressForm : System.Windows.Forms.Form {
   $script:to      = ''
   $script:cell    = '새 판이 있는지 보는 중'
   $script:last    = ''
+  $script:topic   = ''   # 마지막 한 줄의 주제 — 설치의 항목 줄. 흐름 줄(앞 공백 셋 이상)은 이것을 안 갈고 뒤에 붙는다
   $script:steps   = $StepsDefault
   $script:done    = 0
   $script:hurt    = $false
@@ -10885,7 +10963,16 @@ public class PAISetupProgressForm : System.Windows.Forms.Form {
     $text = $line.Trim()
     if (-not $text) { return }
     # 마지막 한 줄은 머리줄(걸음 · 검증)을 안 든다 — 그 글은 바로 위 지금 걸음 칸이 이미 든다.
-    if ($own -or $line -notmatch '^(\[\d+/\d+\]|=== 검증)') { $script:last = $text }
+    #   설치의 흐름 줄(자식이 낸 줄 · 받는 진행 — 앞 공백 셋 이상, 꼴은 설치기의 `Show-ChildLine` 머리말)은 주제(마지막 항목 줄)를 갈지 않고
+    #   그 뒤에 붙인다 — 「설치 성공」만 떠 어느 프로그램인지 잃지 않게. 주제는 끝의 괄호 곁말을 떼고 40자에서 자른다(설치 창의 같은 칸과 같은 꼴).
+    if ($own -or $line -notmatch '^(\[\d+/\d+\]|=== 검증)') {
+      if (-not $own -and $line -match '^\s{3,}\S' -and $script:topic) {
+        $head = $script:topic -replace '\s*\([^()]*\)\s*$', ''
+        if ($head.Length -gt 40) { $head = $head.Substring(0, 40) + '…' }
+        $script:last = "$head — $text"
+      }
+      else { $script:last = $text; if (-not $own) { $script:topic = $text } }
+    }
     if ($own) {
       if ($text -match '^새 판 (\S+) 을 받는다') { $script:to = $Matches[1]; $script:cell = "새 판 $($Matches[1]) 을 받는 중" }
       elseif ($text -match '^install\.ps1 실행: (\S+)') { $script:to = $Matches[1]; $script:cell = '준비' }

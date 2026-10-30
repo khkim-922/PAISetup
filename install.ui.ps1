@@ -1040,6 +1040,7 @@ $script:segLo = 0; $script:segHi = 0   # 지금 칸이 차지하는 구간 — �
 $script:idle  = 0                     # 조용한 틱 수 — 쌓이면 막대를 천천히 민다
 $script:proc = $null; $script:tmpEnv = $null
 $script:sw = $null; $script:last = ''   # 흐른 시간과 마지막 줄 — 창이 살아 있음을 보인다
+$script:topic = ''                      # 상태 글의 주제 — 마지막 머리 · 항목 줄. 흐름 줄은 이것을 안 갈고 뒤에 붙는다
 $script:done = ''                       # 몸통이 낸 마무리 문장 — 끝났을 때 이것을 띄운다
 $script:outFile = $null; $script:errFile = $null
 $script:rdOut = $null;  $script:rdErr = $null
@@ -1073,7 +1074,7 @@ $bGo.Add_Click({
   #   그동안 구간이 0/0 이면 심장박동이 못 뛰어 막대가 0 에 박히고, 사람은 아무것도 안 하는 줄 안다.
   $script:segLo = 0; $script:segHi = 8; $script:idle = 0
   $script:sw = [Diagnostics.Stopwatch]::StartNew()
-  $script:last = '준비'
+  $script:last = '준비'; $script:topic = '준비'
   # ⚠ **지난 회차의 마무리 문장을 지운다** — [다시 설치] 에서 이번 회차가 그 줄을 못 내면 지난 문장이 그대로 떠, 방금 한
   #   일과 다른 말을 한다.
   $script:done = ''
@@ -1183,10 +1184,10 @@ function Step-Line([string]$line) {
     $script:segLo = [int](($done - 1) * 100 / $all)
     $script:segHi = [int]($done * 100 / $all)
     $bar.Value = $script:segLo
-    $script:last = "$done/$all  $($Matches[3])"
+    $script:last = "$done/$all  $($Matches[3])"; $script:topic = $script:last
   } elseif ($line -match '^=== 검증') {
     $script:segLo = 100; $script:segHi = 100
-    $bar.Value = 100; $script:last = '검증'
+    $bar.Value = 100; $script:last = '검증'; $script:topic = '검증'
   } elseif ($line -match '^=== 끝 ===\s*(.+)$') {
     # 마무리 문장은 몸통의 것을 그대로 쓴다 — 몸통이 갈래마다 다른 말을 한다(창을 띄웠나 · 떠 있어서 안 띄웠나 · 못 찾았나 ·
     #   안 띄우기로 했나). 사본을 두면 갈래가 늘 때 한쪽만 낡고, 낡은 줄은 멀쩡한 설치를 딴 데로 보낸다.
@@ -1197,8 +1198,16 @@ function Step-Line([string]$line) {
       $stepBy = [Math]::Max(1, [int](($script:segHi - $script:segLo) / 6))
       $bar.Value = [Math]::Min($script:segHi - 1, $bar.Value + $stepBy)
     }
-    # 무엇을 하는 중인지도 같이 보여준다 — 막대만 움직이면 무슨 일인지는 여전히 모른다.
-    $script:last = $line.Trim()
+    # 무엇을 하는 중인지도 같이 보여준다 — 막대만 움직이면 무슨 일인지는 여전히 모른다. 앞 공백이 셋 이상인 줄은 흐름 줄(자식이 낸 줄 ·
+    #   받는 진행 · 세부 줄)이라 주제를 갈지 않고 그 뒤에 붙인다 — 「설치 성공」만 떠 어느 프로그램인지 잃지 않게. 붙일 때 주제는 끝의
+    #   괄호 곁말을 떼고 40자에서 자른다 — 상태 칸은 줄바꿈하는 칸이라 긴 주제가 흐름 줄을 밀어내고 칸을 키운다. 들여쓰기 꼴은 몸통의
+    #   `Show-ChildLine` 머리말이 든다.
+    if ($line -match '^\s{3,}\S' -and $script:topic) {
+      $head = $script:topic -replace '\s*\([^()]*\)\s*$', ''
+      if ($head.Length -gt 40) { $head = $head.Substring(0, 40) + '…' }
+      $script:last = "$head — $($line.Trim())"
+    }
+    else { $script:topic = $line.Trim(); $script:last = $script:topic }
   }
 }
 
