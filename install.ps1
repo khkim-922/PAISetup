@@ -385,6 +385,8 @@ $TlsHosts = @(
 #   · `@{ Via = 'none' }` — 올리지 않는다. 있으면 두고 없으면 깐다
 #   · `@{ Via = 'updater'; Exe; Args }` — 앱의 제 갱신기를 깐 직후와 이미 있을 때 한 번씩 부른다(`Invoke-AppUpdater`). 갱신기는 새 판이
 #     없으면 받지 않고 끝난다. 갱신기 파일이 없는 PC(다른 꼴로 깔린 앱)는 길 목록 그대로다. winget 이 없는 PC 에서도 돈다
+#     `Msix = @{ Family; App; Url }` — 갱신기 파일이 없고 이 꾸러미 가족(MSIX)으로 깔렸으면 벤더 MSIX 주소(`Url` — 판 없는 넘김)의
+#     판과 견주고 MSIX 로 올린다(`Update-MsixApp`). winget 목록과는 견주지 않는다 — 번호 체계가 달라 「최신」이 거짓이 된다
 # `App` — 시작 메뉴에 뜨는 이름(띄울 때 찾는 글자). 패키지 id 와 다른 것을 가리켜 따로 적는다 — 스토어 제품은 id 가
 #   `9PLM9XGG6VKS` 꼴이라 거기서 팔 것이 없다.
 # 「깔렸나」는 시작 메뉴 이름(`App`) → 윈도우의 설치 목록 → winget 목록 차례로 묻는다(`Measure-DesktopApp` · 결정 0145).
@@ -400,14 +402,18 @@ $TlsHosts = @(
 #   공용 목록(`$Apps`)에 안 넣어 그 앱을 고른 사람만 받는다.
 $DesktopApps = @(
   # Claude 는 판 없는 공식 주소가 둘인데 다 안 맞는다 — 다운로드 페이지의 설치본 주소는 스크립트에 403(브라우저 전용)이고, 조직
-  #   배포용 MSIX 주소는 열려 있지만 꼴이 다르다(관리자 승인이 드는 꾸러미 서비스를 싣고, 제 갱신기가 없으며, 설정 자리가 지금
-  #   꼴과 갈린다). 그래서 winget 이 처음 한 번 Squirrel 꼴을 깔아 갱신기를 놓고, 판은 그 갱신기가 공식 배포 주소에서 따라간다.
+  #   배포용 MSIX 주소는 열려 있지만 꼴이 다르다(관리자 승인이 드는 꾸러미 서비스를 싣고, 설정 자리가 지금 꼴과 갈린다). 그래서
+  #   winget 이 처음 한 번 Squirrel 꼴을 깔아 갱신기를 놓고, 판은 그 갱신기가 공식 배포 주소에서 따라간다.
   #   공식 배포 주소는 그 갱신기가 읽는 공개 목록(`RELEASES`)이 선 자리다 — 앱이 제 안에서 쓰는 주소는 기기 값이 붙어야 열린다.
+  # 이미 MSIX 꼴(`Claude_pzs8sxrjxfjjc`)로 선 PC 는 앱이 제 안에서 새 꾸러미를 받아 두지만, 떠 있으면 윈도우가 등록을 앱이 닫힐 때로
+  #   미룬다 — 로그온 때 윈도우의 시작 작업(`ClaudeStartup`)이 앱을 먼저 띄워 오토런 자리에서는 늘 떠 있다. 그래서 설치기가 닫고
+  #   세우고 다시 띄운다(`Msix`). winget 목록은 Squirrel 번호(`2.x`)라 MSIX 번호(`4.x`)와 견줄 수 없다.
   # `Reg` — 설치 목록 이름이 `Claude` 그대로다(HKCU · Squirrel 이 판을 올릴 때 같이 고친다). 이름 전체로 건다.
   @{ Key = 'claude'; Label = 'Claude 데스크탑'; App = 'Claude'; Reg = 'Claude'
      Id = 'Anthropic.Claude'; Source = 'winget'
      Upgrade = @{ Via = 'updater'; Exe = '%LOCALAPPDATA%\AnthropicClaude\Update.exe'
-                  Args = @('--update=https://downloads.claude.ai/releases/win32/x64') } }
+                  Args = @('--update=https://downloads.claude.ai/releases/win32/x64')
+                  Msix = @{ Family = 'Claude_pzs8sxrjxfjjc'; App = 'Claude'; Url = 'https://claude.ai/api/desktop/win32/x64/msix/latest/redirect' } } }
   # ⚠ **코덱스는 ChatGPT 앱 안에 산다 — `App` 은 `ChatGPT` 여야 한다.** 사람 눈에 닿는 이름(시작 메뉴 · 매니페스트
   #   `DisplayName` · 실행 파일 `app/ChatGPT.exe`)이 다 `ChatGPT` 이고 `Codex` 는 꾸러미 이름(`OpenAI.Codex_…!App`)에만 남는다.
   #   `Codex` 로 두면 멀쩡히 깔아 놓고 이름으로 되찾지 못해 「설치 실패」로 찍는다.
@@ -3839,6 +3845,17 @@ function Invoke-VendorAsk([string]$Url, [switch]$Body) {
     $req.Timeout = $VendorHeadCap * 1000
     $req.ReadWriteTimeout = $VendorHeadCap * 1000
     try { $res = $req.GetResponse() } catch [Net.WebException] { $res = $_.Exception.Response }
+    # HEAD 를 안 받는 자리(405 — Claude 의 MSIX 넘김)는 GET 으로 한 번 더 묻는다. 넘김(30x)은 몸 없이 오고 몸은 200 일 때만 읽는다
+    if (-not $Body -and $res -and [int]$res.StatusCode -eq 405) {
+      $res.Close(); $res = $null
+      $req = [Net.HttpWebRequest]::Create($Url)
+      $req.AllowAutoRedirect = $false
+      $req.Method = 'GET'
+      $req.UserAgent = 'PAISetup'
+      $req.Timeout = $VendorHeadCap * 1000
+      $req.ReadWriteTimeout = $VendorHeadCap * 1000
+      try { $res = $req.GetResponse() } catch [Net.WebException] { $res = $_.Exception.Response }
+    }
     if (-not $res) { return $o }
     $o.Code = [int]$res.StatusCode
     $o.Location = [string]$res.Headers['Location']
@@ -4047,6 +4064,9 @@ function Get-UpgradeRoute($Row, [string]$Installed) {
     $upExe = if ($Row.Upgrade.Exe) { [Environment]::ExpandEnvironmentVariables("$($Row.Upgrade.Exe)") }
              else { "$((Get-Command $Row.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)" }
     if ($upExe -and (Test-Path -LiteralPath $upExe)) { $r.Via = 'updater'; return $r }
+    if ($Row.Upgrade.Msix -and (Get-MsixPackage $Row.Upgrade.Msix.Family)) {
+      $r.Via = 'msix'; $r.Found = Get-VendorLatest @{ Read = 'redirect'; Url = $Row.Upgrade.Msix.Url }; return $r
+    }
   }
   $r.Way = Get-VendorWay $Row $Installed
   if ($r.Way) {
@@ -4104,6 +4124,53 @@ function Write-ShadowedCopy($Row) {
   $bin = [Environment]::ExpandEnvironmentVariables("$($Row.PathDir)").TrimEnd('\')
   if ($src -and -not $src.StartsWith("$bin\", [StringComparison]::OrdinalIgnoreCase)) {
     Write-Host "  ! $($Row.Label) — 새 사본은 $bin 에 섰는데 이름으로는 $src 가 먼저 잡힌다 · 그 사본을 걷거나 PATH 에서 뺀다" -ForegroundColor Yellow
+  }
+}
+
+# 꾸러미 가족(`이름_게시자id`)으로 등록된 MSIX 하나 — 없거나 못 물으면 `$null`.
+function Get-MsixPackage([string]$Family) {
+  try { return @(Get-AppxPackage -Name ($Family -replace '_[^_]+$', '') -ErrorAction Stop | Where-Object { $_.PackageFamilyName -eq $Family })[0] }
+  catch { return $null }
+}
+
+# MSIX 꼴로 선 앱(행의 `Upgrade.Msix`)을 벤더 최신 판으로 올린다 — 앱이 떠 있으면 닫고 세운 뒤 다시 띄운다.
+#   앱이 제 안에서 받아 둔 판(떠 있어 등록이 미뤄진 꾸러미 — `WindowsApps\<이름>_<판>_x64__<게시자id>`)이 있으면 그것을 등록하고, 없으면
+#   벤더 MSIX 를 받아 단다. 둘 다 `-ForceApplicationShutdown` 이다 — 떠 있는 판 위에는 윈도우가 등록을 미뤄 판이 안 선다.
+# ⚠ **밤 자동 실행은 떠 있는 앱을 닫지 않는다** — 밤에 맡겨 둔 세션이 그 앱 안에서 돈다. 다음 로그온 판이 올린다.
+function Update-MsixApp($A, [string]$Before, $Found) {
+  $mx = $A.Upgrade.Msix
+  $cur = ConvertTo-Ver $Before
+  $new = ConvertTo-Ver $Found.Ver
+  if (-not $new) { Write-Host "  있음  $(Format-VerPart $Before) · ! 벤더 MSIX 의 최신 판을 못 읽었다" -ForegroundColor Yellow; return }
+  if ($cur -and $cur -ge $new) { Write-Host "  최신  $(Format-VerPart $Before)"; return }
+  $name = $mx.Family -replace '_[^_]+$', ''
+  $running = @(Get-Process -Name $mx.App -ErrorAction SilentlyContinue | Where-Object { "$($_.Path)" -like "*\WindowsApps\$($name)_*" })
+  if ($running.Count -and $NightRun) {
+    Write-Host "  ! 새 판 $($Found.Ver) 이 있다 — 앱이 떠 있어 밤 자동 실행은 안 닫는다 · 다음 로그온이 올린다" -ForegroundColor Yellow
+    return
+  }
+  $full = '{0}_{1}.{2}.{3}.{4}_x64__{5}' -f $name, $new.Major, $new.Minor, [Math]::Max(0, $new.Build), [Math]::Max(0, $new.Revision), ($mx.Family -replace '^.*_', '')
+  $file = $null
+  try {
+    if (Test-Path -LiteralPath (Join-Path $env:ProgramFiles "WindowsApps\$full")) {
+      Say-Busy $A.Label 'upgrade' @('받아 둔 판을 세운다', $(if ($running.Count) { '앱을 닫고' } else { '' }))
+      Add-AppxPackage -RegisterByFamilyName -MainPackage $full -ForceApplicationShutdown -ErrorAction Stop
+    } else {
+      $file = Join-Path ([IO.Path]::GetTempPath()) "$name-$($Found.Ver).msix"
+      Say-Busy $A.Label 'fetch' @((Split-Path $file -Leaf), "벤더 $($Found.Ver)")
+      Get-Download $Found.Url $file $AppUpdaterCap
+      Say-Busy $A.Label 'upgrade' @('MSIX', $(if ($running.Count) { '앱을 닫고' } else { '' }))
+      Add-AppxPackage -Path $file -ForceApplicationShutdown -ErrorAction Stop
+    }
+  } catch {
+    Write-Host "  ! $($A.Label) — MSIX 로 못 올렸다 · $(Say-Why $_)" -ForegroundColor Red
+    $script:Fails.Add("$($A.Label) (MSIX 올리기)")
+  } finally { if ($file) { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue } }
+  $after = [string](Get-MsixPackage $mx.Family).Version
+  Write-UpgradeResult $A.Label $Before $after
+  if ($running.Count) {
+    try { Start-Process "shell:AppsFolder\$($mx.Family)!$($mx.App)"; Write-Host '     떠 있던 앱을 다시 띄웠다' }
+    catch { Write-Host "  ! 앱을 다시 못 띄웠다 — 시작 메뉴에서 연다 · $(Say-Why $_)" -ForegroundColor Yellow }
   }
 }
 
@@ -4348,6 +4415,7 @@ function Install-DesktopApp($A) {
     if ($deskAct -eq 'present')    { Write-Host "  있음  $(Format-VerPart $m.Ver)" }
     # 제 갱신기가 있는 행은 winget 이 아니라 그것이 올린다 — 갱신기 파일이 없는 PC(다른 꼴로 깔린 앱)는 길이 가른 대로 간다.
     elseif ($route.Via -eq 'updater') { [void](Invoke-AppUpdater $A $m.Ver) }
+    elseif ($route.Via -eq 'msix') { Update-MsixApp $A $m.Ver $route.Found }
     elseif ($deskAct -eq 'latest') { Write-Host "  최신  $(Format-VerPart $m.Ver)"; Write-WingetAhead $A.Label $route }
     elseif ($deskAct -eq 'upgrade' -or $deskAct -eq 'upcheck') {
       [void](Invoke-RowUpgrade $A.Label $A $route $deskAct $A.Source)
@@ -7023,6 +7091,9 @@ $hostAgy         = [bool]($PickKeys -contains 'antigravity')
 #   칸이 정했다(`$repoChoice` — 안 골랐으면 `$ChoiceNone`).
 $repoUrl = if ($repoChoice -and $repoChoice -ne $ChoiceNone) { $repoChoice } else { $null }
 $configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
+# GitHub 로그인이 드는 판인가 — 주소 가운데 github.com 이 하나라도 있을 때만이다. 이 PC 의 bare 폴더(`C:\…` · `file:///…`)만 넣은
+#   사람에게 로그인 창을 띄우면 GitHub 계정이 없어도 되는 길에 가입을 요구하는 꼴이다. 그 뒤로 gh 를 쓰는 자리(세션 훅)는 없다.
+$configRepoOnGitHub = [bool]@($configRepoUrls | Where-Object { $_ -match 'github\.com' }).Count
 
 # ── 제작자 세트를 받을 도구 — 도구마다 고른다 (결정 0099) ───────────────────────────────────────
 # `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 Claude 다 — 이전 판의 단일 칸이라, 그 칸으로 자동 실행이
@@ -7351,10 +7422,10 @@ foreach ($app in $Apps) {
 # 코드 창은 사람을 기다리는 동안 제 프로세스를 세운다(`ShowDialog()`). 「설정 저장소」 걸음에서 이 프로세스로 열면 그 사이 설치가 멎으므로,
 #   이 몸통을 `-GhLoginOnly` 로 다시 띄워 그 안에서 열고 설치는 잇는다. 답은 「설정 저장소」 걸음의 로그인 칸이 받는다.
 # gh 는 위 `$Apps` 의 마지막 줄이라 이보다 앞은 없고, 뒤로 남은 걸음(VC++ · 데스크탑 앱 · 확장 · CLI …)이 창의 한도를 덮는다.
-# 띄우는 조건은 그 칸과 같다 — `#config-repo` 가 있고 · git 이 닿고 · 개발 도구를 켰고 · 창을 띄울 판(`Get-GhLoginGo`)일 때. 안
-#   띄운 판은 그 칸이 제 자리에서 다시 잰다.
+# 띄우는 조건은 그 칸과 같다 — `#config-repo` 에 GitHub 주소가 있고(`$configRepoOnGitHub`) · git 이 닿고 · 개발 도구를 켰고 · 창을
+#   띄울 판(`Get-GhLoginGo`)일 때. 안 띄운 판은 그 칸이 제 자리에서 다시 잰다.
 $script:GhLoginChild = $null
-if ($repoUrl -and -not $NoDevTools -and (Test-Runs 'git' '--version') -and (Get-GhLoginGo) -eq 'open') {
+if ($configRepoOnGitHub -and -not $NoDevTools -and (Test-Runs 'git' '--version') -and (Get-GhLoginGo) -eq 'open') {
   $script:GhLoginChild = Start-GhLoginChild $MyInvocation.MyCommand.Path
   if ($script:GhLoginChild.Proc) {
     Write-Host "  GitHub 로그인 — 창을 띄웠다 · 코드는 팝업에 (최대 ${GhLoginWait}초) · 설치는 그대로 잇는다" -ForegroundColor Yellow
@@ -9552,7 +9623,7 @@ if (-not $repoUrl) {
   #   자식이 창을 못 세운 판만 이 자리에서 띄운다. 창의 한도는 `$GhLoginWait` 하나다.
   # 저장소를 넣은 사람만 묻는다 — gh 는 바로 아래 비공개 저장소 받기와 그 뒤 세션 훅이 쓰고, 저장소를 안 넣은 사람에게 띄우면
   #   GitHub 가입부터 하라는 말이 된다. 그 조건은 이 칸이 `#config-repo` 가 있을 때만 돌아 이미 섰고, 아래 조건은 개발 도구를 끈
-  #   사람(gh 가 안 깔린다) 하나만 든다.
+  #   사람(gh 가 안 깔린다)과 주소가 다 GitHub 밖인 사람(이 PC 의 bare 폴더 — `$configRepoOnGitHub`)을 든다.
   # 토큰을 전제하지 않는다 — 모두의 길은 브라우저에 넣는 일회용 코드 하나이고, 개인 토큰을 이미 든 사람은 「이미 서 있다」로
   #   지나간다. 코드는 팝업이 든다 — 설치 창 기록에만 찍으면 스크롤에 묻힌다. 창 하나가 코드 · 남은 시간 · 브라우저 열기 · 복사를
   #   들고, 로그인이 서면 스스로 닫힌다.
@@ -9561,7 +9632,10 @@ if (-not $repoUrl) {
   #   안 막힌다(「사외 Claude 구독 로그인」 칸과 같은 규율).
 
   $ghLoggedIn = $false
-  if (-not $NoDevTools) {
+  if (-not $configRepoOnGitHub) {
+    Write-Host ''
+    Write-Host '  GitHub CLI 로그인 — 건너뜀 · 주소가 GitHub 가 아니다' -ForegroundColor Cyan
+  } elseif (-not $NoDevTools) {
     # 이 구간을 따로 잰다 — 이 자리에서 창을 띄운 판은 사람이 코드를 누를 때까지 멎어, 안 가르면 그 대기가 「저장소 걸음이
     #   느리다」로 읽힌다. 앞당겨 띄운 판은 남은 기다림만 든다.
     $tGh = Get-Took

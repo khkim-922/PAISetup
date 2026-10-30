@@ -41,6 +41,13 @@ if [ "$found" = 1 ] && ! awk '
             printf "✖ %s: superseded_by 는 네 자리 번호 하나다 (값: %s)\n", file, sup > "/dev/stderr"
             err = 1; return
         }
+        # 같은 번호가 둘이면 거절한다 — 병행 세션이 원격을 재기 전에 같은 다음 번호를 잡는다. 색인에 두 줄로 나가면
+        #   「결정 NNNN」 가리킴이 둘 중 어느 것인지 못 가른다
+        if (num in seen) {
+            printf "✖ %s: 번호 %s 가 이미 %s 에 있다 — 한쪽을 다음 번호로 옮긴다\n", file, num, seen[num] > "/dev/stderr"
+            err = 1; return
+        }
+        seen[num] = file
         if (sup != "") st = st " → " sup
         printf "| [%s](%s) | %s | %s | %s |\n", num, file, ttl, st, dt
     }

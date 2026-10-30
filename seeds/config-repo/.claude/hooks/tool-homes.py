@@ -36,6 +36,9 @@ place — 길마다 조건이 서면 항목을 그 항목의 이긴 층에서 �
         import 는 한 자리에 길이 여럿일 수 있다 — 표지 사이에 조건이 서고 이긴 층이 있는 길마다 가져오기 한 줄을 표의
         차례로 두고, 줄이 하나도 없으면 블록을 걷는다. 폴더 항목의 길은 이긴 층의 항목 폴더 안 가져올 파일을 가리키고,
         그 파일이 없으면 그 줄을 빼고 WARN 을 낸다 — 없는 파일을 가리키는 가져오기는 Claude 가 말없이 건너뛴다.
+        block 과 include 도 한 자리에 길이 여럿일 수 있다 — block 은 이긴 층이 있는 길의 본문을 표의 차례로 이어 한 블록에
+        두고(lines 의 룰 줄은 그 뒤), include 는 길마다 가리킴 한 줄을 표의 차례로 둔다. import 블록 · block · include 파일은
+        맨 앞에 알림 한 줄(HOME_NOTE)을 같이 둔다 — 늘 읽히는 자리라, 사본을 고치려는 모델이 고치기 전에 그 줄을 본다.
 check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 함께 1, 층이나 표가 없으면(또는 못 재면) 2.
 
 **이기는 단위는 항목이다** — 개인 층에 그 항목이 있으면 통째로 개인 층 것이다. 파일 단위로 섞으면 저장소에서 지운 룰이
@@ -202,9 +205,12 @@ BEGIN = '<!-- paisetup:norms BEGIN -->'
 END = '<!-- paisetup:norms END -->'
 IMPORT_LINE = '@~/%s/%s/%s'            # HUB · 층 · 층 안의 자리(폴더 항목이면 뒤에 가져올 파일)
 
+# 늘 읽히는 세 자리(Claude import 블록 · Codex 블록 · agy include 파일)의 머리 한 줄 — 사본을 고치려는 모델을 원본으로
+#   돌린다(결정 0193). 스킬 설명만으로는 스킬을 읽고도 사본을 고치는 도구가 있다
+HOME_NOTE = '여기와 설치가 홈에 놓은 규범 · 룰 · 스킬 사본은 다음 설치가 다시 쓴다 — 고치려면 먼저 `config-repo-start` 스킬을 부른다.'
+
 # Codex 블록의 글 — 홈에 이미 깔린 블록과 바이트 꼴이 같아야 다시 놓을 때 룰 줄의 자리(이긴 층)만 바뀐다
-CODEX_HEAD = ('%s\n<!-- 설치 · 배포가 제작자 규범 원본에서 뽑아 쓴다. 여기서 고치면 다음 설치에 사라진다 — '
-              '원본을 고친다. -->\n\n' % BEGIN)
+CODEX_HEAD = '%s\n%s\n\n' % (BEGIN, HOME_NOTE)
 CODEX_RULES_HEAD = ('\n## 영역 룰 — 파일을 만질 때만 걸리는 원칙\n\n'
                     '아래 파일을 만지기 전에 가리킨 룰을 읽고 따른다. 위 규범이 「룰이 든다」고 적은 자리가 이것들이다.\n\n')
 CODEX_RULE_LINE = '- `%s` 를 만질 때는 `%s/%s` 를 먼저 읽는다'
@@ -529,11 +535,14 @@ def read_table(path):
             bad.append('was %s — %s 항목의 copy 길 대상이 아니다' % (w.target, EACH))
     for target, rs in table.groups.items():
         forms = [r.form for r in rs]
-        if forms.count(BLOCK) == 1 and forms[0] == BLOCK and all(x == LINES for x in forms[1:]):
-            continue
+        blocks = forms.count(BLOCK)
+        if blocks and forms == [BLOCK] * blocks + [LINES] * (len(forms) - blocks):
+            continue        # block 길이 여럿이면 본문을 표의 차례로 잇는다 — lines 는 그 뒤에 선다
         if all(x == IMPORT for x in forms):
             continue        # 한 자리에 import 길이 여럿 설 수 있다 — 길마다 한 줄
-        if len(forms) == 1 and forms[0] in (INCLUDE, LIST, COPY, HOOK):
+        if all(x == INCLUDE for x in forms):
+            continue        # include 도 — 길마다 가리킴 한 줄
+        if len(forms) == 1 and forms[0] in (LIST, COPY, HOOK):
             continue
         bad.append('자리 %s — 한 자리에 맞지 않는 꼴들이다(%s)' % (target, ' · '.join(forms)))
     return table, bad
@@ -1157,10 +1166,10 @@ def rule_lines(files, rules_home):
     return out
 
 
-def codex_block(norms_file, rule_sets):
-    """규범 본문 + 룰마다 「이 파일들을 만질 때 이 룰을 먼저 읽는다」 한 줄. rule_sets — [(가리킬 자리, 파일들)]."""
-    norms = norms_file.read_text(encoding='utf-8-sig').replace('\r\n', '\n')
-    body = norms.rstrip() + '\n'
+def codex_block(norms_files, rule_sets):
+    """규범 본문들(표의 차례로 빈 줄 하나를 두고 잇는다) + 룰마다 「이 파일들을 만질 때 이 룰을 먼저 읽는다」 한 줄.
+    rule_sets — [(가리킬 자리, 파일들)]."""
+    body = '\n'.join(f.read_text(encoding='utf-8-sig').replace('\r\n', '\n').rstrip() + '\n' for f in norms_files)
     lines = []
     for rules_home, files in rule_sets:
         lines += rule_lines(files, rules_home)
@@ -1255,8 +1264,9 @@ def agy_text(run, form, layer, item):
     return LIST_TEXT % json.dumps(target, ensure_ascii=False)
 
 
-def is_ours(run, form, path, raw, item):
-    """include · list 파일이 우리 것인가 — 기록의 해시 그대로이거나 우리가 쓴 꼴 그대로(덧붙은 열쇠가 없다)."""
+def is_ours(run, form, path, raw, items):
+    """include · list 파일이 우리 것인가 — 기록의 해시 그대로이거나 우리가 쓴 꼴 그대로(덧붙은 열쇠가 없다). items — 그
+    자리로 가는 길들의 항목."""
     if run.ledger.get(run.rel(path)) == sha(raw):
         return True
     try:
@@ -1265,9 +1275,11 @@ def is_ours(run, form, path, raw, item):
         return False
     if form == INCLUDE:
         shapes = set(s.format(home=run.home_abs) for s in OLD_INCLUDE)
-        shapes |= set(agy_text(run, INCLUDE, layer, item).strip() for layer in LAYERS)
-        return text.strip() in shapes
-    paths = set(s.format(home=run.home_abs) for s in OLD_LIST) | set(layer_abs(run, layer, item) for layer in LAYERS)
+        shapes |= set(agy_text(run, INCLUDE, layer, item).strip() for layer in LAYERS for item in items) | {HOME_NOTE}
+        lines = [x.strip() for x in text.splitlines() if x.strip()]
+        return bool(lines) and all(x in shapes for x in lines)
+    paths = set(s.format(home=run.home_abs) for s in OLD_LIST)
+    paths |= set(layer_abs(run, layer, item) for layer in LAYERS for item in items)
     try:
         doc = json.loads(text)
     except ValueError:
@@ -1279,8 +1291,8 @@ def is_ours(run, form, path, raw, item):
     return isinstance(entry, dict) and list(entry) == ['path'] and entry['path'] in paths
 
 
-def place_whole(run, path, text, form, item):
-    """파일 통째로 우리 것인 꼴(include · list). text 가 None 이면 우리 것만 걷는다."""
+def place_whole(run, path, text, form, items):
+    """파일 통째로 우리 것인 꼴(include · list). text 가 None 이면 우리 것만 걷는다. items — 그 자리로 가는 길들의 항목."""
     key = run.rel(path)
     link = is_link(path)
     if path.is_dir() and not link:
@@ -1294,12 +1306,12 @@ def place_whole(run, path, text, form, item):
             return
         if link:
             run.backup(path, True, '링크다 — 걷고 파일로 쓴다')
-        elif raw is not None and not is_ours(run, form, path, raw, item):
+        elif raw is not None and not is_ours(run, form, path, raw, items):
             run.backup(path, False, '우리가 쓴 꼴이 아니다')
         run.write(path, data, '이 PC 홈의 절대 경로로 이긴 층을 가리킨다')
         run.record(key, sha(data), None)
         return
-    if raw is not None and not link and is_ours(run, form, path, raw, item):
+    if raw is not None and not link and is_ours(run, form, path, raw, items):
         run.remove(path, '칸을 껐거나 항목이 없다 · 우리 것이다')
         run.record(key, None, None)
     elif key in run.ledger:
@@ -1852,7 +1864,7 @@ def place(run, table, views, conds):
             elif first.form == IMPORT:
                 lines = [import_line(run, r, table.items[r.item], chosen(r)) for r in routes]
                 lines = [x for x in lines if x]
-                text = ('%s\n%s\n%s\n' % (BEGIN, '\n'.join(lines), END)) if lines else ''
+                text = ('%s\n%s\n%s\n%s\n' % (BEGIN, HOME_NOTE, '\n'.join(lines), END)) if lines else ''
                 place_marked(run, path, text, True)
             elif first.form == HOOK:
                 seen = [views[layer](item) for layer in LAYERS]
@@ -1860,21 +1872,23 @@ def place(run, table, views, conds):
                     seen.append(item_files(run.retire[0], item.path))
                 place_hooks(run, path, item, chosen(first), seen)
             elif first.form == BLOCK:
-                got = chosen(first)
+                bodies = [g[1][''] for g in (chosen(r) for r in routes if r.form == BLOCK) if g]
                 text = ''
-                if got:
+                if bodies:
                     rule_sets = []
-                    for r in routes[1:]:
-                        g = chosen(r)
+                    for r in routes:
+                        g = chosen(r) if r.form == LINES else None
                         if g:
                             home_of_rules = '%s%s/%s/%s' % (TILDE, HUB, g[0], table.items[r.item].path.rstrip('/'))
                             rule_sets.append((home_of_rules, g[1]))
-                    text = codex_block(got[1][''], rule_sets)
+                    text = codex_block(bodies, rule_sets)
                 place_marked(run, path, text, False)
             else:
                 whole.add(run.rel(path))
-                got = chosen(first)
-                place_whole(run, path, agy_text(run, first.form, got[0], item) if got else None, first.form, item)
+                ptrs = [agy_text(run, r.form, g[0], table.items[r.item]) for r, g in ((r, chosen(r)) for r in routes) if g]
+                head = HOME_NOTE + '\n' if first.form == INCLUDE else ''   # list 는 JSON 이라 머리 줄을 못 든다
+                place_whole(run, path, head + ''.join(ptrs) if ptrs else None, first.form,
+                            [table.items[r.item] for r in routes])
         except Exception as e:  # noqa: BLE001 — 한 자리가 막혀도 나머지는 간다
             run.out.error('%s — %s: %s' % (target, type(e).__name__, e))
     tops = sorted(set(run.rel(run.at(r.target)) + '/' for r in table.routes if r.form == COPY))

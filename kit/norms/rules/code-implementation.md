@@ -14,7 +14,7 @@ description: "코드 파일을 만질 때 — 이름 맞추기 · 주석의 양 
 
 # 코드 구현 원칙 — 편집 자리 층
 
-> 원본은 `claude-config/.claude/rules.global/code-implementation.md` 다. 배포본을 고치지 않는다.
+> 원본은 설정 저장소의 `.claude/rules.global/code-implementation.md` 다 — 홈에 놓인 사본을 고치지 않는다.
 > 규범 코드 작성 원칙 가운데 **코드 파일을 만지는 자리에서만 뜻이 서는** 것이 여기 산다 — 조항마다 `*(➔ 규범 [X])*` 가 어느 원칙의 기전인지 든다.
 
 1. **[Cognitive Anchoring]**

@@ -379,6 +379,8 @@
   <div class="rows">
     <div class="row"><b>규범<span class="tag"><code class="nm">.claude/CLAUDE.global.md</code><span class="k norm">Norm</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span></span></b>
       <div>모든 세션에 늘 읽히는 원칙 한 편입니다. 도구마다 제 규범 파일(Claude 는 <code>CLAUDE.md</code>, Codex · agy 는 <code>AGENTS.md</code>)이 이것을 읽어 옵니다.</div></div>
+    <div class="row"><b>더하는 규범<span class="tag"><code class="nm">.claude/CLAUDE.add.md</code><span class="k norm">Norm</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span></span></b>
+      <div>규범 <b>뒤에 내 줄을 더하는</b> 파일입니다. 규범을 통째로 가져오지 않아도 내 줄이 서고, 제작자 규범은 새 판이 계속 따라옵니다. 제작자의 줄을 바꾸거나 빼야 할 때만 위 규범 자리를 씁니다.</div></div>
     <div class="row"><b>룰<span class="tag"><code class="nm">.claude/rules.global/*.md</code><span class="k rule">Rule</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span></span></b>
       <div>정해진 파일을 만질 때만 걸리는 규칙입니다. 어느 파일에 걸리는지는 룰 파일 머리말에 적습니다.</div></div>
     <div class="row"><b>스킬<span class="tag"><code class="nm">.claude/skills/&lt;이름&gt;/</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span></span></b>
@@ -413,6 +415,7 @@
           <tr><td>스킬 하나</td><td><code>~/.paisetup/standard/skills/&lt;이름&gt;/</code></td><td><code>.claude/skills/&lt;이름&gt;/</code></td></tr>
         </tbody>
       </table></div>
+      <p>규범에 내 줄을 더하기만 할 거면 복사하지 않고 <code>.claude/CLAUDE.add.md</code> 에 그 줄만 둡니다.</p>
       <p>복사한 것은 내 파일이 되어, <b>제작자가 그 파일을 고쳐도 따라오지 않습니다.</b> 규범 · 룰은 항목째 이기니 룰을 한 파일만 둬도
          제작자의 룰은 더 오지 않습니다 — 제작자 룰을 같이 쓰려면 폴더째 가져옵니다. 스킬은 고칠 것만 가져오면 나머지는 제작자 것이 그대로 갑니다.</p>
     </div>

@@ -22,7 +22,7 @@ agent-envelope 가 든다. **규범은 제작자 칸(`PAISETUP_PERSONAL`)에 agy
   `--out` 을 읽는다. 윈도 밖에서는 `python3`(재지 않았다).
 - **Codex 에서는** 콘솔 있는 `python` 으로 부르고 끝날 때까지 기다리되(`pythonw` 는 셸이 안 기다린다) **샌드박스 밖에서
   돌린다** — 셸 호출에 `sandbox_permissions: "require_escalated"` 와 허락을 묻는 한 줄(`justification`)을 싣는다. 샌드박스 안은 망이
-  닫혀 agy 가 첫 요청에서 지고, 승인 정책이 `never` 인 자리(`codex exec` 기본)에서는 이 길이 없다(결정 0098).
+  닫혀 agy 가 첫 요청에서 지고, 승인 정책이 `never` 인 자리(`codex exec` 기본)에서는 이 길이 없다.
 
 ## 이 러너만의 것
 

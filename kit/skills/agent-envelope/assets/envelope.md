@@ -30,11 +30,12 @@ harness's own review feature on the same tree, never one packet folder for every
 
 ## Materials · tools
 - Open these: <paths or URLs the lane can reach. Anything it cannot reach is copied into the work directory: <path>>
-- Tools you have: <shell · edit · probes — whatever the work needs to test its own claims>
+- Tools you have: <shell · edit · probes — whatever the work needs to test its own claims. A lane without hands reports guesses as findings; what the fence blocks is state change outside ownership, never writing itself>
 - Work directory: <path> — it is the fence; nothing outside it changes
 
 ## Output contract
 - Each finding: `file:line` plus a concrete failure scenario. Both, or it is an impression, not a finding.
+- Code findings are proven by a run: a failing test, a repro script, or command output that shows the wrong behavior, quoted in the report. A finding without its run goes under "unverified", never among the findings. Prose and design findings cannot be run, so the scenario is their proof.
 - Name what you did not measure and what you did not look at. Zero findings is a valid report — say so, and say how far you looked.
 - Screens: the image path and what is visible, in plain words.
 - Build lanes: when what the person sees is the essence, deliver several drafts before the engine and say which one the owner
@@ -42,7 +43,7 @@ harness's own review feature on the same tree, never one packet folder for every
 - Owner's seat: if anything a person sees or does changed, open it the way the owner would (browser, screen, the real
   flow), do it yourself, and attach the evidence — image path or the exact steps and what happened. A report without this
   is not done, whatever the checks say; an acceptance lane that never saw the build will sit in the same seat after you.
-- Probes take the tree as an argument; never hardcode a path.
+- Probes take the tree as an argument; never hardcode a path — the parent re-runs them before and after.
 - Checks you ran: counts, the mutation result (a deliberately wrong specimen went red) and the tree fingerprint (commit or hash).
 - Checks you added, if any: for each, which of the four keep-criteria of check-design §1 it meets. If you verified once without adding a check, say so, with the command and its result.
 - Report in English as your final message. Files a human will open directly: Korean.
