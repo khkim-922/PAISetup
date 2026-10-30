@@ -572,8 +572,9 @@ $UrlCredential = '(?<=://)[^/@\s]+@'
 # 바깥 명령이 흘린 한 줄을 화면에 찍는다 — 자식 줄이 화면에 닿는 문은 이것 하나다(러너 둘이 `$OnLine` 없이 불렸을 때 · 훅 몸통에
 #   넘긴 판까지). 줄 꼴이 정해진 도구의 번역 손(`Show-ExtProgress` · `Show-ToolHomesLine` · `Show-BrowserMcpLine`)만 따로 선다.
 #   · `\r` 로 덮어쓴 줄은 끝 판만 남기고, 이스케이프를 걷고, 빈 줄과 `$ChildLineNoise` 는 버린다
-#   · **진행 판은 접는다** — 숫자를 지우고 빈칸을 하나로 접은 꼴이 바로 앞에 찍은 줄과 같으면 안 찍는다(`Updating files: N% (a/b)` 는 첫 판과 `, done.`
-#     판만 선다). 파워셸은 자식 출력을 `\r` 에서도 끊어 넘기므로 덮어쓰기만으로는 판이 안 접힌다. 앞 꼴(`$script:ChildLineShape`)은 러너가 부름마다 비운다
+#   · **진행 판은 접는다** — 진행 판 꼴(`N%` 나 `a/b` 가 든 줄)이고, 숫자를 지우고 빈칸을 하나로 접은 꼴이 바로 앞에 찍은 줄과 같으면
+#     안 찍는다(`Updating files: N% (a/b)` 는 첫 판과 `, done.` 판만 선다). 진행 판 꼴로 좁히는 까닭 — 숫자만 다른 낱낱의 줄
+#     (`slide1.xml` · `slide2.xml`, 판만 다른 `npm warn deprecated` 둘)은 서로 다른 일이라 다 선다. 파워셸은 자식 출력을 `\r` 에서도 끊어 넘기므로 덮어쓰기만으로는 판이 안 접힌다. 앞 꼴(`$script:ChildLineShape`)은 러너가 부름마다 비운다
 #   · 자식 줄 안의 들여쓰기는 지키고, 그 앞에 6칸을 더 들여 흐린 색으로 찍는다
 # ⚠ **6칸 들여쓰기를 걷지 않는다** — 설치 창 · 자동 실행 진행 창이 앞 공백 셋 이상인 줄을 흐름 줄로 읽어 상태 글의 주제를 안 갈고,
 #   머리줄은 `^\[n/N\]` 로 읽는다(자식이 `[1/4] …` 를 찍어도 막대가 안 뛴다).
@@ -582,7 +583,7 @@ function Show-ChildLine([string]$Line) {
   $s = @("$Line" -split "`r" | ForEach-Object { (($_ -replace $ChildLineEscape, '') -replace $UrlCredential, '***@').TrimEnd() } | Where-Object { $_.Trim() })
   if (-not $s.Count -or $s[-1] -cmatch $ChildLineNoise) { return }
   $shape = ($s[-1] -replace '\d+', '#') -replace '\s+', ' '
-  if ($shape -ceq $script:ChildLineShape) { return }
+  if ($shape -ceq $script:ChildLineShape -and $s[-1] -match '\d%|\d/\d') { return }
   $script:ChildLineShape = $shape
   Write-Host "      $($s[-1])" -ForegroundColor DarkGray
 }
@@ -1510,7 +1511,7 @@ function Clear-RepoDrmWrapped([string]$Repo, [string]$Bash) {
   if ($to -cnotmatch '^[0-9a-f]{40}([0-9a-f]{24})?$') { return @{ Code = $null; Lines = @('따르는 원격 갈래의 끝을 못 읽었다') } }
   try {
     $lines = @(& { $ErrorActionPreference = 'Continue'; & $Bash ($body -replace '\\', '/') --clear-drm ($Repo -replace '\\', '/') $to 2>&1 } |
-               ForEach-Object { "$_" } | Where-Object { $_.Trim() })
+               ForEach-Object { "$_" -replace $UrlCredential, '***@' } | Where-Object { $_.Trim() })
     return @{ Code = $LASTEXITCODE; Lines = $lines }
   } catch { return @{ Code = -1; Lines = @("몸통을 못 불렀다: $(Say-Why $_)") } }
 }
@@ -2205,6 +2206,7 @@ function Write-CheckRow($c) {
 # ⚠ **부른 자리의 변수에 쓴다(`-Scope 1`)** — `$script:` 로 쓰면 검증 글을 떼어 제 칸에서 돌리는 배포 검사의 `$checks` 를 비켜 간다.
 function Add-Check($Rows) {
   foreach ($c in @($Rows)) {
+    if ($null -eq $c) { continue }   # 아무것도 안 낸 칸 손 — `$checks += (빈 결과)` 처럼 아무것도 안 쌓는다
     Set-Variable -Name checks -Scope 1 -Value ($checks + $c)
     Write-CheckRow $c
   }
@@ -6801,19 +6803,32 @@ $InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING',
 # 자리는 그 둘과 같은 폴더다. 못 지으면 기록 없이 간다 — 기록은 설치를 안 막는다.
 # ⚠ **세부 기록은 `install-` 로 시작하지 않는다** — 설치 창의 「설치기록」이 `install-*.log` 가운데 가장 새 것을 화면 기록으로 집는다.
 #   콘솔 판의 화면 기록은 그 무늬에 들어 그 단추가 그대로 집는다.
+# ⚠ **옮겨 적기는 몸통이 나가는 자리마다 끈다(`Stop-RunLog`)** — `exit` 는 스크립트만 끝내고 사람이 연 창은 남아, 안 끄면 그 창에서
+#   뒤에 치는 명령과 그 출력(붙여 넣은 토큰까지)이 이 기록에 계속 붙는다. 잡히지 않은 던짐도 아래 `trap` 이 끄고 그대로 끝낸다.
 $RunLogDir  = Join-Path $RecordRoot 'logs'
 $RunLogKeep = 15   # 세부 기록을 몇 판까지 두나 — 자동 실행 기록(`autorun-*.log`)과 같은 수. 화면 기록은 설치 창 기록처럼 안 걷는다
+$runStamp = "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID"
 $script:DetailLog = ''
+$script:RunTranscript = $false
+function Stop-RunLog {
+  if (-not $script:RunTranscript) { return }
+  $script:RunTranscript = $false
+  try { Stop-Transcript | Out-Null } catch { }
+}
+trap { Stop-RunLog; break }
 try {
   New-Item -ItemType Directory -Path $RunLogDir -Force -ErrorAction Stop | Out-Null
   Get-ChildItem -LiteralPath $RunLogDir -Filter 'detail-*.log' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending |
     Select-Object -Skip ($RunLogKeep - 1) | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
-  $runStamp = "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID"
-  $script:DetailLog = Join-Path $RunLogDir "detail-$runStamp.log"
-  [IO.File]::WriteAllText($script:DetailLog, "PAISetup $DistVersion 설치 세부 기록 — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') · 하는 부름마다 명령 · 원문 · 종료 값 · 걸린 초`r`n",
+  $detailAt = Join-Path $RunLogDir "detail-$runStamp.log"
+  [IO.File]::WriteAllText($detailAt, "PAISetup $DistVersion 설치 세부 기록 — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') · 하는 부름마다 명령 · 원문 · 종료 값 · 걸린 초`r`n",
                           (New-Object Text.UTF8Encoding($false)))
-  if (-not [Console]::IsOutputRedirected) { Start-Transcript -LiteralPath (Join-Path $RunLogDir "install-$runStamp.log") | Out-Null }
+  $script:DetailLog = $detailAt
 } catch { $script:DetailLog = '' }
+# 옮겨 적기는 세부 기록과 따로 둔다 — 옮겨 적기를 못 하는 창에서도 세부 기록은 선다
+if ($script:DetailLog -and -not [Console]::IsOutputRedirected) {
+  try { Start-Transcript -LiteralPath (Join-Path $RunLogDir "install-$runStamp.log") | Out-Null; $script:RunTranscript = $true } catch { }
+}
 
 Write-Host ''
 Write-Host '=== Claude Code 환경 설치 ===' -ForegroundColor Cyan
@@ -6839,6 +6854,7 @@ if (-not $siteFact.Site) {
   Write-Host "  ! 자리를 못 정했다 — $($siteFact.Why)" -ForegroundColor Red
   Write-Host '    아무것도 안 깔고 멈춘다 — 사내인지 사외인지 모르고 깔면 회사 연결을 걷거나 닿지 않는 주소를 심는다'
   Write-Host '    설치 묶음(Setup.exe)을 새로 받아 다시 누른다 · 값 파일을 손으로 만들었으면 #site-probe = 호스트:포트 줄을 넣는다'
+  Stop-RunLog
   exit 1
 }
 $site    = $siteFact.Site
@@ -6853,6 +6869,7 @@ if ($sitePassed -and $sitePassed -cne $site) {
     Write-Host "  ! 창을 연 뒤 자리가 바뀌었다 — 창을 다시 연다 (창은 $passedSaid · 지금은 $($siteSaid[$site]) · $probe)" -ForegroundColor Red
     Write-Host '    아무것도 안 깔고 멈춘다 — 창이 보여 준 칸(주소 · 키)과 지금 자리가 다르면 받은 키를 버리거나 닿지 않는 주소를 심는다'
   }
+  Stop-RunLog
   exit 1
 }
 $siteBy = if ($offsite) { '안 닿음' } else { '닿음' }
@@ -9682,9 +9699,9 @@ if (-not $repoUrl) {
       if ($rc -eq 0 -and (Test-Path -LiteralPath (Join-Path $dest '.git'))) {
         $got += $dest
       } else {
-        Write-Host "  ! 못 받았다 — 주소 · 계정 · 망을 본다  ($u)" -ForegroundColor Red
+        Write-Host "  ! 못 받았다 — 주소 · 계정 · 망을 본다  ($($u -replace $UrlCredential, '***@'))" -ForegroundColor Red
         Show-Log $log
-        $Fails.Add("개인 값 저장소 (못 받았다: $u)")
+        $Fails.Add("개인 값 저장소 (못 받았다: $($u -replace $UrlCredential, '***@'))")
       }
       # 받기는 자격 창이 뜰 수 있어 여기도 사람 대기가 섞인다 — 진 판도 찍는다(진 데 든 시간도 시간이다).
       Write-Took ((Split-Path $dest -Leaf) + ' 받기') $tRepo
@@ -12202,6 +12219,8 @@ Write-Host ''
 Write-Host ("── 설치를 마쳤다 (" + [int]$Sw.Elapsed.TotalSeconds + "초)") -ForegroundColor DarkGray
 # ── 빗장 해제 ────────────────────────────────────────────────────────────────
 try { if ($script:HasEngineMutex -and $script:EngineMutex) { $script:EngineMutex.ReleaseMutex(); $script:EngineMutex.Dispose() } } catch { }
+# 콘솔 판의 옮겨 적기를 끈다 — 아래 두 `exit` 앞이다(위 「설치 기록」 머리말)
+Stop-RunLog
 
 # ⚠ **셋 다 본다** — 하는 걸음이 진 것(`$Fails`) · 끝에 재서 빨간 것(`$redChecks`) · 못 잰 것(`$unmeasuredChecks`)은 겹치기도 하고
 #   한쪽만 서기도 한다. 어느 쪽이든 하나라도 서면 이 설치는 안 끝난 것이다 — 못 잰 것은 빨강이 아니지만 선 것도 아니다(결정 0141).
