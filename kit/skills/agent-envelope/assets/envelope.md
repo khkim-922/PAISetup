@@ -14,7 +14,7 @@ harness's own review feature on the same tree, never one packet folder for every
   verbatim into every lane of the same work>
 - This lane delivers: <the piece of the finished form this lane builds or measures>
 - Ours: <the one or two things that make it ours, if the owner named any — else "find one and propose it in the report">
-- Done is judged by: <checks | the owner's eye on drafts — then drafts come before the engine>
+- Done is judged by: <acceptance lane — whenever anything a person sees or does changes | checks only — nothing a person sees or does changes | the owner's eye on drafts — then drafts come before the engine>
 - Weight: <deep | errand>
 - Carrier · model: <e.g. Claude subagent · sonnet | agy | Codex --write — a review goes to /code-review or --review, see the line above>
 
@@ -37,8 +37,11 @@ harness's own review feature on the same tree, never one packet folder for every
 - Each finding: `file:line` plus a concrete failure scenario. Both, or it is an impression, not a finding.
 - Name what you did not measure and what you did not look at. Zero findings is a valid report — say so, and say how far you looked.
 - Screens: the image path and what is visible, in plain words.
-- Build lanes: the finished form is the bar, not the check — a green check with the form missing is not done. When what
-  the person sees is the essence, deliver several drafts before the engine and say which one the owner should look at.
+- Build lanes: when what the person sees is the essence, deliver several drafts before the engine and say which one the owner
+  should look at.
+- Owner's seat: if anything a person sees or does changed, open it the way the owner would (browser, screen, the real
+  flow), do it yourself, and attach the evidence — image path or the exact steps and what happened. A report without this
+  is not done, whatever the checks say; an acceptance lane that never saw the build will sit in the same seat after you.
 - Probes take the tree as an argument; never hardcode a path.
 - Checks you ran: counts, the mutation result (a deliberately wrong specimen went red) and the tree fingerprint (commit or hash).
 - Checks you added, if any: for each, which of the four keep-criteria of check-design §1 it meets. If you verified once without adding a check, say so, with the command and its result.
