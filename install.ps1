@@ -4064,7 +4064,7 @@ function Get-UpgradeRoute($Row, [string]$Installed) {
     $upExe = if ($Row.Upgrade.Exe) { [Environment]::ExpandEnvironmentVariables("$($Row.Upgrade.Exe)") }
              else { "$((Get-Command $Row.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)" }
     if ($upExe -and (Test-Path -LiteralPath $upExe)) { $r.Via = 'updater'; return $r }
-    if ($Row.Upgrade.Msix -and (Get-MsixPackage $Row.Upgrade.Msix.Family)) {
+    if ($Row.Upgrade.Msix -and (Find-MsixInstall $Row.Upgrade.Msix.Family)) {
       $r.Via = 'msix'; $r.Found = Get-VendorLatest @{ Read = 'redirect'; Url = $Row.Upgrade.Msix.Url }; return $r
     }
   }
@@ -4128,7 +4128,9 @@ function Write-ShadowedCopy($Row) {
 }
 
 # 꾸러미 가족(`이름_게시자id`)으로 등록된 MSIX 하나 — 없거나 못 물으면 `$null`.
-function Get-MsixPackage([string]$Family) {
+# ⚠ **함수 이름에 `Get-Msix…` · `Add-Msix…` 꼴을 쓰지 않는다** — Appx 모듈이 그 이름들을 Appx 명령의 별칭으로 내고, 별칭은 함수보다
+#   먼저 잡힌다. 모듈이 실린 뒤(첫 `Get-AppxPackage` 뒤)부터 우리 함수 대신 별칭이 불려 빈 값이 난다.
+function Find-MsixInstall([string]$Family) {
   try { return @(Get-AppxPackage -Name ($Family -replace '_[^_]+$', '') -ErrorAction Stop | Where-Object { $_.PackageFamilyName -eq $Family })[0] }
   catch { return $null }
 }
@@ -4166,7 +4168,7 @@ function Update-MsixApp($A, [string]$Before, $Found) {
     Write-Host "  ! $($A.Label) — MSIX 로 못 올렸다 · $(Say-Why $_)" -ForegroundColor Red
     $script:Fails.Add("$($A.Label) (MSIX 올리기)")
   } finally { if ($file) { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue } }
-  $after = [string](Get-MsixPackage $mx.Family).Version
+  $after = [string](Find-MsixInstall $mx.Family).Version
   Write-UpgradeResult $A.Label $Before $after
   if ($running.Count) {
     try { Start-Process "shell:AppsFolder\$($mx.Family)!$($mx.App)"; Write-Host '     떠 있던 앱을 다시 띄웠다' }
