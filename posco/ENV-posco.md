@@ -29,8 +29,8 @@
   읽는 이름이 다를 뿐이라, 하나를 「이게 아니다」로 못 박으면 다른 클라이언트를 못 붙인다.
   ⚠ 둘이 함께 실리면 프록시가 `x-api-key` 를 뗀다 — 개인 키가 평문 HTTP 로 사내에 새지 않게(`pgpt-proxy/README.md`)
 - 우리가 쓰는 모델 — **Opus 5.5 가 기본이고 `opus` 별칭도 그것이다**(Claude Code · 결정 0206).
-  Claude Code 에는 1M 창으로 열리게 접미사를 붙여 `claude-opus-5-5[1m]` 으로 심는다(`ANTHROPIC_MODEL` ·
-  `ANTHROPIC_DEFAULT_OPUS_MODEL` · 결정 0049). `/model` 에서 고를 목록(Sonnet 5.5 · Haiku 5.5 · Fable 5.1 · Opus 5 포함)은 설치기가
+  Claude Code 에는 `claude-opus-5-5` 로 심는다(`ANTHROPIC_MODEL` ·
+  `ANTHROPIC_DEFAULT_OPUS_MODEL`) — 접미사 `[1m]` 없이도 1M 창으로 열린다(결정 0207). `/model` 에서 고를 목록(Sonnet 5.5 · Haiku 5.5 · Fable 5.1 · Opus 5 포함)은 설치기가
   사내에서만 홈 설정의 `modelPicker` 로 쓴다(결정 0048) — 옛 Custom 칸(`ANTHROPIC_CUSTOM_MODEL_OPTION`)은 걷었다.
   ⚠ **게이트웨이의 철자는 모델마다 다르다** — `claude-opus-5.5` · `claude-haiku-5.5` 는 점, `claude-fable-5-1` 은 하이픈이고,
   다른 철자는 직결로 `400` 이다(실측 2026-11-02 · #228). 우리는 하이픈으로 심고 프록시가 목록에 선 철자로 고쳐 보낸다.

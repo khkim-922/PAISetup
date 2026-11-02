@@ -597,12 +597,12 @@
       <div class="row"><b>Codex · Antigravity 회사 연결<span class="tag"><code class="nm">model_provider</code><code class="nm">modelProvider</code><span class="k setting">Setting</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 Codex · agy 가 회사 게이트웨이가 아니라 제 계정 쪽으로 나가 회사 키로 쓸 수 없습니다.</span> 사람이 둔 다른 Codex 설정은 그대로 두고, 사외로 나가거나 사내에서 그 도구를 끄면 이 연결만 걷어 각자 로그인으로 돌립니다.</div></div>
       <div class="row"><b><code>/model</code> 목록<span class="tag"><code class="nm">modelPicker</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
-        <div><span class="why">기본 목록에는 게이트웨이에 없는 이름이 섞이고 100만 토큰 창 표시도 없습니다.</span> 그래서 게이트웨이가 받는 모델만 100만 토큰 창으로 고르게 합니다. 사람이 고친 목록은 덮지 않습니다.</div></div>
+        <div><span class="why">기본 목록에는 게이트웨이에 없는 이름이 섞이고 100만 토큰 창 표시도 없습니다.</span> 그래서 게이트웨이가 받는 모델만 고르게 합니다. 사람이 고친 목록은 덮지 않습니다.</div></div>
       <div class="row"><b>회사망 밖으로 안 보내기<span class="tag"><code class="nm">DISABLE_TELEMETRY</code><code class="nm">DISABLE_ERROR_REPORTING</code><code class="nm">CLAUDE_CODE_DISABLE_FAST_MODE</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">사용 통계 · 오류 보고 · 빠른 모드는 회사망이 막는 곳으로 나가는 기능이라 사내에서는 어차피 닿지 못합니다.</span> 그래서 사내에서만 꺼 두어, 도구가 닿지 못할 곳으로 나가려 하지 않게 합니다. 원격 제어(Remote Control)도 사내에서는 쓸 수 없는 기능입니다. 사외에서는 걷어 그대로 켜져 있습니다.</div></div>
-      <div class="row"><b>긴 대화<span class="tag"><code class="nm">ANTHROPIC_MODEL … [1m]</code><code class="nm">model_context_window</code><span class="k setting">Setting</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="src pai">PAI</span></span></b>
-        <div><span class="why">없으면 게이트웨이를 거친 Claude Code 가 대화 창을 20만 토큰으로 잡습니다.</span> 모델 이름의 표시로 100만 토큰 창을 엽니다. <code>/model</code> 의 다른 Claude 모델도 같습니다.
-          Codex 도 그냥 두면 26만 토큰 남짓이라 회사 설정이 창을 100만 토큰으로 엽니다. 사외로 나가면 걷습니다.</div></div>
+      <div class="row"><b>긴 대화<span class="tag"><code class="nm">model_context_window</code><span class="k setting">Setting</span><span class="t codex">Codex</span><span class="src pai">PAI</span></span></b>
+        <div><span class="why">Codex 는 그냥 두면 회사 모델의 창을 몰라 26만 토큰 남짓으로 잡습니다.</span> 그래서 회사 설정이 창을 100만 토큰으로 엽니다. 사외로 나가면 걷습니다.
+          Claude Code 는 따로 둘 것 없이 100만 토큰 창으로 열립니다.</div></div>
       <div class="row"><b>가장 새 모델로 일하기<span class="tag"><code class="nm">pgpt-proxy</code><span class="k proxy">Proxy</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
         <div>가장 새 Opus 가 거절하는 값(1 이 아닌 <code>temperature</code> · 모든 <code>top_p</code>)을 프록시가 떼고 넘겨, 가장 새 Opus 로도 일합니다.</div></div>
       <div class="row"><b>서브에이전트 · 요약의 모델<span class="tag"><code class="nm">pgpt-proxy</code><span class="k proxy">Proxy</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span></b>
