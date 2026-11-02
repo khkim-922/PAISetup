@@ -93,6 +93,20 @@ def post(port: int, model: str, *, key: str = "test-key-0123456789", max_tokens:
     return response.status, str(seen.get("model")), response.getheader("x-pgpt-model-substituted") or ""
 
 
+def response_model(port: int, model: str, *, key: str) -> str:
+    """클라이언트가 받은 응답 본문의 model 칸."""
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    body = json.dumps({"model": model, "max_tokens": 64, "stream": False,
+                       "messages": [{"role": "user", "content": "Reply exactly OK"}]})
+    conn.request("POST", PATH, body=body, headers={"Content-Type": "application/json",
+                                                   "Authorization": f"Bearer {key}",
+                                                   "anthropic-version": "2023-06-01"})
+    response = conn.getresponse()
+    data = response.read()
+    conn.close()
+    return str(json.loads(data).get("model"))
+
+
 def main() -> int:
     work = tempfile.TemporaryDirectory()
     proxy.LOG_PATH = Path(work.name) / "proxy.log"
@@ -142,6 +156,11 @@ def main() -> int:
         check(f"실측 목록: {model} → {want}", (status, sent) == (200, want) and bool(header) == substituted,
               (status, sent, header))
     check("새 키는 목록을 다시 읽는다", STATE["list_calls"] == 2, STATE["list_calls"])
+    # 응답 이름은 답한 모델의 하이픈 꼴이다(#230) — 확장이 점 철자를 못 읽어 「The previous model」로 띄운다
+    for model, want in (("claude-opus-5-5", "claude-opus-5-5"), ("claude-sonnet-5", "claude-sonnet-5-5"),
+                        ("claude-fable-5-1", "claude-fable-5-1"), ("claude-opus-5", "claude-opus-5")):
+        served = response_model(port, model, key="other-key-0123456789")
+        check(f"응답 이름: {model} → {want}", served == want, served)
 
     # 4. 출력 상한은 대체된 모델에도 걸린다(비스트림 18000)
     post(port, "claude-haiku-4-5", key="other-key-0123456789", max_tokens=64000)

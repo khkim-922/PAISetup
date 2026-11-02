@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 15
+VERSION_OURS = 16
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -999,6 +999,22 @@ def is_model_substitution(before: object, after: object) -> bool:
     return spelled != after.strip().lower().replace("-", ".")
 
 
+def _hyphen_claude_name(name: str) -> str:
+    """``claude-opus-5.5`` → ``claude-opus-5-5`` — 게이트웨이 철자를 Claude Code 가 읽는 하이픈 꼴로. 점이 없으면 그대로."""
+    return re.sub(r"(?<=\d)\.(?=\d)", "-", name) if name.lower().startswith("claude-") else name
+
+
+def echo_requested_model(data: bytes, sent: str, requested: str) -> tuple[bytes, bool]:
+    """응답 바이트의 첫 ``"model":"<보낸 이름>"`` 을 클라이언트가 읽는 이름으로 바꾼다. (바꾼 바이트, 바꿨나).
+
+    스트림은 ``message_start`` 의 ``message.model`` 이, 비스트리밍은 본문의 ``model`` 이 첫 것이다. 보낸 이름과 다른 이름이
+    오면(게이트웨이가 다른 모델로 답했다) 손대지 않는다. ⚠ 조각 경계에 걸쳐 갈린 이름은 못 바꾼다 — 그 판은 그대로 넘긴다.
+    """
+    pattern = re.compile(rb'"model"\s*:\s*' + re.escape(json.dumps(sent).encode("ascii")))
+    replaced, count = pattern.subn(b'"model":' + json.dumps(requested).encode("ascii"), data, count=1)
+    return replaced, bool(count)
+
+
 def normalize_claude_model_id(payload: dict[str, object], path: str = "",
                               listed: frozenset[str] | None = None) -> bool:
     """Messages 요청의 Claude 소수 판 ID 를 P-GPT 의 점 표기로 되살린다."""
@@ -1562,6 +1578,8 @@ def web_search_error_message(query: str, model: str, code: str = "unavailable") 
 
 class ProxyHandler(BaseHTTPRequestHandler):
     _model_substituted = ""
+    # (보낸 이름, 돌려줄 하이픈 이름) — 응답의 model 칸을 Claude Code 가 읽는 꼴로 바꿀 때 쓴다(echo_requested_model)
+    _model_echo: tuple[str, str] | None = None
 
     def end_headers(self) -> None:  # noqa: D102
         # 바꿔 보낸 요청의 200 을 「요청한 모델이 된다」로 읽지 않게 머리글로 밝힌다
@@ -1805,6 +1823,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         compact_copy = bytearray() if (claude_messages and not sse) else None
         keepalives_before = self._keepalives_sent
         self._stream_outcome = "complete"
+        echo = self._model_echo
 
         def incomplete(reason: str) -> bool:
             self._stream_outcome = "stream_incomplete" if sse else "incomplete"
@@ -1828,6 +1847,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         compact_copy.extend(chunk)
                     else:
                         compact_copy = None
+                if echo is not None:
+                    chunk, echoed = echo_requested_model(chunk, *echo)
+                    if echoed:
+                        echo = None
                 self._emit(chunk)
             # 길이를 선언한 응답이 모자라게 끝나면 read1() 은 예외 없이 빈 바이트를 돌려준다 — 남은 길이로 가린다
             remaining = getattr(response, "length", None)
@@ -1888,6 +1911,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._upstream_started = 0.0
         self._request_context = f"id={time.monotonic_ns():x}"
         self._model_substituted = ""
+        self._model_echo = None
         self._compact_request = False
         self._claude_messages = False
         self._keepalives_sent = 0
@@ -1970,6 +1994,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         listed = _GATEWAY_MODELS.get(bearer_token(self.headers)) if needs_model_list(model_name) else None
                         if normalize_claude_model_id(payload_obj, parsed.path, listed):
                             restored = payload_obj.get("model")
+                            # 응답 이름은 답한 모델의 하이픈 꼴로 돌려준다 — Claude Code(VS Code 확장)는 하이픈 꼴만 읽어
+                            # claude-opus-5.5 를 「The previous model」로 띄운다(#230). 대체한 응답도 답한 모델의 이름이라 숨기지 않는다
+                            self._model_echo = (str(restored), _hyphen_claude_name(str(restored)))
                             if is_model_substitution(model_name, restored):
                                 # 응답의 200 은 바뀐 모델의 것이다 — 표기만 고친 것(4-7 → 4.7)과 갈라 따로 센다
                                 _count_model_substitution()
@@ -2131,6 +2158,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     if response.length not in (None, 0):
                         raise ValueError("Truncated nonstream response")
                     message = json.loads(raw)
+                    if self._model_echo is not None and message.get("model") == self._model_echo[0]:
+                        message["model"] = self._model_echo[1]
                     events = anthropic_message_events(message, allow_tools=False)
                     for event in events:
                         self._emit(event)
@@ -2182,7 +2211,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._chunked_out = False
             if no_body:
                 pass
-            elif upstream_length is not None and not is_sse and not getattr(response, "chunked", False):
+            elif (upstream_length is not None and not is_sse and not getattr(response, "chunked", False)
+                  and self._model_echo is None):
+                # 응답 이름을 되돌리면 길이가 바뀔 수 있다(날짜 꼬리를 뗀 이름) — 그 판은 아래 chunked 로 싼다
                 # chunked 와 Content-Length 를 함께 보낸 업스트림은 http.client 가 chunked 로 읽는다 — 그 길이는 틀린 값이다
                 self.send_header("Content-Length", upstream_length)
             else:
@@ -2555,6 +2586,15 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-sonnet-5", measured) == "claude-sonnet-5.5"
     assert normalize_pgpt_claude_model("claude-opus-9-9", measured) == "claude-opus-9.9"
     assert not is_model_substitution("claude-fable-5-1", "claude-fable-5-1")
+    # 응답 이름은 답한 모델의 하이픈 꼴로 돌려준다(#230) — 스트림 첫 이벤트 · 비스트리밍 본문 · 다른 이름이면 손 안 댐
+    assert _hyphen_claude_name("claude-opus-5.5") == "claude-opus-5-5"
+    assert _hyphen_claude_name("claude-opus-5") == "claude-opus-5" and _hyphen_claude_name("gpt-5.6-sol") == "gpt-5.6-sol"
+    sse = b'event: message_start\ndata: {"type":"message_start","message":{"id":"m","model":"claude-opus-5.5","usage":{}}}\n\n'
+    echoed, hit = echo_requested_model(sse, "claude-opus-5.5", "claude-opus-5-5")
+    assert hit and b'"model":"claude-opus-5-5"' in echoed and b"5.5" not in echoed
+    assert echo_requested_model(b'{"id":"m", "model": "claude-sonnet-5.5"}', "claude-sonnet-5.5", "claude-sonnet-5-5") \
+        == (b'{"id":"m", "model":"claude-sonnet-5-5"}', True)
+    assert echo_requested_model(b'{"model":"claude-opus-5"}', "claude-opus-5.5", "claude-opus-5-5") == (b'{"model":"claude-opus-5"}', False)
     assert normalize_pgpt_claude_model("claude-fable-5-1", later) == "claude-fable-5.1"
     assert claude_family_version("claude-3-5-haiku-20241022") == ("haiku", (3, 5))
     assert parse_model_map(" claude-haiku*=claude-opus-5 ; bad ;x=") == [("claude-haiku*", "claude-opus-5")]
