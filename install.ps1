@@ -204,17 +204,22 @@ $PersonalTools = @(
 #   벤더가 판을 내는 꼴 — `Read` 의 낱말이 가르고 읽는 손은 하나다(`Get-VendorLatest`). 행은 이름이 아니라 이 꼴로 갈린다:
 #     · `redirect` — `Url` 이 판 없는 주소이고 그 판의 파일로 넘긴다. 넘김 주소의 경로에서 판을 읽고, 받기는 `Url` 그대로다
 #     · `listing`  — `List` 가 판마다 폴더를 둔 목록이다. 행의 판 줄(`Line`)에 든 판 가운데 받을 파일(`Url` 의 `{ver}` 틀)이 있는
-#       가장 높은 판이다 — 보안 고침만 낸 판은 설치본이 없어 받기 전에 그 주소가 있나를 묻는다
+#       가장 높은 판이다 — 보안 고침만 낸 판은 설치본이 없어 받기 전에 그 주소가 있나를 묻는다. 200 이나 넘김(30x)이면 있다 — 미러로
+#       넘기는 배포 서버는 파일을 직접 안 준다
 #     · `feed`     — `Feed` 가 앱의 갱신 피드(electron-builder 의 `latest-*.yml`)다. 판 · 받을 주소 · SHA512 를 피드가 댄다
 #     · `github`   — `Repo` 의 GitHub 릴리스 `latest` 가 넘기는 태그에서 판을 읽고, 자산 이름은 `Asset` 틀이다(`{tag}` 는 태그에서 머리
 #       `v` 를 뗀 글자). 자산 이름에 판이 박힌 릴리스라 `latest/download/<이름>` 으로는 못 받는다
 #   받은 것을 까는 꼴 — `SilentArgs` 면 설치본을 무음으로 돌리고(winget 이 그 설치본에 주는 인자와 같다), `Unzip` 이면 zip 을 고정
-#     자리(`Dir`)에 푼다 — zip 안에서 판마다 이름이 바뀌는 폴더가 `Root`(`{ver}` 틀)다(`Install-VendorZip`)
+#     자리(`Dir`)에 푼다 — zip 안에서 판마다 이름이 바뀌는 폴더가 `Root`(`{ver}` 틀)다(`Install-VendorZip`). `Msi` 면 받은 것이 MSI 라
+#     `msiexec /i` 에 `SilentArgs` 를 붙여 승격으로 돌린다 — 승인 창은 winget 이 그 MSI 에 띄우는 것과 같다
+#   받는 곳 — `Mirrors = 'metalink'` 면 받을 주소의 Metalink(`<주소>.meta4` — 배포 서버가 내는 미러 순위 · 원본 지문)를 읽어 순위 앞
+#     곳들의 받기 빠르기를 재고 가장 빠른 곳에서 받는다(`Get-VendorMirror`). 미러로 넘기는 배포 서버는 회차마다 다른 미러를 주고, 한
+#     연결로 받는 빠르기가 미러마다 열 배까지 갈린다
 #   울타리 — `Signer` 면 받은 파일의 Authenticode 서명이 유효하고 서명자(인증서 CN)가 그 이름일 때만 돌린다(winget 의 지문 대신 서는
-#     울타리). 서명이 없는 배포는 `Unsigned` 에 그래도 받는 까닭을 적고, 그 길은 https 주소에서만 받는다. 피드가 SHA512 를 대면 그것도
-#     맞아야 한다(`Test-VendorFence`). 둘 다 없는 벤더 길은 안 돌린다
-#   판을 읽는 벤더 길은 x64 사용자 범위 설치본 · 꾸러미를 가리킨다 — ARM PC 와, 깔린 것이 사용자 범위 밖(기계 범위 · 앱 실행 별칭
-#     자리)에 선 PC 에서는 안 탄다(`Get-VendorWay`). 그 위에 돌리면 두 벌이 된다.
+#     울타리). 서명이 없는 배포는 `Unsigned` 에 그래도 받는 까닭을 적고, 그 길은 https 주소에서만 받는다. 피드가 SHA512 를, Metalink 가
+#     SHA-256 을 대면 그것도 맞아야 한다(`Test-VendorFence`). 둘 다 없는 벤더 길은 안 돌린다
+#   판을 읽는 벤더 길은 x64 PC 에서만 타고, 깔린 것 위에서는 사용자 범위(`%LOCALAPPDATA%` 밑)에 선 사본에만 탄다 — 기계 범위 · 앱 실행
+#     별칭 자리에 선 것 위에 돌리면 두 벌이 된다(`Get-VendorWay`). 기계 범위 MSI 길은 그래서 깔 때만 탄다.
 # 깔린 것을 올리는 길은 따로 안 적으면 이 목록을 따른다 — 벤더 판을 읽었으면 그 판으로 가르고 그 길에서 받으며, 못 읽었으면 winget
 #   「올릴 것」 목록이다(`Get-UpgradeRoute`). 다른 길은 데스크탑 앱 표의 `Upgrade` 가 든다.
 $Apps = @(
@@ -320,8 +325,16 @@ $Clis = @(
   #   ⚠ `Cmd` 는 콘솔 껍데기 `soffice.com` 이다 — `soffice.exe --version` 은 따로 콘솔 창을 띄워 판을 찍고 Enter 를 기다려, 프로브가
   #   사람이 누를 때까지 선다. 맨 이름(`soffice`)은 파워셸 · cmd 가 PATHEXT 차례로 `.com` 을 집지만 그 차례에 기대지 않는다.
   #   `Arg` 는 기본(`--version`)이다 — `soffice.com` 은 이 창에 판을 찍고 0 으로 끝난다.
+  #   `Ways` — 깔 때는 배포 서버의 미러 순위에서 잰 가장 빠른 곳으로 받는다(`Mirrors`). 배포 서버가 넘겨 주는 미러를 그대로 타는
+  #   winget 은 느린 미러에 걸리면 수백 MB 를 10분 가까이 받는다. 판은 `stable/` 의 가장 높은 판 폴더다 — winget 목록이 대는 판과 같다.
+  #   winget 매니페스트가 VC++ 런타임을 짝으로 들어, 벤더 MSI 도 그 런타임이 선 PC 에서만 간다(`NeedsVcRuntime`). 깔린 것을 올리는 일은
+  #   winget 이 든다(기계 범위).
   @{ Key='libreoffice'; Via='winget'; Cmd='soffice.com'; Label='LibreOffice (덱을 그림으로)'; Id='TheDocumentFoundation.LibreOffice'
-     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude') }
+     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude')
+     Ways=@(@{ Via='vendor'; Read='listing'; List='https://download.documentfoundation.org/libreoffice/stable/'
+               Url='https://download.documentfoundation.org/libreoffice/stable/{ver}/win/x86_64/LibreOffice_{ver}_Win_x86-64.msi'
+               Mirrors='metalink'; Msi=$true; SilentArgs='/quiet /norestart'; NeedsVcRuntime=$true; Signer='The Document Foundation' }
+            @{ Via='winget' }) }
   # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로를 lychee 로 잰다(설정
   #   저장소의 세션 훅도 까지만, 그 저장소를 안 붙인 PC 에도 서야 해서 여기서도 깐다). 선언의 설치법이 GitHub 릴리스라 winget id 를 이
   #   줄이 든다. lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 그 자리(`WinGet\Links` 나 패키지 폴더 — winget 이 PC 마다 고른다)가
@@ -358,6 +371,8 @@ $VcRuntimeMin = [version]'14.40'
 $VcRedistRcReboot    = @(3010, 1641, 0x8A150109, 0x8A15010A, 0x8A15010B)   # 다시 시작해야 끝난다 · 다시 시작한 뒤 다시 깐다
 $VcRedistRcCancelled = @(1602, 1223, 0x8A15010C, 0x800704C7)                # 사람이(승인 창에서) 물렸다
 $VcRedistRcNewer     = @(1638, 0x8A15002B, 0x8A150061, 0x8A15010D, 0x8A15010E)  # 같거나 더 새 판이 이미 깔렸다
+# `msiexec` 가 「깔았고 다시 시작해야 끝난다」로 낸 값(Windows Installer 오류 값) — 벤더 MSI 길(`Invoke-VendorWay`)은 섰다로 친다
+$MsiRcReboot = @(3010, 1641)
 
 # ── Node 가 말을 거는 자리 — **목록이 진본이다** ─────────────────────────────────
 # 신뢰를 이을 근거를 여기서 잰다(`Wire-NodeTrust`). Node 를 태우는 곳이 늘면 한 줄 더한다.
@@ -1099,6 +1114,9 @@ $ExtListCap    = 60    # `code` 가 node 를 띄워 깔린 확장을 읽는다 �
 $VendorHeadCap = 15    # 벤더에 판을 묻는 요청 한 번(`Invoke-VendorAsk` — 넘김 주소 · 목록 쪽 · 피드) — 받지 않으므로 평소 1초 안팎이다. 넘기면 「모른다」로 winget 목록에 물러선다
 $VendorPageMax = 1MB   # 판을 읽으려고 GET 하는 쪽(목록 · 피드)에서 읽는 몸통의 끝 — 목록 쪽이 수십 KB 다. 넘는 꼬리는 안 읽는다
 $VendorListTries = 3   # 목록 쪽(`listing`)에서 받을 파일이 있나를 HEAD 로 묻는 판의 수 — 높은 판부터 묻는다. 보안 고침만 낸 판이 이보다 많이 이어지면 winget 으로 물러선다
+$VendorMirrorTries = 8      # 미러 순위(`Mirrors = 'metalink'`)에서 빠르기를 재는 곳의 수 — 가까운 곳부터. 순위는 묻는 쪽의 대륙 미러를 앞에 세운다
+$VendorMirrorProbe = 4MB    # 한 곳을 재려고 받는 앞 토막 — 작으면 연결을 여는 시간만 잰다
+$VendorMirrorCap   = 4      # 한 곳을 재는 초 — 넘기면 그때까지 받은 양으로 잰다. 느린 곳일수록 일찍 끊어, 다 재도 이 초 × 곳의 수 안팎이다
 $ClaudePluginCap = 60  # `claude plugin list` · `plugin marketplace list` — node 로 선 CLI 가 플러그인 기록을 읽는다. 첫 실행에 제 짐을 푸는 CLI 가 `--version` 에 20초 가까이 쓴 PC 가 있어(PAISetup #30) 넉넉히 둔다
 # 끝 검증이 묻는 바깥 명령의 한도 — 넘기면 그 칸이 「못 쟀다」다. 위와 같이 멈춤을 가르는 값이라 의심스러우면 길게 둔다.
 $ToolHomesCheckCap = 120   # 손(`tool-homes.py check`)이 도구 홈 넷의 규범 · 룰 · 에이전트 · 스킬을 표와 견준다 — 파일을 읽기만 하는데, 느린 디스크와 보안 소프트가 낀 VDI 를 넉넉히 덮는다
@@ -3907,7 +3925,8 @@ function Get-VendorLatest($Way) {
                 Where-Object { -not $line -or ($_.Major -eq $line.Major -and $_.Minor -eq $line.Minor) } | Sort-Object -Descending -Unique)
       foreach ($v in @($vers | Select-Object -First $VendorListTries)) {
         $u = $Way.Url.Replace('{ver}', "$v")
-        if ((Invoke-VendorAsk $u).Code -eq 200) { $found.Ver = "$v"; $found.Url = $u; break }
+        $code = (Invoke-VendorAsk $u).Code
+        if ($code -eq 200 -or ($code -ge 300 -and $code -lt 400)) { $found.Ver = "$v"; $found.Url = $u; break }
       }
     }
     'feed' {
@@ -3932,12 +3951,55 @@ function Get-VendorLatest($Way) {
   return $found
 }
 
+# 미러 한 곳의 받기 빠르기 — 앞 `$VendorMirrorProbe` 바이트를 받아 보고 초당 바이트를 낸다(못 받았으면 0). `$VendorMirrorCap` 초가
+#   지나면 그때까지 받은 양으로 잰다. https 로 물은 것이 http 로 넘겨지면 0 이다(`Get-Download` 와 같은 자).
+function Measure-VendorMirror([string]$Url) {
+  $res = $null
+  $got = 0
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  try {
+    $req = [Net.HttpWebRequest]::Create($Url)
+    $req.UserAgent = 'PAISetup'
+    $req.Timeout = $VendorMirrorCap * 1000
+    $req.ReadWriteTimeout = $VendorMirrorCap * 1000
+    $req.AddRange(0, [int]$VendorMirrorProbe - 1)
+    $res = $req.GetResponse()
+    if ($Url -like 'https:*' -and $res.ResponseUri.Scheme -ne 'https') { return 0 }
+    $in = $res.GetResponseStream()
+    $buf = New-Object byte[] 65536
+    while ($got -lt $VendorMirrorProbe -and $sw.Elapsed.TotalSeconds -lt $VendorMirrorCap -and ($n = $in.Read($buf, 0, $buf.Length)) -gt 0) { $got += $n }
+  } catch { } finally { if ($res) { $res.Close() } }
+  $sec = $sw.Elapsed.TotalSeconds
+  if ($got -le 0 -or $sec -le 0) { return 0 }
+  return [double]($got / $sec)
+}
+
+# 받을 곳을 미러에서 고른다 — 받을 주소(`$Url`)의 Metalink(`<주소>.meta4`)에서 원본 지문(SHA-256)과 순위대로 선 https 미러를 읽고, 앞
+#   `$VendorMirrorTries` 곳의 빠르기를 재(`Measure-VendorMirror`) 가장 빠른 곳을 낸다. 내는 것 `@{ Url; Sha256; Speed; Tried }` — 목록을
+#   못 읽었거나, 지문이 없거나, 잰 곳이 다 0 이면 `$null` 이다(부르는 쪽이 다음 길로 간다). 지문이 없으면 고르지 않는다 — 미러의 파일을
+#   원본과 맞출 자가 그것뿐이다.
+function Get-VendorMirror([string]$Url) {
+  $a = Invoke-VendorAsk "$Url.meta4" -Body
+  if ($a.Code -ne 200 -or $a.Text -notmatch '<hash type="sha-256">([0-9a-fA-F]{64})</hash>') { return $null }
+  $sha = $Matches[1].ToLowerInvariant()
+  $urls = @([regex]::Matches($a.Text, '<url\b[^>]*\bpriority="(\d+)"[^>]*>(https://[^<]+)</url>') |
+            Sort-Object { [int]$_.Groups[1].Value } | ForEach-Object { [Net.WebUtility]::HtmlDecode($_.Groups[2].Value) } |
+            Select-Object -First $VendorMirrorTries)
+  $best = $null
+  foreach ($u in $urls) {
+    $bps = Measure-VendorMirror $u
+    if ($bps -gt 0 -and (-not $best -or $bps -gt $best.Speed)) { $best = @{ Url = $u; Sha256 = $sha; Speed = $bps; Tried = $urls.Count } }
+  }
+  return $best
+}
+
 # 받은 파일이 그 벤더의 것인가 — 맞으면 빈 글자, 아니면 어긋난 까닭. 길(`$Way`)이 울타리 하나를 꼭 든다(결정 0179 — winget 의 지문 대신
 #   서는 울타리):
 #   · `Signer` — Authenticode 서명이 유효하고 서명자 인증서의 CN 이 그 이름일 때만 맞다
 #   · `Unsigned` — 서명이 없는 배포라고 행이 까닭을 적은 길. 받은 주소가 https 일 때만 맞다(넘김이 http 로 내려앉으면 받는 손이 던진다 ·
 #     `Get-Download`)
-#   피드가 지문을 댔으면(`$Found.Sha512`) 받은 파일의 SHA512 도 같아야 한다. 울타리를 안 든 길은 어긋난 것이다.
+#   피드가 지문을 댔으면(`$Found.Sha512`) 받은 파일의 SHA512 도, Metalink 가 댔으면(`$Found.Sha256`) SHA-256 도 같아야 한다. 울타리를
+#   안 든 길은 어긋난 것이다.
 function Test-VendorFence([string]$Path, $Way, $Found) {
   if ($Way.Signer) {
     try { $sig = Get-AuthenticodeSignature -LiteralPath $Path } catch { return "서명을 못 읽었다 — $(Say-Why $_)" }
@@ -3956,6 +4018,11 @@ function Test-VendorFence([string]$Path, $Way, $Found) {
       try { $got = [Convert]::ToBase64String([Security.Cryptography.SHA512]::Create().ComputeHash($fs)) } finally { $fs.Dispose() }
     } catch { return "지문을 못 쟀다 — $(Say-Why $_)" }
     if ($got -cne $Found.Sha512) { return '받은 파일의 SHA512 가 피드의 것과 다르다' }
+  }
+  if ($Found.Sha256) {
+    $got = ''
+    try { $got = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash } catch { return "지문을 못 쟀다 — $(Say-Why $_)" }
+    if ($got -ne $Found.Sha256) { return '받은 파일의 SHA-256 이 원본 서버의 것과 다르다' }
   }
   return ''
 }
@@ -4013,18 +4080,27 @@ function Install-VendorZip([string]$Zip, $Row, $Way, $Found) {
 
 # 벤더 길 하나로 받아 깐다 — 프로그램 · 데스크탑 앱 · winget CLI 가 이 한 손을 쓴다. `$Found`(`Get-VendorLatest` 의 답 · 판을 안 읽는 길은
 #   `@{ Url = 길의 Url }`)의 주소에서 받아 울타리(`Test-VendorFence`)를 지나면 설치본을 무음으로 돌리거나(`SilentArgs`) 고정 자리에
-#   푼다(`Unzip` · `Install-VendorZip`).
-#   내는 것 `@{ Rc; Why }` — `Rc` 0 이면 섰다(zip 은 새 사본이 도는 것까지 쟀다), 0 이 아니면 설치본이 낸 값, `$null` 이면 받기 · 울타리 ·
-#   띄우기 · 풀기에서 졌고 `Why` 가 까닭이다. 0 이 아니면 그 까닭을 노란 한 줄로 남긴다 — 부르는 쪽은 다음 길로 간다.
-#   받는 파일 이름은 행의 이름에서 짓는다(`<이름>Setup.exe` · `.zip`) — 받아 놓을 이름이 사람에게 뜻이 있게.
+#   푼다(`Unzip` · `Install-VendorZip`) · MSI 를 승격으로 돌린다(`Msi`). 미러 순위를 든 길(`Mirrors`)은 받기 전에 받을 곳을 고르고
+#   (`Get-VendorMirror`) 그 지문을 울타리에 더한다.
+#   내는 것 `@{ Rc; Why }` — `Rc` 0 이면 섰다(zip 은 새 사본이 도는 것까지 쟀다 · MSI 는 다시 시작해야 끝나는 값도 섰다로 친다), 0 이
+#   아니면 설치본이 낸 값, `$null` 이면 받을 곳 고르기 · 받기 · 울타리 · 띄우기 · 풀기에서 졌고 `Why` 가 까닭이다. 0 이 아니면 그 까닭을
+#   노란 한 줄로 남긴다 — 부르는 쪽은 다음 길로 간다.
+#   받는 파일 이름은 행의 이름에서 짓는다(`<이름>Setup.exe` · `.zip` · `.msi`) — 받아 놓을 이름이 사람에게 뜻이 있게.
 function Invoke-VendorWay([string]$Label, $Row, $Way, $Found, [string]$Act) {
   $base = @($Row.App, $Row.Name, $Row.Key, $Row.Cmd) | Where-Object { $_ } | Select-Object -First 1
-  $file = Join-Path ([IO.Path]::GetTempPath()) (("$base" -replace '[^\w.-]', '') + 'Setup' + $(if ($Way.Unzip) { '.zip' } else { '.exe' }))
+  $ext = if ($Way.Unzip) { '.zip' } elseif ($Way.Msi) { '.msi' } else { '.exe' }
+  $file = Join-Path ([IO.Path]::GetTempPath()) (("$base" -replace '[^\w.-]', '') + 'Setup' + $ext)
   $r = @{ Rc = $null; Why = '' }
   try {
+    $m = $null
     if (-not $Found.Url) { $r.Why = '벤더의 받을 주소를 못 읽었다' }
     elseif ($Way.NeedsVcRuntime -and (Measure-VcRuntime).State -ne 'yes') { $r.Why = 'VC++ 런타임이 없어 벤더 사본이 못 돈다 — 짝을 함께 까는 winget 으로' }
+    elseif ($Way.Mirrors -eq 'metalink' -and -not ($m = Get-VendorMirror $Found.Url)) { $r.Why = '미러 순위 · 원본 지문을 못 읽었거나 잰 미러가 다 안 받는다' }
     else {
+      if ($m) {
+        $Found = @{ Ver = $Found.Ver; Url = $m.Url; Sha512 = $Found.Sha512; Sha256 = $m.Sha256 }
+        Write-Host ('      · 미러 {0} — {1:N1} MB/s ({2}곳을 쟀다)' -f ([Uri]$m.Url).Host, ($m.Speed / 1MB), $m.Tried) -ForegroundColor DarkGray
+      }
       try {
         Say-Busy $Label 'fetch' @((Split-Path $file -Leaf), $(if ($Found.Ver) { "벤더 $($Found.Ver)" } else { '벤더' }))
         Get-Download $Found.Url $file
@@ -4034,6 +4110,13 @@ function Invoke-VendorWay([string]$Label, $Row, $Way, $Found, [string]$Act) {
         if ($Way.Unzip) {
           Say-Busy $Label $Act @('벤더 zip', [Environment]::ExpandEnvironmentVariables("$($Way.Unzip.Dir)"))
           $r = Install-VendorZip $file $Row $Way $Found
+        } elseif ($Way.Msi) {
+          Say-Busy $Label $Act @('벤더 MSI', '승인 창이 뜰 수 있다', '몇 분 걸릴 수 있다')
+          try {
+            $r.Rc = (Start-Process -FilePath 'msiexec.exe' -ArgumentList (@('/i', "`"$file`"") + @($Way.SilentArgs)) -Verb RunAs -PassThru -Wait).ExitCode
+            if ($MsiRcReboot -contains $r.Rc) { Write-Host '      · 다시 시작하면 설치가 마무리된다' -ForegroundColor Yellow; $r.Rc = 0 }
+            if ($r.Rc -ne 0) { $r.Why = "벤더 MSI 가 $($r.Rc) 로 끝났다" }
+          } catch { $r.Why = "벤더 MSI 를 못 띄웠다(승인 창을 물렸을 수 있다) — $(Say-Why $_)" }
         } else {
           Say-Busy $Label $Act @('벤더 설치본', '몇 분 걸릴 수 있다')
           try {
@@ -4981,7 +5064,9 @@ function Install-WingetCli($C) {
   }
   if ($cliAct -eq 'present') { Write-Host "  $($C.Label) — 있음 $(Format-VerPart $b)"; return }
   if ($cliAct -eq 'latest')  { Write-Host "  $($C.Label) — 최신  $(Format-VerPart $b)"; Write-WingetAhead $C.Label $route; return }
-  if ($C.Scope -eq 'machine' -and -not $noWinget -and -not (Test-ElevationDoor $C.Label $cliAct (Test-Attended) ($cliAct -eq 'install'))) { return }
+  # winget 이 없으면 기계 범위로 갈 손은 벤더 MSI 길(깔 때만)뿐이라, 그 길이 없으면 문을 안 묻는다
+  $machineGo = -not $noWinget -or ($cliAct -eq 'install' -and (Get-VendorWay $C $cliRuns))
+  if ($C.Scope -eq 'machine' -and $machineGo -and -not (Test-ElevationDoor $C.Label $cliAct (Test-Attended) ($cliAct -eq 'install'))) { return }
   if ($cliAct -eq 'upgrade' -or $cliAct -eq 'upcheck') {
     if ($route.Via -eq 'updater') { Invoke-CliUpdater $C $b $arg; return }
     $srcBefore ="$((Get-Command $C.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
