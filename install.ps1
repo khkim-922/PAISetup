@@ -6829,21 +6829,23 @@ $HomeSeed = Read-HomeSeed (Join-Path $Here 'seeds\config-repo\vdi-home-settings.
 $Features = Get-SeedSwitches $HomeSeed
 
 # ── 고를 모델 목록 — **자리를 탄다. 게이트웨이에 닿는 자리에만 선다** (결정 0047 · 0048) ────
-# `/model` 목록에 설 줄을 우리가 선언한다. 접미사 `[1m]` 이 창을 1M 으로 연다 — 게이트웨이는 그만큼을 주고 CLI 가 깎는다.
+# `/model` 목록에 설 줄을 우리가 선언한다. 접미사 `[1m]` 은 안 붙인다 — 지금 Claude Code 는 게이트웨이 모델을 접미사 없이도
+#   1M 창으로 연다(claude-config 결정 0207).
 # ⚠ **씨앗(`vdi-home-settings.json`)에 두지 않는다.** 이 이름들은 게이트웨이가 등록한 것이라 자리를 타는데 씨앗은 익명 층이고
 #   포크를 따라간다. 사외는 구독으로 돌아 이 이름이 없어서, 씨앗에 두면 사외 VDI 목록에 못 부르는 줄이 서고 고르면 깨진다 —
 #   그 자리는 씨앗 덮기가 이 설치보다 나중이라(위 「클라이언트 기능 스위치」) 여기서 안 쓴 것도 씨앗이 되살린다.
 # 목록의 진본은 게이트웨이의 `GET /v1/models` 다 — 거기 없는 Sonnet 5 · Haiku 는 내장 줄로 보여도 고르면 400 이라
 #   `$ModelPickerOnly` 로 내장 줄을 숨긴다. 줄이 늘면 여기 한 줄을 더하되, 게이트웨이가 그 이름을 내는지 먼저 묻는다.
-# ⚠ **이름은 하이픈으로 적는다.** 하이픈이 CLI 카탈로그가 아는 이름이라 표시명 · 접미사 판정이 걸리고, 점 표기는 「모르는 모델」로
-#   떨어져 `[1m]` 이 조용히 안 붙는다. 게이트웨이의 철자는 모델마다 달라(`claude-opus-5.5` 는 점 · `claude-fable-5-1` 은 하이픈)
-#   하이픈을 직결로 보내면 400 인 이름도 있지만, 사내 Claude Code 는 로컬 프록시를 지나고 프록시가 목록에 선 철자로 고쳐 보낸다.
+# ⚠ **이름은 하이픈으로 적는다.** 하이픈이 CLI 카탈로그가 아는 이름이라 표시명과 모델 기능(자동 모드 · 노력 수준)이 걸리고, 점
+#   표기는 「모르는 모델」로 떨어진다. 게이트웨이의 철자는 모델마다 달라(`claude-opus-5.5` 는 점 · `claude-fable-5-1` 은 하이픈)
+#   하이픈을 직결로 보내면 400 인 이름도 있지만, 사내 Claude Code 는 로컬 프록시를 지나고 프록시가 나가는 철자와 돌아오는
+#   응답 이름을 맞춘다.
 $ModelPicker = @(
-  @{ model = 'claude-opus-5-5[1m]';   description = 'Opus 5.5 · 게이트웨이 · 1M 창' }
-  @{ model = 'claude-sonnet-5-5[1m]'; description = 'Sonnet 5.5 · 게이트웨이 · 1M 창' }
-  @{ model = 'claude-haiku-5-5[1m]';  description = 'Haiku 5.5 · 게이트웨이 · 1M 창' }
-  @{ model = 'claude-fable-5-1[1m]';  description = 'Fable 5.1 · 게이트웨이 · 1M 창' }
-  @{ model = 'claude-opus-5[1m]';     description = 'Opus 5 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-opus-5-5';   description = 'Opus 5.5 · 게이트웨이' }
+  @{ model = 'claude-sonnet-5-5'; description = 'Sonnet 5.5 · 게이트웨이' }
+  @{ model = 'claude-haiku-5-5';  description = 'Haiku 5.5 · 게이트웨이' }
+  @{ model = 'claude-fable-5-1';  description = 'Fable 5.1 · 게이트웨이' }
+  @{ model = 'claude-opus-5';     description = 'Opus 5 · 게이트웨이' }
 )
 # 내장 줄(Sonnet 5 · Haiku · Custom 칸)을 숨긴다 — 이 게이트웨이가 안 내는 것들이다.
 # `Default` 행은 이 값과 무관하게 남는다.
@@ -6869,8 +6871,8 @@ $BusyVerbs = [ordered]@{
 # 끄기 셋도 사내 전용이다 — 회사망이 막는 곳으로 안 가려고 끄는 것이라 사외에서는 끌 까닭이 없고, 끄면 잃는다:
 #   `DISABLE_TELEMETRY` 는 원격 제어가 기대는 기능 플래그 평가까지 꺼 켤 때마다 「Remote Control initialization failed」로 진다
 #   (공식 문서 remote-control 요구 조건). 값 파일이 늘 이 이름을 들어 울타리를 넘으므로, 사용자가 손수 넣은 값도 사외에서는 걷힌다.
-# 모델 고정 둘도 사내 전용이다 — 게이트웨이가 설정 `model` 키의 `[1m]` 을 벗겨 1M 창을 환경변수로 여는 우회라(claude-config 결정
-#   0049), 구독 로그인으로 서는 사외에서는 열 것이 없다. 남으면 시작 모델이 그 값에 묶여 `/model` 로 고른 것이 새 창마다 밀린다.
+# 모델 고정 둘도 사내 전용이다 — 게이트웨이 이름(`claude-opus-5-5`)이라 구독 로그인으로 서는 사외에서는 뜻이 없다. 남으면
+#   시작 모델이 그 값에 묶여 `/model` 로 고른 것이 새 창마다 밀린다.
 #   `ANTHROPIC_MODEL` 은 위 `$Vars` 표에도 있어 표 루프도 이 목록을 묻는다.
 # 안티그래비티의 주소도 사내 전용이다 — 루프백이 아니라 게이트웨이를 바로 가리켜(claude-config 결정 0203) 프록시 걷기가 못 가르고,
 #   사외에서는 닿지 않는 회사 주소라 남으면 그 사람의 키로 도는 agy 가 죽은 곳으로 나간다.
