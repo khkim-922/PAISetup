@@ -9153,10 +9153,10 @@ $envAssets = @(
   #   가리킬 자리가 홈에 서야 한다(claude-config 결정 0074 · 0075).
   @{ From = Join-Path $Here 'seeds\vibecoding'; To = Join-Path $homeDir 'seeds\vibecoding'; Mirror = $true
      Name = '사내 코딩 기준 씨앗'; Desc = '사내 앱을 회사 방식으로 배포할 때 스킬 inhouse-app 이 여는 회사 기준 본문 — 들머리는 SEED.md' }
-  # 스크립트가 사내 메일을 보내는 파일 하나 — 회사 가이드대로면 사내 중계에서 첫 발송이 지는 자리를 기본값으로 든다.
-  #   스킬 `inhouse-app` 과 사내 환경 문서가 이 자리를 가리킨다.
+  # 스크립트가 사내 메일을 보내고 받은편지함을 읽는 파일들 — 회사 가이드대로면 사내 중계에서 첫 발송이 지는 자리를 기본값으로
+  #   들고, 가이드에 없는 받기는 읽음 표시를 안 바꾸는 길로 든다. 스킬 `inhouse-app` 과 사내 환경 문서가 이 자리를 가리킨다.
   @{ From = Join-Path $Here 'seeds\mail'; To = Join-Path $homeDir 'seeds\mail'; Mirror = $true
-     Name = '메일 씨앗'; Desc = '회사 PC 의 스크립트가 사내 메일을 보내는 파일 하나 — 복사해서 쓴다' }
+     Name = '메일 씨앗'; Desc = '회사 PC 의 스크립트가 사내 메일을 보내고 받은편지함을 읽는 파일들 — 복사해서 쓴다' }
 )
 # ── 홈 씨앗의 임자 — 찾는 자 하나가 정한다 (`Get-OwnedHome` · PAISetup #48 ①) ──────────────────────────────────
 # 찾는 자는 이 짐의 것을 부른다(`Get-ConfigRootGen` — 「설정 저장소」 걸음이 넘길 자리를 재는 그 손) — 홈 사본은 이 걸음이 바로 아래에서

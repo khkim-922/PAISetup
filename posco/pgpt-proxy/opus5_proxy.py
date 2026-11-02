@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 16
+VERSION_OURS = 17
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -118,6 +118,9 @@ EXECUTION_LIMIT_MARGIN_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_MARGIN_SEC",
 # 게이트웨이 목록을 못 읽었을 때 하이쿠 · claude-sonnet-5* 가 갈 자리 — 목록을 읽으면 목록이 먼저다(resolve_claude_model).
 CLAUDE_HAIKU_SUBSTITUTE = "claude-haiku-5.5"
 CLAUDE_SONNET_SUBSTITUTE = "claude-sonnet-5.5"
+# 판 없는 claude-sonnet-5(자동 모드 분류기가 보내는 이름)가 갈 자리 — 목록에 있으면 목록보다 앞서고, 없으면 가장 새 소넷이다.
+#   게이트웨이의 5.x 판은 분류기 2단계의 「<thinking> 안에서 먼저 생각하라」 지시에 빈 답을 내 판정이 안 선다(#230).
+CLAUDE_SONNET5_SUBSTITUTE = "claude-sonnet-4.6"
 CLIENT_POLL_SEC = 0.25
 HOP_BY_HOP = {
     "connection",
@@ -832,6 +835,11 @@ def is_substitution_target(model: str) -> bool:
     return "haiku" in lower or lower.startswith("claude-sonnet-5")
 
 
+def is_bare_sonnet5(model: str) -> bool:
+    """판을 안 박은 claude-sonnet-5(날짜 꼬리는 뗀다)인가 — /model 의 claude-sonnet-5-5 같은 판 박힌 이름은 아니다."""
+    return re.sub(r"-\d{8}$", "", model.strip().lower()) == "claude-sonnet-5"
+
+
 def needs_model_list(model: object) -> bool:
     """목록을 읽어야 이름이 서나 — 대체 대상이거나 철자를 고를 대시 이름일 때만 읽는다. 점 표기 · 판 없는 이름은 안 읽는다."""
     if not isinstance(model, str):
@@ -869,6 +877,8 @@ def resolve_claude_model(model: str, listed: frozenset[str] | None = None) -> tu
             if spelled in listed_lower:
                 return listed_lower[spelled], "list"  # 게이트웨이가 들였다 — 대체하지 않는다
         parsed = claude_family_version(name)
+        if is_bare_sonnet5(name) and CLAUDE_SONNET5_SUBSTITUTE.lower() in listed_lower:
+            return listed_lower[CLAUDE_SONNET5_SUBSTITUTE.lower()], "list"
         if parsed and is_substitution_target(name):
             for family in _CLAUDE_FALLBACK_FAMILIES.get(parsed[0], (parsed[0],)):
                 pick = newest_listed_claude(family, listed)
@@ -877,7 +887,9 @@ def resolve_claude_model(model: str, listed: frozenset[str] | None = None) -> tu
     # 목록을 못 읽었을 때 — 하이쿠는 대시→점 변환보다 먼저 본다(CLI 가 박은 판 · 날짜가 게이트웨이의 판과 어긋난다)
     if "haiku" in lower:
         return CLAUDE_HAIKU_SUBSTITUTE, "fixed"
-    # claude-sonnet-5 와 날짜 박힌 claude-sonnet-5-20260219
+    # claude-sonnet-5 와 날짜 박힌 claude-sonnet-5-20260219 — 판 박힌 claude-sonnet-5-5 는 5.5 로
+    if is_bare_sonnet5(name):
+        return CLAUDE_SONNET5_SUBSTITUTE, "fixed"
     if lower.startswith("claude-sonnet-5"):
         return CLAUDE_SONNET_SUBSTITUTE, "fixed"
     return _dotted_claude_name(name), "spelling"
@@ -2434,8 +2446,9 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-newfamily-7-2") == "claude-newfamily-7.2"
     assert normalize_pgpt_claude_model("claude-3-5-sonnet-20241022") == "claude-3-5-sonnet-20241022"
     assert normalize_pgpt_claude_model("gpt-5.6-sol") == "gpt-5.6-sol"
-    assert normalize_pgpt_claude_model("claude-sonnet-5") == CLAUDE_SONNET_SUBSTITUTE
-    assert normalize_pgpt_claude_model("claude-sonnet-5-20260219") == CLAUDE_SONNET_SUBSTITUTE
+    assert normalize_pgpt_claude_model("claude-sonnet-5") == CLAUDE_SONNET5_SUBSTITUTE
+    assert normalize_pgpt_claude_model("claude-sonnet-5-20260219") == CLAUDE_SONNET5_SUBSTITUTE
+    assert normalize_pgpt_claude_model("claude-sonnet-5-5") == CLAUDE_SONNET_SUBSTITUTE  # 판 박힌 /model 줄은 분류기 대체가 아니다
     assert normalize_claude_model_id({"model": "claude-opus-5"}, "/gpgpta01-gpt/v1/messages") is False
 
     # Hermes anthropic_messages: x-api-key → Bearer 보강 (원래 헤더 유지)
@@ -2583,7 +2596,10 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-opus-5-5", measured) == "claude-opus-5.5"
     assert normalize_pgpt_claude_model("claude-haiku-5-5", measured) == "claude-haiku-5.5"
     assert normalize_pgpt_claude_model("claude-haiku-4-5-20251001", measured) == "claude-haiku-5.5"
-    assert normalize_pgpt_claude_model("claude-sonnet-5", measured) == "claude-sonnet-5.5"
+    assert normalize_pgpt_claude_model("claude-sonnet-5", measured) == "claude-sonnet-4.6"  # 분류기 이름은 4.6 으로(#230)
+    assert normalize_pgpt_claude_model("claude-sonnet-5-20260219", measured) == "claude-sonnet-4.6"
+    assert normalize_pgpt_claude_model("claude-sonnet-5-5", measured) == "claude-sonnet-5.5"
+    assert normalize_pgpt_claude_model("claude-sonnet-5", measured - {"claude-sonnet-4.6"}) == "claude-sonnet-5.5"  # 4.6 이 빠지면 가장 새 소넷
     assert normalize_pgpt_claude_model("claude-opus-9-9", measured) == "claude-opus-9.9"
     assert not is_model_substitution("claude-fable-5-1", "claude-fable-5-1")
     # 응답 이름은 답한 모델의 하이픈 꼴로 돌려준다(#230) — 스트림 첫 이벤트 · 비스트리밍 본문 · 다른 이름이면 손 안 댐

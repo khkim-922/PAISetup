@@ -590,7 +590,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 | `~/.claude/seeds/check/` | 검사 견본이고, 새 프로젝트의 `_check/` 가 이것을 복사해 출발한다 |
 | `~/.claude/seeds/config-repo/` | 설정 저장소 견본이고, 그대로 돌아가는 한 벌이 다 들어 있다 |
 | `~/.claude/seeds/vibecoding/` | 회사가 쓴 사내 FastAPI 코딩 기준이고, 들머리는 그 안의 `SEED.md` 다 |
-| `~/.claude/seeds/mail/` | 회사 PC 의 스크립트가 사내 메일을 보내는 파일 하나이고, 메일을 보낼 스크립트 곁에 복사해 쓴다 |
+| `~/.claude/seeds/mail/` | 회사 PC 의 스크립트가 사내 메일을 보내고 받은편지함을 읽는 파일들이고, 그 스크립트 곁에 복사해 쓴다 |
 
 - 검사 견본에는 판정을 내는 공용 부품 · 종료 코드 약속을 검사하는 도구 · 어느 저장소에서나 도는 커밋 게이트가 들어 있다. 복사해 간
   사본에는 원본을 가리키는 설명이 붙고, 원본이 바뀌면 `borrowed_check.py --receive` 로 다시 받는다
