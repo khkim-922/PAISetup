@@ -609,6 +609,20 @@ function Show-ChildLine([string]$Line) {
   Write-Host "      $($s[-1])" -ForegroundColor DarkGray
 }
 
+# `python -m pip install` 이 뱉는 줄을 진행 줄로 옮긴다 — pip 는 의존 꾸러미마다 `Collecting` · `Downloading … .metadata` 를 찍어
+#   청한 몇 개가 수십 줄이 된다. 청한 꾸러미를 받기 시작한 줄(`(from …)` 이 없는 `Collecting`)과 까는 줄(꾸러미 수)만 내고, 경고 ·
+#   오류는 `Show-ChildLine` 으로 그대로 낸다. 이미 깔린 판(`Requirement already satisfied`)은 안 낸다. 판정은 안 한다 — 섰나는 종료
+#   값이 들고, 원문은 세부 기록에 다 남는다(`Add-RunDetail`).
+function Show-PipLine([string]$Line) {
+  if ($Line -match '^Collecting (\S+)\s*$') {
+    Write-Host "    · $($Matches[1]) — 받는 중" -ForegroundColor DarkGray
+  } elseif ($Line -match '^Installing collected packages: (.+)$') {
+    Write-Host "    · 의존 꾸러미까지 $(@($Matches[1] -split ',\s*' | Where-Object { $_ }).Count)개 — 까는 중" -ForegroundColor DarkGray
+  } elseif ($Line -match '^(WARNING|ERROR):') {
+    Show-ChildLine $Line
+  }
+}
+
 # 하는 중인 일 한 줄 — `이름 — 동작 … (곁말)`. 동작은 `$BusyVerbs` 의 열쇠이고, 표에 없으면 던진다.
 function Say-Busy([string]$What, [string]$Do, [string[]]$Notes = @()) {
   if (-not $BusyVerbs.Contains($Do)) { throw "Say-Busy — 모르는 동작: $Do" }
@@ -9245,7 +9259,7 @@ if ($pipPkgs) {
     try {
       New-Item -ItemType Directory -Path $pipCwd -Force | Out-Null
       Push-Location -LiteralPath $pipCwd
-      try { $prc = Invoke-Logged 'python' $pipArgs $pl } finally { Pop-Location }
+      try { $prc = Invoke-Logged 'python' $pipArgs $pl ${function:Show-PipLine} } finally { Pop-Location }
     } catch {
       # 빈 폴더를 못 지었거나 못 옮겼다 — 작업 폴더째 부르지 않고 못 깐 것으로 남긴다(아래 노란 줄이 종료 -1 로 말한다).
       [IO.File]::WriteAllText($pl, "빈 작업 폴더를 못 지어 안 불렀다 ($pipCwd) — $($_.Exception.Message)")
