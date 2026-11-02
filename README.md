@@ -2,10 +2,10 @@
 
 Posco Futurem AI setup Wizard — `Setup.exe` 하나로 윈도우 PC 에 Claude Code 와 AI 코딩 도구를 설치합니다.
 
-1분 소개 영상입니다. 말소리 없이 한국어 자막과 잔잔한 배경음악이 나옵니다.
+소개 영상입니다. 말소리 없이 한국어 자막과 잔잔한 배경음악이 나옵니다.
 
 <!-- markdownlint-disable-next-line MD034 -- 주소 한 줄만 둬야 GitHub 이 블록 플레이어로 그린다(video 태그는 폭 0 으로 접힌다) -->
-https://github.com/user-attachments/assets/9b9893e2-1002-4a22-bf04-ce417f5cd2c8
+https://github.com/user-attachments/assets/2500adc3-0426-4334-9686-588025c7b73d
 
 ## 목차
 

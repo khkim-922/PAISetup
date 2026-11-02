@@ -1,15 +1,15 @@
-"""모델 대체 검사 — 프록시가 게이트웨이 `/v1/models` 목록을 읽고 그에 맞춰 이름을 고르나 (v32).
+"""모델 이름 검사 — 프록시가 게이트웨이 `/v1/models` 목록을 읽고 그에 맞춰 이름을 고르나.
 
-v31 까지는 하이쿠 · sonnet-5* 를 `claude-sonnet-4.6` 으로 박아 두고 바꿔 보냈다. 게이트웨이가 새 모델을 들여도
-따라가지 않았다. v32 는 대체 대상 이름이 들어올 때만 목록을 읽어(키별 캐시) 목록에 있으면 그대로, 없으면 같은
-계열의 가장 높은 판(하이쿠는 소네트까지)을 보낸다. 페이블(claude-fable-*)은 대상이 아니라 철자만 고쳐 그대로 보내고,
-게이트웨이에 없으면 그 400 이 클라이언트에 보인다(결정 0164). 가짜 게이트웨이와 프록시를 이 프로세스 안에 띄워
-잰다. 망도 회사 키도 안 쓴다.
+목록이 이름을 정하는 요청만 목록을 읽는다(키별 캐시). 둘이다 — 대체 대상(하이쿠 · claude-sonnet-5*)은 목록에 있으면
+그대로, 없으면 같은 계열의 가장 높은 판(하이쿠는 소네트까지)으로 보낸다. 대시 이름(claude-opus-5-5)은 목록에 선
+철자를 따른다 — 게이트웨이 철자는 모델마다 달라 대개 점 표기(claude-opus-5.5)고 페이블은 대시 그대로(claude-fable-5-1)다.
+대상이 아닌 이름은 목록에 없어도 갈아 보내지 않고 게이트웨이의 400 이 클라이언트에 보인다(결정 0164). 가짜 게이트웨이와
+프록시를 이 프로세스 안에 띄워 잰다. 망도 회사 키도 안 쓴다.
 
     python -X utf8 posco/pgpt-proxy/Test-ProxyModelMap.py
 
-⚠ 대체 대상이 아닌 이름(claude-opus-5 등)에는 목록을 읽지 않는다 — 평소 호출에 지연을 보태지 않는다.
-⚠ 목록을 못 읽으면 v31 규칙으로 간다 — 요청은 막지 않는다.
+⚠ 점 표기 · 판 없는 이름(claude-opus-5.5 · claude-opus-5)에는 목록을 읽지 않는다 — 평소 호출에 지연을 보태지 않는다.
+⚠ 목록을 못 읽으면 고정 규칙으로 간다 — 요청은 막지 않는다. 그 판의 대시 이름은 점 표기로 가므로 페이블은 400 이다.
 ⚠ 출력 상한(스트림 10000 · 비스트림 18000)은 대체된 모델에도 그대로 걸린다.
 """
 from __future__ import annotations
@@ -32,6 +32,10 @@ PATH = "/gpgpta01-gpt/v1/messages?beta=true"
 # 2026-10-15 실측 목록의 Claude 부분(#147) — 페이블 · 소네트 5 · 하이쿠는 없다
 TODAY = ["claude-opus-5", "claude-opus-4.7", "claude-opus-4.6", "claude-opus-4.5",
          "claude-sonnet-4.6", "claude-sonnet-4.5", "gpt-5.5", "gemini-3.6-flash"]
+# 2026-11-02 회사 실측 목록의 Claude 부분(#228) — 철자가 섞였다(5.5 는 점 · 페이블은 대시). claude-sonnet-5 는 여전히 없다
+MEASURED = ["claude-fable-5-1", "claude-haiku-5.5", "claude-opus-4.5", "claude-opus-4.6", "claude-opus-4.7",
+            "claude-opus-4.8", "claude-opus-5", "claude-opus-5.5", "claude-sonnet-4.5", "claude-sonnet-4.6",
+            "claude-sonnet-5.5", "gpt-6-luna", "gemini-3.6-flash"]
 STATE: dict[str, object] = {"models": list(TODAY), "list_status": 200, "list_calls": 0, "seen": []}
 
 
@@ -107,33 +111,35 @@ def main() -> int:
         failures += 0 if ok else 1
         print(f"{'OK  ' if ok else 'FAIL'} {name}" + ("" if ok else f" — {detail}"))
 
-    # 1. 대체 대상이 아닌 이름은 목록을 읽지 않는다
+    # 1. 점 표기 · 판 없는 이름은 목록을 읽지 않는다 — 목록에 없어도 갈아 보내지 않는다(0164)
     status, sent, header = post(port, "claude-opus-5")
     check("claude-opus-5 그대로 · 목록 안 읽음", (status, sent, header, STATE["list_calls"]) == (200, "claude-opus-5", "", 0),
           (status, sent, header, STATE["list_calls"]))
-    # 페이블은 사람이 고르는 이름이라 대상이 아니다 — 철자만 고쳐 보내고 게이트웨이의 400 이 그대로 보인다(결정 0164).
-    # 목록을 읽는 하이쿠보다 먼저 보내야 「목록 안 읽음」을 잰다.
-    status, sent, header = post(port, "claude-fable-5-1")
-    check("claude-fable-5-1 그대로 · 400 이 보인다 · 목록 안 읽음",
-          (status, sent, header, STATE["list_calls"]) == (400, "claude-fable-5.1", "", 0),
+    status, sent, header = post(port, "claude-opus-5.5")
+    check("claude-opus-5.5 그대로 · 400 이 보인다 · 목록 안 읽음",
+          (status, sent, header, STATE["list_calls"]) == (400, "claude-opus-5.5", "", 0),
           (status, sent, header, STATE["list_calls"]))
 
-    # 2. 오늘 목록(#147): 하이쿠 · 소네트 5 → 소네트 4.6
+    # 2. 옛 목록(#147): 하이쿠 · 소네트 5 → 소네트 4.6 · 목록에 없는 페이블은 철자만 고쳐 400 이 보인다
     for model, want in (("claude-haiku-4-5-20251001", "claude-sonnet-4.6"), ("claude-sonnet-5", "claude-sonnet-4.6"),
                         ("claude-sonnet-5-5", "claude-sonnet-4.6")):
         status, sent, header = post(port, model)
         check(f"{model} → {want}", (status, sent) == (200, want) and header == f"{model} -> {want}", (status, sent, header))
+    status, sent, header = post(port, "claude-fable-5-1")
+    check("옛 목록: claude-fable-5-1 은 갈아 보내지 않는다 · 400", (status, sent, header) == (400, "claude-fable-5.1", ""),
+          (status, sent, header))
     check("목록은 키당 한 번만 읽는다(캐시)", STATE["list_calls"] == 1, STATE["list_calls"])
 
-    # 3. 게이트웨이가 새 모델을 들이면 대체를 멈추고 따라간다 — 다른 키는 따로 읽는다. 페이블은 대상이 아니라 목록에
-    #    서면 손 안 대고 200 이다
-    STATE["models"] = TODAY + ["claude-sonnet-5.5", "claude-haiku-4.5", "claude-fable-5.1"]
+    # 3. 실측 목록(#228): 대체를 멈추고 목록의 철자를 따른다 — 다른 키는 따로 읽는다
+    STATE["models"] = list(MEASURED)
     for model, want, substituted in (("claude-sonnet-5-5", "claude-sonnet-5.5", False),
-                                     ("claude-haiku-4-5-20251001", "claude-haiku-4.5", False),
-                                     ("claude-fable-5-1", "claude-fable-5.1", False),
+                                     ("claude-opus-5-5", "claude-opus-5.5", False),
+                                     ("claude-haiku-5-5", "claude-haiku-5.5", False),
+                                     ("claude-fable-5-1", "claude-fable-5-1", False),
+                                     ("claude-haiku-4-5-20251001", "claude-haiku-5.5", True),
                                      ("claude-sonnet-5", "claude-sonnet-5.5", True)):
         status, sent, header = post(port, model, key="other-key-0123456789")
-        check(f"새 목록: {model} → {want}", (status, sent) == (200, want) and bool(header) == substituted,
+        check(f"실측 목록: {model} → {want}", (status, sent) == (200, want) and bool(header) == substituted,
               (status, sent, header))
     check("새 키는 목록을 다시 읽는다", STATE["list_calls"] == 2, STATE["list_calls"])
 
@@ -142,13 +148,14 @@ def main() -> int:
     capped = STATE["seen"][-1].get("max_tokens")  # type: ignore[index]
     check("대체된 모델에도 출력 상한", capped == proxy.output_cap(unstream=True), capped)
 
-    # 5. 목록을 못 읽으면 v31 규칙(하이쿠 → 소네트 4.6) — 요청은 막지 않는다
-    STATE["models"] = list(TODAY)
+    # 5. 목록을 못 읽으면 고정 규칙(하이쿠 → 하이쿠 5.5 · 소네트 5 → 소네트 5.5 · 대시 → 점) — 요청은 막지 않는다
     STATE["list_status"] = 503
     status, sent, header = post(port, "claude-haiku-4-5", key="third-key-0123456789")
-    check("목록 실패 → 기본 규칙", (status, sent) == (200, "claude-sonnet-4.6"), (status, sent))
+    check("목록 실패 → 기본 규칙", (status, sent) == (200, proxy.CLAUDE_HAIKU_SUBSTITUTE), (status, sent))
+    status, sent, _ = post(port, "claude-sonnet-5", key="third-key-0123456789")
+    check("목록 실패 → 소네트 5 기본 규칙", (status, sent) == (200, proxy.CLAUDE_SONNET_SUBSTITUTE), (status, sent))
     status, sent, _ = post(port, "claude-fable-5-1", key="third-key-0123456789")
-    check("페이블은 목록과 무관하게 손대지 않는다(게이트웨이가 판정)", (status, sent) == (400, "claude-fable-5.1"), (status, sent))
+    check("목록 실패 → 페이블은 점 표기로 가 400 이다(알려진 한계)", (status, sent) == (400, "claude-fable-5.1"), (status, sent))
     calls = STATE["list_calls"]
     post(port, "claude-haiku-4-5", key="third-key-0123456789")
     check("실패 뒤에는 잠시 다시 묻지 않는다", STATE["list_calls"] == calls, (calls, STATE["list_calls"]))

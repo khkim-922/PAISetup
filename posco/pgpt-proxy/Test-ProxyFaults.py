@@ -259,8 +259,8 @@ def main() -> int:
               f"시한 밖의 HTTP 500 은 절단으로 세지 않는다 ({status}, execution_cuts={after.get('execution_cuts')})")
         haiku = b'{"model":"claude-haiku-4-5-20251001","messages":[{"role":"user","content":"hi"}]}'
         status, data, _ = request(proxy_port, "POST", f"{base}/v1/messages", haiku)
-        check(status == 200 and b"claude-sonnet-4.6" in data and b"haiku" not in data,
-              f"하이쿠는 게이트웨이에 없어 소넷으로 바꿔 보낸다 ({status})")
+        check(status == 200 and b"claude-haiku-5.5" in data and b"claude-haiku-4-5" not in data,
+              f"목록을 못 읽으면 하이쿠는 게이트웨이에 선 판(5.5)으로 바꿔 보낸다 ({status})")
 
         status, data, _ = request(proxy_port, "POST", f"{base}/big413", b"x" * (8 * 1024 * 1024))
         check(status == 413 and COUNT.get("big413") == 1, f"본문을 다 받기 전의 413 은 그대로, 다시 보내지 않는다 ({status}, {COUNT.get('big413')}번)")
@@ -314,7 +314,7 @@ def main() -> int:
         sub_response.read()
         conn.close()
         after = json.loads(request(proxy_port, "GET", "/health")[1])
-        check(sub_header == "claude-haiku-4-5-20251001 -> claude-sonnet-4.6",
+        check(sub_header == "claude-haiku-4-5-20251001 -> claude-haiku-5.5",
               f"바꿔 보낸 응답에 x-pgpt-model-substituted 가 붙는다 ({sub_header!r})")
         check(after.get("model_substitutions", 0) - before.get("model_substitutions", 0) == 1,
               "바꿔 보낸 요청을 model_substitutions 로 하나 센다")

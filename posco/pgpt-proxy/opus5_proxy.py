@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 14
+VERSION_OURS = 15
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -115,8 +115,9 @@ GATEWAY_REQUEST_ID_HEADER = "x-pgpt-request-id"
 EXECUTION_LIMIT_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_SEC", STREAM_LIMIT_SEC)
 # 시한 근방으로 볼 폭(초). 180.0 실측에 맞추되 측정 오차와 앞단 지연을 담는다.
 EXECUTION_LIMIT_MARGIN_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_MARGIN_SEC", 5.0)
-# 게이트웨이 목록을 못 읽었을 때 하이쿠가 갈 자리 — 목록을 읽으면 목록이 먼저다(resolve_claude_model).
-CLAUDE_HAIKU_SUBSTITUTE = "claude-sonnet-4.6"
+# 게이트웨이 목록을 못 읽었을 때 하이쿠 · claude-sonnet-5* 가 갈 자리 — 목록을 읽으면 목록이 먼저다(resolve_claude_model).
+CLAUDE_HAIKU_SUBSTITUTE = "claude-haiku-5.5"
+CLAUDE_SONNET_SUBSTITUTE = "claude-sonnet-5.5"
 CLIENT_POLL_SEC = 0.25
 HOP_BY_HOP = {
     "connection",
@@ -773,8 +774,9 @@ def patch_tool_descriptions(payload: dict) -> int:
     return patched
 
 
-# 게이트웨이는 점 표기(claude-opus-4.6)만 받는데 Claude Code 의 곁 호출은 대시 표기(claude-opus-4-7)로 보낸다. 계열 이름은 고정하지 않는다 —
-# 새 계열이 나와도 프록시를 안 고치게.
+# Claude Code 는 대시 표기(claude-opus-5-5)로 보내는데 게이트웨이의 철자는 모델마다 다르다 — 대개 점 표기(claude-opus-5.5)고
+# 페이블은 대시 그대로(claude-fable-5-1)다. 그래서 대시 이름은 목록에 선 철자를 따르고, 목록을 못 읽으면 점 표기로 보낸다.
+# 계열 이름은 고정하지 않는다 — 새 계열이 나와도 프록시를 안 고치게.
 _CLAUDE_DASH_VERSION = re.compile(
     r"^(claude-[a-z]+-\d+)-(\d+)(.*)$",
     re.IGNORECASE,
@@ -824,12 +826,18 @@ def _dotted_claude_name(name: str) -> str:
     return f"{match.group(1)}.{match.group(2)}{match.group(3)}"
 
 
-def needs_model_list(model: object) -> bool:
-    """대체 대상 이름(하이쿠 · claude-sonnet-5*)인가 — 이런 요청에만 목록을 읽는다."""
-    if not isinstance(model, str):
-        return False
+def is_substitution_target(model: str) -> bool:
+    """Claude Code 가 곁 호출에 제 손으로 보내는 이름(하이쿠 · claude-sonnet-5*)인가 — 이 이름만 다른 판으로 갈아 보낸다."""
     lower = model.strip().lower()
     return "haiku" in lower or lower.startswith("claude-sonnet-5")
+
+
+def needs_model_list(model: object) -> bool:
+    """목록을 읽어야 이름이 서나 — 대체 대상이거나 철자를 고를 대시 이름일 때만 읽는다. 점 표기 · 판 없는 이름은 안 읽는다."""
+    if not isinstance(model, str):
+        return False
+    bare = re.sub(r"-\d{8}$", "", model.strip())
+    return is_substitution_target(bare) or _dotted_claude_name(bare) != bare
 
 
 def newest_listed_claude(family: str, listed: frozenset[str]) -> str | None:
@@ -855,22 +863,23 @@ def resolve_claude_model(model: str, listed: frozenset[str] | None = None) -> tu
             return target, "config"
     if listed is not None and needs_model_list(name):
         listed_lower = {item.lower(): item for item in listed}
-        spelled = _dotted_claude_name(re.sub(r"-\d{8}$", "", name)).lower()
-        if spelled in listed_lower:
-            return listed_lower[spelled], "list"  # 게이트웨이가 들였다 — 대체하지 않는다
+        bare = re.sub(r"-\d{8}$", "", name)
+        # 받은 철자가 먼저다 — 점으로 고친 철자를 먼저 보면 대시가 제 철자인 claude-fable-5-1 이 400 으로 간다
+        for spelled in (bare.lower(), _dotted_claude_name(bare).lower()):
+            if spelled in listed_lower:
+                return listed_lower[spelled], "list"  # 게이트웨이가 들였다 — 대체하지 않는다
         parsed = claude_family_version(name)
-        if parsed:
+        if parsed and is_substitution_target(name):
             for family in _CLAUDE_FALLBACK_FAMILIES.get(parsed[0], (parsed[0],)):
                 pick = newest_listed_claude(family, listed)
                 if pick:
                     return pick, "list"
-    # 하이쿠는 게이트웨이에 없다 — 대시→점 변환보다 먼저 본다(그쪽을 먼저 타면 claude-haiku-4.5 가 되어
-    # 여전히 없는 이름이다)
+    # 목록을 못 읽었을 때 — 하이쿠는 대시→점 변환보다 먼저 본다(CLI 가 박은 판 · 날짜가 게이트웨이의 판과 어긋난다)
     if "haiku" in lower:
         return CLAUDE_HAIKU_SUBSTITUTE, "fixed"
-    # 목록을 못 읽었을 때 — claude-sonnet-5 와 날짜 박힌 claude-sonnet-5-20260219
+    # claude-sonnet-5 와 날짜 박힌 claude-sonnet-5-20260219
     if lower.startswith("claude-sonnet-5"):
-        return "claude-sonnet-4.6", "fixed"
+        return CLAUDE_SONNET_SUBSTITUTE, "fixed"
     return _dotted_claude_name(name), "spelling"
 
 
@@ -1957,7 +1966,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         changed = True
                         self._request_context += f" kind=web_search search_model={WEB_SEARCH_MODEL}"
                     elif is_messages:
-                        # 대체 대상 이름일 때만 게이트웨이 목록을 본다(키별 캐시) — 새 모델이 오르면 따라간다
+                        # 목록이 이름을 정하는 요청(대체 대상 · 대시 이름)만 게이트웨이 목록을 본다(키별 캐시) — 새 모델이 오르면 따라간다
                         listed = _GATEWAY_MODELS.get(bearer_token(self.headers)) if needs_model_list(model_name) else None
                         if normalize_claude_model_id(payload_obj, parsed.path, listed):
                             restored = payload_obj.get("model")
@@ -2394,8 +2403,8 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-newfamily-7-2") == "claude-newfamily-7.2"
     assert normalize_pgpt_claude_model("claude-3-5-sonnet-20241022") == "claude-3-5-sonnet-20241022"
     assert normalize_pgpt_claude_model("gpt-5.6-sol") == "gpt-5.6-sol"
-    assert normalize_pgpt_claude_model("claude-sonnet-5") == "claude-sonnet-4.6"
-    assert normalize_pgpt_claude_model("claude-sonnet-5-20260219") == "claude-sonnet-4.6"
+    assert normalize_pgpt_claude_model("claude-sonnet-5") == CLAUDE_SONNET_SUBSTITUTE
+    assert normalize_pgpt_claude_model("claude-sonnet-5-20260219") == CLAUDE_SONNET_SUBSTITUTE
     assert normalize_claude_model_id({"model": "claude-opus-5"}, "/gpgpta01-gpt/v1/messages") is False
 
     # Hermes anthropic_messages: x-api-key → Bearer 보강 (원래 헤더 유지)
@@ -2534,6 +2543,18 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-sonnet-5-7", later) == "claude-sonnet-5.5"
     assert normalize_pgpt_claude_model("claude-haiku-4-5-20251001", later) == "claude-haiku-4.5"
     assert normalize_pgpt_claude_model("claude-haiku-5", later) == "claude-haiku-4.5"
+    # 철자는 모델마다 다르다 — 목록에 선 철자를 따르고, 대상 아닌 이름은 목록에 없어도 갈아 보내지 않는다(0164)
+    measured = frozenset({"claude-fable-5-1", "claude-haiku-5.5", "claude-opus-4.8", "claude-opus-5", "claude-opus-5.5",
+                          "claude-sonnet-4.6", "claude-sonnet-5.5"})  # 회사 실측 2026-11-02 의 일부(#228)
+    assert needs_model_list("claude-fable-5-1") and needs_model_list("claude-opus-5-5")
+    assert not needs_model_list("claude-opus-5") and not needs_model_list("claude-opus-5.5")
+    assert normalize_pgpt_claude_model("claude-fable-5-1", measured) == "claude-fable-5-1"
+    assert normalize_pgpt_claude_model("claude-opus-5-5", measured) == "claude-opus-5.5"
+    assert normalize_pgpt_claude_model("claude-haiku-5-5", measured) == "claude-haiku-5.5"
+    assert normalize_pgpt_claude_model("claude-haiku-4-5-20251001", measured) == "claude-haiku-5.5"
+    assert normalize_pgpt_claude_model("claude-sonnet-5", measured) == "claude-sonnet-5.5"
+    assert normalize_pgpt_claude_model("claude-opus-9-9", measured) == "claude-opus-9.9"
+    assert not is_model_substitution("claude-fable-5-1", "claude-fable-5-1")
     assert normalize_pgpt_claude_model("claude-fable-5-1", later) == "claude-fable-5.1"
     assert claude_family_version("claude-3-5-haiku-20241022") == ("haiku", (3, 5))
     assert parse_model_map(" claude-haiku*=claude-opus-5 ; bad ;x=") == [("claude-haiku*", "claude-opus-5")]

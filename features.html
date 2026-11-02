@@ -36,7 +36,7 @@
     박으면 릴리스가 멈춘다. 이슈 안내는 설치 창의 「바뀐 것」 링크(주소를 값 파일의 `#update-repo` 에서 짓는다)를 가리킨다.
 
   ⚠ 밖에서 불러오는 것이 한 자도 없다 — 글꼴 · 스타일 · 그림을 다 안에 든다. 밖으로 가는 것은 사람이
-    누르는 링크(구글 무료 키 받기)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
+    누르는 링크(구글 무료 키 받기)와 사람이 누르는 소개 영상(`preload="none"`)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
     더블클릭 한 번에 떠야 하기 때문이다. 접는 칸은 스크립트 없이 `<details>` 로 접는다.
   ⚠ 스크립트는 끝의 몇 줄 하나뿐이다 — 「이름표 읽는 법」 표의 풀이(dd)를 같은 칩마다 `title` 로 단다. 칩의 풀이 글은 그 표에만
     적는다(칩마다 `title` 을 손으로 달면 표와 갈라진다). 스크립트가 꺼져도 페이지는 그대로 읽히고, 풀이는 접힌 표에서 본다.
@@ -118,6 +118,14 @@
     background: var(--surface); border: 1px solid var(--line); transition: box-shadow .15s ease;
   }
   .toc a:hover, .toc a:focus-visible { box-shadow: var(--lift); }
+
+  /* ── 소개 영상 ── */
+  .intro { margin: 18px 0 0; scroll-margin-top: 16px; }
+  .intro video {
+    display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 16px; background: #111;
+    border: 1px solid var(--line); box-shadow: var(--shadow);
+  }
+  .intro figcaption { color: var(--dim); font-size: 13px; margin: 8px 4px 0; }
 
   .l1 { --k: var(--l1); --kb: var(--l1-bg); }
   .l2 { --k: var(--l2); --kb: var(--l2-bg); }
@@ -352,8 +360,18 @@
   <div class="kicker">설치가 끝나면</div>
   <h1>설치하면 생기는 기능</h1>
   <p class="lede">Claude Code 를 처음 깐 동료를 위한 한 장입니다. 설치가 끝난 뒤 무엇을 하면 되고, 무엇을 쓸 수 있고, 무엇이 알아서 되어 있는지를 적었습니다.</p>
-  <nav class="toc" aria-label="이 페이지의 차례"><a href="#first">설치 뒤 할 일</a><a href="#try">이렇게 쓰면 됩니다</a><a href="#auto">알아서 해 두는 것</a><a href="#more">더 쓰고 싶다면</a></nav>
+  <nav class="toc" aria-label="이 페이지의 차례"><a href="#intro">소개 영상</a><a href="#first">설치 뒤 할 일</a><a href="#try">이렇게 쓰면 됩니다</a><a href="#auto">알아서 해 두는 것</a><a href="#more">더 쓰고 싶다면</a></nav>
 </header>
+
+<!-- 소개 영상 — 짐에 안 넣고 깃허브에 올린 파일을 그 자리에서 튼다. preload="none" 이라 누르기 전에는 아무것도 안 받는다 —
+     페이지가 뜨는 데 밖이 안 걸린다는 머리말의 약속이 그대로 선다. 주소는 배포본 README 첫머리와 같은 것이다 — 새로 올리면
+     docs/intro-video/set-url.sh 가 둘을 같이 바꾼다 -->
+<figure class="intro" id="intro">
+  <video controls preload="none" playsinline src="https://github.com/user-attachments/assets/2500adc3-0426-4334-9686-588025c7b73d">
+    <a href="https://github.com/user-attachments/assets/2500adc3-0426-4334-9686-588025c7b73d">소개 영상 열기</a>
+  </video>
+  <figcaption>소개 영상 — 말소리 없이 자막과 배경 음악이 나옵니다. 누르면 인터넷에서 받아 재생합니다.</figcaption>
+</figure>
 
 <details class="legend l2" id="legend">
   <summary><span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/></svg></span>
@@ -479,10 +497,12 @@
     <article class="tile" id="seed">
       <div class="top"><span class="ico"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3M7 9l3 2-3 2M12 13h4"/></svg></span><h4>사내 시스템에 붙기 · 문제 풀기</h4></div>
       <p class="desc">사내 게이트웨이(P-GPT) · SSO · 배포 · 회사 인증서에 붙는 코드라면 앱이든 짧은 스크립트든 <code>inhouse-app</code> 스킬이 배관 견본 · 사내 환경 사실 · 회사 기준을 꺼내 씁니다.
-         게이트웨이 답이 잘리거나 비는 일, 504, 인증서 오류를 풀 때도 같습니다.</p>
-      <div class="say"><span>이렇게 말해 보세요</span><q>사내 앱 만들자</q><q>회사 게이트웨이로 LLM 붙여 줘</q><q>게이트웨이 호출이 잘려요</q></div>
+         게이트웨이 답이 잘리거나 비는 일, 504, 인증서 오류를 풀 때도 같습니다.
+         스크립트가 회사 메일을 보내야 하면 사내 메일 중계에 맞춘 파일 하나를 복사해 바로 씁니다.</p>
+      <div class="say"><span>이렇게 말해 보세요</span><q>사내 앱 만들자</q><q>회사 게이트웨이로 LLM 붙여 줘</q><q>결과를 회사 메일로 보내 줘</q></div>
       <div class="parts">
         <div><b>사내 시스템에 붙기</b><span class="tag"><code class="nm">inhouse-app</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></div>
+        <div><b>사내 메일 보내기</b><span class="tag"><code class="nm">mail</code><span class="k seed">Seed</span><span class="t all">누구에게나</span><span class="src pai">PAI</span></span></div>
       </div>
     </article>
     <article class="tile">

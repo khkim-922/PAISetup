@@ -362,7 +362,7 @@ Python 이 깔리는 판에서는 Microsoft 의 「Visual C++ 재배포 가능 �
 
 ### 로컬 프록시
 
-사내에서만 이 PC 안에 프록시를 띄워 Claude Code(Opus 5) · Codex 의 요청을 게이트웨이로 넘긴다. 안티그래비티는 프록시를 안 지나고
+사내에서만 이 PC 안에 프록시를 띄워 Claude Code(Opus 5.5) · Codex 의 요청을 게이트웨이로 넘긴다. 안티그래비티는 프록시를 안 지나고
 게이트웨이에 바로 붙는다.
 
 - 주소는 `install.env` 의 `ANTHROPIC_BASE_URL` 이 든다
@@ -577,7 +577,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 
 ## 사내 환경 문서와 견본 폴더
 
-사내 환경 문서와 견본 폴더 넷은 고를 것이 아니라 환경이라 스위치 없이 누구에게나 홈에 깔린다.
+사내 환경 문서와 견본 폴더들은 고를 것이 아니라 환경이라 스위치 없이 누구에게나 홈에 깔린다.
 
 | 자리 | 무엇 |
 |---|---|
@@ -586,6 +586,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 | `~/.claude/seeds/check/` | 검사 견본이고, 새 프로젝트의 `_check/` 가 이것을 복사해 출발한다 |
 | `~/.claude/seeds/config-repo/` | 설정 저장소 견본이고, 그대로 돌아가는 한 벌이 다 들어 있다 |
 | `~/.claude/seeds/vibecoding/` | 회사가 쓴 사내 FastAPI 코딩 기준이고, 들머리는 그 안의 `SEED.md` 다 |
+| `~/.claude/seeds/mail/` | 회사 PC 의 스크립트가 사내 메일을 보내는 파일 하나이고, 메일을 보낼 스크립트 곁에 복사해 쓴다 |
 
 - 검사 견본에는 판정을 내는 공용 부품 · 종료 코드 약속을 검사하는 도구 · 어느 저장소에서나 도는 커밋 게이트가 들어 있다. 복사해 간
   사본에는 원본을 가리키는 설명이 붙고, 원본이 바뀌면 `borrowed_check.py --receive` 로 다시 받는다

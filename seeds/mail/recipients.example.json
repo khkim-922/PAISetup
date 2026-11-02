@@ -1,0 +1,15 @@
+{
+  "_comment": "견본이다. 실제 파일은 recipients.json — 주소가 들므로 저장소에 올리지 않는다(.gitignore 에 넣는다).",
+  "from": "발신자@company.com",
+  "to": [
+    "TO_사원1@company.com",
+    "TO_사원2@company.com"
+  ],
+  "cc": [
+    "CC_담당1@company.com"
+  ],
+  "bcc": [
+    "BCC_본인@company.com"
+  ],
+  "error_notify": "ERROR_알림받을주소@company.com"
+}

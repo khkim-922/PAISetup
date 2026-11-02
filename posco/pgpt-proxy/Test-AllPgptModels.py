@@ -11,12 +11,17 @@ import urllib.request
 from pathlib import Path
 
 MODELS = [
+    "claude-fable-5-1",
+    "claude-haiku-5.5",
     "claude-opus-4.5",
     "claude-opus-4.6",
     "claude-opus-4.7",
+    "claude-opus-4.8",
     "claude-opus-5",
+    "claude-opus-5.5",
     "claude-sonnet-4.5",
     "claude-sonnet-4.6",
+    "claude-sonnet-5.5",
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
     "gemini-3-flash-preview",
@@ -43,6 +48,8 @@ MODELS = [
     "gpt-5.6-luna",
     "gpt-5.6-sol",
     "gpt-5.6-terra",
+    "gpt-6-astra",
+    "gpt-6-luna",
     "grok-4-1-fast-non-reasoning",
     "grok-4-1-fast-reasoning",
     "o3-mini",
