@@ -248,8 +248,9 @@ PowerShell 의 스크립트 실행이 윈도 기본값으로 막혀 있던 PC �
 
 설치가 winget 설정에 심은 받기 엔진 값은 설치가 걷지 않는다.
 
-- 자리는 `%LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json` 의 `network` 안 `"downloader": "wininet"` 줄이다
-- 그 줄을 지우면 winget 이 다시 제가 고른다. 설치를 다시 누르면 다시 심는다 — 영영 안 쓰려면 `"downloader": "default"` 로 적어 둔다(사람이 정한
+- 자리는 `%LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json` 의 `network` 안 두 줄 —
+  `"downloader": "do"` 와 `"doProgressTimeoutInSeconds": 60` 이다
+- 두 줄을 지우면 winget 이 다시 제가 고른다. 설치를 다시 누르면 다시 심는다 — 영영 안 쓰려면 `"downloader": "default"` 로 적어 둔다(사람이 정한
   값이라 설치가 안 덮는다)
 
 ### 바로가기

@@ -116,14 +116,16 @@ PAISetup 설치본이 이 PC 의 어디에 무엇을 어떤 조건으로 까는�
 
 ### winget 받는 손
 
-프로그램을 winget 으로 깔기 전에 winget 이 받는 엔진을 WinINet 으로 심는다 — 기본값이 고르는 전달 최적화(Delivery Optimization)는
-사내망에서 어떤 배포 서버(LibreOffice 가 그렇다)에서 한 바이트도 못 받은 채 몇 분을 서고, WinINet 으로는 같은 받기가 끝까지 닿는다.
-자리는 사용자 winget 설정 파일
-`%LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json` 의 `network` 안 `downloader` 칸이다.
+프로그램을 winget 으로 깔기 전에 winget 이 받는 엔진을 전달 최적화(Delivery Optimization)로 박고, 받기가 60초 동안 진척이 없으면
+다른 엔진으로 넘기게 한다. 사내망에서 전달 최적화는 다른 엔진(WinINet)보다 빠르지만 어떤 배포 서버(LibreOffice 가 그렇다)에서는 한 바이트도
+못 받은 채 서는데, 그 판은 넘김이 받는다. 자리는 사용자 winget 설정 파일
+`%LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json` 의 `network` 안 두 칸 —
+`downloader`(`"do"`) · `doProgressTimeoutInSeconds`(`60`) 이다.
 
-- 사람이 `downloader` 를 정해 뒀으면 그 값을 둔다 — 설치 화면에 「사람이 정한 값 … 이라 둔다」가 선다
+- 사람이 두 칸 가운데 하나라도 정해 뒀으면 그 값을 둔다 — 설치 화면에 「사람이 정한 값 … 이라 둔다」가 선다
+- `"downloader": "wininet"` 한 칸만 서 있으면 이전 판 설치가 심은 값이라 두 칸으로 갈아 낀다 — 설치 화면에 「옛 판이 심은 값 … 을 갈았다」가 선다
 - 그 파일이 주석 든 JSON(사람이 `winget settings` 를 한 번 연 PC)이면 설치가 못 읽어 안 건드리고 노란 줄을 남긴다. 그 PC 는 그 파일의
-  `network` 에 `"downloader": "wininet"` 을 손으로 넣는다
+  `network` 에 `"downloader": "do"` 와 `"doProgressTimeoutInSeconds": 60` 을 손으로 넣는다
 - 설치는 이 값을 걷지 않는다 — 지울 자리는 [UNINSTALL](UNINSTALL.md#winget-받는-손)이 든다
 
 ## 설치 창의 칸

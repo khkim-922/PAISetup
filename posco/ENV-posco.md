@@ -165,7 +165,9 @@
   166~201 로 같고 disabled 도 184~199 다. 넷 다 400 없이 200 — **효과값도 disabled 도 모델에 안 닿는다.**
   `thinking`·`output_config` 는 이 게이트웨이가 통째로 떨구는 필드다
 - **게이트웨이 팀에 낼 보고** — `gateway-report-claude-thinking-2026-09-09.md`(관측 사실 · 여쭙는 것 셋 · curl 재현 ·
-  설치본에는 안 실린다). 답이 오면 이 절을 그 답으로 고친다
+  설치본에는 안 실린다). 답이 오면 이 절을 그 답으로 고친다. 이 절의 결함을 다른 보고들과 한 표로 묶어 「Bedrock InvokeModel 꼴
+  끝점을 곁에 열면 무엇이 풀리고 무엇이 안 풀리나」로 다시 물은 것이 `gateway-report-bedrock-passthrough-2026-11-02.md` 다 — 끝점이
+  어렵다면 지금의 변환기가 `thinking` · `output_config` 를 Converse 의 `additionalModelRequestFields` 로 넘기는 길도 함께 물었다
 - atelier 는 회사에서 `claude-opus-5` 를 쓰므로 **생각이 켜진 채 조용히, 조일 수 없이 돈다.** 렌더 봉투에서
   그 생각이 180초를 넘으면 스트림 벽 → 접은 비스트리밍이 300초를 더 태우고 504 (2026-09-07 14:07~14:15 실측,
   atelier `output/_fail/fail-141502`). 이 게이트웨이에서 침묵을 없애는 손잡이는 **모델 이름**뿐이다 — 4.7 은

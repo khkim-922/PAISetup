@@ -618,7 +618,7 @@
       <div class="row"><b>PowerShell 에서 npm 명령 부르기<span class="tag"><code class="nm">ExecutionPolicy</code><span class="k setting">Setting</span><span class="t all">모든 도구</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 스크립트 실행이 윈도 기본값으로 막힌 PC 의 PowerShell(VS Code 의 터미널 포함)에서 <code>claude</code> · <code>npm</code> 같은 명령이 「스크립트를 실행할 수 없으므로」로 집니다.</span> 막혀 있을 때만 이 계정을 RemoteSigned 로 올립니다. 인터넷에서 받은 스크립트는 서명을 그대로 묻고, 회사 정책이 정한 값과 사람이 고른 값은 바꾸지 않습니다.</div></div>
       <div class="row"><b>winget 받기 엔진<span class="tag"><code class="nm">network.downloader</code><span class="k setting">Setting</span><span class="t all">winget</span><span class="src pai">PAI</span></span></b>
-        <div><span class="why">없으면 사내망에서 winget 으로 까는 프로그램이 받기에서 한 바이트도 못 받은 채 몇 분씩 섭니다.</span> winget 의 받기 엔진을 WinINet 으로 정해 둡니다. 사람이 정해 둔 받기 엔진은 바꾸지 않습니다.</div></div>
+        <div><span class="why">없으면 winget 이 그때그때 고르는 엔진에 따라 사내망 받기가 두 배 느리거나, 어떤 배포 서버에서 한 바이트도 못 받은 채 몇 분씩 섭니다.</span> winget 의 받기 엔진을 빠른 전달 최적화로 정하고, 60초 동안 진척이 없으면 다른 엔진으로 넘기게 해 둡니다. 사람이 정해 둔 받기 엔진은 바꾸지 않습니다.</div></div>
       <div class="row"><b>워드의 PDF 변환 안내 끄기<span class="tag"><code class="nm">DisableConvertPdfWarning</code><span class="k setting">Setting</span><span class="t all">워드</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 DRM 문서 읽기가 숨겨 띄운 워드가 그 안내창에서 아무도 못 누른 채 멈춥니다.</span> 사람이 PDF 를 워드로 열 때도 안 뜹니다. 워드가 깔린 PC 에서만입니다.</div></div>
     </div>
