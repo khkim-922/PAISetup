@@ -6835,11 +6835,14 @@ $Features = Get-SeedSwitches $HomeSeed
 #   그 자리는 씨앗 덮기가 이 설치보다 나중이라(위 「클라이언트 기능 스위치」) 여기서 안 쓴 것도 씨앗이 되살린다.
 # 목록의 진본은 게이트웨이의 `GET /v1/models` 다 — 거기 없는 Sonnet 5 · Haiku 는 내장 줄로 보여도 고르면 400 이라
 #   `$ModelPickerOnly` 로 내장 줄을 숨긴다. 줄이 늘면 여기 한 줄을 더하되, 게이트웨이가 그 이름을 내는지 먼저 묻는다.
-# ⚠ **이름은 하이픈으로 적는다.** 게이트웨이는 점 표기(`claude-opus-4.7`)로 목록을 내지만 두 표기를 다 받는다. 하이픈이 CLI
-#   카탈로그가 아는 이름이라 표시명 · 접미사 판정이 걸리고, 점 표기는 「모르는 모델」로 떨어져 `[1m]` 이 조용히 안 붙는다.
+# ⚠ **이름은 하이픈으로 적는다.** 하이픈이 CLI 카탈로그가 아는 이름이라 표시명 · 접미사 판정이 걸리고, 점 표기는 「모르는 모델」로
+#   떨어져 `[1m]` 이 조용히 안 붙는다. 게이트웨이의 철자는 모델마다 달라(`claude-opus-5.5` 는 점 · `claude-fable-5-1` 은 하이픈)
+#   하이픈을 직결로 보내면 400 인 이름도 있지만, 사내 Claude Code 는 로컬 프록시를 지나고 프록시가 목록에 선 철자로 고쳐 보낸다.
 $ModelPicker = @(
-  @{ model = 'claude-sonnet-4-6[1m]'; description = 'Sonnet 4.6 · 게이트웨이 · 1M 창' }
-  @{ model = 'claude-opus-4-7[1m]';   description = 'Opus 4.7 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-opus-5-5[1m]';   description = 'Opus 5.5 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-sonnet-5-5[1m]'; description = 'Sonnet 5.5 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-haiku-5-5[1m]';  description = 'Haiku 5.5 · 게이트웨이 · 1M 창' }
+  @{ model = 'claude-fable-5-1[1m]';  description = 'Fable 5.1 · 게이트웨이 · 1M 창' }
   @{ model = 'claude-opus-5[1m]';     description = 'Opus 5 · 게이트웨이 · 1M 창' }
 )
 # 내장 줄(Sonnet 5 · Haiku · Custom 칸)을 숨긴다 — 이 게이트웨이가 안 내는 것들이다.
