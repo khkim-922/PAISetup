@@ -1,6 +1,6 @@
 ---
 name: norm-green-is-not-done
-description: "검사 · 게이트 · 레인 보고의 초록이나 빨강을 읽고 판정을 내리려 할 때 부른다 — 규범 [Goal-Driven Execution] 의 「검사 결과를 그대로 믿지 않는다」 본문. 초록은 본 데까지 · 무엇과 견준 초록인가 · 빨강이면 검사를 연다."
+description: "이 순간인가 — 검사 · 게이트 · 레인 보고의 초록이나 빨강을 읽고 「통과 · 됐다 · 안 된다」를 말하려 한다 → 부른다. 규범 [Goal-Driven Execution] 의 「검사 결과를 그대로 믿지 않는다」 본문. 초록은 본 데까지 · 무엇과 견준 초록인가 · 빨강이면 검사를 연다."
 user-invocable: false
 ---
 

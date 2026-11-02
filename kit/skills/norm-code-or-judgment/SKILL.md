@@ -1,6 +1,6 @@
 ---
 name: norm-code-or-judgment
-description: "스크립트 · 규칙표 · 자동 판정을 짜려 할 때 부른다 — 규범 [Determinism First] 의 글머리 둘. 사례 하나로 스크립트를 짜지 않는다 · 의미 판단의 표지 셋."
+description: "이 순간인가 — 스크립트 · 규칙표 · 자동 판정을 짜려 하고, 그것이 재는 것이 사람이 읽어 가르던 뜻이다 → 부른다. 규범 [Determinism First] 의 글머리 둘. 사례 하나로 스크립트를 짜지 않는다 · 의미 판단의 표지 셋."
 user-invocable: false
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: norm-point-or-derive
-description: "같은 사실을 둘째 자리에 두려 할 때 — 문서 · 코드 상수 · 설정 · 목록 어디든 — 부른다. 규범 [Single Source · Point or Derive] 의 ⚠ 본문. 가리키기를 먼저 찾고, 가리킬 원본은 읽는 쪽이 도는 모든 자리에 있어야 한다."
+description: "이 순간인가 — 다른 데 이미 있는 사실(값 · 목록 · 경로 · 설정)을 둘째 자리에 적으려 한다 → 부른다. 규범 [Single Source · Point or Derive] 의 ⚠ 본문. 가리키기를 먼저 찾고, 가리킬 원본은 읽는 쪽이 도는 모든 자리에 있어야 한다."
 user-invocable: false
 ---
 

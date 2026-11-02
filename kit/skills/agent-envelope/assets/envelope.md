@@ -44,7 +44,8 @@ harness's own review feature on the same tree, never one packet folder for every
   flow), do it yourself, and attach the evidence — image path or the exact steps and what happened. A report without this
   is not done, whatever the checks say; an acceptance lane that never saw the build will sit in the same seat after you.
 - Probes take the tree as an argument; never hardcode a path — the parent re-runs them before and after.
-- Checks you ran: counts, the mutation result (a deliberately wrong specimen went red) and the tree fingerprint (commit or hash).
+- Checks you ran: counts, the mutation result (a deliberately wrong specimen went red) and the tree fingerprint (commit or hash). <Parent: if the repository's gate runner stamps the tree, name it here (seed runner: `--run-gates --only <name>`) — a check file called directly leaves no stamp and the push re-measures.>
+
 - Checks you added, if any: for each, which of the four keep-criteria of check-design §1 it meets. If you verified once without adding a check, say so, with the command and its result.
 - Report in English as your final message. Files a human will open directly: Korean.
 
@@ -61,3 +62,4 @@ harness's own review feature on the same tree, never one packet folder for every
 ⑦ Add a permanent check only when all four keep-criteria of check-design §1 hold (the defect really happened or has a clear path · it is silent or irreversible when it breaks · it harms the user badly · nothing else already catches it); otherwise verify once and report the command and its result. A check and its specimen are one pair — when tightening a check turns a specimen red, fix both in the same pass.
 ⑧ Lanes share one machine. Run your long checks one at a time, in the background, and wait for the finish notification instead of polling or starting a second copy — overlapping copies slow every run.
 ⑨ The finished form measures the work, not the letter — within your ownership, whatever a finished one is customarily expected to have, and wherever the best expert in this field would do it better (design, missed cases, how it is measured, the flow the user goes through), build it even if the envelope did not list it, and list every addition with its reason in the report. What stays a proposal is what is not yours to decide — a change of direction, a decision the owner holds, a file you do not own. "New" is not a reason to hold back.
+⑩ Never delegate — do not spawn subagents or call the Agent tool. Every lane start carries the whole always-on load (norms, memory index, skill descriptions), so a lane inside a lane pays that again for a small job. The parent is the only one who spawns; if a piece needs another lane, propose it in the report.

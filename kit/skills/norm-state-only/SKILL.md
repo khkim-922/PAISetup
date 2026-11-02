@@ -1,6 +1,6 @@
 ---
 name: norm-state-only
-description: "문서 · 주석 · 메모리 · 결정 기록 · README 를 쓰거나 고칠 때 부른다 — 규범 [Docs-as-Code · State Only] 의 본문. 경위는 어디로 가나 · 주석은 무엇만 드나 · 굳는 문서의 예외."
+description: "이 순간인가 — 문서 · 주석 · 메모리 · 결정 기록 · README 를 쓰거나 고치려 하고, 거기에 날짜 · 사람 · 옛 판 · 「~했더니」 · 경위가 들어가려 한다 → 부른다. 규범 [Docs-as-Code · State Only] 의 본문. 경위는 어디로 가나 · 주석은 무엇만 드나 · 굳는 문서의 예외."
 user-invocable: false
 ---
 

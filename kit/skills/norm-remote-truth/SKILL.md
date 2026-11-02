@@ -1,6 +1,6 @@
 ---
 name: norm-remote-truth
-description: "원격 · 브랜치 · 커밋의 상태를 판정하려 할 때 부른다 — 「main 이 뒤처졌다」 · 「처음 생긴 커밋」 · 「밀 것이 있다」. 규범 [Main is the Default] 의 ⚠ 본문. origin/* 와 로컬 main 은 마지막 fetch 의 사진이다."
+description: "이 순간인가 — origin/* · 로컬 main · 다른 트리의 사본을 읽는 git 명령으로 「원격에 있나 · main 이 뒤처졌나 · 처음 생긴 커밋인가 · 밀 것이 있나」를 답하려 하고, 이 세션에서 내가 fetch 한 뒤가 아니다 → 부른다. 규범 [Main is the Default] 의 ⚠ 본문. 사진은 내 fetch 로만 새로워진다."
 user-invocable: false
 ---
 

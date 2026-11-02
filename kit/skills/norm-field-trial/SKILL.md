@@ -1,6 +1,6 @@
 ---
 name: norm-field-trial
-description: "설치 · 배포처럼 다른 기계나 사람 손이 드는 판을 계획하거나 시키려 할 때 부른다 — 규범 [Goal-Driven Execution] 의 「현장 판은 확인이다」 본문. 설계를 가를 실험은 현장에 먼저 시키지 않는다."
+description: "이 순간인가 — 다른 기계나 다른 사람 손이 돌릴 걸음(설치 · 배포 · 다른 PC 에서의 확인)을 계획하거나 적으려 한다 → 부른다. 규범 [Goal-Driven Execution] 의 「현장 판은 확인이다」 본문. 설계를 가를 실험은 현장에 먼저 시키지 않는다."
 user-invocable: false
 ---
 

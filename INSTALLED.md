@@ -270,13 +270,17 @@ Claude 를 고르면 pptxgenjs 를 npm 전역에 깔고, 새 판이 있으면 �
 
 ### 덱을 그림으로 보는 LibreOffice
 
-Claude 를 고르면 LibreOffice 를 winget 으로 깐다 — 공식 pptx 스킬이 만든 덱을 눈으로 확인할 때 덱을 PDF 로 바꾸는 손(`soffice`)이다.
+Claude 를 고르면 LibreOffice 를 깐다 — 공식 pptx 스킬이 만든 덱을 눈으로 확인할 때 덱을 PDF 로 바꾸는 손(`soffice`)이다.
 그 PDF 를 페이지 그림으로 그리는 것은 위 poppler 다. 회사 PC 에서도 LibreOffice 가 쓴 PDF 는 DRM 이 감싸지 않아(재 본 10분 동안), 덱을
 보는 기본 길이 이것이다.
 
 - PC 전체에 까는 설치본(MSI)이라 관리자 승인 창(UAC)이 한 번 뜰 수 있다. 승인 창이 뜨는 PC 에서 로그온 자동 실행은 누를 사람이
   없으니 창을 안 띄우고 노란 줄로 미룬다 — 설치 창으로 다시 누르면 그때 한 번 뜬다
-- 받는 것만 수백 MB 라 그 줄에서 몇 분 조용할 수 있다
+- 받는 곳은 LibreOffice 배포 서버가 내는 미러 순위에서 가까운 몇 곳을 재 보고 고른 가장 빠른 곳이다 — 그 줄 밑에 고른 미러와
+  빠르기가 찍힌다. 배포 서버가 넘겨 주는 미러를 그대로 타면 미러에 따라 받기가 열 배까지 느려진다
+- 받은 설치본은 배포 서버가 낸 SHA-256 과 서명자(The Document Foundation)가 다 맞을 때만 깐다
+- 미러를 못 고르거나 받기 · 확인 · 설치 가운데 하나가 지면 winget 이 깐다. 이미 깔린 LibreOffice 를 올리는 일도 winget 이 든다
+- 받는 것만 수백 MB 라 그 줄에서 1 ~ 2분, winget 이 받는 판은 몇 분 조용할 수 있다
 - LibreOffice 는 제 폴더(`C:\Program Files\LibreOffice\program`)를 PATH 에 안 심는다. 그래서 설치가 끝날 무렵 그 자리를 사용자 PATH
   끝에 더해, 새로 여는 터미널에서 `soffice` 가 이름만으로 선다 — [npm 전역 자리](#nodejs-와-npm-전역-자리)와 같은 규칙이다. 이미 떠
   있던 터미널 · 세션은 다시 열어야 잡힌다
