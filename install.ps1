@@ -5681,12 +5681,15 @@ function Get-BrowserMcpCheck([string]$Adapter, [string[]]$Picked, [string[]]$Unp
 
 # 표 한 줄(`$ToolAutoRun` — 「도구별 홈」 걸음)이 받는 꼴 — Label · Want · Path(설정 파일) · Under(그 안의 표 이름 · 맨 위면 빈 글) ·
 #   Set(심을 키와 값 · 순서대로) · Guard(있으면 사람이 정한 것으로 보는 키 · 없으면 Set 의 키) · Toml(참이면 TOML 맨 위 키) ·
-#   Need(심기 전에 그 자리에 그 값으로 서 있어야 하는 키 · JSON 줄만 — 표의 앞 줄이 심은 뒤에 재므로 같은 파일의 앞 줄을 먼저 둔다).
+#   Need(심기 전에 그 자리에 그 값으로 서 있어야 하는 키 · JSON 줄만 — 표의 앞 줄이 심은 뒤에 재므로 같은 파일의 앞 줄을 먼저 둔다) ·
+#   Was(옛 판이 그 줄에 심던 키와 값 · JSON 줄만 — 서 있는 Guard 키가 꼭 이 키들이고 값도 같으면 우리 것이라 새 값으로 간다).
 # 심는 규칙은 하나다 — **Guard 의 키가 하나라도 서 있으면 그 줄을 통째로 둔다.** 한 줄의 키들은 그 도구의 스위치 하나라, 사람이
-#   하나만 정해 둔 자리에 나머지를 채우면 그 사람이 고른 적 없는 조합이 선다(claude-config 결정 0127).
+#   하나만 정해 둔 자리에 나머지를 채우면 그 사람이 고른 적 없는 조합이 선다(claude-config 결정 0127). 예외는 Was 하나다 — 우리가
+#   심던 값을 바꾼 판에서, 옛 판이 심은 값을 사람 값으로 읽으면 새 값이 그 PC 에 끝내 안 닿는다(결정 0205).
 # 내는 것 — @{ Did = set · kept · skipped(Need 가 안 섰다) · broken · nopython · unmeasured(파이썬 물음이 울타리를 넘겼다 — 안 건드렸다) ·
 #   raced(쓰는 사이 다른 프로그램이 그 파일을 고쳤다 — 그 글을 둔다 · `Write-FileSafely`) · linked(그 파일이 링크다 — 안 썼다);
-#   Have = 서 있던 Guard 키와 값(「키 = 값」 글) · Why = skipped · broken · unmeasured 의 까닭 · Probe = unmeasured 의 물음 }.
+#   Have = 서 있던 Guard 키와 값(「키 = 값」 글 · set 이면 Was 로 갈아 낀 옛 값) · Why = skipped · broken · unmeasured 의 까닭 ·
+#   Probe = unmeasured 의 물음 }.
 #   화면 · 실패 줄은 부르는 쪽이 든다. 파일을 못 읽으면 안 건드린다 — 사람이 손댄 것이 거기 들어 있을 수 있다.
 # ⚠ 표인가는 `[System.Management.Automation.PSCustomObject]` 로 가른다 — `[pscustomobject]` 는 `[psobject]` 라 파이프에서 온 글 · 목록도
 #   그 꼴로 읽혀, 맨 위가 목록인 파일을 표로 보고 덮는다.
@@ -5755,17 +5758,21 @@ function Set-ToolAutoRun($Row) {
     $at = $obj.($Row.Under)
   }
   $have = @($guard | Where-Object { $at.PSObject.Properties[$_] } | ForEach-Object { "$_ = $($at.$_ | ConvertTo-Json -Compress)" })
-  if ($have.Count) { return @{ Did = 'kept'; Have = $have } }
+  $was = @(if ($Row.Was) { $guard | Where-Object { $Row.Was.Contains($_) } | ForEach-Object { "$_ = $($Row.Was[$_] | ConvertTo-Json -Compress)" } })
+  $ours = $was.Count -and (($have -join "`n") -ceq ($was -join "`n"))
+  if ($have.Count -and -not $ours) { return @{ Did = 'kept'; Have = $have } }
   if ($Row.Need) {
     $unmet = @($Row.Need.Keys | Where-Object { -not ($at.PSObject.Properties[$_] -and $at.$_ -ceq $Row.Need[$_]) })
     if ($unmet.Count) { return @{ Did = 'skipped'; Why = (@($unmet | ForEach-Object { "$_ 가 $($Row.Need[$_] | ConvertTo-Json -Compress) 가 아니다" }) -join ' · ') } }
   }
+  if ($ours) { foreach ($k in $Row.Was.Keys) { $at.PSObject.Properties.Remove($k) } }
   foreach ($k in $Row.Set.Keys) { $at | Add-Member -NotePropertyName $k -NotePropertyValue $Row.Set[$k] }
   # ⚠ `-Depth` 를 준다 — 5.1 의 기본 깊이는 2 라 사람이 둔 깊은 표가 글자로 뭉개진다.
   $w = Write-FileSafely $Row.Path ((New-Object Text.UTF8Encoding($false)).GetBytes(($obj | ConvertTo-Json -Depth 32))) $oldBytes
   if ($w.Did -ceq 'linked') { return @{ Did = 'linked'; Why = $w.Why } }
   if ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun') { return @{ Did = 'raced'; Why = $w.Why } }
   if ($w.Did -cne 'written') { return @{ Did = 'broken'; Why = $w.Why } }
+  if ($ours) { return @{ Did = 'set'; Have = $have } }
   return @{ Did = 'set' }
 }
 
@@ -7006,25 +7013,34 @@ if ($noWinget) {
 Update-RuntimePath
 
 # ── winget 받는 손 ─────────────────────────────────────────────────────────────
-# 앱 · CLI 걸음 앞에서 winget 의 받기 엔진을 WinINet 으로 심는다 — 기본값(`default`)이 고르는 전달 최적화(DO)는 사내망에서 어떤 벤더
-#   서버(LibreOffice 의 documentfoundation)에서 한 바이트도 못 받은 채 몇 분을 선다. 같은 받기가 WinINet 으로는 끝까지 닿는다(#65 회사
-#   실측). 칸은 winget 문서(winget-cli `doc/Settings.md` 의 `network.downloader`)가 든다. winget 은 부를 때마다 이 파일을 읽어, 심은
-#   뒤의 걸음부터 든다. 심겼나는 `winget settings export` 로 못 가린다 — 받을 때 winget 진단 기록에 찍히는 엔진 이름(`WinINet downloading`)이 든다.
-# 심는 손은 도구 설정을 사람 값을 안 덮고 심는 손(`Set-ToolAutoRun`)이다 — 사람이 `downloader` 를 정해 뒀으면 둔다. 그 파일이 주석 든
-#   JSON 이라 못 읽으면 안 건드리고 노란 줄로 남긴다(winget 은 `winget settings` 를 연 PC 에만 그 파일을 주석과 함께 짓는다).
+# 앱 · CLI 걸음 앞에서 winget 의 받기 엔진을 전달 최적화(DO)로 박고, 진척 없이 60초가 가면 다른 엔진으로 넘기게 한다 — 회사 PC 에서
+#   DO 가 WinINet 보다 두 배 빨랐고(#66 실측), DO 가 어떤 벤더 서버에서 한 바이트도 못 받은 채 서는 판(#65 · 회사 VDI)은 그 넘김이 받는다.
+#   기본값(`default`)은 winget 이 판마다 고르고 넘김 초도 winget 판을 따라가므로 둘 다 적어 둔다. 까닭과 두 실측은 claude-config 결정
+#   0205 가 든다. 칸은 winget 문서(winget-cli `doc/Settings.md` 의 `network.downloader` · `network.doProgressTimeoutInSeconds`)가 든다.
+#   winget 은 부를 때마다 이 파일을 읽어, 심은 뒤의 걸음부터 든다. 심겼나는 `winget settings export` 로 못 가린다 — 받을 때 winget 진단
+#   기록에 찍히는 엔진 이름(`DeliveryOptimization downloading`)이 든다.
+# 심는 손은 도구 설정을 사람 값을 안 덮고 심는 손(`Set-ToolAutoRun`)이다 — 사람이 두 키 가운데 하나라도 정해 뒀으면 둔다. 옛 판이
+#   심은 값(`"downloader": "wininet"` 한 칸)만 서 있으면 우리 것이라 새 값으로 간다(`Was`). 그 파일이 주석 든 JSON 이라 못 읽으면 안
+#   건드리고 노란 줄로 남긴다(winget 은 `winget settings` 를 연 PC 에만 그 파일을 주석과 함께 짓는다).
 # 장부에 안 적는다 — 걷지 않는 설정이고, 지울 자리는 UNINSTALL 「winget 받는 손」이 든다.
 if (-not $noWinget) {
-  $WingetCfg = @{ Label = 'winget 받는 손'; Under = 'network'; Set = [ordered]@{ downloader = 'wininet' }
+  $WingetCfg = @{ Label = 'winget 받는 손'; Under = 'network'; Set = [ordered]@{ downloader = 'do'; doProgressTimeoutInSeconds = 60 }
+                  Was = [ordered]@{ downloader = 'wininet' }
                   Path = (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json') }
   $wgRes = Set-ToolAutoRun $WingetCfg
+  $wgOurs = @($WingetCfg.Set.Keys | ForEach-Object { "$_ = $($WingetCfg.Set[$_] | ConvertTo-Json -Compress)" }) -join ' · '
+  $wgSays = "전달 최적화(DO) · 진척 없이 $($WingetCfg.Set.doProgressTimeoutInSeconds)초면 다른 엔진으로 넘긴다"
   switch ($wgRes.Did) {
-    'set' { Write-Host '  winget 받는 손 — WinINet 으로 심었다 (network.downloader = "wininet")' -ForegroundColor Green }
+    'set' {
+      if ($wgRes.Have) { Write-Host "  winget 받는 손 — 옛 판이 심은 값($($wgRes.Have -join ' · '))을 갈았다 · $wgSays ($wgOurs)" -ForegroundColor Green }
+      else { Write-Host "  winget 받는 손 — 심었다 · $wgSays ($wgOurs)" -ForegroundColor Green }
+    }
     'kept' {
-      if ((@($wgRes.Have) -join ' · ') -ceq 'downloader = "wininet"') { Write-Host '  winget 받는 손 — 이미 WinINet 이다' }
+      if ((@($wgRes.Have) -join ' · ') -ceq $wgOurs) { Write-Host "  winget 받는 손 — 이미 심겨 있다 · $wgSays" }
       else { Write-Host "  winget 받는 손 — 사람이 정한 값($($wgRes.Have -join ' · '))이라 둔다" }
     }
     default {
-      Write-Host "  ! winget 받는 손 — $($wgRes.Why) · 안 건드렸다 ($($WingetCfg.Path)) · 받기가 느리면 그 파일의 network 에 downloader 를 wininet 으로 넣는다" -ForegroundColor Yellow
+      Write-Host "  ! winget 받는 손 — $($wgRes.Why) · 안 건드렸다 ($($WingetCfg.Path)) · 받기가 멈추면 그 파일의 network 에 두 칸($wgOurs)을 넣는다" -ForegroundColor Yellow
     }
   }
 }
