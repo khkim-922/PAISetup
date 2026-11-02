@@ -467,6 +467,7 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
         <TextBlock Text="고른 도구의 CLI 와 데스크탑 앱을, 원하면 VS Code 와 확장까지 세웁니다." Style="{StaticResource Note}" FontSize="13" Margin="0,4,0,10"/>
         <WrapPanel Margin="0,0,0,8">
           <TextBlock Text="알아보기" Style="{StaticResource Note}" VerticalAlignment="Center" Margin="0,0,10,6"/>
+          <Button x:Name="LnkVideo" Style="{StaticResource Pill}" Tag="&#xE714;" Content="소개 영상"/>
           <Button x:Name="LnkFeat" Style="{StaticResource Pill}" Tag="&#xE71D;" Content="제공기능"/>
           <Button x:Name="LnkFlow" Style="{StaticResource Pill}" Tag="&#xE8AB;" Content="설치흐름"/>
           <Button x:Name="LnkNews" Style="{StaticResource Pill}" Tag="&#xE81C;" Content="바뀐 것"/>
@@ -895,16 +896,17 @@ foreach ($t in @(@{ El = $tRepo; Text = $tipText }, @{ El = (Get-El 'RepoWhat');
 # ── 링크 — 파일 · 폴더 · 페이지를 연다 ───────────────────────────────────────────
 # 링크 글은 「무엇이 있는 데인가」만 든다 — 「열기」 · 「위치」를 안 붙인다. 없으면 무엇이 어디에 없는지를 경로까지 대고 말한다 —
 #   눌렀는데 아무 일도 안 나면 사람은 「내 컴퓨터가 이상한가」에서 멈춘다.
-# `Open-Thing <경로> <무엇 — 이름만, 토씨 없이> [-Folder] [-Page]` — 폴더는 탐색기로, 페이지(`.html`)는 기본 브라우저(`Open-InBrowser`)로, 나머지는 그
-#   파일의 기본 프로그램으로 연다. 없거나 못 열면 그 말을 경로와 함께 한다. 내는 것 없음.
-function Open-Thing([string]$Path, [string]$What, [switch]$Folder, [switch]$Page) {
+# `Open-Thing <경로> <무엇 — 이름만, 토씨 없이> [-Folder] [-Page] [-Fragment <자리>]` — 폴더는 탐색기로, 페이지(`.html`)는 기본
+#   브라우저(`Open-InBrowser` — `-Fragment` 를 주면 그 자리로)로, 나머지는 그 파일의 기본 프로그램으로 연다. 없거나 못 열면 그 말을
+#   경로와 함께 한다. 내는 것 없음.
+function Open-Thing([string]$Path, [string]$What, [switch]$Folder, [switch]$Page, [string]$Fragment) {
   if (-not (Test-Path -LiteralPath $Path)) {
     [void][Windows.MessageBox]::Show($F, "$What — 이 폴더에 없습니다" + [Environment]::NewLine + $Path, $AppName, 'OK', 'Warning')
     return
   }
   try {
     if ($Folder) { Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $Path + '"') | Out-Null }
-    elseif ($Page -and (Get-Command Open-InBrowser -ErrorAction SilentlyContinue)) { Open-InBrowser $Path }
+    elseif ($Page -and (Get-Command Open-InBrowser -ErrorAction SilentlyContinue)) { Open-InBrowser $Path $Fragment }
     else { Start-Process -FilePath $Path | Out-Null }
   } catch {
     [void][Windows.MessageBox]::Show($F, "$What — 못 열었습니다: $($_.Exception.Message)" + [Environment]::NewLine + $Path,
@@ -912,8 +914,11 @@ function Open-Thing([string]$Path, [string]$What, [switch]$Folder, [switch]$Page
   }
 }
 
-# 「알아보기」 — 누르기 전에 읽을 것 셋(제공기능 · 설치흐름 · 바뀐 것). 스위치 없이 놓이는 것(사내 문서 · 씨앗)일수록 누르기 전에 말한다 — 그 말은 「제공기능」
+# 「알아보기」 — 누르기 전에 읽을 것(소개 영상 · 제공기능 · 설치흐름 · 바뀐 것). 스위치 없이 놓이는 것(사내 문서 · 씨앗)일수록 누르기 전에 말한다 — 그 말은 「제공기능」
 #   페이지가 든다(결정 0091). 무엇이 어디에 놓이나의 진본은 install.ps1 「공용 자산」 걸음과 `INSTALLED.md` 라 목록을 여기 옮기지 않는다.
+# 소개 영상 — 같은 안내 페이지의 맨 위 영상 자리(`#intro`)로 연다. 영상은 짐에 없고 그 페이지가 깃허브에 올린 파일을 튼다 —
+#   주소를 이 창에 또 적지 않는다.
+(Get-El 'LnkVideo').Add_Click({ Open-Thing (Join-Path $Here 'features.html') '안내 페이지(features.html)' -Page -Fragment 'intro' })
 (Get-El 'LnkFeat').Add_Click({ Open-Thing (Join-Path $Here 'features.html') '안내 페이지(features.html)' -Page })
 # 설치 흐름 그림 — 같은 폴더의 `install-flow.svg`(README 가 든 그 그림).
 (Get-El 'LnkFlow').Add_Click({ Open-Thing (Join-Path $Here 'install-flow.svg') '설치 흐름 그림(install-flow.svg)' })

@@ -4,9 +4,13 @@
 #   안 고른 PC(맨바닥 VDI)에서 파일을 그대로 띄우면 윈도우가 앱 고르기 창부터 띄운다. 그래서 `https` 에 선 앱의 여는 명령
 #   (`HKCR\<ProgId>\shell\open\command`)에 그 파일의 주소(`file:///…`)를 넣어 띄우고, 그 앱을 못 찾으면 파일 연결에 맡긴다.
 # 던지면 부르는 쪽이 「못 열었다」로 읽는다.
+# `-Fragment <이름>` 을 주면 페이지의 그 자리(`#이름`)로 연다. ⚠ 경로에 `#` 을 붙여 넘기지 않는다 — 윈도 경로로 읽혀 `%23` 으로
+#   깨진다. 파일 연결로 물러난 판(아래 끝 줄)은 자리 없이 페이지 머리로 열린다.
 
-function Open-InBrowser([string]$Page) {
-  $uri = ([Uri]$Page).AbsoluteUri
+function Open-InBrowser([string]$Page, [string]$Fragment) {
+  $builder = [UriBuilder]([Uri]$Page)
+  if ($Fragment) { $builder.Fragment = $Fragment }
+  $uri = $builder.Uri.AbsoluteUri
   $id  = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice' -ErrorAction SilentlyContinue).ProgId
   $cmd = if ($id) { (Get-ItemProperty -LiteralPath "Registry::HKEY_CLASSES_ROOT\$id\shell\open\command" -ErrorAction SilentlyContinue).'(default)' }
   if ("$cmd" -match '^\s*"([^"]+)"\s*(.*)$' -and (Test-Path -LiteralPath $Matches[1])) {
