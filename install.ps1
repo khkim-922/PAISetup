@@ -3566,8 +3566,9 @@ function Wire-NodeTrust {
 #   서는 조건 — HEAD 가 크기를 주고 그 크기가 `$DownloadSplitMin` 이상이며, `$DownloadParts` 조각 요청이 다 206 으로 제 범위와 전체 크기를
 #   맞게 답한다. 하나라도 어긋나면 몸통을 읽기 전에 거두고 `single` 이다 — 범위를 무시하고 200 으로 통째 주는 길에서 같은 파일을 여러 번
 #   안 받는다.
-#   시계 — 응답 머리는 `$WaitSec` 안에 와야 하고(프록시가 통째로 받아 검사하는 몫), 몸통은 `$WaitSec` 동안 한 바이트도 안 오면 끊는다.
-#   한 연결 길의 `Timeout` · `ReadWriteTimeout` 과 같은 몫이다.
+#   시계 — HEAD 와 조각 머리는 `$VendorHeadCap` 안에 와야 하고, 안 오면 `single` 이다 — 머리를 오래 붙드는 길(막힌 망 · 파일을 통째로
+#   받아 검사하는 프록시)은 한 연결 길의 제 시계(`$WaitSec`)로 넘긴다. 이 길이 그 시계를 한 번 더 쓰면 실패까지 기다림이 두 배가 된다.
+#   몸통은 `$WaitSec` 동안 한 바이트도 안 오면 끊는다 — 한 연결 길의 `ReadWriteTimeout` 과 같은 몫이다.
 # ⚠ **호스트당 연결 수를 이 주소에만 연다** — .NET Framework 의 기본은 호스트당 2 라, 안 열면 조각이 둘씩만 돈다.
 # ⚠ **조각마다 받은 길이를 잰다** — 파일은 처음에 전체 크기로 잡아 두므로 파일 크기로는 덜 받은 조각이 안 보인다.
 function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
@@ -3578,7 +3579,9 @@ function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
   $cts = New-Object Threading.CancellationTokenSource
   $res = @(); $outs = @()
   try {
-    try { $head = $hc.SendAsync((New-Object Net.Http.HttpRequestMessage 'HEAD', $Url)).Result } catch { return 'single' }
+    $ask = $hc.SendAsync((New-Object Net.Http.HttpRequestMessage 'HEAD', $Url), $cts.Token)
+    try { if (-not $ask.Wait($VendorHeadCap * 1000)) { $cts.Cancel(); return 'single' } } catch { return 'single' }
+    $head = $ask.Result
     $final = $head.RequestMessage.RequestUri
     $total = $head.Content.Headers.ContentLength
     $ok    = $head.IsSuccessStatusCode
@@ -3595,13 +3598,16 @@ function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
       $rq.Headers.Range = New-Object Net.Http.Headers.RangeHeaderValue $from[$i], ($from[$i] + $want[$i] - 1)
       $hc.SendAsync($rq, [Net.Http.HttpCompletionOption]::ResponseHeadersRead, $cts.Token)
     })
-    try { [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]$sends) } catch { }
+    $all = $false
+    try { $all = [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]$sends, $VendorHeadCap * 1000) } catch { }
     $res = @($sends | Where-Object { $_.Status -eq 'RanToCompletion' } | ForEach-Object { $_.Result })
-    if ($res.Count -ne $n) { return 'single' }
+    if (-not $all -or $res.Count -ne $n) { $cts.Cancel(); return 'single' }
+    # 조각마다 제 넘김 끝도 https 여야 한다 — HEAD 의 끝만 보면 GET 이 따로 http 로 넘겨진 조각을 쓴다. 어긋나면 한 연결 길이 던진다.
     for ($i = 0; $i -lt $n; $i++) {
       $cr = $res[$i].Content.Headers.ContentRange
       if ([int]$res[$i].StatusCode -ne 206 -or -not $cr -or $cr.From -ne $from[$i] -or $cr.Length -ne $total -or
-          $res[$i].Content.Headers.ContentLength -ne $want[$i]) { return 'single' }
+          $res[$i].Content.Headers.ContentLength -ne $want[$i] -or
+          ($Url -like 'https:*' -and $res[$i].RequestMessage.RequestUri.Scheme -ne 'https')) { return 'single' }
     }
     Write-Host ('        {0} 연결로 나눠 받는다 — {1:N1} MB' -f $n, ($total / 1MB))
     $file = [IO.File]::Create($OutFile)
