@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 17
+VERSION_OURS = 18
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -75,7 +75,7 @@ MAX_UNSTREAM_BYTES = 32 * 1024 * 1024
 WEB_SEARCH = os.environ.get("PGPT_PROXY_WEB_SEARCH", "1").lower() not in {"0", "false", "off"}
 HOIST_TOOL_IMAGES = os.environ.get("PGPT_PROXY_HOIST_TOOL_IMAGES", "1").lower() not in {"0", "false", "off"}
 DOCUMENT_NOTE = os.environ.get("PGPT_PROXY_DOCUMENT_NOTE", "1").lower() not in {"0", "false", "off"}
-WEB_SEARCH_MODEL = os.environ.get("PGPT_PROXY_WEB_SEARCH_MODEL", "gemini-3.6-flash").strip()
+WEB_SEARCH_MODEL = os.environ.get("PGPT_PROXY_WEB_SEARCH_MODEL", "gemini-3.8-flash").strip()
 # 상류 기본 시한(600초)을 따르면 막힌 게이트웨이 앞에서 CLI 가 10분씩 묶인다.
 WEB_SEARCH_TIMEOUT = _env_float("PGPT_PROXY_WEB_SEARCH_TIMEOUT", 90.0)
 # CLI 2.1.293 의 문구다 — CLI 가 바꾸면 메움이 멎는다(/health 의 web_search_filled 가 안 오른다).
