@@ -1131,6 +1131,8 @@ $VendorListTries = 3   # 목록 쪽(`listing`)에서 받을 파일이 있나를 
 $VendorMirrorTries = 8      # 미러 순위(`Mirrors = 'metalink'`)에서 빠르기를 재는 곳의 수 — 가까운 곳부터. 순위는 묻는 쪽의 대륙 미러를 앞에 세운다
 $VendorMirrorProbe = 4MB    # 한 곳을 재려고 받는 앞 토막 — 작으면 연결을 여는 시간만 잰다
 $VendorMirrorCap   = 4      # 한 곳을 재는 초 — 넘기면 그때까지 받은 양으로 잰다. 느린 곳일수록 일찍 끊어, 다 재도 이 초 × 곳의 수 안팎이다
+$DownloadParts    = 8       # 큰 것을 나눠 받는 연결 수(`Get-DownloadParts`) — 연결 하나의 빠르기를 묶는 길(먼 지연 · 프록시)에서 회선을 다 쓴다. 회선이 묶인 자리에서는 4 와 8 이 같다(PAISetup #67)
+$DownloadSplitMin = 32MB    # 이보다 작은 것은 한 연결로 받는다 — 조각을 여는 값이 받는 시간을 넘는다
 $ClaudePluginCap = 60  # `claude plugin list` · `plugin marketplace list` — node 로 선 CLI 가 플러그인 기록을 읽는다. 첫 실행에 제 짐을 푸는 CLI 가 `--version` 에 20초 가까이 쓴 PC 가 있어(PAISetup #30) 넉넉히 둔다
 # 끝 검증이 묻는 바깥 명령의 한도 — 넘기면 그 칸이 「못 쟀다」다. 위와 같이 멈춤을 가르는 값이라 의심스러우면 길게 둔다.
 $ToolHomesCheckCap = 120   # 손(`tool-homes.py check`)이 도구 홈 넷의 규범 · 룰 · 에이전트 · 스킬을 표와 견준다 — 파일을 읽기만 하는데, 느린 디스크와 보안 소프트가 낀 VDI 를 넉넉히 덮는다
@@ -3559,6 +3561,87 @@ function Wire-NodeTrust {
   Plant-Var 'NODE_EXTRA_CA_CERTS' $target
 }
 
+# 큰 것을 여러 연결로 나눠 받는 자 — `Get-Download` 가 먼저 부른다. 내는 것 `done`(다 받았다) · `single`(이 길이 안 선다 — 한 연결로
+#   받으라). 받는 도중의 실패는 던진다(한 연결 길도 같은 자리에서 진다).
+#   서는 조건 — HEAD 가 크기를 주고 그 크기가 `$DownloadSplitMin` 이상이며, `$DownloadParts` 조각 요청이 다 206 으로 제 범위와 전체 크기를
+#   맞게 답한다. 하나라도 어긋나면 몸통을 읽기 전에 거두고 `single` 이다 — 범위를 무시하고 200 으로 통째 주는 길에서 같은 파일을 여러 번
+#   안 받는다.
+#   시계 — 응답 머리는 `$WaitSec` 안에 와야 하고(프록시가 통째로 받아 검사하는 몫), 몸통은 `$WaitSec` 동안 한 바이트도 안 오면 끊는다.
+#   한 연결 길의 `Timeout` · `ReadWriteTimeout` 과 같은 몫이다.
+# ⚠ **호스트당 연결 수를 이 주소에만 연다** — .NET Framework 의 기본은 호스트당 2 라, 안 열면 조각이 둘씩만 돈다.
+# ⚠ **조각마다 받은 길이를 잰다** — 파일은 처음에 전체 크기로 잡아 두므로 파일 크기로는 덜 받은 조각이 안 보인다.
+function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
+  Add-Type -AssemblyName System.Net.Http
+  $hc = New-Object Net.Http.HttpClient
+  $hc.Timeout = [TimeSpan]::FromSeconds($WaitSec)
+  [void]$hc.DefaultRequestHeaders.UserAgent.TryParseAdd('PAISetup')
+  $cts = New-Object Threading.CancellationTokenSource
+  $res = @(); $outs = @()
+  try {
+    try { $head = $hc.SendAsync((New-Object Net.Http.HttpRequestMessage 'HEAD', $Url)).Result } catch { return 'single' }
+    $final = $head.RequestMessage.RequestUri
+    $total = $head.Content.Headers.ContentLength
+    $ok    = $head.IsSuccessStatusCode
+    $head.Dispose()
+    if (-not $ok -or -not $total -or $total -lt $DownloadSplitMin) { return 'single' }
+    if ($Url -like 'https:*' -and $final.Scheme -ne 'https') { throw "https 로 물었는데 $($final.Scheme) 로 넘겨졌다 ($($final.Host))" }
+    $n = $DownloadParts
+    [Net.ServicePointManager]::FindServicePoint($final).ConnectionLimit = [Math]::Max($n, [Net.ServicePointManager]::FindServicePoint($final).ConnectionLimit)
+    $size = [long][Math]::Ceiling($total / $n)
+    $from = @(for ($i = 0; $i -lt $n; $i++) { [long]$i * $size })
+    $want = @(for ($i = 0; $i -lt $n; $i++) { [Math]::Min($from[$i] + $size, $total) - $from[$i] })
+    $sends = @(for ($i = 0; $i -lt $n; $i++) {
+      $rq = New-Object Net.Http.HttpRequestMessage 'GET', $final
+      $rq.Headers.Range = New-Object Net.Http.Headers.RangeHeaderValue $from[$i], ($from[$i] + $want[$i] - 1)
+      $hc.SendAsync($rq, [Net.Http.HttpCompletionOption]::ResponseHeadersRead, $cts.Token)
+    })
+    try { [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]$sends) } catch { }
+    $res = @($sends | Where-Object { $_.Status -eq 'RanToCompletion' } | ForEach-Object { $_.Result })
+    if ($res.Count -ne $n) { return 'single' }
+    for ($i = 0; $i -lt $n; $i++) {
+      $cr = $res[$i].Content.Headers.ContentRange
+      if ([int]$res[$i].StatusCode -ne 206 -or -not $cr -or $cr.From -ne $from[$i] -or $cr.Length -ne $total -or
+          $res[$i].Content.Headers.ContentLength -ne $want[$i]) { return 'single' }
+    }
+    Write-Host ('        {0} 연결로 나눠 받는다 — {1:N1} MB' -f $n, ($total / 1MB))
+    $file = [IO.File]::Create($OutFile)
+    $file.SetLength($total)
+    $file.Close()
+    $copies = @(for ($i = 0; $i -lt $n; $i++) {
+      $o = New-Object IO.FileStream $OutFile, ([IO.FileMode]::Open), ([IO.FileAccess]::Write), ([IO.FileShare]::ReadWrite)
+      [void]$o.Seek($from[$i], [IO.SeekOrigin]::Begin)
+      $outs += $o
+      $res[$i].Content.ReadAsStreamAsync().Result.CopyToAsync($o, 1048576, $cts.Token)
+    })
+    # ⚠ **줄로 말한다 — 막대가 아니라.** 한 연결 길과 같은 꼴 · 같은 10% 눈금이다.
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    $still = [Diagnostics.Stopwatch]::StartNew()
+    $last = 0.0; $mark = 0
+    while (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]$copies, 1000)) {
+      $got = 0.0
+      for ($i = 0; $i -lt $n; $i++) { $got += $outs[$i].Position - $from[$i] }
+      if ($got -gt $last) { $last = $got; $still.Restart() }
+      elseif ($still.Elapsed.TotalSeconds -ge $WaitSec) { $cts.Cancel(); throw "$WaitSec 초 동안 한 바이트도 안 왔다 ($($final.Host))" }
+      $pct = [Math]::Floor(($got / $total) * 100)
+      if ($pct -ge ($mark + 10)) {
+        $mark = $pct - ($pct % 10)
+        Write-Host ('        {0}% · {1:N1} / {2:N1} MB' -f $mark, ($got / 1MB), ($total / 1MB))
+      }
+    }
+    for ($i = 0; $i -lt $n; $i++) {
+      if ($outs[$i].Position - $from[$i] -ne $want[$i]) { throw "조각 $($i + 1) 을 덜 받았다 ($($outs[$i].Position - $from[$i]) / $($want[$i]) 바이트)" }
+    }
+    Write-Host ('        다 받았다 — {0:N1} MB · {1:N1} MB/s' -f ($total / 1MB), ($total / 1MB / [Math]::Max($sw.Elapsed.TotalSeconds, 0.001)))
+    return 'done'
+  } catch [AggregateException] {
+    throw $_.Exception.InnerException
+  } finally {
+    foreach ($o in $outs) { $o.Dispose() }
+    foreach ($r in $res) { $r.Dispose() }
+    $cts.Dispose(); $hc.Dispose()
+  }
+}
+
 # 큰 것을 받는 자 — 주소를 `$OutFile` 로 흘려 쓰고, 가면서 10% 마다(크기를 안 주면 25MB 마다) 한 줄씩 말한다. 실패는 던진다.
 #   `Invoke-WebRequest` 를 안 쓰는 까닭 셋 — 이 자리는 수백 MB 다:
 #   · 몸통을 메모리에 물고 있다가 쓴다(5.1) — 그렇게 받으면 그 자체로 느리다
@@ -3568,7 +3651,9 @@ function Wire-NodeTrust {
 #   읽는 사이다.
 # ⚠ **https 로 물은 받기가 넘김 끝에 http 에 닿으면 던진다** — 이 파워셸(.NET Framework)의 넘김 따라가기는 그 내려앉음을 막지 않는다.
 #   서명이 없는 벤더 길은 https 로 받는 것이 울타리라(`Test-VendorFence`) 여기서 끊는다.
+# 먼저 나눠 받기(`Get-DownloadParts`)를 묻고, 그 길이 안 서면 한 연결로 받는다.
 function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
+  if ((Get-DownloadParts $Url $OutFile $WaitSec) -eq 'done') { return }
   $req = [Net.HttpWebRequest]::Create($Url)
   $req.Timeout          = $WaitSec * 1000
   $req.ReadWriteTimeout = $WaitSec * 1000
