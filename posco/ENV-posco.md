@@ -289,8 +289,11 @@
   릴레이에서 진다. 회사 PC 실측 · intelligence `8abc68c`(사내 PC 발행기 · 2026-11-02) — 그대로 쓰는 보내는 손은 씨앗 `mail/`
 - **사내 메일함은 Lotus Notes(HCL Domino) 웹메일이고, 받는 길은 웹뿐이다.** 메일함 서버(`pcfma0b.posco.net` · 웹메일
   주소창의 `…/이름.nsf`)는 80 · 443 만 열려 있고 IMAP · POP3 · Notes(1352)는 닫혀 있다. 앞에 사내 SSO(`swpsso.posco.net`
-  → ADFS `adfs.m365.posco.net`)가 서고, 끊긴 세션에는 오류 대신 200 에 SSO 로 보내는 HTML 을 준다. 회사 데스크톱은
-  Windows 통합 인증으로 넘을 것으로 보지만 안 쟀다 — **VDI 는 ADFS 의 통합 인증(`/adfs/ls/wia`)이 401 로 지고**, 사람이
+  → ADFS `adfs.m365.posco.net`)가 서고, 끊긴 세션에는 오류 대신 200 에 SSO 로 보내는 HTML 을 준다. **회사 데스크톱은 새
+  브라우저로 `…/saml_login.jsp?companyCode=shared` 를 먼저 열면 입력 없이 넘지만, 도중의 「다른 PC에서 EP 접속 정보」 창을
+  「확인」해야 넘고 그것이 다른 쪽 세션을 끊는다** — 메일 서버 세션도 SSO 세션에 묶여 함께 죽는다. 사람의 세션을 안 깨고
+  읽으려면 그 사람의 Edge 를 디버깅 포트(`127.0.0.1`)로 띄워 CDP 로 붙는다(회사 데스크톱 실측 · mail-secretary #1 · 2026-11-03)
+  — **VDI 는 ADFS 의 통합 인증(`/adfs/ls/wia`)이 401 로 지고**, 사람이
   브라우저에서 로그인해야 세션이 선다. 세션 쿠키로 목록(`XML_Inbox?ReadViewEntries` — XML · `outputformat=JSON` 도 된다)
   · 본문 조각(`/0/<unid>/Body/M1.1`(평문) · `M1.2`(HTML)`?OpenElement`) · 첨부(`/0/<unid>/$FILE/<이름>` · 바이트 그대로 ·
   한글 이름도)를 받고, **이 셋은 메일의 읽음 표시를 안 바꾼다. 문서를 여는 `?OpenDocument` 는 바꾼다.** 읽음은 목록의
