@@ -19,9 +19,14 @@
   ⑤ 한도는 변수로 열려 있다 — 시간 벽 · 이어받기 바퀴 · 봉투 상한 · 출력 상한.
      손잡이마다 판정 하나다: 넷을 한 줄로 묶으면 하나가 안 서도 넷이 함께 빨강이라
      어느 것이 없는지가 화면에서 안 갈린다
-  ⑥ 기본 갈래에 모르는 이름을 적으면 뜰 때 죽는다 — 오타가 조용히 딴 갈래로 안 간다
+  ⑥ 기본 갈래에 모르는 이름을 적으면 불러오기는 서되 첫 자격(`creds`)과 `configure()` 가 그 이름을
+     말하며 선다 — 오타가 조용히 딴 갈래로 안 가고, 남의 틀린 손잡이가 불러오기를 안 넘어뜨린다
+  ⑦ 부르는 쪽이 넘긴 값이 이긴다 — 차례는 `configure(...)` → 환경 → 기본. 환경에 틀린 손잡이가 걸려
+     있어도 불러오기가 서고, 넘긴 값(출력 상한 · 기본 갈래 · 모델 표 · 캐시 수명 · 기록 자리)이 그대로
+     자격에 앉는다. 모르는 손잡이 이름은 그 자리에서 선다
 
-⚠ 들여올 때 굳는 값(④⑤⑥)은 이 프로세스에서 못 바꾼다 — 새 프로세스에 손잡이를 주고 되읽는다.
+⚠ 환경 → 기본 길(④⑤⑥⑦)은 불러올 때 도는 길이라 새 프로세스에 손잡이를 주고 되읽는다 — 재는 자리가
+  매번 같아야 해서다. `configure` 는 이 프로세스에서도 값을 바꾸지만 같은 까닭으로 자식에서 잰다.
 
 그 앱이 안 여는 손잡이는 「뺀 자리」다. 한도를 상수로 박고 기본 갈래를 환경변수로 안 여는 앱이
 있다 — 곁 선언 `_check/gateway.conf` 의 `[no_handle]` 이 그 까닭을 들면 ⑤의 그 한도와 ⑥ 셋이
@@ -222,20 +227,111 @@ if live:
 print("\n[6] 기본 갈래에 모르는 이름")
 if "PROVIDER" in NO_HANDLE:
     # 뺀 자리에서는 자식도 안 올린다 — 손잡이를 안 읽는 앱에서는 모르는 이름을 실어도 자식이
-    # 안 죽어, 잴 것이 없는 자리가 빨강으로 선다.
-    cut_off("뜰 때 죽는다", "PROVIDER")
-    cut_off("  그 이름과 손잡이 이름을 말한다", "PROVIDER")
+    # 안 서, 잴 것이 없는 자리가 빨강으로 선다.
+    cut_off("불러오기는 선다 — 틀린 이름이 import 를 안 넘어뜨린다", "PROVIDER")
+    cut_off("첫 자격에서 서고 그 이름과 손잡이 이름을 말한다", "PROVIDER")
+    cut_off("  뜰 때 죽이는 길 — configure() 가 그 자리에서 같은 말로 선다", "PROVIDER")
     cut_off("아는 이름이면 그것이 기본이 된다 (양성 대조)", "PROVIDER")
 else:
-    # 배관을 무는 것만으로 죽는다 — 자식의 머리말(`_PLUMB`)이 그 임포트다.
-    rc, out, err = peek("pass", **{f"{P}_PROVIDER": "antropic"})
-    show("뜰 때 죽는다", rc != 0, True)
-    show("  그 이름과 손잡이 이름을 말한다", "antropic" in err and f"{P}_PROVIDER" in err, True)
+    # 배관을 무는 것(자식의 머리말 `_PLUMB`)으로는 안 죽는다 — 사용자 환경에 걸린 남의 손잡이가 상주를
+    # 못 뜨게 하던 자리다. 세우는 자리는 첫 자격이고, 뜰 때 죽이고 싶은 앱은 뜰 때 `configure()` 를 부른다.
+    rc, out, err = peek("print('alive')", **{f"{P}_PROVIDER": "antropic"})
+    show("불러오기는 선다 — 틀린 이름이 import 를 안 넘어뜨린다", (rc, out), (0, "alive"))
+    rc, out, err = peek("gateway.creds()", **{f"{P}_PROVIDER": "antropic"})
+    show("첫 자격에서 서고 그 이름과 손잡이 이름을 말한다",
+         rc != 0 and "antropic" in err and f"{P}_PROVIDER" in err, True)
+    rc, out, err = peek("gateway.configure()", **{f"{P}_PROVIDER": "antropic"})
+    show("  뜰 때 죽이는 길 — configure() 가 그 자리에서 같은 말로 선다",
+         rc != 0 and "antropic" in err and f"{P}_PROVIDER" in err, True)
     rc, out, err = peek("print(gateway.DEFAULT_PROVIDER)",
                         **{f"{P}_PROVIDER": list(gateway._GATEWAY)[-1]})
     show("아는 이름이면 그것이 기본이 된다 (양성 대조)", out, list(gateway._GATEWAY)[-1])
 
-print("\n[7] 안 잰 것")
+print("\n[7] 부르는 쪽이 넘긴 값이 이긴다 — configure → 환경 → 기본")
+# 주인의 앱이 잰 결함이다 — 씨앗을 깔린 자리에서 불러오면 사용자 환경의 `{P}_WALL_MAX_TOKENS=64000` 이
+# 앱이 4000 으로 닫은 출력 상한을 열고, `{P}_PROVIDER=bogus` 가 불러오기를 넘어뜨려 상주가 안 떴다.
+# 둘 다 조용하다 — 상한은 열린 줄 모르고 열리고, 상주는 뜨다 죽는다. 그래서 넷을 잰다: 틀린 환경 위에서
+# 불러오기가 서나 · 넘긴 값이 환경을 이기나 · 다른 접두어를 넘기면 이 접두어 손잡이를 안 읽나 · 박힌 값
+# 넷(접두어 · 모델 표 · 캐시 수명 · 기록 자리)이 넘긴 대로 앉나. 한도 손잡이는 [5] 가 푼 `live` 에서 쓴다
+# — 그 앱이 여는 손잡이만 넘길 수 있어서다.
+rc, out, err = peek("print(hasattr(gateway, 'configure'))")
+if out != "True":
+    unmeasured("configure 가 배관에 있다", "이 배관에는 `configure` 가 없다 — 받는 꼴 앞 판의 사본이다")
+elif not live:
+    unmeasured("넘긴 값이 환경을 이긴다", "[5] 의 한도 손잡이가 하나도 안 열려 넘길 값이 없다")
+else:
+    first, last = next(iter(gateway._GATEWAY)), list(gateway._GATEWAY)[-1]
+    # 불러오기를 넘어뜨리던 꼴 둘 — 숫자가 아닌 한도 · 모르는 갈래. 이 판은 「서나」만 본다.
+    bad_env = {f"{P}_{live[0][0]}": "글자"}
+    if "PROVIDER" not in NO_HANDLE:
+        bad_env[f"{P}_PROVIDER"] = "antropic"
+    rc, out, err = peek("print('alive')", **bad_env)
+    show("환경에 틀린 손잡이가 걸려 있어도 불러오기가 선다", (rc, out), (0, "alive"))
+    # 남의 손잡이가 **멀쩡한 값**으로 걸린 판 — 주인의 앱이 잰 그 꼴(64000 이 닫은 상한을 연다). 틀린 값을
+    # 섞지 않는 까닭: 섞으면 넘긴 값을 안 읽는 배관이 `configure` 에서 넘어져 「못 쟀다」로 빠지고 빨강이
+    # 안 선다. 여기는 값을 읽어 견줘야 무는 자리다.
+    bad_env = {f"{P}_{name}": "64000" for name, *_ in live}
+    if "PROVIDER" not in NO_HANDLE:
+        bad_env[f"{P}_PROVIDER"] = last
+    given = {name: want for name, _, _, want, _ in live}
+    if "PROVIDER" not in NO_HANDLE:
+        given["PROVIDER"] = first
+    code = ("import importlib, json; "
+            f"gateway.configure(prefix={P!r}, **{given!r}); "
+            "print(json.dumps({n: str(getattr(importlib.import_module(m), a)) "
+            "for n, m, a in " + repr([row[:3] for row in live]) + "} | "
+            "{'PROVIDER': gateway.DEFAULT_PROVIDER, 'creds': gateway.creds(provider=" + repr(first) + ").max_tokens}))")
+    rc, out, err = peek(code, **bad_env)
+    if rc == 0:
+        got = json.loads(out)
+        for name, _, _, want, label in live:
+            show(f"{label} — configure({name}=…) 가 환경의 틀린 값을 이긴다", got.get(name), want)
+        if "PROVIDER" not in NO_HANDLE:
+            show("기본 갈래 — configure(PROVIDER=…) 가 환경이 고른 다른 갈래를 이긴다", got.get("PROVIDER"), first)
+        wall = [row for row in live if row[0] == "WALL_MAX_TOKENS"]
+        if wall and gateway._GATEWAY[first]["site"] == gateway.SITE_POSCO:
+            show("  그 상한이 자격에 앉는다 — 회사 갈래의 max_tokens", got.get("creds"), int(wall[0][3]))
+    else:
+        for name, _, _, _, label in live:
+            unmeasured(f"{label} — configure", f"값을 되읽는 자식이 졌다 — {err.strip()[-200:]}")
+    # 다른 접두어를 넘기면 이 접두어의 손잡이는 한 줄도 안 읽는다 — 값은 손잡이 없이 올린 판과 같다.
+    probe = ("import importlib, json; "
+             "print(json.dumps({n: str(getattr(importlib.import_module(m), a)) "
+             "for n, m, a in " + repr([row[:3] for row in live]) + "}))")
+    rc0, bare, err0 = peek(probe)
+    rc, out, err = peek(f"gateway.configure(prefix={P + '_OTHER'!r}); " + probe,
+                        **{f"{P}_{name}": want for name, _, _, want, _ in live})
+    if rc0 == 0 and rc == 0:
+        show("다른 접두어를 넘기면 이 접두어의 손잡이를 안 읽는다 — 손잡이 없이 올린 판과 같다",
+             json.loads(out), json.loads(bare))
+    else:
+        unmeasured("다른 접두어를 넘기면 이 접두어의 손잡이를 안 읽는다",
+                   f"값을 되읽는 자식이 졌다 — {(err or err0).strip()[-200:]}")
+    # 박힌 값 넷 — 모델 표 · 캐시 수명 · 기록 자리(접두어는 위에서 섰다). 넘긴 대로 자격과 봉투에 앉는다.
+    code = ("import json, pathlib; "
+            f"gateway.configure(prefix={P!r}, models={{{first!r}: ('m-given', 'm-2')}}, "
+            "CACHE_TTL='5m', LOGS_DIR=pathlib.Path('given-logs')); "
+            "print(json.dumps({'model': gateway.creds(provider=" + repr(first) + ").model, "
+            "'ttl_word': [b for r in gateway._GATEWAY.values() for b in r.get('betas', ()) "
+            "if b == gateway.CACHE_TTL_BETA], 'ttl': providers._cache_ctl().get('ttl'), "
+            "'logs': str(gateway.LOGS_DIR)}))")
+    rc, out, err = peek(code)
+    if rc == 0:
+        got = json.loads(out)
+        show("모델 표 — 넘긴 표의 첫 항이 그 갈래의 기본 모델이다", got["model"], "m-given")
+        show("캐시 수명 — 넘긴 5m 이면 ttl 도 그 낱말도 안 나간다", (got["ttl"], got["ttl_word"]), (None, []))
+        show("기록 자리 — 넘긴 자리가 LOGS_DIR 다", got["logs"], "given-logs")
+    else:
+        for label in ("모델 표", "캐시 수명", "기록 자리"):
+            unmeasured(f"{label} — configure", f"값을 되읽는 자식이 졌다 — {err.strip()[-200:]}")
+    # 모르는 이름은 그 자리에서 선다 — 오타가 말없이 아무것도 안 바꾸는 것이 제일 비싸다.
+    rc, out, err = peek("gateway.configure(WALL_MAX_TOKEN=1)")
+    show("모르는 손잡이 이름은 configure 가 그 자리에서 세우고 이름을 말한다",
+         rc != 0 and "WALL_MAX_TOKEN" in err, True)
+    rc, out, err = peek("gateway.configure(models={'no-such-lane': ('m',)})")
+    show("표에 없는 갈래의 모델 표도 그 자리에서 선다", rc != 0 and "no-such-lane" in err, True)
+
+print("\n[8] 안 잰 것")
 edge("게이트웨이가 이 봉투를 실제로 받나 — 실호출 프로브 몫이다. 여기는 **꼴**만 잰다")
 edge("환산비(자/토큰)와 층 셋 이상 봉투의 캐시 적중 — `live_probe.py` 가 재고, 잰 값은 씨앗 `README.md` "
      "「안 잰 자리」 표가 든다")

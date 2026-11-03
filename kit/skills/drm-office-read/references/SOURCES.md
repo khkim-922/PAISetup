@@ -1,6 +1,28 @@
 # 출처 — drm-office-read
 
-보관한 원문은 없다. 빌린 자리만 적는다.
+보관한 원문은 없다. 빌린 자리와, 같은 읽는 법을 쥔 곳을 적는다.
+
+## 같은 읽는 법을 쥔 곳 — 이 스킬의 읽는 법(`office-read.ps1`)을 고치면 「닿는 자리」로 든다
+
+| 어디 | 어떻게 따라가나 | 무엇이 같은가 |
+|---|---|---|
+| mail-secretary `secretary/office_read.ps1` · `secretary/office.py` | **부른다** — 홈에 깔린 이 스킬의 `scripts/office-read.ps1` 을 점 소싱하고 계약 판(`$DRM_OFFICE_READ_CONTRACT`)을 제가 아는 판과 견준다. 그 저장소에는 제 꼴(JSON 한 줄)의 본체만 남는다 | 띄우기 · Job · 엑셀 `Value2` + 서식 · 묶음 펴기 · 글 밖 셈 전부 |
+| atelier `app/ps/xlsx_text.ps1` · `app/ps/pptx_text.ps1` · `app/ps/word_pkg.ps1` | **일부러 갈랐다** — 평문 길과 같은 글자를 내야 하는 제 계약 · 골든이 있어 이 스킬을 안 부른다. 결함의 종류는 같으니 고친 결함을 저쪽에서도 찾아본다 | 앱 띄우기 · 시한 · 객체 모델에서 뽑기(워드는 `WordOpenXML` 되감기라 다르다) |
+| 동료 `sejuone-cloud/pgpt-one-click-connect` `app/optional-skills/office-com-read` | **일부러 갈랐다** — 이 스킬에서 갈라져 나가 각자 넓어진다. 빌릴 때는 규격만(아래 절) | 읽기 · 그림 꺼내기 · 세션 규칙 |
+
+## 빌린 자리 — 엑셀 값 한 번에 받기 · 묶음 재귀 · 오류 칸 이름
+
+- **어디서** — mail-secretary `secretary/office_read.ps1` 의 `Format-Cell`(9f9cf9b) · 동료 `office-com-read/scripts/read-office.ps1` 의
+  `Write-PPTShape` 와 오류 칸 표(2ef0ddb3f65c)
+- **어떻게 따라가나** — 손으로 따라간다. 좌표는 `office-read.ps1` 의 그 함수 머리에 있다
+
+| 짝 | 무엇 | 여기서 |
+|---|---|---|
+| 손잡이 | 시트 `Value2` 한 번 · 열마다 첫 자료 줄의 `NumberFormat` 하나 · 묶음 `GroupItems` 재귀 · `Value2` 의 음수 정수 → 오류 이름 | 가져왔다 |
+| 난간 | 한 칸짜리 시트는 스칼라로 온다 · 묶음 깊이 상한 · 묶음이 든 개체 틀(Type 14) | 가져왔다 |
+| 실측 | 비서: 121초 → 6.2초 · `########` 0. 여기: 2000×30 이 140초 → 4초 · 묶음 셈 1 → 3(#232) | 같은 PC 에서 다시 쟀다 |
+| 곁말 | 통화 · 사용자 꼴 · 칸마다 다른 꼴은 날값 | SKILL.md 3 절에 옮겼다 |
+| 검사 | 비서는 `_check/office_check.py` · 동료는 `tests/Test-OfficeRead.ps1`(안 읽었다) | 영구 검사는 안 두었다(check-design 1 절 — 돌려 보면 보인다) |
 
 ## 빌린 자리 — 상류 `office-com-read` 의 그림 꺼내기
 

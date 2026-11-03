@@ -3,7 +3,7 @@
 층 — 쓰는 사람의 계약(회사 PC 에서 상태 문이 넘어지지 않고 까닭을 말한다)
 걷는 조건 — 배관의 `_probe` 가 TLS 실패의 까닭을 더는 가르지 않거나, 앱이 OS 신뢰 저장소(truststore)를 안 끼면 걷는다
 
-좌표 — 배관 씨앗은 claude-config 결정 0033 · 사본 규율은 0040 · 남기고 걷는 기준은 0148(스킬 check-design) — 이
+좌표 — 배관 씨앗은 claude-config 결정 0033 → 0219 · 사본 규율은 0040 · 남기고 걷는 기준은 0148(스킬 check-design) — 이
 검사가 드는 판정의 범위는 atelier #445(레인 B1) · 지키는 결함은 AI-prompt-helper #183.
 
     python -X utf8 _check/probe_words_check.py

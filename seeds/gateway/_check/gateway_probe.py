@@ -10,9 +10,9 @@
     python -X utf8 _check/gateway_probe.py --contract openai  # 계약을 골라 · 표의 첫 줄로
     python -X utf8 _check/gateway_probe.py --provider gemini --key …
 
-**`--self-check` 는 값을 안 치른다.** 로컬에 가짜 SSE 게이트웨이를 띄워 계약마다 다섯 국면을
-돌린다 — 성한 판 · 상한에서 이어받는 판 · 예외로 끊긴 판 · 조용히 끝난 판 · 봉투가 두 줄로
-갈려 온 판. 키도 망도 안 든다.
+**`--self-check` 는 값을 안 치른다.** 로컬에 가짜 SSE 게이트웨이를 띄워 계약마다 여섯 국면을
+돌린다 — 성한 판 · 상한에서 이어받는 판 · 예외로 끊긴 판 · 조용히 끝난 판 · 오류 프레임으로
+끊긴 판 · 봉투가 두 줄로 갈려 온 판. 키도 망도 안 든다.
 
 **스위치가 없으면 실호출이다.** 키가 없으면 배관이 안 보내고 봉투 명세를 돌려주는데
 (`providers.spec`), 그것을 찍고 「못 쟀다」(2)로 나간다 — 초록이 아니다. 명세를 여기서 다시
@@ -246,6 +246,15 @@ class _Fake(BaseHTTPRequestHandler):
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()
             return
+        if scene == "frame":
+            # **글자를 흘린 뒤 오류 프레임으로 끊는다** — 회사 Claude 갈래의 180초 벽이 이 꼴로
+            # 온다(claude-config `posco/ENV-posco.md` 「스트림 180초 컷」 행 · `providers.CUT_FRAME`
+            # 곁말). Anthropic 계약은 `data:` 에만 실린 `{"type":"error"}` 꼴, 나머지 둘은 사내
+            # `event:error` 프레임 꼴(errors-Posco.setting.md 「SSE error event」)로 보낸다.
+            self._chunk(_frame_cut(contract))
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+            return
         if scene == "split":
             # **봉투 하나를 두 `data:` 줄로 갈라 보낸다** — 이 게이트웨이가 긴 몸통에 하는
             # 짓이고 그 까닭은 `providers._sse_events` 곁말이 든다. 여미는 자가 없으면
@@ -257,6 +266,13 @@ class _Fake(BaseHTTPRequestHandler):
             return
         self._chunk(tail)
         self.wfile.write(b"0\r\n\r\n")
+
+
+def _frame_cut(contract):
+    """오류 프레임 하나 — 계약마다 실려 오는 꼴이 갈린다(`_Fake.do_POST` 의 frame 국면 곁말)."""
+    if contract == gateway.CONTRACT_ANTHROPIC:
+        return _sse({"type": "error", "error": {"type": "api_error", "message": FRAME_WHY}})
+    return "event: error\n" + _sse({"code": "C054", "message": FRAME_WHY})
 
 
 def _split_tail(tail):
@@ -289,8 +305,12 @@ def _creds_at(slug, port, scene, contract):
         url=f"http://127.0.0.1:{port}/{scene}/{contract}")
 
 
-# 예외로 끊긴 판과 조용히 끝난 판 — **끝나는 꼴이 둘**이라 둘 다 돈다.
-CUT_SCENES = (("cut", "예외로 끊긴 판"), ("quiet", "조용히 끝난 판"))
+# 예외로 끊긴 판 · 조용히 끝난 판 · 오류 프레임으로 끊긴 판 — **끝나는 꼴이 셋**이라 셋 다 돈다.
+CUT_SCENES = (("cut", "예외로 끊긴 판"), ("quiet", "조용히 끝난 판"), ("frame", "오류 프레임으로 끊긴 판"))
+# 오류 프레임에 싣는 사유 — 게이트웨이가 벽에서 남기는 문장 그대로(ENV-posco 「스트림 180초 컷」 행).
+# 검사가 재는 것은 「받은 글자가 남고 이 글자가 사유에 든다」이지 그 문장 자체가 아니다.
+FRAME_WHY = ("내부 서버 오류: HTTP request execution did not complete before the specified "
+             "timeout configuration: 180000 millis")
 
 
 def self_check():
@@ -363,6 +383,12 @@ def self_check():
                                   creds=_creds_at(slug, port, "quiet", contract),
                                   on_cut=cuts.append)
             ok("조용한 끝은 제 낱말로 온다", cuts == [providers.CUT_NO_SIGNAL], str(cuts))
+            # 오류 프레임으로 끊긴 판의 사유는 **저쪽 문장을 든다** — 벽의 문장이 거기 실려 온다.
+            cuts = []
+            providers.stream_once(SYSTEM, msgs,
+                                  creds=_creds_at(slug, port, "frame", contract),
+                                  on_cut=cuts.append)
+            ok("프레임의 끝은 저쪽 문장을 사유로 든다", bool(cuts) and FRAME_WHY in cuts[0], str(cuts))
 
             # ⑤ 두 줄로 갈라 온 봉투를 여민다 — 안 여미면 조용히 버려진다
             used, cuts = [], []
@@ -384,7 +410,7 @@ def self_check():
         srv.shutdown()
 
     _exit(f"계약 {len(SELF_CONTRACTS)}갈래({' · '.join(SELF_CONTRACTS)})의 한 바퀴 — 성한 판 · "
-          "상한 이어받기 · 예외로 끊긴 판 · 조용히 끝난 판 · 갈라 온 봉투. "
+          "상한 이어받기 · 예외로 끊긴 판 · 조용히 끝난 판 · 오류 프레임으로 끊긴 판 · 갈라 온 봉투. "
           "가짜 게이트웨이라 저쪽이 무엇을 주는지는 한 자도 안 잰다")
 
 

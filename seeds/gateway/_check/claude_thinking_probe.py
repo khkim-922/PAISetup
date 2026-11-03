@@ -49,8 +49,10 @@
                                    (안 돌리려면 `--no-cli`)
   ⑤ 생각할 거리 · 생각 끔 · HTTP  — 낱말 없이도 생각이 나면 모델 기본값이 켠 것이다(Opus 5 는 기본이
                                    켬). ③과 ⑤가 같으면 낱말은 아무 일도 안 한 것이다
-⚠ 모델이 곧 변수다 — Claude Code 의 `opus` 별칭은 이 게이트웨이에서 `claude-opus-5` 로 풀린다(중계로
-  잡은 몸에서 본 이름). ④를 ①②③과 견주려면 `--model` 을 같은 이름으로 맞춘다.
+⚠ 모델이 곧 변수다 — Claude Code 의 `opus` 별칭이 어느 판으로 풀리나는 그 PC 에 심긴
+  `ANTHROPIC_DEFAULT_OPUS_MODEL` 이 정한다(claude-config `posco/ENV-posco.md` 「우리가 쓰는 모델」 항목 —
+  지금은 Opus 5.5 · 철자는 루프백 프록시가 목록에서 고른다). ④를 ①②③과 견주려면 `--model` 을 그
+  이름의 게이트웨이 철자로 맞춘다.
 
 생각이 났나는 세 자리에서 읽는다 — 조각만 세면 못 본다. Opus 4.7 부터 생각 표시 기본이
 `omitted` 라 생각 블록이 **빈 글자로** 흐른다(문서). 그래서 `content_block_start` 의 `thinking`

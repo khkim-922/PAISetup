@@ -595,7 +595,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 | 자리 | 무엇 |
 |---|---|
 | `~/.claude/posco/` | 사내 게이트웨이 환경 문서 한 층이고, 무엇이 되고 안 되는지는 한 장이 아니라 이 폴더 전체가 답한다 |
-| `~/.claude/seeds/gateway/` | 게이트웨이 배관 견본이고, 새 프로젝트가 이 폴더를 복사해 출발한다(import 해서 쓰는 라이브러리가 아니다) |
+| `~/.claude/seeds/gateway/` | 게이트웨이 배관이다 — 주인의 앱은 이 자리에서 불러 쓰고(`configure()` 로 제 값을 넘긴다), 새 프로젝트는 이 폴더를 복사해 출발하든 불러 쓰든 고른다 |
 | `~/.claude/seeds/check/` | 검사 견본이고, 새 프로젝트의 `_check/` 가 이것을 복사해 출발한다 |
 | `~/.claude/seeds/config-repo/` | 설정 저장소 견본이고, 그대로 돌아가는 한 벌이 다 들어 있다 |
 | `~/.claude/seeds/vibecoding/` | 회사가 쓴 사내 FastAPI 코딩 기준이고, 들머리는 그 안의 `SEED.md` 다 |

@@ -37,7 +37,8 @@
     서면 ``MailError``. 연결 · 시한 오류는 ``smtplib`` · ``socket`` 의 예외가 그대로 온다.
     ``load_recipients`` 는 ``send`` 에 그대로 풀어 넣을 dict(``sender`` · ``to`` · ``cc`` ·
     ``bcc``)를 낸다. ``notify`` 는 보냈으면 True, 못 보냈으면 False 를 내고 예외를 안 낸다.
-    무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은 이 모듈 이름).
+    무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은 이 모듈 이름) — 셈 · 크기 · 사유만 싣고 메일 주소 ·
+    제목 · 본문은 안 싣는다(예외의 메시지는 거절된 주소를 든다 — 부르는 쪽이 기록에 옮길 때 가린다).
 
 환경변수 — 회사 SMTP 규약의 이름. 비워 둔 값은 안 준 것으로 본다
     ``MAIL_HOST``             중계 호스트                    기본 ``antispam.posco.net``
@@ -60,6 +61,9 @@
     * 일부 수신자만 거절되면 ``smtplib`` 은 예외 없이 거절 목록만 돌려준다. 그것을
       성공으로 세면 누군가 조용히 못 받는다 — 그래서 하나라도 거절되면 ``MailRefused``
     * bcc 는 봉투(RCPT)에만 싣고 머리(헤더)에는 쓰지 않는다
+    * 사내 중계로 보낸 메일은 보낸 사람의 웹메일 보낸편지함에 안 남는다 — 보낸 흔적은 제 주소로 받은 사본뿐이다. 나에게
+      보낸 사본은 보낸 뒤 몇 초 안에 받은편지함에 받는 꼴 ``T`` 로 오고, 보낸 사람 열은 주소만 든다(발신자를 주소만으로
+      줬을 때로 쟀다). 남에게 보내며 나를 bcc 에 넣은 사본의 꼴은 안 쟀다. 회사 확인 대장(mail-secretary 저장소 이슈 #9 · B · B2)
 """
 
 from __future__ import annotations
@@ -345,7 +349,7 @@ def notify(subject: str, text: str, *, to: str | None = None,
             log.warning("알림을 못 보냈다: 받을 주소나 발신자가 없다")
             return False
         send(subject, to=[to], sender=sender, text=text)
-        log.info("알림을 보냈다: %s", to)
+        log.info("알림을 보냈다: 받는 사람 1")   # 주소는 안 싣는다 — 기록은 셈과 사유만 든다
         return True
     except Exception as exc:
         log.warning("알림을 못 보냈다: %s", type(exc).__name__)

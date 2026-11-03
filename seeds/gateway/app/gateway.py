@@ -1,9 +1,18 @@
 """갈래 표와 자격 — 어디로 보내나 · 무엇으로 여나 · 얼마까지 받나.
 
-⚠ **골든 씨앗이다** — 진본은 claude-config `seeds/gateway/` 이고, 새 프로젝트가 이 폴더를
-  복사해 출발한다. 복사한 뒤 손댈 자리는 아래 `ENV_PREFIX` · `LOGIN_REQUIRED` 둘과 갈래
-  표의 값이다 — 나머지는 규격이라 고치면 짝(손잡이·난간·실측·곁말·검사)이 깨진다. 왜 이 값들인지의
-  판정표는 claude-config 결정 0033 이 든다.
+⚠ **골든 씨앗이다** — 진본은 claude-config `seeds/gateway/` 이고, 받는 길이 둘이다.
+  · 폴더를 복사해 출발한다 — 복사한 뒤 손댈 자리는 아래 `ENV_PREFIX` · `LOGIN_REQUIRED` 둘과 갈래
+    표의 값이다. 나머지는 규격이라 고치면 짝(손잡이·난간·실측·곁말·검사)이 깨진다.
+  · 깔린 자리(`~/.claude/seeds/gateway`)에서 그대로 불러온다 — 제 값은 `configure(...)` 로 넘긴다.
+    접두어 · 갈래별 모델 표 · 캐시 수명 · 기록 자리처럼 복사하는 쪽이 손으로 고치던 것이 다 거기로 든다.
+  왜 이 값들인지의 판정표는 claude-config 결정 0033 이 든다.
+
+**손잡이의 차례 — 부르는 쪽(`configure(...)`) → 환경(`{ENV_PREFIX}_*`) → 기본.** 손잡이를 읽는 자리는
+`_settle` 하나다 — 불러올 때 한 번 돌고(환경 → 기본), `configure` 때마다 다시 돈다. 그래서 모듈 꼭대기의
+값은 불러올 때 굳지 않는다 — 부르는 쪽이 넘긴 값이 환경에 걸린 남의 손잡이를 이긴다.
+⚠ **틀린 값은 불러오기를 안 넘어뜨린다.** 모르는 갈래 · 모르는 담장 · 정수가 아닌 한도 · 주소가 아닌 바닥은
+  `_FAULT` 에 남고, **첫 자격(`creds`)과 `configure` 가 그 자리에서 세운다** — 그 자리의 말은 지금까지와
+  같다. 뜰 때 죽이고 싶은 앱은 뜰 때 `configure()` 를 부른다(인자 없이도 손잡이를 다시 읽고 틀린 값을 세운다).
 
 실측의 진본은 claude-config `posco/` 다. 여기 적힌 값은 셋 중 하나이고 어느 것인지는
 줄마다 주석이 든다 — 사내 문서(파일명·행) · ENV-posco 실측 · 사내 문서 표 밖이라 실호출로
@@ -24,16 +33,51 @@ from urllib.parse import urlparse
 
 # 환경변수 접두어 — **복사한 뒤 여기 한 자리만 바꾼다.** 같은 PC 에 형제 앱이 함께 뜨므로
 # 접두어가 겹치면 늦게 뜬 쪽이 남의 손잡이를 문다. 저장소 이름의 머리글자가 관례다.
+# 불러와 쓰는 쪽은 안 고친다 — `configure(prefix=…)` 가 같은 자리를 갈아 끼운다.
 ENV_PREFIX = "APP"
+
+# 부르는 쪽이 `configure` 로 넘긴 값 — 이름은 접두어를 뗀 손잡이 이름이다. 환경보다 앞선다.
+_given = {}
+# `_settle` 한 바퀴가 읽은 손잡이 이름 전부 — 불러온 뒤에는 꽉 찬다. `configure` 가 모르는 이름을
+# 이 목록으로 거른다: 오타(`WALL_MAX_TOKEN`)가 말없이 아무것도 안 바꾸는 것이 제일 비싸다.
+_HANDLES = []
+# 손잡이를 읽다 걸린 틀린 값 — 사람 말 한 줄씩. 불러올 때는 안 세우고 `creds` · `configure` 가 세운다
+# (머리말). 비면 다 성하다.
+_FAULT = []
 
 
 def _env(name, default):
-    """`{ENV_PREFIX}_{name}` — 손잡이는 전부 이 한 자리로 읽는다.
+    """`{ENV_PREFIX}_{name}` — 손잡이는 전부 이 한 자리로 읽는다. 부르는 쪽이 넘긴 값이 앞선다.
 
     예외는 회사가 이름을 정한 둘(`COMPANY_URL_ENV` · `COMPANY_TOKEN_ENV`)뿐이다 — 운영팀이
     심는 글자 그대로 읽어야 닿아서 접두어를 못 붙인다.
     """
+    if name not in _HANDLES:
+        _HANDLES.append(name)
+    if name in _given:
+        return _given[name]
     return os.environ.get(f"{ENV_PREFIX}_{name}", default)
+
+
+def _handle(name):
+    """틀린 값을 말할 때 그 손잡이를 부르는 이름 — 넘긴 값이면 `configure` 의 이름, 아니면 환경변수 이름."""
+    return f"configure({name}=…)" if name in _given else f"{ENV_PREFIX}_{name}"
+
+
+def _int(name, default, kind=int):
+    """정수(또는 `kind`) 손잡이 — 숫자가 아니면 `_FAULT` 에 남기고 기본값으로 선다."""
+    raw = _env(name, default)
+    try:
+        return kind(raw)
+    except (TypeError, ValueError):
+        _FAULT.append(f"{_handle(name)} 가 숫자가 아니다: {raw!r} — 기본 {default!r} 꼴로 둔다")
+        return kind(default)
+
+
+def _flag(name):
+    """켬·끔 손잡이 — 환경은 `"1"`, 넘긴 값은 참·거짓도 받는다."""
+    raw = _env(name, "")
+    return raw is True or raw == "1"
 
 
 # 이 앱은 **로그인 없이 못 쓰나** — 복사한 뒤 손댈 둘째 자리다. 참이면 서버가 회사 갈래에
@@ -43,10 +87,6 @@ def _env(name, default):
 # ⚠ **기본은 거짓이다.** 로그인 없는 앱이 켜면 띄운 자리의 토큰으로 남이 마구 쓴다 — 서버에
 #   「누가 부르나」를 가를 재료가 없다(아래 `_KEY_ENV` 곁말).
 LOGIN_REQUIRED = False
-
-
-# 앱이 제 손으로 여는 기록 폴더 — CLI 오류 증거(`providers._cli_evidence`)가 여기 앉는다.
-LOGS_DIR = Path(_env("LOGS_DIR", "logs"))
 
 # --- 담장 — 사내망 **안**으로 가나 **밖**으로 나가나.
 # 주소로는 못 가른다: 사람이 아는 것은 「회사 거냐 내 거냐」지 호스트 이름이 아니다.
@@ -80,18 +120,9 @@ CONTRACT_OPENAI = "openai"          # /v1/responses          · Bearer
 CONTRACT_GEMINI = "gemini"          # :streamGenerateContent · x-goog-api-key
 CONTRACT_CLI = "cli"                # HTTP 아님 — 이 PC 의 실행파일을 파이프로
 
-# --- 캐시 수명과 그것을 여는 베타 낱말.
-# **고를 수 있는 것은 anthropic 계약뿐이다** — 나머지 둘은 접두사가 맞으면 자동이라
-# 우리가 실을 표가 없다. 기본 수명 5분은 사람이 답을 쓰는 사이 식는다.
-# 되돌리려면 `5m` 으로 둔다 — 그러면 필드도 낱말도 안 나간다(`providers._cache_ctl` 과 아래
-# `_CACHE_BETAS` 가 **같은 손잡이**를 본다. 한쪽만 보면 「1시간을 열어 달라」고 말해 놓고
-# 5분 봉투를 보내는 어긋난 요청이 되고, 이 게이트웨이는 모르는 낱말을 조용히 삼켜 안 운다).
-CACHE_TTL = _env("CACHE_TTL", "1h")
+# --- 캐시 수명을 여는 베타 낱말. 수명 손잡이(`CACHE_TTL`)는 `_settle` 이 읽는다.
 CACHE_TTL_BETA = "extended-cache-ttl-2025-04-11"   # 1시간을 여는 낱말
 OUTPUT_128K_BETA = "output-128k-2025-02-19"        # 128K 출력 상한을 여는 낱말
-# 두 낱말 다 **사내 문서 머리 표에 없다**(ENV-posco 「아직 안 잰 것」 절의 `anthropic-beta` 항목) — 흘려지면
-# 상한은 옛 값이고 캐시 수명은 5분이다. 그래서 갈래마다 무엇을 싣나를 아래 표의 `betas` 칸이 든다.
-_CACHE_BETAS = (CACHE_TTL_BETA,) if CACHE_TTL and CACHE_TTL != "5m" else ()
 
 ANTHROPIC_VERSION = "2023-06-01"   # Claude-Posco.setting.md 「Headers」 표의 `anthropic-version` 기본값
 
@@ -117,7 +148,8 @@ def _base(value, names):
       어느 꼴로 올지는 회사 문서가 안 정했다 — 그래서 어느 꼴로 와도 같은 바닥으로 받는다.
       계약 셋이 한 바닥을 나눠 쓰므로 뗀 자리는 갈래 표가 다시 붙인다. 마디 단위라 `/v1beta`
       는 안 뗀다.
-    ⚠ **주소가 아닌 값은 뜰 때 죽는다** — 요청마다 넘어지면 배포는 성공으로 보이고 화면만 빈다.
+    ⚠ **주소가 아닌 값은 선다** — 요청마다 넘어지면 배포는 성공으로 보이고 화면만 빈다. 세우는 자리는
+      `_settle` 이 받아 `_FAULT` 에 두고 첫 자격 · `configure` 가 그대로 올린다(머리말).
     """
     u = urlparse(value.strip())
     if u.scheme not in ("http", "https") or not u.netloc:
@@ -128,145 +160,371 @@ def _base(value, names):
     return f"{u.scheme}://{u.netloc}{'/'.join(segs).rstrip('/')}"
 
 
-# --- 바닥 주소 — **주소도 변수로 연다.** 개발·운영 게이트웨이와 루프백 프록시를 갈아 끼울 때
-# 코드를 안 고친다. 비우면 지금 주소다.
-# 회사 게이트웨이는 손잡이가 둘이다 — 이 앱의 것이 먼저고, 비면 회사 이름을 읽는다. 앱의 것이
-# 더 좁은 선언이라 이긴다. 회사 갈래 셋(아래 표)이 이 바닥 하나를 나눠 쓴다.
-# ⚠ 이름이 `_URL` 이 아니라 `_BASE_URL` 인 까닭 — 형제(atelier)의 `GATEWAY_URL` 은 기본 갈래의
-#   **완성된** 주소다. 같은 이름이면 갈림 목록(`_check/drift_check.py`)이 다른 것을 짝짓는다.
-GATEWAY_BASE_URL = _base(
-    _env("GATEWAY_BASE_URL", "") or os.environ.get(COMPANY_URL_ENV, "")
-    or "http://aigpt.posco.net/gpgpta01-gpt",           # Claude-Posco.setting.md 「환경별 URL」 표의 운영계
-    f"{ENV_PREFIX}_GATEWAY_BASE_URL · {COMPANY_URL_ENV}")
-# 바깥 갈래는 제 손잡이로만 옮긴다.
-# ⚠ **SDK 표준 이름(`ANTHROPIC_BASE_URL` · `GOOGLE_GEMINI_BASE_URL`)은 안 읽는다.** 회사 PC 에서는
-#   Claude Code · Gemini CLI 가 그 이름으로 회사 게이트웨이나 루프백 프록시를 보므로
-#   (Claude-Posco.setting.md 「커스텀 설정 항목」 표의 `ANTHROPIC_BASE_URL` · ENV-posco 의 프록시 절), 읽으면 「내 키」 갈래가 개인 키를
-#   회사 쪽으로 보낸다 — 아래 `_KEY_ENV` 가 `ANTHROPIC_API_KEY` 를 안 읽는 것과 같은 결이다.
-ANTHROPIC_API_BASE_URL = _base(_env("ANTHROPIC_API_BASE_URL", "https://api.anthropic.com"),
-                               f"{ENV_PREFIX}_ANTHROPIC_API_BASE_URL")
-GEMINI_API_BASE_URL = _base(
-    _env("GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com"),
-    f"{ENV_PREFIX}_GEMINI_API_BASE_URL")
+def _floor(name, default, handle_names, fallback=""):
+    """바닥 주소 손잡이 — 주소가 아니면 `_FAULT` 에 남기고 기본 주소로 선다."""
+    raw = _env(name, "") or fallback or default
+    try:
+        return _base(raw, handle_names)
+    except RuntimeError as why:
+        _FAULT.append(str(why))
+        return _base(default, handle_names)
 
-_GATEWAY = {
-    # 회사 Claude — 주소·머리는 Claude-Posco.setting.md 「환경별 URL」 · 「Headers」 표.
-    # ⚠ **첫 항이 곧 기본이다** — 기본을 따로 적으면 목록과 어긋나고 어긋난 줄 아무도 모른다.
-    #   순서의 뜻은 앱마다 다르다: 품질 우선이면 최상위가 앞(헬퍼), 비용 우선이면 싼 것이
-    #   앞(아뜰리에). 여기는 최상위가 앞이다 — 복사한 앱이 제 뜻대로 돌린다.
-    "anthropic": {"url": f"{GATEWAY_BASE_URL}{MESSAGES_PATH}",
-                  # `claude-opus-5` 는 같은 문서 「지원 모델」 표 밖인데 실제로 돈다 —
-                  # 사용자 확인(ENV-posco 「우리가 쓰는 모델」 항목 · atelier 갈래 표).
-                  "models": ("claude-opus-5",
-                             "claude-opus-4.7",
-                             "claude-sonnet-4.6"),
-                  "site": SITE_POSCO, "label": "회사 Claude",
-                  "key_group": KEY_GROUP_POSCO,
-                  "contract": CONTRACT_ANTHROPIC,
-                  "betas": (OUTPUT_128K_BETA, *_CACHE_BETAS)},
-    # 회사 GPT — `/v1/responses` (OpenAI.-Posco.Setting.md 「Responses API (OpenAI)」 절). 옛 문
-    # (`/v1/chat/completions`)은 안 쓴다: 이 게이트웨이가 **다 만든 뒤 몰아 줘서**
-    # 렌더가 길수록 사용자가 빈 화면을 본다(atelier #123 실측 · 커밋 2be4432).
-    # 상한을 실을 이름이 이 계약만 다르다(같은 절 Request Body 표의 `max_output_tokens`).
-    "openai":    {"url": f"{GATEWAY_BASE_URL}{RESPONSES_PATH}",
-                  # 사내 문서 예시는 `gpt-5.2` 계열이고 이 둘은 표 밖 · 사용자 확인
-                  # (atelier config.py 주석 · 커밋 2be4432). 최상위가 앞이다.
-                  "models": ("gpt-5.6-sol", "gpt-5.6-terra"),
-                  "site": SITE_POSCO, "label": "회사 GPT",
-                  "key_group": KEY_GROUP_POSCO,
-                  "contract": CONTRACT_OPENAI,
-                  "max_tokens_field": "max_output_tokens"},
-    # 회사 Gemini — 같은 호스트인데 **계약도 인증도 다르다.** P-GPT 가 구글 네이티브
-    # 표면을 그대로 연다(Gemini-Posco.setting.md 「Gemini Native API (Gemini)」의 `POST …:streamGenerateContent` · 「인증」 표).
-    # `url` 은 **바닥 주소**다 — 이 계약만 경로에 모델 이름이 들어가서(providers 의
-    # `_gemini_envelope`) 완성된 주소를 여기 적을 수가 없다.
-    "gemini-posco": {"url": GATEWAY_BASE_URL,
-                     # 등록 목록은 같은 문서 「사용 가능한 모델」인데 「관리자 설정에 따라 다를 수
-                     # 있다」고 저쪽이 든다 — `gemini-3.6-flash` 가 목록 밖 · 사용자
-                     # 확인이다(atelier config.py 주석 · 커밋 2be4432).
-                     "models": ("gemini-3.1-pro-preview", "gemini-3.6-flash"),
-                     "site": SITE_POSCO, "label": "회사 Gemini",
-                     "key_group": KEY_GROUP_POSCO,
-                     "contract": CONTRACT_GEMINI},
-    # --- 사내망 밖 — 같은 코드로 돌아야 한다. 게이트웨이가 아플 때
-    # 제품이 서지 않게 하는 자리고, 집에서 시험하는 자리이기도 하다.
-    "anthropic-api": {"url": f"{ANTHROPIC_API_BASE_URL}{MESSAGES_PATH}",
-                      # 공개 모델 ID. 첫 항을 `claude-opus-5` 로 두는 까닭은 회사
-                      # Claude 갈래의 기본과 **같은 모델**이라야 갈래를 바꿨을 때
-                      # 품질 기준선이 비교되기 때문이다.
-                      "models": ("claude-opus-5", "claude-sonnet-5"),
-                      "site": SITE_OUTSIDE, "label": "내 키로 Anthropic",
-                      "key_group": KEY_GROUP_ANTHROPIC,
+
+def _lanes():
+    """갈래 표 한 벌 — `_settle` 이 손잡이를 읽은 뒤 짓는다(바닥 주소 · 베타 낱말이 손잡이에서 온다).
+
+    받는 것: 없다 — 모듈의 바닥 주소 셋과 `_CACHE_BETAS` 를 읽는다. 내는 것: `{갈래: 행}`. 모델 칸은
+    `configure(models=…)` 가 넘긴 갈래만 `_settle` 이 뒤에서 갈아 끼운다.
+    """
+    return {
+        # 회사 Claude — 주소·머리는 Claude-Posco.setting.md 「환경별 URL」 · 「Headers」 표.
+        # ⚠ **첫 항이 곧 기본이다** — 기본을 따로 적으면 목록과 어긋나고 어긋난 줄 아무도 모른다.
+        #   순서의 뜻은 앱마다 다르다: 품질 우선이면 최상위가 앞(헬퍼), 비용 우선이면 싼 것이
+        #   앞(아뜰리에). 여기는 최상위가 앞이다 — 복사한 앱이 제 뜻대로 돌리고, 불러와 쓰는 앱은
+        #   `configure(models={"anthropic": (…)})` 로 제 표를 넘긴다.
+        "anthropic": {"url": f"{GATEWAY_BASE_URL}{MESSAGES_PATH}",
+                      # `claude-opus-5` 는 같은 문서 「지원 모델」 표 밖인데 실제로 돈다 —
+                      # 사용자 확인(ENV-posco 「우리가 쓰는 모델」 항목 · atelier 갈래 표).
+                      # ⚠ 이름은 `GET /v1/models` 의 철자 그대로다 — 판마다 점(`claude-opus-5.5`)과
+                      #   하이픈(`claude-fable-5-1`)이 갈리고 다른 철자는 직결로 400 이다(같은 항목).
+                      #   이 배관은 프록시를 안 지나 철자를 고쳐 줄 자가 없다.
+                      # ⚠ **5.x 판(Opus 5 포함)은 「태그 안에서 먼저 생각하고 답하라」는 지시에 빈 답을
+                      #   낸다**(`content: []` · `output_tokens=0` · `end_turn` — 같은 항목 · 직결도 같다).
+                      #   배관은 그 판을 여문 빈손으로 이름 부르지만(`providers.EMPTY_HANDS`) 막지는
+                      #   않는다 — 그런 지시문을 쓰는 앱은 Sonnet 4.6 으로 보낸다.
+                      "models": ("claude-opus-5",
+                                 "claude-opus-4.7",
+                                 "claude-sonnet-4.6"),
+                      "site": SITE_POSCO, "label": "회사 Claude",
+                      "key_group": KEY_GROUP_POSCO,
                       "contract": CONTRACT_ANTHROPIC,
-                      # ⚠ **128K 낱말을 안 싣는다 — 안 쟀다.** 이 문에 그 낱말이 아직
-                      #   서는지 못 재 봤고, 아래 상한이 안전값이라 실을 값도 없다.
-                      #   캐시 수명 낱말만 싣는다: 캐싱은 필수 규율이라(AI-prompt-helper 결정 0004)
-                      #   두 자리가 같은 수명으로 돌아야 한다.
-                      "betas": _CACHE_BETAS},
-    # 내 키로 Gemini — 구글 직결. 회사 갈래와 **같은 계약**이라 코드가 하나다.
-    # 첫 항이 기본이다 — 무료 키는 pro 미리보기의 할당량이 0 이라(429 · 2026-09-05 실측) flash 가 앞이다.
-    "gemini":    {"url": GEMINI_API_BASE_URL,
-                  "models": ("gemini-3.7-flash", "gemini-3.1-pro-preview"),
-                  "site": SITE_OUTSIDE, "label": "내 키로 Gemini",
-                  "key_group": KEY_GROUP_GEMINI,
-                  "contract": CONTRACT_GEMINI},
-    # 이 PC 에 깔린 claude CLI 를 그대로 부른다. 주소도 키도 없다 — 구독 로그인이 이미
-    # 되어 있고 그 인증을 빌려 쓴다. 그래서 `local` 이 선다: **키가 없다고 드라이런으로
-    # 떨어지면 안 되는 유일한 갈래다**(아래 `creds` 의 `dry_run`).
-    # ⚠ 모델 이름이 게이트웨이 갈래와 다르다 — **별칭**이다. 별칭은 판을 안 고정하므로
-    #   (CLI 도움말이 「alias for the latest model」로 적어 뒀다) 여기 판 번호를 안 적는다:
-    #   적는 순간 낡고, 낡은 줄 아무도 모른다. 특정 판을 박으려면 화면 모델 칸에 정식
-    #   이름을 직접 적는다. 위 게이트웨이 갈래들과 정반대다 — 저쪽은 회사가 등록한
-    #   이름이라 목록이 곧 있는 것 전부다.
-    # ⚠ **출력 상한을 실을 자리가 없다**(`providers._cli_once`) — `_MODEL_MAX_TOKENS` 에
-    #   이 이름들을 안 적는 까닭이다. 안전값이 서지만 어차피 안 나간다.
-    # ⚠ **별칭 셋은 atelier 갈래 표에서 그대로 가져왔다**(커밋 d93df1d). 첫 항만 이 앱의
-    #   규율대로 최상위(`opus`)로 세웠고 뒤 둘의 서열은 **안 쟀다** — 별칭이 가리키는
-    #   실물이 때마다 갈려 여기서 잴 수 있는 것이 아니다.
-    "claude-cli": {"url": "", "local": True,
-                   "models": ("opus", "sonnet", "fable"),
-                   "site": SITE_OUTSIDE, "label": "이 PC 의 Claude 구독",
-                   "key_group": KEY_GROUP_CLAUDE_CLI,
-                   "contract": CONTRACT_CLI},
-}
+                      "betas": (OUTPUT_128K_BETA, *_CACHE_BETAS)},
+        # 회사 GPT — `/v1/responses` (OpenAI.-Posco.Setting.md 「Responses API (OpenAI)」 절). 옛 문
+        # (`/v1/chat/completions`)은 안 쓴다: 이 게이트웨이가 **다 만든 뒤 몰아 줘서**
+        # 렌더가 길수록 사용자가 빈 화면을 본다(atelier #123 실측 · 커밋 2be4432).
+        # 상한을 실을 이름이 이 계약만 다르다(같은 절 Request Body 표의 `max_output_tokens`).
+        "openai":    {"url": f"{GATEWAY_BASE_URL}{RESPONSES_PATH}",
+                      # 사내 문서 예시는 `gpt-5.2` 계열이고 이 둘은 표 밖 · 사용자 확인
+                      # (atelier config.py 주석 · 커밋 2be4432). 둘 가운데는 최상위가 앞이다.
+                      # 회사가 Codex 에 쓰는 판은 그 위의 `gpt-6.1-sol` 이다(Codex-CLI.setting.toml
+                      # `model`) — 출력 상한 · 입력 벽을 이 씨앗이 안 재 표에 안 올린다.
+                      "models": ("gpt-5.6-sol", "gpt-5.6-terra"),
+                      "site": SITE_POSCO, "label": "회사 GPT",
+                      "key_group": KEY_GROUP_POSCO,
+                      "contract": CONTRACT_OPENAI,
+                      "max_tokens_field": "max_output_tokens"},
+        # 회사 Gemini — 같은 호스트인데 **계약도 인증도 다르다.** P-GPT 가 구글 네이티브
+        # 표면을 그대로 연다(Gemini-Posco.setting.md 「Gemini Native API (Gemini)」의 `POST …:streamGenerateContent` · 「인증」 표).
+        # `url` 은 **바닥 주소**다 — 이 계약만 경로에 모델 이름이 들어가서(providers 의
+        # `_gemini_envelope`) 완성된 주소를 여기 적을 수가 없다.
+        "gemini-posco": {"url": GATEWAY_BASE_URL,
+                         # 등록 목록은 같은 문서 「사용 가능한 모델」인데 「관리자 설정에 따라 다를 수
+                         # 있다」고 저쪽이 든다 — `gemini-3.6-flash` 가 목록 밖 · 사용자
+                         # 확인이다(atelier config.py 주석 · 커밋 2be4432). 회사가 지금 쓰는 flash 는
+                         # `gemini-3.8-flash` 다(`pgpt-proxy/README.md` 웹서치 메움 칸의 기본값) — 이
+                         # 씨앗이 안 재 표에 안 올린다.
+                         "models": ("gemini-3.1-pro-preview", "gemini-3.6-flash"),
+                         "site": SITE_POSCO, "label": "회사 Gemini",
+                         "key_group": KEY_GROUP_POSCO,
+                         "contract": CONTRACT_GEMINI},
+        # --- 사내망 밖 — 같은 코드로 돌아야 한다. 게이트웨이가 아플 때
+        # 제품이 서지 않게 하는 자리고, 집에서 시험하는 자리이기도 하다.
+        "anthropic-api": {"url": f"{ANTHROPIC_API_BASE_URL}{MESSAGES_PATH}",
+                          # 공개 모델 ID. 첫 항을 `claude-opus-5` 로 두는 까닭은 회사
+                          # Claude 갈래의 기본과 **같은 모델**이라야 갈래를 바꿨을 때
+                          # 품질 기준선이 비교되기 때문이다.
+                          "models": ("claude-opus-5", "claude-sonnet-5"),
+                          "site": SITE_OUTSIDE, "label": "내 키로 Anthropic",
+                          "key_group": KEY_GROUP_ANTHROPIC,
+                          "contract": CONTRACT_ANTHROPIC,
+                          # ⚠ **128K 낱말을 안 싣는다 — 안 쟀다.** 이 문에 그 낱말이 아직
+                          #   서는지 못 재 봤고, 아래 상한이 안전값이라 실을 값도 없다.
+                          #   캐시 수명 낱말만 싣는다: 캐싱은 필수 규율이라(AI-prompt-helper 결정 0004)
+                          #   두 자리가 같은 수명으로 돌아야 한다.
+                          "betas": _CACHE_BETAS},
+        # 내 키로 Gemini — 구글 직결. 회사 갈래와 **같은 계약**이라 코드가 하나다.
+        # 첫 항이 기본이다 — 무료 키는 pro 미리보기의 할당량이 0 이라(429 · 2026-09-05 실측) flash 가 앞이다.
+        "gemini":    {"url": GEMINI_API_BASE_URL,
+                      "models": ("gemini-3.7-flash", "gemini-3.1-pro-preview"),
+                      "site": SITE_OUTSIDE, "label": "내 키로 Gemini",
+                      "key_group": KEY_GROUP_GEMINI,
+                      "contract": CONTRACT_GEMINI},
+        # 이 PC 에 깔린 claude CLI 를 그대로 부른다. 주소도 키도 없다 — 구독 로그인이 이미
+        # 되어 있고 그 인증을 빌려 쓴다. 그래서 `local` 이 선다: **키가 없다고 드라이런으로
+        # 떨어지면 안 되는 유일한 갈래다**(아래 `creds` 의 `dry_run`).
+        # ⚠ 모델 이름이 게이트웨이 갈래와 다르다 — **별칭**이다. 별칭은 판을 안 고정하므로
+        #   (CLI 도움말이 「alias for the latest model」로 적어 뒀다) 여기 판 번호를 안 적는다:
+        #   적는 순간 낡고, 낡은 줄 아무도 모른다. 특정 판을 박으려면 화면 모델 칸에 정식
+        #   이름을 직접 적는다. 위 게이트웨이 갈래들과 정반대다 — 저쪽은 회사가 등록한
+        #   이름이라 목록이 곧 있는 것 전부다.
+        # ⚠ **출력 상한을 실을 자리가 없다**(`providers._cli_once`) — `_MODEL_MAX_TOKENS` 에
+        #   이 이름들을 안 적는 까닭이다. 안전값이 서지만 어차피 안 나간다.
+        # ⚠ **별칭 셋은 atelier 갈래 표에서 그대로 가져왔다**(커밋 d93df1d). 첫 항만 이 앱의
+        #   규율대로 최상위(`opus`)로 세웠고 뒤 둘의 서열은 **안 쟀다** — 별칭이 가리키는
+        #   실물이 때마다 갈려 여기서 잴 수 있는 것이 아니다.
+        "claude-cli": {"url": "", "local": True,
+                       "models": ("opus", "sonnet", "fable"),
+                       "site": SITE_OUTSIDE, "label": "이 PC 의 Claude 구독",
+                       "key_group": KEY_GROUP_CLAUDE_CLI,
+                       "contract": CONTRACT_CLI},
+    }
+
+
+# 갈래 표 — 한 벌을 `_settle` 이 채운다(`_lanes`). 같은 사전을 제자리에서 다시 채우므로 불러온 뒤
+# 붙든 손(`gateway._GATEWAY`)이 `configure` 뒤에도 같은 표를 본다.
+_GATEWAY = {}
 # 표에 안 적은 갈래가 쓰는 이름 — Anthropic·Gemini 가 이 이름을 쓴다.
 _DEFAULT_MAX_TOKENS_FIELD = "max_tokens"
-# 기본 갈래 — 요청이 안 고르면 이것으로 간다. 변수로 연다.
-# ⚠ **모르는 이름은 뜰 때 죽는다.** 형제 하나는 옛 환경과의 호환으로 기본 행에 내리는데,
-#   새로 출발하는 프로젝트에는 지킬 옛 환경이 없다 — 오타가 조용히 딴 갈래로 가는 것이
-#   더 비싸다. 담장 검사(아래)는 이 판정 **뒤에** 선다.
-DEFAULT_PROVIDER = _env("PROVIDER", next(iter(_GATEWAY))).lower()
-if DEFAULT_PROVIDER not in _GATEWAY:
-    raise RuntimeError(
-        f"{ENV_PREFIX}_PROVIDER 가 모르는 갈래다: {DEFAULT_PROVIDER} — "
-        f"있는 것은 {', '.join(_GATEWAY)} 이다")
-
-# 담장 순서 — 표의 등장 순서를 따른다. 손으로 적으면 갈래를 더할 때 어긋난다.
-SITES = tuple(dict.fromkeys(row["site"] for row in _GATEWAY.values()))
 
 
-# --- 이 서버가 **여는** 담장 — 띄우는 사람이 선언한다 (atelier ADR 0253) -------------
-#
-# 비우면 다 연다. 회사에 띄울 때 `posco` 하나만 적으면 바깥 갈래(구글 직결 · 이 PC 구독)가
-# 화면 목록에서 빠지고, 옛 브라우저 저장분이 그
-# 갈래를 실어 와도 아래 `creds` 가 안 받는다 — 회사 자산이 회사 게이트웨이로만 간다.
-# ⚠ **닿음 판정과 다른 축이다.** 저쪽은 열어 봐서 **잰 것**이고 이쪽은 띄운 사람이 **적은
-#   것**이라 틀릴 자리가 없다. 그래서 닫힌 담장의 갈래는 **잠기는 것이 아니라 안 선다** —
-#   잠긴 채 남겨 흐리게 두면 동료에게 「왜 회색이지」만 남는다. 잠금은 판정이 틀릴 수 있는
-#   닿음 실측의 규율이다(아래 `why_unreachable`).
-# ⚠ **모르는 이름은 뜰 때 죽인다** — 오타가 「다 연다」로 조용히 떨어지면 닫은 줄 알고 연다.
 def _sites_allowed():
-    names = tuple(dict.fromkeys(
-        s.strip() for s in _env("SITES", "").split(",") if s.strip()))
+    """이 서버가 여는 담장 — 비우면 다 연다(아래 `_settle` 의 담장 곁말). 모르는 이름은 `RuntimeError`."""
+    raw = _env("SITES", "")
+    names = raw.split(",") if isinstance(raw, str) else raw
+    names = tuple(dict.fromkeys(s.strip() for s in names if s.strip()))
     unknown = [s for s in names if s not in SITES]
     if unknown:
         raise RuntimeError(
-            f"{ENV_PREFIX}_SITES 에 모르는 담장이 있다: {'·'.join(unknown)} — "
+            f"{_handle('SITES')} 에 모르는 담장이 있다: {'·'.join(unknown)} — "
             f"고를 수 있는 것은 {'·'.join(SITES)} 이다")
     return names or SITES
 
 
-SITES_ALLOWED = _sites_allowed()
+def _settle():
+    """손잡이를 읽어 모듈의 값을 세운다 — **읽는 자리는 여기뿐이다.** 불러올 때 한 번, `configure` 마다 다시.
+
+    받는 것: 없다 — `ENV_PREFIX` · `_given` · 환경을 읽는다. 내는 것: 없다 — 모듈의 이름들을 갈아 끼우고
+    `_FAULT` 를 새로 채운다. 세우지 않는다 — 틀린 값은 `_FAULT` 에 남고 `creds` · `configure` 가 올린다.
+    같은 손잡이를 두 번 읽으면 둘째가 조용히 이기므로, 손잡이 하나는 여기 한 줄이다.
+    """
+    global LOGS_DIR, CACHE_TTL, _CACHE_BETAS, GATEWAY_BASE_URL, ANTHROPIC_API_BASE_URL, GEMINI_API_BASE_URL
+    global DEFAULT_PROVIDER, SITES, SITES_ALLOWED, REACH_TIMEOUT_S, CLI_AUTH_TIMEOUT_S
+    global WALL_MAX_TOKENS, TIMEOUT_S, MAX_CONTINUE, MAX_ENVELOPE_CHARS, DRY_RUN_FORCED
+    global GEMINI_THOUGHTS, GEMINI_THINK_TOKENS
+    _FAULT.clear()
+
+    # 앱이 제 손으로 여는 기록 폴더 — CLI 오류 증거(`providers._cli_evidence`)가 여기 앉는다.
+    LOGS_DIR = Path(_env("LOGS_DIR", "logs"))
+
+    # --- 캐시 수명과 그것을 여는 베타 낱말.
+    # **고를 수 있는 것은 anthropic 계약뿐이다** — 나머지 둘은 접두사가 맞으면 자동이라
+    # 우리가 실을 표가 없다. 기본 수명 5분은 사람이 답을 쓰는 사이 식는다.
+    # 되돌리려면 `5m` 으로 둔다 — 그러면 필드도 낱말도 안 나간다(`providers._cache_ctl` 과 아래
+    # `_CACHE_BETAS` 가 **같은 손잡이**를 본다. 한쪽만 보면 「1시간을 열어 달라」고 말해 놓고
+    # 5분 봉투를 보내는 어긋난 요청이 되고, 이 게이트웨이는 모르는 낱말을 조용히 삼켜 안 운다).
+    # 두 낱말 다 **사내 문서 머리 표에 없다.** 회사 갈래에서 1시간 낱말은 **안 옮겨진다** — 수명은
+    # 5분이다(ENV-posco 「우리가 잰 것」 표의 「캐시 1시간」 행 · 1시간 갈래가 8분 뒤 읽기 0). 그래서 이
+    # 손잡이는 회사 갈래에서는 아무것도 안 사고 사외 Anthropic 갈래에서만 선다 — 사람이 답을 쓰는
+    # 사이 5분이 식는 것은 그쪽 이야기다. 회사 갈래만 두는 앱은 `5m` 으로 두어 안 옮겨질 낱말을
+    # 안 싣는다. 128K 낱말은 아직 안 쟀다(같은 문서 「아직 안 잰 것」 절) — 흘려지면 상한은 옛 값이다.
+    # 갈래마다 무엇을 싣나는 갈래 표의 `betas` 칸이 든다.
+    CACHE_TTL = _env("CACHE_TTL", "1h")
+    _CACHE_BETAS = (CACHE_TTL_BETA,) if CACHE_TTL and CACHE_TTL != "5m" else ()
+
+    # --- 바닥 주소 — **주소도 변수로 연다.** 개발·운영 게이트웨이와 루프백 프록시를 갈아 끼울 때
+    # 코드를 안 고친다. 비우면 지금 주소다.
+    # 회사 게이트웨이는 손잡이가 둘이다 — 이 앱의 것이 먼저고, 비면 회사 이름을 읽는다. 앱의 것이
+    # 더 좁은 선언이라 이긴다. 회사 갈래 셋(갈래 표)이 이 바닥 하나를 나눠 쓴다.
+    # ⚠ 이름이 `_URL` 이 아니라 `_BASE_URL` 인 까닭 — 형제(atelier)의 `GATEWAY_URL` 은 기본 갈래의
+    #   **완성된** 주소다. 같은 이름이면 갈림 목록(`_check/drift_check.py`)이 다른 것을 짝짓는다.
+    GATEWAY_BASE_URL = _floor(
+        "GATEWAY_BASE_URL",
+        "http://aigpt.posco.net/gpgpta01-gpt",           # Claude-Posco.setting.md 「환경별 URL」 표의 운영계
+        f"{ENV_PREFIX}_GATEWAY_BASE_URL · {COMPANY_URL_ENV}",
+        fallback=os.environ.get(COMPANY_URL_ENV, ""))
+    # 바깥 갈래는 제 손잡이로만 옮긴다.
+    # ⚠ **SDK 표준 이름(`ANTHROPIC_BASE_URL` · `GOOGLE_GEMINI_BASE_URL`)은 안 읽는다.** 회사 PC 에서는
+    #   Claude Code 가 앞 이름으로 루프백 프록시를, 안티그래비티(`agy`)가 뒤 이름으로 회사 게이트웨이를
+    #   보므로(Claude-Posco.setting.md 「커스텀 설정 항목」 표의 `ANTHROPIC_BASE_URL` · ENV-posco 「우리가 쓰는
+    #   인증」 항목과 안티그래비티 항목), 읽으면 「내 키」 갈래가 개인 키를 회사 쪽으로 보낸다 — 아래
+    #   `_KEY_ENV` 가 `ANTHROPIC_API_KEY` 를 안 읽는 것과 같은 결이다.
+    ANTHROPIC_API_BASE_URL = _floor("ANTHROPIC_API_BASE_URL", "https://api.anthropic.com",
+                                    f"{ENV_PREFIX}_ANTHROPIC_API_BASE_URL")
+    GEMINI_API_BASE_URL = _floor("GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com",
+                                 f"{ENV_PREFIX}_GEMINI_API_BASE_URL")
+
+    _GATEWAY.clear()
+    _GATEWAY.update(_lanes())
+    # 부르는 쪽의 모델 표 — 갈래마다 통째로 갈아 끼운다(첫 항이 기본이라 한 항만 바꾸는 길은 없다).
+    for lane, models in _given.get("models", {}).items():
+        _GATEWAY[lane]["models"] = tuple(models)
+
+    # 기본 갈래 — 요청이 안 고르면 이것으로 간다. 변수로 연다.
+    # ⚠ **모르는 이름은 선다.** 형제 하나는 옛 환경과의 호환으로 기본 행에 내리는데,
+    #   새로 출발하는 프로젝트에는 지킬 옛 환경이 없다 — 오타가 조용히 딴 갈래로 가는 것이
+    #   더 비싸다. 담장 검사(아래)는 이 판정 **뒤에** 선다.
+    DEFAULT_PROVIDER = str(_env("PROVIDER", next(iter(_GATEWAY)))).lower()
+    if DEFAULT_PROVIDER not in _GATEWAY:
+        _FAULT.append(
+            f"{_handle('PROVIDER')} 가 모르는 갈래다: {DEFAULT_PROVIDER} — "
+            f"있는 것은 {', '.join(_GATEWAY)} 이다")
+
+    # 담장 순서 — 표의 등장 순서를 따른다. 손으로 적으면 갈래를 더할 때 어긋난다.
+    SITES = tuple(dict.fromkeys(row["site"] for row in _GATEWAY.values()))
+
+    # --- 이 서버가 **여는** 담장 — 띄우는 사람이 선언한다 (atelier ADR 0253) -------------
+    #
+    # 비우면 다 연다. 회사에 띄울 때 `posco` 하나만 적으면 바깥 갈래(구글 직결 · 이 PC 구독)가
+    # 화면 목록에서 빠지고, 옛 브라우저 저장분이 그
+    # 갈래를 실어 와도 `creds` 가 안 받는다 — 회사 자산이 회사 게이트웨이로만 간다.
+    # ⚠ **닿음 판정과 다른 축이다.** 저쪽은 열어 봐서 **잰 것**이고 이쪽은 띄운 사람이 **적은
+    #   것**이라 틀릴 자리가 없다. 그래서 닫힌 담장의 갈래는 **잠기는 것이 아니라 안 선다** —
+    #   잠긴 채 남겨 흐리게 두면 동료에게 「왜 회색이지」만 남는다. 잠금은 판정이 틀릴 수 있는
+    #   닿음 실측의 규율이다(아래 `why_unreachable`).
+    # ⚠ **모르는 이름은 다 닫는다** — 오타가 「다 연다」로 조용히 떨어지면 닫은 줄 알고 연다. 닫힌
+    #   채 `_FAULT` 가 서므로 화면은 비고 첫 자격이 그 이름을 말한다.
+    try:
+        SITES_ALLOWED = _sites_allowed()
+        sites_stand = True
+    except RuntimeError as why:
+        _FAULT.append(str(why))
+        SITES_ALLOWED, sites_stand = (), False
+
+    # 기본 갈래가 닫힌 담장 것이면 **선다.** 안 그러면 갈래를 안 고른 요청이 닫은
+    # 담장으로 향하고, 그것을 `creds` 가 다시 기본 갈래로 내리는데 그 기본이 또 닫혀 있어
+    # **내림이 제자리를 돈다** — 기본이 없는 서버가 된다. 고칠 손잡이는 둘이다 —
+    # `{ENV_PREFIX}_PROVIDER` 를 열린 담장의 갈래로 두거나 `{ENV_PREFIX}_SITES` 를 넓힌다.
+    # ⚠ 이 검사는 기본 갈래의 이름 판정과 담장 판정 **뒤**에 선다 — 앞에 서면 모르는 이름이 검사를
+    #   건너뛰고, 담장이 이미 틀린 판은 같은 틀림을 두 번 말한다.
+    if sites_stand and DEFAULT_PROVIDER in _GATEWAY and not site_allowed(DEFAULT_PROVIDER):
+        _FAULT.append(
+            f"기본 갈래 {DEFAULT_PROVIDER} 는 {_GATEWAY[DEFAULT_PROVIDER]['site']} 담장인데 "
+            f"{_handle('SITES')} 가 {'·'.join(SITES_ALLOWED)} 만 연다 — {_handle('PROVIDER')} 를 "
+            f"열린 담장의 갈래로 두거나 {_handle('SITES')} 를 넓힌다")
+
+    # 두드리고 기다리는 시간. 살아 있으면 0.1초 안에 오므로 이 값은 **죽었을 때의 벽**이다.
+    # 화면이 뜰 때 한 번 무는 자리라, 끝점 둘이 다 죽으면 이 값의 두 배가 첫 화면에 얹힌다.
+    REACH_TIMEOUT_S = _int("REACH_TIMEOUT_S", "2", float)
+    # CLI 는 프로세스를 띄우는 일이라 소켓 한 번보다 느리다 — 같은 손잡이에서 넉넉히 파생한다.
+    CLI_AUTH_TIMEOUT_S = REACH_TIMEOUT_S * 3
+
+    # 사내 갈래의 **문 출력 상한 — 벽에서 역산한 값이다**(`GATEWAY_WALL_S` 곁말). 실측(atelier 2026-08-14 ·
+    # ENV-posco)이 말하는 것은 프리필은 시간을 거의 안 먹고 생성이 초당 34~58 토큰이라는 것이다:
+    #     180초 × 51 토큰/초 ≈ 9,177 토큰   ← 빨리 쓰는 판의 몫
+    # 상한을 벽 **안쪽**에 두면 절단이 계약(`max_tokens`)으로 와서 이어받기가 정확히 걸리고
+    # (`providers.stream_resumed`), 이어받은 바퀴도 다시 이 상한 안에서 끝난다. 벽에 닿게 두면
+    # stop 이 빈 채로 돌아와 「끝난 것」과 「잘린 것」을 영영 못 가른다.
+    # 4,000 인 까닭 — 보통 속도로 78초, 관측된 가장 느린 속도(34 토큰/초)로도 118초라 어느 쪽이든
+    # 벽 안이다. **낮게 틀리는 것이 안전하다.** 값과 역산은 atelier `config.TALK_MAX_TOKENS` 와 같다.
+    # ⚠ 바깥 갈래(내 키 · 이 PC 의 CLI)에는 벽이 없어 안 건다 — `creds` 가 담장(`site`)으로 가른다.
+    # ⚠ 생각이 길어 **시간이 침묵으로 가는 판**은 상한을 아무리 낮춰도 벽에 걸린다 — 그 판은
+    #   `providers.CUT_NO_SIGNAL` 로 기록에 남고 이어받기는 안 붙는다(닫힌 답에 걸면 지어낸다).
+    WALL_MAX_TOKENS = _int("WALL_MAX_TOKENS", "4000")
+    # 소켓에 거는 자 — **침묵**을 잰다(총 시간이 아니다). 조각이 오면 되감긴다.
+    # 부르는 쪽이 `deadline` 을 주면 남은 예산과 이 값 중 먼저 오는 쪽이 선다(providers).
+    TIMEOUT_S = _int("TIMEOUT_S", "900")
+    # 이어받기 바퀴 상한(`providers.stream_resumed`) — 끊김이 되풀이되면 한 회가 통째로 3분이라(180초 벽)
+    # 크게 두면 사람이 화면 앞에서 십 분을 기다린다. 변수로 연다 — 되풀이 끊김이 사고로 났을 때
+    # 재기동만으로 바퀴를 줄일 수 있게.
+    MAX_CONTINUE = _int("MAX_CONTINUE", "5")
+
+    # --- 입력 난간 — 봉투가 벽에 닿기 전에 서는 자 (AI-prompt-helper 결정 0024).
+    # 위 상한들이 **얼마를 받나**라면 이 값은 **얼마를 보내나**다. 넘겨 보내면 게이트웨이가
+    # 400 을 내거나, 모르는 것을 삼키는 성질대로 빈 채로 끊는다 — 뒤엣것이면
+    # `providers.CUT_NO_SIGNAL` 과 구별이 안 되고 원인이 입력 쪽이라 되부르기도 안 듣는다.
+    #
+    # **값은 모델 입력 한도에서 되짚는다.** 벽은 **토큰**인데 이 자는 **글자**라 환산이 낀다.
+    #
+    #     가장 낮은 벽 922,000토큰 × 1.0 자/토큰 ≈ 922,000자   →  난간 900,000자
+    #
+    # ⚠ **가장 낮은 벽이 사내 GPT 다.** Claude 갈래 넷(`claude-opus-5`·`4.7`·`sonnet-4.6`·
+    #   `sonnet-5`)은 1,000,000토큰이고, `gpt-5.6-sol` 의 922,000토큰이 그보다 낮다(값의 출처는
+    #   atelier `config.MAX_ENVELOPE_CHARS` 곁말 — 같은 게이트웨이·같은 모델 이름이다).
+    # ⚠ **환산비는 계약마다 다르고, 조이는 자는 「벽 × 비」가 가장 작은 모델이다** — 사내 실측
+    #   2026-09-09(`_check/live_probe.py ratio` · 한국어 산문 19,591자 · `_check/log/live-probe.log`):
+    #     anthropic(claude-opus-5) 1.26 자/토큰 · openai(gpt-5.6-sol) 2.06 · gemini 2.08
+    #   가장 낮은 벽은 GPT(922,000)지만 비가 2.06 이라 1.9M자까지 서고, Claude 는 벽이 1,000,000
+    #   이어도 비가 1.26 이라 **1.26M자에서 먼저 닿는다.** 되짚는 식은 「가장 낮은 벽 × 가장 낮은
+    #   비」가 아니라 **모델마다 벽 × 그 모델의 비를 내어 가장 작은 것**이다. 씨앗의 900,000 은 그
+    #   1.26M 아래에 남는 값이고, 그래서 그대로 둔다 — 낮게 틀리는 것이 안전하다.
+    # ⚠ **결이 다르면 비가 다르다** — 위 셋은 한국어 산문의 것이다. HTML·KB 가 섞인 봉투는 아뜰리에
+    #   표본 아홉이 1.17~2.09 였다. 제 봉투의 결로 다시 잰다 — 프로브가 파일을 받는다.
+    # ⚠ **안 쟀다.** ① 사내 게이트웨이가 모델 벽보다 **먼저** 세우는 입력 상한이 있나(사내 PC 몫)
+    #   ② `gpt-5.6-terra`·gemini 셋·CLI 별칭 셋의 입력 한도 — gemini 는 비(2.08)만 있고 벽이 없다.
+    MAX_ENVELOPE_CHARS = _int("MAX_ENVELOPE_CHARS", "900000")
+
+    # 요청이 키를 실어 와도, 서버 토큰이 있어도 안 보낸다 — 봉투 명세만 돌려준다.
+    # 판정은 요청마다 선다(`creds`) — **프로세스가 쥔 사실은 이 강제 하나뿐**이라 여기
+    # 굳는 값도 그것 하나다. 서버가 키를 안 깔므로(`_KEY_ENV` 곁말 · 로그인을 선언한 앱의 회사
+    # 갈래만 예외다) 「이 서버가 실호출인가」는 프로세스가 답할 수 있는 물음이 아니다 — 브라우저마다
+    # 다르다.
+    DRY_RUN_FORCED = _flag("DRY_RUN")
+
+    # --- Gemini 갈래에 **생각을 흘려 달라고 요청한다** — 켜면 봉투에
+    # `generationConfig.thinkingConfig.includeThoughts` 가 실린다.
+    #
+    # ⚠ **품질 손잡이가 아니라 선을 살려 두는 손잡이다.** 앞단 HAProxy 의 `timeout server` 는
+    #   **조각 사이 무응답**을 재고 **조각이 오면 리셋된다**(실측 300초 ·
+    #   claude-config `posco/gateway-front-haproxy.md`). pro 모델이 생각에 들어가면 그동안 한
+    #   조각도 안 흘러 그 자를 넘기고, **구조 없는 HTML 504**(`The server didn't respond in
+    #   time.`)가 온다. SSE 를 심장박동으로 살리는 것이 이 제품의 표준 처방이고 **생각 조각이
+    #   곧 그 박동이다.** 시한을 늘리는 것이 아니라 선을 살려 두는 것이다.
+    # ⚠ **위 `WALL_MAX_TOKENS` 와 다른 겹이다** — 저쪽은 스트림이 흐르는 판의 180초 절대 벽을
+    #   상한으로 되짚은 값이고, 이쪽은 **아무 조각도 안 흐르는 판**의 자다. 상한을 아무리
+    #   낮춰도 침묵으로 가는 판은 못 막는다(AI-prompt-helper 결정 0017 이 「안 고치는 자리」로 적어 둔 그것).
+    # ⚠ **켠다고 생각을 더 시키는 것이 아니다** — 끈 판에도 `thoughtsTokenCount` 가 오므로
+    #   모델은 어차피 같은 만큼 생각한다. 켜는 것은 그 조각을 **흘려보내라**는 뜻이다.
+    # ⚠ **실측은 아뜰리에가 사내 게이트웨이에서 했다**(atelier `_check/log/thinking-probe-runs.log` ·
+    #   2026-08-27). 400 이 안 오고 생각 조각이 실제로 흐르며, 켠 판이 선을 절반 시각에 연다 —
+    #   61,019자 봉투에서 6.1초→4.1초 · 81,193자에서 7.7초→3.9초. 이 씨앗의 배관으로도 같은
+    #   게이트웨이에서 섰다(`_check/log/live-probe.log` 의 `thoughts` 줄 — 첫 조각 8.6초 전에 생각
+    #   신호 11번 · `thinking_tokens=971`). 「쓰기 전에 프로브로 잰다」는 규율을 그 실측으로
+    #   갈음한다(AI-prompt-helper 결정 0033).
+    # ⚠ **게이트웨이 제 504 와 다른 겹이다** — 저쪽이 낸 504 는 코드가 실려 오고 스트림 중이면
+    #   200 + `event: error` 로 온다. 우리가 받은 것은 코드 없는 HTML 이라 **게이트웨이가 낸
+    #   것이 아니다** — 이 가름이 없으면 다음 504 를 사내 오류 코드표에서 헛짚는다.
+    # ⚠ **죽는 판은 재현이 안 됐다** — 손잡이의 근거는 「504 를 없앤다」가 아니라 「기전이
+    #   실물에서 선다」까지다(아뜰리에 곁말 그대로). 켰으니 닫혔다고 읽지 않는다.
+    # ⚠ **상한을 걸 일이 생기면 `thinkingBudget` 이 아니라 `thinkingLevel` 이다**(gemini 3 ·
+    #   low·medium·high). 저쪽은 하위호환 낱말이고 **둘을 같이 실으면 400** 이다. 그리고 이
+    #   게이트웨이는 모르는 낱말을 조용히 삼키므로 그 낱말은 쓰기 전에 따로 재야 한다.
+    raw = _env("GEMINI_THOUGHTS", "1")
+    GEMINI_THOUGHTS = raw is True or raw == "1"
+    # --- gemini 는 **생각 몫이 `maxOutputTokens` 안에 든다** — 사내 실측 2026-09-09(AI-prompt-helper #64):
+    # 상한 2,500 인 문이 `out=71 think=2401` 에서 잘렸다. 답 크기에 이 몫을 더해 싣는다
+    # (`providers._gm_envelope`). 켜고 끄는 것과 무관하다 — 끈 판에도 생각은 같은 만큼 한다.
+    # 값 — 그 판의 바퀴당 최대 생각 2,401 위로 여유를 둔 것. 180초 벽과의 셈: 가장 느리게 본 판(초당
+    # 57토큰)으로도 4,000+4,000 은 140초라 벽 안이다. ⚠ 생성 속도는 한 판 실측이다 — **안 쟀다**.
+    GEMINI_THINK_TOKENS = _int("GEMINI_THINK_TOKENS", "4000")
+
+
+def _ready():
+    """틀린 손잡이가 서 있으면 지금 세운다 — 첫 자격(`creds`) · 닿음 판정 · `configure` 가 부른다."""
+    if _FAULT:
+        raise RuntimeError(" · ".join(_FAULT))
+
+
+def configure(prefix=None, models=None, **handles):
+    """부르는 쪽의 값을 깔고 손잡이를 다시 읽는다 — 불러와 쓰는 앱이 갈래를 쓰기 전에 한 번 부른다.
+
+    받는 것 — `prefix`: 환경변수 접두어(`ENV_PREFIX` 를 갈아 끼운다) · `models`: `{갈래: (모델, …)}` —
+    갈래마다 표를 통째로, 첫 항이 기본 · `handles`: 접두어를 뗀 손잡이 이름과 값(`WALL_MAX_TOKENS=4000` ·
+    `CACHE_TTL="5m"` · `LOGS_DIR=Path(…)` · `PROVIDER="anthropic"` · `SITES="posco"` …). 값의 꼴은 환경변수에
+    적을 글자 그대로도 되고 그 뜻의 파이썬 값(정수 · `Path` · 참거짓)도 된다. 무엇이 있나는 이 파일에서
+    `_env(` 를 찾으면 전부다.
+    내는 것 — 없다. 넘긴 것은 쌓인다(앞서 넘긴 이름은 다시 넘겨야 바뀐다) · 같은 인자로 두 번 불러도 같다.
+    세우는 것 — 모르는 손잡이 이름 · 표에 없는 갈래는 **그 자리에서** `ValueError`(부르는 쪽 코드의 오타라
+    환경 탓이 아니다) · 읽은 값이 틀리면 `_FAULT` 를 `RuntimeError` 로 — 뜰 때 죽이고 싶은 앱이 뜰 때
+    부르는 자리가 이것이다(인자 없이도 된다).
+    ⚠ **환경에 걸린 남의 손잡이를 이긴다** — 넘긴 이름은 환경을 안 본다. 안 넘긴 이름은 `{prefix}_*`
+      → 기본 차례다(머리말).
+    """
+    global ENV_PREFIX
+    unknown = [name for name in handles if name not in _HANDLES]
+    if unknown:
+        raise ValueError(f"configure 가 모르는 손잡이다: {', '.join(unknown)} — "
+                         f"있는 것은 {', '.join(_HANDLES)} 이다")
+    if models:
+        unknown = [lane for lane in models if lane not in _GATEWAY]
+        if unknown:
+            raise ValueError(f"configure(models=…) 에 표에 없는 갈래가 있다: {', '.join(unknown)} — "
+                             f"있는 것은 {', '.join(_GATEWAY)} 이다")
+        _given.setdefault("models", {}).update({lane: tuple(m) for lane, m in models.items()})
+    if prefix is not None:
+        ENV_PREFIX = prefix
+    _given.update(handles)
+    _settle()
+    _ready()
 
 
 def site_allowed(provider):
@@ -277,17 +535,6 @@ def site_allowed(provider):
     row = _GATEWAY.get(provider)
     return row is not None and row["site"] in SITES_ALLOWED
 
-
-# 기본 갈래가 닫힌 담장 것이면 **뜰 때 죽인다.** 안 그러면 갈래를 안 고른 요청이 닫은
-# 담장으로 향하고, 그것을 `creds` 가 다시 기본 갈래로 내리는데 그 기본이 또 닫혀 있어
-# **내림이 제자리를 돈다** — 기본이 없는 서버가 된다. 고칠 손잡이는 둘이다 —
-# `{ENV_PREFIX}_PROVIDER` 를 열린 담장의 갈래로 두거나 `{ENV_PREFIX}_SITES` 를 넓힌다.
-# ⚠ 이 검사는 기본 갈래의 이름 판정 **뒤**에 선다 — 앞에 서면 모르는 이름이 검사를 건너뛴다.
-if not site_allowed(DEFAULT_PROVIDER):
-    raise RuntimeError(
-        f"기본 갈래 {DEFAULT_PROVIDER} 는 {_GATEWAY[DEFAULT_PROVIDER]['site']} 담장인데 "
-        f"{ENV_PREFIX}_SITES 가 {'·'.join(SITES_ALLOWED)} 만 연다 — {ENV_PREFIX}_PROVIDER 를 "
-        f"열린 담장의 갈래로 두거나 {ENV_PREFIX}_SITES 를 넓힌다")
 
 # --- 키 묶음 → 그 묶음의 환경변수 후보. 앞에서부터 찾아 **처음 값이 있는 것**을 쓴다.
 # ⚠ **읽는 자는 프로브들뿐이다**(`_check/gateway_probe.py` · `live_probe.py` · `stream_probe.py`). 서버는 이 이름들로
@@ -343,10 +590,6 @@ def server_token(group):
 # 재면 죽은 망에서 같은 벽을 세 번 기다린다. 끝점 단위로 한 번만 재면 갈래가 늘어도 벽은
 # 안 는다 — 「상태 문마다 나가는 요청이 갈래 수만큼 는다」는 걱정이 이 마디로 사라진다.
 _reach = {}          # {(호스트, 포트, 스킴): (닿나, 못 닿은 까닭)}
-
-# 두드리고 기다리는 시간. 살아 있으면 0.1초 안에 오므로 이 값은 **죽었을 때의 벽**이다.
-# 화면이 뜰 때 한 번 무는 자리라, 끝점 둘이 다 죽으면 이 값의 두 배가 첫 화면에 얹힌다.
-REACH_TIMEOUT_S = float(_env("REACH_TIMEOUT_S", "2"))
 
 # 악수 실패의 까닭이 드는 칸 — **먼저 걸리는 것을 쓴다.** 닫힌 표라 여기 한 자리에 둔다.
 # reason: OpenSSL 이 직접 거부한 자리 · verify_message: OS 검증기가 낸 문장 ·
@@ -437,9 +680,6 @@ def _reach_of(url):
 #   다음 물음에 다시 잰다(아래 `_local_verdict`).
 _cli_auth = None
 
-# CLI 는 프로세스를 띄우는 일이라 소켓 한 번보다 느리다 — 같은 손잡이에서 넉넉히 파생한다.
-CLI_AUTH_TIMEOUT_S = REACH_TIMEOUT_S * 3
-
 
 def _cli_logged_in(exe):
     """이 PC 의 CLI 가 로그인돼 있나 — (로그인됐나, 까닭) · **못 쟀으면 `None`.**
@@ -498,7 +738,11 @@ def _verdict(provider, owner=False):
 
     ⚠ `owner` 는 **부른 사람이 이 서버 PC 앞에 앉아 있나**다. 로컬 갈래에서만 쓴다 — 그
       자리에서만 이 PC 의 로그인이 제 자격이 되기 때문이다.
+    ⚠ 틀린 손잡이가 서 있으면 어느 갈래도 「못 닿음」이고 까닭이 그 손잡이다 — 화면이 잠근 자리에
+      고칠 이름이 뜬다. 세우지는 않는다: 상태 문은 서야 사람이 그 말을 본다.
     """
+    if _FAULT:
+        return False, " · ".join(_FAULT)
     row = _GATEWAY.get(provider)
     if row is None:
         return False, "모르는 갈래예요"
@@ -532,27 +776,16 @@ def why_unreachable(provider, owner=False):
 # --- 벽과 자 — 시간의 축. 돈의 축(캐시)과 갈린다.
 # 사내 게이트웨이는 **요청부터의 절대 벽**에서 신호 없이 끊는다. 스트림이 열려도, 한 토큰도
 # 안 나와도 같은 자리다 — 생성량과 무관하다(ENV-posco 「스트림 180초 컷」 실측 · 문서에 없다).
+# 오는 꼴은 셋이다 — 흐르던 스트림 끝의 오류 프레임(`… timeout configuration: 180000 millis` ·
+# `providers.CUT_FRAME`) · `message_start` 뒤 신호 없는 EOF(`providers.CUT_NO_SIGNAL`) · 머리조차
+# 안 온 채 같은 문장을 실은 HTTP 500(`providers.Rejected`). 스트림 길에서만 걸리고 같은 앱의
+# 비스트리밍은 앞단 300초까지 산다(같은 문서의 층 표).
 # ⚠ 앞단 HAProxy(300초 · gateway-front-haproxy.md)와 **다른 겹**이다. 값이 안 맞는다.
 # ⚠ **저쪽의 시계지 우리 자가 아니다(AI-prompt-helper 결정 0017).** 이 값으로 요청을 스스로 끊지 않는다 —
 #   끊으면 사람이 안 시킨 절단이고, 잘린 판은 stop 이 비어 이어받기가 못 붙는다(2026-09-07
 #   실측: 문마다 이 값을 시한으로 걸어 두었더니 벽이 없는 CLI 구독 갈래의 ⑤ 까지 180초에
-#   잘렸다). 여기서 파생하는 것은 하나, 아래 `WALL_MAX_TOKENS` 다.
+#   잘렸다). 여기서 파생하는 것은 하나, 문 출력 상한 `WALL_MAX_TOKENS`(`_settle`)다.
 GATEWAY_WALL_S = 180
-# 사내 갈래의 **문 출력 상한 — 벽에서 역산한 값이다.** 실측(atelier 2026-08-14 · ENV-posco)이
-# 말하는 것은 프리필은 시간을 거의 안 먹고 생성이 초당 34~58 토큰이라는 것이다:
-#     180초 × 51 토큰/초 ≈ 9,177 토큰   ← 빨리 쓰는 판의 몫
-# 상한을 벽 **안쪽**에 두면 절단이 계약(`max_tokens`)으로 와서 이어받기가 정확히 걸리고
-# (`providers.stream_resumed`), 이어받은 바퀴도 다시 이 상한 안에서 끝난다. 벽에 닿게 두면
-# stop 이 빈 채로 돌아와 「끝난 것」과 「잘린 것」을 영영 못 가른다.
-# 4,000 인 까닭 — 보통 속도로 78초, 관측된 가장 느린 속도(34 토큰/초)로도 118초라 어느 쪽이든
-# 벽 안이다. **낮게 틀리는 것이 안전하다.** 값과 역산은 atelier `config.TALK_MAX_TOKENS` 와 같다.
-# ⚠ 바깥 갈래(내 키 · 이 PC 의 CLI)에는 벽이 없어 안 건다 — `creds` 가 담장(`site`)으로 가른다.
-# ⚠ 생각이 길어 **시간이 침묵으로 가는 판**은 상한을 아무리 낮춰도 벽에 걸린다 — 그 판은
-#   `providers.CUT_NO_SIGNAL` 로 기록에 남고 이어받기는 안 붙는다(닫힌 답에 걸면 지어낸다).
-WALL_MAX_TOKENS = int(_env("WALL_MAX_TOKENS", "4000"))
-# 소켓에 거는 자 — **침묵**을 잰다(총 시간이 아니다). 조각이 오면 되감긴다.
-# 부르는 쪽이 `deadline` 을 주면 남은 예산과 이 값 중 먼저 오는 쪽이 선다(providers).
-TIMEOUT_S = int(_env("TIMEOUT_S", "900"))
 
 # --- 모델별 출력 상한 — 상한을 넘긴 값은 게이트웨이가 400 을 내고 스트림을 머리만
 # 뱉은 뒤 끊는다. 그때 우리 손에는 빈 글자만 남아 **원인이 안 보인다.** 그래서 보내기 전에 이 표로 막는다.
@@ -573,75 +806,9 @@ _MODEL_MAX_TOKENS = {
     # ⚠ **사외 Anthropic 갈래의 모델은 여기 없다 — 안 쟀다.** 공개 문서는 더 큰 값을
     #   들지만 이 저장소가 잰 것이 아니라, 안전값으로 떨어뜨린다. 재려면 값을 올려
     #   가며 한 번 부른다 — 400 이 오면 그 위가 벽이다.
+    # ⚠ **부르는 쪽이 `configure(models=…)` 로 넘긴 이름도 여기 없으면 안전값이다** — 회사 갈래는 문
+    #   상한이 먼저 와 손해가 없고, 바깥 갈래는 안전값이 곧 상한이다.
 }
-
-
-# --- 입력 난간 — 봉투가 벽에 닿기 전에 서는 자 (AI-prompt-helper 결정 0024).
-# 위 상한들이 **얼마를 받나**라면 이 값은 **얼마를 보내나**다. 넘겨 보내면 게이트웨이가
-# 400 을 내거나, 모르는 것을 삼키는 성질대로 빈 채로 끊는다 — 뒤엣것이면
-# `providers.CUT_NO_SIGNAL` 과 구별이 안 되고 원인이 입력 쪽이라 되부르기도 안 듣는다.
-#
-# **값은 모델 입력 한도에서 되짚는다.** 벽은 **토큰**인데 이 자는 **글자**라 환산이 낀다.
-#
-#     가장 낮은 벽 922,000토큰 × 1.0 자/토큰 ≈ 922,000자   →  난간 900,000자
-#
-# ⚠ **가장 낮은 벽이 사내 GPT 다.** Claude 갈래 넷(`claude-opus-5`·`4.7`·`sonnet-4.6`·
-#   `sonnet-5`)은 1,000,000토큰이고, `gpt-5.6-sol` 의 922,000토큰이 그보다 낮다(값의 출처는
-#   atelier `config.MAX_ENVELOPE_CHARS` 곁말 — 같은 게이트웨이·같은 모델 이름이다).
-# ⚠ **환산비는 계약마다 다르고, 조이는 자는 「벽 × 비」가 가장 작은 모델이다** — 사내 실측
-#   2026-09-09(`_check/live_probe.py ratio` · 한국어 산문 19,591자 · `_check/log/live-probe.log`):
-#     anthropic(claude-opus-5) 1.26 자/토큰 · openai(gpt-5.6-sol) 2.06 · gemini 2.08
-#   가장 낮은 벽은 GPT(922,000)지만 비가 2.06 이라 1.9M자까지 서고, Claude 는 벽이 1,000,000
-#   이어도 비가 1.26 이라 **1.26M자에서 먼저 닿는다.** 되짚는 식은 「가장 낮은 벽 × 가장 낮은
-#   비」가 아니라 **모델마다 벽 × 그 모델의 비를 내어 가장 작은 것**이다. 씨앗의 900,000 은 그
-#   1.26M 아래에 남는 값이고, 그래서 그대로 둔다 — 낮게 틀리는 것이 안전하다.
-# ⚠ **결이 다르면 비가 다르다** — 위 셋은 한국어 산문의 것이다. HTML·KB 가 섞인 봉투는 아뜰리에
-#   표본 아홉이 1.17~2.09 였다. 제 봉투의 결로 다시 잰다 — 프로브가 파일을 받는다.
-# ⚠ **안 쟀다.** ① 사내 게이트웨이가 모델 벽보다 **먼저** 세우는 입력 상한이 있나(사내 PC 몫)
-#   ② `gpt-5.6-terra`·gemini 셋·CLI 별칭 셋의 입력 한도 — gemini 는 비(2.08)만 있고 벽이 없다.
-MAX_ENVELOPE_CHARS = int(_env("MAX_ENVELOPE_CHARS", "900000"))
-
-
-# 요청이 키를 실어 와도, 서버 토큰이 있어도 안 보낸다 — 봉투 명세만 돌려준다.
-# 판정은 요청마다 선다(아래 `creds`) — **프로세스가 쥔 사실은 이 강제 하나뿐**이라 여기
-# 굳는 값도 그것 하나다. 서버가 키를 안 깔므로(`_KEY_ENV` 곁말 · 로그인을 선언한 앱의 회사
-# 갈래만 예외다) 「이 서버가 실호출인가」는 프로세스가 답할 수 있는 물음이 아니다 — 브라우저마다
-# 다르다.
-DRY_RUN_FORCED = _env("DRY_RUN", "") == "1"
-
-# --- Gemini 갈래에 **생각을 흘려 달라고 요청한다** — 켜면 봉투에
-# `generationConfig.thinkingConfig.includeThoughts` 가 실린다.
-#
-# ⚠ **품질 손잡이가 아니라 선을 살려 두는 손잡이다.** 앞단 HAProxy 의 `timeout server` 는
-#   **조각 사이 무응답**을 재고 **조각이 오면 리셋된다**(실측 300초 ·
-#   claude-config `posco/gateway-front-haproxy.md`). pro 모델이 생각에 들어가면 그동안 한
-#   조각도 안 흘러 그 자를 넘기고, **구조 없는 HTML 504**(`The server didn't respond in
-#   time.`)가 온다. SSE 를 심장박동으로 살리는 것이 이 제품의 표준 처방이고 **생각 조각이
-#   곧 그 박동이다.** 시한을 늘리는 것이 아니라 선을 살려 두는 것이다.
-# ⚠ **위 `WALL_MAX_TOKENS` 와 다른 겹이다** — 저쪽은 스트림이 흐르는 판의 180초 절대 벽을
-#   상한으로 되짚은 값이고, 이쪽은 **아무 조각도 안 흐르는 판**의 자다. 상한을 아무리
-#   낮춰도 침묵으로 가는 판은 못 막는다(AI-prompt-helper 결정 0017 이 「안 고치는 자리」로 적어 둔 그것).
-# ⚠ **켠다고 생각을 더 시키는 것이 아니다** — 끈 판에도 `thoughtsTokenCount` 가 오므로
-#   모델은 어차피 같은 만큼 생각한다. 켜는 것은 그 조각을 **흘려보내라**는 뜻이다.
-# ⚠ **실측은 아뜰리에가 사내 게이트웨이에서 했다**(`_check/log/thinking-probe-runs.log` ·
-#   2026-08-27). 400 이 안 오고 생각 조각이 실제로 흐르며, 켠 판이 선을 절반 시각에 연다 —
-#   61,019자 봉투에서 6.1초→4.1초 · 81,193자에서 7.7초→3.9초. 「쓰기 전에 프로브로
-#   잰다」는 규율을 그 실측으로 갈음한다(AI-prompt-helper 결정 0033).
-# ⚠ **게이트웨이 제 504 와 다른 겹이다** — 저쪽이 낸 504 는 코드가 실려 오고 스트림 중이면
-#   200 + `event: error` 로 온다. 우리가 받은 것은 코드 없는 HTML 이라 **게이트웨이가 낸
-#   것이 아니다** — 이 가름이 없으면 다음 504 를 사내 오류 코드표에서 헛짚는다.
-# ⚠ **죽는 판은 재현이 안 됐다** — 손잡이의 근거는 「504 를 없앤다」가 아니라 「기전이
-#   실물에서 선다」까지다(아뜰리에 곁말 그대로). 켰으니 닫혔다고 읽지 않는다.
-# ⚠ **상한을 걸 일이 생기면 `thinkingBudget` 이 아니라 `thinkingLevel` 이다**(gemini 3 ·
-#   low·medium·high). 저쪽은 하위호환 낱말이고 **둘을 같이 실으면 400** 이다. 그리고 이
-#   게이트웨이는 모르는 낱말을 조용히 삼키므로 그 낱말은 쓰기 전에 따로 재야 한다.
-GEMINI_THOUGHTS = _env("GEMINI_THOUGHTS", "1") == "1"
-# --- gemini 는 **생각 몫이 `maxOutputTokens` 안에 든다** — 사내 실측 2026-09-09(AI-prompt-helper #64):
-# 상한 2,500 인 문이 `out=71 think=2401` 에서 잘렸다. 답 크기에 이 몫을 더해 싣는다
-# (`providers._gm_envelope`). 켜고 끄는 것과 무관하다 — 끈 판에도 생각은 같은 만큼 한다.
-# 값 — 그 판의 바퀴당 최대 생각 2,401 위로 여유를 둔 것. 180초 벽과의 셈: 가장 느리게 본 판(초당
-# 57토큰)으로도 4,000+4,000 은 140초라 벽 안이다. ⚠ 생성 속도는 한 판 실측이다 — **안 쟀다**.
-GEMINI_THINK_TOKENS = int(_env("GEMINI_THINK_TOKENS", "4000"))
 
 
 def model_cap(model):
@@ -666,6 +833,8 @@ class Creds(NamedTuple):
 def creds(provider=None, token=None, model=None, max_tokens=None):
     """요청이 실어 온 것 위에 갈래 기본을 깐다.
 
+    ⚠ **틀린 손잡이가 서 있으면 여기서 세운다**(`_ready`) — 불러올 때 안 세운 그 말이 첫 자격에서 그대로
+      오른다. 어느 요청도 틀린 값 위로는 안 나간다.
     ⚠ **키는 요청이 실어 온 것을 쓴다** — 사람의 키 이름으로 깔아 주지 않는다(위 `_KEY_ENV`
       곁말). 안 실어 오면 `dry_run` 이 서서 봉투 명세만 나간다 — 조용히 남의 키로
       새지 않는다. **예외는 하나** — 로그인을 선언한 앱의 회사 갈래에는 운영팀이 심은 앱
@@ -684,6 +853,7 @@ def creds(provider=None, token=None, model=None, max_tokens=None):
       「말없이 사내 게이트웨이로 간다」가 여기서는 안 난다. 그래서 **내린 요청에는 서버
       토큰도 안 깐다** — 깔면 내린 요청이 그 토큰을 달고 사내 게이트웨이로 나간다.
     """
+    _ready()
     provider = (provider or DEFAULT_PROVIDER).lower()
     if provider not in _GATEWAY:
         raise ValueError(f"모르는 갈래다 — {provider} (있는 것: {', '.join(_GATEWAY)})")
@@ -711,3 +881,8 @@ def creds(provider=None, token=None, model=None, max_tokens=None):
         # 좁히는 것은 서버의 자격 문이 든다.
         dry_run=DRY_RUN_FORCED or not (token or row.get("local")),
         local=bool(row.get("local")))
+
+
+# 불러올 때 한 번 — 환경 → 기본. 복사해 쓰는 쪽은 이것이 전부고(`ENV_PREFIX` 한 줄), 불러와 쓰는 쪽은
+# `configure` 가 같은 자리를 다시 돈다. 틀린 값은 여기서 안 세운다(머리말).
+_settle()

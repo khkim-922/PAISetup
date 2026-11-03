@@ -3,7 +3,7 @@
 ⚠ **골든 씨앗이다** — 진본은 claude-config `seeds/gateway/` 이고, 새 프로젝트가 이 폴더를
   복사해 출발한다. 몸통은 실측이 있는 쪽에서 왔다 — 씀씀이·이음매·생각 조각은 아뜰리에가
   사내 게이트웨이에서 잰 것이고, 거절·빈손·캐시 경계 셈은 헬퍼가 그 사고를 보고 일반화한
-  것이다. 어느 자리가 어느 쪽에서 왔고 왜인지는 claude-config 결정 0033 의 판정표가 든다.
+  것이다. 어느 자리가 어느 쪽에서 왔고 왜인지는 claude-config 결정 0033 → 0219 의 판정표가 든다(판정표는 0219 가 그대로 든다).
 
   - Anthropic: `/v1/messages`            · x-api-key      · `content_block_delta`
   - OpenAI:    `/v1/responses`           · Bearer         · `response.output_text.delta`
@@ -33,10 +33,8 @@ from typing import NamedTuple
 
 from . import gateway
 
-# 이어받기 바퀴 상한 — 끊김이 되풀이되면 한 회가 통째로 3분이라(180초 벽) 크게 두면
-# 사람이 화면 앞에서 십 분을 기다린다. 변수로 연다 — 되풀이 끊김이 사고로 났을 때 재기동만으로
-# 바퀴를 줄일 수 있게.
-MAX_CONTINUE = int(gateway._env("MAX_CONTINUE", "5"))
+# 이어받기 바퀴 상한은 배관의 손잡이다(`gateway.MAX_CONTINUE`) — 손잡이는 전부 그쪽 한 자리가 읽어,
+# 불러올 때 굳지 않고 `gateway.configure` 뒤에도 따라온다. 여기 읽어 두면 그 한 자리가 둘이 된다.
 # 키 없이 돌아온 판의 종료 사유 — 계약 어휘가 아니라 **우리 낱말**이라 갈리게 둔다.
 # 이어받기 목록에 없으므로 드라이런은 바퀴를 안 돈다.
 STOP_DRY_RUN = "dry_run"
@@ -256,8 +254,10 @@ def stream_once(system, messages, on_text=None, creds=None, on_usage=None,
         why.append(CUT_NO_SIGNAL)
     # **여문 빈손** — 신호가 섰으므로 위 줄이 안 잡는다. 안 붙이면 사유가 어느 칸에도 안
     # 남고 로그에는 `stop=end_turn out=0` 만 선다(AI-prompt-helper #44 B).
-    # ⚠ **안 쟀다** — 이 판정이 계약 전체 위에 선 것은 gemini 에서 난 사고를 일반화한 것이다.
-    #   다른 계약이 실제로 여문 빈손을 낸 적이 있나는 양쪽 앱 다 실측이 없다.
+    # ⚠ **anthropic 계약도 낸다** — 회사 Claude 갈래의 5.x 판(Opus 5 · Opus 5.5 · Sonnet 5.5)은
+    #   「태그 안에서 먼저 생각하고 답하라」는 지시에 `content: []` · `output_tokens=0` · `end_turn`
+    #   으로 답한다(ENV-posco 「우리가 쓰는 모델」 항목 · `pgpt-proxy/README.md` 모델 대체 칸 —
+    #   프록시 없이 직결해도 같다). 처음 겪은 자리는 gemini 였고, openai 계약에서는 아직 안 쟀다.
     empty = _empty_why(text, stop, seen)
     if empty:
         why.append(empty)
@@ -299,7 +299,7 @@ def stream_resumed(system, messages, continue_ask, on_text=None, creds=None,
     said, stop = stream_once(system, messages, on_text, creds, on_usage,
                              deadline, on_cut, on_think)
     parts = [said] if said else []
-    for i in range(MAX_CONTINUE):
+    for i in range(gateway.MAX_CONTINUE):
         if stop != "max_tokens":
             break
         if not parts:
@@ -346,7 +346,15 @@ CUT_LOST = "안 여민 봉투 조각 {n}자를 버렸다"
 # 「예외가 났나」가 아니라 **「종료 신호가 섰나」** 위에 세운다(`stream_once` 끝).
 # ⚠ 실측(이 저장소 · 파이썬 3.14): 잘린 Content-Length 응답도, 깨끗이 닫힌 청크
 #   스트림도 `readline()` 이 조용히 끝난다 — 예외로 오는 것은 **잘린 청크**뿐이다.
+# ⚠ **같은 벽이 오류 프레임으로도 온다** — 글자가 흐르던 스트림의 마지막 바이트에
+#   `{"type":"error","error":{"type":"api_error","message":"… timeout configuration: 180000 millis"}}`
+#   가 실린다(같은 행 · 회사 직결 실측). 그 판은 `_frame_why` 가 사유를 뽑아 `on_cut` 으로
+#   올리고 받은 글자는 손에 남는다 — 아래 `CUT_FRAME` 꼴. 머리조차 안 온 채 벽에 닿으면 같은
+#   문장이 HTTP 500 몸통으로 와 `Rejected` 가 든다.
 CUT_NO_SIGNAL = "종료 신호 없이 스트림이 끝났다"
+# 저쪽이 **오류 프레임으로 끊은** 컷 — 글자를 받아 둔 뒤 왔으면 예외가 아니라 사유다. 한 자도
+# 못 받은 채 왔으면 그대로 예외로 오른다(`_sse_events` 의 「하나도 못 받고 끊겼으면 안 삼킨다」와 같은 자).
+CUT_FRAME = "게이트웨이 스트림 오류 — {why}"
 _WALL_FLOOR_S = 1.0         # 예산이 바닥나도 **한 번은** 다녀올 기회를 준다
 
 # **여문 빈손** — 저쪽이 「다 말했다」고 신호를 세워 놓고 글자를 한 자도 안 준 판이다.
@@ -392,6 +400,9 @@ def _plain_env(env):
     읽개를 새로 안 짓는 까닭은 `_anthropic_once` 의 `text/event-stream` 이 아닌 갈래가
     이미 통짜 몸통을 읽기 때문이다. 봉투를 다시 짓지 않고 `_replace` 로 두 칸만 가는
     까닭도 같다 — 다시 지으면 층·경계·상한이 저쪽과 갈릴 자리가 생긴다.
+    ⚠ **이 길의 응답에는 캐시 쓰기 항이 없다** — 회사 게이트웨이는 `cache_creation_input_tokens`
+      를 스트림의 `message_delta` 에만 싣는다(ENV-posco 「캐시 사용량 항」 행). 접은 판의
+      `cache_write=0` 은 「안 썼다」가 아니라 「안 세어 보냈다」다.
     """
     return env._replace(headers={**env.headers, "accept": "application/json"},
                         body={**env.body, "stream": False})
@@ -469,6 +480,19 @@ def _join_seams(out, seams):
 def _why(exc):
     """예외 하나를 한 줄 사유로 — 이름과 뜻을 붙여 자른다."""
     return f"{type(exc).__name__}: {exc}".splitlines()[0][:_CUT_WHY_CAP]
+
+
+def _frame_why(ev):
+    """오류 프레임 하나를 한 줄 사유로 — 꼴이 둘이라 한 자리에서 편다.
+
+    사내 SSE `error` 이벤트는 평평한 `{"code","message"}` 로(errors-Posco.setting.md 「SSE error
+    event」), 회사 Claude 갈래의 180초 벽은 Anthropic 꼴 `{"type":"error","error":{"message"}}`
+    로 온다(ENV-posco 「스트림 180초 컷」 행). 코드는 실려 오면 붙인다 — 카탈로그를 찾는 열쇠다.
+    """
+    seat = ev.get("error") if isinstance(ev.get("error"), dict) else ev
+    msg = seat.get("message") or "사유 없음"
+    code = seat.get("code") or seat.get("type")
+    return CUT_FRAME.format(why=msg + (f" ({code})" if code else ""))[:_CUT_WHY_CAP]
 
 
 def _sock_timeout(deadline):
@@ -549,11 +573,16 @@ def _sse_events(resp, deadline=None, on_cut=None):
       TCP 를 닫는다. 받은 조각은 호출자 손에 남고 stop 이 빈 채로 돌아간다.
       사내의 180초 벽(`gateway.GATEWAY_WALL_S`)이 이 자리로 온다.
     ⚠ **하나도 못 받고 끊겼으면 안 삼킨다** — 이어붙일 것이 없는 진짜 오류라 예외로
-      올려야 화면에 보인다.
+      올려야 화면에 보인다. **오류 프레임도 같은 자로 가른다** — 글자를 받아 둔 뒤 온
+      프레임은 컷이라 사유로 올리고 받은 것을 돌려주며, 한 자도 못 받은 채 온 프레임만
+      예외로 오른다. 회사 Claude 갈래의 180초 벽이 흐르던 스트림 끝에 그 프레임으로
+      온다(ENV-posco 「스트림 180초 컷」 행 · `CUT_FRAME` 곁말).
     ⚠ **삼키더라도 사유는 올린다**(`on_cut`) — 안 그러면 그 자리에서 사유가 증발한다.
-    ⚠ **쪼개진 봉투를 여민다.** 이 게이트웨이는 긴 몸통을 여러 `data:` 줄로 갈라
-      보낸다(atelier #118 회사 실측). 줄마다 파싱하면 못 읽은 조각이 **조용히**
-      버려진다 — 버리게 되면 그 사실과 크기를 사유로 올린다(`CUT_LOST`).
+    ⚠ **쪼개진 봉투를 여민다.** 이 게이트웨이는 긴 몸통을 여러 `data:` 줄로 갈라 보낸
+      적이 있다(atelier #118 회사 실측). Gemini 길은 지금 안 쪼개는 것이 실측이지만
+      (`pgpt-proxy/README.md` 「`/v1beta` 그대로 넘기기」 칸 — 13,124바이트 JSON 도 한 줄로),
+      게이트웨이는 예고 없이 바뀌므로 여미는 손은 둔다. 줄마다 파싱하면 못 읽은 조각이
+      **조용히** 버려진다 — 버리게 되면 그 사실과 크기를 사유로 올린다(`CUT_LOST`).
     """
     got = False
     pend = ""                 # 쪼개진 봉투의 앞 조각 — 여며질 때까지 든다
@@ -608,9 +637,11 @@ def _sse_events(resp, deadline=None, on_cut=None):
             if evname == "error":
                 # 사내 문서 「SSE error event」 — 스트림이 200 으로 이미 열려 있어
                 # 오류가 프레임으로 온다. 안 받으면 조용히 빈 응답으로만 보인다.
-                raise RuntimeError("게이트웨이 스트림 오류 — "
-                                   + (ev.get("message") or "사유 없음")
-                                   + (f" ({ev['code']})" if ev.get("code") else ""))
+                # 받아 둔 것이 있으면 컷이고(사유를 올리고 끝난다), 없으면 예외다.
+                if got:
+                    bye(_frame_why(ev))
+                    return
+                raise RuntimeError(_frame_why(ev))
             evname = ""
             got = True
             yield ev
@@ -677,6 +708,10 @@ def _open(env, c, deadline):
 
     ⚠ 몸통은 한글을 이스케이프해 보낸다(`json.dumps` 기본값) — atelier 가 이 게이트웨이로
       실측한 꼴 그대로다. 읽으라고 찍는 명세만 안 이스케이프한다(`spec`).
+    ⚠ **연결은 요청마다 새로 연다** — `urlopen` 은 풀을 안 둔다. 풀을 두는 클라이언트
+      (`requests.Session` · `httpx.Client`)로 갈아 끼우면 회사 게이트웨이 앞단이 쉬는
+      keep-alive 연결을 30초에 닫는 것(ENV-posco 「게이트웨이 앞단의 타이머는 둘이다」 항목)과
+      겨루게 된다 — 꺼낸 연결이 죽어 있으면 요청이 지고, 다시 보내면 생성이 두 번 돈다.
     """
     req = urllib.request.Request(
         env.url, data=json.dumps(env.body).encode("utf-8"), method="POST",
@@ -740,6 +775,10 @@ def _ant_system(layers, marks_budget=CACHE_MARK_CAP):
 
 
 def _ant_envelope(layers, messages, c):
+    # ⚠ **`temperature` · `top_p` 를 안 싣는다 — 손잡이를 더하지 않는다.** 회사 갈래 너머의
+    #   Bedrock 이 Opus 5 에는 1 이 아닌 `temperature` 와 모든 `top_p` 를, Sonnet 4.6 에는 둘을
+    #   함께 실은 것을 400 으로 거절한다(`pgpt-proxy/README.md` 「`/v1/messages`」 칸 · 회사 직결
+    #   실측). 사외 Anthropic 갈래는 받지만 한 봉투 짓는 자가 갈래로 갈라 싣지 않는다.
     heads = {"content-type": "application/json",
              "anthropic-version": gateway.ANTHROPIC_VERSION,
              "accept": "text/event-stream"}
@@ -790,8 +829,15 @@ def _anthropic_once(env, c, on_text, on_usage, deadline, on_cut, on_think=None):
                 # 싣는다(`message_start` 는 0 이었다 · atelier 실측).
                 _report_usage(on_usage, ev.get("usage"))
             elif kind == "error":
-                raise RuntimeError((ev.get("error") or {}).get(
-                    "message", "게이트웨이 오류"))
+                # `event:` 줄 없이 `data:` 에만 실려 온 오류 프레임 — 회사 Claude 갈래의 180초
+                # 벽이 흐르던 스트림 끝에 이 꼴로 온다(`CUT_FRAME` 곁말). 받아 둔 글자가
+                # 있으면 컷이라 사유만 올리고 그 글자를 돌려준다 — 예외로 올리면 26KB 를
+                # 받아 놓고도 손이 빈다. 한 자도 못 받았으면 예외다.
+                if parts:
+                    if on_cut:
+                        on_cut(_frame_why(ev))
+                    break
+                raise RuntimeError(_frame_why(ev))
     return "".join(parts), stop
 
 
@@ -988,8 +1034,9 @@ def _gm_usage(on_usage, meta, on_think=None):
     ⚠ **생각 몫도 씀씀이 칸으로 내려보낸다**(아뜰리에 #302 ③) — 아래 `on_think` 는 화면
       진행 신호라 흘러가 사라지고, 뒤에 「생각으로 예산을 다 썼나」를 물으면 답할 재료가
       아무 데도 안 남는다. 이름 갈아 끼우는 자리가 여기 하나다.
-    ⚠ **사내 문서의 `usageMetadata` 목록에 이 칸이 없다.** 목록 밖인데 오는 칸이 이미
-      있으므로(`cachedContentTokenCount`) **있으면 쓰고 없으면 조용하다** — 지어내지 않는다.
+    ⚠ **사내 문서의 `usageMetadata` 목록에 이 칸이 없다** — 그래도 온다(ENV-posco 「Gemini 길
+      (`/v1beta`)의 답은 Gemini API 꼴」 항목 · `thoughtsTokenCount` · `serviceTier`). 목록 밖인데
+      오는 칸이 또 있으므로(`cachedContentTokenCount`) **있으면 쓰고 없으면 조용하다** — 지어내지 않는다.
     """
     _report_usage(on_usage, meta, prompt_key="promptTokenCount",
                   read_key="cachedContentTokenCount", write_key="_없는칸",

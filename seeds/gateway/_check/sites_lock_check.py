@@ -12,18 +12,23 @@
 거절되는 것(경계). 목록만 빼고 자격은 받으면 브라우저에 저장돼 있던 선택이 그대로 밖으로
 나가고, 아무 검사도 안 운다.
 
-재는 것 다섯 — 갈래마다 `gateway` 를 자식 프로세스에서 새로 올려 본다(환경변수가 적재
-시점에 굳는 값이라 한 프로세스 안에서는 두 벌을 못 본다):
+재는 것 다섯 — 갈래마다 `gateway` 를 자식 프로세스에서 새로 올려 본다(환경 → 기본 길은
+불러올 때 도는 길이라, 재는 자리가 매번 같으려면 새 프로세스다):
   ① 비우면 다 연다 — 여는 담장이 표의 담장 전부이고, 자격은 실어 온 그대로 선다
   ② 회사 담장만 열면 — 바깥 갈래를 실어 온 요청은 기본 갈래로 내려가되 키·모델이 함께
      비어 드라이런이 선다. 회사 갈래를 실어 온 요청은 그대로 선다
-  ③ 모르는 담장 이름은 뜰 때 죽는다 — 오타가 「다 연다」로 떨어지면 닫은 줄 알고 연다
-  ④ 기본 갈래가 닫힌 담장 것이면 뜰 때 죽는다 — 안 실어 온 요청마다 닫은 담장으로
-     나가는 서버가 되기 때문이다. 기본 갈래를 열린 쪽으로 두면 뜬다
-  ⑤ 모르는 갈래 이름은 담장과 무관하게 죽는다 — 요청이 실어 오면 `ValueError`, 기본
-     갈래에 적으면 뜰 때. 옛 환경과의 호환으로 기본 행에 내리는 길도 있지만, 그 내림이
+  ③ 모르는 담장 이름은 다 닫은 채 첫 자격이 세운다 — 오타가 「다 연다」로 떨어지면 닫은 줄 알고 연다
+  ④ 기본 갈래가 닫힌 담장 것이면 첫 자격이 세운다 — 안 실어 온 요청마다 닫은 담장으로
+     나가는 서버가 되기 때문이다. 기본 갈래를 열린 쪽으로 두면 선다
+  ⑤ 모르는 갈래 이름은 담장과 무관하게 선다 — 요청이 실어 오면 `ValueError`, 기본
+     갈래에 적으면 첫 자격에서 `RuntimeError`. 옛 환경과의 호환으로 기본 행에 내리는 길도 있지만, 그 내림이
      담장 검사보다 앞에 서면 오타가 닫은 담장으로 샌다. 새 프로젝트는 지킬 옛 환경이 없어
      세우는 쪽을 고른다
+
+⚠ **③④⑤ 는 불러오기를 안 넘어뜨린다** — 틀린 손잡이는 `_FAULT` 에 남고 첫 자격(`creds`)이 그 말을
+  올린다(배관 머리말). 사용자 환경에 걸린 남의 손잡이가 불러와 쓰는 앱의 상주를 못 뜨게 하던 자리라서다.
+  뜰 때 죽이고 싶은 앱은 뜰 때 `configure()` 를 부르고, 그 길은 봉투 검사 [6] 이 잰다. 여기서는 자식이
+  살아 돌아와 첫 자격의 말을 JSON 으로 실어 온다 — 자식이 죽었으면 그것이 곧 「불러오기가 넘어졌다」다.
 
 기본 갈래 손잡이가 없는 앱에서는 셋이 뺀 자리로 내려간다. 위 ④ 둘과 ⑤ 뒤엣것은 기본
 갈래를 환경변수로 여는 앱을 전제한다 — 기본 갈래를 상수로 두고 그렇게 둔 까닭을 제 코드에
@@ -104,6 +109,8 @@ def creds(p, t, m):
         c = gateway.creds(provider=p, token=t, model=m)
     except ValueError as e:
         return {"error": str(e)}
+    except RuntimeError as e:          # 틀린 손잡이 — 첫 자격이 세우는 그 말
+        return {"fault": str(e)}
     return {"provider": c.provider, "token": c.token, "model": c.model, "dry_run": c.dry_run}
 out = {
     "sites_all": list(gateway.SITES),
@@ -191,38 +198,46 @@ def main():
             f"model={lock['creds_bare']['model']} dry_run=True" for pid in outside])
 
     code, out, err = _child(**{f"{P}_SITES": f"{posco},nowhere"})
-    report("③ 모르는 담장 이름을 적으면 뜰 때 죽고 그 이름을 말한다",
-           code != 0 and "nowhere" in err and f"{P}_SITES" in err,
-           [f"exit {code} · stderr 꼬리: {err.strip()[-300:]}"])
+    typo = _load(code, out, err, f"③ {P}_SITES={posco},nowhere")
+    fault = (typo or {}).get("creds_bare", {}).get("fault", "")
+    report("③ 모르는 담장 이름을 적으면 불러오기는 서고 다 닫힌 채 첫 자격이 그 이름을 말한다",
+           typo is not None and typo["sites_allowed"] == [] and "nowhere" in fault and f"{P}_SITES" in fault,
+           [f"exit {code} · 여는 담장 {typo and typo['sites_allowed']} · 첫 자격: {fault or err.strip()[-300:]}"])
 
     out_site = base["gateway"][outside[0]]
     # 뺀 자리에서는 자식도 안 올린다 — 손잡이를 안 읽는 앱에 그 변수를 실어 올리면 판정이
     # 「exit … · stderr 꼬리」를 달고 빨강으로 서, 잴 것이 없는 자리를 결함으로 센다.
     if NO_PROVIDER_WHY:
-        cut_off(f"④ `{out_site}` 만 열고 기본 갈래를 두면(회사 갈래) 뜰 때 죽고 "
-                f"{P}_PROVIDER 를 말한다")
-        cut_off(f"④ 기본 갈래를 열린 담장 것({outside[0]})으로 두면 뜬다")
+        cut_off(f"④ `{out_site}` 만 열고 기본 갈래를 두면(회사 갈래) 첫 자격이 "
+                f"{P}_PROVIDER 를 말하며 선다")
+        cut_off(f"④ 기본 갈래를 열린 담장 것({outside[0]})으로 두면 선다")
     else:
         code, out, err = _child(**{f"{P}_SITES": out_site})
-        report(f"④ `{out_site}` 만 열고 기본 갈래를 두면(회사 갈래) 뜰 때 죽고 {P}_PROVIDER 를 말한다",
-               code != 0 and f"{P}_PROVIDER" in err,
-               [f"exit {code} · stderr 꼬리: {err.strip()[-300:]}"])
+        shut = _load(code, out, err, f"④ {P}_SITES={out_site}")
+        fault = (shut or {}).get("creds_bare", {}).get("fault", "")
+        report(f"④ `{out_site}` 만 열고 기본 갈래를 두면(회사 갈래) 첫 자격이 {P}_PROVIDER 를 말하며 선다",
+               shut is not None and f"{P}_PROVIDER" in fault,
+               [f"exit {code} · 첫 자격: {fault or err.strip()[-300:]}"])
         code, out, err = _child(**{f"{P}_SITES": out_site, f"{P}_PROVIDER": outside[0]})
         fixed = _load(code, out, err, f"④ {P}_SITES={out_site} {P}_PROVIDER={outside[0]}")
-        report(f"④ 기본 갈래를 열린 담장 것({outside[0]})으로 두면 뜬다",
-               fixed is not None and fixed["sites_allowed"] == [out_site],
-               [f"실측 {fixed and fixed['sites_allowed']}"])
+        report(f"④ 기본 갈래를 열린 담장 것({outside[0]})으로 두면 선다",
+               fixed is not None and fixed["sites_allowed"] == [out_site]
+               and "fault" not in fixed["creds_bare"],
+               [f"실측 {fixed and fixed['sites_allowed']} · 첫 자격 {fixed and fixed['creds_bare']}"])
 
     # ⑤ 앞엣것은 손잡이와 무관하다 — 요청이 실어 오는 이름을 배관이 어떻게 받나라서,
     #    기본 갈래를 상수로 두는 앱에서도 그대로 선다.
     report("⑤ 요청이 모르는 갈래 이름을 실어 오면 선다 — 기본으로 안 내린다",
            "error" in base["creds_typo"], [f"실측 {base['creds_typo']}"])
     if NO_PROVIDER_WHY:
-        cut_off("⑤ 기본 갈래에 모르는 이름을 적으면 담장을 다 열어도 뜰 때 죽는다")
+        cut_off("⑤ 기본 갈래에 모르는 이름을 적으면 담장을 다 열어도 첫 자격이 그 이름을 말하며 선다")
     else:
         code, out, err = _child(**{f"{P}_PROVIDER": "antropic"})
-        report("⑤ 기본 갈래에 모르는 이름을 적으면 담장을 다 열어도 뜰 때 죽는다",
-               code != 0 and "antropic" in err, [f"exit {code} · stderr 꼬리: {err.strip()[-300:]}"])
+        typo = _load(code, out, err, f"⑤ {P}_PROVIDER=antropic")
+        fault = (typo or {}).get("creds_bare", {}).get("fault", "")
+        report("⑤ 기본 갈래에 모르는 이름을 적으면 담장을 다 열어도 첫 자격이 그 이름을 말하며 선다",
+               typo is not None and "antropic" in fault,
+               [f"exit {code} · 첫 자격: {fault or err.strip()[-300:]}"])
 
     bad = fails()
     if bad:

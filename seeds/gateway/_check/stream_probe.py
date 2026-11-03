@@ -43,7 +43,10 @@ SSE 모양으로 오는데 응답을 다 만든 뒤 한꺼번에 뱉을 수 있�
 
 사내 게이트웨이는 요청부터의 절대 벽에서 신호(`stop_reason`) 없이 끊는다. 생성량과 무관하다 —
 쉬지 않고 흐르는 판도, 한 토큰도 안 나온 판도 같은 시각에 잘린다(claude-config
-`posco/ENV-posco.md` 「스트림 180초 컷」). 배관은 그 값을 `GATEWAY_WALL_S` 로 들고 그 안쪽에
+`posco/ENV-posco.md` 「스트림 180초 컷」). 오는 꼴이 셋이라 셋 다 벽의 실측으로 읽는다 — 흐르던
+스트림 끝의 오류 프레임과 신호 없는 EOF 는 배관이 사유(`on_cut`)로 올리고, 머리조차 안 온 채
+같은 문장을 실은 HTTP 500 은 거절로 온다(`WALL_SENTENCE` — 그 문장이 든 거절은 진 부름이 아니라
+벽이다). 배관은 그 값을 `GATEWAY_WALL_S` 로 들고 그 안쪽에
 출력 상한(`WALL_MAX_TOKENS`)을 둔다 — 절단이 계약(`max_tokens`)으로 오게. 그래서 평소 부름은
 벽에 안 닿고, **벽이 옮겨져도 아무도 모른다.** 이 모드는 일부러 벽 너머까지 시켜 끊긴 시각을 찍는다.
 
@@ -79,6 +82,10 @@ WALL_ASK = ("1부터 800까지 세어라. 숫자마다 그 숫자로 시작하�
             "설명·머리말 없이 목록만 낸다. 중간에 멈추지 말고 끝까지 낸다.")
 WALL_ASK_TOKENS = 20000
 WALL_SLACK_S = 10          # 실측이 벽의 이 안이면 「같은 벽」으로 본다
+# 게이트웨이가 벽에서 제 입으로 남기는 문장(claude-config `posco/ENV-posco.md` 「스트림 180초 컷」 행 ·
+# `… HTTP request execution did not complete before the specified timeout configuration: 180000 millis`).
+# 오류 프레임으로도 HTTP 500 몸통으로도 같은 글자라 — 앞은 사유로, 뒤는 거절로 온다 — 둘 다 이 조각으로 알아본다.
+WALL_SENTENCE = "did not complete before the specified timeout configuration"
 
 # 마지막 이만큼의 시간 안에 글자가 이만큼 넘게 몰려 오면 버퍼링으로 본다.
 # 진짜 스트리밍이면 글자가 처음부터 고르게 오므로 이 창에는 그 몫만큼만 들어온다.
@@ -250,8 +257,11 @@ def wall(pid, key):
     print(f"       {bar(secs, marks)}")
     print(f"       {secs:.1f}초 · 조각 {n} · {len(text):,}자 · stop={stop!r}" + (f" · 끊김 {cut}" if cut else ""))
     _log(f"wall provider={pid} model={c.model} secs={secs:.1f} marks={n} chars={len(text)} stop={stop!r} cut={cut!r} err={err!r}")
-    if err:
+    if err and WALL_SENTENCE not in err:
         raise Unmeasured(f"[안 잼] 부름이 졌다 — {err}")
+    if err:
+        # 머리조차 안 온 채 벽에 닿은 판 — 거절 몸통에 벽의 문장이 실려 온다. 진 부름이 아니라 벽의 실측이다.
+        edge(f"응답 머리 없이 {secs:.1f}초에 거절 — 몸통이 벽의 문장을 들었다")
     if stop is not None:
         unmeasured("벽", f"출력이 벽 전에 끝났다 — 총 {secs:.1f}초 · stop={stop!r} · {len(text):,}자. "
                         "벽이 없어진 것과 출력이 먼저 끝난 것을 못 가른다 — 더 긴 물음이나 더 느린 모델로 다시 잰다")

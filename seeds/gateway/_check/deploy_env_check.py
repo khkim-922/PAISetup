@@ -11,7 +11,8 @@
   [1] 주소 — 손잡이가 비면 회사 갈래가 한 바닥을 나눠 쓴다 · 회사 바닥 손잡이(앱 것 ·
       회사 이름)는 회사 갈래만 옮긴다 · 둘 다 있으면 앱 것이 이긴다 · `/v1` 을 붙여 와도 같은
       바닥이다 · 바깥 갈래는 제 손잡이로만 옮긴다 · SDK 표준 이름은 안 읽는다 · 주소가 아닌
-      값은 뜰 때 죽는다
+      값은 불러오기를 안 넘어뜨리되 첫 자격이 그 이름을 대며 선다(뜰 때 죽이는 길은 `configure()` —
+      봉투 검사 [6])
   [2] 서버 토큰 — 로그인을 선언 안 한 앱(기본)은 토큰이 있어도 안 쓴다 · 선언한 앱은 회사
       갈래에만 깐다 · 실어 온 키가 이긴다 · 담장에서 내린 요청과 드라이런 강제는 그대로
       드라이런이다 · 토큰이 없으면 드라이런이다
@@ -188,8 +189,14 @@ def urls_section():
                "이름은 회사 쪽을 가리킨다",
                got == base, [f"{p}: {got[p]!r} — 기대 {base[p]!r}" for p in got if got[p] != base[p]])
 
-    rc, out, err = child(_URLS, **{COMPANY_URL: "aigpt.posco.net/gpgpta01-gpt"})
-    report(f"주소가 아닌 값은 뜰 때 죽고 {COMPANY_URL} 를 댄다 — 요청마다 넘어지면 배포는 성공으로 보인다",
+    # 틀린 주소는 불러오기를 안 넘어뜨린다 — 사용자 환경의 남의 손잡이가 상주를 못 뜨게 하던 자리다.
+    # 대신 첫 자격이 그 이름을 대며 선다 — 요청마다 넘어지는 것과 다르다: 어느 요청도 그 위로 안 나가고
+    # 말이 같은 한 줄이다. 배포가 성공으로 보이는 것이 싫은 앱은 뜰 때 `configure()` 를 부른다.
+    rc, out, err = child("print('alive')", **{COMPANY_URL: "aigpt.posco.net/gpgpta01-gpt"})
+    report(f"주소가 아닌 {COMPANY_URL} 이 불러오기를 안 넘어뜨린다", rc == 0 and out == "alive",
+           [f"exit {rc} · stderr 꼬리: {err.strip()[-300:]}"])
+    rc, out, err = child("gateway.creds()", **{COMPANY_URL: "aigpt.posco.net/gpgpta01-gpt"})
+    report(f"  첫 자격이 {COMPANY_URL} 를 대며 선다 — 어느 요청도 틀린 주소 위로 안 나간다",
            rc != 0 and COMPANY_URL in err, [f"exit {rc} · stderr 꼬리: {err.strip()[-300:]}"])
 
 

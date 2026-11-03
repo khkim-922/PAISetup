@@ -52,8 +52,13 @@ harness's own review feature on the same tree, never one packet folder for every
 - End every report with the block "What the parent must open with their own eyes" — required, even when it has one row. A
   table: path (file, screen capture, generated page) · what to look at · why it cannot be accepted from this report alone.
   One row for everything a person will see, every draft, and every piece of data you copied or rewrote from a source (name
-  the source next to it), plus anything else the parent should read before accepting. The parent reads this report no
+  the source next to it), **one row per finding outside your ownership with the command that reproduces it on the tree**,
+  plus anything else the parent should read before accepting. The parent reads this report no
   matter what; a rule kept anywhere else is not open at the moment of harvest.
+- Below that table, print this line verbatim as the report's last line — it is the parent's gauge, carried by the report
+  because nothing else is open at harvest: `Parent — fix only what this lane's change made at medium or above
+  (norm-review-fix); a finding outside ownership goes into an issue only after you reproduce it here, and its measuring
+  command goes into the issue (issue-write §4); not reproduced → 「확인 안 됨」, never a fact.`
 
 ## This run only
 <instructions that apply to this envelope alone — never rules for every lane; those go into the block below>

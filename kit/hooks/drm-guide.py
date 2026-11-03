@@ -48,7 +48,7 @@
 자리가 임시 폴더 밑(스크래치패드도 그 안이다)이라 임시 폴더를 비우는 손이 거둔다. 세션 칸을 두는 것은 스크래치패드가 없는
 표면(VS Code 앱)에서 두 세션이 같은 이름을 서로 덮지 않게 하려는 것이다.
 
-⚠ **다루는 확장자는 스킬의 표가 든다** — `read-drm.ps1` 의 `$HANDLER`(확장자 → 앱)를 그 자리에서 읽는다. 여기 따로 적으면
+⚠ **다루는 확장자는 스킬의 표가 든다** — 읽는 부품 `office-read.ps1` 의 `$HANDLER`(확장자 → 앱)를 그 자리에서 읽는다. 여기 따로 적으면
    스킬이 확장자를 늘린 날 길잡이만 낡는다. 껍데기의 글롭만은 파이썬을 띄우기 전이라 표를 못 읽어 한 벌을 든다 — 검사가
    표의 확장자마다 껍데기를 지나 걸리나를 잰다.
 ⚠ **스킬을 못 찾으면 그 사실을 말한다** — 감긴 파일이 있는데 읽을 길이 이 PC 에 없다는 것도 모델이 알아야 할 사실이다.
@@ -77,7 +77,8 @@ import tempfile
 
 NAME = 'DRM 길잡이'
 SKILL = 'drm-office-read'
-READER = os.path.join('scripts', 'read-drm.ps1')   # 확장자 표(`$HANDLER`)와 글자를 뽑는 손
+READER = os.path.join('scripts', 'read-drm.ps1')     # 글자를 뽑는 손 — 길잡이가 대는 명령
+LIBRARY = os.path.join('scripts', 'office-read.ps1')  # 읽는 부품 — 확장자 표(`$HANDLER`)가 여기 산다
 FASOO_MARK = b'DRMONE'    # Fasoo 가 감싼 파일의 머리 표지
 HEAD_BYTES = 16           # 표지를 찾는 머리 길이 — 표본은 셋째 바이트에서 시작한다
 B64_HEAD = 24             # 머리 16 바이트를 푸는 데 드는 base64 글자 수 — 4 · ⌈16 / 3⌉
@@ -106,7 +107,7 @@ UNSAFE_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')   # 윈도우 파일 이름�
 # ── 스킬 — 자리와 확장자 표 ──────────────────────────────────────────────────────
 def skill_dirs():
     """선 스킬 폴더를 찾는 차례대로 — 이 파일 곁(설정 저장소의 진본) · Claude 홈 · Codex 홈(`~/.agents/skills`) · agy 홈
-    (`~/.gemini/config/skills`). `SKILL.md` 와 `read-drm.ps1` 이 다 있어야 선다. 도구마다 제 홈을 들어 한 PC 에 여럿일 수
+    (`~/.gemini/config/skills`). `SKILL.md` · `read-drm.ps1` · `office-read.ps1` 이 다 있어야 선다. 도구마다 제 홈을 들어 한 PC 에 여럿일 수
     있고, Claude 를 안 고른 PC 에는 뒤의 둘만 있다(결정 0097 · 0099 · 0111)."""
     forced = os.environ.get(SKILL_DIR_ENV)
     if forced is not None:   # 시험이 자리를 주면 그 자리만(여럿이면 `os.pathsep` 으로 잇는다) — 「없을 때」를 재려면 대체가 없어야 한다
@@ -119,7 +120,7 @@ def skill_dirs():
                  os.path.join(home, '.agents', 'skills', SKILL),
                  os.path.join(home, '.gemini', 'config', 'skills', SKILL)]
     return [d for d in cands
-            if d and os.path.isfile(os.path.join(d, 'SKILL.md')) and os.path.isfile(os.path.join(d, READER))]
+            if d and all(os.path.isfile(os.path.join(d, f)) for f in ('SKILL.md', READER, LIBRARY))]
 
 
 def skill_dir():
@@ -129,9 +130,9 @@ def skill_dir():
 
 
 def handled_exts(sdir):
-    """`read-drm.ps1` 의 `$HANDLER` 열쇠 — 소문자 확장자 집합. 못 읽으면 빈 집합."""
+    """읽는 부품 `office-read.ps1` 의 `$HANDLER` 열쇠 — 소문자 확장자 집합. 못 읽으면 빈 집합."""
     try:
-        with open(os.path.join(sdir, READER), encoding='utf-8-sig') as f:
+        with open(os.path.join(sdir, LIBRARY), encoding='utf-8-sig') as f:
             src = f.read()
     except OSError:
         return set()
