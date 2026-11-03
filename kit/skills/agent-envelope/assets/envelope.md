@@ -10,7 +10,8 @@ harness's own review feature on the same tree, never one packet folder for every
 ## Task
 - Source: <issue URL or path — the lane opens it itself; never paste its body here>
 - Finished form: <one or two lines — what the person sees and does when the whole work is done, at the level people
-  customarily expect of a finished one. Not a list of parts: the parts are the lane's to recall and propose. Copy this line
+  customarily expect of a finished one. Not a list of parts: the parts are the lane's to recall and propose. When the source
+  issue opens with its top section (「완성형」 or 「다 됐을 때」 — skill issue-write §2), take it from there. Copy this line
   verbatim into every lane of the same work>
 - This lane delivers: <the piece of the finished form this lane builds or measures>
 - Ours: <the one or two things that make it ours, if the owner named any — else "find one and propose it in the report">
@@ -48,6 +49,11 @@ harness's own review feature on the same tree, never one packet folder for every
 
 - Checks you added, if any: for each, which of the four keep-criteria of check-design §1 it meets. If you verified once without adding a check, say so, with the command and its result.
 - Report in English as your final message. Files a human will open directly: Korean.
+- End every report with the block "What the parent must open with their own eyes" — required, even when it has one row. A
+  table: path (file, screen capture, generated page) · what to look at · why it cannot be accepted from this report alone.
+  One row for everything a person will see, every draft, and every piece of data you copied or rewrote from a source (name
+  the source next to it), plus anything else the parent should read before accepting. The parent reads this report no
+  matter what; a rule kept anywhere else is not open at the moment of harvest.
 
 ## This run only
 <instructions that apply to this envelope alone — never rules for every lane; those go into the block below>
