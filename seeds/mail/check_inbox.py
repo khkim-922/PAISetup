@@ -12,7 +12,10 @@ PC 에서만 닿는다).
 기록이다(이 파일은 inbox.py 의 값을 읽어 오지 않는다). 메일함 흉내가 지키는 것 — 여는 주소(``?OpenDocument`` ·
 ``?EditDocument``)를 부르면 그 메일이 읽음이 되고 ``ag_read_cancel`` 은 안 읽음(``z^ico-nomail``)으로 되돌린다. 쿠키가 없거나
 세션이 끊긴 판이면 200 에 SSO 로 보내는 HTML 을 준다. 받은편지함 보기는 받은편지함 메일만 내고, 폴더 보기는 unid 로만 열리며
-(제목으로 열면 0줄), 받는 사람 목록 · 모든편지함 보기는 기본 정렬이 날짜순이 아니다.
+(제목으로 열면 0줄), 받는 사람 목록 보기는 기본 정렬이 날짜순이 아니다. 폴더 보기의 보낸 사람 열은 ``<이름>-ENG-<영문>``(주소
+없음)이고 읽음 열은 HTML 조각(``class='mail_21'`` 안 읽음 · ``mail_22`` 읽음)이다. 모든편지함은 정렬 없이 날짜 내림차순이고
+``ResortDescending=1`` 이면 내림차순 두 덩이다 — 실물에서 무엇이 가르는지 몰라 여기서는 날짜 차례의 짝수 자리(가장 새 메일부터)를
+뒤 덩이로 낸다. 밖의 메일이 폴더 보기에서 서는 이름은 안 쟀다 — 여기서는 주소의 앞쪽만 낸다.
 
 돌리는 법::
 
@@ -89,6 +92,20 @@ def internal_sender(name: str, addr: str, name_eng: str) -> str:
     return f"{name}-=spl=-{name} &lt;{addr}&gt;-ENG-{name_eng}-=spl=-{name_eng}&lt;{addr}&gt;"
 
 
+def folder_sender(sender: str) -> str:
+    """폴더 보기의 보낸 사람 열 — 사내는 ``<이름>-ENG-<영문>``(주소 없음 · 실측), 밖의 주소만 온 메일은 주소의 앞쪽만(머리말)."""
+    if "-=spl=-" in sender:
+        ko, _, en = sender.partition("-ENG-")
+        return f"{ko.partition('-=spl=-')[0]}-ENG-{en.partition('-=spl=-')[0]}"
+    return sender.partition("@")[0]
+
+
+def folder_read(unid: str, unread: bool, position: int) -> str:
+    """폴더 보기의 읽음 열(XML 을 푼 뒤 · 실측) — ``div`` 와 ``id`` 사이 빈칸 둘 · 제 unid · 보기 안의 차례 번호."""
+    return (f"<div  id='{unid}'><a href='#' class='{'mail_21' if unread else 'mail_22'}'></a>"
+            f"<span id='xp_{position}' style='position:relative; top:-20px; left:25px; display:none;'></span></div>")
+
+
 def shown(stamp: str) -> tuple[str, str]:
     """YYYYMMDDHHMMSS → (xdate, $91) — 메일함이 주는 두 꼴(실측)."""
     s = stamp
@@ -119,6 +136,7 @@ class FakeMail:
     folder: str | None = ""
     label: str | None = None
     importance: str = ""
+    mark: str = ""                  # 읽은 메일의 읽음 열 — 빈 글자면 ico-okmail · 회신함 ico-post · 전달함 ico-remail
 
     def folder_label(self) -> str:
         """모든편지함의 폴더 열 — 받은편지함 ``[${INBOX}]`` · 하위 폴더는 끝 이름만(실측)."""
@@ -127,7 +145,7 @@ class FakeMail:
         return f"[{self.folder.rsplit(chr(92), 1)[-1]}]" if self.folder else "[${INBOX}]"
 
     def cols(self, columns) -> dict:
-        mark = ("z^ico-nomail" if self.cancelled else "ico-nomail") if self.unread else "ico-okmail"
+        mark = ("z^ico-nomail" if self.cancelled else "ico-nomail") if self.unread else (self.mark or "ico-okmail")
         xdate, sort = shown(self.stamp)
         values = {"read": mark, "xrtype": self.role, "xname": self.sender, "xsubject": self.subject, "xdate": xdate,
                   "xsize": " 5KB", "$91": sort, "attachment": "{}".join(self.attachments), "xrelatedid": self.unid,
@@ -321,14 +339,18 @@ class FakeDomino:
                     for u, st, d, to in got]
         elif self.all_view and key == ALL_VIEW_UNID.lower():
             got = [m for m in self.mails.values() if m.folder is None or not m.folder.startswith("(")]
-            got.sort(key=(lambda m: m.stamp) if descending else (lambda m: m.unid), reverse=descending)
+            # 정렬 없이는 날짜 내림차순 · ResortDescending=1 이면 내림차순 두 덩이(실측 — 가르는 규칙은 머리말)
+            got.sort(key=lambda m: (m.stamp, m.unid), reverse=True)
+            if descending:
+                got = got[1::2] + got[0::2]
             rows = [(m.unid, m.cols(ALL_COLUMNS)) for m in got]
         else:
             # 폴더 보기는 unid 로만 열린다 — 제목으로 열면 0줄(실측). 모르는 보기도 빈 목록이다
             folder = next((p for p in self.folder_paths() if folder_unid(p).lower() == key), None)
             got = sorted((m for m in self.mails.values() if folder is not None and m.folder == folder),
                          key=lambda m: m.stamp, reverse=True)
-            rows = [(m.unid, m.cols(FOLDER_COLUMNS)) for m in got]
+            rows = [(m.unid, {**m.cols(FOLDER_COLUMNS), "xname": folder_sender(m.sender),
+                              "read": folder_read(m.unid, m.unread, i + 1)}) for i, m in enumerate(got)]
             count = min(count, FOLDER_PAGE_MAX)
         page = rows[start - 1:start - 1 + count]
         body = "".join(
@@ -453,8 +475,10 @@ def check_list_shape_sender_role_and_paging():
 
 def check_folders_are_users_own_opened_by_unid():
     """폴더는 쓰는 사람이 지은 것만 · 경로는 보기 목록의 제목 그대로 · 보기는 unid 로 연다 — 제목으로 열면 0줄이 와서 그 폴더의
-    메일이 조용히 빠진다. 폴더 줄은 받는 꼴 · 중요도가 빈다(그 보기에 열이 없다)."""
+    메일이 조용히 빠진다. 폴더 줄은 받는 꼴 · 중요도가 빈다(그 보기에 열이 없다). 안 읽음은 읽음 열 HTML 조각의 class 로 선다 —
+    받은편지함의 낱말로 읽으면 폴더의 안 읽은 메일이 다 읽음이 된다."""
     with stage(folders=(FOLDER_EMPTY,)) as (box, mailbox):
+        box.mails[U["f_child"]].unread = False
         folders = mailbox.folders()
         # 시스템 폴더((…))는 빠지고, 마디마다 가나다 차례
         assert [f.path for f in folders] == [FOLDER_COMMA, FOLDER_CHILD, FOLDER_TOP, FOLDER_EMPTY], [f.path for f in folders]
@@ -463,16 +487,26 @@ def check_folders_are_users_own_opened_by_unid():
             mine = sorted((m for m in box.mails.values() if m.folder == f.path), key=lambda m: m.stamp, reverse=True)
             assert [e.unid for e in got] == [m.unid for m in mine], f"폴더 보기의 줄이 그 폴더의 메일이 아니다: {f.path}"
             assert all(e.folder == f.path and e.role == "" and e.importance == "" for e in got), got
+            assert [e.unread for e in got] == [m.unread for m in mine], f"폴더 줄의 안 읽음이 메일함과 다르다: {f.path}"
         raises(inbox.MailboxConfigError, lambda: mailbox.list_folder(inbox.Folder(unid=FOLDER_CHILD, path=FOLDER_CHILD)))
 
 
-def check_all_mail_view_gives_role_and_importance_newest_first():
-    """모든편지함은 날짜 내림차순(Resort)으로 받아야 창에서 끊을 수 있고, 폴더 줄에 없는 받는 꼴 · 중요도를 unid 로 준다."""
-    with stage() as (_, mailbox):
+def check_all_mail_view_gives_marks_and_sender_newest_first():
+    """모든편지함은 정렬 없이 받는다 — 그 꼴이 이미 날짜 내림차순이고, ``ResortDescending=1`` 은 내림차순 두 덩이를 내 창에서
+    끊으면 뒤 덩이의 새 메일을 놓친다. 폴더 줄에 없는 받는 꼴 · 중요도와, 폴더 줄이 못 드는 보낸 분 주소 · 읽음 열(회신함 ·
+    전달함)을 unid 로 준다."""
+    with stage() as (box, mailbox):
+        box.mails[U["f_child"]].unread, box.mails[U["f_child"]].mark = False, "ico-post"
         marks = mailbox.list_all(count=200)
+        asked = box.paths[-1]
+        assert "ReadViewEntries" in asked and "ResortDescending" not in asked, f"모든편지함을 정렬해 받았다: {asked}"
         by = {m.unid: m for m in marks}
         assert (by[U["f_top"]].role, by[U["f_top"]].importance) == ("T", "1"), by[U["f_top"]]
         assert (by[U["f_comma"]].role, by[U["f_child"]].role, by[U["f_child"]].importance) == ("G", "C", "2")
+        assert by[U["f_top"]].sender.addr == "sm.ha@haneul-parts.example", by[U["f_top"]].sender
+        assert by[U["f_child"]].sender == inbox.Sender(*PEER), by[U["f_child"]].sender
+        assert (by[U["f_child"]].read_mark, by[U["f_top"]].read_mark) == ("ico-post", "ico-nomail"), \
+            (by[U["f_child"]].read_mark, by[U["f_top"]].read_mark)
         stamps = [m.date_sort for m in marks]
         assert stamps == sorted(stamps, reverse=True), "모든편지함이 날짜 내림차순이 아니다"
     with stage(all_view=False) as (_, mailbox):

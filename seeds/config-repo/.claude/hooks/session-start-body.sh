@@ -317,11 +317,22 @@ uv_link() {  # uv_link <경로> — 0 uv 의 파이썬 자리 밑을 가리키�
 #   줄마다 `read`(또는 `mapfile`)로 읽으면 MSYS 에서 선언 하나에 awk 하나를 띄우는 만큼 든다 — 통째로 읽고 쪼갠다.
 #   쪼개는 동안만 IFS 를 줄바꿈으로 · 글롭을 끈다(`local -`) — 안 끄면 글롭 글자(`[…]` · `*`)가 든 줄이 그 자리의 파일
 #   이름으로 바뀐다.
+#   읽은 글은 파일마다 한 번만 읽어 `_DECL_RAW` 에 둔다 — 읽기(`$(<…)`)도 서브셸이라 MSYS 에서 fork 하나이고, 진단은 도구마다
+#   같은 파일을 몇 번씩 묻는다. 서브셸에서 읽은 것은 부모에 안 남으므로 주 셸이 먼저 읽어 둔다(`decl_prime`).
+#   선언 파일은 한 실행 안에서 안 바뀐다 — 이 훅은 선언을 안 쓰고, 덮는 deploy.ps1 은 훅을 띄우기 전에 덮는다.
+declare -A _DECL_RAW=()
 _decl_lines() {
   local - IFS=$'\n'
   set -f
-  # shellcheck disable=SC2207 # 줄로 쪼개려고 일부러 따옴표를 뺀다 — mapfile 은 위 까닭으로 안 쓰고, 글롭은 위에서 껐다
-  _dla=($(<"$1"))
+  [ -n "${_DECL_RAW[$1]+x}" ] || _DECL_RAW[$1]="$(<"$1")"
+  # shellcheck disable=SC2206 # 줄로 쪼개려고 일부러 따옴표를 뺀다 — mapfile 은 위 까닭으로 안 쓰고, 글롭은 위에서 껐다
+  _dla=(${_DECL_RAW[$1]})
+}
+
+# decl_prime <파일…> — 있는 선언 파일을 주 셸에서 읽어 둔다. 뒤의 조회는 서브셸 안에서도 다시 안 읽는다 · 늘 0
+decl_prime() {
+  for _dpf in "$@"; do [ -f "$_dpf" ] && _decl_lines "$_dpf"; done
+  return 0
 }
 
 # _decl_pick <파일> <절> <키…> — 키마다 값을 `_dpv[번째]` 에 둔다(0 부터 · 없는 키는 칸이 비어 있지 않고 아예 없다) · 늘 0
@@ -379,19 +390,13 @@ decl_get() {  # decl_get <파일> <절> <키> — 값 한 줄 · 키가 없거�
   return 0
 }
 
-# ── 절 하나를 한 번 읽어 달라는 키를 달라는 순서로 낸다 ─────────────────────
-#    프로브 · 판 검사 · 진단이 한 도구의 키 여럿을 물을 때 `decl_get` 을 키마다 부르지 않고 이것 하나로 묻는다 — 명령 치환
-#    하나 · 파일 읽기 한 번이다.
+# ── 절 하나의 키 여럿을 한 번에 — 값을 `_dpv[번째]` 에 둔다(0 부터 · 없는 키 · 없는 파일은 빈 칸) · 늘 0 ──
+#    프로브 · 판 검사 · 진단이 한 도구의 키 여럿을 물을 때 `decl_get` 을 키마다 부르지 않고 이것 하나로 묻는다. 명령 치환
+#    없이 부른 셸에서 돈다 — 도구마다 몇 번씩 도는 자리라, 조회마다 서브셸 fork 를 띄우면 맨바닥 VDI 에서 진단 한 판이 그
+#    fork 로 수 초를 쓴다. 부른 자는 다음 조회 전에 `_dpv` 를 제 변수로 옮긴다 — 다음 조회가 덮는다.
 #    키 목록은 부르는 자가 제 자리에서 댄다 — 선언의 낱말을 이 함수가 들면 그 목록이 손사본이 되어 키가 늘 때 조용히 낡는다.
-# ⚠ 줄 수는 달라는 키 수와 같고, 없는 키는 빈 줄이다 — 값을 자리로 읽으므로 한 칸이 비면 그 뒤가 다 밀린다. 그래서
-#   부르는 자는 읽기 전에 변수를 다 비운다: 명령 치환이 끝 개행을 깎아 꼬리의 빈 값은 줄째로 사라지고 `read` 가 EOF 를
-#   만난다(`_site_of` 와 같은 결). 선언은 한 줄이 한 값이라 값에 줄바꿈은 들 수 없다.
-decl_fields() {  # decl_fields <파일> <절> <키…>
-  _dff="$1"; _dfs="$2"; shift 2
-  [ -f "$_dff" ] || { for _dfk in "$@"; do echo; done; return 0; }
-  _decl_pick "$_dff" "$_dfs" "$@"
-  _dfi=0
-  for _dfk in "$@"; do printf '%s\n' "${_dpv[_dfi]:-}"; _dfi=$((_dfi + 1)); done
+decl_pick_v() {  # decl_pick_v <파일> <절> <키…>
+  if [ -f "$1" ]; then _decl_pick "$@"; else _dpv=(); fi
   return 0
 }
 
@@ -427,6 +432,8 @@ path_catchup() {  # 0 = 이번에 붙였다 · 1 = 붙일 것이 없거나 이�
 #    깐 것이 아니다」라 PATH 에서 실행해 잰다(단일 실행파일로 받은 도구 — 래퍼가 없어 애초에 빠르다).
 probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
   _k="$1"; _tg="$2"; _knp="$3"; shift 3
+  # 진단이 묶어 물은 답이 있으면 그것이다(`probe_batch`).
+  [ -z "$_PB_ON" ] || [ -z "${_PB[$_k:$_tg]+x}" ] || return "${_PB[$_k:$_tg]}"
   [ $# -gt 0 ] || set -- --version
   case "$_k" in
     exec-on-path)      if [ -n "$_knp" ]; then
@@ -456,15 +463,90 @@ probe_tool() {  # probe_tool <갈래> <대상> <npm패키지|빈값> [인자…]
   esac
 }
 
+# ── 묶어 묻기 — import 로 재는 갈래 셋(`python-importable` · `machine-python-importable` · `node-resolvable`)을 해석기마다 한 번에 ──
+#    진단은 도구마다 해석기를 하나씩 띄운다 — 맨바닥 VDI 는 프로세스 하나가 몇 초라 저장소마다 그 물음이 진단 몫의 큰 덩이다
+#    (PAISetup #69). 진단 단계 머리에서 한 번 묻고(`probe_batch`) 답을 `_PB` 에 둔다 — `probe_tool` 이 답을 먼저 본다.
+#    진단은 깔지 않으므로 그동안 답이 안 낡는다. 설치 걸음은 깔기 앞뒤로 답이 바뀌므로 묶음을 안 쓴다(그때는 `_PB_ON` 이 비었다).
+#    한 해석기 안에서 모듈마다 따로 import 하고, 하나가 던져도 나머지는 묻는다. 해석기가 끝 표지까지 못 갔으면(죽었다) 그
+#    해석기의 답을 하나도 안 두고, 하나씩 띄우는 본래 길이 잰다.
+#    인용될 도구는 안 묻는다 — 진단이 그 줄을 프로브 없이 내므로, 묶어 물으면 무거운 import(`markitdown`)를 헛되이 띄운다.
+#    ⚠ 한 프로세스라 앞 모듈의 import 가 뒤 모듈을 바꿀 수 있다 — 따로 띄우면 지고 묶으면 서는 짝이 이론상 있다. 선언된
+#      도구는 서로 독립한 꾸러미라 그 짝보다 프로세스 수가 값이 크다.
+declare -A _PB=()
+_PB_ON=''
+_PB_PY='import importlib, sys
+for m in sys.argv[1:]:
+    try:
+        importlib.import_module(m)
+    except BaseException:
+        continue
+    print("@@probe-ok " + m)
+print("@@probe-done")'
+_PB_NODE='for (const m of process.argv.slice(1)) { try { await import(m); console.log("@@probe-ok " + m) } catch {} }
+console.log("@@probe-done")'
+
+_pb_store() {  # _pb_store <갈래> <해석기의 답> <물은 모듈…> — 끝 표지가 있을 때만 모듈마다 0(닿는다) · 1(안 닿는다)을 둔다
+  _pbk="$1"; _pbo="${2//$'\r'/}"; shift 2
+  case "$_pbo" in *"@@probe-done"*) ;; *) return 0 ;; esac
+  for _pbm in "$@"; do
+    case "$_NL$_pbo$_NL" in
+      *"${_NL}@@probe-ok $_pbm${_NL}"*) _PB[$_pbk:$_pbm]=0 ;;
+      *) _PB[$_pbk:$_pbm]=1 ;;
+    esac
+  done
+  return 0
+}
+
+probe_batch() {  # probe_batch <선언파일…> — 늘 0
+  _pbpy=''; _pbmpy=''; _pbnode=''
+  for _pbf in "$@"; do
+    [ -f "$_pbf" ] || continue
+    for _pbn in $(decl_sections "$_pbf"); do
+      decl_pick_v "$_pbf" "$_pbn" probe probe-target
+      _pbp="${_dpv[0]:-}"; _pbt="${_dpv[1]:-}"
+      [ -n "$_pbt" ] || continue
+      repo_verified "$_pbf" "$_pbn" "$_pbp" "$_pbt" && continue
+      global_verified "$_pbf" "$_pbn" "$_pbt" && continue
+      case "$_pbp" in
+        python-importable)         _pbpy="$_pbpy $_pbt" ;;
+        machine-python-importable) _pbmpy="$_pbmpy $_pbt" ;;
+        node-resolvable)           _pbnode="$_pbnode $_pbt" ;;
+      esac
+    done
+  done
+  # 해석기를 고르는 자는 `probe_tool` 의 그 갈래와 같다 — 여기서 다른 해석기를 물으면 묶음의 답이 딴 명제다.
+  # shellcheck disable=SC2086 # 모듈 이름은 공백 없는 낱말이라 낱말로 쪼개 넘긴다
+  if [ -n "$_pbpy" ]; then
+    if [ -x "$VENV_PY" ]; then
+      _pb_store python-importable "$("$VENV_PY" -c "$_PB_PY" $_pbpy 2>/dev/null)" $_pbpy
+    elif command -v "$PY_CMD" >/dev/null 2>&1; then
+      _pb_store python-importable "$("$PY_CMD" -c "$_PB_PY" $_pbpy 2>/dev/null)" $_pbpy
+    fi
+  fi
+  # shellcheck disable=SC2086
+  [ -z "$_pbmpy" ] || _pb_store machine-python-importable "$("$PC_PY" -c "$_PB_PY" $_pbmpy 2>/dev/null)" $_pbmpy
+  # shellcheck disable=SC2086
+  [ -z "$_pbnode" ] ||
+    _pb_store node-resolvable "$(cd "$PROJECT_DIR" && node --input-type=module -e "$_PB_NODE" $_pbnode 2>/dev/null)" $_pbnode
+  _PB_ON=1
+  return 0
+}
+
 # npm 전역 자리 — 한 세션에 한 번만 묻는다. `npm root -g` 는 값을 내기까지 node 를 띄우는데 그 값은 세션 안에서 안
 # 바뀐다 — 프로브 · 판 검사 · 진단이 저마다 물으면 도구 수만큼 되풀이되고, 프로세스가 비싼 자리에서는 그것이 곧 벽이다.
 # ⚠ 값을 되돌리지 않고 변수에 세운다 — 명령 치환은 서브셸이라 캐시가 부모에 안 남는다. `$(npm_root_g)` 꼴로 부르면 매
 #   호출이 제 서브셸에서 빈 캐시를 보고 다시 묻는데, 판정은 멀쩡하니 느린 것만 남고 까닭은 안 보인다. 그래서 부르는 자는
 #   이것을 문장으로 부르고 값은 `$NPM_ROOT_G` 에서 읽는다.
+# deploy.ps1 이 한 번 물어 넘긴 값(`CLAUDE_NPM_ROOT_G`)이 있으면 그것을 쓴다 — 저장소 걸음은 저장소마다 새 프로세스라 이 캐시가
+#   안 이어지고, 맨바닥 VDI 에서 `npm root -g` 한 번이 몇 초다. 넘긴 자리가 폴더로 안 서면 넘김을 버리고 제가 묻는다.
 npm_root_g() {  # 성공하면 $NPM_ROOT_G 에 자리가 선다
   [ -n "$NPM_ROOT_G_ASKED" ] || {
     NPM_ROOT_G_ASKED=1
-    NPM_ROOT_G="$(npm root -g 2>/dev/null)" || NPM_ROOT_G=''
+    if [ -n "${CLAUDE_NPM_ROOT_G:-}" ] && [ -d "$CLAUDE_NPM_ROOT_G" ]; then
+      NPM_ROOT_G="$CLAUDE_NPM_ROOT_G"
+    else
+      NPM_ROOT_G="$(npm root -g 2>/dev/null)" || NPM_ROOT_G=''
+    fi
   }
   [ -n "$NPM_ROOT_G" ]
 }
@@ -512,9 +594,8 @@ gh_asset_get() {  # gh_asset_get <받을 파일> <주소>
 
 tool_version_have() {  # tool_version_have <선언파일> <이름> — 깔린 판 · 못 읽으면 빈 값
   _vhi=''; _vhp=''; _vht=''; _vha=''
-  { IFS= read -r _vhi; IFS= read -r _vhp; IFS= read -r _vht; IFS= read -r _vha; } <<EOF
-$(decl_fields "$1" "$2" install package probe-target probe-arg)
-EOF
+  decl_pick_v "$1" "$2" install package probe-target probe-arg
+  _vhi="${_dpv[0]:-}"; _vhp="${_dpv[1]:-}"; _vht="${_dpv[2]:-}"; _vha="${_dpv[3]:-}"
   case "$_vhi" in
     npm-global) case "$_vhp" in ?*@*) _vhp="${_vhp%@*}" ;; esac
                 npm_global_version "$_vhp" ;;
@@ -535,9 +616,8 @@ EOF
 
 tool_version_latest() {  # tool_version_latest <선언파일> <이름> — 받을 판 · 못 읽으면 빈 값
   _vli=''; _vlp=''; _vlr=''; _vlt=''; _vlw=''
-  { IFS= read -r _vli; IFS= read -r _vlp; IFS= read -r _vlr; IFS= read -r _vlt; IFS= read -r _vlw; } <<EOF
-$(decl_fields "$1" "$2" install package repo tag winget-id)
-EOF
+  decl_pick_v "$1" "$2" install package repo tag winget-id
+  _vli="${_dpv[0]:-}"; _vlp="${_dpv[1]:-}"; _vlr="${_dpv[2]:-}"; _vlt="${_dpv[3]:-}"; _vlw="${_dpv[4]:-}"
   case "$_vli" in
     npm-global) case "$_vlp" in
                   ?*@*) printf '%s\n' "${_vlp##*@}" | ver_first ;;   # 판을 박았으면 그 판이 받을 판이다
@@ -565,15 +645,8 @@ probe_reach() {  # probe_reach <선언파일> <이름> — **이 저장소에서
   # `install` · `package` 을 같이 읽는다 — 실행 갈래가 npm 래퍼를 비켜서려면 「이것이 npm 이 깐 것인가」를 알아야
   #   하는데 그 답이 선언에 있다(`probe_tool` 머리말). 같은 파일을 두 번 안 읽도록 이 한 번의 조회에 칸을 더한다.
   _prk=''; _prt=''; _pra=''; _pri=''; _prp=''
-  {
-    IFS= read -r _prk
-    IFS= read -r _prt
-    IFS= read -r _pra
-    IFS= read -r _pri
-    IFS= read -r _prp
-  } <<EOF
-$(decl_fields "$1" "$2" probe probe-target probe-arg install package)
-EOF
+  decl_pick_v "$1" "$2" probe probe-target probe-arg install package
+  _prk="${_dpv[0]:-}"; _prt="${_dpv[1]:-}"; _pra="${_dpv[2]:-}"; _pri="${_dpv[3]:-}"; _prp="${_dpv[4]:-}"
   [ "$_pri" = npm-global ] || _prp=''
   # shellcheck disable=SC2086 # probe-arg 는 낱말 분리가 의도다
   probe_tool "$_prk" "$_prt" "$_prp" $_pra
@@ -585,9 +658,8 @@ probe_pin() {  # probe_pin <선언파일> <이름> — 선언이 판을 박았�
   #   박은 선언은 이 칸이 통째로 빠진다 — 최신을 받고 안 잰다. 0 이면 맞거나 안 잰다.
   # 판은 npm 전역 한 자리에 서서 저장소를 안 타므로, 저장소 갈래(`probe_decl`)와 전역 갈래(`probe_global`)가 이 몸통을 같이 쓴다.
   _ppi=''; _pk=''
-  { IFS= read -r _ppi; IFS= read -r _pk; } <<EOF
-$(decl_fields "$1" "$2" install package)
-EOF
+  decl_pick_v "$1" "$2" install package
+  _ppi="${_dpv[0]:-}"; _pk="${_dpv[1]:-}"
   [ "$_ppi" = npm-global ] || return 0
   # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
   case "$_pk" in
@@ -614,9 +686,8 @@ probe_decl() {  # probe_decl <선언파일> <이름> — 저장소의 물음. �
 #    ⚠ 경로를 JS 소스에 안 박는다 — cwd 로 준다(`npm_global_version` 머리말과 같은 함정).
 probe_global() {  # probe_global <선언파일> <이름>
   _pgk=''; _pgt=''
-  { IFS= read -r _pgk; IFS= read -r _pgt; } <<EOF
-$(decl_fields "$1" "$2" probe probe-target)
-EOF
+  decl_pick_v "$1" "$2" probe probe-target
+  _pgk="${_dpv[0]:-}"; _pgt="${_dpv[1]:-}"
   case "$_pgk" in
     node-resolvable)
       npm_root_g || return 1
@@ -1249,17 +1320,34 @@ deploy_personal() {   # deploy_personal auto|install
       echo "$PROJECT_NAME: ⚠ personal.conf 에 REPOS 는 있는데 REPO_URL 이 없다 — 어디서 받을지 모른다"
     else
       mkdir -p "$_root"
+      # 첫 받기는 혼자 한다 — 자격이 아직 없는 PC 에서 같이 띄우면 로그인 창이 저장소 수만큼 한꺼번에 뜬다. 첫 받기가 서면
+      #   도우미(credential.helper)에 자격이 선 것이라 나머지는 동시에 받는다 — 맨바닥 VDI 는 받기보다 파일을 푸는 쪽이 느리고
+      #   (PAISetup #69) 저장소마다 자리가 따로라 서로 안 기댄다. 첫 받기가 지면 나머지도 하나씩 받는다(창이 겹치지 않게).
+      #   동시에 받은 것의 줄은 저장소마다 모아 두었다가 차례대로 낸다 — 섞이면 어느 줄이 어느 저장소 것인지 못 읽는다.
+      # ⚠ 기다리기는 띄운 것의 PID 로만 한다 — 맨 `wait` 는 이 셸이 앞서 띄운 배경 일까지 기다린다.
+      _cone=''; _cpar=''; _cpids=''; _cwait=''
+      _cdir="${TMPDIR:-/tmp}/sibling-clone-$$"
       for _r in $_repos; do
         [ -d "$_root/$_r/.git" ] && continue
-        echo "$PROJECT_NAME: $_r — clone ($_root)"
-        # 저장소마다 초를 붙인다 — 받는 양이 저장소마다 자리 수가 다르고, 합만 보면 그 차가
-        # 망 탓인지 파일 수 탓인지 안 갈린다. 진 판도 찍는다(진 데 든 시간도 시간이다).
-        _ct0=$SECONDS
-        git clone "$(printf '%s' "$_url" | sed "s|<이름>|$_r|g")" "$_root/$_r" ||
-          echo "$PROJECT_NAME: ⚠ $_r clone 실패 — 주소 · 계정 · 망을 본다"
-        printf '  · %s clone — %s초\n' "$_r" "$((SECONDS - _ct0))"
+        if [ -z "$_cpar" ]; then
+          clone_sibling "$_r" "$_root" "$_url"
+          if [ -d "$_root/$_r/.git" ]; then
+            gate_fresh_clone "$_root/$_r"
+            [ -z "$_cone" ] && _cpar=1
+          fi
+          _cone=1
+          continue
+        fi
+        mkdir -p "$_cdir"
+        clone_sibling "$_r" "$_root" "$_url" > "$_cdir/$_r" 2>&1 &
+        _cpids="$_cpids $!"; _cwait="$_cwait $_r"
+      done
+      [ -z "$_cpids" ] || wait $_cpids
+      for _r in $_cwait; do
+        cat "$_cdir/$_r" 2>/dev/null
         if [ -d "$_root/$_r/.git" ]; then gate_fresh_clone "$_root/$_r"; fi
       done
+      [ -z "$_cwait" ] || rm -rf "$_cdir"
     fi
   fi
 
@@ -2470,7 +2558,7 @@ node_home_dir() {
 
 # node_home_wanted <선언파일> — 홈에 이을 이름을 「절 이름<탭>모듈」 줄로 낸다 · 늘 0
 #   `wiring = node-link` 이고 on-demand 가 아닌 절이다 — on-demand 는 훅이 안 까는 도구라 이을 실물이 없다. 모듈은
-#   `probe-target` 이다(`wire_tool` 이 저장소에 잇는 이름과 같다). 읽는 자는 `decl_fields` 와 같다 — 줄 머리의 키 · 첫 값이
+#   `probe-target` 이다(`wire_tool` 이 저장소에 잇는 이름과 같다). 읽는 자는 `decl_pick_v` 와 같다 — 줄 머리의 키 · 첫 값이
 #   이긴다 · `#` 뒤는 주석 · CRLF 를 걷는다. 파일을 한 번만 읽는다 — 세션마다 도는 대조가 부르므로 절마다 awk 를 안 띄운다.
 #   읽는 것은 셸이다(`read` 고리 · 프로세스 없음). 줄마다 하는 일 — 꼬리 CR 하나를 떼고, `[` 로 열면 새 절(이름은 `[` · `]` 를 다
 #   걷고 꼬리 공백을 뗀 글자), 절 안의 줄은 첫 `#` 과 그 앞 공백부터 끝까지 떼고(그 뒤 꼬리 공백은 안 뗀다 — `#` 이 없으면
@@ -2723,6 +2811,42 @@ _pull_target() {  # _pull_target <저장소> <원격> <.git 자리>
 #   받는 것 — 저장소. 내는 것 — 옮겼거나 못 옮겼을 때 한 줄(설치기 기록에 든다). 부작용 — 판정 한 줄(`_pull_target`) · main 의 자리.
 #   옮기는 것은 갓 받은 꼴일 때뿐이다 — main 체크아웃이고 HEAD 가 원격 끝과 같다. `reset --keep` 이라 편집이 끼어 있으면 git 이
 #   거절하고 나무는 원격 끝에 남는다.
+# ── 기계에 하나씩 — 저장소 걸음이 동시에 돌 때(deploy.ps1) npm 캐시를 같이 쓰는 `npm ci` 를 겹치지 않게 ──
+#    윈도우의 npm 캐시는 두 프로세스가 같이 쓰면 이름 바꾸기에서 EPERM 으로 진다. 자물쇠는 홈의 파일 하나이고 적힌 PID 가
+#    살아 있는 동안만 선다 — 죽은 자물쇠는 걷고 잡는다(`install_bg` 와 같은 결). 비어 있는 자물쇠는 막 잡히는 중이라 안 걷는다.
+#    기다림에 끝을 둔다 — 넘기면 안 잡고 간다. 막을 것은 드문 겹침이고, 영영 서는 쪽이 더 나쁘다.
+NPM_CI_LOCK="$HOME/.claude/npm-ci.lock"
+NPM_CI_LOCK_WAIT=900   # 초 — 맨바닥 VDI 에서 저장소 하나의 `npm ci` 가 걸리는 시간의 몇 배
+npm_ci_lock() {  # 늘 0 · 잡았으면 NPM_CI_LOCKED=1
+  NPM_CI_LOCKED=''; _nlw=$SECONDS
+  # ⚠ 적는 PID 는 부르는 셸의 `$BASHPID` 다 — 세션(auto)의 설치는 `install_bg` 의 배경 서브셸에서 도는데 거기서 `$$` 는 곧
+  #   끝나는 부모 훅이라, 쥔 자물쇠가 죽은 것으로 보여 다른 설치가 걷어 간다(`install_bg` 가 제 자물쇠를 고쳐 쓰는 까닭과 같다).
+  #   아래 `( … )` 안에서 읽으면 그 짧은 서브셸의 PID 라 여기서 받아 둔다.
+  _nlme=$BASHPID
+  while :; do
+    if ( set -C; printf '%s\n' "$_nlme" > "$NPM_CI_LOCK" ) 2>/dev/null; then NPM_CI_LOCKED=1; return 0; fi
+    # 자물쇠가 없는데 못 만들었으면 자리 · 권한 탓이다(`~/.claude` 가 없는 컨테이너 등) — 기다려도 안 풀리니 안 잡고 간다.
+    [ -e "$NPM_CI_LOCK" ] || return 0
+    _nlp="$(cat "$NPM_CI_LOCK" 2>/dev/null)"
+    if [ -n "$_nlp" ] && ! kill -0 "$_nlp" 2>/dev/null; then rm -f "$NPM_CI_LOCK"; continue; fi
+    [ $((SECONDS - _nlw)) -lt "$NPM_CI_LOCK_WAIT" ] || return 0
+    sleep 1
+  done
+}
+npm_ci_unlock() { [ -z "$NPM_CI_LOCKED" ] || rm -f "$NPM_CI_LOCK"; NPM_CI_LOCKED=''; return 0; }
+
+# ── 형제 저장소 하나를 받는다 — 머리줄 · clone · 걸린 초 · 실패 줄을 낸다. 늘 0 ──
+#    저장소마다 초를 붙인다 — 받는 양이 저장소마다 자리 수가 다르고, 합만 보면 그 차가 망 탓인지 파일 수 탓인지 안 갈린다.
+#    진 판도 찍는다(진 데 든 시간도 시간이다). 당김 문에 세우는 일(`gate_fresh_clone`)은 부르는 쪽이 받은 뒤에 한다.
+clone_sibling() {  # clone_sibling <이름> <뿌리> <주소 틀 — `<이름>` 자리에 이름이 선다>
+  _cst0=$SECONDS
+  echo "$PROJECT_NAME: $1 — clone ($2)"
+  git clone "$(printf '%s' "$3" | sed "s|<이름>|$1|g")" "$2/$1" ||
+    echo "$PROJECT_NAME: ⚠ $1 clone 실패 — 주소 · 계정 · 망을 본다"
+  printf '  · %s clone — %s초\n' "$1" "$((SECONDS - _cst0))"
+  return 0
+}
+
 gate_fresh_clone() {  # gate_fresh_clone <저장소>
   [ "$(git -C "$1" symbolic-ref --short -q HEAD 2>/dev/null)" = main ] || return 0
   _gfg="$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null)" || return 0
@@ -2958,6 +3082,15 @@ install_step() {
     exit "$_drc"
   fi
 
+  # ── 선언을 지금 다시 읽고 이 순간의 지문을 쥔다 ────────────────────
+  #    세션(auto)은 배경 당김(`pull_ff`)이 이 걸음과 겹쳐 선언을 바꿀 수 있다 — 까는 동안은 이 읽기로만 보고(`_DECL_RAW`),
+  #    끝에 굳히는 지문도 이 순간의 것이다(아래 「선언 지문 굳히기」). deploy.ps1 에 넘기는
+  #    바깥 `--install` 은 위에서 끝나 도장을 안 찍으므로 그 뒤에 쥔다.
+  _DECL_RAW=(); decl_prime "$GCONF" "$PCONF"
+  INSTALL_FP=''; INSTALL_GFP=''
+  [ -z "$DO_REPO" ]   || INSTALL_FP="$(decl_fingerprint)"
+  [ -z "$DO_GLOBAL" ] || INSTALL_GFP="$(global_fingerprint)"
+
   # 실패는 삼키되 까닭까지 버리지는 않는다 — 진단이 ❌ 줄에 사유를 이어 붙인다. 지난 실패는 지우기 전에 찍는다 — 안
   #   그러면 「무엇이 왜 실패했었나」가 성공한 재설치와 함께 사라져 다시 못 잰다.
   # 이번에 안 도는 층의 기록은 안 지운다 — 저장소 갈래가 전역 기록을 비우면 전역형 도구가 못 깔린 사유가 깔아 보지도
@@ -3137,11 +3270,13 @@ install_step() {
   #    `node_modules` 다.
   if [ -n "$DO_REPO" ] && [ -f "$PROJECT_DIR/package-lock.json" ] && command -v npm >/dev/null 2>&1; then
     _nt0=$SECONDS
+    npm_ci_lock
     if ( cd "$PROJECT_DIR" && try "노드 의존성" npm ci --no-audit --no-fund --silent ); then
       printf '  · 노드 의존성 — 깔았다 (%s초)\n' "$((SECONDS - _nt0))"
     else
       printf '  · 노드 의존성 — 못 깔았다 (%s초)\n' "$((SECONDS - _nt0))"
     fi
+    npm_ci_unlock
   fi
 
   # ── 선언 도구를 까는 손 — 프로브 → 설치 → 배선 → 재프로브. 판정은 진단 단계 한 자리가 낸다 ──
@@ -3443,13 +3578,8 @@ install_step() {
     #   전역 걸음이 도구마다 한 번 댄다. 받을지 말지는 스크립트가 스스로 가른다 — 있으면 두고, 없으면 그때의 최신을 받는다.
     _f="$1"; _t="$2"
     _br=''; _skipname=''; _fb=''
-    {
-      IFS= read -r _br
-      IFS= read -r _skipname
-      IFS= read -r _fb
-    } <<EOF
-$(decl_fields "$_f" "$_t" browsers skip-browsers-env browsers-fallback)
-EOF
+    decl_pick_v "$_f" "$_t" browsers skip-browsers-env browsers-fallback
+    _br="${_dpv[0]:-}"; _skipname="${_dpv[1]:-}"; _fb="${_dpv[2]:-}"
     [ -n "$_br" ] || return 0
     _skipval=""; [ -n "$_skipname" ] && _skipval="${!_skipname:-}"
     [ -z "$_skipval" ] || return 0
@@ -3470,17 +3600,14 @@ EOF
   wire_tool() {  # wire_tool <선언파일> <이름> — node-link: 이름 해석이 되게 만든다
     _f="$1"; _t="$2"
     _wg=''; _mod=''; _env=''; _wod=''
-    {
-      IFS= read -r _wg
-      IFS= read -r _mod
-      IFS= read -r _env
-      IFS= read -r _wod
-    } <<EOF
-$(decl_fields "$_f" "$_t" wiring probe-target wiring-env on-demand)
-EOF
+    decl_pick_v "$_f" "$_t" wiring probe-target wiring-env on-demand
+    _wg="${_dpv[0]:-}"; _mod="${_dpv[1]:-}"; _env="${_dpv[2]:-}"; _wod="${_dpv[3]:-}"
     [ "$_wg" = node-link ] || return 0
     # 닿으면 그 답을 적는다 — 진단이 같은 물음을 다시 안 띄우고 인용한다(`repo_verified` 곁말).
-    probe_tool node-resolvable "$_mod" "" && { repo_verified_put "$_f" "$_t" node-resolvable "$_mod"; return 0; }
+    # 저장소 안에 그 이름이 아직 없으면 묻지 않고 바로 잇는다 — 갓 받은 저장소에서 이 물음은 늘 지고, node 한 번이 맨바닥 VDI
+    #   에서 몇 초다. 바깥 자리에서 풀렸을 이름에 정션이 하나 더 설 뿐이고, 닿나는 잇고 난 뒤의 물음이 잰다.
+    [ -e "$PROJECT_DIR/node_modules/$_mod" ] && probe_tool node-resolvable "$_mod" "" &&
+      { repo_verified_put "$_f" "$_t" node-resolvable "$_mod"; return 0; }
     # ⚠ 못 건 배선은 실패로 적는다 — 이 걸음 뒤에 지문 도장이 찍히므로(「선언 지문 굳히기」) 조용히 나가면 그 저장소는
     #   「배선됐다」로 굳고, 다음 세션(auto)도 재설치(`--needs-install`)도 파일만 봐서 영영 다시 안 건다. 전역 도구가 저장소
     #   걸음보다 늦게 서는 판(노드가 설치 도중에 들어온 새 PC)이 그 자리다. 적어 두면 `--needs-install` 이 1 을 내 다음
@@ -3532,9 +3659,8 @@ EOF
   wire_global() {  # wire_global <선언파일> <이름>
     _wf="$1"; _wn="$2"
     _we=''; _wm=''
-    { IFS= read -r _we; IFS= read -r _wm; } <<EOF
-$(decl_fields "$_wf" "$_wn" wiring-env probe-target)
-EOF
+    decl_pick_v "$_wf" "$_wn" wiring-env probe-target
+    _we="${_dpv[0]:-}"; _wm="${_dpv[1]:-}"
     [ -n "$_we" ] || return 0
     [ -n "$_wm" ] || return 0
     npm_root_g || return 0
@@ -3642,15 +3768,8 @@ EOF
       [ -f "$_gf" ] || continue
       for _gn in $(decl_sections "$_gf"); do
         _gi=''; _god=''; _gcb=''; _gtg=''; _gbn=''
-        {
-          IFS= read -r _gi
-          IFS= read -r _god
-          IFS= read -r _gcb
-          IFS= read -r _gtg
-          IFS= read -r _gbn
-        } <<EOF
-$(decl_fields "$_gf" "$_gn" install on-demand called-by probe-target bin)
-EOF
+        decl_pick_v "$_gf" "$_gn" install on-demand called-by probe-target bin
+        _gi="${_dpv[0]:-}"; _god="${_dpv[1]:-}"; _gcb="${_dpv[2]:-}"; _gtg="${_dpv[3]:-}"; _gbn="${_dpv[4]:-}"
         global_kind "$_gi" || continue
         case " $_gseen " in *" $_gn "*) continue ;; esac
         _gseen="$_gseen $_gn"
@@ -3842,10 +3961,17 @@ EOF
   #    부재가 통과로 안 읽힌다.
   #    ⚠ 돈 층만 굳힌다 — 전역만 돈 갈래가 저장소 지문까지 찍으면 저장소가 깔린 적 없는데 「깔 것이 없다」가 되어, 그 침묵이
   #      무작동을 성공으로 보이게 한다.
-  [ -n "$DO_REPO" ] && { decl_fingerprint > "$STAMP" 2>/dev/null || true; }
+  #    굳히는 값은 걸음 첫머리에 쥔 지문이다(`INSTALL_FP`) — 끝에 다시 재면, 그 사이 배경 당김이 선언을 바꾼 판에서 옛 선언으로
+  #    깔고 새 선언의 지문을 적어 다음 세션이 새 도구를 영영 안 깐다. 첫머리 지문이면 다음 세션이 어긋남을 보고 다시 깐다.
+  if [ -n "$DO_REPO" ]; then
+    if [ -n "$INSTALL_FP" ]; then printf '%s\n' "$INSTALL_FP" > "$STAMP" 2>/dev/null || true
+    else decl_fingerprint > "$STAMP" 2>/dev/null || true; fi
+  fi
   if [ -n "$DO_GLOBAL" ]; then
     mkdir -p "$(dirname "$GSTAMP")" 2>/dev/null || true
-    global_fingerprint > "$GSTAMP" 2>/dev/null
+    # 저장소 지문과 같은 까닭으로 걸음 첫머리의 지문을 굳힌다(`INSTALL_GFP`).
+    if [ -n "$INSTALL_GFP" ]; then printf '%s\n' "$INSTALL_GFP" > "$GSTAMP" 2>/dev/null
+    else global_fingerprint > "$GSTAMP" 2>/dev/null; fi
     # ⚠ 종료코드로 안 가른다 — 이 함수는 pipefail 아래서 지문을 다 내고도 1 을 낸다(마지막 선언 파일이 줄바꿈으로 끝나면
     #   꼬리 검사가 거짓이다). 적혔나를 파일로 본다 — 폴더 자리면 `-f` 가 거짓이다.
     { [ -f "$GSTAMP" ] && [ -s "$GSTAMP" ]; } || PC_WIDE_FAIL=1
@@ -3956,9 +4082,8 @@ why() {  # why <도구> [<설치 걸음>] — 도구 이름으로 못 찾으면 
 #   스스로 말하게 한다(규범 [Goal-Driven Execution]).
 pin_shape() {  # pin_shape <선언파일> <이름> — 안 잰 까닭 한 줄, 잴 수 있으면 빈 값
   _psi=''; _sk=''
-  { IFS= read -r _psi; IFS= read -r _sk; } <<EOF
-$(decl_fields "$1" "$2" install package)
-EOF
+  decl_pick_v "$1" "$2" install package
+  _psi="${_dpv[0]:-}"; _sk="${_dpv[1]:-}"
   [ "$_psi" = npm-global ] || return 0
   case "$_sk" in ?*@*) ;; *) return 0 ;; esac   # 판을 안 박은 선언은 애초에 안 잰다고 적혀 있다
   _sv="${_sk##*@}"
@@ -3972,9 +4097,8 @@ EOF
 # 사유가 「안 닿는다」 하나면 다음 사람은 npm 이 없나부터 뒤진다(`nogo` 머리말과 같은 결).
 pin_mismatch() {  # pin_mismatch <선언파일> <이름> — 어긋나면 읽을 한 줄, 아니면 빈 값
   _pmi=''; _mk=''
-  { IFS= read -r _pmi; IFS= read -r _mk; } <<EOF
-$(decl_fields "$1" "$2" install package)
-EOF
+  decl_pick_v "$1" "$2" install package
+  _pmi="${_dpv[0]:-}"; _mk="${_dpv[1]:-}"
   [ "$_pmi" = npm-global ] || return 0
   # 스코프 패키지(@scope/name)는 맨 앞 `@` 가 판 구분자가 아니다 — 첫 글자 뒤의 `@` 만 문다.
   case "$_mk" in ?*@*) ;; *) return 0 ;; esac
@@ -4016,9 +4140,8 @@ global_verified() {  # global_verified <선언파일> <이름> <probe-target>
   [ -n "${CLAUDE_CONFIG_RUN:-}" ] || return 1
   [ -f "$GVERIFIED" ] || return 1
   _gvi=''; _gvk=''
-  { IFS= read -r _gvi; IFS= read -r _gvk; } <<EOF
-$(decl_fields "$1" "$2" install probe)
-EOF
+  decl_pick_v "$1" "$2" install probe
+  _gvi="${_dpv[0]:-}"; _gvk="${_dpv[1]:-}"
   global_kind "$_gvi" || return 1
   # ⚠ `node-resolvable` 은 인용이 못 선다 — 프로브 둘이 딴 명제를 잰다. 전역 걸음의 `probe_global` 은 `npm root -g` 에
   #   대고 「기계에 있나」를 묻고, 저장소의 `probe_reach` 는 이 저장소 안에서 「정션을 타고 이름이 풀리나」를 묻는다. 기계에
@@ -4055,15 +4178,8 @@ render_decl() {  # render_decl <선언파일> <층라벨>
     # on-demand · install 도 여기서 같이 읽는다 — 같은 조회가 이미 그 절을 읽고 있어 키 한 칸을 더 받는 값이 0 이다.
     #   아래서 따로 물으면 프로세스 하나가 도구마다 더 뜬다.
     _probe=''; _target=''; _by=''; _ondemand=''; _inst=''
-    {
-      IFS= read -r _probe
-      IFS= read -r _target
-      IFS= read -r _by
-      IFS= read -r _ondemand
-      IFS= read -r _inst
-    } <<EOF
-$(decl_fields "$1" "$_name" probe probe-target called-by on-demand install)
-EOF
+    decl_pick_v "$1" "$_name" probe probe-target called-by on-demand install
+    _probe="${_dpv[0]:-}"; _target="${_dpv[1]:-}"; _by="${_dpv[2]:-}"; _ondemand="${_dpv[3]:-}"; _inst="${_dpv[4]:-}"
     # 판 일치 갈래는 저장소 venv 를 잰다 — venv 가 안 서는 저장소(`requirements.txt` 없음)에는 잴 것이 없어 안 그린다.
     #   전역 선언의 것은 저장소 선언이 같은 갈래를 두면 그쪽이 venv 의 판을 정하므로(「파이썬 축」) 안 그린다 — 그리면
     #   저장소 판으로 선 venv 를 전역 판으로 재는 헛빨강이 선다.
@@ -4335,6 +4451,8 @@ PC_PY="$PY_CMD"; PY_READY=''
 [ "$MODE" = auto ] || py_ready
 VENV_PY="$VENV_BIN/python"; [ -x "$VENV_PY" ] || VENV_PY="$VENV_BIN/python.exe"
 NPM_BIN="$PROJECT_DIR/node_modules/.bin"
+# 이 저장소의 선언 둘을 주 셸에서 읽어 둔다 — 뒤의 조회가 서브셸 안에서 파일을 다시 안 읽는다(`_decl_lines` 곁말).
+decl_prime "$GCONF" "$PCONF"
 
 PATH_CAUGHT=''
 NPM_ROOT_G=''; NPM_ROOT_G_ASKED=''
@@ -4655,6 +4773,7 @@ if [ -d "$PROJECT_DIR/.githooks" ]; then
 fi
 
 # 선언 축 — 전역·프로젝트 두 층. 이름·뜻은 전부 선언에서 온다
+probe_batch "$GCONF" "$PCONF"
 render_decl "$GCONF" "전역"
 render_decl "$PCONF" "프로젝트"
 # 세션의 python3 — 이 실행의 전역 걸음(「세션의 python3」 칸)이 못 맞췄을 때만 선다. 그 걸음을 돈 실행만 센다(전역 걸음이 없는 실행은 안 잰다)

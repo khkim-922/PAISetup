@@ -53,7 +53,7 @@ description: "규범 · 룰 · 스킬 본문 · 메모리에 줄을 더하거나
 
 - **걷는 근거는 둘이다** — 다른 층이 이미 든다(그 좌표를 댄다) · 같은 말의 되풀이다 — 되풀이는 낱말이 아니라 뜻으로 재니 옮길 자리를 먼저 읽고, 제 말로 이미 들면 옮기지 않고 걷는다. 「모델이 알아서 한다」는 잰 것이
   아니고 읽는 모델 · 하네스마다 다르다 — 모델에게 「이 줄이 필요하냐」고 물으면 그 모델의 기본을 답할 뿐이다. 둘에 안 걸리는
-  줄은 **재서만 걷는다** — 있을 때와 없을 때를 스킬 skill-comply 로 견주되, 독자는 우리가 내보내는 가장 약한 독자(배포본을
+  줄은 **재서만 걷는다** — 있을 때와 없을 때를 긴 세션 리뷰(걸렸어야 할 순간마다 열렸나 · 열렸으면 달라졌나)로 견주되, 독자는 우리가 내보내는 가장 약한 독자(배포본을
   받는 PC 의 모델 · Codex · agy)로 잡는다. 재지 않기로 하면 「둔다」로 닫고 까닭을 적는다. 「가리키기만 한다」도
   걷을 까닭이 아니다 — 가리키는 줄은 그것으로 제 일을 한다. 가리킴은 원본이 사라지거나 짝이 풀렸을 때 걷는다
 - **옮기면 옛 자리에 새 주소를 남기고 옛 이름을 훑는다** — 규범 · 룰 · 스킬 · 메모리 · 결정 기록 · 봉투 틀까지 본다.
@@ -87,7 +87,7 @@ description: "규범 · 룰 · 스킬 본문 · 메모리에 줄을 더하거나
   ```bash
   python -I -X utf8 -c "import re,glob,os;n=sum(len(open(f,encoding='utf-8').read().encode()) for f in ['.claude/CLAUDE.global.md','memory/global/MEMORY.md'] if os.path.exists(f));d=sum(len((re.search(r'^description:\s*(.*)$',open(f,encoding='utf-8').read(),re.M) or [0,''])[1].encode()) for f in glob.glob('.claude/skills/*/SKILL.md'));print(f'always-on {n} B + skill descriptions {d} B = {n+d} B ≈ {(n+d)/2.1:.0f} tok')"
   ```
-- 움직임이 바뀌었나는 안 잰 것으로 적는다 — 잴 때는 스킬 skill-comply 로 앞 판과 견준다
+- 움직임이 바뀌었나는 안 잰 것으로 적는다 — 잴 때는 긴 세션 리뷰로 앞 판과 견준다
 
 ## 갈리는 자리
 

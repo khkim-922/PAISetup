@@ -90,9 +90,13 @@
     * 폴더마다의 보기는 **unid 로만 열린다**(``/<unid>?ReadViewEntries`` — 제목을 넣으면 0줄). 기본 정렬이 날짜 내림차순이고
       ``count`` 는 1000에서 잘린다. 열이 받은편지함과 달라 받는 꼴(``xrtype``) · 중요도(``xImportance``) · 관련 문서
       (``xrelatedid``)가 없고 ``nh_read`` · ``LOCALSAVE`` · ``Security`` 가 있다 — 받는 꼴 · 중요도는 모든편지함에서 unid 로 채운다 (A2)
-    * 모든편지함(``XML_모든편지함`` — 이 보기 이름은 한 메일함으로만 쟀다)은 받은 것 · 보낸 것 · 폴더를 다 든다. 기본 정렬이
-      섞여 있어 ``&ResortDescending=1`` 로 날짜 내림차순을 받는다 — 안 붙이면 창에서 끊지 못한다. 한 번에 받아서만 쟀다 —
-      ``start`` 로 장을 넘길 때 차례가 이어지는지는 안 쟀다 (A2 · A4)
+    * 폴더 보기의 칸 꼴은 받은편지함과 다르다. 보낸 사람 열 ``xname`` 은 ``<이름>-ENG-<영문>`` 이라 ``-=spl=-`` 도 주소도 없다 —
+      보낸 분 주소는 모든편지함에서 unid 로 채운다. 읽음 열 ``read`` 는 낱말이 아니라 HTML 조각
+      ``<div  id='<unid>'><a href='#' class='mail_21'></a>…</div>`` 이고, class 는 ``mail_21`` 안 읽음 · ``mail_22`` 읽음 둘뿐이라
+      회신함 · 전달함을 못 가린다 — 그 표시도 모든편지함의 ``read`` 에서 채운다. ``nh_read`` 는 읽음 표지로 안 쓴다 (A5 · K2)
+    * 모든편지함(``XML_모든편지함`` — 이 보기 이름은 한 메일함으로만 쟀다)은 받은 것 · 보낸 것 · 폴더를 다 든다. 정렬 없이
+      부르면 이미 날짜 내림차순이다. ``&ResortDescending=1`` 을 붙이면 내림차순 두 덩이가 이어 붙어 와(가장 새 메일이 뒤 덩이
+      머리) 창에서 끊으면 새 메일을 놓친다 — 무엇이 두 덩이를 가르는지는 모른다. ``xname`` · ``read`` 는 받은편지함과 같은 꼴이다 (A2 · A4)
     * ⚠ **모든편지함의 폴더 열 ``xfoldername`` 은 폴더의 진본이 아니다** — 하위 폴더는 끝 이름만 오고, 어느 폴더 보기에도 없는
       메일이 폴더 이름을 들고 있고, 받은편지함 메일이 폴더 이름을 들기도 한다. 그래서 그 열은 안 읽는다 — 폴더는 폴더 보기가 든다 (A2)
     * 보낸편지함 보기 ``XML_Sent`` 는 받은편지함과 같은 ``?ReadViewEntries`` 이고, 그 보기의 ``xname`` 열이 수신인이다
@@ -141,6 +145,9 @@ SENT_COLUMN_TO = "xname"
 VIEW_COLUMN_DATE, VIEW_COLUMN_DIRECTION, VIEW_COLUMN_TO, VIEW_COLUMN_FROM = "$101", "$91", "$102", "$103"
 
 UNREAD_MARK = "ico-nomail"
+# 폴더 보기 읽음 열의 HTML 조각 — class 둘뿐이다(안 읽음 · 읽음)
+FOLDER_UNREAD_CLASS = "mail_21"
+FOLDER_READ_CLASS = re.compile(r"class='(mail_2[12])'")
 ATTACHMENT_SEPARATOR = "{}"
 SPLIT_MARK, ENG_MARK = "-=spl=-", "-ENG-"
 # ECM 을 가리키는 큰 첨부 — <원래 이름>(<확장자>_<크기>KB).html
@@ -217,7 +224,8 @@ class Entry:
     """받은편지함 · 폴더 목록의 한 줄. ``unid`` 가 그 메일의 열쇠다. 시각은 메일함이 준 글자 그대로다.
 
     ``folder`` 는 받은편지함이면 빈 글자, 폴더 보기에서 왔으면 그 폴더의 경로(``부모\\자식``)다. 폴더 줄은 받는 꼴 · 중요도 ·
-    관련 문서가 빈다 — 그 보기에 열이 없다(``Mailbox.list_all`` 로 채운다).
+    관련 문서가 빈다 — 그 보기에 열이 없다. 보낸 분 주소도 빈다. ``read_mark`` 는 읽음 열의 class(``mail_21`` · ``mail_22``)라
+    회신함 · 전달함을 못 가린다 — 셋 다 ``Mailbox.list_all`` 로 채운다.
     """
     unid: str
     subject: str
@@ -243,7 +251,8 @@ class Folder:
 
 @dataclass(frozen=True)
 class Marks:
-    """모든편지함 한 줄에서 폴더 보기에 없는 열 — 받는 꼴(``xrtype``) · 중요도(``xImportance``). 시각은 창에서 끊는 데만 쓴다.
+    """모든편지함 한 줄에서 폴더 보기가 못 드는 칸 — 받는 꼴(``xrtype``) · 중요도(``xImportance``) · 보낸 분(``xname`` 을 푼 것) ·
+    읽음 열 글자 그대로(``ico-post`` 회신함 · ``ico-remail`` 전달함 …). 시각은 창에서 끊는 데만 쓴다.
 
     폴더는 안 든다 — 이 보기의 폴더 열(``xfoldername``)은 경로가 아니다(머리말 「사내 메일함에서 잰 것」).
     """
@@ -252,6 +261,8 @@ class Marks:
     date_sort: str
     role: str
     importance: str
+    sender: Sender
+    read_mark: str
 
 
 @dataclass(frozen=True)
@@ -464,7 +475,8 @@ class Mailbox:
         return folders
 
     def list_folder(self, folder: Folder, count: int = 30, start: int = 1) -> list[Entry]:
-        """그 폴더를 새것부터 ``count`` 통 — 줄마다 ``folder`` 에 그 폴더의 경로를 싣는다. 받는 꼴 · 중요도는 빈다."""
+        """그 폴더를 새것부터 ``count`` 통 — 줄마다 ``folder`` 에 그 폴더의 경로를 싣는다. 받는 꼴 · 중요도 · 보낸 분 주소 · 회신함 ·
+        전달함 표시는 빈다(``list_all``) · 안 읽음은 읽음 열의 class 로 선다."""
         if not _UNID.match(folder.unid or ""):
             raise MailboxConfigError("폴더 보기는 unid 로만 연다 — 제목으로 열면 0줄이 온다")
         root = self._view(folder.unid, count, start)
@@ -473,14 +485,16 @@ class Mailbox:
         return entries
 
     def list_all(self, count: int = 30, start: int = 1) -> list[Marks] | None:
-        """모든편지함을 날짜 내림차순으로 ``count`` 줄 — 받는 꼴 · 중요도만 낸다. 보기가 이 메일함에 없으면 None."""
+        """모든편지함을 정렬 없이 ``count`` 줄 — 그 꼴이 날짜 내림차순이다. 받는 꼴 · 중요도 · 보낸 분 · 읽음 열을 낸다. 보기가 이
+        메일함에 없으면 None."""
         unid = self.view_unid(ALL_VIEW_TITLE)
         if unid is None:
-            log.warning("모든편지함 보기가 이 메일함에 없다 — 폴더 메일의 받는 꼴 · 중요도 없이 돈다")
+            log.warning("모든편지함 보기가 이 메일함에 없다 — 폴더 메일의 받는 꼴 · 중요도 · 보낸 분 주소 없이 돈다")
             return None
-        root = self._view(unid, count, start, descending=True)
+        root = self._view(unid, count, start)
         marks = [Marks(unid=e.get("unid", ""), date=_column(e, COLUMN_DATE), date_sort=_column(e, COLUMN_DATE_SORT),
-                       role=_column(e, COLUMN_ROLE).upper(), importance=_column(e, COLUMN_IMPORTANCE))
+                       role=_column(e, COLUMN_ROLE).upper(), importance=_column(e, COLUMN_IMPORTANCE),
+                       sender=parse_sender(_column(e, COLUMN_FROM)), read_mark=_column(e, COLUMN_READ))
                  for e in root.iter("viewentry")]
         log.info("모든편지함: %d줄", len(marks))
         return marks
@@ -622,6 +636,11 @@ def folder_order(path: str) -> tuple:
 
 def _entry(entry: ET.Element, *, folder: str = "") -> Entry:
     mark = _column(entry, COLUMN_READ)
+    unread = UNREAD_MARK in mark
+    found = FOLDER_READ_CLASS.search(mark) if folder else None
+    if found:   # 폴더 보기의 읽음 열은 HTML 조각이다 — class 가 안 읽음 · 읽음을 가른다(머리말)
+        mark = found.group(1)
+        unread = mark == FOLDER_UNREAD_CLASS
     return Entry(
         unid=entry.get("unid", ""),
         subject=_column(entry, COLUMN_SUBJECT),
@@ -633,7 +652,7 @@ def _entry(entry: ET.Element, *, folder: str = "") -> Entry:
         role=_column(entry, COLUMN_ROLE).upper(),
         attachments=tuple(parse_attachment(n) for n in _column(entry, COLUMN_ATTACHMENTS).split(ATTACHMENT_SEPARATOR)
                           if n.strip()),
-        unread=UNREAD_MARK in mark,
+        unread=unread,
         read_mark=mark,
         related=_column(entry, COLUMN_RELATED),
         folder=folder,

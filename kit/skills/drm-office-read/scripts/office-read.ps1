@@ -19,7 +19,10 @@
         Visual 의 열쇠는 영어다 — tables · images · shapes · formulas · charts · fields. 0 인 열쇠는 없다. 파워포인트는 글 없는
         낱 도형(그림 · 도형을 안 가른다)을 images 에 센다. 사람 말로 옮기는 것은 부르는 쪽 몫이다(read-drm.ps1 의 Format-Visual)
       · Format-Cell · Get-PptLeafShapes · Measure-*Visual · Add-Count — 위 셋이 쓰는 부품. 따로 불러도 된다
-      · 상수 — $HANDLER · $PROCESS_OF · $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX
+      · 상수 — $HANDLER · $PROCESS_OF · $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS ·
+        $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
+      · 파워포인트 글은 머리 한 줄($PPT_SEAT_LEGEND) 뒤 장마다 도형을 위→아래 · 왼→오른으로 세워 줄마다 [위 · 왼] 꼬리표를 앞세운다.
+        표의 합친 칸은 첫 칸에만 글을 두고 덮인 칸은 비운다
     판을 올리는 자 — 함수 이름 · 인자 · 내는 꼴(열쇠 포함) · Job 의 뜻이 바뀌면 1 을 올린다. 함수를 더하거나 안을 고치는 것은 안 올린다.
 
     $PptWasRunning — New-OfficeApp 이 파워포인트를 띄우기 전에 그 앱이 떠 있었나를 $script: 범위에 둔다. 점 소싱한 함수의 $script: 는
@@ -46,6 +49,15 @@ $XL_ERROR_TEXT = @{ -2146826288 = '#NULL!'; -2146826281 = '#DIV/0!'; -2146826273
                     -2146826259 = '#NAME?'; -2146826252 = '#NUM!'; -2146826246 = '#N/A' }
 # 묶음 안 묶음을 어디까지 펴나 — 그 아래는 도형 하나로 센다
 $PPT_GROUP_DEPTH_MAX = 20
+# 파워포인트 글의 도형 꼬리표 — 읽는 모델이 나란한 칸의 머리말과 값을 같은 「왼」끼리 짝짓는 근거다.
+# 만든 차례(z)대로 내면 머리말 바로 뒤에 다른 칸의 값이 서고 모델은 그것을 그 머리말의 값으로 읽는다
+$PPT_SEAT_LEGEND = '(도형 앞 [위 · 왼] 은 그 도형이 장 안에 놓인 자리다 — 포인트, 왼쪽 위가 0)'
+$PPT_SEAT_TAG = '[위 {0:0} · 왼 {1:0}]'
+# 파워포인트 글의 문단 끝(CR)과 문단 안 줄 나눔(VT) — 꼬리표 줄 안에 남으면 읽는 도구마다 줄이 붙거나 끊긴다
+$PPT_BREAKS = @([string][char]13, [string][char]11)
+$PPT_CELL_BREAK = '<br>'
+# 표 칸 두 개가 같은 합친 칸인지 가르는 자리 상자의 허용 차(pt) — 다른 칸은 칸 크기만큼 어긋난다
+$PPT_CELL_SAME_PT = 0.5
 
 # ── 띄운 앱은 이 프로세스에 묶는다 ───────────────────────────────────────
 # 오피스는 COM 서버라 이 PowerShell 의 자식이 아니다 — 부르는 쪽이 시한으로 이 프로세스를 끊으면 본체의
@@ -321,6 +333,21 @@ function Read-WithExcel {
     }
 }
 
+function Get-PptCellBox {
+    <# 표 칸 도형의 자리 상자 @(왼, 위, 너비, 높이)(pt). 못 읽으면 $null — 그 칸은 합친 칸으로 안 가른다 #>
+    param($CellShape)
+    try { return , @([double]$CellShape.Left, [double]$CellShape.Top, [double]$CellShape.Width, [double]$CellShape.Height) }
+    catch { return $null }
+}
+
+function Test-PptSameBox {
+    <# 두 상자가 $PPT_CELL_SAME_PT 안으로 같나 — 파워포인트 개체 모형에는 합침 여부 속성이 없어, 같은 상자가 곧 같은 합친 칸이다 #>
+    param($A, $B)
+    if ($null -eq $A -or $null -eq $B) { return $false }
+    for ($i = 0; $i -lt 4; $i++) { if ([Math]::Abs($A[$i] - $B[$i]) -gt $PPT_CELL_SAME_PT) { return $false } }
+    return $true
+}
+
 function Read-WithPPT {
     param($App, [string]$LiteralPath)
     # 사람이 같은 파일을 열어 두었으면 그 발표를 돌려받는다 — 읽기만 하고 닫지 않는다(office-session.ps1)
@@ -329,20 +356,44 @@ function Read-WithPPT {
     $pres = $session.Document
     try {
         $out = [System.Text.StringBuilder]::new()
+        [void]$out.AppendLine($PPT_SEAT_LEGEND)
         foreach ($slide in $pres.Slides) {
             [void]$out.AppendLine("### 장 $($slide.SlideIndex)")
-            foreach ($shape in (Get-PptLeafShapes -Shapes $slide.Shapes)) {   # 묶음 안 글도 여기서 나온다
+            # 묶음 안 도형도 슬라이드 자리를 주므로 편 뒤 한 번에 세운다 — 위→아래 · 왼→오른, 같은 자리면 만든 차례
+            $z = 0
+            $seated = foreach ($leaf in (Get-PptLeafShapes -Shapes $slide.Shapes)) {
+                $z++
+                $top = 0.0; $left = 0.0
+                try { $top = [double]$leaf.Top; $left = [double]$leaf.Left } catch { }
+                [pscustomobject]@{ Shape = $leaf; Top = $top; Left = $left; Z = $z }
+            }
+            foreach ($seat in @($seated | Sort-Object Top, Left, Z)) {
+                $shape = $seat.Shape
+                $tag = $PPT_SEAT_TAG -f $seat.Top, $seat.Left
                 if ($shape.HasTextFrame -and $shape.TextFrame.HasText) {
-                    [void]$out.AppendLine([string]$shape.TextFrame.TextRange.Text)
+                    $text = [string]$shape.TextFrame.TextRange.Text
+                    foreach ($b in $PPT_BREAKS) { $text = $text.Replace($b, [Environment]::NewLine) }
+                    [void]$out.AppendLine("$tag $text")
                 }
-                # 표(Table) 도형 내부 텍스트 추출 보강
                 if ($shape.HasTable -ne 0) {
+                    [void]$out.AppendLine("$tag 표")
                     try {
                         $tbl = $shape.Table
+                        $boxes = @{}
                         for ($r = 1; $r -le $tbl.Rows.Count; $r++) {
                             $rowCells = @()
                             for ($c = 1; $c -le $tbl.Columns.Count; $c++) {
-                                $rowCells += [string]$tbl.Cell($r, $c).Shape.TextFrame.TextRange.Text
+                                $cellShape = $tbl.Cell($r, $c).Shape
+                                $box = Get-PptCellBox $cellShape
+                                $boxes["$r,$c"] = $box
+                                # 합친 칸의 덮인 자리는 첫 칸과 같은 글 · 같은 상자를 돌려준다 — 비워 두어야 값이 칸 수만큼 안 더해진다
+                                if ((Test-PptSameBox $box $boxes["$r,$($c - 1)"]) -or (Test-PptSameBox $box $boxes["$($r - 1),$c"])) {
+                                    $rowCells += ''
+                                    continue
+                                }
+                                $cell = [string]$cellShape.TextFrame.TextRange.Text
+                                foreach ($b in $PPT_BREAKS) { $cell = $cell.Replace($b, $PPT_CELL_BREAK) }
+                                $rowCells += $cell
                             }
                             [void]$out.AppendLine('| ' + ($rowCells -join ' | ') + ' |')
                         }

@@ -36,6 +36,7 @@ harness's own review feature on the same tree, never one packet folder for every
 
 ## Output contract
 - Each finding: `file:line` plus a concrete failure scenario. Both, or it is an impression, not a finding.
+- Review lanes: every finding also carries three tags — made by this change or pre-existing · severity (high · medium · low) · the real path by which it reaches a person, file, secret or time ("could happen" is not a path). The parent sorts findings by these tags before fixing any; a finding without them is unsorted and the parent asks for them back.
 - Code findings are proven by a run: a failing test, a repro script, or command output that shows the wrong behavior, quoted in the report. A finding without its run goes under "unverified", never among the findings. Prose and design findings cannot be run, so the scenario is their proof.
 - Name what you did not measure and what you did not look at. Zero findings is a valid report — say so, and say how far you looked.
 - Screens: the image path and what is visible, in plain words.
@@ -56,9 +57,10 @@ harness's own review feature on the same tree, never one packet folder for every
   plus anything else the parent should read before accepting. The parent reads this report no
   matter what; a rule kept anywhere else is not open at the moment of harvest.
 - Below that table, print this line verbatim as the report's last line — it is the parent's gauge, carried by the report
-  because nothing else is open at harvest: `Parent — fix only what this lane's change made at medium or above
-  (norm-review-fix); a finding outside ownership goes into an issue only after you reproduce it here, and its measuring
-  command goes into the issue (issue-write §4); not reproduced → 「확인 안 됨」, never a fact.`
+  because nothing else is open at harvest: `Parent — before fixing anything, sort every finding in a table, one row each: made by this change or
+  pre-existing · severity · real path · verdict (fix · issue · drop) — the ruler for the verdict is norm-review-fix; a finding
+  outside ownership goes into an issue only after you reproduce it here, and its measuring command goes into the issue
+  (issue-write §4); not reproduced → 「확인 안 됨」, never a fact.`
 
 ## This run only
 <instructions that apply to this envelope alone — never rules for every lane; those go into the block below>
@@ -72,5 +74,5 @@ harness's own review feature on the same tree, never one packet folder for every
 ⑥ Never run commands that print the environment or the process list (env, printenv, set, ps aux, pgrep -af) — they write secrets into the transcript.
 ⑦ Add a permanent check only when all four keep-criteria of check-design §1 hold (the defect really happened or has a clear path · it is silent or irreversible when it breaks · it harms the user badly · nothing else already catches it); otherwise verify once and report the command and its result. A check and its specimen are one pair — when tightening a check turns a specimen red, fix both in the same pass.
 ⑧ Lanes share one machine. Run your long checks one at a time, in the background, and wait for the finish notification instead of polling or starting a second copy — overlapping copies slow every run.
-⑨ The finished form measures the work, not the letter — within your ownership, whatever a finished one is customarily expected to have, and wherever the best expert in this field would do it better (design, missed cases, how it is measured, the flow the user goes through), build it even if the envelope did not list it, and list every addition with its reason in the report. What stays a proposal is what is not yours to decide — a change of direction, a decision the owner holds, a file you do not own. "New" is not a reason to hold back.
+⑨ The finished form measures the work, not the letter — within your ownership, whatever a finished one is customarily expected to have, and wherever the best expert in this field would do it better (design, missed cases, how it is measured, the flow the user goes through), build it even if the envelope did not list it, and list every addition with its reason in the report. A missed case counts only when the system as it stands has a real path to it — name that path; a case the real flow cannot produce is neither built nor proposed. What stays a proposal is what is not yours to decide — a change of direction, a decision the owner holds, a file you do not own. "New" is not a reason to hold back.
 ⑩ Never delegate — do not spawn subagents or call the Agent tool. Every lane start carries the whole always-on load (norms, memory index, skill descriptions), so a lane inside a lane pays that again for a small job. The parent is the only one who spawns; if a piece needs another lane, propose it in the report.

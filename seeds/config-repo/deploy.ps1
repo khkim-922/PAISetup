@@ -156,10 +156,19 @@ function Complete-GitChild($job) {
     try { $null = [System.Threading.Tasks.Task]::WaitAll($job.Pump, $drainMs) } catch { }
     foreach ($s in $job.Sink) { try { $s.Dispose() } catch { } }
     $why = Get-GitWhy $job.Err
-    $out = ''
+    $out = ''; $errText = ''
     try { $out = [System.IO.File]::ReadAllText($job.Out) } catch { }
+    try { $errText = [System.IO.File]::ReadAllText($job.Err) } catch { }
     Remove-Item $job.Err, $job.Out -Force -ErrorAction SilentlyContinue
-    return @{ Code = $code; Why = $why; Out = $out }
+    return @{ Code = $code; Why = $why; Out = $out; ErrText = $errText }
+}
+
+function Wait-Child($job) {
+    # 띄워 둔 자식 하나(`Start-GitChild` 의 답)를 끝까지 기다려 거둔다 — 내는 것은 `Complete-GitChild` 와 같다. 못 띄운 답이면
+    #   Code 가 $null 이고 Why 가 그 사유다. 한도를 안 둔다 — 한도가 드는 자리는 `Invoke-GitWait` 를 쓴다.
+    if (-not $job -or $job.Why) { return @{ Code = $null; Why = "$($job.Why)"; Out = ''; ErrText = '' } }
+    try { $job.Proc.WaitForExit() } catch { }
+    return Complete-GitChild $job
 }
 
 function Invoke-GitWait($gitArgs, $timeoutSec, $exe) {
@@ -916,7 +925,11 @@ $pulledRepos = @{}   # 저장소 -> 이번 회차에 그 저장소로 밀어도 
 
 # 대상은 `personal.conf` 의 REPOS 중 이 PC 에 `.git` 을 든 것이다 — 목록을 여기 안 적는다. 이 저장소 자신은 대상이 아니다 —
 #   부팅 라인에서 이 스크립트가 도는 것은 설치의 「설정 저장소」 걸음이 이미 그것을 당긴 뒤이고, 지금 도는 몸통이 곧 그 판이다.
+# 계획 쪽 초(`$planSecs`)는 실행 고리의 `$stepSecs` 밖이라 따로 잰다 — 보고 머리에 한 줄로 낸다.
+$planSecs = [ordered]@{}
+$tPull = $deploySw.Elapsed.TotalMilliseconds
 Sync-Repos $globalRuleTargets
+$planSecs['당김'] = $deploySw.Elapsed.TotalMilliseconds - $tPull
 
 
 # ============================ 계획 ============================
@@ -1083,24 +1096,50 @@ foreach ($repoRoot in $hookTargets) {
 $installSteps = @()
 # 이 저장소 자신도 설치 대상이다 — 파일 배포 대상은 아니지만(진본이라 덮을 것이 없다) 제 도구 선언과 배선이 있고, 세션
 #   훅(auto)은 지난 실패를 다시 안 깔고 알리기만 하므로 다시 까는 손이 여기다.
+# 저장소마다 둘을 묻는다 — 깔 게 있나(`--needs-install` · Git Bash 하나)와 마지막 CI(gh 하나). 둘 다 읽기만 하고 저장소끼리
+#   안 기대므로 다 띄운 뒤 저장소 차례대로 거둔다 — 맨바닥 VDI 는 프로세스 하나가 몇 초라 저장소 수만큼 줄 서면 계획만
+#   분 단위다(PAISetup #69). 판정 · 줄 · 할 일은 저장소 차례 그대로다.
+# ⚠ 묻는 훅은 그 저장소의 사본이 아니라 진본이다 — 사본은 이 배포가 덮으러 가는 낡은 판일 수 있고, 낡은 판은
+#   `--needs-install` 을 몰라 auto 갈래로 빠져 저장소마다 오래 돌고 엉뚱한 줄을 사유로 낸다. 그래서 이 저장소의 몸통
+#   (`session-start-body.sh`)을 바로 부르고 대상 저장소는 `SESSION_START_REPO` 로 넘긴다 — 문지기가 몸통을 부를 때 쓰는
+#   입구다(형제 저장소의 훅은 몸통을 부르는 문지기로 줄었다). 자식은 띄우는 순간의 환경을 물려받으므로 띄우는 동안만 세운다.
+# 자식은 `Start-GitChild` 로 띄운다 — 파워셸이 stderr 를 안 만지니 `NativeCommandError` 로 배포가 죽을 자리가 없다(당김 손 머리).
+$tAsk = $deploySw.Elapsed.TotalMilliseconds
+$needsProbe = Join-Path $src '.claude\hooks\session-start-body.sh'
+$ghExe = @(Get-Command gh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1)
+$ciArgsOf = { param($slug) @('run', 'list', '--repo', $slug, '--branch', 'main', '--limit', '1',
+                             '--json', 'conclusion,status,headSha,createdAt') }
+$asks = @()
 foreach ($repoRoot in @(@($src) + $globalRuleTargets)) {
     $boot = Join-Path $repoRoot '.claude\hooks\session-start.sh'
     if (-not (Test-Path $boot)) { continue }
+    $ask = @{ Repo = $repoRoot; Boot = $boot; Needs = $null; Slug = $null; Ci = $null }
+    if ($bash) {
+        $env:SESSION_START_REPO = $repoRoot -replace '\\', '/'
+        try { $ask.Needs = Start-GitChild @(($needsProbe -replace '\\', '/'), '--needs-install') $bash }
+        finally { Remove-Item Env:SESSION_START_REPO -ErrorAction SilentlyContinue }
+        # 마지막 CI — 읽는 자를 세운다. main 에 바로 커밋하면 CI 는 PR 도 자동머지도 없이 GitHub 페이지에만 빨강을 남긴다 —
+        #   배포가 도는 자리가 곧 사람이 보는 자리라 여기서 한 줄 읽는다.
+        try { $remote = & git -C $repoRoot remote get-url origin 2>$null } catch { $remote = '' }
+        if ($remote -match 'github\.com[:/]([^/\s]+/[^/\s]+?)(\.git)?$') { $ask.Slug = $Matches[1] }
+        if ($ask.Slug -and $ghExe) { $ask.Ci = Start-GitChild (& $ciArgsOf $ask.Slug) $ghExe[0].Source }
+    }
+    $asks += $ask
+}
+foreach ($ask in $asks) {
+    $repoRoot = $ask.Repo; $boot = $ask.Boot
     if (-not $bash) {
         $todo += "Git Bash 를 못 찾음. 직접 실행:  bash '$boot' --install"
         continue
     }
-    # ⚠ `2>&1` 을 안 붙인다(당김 손 머리의 「리다이렉트가 곧 위험이다」) — 사유는 훅이 stdout 한 줄로 낸다.
-    # ⚠ 묻는 훅은 그 저장소의 사본이 아니라 진본이다 — 사본은 이 배포가 덮으러 가는 낡은 판일 수 있고, 낡은 판은
-    #   `--needs-install` 을 몰라 auto 갈래로 빠져 저장소마다 오래 돌고 엉뚱한 줄을 사유로 낸다. 그래서 이 저장소의 몸통
-    #   (`session-start-body.sh`)을 바로 부르고 대상 저장소는 `SESSION_START_REPO` 로 넘긴다 — 문지기가 몸통을 부를 때 쓰는
-    #   입구다(형제 저장소의 훅은 몸통을 부르는 문지기로 줄었다)
-    $needsProbe = Join-Path $src '.claude\hooks\session-start-body.sh'
-    $env:SESSION_START_REPO = $repoRoot -replace '\\', '/'
-    try { $needs = & $bash ($needsProbe -replace '\\', '/') --needs-install; $needsRc = $LASTEXITCODE }
-    finally { Remove-Item Env:SESSION_START_REPO -ErrorAction SilentlyContinue }
+    $n = Wait-Child $ask.Needs
+    # 훅이 stderr 로 낸 것은 사람에게 그대로 보인다 — 자식으로 띄우기 전에는 콘솔로 흘렀다.
+    if ("$($n.ErrText)".Trim()) { Write-Host "$($n.ErrText)".TrimEnd() }
+    $needs = @("$($n.Out)" -split "`r?`n")
+    # ⚠ 못 띄웠거나 종료 값을 못 읽었으면 2(「못 쟀다」)다 — 0 으로 접으면 부재가 통과로 읽힌다.
+    $needsRc = if ($null -eq $n.Code) { 2 } else { $n.Code }
     $needsWhy = @($needs | Where-Object { "$_".Trim() }) | Select-Object -Last 1
-    if (-not $needsWhy) { $needsWhy = '훅이 사유를 안 냈다' }
+    if (-not $needsWhy) { $needsWhy = if ($n.Why -and $null -eq $n.Code) { $n.Why } else { '훅이 사유를 안 냈다' } }
     # ⚠ `--needs-install` 은 그 저장소에 지금 있는 선언으로 잰다 — 이번 배포가 도구 선언(`tools.global.conf`)을 바꾸면 새
     #   선언이 아직 거기 없어 지문이 맞는 것으로 나오고, 배포를 두 번 돌려야 깔린다. 그래서 선언을 덮는 복사가 계획에 있으면
     #   판정과 무관하게 올린다 — 실행은 계획 순서라 복사(앞)가 설치(여기)보다 먼저 돈다.
@@ -1118,26 +1157,25 @@ foreach ($repoRoot in @(@($src) + $globalRuleTargets)) {
             Text = "+ 저장소 설치  $repoRoot  ($why)"
         }
     }
-    # --- 마지막 CI — 읽는 자를 세운다 ---
-    # main 에 바로 커밋하면 CI 는 PR 도 자동머지도 없이 GitHub 페이지에만 빨강을 남긴다 — 배포가 도는 자리가 곧 사람이 보는
-    #   자리라 여기서 한 줄 읽는다. `GH_TOKEN` 이 Actions 읽기 없는 세밀 토큰이면 403 이 나서 키링(gh auth login)으로 한 번 더
-    #   묻고, 그것도 없으면 「못 쟀다」로 남긴다 — 이 줄로 배포를 막지 않는다. 빨강이면 남은 수동 작업에 올린다.
-    $slug = $null
-    try { $remote = & git -C $repoRoot remote get-url origin 2>$null } catch { $remote = '' }
-    if ($remote -match 'github\.com[:/]([^/\s]+/[^/\s]+?)(\.git)?$') { $slug = $Matches[1] }
-    if ($slug -and (Get-Command gh -ErrorAction SilentlyContinue)) {
-        $ciArgs = @('run', 'list', '--repo', $slug, '--branch', 'main', '--limit', '1',
-                    '--json', 'conclusion,status,headSha,createdAt')
-        # ⚠ `2>$null` 은 방패가 아니라 잡아서 넘긴다(당김 손 머리의 「리다이렉트가 곧 위험이다」) — 안 잡으면 gh 의 403 한 줄이
-        #   배포를 통째로 죽인다.
-        try { $ciJson = & gh @ciArgs 2>$null; $ciRc = $LASTEXITCODE } catch { $ciJson = $null; $ciRc = 1 }
+    # --- 마지막 CI ---
+    # `GH_TOKEN` 이 Actions 읽기 없는 세밀 토큰이면 403 이 나서 키링(gh auth login)으로 한 번 더 묻고, 그것도 없으면 「못 쟀다」로
+    #   남긴다 — 이 줄로 배포를 막지 않는다. 빨강이면 남은 수동 작업에 올린다.
+    if ($ask.Slug -and $ghExe) {
+        $slug = $ask.Slug
+        $c = Wait-Child $ask.Ci
+        $ciJson = $c.Out
+        $ciRc = if ($null -eq $c.Code) { 1 } else { $c.Code }
         if ($ciRc -ne 0 -and $env:GH_TOKEN) {
             $savedTok = $env:GH_TOKEN; $env:GH_TOKEN = $null
-            try { $ciJson = & gh @ciArgs 2>$null; $ciRc = $LASTEXITCODE } catch { $ciJson = $null; $ciRc = 1 }
-            $env:GH_TOKEN = $savedTok
+            try { $c = Wait-Child (Start-GitChild (& $ciArgsOf $slug) $ghExe[0].Source) }
+            finally { $env:GH_TOKEN = $savedTok }
+            $ciJson = $c.Out
+            $ciRc = if ($null -eq $c.Code) { 1 } else { $c.Code }
         }
         $ci = $null
-        if ($ciRc -eq 0 -and $ciJson) { $ci = @($ciJson | ConvertFrom-Json) | Select-Object -First 1 }
+        if ($ciRc -eq 0 -and "$ciJson".Trim()) {
+            try { $ci = @("$ciJson" | ConvertFrom-Json) | Select-Object -First 1 } catch { $ci = $null }
+        }
         if ($ci) {
             $verdict = if ($ci.conclusion) { $ci.conclusion } else { $ci.status }
             $ciLine  = "마지막 CI $verdict · $($ci.headSha.Substring(0, 7)) · $($ci.createdAt.Substring(0, 10))"
@@ -1155,6 +1193,7 @@ foreach ($repoRoot in @(@($src) + $globalRuleTargets)) {
         }
     }
 }
+$planSecs['설치 판정 · CI'] = $deploySw.Elapsed.TotalMilliseconds - $tAsk
 
 # --- 전역형 도구 — 저장소 고리 앞에 한 번 ---
 # 무엇이 전역형인지도, 어느 저장소의 선언을 합칠지도 이 스크립트는 모른다 — `--install-global` 갈래가 안다. 여기는 한 번
@@ -1288,6 +1327,15 @@ if ($ghTok) {
 # 앞에서 받는 것 — 계획 단계의 `$plan` · `$same` · `$prunable` · `$gateReport` · `$todo`
 # 안 하는 것 — 아무것도 안 바꾼다 · 바꿀 것이 없거나 승인이 안 서면 여기서 돌아가고 실행 단계는 안 돈다
 
+# 계획에 걸린 초 — 시작부터 여기까지를 당김 · 설치 판정과 CI · 그 밖(파일 견주기 · 손의 dry-run 등)으로 가른다. 실행 고리의
+#   「걸음에 걸린 초」와 짝이라 둘을 합하면 배포 한 판이 다 갈린다. 0.1 초에 못 미치는 칸은 안 낸다.
+$planTotal = $deploySw.Elapsed.TotalMilliseconds
+$planShown = @($planSecs.GetEnumerator() | Where-Object { $_.Value -ge 100 } |
+               ForEach-Object { "$($_.Key) $([math]::Round($_.Value / 1000, 1))" })
+$planRest = $planTotal - (@($planSecs.Values) | Measure-Object -Sum).Sum
+if ($planRest -ge 100) { $planShown += "그 밖 $([math]::Round($planRest / 1000, 1))" }
+Write-Host ("`n계획에 걸린 초 — " + ($planShown -join ' · ')) -ForegroundColor DarkGray
+
 # 이미 맞는 것은 개수만 낸다 — 한 줄씩 펴면 매 실행이 100줄을 넘어 정작 봐야 할 「바꿀 것」이 묻힌다. 어긋난 것을 찾을 때만
 #   -ShowUnchanged 로 편다.
 if ($same.Count -gt 0) {
@@ -1379,11 +1427,80 @@ if (-not $Yes) {
 #   저장소 걸음이 못 알아본다.
 $env:CLAUDE_CONFIG_RUN = "$(Get-Date -Format 'yyyyMMddTHHmmss')-$PID"
 
-$homesRan = $false   # 손은 한 번만 돈다 — 아래 `homes` 걸음
+$homesRan = $false      # 손은 한 번만 돈다 — 아래 `homes` 걸음
+$installsRan = $false   # 동시 실행 판의 저장소 설치는 첫 `install` 걸음이 다 돈다 — 아래 `install` 걸음
+
+# ── npm 전역 자리를 한 번 재서 넘긴다 — 훅은 저장소마다 새 프로세스라 제 캐시가 안 이어진다 ──────────
+# 맨바닥 VDI 에서 `npm root -g` 한 번이 몇 초라 저장소 수만큼 쌓인다(PAISetup #69). 훅은 이 값이 폴더로 설 때만 믿고, 아니면
+#   제가 묻는다(`npm_root_g`). 깔 걸음이 없으면 안 잰다. 끝에서 이름을 걷는다.
+# ⚠ 리다이렉트 없이 부른다 — `2>$null` 은 이 스크립트에서 방패가 아니다(당김 손 머리). stderr 는 콘솔로 흐른다.
+if (@($plan | Where-Object { $_.Kind -eq 'install' -or $_.Kind -eq 'install-global' }).Count -and
+    (Get-Command npm -ErrorAction SilentlyContinue)) {
+    try {
+        $npmRoot = "$(@(& npm root -g) | Select-Object -Last 1)".Trim()
+        if ($npmRoot -and (Test-Path -LiteralPath $npmRoot -PathType Container)) { $env:CLAUDE_NPM_ROOT_G = $npmRoot }
+    } catch { }
+}
+
+# ── 저장소 설치가 진 것을 남긴다 — 하나씩 도는 판과 동시에 도는 판이 같은 말을 낸다 ──────────
+# ⚠ 여기가 목표를 이뤘나를 아는 유일한 자리다 — 훅은 `--install` 에서도 꺼진 검사를 종료코드로 낸다. 그 신호를 받아 위층까지
+#   물고 가지 않으면 검사가 꺼진 채로 화면이 초록으로 끝난다.
+function Add-RepoInstallFail($step, [string]$why) {
+    Write-Host "! 저장소 설치가 오류로 끝났습니다 ($why)  $($step.Repo)" -ForegroundColor Red
+    $script:envDown += "$($step.Repo) — 꺼진 검사가 남았다 (위 진단의 ❌ 줄이 곧 고칠 자리)"
+    $script:todo += "확인:  bash '$($step.Script)' --check"
+}
+
+# ── 저장소 설치를 동시에 — 바깥 `--install` 이 이 배포를 부른 판(`CLAUDE_CONFIG_PC_WIDE_HELD`)에서만 ──────────
+# 저장소 걸음은 저마다 제 venv · node_modules · 실패 기록만 쓰고, 기계 하나뿐인 것 셋은 따로 막는다: `npm ci` 는 훅의 기계
+#   자물쇠(`npm_ci_lock`)가 하나씩 돌리고, `uv self update` 는 실행 중인 uv 를 갈아 끼우므로 이 판에서는 건너뛴다
+#   (`UV_FRESHED` — 다음 실행이 올린다), 전역 명부는 앞의 전역 걸음이 다 적은 뒤라 읽기만 한다. 사람이 바로 부른 판은 저장소
+#   걸음마다 PC 전체 일(홈 설정 · git 전역 설정 · 사용자 환경변수)까지 하므로 겹치면 깨진다 — 그 판은 하나씩이다.
+# 줄은 저장소마다 모아 끝난 차례로 통째로 낸다 — 섞이면 어느 줄이 어느 저장소 것인지 못 읽는다. stderr 는 bash 안에서
+#   stdout 에 합쳐 한 저장소 안의 차례를 지킨다. 맨바닥 VDI 는 프로세스와 작은 파일 푸는 일이 느려 저장소 걸음 대부분이
+#   기다림이다(PAISetup #69) — 동시에 도는 수는 코어 수와 디스크를 함께 먹으므로 작게 둔다.
+$RepoInstallParallel = 4
+$RepoInstallPollMs   = 200
+function Invoke-RepoInstallBatch($steps) {
+    $queue = New-Object System.Collections.Queue
+    foreach ($s in @($steps)) { $queue.Enqueue($s) }
+    $running = New-Object System.Collections.ArrayList
+    $savedFresh = $env:UV_FRESHED
+    $env:UV_FRESHED = '1'
+    Write-Host "저장소 설치 $($queue.Count)곳 — 한 번에 ${RepoInstallParallel}곳씩 동시에 돌고, 끝난 차례로 줄을 냅니다"
+    try {
+        while ($queue.Count -or $running.Count) {
+            while ($queue.Count -and $running.Count -lt $RepoInstallParallel) {
+                $s = $queue.Dequeue()
+                $job = Start-GitChild @('-c', "exec bash `"`$0`" --install 2>&1", ($s.Script -replace '\\', '/')) $bash
+                $null = $running.Add(@{ Step = $s; Job = $job; T0 = $deploySw.Elapsed.TotalMilliseconds })
+            }
+            $done = $null
+            while (-not $done) {
+                foreach ($r in $running) {
+                    if ($r.Job.Why) { $done = $r; break }
+                    try { if ($r.Job.Proc.HasExited) { $done = $r; break } } catch { $done = $r; break }
+                }
+                if (-not $done) { Start-Sleep -Milliseconds $RepoInstallPollMs }
+            }
+            $running.Remove($done)
+            $res = Wait-Child $done.Job
+            $secs = [math]::Round(($deploySw.Elapsed.TotalMilliseconds - $done.T0) / 1000)
+            Write-Host "`n── 저장소 설치  $($done.Step.Repo)"
+            if ("$($res.Out)".Trim()) { Write-Host "$($res.Out)".TrimEnd() }
+            Write-Host "── 저장소 설치를 마쳤다  $($done.Step.Repo)  (${secs}초)"
+            if ($null -eq $res.Code) { Add-RepoInstallFail $done.Step "못 쟀다 — $($res.Why)" }
+            elseif ($res.Code -ne 0) { Add-RepoInstallFail $done.Step "exit $($res.Code)" }
+        }
+    } finally {
+        if ($null -eq $savedFresh) { Remove-Item Env:UV_FRESHED -ErrorAction SilentlyContinue } else { $env:UV_FRESHED = $savedFresh }
+    }
+}
 
 # ── 걸음 종류마다 걸린 초 — 줄마다 찍지 않고 종류별로 합쳐 끝에 한 번 낸다 ──────────
 # 계획은 수백 줄이라 줄마다 초를 붙이면 읽을 수 없고, 가르려는 것은 「파일 붓기가 먹나 · 깔기가 먹나」라 종류가 그 물음의
-#   단위다. 이 합은 걸음 안의 시간만 든다 — 계획 세우기와 당김은 고리 밖이라, 끝 줄에 그렇게 적어 합을 전체로 안 읽게 한다.
+#   단위다. 이 합은 걸음 안의 시간만 든다 — 계획 쪽은 고리 밖이라 보고 머리의 「계획에 걸린 초」 줄이 든다. 동시 실행 판의
+#   저장소 설치는 묶음 한 판의 벽시계 시간이 `install` 칸에 든다.
 $stepSecs = @{}
 Write-Host ""
 foreach ($step in $plan) {
@@ -1488,14 +1605,17 @@ foreach ($step in $plan) {
             # ⚠ 고리를 끊는 표식 — 훅은 밖(설치기 · 사람)이 `--install` 로 부르면 개인 칸을 세우고 이 스크립트에 넘긴다. 여기서
             #   부른 훅이 또 넘기면 고리라, 이 이름이 서 있으면 훅은 저장소 하나의 설치로 간다.
             $env:CLAUDE_CONFIG_DEPLOYING = '1'
-            & $bash ($step.Script -replace '\\', '/') --install
-            if ($LASTEXITCODE -ne 0) {
-                # ⚠ 여기가 목표를 이뤘나를 아는 유일한 자리다 — 훅은 `--install` 에서도 꺼진 검사를 종료코드로 낸다. 그 신호를
-                #   받아 위층까지 물고 가지 않으면 검사가 꺼진 채로 화면이 초록으로 끝난다.
-                Write-Host "! 저장소 설치가 오류로 끝났습니다 (exit $LASTEXITCODE)  $($step.Repo)" -ForegroundColor Red
-                $envDown += "$($step.Repo) — 꺼진 검사가 남았다 (위 진단의 ❌ 줄이 곧 고칠 자리)"
-                $todo += "확인:  bash '$($step.Script)' --check"
+            # 바깥 `--install` 이 부른 판(`CLAUDE_CONFIG_PC_WIDE_HELD`)이면 저장소 걸음을 첫 걸음에서 한꺼번에 동시에 돌리고 뒤
+            #   걸음은 건너뛴다(`Invoke-RepoInstallBatch` 머리). 사람이 바로 부른 판은 하나씩이다.
+            if ($env:CLAUDE_CONFIG_PC_WIDE_HELD) {
+                if (-not $installsRan) {
+                    $installsRan = $true
+                    Invoke-RepoInstallBatch @($plan | Where-Object { $_.Kind -eq 'install' })
+                }
+                break
             }
+            & $bash ($step.Script -replace '\\', '/') --install
+            if ($LASTEXITCODE -ne 0) { Add-RepoInstallFail $step "exit $LASTEXITCODE" }
         }
 
         'userenv' {
@@ -1532,7 +1652,7 @@ if ($plan.Count) {
     if ($shown.Count) {
         Write-Host ("`n걸음에 걸린 초 — " +
                     (($shown | ForEach-Object { "$($_.Key) $([math]::Round($_.Value / 1000, 1))" }) -join ' · ') +
-                    "  (계획 세우기 · 당김은 이 고리 밖이라 안 들어 있다)") -ForegroundColor DarkGray
+                    "  (계획 쪽은 위 「계획에 걸린 초」 줄)") -ForegroundColor DarkGray
     }
 }
 
@@ -1540,6 +1660,8 @@ if ($plan.Count) {
 #   제가 잰 것으로 읽고, 손으로 부른 `--install` 이 고리 안의 부름으로 읽혀 deploy 에 안 넘기고 전역 설치도 안 한다.
 Remove-Item Env:CLAUDE_CONFIG_RUN -ErrorAction SilentlyContinue
 Remove-Item Env:CLAUDE_CONFIG_DEPLOYING -ErrorAction SilentlyContinue
+# 넘긴 npm 전역 자리도 걷는다 — 남으면 같은 셸에서 나중에 부른 훅이 그 사이 바뀐 자리를 믿는다.
+Remove-Item Env:CLAUDE_NPM_ROOT_G -ErrorAction SilentlyContinue
 
 if (Test-Path $backup) { Write-Host "`n백업: $backup" }
 
