@@ -11,6 +11,9 @@
 * ``..`` 경로는 막는다
 * (v18) 상류 SSE 가 침묵하면 주석을 흘리고, 게이트웨이의 ``error`` 프레임은 세어 요청 번호와 함께 기록한다
 * (v18) 하이쿠 모델 이름은 게이트웨이에 있는 소넷으로 바꿔 보낸다
+* (33.19) 상류 스트림 요청에 응답 머리가 한도(실행 시한 + 폭) 안에 안 오면 프록시가 500 으로 대신 끊고 절단으로 센다 —
+  한도 안의 머리 · 압축의 비스트리밍 길 · 비스트리밍 요청은 그대로 기다린다(#237). 층은 쓰는 사람의 계약이고,
+  게이트웨이가 스트림 시한을 늘 지키게 되거나 프록시가 머리 기다림 한도를 걷으면 이 판정 다섯을 걷는다
 """
 
 from __future__ import annotations
@@ -28,6 +31,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+HEAD_SILENT = b"HEAD-SILENT"   # 이 글자가 든 /v1/messages 요청에는 가짜 게이트웨이가 머리를 늦게 보낸다
+HEAD_SILENT_SEC = 2.0
 COUNT: dict[str, int] = {}
 FAILURES = 0
 
@@ -77,6 +82,9 @@ def handle(conn: socket.socket) -> None:
                 conn.close()
                 return
             body = reader.read(length) if length else b""
+            if key == "messages" and HEAD_SILENT in body:
+                # 요청을 받고 머리를 안 보내는 게이트웨이(#237) — 프록시의 머리 기다림 한도(시험값 0.7초)보다 길게 침묵한다
+                time.sleep(HEAD_SILENT_SEC)
             if key == "trunc":
                 conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n" + b"x" * 446)
                 conn.close()
@@ -179,6 +187,16 @@ def request(port: int, method: str, path: str, body: bytes | None = None) -> tup
             return response.status, error.partial, type(error).__name__
     finally:
         conn.close()
+
+
+def proxy_compact_prompt(work: Path) -> str:
+    """시험이 띄운 프록시 사본이 압축으로 알아보는 프롬프트 — 문구를 옮겨 적지 않고 그 사본의 상수를 부른다."""
+    sys.path.insert(0, str(work))
+    try:
+        import opus5_proxy  # noqa: PLC0415 — 띄운 사본과 같은 파일이어야 한다
+    finally:
+        sys.path.pop(0)
+    return opus5_proxy._COMPACT_PREAMBLE + opus5_proxy._COMPACT_TASK
 
 
 def main() -> int:
@@ -328,6 +346,41 @@ def main() -> int:
               "표기만 고친 요청(4-7 → 4.7)에는 머리글이 붙지 않는다")
         plain_response.read()
         plain.close()
+
+        # (33.19) 머리를 안 보내는 게이트웨이 — 스트림 요청만 프록시가 한도에서 대신 끊는다(#237)
+        def head_cuts() -> int:
+            # 절단 셈(execution_cuts)은 시한 근방에 진 판도 센다 — 되울림 답은 Anthropic 꼴이 아니라 압축 길이 지고 그 셈에 든다.
+            # 그래서 「프록시가 대신 끊었나」는 그 판만 남기는 기록 줄로 잰다
+            return (work / "proxy.log").read_text(encoding="utf-8", errors="replace").count("result=head_cut")
+
+        def timed(payload: dict) -> tuple[int, bytes, float, int]:
+            before = head_cuts()
+            began = time.monotonic()
+            status, data, _ = request(proxy_port, "POST", f"{base}/v1/messages", json.dumps(payload).encode())
+            took = time.monotonic() - began
+            time.sleep(0.1)   # complete 줄은 응답을 다 보낸 뒤 finally 에서 적힌다
+            return status, data, took, head_cuts() - before
+
+        silent = HEAD_SILENT.decode()
+        before_cuts = json.loads(request(proxy_port, "GET", "/health")[1]).get("execution_cuts", 0)
+        status, data, took, cuts = timed({"model": "claude-opus-5", "stream": True,
+                                          "messages": [{"role": "user", "content": silent}]})
+        counted = json.loads(request(proxy_port, "GET", "/health")[1]).get("execution_cuts", 0) - before_cuts
+        check(status == 500 and b'"api_error"' in data and took < HEAD_SILENT_SEC - 0.3 and cuts == 1,
+              f"머리 없는 스트림 요청은 한도에서 500(api_error)으로 끊고 result=head_cut 으로 남긴다 ({status} · {took:.1f}초 · +{cuts})")
+        check(counted == 1, f"그 판을 /health 의 execution_cuts 로 하나 센다 (+{counted})")
+        status, _, took, cuts = timed({"model": "claude-opus-5", "stream": True,
+                                       "messages": [{"role": "user", "content": "hi"}]})
+        check(status == 200 and cuts == 0, f"한도 안에 머리가 온 스트림 요청은 그대로 흐른다 ({status} · head_cut +{cuts})")
+        compact = proxy_compact_prompt(work) + " " + silent
+        status, _, took, cuts = timed({"model": "claude-opus-5", "stream": True,
+                                       "messages": [{"role": "user", "content": compact}]})
+        check(status == 200 and took >= HEAD_SILENT_SEC and cuts == 0,
+              f"압축(상류는 비스트리밍)은 한도를 넘겨도 머리를 기다린다 ({status} · {took:.1f}초 · head_cut +{cuts})")
+        status, _, took, cuts = timed({"model": "claude-opus-5", "max_tokens": 64,
+                                       "messages": [{"role": "user", "content": silent}]})
+        check(status == 200 and took >= HEAD_SILENT_SEC and cuts == 0,
+              f"비스트리밍 요청은 한도를 넘겨도 머리를 기다린다 ({status} · {took:.1f}초 · head_cut +{cuts})")
     finally:
         proc.terminate()
         try:

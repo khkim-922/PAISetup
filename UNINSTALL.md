@@ -87,7 +87,7 @@ Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night -Conf
 | `PreToolUse` | `image-gate` · `bash-backslash-deny` · `shell-slip` · `lane-resume` · 옛 판이 심은 `drm-guide` |
 | `PostToolUse` | `utf8-bom` · `web-retry` |
 | `PostToolUseFailure` | `web-retry` · `drm-guide` |
-| `UserPromptSubmit` | `drm-guide` · `context-alert` |
+| `UserPromptSubmit` | `drm-guide` · `context-alert` · `stall-note` |
 
 ### 워드의 PDF 변환 안내
 
@@ -156,9 +156,9 @@ agy mcp remove playwright
 - Codex 를 고치기 전 것은 `config.toml.before-browser-mcp-<시각>` 에 있다
 - 꾸러미는 `npm uninstall -g playwright`, 받은 브라우저는 `%USERPROFILE%\.cache\ms-playwright\chromium-snapshot-*` 폴더다
 
-### 묻지 않고 돌기
+### 자동 승인
 
-고른 agy · Copilot · Codex 에 심은 묻지 않고 돌기 설정은 설치가 걷지 않는다.
+고른 agy · Copilot · Codex 에 심은 자동 승인 설정은 설치가 걷지 않는다.
 
 손으로 지우거나, 그 도구의 설정 화면에서 다른 값을 고른다.
 
@@ -226,7 +226,7 @@ Claude · Codex 를 같이 골랐으면 사용자 환경변수 `CC_BG_AGENTS` ·
 
 ### 사용자 PATH 의 두 줄
 
-사용자 PATH 에 더한 npm 전역 자리(npm 에 물은 자리 — 보통 `%APPDATA%\npm`)와 pip 사용자 자리 `%APPDATA%\Python\Python<판>\Scripts` 는
+사용자 PATH 에 더한 npm 전역 폴더(npm 에 물은 자리 — 보통 `%APPDATA%\npm`)와 pip 사용자 폴더 `%APPDATA%\Python\Python<판>\Scripts` 는
 설치가 걷지 않는다.
 
 - 같은 자리를 Node · Python 설치나 사람이 넣었을 수 있어 누가 넣었는지 못 가려서다
@@ -244,7 +244,7 @@ PowerShell 의 스크립트 실행이 윈도 기본값으로 막혀 있던 PC �
 - 되돌리면 PowerShell 에서 `claude` · `npm` 같은 npm 명령이 다시 「스크립트를 실행할 수 없으므로」로 진다 — cmd · Git Bash 에서는 돈다
 - 설치를 다시 누르면(로그온 자동 실행도) 다시 올린다
 
-### winget 받는 손
+### winget 다운로드 방식
 
 설치가 winget 설정에 심은 받기 엔진 값은 설치가 걷지 않는다.
 

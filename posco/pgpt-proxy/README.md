@@ -23,7 +23,7 @@
 | `opus5_proxy.py` | 상류 `app/opus5_proxy.py` v33 + 우리 덩어리 | 프록시 본체. 표준 라이브러리만 쓴다 |
 | `mock_gateway.py` | 상류 `tests/` + 우리 칸 하나 | 가짜 게이트웨이 — prefill 에 400 을 내 프록시의 끝 assistant 떼기가 도는지 드러낸다(실물 게이트웨이는 지금 prefill 을 받는다 · #226). 사내망 밖에서 프록시를 끝까지 돌려 볼 때 |
 | `Test-AllPgptModels.py` | 상류 `tests/` | 모델 전수 스모크 — 프록시 너머로 모델마다 「Reply OK」 한 줄. 결과는 곁 `model-results/` |
-| `Test-ProxyFaults.py` | 상류 `tests/` | 비정상 응답·스트림 단절·413·surrogate·180초 절단 계수 · 깨진 본문 400 · 모델 대체 표시 등 결함 내성 검사 |
+| `Test-ProxyFaults.py` | 상류 `tests/` | 비정상 응답·스트림 단절·413·surrogate·180초 절단 계수 · 머리 기다림 한도(머리 없는 스트림만 500 · 압축 · 비스트리밍은 기다린다) · 깨진 본문 400 · 모델 대체 표시 등 결함 내성 검사 |
 | `Test-ProxyStreaming.py` | 상류 `tests/` | 스트림 무결성 — 이벤트 경계의 주석 · 길이 선언 SSE · 끝 이벤트 검증 · 진단 줄 |
 | `Test-ProxyCompaction.py` | 상류 `tests/` | 압축 알아보기 · 출력 상한 · thinking 예산 |
 | `Test-ProxyUnstream.py` | 상류 `tests/` | 비스트리밍 갈래 — 압축이 비스트리밍·18,000 으로 가나 · 짓는 SSE · 압축 답의 도구 호출과 깨진 답은 오류 |
@@ -42,9 +42,9 @@
 
 ## 판과 우리 덩어리
 
-- **판 번호는 두 칸이다 — 지금 `33.18`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 마지막으로 받은 상류 판이라
+- **판 번호는 두 칸이다 — 지금 `33.19`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 마지막으로 받은 상류 판이라
   33 에 선다. 뒤 칸은 그 위에 우리가 얹은 덩어리 수고, 앞으로 우리 고침은 이 칸이 센다
-  ⚠ **`/health` 는 사람이 읽기 좋게 `33.18` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
+  ⚠ **`/health` 는 사람이 읽기 좋게 `33.19` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
   점 찍힌 문자열을 그대로 견주면 `"9" > "10"` 이 되기 때문이다. 설치기는 그렇게 견주어 낮으면 갈아 끼운다
   (`install.ps1` 프록시 칸)
   ⚠ **정수 한 칸(`17`·`26`)이 도는 자리도 받는다** — 옛 판과 상류 판은 두 이름이 없어 「못 읽었다」로 떨어지고,
@@ -119,6 +119,8 @@
 | **기록 보존**(v29) — `proxy.log` 가 1 MB 를 넘으면 `proxy.log.1` 로 넘기고, 넘기기가 막히면 2 MB 에서 멈춘다 · 처리기에서 안 잡힌 예외를 `unhandled error …` 한 줄로, 클라이언트 끊김을 짧은 한 줄로 남긴다 · 숫자 아닌 · 음수 `Content-Length` 와 짧은 본문은 넘기지 않고 400 · `Transfer-Encoding` 이 붙은 요청은 본문을 안 읽고 411(`Length Required`)로 돌린다 — 이 문을 지나는 클라이언트 둘은 큰 본문도 `Content-Length` 로 올린다(Codex 64 KB · 회사 실측 2026-10-30 · #226 ⑨ · Claude Code 2.1.314 는 사외 실측) · `/health` 의 `max_request_bytes` | **쓴다** — 요청 바이트는 안 바뀐다. `pythonw` 아래에는 stderr 가 없어 안 잡힌 예외가 어디에도 안 남던 자리다. 180초 절단 줄을 몇 시간 뒤에 읽어도 남는다 |
 | 입력 크기로 출력 상한 낮추기(v29 · `PGPT_PROXY_INPUT_READ_SEC_PER_MTOK` · 기본 `0`) | **논다** — 꺼져 있다. 값은 회사 `/health` 가 큰 `max_request_bytes` 곁에 `execution_cuts` 를 보인 뒤에 가른다. ⚠ 본문 바이트에는 base64 그림이 들어 그림 많은 대화를 길게 잰다 |
 | 응답 머리를 기다리다 클라이언트가 끊으면 상류 연결도 닫는다(v21) · `/health` 의 `client_cancellations` | **쓴다** — 게이트웨이가 이미 시작한 생성까지 멈춘다는 보장은 없다 |
+| **(우리 것)** **머리 기다림 한도** — 상류로 스트림을 보낸 Claude 요청(`/v1/messages` · 상류 몸 `stream: true`)이 `EXECUTION_LIMIT_SEC + EXECUTION_LIMIT_MARGIN_SEC`(185초) 안에 응답 머리를 못 받으면, 상류 연결을 버리고 게이트웨이의 180초 절단과 같은 꼴(`500` · `api_error`)로 답한다 · 기록 `result=head_cut` · `/health` 의 `execution_cuts` 로 센다. 압축의 비스트리밍 길 · 비스트리밍 요청 · 웹서치 메움은 한도 없이 기다린다 · 시한을 0 으로 끄면 이 한도도 꺼진다(결정 0220 · #237) | **쓴다** — 게이트웨이가 제 시한에 안 끊고 머리 없이 235 · 271초 섰던 판이 있다(회사 VDI 2026-11-05 · 그 판 내내 5xx 0). 클라이언트(Claude Code 의 유휴 워치독 10분)는 그동안 안 끊는다. 500 이면 Claude Code 가 스스로 다시 보낸다 — 프록시는 다시 보내지 않는다(결정 0202) |
+| **(우리 것)** **머리 없이 선 판의 알림** — 위 한도로 끊었거나 머리 전에 클라이언트가 끊은 Claude 요청이 `STALL_NOTE_MIN_SEC`(30초 · `PGPT_PROXY_STALL_NOTE_MIN_SEC`) 넘게 섰으면, 요청 몸 `metadata.user_id` 의 세션 번호로 `notes/<세션>.txt` 에 사실 한 줄을 잇는다. 훅 `.claude/hooks/stall-note.sh` 가 그 세션의 다음 프롬프트에 그 줄을 모델 곁에 싣고 지운다 · 쓰다 지면 기록만 남긴다 | **쓴다** — 첫 바이트를 못 받은 판은 모델 쪽에서 한 글자도 안 쓴 판이라, 그 멈춤을 아는 것은 프록시뿐이다(#237 ②). ⚠ 폴더 자리(프록시 곁 `notes`)는 그 훅이 읽는 자리와 짝이다 |
 | `/v1beta` 그대로 넘기기 — 이 문으로 온 Gemini 요청은 경로 · 머리 · 본문을 안 고치고, 스트림은 바이트 그대로 옮긴다(keepalive 주석 · 끝 이벤트 확인 · chunked 로 다시 싸기를 안 한다). 모델 이름 · `-customtools` 접미사 · 쪼개진 SSE · 인증 머리를 고치는 칸은 없다 | **논다 · 걷을 것이 없다** — 경로를 가리지 않고 넘기는 문이라 따로 지닌 코드가 스트림 가르기 한 줄뿐이다. 우리 클라이언트 가운데 이 길을 타는 것이 없다 — 안티그래비티(`agy`)는 게이트웨이에 바로 붙는다(결정 0203). 주소를 아직 이 문에 둔 agy 도 본 턴은 선다 — 게이트웨이가 `x-goog-api-key` 를 받고(`../Gemini-Posco.setting.md` 인증 절), Gemini 스트림을 `data:` 줄 여럿으로 쪼개지 않는다(생각 서명 thoughtSignature 가 든 13,124 바이트 JSON 까지 한 줄로 · 회사 실측 2026-10-30 · #226 ⑱). 제목 짓기 곁 호출의 400 은 직결과 같다 |
 | `x-api-key` 만 온 Anthropic 호환 요청에 같은 키를 `Authorization: Bearer` 로 덧붙이기 | **논다** — Claude Code 는 Bearer 로 보낸다 |
 | 개인 `x-api-key` 헤더 누출 방지 — `Authorization` 이 이미 있으면 `x-api-key` 제거 (v16) | **쓴다** (Claude Code) — 사용자 환경에 개인 `ANTHROPIC_API_KEY` 가 있어도 평문 HTTP 로 사내 게이트웨이에 새지 않는다 |

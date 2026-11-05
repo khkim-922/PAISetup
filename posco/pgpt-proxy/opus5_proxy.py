@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 18
+VERSION_OURS = 19
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -115,6 +115,15 @@ GATEWAY_REQUEST_ID_HEADER = "x-pgpt-request-id"
 EXECUTION_LIMIT_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_SEC", STREAM_LIMIT_SEC)
 # 시한 근방으로 볼 폭(초). 180.0 실측에 맞추되 측정 오차와 앞단 지연을 담는다.
 EXECUTION_LIMIT_MARGIN_SEC = _env_float("PGPT_PROXY_EXECUTION_LIMIT_MARGIN_SEC", 5.0)
+# 상류 스트림 요청이 응답 머리를 기다리는 한도 — 게이트웨이가 제 시한에 끊었어야 할 때까지. 넘기면 프록시가 그 절단을 대신 낸다.
+# 시한을 0 이하로 끄면 이 한도도 꺼진다(머리를 UPSTREAM_TIMEOUT 까지 기다린다).
+HEAD_WAIT_LIMIT_SEC = EXECUTION_LIMIT_SEC + EXECUTION_LIMIT_MARGIN_SEC if EXECUTION_LIMIT_SEC > 0 else 0.0
+# 머리 없이 선 판의 알림 — 이만큼 넘게 머리 없이 끝난 Claude 요청(클라이언트 취소 · 머리 절단)을 그 세션 몫 파일에 한 줄 남긴다.
+# 다음 프롬프트에 훅 `stall-note.sh` 가 그 줄을 모델 곁에 싣고 지운다. 기본은 Claude Code 가 「Slow first byte」 를 찍는 30초다
+STALL_NOTE_MIN_SEC = _env_float("PGPT_PROXY_STALL_NOTE_MIN_SEC", 30.0)
+# ⚠ 이 폴더 이름과 자리(프록시 곁)는 훅 `.claude/hooks/stall-note.sh` 가 읽는 자리와 짝이다 — 한쪽만 바꾸면 알림이 조용히 끊긴다
+STALL_NOTES_DIR = Path(__file__).with_name("notes")
+_SESSION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 # 게이트웨이 목록을 못 읽었을 때 하이쿠 · claude-sonnet-5* 가 갈 자리 — 목록을 읽으면 목록이 먼저다(resolve_claude_model).
 CLAUDE_HAIKU_SUBSTITUTE = "claude-haiku-5.5"
 CLAUDE_SONNET_SUBSTITUTE = "claude-sonnet-5.5"
@@ -214,6 +223,10 @@ _WEB_SEARCH_EMPTY = 0  # filled 에도 든다
 
 class _ClientDisconnected(Exception):
     """응답을 보내기 전에 클라이언트가 끊었다."""
+
+
+class _HeadTimeout(Exception):
+    """상류가 머리 기다림 한도 안에 응답 머리를 안 보냈다 — 상류 연결은 버렸다."""
 
 
 def request_provider(path: str, model: str) -> str:
@@ -557,6 +570,37 @@ def stats() -> dict[str, object]:
         }
     base.update(_GATEWAY_MODELS.stats())
     return base
+
+
+def request_session_id(payload: dict) -> str:
+    """Claude Code 요청 몸의 세션 번호 · 못 읽으면 빈 글.
+
+    `metadata.user_id` 는 JSON 문자열이고 그 `session_id` 가 훅 입력의 `session_id` 와 같다(Claude Code 2.1.318 실측 · #237).
+    옛 꼴(`user_…_session_<uuid>`)도 받는다. 파일 이름으로 쓰므로 uuid 꼴만 낸다.
+    """
+    meta = payload.get("metadata")
+    raw = meta.get("user_id") if isinstance(meta, dict) else None
+    if not isinstance(raw, str):
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        parsed = None
+    found = str(parsed.get("session_id") or "") if isinstance(parsed, dict) else ""
+    if not found:
+        hit = re.search(r"session_(" + _SESSION_ID.pattern + ")", raw)
+        found = hit.group(1) if hit else ""
+    return found if _SESSION_ID.fullmatch(found) else ""
+
+
+def note_stall(session_id: str, line: str) -> None:
+    """그 세션 몫 알림 파일에 한 줄을 잇는다. 쓰다 지면 기록만 남기고 넘어간다 — 알림 때문에 응답을 깨지 않는다."""
+    try:
+        STALL_NOTES_DIR.mkdir(exist_ok=True)
+        with open(STALL_NOTES_DIR / f"{session_id}.txt", "a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except OSError as error:
+        log(f"stall note not written: {error}")
 
 
 def log(message: str) -> None:
@@ -1607,6 +1651,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     _request_context = ""
     _keepalives_sent = 0
     _stream_outcome = "complete"
+    _session_id = ""
 
     def _client_disconnected(self) -> bool:
         """요청 · 이어 온 바이트를 소비하지 않고, 소켓 시한도 안 바꾸고 들여다본다."""
@@ -1660,11 +1705,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
         return data
 
     def _exchange_upstream(self, conn: http.client.HTTPConnection, method: str, path: str,
-                           body: bytes | None, headers: dict[str, str]) -> http.client.HTTPResponse:
-        """응답 머리를 기다리며 클라이언트 취소를 알아챈다 — 긴 생각 턴도 같다.
+                           body: bytes | None, headers: dict[str, str],
+                           head_deadline: float | None = None) -> http.client.HTTPResponse:
+        """응답 머리를 기다리며 클라이언트 취소와 머리 기다림 한도를 알아챈다 — 긴 생각 턴도 같다.
 
-        이 도우미가 request/getresponse 를 쥐고, 연결 정리는 부르는 쪽 몫이다. 취소되면 늦게 온 응답은 닫는다 — 소켓을
-        살려 두거나 풀에 들지 않게. HTTP 상태 · 머리는 안 건드리고, 미리 SSE 200 을 보내지 않는다.
+        이 도우미가 request/getresponse 를 쥐고, 연결 정리는 부르는 쪽 몫이다. 취소되거나 ``head_deadline``(monotonic 시각)을
+        넘기면 늦게 온 응답은 닫는다 — 소켓을 살려 두거나 풀에 들지 않게. 넘기면 ``_HeadTimeout`` 을 올린다.
+        HTTP 상태 · 머리는 안 건드리고, 미리 SSE 200 을 보내지 않는다.
         """
         done = threading.Event()
         lock = threading.Lock()
@@ -1694,15 +1741,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     results.append(result)
             done.set()
 
+        def abandon() -> None:
+            nonlocal abandoned
+            with lock:
+                abandoned = True
+                for result in results:
+                    if isinstance(result, http.client.HTTPResponse):
+                        result.close()
+
         threading.Thread(target=exchange, daemon=True).start()
         while not done.wait(CLIENT_POLL_SEC):
             if self._client_disconnected():
-                with lock:
-                    abandoned = True
-                    for result in results:
-                        if isinstance(result, http.client.HTTPResponse):
-                            result.close()
+                abandon()
                 raise _ClientDisconnected()
+            if head_deadline is not None and time.monotonic() >= head_deadline:
+                abandon()
+                raise _HeadTimeout()
         result = results[0]
         if isinstance(result, Exception):
             raise result
@@ -1730,10 +1784,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
         body: bytes | None,
         headers: dict[str, str],
         timeout: float | None = None,
+        head_wait: float | None = None,
     ) -> tuple[http.client.HTTPResponse, http.client.HTTPConnection]:
-        """새 연결로 게이트웨이에 POST · GET 한다. ``timeout`` 은 이 요청의 응답 시한(초) — 준 연결은 부른 쪽이
-        다 읽은 뒤 닫는다(``_UPSTREAM.close``). 실패하면 닫고 다시 보내지 않는다 — 게이트웨이가 이미 요청을 처리 중일 수 있어
-        다시 보내면 생성이 두 번 돈다(비용 두 배).
+        """새 연결로 게이트웨이에 POST · GET 한다. ``timeout`` 은 이 요청의 응답 시한(초) · ``head_wait`` 는 응답 머리를
+        기다리는 한도(초)다 — 준 연결은 부른 쪽이 다 읽은 뒤 닫는다(``_UPSTREAM.close``). 실패하면 닫고 다시 보내지
+        않는다 — 게이트웨이가 이미 요청을 처리 중일 수 있어 다시 보내면 생성이 두 번 돈다(비용 두 배).
         """
         upstream_headers = {
             key: value
@@ -1750,9 +1805,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
         conn = _UPSTREAM.open()
         if timeout is not None and conn.sock is not None:
             conn.sock.settimeout(timeout)
+        head_deadline = time.monotonic() + head_wait if head_wait else None
         try:
-            return self._exchange_upstream(conn, method, path, body, upstream_headers), conn
-        except (_ClientDisconnected, http.client.HTTPException, OSError, TimeoutError):
+            return self._exchange_upstream(conn, method, path, body, upstream_headers, head_deadline), conn
+        except (_ClientDisconnected, _HeadTimeout, http.client.HTTPException, OSError, TimeoutError):
             _UPSTREAM.close(conn)
             raise
 
@@ -1926,6 +1982,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._model_echo = None
         self._compact_request = False
         self._claude_messages = False
+        self._session_id = ""
         self._keepalives_sent = 0
         self._stream_outcome = "complete"
         self._gw_request_id = ""
@@ -1964,6 +2021,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _note_request_bytes(len(body))
         model_name = ""
         claude_unstream = False
+        upstream_stream = False
         compact_request = False
         web_search: dict[str, object] | None = None
         if body:
@@ -2027,12 +2085,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             self._request_context += " kind=compact"
                         self._compact_request = compact_request
                         self._claude_messages = True
+                        self._session_id = request_session_id(payload_obj)
                         changed = True
                         if COMPACT_UNSTREAM and compact_request and payload_obj.get("stream") is True:
                             payload_obj["stream"] = False
                             claude_unstream = True
                             self._request_context += " transport=unstream"
-                        ceiling = cap_claude_output(payload_obj, unstream=payload_obj.get("stream") is not True,
+                        upstream_stream = payload_obj.get("stream") is True
+                        ceiling = cap_claude_output(payload_obj, unstream=not upstream_stream,
                                                     body_bytes=len(body))
                         if ceiling:
                             self._request_context += " " + ceiling
@@ -2087,9 +2147,24 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 response, conn = self._write_upstream(
                     self.command, upstream_path, body, headers,
                     timeout=WEB_SEARCH_TIMEOUT if web_search else None,
+                    # 게이트웨이의 실행 시한은 스트림 경로에만 문다 — 압축의 비스트리밍 길(300초까지)은 머리를 그대로 기다린다
+                    head_wait=HEAD_WAIT_LIMIT_SEC if (upstream_stream and HEAD_WAIT_LIMIT_SEC > 0) else None,
                 )
             except _ClientDisconnected:
                 raise
+            except _HeadTimeout:
+                # 게이트웨이가 제 시한에 끊었어야 할 요청이다 — 그 절단과 같은 꼴(500 · api_error)로 내어 클라이언트가 다시 보내게 한다.
+                # 프록시는 다시 보내지 않는다(결정 0202)
+                outcome = "head_cut"
+                client_status = 500
+                _count_execution_cut()
+                log(f"execution cut {self.command} {parsed.path} upstream={time.monotonic() - self._upstream_started:.1f}s "
+                    f"no response header (gateway limit ~{EXECUTION_LIMIT_SEC:g}s · proxy answered 500) {self._request_context}")
+                self._send_json(500, {"type": "error", "error": {"type": "api_error", "message": (
+                    f"Proxy: the gateway sent no response header within {HEAD_WAIT_LIMIT_SEC:g}s "
+                    f"(its stream execution limit is {EXECUTION_LIMIT_SEC:g}s); the request was abandoned.")}},
+                    keep_alive=False)
+                return
             except Exception as error:
                 outcome = "upstream_error"
                 log(f"{self.command} {parsed.path} -> upstream unreachable: {error} {self._request_context}")
@@ -2276,6 +2351,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 log(f"complete {self.command} {parsed.path} HTTP {client_status} result={outcome} "
                     f"headers={headers_sec:.3f}s upstream={upstream_sec:.3f}s "
                     f"total={elapsed:.3f}s {self._request_context}{self._gw()}")
+            if (self._session_id and response is None and outcome in ("client_cancelled", "head_cut")
+                    and upstream_sec >= STALL_NOTE_MIN_SEC):
+                how = ("프록시가 게이트웨이의 스트림 시한 대신 500 으로 끊었고, Claude Code 는 그 요청을 다시 보낸다"
+                       if outcome == "head_cut" else "클라이언트 쪽에서 끊겼다(사람의 ESC 또는 CLI 의 시한) — 그 판의 답은 안 왔다")
+                note_stall(self._session_id, (
+                    f"프록시 기록 {time.strftime('%H:%M:%S')} — 이 세션의 요청 하나(모델 {model_name or '?'})가 게이트웨이에서 "
+                    f"{upstream_sec:.0f}초 동안 응답 머리(첫 바이트) 없이 섰다가 {how}."))
             if elapsed >= SLOW_REQUEST_SEC and parsed.path != "/health":
                 _count_slow()
                 log(f"slow {self.command} {parsed.path} {elapsed:.1f}s{self._gw()}")

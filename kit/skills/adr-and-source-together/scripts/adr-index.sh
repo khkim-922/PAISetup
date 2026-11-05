@@ -48,6 +48,12 @@ if [ "$found" = 1 ] && ! awk '
             err = 1; return
         }
         seen[num] = file
+        # 긴 이름을 거절한다 — 윈도 체크아웃(릴리스 러너 · 긴 홈 아래의 복제)은 경로 260 자에서 「Filename too long」으로 멈추고, 폴더
+        #   앞머리가 60 자 안팎이라 이름에 남는 자리가 그 안쪽이다. 180 자면 앞머리에 80 자가 남는다
+        if (length(file) > 180) {
+            printf "✖ %s: 파일 이름이 %d 자다 — 180 자 안으로 줄인다(윈도 경로 한도)\n", file, length(file) > "/dev/stderr"
+            err = 1; return
+        }
         if (sup != "") st = st " → " sup
         printf "| [%s](%s) | %s | %s | %s |\n", num, file, ttl, st, dt
     }

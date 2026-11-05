@@ -150,6 +150,9 @@ ECM_ATTACHMENT = re.compile(r"^(?P<name>.+)\((?P<ext>[0-9A-Za-z]+)_(?P<kb>\d+)KB
 BODY_KINDS = ("html", "text")
 BODY_TEXT_PART = "M1.1"
 
+# 주소록의 예 · 아니오 칸(퇴직 · 장 여부)이 참인 값
+DIRECTORY_YES = ("Y", "1", "TRUE")
+
 # ⚠ 읽음 표시를 바꾸는 명령 — 읽기 길은 이 주소를 짓지 않고, 지으려 하면 서버에 닿기 전에 막는다
 MARKS_AS_READ = re.compile(r"[?&](opendocument|editdocument)\b", re.IGNORECASE)
 # 메일함을 바꾸는 주소 전부 — 읽음으로 · 안 읽음으로(되돌리기)
@@ -262,7 +265,10 @@ class SentEntry:
 
 @dataclass(frozen=True)
 class DirectoryPerson:
-    """사내 주소록의 한 사람. ``notes`` 는 Notes 이름(``key``) — 받는 사람 목록에서 그 사람을 알아보는 열쇠다."""
+    """사내 주소록의 한 사람. ``notes`` 는 Notes 이름(``key``) — 받는 사람 목록에서 그 사람을 알아보는 열쇠다.
+
+    ``dept_code`` · ``grade_code`` 는 주소록이 준 글자 그대로, ``is_boss`` 는 주소록의 장 여부다.
+    """
     email: str
     name: str
     name_eng: str
@@ -274,6 +280,9 @@ class DirectoryPerson:
     job_title: str
     company: str
     retired: bool
+    dept_code: str = ""
+    grade_code: str = ""
+    is_boss: bool = False
 
 
 # ── 세션 ─────────────────────────────────────────────────────────────────
@@ -561,9 +570,11 @@ class Mailbox:
         users = answer.get("user", []) if isinstance(answer, dict) else []
         return [DirectoryPerson(
             email=u.get("email") or "", name=u.get("user_name") or "", name_eng=u.get("user_name_eng") or "",
-            notes=u.get("key") or "", user_id=u.get("user_id") or "", empno=u.get("empno") or "",
+            notes=u.get("key") or "", user_id=u.get("user_id") or "", empno=str(u.get("empno") or ""),
             dept=u.get("dept_name") or "", grade=u.get("grade") or "", job_title=u.get("job_title") or "",
-            company=u.get("company_name") or "", retired=str(u.get("is_retire") or "").upper() in ("Y", "1", "TRUE"))
+            company=u.get("company_name") or "", retired=str(u.get("is_retire") or "").upper() in DIRECTORY_YES,
+            dept_code=u.get("dept_code") or "", grade_code=u.get("grade_code") or "",
+            is_boss=str(u.get("is_boss") or "").upper() in DIRECTORY_YES)
             for u in users if isinstance(u, dict)]
 
     # ── 메일함을 바꾸는 손 — 사람이 그 메일 하나를 분명히 고른 뒤에만 부른다(머리말) ──────────────

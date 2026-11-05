@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>설정 저장소 만드는 법</title>
 <!--
-  설치 창의 「내 저장소 받기」 곁 「설정저장소 만드는 법」 링크가 여는 한 장이다. 읽는 사람은 제 설정을 여러 PC · VDI 로
+  설치 창의 「내 저장소 다운로드」 곁 「설정저장소 만드는 법」 링크가 여는 한 장이다. 읽는 사람은 제 설정을 여러 PC · VDI 로
   들고 다니려는 동료다 — 이 저장소 안에서 쓰는 말(선언 · 몸통 · 씨앗 · 슬러그 · 손 · 개인 층 · 표준 층)을 안 쓴다. 그 말이
   필요한 사람은 견본 폴더의 README.md 로 간다.
   절은 다섯이고 만드는 사람이 묻는 차례로 선다 — 넣으면 달라지는 것(`#choose`) · 담는 것(`#contents`) · 만들기(`#make`) ·
@@ -16,7 +16,7 @@
     · 받는 자리 · 넘기기 · 옛 판을 안 넘기는 것 · 끝의 한 줄 — PAISetup `install.ps1` 의 「설정 저장소」 걸음 · `Get-SessionHookGen`
     · `personal.conf` 의 칸 — `seeds/config-repo/personal.conf` 의 주석
     · 설치 창의 칸 이름 · 칸 안의 글 · 접힌 머리의 한 줄 — PAISetup `install.ui.ps1`
-  경로 · 값의 전부는 `INSTALLED.md` 의 「제작자의 규범 · 룰 · 스킬」 · 「내 저장소 받기를 채우면」이 든다 — 여기는 만드는 사람이
+  경로 · 값의 전부는 `INSTALLED.md` 의 「제작자의 규범 · 룰 · 스킬」 · 「내 저장소 다운로드를 채우면」이 든다 — 여기는 만드는 사람이
   알아야 할 것만 든다.
 
   ⚠ 같은 폴더의 다른 파일로 가는 링크를 두지 않는다 — 이 장은 배포본 뿌리와 씨앗 폴더(`seeds/config-repo/`) 두 자리로 나가고,
@@ -300,7 +300,7 @@
 <body>
 
 <header class="hero">
-  <div class="kicker">설치 창의 「내 저장소 받기」</div>
+  <div class="kicker">설치 창의 「내 저장소 다운로드」</div>
   <h1>설정 저장소 만드는 법</h1>
   <p class="lede">내 규범 · 룰 · 스킬 · 에이전트 · 메모리 · 홈 설정 · 키를 <b>비공개 git 저장소 하나</b>에 담아 두는 방법입니다.
      설치 창에 그 주소를 넣으면 <b>어느 PC · VDI 에서든 설치 한 번으로 같은 환경</b>이 서고, 비워 두면 제작자의 세트가 깔립니다.</p>
@@ -343,14 +343,14 @@
 <!-- ━━━━━━━━━━━━━━━━━━━━ 넣으면 달라지는 것 ━━━━━━━━━━━━━━━━━━━━ -->
 <section id="choose" class="layer l1">
   <div class="layer-head"><h2>넣으면 달라지는 것</h2></div>
-  <p class="sub">「내 저장소 받기」는 비워 두는 것이 기본입니다. 프로그램 · 확장 · CLI · 회사 키 · 사내 문서는 이 칸과 상관없이 다 깔리고,
+  <p class="sub">「내 저장소 다운로드」는 비워 두는 것이 기본입니다. 프로그램 · 확장 · CLI · 회사 키 · 사내 문서는 이 칸과 상관없이 다 깔리고,
      달라지는 것은 <b>규범 · 룰 · 스킬을 누구 것으로 받느냐</b>입니다.</p>
   <div class="fork">
     <div class="panel maker">
       <header>비워 두면 <small>— 제작자의 세트</small></header>
       <ul class="checks">
         <li>설치 묶음에 든 <b>제작자의 규범 · 룰 · 스킬</b>이 깔립니다.</li>
-        <li>「자세히 설정」의 「규범 · 룰 · 스킬을 받을 모델」 칸에 「설정 저장소를 넣지 않았으니, 고른 모델에 제작자의 규범 · 룰 · 스킬이 깔립니다」가 뜹니다.</li>
+        <li>「자세히 설정」의 「규범 · 룰 · 스킬을 받을 모델」 칸에 「설정 저장소를 넣지 않았으니, 선택한 모델에 제작자의 규범 · 룰 · 스킬이 설치됩니다」가 뜹니다.</li>
         <li>따로 할 일이 없습니다. PC 를 하나만 쓴다면 대개 여기서 끝입니다.</li>
       </ul>
     </div>
@@ -490,7 +490,7 @@ git push</pre></li>
   <p class="sub">새 PC 나 비워진 VDI 에서는 이것만 하면 됩니다. 넣은 주소는 기억되어 다음 설치 창과 로그온 자동 실행이 그대로 씁니다.</p>
   <div class="panel">
     <ul class="checks">
-      <li>「연결」 칸의 <b>「내 저장소 받기」</b> 입력란에 저장소 주소를 붙여 넣습니다 — <code>https://github.com/&lt;내 아이디&gt;/claude-config</code>. 이 장을 연 「설정저장소 만드는 법」과 「받는자리」가 그 입력란 바로 아래 오른쪽에 있습니다.</li>
+      <li>「연결」 칸의 <b>「내 저장소 다운로드」</b> 입력란에 저장소 주소를 붙여 넣습니다 — <code>https://github.com/&lt;내 아이디&gt;/claude-config</code>. 이 장을 연 「설정저장소 만드는 법」과 「저장소 폴더」가 그 입력란 바로 아래 오른쪽에 있습니다.</li>
       <li>「자세히 설정」을 펴서 <b>「규범 · 룰 · 스킬을 받을 모델」</b>에서 내 세트를 받을 모델을 고릅니다. 그 칸에 「설정 저장소를 넣었으니, 고른 모델에 내 규범 · 룰 · 스킬(claude-config)이 깔립니다」가 뜨고,
         접어 두어도 머리의 한 줄이 「규범: Claude ← 내 저장소」로 바뀝니다(비워 두면 「규범: Claude ← 제작자」).</li>
       <li><b>[설치 시작]</b>을 누릅니다.</li>
@@ -502,7 +502,7 @@ git push</pre></li>
   <div class="flow"><span>받기</span><i>→</i><span>세션 훅</span><i>→</i><span>deploy.ps1</span><i>→</i><span>고른 모델의 홈</span></div>
   <div class="rows">
     <div class="row"><b>받기<span class="tag"><span class="k inst">Installer</span></span></b>
-      <div><code>C:\Users\&lt;내 이름&gt;\repos\claude-config</code> 에 받습니다 — 설치 창의 「받는자리」가 그 폴더를 엽니다. 이미 받아 둔 PC 면 새 커밋을 당겨 옵니다.
+      <div><code>C:\Users\&lt;내 이름&gt;\repos\claude-config</code> 에 받습니다 — 설치 창의 「저장소 폴더」가 그 폴더를 엽니다. 이미 받아 둔 PC 면 새 커밋을 당겨 옵니다.
         GitHub CLI 로그인이 안 돼 있으면 받기 직전에 <b>일회용 코드 창</b>이 뜹니다 — [브라우저 열기]를 누르고 그 코드를 넣으면 스스로 닫힙니다.</div></div>
     <div class="row"><b>세션 훅<span class="tag"><code class="nm">session-start.sh --install</code><span class="k hook">Hook</span></span></b>
       <div>받은 저장소 뿌리의 이 파일을 부릅니다. <code>personal.conf</code> 대로 git 이름 · 메일과 기본 설정을 맞추고, <code>REPOS</code> 가운데 없는 저장소를 받고,
@@ -561,11 +561,11 @@ bash .claude/hooks/session-start.sh --install; echo "종료코드 $?"</pre></div
     <div class="mini"><b>이름은 <code>claude-config</code>, <code>memory/</code> 는 남깁니다</b>
       <span>세션 훅과 커밋 검사는 <code>deploy.ps1</code> 과 <code>memory/</code> 를 함께 든 폴더를 설정 저장소로 알아봅니다. 하나라도 빠지면 개인 설정과 배포가 서지 않습니다.</span></div>
     <div class="mini"><b>견본이 새 판이 되면 직접 올립니다</b>
-      <span>설치는 내 설정 저장소를 고치지 않습니다. 옛 견본으로 만든 저장소면 설치 기록에 「이 저장소의 훅으로 넘기지 않는다」가 뜨고 그 훅을 부르지 않습니다 — <a href="#upgrade">올리는 법</a>.</span></div>
+      <span>설치는 내 설정 저장소를 고치지 않습니다. 옛 견본으로 만든 저장소면 설치 기록에 「이 저장소의 훅은 실행하지 않음」가 뜨고 그 훅을 부르지 않습니다 — <a href="#upgrade">올리는 법</a>.</span></div>
     <div class="mini"><b>세션 훅은 하나만 돕니다</b>
       <span>주소를 여럿 넣으면 다 받되, 세션 훅을 든 저장소가 여럿이면 앞의 것 하나만 부릅니다. 설정 저장소 주소를 맨 앞에 둡니다.</span></div>
     <div class="mini"><b>그만 쓰려면 칸과 폴더를 함께 걷습니다</b>
-      <span>「내 저장소 받기」를 비우고 <code>repos</code> 의 그 폴더를 지우거나 옮긴 뒤 다시 설치하면 제작자 세트로 돌아갑니다. 칸만 비우고 폴더를 두면 내 것이 계속 이기고, 폴더만 지우면 다음 설치가 다시 받습니다.</span></div>
+      <span>「내 저장소 다운로드」를 비우고 <code>repos</code> 의 그 폴더를 지우거나 옮긴 뒤 다시 설치하면 제작자 세트로 돌아갑니다. 칸만 비우고 폴더를 두면 내 것이 계속 이기고, 폴더만 지우면 다음 설치가 다시 받습니다.</span></div>
   </div>
 
   <details id="upgrade">
@@ -590,9 +590,9 @@ git status</pre>
       <p class="flush">설치 기록은 설치 창 아래 띠 왼쪽 끝의 「설치기록」이 엽니다.</p>
       <ul>
         <li><b>「어느 뿌리에도 .claude\hooks\session-start.sh 가 없어 훅은 안 돌았다」</b> — 받기는 됐는데 훅 파일이 없습니다. 견본을 복사할 때 숨김 폴더가 빠졌는지 봅니다.</li>
-        <li><b>「못 받았다 — 주소 · 계정 · 망을 본다」</b> — 주소에 오타가 있거나, 비공개 저장소를 읽을 수 있는 계정으로 로그인하지 않았거나, 망이 막혔습니다.</li>
-        <li><b>「git 이 안 닿아 못 받는다」</b> — 개발 도구를 빼고 깐 PC 입니다. <code>Setup.exe -DevTools</code> 로 한 번 돌리면 git 이 깔립니다.</li>
-        <li><b>「이 저장소의 훅으로 넘기지 않는다」</b> — 옛 견본으로 만든 저장소입니다. 위 <a href="#upgrade">견본 새 판으로 올리는 법</a>대로 올립니다.</li>
+        <li><b>「다운로드 실패 — 주소 · 계정 · 네트워크를 확인하세요」</b> — 주소에 오타가 있거나, 비공개 저장소를 읽을 수 있는 계정으로 로그인하지 않았거나, 망이 막혔습니다.</li>
+        <li><b>「git 을 찾을 수 없어 다운로드할 수 없음」</b> — 개발 도구를 빼고 깐 PC 입니다. <code>Setup.exe -DevTools</code> 로 한 번 돌리면 git 이 깔립니다.</li>
+        <li><b>「이 저장소의 훅은 실행하지 않음」</b> — 옛 견본으로 만든 저장소입니다. 위 <a href="#upgrade">견본 새 판으로 올리는 법</a>대로 올립니다.</li>
         <li><b>「personal.conf 에 GIT_NAME · GIT_EMAIL 이 없다」</b> — 칸 이름에 오타가 났거나 값이 비었습니다.</li>
       </ul>
       <p>파일 하나하나가 무엇인지는 견본 폴더의 <code>README.md</code> 가, 세션을 열 때와 배포할 때 무슨 일이 어떤 차례로 일어나는지는 같은 폴더의 그림 둘

@@ -150,8 +150,12 @@ U = {name: f"{i:032X}" for i, name in enumerate((
     "f_top", "f_child", "f_comma", "f_ghost", "f_trash", "sent_1", "sent_2"), start=0xA1B2C3D4E5F60000)}
 OWNER = {"email": "dh.park@nuri.example", "user_name": "박도현", "user_name_eng": "Dohyun Park", "user_id": "dhpark",
          "key": "CN=박도현/OU=DH/O=NURI", "empno": "200001", "company_name": "누리소재", "dept_name": "소재사업부",
-         "grade": "부장", "job_title": "그룹장", "is_retire": "N"}
+         "dept_code": "n310_00", "grade": "부장", "grade_code": "P40", "job_title": "그룹장", "is_boss": "Y", "is_retire": "N"}
 PEER = ("서하늘", "hn.seo@nuri.example", "Haneul Seo")
+COLLEAGUE = {**OWNER, "email": PEER[1], "user_name": PEER[0], "user_name_eng": PEER[2], "user_id": "hnseo",
+             "key": "CN=서하늘/OU=HN/O=NURI", "empno": "200002", "dept_code": "n310_10", "grade": "차장",
+             "grade_code": "P30", "job_title": "일반", "is_boss": "N"}
+DIRECTORY = (OWNER, COLLEAGUE)
 EXTERNAL = "alex.berg@far-cells.example"
 FOLDER_TOP, FOLDER_CHILD, FOLDER_COMMA, FOLDER_EMPTY = "협력사", "프로젝트\\소재 시험", "소식\\공지, 안내", "회의.2026"
 # SSO 주소를 적은 사내 안내 본문 — 끊긴 세션의 화면이 아니다
@@ -250,7 +254,7 @@ class FakeDomino:
         if low.startswith("/common/profile.nsf/ag_org_search_json?openagent"):
             query = urllib.parse.parse_qs(raw.split("&", 1)[1] if "&" in raw else "", keep_blank_values=True)
             key = query.get("search_key", [""])[0].casefold()
-            users = [OWNER] if key and key in (OWNER["email"], OWNER["user_name"], OWNER["empno"]) else []
+            users = [p for p in DIRECTORY if key and key in (p["email"], p["user_name"], p["empno"])]
             return self.send(h, 200, json.dumps({"dept": [], "user": users, "total": len(users)},
                                                 ensure_ascii=False).encode(), "text/html; charset=UTF-8")
         if not raw.startswith(DB):
@@ -532,12 +536,20 @@ def check_directory_and_session_probe():
         me = mailbox.find_people(OWNER["email"], COMPANY)
         assert len(me) == 1 and (me[0].notes, me[0].grade, me[0].user_id, me[0].retired) == \
             (OWNER["key"], "부장", "dhpark", False), me
+        assert (me[0].empno, me[0].dept_code, me[0].grade_code, me[0].is_boss) == ("200001", "n310_00", "P40", True), me
+        peer = mailbox.find_people(PEER[1], COMPANY)
+        assert len(peer) == 1 and (peer[0].dept_code, peer[0].grade_code, peer[0].is_boss) == ("n310_10", "P30", False), \
+            peer
         assert mailbox.find_people(EXTERNAL, COMPANY) == [], "밖의 주소가 주소록에 걸렸다"
         asked = [urllib.parse.unquote(p) for p in box.paths if "ag_org_search_json" in p]
         assert asked and all(f"company={COMPANY}" in p for p in asked), asked
         assert mailbox.session_alive() is True
     with stage(session="login") as (_, mailbox):
         assert mailbox.session_alive() is False, "끊긴 세션에 세션 확인이 참이다"
+    # 새 칸 셋은 기본값이 있다 — 칸 셋 없이 한 사람을 짓던 쪽이 그대로 선다
+    bare = inbox.DirectoryPerson(email="", name="", name_eng="", notes="", user_id="", empno="", dept="", grade="",
+                                 job_title="", company="", retired=False)
+    assert (bare.dept_code, bare.grade_code, bare.is_boss) == ("", "", False), bare
 
 
 # ── 끊긴 세션 · 설정 ──────────────────────────────────────────────────────

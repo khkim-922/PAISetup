@@ -27,13 +27,13 @@
   심는 설정은 사람이 알아볼 만한 것만 적는다 — 도구 사이의 배선(러너 모델 값 · 자리 기록 · 훅 신뢰 · 데스크탑 첫 설정을 돌리는 키)은
   `INSTALLED.md` 가 든다.
   사내 · 사외가 갈리는 문장에는 자리 배지(`.s.in` · `.s.out`)를 단다 — 배지가 없으면 어디서나 같다는 뜻이다.
-  설치 창의 칸 · 링크는 이름(「규범 · 룰 · 스킬을 받을 모델」 · 「자동 실행」 · 「제공기능」 · 「바뀐 것」)으로만 부른다 — 창의 배치나 칸 글자를
+  설치 창의 칸 · 링크는 이름(「규범 · 룰 · 스킬을 받을 모델」 · 「자동 실행」 · 「제공기능」 · 「변경 내역」)으로만 부른다 — 창의 배치나 칸 글자를
   박으면 창을 다시 지을 때 이 장이 거짓이 된다.
   「불러 쓰는 절차」 칸은 배포본에 실리는 스킬(`dist.manifest.conf` 의 `[뺀다]` 를 뺀 `kit/skills`)을 손으로 옮긴 목록이다 —
   스킬을 더하거나 걷거나 배포에서 빼면 이 칸도 고친다(맡기기 스킬 넷 · DRM 문서 읽기 · 사내 앱은 위 칸들이 적는다).
 
   ⚠ 배포 저장소 주소를 박지 않는다 — 그 주소의 계정 이름이 뽑기의 「새면 안 되는 글자」(dist.manifest.conf)라
-    박으면 릴리스가 멈춘다. 이슈 안내는 설치 창의 「바뀐 것」 링크(주소를 값 파일의 `#update-repo` 에서 짓는다)를 가리킨다.
+    박으면 릴리스가 멈춘다. 이슈 안내는 설치 창의 「변경 내역」 링크(주소를 값 파일의 `#update-repo` 에서 짓는다)를 가리킨다.
 
   ⚠ 밖에서 불러오는 것이 한 자도 없다 — 글꼴 · 스타일 · 그림을 다 안에 든다. 밖으로 가는 것은 사람이
     누르는 링크(구글 무료 키 받기)와 사람이 누르는 소개 영상(`preload="none"`)뿐이라 페이지가 뜨는 데는 안 걸린다. 사내망에서도
@@ -572,6 +572,8 @@
         <span>DRM 이 걸린 오피스 · PDF 의 경로를 적거나 그 파일을 읽다 막히면 DRM 문서 읽기로 가는 길을 알려 줍니다. Claude 의 VS Code 앱에서 「+」로 붙인 PDF 는 놓치니 경로를 적어 주세요. agy 에서는 그 파일을 열려는 순간 막고 길을 알려 줍니다.</span></div>
       <div class="mini"><b>컨텍스트 알림</b><span class="tag"><code class="nm">context-alert</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         <span>대화가 한 번에 기억할 수 있는 양의 66&nbsp;% 를 넘으면, 남은 일의 크기와 여유를 재어 이 창에서 어디까지 가고 어디서 끊을지 한두 줄로 알려 줍니다. 작은 일은 바로 하고 도는 일은 거둔 뒤에 하며, 그래도 여유가 모자랄 때만 압축이나 새 세션을 까닭과 함께 권합니다(사내에서는 새 세션 쪽으로 기웁니다). 끊을지는 사람이 정합니다. 기억 창이 작은 모델에서는 조용합니다.</span></div>
+      <div class="mini"><b>멈춘 요청 알려 주기</b><span class="tag"><code class="nm">stall-note</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span>
+        <span>사내에서 AI 의 답이 첫 글자도 없이 오래 멈췄다가 끊기면, 다음에 글을 보낼 때 「직전 요청이 몇 초 멈췄다가 끊겼다」를 AI 에게 알려 줍니다. AI 가 그 멈춤을 모른 채 일을 이어 가지 않게 합니다.</span></div>
       <div class="mini"><b>웹 다시 찾기</b><span class="tag"><code class="nm">web-retry</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span>
         <span>웹 검색이나 웹 가져오기가 실패하면, 이 PC 에서 쓸 수 있는 다른 길(curl · Tavily · agy)을 결과 곁에 알려 줍니다.</span></div>
       <div class="mini"><b>위험한 셸 명령 잡기</b><span class="tag"><code class="nm">shell-slip</code><span class="k hook">Hook</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span>
@@ -822,8 +824,8 @@
 
 <footer>
   <p class="help"><b>막히거나 바라는 것이 있으면</b> 이 설치본이 나온 GitHub 저장소에 이슈로 남겨 주세요.
-     설치 창의 「바뀐 것」 링크가 여는 페이지 위쪽에 Issues 탭이 있습니다 — 공개 저장소라 회사 문서 · 키 · 사내 주소는 적지 않습니다.</p>
-  <p>판마다 바뀐 것은 릴리스 노트가 적습니다 — 설치 창의 「바뀐 것」 링크가 릴리스 목록을 엽니다.
+     설치 창의 「변경 내역」 링크가 여는 페이지 위쪽에 Issues 탭이 있습니다 — 공개 저장소라 회사 문서 · 키 · 사내 주소는 적지 않습니다.</p>
+  <p>판마다 바뀐 것은 릴리스 노트가 적습니다 — 설치 창의 「변경 내역」 링크가 릴리스 목록을 엽니다.
      어디에 무엇이 깔리는지는 같은 폴더의 <a href="INSTALLED.md"><code>INSTALLED.md</code></a> 가 자세히 적습니다.</p>
 </footer>
 
