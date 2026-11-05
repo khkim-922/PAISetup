@@ -48,12 +48,14 @@
 #     안 건다(「자동 실행을 켜나」 칸). 설치본도 `#update-repo` 의 최신 릴리스로 간다(「마무리」의 「설치본 자신을 새 릴리스로 간다」 칸).
 #   `-GhLoginOnly <결과 파일>` — 사람이 주는 칸이 아니다. 「프로그램」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
 #     (`Start-GhLoginChild`). 자식은 라이브러리만 읽고 빗장 앞에서 GitHub 로그인 창 하나를 띄운 뒤 결과를 그 파일에 적고 나간다.
+#   `-DesktopAppOnly <요청 파일>` — 사람이 주는 칸이 아니다. 「데스크탑 앱」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
+#     (`Start-DesktopAppChild`). 자식은 라이브러리만 읽고 빗장 앞에서 그 파일이 고른 데스크탑 앱 하나를 깐 뒤 결과를 파일에 적고 나간다.
 # ⚠ **`install.cmd` 에 한글을 넣지 않는다.** cmd.exe 는 배치 파일을 콘솔 OEM 코드페이지(한국은 cp949)로 읽어, UTF-8 한글이
 #   어긋나면 `rem` 이 안 잡히고 깨진 글자가 **명령으로 실행된다.** 그 파일의 설명은 BOM 이 붙은 이 파일이 든다.
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
       [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun, [string]$GhLoginOnly,
-      [switch]$ChoicesFull, [switch]$DevTools)
+      [switch]$ChoicesFull, [switch]$DevTools, [string]$DesktopAppOnly)
 
 $ErrorActionPreference = 'Stop'
 
@@ -202,7 +204,9 @@ $PersonalTools = @(
 #   · `@{ Via = 'vendor'; … }` — 벤더 주소에서 받아 깐다. `Read` 가 있으면 벤더의 최신 판을 읽는 길이고(아래), 없으면 판 없는 고정 주소
 #     (`Url`)다 — 판을 모르니 깔 때만 쓴다
 #   벤더가 판을 내는 꼴 — `Read` 의 낱말이 가르고 읽는 손은 하나다(`Get-VendorLatest`). 행은 이름이 아니라 이 꼴로 갈린다:
-#     · `redirect` — `Url` 이 판 없는 주소이고 그 판의 파일로 넘긴다. 넘김 주소의 경로에서 판을 읽고, 받기는 `Url` 그대로다
+#     · `redirect` — `Url` 이 판 없는 주소이고 그 판의 파일로 넘긴다. 넘김 주소의 경로에서 판을 읽고, 받기는 `Url` 그대로다. `Sibling`
+#       (확장자)을 들면 넘김이 가리키는 파일 곁에 같은 이름 · 그 확장자로 선 파일을 받는다 — 벤더가 한 판의 여러 꼴을 한 이름으로 나란히
+#       두고, 판 없는 주소는 그 가운데 한 꼴에만 이 설치기에 열려 있을 때다. 넘김을 못 읽으면 받을 주소도 판도 모른다
 #     · `listing`  — `List` 가 판마다 폴더를 둔 목록이다. 행의 판 줄(`Line`)에 든 판 가운데 받을 파일(`Url` 의 `{ver}` 틀)이 있는
 #       가장 높은 판이다 — 보안 고침만 낸 판은 설치본이 없어 받기 전에 그 주소가 있나를 묻는다. 200 이나 넘김(30x)이면 있다 — 미러로
 #       넘기는 배포 서버는 파일을 직접 안 준다
@@ -374,6 +378,28 @@ $VcRedistRcNewer     = @(1638, 0x8A15002B, 0x8A150061, 0x8A15010D, 0x8A15010E)  
 # `msiexec` 가 「깔았고 다시 시작해야 끝난다」로 낸 값(Windows Installer 오류 값) — 벤더 MSI 길(`Invoke-VendorWay`)은 섰다로 친다
 $MsiRcReboot = @(3010, 1641)
 
+# ── winget 에 넘기는 옵션 — 프로그램 · 데스크탑 앱 · CLI 가 같이 쓴다 ─────────────────────────────
+# ⚠ `--source winget` 을 박는다 — 사내에서 빼면 인증서 검증에 걸린다.
+# 판정은 종료코드가 아니라 프로브다 — winget 은 이미 깔려 있으면 「올릴 것이 없다」로 0 이 아닌 값을 낸다.
+# 소스를 뗀 옵션(`$WGOpts`)을 따로 둔다 — 데스크탑 앱 하나가 스토어 소스에 살아서(`$DesktopApps` 의 `Source`) 소스를 붙박이로 두면 그 앱을
+#   못 부른다. 나머지는 `$WG` 를 쓴다 — 붙이는 자리를 한 줄로 두어 둘이 안 갈린다.
+$WGOpts = @('--exact','--silent',
+            '--accept-package-agreements','--accept-source-agreements','--disable-interactivity')
+$WG = @('--source','winget') + $WGOpts
+# winget 이 「입력 조건과 일치하는 설치된 패키지를 찾을 수 없다」로 끝난 값(`APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND`). `winget list`
+#   의 0 아닌 값 가운데 이것만 「없다」다 —소스를 못 열었거나(인증서 `0x8A15005E`) 그 밖으로 진 값은 「못 쟀다」다(결정 0145).
+$WingetNotInstalled = 0x8A150014
+
+# ── 데스크탑 앱의 짝으로 먼저 서야 하는 런타임 — **있으면 안 깐다** (PAISetup #16 · 결정 0059) ──────────────────
+# ⚠ **`Test-DesktopApp` 으로 못 잰다 — 레지스트리에 묻는다.** WebView2 는 GUI 앱이 아니라 런타임이라 시작 메뉴(`Get-StartApps`)에
+#   안 서고, `winget list` 는 찾기는 하는데 이름과 판을 Edge 의 것으로 낸다. 레지스트리가 WebView2 를 찾는 앱이 실제로 보는
+#   자리다. 기계 자리와 사용자 자리를 둘 다 본다(설치 갈래가 둘이다).
+# 판을 안 견주고 「있나」만 본다 — 하한을 벤더가 안 내(매니페스트에 `Dependencies` 가 없다) 숫자를 박으면 근거 없는 규칙표가 된다.
+#   이 런타임은 Edge 채널을 타는 Evergreen 이라 한 번 서면 저절로 따라간다.
+# ⚠ **`--source winget` 을 박는다.** 안 박으면 msstore 까지 훑다가 그쪽 인증서 오류(`0x8a15005e`)로 설치가 시작도 못 하는데,
+#   종료코드는 0 이라 성공으로 보인다.
+$WebView2Guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+
 # ── Node 가 말을 거는 자리 — **목록이 진본이다** ─────────────────────────────────
 # 신뢰를 이을 근거를 여기서 잰다(`Wire-NodeTrust`). Node 를 태우는 곳이 늘면 한 줄 더한다.
 #   이 설치가 실제로 여는 곳만 든다 — 신뢰 저장소를 통째로 훑으면 이 PC 가 믿는 CA 를 다 옮겨 적게 되고, 사본은 낡는다.
@@ -391,7 +417,7 @@ $TlsHosts = @(
 # `Gateway` 는 「게이트웨이를 쓸 때 필요」다 — 쓰나는 자리에 달렸고 자리는 프로브(`#site-probe`)가 가른다. 표는 주소가 있으면
 #   쓰고 없으면 안 쓰는 것으로만 판정한다 — 자리 판별을 표에 옮겨 적으면 같은 규칙이 두 자리에 산다.
 
-# ── 데스크탑 앱 — **목록이 진본이다.** 「프로그램」의 「데스크탑 앱 설치」 칸이 깔 때도, 「마무리」의 「연다」 칸이 띄울 것을
+# ── 데스크탑 앱 — **목록이 진본이다.** 「데스크탑 앱」 걸음이 깔 때도, 「마무리」의 「연다」 칸이 띄울 것을
 #    찾을 때도 이 표에서 판다 ──
 # 앱마다 설치 길이 달라 표가 id 만이 아니라 길 목록(`Ways` — `$Apps` 머리의 「길 목록」과 같은 꼴)까지 든다 — 갈림이 설치 칸 안에
 #   숨으면 앱이 늘 때 표만 고쳐서는 안 걸린다. `Id` · `Source` 는 winget 이 이 앱을 아는 이름과 소스다 — 깔렸나 · 「올릴 것」 목록 ·
@@ -415,20 +441,33 @@ $TlsHosts = @(
 #     · `any`     — 자리를 안 가린다. 제 인증으로 서는 앱
 # `Requires` — 짝으로 먼저 깔 런타임. winget 매니페스트의 `Dependencies` 가 비어 winget 이 안 챙기는 자리를 우리가 챈다.
 #   공용 목록(`$Apps`)에 안 넣어 그 앱을 고른 사람만 받는다.
+# `Front` — 「데스크탑 앱」 걸음이 이 행을 설치 창에서 깐다. 설치가 사람이 누를 창으로 넘어갈 수 있는 행이다 — 그 안내 줄은 창이
+#   뜨는 때 서야 한다. 안 적은 행은 숨은 자식(`Start-DesktopAppChild`)으로 다른 행과 동시에 깔고 그 걸음 끝에서 화면 줄을 거둔다.
+# Claude 데스크탑의 판 없는 MSIX 주소 — 최신 판의 MSIX 파일로 넘긴다. Claude 행의 벤더 길(판 읽기 · 곁의 Squirrel 설치본)과 MSIX 꼴로 선
+#   PC 의 올리기(`Upgrade.Msix`)가 같이 읽는다.
+$ClaudeMsixLatest = 'https://claude.ai/api/desktop/win32/x64/msix/latest/redirect'
 $DesktopApps = @(
-  # Claude 는 판 없는 공식 주소가 둘인데 다 안 맞는다 — 다운로드 페이지의 설치본 주소는 스크립트에 403(브라우저 전용)이고, 조직
-  #   배포용 MSIX 주소는 열려 있지만 꼴이 다르다(관리자 승인이 드는 꾸러미 서비스를 싣고, 설정 자리가 지금 꼴과 갈린다). 그래서
-  #   winget 이 처음 한 번 Squirrel 꼴을 깔아 갱신기를 놓고, 판은 그 갱신기가 공식 배포 주소에서 따라간다.
-  #   공식 배포 주소는 그 갱신기가 읽는 공개 목록(`RELEASES`)이 선 자리다 — 앱이 제 안에서 쓰는 주소는 기기 값이 붙어야 열린다.
+  # Claude 는 Squirrel 꼴(사용자 범위 · 제 갱신기 `Update.exe`)로 깐다. 깔 때는 벤더 길이 먼저다 — 판 없는 공식 주소 가운데 이 설치기의
+  #   받는 손(.NET)에 열린 것은 MSIX 주소(`$ClaudeMsixLatest`) 하나이고(exe · setup 주소는 403), 그 넘김이 가리키는 판 폴더에 같은 이름의
+  #   Squirrel 설치본(`…/releases/win32/x64/<판>/Claude-<지문>.exe`)이 나란히 선다(`Sibling`). 그 설치본은 winget 매니페스트의 exe 설치본과
+  #   같은 꼴 · 같은 무음 인자(`--silent`)다. 판을 넘김 주소의 경로에서 읽으므로 한 번에 최신 판이 선다 — winget 은 매니페스트에 박힌
+  #   옛 판을 깔아 갱신기가 곧바로 한 번 더 받게 된다. 벤더 길이 지면(곁 파일이 없다 · 서명이 다르다) winget 이다. 서명자는 Claude 의
+  #   MSIX 꾸러미 게시자 · Claude Code CLI 의 서명자와 같은 이름이다.
+  #   MSIX 파일로는 깔지 않는다 — 관리자 승인이 드는 꾸러미 서비스를 싣고, 설정 자리가 Squirrel 꼴과 갈린다. 깔린 앱의 판은 갱신기가 공식
+  #   배포 주소에서 따라간다. 공식 배포 주소는 그 갱신기가 읽는 공개 목록(`RELEASES`)이 선 자리다 — 앱이 제 안에서 쓰는 주소는 기기 값이
+  #   붙어야 열린다.
   # 이미 MSIX 꼴(`Claude_pzs8sxrjxfjjc`)로 선 PC 는 앱이 제 안에서 새 꾸러미를 받아 두지만, 떠 있으면 윈도우가 등록을 앱이 닫힐 때로
   #   미룬다 — 로그온 때 윈도우의 시작 작업(`ClaudeStartup`)이 앱을 먼저 띄워 오토런 자리에서는 늘 떠 있다. 그래서 설치기가 닫고
   #   세우고 다시 띄운다(`Msix`). winget 목록은 Squirrel 번호(`2.x`)라 MSIX 번호(`4.x`)와 견줄 수 없다.
   # `Reg` — 설치 목록 이름이 `Claude` 그대로다(HKCU · Squirrel 이 판을 올릴 때 같이 고친다). 이름 전체로 건다.
   @{ Key = 'claude'; Label = 'Claude 데스크탑'; App = 'Claude'; Reg = 'Claude'
      Id = 'Anthropic.Claude'; Source = 'winget'
+     Ways = @(@{ Via = 'vendor'; Read = 'redirect'; Url = $ClaudeMsixLatest; Sibling = '.exe'
+                 SilentArgs = @('--silent'); Signer = 'Anthropic, PBC' }
+              @{ Via = 'winget' })
      Upgrade = @{ Via = 'updater'; Exe = '%LOCALAPPDATA%\AnthropicClaude\Update.exe'
                   Args = @('--update=https://downloads.claude.ai/releases/win32/x64')
-                  Msix = @{ Family = 'Claude_pzs8sxrjxfjjc'; App = 'Claude'; Url = 'https://claude.ai/api/desktop/win32/x64/msix/latest/redirect' } } }
+                  Msix = @{ Family = 'Claude_pzs8sxrjxfjjc'; App = 'Claude'; Url = $ClaudeMsixLatest } } }
   # ⚠ **코덱스는 ChatGPT 앱 안에 산다 — `App` 은 `ChatGPT` 여야 한다.** 사람 눈에 닿는 이름(시작 메뉴 · 매니페스트
   #   `DisplayName` · 실행 파일 `app/ChatGPT.exe`)이 다 `ChatGPT` 이고 `Codex` 는 꾸러미 이름(`OpenAI.Codex_…!App`)에만 남는다.
   #   `Codex` 로 두면 멀쩡히 깔아 놓고 이름으로 되찾지 못해 「설치 실패」로 찍는다.
@@ -441,7 +480,9 @@ $DesktopApps = @(
   # `Upgrade = none` — 스토어 앱 갱신은 윈도우 업데이트를 타는데 사내에서 그쪽이 끊긴다(`0x80072EFD`) — 없으면 깔고 있으면 둔다.
   # 깔렸나는 꾸러미 가족(`Appx`)이 잰다 — msstore 의 winget 목록은 깔린 채로 「안 깔렸다」를 내고, 막힌 회선에서는 열리지도
   #   않는다. 가족 이름은 시작 메뉴 손잡이(`OpenAI.Codex_2p2nqsd0c76g0!App`)의 앞마디다.
-  @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'ChatGPT'; Appx = 'OpenAI.Codex_2p2nqsd0c76g0'
+  # `Front` — 스토어 설치 스텁이 열린 회선에서 스토어 창으로 넘기면 사람이 [다운로드]를 눌러야 선다. 그 안내 줄이 창이 뜨는 때 서도록
+  #   이 창에서 깐다(`Front` 의 뜻은 표 머리말).
+  @{ Key = 'codex';  Label = 'Codex 데스크탑';  App = 'ChatGPT'; Appx = 'OpenAI.Codex_2p2nqsd0c76g0'; Front = $true
      Id = '9PLM9XGG6VKS'; Source = 'msstore'; Upgrade = @{ Via = 'none' }
      Ways = @(@{ Via = 'winget' }
               @{ Via = 'vendor'; Url = 'https://get.microsoft.com/installer/download/9PLM9XGG6VKS'; SilentArgs = @('/S')
@@ -489,6 +530,7 @@ $DesktopApps = @(
 $Steps = @(
   @{ Key = 'programs';   Title = '프로그램' }
   @{ Key = 'extensions'; Title = 'VS Code 확장' }
+  @{ Key = 'desktop';    Title = '데스크탑 앱' }
   @{ Key = 'cli';        Title = 'CLI' }
   @{ Key = 'keys';       Title = '키와 값' }
   @{ Key = 'site';       Title = '사내 연결' }
@@ -498,6 +540,20 @@ $Steps = @(
   @{ Key = 'repo';       Title = '설정 저장소' }
   @{ Key = 'register';   Title = 'Claude 플러그인' }
 )
+
+# 「도는 중」 한 줄(`Say-Busy`)이 고르는 동작 낱말 표 — 줄의 꼴 `  <대상> — <동작>중 … (<수단> · <덧말>)` 은 그 함수 하나가 든다.
+# 설치 창은 몸통이 찍은 마지막 한 줄을 「지금 하는 일」로 띄운다(`install.ui.ps1` 의 `Step-Line`) — 안 찍는 자리는 직전 결과
+#   줄이 걸린 채 오래 돌아 멎은 것과 구분이 안 된다. 그래서 시간이 드는 걸음은 들어가기 전에 `Say-Busy` 를 부르고, 동작 낱말은
+#   이 표에서만 고른다. 결과 줄(`— 깔았다 · 있음 · 최신 · 올렸다`)은 자리마다 까닭이 달라 제 자리가 찍는다.
+$BusyVerbs = [ordered]@{
+  install = '설치 중'
+  upgrade = '업데이트 중'
+  upcheck = '업데이트 확인 중'
+  fetch   = '다운로드 중'
+  wait    = '기다리는 중'
+  remove  = '제거 중'
+  background = '백그라운드에서 설치 중'
+}
 
 #region 라이브러리 — 흐름이 부르는 함수는 다 여기 선다. 정의만 있고 도는 문장은 없다
 
@@ -867,6 +923,33 @@ function Format-VerPart([string]$Ver) {
   return '(버전 확인 안 됨)'
 }
 
+# ── winget 은 이 PC 에서 한 번에 하나 — 설치 몸통과 그 몸통이 띄운 데스크탑 앱 자식(`-DesktopAppOnly`)이 같은 이름의 빗장을 쥔다 ─────────
+# winget 둘이 겹쳐 도는 것은 winget 이 약속하지 않는 꼴이다 — 소스 색인 · 받아 둔 설치본 자리를 같이 쓴다. 그래서 winget 을 부르는 두
+#   러너(`Invoke-Logged` · `Invoke-LoggedCapped`)가 부르기 앞에서 이 빗장을 쥐고 끝나면 놓는다 — 울타리 초는 쥔 뒤부터 센다. winget 이 아닌
+#   부름은 이 두 손을 안 부른다.
+#   `Enter-WingetLock` — 빗장을 쥐고 놓을 손잡이를 낸다. 남이 쥐고 있으면 기다리는 줄을 한 번 찍고 반 초씩 기다린다(Ctrl+C 를 받게).
+#     빗장을 못 지으면 `$null` 을 내고 쥐지 않은 채 간다 — 빗장은 겹침을 막는 손이지 설치를 막을 자리가 아니다.
+#   `Exit-WingetLock` — 쥔 빗장을 놓는다. `$null` 이면 아무것도 안 한다.
+# ⚠ **버려진 빗장은 잡힌 것이다** — 쥔 자식이 거둬지면(`Stop-BackRuns`) `WaitOne` 이 던지는데, 그때 소유권은 이쪽에 넘어와 있다(「준비」의
+#   단일 실행 빗장과 같다).
+$WingetLockName = 'Local\PAISetup-Winget-Lock'
+function Enter-WingetLock {
+  $m = $null
+  try { $m = New-Object Threading.Mutex($false, $WingetLockName) } catch { return $null }
+  $got = $false
+  try { $got = $m.WaitOne(0) } catch { $got = $true }
+  if (-not $got) {
+    Say-Busy 'winget' 'wait' @('다른 설치가 winget 을 쓰는 중')
+    while (-not $got) { try { $got = $m.WaitOne(500) } catch { $got = $true } }
+  }
+  return $m
+}
+function Exit-WingetLock($Lock) {
+  if (-not $Lock) { return }
+  try { $Lock.ReleaseMutex() } catch { }
+  $Lock.Dispose()
+}
+
 # 네이티브 명령을 돌려 모든 스트림을 `$LogPath`(BOM 붙은 UTF-8 — 읽는 쪽 `Get-Content` 가 BOM 으로 가린다)에 잡고, 줄이 나오는
 #   대로 줄을 받는 손에 넘긴다 — 종료코드를 내고, 못 부르면 -1 이다. 실패했을 때 그 파일의 끝 줄을 다시 펴는 것은 부르는 쪽의 몫이다.
 # **하는 부름은 손에 넘기고, 재는 부름(판정용 조회 — `--version` · `list` · `status` · `--check`)은 `-Quiet` 다.** 손은 `$OnLine`(줄 꼴이
@@ -880,6 +963,7 @@ function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath, [scr
   $prev = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   if (-not $OnLine -and -not $Quiet) { $OnLine = ${function:Show-ChildLine} }
+  $lock = if ($File -eq 'winget') { Enter-WingetLock } else { $null }
   $w = $null; $rc = -1; $took = [Diagnostics.Stopwatch]::StartNew()
   try {
     $w = New-Object IO.StreamWriter($LogPath, $false, (New-Object Text.UTF8Encoding($true)))
@@ -888,6 +972,7 @@ function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath, [scr
   }
   catch { $rc = -1 }
   finally {
+    if ($lock) { Exit-WingetLock $lock }
     if ($w) { $w.Dispose() }
     $ErrorActionPreference = $prev
     if (-not $Quiet) { try { Add-RunDetail $File $CmdArgs $rc $took.Elapsed.TotalSeconds @($LogPath) } catch { } }
@@ -1034,6 +1119,7 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
   $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
   if (-not $psi) { return -1 }
   if (-not $OnLine -and -not $Quiet) { $OnLine = ${function:Show-ChildLine} }
+  $lock = if ($File -eq 'winget') { Enter-WingetLock } else { $null }
   $rc = -1; $took = [Diagnostics.Stopwatch]::StartNew()
   # 자식이 끝난 뒤 파이프의 꼬리를 다 붓기까지 기다리는 한도 — 그 끝은 파이프를 쥔 손자까지 다 나가야 온다.
   # 거둔 갈래는 안 기다린다 — 꼬리를 읽을 자리가 없고, 살아남은 손자가 울타리를 늘린다.
@@ -1065,6 +1151,7 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
     }
   } catch { $rc = -1 }
   finally {
+    if ($lock) { Exit-WingetLock $lock }
     foreach ($s in $sink) { try { $s.Dispose() } catch { } }
     # 세부 기록은 파일을 닫은 뒤에 읽는다 — 쓰는 손이 쥔 동안은 읽기가 공유 위반으로 진다
     if (-not $Quiet) { try { Add-RunDetail $File $CmdArgs $rc $took.Elapsed.TotalSeconds @($LogPath, "$LogPath.err") } catch { } }
@@ -1198,9 +1285,10 @@ function Complete-BackRun([string]$Name, [scriptblock]$OnLine, [int]$Within = -1
     if ($run.Cwd) { Remove-Item -LiteralPath $run.Cwd -Recurse -Force -ErrorAction SilentlyContinue }
     $script:BackRuns.Remove($Name)
   }
-  # 걸린 초는 자식이 실제로 돈 초다 — 거둔 때까지로 재면 겹쳐 돈 걸음의 몫이 섞여 무엇이 느렸나를 못 가른다
+  # 걸린 초는 자식이 실제로 돈 초다 — 거둔 때까지로 재면 겹쳐 돈 걸음의 몫이 섞여 무엇이 느렸나를 못 가른다. 제 발로 끝난 자식만 그
+  #   프로세스의 시각으로 잰다 — 방금 나무째 거둔 자식은 끝 시각이 0(1601년)으로 읽혀 음수가 나므로 띄운 때부터 거둔 때까지다
   $sec = $run.Took.Elapsed.TotalSeconds
-  if ($p -and $p.HasExited) { try { $sec = ($p.ExitTime - $p.StartTime).TotalSeconds } catch { } }
+  if ($p -and $rc -ge 0 -and $p.HasExited) { try { $t = ($p.ExitTime - $p.StartTime).TotalSeconds; if ($t -ge 0) { $sec = $t } } catch { } }
   $note = '백그라운드 · {0:HH:mm:ss} 에 띄움 · 거둘 때 {1:N1}초 기다림' -f $run.At, $waited.Elapsed.TotalSeconds
   try { Add-RunDetail $run.File $run.Args $rc $sec @($run.Log, "$($run.Log).err") $note } catch { }
   # 두 흐름을 BOM 붙은 UTF-8 한 파일로 잇는다 — 앞에서 부르던 손(`Invoke-Logged`)의 기록 꼴이다. 진 판의 끝 줄(`Show-Log` — 인코딩을 안 박고
@@ -1221,6 +1309,8 @@ function Complete-BackRun([string]$Name, [scriptblock]$OnLine, [int]$Within = -1
 #   기록에 한 판씩 남긴다. 반쯤 깐 꾸러미가 남지 않게 끄기보다 기다리기가 먼저다. 이 손은 안 던진다 — 나가는 길의 `trap` 안에서도 돈다.
 #   기다림의 끝은 하나다 — 부름마다 따로 `$BackRunExitWait` 를 주면 둘이 남았을 때 차례로 기다려 그 곱절을 선다. 그동안 다른 부름도 같이
 #   돌고 있으므로 한 마감으로 다 거둔다.
+#   띄울 때의 `-Keep` 이 `Clean`(지울 파일 목록)을 든 해시면 그 파일도 지운다 — 정한 자리의 거두는 손이 읽고 지우던 것(데스크탑 앱 자식의
+#   요청 · 결과 · 세부 기록)이라 이 길에서는 아무도 안 지운다.
 function Stop-BackRuns {
   if (-not $script:BackRuns) { return }
   $until = [Diagnostics.Stopwatch]::StartNew()
@@ -1232,7 +1322,8 @@ function Stop-BackRuns {
       # 거둔 값만 댄다 — 깔았나를 재는 손(`Complete-Extension` · `Complete-PipPackages`)은 이 길에서 안 돌아, 결과는 다음 설치가 다시 잰다
       $said = if ($r.Rc -eq -2) { "${left}초 안에 끝나지 않아 중지함" } else { "끝남 (종료 코드 $($r.Rc))" }
       Write-Host "    · 백그라운드 작업 「$n」 — $said · 결과는 다음 설치에서 다시 확인" -ForegroundColor Yellow
-      Remove-Item -LiteralPath $r.Log, "$($r.Log).err" -ErrorAction SilentlyContinue
+      $clean = @(if ($r.Keep -is [hashtable] -and $r.Keep.Clean) { @($r.Keep.Clean) })
+      Remove-Item -LiteralPath (@($r.Log, "$($r.Log).err") + $clean) -ErrorAction SilentlyContinue
     } catch { }
   }
 }
@@ -1251,9 +1342,12 @@ $VendorPageMax = 1MB   # 판을 읽으려고 GET 하는 쪽(목록 · 피드)에
 $VendorListTries = 3   # 목록 쪽(`listing`)에서 받을 파일이 있나를 HEAD 로 묻는 판의 수 — 높은 판부터 묻는다. 보안 고침만 낸 판이 이보다 많이 이어지면 winget 으로 물러선다
 $VendorMirrorTries = 8      # 미러 순위(`Mirrors = 'metalink'`)에서 빠르기를 재는 곳의 수 — 가까운 곳부터. 순위는 묻는 쪽의 대륙 미러를 앞에 세운다
 $VendorMirrorProbe = 4MB    # 한 곳을 재려고 받는 앞 토막 — 작으면 연결을 여는 시간만 잰다
-$VendorMirrorCap   = 4      # 한 곳을 재는 초 — 넘기면 그때까지 받은 양으로 잰다. 느린 곳일수록 일찍 끊어, 다 재도 이 초 × 곳의 수 안팎이다
+$VendorMirrorCap   = 4      # 곳들을 한꺼번에 재는 마감 초 — 넘기면 그때까지 받은 양으로 잰다. 고르기 전체가 Metalink 한 번 묻기와 이 초 안팎이다
 $DownloadParts    = 8       # 큰 것을 나눠 받는 연결 수(`Get-DownloadParts`) — 연결 하나의 빠르기를 묶는 길(먼 지연 · 프록시)에서 회선을 다 쓴다. 회선이 묶인 자리에서는 4 와 8 이 같다(PAISetup #67)
 $DownloadSplitMin = 32MB    # 이보다 작은 것은 한 연결로 받는다 — 조각을 여는 값이 받는 시간을 넘는다
+# 받는 동안 진척 줄(10% 눈금 · 25 MB 눈금)을 찍나 — 받는 자 둘(`Get-Download` · `Get-DownloadParts`)이 읽는다. 백그라운드 자식(`-DesktopAppOnly`)은
+#   끄고 돈다 — 그 줄은 거둘 때 한꺼번에 다시 찍혀 「지금 받는 중」이 아니라 지난 눈금만 늘어놓는다. 끝 줄(「다운로드 완료」)은 늘 찍는다.
+$DownloadTicks = $true
 $ClaudePluginCap = 60  # `claude plugin list` · `plugin marketplace list` — node 로 선 CLI 가 플러그인 기록을 읽는다. 첫 실행에 제 짐을 푸는 CLI 가 `--version` 에 20초 가까이 쓴 PC 가 있어(PAISetup #30) 넉넉히 둔다
 # 끝 검증이 묻는 바깥 명령의 한도 — 넘기면 그 칸이 「못 쟀다」다. 위와 같이 멈춤을 가르는 값이라 의심스러우면 길게 둔다.
 $ToolHomesCheckCap = 120   # 손(`tool-homes.py check`)이 도구 홈 넷의 규범 · 룰 · 에이전트 · 스킬을 표와 견준다 — 파일을 읽기만 하는데, 느린 디스크와 보안 소프트가 낀 VDI 를 넉넉히 덮는다
@@ -2910,7 +3004,7 @@ function Get-PlantLedgerChecks($Ledger, [System.Collections.IDictionary]$UserEnv
   if ($Ledger.Why) { return @(@{ Name = "설치 기록 (읽지 못함 — $($Ledger.Why) · $($Ledger.Path))"; Ok = $false }) }
   if ($script:LedgerSaveWhy) { $out += @{ Name = "설치 기록 (이번에 저장하지 못함 — $($script:LedgerSaveWhy) · $($Ledger.Path))"; Ok = $false } }
   $rows = @($Ledger.Rows | Where-Object { $_.By -cne 'seen' })
-  $say = { param([string]$what, [int]$n, [string[]]$bad) "설치 기록 대조 — $what (항목 $n개$(if ($bad.Count) { ' · 불일치: ' + ($bad -join ' · ') }))" }
+  $say = { param([string]$what, [int]$n, [string[]]$bad) "설치 기록 대조 — $what (항목 ${n}개$(if ($bad.Count) { ' · 불일치: ' + ($bad -join ' · ') }))" }
   $u = @($rows | Where-Object { $_.Place -ceq 'user-env' })
   if ($u.Count) {
     $bad = @($u | Where-Object { -not (Test-SameText $(if ($UserEnv.Contains($_.Name)) { [string]$UserEnv[$_.Name] } else { $null }) $_.Value) } | ForEach-Object { $_.Name })
@@ -3749,11 +3843,11 @@ function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
       $got = 0.0
       for ($i = 0; $i -lt $n; $i++) { $got += $outs[$i].Position - $from[$i] }
       if ($got -gt $last) { $last = $got; $still.Restart() }
-      elseif ($still.Elapsed.TotalSeconds -ge $WaitSec) { $cts.Cancel(); throw "$WaitSec초 동안 데이터를 받지 못함 ($($final.Host))" }
+      elseif ($still.Elapsed.TotalSeconds -ge $WaitSec) { $cts.Cancel(); throw "${WaitSec}초 동안 데이터를 받지 못함 ($($final.Host))" }
       $pct = [Math]::Floor(($got / $total) * 100)
       if ($pct -ge ($mark + 10)) {
         $mark = $pct - ($pct % 10)
-        Write-Host ('        {0}% · {1:N1} / {2:N1} MB' -f $mark, ($got / 1MB), ($total / 1MB))
+        if ($DownloadTicks) { Write-Host ('        {0}% · {1:N1} / {2:N1} MB' -f $mark, ($got / 1MB), ($total / 1MB)) }
       }
     }
     for ($i = 0; $i -lt $n; $i++) {
@@ -3807,12 +3901,12 @@ function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
           $pct = [Math]::Floor(($got / $total) * 100)
           if ($pct -ge ($mark + 10)) {
             $mark = $pct - ($pct % 10)
-            Write-Host ('        {0}% · {1:N1} / {2:N1} MB' -f $mark, ($got / 1MB), ($total / 1MB))
+            if ($DownloadTicks) { Write-Host ('        {0}% · {1:N1} / {2:N1} MB' -f $mark, ($got / 1MB), ($total / 1MB)) }
           }
         } elseif ($got -ge ($mark + 1) * 25MB) {
           # 크기를 안 주는 자리 — 몇 퍼센트인지는 못 말해도 **움직이고 있다**는 말은 한다.
           $mark++
-          Write-Host ('        {0:N1} MB 다운로드됨' -f ($got / 1MB))
+          if ($DownloadTicks) { Write-Host ('        {0:N1} MB 다운로드됨' -f ($got / 1MB)) }
         }
       }
     } finally { $out.Close(); $in.Close() }
@@ -3826,20 +3920,21 @@ function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
 #region 깔기 — winget 을 되살리고, 프로그램 · VS Code 확장 · CLI · VC++ 런타임이 있나 묻고 깔고 올린다
 
 # ── winget 을 되살려 본다 — 없다고 바로 물러나기 전에 ────────────────────────────
-# 되살아나 불리면 `$true`, 세 갈래가 다 지면 무엇을 시도했고 무엇에 걸렸는지 적고 `$false` 를 낸다(정책이 사이드로딩을 막은
-#   기계는 우리가 넘을 자리가 아니다). 갈래는 싼 것부터다:
-#   ① 이 프로필에 다시 등록 — 가장 흔한 자리는 「안 깔림」이 아니라 「이 프로필에 등록 안 됨」이다. winget 은 AppX(App
-#      Installer)라 기계에는 프로비저닝돼 있어도 사용자 프로필에는 등록이 안 될 수 있고, 비영속 VDI 는 로그인마다 늘 그 꼴이다.
-#      네트워크 없이 선다
-#   ② 마이크로소프트가 문서에 적어 둔 길 — PSGallery 의 WinGet 모듈로 `Repair-WinGetPackageManager` 를 돌린다(사내 VDI 에서 선다)
-#   ③ GitHub 릴리스에서 내려받기 — 사내 환경 문서가 GitHub HTTPS 는 열려 있다고 적는다
-# ③ 이 받는 자리와 두 파일 이름 — 최신 릴리스의 받는 주소에서 이름으로 바로 받는다(그 갈래의 머리말).
+# 되살아나 불리면 `$true`, 두 갈래가 다 지면 무엇을 시도했고 무엇에 걸렸는지 적고 `$false` 를 낸다(정책이 사이드로딩을 막은
+#   기계는 우리가 넘을 자리가 아니다). 갈래는 이 차례로 간다:
+#   · GitHub 릴리스 — winget 본체(App Installer 꾸러미)와 딸린 것을 최신 릴리스에서 받아 이 사용자에게 깐다. 사내 프록시도 GitHub 릴리스
+#     자산을 통과시킨다
+#   · PowerShell 모듈 — 마이크로소프트가 문서에 적어 둔 길. PSGallery 의 WinGet 모듈을 받아 `Repair-WinGetPackageManager` 를 돌린다.
+#     그 명령도 같은 꾸러미를 GitHub 에서 받으므로, 모듈을 받는 몫(NuGet 공급자 · PSGallery)만큼 앞 갈래보다 길다 — 앞 갈래가 진 판의
+#     물러설 자리다
+#   비영속 VDI 는 로그인마다 프로필이 새로 나서 이 함수가 회차마다 돈다 — 갈래마다 걸린 초가 세부 기록에 남는다(아래 `$tier`).
+# GitHub 릴리스 갈래가 받는 자리와 두 파일 이름 — 최신 릴리스의 받는 주소에서 이름으로 바로 받는다(그 갈래의 머리말).
 $WingetRelSite   = 'https://github.com/microsoft/winget-cli/releases/latest/download'
 $WingetRelDeps   = 'DesktopAppInstaller_Dependencies.zip'
 $WingetRelBundle = 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'
 function Restore-Winget {
   Write-Host '  winget 이 없음 — 복구를 시도합니다.' -ForegroundColor Yellow
-  # ⚠ **TLS 1.2 는 함수 머리에서 세운다 — 세 갈래가 다 HTTPS 를 탄다.** 5.1 의 기본은 기계에 따라 아직 SSL3/TLS1.0 이고 PSGallery
+  # ⚠ **TLS 1.2 는 함수 머리에서 세운다 — 두 갈래가 다 HTTPS 를 탄다.** 5.1 의 기본은 기계에 따라 아직 SSL3/TLS1.0 이고 PSGallery
   #   는 TLS 1.2 아래로 안 받아, 한 갈래에서만 세우면 다른 갈래가 「망이 죽었다」로 진다. 덮어쓰지 않고 더한다 — 대입하면 그
   #   기계가 쓰던 더 높은 판(TLS 1.3)을 지운다.
   try {
@@ -3858,61 +3953,10 @@ function Restore-Winget {
     [bool](Get-Command winget -ErrorAction SilentlyContinue)
   }
   # 갈래마다 걸린 초를 세부 기록에 한 줄로 남긴다(`Add-RunSpan`) — 갈래의 `finally` 가 부르므로 되살린 갈래 · 진 갈래 · 던진 갈래가 다
-  #   한 줄씩이다. 재기만 하고 갈래의 차례 · 판정은 안 바꾼다. 맨바닥 사내 VDI 에서 준비 86초 가운데 이 자리가 얼마인지를 가른다(PAISetup #69).
+  #   한 줄씩이다. 갈래의 이름이 그 줄의 이름이다 — 차례가 바뀌어도 회차끼리 견줄 수 있게 번호를 안 단다(PAISetup #69).
   $tier = { param([string]$What, [string]$Said, $Sw) try { Add-RunSpan "winget 복구 $What" $Said $Sw.Elapsed.TotalSeconds } catch { } }
 
-  # ① 이 프로필에 다시 등록한다 (네트워크 없음)
-  $tierSw = [Diagnostics.Stopwatch]::StartNew(); $tierSaid = '실패'
-  try {
-    Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe `
-      -ErrorAction Stop
-    if (& $reach) {
-      Write-Host '  winget 복구함 (프로필에 다시 등록)' -ForegroundColor Green
-      $tierSaid = '복구함'
-      return $true
-    }
-    # 「됐다는데 안 잡힌다」는 「안 됐다」와 다른 명제라 따로 말한다 — 그 차이가 다음에 어디를 팔지를 정한다.
-    Write-Host '    · 다시 등록했지만 winget 을 찾을 수 없음 — 다음 방법을 시도합니다'
-    $tierSaid = '등록했지만 찾지 못함'
-  } catch {
-    Write-Host "    · 다시 등록 실패 — $(Say-Why $_)"
-  } finally { & $tier '① 프로필에 다시 등록' $tierSaid $tierSw }
-
-  # ② 마이크로소프트가 적어 둔 길 — PSGallery 의 WinGet 모듈이 스스로 고친다. `-AllUsers` 는 관리자를 타므로, 안 되면 그것 없이
-  #   한 번 더 — 제 계정에만 서도 쓸 수 있다.
-  $tierSw = [Diagnostics.Stopwatch]::StartNew(); $tierSaid = '실패'
-  try {
-    Write-Host '    · PowerShell 모듈로 복구를 시도합니다 (PSGallery)'
-    # 있으면 안 받는다 — 깔린 모듈을 `-Force` 로 다시 깔면 윈도우가 「쓰는 중이라 못 바꾼다」로 문다.
-    if (Get-Module -ListAvailable -Name Microsoft.WinGet.Client) {
-      Write-Host '      (모듈이 이미 있음 — 다운로드 건너뜀)'
-    } else {
-      # 받기가 져도 Repair 로 간다 — Repair 는 모듈만 있으면 서므로, 준비의 실패(프록시의 504 등)가 본 걸음을 막지 않게 갈래를
-      #   끊는다.
-      $getSw = [Diagnostics.Stopwatch]::StartNew(); $getSaid = '실패'
-      try {
-        Install-PackageProvider -Name NuGet -Force -ErrorAction Stop | Out-Null
-        Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery `
-          -ErrorAction Stop | Out-Null
-        $getSaid = '받음'
-      } catch {
-        Write-Host "      (모듈 다운로드 실패 — $(Say-Why $_)) — 기존 모듈로 시도합니다"
-      } finally { & $tier '② 중 모듈 받기 (NuGet · PSGallery)' $getSaid $getSw }
-    }
-    try { Repair-WinGetPackageManager -AllUsers -ErrorAction Stop }
-    catch { Repair-WinGetPackageManager -ErrorAction Stop }
-    if (& $reach) {
-      Write-Host '  winget 복구함 (Repair-WinGetPackageManager)' -ForegroundColor Green
-      $tierSaid = '복구함'
-      return $true
-    }
-    Write-Host '    · 모듈은 실행됐지만 winget 을 찾을 수 없음 — 다음 방법을 시도합니다'
-    $tierSaid = '실행했지만 찾지 못함'
-  } catch {
-    Write-Host "    · 모듈로 복구 실패 — $(Say-Why $_)"
-  } finally { & $tier '② PowerShell 모듈 Repair-WinGetPackageManager (받기 포함)' $tierSaid $tierSw }
-
-  # ③ GitHub 릴리스에서 받아 깐다
+  # GitHub 릴리스에서 받아 깐다
   # 걸음마다 제 실패 문장(`$step`)을 들고 catch 가 그것을 그대로 쓴다 — 받기 · 풀기 · 깔기가 한 문장으로 뭉개지면 다 받고 깔다 진
   #   것도 망 탓으로 읽힌다. 문장을 통째로 드는 것은 조사를 붙여 짓지 않게 하려는 것이다. 받기 문장은 주소를 든다 — 이름이 바뀌어
   #   404 로 지면 그 주소가 까닭이다.
@@ -3920,7 +3964,7 @@ function Restore-Winget {
   #   회사망 · VDI 에서는 남이 쓴 몫에 걸려 403 이 난다. 이 갈래가 도는 PC 에는 winget 도 gh 도 없어 로그인한 길로 물을 수도 없다.
   #   받을 두 파일은 이름이 판마다 같아(v1.9 부터) 최신 릴리스의 받는 주소(`$WingetRelSite`)에서 이름으로 바로 받는다. 라이선스
   #   파일은 안 받는다 — 이 사용자에게만 까는 `Add-AppxPackage` 는 그것을 안 쓴다.
-  $step = 'GitHub 다운로드 방법도 실패'
+  $step = 'GitHub 다운로드 방법 실패'
   $tierSw = [Diagnostics.Stopwatch]::StartNew(); $tierSaid = '실패'
   try {
     Write-Host '    · GitHub 릴리스에서 다운로드를 시도합니다'
@@ -3972,12 +4016,46 @@ function Restore-Winget {
       $tierSaid = '복구함'
       return $true
     }
-    Write-Host '    · 설치했지만 winget 을 찾을 수 없음 — 새 창에서는 찾을 수 있음'
+    Write-Host '    · 설치했지만 winget 을 찾을 수 없음 — 다음 방법을 시도합니다'
     $tierSaid = '설치했지만 찾지 못함'
   } catch {
     Write-Host "    · $step — $(Say-Why $_)"
     $tierSaid = "실패 — $step"
-  } finally { & $tier '③ GitHub 릴리스' $tierSaid $tierSw }
+  } finally { & $tier 'GitHub 릴리스' $tierSaid $tierSw }
+
+  # 마이크로소프트가 적어 둔 길 — PSGallery 의 WinGet 모듈이 스스로 고친다. `-AllUsers` 는 관리자를 타므로, 안 되면 그것 없이
+  #   한 번 더 — 제 계정에만 서도 쓸 수 있다.
+  $tierSw = [Diagnostics.Stopwatch]::StartNew(); $tierSaid = '실패'
+  try {
+    Write-Host '    · PowerShell 모듈로 복구를 시도합니다 (PSGallery)'
+    # 있으면 안 받는다 — 깔린 모듈을 `-Force` 로 다시 깔면 윈도우가 「쓰는 중이라 못 바꾼다」로 문다.
+    if (Get-Module -ListAvailable -Name Microsoft.WinGet.Client) {
+      Write-Host '      (모듈이 이미 있음 — 다운로드 건너뜀)'
+    } else {
+      # 받기가 져도 Repair 로 간다 — Repair 는 모듈만 있으면 서므로, 준비의 실패(프록시의 504 등)가 본 걸음을 막지 않게 갈래를
+      #   끊는다.
+      $getSw = [Diagnostics.Stopwatch]::StartNew(); $getSaid = '실패'
+      try {
+        Install-PackageProvider -Name NuGet -Force -ErrorAction Stop | Out-Null
+        Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery `
+          -ErrorAction Stop | Out-Null
+        $getSaid = '받음'
+      } catch {
+        Write-Host "      (모듈 다운로드 실패 — $(Say-Why $_)) — 기존 모듈로 시도합니다"
+      } finally { & $tier 'PowerShell 모듈 중 모듈 받기 (NuGet · PSGallery)' $getSaid $getSw }
+    }
+    try { Repair-WinGetPackageManager -AllUsers -ErrorAction Stop }
+    catch { Repair-WinGetPackageManager -ErrorAction Stop }
+    if (& $reach) {
+      Write-Host '  winget 복구함 (Repair-WinGetPackageManager)' -ForegroundColor Green
+      $tierSaid = '복구함'
+      return $true
+    }
+    Write-Host '    · 모듈은 실행됐지만 winget 을 찾을 수 없음 — 새 창에서는 찾을 수 있음'
+    $tierSaid = '실행했지만 찾지 못함'
+  } catch {
+    Write-Host "    · 모듈로 복구 실패 — $(Say-Why $_)"
+  } finally { & $tier 'PowerShell 모듈 Repair-WinGetPackageManager (받기 포함)' $tierSaid $tierSw }
 
   return $false
 }
@@ -4144,6 +4222,17 @@ function Get-VendorLatest($Way) {
       $found.Url = $Way.Url
       $a = Invoke-VendorAsk $Way.Url
       if ($a.Location) { try { $found.Ver = & $verIn (New-Object Uri ([Uri]$Way.Url), $a.Location).AbsolutePath } catch { } }
+      if ($Way.Sibling) {
+        $found.Url = ''
+        if ($found.Ver) {
+          try {
+            $at = (New-Object Uri ([Uri]$Way.Url), $a.Location).GetLeftPart('Path')
+            $sib = $at -replace '\.[^./]+$', "$($Way.Sibling)"
+            if ($sib -ne $at) { $found.Url = $sib }
+          } catch { }
+        }
+        if (-not $found.Url) { $found.Ver = '' }
+      }
     }
     'github' {
       # 태그는 넘김 주소의 끝마디다(`…/releases/tag/v26.09.0-0`). `{tag}` 는 머리 `v` 를 뗀 글자다 — 자산 이름이 그 꼴이다
@@ -4193,31 +4282,65 @@ function Get-VendorLatest($Way) {
   return $found
 }
 
-# 미러 한 곳의 받기 빠르기 — 앞 `$VendorMirrorProbe` 바이트를 받아 보고 초당 바이트를 낸다(못 받았으면 0). `$VendorMirrorCap` 초가
-#   지나면 그때까지 받은 양으로 잰다. https 로 물은 것이 http 로 넘겨지면 0 이다(`Get-Download` 와 같은 자).
-function Measure-VendorMirror([string]$Url) {
-  $res = $null
-  $got = 0
+# 미러 여러 곳의 받기 빠르기를 한꺼번에 잰다 — 곳마다 앞 `$VendorMirrorProbe` 바이트를 동시에 받아 보고, 내는 것은 받은 주소의 차례
+#   그대로 곳마다 초당 바이트다(못 받았으면 0). 마감은 하나다 — 띄운 때부터 `$VendorMirrorCap` 초가 지나면 덜 받은 곳도 그때까지 받은
+#   양으로 잰다. 곳마다의 초는 그 곳이 끝난 때(다 받았다 · 졌다 · 마감)까지다. https 로 물은 것이 http 로 넘겨지면 0 이다(`Get-Download`
+#   와 같은 자).
+# 한 스레드에서 돈다 — 곳마다 응답 머리(`GetResponseAsync`)와 읽기(`ReadAsync`)를 띄워 두고 짧은 틈마다 끝난 것만 거둬 다음 읽기를
+#   띄운다. 곳마다 차례로 재면 느린 곳마다 마감을 다 써 잰 곳의 수만큼 늘어난다.
+function Measure-VendorMirrors([string[]]$Urls) {
   $sw = [Diagnostics.Stopwatch]::StartNew()
+  $ps = @(foreach ($u in $Urls) {
+    $p = @{ Url = $u; Req = $null; Head = $null; Res = $null; In = $null; Read = $null; Got = 0; Sec = 0.0; Done = $false; Bad = $false
+            Buf = (New-Object byte[] 65536) }
+    try {
+      $p.Req = [Net.HttpWebRequest]::Create($u)
+      $p.Req.UserAgent = 'PAISetup'
+      $p.Req.AddRange(0, [int]$VendorMirrorProbe - 1)
+      $p.Head = $p.Req.GetResponseAsync()
+    } catch { $p.Done = $true; $p.Bad = $true }
+    $p
+  })
   try {
-    $req = [Net.HttpWebRequest]::Create($Url)
-    $req.UserAgent = 'PAISetup'
-    $req.Timeout = $VendorMirrorCap * 1000
-    $req.ReadWriteTimeout = $VendorMirrorCap * 1000
-    $req.AddRange(0, [int]$VendorMirrorProbe - 1)
-    $res = $req.GetResponse()
-    if ($Url -like 'https:*' -and $res.ResponseUri.Scheme -ne 'https') { return 0 }
-    $in = $res.GetResponseStream()
-    $buf = New-Object byte[] 65536
-    while ($got -lt $VendorMirrorProbe -and $sw.Elapsed.TotalSeconds -lt $VendorMirrorCap -and ($n = $in.Read($buf, 0, $buf.Length)) -gt 0) { $got += $n }
-  } catch { } finally { if ($res) { $res.Close() } }
-  $sec = $sw.Elapsed.TotalSeconds
-  if ($got -le 0 -or $sec -le 0) { return 0 }
-  return [double]($got / $sec)
+    while ($sw.Elapsed.TotalSeconds -lt $VendorMirrorCap -and @($ps | Where-Object { -not $_.Done }).Count) {
+      foreach ($p in $ps) {
+        if ($p.Done) { continue }
+        try {
+          # 끝난 읽기는 이 틈에 다 비운다 — 틈마다 읽기 하나만 거두면 잰 빠르기가 회선이 아니라 틈의 길이에 묶인다
+          while ($true) {
+            if (-not $p.Res) {
+              if (-not $p.Head.IsCompleted) { break }
+              if ("$($p.Head.Status)" -ne 'RanToCompletion') { $p.Bad = $true; throw '응답 머리를 받지 못함' }
+              $p.Res = $p.Head.Result
+              if ($p.Url -like 'https:*' -and $p.Res.ResponseUri.Scheme -ne 'https') { $p.Bad = $true; throw 'http 로 넘겨짐' }
+              $p.In = $p.Res.GetResponseStream()
+            } else {
+              if (-not $p.Read.IsCompleted) { break }
+              if ("$($p.Read.Status)" -ne 'RanToCompletion') { throw '읽다 끊김' }
+              $k = [int]$p.Read.Result
+              $p.Got += [Math]::Max(0, $k)
+              if ($k -le 0 -or $p.Got -ge $VendorMirrorProbe) { $p.Done = $true; $p.Sec = $sw.Elapsed.TotalSeconds; break }
+            }
+            $p.Read = $p.In.ReadAsync($p.Buf, 0, $p.Buf.Length)
+          }
+        } catch { $p.Done = $true; $p.Sec = $sw.Elapsed.TotalSeconds }
+      }
+      # 다음 틈은 걸린 일 하나가 끝나는 대로 연다(길어야 20ms)
+      $wait = @(foreach ($p in $ps) { if (-not $p.Done) { if ($p.Res) { $p.Read } else { $p.Head } } }) | Where-Object { $_ }
+      if ($wait) { [void][Threading.Tasks.Task]::WaitAny([Threading.Tasks.Task[]]@($wait), 20) }
+    }
+  } finally {
+    foreach ($p in $ps) {
+      if (-not $p.Done) { $p.Sec = $sw.Elapsed.TotalSeconds }
+      try { if ($p.Req) { $p.Req.Abort() } } catch { }
+      try { if ($p.Res) { $p.Res.Close() } } catch { }
+    }
+  }
+  return @(foreach ($p in $ps) { if (-not $p.Bad -and $p.Got -gt 0 -and $p.Sec -gt 0) { [double]($p.Got / $p.Sec) } else { 0.0 } })
 }
 
 # 받을 곳을 미러에서 고른다 — 받을 주소(`$Url`)의 Metalink(`<주소>.meta4`)에서 원본 지문(SHA-256)과 순위대로 선 https 미러를 읽고, 앞
-#   `$VendorMirrorTries` 곳의 빠르기를 재(`Measure-VendorMirror`) 가장 빠른 곳을 낸다. 내는 것 `@{ Url; Sha256; Speed; Tried }` — 목록을
+#   `$VendorMirrorTries` 곳의 빠르기를 한꺼번에 재(`Measure-VendorMirrors`) 가장 빠른 곳을 낸다. 내는 것 `@{ Url; Sha256; Speed; Tried }` — 목록을
 #   못 읽었거나, 지문이 없거나, 잰 곳이 다 0 이면 `$null` 이다(부르는 쪽이 다음 길로 간다). 지문이 없으면 고르지 않는다 — 미러의 파일을
 #   원본과 맞출 자가 그것뿐이다.
 #   목록 읽기부터 고르기까지 걸린 초와 곳마다의 빠르기를 세부 기록에 한 줄로 남긴다(`Add-RunSpan`) — 재기만 하고 고르는 것은 안 바꾼다.
@@ -4232,8 +4355,9 @@ function Get-VendorMirror([string]$Url) {
     $urls = @([regex]::Matches($a.Text, '<url\b[^>]*\bpriority="(\d+)"[^>]*>(https://[^<]+)</url>') |
               Sort-Object { [int]$_.Groups[1].Value } | ForEach-Object { [Net.WebUtility]::HtmlDecode($_.Groups[2].Value) } |
               Select-Object -First $VendorMirrorTries)
-    foreach ($u in $urls) {
-      $bps = Measure-VendorMirror $u
+    $speeds = @(Measure-VendorMirrors $urls)
+    for ($i = 0; $i -lt $urls.Count; $i++) {
+      $u = $urls[$i]; $bps = $speeds[$i]
       $seen += '{0} {1:N1} MB/s' -f $(try { ([Uri]$u).Host } catch { $u }), ($bps / 1MB)
       if ($bps -gt 0 -and (-not $best -or $bps -gt $best.Speed)) { $best = @{ Url = $u; Sha256 = $sha; Speed = $bps; Tried = $urls.Count } }
     }
@@ -4687,20 +4811,22 @@ function Test-WebView2 {
   return ''
 }
 
+# 짝(`Requires` 의 winget id) 하나가 이 PC 에 섰나 — 내는 것 @{ Ver = 선 판(없으면 빈 글자); What = 화면에 댈 이름 }. 「데스크탑 앱」
+#   걸음(짝이 안 선 행은 그 창에서 깐다)과 `Install-Requires` 가 이 한 자를 쓴다. 재는 자는 짝마다 다르다 — 짝이 늘면 여기에 한 갈래를 더한다.
+# ⚠ **모르는 id 는 재지 않고 「안 섰다」다** — 「못 쟀다」를 「있다」로 접으면 설치가 조용히 안 서고, 그 실패는 앱 쪽에서 엉뚱한 사유로
+#   나타난다. 그래서 그 짝은 늘 깐다.
+function Measure-Require([string]$Id) {
+  if ($Id -eq 'Microsoft.EdgeWebView2Runtime') { return @{ Ver = (Test-WebView2); What = 'WebView2 런타임' } }
+  return @{ Ver = ''; What = $Id }
+}
+
 # 앱의 짝(`Requires`)을 winget 으로 먼저 세운다 — 다 있거나 섰으면 `$true`, 하나라도 못 세우면 빨간 줄 · `$Fails` 와 함께 `$false`.
 function Install-Requires($A) {
   foreach ($id in @($A.Requires)) {
     if (-not $id) { continue }
-    # 재는 자는 짝마다 다르다 — 짝이 늘면 여기에 한 갈래를 더한다.
-    # ⚠ **모르는 id 는 재지 않고 깐다** — 「못 쟀다」를 「있다」로 접으면 설치가 조용히 안 서고, 그 실패는 앱 쪽에서 엉뚱한
-    #   사유로 나타난다.
-    if ($id -eq 'Microsoft.EdgeWebView2Runtime') {
-      $pv = Test-WebView2
-      if ($pv) { Write-Host ('      · WebView2 런타임 — 설치되어 있음 {0}' -f (Format-VerPart $pv)); continue }
-      $what = 'WebView2 런타임'
-    } else {
-      $what = $id
-    }
+    $have = Measure-Require $id
+    if ($have.Ver) { Write-Host ('      · {0} — 설치되어 있음 {1}' -f $have.What, (Format-VerPart $have.Ver)); continue }
+    $what = $have.What
     if ($noWinget) {
       Write-Host '      ! winget 이 없어 필요한 구성 요소를 설치할 수 없음 — 이 앱도 실행되지 않음' -ForegroundColor Red
       $script:Fails.Add("$($A.Label) (필요한 구성 요소 $id — winget 없음)")
@@ -4768,6 +4894,7 @@ function Install-DesktopApp($A) {
   $al = $null
   $rc = $null
   $wayWhy = ''
+  $won = $null
   foreach ($W in $ways) {
    if ($al) { Remove-Item $al -ErrorAction SilentlyContinue }
    $al = [IO.Path]::GetTempFileName()
@@ -4788,15 +4915,16 @@ function Install-DesktopApp($A) {
     $rc = $vr.Rc
     $wayWhy = $vr.Why
    }
-   if (Test-DesktopApp $A) { break }
+   if (Test-DesktopApp $A) { $won = $W; break }
    if ($W -ne $ways[-1]) { Write-Host ('      · 이 방법은 실패{0} — 다음 방법으로' -f $(if ($null -ne $rc) { " (종료 코드 $rc)" } else { '' })) }
   }
   if (Test-DesktopApp $A) {
     Write-Host '  설치 완료' -ForegroundColor Green
     $script:JustInstalledApps[$A.App] = $true
     $script:InstalledAppRows[$A.Label] = $A
-    # winget 이 깐 판은 벤더보다 늦을 수 있다 — 제 갱신기가 있는 행은 깐 자리에서 바로 최신으로 올린다.
-    if ($A.Upgrade.Via -eq 'updater') { [void](Invoke-AppUpdater $A (Measure-DesktopApp $A).Ver) }
+    # winget 이 깐 판은 벤더보다 늦을 수 있다 — 제 갱신기가 있는 행은 깐 자리에서 바로 최신으로 올린다. 판을 읽는 벤더 길로 섰으면 이미
+    #   최신이라 안 부른다.
+    if ($A.Upgrade.Via -eq 'updater' -and -not ($won -and $won.Via -eq 'vendor' -and $won.Read)) { [void](Invoke-AppUpdater $A (Measure-DesktopApp $A).Ver) }
   } elseif ($null -eq $rc -and $wayWhy) {
     # 마지막 길이 받기 · 울타리 · 띄우기에서 졌다 — 그 까닭은 위 노란 줄이 댔다.
     Write-Host "  ! 설치 실패 — 마지막 방법도 실패: $wayWhy" -ForegroundColor Red
@@ -4818,6 +4946,133 @@ function Install-DesktopApp($A) {
     $script:Fails.Add($A.Label)
   }
   Remove-Item $al -ErrorAction SilentlyContinue
+}
+
+# ── 데스크탑 앱 하나를 숨은 자식에서 깐다 — 「데스크탑 앱」 걸음이 앱 여럿을 동시에 깔 때 (PAISetup #69) ─────────────────────────
+# 자식은 이 몸통을 `-DesktopAppOnly <요청 파일>` 로 다시 띄운 것이다 — 라이브러리만 읽고 빗장 앞에서 `Install-DesktopApp` 한 번을 돌린 뒤
+#   결과를 파일에 적고 나간다. 부모의 상태(`$Fails` · 깐 목록 · 못 잰 걸음 · 넘김)는 자식이 못 고치므로 결과 파일로 돌려받아 부모가
+#   거둘 때 덧붙인다. 띄우기 · 기다리기 · 나무째 거두기는 백그라운드 부름(`Start-BackRun` · `Complete-BackRun` · `Stop-BackRuns`)이 든다.
+# 세 손이 짝이다 — 같은 파일 이름(`<임시 폴더>\paisetup-desktop-<열쇠>-<8자>` 뒤에 `.json` 요청 · `.result.json` 결과 · `.detail.log` 세부
+#   기록)을 쓴다.
+#   `Start-DesktopAppChild` (부모) — 요청을 적고 자식을 띄운다. 요청은 부모가 이미 가른 값이다: 행의 열쇠 · winget 이 없나 · 올리기를
+#     끄나 · 밤 회차인가 · 맨 앞에서 받은 「올릴 것」 목록(`$upgradable` — 못 받았으면 `null`).
+#   `Invoke-DesktopAppChild` (자식) — 요청을 읽어 그 값을 이 프로세스의 같은 이름에 두고 `Install-DesktopApp` 을 돌린다. 화면 줄은 정보
+#     스트림(`6>&1`)으로 받아 글 · 색 · 줄바꿈 없음을 그대로 적는다. 결과 — @{ Key; Lines = @(@{ T; C; N }); Fails; Installed; Just;
+#     Unmeasured; Overflow; ProbeWhy; Threw; Sec }. `Threw` 는 던진 까닭(파일:줄)이고 `Sec` 은 그 한 판의 초다. 다 쓴 뒤 이름을 옮긴다 —
+#     부모는 파일이 있으면 답이 다 섰다고 읽는다. 세부 기록은 요청의 `.detail.log` 에 쓰고, 그 판의 초(`Add-RunSpan`)도 거기 남긴다.
+#   `Complete-DesktopAppChild` (부모) — 그 행의 부름을 거두고(아직 돌면 기다리는 줄 · `Complete-BackRun`) 자식의 세부 기록을 부모의 것에
+#     잇고, 화면 줄을 받은 그대로 다시 찍은 뒤 상태를 덧붙인다. 결과가 없으면(자식이 못 떴거나 죽었다) 빨간 줄 · `$Fails` 와 자식이 낸 끝
+#     줄이다 — 다음 설치가 다시 잰다. 자식을 아예 못 띄웠으면 그 행을 이 창에서 깐다.
+# ⚠ **자식의 진척 줄은 끄고 띄운다**(`$DownloadTicks`) — 화면 줄은 거둘 때 한꺼번에 찍혀, 받는 중의 눈금은 지난 일이 된다.
+function Start-DesktopAppChild($Row, [string]$Engine) {
+  $stem = Join-Path ([IO.Path]::GetTempPath()) ('paisetup-desktop-' + $Row.Key + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+  $req = [ordered]@{ Key = $Row.Key; NoWinget = [bool]$noWinget; NoUpgrade = [bool]$NoUpgrade; NightRun = [bool]$NightRun
+                     Upgradable = $upgradable; Result = "$stem.result.json"; Detail = "$stem.detail.log" }
+  [IO.File]::WriteAllText("$stem.json", ($req | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding($false)))
+  $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  Start-BackRun $Row.Label $ps @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Engine, '-DesktopAppOnly', "$stem.json") `
+    -Label $Row.Label -Keep @{ Stem = $stem; Clean = @("$stem.json", "$stem.result.json", "$stem.result.json.tmp", "$stem.detail.log") }
+}
+
+function Invoke-DesktopAppChild([string]$RequestFile) {
+  $req = [IO.File]::ReadAllText($RequestFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
+  $out = [ordered]@{ Key = "$($req.Key)"; Lines = @(); Fails = @(); Installed = $false; Just = $false; Unmeasured = @(); Overflow = @()
+                     ProbeWhy = @{}; Threw = ''; Sec = 0.0 }
+  # ⚠ `List[hashtable]` 을 `ToArray()` 로 꺼낸다 — `List[object]` 를 `@(…)` 로 싸면 이 파워셸(5.1)이 「Argument types do not match」로 던진다
+  $lines = New-Object System.Collections.Generic.List[hashtable]
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  try {
+    $row = @($DesktopApps | Where-Object { $_.Key -eq $req.Key })[0]
+    if (-not $row) { throw "데스크탑 앱 표에 없는 열쇠 — $($req.Key)" }
+    $script:DetailLog        = "$($req.Detail)"
+    $script:noWinget         = [bool]$req.NoWinget
+    $script:NoUpgrade        = [bool]$req.NoUpgrade
+    $script:NightRun         = [bool]$req.NightRun
+    $script:upgradable       = if ($null -eq $req.Upgradable) { $null } else { , @($req.Upgradable | ForEach-Object { "$_" }) }
+    $script:DownloadTicks    = $false
+    $script:JustInstalledApps = @{}
+    $script:InstalledAppRows  = @{}
+    # 막대를 끈다 — 자식은 부모의 콘솔을 같이 쓴다(받기 · MSIX 세우기가 그 위에 막대를 그린다)
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+      & { Install-DesktopApp $row } 6>&1 | ForEach-Object {
+        $m = if ($_ -is [Management.Automation.InformationRecord]) { $_.MessageData } else { $_ }
+        if ($m -is [Management.Automation.HostInformationMessage]) {
+          $lines.Add(@{ T = "$($m.Message)"; C = $(if ($null -ne $m.ForegroundColor) { "$($m.ForegroundColor)" } else { '' }); N = [bool]$m.NoNewLine })
+        } else { $lines.Add(@{ T = "$m"; C = ''; N = $false }) }
+      }
+    } finally {
+      $out.Sec = $sw.Elapsed.TotalSeconds
+      try { Add-RunSpan "데스크탑 앱 — $($row.Label)" '받기 · 설치 · 올리기 한 판 (백그라운드)' $out.Sec } catch { }
+    }
+    $out.Installed = [bool]$script:InstalledAppRows.ContainsKey($row.Label)
+    $out.Just      = [bool]$script:JustInstalledApps.ContainsKey($row.App)
+  } catch {
+    $at = ''
+    try { $ii = $_.InvocationInfo; if ($ii -and $ii.ScriptName) { $at = ' ({0}:{1})' -f (Split-Path -Leaf $ii.ScriptName), $ii.ScriptLineNumber } } catch { }
+    $out.Threw = "$(Say-Why $_)$at"
+  } finally {
+    $out.Lines      = $lines.ToArray()
+    $out.Fails      = @($Fails)
+    $out.Unmeasured = @($script:UnmeasuredSteps)
+    $out.Overflow   = @($script:ProbeTimedOut)
+    $out.ProbeWhy   = $script:ProbeWhy
+    [IO.File]::WriteAllText("$($req.Result).tmp", ($out | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath "$($req.Result).tmp" -Destination "$($req.Result)" -Force
+  }
+}
+
+function Complete-DesktopAppChild($Row) {
+  $name = $Row.Label
+  if (-not (Test-BackRun $name)) { return }
+  $stem    = $script:BackRuns[$name].Keep.Stem
+  $started = [bool]$script:BackRuns[$name].Proc
+  $stray   = New-Object System.Collections.Generic.List[string]
+  $done    = Complete-BackRun $name { param($l) $stray.Add($l) }
+  $res = $null
+  try { $res = [IO.File]::ReadAllText("$stem.result.json", [Text.Encoding]::UTF8) | ConvertFrom-Json } catch { }
+  try {
+    if ($script:DetailLog -and (Test-Path -LiteralPath "$stem.detail.log")) {
+      [IO.File]::AppendAllText($script:DetailLog, [IO.File]::ReadAllText("$stem.detail.log", [Text.Encoding]::UTF8), (New-Object Text.UTF8Encoding($false)))
+    }
+  } catch { }
+  try {
+    if ($res) {
+      if (-not @($res.Lines).Count) { Write-Host ''; Write-Host "  $($Row.Label)" -ForegroundColor Cyan }
+      foreach ($l in @($res.Lines)) {
+        $c = "$($l.C)"
+        if ($c) { Write-Host "$($l.T)" -ForegroundColor $c -NoNewline:([bool]$l.N) } else { Write-Host "$($l.T)" -NoNewline:([bool]$l.N) }
+      }
+      foreach ($l in $stray) { Show-ChildLine $l }
+      if ($res.Threw) {
+        Write-Host "  ! $($Row.Label) — 중단됨: $($res.Threw) · 이 앱의 나머지는 건너뜀 (다음 설치에서 다시 확인)" -ForegroundColor Red
+        $script:Fails.Add("$($Row.Label) (중단됨)")
+      }
+      Write-Host ('    · 백그라운드에서 진행함 — {0}초' -f [int]$res.Sec) -ForegroundColor DarkGray
+      foreach ($f in @($res.Fails)) { if ("$f") { $script:Fails.Add("$f") } }
+      if ($res.Installed) { $script:InstalledAppRows[$Row.Label] = $Row }
+      if ($res.Just) { $script:JustInstalledApps[$Row.App] = $true }
+      foreach ($u in @($res.Unmeasured)) {
+        if ($u) { $script:UnmeasuredSteps.Add(@{ Step = "$($u.Step)"; Probe = "$($u.Probe)"; Held = "$($u.Held)"; Why = "$($u.Why)"; Redo = "$($u.Redo)" }) }
+      }
+      foreach ($o in @($res.Overflow)) { if ($o) { $script:ProbeTimedOut.Add(@{ Probe = "$($o.Probe)"; Site = [int]$o.Site; Cap = [int]$o.Cap }) } }
+      if ($res.ProbeWhy) { foreach ($p in $res.ProbeWhy.PSObject.Properties) { $script:ProbeWhy[$p.Name] = "$($p.Value)" } }
+    } elseif (-not $started) {
+      Write-Host ''
+      Write-Host "  ! $($Row.Label) — 백그라운드로 띄우지 못해 여기서 설치합니다 ($((Get-Content -LiteralPath $done.Log -Raw -ErrorAction SilentlyContinue).Trim()))" -ForegroundColor Yellow
+      $daSw = [Diagnostics.Stopwatch]::StartNew()
+      try { Install-DesktopApp $Row }
+      finally { try { Add-RunSpan "데스크탑 앱 — $($Row.Label)" '받기 · 설치 · 올리기 한 판' $daSw.Elapsed.TotalSeconds } catch { } }
+    } else {
+      Write-Host ''
+      Write-Host "  $($Row.Label)" -ForegroundColor Cyan
+      Write-Host "  ! 백그라운드 설치의 결과를 받지 못함 (종료 코드 $($done.Rc)) — 마지막 출력:" -ForegroundColor Red
+      Show-Log $done.Log 5
+      $script:Fails.Add("$($Row.Label) (백그라운드 설치의 결과를 받지 못함 — 다음 설치에서 다시 확인)")
+    }
+  } finally {
+    Remove-Item -LiteralPath (@($done.Log) + @($done.Keep.Clean)) -ErrorAction SilentlyContinue
+  }
 }
 
 # 깔린 확장과 그 판 — `@{ Vers = @{ Id = 판 }; Why = '' }`. 못 읽었으면 `Vers` 가 `$null` 이고 `Why` 가 그 까닭이다
@@ -7019,6 +7274,17 @@ if ($GhLoginOnly) {
   exit 0
 }
 
+# ── 데스크탑 앱 하나만 까는 자식 — 「데스크탑 앱」 걸음이 띄운다(`Start-DesktopAppChild`) ───────────────────────
+# 위 로그인 창 자식과 같은 자리에서 나간다 — 빗장을 쥐면 저를 띄운 설치와 겹침으로 읽혀 물러나고, 아래 준비는 사람 환경을 만진다.
+#   준비가 가르는 값(winget 유무 · 올릴 것 목록 · 밤 회차)은 요청 파일이 부모의 것을 그대로 든다(`Invoke-DesktopAppChild`).
+# ⚠ 던짐은 여기서 받아 까닭을 오류 흐름에 쓰고 1 로 나간다 — 아래 `trap` 은 스크립트 전체에 걸려 이 자리의 던짐도 받는데, 그 손이
+#   부르는 `Stop-RunLog` 는 아직 안 선 자리라 까닭이 「Stop-RunLog 를 모른다」로 가려진다. 부모는 결과 파일이 없으면 그 글을 편다.
+if ($DesktopAppOnly) {
+  try { Invoke-DesktopAppChild $DesktopAppOnly }
+  catch { [Console]::Error.WriteLine("데스크탑 앱 자식이 결과를 쓰지 못함 — $(Say-Why $_)"); exit 1 }
+  exit 0
+}
+
 # ══ 준비 ═══════════════════════════════════════════════════════════════════════════════════════
 #   층 — 없음(걸음 앞)
 #   하는 일 — 겹쳐 도는 것을 막는 빗장 · 고른 제품 · 묻고 잴 이름 표 · winget 되살리기 · 자리 재기 · 조건 값 ·
@@ -7248,20 +7514,6 @@ $ModelPicker = @(
 # `Default` 행은 이 값과 무관하게 남는다.
 $ModelPickerOnly = $true
 
-# 「도는 중」 한 줄(`Say-Busy`)이 고르는 동작 낱말 표 — 줄의 꼴 `  <대상> — <동작>중 … (<수단> · <덧말>)` 은 그 함수 하나가 든다.
-# 설치 창은 몸통이 찍은 마지막 한 줄을 「지금 하는 일」로 띄운다(`install.ui.ps1` 의 `Step-Line`) — 안 찍는 자리는 직전 결과
-#   줄이 걸린 채 오래 돌아 멎은 것과 구분이 안 된다. 그래서 시간이 드는 걸음은 들어가기 전에 `Say-Busy` 를 부르고, 동작 낱말은
-#   이 표에서만 고른다. 결과 줄(`— 깔았다 · 있음 · 최신 · 올렸다`)은 자리마다 까닭이 달라 제 자리가 찍는다.
-$BusyVerbs = [ordered]@{
-  install = '설치 중'
-  upgrade = '업데이트 중'
-  upcheck = '업데이트 확인 중'
-  fetch   = '다운로드 중'
-  wait    = '기다리는 중'
-  remove  = '제거 중'
-  background = '백그라운드에서 설치 중'
-}
-
 # 사내에서만 뜻이 있는 이름 — **값이 주소가 아니라 프록시 걷기(`Test-OurProxyEntry`)가 못 가른다.** 저쪽은 「값이 죽은 포트를
 #   가리키나」를, 이쪽은 「이 이름이 사외에서 뜻이 있나」를 묻는다 — 값으로만 재면 `ATELIER_SITES=posco` 같은 사내 전용 값이 사외로
 #   새어 아뜰리에의 갈래가 다 막힌다. 값은 안 보고, 이름 울타리(`Test-OurInsideOnlyEntry` · 값 파일이 그 이름을 드는가)로 우리가
@@ -7449,18 +7701,6 @@ if (-not $noWinget) {
     }
   }
 }
-
-# ── 앱 ────────────────────────────────────────────────────────────────────────
-# ⚠ `--source winget` 을 박는다 — 사내에서 빼면 인증서 검증에 걸린다.
-# 판정은 종료코드가 아니라 프로브다 — winget 은 이미 깔려 있으면 「올릴 것이 없다」로 0 이 아닌 값을 낸다.
-# 소스를 뗀 옵션(`$WGOpts`)을 따로 둔다 — 데스크탑 앱 하나가 스토어 소스에 살아서(위 표의 `Source`) 소스를 붙박이로 두면 그 앱을
-#   못 부른다. 나머지는 `$WG` 를 쓴다 — 붙이는 자리를 한 줄로 두어 둘이 안 갈린다.
-$WGOpts = @('--exact','--silent',
-            '--accept-package-agreements','--accept-source-agreements','--disable-interactivity')
-$WG = @('--source','winget') + $WGOpts
-# winget 이 「입력 조건과 일치하는 설치된 패키지를 찾을 수 없다」로 끝난 값(`APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND`). `winget list`
-#   의 0 아닌 값 가운데 이것만 「없다」다 —소스를 못 열었거나(인증서 `0x8A15005E`) 그 밖으로 진 값은 「못 쟀다」다(결정 0145).
-$WingetNotInstalled = 0x8A150014
 
 # ── 자동 실행을 켜나 · 자동 실행이 읽는 「지난 설치의 자리」 (PAISetup #36) ─────────────────────────────────
 # 켜나(`$wantAutoRun`)는 `-AutoRun` · `-NoAutoRun` 이 먼저고, 없으면 짐의 `#autorun = yes|no` 를 `Get-AutoRunDefault` 가 푼다. 「부팅 시
@@ -7765,13 +8005,25 @@ if (-not ($NoUpgrade -or $noWinget)) {
 $pipLine  = Read-Directive $DistEnvFile 'pip-packages'
 $pipPkgs  = @(if ($pipLine) { $pipLine -split '[,\s]+' | Where-Object { $_ } })
 $pipAsked = $false
+# 이번 판에 인스톨러가 새로 깐 데스크탑 앱(`Install-DesktopApp` 이 채운다 · 키는 행의 `App`). 있나는 길마다 묻는 자가 다르고,
+#   종료코드를 판정으로 안 쓰는 것은 「프로그램」 걸음과 같은 결이다. 아래 셋은 「데스크탑 앱」 걸음이 채우고 뒤 칸이 읽는다 — 그 걸음이
+#   첫 칸 앞에서 멎어도 빈 값으로 선다.
+$script:JustInstalledApps = @{}
+# ── 이 판에서 **깔거나 이미 서 있던** 데스크탑 앱 — 끝의 「연다」 칸이 이것에 묻는다 (결정 0059) ──
+# 자리로 묻지 않는다 — 「언제」가 행에 있어 사내에서도 깔리는 앱이 있고, 자리로 물으면 방금 깐 것을 안 띄운다.
+# ⚠ **`JustInstalledApps` 와 다른 자다.** 저쪽은 이번에 깐 것만 들어(인스톨러가 제 손으로 띄웠나를 가른다) 이미 있던 앱은 안 든다.
+#   여기는 이 판에서 선 것 전부라야 한다 — 어제 깐 앱도 오늘 띄운다. 키는 `Label`(화면에 쓰는 이름), 값은 표의 행이다.
+$script:InstalledAppRows = @{}
+
+# 숨은 자식으로 띄운 행 — 「데스크탑 앱」 걸음의 `finally` 가 표 차례로 거둔다.
+$deskBack = @()
 
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. 「프로그램」 걸음 앞에도 시간이 든다.
 Write-Elapsed '준비'
 
 # ══ 걸음 「프로그램」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 기계
-#   하는 일 — winget 앱(VS Code · Node · Git · Python · gh) · VC++ 런타임(파이썬이 서는 판) · 데스크탑 앱 · Node 신뢰 · 씨앗의
+#   하는 일 — winget 앱(VS Code · Node · Git · Python · gh) · VC++ 런타임(파이썬이 서는 판) · Node 신뢰 · 씨앗의
 #     파이썬 패키지를 백그라운드로 띄우기(거두기는 「공용 자산」)
 #   앞에서 받는 것 — 준비의 고른 제품 · 자리 · 올릴 것 목록 · winget 유무 · 파이썬이 필요한 까닭 · 파이썬 패키지 이름(`$pipPkgs`)
 #   안 하는 것 — 홈 파일 · 키. 예외 하나 — Node 신뢰가 CA 경로(`NODE_EXTRA_CA_CERTS`)를 사용자 환경에 심는다.
@@ -7877,7 +8129,7 @@ foreach ($app in $Apps) {
 # ── GitHub 로그인 창을 앞당겨 띄운다 — gh 가 선 바로 뒤, 숨은 자식에 (PAISetup #35 A) ─────────────────────
 # 코드 창은 사람을 기다리는 동안 제 프로세스를 세운다(`ShowDialog()`). 「설정 저장소」 걸음에서 이 프로세스로 열면 그 사이 설치가 멎으므로,
 #   이 몸통을 `-GhLoginOnly` 로 다시 띄워 그 안에서 열고 설치는 잇는다. 답은 「설정 저장소」 걸음의 로그인 칸이 받는다.
-# gh 는 위 `$Apps` 의 마지막 줄이라 이보다 앞은 없고, 뒤로 남은 걸음(VC++ · 데스크탑 앱 · 확장 · CLI …)이 창의 한도를 덮는다.
+# gh 는 위 `$Apps` 의 마지막 줄이라 이보다 앞은 없고, 뒤로 남은 걸음(VC++ · 확장 · 데스크탑 앱 · CLI …)이 창의 한도를 덮는다.
 # 띄우는 조건은 그 칸과 같다 — `#config-repo` 에 GitHub 주소가 있고(`$configRepoOnGitHub`) · git 이 닿고 · 개발 도구를 켰고 · 창을
 #   띄울 판(`Get-GhLoginGo`)일 때. 안 띄운 판은 그 칸이 제 자리에서 다시 잰다.
 $script:GhLoginChild = $null
@@ -7897,6 +8149,110 @@ if ($wantVcRuntime) {
   Install-VcRuntime (Test-Attended)
 }
 
+# ── Node 신뢰 배선 — **「VS Code 확장」 걸음보다 앞이다** ─────────────────────────────────
+# 뒤의 두 걸음(「VS Code 확장」 · 「CLI」)이 둘 다 Node 로 내려받는다 — 뒤에 두면 이미 진 뒤에 신뢰를 잇는다.
+# ⚠ **`-NoUpgrade` 로 안 건너뛴다.** 이것은 올리는 일이 아니라 서게 하는 일이고, 비영속 VDI 는 로그인마다 사용자 환경변수가 새로
+#   나서 매번 다시 심어야 한다.
+Write-Host ''
+Write-Host '  Node 신뢰 배선' -ForegroundColor Cyan
+Wire-NodeTrust
+
+# ── 씨앗이 드는 파이썬 패키지를 백그라운드로 띄운다 — **파이썬이 선 바로 뒤다** (PAISetup #69) ──────────────────────
+# 거두기는 「공용 자산」 걸음이 한다 — 그 사이 「VS Code 확장」 ~ 「Claude 홈 설정」 걸음이 겹쳐 돌고, 그 걸음들이 부르는 파이썬(로컬 프록시 ·
+#   Codex 설정 병합 · 샌드박스 키 재기)은 표준 라이브러리만 읽어 까는 중인 패키지를 안 건드린다. 이 걸음이 여기 오기 전에 멎었으면 그 걸음이 제 자리에서
+#   띄우고 거둔다.
+if ($pipPkgs) {
+  Write-Host ''
+  Start-PipPackages $pipPkgs
+  $pipAsked = $true
+}
+
+} catch { Write-StepFault $_ }
+Exit-Step 'programs'
+
+# ══ 걸음 「VS Code 확장」 ═══════════════════════════════════════════════════════════════════════
+#   층 — 기계
+#   하는 일 — 깔린 확장을 한 번에 올리고, 고른 제품의 빠진 확장을 까는 부름을 백그라운드로 띄운다
+#   앞에서 받는 것 — 「프로그램」의 VS Code(`code`) · Node 신뢰
+#   안 하는 것 — 사용자 환경 · 홈 · 빠진 확장을 깔았나 재기(「공용 자산」 걸음 끝의 `Complete-Extension` 이 거두며 잰다)
+# 확장만으로는 안 돈다 — 확장은 Claude Code CLI 를 자식으로 부른다. 그래서 「CLI」 걸음이 붙어 있고, 둘 중 하나만 서면 VS Code 는
+#   열리는데 아무 일도 안 일어난다.
+# `code` 를 띄우는 횟수가 곧 시간이다 — 한 번 뜰 때마다 노드 프로세스가 서고 마켓플레이스에 한 번 묻는다(VDI 에서 몇 초씩). 그래서
+#   판 번호는 한 번 읽고, 깔린 것은 `--update-extensions` 한 번으로 올리고, 다시 한 번 읽어 앞뒤로 「올렸다 · 최신」을 가른다. 빠진
+#   확장도 `code` 한 번에 넘기고 목록 한 번으로 잰다(`Install-Extension` · `Complete-Extension`).
+# 올리기는 앞에서, 빠진 것 깔기는 그 뒤 백그라운드다 — 두 `code` 부름이 같은 확장 폴더를 동시에 쓰지 않게 차례를 둔다. 깔기는 맨바닥
+#   VDI 에서 수 분이 들어(PAISetup #69) 뒤 걸음과 겹쳐 돌린다.
+# `--update-extensions` 는 깔린 확장 전부를 올린다 — 우리 것만 고르는 스위치가 없다. VS Code 가 스스로 하는 자동 갱신과 같은 일이다.
+
+Enter-Step 'extensions'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
+# 확장 갱신 한 호출에 두르는 울타리 — 초. **갱신은 곁일이라 포기할 수 있다**(까닭은 아래 호출 자리).
+# 평소 1~14초지만 밀린 회차는 수백 초를 써 정상이 꽤 느릴 수 있는 자리다 — 넉넉히 두되 부르는 쪽 울타리(10분)를 혼자 다 먹지
+#   못하게 그 절반 아래로 둔다.
+$ExtUpdateCap  = 240
+# 이보다 오래 걸렸으면 걸린 시간을 적는다 — 평소치를 넘은 회차만 기록에 남게.
+$ExtUpdateSlow = 30
+# 고른 제품의 확장만 든다 — 목록이 진본이고 고르는 축은 `$Products` 다.
+$ExtPicks = @($Extensions | Where-Object { $PickKeys -contains $_.Key })
+# 할 일은 확장마다 `Get-InstallAction` 이 가른다 — 깔렸나는 `code --list-extensions` 가 재고, 최신 판은 묻지 않는다(마켓플레이스 판을
+#   따로 물을 손이 없다). 그래서 깔린 확장은 `upcheck` 이고, 그 묻기는 아래 한 호출(`--update-extensions`)이 한꺼번에 한다.
+# ⚠ **`code` 를 못 쟀으면 확장도 못 잰 것이다** — 「안 선다」로 읽어 빨갛게 끝내지 않고 확장마다 안 한 걸음으로 남긴다(결정 0141 · 0145).
+$extCodeRuns = if ($NoVsCode) { '' } else { Measure-Runs 'code' '--version' }
+if ($NoVsCode) {
+  Write-Host '  건너뜀 — VS Code 선택 해제 (확장은 VS Code 가 있어야 설치됨)'
+} elseif ($extCodeRuns -ne 'no') {
+  # `code --version` 을 못 쟀으면 `Measure-Runs` 가 남긴 그 까닭(넘김 · 못 띄움 · 종료 값)이 확장마다의 까닭이다 — `Why` 를 비워
+  #   `Add-UnmeasuredStep` 이 `Get-ProbeWhy` 로 찍게 한다.
+  $extRead   = if ($extCodeRuns -eq 'yes') { Get-ExtVersions } else { @{ Vers = $null; Why = '' } }
+  $extBefore = $extRead.Vers
+  $extProbe  = if ($extCodeRuns -eq 'yes') { 'code --list-extensions --show-versions' } else { 'code --version' }
+  $extActs   = @{}
+  foreach ($x in $ExtPicks) {
+    $xHas = if ($null -eq $extBefore) { 'unmeasured' } elseif ($extBefore.ContainsKey($x.Id)) { 'yes' } else { 'no' }
+    $xVer = if ($xHas -eq 'yes') { $extBefore[$x.Id] } else { '' }
+    $extActs[$x.Id] = Get-InstallAction $xHas $xVer '' $null $true ([bool]$NoUpgrade)
+  }
+  $extAfter  = $extBefore
+  $extHave   = @($ExtPicks | Where-Object { $extActs[$_.Id] -eq 'upcheck' })
+  if ($extHave.Count -gt 0) {
+    Say-Busy "설치된 확장 $($extHave.Count)개" 'upcheck' @('code')
+    $xl = [IO.Path]::GetTempFileName()
+    $t0 = Get-Date
+    $rc = Invoke-LoggedCapped 'code' @('--update-extensions') $xl $ExtUpdateCap ${function:Show-ExtProgress}
+    $took = [int]((Get-Date) - $t0).TotalSeconds
+    Remove-Item $xl, "$xl.err" -ErrorAction SilentlyContinue
+    # 넘긴 것은 실패가 아니다 — 확장은 이미 깔려 있어 본일(세우기)이 안 깨지고, 못 올린 판은 VS Code 가 제 자동 갱신으로 올린다.
+    #   그래서 `$Fails` 에 안 넣고 말만 하고 간다.
+    if ($rc -eq -2) {
+      Write-Host "  ! 확장 업데이트가 ${ExtUpdateCap}초를 넘겨 중지함 — 설치된 버전 그대로 진행 (VS Code 가 직접 업데이트합니다)" -ForegroundColor Yellow
+    }
+    # 걸린 시간을 적는다 — 이 호출은 확장별 소요를 안 뱉어, 느렸을 때 뒤에 남는 자리가 이것뿐이다. 걸음 전체를 재는
+    #   `Write-Elapsed` 로는 이 호출 몫이 안 갈린다.
+    elseif ($took -ge $ExtUpdateSlow) {
+      Write-Host "  (확장 업데이트에 ${took}초 걸림 — 밀린 업데이트가 많았음)" -ForegroundColor DarkGray
+    }
+    $extAfter = (Get-ExtVersions).Vers
+  }
+  if (-not $ExtPicks) { Write-Host '  선택한 제품이 없어 확장을 설치하지 않음' }
+  Install-Extension $ExtPicks $extActs $extBefore $extAfter $extProbe $extRead.Why
+} else {
+  Write-Host '  ! code 가 이 창의 PATH 에 없어 건너뜀 — VS Code 설치를 먼저 확인하세요' -ForegroundColor Red
+  $Fails.Add('VS Code 확장 (code 를 찾을 수 없음)')
+}
+
+} catch { Write-StepFault $_ }
+Exit-Step 'extensions'
+
+# ══ 걸음 「데스크탑 앱」 ════════════════════════════════════════════════════════════════════════
+#   층 — 기계
+#   하는 일 — Codex 데스크탑의 샌드박스 키를 두고, 고른 제품의 데스크탑 앱을 깔거나 올린다. 사람이 누를 창으로 넘어갈 수 있는
+#     앱(행의 `Front`)은 이 창에서 깔고, 나머지는 숨은 자식(`-DesktopAppOnly`)으로 동시에 띄워 이 걸음 끝에서 표 차례로 거둔다
+#   앞에서 받는 것 — 준비의 고른 제품 · 자리 · 올릴 것 목록(`$upgradable`) · winget 유무
+#   안 하는 것 — 앱 띄우기(「마무리」의 「연다」 칸) · 데스크탑의 권한 · 프로젝트 심기(「설정 저장소」 걸음)
+# 「VS Code 확장」 걸음 뒤에 선다 — 그 걸음이 백그라운드로 띄운 확장 묶음과 「프로그램」 걸음이 띄운 파이썬 패키지가 이 걸음과 겹쳐 돈다.
+# 숨은 자식은 이 걸음 안에서 다 거둔다 — 뒤 걸음에 앱을 읽는 자리가 있다(「설정 저장소」의 심기가 데스크탑 상태를 심고, 「마무리」의
+#   「연다」 칸이 깐 목록에 묻는다). 자식과 이 창이 같이 부르는 winget 은 빗장 하나로 한 번에 하나다(`Enter-WingetLock`).
+
 # ── 데스크탑 앱 설치 — **켤지는 값 파일이, 언제는 행이, 무엇을은 제품 칸이 정한다** ──────
 # 「사내에 쓸모가 없다」는 앱마다 다르다(결정 0059). 게이트웨이를 물리는 `ANTHROPIC_BASE_URL` 은 Claude Code CLI 만 읽고 앱에는
 #   그 스위치가 없어, 게이트웨이를 물어야 쓸모가 있는 앱(Claude · Codex · Antigravity — 결정 0045)은 사내에서 깔려도 막힌 제 본사로
@@ -7911,25 +8267,8 @@ if ($wantVcRuntime) {
 # GUI 앱이라 PATH 로 못 잰다 — `--version` 을 부를 이름이 안 생긴다. winget 갈래는 winget 의 목록에, 제 설치본 갈래는 시작 메뉴에
 #   묻는다. 짝으로 딸린 런타임은 그 둘로도 못 재 레지스트리가 든다(`Test-WebView2`).
 
-# 이번 판에 인스톨러가 새로 깐 데스크탑 앱(`Install-DesktopApp` 이 채운다 · 키는 행의 `App`). 있나는 길마다 묻는 자가 다르고,
-#   종료코드를 판정으로 안 쓰는 것은 위 「앱」 칸과 같은 결이다.
-$script:JustInstalledApps = @{}
-# ── 이 판에서 **깔거나 이미 서 있던** 데스크탑 앱 — 끝의 「연다」 칸이 이것에 묻는다 (결정 0059) ──
-# 자리로 묻지 않는다 — 「언제」가 행에 있어 사내에서도 깔리는 앱이 있고, 자리로 물으면 방금 깐 것을 안 띄운다.
-# ⚠ **`JustInstalledApps` 와 다른 자다.** 저쪽은 이번에 깐 것만 들어(인스톨러가 제 손으로 띄웠나를 가른다) 이미 있던 앱은 안 든다.
-#   여기는 이 판에서 선 것 전부라야 한다 — 어제 깐 앱도 오늘 띄운다. 키는 `Label`(화면에 쓰는 이름), 값은 표의 행이다.
-$script:InstalledAppRows = @{}
-
-# ── 짝으로 먼저 서야 하는 런타임 — **있으면 안 깐다** (PAISetup #16 · 결정 0059) ──────────────────
-# ⚠ **`Test-DesktopApp` 으로 못 잰다 — 레지스트리에 묻는다.** WebView2 는 GUI 앱이 아니라 런타임이라 시작 메뉴(`Get-StartApps`)에
-#   안 서고, `winget list` 는 찾기는 하는데 이름과 판을 Edge 의 것으로 낸다. 레지스트리가 WebView2 를 찾는 앱이 실제로 보는
-#   자리다. 기계 자리와 사용자 자리를 둘 다 본다(설치 갈래가 둘이다).
-# 판을 안 견주고 「있나」만 본다 — 하한을 벤더가 안 내(매니페스트에 `Dependencies` 가 없다) 숫자를 박으면 근거 없는 규칙표가 된다.
-#   이 런타임은 Edge 채널을 타는 Evergreen 이라 한 번 서면 저절로 따라간다.
-# ⚠ **`--source winget` 을 박는다.** 안 박으면 msstore 까지 훑다가 그쪽 인증서 오류(`0x8a15005e`)로 설치가 시작도 못 하는데,
-#   종료코드는 0 이라 성공으로 보인다.
-$WebView2Guid = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
-
+Enter-Step 'desktop'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 짐의 `#desktop-app` 을 읽는다(`Read-DesktopAppSwitch` — `-Describe` 의 `app|` 줄도 같은 손을 지난다). `:` 뒤 목록은 위 머리말대로
 #   말하고 지나간다.
 $wantApp   = Read-Directive $DistEnvFile 'desktop-app'
@@ -8019,143 +8358,71 @@ function Set-CodexSandboxKey([string]$Path) {
   if ($w.Did -ceq 'overrun') { return @{ Did = 'raced'; Why = $w.Why } }
   return @{ Did = 'left'; Why = $w.Why }
 }
-# ── Node 신뢰 배선 — **「VS Code 확장」 걸음보다 앞이다** ─────────────────────────────────
-# 뒤의 두 걸음(「VS Code 확장」 · 「CLI」)이 둘 다 Node 로 내려받는다 — 뒤에 두면 이미 진 뒤에 신뢰를 잇는다.
-# ⚠ **`-NoUpgrade` 로 안 건너뛴다.** 이것은 올리는 일이 아니라 서게 하는 일이고, 비영속 VDI 는 로그인마다 사용자 환경변수가 새로
-#   나서 매번 다시 심어야 한다.
-Write-Host ''
-Write-Host '  Node 신뢰 배선' -ForegroundColor Cyan
-Wire-NodeTrust
-
-# ── 씨앗이 드는 파이썬 패키지를 백그라운드로 띄운다 — **파이썬이 선 바로 뒤다** (PAISetup #69) ──────────────────────
-# 거두기는 「공용 자산」 걸음이 한다 — 그 사이 이 걸음의 데스크탑 앱과 「VS Code 확장」 ~ 「Claude 홈 설정」 걸음이 겹쳐 돌고, 그 걸음들이 부르는 파이썬(로컬 프록시 ·
-#   Codex 설정 병합)은 표준 라이브러리만 읽어 까는 중인 패키지를 안 건드린다. 이 걸음이 여기 오기 전에 멎었으면 그 걸음이 제 자리에서
-#   띄우고 거둔다.
-if ($pipPkgs) {
-  Write-Host ''
-  Start-PipPackages $pipPkgs
-  $pipAsked = $true
-}
-
-# ⚠ 위 둘(Node 신뢰 배선 · 파이썬 패키지 띄우기)은 데스크탑 앱 앞에 선다 — 둘 다 데스크탑 앱에 안 기대고, 사외 맨바닥에서는
-#   데스크탑 앱 넷을 받고 까는 몫이 이 걸음에서 가장 길어 그동안 pip 가 뒤에서 같이 돈다(PAISetup #69).
 
 # ── 자리 판정 — **행마다 묻는다** (PAISetup #16 · 결정 0059) ──────────────────────────────────
 # 스위치의 두 값은 위 「데스크탑 앱 설치」 머리말이 든다. 안 깐 까닭을 행마다 댄다 — 같은 판에서 어떤 행은 깔리고 어떤 행은
-#   안 깔려, 안 깔린 줄이 침묵하면 고른 사람이 제 선택이 죽은 줄 모른다.
+#   안 깔려, 안 깔린 줄이 침묵하면 고른 사람이 제 선택이 죽은 줄 모른다. 안 깔 행은 깔 행보다 먼저 표 차례로 말한다.
+# 행이 「언제」를 안 적으면 `offsite` 다 — 그 자는 `Test-DesktopAppHere` 하나가 든다(설치 창의 안내 줄도 그 답으로 선다).
 if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
   # 빈 목록도 말한다 — 제품을 하나도 안 켠 판이 한 줄도 없이 지나가지 않게.
   if (-not $appPicks) {
     Write-Host ''
     Write-Host '  데스크탑 앱 — 선택한 제품이 없어 설치하지 않음'
   }
-  foreach ($da in $appPicks) {
-    # 행이 「언제」를 안 적으면 `offsite` 다 — 그 자는 `Test-DesktopAppHere` 하나가 든다(설치 창의 안내 줄도 그 답으로 선다).
-    if (Test-DesktopAppHere $da $appWhen $offsite) {
-      # Codex 는 데스크탑의 앱 서버가 처음 뜨기 전에 샌드박스 키가 서야 한다(위 `Set-CodexSandboxKey`)
-      if ($da.Key -eq 'codex') {
-        $sbx = Set-CodexSandboxKey $CodexCfg
-        $sbxName = 'Codex 데스크탑 · 샌드박스 키'
-        switch ($sbx.Did) {
-          'made'       { Write-Host "  $sbxName — 데스크탑 설치 전에 만듦 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
-          'added'      { Write-Host "  $sbxName — 데스크탑 설치 전에 설정 끝에 추가함 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
-          'kept'       { Write-Host "  $sbxName — 이미 설정됨 ($($sbx.Have))" }
-          'raced'      { Write-Host "  ! $sbxName — 설정 끝에 추가했지만 $($sbx.Why) · 현재 내용 유지 ($CodexCfg)" -ForegroundColor Yellow }
-          'unmeasured' { Add-UnmeasuredStep $sbxName $sbx.Probe '저장도 건너뛰기도 하지 않음' $sbx.Why }
-          default {
-            Write-Host "  ! $sbxName — $($sbx.Why) · 변경하지 않음 ($CodexCfg) — 앱의 샌드박스 초기 설정이 새 대화 권한을 「승인 요청」으로 덮어쓸 수 있음" -ForegroundColor Yellow
-          }
-        }
-      }
-      # 앱마다 받기 · 설치 · 올리기를 한 판으로 재 세부 기록에 남긴다(`Add-RunSpan` — 화면에는 안 찍는다). 앱끼리 동시에 깔지를
-      #   가르는 숫자가 이것이다 — 벤더 설치본은 `Add-RunDetail` 밖이라 이 줄이 없으면 앱마다의 몫이 안 갈린다(PAISetup #69).
-      $daSw = [Diagnostics.Stopwatch]::StartNew()
-      try { Install-DesktopApp $da }
-      finally { try { Add-RunSpan "데스크탑 앱 — $($da.Label)" '받기 · 설치 · 올리기 한 판' $daSw.Elapsed.TotalSeconds } catch { } }
-      continue
-    }
+  $deskHere = @($appPicks | Where-Object { Test-DesktopAppHere $_ $appWhen $offsite })
+  foreach ($da in @($appPicks | Where-Object { $deskHere -notcontains $_ })) {
     Write-Host ''
     Write-Host "  $($da.Label)" -ForegroundColor Cyan
     # 자리는 둘뿐이라(「준비」의 「자리」 칸) 안 깐 까닭은 사내 하나다.
     Write-Host '      · 건너뜀 (사내에서는 게이트웨이로 연결할 수 없음)'
   }
+  # Codex 는 데스크탑의 앱 서버가 처음 뜨기 전에 샌드박스 키가 서야 한다(위 `Set-CodexSandboxKey`) — 어느 앱이든 띄우기 앞이다
+  if (@($deskHere | Where-Object { $_.Key -eq 'codex' }).Count) {
+    $sbx = Set-CodexSandboxKey $CodexCfg
+    $sbxName = 'Codex 데스크탑 · 샌드박스 키'
+    switch ($sbx.Did) {
+      'made'       { Write-Host "  $sbxName — 데스크탑 설치 전에 만듦 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
+      'added'      { Write-Host "  $sbxName — 데스크탑 설치 전에 설정 끝에 추가함 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
+      'kept'       { Write-Host "  $sbxName — 이미 설정됨 ($($sbx.Have))" }
+      'raced'      { Write-Host "  ! $sbxName — 설정 끝에 추가했지만 $($sbx.Why) · 현재 내용 유지 ($CodexCfg)" -ForegroundColor Yellow }
+      'unmeasured' { Add-UnmeasuredStep $sbxName $sbx.Probe '저장도 건너뛰기도 하지 않음' $sbx.Why }
+      default {
+        Write-Host "  ! $sbxName — $($sbx.Why) · 변경하지 않음 ($CodexCfg) — 앱의 샌드박스 초기 설정이 새 대화 권한을 「승인 요청」으로 덮어쓸 수 있음" -ForegroundColor Yellow
+      }
+    }
+  }
+  # 누구를 이 창에서, 누구를 숨은 자식으로 — 행의 `Front` · MSI 길 · 안 선 짝이 가른다. MSI 는 윈도우가 PC 에서 한 번에 하나만 돌려, 그
+  #   길을 든 행은 다른 설치와 겹치지 않게 이 창에서 깐다. 짝(`Requires`)이 안 선 행도 이 창에서 깐다 — 짝을 기계 범위로 깔 때 관리자
+  #   승인 창이 뜰 수 있어, 그 안내 줄이 창과 같이 서야 한다(`Measure-Require`). 이 창에서 깔 행이 없으면 첫 행을 이 창에서 깐다 — 겹칠
+  #   것 없이 자식을 띄우면 띄우는 값만 든다.
+  # ⚠ **자식은 이 설치기(`install.ps1`)를 다시 띄운 것이다** — 이 흐름을 다른 스크립트가 떼어 돌리면(`$PSCommandPath` 가 그 스크립트다)
+  #   자식이 그 스크립트를 띄워 그 흐름을 되풀이한다. 그 판은 자식 없이 다 이 창에서 깐다.
+  $deskBack  = @(if ([IO.Path]::GetFileName("$PSCommandPath") -ieq 'install.ps1') {
+    $deskHere | Where-Object { -not $_.Front -and -not @(Get-RowWays $_ | Where-Object { $_.Msi }).Count -and
+                               -not @(@($_.Requires) | Where-Object { $_ -and -not (Measure-Require $_).Ver }).Count } })
+  $deskFront = @($deskHere | Where-Object { $deskBack -notcontains $_ })
+  if (-not $deskFront.Count -and $deskBack.Count) { $deskFront = @($deskBack[0]); $deskBack = @($deskBack | Select-Object -Skip 1) }
+  if ($deskBack.Count) {
+    Write-Host ''
+    foreach ($da in $deskBack) { Start-DesktopAppChild $da $PSCommandPath }
+    Say-Busy (@($deskBack | ForEach-Object { $_.Label }) -join ' · ') 'background' @(
+      "$(@($deskFront | ForEach-Object { $_.Label }) -join ' · ') 설치와 함께 진행", '결과는 이 단계 끝에 표시')
+  }
+  foreach ($da in $deskFront) {
+    # 앱마다 받기 · 설치 · 올리기를 한 판으로 재 세부 기록에 남긴다(`Add-RunSpan` — 화면에는 안 찍는다). 숨은 자식은 같은 줄을 제 판에서
+    #   남긴다(`Invoke-DesktopAppChild`) — 벤더 설치본은 `Add-RunDetail` 밖이라 이 줄이 없으면 앱마다의 몫이 안 갈린다(PAISetup #69).
+    $daSw = [Diagnostics.Stopwatch]::StartNew()
+    try { Install-DesktopApp $da }
+    finally { try { Add-RunSpan "데스크탑 앱 — $($da.Label)" '받기 · 설치 · 올리기 한 판' $daSw.Elapsed.TotalSeconds } catch { } }
+  }
 }
 
-} catch { Write-StepFault $_ }
-Exit-Step 'programs'
-
-# ══ 걸음 「VS Code 확장」 ═══════════════════════════════════════════════════════════════════════
-#   층 — 기계
-#   하는 일 — 깔린 확장을 한 번에 올리고, 고른 제품의 빠진 확장을 까는 부름을 백그라운드로 띄운다
-#   앞에서 받는 것 — 「프로그램」의 VS Code(`code`) · Node 신뢰
-#   안 하는 것 — 사용자 환경 · 홈 · 빠진 확장을 깔았나 재기(「공용 자산」 걸음 끝의 `Complete-Extension` 이 거두며 잰다)
-# 확장만으로는 안 돈다 — 확장은 Claude Code CLI 를 자식으로 부른다. 그래서 「CLI」 걸음이 붙어 있고, 둘 중 하나만 서면 VS Code 는
-#   열리는데 아무 일도 안 일어난다.
-# `code` 를 띄우는 횟수가 곧 시간이다 — 한 번 뜰 때마다 노드 프로세스가 서고 마켓플레이스에 한 번 묻는다(VDI 에서 몇 초씩). 그래서
-#   판 번호는 한 번 읽고, 깔린 것은 `--update-extensions` 한 번으로 올리고, 다시 한 번 읽어 앞뒤로 「올렸다 · 최신」을 가른다. 빠진
-#   확장도 `code` 한 번에 넘기고 목록 한 번으로 잰다(`Install-Extension` · `Complete-Extension`).
-# 올리기는 앞에서, 빠진 것 깔기는 그 뒤 백그라운드다 — 두 `code` 부름이 같은 확장 폴더를 동시에 쓰지 않게 차례를 둔다. 깔기는 맨바닥
-#   VDI 에서 수 분이 들어(PAISetup #69) 뒤 걸음과 겹쳐 돌린다.
-# `--update-extensions` 는 깔린 확장 전부를 올린다 — 우리 것만 고르는 스위치가 없다. VS Code 가 스스로 하는 자동 갱신과 같은 일이다.
-
-Enter-Step 'extensions'
-try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
-# 확장 갱신 한 호출에 두르는 울타리 — 초. **갱신은 곁일이라 포기할 수 있다**(까닭은 아래 호출 자리).
-# 평소 1~14초지만 밀린 회차는 수백 초를 써 정상이 꽤 느릴 수 있는 자리다 — 넉넉히 두되 부르는 쪽 울타리(10분)를 혼자 다 먹지
-#   못하게 그 절반 아래로 둔다.
-$ExtUpdateCap  = 240
-# 이보다 오래 걸렸으면 걸린 시간을 적는다 — 평소치를 넘은 회차만 기록에 남게.
-$ExtUpdateSlow = 30
-# 고른 제품의 확장만 든다 — 목록이 진본이고 고르는 축은 `$Products` 다.
-$ExtPicks = @($Extensions | Where-Object { $PickKeys -contains $_.Key })
-# 할 일은 확장마다 `Get-InstallAction` 이 가른다 — 깔렸나는 `code --list-extensions` 가 재고, 최신 판은 묻지 않는다(마켓플레이스 판을
-#   따로 물을 손이 없다). 그래서 깔린 확장은 `upcheck` 이고, 그 묻기는 아래 한 호출(`--update-extensions`)이 한꺼번에 한다.
-# ⚠ **`code` 를 못 쟀으면 확장도 못 잰 것이다** — 「안 선다」로 읽어 빨갛게 끝내지 않고 확장마다 안 한 걸음으로 남긴다(결정 0141 · 0145).
-$extCodeRuns = if ($NoVsCode) { '' } else { Measure-Runs 'code' '--version' }
-if ($NoVsCode) {
-  Write-Host '  건너뜀 — VS Code 선택 해제 (확장은 VS Code 가 있어야 설치됨)'
-} elseif ($extCodeRuns -ne 'no') {
-  # `code --version` 을 못 쟀으면 `Measure-Runs` 가 남긴 그 까닭(넘김 · 못 띄움 · 종료 값)이 확장마다의 까닭이다 — `Why` 를 비워
-  #   `Add-UnmeasuredStep` 이 `Get-ProbeWhy` 로 찍게 한다.
-  $extRead   = if ($extCodeRuns -eq 'yes') { Get-ExtVersions } else { @{ Vers = $null; Why = '' } }
-  $extBefore = $extRead.Vers
-  $extProbe  = if ($extCodeRuns -eq 'yes') { 'code --list-extensions --show-versions' } else { 'code --version' }
-  $extActs   = @{}
-  foreach ($x in $ExtPicks) {
-    $xHas = if ($null -eq $extBefore) { 'unmeasured' } elseif ($extBefore.ContainsKey($x.Id)) { 'yes' } else { 'no' }
-    $xVer = if ($xHas -eq 'yes') { $extBefore[$x.Id] } else { '' }
-    $extActs[$x.Id] = Get-InstallAction $xHas $xVer '' $null $true ([bool]$NoUpgrade)
-  }
-  $extAfter  = $extBefore
-  $extHave   = @($ExtPicks | Where-Object { $extActs[$_.Id] -eq 'upcheck' })
-  if ($extHave.Count -gt 0) {
-    Say-Busy "설치된 확장 $($extHave.Count)개" 'upcheck' @('code')
-    $xl = [IO.Path]::GetTempFileName()
-    $t0 = Get-Date
-    $rc = Invoke-LoggedCapped 'code' @('--update-extensions') $xl $ExtUpdateCap ${function:Show-ExtProgress}
-    $took = [int]((Get-Date) - $t0).TotalSeconds
-    Remove-Item $xl, "$xl.err" -ErrorAction SilentlyContinue
-    # 넘긴 것은 실패가 아니다 — 확장은 이미 깔려 있어 본일(세우기)이 안 깨지고, 못 올린 판은 VS Code 가 제 자동 갱신으로 올린다.
-    #   그래서 `$Fails` 에 안 넣고 말만 하고 간다.
-    if ($rc -eq -2) {
-      Write-Host "  ! 확장 업데이트가 ${ExtUpdateCap}초를 넘겨 중지함 — 설치된 버전 그대로 진행 (VS Code 가 직접 업데이트합니다)" -ForegroundColor Yellow
-    }
-    # 걸린 시간을 적는다 — 이 호출은 확장별 소요를 안 뱉어, 느렸을 때 뒤에 남는 자리가 이것뿐이다. 걸음 전체를 재는
-    #   `Write-Elapsed` 로는 이 호출 몫이 안 갈린다.
-    elseif ($took -ge $ExtUpdateSlow) {
-      Write-Host "  (확장 업데이트에 ${took}초 걸림 — 밀린 업데이트가 많았음)" -ForegroundColor DarkGray
-    }
-    $extAfter = (Get-ExtVersions).Vers
-  }
-  if (-not $ExtPicks) { Write-Host '  선택한 제품이 없어 확장을 설치하지 않음' }
-  Install-Extension $ExtPicks $extActs $extBefore $extAfter $extProbe $extRead.Why
-} else {
-  Write-Host '  ! code 가 이 창의 PATH 에 없어 건너뜀 — VS Code 설치를 먼저 확인하세요' -ForegroundColor Red
-  $Fails.Add('VS Code 확장 (code 를 찾을 수 없음)')
+} catch { Write-StepFault $_ } finally {
+# ── 숨은 자식으로 띄운 데스크탑 앱을 거둔다 — 표 차례로 ──────────────────
+# 걸음 경계의 `finally` 에 선다 — 이 걸음이 도중에 멎어도 거둔다. 거두기마다 제 `try` 로 감싼다(「공용 자산」 걸음의 거두기와 같은 까닭).
+foreach ($da in $deskBack) { try { Complete-DesktopAppChild $da } catch { Write-StepFault $_ } }
 }
-
-} catch { Write-StepFault $_ }
-Exit-Step 'extensions'
+Exit-Step 'desktop'
 
 # ══ 걸음 「CLI」 ═══════════════════════════════════════════════════════════════════════════════
 #   층 — 기계
@@ -8611,10 +8878,12 @@ if (-not $WordVersions.Count) {
 # ── 사외 Claude 구독 로그인 — **저장소와 세션 훅에 매지 않는다** ────────────
 # 로그인은 클론한 저장소의 일이 아니다 — 저장소 칸을 비운 사람도 사외에서는 Claude CLI 자체의 자격이 필요하다. 세션 훅은 로그인한
 #   Claude 세션이 열려야 돌므로 거기 두면 순서가 뒤집힌다. 비영속 VDI 가 로그인마다 부르는 이 설치기가 든다.
-# 기존 로그인을 먼저 재고, 비었을 때만 브라우저 OAuth 를 띄운 뒤 최대 180초 동안 다시 잰다. 사람이 안 누르는 것도 선택이라 시간
-#   넘김을 설치 실패로 세지 않는다.
+# 기존 로그인을 먼저 재고, 비었을 때만 브라우저 OAuth 를 띄우고 설치를 잇는다 — 사람이 브라우저에서 로그인하는 동안 설치를 세우지
+#   않는다(GitHub 로그인 창과 같은 결). 섰나는 「마무리」 끝(검증 바로 앞)의 「Claude 구독 로그인 결과」 칸이 한 번 잰다(`$script:ClaudeLogin`). 사람이
+#   안 누르는 것도 선택이라 안 선 것을 설치 실패로 세지 않는다.
+# 띄운 로그인(숨은 `cmd` 와 그 아래 CLI)은 거두지 않는다 — 설치가 끝난 뒤에 브라우저에서 마쳐도 그 CLI 가 자격을 적는다.
 
-$claudeLoggedIn = $false
+$script:ClaudeLogin = $null
 if ($offsite) {
   Write-Host ''
   Write-Host '  Claude 구독 로그인' -ForegroundColor Cyan
@@ -8622,7 +8891,6 @@ if ($offsite) {
   if (-not (Test-Runs 'claude' '--version')) {
     Write-Host '  ! claude CLI 를 찾을 수 없어 로그인을 시작할 수 없음 — 위 CLI 설치 결과를 확인하세요' -ForegroundColor Yellow
   } elseif (Test-ClaudeLoggedIn) {
-    $claudeLoggedIn = $true
     Write-Host '  이미 로그인됨 (loggedIn=true)'
   } elseif ($script:ProbeTimedOut.Count -gt $loginTimedBefore) {
     # ⚠ **못 쟀으면 로그인 창을 안 띄운다** — 로그인이 선 PC 에 브라우저를 띄우게 된다(결정 0141 · 아래 gh 칸과 같은 규율).
@@ -8631,13 +8899,11 @@ if ($offsite) {
   } elseif ($NightRun) {
     Write-Host '  ! 야간 자동 실행이라 로그인 브라우저를 열지 않음 — 다음 로그온이나 설치 창에서 엽니다' -ForegroundColor Yellow
   } elseif (-not (Test-Reach 'claude.ai:443')) {
-    # 닿는지 먼저 잰다 — 막힌 자리에서 3분을 서 있지 않는다. 로그인은 브라우저 콜백으로 끝나, 그 페이지에 못 닿으면 CLI 는 죽지
-    #   않고 기다려 아래 루프의 `HasExited` 조기 탈출이 안 걸린다. 닿는다고 열린다는 보장은 없지만 못 닿으면 확실히 못 연다 —
-    #   그 한쪽만으로 3분을 아낀다. 막혔다고 실패로 안 센다 — 로그인은 사람이 안 눌러도 되는 자리다.
+    # 닿는지 먼저 잰다 — 로그인은 브라우저 콜백으로 끝나, 그 페이지에 못 닿으면 연 브라우저와 CLI 가 끝나지 않은 채 남는다. 닿는다고
+    #   열린다는 보장은 없지만 못 닿으면 확실히 못 연다. 막혔다고 실패로 안 센다 — 로그인은 사람이 안 눌러도 되는 자리다.
     Write-Host '  ! claude.ai 에 연결할 수 없음 — 브라우저를 열지 않고 넘어감 (네트워크에서 차단됨)' -ForegroundColor Yellow
     Write-Host '     연결되는 네트워크에서 새 터미널에 claude auth login 을 실행하세요'
   } else {
-    Write-Host '  구독 계정 로그인 브라우저를 엽니다 — 로그인을 완료해 주세요 (최대 180초)' -ForegroundColor Yellow
     try {
       # PowerShell 에서 `claude`는 npm 이 만든 `claude.ps1`이 먼저 잡히지만, cmd 는
       # 그 파일을 실행할 수 없다. 같은 자리의 cmd shim 을 정확히 고른다.
@@ -8645,30 +8911,9 @@ if ($offsite) {
       # 설치 프로세스는 콘솔이 없고 stdin 도 NUL 이다. 로그인은 stdin 이 아니라
       # 브라우저 콜백으로 끝나므로 숨은 cmd 자식으로 띄워도 선다.
       $cmdArgs = '/d /s /c ""' + $cc.Source + '" auth login"'
-      $login = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
-                 -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
-      # ⚠ **180초는 끝 시각으로 센다 — 도는 횟수로 세지 않는다.** 한 번 재는 데 울타리(`$ProbeCap`)까지 걸릴 수 있어,
-      #   횟수에 제 쉬는 틈만 더해 세면 「최대 180초」가 그 곱으로 분을 넘긴다. 끝 시각을 넘긴 뒤에는 더 안 재므로
-      #   넘는 몫은 한 번의 재기와 아래 마지막 재기뿐이다(결정 0141).
-      $loginStart = Get-Date
-      $loginEnd   = $loginStart.AddSeconds(180)
-      $nextSay    = 15
-      while ((Get-Date) -lt $loginEnd) {
-        Start-Sleep -Seconds 5
-        if (Test-ClaudeLoggedIn) { $claudeLoggedIn = $true; break }
-        if ($login.HasExited) { break }
-        $elapsed = [int]((Get-Date) - $loginStart).TotalSeconds
-        if ($elapsed -ge $nextSay) {
-          Say-Busy 'Claude 구독 로그인' 'wait' @("${elapsed}초")
-          $nextSay += 15
-        }
-      }
-      if (-not $claudeLoggedIn) { $claudeLoggedIn = Test-ClaudeLoggedIn }
-      if ($claudeLoggedIn) {
-        Write-Host '  로그인 완료 (loggedIn=true)' -ForegroundColor Green
-      } else {
-        Write-Host '  ! 아직 로그인되지 않음 — 새 터미널에서 claude auth login 을 실행하세요' -ForegroundColor Yellow
-      }
+      $script:ClaudeLogin = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\cmd.exe') `
+                              -ArgumentList $cmdArgs -WindowStyle Hidden -PassThru
+      Write-Host '  구독 계정 로그인 — 브라우저를 열었습니다 · 로그인을 완료해 주세요 · 설치는 계속 진행됩니다 (결과는 검증 앞에서 확인)' -ForegroundColor Yellow
     } catch {
       Write-Host "  ! 로그인을 시작하지 못함 — $(Say-Why $_)" -ForegroundColor Yellow
       Write-Host '     새 터미널에서 실행하세요: claude auth login'
@@ -9519,7 +9764,7 @@ foreach ($a in $envAssets) {
   New-Item -ItemType Directory -Path $a.To -Force | Out-Null
   Copy-Item -Path (Join-Path $a.From '*') -Destination $a.To -Recurse -Force
   $swept = if ($a.Ledger) { Sync-AssetLedger $a } else { 0 }
-  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '복사함' } elseif ($swept) { "설치 완료 (원본에서 빠진 파일 $swept개 정리)" } else { '설치 완료' })" -ForegroundColor Green
+  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '복사함' } elseif ($swept) { "설치 완료 (원본에서 빠진 파일 ${swept}개 정리)" } else { '설치 완료' })" -ForegroundColor Green
   Write-Host "     $($a.To)"
   Write-Host "     $($a.Desc)"
 }
@@ -10001,7 +10246,7 @@ foreach ($at in $autoAts) {
 }
 
 # ── Codex 데스크탑의 샌드박스 키의 장부 (PAISetup #44 ⑳) ─────────────────────────────────────
-# 심는 손은 「프로그램」 걸음의 데스크탑 칸(`Set-CodexSandboxKey` · 그 칸이 낸 `$sbx`)이다 — 데스크탑을 깔기 앞이라 거기 산다. 여기서는 그 결과로
+# 심는 손은 「데스크탑 앱」 걸음(`Set-CodexSandboxKey` · 그 걸음이 낸 `$sbx`)이다 — 데스크탑을 깔기 앞이라 거기 산다. 여기서는 그 결과로
 #   장부를 맞춘다: 이번 판에 지었거나 더했으면 우리 것으로 적고, 판이 `$CodexSandboxMode` 를 바꿨으면 장부의 옛 값 그대로일 때 새 값으로 간다.
 #   Codex 를 안 고르게 되면 장부의 값 그대로인 그 키를 걷는다(그 표에 남은 키가 없으면 머리째). 사람이 바꾼 값은 둔다.
 # 고른 채 이번 판에 데스크탑을 안 깐 자리(사내)는 심지도 걷지도 않고 장부만 실물에 맞춘다(guard · 걷기 없음) — 키는 이미 깐 데스크탑이 읽고,
@@ -10482,10 +10727,10 @@ Exit-Step 'register'
 # ══ 마무리 ═════════════════════════════════════════════════════════════════════════════════════
 #   층 — 없음(걸음 뒤)
 #   하는 일 — 넘겨받은 임시 값 파일 지우기 · 회차를 넘기는 기록 · 사용자 범위 명령 자리를 사용자 PATH 에 · PowerShell 의 스크립트
-#     실행(현재 사용자 범위) · 바로가기 · 로그온 자동 실행 · 끝 검증 · 앱 열기 · 끝 줄 · 종료 코드
+#     실행(현재 사용자 범위) · 바로가기 · 로그온 자동 실행 · 「키와 값」이 연 Claude 구독 로그인의 결과 · 끝 검증 · 앱 열기 · 끝 줄 · 종료 코드
 #   앞에서 받는 것 — 앞 걸음 전부
 #   안 하는 것 — 없음
-#   경계 — 끝 검증 앞까지(임시 값 파일 · 기록 · 사용자 PATH · 실행 정책 · 아이콘 · 자동 실행)가 칸 「마무리」, 끝 검증의 재기가 칸 「검증」이다.
+#   경계 — 끝 검증 앞까지(임시 값 파일 · 기록 · 사용자 PATH · 실행 정책 · 아이콘 · 자동 실행 · 로그인 결과)가 칸 「마무리」, 끝 검증의 재기가 칸 「검증」이다.
 #     둘 다 걸음과 같은 경계(`Write-StepFault`)를 둘러 마무리에서 진 것도 끝 검증을 안 빼고, 검증에서 진 것도 끝 줄 · 종료 코드를 안 뺀다
 try {  # 칸 경계 「마무리」 — 아래 catch 까지가 이 칸이다(`Write-StepFault`)
 # ── 넘겨받은 임시 값 파일을 여기서 지운다 — **읽기가 다 끝난 첫 자리다** ────────────
@@ -11415,7 +11660,8 @@ $CloseOkSec = 4
 $WinW = 360
 $WinH = 112
 $Edge = 12
-$StepsDefault = 10
+# 첫 머리줄이 오기 전 막대의 분모 — 설치기가 이 파일을 쓸 때 제 걸음 표(`$Steps`)의 길이로 채운다. 머리줄(`[n/N]`)이 오면 그 분모로 간다.
+$StepsDefault = @@STEPS@@
 
 try {
   try { [Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal' } catch { }
@@ -11617,7 +11863,7 @@ try { if ($script:reader) { $script:reader.Dispose() } } catch { }
 exit 0
 '@
     try {
-      [IO.File]::WriteAllText((Join-Path $setupRoot $AutoRunProgress), $progressText, [System.Text.Encoding]::UTF8)
+      [IO.File]::WriteAllText((Join-Path $setupRoot $AutoRunProgress), $progressText.Replace('@@STEPS@@', "$($Steps.Count)"), [System.Text.Encoding]::UTF8)
     } catch {
       Write-Host "  ! 자동 실행 진행 창 파일을 저장하지 못함 — $(Say-Why $_) (로그온 자동 실행은 창 없이 진행)" -ForegroundColor Yellow
     }
@@ -11785,6 +12031,29 @@ exit 0
   Write-Host '  부팅 시 자동 실행 — 이 PC 에서 꺼 둠 (설치 창에서 이 항목을 켜고 설치하면 다시 등록)'
 }
 
+# ── Claude 구독 로그인 결과 — 「키와 값」 걸음이 연 로그인을 여기서 한 번 잰다 ─────────────────────────────────
+# 「키와 값」 걸음은 브라우저만 열고 설치를 잇는다(`$script:ClaudeLogin`). 그 사이 뒤 걸음들이 돌아, 사람이 로그인을 마칠 시간이
+#   거기서 난다. 여기는 검증 앞의 정한 자리라 한 번만 잰다 — 연 판에만 줄이 선다.
+#   · 섰다 — 초록 줄
+#   · 못 쟀다(확인 명령이 울타리를 넘겼다) — 「안 섰다」로 접지 않고 노란 줄과 손으로 잴 명령(결정 0141)
+#   · 안 섰다 — 로그인 CLI 가 아직 기다리는 중이면 「브라우저에서 마치면 그대로 적용된다」, 끝났으면 손으로 칠 명령이다. 둘 다 노란
+#     줄이고 실패로 안 센다 — 로그인은 사람이 안 눌러도 되는 자리다
+# 「마무리」 칸의 마지막 문장이다 — 그 칸의 경계(`Write-StepFault`)가 받고, 칸 밖에 문장을 두지 않는다(검증 앞까지가 한 칸이다).
+if ($script:ClaudeLogin) {
+  Write-Host ''
+  Write-Host '  Claude 구독 로그인' -ForegroundColor Cyan
+  $loginTimedBefore = $script:ProbeTimedOut.Count
+  if (Test-ClaudeLoggedIn) {
+    Write-Host '  로그인 완료 (loggedIn=true)' -ForegroundColor Green
+  } elseif ($script:ProbeTimedOut.Count -gt $loginTimedBefore) {
+    Write-Host '  ! 로그인 상태를 확인하지 못함 — 확인 명령이 제한 시간 안에 끝나지 않음' -ForegroundColor Yellow
+    Write-Host '     새 터미널에서 claude auth status 로 확인하고, 로그인되어 있지 않으면 claude auth login 을 실행하세요'
+  } elseif (-not $script:ClaudeLogin.HasExited) {
+    Write-Host '  ! 아직 로그인되지 않음 — 열어 둔 브라우저에서 로그인을 마치면 그대로 적용됩니다 · 브라우저를 닫았다면 새 터미널에서 claude auth login 을 실행하세요' -ForegroundColor Yellow
+  } else {
+    Write-Host '  ! 아직 로그인되지 않음 — 새 터미널에서 claude auth login 을 실행하세요' -ForegroundColor Yellow
+  }
+}
 } catch { Write-StepFault $_ '마무리' }
 
 # ── 검증 — **재고 나서 말한다** ─────────────────────────────────────────────────
@@ -12377,7 +12646,7 @@ if ($script:ProbeTimedOut.Count) {
   foreach ($g in @($script:ProbeTimedOut | Group-Object { $_.Probe })) {
     $gSites = @($g.Group | ForEach-Object { $_.Site } | Sort-Object -Unique).Count
     $gCap   = @($g.Group | ForEach-Object { $_.Cap } | Sort-Object -Unique) -join '/'
-    Write-Host "      · ``$($g.Name)`` — $gSites곳 · $($g.Count)번 (제한 시간 ${gCap}초)" -ForegroundColor Yellow
+    Write-Host "      · ``$($g.Name)`` — ${gSites}곳 · $($g.Count)번 (제한 시간 ${gCap}초)" -ForegroundColor Yellow
   }
 }
 # gh 로그인 — 설정 저장소를 받는 PC 와 Copilot 을 고른 PC 만 잰다. 그 둘이 이 로그인을 쓴다(개인 쪽 gh · git ·
@@ -12404,11 +12673,11 @@ $unmeasuredChecks = @($checks | Where-Object { $_.State -eq 'unmeasured' }).Coun
 
 Write-Host ''
 if ($redChecks -gt 0) {
-  Write-Host "검증 실패 $redChecks개 — 바로 위 [X] 항목입니다" -ForegroundColor Red
+  Write-Host "검증 실패 ${redChecks}개 — 바로 위 [X] 항목입니다" -ForegroundColor Red
   Write-Host ''
 }
 if ($unmeasuredChecks -gt 0) {
-  Write-Host "검증하지 못한 항목 $unmeasuredChecks개 — 바로 위 [?] 항목입니다. 없다는 뜻이 아니라 확인 명령이 응답하지 않았다는 뜻입니다 (제한 시간과 이유는 각 줄에 있음)" -ForegroundColor Yellow
+  Write-Host "검증하지 못한 항목 ${unmeasuredChecks}개 — 바로 위 [?] 항목입니다. 없다는 뜻이 아니라 확인 명령이 응답하지 않았다는 뜻입니다 (제한 시간과 이유는 각 줄에 있음)" -ForegroundColor Yellow
   # 세 갈래는 배포본 안내 `TROUBLESHOOTING.md` 「노란 물음표는 못 쟀다는 뜻이다」(진본은 claude-config `docs/TROUBLESHOOTING.md`)와 같은 말이다 — 한쪽을 고치면 다른 쪽도 고친다.
   Write-Host '  설치기는 그 위에 다시 설치하지 않았습니다. 그 명령을 새 터미널에서 한 번 실행해 보세요 —' -ForegroundColor Yellow
   Write-Host '    · 멈추면 그 도구나 보안 프로그램 쪽 문제입니다' -ForegroundColor Yellow
