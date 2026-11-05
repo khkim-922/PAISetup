@@ -8019,6 +8019,27 @@ function Set-CodexSandboxKey([string]$Path) {
   if ($w.Did -ceq 'overrun') { return @{ Did = 'raced'; Why = $w.Why } }
   return @{ Did = 'left'; Why = $w.Why }
 }
+# ── Node 신뢰 배선 — **「VS Code 확장」 걸음보다 앞이다** ─────────────────────────────────
+# 뒤의 두 걸음(「VS Code 확장」 · 「CLI」)이 둘 다 Node 로 내려받는다 — 뒤에 두면 이미 진 뒤에 신뢰를 잇는다.
+# ⚠ **`-NoUpgrade` 로 안 건너뛴다.** 이것은 올리는 일이 아니라 서게 하는 일이고, 비영속 VDI 는 로그인마다 사용자 환경변수가 새로
+#   나서 매번 다시 심어야 한다.
+Write-Host ''
+Write-Host '  Node 신뢰 배선' -ForegroundColor Cyan
+Wire-NodeTrust
+
+# ── 씨앗이 드는 파이썬 패키지를 백그라운드로 띄운다 — **파이썬이 선 바로 뒤다** (PAISetup #69) ──────────────────────
+# 거두기는 「공용 자산」 걸음이 한다 — 그 사이 이 걸음의 데스크탑 앱과 「VS Code 확장」 ~ 「Claude 홈 설정」 걸음이 겹쳐 돌고, 그 걸음들이 부르는 파이썬(로컬 프록시 ·
+#   Codex 설정 병합)은 표준 라이브러리만 읽어 까는 중인 패키지를 안 건드린다. 이 걸음이 여기 오기 전에 멎었으면 그 걸음이 제 자리에서
+#   띄우고 거둔다.
+if ($pipPkgs) {
+  Write-Host ''
+  Start-PipPackages $pipPkgs
+  $pipAsked = $true
+}
+
+# ⚠ 위 둘(Node 신뢰 배선 · 파이썬 패키지 띄우기)은 데스크탑 앱 앞에 선다 — 둘 다 데스크탑 앱에 안 기대고, 사외 맨바닥에서는
+#   데스크탑 앱 넷을 받고 까는 몫이 이 걸음에서 가장 길어 그동안 pip 가 뒤에서 같이 돈다(PAISetup #69).
+
 # ── 자리 판정 — **행마다 묻는다** (PAISetup #16 · 결정 0059) ──────────────────────────────────
 # 스위치의 두 값은 위 「데스크탑 앱 설치」 머리말이 든다. 안 깐 까닭을 행마다 댄다 — 같은 판에서 어떤 행은 깔리고 어떤 행은
 #   안 깔려, 안 깔린 줄이 침묵하면 고른 사람이 제 선택이 죽은 줄 모른다.
@@ -8046,7 +8067,11 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
           }
         }
       }
-      Install-DesktopApp $da
+      # 앱마다 받기 · 설치 · 올리기를 한 판으로 재 세부 기록에 남긴다(`Add-RunSpan` — 화면에는 안 찍는다). 앱끼리 동시에 깔지를
+      #   가르는 숫자가 이것이다 — 벤더 설치본은 `Add-RunDetail` 밖이라 이 줄이 없으면 앱마다의 몫이 안 갈린다(PAISetup #69).
+      $daSw = [Diagnostics.Stopwatch]::StartNew()
+      try { Install-DesktopApp $da }
+      finally { try { Add-RunSpan "데스크탑 앱 — $($da.Label)" '받기 · 설치 · 올리기 한 판' $daSw.Elapsed.TotalSeconds } catch { } }
       continue
     }
     Write-Host ''
@@ -8054,24 +8079,6 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
     # 자리는 둘뿐이라(「준비」의 「자리」 칸) 안 깐 까닭은 사내 하나다.
     Write-Host '      · 건너뜀 (사내에서는 게이트웨이로 연결할 수 없음)'
   }
-}
-
-# ── Node 신뢰 배선 — **「VS Code 확장」 걸음보다 앞이다** ─────────────────────────────────
-# 뒤의 두 걸음(「VS Code 확장」 · 「CLI」)이 둘 다 Node 로 내려받는다 — 뒤에 두면 이미 진 뒤에 신뢰를 잇는다.
-# ⚠ **`-NoUpgrade` 로 안 건너뛴다.** 이것은 올리는 일이 아니라 서게 하는 일이고, 비영속 VDI 는 로그인마다 사용자 환경변수가 새로
-#   나서 매번 다시 심어야 한다.
-Write-Host ''
-Write-Host '  Node 신뢰 배선' -ForegroundColor Cyan
-Wire-NodeTrust
-
-# ── 씨앗이 드는 파이썬 패키지를 백그라운드로 띄운다 — **파이썬이 선 바로 뒤다** (PAISetup #69) ──────────────────────
-# 거두기는 「공용 자산」 걸음이 한다 — 그 사이 「VS Code 확장」 ~ 「Claude 홈 설정」 걸음이 겹쳐 돌고, 그 걸음들이 부르는 파이썬(로컬 프록시 ·
-#   Codex 설정 병합)은 표준 라이브러리만 읽어 까는 중인 패키지를 안 건드린다. 이 걸음이 여기 오기 전에 멎었으면 그 걸음이 제 자리에서
-#   띄우고 거둔다.
-if ($pipPkgs) {
-  Write-Host ''
-  Start-PipPackages $pipPkgs
-  $pipAsked = $true
 }
 
 } catch { Write-StepFault $_ }
