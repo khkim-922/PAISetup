@@ -319,6 +319,13 @@ function Sync-Repos($repos) {
         $fetches = @()
         foreach ($repo in $repos) {
             if (-not (Test-Path (Join-Path $repo '.git'))) { continue }
+            # 바깥 `--install` 이 이번 회차에 막 받은 저장소(`CLAUDE_CONFIG_FRESH_CLONES` — 이름을 빈칸으로 잇는다)는 안 당긴다 — clone 이
+            #   원격 끝(당김 문의 답)에 세워 당길 것이 없고, 맨바닥 VDI 에서 이 당김이 일곱 저장소에 38초였다(PAISetup #69). 밀어도 된다.
+            if (@("$env:CLAUDE_CONFIG_FRESH_CLONES" -split '\s+' | Where-Object { $_ }) -contains (Split-Path $repo -Leaf)) {
+                Write-Host "· 당김 건너뜀  $repo  (이번 회차에 막 받았다)" -ForegroundColor DarkGray
+                $pulledRepos[$repo] = $true
+                continue
+            }
             # ⚠ `2>$null` 은 방패가 아니라 잡아서 넘긴다(당김 손 머리의 「리다이렉트가 곧 위험이다」). HEAD 를 못 읽으면
             #   「main 이 아니다」와 같은 갈래로 떨어진다.
             try { $head = (& git -C $repo symbolic-ref --short -q HEAD 2>$null) } catch { $head = '' }

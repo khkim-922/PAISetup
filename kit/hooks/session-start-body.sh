@@ -1325,6 +1325,7 @@ deploy_personal() {   # deploy_personal auto|install
       #   (PAISetup #69) 저장소마다 자리가 따로라 서로 안 기댄다. 첫 받기가 지면 나머지도 하나씩 받는다(창이 겹치지 않게).
       #   동시에 받은 것의 줄은 저장소마다 모아 두었다가 차례대로 낸다 — 섞이면 어느 줄이 어느 저장소 것인지 못 읽는다.
       # ⚠ 기다리기는 띄운 것의 PID 로만 한다 — 맨 `wait` 는 이 셸이 앞서 띄운 배경 일까지 기다린다.
+      # 이번 회차에 받은 저장소의 이름 — deploy.ps1 이 그 저장소를 다시 안 당긴다(`CLAUDE_CONFIG_FRESH_CLONES` · 아래 넘기는 줄).
       _cone=''; _cpar=''; _cpids=''; _cwait=''
       _cdir="${TMPDIR:-/tmp}/sibling-clone-$$"
       for _r in $_repos; do
@@ -1333,6 +1334,7 @@ deploy_personal() {   # deploy_personal auto|install
           clone_sibling "$_r" "$_root" "$_url"
           if [ -d "$_root/$_r/.git" ]; then
             gate_fresh_clone "$_root/$_r"
+            CLONED_NOW="$CLONED_NOW $_r"
             [ -z "$_cone" ] && _cpar=1
           fi
           _cone=1
@@ -1345,7 +1347,7 @@ deploy_personal() {   # deploy_personal auto|install
       [ -z "$_cpids" ] || wait $_cpids
       for _r in $_cwait; do
         cat "$_cdir/$_r" 2>/dev/null
-        if [ -d "$_root/$_r/.git" ]; then gate_fresh_clone "$_root/$_r"; fi
+        if [ -d "$_root/$_r/.git" ]; then gate_fresh_clone "$_root/$_r"; CLONED_NOW="$CLONED_NOW $_r"; fi
       done
       [ -z "$_cwait" ] || rm -rf "$_cdir"
     fi
@@ -3062,7 +3064,8 @@ install_step() {
     deploy_personal install
     echo "$PROJECT_NAME: deploy.ps1 에 넘긴다 — 저장소·메모리를 밀고 각 저장소 훅을 --install 로 부른다"
     # PC 전체 일은 이 갈래가 쥔다 — 표식을 그 부름 하나에만 실어, 고리 안의 저장소 훅이 그 일을 또 안 하게 한다(준비 단계의 PC_WIDE)
-    CLAUDE_CONFIG_PC_WIDE_HELD=1 \
+    # 이번 회차에 막 받은 형제(`CLONED_NOW` — `deploy_personal`)는 deploy 의 당김이 건너뛴다 — clone 이 원격 끝에 세웠다.
+    CLAUDE_CONFIG_PC_WIDE_HELD=1 CLAUDE_CONFIG_FRESH_CLONES="${CLONED_NOW:-}" \
       powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$CONFIG_ROOT/deploy.ps1")" -Yes
     _drc=$?
     # 홈 훅 · 신뢰를 여기서 심고 PC 전체 일의 표식을 남긴다 — deploy.ps1 은 할 일이 없는 평소 상태면 저장소 훅을 안
