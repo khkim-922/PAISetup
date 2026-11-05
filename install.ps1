@@ -593,7 +593,8 @@ $UrlCredential = '(?<=://)[^/@\s]+@'
 # 바깥 명령이 낸 한 줄을 받는 기본 손 — 자식 줄이 화면에 닿는 문은 이것 하나다(러너 둘이 `$OnLine` 없이 불렸을 때 · 훅 몸통에 넘긴
 #   판까지). **화면에는 `$ChildLineAlarm` 에 걸린 줄만 올린다** — 흔한 설치기처럼 화면은 항목 · 결과 · 경보를 들고, 원문은 세부 기록
 #   (`Add-RunDetail`)이 다 든다. 진 부름의 끝 줄은 부르는 자리가 `Show-Log` 로 편다. 사람에게 보일 이정표가 따로 있는 도구는 제 번역 손
-#   (`Show-ExtProgress` · `Show-ToolHomesLine` · `Show-BrowserMcpLine` · `Show-PipLine`)을 `$OnLine` 으로 넘긴다.
+#   (`Show-ExtProgress` · `Show-ToolHomesLine` · `Show-BrowserMcpLine`)을 `$OnLine` 으로 넘긴다. 백그라운드 부름은 거둘 때 받은 글을 이
+#   손에 넘긴다(`Complete-BackRun`).
 #   · `\r` 로 덮어쓴 줄은 끝 판만 보고, 이스케이프를 걷는다
 #   · 올리는 줄은 6칸 들여 빨강으로 찍는다
 # ⚠ **6칸 들여쓰기를 걷지 않는다** — 설치 창 · 자동 실행 진행 창이 앞 공백 셋 이상인 줄을 흐름 줄로 읽어 상태 글의 주제를 안 갈고,
@@ -602,20 +603,6 @@ function Show-ChildLine([string]$Line) {
   $s = @("$Line" -split "`r" | ForEach-Object { (($_ -replace $ChildLineEscape, '') -replace $UrlCredential, '***@').TrimEnd() } | Where-Object { $_.Trim() })
   if (-not $s.Count -or $s[-1] -cnotmatch $ChildLineAlarm) { return }
   Write-Host "      $($s[-1].Trim())" -ForegroundColor Red
-}
-
-# `python -m pip install` 이 뱉는 줄을 진행 줄로 옮긴다 — pip 는 의존 꾸러미마다 `Collecting` · `Downloading … .metadata` 를 찍어
-#   청한 몇 개가 수십 줄이 된다. 청한 꾸러미를 받기 시작한 줄(`(from …)` 이 없는 `Collecting`)과 까는 줄(꾸러미 수)만 내고, 경고 ·
-#   오류는 `Show-ChildLine` 에 넘긴다(화면에는 오류 줄만 오른다). 이미 깔린 판(`Requirement already satisfied`)은 안 낸다. 판정은 안 한다 — 섰나는 종료
-#   값이 들고, 원문은 세부 기록에 다 남는다(`Add-RunDetail`).
-function Show-PipLine([string]$Line) {
-  if ($Line -match '^Collecting (\S+)\s*$') {
-    Write-Host "    · $($Matches[1]) — 다운로드 중" -ForegroundColor DarkGray
-  } elseif ($Line -match '^Installing collected packages: (.+)$') {
-    Write-Host "    · 의존성 포함 $(@($Matches[1] -split ',\s*' | Where-Object { $_ }).Count)개 — 설치 중" -ForegroundColor DarkGray
-  } elseif ($Line -match '^(WARNING|ERROR):') {
-    Show-ChildLine $Line
-  }
 }
 
 # 하는 중인 일 한 줄 — `이름 — 동작 … (곁말)`. 동작은 `$BusyVerbs` 의 열쇠이고, 표에 없으면 던진다.
@@ -911,11 +898,13 @@ function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath, [scr
 # 하는 부름 한 번을 세부 기록(`$script:DetailLog`)에 덧붙인다 — 명령 · 받은 글 원문 전체 · 종료 값 · 걸린 초. 화면의 거름
 #   (`Show-ChildLine`)은 화면에만 걸리고 여기는 다 남는다. `$Paths` 는 러너가 받은 파일(stdout · stderr 차례)이다.
 #   주소에 박힌 자격(`https://사람:토큰@`)은 명령과 글 둘 다에서 가린다. 세부 기록 자리가 안 섰으면 아무것도 안 한다.
-function Add-RunDetail([string]$File, [string[]]$CmdArgs, $Rc, [double]$Sec, [string[]]$Paths) {
+#   `$Note` 는 머리 줄 끝의 대괄호 곁말이다 — 백그라운드 부름(`Complete-BackRun`)이 띄운 시각과 거둘 때 기다린 초를 단다.
+function Add-RunDetail([string]$File, [string[]]$CmdArgs, $Rc, [double]$Sec, [string[]]$Paths, [string]$Note = '') {
   if (-not $script:DetailLog) { return }
   $hide = $UrlCredential
   $sb = New-Object Text.StringBuilder
-  [void]$sb.AppendLine("──── $(Get-Date -Format 'HH:mm:ss') $(((@($File) + @($CmdArgs)) -join ' ') -replace $hide, '***@')")
+  $tail = if ($Note) { " [$Note]" } else { '' }
+  [void]$sb.AppendLine("──── $(Get-Date -Format 'HH:mm:ss') $(((@($File) + @($CmdArgs)) -join ' ') -replace $hide, '***@')$tail")
   for ($i = 0; $i -lt @($Paths).Count; $i++) {
     if (-not (Test-Path -LiteralPath $Paths[$i])) { continue }
     $t = [IO.File]::ReadAllText($Paths[$i], [Text.Encoding]::UTF8) -replace $hide, '***@'
@@ -926,6 +915,15 @@ function Add-RunDetail([string]$File, [string[]]$CmdArgs, $Rc, [double]$Sec, [st
   }
   [void]$sb.AppendLine(('──── 종료 {0} · {1:N1}초' -f $Rc, $Sec))
   [IO.File]::AppendAllText($script:DetailLog, $sb.ToString(), (New-Object Text.UTF8Encoding($false)))
+}
+
+# 부름 하나가 아닌 구간 하나를 세부 기록에 한 줄로 남긴다 — `──── 시각 구간 · 무엇 · 결과 · N초`. 화면에는 안 찍는다. 재기만 하는
+#   자리(winget 되살리기의 갈래마다 · 받기 전 미러 빠르기 재기)가 부른다 — 그 구간은 파워셸 명령 · 웹 요청 여럿이라 `Add-RunDetail` 의
+#   「명령 · 원문 · 종료 값」 꼴이 안 맞는다. 세부 기록 자리가 안 섰으면 아무것도 안 한다.
+function Add-RunSpan([string]$What, [string]$Said, [double]$Sec) {
+  if (-not $script:DetailLog) { return }
+  $line = ('──── {0} 구간 · {1} · {2} · {3:N1}초' -f (Get-Date -Format 'HH:mm:ss'), $What, $Said, $Sec) -replace $UrlCredential, '***@'
+  [IO.File]::AppendAllText($script:DetailLog, "$line`r`n", (New-Object Text.UTF8Encoding($false)))
 }
 
 # 자라는 로그 파일에서 지난번 뒤로 붙은 줄을 `$OnLine` 에 넘긴다 — 울타리 손(`Invoke-LoggedCapped`)이 기다리는 동안 부른다.
@@ -1110,6 +1108,135 @@ function Stop-ProbeTree([Diagnostics.Process]$Proc) {
   }
 }
 
+# ── 백그라운드 부름 — 띄워 두고 뒤 걸음을 잇다가, 정한 자리에서 거둔다 (PAISetup #69) ──────────────────────────
+# 서로 안 기대는 오래 걸리는 부름(VS Code 확장 묶음 · 씨앗의 파이썬 패키지)을 뒤 걸음과 겹쳐 돌린다 — 사내 VDI 는 프로세스 띄우기와
+#   작은 파일 쓰기가 느려, 이 둘을 앞에서 기다리는 몫이 맨바닥 한 판에서 300초 남짓이었다. 띄우기 · 거두기는 이 넷이 든다.
+#   `Start-BackRun` — 이름 · 명령 · 인자를 받아 띄우고 `$script:BackRuns` 에 그 이름으로 둔다. 같은 이름이 서 있으면 던진다.
+#     `-EmptyCwd` 면 이 회차의 빈 폴더(`%TEMP%\claude-setup-<이름>-<PID>`)를 지어 그 안에서 띄우고 거둘 때 지운다. `-CapSec` 이 0 보다
+#     크면 띄운 때부터 그 초가 울타리다(0 이면 끝까지 기다린다). `-Label` 은 거둘 때 아직 돌고 있으면 기다리는 줄에 댈 이름이다(비면 그
+#     줄을 안 찍는다). `-Keep` 은 거두는 쪽이 받을 값이다. 못 띄우면 그 까닭을 기록 파일에 적어 둔다 — 거두면 -1 이다.
+#   `Test-BackRun` — 그 이름이 아직 안 거둔 채 서 있나.
+#   `Complete-BackRun` — 그 이름을 거둔다: 끝(울타리가 있으면 그 남은 몫, `-Within` 을 주면 그 초 안)까지 기다리고, 넘기면 나무째 거둔다.
+#     안 끝났으면 띄울 때의 `-Label` 로 기다리는 줄을 한 번 찍는다 — `-Within` 을 준 거둠(나가는 길)은 부르는 쪽이 제 줄을 찍는다. 받은
+#     글은 그때 한 번에 `$OnLine` 에 넘기고(없으면 `Show-ChildLine`) 세부 기록에 한 판을 남긴다. 내는 것 @{ Rc; Log; Sec; Keep } — `Rc` 는
+#     `Invoke-LoggedCapped` 와 같은 값(0 이상 종료 값 · -1 못 띄웠다 · -2 넘겨서 거뒀다), `Log` 는 stdout 뒤에 stderr 를 이은 BOM 붙은 UTF-8
+#     파일(지우는 것은 부르는 쪽이다), `Sec` 은 자식이 실제로 돈 초다. 서 있지 않은 이름이면 `$null`.
+#   `Stop-BackRuns` — 아직 안 거둔 것을 다 거둔다. 정한 자리 앞에서 몸통이 나가는 길(`Stop-RunLog`)이 부른다.
+# 띄우는 꼴 · 울타리 · 나무째 거두기는 `Invoke-LoggedCapped` 와 같은 손(`New-NativeStart` · `Process.Start` · `Stop-ProbeTree`)이 든다.
+# ⚠ **자식의 글은 거둘 때 찍는다** — 띄운 동안 화면에 쓰면 뒤 걸음의 머리줄 · 진행 줄 사이에 끼어, 화면 껍데기가 그 줄을 엉뚱한 걸음의
+#   주제 뒤에 붙인다. 진행 줄(`Show-ExtProgress` 의 「다운로드 중」)은 「…중」 꼴이라 거둔 뒤에 찍으면 거짓이 되므로, 거둘 때는 경보만
+#   올린다.
+# ⚠ **띄운 것은 몸통이 나가기 전에 다 거둔다** — 고아로 남은 `code` · `pip` 는 다음 회차의 같은 부름과 겹쳐 같은 폴더에 쓰고, 화면 기록은
+#   그 끝을 못 남긴다. 흐름은 정한 자리에서 거두고, 그 앞에서 나가는 길(잡히지 않은 던짐의 `trap`)은 `Stop-RunLog` 가 거둔다.
+# 이 넷은 `$script:BackRuns` 가 없어도(첫 부름 전) 선다 — 칸 경계 검사가 흐름만 떼어 이 손을 부른다.
+function Start-BackRun([string]$Name, [string]$File, [string[]]$CmdArgs, [int]$CapSec = 0, [switch]$EmptyCwd, [string]$Label = '', $Keep) {
+  if ($null -eq $script:BackRuns) { $script:BackRuns = [ordered]@{} }
+  if ($script:BackRuns.Contains($Name)) { throw "백그라운드 부름 — 이미 띄운 이름: $Name" }
+  $log = [IO.Path]::GetTempFileName()
+  $run = @{ Name = $Name; File = $File; Args = @($CmdArgs); Cap = $CapSec; Log = $log; At = (Get-Date); Keep = $Keep; Label = $Label
+            Took = [Diagnostics.Stopwatch]::StartNew(); Proc = $null; Pump = @(); Sink = @(); Cwd = '' }
+  $script:BackRuns[$Name] = $run
+  try {
+    $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
+    if (-not $psi) { throw "$File 을 이 창에서 띄울 수 없음" }
+    if ($EmptyCwd) {
+      $cwd = Join-Path ([IO.Path]::GetTempPath()) "claude-setup-$Name-$PID"
+      try { New-Item -ItemType Directory -Path $cwd -Force -ErrorAction Stop | Out-Null }
+      catch { throw "빈 작업 폴더를 만들지 못해 실행하지 않음 ($cwd) — $($_.Exception.Message)" }
+      $run.Cwd = $cwd
+      $psi.WorkingDirectory = $cwd
+    }
+    # 파일 버퍼는 기본 크기다 — 이 글은 거둘 때 닫힌 파일에서 읽으므로, 흘려 읽는 `Invoke-LoggedCapped`(1 바이트)처럼 바로 닿을 까닭이 없다
+    $run.Sink = @(New-Object IO.FileStream($log, 'Create', 'Write', 'ReadWrite', 4096))
+    $run.Sink += New-Object IO.FileStream("$log.err", 'Create', 'Write', 'ReadWrite', 4096)
+    $p = [Diagnostics.Process]::Start($psi)
+    $p.StandardInput.Close()
+    $run.Proc = $p
+    $run.Pump = @($p.StandardOutput.BaseStream.CopyToAsync($run.Sink[0]),
+                  $p.StandardError.BaseStream.CopyToAsync($run.Sink[1]))
+  } catch {
+    foreach ($s in $run.Sink) { try { $s.Dispose() } catch { } }
+    $run.Sink = @()
+    try { [IO.File]::WriteAllText($log, "백그라운드로 띄우지 못함 — $(Say-Why $_)") } catch { }
+  }
+}
+
+function Test-BackRun([string]$Name) {
+  return [bool]($script:BackRuns -and $script:BackRuns.Contains($Name))
+}
+
+function Complete-BackRun([string]$Name, [scriptblock]$OnLine, [int]$Within = -1) {
+  if (-not (Test-BackRun $Name)) { return $null }
+  $run = $script:BackRuns[$Name]
+  if (-not $OnLine) { $OnLine = ${function:Show-ChildLine} }
+  $p = $run.Proc
+  $rc = -1
+  $waited = [Diagnostics.Stopwatch]::StartNew()
+  try {
+    if ($p) {
+      # 기다릴 끝 — 울타리의 남은 몫과 `-Within` 가운데 이른 것. 둘 다 없으면 끝까지다
+      $left = [double]::PositiveInfinity
+      if ($run.Cap -gt 0) { $left = [Math]::Max(0, $run.Cap - $run.Took.Elapsed.TotalSeconds) }
+      if ($Within -ge 0) { $left = [Math]::Min($left, $Within) }
+      if (-not $p.HasExited -and $run.Label -and $Within -lt 0) {
+        Say-Busy $run.Label 'wait' @('백그라운드에서 실행 중', "$([int]$run.Took.Elapsed.TotalSeconds)초째")
+      }
+      # 반 초씩 기다린다 — 끝까지 한 번에 기다리는 .NET 부름은 그동안 Ctrl+C 를 못 받는다
+      while (-not $p.WaitForExit(500) -and $waited.Elapsed.TotalSeconds -lt $left) { }
+      if ($p.HasExited) {
+        try { $null = [Threading.Tasks.Task]::WaitAll($run.Pump, 5000) } catch { }
+        $rc = $p.ExitCode
+      } else {
+        try { Stop-ProbeTree $p } catch { }
+        try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+        $rc = -2
+      }
+    }
+  } catch { $rc = -1 }
+  finally {
+    foreach ($s in $run.Sink) { try { $s.Dispose() } catch { } }
+    if ($run.Cwd) { Remove-Item -LiteralPath $run.Cwd -Recurse -Force -ErrorAction SilentlyContinue }
+    $script:BackRuns.Remove($Name)
+  }
+  # 걸린 초는 자식이 실제로 돈 초다 — 거둔 때까지로 재면 겹쳐 돈 걸음의 몫이 섞여 무엇이 느렸나를 못 가른다
+  $sec = $run.Took.Elapsed.TotalSeconds
+  if ($p -and $p.HasExited) { try { $sec = ($p.ExitTime - $p.StartTime).TotalSeconds } catch { } }
+  $note = '백그라운드 · {0:HH:mm:ss} 에 띄움 · 거둘 때 {1:N1}초 기다림' -f $run.At, $waited.Elapsed.TotalSeconds
+  try { Add-RunDetail $run.File $run.Args $rc $sec @($run.Log, "$($run.Log).err") $note } catch { }
+  # 두 흐름을 BOM 붙은 UTF-8 한 파일로 잇는다 — 앞에서 부르던 손(`Invoke-Logged`)의 기록 꼴이다. 진 판의 끝 줄(`Show-Log` — 인코딩을 안 박고
+  #   BOM 으로 가린다)과 까닭 가르기가 stderr 의 글까지 본다. 차례는 stdout 다음 stderr 다
+  try {
+    $both = (@($run.Log, "$($run.Log).err") | ForEach-Object {
+      $t = if (Test-Path -LiteralPath $_) { [IO.File]::ReadAllText($_, [Text.Encoding]::UTF8) } else { '' }
+      if ($t -and -not $t.EndsWith("`n")) { $t + "`r`n" } else { $t }
+    }) -join ''
+    [IO.File]::WriteAllText($run.Log, $both, (New-Object Text.UTF8Encoding($true)))
+  } catch { }
+  Remove-Item -LiteralPath "$($run.Log).err" -ErrorAction SilentlyContinue
+  foreach ($l in @(Get-Content -LiteralPath $run.Log -Encoding UTF8 -ErrorAction SilentlyContinue)) { if ("$l".Trim()) { & $OnLine "$l" } }
+  return @{ Rc = $rc; Log = $run.Log; Sec = $sec; Keep = $run.Keep }
+}
+
+# 정한 자리 앞에서 몸통이 나갈 때 — 아직 안 거둔 부름마다 `$BackRunExitWait` 초까지 끝을 기다리고, 넘기면 나무째 거둔다. 화면과 세부
+#   기록에 한 판씩 남긴다. 반쯤 깐 꾸러미가 남지 않게 끄기보다 기다리기가 먼저다. 이 손은 안 던진다 — 나가는 길의 `trap` 안에서도 돈다.
+#   기다림의 끝은 하나다 — 부름마다 따로 `$BackRunExitWait` 를 주면 둘이 남았을 때 차례로 기다려 그 곱절을 선다. 그동안 다른 부름도 같이
+#   돌고 있으므로 한 마감으로 다 거둔다.
+function Stop-BackRuns {
+  if (-not $script:BackRuns) { return }
+  $until = [Diagnostics.Stopwatch]::StartNew()
+  foreach ($n in @($script:BackRuns.Keys)) {
+    try {
+      $left = [Math]::Max(0, [int]($BackRunExitWait - $until.Elapsed.TotalSeconds))
+      Write-Host "  ! 백그라운드 작업 「$n」 — 설치가 도중에 끝나 이 작업이 끝나기를 기다립니다 (최대 ${left}초)" -ForegroundColor Yellow
+      $r = Complete-BackRun $n $null $left
+      # 거둔 값만 댄다 — 깔았나를 재는 손(`Complete-Extension` · `Complete-PipPackages`)은 이 길에서 안 돌아, 결과는 다음 설치가 다시 잰다
+      $said = if ($r.Rc -eq -2) { "${left}초 안에 끝나지 않아 중지함" } else { "끝남 (종료 코드 $($r.Rc))" }
+      Write-Host "    · 백그라운드 작업 「$n」 — $said · 결과는 다음 설치에서 다시 확인" -ForegroundColor Yellow
+      Remove-Item -LiteralPath $r.Log, "$($r.Log).err" -ErrorAction SilentlyContinue
+    } catch { }
+  }
+}
+
 # 「도나」를 묻는 한 번에 주는 한도 — `--version` 류의 즉답에 20초면 넉넉하다. 느린 기계를 재는 값이 아니라 멈춤을 가르는
 #   값이다: 짧게 잡으면 멀쩡한 자리가 「못 쟀다」로 남아 설치가 성공으로 안 끝나고, 길게 잡아도 잃는 것은 멎은 한 자리의
 #   그 초뿐이라 의심스러우면 길게 잡는다.
@@ -1134,6 +1261,7 @@ $ToolHomesCheckCap = 120   # 손(`tool-homes.py check`)이 도구 홈 넷의 규
 $VcRedistCap   = 900   # VC++ 재배포 패키지를 받고(17.8 MB) 까는 한 번 — 사내 회선의 받기와 승인 창을 누를 사람의 몫까지 넉넉히 덮는다
 $AppUpdaterCap = 900   # 제 갱신기(`Invoke-AppUpdater` · `Invoke-CliUpdater`)가 새 판을 받아 펼치는 한 번 — Claude 의 통짜 꾸러미가 수백 MB 라 사내 회선의 받기를 넉넉히 덮는다
 $WingetRemoveCap = 300 # 벤더 사본이 갈음한 winget 휴대용 꾸러미 하나를 걷는 한 번(`Remove-WingetCopy`) — 파일을 지우고 PATH 줄을 걷는다. 원본을 새로 받는 첫 부름까지 덮는다
+$BackRunExitWait = 300 # 설치가 도중에 끝날 때 안 거둔 백그라운드 부름(`Stop-BackRuns`)의 끝을 기다리는 초 — 사내 VDI 맨바닥에서 확장 묶음 한 번이 242초였다(PAISetup #69). 넘기면 나무째 거둔다
 
 # 울타리를 넘긴 프로브 — **넘김 하나가 한 줄이다.** 같은 명령이 여러 자리에서 넘기면 그 수만큼 서고, 줄마다 명령(`Probe`) ·
 #   부른 자리(`Site` — 이 파일의 행) · 한도(`Cap`)를 든다. 끝 검증이 이것을 명령마다 「몇 자리 · 몇 번」으로 센다.
@@ -3729,23 +3857,30 @@ function Restore-Winget {
     Update-RuntimePath      # 레지스트리 두 범위를 다시 태우는 자 — 사본을 여기 또 두지 않는다
     [bool](Get-Command winget -ErrorAction SilentlyContinue)
   }
+  # 갈래마다 걸린 초를 세부 기록에 한 줄로 남긴다(`Add-RunSpan`) — 갈래의 `finally` 가 부르므로 되살린 갈래 · 진 갈래 · 던진 갈래가 다
+  #   한 줄씩이다. 재기만 하고 갈래의 차례 · 판정은 안 바꾼다. 맨바닥 사내 VDI 에서 준비 86초 가운데 이 자리가 얼마인지를 가른다(PAISetup #69).
+  $tier = { param([string]$What, [string]$Said, $Sw) try { Add-RunSpan "winget 복구 $What" $Said $Sw.Elapsed.TotalSeconds } catch { } }
 
   # ① 이 프로필에 다시 등록한다 (네트워크 없음)
+  $tierSw = [Diagnostics.Stopwatch]::StartNew(); $tierSaid = '실패'
   try {
     Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe `
       -ErrorAction Stop
     if (& $reach) {
       Write-Host '  winget 복구함 (프로필에 다시 등록)' -ForegroundColor Green
+      $tierSaid = '복구함'
       return $true
     }
     # 「됐다는데 안 잡힌다」는 「안 됐다」와 다른 명제라 따로 말한다 — 그 차이가 다음에 어디를 팔지를 정한다.
     Write-Host '    · 다시 등록했지만 winget 을 찾을 수 없음 — 다음 방법을 시도합니다'
+    $tierSaid = '등록했지만 찾지 못함'
   } catch {
     Write-Host "    · 다시 등록 실패 — $(Say-Why $_)"
-  }
+  } finally { & $tier '① 프로필에 다시 등록' $tierSaid $tierSw }
 
   # ② 마이크로소프트가 적어 둔 길 — PSGallery 의 WinGet 모듈이 스스로 고친다. `-AllUsers` 는 관리자를 타므로, 안 되면 그것 없이
   #   한 번 더 — 제 계정에만 서도 쓸 수 있다.
+  $tierSw = [Diagnostics.Stopwatch]::StartNew(); $tierSaid = '실패'
   try {
     Write-Host '    · PowerShell 모듈로 복구를 시도합니다 (PSGallery)'
     # 있으면 안 받는다 — 깔린 모듈을 `-Force` 로 다시 깔면 윈도우가 「쓰는 중이라 못 바꾼다」로 문다.
@@ -3754,24 +3889,28 @@ function Restore-Winget {
     } else {
       # 받기가 져도 Repair 로 간다 — Repair 는 모듈만 있으면 서므로, 준비의 실패(프록시의 504 등)가 본 걸음을 막지 않게 갈래를
       #   끊는다.
+      $getSw = [Diagnostics.Stopwatch]::StartNew(); $getSaid = '실패'
       try {
         Install-PackageProvider -Name NuGet -Force -ErrorAction Stop | Out-Null
         Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery `
           -ErrorAction Stop | Out-Null
+        $getSaid = '받음'
       } catch {
         Write-Host "      (모듈 다운로드 실패 — $(Say-Why $_)) — 기존 모듈로 시도합니다"
-      }
+      } finally { & $tier '② 중 모듈 받기 (NuGet · PSGallery)' $getSaid $getSw }
     }
     try { Repair-WinGetPackageManager -AllUsers -ErrorAction Stop }
     catch { Repair-WinGetPackageManager -ErrorAction Stop }
     if (& $reach) {
       Write-Host '  winget 복구함 (Repair-WinGetPackageManager)' -ForegroundColor Green
+      $tierSaid = '복구함'
       return $true
     }
     Write-Host '    · 모듈은 실행됐지만 winget 을 찾을 수 없음 — 다음 방법을 시도합니다'
+    $tierSaid = '실행했지만 찾지 못함'
   } catch {
     Write-Host "    · 모듈로 복구 실패 — $(Say-Why $_)"
-  }
+  } finally { & $tier '② PowerShell 모듈 Repair-WinGetPackageManager (받기 포함)' $tierSaid $tierSw }
 
   # ③ GitHub 릴리스에서 받아 깐다
   # 걸음마다 제 실패 문장(`$step`)을 들고 catch 가 그것을 그대로 쓴다 — 받기 · 풀기 · 깔기가 한 문장으로 뭉개지면 다 받고 깔다 진
@@ -3782,6 +3921,7 @@ function Restore-Winget {
   #   받을 두 파일은 이름이 판마다 같아(v1.9 부터) 최신 릴리스의 받는 주소(`$WingetRelSite`)에서 이름으로 바로 받는다. 라이선스
   #   파일은 안 받는다 — 이 사용자에게만 까는 `Add-AppxPackage` 는 그것을 안 쓴다.
   $step = 'GitHub 다운로드 방법도 실패'
+  $tierSw = [Diagnostics.Stopwatch]::StartNew(); $tierSaid = '실패'
   try {
     Write-Host '    · GitHub 릴리스에서 다운로드를 시도합니다'
     $step = '다운로드 폴더를 만들지 못함'
@@ -3829,12 +3969,15 @@ function Restore-Winget {
 
     if (& $reach) {
       Write-Host '  winget 복구함 (GitHub 최신 릴리스)' -ForegroundColor Green
+      $tierSaid = '복구함'
       return $true
     }
     Write-Host '    · 설치했지만 winget 을 찾을 수 없음 — 새 창에서는 찾을 수 있음'
+    $tierSaid = '설치했지만 찾지 못함'
   } catch {
     Write-Host "    · $step — $(Say-Why $_)"
-  }
+    $tierSaid = "실패 — $step"
+  } finally { & $tier '③ GitHub 릴리스' $tierSaid $tierSw }
 
   return $false
 }
@@ -4077,19 +4220,28 @@ function Measure-VendorMirror([string]$Url) {
 #   `$VendorMirrorTries` 곳의 빠르기를 재(`Measure-VendorMirror`) 가장 빠른 곳을 낸다. 내는 것 `@{ Url; Sha256; Speed; Tried }` — 목록을
 #   못 읽었거나, 지문이 없거나, 잰 곳이 다 0 이면 `$null` 이다(부르는 쪽이 다음 길로 간다). 지문이 없으면 고르지 않는다 — 미러의 파일을
 #   원본과 맞출 자가 그것뿐이다.
+#   목록 읽기부터 고르기까지 걸린 초와 곳마다의 빠르기를 세부 기록에 한 줄로 남긴다(`Add-RunSpan`) — 재기만 하고 고르는 것은 안 바꾼다.
+#   사내 VDI 맨바닥에서 「CLI」 걸음의 받기 앞 몫을 가른다(PAISetup #69).
 function Get-VendorMirror([string]$Url) {
-  $a = Invoke-VendorAsk "$Url.meta4" -Body
-  if ($a.Code -ne 200 -or $a.Text -notmatch '<hash type="sha-256">([0-9a-fA-F]{64})</hash>') { return $null }
-  $sha = $Matches[1].ToLowerInvariant()
-  $urls = @([regex]::Matches($a.Text, '<url\b[^>]*\bpriority="(\d+)"[^>]*>(https://[^<]+)</url>') |
-            Sort-Object { [int]$_.Groups[1].Value } | ForEach-Object { [Net.WebUtility]::HtmlDecode($_.Groups[2].Value) } |
-            Select-Object -First $VendorMirrorTries)
-  $best = $null
-  foreach ($u in $urls) {
-    $bps = Measure-VendorMirror $u
-    if ($bps -gt 0 -and (-not $best -or $bps -gt $best.Speed)) { $best = @{ Url = $u; Sha256 = $sha; Speed = $bps; Tried = $urls.Count } }
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  $best = $null; $seen = @(); $said = '미러 순위나 원본 해시를 읽지 못함'
+  try {
+    $a = Invoke-VendorAsk "$Url.meta4" -Body
+    if ($a.Code -ne 200 -or $a.Text -notmatch '<hash type="sha-256">([0-9a-fA-F]{64})</hash>') { return $null }
+    $sha = $Matches[1].ToLowerInvariant()
+    $urls = @([regex]::Matches($a.Text, '<url\b[^>]*\bpriority="(\d+)"[^>]*>(https://[^<]+)</url>') |
+              Sort-Object { [int]$_.Groups[1].Value } | ForEach-Object { [Net.WebUtility]::HtmlDecode($_.Groups[2].Value) } |
+              Select-Object -First $VendorMirrorTries)
+    foreach ($u in $urls) {
+      $bps = Measure-VendorMirror $u
+      $seen += '{0} {1:N1} MB/s' -f $(try { ([Uri]$u).Host } catch { $u }), ($bps / 1MB)
+      if ($bps -gt 0 -and (-not $best -or $bps -gt $best.Speed)) { $best = @{ Url = $u; Sha256 = $sha; Speed = $bps; Tried = $urls.Count } }
+    }
+    $said = if ($best) { "고름 $(try { ([Uri]$best.Url).Host } catch { $best.Url })" } else { '잰 곳이 모두 응답 없음' }
+    return $best
+  } finally {
+    try { Add-RunSpan "미러 빠르기 재기 — $(($Url -split '/')[-1]) · $($seen.Count)곳 ($($seen -join ', '))" $said $sw.Elapsed.TotalSeconds } catch { }
   }
-  return $best
 }
 
 # 받은 파일이 그 벤더의 것인가 — 맞으면 빈 글자, 아니면 어긋난 까닭. 길(`$Way`)이 울타리 하나를 꼭 든다(결정 0179 — winget 의 지문 대신
@@ -4686,14 +4838,14 @@ function Get-ExtVersions {
 }
 
 # 고른 확장을 까는 한 자리 — 확장마다 같은 걸음을 적으면 함정(곧바로 물으면 아직 없다 · 인증서면 다른 병이다)을 사본마다
-#   따로 지켜야 한다(결정 0041). 할 일이 `hold` 인 행은 「안 한 걸음」(`Add-UnmeasuredStep`), 그 밖에 `install` 이 아닌 행은 결과
-#   줄만 찍고, 못 깐 확장은 빨간 줄 · `$Fails` 다.
+#   따로 지켜야 한다(결정 0041). 이 손과 `Complete-Extension` 이 한 쌍이다 — 이 손은 할 일을 가르고 빠진 확장의 묶음을 백그라운드로
+#   띄우며(`Start-BackRun`), 거두기 · 깔았나 재기 · 결과 줄은 저 손이 든다. 할 일이 `hold` 인 행은 「안 한 걸음」(`Add-UnmeasuredStep`),
+#   그 밖에 `install` 이 아닌 행은 결과 줄만 여기서 찍고, 못 깐 확장은 저 손의 빨간 줄 · `$Fails` 다.
 # 빠진 확장은 `code` 한 번에 넘긴다(`--install-extension` 여럿 · PAISetup #35 B) — `code` 를 띄울 때마다 node 가 새로 서고
 #   마켓플레이스에 한 번 묻는 값이 VDI 에서 몇 초씩이라 확장 수만큼 쌓인다. 깔았나도 목록 한 번으로 잰다. `--force` 는 같은 판을
 #   다시 받지 않는다(`already installed` 만 찍는다) — 느린 것은 `code` 를 띄우는 횟수다.
-#   묶음이 지면 하나씩 다시 깐다 — 묶음의 종료 값 하나로는 어느 확장이 졌는지 몰라서다. 하나만 넘긴 묶음은 다시 안 깐다.
-#   긴 명령 앞에 한 줄을 먼저 찍는다 — 화면 껍데기의 상태 줄은 마지막으로 나온 줄이라, 안 찍으면 그동안 직전 칸의 결과가 「지금
-#   하는 일」로 서 있다.
+#   띄우기 앞에 한 줄을 찍는다 — 무엇을 백그라운드로 깔고 결과가 어디서 서는지를 댄다. 안 찍으면 이 걸음이 「완료」로 끝난 뒤 확장이
+#   어디로 갔는지 화면이 말하지 않는다.
 # `$Rows` 는 고른 확장의 행(`Id` · `Label`), `$Acts` 는 「VS Code 확장」 걸음이 행마다 `Get-InstallAction` 에서 받은 할 일이다
 #   (`Id` → 할 일) — 올리기(`upcheck`)는 그 걸음이 깔린 확장을 한 번에 묻고(`--update-extensions`) 여기는 앞뒤 판(`$Before` · `$After`)으로
 #   결과만 찍는다. `$Probe` · `$Why` 는 못 쟀을 때 댈 물음과 그 까닭이다(`Add-UnmeasuredStep` 의 꼴).
@@ -4729,11 +4881,26 @@ function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtab
     $todo += ,$x
   }
   if (-not $todo.Count) { return }
+  $xa = @(); foreach ($x in $todo) { $xa += '--install-extension', $x.Id }
+  Say-Busy (@($todo | ForEach-Object { $_.Label }) -join ' · ') 'background' @('code', '결과는 「공용 자산」 단계 끝에서 표시')
+  Start-BackRun 'extensions' 'code' ($xa + '--force') -Label 'VS Code 확장' -Keep $todo
+}
+
+# 백그라운드로 띄운 확장 묶음을 거두고 깔았나를 잰다 — 「VS Code 확장」 걸음이 띄운 것(`Install-Extension`)의 나머지 반이다. 띄운 것이
+#   없으면(빠진 확장이 없었다 · 그 걸음이 띄우기 전에 멎었다) 아무것도 안 한다. 부르는 자리는 흐름의 한 곳 — 「공용 자산」 걸음 경계의
+#   `finally` 다(까닭은 그 자리). 그 사이 「CLI」 ~ 「공용 자산」 걸음이 겹쳐 돈다 — 그 걸음들은 `code` 를 안 부르고 VS Code 의 확장 폴더 ·
+#   신뢰 목록을 안 건드린다.
+# 묶음이 지면 하나씩 다시 깐다 — 묶음의 종료 값 하나로는 어느 확장이 졌는지 몰라서다. 하나만 넘긴 묶음은 다시 안 깐다. 다시 깔기는
+#   앞에서 돈다(진 판에만 서는 갈래다). 결과 줄 · 실패 줄 · `$Fails` 는 앞에서 깔던 때와 같은 글이다.
+function Complete-Extension {
+  if (-not (Test-BackRun 'extensions')) { return }
+  Write-Host ''
+  Write-Host '  VS Code 확장 — 백그라운드 설치 결과' -ForegroundColor Cyan
+  # 거둘 때는 아무 줄도 다시 안 찍는다 — 진행 줄은 「…중」 꼴이라 끝난 뒤에는 거짓이고, 진 판의 끝 줄은 아래 실패 줄이 편다
+  $done = Complete-BackRun 'extensions' { }
+  $todo = @($done.Keep)
   $ids = @($todo | ForEach-Object { $_.Id })
-  Say-Busy (@($todo | ForEach-Object { $_.Label }) -join ' · ') 'install' @('code')
-  $xl = [IO.Path]::GetTempFileName()
-  $xa = @(); foreach ($i in $ids) { $xa += '--install-extension', $i }
-  $rc = Invoke-Logged 'code' ($xa + '--force') $xl ${function:Show-ExtProgress}
+  $rc = $done.Rc; $xl = $done.Log
   $rcs = @{}; $logs = @{}
   if ($rc -ne 0 -and $todo.Count -gt 1) {
     Write-Host "  (확장 $($todo.Count)개를 한 번에 설치하다가 code 가 종료 코드 $rc 로 끝남 — 하나씩 다시 설치합니다)"
@@ -4791,6 +4958,52 @@ function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtab
     }
   }
   Remove-Item -LiteralPath (@($xl) + @($logs.Values) | Select-Object -Unique) -ErrorAction SilentlyContinue
+}
+
+# 씨앗이 드는 파이썬 패키지를 까는 부름을 백그라운드로 띄운다 — 받는 것: 값 파일의 `#pip-packages` 이름들. `-Now` 는 띄운 자리에서 바로
+#   거두는 판(「공용 자산」 걸음이 앞에서 띄운 것이 없을 때)이라 「설치 중」 줄을 찍는다. 거두기 · 결과 줄은 `Complete-PipPackages` 가 든다.
+#   무엇을 왜 까는지는 「공용 자산」 걸음의 「씨앗이 드는 파이썬 패키지」 칸이 든다.
+# ⚠ **못 쟀으면 건너뛰지 않는다** — 넘김을 「없다」로 읽고 건너뛰면 값 파일이 청한 패키지가 끝 검증에도 안 잡힌 채 초록으로 끝난다.
+#   「안 한 걸음」으로 남긴다(결정 0141).
+# ⚠ **`pip` 가 아니라 `python -m pip` 로 깐다.** `pip` 를 따로 부르면 어느 파이썬의 것인지 PATH 가 따로 정해, 부품을 부르는 `python` 과
+#   갈릴 수 있다.
+# ⚠ **빈 작업 폴더에서 부른다**(`-EmptyCwd`) — `-m` 은 작업 폴더를 `sys.path` 맨 앞에 둬, 그 폴더의 `pip.py` · `pip/` 가 돈다. `-P` 는 3.11
+#   앞 판이 못 받고 `-I` 는 사용자 자리(`--user` 꼴 설치의 자리)를 버린다.
+# 막힌 망에 오래 붙잡히지 않게 기다림과 되풀이를 줄인다(`--timeout 15 --retries 1`). `--no-compile` 은 깐 `.py` 마다 `.pyc` 를 미리 쓰지
+#   않는다 — 작은 파일 수천 개(numpy · onnxruntime · lxml)를 쓰는 몫이 VDI 에서 크고, 첫 `import` 가 그 파일만 한 번 짓는다. 그 첫 짓기가
+#   쓰는 자리는 패키지가 깔린 자리라 사용자가 쓸 수 있다 — 설치기의 파이썬은 사용자 범위(`InstallAllUsers=0`)고, 기본 자리에 못 쓰는
+#   파이썬이면 pip 가 사용자 자리(`--user` 꼴 · 「사용자 범위 명령 자리」 칸)로 물러선다.
+function Start-PipPackages([string[]]$Pkgs, [switch]$Now) {
+  $names = $Pkgs -join ' · '
+  $pipPython = Measure-Runs 'python' '--version'
+  if ($pipPython -eq 'unmeasured') { Add-UnmeasuredStep "파이썬 패키지($names)" 'python --version' '설치하지 않음'; return }
+  if ($pipPython -ne 'yes') { Write-Host "  파이썬 패키지($names) — 건너뜀: 이 창에서 python 이 실행되지 않음"; return }
+  if ($Now) { Say-Busy "파이썬 패키지($names)" 'install' @('pip') }
+  else      { Say-Busy "파이썬 패키지($names)" 'background' @('pip', '결과는 「공용 자산」 단계에서 표시') }
+  $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', '--no-compile',
+               '--timeout', '15', '--retries', '1') + $Pkgs
+  # 기다리는 줄은 앞서 띄운 판에만 찍는다 — 바로 거두는 판(`-Now`)은 바로 위 줄이 이미 「설치 중」이다
+  $label = if ($Now) { '' } else { '파이썬 패키지' }
+  Start-BackRun 'pip' 'python' $pipArgs -EmptyCwd -Label $label -Keep $names
+}
+
+# 백그라운드로 띄운 파이썬 패키지 부름을 거두고 결과 줄을 찍는다 — 띄운 것이 없으면 아무것도 안 한다. 부르는 자리는 「공용 자산」 걸음
+#   경계의 `finally` 하나다 — 그 걸음이 도중에 멎어도 거둬, 뒤 걸음(설정 저장소의 훅이 `pip install --user` 를 부른다)과 겹치지 않는다.
+# 못 깔아도 빨강으로 안 끝낸다 — 회사망이 패키지 저장소를 막는 자리가 있고, 없으면 줄이기가 「PIL 이 없다」와 까는 명령을 대며 원본
+#   치수로 물러나 조용히 무너지지 않는다. 말은 하고 뱉은 끝 줄을 편다. 거둘 때 다시 찍는 줄은 pip 의 경고 · 오류 머리 줄(`WARNING:` ·
+#   `ERROR:`)을 `Show-ChildLine` 에 넘긴 것 — 화면에는 그 가운데 경보만 오른다. 진행 줄(`Collecting` · `Installing collected packages`)은
+#   안 찍는다 — 「…중」 꼴이라 끝난 뒤에는 거짓이다.
+function Complete-PipPackages {
+  if (-not (Test-BackRun 'pip')) { return }
+  $done = Complete-BackRun 'pip' { param($l) if ($l -match '^(WARNING|ERROR):') { Show-ChildLine $l } }
+  $names = "$($done.Keep)"
+  if ($done.Rc -eq 0) {
+    Write-Host "  파이썬 패키지 — 설치 완료 ($names)" -ForegroundColor Green
+  } else {
+    Write-Host "  ! 파이썬 패키지($names) — 설치 실패 (종료 코드 $($done.Rc)). 그림 축소 기능은 원본 크기로 대신합니다 · 마지막 출력:" -ForegroundColor Yellow
+    Show-Log $done.Log
+  }
+  Remove-Item -LiteralPath $done.Log -ErrorAction SilentlyContinue
 }
 
 # npm 이 제 기록에 적은 그 패키지들 — 패키지 이름마다 `@{ State = yes · no · unmeasured; Ver = 깔린 판(모르면 빈 글자); Probe; Why }`
@@ -7046,6 +7259,7 @@ $BusyVerbs = [ordered]@{
   fetch   = '다운로드 중'
   wait    = '기다리는 중'
   remove  = '제거 중'
+  background = '백그라운드에서 설치 중'
 }
 
 # 사내에서만 뜻이 있는 이름 — **값이 주소가 아니라 프록시 걷기(`Test-OurProxyEntry`)가 못 가른다.** 저쪽은 「값이 죽은 포트를
@@ -7078,7 +7292,9 @@ $RunLogKeep = 15   # 세부 기록을 몇 판까지 두나 — 자동 실행 기
 $runStamp = "$(Get-Date -Format 'yyyyMMdd-HHmmss')-$PID"
 $script:DetailLog = ''
 $script:RunTranscript = $false
+# 끄기 앞에서 안 거둔 백그라운드 부름을 거둔다(`Stop-BackRuns`) — 그 끝 줄이 화면 기록에 남아야 한다.
 function Stop-RunLog {
+  Stop-BackRuns
   if (-not $script:RunTranscript) { return }
   $script:RunTranscript = $false
   try { Stop-Transcript | Out-Null } catch { }
@@ -7544,13 +7760,20 @@ if (-not ($NoUpgrade -or $noWinget)) {
     Write-Host "  (업데이트 목록을 한 번에 받지 못함 — $uwhy 프로그램마다 따로 확인합니다)"
   }
 }
+# 씨앗이 드는 파이썬 패키지의 이름 — 값 파일의 `#pip-packages` 가 든다(무엇을 왜 까나는 「공용 자산」 걸음의 그 칸). 「프로그램」 걸음
+#   끝에서 띄우고(`$pipAsked`) 「공용 자산」 걸음이 거둔다 — 둘이 같은 이름을 읽게 여기서 한 번 읽는다.
+$pipLine  = Read-Directive $DistEnvFile 'pip-packages'
+$pipPkgs  = @(if ($pipLine) { $pipLine -split '[,\s]+' | Where-Object { $_ } })
+$pipAsked = $false
+
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. 「프로그램」 걸음 앞에도 시간이 든다.
 Write-Elapsed '준비'
 
 # ══ 걸음 「프로그램」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 기계
-#   하는 일 — winget 앱(VS Code · Node · Git · Python · gh) · VC++ 런타임(파이썬이 서는 판) · 데스크탑 앱 · Node 신뢰
-#   앞에서 받는 것 — 준비의 고른 제품 · 자리 · 올릴 것 목록 · winget 유무 · 파이썬이 필요한 까닭
+#   하는 일 — winget 앱(VS Code · Node · Git · Python · gh) · VC++ 런타임(파이썬이 서는 판) · 데스크탑 앱 · Node 신뢰 · 씨앗의
+#     파이썬 패키지를 백그라운드로 띄우기(거두기는 「공용 자산」)
+#   앞에서 받는 것 — 준비의 고른 제품 · 자리 · 올릴 것 목록 · winget 유무 · 파이썬이 필요한 까닭 · 파이썬 패키지 이름(`$pipPkgs`)
 #   안 하는 것 — 홈 파일 · 키. 예외 하나 — Node 신뢰가 CA 경로(`NODE_EXTRA_CA_CERTS`)를 사용자 환경에 심는다.
 #     뒤의 확장 · CLI 가 그 값을 물고 받으므로 이 걸음에 선다
 # 이 판이 그 앱을 안 까는 까닭 — 까는 판이면 빈 글자다. 이 걸음과 끝 검증(안 깐 것은 안 잰다)이 같이 읽는다.
@@ -7841,19 +8064,31 @@ Write-Host ''
 Write-Host '  Node 신뢰 배선' -ForegroundColor Cyan
 Wire-NodeTrust
 
+# ── 씨앗이 드는 파이썬 패키지를 백그라운드로 띄운다 — **파이썬이 선 바로 뒤다** (PAISetup #69) ──────────────────────
+# 거두기는 「공용 자산」 걸음이 한다 — 그 사이 「VS Code 확장」 ~ 「Claude 홈 설정」 걸음이 겹쳐 돌고, 그 걸음들이 부르는 파이썬(로컬 프록시 ·
+#   Codex 설정 병합)은 표준 라이브러리만 읽어 까는 중인 패키지를 안 건드린다. 이 걸음이 여기 오기 전에 멎었으면 그 걸음이 제 자리에서
+#   띄우고 거둔다.
+if ($pipPkgs) {
+  Write-Host ''
+  Start-PipPackages $pipPkgs
+  $pipAsked = $true
+}
+
 } catch { Write-StepFault $_ }
 Exit-Step 'programs'
 
 # ══ 걸음 「VS Code 확장」 ═══════════════════════════════════════════════════════════════════════
 #   층 — 기계
-#   하는 일 — 깔린 확장을 한 번에 올리고, 고른 제품의 확장을 깐다
+#   하는 일 — 깔린 확장을 한 번에 올리고, 고른 제품의 빠진 확장을 까는 부름을 백그라운드로 띄운다
 #   앞에서 받는 것 — 「프로그램」의 VS Code(`code`) · Node 신뢰
-#   안 하는 것 — 사용자 환경 · 홈
+#   안 하는 것 — 사용자 환경 · 홈 · 빠진 확장을 깔았나 재기(「공용 자산」 걸음 끝의 `Complete-Extension` 이 거두며 잰다)
 # 확장만으로는 안 돈다 — 확장은 Claude Code CLI 를 자식으로 부른다. 그래서 「CLI」 걸음이 붙어 있고, 둘 중 하나만 서면 VS Code 는
 #   열리는데 아무 일도 안 일어난다.
 # `code` 를 띄우는 횟수가 곧 시간이다 — 한 번 뜰 때마다 노드 프로세스가 서고 마켓플레이스에 한 번 묻는다(VDI 에서 몇 초씩). 그래서
 #   판 번호는 한 번 읽고, 깔린 것은 `--update-extensions` 한 번으로 올리고, 다시 한 번 읽어 앞뒤로 「올렸다 · 최신」을 가른다. 빠진
-#   확장도 `code` 한 번에 넘기고 목록 한 번으로 잰다(`Install-Extension`).
+#   확장도 `code` 한 번에 넘기고 목록 한 번으로 잰다(`Install-Extension` · `Complete-Extension`).
+# 올리기는 앞에서, 빠진 것 깔기는 그 뒤 백그라운드다 — 두 `code` 부름이 같은 확장 폴더를 동시에 쓰지 않게 차례를 둔다. 깔기는 맨바닥
+#   VDI 에서 수 분이 들어(PAISetup #69) 뒤 걸음과 겹쳐 돌린다.
 # `--update-extensions` 는 깔린 확장 전부를 올린다 — 우리 것만 고르는 스위치가 없다. VS Code 가 스스로 하는 자동 갱신과 같은 일이다.
 
 Enter-Step 'extensions'
@@ -9202,8 +9437,9 @@ Exit-Step 'home'
 
 # ══ 걸음 「공용 자산」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 홈
-#   하는 일 — 사내 환경 문서 · 씨앗(거울로 깔거나, 설정 저장소가 들면 비켜선다) · 씨앗 판 줄 · 씨앗이 드는 파이썬 패키지
-#   앞에서 받는 것 — 준비의 설정 저장소 주소 · 배포본 판(`$DistVersion`), 「프로그램」의 파이썬
+#   하는 일 — 사내 환경 문서 · 씨앗(거울로 깔거나, 설정 저장소가 들면 비켜선다) · 씨앗 판 줄 · 씨앗이 드는 파이썬 패키지 · 끝에서 앞
+#     걸음이 백그라운드로 띄운 둘(파이썬 패키지 · VS Code 확장 묶음) 거두기(경계의 `finally`)
+#   앞에서 받는 것 — 준비의 설정 저장소 주소 · 배포본 판(`$DistVersion`), 「프로그램」의 파이썬 · 그 걸음과 「VS Code 확장」 걸음이 띄운 부름
 #   안 하는 것 — 도구별 홈
 # 고를 것이 아니라 환경이라 스위치가 없다 — 사내 게이트웨이의 배선 · 오류 명세와, 복사해 출발하는 씨앗은 누가 받아도 쓴다.
 # 홈에 깐다 — zip 이 풀린 자리는 바탕화면 폴더를 지우면 사라지고, 스킬과 형제 저장소 문서가 가리키는 `claude-config/posco/` 는
@@ -9314,52 +9550,29 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
 # 검사 씨앗의 그림 줄이기(`_shrink.py`)가 PIL 을 든다. 부르는 자는 모델이지만 그 길을 여는 것은
 # 위 그림 문이다 — 그림이 크면 누구의 PC 에서든 「줄여서 연다」로 돌려보낸다. 그래서 규범·룰·
 # 스킬 칸이 아니라 여기 선다: 부품도 문도 스위치를 안 타니 의존성도 안 탄다.
-# 이름은 이 파일에 없다 — 값 파일의 `#pip-packages = 이름 …` 이 들고, 몸통은 까는 법만 안다(`#gateway-proxy` · `#codex-config` 와
-#   같은 결). 읽는 값 파일은 배포본의 것이다(`$DistEnvFile` 곁말).
-# ⚠ **`pip` 가 아니라 `python -m pip` 로 깐다.** `pip` 를 따로 부르면 어느 파이썬의 것인지 PATH 가 따로 정해, 부품을 부르는
-#   `python` 과 갈릴 수 있다.
-# 못 깔아도 빨강으로 안 끝낸다 — 회사망이 패키지 저장소를 막는 자리가 있고, 없으면 줄이기가 「PIL 이 없다」와 까는 명령을 대며
-#   원본 치수로 물러나 조용히 무너지지 않는다. 말은 하고 뱉은 끝 줄을 편다. 막힌 망에 오래 붙잡히지 않게 기다림과 되풀이를 줄인다.
+# 이름은 이 파일에 없다 — 값 파일의 `#pip-packages = 이름 …` 이 들고(「준비」가 `$pipPkgs` 로 읽는다), 몸통은 까는 법만 안다
+#   (`#gateway-proxy` · `#codex-config` 와 같은 결). 읽는 값 파일은 배포본의 것이다(`$DistEnvFile` 곁말).
+# 까는 부름은 「프로그램」 걸음 끝에서 백그라운드로 띄워 두었다(`Start-PipPackages` — 까는 법 · `--no-compile` 의 까닭은 그 머리말이 든다).
+#   여기서는 그 결과를 거둔다 — 거두기는 이 걸음 경계의 `finally` 다(`Complete-PipPackages`). 그 걸음이 띄우기 전에 멎었으면 여기서 띄우고
+#   바로 거둔다.
 #   이미 있으면 pip 가 망에 안 묻고 끝나 로그온 자동 실행이 매번 불러도 된다.
-$pipLine = Read-Directive $DistEnvFile 'pip-packages'
-$pipPkgs = @(if ($pipLine) { $pipLine -split '[,\s]+' | Where-Object { $_ } })
-if ($pipPkgs) {
-  $pipNames = $pipPkgs -join ' · '
-  # ⚠ **못 쟀으면 건너뛰지 않는다** — 넘김을 「없다」로 읽고 건너뛰면 값 파일이 청한 패키지가 끝 검증에도 안 잡힌 채
-  #   초록으로 끝난다. 「안 한 걸음」으로 남긴다(결정 0141).
-  $pipPython = Measure-Runs 'python' '--version'
-  if ($pipPython -eq 'unmeasured') {
-    Add-UnmeasuredStep "파이썬 패키지($pipNames)" 'python --version' '설치하지 않음'
-  } elseif ($pipPython -ne 'yes') {
-    Write-Host "  파이썬 패키지($pipNames) — 건너뜀: 이 창에서 python 이 실행되지 않음"
-  } else {
-    Say-Busy "파이썬 패키지($pipNames)" 'install' @('pip')
-    $pl = [IO.Path]::GetTempFileName()
-    $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
-                 '--timeout', '15', '--retries', '1') + $pipPkgs
-    # ⚠ **빈 작업 폴더에서 부른다** — `-m` 은 작업 폴더를 `sys.path` 맨 앞에 둬, 그 폴더의 `pip.py` · `pip/` 가 돈다. `-P` 는 3.11 앞
-    #   판이 못 받고 `-I` 는 사용자 자리(`--user` 꼴 설치의 자리)를 버리므로, 이 회차가 지은 빈 폴더로 옮겨 부른다.
-    $pipCwd = Join-Path ([IO.Path]::GetTempPath()) ("claude-setup-pip-$PID")
-    $prc = -1
-    try {
-      New-Item -ItemType Directory -Path $pipCwd -Force | Out-Null
-      Push-Location -LiteralPath $pipCwd
-      try { $prc = Invoke-Logged 'python' $pipArgs $pl ${function:Show-PipLine} } finally { Pop-Location }
-    } catch {
-      # 빈 폴더를 못 지었거나 못 옮겼다 — 작업 폴더째 부르지 않고 못 깐 것으로 남긴다(아래 노란 줄이 종료 -1 로 말한다).
-      [IO.File]::WriteAllText($pl, "빈 작업 폴더를 만들지 못해 실행하지 않음 ($pipCwd) — $($_.Exception.Message)")
-    } finally { Remove-Item -LiteralPath $pipCwd -Recurse -Force -ErrorAction SilentlyContinue }
-    if ($prc -eq 0) {
-      Write-Host "  파이썬 패키지 — 설치 완료 ($pipNames)" -ForegroundColor Green
-    } else {
-      Write-Host "  ! 파이썬 패키지($pipNames) — 설치 실패 (종료 코드 $prc). 그림 축소 기능은 원본 크기로 대신합니다 · 마지막 출력:" -ForegroundColor Yellow
-      Show-Log $pl
-    }
-    Remove-Item $pl -ErrorAction SilentlyContinue
-  }
+if ($pipPkgs -and -not $pipAsked) {
+  Start-PipPackages $pipPkgs -Now
+  $pipAsked = $true
 }
 
-} catch { Write-StepFault $_ }
+} catch { Write-StepFault $_ } finally {
+# ── 백그라운드로 띄운 둘을 거둔다 — 파이썬 패키지 · VS Code 확장 묶음 (PAISetup #69) ──────────────────
+# **「설정 저장소」 걸음 앞의 정한 자리다** — 그 걸음의 두 손이 이 둘과 겹치면 안 된다:
+#   · 넘긴 훅이 `pip install --user` 를 부른다 — 같은 파이썬 자리에 두 pip 가 겹쳐 쓴다
+#   · 심기(`--plant` · 넘긴 훅의 `--install`)가 VS Code 의 폴더 신뢰를 심는데, 그 손(`vscode-trust.py`)은 `Code.exe` 가 하나라도 돌면 VS Code
+#     가 떠 있다고 보고 다음 설치로 미룬다 — 확장을 까는 `code` 도 `Code.exe` 다
+# 걸음 경계의 `finally` 에 선다 — 이 걸음이 도중에 멎어도 거둔다. 띄운 것이 없으면 아무 줄도 안 낸다. 이 걸음의 마지막 줄들이다.
+# ⚠ 거두기마다 제 `try` 로 감싼다 — `finally` 는 위 `catch` 밖이라 여기서 던지면 걸음 고장이 아니라 맨 위 `trap` 까지 가서 설치가 통째로
+#   끝나고, 앞 거두기가 던지면 뒤 거두기는 안 돈다.
+try { Complete-PipPackages } catch { Write-StepFault $_ }
+try { Complete-Extension } catch { Write-StepFault $_ }
+}
 Exit-Step 'assets'
 
 # ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
