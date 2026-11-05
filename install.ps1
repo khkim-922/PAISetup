@@ -70,7 +70,7 @@ $SwMark = 0
 #   통째로 죽인다. 판정도 망가진다: `Get-Ver` 가 판 대신 경고 줄을 읽는다.
 # 버리지도 않는다 — 판정만 재는 자리는 버리고(`Get-Ver` 는 울타리 손 `Invoke-LoggedCapped` 가 받은 나가는 글만, 「도나」
 #   `Test-Runs` · `Measure-Runs` 는 `Invoke-ProbeCapped` 가 띄운 자식의 두 스트림을 읽어 버린다), 설치하는 자리는 실패의 까닭이
-#   유일한 단서라 파일로 잡아 두며 화면에 흘리고(`Invoke-Logged` 머리말), 실패하면 끝 줄을 다시 편다.
+#   유일한 단서라 파일로 잡아 두고(`Invoke-Logged` 머리말) 화면에는 경보 줄만 올리며, 실패하면 끝 줄을 다시 편다.
 
 # 콘솔 UTF-8 강제. PowerShell 5.1 기본은 시스템 코드페이지(한국은 cp949)라 한글이 깨진다.
 # ⚠ **던지게 두지 않는다.** 출력이 파일로 돌려진 채로 뜨면 이 줄이 걸릴 수 있고, 위 `Stop` 이 그 자리에서 끝내 **한 줄도
@@ -503,10 +503,10 @@ $Steps = @(
 
 #region 화면 — 진행 · 걸린 시간 · 실패 까닭 · 로그 끝 줄을 찍고, 물음창을 띄운다
 
-# 걸음 하나가 끝난 줄 — `── 글자 — 마쳤다 (N초)` 를 찍고 시계의 눈금(`SwMark`)을 지금으로 옮긴다. 걸음 경계에서만 부른다.
+# 걸음 하나가 끝난 줄 — `── 글자 — 완료 (N초)` 를 찍고 시계의 눈금(`SwMark`)을 지금으로 옮긴다. 걸음 경계에서만 부른다.
 function Write-Elapsed([string]$Text) {
   $now = [int]$Sw.Elapsed.TotalSeconds
-  Write-Host ("  ── $Text — 마쳤다 (" + ($now - $script:SwMark) + "초)") -ForegroundColor DarkGray
+  Write-Host ("  ── $Text — 완료 (" + ($now - $script:SwMark) + "초)") -ForegroundColor DarkGray
   $script:SwMark = $now
 }
 
@@ -557,7 +557,7 @@ function Say-Why($ErrorRecord) {
   try { $e = $ErrorRecord.Exception } catch { }
   $t = ''
   if ($e) { $t = [string]$e.Message }
-  if (-not $t) { return '(까닭을 안 준다)' }
+  if (-not $t) { return '(이유 없음)' }
   $t = $t -replace '<[^>]*>', ' '                 # 표시를 걷는다
   $t = ($t -replace '\s+', ' ').Trim()            # 줄바꿈·연속 빈칸을 하나로 접는다
   if ($t.Length -gt 160) { $t = $t.Substring(0, 160).TrimEnd() + '…' }
@@ -577,47 +577,42 @@ function Show-Log([string]$LogPath, [int]$Lines = 8) {
            Where-Object { $_ -and $_.Trim() })
   }
   if ($t.Count) { $t | ForEach-Object { Write-Host "      $($_ -replace $UrlCredential, '***@')" } }
-  else { Write-Host '      (한 줄도 안 뱉었다 — 명령이 글자 없이 졌다)' }
+  else { Write-Host '      (출력 없음 — 명령이 아무것도 출력하지 않고 실패함)' }
 }
 
-# 사람이 읽을 줄이 아닌 것 — 아래 `Show-ChildLine` 이 거른다(대소문자를 가린다). 스피너뿐인 줄(`-\|/.` · 점자 스피너) · 막대(막대 ·
-#   상자 글자가 다섯 넘게 이어지고 그 뒤가 숫자나 줄 끝 — 사람 줄의 `── 진단을 마쳤다` 같은 짧은 표지는 산다) · 숫자가 붙은 글자 막대
-#   (pip 의 `---------- 7.3/7.3 MB`) · 줄 계약(`KEY=값` — 부르는 쪽이 다 모은 뒤 제 꼴로 옮겨 찍는다).
-$ChildLineNoise = '^[\s\-\\|/.]*$|[▀-▟─-╿]{5,}(\s*[\d.]|\s*$)|[⠀-⣿]|^\s*[-=#]{10,}\s+\d|^[A-Z][A-Z0-9_]*='
+# 바깥 명령의 줄 가운데 화면에 올리는 것 — **경보 줄만**(허락 목록). 이 설치기 · 형제 훅의 경보 머리(`❌` · `✗` · `! `)와 도구들이
+#   오류에 붙이는 머리(`error` · `fatal` · `npm ERR!` · `Traceback`)다. 대소문자를 가린다 — `warning` · 상투 문구(winget 의 라이선스 ·
+#   해시 · 「설치 성공」, npm 의 `warn`)는 경보가 아니다.
+$ChildLineAlarm = '^\s*(❌|✗|! )|^\s*(error|ERROR|Error|fatal|FATAL)\b|^\s*npm (ERR!|error)|^Traceback '
 # 색 · 창 제목을 바꾸는 이스케이프(CSI · OSC) — 화면에 글자로 남지 않게 걷는다.
 $ChildLineEscape = '\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)'
 # 주소에 박힌 자격(`https://사람:토큰@`) — 자식이 낸 글을 화면 · 기록에 옮기는 자리(`Show-ChildLine` · `Show-Log` · `Add-RunDetail`)가
 #   `***@` 로 가린다. git 은 받기가 지면 그 주소를 그대로 찍는다.
 $UrlCredential = '(?<=://)[^/@\s]+@'
 
-# 바깥 명령이 흘린 한 줄을 화면에 찍는다 — 자식 줄이 화면에 닿는 문은 이것 하나다(러너 둘이 `$OnLine` 없이 불렸을 때 · 훅 몸통에
-#   넘긴 판까지). 줄 꼴이 정해진 도구의 번역 손(`Show-ExtProgress` · `Show-ToolHomesLine` · `Show-BrowserMcpLine`)만 따로 선다.
-#   · `\r` 로 덮어쓴 줄은 끝 판만 남기고, 이스케이프를 걷고, 빈 줄과 `$ChildLineNoise` 는 버린다
-#   · **진행 판은 접는다** — 진행 판 꼴(`N%` 나 `a/b` 가 든 줄)이고, 숫자를 지우고 빈칸을 하나로 접은 꼴이 바로 앞에 찍은 줄과 같으면
-#     안 찍는다(`Updating files: N% (a/b)` 는 첫 판과 `, done.` 판만 선다). 진행 판 꼴로 좁히는 까닭 — 숫자만 다른 낱낱의 줄
-#     (`slide1.xml` · `slide2.xml`, 판만 다른 `npm warn deprecated` 둘)은 서로 다른 일이라 다 선다. 파워셸은 자식 출력을 `\r` 에서도 끊어 넘기므로 덮어쓰기만으로는 판이 안 접힌다. 앞 꼴(`$script:ChildLineShape`)은 러너가 부름마다 비운다
-#   · 자식 줄 안의 들여쓰기는 지키고, 그 앞에 6칸을 더 들여 흐린 색으로 찍는다
+# 바깥 명령이 낸 한 줄을 받는 기본 손 — 자식 줄이 화면에 닿는 문은 이것 하나다(러너 둘이 `$OnLine` 없이 불렸을 때 · 훅 몸통에 넘긴
+#   판까지). **화면에는 `$ChildLineAlarm` 에 걸린 줄만 올린다** — 흔한 설치기처럼 화면은 항목 · 결과 · 경보를 들고, 원문은 세부 기록
+#   (`Add-RunDetail`)이 다 든다. 진 부름의 끝 줄은 부르는 자리가 `Show-Log` 로 편다. 사람에게 보일 이정표가 따로 있는 도구는 제 번역 손
+#   (`Show-ExtProgress` · `Show-ToolHomesLine` · `Show-BrowserMcpLine` · `Show-PipLine`)을 `$OnLine` 으로 넘긴다.
+#   · `\r` 로 덮어쓴 줄은 끝 판만 보고, 이스케이프를 걷는다
+#   · 올리는 줄은 6칸 들여 빨강으로 찍는다
 # ⚠ **6칸 들여쓰기를 걷지 않는다** — 설치 창 · 자동 실행 진행 창이 앞 공백 셋 이상인 줄을 흐름 줄로 읽어 상태 글의 주제를 안 갈고,
 #   머리줄은 `^\[n/N\]` 로 읽는다(자식이 `[1/4] …` 를 찍어도 막대가 안 뛴다).
-$script:ChildLineShape = ''
 function Show-ChildLine([string]$Line) {
   $s = @("$Line" -split "`r" | ForEach-Object { (($_ -replace $ChildLineEscape, '') -replace $UrlCredential, '***@').TrimEnd() } | Where-Object { $_.Trim() })
-  if (-not $s.Count -or $s[-1] -cmatch $ChildLineNoise) { return }
-  $shape = ($s[-1] -replace '\d+', '#') -replace '\s+', ' '
-  if ($shape -ceq $script:ChildLineShape -and $s[-1] -match '\d%|\d/\d') { return }
-  $script:ChildLineShape = $shape
-  Write-Host "      $($s[-1])" -ForegroundColor DarkGray
+  if (-not $s.Count -or $s[-1] -cnotmatch $ChildLineAlarm) { return }
+  Write-Host "      $($s[-1].Trim())" -ForegroundColor Red
 }
 
 # `python -m pip install` 이 뱉는 줄을 진행 줄로 옮긴다 — pip 는 의존 꾸러미마다 `Collecting` · `Downloading … .metadata` 를 찍어
 #   청한 몇 개가 수십 줄이 된다. 청한 꾸러미를 받기 시작한 줄(`(from …)` 이 없는 `Collecting`)과 까는 줄(꾸러미 수)만 내고, 경고 ·
-#   오류는 `Show-ChildLine` 으로 그대로 낸다. 이미 깔린 판(`Requirement already satisfied`)은 안 낸다. 판정은 안 한다 — 섰나는 종료
+#   오류는 `Show-ChildLine` 에 넘긴다(화면에는 오류 줄만 오른다). 이미 깔린 판(`Requirement already satisfied`)은 안 낸다. 판정은 안 한다 — 섰나는 종료
 #   값이 들고, 원문은 세부 기록에 다 남는다(`Add-RunDetail`).
 function Show-PipLine([string]$Line) {
   if ($Line -match '^Collecting (\S+)\s*$') {
-    Write-Host "    · $($Matches[1]) — 받는 중" -ForegroundColor DarkGray
+    Write-Host "    · $($Matches[1]) — 다운로드 중" -ForegroundColor DarkGray
   } elseif ($Line -match '^Installing collected packages: (.+)$') {
-    Write-Host "    · 의존 꾸러미까지 $(@($Matches[1] -split ',\s*' | Where-Object { $_ }).Count)개 — 까는 중" -ForegroundColor DarkGray
+    Write-Host "    · 의존성 포함 $(@($Matches[1] -split ',\s*' | Where-Object { $_ }).Count)개 — 설치 중" -ForegroundColor DarkGray
   } elseif ($Line -match '^(WARNING|ERROR):') {
     Show-ChildLine $Line
   }
@@ -687,8 +682,8 @@ function Write-StepFault($Err, [string]$Key = $script:StepNow) {
     if ($ii -and $ii.ScriptName) { $at = '{0}:{1}' -f (Split-Path -Leaf $ii.ScriptName), $ii.ScriptLineNumber }
   } catch { }
   $where = if ($at) { " ($at)" } else { '' }
-  Write-Host "  ! $title — 도중에 멎었다: $(Say-Why $Err)$where · 이 칸의 나머지는 안 하고 다음으로 간다" -ForegroundColor Red
-  $script:Fails.Add("$title (도중에 멎었다$(if ($at) { " · $at" }))")
+  Write-Host "  ! $title — 중단됨: $(Say-Why $Err)$where · 이 단계의 나머지는 건너뛰고 다음 단계로 넘어갑니다" -ForegroundColor Red
+  $script:Fails.Add("$title (중단됨$(if ($at) { " · $at" }))")
   $script:StepFaults[$Key] = $at
 }
 
@@ -699,7 +694,7 @@ function Assert-StepsDone([string[]]$Keys) {
     if ($script:StepFaults -and $script:StepFaults.Contains($k)) {
       $t = $k
       try { $t = Get-StepTitle $k } catch { }
-      throw "앞 걸음 「$t」이 도중에 멎어 이 걸음을 안 했다 — 그 걸음이 반쯤 지은 값으로 걷거나 심지 않는다 (다음 판이 다시 한다)"
+      throw "앞 단계 「$t」이 도중에 중단되어 이 단계를 건너뜀 — 앞 단계가 일부만 만든 값으로 설정하거나 제거하지 않음 (다음 설치에서 다시 진행)"
     }
   }
 }
@@ -793,7 +788,7 @@ function Stop-HolderTree($Holder) {
     catch { return $false } finally { if ($h) { $h.Dispose() } }
   }
   # 물음 창이 떠 있는 사이 겹친 엔진이 끝나 PID 가 남에게 갔으면 그 남의 자식을 따라가지 않는다 — 끝난 것으로 본다
-  if (-not (& $same $Holder)) { return @{ Ended = @('PID {0} (이미 끝났다)' -f $rootId); Left = @() } }
+  if (-not (& $same $Holder)) { return @{ Ended = @('PID {0} (이미 종료됨)' -f $rootId); Left = @() } }
   $all = $null; $why = ''
   try { $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, Name, CommandLine -OperationTimeoutSec 10 -ErrorAction Stop) }
   catch { $why = ($_.Exception.Message -split '\r?\n')[0] }
@@ -838,7 +833,7 @@ function Stop-HolderTree($Holder) {
   }
   $ended = @($nodes | Where-Object { $alive -notcontains $_ } | ForEach-Object { & $label $_ })
   $left  = @($alive | ForEach-Object { & $label $_ })
-  if ($why) { $left += "PID $rootId 의 자손 (프로세스 목록을 못 읽어 못 쟀다 — $why)" }
+  if ($why) { $left += "PID $rootId 의 자손 (프로세스 목록을 읽지 못해 확인하지 못함 — $why)" }
   return @{ Ended = $ended; Left = $left }
 }
 
@@ -882,14 +877,15 @@ function Get-Ver([string]$Cmd, [string]$Arg, [string[]]$VerArgs = @()) {
 #   틀렸다」를 못 갈라 사람이 고장을 의심한다(#32 · 못 잰 자리는 제 상태를 말한다 — 결정 0141). 판정은 안 바꾼다.
 function Format-VerPart([string]$Ver) {
   if ("$Ver".Trim()) { return "($Ver)" }
-  return '(판을 못 읽었다)'
+  return '(버전 확인 안 됨)'
 }
 
 # 네이티브 명령을 돌려 모든 스트림을 `$LogPath`(BOM 붙은 UTF-8 — 읽는 쪽 `Get-Content` 가 BOM 으로 가린다)에 잡고, 줄이 나오는
-#   대로 화면에도 흘린다 — 종료코드를 내고, 못 부르면 -1 이다. 실패했을 때 그 파일의 끝 줄을 다시 펴는 것은 부르는 쪽의 몫이다.
-# **하는 부름은 흘리고, 재는 부름(판정용 조회 — `--version` · `list` · `status` · `--check`)은 `-Quiet` 다.** 흘리는 손은 `$OnLine`(줄 꼴이
-#   정해진 도구가 제 번역 손을 넘긴다)이고, 안 주면 `Show-ChildLine` 이다. 기본값이 흘림인 까닭 — 새로 붙는 자리가 깜빡하면 조용한
-#   기본값은 「멈춘 화면」이 되풀이되고, 흘리는 기본값은 눈에 보이는 잡음이라 바로 잡힌다.
+#   대로 줄을 받는 손에 넘긴다 — 종료코드를 내고, 못 부르면 -1 이다. 실패했을 때 그 파일의 끝 줄을 다시 펴는 것은 부르는 쪽의 몫이다.
+# **하는 부름은 손에 넘기고, 재는 부름(판정용 조회 — `--version` · `list` · `status` · `--check`)은 `-Quiet` 다.** 손은 `$OnLine`(줄 꼴이
+#   정해진 도구가 제 번역 손을 넘긴다)이고, 안 주면 `Show-ChildLine` 이다 — 그 손은 경보 줄만 화면에 올린다(허락 목록). 기본값이
+#   허락 목록인 까닭 — 새로 붙는 도구의 상투 문구가 화면에 새지 않는다. 멈춘 듯 보이는 구간은 항목 줄의 곁말(「몇 분 조용할 수 있다」)과
+#   설치 창의 흐른 초 · 「오래 걸리는 중」이 든다.
 # 하는 부름(`-Quiet` 아님)은 끝난 뒤 세부 기록에 명령 · 종료 값 · 걸린 초 · 받은 글 원문을 남긴다(`Add-RunDetail`).
 function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath, [scriptblock]$OnLine, [switch]$Quiet) {
   # ⚠ **여기서만 `Stop` 을 푼다.** 네이티브의 stderr 는 `*>&1` 로 합쳐도 오류 레코드로 올라와 바깥의 `Stop` 이 그
@@ -897,7 +893,6 @@ function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath, [scr
   $prev = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   if (-not $OnLine -and -not $Quiet) { $OnLine = ${function:Show-ChildLine} }
-  $script:ChildLineShape = ''
   $w = $null; $rc = -1; $took = [Diagnostics.Stopwatch]::StartNew()
   try {
     $w = New-Object IO.StreamWriter($LogPath, $false, (New-Object Text.UTF8Encoding($true)))
@@ -1035,13 +1030,12 @@ function Join-NativeArgs([string[]]$CmdArgs) {
 #   멈추지 않는다. `cmd /c … >` 로 감싸 파일로 돌리지 않는다 — 그러면 `Kill()` 이 자식 대신 cmd 만 죽인다.
 # 나무째 거둔다 — `code` · `npm` 류는 제 자식을 띄우고 껍데기(`.cmd` · `.ps1`)는 그 호스트가 부모로 서서, 부모만 죽이면
 #   손자가 남아 돈다. `Kill($true)` 는 이 파워셸(5.1 · .NET Framework)에 없어 `Stop-ProbeTree` 가 든다.
-# 흘리기는 `Invoke-Logged` 와 같은 규칙이다 — 하는 부름은 흘리고 재는 부름은 `-Quiet`, 손은 `$OnLine` 이고 없으면 `Show-ChildLine`.
+# 줄 넘기기는 `Invoke-Logged` 와 같은 규칙이다 — 하는 부름은 손에 넘기고 재는 부름은 `-Quiet`, 손은 `$OnLine` 이고 없으면 `Show-ChildLine`.
 #   기다리는 동안 두 파일에 붙은 줄을 그 손에 넘긴다(`Read-LogTail` · 반 초 틈) — stderr 도 읽는다: git · npm · 셸 손은 진행을 거기 쓴다.
 function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec, [scriptblock]$OnLine, [switch]$Quiet) {
   $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
   if (-not $psi) { return -1 }
   if (-not $OnLine -and -not $Quiet) { $OnLine = ${function:Show-ChildLine} }
-  $script:ChildLineShape = ''
   $rc = -1; $took = [Diagnostics.Stopwatch]::StartNew()
   # 자식이 끝난 뒤 파이프의 꼬리를 다 붓기까지 기다리는 한도 — 그 끝은 파이프를 쥔 손자까지 다 나가야 온다.
   # 거둔 갈래는 안 기다린다 — 꼬리를 읽을 자리가 없고, 살아남은 손자가 울타리를 늘린다.
@@ -1200,7 +1194,7 @@ function Test-Runs([string]$Cmd, [string]$Arg) {
 function Add-UnmeasuredStep([string]$Step, [string]$Probe, [string]$Held, [string]$Why = '', [string]$Redo = '') {
   if (-not $Why) { $Why = Get-ProbeWhy $Probe }
   $script:UnmeasuredSteps.Add(@{ Step = $Step; Probe = $Probe; Held = $Held; Why = $Why; Redo = $Redo })
-  Write-Host "  ! $Step — 못 쟀다: ``$Probe`` 이 $Why $Held (없는 것이 아니다)" -ForegroundColor Yellow
+  Write-Host "  ! $Step — 확인하지 못함: ``$Probe`` 이 $Why $Held (없다는 뜻은 아님)" -ForegroundColor Yellow
 }
 
 # 울타리 손(`Invoke-LoggedCapped`)이 -2 를 낸 자리가 부른다 — 넘김 한 줄(명령 · 부른 행 · 한도)을 `$script:ProbeTimedOut` 에 남겨
@@ -1365,9 +1359,9 @@ function Read-ModelTable([string]$Path) {
   $weights = @('deep', 'errand', 'fallback')
   $none    = '-'
   $empty   = @{ Agy = @{ inside = [ordered]@{}; outside = [ordered]@{} }; Codex = @{ inside = [ordered]@{}; outside = [ordered]@{} }; Why = $null }
-  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { $empty.Why = "표가 없다: $Path"; return $empty }
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { $empty.Why = "표 파일 없음: $Path"; return $empty }
   try { $lines = [IO.File]::ReadAllLines($Path, [Text.Encoding]::UTF8) }
-  catch { $empty.Why = "표를 못 읽었다: $($_.Exception.Message)"; return $empty }
+  catch { $empty.Why = "표 파일을 읽지 못함: $($_.Exception.Message)"; return $empty }
   $cell = @{}
   $fall = @{ inside = @(); outside = @() }
   $rows = @{ inside = 0; outside = 0 }
@@ -1376,25 +1370,25 @@ function Read-ModelTable([string]$Path) {
     $t = $lines[$i].Trim()
     if (-not $t -or $t.StartsWith('#')) { continue }
     $at = "$($i + 1) 줄"
-    if ($t -notmatch '^(\S+)\s+(\S+)\s+(\S+)\s+(\S.*)$') { $why = "$at — 칸이 넷이 아니다"; break }
+    if ($t -notmatch '^(\S+)\s+(\S+)\s+(\S+)\s+(\S.*)$') { $why = "$at — 항목이 4개가 아님"; break }
     $site = $Matches[1]; $tool = $Matches[2]; $weight = $Matches[3]; $model = $Matches[4].Trim()
     if ($sites -cnotcontains $site)     { $why = "$at — 모르는 자리 $site"; break }
     if ($tools -cnotcontains $tool)     { $why = "$at — 모르는 도구 $tool"; break }
     if ($weights -cnotcontains $weight) { $why = "$at — 모르는 무게 $weight"; break }
-    if ($model.Contains(';'))           { $why = "$at — 모델 이름에 ; 가 든다"; break }
+    if ($model.Contains(';'))           { $why = "$at — 모델 이름에 ; 가 들어 있음"; break }
     $rows[$site]++
     if ($weight -ceq 'fallback') {
-      if ($tool -cne 'agy')    { $why = "$at — 넘길 차례는 agy 만 든다"; break }
-      if ($model -ceq $none)   { $why = "$at — 넘길 차례에 - 가 든다"; break }
+      if ($tool -cne 'agy')    { $why = "$at — 대체 순서는 agy 만 지정할 수 있음"; break }
+      if ($model -ceq $none)   { $why = "$at — 대체 순서에 - 가 들어 있음"; break }
       $fall[$site] += $model
       continue
     }
     $key = "$site $tool $weight"
-    if ($cell.ContainsKey($key)) { $why = "$at — $key 가 두 줄이다"; break }
+    if ($cell.ContainsKey($key)) { $why = "$at — $key 가 두 줄 있음"; break }
     $cell[$key] = $model
   }
   # 줄이 하나도 없는 자리는 잘린 표다 — 어느 자리든 claude 줄은 선다
-  if (-not $why) { foreach ($s in $sites) { if (-not $rows[$s]) { $why = "자리 $s 의 줄이 없다"; break } } }
+  if (-not $why) { foreach ($s in $sites) { if (-not $rows[$s]) { $why = "네트워크 환경 $s 의 줄 없음"; break } } }
   $out = @{ Agy = @{}; Codex = @{}; Why = $null }
   foreach ($s in $sites) {
     if ($why) { break }
@@ -1453,21 +1447,21 @@ function Write-FileSafely([string]$Path, [byte[]]$New, $Old, [scriptblock]$Check
   $newB64 = [Convert]::ToBase64String($New)
   if ($null -ne $oldB64 -and $oldB64 -ceq $newB64) { return @{ Did = 'same' } }
   $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-  if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return @{ Did = 'linked'; Why = '그 자리가 링크(재분석 지점)다 — 갈아 끼우면 링크가 끊겨 안 썼다' } }
-  if ($item -and -not $item.PSIsContainer -and [string]$item.LinkType -ceq 'HardLink') { return @{ Did = 'linked'; Why = '그 파일이 하드 링크다 — 갈아 끼우면 다른 이름과 갈라져 안 썼다' } }
-  if ($item -and $item.PSIsContainer) { return @{ Did = 'left'; Why = '그 자리가 폴더다' } }
+  if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return @{ Did = 'linked'; Why = '그 위치가 링크(재분석 지점)라 저장하지 않음 — 덮어쓰면 링크가 끊어짐' } }
+  if ($item -and -not $item.PSIsContainer -and [string]$item.LinkType -ceq 'HardLink') { return @{ Did = 'linked'; Why = '그 파일이 하드 링크라 저장하지 않음 — 덮어쓰면 다른 이름의 파일과 분리됨' } }
+  if ($item -and $item.PSIsContainer) { return @{ Did = 'left'; Why = '그 위치가 폴더임' } }
   $tag = "$Path.paisetup-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
   $side = "$tag.new"; $bak = "$tag.old"
   $out = @{ Did = 'written' }
   try {
     New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force | Out-Null
     [IO.File]::WriteAllBytes($side, $New)
-    if ($Check -and -not (& $Check $side)) { return @{ Did = 'refused'; Why = '쓸 글을 재니 그 뜻이 아니다' } }
+    if ($Check -and -not (& $Check $side)) { return @{ Did = 'refused'; Why = '저장할 내용을 확인해 보니 의도와 다름' } }
     for ($i = 1; ; $i++) {
       $now = $null
       if (Test-Path -LiteralPath $Path -PathType Leaf) { $now = [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) }
       if ($now -cne $oldB64) {
-        return @{ Did = 'raced'; Why = $(if ($null -eq $oldB64) { '쓰려는 사이 다른 프로그램이 그 자리에 파일을 지었다' } else { '재는 사이 다른 프로그램이 그 파일을 고쳤다' }) }
+        return @{ Did = 'raced'; Why = $(if ($null -eq $oldB64) { '저장하는 사이 다른 프로그램이 그 위치에 파일을 만듦' } else { '확인하는 사이 다른 프로그램이 그 파일을 수정함' }) }
       }
       try {
         if ($null -eq $oldB64) { [IO.File]::Move($side, $Path) } else { [IO.File]::Replace($side, $Path, $bak) }
@@ -1479,14 +1473,14 @@ function Write-FileSafely([string]$Path, [byte[]]$New, $Old, [scriptblock]$Check
     }
     # 끼운 뒤에는 원래 글로 덮어쓰지 않는다 — 되읽은 글이 다르면 그 사이 다른 프로그램이 쓴 것이라 그 글을 둔다
     $back = try { [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) } catch { $null }
-    if ($null -ne $back -and $back -cne $newB64) { $out = @{ Did = 'overrun'; Why = '쓴 뒤 되읽으니 다른 글이다 — 그 사이 다른 프로그램이 썼다' } }
+    if ($null -ne $back -and $back -cne $newB64) { $out = @{ Did = 'overrun'; Why = '저장 후 다시 읽으니 내용이 다름 — 그 사이 다른 프로그램이 저장함' } }
   } catch {
-    $why = "못 썼다 ($($_.Exception.Message))"
+    $why = "저장 실패 ($($_.Exception.Message))"
     if ($null -ne $oldB64 -and -not (Test-Path -LiteralPath $Path)) {
       $restored = $false
       if (Test-Path -LiteralPath $bak) { try { Move-Item -LiteralPath $bak -Destination $Path; $restored = $true } catch { } }
       if (-not $restored) { try { [IO.File]::WriteAllBytes($Path, [byte[]]$Old); $restored = $true } catch { } }
-      $why += $(if ($restored) { ' — 끼우다 진 자리를 원래 파일로 되돌렸다' } else { " — 원래 파일을 못 되돌렸다$(if (Test-Path -LiteralPath $bak) { " · 원래 글은 $bak 에 있다" })" })
+      $why += $(if ($restored) { ' — 원래 파일로 되돌림' } else { " — 원래 파일로 되돌리지 못함$(if (Test-Path -LiteralPath $bak) { " · 원래 내용은 $bak 에 있음" })" })
     }
     return @{ Did = 'left'; Why = $why }
   } finally {
@@ -1497,7 +1491,7 @@ function Write-FileSafely([string]$Path, [byte[]]$New, $Old, [scriptblock]$Check
         if ($j) { Start-Sleep -Milliseconds 300 }
         Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
       }
-      if (Test-Path -LiteralPath $f) { Write-Host "  ! 임시 사본이 남았다 — 그 파일의 글을 그대로 든 사본이라 손으로 지운다: $f" -ForegroundColor Yellow }
+      if (Test-Path -LiteralPath $f) { Write-Host "  ! 임시 사본이 남아 있음 — 원본 내용이 그대로 들어 있으니 직접 지우세요: $f" -ForegroundColor Yellow }
     }
   }
   return $out
@@ -1506,10 +1500,10 @@ function Write-FileSafely([string]$Path, [byte[]]$New, $Old, [scriptblock]$Check
 # 홈 설정 씨앗을 읽는다 — 짐에 실린 `vdi-home-settings.json`(claude-config 의 그 파일을 뽑은 것). 받는 것: 자리. 내는 것 — @{ Obj = <맨 위 표 ·
 #   못 읽었으면 $null>; Why = <못 읽은 까닭> }. 「Claude 홈 설정」이 그 파일이 없을 때 이것으로 짓고, 기능 스위치(`$Features`)가 그 `env` 를 읽는다.
 function Read-HomeSeed([string]$Path) {
-  if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return @{ Obj = $null; Why = "씨앗이 없다 ($Path)" } }
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return @{ Obj = $null; Why = "씨앗 없음 ($Path)" } }
   $o = $null
-  try { $o = [IO.File]::ReadAllText($Path) | ConvertFrom-Json } catch { return @{ Obj = $null; Why = "씨앗을 JSON 으로 못 읽었다 ($Path)" } }
-  if ($o -isnot [System.Management.Automation.PSCustomObject]) { return @{ Obj = $null; Why = "씨앗의 맨 위가 표가 아니다 ($Path)" } }
+  try { $o = [IO.File]::ReadAllText($Path) | ConvertFrom-Json } catch { return @{ Obj = $null; Why = "씨앗을 JSON 으로 읽지 못함 ($Path)" } }
+  if ($o -isnot [System.Management.Automation.PSCustomObject]) { return @{ Obj = $null; Why = "씨앗의 최상위가 객체가 아님 ($Path)" } }
   return @{ Obj = $o; Why = '' }
 }
 
@@ -1548,12 +1542,12 @@ function Clear-RepoDrmWrapped([string]$Repo, [string]$Bash) {
   $body = Join-Path $ConfigSeedHome '.claude\hooks\session-start-body.sh'
   if (-not $Bash -or -not (Test-Path -LiteralPath $body -PathType Leaf)) { return @{ Code = $null; Lines = @() } }
   $to = "$(@(Get-Quiet 'git' @('-C', $Repo, 'rev-parse', '-q', '--verify', '@{u}^{commit}'))[0])".Trim()
-  if ($to -cnotmatch '^[0-9a-f]{40}([0-9a-f]{24})?$') { return @{ Code = $null; Lines = @('따르는 원격 갈래의 끝을 못 읽었다') } }
+  if ($to -cnotmatch '^[0-9a-f]{40}([0-9a-f]{24})?$') { return @{ Code = $null; Lines = @('추적하는 원격 브랜치의 커밋을 읽지 못함') } }
   try {
     $lines = @(& { $ErrorActionPreference = 'Continue'; & $Bash ($body -replace '\\', '/') --clear-drm ($Repo -replace '\\', '/') $to 2>&1 } |
                ForEach-Object { "$_" -replace $UrlCredential, '***@' } | Where-Object { $_.Trim() })
     return @{ Code = $LASTEXITCODE; Lines = $lines }
-  } catch { return @{ Code = -1; Lines = @("몸통을 못 불렀다: $(Say-Why $_)") } }
+  } catch { return @{ Code = -1; Lines = @("훅 본체를 실행하지 못함: $(Say-Why $_)") } }
 }
 
 # JSON 을 두 칸 들여쓰기 · `"키": 값` 꼴로 쓴다 — 씨앗 저장소 설정과 같은 꼴이다. ASCII 밖의 글자(한글 등)는 그대로 두고 따옴표 · 역슬래시 ·
@@ -2059,7 +2053,7 @@ function Invoke-WorkRootScan([string]$Root, [string[]]$Handled, [bool]$CreatorOn
     $found += $g
   }
   foreach ($g in @($found | Where-Object { $_.Refreshed.Count -and $_.Current })) { Write-RefreshLine $g }
-  foreach ($o in @($found | Where-Object { -not $_.Current })) { Write-HookNotice $o '작업 루트의 옛 우리 훅 — 칸에 안 든 저장소' }
+  foreach ($o in @($found | Where-Object { -not $_.Current })) { Write-HookNotice $o '작업 루트의 이전 버전 훅 — 입력하지 않은 저장소' }
   return , $found
 }
 
@@ -2207,7 +2201,7 @@ function Compare-AssetTree([string]$From, [string]$To, [switch]$ExtraOk, [string
   }
   $extra = @($dst.Keys | Where-Object { -not $src.ContainsKey($_) })
   $say = @()
-  if (-not $src.Count) { $say += '원본이 비었다' }
+  if (-not $src.Count) { $say += '원본이 비어 있음' }
   if ($miss.Count)  { $say += "모자람 $($miss.Count): $((@($miss | Sort-Object | Select-Object -First 3)) -join ', ')" }
   if ($diff.Count)  { $say += "다름 $($diff.Count): $((@($diff | Sort-Object | Select-Object -First 3)) -join ', ')" }
   if ($extra.Count) { $say += "여분 $($extra.Count)$(if (-not $ExtraOk) { ': ' + ((@($extra | Sort-Object | Select-Object -First 3)) -join ', ') })" }
@@ -2234,7 +2228,7 @@ function Write-CheckRow($c) {
   if ($c.State -eq 'unmeasured') {
     $over = "``$($c.Probe)`` 이 $(if ($c.Why) { $c.Why } else { Get-ProbeWhy $c.Probe })서"
     $why  = if ($c.Premise) { "$($c.Premise) 와 한 전제 — $over" } else { $over }
-    Write-Host "  [?] $($c.Name) — 못 쟀다: $why" -ForegroundColor Yellow
+    Write-Host "  [?] $($c.Name) — 확인하지 못함: $why" -ForegroundColor Yellow
   }
   elseif ($c.Ok)     { Write-Host "  [O] $($c.Name)" -ForegroundColor Green }
   elseif ($c.Advice) { Write-Host "  [!] $($c.Name)" -ForegroundColor Yellow }
@@ -2265,7 +2259,7 @@ function Add-Check($Rows) {
 function Sync-AssetLedger($Asset, [switch]$Drop) {
   $L = Read-RunLedger $ClaudePlantLedger
   if ($L.Why) {
-    if (-not $Drop) { Write-Host "  ! $($Asset.Name) — 장부를 못 읽어 원본에서 빠진 파일을 안 걷었다 ($($L.Why) · $($L.Path))" -ForegroundColor Yellow }
+    if (-not $Drop) { Write-Host "  ! $($Asset.Name) — 설치 기록을 읽지 못해 원본에서 빠진 파일을 정리하지 않음 ($($L.Why) · $($L.Path))" -ForegroundColor Yellow }
     return 0
   }
   $at = ConvertTo-LedgerAt $Asset.To
@@ -2296,14 +2290,14 @@ function Sync-AssetLedger($Asset, [switch]$Drop) {
   if (-not $rows.Count) {
     $odd = @((Get-AssetFiles $Asset.To).Keys | Where-Object { -not $src.ContainsKey($_) } | Sort-Object)
     if ($odd.Count) {
-      Write-Host "  ! $($Asset.Name) — 원본에 없는 파일 $($odd.Count)개가 있다 · 장부 앞에 깔린 자리라 우리 것인지 몰라 둔다(한 번만 알린다): $((@($odd | Select-Object -First 5)) -join ' · ')$(if ($odd.Count -gt 5) { ' …' })" -ForegroundColor Yellow
+      Write-Host "  ! $($Asset.Name) — 원본에 없는 파일 $($odd.Count)개 · 설치 기록 이전에 설치된 위치라 그대로 유지 (이번 한 번만 알림): $((@($odd | Select-Object -First 5)) -join ' · ')$(if ($odd.Count -gt 5) { ' …' })" -ForegroundColor Yellow
       Write-Host "     $($Asset.To)"
     }
   }
-  if ($kept.Count) { Write-Host "  ! $($Asset.Name) — 원본에서 빠졌는데 우리가 놓은 뒤 바뀐 파일이라 둔다: $($kept -join ' · ')" -ForegroundColor Yellow }
+  if ($kept.Count) { Write-Host "  ! $($Asset.Name) — 원본에서 빠졌지만 설치 후 수정된 파일이라 유지: $($kept -join ' · ')" -ForegroundColor Yellow }
   if ($fail.Count) {
-    Write-Host "  ! $($Asset.Name) — 원본에서 빠진 파일을 못 걷었다: $($fail -join ' · ')" -ForegroundColor Red
-    $Fails.Add("$($Asset.Name) (원본에서 빠진 파일 걷기)")
+    Write-Host "  ! $($Asset.Name) — 원본에서 빠진 파일을 정리하지 못함: $($fail -join ' · ')" -ForegroundColor Red
+    $Fails.Add("$($Asset.Name) (원본에서 빠진 파일 정리)")
   }
   foreach ($k in $src.Keys) {
     $p = Join-Path $Asset.To $k
@@ -2363,7 +2357,7 @@ function ConvertFrom-LedgerAt([string]$At) {
 function Read-PlantLedger([string]$Path) {
   $L = @{ Path = $Path; Rows = New-Object System.Collections.Generic.List[hashtable]; Bytes = $null; Migrating = $true; Why = ''
           Head = '# PAISetup 장부 2 — 설치기가 심은 것: 자리 · 그 안의 자리 · 이름 · 심은 손 · 값 (탭으로 가른다 · 설치기가 판마다 다시 쓴다 · 손으로 고치지 않는다)' }
-  if (-not $Path) { $L.Why = '장부 자리가 안 섰다'; return $L }
+  if (-not $Path) { $L.Why = '설치 기록 위치가 정해지지 않음'; return $L }
   if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $L }
   try { $L.Bytes = [IO.File]::ReadAllBytes($Path) } catch { $L.Why = Say-Why $_; return $L }
   $mark = $L.Head.Substring(0, $L.Head.IndexOf(' —'))
@@ -2409,7 +2403,7 @@ function Save-PlantLedger($Ledger) {
   $w = Write-FileSafely $Ledger.Path $bytes $Ledger.Bytes
   if ($w.Did -ceq 'written' -or $w.Did -ceq 'same') { $Ledger.Bytes = $bytes; return $true }
   if ($w.Did -ceq 'overrun') { try { $Ledger.Bytes = [IO.File]::ReadAllBytes($Ledger.Path) } catch { } }
-  Write-Host "  ! 장부를 못 썼다 — $($w.Why) · 다음 판은 이번에 심은 것을 사람 값으로 읽어 안 걷을 수 있다 ($($Ledger.Path))" -ForegroundColor Yellow
+  Write-Host "  ! 설치 기록을 저장하지 못함 — $($w.Why) · 다음 설치에서 이번 설정을 사용자 값으로 보고 정리하지 않을 수 있음 ($($Ledger.Path))" -ForegroundColor Yellow
   $script:LedgerSaveWhy = $w.Why
   return $false
 }
@@ -2421,7 +2415,7 @@ function Find-LedgerRows($Ledger, [string]$Place, [string]$At, [string]$By) {
   return @($Ledger.Rows | Where-Object { $_.Place -ceq $Place -and $_.At -ceq $At -and $_.By -ceq $By })
 }
 function Add-LedgerRow($Ledger, [string]$Place, [string]$At, [string]$Name, [string]$By, [string]$Value) {
-  if ($Value -match "[`t`r`n]" -or $Name -match "[`t`r`n]") { Write-Host "  ($Name — 탭 · 줄바꿈이 든 값이라 장부에 못 적는다 · 다음 판은 이 값을 우리 것으로 못 알아본다)" -ForegroundColor DarkGray; return }
+  if ($Value -match "[`t`r`n]" -or $Name -match "[`t`r`n]") { Write-Host "  ($Name — 탭이나 줄바꿈이 든 값이라 설치 기록에 남기지 않음 · 다음 설치에서 이 값을 알아보지 못함)" -ForegroundColor DarkGray; return }
   foreach ($r in $Ledger.Rows) {
     if ($r.Place -ceq $Place -and $r.At -ceq $At -and $r.Name -ceq $Name -and $r.By -ceq $By -and (Test-SameText $r.Value $Value)) { return }
   }
@@ -2489,7 +2483,7 @@ function Sync-Planted {
       $spNm = if ($Label.Contains($spN)) { $Label[$spN] } else { $spN }
       foreach ($spD in @($Want[$spN])) {
         $spCur = & $Get $spN
-        if ($spCur -and $spCur.Unread) { $spRes.Unread += $spN; Write-Host "  ! $spNm — $($spCur.Unread) · 안 건드렸다$spTail" -ForegroundColor Yellow; break }
+        if ($spCur -and $spCur.Unread) { $spRes.Unread += $spN; Write-Host "  ! $spNm — $($spCur.Unread) · 변경하지 않음$spTail" -ForegroundColor Yellow; break }
         $spHave = @(if ($spCur) { $spCur.List })
         $spRow = @($spMine | Where-Object { $_.Name -ceq $spN -and (Test-SameText $_.Value $spD) }) | Select-Object -First 1
         if ($spHave -ccontains $spD) {
@@ -2500,7 +2494,7 @@ function Sync-Planted {
         if (& $Set $spN $spD) {
           Add-LedgerRow $Ledger $Place $At $spN $By $spD
           $spRes.Planted += $spN
-          if ($Speak) { Write-Host "  $spNm — 심었다 ($spD)$spTail" -ForegroundColor Green }
+          if ($Speak) { Write-Host "  $spNm — 설정함 ($spD)$spTail" -ForegroundColor Green }
         } else { $spRes.Failed += $spN }
       }
     }
@@ -2514,11 +2508,11 @@ function Sync-Planted {
         if (@(if ($spCur) { $spCur.List }) -ccontains $spRow.Value) {
           if (& $Remove $spRow.Name $spRow.Value) {
             [void]$Ledger.Rows.Remove($spRow); $spRes.Removed += $spRow.Name
-            if ($Speak) { Write-Host "  $spNm — 걷었다 (우리가 심은 $($spRow.Value) · 이번에는 안 심는다)$spTail" -ForegroundColor Green }
+            if ($Speak) { Write-Host "  $spNm — 제거함 (이전 설치가 설정한 $($spRow.Value) · 이번에는 사용 안 함)$spTail" -ForegroundColor Green }
           } else { $spRes.Failed += $spRow.Name }
         } else {
           [void]$Ledger.Rows.Remove($spRow)
-          Write-Host "  $spNm — 사람이 걷어 둔다 (우리 기록에서만 뺐다)$spTail"
+          Write-Host "  $spNm — 사용자가 제거한 상태 유지 (설치 기록에서만 뺌)$spTail"
         }
       }
     }
@@ -2528,7 +2522,7 @@ function Sync-Planted {
     $spNm = if ($Label.Contains($spN)) { $Label[$spN] } else { $spN }
     $spD = [string]$Want[$spN]
     $spC = & $Get $spN
-    if ($spC -is [hashtable]) { $spRes.Unread += $spN; Write-Host "  ! $spNm — $($spC.Unread) · 안 건드렸다$spTail" -ForegroundColor Yellow; continue }
+    if ($spC -is [hashtable]) { $spRes.Unread += $spN; Write-Host "  ! $spNm — $($spC.Unread) · 변경하지 않음$spTail" -ForegroundColor Yellow; continue }
     $spRow = @($spMine | Where-Object { $_.Name -ceq $spN }) | Select-Object -First 1
     $spOurs = [bool]($spRow -and $null -ne $spC -and (Test-SameText $spRow.Value $spC))
     if ($null -ne $spC -and (Test-SameText $spC $spD)) {
@@ -2540,7 +2534,7 @@ function Sync-Planted {
     if ($null -eq $spC -and -not $Plant) { if ($spRow) { [void]$Ledger.Rows.Remove($spRow) }; continue }   # 심는 손이 따로다 — 사라진 값은 장부에서만 뺀다
     if ($null -ne $spC -and -not $spOurs -and ($Mode -ceq 'guard' -or -not $Plant)) {
       $spRes.Kept += $spN
-      if ($SayKept) { Write-Host "  $spNm — 사람이 정한 값$(if ($ShowValue) { "($spC)" })이라 둔다$spTail" }
+      if ($SayKept) { Write-Host "  $spNm — 사용자가 정한 값$(if ($ShowValue) { "($spC)" })이라 유지$spTail" }
       if ($spRow) { [void]$Ledger.Rows.Remove($spRow) }
       continue
     }
@@ -2548,7 +2542,7 @@ function Sync-Planted {
       Set-LedgerRow $Ledger $Place $At $spN $By $spD
       if ($null -eq $spC) { $spRes.Planted += $spN } else { $spRes.Replaced += $spN }
       if ($Speak) {
-        $spDid = if ($null -eq $spC) { '심었다' } elseif ($spOurs) { '우리가 심은 옛 값을 새 값으로 바꿨다' } else { '맞췄다' }
+        $spDid = if ($null -eq $spC) { '설정함' } elseif ($spOurs) { '이전 설치 값을 새 값으로 바꿈' } else { '설정을 맞춤' }
         Write-Host "  $spNm — $spDid$spTail" -ForegroundColor Green
       }
     } else { $spRes.Failed += $spN }
@@ -2565,11 +2559,11 @@ function Sync-Planted {
       if ($spSame) {
         if (& $Remove $spRow.Name $spRow.Value) {
           [void]$Ledger.Rows.Remove($spRow); $spRes.Removed += $spRow.Name
-          if ($Speak) { Write-Host "  $spNm — 걷었다 (우리가 심은 값 · 이번에는 안 심는다)$spTail" -ForegroundColor Green }
+          if ($Speak) { Write-Host "  $spNm — 제거함 (이전 설치가 설정한 값 · 이번에는 사용 안 함)$spTail" -ForegroundColor Green }
         } else { $spRes.Failed += $spRow.Name }
       } else {
         $spRes.Kept += $spRow.Name
-        Write-Host "  $spNm — 우리가 심은 뒤 사람이 바꾼 값이라 둔다 (우리 기록에서만 뺐다)$spTail"
+        Write-Host "  $spNm — 설치 후 사용자가 바꾼 값이라 유지 (설치 기록에서만 뺌)$spTail"
         [void]$Ledger.Rows.Remove($spRow)
       }
     }
@@ -2585,7 +2579,7 @@ function Get-SettingsSlot($Cfg, [string]$Place, [string]$Name) {
   if ($Place -ceq 'settings-env') {
     $e = $Cfg.PSObject.Properties['env']
     if (-not $e) { return $null }
-    if ($e.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Unread = 'env 가 표가 아니다' } }
+    if ($e.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Unread = 'env 가 객체가 아님' } }
     $p = $e.Value.PSObject.Properties[$Name]
     if (-not $p) { return $null }
     return (& $text $p.Value)
@@ -2599,11 +2593,11 @@ function Get-SettingsSlot($Cfg, [string]$Place, [string]$Name) {
     $key = $Matches[1]
     $perm = $Cfg.PSObject.Properties['permissions']
     if (-not $perm) { return $null }
-    if ($perm.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Unread = 'permissions 가 표 꼴이 아니다' } }
+    if ($perm.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Unread = 'permissions 가 객체 형식이 아님' } }
     $p = $perm.Value.PSObject.Properties[$key]
     if ($key -ceq 'allow') {
       if (-not $p -or $null -eq $p.Value) { return @{ List = @() } }
-      if ($p.Value -isnot [array]) { return @{ Unread = 'permissions.allow 가 목록 꼴이 아니다' } }
+      if ($p.Value -isnot [array]) { return @{ Unread = 'permissions.allow 가 목록 형식이 아님' } }
       return @{ List = @($p.Value | Where-Object { $null -ne $_ } | ForEach-Object { [string]$_ }) }
     }
     if (-not $p) { return $null }
@@ -2626,7 +2620,7 @@ function Open-ToolDoc([string]$Path, [string]$Under, [bool]$Toml, [string[]]$Key
   $d = @{ Path = $Path; Under = $Under; Toml = $Toml; Bytes = $null; Obj = $null; Text = ''; Now = $null
           Edits = New-Object System.Collections.Generic.List[object]; Why = ''; Changed = $false }
   if (Test-Path -LiteralPath $Path -PathType Leaf) {
-    try { $d.Bytes = [IO.File]::ReadAllBytes($Path) } catch { $d.Why = "못 읽었다 ($(Say-Why $_))"; return $d }
+    try { $d.Bytes = [IO.File]::ReadAllBytes($Path) } catch { $d.Why = "읽지 못함 ($(Say-Why $_))"; return $d }
   }
   if ($Toml) {
     $d.Now = [pscustomobject]@{}
@@ -2635,12 +2629,12 @@ function Open-ToolDoc([string]$Path, [string]$Under, [bool]$Toml, [string[]]$Key
     $timed = $script:ProbeTimedOut.Count
     $now = Read-TomlTopKeys $Path $(if ($Under) { @($Under) } else { @($Keys) })
     if ($null -eq $now) {
-      $d.Why = if ($script:ProbeTimedOut.Count -gt $timed) { 'TOML 을 읽는 파이썬이 울타리 안에 안 끝났다' } else { 'TOML 로 못 읽었다(깨진 파일이거나 파이썬 3.11 이상이 안 선다)' }
+      $d.Why = if ($script:ProbeTimedOut.Count -gt $timed) { 'TOML 을 읽는 Python 이 제한 시간 안에 끝나지 않음' } else { 'TOML 로 읽지 못함 (파일이 깨졌거나 Python 3.11 이상이 실행되지 않음)' }
       return $d
     }
     if ($Under) {
       $u = Get-PropExact $now $Under
-      if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = "$Under 가 표가 아니다"; return $d }
+      if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = "$Under 가 표가 아님"; return $d }
       if ($u) { $d.Now = $u.Value }
     } else { $d.Now = $now }
     return $d
@@ -2649,15 +2643,15 @@ function Open-ToolDoc([string]$Path, [string]$Under, [bool]$Toml, [string[]]$Key
   if ($null -ne $d.Bytes) {
     $text = Read-TextOf $d.Bytes
     if ($text.Trim()) {
-      try { $obj = $text | ConvertFrom-Json } catch { $d.Why = 'JSON 으로 못 읽었다'; return $d }
-      if ($obj -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = '맨 위가 표가 아니다'; return $d }
+      try { $obj = $text | ConvertFrom-Json } catch { $d.Why = 'JSON 으로 읽지 못함'; return $d }
+      if ($obj -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = '최상위가 객체가 아님'; return $d }
     }
   }
   if ($null -eq $obj) { $obj = [pscustomobject]@{} }
   $d.Obj = $obj
   if ($Under) {
     $u = $obj.PSObject.Properties[$Under]
-    if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = "$Under 가 표가 아니다" }
+    if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { $d.Why = "$Under 가 객체가 아님" }
   }
   return $d
 }
@@ -2785,10 +2779,10 @@ function Save-ToolDoc($Doc) {
 #   알린 사람 값(`seen`)은 우리 것이 아니라 안 잰다. 이 판에 장부를 못 썼으면(`$script:LedgerSaveWhy`) 그것도 한 칸이다.
 function Get-PlantLedgerChecks($Ledger, [System.Collections.IDictionary]$UserEnv, [string]$HomeCfg) {
   $out = @()
-  if ($Ledger.Why) { return @(@{ Name = "장부 (못 읽었다 — $($Ledger.Why) · $($Ledger.Path))"; Ok = $false }) }
-  if ($script:LedgerSaveWhy) { $out += @{ Name = "장부 (이 판에 못 썼다 — $($script:LedgerSaveWhy) · $($Ledger.Path))"; Ok = $false } }
+  if ($Ledger.Why) { return @(@{ Name = "설치 기록 (읽지 못함 — $($Ledger.Why) · $($Ledger.Path))"; Ok = $false }) }
+  if ($script:LedgerSaveWhy) { $out += @{ Name = "설치 기록 (이번에 저장하지 못함 — $($script:LedgerSaveWhy) · $($Ledger.Path))"; Ok = $false } }
   $rows = @($Ledger.Rows | Where-Object { $_.By -cne 'seen' })
-  $say = { param([string]$what, [int]$n, [string[]]$bad) "장부와 실물 — $what ($n 줄$(if ($bad.Count) { ' · 어긋남: ' + ($bad -join ' · ') }))" }
+  $say = { param([string]$what, [int]$n, [string[]]$bad) "설치 기록 대조 — $what (항목 $n개$(if ($bad.Count) { ' · 불일치: ' + ($bad -join ' · ') }))" }
   $u = @($rows | Where-Object { $_.Place -ceq 'user-env' })
   if ($u.Count) {
     $bad = @($u | Where-Object { -not (Test-SameText $(if ($UserEnv.Contains($_.Name)) { [string]$UserEnv[$_.Name] } else { $null }) $_.Value) } | ForEach-Object { $_.Name })
@@ -2797,7 +2791,7 @@ function Get-PlantLedgerChecks($Ledger, [System.Collections.IDictionary]$UserEnv
   $s = @($rows | Where-Object { $_.Place -ceq 'settings-env' -or $_.Place -ceq 'settings' })
   if ($s.Count) {
     $cfg = $null; $why = ''
-    try { $t = [IO.File]::ReadAllText($HomeCfg); $cfg = if ($t.Trim()) { $t | ConvertFrom-Json } else { [pscustomobject]@{} } } catch { $why = '못 읽었다' }
+    try { $t = [IO.File]::ReadAllText($HomeCfg); $cfg = if ($t.Trim()) { $t | ConvertFrom-Json } else { [pscustomobject]@{} } } catch { $why = '읽지 못함' }
     $bad = @(foreach ($r in $s) {
       if ($why) { "$($r.Name)($why)"; continue }
       $c = Get-SettingsSlot $cfg $r.Place $r.Name
@@ -2810,8 +2804,8 @@ function Get-PlantLedgerChecks($Ledger, [System.Collections.IDictionary]$UserEnv
     $at = ConvertFrom-LedgerAt $g.Name
     $toml = $at.Path -like '*.toml'
     $doc = Open-ToolDoc $at.Path $at.Under $toml @($g.Group | ForEach-Object { $_.Name })
-    if ($doc.Why -and $toml -and $doc.Why.Contains('울타리')) {
-      $out += @{ Name = "장부와 실물 — $($g.Name)"; State = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) }
+    if ($doc.Why -and $toml -and $doc.Why.Contains('제한 시간')) {
+      $out += @{ Name = "설치 기록 대조 — $($g.Name)"; State = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) }
       continue
     }
     $bad = @($g.Group | Where-Object { $c = Get-ToolDocValue $doc $_.Name; $c -is [hashtable] -or -not (Test-SameText $c $_.Value) } | ForEach-Object { $_.Name })
@@ -2963,7 +2957,7 @@ function Add-ToUserPath([string]$Dir,
                         [scriptblock]$Notify = { Send-EnvChanged }) {
   try {
     $entry = [Environment]::ExpandEnvironmentVariables($Dir).Trim().TrimEnd('\', '/')
-    if (-not $entry) { throw '덧댈 자리가 비었다' }
+    if (-not $entry) { throw '추가할 경로가 비어 있음' }
     $now = Get-UserPath $SubKey
     $raw = [string]$now.Raw
     if (Test-PathListHas $raw $entry) { return @{ Did = 'kept' } }
@@ -3042,18 +3036,18 @@ function Measure-NewShellCommand([string]$Name, [string]$Arg, $Policy) {
   $hit = Find-NewShellCommand $Name
   if (-not $hit) {
     $here = Get-Command $Name -ErrorAction SilentlyContinue | Select-Object -First 1
-    $tail = if ($here -and $here.Source) { " · 이 창은 $(Split-Path -Parent $here.Source) 에서 집는다 — 설치 창만 아는 자리다" } else { '' }
-    return @{ State = 'no'; Say = "새 터미널의 PATH 에 ``$Name`` 이 없다$tail" }
+    $tail = if ($here -and $here.Source) { " · 이 창에서는 $(Split-Path -Parent $here.Source) 에서 찾음 — 설치 창에서만 보이는 위치" } else { '' }
+    return @{ State = 'no'; Say = "새 터미널의 PATH 에 ``$Name`` 이 없음$tail" }
   }
   if ($hit.Path -like '*\Microsoft\WindowsApps\*') {
     $probe = "$($hit.Path) $Arg"
     $rc = Invoke-ProbeCapped $hit.Path $Arg $ProbeCap
     if ($rc -eq -2) { Add-ProbeOverflow $probe $ProbeCap; return @{ State = 'unmeasured'; Probe = $probe; Why = '' } }
-    if ($rc -ne 0)  { return @{ State = 'no'; Say = "새 터미널은 앱 실행 별칭($($hit.Path))을 집는데 그것이 안 돈다 — 스토어 껍데기다" } }
+    if ($rc -ne 0)  { return @{ State = 'no'; Say = "새 터미널은 앱 실행 별칭($($hit.Path))을 찾는데 실행되지 않음 — 스토어 바로 가기임" } }
   }
   if ($hit.Ps1) {
     if ($Policy.State -ne 'yes') { return @{ State = 'unmeasured'; Probe = $Policy.Probe; Why = $Policy.Why } }
-    if ($Policy.Blocks) { return @{ State = 'no'; Say = "PowerShell 은 $Name.ps1 을 집고 실행 정책($($Policy.Value) · $($Policy.Scope))이 막는다 — cmd · Git Bash 에서는 돈다" } }
+    if ($Policy.Blocks) { return @{ State = 'no'; Say = "PowerShell 은 $Name.ps1 을 찾는데 실행 정책($($Policy.Value) · $($Policy.Scope))이 막음 — cmd · Git Bash 에서는 실행됨" } }
   }
   return @{ State = 'yes'; Say = '' }
 }
@@ -3193,7 +3187,7 @@ function Read-CompanyKeyBlob([string]$Path) {
     # 키가 아닌 평문 — 빈 것 · 빈칸뿐인 것 · 앞에 BOM(U+FEFF)이 붙은 것. ⚠ BOM 은 순서 견줌(ordinal)으로 찾는다 — 문화권 견줌은 그
     #   글자를 건너뛰어 아무 글에나 「붙었다」고 답하고, `-ceq` 도 `<BOM>키` 를 키와 같다고 본다.
     if ($key.Trim().Length -and -not $key.StartsWith([string][char]0xFEFF, [StringComparison]::Ordinal)) { return @{ Key = $key; Why = '' } }
-    $why = '키가 아닌 덩이(비었거나 빈칸뿐이거나 앞에 BOM 이 붙었다)'
+    $why = '키가 아닌 값 (비었거나 공백뿐이거나 앞에 BOM 이 붙음)'
   } catch { $why = Say-Why $_ } finally { if ($plain) { [Array]::Clear($plain, 0, $plain.Length) } }
   try { Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue } catch { }
   return @{ Key = ''; Why = $why }
@@ -3221,7 +3215,7 @@ function Save-CompanyKeyBlob([hashtable]$Blob, [string]$Path, [string]$Key, [str
   } catch {
     $err = $_
     try { Remove-Item -LiteralPath $side -Force -ErrorAction SilentlyContinue } catch { }
-    Write-Host "  ! 회사 키를 설치기 폴더에 못 두었다 — $(Say-Why $err) · 사외에서 걷히면 사내로 돌아와 다시 넣는다" -ForegroundColor Yellow
+    Write-Host "  ! 회사 키를 설치 폴더에 보관하지 못함 — $(Say-Why $err) · 사외에서 제거되면 사내로 돌아왔을 때 다시 입력해야 합니다" -ForegroundColor Yellow
     return $false
   } finally { if ($plain) { [Array]::Clear($plain, 0, $plain.Length) } }
 }
@@ -3236,22 +3230,22 @@ function Plant-Var([string]$Name, [string]$Value) {
     # 자리가 그러라고 하면 「Claude 홈 설정」 걸음이 이 표의 값을 홈 설정에도 민다 — 한 번 정한 값을 두 자리로 민다(키와 맡기기
     #   러너 값은 빼고 — 그 걸음의 `env` 칸).
     $script:Planted[$Name] = $Value
-    Write-Host "  $Name — 심었다" -ForegroundColor Green
+    Write-Host "  $Name — 설정함" -ForegroundColor Green
   } catch {
-    Write-Host "  ! $Name 심기 실패 — $(Say-Why $_)" -ForegroundColor Red
-    $script:Fails.Add("$Name 심기")
+    Write-Host "  ! $Name 설정 실패 — $(Say-Why $_)" -ForegroundColor Red
+    $script:Fails.Add("$Name 설정")
   }
 }
 
 # 사용자 환경변수를 걷는다(이 창에서도) — 받는 것: 이름 · 걷은 줄에 붙일 까닭(없으면 사외라 안 쓴다). 진 것은 빨간 줄과 `$Fails` 다.
-function Remove-UserVar([string]$Name, [string]$Why = '사외라 안 쓴다') {
+function Remove-UserVar([string]$Name, [string]$Why = '사외에서는 사용 안 함') {
   try {
     [Environment]::SetEnvironmentVariable($Name, $null, 'User')
     Remove-Item -Path "Env:$Name" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
-    Write-Host "  $Name — 걷었다 ($Why)" -ForegroundColor Green
+    Write-Host "  $Name — 제거함 ($Why)" -ForegroundColor Green
   } catch {
-    Write-Host "  ! $Name 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
-    $script:Fails.Add("$Name 걷기")
+    Write-Host "  ! $Name 제거 실패 — $(Say-Why $_)" -ForegroundColor Red
+    $script:Fails.Add("$Name 제거")
   }
 }
 
@@ -3261,7 +3255,7 @@ function Remove-CompanyKeyCopy([string]$Name, [string]$Why) {
   $cur = [Environment]::GetEnvironmentVariable($Name, 'User')
   if (-not $cur) { return }
   if (Test-CompanyKey $cur) { Remove-UserVar $Name $Why }
-  else { Write-Host "  $Name — 우리 키가 아니다 · 그대로 둔다" }
+  else { Write-Host "  $Name — 설치기가 넣은 키가 아니라 유지" }
 }
 
 # 다른 자리의 값을 걷는다 — 받는 것: 자리마다 `[ordered]@{<이름> = <값>}` 인 표 · 이 자리. 이 자리 표에 없는 이름이 다른 자리
@@ -3276,10 +3270,10 @@ function Remove-OtherSiteVars([hashtable]$BySite, [string]$Site) {
       try {
         [Environment]::SetEnvironmentVariable($k, $null, 'User')
         Remove-Item -Path "Env:$k" -ErrorAction SilentlyContinue   # 이 창에서도 걷는다 (Plant-Var 와 짝)
-        Write-Host "  $k — 걷었다 (다른 자리의 값)" -ForegroundColor Green
+        Write-Host "  $k — 제거함 (다른 네트워크 환경의 값)" -ForegroundColor Green
       } catch {
-        Write-Host "  ! $k 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
-        $script:Fails.Add("$k 걷기")
+        Write-Host "  ! $k 제거 실패 — $(Say-Why $_)" -ForegroundColor Red
+        $script:Fails.Add("$k 제거")
       }
     }
   }
@@ -3294,7 +3288,7 @@ function Remove-OurRunnerVars([hashtable]$BySite, [string]$Why) {
     $cur = [Environment]::GetEnvironmentVariable($k, 'User')
     if (-not $cur) { continue }
     if ($vals[$k] -ccontains $cur) { Remove-UserVar $k $Why }
-    else { Write-Host "  $k — 우리 값이 아니다 · 그대로 둔다" }
+    else { Write-Host "  $k — 설치기가 넣은 값이 아니라 유지" }
   }
 }
 
@@ -3359,7 +3353,7 @@ function Get-WordPdfQuietCheck([string[]]$Versions) {
   if (-not $Versions -or -not $Versions.Count) { return }
   $on = @($Versions | Where-Object { (Get-WordPdfQuietAt $_).Now -ne 1 })
   @{ Name = ("워드 PDF 변환 안내 끔 ($($WordPdfQuiet.Name) = 1 · 워드 $($Versions -join ' · ')" +
-             $(if ($on.Count) { ' — 1 이 아닌 판: ' + ($on -join ' · ') } else { '' }) + ')')
+             $(if ($on.Count) { ' — 1 이 아닌 버전: ' + ($on -join ' · ') } else { '' }) + ')')
      Ok   = ($on.Count -eq 0) }
 }
 
@@ -3393,9 +3387,9 @@ function Test-Reach([string]$HostPort, [int]$TimeoutMs = 3000, [switch]$ShapeOnl
 #   정한 까닭 }. 프로브가 없거나 꼴이 틀리면 `Site` 가 `$null` 이다 — 부르는 쪽은 그것을 빨강으로 말하고 어느 갈래로도 안 간다. 안 재고
 #   한 갈래를 고르면 같은 PC 가 회차마다 다른 자리로 돌아 키와 주소를 잃는다(PAISetup #46).
 function Measure-Site([string]$Probe) {
-  if (-not $Probe) { return @{ Site = $null; Why = '짐의 값 파일(install.env)에 #site-probe 가 없다' } }
+  if (-not $Probe) { return @{ Site = $null; Why = '설치 패키지의 설정 파일(install.env)에 #site-probe 가 없음' } }
   $r = Test-Reach $Probe
-  if ($null -eq $r) { return @{ Site = $null; Why = "짐의 값 파일의 #site-probe 가 호스트:포트 꼴이 아니다 ($Probe)" } }
+  if ($null -eq $r) { return @{ Site = $null; Why = "설치 패키지 설정 파일의 #site-probe 가 호스트:포트 형식이 아님 ($Probe)" } }
   return @{ Site = $(if ($r) { 'inside' } else { 'outside' }); Why = $null }
 }
 
@@ -3479,13 +3473,13 @@ function Wire-NodeTrust {
       $corp = @(Read-CertFile $corpPath)
       if ($corp.Count) { Write-Host "  회사 CA $($corp.Count)장 — $(Split-Path -Leaf $corpPath)" }
       else {
-        Write-Host "  ! 회사 CA 파일에서 인증서를 못 읽었다 — $corpPath" -ForegroundColor Red
-        $script:Fails.Add('Node 신뢰 배선 (회사 CA 파일을 못 읽는다)')
+        Write-Host "  ! 회사 CA 파일에서 인증서를 읽지 못함 — $corpPath" -ForegroundColor Red
+        $script:Fails.Add('Node 신뢰 배선 (회사 CA 파일을 읽지 못함)')
       }
     } else {
       # 값 파일이 가리켰는데 없는 것은 배포가 빠뜨린 것이고, 그 빠짐은 CA 가 없는 PC 에서만 드러난다 — 빨강으로 말한다.
-      Write-Host "  ! 값 파일이 가리킨 회사 CA 가 없다 — $corpPath" -ForegroundColor Red
-      $script:Fails.Add('Node 신뢰 배선 (회사 CA 가 없다)')
+      Write-Host "  ! 설정 파일에 지정된 회사 CA 가 없음 — $corpPath" -ForegroundColor Red
+      $script:Fails.Add('Node 신뢰 배선 (회사 CA 없음)')
     }
   }
 
@@ -3507,14 +3501,14 @@ function Wire-NodeTrust {
 
   if ($unknown) {
     # 여기서 안 묻는다 — 이 PC 가 모르는 CA 를 신뢰할지는 설치기가 낼 판단이 아니다.
-    Write-Host '  ! 이 PC 가 모르는 CA 가 길에 있다 — 담지 않는다:' -ForegroundColor Red
+    Write-Host '  ! 이 PC 가 모르는 CA 가 연결 경로에 있음 — 추가하지 않음:' -ForegroundColor Red
     $unknown | ForEach-Object { Write-Host "      $_" }
-    Write-Host '     회사 루트 인증서가 아직 이 PC 에 없다. 배포 묶음으로 실어 보내려면'
-    Write-Host '     값 파일에 `#corp-ca = <파일>` 을 두고 그 파일을 같이 넣는다.'
+    Write-Host '     회사 루트 인증서가 아직 이 PC 에 없습니다. 설치 패키지에 함께 넣으려면'
+    Write-Host '     값 파일에 `#corp-ca = <파일>` 을 넣고 그 파일을 함께 두세요.'
     $script:Fails.Add('Node 신뢰 배선 (모르는 CA)')
   }
   if ($roots.Count -eq 0) {
-    Write-Host '  담을 것이 없다 (아무 데도 못 닿았다)'
+    Write-Host '  추가할 인증서 없음 (어느 주소에도 연결되지 않음)'
     return
   }
 
@@ -3536,9 +3530,9 @@ function Wire-NodeTrust {
   $pemOld = $null
   try { if (Test-Path -LiteralPath $target -PathType Leaf) { $pemOld = [IO.File]::ReadAllBytes($target) } } catch { }
   $pemWrote = Write-FileSafely $target ((New-Object Text.UTF8Encoding($false)).GetBytes($sb.ToString())) $pemOld
-  if ($pemWrote.Did -ceq 'linked') { Write-Host "  ! CA 묶음 — $($pemWrote.Why) · 안 심었다 ($target)" -ForegroundColor Yellow; return }
+  if ($pemWrote.Did -ceq 'linked') { Write-Host "  ! CA 묶음 — $($pemWrote.Why) · 설정하지 않음 ($target)" -ForegroundColor Yellow; return }
   if ($pemWrote.Did -cne 'written' -and $pemWrote.Did -cne 'same') {
-    Write-Host "  ! CA 묶음을 못 썼다 — $($pemWrote.Why)" -ForegroundColor Red
+    Write-Host "  ! CA 묶음을 저장하지 못함 — $($pemWrote.Why)" -ForegroundColor Red
     $script:Fails.Add('Node 신뢰 배선 (파일 쓰기)')
     return
   }
@@ -3547,11 +3541,11 @@ function Wire-NodeTrust {
   #   이 창의 값은 우리가 방금 넣었을 수 있다.
   $cur = [Environment]::GetEnvironmentVariable('NODE_EXTRA_CA_CERTS', 'User')
   if ($cur -and $cur -ne $target -and (Test-Path -LiteralPath $cur)) {
-    Write-Host '  ! NODE_EXTRA_CA_CERTS 가 이미 다른 파일을 가리킨다 — 안 덮는다' -ForegroundColor Red
-    Write-Host "      지금 가리키는 것:  $cur"
-    Write-Host "      우리가 뽑아 둔 것:  $target"
-    Write-Host '     둘을 한 파일로 합치고 그것을 가리키게 한다.'
-    $script:Fails.Add('Node 신뢰 배선 (이미 다른 파일을 가리킨다)')
+    Write-Host '  ! NODE_EXTRA_CA_CERTS 가 이미 다른 파일을 가리킴 — 덮어쓰지 않음' -ForegroundColor Red
+    Write-Host "      현재 값:            $cur"
+    Write-Host "      설치기가 만든 파일:  $target"
+    Write-Host '     두 파일을 하나로 합친 뒤 그 파일을 가리키게 하세요.'
+    $script:Fails.Add('Node 신뢰 배선 (이미 다른 파일을 가리킴)')
     return
   }
 
@@ -3587,7 +3581,7 @@ function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
     $ok    = $head.IsSuccessStatusCode
     $head.Dispose()
     if (-not $ok -or -not $total -or $total -lt $DownloadSplitMin) { return 'single' }
-    if ($Url -like 'https:*' -and $final.Scheme -ne 'https') { throw "https 로 물었는데 $($final.Scheme) 로 넘겨졌다 ($($final.Host))" }
+    if ($Url -like 'https:*' -and $final.Scheme -ne 'https') { throw "https 로 요청했는데 $($final.Scheme) 로 전환됨 ($($final.Host))" }
     $n = $DownloadParts
     [Net.ServicePointManager]::FindServicePoint($final).ConnectionLimit = [Math]::Max($n, [Net.ServicePointManager]::FindServicePoint($final).ConnectionLimit)
     $size = [long][Math]::Ceiling($total / $n)
@@ -3609,7 +3603,7 @@ function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
           $res[$i].Content.Headers.ContentLength -ne $want[$i] -or
           ($Url -like 'https:*' -and $res[$i].RequestMessage.RequestUri.Scheme -ne 'https')) { return 'single' }
     }
-    Write-Host ('        {0} 연결로 나눠 받는다 — {1:N1} MB' -f $n, ($total / 1MB))
+    Write-Host ('        {0}개 연결로 나눠 다운로드 — {1:N1} MB' -f $n, ($total / 1MB))
     $file = [IO.File]::Create($OutFile)
     $file.SetLength($total)
     $file.Close()
@@ -3627,7 +3621,7 @@ function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
       $got = 0.0
       for ($i = 0; $i -lt $n; $i++) { $got += $outs[$i].Position - $from[$i] }
       if ($got -gt $last) { $last = $got; $still.Restart() }
-      elseif ($still.Elapsed.TotalSeconds -ge $WaitSec) { $cts.Cancel(); throw "$WaitSec 초 동안 한 바이트도 안 왔다 ($($final.Host))" }
+      elseif ($still.Elapsed.TotalSeconds -ge $WaitSec) { $cts.Cancel(); throw "$WaitSec초 동안 데이터를 받지 못함 ($($final.Host))" }
       $pct = [Math]::Floor(($got / $total) * 100)
       if ($pct -ge ($mark + 10)) {
         $mark = $pct - ($pct % 10)
@@ -3635,9 +3629,9 @@ function Get-DownloadParts([string]$Url, [string]$OutFile, [int]$WaitSec) {
       }
     }
     for ($i = 0; $i -lt $n; $i++) {
-      if ($outs[$i].Position - $from[$i] -ne $want[$i]) { throw "조각 $($i + 1) 을 덜 받았다 ($($outs[$i].Position - $from[$i]) / $($want[$i]) 바이트)" }
+      if ($outs[$i].Position - $from[$i] -ne $want[$i]) { throw "조각 $($i + 1) 을 끝까지 받지 못함 ($($outs[$i].Position - $from[$i]) / $($want[$i]) 바이트)" }
     }
-    Write-Host ('        다 받았다 — {0:N1} MB · {1:N1} MB/s' -f ($total / 1MB), ($total / 1MB / [Math]::Max($sw.Elapsed.TotalSeconds, 0.001)))
+    Write-Host ('        다운로드 완료 — {0:N1} MB · {1:N1} MB/s' -f ($total / 1MB), ($total / 1MB / [Math]::Max($sw.Elapsed.TotalSeconds, 0.001)))
     return 'done'
   } catch [AggregateException] {
     throw $_.Exception.InnerException
@@ -3666,7 +3660,7 @@ function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
   $req.UserAgent        = 'PAISetup'
   $res = $req.GetResponse()
   try {
-    if ($Url -like 'https:*' -and $res.ResponseUri.Scheme -ne 'https') { throw "https 로 물었는데 $($res.ResponseUri.Scheme) 로 넘겨졌다 ($($res.ResponseUri.Host))" }
+    if ($Url -like 'https:*' -and $res.ResponseUri.Scheme -ne 'https') { throw "https 로 요청했는데 $($res.ResponseUri.Scheme) 로 전환됨 ($($res.ResponseUri.Host))" }
     $total = 0.0
     try { $total = [double]$res.ContentLength } catch { }
     $in  = $res.GetResponseStream()
@@ -3690,12 +3684,12 @@ function Get-Download([string]$Url, [string]$OutFile, [int]$WaitSec = 600) {
         } elseif ($got -ge ($mark + 1) * 25MB) {
           # 크기를 안 주는 자리 — 몇 퍼센트인지는 못 말해도 **움직이고 있다**는 말은 한다.
           $mark++
-          Write-Host ('        {0:N1} MB 받았다' -f ($got / 1MB))
+          Write-Host ('        {0:N1} MB 다운로드됨' -f ($got / 1MB))
         }
       }
     } finally { $out.Close(); $in.Close() }
     # 끝난 줄을 따로 댄다 — 몫을 내림으로 세니 마지막 토막에서는 100% 가 안 뜬다. 마지막 줄은 받은 양으로 말한다.
-    Write-Host ('        다 받았다 — {0:N1} MB' -f ($got / 1MB))
+    Write-Host ('        다운로드 완료 — {0:N1} MB' -f ($got / 1MB))
   } finally { $res.Close() }
 }
 
@@ -3716,7 +3710,7 @@ $WingetRelSite   = 'https://github.com/microsoft/winget-cli/releases/latest/down
 $WingetRelDeps   = 'DesktopAppInstaller_Dependencies.zip'
 $WingetRelBundle = 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'
 function Restore-Winget {
-  Write-Host '  winget 이 없다 — 되살려 본다.' -ForegroundColor Yellow
+  Write-Host '  winget 이 없음 — 복구를 시도합니다.' -ForegroundColor Yellow
   # ⚠ **TLS 1.2 는 함수 머리에서 세운다 — 세 갈래가 다 HTTPS 를 탄다.** 5.1 의 기본은 기계에 따라 아직 SSL3/TLS1.0 이고 PSGallery
   #   는 TLS 1.2 아래로 안 받아, 한 갈래에서만 세우면 다른 갈래가 「망이 죽었다」로 진다. 덮어쓰지 않고 더한다 — 대입하면 그
   #   기계가 쓰던 더 높은 판(TLS 1.3)을 지운다.
@@ -3741,22 +3735,22 @@ function Restore-Winget {
     Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe `
       -ErrorAction Stop
     if (& $reach) {
-      Write-Host '  되살렸다 (프로필에 다시 등록)' -ForegroundColor Green
+      Write-Host '  winget 복구함 (프로필에 다시 등록)' -ForegroundColor Green
       return $true
     }
     # 「됐다는데 안 잡힌다」는 「안 됐다」와 다른 명제라 따로 말한다 — 그 차이가 다음에 어디를 팔지를 정한다.
-    Write-Host '    · 재등록은 됐는데 winget 이 안 잡힌다 — 다음을 해 본다'
+    Write-Host '    · 다시 등록했지만 winget 을 찾을 수 없음 — 다음 방법을 시도합니다'
   } catch {
-    Write-Host "    · 재등록 안 됨 — $(Say-Why $_)"
+    Write-Host "    · 다시 등록 실패 — $(Say-Why $_)"
   }
 
   # ② 마이크로소프트가 적어 둔 길 — PSGallery 의 WinGet 모듈이 스스로 고친다. `-AllUsers` 는 관리자를 타므로, 안 되면 그것 없이
   #   한 번 더 — 제 계정에만 서도 쓸 수 있다.
   try {
-    Write-Host '    · PowerShell 모듈로 고쳐 본다 (PSGallery)'
+    Write-Host '    · PowerShell 모듈로 복구를 시도합니다 (PSGallery)'
     # 있으면 안 받는다 — 깔린 모듈을 `-Force` 로 다시 깔면 윈도우가 「쓰는 중이라 못 바꾼다」로 문다.
     if (Get-Module -ListAvailable -Name Microsoft.WinGet.Client) {
-      Write-Host '      (모듈이 이미 있다 — 안 받는다)'
+      Write-Host '      (모듈이 이미 있음 — 다운로드 건너뜀)'
     } else {
       # 받기가 져도 Repair 로 간다 — Repair 는 모듈만 있으면 서므로, 준비의 실패(프록시의 504 등)가 본 걸음을 막지 않게 갈래를
       #   끊는다.
@@ -3765,18 +3759,18 @@ function Restore-Winget {
         Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery `
           -ErrorAction Stop | Out-Null
       } catch {
-        Write-Host "      (모듈을 못 받았다 — $(Say-Why $_)) — 있는 것으로 해 본다"
+        Write-Host "      (모듈 다운로드 실패 — $(Say-Why $_)) — 기존 모듈로 시도합니다"
       }
     }
     try { Repair-WinGetPackageManager -AllUsers -ErrorAction Stop }
     catch { Repair-WinGetPackageManager -ErrorAction Stop }
     if (& $reach) {
-      Write-Host '  되살렸다 (Repair-WinGetPackageManager)' -ForegroundColor Green
+      Write-Host '  winget 복구함 (Repair-WinGetPackageManager)' -ForegroundColor Green
       return $true
     }
-    Write-Host '    · 모듈은 돌았는데 winget 이 안 잡힌다 — 다음을 해 본다'
+    Write-Host '    · 모듈은 실행됐지만 winget 을 찾을 수 없음 — 다음 방법을 시도합니다'
   } catch {
-    Write-Host "    · 모듈로 안 됨 — $(Say-Why $_)"
+    Write-Host "    · 모듈로 복구 실패 — $(Say-Why $_)"
   }
 
   # ③ GitHub 릴리스에서 받아 깐다
@@ -3787,30 +3781,30 @@ function Restore-Winget {
   #   회사망 · VDI 에서는 남이 쓴 몫에 걸려 403 이 난다. 이 갈래가 도는 PC 에는 winget 도 gh 도 없어 로그인한 길로 물을 수도 없다.
   #   받을 두 파일은 이름이 판마다 같아(v1.9 부터) 최신 릴리스의 받는 주소(`$WingetRelSite`)에서 이름으로 바로 받는다. 라이선스
   #   파일은 안 받는다 — 이 사용자에게만 까는 `Add-AppxPackage` 는 그것을 안 쓴다.
-  $step = '셋째 갈래에서 졌다'
+  $step = 'GitHub 다운로드 방법도 실패'
   try {
-    Write-Host '    · GitHub 릴리스에서 받아 본다'
-    $step = '받을 자리를 못 만들었다'
+    Write-Host '    · GitHub 릴리스에서 다운로드를 시도합니다'
+    $step = '다운로드 폴더를 만들지 못함'
     $work = Join-Path ([IO.Path]::GetTempPath()) "winget-$PID"
     New-Item -ItemType Directory -Path $work -Force | Out-Null
 
     # 딸린 것이 먼저다 — 없으면 본체 설치가 그 자리에서 진다
     $z = Join-Path $work 'dep.zip'
-    $step = "딸린 것 zip 을 못 받았다 ($WingetRelSite/$WingetRelDeps)"
+    $step = "종속 패키지 zip 을 다운로드하지 못함 ($WingetRelSite/$WingetRelDeps)"
     Say-Get 'winget 딸린 것' @{ name = $WingetRelDeps }
     Get-Download "$WingetRelSite/$WingetRelDeps" $z
-    $step = '딸린 것 zip 을 못 풀었다'
+    $step = '종속 패키지 zip 압축을 풀지 못함'
     Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $work 'dep') -Force
-    $step = '딸린 것을 못 깔았다'
+    $step = '종속 패키지를 설치하지 못함'
     $deps = @(Get-ChildItem (Join-Path $work 'dep') -Recurse -Filter '*.appx' |
               Where-Object { $_.FullName -match 'x64' })
     # 하나도 못 골랐으면 그것부터 말한다 — 고를 것이 없는 것과 다 깐 것은 화면에서 똑같이 조용하고, 본체 설치가 「딸린 것이
     #   없다」로 진다. zip 은 `x64/` · `x86/` · `arm64/` 에 `.appx` 를 든다 — 0 이면 저쪽 꼴이 바뀐 것이니 사람이 본다.
     if (-not $deps.Count) {
-      Write-Host '      ! 딸린 것에서 x64 를 하나도 못 골랐다 — 본체 설치가 질 수 있다' `
+      Write-Host '      ! 종속 패키지에서 x64 용을 찾지 못함 — 본체 설치가 실패할 수 있음' `
         -ForegroundColor Yellow
     } else {
-      Say-Busy 'winget 딸린 것' 'install' @("$($deps.Count)개")
+      Say-Busy 'winget 종속 패키지' 'install' @("$($deps.Count)개")
     }
     foreach ($d in $deps) {
       # 하나가 져도 다음 것으로 간다 — 더 새것이 깔린 기계는 윈도우가 무는데 그건 「할 일 없음」이다. 삼키지는 않고 이름과
@@ -3821,12 +3815,12 @@ function Restore-Winget {
     $depPaths = @($deps | ForEach-Object { $_.FullName })
 
     $b = Join-Path $work $WingetRelBundle
-    $step = "본체를 못 받았다 ($WingetRelSite/$WingetRelBundle)"
+    $step = "winget 본체를 다운로드하지 못함 ($WingetRelSite/$WingetRelBundle)"
     Say-Get 'winget' @{ name = $WingetRelBundle }
     Get-Download "$WingetRelSite/$WingetRelBundle" $b
     # 깔기는 수백 MB 를 푸는 동안 한 글자도 안 내므로 들어가기 전에 말한다 — 조용하면 사람은 멎은 줄 알고 창을 닫는다.
-    Say-Busy 'winget' 'install' @('몇 분 걸릴 수 있다')
-    $step = '본체를 못 깔았다'
+    Say-Busy 'winget' 'install' @('몇 분 걸릴 수 있음')
+    $step = 'winget 본체를 설치하지 못함'
     # 딸린 것을 같이 넘긴다(마이크로소프트가 적어 둔 꼴) — 위에서 하나씩 깐 뒤에도 판 맞추기를 윈도우가 하게 하고, 위 걸음이 다
     #   져도 여기서 한 번 더 선다.
     if ($depPaths.Count) { Add-AppxPackage -Path $b -DependencyPath $depPaths -ErrorAction Stop }
@@ -3834,10 +3828,10 @@ function Restore-Winget {
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 
     if (& $reach) {
-      Write-Host '  되살렸다 (GitHub 최신 릴리스)' -ForegroundColor Green
+      Write-Host '  winget 복구함 (GitHub 최신 릴리스)' -ForegroundColor Green
       return $true
     }
-    Write-Host '    · 깔았는데 winget 이 안 잡힌다 — 새 창에서는 잡힐 수 있다'
+    Write-Host '    · 설치했지만 winget 을 찾을 수 없음 — 새 창에서는 찾을 수 있음'
   } catch {
     Write-Host "    · $step — $(Say-Why $_)"
   }
@@ -4107,12 +4101,12 @@ function Get-VendorMirror([string]$Url) {
 #   안 든 길은 어긋난 것이다.
 function Test-VendorFence([string]$Path, $Way, $Found) {
   if ($Way.Signer) {
-    try { $sig = Get-AuthenticodeSignature -LiteralPath $Path } catch { return "서명을 못 읽었다 — $(Say-Why $_)" }
+    try { $sig = Get-AuthenticodeSignature -LiteralPath $Path } catch { return "서명을 읽지 못함 — $(Say-Why $_)" }
     $cn = if ("$($sig.SignerCertificate.Subject)" -match '^CN=(?:"([^"]+)"|([^,]+))') { "$($Matches[1])$($Matches[2])" } else { '' }
-    if ("$($sig.Status)" -ne 'Valid') { return "서명이 $($sig.Status) 다" }
-    if ($cn -ne $Way.Signer) { return "서명자가 $(if ($cn) { $cn } else { '(없음)' }) 다 — $($Way.Signer) 여야 한다" }
+    if ("$($sig.Status)" -ne 'Valid') { return "서명 상태가 $($sig.Status)" }
+    if ($cn -ne $Way.Signer) { return "서명자가 $(if ($cn) { $cn } else { '(없음)' }) — $($Way.Signer) 이어야 함" }
   } elseif ($Way.Unsigned) {
-    if ("$($Found.Url)" -notlike 'https://*') { return "서명이 없는 길인데 주소가 https 가 아니다 ($($Found.Url))" }
+    if ("$($Found.Url)" -notlike 'https://*') { return "서명 없는 다운로드인데 주소가 https 가 아님 ($($Found.Url))" }
   } else {
     return '행에 울타리(서명자 · 서명 없는 까닭)가 없다'
   }
@@ -4121,13 +4115,13 @@ function Test-VendorFence([string]$Path, $Way, $Found) {
     try {
       $fs = [IO.File]::OpenRead($Path)
       try { $got = [Convert]::ToBase64String([Security.Cryptography.SHA512]::Create().ComputeHash($fs)) } finally { $fs.Dispose() }
-    } catch { return "지문을 못 쟀다 — $(Say-Why $_)" }
-    if ($got -cne $Found.Sha512) { return '받은 파일의 SHA512 가 피드의 것과 다르다' }
+    } catch { return "해시를 계산하지 못함 — $(Say-Why $_)" }
+    if ($got -cne $Found.Sha512) { return '받은 파일의 SHA512 가 피드의 값과 다름' }
   }
   if ($Found.Sha256) {
     $got = ''
-    try { $got = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash } catch { return "지문을 못 쟀다 — $(Say-Why $_)" }
-    if ($got -ne $Found.Sha256) { return '받은 파일의 SHA-256 이 원본 서버의 것과 다르다' }
+    try { $got = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash } catch { return "해시를 계산하지 못함 — $(Say-Why $_)" }
+    if ($got -ne $Found.Sha256) { return '받은 파일의 SHA-256 이 원본 서버의 값과 다름' }
   }
   return ''
 }
@@ -4140,7 +4134,7 @@ function Test-VendorFence([string]$Path, $Way, $Found) {
 function Install-VendorZip([string]$Zip, $Row, $Way, $Found) {
   $dir = [Environment]::ExpandEnvironmentVariables("$($Way.Unzip.Dir)").TrimEnd('\')
   $bin = [Environment]::ExpandEnvironmentVariables("$($Row.PathDir)").TrimEnd('\')
-  if (-not $bin.StartsWith("$dir\", [StringComparison]::OrdinalIgnoreCase)) { return @{ Rc = $null; Why = "행의 PathDir($bin)가 풀 자리($dir) 밑이 아니다" } }
+  if (-not $bin.StartsWith("$dir\", [StringComparison]::OrdinalIgnoreCase)) { return @{ Rc = $null; Why = "행의 PathDir($bin)가 압축 해제 위치($dir) 아래가 아님" } }
   $rel = $bin.Substring($dir.Length + 1)
   $parent = Split-Path -Parent $dir
   $leaf = Split-Path -Leaf $dir
@@ -4157,24 +4151,24 @@ function Install-VendorZip([string]$Zip, $Row, $Way, $Found) {
       # 5.1 은 막대를 그리느라 풀기가 몇 배 느려진다 — 함수 안의 대입이라 나오면 저절로 돌아온다
       $ProgressPreference = 'SilentlyContinue'
       Expand-Archive -LiteralPath $Zip -DestinationPath $stage -Force
-    } catch { return @{ Rc = $null; Why = "zip 을 못 풀었다 — $(Say-Why $_)" } }
+    } catch { return @{ Rc = $null; Why = "zip 압축을 풀지 못함 — $(Say-Why $_)" } }
     $root = Join-Path $stage ("$($Way.Unzip.Root)".Replace('{ver}', $Found.Ver))
-    if (-not (Test-Path -LiteralPath $root -PathType Container)) { return @{ Rc = $null; Why = "zip 안에 $(Split-Path -Leaf $root) 가 없다" } }
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { return @{ Rc = $null; Why = "zip 안에 $(Split-Path -Leaf $root) 가 없음" } }
     $arg = if ($Row.Arg) { $Row.Arg } else { '--version' }
     $probe = Join-Path (Join-Path $root $rel) $Row.Cmd
     $runs = Measure-Runs $probe $arg
     if ($runs -ne 'yes') {
-      $runWhy = if ($runs -eq 'no') { '그 자리에 없어' } else { Get-ProbeWhy "$probe $arg" }
-      return @{ Rc = $null; Why = "새 사본이 안 돈다 — ``$($Row.Cmd) $arg`` 이 ${runWhy}서 옛 사본을 그대로 둔다" }
+      $runWhy = if ($runs -eq 'no') { '그 위치에 없어' } else { Get-ProbeWhy "$probe $arg" }
+      return @{ Rc = $null; Why = "새 버전이 실행되지 않음 — ``$($Row.Cmd) $arg`` 이 ${runWhy}서 이전 버전을 그대로 유지" }
     }
     if (Test-Path -LiteralPath $dir) {
       try { Rename-Item -LiteralPath $dir -NewName (Split-Path -Leaf $old) -ErrorAction Stop }
-      catch { return @{ Rc = $null; Why = "옛 사본을 못 비켰다(쓰이는 중일 수 있다) — $(Say-Why $_)" } }
+      catch { return @{ Rc = $null; Why = "이전 버전을 옮기지 못함 (사용 중일 수 있음) — $(Say-Why $_)" } }
     }
     try { Move-Item -LiteralPath $root -Destination $dir -ErrorAction Stop }
     catch {
       if (Test-Path -LiteralPath $old) { Rename-Item -LiteralPath $old -NewName $leaf -ErrorAction SilentlyContinue }
-      return @{ Rc = $null; Why = "새 사본을 그 자리로 못 옮겼다 — $(Say-Why $_)" }
+      return @{ Rc = $null; Why = "새 버전을 그 위치로 옮기지 못함 — $(Say-Why $_)" }
     }
     Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue
     return @{ Rc = 0; Why = '' }
@@ -4198,36 +4192,36 @@ function Invoke-VendorWay([string]$Label, $Row, $Way, $Found, [string]$Act) {
   $r = @{ Rc = $null; Why = '' }
   try {
     $m = $null
-    if (-not $Found.Url) { $r.Why = '벤더의 받을 주소를 못 읽었다' }
-    elseif ($Way.NeedsVcRuntime -and (Measure-VcRuntime).State -ne 'yes') { $r.Why = 'VC++ 런타임이 없어 벤더 사본이 못 돈다 — 짝을 함께 까는 winget 으로' }
-    elseif ($Way.Mirrors -eq 'metalink' -and -not ($m = Get-VendorMirror $Found.Url)) { $r.Why = '미러 순위 · 원본 지문을 못 읽었거나 잰 미러가 다 안 받는다' }
+    if (-not $Found.Url) { $r.Why = '공식 다운로드 주소를 확인하지 못함' }
+    elseif ($Way.NeedsVcRuntime -and (Measure-VcRuntime).State -ne 'yes') { $r.Why = 'VC++ 런타임이 없어 공식 버전이 실행되지 않음 — 필요한 구성 요소를 함께 설치하는 winget 으로 설치' }
+    elseif ($Way.Mirrors -eq 'metalink' -and -not ($m = Get-VendorMirror $Found.Url)) { $r.Why = '미러 순위나 원본 해시를 읽지 못했거나 측정한 미러가 모두 응답하지 않음' }
     else {
       if ($m) {
         $Found = @{ Ver = $Found.Ver; Url = $m.Url; Sha512 = $Found.Sha512; Sha256 = $m.Sha256 }
-        Write-Host ('      · 미러 {0} — {1:N1} MB/s ({2}곳을 쟀다)' -f ([Uri]$m.Url).Host, ($m.Speed / 1MB), $m.Tried) -ForegroundColor DarkGray
+        Write-Host ('      · 미러 {0} — {1:N1} MB/s ({2}곳 측정)' -f ([Uri]$m.Url).Host, ($m.Speed / 1MB), $m.Tried) -ForegroundColor DarkGray
       }
       try {
-        Say-Busy $Label 'fetch' @((Split-Path $file -Leaf), $(if ($Found.Ver) { "벤더 $($Found.Ver)" } else { '벤더' }))
+        Say-Busy $Label 'fetch' @((Split-Path $file -Leaf), $(if ($Found.Ver) { "$($Found.Ver)" } else { '' }))
         Get-Download $Found.Url $file
-      } catch { $r.Why = "벤더 주소에서 못 받았다 — $(Say-Why $_)" }
-      if (-not $r.Why) { $bad = Test-VendorFence $file $Way $Found; if ($bad) { $r.Why = "벤더 파일을 안 썼다 — $bad" } }
+      } catch { $r.Why = "공식 주소에서 다운로드하지 못함 — $(Say-Why $_)" }
+      if (-not $r.Why) { $bad = Test-VendorFence $file $Way $Found; if ($bad) { $r.Why = "공식 파일을 사용하지 않음 — $bad" } }
       if (-not $r.Why) {
         if ($Way.Unzip) {
-          Say-Busy $Label $Act @('벤더 zip', [Environment]::ExpandEnvironmentVariables("$($Way.Unzip.Dir)"))
+          Say-Busy $Label $Act @('공식 zip', [Environment]::ExpandEnvironmentVariables("$($Way.Unzip.Dir)"))
           $r = Install-VendorZip $file $Row $Way $Found
         } elseif ($Way.Msi) {
-          Say-Busy $Label $Act @('벤더 MSI', '승인 창이 뜰 수 있다', '몇 분 걸릴 수 있다')
+          Say-Busy $Label $Act @('공식 MSI', '승인 창이 뜰 수 있음', '몇 분 걸릴 수 있음')
           try {
             $r.Rc = (Start-Process -FilePath 'msiexec.exe' -ArgumentList (@('/i', "`"$file`"") + @($Way.SilentArgs)) -Verb RunAs -PassThru -Wait).ExitCode
-            if ($MsiRcReboot -contains $r.Rc) { Write-Host '      · 다시 시작하면 설치가 마무리된다' -ForegroundColor Yellow; $r.Rc = 0 }
-            if ($r.Rc -ne 0) { $r.Why = "벤더 MSI 가 $($r.Rc) 로 끝났다" }
-          } catch { $r.Why = "벤더 MSI 를 못 띄웠다(승인 창을 물렸을 수 있다) — $(Say-Why $_)" }
+            if ($MsiRcReboot -contains $r.Rc) { Write-Host '      · PC 를 다시 시작하면 설치가 마무리됩니다' -ForegroundColor Yellow; $r.Rc = 0 }
+            if ($r.Rc -ne 0) { $r.Why = "공식 MSI 가 종료 코드 $($r.Rc) 로 끝남" }
+          } catch { $r.Why = "공식 MSI 를 실행하지 못함 (승인 창을 취소했을 수 있음) — $(Say-Why $_)" }
         } else {
-          Say-Busy $Label $Act @('벤더 설치본', '몇 분 걸릴 수 있다')
+          Say-Busy $Label $Act @('공식 설치 파일', '몇 분 걸릴 수 있음')
           try {
             $r.Rc = (Start-Process -FilePath $file -ArgumentList $Way.SilentArgs -PassThru -Wait).ExitCode
-            if ($r.Rc -ne 0) { $r.Why = "벤더 설치본이 $($r.Rc) 로 끝났다" }
-          } catch { $r.Why = "벤더 설치본을 못 띄웠다 — $(Say-Why $_)" }
+            if ($r.Rc -ne 0) { $r.Why = "공식 설치 파일이 종료 코드 $($r.Rc) 로 끝남" }
+          } catch { $r.Why = "공식 설치 파일을 실행하지 못함 — $(Say-Why $_)" }
         }
       }
     }
@@ -4271,7 +4265,7 @@ function Get-UpgradeRoute($Row, [string]$Installed) {
 #   올린다. winget 이 없으면 노란 줄 하나다. 벤더 길이 섰으면 참이다 — 올랐나는 부르는 쪽이 앞뒤 판으로 가른다(`Write-UpgradeResult`).
 function Invoke-RowUpgrade([string]$Label, $Row, $Route, [string]$Act, [string]$Source = 'winget', [string[]]$Notes = @()) {
   if ($Act -eq 'upgrade' -and $Route.Via -eq 'vendor' -and (Invoke-VendorWay $Label $Row $Route.Way $Route.Found 'upgrade').Rc -eq 0) { return $true }
-  if ($noWinget) { Write-Host "  ! $Label — winget 이 없어 못 올렸다" -ForegroundColor Yellow; return $false }
+  if ($noWinget) { Write-Host "  ! $Label — winget 이 없어 업데이트하지 못함" -ForegroundColor Yellow; return $false }
   Invoke-WingetUpgrade $Label $Row.Id $Source $Act $Notes
   return $false
 }
@@ -4281,7 +4275,7 @@ function Invoke-RowUpgrade([string]$Label, $Row, $Route, [string]$Act, [string]$
 #   틀렸는지는 사람이 본다.
 function Write-WingetAhead([string]$Label, $Route) {
   if ($Route.Via -eq 'vendor' -and $Route.Ahead) {
-    Write-Host "  ! $Label — winget 목록은 이보다 높은 판을 올릴 것으로 댄다 · 벤더 판 $($Route.Found.Ver) 을 따르고 winget 으로는 안 올린다" -ForegroundColor Yellow
+    Write-Host "  ! $Label — winget 목록은 이보다 높은 버전을 업데이트 대상으로 표시 · 공식 버전 $($Route.Found.Ver) 을 따르고 winget 으로는 업데이트하지 않음" -ForegroundColor Yellow
   }
 }
 
@@ -4291,15 +4285,15 @@ function Write-WingetAhead([string]$Label, $Route) {
 #   (`--id … --exact`). 못 걷으면 노란 줄과 손으로 칠 명령이다.
 function Remove-WingetCopy($Row) {
   $hand = "winget uninstall --id $($Row.Id) --exact --source winget"
-  if ($noWinget) { Write-Host "  ! $($Row.Label) — winget 이 없어 winget 사본을 못 걷었다 · 손으로: $hand" -ForegroundColor Yellow; return }
-  Say-Busy $Row.Label 'remove' @('winget', "$($Row.Id) — 벤더 사본이 섰다")
+  if ($noWinget) { Write-Host "  ! $($Row.Label) — winget 이 없어 winget 사본을 제거하지 못함 · 직접 실행: $hand" -ForegroundColor Yellow; return }
+  Say-Busy $Row.Label 'remove' @('winget', "$($Row.Id) — 공식 버전으로 교체됨")
   $log = [IO.Path]::GetTempFileName()
   $rc = Invoke-LoggedCapped 'winget' @('uninstall', '--id', $Row.Id, '--exact', '--source', 'winget', '--silent',
                                        '--accept-source-agreements', '--disable-interactivity') $log $WingetRemoveCap
   if ($rc -eq -2) { Add-ProbeOverflow "winget uninstall --id $($Row.Id)" $WingetRemoveCap }
-  if ($rc -eq 0) { Write-Host "  $($Row.Label) — winget 사본을 걷었다 ($($Row.Id))" }
+  if ($rc -eq 0) { Write-Host "  $($Row.Label) — winget 사본 제거함 ($($Row.Id))" }
   else {
-    Write-Host "  ! $($Row.Label) — winget 사본을 못 걷었다(winget 이 $(Format-ProbeWhy $rc $WingetRemoveCap)서) · 손으로: $hand" -ForegroundColor Yellow
+    Write-Host "  ! $($Row.Label) — winget 사본을 제거하지 못함 (winget 이 $(Format-ProbeWhy $rc $WingetRemoveCap)서) · 직접 실행: $hand" -ForegroundColor Yellow
     Show-Log $log 3
   }
   Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
@@ -4311,7 +4305,7 @@ function Write-ShadowedCopy($Row) {
   $src = "$((Get-Command $Row.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
   $bin = [Environment]::ExpandEnvironmentVariables("$($Row.PathDir)").TrimEnd('\')
   if ($src -and -not $src.StartsWith("$bin\", [StringComparison]::OrdinalIgnoreCase)) {
-    Write-Host "  ! $($Row.Label) — 새 사본은 $bin 에 섰는데 이름으로는 $src 가 먼저 잡힌다 · 그 사본을 걷거나 PATH 에서 뺀다" -ForegroundColor Yellow
+    Write-Host "  ! $($Row.Label) — 새 버전은 $bin 에 설치됐지만 명령 이름으로는 $src 가 먼저 실행됨 · 그 사본을 지우거나 PATH 에서 빼세요" -ForegroundColor Yellow
   }
 }
 
@@ -4331,36 +4325,36 @@ function Update-MsixApp($A, [string]$Before, $Found) {
   $mx = $A.Upgrade.Msix
   $cur = ConvertTo-Ver $Before
   $new = ConvertTo-Ver $Found.Ver
-  if (-not $new) { Write-Host "  있음  $(Format-VerPart $Before) · ! 벤더 MSIX 의 최신 판을 못 읽었다" -ForegroundColor Yellow; return }
-  if ($cur -and $cur -ge $new) { Write-Host "  최신  $(Format-VerPart $Before)"; return }
+  if (-not $new) { Write-Host "  설치되어 있음 $(Format-VerPart $Before) · ! 공식 MSIX 의 최신 버전을 확인하지 못함" -ForegroundColor Yellow; return }
+  if ($cur -and $cur -ge $new) { Write-Host "  최신 버전 $(Format-VerPart $Before)"; return }
   $name = $mx.Family -replace '_[^_]+$', ''
   $running = @(Get-Process -Name $mx.App -ErrorAction SilentlyContinue | Where-Object { "$($_.Path)" -like "*\WindowsApps\$($name)_*" })
   if ($running.Count -and $NightRun) {
-    Write-Host "  ! 새 판 $($Found.Ver) 이 있다 — 앱이 떠 있어 밤 자동 실행은 안 닫는다 · 다음 로그온이 올린다" -ForegroundColor Yellow
+    Write-Host "  ! 새 버전 $($Found.Ver) 있음 — 앱이 실행 중이라 야간 자동 실행은 앱을 닫지 않음 · 다음 로그온 때 업데이트합니다" -ForegroundColor Yellow
     return
   }
   $full = '{0}_{1}.{2}.{3}.{4}_x64__{5}' -f $name, $new.Major, $new.Minor, [Math]::Max(0, $new.Build), [Math]::Max(0, $new.Revision), ($mx.Family -replace '^.*_', '')
   $file = $null
   try {
     if (Test-Path -LiteralPath (Join-Path $env:ProgramFiles "WindowsApps\$full")) {
-      Say-Busy $A.Label 'upgrade' @('받아 둔 판을 세운다', $(if ($running.Count) { '앱을 닫고' } else { '' }))
+      Say-Busy $A.Label 'upgrade' @('다운로드한 버전으로 설치', $(if ($running.Count) { '앱을 닫은 뒤' } else { '' }))
       Add-AppxPackage -RegisterByFamilyName -MainPackage $full -ForceApplicationShutdown -ErrorAction Stop
     } else {
       $file = Join-Path ([IO.Path]::GetTempPath()) "$name-$($Found.Ver).msix"
-      Say-Busy $A.Label 'fetch' @((Split-Path $file -Leaf), "벤더 $($Found.Ver)")
+      Say-Busy $A.Label 'fetch' @((Split-Path $file -Leaf), "$($Found.Ver)")
       Get-Download $Found.Url $file $AppUpdaterCap
-      Say-Busy $A.Label 'upgrade' @('MSIX', $(if ($running.Count) { '앱을 닫고' } else { '' }))
+      Say-Busy $A.Label 'upgrade' @('MSIX', $(if ($running.Count) { '앱을 닫은 뒤' } else { '' }))
       Add-AppxPackage -Path $file -ForceApplicationShutdown -ErrorAction Stop
     }
   } catch {
-    Write-Host "  ! $($A.Label) — MSIX 로 못 올렸다 · $(Say-Why $_)" -ForegroundColor Red
-    $script:Fails.Add("$($A.Label) (MSIX 올리기)")
+    Write-Host "  ! $($A.Label) — MSIX 업데이트 실패 · $(Say-Why $_)" -ForegroundColor Red
+    $script:Fails.Add("$($A.Label) (MSIX 업데이트)")
   } finally { if ($file) { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue } }
   $after = [string](Find-MsixInstall $mx.Family).Version
   Write-UpgradeResult $A.Label $Before $after
   if ($running.Count) {
-    try { Start-Process "shell:AppsFolder\$($mx.Family)!$($mx.App)"; Write-Host '     떠 있던 앱을 다시 띄웠다' }
-    catch { Write-Host "  ! 앱을 다시 못 띄웠다 — 시작 메뉴에서 연다 · $(Say-Why $_)" -ForegroundColor Yellow }
+    try { Start-Process "shell:AppsFolder\$($mx.Family)!$($mx.App)"; Write-Host '     실행 중이던 앱을 다시 실행함' }
+    catch { Write-Host "  ! 앱을 다시 실행하지 못함 — 시작 메뉴에서 여세요 · $(Say-Why $_)" -ForegroundColor Yellow }
   }
 }
 
@@ -4369,17 +4363,17 @@ function Update-MsixApp($A, [string]$Before, $Found) {
 function Invoke-AppUpdater($A, [string]$Before) {
   $exe = [Environment]::ExpandEnvironmentVariables($A.Upgrade.Exe)
   if (-not (Test-Path -LiteralPath $exe)) { return $false }
-  Say-Busy $A.Label 'upgrade' @('앱 갱신기', "지금 $(if ($Before) { $Before } else { '판 모름' })")
+  Say-Busy $A.Label 'upgrade' @('앱 자체 업데이트', "현재 $(if ($Before) { $Before } else { '버전 모름' })")
   $log = [IO.Path]::GetTempFileName()
   $rc = Invoke-LoggedCapped $exe @($A.Upgrade.Args) $log $AppUpdaterCap
   if ($rc -eq -2) { Add-ProbeOverflow "$exe $($A.Upgrade.Args -join ' ')" $AppUpdaterCap }
   $after = (Measure-DesktopApp $A).Ver
   if ($rc -ne 0) {
-    Write-Host "  ! 앱 갱신기가 $(Format-ProbeWhy $rc $AppUpdaterCap) — 판은 앱이 스스로 따라간다 $(Format-VerPart $after)" -ForegroundColor Yellow
+    Write-Host "  ! 앱 자체 업데이트가 $(Format-ProbeWhy $rc $AppUpdaterCap) — 버전은 앱이 직접 업데이트합니다 $(Format-VerPart $after)" -ForegroundColor Yellow
     Show-Log $log 3
   } else {
     Write-UpgradeResult $A.Label $Before $after
-    if ($after -and $Before -and $after -ne $Before) { Write-Host '     앱을 다시 열면 새 판으로 뜬다' }
+    if ($after -and $Before -and $after -ne $Before) { Write-Host '     앱을 다시 열면 새 버전으로 실행됩니다' }
   }
   Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
   return $true
@@ -4389,13 +4383,13 @@ function Invoke-AppUpdater($A, [string]$Before) {
 #   없으면 받지 않고 끝난다. 지거나 울타리를 넘기면 노란 줄과 로그 끝이다 — 깔린 CLI 는 그대로 서 있으니 실패로 안 센다.
 function Invoke-CliUpdater($C, [string]$Before, [string]$VerArg) {
   $exe = "$((Get-Command $C.Cmd -ErrorAction SilentlyContinue | Select-Object -First 1).Source)"
-  Say-Busy $C.Label 'upgrade' @('제 갱신기', "지금 $(if ($Before) { $Before } else { '판 모름' })")
+  Say-Busy $C.Label 'upgrade' @('자체 업데이트', "현재 $(if ($Before) { $Before } else { '버전 모름' })")
   $log = [IO.Path]::GetTempFileName()
   $rc = Invoke-LoggedCapped $exe @($C.Upgrade.Args) $log $AppUpdaterCap
   if ($rc -eq -2) { Add-ProbeOverflow "$($C.Cmd) $($C.Upgrade.Args -join ' ')" $AppUpdaterCap }
   $after = Get-Ver $C.Cmd $VerArg
   if ($rc -ne 0) {
-    Write-Host "  ! $($C.Label) — 제 갱신기가 $(Format-ProbeWhy $rc $AppUpdaterCap) — 깔린 판 그대로다 $(Format-VerPart $after)" -ForegroundColor Yellow
+    Write-Host "  ! $($C.Label) — 자체 업데이트가 $(Format-ProbeWhy $rc $AppUpdaterCap) — 설치된 버전 그대로 $(Format-VerPart $after)" -ForegroundColor Yellow
     Show-Log $log 3
   } else {
     Write-UpgradeResult $C.Label $Before $after
@@ -4409,10 +4403,10 @@ function Invoke-CliUpdater($C, [string]$Before, [string]$VerArg) {
 #   못 읽음을 말한다(`Format-VerPart`).
 function Write-UpgradeResult([string]$Name, [string]$before, [string]$after) {
   if ($after -and $before -and $after -ne $before) {
-    Write-Host "  $Name — 올렸다  $before  ->  $after" -ForegroundColor Green
+    Write-Host "  $Name — 업데이트 완료 ($before → $after)" -ForegroundColor Green
   } else {
     $shown = if ($after) { $after } else { $before }
-    Write-Host "  $Name — 최신  $(Format-VerPart $shown)"
+    Write-Host "  $Name — 최신 버전 $(Format-VerPart $shown)"
   }
 }
 
@@ -4550,29 +4544,29 @@ function Install-Requires($A) {
     #   사유로 나타난다.
     if ($id -eq 'Microsoft.EdgeWebView2Runtime') {
       $pv = Test-WebView2
-      if ($pv) { Write-Host ('      · WebView2 런타임 — 있음 {0}' -f (Format-VerPart $pv)); continue }
+      if ($pv) { Write-Host ('      · WebView2 런타임 — 설치되어 있음 {0}' -f (Format-VerPart $pv)); continue }
       $what = 'WebView2 런타임'
     } else {
       $what = $id
     }
     if ($noWinget) {
-      Write-Host '      ! winget 이 없어 짝을 못 깐다 — 이 앱도 안 선다' -ForegroundColor Red
-      $script:Fails.Add("$($A.Label) (짝 $id — winget 이 없다)")
+      Write-Host '      ! winget 이 없어 필요한 구성 요소를 설치할 수 없음 — 이 앱도 실행되지 않음' -ForegroundColor Red
+      $script:Fails.Add("$($A.Label) (필요한 구성 요소 $id — winget 없음)")
       return $false
     }
-    Say-Busy $what 'install' @('winget', "$($A.Label) 이 먼저 요구한다")
+    Say-Busy $what 'install' @('winget', "$($A.Label) 에 필요")
     $rl = [IO.Path]::GetTempFileName()
     $rc = Invoke-Logged 'winget' (@('install','--id',$id) + $WG) $rl
     if ($rc -ne 0) {
       # 사유를 우리가 분류하지 않는다 — 뱉은 끝 줄을 그대로 낸다(`Show-Log`).
-      Write-Host ("      ! 짝을 못 깔았다 (winget 이 $rc 로 끝났다) — 뱉은 끝 줄:") -ForegroundColor Red
+      Write-Host ("      ! 필요한 구성 요소 설치 실패 (winget 종료 코드 $rc) — 마지막 출력:") -ForegroundColor Red
       Show-Log $rl 5
-      $script:Fails.Add("$($A.Label) (짝 $id)")
+      $script:Fails.Add("$($A.Label) (필요한 구성 요소 $id)")
       Remove-Item $rl -ErrorAction SilentlyContinue
       return $false
     }
     Remove-Item $rl -ErrorAction SilentlyContinue
-    Write-Host '      · 짝이 섰다'
+    Write-Host '      · 필요한 구성 요소 설치 완료'
   }
   return $true
 }
@@ -4591,22 +4585,22 @@ function Install-DesktopApp($A) {
   $ways = @(Get-RowWays $A)
   # winget 을 안 타는 길이 있으면 winget 이 없어도 여기서 안 끝낸다. 깔린 앱은 winget 없이도 「있음」이다.
   if (($deskAct -eq 'install' -or $deskAct -eq 'hold') -and $noWinget -and -not @($ways | Where-Object { $_.Via -ne 'winget' }).Count) {
-    Write-Host '  ! winget 이 없어 못 깐다' -ForegroundColor Red
-    $script:Fails.Add("$($A.Label) (winget 이 없다)")
+    Write-Host '  ! winget 이 없어 설치할 수 없음' -ForegroundColor Red
+    $script:Fails.Add("$($A.Label) (winget 없음)")
     return
   }
   # ⚠ **못 쟀으면 깔지도 올리지도 않는다** — 못 잰 것을 「없다」로 읽으면 깔린 앱 위에 `winget install` 을 돌려 winget 목록의 판으로
   #   내린다(결정 0145).
   if ($deskAct -eq 'hold') {
-    Add-UnmeasuredStep $A.Label $m.Probe '깔지도 올리지도 않았다' $m.Why
+    Add-UnmeasuredStep $A.Label $m.Probe '설치도 업데이트도 하지 않음' $m.Why
     return
   }
   if ($deskAct -ne 'install') {
-    if ($deskAct -eq 'present')    { Write-Host "  있음  $(Format-VerPart $m.Ver)" }
+    if ($deskAct -eq 'present')    { Write-Host "  설치되어 있음 $(Format-VerPart $m.Ver)" }
     # 제 갱신기가 있는 행은 winget 이 아니라 그것이 올린다 — 갱신기 파일이 없는 PC(다른 꼴로 깔린 앱)는 길이 가른 대로 간다.
     elseif ($route.Via -eq 'updater') { [void](Invoke-AppUpdater $A $m.Ver) }
     elseif ($route.Via -eq 'msix') { Update-MsixApp $A $m.Ver $route.Found }
-    elseif ($deskAct -eq 'latest') { Write-Host "  최신  $(Format-VerPart $m.Ver)"; Write-WingetAhead $A.Label $route }
+    elseif ($deskAct -eq 'latest') { Write-Host "  최신 버전 $(Format-VerPart $m.Ver)"; Write-WingetAhead $A.Label $route }
     elseif ($deskAct -eq 'upgrade' -or $deskAct -eq 'upcheck') {
       [void](Invoke-RowUpgrade $A.Label $A $route $deskAct $A.Source)
       Write-UpgradeResult $A.Label $m.Ver (Measure-DesktopApp $A).Ver
@@ -4627,11 +4621,11 @@ function Install-DesktopApp($A) {
    $al = [IO.Path]::GetTempFileName()
    $wayWhy = ''
    if ($W.Via -eq 'winget') {
-    if ($noWinget) { Write-Host '      · winget 이 없다 — 다음 길로'; continue }
+    if ($noWinget) { Write-Host '      · winget 없음 — 다음 방법으로'; continue }
     # 오래 걸리는 걸음은 들어가기 전에 말한다 — winget 은 `--silent` 로 수백 MB 를 받는 1~2분 동안 화면을 안 바꿔, 「도는 중」과
     #   「멈췄다」가 같은 화면이 된다. 소스는 기본(`winget`)이 아닐 때만 댄다(「winget · winget」이 안 찍히게).
     $via = if ($A.Source -and $A.Source -ne 'winget') { "winget · $($A.Source)" } else { 'winget' }
-    Say-Busy $A.Label 'install' @($via, '수백 MB · 1~2분 걸릴 수 있다')
+    Say-Busy $A.Label 'install' @($via, '수백 MB · 1~2분 걸릴 수 있음')
     $rc = Invoke-Logged 'winget' (@('install','--id',$A.Id,'--source',$A.Source) + $WGOpts) $al
    } else {
     if ($W.Read -and $W -ne $vendorHere) { continue }
@@ -4643,25 +4637,25 @@ function Install-DesktopApp($A) {
     $wayWhy = $vr.Why
    }
    if (Test-DesktopApp $A) { break }
-   if ($W -ne $ways[-1]) { Write-Host ('      · 이 길이 졌다{0} — 다음 길로' -f $(if ($null -ne $rc) { " (낸 값 $rc)" } else { '' })) }
+   if ($W -ne $ways[-1]) { Write-Host ('      · 이 방법은 실패{0} — 다음 방법으로' -f $(if ($null -ne $rc) { " (종료 코드 $rc)" } else { '' })) }
   }
   if (Test-DesktopApp $A) {
-    Write-Host '  깔았다' -ForegroundColor Green
+    Write-Host '  설치 완료' -ForegroundColor Green
     $script:JustInstalledApps[$A.App] = $true
     $script:InstalledAppRows[$A.Label] = $A
     # winget 이 깐 판은 벤더보다 늦을 수 있다 — 제 갱신기가 있는 행은 깐 자리에서 바로 최신으로 올린다.
     if ($A.Upgrade.Via -eq 'updater') { [void](Invoke-AppUpdater $A (Measure-DesktopApp $A).Ver) }
   } elseif ($null -eq $rc -and $wayWhy) {
     # 마지막 길이 받기 · 울타리 · 띄우기에서 졌다 — 그 까닭은 위 노란 줄이 댔다.
-    Write-Host "  ! 설치 실패 — 마지막 길이 졌다: $wayWhy" -ForegroundColor Red
+    Write-Host "  ! 설치 실패 — 마지막 방법도 실패: $wayWhy" -ForegroundColor Red
     $script:Fails.Add("$($A.Label) ($wayWhy)")
   } elseif ($rc -eq 0) {
     # 종료 0 인데 앱이 없다 = 설치본이 제 일을 남에게 넘긴 것이다(스토어 스텁이 스토어 창을 띄우고 빠지는 갈래). 「설치 실패」로
     #   찍으면 거짓이고 사람이 눌러야 할 일 때문에 설치가 빨갛게 끝난다 — 진짜 실패는 0 이 아닌 값을 낸다.
-    Write-Host '  · 창이 열렸다 — 거기서 [다운로드]를 누르면 깔린다' -ForegroundColor Yellow
-    Write-Host '     설치기는 그것을 못 기다린다(넘긴 프로세스가 이미 끝났다). 깔린 뒤 다시 누르면 「있음」으로 지나간다.'
+    Write-Host '  · 창이 열렸습니다 — [다운로드]를 누르면 설치됩니다' -ForegroundColor Yellow
+    Write-Host '     설치기는 그 창을 기다릴 수 없습니다 (넘겨받은 프로세스가 이미 끝남). 설치한 뒤 다시 실행하면 「설치되어 있음」으로 넘어갑니다.'
   } else {
-    Write-Host ('  ! 설치 실패 — 낸 값 {0}' -f $rc) -ForegroundColor Red
+    Write-Host ('  ! 설치 실패 — 종료 코드 {0}' -f $rc) -ForegroundColor Red
     # 설치본이 제 로그를 남기는 갈래면 그 끝 줄을 댄다 — 회선이 막은 자리에서는 막았다는 말이 그 안에 그대로 들어 있다.
     $log = $al
     if ($A.Log) {
@@ -4703,19 +4697,17 @@ function Get-ExtVersions {
 # `$Rows` 는 고른 확장의 행(`Id` · `Label`), `$Acts` 는 「VS Code 확장」 걸음이 행마다 `Get-InstallAction` 에서 받은 할 일이다
 #   (`Id` → 할 일) — 올리기(`upcheck`)는 그 걸음이 깔린 확장을 한 번에 묻고(`--update-extensions`) 여기는 앞뒤 판(`$Before` · `$After`)으로
 #   결과만 찍는다. `$Probe` · `$Why` 는 못 쟀을 때 댈 물음과 그 까닭이다(`Add-UnmeasuredStep` 의 꼴).
-# `code` 가 확장을 깔고 올리며 뱉는 줄을 진행 줄로 옮긴다 — 묶음 한 번이 끝나야 결과 줄이 서므로 그동안 확장마다 무엇을 하나를
-#   흘린다. `code` 는 묶음 안의 확장을 나란히 받아 「받았다」 줄이 거의 한꺼번에 온다(실측 1.143). 판정은 안 한다 — 깔았나는 뒤의
-#   목록이 잰다. 이름은 확장 표(`$Extensions`)의 `Label` 로 옮기고, 표에 없는 것(딸려 오는 확장)은 Id 그대로 둔다. 모르는
-#   줄(node 경고 · 머리 줄)은 안 낸다.
+# `code` 가 확장을 깔고 올리며 뱉는 줄 가운데 「받기 시작」만 진행 줄로 옮긴다 — 묶음 한 번이 끝나야 결과 줄이 서므로 그동안 무엇을
+#   받는지 한 줄씩 댄다. 판정은 안 한다 — 깔았나는 뒤의 목록이 잰다. 이름은 확장 표(`$Extensions`)의 `Label` 로 옮기고, 표에 없는
+#   것(딸려 오는 확장)은 안 낸다. 「받았다」 줄 · 모르는 줄(node 경고 · 머리 줄)도 안 낸다 — 확장마다 뒤의 결과 줄이 같은 말을 한다.
 function Show-ExtProgress([string]$Line) {
-  $name = { param($id) $r = @($Extensions | Where-Object { $_.Id -eq $id })[0]; if ($r) { $r.Label } else { $id } }
+  $name = { param($id) $r = @($Extensions | Where-Object { $_.Id -eq $id })[0]; if ($r) { $r.Label } }
   if ($Line -match "^Installing extension '([^']+)'") {
-    Write-Host "    · $(& $name $Matches[1]) — 받는 중" -ForegroundColor DarkGray
+    $n = & $name $Matches[1]
+    if ($n) { Write-Host "    · $n — 다운로드 중" -ForegroundColor DarkGray }
   } elseif ($Line -match '^Updating extensions: (.+)$') {
-    Write-Host "    · $((@($Matches[1] -split ',\s*') | ForEach-Object { & $name $_ }) -join ' · ') — 새 판 받는 중" -ForegroundColor DarkGray
-  } elseif ($Line -match "^Extension '([^']+)' v(\S+) was successfully (installed|updated)") {
-    $verb = if ($Matches[3] -eq 'installed') { '받았다' } else { '올렸다' }
-    Write-Host "    · $(& $name $Matches[1]) $($Matches[2]) — $verb" -ForegroundColor DarkGray
+    $n = @(@($Matches[1] -split ',\s*') | ForEach-Object { & $name $_ } | Where-Object { $_ })
+    if ($n.Count) { Write-Host "    · $($n -join ' · ') — 새 버전 다운로드 중" -ForegroundColor DarkGray }
   }
 }
 
@@ -4724,14 +4716,14 @@ function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtab
   foreach ($x in @($Rows)) {
     $Id = $x.Id; $Label = $x.Label; $Act = $Acts[$Id]
     if ($Act -eq 'hold') {
-      Add-UnmeasuredStep $Label $Probe '깔지도 올리지도 않았다' $Why
+      Add-UnmeasuredStep $Label $Probe '설치도 업데이트도 하지 않음' $Why
       continue
     }
     if ($Act -ne 'install') {
       $b = $Before[$Id]; $a = if ($After) { $After[$Id] } else { '' }
-      if ($Act -eq 'present')     { Write-Host "  $Label — 있음  $(Format-VerPart $b)" }
-      elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
-      else                        { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
+      if ($Act -eq 'present')     { Write-Host "  $Label — 설치되어 있음 $(Format-VerPart $b)" }
+      elseif ($a -and $a -ne $b)  { Write-Host "  $Label — 업데이트 완료 ($b → $a)" -ForegroundColor Green }
+      else                        { Write-Host "  $Label — 최신 버전 $(Format-VerPart $b)" }
       continue
     }
     $todo += ,$x
@@ -4744,7 +4736,7 @@ function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtab
   $rc = Invoke-Logged 'code' ($xa + '--force') $xl ${function:Show-ExtProgress}
   $rcs = @{}; $logs = @{}
   if ($rc -ne 0 -and $todo.Count -gt 1) {
-    Write-Host "  (확장 $($todo.Count)개를 한 번에 깔다가 code 가 $rc 로 끝났다 — 하나씩 다시 깐다)"
+    Write-Host "  (확장 $($todo.Count)개를 한 번에 설치하다가 code 가 종료 코드 $rc 로 끝남 — 하나씩 다시 설치합니다)"
     foreach ($x in $todo) {
       Say-Busy $x.Label 'install' @('code')
       $logs[$x.Id] = [IO.Path]::GetTempFileName()
@@ -4778,23 +4770,23 @@ function Install-Extension($Rows, [hashtable]$Acts, [hashtable]$Before, [hashtab
   foreach ($x in $todo) {
     $Id = $x.Id; $Label = $x.Label; $rc = $rcs[$Id]; $xlog = $logs[$Id]
     if ($ls.Ids -notcontains $Id -and $ls.Rc -ne 0) {
-      Add-UnmeasuredStep $Label 'code --list-extensions' '깔았나를 못 쟀다' (Format-ProbeWhy $ls.Rc $ExtListCap)
+      Add-UnmeasuredStep $Label 'code --list-extensions' '설치 여부를 확인하지 못함' (Format-ProbeWhy $ls.Rc $ExtListCap)
     } elseif ($ls.Ids -contains $Id) {
-      Write-Host "  $Label — 깔았다" -ForegroundColor Green
+      Write-Host "  $Label — 설치 완료" -ForegroundColor Green
     } else {
       # 까닭을 편다 — 「! 설치 실패」 한 줄만 내면 다음 사람이 열어 볼 자리가 없다.
-      Write-Host "  ! $Label 설치 실패 (code 가 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+      Write-Host "  ! $Label 설치 실패 (code 종료 코드 $rc) — 마지막 출력:" -ForegroundColor Red
       Show-Log $xlog
-      Write-Host '     10초를 기다려도 목록에 안 떴다.'
+      Write-Host '     10초를 기다려도 설치 목록에 나타나지 않았습니다.'
       # 인증서면 다른 병이다 — 「self signed certificate」 는 VS Code 의 흠이 아니라 길에 TLS 를 가로채는 장비가 있는데 Node 가
       #   그 CA 를 모른다는 말이다. 안 짚으면 사람은 VS Code 를 다시 깔러 간다.
       $said = (Get-Content -LiteralPath $xlog -ErrorAction SilentlyContinue) -join "`n"
       if ($said -match 'self.signed certificate|unable to (verify|get local issuer)|UNABLE_TO_|CERT_') {
-        Write-Host '     ↑ 인증서 문제다 — 길에 TLS 를 가로채는 장비가 있는데 Node 가 그 CA 를 모른다.' -ForegroundColor Yellow
-        Write-Host '        VS Code 를 다시 깔아도 안 낫는다. 위 「Node 신뢰 배선」 칸을 먼저 본다.'
+        Write-Host '     ↑ 인증서 문제입니다 — 연결 경로에 TLS 를 가로채는 장비가 있는데 Node 가 그 CA 를 모릅니다.' -ForegroundColor Yellow
+        Write-Host '        VS Code 를 다시 설치해도 해결되지 않습니다. 위 「Node 신뢰 배선」 항목을 먼저 확인하세요.'
       }
-      Write-Host '     VS Code 가 열려 있으면 전부 닫고 다시 눌러 본다.'
-      Write-Host "     손으로 재려면:  code --install-extension $Id --force"
+      Write-Host '     VS Code 가 열려 있으면 모두 닫고 다시 실행하세요.'
+      Write-Host "     직접 설치하려면:  code --install-extension $Id --force"
       $Fails.Add("VS Code 확장 ($Label)")
     }
   }
@@ -4879,7 +4871,7 @@ function Install-NpmCli($Rows) {
   #   조용히 빠진다. 하지도 건너뛰지도 않고 끝 검증에 남긴다.
   $npmRuns = Measure-Runs 'npm' '--version'
   if ($npmRuns -eq 'unmeasured') {
-    foreach ($r in @($Rows)) { Add-UnmeasuredStep $r.Label 'npm --version' '깔렸나 안 묻고 깔지도 올리지도 않았다' }
+    foreach ($r in @($Rows)) { Add-UnmeasuredStep $r.Label 'npm --version' '설치 여부를 확인하지 않고 설치도 업데이트도 하지 않음' }
     return
   }
   if ($npmRuns -ne 'yes') {
@@ -4887,10 +4879,10 @@ function Install-NpmCli($Rows) {
     #   명령이 없는 꾸러미 행(`Module`)은 찾을 이름이 없어 못 깐 것이다.
     foreach ($r in @($Rows)) {
       if ($r.Cmd -and (Get-Command $r.Cmd -ErrorAction SilentlyContinue)) {
-        Write-Host "  $($r.Label) — 있음 $(Format-VerPart '') — npm 이 안 서 그 기록을 못 읽었다"
+        Write-Host "  $($r.Label) — 설치되어 있음 $(Format-VerPart '') — npm 이 실행되지 않아 버전을 확인하지 못함"
       } else {
-        Write-Host "  ! npm 이 없어 $($r.Label) 를 못 깐다 — Node.js 설치부터 본다" -ForegroundColor Red
-        $Fails.Add("$($r.Label) (npm 이 안 닿는다)")
+        Write-Host "  ! npm 이 없어 $($r.Label) 를 설치할 수 없음 — Node.js 설치를 먼저 확인하세요" -ForegroundColor Red
+        $Fails.Add("$($r.Label) (npm 을 찾을 수 없음)")
       }
     }
     return
@@ -4905,17 +4897,17 @@ function Install-NpmCli($Rows) {
     #   자리표시인지 못 쟀으면 그 행은 다시 받지도 올리지도 않고 안 한 걸음으로 남긴다(결정 0141).
     $stub = if ($rec.State -eq 'yes') { Measure-NpmNativeStub $r } else { @{ State = 'no' } }
     if ($stub.State -eq 'unmeasured') {
-      Add-UnmeasuredStep $Label $stub.Probe '진짜 실행 파일이 섰나 모른 채 다시 받지도 올리지도 않았다' $stub.Why
+      Add-UnmeasuredStep $Label $stub.Probe '실제 실행 파일이 있는지 모르는 채로 다시 다운로드도 업데이트도 하지 않음' $stub.Why
       continue
     }
     if ($stub.State -eq 'yes') {
-      Write-Host "  ! $Label — 진짜 실행 파일이 빠지고 자리표시만 있다 · 다시 깐다" -ForegroundColor Yellow
+      Write-Host "  ! $Label — 실제 실행 파일이 없고 빈 껍데기만 있음 · 다시 설치합니다" -ForegroundColor Yellow
       $spec = if ($b) { "$Pkg@$b" } else { $Pkg }
       $todo['install'] += ,@{ Pkg = $Pkg; Cmd = $r.Cmd; Label = $Label; Spec = $spec; Before = $b; Latest = ''; NativeBin = $r.NativeBin }
       continue
     }
     if ($rec.State -eq 'yes' -and -not $NoUpgrade) {
-      Say-Busy $Label 'upcheck' @('npm', "지금 $(Format-VerPart $b)")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
+      Say-Busy $Label 'upcheck' @('npm', "현재 $(Format-VerPart $b)")     # 나가는 명령 앞의 한 줄 — 확장 칸과 같은 까닭
       # 먼저 묻고 다르면 깐다 — 판정하려고 `npm install` 을 돌리면 같은 판이어도 풀이 · 받기 · 링크를 다시 밟고, 판 하나 묻는 GET 은
       #   1초 안팎이다(사외 VDI 는 로그인마다 이 걸음을 지난다). `$NpmViewCap` 울타리를 두르고(#26), 넘기면 최신 판을 「못 쟀다」다.
       # ⚠ **묻는 것도 `@latest` 로 묻는다** — install 이 보는 태그와 다른 것을 물으면 엉뚱한 판과 견주게 되고, 그 어긋남은 「올렸는데
@@ -4929,22 +4921,22 @@ function Install-NpmCli($Rows) {
     }
     $cliAct = Get-InstallAction $rec.State $b $rv $null $false ([bool]$NoUpgrade)
     if ($cliAct -eq 'hold') {
-      Add-UnmeasuredStep $Label $rec.Probe '깔지도 올리지도 않았다' $rec.Why
+      Add-UnmeasuredStep $Label $rec.Probe '설치도 업데이트도 하지 않음' $rec.Why
     } elseif ($cliAct -eq 'present') {
-      Write-Host "  $Label — 있음 $(Format-VerPart $b)"
+      Write-Host "  $Label — 설치되어 있음 $(Format-VerPart $b)"
     } elseif ($cliAct -eq 'latest') {
-      Write-Host "  $Label — 최신  $(Format-VerPart $b)"
+      Write-Host "  $Label — 최신 버전 $(Format-VerPart $b)"
     } elseif ($cliAct -eq 'keep') {
       # 여기서 지는 것을 실패로 세지 않는다 — 그 CLI 는 이미 깔려 깔린 판으로 돈다(저장소 `pull` 이 졌을 때와 같은 규율: 말은 하되
       #   빨강으로 안 끝낸다). 「최신」이라고도 안 찍는다 — 낡은 판이 도는 것과 못 가른다. 판을 모르면 다시 받지 않는다 — 못 닿는
       #   레지스트리에는 install 도 못 닿는다.
       if ($vrc -eq -2) {
-        Write-Host "  $Label — 있음 $(Format-VerPart $b)"
-        Add-UnmeasuredStep "$Label 올리기" "npm view $Pkg@latest version" '최신인지 모른 채 올리지도 않았다' (Format-ProbeWhy $vrc $NpmViewCap)
+        Write-Host "  $Label — 설치되어 있음 $(Format-VerPart $b)"
+        Add-UnmeasuredStep "$Label 업데이트" "npm view $Pkg@latest version" '최신인지 모르는 채로 업데이트하지 않음' (Format-ProbeWhy $vrc $NpmViewCap)
       } elseif (-not $b) {
-        Write-Host "  ! $Label — 깔린 판을 못 읽었다 (``npm ls -g`` 기록에 판이 없다) · 깔린 그대로 간다" -ForegroundColor Yellow
+        Write-Host "  ! $Label — 설치된 버전을 확인하지 못함 (``npm ls -g`` 결과에 버전 없음) · 설치된 그대로 진행" -ForegroundColor Yellow
       } else {
-        Write-Host "  ! $Label — 레지스트리에 판을 못 물었다 (npm view 가 $vrc 로 끝났다) · 옛 판 $b 로 간다" -ForegroundColor Yellow
+        Write-Host "  ! $Label — 레지스트리에서 최신 버전을 확인하지 못함 (npm view 종료 코드 $vrc) · 기존 버전 $b 로 진행" -ForegroundColor Yellow
       }
     } elseif ($cliAct -eq 'upgrade' -or $cliAct -eq 'install') {
       # 깔기는 `install` 일 때만이다 — 이 갈래가 안 내는 할 일이 와도 깔린 것 위에 다시 깔지 않는다. 올리기는 묻은 태그(`@latest`)를
@@ -4969,7 +4961,7 @@ function Install-NpmCli($Rows) {
     $nl  = [IO.Path]::GetTempFileName()
     $nrc = Invoke-Logged 'npm' (@('install','-g') + @($grp | ForEach-Object { $_.Spec })) $nl
     if ($nrc -ne 0 -and $grp.Count -gt 1) {
-      Write-Host "  (CLI $($grp.Count)개를 한 번에 깔다가 npm 이 $nrc 로 끝났다 — 하나씩 다시 깐다)"
+      Write-Host "  (CLI $($grp.Count)개를 한 번에 설치하다가 npm 이 종료 코드 $nrc 로 끝남 — 하나씩 다시 설치합니다)"
       foreach ($g in $grp) {
         Say-Busy $g.Label $act @('npm')
         $g.Log = [IO.Path]::GetTempFileName()
@@ -4990,11 +4982,11 @@ function Install-NpmCli($Rows) {
   foreach ($g in @($ran | Where-Object { $_.Rc -eq 0 })) {
     $stub = Measure-NpmNativeStub $g
     if ($stub.State -eq 'unmeasured') {
-      Add-UnmeasuredStep $g.Label $stub.Probe '진짜 실행 파일이 섰나 모른 채 다시 받지 않았다' $stub.Why
+      Add-UnmeasuredStep $g.Label $stub.Probe '실제 실행 파일이 있는지 모르는 채로 다시 다운로드하지 않음' $stub.Why
       continue
     }
     if ($stub.State -ne 'yes') { continue }
-    Write-Host "  ! $($g.Label) — npm 은 깔았다는데 진짜 실행 파일이 빠졌다 · 한 번 다시 받는다" -ForegroundColor Yellow
+    Write-Host "  ! $($g.Label) — npm 은 설치했다고 하지만 실제 실행 파일이 없음 · 한 번 다시 다운로드합니다" -ForegroundColor Yellow
     Say-Busy $g.Label 'install' @('npm')
     $oldLogs += $g.Log
     $g.Log = [IO.Path]::GetTempFileName()
@@ -5008,33 +5000,33 @@ function Install-NpmCli($Rows) {
   foreach ($g in $ran) {
     $Pkg = $g.Pkg; $Label = $g.Label; $b = $g.Before; $nrc = $g.Rc; $nl = $g.Log
     if ($g.Stub) {
-      Write-Host "  ! $Label 설치 실패 (npm 은 0 으로 끝났는데 두 번 다 진짜 실행 파일이 안 들어왔다 — $($g.NativeBin) 가 자리표시다) — 뱉은 끝 줄:" -ForegroundColor Red
+      Write-Host "  ! $Label 설치 실패 (npm 은 성공으로 끝났지만 두 번 모두 실제 실행 파일이 설치되지 않음 — $($g.NativeBin) 가 빈 껍데기) — 마지막 출력:" -ForegroundColor Red
       Show-Log $nl
       Write-Host "     새 터미널에서:  npm install -g $($g.Spec)"
-      $Fails.Add("$Label (진짜 실행 파일이 빠졌다)")
+      $Fails.Add("$Label (실제 실행 파일 없음)")
       continue
     }
     if ($g.Act -eq 'upgrade') {
       $a = $after[$Pkg].Ver
-      if ($a -and $a -ne $b) { Write-Host "  $Label — 올렸다  $b  ->  $a" -ForegroundColor Green }
+      if ($a -and $a -ne $b) { Write-Host "  $Label — 업데이트 완료 ($b → $a)" -ForegroundColor Green }
       elseif ($nrc -ne 0) {
-        Write-Host "  ! $Label — 올리기 실패 (npm 이 $nrc 로 끝났다) · 옛 판 $b 로 간다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+        Write-Host "  ! $Label — 업데이트 실패 (npm 종료 코드 $nrc) · 기존 버전 $b 로 진행 — 마지막 출력:" -ForegroundColor Yellow
         Show-Log $nl
       }
-      else { Write-Host "  $Label — 최신  $(Format-VerPart $b)" }
+      else { Write-Host "  $Label — 최신 버전 $(Format-VerPart $b)" }
       continue
     }
     # 깔렸나는 npm 이 0 으로 끝났고 그 기록에 섰나다. 판을 못 쟀으면 깔린 것은 그대로 깔린 것이다 — 「설치 실패」로 안 찍는다.
     $got = $after[$Pkg]
     if ($nrc -eq 0 -and $got.State -eq 'yes' -and $got.Ver) {
-      Write-Host "  $Label — 깔았다 $(Format-VerPart $got.Ver)" -ForegroundColor Green
+      Write-Host "  $Label — 설치 완료 $(Format-VerPart $got.Ver)" -ForegroundColor Green
     } elseif ($nrc -eq 0 -and $got.State -ne 'no') {
-      $gotWhy = if ($got.State -eq 'yes') { 'npm 기록에 판이 없다' }
+      $gotWhy = if ($got.State -eq 'yes') { 'npm 결과에 버전 없음' }
                 else { "``$($got.Probe)`` 이 $(if ($got.Why) { $got.Why } else { "${ProbeCap}초 안에 안 끝나" })서" }
-      Write-Host "  $Label — 깔았다 · 판을 못 쟀다 ($gotWhy) — npm 은 0 으로 끝났다" -ForegroundColor Yellow
+      Write-Host "  $Label — 설치 완료 · 버전 확인 안 됨 ($gotWhy) — npm 은 성공으로 끝남" -ForegroundColor Yellow
     } else {
-      $failWhy = if ($nrc -ne 0) { "npm 이 $nrc 로 끝났다" } else { 'npm 은 0 으로 끝났는데 그 기록에 없다' }
-      Write-Host "  ! $Label 설치 실패 ($failWhy) — 뱉은 끝 줄:" -ForegroundColor Red
+      $failWhy = if ($nrc -ne 0) { "npm 종료 코드 $nrc" } else { 'npm 은 성공으로 끝났지만 설치 목록에 없음' }
+      Write-Host "  ! $Label 설치 실패 ($failWhy) — 마지막 출력:" -ForegroundColor Red
       Show-Log $nl
       $Fails.Add($Label)
     }
@@ -5050,23 +5042,23 @@ function Install-NpmCli($Rows) {
 #   `wiring = node-link` — `probe-target` 을 Node 가 보는 홈 자리에 잇는다(`Link` · `Install-NodeHomeLink`)
 function ConvertFrom-NpmDirective([string]$Line, [string[]]$ProductKeys) {
   $parts = @("$Line".Trim() -split '\s+' | Where-Object { $_ })
-  if (-not $parts.Count -or $parts[0] -match '=') { return @{ Why = '절 이름이 없다' } }
+  if (-not $parts.Count -or $parts[0] -match '=') { return @{ Why = '항목 이름 없음' } }
   $name = $parts[0]
   $f = @{}
   foreach ($p in @($parts | Select-Object -Skip 1)) {
-    if ($p -notmatch '^([a-z-]+)=(.+)$') { return @{ Why = "$name — 칸 꼴이 아니다($p)" } }
+    if ($p -notmatch '^([a-z-]+)=(.+)$') { return @{ Why = "$name — 키=값 형식이 아님 ($p)" } }
     if (-not $f.ContainsKey($Matches[1])) { $f[$Matches[1]] = $Matches[2] }
   }
-  if (-not $f['package'])      { return @{ Why = "$name — package 가 없다" } }
-  if (-not $f['probe-target']) { return @{ Why = "$name — probe-target 이 없다" } }
+  if (-not $f['package'])      { return @{ Why = "$name — package 없음" } }
+  if (-not $f['probe-target']) { return @{ Why = "$name — probe-target 없음" } }
   $row = @{ Label = $name; Pkg = $f['package'] }
   if ($f['dist'] -eq 'all')                     { $row.Always = $true }
   elseif ($f['dist'] -eq 'maker')               { $row.Maker = $true }
   elseif ($ProductKeys -contains $f['dist'])    { $row.For = @($f['dist']) }
-  else                                          { return @{ Why = "$name — dist 값을 모른다($($f['dist']))" } }
+  else                                          { return @{ Why = "$name — 알 수 없는 dist 값 ($($f['dist']))" } }
   if ($f['probe'] -eq 'node-resolvable')        { $row.Module = $f['probe-target'] }
   elseif ($f['probe'] -in 'exec-on-path', 'exec-npm-bin') { $row.Cmd = $f['probe-target'] }
-  else                                          { return @{ Why = "$name — probe 값을 모른다($($f['probe']))" } }
+  else                                          { return @{ Why = "$name — 알 수 없는 probe 값 ($($f['probe']))" } }
   if ($f['wiring'] -eq 'node-link') { $row.Link = $f['probe-target'] }
   return @{ Row = $row }
 }
@@ -5084,13 +5076,13 @@ function ConvertFrom-NpmDirective([string]$Line, [string[]]$ProductKeys) {
 function Install-NodeHomeLink($Rows) {
   if (-not $NodeHomeModules) {
     foreach ($r in @($Rows)) {
-      Write-Host "  ! $($r.Label) — 홈에 못 잇는다: Node 가 볼 홈(USERPROFILE)이 비었다" -ForegroundColor Red
-      $Fails.Add("$($r.Label) (홈 배선 — 홈이 없다)")
+      Write-Host "  ! $($r.Label) — 홈 폴더에 연결할 수 없음: Node 가 볼 홈 폴더(USERPROFILE)가 비어 있음" -ForegroundColor Red
+      $Fails.Add("$($r.Label) (홈 폴더 연결 — 홈 폴더 없음)")
     }
     return
   }
   if ($script:NpmGlobalAsk.State -eq 'unmeasured') {
-    foreach ($r in @($Rows)) { Add-UnmeasuredStep "$($r.Label) 홈 배선" $script:NpmGlobalAsk.Probe '홈에 잇지 않았다' $script:NpmGlobalAsk.Why }
+    foreach ($r in @($Rows)) { Add-UnmeasuredStep "$($r.Label) 홈 폴더 연결" $script:NpmGlobalAsk.Probe '홈 폴더에 연결하지 않음' $script:NpmGlobalAsk.Why }
     return
   }
   if ($script:NpmGlobalAsk.State -ne 'asked') { return }
@@ -5103,23 +5095,23 @@ function Install-NodeHomeLink($Rows) {
       if ($it -and ($it.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
         $to = "$(@($it.Target)[0])".TrimEnd('\')
         if ($to -and (Test-Path -LiteralPath $to)) {
-          if ($to -ieq $g.TrimEnd('\')) { Write-Host "  $($r.Label) — 홈에 이어져 있다"; continue }
-          Write-Host "  ! $($r.Label) — $l 이 다른 자리($to)를 가리켜 안 덮는다 · 저장소 밖 스크립트는 그것을 부르고 이 설치는 그것을 안 올린다" -ForegroundColor Yellow
+          if ($to -ieq $g.TrimEnd('\')) { Write-Host "  $($r.Label) — 홈 폴더에 연결되어 있음"; continue }
+          Write-Host "  ! $($r.Label) — $l 이 다른 위치($to)를 가리키고 있어 덮어쓰지 않음 · 저장소 밖 스크립트는 그쪽을 사용하며, 이 설치기는 그쪽을 업데이트하지 않음" -ForegroundColor Yellow
           continue
         }
         [IO.Directory]::Delete($l)   # 정션만 걷힌다 — 따라 들어가지 않는다
         $it = $null
       }
       if ($it) {
-        Write-Host "  ! $($r.Label) — $l 에 다른 것이 서 있어 안 덮는다 · 저장소 밖 스크립트는 그것을 부르고 이 설치는 그것을 안 올린다" -ForegroundColor Yellow
+        Write-Host "  ! $($r.Label) — $l 에 다른 파일이 있어 덮어쓰지 않음 · 저장소 밖 스크립트는 그쪽을 사용하며, 이 설치기는 그쪽을 업데이트하지 않음" -ForegroundColor Yellow
         continue
       }
       New-Item -ItemType Directory -Path (Split-Path -Parent $l) -Force -ErrorAction Stop | Out-Null
       New-Item -ItemType Junction -Path $l -Target $g -ErrorAction Stop | Out-Null
-      Write-Host "  $($r.Label) — 홈에 이었다 ($l)" -ForegroundColor Green
+      Write-Host "  $($r.Label) — 홈 폴더에 연결함 ($l)" -ForegroundColor Green
     } catch {
-      Write-Host "  ! $($r.Label) — 홈에 못 이었다 ($l): $($_.Exception.Message)" -ForegroundColor Red
-      $Fails.Add("$($r.Label) (홈 배선)")
+      Write-Host "  ! $($r.Label) — 홈 폴더에 연결하지 못함 ($l): $($_.Exception.Message)" -ForegroundColor Red
+      $Fails.Add("$($r.Label) (홈 폴더 연결)")
     }
   }
 }
@@ -5164,11 +5156,11 @@ function Install-WingetCli($C) {
   $route = Get-UpgradeRoute $C $cliRuns
   $cliAct = Get-InstallAction $cliRuns $b $route.Found.Ver $route.Listed $true $route.Off
   if ($cliAct -eq 'hold') {
-    Add-UnmeasuredStep $C.Label "$($C.Cmd) $arg" '깔지도 올리지도 않았다' '' "winget install --id $($C.Id) --force"
+    Add-UnmeasuredStep $C.Label "$($C.Cmd) $arg" '설치도 업데이트도 하지 않음' '' "winget install --id $($C.Id) --force"
     return
   }
-  if ($cliAct -eq 'present') { Write-Host "  $($C.Label) — 있음 $(Format-VerPart $b)"; return }
-  if ($cliAct -eq 'latest')  { Write-Host "  $($C.Label) — 최신  $(Format-VerPart $b)"; Write-WingetAhead $C.Label $route; return }
+  if ($cliAct -eq 'present') { Write-Host "  $($C.Label) — 설치되어 있음 $(Format-VerPart $b)"; return }
+  if ($cliAct -eq 'latest')  { Write-Host "  $($C.Label) — 최신 버전 $(Format-VerPart $b)"; Write-WingetAhead $C.Label $route; return }
   # winget 이 없으면 기계 범위로 갈 손은 벤더 MSI 길(깔 때만)뿐이라, 그 길이 없으면 문을 안 묻는다
   $machineGo = -not $noWinget -or ($cliAct -eq 'install' -and (Get-VendorWay $C $cliRuns))
   if ($C.Scope -eq 'machine' -and $machineGo -and -not (Test-ElevationDoor $C.Label $cliAct (Test-Attended) ($cliAct -eq 'install'))) { return }
@@ -5197,19 +5189,19 @@ function Install-WingetCli($C) {
   $vw = Get-VendorWay $C $cliRuns
   if ($vw) {
     $found = Get-VendorLatest $vw
-    if (-not $found.Url) { Write-Host '      · 벤더 판을 못 읽었다 — winget 으로' -ForegroundColor Yellow }
+    if (-not $found.Url) { Write-Host '      · 공식 버전을 확인하지 못함 — winget 으로 설치' -ForegroundColor Yellow }
     elseif ((Invoke-VendorWay $C.Label $C $vw $found 'install').Rc -eq 0) { $placed = $vw }
   }
   $wl = $null
   $rc = 0
   if (-not $placed) {
     if ($noWinget) {
-      Write-Host "  ! winget 이 없어 $($C.Label) 를 못 깐다" -ForegroundColor Red
-      $Fails.Add("$($C.Label) (winget 이 없다)")
+      Write-Host "  ! winget 이 없어 $($C.Label) 를 설치할 수 없음" -ForegroundColor Red
+      $Fails.Add("$($C.Label) (winget 없음)")
       return
     }
     # 기계 범위 MSI 는 받고 까는 몇 분이 조용하다 — 「프로그램」 걸음처럼 미리 말한다(그 침묵을 멎음으로 읽고 창을 닫는다)
-    Say-Busy $C.Label 'install' @('winget', $(if ($C.Scope -eq 'machine') { '몇 분 조용할 수 있다' }))
+    Say-Busy $C.Label 'install' @('winget', $(if ($C.Scope -eq 'machine') { '몇 분간 출력이 없을 수 있음' }))
     $wl = [IO.Path]::GetTempFileName()
     $rc = Invoke-Logged 'winget' (@('install','--id',$C.Id) + $WG) $wl
   }
@@ -5218,13 +5210,13 @@ function Install-WingetCli($C) {
   Update-RuntimePath
   if ($placed -and $placed.Unzip) { Write-ShadowedCopy $C }
   if (Test-Runs $C.Cmd $arg) {
-    Write-Host "  $($C.Label) — 깔았다 $(Format-VerPart (Get-Ver $C.Cmd $arg))" -ForegroundColor Green
+    Write-Host "  $($C.Label) — 설치 완료 $(Format-VerPart (Get-Ver $C.Cmd $arg))" -ForegroundColor Green
   } else {
     # 「됐다는데 안 잡힌다」를 「안 됐다」와 갈라 적는다 — winget 이 PATH 를 안 들어 준 자리이고, 다음에 어디를 팔지가 갈린다.
-    $how = if ($placed) { '벤더 사본이 섰는데' } else { "설치가 $rc 로 끝났는데" }
-    Write-Host "  ! $($C.Label) — $how $($C.Cmd) 가 안 잡힌다$(if ($wl) { ' — 뱉은 끝 줄:' })" -ForegroundColor Red
+    $how = if ($placed) { '공식 버전을 설치했지만' } else { "설치가 종료 코드 $rc 로 끝났지만" }
+    Write-Host "  ! $($C.Label) — $how $($C.Cmd) 를 찾을 수 없음$(if ($wl) { ' — 마지막 출력:' })" -ForegroundColor Red
     if ($wl) { Show-Log $wl }
-    Write-Host "     새 터미널에서 다시 보고, 그래도 없으면:  winget install --id $($C.Id) --source winget"
+    Write-Host "     새 터미널에서 다시 확인하고, 그래도 없으면:  winget install --id $($C.Id) --source winget"
     $Fails.Add("CLI ($($C.Label))")
   }
   if ($wl) { Remove-Item $wl -ErrorAction SilentlyContinue }
@@ -5318,18 +5310,18 @@ function Test-ElevationDoor([string]$Label, [string]$Act, [bool]$Attended, [bool
                             [string]$Why = '', [string]$Ask = '', [string]$Hand = '', [string]$Still = '') {
   $go = Get-ElevationGo (Read-ElevationState) $Attended
   if ($go -eq 'go') { return $true }
-  $did = if ($Act -eq 'install') { '안 깔았다' } else { '안 올렸다' }
+  $did = if ($Act -eq 'install') { '설치하지 않음' } else { '업데이트하지 않음' }
   $head = if ($Why) { "$Why · " } else { '' }
-  $tail = (@($Still, $(if ($Hand) { "손으로: $Hand" })) | Where-Object { $_ } | ForEach-Object { " · $_" }) -join ''
+  $tail = (@($Still, $(if ($Hand) { "직접 실행: $Hand" })) | Where-Object { $_ } | ForEach-Object { " · $_" }) -join ''
   if ($go -eq 'later') {
-    Write-Host "  ! $Label — ${head}관리자 승인 창이 뜨는 PC 인데 누를 사람이 없는 판이라 $did · 설치 창으로 다시 누르면 승인 창이 한 번 뜬다$tail" -ForegroundColor Yellow
+    Write-Host "  ! $Label — ${head}관리자 승인 창이 뜨는 PC 인데 승인할 사람이 없는 실행이라 $did · 설치 창에서 다시 실행하면 승인 창이 한 번 뜹니다$tail" -ForegroundColor Yellow
     return $false
   }
   $ask = if ($Ask) { $Ask } else { $Label }
-  $line = "  ! $Label — ${head}이 PC 는 관리자 승격이 안 서 $did$tail · IT 에 「$ask」 설치를 요청한다"
+  $line = "  ! $Label — ${head}이 PC 는 관리자 권한을 얻을 수 없어 $did$tail · IT 에 「$ask」 설치를 요청하세요"
   if ($Must) {
     Write-Host $line -ForegroundColor Red
-    $Fails.Add("$Label (관리자 승격이 안 서는 PC — IT 에 요청)")
+    $Fails.Add("$Label (관리자 권한을 얻을 수 없는 PC — IT 에 요청)")
   } else {
     Write-Host $line -ForegroundColor Yellow
   }
@@ -5349,44 +5341,44 @@ function Install-VcRuntime([bool]$Attended) {
   # 「올릴 것인가」의 답은 winget 목록이 아니라 문턱이 든다
   $below = if ($m.State -eq 'yes') { [version]$m.Ver -lt $VcRuntimeMin } else { $null }
   $act = Get-InstallAction $m.State $m.Ver '' $below $false $false
-  if ($act -eq 'hold') { Add-UnmeasuredStep $L $m.Probe '깔지도 올리지도 않았다' $m.Why; return }
-  if ($act -eq 'latest') { Write-Host "  $L — 있음  $(Format-VerPart $m.Ver) · $VcRuntimeMin 이상"; return }
+  if ($act -eq 'hold') { Add-UnmeasuredStep $L $m.Probe '설치도 업데이트도 하지 않음' $m.Why; return }
+  if ($act -eq 'latest') { Write-Host "  $L — 설치되어 있음 $(Format-VerPart $m.Ver) · $VcRuntimeMin 이상"; return }
   if ($act -ne 'install' -and $act -ne 'upgrade') { return }
-  $now = if ($m.Ver) { "지금 $($m.Ver)" } else { '없다' }
-  $still = '나머지 설치는 그대로 간다 · 이 런타임에 기대는 파이썬 패키지(markitdown · PPT 검수)만 이 PC 에서 import 하다 죽는다'
+  $now = if ($m.Ver) { "현재 $($m.Ver)" } else { '없음' }
+  $still = '나머지 설치는 계속 진행 · 이 런타임이 필요한 파이썬 패키지(markitdown · PPT 검수)만 이 PC 에서 실행되지 않음'
   if ($noWinget) {
-    Write-Host "  ! $L — $now · $VcRuntimeMin 보다 낮은데 winget 이 없어 못 올린다 · $still · IT 에 「Microsoft Visual C++ 재배포 가능 패키지(x64) $VcRuntimeMin 이상」을 요청한다" -ForegroundColor Red
-    $Fails.Add("$L (winget 이 없다)")
+    Write-Host "  ! $L — $now · $VcRuntimeMin 보다 낮은데 winget 이 없어 업데이트할 수 없음 · $still · IT 에 「Microsoft Visual C++ 재배포 가능 패키지(x64) $VcRuntimeMin 이상」을 요청하세요" -ForegroundColor Red
+    $Fails.Add("$L (winget 없음)")
     return
   }
-  if (-not (Test-ElevationDoor $L $act $Attended $true "$now · $VcRuntimeMin 보다 낮다" "Microsoft Visual C++ 재배포 가능 패키지(x64) $VcRuntimeMin 이상" $hand $still)) { return }
-  Say-Busy $L $act @('winget', $now, '관리자 승인이 들 수 있다')
+  if (-not (Test-ElevationDoor $L $act $Attended $true "$now · $VcRuntimeMin 보다 낮음" "Microsoft Visual C++ 재배포 가능 패키지(x64) $VcRuntimeMin 이상" $hand $still)) { return }
+  Say-Busy $L $act @('winget', $now, '관리자 승인이 필요할 수 있음')
   $log = [IO.Path]::GetTempFileName()
   $rc = Invoke-LoggedCapped 'winget' (@('install','--id',$VcRuntime.Id) + $WG) $log $VcRedistCap
   if ($rc -eq -2) { Add-ProbeOverflow "winget install --id $($VcRuntime.Id)" $VcRedistCap }
   $after = Measure-VcRuntime
   if ($after.State -eq 'yes' -and [version]$after.Ver -ge $VcRuntimeMin) {
-    if ($m.Ver) { Write-Host "  $L — 올렸다  $($m.Ver)  ->  $($after.Ver)" -ForegroundColor Green }
-    else        { Write-Host "  $L — 깔았다 $(Format-VerPart $after.Ver)" -ForegroundColor Green }
+    if ($m.Ver) { Write-Host "  $L — 업데이트 완료 ($($m.Ver) → $($after.Ver))" -ForegroundColor Green }
+    else        { Write-Host "  $L — 설치 완료 $(Format-VerPart $after.Ver)" -ForegroundColor Green }
   } else {
-    $fileNow = if ($after.State -eq 'yes') { "파일은 $($after.Ver)" } elseif ($after.State -eq 'no') { '파일이 없다' } else { '파일의 판을 못 읽었다' }
+    $fileNow = if ($after.State -eq 'yes') { "파일 버전 $($after.Ver)" } elseif ($after.State -eq 'no') { '파일 없음' } else { '파일 버전 확인 안 됨' }
     if ($rc -eq -2) {
-      Write-Host "  ! $L — 올리지 못했다: winget 이 $(Format-ProbeWhy $rc $VcRedistCap)서 거뒀다(승인 창이 사람을 기다렸을 수 있다) · $fileNow · $still · 설치 창으로 다시 누르거나 손으로: $hand" -ForegroundColor Red
-      $Fails.Add("$L (winget 이 ${VcRedistCap}초 안에 안 끝났다)")
+      Write-Host "  ! $L — 업데이트 실패: winget 이 $(Format-ProbeWhy $rc $VcRedistCap)서 중지함 (승인 창이 응답을 기다렸을 수 있음) · $fileNow · $still · 설치 창에서 다시 실행하거나 직접 실행: $hand" -ForegroundColor Red
+      $Fails.Add("$L (winget 이 ${VcRedistCap}초 안에 끝나지 않음)")
     } elseif ($VcRedistRcReboot -contains $rc) {
-      Write-Host "  ! $L — winget 이 PC 를 다시 시작해야 끝난다고 했다($(Format-ProbeWhy $rc 0)서) · $fileNow · 다시 시작한 뒤 설치를 다시 누르면 선다 · $still" -ForegroundColor Red
-      $Fails.Add("$L (PC 를 다시 시작해야 선다)")
+      Write-Host "  ! $L — winget 이 PC 를 다시 시작해야 완료된다고 함 ($(Format-ProbeWhy $rc 0)서) · $fileNow · 다시 시작한 뒤 설치를 다시 실행하세요 · $still" -ForegroundColor Red
+      $Fails.Add("$L (PC 다시 시작 필요)")
     } elseif ($VcRedistRcCancelled -contains $rc) {
-      Write-Host "  ! $L — 관리자 승인이 안 나서 못 올렸다($now) · $still · 승인할 수 있을 때 설치를 다시 누르거나 손으로: $hand" -ForegroundColor Red
-      $Fails.Add("$L (관리자 승인이 안 났다)")
+      Write-Host "  ! $L — 관리자 승인을 받지 못해 업데이트하지 못함 ($now) · $still · 승인할 수 있을 때 설치를 다시 실행하거나 직접 실행: $hand" -ForegroundColor Red
+      $Fails.Add("$L (관리자 승인 없음)")
     } elseif ($VcRedistRcNewer -contains $rc) {
-      Write-Host "  ! $L — winget 은 같거나 더 새 판이 이미 깔렸다고 하는데 $fileNow — 다시 시작이 남았을 수 있다 · 다시 시작해도 그대로면 「설정 → 앱」에서 Microsoft Visual C++ 2015-2022 재배포 가능 패키지(x64)를 「수정」한다 · $still" -ForegroundColor Red
-      $Fails.Add("$L (winget 은 깔렸다는데 파일이 옛 판이다)")
+      Write-Host "  ! $L — winget 은 같거나 더 새 버전이 이미 설치되어 있다고 하지만 $fileNow — PC 다시 시작이 필요할 수 있음 · 다시 시작해도 그대로면 「설정 → 앱」에서 Microsoft Visual C++ 2015-2022 재배포 가능 패키지(x64)를 「수정」하세요 · $still" -ForegroundColor Red
+      $Fails.Add("$L (winget 은 설치됐다고 하지만 파일은 이전 버전)")
     } else {
-      Write-Host "  ! $L — 올리지 못했다(winget 이 $(Format-ProbeWhy $rc 0)서) · $fileNow · $still — 뱉은 끝 줄:" -ForegroundColor Red
+      Write-Host "  ! $L — 업데이트 실패 (winget 이 $(Format-ProbeWhy $rc 0)서) · $fileNow · $still — 마지막 출력:" -ForegroundColor Red
       Show-Log $log
-      Write-Host "     손으로:  $hand"
-      $Fails.Add("$L (winget 이 $rc 로 끝났다)")
+      Write-Host "     직접 실행:  $hand"
+      $Fails.Add("$L (winget 종료 코드 $rc)")
     }
   }
   Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
@@ -5408,7 +5400,7 @@ function Install-VcRuntime([bool]$Attended) {
 function Read-FreeSkillTable([string]$Table) {
   $t = @{ Homes = @{}; Why = '' }
   $lines = $null
-  try { $lines = [IO.File]::ReadAllLines($Table, [Text.Encoding]::UTF8) } catch { $t.Why = "갈 곳 표를 못 읽었다 ($Table · $(Say-Why $_))"; return $t }
+  try { $lines = [IO.File]::ReadAllLines($Table, [Text.Encoding]::UTF8) } catch { $t.Why = "설치 위치 표를 읽지 못함 ($Table · $(Say-Why $_))"; return $t }
   $expand = { param([string]$p)
     $p = $p.TrimEnd('/')
     if ($p.StartsWith('~/')) { $p = Join-Path $env:USERPROFILE ($p.Substring(2).Replace('/', '\')) }
@@ -5429,7 +5421,7 @@ function Read-FreeSkillTable([string]$Table) {
     $t.Homes[$r.Tool] = @{ Skills = (& $expand $w.At); Ledger = $ledger; Root = (Split-Path $ledger -Parent)
                            Not = @($nots | Where-Object { $_.Item -ceq $r.Item -and ($_.Tool -ceq $r.Tool -or $_.Tool -ceq '*') } | ForEach-Object { $_.Name }) }
   }
-  if (-not $t.Homes.Count) { $t.Why = "갈 곳 표에 칸 없이 까는 걸음이 쓸 기록 줄(was … shared)이 없다 ($Table)" }
+  if (-not $t.Homes.Count) { $t.Why = "설치 위치 표에 기본 설치 스킬용 기록 줄(was … shared)이 없음 ($Table)" }
   return $t
 }
 
@@ -5467,9 +5459,9 @@ function Install-FreeSkills([string]$Tool) {
   $p     = $h.Place
   if (-not $p) {
     if ($names.Count) {
-      $why = if ($FreeSkillTable.Why) { $FreeSkillTable.Why } else { '갈 곳 표에 이 홈의 기록 줄(was … shared)이 없다' }
-      Write-Host "  ! $($h.Label) — 스킬 자리를 몰라 못 깐다: $why" -ForegroundColor Red
-      $Fails.Add("$($h.Label) 스킬 (갈 곳 표에 자리가 없음)")
+      $why = if ($FreeSkillTable.Why) { $FreeSkillTable.Why } else { '설치 위치 표에 이 홈의 기록 줄(was … shared)이 없음' }
+      Write-Host "  ! $($h.Label) — 스킬 설치 위치를 몰라 설치할 수 없음: $why" -ForegroundColor Red
+      $Fails.Add("$($h.Label) 스킬 (설치 위치 표에 항목 없음)")
     }
     return
   }
@@ -5485,8 +5477,8 @@ function Install-FreeSkills([string]$Tool) {
   foreach ($n in $names) {
     $from = Join-Path $KitSkills $n
     if (-not (Test-Path -LiteralPath (Join-Path $from 'SKILL.md'))) {
-      Write-Host "  ! $($h.Label) 스킬 $n — 짐에 없다" -ForegroundColor Red
-      $Fails.Add("$($h.Label) 스킬 $n (짐에 없음)")
+      Write-Host "  ! $($h.Label) 스킬 $n — 설치 패키지에 없음" -ForegroundColor Red
+      $Fails.Add("$($h.Label) 스킬 $n (설치 패키지에 없음)")
       continue
     }
     $to = Join-Path $p.Skills $n
@@ -5496,7 +5488,7 @@ function Install-FreeSkills([string]$Tool) {
         New-Item -ItemType Directory -Path $aside -Force | Out-Null
       }
       Move-Item -LiteralPath $to -Destination (Join-Path $aside $n) -Force
-      Write-Host "  ! $($h.Label) 스킬 $n — 같은 이름의 폴더가 우리 기록에 없어 통째로 옮겨 두고 깐다 (옮긴 자리: $aside)" -ForegroundColor Yellow
+      Write-Host "  ! $($h.Label) 스킬 $n — 같은 이름의 폴더가 설치 기록에 없어 통째로 옮겨 두고 설치 (옮긴 위치: $aside)" -ForegroundColor Yellow
     }
     New-Item -ItemType Directory -Path $to -Force | Out-Null
     Copy-Item -Path (Join-Path $from '*') -Destination $to -Recurse -Force
@@ -5523,22 +5515,22 @@ function Install-FreeSkills([string]$Tool) {
       }
     }
     if ($staleFail.Count) {
-      Write-Host "  ! $($h.Label) 스킬 $n — 짐에 없는 파일을 못 옮겼다: $($staleFail -join ' · ')" -ForegroundColor Red
-      $Fails.Add("$($h.Label) 스킬 $n (짐에 없는 파일 옮기기)")
+      Write-Host "  ! $($h.Label) 스킬 $n — 설치 패키지에 없는 파일을 옮기지 못함: $($staleFail -join ' · ')" -ForegroundColor Red
+      $Fails.Add("$($h.Label) 스킬 $n (설치 패키지에 없는 파일 옮기기)")
     }
-    Write-Host "  $($h.Label) 스킬 $n — 깔았다" -ForegroundColor Green
     if ($staleMoved.Count) {
-      Write-Host "    짐에 없는 파일 $($staleMoved.Count) 개를 옮겨 두었다: $($staleMoved -join ' · ') (옮긴 자리: $staleKept)" -ForegroundColor Green
+      Write-Host "    $n — 설치 패키지에 없는 파일 $($staleMoved.Count)개를 옮겨 둠: $($staleMoved -join ' · ') (옮긴 위치: $staleKept)" -ForegroundColor Green
     }
     $done += $n
   }
+  if ($done.Count) { Write-Host "  $($h.Label) 스킬 — 설치 완료 ($($done -join ' · '))" -ForegroundColor Green }
   $gone = @($ours | Where-Object { $names -notcontains $_ } |
             Where-Object { Test-Path -LiteralPath (Join-Path $p.Skills $_) -PathType Container })
   if ($gone.Count) {
     New-Item -ItemType Directory -Path $bk -Force | Out-Null
     foreach ($n in $gone) {
       Move-Item -LiteralPath (Join-Path $p.Skills $n) -Destination (Join-Path $bk $n) -Force
-      Write-Host "  $($h.Label) 스킬 $n — 이번에 깔 목록에 없어 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
+      Write-Host "  $($h.Label) 스킬 $n — 이번 설치 목록에 없어 제거함 (옮긴 위치: $bk)" -ForegroundColor Green
     }
   }
   $keep = @(@($ours | Where-Object { $names -contains $_ }) + $done | Select-Object -Unique)
@@ -5579,17 +5571,19 @@ function Invoke-ToolHomes([string]$Hand, [string[]]$HandArgs, [int]$CapSec = 0) 
   }
 }
 
-# 손의 줄 하나를 이 설치기의 꼴로 찍는다 — `CHANGE=` 은 칸 셋(동사 · 자리 · 까닭)을 한 줄로, `WARN=` 은 노랑, `ERROR=` 은 빨강,
-#   꼴 밖의 줄(파이썬이 못 뜬 까닭 같은)은 그대로. 초록 · 빨강 판정은 부르는 자리가 종료 값과 `Errors` 로 내린다.
+# 손의 줄 하나를 이 설치기의 꼴로 찍는다 — `WARN=` 은 노랑, `ERROR=` 은 빨강, 꼴 밖의 줄(파이썬이 못 뜬 까닭 같은)은 그대로.
+#   `CHANGE=`(파일 하나를 바꾼 줄)은 화면에 안 올린다 — 부르는 자리가 바꾼 수를 결과 줄 하나에 담고, 원문은 세부 기록이 든다.
+#   `backup` 줄만은 올린다 — 사람이 고친 파일을 백업하고 덮은 자리라, 사람이 제 고침이 어디로 갔는지 알아야 한다.
+#   초록 · 빨강 판정은 부르는 자리가 종료 값과 `Errors` 로 내린다.
 function Show-ToolHomesLine([string]$Line) {
   $ln = "$Line".TrimEnd()
   if (-not $ln -or $ln -like 'CHANGED=*') { return }
   if ($ln -like 'CHANGE=*') {
     $f = @($ln.Substring('CHANGE='.Length).Split("`t"))
-    $where = if ($f.Count -gt 1) { " $($f[1])" } else { '' }
-    $why = if ($f.Count -gt 2) { " — $($f[2])" } else { '' }
-    Write-Host "     $($f[0])$where$why"
-  } elseif ($ln -like 'WARN=*') {
+    if ($f[0] -ceq 'backup' -and $f.Count -gt 1) { Write-Host "     ! 백업한 뒤 새 버전으로 바꿈 — $($f[1])" -ForegroundColor Yellow }
+    return
+  }
+  if ($ln -like 'WARN=*') {
     Write-Host "     ! $($ln.Substring('WARN='.Length))" -ForegroundColor Yellow
   } elseif ($ln -like 'ERROR=*') {
     Write-Host "     ! $($ln.Substring('ERROR='.Length))" -ForegroundColor Red
@@ -5603,25 +5597,25 @@ function Show-ToolHomesLine([string]$Line) {
 #   (그 칸이 든 물음이 멎었을 뿐 홈은 모른다 — 결정 0141).
 function Get-ToolHomesCheck([string]$Hand) {
   $name = '규범 · 룰 · 에이전트 · 스킬'
-  if (-not (Test-Path -LiteralPath $Hand -PathType Leaf)) { return @{ Name = "$name (못 쟀다 — 짐에 손이 없다: $Hand)"; Ok = $false } }
+  if (-not (Test-Path -LiteralPath $Hand -PathType Leaf)) { return @{ Name = "$name (확인하지 못함 — 설치 패키지에 설치 도구가 없음: $Hand)"; Ok = $false } }
   # 울타리 안에서 묻는다(`$ToolHomesCheckCap`) — 멎은 python 하나가 검증을 영구히 세운다(#26 과 같은 꼴). 넘기면 「못 쟀다」 칸이다
   $Result = Invoke-ToolHomes $Hand @('check') $ToolHomesCheckCap
   if ($Result.Rc -eq -2) {
     Add-ProbeOverflow 'python tool-homes.py check' $ToolHomesCheckCap
     return @{ Name = $name; State = 'unmeasured'; Probe = 'python tool-homes.py check'; Why = (Format-ProbeWhy -2 $ToolHomesCheckCap) }
   }
-  if ($Result.Rc -eq 0) { return @{ Name = "$name (홈이 tool-homes.conf 대로다)"; Ok = $true } }
+  if ($Result.Rc -eq 0) { return @{ Name = "$name (홈이 tool-homes.conf 와 일치)"; Ok = $true } }
   if ($Result.Rc -eq 1) {
     $places = @($Result.Changes | ForEach-Object { @($_.Split("`t"))[1] } | Where-Object { $_ } | Select-Object -Unique)
     $shown = @($places) + @($Result.Errors)
-    return @{ Name = "$name (홈이 tool-homes.conf 와 다르다 — $($shown -join ' · '))"; Ok = $false }
+    return @{ Name = "$name (홈이 tool-homes.conf 와 다름 — $($shown -join ' · '))"; Ok = $false }
   }
   $other = @($Result.Lines | Where-Object { $_ -notmatch '^(CHANGE|CHANGED|WARN|ERROR)=' })
   $why = if ($Result.Errors.Count) { $Result.Errors[-1] }
-         elseif ($Result.Rc -eq -1) { 'python 을 못 불렀다' }
+         elseif ($Result.Rc -eq -1) { 'python 을 실행하지 못함' }
          elseif ($other.Count) { $other[0].Trim() }
-         else { "종료 $($Result.Rc)" }
-  return @{ Name = "$name (못 쟀다 — $why)"; Ok = $false }
+         else { "종료 코드 $($Result.Rc)" }
+  return @{ Name = "$name (확인하지 못함 — $why)"; Ok = $false }
 }
 
 #endregion 도구 홈의 규범 · 룰 · 스킬
@@ -5696,7 +5690,7 @@ function Get-ClaudeHookWiring($Cfg, [string]$Shell, [string]$KitShell) {
   $head = Get-HookHead $headAt
   $out = @{ Events = @(); Missing = @(); BadMatcher = @(); Why = '' }
   if (-not $head -or -not $head.ContainsKey('events')) {
-    $out.Why = "껍데기 $Shell 의 등록 머리말을 못 읽었다 ($headAt)"
+    $out.Why = "훅 스크립트 $Shell 의 등록 정보를 읽지 못함 ($headAt)"
     return $out
   }
   $out.Events = @($head['events'].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -5738,8 +5732,8 @@ function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts,
   if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) { return }
   $gone = @($Parts | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
   if ($gone.Count) {
-    Write-Host "  ! $Label — 고르지 않았는데 씨앗에 걷는 손이 없어 못 걷었다 ($($gone -join ' · '))" -ForegroundColor Red
-    $script:Fails.Add("$Label 걷기 (씨앗이 없다)")
+    Write-Host "  ! $Label — 선택하지 않았지만 씨앗에 제거 스크립트가 없어 제거하지 못함 ($($gone -join ' · '))" -ForegroundColor Red
+    $script:Fails.Add("$Label 제거 (씨앗 없음)")
     return
   }
   # 파이썬을 묻는 한 번에도 울타리를 두른다 — 멎으면 그 판을 못 잰 것이라 걷지도 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141).
@@ -5748,31 +5742,31 @@ function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts,
   try { $prc = Invoke-LoggedCapped 'python' $Probe $pl $ProbeCap -Quiet } finally { Remove-Item -LiteralPath $pl, "$pl.err" -ErrorAction SilentlyContinue }
   if ($prc -eq -2) {
     Add-ProbeOverflow "python $($Probe -join ' ')" $ProbeCap
-    Add-UnmeasuredStep "$Label 걷기" "python $($Probe -join ' ')" '걷지도 건너뛰지도 않았다'
+    Add-UnmeasuredStep "$Label 제거" "python $($Probe -join ' ')" '제거도 건너뛰기도 하지 않음'
     return
   }
   if ($prc -ne 0) {
-    Write-Host "  ! $Label — 고르지 않았는데 $ProbeWhat 안 서서 못 걷었다 · 우리 훅이 $Config 에 남았을 수 있다" -ForegroundColor Yellow
+    Write-Host "  ! $Label — 선택하지 않았지만 $ProbeWhat 실행되지 않아 제거하지 못함 · 설치기 훅이 $Config 에 남아 있을 수 있음" -ForegroundColor Yellow
     return
   }
   $log = [IO.Path]::GetTempFileName()
   $rc = Invoke-Logged 'python' (@('-X', 'utf8', $Parts[0]) + $HandArgs) $log
   $said = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
   if ($rc -ne 0 -or @($said | Where-Object { $_ -like 'ERROR=*' }).Count) {
-    Write-Host "  ! $Label — 고르지 않아 우리 훅을 걷으려 했는데 못 걷었다(종료 $rc) · $Config 는 그대로다. 걷는 손이 뱉은 끝 줄:" -ForegroundColor Red
+    Write-Host "  ! $Label — 선택하지 않아 설치기 훅을 제거하려 했지만 실패 (종료 코드 $rc) · $Config 는 그대로입니다. 마지막 출력:" -ForegroundColor Red
     Show-Log $log
-    $script:Fails.Add("$Label 걷기 (못 걷었다)")
+    $script:Fails.Add("$Label 제거 (실패)")
   } else {
     if ($said -contains 'CHANGED=1') {
-      Write-Host "  $Label — 고르지 않아 우리 훅을 걷었다" -ForegroundColor Green
+      Write-Host "  $Label — 선택하지 않아 설치기 훅을 제거함" -ForegroundColor Green
       $bak = @($said | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
-      if ($bak) { Write-Host "     고치기 전 것은 $($bak.Substring('BACKUP='.Length)) 에 떠 뒀다" }
+      if ($bak) { Write-Host "     변경 전 파일은 $($bak.Substring('BACKUP='.Length)) 에 백업함" }
     } else {
-      Write-Host "  $Label — 고르지 않았다 · 걷을 우리 훅이 없다"
+      Write-Host "  $Label — 선택 안 함 · 제거할 설치기 훅 없음"
     }
     $skipped = @($said | Where-Object { $_ -like 'SKIP=*' })
     if ($skipped.Count) {
-      Write-Host "  ! $Label — 못 알아보는 꼴로 적힌 이벤트는 안 건드렸다: $($skipped -join ' ') · 그 안의 우리 훅은 남았을 수 있다" -ForegroundColor Yellow
+      Write-Host "  ! $Label — 알아볼 수 없는 형식의 이벤트는 변경하지 않음: $($skipped -join ' ') · 그 안의 설치기 훅은 남아 있을 수 있음" -ForegroundColor Yellow
     }
   }
   Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
@@ -5817,8 +5811,8 @@ function Invoke-BrowserMcp([string]$Adapter, [string[]]$AdapterArgs, [int]$CapSe
 #   「시간을 넘겼다」로 읽힌다(뜻은 「도구 시간 한도를 맞췄다」다). 모르는 동사는 그대로 낸다.
 function Show-BrowserMcpLine([string]$Label, [string]$Line) {
   $hostName = @{ claude = 'Claude'; codex = 'Codex'; agy = 'agy' }
-  $verb = @{ add = ' 에 달았다'; readd = ' 에 다시 달았다'; fix = ' 등록을 고쳤다'; remove = ' 에서 걷었다'
-             timeout = ' 의 도구 시간 한도(tool_timeout_sec)를 맞췄다' }
+  $verb = @{ add = ' 에 등록함'; readd = ' 에 다시 등록함'; fix = ' 등록을 수정함'; remove = ' 에서 제거함'
+             timeout = ' 의 도구 시간 제한(tool_timeout_sec)을 설정함' }
   $ln = "$Line".Trim()
   if ($ln -like 'CHANGE=*') {
     $c = $ln.Substring('CHANGE='.Length)
@@ -5829,7 +5823,7 @@ function Show-BrowserMcpLine([string]$Label, [string]$Line) {
     Write-Host "  $Label — $say" -ForegroundColor Green
   }
   elseif ($ln -like 'WARN=*')  { Write-Host "  ! $Label — $($ln.Substring('WARN='.Length))" -ForegroundColor Yellow }
-  elseif ($ln -like 'SKIP=*')  { Write-Host "  ! $Label — 안 달았다: $($ln.Substring('SKIP='.Length))" -ForegroundColor Yellow }
+  elseif ($ln -like 'SKIP=*')  { Write-Host "  ! $Label — 등록하지 않음: $($ln.Substring('SKIP='.Length))" -ForegroundColor Yellow }
   elseif ($ln -like 'ERROR=*') { Write-Host "  ! $Label — $($ln.Substring('ERROR='.Length))" -ForegroundColor Red }
 }
 
@@ -5840,7 +5834,7 @@ function Show-BrowserMcpLines([string]$Label, $Result, [switch]$Replay) {
   if ($Result.Rc -ne 0 -or @($Result.Lines | Where-Object { $_ -like 'ERROR=*' }).Count) {
     $script:Fails.Add("$Label (종료 $($Result.Rc))")
   } elseif ($Result.Lines -contains 'CHANGED=0' -and -not @($Result.Lines | Where-Object { $_ -match '^(WARN|SKIP)=' }).Count) {
-    Write-Host "  $Label — 이미 맞다"
+    Write-Host "  $Label — 이미 설정됨"
   }
 }
 
@@ -5848,7 +5842,7 @@ function Show-BrowserMcpLines([string]$Label, $Result, [switch]$Replay) {
 #   띄워 이동 · 그림 한 장(「우리 크로미움이 여기서 뜨나」). 0 맞다 `[O]` · 1 어긋났다 `[X]` · 2 못 쟀다 `[?]`(결정 0141).
 function Get-BrowserMcpCheck([string]$Adapter, [string[]]$Picked, [string[]]$Unpicked) {
   $name = '브라우저 MCP'
-  if (-not (Test-Path -LiteralPath $Adapter -PathType Leaf)) { return @{ Name = "$name (씨앗에 어댑터가 없다: $Adapter)"; Ok = $false } }
+  if (-not (Test-Path -LiteralPath $Adapter -PathType Leaf)) { return @{ Name = "$name (씨앗에 등록 도구가 없음: $Adapter)"; Ok = $false } }
   $hostArgs = @()
   foreach ($h in $Picked)   { $hostArgs += @('--host', $h) }
   foreach ($h in $Unpicked) { $hostArgs += @('--gone', $h) }
@@ -5859,9 +5853,9 @@ function Get-BrowserMcpCheck([string]$Adapter, [string[]]$Picked, [string[]]$Unp
   }
   $said = @($r.Lines | Where-Object { $_ -match '^(DIFF|UNMEASURED)=' -or $_ -like 'LIVE=fail*' } | ForEach-Object { $_ -replace '^[A-Z]+=', '' })
   $live = @($r.Lines | Where-Object { $_ -like 'LIVE=ok*' } | ForEach-Object { $_.Substring('LIVE=ok '.Length) }) | Select-Object -First 1
-  if ($r.Rc -eq 0) { return @{ Name = "$name (등록이 맞고 브라우저가 뜬다$(if ($live) { " — $live" }))"; Ok = $true } }
-  if ($r.Rc -eq 2) { return @{ Name = "$name ($($said -join ' · '))"; State = 'unmeasured'; Probe = 'browser-mcp.py check'; Why = '끝까지 못 재' } }
-  $why = if ($said.Count) { $said -join ' · ' } elseif ($r.Rc -eq -1) { 'python 을 못 불렀다' } else { "종료 $($r.Rc)" }
+  if ($r.Rc -eq 0) { return @{ Name = "$name (등록 정상 · 브라우저 실행 확인$(if ($live) { " — $live" }))"; Ok = $true } }
+  if ($r.Rc -eq 2) { return @{ Name = "$name ($($said -join ' · '))"; State = 'unmeasured'; Probe = 'browser-mcp.py check'; Why = '끝까지 확인하지 못해' } }
+  $why = if ($said.Count) { $said -join ' · ' } elseif ($r.Rc -eq -1) { 'python 을 실행하지 못함' } else { "종료 $($r.Rc)" }
   return @{ Name = "$name ($why)"; Ok = $false }
 }
 
@@ -5889,7 +5883,7 @@ function Set-ToolAutoRun($Row) {
     # 「python 이 서나」는 세 값으로 묻는다 — 못 잰 것(넘김 · 선 이름이 짐)을 「없다」로 읽지 않는다(결정 0141 · `Test-Runs` 곁말)
     $tpy = Measure-Runs 'python' '--version'
     if ($tpy -eq 'unmeasured') { return @{ Did = 'unmeasured'; Probe = 'python --version'; Why = (Get-ProbeWhy 'python --version') } }
-    if ($tpy -ne 'yes') { return @{ Did = 'nopython'; Why = 'python 이 안 선다' } }
+    if ($tpy -ne 'yes') { return @{ Did = 'nopython'; Why = 'python 이 실행되지 않음' } }
     # `--version` 이 선 뒤 다시 부르는 자리라 울타리를 두른다 — 넘기면 못 잰 것이라 심지도 건너뛰지도 않는다(결정 0141)
     $tl = [IO.Path]::GetTempFileName()
     # `-I` — 작업 폴더의 `tomllib.py` 를 안 집는다(3.11 이 전제라 받는다)
@@ -5898,7 +5892,7 @@ function Set-ToolAutoRun($Row) {
       Add-ProbeOverflow 'python -c import tomllib' $ProbeCap
       return @{ Did = 'unmeasured'; Probe = 'python -c import tomllib'; Why = (Format-ProbeWhy -2 $ProbeCap) }
     }
-    if ($trc -ne 0) { return @{ Did = 'nopython'; Why = '파이썬 3.11 이상(tomllib)이 안 선다' } }
+    if ($trc -ne 0) { return @{ Did = 'nopython'; Why = 'Python 3.11 이상(tomllib)이 실행되지 않음' } }
     $tomlTimed = $script:ProbeTimedOut.Count
     $old = ''
     $oldBytes = $null
@@ -5907,7 +5901,7 @@ function Set-ToolAutoRun($Row) {
       $old = Read-TextOf $oldBytes
       $now = Read-TomlTopKeys $Row.Path $guard
       if ($null -eq $now -and $script:ProbeTimedOut.Count -gt $tomlTimed) { return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
-      if ($null -eq $now) { return @{ Did = 'broken'; Why = 'TOML 로 못 읽었다' } }
+      if ($null -eq $now) { return @{ Did = 'broken'; Why = 'TOML 로 읽지 못함' } }
       $have = @($guard | Where-Object { $now.PSObject.Properties[$_] } | ForEach-Object { "$_ = $($now.$_ | ConvertTo-Json -Compress)" })
       if ($have.Count) { return @{ Did = 'kept'; Have = $have } }
     }
@@ -5921,7 +5915,7 @@ function Set-ToolAutoRun($Row) {
       $after = Read-TomlTopKeys $probe @($Row.Set.Keys)
       if ($null -eq $after -and $script:ProbeTimedOut.Count -gt $tomlTimed) { return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
       $miss = @($Row.Set.Keys | Where-Object { -not ($after -and $after.PSObject.Properties[$_] -and $after.$_ -ceq $Row.Set[$_]) })
-      if ($miss.Count) { return @{ Did = 'broken'; Why = "얹은 결과가 그 뜻으로 안 읽힌다 ($($miss -join ' · '))" } }
+      if ($miss.Count) { return @{ Did = 'broken'; Why = "추가한 결과를 다시 읽으니 의도와 다름 ($($miss -join ' · '))" } }
       $w = Write-FileSafely $Row.Path ((New-Object Text.UTF8Encoding($false)).GetBytes($head + $old)) $oldBytes
     } finally { Remove-Item -LiteralPath $probe -ErrorAction SilentlyContinue }
     if ($w.Did -ceq 'linked') { return @{ Did = 'linked'; Why = $w.Why } }
@@ -5935,15 +5929,15 @@ function Set-ToolAutoRun($Row) {
     $oldBytes = [IO.File]::ReadAllBytes($Row.Path)
     $text = Read-TextOf $oldBytes
     if ($text.Trim()) {
-      try { $obj = $text | ConvertFrom-Json } catch { return @{ Did = 'broken'; Why = 'JSON 으로 못 읽었다' } }
-      if ($obj -isnot [System.Management.Automation.PSCustomObject]) { return @{ Did = 'broken'; Why = '맨 위가 표가 아니다' } }
+      try { $obj = $text | ConvertFrom-Json } catch { return @{ Did = 'broken'; Why = 'JSON 으로 읽지 못함' } }
+      if ($obj -isnot [System.Management.Automation.PSCustomObject]) { return @{ Did = 'broken'; Why = '최상위가 객체가 아님' } }
     }
   }
   if ($null -eq $obj) { $obj = [pscustomobject]@{} }
   $at = $obj
   if ($Row.Under) {
     $u = $obj.PSObject.Properties[$Row.Under]
-    if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Did = 'broken'; Why = "$($Row.Under) 가 표가 아니다" } }
+    if ($u -and $u.Value -isnot [System.Management.Automation.PSCustomObject]) { return @{ Did = 'broken'; Why = "$($Row.Under) 가 객체가 아님" } }
     if (-not $u) { $obj | Add-Member -NotePropertyName $Row.Under -NotePropertyValue ([pscustomobject]@{}) }
     $at = $obj.($Row.Under)
   }
@@ -5953,7 +5947,7 @@ function Set-ToolAutoRun($Row) {
   if ($have.Count -and -not $ours) { return @{ Did = 'kept'; Have = $have } }
   if ($Row.Need) {
     $unmet = @($Row.Need.Keys | Where-Object { -not ($at.PSObject.Properties[$_] -and $at.$_ -ceq $Row.Need[$_]) })
-    if ($unmet.Count) { return @{ Did = 'skipped'; Why = (@($unmet | ForEach-Object { "$_ 가 $($Row.Need[$_] | ConvertTo-Json -Compress) 가 아니다" }) -join ' · ') } }
+    if ($unmet.Count) { return @{ Did = 'skipped'; Why = (@($unmet | ForEach-Object { "$_ 가 $($Row.Need[$_] | ConvertTo-Json -Compress) 가 아님" }) -join ' · ') } }
   }
   if ($ours) { foreach ($k in $Row.Was.Keys) { $at.PSObject.Properties.Remove($k) } }
   foreach ($k in $Row.Set.Keys) { $at | Add-Member -NotePropertyName $k -NotePropertyValue $Row.Set[$k] }
@@ -5995,7 +5989,7 @@ function Get-ToolAutoRunCheck($Row) {
       $tomlTimed = $script:ProbeTimedOut.Count
       $at = Read-TomlTopKeys $Row.Path $guard
       if ($null -eq $at -and $script:ProbeTimedOut.Count -gt $tomlTimed) {
-        return @{ Name = "묻지 않고 돌기 · $($Row.Label) ($($Row.Path))"; State = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) }
+        return @{ Name = "자동 승인 · $($Row.Label) ($($Row.Path))"; State = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) }
       }
     } else {
       try { $at = [IO.File]::ReadAllText($Row.Path) | ConvertFrom-Json } catch { $at = $null }
@@ -6009,8 +6003,8 @@ function Get-ToolAutoRunCheck($Row) {
     $waived = @($Row.Need.Keys | Where-Object { $at.PSObject.Properties[$_] -and $at.$_ -cne $Row.Need[$_] } | ForEach-Object { "$_ = $($at.$_ | ConvertTo-Json -Compress)" })
   }
   $where = $Row.Path + $(if ($Row.Under) { " 의 $($Row.Under)" } else { '' })
-  $shown = if ($have.Count) { $have -join ' · ' } elseif ($waived.Count) { "안 심는다 — $($waived -join ' · ')" } else { '없다' }
-  @{ Name = "묻지 않고 돌기 · $($Row.Label) ($where — $shown)"; Ok = [bool]($have.Count -or $waived.Count) }
+  $shown = if ($have.Count) { $have -join ' · ' } elseif ($waived.Count) { "건너뜀 — $($waived -join ' · ')" } else { '없음' }
+  @{ Name = "자동 승인 · $($Row.Label) ($where — $shown)"; Ok = [bool]($have.Count -or $waived.Count) }
 }
 
 #endregion 도구별 · 묻지 않고 돌기
@@ -6166,7 +6160,7 @@ $GhStatusCap = 30
 #   의 `state` 가 든다 — `success` 면 산다. `error` 는 gh 가 「The token in keyring is invalid」를 내는 상태인데 망이 끊겨도
 #   나므로, GitHub 가 토큰을 401 로 거절했을 때(`error` 칸)만 무효로 친다. 로그인이 없으면 hosts 가 빈다.
 function Get-GhKeyringState {
-  if (-not (Test-Runs 'gh' '--version')) { return @{ State = 'unmeasured'; Why = 'gh 가 안 닿는다' } }
+  if (-not (Test-Runs 'gh' '--version')) { return @{ State = 'unmeasured'; Why = 'gh 를 찾을 수 없음' } }
   $saved = @{}
   foreach ($n in $GhEnvTokens) {
     $saved[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
@@ -6181,32 +6175,32 @@ function Get-GhKeyringState {
     foreach ($n in $GhEnvTokens) { [Environment]::SetEnvironmentVariable($n, $saved[$n], 'Process') }
     Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue
   }
-  if ($rc -eq -2) { return @{ State = 'unmeasured'; Why = "gh auth status 가 ${GhStatusCap}초 안에 안 끝나 거뒀다" } }
-  if ($rc -ne 0) { return @{ State = 'unmeasured'; Why = "gh auth status 가 $rc 로 끝났다" } }
-  try { $hosts = (($said -join "`n") | ConvertFrom-Json).hosts } catch { return @{ State = 'unmeasured'; Why = 'gh 의 답을 JSON 으로 못 읽었다' } }
+  if ($rc -eq -2) { return @{ State = 'unmeasured'; Why = "gh auth status 가 ${GhStatusCap}초 안에 끝나지 않아 중지함" } }
+  if ($rc -ne 0) { return @{ State = 'unmeasured'; Why = "gh auth status 가 종료 코드 $rc 로 끝남" } }
+  try { $hosts = (($said -join "`n") | ConvertFrom-Json).hosts } catch { return @{ State = 'unmeasured'; Why = 'gh 의 응답을 JSON 으로 읽지 못함' } }
   $acct = @($hosts.'github.com') | Select-Object -First 1
   if (-not $acct) { return @{ State = 'none'; Why = '' } }
   if ($acct.state -eq 'success') { return @{ State = 'ok'; Why = '' } }
   if ($acct.state -eq 'error' -and "$($acct.error)" -match '\b401\b') { return @{ State = 'invalid'; Why = '' } }
   $err = "$($acct.error)" -replace '\s+', ' '
   if ($err.Length -gt 120) { $err = $err.Substring(0, 120) + ' …' }
-  return @{ State = 'unmeasured'; Why = "gh 가 GitHub 에 못 물었다 — $($acct.state)$(if ($err) { ": $err" })" }
+  return @{ State = 'unmeasured'; Why = "gh 가 GitHub 에 확인하지 못함 — $($acct.state)$(if ($err) { ": $err" })" }
 }
 
 # 끝 검증의 gh 로그인 줄 — `Get-GhKeyringState` 의 답을 사람이 읽을 줄로 옮긴다. 받는 것 — 그 답 · 사용자 · 기계 범위에
 #   선 환경변수 토큰의 이름들. 내는 것 — @{ Ok = 살아 있나; Lines = 줄들 }. 무효 · 없음이면 되살리는 명령을 붙이고, 이름이
 #   있으면 그 셸에서 먼저 비우는 명령을 더한다(값은 안 싣는다).
 function Get-GhKeyringLines($St, [string[]]$TokenVars) {
-  $fix = @("    새 터미널에서 gh auth login -s $GhLoginScopes 한 번이면 된다")
+  $fix = @("    새 터미널에서 gh auth login -s $GhLoginScopes 을 한 번 실행하면 됩니다")
   if (@($TokenVars).Count) {
-    $fix += ("    환경변수 토큰($(@($TokenVars) -join ' · '))이 선 셸에서는 gh 가 로그인을 안 받는다 — 그 셸에서 먼저 비운다" +
+    $fix += ("    환경변수 토큰($(@($TokenVars) -join ' · '))이 설정된 셸에서는 gh 가 키링 로그인을 쓰지 않습니다 — 그 셸에서 먼저 지우세요" +
              "(PowerShell: Remove-Item $((@($TokenVars) | ForEach-Object { "Env:$_" }) -join ', '))")
   }
   switch ($St.State) {
-    'ok'      { return @{ Ok = $true;  Lines = @('  [O] gh 로그인 (키링 — 환경변수 토큰을 뺀 채로 쟀다)') } }
-    'invalid' { return @{ Ok = $false; Lines = @('  ! gh 로그인이 무효다 — 키링의 토큰이 죽었다 (대개 다른 기기에서 같은 범위로 gh 에 로그인한 탓이다)') + $fix } }
-    'none'    { return @{ Ok = $false; Lines = @('  ! gh 로그인이 없다 — gh · git · Copilot CLI 가 쓰는 로그인이다') + $fix } }
-    default   { return @{ Ok = $false; Lines = @("  ! gh 로그인 — 못 쟀다 ($($St.Why))") } }
+    'ok'      { return @{ Ok = $true;  Lines = @('  [O] gh 로그인 (키링 — 환경 변수 토큰을 제외하고 확인)') } }
+    'invalid' { return @{ Ok = $false; Lines = @('  ! gh 로그인이 유효하지 않음 — 키링의 토큰이 만료됨 (대개 다른 기기에서 같은 범위로 gh 에 로그인했기 때문입니다)') + $fix } }
+    'none'    { return @{ Ok = $false; Lines = @('  ! gh 로그인 없음 — gh · git · Copilot CLI 가 쓰는 로그인입니다') + $fix } }
+    default   { return @{ Ok = $false; Lines = @("  ! gh 로그인 — 확인하지 못함 ($($St.Why))") } }
   }
 }
 
@@ -6426,7 +6420,7 @@ function Stop-GhLoginProcess([System.Diagnostics.Process]$Proc) {
 # ⚠ **답을 다 쓴 뒤 이름을 옮긴다** — 부모는 파일이 있으면 답이 다 섰다고 읽는다. 반쯤 쓴 파일을 읽지 않게 한다.
 #   `gh auth setup-git` 은 부모가 한다 — 자격을 맡기는 일은 저장소를 받는 자리 바로 앞이 제자리다.
 function Invoke-GhLoginChild([string]$ResultFile) {
-  $said  = 'err 까닭을 못 적었다'
+  $said  = 'err 이유를 기록하지 못함'
   $gl    = [IO.Path]::GetTempFileName()
   $login = $null
   try {
@@ -6500,7 +6494,7 @@ function Wait-GhLoginChild($C, [switch]$Now) {
   if (-not $C.Proc.HasExited) {
     $left = if ($Now) { 0 } else { [int][Math]::Ceiling(($C.Deadline - [DateTime]::UtcNow).TotalSeconds) }
     if ($left -gt 0) {
-      Say-Busy 'GitHub 로그인 창' 'wait' @('앞서 띄운 창', "남은 최대 ${left}초")
+      Say-Busy 'GitHub 로그인 창' 'wait' @('앞서 연 창', "남은 시간 최대 ${left}초")
       $null = $C.Proc.WaitForExit($left * 1000)
     }
     if (-not $C.Proc.HasExited) {
@@ -6636,10 +6630,10 @@ function Ask-Restart([string]$AppName) {
   #   그 둘을 가른다(껍데기는 사람 데스크탑 위라 참). 안 묻는 쪽의 답은 「안 끈다」다 — 설치가 제 손으로 끄면 사람이 띄워 둔 창과
   #   저장 안 한 것이 말없이 날아간다.
   if (-not [Environment]::UserInteractive) {
-    Write-Host '  물을 자리가 없다 (세션 0 · 서비스 · 스케줄러) — 안 묻고 그대로 둔다'
+    Write-Host '  물어볼 수 없는 환경 (세션 0 · 서비스 · 스케줄러) — 묻지 않고 그대로 유지'
     return $false
   }
-  Write-Host '  끌지 묻는다 — 창이 뜬다'
+  Write-Host '  종료할지 묻습니다 — 창이 뜹니다'
   $msg = "$AppName — 이미 돌고 있습니다.`n`n" +
          "지금 껐다 새로 열까요?`n" +
          "돌던 것은 방금 깔린 것(키 · 세션 훅)을 모릅니다.`n`n" +
@@ -6680,17 +6674,17 @@ function Stop-App($App) {
 # 내는 것 — @{ Ran = 불렀나; Ok = 0 으로 끝났나; Why = 안 불렀거나 0 이 아닌 까닭 }. 실패로 셀지는 부르는 쪽이 든다.
 function Invoke-Plant([string]$Bash, [string]$Root) {
   $hook = Join-Path $ConfigSeedHooks 'session-start.sh'
-  if (-not $Bash) { return @{ Ran = $false; Ok = $false; Why = 'Git Bash 가 없다' } }
-  if (-not (Test-Path -LiteralPath $hook -PathType Leaf)) { return @{ Ran = $false; Ok = $false; Why = "홈 씨앗에 훅이 없다 ($hook)" } }
+  if (-not $Bash) { return @{ Ran = $false; Ok = $false; Why = 'Git Bash 없음' } }
+  if (-not (Test-Path -LiteralPath $hook -PathType Leaf)) { return @{ Ran = $false; Ok = $false; Why = "홈 씨앗에 훅이 없음 ($hook)" } }
   $rootArg = ($Root -replace '\\', '/').TrimEnd('/')
   $t = Get-Took
   $made = -not (Test-Path -LiteralPath $Root)
   try {
     New-Item -ItemType Directory -Path $Root -Force | Out-Null
-    Write-Host "  심기만 — $hook --plant $rootArg" -ForegroundColor Green
+    Write-Host "  설정 적용 — $hook --plant $rootArg" -ForegroundColor Green
     Write-Host ''
-    # 몸통의 줄은 러너로 받아 자식 줄의 문(`Show-ChildLine`)으로 흘린다 — 함수 안에서 그냥 부르면 bash 의 stdout 이 이 함수가 내는
-    #   값에 섞여 설치 화면 · 자동 실행 로그에 한 줄도 안 남는다(심었다 · 미뤘다 · 진 까닭). 러너는 줄을 화면에만 내고 종료값을 돌려준다.
+    # 몸통의 줄은 러너로 받아 자식 줄의 문(`Show-ChildLine`)을 지나게 한다 — 함수 안에서 그냥 부르면 bash 의 stdout 이 이 함수가 내는
+    #   값에 섞인다. 화면에는 경보 줄(진 까닭)만 서고 원문은 세부 기록이 든다. 러너는 종료값을 돌려준다.
     $plantLog = [IO.Path]::GetTempFileName()
     try { $rc = Invoke-Logged $Bash @(($hook -replace '\\', '/'), '--plant', $rootArg) $plantLog }
     finally { Remove-Item -LiteralPath $plantLog -ErrorAction SilentlyContinue }
@@ -6700,7 +6694,7 @@ function Invoke-Plant([string]$Bash, [string]$Root) {
     # 지은 루트를 비었을 때만 걷는다 — 폴더 하나만 지우는 `Directory.Delete` 는 무엇이 들었으면 던지고 아무것도 안 지운다
     if ($made) { try { [IO.Directory]::Delete($Root) } catch { } }
   }
-  Write-Took '심기 --plant' $t
+  Write-Took '설정 적용 (--plant)' $t
   @{ Ran = $true; Ok = ($rc -eq 0); Why = "exit $rc" }
 }
 
@@ -6843,18 +6837,18 @@ if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
   Write-Host '  이미 다른 설치 또는 자동 실행이 진행 중입니다.' -ForegroundColor Yellow
   foreach ($h in $holders) { Write-Host ('  ' + (Format-EngineHolder $h)) }
   if (-not $holders) {
-    Write-Host '    · 쥔 프로세스를 못 찾았다 — 방금 끝났거나 다른 사용자 것이다'
+    Write-Host '    · 잠금을 가진 프로세스를 찾지 못함 — 방금 끝났거나 다른 사용자의 프로세스입니다'
   }
 
   # ⚠ **묻는 자리를 가르는 것은 `-Yes` 가 아니라 「누를 사람이 있나」다**(`Ask-Restart` 와 같은 자) — 화면 껍데기는 사람을 앞에
   #   두고도 몸통을 늘 `-Yes` 로 부르므로, `-Yes` 에 걸면 화면으로 깐 사람은 영영 안 물어본다. 누를 사람이 없는 것은 세션 0
   #   (서비스 · 「로그온하지 않아도 실행」 스케줄러 · CI)뿐이고 `UserInteractive` 가 그것을 가른다.
   if (-not [Environment]::UserInteractive) {
-    Write-Host '  물을 자리가 없다 (세션 0 · 서비스 · 스케줄러) — 겹치지 않게 물러납니다.' -ForegroundColor Yellow
+    Write-Host '  물어볼 수 없는 환경 (세션 0 · 서비스 · 스케줄러) — 겹치지 않도록 이번 실행을 중단합니다.' -ForegroundColor Yellow
     exit 1
   }
   if ($NightRun) {
-    Write-Host '  밤 자동 실행이라 묻지도 기다리지도 않고 물러납니다 — 다음 회차가 잇는다.' -ForegroundColor Yellow
+    Write-Host '  야간 자동 실행이라 묻거나 기다리지 않고 중단합니다 — 다음 실행 때 이어서 진행합니다.' -ForegroundColor Yellow
     exit 1
   }
 
@@ -6889,19 +6883,19 @@ if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
         $treeLeft = @()
         foreach ($h in $holders) {
           $tr = Stop-HolderTree $h
-          foreach ($x in $tr.Ended) { Write-Host "  $x — 끝냈다 (다시 재니 없다)" }
-          foreach ($x in $tr.Left)  { Write-Host "  ! $x — 못 끝냈다 (다시 재도 있다)" -ForegroundColor Red }
+          foreach ($x in $tr.Ended) { Write-Host "  $x — 종료함 (다시 확인하니 없음)" }
+          foreach ($x in $tr.Left)  { Write-Host "  ! $x — 종료하지 못함 (다시 확인해도 있음)" -ForegroundColor Red }
           $treeLeft += $tr.Left
         }
         $seedLocks = @()
         if (-not $treeLeft) {
           $seedRoot = Join-Path $homeDir 'seeds'
           $seedLocks = @(Find-LockedFiles $seedRoot)
-          if ($seedLocks) { foreach ($x in $seedLocks) { Write-Host "  ! 아직 누가 쥔 파일 — $x" -ForegroundColor Red } }
-          else { Write-Host "  잠금 — 홈 씨앗($seedRoot)의 파일을 다 홀로 열 수 있다 (풀렸다)" }
+          if ($seedLocks) { foreach ($x in $seedLocks) { Write-Host "  ! 아직 다른 프로세스가 사용 중인 파일 — $x" -ForegroundColor Red } }
+          else { Write-Host "  잠금 — 홈 씨앗($seedRoot)의 파일 잠금이 모두 풀림" }
         }
         if ($treeLeft -or $seedLocks) {
-          Write-Host '  ! 끝내지 못한 것이 있어 들어가지 않습니다 — 위 이름을 작업 관리자에서 끝내고 다시 누릅니다.' -ForegroundColor Red
+          Write-Host '  ! 종료하지 못한 프로세스가 있어 설치를 시작하지 않습니다 — 작업 관리자에서 위 프로세스를 끝낸 뒤 다시 실행하세요.' -ForegroundColor Red
           exit 1
         }
         # 주인이 죽으면 윈도우가 빗장을 놓는다 — 그 버려진 빗장을 여기서 받는다(위 「버려진 빗장」과 같다).
@@ -6913,7 +6907,7 @@ if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
 
   $holders = @(Find-EngineHolders)
   if (-not $script:HasEngineMutex -or $holders.Count -gt 0) {
-    Write-Host '  ! 다른 설치 프로세스가 끝나지 않아 물러납니다.' -ForegroundColor Red
+    Write-Host '  ! 다른 설치 프로세스가 끝나지 않아 이번 실행을 중단합니다.' -ForegroundColor Red
     exit 1
   }
 }
@@ -6983,16 +6977,16 @@ if ($PickSet) {
   # 걷은 제품 이름(`$RetiredProducts`)은 오타가 아니라 이전 배포본이 고른 값이라 말없이 빠진다 — 그 이름만 든 값은 빈 값과 같다.
   $unknown     = @($PickKeys | Where-Object { $ProductKeys -notcontains $_ -and $RetiredProducts -notcontains $_ -and $_ -ne $ChoiceNone })
   foreach ($k in $unknown) {
-    Write-Host ('  ! 모르는 제품 이름 — {0} (아는 것: {1})' -f $k, ($ProductKeys -join ', ')) -ForegroundColor Yellow
+    Write-Host ('  ! 알 수 없는 제품 이름 — {0} (사용 가능: {1})' -f $k, ($ProductKeys -join ', ')) -ForegroundColor Yellow
   }
   # 모르는 이름은 들고 가지 않는다 — 아래 걸음마다 아무것도 안 맞는 열쇠가 섞여 다닐 까닭이 없다.
   $PickKeys = @($PickKeys | Where-Object { $ProductKeys -contains $_ })
   # 아는 이름이 하나도 안 남으면 그것은 오타지 「아무것도 안 깔겠다」가 아니다 — 위 경고 줄은 걸음 로그에 묻혀, 제품을 하나도
   #   안 깐 채 초록으로 끝난다. 막지는 않고(프로그램 · 키 · 씨앗은 설 자리가 있다) `$Fails` 에 적어 맨 끝 검증을 빨갛게 한다.
   if ($unknown -and -not $PickKeys) {
-    Write-Host ('  ! 고른 제품이 하나도 안 섰다 — 준 값을 쉼표로 가른다: -Pick "{0}" (하나도 안 깔려면 -Pick {1})' -f
+    Write-Host ('  ! 선택한 제품을 하나도 알아보지 못함 — 쉼표로 구분해 지정하세요: -Pick "{0}" (아무것도 설치하지 않으려면 -Pick {1})' -f
                 ($ProductKeys -join ','), $ChoiceNone) -ForegroundColor Red
-    $Fails.Add(('-Pick 에 아는 제품 이름이 없다 (준 값: {0})' -f $Pick))
+    $Fails.Add(('-Pick 에 알 수 있는 제품 이름이 없음 (지정한 값: {0})' -f $Pick))
     $PickUnreadable = $true
   }
 } else {
@@ -7002,9 +6996,9 @@ if ($PickSet) {
 if (-not $PickKeys) { $PickKeys = @() }
 
 $Vars = @(
-  @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 사내는 로컬 프록시 루프백 · 끝에 /v1 을 붙이지 않는다 (CLI 가 붙인다)'; Gateway=$true }
+  @{ Name='ANTHROPIC_BASE_URL';   Desc='게이트웨이 주소 — 사내는 로컬 프록시 루프백 · 끝에 /v1 을 붙이지 마세요 (CLI 가 붙임)'; Gateway=$true }
   @{ Name='ANTHROPIC_AUTH_TOKEN'; Desc='게이트웨이 API 키';                                          Gateway=$true; Secret=$true }
-  @{ Name='ANTHROPIC_MODEL';      Desc='기본 모델 이름 (비우면 CLI 기본값으로 둔다)';                Gateway=$false }
+  @{ Name='ANTHROPIC_MODEL';      Desc='기본 모델 이름 (비우면 CLI 기본값 사용)';                Gateway=$false }
 )
 
 # ── 클라이언트 기능 스위치 — **씨앗이 아니라 늘 맞춘다 · 진본은 홈 설정 씨앗의 `env` 다** (PAISetup #47 ⑦) ────────────────────────
@@ -7046,12 +7040,12 @@ $ModelPickerOnly = $true
 #   줄이 걸린 채 오래 돌아 멎은 것과 구분이 안 된다. 그래서 시간이 드는 걸음은 들어가기 전에 `Say-Busy` 를 부르고, 동작 낱말은
 #   이 표에서만 고른다. 결과 줄(`— 깔았다 · 있음 · 최신 · 올렸다`)은 자리마다 까닭이 달라 제 자리가 찍는다.
 $BusyVerbs = [ordered]@{
-  install = '설치중'
-  upgrade = '갱신중'
-  upcheck = '갱신 확인중'
-  fetch   = '받는중'
+  install = '설치 중'
+  upgrade = '업데이트 중'
+  upcheck = '업데이트 확인 중'
+  fetch   = '다운로드 중'
   wait    = '기다리는 중'
-  remove  = '걷는중'
+  remove  = '제거 중'
 }
 
 # 사내에서만 뜻이 있는 이름 — **값이 주소가 아니라 프록시 걷기(`Test-OurProxyEntry`)가 못 가른다.** 저쪽은 「값이 죽은 포트를
@@ -7070,7 +7064,7 @@ $InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING',
                 'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'GOOGLE_GEMINI_BASE_URL')
 
 # ── 설치 기록 — 화면은 지금 읽을 것만, 기록은 그보다 많이 ─────────────────────────────────────────
-# 화면은 사람이 지금 읽을 것을 든다 — 자식 줄은 `Show-ChildLine` 이 걸러 흘린다. 기록은 거른 것까지 든다 — 하는 부름마다 명령 ·
+# 화면은 사람이 지금 읽을 것을 든다 — 자식 줄은 `Show-ChildLine` 이 경보 줄만 올린다. 기록은 거른 것까지 든다 — 하는 부름마다 명령 ·
 #   원문 · 종료 값 · 걸린 초를 세부 기록(`$script:DetailLog`)에 덧붙인다(`Add-RunDetail`).
 # 화면 기록은 출력을 받는 쪽이 남긴다 — 설치 창(`install.ui.ps1` 의 `Save-RunLog`) · 로그온 자동 실행(`autorun-*.log`). 출력이 콘솔인
 #   판(사람이 `install.ps1` 을 직접 돌린 판)은 받는 쪽이 없어 여기서 화면을 옮겨 적는다(`Start-Transcript`).
@@ -7125,9 +7119,9 @@ $probe      = Read-Directive $DistEnvFile 'site-probe'
 $sitePassed = Read-Directive $EnvFile 'site'
 $siteFact   = Measure-Site $probe
 if (-not $siteFact.Site) {
-  Write-Host "  ! 자리를 못 정했다 — $($siteFact.Why)" -ForegroundColor Red
-  Write-Host '    아무것도 안 깔고 멈춘다 — 사내인지 사외인지 모르고 깔면 회사 연결을 걷거나 닿지 않는 주소를 심는다'
-  Write-Host '    설치 묶음(Setup.exe)을 새로 받아 다시 누른다 · 값 파일을 손으로 만들었으면 #site-probe = 호스트:포트 줄을 넣는다'
+  Write-Host "  ! 네트워크 환경을 판단하지 못함 — $($siteFact.Why)" -ForegroundColor Red
+  Write-Host '    아무것도 설치하지 않고 중단합니다 — 사내인지 사외인지 모른 채 설치하면 회사 연결을 지우거나 연결할 수 없는 주소를 설정하게 됩니다'
+  Write-Host '    설치 파일(Setup.exe)을 새로 받아 다시 실행하세요 · 설정 파일을 직접 만들었다면 #site-probe = 호스트:포트 줄을 넣으세요'
   Stop-RunLog
   exit 1
 }
@@ -7137,23 +7131,23 @@ $siteSaid = @{ inside = '사내'; outside = '사외' }
 if ($sitePassed -and $sitePassed -cne $site) {
   $passedSaid = if ($siteSaid.ContainsKey($sitePassed)) { $siteSaid[$sitePassed] } else { $sitePassed }
   if ($NightRun) {
-    Write-Host "  ! 밤 회차가 잰 뒤 자리가 바뀌었다 — 밤 회차는 $passedSaid · 지금은 $($siteSaid[$site]) ($probe)" -ForegroundColor Red
-    Write-Host '    밤 회차는 자리를 안 바꾼다 — 아무것도 안 깔고 멈춘다 (다음 로그온 회차 · 설치 창이 잇는다)'
+    Write-Host "  ! 야간 실행이 확인한 뒤 네트워크 환경이 바뀜 — 야간 실행 확인 당시 $passedSaid · 현재 $($siteSaid[$site]) ($probe)" -ForegroundColor Red
+    Write-Host '    야간 실행은 네트워크 환경을 바꾸지 않습니다 — 아무것도 설치하지 않고 중단합니다 (다음 로그온 실행이나 설치 창에서 이어서 진행)'
   } else {
-    Write-Host "  ! 창을 연 뒤 자리가 바뀌었다 — 창을 다시 연다 (창은 $passedSaid · 지금은 $($siteSaid[$site]) · $probe)" -ForegroundColor Red
-    Write-Host '    아무것도 안 깔고 멈춘다 — 창이 보여 준 칸(주소 · 키)과 지금 자리가 다르면 받은 키를 버리거나 닿지 않는 주소를 심는다'
+    Write-Host "  ! 창을 연 뒤 네트워크 환경이 바뀜 — 설치 창을 다시 여세요 (창을 열 때 $passedSaid · 현재 $($siteSaid[$site]) · $probe)" -ForegroundColor Red
+    Write-Host '    아무것도 설치하지 않고 중단합니다 — 창에 표시된 항목(주소 · 키)과 현재 네트워크 환경이 다르면 입력한 키를 잃거나 연결할 수 없는 주소를 설정하게 됩니다'
   }
   Stop-RunLog
   exit 1
 }
-$siteBy = if ($offsite) { '안 닿음' } else { '닿음' }
-if ($sitePassed) { $siteBy += ' · 넘겨받은 자리와 같다' }
-Write-Host ("  자리 = {0}  ({1} {2})" -f $siteSaid[$site], $probe, $siteBy)
+$siteBy = if ($offsite) { '연결 안 됨' } else { '연결됨' }
+if ($sitePassed) { $siteBy += ' · 설치 창 판정과 같음' }
+Write-Host ("  네트워크 환경 = {0}  ({1} {2})" -f $siteSaid[$site], $probe, $siteBy)
 # 사내는 VS Code 가 필수다(`Test-VsCodeRequired`) — 칸을 꺼도 깐다. 기록은 사람이 고른 값(`$NoVsCodeChosen`) 그대로 둔다 — 사외로
 #   나가면 그 값이 다시 선다.
 if ($NoVsCode -and (Test-VsCodeRequired $site)) {
   $NoVsCode = $false
-  Write-Host '  VS Code — 사내는 필수라 칸을 껐어도 깐다 (고른 「끔」은 기록에 그대로 둔다)'
+  Write-Host '  VS Code — 사내에서는 필수라 선택을 해제했어도 설치 (선택 해제 기록은 그대로 유지)'
 }
 # 이 자리에서 안 내놓는 제품(`$Products` 의 `When` · `Test-ProductHere`) — 이번에 고른 것과 지난 기록에서 그 이름을 모아 이 판의 걸음에서만
 #   뺀다. 깔린 것은 안 걷고, 기록에는 「회차를 넘기는 기록」 칸이 다시 적는다 — 이 자리의 창에는 그 칸이 없어 사람이 끌 길이 없었고, 사외로
@@ -7162,7 +7156,7 @@ if ($NoVsCode -and (Test-VsCodeRequired $site)) {
 $recPickKeys = @([string]$Recorded['pick'] -split '[,\s]+' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
 $PickHeld = @($Products | Where-Object { -not (Test-ProductHere $_ $offsite) -and (($PickKeys -contains $_.Key) -or ($recPickKeys -contains $_.Key)) } |
               ForEach-Object { $_.Key })
-foreach ($heldRow in @($Products | Where-Object { $PickHeld -contains $_.Key })) { Write-Host "  $($heldRow.Label) — 사내에서는 안 받는다(사내 지원 전) · 고른 기록은 둔다" }
+foreach ($heldRow in @($Products | Where-Object { $PickHeld -contains $_.Key })) { Write-Host "  $($heldRow.Label) — 사내에서는 설치하지 않음 (사내 지원 전) · 선택 기록은 유지" }
 $PickKeys = @($PickKeys | Where-Object { $PickHeld -notcontains $_ })
 Write-Host ''
 
@@ -7174,8 +7168,8 @@ foreach ($lineRow in @($Apps | Where-Object { $_.LineFrom })) {
   $lineVal = Read-Directive $DistEnvFile $lineRow.LineFrom
   if ($lineVal -match '^\d+\.\d+$') { $null = Set-RowLine $lineRow $lineVal; continue }
   $Apps = @($Apps | Where-Object { $_ -ne $lineRow })
-  Write-Host "  ! $($lineRow.Name) — 값 파일의 #$($lineRow.LineFrom) 이 없거나 꼴(예: 3.14)이 아니라 판을 못 정했다 — 깔지도 올리지도 않는다" -ForegroundColor Yellow
-  $Fails.Add("$($lineRow.Name) (값 파일에 #$($lineRow.LineFrom) 이 없어 판을 못 정했다)")
+  Write-Host "  ! $($lineRow.Name) — 설정 파일의 #$($lineRow.LineFrom) 이 없거나 형식(예: 3.14)이 맞지 않아 버전을 정하지 못함 — 설치도 업데이트도 하지 않음" -ForegroundColor Yellow
+  $Fails.Add("$($lineRow.Name) (설정 파일에 #$($lineRow.LineFrom) 이 없어 버전을 정하지 못함)")
 }
 
 # ── 선언의 npm 도구 — **목록은 설정 저장소의 전역 도구 선언이 든다** (PAISetup #57 ⑨) ──
@@ -7186,8 +7180,8 @@ foreach ($lineRow in @($Apps | Where-Object { $_.LineFrom })) {
 foreach ($npmLine in @(Read-Directive $DistEnvFile 'npm-global' -All)) {
   $npmRow = ConvertFrom-NpmDirective $npmLine @($Products | ForEach-Object { $_.Key })
   if ($npmRow.Row) { $Clis += $npmRow.Row; continue }
-  Write-Host "  ! 값 파일의 #npm-global 줄을 못 읽었다 — $($npmRow.Why) · 그 도구를 깔지도 올리지도 않는다" -ForegroundColor Yellow
-  $Fails.Add("선언의 npm 도구 (값 파일의 #npm-global 줄을 못 읽었다 — $($npmRow.Why))")
+  Write-Host "  ! 설정 파일의 #npm-global 줄을 읽지 못함 — $($npmRow.Why) · 해당 도구를 설치도 업데이트도 하지 않음" -ForegroundColor Yellow
+  $Fails.Add("선언의 npm 도구 (설정 파일의 #npm-global 줄을 읽지 못함 — $($npmRow.Why))")
 }
 
 # ── winget ────────────────────────────────────────────────────────────────────
@@ -7199,9 +7193,9 @@ if ($noWinget) {
   if (Restore-Winget) { $noWinget = $false; Update-RuntimePath }
 }
 if ($noWinget) {
-  Write-Host '  winget 을 못 되살렸다 — 프로그램을 새로 깔지는 못한다.' -ForegroundColor Yellow
-  Write-Host '  이미 깔린 것으로 진행한다. 모자란 것은 끝에 이름을 댄다.'
-  Write-Host '  (사내 PC 면 스토어가 막혔을 수 있다 — 모자란 것은 IT 에 요청한다)'
+  Write-Host '  winget 을 복구하지 못했습니다 — 프로그램을 새로 설치할 수 없습니다.' -ForegroundColor Yellow
+  Write-Host '  이미 설치된 프로그램으로 진행합니다. 빠진 프로그램은 마지막에 알려 드립니다.'
+  Write-Host '  (사내 PC 라면 스토어가 막혀 있을 수 있습니다 — 빠진 프로그램은 IT 에 요청하세요)'
   Write-Host ''
 }
 
@@ -7219,23 +7213,23 @@ Update-RuntimePath
 #   건드리고 노란 줄로 남긴다(winget 은 `winget settings` 를 연 PC 에만 그 파일을 주석과 함께 짓는다).
 # 장부에 안 적는다 — 걷지 않는 설정이고, 지울 자리는 UNINSTALL 「winget 받는 손」이 든다.
 if (-not $noWinget) {
-  $WingetCfg = @{ Label = 'winget 받는 손'; Under = 'network'; Set = [ordered]@{ downloader = 'do'; doProgressTimeoutInSeconds = 60 }
+  $WingetCfg = @{ Label = 'winget 다운로드 방식'; Under = 'network'; Set = [ordered]@{ downloader = 'do'; doProgressTimeoutInSeconds = 60 }
                   Was = [ordered]@{ downloader = 'wininet' }
                   Path = (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json') }
   $wgRes = Set-ToolAutoRun $WingetCfg
   $wgOurs = @($WingetCfg.Set.Keys | ForEach-Object { "$_ = $($WingetCfg.Set[$_] | ConvertTo-Json -Compress)" }) -join ' · '
-  $wgSays = "전달 최적화(DO) · 진척 없이 $($WingetCfg.Set.doProgressTimeoutInSeconds)초면 다른 엔진으로 넘긴다"
+  $wgSays = "전달 최적화(DO) · $($WingetCfg.Set.doProgressTimeoutInSeconds)초 동안 진행이 없으면 다른 다운로드 엔진으로 전환"
   switch ($wgRes.Did) {
     'set' {
-      if ($wgRes.Have) { Write-Host "  winget 받는 손 — 옛 판이 심은 값($($wgRes.Have -join ' · '))을 갈았다 · $wgSays ($wgOurs)" -ForegroundColor Green }
-      else { Write-Host "  winget 받는 손 — 심었다 · $wgSays ($wgOurs)" -ForegroundColor Green }
+      if ($wgRes.Have) { Write-Host "  winget 다운로드 방식 — 이전 설치가 설정한 값($($wgRes.Have -join ' · '))을 바꿈 · $wgSays ($wgOurs)" -ForegroundColor Green }
+      else { Write-Host "  winget 다운로드 방식 — 설정함 · $wgSays ($wgOurs)" -ForegroundColor Green }
     }
     'kept' {
-      if ((@($wgRes.Have) -join ' · ') -ceq $wgOurs) { Write-Host "  winget 받는 손 — 이미 심겨 있다 · $wgSays" }
-      else { Write-Host "  winget 받는 손 — 사람이 정한 값($($wgRes.Have -join ' · '))이라 둔다" }
+      if ((@($wgRes.Have) -join ' · ') -ceq $wgOurs) { Write-Host "  winget 다운로드 방식 — 이미 설정됨 · $wgSays" }
+      else { Write-Host "  winget 다운로드 방식 — 사용자가 정한 값($($wgRes.Have -join ' · '))이라 유지" }
     }
     default {
-      Write-Host "  ! winget 받는 손 — $($wgRes.Why) · 안 건드렸다 ($($WingetCfg.Path)) · 받기가 멈추면 그 파일의 network 에 두 칸($wgOurs)을 넣는다" -ForegroundColor Yellow
+      Write-Host "  ! winget 다운로드 방식 — $($wgRes.Why) · 변경하지 않음 ($($WingetCfg.Path)) · 다운로드가 멈추면 그 파일의 network 항목에 두 값($wgOurs)을 넣으세요" -ForegroundColor Yellow
     }
   }
 }
@@ -7287,7 +7281,7 @@ if ($wantAutoRun -eq $true -and $siteRecorded -ne $site -and (Test-Path -Literal
     Set-Content -LiteralPath $AutoRunSiteRecord -Value 'switching' -Encoding UTF8 -ErrorAction Stop
   } catch {
     Remove-Item -LiteralPath $AutoRunSiteRecord -Force -ErrorAction SilentlyContinue
-    Write-Host "  ! 자동 실행이 읽을 자리 기록을 못 적었다 — $(Say-Why $_) (밤 자동 실행은 다음 설치까지 건너뛴다)" -ForegroundColor Yellow
+    Write-Host "  ! 자동 실행용 네트워크 환경 기록을 저장하지 못함 — $(Say-Why $_) (야간 자동 실행은 다음 설치 때까지 건너뜀)" -ForegroundColor Yellow
   }
 }
 
@@ -7460,17 +7454,17 @@ $FreeSkillHomes = [ordered]@{
 }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 「프로그램」 걸음이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
-if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 이것으로 돈다' }
-if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 래퍼가 pythonw 로 돈다' }
-if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 맡기기 래퍼가 파이썬으로 돈다' }
-if ($wantClaudeBg)    { $needPythonWhy += 'Claude 맡기기 래퍼가 python 으로 돈다' }
-if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex 훅이 파이썬으로 돈다' }
-if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 파이썬으로 돈다' }
-if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 길잡이 훅이 감긴 첨부를 파이썬으로 잰다' }
-if ($PickKeys -contains 'claude') { $needPythonWhy += 'Claude 훅 등록을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
+if ($wantProxy)       { $needPythonWhy += '로컬 프록시가 Python 으로 실행됨' }
+if ($wantAgyDelegate) { $needPythonWhy += 'agy 백그라운드 실행 도구가 pythonw 로 실행됨' }
+if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 위임 실행 도구가 Python 으로 실행됨' }
+if ($wantClaudeBg)    { $needPythonWhy += 'Claude 위임 실행 도구가 Python 으로 실행됨' }
+if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex 훅이 Python 으로 실행됨' }
+if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 Python 으로 실행됨' }
+if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 안내 훅이 암호화된 첨부를 Python 으로 확인함' }
+if ($PickKeys -contains 'claude') { $needPythonWhy += 'Claude 훅 등록 도구(tool-homes.py)가 Python 으로 실행됨' }
 # 제작자 칸을 켰으면 고른 기능이 손(`tool-homes.py`)으로 선다 — 칸을 켠 도구가 위 까닭을 이미 들어도 이 까닭은 따로 적는다
-if ($personalAny) { $needPythonWhy += '제작자 칸의 규범 · 룰 · 스킬을 놓는 손(tool-homes.py)이 파이썬으로 돈다' }
-if (@($BrowserMcpHosts.Keys | Where-Object { $PickKeys -contains $_ }).Count) { $needPythonWhy += '브라우저 MCP 를 다는 어댑터(browser-mcp.py)가 파이썬으로 돈다' }
+if ($personalAny) { $needPythonWhy += '제작자 칸의 규범 · 룰 · 스킬 설치 도구(tool-homes.py)가 Python 으로 실행됨' }
+if (@($BrowserMcpHosts.Keys | Where-Object { $PickKeys -contains $_ }).Count) { $needPythonWhy += '브라우저 MCP 등록 도구(browser-mcp.py)가 Python 으로 실행됨' }
 $needPython = [bool]$needPythonWhy.Count
 # 안티그래비티는 틀 파일이 없다 — 심을 것이 `modelProvider` 한 줄이라, 무는 것은 「사내인가」와 「이 제품을 켰나」뿐이다.
 $wantAgy    = [bool]($inside -and ($PickKeys -contains 'antigravity'))
@@ -7482,7 +7476,7 @@ $wantAgy    = [bool]($inside -and ($PickKeys -contains 'antigravity'))
 #   문다 — 회사 키 사본과 설정 파일의 회사 연결이 같은 문으로 걷혀야 한쪽만 남지 않는다. 조건은 여기 하나만 고친다.
 $wantNeed = @{ codex = $wantCodex; gemini = $wantAgy }
 # 회사 키로 안 세우는 도구의 회사 연결을 걷는 까닭 — 「사내 연결」의 「안 세우는 도구」 칸과 끝 검증의 그 줄이 같은 글로 댄다
-$OffLinkWhy = if ($inside) { '이 판은 회사 키로 안 세운다' } else { '사외' }
+$OffLinkWhy = if ($inside) { '이번 설치는 회사 키를 사용하지 않음' } else { '사외' }
 # ── 회사 설정 둘이 앉는 자리 — **같은 까닭으로 여기 한 자리다** ─────────────────
 # 아래 「Codex · 안티그래비티 설정」 칸이 이 둘에 쓰고 끝의 검증이 이 둘을 다시 재므로, 글자를 두 자리에 박지 않는다 (PAISetup #3).
 $CodexCfg  = Join-Path $env:USERPROFILE '.codex\config.toml'
@@ -7499,8 +7493,8 @@ if ($proxyRel -or $codexTpl) {
   if ($wantProxy)  { $more += '로컬 프록시' }
   if ($wantCodex)  { $more += 'Codex 회사 설정' }
   if ($wantAgy)    { $more += '안티그래비티 회사 설정' }
-  if ($more.Count) { Write-Host ("  사내라 더 세운다 — " + ($more -join ' · ')); Write-Host '' }
-  elseif (-not $inside) { Write-Host '  프록시와 Codex·안티그래비티 회사 설정은 사내에서만 선다 — 여기서는 프로그램만 깔고 각자 로그인으로 쓴다'; Write-Host '' }
+  if ($more.Count) { Write-Host ("  사내 추가 설정 — " + ($more -join ' · ')); Write-Host '' }
+  elseif (-not $inside) { Write-Host '  프록시와 Codex·안티그래비티 회사 설정은 사내 전용 — 사외에서는 프로그램만 설치하고 각자 계정으로 로그인해 사용합니다'; Write-Host '' }
 }
 
 # ── 올릴 것이 있는 앱을 **한 번에** 묻는다 ─────────────────────────────────────
@@ -7519,7 +7513,7 @@ $upgradable = $null
 $CliPicks = @($Clis | Where-Object { ($PickKeys -contains $_.Key) -or ($_.Maker -and $personalAny) -or $_.Always -or
                                      ($_.For -and @($_.For | Where-Object { $PickKeys -contains $_ }).Count) })
 if (-not ($NoUpgrade -or $noWinget)) {
-  Say-Busy '프로그램 판' 'upcheck' @('winget · 한 번에')
+  Say-Busy '프로그램 버전' 'upcheck' @('winget · 한 번에')
   # 시간 울타리를 두른다 — 멎은 winget 하나가 설치를 영구히 세운다(PAISetup #26 과 같은 꼴). 넘기면 목록을 못 받은 것(`$null`)이라 앱마다 묻는다.
   $ulog = [System.IO.Path]::GetTempFileName()
   $urc = Invoke-LoggedCapped 'winget' @('list','--upgrade-available','--accept-source-agreements','--disable-interactivity') $ulog $WingetListCap -Quiet
@@ -7540,14 +7534,14 @@ if (-not ($NoUpgrade -or $noWinget)) {
     }
     $upgradable = $hits
     if ($hits.Count) {
-      Write-Host ('  올릴 것 ' + $hits.Count + '개 — ' + ($hits -join ' · '))
+      Write-Host ('  업데이트할 프로그램 ' + $hits.Count + '개 — ' + ($hits -join ' · '))
     } else {
-      Write-Host '  올릴 것 없음 — 판 대조를 한 번에 끝냈다'
+      Write-Host '  업데이트할 프로그램 없음 — 버전 확인 완료'
     }
   } else {
     # 까닭을 댄다 — 넘김이면 그 한도를, 졌으면 그 값을. 표를 못 읽은 것과 winget 이 진 것은 다음에 볼 자리가 다르다.
-    $uwhy = if ($urc -eq 0) { '표를 못 읽어' } else { '`winget list --upgrade-available` 이 ' + (Format-ProbeWhy $urc $WingetListCap) }
-    Write-Host "  (올릴 목록을 한 번에 못 받았다 — $uwhy 앱마다 묻는다)"
+    $uwhy = if ($urc -eq 0) { '목록을 읽지 못해' } else { '`winget list --upgrade-available` 이 ' + (Format-ProbeWhy $urc $WingetListCap) }
+    Write-Host "  (업데이트 목록을 한 번에 받지 못함 — $uwhy 프로그램마다 따로 확인합니다)"
   }
 }
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. 「프로그램」 걸음 앞에도 시간이 든다.
@@ -7563,7 +7557,7 @@ Write-Elapsed '준비'
 #   VS Code 를 끄면 VS Code 만 안 깐다 — Node 는 CLI 가 타므로 `core` 로 남아 그대로 깔린다. 개발도구를 꺼도 파이썬으로 도는 것(사내 로컬
 #   프록시 · 맡기기 래퍼 · 훅 · 손)을 고른 판이면 파이썬만은 깐다(결정 0041 — 까닭은 `$needPythonWhy` 가 든다).
 function Get-AppSkip($App) {
-  if ($NoVsCode -and $App.Need -eq 'vscode') { return 'VS Code 칸을 껐다' }
+  if ($NoVsCode -and $App.Need -eq 'vscode') { return 'VS Code 선택 해제' }
   if ($NoDevTools -and $App.Need -eq 'dev' -and -not ($needPython -and $App.Cmd -eq 'python')) { return '-NoDevTools' }
   return ''
 }
@@ -7576,7 +7570,7 @@ foreach ($app in $Apps) {
     continue
   }
   if ($NoDevTools -and $app.Need -eq 'dev') {
-    Write-Host "  $($app.Name) — 개발도구를 껐지만 깐다 ($($needPythonWhy -join ' · '))"
+    Write-Host "  $($app.Name) — 개발 도구를 제외했지만 필요해서 설치 ($($needPythonWhy -join ' · '))"
   }
   # 할 일은 한 자리(`Get-InstallAction`)가 가른다. 올리는 길은 `Get-UpgradeRoute` 가 가른다 — 벤더 판을 읽은 줄은 그 판이 최신 판이고,
   #   못 읽은 줄은 맨 앞에서 한 번에 받은 「올릴 것」 목록이(못 받았으면 앱마다 묻는다) 가른다. winget 목록은 남이 옮겨 적는 사본이라 새
@@ -7588,11 +7582,11 @@ foreach ($app in $Apps) {
   $route   = Get-UpgradeRoute $app $appRuns
   $appAct  = Get-InstallAction $appRuns $before $route.Found.Ver $route.Listed $true $route.Off
   if ($appAct -eq 'hold') {
-    Add-UnmeasuredStep $app.Name "$($app.Cmd) $($app.Arg)" '깔지도 올리지도 않았다' '' "winget install --id $($app.Id) --force"
+    Add-UnmeasuredStep $app.Name "$($app.Cmd) $($app.Arg)" '설치도 업데이트도 하지 않음' '' "winget install --id $($app.Id) --force"
     continue
   }
-  if ($appAct -eq 'present') { Write-Host "  $($app.Name) — 있음  $(Format-VerPart $before)"; continue }
-  if ($appAct -eq 'latest')  { Write-Host "  $($app.Name) — 최신  $(Format-VerPart $before)"; Write-WingetAhead $app.Name $route; continue }
+  if ($appAct -eq 'present') { Write-Host "  $($app.Name) — 설치되어 있음 $(Format-VerPart $before)"; continue }
+  if ($appAct -eq 'latest')  { Write-Host "  $($app.Name) — 최신 버전 $(Format-VerPart $before)"; Write-WingetAhead $app.Name $route; continue }
   # 기계 범위 행 — 승격이 이 판에 안 서면 걸지 않는다(사람을 기다리며 서지 않게 · 회차마다 지지 않게 · 결정 0146 과 같은 문)
   if ($app.Scope -eq 'machine' -and -not $noWinget -and -not (Test-ElevationDoor $app.Name $appAct (Test-Attended) ($appAct -eq 'install'))) { continue }
   if ($appAct -eq 'upgrade' -or $appAct -eq 'upcheck') {
@@ -7610,19 +7604,19 @@ foreach ($app in $Apps) {
   $vw = Get-VendorWay $app $appRuns
   if ($vw) {
     $found = Get-VendorLatest $vw
-    if (-not $found.Url) { Write-Host '      · 벤더 판을 못 읽었다 — winget 으로' -ForegroundColor Yellow }
-    elseif ((Invoke-VendorWay $app.Name $app $vw $found 'install').Rc -eq 0) { $rc = 0; $via = '벤더 설치본' }
+    if (-not $found.Url) { Write-Host '      · 공식 버전을 확인하지 못함 — winget 으로 설치' -ForegroundColor Yellow }
+    elseif ((Invoke-VendorWay $app.Name $app $vw $found 'install').Rc -eq 0) { $rc = 0; $via = '공식 설치 파일' }
   }
   if ($null -eq $rc) {
     if ($noWinget) {
-      Write-Host "  ! $($app.Name) — 없는데 winget 이 없어 못 깐다" -ForegroundColor Red
-      $Fails.Add("$($app.Name) (winget 이 없다)")
+      Write-Host "  ! $($app.Name) — 설치되어 있지 않은데 winget 이 없어 설치할 수 없음" -ForegroundColor Red
+      $Fails.Add("$($app.Name) (winget 없음)")
       continue
     }
 
-    # 받는 몇 분 동안은 화면이 조용할 수 있다 — winget 의 줄은 흘리되 진행 막대는 거른다(`Show-ChildLine` — 화면 껍데기의 기록 칸이
-    #   막대로 도배된다). 받는 동안 winget 이 내는 것은 막대뿐이라 그 침묵이 멎은 것과 구분이 안 돼, 조용할 수 있다고 미리 말한다.
-    Say-Busy $app.Name 'install' @('winget', '몇 분 조용할 수 있다')
+    # 받는 몇 분 동안은 화면이 조용하다 — winget 의 줄은 경보 말고는 화면에 안 올린다(`Show-ChildLine`). 그 침묵이 멎은 것과
+    #   구분이 안 돼, 조용할 수 있다고 미리 말한다.
+    Say-Busy $app.Name 'install' @('winget', '몇 분간 출력이 없을 수 있음')
     $log = [System.IO.Path]::GetTempFileName()
     # ⚠ **종료코드를 안 버린다.** 판정은 프로브가 들지만(winget 은 「올릴 것 없음」에도 0 이 아닌 값을 낸다), 프로브가 끝내 못 잡았을
     #   때 「깔렸는데 이 창이 못 잡는다」와 「진짜 못 깔았다」를 가르는 자가 이것뿐이다.
@@ -7643,14 +7637,14 @@ foreach ($app in $Apps) {
     Update-RuntimePath
   }
   if ($ok) {
-    Write-Host "  $($app.Name) — 깔았다" -ForegroundColor Green
+    Write-Host "  $($app.Name) — 설치 완료" -ForegroundColor Green
   } elseif ($rc -eq 0) {
     # 거짓 빨강을 덜되 초록으로 넘기지는 않는다 — winget 이 성공이라 했는데 이 창이 못 잡는 것은 흔히 PATH 가 새 프로세스부터
     #   서기 때문이다. 못 잡은 것은 남기고 사유만 바꾼다 — 「설치 실패」로 적으면 멀쩡히 깔린 것을 찾아 헤맨다.
-    Write-Host "  ! $($app.Name) — 깔기는 끝났다는데($via) 이 창이 못 잡는다 (새 창에서 잡힌다)" -ForegroundColor Yellow
-    $Fails.Add("$($app.Name) (깔렸는데 이 창에서 안 잡힌다 — 새 창에서 본다)")
+    Write-Host "  ! $($app.Name) — 설치는 끝났지만 ($via) 이 창에서는 찾을 수 없음 (새 창에서는 찾을 수 있음)" -ForegroundColor Yellow
+    $Fails.Add("$($app.Name) (설치됐지만 이 창에서 찾을 수 없음 — 새 창에서 확인)")
   } else {
-    Write-Host "  ! $($app.Name) 설치 실패 (winget 이 $rc 로 끝났다) — 뱉은 끝 줄:" -ForegroundColor Red
+    Write-Host "  ! $($app.Name) 설치 실패 (winget 종료 코드 $rc) — 마지막 출력:" -ForegroundColor Red
     Show-Log $log 5
     $Fails.Add("$($app.Name) 설치")
   }
@@ -7667,7 +7661,7 @@ $script:GhLoginChild = $null
 if ($configRepoOnGitHub -and -not $NoDevTools -and (Test-Runs 'git' '--version') -and (Get-GhLoginGo) -eq 'open') {
   $script:GhLoginChild = Start-GhLoginChild $MyInvocation.MyCommand.Path
   if ($script:GhLoginChild.Proc) {
-    Write-Host "  GitHub 로그인 — 창을 띄웠다 · 코드는 팝업에 (최대 ${GhLoginWait}초) · 설치는 그대로 잇는다" -ForegroundColor Yellow
+    Write-Host "  GitHub 로그인 — 창을 열었습니다 · 코드는 팝업에 표시 (최대 ${GhLoginWait}초) · 설치는 계속 진행됩니다" -ForegroundColor Yellow
   }
 }
 
@@ -7720,7 +7714,7 @@ $appSwitch = Read-DesktopAppSwitch $wantApp
 $appWhen   = $appSwitch.When
 if ($appSwitch.Extra) {
   Write-Host ''
-  Write-Host ('  ! #desktop-app 의 : 뒤 목록은 이제 안 쓴다 — 무엇을 깔지는 제품 칸이 든다 (준 값: {0})' -f
+  Write-Host ('  ! #desktop-app 의 : 뒤 목록은 더 이상 쓰지 않음 — 설치할 항목은 제품 선택으로 정합니다 (지정한 값: {0})' -f
               $appSwitch.Extra) -ForegroundColor Yellow
 }
 $appPicks = @($DesktopApps | Where-Object { $PickKeys -contains $_.Key })
@@ -7749,13 +7743,13 @@ function Set-CodexSandboxKey([string]$Path) {
   if ($env:CODEX_HOME) {
     $there = try { [IO.Path]::GetFullPath($env:CODEX_HOME).TrimEnd('\') } catch { $env:CODEX_HOME }
     if ($there -ne [IO.Path]::GetFullPath((Split-Path $Path -Parent)).TrimEnd('\')) {
-      return @{ Did = 'left'; Why = "CODEX_HOME($env:CODEX_HOME) 이 서 있어 앱은 그 자리의 설정을 읽는다" }
+      return @{ Did = 'left'; Why = "CODEX_HOME($env:CODEX_HOME) 이 설정되어 있어 앱은 그 위치의 설정을 읽음" }
     }
   }
   # 링크는 짓기 앞에서 가린다 — 끊긴 링크는 「없는 파일」로 읽혀 짓기가 링크 너머에 쓴다
   $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
   if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-    return @{ Did = 'left'; Why = '설정 파일이 링크다 — 갈아 끼우면 링크가 끊긴다' }
+    return @{ Did = 'left'; Why = '설정 파일이 링크임 — 덮어쓰면 링크가 끊어짐' }
   }
   if (-not (Test-Path -LiteralPath $Path)) {
     $w = Write-FileSafely $Path ($utf8.GetBytes($block)) $null
@@ -7768,14 +7762,14 @@ function Set-CodexSandboxKey([string]$Path) {
   $now = Read-TomlTopKeys $Path @('windows')
   if ($null -eq $now) {
     if ($script:ProbeTimedOut.Count -gt $timed) { return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
-    return @{ Did = 'left'; Why = 'TOML 로 못 읽었다(깨진 파일이거나 파이썬 3.11 이상이 안 선다)' }
+    return @{ Did = 'left'; Why = 'TOML 로 읽지 못함 (파일이 깨졌거나 Python 3.11 이상이 실행되지 않음)' }
   }
   $w = $now.PSObject.Properties['windows']
   if ($w) {
     if ($w.Value -is [System.Management.Automation.PSCustomObject] -and @($w.Value.PSObject.Properties | Where-Object { $_.Name -ceq 'sandbox' }).Count) {
       return @{ Did = 'kept'; Have = "windows.sandbox = $($w.Value.sandbox | ConvertTo-Json -Compress)" }
     }
-    return @{ Did = 'left'; Why = $(if ($w.Value -is [System.Management.Automation.PSCustomObject]) { '[windows] 표에 sandbox 가 없다' } else { 'windows 가 표가 아니다' }) }
+    return @{ Did = 'left'; Why = $(if ($w.Value -is [System.Management.Automation.PSCustomObject]) { '[windows] 표에 sandbox 가 없음' } else { 'windows 가 표가 아님' }) }
   }
   $old = [IO.File]::ReadAllBytes($Path)
   $nl = if ($utf8.GetString($old).Contains("`r`n")) { "`r`n" } else { "`n" }
@@ -7792,7 +7786,7 @@ function Set-CodexSandboxKey([string]$Path) {
     # `-I` — 작업 폴더의 같은 이름 모듈(`tomllib.py` · `json.py`)을 안 집는다
     $rc = Invoke-LoggedCapped 'python' @('-I', '-X', 'utf8', '-c', $same, $Path, $probe, $CodexSandboxMode) $tl $ProbeCap -Quiet
     if ($rc -eq -2) { Add-ProbeOverflow $TomlReadProbe $ProbeCap; return @{ Did = 'unmeasured'; Probe = $TomlReadProbe; Why = (Format-ProbeWhy -2 $ProbeCap) } }
-    if ($rc -ne 0) { return @{ Did = 'left'; Why = "붙인 결과가 그 뜻으로 안 읽힌다 (python $rc)" } }
+    if ($rc -ne 0) { return @{ Did = 'left'; Why = "덧붙인 결과를 다시 읽으니 의도와 다름 (python $rc)" } }
   } finally {
     Remove-Item -LiteralPath $tl, "$tl.err", $probe -ErrorAction SilentlyContinue
   }
@@ -7809,7 +7803,7 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
   # 빈 목록도 말한다 — 제품을 하나도 안 켠 판이 한 줄도 없이 지나가지 않게.
   if (-not $appPicks) {
     Write-Host ''
-    Write-Host '  데스크탑 앱 — 켠 제품이 없어 안 깐다'
+    Write-Host '  데스크탑 앱 — 선택한 제품이 없어 설치하지 않음'
   }
   foreach ($da in $appPicks) {
     # 행이 「언제」를 안 적으면 `offsite` 다 — 그 자는 `Test-DesktopAppHere` 하나가 든다(설치 창의 안내 줄도 그 답으로 선다).
@@ -7819,13 +7813,13 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
         $sbx = Set-CodexSandboxKey $CodexCfg
         $sbxName = 'Codex 데스크탑 · 샌드박스 키'
         switch ($sbx.Did) {
-          'made'       { Write-Host "  $sbxName — 데스크탑보다 먼저 지었다 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
-          'added'      { Write-Host "  $sbxName — 데스크탑보다 먼저 설정 끝에 더했다 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
-          'kept'       { Write-Host "  $sbxName — 이미 서 있어 둔다 ($($sbx.Have))" }
-          'raced'      { Write-Host "  ! $sbxName — 설정 끝에 더했는데 $($sbx.Why) · 그 글을 둔다 ($CodexCfg)" -ForegroundColor Yellow }
-          'unmeasured' { Add-UnmeasuredStep $sbxName $sbx.Probe '쓰지도 건너뛰지도 않았다' $sbx.Why }
+          'made'       { Write-Host "  $sbxName — 데스크탑 설치 전에 만듦 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
+          'added'      { Write-Host "  $sbxName — 데스크탑 설치 전에 설정 끝에 추가함 ([windows] sandbox = `"$CodexSandboxMode`")" -ForegroundColor Green }
+          'kept'       { Write-Host "  $sbxName — 이미 설정됨 ($($sbx.Have))" }
+          'raced'      { Write-Host "  ! $sbxName — 설정 끝에 추가했지만 $($sbx.Why) · 현재 내용 유지 ($CodexCfg)" -ForegroundColor Yellow }
+          'unmeasured' { Add-UnmeasuredStep $sbxName $sbx.Probe '저장도 건너뛰기도 하지 않음' $sbx.Why }
           default {
-            Write-Host "  ! $sbxName — $($sbx.Why) · 안 건드렸다 ($CodexCfg) — 앱의 샌드박스 첫 설정이 새 대화 권한을 「승인 요청」으로 덮을 수 있다" -ForegroundColor Yellow
+            Write-Host "  ! $sbxName — $($sbx.Why) · 변경하지 않음 ($CodexCfg) — 앱의 샌드박스 초기 설정이 새 대화 권한을 「승인 요청」으로 덮어쓸 수 있음" -ForegroundColor Yellow
           }
         }
       }
@@ -7835,7 +7829,7 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
     Write-Host ''
     Write-Host "  $($da.Label)" -ForegroundColor Cyan
     # 자리는 둘뿐이라(「준비」의 「자리」 칸) 안 깐 까닭은 사내 하나다.
-    Write-Host '      · 사내라 안 깐다 (게이트웨이를 못 문다)'
+    Write-Host '      · 건너뜀 (사내에서는 게이트웨이로 연결할 수 없음)'
   }
 }
 
@@ -7877,7 +7871,7 @@ $ExtPicks = @($Extensions | Where-Object { $PickKeys -contains $_.Key })
 # ⚠ **`code` 를 못 쟀으면 확장도 못 잰 것이다** — 「안 선다」로 읽어 빨갛게 끝내지 않고 확장마다 안 한 걸음으로 남긴다(결정 0141 · 0145).
 $extCodeRuns = if ($NoVsCode) { '' } else { Measure-Runs 'code' '--version' }
 if ($NoVsCode) {
-  Write-Host '  건너뜀 — VS Code 칸을 껐다 (확장은 VS Code 없이 설 자리가 없다)'
+  Write-Host '  건너뜀 — VS Code 선택 해제 (확장은 VS Code 가 있어야 설치됨)'
 } elseif ($extCodeRuns -ne 'no') {
   # `code --version` 을 못 쟀으면 `Measure-Runs` 가 남긴 그 까닭(넘김 · 못 띄움 · 종료 값)이 확장마다의 까닭이다 — `Why` 를 비워
   #   `Add-UnmeasuredStep` 이 `Get-ProbeWhy` 로 찍게 한다.
@@ -7893,7 +7887,7 @@ if ($NoVsCode) {
   $extAfter  = $extBefore
   $extHave   = @($ExtPicks | Where-Object { $extActs[$_.Id] -eq 'upcheck' })
   if ($extHave.Count -gt 0) {
-    Say-Busy "깔린 확장 $($extHave.Count)개" 'upcheck' @('code')
+    Say-Busy "설치된 확장 $($extHave.Count)개" 'upcheck' @('code')
     $xl = [IO.Path]::GetTempFileName()
     $t0 = Get-Date
     $rc = Invoke-LoggedCapped 'code' @('--update-extensions') $xl $ExtUpdateCap ${function:Show-ExtProgress}
@@ -7902,20 +7896,20 @@ if ($NoVsCode) {
     # 넘긴 것은 실패가 아니다 — 확장은 이미 깔려 있어 본일(세우기)이 안 깨지고, 못 올린 판은 VS Code 가 제 자동 갱신으로 올린다.
     #   그래서 `$Fails` 에 안 넣고 말만 하고 간다.
     if ($rc -eq -2) {
-      Write-Host "  ! 확장 갱신이 ${ExtUpdateCap}초를 넘겨 거뒀다 — 깔린 판 그대로 간다 (VS Code 가 스스로 올린다)" -ForegroundColor Yellow
+      Write-Host "  ! 확장 업데이트가 ${ExtUpdateCap}초를 넘겨 중지함 — 설치된 버전 그대로 진행 (VS Code 가 직접 업데이트합니다)" -ForegroundColor Yellow
     }
     # 걸린 시간을 적는다 — 이 호출은 확장별 소요를 안 뱉어, 느렸을 때 뒤에 남는 자리가 이것뿐이다. 걸음 전체를 재는
     #   `Write-Elapsed` 로는 이 호출 몫이 안 갈린다.
     elseif ($took -ge $ExtUpdateSlow) {
-      Write-Host "  (확장 갱신에 ${took}초 걸렸다 — 밀린 양이 많았다)" -ForegroundColor DarkGray
+      Write-Host "  (확장 업데이트에 ${took}초 걸림 — 밀린 업데이트가 많았음)" -ForegroundColor DarkGray
     }
     $extAfter = (Get-ExtVersions).Vers
   }
-  if (-not $ExtPicks) { Write-Host '  고른 제품이 없어 확장을 안 깐다' }
+  if (-not $ExtPicks) { Write-Host '  선택한 제품이 없어 확장을 설치하지 않음' }
   Install-Extension $ExtPicks $extActs $extBefore $extAfter $extProbe $extRead.Why
 } else {
-  Write-Host '  ! code 가 이 창의 PATH 에 없어 건너뛴다 — VS Code 설치부터 본다' -ForegroundColor Red
-  $Fails.Add('VS Code 확장 (code 가 안 닿는다)')
+  Write-Host '  ! code 가 이 창의 PATH 에 없어 건너뜀 — VS Code 설치를 먼저 확인하세요' -ForegroundColor Red
+  $Fails.Add('VS Code 확장 (code 를 찾을 수 없음)')
 }
 
 } catch { Write-StepFault $_ }
@@ -7930,7 +7924,7 @@ Exit-Step 'extensions'
 
 Enter-Step 'cli'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
-if (-not $CliPicks) { Write-Host '  고른 제품이 없어 CLI 를 안 깐다' }
+if (-not $CliPicks) { Write-Host '  선택한 제품이 없어 CLI 를 설치하지 않음' }
 # npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
 $npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
 if ($npmCliPicks.Count) { Install-NpmCli $npmCliPicks }
@@ -7942,7 +7936,7 @@ foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-Wi
 # 사외는 여기서 로그인 길을 댄다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다. 사내에서 심은 회사 연결이 남아 있으면 그
 #   로그인이 안 서는데, 그 연결은 「사내 연결」 걸음의 「안 세우는 도구」 칸이 걷고 못 걷으면 그 칸이 제 줄을 세운다.
 if (-not $inside) {
-  Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), 안티그래비티는 `agy` 첫 실행의 Google 로그인으로 쓴다 · 사내에서 심은 회사 연결은 「사내 연결」이 걷는다'
+  Write-Host '  사외 — Codex 는 `codex login`(ChatGPT), 안티그래비티는 `agy` 첫 실행 때 Google 로그인으로 사용합니다 · 사내에서 설정한 회사 연결은 「사내 연결」 단계에서 정리합니다'
 }
 # Copilot CLI 는 따로 로그인하지 않고 gh 로그인을 쓴다(claude-config 결정 0137) — 그 로그인이 서 있나는 끝 검증의 gh 로그인
 #   줄이 잰다(`Get-GhKeyringLines`).
@@ -7972,10 +7966,10 @@ try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFa
 # ⚠ **다른 자리의 값은 우리가 심은 글자 그대로일 때만 걷는다**(`Remove-OtherSiteVars`).
 $ModelTable = Read-ModelTable (Join-Path $KitSkills 'agent-envelope\models.conf')
 if ($ModelTable.Why -and ($wantAgyDelegate -or $wantCcBg)) {
-  Write-Host "  ! 맡기기 모델 표를 못 읽었다 — agy · Codex 모델 값을 안 건드렸다 ($($ModelTable.Why))" -ForegroundColor Red
-  $Fails.Add("맡기기 모델 표 ($($ModelTable.Why))")
+  Write-Host "  ! 위임 모델 표를 읽지 못함 — agy · Codex 모델 값을 변경하지 않음 ($($ModelTable.Why))" -ForegroundColor Red
+  $Fails.Add("위임 모델 표 ($($ModelTable.Why))")
 } elseif ($ModelTable.Why) {
-  Write-Host "  ! 맡기기 모델 표를 못 읽었다 — 안 세우는 맡기기의 옛 모델 값을 못 가려 안 걷는다 ($($ModelTable.Why))" -ForegroundColor Yellow
+  Write-Host "  ! 위임 모델 표를 읽지 못함 — 사용하지 않는 위임의 이전 모델 값을 구분할 수 없어 정리하지 않음 ($($ModelTable.Why))" -ForegroundColor Yellow
 }
 # agy — 래퍼(스킬 `agy-background`)가 읽는다
 $AgyModelVarsBySite = $ModelTable.Agy
@@ -7983,7 +7977,7 @@ $AgyModelVars       = $AgyModelVarsBySite[$ModelSite]
 if ($wantAgyDelegate) {
   foreach ($k in $AgyModelVars.Keys) {
     if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $AgyModelVars[$k]) {
-      Write-Host "  $k — 이미 맞다"
+      Write-Host "  $k — 이미 설정됨"
     } else {
       Plant-Var $k $AgyModelVars[$k]
     }
@@ -7991,7 +7985,7 @@ if ($wantAgyDelegate) {
   Remove-OtherSiteVars $AgyModelVarsBySite $ModelSite
 } else {
   # 안 세우는 맡기기 — 끈 기능의 값도 심은 손이 걷는다(우리 값 그대로인 것만 · 사람 값은 둔다)
-  Remove-OurRunnerVars $AgyModelVarsBySite 'agy 맡기기를 안 세운다'
+  Remove-OurRunnerVars $AgyModelVarsBySite 'agy 위임을 사용하지 않음'
 }
 
 # Codex · Copilot — 위 `$CcBgVars`(이 자리의 것)에 표가 이 자리에 준 Codex 모델(맡기기 · 기본)을 더해 심는다. 래퍼(스킬
@@ -8003,14 +7997,14 @@ foreach ($s in @($ModelTable.Codex.Keys)) {
 if ($wantCcBg) {
   foreach ($k in $CcBgVars.Keys) {
     if ([Environment]::GetEnvironmentVariable($k, 'User') -eq $CcBgVars[$k]) {
-      Write-Host "  $k — 이미 맞다"
+      Write-Host "  $k — 이미 설정됨"
     } else {
       Plant-Var $k $CcBgVars[$k]
     }
   }
   Remove-OtherSiteVars $CcBgVarsBySite $ModelSite
 } else {
-  Remove-OurRunnerVars $CcBgVarsBySite 'Codex · Copilot 맡기기를 안 세운다'
+  Remove-OurRunnerVars $CcBgVarsBySite 'Codex · Copilot 위임을 사용하지 않음'
 }
 
 # ── 맡기기 러너 값의 장부 — 표에서 빠지거나 `-` 가 된 이름 · 값이 바뀐 이름은 장부로 걷는다 (PAISetup #44 ⑤) ─────────────────
@@ -8021,10 +8015,10 @@ if ($wantCcBg) {
 # 사용자 환경을 읽고 쓰는 손 셋 — 「값 파일 이름의 장부」 칸도 쓴다. 심기 · 걷기는 `Plant-Var` · `Remove-UserVar` 가 들고 줄도 그 둘이 찍는다.
 $Ledger = Read-PlantLedger $ClaudePlantLedger
 $script:LedgerMigrating = $Ledger.Migrating   # 이 판이 장부를 처음 세우나 — 판에 한 번 정한다(`Read-RunLedger`)
-if ($Ledger.Why) { Write-Host "  ! 장부를 못 읽었다 ($($Ledger.Why)) — 이번 판은 심기만 하고 장부로 걷지 않는다 ($ClaudePlantLedger)" -ForegroundColor Yellow }
+if ($Ledger.Why) { Write-Host "  ! 설치 기록을 읽지 못함 ($($Ledger.Why)) — 이번에는 설정만 하고 기록에 따른 정리는 하지 않음 ($ClaudePlantLedger)" -ForegroundColor Yellow }
 $UserEnvGet    = { param($n) $v = [Environment]::GetEnvironmentVariable($n, 'User'); if ($v) { $v } else { $null } }
 $UserEnvSet    = { param($n, $v) $f0 = $script:Fails.Count; Plant-Var $n $v; $script:Fails.Count -eq $f0 }
-$UserEnvRemove = { param($n, $v) $f0 = $script:Fails.Count; Remove-UserVar $n '장부의 우리 값 · 이번 판은 안 심는다'; $script:Fails.Count -eq $f0 }
+$UserEnvRemove = { param($n, $v) $f0 = $script:Fails.Count; Remove-UserVar $n '이전 설치가 설정한 값 · 이번에는 사용 안 함'; $script:Fails.Count -eq $f0 }
 foreach ($g in @(@{ By = 'agy-model'; On = $wantAgyDelegate; Want = $AgyModelVars; Known = (Get-SiteValues @(, $AgyModelVarsBySite)) },
                  @{ By = 'ccbg';      On = $wantCcBg;        Want = $CcBgVars;     Known = (Get-SiteValues @(, $CcBgVarsBySite)) })) {
   $RunnerKnown = $g.Known
@@ -8038,7 +8032,7 @@ foreach ($g in @(@{ By = 'agy-model'; On = $wantAgyDelegate; Want = $AgyModelVar
 #   설치 몸통이 없는 저장소를 쓰는 사람은 키가 어디에도 안 심긴다. 저장소가 드는 것은 사람에게 딸린 것(개인 키 · 형제 저장소)이다.
 # 값 줄은 짐의 것이고, 사람이 넣은 키 · 주소만 얹는다(`Read-RunValues`).
 $fromFile  = Read-RunValues $DistEnvFile $EnvFile $TypedGatewayUrl
-if ($fromFile.Count -gt 0) { Write-Host "  install.env 가 $($fromFile.Count)개를 든다" }
+if ($fromFile.Count -gt 0) { Write-Host "  install.env 설정값 $($fromFile.Count)개" }
 
 # 게이트웨이를 쓰나 — **자리에서 난다**(「준비」의 `$inside`). 사내면 쓰고, 사외면 값 파일이 주소를 들어도 안 쓴다.
 # ⚠ **주소로 가르지 않는다.** 사내인데 주소가 없는 판(집에서 처음 깐 노트북의 회사 회차)을 「게이트웨이를 안 쓰는 자리」로 읽으면
@@ -8052,10 +8046,10 @@ $useGateway = $inside
 #   것인가」를 이 값으로 가른다 — 버린 뒤에는 남의 키와 우리 키를 못 갈라 걷어도 되는 것만 걷을 수 없다.
 $ourGateway = @{}
 if ($useGateway) {
-  Write-Host "  사내다 — 게이트웨이를 쓴다"
+  Write-Host "  사내 — 게이트웨이 사용"
 } else {
-  Write-Host "  사외다 — 게이트웨이를 안 쓴다"
-  Write-Host '    구독 로그인으로 섭니다 (claude auth login)'
+  Write-Host "  사외 — 게이트웨이 사용 안 함"
+  Write-Host '    구독 계정 로그인으로 사용합니다 (claude auth login)'
   # 값 파일이 든 사내 값을 버린다 — 안 버리면 아래 루프가 그대로 심는다.
   foreach ($v in $Vars) {
     if (-not $v.Gateway) { continue }
@@ -8074,7 +8068,7 @@ if ($useGateway) {
 $script:CompanyKeys = New-Object System.Collections.Generic.List[string]
 $keyBlob = Read-CompanyKeyBlob $CompanyKeyBlob
 if ($keyBlob.Why) {
-  Write-Host "  ! 설치기 폴더에 둔 회사 키를 못 풀었다 ($($keyBlob.Why)) — 사내에서 키가 없으면 설치 창에 다시 넣는다" -ForegroundColor Yellow
+  Write-Host "  ! 설치 폴더에 보관한 회사 키를 열지 못함 ($($keyBlob.Why)) — 사내에서 키가 없으면 설치 창에 다시 입력하세요" -ForegroundColor Yellow
 }
 Add-CompanyKey $fromFile['ANTHROPIC_AUTH_TOKEN']
 Add-CompanyKey $ourGateway['ANTHROPIC_AUTH_TOKEN']
@@ -8096,7 +8090,7 @@ if (-not $useGateway) {
       (Test-OurGatewayUrl ([string]$homePair.ANTHROPIC_BASE_URL) $OurGatewayUrls)) {
     $pairKey = [string]$homePair.ANTHROPIC_AUTH_TOKEN
     Add-CompanyKey $pairKey
-    if (-not $keyBlob.Key) { $null = Save-CompanyKeyBlob $keyBlob $CompanyKeyBlob $pairKey '걷기 전에 설치기 폴더에 이 사용자만 푸는 암호로 두었다 · 사내로 돌아오면 다시 심는다' }
+    if (-not $keyBlob.Key) { $null = Save-CompanyKeyBlob $keyBlob $CompanyKeyBlob $pairKey '제거하기 전에 설치 폴더에 이 사용자만 열 수 있게 암호화해 보관함 · 사내로 돌아오면 다시 설정합니다' }
   }
 }
 
@@ -8113,11 +8107,11 @@ foreach ($v in $Vars) {
     if (-not $envVal) { $envVal = [Environment]::GetEnvironmentVariable($v.Name, 'Process') }
     if ($envVal) {
       $val = $envVal
-      Write-Host "  $($v.Name) — 환경변수에 있는 값을 쓴다" -ForegroundColor Cyan
+      Write-Host "  $($v.Name) — 환경 변수에 있는 값 사용" -ForegroundColor Cyan
     } elseif ($v.Name -ceq 'ANTHROPIC_AUTH_TOKEN' -and $keyBlob.Key) {
       # 사외 판이 걷고 덩이로 둔 키 — 다시 묻지 않고 심는다. 별칭 둘은 아래 칸이 심은 키에서 다시 짓는다.
       $val = $keyBlob.Key
-      Write-Host "  $($v.Name) — 설치기 폴더에 이 사용자만 푸는 암호로 둔 회사 키를 쓴다" -ForegroundColor Cyan
+      Write-Host "  $($v.Name) — 설치 폴더에 암호화해 보관한 회사 키 사용" -ForegroundColor Cyan
     }
   }
 
@@ -8125,7 +8119,7 @@ foreach ($v in $Vars) {
   if ($v.Gateway -and -not $useGateway) { continue }
   # 사내 전용 이름도 같다 — 아래 「값 파일이 든 나머지 이름」 칸과 같은 문(`$InsideOnly`)을 묻는다
   if (-not $useGateway -and ($InsideOnly -contains $v.Name)) {
-    if ($val) { Write-Host "  $($v.Name) — 안 심는다 (사외에서는 뜻이 없는 이름)" -ForegroundColor Yellow }
+    if ($val) { Write-Host "  $($v.Name) — 건너뜀 (사내 전용)" -ForegroundColor Yellow }
     continue
   }
 
@@ -8148,7 +8142,7 @@ foreach ($v in $Vars) {
   # ⚠ **빈 값은 안 심는다.** 심으면 판정이 「있다」로 뒤집혀 부재가 조용해진다.
   if (-not $val) {
     if ($v.Gateway -and $useGateway) {
-      Write-Host "  ! $($v.Name) 이 비었다 — 이게 없으면 확장이 게이트웨이로 못 간다" -ForegroundColor Red
+      Write-Host "  ! $($v.Name) 이 비어 있음 — 이 값이 없으면 확장이 게이트웨이에 연결할 수 없습니다" -ForegroundColor Red
       $Fails.Add("$($v.Name) 미입력")
     }
     continue
@@ -8169,11 +8163,11 @@ foreach ($k in $fromFile.Keys) {
   $val = $fromFile[$k]
   if (-not $val) { continue }
   if (-not $useGateway -and (Test-ProxyValue $val)) {
-    Write-Host "  $k — 안 심는다 (사외라 프록시가 안 선다: $val)" -ForegroundColor Yellow
+    Write-Host "  $k — 건너뜀 (사외에서는 프록시를 쓰지 않음: $val)" -ForegroundColor Yellow
     continue
   }
   if (-not $useGateway -and ($InsideOnly -contains $k)) {
-    Write-Host "  $k — 안 심는다 (사외에서는 뜻이 없는 이름)" -ForegroundColor Yellow
+    Write-Host "  $k — 건너뜀 (사내 전용)" -ForegroundColor Yellow
     continue
   }
   Plant-Var $k $val
@@ -8191,7 +8185,7 @@ $KeyAliases = @(
 if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
   # 심은 키를 회사 키로 세우고 덩이를 맞춘다 — 사외로 나가 사용자 환경에서 걷힌 뒤 돌아온 판이 이 덩이에서 받는다.
   Add-CompanyKey $Planted['ANTHROPIC_AUTH_TOKEN']
-  $null = Save-CompanyKeyBlob $keyBlob $CompanyKeyBlob $Planted['ANTHROPIC_AUTH_TOKEN'] '설치기 폴더에 이 사용자만 푸는 암호로 두었다 · 사외에서 걷혀도 사내로 돌아오면 다시 심는다'
+  $null = Save-CompanyKeyBlob $keyBlob $CompanyKeyBlob $Planted['ANTHROPIC_AUTH_TOKEN'] '설치 폴더에 이 사용자만 열 수 있게 암호화해 보관함 · 사외에서 제거되어도 사내로 돌아오면 다시 설정합니다'
   foreach ($k in $KeyAliases) {
     if (-not $wantNeed[$k.Need]) { continue }
     Plant-Var $k.Name $Planted['ANTHROPIC_AUTH_TOKEN']
@@ -8202,8 +8196,8 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
   # 지우지는 않는다 — 우리가 심은 이름이 아니라 구글 직결 키의 제 이름이라, 걷으면 그 사람의 다른 일이 죽는다(「사외로 간 자리의
   #   사내 잔재」 칸의 「남의 값은 안 걷는다」와 같은 자). 화면에 찍어 두어, 회사 키로 안 서는 사람이 열어 볼 자리를 남긴다.
   if ($wantNeed['gemini'] -and [Environment]::GetEnvironmentVariable('GOOGLE_API_KEY', 'User')) {
-    Write-Host '  ! GOOGLE_API_KEY 가 사용자 환경에 있다 — 안티그래비티가 회사 키 대신 이것을 집는다' -ForegroundColor Yellow
-    Write-Host '     구글 직결 키의 제 이름이라 설치기가 안 걷는다. 회사 게이트웨이로 쓰려면 손으로 걷는다 (시스템 환경 변수)'
+    Write-Host '  ! GOOGLE_API_KEY 가 사용자 환경 변수에 있음 — 안티그래비티가 회사 키 대신 이 키를 사용합니다' -ForegroundColor Yellow
+    Write-Host '     Google 에 직접 연결하는 키의 공식 이름이라 설치기가 지우지 않습니다. 회사 게이트웨이로 쓰려면 직접 지우세요 (시스템 환경 변수)'
   }
 }
 
@@ -8215,7 +8209,7 @@ if ($useGateway -and $Planted['ANTHROPIC_AUTH_TOKEN']) {
 if ($useGateway) {
   foreach ($k in $KeyAliases) {
     if ($wantNeed[$k.Need]) { continue }
-    Remove-CompanyKeyCopy $k.Name "회사 키 사본 · 이번 판은 $($k.Tool) 를 회사 키로 안 세운다"
+    Remove-CompanyKeyCopy $k.Name "회사 키 사본 · 이번 설치는 $($k.Tool) 에 회사 키를 쓰지 않음"
   }
 }
 
@@ -8254,11 +8248,11 @@ if (-not $useGateway) {
   $oursUrl = Test-OurGatewayUrl $oldUrl $OurGatewayUrls
 
   if (-not $oldUrl) {
-    Write-Host '  ANTHROPIC_BASE_URL — 없다 (걷을 것이 없다)'
+    Write-Host '  ANTHROPIC_BASE_URL — 없음 (정리할 항목 없음)'
   } elseif (-not $oursUrl) {
     # 모르는 주소를 지우지 않되 말은 한다 — 이것이 살아 있으면 구독 로그인이 서 있어도 CLI 는 이쪽으로 나간다.
-    Write-Host "  ! ANTHROPIC_BASE_URL 이 우리 것이 아니다 — 안 걷는다 ($oldUrl)" -ForegroundColor Yellow
-    Write-Host '     구독 로그인으로 서려면 이 이름을 손으로 걷는다 (시스템 환경 변수)'
+    Write-Host "  ! ANTHROPIC_BASE_URL 이 설치기가 넣은 값이 아님 — 지우지 않음 ($oldUrl)" -ForegroundColor Yellow
+    Write-Host '     구독 계정으로 로그인하려면 이 변수를 직접 지우세요 (시스템 환경 변수)'
   } else {
     Remove-UserVar 'ANTHROPIC_BASE_URL'
   }
@@ -8266,13 +8260,13 @@ if (-not $useGateway) {
   if ($oursUrl) { Add-CompanyKey $oldKey }
   if ($oldKey -and (Test-CompanyKey $oldKey)) {
     # ⚠ **걷기 바로 앞에 덩이로 둔다** — 사용자 환경이 이 PC 에서 그 키를 든 마지막 자리라, 그냥 걷으면 사내로 돌아온 판이 다시 묻는다.
-    $null = Save-CompanyKeyBlob $keyBlob $CompanyKeyBlob $oldKey '걷기 전에 설치기 폴더에 이 사용자만 푸는 암호로 두었다 · 사내로 돌아오면 다시 심는다'
+    $null = Save-CompanyKeyBlob $keyBlob $CompanyKeyBlob $oldKey '제거하기 전에 설치 폴더에 이 사용자만 열 수 있게 암호화해 보관함 · 사내로 돌아오면 다시 설정합니다'
     Remove-UserVar 'ANTHROPIC_AUTH_TOKEN'
   } elseif ($oldKey) {
-    Write-Host '  ! ANTHROPIC_AUTH_TOKEN 이 우리 키인지 못 가린다 — 안 걷는다' -ForegroundColor Yellow
-    Write-Host '     구독 로그인으로 서려면 이 이름을 손으로 걷는다 (시스템 환경 변수)'
+    Write-Host '  ! ANTHROPIC_AUTH_TOKEN 이 설치기가 넣은 키인지 알 수 없음 — 지우지 않음' -ForegroundColor Yellow
+    Write-Host '     구독 계정으로 로그인하려면 이 변수를 직접 지우세요 (시스템 환경 변수)'
   }
-  foreach ($k in $KeyAliases) { Remove-CompanyKeyCopy $k.Name '사외라 안 쓴다 · 회사 키 사본' }
+  foreach ($k in $KeyAliases) { Remove-CompanyKeyCopy $k.Name '사외에서는 사용 안 함 · 회사 키 사본' }
 
   # 표 밖의 프록시 주소도 여기서 걷는다 — 「값 파일이 든 나머지 이름」 칸이 이번 판에 안 심어도 사내에서 한 번 깐 기계에는 그 값이
   #   남는다. 걷어도 되나는 이름을 손으로 들지 않고 `Test-OurProxyEntry` 가 판다 — 두 물음(무엇을 · 누구 것인지)이 다 거기 있고,
@@ -8288,22 +8282,22 @@ if (-not $useGateway) {
     if (Test-ScheduledTaskExists $ProxyTaskName) {
       Stop-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue
       Unregister-ScheduledTask -TaskName $ProxyTaskName -Confirm:$false -ErrorAction Stop
-      Write-Host "  감시 작업 — 걷었다 (작업 스케줄러 · $ProxyTaskName)" -ForegroundColor Green
+      Write-Host "  감시 작업 — 제거함 (작업 스케줄러 · $ProxyTaskName)" -ForegroundColor Green
     }
   } catch {
-    Write-Host "  ! 감시 작업 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
-    $Fails.Add('사내 잔재 (감시 작업 걷기)')
+    Write-Host "  ! 감시 작업 제거 실패 — $(Say-Why $_)" -ForegroundColor Red
+    $Fails.Add('사내 잔재 (감시 작업 제거)')
   }
 
   $runKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
   try {
     if (Get-ItemProperty -Path $runKeyPath -Name $ProxyRunName -ErrorAction SilentlyContinue) {
       Remove-ItemProperty -Path $runKeyPath -Name $ProxyRunName -ErrorAction Stop
-      Write-Host "  기존 자동시작 — 걷었다 (HKCU Run · $ProxyRunName)" -ForegroundColor Green
+      Write-Host "  기존 자동시작 — 제거함 (HKCU Run · $ProxyRunName)" -ForegroundColor Green
     }
   } catch {
-    Write-Host "  ! 기존 자동시작 걷기 실패 — $(Say-Why $_)" -ForegroundColor Red
-    $Fails.Add('사내 잔재 (자동시작 걷기)')
+    Write-Host "  ! 기존 자동시작 제거 실패 — $(Say-Why $_)" -ForegroundColor Red
+    $Fails.Add('사내 잔재 (자동 시작 제거)')
   }
 
   $oldProxyDir = Join-Path $env:LOCALAPPDATA $ProxyDirName
@@ -8312,10 +8306,10 @@ if (-not $useGateway) {
     if (Test-Path -LiteralPath $oldProxyDir) {
       # 못 지운 것을 지웠다고 안 한다 — 도는 프록시가 제 로그를 잡고 있으면 폴더가 남는다. 가리키는 주소와 자동시작은 걷혔으니
       #   다음 로그인부터는 안 뜬다.
-      Write-Host "  ! 프록시 사본을 못 지웠다 (도는 중일 수 있다) — $oldProxyDir" -ForegroundColor Yellow
-      Write-Host '     다음 로그인부터는 안 뜬다 — 지금 끄려면 작업 관리자에서 pythonw 를 끝낸다'
+      Write-Host "  ! 프록시 사본을 지우지 못함 (실행 중일 수 있음) — $oldProxyDir" -ForegroundColor Yellow
+      Write-Host '     다음 로그인부터는 실행되지 않습니다 — 지금 끄려면 작업 관리자에서 pythonw 를 끝내세요'
     } else {
-      Write-Host "  프록시 사본 — 걷었다 ($oldProxyDir)" -ForegroundColor Green
+      Write-Host "  프록시 사본 — 제거함 ($oldProxyDir)" -ForegroundColor Green
     }
   }
 }
@@ -8352,17 +8346,17 @@ $null = Save-PlantLedger $Ledger
 $WordPdfQuiet = @{ Office = 'HKCU:\Software\Microsoft\Office'; Name = 'DisableConvertPdfWarning' }
 $WordVersions = @(Get-WordVersions)
 if (-not $WordVersions.Count) {
-  Write-Host '  워드 PDF 변환 안내 — 워드가 없어 안 건드린다'
+  Write-Host '  워드 PDF 변환 안내 — 워드가 없어 건너뜀'
 } else {
   $wordDid  = @(Set-WordPdfQuiet $WordVersions)
   $wordSet  = @($wordDid | Where-Object { $_.Did -eq 'set' }  | ForEach-Object { $_.Version })
   $wordKept = @($wordDid | Where-Object { $_.Did -eq 'kept' } | ForEach-Object { $_.Version })
   $wordSaid = @()
-  if ($wordSet.Count)  { $wordSaid += "껐다 ($($wordSet -join ' · '))" }
-  if ($wordKept.Count) { $wordSaid += "이미 꺼져 있다 ($($wordKept -join ' · '))" }
+  if ($wordSet.Count)  { $wordSaid += "끔 ($($wordSet -join ' · '))" }
+  if ($wordKept.Count) { $wordSaid += "이미 꺼져 있음 ($($wordKept -join ' · '))" }
   if ($wordSet.Count) {
     Write-Host ('  워드 PDF 변환 안내 — ' + ($wordSaid -join ' · ') +
-                ' — DRM 스킬이 숨은 워드로 PDF 를 열다 그 창에 갇히지 않게. 사람이 PDF 를 워드로 열 때도 그 안내가 더는 안 뜬다') -ForegroundColor Green
+                ' — DRM 스킬이 숨겨진 워드로 PDF 를 열 때 이 안내 창에서 멈추지 않게 합니다. 직접 PDF 를 워드로 열 때도 이 안내는 더 이상 나오지 않습니다') -ForegroundColor Green
   } elseif ($wordKept.Count) {
     Write-Host ('  워드 PDF 변환 안내 — ' + ($wordSaid -join ' · '))
   }
@@ -8384,24 +8378,24 @@ if ($offsite) {
   Write-Host '  Claude 구독 로그인' -ForegroundColor Cyan
   $loginTimedBefore = $script:ProbeTimedOut.Count
   if (-not (Test-Runs 'claude' '--version')) {
-    Write-Host '  ! claude CLI 가 안 닿아 로그인을 못 띄운다 — 위 CLI 설치를 본다' -ForegroundColor Yellow
+    Write-Host '  ! claude CLI 를 찾을 수 없어 로그인을 시작할 수 없음 — 위 CLI 설치 결과를 확인하세요' -ForegroundColor Yellow
   } elseif (Test-ClaudeLoggedIn) {
     $claudeLoggedIn = $true
-    Write-Host '  이미 서 있다 (loggedIn=true)'
+    Write-Host '  이미 로그인됨 (loggedIn=true)'
   } elseif ($script:ProbeTimedOut.Count -gt $loginTimedBefore) {
     # ⚠ **못 쟀으면 로그인 창을 안 띄운다** — 로그인이 선 PC 에 브라우저를 띄우게 된다(결정 0141 · 아래 gh 칸과 같은 규율).
-    Write-Host '  ! 로그인이 섰나를 못 쟀다 — 그 물음이 울타리 안에 안 끝났다 · 브라우저를 안 띄운다' -ForegroundColor Yellow
-    Write-Host '     새 터미널에서 claude auth status 로 보고, 비었으면 claude auth login'
+    Write-Host '  ! 로그인 상태를 확인하지 못함 — 확인 명령이 제한 시간 안에 끝나지 않음 · 브라우저를 열지 않음' -ForegroundColor Yellow
+    Write-Host '     새 터미널에서 claude auth status 로 확인하고, 로그인되어 있지 않으면 claude auth login 을 실행하세요'
   } elseif ($NightRun) {
-    Write-Host '  ! 밤 자동 실행이라 로그인 브라우저를 안 띄운다 — 다음 로그온 · 설치 창이 띄운다' -ForegroundColor Yellow
+    Write-Host '  ! 야간 자동 실행이라 로그인 브라우저를 열지 않음 — 다음 로그온이나 설치 창에서 엽니다' -ForegroundColor Yellow
   } elseif (-not (Test-Reach 'claude.ai:443')) {
     # 닿는지 먼저 잰다 — 막힌 자리에서 3분을 서 있지 않는다. 로그인은 브라우저 콜백으로 끝나, 그 페이지에 못 닿으면 CLI 는 죽지
     #   않고 기다려 아래 루프의 `HasExited` 조기 탈출이 안 걸린다. 닿는다고 열린다는 보장은 없지만 못 닿으면 확실히 못 연다 —
     #   그 한쪽만으로 3분을 아낀다. 막혔다고 실패로 안 센다 — 로그인은 사람이 안 눌러도 되는 자리다.
-    Write-Host '  ! claude.ai 에 못 닿는다 — 브라우저를 안 띄우고 지나간다 (회선이 막았다)' -ForegroundColor Yellow
-    Write-Host '     닿는 자리에서 새 터미널에 claude auth login'
+    Write-Host '  ! claude.ai 에 연결할 수 없음 — 브라우저를 열지 않고 넘어감 (네트워크에서 차단됨)' -ForegroundColor Yellow
+    Write-Host '     연결되는 네트워크에서 새 터미널에 claude auth login 을 실행하세요'
   } else {
-    Write-Host '  구독 계정 로그인 브라우저를 엽니다 — 눌러 주세요 (최대 180초)' -ForegroundColor Yellow
+    Write-Host '  구독 계정 로그인 브라우저를 엽니다 — 로그인을 완료해 주세요 (최대 180초)' -ForegroundColor Yellow
     try {
       # PowerShell 에서 `claude`는 npm 이 만든 `claude.ps1`이 먼저 잡히지만, cmd 는
       # 그 파일을 실행할 수 없다. 같은 자리의 cmd shim 을 정확히 고른다.
@@ -8429,13 +8423,13 @@ if ($offsite) {
       }
       if (-not $claudeLoggedIn) { $claudeLoggedIn = Test-ClaudeLoggedIn }
       if ($claudeLoggedIn) {
-        Write-Host '  섰다 (loggedIn=true)' -ForegroundColor Green
+        Write-Host '  로그인 완료 (loggedIn=true)' -ForegroundColor Green
       } else {
-        Write-Host '  ! 아직 로그인되지 않았다 — 새 터미널에서 claude auth login' -ForegroundColor Yellow
+        Write-Host '  ! 아직 로그인되지 않음 — 새 터미널에서 claude auth login 을 실행하세요' -ForegroundColor Yellow
       }
     } catch {
-      Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
-      Write-Host '     새 터미널에서: claude auth login'
+      Write-Host "  ! 로그인을 시작하지 못함 — $(Say-Why $_)" -ForegroundColor Yellow
+      Write-Host '     새 터미널에서 실행하세요: claude auth login'
     }
   }
 }
@@ -8475,24 +8469,24 @@ if ($wantProxy) {
   $proxySrc = Join-Path $Here $proxyRel
   $baseUrl  = $Planted['ANTHROPIC_BASE_URL']
   if (-not (Test-Path -LiteralPath $proxySrc)) {
-    Write-Host "  ! 프록시 파일이 이 폴더에 없다 — $proxyRel" -ForegroundColor Red
-    $Fails.Add('로컬 프록시 (파일이 없다)')
+    Write-Host "  ! 프록시 파일이 이 폴더에 없음 — $proxyRel" -ForegroundColor Red
+    $Fails.Add('로컬 프록시 (파일 없음)')
   } elseif (-not $baseUrl) {
-    Write-Host '  ! ANTHROPIC_BASE_URL 이 안 심겨 프록시가 설 자리를 모른다' -ForegroundColor Red
-    $Fails.Add('로컬 프록시 (주소가 없다)')
+    Write-Host '  ! ANTHROPIC_BASE_URL 이 설정되지 않아 프록시 주소를 알 수 없음' -ForegroundColor Red
+    $Fails.Add('로컬 프록시 (주소 없음)')
   } else {
     $u = $null
     try { $u = [Uri]$baseUrl } catch { }
     if (-not $u -or -not $u.IsLoopback) {
       # 주소가 루프백이 아니면 프록시를 띄워도 아무도 안 지난다 — 세우지 않고 말한다.
-      Write-Host "  ! ANTHROPIC_BASE_URL 이 루프백이 아니다 ($baseUrl) — 프록시를 안 세운다" -ForegroundColor Yellow
-      Write-Host '     프록시를 지나려면 값 파일의 주소를 127.0.0.1 로 둔다 (결정 0041)'
+      Write-Host "  ! ANTHROPIC_BASE_URL 이 루프백 주소가 아님 ($baseUrl) — 프록시를 실행하지 않음" -ForegroundColor Yellow
+      Write-Host '     프록시를 거치려면 설정 파일의 주소를 127.0.0.1 로 지정하세요 (결정 0041)'
     } else {
       $proxyHealthUrl = "http://$($u.Host):$($u.Port)/health"
       $pyw = Get-RealPythonW
       if (-not $pyw -or -not (Test-Path -LiteralPath $pyw)) {
-        Write-Host '  ! pythonw.exe 를 못 찾았다 — 위 「프로그램」 걸음의 파이썬 설치부터 본다' -ForegroundColor Red
-        $Fails.Add('로컬 프록시 (파이썬이 없다)')
+        Write-Host '  ! pythonw.exe 를 찾지 못함 — 위 「프로그램」 단계의 Python 설치 결과를 먼저 확인하세요' -ForegroundColor Red
+        $Fails.Add('로컬 프록시 (Python 없음)')
       } else {
         $proxyDir  = Join-Path $env:LOCALAPPDATA $ProxyDirName
         $proxyPath = Join-Path $proxyDir $ProxyFile
@@ -8523,7 +8517,7 @@ if ($wantProxy) {
           # 도는 판이 낸 `version` — `15.4` 꼴이거나, 이전 프록시 판의 정수 하나다(`ConvertFrom-ProxyHealthVer` 가 둘 다 받는다).
           $runVer = [string]$up.version
           if (Test-ProxyVerAtLeast (ConvertFrom-ProxyHealthVer $runVer) $setPair) {
-            Write-Host "  이미 돈다 — v$runVer · 그대로 쓴다"
+            Write-Host "  이미 실행 중 — v$runVer · 그대로 사용"
             $start = $false
           } else {
             $proxyStale = $true
@@ -8531,7 +8525,7 @@ if ($wantProxy) {
         }
         New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
         if ($keepPair) {
-          Write-Host "  실행 폴더 — $proxyDir (실행 폴더의 판 v$setVer 이 이 짐의 v$ourVer 보다 새로워 안 덮었다)"
+          Write-Host "  실행 폴더 — $proxyDir (실행 폴더의 버전 v$setVer 이 설치 패키지의 v$ourVer 보다 새로워 덮어쓰지 않음)"
           if (-not (Test-Path -LiteralPath $watchdogPath) -and (Test-Path -LiteralPath $watchdogSrc)) {
             Copy-Item -LiteralPath $watchdogSrc -Destination $watchdogPath -Force
           }
@@ -8545,7 +8539,7 @@ if ($wantProxy) {
         # ⚠ **새 파일을 놓은 뒤에 끈다** — 감시 작업(`$ProxyTaskName`)은 5초마다 프록시가 안 돌면 실행 폴더의 파일로 다시 띄운다. 끄고
         #   나서 베끼면 그 틈에 깬 감시자가 옛 파일을 띄우고, 이 판이 띄운 새 판은 포트를 기다리다(프록시의 bind 재시도 15초) 물러난다.
         if ($proxyStale) {
-          Write-Host "  낡은 프록시 v$runVer 이 돈다 — 끄고 v$setVer 로 새로 띄운다"
+          Write-Host "  이전 버전 프록시 v$runVer 실행 중 — 종료하고 v$setVer 로 다시 실행합니다"
           Stop-ProxyOnPort $u.Port $ProxyFile
         }
         if ($start) {
@@ -8565,15 +8559,15 @@ if ($wantProxy) {
               $atSet = [bool]$up -and (Test-ProxyVerAtLeast (ConvertFrom-ProxyHealthVer ([string]$up.version)) $setPair)
             }
           }
-          if ($atSet) { Write-Host "  띄웠다 — $($u.Host):$($u.Port) v$($up.version)" -ForegroundColor Green }
+          if ($atSet) { Write-Host "  실행함 — $($u.Host):$($u.Port) v$($up.version)" -ForegroundColor Green }
           elseif ($up) {
             $pidSaid = if ($up.pid) { " · PID $($up.pid)" } else { '' }
-            Write-Host "  ! 옛 판 v$($up.version) 이 그대로 돈다 — 끄지 못했다 (포트 $($u.Port)$pidSaid) · 실행 폴더는 v$setVer 라 다음 로그인부터 새 판이 선다" -ForegroundColor Red
-            $Fails.Add("로컬 프록시 (옛 판 v$($up.version) 이 그대로 돈다)")
+            Write-Host "  ! 이전 버전 v$($up.version) 이 계속 실행 중 — 종료하지 못함 (포트 $($u.Port)$pidSaid) · 실행 폴더는 v$setVer 라 다음 로그인부터 새 버전이 실행됩니다" -ForegroundColor Red
+            $Fails.Add("로컬 프록시 (이전 버전 v$($up.version) 이 계속 실행 중)")
           }
           else {
-            Write-Host "  ! 안 떴다 — $proxyDir\proxy.log 를 본다 (포트를 딴 프로그램이 잡고 있을 수 있다)" -ForegroundColor Red
-            $Fails.Add('로컬 프록시 (안 떴다)')
+            Write-Host "  ! 실행되지 않음 — $proxyDir\proxy.log 를 확인하세요 (다른 프로그램이 포트를 쓰고 있을 수 있음)" -ForegroundColor Red
+            $Fails.Add('로컬 프록시 (실행 안 됨)')
           }
         }
 
@@ -8582,7 +8576,7 @@ if ($wantProxy) {
         try {
           if (Get-ItemProperty -Path $runKey -Name $ProxyRunName -ErrorAction SilentlyContinue) {
             Remove-ItemProperty -Path $runKey -Name $ProxyRunName -ErrorAction SilentlyContinue
-            Write-Host "  기존 자동시작 — 걷었다 (HKCU Run · $ProxyRunName)"
+            Write-Host "  기존 자동시작 — 제거함 (HKCU Run · $ProxyRunName)"
           }
         } catch { }
 
@@ -8610,7 +8604,7 @@ if ($wantProxy) {
           #   (`ExecutionTimeLimit` 0)이고 겹침 정책이 `IgnoreNew` 라, 앞 회차가 사는 중에 부르면 「요청을 거부했습니다」
           #   (`0x800710E0`)가 마지막 결과로 남는다 — 규칙대로 물러난 것이고 감시자는 멀쩡히 돈다.
           Start-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue
-          Write-Host "  감시 작업 — 로그인마다 창 없이 띄우도록 걸고 시작했다 (작업 스케줄러 · $ProxyTaskName)" -ForegroundColor Green
+          Write-Host "  감시 작업 — 로그인할 때마다 창 없이 실행되도록 등록하고 시작함 (작업 스케줄러 · $ProxyTaskName)" -ForegroundColor Green
         } catch {
           Write-Host "  ! 감시 작업 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Red
           $Fails.Add('로컬 프록시 (감시 작업)')
@@ -8642,20 +8636,20 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
     # python 은 병합기를 부를 갈래에서만 세 값으로 묻는다 — 못 잰 것을 「python 없음」 빨강으로 읽지 않는다(결정 0141)
     $cmPython = if ((Test-Path -LiteralPath $src) -and (Test-Path -LiteralPath $dst) -and (Test-Path -LiteralPath $CodexCfgMerge)) { Measure-Runs 'python' '--version' } else { '' }
     if (-not (Test-Path -LiteralPath $src)) {
-      Write-Host "  ! Codex 틀이 이 폴더에 없다 — $codexTpl" -ForegroundColor Red
-      $Fails.Add('Codex 설정 (틀이 없다)')
+      Write-Host "  ! Codex 설정 템플릿이 이 폴더에 없음 — $codexTpl" -ForegroundColor Red
+      $Fails.Add('Codex 설정 (템플릿 없음)')
     } elseif (-not (Test-Path -LiteralPath $dst)) {
       $w = Write-FileSafely $dst ($noBom.GetBytes([string](Get-Content -LiteralPath $src -Raw -Encoding UTF8))) $null
-      if ($w.Did -ceq 'written') { Write-Host '  Codex config.toml — 틀로 썼다 (키는 파일이 아니라 OPENAI_API_KEY 에서 읽는다)' -ForegroundColor Green }
-      elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! Codex config.toml — $($w.Why) · 그 글을 둔다 (다음 판이 틀의 자리를 맞춘다)" -ForegroundColor Yellow }
-      else { Write-Host "  ! Codex config.toml — 틀로 못 썼다 ($($w.Why))" -ForegroundColor Red; $Fails.Add('Codex 설정 (틀로 못 썼다)') }
+      if ($w.Did -ceq 'written') { Write-Host '  Codex config.toml — 템플릿으로 저장함 (키는 파일이 아니라 OPENAI_API_KEY 에서 읽음)' -ForegroundColor Green }
+      elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! Codex config.toml — $($w.Why) · 현재 내용 유지 (다음 설치에서 템플릿 항목을 맞춤)" -ForegroundColor Yellow }
+      else { Write-Host "  ! Codex config.toml — 템플릿으로 저장하지 못함 ($($w.Why))" -ForegroundColor Red; $Fails.Add('Codex 설정 (템플릿 저장 실패)') }
     } elseif (-not (Test-Path -LiteralPath $CodexCfgMerge)) {
-      Write-Host "  ! Codex config.toml — 틀 병합기가 이 폴더에 없어 안 건드렸다 ($CodexCfgMerge)" -ForegroundColor Red
-      $Fails.Add('Codex 설정 (틀 병합기가 없다)')
+      Write-Host "  ! Codex config.toml — 템플릿 병합 도구가 이 폴더에 없어 변경하지 않음 ($CodexCfgMerge)" -ForegroundColor Red
+      $Fails.Add('Codex 설정 (템플릿 병합 도구 없음)')
     } elseif ($cmPython -eq 'unmeasured') {
-      Add-UnmeasuredStep 'Codex config.toml 틀 맞추기' 'python --version' '맞추지도 건너뛰지도 않았다'
+      Add-UnmeasuredStep 'Codex config.toml 템플릿 적용' 'python --version' '적용도 건너뛰기도 하지 않음'
     } elseif ($cmPython -ne 'yes') {
-      Write-Host '  ! Codex config.toml — python 이 안 서서 틀을 못 맞췄다 (안 건드렸다)' -ForegroundColor Red
+      Write-Host '  ! Codex config.toml — python 이 실행되지 않아 템플릿을 적용하지 못함 (변경하지 않음)' -ForegroundColor Red
       $Fails.Add('Codex 설정 (python 없음)')
     } else {
       $cmLog = [IO.Path]::GetTempFileName()
@@ -8663,16 +8657,16 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
       $cmOut = @(Get-Content -LiteralPath $cmLog -Encoding UTF8 -ErrorAction SilentlyContinue |
                  ForEach-Object { "$_".Trim() } | Where-Object { $_ })
       if ($cmRc -ne 0) {
-        Write-Host '  ! Codex config.toml — 틀을 못 맞췄다 · 파일은 그대로다. 병합기가 뱉은 끝 줄:' -ForegroundColor Red
+        Write-Host '  ! Codex config.toml — 템플릿을 적용하지 못함 · 파일은 그대로입니다. 마지막 출력:' -ForegroundColor Red
         Show-Log $cmLog
-        $Fails.Add('Codex 설정 (틀 병합 실패)')
+        $Fails.Add('Codex 설정 (템플릿 병합 실패)')
       } elseif ($cmOut -contains 'CHANGED=1') {
         $cmSet = @($cmOut | Where-Object { $_ -like 'SET=*' } | ForEach-Object { $_.Substring('SET='.Length) })
-        Write-Host "  Codex config.toml — 틀의 자리를 맞췄다 ($($cmSet -join ' · ')) · 다른 키 · 표는 그대로다" -ForegroundColor Green
+        Write-Host "  Codex config.toml — 템플릿 항목을 적용함 ($($cmSet -join ' · ')) · 다른 키와 표는 그대로 유지" -ForegroundColor Green
         $cmBak = @($cmOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
-        if ($cmBak) { Write-Host "     고치기 전 것은 $($cmBak.Substring('BACKUP='.Length)) 에 떠 뒀다" }
+        if ($cmBak) { Write-Host "     변경 전 파일은 $($cmBak.Substring('BACKUP='.Length)) 에 백업함" }
       } else {
-        Write-Host '  Codex config.toml — 이미 맞다'
+        Write-Host '  Codex config.toml — 이미 설정됨'
       }
       Remove-Item -LiteralPath $cmLog -ErrorAction SilentlyContinue
     }
@@ -8692,8 +8686,8 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
     $agyBroken = $false
     if (Test-Path -LiteralPath $dst) {
       try { $agyOld = [IO.File]::ReadAllBytes($dst); $agyText = Read-TextOf $agyOld; if ($agyText.Trim()) { $a = $agyText | ConvertFrom-Json } } catch {
-        Write-Host '  ! 안티그래비티 settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
-        $Fails.Add('안티그래비티 설정 (settings.json 이 깨졌다)')
+        Write-Host '  ! 안티그래비티 settings.json 을 읽지 못함 (형식 오류) — 변경하지 않음' -ForegroundColor Red
+        $Fails.Add('안티그래비티 설정 (settings.json 형식 오류)')
         $agyBroken = $true
       }
     } else { $a = [pscustomobject]@{} }
@@ -8703,14 +8697,14 @@ if ($useGateway -and ($wantCodex -or $wantAgy)) {
       if ($null -eq $a) { $a = [pscustomobject]@{} }   # 빈 파일은 `ConvertFrom-Json` 이 아무것도 안 낸다
       $mp = $a.PSObject.Properties['modelProvider']
       if ($mp -and $mp.Value -is [string] -and $mp.Value -ceq $AgyProvider) {
-        Write-Host '  안티그래비티 settings.json — 이미 맞다'
+        Write-Host '  안티그래비티 settings.json — 이미 설정됨'
       } else {
         if ($mp) { $mp.Value = $AgyProvider } else { $a | Add-Member -NotePropertyName 'modelProvider' -NotePropertyValue $AgyProvider }
         $after = $a | ConvertTo-Json -Depth 10
         $w = Write-FileSafely $dst ($noBom.GetBytes($after)) $agyOld
-        if ($w.Did -ceq 'written') { Write-Host '  안티그래비티 settings.json — 썼다 (modelProvider · 키와 주소는 환경변수가 든다)' -ForegroundColor Green }
-        elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! 안티그래비티 settings.json — $($w.Why) · 그 글을 둔다 (다음 판이 맞춘다)" -ForegroundColor Yellow }
-        else { Write-Host "  ! 안티그래비티 settings.json 을 못 썼다 — $($w.Why)" -ForegroundColor Red; $Fails.Add('안티그래비티 설정 (못 썼다)') }
+        if ($w.Did -ceq 'written') { Write-Host '  안티그래비티 settings.json — 저장함 (modelProvider · 키와 주소는 환경 변수에서 읽음)' -ForegroundColor Green }
+        elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! 안티그래비티 settings.json — $($w.Why) · 현재 내용 유지 (다음 설치에서 맞춤)" -ForegroundColor Yellow }
+        else { Write-Host "  ! 안티그래비티 settings.json 을 저장하지 못함 — $($w.Why)" -ForegroundColor Red; $Fails.Add('안티그래비티 설정 (저장 실패)') }
       }
     }
   }
@@ -8741,37 +8735,37 @@ if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하�
     $src = Join-Path $Here $codexTpl
     $ocPython = if ((Test-Path -LiteralPath $src) -and (Test-Path -LiteralPath $CodexCfgMerge)) { Measure-Runs 'python' '--version' } else { '' }
     if (-not (Test-Path -LiteralPath $src)) {
-      Write-Host "  ! Codex config.toml — 회사 틀이 이 폴더에 없어 회사 연결이 남았나 못 가렸다 · 안 건드렸다 ($codexTpl)" -ForegroundColor Yellow
+      Write-Host "  ! Codex config.toml — 회사 설정 템플릿이 이 폴더에 없어 회사 연결이 남아 있는지 확인하지 못함 · 변경하지 않음 ($codexTpl)" -ForegroundColor Yellow
     } elseif (-not (Test-Path -LiteralPath $CodexCfgMerge)) {
-      Write-Host "  ! Codex config.toml — 틀 병합기가 이 폴더에 없어 회사 연결을 못 걷었다 ($CodexCfgMerge)" -ForegroundColor Red
-      $Fails.Add('Codex 설정 (틀 병합기가 없다)')
+      Write-Host "  ! Codex config.toml — 템플릿 병합 도구가 이 폴더에 없어 회사 연결을 제거하지 못함 ($CodexCfgMerge)" -ForegroundColor Red
+      $Fails.Add('Codex 설정 (템플릿 병합 도구 없음)')
     } elseif ($ocPython -eq 'unmeasured') {
-      Add-UnmeasuredStep 'Codex 회사 연결 걷기' 'python --version' '걷지도 건너뛰지도 않았다'
+      Add-UnmeasuredStep 'Codex 회사 연결 제거' 'python --version' '제거도 건너뛰기도 하지 않음'
     } elseif ($ocPython -ne 'yes') {
-      Write-Host '  ! Codex config.toml — python 이 안 서서 회사 연결을 못 걷었다 · 남았으면 Codex 가 로그인 대신 그 연결로 가서 진다' -ForegroundColor Yellow
+      Write-Host '  ! Codex config.toml — python 이 실행되지 않아 회사 연결을 제거하지 못함 · 남아 있으면 Codex 가 로그인 대신 그 연결을 써서 실패합니다' -ForegroundColor Yellow
     } else {
       $cmLog = [IO.Path]::GetTempFileName()
       $cmRc = Invoke-Logged 'python' @('-X', 'utf8', $CodexCfgMerge, '--config', $CodexCfg, '--template', $src, '--remove-provider') $cmLog
       $cmOut = @(Get-Content -LiteralPath $cmLog -Encoding UTF8 -ErrorAction SilentlyContinue |
                  ForEach-Object { "$_".Trim() } | Where-Object { $_ })
       if ($cmRc -ne 0) {
-        Write-Host '  ! Codex config.toml — 회사 연결을 못 걷었다 · 파일은 그대로다. 병합기가 뱉은 끝 줄:' -ForegroundColor Red
+        Write-Host '  ! Codex config.toml — 회사 연결을 제거하지 못함 · 파일은 그대로입니다. 마지막 출력:' -ForegroundColor Red
         Show-Log $cmLog
-        $Fails.Add('Codex 설정 (회사 연결 걷기 실패)')
+        $Fails.Add('Codex 설정 (회사 연결 제거 실패)')
       } else {
         if ($cmOut -contains 'CHANGED=1') {
           $cmUnset = @($cmOut | Where-Object { $_ -like 'UNSET=*' } | ForEach-Object { $_.Substring('UNSET='.Length) })
-          Write-Host "  Codex config.toml — 회사 연결을 걷었다 ($($cmUnset -join ' · ')) · 다른 키 · 표는 그대로다" -ForegroundColor Green
+          Write-Host "  Codex config.toml — 회사 연결을 제거함 ($($cmUnset -join ' · ')) · 다른 키와 표는 그대로 유지" -ForegroundColor Green
           $cmBak = @($cmOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
-          if ($cmBak) { Write-Host "     고치기 전 것은 $($cmBak.Substring('BACKUP='.Length)) 에 떠 뒀다" }
+          if ($cmBak) { Write-Host "     변경 전 파일은 $($cmBak.Substring('BACKUP='.Length)) 에 백업함" }
         } else {
-          Write-Host '  Codex config.toml — 회사 연결이 없다'
+          Write-Host '  Codex config.toml — 회사 연결 없음'
         }
         $cmKept = @($cmOut | Where-Object { $_ -like 'KEPT=*' } | ForEach-Object { $_.Substring('KEPT='.Length) })
         # 틀과 다른 표는 사람이 고친 것만이 아니다 — 옛 판의 틀이 심은 표도 틀의 값이 바뀐 뒤에는 다르다. 그래서 고친 사람을 단정하지
         #   않고 한 판에 한 줄로만 댄다.
         if ($cmKept.Count) {
-          Write-Host "  ! Codex config.toml — 회사 제공자 표가 틀과 다른 키를 들어 표는 두었다 ($($cmKept -join ' · ')) · 사람이 고쳤거나 옛 판의 틀이다. 맨 위의 회사 고르기(model_provider)는 걷는다 — 그 표를 고르는 프로필이 있으면 그 프로필은 손으로 고친다" -ForegroundColor Yellow
+          Write-Host "  ! Codex config.toml — 회사 제공자 표에 템플릿과 다른 키가 있어 표는 유지 ($($cmKept -join ' · ')) · 사용자가 고쳤거나 이전 버전 템플릿입니다. 맨 위의 회사 제공자 선택(model_provider)은 제거합니다 — 그 표를 고르는 프로필이 있으면 직접 고치세요" -ForegroundColor Yellow
         }
       }
       Remove-Item -LiteralPath $cmLog -ErrorAction SilentlyContinue
@@ -8782,21 +8776,21 @@ if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하�
     $agyOld = $null
     $agyBroken = $false
     try { $agyOld = [IO.File]::ReadAllBytes($AgyCfg); $agyText = Read-TextOf $agyOld; if ($agyText.Trim()) { $a = $agyText | ConvertFrom-Json } } catch {
-      Write-Host '  ! 안티그래비티 settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
-      $Fails.Add('안티그래비티 설정 (settings.json 이 깨졌다)')
+      Write-Host '  ! 안티그래비티 settings.json 을 읽지 못함 (형식 오류) — 변경하지 않음' -ForegroundColor Red
+      $Fails.Add('안티그래비티 설정 (settings.json 형식 오류)')
       $agyBroken = $true
     }
     $mp = if ($a) { $a.PSObject.Properties['modelProvider'] } else { $null }
     if (Test-AgyCompanyLink $a) {
       $a.PSObject.Properties.Remove('modelProvider')
       $w = Write-FileSafely $AgyCfg ((New-Object Text.UTF8Encoding($false)).GetBytes(($a | ConvertTo-Json -Depth 10))) $agyOld
-      if ($w.Did -ceq 'written') { Write-Host '  안티그래비티 settings.json — 회사 연결(modelProvider)을 걷었다 · 처음 실행할 때 Google 로그인으로 쓴다' -ForegroundColor Green }
-      elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! 안티그래비티 settings.json — $($w.Why) · 그 글을 둔다 (다음 판이 걷는다)" -ForegroundColor Yellow }
-      else { Write-Host "  ! 안티그래비티 settings.json — 회사 연결을 못 걷었다 ($($w.Why))" -ForegroundColor Red; $Fails.Add('안티그래비티 설정 (회사 연결 걷기 실패)') }
+      if ($w.Did -ceq 'written') { Write-Host '  안티그래비티 settings.json — 회사 연결(modelProvider)을 제거함 · 처음 실행할 때 Google 로그인으로 사용합니다' -ForegroundColor Green }
+      elseif ($w.Did -ceq 'raced' -or $w.Did -ceq 'overrun' -or $w.Did -ceq 'linked') { Write-Host "  ! 안티그래비티 settings.json — $($w.Why) · 현재 내용 유지 (다음 설치에서 제거)" -ForegroundColor Yellow }
+      else { Write-Host "  ! 안티그래비티 settings.json — 회사 연결을 제거하지 못함 ($($w.Why))" -ForegroundColor Red; $Fails.Add('안티그래비티 설정 (회사 연결 제거 실패)') }
     } elseif ($mp -and $mp.Value -is [string] -and $mp.Value -ceq $AgyProvider) {
-      Write-Host '  안티그래비티 settings.json — modelProvider 는 둔다 · GEMINI_API_KEY 가 회사 키가 아니라 그 사람의 API 키 갈래로 본다'
+      Write-Host '  안티그래비티 settings.json — modelProvider 유지 · GEMINI_API_KEY 가 회사 키가 아니라 사용자 본인의 API 키로 판단'
     } elseif (-not $agyBroken) {
-      Write-Host '  안티그래비티 settings.json — 회사 연결이 없다'
+      Write-Host '  안티그래비티 settings.json — 회사 연결 없음'
     }
   }
 }
@@ -8847,13 +8841,13 @@ if (Test-Path -LiteralPath $homeCfg) {
     $homeText = Read-TextOf $homeOld
     if ($homeText.Trim()) { $cfg = $homeText | ConvertFrom-Json } else { $cfg = [pscustomobject]@{}; $homeBlank = $true }
     if ($cfg -isnot [System.Management.Automation.PSCustomObject]) { throw '맨 위가 표가 아니다' }
-    if ($homeBlank) { Write-Host '  ! 비어 있다 — 빈 설정으로 읽고 필요한 것을 민다' -ForegroundColor Yellow }
-    else { Write-Host '  있음 — 그대로 두고 필요한 것만 민다' }
+    if ($homeBlank) { Write-Host '  ! 비어 있음 — 빈 설정으로 보고 필요한 항목을 추가' -ForegroundColor Yellow }
+    else { Write-Host '  기존 설정 있음 — 그대로 두고 필요한 항목만 추가' }
   } catch {
     $cfg = $null
     # ⚠ **깨진 파일을 덮지 않는다.** 사람이 손댄 것이 거기 들어 있을 수 있고, 지우면 무엇을 잃었는지 물을 자리가 없다. 말하고 물러난다.
-    Write-Host '  ! settings.json 을 못 읽었다 (꼴이 깨졌다) — 안 건드린다' -ForegroundColor Red
-    $Fails.Add('홈 settings.json 을 못 읽었다')
+    Write-Host '  ! settings.json 을 읽지 못함 (형식 오류) — 변경하지 않음' -ForegroundColor Red
+    $Fails.Add('홈 settings.json 을 읽지 못함')
   }
 } else {
   # 새 파일에 옮기는 것은 이 걸음이 고른 씨앗의 맨 위 키뿐이다(`$HomeSeedKeys` — 이름은 여기, 값은 씨앗 `$HomeSeed` · PAISetup #47 ⑦). 씨앗은
@@ -8867,9 +8861,9 @@ if (Test-Path -LiteralPath $homeCfg) {
       if ($HomeSeedKeys -ccontains $p.Name) { $cfg | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value }
     }
   } elseif ($HomeSeed) {
-    Write-Host "  ! 홈 설정 씨앗을 못 읽었다 — $($HomeSeed.Why) · 빈 설정으로 짓는다" -ForegroundColor Yellow
+    Write-Host "  ! 홈 설정 씨앗을 읽지 못함 — $($HomeSeed.Why) · 빈 설정으로 만듦" -ForegroundColor Yellow
   }
-  Write-Host '  없어서 씨앗을 깐다'
+  Write-Host '  설정 파일이 없어 씨앗으로 새로 만듦'
 }
 
 # ── 기본 권한 모드 · 허용 규칙 — 심는 표 (claude-config #147 · claude-config #142 ㉲ · PAISetup #50)─────────────────────────────────────────
@@ -8943,7 +8937,7 @@ if ($cfg) {
   # 클라이언트 기능 스위치 — 자리도 값 파일도 안 탄다. 선언은 홈 설정 씨앗의 `env`(`$Features`)이고, 씨앗에서 뺀 스위치는 장부로 걷는다(PAISetup #44 ⑨).
   #   씨앗을 못 읽은 판은 안 건드린다 — 그 판의 선언이 없다.
   if ($null -eq $Features) {
-    Write-Host "  ! 기능 스위치 — 홈 설정 씨앗을 못 읽어 안 건드렸다$(if ($HomeSeed -and $HomeSeed.Why) { " ($($HomeSeed.Why))" })" -ForegroundColor Yellow
+    Write-Host "  ! 기능 스위치 — 홈 설정 씨앗을 읽지 못해 변경하지 않음$(if ($HomeSeed -and $HomeSeed.Why) { " ($($HomeSeed.Why))" })" -ForegroundColor Yellow
   }
   $fx = Sync-Planted -Ledger $Ledger -Place 'settings-env' -At $homeAt -By 'features' -Want $(if ($null -ne $Features) { $Features } else { [ordered]@{} }) `
           -Complete ($null -ne $Features) -Get $EnvGet -Set $EnvSet -Remove $EnvRemove -Where '기능 스위치 · env' -Speak
@@ -8968,7 +8962,7 @@ if ($cfg) {
             -Remove { param($n, $v) $cfg.PSObject.Properties.Remove('modelPicker'); $true } `
             -Label @{ modelPicker = '모델 목록' } -Where 'modelPicker' -Speak -SayKept
   if (& $HomeChanged $pick) { $dirty = $true }
-  elseif ($useGateway -and -not $pick.Kept.Count -and -not $pick.Unread.Count) { Write-Host '  모델 목록 — 이미 맞다' }
+  elseif ($useGateway -and -not $pick.Kept.Count -and -not $pick.Unread.Count) { Write-Host '  모델 목록 — 이미 설정됨' }
 
   # WebFetch 검증 건너뛰기 — **사내 자리에만 켠다** (claude-config #118 · 결정 0087).
   # 사내 망이 `api.anthropic.com` 을 SNI 로 끊어, WebFetch 가 가져오기 전에 묻는 Anthropic 차단 목록 조회
@@ -8979,16 +8973,16 @@ if ($cfg) {
   $skipOn = $cfg.PSObject.Properties['skipWebFetchPreflight'] -and ($cfg.skipWebFetchPreflight -eq $true)
   if ($inside) {
     if ($skipOn) {
-      Write-Host '  WebFetch 검증 건너뛰기 — 이미 켜져 있다'
+      Write-Host '  WebFetch 검증 건너뛰기 — 이미 켜져 있음'
     } else {
       $cfg | Add-Member -NotePropertyName skipWebFetchPreflight -NotePropertyValue $true -Force
       $dirty = $true
-      Write-Host '  WebFetch 검증 건너뛰기 — 켰다 (사내 망이 그 조회를 끊는다)' -ForegroundColor Green
+      Write-Host '  WebFetch 검증 건너뛰기 — 켬 (사내 네트워크가 그 확인 요청을 차단함)' -ForegroundColor Green
     }
   } elseif ($skipOn) {
     $cfg.PSObject.Properties.Remove('skipWebFetchPreflight')
     $dirty = $true
-    Write-Host '  WebFetch 검증 건너뛰기 — 걷었다 (사외는 그 검사가 선다)' -ForegroundColor Green
+    Write-Host '  WebFetch 검증 건너뛰기 — 제거함 (사외에서는 그 확인이 정상 동작함)' -ForegroundColor Green
   }
 
   # 기본 권한 모드 · 허용 규칙 · env 의 이름 — 위 표(`$ClaudeHomePlants`)대로 장부 손이 심고 장부에 든 우리 것만 걷는다(guard 꼴 · 표의 값이 바뀌면
@@ -8998,7 +8992,7 @@ if ($cfg) {
   foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
     if ($p.Env) {
       if ($p.Yield -and $cfg.PSObject.Properties[$p.Yield] -and -not (Test-SameText ([string]$cfg.($p.Yield)) $p.Value)) {
-        Write-Host "  $($p.Label) — 사람이 둔 $($p.Yield)($($cfg.($p.Yield)))가 있어 $($p.Key) 를 안 심는다 (그 키를 이길 이름이다)"; continue
+        Write-Host "  $($p.Label) — 사용자가 설정한 $($p.Yield)($($cfg.($p.Yield)))가 있어 $($p.Key) 를 설정하지 않음 (그 키가 우선함)"; continue
       }
       $envWant[$p.Key] = $p.Value
     }
@@ -9022,7 +9016,7 @@ if ($cfg) {
   $AllowSay = {
     param([string]$v, [bool]$planted)
     $row = @($ClaudeHomePlants | Where-Object { $_.Key -ceq 'allow' -and $_.Value -ceq $v }) | Select-Object -First 1
-    $what = if ($planted) { "심었다 ($v)" } else { "걷었다 (우리가 심은 $v · 이번에는 안 심는다)" }
+    $what = if ($planted) { "설정함 ($v)" } else { "제거함 (이전 설치가 설정한 $v · 이번에는 사용 안 함)" }
     Write-Host "  $(if ($row) { $row.Label } else { 'Claude 허용 규칙' }) — $what (permissions.allow)" -ForegroundColor Green
   }
   $pa = Sync-Planted -Ledger $Ledger -Place 'settings' -At $homeAt -By 'permissions' -Names @('permissions.allow') -Want $allowWant -Mode 'guard' -List `
@@ -9043,7 +9037,7 @@ if ($cfg) {
   if ((& $HomeChanged $pm) -or (& $HomeChanged $pa) -or (& $HomeChanged $pe)) { $dirty = $true }
   elseif (@($ClaudeHomePlants | Where-Object { $_.Want }).Count -and
           -not ($pm.Kept.Count + $pm.Unread.Count + $pa.Unread.Count + $pe.Kept.Count + $pe.Unread.Count)) {
-    Write-Host '  기본 권한 모드 · 허용 규칙 · env 의 이름 — 이미 맞다'
+    Write-Host '  기본 권한 모드 · 허용 규칙 · env 의 이름 — 이미 설정됨'
   }
 
   # 러너 값 사본 — 이 파일에 맡기기 러너 이름(`$RunnerEnvValues`)이 있으면 판마다 맞춘다. 이 칸은 그 이름을 안 밀지만, 그 이름을
@@ -9061,12 +9055,12 @@ if ($cfg) {
       if ($p.Value -is [string] -and $RunnerEnvValues[$p.Name] -ccontains $p.Value) {
         $cfg.env.PSObject.Properties.Remove($p.Name)
         $dirty = $true
-        Write-Host "  $($p.Name) — settings.json 에서 걷었다 (맡기기 러너 값은 사용자 환경변수가 든다)" -ForegroundColor Green
+        Write-Host "  $($p.Name) — settings.json 에서 제거함 (위임 실행 값은 사용자 환경 변수에 둠)" -ForegroundColor Green
       } else {
         $shown = Get-SettingsSlot $cfg 'settings-env' $p.Name
         if (@($seenRows | Where-Object { $_.Name -ceq $p.Name -and (Test-SameText $_.Value $shown) }).Count) { continue }
-        Write-Host "  ! $($p.Name) 이 settings.json 에 우리 표에 없는 값($($p.Value))으로 있다 — 사람이 고른 값으로 보고 둔다" -ForegroundColor Yellow
-        Write-Host "     CLI · VS Code 세션이 띄운 러너는 이 값으로 나간다. 우리 값으로 돌리려면 이 줄을 지운다 — 볼 자리: $homeCfg  (env 칸)"
+        Write-Host "  ! $($p.Name) 이 settings.json 에 설치기 목록에 없는 값($($p.Value))으로 있음 — 사용자가 정한 값으로 보고 유지" -ForegroundColor Yellow
+        Write-Host "     CLI · VS Code 세션이 실행하는 위임 도구는 이 값을 씁니다. 설치기 값으로 되돌리려면 이 줄을 지우세요 — 위치: $homeCfg  (env 항목)"
         Set-LedgerRow $Ledger 'settings-env' $homeAt $p.Name 'seen' $shown
       }
     }
@@ -9088,13 +9082,13 @@ if ($cfg) {
       if (Test-CompanyKey ([string]$cfg.env.$k)) {
         $cfg.env.PSObject.Properties.Remove($k)
         $dirty = $true
-        Write-Host "  $k — settings.json 에서 걷었다 (회사 키는 이 파일에 안 둔다)" -ForegroundColor Green
+        Write-Host "  $k — settings.json 에서 제거함 (회사 키는 이 파일에 두지 않음)" -ForegroundColor Green
       } elseif ($Planted.ContainsKey($k)) {
-        Write-Host "  ! $k 이 settings.json 에 다른 값으로 있다 — 심은 값을 가린다" -ForegroundColor Red
-        Write-Host "     볼 자리: $homeCfg  (env 칸)"
-        $Fails.Add("$k 이 settings.json 에 다른 값으로 있다")
+        Write-Host "  ! $k 이 settings.json 에 다른 값으로 있음 — 설정한 값보다 우선 적용됨" -ForegroundColor Red
+        Write-Host "     위치: $homeCfg  (env 항목)"
+        $Fails.Add("$k 이 settings.json 에 다른 값으로 있음")
       } elseif ($k -notlike 'ANTHROPIC_*') {
-        Write-Host "  $k — settings.json 에 우리 키가 아닌 값이 있다 · 그대로 둔다"
+        Write-Host "  $k — settings.json 에 설치기가 넣지 않은 값이 있음 · 그대로 유지"
       }
     }
   }
@@ -9113,14 +9107,14 @@ if ($cfg) {
       $why = ''
       if ($p.Name -ceq 'ANTHROPIC_BASE_URL') {
         if (-not (Test-OurGatewayUrl ([string]$p.Value) $OurGatewayUrls)) { continue }
-        $why = '사외라 게이트웨이를 안 쓴다'
+        $why = '사외에서는 게이트웨이를 쓰지 않음'
       }
-      elseif (Test-OurProxyEntry $p.Name $p.Value $fromFile)  { $why = '사외라 프록시가 안 선다' }
-      elseif (Test-OurInsideOnlyEntry $p.Name $fromFile)  { $why = '사외에서는 뜻이 없는 이름' }
+      elseif (Test-OurProxyEntry $p.Name $p.Value $fromFile)  { $why = '사외에서는 프록시를 쓰지 않음' }
+      elseif (Test-OurInsideOnlyEntry $p.Name $fromFile)  { $why = '사내 전용' }
       else { continue }
       $cfg.env.PSObject.Properties.Remove($p.Name)
       $dirty = $true
-      Write-Host "  $($p.Name) — settings.json 에서 걷었다 ($why)" -ForegroundColor Green
+      Write-Host "  $($p.Name) — settings.json 에서 제거함 ($why)" -ForegroundColor Green
     }
   }
 
@@ -9142,9 +9136,9 @@ if ($cfg) {
             -Get $EnvGet -Set $EnvSet -Remove $EnvRemove -Where 'settings.json 의 env' `
             -Owned { param($n, $c) (-not $useGateway) -and ($DistNames -contains $n) -and -not $Planted.ContainsKey($n) }
   if (& $HomeChanged $push) { $dirty = $true }
-  if ($pushWant.Count) { Write-Host "  env 에 $($pushWant.Count) 개를 맞췄다 (#settings-env = yes · 키와 맡기기 러너 값은 환경변수에만 둔다)" -ForegroundColor Green }
-  elseif (-not $wantEnv) { Write-Host '  env 는 안 민다 — 값 파일이 #settings-env 를 안 든다 · 앞 판이 민 우리 값은 걷는다' }
-  foreach ($k in $push.Removed) { Write-Host "  $k — settings.json 에서 걷었다 (앞 판이 민 우리 값 · 이번 판은 안 민다)" -ForegroundColor Green }
+  if ($pushWant.Count) { Write-Host "  env 항목 $($pushWant.Count)개 설정함 (#settings-env = yes · 키와 위임 실행 값은 환경 변수에만 둠)" -ForegroundColor Green }
+  elseif (-not $wantEnv) { Write-Host '  env 항목은 설정하지 않음 — 설정 파일에 #settings-env 가 없음 · 이전 설치가 넣은 값은 제거' }
+  foreach ($k in $push.Removed) { Write-Host "  $k — settings.json 에서 제거함 (이전 설치가 넣은 값 · 이번에는 사용 안 함)" -ForegroundColor Green }
 
   # 우리가 안 민 `ANTHROPIC_` 이름이 남아 있으면 문다(「홀로 있다」) — 사내 안내 문서가 손으로 적으라고 하는 자리라, 앞선 값이 남으면 그쪽이
   #   이겨 방금 심은 것이 가려진다. 지우지는 않는다 — 사람이 뜻을 두고 넣었을 수 있다. 우리 것은 장부에 든 밀기 줄이다(바로 위 칸이 이번
@@ -9154,9 +9148,9 @@ if ($cfg) {
     foreach ($p in $cfg.env.PSObject.Properties) {
       if ($p.Name -notlike 'ANTHROPIC_*') { continue }
       if ($pushedNow -contains $p.Name) { continue }
-      Write-Host "  ! $($p.Name) 이 settings.json 에만 있다 — 우리가 심은 값을 가릴 수 있다" -ForegroundColor Red
-      Write-Host "     볼 자리: $homeCfg  (env 칸)"
-      $Fails.Add("$($p.Name) 이 settings.json 에 홀로 있다")
+      Write-Host "  ! $($p.Name) 이 settings.json 에만 있음 — 설치기가 설정한 값보다 우선 적용될 수 있음" -ForegroundColor Red
+      Write-Host "     위치: $homeCfg  (env 항목)"
+      $Fails.Add("$($p.Name) 이 settings.json 에만 있음")
     }
   }
 
@@ -9174,7 +9168,7 @@ if ($cfg) {
     }
     if ($hintDropped) {
       $cfg.hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $hintKept -Force
-      Write-Host '  Tavily 키 안내(SessionStart) — 더 안 쓰는 안내라 걷었다' -ForegroundColor Green
+      Write-Host '  Tavily 키 안내(SessionStart) — 더 이상 쓰지 않는 안내라 제거함' -ForegroundColor Green
       $dirty = $true
     }
   }
@@ -9186,17 +9180,17 @@ if ($cfg) {
     $json = $cfg | ConvertTo-Json -Depth 10
     $homeWrote = Write-FileSafely $homeCfg ((New-Object Text.UTF8Encoding($false)).GetBytes($json)) $homeOld
     switch ($homeWrote.Did) {
-      'written' { Write-Host '  썼다' -ForegroundColor Green }
-      'raced'   { Write-Host "  ! settings.json — $($homeWrote.Why) · 이 판은 안 썼다 (다음 판이 맞춘다 · $homeCfg)" -ForegroundColor Yellow }
-      'linked'  { Write-Host "  ! settings.json — $($homeWrote.Why) · 그 자리는 손으로 맞춘다 ($homeCfg)" -ForegroundColor Yellow }
-      'overrun' { Write-Host "  ! settings.json — $($homeWrote.Why) · 그 글을 둔다 ($homeCfg)" -ForegroundColor Yellow }
+      'written' { Write-Host '  settings.json 저장함' -ForegroundColor Green }
+      'raced'   { Write-Host "  ! settings.json — $($homeWrote.Why) · 이번에는 저장하지 않음 (다음 설치에서 맞춤 · $homeCfg)" -ForegroundColor Yellow }
+      'linked'  { Write-Host "  ! settings.json — $($homeWrote.Why) · 이 위치는 직접 맞춰 주세요 ($homeCfg)" -ForegroundColor Yellow }
+      'overrun' { Write-Host "  ! settings.json — $($homeWrote.Why) · 현재 내용 유지 ($homeCfg)" -ForegroundColor Yellow }
       default {
-        Write-Host "  ! settings.json 을 못 썼다 — $($homeWrote.Why) ($homeCfg)" -ForegroundColor Red
-        $Fails.Add('홈 settings.json 을 못 썼다')
+        Write-Host "  ! settings.json 을 저장하지 못함 — $($homeWrote.Why) ($homeCfg)" -ForegroundColor Red
+        $Fails.Add('홈 settings.json 저장 실패')
       }
     }
   } else {
-    Write-Host '  이미 맞다 — 안 건드림'
+    Write-Host '  settings.json — 이미 설정됨 (변경 없음)'
   }
 
   # 장부 — 설정을 쓴 뒤에만 이 걸음의 줄을 쓴다(못 썼으면 디스크의 장부 그대로다 — 장부가 설정보다 앞서지 않게).
@@ -9230,24 +9224,24 @@ try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFa
 #   장부에 적은 파일 가운데 원본에서 빠진 것만 걷는다(`Sync-AssetLedger`).
 $envAssets = @(
   @{ From = Join-Path $Here 'posco';         To = Join-Path $homeDir 'posco'; Mirror = $false; Ledger = $true
-     Name = '사내 환경 문서'; Desc = '게이트웨이·API·오류 기록 — 붙이기 전에 읽는다' }
+     Name = '사내 환경 문서'; Desc = '게이트웨이·API·오류 기록 — 연동하기 전에 읽어 보세요' }
   @{ From = Join-Path $Here 'seeds\gateway'; To = Join-Path $homeDir 'seeds\gateway'; Mirror = $true
-     Name = '게이트웨이 씨앗'; Desc = '새 프로젝트가 복사해서 출발한다' }
+     Name = '게이트웨이 씨앗'; Desc = '새 프로젝트를 시작할 때 복사해서 씁니다' }
   @{ From = Join-Path $Here 'seeds\check';   To = Join-Path $homeDir 'seeds\check'; Mirror = $true
-     Name = '검사 씨앗';       Desc = '검사 부품과 어느 저장소에서나 도는 게이트의 진본 — 받아 간 사본은 여기를 가리킨다' }
+     Name = '검사 씨앗';       Desc = '검사 부품과 모든 저장소에서 쓰는 커밋 게이트 원본 — 저장소의 사본은 이곳을 가리킵니다' }
   # 이것도 스위치를 안 둔다 — 설치 창의 「설정 저장소」 칸을 쓸 사람만 보지만, 칸을 채우려면 저장소가 이미 있어야 하고 그 저장소를
   #   만드는 골든이 이것이다. 켜는 칸으로 두면 안 켠 사람은 그 칸을 채울 길을 못 찾는다.
   @{ From = Join-Path $Here 'seeds\config-repo'; To = $ConfigSeedHome; Mirror = $true
-     Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 칸이 기대하는 저장소를 만드는 골든' }
+     Name = '설정 저장소 씨앗'; Desc = '「설정 저장소」 항목에 쓸 저장소를 만드는 기본 틀' }
   # 회사가 쓴 사내 FastAPI 코딩 기준 — 스킬 `inhouse-app`(제작자 칸을 켠 사람)이 이 자리의 장을 연다.
   # 스킬을 안 켠 사람에게도 깐다 — 사내 환경 문서(`posco/README.md`)와 이 씨앗의 `SEED.md` 가 이 자리를 가리키므로, 그 좌표가
   #   가리킬 자리가 홈에 서야 한다(claude-config 결정 0074 · 0075).
   @{ From = Join-Path $Here 'seeds\vibecoding'; To = Join-Path $homeDir 'seeds\vibecoding'; Mirror = $true
-     Name = '사내 코딩 기준 씨앗'; Desc = '사내 앱을 회사 방식으로 배포할 때 스킬 inhouse-app 이 여는 회사 기준 본문 — 들머리는 SEED.md' }
+     Name = '사내 코딩 기준 씨앗'; Desc = '사내 앱을 회사 방식으로 배포할 때 스킬 inhouse-app 이 참고하는 회사 기준 문서 — 시작은 SEED.md' }
   # 스크립트가 사내 메일을 보내고 받은편지함을 읽는 파일들 — 회사 가이드대로면 사내 중계에서 첫 발송이 지는 자리를 기본값으로
   #   들고, 가이드에 없는 받기는 읽음 표시를 안 바꾸는 길로 든다. 스킬 `inhouse-app` 과 사내 환경 문서가 이 자리를 가리킨다.
   @{ From = Join-Path $Here 'seeds\mail'; To = Join-Path $homeDir 'seeds\mail'; Mirror = $true
-     Name = '메일 씨앗'; Desc = '회사 PC 의 스크립트가 사내 메일을 보내고 받은편지함을 읽는 파일들 — 복사해서 쓴다' }
+     Name = '메일 씨앗'; Desc = '회사 PC 의 스크립트에서 사내 메일을 보내고 받은편지함을 읽는 파일 — 복사해서 씁니다' }
 )
 # ── 홈 씨앗의 임자 — 찾는 자 하나가 정한다 (`Get-OwnedHome` · PAISetup #48 ①) ──────────────────────────────────
 # 찾는 자는 이 짐의 것을 부른다(`Get-ConfigRootGen` — 「설정 저장소」 걸음이 넘길 자리를 재는 그 손) — 홈 사본은 이 걸음이 바로 아래에서
@@ -9256,17 +9250,17 @@ $envAssets = @(
 $ownerBash   = Find-GitBash
 $ownerFinder = Join-Path $Here 'seeds\config-repo\.githooks\claude-config-path.sh'
 $homeOwners = Get-OwnedHome $ownerBash $ownerFinder $configRepoUrls $configRepoRoot
-if ($homeOwners.Why -and -not $homeOwners.Roots.Count) { Write-Host "  ! 씨앗의 임자(설정 저장소)를 못 가렸다 — 설치 묶음 판으로 깐다 ($($homeOwners.Why))" -ForegroundColor Yellow }
+if ($homeOwners.Why -and -not $homeOwners.Roots.Count) { Write-Host "  ! 씨앗을 관리하는 설정 저장소를 확인하지 못함 — 설치 패키지 버전으로 설치 ($($homeOwners.Why))" -ForegroundColor Yellow }
 $ownedHome = $homeOwners.Map
 foreach ($a in $envAssets) {
-  if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없다"; continue }
+  if (-not (Test-Path -LiteralPath $a.From)) { Write-Host "  $($a.Name) — 이 폴더에 없음"; continue }
   $a.Rel = $a.To.Substring($homeDir.Length).TrimStart('\')
   $owner = $ownedHome[$a.Rel]
   if ($owner -and @(Get-ChildItem -LiteralPath $a.To -Recurse -File -ErrorAction SilentlyContinue).Count) {
     $a.Owner = $owner
     # 장부의 그 자리 줄은 걷는다 — 그 자리는 이제 저쪽이 미는 판이라, 줄을 두면 임자가 사라진 뒤의 판이 저쪽이 고친 파일을 사람 것으로 읽는다
     if ($a.Ledger) { $null = Sync-AssetLedger $a -Drop }
-    Write-Host "  $($a.Name) — 설정 저장소가 들고 있어 비켜선다" -ForegroundColor Green
+    Write-Host "  $($a.Name) — 건너뜀 (설정 저장소에서 관리)" -ForegroundColor Green
     Write-Host "     $owner"
     continue
   }
@@ -9275,14 +9269,14 @@ foreach ($a in $envAssets) {
   if ($a.Mirror -and (Test-Path -LiteralPath $a.To)) {
     try { Remove-Item -LiteralPath $a.To -Recurse -Force -ErrorAction Stop }
     catch {
-      Write-Host "  ! $($a.Name) 옛 사본을 못 걷었다 — $(Say-Why $_)" -ForegroundColor Red
-      $Fails.Add("$($a.Name) (옛 사본 걷기)")
+      Write-Host "  ! $($a.Name) 이전 사본을 제거하지 못함 — $(Say-Why $_)" -ForegroundColor Red
+      $Fails.Add("$($a.Name) (이전 사본 제거)")
     }
   }
   New-Item -ItemType Directory -Path $a.To -Force | Out-Null
   Copy-Item -Path (Join-Path $a.From '*') -Destination $a.To -Recurse -Force
   $swept = if ($a.Ledger) { Sync-AssetLedger $a } else { 0 }
-  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '거울로 깔았다' } elseif ($swept) { "깔았다 (원본에서 빠진 파일 $swept 개를 걷었다)" } else { '깔았다' })" -ForegroundColor Green
+  Write-Host "  $($a.Name) — $(if ($a.Mirror) { '복사함' } elseif ($swept) { "설치 완료 (원본에서 빠진 파일 $swept개 정리)" } else { '설치 완료' })" -ForegroundColor Green
   Write-Host "     $($a.To)"
   Write-Host "     $($a.Desc)"
 }
@@ -9312,7 +9306,7 @@ if ((Test-Path -LiteralPath $seedRoot) -and $DistVersion -and -not $seedOwned) {
     #   화면에는 멀쩡히 찍히고 견주는 자리에서만 안 맞는다.
     $seedVerLine = "$DistVersion $(Get-Date -Format 'yyyy-MM-dd')`n"
     [IO.File]::WriteAllText($seedVerFile, $seedVerLine, (New-Object Text.UTF8Encoding($false)))
-    Write-Host "  씨앗 판 줄 — $DistVersion" -ForegroundColor Green
+    Write-Host "  씨앗 버전 — $DistVersion" -ForegroundColor Green
   }
 }
 
@@ -9335,9 +9329,9 @@ if ($pipPkgs) {
   #   초록으로 끝난다. 「안 한 걸음」으로 남긴다(결정 0141).
   $pipPython = Measure-Runs 'python' '--version'
   if ($pipPython -eq 'unmeasured') {
-    Add-UnmeasuredStep "파이썬 패키지($pipNames)" 'python --version' '깔지 않았다'
+    Add-UnmeasuredStep "파이썬 패키지($pipNames)" 'python --version' '설치하지 않음'
   } elseif ($pipPython -ne 'yes') {
-    Write-Host "  파이썬 패키지($pipNames) — 건너뛴다: 이 창에서 python 이 안 선다"
+    Write-Host "  파이썬 패키지($pipNames) — 건너뜀: 이 창에서 python 이 실행되지 않음"
   } else {
     Say-Busy "파이썬 패키지($pipNames)" 'install' @('pip')
     $pl = [IO.Path]::GetTempFileName()
@@ -9353,12 +9347,12 @@ if ($pipPkgs) {
       try { $prc = Invoke-Logged 'python' $pipArgs $pl ${function:Show-PipLine} } finally { Pop-Location }
     } catch {
       # 빈 폴더를 못 지었거나 못 옮겼다 — 작업 폴더째 부르지 않고 못 깐 것으로 남긴다(아래 노란 줄이 종료 -1 로 말한다).
-      [IO.File]::WriteAllText($pl, "빈 작업 폴더를 못 지어 안 불렀다 ($pipCwd) — $($_.Exception.Message)")
+      [IO.File]::WriteAllText($pl, "빈 작업 폴더를 만들지 못해 실행하지 않음 ($pipCwd) — $($_.Exception.Message)")
     } finally { Remove-Item -LiteralPath $pipCwd -Recurse -Force -ErrorAction SilentlyContinue }
     if ($prc -eq 0) {
-      Write-Host "  파이썬 패키지 — $pipNames 섰다" -ForegroundColor Green
+      Write-Host "  파이썬 패키지 — 설치 완료 ($pipNames)" -ForegroundColor Green
     } else {
-      Write-Host "  ! 파이썬 패키지($pipNames) — 못 깔았다(종료 $prc). 그림 줄이기는 원본 치수로 물러난다 · pip 가 뱉은 끝 줄:" -ForegroundColor Yellow
+      Write-Host "  ! 파이썬 패키지($pipNames) — 설치 실패 (종료 코드 $prc). 그림 축소 기능은 원본 크기로 대신합니다 · 마지막 출력:" -ForegroundColor Yellow
       Show-Log $pl
     }
     Remove-Item $pl -ErrorAction SilentlyContinue
@@ -9391,7 +9385,7 @@ foreach ($pv in @(@{ Name = 'PAISETUP_PERSONAL'; Value = $PersonalValue }, @{ Na
     #   지금의 배포는 사용자 값을 먼저 읽지만, 포크한 설정 저장소는 사람이 당기기 전까지 프로세스 값을 먼저 읽는 판을 든다 — 오래
     #   떠 있던 앱에서 부르면 프로세스에 앞선 값이 남아, 그 판의 배포가 끈 도구로 읽고 개인화를 걷는다. 그런 포크가 남는 동안 든다.
     Set-Item -Path "Env:$($pv.Name)" -Value $pv.Value
-    Write-Host "  $($pv.Name) — 이미 맞다 ($($pv.Value))"
+    Write-Host "  $($pv.Name) — 이미 설정됨 ($($pv.Value))"
   } else {
     Plant-Var $pv.Name $pv.Value
   }
@@ -9401,7 +9395,7 @@ foreach ($pv in @(@{ Name = 'PAISETUP_PERSONAL'; Value = $PersonalValue }, @{ Na
 #   자리가 그 파일에 남아 사용자 값을 가린다.
 if ([Environment]::GetEnvironmentVariable('PAISETUP_SITE', 'User') -eq $ModelSite) {
   Set-Item -Path 'Env:PAISETUP_SITE' -Value $ModelSite
-  Write-Host "  PAISETUP_SITE — 이미 맞다 ($ModelSite)"
+  Write-Host "  PAISETUP_SITE — 이미 설정됨 ($ModelSite)"
 } else {
   Plant-Var 'PAISETUP_SITE' $ModelSite
 }
@@ -9419,25 +9413,25 @@ $toolHomesProbe  = Measure-Runs 'python' '--version'
 $toolHomesPython = ($toolHomesProbe -eq 'yes')
 $toolHomesOn     = [bool]($personalAny -or $hostClaude -or $toolHomesPython)
 if (-not $toolHomesOn -and $toolHomesProbe -ne 'unmeasured') {
-  Write-Host '  규범 · 룰 · 에이전트 · 스킬 — 건너뜀 (python 이 안 서고, 켠 제작자 칸도 고른 Claude 도 없다)'
+  Write-Host '  규범 · 룰 · 에이전트 · 스킬 — 건너뜀 (python 이 실행되지 않고, 켠 제작자 칸도 선택한 Claude 도 없음)'
 } elseif (-not (Test-Path -LiteralPath $toolHomesHand -PathType Leaf)) {
-  Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 짐에 없다 ($toolHomesHand)" -ForegroundColor Red
-  $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (짐에 없음)')
+  Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 설치 패키지에 없음 ($toolHomesHand)" -ForegroundColor Red
+  $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (설치 패키지에 없음)')
 } elseif ($toolHomesProbe -eq 'unmeasured') {
-  Add-UnmeasuredStep '규범 · 룰 · 에이전트 · 스킬' 'python --version' '손을 안 불렀다 — 놓기도, 끈 칸 · 뺀 제품의 우리 것 걷기도 안 했다'
+  Add-UnmeasuredStep '규범 · 룰 · 에이전트 · 스킬' 'python --version' '설치 도구를 실행하지 않음 — 설치도, 해제한 항목 · 제외한 제품의 정리도 하지 않음'
 } elseif (-not $toolHomesPython) {
-  Write-Host '  ! 규범 · 룰 · 에이전트 · 스킬 — python 이 안 서서 손을 못 댔다' -ForegroundColor Red
+  Write-Host '  ! 규범 · 룰 · 에이전트 · 스킬 — python 이 실행되지 않아 설치하지 못함' -ForegroundColor Red
   $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (python 없음)')
 } else {
   Say-Busy '규범 · 룰 · 에이전트 · 스킬' 'install' @('tool-homes.py')
   $th = Invoke-ToolHomes $toolHomesHand @('sync', '--layer', 'standard', '--from', $Kit)
   if ($th.Rc -ne 0 -or $th.Errors.Count) {
-    Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 손이 다 못 놓았다 (종료 $($th.Rc))" -ForegroundColor Red
-    $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (손이 다 못 놓았다)')
+    Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 일부를 설치하지 못함 (종료 코드 $($th.Rc))" -ForegroundColor Red
+    $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (일부 설치 실패)')
   } elseif ($th.Changes.Count) {
-    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 맞췄다 (제작자 칸 $PersonalValue · 고른 제품 $PickValue)" -ForegroundColor Green
+    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 업데이트함 (파일 $($th.Changes.Count)개 · 제작자 칸 $PersonalValue · 선택한 제품 $PickValue)" -ForegroundColor Green
   } else {
-    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 이미 맞다 (제작자 칸 $PersonalValue · 고른 제품 $PickValue)"
+    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 이미 최신 상태 (제작자 칸 $PersonalValue · 선택한 제품 $PickValue)"
   }
 }
 
@@ -9469,7 +9463,7 @@ if ($staleRules.Count -gt 0) {
   New-Item -ItemType Directory -Path $bk -Force | Out-Null
   foreach ($r in $staleRules) {
     Move-Item -LiteralPath $r.FullName -Destination (Join-Path $bk $r.Name) -Force
-    Write-Host "  룰 $($r.Name) — 스킬로 바뀌어 걷었다 (옮긴 자리: $bk)" -ForegroundColor Green
+    Write-Host "  룰 $($r.Name) — 스킬로 바뀌어 제거함 (옮긴 위치: $bk)" -ForegroundColor Green
   }
 }
 
@@ -9479,18 +9473,18 @@ if ($staleRules.Count -gt 0) {
 # 얹는다. 병합 규칙의 진본은 씨앗의 `codex-hook-install.py` · `codex-hooks.example.toml` 이다 — 우리 항목만
 # 갈고 남의 훅 · 다른 표는 뜻 그대로 두며, 결과가 그 뜻으로 다시 읽힐 때만 쓴다. 못 알아보는 꼴로 적힌
 # 이벤트는 건너뛰고(SKIP), 끝 검증이 그 빠진 배선을 [X] 로 알린다.
-# ⚠ **stderr 를 합치지 않는다** — 맨 위 규칙(`2>&1`). 글자는 `Invoke-Logged` 가 파일로 받으며 흘리고(줄 계약은 거른다), 실패하면 끝 줄을 다시 편다.
+# ⚠ **stderr 를 합치지 않는다** — 맨 위 규칙(`2>&1`). 글자는 `Invoke-Logged` 가 파일로 받고(화면에는 경보 줄만), 실패하면 끝 줄을 다시 편다.
 if ($PickKeys -contains 'codex') {
   $codexHookDir = $ConfigSeedHooks
   $codexHookPlant = Join-Path $codexHookDir 'codex-hook-install.py'
   $codexHookExample = Join-Path $ConfigSeedHome 'codex-hooks.example.toml'
   if (-not (Test-Path -LiteralPath $codexHookPlant) -or -not (Test-Path -LiteralPath $codexHookExample)) {
-    Write-Host '  ! Codex 훅 — 씨앗의 병합기나 예시가 없어 안 심는다' -ForegroundColor Red
-    $Fails.Add('Codex 훅 (씨앗이 없다)')
+    Write-Host '  ! Codex 훅 — 씨앗에 병합 도구나 예시가 없어 등록하지 않음' -ForegroundColor Red
+    $Fails.Add('Codex 훅 (씨앗 없음)')
   } elseif (($codexHookPython = Measure-Runs 'python' '--version') -eq 'unmeasured') {
-    Add-UnmeasuredStep 'Codex 훅' 'python --version' '심지도 건너뛰지도 않았다'
+    Add-UnmeasuredStep 'Codex 훅' 'python --version' '등록도 건너뛰기도 하지 않음'
   } elseif ($codexHookPython -ne 'yes') {
-    Write-Host '  ! Codex 훅 — python 이 안 서서 안 심는다' -ForegroundColor Red
+    Write-Host '  ! Codex 훅 — python 이 실행되지 않아 등록하지 않음' -ForegroundColor Red
     $Fails.Add('Codex 훅 (python 없음)')
   } else {
     $codexHookLog = [IO.Path]::GetTempFileName()
@@ -9499,19 +9493,19 @@ if ($PickKeys -contains 'codex') {
       $codexHookOut = @(Get-Content -LiteralPath $codexHookLog -ErrorAction SilentlyContinue |
                         ForEach-Object { "$_".Trim() } | Where-Object { $_ })
       if ($codexHookRc -ne 0) {
-        Write-Host '  ! Codex 훅 병합 실패 — config.toml 은 그대로다. 병합기가 뱉은 끝 줄:' -ForegroundColor Red
+        Write-Host '  ! Codex 훅 병합 실패 — config.toml 은 그대로입니다. 마지막 출력:' -ForegroundColor Red
         Show-Log $codexHookLog
         $Fails.Add('Codex 훅 (config.toml 병합 실패)')
       } else {
         $skipped = @($codexHookOut | Where-Object { $_ -like 'SKIP=*' })
         if ($skipped.Count) {
-          Write-Host "  ! Codex 훅 — 못 알아보는 꼴로 적힌 이벤트는 안 건드렸다: $($skipped -join ' ')" -ForegroundColor Yellow
+          Write-Host "  ! Codex 훅 — 알아볼 수 없는 형식의 이벤트는 변경하지 않음: $($skipped -join ' ')" -ForegroundColor Yellow
         } elseif ($codexHookOut -contains 'CHANGED=1') {
-          Write-Host '  Codex 훅 — 씨앗 예시(codex-hooks.example.toml)의 우리 훅을 config.toml 에 심었다' -ForegroundColor Green
+          Write-Host '  Codex 훅 — 씨앗 예시(codex-hooks.example.toml)의 훅을 config.toml 에 등록함' -ForegroundColor Green
           $codexHookBak = @($codexHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
-          if ($codexHookBak) { Write-Host "     고치기 전 것은 $($codexHookBak.Substring(7)) 에 떠 뒀다" }
+          if ($codexHookBak) { Write-Host "     변경 전 파일은 $($codexHookBak.Substring(7)) 에 백업함" }
         } else {
-          Write-Host '  Codex 훅 — 이미 맞다'
+          Write-Host '  Codex 훅 — 이미 등록됨'
         }
       }
     } finally { Remove-Item -LiteralPath $codexHookLog -ErrorAction SilentlyContinue }
@@ -9519,13 +9513,13 @@ if ($PickKeys -contains 'codex') {
     # Codex 는 신뢰한 사용자 훅만 돌린다 — 대화형 시작은 묻지만 `codex exec`(다른 도구가 Codex 에 일을 맡기는 길)는
     # 말없이 건너뛴다. 배선만 세우면 고른 기능이 반쯤 죽은 채 끝나서, 신뢰 적기까지가 이 칸의 일이다. 씨앗의
     # `codex-hook-trust.py` 가 Codex 제 설정 쓰기로 우리 훅에만 적는다 — 남의 훅 · 사람이 끈 우리 훅은 둔다.
-    # 해시는 Codex 가 낸 값을 그대로 되돌려 적을 뿐이다. 적은 명령은 아래에 그대로 찍어 기록에 남긴다.
+    # 해시는 Codex 가 낸 값을 그대로 되돌려 적을 뿐이다. 화면에는 적은 수만 찍고, 적은 명령은 세부 기록에 남는다.
     # 홈은 Codex 가 고르는 차례(`CODEX_HOME` → `~/.codex`)를 그대로 따른다 — Codex 가 실제로 읽는 설정에 적는다.
     # 끝 검증이 같은 손(`status`)으로 Codex 가 읽은 상태를 다시 잰다 — 여기서 못 적었으면 거기서 [X] 로 남는다.
     $codexTrustPlant = Join-Path $codexHookDir 'codex-hook-trust.py'
     if (-not (Test-Path -LiteralPath $codexTrustPlant)) {
-      Write-Host '  ! Codex 훅 신뢰 — 씨앗에 신뢰 도우미가 없어 못 적었다' -ForegroundColor Red
-      $Fails.Add('Codex 훅 신뢰 (씨앗이 없다)')
+      Write-Host '  ! Codex 훅 신뢰 — 씨앗에 신뢰 등록 도구가 없어 등록하지 못함' -ForegroundColor Red
+      $Fails.Add('Codex 훅 신뢰 (씨앗 없음)')
     } else {
       $codexTrustLog = [IO.Path]::GetTempFileName()
       try {
@@ -9534,15 +9528,13 @@ if ($PickKeys -contains 'codex') {
                            ForEach-Object { "$_".Trim() } | Where-Object { $_ })
       } finally { Remove-Item -LiteralPath $codexTrustLog -ErrorAction SilentlyContinue }
       $codexTrustNow = @($codexTrustOut | Where-Object { $_ -like 'TRUSTED_NOW=*' })
-      foreach ($ln in $codexTrustNow) {
-        Write-Host "  Codex 훅 신뢰 — 적었다: $($ln.Substring('TRUSTED_NOW='.Length))" -ForegroundColor Green
-      }
+      if ($codexTrustNow.Count) { Write-Host "  Codex 훅 신뢰 — 등록함 (훅 $($codexTrustNow.Count)개)" -ForegroundColor Green }
       if ($codexTrustRc -eq 0) {
-        if (-not $codexTrustNow.Count) { Write-Host '  Codex 훅 신뢰 — 이미 맞다' }
+        if (-not $codexTrustNow.Count) { Write-Host '  Codex 훅 신뢰 — 이미 등록됨' }
       } else {
         $codexTrustWhy = @($codexTrustOut | Where-Object { $_ -like 'UNMEASURED=*' -or $_ -like 'ERROR=*' }) | Select-Object -Last 1
-        Write-Host "  ! Codex 훅 신뢰 — 못 적었다 ($(if ($codexTrustWhy) { $codexTrustWhy } else { "종료 $codexTrustRc" })). Codex 를 열어 새 훅을 한 번 신뢰한다" -ForegroundColor Red
-        $Fails.Add('Codex 훅 신뢰 (못 적었다)')
+        Write-Host "  ! Codex 훅 신뢰 — 등록하지 못함 ($(if ($codexTrustWhy) { $codexTrustWhy } else { "종료 코드 $codexTrustRc" })). Codex 를 열어 새 훅을 한 번 신뢰해 주세요" -ForegroundColor Red
+        $Fails.Add('Codex 훅 신뢰 (등록 실패)')
       }
     }
   }
@@ -9563,12 +9555,12 @@ $agyHookPlant = Join-Path $ConfigSeedHooks 'agy-hooks.py'
 $AgyHooksCfg  = Join-Path $env:USERPROFILE '.gemini\config\hooks.json'
 if ($hostAgy) {
   if (-not (Test-Path -LiteralPath $agyHookPlant)) {
-    Write-Host '  ! agy 훅 — 씨앗의 어댑터가 없어 안 심는다' -ForegroundColor Red
-    $Fails.Add('agy 훅 (씨앗이 없다)')
+    Write-Host '  ! agy 훅 — 씨앗에 연결 도구가 없어 등록하지 않음' -ForegroundColor Red
+    $Fails.Add('agy 훅 (씨앗 없음)')
   } elseif (($agyHookPython = Measure-Runs 'python' '--version') -eq 'unmeasured') {
-    Add-UnmeasuredStep 'agy 훅' 'python --version' '심지도 건너뛰지도 않았다'
+    Add-UnmeasuredStep 'agy 훅' 'python --version' '등록도 건너뛰기도 하지 않음'
   } elseif ($agyHookPython -ne 'yes') {
-    Write-Host '  ! agy 훅 — python 이 안 서서 안 심는다' -ForegroundColor Red
+    Write-Host '  ! agy 훅 — python 이 실행되지 않아 등록하지 않음' -ForegroundColor Red
     $Fails.Add('agy 훅 (python 없음)')
   } else {
     $agyHookLog = [IO.Path]::GetTempFileName()
@@ -9577,15 +9569,15 @@ if ($hostAgy) {
       $agyHookOut = @(Get-Content -LiteralPath $agyHookLog -ErrorAction SilentlyContinue |
                       ForEach-Object { "$_".Trim() } | Where-Object { $_ })
       if ($agyHookRc -ne 0) {
-        Write-Host '  ! agy 훅 — hooks.json 은 그대로다. 어댑터가 뱉은 끝 줄:' -ForegroundColor Red
+        Write-Host '  ! agy 훅 — 등록 실패 · hooks.json 은 그대로입니다. 마지막 출력:' -ForegroundColor Red
         Show-Log $agyHookLog
         $Fails.Add('agy 훅 (hooks.json 병합 실패)')
       } elseif ($agyHookOut -contains 'CHANGED=1') {
-        Write-Host '  agy 훅 — 씨앗 어댑터(agy-hooks.py)의 우리 훅을 hooks.json 에 심었다' -ForegroundColor Green
+        Write-Host '  agy 훅 — 씨앗 연결 도구(agy-hooks.py)의 훅을 hooks.json 에 등록함' -ForegroundColor Green
         $agyHookBak = @($agyHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
-        if ($agyHookBak) { Write-Host "     고치기 전 것은 $($agyHookBak.Substring(7)) 에 떠 뒀다" }
+        if ($agyHookBak) { Write-Host "     변경 전 파일은 $($agyHookBak.Substring(7)) 에 백업함" }
       } else {
-        Write-Host '  agy 훅 — 이미 맞다'
+        Write-Host '  agy 훅 — 이미 등록됨'
       }
     } finally { Remove-Item -LiteralPath $agyHookLog -ErrorAction SilentlyContinue }
   }
@@ -9616,24 +9608,24 @@ $browserMcpPython = Measure-Runs 'python' '--version'
 if ($browserMcpOn.Count) {
   $gitBash = Find-GitBash
   if (-not $gitBash -and $NoDevTools) {
-    Write-Host '  브라우저(크로미움) — 건너뜀 (-NoDevTools · 받는 손이 Git Bash 로 돈다)'
+    Write-Host '  브라우저(크로미움) — 건너뜀 (-NoDevTools · 다운로드 스크립트가 Git Bash 로 실행됨)'
     $browserGetSkipped = $true
   } elseif (-not $gitBash) {
-    Write-Host '  ! 브라우저(크로미움) — Git Bash 가 없어 못 받았다' -ForegroundColor Yellow
+    Write-Host '  ! 브라우저(크로미움) — Git Bash 가 없어 다운로드하지 못함' -ForegroundColor Yellow
   } elseif (-not (Test-Path -LiteralPath $browserGet)) {
-    Write-Host "  ! 브라우저(크로미움) — 씨앗에 받는 손이 없다 ($browserGet)" -ForegroundColor Red
-    $Fails.Add('브라우저 받기 (씨앗이 없다)')
+    Write-Host "  ! 브라우저(크로미움) — 씨앗에 다운로드 스크립트가 없음 ($browserGet)" -ForegroundColor Red
+    $Fails.Add('브라우저 받기 (씨앗 없음)')
   } else {
-    Say-Busy '브라우저(크로미움)' 'fetch' @('get-browser.sh · 없을 때만')
+    Say-Busy '브라우저(크로미움)' 'fetch' @('get-browser.sh · 없을 때만 다운로드')
     $gbLog = [IO.Path]::GetTempFileName()
     $gbRc = Invoke-LoggedCapped $gitBash @(($browserGet -replace '\\', '/')) $gbLog $BrowserGetCap
     # 받은 자리 · 판은 받는 손의 줄이 위에 이미 흘렀다 — 결과 줄은 그 줄을 되풀이하지 않고 섰다는 것만 말한다
     if ($gbRc -eq 0) {
-      Write-Host '  브라우저(크로미움) — 섰다'
+      Write-Host '  브라우저(크로미움) — 준비됨'
     } elseif ($gbRc -eq -2) {
-      Write-Host "  ! 브라우저(크로미움) — ${BrowserGetCap}초 안에 못 받아 거뒀다" -ForegroundColor Yellow
+      Write-Host "  ! 브라우저(크로미움) — ${BrowserGetCap}초 안에 다운로드하지 못해 중지함" -ForegroundColor Yellow
     } else {
-      Write-Host "  ! 브라우저(크로미움) — 못 받았다 (종료 $gbRc) — 뱉은 끝 줄:" -ForegroundColor Yellow
+      Write-Host "  ! 브라우저(크로미움) — 다운로드 실패 (종료 코드 $gbRc) — 마지막 출력:" -ForegroundColor Yellow
       Show-Log $gbLog
     }
     Remove-Item -LiteralPath $gbLog, "$gbLog.err" -ErrorAction SilentlyContinue
@@ -9641,18 +9633,18 @@ if ($browserMcpOn.Count) {
 }
 if (-not (Test-Path -LiteralPath $browserMcpPlant)) {
   if ($browserMcpOn.Count) {
-    Write-Host '  ! 브라우저 MCP — 씨앗의 어댑터가 없어 안 단다' -ForegroundColor Red
-    $Fails.Add('브라우저 MCP (씨앗이 없다)')
+    Write-Host '  ! 브라우저 MCP — 씨앗에 등록 도구가 없어 등록하지 않음' -ForegroundColor Red
+    $Fails.Add('브라우저 MCP (씨앗 없음)')
   }
 } elseif ($browserMcpPython -eq 'unmeasured') {
-  if ($browserMcpOn.Count)      { Add-UnmeasuredStep '브라우저 MCP' 'python --version' '달지도 걷지도 않았다' }
-  elseif ($browserMcpOff.Count) { Add-UnmeasuredStep '브라우저 MCP 걷기' 'python --version' '우리 등록을 안 걷었다' }
+  if ($browserMcpOn.Count)      { Add-UnmeasuredStep '브라우저 MCP' 'python --version' '등록도 제거도 하지 않음' }
+  elseif ($browserMcpOff.Count) { Add-UnmeasuredStep '브라우저 MCP 제거' 'python --version' '설치기 등록을 제거하지 않음' }
 } elseif ($browserMcpPython -ne 'yes') {
   if ($browserMcpOn.Count) {
-    Write-Host '  ! 브라우저 MCP — python 이 안 서서 안 단다' -ForegroundColor Red
+    Write-Host '  ! 브라우저 MCP — python 이 실행되지 않아 등록하지 않음' -ForegroundColor Red
     $Fails.Add('브라우저 MCP (python 없음)')
   } else {
-    Write-Host '  ! 브라우저 MCP — 고르지 않았는데 python 이 안 서서 우리 등록을 못 걷었다' -ForegroundColor Yellow
+    Write-Host '  ! 브라우저 MCP — 선택하지 않았지만 python 이 실행되지 않아 설치기 등록을 제거하지 못함' -ForegroundColor Yellow
   }
 } else {
   # 줄은 받는 즉시 옮겨 찍는다. 브라우저를 안 받은 판(`-NoDevTools`)만 조용히 받는다 — 그 판의 SKIP 은 아래 「건너뜀」 한 줄이 대신
@@ -9661,7 +9653,7 @@ if (-not (Test-Path -LiteralPath $browserMcpPlant)) {
     $bmFlow = if ($browserGetSkipped) { $null } else { { param($l) Show-BrowserMcpLine '브라우저 MCP' $l } }
     $bmInstall = Invoke-BrowserMcp $browserMcpPlant (@('install') + @($browserMcpOn | ForEach-Object { '--host', $_ })) -OnLine $bmFlow
     $browserMcpSkipped = $browserGetSkipped -and $bmInstall.Rc -eq 0 -and @($bmInstall.Lines | Where-Object { $_ -like 'SKIP=*' }).Count -gt 0
-    if ($browserMcpSkipped) { Write-Host '  브라우저 MCP — 건너뜀 (-NoDevTools · 브라우저를 안 받아 안 달았다)' }
+    if ($browserMcpSkipped) { Write-Host '  브라우저 MCP — 건너뜀 (-NoDevTools · 브라우저를 다운로드하지 않아 등록하지 않음)' }
     else                    { Show-BrowserMcpLines '브라우저 MCP' $bmInstall -Replay:(-not $bmFlow) }
   }
   if ($browserMcpOff.Count) {
@@ -9732,28 +9724,28 @@ foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) {
     $guardSet = @($guardOut | Where-Object { $null -ne (Get-ToolDocValue $ToolDoc $_) })
     $null = Sync-Planted -Ledger $Ledger -Place 'tool' -At $at -By 'autorun' -Want $vals -Names @($vals.Keys) -Mode 'guard' -Plant $false -Complete $false `
               -Adopt $(if ($Ledger.Migrating -and -not $guardSet.Count) { @($vals.Keys) } else { @() }) -Get $ToolDocGet -Set $ToolDocSet -Remove $ToolDocRemove `
-              -Where "묻지 않고 돌기 · $($r.Label)" -Speak
+              -Where "자동 승인 · $($r.Label)" -Speak
     $sv = Save-ToolDoc $ToolDoc
     if ($sv.Did -cne 'same' -and $sv.Did -cne 'written') {
       Set-LedgerSlice $Ledger @('tool') $at $snap
-      Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — 장부의 옛 우리 값을 새 값으로 못 바꿨다 ($($sv.Why)) · 안 건드렸다 ($($r.Path))" -ForegroundColor Yellow
+      Write-Host "  ! 자동 승인 · $($r.Label) — 이전 설치 값을 새 값으로 바꾸지 못함 ($($sv.Why)) · 변경하지 않음 ($($r.Path))" -ForegroundColor Yellow
     }
   }
   $res = Set-ToolAutoRun $r
   $ours = @($r.Set.Keys | ForEach-Object { "$_ = $($r.Set[$_] | ConvertTo-Json -Compress)" }) -join ' · '
   switch ($res.Did) {
-    'set'  { Write-Host "  묻지 않고 돌기 · $($r.Label) — 심었다 ($ours)" -ForegroundColor Green }
+    'set'  { Write-Host "  자동 승인 · $($r.Label) — 설정함 ($ours)" -ForegroundColor Green }
     'kept' {
-      if ((@($res.Have) -join ' · ') -ceq $ours) { Write-Host "  묻지 않고 돌기 · $($r.Label) — 이미 맞다" }
-      else { Write-Host "  묻지 않고 돌기 · $($r.Label) — 사람이 정한 값($($res.Have -join ' · '))이라 둔다" }
+      if ((@($res.Have) -join ' · ') -ceq $ours) { Write-Host "  자동 승인 · $($r.Label) — 이미 설정됨" }
+      else { Write-Host "  자동 승인 · $($r.Label) — 사용자가 정한 값($($res.Have -join ' · '))이라 유지" }
     }
-    'skipped' { Write-Host "  묻지 않고 돌기 · $($r.Label) — 안 심는다 ($($res.Why))" }
-    'raced'   { Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 이 판은 안 썼다 ($($r.Path))" -ForegroundColor Yellow }
-    'linked'  { Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 그 자리는 손으로 맞춘다 ($($r.Path))" -ForegroundColor Yellow }
-    'unmeasured' { Add-UnmeasuredStep "묻지 않고 돌기 · $($r.Label)" $res.Probe '심지도 건너뛰지도 않았다' $res.Why }
+    'skipped' { Write-Host "  자동 승인 · $($r.Label) — 건너뜀 ($($res.Why))" }
+    'raced'   { Write-Host "  ! 자동 승인 · $($r.Label) — $($res.Why) · 이번에는 저장하지 않음 ($($r.Path))" -ForegroundColor Yellow }
+    'linked'  { Write-Host "  ! 자동 승인 · $($r.Label) — $($res.Why) · 이 위치는 직접 맞춰 주세요 ($($r.Path))" -ForegroundColor Yellow }
+    'unmeasured' { Add-UnmeasuredStep "자동 승인 · $($r.Label)" $res.Probe '설정도 건너뛰기도 하지 않음' $res.Why }
     default {
-      Write-Host "  ! 묻지 않고 돌기 · $($r.Label) — $($res.Why) · 안 건드렸다 ($($r.Path))" -ForegroundColor Red
-      $Fails.Add("묻지 않고 돌기 · $($r.Label) ($($res.Why))")
+      Write-Host "  ! 자동 승인 · $($r.Label) — $($res.Why) · 변경하지 않음 ($($r.Path))" -ForegroundColor Red
+      $Fails.Add("자동 승인 · $($r.Label) ($($res.Why))")
     }
   }
   if ($res.Did -eq 'set') { foreach ($k in $vals.Keys) { Set-LedgerRow $Ledger 'tool' $at $k 'autorun' $vals[$k] } }
@@ -9777,14 +9769,14 @@ foreach ($at in $autoAts) {
   $snap = Get-LedgerSlice $Ledger @('tool') $at
   $ToolDoc = Open-ToolDoc $where.Path $where.Under ($where.Path -like '*.toml') $gone
   $res = Sync-Planted -Ledger $Ledger -Place 'tool' -At $at -By 'autorun' -Want ([ordered]@{}) -Names $gone -Mode 'guard' -Plant $false -Complete $true `
-           -Get $ToolDocGet -Set $ToolDocSet -Remove $ToolDocRemove -Where "묻지 않고 돌기 · $($where.Path)" -Speak
+           -Get $ToolDocGet -Set $ToolDocSet -Remove $ToolDocRemove -Where "자동 승인 · $($where.Path)" -Speak
   if ($res.Unread.Count -or $res.Failed.Count) {
-    Write-Host "  ! 묻지 않고 돌기 — 우리가 심은 값($(@($res.Unread) + @($res.Failed) -join ' · '))을 못 걷었다$(if ($ToolDoc.Why) { " ($($ToolDoc.Why))" }) · 다음 판이 다시 본다 ($($where.Path))" -ForegroundColor Yellow
+    Write-Host "  ! 자동 승인 — 이전 설치가 설정한 값($(@($res.Unread) + @($res.Failed) -join ' · '))을 제거하지 못함$(if ($ToolDoc.Why) { " ($($ToolDoc.Why))" }) · 다음 설치에서 다시 확인 ($($where.Path))" -ForegroundColor Yellow
   }
   $sv = Save-ToolDoc $ToolDoc
   if ($sv.Did -cne 'same' -and $sv.Did -cne 'written') {
     Set-LedgerSlice $Ledger @('tool') $at $snap
-    Write-Host "  ! 묻지 않고 돌기 — 우리가 심은 값을 못 걷었다 ($($sv.Why)) · 안 건드렸다 ($($where.Path))" -ForegroundColor Yellow
+    Write-Host "  ! 자동 승인 — 이전 설치가 설정한 값을 제거하지 못함 ($($sv.Why)) · 변경하지 않음 ($($where.Path))" -ForegroundColor Yellow
   }
 }
 
@@ -9807,11 +9799,11 @@ if ($sbxOn -or $sbxRows) {
   $res = Sync-Planted -Ledger $Ledger -Place 'tool' -At $sbxAt -By 'codex-sandbox' -Want $sbxWant -Mode 'guard' -Plant $false -Complete ($sbxOn -or $sbxGone) `
            -Adopt $(if ($sbxDid -ceq 'made' -or $sbxDid -ceq 'added' -or ($sbxOn -and $Ledger.Migrating)) { @('sandbox') } else { @() }) `
            -Get $ToolDocGet -Set $ToolDocSet -Remove $ToolDocRemove -Label @{ sandbox = 'Codex 데스크탑 · 샌드박스 키' } -Where "$CodexCfg 의 [windows]" -Speak
-  if ($res.Failed.Count) { Write-Host "  ! Codex 데스크탑 · 샌드박스 키 — 장부의 우리 값을 못 고쳤다 (그 줄의 꼴이 우리가 쓴 꼴이 아니다) · 안 건드렸다 ($CodexCfg)" -ForegroundColor Yellow }
+  if ($res.Failed.Count) { Write-Host "  ! Codex 데스크탑 · 샌드박스 키 — 이전 설치 값을 고치지 못함 (그 줄의 형식이 설치기가 쓴 형식과 다름) · 변경하지 않음 ($CodexCfg)" -ForegroundColor Yellow }
   $sv = Save-ToolDoc $ToolDoc
   if ($sv.Did -cne 'same' -and $sv.Did -cne 'written') {
     Set-LedgerSlice $Ledger @('tool') $sbxAt $snap
-    Write-Host "  ! Codex 데스크탑 · 샌드박스 키 — 못 썼다 ($($sv.Why)) · 안 건드렸다 ($CodexCfg)" -ForegroundColor Yellow
+    Write-Host "  ! Codex 데스크탑 · 샌드박스 키 — 저장하지 못함 ($($sv.Why)) · 변경하지 않음 ($CodexCfg)" -ForegroundColor Yellow
   }
 }
 $null = Save-PlantLedger $Ledger
@@ -9849,10 +9841,10 @@ $handOff = $false
 $bash = Find-GitBash
 # 주소(`$repoUrl` · `$configRepoUrls`)와 자리(`Get-ConfigRepoDir`)는 「설정 저장소의 주소와 자리」 칸에서 한 벌로 섰다.
 if (-not $repoUrl) {
-  Write-Host '  건너뜀 — install.env 에 #config-repo 가 없다'
+  Write-Host '  건너뜀 — install.env 에 #config-repo 가 없음'
 } elseif (-not (Test-Runs 'git' '--version')) {
-  Write-Host '  ! git 이 안 닿아 못 받는다' -ForegroundColor Red
-  $Fails.Add('개인 값 저장소 (git 이 안 닿는다)')
+  Write-Host '  ! git 을 찾을 수 없어 다운로드할 수 없음' -ForegroundColor Red
+  $Fails.Add('개인 값 저장소 (git 을 찾을 수 없음)')
 } else {
   # ⚠ **받는 자리를 값 파일로 고르게 하지 않는다** — 넘겨받는 쪽은 형제 저장소를 제 선언의 `ROOT`(`$HOME/repos`)로 찾고 값
   #   파일을 안 보므로, 여기만 딴 데로 받으면 저쪽이 `~/repos` 에서 찾다 죽는다. 자리를 옮기는 법은 「홈 아래 우리가 쓰는 자리」
@@ -9877,7 +9869,7 @@ if (-not $repoUrl) {
   $ghLoggedIn = $false
   if (-not $configRepoOnGitHub) {
     Write-Host ''
-    Write-Host '  GitHub CLI 로그인 — 건너뜀 · 주소가 GitHub 가 아니다' -ForegroundColor Cyan
+    Write-Host '  GitHub CLI 로그인 — 건너뜀 · GitHub 주소가 아님' -ForegroundColor Cyan
   } elseif (-not $NoDevTools) {
     # 이 구간을 따로 잰다 — 이 자리에서 창을 띄운 판은 사람이 코드를 누를 때까지 멎어, 안 가르면 그 대기가 「저장소 걸음이
     #   느리다」로 읽힌다. 앞당겨 띄운 판은 남은 기다림만 든다.
@@ -9892,24 +9884,24 @@ if (-not $repoUrl) {
       if (@('ok', 'no', 'late') -contains $ghAns.Said) {
         $ghHere = $false
         if ($ghAns.Said -eq 'late') {
-          Write-Host "  ! 앞서 띄운 로그인 창이 한도(${GhLoginWait}초 + ${GhLoginGrace}초) 안에 안 끝나 거뒀다" -ForegroundColor Yellow
+          Write-Host "  ! 앞서 연 로그인 창이 제한 시간(${GhLoginWait}초 + ${GhLoginGrace}초) 안에 끝나지 않아 닫음" -ForegroundColor Yellow
         }
         $ghTimedBefore = $script:ProbeTimedOut.Count
         if (Test-GhLoggedIn) {
           $ghLoggedIn = $true
-          Write-Host '  섰다' -ForegroundColor Green
+          Write-Host '  로그인 완료' -ForegroundColor Green
           $null = Get-Quiet 'gh' @('auth','setup-git')
         } elseif ($script:ProbeTimedOut.Count -gt $ghTimedBefore) {
-          Write-Host "  ! 로그인이 섰나를 못 쟀다 — gh api user 가 ${GhStatusCap}초 안에 안 끝났다" -ForegroundColor Yellow
+          Write-Host "  ! 로그인 상태를 확인하지 못함 — gh api user 가 ${GhStatusCap}초 안에 끝나지 않음" -ForegroundColor Yellow
         } else {
-          Write-Host "  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login -s $GhLoginScopes (저장소 받기는 제 자격 창을 띄운다)" -ForegroundColor Yellow
+          Write-Host "  ! 로그인되지 않음 — 새 터미널에서 gh auth login -s $GhLoginScopes 을 실행하세요 (저장소 다운로드 때는 git 이 자체 로그인 창을 엽니다)" -ForegroundColor Yellow
         }
       } else {
-        $why = if ($ghAns.Said -like 'err *') { $ghAns.Said.Substring(4) } elseif ($ghAns.Err) { $ghAns.Err } else { '답 없이 끝났다' }
-        Write-Host "  ! 앞서 띄운 로그인 창이 못 섰다 — $why · 이 자리에서 다시 잰다" -ForegroundColor Yellow
+        $why = if ($ghAns.Said -like 'err *') { $ghAns.Said.Substring(4) } elseif ($ghAns.Err) { $ghAns.Err } else { '응답 없이 끝남' }
+        Write-Host "  ! 앞서 연 로그인 창에서 로그인되지 않음 — $why · 지금 다시 확인합니다" -ForegroundColor Yellow
       }
     } elseif ($script:GhLoginChild) {
-      Write-Host "  ! 로그인 창을 앞서 못 띄웠다 — $($script:GhLoginChild.Why) · 이 자리에서 잰다" -ForegroundColor Yellow
+      Write-Host "  ! 앞서 로그인 창을 열지 못함 — $($script:GhLoginChild.Why) · 지금 확인합니다" -ForegroundColor Yellow
       $script:GhLoginChild = $null
     }
     # 「프로그램」 걸음에서 잰 답을 다시 쓰지 않고 여기서 잰다 — 그 사이 「키와 값」 걸음이 이 프로세스의 환경변수(`$GhEnvTokens` 도
@@ -9917,41 +9909,41 @@ if (-not $repoUrl) {
     if ($ghHere) {
       switch (Get-GhLoginGo) {
         'nogh' {
-          Write-Host '  ! gh 가 안 닿아 로그인을 못 띄운다 — 위 프로그램 칸을 본다' -ForegroundColor Yellow
+          Write-Host '  ! gh 를 찾을 수 없어 로그인을 시작할 수 없음 — 위 프로그램 단계를 확인하세요' -ForegroundColor Yellow
         }
         'already' {
           $ghLoggedIn = $true
-          Write-Host '  이미 서 있다'
+          Write-Host '  이미 로그인됨'
           $null = Get-Quiet 'gh' @('auth','setup-git')
         }
         'unmeasured' {
           # 아래 clone 은 제 자격 창을 띄운다
-          Write-Host "  ! 로그인이 섰나를 못 쟀다 — gh api user 가 ${GhStatusCap}초 안에 안 끝났다 · 창을 안 띄운다" -ForegroundColor Yellow
+          Write-Host "  ! 로그인 상태를 확인하지 못함 — gh api user 가 ${GhStatusCap}초 안에 끝나지 않음 · 로그인 창을 열지 않음" -ForegroundColor Yellow
         }
         'night' {
-          Write-Host '  ! 밤 자동 실행이라 로그인 창을 안 띄운다 — 다음 로그온 · 설치 창이 띄운다' -ForegroundColor Yellow
+          Write-Host '  ! 야간 자동 실행이라 로그인 창을 열지 않음 — 다음 로그온이나 설치 창에서 엽니다' -ForegroundColor Yellow
         }
         'noreach' {
           # 창을 아끼고 말만 한다 — 아래 clone 은 제 자격 창을 띄우므로 길이 막히지는 않는다(안 누른 것과 같은 규율)
-          Write-Host '  ! github.com 에 못 닿아 로그인이 섰나를 못 쟀다 — 자격 문제가 아니라 망 문제다' -ForegroundColor Yellow
+          Write-Host '  ! github.com 에 연결할 수 없어 로그인 상태를 확인하지 못함 — 계정 문제가 아니라 네트워크 문제입니다' -ForegroundColor Yellow
         }
         default {
-          Write-Host "  브라우저 로그인을 띄운다 — 코드는 팝업에 (최대 ${GhLoginWait}초)" -ForegroundColor Yellow
+          Write-Host "  브라우저 로그인을 엽니다 — 코드는 팝업에 표시 (최대 ${GhLoginWait}초)" -ForegroundColor Yellow
           $gl = [IO.Path]::GetTempFileName()
           $login = $null
           try {
             $login = Start-GhLoginProcess $gl
             $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait
             if ($ghLoggedIn) {
-              Write-Host '  섰다' -ForegroundColor Green
+              Write-Host '  로그인 완료' -ForegroundColor Green
               $null = Get-Quiet 'gh' @('auth','setup-git')
             } else {
               Stop-GhLoginProcess $login
-              Write-Host "  ! 로그인이 안 섰다 — 새 터미널에서 gh auth login -s $GhLoginScopes (저장소 받기는 제 자격 창을 띄운다)" -ForegroundColor Yellow
+              Write-Host "  ! 로그인되지 않음 — 새 터미널에서 gh auth login -s $GhLoginScopes 을 실행하세요 (저장소 다운로드 때는 git 이 자체 로그인 창을 엽니다)" -ForegroundColor Yellow
             }
           } catch {
             Stop-GhLoginProcess $login
-            Write-Host "  ! 로그인을 못 띄웠다 — $(Say-Why $_)" -ForegroundColor Yellow
+            Write-Host "  ! 로그인을 시작하지 못함 — $(Say-Why $_)" -ForegroundColor Yellow
           }
           Remove-Item $gl, "$gl.err" -ErrorAction SilentlyContinue
         }
@@ -9983,7 +9975,7 @@ if (-not $repoUrl) {
       if ($rc -ne 0) {
         $drm = Clear-RepoDrmWrapped $dest $bash
         if ($drm.Code -eq 0 -and $drm.Lines.Count) {
-          Write-Host '  ↺ DRM 이 감싼 사본이 당김을 막아, 감싼 판을 백업하고 커밋본으로 되돌린 뒤 다시 당긴다' -ForegroundColor Yellow
+          Write-Host '  ↺ DRM 으로 암호화된 파일이 업데이트를 막아, 암호화된 파일을 백업하고 커밋된 버전으로 되돌린 뒤 다시 업데이트합니다' -ForegroundColor Yellow
           $drm.Lines | ForEach-Object { Write-Host "      $_" }
           $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
         }
@@ -9994,34 +9986,34 @@ if (-not $repoUrl) {
       #   이 걸음의 노란 줄은 기록에 묻힌다. 빨강으로는 안 센다 — 그 손질을 커밋할지 버릴지는 사람이 정한다.
       $got += $dest
       if ($rc -ne 0) {
-        Write-Host '  ! pull 이 졌다 — 이미 받아 둔 판으로 간다' -ForegroundColor Yellow
+        Write-Host '  ! pull 실패 — 이미 받아 둔 버전으로 진행' -ForegroundColor Yellow
         Show-Log $log
         if ($drm -and $drm.Code -eq 1) {
           $drm.Lines | ForEach-Object { Write-Host "      $_" }
-          Write-Host "    손질을 커밋하거나 되돌린 뒤 설치를 다시 돌린다 — 볼 자리: git -C `"$dest`" status" -ForegroundColor Yellow
-          $checks += @{ Name = "$(Split-Path $dest -Leaf) 당김 — 커밋 안 된 손질이 막아 옛 판에 머문다 (git -C `"$dest`" status)"; Ok = $false; Advice = $true }
+          Write-Host "    수정한 내용을 커밋하거나 되돌린 뒤 설치를 다시 실행하세요 — 확인: git -C `"$dest`" status" -ForegroundColor Yellow
+          $checks += @{ Name = "$(Split-Path $dest -Leaf) 업데이트 — 커밋하지 않은 수정 사항 때문에 이전 버전에 머물러 있음 (git -C `"$dest`" status)"; Ok = $false; Advice = $true }
         } elseif ($drm -and $drm.Code -ne 0) {
-          $why = if ($drm.Lines.Count) { $drm.Lines -join ' · ' } else { '홈 씨앗의 세션 훅 몸통을 못 불렀다' }
-          Write-Host "    DRM 이 감싼 사본인지 못 가렸다 — $why" -ForegroundColor Yellow
+          $why = if ($drm.Lines.Count) { $drm.Lines -join ' · ' } else { '홈 씨앗의 세션 훅 본체를 실행하지 못함' }
+          Write-Host "    DRM 으로 암호화된 파일인지 확인하지 못함 — $why" -ForegroundColor Yellow
         }
       }
-      Write-Took ((Split-Path $dest -Leaf) + ' 당김') $tRepo
+      Write-Took ((Split-Path $dest -Leaf) + ' 업데이트 (git pull)') $tRepo
     } else {
       Say-Busy (Split-Path $dest -Leaf) 'fetch' @('git clone', $dest)
       # 이 안내는 우리가 찍는다 — 자격 관리자의 「브라우저에서 마치라」는 줄은 영어로 흘러 지나가(아래 `Invoke-Logged`), 안 찍으면
       #   사람은 창이 왜 떴는지 모른 채 설치가 멈춘 줄 안다.
-      Write-Host '    GitHub 로그인 창이 뜰 수 있습니다 — 브라우저에서 눌러 주세요' -ForegroundColor Yellow
+      Write-Host '    GitHub 로그인 창이 뜰 수 있습니다 — 브라우저에서 로그인을 완료해 주세요' -ForegroundColor Yellow
       $rc = Invoke-Logged 'git' @('clone', $u, $dest) $log
       # ⚠ 종료코드만 믿지 않는다 — 0 으로 끝났는데 `.git` 이 안 선 판을 여기서 거른다.
       if ($rc -eq 0 -and (Test-Path -LiteralPath (Join-Path $dest '.git'))) {
         $got += $dest
       } else {
-        Write-Host "  ! 못 받았다 — 주소 · 계정 · 망을 본다  ($($u -replace $UrlCredential, '***@'))" -ForegroundColor Red
+        Write-Host "  ! 다운로드 실패 — 주소 · 계정 · 네트워크를 확인하세요  ($($u -replace $UrlCredential, '***@'))" -ForegroundColor Red
         Show-Log $log
-        $Fails.Add("개인 값 저장소 (못 받았다: $($u -replace $UrlCredential, '***@'))")
+        $Fails.Add("개인 값 저장소 (다운로드 실패: $($u -replace $UrlCredential, '***@'))")
       }
       # 받기는 자격 창이 뜰 수 있어 여기도 사람 대기가 섞인다 — 진 판도 찍는다(진 데 든 시간도 시간이다).
-      Write-Took ((Split-Path $dest -Leaf) + ' 받기') $tRepo
+      Write-Took ((Split-Path $dest -Leaf) + ' 다운로드 (git clone)') $tRepo
     }
     Remove-Item $log -ErrorAction SilentlyContinue
   }
@@ -10056,29 +10048,29 @@ if (-not $repoUrl) {
   # 간 저장소마다 「갈았다」 줄 — 쓰다 져 옛 판으로 남은 것은 안 댄다(그것은 아래 「넘기지 않는다」 줄이 든다).
   foreach ($g in @($hookGen | Where-Object { $_.Refreshed.Count -and $_.Current })) { Write-RefreshLine $g }
   # 못 넘긴 것은 실패로 세지 않는다(`Write-HookNotice`) — 저장소와 까닭과 그 까닭에 맞는 고치는 길을 댄다.
-  foreach ($o in $oldHooks) { Write-HookNotice $o '이 저장소의 훅으로 넘기지 않는다' }
+  foreach ($o in $oldHooks) { Write-HookNotice $o '이 저장소의 훅은 실행하지 않음' }
 
   if (-not $got) {
     # 실패는 위에서 까닭과 함께 이미 셌다 — 또 세면 한 사고가 둘로 보고된다. 사슬이 끊긴 것만 말한다(안 말하면 훅이 돈 줄 안다).
-    Write-Host '  넘길 자리가 없어 훅을 안 부른다'
+    Write-Host '  넘겨줄 저장소가 없어 훅을 실행하지 않음'
   } elseif (-not $boot) {
     # 실패가 아니다(칸 머리의 「없으면」) — 훅을 기대한 사람이 속지 않게 안 돈 것을 이름으로 말한다.
-    Write-Host "  받아 뒀다 — $($got.Count)개" -ForegroundColor Green
+    Write-Host "  다운로드함 — $($got.Count)개" -ForegroundColor Green
     $got | ForEach-Object { Write-Host "     $_" }
-    if ($oldHooks) { Write-Host '    넘겨도 되는 훅을 든 뿌리가 없어 훅은 안 돌았다 — 까닭은 위 「이 저장소의 훅으로 넘기지 않는다」 줄이 든다.' }
-    else           { Write-Host "    어느 뿌리에도 $hookRel 가 없어 훅은 안 돌았다." }
-    Write-Host "    자동화까지 원하면 $ConfigSeedHome 를 복사해 그 이름으로 둔다."
+    if ($oldHooks) { Write-Host '    실행할 수 있는 훅이 든 저장소가 없어 훅을 실행하지 않았습니다 — 이유는 위 「이 저장소의 훅은 실행하지 않음」 줄에 있습니다.' }
+    else           { Write-Host "    어느 저장소에도 $hookRel 가 없어 훅을 실행하지 않았습니다." }
+    Write-Host "    자동화까지 쓰려면 $ConfigSeedHome 를 복사해 그 이름으로 두세요."
   } elseif (-not $bash) {
-    Write-Host '  ! Git Bash 를 못 찾았다' -ForegroundColor Red
-    $Fails.Add('개인 값 저장소 (Git Bash 가 없다)')
+    Write-Host '  ! Git Bash 를 찾지 못함' -ForegroundColor Red
+    $Fails.Add('개인 값 저장소 (Git Bash 없음)')
   } else {
     if ($got.Count -gt 1) {
-      Write-Host "  받아 뒀다 — $($got.Count)개" -ForegroundColor Green
+      Write-Host "  다운로드함 — $($got.Count)개" -ForegroundColor Green
       $got | ForEach-Object { Write-Host "     $_" }
     }
     if ($bootRepos.Count -gt 1) {
-      Write-Host "  ! 넘겨도 되는 훅을 든 저장소가 $($bootRepos.Count)개다 — 첫 것만 부른다" -ForegroundColor Yellow
-      $bootRepos | Select-Object -Skip 1 | ForEach-Object { Write-Host "     안 부른 것: $_" }
+      Write-Host "  ! 실행할 수 있는 훅이 든 저장소가 $($bootRepos.Count)개 — 첫 번째만 실행합니다" -ForegroundColor Yellow
+      $bootRepos | Select-Object -Skip 1 | ForEach-Object { Write-Host "     실행하지 않은 저장소: $_" }
     }
     $handOff = $true
   }
@@ -10088,12 +10080,12 @@ if (-not $repoUrl) {
 #   (`~/.codex/.codex-global-state.json` — 작업 루트 저장소 0126 · 새 대화 기본 권한 0127)을 미루고, 「연다」 칸이 로그인이 선 것을 본
 #   뒤에만 닫고 심고 다시 띄운다(claude-config 결정 0135).
 if ($handOff) {
-  Write-Host "  훅으로 넘긴다 — $boot --install" -ForegroundColor Green
+  Write-Host "  저장소 훅 실행 — $boot --install" -ForegroundColor Green
   Write-Host ''
   # `--install` 은 리모트 Setup script 가 부르는 것과 같은 갈래다 — 지문을 안 보고 깐다. 맨바닥 VDI 의 첫 판(형제 저장소 clone)은
   #   세션 훅의 시간 한도가 아니라 여기서 진다. 이 한 부름에 형제 clone · 전역 도구 · 배포 · 저장소 설치 · 진단이 다 들어 있고,
   #   저쪽이 제 안을 가르는 줄을 내므로 여기는 그 전체를 감싼 값 하나만 잰다.
-  #   몸통의 줄은 러너로 받아 자식 줄의 문(`Show-ChildLine`)으로 흘린다 — 형제 저장소 받기의 진행 판이 접히고, 원문은 세부 기록에 남는다.
+  #   몸통의 줄은 러너로 받아 자식 줄의 문(`Show-ChildLine`)을 지나게 한다 — 화면에는 경보 줄(❌ · `!`)만 서고, 원문은 세부 기록에 남는다.
   $tHook = Get-Took
   $hookLog = [IO.Path]::GetTempFileName()
   $hookRc = Invoke-Logged $bash @(($boot -replace '\\','/'), '--install') $hookLog
@@ -10114,8 +10106,8 @@ $scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny $ConfigSeedHo
 #   끈 PC(`-NoDevTools`)가 고른 몫이고, 홈 씨앗이 모자라면 끝 검증의 씨앗 줄이 [X] 다. 불렀는데 0 이 아니면 센다. 0 은 「다
 #   심었다」가 아니다 — 미룬 칸과 걸 저장소가 없는 루트도 0 이다. 무엇을 심고 미뤘나는 몸통이 찍는 줄이 든다.
 $plant = Invoke-Plant $bash $configRepoRoot
-if (-not $plant.Ran) { Write-Host "  ! 심기 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 못 심었다" -ForegroundColor Yellow }
-elseif (-not $plant.Ok) { $Fails.Add("심기 --plant ($($plant.Why))") }
+if (-not $plant.Ran) { Write-Host "  ! 설정 적용 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 설정하지 못함" -ForegroundColor Yellow }
+elseif (-not $plant.Ok) { $Fails.Add("설정 적용 --plant ($($plant.Why))") }
 } catch { Write-StepFault $_ } finally {
 # ── 앞당겨 띄운 로그인 창을 거둔다 — 로그인 칸에 안 닿은 판(그 사이 git 이 안 닿았다 · 이 걸음이 도중에 멎었다)의 자리 ──────────────────
 # 로그인 칸이 답을 받았으면 비어 있어 아무것도 안 한다. 남았으면 저장소를 받을 길이 이미 끊긴 판이라 기다리지 않고 거두고 곁 파일을 지운다.
@@ -10171,12 +10163,12 @@ if ($wantOfficialSkills) {
 #   부르면 넘긴 명령이 거기서 설치를 세운다. 건너뛰지도 않고 「안 한 걸음」으로 남긴다(결정 0141 · 0151).
 $officialClaude = if ($wantOfficialSkills) { Measure-Runs 'claude' '--version' } else { '' }
 if ($officialClaude -eq 'unmeasured') {
-  Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude --version' '있는지 안 묻고 깔지도 않았다'
+  Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude --version' '설치 여부를 확인하지 않고 설치도 하지 않음'
   Write-Host $officialHand
   $wantOfficialSkills = $false
 } elseif ($wantOfficialSkills -and $officialClaude -ne 'yes') {
   # `no` 는 그 이름이 이 창에 없다는 것뿐이다 — 이름이 서는데 진 판은 위 갈래가 그 종료 값과 함께 든다(결정 0151).
-  Write-Host '  ! Anthropic 공식 스킬 — 건너뛴다: claude 가 이 창의 PATH 에 없다 · 위 CLI 줄을 먼저 본다' -ForegroundColor Yellow
+  Write-Host '  ! Anthropic 공식 스킬 — 건너뜀: claude 가 이 창의 PATH 에 없음 · 위 CLI 결과를 먼저 확인하세요' -ForegroundColor Yellow
   Write-Host $officialHand
   $wantOfficialSkills = $false
 }
@@ -10205,23 +10197,23 @@ if ($wantOfficialSkills) {
     foreach ($r in @($parsed | ForEach-Object { $_ })) { if ($r -and $r.id) { $t[[string]$r.id] = ($r.enabled -eq $true) } }
     $t
   }
-  $plWhy = { param($Ask) if ($Ask.Rc -eq 0) { '낸 글이 JSON 으로 안 읽혀' } else { Format-ProbeWhy $Ask.Rc $ClaudePluginCap } }
+  $plWhy = { param($Ask) if ($Ask.Rc -eq 0) { '출력을 JSON 으로 읽을 수 없어' } else { Format-ProbeWhy $Ask.Rc $ClaudePluginCap } }
   $pl = & $askClaude @('plugin','list','--json')
   $have = & $readPlugins $pl
   if ($null -eq $have) {
-    Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin list --json' '있는지 못 재 깔지도 않았다' (& $plWhy $pl)
+    Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin list --json' '설치 여부를 확인하지 못해 설치하지 않음' (& $plWhy $pl)
     Write-Host $officialHand
   } else {
     foreach ($id in $officialIds) {
       if (-not $have.ContainsKey($id)) { continue }
-      if ($have[$id]) { Write-Host "  Anthropic 공식 스킬 — 있음: $id" }
-      else { Write-Host "  Anthropic 공식 스킬 — 깔렸는데 꺼져 있다: $id · 켜려면  claude plugin enable $id" }
+      if ($have[$id]) { Write-Host "  Anthropic 공식 스킬 — 설치되어 있음: $id" }
+      else { Write-Host "  Anthropic 공식 스킬 — 설치됐지만 꺼져 있음: $id · 켜려면  claude plugin enable $id" }
     }
     $missing = @($officialIds | Where-Object { -not $have.ContainsKey($_) })
     if ($missing.Count) {
       $mk = & $askClaude @('plugin','marketplace','list')
       if ($mk.Rc -eq -2) {
-        Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin marketplace list' '깔지 않았다' (Format-ProbeWhy -2 $ClaudePluginCap)
+        Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin marketplace list' '설치하지 않음' (Format-ProbeWhy -2 $ClaudePluginCap)
         Write-Host $officialHand
       } else {
         Say-Busy 'Anthropic 공식 스킬' 'install' @('claude plugin', ($missing -join ' · '))
@@ -10242,12 +10234,12 @@ if ($wantOfficialSkills) {
         $pl = & $askClaude @('plugin','list','--json')
         $have = & $readPlugins $pl
         if ($null -eq $have) {
-          Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin list --json' '깔았나를 못 쟀다' (& $plWhy $pl)
+          Add-UnmeasuredStep 'Anthropic 공식 스킬' 'claude plugin list --json' '설치 여부를 확인하지 못함' (& $plWhy $pl)
         } else {
-          foreach ($id in @($missing | Where-Object { $have.ContainsKey($_) })) { Write-Host "  Anthropic 공식 스킬 — 깔았다: $id" -ForegroundColor Green }
+          foreach ($id in @($missing | Where-Object { $have.ContainsKey($_) })) { Write-Host "  Anthropic 공식 스킬 — 설치 완료: $id" -ForegroundColor Green }
           $still = @($missing | Where-Object { -not $have.ContainsKey($_) })
           if ($still.Count) {
-            Write-Host "  ! Anthropic 공식 스킬 — 못 깔았다 ($rc): $($still -join ' · ') · Claude Code 는 그대로 돈다 — 뱉은 끝 줄:" -ForegroundColor Yellow
+            Write-Host "  ! Anthropic 공식 스킬 — 설치 실패 ($rc): $($still -join ' · ') · Claude Code 는 그대로 사용할 수 있음 — 마지막 출력:" -ForegroundColor Yellow
             foreach ($k in @(@('market') + $still)) { if ($logs.ContainsKey($k)) { Show-Log $logs[$k] } }
             Write-Host $officialHand
           }
@@ -10261,7 +10253,7 @@ if ($wantOfficialSkills) {
 # agy 의 Google 로그인은 회사 설정이 안 서는 자리의 몫이다 — 사내는 회사 키로 게이트웨이를 타서(`$wantAgy` · 「Codex · 안티그래비티
 #   설정」 칸) 로그인 없이 agy 맡기기가 선다.
 if ($wantAgyDelegate -and -not $wantAgy) {
-  Write-Host '  agy 가 로그인 전이면 터미널에서 agy 를 한 번 띄워 Google 계정으로 로그인한다'
+  Write-Host '  agy 에 아직 로그인하지 않았다면 터미널에서 agy 를 한 번 실행해 Google 계정으로 로그인하세요'
 }
 
 } catch { Write-StepFault $_ }
@@ -10323,7 +10315,7 @@ try {
   if ($recWrote.Did -cne 'written' -and $recWrote.Did -cne 'same') { throw $recWrote.Why }
   Remove-Item -LiteralPath $LegacyChoiceArgs, $LegacyChoiceEnv -Force -ErrorAction SilentlyContinue
 } catch {
-  Write-Host "  ! 고른 것을 다음 회차에 남기지 못했다 — $(Say-Why $_) (다음 회차는 지난 기록으로 간다)" -ForegroundColor Yellow
+  Write-Host "  ! 선택 내용을 다음 실행용으로 저장하지 못함 — $(Say-Why $_) (다음 실행은 이전 기록을 사용)" -ForegroundColor Yellow
 }
 
 # ── 사용자 범위 명령 자리 — **사용자 PATH 에 심어야 설치가 끝난 뒤에도 선다** (claude-config 결정 0143 · PAISetup #30 ②) ─────────────
@@ -10336,31 +10328,31 @@ try {
 # 폴더가 있을 때만 심는다 — 무엇이든 깔아야 생기는 폴더다. 걷는 손은 없다 — 같은 자리를 다른 설치나 사람이 넣었을 수 있다(결정 0143).
 # 고른 CLI 가운데 winget 이 PATH 에 안 심는 것(`$Clis` 의 `PathDir` · LibreOffice)도 같은 손으로 심는다 — 「CLI」 걸음이 깔아야 그 폴더가 선다.
 $PipUser = Measure-PipUserScripts
-if ($PipUser.State -eq 'unmeasured') { Add-UnmeasuredStep 'pip 사용자 자리' $PipUser.Probe '사용자 PATH 에 안 더했다' $PipUser.Why }
-foreach ($ud in @(@{ Label = 'npm 전역 자리'; Dir = $NpmGlobalDir; What = 'npm 으로 깐 CLI 가' },
-                  @{ Label = 'pip 사용자 자리'; Dir = $PipUser.Dir; What = 'pip 가 사용자 자리에 깐 명령이' }) +
-                @($CliPicks | Where-Object { $_.PathDir } | ForEach-Object { @{ Label = "$($_.Label) 자리"; Dir = $_.PathDir; What = "``$($_.Cmd)`` 명령이" } })) {
+if ($PipUser.State -eq 'unmeasured') { Add-UnmeasuredStep 'pip 사용자 폴더' $PipUser.Probe '사용자 PATH 에 추가하지 않음' $PipUser.Why }
+foreach ($ud in @(@{ Label = 'npm 전역 폴더'; Dir = $NpmGlobalDir; What = 'npm 으로 설치한 CLI 를' },
+                  @{ Label = 'pip 사용자 폴더'; Dir = $PipUser.Dir; What = 'pip 가 사용자 폴더에 설치한 명령을' }) +
+                @($CliPicks | Where-Object { $_.PathDir } | ForEach-Object { @{ Label = "$($_.Label) 폴더"; Dir = $_.PathDir; What = "``$($_.Cmd)`` 명령을" } })) {
   if (-not $ud.Dir -or -not (Test-Path -LiteralPath $ud.Dir)) { continue }
   # 기계 PATH 에 선 자리(nvm 류가 npm 자리를 거기 둔다)는 새 터미널이 이미 본다 — 사용자 PATH 에 겹쳐 심지 않는다.
   if (Test-PathListHas ([string][Environment]::GetEnvironmentVariable('Path', 'Machine')) $ud.Dir) {
-    Write-Host "  $($ud.Label) — 기계 PATH 에 이미 있다 ($($ud.Dir))"
+    Write-Host "  $($ud.Label) — 시스템 PATH 에 이미 있음 ($($ud.Dir))"
     continue
   }
   $udPath = Add-ToUserPath $ud.Dir
   switch ($udPath.Did) {
-    'kept'  { Write-Host "  $($ud.Label) — 사용자 PATH 에 이미 있다 ($($ud.Dir))" }
+    'kept'  { Write-Host "  $($ud.Label) — 사용자 PATH 에 이미 있음 ($($ud.Dir))" }
     'added' {
-      Write-Host "  $($ud.Label) — 사용자 PATH 에 더했다 ($($ud.Dir)) · 새로 여는 터미널부터 $($ud.What) 이름만으로 선다" -ForegroundColor Green
+      Write-Host "  $($ud.Label) — 사용자 PATH 에 추가함 ($($ud.Dir)) · 새로 여는 터미널부터 $($ud.What) 이름만으로 실행할 수 있음" -ForegroundColor Green
       if (-not $udPath.Notified) {
-        Write-Host '    ! 열린 프로그램에 바뀐 것을 못 알렸다 — 다음 로그온부터 새 터미널이 본다' -ForegroundColor Yellow
+        Write-Host '    ! 실행 중인 프로그램에 변경을 알리지 못함 — 다음 로그온부터 새 터미널에 적용됨' -ForegroundColor Yellow
       }
     }
     'toolong' {
-      Write-Host ("  ! {0} — 사용자 PATH 에 안 더했다: 더하면 PATH 가 {1:N0} 자로 환경변수 한도({2:N0})를 넘는다 · 안 쓰는 자리를 걷고 다시 누른다" -f $ud.Label, $udPath.Len, $EnvVarMax) -ForegroundColor Red
-      $Fails.Add("$($ud.Label) (PATH 길이 한도)")
+      Write-Host ("  ! {0} — 사용자 PATH 에 추가하지 않음: 추가하면 PATH 가 {1:N0}자로 환경 변수 길이 제한({2:N0})을 넘음 · 쓰지 않는 경로를 지운 뒤 다시 실행하세요" -f $ud.Label, $udPath.Len, $EnvVarMax) -ForegroundColor Red
+      $Fails.Add("$($ud.Label) (PATH 길이 제한)")
     }
     default {
-      Write-Host "  ! $($ud.Label) — 사용자 PATH 에 못 더했다 — $(Say-Why $udPath.Err)" -ForegroundColor Red
+      Write-Host "  ! $($ud.Label) — 사용자 PATH 에 추가하지 못함 — $(Say-Why $udPath.Err)" -ForegroundColor Red
       $Fails.Add("$($ud.Label) (사용자 PATH)")
     }
   }
@@ -10372,21 +10364,21 @@ foreach ($ud in @(@{ Label = 'npm 전역 자리'; Dir = $NpmGlobalDir; What = 'n
 #   [X] 로 든다. 걷는 손은 없다 — 사람이 그 뒤에 고른 값과 갈라 낼 수 없다(배포본 UNINSTALL 이 되돌리는 명령을 든다).
 $psPolicy = Get-ShellScriptPolicy
 if ($psPolicy.State -ne 'yes') {
-  Add-UnmeasuredStep 'PowerShell 스크립트 실행' $psPolicy.Probe '실행 정책을 안 바꿨다' $psPolicy.Why
+  Add-UnmeasuredStep 'PowerShell 스크립트 실행' $psPolicy.Probe '실행 정책을 바꾸지 않음' $psPolicy.Why
 } elseif ($psPolicy.Blocks -and $psPolicy.Value -eq 'Restricted' -and $psPolicy.Scope -notlike '*Policy') {
   # ⚠ **던짐이 아니라 읽은 값으로 가른다** — Bypass 로 뜬 이 창에서는 값을 쓰고도 「더 좁은 범위(Process)가 덮는다」 오류를 던질 수 있다.
   $setErr = $null
   try { Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force -ErrorAction Stop } catch { $setErr = $_ }
   if ("$(Get-ExecutionPolicy -Scope CurrentUser)" -eq 'RemoteSigned') {
-    Write-Host "  PowerShell 스크립트 실행 — 현재 사용자만 RemoteSigned 로 올렸다 (앞은 $($psPolicy.Value) · $($psPolicy.Scope)) · 새로 여는 PowerShell 에서 npm 이 깐 명령이 돈다" -ForegroundColor Green
+    Write-Host "  PowerShell 스크립트 실행 — 현재 사용자만 RemoteSigned 로 변경함 (이전 값 $($psPolicy.Value) · $($psPolicy.Scope)) · 새로 여는 PowerShell 에서 npm 으로 설치한 명령을 실행할 수 있음" -ForegroundColor Green
   } else {
-    Write-Host "  ! PowerShell 스크립트 실행 — 현재 사용자 범위를 못 올렸다 — $(if ($setErr) { Say-Why $setErr } else { '쓴 값이 안 남았다' })" -ForegroundColor Red
+    Write-Host "  ! PowerShell 스크립트 실행 — 현재 사용자 범위를 변경하지 못함 — $(if ($setErr) { Say-Why $setErr } else { '저장한 값이 남지 않음' })" -ForegroundColor Red
     $Fails.Add('PowerShell 스크립트 실행 (현재 사용자 범위)')
   }
 } elseif ($psPolicy.Blocks) {
-  Write-Host "  ! PowerShell 스크립트 실행 — $($psPolicy.Value) ($($psPolicy.Scope)) 가 막는다 · 그 값은 안 바꾼다(정책이 쥐었거나 사람이 고른 값) — PowerShell 에서는 ``claude.cmd`` 처럼 .cmd 로 부르거나 cmd · Git Bash 를 쓴다" -ForegroundColor Yellow
+  Write-Host "  ! PowerShell 스크립트 실행 — $($psPolicy.Value) ($($psPolicy.Scope)) 가 실행을 막음 · 이 값은 바꾸지 않음 (그룹 정책이나 사용자가 정한 값) — PowerShell 에서는 ``claude.cmd`` 처럼 .cmd 로 실행하거나 cmd · Git Bash 를 사용하세요" -ForegroundColor Yellow
 } else {
-  Write-Host "  PowerShell 스크립트 실행 — 이미 열려 있다 ($($psPolicy.Value) · $($psPolicy.Scope))"
+  Write-Host "  PowerShell 스크립트 실행 — 이미 허용됨 ($($psPolicy.Value) · $($psPolicy.Scope))"
 }
 
 # ── 바탕화면·시작 메뉴 아이콘 ───────────────────────────────────────────────────
@@ -10399,7 +10391,7 @@ if ($psPolicy.State -ne 'yes') {
 $launcher = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\Setup.exe'
 if (Test-Path -LiteralPath $launcher) {
   Write-Host ''
-  Write-Host '  바탕화면 · 시작 메뉴에 아이콘을 둔다'
+  Write-Host '  바탕화면 · 시작 메뉴 바로 가기'
   $made = @()
   try {
     $sh = New-Object -ComObject WScript.Shell
@@ -10433,8 +10425,8 @@ if (Test-Path -LiteralPath $launcher) {
       } catch { }
     }
   } catch { }
-  if ($made.Count) { Write-Host ("    " + ($made -join ' · ') + " — 다음에는 이것을 누르면 됩니다") -ForegroundColor Green }
-  else { Write-Host '    ! 아이콘을 못 만들었다 — 설치에는 지장이 없다' -ForegroundColor Yellow }
+  if ($made.Count) { Write-Host ("    " + ($made -join ' · ') + " — 바로 가기 만듦 · 다음에는 이것을 실행하면 됩니다") -ForegroundColor Green }
+  else { Write-Host '    ! 바로 가기를 만들지 못함 — 설치에는 지장 없음' -ForegroundColor Yellow }
 }
 
 # ── VS Code 바탕화면 아이콘 — VS Code 가 주 무대인 자리(`Test-VsCodeRequired` · 사내)에만 ──
@@ -10462,9 +10454,9 @@ if (-not $NoVsCode -and (Test-VsCodeRequired $site)) {
         $lnk.TargetPath       = $vs.Exe
         $lnk.WorkingDirectory = $vs.Dir
         $lnk.Save()
-        Write-Host '    VS Code — 바탕화면에 아이콘을 두었다' -ForegroundColor Green
+        Write-Host '    VS Code — 바탕화면 바로 가기 만듦' -ForegroundColor Green
       }
-    } catch { Write-Host '    ! VS Code 바탕화면 아이콘을 못 만들었다 — 설치에는 지장이 없다' -ForegroundColor Yellow }
+    } catch { Write-Host '    ! VS Code 바탕화면 바로 가기를 만들지 못함 — 설치에는 지장 없음' -ForegroundColor Yellow }
   }
 }
 
@@ -10550,7 +10542,7 @@ function Log([string]$msg) {
 }
 
 # 첫 줄에 제 PID 를 적는다 — 뒤 회차의 가드가 이 기록을 이 회차가 글자를 내는 자리로 찾는다(아래 `Find-RunOutput`).
-$runKind = if ($Night) { '밤 작업' } else { '로그온 작업' }
+$runKind = if ($Night) { '야간 작업' } else { '로그온 작업' }
 Log "=== PAISetup 자동 실행 시작 (PID $PID) · $runKind ==="
 
 # 기록은 최근 것만 둔다 — 건너뛰는 회차도 기록을 하나씩 남기므로 시작마다 거둔다. 지금 회차의 기록은 가장 새것이라 남는다.
@@ -10572,8 +10564,8 @@ $lastFile = Join-Path $setupRoot '.autorun-last'
 if (Test-Path -LiteralPath $lastFile) {
   try {
     $prevSaid = (Get-Content -LiteralPath $lastFile -Raw -Encoding UTF8 -ErrorAction Stop).Trim()
-    if ($prevSaid -match '\s(\S+)$' -and $Matches[1] -ne '0') { Log "! 지난 회차가 성공으로 안 끝났다 — $prevSaid" }
-    else { Log "지난 회차 — $prevSaid" }
+    if ($prevSaid -match '\s(\S+)$' -and $Matches[1] -ne '0') { Log "! 지난 실행이 성공하지 못함 — $prevSaid" }
+    else { Log "지난 실행 — $prevSaid" }
   } catch { }
 }
 
@@ -10587,7 +10579,7 @@ if (Test-Path -LiteralPath $stampFile) {
 }
 $doneToday = [bool]($doneAt -and $doneAt.Date -eq (Get-Date).Date)
 if ($Night -and $doneToday) {
-  Log "오늘 이미 자동 실행이 끝났습니다 ($($doneAt.ToString('HH:mm'))). 밤 회차는 건너뜁니다."
+  Log "오늘 이미 자동 실행이 끝났습니다 ($($doneAt.ToString('HH:mm'))). 야간 실행은 건너뜁니다."
   exit 0
 }
 
@@ -10648,7 +10640,7 @@ try {
     if ($ruleDef.Count -eq 1) { . ([scriptblock]::Create($ruleDef[0])); $engineRuleOk = $true }
   }
 } catch { $engineRuleOk = $false }
-if (-not $engineRuleOk) { Log "! 엔진을 알아보는 자(Get-EngineKind)를 가장 높은 판의 몸통에서 못 들였다 — 명령줄에 install.ps1 · autorun.ps1 · deploy.ps1 을 든 것을 다 센다" }
+if (-not $engineRuleOk) { Log "! 실행 중인 설치를 구분하는 함수(Get-EngineKind)를 최신 버전 설치기에서 불러오지 못함 — 명령줄에 install.ps1 · autorun.ps1 · deploy.ps1 이 든 프로세스를 모두 셉니다" }
 function Get-OtherEngines {
   @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.ProcessId -ne $myPid -and $_.ProcessId -ne $parentPid -and $(
@@ -10837,14 +10829,14 @@ $nightYoungSec = 120
 $nightWaitSec  = 30
 $youngOthers = @($otherEngines | Where-Object { ((Get-Date) - $_.CreationDate).TotalMinutes -lt $orphanMin })
 if ($Night -and $youngOthers) {
-  Log "다른 자동 실행 또는 설치가 돌고 있어 밤 회차는 물러납니다 ($($youngOthers.ProcessId -join ', '))."
+  Log "다른 자동 실행 또는 설치가 진행 중이라 야간 실행을 중단합니다 ($($youngOthers.ProcessId -join ', '))."
   exit 0
 }
 if ($otherEngines) {
   $youngNight = @($otherEngines | Where-Object {
     "$($_.CommandLine)" -match '\s-Night(\s|$)' -and ((Get-Date) - $_.CreationDate).TotalSeconds -lt $nightYoungSec })
   if ($youngNight.Count -eq $otherEngines.Count) {
-    Log "막 선 밤 회차가 있습니다 ($($youngNight.ProcessId -join ', ')) — 끝나기를 최대 ${nightWaitSec}초 기다립니다."
+    Log "방금 시작된 야간 실행이 있습니다 ($($youngNight.ProcessId -join ', ')) — 끝나기를 최대 ${nightWaitSec}초 기다립니다."
     $waitUntil = (Get-Date).AddSeconds($nightWaitSec)
     while ((Get-Date) -lt $waitUntil -and @($youngNight | Where-Object { Test-Alive $_ }).Count) { Start-Sleep -Milliseconds 500 }
     $otherEngines = @(Get-OtherEngines)
@@ -10852,7 +10844,7 @@ if ($otherEngines) {
 }
 
 if ($otherEngines) {
-  Log "다른 자동 실행 또는 설치 프로세스가 있습니다 ($($otherEngines.ProcessId -join ', ')). 멎었나 잽니다..."
+  Log "다른 자동 실행 또는 설치 프로세스가 있습니다 ($($otherEngines.ProcessId -join ', ')). 멈춘 상태인지 확인합니다..."
   $stalled = @()
   $held    = @()
   foreach ($e in $otherEngines) {
@@ -10865,7 +10857,7 @@ if ($otherEngines) {
 
   # 멎었다고 가르지 못한 것이 하나라도 있으면 물러난다 — 겹치면 반쪽 상태가 남는다.
   if ($held) {
-    Log "멎었다고 가르지 못한 것이 $($held.Count) 개 있어 겹치지 않게 물러납니다 ($($held.ProcessId -join ', '))."
+    Log "멈췄다고 판단할 수 없는 프로세스가 $($held.Count)개 있어 겹치지 않도록 중단합니다 ($($held.ProcessId -join ', '))."
     exit 0
   }
 
@@ -10874,18 +10866,18 @@ if ($otherEngines) {
     foreach ($e in $stalled) {
       $k = Stop-Engine $e
       $said = if ($k.Why) { " ($($k.Why))" } else { '' }
-      if ($k.Gone) { Log "  PID $($e.ProcessId) 을 거뒀다 — 다시 재니 없다$said" }
-      else { Log "  ! PID $($e.ProcessId) 을 못 거뒀다 — 다시 재도 있다$said" }
+      if ($k.Gone) { Log "  PID $($e.ProcessId) 종료함 — 다시 확인하니 없음$said" }
+      else { Log "  ! PID $($e.ProcessId) 종료하지 못함 — 다시 확인해도 있음$said" }
     }
     # 거둔 뒤 가드가 보는 것 전부를 다시 잰다 — 거두는 사이 새로 선 것도 여기서 걸린다.
     $stillThere = @(Get-OtherEngines)
     if ($stillThere) {
-      Log "! 거두고 다시 쟀는데 $($stillThere.Count) 개가 남았습니다 ($($stillThere.ProcessId -join ', ')). 물러납니다 — 다음 자동 실행 때 다시 잽니다."
+      Log "! 종료한 뒤 다시 확인했지만 $($stillThere.Count)개가 남아 있습니다 ($($stillThere.ProcessId -join ', ')). 중단합니다 — 다음 자동 실행 때 다시 확인합니다."
       exit 0
     }
-    Log "멎은 것을 다 거뒀습니다. 자동 실행을 잇습니다."
+    Log "멈춘 프로세스를 모두 종료했습니다. 자동 실행을 계속합니다."
   } else {
-    Log "재는 사이에 다 끝났습니다. 자동 실행을 잇습니다."
+    Log "확인하는 동안 모두 끝났습니다. 자동 실행을 계속합니다."
   }
 }
 
@@ -10924,7 +10916,7 @@ $targetEnvProbe = Join-Path $versionDirs[0].FullName 'install.env'
 #   · 로그온 회차: 오늘 끝났으면 건너뛰되, 지금 자리를 재어 지난 설치와 다를 때만 다시 돈다 — 자리를 바꾸는 것은 로그온 회차와
 #     사람이 누른 설치의 몫이다. 못 쟀으면 건너뛴다
 $siteFile = Join-Path $setupRoot '.autorun-site'
-$siteWord = @{ inside = '사내'; outside = '사외'; switching = '바꾸는 중에 멎음'; unmeasured = '못 쟀다'; broken = '못 정함' }
+$siteWord = @{ inside = '사내'; outside = '사외'; switching = '전환 중 멈춤'; unmeasured = '확인하지 못함'; broken = '판단하지 못함' }
 
 $siteLast = ''
 if (Test-Path -LiteralPath $siteFile) {
@@ -10967,8 +10959,8 @@ if ($Night -or $doneToday) {
   }
   $nowSaid  = if ($siteWord[$siteNow]) { $siteWord[$siteNow] } else { $siteNow }
   $lastSaid = if ($siteWord[$siteLast]) { $siteWord[$siteLast] } elseif ($siteLast) { $siteLast } else { '기록 없음' }
-  Log "자리 — 지금 $nowSaid · 지난 설치 $lastSaid"
-  if ($siteWhy) { Log "! 자리를 못 정했다 — $siteWhy · 이 짐의 설치도 같은 까닭으로 멈춘다 (설치 묶음을 새로 받는다)" }
+  Log "네트워크 환경 — 현재 $nowSaid · 지난 설치 $lastSaid"
+  if ($siteWhy) { Log "! 네트워크 환경을 판단하지 못함 — $siteWhy · 이 설치 패키지로 설치해도 같은 이유로 중단됩니다 (설치 파일을 새로 받으세요)" }
 }
 $measured = ($siteNow -eq 'inside' -or $siteNow -eq 'outside')
 $sameSite = $measured -and ($siteNow -eq $siteLast)
@@ -10980,7 +10972,7 @@ if ($doneToday -and -not ($measured -and -not $sameSite)) {
 }
 if ($Night) {
   if (-not $sameSite) {
-    Log "밤 회차는 자리를 안 바꿉니다 — 지금 자리가 지난 설치와 같다고 확인되지 않아 아무것도 안 바꾸고 건너뜁니다 (자리는 로그온 · 설치 창이 바꿉니다)."
+    Log "야간 실행은 네트워크 환경을 바꾸지 않습니다 — 현재 네트워크 환경이 지난 설치와 같은지 확인되지 않아 아무것도 바꾸지 않고 건너뜁니다 (네트워크 환경은 로그온 실행이나 설치 창에서 바뀝니다)."
     exit 0
   }
   if ($siteNow -eq 'inside' -or $siteNow -eq 'outside') { $pinSite = $siteNow }
@@ -10999,7 +10991,7 @@ $progressAsked = (-not $Night -and $env:PAISETUP_AUTORUN_VIEWER -eq '1')
 if ($progressAsked) {
   try {
     $progressScript = Join-Path $setupRoot '@@PROGRESS@@'
-    if (-not (Test-Path -LiteralPath $progressScript)) { throw "진행 창 스크립트가 없다 ($progressScript)" }
+    if (-not (Test-Path -LiteralPath $progressScript)) { throw "진행 창 스크립트 없음 ($progressScript)" }
     Add-Type -ErrorAction Stop -Namespace PAISetup -Name Progress -MemberDefinition @"
 [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
 public struct SI { public int cb; public string r; public string d; public string t; public int x; public int y; public int xs; public int ys; public int xc; public int yc; public int fa; public int flags; public short show; public short r2; public System.IntPtr r3; public System.IntPtr i; public System.IntPtr o; public System.IntPtr e; }
@@ -11020,9 +11012,9 @@ public static int StartQuiet(string app, string cmd) {
     $progExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $progCmd = '"{0}" -NoProfile -ExecutionPolicy Bypass -File "{1}" -Log "{2}" -WatchPid {3} -From "{4}"' -f
                  $progExe, $progressScript, $logFile, $PID, $versionDirs[0].Name
-    if (-not [PAISetup.Progress]::StartQuiet($progExe, $progCmd)) { throw "CreateProcess 가 졌다 ($([Runtime.InteropServices.Marshal]::GetLastWin32Error()))" }
+    if (-not [PAISetup.Progress]::StartQuiet($progExe, $progCmd)) { throw "CreateProcess 실패 ($([Runtime.InteropServices.Marshal]::GetLastWin32Error()))" }
   } catch {
-    Log "진행 창을 못 띄웠다 — 창 없이 잇는다 ($(($_.Exception.Message -split '\r?\n')[0]))"
+    Log "진행 창을 열지 못함 — 창 없이 계속합니다 ($(($_.Exception.Message -split '\r?\n')[0]))"
   }
 }
 Remove-Item Env:PAISETUP_AUTORUN_VIEWER -ErrorAction SilentlyContinue
@@ -11046,34 +11038,34 @@ if ($updRepo -and (Test-Path -LiteralPath $updLib)) {
   try { . $updLib } catch { }
   $probe = $null
   try { $probe = Measure-NewerRelease -Repo $updRepo -Mine $mine } catch { }
-  if (-not $probe) { $probe = @{ State = 'unmeasured'; Why = '묻는 손(Measure-NewerRelease)을 못 불렀다' } }
+  if (-not $probe) { $probe = @{ State = 'unmeasured'; Why = '확인 함수(Measure-NewerRelease)를 실행하지 못함' } }
   if ($probe.State -eq 'latest') {
-    Log "설치본은 그대로 간다 ($mine) — 최신이다"
+    Log "현재 버전으로 진행 ($mine) — 최신 버전"
   } elseif ($probe.State -eq 'no-asset') {
-    Log "! 설치본은 그대로 간다 ($mine) — $($probe.Why)"
+    Log "! 현재 버전으로 진행 ($mine) — $($probe.Why)"
   } elseif ($probe.State -ne 'newer') {
-    Log "! 설치본은 그대로 간다 ($mine) — 새 판이 있나 못 물었다: $($probe.Why)"
+    Log "! 현재 버전으로 진행 ($mine) — 새 버전을 확인하지 못함: $($probe.Why)"
   } else {
     $found = $probe.Found
     Log "새 판 $($found.Ver) 을 받는다 (지금 $mine · 릴리스 $($found.Rel))"
     $v = $null
     try { $v = Get-VerifiedSetup -Found $found } catch { }
     if (-not $v -or -not $v.Ok) {
-      $why = '알 수 없다'
+      $why = '알 수 없음'
       if ($v) { $why = "$($v.Status) — $($v.Detail)" }
-      Log "! 새 판을 안 깔았다: $why"
+      Log "! 새 버전을 설치하지 않음: $why"
     } else {
-      Log "지문이 맞다 ($($v.Have)) — 짐을 푼다"
+      Log "파일 해시 일치 ($($v.Have)) — 압축을 풉니다"
       try {
         $pr = Start-Process -FilePath $v.Path -ArgumentList '-Unattended' -Wait -PassThru -ErrorAction Stop
-        if ($pr.ExitCode -ne 0) { Log "! 푸는 자가 $($pr.ExitCode) 로 나갔다 — 옛 판으로 간다" }
-      } catch { Log "! 푸는 자를 못 띄웠다: $($_.Exception.Message)" }
+        if ($pr.ExitCode -ne 0) { Log "! 압축 풀기가 종료 코드 $($pr.ExitCode) 로 끝남 — 이전 버전으로 진행" }
+      } catch { Log "! 압축 풀기를 시작하지 못함: $($_.Exception.Message)" }
       Remove-Item -LiteralPath $v.Path, "$($v.Path).sha256" -Force -ErrorAction SilentlyContinue
       # 푼 판이 섰나는 **다시 세어** 안다 — 「띄웠다」와 「풀렸다」는 다른 명제다.
       $versionDirs = Find-Versions
       if (-not $versionDirs) { Log "! 설치본 폴더를 찾지 못했습니다"; exit 1 }
-      if ($versionDirs[0].Name -eq $mine) { Log "! 새 판이 안 풀렸다 — $mine 으로 간다" }
-      else { Log "새 판으로 간다: $($versionDirs[0].Name)" }
+      if ($versionDirs[0].Name -eq $mine) { Log "! 새 버전 압축이 풀리지 않음 — $mine 으로 진행" }
+      else { Log "새 버전으로 진행: $($versionDirs[0].Name)" }
     }
   }
 }
@@ -11091,9 +11083,9 @@ if ($pinSite) {
     $pinned = Join-Path $setupRoot '.autorun-night.env'
     Set-Content -LiteralPath $pinned -Value @("#site = $pinSite") -Encoding UTF8 -ErrorAction Stop
     $runArgs = @('-EnvFile', $pinned)
-    Log "자리를 $($siteWord[$pinSite])로 박고 잇습니다."
+    Log "네트워크 환경을 $($siteWord[$pinSite])로 고정하고 계속합니다."
   } catch {
-    Log "! 자리를 박은 값 파일을 못 만들었다 — 자리를 바꿀 수 있어 건너뜁니다 ($(($_.Exception.Message -split '\r?\n')[0]))"
+    Log "! 네트워크 환경을 고정한 설정 파일을 만들지 못함 — 네트워크 환경이 바뀔 수 있어 건너뜁니다 ($(($_.Exception.Message -split '\r?\n')[0]))"
     exit 0
   }
 }
@@ -11154,8 +11146,8 @@ try {
            Where-Object { $_.FullName -ne $versionDirs[0].FullName }
   foreach ($d in $stale) {
     Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction SilentlyContinue
-    if (Test-Path -LiteralPath $d.FullName) { Log "! 옛 판을 못 지웠다 (쓰는 중일 수 있다): $($d.Name)" }
-    else { Log "옛 판을 거뒀다: $($d.Name)" }
+    if (Test-Path -LiteralPath $d.FullName) { Log "! 이전 버전을 지우지 못함 (사용 중일 수 있음): $($d.Name)" }
+    else { Log "이전 버전 정리함: $($d.Name)" }
   }
 } catch { }
 '@
@@ -11308,7 +11300,7 @@ public class PAISetupProgressForm : System.Windows.Forms.Form {
       else { $script:last = $text; if (-not $own) { $script:topic = $text } }
     }
     if ($own) {
-      if ($text -match '^새 판 (\S+) 을 받는다') { $script:to = $Matches[1]; $script:cell = "새 판 $($Matches[1]) 을 받는 중" }
+      if ($text -match '^새 판 (\S+) 을 받는다') { $script:to = $Matches[1]; $script:cell = "새 버전 $($Matches[1]) 다운로드 중" }
       elseif ($text -match '^install\.ps1 실행: (\S+)') { $script:to = $Matches[1]; $script:cell = '준비' }
       elseif ($text -match '^=== PAISetup 자동 실행 완료 \(코드 (\S+)\) ===') { $script:rc = $Matches[1] }
       return
@@ -11316,15 +11308,15 @@ public class PAISetupProgressForm : System.Windows.Forms.Form {
     if ($line -match '^\[(\d+)/(\d+)\]\s*(.*)$') {
       $script:steps = [int]$Matches[2]; $script:done = [int]$Matches[1] - 1
       $script:cell = "[$($Matches[1])/$($Matches[2])] $($Matches[3])"
-    } elseif ($line -match '^\s*── \[(\d+)/(\d+)\] .* — 마쳤다 \(') {
+    } elseif ($line -match '^\s*── \[(\d+)/(\d+)\] .* — 완료 \(') {
       $script:steps = [int]$Matches[2]; $script:done = [int]$Matches[1]
-    } elseif ($line -match '^\s*! \[(\d+)/(\d+)\] .* — 도중에 멎었다') {
+    } elseif ($line -match '^\s*! \[(\d+)/(\d+)\] .* — 중단됨') {
       $script:steps = [int]$Matches[2]; $script:done = [int]$Matches[1]; $script:hurt = $true
     } elseif ($line -match '^=== 검증') {
       $script:done = $script:steps; $script:cell = '검증'
-    } elseif ($line -match '^끝내지 못했다') {
+    } elseif ($line -match '^완료하지 못함') {
       $script:hurt = $true
-    } elseif ($line -match '^── 설치를 마쳤다') {
+    } elseif ($line -match '^── 설치 완료') {
       $script:done = $script:steps; $script:cell = '마무리'
     }
   }
@@ -11346,8 +11338,8 @@ public class PAISetupProgressForm : System.Windows.Forms.Form {
     $bar.Maximum = [Math]::Max(1, $script:steps)
     $bar.Value = [Math]::Max(0, [Math]::Min($bar.Maximum, $script:done))
     switch ($script:final) {
-      'ok'  { $lCell.Text = '끝났다'; $lCell.ForeColor = [Drawing.Color]::ForestGreen; $lLast.Text = '이 창은 곧 닫힌다' }
-      'bad' { $lCell.Text = '끝내지 못했다 — 기록 보기'; $lCell.ForeColor = [Drawing.Color]::Firebrick }
+      'ok'  { $lCell.Text = '완료'; $lCell.ForeColor = [Drawing.Color]::ForestGreen; $lLast.Text = '이 창은 곧 닫힙니다' }
+      'bad' { $lCell.Text = '완료하지 못함 — 기록 보기'; $lCell.ForeColor = [Drawing.Color]::Firebrick }
       default {
         $lCell.Text = $script:cell
         $lCell.ForeColor = if ($script:hurt) { [Drawing.Color]::Firebrick } else { [Drawing.Color]::Black }
@@ -11361,7 +11353,7 @@ public class PAISetupProgressForm : System.Windows.Forms.Form {
       $script:final = 'ok'; $script:done = $script:steps; $script:closeAt = (Get-Date).AddSeconds($CloseOkSec)
     } else {
       $script:final = 'bad'
-      $lLast.Text = if ($Why) { $Why } else { "코드 $($script:rc) 로 끝났다 — 남은 것은 기록 끝에 있다" }
+      $lLast.Text = if ($Why) { $Why } else { "종료 코드 $($script:rc) — 남은 문제는 기록 끝에서 확인하세요" }
     }
   }
 
@@ -11382,7 +11374,7 @@ public class PAISetupProgressForm : System.Windows.Forms.Form {
         # 끝난 뒤에 쓴 줄까지 마저 읽고 가른다.
         [void](Pump)
         if ($script:pending) { Step-Line $script:pending; $script:pending = '' }
-        if ($null -ne $script:rc) { Set-Final '' } else { Set-Final '자동 실행이 끝 줄 없이 끝났다 — 기록 끝을 본다' }
+        if ($null -ne $script:rc) { Set-Final '' } else { Set-Final '자동 실행이 완료 표시 없이 끝남 — 기록 끝을 확인하세요' }
       }
       Show-State
       if ($script:final -eq 'bad') { $timer.Stop() }
@@ -11407,7 +11399,7 @@ exit 0
     try {
       [IO.File]::WriteAllText((Join-Path $setupRoot $AutoRunProgress), $progressText, [System.Text.Encoding]::UTF8)
     } catch {
-      Write-Host "  ! 자동 실행 진행 창을 못 썼다 — $(Say-Why $_) (로그온 자동 실행은 창 없이 돈다)" -ForegroundColor Yellow
+      Write-Host "  ! 자동 실행 진행 창 파일을 저장하지 못함 — $(Say-Why $_) (로그온 자동 실행은 창 없이 진행)" -ForegroundColor Yellow
     }
 
     # 지난 설치의 자리 — 자리에 기대는 걸음을 다 지난 여기서 끝 값을 적는다(그 앞은 「자동 실행을 켜나」 칸이 `switching` 을
@@ -11416,7 +11408,7 @@ exit 0
       Set-Content -LiteralPath $AutoRunSiteRecord -Value $site -Encoding UTF8 -ErrorAction Stop
     } catch {
       Remove-Item -LiteralPath $AutoRunSiteRecord -Force -ErrorAction SilentlyContinue
-      Write-Host "  ! 이번 설치의 자리를 못 남겼다 — $(Say-Why $_) (밤 자동 실행은 다음 설치까지 건너뛴다)" -ForegroundColor Yellow
+      Write-Host "  ! 이번 설치의 네트워크 환경을 기록하지 못함 — $(Say-Why $_) (야간 자동 실행은 다음 설치 때까지 건너뜀)" -ForegroundColor Yellow
     }
 
     # 두 작업 다 사용자 권한 그대로 돈다(`Interactive` · 승격 없음) — 사람이 로그온해 있을 때만 서고, 잠긴 세션에서도 선다.
@@ -11467,7 +11459,7 @@ exit 0
                               [System.Text.Encoding]::UTF8)
       $gateOk = $true
     } catch {
-      Write-Host "  ! 자동 실행 문지기를 못 썼다 — $(Say-Why $_)" -ForegroundColor Yellow
+      Write-Host "  ! 자동 실행 시작 스크립트를 저장하지 못함 — $(Say-Why $_)" -ForegroundColor Yellow
     }
 
     # 창 없이 띄운다 — 머리 없는 콘솔(`conhost --headless`)은 창을 안 만든다. `powershell -WindowStyle Hidden` 은 기본 터미널이
@@ -11509,14 +11501,14 @@ exit 0
       Register-ScheduledTask -TaskName $AutoRunTaskName -Action $action -Trigger $onLogon `
                              -Principal $principal -Settings $settings `
                              -Description "PAISetup background auto-update & environment sync on logon" -Force | Out-Null
-      Write-Host ("  부팅 시 자동 실행 — 걸었다 (작업 스케줄러 · $AutoRunTaskName · 로그온 1분 뒤 · " +
-                  $(if ($headless) { '설치할 때만 진행 창' } else { '보이는 콘솔 창' }) + ')') -ForegroundColor Green
+      Write-Host ("  부팅 시 자동 실행 — 등록함 (작업 스케줄러 · $AutoRunTaskName · 로그온 1분 뒤 · " +
+                  $(if ($headless) { '설치할 때만 진행 창 표시' } else { '콘솔 창 표시' }) + ')') -ForegroundColor Green
     } catch {
       Write-Host "  ! 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
     }
 
     try {
-      if (-not $gateOk) { throw '문지기가 없어 밤 작업을 안 건다' }
+      if (-not $gateOk) { throw '시작 스크립트가 없어 야간 작업을 등록하지 않음' }
       $nightAction = if ($headless) {
         New-ScheduledTaskAction -Execute $conhost -Argument "--headless `"$psExe`" $gateArgs -Night"
       } else {
@@ -11526,10 +11518,10 @@ exit 0
       Register-ScheduledTask -TaskName $AutoRunNightTaskName -Action $nightAction -Trigger $onNight `
                              -Principal $principal -Settings $settings `
                              -Description "PAISetup nightly auto-update & environment sync (never switches site)" -Force | Out-Null
-      Write-Host ("  밤 자동 실행 — 걸었다 (작업 스케줄러 · $AutoRunNightTaskName · 매일 $($AutoRunNightAt.ToString('HH:mm')) 무렵 · 놓치면 켜진 뒤 · " +
-                  $(if ($headless) { '창 없이' } else { '숨긴 창 — 잠깐 보일 수 있다' }) + ')') -ForegroundColor Green
+      Write-Host ("  야간 자동 실행 — 등록함 (작업 스케줄러 · $AutoRunNightTaskName · 매일 $($AutoRunNightAt.ToString('HH:mm')) 무렵 · 놓치면 PC 를 켠 뒤 · " +
+                  $(if ($headless) { '창 없이' } else { '숨긴 창 — 잠깐 보일 수 있음' }) + ')') -ForegroundColor Green
     } catch {
-      Write-Host "  ! 밤 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
+      Write-Host "  ! 야간 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
     }
   } else {
     # 작업마다 따로 걷는다 — 하나를 못 걷어도 다른 하나는 걷는다.
@@ -11551,9 +11543,9 @@ exit 0
       foreach ($f in @('autorun.ps1', '.autorun-stamp', '.autorun-night.env', '.autorun-last', $AutoRunGate, $AutoRunProgress, (Split-Path -Leaf $AutoRunSiteRecord))) {
         Remove-Item -LiteralPath (Join-Path $setupRoot $f) -Force -ErrorAction SilentlyContinue
       }
-      Write-Host "  부팅 시 자동 실행 — 걷었다 (작업 스케줄러 · $($gone -join ' · '))" -ForegroundColor Green
+      Write-Host "  부팅 시 자동 실행 — 등록 해제함 (작업 스케줄러 · $($gone -join ' · '))" -ForegroundColor Green
     } elseif (-not (Test-AutoRunTask $AutoRunTaskName) -and -not (Test-AutoRunTask $AutoRunNightTaskName)) {
-      Write-Host "  부팅 시 자동 실행 — 등록되어 있지 않다"
+      Write-Host "  부팅 시 자동 실행 — 등록되어 있지 않음"
     }
     # 사람이 끈 판(`-NoAutoRun`)이면 끈 것을 적는다 — 작업을 못 걷었어도 적는다(끈 것은 사람의 뜻이다). 값 파일의 `no` 로 걷은 판은
     #   안 적는다 — 그것은 짐의 기본값이지 이 PC 에서 고른 것이 아니다. 위 걷기가 지우는 목록에 이 기록을 넣지 않는다.
@@ -11564,13 +11556,13 @@ exit 0
         Set-Content -LiteralPath $AutoRunOffRecord -Encoding UTF8 -ErrorAction Stop `
           -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm') + ' 자동 실행을 껐다 — 설치 창에서 칸을 켜고 설치하면 이 파일을 지우고 다시 건다')
       } catch {
-        Write-Host "  ! 끈 것을 못 적었다 — $(Say-Why $_) (다음 설치 창은 자동 실행 칸을 켜진 채로 띄울 수 있다)" -ForegroundColor Yellow
+        Write-Host "  ! 끈 설정을 저장하지 못함 — $(Say-Why $_) (다음 설치 창에서 자동 실행이 켜진 상태로 보일 수 있음)" -ForegroundColor Yellow
       }
     }
   }
 } elseif ($autoKeptOff) {
   Write-Host ''
-  Write-Host '  부팅 시 자동 실행 — 이 PC 에서 꺼 두었다 (설치 창에서 칸을 켜고 설치하면 다시 건다)'
+  Write-Host '  부팅 시 자동 실행 — 이 PC 에서 꺼 둠 (설치 창에서 이 항목을 켜고 설치하면 다시 등록)'
 }
 
 } catch { Write-StepFault $_ '마무리' }
@@ -11643,11 +11635,11 @@ foreach ($c in $CliPicks) {
     if ($rec.State -eq 'unmeasured') { Add-Check @{ Name = $c.Label; State = 'unmeasured'; Probe = $rec.Probe; Why = $rec.Why } }
     elseif ($rec.State -ne 'yes')    { Add-Check @{ Name = $c.Label; Ok = $false } }
     elseif ($stub.State -eq 'unmeasured') { Add-Check @{ Name = $c.Label; State = 'unmeasured'; Probe = $stub.Probe; Why = $stub.Why } }
-    elseif ($stub.State -eq 'yes')   { Add-Check @{ Name = "$($c.Label) (진짜 실행 파일이 빠지고 자리표시만 있다 — $($c.NativeBin))"; Ok = $false } }
+    elseif ($stub.State -eq 'yes')   { Add-Check @{ Name = "$($c.Label) (실제 실행 파일 없이 빈 껍데기만 있음 — $($c.NativeBin))"; Ok = $false } }
     elseif ($c.Module) {
       # 명령이 없는 꾸러미 — 저장소 밖의 스크립트가 `require` 로 푸나를 잰다. 못 풀리면 이 설치가 이을 자리(홈 배선)가 진 것이라 빨강이다
       $nr = Measure-NodeResolvable $c.Module
-      $nrName = "$($c.Label) — 저장소 밖의 require"
+      $nrName = "$($c.Label) — 저장소 밖에서 require"
       if ($nr.State -eq 'unmeasured') { Add-Check @{ Name = $nrName; State = 'unmeasured'; Probe = $nr.Probe; Why = $nr.Why } }
       else                            { Add-Check @{ Name = $nrName; Ok = ($nr.State -eq 'yes') } }
     }
@@ -11695,12 +11687,12 @@ foreach ($a in $envAssets) {
       if ($null -ne $tracked -and $LASTEXITCODE -ne 0) { $tracked = $null }
     } catch { $tracked = $null } finally { [Console]::OutputEncoding = $saveOut }
     if ($null -eq $tracked) {
-      Add-Check @{ Name = "$($a.Name) (설정 저장소가 든다 · $owner)"; State = 'unmeasured'; Probe = "git -C `"$ownDir`" ls-files"
-                    Why = '그 저장소가 추적하는 파일을 git 이 못 댔다' }
+      Add-Check @{ Name = "$($a.Name) (설정 저장소에서 관리 · $owner)"; State = 'unmeasured'; Probe = "git -C `"$ownDir`" ls-files"
+                    Why = '추적 파일 목록을 내지 못해' }
       continue
     }
     $cmp = Compare-AssetTree $ownDir $a.To -ExtraOk -Only @($tracked | Where-Object { $_ } | ForEach-Object { $_.Replace('/', '\') })
-    Add-Check (New-AssetRow "$($a.Name) (설정 저장소가 든다 · 원본 $($cmp.N) 파일$(if ($cmp.Say) { ' · ' + $cmp.Say }) · $owner)" $cmp.Ok $cmp.Bad $cmp.Unread)
+    Add-Check (New-AssetRow "$($a.Name) (설정 저장소에서 관리 · 원본 파일 $($cmp.N)개$(if ($cmp.Say) { ' · ' + $cmp.Say }) · $owner)" $cmp.Ok $cmp.Bad $cmp.Unread)
     continue
   }
   # 장부로 맞추는 자리 — 원본의 파일이 바이트까지 섰나와, 장부에 든 우리 파일 가운데 원본에서 빠졌는데 놓은 그대로 남은 것이 없나를
@@ -11716,10 +11708,10 @@ foreach ($a in $envAssets) {
       try { if ((Get-FileHash -LiteralPath $p -Algorithm SHA256 -ErrorAction Stop).Hash -ceq $r.Value) { $left += $r.Name } }
       catch { $leftUnread += $p }
     }
-    $say = @(@($cmp.Say) + @($(if ($left.Count) { "원본에서 빠진 우리 파일 $($left.Count): $((@($left | Select-Object -First 3)) -join ', ')" })) +
-             @($(if ($leftUnread.Count) { "못 읽음(원본에서 빠진 우리 파일) $($leftUnread.Count)" })) +
-             @($(if ($lgr.Why) { "장부를 못 읽었다 — $($lgr.Why)" })) | Where-Object { $_ })
-    Add-Check (New-AssetRow "$($a.Name) (원본 $($cmp.N) 파일$(if ($say.Count) { ' · ' + ($say -join ' · ') }))" ($cmp.Ok -and -not $left.Count -and -not $lgr.Why -and -not $leftUnread.Count) `
+    $say = @(@($cmp.Say) + @($(if ($left.Count) { "원본에서 빠진 설치 파일 $($left.Count)개: $((@($left | Select-Object -First 3)) -join ', ')" })) +
+             @($(if ($leftUnread.Count) { "읽지 못함(원본에서 빠진 설치 파일) $($leftUnread.Count)개" })) +
+             @($(if ($lgr.Why) { "설치 기록을 읽지 못함 — $($lgr.Why)" })) | Where-Object { $_ })
+    Add-Check (New-AssetRow "$($a.Name) (원본 파일 $($cmp.N)개$(if ($say.Count) { ' · ' + ($say -join ' · ') }))" ($cmp.Ok -and -not $left.Count -and -not $lgr.Why -and -not $leftUnread.Count) `
                  ($cmp.Bad -or [bool]$left.Count -or [bool]$lgr.Why) (@($cmp.Unread) + @($leftUnread)))
     continue
   }
@@ -11741,13 +11733,13 @@ foreach ($a in $envAssets) {
 #   껍데기를 하나도 못 찾으면 그것이 [X] 다 — 빈 목록을 초록으로 지나가지 않는다.
 if ($hostClaude) {
   $gc = $null; $gcWhy = ''
-  try { $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $gcWhy = '홈 설정을 못 읽었다' }
+  try { $gc = Get-Content -LiteralPath $homeCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $gcWhy = '홈 설정을 읽지 못함' }
   $seedHooks = $ConfigSeedHooks
   $kitHooks = Join-Path $Kit 'hooks'
   $hookShells = @(Get-ChildItem -LiteralPath $kitHooks -Filter '*.sh' -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object {
       $hh = Get-HookHead $_.FullName
       if ($hh -and $hh.ContainsKey('events')) { @{ Shell = $_.Name; Path = $_.FullName; Var = $hh['var'] } } })
-  if (-not $hookShells.Count) { Add-Check @{ Name = "Claude 훅 목록 (짐의 훅 폴더에 등록 머리말을 든 껍데기가 없다 — $kitHooks)"; Ok = $false } }
+  if (-not $hookShells.Count) { Add-Check @{ Name = "Claude 훅 목록 (설치 패키지의 훅 폴더에 등록 정보가 있는 훅 스크립트가 없음 — $kitHooks)"; Ok = $false } }
   foreach ($w in $hookShells) {
     $label = "Claude 훅 $($w.Shell)"
     $seedFiles = @($w.Shell)
@@ -11761,7 +11753,7 @@ if ($hostClaude) {
       }
     }
     foreach ($f in $seedFiles) {
-      $kind = if ($f -ceq $w.Shell) { '껍데기' } else { '곁 파일' }
+      $kind = if ($f -ceq $w.Shell) { '스크립트' } else { '보조 파일' }
       Add-Check @{ Name = "$label $kind (씨앗의 $f)"; Ok = (Test-Path -LiteralPath (Join-Path $seedHooks $f)) }
     }
     $wr = Get-ClaudeHookWiring $gc $w.Shell $w.Path
@@ -11773,7 +11765,7 @@ if ($hostClaude) {
       Add-Check @{ Name = "$label 배선 (홈 settings.json 의 $($wr.Events -join ' · ')$miss)"; Ok = ($wr.Missing.Count -eq 0) }
     }
     $bad = @($wr.BadMatcher) + @($(if ($wrWhy) { $wrWhy }))
-    Add-Check @{ Name = ("$label matcher (이벤트마다 진본과 같다" + $(if ($bad.Count) { ' — ' + ($bad -join ' · ') } else { '' }) + ')')
+    Add-Check @{ Name = ("$label matcher (이벤트마다 원본과 같음" + $(if ($bad.Count) { ' — ' + ($bad -join ' · ') } else { '' }) + ')')
                   Ok = ($bad.Count -eq 0) }
   }
 }
@@ -11802,9 +11794,9 @@ foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
   if ($p.Key -ceq 'allow') {
     Add-Check @{ Name = "$($p.Label) (홈 settings.json 의 permissions.allow 에 $($p.Value))"; Ok = (@($pv) -ccontains $p.Value) }
   } elseif ($null -eq $pv -and $p.Yield -and $planCfg -and $planCfg.PSObject.Properties[$p.Yield] -and -not (Test-SameText ([string]$planCfg.($p.Yield)) $p.Value)) {
-    Add-Check @{ Name = "$($p.Label) (홈 settings.json 의 $($p.Yield) = $($planCfg.($p.Yield)) · 사람이 정한 키라 $slot 를 안 심었다)"; Ok = $true }
+    Add-Check @{ Name = "$($p.Label) (홈 settings.json 의 $($p.Yield) = $($planCfg.($p.Yield)) · 사용자가 정한 키라 $slot 를 설정하지 않음)"; Ok = $true }
   } else {
-    $pvShow = if ($null -eq $pv) { '없다' } elseif ($pv -ceq $p.Value) { $pv } else { "$pv · 사람이 정한 값이라 안 덮었다" }
+    $pvShow = if ($null -eq $pv) { '없음' } elseif ($pv -ceq $p.Value) { $pv } else { "$pv · 사용자가 정한 값이라 덮어쓰지 않음" }
     Add-Check @{ Name = "$($p.Label) (홈 settings.json 의 $slot = $pvShow)"; Ok = ($null -ne $pv) }
   }
 }
@@ -11816,13 +11808,13 @@ Add-Check @(Get-PlantLedgerChecks (Read-PlantLedger $ClaudePlantLedger) $userEnv
 # agy 묶음 — 맡기기(모델 값). 심는 조건 그대로 잰다(위 `$wantAgyDelegate` 곁말). agy 설정 둘은 손의 `check` 가 잰다.
 # ⚠ 맡기기 모델 표를 못 읽은 판은 [X] 다 — 견줄 값이 비어 그대로 재면 빈 목록이 [O] 로 찍힌다.
 if ($wantAgyDelegate) {
-  Add-Check @{ Name = $(if ($ModelTable.Why) { 'agy 모델 (맡기기 모델 표를 못 읽었다)' } else { "agy 모델 ($($AgyModelVars.Keys -join ' · '))" })
+  Add-Check @{ Name = $(if ($ModelTable.Why) { 'agy 모델 (위임 모델 표를 읽지 못함)' } else { "agy 모델 ($($AgyModelVars.Keys -join ' · '))" })
                 Ok = ((-not $ModelTable.Why) -and
                       @($AgyModelVars.Keys | Where-Object { $userEnv[$_] -ne $AgyModelVars[$_] }).Count -eq 0) }
 }
 # Codex · Copilot 맡기기의 자리 값 — 이 자리 값과 글자까지 같은가(`$CcBgVars` — 맡기기 모델 표가 Codex 모델을 주면 그것도).
 if ($wantCcBg) {
-  Add-Check @{ Name = "Codex · Copilot 맡기기 값 ($($CcBgVars.Keys -join ' · '))"
+  Add-Check @{ Name = "Codex · Copilot 위임 값 ($($CcBgVars.Keys -join ' · '))"
                 Ok = (@($CcBgVars.Keys | Where-Object { $userEnv[$_] -ne $CcBgVars[$_] }).Count -eq 0) }
 }
 # Codex 훅 — 부품(설정 저장소 씨앗) · config.toml 배선 · Codex 가 읽은 신뢰. Codex 를 골랐을 때만 잰다.
@@ -11842,7 +11834,7 @@ if ($PickKeys -contains 'codex') {
   $codexHookParts = @(@($codexExCmds | ForEach-Object { $_.File } | Select-Object -Unique) + @('codex-hook-install.py', 'codex-hook-trust.py') |
                       ForEach-Object { Join-Path $ConfigSeedHooks $_ }) + @($codexEx)
   $codexPartsGone = @($codexHookParts | Where-Object { -not (Test-Path -LiteralPath $_) } | ForEach-Object { Split-Path $_ -Leaf })
-  Add-Check @{ Name = ("Codex 훅 부품 (예시가 부르는 $(@($codexExCmds | ForEach-Object { $_.File } | Select-Object -Unique).Count) 개 · 병합기 · 신뢰 도우미 · 예시" +
+  Add-Check @{ Name = ("Codex 훅 부품 (예시가 부르는 $(@($codexExCmds | ForEach-Object { $_.File } | Select-Object -Unique).Count) 개 · 병합 도구 · 신뢰 등록 도구 · 예시" +
                        $(if ($codexPartsGone.Count) { ' — 없는 것 ' + ($codexPartsGone -join ' · ') } else { '' }) + ')')
                 Ok = ($codexExCmds.Count -gt 0 -and $codexPartsGone.Count -eq 0) }
   $codexUnwired = @($codexExCmds | Where-Object { -not $codexHookText.Contains($_.Said) } | ForEach-Object { $_.Said })
@@ -11865,14 +11857,14 @@ if ($PickKeys -contains 'codex') {
     foreach ($ln in $ctOut) { if ($ln -match '^(EXPECTED|WIRED|TRUSTED|NONE_LISTED|UNMEASURED|ERROR)=(.*)$') { $ctVal[$Matches[1]] = $Matches[2] } }
     $ctOff = @($ctOut | Where-Object { $_ -like 'HOOK=*' -and $_ -like '*|disabled' }).Count
     if ($ctRc -ne 0 -or -not $ctVal.ContainsKey('EXPECTED') -or -not $ctVal.ContainsKey('TRUSTED')) {
-      $ctWhy = if ($ctVal['UNMEASURED']) { $ctVal['UNMEASURED'] } elseif ($ctVal['ERROR']) { $ctVal['ERROR'] } else { "종료 $ctRc" }
-      Add-Check @{ Name = "Codex 훅 신뢰 (못 잼 — $ctWhy · Codex 를 열어 새 훅을 한 번 신뢰한다)"; Ok = $false }
+      $ctWhy = if ($ctVal['UNMEASURED']) { $ctVal['UNMEASURED'] } elseif ($ctVal['ERROR']) { $ctVal['ERROR'] } else { "종료 코드 $ctRc" }
+      Add-Check @{ Name = "Codex 훅 신뢰 (확인하지 못함 — $ctWhy · Codex 를 열어 새 훅을 한 번 신뢰해 주세요)"; Ok = $false }
     } else {
       $ctExp = [int]$ctVal['EXPECTED']; $ctWired = [int]$ctVal['WIRED']; $ctTrusted = [int]$ctVal['TRUSTED']
       $ctNote = @()
-      if ($ctOff) { $ctNote += "사람이 끈 것 $ctOff" }
-      if ($ctVal['NONE_LISTED']) { $ctNote += "Codex 가 안 싣는다: $($ctVal['NONE_LISTED'])" }
-      Add-Check @{ Name = "Codex 훅 신뢰 (Codex 가 읽은 것 — 배선 $ctWired/$ctExp · 신뢰 $ctTrusted/$ctExp$(if ($ctNote.Count) { ' · ' + ($ctNote -join ' · ') }))"
+      if ($ctOff) { $ctNote += "사용자가 끈 훅 $ctOff" }
+      if ($ctVal['NONE_LISTED']) { $ctNote += "Codex 가 불러오지 않음: $($ctVal['NONE_LISTED'])" }
+      Add-Check @{ Name = "Codex 훅 신뢰 (Codex 가 읽은 상태 — 등록 $ctWired/$ctExp · 신뢰 $ctTrusted/$ctExp$(if ($ctNote.Count) { ' · ' + ($ctNote -join ' · ') }))"
                     Ok = ($ctExp -gt 0 -and $ctWired -eq $ctExp -and ($ctTrusted + $ctOff) -eq $ctExp) }
     }
   }
@@ -11884,14 +11876,14 @@ foreach ($t in $FreeSkillHomes.Keys) {
   $fh = $FreeSkillHomes[$t]
   $freeWant = @(Get-FreeSkillNames $t)
   if ($fh.Box -or -not $freeWant.Count) { continue }
-  if (-not $fh.Place) { Add-Check @{ Name = "칸 없이 까는 스킬 — $($fh.Label) (갈 곳 표에 자리가 없다)"; Ok = $false }; continue }
+  if (-not $fh.Place) { Add-Check @{ Name = "기본 설치 스킬 — $($fh.Label) (설치 위치 표에 항목 없음)"; Ok = $false }; continue }
   $freeUnread = @(); $freeUnreadSay = @()
   $freeBad = @(foreach ($n in $freeWant) {
     $cmp = Compare-AssetTree (Join-Path $KitSkills $n) (Join-Path $fh.Place.Skills $n)
     if ($cmp.Bad) { "$n($($cmp.Say))" }
     elseif ($cmp.Unread.Count) { $freeUnread += @($cmp.Unread); $freeUnreadSay += "$n($($cmp.Say))" }
   })
-  Add-Check (New-AssetRow "칸 없이 까는 스킬 — $($fh.Label) ($($freeWant -join ' · ')$(if ($freeBad.Count) { ' · 어긋남: ' + ($freeBad -join ' · ') })$(if ($freeUnreadSay.Count) { ' · ' + ($freeUnreadSay -join ' · ') }))" `
+  Add-Check (New-AssetRow "기본 설치 스킬 — $($fh.Label) ($($freeWant -join ' · ')$(if ($freeBad.Count) { ' · 불일치: ' + ($freeBad -join ' · ') })$(if ($freeUnreadSay.Count) { ' · ' + ($freeUnreadSay -join ' · ') }))" `
                ($freeBad.Count -eq 0 -and -not $freeUnread.Count) ($freeBad.Count -gt 0) $freeUnread)
 }
 # agy — 훅 셋이 우리 어댑터로 걸렸나 (결정 0099 · 컨텍스트 알림은 claude-config #173)
@@ -11931,16 +11923,16 @@ if ($hostAgy) {
       } catch { }
     }
   }
-  Add-Check @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · PreInvocation · agy 가 돌리는 꼴로 돌려 본다)'
+  Add-Check @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · PreInvocation · agy 와 같은 방식으로 실행해 확인)'
                 Ok = ($agyWired.Count -eq 3 -and $agyRan.Count -eq 3) }
 }
 # 고른 도구 값 · 고른 제품 값 — 손 · 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0102 · 0107 · 0112)
-Add-Check @{ Name = "제작자 세트 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
+Add-Check @{ Name = "제작자 칸 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
-Add-Check @{ Name = "고른 제품 값 (PAISETUP_PICK = $PickValue)"
+Add-Check @{ Name = "선택한 제품 값 (PAISETUP_PICK = $PickValue)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PICK', 'User') -eq $PickValue) }
 # 자리 값 — 맡기는 세션이 맡기기 모델 표의 자리 줄을 고른다(결정 0123)
-Add-Check @{ Name = "자리 값 (PAISETUP_SITE = $ModelSite)"
+Add-Check @{ Name = "네트워크 환경 값 (PAISETUP_SITE = $ModelSite)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_SITE', 'User') -eq $ModelSite) }
 # 규범 · 룰 · 에이전트 · 스킬 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
@@ -11974,13 +11966,13 @@ if ($useGateway) {
   if ($wantCodex) {
     # 틀의 자리가 서 있나 — 「Codex · 안티그래비티 설정」 칸의 병합기(`$CodexCfgMerge`)를 판정만 하는 꼴로 부른다. 병합기가 졌거나 python 이 없는 것은 [X] 다 —
     #   `python --version` 을 못 잰 것(넘김 · 못 띄움 · 이름은 서는데 0 아닌 끝)만 [?] 다(결정 0141 · 0151).
-    $cmWhy = '파일이 없다'
+    $cmWhy = '파일 없음'
     $cmOk = $false
     $cmPython = if ((Test-Path -LiteralPath $CodexCfg) -and (Test-Path -LiteralPath $CodexCfgMerge)) { Measure-Runs 'python' '--version' } else { '' }
     if (-not (Test-Path -LiteralPath $CodexCfg)) {
       # 위 「파일이 없다」 그대로
     } elseif ($cmPython -ne 'yes') {
-      $cmWhy = '못 잼 — 틀 병합기나 python 이 안 선다'
+      $cmWhy = '확인하지 못함 — 템플릿 병합 도구나 python 이 실행되지 않음'
     } else {
       $cmLog = [IO.Path]::GetTempFileName()
       $cmRc = Invoke-Logged 'python' @('-X', 'utf8', $CodexCfgMerge, '--config', $CodexCfg, '--template', (Join-Path $Here $codexTpl), '--check') $cmLog -Quiet
@@ -11988,9 +11980,9 @@ if ($useGateway) {
                  ForEach-Object { "$_".Trim() } | Where-Object { $_ })
       Remove-Item -LiteralPath $cmLog -ErrorAction SilentlyContinue
       $cmOk = ($cmRc -eq 0 -and $cmOut -contains 'CHANGED=0')
-      $cmWhy = if ($cmOk) { '틀의 자리가 다 틀의 값이다' }
-               elseif ($cmRc -eq 0) { '틀과 다른 자리 — ' + (@($cmOut | Where-Object { $_ -like 'SET=*' } | ForEach-Object { $_.Substring('SET='.Length) }) -join ' · ') }
-               else { '못 잼 — ' + (@($cmOut | Where-Object { $_ -like 'ERROR=*' }) + @("종료 $cmRc") | Select-Object -First 1) }
+      $cmWhy = if ($cmOk) { '템플릿 항목이 모두 템플릿 값과 같음' }
+               elseif ($cmRc -eq 0) { '템플릿과 다른 항목 — ' + (@($cmOut | Where-Object { $_ -like 'SET=*' } | ForEach-Object { $_.Substring('SET='.Length) }) -join ' · ') }
+               else { '확인하지 못함 — ' + (@($cmOut | Where-Object { $_ -like 'ERROR=*' }) + @("종료 코드 $cmRc") | Select-Object -First 1) }
     }
     if ($cmPython -eq 'unmeasured') { Add-Check @{ Name = 'Codex config.toml'; State = 'unmeasured'; Probe = 'python --version' } }
     else                            { Add-Check @{ Name = "Codex config.toml ($cmWhy)"; Ok = $cmOk } }
@@ -12011,7 +12003,7 @@ if ($useGateway) {
       $runDisk = $null
       try { $runDisk = Get-ProxyVer (Get-Content -LiteralPath (Join-Path (Join-Path $env:LOCALAPPDATA $ProxyDirName) $ProxyFile) -Raw -Encoding UTF8) } catch { }
       if ($runDisk) {
-        $hName = "로컬 프록시 (/health · 도는 판 v$hVer · 실행 폴더 v$($runDisk[0]).$($runDisk[1]))"
+        $hName = "로컬 프록시 (/health · 실행 중인 버전 v$hVer · 실행 폴더 v$($runDisk[0]).$($runDisk[1]))"
         $hOk = Test-ProxyVerAtLeast (ConvertFrom-ProxyHealthVer $hVer) $runDisk
       } else {
         $hName = "로컬 프록시 (/health · v$hVer)"
@@ -12024,9 +12016,9 @@ if ($useGateway) {
     }
     if ($door -eq 429) {
       Add-Check @{ Name = 'Opus 5 문 — prefill 본문이 프록시 너머로 200'; State = 'unmeasured'; Probe = 'POST /v1/messages (prefill 본문)'
-                    Why = 'API 한도에 걸려 429 를 받아' }
+                    Why = 'API 사용 한도에 걸려 429 를 받아' }
     } else {
-      Add-Check @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (받은 것: $door$(if ($door -ge 500) { " — 상류가 끊었다 · prefill 이 아니다" }))"; Ok = ($door -eq 200) }
+      Add-Check @{ Name = "Opus 5 문 — prefill 본문이 프록시 너머로 200 (응답: $door$(if ($door -ge 500) { " — 상위 서버가 연결을 끊음 · prefill 문제 아님" }))"; Ok = ($door -eq 200) }
     }
 
     # ⚠ **프록시 프로세스는 하나여야 하고 껍데기가 아니어야 한다**(PAISetup #21) — 런처(WindowsApps\pythonw.exe)가 박히면 부모-자식
@@ -12039,14 +12031,14 @@ if ($useGateway) {
       $procPath = $proxyProcs[0].ExecutablePath
       $notShell = (-not [string]::IsNullOrEmpty($procPath)) -and ($procPath -notlike '*\Microsoft\WindowsApps\*')
     }
-    Add-Check @{ Name = "로컬 프록시 단일 프로세스 (중복 껍데기 없음 — $($proxyProcs.Count)개)"; Ok = ($singleProc -and $notShell) }
+    Add-Check @{ Name = "로컬 프록시 단일 프로세스 (중복 실행 없음 — $($proxyProcs.Count)개)"; Ok = ($singleProc -and $notShell) }
 
     $taskArgs = (Get-ScheduledTask -TaskName $ProxyTaskName -ErrorAction SilentlyContinue).Actions | Select-Object -ExpandProperty Arguments
     $taskOk = ($taskArgs -and ($taskArgs -notlike '*WindowsApps\pythonw.exe*'))
     Add-Check @{ Name = "와치독 감시 등록 (실행형 인터프리터 경로)"; Ok = [bool]$taskOk }
   }
 } else {
-  Write-Host '  (게이트웨이를 안 쓴다 — 구독 로그인으로 선다)'
+  Write-Host '  (게이트웨이 사용 안 함 — 구독 계정 로그인으로 사용)'
   # ⚠ **안 쓰기로 한 자리에서는 「없나」를 잰다** — 안 재면 사내에서 한 번 깐 기계에 남은 값이 검증을 지나가고, 화면은 전부 [O]
   #   인데 CLI 는 닿지 않는 루프백으로 나간다(「사외로 간 자리의 사내 잔재」 칸).
   foreach ($v in $Vars) {
@@ -12075,7 +12067,7 @@ if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하�
       Add-Check @{ Name = "Codex config.toml — 회사 연결 없음 ($OffLinkWhy)"; State = 'unmeasured'; Probe = 'python --version' }
     } else {
       $ocOk = $false
-      $ocWhy = '못 잼 — 틀 병합기나 python 이 안 선다'
+      $ocWhy = '확인하지 못함 — 템플릿 병합 도구나 python 이 실행되지 않음'
       if ($ocPython -eq 'yes') {
         $ocLog = [IO.Path]::GetTempFileName()
         $ocRc = Invoke-Logged 'python' @('-X', 'utf8', $CodexCfgMerge, '--config', $CodexCfg, '--template', (Join-Path $Here $codexTpl), '--remove-provider', '--check') $ocLog -Quiet
@@ -12084,8 +12076,8 @@ if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하�
         Remove-Item -LiteralPath $ocLog -ErrorAction SilentlyContinue
         $ocOk = ($ocRc -eq 0 -and $ocOut -contains 'CHANGED=0')
         $ocWhy = if ($ocOk) { '회사 연결 없음' }
-                 elseif ($ocRc -eq 0) { '회사 연결이 남았다 — ' + (@($ocOut | Where-Object { $_ -like 'UNSET=*' } | ForEach-Object { $_.Substring('UNSET='.Length) }) -join ' · ') }
-                 else { '못 잼 — ' + (@($ocOut | Where-Object { $_ -like 'ERROR=*' }) + @("종료 $ocRc") | Select-Object -First 1) }
+                 elseif ($ocRc -eq 0) { '회사 연결이 남아 있음 — ' + (@($ocOut | Where-Object { $_ -like 'UNSET=*' } | ForEach-Object { $_.Substring('UNSET='.Length) }) -join ' · ') }
+                 else { '확인하지 못함 — ' + (@($ocOut | Where-Object { $_ -like 'ERROR=*' }) + @("종료 코드 $ocRc") | Select-Object -First 1) }
       }
       Add-Check @{ Name = "Codex config.toml ($OffLinkWhy — $ocWhy)"; Ok = $ocOk }
     }
@@ -12095,9 +12087,9 @@ if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하�
     $oaWhy = '회사 연결 없음'
     try {
       $oa = Get-Content -LiteralPath $AgyCfg -Raw -Encoding UTF8 | ConvertFrom-Json
-      if (Test-AgyCompanyLink $oa) { $oaOk = $false; $oaWhy = '회사 연결이 남았다 — modelProvider' }
-      elseif ($oa -and $oa.PSObject.Properties['modelProvider']) { $oaWhy = '회사 연결 없음 — modelProvider 는 사람의 갈래' }
-    } catch { $oaOk = $false; $oaWhy = '못 읽었다' }
+      if (Test-AgyCompanyLink $oa) { $oaOk = $false; $oaWhy = '회사 연결이 남아 있음 — modelProvider' }
+      elseif ($oa -and $oa.PSObject.Properties['modelProvider']) { $oaWhy = '회사 연결 없음 — modelProvider 는 사용자 본인 설정' }
+    } catch { $oaOk = $false; $oaWhy = '읽지 못함' }
     Add-Check @{ Name = "안티그래비티 settings.json ($OffLinkWhy — $oaWhy)"; Ok = $oaOk }
   }
 }
@@ -12106,20 +12098,20 @@ if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하�
 #   npm 으로 까는 CLI 를 골랐을 때만 잰다.
 if (@($CliPicks | Where-Object { $_.Via -ne 'winget' }).Count) {
   if ($script:NpmGlobalAsk.State -ne 'asked') {
-    Add-Check @{ Name = 'npm 전역 자리 — 새 터미널의 PATH'; State = 'unmeasured'; Probe = $script:NpmGlobalAsk.Probe; Why = $script:NpmGlobalAsk.Why }
+    Add-Check @{ Name = 'npm 전역 폴더 — 새 터미널의 PATH'; State = 'unmeasured'; Probe = $script:NpmGlobalAsk.Probe; Why = $script:NpmGlobalAsk.Why }
   } else {
-    Add-Check @{ Name = "npm 전역 자리 — 새 터미널의 PATH ($NpmGlobalDir)"; Ok = (Test-NewShellPathHas $NpmGlobalDir) }
+    Add-Check @{ Name = "npm 전역 폴더 — 새 터미널의 PATH ($NpmGlobalDir)"; Ok = (Test-NewShellPathHas $NpmGlobalDir) }
   }
 }
 # pip 사용자 자리 — 그 폴더가 섰으면(pip 가 그 자리에 무엇을 깔았으면) 새 터미널이 볼 PATH 에 섰나. 마무리의 「사용자 범위 명령
 #   자리」가 물은 그 자리를 같은 자로 레지스트리에서 잰다(PAISetup #30 ②).
 if ($PipUser.Dir -and (Test-Path -LiteralPath $PipUser.Dir)) {
-  Add-Check @{ Name = "pip 사용자 자리 — 새 터미널의 PATH ($($PipUser.Dir))"; Ok = (Test-NewShellPathHas $PipUser.Dir) }
+  Add-Check @{ Name = "pip 사용자 폴더 — 새 터미널의 PATH ($($PipUser.Dir))"; Ok = (Test-NewShellPathHas $PipUser.Dir) }
 }
 # winget 이 PATH 에 안 심는 CLI 자리(`$Clis` 의 `PathDir`) — 그 폴더가 섰으면 새 터미널이 볼 PATH 에 섰나. 이 창의 CLI 칸은 배선이
 #   그 자리를 끝에 붙여 늘 서므로 새 터미널을 못 잰다 — 마무리가 심은 자리를 같은 자로 레지스트리에서 잰다. 폴더가 없으면 위 CLI 칸이 말한다.
 foreach ($pd in @($CliPicks | Where-Object { $_.PathDir -and (Test-Path -LiteralPath $_.PathDir) })) {
-  Add-Check @{ Name = "$($pd.Label) 자리 — 새 터미널의 PATH ($($pd.PathDir))"; Ok = (Test-NewShellPathHas $pd.PathDir) }
+  Add-Check @{ Name = "$($pd.Label) 폴더 — 새 터미널의 PATH ($($pd.PathDir))"; Ok = (Test-NewShellPathHas $pd.PathDir) }
 }
 # VC++ 런타임 — 「프로그램」 걸음과 같은 문 · 같은 자(파일의 판)로 문턱 위인가를 잰다(결정 0146).
 if ($wantVcRuntime) {
@@ -12127,7 +12119,7 @@ if ($wantVcRuntime) {
   if ($vcNow.State -eq 'unmeasured') {
     Add-Check @{ Name = "$($VcRuntime.Name) ($($VcRuntime.Dll) · $VcRuntimeMin 이상)"; State = 'unmeasured'; Probe = $vcNow.Probe; Why = $vcNow.Why }
   } else {
-    $vcSaid = if ($vcNow.State -eq 'yes') { $vcNow.Ver } else { '없다' }
+    $vcSaid = if ($vcNow.State -eq 'yes') { $vcNow.Ver } else { '없음' }
     Add-Check @{ Name = "$($VcRuntime.Name) ($($VcRuntime.Dll) $vcSaid · $VcRuntimeMin 이상)"
                   Ok = [bool]($vcNow.State -eq 'yes' -and [version]$vcNow.Ver -ge $VcRuntimeMin) }
   }
@@ -12144,28 +12136,28 @@ $persLabels = @($PersonalTools | Where-Object { ",$PersonalValue," -like "*,$($_
 $persHomes  = ($persLabels -join ' · ') + ' 홈'
 $persRepo   = if ($dest) { Split-Path -Leaf $dest } else { '' }
 $persHanded = [bool]$handOff   # 훅에 넘겼나 — 이름을 따로 둔다: 넘김 칸의 그 갈래 머리는 훅 검사(check-dist-hooks)가 글자로 한 곳만 찾는다
-$persSaid = if (-not $persLabels.Count) { '받을 모델을 안 골라 어느 홈에도 안 놓았다' }
-            elseif ($persHanded -and -not @($Fails | Where-Object { "$_" -like '훅 --install*' }).Count) { "내 저장소($persRepo)의 훅에 넘겼다 — 그 저장소의 deploy 가 $($persHomes)에 푼다" }
-            elseif ($persHanded) { "내 저장소($persRepo)의 훅이 져 $($persHomes)에는 설치 묶음의 제작자 세트만 있다" }
-            elseif ($configRepoUrls.Count) { "내 저장소를 받았지만 넘길 훅이 없어 $($persHomes)에 설치 묶음의 제작자 세트를 놓았다" }
-            else { "설치 묶음의 제작자 세트를 $($persHomes)에 놓았다" }
+$persSaid = if (-not $persLabels.Count) { '받을 도구를 선택하지 않아 어느 홈에도 설치하지 않음' }
+            elseif ($persHanded -and -not @($Fails | Where-Object { "$_" -like '훅 --install*' }).Count) { "내 저장소($persRepo)의 훅에 맡김 — 그 저장소의 deploy 가 $($persHomes)에 설치" }
+            elseif ($persHanded) { "내 저장소($persRepo)의 훅이 실패해 $($persHomes)에는 설치 패키지의 제작자 세트만 있음" }
+            elseif ($configRepoUrls.Count) { "내 저장소를 받았지만 실행할 훅이 없어 $($persHomes)에 설치 패키지의 제작자 세트를 설치함" }
+            else { "설치 패키지의 제작자 세트를 $($persHomes)에 설치함" }
 Write-Host "  · 규범 · 룰 · 스킬 — $persSaid"
 # 안 한 걸음 —못 재서 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`). 끝 검증에 짝 칸이 없어 여기서 따로 찍는다. 까닭은 걸음이
 #   든 것(`Why` — 넘김 · 종료 값 · 던진 오류)을 그대로 찍는다.
 foreach ($s in $script:UnmeasuredSteps) {
-  Write-Host "  [?] 안 한 걸음 · $($s.Step) — 못 쟀다: ``$($s.Probe)`` 이 $($s.Why) $($s.Held)" -ForegroundColor Yellow
-  if ($s.Redo) { Write-Host "      새 터미널에서도 오류로 끝나면 깨진 것이다 — 손으로 다시 깐다:  $($s.Redo)" -ForegroundColor Yellow }
+  Write-Host "  [?] 건너뛴 단계 · $($s.Step) — 확인하지 못함: ``$($s.Probe)`` 이 $($s.Why) $($s.Held)" -ForegroundColor Yellow
+  if ($s.Redo) { Write-Host "      새 터미널에서도 오류로 끝나면 프로그램이 손상된 것입니다 — 직접 다시 설치하세요:  $($s.Redo)" -ForegroundColor Yellow }
 }
 # 이 설치에서 울타리를 넘긴 프로브 — 명령마다 몇 자리에서 몇 번인가. 칸에 안 걸린 넘김(그 자리가 「안 선다 · 없음」을 적고
 #   지나간 것)도 여기서 보인다. 세기에는 안 든다 — 칸 · 걸음 · `$Fails` 가 제 몫으로 이미 셌다.
 if ($script:ProbeTimedOut.Count) {
   Write-Host ''
-  Write-Host "  ! 울타리를 넘긴 프로브 — 그 탓에 「안 선다 · 없음 · 안 닿는다」로 적힌 줄은 없는 것이 아니라 못 잰 것이다:" -ForegroundColor Yellow
+  Write-Host "  ! 제한 시간을 넘긴 확인 명령 — 이 때문에 「실행 안 됨 · 없음 · 찾을 수 없음」으로 표시된 줄은 없다는 뜻이 아니라 확인하지 못했다는 뜻입니다:" -ForegroundColor Yellow
   # 한도는 자리마다 다르다 — `--version` 류는 `$ProbeCap`, 할 일을 가르는 바깥 명령은 제 한도(결정 0145). 넘김이 든 값을 찍는다.
   foreach ($g in @($script:ProbeTimedOut | Group-Object { $_.Probe })) {
     $gSites = @($g.Group | ForEach-Object { $_.Site } | Sort-Object -Unique).Count
     $gCap   = @($g.Group | ForEach-Object { $_.Cap } | Sort-Object -Unique) -join '/'
-    Write-Host "      · ``$($g.Name)`` — $gSites 자리 · $($g.Count)번 (한도 ${gCap}초)" -ForegroundColor Yellow
+    Write-Host "      · ``$($g.Name)`` — $gSites곳 · $($g.Count)번 (제한 시간 ${gCap}초)" -ForegroundColor Yellow
   }
 }
 # gh 로그인 — 설정 저장소를 받는 PC 와 Copilot 을 고른 PC 만 잰다. 그 둘이 이 로그인을 쓴다(개인 쪽 gh · git ·
@@ -12192,28 +12184,28 @@ $unmeasuredChecks = @($checks | Where-Object { $_.State -eq 'unmeasured' }).Coun
 
 Write-Host ''
 if ($redChecks -gt 0) {
-  Write-Host "검증에서 $redChecks 칸이 빨갛다 — 바로 위 [X] 가 그것이다" -ForegroundColor Red
+  Write-Host "검증 실패 $redChecks개 — 바로 위 [X] 항목입니다" -ForegroundColor Red
   Write-Host ''
 }
 if ($unmeasuredChecks -gt 0) {
-  Write-Host "검증에서 $unmeasuredChecks 칸을 못 쟀다 — 바로 위 [?] 가 그것이다. 없는 것이 아니라 그 명령이 답을 못 냈다(한도 · 까닭은 줄마다 위에 적혔다)" -ForegroundColor Yellow
+  Write-Host "검증하지 못한 항목 $unmeasuredChecks개 — 바로 위 [?] 항목입니다. 없다는 뜻이 아니라 확인 명령이 응답하지 않았다는 뜻입니다 (제한 시간과 이유는 각 줄에 있음)" -ForegroundColor Yellow
   # 세 갈래는 배포본 안내 `TROUBLESHOOTING.md` 「노란 물음표는 못 쟀다는 뜻이다」(진본은 claude-config `docs/TROUBLESHOOTING.md`)와 같은 말이다 — 한쪽을 고치면 다른 쪽도 고친다.
-  Write-Host '  설치기는 그 위에 다시 깔지 않았다. 그 명령을 새 터미널에서 한 번 쳐 본다 —' -ForegroundColor Yellow
-  Write-Host '    · 멎으면 그 도구 · 보안 소프트 쪽이다' -ForegroundColor Yellow
-  Write-Host '    · 바로 답하면 설치를 다시 누른다' -ForegroundColor Yellow
-  Write-Host '    · 오류로 끝나면 그 프로그램이 깨진 것이라 손으로 다시 깐다 — winget install --id <Id> --force 나 그 벤더의 설치본(Id 를 아는 걸음은 그 줄 아래 명령을 적었다)' -ForegroundColor Yellow
+  Write-Host '  설치기는 그 위에 다시 설치하지 않았습니다. 그 명령을 새 터미널에서 한 번 실행해 보세요 —' -ForegroundColor Yellow
+  Write-Host '    · 멈추면 그 도구나 보안 프로그램 쪽 문제입니다' -ForegroundColor Yellow
+  Write-Host '    · 바로 응답하면 설치를 다시 실행하세요' -ForegroundColor Yellow
+  Write-Host '    · 오류로 끝나면 프로그램이 손상된 것이니 직접 다시 설치하세요 — winget install --id <Id> --force 또는 공식 설치 파일 (Id 를 아는 항목은 그 줄 아래에 명령을 적었습니다)' -ForegroundColor Yellow
   Write-Host ''
 }
 if ($Fails.Count -gt 0) {
-  Write-Host "끝내지 못했다 — $($Fails.Count)개가 남았다:" -ForegroundColor Red
+  Write-Host "완료하지 못함 — 남은 문제 $($Fails.Count)개:" -ForegroundColor Red
   $Fails | ForEach-Object { Write-Host "  - $_" }
   if ($noWinget) {
     Write-Host ''
-    Write-Host '  winget 이 없어 못 깐 것은 IT 에 이름을 대고 요청한다:' -ForegroundColor Yellow
-    Write-Host '    Microsoft Store 의 "앱 설치 관리자"(App Installer) — 그것이 winget 이다.'
-    Write-Host '    또는 모자란 프로그램을 직접 (VS Code · Node.js · Git · Python).'
-    Write-Host '    ※ 재등록 · PowerShell 모듈 · GitHub 내려받기를 이미 다 시도했다 —'
-    Write-Host '       위 · 줄이 각각 무엇에 걸렸는지 든다.'
+    Write-Host '  winget 이 없어 설치하지 못한 프로그램은 IT 에 요청하세요:' -ForegroundColor Yellow
+    Write-Host '    Microsoft Store 의 "앱 설치 관리자"(App Installer) — 이것이 winget 입니다.'
+    Write-Host '    또는 빠진 프로그램 자체 (VS Code · Node.js · Git · Python).'
+    Write-Host '    ※ 다시 등록 · PowerShell 모듈 · GitHub 다운로드를 모두 시도했습니다 —'
+    Write-Host '       각 방법이 실패한 이유는 위의 · 줄에 있습니다.'
   }
   Write-Host ''
 }
@@ -12223,7 +12215,7 @@ if ($Fails.Count -gt 0) {
 # 검증 칸에 넣지 않는다 — 이 실행이 놓은 것은 지금 다 서 있어 [X] 는 거짓이고, 빨강이면 멀쩡한 설치가 빨갛게 끝난다.
 $sessionOld = @(@($oldHooks) + @($scanHooks) | Where-Object { $_ -and -not $_.Current })
 if ($sessionOld.Count) {
-  Write-Host "옛 판 세션 훅이 남은 저장소 — $($sessionOld.Count)개: 거기서 Claude 세션을 열면 그 훅이 돌아 홈의 규범 · 룰을 제 사본으로 덮을 수 있다" -ForegroundColor Yellow
+  Write-Host "이전 버전 세션 훅이 남은 저장소 — $($sessionOld.Count)개: 그 저장소에서 Claude 세션을 열면 훅이 실행되어 홈의 규범 · 룰을 저장소 사본으로 덮어쓸 수 있습니다" -ForegroundColor Yellow
   foreach ($o in $sessionOld) {
     Write-Host "  - $($o.Repo)"
     Write-Host "    $(if ($o.Fix) { $o.Fix } else { $o.Why })"
@@ -12231,7 +12223,7 @@ if ($sessionOld.Count) {
   Write-Host ''
 }
 if (-not $personalAny -and -not $personalByRepo) {
-  Write-Host '  제작자의 규범·룰·스킬까지 원하면:  설치 창의 제작자 칸에서 도구를 고른다 (.\install.ps1 -PersonalFor claude,codex,agy)'
+  Write-Host '  제작자의 규범·룰·스킬도 쓰려면:  설치 창의 제작자 칸에서 도구를 선택하세요 (.\install.ps1 -PersonalFor claude,codex,agy)'
   Write-Host ''
 }
 
@@ -12249,9 +12241,9 @@ if (-not $personalAny -and -not $personalByRepo) {
 # ⚠ **화면 껍데기의 완료 문구는 마지막 `=== 끝 ===` 줄에서 난다** — 저쪽에 같은 문장을 또 적으면 갈래가 늘 때마다 한쪽만 낡는다.
 # 이 줄만 사람에게 건네는 말이라 「…하세요」로 적는다 — 위는 다 기록이다.
 $tail = if ($offsite) {
-  '구독 로그인으로 섭니다 — Claude 데스크탑이나 VS Code 를 새로 여세요'
+  '구독 계정 로그인으로 사용합니다 — Claude 데스크탑이나 VS Code 를 새로 여세요'
 } else {
-  '열려 있는 VS Code 를 전부 닫고 새로 여세요 — 낡은 창은 방금 심은 키를 못 봅니다'
+  '열려 있는 VS Code 를 모두 닫고 새로 여세요 — 이미 열린 창에는 방금 설정한 키가 적용되지 않습니다'
 }
 
 # ── 이번 실행이 깐 Codex 데스크탑 — 로그인이 서 있을 때만 닫고 · 심고 · 다시 띄운다 (claude-config 결정 0135) ──────────────────────
@@ -12280,7 +12272,7 @@ function Get-CodexDesktopLogin($App) {
 try {
 
 if ($NoLaunch) {
-  Write-Host '  창은 안 띄운다 (-NoLaunch)'
+  Write-Host '  프로그램을 실행하지 않음 (-NoLaunch)'
 } else {
   # ⚠ **띄우기 직전에 새 창이 볼 자리(사용자 환경)를 이 창으로 당긴다** — 저장소의 훅으로 넘긴 판에서는 훅이 개인 키를 심었고
   #   그 값은 레지스트리에만 있어, 그대로 자식을 내면 낡은 환경을 물려준다. 검증 칸이 훅이 끝난 뒤에 읽어 둔 값(`$userEnv`)이다.
@@ -12305,7 +12297,7 @@ if ($NoLaunch) {
     # ⚠ **`$miss` 는 이미 이름(`InstalledAppRows` 의 열쇠)이다** — `$_.Label` 로 한 겹 더 꺼내면 `$null` 이 되어 이름이 빈
     #   「! — 못 찾았다」만 찍힌다.
     if ($miss) {
-      Write-Host ('  ! {0} — 못 찾았다. 시작 메뉴에서 직접 연다' -f
+      Write-Host ('  ! {0} — 찾지 못함. 시작 메뉴에서 직접 여세요' -f
                   ($miss -join ' · ')) -ForegroundColor Yellow
     }
   }
@@ -12317,7 +12309,7 @@ if ($NoLaunch) {
 
   $skip = @()
   if (-not $apps) {
-    Write-Host '  ! 열 것을 못 찾았다 — 시작 메뉴에서 직접 연다' -ForegroundColor Yellow
+    Write-Host '  ! 실행할 프로그램을 찾지 못함 — 시작 메뉴에서 직접 여세요' -ForegroundColor Yellow
   } else {
     # 이번 실행이 깐 Codex 데스크탑 — 로그인이 서 있으면 닫고 심는다(위 `Get-CodexDesktopLogin` 머리말). 닫은 것은 아래 고리가 다시
     #   띄우고, 안 닫은 것은 아래 「이미 실행되었다」 줄로 지나간다. 여기서 진 것은 실패로 안 센다(이 칸의 규율).
@@ -12330,13 +12322,13 @@ if ($NoLaunch) {
           if ($codexLogin.State -eq 'in') {
             if (Stop-App $codexApp) {
               $codexPlant = Invoke-Plant $bash $configRepoRoot
-              if ($codexPlant.Ok) { Write-Host '  Codex 데스크탑 — 로그인이 서 있어 닫고 심기를 불렀다(무엇을 심었나는 위 몸통 줄) · 다시 띄운다' -ForegroundColor Green }
-              else { Write-Host "  ! 심기 — $($codexPlant.Why) · Codex 데스크탑의 프로젝트 · 기본 권한은 다음 설치가 적는다 · 다시 띄운다" -ForegroundColor Yellow }
+              if ($codexPlant.Ok) { Write-Host '  Codex 데스크탑 — 로그인되어 있어 앱을 닫고 설정을 적용함 (적용 내용은 위 줄 참고) · 다시 실행합니다' -ForegroundColor Green }
+              else { Write-Host "  ! 설정 적용 — $($codexPlant.Why) · Codex 데스크탑의 프로젝트 · 기본 권한은 다음 설치 때 설정 · 다시 실행합니다" -ForegroundColor Yellow }
             } else {
-              Write-Host '  ! Codex 데스크탑 — 못 닫았다 · 프로젝트 · 기본 권한은 다음 설치가 적는다' -ForegroundColor Yellow
+              Write-Host '  ! Codex 데스크탑 — 닫지 못함 · 프로젝트 · 기본 권한은 다음 설치 때 설정' -ForegroundColor Yellow
             }
           } else {
-            Write-Host "  Codex 데스크탑 — $($codexLogin.Why) 안 닫는다 · 프로젝트 · 기본 권한은 다음 설치가 적는다"
+            Write-Host "  Codex 데스크탑 — $($codexLogin.Why) 닫지 않음 · 프로젝트 · 기본 권한은 다음 설치 때 설정"
           }
         }
       }
@@ -12351,7 +12343,7 @@ if ($NoLaunch) {
       }
     }
     if ($newlyLaunched) {
-      Write-Host ('  ' + ($newlyLaunched -join ' · ') + ' — 설치 완료 후 이미 실행되었다') -ForegroundColor Green
+      Write-Host ('  ' + ($newlyLaunched -join ' · ') + ' — 설치 후 이미 실행됨') -ForegroundColor Green
       $skip += $newlyLaunched
     }
 
@@ -12366,15 +12358,15 @@ if ($NoLaunch) {
     $up = @($apps | Where-Object { $skip -notcontains $_.Name -and (Test-AppUp $_) })
     if ($up) {
       $names = ($up | ForEach-Object { $_.Name }) -join ' · '
-      Write-Host "  $names — 이미 떠 있다"
+      Write-Host "  $names — 이미 실행 중"
       if (Ask-Restart $names) {
-        Write-Host '  끈다 — 창을 닫으라고 보내고, 안 나가면 세게 끝낸다'
+        Write-Host '  종료합니다 — 창 닫기를 요청하고, 닫히지 않으면 강제로 종료합니다'
         foreach ($u in $up) {
-          if (Stop-App $u) { Write-Host "  $($u.Name) — 껐다" -ForegroundColor Green }
+          if (Stop-App $u) { Write-Host "  $($u.Name) — 종료함" -ForegroundColor Green }
           else {
             # ⚠ **못 껐으면 「껐다」로 안 넘어간다** — 안 끄고 띄우면 돌던 그 프로세스가 창을 내므로, 사람은 재시작한 줄 알고 낡은
             #   것을 그대로 쓴다.
-            Write-Host "  ! $($u.Name) — 안 꺼졌다. 직접 끄고 연다" -ForegroundColor Yellow
+            Write-Host "  ! $($u.Name) — 종료되지 않음. 직접 종료한 뒤 여세요" -ForegroundColor Yellow
             $skip += $u.Name
           }
         }
@@ -12384,10 +12376,10 @@ if ($NoLaunch) {
         #   셌다. 줄로만 낸다.
         if (@($up | Where-Object { $skip -notcontains $_.Name }).Count) {
           $replant = Invoke-Plant $bash $configRepoRoot
-          if (-not $replant.Ok) { Write-Host "  ! 심기 — $($replant.Why) · 다시 띄운 앱의 미룬 칸은 다음 설치가 심는다" -ForegroundColor Yellow }
+          if (-not $replant.Ok) { Write-Host "  ! 설정 적용 — $($replant.Why) · 다시 실행한 앱의 남은 설정은 다음 설치 때 적용" -ForegroundColor Yellow }
         }
       } else {
-        Write-Host '  안 끈다 — 떠 있는 것은 안 띄운다'
+        Write-Host '  종료하지 않음 — 이미 실행 중인 프로그램은 다시 실행하지 않음'
         $skip += @($up | ForEach-Object { $_.Name })
       }
     }
@@ -12396,7 +12388,7 @@ if ($NoLaunch) {
     $opened = @()
     if ($go) {
       # 띄우기 전에 한 박자 둔다 — 새 창은 설치 창을 덮으므로, 바로 띄우면 이 설치의 결론인 검증 칸의 `[O]/[X]` 를 아무도 못 읽는다.
-      Write-Host '  3초 뒤에 엽니다 — 위 검증 칸을 먼저 읽는다' -ForegroundColor Yellow
+      Write-Host '  3초 뒤에 엽니다 — 위 검증 결과를 먼저 확인하세요' -ForegroundColor Yellow
       Start-Sleep -Seconds 3
       # ⚠ **`Start-Process` 로 띄운다** — 이 창의 나가는 손잡이는 화면 껍데기가 따라 읽는 파일로 돌려져 있어, 그것을 물려주면
       #   자식이 그 파일을 붙들고 껍데기의 뒷정리가 막힌다. `-Wait` 는 안 건다 — 걸면 사람이 그 창을 닫을 때까지 설치가 안 끝난다.
@@ -12414,7 +12406,7 @@ if ($NoLaunch) {
           return $true
         } catch {
           # 조사를 안 붙인다 — 여기는 이름이 여럿 지나는 자리다.
-          Write-Host "  ! 못 띄웠다 ($($one.Name)) — $(Say-Why $_)" -ForegroundColor Yellow
+          Write-Host "  ! 실행하지 못함 ($($one.Name)) — $(Say-Why $_)" -ForegroundColor Yellow
           return $false
         }
       }
@@ -12434,15 +12426,15 @@ if ($NoLaunch) {
       }
       $late = @(& $waitUp $sent 20)
       if ($late) {
-        Write-Host ('  ' + (($late | ForEach-Object { $_.Name }) -join ' · ') + ' — 아직 안 떴다. 한 번 더 띄운다')
+        Write-Host ('  ' + (($late | ForEach-Object { $_.Name }) -join ' · ') + ' — 아직 실행되지 않음. 한 번 더 실행합니다')
         $resent = @($late | Where-Object { & $sendApp $_ })
         $late = @(& $waitUp $resent 15) + @($late | Where-Object { $resent -notcontains $_ })
       }
       foreach ($one in $sent) {
         if ($late -contains $one) {
-          Write-Host "  ! $($one.Name) — 안 떴다. 시작 메뉴에서 직접 연다" -ForegroundColor Yellow
+          Write-Host "  ! $($one.Name) — 실행되지 않음. 시작 메뉴에서 직접 여세요" -ForegroundColor Yellow
         } else {
-          Write-Host "  $($one.Name) — 띄웠다" -ForegroundColor Green
+          Write-Host "  $($one.Name) — 실행함" -ForegroundColor Green
           $opened += $one.Name
         }
       }
@@ -12464,7 +12456,7 @@ if ($NoLaunch) {
           } finally { Remove-Item -LiteralPath $vl, "$vl.err" -ErrorAction SilentlyContinue }
         }
         if (-not $vsSeen) {
-          Write-Host '  VS Code 가 이 폴더를 믿느냐고 물으면 Trust 한 번 — 확장이 함께 풀린다' -ForegroundColor Yellow
+          Write-Host '  VS Code 가 이 폴더를 신뢰할지 물으면 Trust 를 한 번 누르세요 — 확장도 함께 사용할 수 있게 됩니다' -ForegroundColor Yellow
         }
       }
     }
@@ -12484,7 +12476,7 @@ if ($NoLaunch) {
 }
 
 } catch {
-  Write-Host "  ! 여는 자리에서 졌다 — $(Say-Why $_)" -ForegroundColor Yellow
+  Write-Host "  ! 프로그램 실행 단계에서 오류 — $(Say-Why $_)" -ForegroundColor Yellow
 }
 
 # ── 옛 제작자 칸을 이어받은 판의 마무리 — 알림 창을 한 번 띄운다 (결정 0099) ──────────
@@ -12501,9 +12493,9 @@ if ($PersonalUpgrade -and -not $NightRun) {
       Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                                                               ('"' + $uiScript + '"'), '-PersonalNotice') | Out-Null
       $noticeShown = $true
-      Write-Host '  제작자 칸이 도구마다로 바뀌었다 — 옛 칸을 Claude 로 이어받아 깔았고, 바꿀 수 있게 설치 창을 한 번 띄웠다' -ForegroundColor Yellow
+      Write-Host '  제작자 칸이 도구별 선택으로 바뀜 — 이전 선택을 Claude 로 이어받아 설치했고, 바꿀 수 있도록 설치 창을 한 번 열었습니다' -ForegroundColor Yellow
     } catch {
-      Write-Host "  ! 알림 창을 못 띄웠다 — $(Say-Why $_). 바꾸려면 설치 창을 열어 제작자 칸을 고른다" -ForegroundColor Yellow
+      Write-Host "  ! 알림 창을 열지 못함 — $(Say-Why $_). 바꾸려면 설치 창을 열어 제작자 칸을 선택하세요" -ForegroundColor Yellow
     }
   }
 }
@@ -12514,15 +12506,15 @@ if ($PersonalUpgrade -and -not $NightRun) {
 # ⚠ **무엇을 던져도 설치를 못 끝낸다** — 안내 페이지는 덤이다(「연다」 칸과 같은 규율).
 # 밤 자동 실행은 열지도 적지도 않는다 — 적으면 그 판을 본 것으로 남아 다음 로그온 · 설치 창이 안 연다.
 if ($NightRun) {
-  Write-Host '  제공기능 — 밤 자동 실행이라 안 연다 (이 PC 에서 아직 안 열었으면 다음 로그온 · 설치 창이 연다)'
+  Write-Host '  제공기능 — 야간 자동 실행이라 열지 않음 (이 PC 에서 아직 열지 않았다면 다음 로그온이나 설치 창에서 엽니다)'
 } else {
   try {
     $featHow = Open-FeaturesOnce $DistVersion $noticeShown `
                                  (Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'features.major') (Join-Path $Here 'features.html')
     switch ($featHow) {
-      'opened' { Write-Host "  제공기능 — 이 PC 에서 처음 여는 설치라 브라우저로 열었다 (다시 볼 때는 설치 창의 「제공기능」 링크)" -ForegroundColor Green }
-      'nopage' { Write-Host '  ! 제공기능 — 이 폴더에 features.html 이 없어 못 열었다 (다음 설치 · 로그온에 다시 본다)' -ForegroundColor Yellow }
-      'failed' { Write-Host '  ! 제공기능 — 브라우저로 못 열었다 (다음 설치 · 로그온에 다시 연다)' -ForegroundColor Yellow }
+      'opened' { Write-Host "  제공기능 — 이 PC 의 첫 설치라 브라우저로 엶 (다시 보려면 설치 창의 「제공기능」 링크)" -ForegroundColor Green }
+      'nopage' { Write-Host '  ! 제공기능 — 이 폴더에 features.html 이 없어 열지 못함 (다음 설치나 로그온 때 다시 확인)' -ForegroundColor Yellow }
+      'failed' { Write-Host '  ! 제공기능 — 브라우저로 열지 못함 (다음 설치나 로그온 때 다시 엶)' -ForegroundColor Yellow }
     }
   } catch {
     Write-Host "  ! 제공기능 — $(Say-Why $_)" -ForegroundColor Yellow
@@ -12533,7 +12525,7 @@ Write-Host ''
 Write-Host "=== 끝 === $tail" -ForegroundColor Yellow
 Write-Host ''
 # ⚠ **총계는 `exit` 둘보다 위에 둔다** — 아래는 진 판이 1 로 나가는 자리라, 그 뒤에 적으면 진 판에서만 총계가 사라진다.
-Write-Host ("── 설치를 마쳤다 (" + [int]$Sw.Elapsed.TotalSeconds + "초)") -ForegroundColor DarkGray
+Write-Host ("── 설치 완료 (" + [int]$Sw.Elapsed.TotalSeconds + "초)") -ForegroundColor DarkGray
 # ── 빗장 해제 ────────────────────────────────────────────────────────────────
 try { if ($script:HasEngineMutex -and $script:EngineMutex) { $script:EngineMutex.ReleaseMutex(); $script:EngineMutex.Dispose() } } catch { }
 # 콘솔 판의 옮겨 적기를 끈다 — 아래 두 `exit` 앞이다(위 「설치 기록」 머리말)

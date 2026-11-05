@@ -56,13 +56,13 @@ if (Test-Path -LiteralPath $VersionPath) {
 # ⚠ **`install.cmd` 에는 `pause` 가 없다** — 설치 창의 [닫기] 가 뒤의 콘솔까지 닫아야 해서다. 그래서 읽을 것이 남는 콘솔
 #   갈래는 끝나기 전에 이것을 부른다 — 안 부르면 한 줄 찍고 창째로 사라져, 사람은 아무 일도 안 일어난 줄 안다.
 # 화면이 선 갈래에서는 안 부른다 — 결과는 창 안에 있고 창을 닫는 것이 곧 끝내는 동작이라, 멈추면 안 닫히는 콘솔이 남는다.
-function Hold-Console([string]$Said = '끝났습니다 — Enter 를 누르면 닫힙니다') {
+function Hold-Console([string]$Said = '완료되었습니다 — Enter 를 누르면 닫힙니다') {
   try { Read-Host $Said | Out-Null } catch { }
 }
 
 if (-not (Test-Path -LiteralPath $Engine)) {
-  Write-Host "install.ps1 이 옆에 없다: $Here" -ForegroundColor Red
-  Write-Host '폴더를 통째로 풀었는지 본다 — 압축 안에서 바로 누르면 옆 파일을 못 찾는다.'
+  Write-Host "install.ps1 을 같은 폴더에서 찾을 수 없습니다: $Here" -ForegroundColor Red
+  Write-Host '압축을 모두 푼 폴더에서 실행했는지 확인하세요 — 압축 파일 안에서 바로 실행하면 같은 폴더의 파일을 찾지 못합니다.'
   Hold-Console
   exit 1
 }
@@ -106,7 +106,7 @@ try {
 } catch { $uiOk = $false }
 
 if (-not $uiOk) {
-  Write-Host '화면을 못 띄운다 — 콘솔로 진행한다.' -ForegroundColor Yellow
+  Write-Host '설치 창을 열 수 없어 콘솔에서 진행합니다.' -ForegroundColor Yellow
   # ⚠ **몸통을 제 프로세스로 띄운다 — 이 프로세스 안에서 부르지 않는다.** 빗장을 쥔 설치를 찾는 두 자(몸통의 `Find-EngineHolders` ·
   #   로그온 자동 실행의 가드)는 명령줄에 `install.ps1` 이 든 파워셸만 본다. 안에서 부르면 명령줄이 이 파일 이름이라 둘 다 못 보고,
   #   빗장에 막힌 다음 판이 쥔 쪽을 못 댄다. 같은 콘솔을 물려받으므로 묻는 줄 · 찍는 줄은 그대로다. 넘기는 깃발은 위 `$PassArgs` 다.
@@ -205,7 +205,7 @@ $Recorded = @{}
 $KeySaved = $false
 # 이 PC 의 자리(`inside` · `outside`)와 그 프로브 — 몸통이 잰 것을 받는다. 못 받거나 몸통이 못 정했으면 자리가 빈 값이고 까닭이
 #   `$SiteWhy` 에 서며, 창은 설치를 안 받는다(아래 「자리를 못 정한 판」). 창은 따로 안 잰다.
-$Site = ''; $SiteWhy = '설치 몸통에 자리를 못 물었다 (install.ps1 -Describe)'; $probe = ''
+$Site = ''; $SiteWhy = '설치기에서 네트워크 환경 정보를 받지 못함 (install.ps1 -Describe)'; $probe = ''
 # 이 자리에서 VS Code 가 필수인가 · 깃발 없는 판의 자동 실행 · 데스크탑 앱 행이 어디서 깔리나(키 → yes · outside · no)
 $VsRequired = $false; $AutoRunOn = $false; $AppHere = @{}
 # 제작자 칸의 도구(도구 · 제품 · 글자) · 「올리기」 칸이 드는 VC++ 런타임 판 · 앱 이름
@@ -245,13 +245,13 @@ try {
   if ($DescribeRc -ne 0 -or -not ($DescribeSeen['site'] -and $DescribeSeen['vscode'] -and $DescribeSeen['autorun'])) {
     $missing = @('site', 'vscode', 'autorun' | Where-Object { -not $DescribeSeen[$_] })
     $Site = ''
-    $SiteWhy = "설치 몸통의 답이 모자라다 (install.ps1 -Describe 종료 $DescribeRc$(if ($missing.Count) { ' · 없는 줄 ' + ($missing -join ', ') }))"
+    $SiteWhy = "설치기의 응답이 불완전함 (install.ps1 -Describe 종료 코드 $DescribeRc$(if ($missing.Count) { ' · 빠진 항목 ' + ($missing -join ', ') }))"
   }
 } catch {
   # 못 띄웠거나 답을 읽다 던졌다 — 자리를 못 받은 판으로 잠그고 진 것을 한 줄로 말한다(아래 「자리를 못 정한 판」이 띄운다). 삼키면
   #   제품 목록 없이 기본값 칸이 서고, 그대로 누른 판이 `-Pick` 없이 몸통을 띄워 사람이 끈 제품을 되살린다.
   $Site = ''
-  $SiteWhy = "설치 몸통에 못 물었다 (install.ps1 -Describe — $(("$($_.Exception.Message)" -split '\r?\n')[0]))"
+  $SiteWhy = "설치기에서 정보를 받지 못함 (install.ps1 -Describe — $(("$($_.Exception.Message)" -split '\r?\n')[0]))"
 }
 # 앱 이름이 안 왔으면(몸통에 못 물은 판) 그 판은 설치를 안 받는다 — 상자 제목에만 쓰는 이름이라 일반 낱말로 선다.
 if (-not $AppName) { $AppName = '설치' }
@@ -464,13 +464,13 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
             </Border>
           </StackPanel>
         </DockPanel>
-        <TextBlock Text="고른 도구의 CLI 와 데스크탑 앱을, 원하면 VS Code 와 확장까지 세웁니다." Style="{StaticResource Note}" FontSize="13" Margin="0,4,0,10"/>
+        <TextBlock Text="선택한 도구의 CLI 와 데스크탑 앱을 설치하고, 원하면 VS Code 와 확장도 설치합니다." Style="{StaticResource Note}" FontSize="13" Margin="0,4,0,10"/>
         <WrapPanel Margin="0,0,0,8">
           <TextBlock Text="알아보기" Style="{StaticResource Note}" VerticalAlignment="Center" Margin="0,0,10,6"/>
           <Button x:Name="LnkVideo" Style="{StaticResource Pill}" Tag="&#xE714;" Content="소개 영상"/>
           <Button x:Name="LnkFeat" Style="{StaticResource Pill}" Tag="&#xE71D;" Content="제공기능"/>
           <Button x:Name="LnkFlow" Style="{StaticResource Pill}" Tag="&#xE8AB;" Content="설치흐름"/>
-          <Button x:Name="LnkNews" Style="{StaticResource Pill}" Tag="&#xE81C;" Content="바뀐 것"/>
+          <Button x:Name="LnkNews" Style="{StaticResource Pill}" Tag="&#xE81C;" Content="변경 내역"/>
         </WrapPanel>
 
         <!-- 설치하는 중 — [설치 시작] 뒤에 선다. 도는 동안 아래 칸들은 접히고, 끝나면 판정을 든 채 남고 칸들이 다시 선다 -->
@@ -502,18 +502,18 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
               <TextBlock x:Name="KeyHint" Grid.Row="2" Grid.Column="1" Style="{StaticResource Note}" Margin="0,6,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
             </Grid>
             <DockPanel Margin="0,14,0,4">
-              <TextBlock x:Name="RepoLabel" Text="내 저장소 받기" DockPanel.Dock="Left"/>
+              <TextBlock x:Name="RepoLabel" Text="내 저장소 다운로드" DockPanel.Dock="Left"/>
               <TextBlock x:Name="RepoWhat" Style="{StaticResource Note}" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                         Text="적은 저장소를 받아 둡니다 — 내 설정은 설정 저장소로 옮깁니다"/>
+                         Text="입력한 저장소를 다운로드합니다 — 내 설정은 설정 저장소에서 가져옵니다"/>
             </DockPanel>
             <TextBox x:Name="RepoBox"/>
             <DockPanel Margin="0,4,0,0">
               <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
-                <Button x:Name="LnkRepo" Style="{StaticResource Link}" Content="받는자리" FontSize="12"/>
+                <Button x:Name="LnkRepo" Style="{StaticResource Link}" Content="저장소 폴더" FontSize="12"/>
                 <TextBlock Text="  ·  " Style="{StaticResource Note}"/>
                 <Button x:Name="LnkHowto" Style="{StaticResource Link}" Content="설정저장소 만드는 법" FontSize="12"/>
               </StackPanel>
-              <TextBlock x:Name="RepoNote" Style="{StaticResource Note}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="저장소 주소를 붙여 넣습니다 · 여러 개는 빈칸으로"/>
+              <TextBlock x:Name="RepoNote" Style="{StaticResource Note}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Text="저장소 주소를 붙여 넣으세요 · 여러 개는 공백으로 구분"/>
             </DockPanel>
           </StackPanel>
         </Border>
@@ -526,7 +526,7 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
             <UniformGrid x:Name="AppChips" Columns="2"/>
             <TextBlock x:Name="AppNote" Style="{StaticResource Note}"/>
             <CheckBox x:Name="VscBox" Margin="0,10,0,0">
-              <TextBlock TextWrapping="Wrap"><Run Text="VS Code 와 켠 것의 확장도 깝니다"/><Run x:Name="VscWhy" Foreground="#5F5F5F" FontSize="12"/></TextBlock>
+              <TextBlock TextWrapping="Wrap"><Run Text="VS Code 와 선택한 도구의 확장도 설치"/><Run x:Name="VscWhy" Foreground="#5F5F5F" FontSize="12"/></TextBlock>
             </CheckBox>
           </StackPanel>
         </Border>
@@ -543,17 +543,17 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
             </ToggleButton>
             <StackPanel x:Name="AdvBody" Visibility="Collapsed" Margin="21,10,0,4">
               <CheckBox x:Name="AutoBox">
-                <TextBlock TextWrapping="Wrap" Text="로그온할 때와 밤마다 깔린 것을 최신으로 올리고 환경을 맞춥니다 (하루 한 번)"/>
+                <TextBlock TextWrapping="Wrap" Text="로그온할 때와 매일 밤, 설치된 프로그램을 최신 버전으로 업데이트하고 설정을 맞춥니다 (하루 한 번)"/>
               </CheckBox>
               <CheckBox x:Name="UpgBox">
-                <TextBlock TextWrapping="Wrap"><Run Text="이미 깔린 것도 최신으로 올립니다"/><Run x:Name="UpgWhy" Foreground="#5F5F5F" FontSize="12"/></TextBlock>
+                <TextBlock TextWrapping="Wrap"><Run Text="이미 설치된 프로그램도 최신 버전으로 업데이트"/><Run x:Name="UpgWhy" Foreground="#5F5F5F" FontSize="12"/></TextBlock>
               </CheckBox>
               <TextBlock x:Name="CfgLabel" Text="규범 · 룰 · 스킬을 받을 모델" Margin="0,12,0,2"/>
               <TextBlock x:Name="CfgSource" Style="{StaticResource Note}" Margin="0,0,0,2" Height="32" TextTrimming="CharacterEllipsis"><Run x:Name="CfgSourceText"/><Run Text="  "/><Hyperlink x:Name="LnkCfgDoc" Foreground="#005FB8" TextDecorations="{x:Null}" FontWeight="SemiBold" Cursor="Hand"><Run Text="?"/></Hyperlink></TextBlock>
               <WrapPanel x:Name="PersPanel"/>
               <!-- 늘 서는 한 줄 알림 칸(결정 0167 의 박힌 자리) -->
               <TextBlock x:Name="CfgTested" Style="{StaticResource Note}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
-                         Text="Claude 에 최적화되어 있습니다 — Codex · agy 에서도 받아 씁니다"/>
+                         Text="Claude 에 최적화되어 있습니다 — Codex · agy 에서도 사용할 수 있습니다"/>
             </StackPanel>
           </StackPanel>
         </Border>
@@ -635,7 +635,7 @@ if ($Site -eq 'inside') {
   $siteText.Text = '사외 — 개인 구독으로 씁니다'
 } else {
   $siteBadge.Background = $Brush.BadBg; $siteDot.Fill = $Brush.Bad; $siteText.Foreground = $Brush.Bad
-  $siteText.Text = '자리를 못 정했습니다'
+  $siteText.Text = '네트워크 환경을 판단하지 못했습니다'
 }
 
 # 주소 칸은 짐이 주소를 안 들 때만 선다 — 자리가 아니라 짐이 가른다(사내 · 사외가 같은 판이다). 짐이 들면 보여 주지도 않는다 — 그
@@ -662,7 +662,7 @@ if (-not $defaultKey) {
 $keyHint = Get-El 'KeyHint'
 if ($noAsk) {
   (Get-El 'KeyBox').IsEnabled = $false
-  $keyHint.Text = '사외에서는 안 씁니다'
+  $keyHint.Text = '사외에서는 사용하지 않습니다'
 } else {
   $tKey = Get-El 'KeyBox'
   Add-FormFace $tKey
@@ -673,12 +673,12 @@ if ($noAsk) {
   $urlShown = if ($urlPreset) { $urlPreset } else { $Saved.GatewayUrl }
   $keyHint.Text = if ($defaultKey -and $urlPreset) { 'API 키가 채워져 있습니다 — 바로 [설치 시작]을 누르면 됩니다.' }
                   elseif ($defaultKey -and $urlShown) { '주소와 API 키가 채워져 있습니다 — 바로 [설치 시작]을 누르면 됩니다.' }
-                  elseif ($KeySaved -and $urlShown) { '키를 비워 두면 이 PC 에 맡겨 둔 회사 키를 씁니다 — 바로 누르면 됩니다.' }
-                  elseif ($urlPreset)  { 'API 키를 넣습니다.' }
-                  elseif ($urlShown)   { '주소는 채워져 있습니다 — API 키만 넣으면 됩니다.' }
-                  elseif ($defaultKey) { 'API 키는 이 기계에 있던 것을 넣었습니다 — 사내면 주소를 넣습니다.' }
-                  elseif ($KeySaved)   { '사내면 주소를 넣습니다 — 키는 이 PC 에 맡겨 둔 것을 씁니다.' }
-                  else                 { '사내면 주소와 키를 넣습니다.' }
+                  elseif ($KeySaved -and $urlShown) { '키를 비워 두면 이 PC 에 보관된 회사 키를 사용합니다 — 바로 [설치 시작]을 누르면 됩니다.' }
+                  elseif ($urlPreset)  { 'API 키를 입력하세요.' }
+                  elseif ($urlShown)   { '주소는 채워져 있습니다 — API 키만 입력하면 됩니다.' }
+                  elseif ($defaultKey) { 'API 키는 이 PC 에 있던 값을 채웠습니다 — 사내라면 주소를 입력하세요.' }
+                  elseif ($KeySaved)   { '사내라면 주소를 입력하세요 — 키는 이 PC 에 보관된 값을 사용합니다.' }
+                  else                 { '사내라면 주소와 키를 입력하세요.' }
 }
 $keyHint.ToolTip = $keyHint.Text   # 한 줄 칸이라 잘린 글의 전문
 
@@ -724,7 +724,7 @@ if ($Choices.Count) {
       $badge.Child = $badgeText
       [void]$face.Children.Add($name); [void]$face.Children.Add($badge)
       $c.Content = $face
-      $c.ToolTip = '이 자리에서는 안 깝니다 — 고른 기록은 그대로 둡니다.'
+      $c.ToolTip = '이 네트워크 환경에서는 설치하지 않습니다 — 선택 기록은 그대로 유지합니다.'
       [Windows.Controls.ToolTipService]::SetShowOnDisabled($c, $true)
     }
     [void]$chips.Children.Add($c)
@@ -740,13 +740,13 @@ if ($Choices.Count) {
   $appYes = @($Choices | Where-Object { -not $NotHere[$_.Key] -and $AppHere[$_.Key] -eq 'yes' })
   $appOut = @($Choices | Where-Object { -not $NotHere[$_.Key] -and $AppHere[$_.Key] -eq 'outside' })
   (Get-El 'AppNote').Text = if (-not $appYes.Count -and -not $appOut.Count) {
-    '켠 것의 CLI 가 깔립니다.'
+    '선택한 도구의 CLI 가 설치됩니다.'
   } elseif (-not $appOut.Count) {
-    '켠 것의 CLI · 데스크탑 앱이 깔립니다.'
+    '선택한 도구의 CLI · 데스크탑 앱이 설치됩니다.'
   } elseif (-not $appYes.Count) {
-    '켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 깔립니다.'
+    '선택한 도구의 CLI 가 설치됩니다 — 데스크탑 앱은 사외에서만 설치됩니다.'
   } else {
-    "켠 것의 CLI 가 깔립니다 — 데스크탑 앱은 사외에서만 ($(@($appYes | ForEach-Object { $_.Label }) -join ' · ') 만 여기서도)"
+    "선택한 도구의 CLI 가 설치됩니다 — 데스크탑 앱은 사외에서만 설치 ($(@($appYes | ForEach-Object { $_.Label }) -join ' · ') 는 어디서나 설치)"
   }
 
   # 필수인 자리(사내)는 켠 채로 잠근다 — 몸통이 칸과 상관없이 깐다(`-Describe` 의 `vscode|required` · 몸통의 `Test-VsCodeRequired`).
@@ -779,7 +779,7 @@ $cAuto.Checked = $AutoRunOn
 # 괄호는 이 칸이 못 막는 하나다 — 몸통의 `-NoUpgrade` 칸별 설명과 같은 말이고, 판은 몸통의 `$VcRuntimeMin` 을 `-Describe` 로 받는다.
 $cUpg = Get-El 'UpgBox'
 Add-FormFace $cUpg
-if ($VcRuntimeMin) { (Get-El 'UpgWhy').Text = "  · 꺼도 VC++ 런타임은 $VcRuntimeMin 아래면 올립니다" }
+if ($VcRuntimeMin) { (Get-El 'UpgWhy').Text = "  · 꺼도 VC++ 런타임이 $VcRuntimeMin 보다 낮으면 업데이트" }
 $cUpg.Checked = -not $NoUpgrade
 
 # 제작자 칸 — **도구마다 고른다**(결정 0099). 칸 이름은 하는 일(「규범 · 룰 · 스킬을 받을 모델」)로 박고, 무엇이 가나(출처)는 칸
@@ -838,7 +838,7 @@ function Update-AdvSummary {
   $src  = if (Get-RepoName $tRepo.Text) { '내 저장소' } else { '제작자' }
   $advSummary.Text = @(
     $(if ($cAuto.Checked) { '자동 업데이트 켬' } else { '자동 업데이트 끔' })
-    $(if ($cUpg.Checked) { '깔린 것도 올림' } else { '깔린 것은 둠' })
+    $(if ($cUpg.Checked) { '설치된 것도 업데이트' } else { '설치된 것은 유지' })
     $(if ($pers.Count) { "규범: $($pers -join ' · ') ← $src" } else { '규범: 안 받음' })
   ) -join '  ·  '
   $advSummary.ToolTip = $advSummary.Text
@@ -846,8 +846,8 @@ function Update-AdvSummary {
 # 출처 줄 — 무엇이 깔리나를 한 문장으로, 저장소 칸을 따라 바뀐다. 칸 이름은 그대로다.
 function Sync-PersonalSource {
   $name = Get-RepoName $tRepo.Text
-  $lSrcText.Text = if ($name) { "설정 저장소를 넣었으니, 고른 모델에 내 규범 · 룰 · 스킬($name)이 깔립니다" }
-               else { '설정 저장소를 넣지 않았으니, 고른 모델에 제작자의 규범 · 룰 · 스킬이 깔립니다' }
+  $lSrcText.Text = if ($name) { "설정 저장소를 넣었으니, 선택한 모델에 내 규범 · 룰 · 스킬($name)이 설치됩니다" }
+               else { '설정 저장소를 넣지 않았으니, 선택한 모델에 제작자의 규범 · 룰 · 스킬이 설치됩니다' }
   $lSrc.ToolTip = "$($lSrcText.Text)`n`n$cfgTip"
   Update-AdvSummary
 }
@@ -865,26 +865,26 @@ $logFold.Add_Click({ $log.Visibility = $(if ($logFold.IsChecked) { 'Visible' } e
 # 툴팁은 「무엇을 하는 칸인가」와 갈래 둘, 그리고 더 볼 데가 있다는 것만 든다 — 자세한 것은 옆 링크의 안내 한 장이 든다. 같은
 #   글을 두 벌 두면 고칠 때 한쪽만 고쳐진다. 꺼진 칸에도 뜬다(`ShowOnDisabled`).
 $tipText = @'
-적은 git 저장소를 이 PC 로 받습니다 — 코드 저장소도, 설정 저장소도.
-저장소마다 내 폴더 아래 repos\<저장소 이름> 으로 받고, 「받는자리」가 그 폴더를
-열어 보여 줍니다. 여러 개는 빈칸으로 가릅니다. 프로그램·확장·CLI·키·프록시는
-이 칸과 상관없이 다 깔립니다.
+입력한 git 저장소를 이 PC 에 다운로드합니다 — 코드 저장소와 설정 저장소 모두.
+저장소마다 내 폴더 아래 repos\<저장소 이름> 에 받으며, 「저장소 폴더」를 누르면 그 폴더가
+열립니다. 여러 개는 공백으로 구분합니다. 프로그램·확장·CLI·키·프록시는
+이 항목과 상관없이 모두 설치됩니다.
 
-코드 저장소는 받아 두는 것으로 끝입니다. 설정 저장소만 한 걸음 더 갑니다:
+코드 저장소는 다운로드로 끝납니다. 설정 저장소는 한 단계가 더 있습니다:
 
-받은 뒤 갈래가 둘이고 둘 다 정당합니다. 가르는 자는 파일 이름 하나 —
-받아온 저장소 뿌리의 .claude/hooks/session-start.sh 입니다.
+다운로드한 뒤 두 경우로 나뉘며, 기준은 파일 하나입니다 —
+받은 저장소 최상위의 .claude/hooks/session-start.sh 입니다.
 
-  · 든 저장소가 있으면  --install 로 부릅니다. 그 뒤는 그 저장소가 잇습니다
-  · 어디에도 없으면      받아 둔 것으로 끝냅니다
+  · 이 파일이 있는 저장소가 있으면  --install 로 실행합니다. 이후는 그 저장소가 진행합니다
+  · 어디에도 없으면      다운로드만 하고 끝냅니다
 
-설정 저장소가 무엇이고 어떻게 만드나는 「설정저장소 만드는 법」이 한 장으로 답합니다.
+설정 저장소가 무엇이고 어떻게 만드는지는 「설정저장소 만드는 법」에 정리되어 있습니다.
 '@
 $cfgTip = @'
-고른 모델의 홈에 규범 · 룰 · 스킬을 놓습니다. 「설치할 도구」에서 고른 것만 켜집니다.
-설정 저장소를 넣으면 내 것이, 안 넣으면 제작자의 것이 깔립니다 — 넣었으면 설치 끝에
-그 저장소의 deploy 가 고른 모델의 홈에 그 저장소의 것을 풉니다. 끈 모델에는 어느 쪽도
-안 갑니다.
+선택한 모델의 홈에 규범 · 룰 · 스킬을 설치합니다. 「설치할 도구」에서 선택한 것만 켜집니다.
+설정 저장소를 입력하면 내 것이, 입력하지 않으면 제작자의 것이 설치됩니다 — 입력했다면 설치 마지막에
+그 저장소의 deploy 가 선택한 모델의 홈에 그 저장소의 것을 설치합니다. 끈 모델에는 어느 쪽도
+설치되지 않습니다.
 '@
 foreach ($t in @(@{ El = $tRepo; Text = $tipText }, @{ El = (Get-El 'RepoWhat'); Text = $tipText }, @{ El = (Get-El 'RepoNote'); Text = $tipText },
                  @{ El = $lCfg; Text = $cfgTip }, @{ El = $lSrc; Text = $cfgTip })) {
@@ -941,7 +941,7 @@ if ($ReleaseList) {
   })
 } else {
   $lnkNews.IsEnabled = $false
-  $lnkNews.ToolTip = '설치 묶음의 값 파일에 #update-repo 가 없어 열 곳을 모릅니다'
+  $lnkNews.ToolTip = '설치 패키지의 설정 파일에 #update-repo 가 없어 열 수 없습니다'
   [Windows.Controls.ToolTipService]::SetShowOnDisabled($lnkNews, $true)
 }
 
@@ -953,15 +953,15 @@ $lnkRepo = Get-El 'LnkRepo'
 if ($RepoRoot) {
   $lnkRepo.Add_Click({
     # 아직 없는 것이 정상이다(저장소를 한 번도 안 받은 PC) — 여기서 만들지 않고(설치가 제 때 만든다) 그 말을 경로와 함께 한다.
-    if (Test-Path -LiteralPath $RepoRoot) { Open-Thing $RepoRoot '받는자리 폴더' -Folder }
+    if (Test-Path -LiteralPath $RepoRoot) { Open-Thing $RepoRoot '저장소 폴더' -Folder }
     else {
-      [void][Windows.MessageBox]::Show($F, '아직 없습니다 — 주소를 넣고 설치하면 이 자리에 만들어집니다.' + [Environment]::NewLine + $RepoRoot,
+      [void][Windows.MessageBox]::Show($F, '아직 없습니다 — 주소를 입력하고 설치하면 이 위치에 만들어집니다.' + [Environment]::NewLine + $RepoRoot,
         $AppName, 'OK', 'Information')
     }
   })
 } else {
   $lnkRepo.IsEnabled = $false
-  $lnkRepo.ToolTip = '내 폴더 아래 repos 에 받습니다'
+  $lnkRepo.ToolTip = '내 폴더 아래 repos 에 다운로드합니다'
   [Windows.Controls.ToolTipService]::SetShowOnDisabled($lnkRepo, $true)
 }
 # 안내 한 장 — `config-repo-howto.html` 은 이 스크립트와 같은 폴더에 같이 온다.
@@ -988,7 +988,7 @@ $lnkCfgDoc.Add_Click({ Open-Thing (Join-Path $Here 'INSTALLED.md') '설치 안�
         $AppName, 'OK', 'Warning')
     }
   } else {
-    [void][Windows.MessageBox]::Show($F, '아직 기록이 없습니다 — 설치를 한 판 돌리면 이 폴더에 남습니다.' + [Environment]::NewLine + $LogDir,
+    [void][Windows.MessageBox]::Show($F, '아직 기록이 없습니다 — 설치를 한 번 실행하면 이 폴더에 남습니다.' + [Environment]::NewLine + $LogDir,
       $AppName, 'OK', 'Information')
   }
 })
@@ -1028,8 +1028,8 @@ $bClose = Get-El 'BClose'
 # 몸통이 자리를 못 정했으면(`site|error|까닭`) · 몸통에 못 물었으면 그 까닭을 빨갛게 띄우고 [설치 시작]을 잠근다 — 그대로 누르면 몸통도
 #   같은 까닭으로 멈추고, 창이 한 갈래를 골라 넘기면 사내 PC 의 회사 연결을 걷거나 닿지 않는 주소를 심는다(PAISetup #46).
 if (-not $Site) {
-  $siteErr = "자리(사내 · 사외)를 못 정해 설치를 못 합니다 — 설치 묶음(Setup.exe)을 새로 받아 다시 누릅니다. 까닭: $(Hide-Address $SiteWhy)" +
-             ' · 값 파일을 손으로 만들었으면 #site-probe = 호스트:포트 줄을 넣습니다.'
+  $siteErr = "네트워크 환경(사내 · 사외)을 판단하지 못해 설치할 수 없습니다 — 설치 파일(Setup.exe)을 새로 받아 다시 실행하세요. 이유: $(Hide-Address $SiteWhy)" +
+             ' · 설정 파일을 직접 만들었다면 #site-probe = 호스트:포트 줄을 넣으세요.'
   Set-Status $siteErr 'Bad'
   $bGo.Enabled = $false
 }
@@ -1042,6 +1042,9 @@ if (-not $Site) {
 #   `ShowDialog()` 를 실행 중이라 **창이 닫힐 때까지 핸들러가 한 번도 안 불린다** — 기록 칸이 비고, `[n/N]` 을 못 봐 막대 구간이
 #   0/0 이고, 심장박동(`segHi > segLo`)도 안 선다.
 $script:segLo = 0; $script:segHi = 0   # 지금 칸이 차지하는 구간 — 그 안에서 낱줄이 민다
+# 첫 `[n/N]` 앞의 준비 몫(막대 0–이 값). 걸음들은 이 값부터 100 까지를 나눠 갖는다 — 두 구간이 겹치면 준비가 길어진 판(winget
+#   되살리기 · 판 대조)에서 막대가 준비 끝까지 올랐다가 첫 걸음 줄에서 0 으로 돌아간다.
+$PrepShare = 8
 $script:idle  = 0                     # 조용한 틱 수 — 쌓이면 막대를 천천히 민다
 $script:proc = $null; $script:tmpEnv = $null
 $script:sw = $null; $script:last = ''   # 흐른 시간과 마지막 줄 — 창이 살아 있음을 보인다
@@ -1066,7 +1069,7 @@ $bGo.Add_Click({
   $key = if ($tKey) { $tKey.Text.Trim() } else { '' }
   if (-not $noAsk -and (($url -and -not $key -and -not $KeySaved) -or ($key -and -not $url))) {
     [void][Windows.MessageBox]::Show($F,
-      $(if ($urlPreset) { 'API 키를 넣습니다 — 키가 없으면 붙지 못합니다.' } else { '주소와 API 키는 둘 다 넣거나 둘 다 비워야 합니다.' }),
+      $(if ($urlPreset) { 'API 키를 입력하세요 — 키가 없으면 연결할 수 없습니다.' } else { '주소와 API 키는 둘 다 입력하거나 둘 다 비워 두세요.' }),
       $AppName, 'OK', 'Warning')
     return
   }
@@ -1077,7 +1080,7 @@ $bGo.Add_Click({
   $log.Clear(); $bar.Value = 0; Set-State '시작합니다…'
   # 준비 구간(0–8)을 미리 연다 — 첫 `[n/N]` 이 나오기 전에도 할 일이 있다(winget 이 없으면 되살리느라 수십 MB 를 받는다).
   #   그동안 구간이 0/0 이면 심장박동이 못 뛰어 막대가 0 에 박히고, 사람은 아무것도 안 하는 줄 안다.
-  $script:segLo = 0; $script:segHi = 8; $script:idle = 0
+  $script:segLo = 0; $script:segHi = $PrepShare; $script:idle = 0
   $script:sw = [Diagnostics.Stopwatch]::StartNew()
   $script:last = '준비'; $script:topic = '준비'
   # ⚠ **지난 회차의 마무리 문장을 지운다** — [다시 설치] 에서 이번 회차가 그 줄을 못 내면 지난 문장이 그대로 떠, 방금 한
@@ -1138,7 +1141,7 @@ $bGo.Add_Click({
 
   # 나가는 것과 오류는 두 파일로 받고 타이머가 둘 다 읽는다 — `Save-RunLog` 는 둘 사이에 경계를 박는다.
   # 무엇을 돌리는지 먼저 찍는다 — 자식이 한 줄도 안 뱉는 판에서 「멈췄나 안 떴나」를 가를 자리가 된다.
-  Add-Log "돌립니다: $argLine"
+  Add-Log "실행: $argLine"
   Add-Log ''
 
   # ⚠ **`Start-Process -PassThru` 로 띄우지 않는다.** `-Wait` 없이 받은 그 객체는 자식이 끝나도 `ExitCode` 가 0 이 아니라
@@ -1163,9 +1166,9 @@ $bGo.Add_Click({
     $script:proc = [Diagnostics.Process]::Start($psi)
   } catch {
     # 예외를 삼키지 않고 말한다 — 삼키면 창이 「시작합니다」에서 굳고 아무도 까닭을 모른다.
-    Add-Log "! 못 띄웠다 — $($_.Exception.Message)"
-    $runTitle.Text = '못 띄웠습니다'
-    Set-State '못 띄웠습니다 — 기록을 펼쳐 봅니다.' 'Bad'
+    Add-Log "! 실행하지 못함 — $($_.Exception.Message)"
+    $runTitle.Text = '실행하지 못했습니다'
+    Set-State '실행하지 못했습니다 — 기록을 펼쳐 확인하세요.' 'Bad'
     $bGo.Text = '다시 설치'; $bGo.Enabled = $true
     Show-Form $true
     return
@@ -1186,9 +1189,10 @@ function Step-Line([string]$line) {
   Add-Log $line
   if ($line -match '^\[(\d+)/(\d+)\]\s*(.*)$') {
     $done = [int]$Matches[1]; $all = [int]$Matches[2]
-    $script:segLo = [int](($done - 1) * 100 / $all)
-    $script:segHi = [int]($done * 100 / $all)
-    $bar.Value = $script:segLo
+    $script:segLo = [int]($PrepShare + ($done - 1) * (100 - $PrepShare) / $all)
+    $script:segHi = [int]($PrepShare + $done * (100 - $PrepShare) / $all)
+    # 막대는 뒤로 안 간다 — 구간을 고쳐도 머리줄 하나가 막대를 끌어내리지 못하게 둔다.
+    $bar.Value = [Math]::Max($bar.Value, $script:segLo)
     $script:last = "$done/$all  $($Matches[3])"; $script:topic = $script:last
   } elseif ($line -match '^=== 검증') {
     $script:segLo = 100; $script:segHi = 100
@@ -1314,7 +1318,7 @@ $timer.Add_Tick({
     $lState.Text = "{0}초 · {1}" -f $sec, $script:last
     # 오래 조용하면 그 사실을 말한다 — 「멈춘 것 같다」를 사람이 혼자 판정하지 않게.
     if ($script:idle -ge 400 -and $script:proc) {   # 400틱 ≈ 60초
-      $lState.Text = "{0}초 · {1}  (오래 걸리는 중 — winget 이 받는 중일 수 있습니다)" -f $sec, $script:last
+      $lState.Text = "{0}초 · {1}  (오래 걸리는 중 — winget 이 다운로드 중일 수 있습니다)" -f $sec, $script:last
     }
   }
 
@@ -1346,17 +1350,17 @@ $timer.Add_Tick({
     # 「못 읽었다」를 「실패했다」로 뭉치지 않는다 — 종료코드가 없는 것은 실패가 아니라 재는 자가 고장났다는 뜻이라, 같은
     #   문장으로 말하면 멀쩡한 설치가 실패로 보고된다.
     if ($null -eq $rc) {
-      $runTitle.Text = '끝났는데 판정을 못 읽었습니다'
-      Set-State '끝났는데 종료코드를 못 읽었습니다 — 기록의 마지막 줄로 판단하세요.' 'Warn'
+      $runTitle.Text = '끝났지만 결과를 확인하지 못했습니다'
+      Set-State '끝났지만 종료 코드를 읽지 못했습니다 — 기록의 마지막 줄을 확인하세요.' 'Warn'
     } elseif ($rc -eq 0) {
       $bar.Value = 100
-      $runTitle.Text = '끝났습니다'
+      $runTitle.Text = '설치 완료'
       # 마무리 문장을 못 받았으면(몸통이 `=== 끝 ===` 줄 전에 끊긴 판) 지어 내지 않고 기록을 보라고 한다 — 안 한 일을 했다고
       #   말하지 않게.
-      Set-State $(if ($script:done) { $script:done } else { '됐습니다 — 기록의 마지막 줄을 보세요.' }) 'Ok'
+      Set-State $(if ($script:done) { $script:done } else { '완료되었습니다 — 기록의 마지막 줄을 확인하세요.' }) 'Ok'
     } else {
-      $runTitle.Text = '끝내지 못했습니다'
-      Set-State "끝내지 못했습니다 (코드 $rc) — 기록을 펼쳐 ! 줄을 보세요." 'Bad'
+      $runTitle.Text = '설치를 완료하지 못했습니다'
+      Set-State "설치를 완료하지 못했습니다 (종료 코드 $rc) — 기록을 펼쳐 ! 줄을 확인하세요." 'Bad'
     }
     $bGo.Text = '다시 설치'; $bGo.Enabled = $true
     Show-Form $true
@@ -1366,7 +1370,7 @@ $timer.Add_Tick({
 # 창을 닫을 때 도는 자식을 두고 가지 않는다 — 물어서 「예」면 나무째 끄고, 기록을 옮긴 뒤 임시 파일을 지운다.
 $F.Add_Closing({
   if ($script:proc -and -not $script:proc.HasExited) {
-    $ans = [Windows.MessageBox]::Show($F, '설치가 도는 중입니다. 멈추고 닫을까요?', $AppName, 'YesNo', 'Warning')
+    $ans = [Windows.MessageBox]::Show($F, '설치가 진행 중입니다. 중지하고 닫을까요?', $AppName, 'YesNo', 'Warning')
     if ($ans -ne 'Yes') { $_.Cancel = $true; return }
     # ⚠ **나무째 끈다.** `$script:proc` 는 몸통이 아니라 그것을 감싼 `cmd.exe` 라, 그것만 죽이면 **몸통 PowerShell 과 그
     #   자식(winget · npm)이 남아 계속 돈다** — 창은 사라졌는데 뒤에서 설치가 이어지고, 다음 판은 빗장에 막힌다.
@@ -1441,15 +1445,15 @@ $script:upTimer.Add_Tick({
     $script:upPs = $null; $script:upHandle = $null
     # 머리의 알약이 답을 든다 — 물음창은 새 판일 때만 뜨므로, 못 물은 판은 여기서만 보인다
     $verText = Get-El 'VerText'
-    if ($probe -and $probe.State -eq 'latest') { $verText.Text = "$DistVersion · 최신" }
+    if ($probe -and $probe.State -eq 'latest') { $verText.Text = "$DistVersion · 최신 버전" }
     elseif (-not $probe -or $probe.State -ne 'newer') {
-      $why = if ($probe -and $probe.Why) { $probe.Why } else { '묻는 손을 못 불렀다' }
-      $verText.Text = "$DistVersion · 새 판 확인 못 함"
-      (Get-El 'VerPill').ToolTip = "새 판이 있나 확인하지 못했습니다 — $why`n「바뀐 것」에서 최신 판 번호를 볼 수 있습니다."
+      $why = if ($probe -and $probe.Why) { $probe.Why } else { '확인 함수를 실행하지 못함' }
+      $verText.Text = "$DistVersion · 새 버전 확인 안 됨"
+      (Get-El 'VerPill').ToolTip = "새 버전이 있는지 확인하지 못했습니다 — $why`n「변경 내역」에서 최신 버전 번호를 볼 수 있습니다."
     }
     if ($probe -and $probe.State -eq 'newer') {
       $script:upFound = $probe.Found
-      $verText.Text = "$DistVersion · 새 판 $($script:upFound.Ver) 있음"
+      $verText.Text = "$DistVersion · 새 버전 $($script:upFound.Ver) 있음"
     }
   }
   if (-not $script:upFound) { $script:upTimer.Stop(); return }
@@ -1463,8 +1467,8 @@ $script:upTimer.Add_Tick({
   $script:upFound = $null
 
   $ans = [Windows.MessageBox]::Show($F,
-    "새 판 $($found.Ver) 이 나와 있습니다. 지금 것은 $DistVersion 입니다.`n`n" +
-    "새 판으로 설치할까요?`n받는 동안 이 창은 잠깐 멈춥니다 — 2MB 남짓입니다.",
+    "새 버전 $($found.Ver) 이 나왔습니다. 현재 버전은 $DistVersion 입니다.`n`n" +
+    "새 버전으로 설치할까요?`n다운로드하는 동안 이 창이 잠시 멈춥니다 — 약 2MB 입니다.",
     $AppName, 'YesNo', 'Question')
   if ($ans -ne 'Yes') { return }
 
@@ -1482,16 +1486,16 @@ $script:upTimer.Add_Tick({
   if (-not $v.Ok) {
     # 「못 쟀다」와 「다르다」를 한 말로 묶지 않는다 — 앞은 대조할 값이 릴리스에 없거나 못 읽은 것이고(`no-hash-asset` ·
     #   `hash-unreadable`) 뒤는 받은 것이 어긋난 것이다(`hash-mismatch`). 사람이 할 일이 서로 다르다.
-    $say = "새 판을 못 받았습니다. 지금 것으로 계속 하셔도 됩니다.`n`n$($v.Detail)"
+    $say = "새 버전을 다운로드하지 못했습니다. 현재 버전으로 계속 진행해도 됩니다.`n`n$($v.Detail)"
     $ico = 'Warning'
     if ($v.Status -eq 'no-hash-asset' -or $v.Status -eq 'hash-unreadable') {
-      $say = "새 판을 못 쟀습니다 — $($v.Detail).`n`n" +
-             "받은 것이 맞는지 대조할 자가 없어 띄우지 않았습니다. 지금 것으로 계속 하셔도 됩니다."
+      $say = "새 버전 파일을 확인하지 못했습니다 — $($v.Detail).`n`n" +
+             "다운로드한 파일이 맞는지 대조할 값이 없어 실행하지 않았습니다. 현재 버전으로 계속 진행해도 됩니다."
     } elseif ($v.Status -eq 'hash-mismatch') {
       $ico = 'Error'
-      $say = "받은 파일이 릴리스에 오른 값과 다릅니다 — 띄우지 않았습니다.`n`n" +
-             "파일: $($v.Path)`n릴리스가 든 값: $($v.Want)`n받은 것의 값: $($v.Have)`n`n" +
-             "지금 것으로 계속 하셔도 됩니다."
+      $say = "다운로드한 파일이 릴리스에 게시된 값과 다릅니다 — 실행하지 않았습니다.`n`n" +
+             "파일: $($v.Path)`n릴리스 게시 값: $($v.Want)`n다운로드한 파일 값: $($v.Have)`n`n" +
+             "현재 버전으로 계속 진행해도 됩니다."
     }
     [void][Windows.MessageBox]::Show($F, $say, $AppName, 'OK', $ico)
     return
@@ -1513,13 +1517,13 @@ $script:upTimer.Add_Tick({
 #   먼저 알린다(몸통 끝의 「옛 제작자 칸을 이어받은 판의 마무리」 · 결정 0099). 몸통의 그 칸을 걷을 때 같이 걷는다.
 function Show-PersonalNotice {
   $ans = [Windows.MessageBox]::Show($F,
-    ('이번 판부터 제작자의 규범 · 룰 · 스킬을 도구마다 고릅니다 — Claude · Codex · agy.' + [Environment]::NewLine + [Environment]::NewLine +
-     '자동 실행이 예전 칸을 Claude 로 이어받아 방금 설치했습니다. 그대로 두려면 이 창을 닫으면 됩니다 — 다시 묻지 않습니다.' +
+    ('이번 버전부터 제작자의 규범 · 룰 · 스킬을 도구별로 선택합니다 — Claude · Codex · agy.' + [Environment]::NewLine + [Environment]::NewLine +
+     '자동 실행이 이전 선택을 Claude 로 이어받아 방금 설치했습니다. 그대로 두려면 이 창을 닫으면 됩니다 — 다시 묻지 않습니다.' +
      [Environment]::NewLine + [Environment]::NewLine +
-     '바꾸려면 「자세히 설정」의 「규범 · 룰 · 스킬을 받을 모델」을 고르고 [설치 시작]을 누릅니다. 예전 칸은 agy 를 같이 고른 PC 의 ' +
-     'agy 에도 규범을 깔았는데, 이번 설치에서 그것은 백업 자리로 옮겨졌습니다 — agy 에서도 받으려면 agy 칸을 켭니다.' + [Environment]::NewLine + [Environment]::NewLine +
-     '주로 일하는 도구에만 켜면 가끔 맡기는 도구는 부를 때 가볍습니다. 무엇이 깔리는지는 이 상자를 닫으면 여는 「제공기능」 페이지에 있습니다.' +
-     $(if ($ReleasePage) { [Environment]::NewLine + [Environment]::NewLine + '이 판에서 바뀐 것을 릴리스 노트에서 자세히 볼까요?' } else { '' })),
+     '바꾸려면 「자세히 설정」의 「규범 · 룰 · 스킬을 받을 모델」을 선택하고 [설치 시작]을 누르세요. 이전 선택은 agy 를 함께 고른 PC 의 ' +
+     'agy 에도 규범을 설치했는데, 이번 설치에서 그것은 백업 위치로 옮겨졌습니다 — agy 에서도 쓰려면 agy 항목을 켜세요.' + [Environment]::NewLine + [Environment]::NewLine +
+     '주로 쓰는 도구에만 켜면 가끔 맡기는 도구는 더 가볍게 실행됩니다. 무엇이 설치되는지는 이 창을 닫으면 열리는 「제공기능」 페이지에 있습니다.' +
+     $(if ($ReleasePage) { [Environment]::NewLine + [Environment]::NewLine + '이 버전의 변경 내역을 릴리스 노트에서 자세히 볼까요?' } else { '' })),
     $AppName, $(if ($ReleasePage) { 'YesNo' } else { 'OK' }), 'Information')
   if ($ReleasePage -and $ans -eq 'Yes') { try { Start-Process -FilePath $ReleasePage | Out-Null } catch { } }
   # 「제공기능」도 같이 연다(결정 0099) — 못 열면 창의 링크가 그대로 남는다
