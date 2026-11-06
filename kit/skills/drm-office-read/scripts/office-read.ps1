@@ -115,11 +115,25 @@ function Join-OfficeJob {
     }
 }
 
+function Read-HeadBytes {
+    <# 파일 머리 $Count 바이트. 오피스가 열어 쥔 파일도 읽게 쓰기 · 지우기를 함께 허락해 연다 —
+       `ReadAllBytes` 는 그 파일에서 공유 위반으로 진다. #>
+    param([string]$LiteralPath, [int]$Count)
+    $fs = [System.IO.File]::Open($LiteralPath, 'Open', 'Read', 'ReadWrite, Delete')
+    try {
+        $buf = New-Object byte[] $Count
+        $n = 0
+        while ($n -lt $Count) { $r = $fs.Read($buf, $n, $Count - $n); if ($r -le 0) { break }; $n += $r }
+        if ($n -lt $Count) { $buf = if ($n -eq 0) { [byte[]]@() } else { $buf[0..($n - 1)] } }
+        return ,[byte[]]$buf
+    } finally { $fs.Dispose() }
+}
+
 function Get-FileHead {
     <# 파일 머리 8바이트를 눈으로 읽을 꼴로. DRM 이 감쌌으면 `. DRMONE` 처럼 나온다. #>
     param([string]$LiteralPath)
-    $bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
-    $n = [Math]::Min(8, $bytes.Length)
+    $bytes = Read-HeadBytes $LiteralPath 8
+    $n = $bytes.Length
     if ($n -eq 0) { return '(빈 파일)' }
     -join ($bytes[0..($n - 1)] | ForEach-Object {
         if ($_ -ge 32 -and $_ -lt 127) { [char]$_ } else { '.' }
@@ -129,7 +143,7 @@ function Get-FileHead {
 function Test-PlainFormat {
     <# 감기지 않은 원래 형식인가. 감겼으면 $false — 그때만 이 부품이 값을 낸다. #>
     param([string]$LiteralPath)
-    $bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
+    $bytes = Read-HeadBytes $LiteralPath 4
     if ($bytes.Length -lt 4) { return $false }
     $sig = -join ($bytes[0..3] | ForEach-Object { [char]$_ })
     return ($sig -eq '%PDF' -or $sig.StartsWith('PK') -or $sig.StartsWith('{\rt') -or

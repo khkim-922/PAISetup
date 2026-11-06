@@ -292,7 +292,7 @@
 - **사내 메일은 릴레이 `antispam.posco.net:25` 에 바로 넣으면 나간다 — 인증이 없다.** STARTTLS 는 광고되지만 핸드셰이크에서
   서버가 연결을 끊어, 평문으로 다시 붙어야 보낸다 — 본문이 사내망을 평문으로 지난다. 회사 메일 가이드(씨앗
   `vibecoding/docs/guides/futurem-smtp.md`)는 서버 값을 안 주고 587 · STARTTLS · 인증서 검증을 기본으로 적어, 그대로 짜면 이
-  릴레이에서 진다. 회사 PC 실측 · intelligence `8abc68c`(사내 PC 발행기 · 2026-11-02) — 그대로 쓰는 보내는 손은 씨앗 `mail/`
+  릴레이에서 진다. 회사 PC 실측 · intelligence `8abc68c`(사내 PC 발행기 · 2026-11-02) — 그대로 쓰는 보내는 손은 스킬 company-mail 의 `scripts/`
 - **사내 메일함은 Lotus Notes(HCL Domino) 웹메일이고, 받는 길은 웹뿐이다.** 메일함 서버(`pcfma0b.posco.net` · 웹메일
   주소창의 `…/이름.nsf`)는 80 · 443 만 열려 있고 IMAP · POP3 · Notes(1352)는 닫혀 있다. 앞에 사내 SSO(`swpsso.posco.net`
   → ADFS `adfs.m365.posco.net`)가 서고, 끊긴 세션에는 오류 대신 200 에 SSO 로 보내는 HTML 을 준다. **회사 데스크톱은 새
@@ -304,7 +304,7 @@
   · 본문 조각(`/0/<unid>/Body/M1.1`(평문) · `M1.2`(HTML)`?OpenElement`) · 첨부(`/0/<unid>/$FILE/<이름>` · 바이트 그대로 ·
   한글 이름도)를 받고, **이 셋은 메일의 읽음 표시를 안 바꾼다. 문서를 여는 `?OpenDocument` 는 바꾼다.** 읽음은 목록의
   `read` 열이 든다(`ico-nomail` 이 안 읽음). REST(`/api/data`)는 서버에는 서 있지만 메일 문서에 403 이다. 회사 VDI
-  실측(2026-11-03 · 제 주소로 보낸 첨부 둘의 시험 메일) — 받는 손은 씨앗 `mail/` 의 `inbox.py` · `mail_login.js`
+  실측(2026-11-03 · 제 주소로 보낸 첨부 둘의 시험 메일) — 받는 손은 스킬 company-mail 의 `scripts/inbox.py`, 세션은 스킬 ep-login 의 `scripts/edge_session.js`
   — 폴더 · 보낸편지함 · 받는 사람 목록(보기 `!전체목록추출용`) · 사내 주소록 · 읽기 전용 막(`ChangeRefused`) · 읽음 반영 손(`mark_read` · `mark_unread`)의 주소와 실측은 그 `inbox.py` 머리가 든다(#235 ④)
 - npm 레지스트리 접근 가능
 - 신규 패키지는 **유료 라이선스인지만** 본다 — 설치 시점에 이미 걸리는 확인이다. 무료면 그대로 깐다.
