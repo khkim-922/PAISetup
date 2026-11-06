@@ -1326,7 +1326,7 @@ deploy_personal() {   # deploy_personal auto|install
       #   동시에 받은 것의 줄은 저장소마다 모아 두었다가 차례대로 낸다 — 섞이면 어느 줄이 어느 저장소 것인지 못 읽는다.
       # ⚠ 기다리기는 띄운 것의 PID 로만 한다 — 맨 `wait` 는 이 셸이 앞서 띄운 배경 일까지 기다린다.
       # 이번 회차에 받은 저장소의 이름 — deploy.ps1 이 그 저장소를 다시 안 당긴다(`CLAUDE_CONFIG_FRESH_CLONES` · 아래 넘기는 줄).
-      _cone=''; _cpar=''; _cpids=''; _cwait=''
+      CLONED_NOW=''; _cone=''; _cpar=''; _cpids=''; _cwait=''
       _cdir="${TMPDIR:-/tmp}/sibling-clone-$$"
       for _r in $_repos; do
         [ -d "$_root/$_r/.git" ] && continue
