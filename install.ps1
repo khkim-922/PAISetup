@@ -6800,7 +6800,29 @@ $GhLoginWait = 180
 # gh 로그인이 기본 범위(repo · read:org · gist) 위로 더 받는 범위 — `workflow` 가 없으면 `.github/workflows/` 를 고친 커밋의
 #   push 를 GitHub 가 거절한다. 로그인 창(`Start-GhLoginProcess`)과 사람에게 주는 되살리는 명령이 이 값을 같이 쓴다.
 #   이미 로그인이 선 PC 는 다시 묻지 않으므로(`Get-GhLoginGo` 의 already) 그 범위 그대로 간다 — 더하려면 `gh auth refresh -s workflow`.
-$GhLoginScopes = 'workflow'
+# 영속 PC 는 `read:user`(프로필 읽기 — 어느 도구도 안 쓴다)를 하나 더 받는다. GitHub 는 같은 사용자 · 같은 앱 · 같은 범위 조합의
+#   토큰을 열 개까지만 두고, 넘치면 가장 덜 쓴 것을 끊는다(OAuth 앱 문서의 토큰 한도). 비영속 VDI 는 로그온마다 새 토큰을 내므로
+#   범위가 같으면 밤새 안 쓴 회사 데스크톱의 토큰을 밀어낸다 — 조합을 갈라 VDI 토큰은 저희끼리만 밀어내게 한다. VDI 는 범위를
+#   그대로 두고(`$GhLoginScopesFresh`), 못 가리면 VDI 쪽이다 — 갈라지기 전과 같은 범위라 아무것도 잃지 않는다.
+$GhLoginScopesFresh = 'workflow'
+$GhLoginScopesKept  = 'workflow,read:user'
+# 홈 폴더가 이 로그온에 섰다고 보는 폭(분) — 비영속 VDI 는 로그온 때 홈이 서고 곧 탐색기가 뜬다
+$GhLoginFreshMinutes = 15
+
+# 비영속 VDI 인가 — 홈 폴더가 이번 로그온 무렵에 새로 섰다. 로그온 시각은 이 세션의 탐색기가 뜬 시각으로 본다(탐색기가 다시
+#   떠도 홈은 옛 시각이라 영속 PC 는 그대로 「아니다」다).
+# 내는 것 — $true(이번 로그온에 선 홈) · $false(앞서 선 홈) · $null(못 쟀다 — 이 세션에 탐색기가 없거나 읽기가 졌다)
+function Test-FreshProfile {
+  try {
+    $session = (Get-Process -Id $PID -ErrorAction Stop).SessionId
+    $shell = @(Get-Process explorer -ErrorAction Stop | Where-Object { $_.SessionId -eq $session } | Sort-Object StartTime)
+    if ($shell.Count -eq 0 -or -not $shell[0].StartTime) { return $null }
+    $born = (Get-Item -LiteralPath $env:USERPROFILE -Force -ErrorAction Stop).CreationTime
+    return ($born -ge $shell[0].StartTime.AddMinutes(-$GhLoginFreshMinutes))
+  } catch { return $null }
+}
+
+$GhLoginScopes = if ((Test-FreshProfile) -eq $false) { $GhLoginScopesKept } else { $GhLoginScopesFresh }
 # 앞당겨 띄운 자식에게 창의 한도 위로 더 주는 초 — 창은 자식이 뜬 때부터 벽시계로 `$GhLoginWait` 에 닫히고(`Invoke-GhLoginChild`),
 #   그 뒤 남는 것은 로그인을 한 번 더 재는 몫(`Test-GhLoggedIn` — `$ProbeCap` + `$GhStatusCap`)과 끝나는 몫이다. 이것까지 넘기면
 #   「설정 저장소」 걸음이 자식을 거둔다.
