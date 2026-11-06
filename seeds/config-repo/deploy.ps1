@@ -31,7 +31,7 @@
 #   저장소의 .claude/settings.json 은 훅 등록 파일이라 배포한다.
 #
 # 기본 실행이 걷는 것은 우리 것이라는 기록이 있는 것뿐이다 — 홈 씨앗 · 사내 환경 문서는 이 저장소 이력이 그 자리에서 지운 파일을
-# (`Get-SeedColumn`), 규범 · 룰 · 에이전트 · 스킬은 손이 제가 놓았다고 기록한 것을(손의 머리말) 걷는다. 형제 저장소에 커밋 안 된 채
+# (`Get-SeedColumn` — 표에서 뺀 씨앗 폴더(deploy.seeds.retired.conf)의 것도 같은 자로), 규범 · 룰 · 에이전트 · 스킬은 손이 제가 놓았다고 기록한 것을(손의 머리말) 걷는다. 형제 저장소에 커밋 안 된 채
 # 남아 당김을 막는 사본은 내용이 이 저장소 이력의 어느 판과 바이트로 같을 때만 되돌리거나 지운다(`Clear-PlantedCopies`). 회사 PC 의 DRM 이
 # 감싸 당김을 막는 오피스 · PDF 는 감싼 판을 백업하고 커밋본으로 되돌린다(`Clear-DrmWrapped` — 판정은 세션 훅 몸통). 기록 없이 원본에만 없는
 # 씨앗 · 메모리 파일은 -Prune 을 줄 때만 걷고, 기본 실행에서는 후보만 알린다.
@@ -520,7 +520,8 @@ function ConvertFrom-ToolHomesOutput {
 function Get-SeedColumn {
     # 받는 것: 이 저장소 뿌리(`-Src`) · 홈(`-Dst`). 아무것도 안 쓴다(git 으로 추적 목록 · 이력 · 판만 묻는다). 내는 것: @{ Dirs — 홈으로
     #   폴더째 미는 폴더(뿌리 기준 · `\` 로) · Files — 그 폴더에서 홈으로 미는 파일(뿌리 기준 · `\` 로) · Gone — 원본이 걷은 파일을 홈에서
-    #   걷는 걸음 · Notes — 할 일 줄 · Stamp — 「씨앗의 판 줄」 걸음(안 쓰면 $null) · Same — 판 줄이 이미 이 판일 때의 「= 동일」 줄(아니면 $null) }
+    #   걷는 걸음(걷은 씨앗 폴더의 것도 든다) · Kept — 걷은 씨앗 폴더에 남은, 이력에 없는 파일의 걷는 걸음(흐름이 `-Prune` 후보로 싣는다) ·
+    #   Notes — 할 일 줄 · Stamp — 「씨앗의 판 줄」 걸음(안 쓰면 $null) · Same — 판 줄이 이미 이 판일 때의 「= 동일」 줄(아니면 $null) }
     # ⚠ 문은 「이 저장소가 홈 씨앗의 원본인가」 — 뿌리에 deploy.seeds.conf 가 있나다. 그 선언은 씨앗에 안 실려 씨앗으로 만든
     #   동료 저장소에는 없고, 그 PC 의 홈 씨앗과 판 줄은 설치기가 짐에서 깐 그대로여야 한다 — 문 없이 돌면 판 줄을 동료 저장소의
     #   커밋으로 덮는다. 문을 못 지나면 아무것도 안 하고 아무 말도 안 한다. 동료가 그 파일을 두면 그 저장소가 홈 씨앗의
@@ -530,13 +531,26 @@ function Get-SeedColumn {
     param([string]$Src, [string]$Dst)
     # 문을 못 지난 판도 같은 열쇠를 다 든다 — `Gone` 이 없으면 흐름의 `@($seedCol.Gone)` 이 `$null` 하나를 든 배열이 되어 계획에
     #   빈 걸음이 서고, 제거 후보 칸의 `$goneSet[$g.Path]` 가 널 열쇠로 던져 배포가 죽는다.
-    $col  = @{ Dirs = @(); Files = @(); Gone = @(); Notes = @(); Stamp = $null; Same = $null }
+    $col  = @{ Dirs = @(); Files = @(); Gone = @(); Kept = @(); Notes = @(); Stamp = $null; Same = $null }
     $conf = Join-Path $Src 'deploy.seeds.conf'
     if (-not (Test-Path -LiteralPath $conf -PathType Leaf)) { return $col }
     $col.Dirs = @(Get-Content -LiteralPath $conf -Encoding UTF8 |
         ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
         Where-Object   { $_ } |
         ForEach-Object { $_ -replace '/', '\' })
+    # 걷은 씨앗 폴더 — 표에서 뺀 폴더의 목록은 짝 선언(`deploy.seeds.retired.conf`)이 든다. 없으면 걷을 폴더가 없다. 밀 폴더로 다시 든
+    #   이름은 밀 폴더로만 센다 — 그 머리말의 ⚠.
+    $retiredConf = Join-Path $Src 'deploy.seeds.retired.conf'
+    $retired = @()
+    if (Test-Path -LiteralPath $retiredConf -PathType Leaf) {
+        $retired = @(Get-Content -LiteralPath $retiredConf -Encoding UTF8 |
+            ForEach-Object { ($_ -replace '#.*$', '').Trim() } |
+            Where-Object   { $_ } |
+            ForEach-Object { $_ -replace '/', '\' } |
+            Where-Object   { $col.Dirs -notcontains $_ })
+    }
+    # 걷은 폴더 가운데 홈에 남은 것만 이력을 묻는다 — 다 걷힌 PC 에서는 git 을 한 번도 더 안 띄운다.
+    $retiredHere = @($retired | Where-Object { Test-Path -LiteralPath (Join-Path $Dst $_) -PathType Container })
     if ($col.Dirs.Count -eq 0) {
         $col.Notes += 'deploy.seeds.conf 가 비었다 — 홈으로 폴더째 미는 씨앗·사내 환경 문서가 하나도 안 깔린다'
     }
@@ -571,10 +585,14 @@ function Get-SeedColumn {
     #   이름이 바뀐 파일은 옛 이름을 지운 것으로 센다(`--no-renames`). 걷는 걸음은 백업 자리에 원본을 뜬다(실행 단계의 `remove`).
     # 이력을 못 물으면(git 이 없다 · 얕은 클론이 그 커밋을 안 든다 · git 이 졌다) 걷지 않는다 — 못 물은 것은 할 일 한 줄이고, 얕은
     #   클론에서 못 본 이력은 안 걷힌 채 남는다(우리 것을 남의 것으로 세는 쪽으로만 진다).
-    if ($col.Dirs.Count -and -not $git) { $col.Notes += 'git 이 없어 원본이 걷은 씨앗 · 사내 환경 문서 파일을 못 가렸다 — 홈에 남는다' }
-    elseif ($col.Dirs.Count) {
+    # 걷은 씨앗 폴더(`$retiredHere`)도 같은 자로 걷는다 — 표에서 뺀 폴더는 원본에 파일이 하나도 없으니 이력이 지운 파일이 곧 그 폴더에서
+    #   이 저장소가 놓았던 것 전부다. 더해 그 파일의 `__pycache__\<이름>.*.pyc` 도 걷는다 — 걷은 손을 홈에서 부른 파이썬이 남긴 부산물이라
+    #   두면 폴더가 껍데기로 남아 「그 손이 아직 있다」로 읽힌다. 그 밖의 파일(이력에 없는 것 — 사람이 둔 것)은 `Kept` 로 낸다.
+    $histDirs = @($col.Dirs) + @($retiredHere)
+    if ($histDirs.Count -and -not $git) { $col.Notes += 'git 이 없어 원본이 걷은 씨앗 · 사내 환경 문서 파일을 못 가렸다 — 홈에 남는다' }
+    elseif ($histDirs.Count) {
         $hist = $null
-        try { $hist = @(& git -C $Src -c core.quotepath=false log --no-renames --diff-filter=D --name-only --format= -- @($col.Dirs | ForEach-Object { $_ -replace '\\', '/' }) 2>$null) } catch { $hist = $null }
+        try { $hist = @(& git -C $Src -c core.quotepath=false log --no-renames --diff-filter=D --name-only --format= -- @($histDirs | ForEach-Object { $_ -replace '\\', '/' }) 2>$null) } catch { $hist = $null }
         if ($null -eq $hist -or $LASTEXITCODE -ne 0) {
             $col.Notes += '원본 이력을 못 물어(git log) 원본이 걷은 씨앗 · 사내 환경 문서 파일을 못 가렸다 — 홈에 남는다'
         } else {
@@ -589,6 +607,27 @@ function Get-SeedColumn {
                     $rel = $f.FullName.Substring($base.Length + 1)
                     if ((Test-Path -LiteralPath (Join-Path $sSrc $rel)) -or -not $deleted["$sd\$rel"]) { continue }
                     $col.Gone += @{ Kind = 'remove'; Path = $f.FullName; Text = "- 제거  $($f.FullName)  (원본이 걷었다 — $($sd -replace '\\', '/')/)" }
+                }
+            }
+            foreach ($sd in $retiredHere) {
+                $base = (Get-Item -LiteralPath (Join-Path $Dst $sd) -Force).FullName.TrimEnd('\')
+                $tag  = "$($sd -replace '\\', '/')/"
+                foreach ($f in @(Get-ChildItem -LiteralPath $base -Recurse -File -Force)) {
+                    $rel = $f.FullName.Substring($base.Length + 1)
+                    # 지금 원본 나무에 있는 파일(과 그 .py 의 캐시)은 지운 이력이 있어도 다시 들인 산 파일이다 — Gone 에도 Kept(-Prune 후보)에도
+                    #   안 싣는다(두 선언이 어긋난 때). 세션 훅 `_retire_seeds` 가 같은 문을 쓴다
+                    if (Test-Path -LiteralPath (Join-Path (Join-Path $Src $sd) $rel)) { continue }
+                    $ours = $deleted["$sd\$rel"]
+                    if (-not $ours -and $rel -match '(^|\\)__pycache__\\([^\\.]+)\.[^\\]*\.pyc$') {
+                        $pyDir = $rel.Substring(0, $rel.Length - $Matches[0].Length + $Matches[1].Length)
+                        if (Test-Path -LiteralPath (Join-Path (Join-Path $Src $sd) "$pyDir$($Matches[2]).py")) { continue }
+                        $ours  = $deleted["$sd\$pyDir$($Matches[2]).py"]
+                    }
+                    if ($ours) {
+                        $col.Gone += @{ Kind = 'remove'; Path = $f.FullName; Text = "- 제거  $($f.FullName)  (걷은 씨앗 폴더 — $tag)" }
+                    } else {
+                        $col.Kept += @{ Kind = 'remove'; Path = $f.FullName; Text = "- 제거  $($f.FullName)  (걷은 씨앗 폴더 $tag — 이 저장소 이력에 없는 파일)" }
+                    }
                 }
             }
         }
@@ -1232,6 +1271,8 @@ if ($installSteps.Count -gt 0) {
 #   이미 기본 실행의 걸음이라(`Get-SeedColumn` 의 Gone) 여기서 다시 안 센다 — 두 번 실으면 `-Prune` 판의 둘째 걷기가 없는 파일에 진다.
 $goneSet = @{}
 foreach ($g in @($seedCol.Gone)) { $goneSet[$g.Path] = $true }
+# 걷은 씨앗 폴더에 남은, 이 저장소 이력에 없는 파일도 후보다 — 그것이 남으면 폴더가 안 걷힌다. 가르는 것은 `Get-SeedColumn` 이 든다.
+$prunable += @($seedCol.Kept)
 foreach ($sd in ($seedDirs | Where-Object { $_ -like 'seeds\*' })) {
     $sSrc = Join-Path $src $sd
     $sDst = Join-Path $dst $sd

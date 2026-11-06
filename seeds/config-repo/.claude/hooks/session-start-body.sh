@@ -900,6 +900,75 @@ EOF
   return 0
 }
 
+_retire_seeds() {
+  # 걷은 씨앗 폴더 — 표에서 뺀 폴더(`$CONFIG_ROOT/deploy.seeds.retired.conf`)가 홈에 남았으면 걷는다. 읽는 값 CONFIG_ROOT · `_seed_dirs`
+  #   (밀 폴더 — 다시 든 이름은 걷지 않는다) · 쓰는 값 PC_WIDE_FAIL(이력을 못 물었거나 못 옮겼다 — 다음 세션이 다시 본다) · 늘 0.
+  # 걷는 것은 그 폴더에서 이 저장소 이력이 그 자리에 두었다 지운 파일과 그 파일의 `__pycache__/<이름>.*.pyc` 뿐이다 — deploy.ps1
+  #   `Get-SeedColumn` 과 같은 자다(까닭은 그 선언의 머리말). 지우지 않고 백업 자리(`~/.claude/backups/session-seeds-<시각>/`)로 같은
+  #   상대 자리에 옮기고, 빈 폴더를 걷는다. 이력에 없는 파일(사람이 둔 것)은 두고 경고 한 줄을 낸다 — 그것을 걷을지는 사람이 정한다.
+  # 다 걷힌 홈에서는 프로세스를 하나도 안 띄운다 — 선언을 셸이 읽고 폴더 문(`[ -d ]`)만 돈다.
+  _rconf="$CONFIG_ROOT/deploy.seeds.retired.conf"
+  [ -f "$_rconf" ] || return 0
+  _rhere=""
+  while IFS= read -r _rl || [ -n "$_rl" ]; do
+    _rl="${_rl%%#*}"
+    for _rd in $_rl; do
+      case "$_NL$_seed_dirs$_NL" in *"$_NL$_rd$_NL"*) continue ;; esac
+      [ -d "$HOME/.claude/$_rd" ] && _rhere="$_rhere $_rd"
+    done
+  done < "$_rconf"
+  [ -n "$_rhere" ] || return 0
+  # shellcheck disable=SC2086 # 폴더 목록을 낱말로 편다(씨앗 폴더 이름이라 공백이 없다)
+  if ! _rgone="$(git -C "$CONFIG_ROOT" -c core.quotepath=false log --no-renames --diff-filter=D --name-only --format= -- $_rhere 2>/dev/null)"; then
+    PC_WIDE_FAIL=1
+    echo "$PROJECT_NAME: ⚠ 씨앗 — 표에서 뺀 폴더를 홈에서 안 걷었다:$_rhere (이력을 git 이 못 댔다: git -C $CONFIG_ROOT log · 다음 세션이 다시 해 본다)"
+    return 0
+  fi
+  _rbk="$HOME/.claude/backups/session-seeds-$(date +%Y%m%d-%H%M%S)"
+  for _rd in $_rhere; do
+    _rmoved=0; _rkept=0; _rfail=""
+    # ⚠ 파이프로 먹이지 않는다 — 고리가 하위 셸에서 돌면 센 값과 PC_WIDE_FAIL 이 밖으로 안 나온다.
+    while IFS= read -r _rf; do
+      [ -n "$_rf" ] || continue
+      _rr="${_rf#"$HOME/.claude/"}"
+      # 지금 원본 나무에 있는 파일(과 그 .py 의 캐시)은 지운 이력이 있어도 다시 들인 산 파일이다 — 걷지도 세지도 않는다(두 선언이
+      #   어긋난 때). deploy.ps1 `Get-SeedColumn` 이 같은 문을 쓴다
+      [ -e "$CONFIG_ROOT/$_rr" ] && continue
+      case "$_rr" in */__pycache__/*.pyc) _rpy="${_rr##*/}"; [ -e "$CONFIG_ROOT/${_rr%/__pycache__/*}/${_rpy%%.*}.py" ] && continue ;; esac
+      _rown=""
+      case "$_NL$_rgone$_NL" in *"$_NL$_rr$_NL"*) _rown=1 ;; esac
+      if [ -z "$_rown" ]; then
+        case "$_rr" in
+          */__pycache__/*.pyc)
+            _rpy="${_rr##*/}"
+            case "$_NL$_rgone$_NL" in *"$_NL${_rr%/__pycache__/*}/${_rpy%%.*}.py$_NL"*) _rown=1 ;; esac ;;
+        esac
+      fi
+      if [ -z "$_rown" ]; then
+        _rkept=$((_rkept + 1))
+      elif mkdir -p "$_rbk/${_rr%/*}" && mv -f "$_rf" "$_rbk/$_rr"; then
+        _rmoved=$((_rmoved + 1))
+      else
+        _rfail="$_rr"
+      fi
+    done <<EOF
+$(find "$HOME/.claude/$_rd" -type f 2>/dev/null)
+EOF
+    find "$HOME/.claude/$_rd" -depth -type d -empty -delete 2>/dev/null
+    if [ -n "$_rfail" ]; then
+      PC_WIDE_FAIL=1
+      echo "$PROJECT_NAME: ⚠ 씨앗 — 표에서 뺀 $_rd 의 파일을 백업 자리로 못 옮겼다: $_rfail (다음 세션이 다시 해 본다)"
+    elif [ "$_rkept" -gt 0 ]; then
+      _rsaid=""
+      [ "$_rmoved" -gt 0 ] && _rsaid=" · 우리 파일 ${_rmoved}개는 $_rbk 로 옮겼다"
+      echo "$PROJECT_NAME: ⚠ 씨앗 — 표에서 뺀 $_rd 에 이 저장소 이력에 없는 파일 ${_rkept}개가 남아 폴더를 다 못 걷었다 — 보고 지우세요 ($HOME/.claude/$_rd$_rsaid)"
+    else
+      echo "$PROJECT_NAME: 씨앗 — 표에서 뺀 $_rd 를 홈에서 걷었다 (파일 ${_rmoved}개 · 옮긴 자리 $_rbk)"
+    fi
+  done
+  return 0
+}
+
 deploy_home_norms() {
   # 홈 밀기 — 읽는 값 CONFIG_ROOT · HOME_SYNC · PUSH_ONLY · 쓰는 값 HOME_STALE · HOME_UNMEASURED(견주기 판 · 못 잰 것과 그 까닭 —
   #   부르는 쪽이 비워 두고 부른다) · PC_WIDE_FAIL · 늘 0.
@@ -919,7 +988,8 @@ deploy_home_norms() {
     # 어느 폴더를 미나는 선언(`$CONFIG_ROOT/deploy.seeds.conf`)이 든다 — deploy.ps1 이 같은 줄을 읽고, `seeds/config-repo` 를
     #   일부러 안 미는 까닭도 그 머리말이 든다. 어떻게 미나(이 저장소가 추적하는 파일만 · 덮어쓰기만)는 deploy.ps1 의 같은 칸
     #   (`Get-SeedColumn`)과 같은 뜻이고,
-    #   홈에만 남은 파일은 여기서 안 지운다 — 원본 이력으로 걷는 손은 deploy.ps1 씨앗 칸 하나다(손을 둘 두면 걷는 규칙이 갈린다).
+    #   미는 폴더에서 홈에만 남은 파일은 여기서 안 지운다 — 원본 이력으로 걷는 손은 deploy.ps1 씨앗 칸 하나다(손을 둘 두면 걷는 규칙이
+    #   갈린다). 표에서 뺀 폴더만은 여기서도 걷는다(`_retire_seeds` — deploy.ps1 을 안 부르는 PC · 컨테이너에도 낡은 손이 남지 않게).
     #   무엇을 안 미나는 git 이 든다(`.gitignore`) — 제외 목록을 따로 두지 않는다. 선언이 없는 저장소를
     #   위한 후퇴 목록은 없다 — 그 저장소는 위 문에서 끝난다. 목록을 여기 한 벌 더 두면 그것이 곧 손사본이다.
     # 미는 파일은 그 폴더에서 이 저장소가 추적하는 파일이다(`git ls-files`) — git 이 무시하는 런타임 기록(저장소 안에서 돌린 프록시의
@@ -974,8 +1044,9 @@ EOF
       echo "$PROJECT_NAME: ⚠ 씨앗 · 사내 환경 문서를 홈에 안 밀었다 — 추적 파일을 git 이 못 댔다 (git -C $CONFIG_ROOT ls-files · 다음 세션이 다시 해 본다)"
       return 0
     fi
-    # 견주기 판은 여기까지다 — 아래 판 줄은 「민 뒤에 적는다」가 뜻이라 안 민 판에는 적을 것이 없다.
+    # 견주기 판은 여기까지다 — 아래 걷기와 판 줄은 「민 뒤에 한다」가 뜻이라 안 민 판에는 할 것이 없다.
     [ "$HOME_SYNC" = push ] || return 0
+    _retire_seeds
     # ── 씨앗의 판 줄 — 홈 사본이 어느 판에서 왔나를 그 자리에 남긴다 ────────
     #    홈 사본을 진본으로 믿고 재는 자가 있다(`seeds/check/_check/borrowed_check.py` 의 `_stamp()`). 홈 뿌리는 git 나무가
     #    아니라 판을 물을 데가 없어, 이 줄이 없으면 낡은 홈과 견준 초록이 최신처럼 읽힌다. 이름은 그쪽 `VERSION_FILE` 이

@@ -85,7 +85,7 @@ node check_session.js <폴더>     # 다른 폴더의 사본을 잰다
 
 | 무엇 | 어디서 | 따라가는 법 |
 |---|---|---|
-| 붙는 길 · 종료 값 넷 · 메일 목록으로 로그인을 가리기 · 파일에 쓰기 전에 거르기 | mail-secretary 저장소 secretary/edge_session.js(68ad771) · 결정 0009 · 0023 | 일부러 갈랐다 — 브라우저 자리에만 붙고(위 「잰 것」) · ECM 을 함께 받고 · 거르는 자가 메일 호스트에서 회사 도메인으로 넓어졌다. 비서가 이 손을 부르게 되면 그 사본을 걷는다(mail-secretary #34) |
+| 붙는 길 · 종료 값 넷 · 메일 목록으로 로그인을 가리기 · 파일에 쓰기 전에 거르기 | mail-secretary 저장소 secretary/edge_session.js(68ad771) · 결정 0009 · 0023 | 일부러 갈랐다 — 브라우저 자리에만 붙고(위 「잰 것」) · ECM 을 함께 받고 · 거르는 자가 메일 호스트에서 회사 도메인으로 넓어졌다. 비서는 이 손을 깔린 자리에서 부르고 제 저장소에 사본을 안 든다(mail-secretary #34 · `secretary/hands.py`) |
 | 띄우는 플래그 · Edge 자리 후보 · 15초 | 같은 저장소 secretary/runner.py 의 `EDGE_FLAGS` · `EDGE_CANDIDATES` · `launch_edge`(68ad771) | 손으로 따라간다 — 이쪽은 `--no-startup-window` 를 안 쓰고 EP 로그인 탭 하나로 띄운다(사람이 그 창에서 로그인하고 그대로 쓴다) |
 | 회사 로그인 주소 | 같은 저장소 secretary/identity.py 의 `COMPANY_LOGIN_PATH`(68ad771) | 손으로 따라간다 |
 | ECM 메인 · SSO 넘김 주소 · 세션 쿠키 · 넘김의 차례 | 같은 저장소 이슈 #28 의 ECM 첫째 · 둘째 판(2026-11-06 VDI) | 손으로 따라간다 — 실물이 바뀌면 `edge_session.js` 의 상수와 검사의 가짜를 함께 고친다 |
