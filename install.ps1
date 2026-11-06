@@ -10942,6 +10942,9 @@ if (-not $NoVsCode -and (Test-VsCodeRequired $site)) {
 #   · 밤 시각 — 부팅해 로그온 회차를 이미 받은 사람이 낮에 자동 실행 창을 다시 안 보게 사람이 고른 값이다
 #   · 흩는 폭 — 로그온은 사람마다 시각이 갈리지만 달력은 PC 전부를 한 분에 띄운다. 한 출구 주소를 같이 쓰는 회사 PC 들이
 #     같은 분에 릴리스를 묻지 않게 흩되, 이른 출근 전(05시)에 끝나는 폭으로 둔다. 잰 값이 아니라 판단이다
+#   · 로그온 지연 — 로그온하고 곧 돈다(`$AutoRunLogonDelay`). 그 사이 망이 덜 선 PC 는 자리 재기가 「사외」로 읽으므로, 지난
+#     설치가 사내였던 로그온 회차는 몸통이 프로브에 닿을 때까지 `$AutoRunSiteWait` 초까지 다시 잰다(아래 「하루 한 번 · 자리」 칸).
+#     안 그러면 사내 PC 가 그날 첫 회차에 사외로 깔려 게이트웨이 값을 잃는다. 사외였던 PC 는 기다리지 않는다
 #   · 문지기 · 머리 없는 콘솔 — 두 작업은 몸통을 바로 부르지 않고 곁의 문지기(`$AutoRunGate`)를 머리 없는 콘솔로 부른다.
 #     건너뛰는 회차는 아무 창도 안 띄우고, 로그온 회차가 설치를 실제로 할 때만 몸통이 곁의 진행 창(`$AutoRunProgress`)을 띄운다. 밤 회차는 몸통이 밤
 #     회차를 아는 판(`$AutoRunNightMarker` 를 든다)일 때만 `-Night` 로 부르고, 아니면 밤 작업을 걷는다 — 옛 판 설치기가 몸통을
@@ -10953,6 +10956,8 @@ if (-not $NoVsCode -and (Test-VsCodeRequired $site)) {
 # 사람이 고른 것의 기록은 자동 실행의 몫이 아니다 — 켜든 끄든 「회차를 넘기는 기록」 칸이 쓰고, 몸통이 회차마다 그 기록을 읽는다.
 $AutoRunNightAt       = [datetime]::Today.AddHours(3)
 $AutoRunNightSpread   = New-TimeSpan -Hours 2
+$AutoRunLogonDelay    = New-TimeSpan -Seconds 10
+$AutoRunSiteWait      = 60
 $AutoRunGate          = 'autorun-gate.ps1'
 $AutoRunProgress      = 'autorun-progress.ps1'
 $AutoRunNightMarker   = 'param([switch]$Night)'
@@ -11380,6 +11385,9 @@ $targetEnvProbe = Join-Path $versionDirs[0].FullName 'install.env'
 #     값 없이 서기 때문이다
 #   · 로그온 회차: 오늘 끝났으면 건너뛰되, 지금 자리를 재어 지난 설치와 다를 때만 다시 돈다 — 자리를 바꾸는 것은 로그온 회차와
 #     사람이 누른 설치의 몫이다. 못 쟀으면 건너뛴다
+#   · 지난 설치가 사내였던 로그온 회차: 「사외」로 읽히면 프로브에 닿을 때까지 @@SITEWAIT@@ 초까지 다시 잰다 — 로그온 바로 뒤는 망이
+#     덜 서 있어 사내 PC 도 「사외」로 읽히고, 그 판정으로 설치가 돌면 게이트웨이 값을 걷는다. 기다림은 끝 시각으로 센다. 끝까지
+#     안 닿으면 「사외」 그대로 간다(사내 노트북을 집에서 켠 판). 뒤의 설치는 제 손으로 다시 재므로 여기서 박지 않는다
 $siteFile = Join-Path $setupRoot '.autorun-site'
 $siteWord = @{ inside = '사내'; outside = '사외'; switching = '전환 중 멈춤'; unmeasured = '확인하지 못함'; broken = '판단하지 못함' }
 
@@ -11393,7 +11401,8 @@ if (Test-Path -LiteralPath $siteFile) {
 #   아무것도 안 심고 멈춘다(밤 회차는 자리를 안 바꾼다). 파일을 못 읽으면 못 잰 것이다.
 $siteEnv = Join-Path $versionDirs[0].FullName 'install.env'
 $siteNow = ''
-if ($Night -or $doneToday) {
+$siteHold = (-not $Night) -and $siteLast -eq 'inside'
+if ($Night -or $doneToday -or $siteHold) {
   $siteNow = 'unmeasured'
   $siteWhy = ''
   $defs = $null
@@ -11417,7 +11426,16 @@ if ($Night -or $doneToday) {
     }
     if ($selfOk) {
       $fact = $null
-      try { $fact = Measure-Site (Read-Directive $siteEnv 'site-probe') } catch { $fact = $null }
+      $probe = ''
+      try { $probe = Read-Directive $siteEnv 'site-probe'; $fact = Measure-Site $probe } catch { $fact = $null }
+      if ($siteHold -and $fact -and $fact.Site -eq 'outside') {
+        Log "사내 확인 주소에 아직 닿지 않음 — 네트워크 연결을 기다립니다 (최대 @@SITEWAIT@@초)"
+        $holdEnd = (Get-Date).AddSeconds([int]'@@SITEWAIT@@')
+        while ($fact.Site -eq 'outside' -and (Get-Date) -lt $holdEnd) {
+          Start-Sleep -Seconds 2
+          try { $fact = Measure-Site $probe } catch { $fact = $null; break }
+        }
+      }
       if ($fact -and $fact.Site) { $siteNow = $fact.Site }
       elseif ($fact) { $siteNow = 'broken'; $siteWhy = $fact.Why }
     }
@@ -11616,7 +11634,8 @@ try {
   }
 } catch { }
 '@
-    [IO.File]::WriteAllText($autoScript, $autoScriptBody.Replace('@@PROGRESS@@', $AutoRunProgress), [System.Text.Encoding]::UTF8)
+    [IO.File]::WriteAllText($autoScript, $autoScriptBody.Replace('@@PROGRESS@@', $AutoRunProgress).Replace('@@SITEWAIT@@', "$AutoRunSiteWait"),
+                            [System.Text.Encoding]::UTF8)
 
     # 진행 창 — 로그온 회차가 설치를 할 때 몸통이 띄우는 작은 창(몸통의 「진행 창」 칸). 못 쓰면 그 회차는 창 없이 돈다 — 기록은
     #   그대로 남는다.
@@ -11963,11 +11982,11 @@ exit 0
         New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$autoScript`""
       }
       $onLogon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-      $onLogon.Delay = "PT1M"
+      $onLogon.Delay = [System.Xml.XmlConvert]::ToString($AutoRunLogonDelay)
       Register-ScheduledTask -TaskName $AutoRunTaskName -Action $action -Trigger $onLogon `
                              -Principal $principal -Settings $settings `
                              -Description "PAISetup background auto-update & environment sync on logon" -Force | Out-Null
-      Write-Host ("  부팅 시 자동 실행 — 등록함 (작업 스케줄러 · $AutoRunTaskName · 로그온 1분 뒤 · " +
+      Write-Host ("  부팅 시 자동 실행 — 등록함 (작업 스케줄러 · $AutoRunTaskName · 로그온 $([int]$AutoRunLogonDelay.TotalSeconds)초 뒤 · " +
                   $(if ($headless) { '설치할 때만 진행 창 표시' } else { '콘솔 창 표시' }) + ')') -ForegroundColor Green
     } catch {
       Write-Host "  ! 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
