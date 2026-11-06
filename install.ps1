@@ -9788,6 +9788,51 @@ foreach ($a in $envAssets) {
   Write-Host "     $($a.Desc)"
 }
 
+# ── 걷은 씨앗 — 진본이 씨앗 표에서 뺀 폴더를 홈에서 걷는다 (claude-config 결정 0225) ──────────────
+# 표에서 줄만 빼면 이미 깐 홈의 사본은 아무도 안 걷어, 낡은 손이 그 자리에서 조용히 계속 불린다. 목록은 짐의 `kit\deploy.seeds.retired.conf`
+#   다 — 설정 저장소(claude-config)의 같은 이름 선언을 뽑는 자가 그대로 싣고, 그 저장소의 배포 · 세션 훅이 같은 줄을 읽는다. 여기 이름을
+#   늘어놓지 않는다 — 늘어놓으면 표에서 폴더를 뺀 날 이 칸만 낡는다.
+# 지우지 않고 폴더째 옮긴다(`~/.claude/backups/install-seeds-<시각>/`) — 거울로 깔던 자리라 폴더째 우리 것이었지만, 지난 설치 뒤 사람이
+#   둔 파일이 함께 들 수 있다(걷힌 룰과 같은 까닭).
+# 비켜서는 자리가 셋이다 — 이 설치가 그 폴더를 방금 깔았다(`$envAssets` — 두 목록이 어긋났다 · 걷으면 설치마다 깔고 걷는다), 설정 저장소가
+#   그 폴더를 아직 민다(`$ownedHome` — 그 저장소가 이 짐보다 옛 판이다), 설정 저장소가 홈 씨앗의 원본이다(그 뿌리에 `deploy.seeds.conf`) —
+#   그쪽 배포 · 세션 훅이 그 저장소 이력으로 저장소가 놓은 파일만 걷고 사람의 파일은 둔다. 두 손이 같은 폴더를 다른 자로 걷지 않게 한다.
+$retiredList = Join-Path $Kit 'deploy.seeds.retired.conf'
+$seedSource = @($homeOwners.Roots | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'deploy.seeds.conf') -PathType Leaf }) | Select-Object -First 1
+if (-not (Test-Path -LiteralPath $retiredList -PathType Leaf)) {
+  Write-Host "  ! 걷은 씨앗 목록이 설치 패키지에 없음 — 홈에 남은 옛 씨앗 폴더를 확인하지 못함 ($retiredList)" -ForegroundColor Red
+  $Fails.Add('걷은 씨앗 목록 (설치 패키지에 없음)')
+} else {
+  $retiredBk = $null
+  foreach ($ln in (Get-Content -LiteralPath $retiredList -Encoding UTF8)) {
+    $rel = (($ln -replace '#.*$', '').Trim()) -replace '/', '\'
+    if (-not $rel) { continue }
+    $at = Join-Path $homeDir $rel
+    if (-not (Test-Path -LiteralPath $at -PathType Container)) { continue }
+    if (@($envAssets | Where-Object { $_.To -ieq $at }).Count) {
+      Write-Host "  ! 걷은 씨앗 $rel — 이 설치가 까는 폴더라 걷지 않음 (설치 패키지의 두 목록이 어긋남)" -ForegroundColor Yellow
+      continue
+    }
+    $owner = $ownedHome[$rel]
+    if (-not $owner) { $owner = $seedSource }
+    if ($owner) {
+      Write-Host "  걷은 씨앗 $rel — 건너뜀 (설정 저장소에서 관리)" -ForegroundColor Green
+      Write-Host "     $owner"
+      continue
+    }
+    if (-not $retiredBk) { $retiredBk = Get-FreePath (Join-Path (Join-Path $homeDir 'backups') ('install-seeds-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))) }
+    $to = Join-Path $retiredBk $rel
+    try {
+      New-Item -ItemType Directory -Path (Split-Path $to -Parent) -Force -ErrorAction Stop | Out-Null
+      Move-Item -LiteralPath $at -Destination $to -ErrorAction Stop
+      Write-Host "  걷은 씨앗 $rel — 더 이상 쓰지 않는 씨앗이라 제거함 (옮긴 위치: $to)" -ForegroundColor Green
+    } catch {
+      Write-Host "  ! 걷은 씨앗 $rel 을 옮기지 못함 — $(Say-Why $_) ($at)" -ForegroundColor Red
+      $Fails.Add("걷은 씨앗 $rel (옮기기)")
+    }
+  }
+}
+
 # ── 씨앗의 판 줄 — 홈 사본이 **어느 판에서 왔나**를 그 자리에 남긴다 ──────────────
 # 홈 사본을 진본으로 믿고 재는 자가 있다(`seeds/check/_check/borrowed_check.py`) — 홈 뿌리는 git 나무가 아니라 판을 물을 데가
 #   없어, 이 줄이 없으면 그 자는 오늘 날짜를 내고 낡은 홈과 견준 초록이 최신처럼 읽힌다.
