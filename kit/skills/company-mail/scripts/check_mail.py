@@ -97,6 +97,7 @@ import mail  # noqa: E402 — 잴 스크립트
 EP = mail.load_ep_session()   # 받는 손의 종료 값 — 형제 스킬 ep-login 의 것
 
 U, OWNER, PEER = fakes_inbox.U, fakes_inbox.OWNER, fakes_inbox.PEER
+HOMONYM_MAIL = fakes_inbox.HOMONYM["email"]
 ME = OWNER["email"]
 COOKIES = WORK / "session.json"
 CALLS = WORK / "standin.log"
@@ -128,7 +129,7 @@ def stage(*, exit_code: int = 0, cookie: str = fakes_inbox.COOKIE[1], left_over:
         COOKIES.write_text(json.dumps({"cookies": session_cookies(left_over)}), encoding="utf-8")
     CALLS.write_text("", encoding="utf-8")
     env = {"MAILBOX_URL": box.url, "MAILBOX_COOKIES": str(WORK / "decoy" / "not-here.json"), "MAIL_DEFAULT_SENDER": ME,
-           "MAIL_HOST": "127.0.0.1", "MAIL_PORT": str(relay.port), "MAIL_USE_TLS": "", "NODE_PATH": str(WORK),
+           "MAIL_ORG_CACHE_DIR": str(WORK / "org"), "MAIL_HOST": "127.0.0.1", "MAIL_PORT": str(relay.port), "MAIL_USE_TLS": "", "NODE_PATH": str(WORK),
            "EP_SESSION_HAND": str(HAND), "STANDIN_EXIT": str(exit_code), "STANDIN_LOG": str(CALLS), "STANDIN_PATH": str(COOKIES),
            "STANDIN_BAD": "1" if bad_path else "", "STANDIN_COOKIES": json.dumps(session_cookies(cookie))}
     saved = {k: os.environ.get(k) for k in env}
@@ -171,6 +172,7 @@ def changing(paths) -> list[str]:
 # ── 읽는 명령은 아무것도 안 바꾼다 ───────────────────────────────────────
 
 def check_reading_commands_change_nothing():
+    C = fakes_inbox.COMPANY
     with stage() as (box, relay, run):
         box.mails[U["ecm"]].attachments += ("보고.docx", "평문.pdf")
         box.mails[U["ecm"]].files.update({"보고.docx": b"DRMONE\x00\x01wrapped", "평문.pdf": b"%PDF-1.7\n"})
@@ -181,7 +183,11 @@ def check_reading_commands_change_nothing():
                  ("read", U["alone"]), ("read", U["f_child"]), ("read", U["ecm"]),
                  ("attachment", U["ecm"], "--save", "all", "--out", str(WORK / "got")),
                  ("preview-reply", U["alone"], "--body-file", body_file("확인했습니다."), "--all"),
-                 ("preview-mark", U["alone"], "--read")]
+                 ("preview-mark", U["alone"], "--read"),
+                 ("people", PEER[1]), ("people", PEER[0], "--exact"), ("org", "소재사업부", "--company", C), ("org", "--tree", "--company", C),
+                 ("org", "소재", "--grade", "차장", "--company", C), ("org-groups", "jobtitle", "--company", C),
+                 ("org-groups", "jobtitle", "일반", "--company", C),
+                 ("people", PEER[1], "--raw")]
         for argv in steps:
             code, out = run(*argv)
             assert code == 0, f"{argv} 가 종료 값 {code}:\n{out}"
@@ -197,14 +203,17 @@ def check_attachments_point_to_the_right_reader():
         code, out = run("attachment", U["ecm"], "--save", "all", "--out", str(WORK / "got"))
         assert code == 0, out
         lines = out.splitlines()
-        assert any("분기 실적.pptx" in x and "company-ecm" in x for x in lines), f"ECM 첨부를 company-ecm 으로 안 보냈다:\n{out}"
+        key = fakes_inbox.ECM_KEY
+        assert any("분기 실적.pptx" in x and f"read {key}" in x and "company-ecm" in x for x in lines), \
+            f"ECM 첨부의 열쇠를 company-ecm 의 read 로 안 넘겼다:\n{out}"
+        assert not any(p.name.startswith("분기 실적") for p in (WORK / "got").iterdir()), "ECM 쪽지를 파일로 남겼다"
         assert any("보고.docx" in x and "drm-office-read" in x for x in lines), f"감긴 첨부를 drm-office-read 로 안 보냈다:\n{out}"
         assert any("평문.pdf" in x and "평문" in x and "drm-office-read" not in x for x in lines), out
         assert (WORK / "got" / "보고.docx").read_bytes() == b"DRMONE\x00\x01wrapped", "받은 첨부 바이트가 다르다"
-        asked = len(box.paths)
         code, out = run("attachment", U["ecm"], "--save", "1")
-        assert code == mail.EXIT_CONFIG and "company-ecm" in out, out
-        assert not any("$FILE" in p for p in box.paths[asked:]), "ECM 첨부를 받으러 갔다"
+        assert code == 0 and f"read {key}" in out and "받았다" not in out, f"ECM 첨부 하나를 고른 판이 열쇠만 내지 않았다:\n{out}"
+        code, out = run("attachment", U["ecm"])
+        assert code == 0 and "--save 1" in out and "company-ecm" in out, f"목록이 ECM 첨부의 열쇠 꺼내는 길을 안 댔다:\n{out}"
 
 
 # ── 찾기 — 메일함 주소는 세션이 대고 · 검색은 임시보관함까지 ─────────────────
@@ -283,6 +292,35 @@ def check_reply_goes_only_with_the_previewed_key():
         plain = msg.get_body(("plain",)).get_content()
         assert plain.startswith(text) and mail.QUOTE_RULE in plain and "<p>" not in plain, plain
         assert not box.changes, "답장이 원래 메일의 읽음을 바꿨다"
+
+
+def check_new_mail_goes_only_with_the_previewed_list():
+    """새 메일 — 받는 사람을 다 펼쳐 이름과 보이고 · 사외 주소는 짚고 · 미리 본 명단 · 내용과 다르면 안 나간다."""
+    team = WORK / "team.txt"
+    team.write_text(f"{PEER[1]}\n# 주석 줄\n{fakes_inbox.TRAINEE['email']}\n{PEER[1]}\n", encoding="utf-8")
+    C = fakes_inbox.COMPANY
+    with stage() as (box, relay, run):
+        args = ("--subject", "주간 회의 안내", "--body-file", body_file("금요일 10시입니다."), "--to-file", str(team),
+                "--cc", fakes_inbox.EXTERNAL, "--company", C)
+        code, out = run("preview-new", *args)
+        assert code == 0 and not relay.mails, out
+        assert "받는 사람 2 명" in out, f"주소 파일의 같은 주소 · 주석을 못 걸렀다:\n{out}"
+        assert f"{PEER[1]} · {PEER[0]} ·" in out, f"받는 사람에 주소록 이름이 안 붙었다:\n{out}"
+        assert "주소록에 없는 주소 1 개" in out and fakes_inbox.EXTERNAL in out, f"사외 주소를 안 짚었다:\n{out}"
+        good = key(out)
+        code, out = run("send-new", *args, "--to", HOMONYM_MAIL, "--confirm", good)
+        assert code == mail.EXIT_STALE and not relay.mails, f"미리 본 것과 다른 명단이 같은 열쇠로 나갔다:\n{out}"
+        code, out = run("send-new", *args, "--confirm", good)
+        assert code == 0, out
+        assert len(relay.mails) == 1, f"한 통이 아니다: {len(relay.mails)}"
+        sent = relay.mails[0]
+        want = [PEER[1], fakes_inbox.TRAINEE["email"], fakes_inbox.EXTERNAL, ME]
+        assert sorted(sent["rcpts"]) == sorted(want), f"봉투가 명단 · 제 사본이 아니다: {sent['rcpts']}"
+        msg = email.message_from_bytes(sent["data"], policy=email.policy.default)
+        assert msg["Subject"] == "주간 회의 안내" and msg["Bcc"] is None and msg["Cc"] == fakes_inbox.EXTERNAL, dict(msg)
+        assert not box.changes, "새 메일이 메일함을 바꿨다"
+        code, out = run("preview-new", "--subject", "x", "--body-file", body_file("x"))
+        assert code == mail.EXIT_CONFIG, f"받는 사람 없이 미리 보기가 섰다:\n{out}"
 
 
 def check_reply_all_takes_the_mails_own_people():

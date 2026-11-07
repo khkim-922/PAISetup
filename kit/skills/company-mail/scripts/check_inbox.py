@@ -177,12 +177,45 @@ OWNER = {"email": "dh.park@nuri.example", "user_name": "박도현", "user_name_e
 PEER = ("서하늘", "hn.seo@nuri.example", "Haneul Seo")
 COLLEAGUE = {**OWNER, "email": PEER[1], "user_name": PEER[0], "user_name_eng": PEER[2], "user_id": "hnseo",
              "key": "CN=서하늘/OU=HN/O=NURI", "empno": "200002", "dept_code": "n310_10", "grade": "차장",
-             "grade_code": "P30", "job_title": "일반", "is_boss": "N"}
-DIRECTORY = (OWNER, COLLEAGUE)
+             "grade_code": "P30", "job_title": "일반", "job_title_code": "J10", "is_boss": "N"}
+# 이름이 같은 다른 사람(다른 부서) · 같은 부서의 퇴직자 — 이름 찾기의 답에 섞여 오는 사람
+HOMONYM = {**COLLEAGUE, "email": "hn.seo2@nuri.example", "user_id": "hnseo2", "key": "CN=서하늘/OU=HN2/O=NURI",
+           "empno": "200003", "dept_name": "기술연구소", "dept_code": "n520_00"}
+RETIRED = {**COLLEAGUE, "email": "old.kim@nuri.example", "user_name": "김지난", "user_id": "oldkim", "key": "CN=김지난/OU=OK/O=NURI",
+           "empno": "199001", "is_retire": "Y"}
+DIRECTORY = (OWNER, COLLEAGUE, HOMONYM, RETIRED)
+# 조직도 — 회사 값 아래 맨 위 부서 둘, 소재사업부 아래 그룹 둘. 칸 이름은 실측 답의 꼴이다(inbox.py 머리말 조직도 줄)
+ORG_DEPTS = (  # (코드, 이름, 깊이, 위 부서 코드 — 회사 값이면 맨 위)
+    ("a100_00(07)", "임원", 1, COMPANY), ("n300_00(07)", "소재사업부", 1, COMPANY),
+    ("n310_00(07)", "소재기획그룹", 2, "n300_00(07)"), ("n320_00(07)", "소재시험그룹", 2, "n300_00(07)"))
+TRAINEE = {**COLLEAGUE, "email": "jw.lee@nuri.example", "user_name": "이지우", "user_id": "jwlee", "key": "CN=이지우/OU=JW/O=NURI",
+           "empno": "200009", "grade": "사원", "job_title": "일반"}
+ORG_MEMBERS = {"a100_00(07)": (OWNER,), "n300_00(07)": (OWNER,), "n310_00(07)": (COLLEAGUE, TRAINEE),
+               "n320_00(07)": (HOMONYM,)}
+GROUPS = {"[07:직책]리더(07)": "리더", "[07:직책]일반(07)": "일반"}
 EXTERNAL = "alex.berg@far-cells.example"
 FOLDER_TOP, FOLDER_CHILD, FOLDER_COMMA, FOLDER_EMPTY = "협력사", "프로젝트\\소재 시험", "소식\\공지, 안내", "회의.2026"
 # SSO 주소를 적은 사내 안내 본문 — 끊긴 세션의 화면이 아니다
 NOTICE = '<p>비밀번호 변경: <a href="http://swpsso.posco.net/idms/U61/jsp/pw.jsp">swpsso.posco.net</a></p>'
+ECM_KEY = "1a2b3c4d5e6f7081"
+# 본문 링크의 OBJECTID 는 머리의 열쇠와 다를 수 있다(잰 29 통 가운데 6) — 링크 쪽 값을 열쇠로 집으면 문다
+ECM_LINK_OBJECT = "99aa88bb77cc66dd"
+
+
+def ecm_note(key: str | None) -> bytes:
+    """ECM 첨부 쪽지 — 잰 꼴(맨 앞 ``<!--@!ECM!@ … -->`` 머리 · 그 뒤 swp_interface.jsp 로 넘기는 본문). 열쇠가 None 이면
+    머리 없는 쪽지다."""
+    def hexed(s: str) -> str:
+        return s.encode().hex()
+    head = ("<!--@!ECM!@<empId>02|usr0123456789abcdef</empId><lineType>01</lineType>"
+            f"<objectId>doc{key}</objectId><totalFileSize>382</totalFileSize><fileName>분기 실적.pptx</fileName>"
+            "<fileSize>382</fileSize><fileType>pptx</fileType>"
+            f"<servletUrl>http://swpecm.posco.net:7091/ECM/servlet/EcmSendFileServlet?DOCID=doc{key}</servletUrl>"
+            "<secretLevelCode>2A</secretLevelCode><sendTime>20261103060000</sendTime>-->\n") if key else ""
+    body = ("<html><body><script>location.href='http://swpecm.posco.net:7091/ECM/swp_interface.jsp?ACTID=viewlink"
+            f"&OBJECTID={hexed(ECM_LINK_OBJECT)}&DOCID={hexed('doc' + (key or '0' * 16))}&SYSID={hexed('pcfma')}';"
+            "</script></body></html>")
+    return (head + body).encode()
 
 
 def scenario():
@@ -197,7 +230,8 @@ def scenario():
                  to_102=f'taeo(강태오), "Berg, Alex"<{EXTERNAL}>, ops@nuri.example'),
         FakeMail(U["ecm"], "분기 실적 자료", "20261103060000", EXTERNAL, "T", html=None, to_102=OWNER["key"],
                  attachments=("분기 실적(pptx_2048KB).html", "메모-표.csv"),
-                 files={"메모-표.csv": "이름,값\n가,1\n".encode() + bytes([0, 255, 13, 10])}),
+                 files={"메모-표.csv": "이름,값\n가,1\n".encode() + bytes([0, 255, 13, 10]),
+                        "분기 실적(pptx_2048KB).html": ecm_note(ECM_KEY)}),
         FakeMail(U["cancelled"], "되돌린 메일", "20261103050000", peer, "T", cancelled=True, to_102=OWNER["key"]),
         FakeMail(U["unmatched"], "옮긴 메일", "20261103040000", peer, "T", to_102=None),
         FakeMail(U["read_one"], "이미 읽은 메일", "20261103030000", peer, "T", unread=False, to_102=OWNER["key"]),
@@ -284,9 +318,34 @@ class FakeDomino:
             page = (f'<html><body><script>var mailserver = "127.0.0.1"; var mailfile = "{DB.lstrip("/")}";'
                     'location.replace("http://" + mailserver + "/" + mailfile + "/FrameNew?openform");</script></body></html>')
             return self.send(h, 200, page.encode(), "text/html; charset=UTF-8")
+        if low.startswith("/common/profile.nsf/ag_tree_dept_json?openagent"):
+            query = urllib.parse.parse_qs(raw.split("&", 1)[1], keep_blank_values=True)
+            under = query.get("dept", [""])[0]
+            rows = [{"type": "dept", "key": c, "dept_name": n, "dept_name_eng": n, "dept_code": c, "depth": str(d),
+                     "has_child": "Y" if any(p == c for *_, p in ORG_DEPTS) else "",
+                     "email": f"dept_{c}@nuri.example"} for c, n, d, p in ORG_DEPTS if p == under]
+            return self.send(h, 200, json.dumps({"result": rows}, ensure_ascii=False).encode(), "text/html")
+        if low.startswith("/common/profile.nsf/ag_tree_user_json?openagent"):
+            query = urllib.parse.parse_qs(raw.split("&", 1)[1], keep_blank_values=True)
+            people = [{k: v for k, v in u.items() if k not in ("dept_code", "is_retire")} | {"type": "user"}
+                      for u in ORG_MEMBERS.get(query.get("dept", [""])[0], ())]
+            rows = people or [{"type": "nothing"}]
+            return self.send(h, 200, json.dumps({"result": rows}, ensure_ascii=False).encode(), "text/html")
+        if low.startswith("/common/lib_f.nsf/aggetdistribute?openagent"):
+            name = urllib.parse.parse_qs(raw.split("&", 1)[1]).get("groupname", [""])[0]
+            title = GROUPS.get(name)
+            members = [{"type": "user", "fullname": u["key"], "name": u["user_name"], "grade": u["grade"],
+                        "deptname": u["dept_name"], "email": u["email"]}
+                       for u in DIRECTORY if title and u.get("job_title") == title]
+            return self.send(h, 200, json.dumps({"result": "ok" if title else "fail", "memberlist": members},
+                                                ensure_ascii=False).encode(), "application/json")
         if low.startswith("/common/profile.nsf/ag_org_search_json?openagent"):
             query = urllib.parse.parse_qs(raw.split("&", 1)[1] if "&" in raw else "", keep_blank_values=True)
+            if query.get("type") == ["group"]:
+                rows = [{"type": "group", "key": k, "group_name": n} for k, n in GROUPS.items()]
+                return self.send(h, 200, json.dumps({"group": rows}, ensure_ascii=False).encode(), "text/html")
             key = query.get("search_key", [""])[0].casefold()
+            # 이름 · 메일 · 사번으로 찾는다 — 부서 이름으로는 사람이 안 온다(실측)
             users = [p for p in DIRECTORY if key and key in (p["email"], p["user_name"], p["empno"])]
             return self.send(h, 200, json.dumps({"dept": [], "user": users, "total": len(users)},
                                                 ensure_ascii=False).encode(), "text/html; charset=UTF-8")
@@ -626,7 +685,15 @@ def check_attachments_direct_bytes_and_ecm_names():
         assert mailbox.attachment(U["ecm"], memo.listed) == want, "목록의 이름 그대로 받는 길이 다르다"
         asked = len(box.paths)
         raises(inbox.MailboxConfigError, lambda: mailbox.attachment(e, ecm))
-        assert len(box.paths) == asked, "ECM 첨부를 받으러 갔다"
+        raises(inbox.MailboxConfigError, lambda: mailbox.ecm_key(e, memo))
+        assert len(box.paths) == asked, "ECM 첨부의 바이트를 내러 · ECM 아닌 첨부의 열쇠를 꺼내러 서버에 갔다"
+        assert mailbox.ecm_key(e, ecm) == ECM_KEY, "ECM 첨부의 열쇠가 머리 objectId 가 아니다"
+        assert mailbox.ecm_key(U["ecm"], ecm.listed) == ECM_KEY, "목록의 이름 그대로 꺼내는 길이 다르다"
+        box.mails[U["ecm"]].files[ecm.listed] = ecm_note(None)
+        missing = raises(inbox.MailboxError, lambda: mailbox.ecm_key(e, ecm))
+        assert type(missing) is inbox.MailboxError, f"머리 없는 쪽지를 {type(missing).__name__} 로 읽었다"
+    with stage(session="login") as (_, mailbox):
+        raises(inbox.SessionExpired, lambda: mailbox.ecm_key(U["ecm"], "분기 실적(pptx_2048KB).html"))
 
 
 def check_sent_list_recipients():
@@ -654,7 +721,72 @@ def check_directory_and_session_probe():
     # 새 칸 셋은 기본값이 있다 — 칸 셋 없이 한 사람을 짓던 쪽이 그대로 선다
     bare = inbox.DirectoryPerson(email="", name="", name_eng="", notes="", user_id="", empno="", dept="", grade="",
                                  job_title="", company="", retired=False)
-    assert (bare.dept_code, bare.grade_code, bare.is_boss) == ("", "", False), bare
+    assert (bare.dept_code, bare.grade_code, bare.is_boss, bare.job_title_code) == ("", "", False, ""), bare
+
+
+def check_exact_lookup_picks_only_that_person():
+    """이름 찾기의 답에는 동명이인이 섞인다 — 주소 · Notes 이름 · ID 로는 그 한 사람만, 이름으로는 같은 이름 모두를 낸다."""
+    with stage() as (box, mailbox):
+        def emails(handle):
+            return sorted(p.email for p in mailbox.find_exact(handle, COMPANY))
+        assert emails(PEER[1].upper()) == [PEER[1]], emails(PEER[1].upper())
+        assert emails(COLLEAGUE["key"]) == [PEER[1]], "Notes 이름으로 찾았는데 동명이인이 섞였다"
+        assert emails("서하늘/hn/nuri") == [PEER[1]], "약식 Notes 이름이 정식과 같은 사람에 닿지 않는다"
+        assert emails(f"{COLLEAGUE['user_id']}({PEER[0]})") == [PEER[1]], "ID 꼴로 찾았는데 그 사람만이 아니다"
+        assert emails(PEER[0]) == sorted([PEER[1], HOMONYM["email"]]), "이름으로는 같은 이름이 다 나와야 가를 수 있다"
+        assert emails(EXTERNAL) == [] and emails("  ") == [], "밖의 주소 · 빈 꼴에 사람이 나왔다"
+        assert len(mailbox.find_people(PEER[0], COMPANY)) == 2, "대역이 동명이인을 안 섞어 이 검사가 안 문다"
+
+
+def check_level_floor_stays_inside_its_track():
+    """등급 거르기 — 같은 갈래 안에서만 위아래 · 두 자리 등급(P10)을 글자 차례로 안 읽는다 · 등급 없는 직급은 빠진다."""
+    def at(code, floor):
+        p = inbox.DirectoryPerson(email="", name="", name_eng="", notes="", user_id="", empno="", dept="", grade="",
+                                  job_title="", company="", retired=False, grade_code=code)
+        return inbox.level_at_least(p.level, floor)
+    assert at("26", "P5") and at("27", "p5") and at("31", "P5"), "리더 · 부장 · 사장이 P5 이상에 안 들었다"
+    assert not at("21", "P5"), "P4(차장)가 P5 이상에 들었다"
+    assert not at("32", "P5"), "E7 이 P 갈래 거르기에 들었다"
+    assert not at("45", "P1") and not at("", "E1"), "등급 없는 직급이 걸렀는데 남았다"
+    raises(inbox.MailboxConfigError, lambda: at("26", "리더"))
+
+
+def check_category_is_passed_through():
+    with stage() as (box, mailbox):
+        mailbox.find_people(PEER[1], COMPANY)
+        mailbox.directory_answer(PEER[1], COMPANY, category="dept")
+        asked = [urllib.parse.parse_qs(p.split("&", 1)[1], keep_blank_values=True)
+                 for p in box.paths if "ag_org_search_json" in p]
+        assert asked[-1].get("category") == ["dept"], "category 칸이 주소록에 안 실렸다"
+        assert all(q.get("category") == [""] for q in asked[:-1]), "category 를 안 줬는데 빈 값이 아니다"
+
+
+def check_org_chart_walks_the_tree_and_keeps_subtree_people():
+    """조직도 — 나무를 끝까지 펼치고, 부서의 사람은 하위 조직까지 · 두 부서에 든 사람은 한 번 · 바로 든 사람만도 낸다."""
+    with stage() as (box, mailbox):
+        chart = mailbox.org_snapshot(COMPANY)
+        assert sorted(chart.depts) == sorted(c for c, *_ in ORG_DEPTS), chart.depts
+        top = chart.find_depts("소재 사업부")
+        assert [d.code for d in top] == ["n300_00(07)"], "띄어쓰기를 가려 부서를 못 찾았다"
+        assert len(chart.find_depts("소재")) == 3, "이름 일부로 찾은 부서가 다르다"
+        assert [d.name for d in chart.path("n310_00(07)")] == ["소재사업부", "소재기획그룹"]
+        deep = sorted(p.email for p in chart.people("n300_00(07)"))
+        assert deep == sorted([OWNER["email"], PEER[1], TRAINEE["email"], HOMONYM["email"]]), deep
+        assert [p.email for p in chart.people("n300_00(07)", deep=False)] == [OWNER["email"]]
+        assert len(chart.people()) == 4, "임원 · 본부 두 곳에 든 사람이 둘로 셌다"
+        assert chart.people("n310_00(07)")[0].dept_code == "n310_00(07)", "구성원의 부서 코드가 그 부서가 아니다"
+        assert chart.members["n320_00(07)"] and not chart.members.get("없음"), chart.members
+        groups = mailbox.org_groups(COMPANY, "jobtitle")
+        assert [n for _, n in groups] == list(GROUPS.values()), groups
+        members = mailbox.group_members("[07:직책]리더(07)")
+        assert members == [] , members
+        assert [m[3] for m in mailbox.group_members("[07:직책]일반(07)")] == \
+            [p["email"] for p in DIRECTORY if p.get("job_title") == "일반"]
+        raises(inbox.MailboxError, lambda: mailbox.group_members("없는 그룹"))
+        raises(inbox.MailboxConfigError, lambda: mailbox.org_groups(COMPANY, "team"))
+        raises(inbox.DirectoryGap, lambda: mailbox.org_snapshot("없는회사(99)"))
+    with stage(session="login") as (_, mailbox):
+        raises(inbox.SessionExpired, lambda: mailbox.org_snapshot(COMPANY))
 
 
 # ── 끊긴 세션 · 설정 ──────────────────────────────────────────────────────

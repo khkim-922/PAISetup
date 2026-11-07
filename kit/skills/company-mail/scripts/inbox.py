@@ -23,7 +23,9 @@
                 html = box.body(mail)                   # HTML 본문 — 꼴과 상관없이 한 길 · 없거나 서버가 안 주면 None
                 text = box.body(mail, "text")           # 평문 조각 — 없으면 None
                 for a in mail.attachments:
-                    if not a.ecm:                       # ECM 첨부는 이름 · 확장자 · 크기만 있다
+                    if a.ecm:                           # 문서함(ECM)을 가리키는 쪽지 — 문서는 문서함에 있다
+                        key = box.ecm_key(mail, a)      # 문서 열쇠(16 hex) — 스킬 company-ecm 이 연다
+                    else:
                         data = box.attachment(mail, a)  # bytes
 
         for folder in box.folders():                    # 쓰는 사람이 지은 폴더 — 시스템 폴더는 안 낸다
@@ -34,6 +36,12 @@
         total, rows = box.search("워크샵", scope="all", field="subject")   # 웹메일 검색 — (모두 건수, 이 쪽의 Found)
         lists = box.recipient_lists(count=600)          # unid → 받는 사람 목록 · 보기가 없으면 None
         people = box.find_people("me@company.com", "<회사>(<코드>)")   # 사내 주소록 — 밖의 주소는 빈 목록
+        one = box.find_exact("CN=홍길동/OU=…/O=…", "<회사>(<코드>)")    # 그 주소 · Notes 이름 · ID 의 사람만 — 하나면 그 사람
+        raw = box.directory_answer("홍길동", "<회사>(<코드>)")         # 주소록 답 그대로(dict) — 꼴을 재는 자리
+        chart = box.org_snapshot("<회사>(<코드>)")                     # 회사 조직 전체(OrgChart) — 부서 나무 · 부서마다 사람
+        team = chart.people(chart.find_depts("소재사업실")[0].code)    # 그 부서와 하위 조직의 사람
+        groups = box.org_groups("<회사>(<코드>)", "jobtitle")          # 배포그룹(직책) — (열쇠, 이름)
+        members = box.group_members(groups[0][0])                     # 그 배포그룹의 (이름, 직급, 부서, 메일)
         box.session_alive()                             # 메일을 안 건드리는 세션 확인
 
     주소 · 쿠키 파일을 환경변수 대신 바로 줄 때는 ``inbox.Mailbox(url, cookies_file)`` 다. 메일함 주소를 모르면 세션으로
@@ -43,7 +51,7 @@
     목록은 ``Entry`` · ``SentEntry`` 를, 폴더는 ``Folder`` 를, 모든편지함은 ``Marks`` 를, 받는 사람 목록은 ``Recipient``
     묶음을, 주소록은 ``DirectoryPerson`` 을 낸다. 보낸 사람은 ``Sender``(이름 · 주소 · 영문 이름), 첨부 이름은
     ``AttachmentName`` 이다. 시각은 메일함이 준 글자 그대로 낸다 — 시각으로 푸는 일은 부르는 쪽이 한다. ``body`` 는 글자,
-    ``attachment`` 는 bytes 를 낸다.
+    ``attachment`` 는 bytes, ``ecm_key`` 는 문서함 문서의 열쇠(16 hex 글자)를 낸다.
 
     세션이 끊겼으면 ``SessionExpired`` — 스킬 ep-login 으로 다시 로그인해 쿠키를 새로 남기라는 뜻이다. 읽기 길이 메일함을 바꿀 주소(또는
     읽기 전용으로 잰 꼴 밖의 주소)를 지으려 하면 ``ChangeRefused``. 설정 · 인자가 틀리면 ``MailboxConfigError``, 서버가
@@ -86,7 +94,10 @@
       모른다) — 404 와 같이 「본문 없음」(None)으로 낸다. 오류로 올리면 메일함을 훑는 회차가 그 한 통에 통째로 진다 (N-가). 조각 ``/Body/M1.1?OpenElement`` 는 평문 · HTML 둘을 든 메일의 평문이다. 다른 꼴(``multipart/related`` 는 본문이
       ``M1.1.1``)의 ``M1.1`` 은 안 쟀다 — 그 자리에 ``text/plain`` 이 아닌 것이 오면 평문 조각은 없는 것으로 낸다 (A)
     * 첨부 이름은 ``attachment`` 열에 ``{}`` 로 이어 온다. 큰 첨부는 ECM 을 가리키는 ``<원래 이름>(<확장자>_<크기>KB).html``
-      이고, 그 파일은 받지 않는다(이름 · 확장자 · 크기만 쓴다 — 파일은 ECM 화면에서만 받아진다)
+      이다. 그 html 은 문서가 아니라 쪽지다 — 같은 ``$FILE`` 주소로 받아지고, 맨 앞 주석 ``<!--@!ECM!@ … -->`` 안의
+      ``<objectId>doc<16 hex></objectId>`` 에서 ``doc`` 을 뗀 값이 문서함이 문서를 여는 열쇠다(``MS_OBJECT_ID`` · 받은편지함
+      ECM 첨부 29 통 모두 머리가 있었고 pptx · xlsx 23 편이 그 열쇠로 열렸다 · 남의 문서함 문서도 · mail-secretary#28 셋째 판).
+      본문 링크의 ``OBJECTID`` 는 6/29 가 이 값과 달라 열쇠로 쓰지 않는다
     * 받은편지함 보기(``XML_Inbox``)는 받은편지함만 든다 — 쓰는 사람의 규칙이 하위 폴더로 옮긴 메일은 그 폴더의 보기에만 있다 (A2)
     * 폴더 목록은 보기 목록(``/api/data/collections``)의 ``@folder: true`` 항목이다. 시스템 폴더(``($Inbox)`` · ``($Trash)`` ·
       ``(Drafts)`` · ``(Sent)`` · ``($Alarms)`` · ``(TrashBackup)`` · ``(규칙)`` · ``(폴더템플릿)``)는 제목이 ``(`` 로 시작한다.
@@ -115,7 +126,17 @@
       (임시보관함 · 휴지통은 빈 칸 · 받은편지함은 ``[${INBOX}]`` · 보낸편지함은 ``[${SENT}]`` — 메일함마다 같은 시스템 표지다),
       시각은 UTC 다. 낱말은 고른 말 그대로 맞춘다 — 「워크샵」과 「워크숍」은 다른 말이다
     * 주소록 ``/common/profile.nsf/ag_org_search_json?OpenAgent`` 는 이름 · 메일 · 사번으로 찾고 밖의 주소는 0건이다.
-      ``company`` 는 조직도 고름 상자의 값(``<회사>(<코드>)``)이고 메일함마다 다르다
+      답은 ``{dept, user, total}`` 이다. ``company`` 는 조직도 고름 상자의 값(``<회사>(<코드>)``)이고 메일함마다 다르다.
+      ``key`` 가 그 사람의 Notes 이름이다 — 주소로 찾은 40 / 40 · ``CN=`` 이름으로 찾은 30 / 30 이 맞았다. 부서 이름을
+      ``search_key`` 로 주면 사람은 0 명이고 이름이 든 부서들만 ``dept`` 에 온다. 직급 · 직책 이름으로는 0 건이다
+    * 조직도는 웹메일 받는 사람 고름 창의 손 둘이다(``orgtree.js``). ``ag_tree_dept_json`` 은 ``dept=<부서 코드>`` 의 바로 아래
+      부서들(``result[]`` · ``key`` 가 코드 · ``depth`` · ``has_child`` · 부서 메일 주소)이고 ``dept`` 에 회사 값을 주면 맨 위
+      부서다. ``ag_tree_user_json`` 은 그 부서에 바로 든 사람이다(하위 부서는 안 든다 · 칸은 주소록 찾기와 같고 ``dept_code`` ·
+      퇴직 칸이 없다 · 비면 ``type`` 이 ``nothing`` 인 한 줄). 본부장은 「임원」과 제 본부에 함께 든다. 전사 189 부서 ·
+      3,388 명을 받는 데 15 초다(2026-11-07)
+    * 배포그룹은 ``ag_org_search_json`` 의 ``type=group`` · ``group_type`` (직책 · 직급 · 지역)이 목록(``group[]`` · ``key`` 는
+      ``[02:직책]리더(02)`` 꼴)을, ``/common/lib_f.nsf/agGetDistribute?openagent&groupname=<key>`` 가 구성원(``memberlist[]``
+      — 이름 · 직급 · 부서 · 메일)을 준다. 개인 주소록은 ``type=private`` 이다(이 메일함은 비었다)
     * 세션 확인 ``/common/lib_f.nsf/checksessionstatus?Openpage`` → ``{"status":"login"}`` — 웹메일이 수십 초마다 부르는
       주소이고 메일을 안 건드린다. 세션이 끊긴 때의 이 주소의 답은 안 쟀다 — 그 꼴이 아니면 다 「끊겼다」로 본다 (C)
     * 읽음으로는 ``/<db>/XML_Inbox/<unid>?OpenDocument``, 안 읽음으로는 ``/<db>/ag_read_cancel?OpenAgent&docid=<unid>&imapuser=0``
@@ -136,6 +157,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 DEFAULT_COOKIES = "~/.mailbox-session.json"
@@ -180,6 +202,9 @@ ATTACHMENT_SEPARATOR = "{}"
 SPLIT_MARK, ENG_MARK = "-=spl=-", "-ENG-"
 # ECM 을 가리키는 큰 첨부 — <원래 이름>(<확장자>_<크기>KB).html
 ECM_ATTACHMENT = re.compile(r"^(?P<name>.+)\((?P<ext>[0-9A-Za-z]+)_(?P<kb>\d+)KB\)\.html$", re.IGNORECASE)
+# 그 쪽지 맨 앞의 기계가 읽는 머리와, 그 안의 문서 열쇠 — 열쇠는 ``doc`` 뒤의 16 hex 다
+ECM_HEAD = re.compile(r"<!--@!ECM!@(?P<head>.*?)-->", re.DOTALL)
+ECM_OBJECT = re.compile(r"<objectId>\s*doc(?P<key>[0-9A-Fa-f]{16})\s*</objectId>")
 
 # 본문 — HTML 은 꼴과 상관없는 한 길, 평문은 조각 하나
 BODY_KINDS = ("html", "text")
@@ -187,6 +212,29 @@ BODY_TEXT_PART = "M1.1"
 
 # 주소록의 예 · 아니오 칸(퇴직 · 장 여부)이 참인 값
 DIRECTORY_YES = ("Y", "1", "TRUE")
+# 직급 코드(``grade_code``) → 인사 등급. P 는 직원 · 임원 1–10, E 는 현장 직군 1–7 — 같은 글자 안에서만 위아래가 선다.
+# 원본은 사람이 준 인사 등급표(직급명 · 직책명 · 직급명칭명)이고, 코드와의 짝은 2026-11-07 전사 조직도에서 직급명칭명 ·
+# 직책 구성이 표와 맞는 것으로 맞췄다. 29 · 30(둘 다 「임원」)과 34 · 35(둘 다 「과장」)의 차례는 직책 구성과 코드 차례로 고른 것이다.
+# 연구직(45–49) · 소장(44) · 이사(10) · 고문 · 외주직은 표에 없어 등급이 없다
+GRADE_LEVELS = {
+    "24": "P1", "23": "P2", "22": "P3", "21": "P4", "26": "P5", "27": "P6", "28": "P7", "29": "P8", "30": "P9", "31": "P10",
+    "43": "E1", "42": "E2", "36": "E3", "35": "E4", "34": "E5", "33": "E6", "32": "E7",
+}
+LEVEL_FORM = re.compile(r"^([A-Z])(\d+)$")
+DIRECTORY_PATH = "/common/profile.nsf/ag_org_search_json?OpenAgent"
+# 조직도 — 웹메일 받는 사람 고름 창이 부르는 손(orgtree.js · org_mail.js). 나무는 부서 코드 → 자식 부서, 구성원은 부서 코드 →
+# 그 부서에 바로 든 사람, 배포그룹은 그룹 열쇠 → 구성원이다
+ORG_DEPT_PATH = "/common/profile.nsf/ag_tree_dept_json?OpenAgent"
+ORG_USER_PATH = "/common/profile.nsf/ag_tree_user_json?OpenAgent"
+DISTRIBUTE_PATH = "/common/lib_f.nsf/agGetDistribute?openagent"
+ORG_TREE_TYPE = "org"            # 고름 창의 「내 조직」 — 패밀리사 · 파트너사는 안 든다
+ORG_EMPTY = "nothing"            # 구성원이 없는 부서의 답은 이 type 한 줄이다
+GROUP_KINDS = ("jobtitle", "grade", "location")   # 배포그룹 탭의 고름 상자 값 — 직책 · 직급 · 지역(이 회사 코드의 꼴)
+ORG_WORKERS = 8                  # 나무 · 구성원을 함께 묻는 수 — 전사 189 부서 · 3,388 명이 17 초다
+DUTY_SEPARATOR = "||"            # 업무 칸은 「업무||근무 꼴||휴무」 — 앞 조각이 업무다
+# 받는 사람 목록이 사람을 드는 꼴 — Notes 이름(``CN=…/OU=…`` 또는 약식 ``이름/OU/O``) · ID(``<영문ID>(<약칭>)``)
+NOTES_MARK = "CN="
+ID_FORM = re.compile(r"^\s*([^\s()/@]+)\s*\(([^()]+)\)\s*$")
 
 # ⚠ 읽음 표시를 바꾸는 명령 — 읽기 길은 이 주소를 짓지 않고, 지으려 하면 서버에 닿기 전에 막는다
 MARKS_AS_READ = re.compile(r"[?&](opendocument|editdocument)\b", re.IGNORECASE)
@@ -208,6 +256,11 @@ class MailboxConfigError(MailboxError):
 
 class SessionExpired(MailboxError):
     """세션이 끊겼다 — 다시 로그인해 쿠키 파일을 새로 남긴다(스킬 ep-login)."""
+
+
+class DirectoryGap(MailboxError):
+    """조직도가 물은 것을 못 줬다 — 회사 값으로 부서가 하나도 안 왔다. 빈 조직이 아니라 묻는 꼴이 틀린 쪽이다(조직도는 회사
+    부서를 다 든다)."""
 
 
 class ChangeRefused(MailboxError):
@@ -240,7 +293,8 @@ class Recipient:
 
 @dataclass(frozen=True)
 class AttachmentName:
-    """목록의 첨부 이름 하나. ECM 첨부면 ``ecm`` 이 참이고 원래 이름 · 확장자 · 크기를 이름에서 뽑는다 — 파일은 받지 않는다.
+    """목록의 첨부 이름 하나. ECM 첨부면 ``ecm`` 이 참이고 원래 이름 · 확장자 · 크기를 이름에서 뽑는다 — 문서는 문서함에 있고
+    ``Mailbox.ecm_key`` 가 그 열쇠를 꺼낸다.
 
     ``listed`` 는 목록이 준 글자 그대로다 — ``Mailbox.attachment`` 에는 이 값이나 이것 자체를 넘긴다.
     """
@@ -325,7 +379,8 @@ class Found:
 class DirectoryPerson:
     """사내 주소록의 한 사람. ``notes`` 는 Notes 이름(``key``) — 받는 사람 목록에서 그 사람을 알아보는 열쇠다.
 
-    ``dept_code`` · ``grade_code`` 는 주소록이 준 글자 그대로, ``is_boss`` 는 주소록의 장 여부다.
+    ``dept_code`` · ``grade_code`` · ``job_title_code`` 는 주소록이 준 글자 그대로, ``is_boss`` 는 주소록의 장 여부다.
+    ``grade`` 는 직급(차장 · 상무보 …), ``job_title`` 은 직책(일반 · 리더 · 그룹장 …)이다.
     """
     email: str
     name: str
@@ -341,6 +396,34 @@ class DirectoryPerson:
     dept_code: str = ""
     grade_code: str = ""
     is_boss: bool = False
+    job_title_code: str = ""
+    location: str = ""
+    duty: str = ""
+
+    @property
+    def level(self) -> str:
+        """인사 등급(``P5`` · ``E3`` …) — 표에 없는 직급이면 빈 글자."""
+        return GRADE_LEVELS.get(self.grade_code, "")
+
+
+def level_at_least(level: str, floor: str) -> bool:
+    """``level`` 이 ``floor`` 와 같은 갈래(P · E)이고 그 이상인가. 등급이 없으면 거짓이다."""
+    a, b = LEVEL_FORM.match(level or ""), LEVEL_FORM.match(floor.strip().upper())
+    if not b:
+        raise MailboxConfigError(f"등급은 P5 · E3 꼴이다: {floor!r}")
+    return bool(a) and a.group(1) == b.group(1) and int(a.group(2)) >= int(b.group(2))
+
+
+@dataclass(frozen=True)
+class Dept:
+    """조직도의 한 부서. ``code`` 는 ``<코드>(<회사 약칭>)`` 꼴의 열쇠, ``parent`` 는 위 부서의 코드(맨 위 부서는 회사 값)다.
+    ``email`` 은 그 부서 자체로 가는 주소다."""
+    code: str
+    name: str
+    depth: int
+    parent: str
+    has_child: bool
+    email: str
 
 
 # ── 세션 ─────────────────────────────────────────────────────────────────
@@ -417,18 +500,7 @@ class Mailbox:
         # 리다이렉트를 따라가지 않는다 — 끊긴 세션은 SSO 로 보내는데, 따라가면 쿠키가 SSO 에 실린다
         self._opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(jar), _NoRedirect())
-        db = re.escape(self.db_path)
-        # 읽기 길이 물을 수 있는 주소 꼴 — 다 읽음을 안 바꾸는 것으로 잰 꼴이다. 닫힌 목록이라 새 꼴은 여기에 더해야 묻는다
-        self._read_only = tuple(re.compile(p, re.IGNORECASE) for p in (
-            rf"^{db}/[^/?]+\?ReadViewEntries(&[\w$%.=-]*)*$",
-            rf"^{db}/api/data/collections$",
-            rf"^{db}/0/{_HEX32}/Body\?OpenField$",
-            rf"^{db}/0/{_HEX32}/Body/M\d+(\.\d+)*\?OpenElement$",
-            rf"^{db}/0/{_HEX32}/\$FILE/[^?#]+$",
-            rf"^{db}/{SEARCH_AGENT}\?open(&[\w$%.()+=-]*)*$",
-            r"^/common/lib_f\.nsf/checksessionstatus\?Openpage$",
-            r"^/common/profile\.nsf/ag_org_search_json\?OpenAgent(&[\w$%.()+=-]*)*$",
-        ))
+        self._read_only = read_only_patterns(self.db_path)
 
     @classmethod
     def from_env(cls) -> Mailbox:
@@ -669,17 +741,37 @@ class Mailbox:
     def attachment(self, mail: Entry | str, name: AttachmentName | str) -> bytes:
         """메일에 바로 붙은 첨부 하나를 바이트 그대로 받는다. ``name`` 은 ``AttachmentName`` 이나 목록이 준 이름 그대로다.
 
-        ECM 첨부(``AttachmentName.ecm``)는 받지 않는다 — ``MailboxConfigError``.
+        ECM 첨부(``AttachmentName.ecm``)는 문서가 아니라 문서함을 가리키는 쪽지라 바이트로 내지 않는다 — ``MailboxConfigError``.
+        그 문서는 ``ecm_key`` 가 꺼낸 열쇠로 연다.
         """
-        unid = _unid(mail)
         listed = name.listed if isinstance(name, AttachmentName) else name
         if ECM_ATTACHMENT.match(listed):
-            raise MailboxConfigError("ECM 첨부는 받지 않는다 — 이름 · 확장자 · 크기만 쓴다")
-        data, content_type = self._get(f"/0/{unid}/$FILE/{urllib.parse.quote(listed)}")
+            raise MailboxConfigError("ECM 첨부는 문서함을 가리키는 쪽지다 — ecm_key 로 문서 열쇠를 꺼내 문서함에서 연다")
+        data, content_type = self._get(f"/0/{_unid(mail)}/$FILE/{urllib.parse.quote(listed)}")
         if "text/html" in content_type.lower() and _looks_like_login(data.decode("utf-8", "replace")):
             raise SessionExpired("첨부 대신 로그인 페이지가 왔다 — 다시 로그인한다")
         log.info("첨부: %d bytes", len(data))
         return data
+
+    def ecm_key(self, mail: Entry | str, name: AttachmentName | str) -> str:
+        """ECM 첨부 하나가 가리키는 문서함 문서의 열쇠(16 hex 글자)를 낸다 — 쪽지를 받아 그 머리에서 꺼낸다.
+
+        ECM 첨부가 아니면 ``MailboxConfigError``. 쪽지에 머리나 열쇠가 없으면 ``MailboxError`` — 꼴이 바뀌었거나 다른 쪽지다.
+        """
+        listed = name.listed if isinstance(name, AttachmentName) else name
+        if not ECM_ATTACHMENT.match(listed):
+            raise MailboxConfigError(f"ECM 첨부가 아니다 — attachment 로 받는다: {listed!r}")
+        # 머리를 먼저 본다 — 쪽지는 다른 주소로 넘기는 스크립트 페이지라, 로그인 화면 판정은 머리가 없을 때만 한다
+        data, _ = self._get(f"/0/{_unid(mail)}/$FILE/{urllib.parse.quote(listed)}")
+        text = data.decode("utf-8", "replace")
+        head = ECM_HEAD.search(text)
+        found = ECM_OBJECT.search(head.group("head")) if head else None
+        if not found:
+            if _looks_like_login(text):
+                raise SessionExpired("ECM 첨부 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+            raise MailboxError("ECM 첨부의 머리에 문서 열쇠(objectId)가 없다 — 쪽지 꼴이 잰 것과 다르다")
+        log.info("ECM 첨부: 열쇠를 꺼냈다")
+        return found.group("key")
 
     def session_alive(self) -> bool:
         """메일을 안 건드리고 세션이 살아 있나 묻는다 — 웹메일이 수십 초마다 부르는 주소다. 살아 있으면 참.
@@ -696,17 +788,18 @@ class Mailbox:
             return False
         return isinstance(answer, dict) and answer.get("status") == "login"
 
-    def find_people(self, search_key: str, company: str) -> list[DirectoryPerson]:
-        """사내 주소록에서 이름 · 메일 · 사번으로 찾는다. 밖의 주소는 빈 목록이다 — 「사내 사람인가」로도 쓴다.
+    def directory_answer(self, search_key: str, company: str, *, category: str = "") -> dict:
+        """사내 주소록의 답을 그대로 낸다(``{dept, user, total}``) — 주소록에 묻는 한 길이고, 안 잰 꼴을 회사에서 재는 자리다.
 
-        ``company`` 는 조직도 고름 상자의 값(``<회사>(<코드>)``)이고 메일함마다 다르다 — 부르는 쪽이 설정에서 넘긴다.
+        ``company`` 는 조직도 고름 상자의 값(``<회사>(<코드>)``)이고 메일함마다 다르다 — 부르는 쪽이 설정에서 넘긴다. ``category`` 는
+        웹메일이 빈 값으로 보내는 칸이다(무엇을 가르나는 안 쟀다). 답이 dict 가 아니면 ``MailboxError``.
         """
         if not search_key.strip() or not company.strip():
             raise MailboxConfigError("주소록 찾기에는 찾을 말과 회사 값이 다 있어야 한다")
         query = urllib.parse.urlencode({
-            "type": "org", "dbpath": self.db_path.lstrip("/"), "company": company, "category": "",
+            "type": "org", "dbpath": self.db_path.lstrip("/"), "company": company, "category": category,
             "search_key": search_key, "date": str(int(time.time() * 1000))}, safe="()")
-        data, kind = self._get_server(f"/common/profile.nsf/ag_org_search_json?OpenAgent&{query}")
+        data, kind = self._get_server(f"{DIRECTORY_PATH}&{query}")
         text = data.decode(_charset(kind), errors="replace")
         try:
             answer = json.loads(text)
@@ -714,15 +807,96 @@ class Mailbox:
             if _looks_like_login(text):
                 raise SessionExpired("주소록 대신 로그인 페이지가 왔다 — 다시 로그인한다") from exc
             raise MailboxError(f"주소록 JSON 을 못 읽었다: {exc}") from exc
-        users = answer.get("user", []) if isinstance(answer, dict) else []
-        return [DirectoryPerson(
-            email=u.get("email") or "", name=u.get("user_name") or "", name_eng=u.get("user_name_eng") or "",
-            notes=u.get("key") or "", user_id=u.get("user_id") or "", empno=str(u.get("empno") or ""),
-            dept=u.get("dept_name") or "", grade=u.get("grade") or "", job_title=u.get("job_title") or "",
-            company=u.get("company_name") or "", retired=str(u.get("is_retire") or "").upper() in DIRECTORY_YES,
-            dept_code=u.get("dept_code") or "", grade_code=u.get("grade_code") or "",
-            is_boss=str(u.get("is_boss") or "").upper() in DIRECTORY_YES)
-            for u in users if isinstance(u, dict)]
+        if not isinstance(answer, dict):
+            raise MailboxError(f"주소록 답이 {{dept, user, total}} 꼴이 아니다: {type(answer).__name__}")
+        return answer
+
+    def find_people(self, search_key: str, company: str, *, category: str = "") -> list[DirectoryPerson]:
+        """사내 주소록에서 이름 · 메일 · 사번으로 찾는다. 밖의 주소는 빈 목록이다 — 「사내 사람인가」로도 쓴다."""
+        users = self.directory_answer(search_key, company, category=category).get("user") or []
+        return [_person(u) for u in users if isinstance(u, dict)]
+
+    def find_exact(self, handle: str, company: str) -> list[DirectoryPerson]:
+        """받는 사람 목록 · 보낸 사람의 한 꼴로 그 사람만 찾는다 — 주소면 메일이, Notes 이름이면 ``key`` 의 견줄 꼴이, ID
+        (``<영문ID>(<약칭>)``)면 ``user_id`` 가 같은 사람만 낸다. 하나면 그 사람이고, 둘 넘게면 잇지 않는다(부르는 쪽이 가른다).
+        이름 · 사번은 그 글자가 같은 사람이다 — 같은 이름이 여럿이면 다 낸다. 찾을 말을 못 짓는 꼴이면 빈 목록이다.
+
+        이름 찾기의 답에는 이름이 같은 다른 사람과 이름에 그 글자가 든 사람이 섞여 온다 — 이 걸러내기 없이 첫 줄을 쓰면 다른
+        사람에게 간다.
+        """
+        query = directory_query(handle)
+        if query is None:
+            return []
+        word, same = query
+        return [p for p in self.find_people(word, company) if same(p)]
+
+    # ── 조직도 — 웹메일 고름 창의 나무 · 구성원 · 배포그룹 ───────────────────────────────
+
+    def _org_json(self, path: str, **query: str):
+        """조직도 손 하나에 묻고 JSON 을 낸다. 로그인 화면이면 ``SessionExpired``, JSON 이 아니면 ``MailboxError``."""
+        query["date"] = str(int(time.time() * 1000))
+        data, kind = self._get_server(f"{path}&{urllib.parse.urlencode(query, safe='()')}")
+        text = data.decode(_charset(kind), errors="replace")
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            if _looks_like_login(text):
+                raise SessionExpired("조직도 대신 로그인 페이지가 왔다 — 다시 로그인한다") from exc
+            raise MailboxError(f"조직도 JSON 을 못 읽었다({path}): {exc}") from exc
+
+    def org_children(self, dept: str, company: str) -> list[Dept]:
+        """그 부서 바로 아래 부서들 — ``dept`` 에 회사 값을 주면 맨 위 부서들이다. 답의 꼴이 다르면 ``MailboxError``."""
+        answer = self._org_json(ORG_DEPT_PATH, company=company, root=company, dept=dept, type=ORG_TREE_TYPE)
+        rows = answer.get("result") if isinstance(answer, dict) else None
+        if not isinstance(rows, list):
+            raise MailboxError(f"조직도 나무 답이 {{result: [...]}} 꼴이 아니다: {str(answer)[:200]}")
+        return [Dept(code=r.get("key") or "", name=r.get("dept_name") or "", depth=int(r.get("depth") or 0),
+                     parent=dept, has_child=str(r.get("has_child") or "").upper() in DIRECTORY_YES,
+                     email=r.get("email") or "")
+                for r in rows if isinstance(r, dict) and r.get("type") == "dept"]
+
+    def org_members(self, dept: str) -> list[DirectoryPerson]:
+        """그 부서에 바로 든 사람(하위 부서 사람은 안 든다) — 조직도에서 부서를 누를 때의 명단이다. 사람의 ``dept_code`` 는
+        이 부서 코드다. 구성원이 없는 부서는 빈 목록이다(답은 ``type`` 이 ``ORG_EMPTY`` 인 한 줄)."""
+        answer = self._org_json(ORG_USER_PATH, dept=dept, type=ORG_TREE_TYPE)
+        rows = answer.get("result") if isinstance(answer, dict) else None
+        if not isinstance(rows, list):
+            raise MailboxError(f"조직도 구성원 답이 {{result: [...]}} 꼴이 아니다: {str(answer)[:200]}")
+        return [_person({**r, "dept_code": dept}) for r in rows if isinstance(r, dict) and r.get("type") == "user"]
+
+    def org_snapshot(self, company: str) -> OrgChart:
+        """회사 조직 전체 — 나무를 층마다 펼치고 부서마다 구성원을 받는다(``ORG_WORKERS`` 만큼 함께). 부서가 하나도 안 오면
+        ``DirectoryGap`` — 회사 값이 틀린 쪽이다."""
+        depts: dict[str, Dept] = {}
+        frontier = [company]
+        with ThreadPoolExecutor(ORG_WORKERS) as pool:
+            while frontier:
+                found = [d for kids in pool.map(lambda c: self.org_children(c, company), frontier) for d in kids
+                         if d.code and d.code not in depts]
+                depts.update((d.code, d) for d in found)
+                frontier = [d.code for d in found if d.has_child]
+            if not depts:
+                raise DirectoryGap(f"조직도가 회사 「{company}」 의 부서를 하나도 안 줬다 — 회사 값을 확인한다")
+            members = dict(zip(depts, pool.map(self.org_members, depts)))
+        return OrgChart(company=company, depts=depts, members=members)
+
+    def org_groups(self, company: str, kind: str) -> list[tuple[str, str]]:
+        """배포그룹 목록 — ``kind`` 는 ``GROUP_KINDS`` 가운데 하나. (그룹 열쇠, 이름) 을 낸다."""
+        if kind not in GROUP_KINDS:
+            raise MailboxConfigError(f"배포그룹 갈래는 {GROUP_KINDS} 가운데 하나다: {kind!r}")
+        answer = self._org_json(DIRECTORY_PATH, type="group", company=company, group_type=kind, group_text=kind)
+        rows = answer.get("group") if isinstance(answer, dict) else None
+        if not isinstance(rows, list):
+            raise MailboxError(f"배포그룹 답이 {{group: [...]}} 꼴이 아니다: {str(answer)[:200]}")
+        return [(r.get("key") or "", r.get("group_name") or "") for r in rows if isinstance(r, dict)]
+
+    def group_members(self, group_key: str) -> list[tuple[str, str, str, str]]:
+        """배포그룹 하나의 구성원 — (이름, 직급, 부서, 메일). 답이 ``ok`` 가 아니면 ``MailboxError``."""
+        answer = self._org_json(DISTRIBUTE_PATH, groupname=group_key)
+        if not isinstance(answer, dict) or answer.get("result") != "ok":
+            raise MailboxError(f"배포그룹 「{group_key}」 구성원을 못 받았다: {str(answer)[:200]}")
+        return [(m.get("name") or "", m.get("grade") or "", m.get("deptname") or "", m.get("email") or "")
+                for m in answer.get("memberlist") or [] if isinstance(m, dict)]
 
     # ── 메일함을 바꾸는 손 — 사람이 그 메일 하나를 분명히 고른 뒤에만 부른다(머리말) ──────────────
 
@@ -750,6 +924,133 @@ class Mailbox:
 
 
 # ── 풀기 ─────────────────────────────────────────────────────────────────
+
+def read_only_patterns(db_path: str) -> tuple[re.Pattern, ...]:
+    """읽기 길이 물을 수 있는 주소 꼴(서버 뿌리부터의 경로 · 질의) — 다 읽음을 안 바꾸는 것으로 잰 꼴이다. 닫힌 목록이라 새 꼴은
+    여기에 더해야 묻는다. ``directory_survey.py`` 가 웹메일에서 잡은 요청을 이 목록에 대 본다."""
+    db = re.escape(db_path)
+    return tuple(re.compile(p, re.IGNORECASE) for p in (
+        rf"^{db}/[^/?]+\?ReadViewEntries(&[\w$%.=-]*)*$",
+        rf"^{db}/api/data/collections$",
+        rf"^{db}/0/{_HEX32}/Body\?OpenField$",
+        rf"^{db}/0/{_HEX32}/Body/M\d+(\.\d+)*\?OpenElement$",
+        rf"^{db}/0/{_HEX32}/\$FILE/[^?#]+$",
+        rf"^{db}/{SEARCH_AGENT}\?open(&[\w$%.()+=-]*)*$",
+        r"^/common/lib_f\.nsf/checksessionstatus\?Openpage$",
+        r"^/common/profile\.nsf/ag_org_search_json\?OpenAgent(&[\w$%.()+=-]*)*$",
+        r"^/common/profile\.nsf/ag_tree_(dept|user)_json\?OpenAgent(&[\w$%.()+=-]*)*$",
+        r"^/common/lib_f\.nsf/agGetDistribute\?openagent(&[\w$%.()+=-]*)*$",
+    ))
+
+
+# ── 조직 전체 — 받아 둔 조직도를 이 PC 에서 거른다 ─────────────────────────────
+
+@dataclass
+class OrgChart:
+    """회사 조직 한 판. ``depts`` 는 코드 → 부서, ``members`` 는 코드 → 그 부서에 바로 든 사람이다. 한 사람이 둘 넘는 부서에
+    들 수 있다(본부장이 「임원」과 제 본부에 함께 든다)."""
+    company: str
+    depts: dict
+    members: dict
+
+    def find_depts(self, words: str) -> list[Dept]:
+        """이름 · 코드가 그 말과 같은 부서 — 같은 것이 없으면 이름에 그 말이 든 부서다. 띄어쓰기 · 대소문자는 안 가린다."""
+        want = _squash(words)
+        if not want:
+            return []
+        exact = [d for d in self.depts.values() if want in (_squash(d.name), _squash(d.code))]
+        return exact or [d for d in self.depts.values() if want in _squash(d.name)]
+
+    def path(self, code: str) -> list[Dept]:
+        """맨 위 부서부터 그 부서까지."""
+        chain = []
+        while code in self.depts:
+            chain.append(self.depts[code])
+            code = self.depts[code].parent
+        return chain[::-1]
+
+    def subtree(self, code: str) -> list[Dept]:
+        """그 부서와 그 아래 부서 전부 — 나무 차례(위 부서 먼저)."""
+        kids: dict[str, list[str]] = {}
+        for d in self.depts.values():
+            kids.setdefault(d.parent, []).append(d.code)
+        out, stack = [], [code]
+        while stack:
+            c = stack.pop()
+            if c in self.depts:
+                out.append(self.depts[c])
+            stack.extend(reversed(kids.get(c, [])))
+        return out
+
+    def people(self, code: str | None = None, *, deep: bool = True) -> list[DirectoryPerson]:
+        """그 부서의 사람(``deep`` 이면 하위 부서까지) — ``code`` 가 없으면 회사 전원. 한 사람은 한 번만, 먼저 만난 부서로 낸다."""
+        if code is None:
+            codes = list(self.depts)
+        else:
+            codes = [d.code for d in self.subtree(code)] if deep else [code]
+        seen, out = set(), []
+        for c in codes:
+            for p in self.members.get(c, []):
+                if p.notes not in seen:
+                    seen.add(p.notes)
+                    out.append(p)
+        return out
+
+    def dept_name(self, code: str) -> str:
+        d = self.depts.get(code)
+        return d.name if d else code
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\s+", "", text or "").casefold()
+
+
+# ── 주소록의 한 사람 ─────────────────────────────────────────────────────
+
+def _person(u: dict) -> DirectoryPerson:
+    return DirectoryPerson(
+        email=u.get("email") or "", name=u.get("user_name") or "", name_eng=u.get("user_name_eng") or "",
+        notes=u.get("key") or "", user_id=u.get("user_id") or "", empno=str(u.get("empno") or ""),
+        dept=u.get("dept_name") or "", grade=u.get("grade") or "", job_title=u.get("job_title") or "",
+        company=u.get("company_name") or "", retired=str(u.get("is_retire") or "").upper() in DIRECTORY_YES,
+        dept_code=u.get("dept_code") or "", grade_code=u.get("grade_code") or "",
+        is_boss=str(u.get("is_boss") or "").upper() in DIRECTORY_YES, job_title_code=u.get("job_title_code") or "",
+        location=u.get("location") or "", duty=(u.get("job_name") or "").split(DUTY_SEPARATOR, 1)[0].strip())
+
+
+def notes_key(text: str) -> str:
+    """Notes 이름의 견줄 꼴 — ``CN=`` · ``OU=`` · ``O=`` 표지를 떼고 대소문자를 접는다(약식 ``이름/OU/O`` 와 같게)."""
+    return "/".join(part.split("=", 1)[-1].strip() for part in text.split("/")).casefold()
+
+
+def is_notes_name(text: str) -> bool:
+    t = text.strip()
+    return t.upper().startswith(NOTES_MARK) or ("/" in t and "@" not in t)
+
+
+def directory_query(handle: str):
+    """한 꼴 → (주소록에 물을 말, 답 가운데 그 사람을 고르는 자). 못 짓는 꼴(빈 글자)이면 None.
+
+    주소는 그 주소로 묻고 메일이 같은 사람, Notes 이름은 ``CN`` 의 이름으로 묻고 ``key`` 의 견줄 꼴이 같은 사람, ID 는 약칭으로
+    묻고 ``user_id`` 가 같은 사람, 그 밖(이름 · 사번)은 그 글자로 묻고 이름이나 사번이 같은 사람이다.
+    """
+    h = handle.strip()
+    if not h:
+        return None
+    if "@" in h:
+        addr = h.casefold()
+        return h, (lambda d: d.email.strip().casefold() == addr)
+    if is_notes_name(h):
+        want = notes_key(h)
+        first = h.split("/", 1)[0]
+        return (first.split("=", 1)[1] if "=" in first else first).strip(), \
+            (lambda d: bool(d.notes.strip()) and notes_key(d.notes) == want)
+    found = ID_FORM.match(h)
+    if found:
+        ident = found.group(1).casefold()
+        return found.group(2).strip(), (lambda d: d.user_id.strip().casefold() == ident)
+    return h, (lambda d: h in (d.name.strip(), d.empno.strip()))
+
 
 def _column(entry: ET.Element, name: str) -> str:
     for data in entry.iter("entrydata"):

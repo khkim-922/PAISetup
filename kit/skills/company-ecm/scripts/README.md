@@ -8,7 +8,7 @@ PC 의 파일은 사람이 고른 폴더 · 보안등급으로 새 문서로 올
 - **여는 손** `ecm.py` 의 `open_document` — 화면의 「보기」와 같은 두 걸음으로 PC 의 ECM 에이전트를 불러 문서를 받는다. 에이전트는
   받은 파일을 그 확장자의 기본 앱으로 **화면에 띄운다** — 사람이 보는 자리에서만 부른다
 - **기본 앱 손** `default_app.py` — 그 확장자의 기본 앱이 안 정해져 있으면 깔린 앱으로 채운다. 이미 고른 값은 안 덮는다
-- **읽는 손** `ecm.py` 의 `read_document` — 에이전트가 띄운 그 문서 하나만 닫고(`close_view.ps1`), 받은 파일의 글자를 스킬
+- **읽는 손** `ecm.py` 의 `read_document` — 에이전트가 띄운 그 문서 하나만 닫고(오피스는 `close_view.ps1` · pdf 는 `close_acrobat.ps1`), 받은 파일의 글자를 스킬
   drm-office-read 의 읽는 손으로 뽑는다
 - **편집하는 손** `ecm.py` 의 `edit_document` · `checkin_document` — 화면의 「편집」처럼 서버에서 잠가 읽기 쓰기로 열고, 고친 뒤 그
   문서만 저장해 닫아(`close_view.ps1 -Save`) 에이전트의 편집완료 창에서 늘 다음 판과 수정 내용으로 올린다(`checkin_window.ps1`). 바꾸는

@@ -5,6 +5,7 @@
     메일함을 바꾸는 일은 둘이고, 둘 다 **미리 보기와 실행이 다른 명령**이다::
 
         preview-reply → send-reply      답장 — 미리 보기가 낸 확인 열쇠를 실행에 넘겨야 나간다
+        preview-new   → send-new        새 메일 — 같은 꼴
         preview-mark  → apply-mark      읽음으로 · 안 읽음으로 — 같은 꼴
 
     확인 열쇠는 미리 보인 그 내용(보내는 사람 · 받는 사람 · 참조 · 숨은참조 · 제목 · 본문)의 지문이다. 실행 명령은 같은
@@ -20,10 +21,22 @@
     search 낱말 [--in 범위] [--field 칸] [--count N] [--page N]
                                                   웹메일 검색 — 범위 all(기본 · 임시보관함까지 함께) · inbox · sent ·
                                                   draft · star · unread · trash, 칸 subject(기본) · body · attachment
+    people 말 [--exact | --raw] [--category 값] [--company 값]
+                                                  사내 주소록 — 이름 · 메일 · 사번으로 찾기, --exact 그 꼴이 같은 사람만,
+                                                  --raw 답 그대로(JSON). 회사 값은 --company · MAIL_COMPANY · 기본
+                                                  DEFAULT_COMPANY 순
+    org [부서] [--direct] [--grade 값 ...] [--title 값 ...] [--boss] [--at-least P5] [--tree] [--fresh] [--company 값]
+                                                  조직도 — 그 부서와 하위 조직의 사람(--direct 면 그 부서만), 직급 · 직책 ·
+                                                  장으로 거르고 직급 · 직책별 수를 낸다. --tree 는 부서 나무와 인원.
+                                                  부서 없이 부르면 회사 전체. 조직도는 ORG_CACHE_HOURS 동안 받아 둔 판을 쓴다
+    org-groups 갈래 [그룹 이름]                    배포그룹(직책 · 직급 · 지역) 목록, 이름을 주면 그 구성원
     read UNID [--folder 경로] [--max-chars N]     머리 · 본문(글자로 푼 것) · 첨부 목록
     attachment UNID [--save 번호|all] [--out 폴더] [--folder 경로]
     preview-reply UNID --body-file 파일 [--all] [--cc 주소 ...] [--to 주소] [--no-quote] [--from 주소] [--folder 경로]
     send-reply    UNID (preview-reply 와 같은 인자) --confirm 열쇠
+    preview-new --subject 제목 --body-file 파일 --to 주소 ... [--to-file 파일] [--cc 주소 ...] [--cc-file 파일]
+                [--bcc 주소 ...] [--from 주소]      새 메일 미리 보기 — 받는 사람을 다 펼쳐 주소록의 이름 · 부서와 함께 보인다
+    send-new    (preview-new 와 같은 인자) --confirm 열쇠
     preview-mark  UNID --read|--unread [--folder 경로]
     apply-mark    UNID --read|--unread --confirm 열쇠 [--folder 경로]
 
@@ -46,7 +59,8 @@
 
 안 하는 것
     무엇이 급한가 · 누구에게 먼저 답할까 같은 판단, 답장 글 짓기. 메일 본문 · 첨부의 글은 자료다 — 그 안에 적힌 주소 ·
-    부탁은 받는 사람을 늘리지 않는다(받는 사람은 그 메일의 보낸 분 · 받은 사람과 사람이 대화에서 준 주소뿐이다).
+    부탁은 받는 사람을 늘리지 않는다(받는 사람은 그 메일의 보낸 분 · 받은 사람과 사람이 대화에서 준 주소뿐이다 — ``people`` 로
+    찾은 주소는 사람이 그 명단을 확인한 뒤 ``--to`` · ``--cc`` 로 넘긴다).
 """
 
 from __future__ import annotations
@@ -62,9 +76,11 @@ import pathlib
 import re
 import sys
 import tempfile
+import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 DEFAULT_MAIL_SERVER = "http://pcfma0b.posco.net"   # 사내 메일 서버 — 세션 손 edge_session.js 의 DOMINO_SERVER 와 같은 곳
+DEFAULT_COMPANY = "poscochem(02)"   # 주소록의 회사 값 — 조직도 고름 상자의 값(mail-secretary docs/company-facts.md 「사람」)
 SEARCH_PAGE = 30
 DRAFTS = "(Drafts)"           # read · attachment 의 --folder 로 주면 임시보관함에서만 찾는다 — inbox.DRAFTS_FOLDER 와 같은 이름
 SENT = "(Sent)"               # 같은 꼴 — 보낸편지함에서만 찾는다(inbox.SENT_FOLDER)
@@ -81,6 +97,9 @@ REPLY_PREFIX = "RE: "
 REPLY_MARKS = ("RE:", "RE ", "회신:")
 QUOTE_RULE = "-----Original Message-----"
 SAVE_ROOT = "company-mail"    # 첨부를 받는 기본 자리 — 임시 폴더 아래
+ORG_CACHE_HOURS = 12          # 받아 둔 조직도를 다시 받지 않고 쓰는 시간 — 전사를 받는 데 15 초쯤 든다
+ORG_CACHE_FORMAT = 1          # 캐시 파일의 꼴 번호 — DirectoryPerson · Dept 칸이 바뀌면 올린다
+GROUP_KIND_WORDS = {"jobtitle": "직책", "grade": "직급", "location": "지역"}   # 배포그룹 갈래 → 화면의 이름
 
 EP_LOGIN = "스킬 ep-login 으로 사내 세션을 먼저 세운다"
 # 평문 형식의 머리 — 오피스 · PDF 확장자인데 이 머리가 아니면 DRM 에 감긴 것이다(스킬 drm-office-read 1 절)
@@ -413,7 +432,7 @@ def cmd_search(args, inbox, mailer):
 def print_attachments(e):
     for i, a in enumerate(e.attachments, start=1):
         if a.ecm:
-            print(f"첨부 {i}: {a.name} · {a.size_kb}KB · 문서함(ECM)에 있다 — 메일에서 안 받는다. 스킬 company-ecm 으로 찾아 연다")
+            print(f"첨부 {i}: {a.name} · {a.size_kb}KB · 문서함(ECM)에 있다 — attachment --save {i} 가 문서 열쇠를 꺼내 스킬 company-ecm 으로 넘긴다")
         else:
             print(f"첨부 {i}: {a.name}")
 
@@ -444,7 +463,7 @@ def cmd_attachment(args, inbox, mailer):
         print("— 받으려면 --save <번호> 나 --save all")
         return
     if args.save == "all":
-        picks = [a for a in e.attachments if not a.ecm]
+        picks = list(e.attachments)
     else:
         try:
             index = int(args.save)
@@ -453,9 +472,14 @@ def cmd_attachment(args, inbox, mailer):
             pick = None
         if pick is None:
             raise Stop(EXIT_CONFIG, f"첨부 번호가 아니다: {args.save!r} — 1 부터 {len(e.attachments)} 까지")
-        if pick.ecm:
-            raise Stop(EXIT_CONFIG, f"{pick.name} 은 문서함(ECM) 첨부라 메일에서 안 받는다 — 스킬 company-ecm 으로 연다")
         picks = [pick]
+    # 문서함(ECM) 첨부는 쪽지라 파일로 안 남기고 열쇠만 낸다 — 문서는 company-ecm 의 read 가 그 열쇠로 받아 글자를 뽑는다
+    for a in [a for a in picks if a.ecm]:
+        key = box.ecm_key(e, a)
+        print(f"문서함(ECM) 문서: {a.name} · 열쇠 {key} — 스킬 company-ecm 의 read {key} 로 연다")
+    picks = [a for a in picks if not a.ecm]
+    if not picks:
+        return
     out = pathlib.Path(args.out).expanduser() if args.out else pathlib.Path(tempfile.gettempdir()) / SAVE_ROOT / e.unid
     out.mkdir(parents=True, exist_ok=True)
     for a in picks:
@@ -572,6 +596,114 @@ def cmd_send_reply(args, inbox, mailer):
     print("보낸 기록은 숨은참조로 받은편지함에 오는 제 사본이다(보낸편지함에는 안 남는다). 원래 메일의 읽음 표시는 그대로다.")
 
 
+# ── 새 메일 ───────────────────────────────────────────────────────────────
+
+def addresses(values, files) -> list[str]:
+    """``--to`` 같은 칸의 주소들 — 쉼표 · 줄로 나눈 것도 받고, 파일은 한 줄에 하나(``#`` 뒤는 버린다). 같은 주소는 한 번."""
+    out: list[str] = []
+    seen: set[str] = set()
+    chunks = list(values or ())
+    for f in files or ():
+        path = pathlib.Path(f).expanduser()
+        if not path.is_file():
+            raise Stop(EXIT_CONFIG, f"주소 파일이 없다: {path}")
+        chunks += [line.split("#", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()]
+    for chunk in chunks:
+        for a in re.split(r"[,;\s]+", chunk):
+            if a and a.casefold() not in seen:
+                seen.add(a.casefold())
+                out.append(a)
+    return out
+
+
+def plan_new(args) -> dict:
+    """보낼 새 메일을 짓는다 — 보내지 않는다. 같은 인자면 같은 것을 낸다(확인 열쇠가 그 위에 선다)."""
+    sender = (args.sender or os.environ.get("MAIL_DEFAULT_SENDER", "")).strip()
+    if not sender:
+        raise Stop(EXIT_CONFIG, "보내는 사람이 없다 — 쓰는 사람 제 메일 주소를 --from 이나 MAIL_DEFAULT_SENDER 로 준다")
+    subject = (args.subject or "").strip()
+    if not subject:
+        raise Stop(EXIT_CONFIG, "제목이 없다 — --subject 로 준다")
+    body_file = pathlib.Path(args.body_file).expanduser()
+    if not body_file.is_file():
+        raise Stop(EXIT_CONFIG, f"메일 글 파일이 없다: {body_file}")
+    body = body_file.read_text(encoding="utf-8").strip()
+    if not body:
+        raise Stop(EXIT_CONFIG, "메일 글이 비었다")
+    to = addresses(args.to, args.to_file)
+    if not to:
+        raise Stop(EXIT_CONFIG, "받는 사람이 없다 — --to 나 --to-file 로 준다")
+    taken = {a.casefold() for a in to}
+    cc = [a for a in addresses(args.cc, args.cc_file) if a.casefold() not in taken]
+    taken |= {a.casefold() for a in cc}
+    bcc = [a for a in addresses(args.bcc, None) if a.casefold() not in taken]
+    if sender.casefold() not in taken | {a.casefold() for a in bcc}:
+        bcc.append(sender)   # 제 사본 — 사내 중계로 보낸 메일은 보낸편지함에 안 남는다
+    body_html = html_lib.escape(body).replace("\n", "<br>")
+    return {"sender": sender, "to": to, "cc": cc, "bcc": bcc, "subject": subject,
+            "html": f"<div>{body_html}</div>", "text": body, "body": body}
+
+
+def new_token(plan: dict) -> str:
+    return token("new", plan["sender"], plan["to"], plan["cc"], plan["bcc"], plan["subject"], plan["html"])
+
+
+def label_people(args, inbox, mails) -> dict:
+    """주소 → 주소록의 한 줄(이름 · 부서 · 직급). 받아 둔 조직도로 찾고, 없는 주소는 빈 값이다(사외 · 부서 주소 · 퇴직)."""
+    company = (getattr(args, "company", "") or os.environ.get("MAIL_COMPANY", "").strip() or DEFAULT_COMPANY).strip()
+    args.fresh = False
+    try:
+        chart, _ = load_org(args, inbox, company)
+    except inbox.MailboxError:
+        return {}
+    book = {p.email.casefold(): p for p in chart.people() if p.email}
+    return {a.casefold(): book.get(a.casefold()) for a in mails}
+
+
+def cmd_preview_new(args, inbox, mailer):
+    plan = plan_new(args)
+    book = label_people(args, inbox, plan["to"] + plan["cc"] + plan["bcc"])
+    print("보낼 새 메일 — 아직 안 나갔다")
+    print(f"보내는 사람: {plan['sender']}")
+    outside = []
+    for word, field in (("받는 사람", "to"), ("참조", "cc"), ("숨은참조", "bcc")):
+        rows = plan[field]
+        print(f"{word} {len(rows)} 명" + (":" if rows else " — 없음"))
+        for i, a in enumerate(rows, 1):
+            p = book.get(a.casefold())
+            if p is None:
+                outside.append(a)
+            print(f"  {i}. {a}" + (f" · {p.name} · {p.dept} · {p.grade}" if p else " · 주소록에 없다"))
+    if outside:
+        print(f"⚠ 주소록에 없는 주소 {len(outside)} 개 — 사외 주소거나 오타일 수 있다: {', '.join(outside)}")
+    print(f"제목: {plan['subject']}")
+    print("--- 메일 글 ---")
+    print(plan["body"])
+    print("---")
+    print(f"확인 열쇠: {new_token(plan)}")
+    print("사람이 이 명단 · 내용 그대로 보내자고 하면 같은 인자에 send-new · --confirm <열쇠> 로 보낸다.")
+
+
+def cmd_send_new(args, inbox, mailer):
+    plan = plan_new(args)
+    if new_token(plan) != args.confirm:
+        raise Stop(EXIT_STALE, "확인 열쇠가 지금 지은 메일과 다르다 — 보내지 않았다. preview-new 로 다시 보이고 확인받는다")
+    envelope = len(plan["to"]) + len(plan["cc"]) + len(plan["bcc"])
+    try:
+        mailer.send(plan["subject"], to=plan["to"], cc=plan["cc"], bcc=plan["bcc"], sender=plan["sender"],
+                    html=plan["html"], text=plan["text"])
+    except mailer.MailRefused as exc:
+        some = len(exc.refused) < envelope
+        raise Stop(EXIT_FAIL, f"중계가 받는 분을 거절했다: {', '.join(exc.refused)} — "
+                              + ("나머지 분께는 나갔다" if some else "아무에게도 안 나갔다")) from exc
+    except mailer.MailError as exc:
+        raise Stop(EXIT_FAIL, f"메일을 못 보냈다: {exc}") from exc
+    except OSError as exc:
+        raise Stop(EXIT_FAIL, f"사내 중계에 못 닿았다({type(exc).__name__}) — 사내망 안인가 본다. 안 나갔다") from exc
+    print(f"보냈다: {plan['subject']} → 받는 사람 {len(plan['to'])} · 참조 {len(plan['cc'])} · 숨은참조 {len(plan['bcc'])}")
+    print("보낸 기록은 숨은참조로 받은편지함에 오는 제 사본이다(보낸편지함에는 안 남는다).")
+
+
 # ── 읽음 표시 ─────────────────────────────────────────────────────────────
 
 def mark_target(args) -> bool:
@@ -620,6 +752,133 @@ def cmd_apply_mark(args, inbox, mailer):
     raise Stop(EXIT_FAIL, f"요청은 갔는데 다시 읽으니 아직 {mark_word(again)}이다 — 메일함에서 직접 본다")
 
 
+# ── 주소록 ────────────────────────────────────────────────────────────────
+
+def person_line(p) -> str:
+    def coded(word, code):
+        return f"{word}({code})" if code else word
+    marks = [m for m, on in (("장", p.is_boss), ("퇴직", p.retired)) if on]
+    return " · ".join(x for x in (p.name, coded(p.dept, p.dept_code), coded(p.grade, p.level),
+                                  coded(p.job_title, p.job_title_code), *marks, p.location, p.duty, p.email) if x)
+
+
+def cmd_people(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    company = (args.company or os.environ.get("MAIL_COMPANY", "").strip() or DEFAULT_COMPANY).strip()
+    if args.raw:
+        print(json.dumps(box.directory_answer(args.words, company, category=args.category), ensure_ascii=False, indent=1))
+        return
+    team = (box.find_exact if args.exact else box.find_people)(args.words, company)
+    print(f"「{args.words}」 {len(team)} 명" + (" — 그 꼴이 같은 사람만" if args.exact else ""))
+    for i, p in enumerate(team, 1):
+        print(f"{i}. {person_line(p)}")
+
+
+def org_cache_path(company: str) -> pathlib.Path:
+    """받아 둔 조직도의 자리 — ``MAIL_ORG_CACHE_DIR`` 이 있으면 그 폴더, 없으면 임시 폴더 아래."""
+    root = os.environ.get("MAIL_ORG_CACHE_DIR", "").strip()
+    folder = pathlib.Path(root) if root else pathlib.Path(tempfile.gettempdir()) / SAVE_ROOT
+    return folder / f"org-{UNSAFE_NAME.sub('_', company)}.json"
+
+
+def load_org(args, inbox, company: str):
+    """회사 조직 한 판 — ``ORG_CACHE_HOURS`` 안에 받아 둔 판이 있으면 그것을, 없거나 ``--fresh`` 면 조직도에서 새로 받는다.
+    내는 것 (OrgChart, 받은 시각 글자)."""
+    import dataclasses   # noqa: PLC0415 — 이 명령만 쓴다
+    path = org_cache_path(company)
+    if not args.fresh and path.exists() and time.time() - path.stat().st_mtime < ORG_CACHE_HOURS * 3600:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            if raw.get("format") == ORG_CACHE_FORMAT:
+                chart = inbox.OrgChart(
+                    company=raw["company"],
+                    depts={c: inbox.Dept(**d) for c, d in raw["depts"].items()},
+                    members={c: [inbox.DirectoryPerson(**p) for p in ps] for c, ps in raw["members"].items()})
+                return chart, time.strftime("%m-%d %H:%M", time.localtime(path.stat().st_mtime))
+        except (OSError, ValueError, KeyError, TypeError):
+            pass   # 깨진 캐시는 새로 받는다
+    chart = open_mailbox(args, inbox).org_snapshot(company)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "format": ORG_CACHE_FORMAT, "company": chart.company,
+        "depts": {c: dataclasses.asdict(d) for c, d in chart.depts.items()},
+        "members": {c: [dataclasses.asdict(p) for p in ps] for c, ps in chart.members.items()}},
+        ensure_ascii=False), encoding="utf-8")
+    return chart, "방금"
+
+
+def tally(people, field: str) -> str:
+    """사람들의 그 칸 값별 수 — 많은 것부터."""
+    counts: dict[str, int] = {}
+    for p in people:
+        key = getattr(p, field) or "(빈 값)"
+        counts[key] = counts.get(key, 0) + 1
+    return " · ".join(f"{k} {n}" for k, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+def cmd_org(args, inbox, mailer):
+    company = (args.company or os.environ.get("MAIL_COMPANY", "").strip() or DEFAULT_COMPANY).strip()
+    chart, when = load_org(args, inbox, company)
+    code = None
+    if args.words:
+        hits = chart.find_depts(args.words)
+        if not hits:
+            raise Stop(EXIT_FAIL, f"「{args.words}」 이 든 부서가 조직도에 없다 — 부서 이름을 줄여 다시 찾거나 org --tree 로 나무를 본다")
+        if len(hits) > 1:
+            print(f"「{args.words}」 이 든 부서가 {len(hits)} 곳이다 — 하나를 골라 그 이름 그대로 다시 부른다")
+            for d in hits:
+                print(f"- {' > '.join(x.name for x in chart.path(d.code))} ({d.code})")
+            return
+        code = hits[0].code
+    where = " > ".join(x.name for x in chart.path(code)) if code else f"회사 전체({company})"
+    print(f"{where} — 조직도 {when} 판")
+    if args.tree:
+        roots = chart.subtree(code) if code else [d for d in chart.depts.values()]
+        top = chart.depts[code].depth if code else 1
+        for d in roots:
+            if code is None and d.parent != company:
+                continue
+            for x in (chart.subtree(d.code) if code is None else [d]):
+                print(f"{'  ' * (x.depth - top)}- {x.name} · {len(chart.people(x.code))} 명"
+                      f"(바로 {len(chart.members.get(x.code, []))}) · {x.email}")
+        return
+    team = chart.people(code, deep=not args.direct)
+    wants = [(field, {w.strip() for w in values}) for field, values in (("grade", args.grade or []),
+                                                                         ("job_title", args.title or [])) if values]
+    picked = [p for p in team if all(getattr(p, f) in vs for f, vs in wants) and (p.is_boss or not args.boss)
+              and (not args.at_least or inbox.level_at_least(p.level, args.at_least))]
+    gone = [p for p in picked if p.retired]
+    picked = [p for p in picked if not p.retired]
+    scope = "그 부서만" if args.direct else "하위 조직까지"
+    filt = " · ".join([*(f"{'직급' if f == 'grade' else '직책'} {'/'.join(sorted(vs))}" for f, vs in wants),
+                       *(["장"] if args.boss else []), *([f"{args.at_least.upper()} 이상"] if args.at_least else [])])
+    print(f"{scope}{' · ' + filt if filt else ''} — {len(picked)} 명" + (f" · 퇴직 {len(gone)} 명은 뺐다" if gone else ""))
+    print(f"등급별: {tally(picked, 'level')}")
+    print(f"직급별: {tally(picked, 'grade')}")
+    print(f"직책별: {tally(picked, 'job_title')}")
+    for i, p in enumerate(picked, 1):
+        print(f"{i}. {person_line(p)}")
+
+
+def cmd_org_groups(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    company = (args.company or os.environ.get("MAIL_COMPANY", "").strip() or DEFAULT_COMPANY).strip()
+    groups = box.org_groups(company, args.kind)
+    if not args.name:
+        print(f"배포그룹 — {GROUP_KIND_WORDS[args.kind]} {len(groups)} 개")
+        for key, name in groups:
+            print(f"- {name}")
+        return
+    hit = [(k, n) for k, n in groups if n.strip() == args.name.strip()]
+    if not hit:
+        raise Stop(EXIT_FAIL, f"{GROUP_KIND_WORDS[args.kind]} 배포그룹에 「{args.name}」 이 없다 — "
+                              f"org-groups {args.kind} 로 목록을 본다")
+    members = box.group_members(hit[0][0])
+    print(f"배포그룹 {GROUP_KIND_WORDS[args.kind]} 「{args.name}」 — {len(members)} 명")
+    for i, (name, grade, dept, email) in enumerate(members, 1):
+        print(f"{i}. {' · '.join(x for x in (name, dept, grade, email) if x)}")
+
+
 # ── 인자 ──────────────────────────────────────────────────────────────────
 
 def parser() -> argparse.ArgumentParser:
@@ -652,6 +911,27 @@ def parser() -> argparse.ArgumentParser:
     q.add_argument("--field", default="subject", choices=tuple(FIELD_WORDS))
     q.add_argument("--count", type=int, default=SEARCH_PAGE)
     q.add_argument("--page", type=int, default=1)
+    q = one("people", cmd_people, mail=False)
+    q.add_argument("words", help="이름 · 메일 · 사번 · Notes 이름 · ID")
+    how = q.add_mutually_exclusive_group()
+    how.add_argument("--exact", action="store_true", help="그 주소 · Notes 이름 · ID · 이름 · 사번이 같은 사람만")
+    how.add_argument("--raw", action="store_true", help="주소록 답을 그대로(JSON) — 꼴을 잰다")
+    q.add_argument("--category", default="", help="주소록의 category 칸 — 웹메일은 빈 값")
+    q.add_argument("--company", default="", help=f"주소록의 회사 값 — 없으면 MAIL_COMPANY, 그것도 없으면 {DEFAULT_COMPANY}")
+    q = one("org", cmd_org, mail=False)
+    q.add_argument("words", nargs="?", default="", help="부서 이름(일부여도 된다) · 부서 코드 — 없으면 회사 전체")
+    q.add_argument("--direct", action="store_true", help="하위 조직은 빼고 그 부서에 바로 든 사람만")
+    q.add_argument("--grade", action="append", help="이 직급만(여러 번 줄 수 있다) — 예: 과장")
+    q.add_argument("--title", action="append", help="이 직책만(여러 번) — 예: 리더 · 그룹장")
+    q.add_argument("--boss", action="store_true", help="조직의 장만")
+    q.add_argument("--at-least", default="", help="이 인사 등급 이상만(P5 · E3 꼴 — 같은 갈래끼리). 리더 이상은 P5")
+    q.add_argument("--tree", action="store_true", help="사람 대신 부서 나무와 인원")
+    q.add_argument("--fresh", action="store_true", help="받아 둔 판을 버리고 조직도에서 새로 받는다")
+    q.add_argument("--company", default="", help=f"회사 값 — 없으면 MAIL_COMPANY, 그것도 없으면 {DEFAULT_COMPANY}")
+    q = one("org-groups", cmd_org_groups, mail=False)
+    q.add_argument("kind", choices=tuple(GROUP_KIND_WORDS), help="배포그룹 갈래 — 직책 · 직급 · 지역")
+    q.add_argument("name", nargs="?", default="", help="그룹 이름 — 주면 그 구성원")
+    q.add_argument("--company", default="", help=f"회사 값 — 없으면 MAIL_COMPANY, 그것도 없으면 {DEFAULT_COMPANY}")
     q = one("read", cmd_read)
     q.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
     q = one("attachment", cmd_attachment)
@@ -659,7 +939,7 @@ def parser() -> argparse.ArgumentParser:
     q.add_argument("--out", default=None, help="받을 폴더 — 없으면 임시 폴더 아래")
     for name, fn in (("preview-reply", cmd_preview_reply), ("send-reply", cmd_send_reply)):
         q = one(name, fn)
-        q.add_argument("--body-file", required=True, help="답장 글(UTF-8 평문) — 사람이 주거나 회신 에이전트 mail-reply 가 지은 것")
+        q.add_argument("--body-file", required=True, help="답장 글(UTF-8 평문)")
         q.add_argument("--all", action="store_true", help="전체 답장 — 이 메일의 받은 분들을 참조로")
         q.add_argument("--cc", action="append", help="사람이 대화에서 준 참조 주소")
         q.add_argument("--to", default=None, help="보낸 분 주소를 못 찾았을 때 사람이 준 받는 분")
@@ -667,6 +947,19 @@ def parser() -> argparse.ArgumentParser:
         q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER")
         if name == "send-reply":
             q.add_argument("--confirm", required=True, help="preview-reply 가 낸 확인 열쇠")
+    for name, fn in (("preview-new", cmd_preview_new), ("send-new", cmd_send_new)):
+        q = one(name, fn, mail=False)
+        q.add_argument("--subject", required=True, help="제목")
+        q.add_argument("--body-file", required=True, help="메일 글(UTF-8 평문)")
+        q.add_argument("--to", action="append", help="받는 사람 주소(여러 번 · 쉼표로 여럿)")
+        q.add_argument("--to-file", action="append", help="받는 사람 주소 파일 — 한 줄에 하나")
+        q.add_argument("--cc", action="append", help="참조 주소")
+        q.add_argument("--cc-file", action="append", help="참조 주소 파일")
+        q.add_argument("--bcc", action="append", help="숨은참조 주소 — 제 사본은 늘 붙는다")
+        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER")
+        q.add_argument("--company", default="", help="주소록 이름을 붙일 회사 값")
+        if name == "send-new":
+            q.add_argument("--confirm", required=True, help="preview-new 가 낸 확인 열쇠")
     for name, fn in (("preview-mark", cmd_preview_mark), ("apply-mark", cmd_apply_mark)):
         q = one(name, fn)
         way = q.add_mutually_exclusive_group(required=True)

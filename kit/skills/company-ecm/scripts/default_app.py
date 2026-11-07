@@ -30,6 +30,14 @@ Windows 가 받아 주는 값 — 어기면 조용히 망가진다
       나고, 그 확장자는 사람이 한 번 「항상 이 앱 사용」을 고르게 이끈다
     * 적은 뒤 Windows 가 그 확장자를 정말 그 ProgId 로 푸는지 ``AssocQueryStringW`` 로 묻는다 — 안 받았으면 이번에 적은
       키를 걷고 ``DefaultAppNeeded`` 를 낸다
+
+기본 앱이 서 있어도 고르는 창이 뜨는 자리
+    * 그 확장자를 열 수 있다고 등록된 앱(``HKCR\\.<확장자>\\OpenWithProgids``) 가운데 ``HKCU\\…\\ApplicationAssociationToasts`` 에
+      ``<ProgId>_<확장자>`` 값이 없는 앱이 있으면, Windows 는 그 앱을 새로 깔린 앱으로 보고 그 확장자를 열 때 「이 파일을 열 때
+      사용할 앱」 창을 한 번 띄운다(새 앱 옆에 「새로 만들기」가 붙는다). 그 창이 떠 있는 동안 문서는 안 열린다
+    * 그래서 ``ensure`` 는 기본 앱이 선 확장자에서, 빠진 앱의 값만 DWORD 0 으로 더한다 — Windows 가 그 앱을 보인 뒤 적는 값과
+      같은 꼴이다. 해시가 없는 키라 Windows 가 막지 않는다. 있는 값과 기본 앱은 건드리지 않는다. 그 확장자에서 「새 앱이
+      깔렸다」 알림만 안 보이게 된다
 """
 
 from __future__ import annotations
@@ -49,6 +57,9 @@ FILE_EXTS = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts"
 # 쓰는 사람의 고름이 놓이는 자리 — 앞이 지금 판, 뒤는 새 판 Windows 가 쓰는 자리다. 둘 중 하나라도 ProgId 가 있으면 고른 것이다
 CHOICE_KEYS = ("UserChoice", "UserChoiceLatest")
 CHOICE_LATEST_PROGID_SUBKEY = "ProgId"     # UserChoiceLatest 는 ProgId 를 하위 키에 든다
+# Windows 가 「이 앱은 사람에게 보였다」를 적는 자리 — 값 이름은 <ProgId>_<확장자>, 값은 DWORD 0
+TOASTS = r"Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts"
+TOAST_SEEN = 0
 
 # 확장자마다 깔렸으면 고를 ProgId — 앞에 선 것부터. 오피스는 그 앱이 깔릴 때 등록하는 이름이고, PDF 는 Acrobat 둘이다.
 # 표에 없는 확장자는 이 손이 고를 앱을 모른다 — 사람이 고른다
@@ -359,12 +370,56 @@ def _remove_choice(ext: str, base: str = FILE_EXTS) -> None:
         pass
 
 
-def ensure(ext: str, *, base: str = FILE_EXTS) -> Ensured:
-    """그 확장자의 기본 앱이 서 있게 한다 — 있으면 그대로 두고, 없으면 깔린 앱으로 적은 뒤 Windows 가 받았나 본다.
+def registered_progids(ext: str) -> list[str]:
+    """그 확장자를 열 수 있다고 등록된 앱의 ProgId(``HKCR\\.<확장자>\\OpenWithProgids`` 의 값 이름) — 읽기만 한다."""
+    names: list[str] = []
+    try:
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, rf"{normalize(ext)}\OpenWithProgids") as key:
+            index = 0
+            while True:
+                try:
+                    name = winreg.EnumValue(key, index)[0]
+                except OSError:
+                    break
+                index += 1
+                if name:
+                    names.append(name)
+    except OSError:
+        pass
+    return names
 
-    사람이 골라야 하면 ``DefaultAppNeeded``. ``base`` 는 검사가 버릴 자리를 줄 때만 바꾼다.
+
+def quiet_new_apps(ext: str, *, toasts: str = TOASTS) -> list[str]:
+    """그 확장자에 등록된 앱 가운데 「보였다」 값이 없는 앱만 값을 더한다 — 더한 값 이름을 낸다. 있는 값은 안 건드린다.
+
+    ``toasts`` 는 검사가 버릴 자리를 줄 때만 바꾼다.
     """
     ext = normalize(ext)
+    added: list[str] = []
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, toasts, 0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE) as key:
+        for progid in registered_progids(ext):
+            name = f"{progid}_{ext}"
+            try:
+                winreg.QueryValueEx(key, name)
+            except FileNotFoundError:
+                winreg.SetValueEx(key, name, 0, winreg.REG_DWORD, TOAST_SEEN)
+                added.append(name)
+    return added
+
+
+def ensure(ext: str, *, base: str = FILE_EXTS, toasts: str = TOASTS) -> Ensured:
+    """그 확장자의 기본 앱이 서 있게 한다 — 있으면 그대로 두고, 없으면 깔린 앱으로 적은 뒤 Windows 가 받았나 본다. 기본 앱이
+    섰으면 새 앱 알림 창이 그 열기를 막지 않게 ``quiet_new_apps`` 를 부른다.
+
+    사람이 골라야 하면 ``DefaultAppNeeded``. ``base`` · ``toasts`` 는 검사가 버릴 자리를 줄 때만 바꾼다.
+    """
+    ext = normalize(ext)
+    got = _ensure_choice(ext, base)
+    quiet_new_apps(ext, toasts=toasts)
+    return got
+
+
+def _ensure_choice(ext: str, base: str) -> Ensured:
     now = state(ext, base=base)
     if now.progid:
         return Ensured(now.progid, False)

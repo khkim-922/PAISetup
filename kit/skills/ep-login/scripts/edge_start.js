@@ -3,8 +3,8 @@
 //
 // 부르는 꼴:
 //     node edge_start.js [--profile <폴더>] [주소]
-//   주소 — 띄운 창의 하나뿐인 탭이 열 곳. 안 주면 사내 SSO 의 회사 로그인(LOGIN_URL)이다 — 데스크톱은 통합 인증으로 입력 없이
-//     넘고, VDI 는 그 탭에 로그인 화면이 선다(사람이 로그인한다).
+//   주소 — 띄운 창의 하나뿐인 탭이 열 곳. 안 주면 데스크톱은 사내 SSO 의 회사 로그인(LOGIN_URL — 통합 인증으로 입력 없이 넘는다),
+//     VDI 는 평소 EP 로그인 화면(EP_LOGIN_URL — 사람이 평소 아이디로 로그인한다)이다.
 //   --profile — 기본 프로필 대신 그 폴더를 프로필로 쓴다. 기본 프로필로 띄웠는데 포트가 안 열리는 Edge(종료 3)에서만 쓴다 —
 //     그 프로필은 사람의 평소 Edge 와 따로 놀아 그 로그인이 평소 Edge 의 EP 세션을 끊는다.
 //   EDGE_DEBUG_PORT 포트(기본 9222 — edge_session.js 와 같은 값) · SESSION_LOGIN_HOSTS 로그인 화면 호스트(쉼표 · edge_session.js 와
@@ -34,8 +34,13 @@ const fs = require('fs');
 const path = require('path');
 const { spawn, execFileSync } = require('child_process');
 
-// 사내 SSO 의 회사 로그인 — mail-secretary secretary/identity.py 의 COMPANY_LOGIN_PATH · posco/ENV-posco.md 「사내 메일함」
+// 사내 SSO 의 회사 로그인 — mail-secretary secretary/identity.py 의 COMPANY_LOGIN_PATH · posco/ENV-posco.md 「사내 메일함」.
+// ADFS 로 넘어가 데스크톱은 통합 인증으로 입력 없이 서지만, VDI 에서는 처음 보는 ADFS 창이 전체 메일 주소를 받는다
 const LOGIN_URL = 'http://swpsso.posco.net/idms/U61/jsp/login/saml_login.jsp?companyCode=shared';
+// 평소 EP 로그인 — swp.posco.net 이 보내는 화면(VDI 꼴의 아이디 · 비밀번호 칸). VDI 는 통합 인증이 안 서 사람이 여기서 로그인한다
+const EP_LOGIN_URL = 'http://swpsso.posco.net/idms/U61/jsp/login/login.jsp';
+// VMware Horizon VDI 인가 — 에이전트가 세션에 심는 브로커 값 · VDI 도메인
+const onVdi = () => Boolean((process.env.ViewClient_Broker_DNS_Name || '').trim()) || /\.VDI$/i.test(process.env.USERDNSDOMAIN || '');
 const LOGIN_HOSTS = 'swpsso.posco.net,adfs.m365.posco.net';   // edge_session.js 의 SESSION_LOGIN_HOSTS 기본과 같다
 const LOGIN_PATH = /\/(login|adfs)\//i;  // 로그인 화면의 경로 — SSO 의 …/jsp/login/… · ADFS 의 /adfs/…. EP(…/jsp/S001…)는 벗어난 것이다
 const EP_DIALOG = '다른 PC에서 EP 접속 정보';   // SSO 가 로그인 도중 띄우는 확인 창의 글(mail-secretary 결정 0009)
@@ -149,7 +154,7 @@ async function main(argv) {
   const exe = findEdge();
   if (!exe) return fail(1, 'Edge 를 못 찾았다');
   if (!profile && edgeRunning()) return fail(2, 'Edge 가 디버깅 포트 없이 돌고 있다 — 창을 다 닫고 알림 영역(트레이)의 Edge 도 끝낸 뒤 다시 부른다');
-  const start = url || LOGIN_URL;
+  const start = url || (onVdi() ? EP_LOGIN_URL : LOGIN_URL);
   const args = [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1'];
   if (profile) args.push(`--user-data-dir=${path.resolve(profile)}`, '--no-first-run');
   args.push(start);                                  // 띄운 창의 하나뿐인 탭이 이 주소다 — 새 탭을 따로 안 연다

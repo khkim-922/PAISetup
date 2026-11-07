@@ -1,10 +1,10 @@
 """사내 문서함(ECM)에서 문서를 찾고 읽고, 사람이 확인한 한 편은 편집해 다음 판으로 올리거나 새 문서로 올리는 손. 표준 라이브러리만 쓴다(곁의
-``default_app.py`` · ``close_view.ps1`` · ``checkin_window.ps1`` 을 함께 쓴다).
+``default_app.py`` · ``close_view.ps1`` · ``close_acrobat.ps1`` · ``checkin_window.ps1`` 을 함께 쓴다).
 
 무엇을 하나
     문서함의 목록 · 찾기 · 건수를 받는다 — 내 문서함, 그리고 그 사람이 볼 수 있는 부서 · 프로젝트 문서함(``Ecm.cabinets`` ·
     ``Ecm.list(cabinet=…)`` · ``Ecm.count``). 문서 하나를 PC 의 ECM 에이전트로 받아 보기로 열고(``open_document``), 에이전트가 띄운
-    오피스 창을 닫은 뒤 받은 파일의 글자를 스킬 drm-office-read 의 읽는 손으로 뽑는다(``read_document``).
+    창(오피스 · Acrobat)을 닫은 뒤 받은 파일의 글자를 스킬 drm-office-read 의 읽는 손으로 뽑는다(``read_document``).
 
     편집은 화면과 같은 차례다 — ``edit_document`` 가 서버에서 잠그고 에이전트로 읽기 쓰기로 열며, 고친 뒤 ``checkin_document`` 가
     그 문서만 저장해 닫고 에이전트의 편집완료 창에서 **늘 다음 판**을 골라 수정 내용과 함께 올린 뒤 문서 정보의 최종 버전이
@@ -68,7 +68,8 @@
       JSON 이다. 성공은 ``MB_RTN_VALUE``, 까닭은 ``MS_MSG_CODE`` · ``MS_MSG_DESC``
     * 목록은 ``DocList-service&getDocList=true`` 의 ``ML_DOC_LIST[]``, 건수는 ``&getDocCount=true`` 의 ``MI_DOC_COUNT`` 다. 내
       문서함은 ``formId=F_LIST_MYDOC`` · 화면의 기본은 ``docCntPerPage=15`` · ``searchPeriod=6M`` · ``fileType=ALL_FORMAT`` ·
-      ``sortDirection=desc``
+      ``sortDirection=desc``. 기간 ``searchPeriod`` 는 화면 기간 필터의 일곱 값(``1M`` · ``6M`` · ``12M`` · ``24M`` · ``36M`` ·
+      ``60M`` · ``ALL``)만 뜻대로 선다 — ``1Y`` 는 ``MSG_E_0056`` 으로 거절되고, ``1W`` 는 거절 없이 1M 보다 많은 건수가 온다
     * 부서 · 프로젝트 문서함은 화면 왼쪽 「내 부서 컨텐츠」와 같은 ``formId=F_LIST_MYDEPT`` · ``listKey=<문서함 열쇠>_<문서함 열쇠>`` 다.
       그 사람의 문서함은 메인 화면의 ``<option id="MENU_DEPT|MENU_PROJECT" value='cab…'>이름</option>`` 이, 제 부서는
       ``s_UserDeptCabinetId`` 가 든다. 부서 문서는 내 문서함 찾기에 안 걸린다
@@ -129,6 +130,7 @@ DEFAULT_AGENT = "ws://localhost:8383/"
 DEFAULT_DOCS_ROOT = r"C:\Rayful2_Docs"
 DEFAULT_READER = "~/.claude/skills/drm-office-read/scripts/read-drm.ps1"
 CLOSE_SCRIPT = pathlib.Path(__file__).resolve().parent / "close_view.ps1"
+ACROBAT_CLOSE_SCRIPT = pathlib.Path(__file__).resolve().parent / "close_acrobat.ps1"
 CHECKIN_SCRIPT = pathlib.Path(__file__).resolve().parent / "checkin_window.ps1"
 
 HTTP_TIMEOUT = 30.0
@@ -193,6 +195,8 @@ SERVER_NAME = re.compile(r"^[/\w.\-]+$")   # 에이전트가 준 서버 임시 �
 LIST_DEFAULTS = {"isHTML": "T", "formId": MY_DOCS, "wfStatusType": "", "fileType": "ALL_FORMAT", "orderBy": "",
                  "sortDirection": "desc"}
 DEFAULT_PERIOD = "6M"
+# 화면 기간 필터의 값 그대로 — 밖의 값은 MSG_E_0056 으로 거절되거나(1Y · 2Y) 거절 없이 틀린 목록이 온다(1W)
+PERIODS = ("1M", "6M", "12M", "24M", "36M", "60M", "ALL")
 DEFAULT_PER_PAGE = 15
 OBJECT_ID = re.compile(r"^[0-9A-Fa-f]{16}$")
 AGENT_FIELD_SEPARATOR = "\x08"
@@ -206,6 +210,13 @@ LOCK_PREFIX = "~$"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 # 오피스 앱 — ProgId 의 앞머리 → 닫는 손이 붙을 앱(이름은 drm-office-read 의 앱 이름과 같다)
 OFFICE_OF_PROGID = {"word.": "Word", "excel.": "Excel", "powerpoint.": "PPT"}
+# pdf 보기 앱 — 이 ProgId 면 close_acrobat.ps1 이 그 탭을 닫는다. 그 밖의 앱(Edge 따위)은 안 닫는다
+ACROBAT = "Acrobat"
+ACROBAT_PROGID = "acroexch."
+# 닫는 손(close_view.ps1 · close_acrobat.ps1)의 종료 값 → 창의 상태. 그 밖의 값은 실패다
+CLOSE_EXIT = {0: "closed", 2: "not-found", 3: "not-front"}
+# 보기를 거절한 코드 — 사람에게 서버 글 대신 할 일을 낸다. 권한이 없어 문서함 화면에도 안 보이던 문서가 이 코드였다
+VIEW_DENIED = "MSG_E_0035"
 OFFICE_BY_EXT = {".docx": "Word", ".doc": "Word", ".xlsx": "Excel", ".xls": "Excel", ".xlsm": "Excel",
                  ".pptx": "PPT", ".ppt": "PPT"}
 
@@ -304,7 +315,7 @@ class ReadResult:
     text: str
     summary: str           # 읽는 손이 낸 한 줄 — 글자 수 · 「글 밖」 셈
     opened: Opened
-    window: str            # closed · not-found · not-office
+    window: str            # closed · not-found · not-front · not-office
 
 
 # ── 세션 ─────────────────────────────────────────────────────────────────
@@ -543,6 +554,8 @@ class Ecm:
 
     @staticmethod
     def _list_params(search: str, period: str, folder: str, cabinet: str = "") -> dict:
+        if period not in PERIODS:
+            raise EcmError(f"기간(--period)은 화면의 값만 받는다: {' · '.join(PERIODS)} — 받은 값 {period!r}")
         if cabinet:
             if not CABINET_ID.match(cabinet):
                 raise EcmError(f"문서함 열쇠(cab…)가 아니다: {cabinet!r} — cabinets 가 낸 열쇠를 준다")
@@ -624,7 +637,10 @@ def _answer(body: bytes, kind: str) -> dict:
     if not isinstance(data, dict):
         raise EcmError("ECM 의 답이 JSON 객체가 아니다")
     if data.get("MB_RTN_VALUE") not in (True, "true"):
-        raise EcmError(f"ECM 이 거절했다: {data.get('MS_MSG_CODE', '')} {data.get('MS_MSG_DESC', '')}".strip())
+        code, desc = str(data.get("MS_MSG_CODE", "")), str(data.get("MS_MSG_DESC", ""))
+        if code == VIEW_DENIED:
+            raise EcmError(f"이 문서를 볼 권한이 없는 것 같다(ECM: {code} {desc}) — 문서함 화면에도 안 보이면 올린 사람에게 공유를 청한다")
+        raise EcmError(f"ECM 이 거절했다: {code} {desc}".strip())
     return data
 
 
@@ -873,6 +889,11 @@ def office_of(progid: str) -> str:
     return next((app for head, app in OFFICE_OF_PROGID.items() if low.startswith(head)), "")
 
 
+def viewer_of(progid: str) -> str:
+    """ProgId → 보기 창을 닫는 손이 붙을 앱 이름 — 오피스 셋에 Acrobat(Reader 포함)을 더한다. 닫을 줄 모르면 빈 글자."""
+    return office_of(progid) or (ACROBAT if progid.lower().startswith(ACROBAT_PROGID) else "")
+
+
 def open_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool = False) -> Opened:
     """문서 하나를 에이전트로 받아 연다 — 열기 전에 그 확장자의 기본 앱을 세운다.
 
@@ -894,21 +915,25 @@ def open_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool 
 
 
 def _close(path: pathlib.Path, app: str, wait: float, save: bool) -> tuple[str, dict]:
-    proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CLOSE_SCRIPT),
-                           "-Path", str(path), "-App", app, "-WaitSeconds", str(int(wait)), *(["-Save"] if save else [])],
+    if app == ACROBAT:     # 보기 전용 — 저장할 것이 없다
+        args = [str(ACROBAT_CLOSE_SCRIPT), "-Path", str(path), "-WaitSeconds", str(int(wait))]
+    else:
+        args = [str(CLOSE_SCRIPT), "-Path", str(path), "-App", app, "-WaitSeconds", str(int(wait)), *(["-Save"] if save else [])]
+    proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", *args],
                           capture_output=True, timeout=wait + 60)
     out = proc.stdout.decode("utf-8", "replace").strip()
-    if proc.returncode in (0, 2):
+    if proc.returncode in CLOSE_EXIT:
         try:
             said = json.loads(out.splitlines()[-1]) if out else {}
         except json.JSONDecodeError:
             said = {}
-        return ("closed" if proc.returncode == 0 else "not-found"), said
+        return CLOSE_EXIT[proc.returncode], said
     raise EcmError(f"창 닫는 손이 실패했다(종료 {proc.returncode}): {out or proc.stderr.decode('utf-8', 'replace').strip()}")
 
 
 def close_window(path: pathlib.Path, app: str, *, wait: float = WINDOW_WAIT) -> str:
-    """에이전트가 띄운 그 문서만 닫는다 — 그 앱에 남은 문서가 없을 때만 앱을 끈다. closed · not-found · not-office 를 낸다."""
+    """에이전트가 띄운 그 문서만 닫는다 — 그 앱에 남은 문서가 없을 때만 앱을 끈다. closed · not-found · not-front(Acrobat 에서 다른
+    pdf 가 앞 탭이라 안 건드렸다) · not-office 를 낸다."""
     if not app:
         return "not-office"
     return _close(path, app, wait, save=False)[0]
@@ -1075,7 +1100,7 @@ def read_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool 
     닫은 뒤에도 그 자리에 남는다. 화면에 띄워 두고 보려면 ``open_document`` 를 쓴다.
     """
     opened = open_document(ecm, agent, object_id, allow_picker=allow_picker)
-    window = close_window(opened.path, office_of(opened.progid))
+    window = close_window(opened.path, viewer_of(opened.progid))
     try:
         text, summary = extract_text(opened.path, reader=reader)
     except ReadError as exc:
@@ -1086,7 +1111,8 @@ def read_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool 
 # ── 명령줄 ───────────────────────────────────────────────────────────────
 
 WINDOW_WORD = {"closed": "닫았다", "not-found":f"{WINDOW_WAIT:.0f} 초 안에 못 찾았다 — 떠 있으면 사람이 닫는다",
-               "not-office": "오피스 창이 아니라 안 닫았다 — 다 봤으면 사람이 닫는다"}
+               "not-front": "다른 pdf 가 앞 탭이라 안 건드렸다 — 다 봤으면 사람이 그 탭을 닫는다",
+               "not-office": "닫을 줄 아는 앱(오피스 · Acrobat)이 아니라 안 닫았다 — 다 봤으면 사람이 닫는다"}
 
 
 def _print_docs(docs: list[Doc], page: int, where: str = "내 문서함") -> None:
@@ -1114,7 +1140,8 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("list", "count"):
         p = sub.add_parser(name, help="문서함 목록" if name == "list" else "문서함 건수")
         p.add_argument("--search", default="", help="찾을 낱말(화면의 찾기 칸)")
-        p.add_argument("--period", default=DEFAULT_PERIOD, help=f"기간(화면 기본 {DEFAULT_PERIOD})")
+        p.add_argument("--period", default=DEFAULT_PERIOD, choices=PERIODS,
+                       help=f"기간 — 화면의 기간 필터 값(1년은 12M · 전체는 ALL). 기본 {DEFAULT_PERIOD}")
         p.add_argument("--folder", default="", help="내 문서함의 폴더 키(목록 줄의 folder_id)")
         p.add_argument("--cabinet", default="", help="부서 · 프로젝트 문서함 열쇠(cabinets 의 cab…) — 안 주면 내 문서함")
         if name == "list":

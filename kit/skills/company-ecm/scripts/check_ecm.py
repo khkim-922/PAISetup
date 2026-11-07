@@ -5,10 +5,12 @@
       대조로 잰 읽기(목록 · 건수 · 열기 첫 걸음 · 세션 확인)는 서버에 닿아 풀려야 한다 — 다 막아서 초록이 되는 판을 가른다
     * 등록 길이 화면의 두 POST(같은 이름 찾기 · 등록)만 보내나 — 같은 이름이면 에이전트 올림도 등록도 안 가고, 화면에 없는 보안
       짝 · 꼴 밖의 서버 자리 · 다른 서비스의 POST 는 서버에 닿기 전에 막나. 대조로 한 판은 끝까지 서야 한다
-    * 기본 앱 손이 이미 고른 값(UserChoice · UserChoiceLatest)을 덮나 — 버릴 자리(HKCU\\Software\\PAISetupEcmCheck)에서 잰다.
-      이 PC 의 진짜 확장자 자리는 안 건드린다
+    * 기본 앱 손이 이미 고른 값(UserChoice · UserChoiceLatest)을 덮나, 새 앱 알림 값을 빠진 것만 더하고 있는 값은 두나 — 버릴
+      자리(HKCU\\Software\\PAISetupEcmCheck)에서 잰다. 이 PC 의 진짜 확장자 자리와 알림 자리는 안 건드린다
     * (``--office`` 일 때만) 창 닫는 손이 받은 문서 하나만 닫고, 같은 앱에 떠 있는 다른 문서와 앱은 남기나 — 남은 문서가
-      없으면 앱을 끄나. 워드와 파워포인트(사용자 하나에 하나만 떠 사람의 앱에 들어간다)로 잰다. 앱은 셸이 띄우듯 실행 파일에
+      없으면 앱을 끄나. 워드와 파워포인트(사용자 하나에 하나만 떠 사람의 앱에 들어간다), 그리고 pdf 의 Acrobat · Reader(창 하나에
+      탭으로 든다 — 닫는 손이 Ctrl+W 를 보내 앞 탭이 사람의 것이면 그것을 닫는다)로 잰다. Acrobat 은 사람의 pdf 가 앞 탭일 때
+      아무것도 안 닫나도 잰다. 앱은 셸이 띄우듯 실행 파일에
       파일을 줘서 띄운다. 오피스가 깔린 PC 에서 화면에 창이 잠깐 뜬다. 그 앱이 이미 떠 있으면 사람의 것이라 안 잰다(못 잼)
 남기는 까닭(check-design §1 넷) — 길이 분명하다(같은 서비스 모음에 문서를 잠그는 편집 열기가 있고 손을 고칠 때마다 막는
 목록이 흔들린다 · 등록은 동료가 보는 문서함에 문서를 더한다 · 기본 앱은 사람이 이미 고른 확장자에서 늘 불린다 · 파워포인트는 사람의 앱에 붙는다) · 깨지면 조용하거나
@@ -44,6 +46,7 @@ import hashlib
 import http.server
 import importlib
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -73,6 +76,7 @@ FAKE_DOCS = [
      "MS_SECURITY_LEVEL": "2A", "MS_LOCK_USER_ID": "", "MI_DOC_PERMIT": "7"},
 ]
 CHECK_BASE = r"Software\PAISetupEcmCheck\FileExts"
+CHECK_TOASTS = r"Software\PAISetupEcmCheck\ApplicationAssociationToasts"
 CABINET = "cab00a1b2c3d4"
 FOLDER = "fdr00a1b2c3d401"
 SUB_FOLDER = "fdr00a1b2c3d402"
@@ -492,7 +496,7 @@ def check_existing_choice_is_never_overwritten(app_mod):
                 winreg.SetValueEx(key, "Hash", 0, winreg.REG_SZ, "personHash=")
             before = _snapshot(path)
             time.sleep(0.05)
-            got = app_mod.ensure(ext, base=CHECK_BASE)
+            got = app_mod.ensure(ext, base=CHECK_BASE, toasts=CHECK_TOASTS)
             assert (got.progid, got.written) == ("Person.Chose.This", False), f"{ext} {where}: 고른 값을 두지 않았다 — {got}"
             assert _snapshot(path) == before, f"{ext} {where}: 고른 값의 키가 바뀌었다"
             if where != "UserChoice":
@@ -504,6 +508,28 @@ def check_existing_choice_is_never_overwritten(app_mod):
     with contextlib.suppress(FileNotFoundError):
         winreg.CloseKey(winreg.OpenKey(winreg.HKEY_CURRENT_USER, root))
         raise AssertionError(f"버릴 자리를 못 걷었다: HKCU\\{root}")
+
+
+def check_new_app_toasts_fill_only_the_missing(app_mod):
+    """등록된 앱 목록은 이 PC 의 실물(HKCR)을 그대로 읽는다 — 버릴 자리에는 「보였다」 값만 짓는다."""
+    ext = next((e for e in (".pdf", ".docx", ".xlsx", ".pptx") if len(app_mod.registered_progids(e)) >= 2), "")
+    if not ext:
+        raise Unmeasured("등록된 앱이 둘 넘는 확장자가 이 PC 에 없다")
+    progids = app_mod.registered_progids(ext)
+    kept, person_value = f"{progids[0]}_{ext}", 7
+    root = CHECK_TOASTS.rsplit("\\", 1)[0]
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, CHECK_TOASTS, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, kept, 0, winreg.REG_DWORD, person_value)
+        added = app_mod.quiet_new_apps(ext, toasts=CHECK_TOASTS)
+        assert added == [f"{p}_{ext}" for p in progids[1:]], f"{ext}: 빠진 앱만 더하지 않았다 — {added}"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, CHECK_TOASTS) as key:
+            assert winreg.QueryValueEx(key, kept) == (person_value, winreg.REG_DWORD), f"{ext}: 있던 값을 고쳤다"
+            for name in added:
+                assert winreg.QueryValueEx(key, name) == (0, winreg.REG_DWORD), f"{name}: Windows 가 적는 꼴(DWORD 0)이 아니다"
+        assert app_mod.quiet_new_apps(ext, toasts=CHECK_TOASTS) == [], f"{ext}: 두 번째 부름이 또 더했다"
+    finally:
+        _delete_tree(root)
 
 
 # 앱 이름 → (프로세스 이름, App Paths 의 실행 파일, COM 이름, 열린 문서 모음)
@@ -542,6 +568,35 @@ def _wait(predicate, seconds=40.0) -> bool:
             return True
         time.sleep(0.5)
     return False
+
+
+ACROBAT_PROCESSES = ("AcroRd32", "Acrobat")
+
+
+def _acrobat_titles() -> list[str]:
+    names = ",".join(ACROBAT_PROCESSES)
+    out = _ps("[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+              f"Get-Process -Name {names} -ErrorAction SilentlyContinue | Where-Object {{ $_.MainWindowHandle -ne 0 }} | "
+              "ForEach-Object { $_.MainWindowTitle }")
+    return [line for line in out.splitlines() if line.strip()]
+
+
+def _acrobat_has(path: pathlib.Path) -> bool:
+    return any(t.startswith(path.name + " - Adobe ") for t in _acrobat_titles())
+
+
+def minimal_pdf() -> bytes:
+    """빈 쪽 하나짜리 pdf — Reader 가 탭으로 열기만 하면 된다."""
+    objs = [b"<</Type/Catalog/Pages 2 0 R>>", b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+            b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>"]
+    out, offs = bytearray(b"%PDF-1.4\n"), []
+    for i, obj in enumerate(objs, 1):
+        offs.append(len(out))
+        out += b"%d 0 obj\n" % i + obj + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 4\n0000000000 65535 f \n" + b"".join(b"%010d 00000 n \n" % o for o in offs)
+    out += b"trailer\n<</Size 4/Root 1 0 R>>\nstartxref\n%d\n%%%%EOF\n" % xref
+    return bytes(out)
 
 
 def _make_decks(paths: list[pathlib.Path]) -> None:
@@ -593,6 +648,34 @@ def check_powerpoint_closes_only_the_received_document(ecm_mod):
     _closes_only_received(ecm_mod, "PPT", ".pptx")
 
 
+def check_acrobat_closes_only_the_received_pdf(ecm_mod):
+    """사람의 pdf 를 **뒤에** 열어 앞 탭으로 세운 판에 받은 pdf 를 닫으라 하면 아무것도 안 닫는다(not-front) — Ctrl+W 를 그대로
+    보내면 사람의 것이 닫힌다. 이어 사람의 pdf 를 닫고(앞 탭이다) 받은 pdf 가 앞 탭이 된 판에 그것만 닫고 앱을 끄나 본다."""
+    if _acrobat_titles():
+        raise Unmeasured("Acrobat · Reader 가 이미 떠 있다 — 사람의 것이라 안 건드린다")
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="check-ecm-acrobat-"))
+    try:
+        person, received = tmp / "person-own.pdf", tmp / "VIEW" / "received_00a1b2c3d4e5f607_user01.pdf"
+        received.parent.mkdir()
+        person.write_bytes(minimal_pdf())
+        received.write_bytes(minimal_pdf())
+        os.startfile(str(received))
+        if not _wait(lambda: _acrobat_has(received)):
+            raise Unmeasured("pdf 기본 앱이 Acrobat · Reader 가 아니거나 시한 안에 못 열었다")
+        os.startfile(str(person))
+        if not _wait(lambda: _acrobat_has(person)):
+            raise Unmeasured("Acrobat 이 사람 몫 pdf 를 시한 안에 못 열었다")
+        got = ecm_mod.close_window(received, ecm_mod.ACROBAT, wait=3)
+        assert got == "not-front", f"Acrobat: 사람의 pdf 가 앞 탭인데 {got} 를 냈다"
+        assert _acrobat_has(person), "Acrobat: 받은 pdf 를 닫으라 했는데 사람의 pdf 가 닫혔다"
+        assert ecm_mod.close_window(person, ecm_mod.ACROBAT) == "closed", "Acrobat: 앞 탭인 pdf 를 못 닫았다"
+        assert _wait(lambda: _acrobat_has(received), 10), "Acrobat: 앞 탭을 닫았는데 남은 pdf 가 앞에 안 섰다(또는 앱까지 꺼졌다)"
+        assert ecm_mod.close_window(received, ecm_mod.ACROBAT) == "closed", "Acrobat: 받은 pdf 가 앞 탭인데 못 닫았다"
+        assert _wait(lambda: not _acrobat_titles(), 20), "Acrobat: 문서가 다 닫혔는데 앱이 안 꺼졌다"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main(argv: list[str]) -> int:
     office = "--office" in argv
     rest = [a for a in argv if a != "--office"]
@@ -603,10 +686,11 @@ def main(argv: list[str]) -> int:
     app_mod = importlib.import_module("default_app")
     print(f"잰다: {tree / 'ecm.py'}")
     checks = [(check_reads_reach_and_changes_never_leave, ecm_mod), (check_register_sends_only_the_screens_two_posts, ecm_mod),
-              (check_existing_choice_is_never_overwritten, app_mod)]
+              (check_existing_choice_is_never_overwritten, app_mod), (check_new_app_toasts_fill_only_the_missing, app_mod)]
     if office:
         checks += [(check_word_closes_only_the_received_document, ecm_mod),
-                   (check_powerpoint_closes_only_the_received_document, ecm_mod)]
+                   (check_powerpoint_closes_only_the_received_document, ecm_mod),
+                   (check_acrobat_closes_only_the_received_pdf, ecm_mod)]
     passed = unmeasured = 0
     for check, mod in checks:
         try:
