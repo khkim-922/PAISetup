@@ -7548,8 +7548,10 @@ $ModelPickerOnly = $true
 #   `ANTHROPIC_MODEL` 은 위 `$Vars` 표에도 있어 표 루프도 이 목록을 묻는다.
 # 안티그래비티의 주소도 사내 전용이다 — 루프백이 아니라 게이트웨이를 바로 가리켜(claude-config 결정 0203) 프록시 걷기가 못 가르고,
 #   사외에서는 닿지 않는 회사 주소라 남으면 그 사람의 키로 도는 agy 가 죽은 곳으로 나간다.
+# 자동 모드 서버 검토 끔도 사내 전용이다 — 게이트웨이가 그 부탁을 떨궈 자동 모드가 도구를 다 거절하는 것을 막는 손잡이라,
+#   Anthropic 에 바로 붙는 사외에서는 멀쩡히 도는 서버 검토를 끄는 값이 된다.
 $InsideOnly = @('ATELIER_SITES', 'DISABLE_TELEMETRY', 'DISABLE_ERROR_REPORTING', 'CLAUDE_CODE_DISABLE_FAST_MODE',
-                'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'GOOGLE_GEMINI_BASE_URL')
+                'ANTHROPIC_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'GOOGLE_GEMINI_BASE_URL', 'CLAUDE_CODE_AUTO_MODE_SERVER')
 
 # ── 설치 기록 — 화면은 지금 읽을 것만, 기록은 그보다 많이 ─────────────────────────────────────────
 # 화면은 사람이 지금 읽을 것을 든다 — 자식 줄은 `Show-ChildLine` 이 경보 줄만 올린다. 기록은 거른 것까지 든다 — 하는 부름마다 명령 ·
