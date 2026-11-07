@@ -59,6 +59,8 @@ const cfg = settings();
 const port = cfg.port;
 const loginWaitMs = cfg.loginMs;              // 로그인 탭을 지켜보는 시한 — VDI 는 사람이 그 탭에서 로그인한다
 const say = line => console.log(line);
+const NEXT = ' 다음: 받는 손(session.sh)을 부른다';
+const HUMAN = '다음: 그 창에서 사람이 로그인한다 — 「EP 접속 정보」 창이 뜨면 「확인」이 다른 자리의 EP 세션을 끊는다고 알린다 · 됐다고 하면 받는 손(session.sh)';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function version() {
@@ -107,7 +109,7 @@ async function attachPage(wsUrl) {
 // 로그인 탭을 지켜본다 — 로그인 화면의 EP 접속 정보 창만 「확인」으로 받고, 탭이 로그인 화면을 벗어나면 떨어진다. 내는 것: 한 줄의 결과
 async function watchLogin(target) {
   const page = await attachPage(target.webSocketDebuggerUrl);
-  if (!page) return '로그인 탭에 못 붙었다 — 그 창에서 사람이 로그인한다';
+  if (!page) return `로그인 탭에 못 붙었다. ${HUMAN}`;
   try {
     let url = target.url;
     let accepted = 0;
@@ -129,7 +131,8 @@ async function watchLogin(target) {
       await sleep(POLL_MS);
     }
     const dialog = accepted ? ` · 「EP 접속 정보」 창을 「확인」으로 받았다(다른 자리의 EP 세션이 끊긴다)` : '';
-    return left ? `로그인 탭이 넘어갔다 — ${new URL(url).host}${dialog}` : `로그인 화면에서 시한(${Math.round(loginWaitMs / 1000)}초)이 지났다 — 그 창에서 로그인한 뒤 다시 부른다${dialog}`;
+    return left ? `로그인 탭이 넘어갔다 — ${new URL(url).host}${dialog}.${NEXT}`
+      : `로그인 화면에서 시한(${Math.round(loginWaitMs / 1000)}초)이 지났다${dialog}. 다음: 사람이 그 창에서 로그인한다(VDI 는 통합 인증이 안 선다) · 됐다고 하면 받는 손(session.sh)`;
   } finally {
     page.close();                                    // 탭 자리의 연결만 끊는다 — 탭과 창은 사람이 쓴다
   }
@@ -145,10 +148,11 @@ async function main(argv) {
     else return fail(1, `인자가 남는다: ${argv[i]}`);
   }
   const open = await version();
-  if (open && open.Browser) { say(`이미 열려 있다 — 127.0.0.1:${port} · ${open.Browser}`); return 0; }
+  if (open && open.Browser) { say(`이미 열려 있다 — 127.0.0.1:${port} · ${open.Browser}.${NEXT} — 3 이면 그 Edge 에서 EP 로그인이 안 된 것이라 사람이 그 창에서 로그인한다`); return 0; }
   const exe = findEdge();
   if (!exe) return fail(1, 'Edge 를 못 찾았다');
-  if (!profile && edgeRunning()) return fail(2, 'Edge 가 디버깅 포트 없이 돌고 있다 — 창을 다 닫고 알림 영역(트레이)의 Edge 도 끝낸 뒤 다시 부른다');
+  if (!profile && edgeRunning()) return fail(2, 'Edge 가 디버깅 포트 없이 돌고 있다. 다음: 사람에게 Edge 창을 다 닫고 알림 영역(트레이)의 Edge 도 끝내 달라고 한 뒤 다시 부른다 — ' +
+    '이쪽에서 닫지 않는다(열린 탭 · 쓰던 글이 사람 것). 닫았는데 또 2 면 Edge 가 뒤에서 사는 설정(시작 부스트 · 닫은 뒤에도 백그라운드 실행)이 켜진 것이다 — 끌지는 사람이 고른다');
   const start = url || (onVdi() ? EP_LOGIN_URL : LOGIN_URL);
   const args = [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1'];
   if (profile) args.push(`--user-data-dir=${path.resolve(profile)}`, '--no-first-run');
@@ -161,14 +165,14 @@ async function main(argv) {
   while (Date.now() < deadline && !(v && v.Browser)) { await sleep(POLL_MS); v = await version(); }
   if (!(v && v.Browser)) {
     return fail(profile ? 1 : 3, profile
-      ? '띄웠는데 포트가 안 열린다 — 그 프로필의 Edge 가 이미 포트 없이 떠 있거나 회사 정책이 막는다'
-      : '띄웠는데 포트가 안 열린다 — Edge 가 Chromium 136 이상이면 기본 프로필에 포트를 안 여는 판이라 --profile 로 다시 부른다. ' +
-        '그 아래 판이면 포트 없이 떠 있던 Edge(시작 부스트 · 닫은 뒤 백그라운드 실행)나 회사 정책이 까닭이다');
+      ? '띄웠는데 포트가 안 열린다 — 그 프로필의 Edge 가 이미 포트 없이 떠 있거나 회사 정책이 막는다. 다음: 사람에게 Edge 를 트레이까지 다 닫아 달라고 한 뒤 다시 부른다 · 그래도 안 서면 멈추고 알린다'
+      : '띄웠는데 포트가 안 열린다. 다음: 사람에게 Edge 주소창에 edge://version 을 열어 첫 줄의 판을 읽어 달라고 한다. Chromium 136 이상이면 기본 프로필에 포트를 안 여는 판이다 — ' +
+        '그 로그인이 평소 Edge 의 EP 세션을 끊는다고 알리고 동의를 받은 뒤 --profile "$LOCALAPPDATA/ep-login/edge-profile" 로 다시 부른다. 그 아래 판이면 포트 없이 떠 있던 Edge(시작 부스트 · 닫은 뒤 백그라운드 실행)나 회사 정책이 까닭이라 2 처럼 트레이까지 닫아 달라고 한 뒤 다시 부른다');
   }
   say(`포트가 열렸다 — 127.0.0.1:${port} · ${v.Browser}`);
   const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(r => r.json()).catch(() => []);
   const tab = targets.find(t => t.type === 'page' && t.webSocketDebuggerUrl);
-  say(tab ? await watchLogin(tab) : '로그인 탭을 못 찾았다 — 그 창에서 사람이 로그인한다');
+  say(tab ? await watchLogin(tab) : `로그인 탭을 못 찾았다. ${HUMAN}`);
   return 0;
 }
 

@@ -1,6 +1,13 @@
 """받는 손(``edge_session.js``)을 파이썬에서 부르는 한 자리 — 사내 앱 스킬의 얇은 명령(company-mail · company-calendar ·
 company-ecm)이 이 폴더를 ``sys.path`` 에 넣고 싣는다. 손을 돌리고 종료 값 · 끝 줄 경로 · 손의 말을 닫힌 꼴 하나로 낸다 —
-어느 종료 값에 무엇을 할지는 부르는 쪽이 제 종료 값으로 옮긴다(그 스킬의 SKILL.md).
+어느 종료 값에 무엇을 할지는 부르는 쪽이 제 종료 값과 메시지의 「다음」 으로 옮긴다.
+
+**흔한 길에서는 손을 안 띄운다**(``session_first``) — 회사 PC 는 프로세스 하나가 수백 ms 라, 세션 파일이 이미 있으면
+그것으로 먼저 돌고 서버가 거절할 때(``expired``)만 손을 띄워 새 파일로 한 번 더 돈다. 파일의 자리는 손과 같은 차례로
+안다(``known_file`` — ``MAILBOX_COOKIES``, 없으면 손의 글에 적힌 ``DEFAULT_FILE``). 읽는 일만 그렇게 두 번 돌고, 서버를
+바꾸는 일은 ``file_first=False`` 로 늘 손부터 받아 한 번만 돈다 — 바꾼 뒤 끊긴 세션으로 둘째 판이 돌면 「이미 그렇다」는
+틀린 말이 사람에게 간다. 첫 판의 표준 출력은 담아 두었다가 선 뒤에 내보내고, ``expired`` 가 아닌 예외로 멈추면 담은 것을
+먼저 내보내고 올린다 — 되풀이해 찍히지도, 멈춘 자리까지의 글이 사라지지도 않게.
 
 어떻게 부르나::
 
@@ -13,9 +20,13 @@ company-ecm)이 이 폴더를 ``sys.path`` 에 넣고 싣는다. 손을 돌리�
     if got.usable:                                   # 0 · 또는 2 인데 남은 파일이 있다 — 그 파일로 서버에 물어 본다
         session = got.file
 
+    result = ep_session.session_first(work, expired=(SessionExpired,))   # 파일부터 · 거절되면 손을 띄워 한 번 더
+    result = ep_session.session_first(work, expired=(SessionExpired,), file_first=False)   # 바꾸는 일 — 늘 손부터 · 한 번
+    # 손이 못 서면 NoSession(got) — got.code 를 제 종료 값으로 옮긴다. 둘째 판의 expired 는 그대로 올라온다
+
 무엇을 내나 — ``Attached(code, file, said)``. ``code`` 는 손의 종료 값(``OK`` 0 · ``TOOL`` 1 · ``NO_EDGE`` 2 · ``NOT_LOGGED_IN`` 3 ·
 ``ECM_HANDOFF`` 4 — 그 뜻은 ``edge_session.js`` 머리말. 4 는 ``ecm`` 을 준 부름에서만 나고, 로그인은 섰으니 사람에게 다시 로그인을
-청하지 말고 스킬 ep-login 의 「ECM 만 못 받았다」를 가리킨다), ``file`` 은 표준 출력 끝 줄의 절대 경로가 있는 파일일 때만, ``said`` 는 손의 말(표준 오류 ·
+청하지 말고 스킬 ep-login 의 탭을 잠깐 여는 갈래(``--ecm-tab``)를 가리킨다), ``file`` 은 표준 출력 끝 줄의 절대 경로가 있는 파일일 때만, ``said`` 는 손의 말(표준 오류 ·
 없으면 표준 출력)이다. 손 · node 가 없거나 시한을 넘기면 돌리지 않고 ``TOOL`` 과 그 까닭을 낸다 — 예외는 안 낸다.
 0 인데 끝 줄이 있는 파일의 절대 경로가 아니면 ``file`` 이 None 이다 — 부르는 쪽이 도구 고장으로 읽는다.
 
@@ -24,14 +35,19 @@ company-ecm)이 이 폴더를 ``sys.path`` 에 넣고 싣는다. 손을 돌리�
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
+import io
 import os
 import pathlib
+import re
 import shutil
 import subprocess
+import sys
 
 HAND = pathlib.Path(__file__).resolve().with_name("edge_session.js")
 HAND_ENV = "EP_SESSION_HAND"
+DEFAULT_FILE_RE = re.compile(r"DEFAULT_FILE\s*=\s*'([^']+)'")   # 손의 글에 적힌 기본 자리 — 옮겨 적지 않고 거기서 읽는다
 OK, TOOL, NO_EDGE, NOT_LOGGED_IN, ECM_HANDOFF = 0, 1, 2, 3, 4   # edge_session.js 의 종료 값 — 닫힌 다섯
 TIMEOUT_SECONDS = 180                              # ECM 넘김(열두 걸음 · 걸음마다 5 초)까지 든다
 
@@ -50,6 +66,66 @@ class Attached:
 
 def hand_path() -> pathlib.Path:
     return pathlib.Path(os.environ.get(HAND_ENV, "").strip() or HAND)
+
+
+def known_file() -> pathlib.Path | None:
+    """받는 손을 안 띄우고 세션 파일의 자리를 낸다 — 손과 같은 차례(``MAILBOX_COOKIES`` → 손의 ``DEFAULT_FILE``). 파일이 없으면 None."""
+    raw = os.environ.get("MAILBOX_COOKIES", "").strip()
+    if not raw:
+        try:
+            found = DEFAULT_FILE_RE.search(hand_path().read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            found = None
+        if not found:
+            return None
+        raw = found.group(1)
+    path = pathlib.Path(os.path.expanduser(raw))
+    return path if path.is_file() else None
+
+
+class NoSession(Exception):
+    """손을 띄웠는데 못 섰다 — ``got`` 이 손의 종료 값 · 말을 든다. 부르는 쪽이 제 종료 값으로 옮긴다."""
+
+    def __init__(self, got: "Attached"):
+        super().__init__(got.said)
+        self.got = got
+
+
+def _held(use, file, expired):
+    """``use(file)`` 을 돌리되 표준 출력을 담는다 — 선 뒤에 내보내고, ``expired`` 면 버리고(둘째 판이 다시 찍는다), 그 밖의
+    예외로 멈추면 멈춘 자리까지의 글을 먼저 내보내고 올린다."""
+    held = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(held):
+            result = use(file)
+    except expired:
+        raise
+    except BaseException:
+        sys.stdout.write(held.getvalue())
+        raise
+    sys.stdout.write(held.getvalue())
+    return result
+
+
+def session_first(use, apps: tuple[str, ...] = (), *, expired=(), env: dict | None = None,
+                  timeout: float = TIMEOUT_SECONDS, file_first: bool = True):
+    """흔한 길에서 손을 안 띄운다 — 있는 세션 파일로 ``use(file)`` 을 먼저 돌리고, 그것이 ``expired`` 를 내거나 파일이 없을
+    때만 손을 띄워 새 파일로 한 번 더 돈다(``file_first=False`` 면 늘 손부터 받아 한 번만). 손이 못 서면 ``NoSession``. 손이
+    같은 낡은 파일만 가리키면(Edge 에 못 붙어 안 고쳤다) 둘째 판 없이 첫 판의 ``expired`` 를 올린다. 둘째 판의 ``expired`` 도
+    그대로 올라간다. 표준 출력은 ``_held`` 가 든다."""
+    file = known_file() if file_first else None
+    stale = None
+    if file is not None:
+        try:
+            return _held(use, file, expired)
+        except expired as exc:
+            stale = exc                              # 파일이 낡았다 — 손을 띄워 새로 받아 한 번 더
+    got = attach(apps, env=env, timeout=timeout)
+    if not got.usable:
+        raise NoSession(got)
+    if stale is not None and got.code == NO_EDGE and got.file == file:
+        raise stale                                  # 손이 못 붙어 같은 파일만 가리킨다 — 또 거절될 판을 안 돈다
+    return _held(use, got.file, expired)
 
 
 def attach(apps: tuple[str, ...] = (), *, env: dict | None = None, timeout: float = TIMEOUT_SECONDS) -> Attached:

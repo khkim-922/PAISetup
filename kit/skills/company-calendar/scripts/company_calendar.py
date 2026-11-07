@@ -12,13 +12,16 @@
 
     공통 — ``--url``(없으면 ``CALENDAR_URL`` → 남긴 주소 → 잰 기본 ``agenda.DEFAULT_APP_URL``). 시각은 다 서울 벽시계다.
 
-하는 일 — 명령마다 먼저 형제 스킬 ep-login 의 받는 손을 인자 없이 말없이 돌려(그 폴더의 ``ep_session.py`` 가 돌린다) 쓰는 사람의
-Edge 에서 그때의 세션을 받는다. 세션 파일의 자리는 그 손이 정하고, 끝 줄에 낸 절대 경로를 이 명령이 읽는다 — 그 자리를 여기 다시
-적지 않는다. 그 쿠키로 곁의 일정 손을 부른다.
+하는 일 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 로 세션을 쥔다: 보기는 세션 파일이 이미 있으면 그것으로 먼저
+돌고 일정 서버가 거절할 때만, 넣기 · 지우기(``MUTATING``)는 늘, 받는 손(node)을 띄워 쓰는 사람의 Edge 에서 세션을 받는다
+(까닭과 바퀴는 그 함수의 머리말). 세션 파일의 자리는 그 손이 정하고 여기 다시 적지 않는다. 그 쿠키로 곁의 일정 손을 부른다.
 판단(무엇을 넣을까 · 지워도 되나 묻기)은 여기 없다 — 바꾸는 명령은 사람이 그 한 건을 확인한 뒤에만 부른다(SKILL.md).
 
 내는 것 — 표준 출력에 JSON 하나. 종료 값: 0 됐다 · 1 도구 고장(그대로 알린다) · 2 인자가 틀렸다 · 3 세션이 없다 · 끊겼다(스킬
-ep-login) · 4 일정 앱 주소가 틀렸거나 잰 기본 주소로 내 일정함이 안 읽힌다. 넣기 · 지우기의 끝은 0 과 함께 ``state`` 가 든다.
+ep-login) · 4 일정 앱 주소가 틀렸거나 잰 기본 주소로 내 일정함이 안 읽힌다. 0 이 아니면 ``message`` 가 까닭과 「다음: …」 을 든다.
+일정 줄 — ``handle``(지우기에 넘기는 손잡이 · 사람에게 안 보인다) · ``weekday`` · ``pending``(참석 답을 안 한 받은 초대) · ``keep`` 이
+차면 지우지 않는 줄이고 ``keep_word`` 가 사람에게 할 말이다 · 공유 줄은 ``calendar``(누구 일정함) · ``private``(주인이 비공개로 든 것).
+넣기 · 지우기의 끝은 0 과 함께 ``state`` 와 사람에게 할 말 · 다음 걸음이 든 ``state_word`` 가 든다.
 """
 
 from __future__ import annotations
@@ -37,6 +40,28 @@ DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}
 WEEKDAYS = "월화수목금토일"                 # date.weekday() 의 0 ~ 6 — 답에 요일을 실어 모델이 요일을 제 셈으로 짐작하지 않게
 NO_CLASH = "none"                        # 확인에 보인 겹침이 없다는 seen 값
 EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION, EXIT_URL = 0, 1, 2, 3, 4
+MUTATING = ("add", "delete")             # 회사 일정을 바꾼다 — 세션 손부터 받아 한 번만 돈다
+NEXT_EP_LOGIN = "다음: 스킬 ep-login 으로 사내 세션을 세운 뒤 같은 명령을 다시 부른다"
+NEXT_URL = "다음: 사람에게 「Edge 에서 메일을 열고 위의 일정 메뉴를 눌러, 열린 일정 화면의 주소창 주소를 그대로 붙여 주세요」 하고, 받은 주소로 remember 를 부른다"
+# 지우지 않는 줄 — 사람에게 할 말. 까닭은 agenda.Event.keep_reason 이 가른다
+KEEP_WORDS = {
+    "invite": "받은 회의 초대입니다 — 지우면 곧 참석 답이 됩니다. 참석 답은 초대 메일이나 회사 일정 화면에서 해 주세요",
+    "meeting": "회의로 든 일정입니다 — 지우면 참석하실 분께 알림이 갈 수 있어 여기서는 지우지 않습니다. 회사 일정 화면에서 지워 주세요",
+    "repeat": "반복 일정입니다 — 지우기가 그날 하나만 걷는지 아직 확인하지 않아 여기서는 지우지 않습니다. 회사 일정 화면에서 지워 주세요",
+    "all_day": "하루 종일 일정입니다 — 지우기를 아직 확인하지 않아 여기서는 지우지 않습니다. 회사 일정 화면에서 지워 주세요",
+    "locked": "고칠 수 있는 일정으로 읽히지 않았습니다 — 일정 앱이 막은 것인지 그 표시를 못 알아본 것인지 가리지 못해 여기서는 지우지 않습니다. 회사 일정 화면에서 지워 주세요",
+    "shared": "공유받은 일정함의 일정입니다 — 여기서는 읽기만 합니다",
+}
+# 넣기 · 지우기의 끝 — 사람에게 할 말과 다음 걸음
+STATE_WORDS = {
+    "added": "넣었습니다(다시 읽어 확인했습니다). 다음: 이 줄의 handle 을 들고 있다가 「방금 것 지워 줘」 에 쓴다",
+    "already": "같은 일정이 이미 있어 넣지 않았습니다",
+    "clashed": "확인하신 뒤 그 시각에 다른 일정이 들어와 넣지 않았습니다. 다음: preview 를 다시 불러 새 겹침을 보이고 다시 묻는다",
+    "deleted": "지웠습니다(다시 읽어 사라진 것을 확인했습니다)",
+    "gone": "그날 일정에 없습니다 — 이미 지워졌거나 다른 날로 옮겨졌습니다",
+    "changed": "보여 드린 뒤 그 일정이 바뀌었습니다. 다음: 답의 event(지금의 꼴)를 보이고 다시 묻는다",
+    "unsure": "됐는지 확인하지 못했습니다. 다음: 다시 부르지 말고 show 로 그날을 읽어 보인다",
+}
 
 
 class Stop(Exception):
@@ -66,19 +91,15 @@ def load_ep_session():
     return ep_session
 
 
-def attach() -> pathlib.Path:
-    """쓰는 사람의 Edge 에서 그때의 세션을 받는다 — 받는 손이 쓴 파일(0)이나, Edge 에 못 붙었을 때 남은 파일(2)을 낸다. 그 세션이
-    아직 살았는지는 일정 서버가 가린다(끊겼으면 ``SessionExpired`` → ep-login). 남은 파일이 없거나 로그인이 안 됐으면(3) ep-login 으로 멈춘다."""
-    ep = load_ep_session()
-    got = ep.attach()
-    if got.usable:
-        return got.file
+def no_session(ep, got) -> Stop:
+    """받는 손이 못 선 까닭을 종료 값으로 옮긴다 — 남은 파일 없는 2 와 3 은 ep-login(종료 3), 1 과 경로 없는 0 은 도구 고장."""
     tail = (got.said.splitlines() or [""])[-1]
     if got.code in (ep.NO_EDGE, ep.NOT_LOGGED_IN):
-        raise Stop(EXIT_SESSION, "session", f"사내 세션이 없다(세션 손 종료 {got.code} — {tail})")
+        why = "Edge 에 붙지 못했고 앞서 받은 세션도 없다" if got.code == ep.NO_EDGE else "Edge 가 사내 로그인 전이다"
+        return Stop(EXIT_SESSION, "session", f"사내 세션이 없다 — {why}. {NEXT_EP_LOGIN}")
     if got.code == ep.OK:
-        raise Stop(EXIT_TOOL, "tool", "세션 손이 0 으로 끝났는데 끝 줄에 세션 파일의 절대 경로가 없다")
-    raise Stop(EXIT_TOOL, "tool", f"세션 손이 종료 {got.code} 로 졌다 — {tail}")
+        return Stop(EXIT_TOOL, "tool", "세션 손이 0 으로 끝났는데 끝 줄에 세션 파일의 절대 경로가 없다")
+    return Stop(EXIT_TOOL, "tool", f"세션 손이 종료 {got.code} 로 졌다 — {tail}")
 
 
 def saved_url() -> str:
@@ -112,6 +133,8 @@ def row(agenda, e) -> dict:
     out = {"day": e.day.isoformat(), "weekday": weekday_of(e.day), "when": e.when(), "title": e.title, "handle": agenda.Seen.of(e).handle,
            "keep": e.keep_reason, "pending": e.response == agenda.RESPONSE_PENDING, "meeting": e.meeting,
            "repeat": e.repeat, "all_day": e.all_day}
+    if e.keep_reason:
+        out["keep_word"] = KEEP_WORDS.get(e.keep_reason, e.keep_reason)
     if e.calendar:                       # 공유받은 일정함의 줄 — 누구 일정함인가 · 주인이 비공개로 든 것인가. 지우는 손잡이는 없다
         out.update(calendar=e.calendar, private=e.private)
         del out["handle"], out["pending"]  # 참석 답은 그 일정함 주인의 것이라 내 초대로 읽히지 않게 뺀다
@@ -137,7 +160,7 @@ def want_of(args, agenda):
     return w
 
 
-def run(args) -> dict:
+def run(args, session: pathlib.Path) -> dict:
     agenda = load_agenda()
     url, by_default = resolve(args, agenda.DEFAULT_APP_URL)
     today = datetime.now(agenda.KST).date()
@@ -147,7 +170,6 @@ def run(args) -> dict:
     if not found:
         raise Stop(EXIT_URL, "url", "일정 앱 주소(…/calperson<NN>.nsf)가 든 주소가 아니다")
     url = found.group(1) + found.group(2)
-    session = attach()
     reader = agenda.Reader(url, session)
     if args.command == "remember":
         try:
@@ -165,8 +187,7 @@ def run(args) -> dict:
         except agenda.SessionExpired:
             raise
         except agenda.CalendarError as exc:
-            raise Stop(EXIT_URL, "url", f"기본 일정 앱 주소({url})로 내 일정함이 안 읽힌다({exc}) — Edge 에서 메일 → 일정을 열어 "
-                                        "주소창의 주소를 받아 remember 로 남긴다") from exc
+            raise Stop(EXIT_URL, "url", f"기본 일정 앱 주소({url})로 내 일정함이 안 읽힌다({exc}) — 일정 DB 가 다른 서버에 있는 사람이다. {NEXT_URL}") from exc
     if args.command == "calendars":
         return {"shared": [{"name": b.name, "kind": b.kind} for b in reader.shared_books()]}
     if args.command == "show":
@@ -195,7 +216,7 @@ def run(args) -> dict:
         if args.command == "add":
             shown = set() if args.seen == NO_CLASH else set(args.seen.split(","))
             got = agenda.register(url, session, w, reader=reader, shown_clash=shown)
-            return {"state": got.state, "event": row(agenda, got.event) if got.event else None}
+            return {"state": got.state, "state_word": STATE_WORDS[got.state], "event": row(agenda, got.event) if got.event else None}
         day = reader.between(w.day, agenda.kst_day(w.end))
         same = next((e for e in day if agenda.same_event(e, w)), None)
         clash = [e for e in day if e.overlaps(w.start, w.end) and e is not same]
@@ -208,8 +229,8 @@ def run(args) -> dict:
     try:
         got = agenda.delete(url, session, seen, reader=reader)
     except agenda.ChangeRefused as exc:
-        return {"state": "refused", "keep": exc.reason}
-    return {"state": got.state, "event": row(agenda, got.event) if got.event else None}
+        return {"state": "refused", "keep": exc.reason, "state_word": KEEP_WORDS.get(exc.reason) or str(exc)}
+    return {"state": got.state, "state_word": STATE_WORDS[got.state], "event": row(agenda, got.event) if got.event else None}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -240,15 +261,19 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     try:
-        result, code = run(args), EXIT_OK
+        agenda, ep = load_agenda(), load_ep_session()
+        # 보기는 세션 파일부터 쓰고 일정 서버가 거절할 때만 받는 손을 띄워 한 번 더, 넣기 · 지우기는 늘 손부터 받아 한 번만
+        try:
+            result, code = ep.session_first(lambda f: run(args, f), expired=(agenda.SessionExpired, agenda.SessionMissing),
+                                            file_first=args.command not in MUTATING), EXIT_OK
+        except ep.NoSession as exc:
+            raise no_session(ep, exc.got) from exc
     except Stop as exc:
         result, code = {"error": exc.kind, "message": str(exc)}, exc.code
     except Exception as exc:  # noqa: BLE001 — 일정 손의 예외를 종료 값으로 옮긴다
         agenda = sys.modules.get("agenda")
-        if agenda and isinstance(exc, agenda.SessionExpired):
-            result, code = {"error": "session", "message": str(exc)}, EXIT_SESSION
-        elif agenda and isinstance(exc, agenda.SessionMissing):
-            result, code = {"error": "session", "message": str(exc)}, EXIT_SESSION
+        if agenda and isinstance(exc, (agenda.SessionExpired, agenda.SessionMissing)):
+            result, code = {"error": "session", "message": f"{exc}. {NEXT_EP_LOGIN}"}, EXIT_SESSION
         elif agenda and isinstance(exc, agenda.CalendarConfigError):
             result, code = {"error": "args", "message": str(exc)}, EXIT_ARGS
         elif agenda and isinstance(exc, agenda.CalendarError):

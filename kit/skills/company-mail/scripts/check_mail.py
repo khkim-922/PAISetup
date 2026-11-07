@@ -117,11 +117,12 @@ def session_cookies(value: str) -> list[dict]:
 
 @contextlib.contextmanager
 def stage(*, exit_code: int = 0, cookie: str = fakes_inbox.COOKIE[1], left_over: str | None = None,
-          bad_path: bool = False, **fake):
+          bad_path: bool = False, file_first: bool = False, **fake):
     """가짜 메일함 · 가짜 중계 · 세션 대역을 세운다. 내는 것 — (메일함 흉내, 중계 흉내, 명령을 부르는 손).
 
     ``left_over`` 를 주면 앞 판의 세션 파일을 그 쿠키 값으로 남겨 둔 채 시작한다 — 메일함의 값이면 아직 받아 주는 세션,
     다른 값이면 메일함이 거절하는 세션이다. ``MAILBOX_COOKIES`` 는 없는 자리를 가리킨다 — 스크립트가 그 값에 기대면 진다.
+    ``file_first`` 면 ``MAILBOX_COOKIES`` 가 남긴 파일의 자리를 가리킨다 — 흔한 길(파일부터 · 손은 거절될 때만)을 재는 판이다.
     """
     try:
         box = fakes_inbox.FakeDomino(**fake)
@@ -132,7 +133,8 @@ def stage(*, exit_code: int = 0, cookie: str = fakes_inbox.COOKIE[1], left_over:
     if left_over is not None:
         COOKIES.write_text(json.dumps({"cookies": session_cookies(left_over)}), encoding="utf-8")
     CALLS.write_text("", encoding="utf-8")
-    env = {"MAILBOX_URL": box.url, "MAILBOX_COOKIES": str(WORK / "decoy" / "not-here.json"), "MAIL_DEFAULT_SENDER": ME,
+    env = {"MAILBOX_URL": box.url, "MAILBOX_COOKIES": str(COOKIES if file_first else WORK / "decoy" / "not-here.json"),
+           "MAIL_DEFAULT_SENDER": ME,
            "MAIL_ORG_CACHE_DIR": str(WORK / "org"), "MAIL_HOST": "127.0.0.1", "MAIL_PORT": str(relay.port), "MAIL_USE_TLS": "", "NODE_PATH": str(WORK),
            "EP_SESSION_HAND": str(HAND), "STANDIN_EXIT": str(exit_code), "STANDIN_LOG": str(CALLS), "STANDIN_PATH": str(COOKIES),
            "STANDIN_BAD": "1" if bad_path else "", "STANDIN_COOKIES": json.dumps(session_cookies(cookie))}
@@ -432,6 +434,29 @@ def check_session_hand_exits_route_the_person():
     with stage(session="redirect") as (_, _, run):
         code, out = run("read", U["alone"])
         assert code == mail.EXIT_SESSION and "ep-login" in out, out
+
+
+def check_session_file_first_skips_the_hand():
+    """흔한 길 — 세션 파일이 있으면 손을 안 띄우고, 메일함이 거절할 때만 띄워 한 번 더 돈다(ep_session.session_first)."""
+    good, stale = fakes_inbox.COOKIE[1], "expired-session"
+    calls = lambda: CALLS.read_text(encoding="utf-8").split()   # noqa: E731
+    # 산 파일 — 손이 3 을 낼 자리여도 안 부른다
+    with stage(file_first=True, exit_code=EP.NOT_LOGGED_IN, left_over=good) as (box, _, run):
+        code, out = run("list")
+        assert code == 0 and box.paths and calls() == [], f"산 파일이 있는데 손을 불렀다: {calls()}\n{out}"
+    # 낡은 파일 — 메일함이 거절하면 손을 한 번 띄워(0 · 새 파일) 다시 돈다. 첫 판의 글은 안 새어 나온다
+    with stage(file_first=True, exit_code=EP.OK, left_over=stale) as (box, _, run):
+        code, out = run("list")
+        assert code == 0 and calls() == ["called", "args=0"], f"낡은 파일 뒤 손을 한 번 안 불렀다: {calls()}\n{out}"
+        assert out.count("받은편지함") <= 1, f"첫 판의 글이 새어 나와 두 번 찍혔다:\n{out}"
+    # 낡은 파일 · 손이 2 로 같은 파일만 가리키면 — 둘째 판도 거절돼 ep-login
+    with stage(file_first=True, exit_code=EP.NO_EDGE, left_over=stale) as (_, _, run):
+        code, out = run("list")
+        assert code == mail.EXIT_SESSION and "ep-login" in out and calls() == ["called", "args=0"], f"{calls()}\n{out}"
+    # 파일 없음 — 오늘처럼 손부터
+    with stage(file_first=True, exit_code=EP.OK) as (box, _, run):
+        code, out = run("list")
+        assert code == 0 and box.paths and calls() == ["called", "args=0"], f"{calls()}\n{out}"
 
 
 CHECKS = [value for name, value in sorted(globals().items()) if name.startswith("check_")]

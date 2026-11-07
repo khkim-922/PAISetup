@@ -3,7 +3,8 @@
     python carriers.py [--site inside|outside] [--table <models.conf>]
 
 읽는 것 — 이 스킬 폴더의 `models.conf` 와 사용자 환경변수 `PAISETUP_SITE`(설치기가 심는다. `--site` 가 이긴다).
-내는 것 — 도구마다 한 줄: deep 모델 · errand 모델 · 그 도구의 러너 스킬이 깔린 자리. 칸이 `-` 면 그 도구는
+내는 것 — 도구마다 한 줄: deep 모델 · errand 모델 · 그 도구의 러너 스킬이 깔린 자리, 그리고 도구마다 셸과 울타리(고르기에 드는
+  차이 — FENCE). 칸이 `-` 면 그 도구는
   이 자리에서 그 무게를 못 진다(표에 줄이 없다). 「도구 기본」은 표가 `-` 로 두어 도구 제 설정의 모델로 뜨는 칸이다.
   자리를 모르면 두 자리에 다 있는 칸만 남기고 그렇다고 말한다 — 모를 때 넓게 남기면 그 자리에서 무게를 못 지는 칸을 고르게 된다.
 종료 — 0 찍었다 · 2 표를 못 읽었다(꼴에 안 맞는 줄은 번호와 까닭을 댄다) · 4 부르는 법이 틀렸다.
@@ -22,6 +23,10 @@ WEIGHTS = ('deep', 'errand', 'fallback')
 NONE = '-'
 # 도구마다 그 도구에게 맡기는 러너 스킬 — Claude 는 같은 앱 안에서는 서브에이전트(Agent 도구)라 러너가 없다
 RUNNER = {'claude': 'claude-background', 'agy': 'agy-background', 'codex': 'codex-copilot-background'}
+# 고르기에 드는 차이 둘 — 셸(제 주장을 재 볼 손)과 울타리(상태 변화를 막는 것). 띄우는 법 · 플래그 · 한도는 러너 스킬이 든다
+FENCE = {'claude': '같은 앱의 서브에이전트: 셸 ○ · 격리 워크트리. 러너(claude-background): 셸 × · 허락 + 작업 자리',
+         'agy': '셸 ○ · 묻지 않고 쓰니 울타리는 작업 자리뿐',
+         'codex': '셸은 고치기 레인에만 · 샌드박스 + 작업 자리. Copilot 이 받으면 셸 ×'}
 # 러너 스킬이 깔리는 자리 — 설치기의 갈 곳 표(tool-homes.conf)가 드는 세 홈과, 이 스킬 곁(저장소의 스킬 폴더)
 HOMES = (('Claude 홈', ('.claude', 'skills')), ('Codex 홈', ('.agents', 'skills')), ('agy 홈', ('.gemini', 'config', 'skills')))
 
@@ -128,6 +133,7 @@ def main():
             runner = RUNNER[tool] + (f'({" · ".join(homes)})' if homes else '(없음 — 이 자리에서 못 띄운다)')
         print(f'{tool:<8}{deep:<34}{errand:<34}{runner}')
     print('칸이 - 면 그 도구는 이 자리에서 그 무게를 못 진다. 넘길 차례(fallback)는 러너가 스스로 따른다.')
+    print('셸 · 울타리 — ' + ' / '.join(f'{tool}: {FENCE[tool]}' for tool in TOOLS))
     return 0
 
 

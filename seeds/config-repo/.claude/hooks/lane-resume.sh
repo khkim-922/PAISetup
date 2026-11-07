@@ -6,7 +6,7 @@
 # 다시 읽힐 맥락이 얼마인지를 사유에 적는다. 같은 메시지를 그대로 다시 보내면 통과한다. 왜와 문턱의 근거는 결정 0168 이 든다.
 #
 # **왜 있나.** 이어 묻기는 그 레인의 기록을 통째로 다시 읽힌다. 캐시가 살아 있으면 싸지만, 식은 뒤에는 캐시 없이 처음부터
-# 다시 읽힌다 — 고칠 자리 하나에 수십만 토큰이 든다. 규칙은 스킬 agent-envelope 1 절 「토큰」 줄에 있는데 보내는 그 순간에
+# 다시 읽힌다 — 고칠 자리 하나에 수십만 토큰이 든다. 규칙은 스킬 agent-envelope 1 절 「자리와 토큰」 줄에 있는데 보내는 그 순간에
 # 안 걸려, 판단과 무관하게 걸리는 이 층에 둔다(규범 [Layer Triage]). 덧말(`additionalContext`)은 도구 결과 곁에 닿아 이번
 # 이어 묻기의 값을 못 아끼므로, 보내기 **전에** 재료를 보이는 한 번 막기로 둔다 — 판단은 모델에 그대로 남는다.
 #
@@ -126,10 +126,10 @@ _h=$((age / 3600)); _m=$((age % 3600 / 60))
 if [ "$_h" -gt 0 ]; then gap="${_h}시간 ${_m}분"; else gap="${_m}분"; fi
 msg="이어 묻기 값 — 받는 레인($to)은 마지막 기록 뒤 ${gap}이 지나 프롬프트 캐시(서브에이전트 $ttl)가 식었고, 이어 물으면 다시 읽힐 맥락이 $how 약 $((tok / 1000))k 토큰이다. 그 맥락을 캐시 없이 처음부터 다시 읽힌다."
 if { printf '%s\n' "$size $mt" > "$mk"; } 2>/dev/null; then
-  msg="$msg 이 레인의 이 상태에서는 이번 한 번만 막았다. 다음 걸음이 그 레인의 기억을 쓰면 같은 메시지를 그대로 다시 보내면 통과한다. 기억은 안 쓰고 고칠 자리만 같다면 Agent 로 새 봉투를 띄우는 쪽이 싸다(스킬 agent-envelope 1 절 「토큰」 줄)."
+  msg="$msg 이 레인의 이 상태에서는 이번 한 번만 막았다. 다음 걸음이 그 레인의 기억을 쓰면 같은 메시지를 그대로 다시 보내면 통과한다. 기억은 안 쓰고 고칠 자리만 같다면 Agent 로 새 봉투를 띄우는 쪽이 싸다(스킬 agent-envelope 1 절 「자리와 토큰」 줄)."
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}' "$msg"
 else
-  msg="$msg 막기 표지를 못 써서 막지 않았다. 다음 걸음이 그 레인의 기억을 안 쓰고 고칠 자리만 같다면 새 봉투가 더 싸다(스킬 agent-envelope 1 절 「토큰」 줄)."
+  msg="$msg 막기 표지를 못 써서 막지 않았다. 다음 걸음이 그 레인의 기억을 안 쓰고 고칠 자리만 같다면 새 봉투가 더 싸다(스킬 agent-envelope 1 절 「자리와 토큰」 줄)."
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}' "$msg"
 fi
 exit 0

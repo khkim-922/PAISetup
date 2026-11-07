@@ -1,0 +1,12 @@
+ep1	ep-login	메일함 세션이 끊겼대. EP 로그인 해 줘
+ep2	ep-login	VDI 에서 처음 쓰는 PC 야. 사내 앱 세션부터 세워 줘
+ep3	ep-login	메일 스크립트가 Edge 에 못 붙는다고 하는데 어떻게 해야 해
+cal1	company-calendar	내일 회사 일정 뭐 있어
+cal2	company-calendar	금요일 3시에 디자인 리뷰 일정 넣어 줘
+cal3	company-calendar	다음 주 월요일 10시 팀 회의 일정 지워 줘
+ecm1	company-ecm	부서 문서함에서 11월 예산 보고서 찾아서 읽어 줘
+ecm2	company-ecm	부서 문서함의 「추진 계획(안)」 문서 2 절을 고쳐서 새 버전으로 올려 줘
+ecm3	company-ecm	방금 만든 report.pptx 를 부서 문서함에 올려 줘
+mail1	company-mail	안 읽은 메일 뭐 있어
+mail2	company-mail	김과장이 보낸 워크숍 메일에 참석한다고 답장 보내 줘
+mail3	company-mail	기획실 리더 이상한테 내일 회의 공지 메일 보내 줘

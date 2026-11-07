@@ -21,7 +21,8 @@ ep-login 이 든다. 부르는 꼴 · 내는 것 · 환경변수 · 회사에서
 
 1. 이 폴더를 `sys.path` 에 넣고 `import agenda` 로 싣는다 — 작업 스케줄러에서 `python -I` 로 띄우면 스크립트 폴더가 `sys.path` 에
    안 서서 스크립트가 부르기 전에 제 폴더를 넣는다(`sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))`)
-2. 일정 앱 주소(`…/calperson<NN>.nsf` 까지)는 사람마다 다르다 — Edge 에서 메일 → 일정을 열어 주소창에서 받는다
+2. 일정 앱 주소(`…/calperson<NN>.nsf` 까지)는 잰 기본 `agenda.DEFAULT_APP_URL` 을 쓴다 — 그 주소로 내 일정함이 안 읽히는
+   사람(일정 DB 가 다른 서버에 있는 사람)만 Edge 에서 메일 → 일정을 열어 주소창에서 받는다
 3. 세션 쿠키 파일은 스킬 ep-login 의 받는 손이 남기고 그 자리를 끝 줄로 알린다 — `agenda.Reader(url, <자리>)` 로 연다. 세션이
    끊기면 `SessionExpired` 가 나니 받는 손을 다시 부른다
 

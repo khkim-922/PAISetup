@@ -48,7 +48,8 @@
     (``inbox.discover_mailbox``). 사람에게 묻지 않는다. 보내는 사람은 ``--from`` 이나 ``MAIL_DEFAULT_SENDER`` 다.
 
 세션
-    명령마다 메일함에 묻기 전에 세션 손(``node edge_session.js`` — 인자 없이)을 말없이 한 번 부른다 — 쓰는
+    읽는 명령은 세션 파일이 이미 있으면 그것으로 먼저 돌고 메일함이 거절할 때만, 바꾸는 명령(``MUTATING``)은 늘, 세션 손
+    (``node edge_session.js`` — 인자 없이)을 말없이 부른다(까닭과 바퀴는 ``ep_session.session_first``). 손을 부르면 쓰는
     사람의 Edge 가 디버깅 포트로 떠 있고 로그인돼 있으면 그 세션을 파일로 받아 사람 손 없이 선다. 세션 파일의 자리는 세션
     손 한 곳이 정한다 — 손이 표준 출력 끝 줄에 낸 절대 경로를 읽고, 이 파일은 자리를 따로 안 든다. 손의 종료 값:
     0 이면 손이 방금 쓴 파일로 잇는다 · 2(Edge 에 못 붙음)면 끝 줄이 가리키는 앞서 받은 파일로 잇고, 끝 줄이 없으면 스킬
@@ -109,6 +110,7 @@ ORG_CACHE_FORMAT = 1          # 캐시 파일의 꼴 번호 — DirectoryPerson 
 GROUP_KIND_WORDS = {"jobtitle": "직책", "grade": "직급", "location": "지역"}   # 배포그룹 갈래 → 화면의 이름
 
 EP_LOGIN = "스킬 ep-login 으로 사내 세션을 먼저 세운다"
+MUTATING = ("send-reply", "send-new", "apply-mark")   # 메일함 밖으로 나가거나 메일함을 바꾼다 — 세션 손부터 받아 한 번만 돈다
 # 평문 형식의 머리 — 오피스 · PDF 확장자인데 이 머리가 아니면 DRM 에 감긴 것이다(스킬 drm-office-read 1 절)
 PLAIN_HEADS = (b"%PDF", b"PK\x03\x04", b"\xd0\xcf\x11\xe0", b"{\\rtf")
 OFFICE_EXTS = {"pdf", "doc", "docx", "docm", "rtf", "xls", "xlsx", "xlsm", "ppt", "pptx", "pptm", "hwp", "hwpx"}
@@ -147,28 +149,20 @@ def load_ep_session():
     return ep_session
 
 
-def attach_session(mailbox_url: str = "") -> pathlib.Path:
-    """받는 손을 말없이 부른다 — 읽을 세션 파일의 자리를 낸다. 못 서면 Stop(머리말 「세션」).
-
-    0 이면 손이 방금 쓴 파일, 2 면 앞서 받아 둔 파일이다 — 그 파일을 메일함이 거절하면 그때 ep-login 이다. 3 과 남은 파일 없는 2 는
-    바로 ep-login, 1 은 도구 고장이다.
-    """
-    ep = load_ep_session()
-    got = ep.attach(env={"MAILBOX_URL": mailbox_url} if mailbox_url else None)   # 주소를 주면 손이 그 메일함으로 로그인을 가린다
-    if got.usable:
-        return got.file
+def no_session(ep, got) -> Stop:
+    """받는 손이 못 선 까닭을 종료 값으로 옮긴다(머리말 「세션」) — 3 과 남은 파일 없는 2 는 ep-login, 1 과 경로 없는 0 은 도구 고장."""
     if got.code == ep.OK:
-        raise Stop(EXIT_FAIL, f"세션 손이 0 으로 끝났는데 끝 줄이 쓴 세션 파일의 절대 경로가 아니다(도구 고장): {got.said[-200:]}")
+        return Stop(EXIT_FAIL, f"세션 손이 0 으로 끝났는데 끝 줄이 쓴 세션 파일의 절대 경로가 아니다(도구 고장): {got.said[-200:]}")
     if got.code in (ep.NO_EDGE, ep.NOT_LOGGED_IN):
         why = "Edge 에 붙지 못했고 앞서 받은 세션도 없다" if got.code == ep.NO_EDGE else "Edge 가 사내 로그인 전이다"
-        raise Stop(EXIT_SESSION, f"사내 세션이 없다 — {why}. {EP_LOGIN}.")
+        return Stop(EXIT_SESSION, f"사내 세션이 없다 — {why}. {EP_LOGIN}.")
     tail = got.said.splitlines()[-5:]
-    raise Stop(EXIT_FAIL, f"세션 손이 종료 값 {got.code} 로 졌다(도구 고장):\n" + "\n".join(tail))
+    return Stop(EXIT_FAIL, f"세션 손이 종료 값 {got.code} 로 졌다(도구 고장):\n" + "\n".join(tail))
 
 
 def open_mailbox(args, inbox):
     url = (args.url or os.environ.get("MAILBOX_URL", "")).strip()
-    session = attach_session(url)
+    session = args.session_file                       # main 이 파일부터 쓰고, 거절되면 손을 띄워 한 번 더(ep_session.session_first)
     if not url:
         server = os.environ.get("MAIL_SERVER", "").strip() or DEFAULT_MAIL_SERVER
         try:
@@ -1046,8 +1040,19 @@ def main(argv=None) -> int:
     args = parser().parse_args(argv)
     try:
         inbox, mailer = load_hands()
-        try:
+        ep = load_ep_session()
+        url = (args.url or os.environ.get("MAILBOX_URL", "")).strip()
+
+        def once(file):
+            args.session_file = file
             args.fn(args, inbox, mailer)
+
+        try:
+            # 읽는 명령은 세션 파일부터 · 거절되면 손을 띄워 한 번 더. 보내기 · 읽음 바꾸기는 늘 손부터 받아 한 번만 돈다
+            ep.session_first(once, expired=(inbox.SessionExpired,), env={"MAILBOX_URL": url} if url else None,
+                             file_first=args.command not in MUTATING)
+        except ep.NoSession as exc:
+            raise no_session(ep, exc.got) from exc
         except inbox.SessionExpired as exc:
             raise Stop(EXIT_SESSION, f"메일함 세션이 끊겼다 — {EP_LOGIN}. ({exc})") from exc
         except inbox.ChangeRefused as exc:

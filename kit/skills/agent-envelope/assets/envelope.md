@@ -1,14 +1,16 @@
 # Lane envelope — copy this file, fill every field, keep the rules block verbatim
 
 (Hints in angle brackets are for the parent; delete them as you fill. Everything the lane must know is in this
-envelope — the conversation does not travel with it.)
+envelope — the conversation does not travel with it. Write it in English — the model's medium is English, so a Korean
+envelope only adds one translation; keep paths, names and quoted literal strings verbatim, or the lane cannot find them.)
 
 (Parent, before filling: is this a review? Then this file is not the vehicle — Claude → `/code-review`, Codex and
 Claude runner → `--review` with the git tree as cwd, agy and Copilot → this file. A cross-model review is each
 harness's own review feature on the same tree, never one packet folder for every carrier.)
 
 ## Task
-- Source: <issue URL or path — the lane opens it itself; never paste its body here>
+- Source: <issue URL or path — the lane opens it itself; never paste its body here. Parent: open every path and
+  coordinate this envelope names before sending — the source may be stale — and tell the lane to check them too>
 - Finished form: <one or two lines — what the person sees and does when the whole work is done, at the level people
   customarily expect of a finished one. Not a list of parts: the parts are the lane's to recall and propose. When the source
   issue opens with its top section (「완성형」 or 「다 됐을 때」 — skill issue-write §2), take it from there. Copy this line
@@ -33,6 +35,9 @@ harness's own review feature on the same tree, never one packet folder for every
 - Open these: <paths or URLs the lane can reach. Anything it cannot reach is copied into the work directory: <path>>
 - Tools you have: <shell · edit · probes — whatever the work needs to test its own claims. A lane without hands reports guesses as findings; what the fence blocks is state change outside ownership, never writing itself>
 - Work directory: <path> — it is the fence; nothing outside it changes
+- Skills to name (the lane gets its rulers only through this envelope): <norm-design when the lane edits norms, rules,
+  skills or memory · check-design when it edits code or checks · borrow-spec-as-pair when it carries another repository's
+  spec here — or "none">
 
 ## Output contract
 - Each finding: `file:line` plus a concrete failure scenario. Both, or it is an impression, not a finding.
