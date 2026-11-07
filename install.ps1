@@ -7703,7 +7703,7 @@ Update-RuntimePath
 # 심는 손은 도구 설정을 사람 값을 안 덮고 심는 손(`Set-ToolAutoRun`)이다 — 사람이 두 키 가운데 하나라도 정해 뒀으면 둔다. 옛 판이
 #   심은 값(`"downloader": "wininet"` 한 칸)만 서 있으면 우리 것이라 새 값으로 간다(`Was`). 그 파일이 주석 든 JSON 이라 못 읽으면 안
 #   건드리고 노란 줄로 남긴다(winget 은 `winget settings` 를 연 PC 에만 그 파일을 주석과 함께 짓는다).
-# 장부에 안 적는다 — 걷지 않는 설정이고, 지울 자리는 UNINSTALL 「winget 받는 손」이 든다.
+# 장부에 안 적는다 — 걷지 않는 설정이고, 지울 자리는 UNINSTALL 「winget 다운로드 방식」이 든다.
 if (-not $noWinget) {
   $WingetCfg = @{ Label = 'winget 다운로드 방식'; Under = 'network'; Set = [ordered]@{ downloader = 'do'; doProgressTimeoutInSeconds = 60 }
                   Was = [ordered]@{ downloader = 'wininet' }
@@ -11709,14 +11709,14 @@ try {
 # PAISetup 로그온 자동 실행의 진행 창 — 자동 실행 몸통이 설치를 실제로 할 때 띄우고, 설치기가 몸통 곁에 쓴다.
 # 부르는 꼴: powershell -NoProfile -ExecutionPolicy Bypass -File <이 파일> -Log <이 회차 기록> -WatchPid <몸통 PID> -From <지금 판>
 # 하는 일: 그 기록을 따라 읽어 설치가 이미 찍는 줄만 갈라 주 화면 오른쪽 아래의 작은 창에 지금 걸음 · 막대 · 마지막 한 줄을 보인다.
-#   읽는 줄과 그 꼴의 주인 — 걸음 머리줄 `[n/N] 이름`(설치기 `Get-StepTitle`) · 걸음 마침 줄 `── [n/N] 이름 — 마쳤다 (N초)`
-#   (`Write-Elapsed`) · 걸음 멎음 줄 `! [n/N] 이름 — 도중에 멎었다…`(`Write-StepFault`) · `=== 검증` · `끝내지 못했다` ·
-#   `── 설치를 마쳤다`(설치기 끝) · 몸통의 `install.ps1 실행: <판>` · `새 판 <판> 을 받는다` · `자동 실행 완료 (코드 N)`(몸통 `Log`).
+#   읽는 줄과 그 꼴의 주인 — 걸음 머리줄 `[n/N] 이름`(설치기 `Get-StepTitle`) · 걸음 마침 줄 `── [n/N] 이름 — 완료 (N초)`
+#   (`Write-Elapsed`) · 걸음 멎음 줄 `! [n/N] 이름 — 중단됨: …`(`Write-StepFault`) · `=== 검증` · `완료하지 못함` ·
+#   `── 설치 완료`(설치기 끝) · 몸통의 `install.ps1 실행: <판>` · `새 판 <판> 을 받는다` · `=== PAISetup 자동 실행 완료 (코드 N) ===`(몸통 `Log`).
 #   꼴이 어긋나면 설치는 멀쩡히 돌고 이 창의 막대만 선다.
 # 안 하는 것: 설치에 아무것도 안 넘기고 빗장을 안 쥔다. 기록은 쓰기 · 지우기를 막지 않게 연다. 무엇이 지든 조용히 나간다 — 몸통은
 #   이 창을 기다리지 않는다.
-# 끝: 몸통이 `자동 실행 완료 (코드 0)` 을 적으면 「끝났다」를 보이고 몇 초 뒤 스스로 닫는다. 0 이 아니거나 그 줄 없이 몸통이 끝나면
-#   「끝내지 못했다」를 보이고 사람이 누를 때까지 남는다. 「숨기기」는 이 창만 닫고 설치는 그대로 간다.
+# 끝: 몸통이 `자동 실행 완료 (코드 0)` 을 적으면 「완료」를 보이고 몇 초 뒤 스스로 닫는다. 0 이 아니거나 그 줄 없이 몸통이 끝나면
+#   「완료하지 못함 — 기록 보기」를 보이고 사람이 누를 때까지 남는다. 「숨기기」는 이 창만 닫고 설치는 그대로 간다.
 param([string]$Log, [int]$WatchPid, [string]$From, [switch]$Detached)
 $ErrorActionPreference = 'Stop'
 
