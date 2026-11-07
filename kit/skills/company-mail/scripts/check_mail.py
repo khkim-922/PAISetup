@@ -3,7 +3,9 @@
 층 — 쓰는 사람의 계약. 읽는 명령(목록 · 폴더 · 읽기 · 첨부 · 미리 보기)이 **읽음 표시를 바꾸거나 메일을 내보내나** · 확인 열쇠
 없이(또는 미리 본 것과 다른 내용으로) **답장이 나가거나 읽음이 바뀌나** · 답장이 그 메일의 보낸 분 · 받은 분과 제 사본 밖의
 주소로 가나(본문에 적힌 주소가 받는 사람이 되나) · 바꾸는 손이 그 메일 하나만 바꾸고 다시 읽어 맞았나를 대나 · 세션 손의
-종료 값(0 · 1 · 2 · 3)과 끊긴 메일함 세션을 바르게 갈라 사람을 스킬 ep-login 으로 보내나.
+종료 값(0 · 1 · 2 · 3)과 끊긴 메일함 세션을 바르게 갈라 사람을 스킬 ep-login 으로 보내나 · 안 읽음 목록이 받아 온 창만 보고
+「안 읽음 0」이라 하나 · 조직도를 못 받은 새 메일 미리 보기가 받는 사람을 다 「주소록에 없다」로 말하나(사람이 새 메일을
+놓치거나 맞는 주소를 고친다).
 남기는 까닭(check-design §1 넷) — 길이 분명하다(이 스크립트는 대화하는 모델이 부르고, 보내기 · 읽음은 그 모델의 한 걸음이다) ·
 나간 메일과 바뀐 읽음은 되돌릴 수 없고 조용하다(사람은 웹메일을 열기 전까지 모른다) · 쓰는 사람의 이름으로 엉뚱한 메일이
 나가거나 새 메일을 못 알아본다 · 다른 무엇도 안 잡는다(곁의 손 검사는 손만 재고 이 명령의 확인 단계를 모른다).
@@ -25,7 +27,8 @@
 언제 걷나 — mail.py 가 사라지거나, 바꾸는 손 앞의 확인을 다른 층(도구의 권한 단계 같은 것)이 같은 꼴로 재게 되면.
 
 여기서 못 재는 것 — 실물 세션 손(Edge 에 붙기) · 사내 SSO · 실물 중계의 STARTTLS · 받는 쪽에서 답장이 원래 대화로 묶이나 ·
-폴더에만 있는 메일에 읽음으로의 주소가 먹나(가짜는 어느 메일이든 먹는다) · 숨은참조 사본이 받은편지함에 오는 꼴.
+폴더에만 있는 메일에 읽음으로의 주소가 먹나(가짜는 어느 메일이든 먹는다) · 숨은참조 사본이 받은편지함에 오는 꼴 · 실물 검색의
+휴지통 줄 폴더 칸과 범위 all 에 휴지통이 드나.
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ import io
 import json
 import os
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -321,6 +325,28 @@ def check_new_mail_goes_only_with_the_previewed_list():
         assert not box.changes, "새 메일이 메일함을 바꿨다"
         code, out = run("preview-new", "--subject", "x", "--body-file", body_file("x"))
         assert code == mail.EXIT_CONFIG, f"받는 사람 없이 미리 보기가 섰다:\n{out}"
+        # 조직도를 못 받은 판(회사 값이 틀리다) — 못 읽은 것을 「주소록에 없다」로 말하지 않는다
+        code, out = run("preview-new", *args[:-2], "--company", "없는회사(99)")
+        assert code == 0 and "확인 열쇠: " in out, out
+        assert "주소록에 없다" not in out and "확인 못" in out, f"조직도를 못 받았는데 주소마다 「주소록에 없다」로 냈다:\n{out}"
+
+
+def check_unread_list_looks_past_the_window():
+    """안 읽음 목록 — 받아 온 창 밖의 안 읽음도 세고 훑은 줄 수를 댄다 · 보낸편지함 · 임시보관함과는 안 받는다."""
+    with stage() as (box, _, run):
+        mails = box.in_inbox()
+        assert not mails[0].unread, "대역의 가장 새 메일이 안 읽음이라 창 하나로도 맞아 이 판이 안 문다"
+        want = [m.unid for m in mails if m.unread]
+        code, out = run("list", "--unread", "--count", "1")
+        assert code == 0, out
+        said = re.search(r"(\d+)통을 훑어 안 읽음 (\d+)통", out)
+        assert said and "끝까지" in out and said.groups() == (str(len(mails)), str(len(want))), \
+            f"받은편지함 {len(mails)}통 · 안 읽음 {len(want)}통을 창 하나만 보고 말했다:\n{out}"
+        rows = [x for x in out.splitlines() if x.startswith("[")]
+        assert len(rows) == 1 and want[0] in rows[0], f"가장 새 안 읽음 한 통을 안 보였다:\n{out}"
+        for flag in ("--drafts", "--sent"):
+            code, out = run("list", flag, "--unread")
+            assert code == mail.EXIT_CONFIG, f"{flag} 에 준 --unread 를 말없이 버렸다:\n{out}"
 
 
 def check_reply_all_takes_the_mails_own_people():

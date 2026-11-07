@@ -3,14 +3,14 @@
 부르는 꼴::
 
     python -X utf8 -I company_calendar.py remember "<일정 화면 주소창의 주소>"   # 주소를 재 보고 남긴다
-    python -X utf8 -I company_calendar.py show [오늘|내일|YYYY-MM-DD] [끝 날]       # 기본 오늘 · 내일 · 내 일정함만
+    python -X utf8 -I company_calendar.py show [오늘|내일|모레|YYYY-MM-DD] [끝 날]  # 기본 오늘 · 내일 · 내 일정함만
     python -X utf8 -I company_calendar.py show … --shared [--who 이름]              # 공유받은 일정함도 · 그 사람 것만
     python -X utf8 -I company_calendar.py calendars                                 # 공유받은 일정함 목록
     python -X utf8 -I company_calendar.py preview --title T --start "YYYY-MM-DD HH:MM" --end "…" [--note N]   # 안 바꾼다
     python -X utf8 -I company_calendar.py add     --title T --start "…" --end "…" [--note N] --seen <preview 의 seen>   # ⚠ 바꾼다
     python -X utf8 -I company_calendar.py delete <handle>                                                    # ⚠ 바꾼다
 
-    공통 — ``--url``(없으면 ``CALENDAR_URL`` → 남긴 주소). 시각은 다 서울 벽시계다.
+    공통 — ``--url``(없으면 ``CALENDAR_URL`` → 남긴 주소 → 잰 기본 ``agenda.DEFAULT_APP_URL``). 시각은 다 서울 벽시계다.
 
 하는 일 — 명령마다 먼저 형제 스킬 ep-login 의 받는 손을 인자 없이 말없이 돌려(그 폴더의 ``ep_session.py`` 가 돌린다) 쓰는 사람의
 Edge 에서 그때의 세션을 받는다. 세션 파일의 자리는 그 손이 정하고, 끝 줄에 낸 절대 경로를 이 명령이 읽는다 — 그 자리를 여기 다시
@@ -18,7 +18,7 @@ Edge 에서 그때의 세션을 받는다. 세션 파일의 자리는 그 손이
 판단(무엇을 넣을까 · 지워도 되나 묻기)은 여기 없다 — 바꾸는 명령은 사람이 그 한 건을 확인한 뒤에만 부른다(SKILL.md).
 
 내는 것 — 표준 출력에 JSON 하나. 종료 값: 0 됐다 · 1 도구 고장(그대로 알린다) · 2 인자가 틀렸다 · 3 세션이 없다 · 끊겼다(스킬
-ep-login) · 4 일정 앱 주소가 없다 · 틀렸다. 넣기 · 지우기의 끝은 0 과 함께 ``state`` 가 든다.
+ep-login) · 4 일정 앱 주소가 틀렸거나 잰 기본 주소로 내 일정함이 안 읽힌다. 넣기 · 지우기의 끝은 0 과 함께 ``state`` 가 든다.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
 SAVED_URL = "~/.company-calendar.json"   # 남긴 일정 앱 주소 — 저장소 밖 · 비밀이 없다(사번 · 쿠키가 안 든다)
 DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}
+WEEKDAYS = "월화수목금토일"                 # date.weekday() 의 0 ~ 6 — 답에 요일을 실어 모델이 요일을 제 셈으로 짐작하지 않게
 NO_CLASH = "none"                        # 확인에 보인 겹침이 없다는 seen 값
 EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION, EXIT_URL = 0, 1, 2, 3, 4
 
@@ -88,11 +89,10 @@ def saved_url() -> str:
     return str(data.get("calendar_url") or "") if isinstance(data, dict) else ""
 
 
-def resolve(args) -> str:
-    url = (args.url or os.environ.get("CALENDAR_URL", "") or saved_url()).strip()
-    if args.command != "remember" and not url:
-        raise Stop(EXIT_URL, "url", "일정 앱 주소가 없다 — Edge 에서 메일 → 일정을 열어 주소창의 주소를 받는다")
-    return url
+def resolve(args, default: str) -> tuple[str, bool]:
+    """일정 앱 주소와 그것이 기본값인가 — ``--url`` → ``CALENDAR_URL`` → 남긴 주소 → 잰 기본(``agenda.DEFAULT_APP_URL``)."""
+    given = (args.url or os.environ.get("CALENDAR_URL", "") or saved_url()).strip()
+    return (given, False) if given else (default, True)
 
 
 def day_of(text: str, today: date) -> date:
@@ -104,8 +104,12 @@ def day_of(text: str, today: date) -> date:
         raise Stop(EXIT_ARGS, "args", f"날은 오늘 · 내일 · 모레 · YYYY-MM-DD 가운데 하나로 준다: {text!r}") from exc
 
 
+def weekday_of(day: date) -> str:
+    return WEEKDAYS[day.weekday()]
+
+
 def row(agenda, e) -> dict:
-    out = {"day": e.day.isoformat(), "when": e.when(), "title": e.title, "handle": agenda.Seen.of(e).handle,
+    out = {"day": e.day.isoformat(), "weekday": weekday_of(e.day), "when": e.when(), "title": e.title, "handle": agenda.Seen.of(e).handle,
            "keep": e.keep_reason, "pending": e.response == agenda.RESPONSE_PENDING, "meeting": e.meeting,
            "repeat": e.repeat, "all_day": e.all_day}
     if e.calendar:                       # 공유받은 일정함의 줄 — 누구 일정함인가 · 주인이 비공개로 든 것인가. 지우는 손잡이는 없다
@@ -135,7 +139,7 @@ def want_of(args, agenda):
 
 def run(args) -> dict:
     agenda = load_agenda()
-    url = resolve(args)
+    url, by_default = resolve(args, agenda.DEFAULT_APP_URL)
     today = datetime.now(agenda.KST).date()
     if args.command == "remember":
         url = (args.address or "").strip()
@@ -155,12 +159,21 @@ def run(args) -> dict:
         place = pathlib.Path(SAVED_URL).expanduser()
         place.write_text(json.dumps({"calendar_url": url}, ensure_ascii=False), encoding="utf-8")
         return {"saved": str(place), "url": url}
+    if by_default:
+        try:
+            reader.book()                # 잰 기본 주소가 이 사람의 일정함을 드나 — 다른 서버에 일정이 있는 사람은 주소를 받는다
+        except agenda.SessionExpired:
+            raise
+        except agenda.CalendarError as exc:
+            raise Stop(EXIT_URL, "url", f"기본 일정 앱 주소({url})로 내 일정함이 안 읽힌다({exc}) — Edge 에서 메일 → 일정을 열어 "
+                                        "주소창의 주소를 받아 remember 로 남긴다") from exc
     if args.command == "calendars":
         return {"shared": [{"name": b.name, "kind": b.kind} for b in reader.shared_books()]}
     if args.command == "show":
         first = day_of(args.first or "오늘", today)
         last = day_of(args.last, today) if args.last else (first + timedelta(days=1) if not args.first else first)
-        out = {"today": today.isoformat(), "first": first.isoformat(), "last": last.isoformat()}
+        out = {"today": today.isoformat(), "today_weekday": weekday_of(today),
+               "first": first.isoformat(), "last": last.isoformat()}
         if not args.who:
             out["events"] = [row(agenda, e) for e in reader.between(first, last)]
         if args.shared or args.who:
@@ -186,7 +199,7 @@ def run(args) -> dict:
         day = reader.between(w.day, agenda.kst_day(w.end))
         same = next((e for e in day if agenda.same_event(e, w)), None)
         clash = [e for e in day if e.overlaps(w.start, w.end) and e is not same]
-        return {"title": w.title, "note": w.note, "day": w.day.isoformat(),
+        return {"title": w.title, "note": w.note, "day": w.day.isoformat(), "weekday": weekday_of(w.day),
                 "when": f"{w.start.astimezone(agenda.KST):%H:%M}–{w.end.astimezone(agenda.KST):%H:%M}",
                 "already": row(agenda, same) if same else None, "clash": [row(agenda, e) for e in clash],
                 "seen": ",".join(sorted(agenda.event_ref(e) for e in clash)) or NO_CLASH,
@@ -201,7 +214,7 @@ def run(args) -> dict:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="회사 일정 — 보기 · 넣기 · 지우기")
-    p.add_argument("--url", help="일정 앱 주소(…/calperson<NN>.nsf) — 없으면 CALENDAR_URL · 남긴 주소")
+    p.add_argument("--url", help="일정 앱 주소(…/calperson<NN>.nsf) — 없으면 CALENDAR_URL · 남긴 주소 · 잰 기본")
     sub = p.add_subparsers(dest="command", required=True)
     r = sub.add_parser("remember", help="일정 앱 주소를 재 보고 남긴다")
     r.add_argument("address")

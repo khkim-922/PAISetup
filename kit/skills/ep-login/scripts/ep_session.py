@@ -7,13 +7,15 @@ company-ecm)이 이 폴더를 ``sys.path`` 에 넣고 싣는다. 손을 돌리�
     import ep_session
 
     got = ep_session.attach()                       # domino — 메일 · 일정
-    got = ep_session.attach(("ecm",))                # ECM 까지 꼭 서야 할 때
+    got = ep_session.attach(("ecm",))                # ECM 만 — Domino 는 안 가린다
+    got = ep_session.attach(("domino", "ecm"))       # 둘 다 꼭 서야 할 때
     got = ep_session.attach(env={"MAILBOX_URL": url})   # 손에 더 줄 환경변수
     if got.usable:                                   # 0 · 또는 2 인데 남은 파일이 있다 — 그 파일로 서버에 물어 본다
         session = got.file
 
-무엇을 내나 — ``Attached(code, file, said)``. ``code`` 는 손의 종료 값(``OK`` 0 · ``TOOL`` 1 · ``NO_EDGE`` 2 · ``NOT_LOGGED_IN`` 3 —
-그 뜻은 ``edge_session.js`` 머리말), ``file`` 은 표준 출력 끝 줄의 절대 경로가 있는 파일일 때만, ``said`` 는 손의 말(표준 오류 ·
+무엇을 내나 — ``Attached(code, file, said)``. ``code`` 는 손의 종료 값(``OK`` 0 · ``TOOL`` 1 · ``NO_EDGE`` 2 · ``NOT_LOGGED_IN`` 3 ·
+``ECM_HANDOFF`` 4 — 그 뜻은 ``edge_session.js`` 머리말. 4 는 ``ecm`` 을 준 부름에서만 나고, 로그인은 섰으니 사람에게 다시 로그인을
+청하지 말고 스킬 ep-login 의 「ECM 만 못 받았다」를 가리킨다), ``file`` 은 표준 출력 끝 줄의 절대 경로가 있는 파일일 때만, ``said`` 는 손의 말(표준 오류 ·
 없으면 표준 출력)이다. 손 · node 가 없거나 시한을 넘기면 돌리지 않고 ``TOOL`` 과 그 까닭을 낸다 — 예외는 안 낸다.
 0 인데 끝 줄이 있는 파일의 절대 경로가 아니면 ``file`` 이 None 이다 — 부르는 쪽이 도구 고장으로 읽는다.
 
@@ -30,7 +32,7 @@ import subprocess
 
 HAND = pathlib.Path(__file__).resolve().with_name("edge_session.js")
 HAND_ENV = "EP_SESSION_HAND"
-OK, TOOL, NO_EDGE, NOT_LOGGED_IN = 0, 1, 2, 3     # edge_session.js 의 종료 값 — 닫힌 넷
+OK, TOOL, NO_EDGE, NOT_LOGGED_IN, ECM_HANDOFF = 0, 1, 2, 3, 4   # edge_session.js 의 종료 값 — 닫힌 다섯
 TIMEOUT_SECONDS = 180                              # ECM 넘김(열두 걸음 · 걸음마다 5 초)까지 든다
 
 

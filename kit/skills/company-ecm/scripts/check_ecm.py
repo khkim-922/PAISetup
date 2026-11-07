@@ -1,24 +1,26 @@
 """ecm.py · default_app.py 의 계약을 가짜 ECM 서버 · 가짜 에이전트로 잰다 — 127.0.0.1 밖으로는 아무것도 안 나간다.
 
-층 — 쓰는 사람의 계약. 판정은 셋이다.
+층 — 쓰는 사람의 계약. 판정은 셋이고, ``--office`` 면 하나가 더 선다.
     * 읽기 길이 문서함을 바꾸는 요청(편집으로 열기 · 새 판 올리기 · 잰 꼴 밖의 서비스 · 칸 · 값 · 방법 · 서버)을 서버에 보내나.
-      대조로 잰 읽기(목록 · 건수 · 열기 첫 걸음 · 세션 확인)는 서버에 닿아 풀려야 한다 — 다 막아서 초록이 되는 판을 가른다
+      대조로 잰 읽기(목록 · 건수 · 열기 첫 걸음 · 세션 확인)는 서버에 닿아 풀려야 한다 — 다 막아서 초록이 되는 판을 가른다.
+      편집 열기는 checkin 이 저장해 올릴 수 있는 꼴(오피스 셋)에만 잠금 요청을 보내나 — 그 밖의 꼴은 잠그기도 기본 앱을 적기도
+      전에 멈추나. 대조로 오피스 꼴은 잠금 요청이 닿아야 한다
     * 등록 길이 화면의 두 POST(같은 이름 찾기 · 등록)만 보내나 — 같은 이름이면 에이전트 올림도 등록도 안 가고, 화면에 없는 보안
-      짝 · 꼴 밖의 서버 자리 · 다른 서비스의 POST 는 서버에 닿기 전에 막나. 대조로 한 판은 끝까지 서야 한다
+      짝 · 꼴 밖의 서버 자리 · 다른 서비스의 POST · 그 문서함의 것이 아닌 폴더는 서버에 닿기 전에 막나. 대조로 한 판은 끝까지 서야 한다
     * 기본 앱 손이 이미 고른 값(UserChoice · UserChoiceLatest)을 덮나, 새 앱 알림 값을 빠진 것만 더하고 있는 값은 두나 — 버릴
       자리(HKCU\\Software\\PAISetupEcmCheck)에서 잰다. 이 PC 의 진짜 확장자 자리와 알림 자리는 안 건드린다
     * (``--office`` 일 때만) 창 닫는 손이 받은 문서 하나만 닫고, 같은 앱에 떠 있는 다른 문서와 앱은 남기나 — 남은 문서가
       없으면 앱을 끄나. 워드와 파워포인트(사용자 하나에 하나만 떠 사람의 앱에 들어간다), 그리고 pdf 의 Acrobat · Reader(창 하나에
-      탭으로 든다 — 닫는 손이 Ctrl+W 를 보내 앞 탭이 사람의 것이면 그것을 닫는다)로 잰다. Acrobat 은 사람의 pdf 가 앞 탭일 때
+      탭으로 든다 — Ctrl+W 는 앞 탭을 닫으므로 앞 탭이 사람의 것이면 닫는 손이 키를 안 보내야 한다)로 잰다. Acrobat 은 사람의 pdf 가 앞 탭일 때
       아무것도 안 닫나도 잰다. 앱은 셸이 띄우듯 실행 파일에
       파일을 줘서 띄운다. 오피스가 깔린 PC 에서 화면에 창이 잠깐 뜬다. 그 앱이 이미 떠 있으면 사람의 것이라 안 잰다(못 잼)
 남기는 까닭(check-design §1 넷) — 길이 분명하다(같은 서비스 모음에 문서를 잠그는 편집 열기가 있고 손을 고칠 때마다 막는
 목록이 흔들린다 · 등록은 동료가 보는 문서함에 문서를 더한다 · 기본 앱은 사람이 이미 고른 확장자에서 늘 불린다 · 파워포인트는 사람의 앱에 붙는다) · 깨지면 조용하거나
-되돌릴 수 없다(서버의 잠금 · 바뀐 기본 앱 · 닫힌 사람의 문서) · 쓰는 사람의 문서함 · 설정 · 문서를 잃는다 · 다른 무엇도 안
+되돌릴 수 없다(서버의 잠금 · checkin 이 못 올리는 꼴에 남은 잠금 · 「실패」로 알려진 채 남의 문서함에 올라간 문서 · 바뀐 기본 앱 ·
+닫힌 사람의 문서) · 쓰는 사람의 문서함 · 설정 · 문서를 잃는다 · 다른 무엇도 안
 잡는다(회사 ECM 은 회사 PC 에서만 닿는다).
 
-가짜 서버는 사내 ECM 에서 잰 꼴을 흉내 낸다 — 꼴의 원본은 ecm.py 머리말 「사내 ECM 에서 잰 것」이 가리키는 회사 확인 기록이다
-(이 파일은 ecm.py 의 막는 목록을 읽어 오지 않는다). ``JSESSIONID`` 가 없으면 ``302 → /ECM/logout.jsp``, 답은 ``text/xml`` 머리에
+가짜 서버는 ecm.py 머리말 「사내 ECM 에서 잰 것」이 드는 꼴을 흉내 낸다(이 파일은 ecm.py 의 막는 목록을 읽어 오지 않는다). ``JSESSIONID`` 가 없으면 ``302 → /ECM/logout.jsp``, 답은 ``text/xml`` 머리에
 앞 빈 줄이 붙은 JSON 이다. 막혀야 할 주소에는 일부러 ``MB_RTN_VALUE:true`` 를 줘서, 새어 나가면 손은 조용히 성공한다 — 판정은
 서버의 받은 기록으로 한다.
 
@@ -35,7 +37,7 @@
 
 여기서 못 재는 것 — 사내 SSO 와 진짜 에이전트(웹소켓 줄을 에이전트가 받는 꼴 · 받은 파일이 감긴 채인 것 · 기본 앱으로 띄우는 것) ·
 Windows 가 해시를 받아 주는지(그것은 손이 쓸 때마다 ``AssocQueryStringW`` 로 다시 본다) · UCPD 가 막는 판 · 엑셀의 닫기 ·
-감긴 파일을 연 오피스.
+감긴 파일을 연 오피스 · 에이전트의 편집완료 창과 오피스 프로세스의 끝 · 에이전트의 실제 올림과 서버의 잠금 · 등록.
 """
 
 from __future__ import annotations
@@ -80,11 +82,14 @@ CHECK_TOASTS = r"Software\PAISetupEcmCheck\ApplicationAssociationToasts"
 CABINET = "cab00a1b2c3d4"
 FOLDER = "fdr00a1b2c3d401"
 SUB_FOLDER = "fdr00a1b2c3d402"
+PROJECT_CABINET = "cab99a1b2c3d4"
+PROJECT_FOLDER = "fdr99a1b2c3d401"
 NEW_OBJ = "22a1b2c3d4e5f609"
+DOCX_OBJ = "11a1b2c3d4e5f608"
 # 실물 메인 화면의 꼴 — 문서함 고르기 칸의 option 과 제 부서 열쇠(스크립트 줄)
 MAIN_HTML = ("<html><script>var s_UserDeptCabinetId\t= '" + CABINET + "';</script><select name='cabinetSel'>"
              "<option id=\"MENU_DEPT\"\n\t\t\tvalue='" + CABINET + "'>기획그룹</option>"
-             "<option id=\"MENU_PROJECT\"\n\t\t\tvalue='cab99a1b2c3d4'>개선 프로젝트</option>"
+             "<option id=\"MENU_PROJECT\"\n\t\t\tvalue='" + PROJECT_CABINET + "'>개선 프로젝트</option>"
              "<option id=\"F_LIST_RCB\" value=\"F_LIST_RCB\">휴지통</option></select>main</html>")
 PROPERTY_HTML = ("<html><table><thead><tr><th>소유자<!-- 소유자 --></th><th>최종 수정자</th><th>최종 버전<!-- 최종 버전 --></th></tr>"
                  "</thead><tbody><tr><td>홍길동</td><td>홍길동</td><td>0.3</td> </tr></tbody></table></html>")
@@ -152,13 +157,15 @@ class FakeEcm:
         if path == "/ECM/ajaxAction.do" and service == "GetSubNaviMenu-service":
             # 실물 꼴 — MS_MENU_ID 는 <문서함>_<폴더>, MS_HAS_SUB 는 수
             if q.get("menuType") == "MENU_DEPT" and q.get("upperKey") == CABINET:
-                rows = [(FOLDER, "기획", 1)]
+                cab, rows = CABINET, [(FOLDER, "기획", 1)]
             elif q.get("menuType") == "F_LIST_FOLDER" and q.get("upperKey") == f"{CABINET}_{FOLDER}":
-                rows = [(SUB_FOLDER, "보고", 0)]
+                cab, rows = CABINET, [(SUB_FOLDER, "보고", 0)]
+            elif q.get("menuType") == "MENU_PROJECT" and q.get("upperKey") == PROJECT_CABINET:
+                cab, rows = PROJECT_CABINET, [(PROJECT_FOLDER, "개선", 0)]
             else:
                 return {"MB_RTN_VALUE": False, "MS_MSG_DESC": "폴더 경로를 조회하는데 실패 하였습니다."}
             return {"MB_RTN_VALUE": True, "ML_MENU_LIST": [
-                {"ID": f, "TEXT": n, "CHILD": s, "CABINETID": CABINET, "MS_MENU_ID": f"{CABINET}_{f}", "MS_MENU_NAME": n,
+                {"ID": f, "TEXT": n, "CHILD": s, "CABINETID": cab, "MS_MENU_ID": f"{cab}_{f}", "MS_MENU_NAME": n,
                  "MS_FORM_ID": "F_LIST_FOLDER", "MS_HAS_SUB": s} for f, n, s in rows]}
         if path == "/ECM/ajaxAction.do" and service == "CheckDuplicatedDoc-service":
             title = dict(urllib.parse.parse_qsl(self.bodies[-1])).get("title", "")
@@ -455,9 +462,53 @@ def check_register_sends_only_the_screens_two_posts(ecm_mod):
                 raise AssertionError("막아야 할 등록 꼴을 보냈다")
             assert len(fake.hits) == reached, f"막아야 할 등록 꼴이 서버에 닿았다: {fake.hits[reached:]}"
             assert len(agent.lines) == lines, "막아야 할 등록 꼴이 에이전트에 닿았다"
+
+            # 그 문서함의 것이 아닌 폴더 — 부서 문서함에서 고른 폴더를 프로젝트 문서함과 함께 준다. 같은 이름 찾기도 올림도 등록도 안 간다
+            posts, lines = [p for m, p in fake.hits if m == "POST"], len(agent.lines)
+            try:
+                ecm_mod.register_document(box, ecm_mod.Agent(agent.url, tmp), target, cabinet=PROJECT_CABINET,
+                                          folder=SUB_FOLDER, security="2A", open_flag="F")
+                raise AssertionError("그 문서함의 것이 아닌 폴더인데 올렸다")
+            except ecm_mod.EcmError:
+                pass
+            assert [p for m, p in fake.hits if m == "POST"] == posts, \
+                f"그 문서함의 것이 아닌 폴더인데 POST 를 보냈다: {[p for m, p in fake.hits if m == 'POST'][len(posts):]}"
+            assert len(agent.lines) == lines, "그 문서함의 것이 아닌 폴더인데 에이전트에 올렸다"
         finally:
             agent.close()
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+def check_edit_locks_only_what_checkin_can_upload(ecm_mod):
+    """편집 열기 — checkin 이 저장해 올릴 수 없는 꼴(pdf)은 잠금 요청도 기본 앱 적기도 없이 멈추고, 오피스 꼴(docx)은 잠금 요청이
+    닿는다. 기본 앱 손은 대역으로 바꿔 이 PC 의 확장자 자리를 안 건드린다."""
+    ensured: list[str] = []
+    real_ensure = ecm_mod.default_app.ensure
+    ecm_mod.default_app.ensure = lambda ext, **_: ensured.append(ext) or ecm_mod.default_app.Ensured("Word.Document.12", False)
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="check-ecm-edit-"))
+    agent = FakeAgent(tmp, lambda name: b"x", answer="NO")   # 받기는 늘 거절한다 — 이 판은 잠금 요청까지만 잰다
+    try:
+        with stage(ecm_mod) as (fake, box):
+            def checkouts():
+                return [p for _, p in fake.hits if "CheckOutCheckIn-service" in p]
+            try:
+                ecm_mod.edit_document(box, ecm_mod.Agent(agent.url, tmp), OBJ)   # pdf
+                raise AssertionError("checkin 이 못 올리는 pdf 를 편집으로 열었다")
+            except ecm_mod.EcmError:
+                pass
+            assert not checkouts(), f"checkin 이 못 올리는 pdf 에 잠금 요청을 보냈다: {checkouts()}"
+            assert not ensured, f"잠그지 않을 꼴에 기본 앱을 적으러 갔다: {ensured}"
+            # 대조 — docx 는 잠금 요청이 하나 닿는다(받기는 가짜 에이전트가 거절한다)
+            try:
+                ecm_mod.edit_document(box, ecm_mod.Agent(agent.url, tmp), DOCX_OBJ)
+                raise AssertionError("가짜 에이전트가 받기를 거절했는데 편집 열기가 섰다")
+            except ecm_mod.AgentError:
+                pass
+            assert len(checkouts()) == 1, f"docx 의 잠금 요청이 하나로 안 닿았다: {checkouts()}"
+    finally:
+        ecm_mod.default_app.ensure = real_ensure
+        agent.close()
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _delete_tree(path: str) -> None:
@@ -685,7 +736,8 @@ def main(argv: list[str]) -> int:
     ecm_mod = importlib.import_module("ecm")
     app_mod = importlib.import_module("default_app")
     print(f"잰다: {tree / 'ecm.py'}")
-    checks = [(check_reads_reach_and_changes_never_leave, ecm_mod), (check_register_sends_only_the_screens_two_posts, ecm_mod),
+    checks = [(check_reads_reach_and_changes_never_leave, ecm_mod), (check_edit_locks_only_what_checkin_can_upload, ecm_mod),
+              (check_register_sends_only_the_screens_two_posts, ecm_mod),
               (check_existing_choice_is_never_overwritten, app_mod), (check_new_app_toasts_fill_only_the_missing, app_mod)]
     if office:
         checks += [(check_word_closes_only_the_received_document, ecm_mod),

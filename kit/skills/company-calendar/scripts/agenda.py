@@ -34,8 +34,8 @@
 
 무엇을 내나
     시각은 다 시간대가 붙은 UTC 이고, 보이기(``Event.when``)는 서울이다. ``Seen`` 은 사람에게 보인 일정 한 줄의 손잡이다 —
-    일정 열쇠(사번이 든다)의 해시 · 제목 · 시작 · 끝의 지문 · 서울 날짜를 한 글줄(``handle``)로 들어, 대화를 건너 지우기에
-    넘긴다. 세션이 끊겼으면 ``SessionExpired``, 막은 주소 · 지우지 않는 줄은 ``ChangeRefused``(지우지 않는 까닭은 ``reason``),
+    그 줄의 열쇠 · 그 일정의 열쇠(둘 다 사번이 든 일정 열쇠의 해시) · 제목 · 시작 · 끝의 지문 · 서울 날짜를 한 글줄(``handle``)로
+    들어, 대화를 건너 지우기에 넘긴다. 공유받은 일정함의 줄이라는 표지는 그 글줄에 안 실린다. 세션이 끊겼으면 ``SessionExpired``, 막은 주소 · 지우지 않는 줄은 ``ChangeRefused``(지우지 않는 까닭은 ``reason``),
     등록 화면의 꼴이 잰 것과 다르면 ``FormChanged``, 쿠키 파일이 없거나 비었으면 ``SessionMissing``(``CalendarConfigError`` 의
     갈래), 주소 · 인자가 틀리면 ``CalendarConfigError``, 그 밖은 ``CalendarError``(다 이것의 갈래다). 무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은 이 모듈 이름) — 셈과 방향만 싣고
     일정 제목 · 이름 · 사번은 안 싣는다.
@@ -45,7 +45,9 @@
     지운다」를 분명히 고른 뒤에만 부른다 — 회차 · 예약 작업 · 모델의 판단이 스스로 부르지 않는다. 이 파일은 그 확인을 대신하지
     않는다. 반복 일정 · 하루 종일 일정 · 회의 · 받은 초대는 지우지 않는다(``Event.keep_reason``). 남의 일정(공유받지 않은 것) ·
     회의실 · 참석 답은 이 파일에 없다. 공유받은 일정함은 읽기만 한다 — 그 줄은 ``keep_reason`` 이
-    ``shared`` 이고, 지우기는 내 일정함만 다시 읽으므로 그 줄의 손잡이는 ``gone`` 으로 끝난다.
+    ``shared`` 이고, 그 줄(``Event``)이나 ``Seen.of`` 로 지은 손잡이를 지우기에 주면 묻기 전에 ``ChangeRefused``(``reason`` 은
+    ``shared``)다. ⚠ ``Seen.parse`` 로 되읽은 손잡이는 그 표지를 잃어 내 일정함의 줄로 읽힌다 — 지우기가 내 일정함에서 그 열쇠를
+    찾고, 없으면 ``gone`` 이다. 공유 줄의 글줄 손잡이를 지우기에 넘기지 않는다.
 
 사내 일정 앱에서 잰 것 — 어기면 조용히 망가진다. 잰 판(셈 · 못 잰 까닭)의 원본은 그 앱 저장소(mail-secretary)의
 ``docs/company-facts.md`` 「일정」과 회사 확인 대장(그 저장소 이슈 #28 「C. 일정」 코멘트 둘)이고, 줄 끝 괄호가 그 대장의 줄이다.
@@ -65,7 +67,8 @@
     * ⚠ **줄의 ``url`` 은 편집 화면(``vweventprev/<unid>?editdocument``)이고, 지우기도 GET 이다** — 읽는 손은 세 JSON 주소의 꼴만
       짓는다 (C2 · C3)
     * 넣기는 ``GET Eventquick?OpenForm`` 의 폼(95칸)을 기본값째 싣고 ``CalendarID · Subject · Description · StartDate · EndDate
-      (YYYY-MM-DD HH:MM 서울) · EventArea · visibility · callback=new`` 만 바꿔 ``POST Eventquick?OpenForm&Seq=1`` 하면 선다 — 쓰는
+      (YYYY-MM-DD HH:MM 서울) · EventArea · visibility · callback=new`` 을 바꿔 ``POST Eventquick?OpenForm&Seq=1`` 하면 선다(이 손은
+      참석자 · 참조 칸 ``att*`` · ``ref*`` 도 비워 보낸다 — 손님 수 칸은 폼 그대로) — 쓰는
       사람 몫(``Editors`` · ``calEditors``)과 고정 값 칸은 폼이 채운다. 답은 창을 닫는 스크립트라 성공을 못 가린다. 넣은 줄은 단건에
       ``eventId=<사번>_<만든 시각>`` · ``eventtype`` 빈 · ``attRsponseStatus`` 빈으로 선다 (C3 · 「코드로 등록 · 지우기」)
     * 넣은 일정은 공개 범위 ``public`` 으로 들어간다 — 폼이 비워 둔 값을 사람이 넣은 판의 값으로 채운다. 남이 제목을 볼 수 있다 (C3)
@@ -75,8 +78,9 @@
     * 세션은 메일함과 한 벌이다 — 회사 쿠키는 다 ``.posco.net`` 이라 메일 서버에 실리는 쿠키로 일정이 다 온다. 쿠키 없이 부르면
       **200 에 SSO 로 넘기는 HTML** 을 준다 — 상태 코드로는 못 가려, JSON · JSONP 가 아니면 끊긴 세션으로 읽는다. 리다이렉트는
       따라가지 않는다 — 따라가면 쿠키가 SSO 에 실린다 (「코드로 등록 · 지우기」)
-    * 안 잰 것 — 반복 일정 · 하루 종일 일정의 지우기(반복은 그날 하나만 걷는지 줄 전체를 걷는지 모른다) · 줄의 ``editable`` 값의
-      꼴(참으로 안 읽히는 꼴이면 지울 수 있는 줄이 없다고 나온다 — 넓게 지우는 쪽이 아니라 좁게 막는 쪽으로 틀린다) · 하루 종일 ·
+    * 내 일정 줄의 ``editable`` 은 칸은 있되 늘 빈 글자다 — 고칠 수 있는 사람은 ``editors``(``CN=…/OU=…/OU=02/O=posconet,`` 꼴로 이은
+      Notes 이름)가 든다. 내 일정함의 줄은 회의든 단건이든 ``Owner`` · ``owner`` · ``editors`` 에 쓰는 사람이 든다
+    * 안 잰 것 — 반복 일정 · 하루 종일 일정의 지우기(반복은 그날 하나만 걷는지 줄 전체를 걷는지 모른다) · 하루 종일 ·
       여러 날 일정의 줄 꼴(올해 표본에 0건) · 일정 조회의 ``end`` 가 그날을 드는지 (C5 ~ C7)
 """
 
@@ -113,6 +117,8 @@ REF_LENGTH = 16                     # 손잡이 속 해시의 길이(16진 글�
 
 # ── 일정 앱의 꼴(잰 값 — 원본은 머리말의 두 자리) ─────────────────────────────────────────────────────
 APP_URL = re.compile(r"^(https?://[^/]+)(/.+?\.nsf)", re.IGNORECASE)
+# 잰 일정 앱 — 남긴 주소 · CALENDAR_URL 이 없을 때 쓰는 기본. 이 주소로 내 일정함이 안 읽히는 PC 는 그 사람의 일정 화면 주소를 받는다
+DEFAULT_APP_URL = "http://pcfca03.posco.net/02/cal/calperson32.nsf"
 LIST_PATH = "/agGetCalendar?OpenAgent&calltype=GNB"
 EVENTS_PATH = "/getcalendareventMe?readform"
 SHARED_EVENTS_PATH = "/getcalendarevent?readform"   # 공유받은 일정함의 일정 — 그 일정함의 서버 · DB 에서 묻는다
@@ -236,7 +242,7 @@ class Event:
     repeat: bool = False
     response: str = ""                 # attRsponseStatus — needsAction · accepted · 빈 글자
     meeting: bool = False              # eventtype 이 Meeting
-    editable: bool = False             # 앱이 이 줄을 고칠 수 있다고 했다(`editable`) — 칸이 없거나 참이 아니면 거짓
+    editable: bool = False             # 쓰는 사람이 이 줄을 고칠 수 있다 — 줄의 `editors` 에 그 사람이 든다(`_edits`)
     calendar: str = ""                 # 공유받은 일정함의 이름(``Book.name``) — 내 일정함의 줄이면 빈 글자
     private: bool = False              # 줄의 visibility 가 private — 주인이 비공개로 든 일정
 
@@ -248,7 +254,7 @@ class Event:
     def keep_reason(self) -> str:
         """지우지 않는 까닭 — 빈 글자면 지워도 된다(쓰는 사람이 손수 든 단건). 참석 답이 걸린 줄은 남이 연 회의에 든 자리라 지우기가
         곧 참석 답이다. 회의 줄은 쓰는 사람이 연 회의여도 지우면 참석하실 분께 알림이 갈 수 있다. 반복 · 하루 종일 일정은 지우기를
-        안 쟀다. 앱이 고칠 수 없다고 한 줄도 안 지운다."""
+        안 쟀다. 쓰는 사람이 고칠 수 있는 줄이 아니면(줄의 ``editors`` 에 그 사람이 안 든다) 안 지운다."""
         if self.calendar:
             return KEEP_SHARED
         if self.response:
@@ -294,12 +300,12 @@ class Want:
 class Seen:
     """사람에게 보인 일정 한 줄의 손잡이 — 그 줄의 열쇠(``ref`` — 일정 열쇠 · 시작의 해시) · 그 일정의 열쇠(``ident`` — 일정
     열쇠만의 해시 · 시각을 옮겨도 같다) · 제목 · 시작 · 끝의 지문(``mark``) · 서울 날짜(``day``). 일정 열쇠(사번이 든다)를 그대로
-    싣지 않는다. ``handle`` 이 한 글줄 꼴이고 ``parse`` 가 되읽는다."""
+    싣지 않는다. ``handle`` 이 한 글줄 꼴이고 ``parse`` 가 되읽는다 — 글줄에는 ``shared`` 가 안 실려, 되읽은 손잡이는 늘 거짓이다."""
     ref: str
     ident: str
     mark: str
     day: date
-    shared: bool = False               # 공유받은 일정함의 줄 — 지우기가 묻지 않고 거절한다
+    shared: bool = False               # 공유받은 일정함의 줄 — 지우기가 묻지 않고 거절한다(``of`` 로 지은 것만 · ``parse`` 는 거짓)
 
     _HANDLE = re.compile(rf"^([0-9a-f]{{{REF_LENGTH}}})\.([0-9a-f]{{{REF_LENGTH}}})\.([0-9a-f]{{{REF_LENGTH}}})"
                          rf"\.(\d{{4}}-\d{{2}}-\d{{2}})$")
@@ -500,7 +506,7 @@ class Reader:
         return f"{own.scheme}://{host}"
 
     def _open(self, url: str, data: bytes | None = None) -> tuple[bytes, str]:
-        """막기 없는 요청 — 읽기는 ``_get`` 을 거쳐서만, 바꾸기는 ``register`` · ``delete`` 만 이것을 바로 부른다."""
+        """막기 없는 요청 — 읽기는 ``_get`` · ``_get_shared`` 를 거쳐서만, 바꾸기는 ``register`` · ``delete`` 만 이것을 바로 부른다."""
         req = urllib.request.Request(url, data=data, method="POST" if data is not None else "GET")
         if data is not None:
             req.add_header("Content-Type", "application/x-www-form-urlencoded")
@@ -588,7 +594,7 @@ class Reader:
         skipped = 0
         for name in ("data", "data2"):
             for row in body.get(name) or ():
-                e = parse_row(row) if isinstance(row, dict) else None
+                e = parse_row(row, book.owner) if isinstance(row, dict) else None
                 if e is None:
                     skipped += 1
                     continue
@@ -601,7 +607,7 @@ class Reader:
         return events
 
     def between(self, first: date, last: date, book: Book | None = None) -> list[Event]:
-        """서울 날짜 ``first`` ~ ``last``(둘 다 든다)에 걸친 내 일정. 앱의 ``end`` 가 그날을 드는지 안 쟀으므로 하루 더 묻고 서울
+        """서울 날짜 ``first`` ~ ``last``(둘 다 든다)에 걸친 일정 — ``book`` 이 없으면 내 일정함이다. 앱의 ``end`` 가 그날을 드는지 안 쟀으므로 하루 더 묻고 서울
         날짜로 거른다 — 어느 쪽이든 그날의 일정이 빠지지 않는다."""
         if last < first:
             raise CalendarConfigError("끝 날짜가 시작 날짜보다 앞이다")
@@ -632,8 +638,17 @@ def _at(text: str, zone: str) -> datetime:
     return naive.replace(tzinfo=tz).astimezone(timezone.utc)
 
 
-def parse_row(row: Mapping[str, Any]) -> Event | None:
-    """일정 줄 하나 — 시각을 못 읽으면 None(그 줄만 버린다)."""
+def _edits(row: Mapping[str, Any], me: str) -> bool:
+    """쓰는 사람이 이 줄을 고칠 수 있나 — 앱의 ``editable`` 이 참이거나, 줄의 ``editors``(쉼표로 이은 Notes 이름)에 ``me`` 가 든다.
+    앱의 ``editable`` 은 내 일정 · 공유 일정 모두 빈 글자로 오고, 고칠 수 있는 사람은 ``editors`` 가 든다."""
+    if _truthy(row.get("editable")):
+        return True
+    names = {n.strip().casefold() for n in str(row.get("editors") or "").split(",") if n.strip()}
+    return bool(me) and me.strip().casefold() in names
+
+
+def parse_row(row: Mapping[str, Any], me: str = "") -> Event | None:
+    """일정 줄 하나 — 시각을 못 읽으면 None(그 줄만 버린다). ``me`` 는 쓰는 사람의 Notes 이름(내 일정함의 ``owner``)이다."""
     zone = str(row.get("timeZone") or "")
     try:
         start, end = _at(str(row.get("start") or ""), zone), _at(str(row.get("end") or ""), zone)
@@ -642,7 +657,7 @@ def parse_row(row: Mapping[str, Any]) -> Event | None:
     return Event(event_id=str(row.get("eventId") or ""), title=html.unescape(str(row.get("title") or "")).strip(),
                  start=start, end=max(start, end), all_day=_truthy(row.get("allDay")), repeat=_truthy(row.get("repeat")),
                  response=str(row.get("attRsponseStatus") or ""),
-                 meeting=str(row.get("eventtype") or "").strip().lower() == MEETING, editable=_truthy(row.get("editable")),
+                 meeting=str(row.get("eventtype") or "").strip().lower() == MEETING, editable=_edits(row, me),
                  private=str(row.get("visibility") or "").strip().lower() == "private")
 
 
@@ -712,9 +727,9 @@ def register(url: str, cookies_file: pathlib.Path | str, want: Want, *, timeout:
              reader: Reader | None = None, shown_clash: Iterable[str] | None = None) -> Added:
     """⚠ 회사 일정을 바꾼다 — 내 일정함에 한 건을 넣는다. 사람이 그 한 건을 확인한 뒤에만 부른다.
 
-    차례 — 내 일정함 → 그날 일정을 읽어 같은 일정이 있으면 넣지 않는다(``already`` — 두 번 부름 · 옛 확인) → 등록 화면을 열어 그
-    폼의 값을 받는다(잰 칸이 없으면 ``FormChanged`` · 넣지 않음). ``shown_clash`` 를 주면(확인에 보인 겹침의 ``event_ref`` 들) 그날
-    그 시각에 보인 것 밖의 일정이 생겼을 때 넣지 않는다(``clashed`` — 사람은 그 겹침을 모르고 「네」 했다) → 잰 칸만 덮고 참석자 · 참조 칸은 비워 저장 주소에 POST → 그날을
+    차례 — 내 일정함 → 그날 일정을 읽어 같은 일정이 있으면 넣지 않는다(``already`` — 두 번 부름 · 옛 확인) → ``shown_clash`` 를
+    주면(확인에 보인 겹침의 ``event_ref`` 들) 그 시각에 보인 것 밖의 일정이 생겼을 때 넣지 않는다(``clashed`` — 사람은 그 겹침을
+    모르고 「네」 했다) → 등록 화면을 열어 그 폼의 값을 받는다(잰 칸이 없으면 ``FormChanged`` · 넣지 않음) → 잰 칸만 덮고 참석자 · 참조 칸은 비워 저장 주소에 POST → 그날을
     다시 읽어 섰으면 ``added``, 안 보이면 ``unsure``(답이 창을 닫는 스크립트라 성공을 못 가린다). 저장 POST 가 도중에 끊겨도 다시
     읽어 가린다. 등록 화면을 열기 전에 진 것(세션 · 서버)은 아무것도 안 바꿨다 — 그대로 올린다.
     """

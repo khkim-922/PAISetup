@@ -2,11 +2,14 @@
 // 127.0.0.1 · localhost 밖으로 아무것도 안 나가고, 쓰는 사람의 Edge 에는 붙지 않는다.
 //
 // 층 — 쓰는 사람의 계약. 세션 파일에 회사 밖 사이트 · 로그인 화면의 쿠키가 새나(사람의 다른 세션 열쇠가 파일로 나간다) · 붙는 손이
-// 사람의 탭을 건드리나(확인 창을 닫는다 · 탭을 남긴다) · 확인 창이 뜬 탭 하나에 붙기가 멈추나 · 종료 값이 닫힌 넷의 뜻대로 나오나
-// (부르는 스킬이 그 값으로 사람에게 무엇을 할지 고른다) · ECM 을 이미 산 세션 위에서 다시 넘나 · 저장소 안에 열쇠를 쓰나.
+// 사람의 탭을 건드리나(확인 창을 닫는다 · 탭을 남긴다) · 확인 창이 뜬 탭 하나에 붙기가 멈추나 · 종료 값이 닫힌 다섯의 뜻대로 나오나
+// (부르는 스킬이 그 값으로 사람에게 무엇을 할지 고른다 — 로그인이 선 사람에게 다시 로그인하라고 하나) · ECM 을 이미 산 세션 위에서
+// 다시 넘나 · 저장소 안에 열쇠를 쓰나.
 // 남기는 까닭(check-design §1 넷) — 길이 분명하다(Edge 는 프로필의 모든 사이트 쿠키를 내고, Playwright 로 붙으면 사람의 확인 창이
 // 닫히고 붙기가 멈추는 것을 이 PC 에서 쟀다) · 새는 쿠키와 닫힌 확인 창은 조용하고 되돌릴 수 없다 · 사람의 다른 세션이 남의 손에
 // 가거나 사람이 고르던 창이 사라진다 · 다른 무엇도 안 잡는다(회사 SSO 는 회사 PC 에서만 닿고, 형제 저장소의 검사는 이 손을 안 돈다).
+// 종료 3 · 4 의 가름도 같은 넷이다 — ECM 넘김만 못 따라간 판이 3 으로 나가 로그인이 선 사람이 다시 로그인을 청받았다(오프라인
+// 탐침으로 쟀다). 부르는 쪽은 그 값을 그대로 사람의 말로 옮긴다.
 //
 // 가짜의 꼴 — ECM 은 2026-11-06 이 PC 실물의 넘김이다(redirect.jsp?redir_url=index.jsp — action 이 빈 폼을 스크립트가 채워 POST ·
 // ssoToken → index.jsp 가 jID · login.do 주소를 스크립트에 든다 → login.do…&USE_WEBSOCKET=F(302) → 메인 · 세션 없는 메인은
@@ -17,7 +20,7 @@
 // 돌리는 법:
 //     node check_session.js [edge_session.js 가 든 폴더]
 //   폴더를 안 주면 이 파일의 폴더를 잰다. 일부러 틀린 사본을 다른 폴더에 두고 그 폴더를 주면 물림(검사가 정말 무나)을 잰다.
-//   Node 22 이상 · Edge. --launch 판은 전역 playwright 를 쓴다(NODE_PATH 가 없으면 npm root -g 로 채운다).
+//   Node 22 이상 · Edge.
 //
 // 판정 — 끝 줄이 「통과 N/N」 이면 종료 0, 하나라도 어긋나면 1, Edge 를 못 찾거나 못 띄우는 등 재지 못했으면 2.
 //
@@ -37,7 +40,6 @@ const TREE = (() => { const p = path.resolve(process.argv[2] || __dirname); retu
 const HAND = path.join(TREE, 'edge_session.js');
 const DB = '/02/mail2/000000.nsf';
 const ECM_MAIN = '/ECM/jsp/main/ecmMain.jsp';
-const EP_DIALOG = '다른 PC에서 EP 접속 정보가 있어 안내드립니다';
 const HAND_MS = 90000;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -52,7 +54,7 @@ function cannot(why) { throw new Cannot(why); }   // 정리(finally)를 지난 �
 // ── 가짜 사내망 ──────────────────────────────────────────────────────────
 // SSO 는 localhost, 메일함 · ECM 은 127.0.0.1 — 호스트가 달라야 「로그인 화면의 쿠키를 안 남긴다」를 잰다
 
-const world = { sso: new Set(), dom: new Set(), ecm: new Set(), relay: new Set(), jid: new Set(), ssoHits: 0, epDialog: false, jsForm: false, n: 0 };
+const world = { sso: new Set(), dom: new Set(), ecm: new Set(), relay: new Set(), jid: new Set(), ssoHits: 0, jsForm: false, n: 0 };
 const token = prefix => `${prefix}-${++world.n}`;
 const cookies = req => Object.fromEntries((req.headers.cookie || '').split(/;\s*/).filter(Boolean).map(p => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]));
 const body = req => new Promise(res => { let s = ''; req.on('data', c => s += c); req.on('end', () => res(new URLSearchParams(s))); });
@@ -68,9 +70,8 @@ function ssoServer(req, res) {
   if (url.pathname === '/idms/U61/jsp/login/login.jsp') {
     const to = url.searchParams.get('to') || '';
     if (live) return go(res, `${to}${to.includes('?') ? '&' : '?'}t=${encodeURIComponent(sid)}`);
-    // 사내 로그인 화면 — 암호 칸이 있다. 가짜는 통합 인증처럼 스스로 넘는다(사람 손 흉내). EP 접속 정보 창은 사람이 고른다
-    const submit = 'document.getElementById("f").submit()';
-    const script = world.epDialog ? `if (confirm(${JSON.stringify(EP_DIALOG)})) ${submit};` : submit;
+    // 사내 로그인 화면 — 암호 칸이 있다. 가짜는 통합 인증처럼 스스로 넘는다(사람 손 흉내)
+    const script = 'document.getElementById("f").submit()';
     return html(res, `<form id="f" method="post" action="/dologin"><input name="id" value="me"><input type="password" name="pw" value="x">` +
       `<input type="hidden" name="to" value="${to}"></form><script>setTimeout(function(){${script}}, 300)</script>`);
   }
@@ -347,7 +348,7 @@ async function main() {
     r = await hand([file], { EDGE_DEBUG_PORT: port });
     judge('ecm 을 안 준 판은 ECM 넘김을 안 한다 · 메일이 서면 종료 0', r.code === 0 && world.ssoHits === 0 && !/ECM —/.test(r.out), `종료 ${r.code} · 넘김 ${world.ssoHits}번 · ${r.out.trim()}`);
     r = await hand([file, 'domino', 'ecm'], { EDGE_DEBUG_PORT: port });
-    judge('ECM 을 꼭 서야 하는 앱으로 주면 → 종료 3', r.code === 3, `종료 ${r.code} · ${r.out.trim()}`);
+    judge('로그인은 섰는데 ECM 넘김만 못 따라갔다 → 종료 4(다시 로그인할 일이 아니다 · 3 이 아니다)', r.code === 4, `종료 ${r.code} · ${r.out.trim()}`);
     const beforeTab = (await pages(edge)).length;
     r = await hand([file, 'ecm', '--ecm-tab'], { EDGE_DEBUG_PORT: port });
     const tabState = fileCookies(file);
@@ -371,18 +372,10 @@ async function main() {
     r = await hand([path.join(repo, 'sub', 'session.json')], { EDGE_DEBUG_PORT: port });
     judge('세션 파일 자리가 git 저장소 안이다 → 종료 1 · 안 쓴다', r.code === 1 && !fs.existsSync(path.join(repo, 'sub', 'session.json')), `종료 ${r.code}`);
 
-    // --launch — 임시 프로필 창에서 로그인(EP 접속 정보 창은 로그인 화면에서 「확인」) → 메일 · ECM
-    world.sso.clear(); world.dom.clear(); world.ecm.clear();
-    world.epDialog = true;
-    const launched = path.join(scratch, 'launched.json');
-    r = await hand([launched, '--launch'], { EDGE_DEBUG_PORT: closed, SESSION_LAUNCH_HEADLESS: '1' });
-    judge('--launch 는 창에서 로그인을 넘겨 메일 · ECM 쿠키를 남긴다 · 끝 줄이 그 경로',
-      r.code === 0 && names(fileCookies(launched)) === 'DomAuthSessId,JSESSIONID' && r.last === launched,
-      `종료 ${r.code} · 쿠키 ${names(fileCookies(launched))} · ${r.out.trim()}`);
-    world.epDialog = false;
-    // 새 창 갈래 뒤에도 사람의 Edge 에는 여전히 못 붙는다 — 부르는 쪽의 조용한 부름이 ep-login 으로 되돌아가지 않아야 한다
-    r = await hand([launched], { EDGE_DEBUG_PORT: closed });
-    judge('새 창 갈래로 받은 파일 — 못 붙어도 그 파일이 살면 종료 0 · 끝 줄이 그 경로', r.code === 0 && r.last === launched, `종료 ${r.code} · ${r.out.trim()}`);
+    // ECM 넘김이 로그인 화면에 닿는다 — EP 로그인이 끊긴 것이라 4 가 아니라 3
+    world.sso.clear(); world.ecm.clear();
+    r = await hand([file, 'ecm'], { EDGE_DEBUG_PORT: port });
+    judge('ECM 넘김이 로그인 화면에 닿으면(EP 로그인이 끊겼다) → 종료 3', r.code === 3, `종료 ${r.code} · ${r.out.trim()}`);
   } finally {
     if (edge) {
       edge.browser.close();

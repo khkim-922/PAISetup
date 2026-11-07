@@ -6,9 +6,11 @@
     ``Ecm.list(cabinet=…)`` · ``Ecm.count``). 문서 하나를 PC 의 ECM 에이전트로 받아 보기로 열고(``open_document``), 에이전트가 띄운
     창(오피스 · Acrobat)을 닫은 뒤 받은 파일의 글자를 스킬 drm-office-read 의 읽는 손으로 뽑는다(``read_document``).
 
-    편집은 화면과 같은 차례다 — ``edit_document`` 가 서버에서 잠그고 에이전트로 읽기 쓰기로 열며, 고친 뒤 ``checkin_document`` 가
+    편집은 화면과 같은 차례다 — ``edit_document`` 가 워드 · 엑셀 · 파워포인트 문서(``OFFICE_BY_EXT`` — ``checkin_document`` 가
+    저장해 올릴 수 있는 꼴)만 서버에서 잠그고 에이전트로 읽기 쓰기로 열며, 고친 뒤 ``checkin_document`` 가
     그 문서만 저장해 닫고 에이전트의 편집완료 창에서 **늘 다음 판**을 골라 수정 내용과 함께 올린 뒤 문서 정보의 최종 버전이
-    바뀌었나 본다. 새 문서는 ``register_document`` 가 화면의 「컨텐츠 등록」 차례로 올린다 — 그 폴더에 같은 이름이 있나 묻고, 에이전트가
+    바뀌었나 본다. 새 문서는 ``register_document`` 가 화면의 「컨텐츠 등록」 차례로 올린다 — 그 폴더가 그 문서함의 것인가를
+    폴더 나무로 읽어 보고, 그 폴더에 같은 이름이 있나 묻고, 에이전트가
     파일을 서버 임시 자리에 올리고, 등록한 뒤 목록에서 다시 읽어 폴더 · 보안등급이 고른 값인가 본다. 바꾸는 요청은 편집 열기
     (``Ecm.checkout``)와 등록 화면의 두 POST(``Ecm._post`` — 같은 이름 찾기 · 등록)만 짓는다 — 그 밖의 바꾸는 꼴(올리기 요청 · 편집취소 ·
     지우기)과 잰 꼴 밖의 주소는 서버에 닿기 전에 ``Refused`` 로 막는다. 왜 이렇게 짓나는 결정 0223 · 0224 가 든다.
@@ -31,7 +33,7 @@
         new = ecm.register_document(box, ecm.Agent.from_env(), path, cabinet=dept.key, folder=top[0].id,
                                     security="2A", open_flag="F")   # 보안 짝은 사람이 확인한 값
         opened = ecm.edit_document(box, ecm.Agent.from_env(), docs[0].object_id)   # 잠그고 읽기 쓰기로 연다
-        # … 오피스 COM 으로 opened.path 의 문서를 고친다(저장은 다음 걸음이 한다) …
+        # … 오피스 COM 으로 opened.path 의 문서를 고친다(닫지 않는다 — 저장해 닫기는 다음 걸음이 한다) …
         done = ecm.checkin_document(box, opened.path, docs[0].object_id, "고친 내용 한 줄")
         print(done.version_before, "→", done.version_after)
 
@@ -40,16 +42,18 @@
 
 무엇을 내나
     목록은 ``Doc``, 문서함은 ``Cabinet``, 열기 · 편집 열기는 ``Opened``(받은 파일 경로 · 문서 표 · 기본 앱), 읽기는 ``ReadResult``,
-    올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서는 ``Registered``(열쇠 · 이름 · 판)이다. 명령줄의 종료 값은 0 됨 · 1 실패(메시지 그대로 알린다) · 3 세션이 없거나
-    끊겼다(스킬 ep-login 으로 다시 받는다) · 4 사람이 그 확장자의 기본 앱을 한 번 골라야 한다(메시지가 할 일을 든다). 갈래 예외는
-    ``EcmError`` 아래에 선다 — ``SessionMissing`` · ``SessionExpired`` · ``Refused`` · ``AgentError`` · ``ReadError``, 그리고
-    ``default_app.DefaultAppNeeded``.
+    올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서는 ``Registered``(열쇠 · 이름 · 판)이다. 명령줄의 종료 값은 0 됨 · 1 실패(메시지 그대로 알린다) · 2 인자가
+    틀렸다(argparse 가 받는 값을 든다) · 3 세션이 없거나 끊겼다(스킬 ep-login 으로 다시 받는다) · 4 사람이 그 확장자의 기본 앱을 한 번
+    골라야 한다(메시지가 할 일을 든다). 갈래 예외는 ``EcmError`` 아래에 선다 — ``SessionMissing`` · ``SessionExpired`` · ``Refused`` ·
+    ``AgentError`` · ``ReadError``. ``default_app.DefaultAppNeeded`` · ``ValueError``(확장자 꼴) · ``OSError`` ·
+    ``subprocess.TimeoutExpired`` 는 그 아래가 아니다 — 명령줄은 따로 잡아 4 · 1 로 내고, 손으로 부르는 쪽도 따로 잡아야 한다.
 
 받은 파일은 어떻게 되나
     에이전트가 ``<받는 자리>\\<계정>\\VIEW\\<시각 번호>\\``(보기) · ``…\\CHECKOUT\\<시각 번호>\\``(편집)에 둔 파일은 **지우지도
     옮기지도 않는다.** 그 폴더는 에이전트의 것이고(ECM 화면에서 사람이 열어도 같은 자리에 같은 꼴로 쌓인다), 파일은 DRM 에 감긴 채라
     그 PC 의 오피스 밖에서는 안 열린다. 비우는 일은 에이전트의 정리 프로그램 몫이다. 읽는 손이 뽑은 평문은 이 손이 지은 임시
-    폴더에 잠시 놓였다가 글자를 읽자마자 그 폴더째 지운다 — 평문은 디스크에 남지 않고 부르는 쪽에만 간다.
+    폴더(``ecm-read-…``)에 잠시 놓였다가 글자를 읽자마자 그 폴더째 지우고 부르는 쪽에만 간다 — 지우기가 실패해도 말없이 넘어가므로
+    (``ignore_errors``) 그때는 그 폴더에 남는다.
 
 환경변수(``from_env``)
     ``ECM_URL``           ECM 주소 — ``…/ECM`` 까지                         기본 ``http://swpecm.posco.net:7091/ECM``
@@ -79,9 +83,10 @@
       에이전트가 파일을 새 폴더에 받고 기본 앱으로 연다
     * 편집 열기는 ``CheckOutCheckIn-service&checkout=true&MS_OBJECT_ID=<16 hex>`` 가 서버에서 잠그고 같은 세 값을 준다(``MB_RTN_VALUE``
       가 참이면 실패 코드가 같이 와도 선다). 줄의 셋째 값이 ``EDIT_NOCHECKIN`` 이면 에이전트가 ``CHECKOUT`` 아래에 받아 읽기 쓰기로
-      연다. 받은 이름 끝에 열쇠 · 계정이 한 번 더 붙을 수 있다 — 이름을 짓지 않고 새로 생긴 파일을 집는다
+      연다. 받은 이름은 ``<이름>_<문서 열쇠>_<계정>.<꼴>`` 이다 — ``checkin_document`` 가 이름 속 열쇠로 그 문서를 알아본다.
+      받을 때는 이름을 짓지 않고 새로 생긴 파일을 집는다(xlsx 로 쟀다 · docx · pptx 는 안 쟀다)
     * 편집완료 창은 **오피스 프로세스가 끝나야** 뜬다(문서를 닫기만 해서는 안 뜬다). 창 속은 웹 화면이고 판 라디오
-      ``choice_version`` 의 기본은 지금 판(덮어쓰기)이다 — 마지막 값이 다음 판이다. 수정 내용 칸은 ``version_desc`` · 저장은 그 화면의
+      ``choice_version`` 의 기본은 지금 판(덮어쓰기)이다 — 지금 판보다 큰 값이 꼭 하나일 때만 그것을 고르고, 아니면 아무것도 안 누른다. 수정 내용 칸은 ``version_desc`` · 저장은 그 화면의
       ``fn_save()`` · 올리기는 에이전트가 한다. 판은 문서 정보 화면(``docProperty_simple.do?ServiceName=DocPropertyHtml-service&basicinfo=true
       &DOCID=<16 hex>&getType=user``)의 「최종 버전」 칸이 든다
     * 폴더 나무는 ``GetSubNaviMenu-service&menuType=<MENU_DEPT|MENU_PROJECT>&upperKey=<문서함>`` (문서함 바로 아래) ·
@@ -236,7 +241,7 @@ class SessionExpired(EcmError):
 
 
 class Refused(EcmError):
-    """읽기로 잰 꼴 밖의 요청을 지었다 — 서버에 닿기 전에 막았다."""
+    """잰 꼴 밖의 요청을 지었다 — 읽기 · 편집 열기 · 등록 POST 어느 길이든 서버에 닿기 전에 막았다."""
 
 
 class AgentError(EcmError):
@@ -320,6 +325,11 @@ class ReadResult:
 
 # ── 세션 ─────────────────────────────────────────────────────────────────
 
+def url_from_env() -> str:
+    """ECM 주소 — 환경변수 ``ECM_URL``, 비었으면 ``DEFAULT_URL``. 세션 파일 없이 주소만 드는 자리(이 손을 깔린 자리에서 싣는 앱)도 이것을 부른다."""
+    return os.environ.get("ECM_URL", "").strip() or DEFAULT_URL
+
+
 def session_path() -> pathlib.Path:
     """환경변수 ``MAILBOX_COOKIES`` 의 세션 파일 자리. 비었으면 ``SessionMissing`` — 자리는 스킬 ep-login 의 받는 손이 정한다."""
     raw = os.environ.get("MAILBOX_COOKIES", "").strip()
@@ -380,7 +390,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 # ── 서버 ─────────────────────────────────────────────────────────────────
 
 class Ecm:
-    """ECM 서버 하나. 손은 다 읽기다 — ``_fetch`` 가 모든 요청을 ``guard`` 에 먼저 댄다."""
+    """ECM 서버 하나. 모든 요청을 서버에 닿기 전에 잰 꼴에 댄다 — 읽기는 ``guard``(닫힌 목록), 편집 열기는 ``_guard_edit``,
+    등록 화면의 두 POST 는 ``_post`` 가 든다."""
 
     def __init__(self, url: str = DEFAULT_URL, session_file=None, *, timeout: float = HTTP_TIMEOUT):
         match = re.match(r"^(https?://[^/?#]+)(/[^?#]*?)/?$", url.strip(), re.IGNORECASE)
@@ -396,7 +407,7 @@ class Ecm:
 
     @classmethod
     def from_env(cls) -> "Ecm":
-        return cls(os.environ.get("ECM_URL", "").strip() or DEFAULT_URL, session_path())
+        return cls(url_from_env(), session_path())
 
     # 막기 — 이 판이 지은 주소를 다시 풀어 닫힌 목록에 댄다
     def guard(self, method: str, url: str) -> None:
@@ -510,6 +521,23 @@ class Ecm:
                 found.append(Folder(key.group(1), key.group(2), str(row.get("MS_MENU_NAME", "")).strip(),
                                     str(row.get("MS_HAS_SUB", "0")) not in ("0", "")))
         return found
+
+    def has_folder(self, cabinet: str, folder: str) -> bool:
+        """그 폴더(``fdr…``)가 그 문서함의 폴더 나무에 있나 — ``folders`` 로 문서함 바로 아래부터 한 층씩 내려가며 찾는다. 읽기만
+        하고, 아래 폴더가 있는 폴더만 열며, 찾으면 거기서 멈춘다."""
+        if not FOLDER_ID.match(folder):
+            raise EcmError(f"폴더 열쇠(fdr…)가 아니다: {folder!r} — folders 가 낸 열쇠를 준다")
+        layer, opened = self.folders(cabinet), set()
+        while layer:
+            if any(f.id == folder for f in layer):
+                return True
+            below = []
+            for f in layer:
+                if f.has_sub and f.id not in opened:
+                    opened.add(f.id)
+                    below.extend(self.folders(cabinet, f.id))
+            layer = below
+        return False
 
     def duplicates(self, folder: str, title: str, ext: str) -> list[str]:
         """그 폴더에 같은 이름 · 확장자의 문서가 있나 — 화면이 등록 전에 묻는 같은 요청. 걸린 이름들을 낸다."""
@@ -804,7 +832,7 @@ def ws_exchange(url: str, text: str, *, timeout: float = AGENT_TIMEOUT) -> str:
 
 
 class Agent:
-    """PC 의 ECM 에이전트 — 받은 파일을 기본 앱으로 연다."""
+    """PC 의 ECM 에이전트 — 받은 파일을 기본 앱으로 열고(보기 · 편집), 새 문서로 올릴 파일을 서버 임시 자리에 올린다."""
 
     def __init__(self, url: str = DEFAULT_AGENT, docs_root=DEFAULT_DOCS_ROOT):
         self.url = url
@@ -958,9 +986,14 @@ def checkin_pending(object_id: str) -> bool:
 
 
 def edit_document(ecm: Ecm, agent: Agent, object_id: str) -> Opened:
-    """편집으로 연다 — 서버가 그 문서를 이 사람 이름으로 잠그고, 에이전트가 읽기 쓰기로 띄운다. 기본 앱이 없으면 멈춘다
-    (``DefaultAppNeeded``) — 고르는 창이 뜬 채로 잠그면 사람이 모르는 잠금이 남는다. 잠근 뒤 받기가 안 서면 그 말을 낸다."""
-    ticket = ecm.view(object_id)                    # 확장자 · 이름을 먼저 본다 — 잠그기 전에 기본 앱을 세운다
+    """편집으로 연다 — 서버가 그 문서를 이 사람 이름으로 잠그고, 에이전트가 읽기 쓰기로 띄운다. 잠그기 전에 둘을 본다 — 끝까지 못
+    가는 판에 잠그면 사람이 모르는 잠금이 남는다:
+    ``checkin_document`` 가 저장해 올릴 수 있는 꼴(``OFFICE_BY_EXT``)이 아니면 ``EcmError`` 로 멈추고, 기본 앱이 없으면
+    ``DefaultAppNeeded`` 로 멈춘다. 잠근 뒤 받기가 안 서면 그 말을 낸다."""
+    ticket = ecm.view(object_id)                    # 확장자 · 이름을 먼저 본다 — 읽기라 잠그지 않는다
+    if ticket.ext not in OFFICE_BY_EXT:
+        raise EcmError(f"이 꼴({ticket.ext or '확장자 없음'})은 편집으로 열어 올리지 못한다 — checkin 은 워드 · 엑셀 · 파워포인트만 "
+                       "저장해 닫는다. 잠그지 않았다 — 고치려면 사람이 ECM 화면에서 편집한다")
     ensured = default_app.ensure(ticket.ext)
     locked = ecm.checkout(object_id)
     try:
@@ -1031,7 +1064,8 @@ def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *,
 def register_document(ecm: Ecm, agent: Agent, path: pathlib.Path, *, cabinet: str, folder: str, security: str,
                       open_flag: str, title: str = "") -> Registered:
     """PC 의 파일 하나를 그 문서함 폴더의 새 문서로 올린다 — 화면의 「컨텐츠 등록」과 같은 차례: 같은 이름 찾기 → 에이전트가 서버
-    임시 자리에 올림 → 등록 → 목록에서 다시 읽어 섰나 본다. 보안등급 · 공개는 사람이 대화에서 확인한 짝만 준다 — 잘못 고르면
+    임시 자리에 올림 → 등록 → 목록에서 다시 읽어 섰나 본다. 그 앞에서 그 폴더가 그 문서함의 것인가를 폴더 나무로 읽어 보고,
+    아니면 아무것도 안 보내고 멈춘다. 보안등급 · 공개는 사람이 대화에서 확인한 짝만 준다 — 잘못 고르면
     동료 전체에 보인다. 같은 이름이 그 폴더에 있으면 올리지 않는다(다음 판은 edit · checkin 의 몫이다)."""
     path = pathlib.Path(path).resolve()       # 에이전트는 다른 프로세스라 상대 경로를 제 자리에서 푼다
     if not path.is_file() or path.stat().st_size == 0:
@@ -1049,6 +1083,8 @@ def register_document(ecm: Ecm, agent: Agent, path: pathlib.Path, *, cabinet: st
     name = check_title(title or path.stem)
     if (name + "." + ext) != path.name and title:
         log.info("등록 이름을 파일 이름과 달리 둔다: %s", name)
+    if not ecm.has_folder(cabinet, folder):    # 등록 뒤의 목록 견줌만으로는 남의 문서함에 이미 올라간 문서를 「실패」로 알리게 된다
+        raise EcmError(f"그 폴더({folder})가 문서함 {cabinet} 에 없다 — 아무것도 안 올렸다. folders {cabinet} 가 낸 폴더를 준다")
     clash = ecm.duplicates(folder, name, ext)
     if clash:
         raise EcmError(f"그 폴더에 같은 이름의 문서가 있다({', '.join(clash)}) — 고쳐 올리려면 edit · checkin 으로 다음 판을 올리고, "
@@ -1183,7 +1219,7 @@ def main(argv: list[str] | None = None) -> int:
                   f"{default_app.resolved_progid(ext) or '없음'} · 고를 앱 {default_app.pick_progid(ext) or '없음'}")
             print(f"이 PC 의 해시 계산 — Windows 가 적은 {check.total} 개 중 {check.matched} 개가 같다")
             return EXIT_OK
-        ecm = Ecm(os.environ.get("ECM_URL", "").strip() or DEFAULT_URL, args.session or session_path())
+        ecm = Ecm(url_from_env(), args.session or session_path())
         if args.command == "session":
             alive = ecm.session_alive()
             print("ECM 세션이 살았다" if alive else "ECM 세션이 끊겼다 — 스킬 ep-login 으로 다시 받는다")

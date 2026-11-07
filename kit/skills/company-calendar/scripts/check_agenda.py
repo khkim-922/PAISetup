@@ -29,7 +29,7 @@ HTML 엔티티로 낸다. 등록 화면의 폼은 잰 「값이 찬 칸」과 �
 언제 걷나 — agenda.py 가 사라지거나, 같은 계약을 실물 일정 앱에서 재는 검사가 서서 이 검사가 더하는 믿음이 없어지면.
 
 여기서 못 재는 것 — 사내 SSO 를 넘는 길 · 실물 등록 폼이 스크립트로 값을 채우는지 · 실물이 고정 값을 안 옮긴 저장에 무엇을 하는지(가짜는
-「안 섰다」로 둔다) · 실물 지우기가 틀린 칸(남의 일정함 · 남의 이름)에 무엇을 하는지 · 실물 줄의 ``editable`` 값의 꼴 · 하루 종일 ·
+「안 섰다」로 둔다) · 실물 지우기가 틀린 칸(남의 일정함 · 남의 이름)에 무엇을 하는지 · 내 일정함에 editors 가 내가 아닌 줄이 실제로 오는지 · 하루 종일 ·
 여러 날 일정의 실물 꼴(가짜의 하루 종일 줄은 지어낸 꼴이다) · 일정 조회의 ``end`` 가 그날을 드는지(가짜는 든다).
 """
 
@@ -60,6 +60,7 @@ logging.getLogger(agenda.__name__).addHandler(logging.NullHandler())
 DB = "/02/cal/calperson32.nsf"
 EMPNO = "100001"
 OWNER = f"CN=이도윤/OU={EMPNO}/OU=02/O=gaonnet"
+OTHER = "CN=관리자/OU=100002/OU=02/O=gaonnet"   # 고칠 수 있는 사람이 쓰는 사람이 아닌 줄의 editors
 CALENDAR_ID = f"{EMPNO}_Calendar"
 SYS_ADMIN = "calAdmin=SYS/02/gaonnet"
 EVENT_AREA = "업무"
@@ -112,7 +113,7 @@ class FakeEvent:
     eventtype: str = ""
     repeat_days: int = 1
     all_day: bool = False
-    editable: bool = True
+    editable: bool = True              # 쓰는 사람이 editors 에 드나 — 실물처럼 editable 칸은 늘 빈 글자로 낸다
     timezone: str = ""
     event_id: str = ""
     unid: str = field(default="")
@@ -287,7 +288,7 @@ class FakeCalendar:
                 "title": e.title.replace("[", "&#91;").replace("]", "&#93;"), "start": f"{start:%Y-%m-%d %H:%M:%S}",
                 "end": f"{end:%Y-%m-%d %H:%M:%S}", "timeZone": e.timezone, "colorId": "1",
                 "attRsponseStatus": e.response, "owner": OWNER, "Importance": "false", "visibility": "public",
-                "editable": "true" if e.editable else "false", "editors": "", "attOwner": OWNER, "Owner": OWNER,
+                "editable": "", "editors": f"{OWNER if e.editable else OTHER},", "attOwner": OWNER, "Owner": OWNER,
                 "url": f"{DB}/vweventprev/{e.unid}?editdocument"}
 
     def shared_jsonp(self, callback: str, cid: str, username: str) -> str:
