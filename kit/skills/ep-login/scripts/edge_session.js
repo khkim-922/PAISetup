@@ -17,7 +17,7 @@
 //
 // 환경변수 — 다 없어도 된다. MAILBOX_URL 메일함 주소(…/<번호>.nsf 까지 · 주면 domino 를 그 목록으로 가린다) ·
 //   MAILBOX_VIEW 받은편지함 보기(기본 XML_Inbox) · DOMINO_URL Domino 서버(기본 아래 DOMINO_SERVER) ·
-//   EDGE_DEBUG_PORT 디버깅 포트(기본 9222) · ECM_URL ECM 메인 주소(기본 아래 ECM_MAIN · 넘김이 가리킬 첫 화면 index.jsp 는 그
+//   EDGE_DEBUG_PORT 디버깅 포트(쉼표로 여럿 · 주면 그 포트만 본다 · 안 주면 아래 「어느 Edge 에 붙나」) · ECM_URL ECM 메인 주소(기본 아래 ECM_MAIN · 넘김이 가리킬 첫 화면 index.jsp 는 그
 //   주소의 첫 경로 칸 아래에서 짓는다) · SSO_REDIRECT_URL SSO 넘김 주소 ·
 //   SESSION_DOMAIN 회사 도메인(기본 posco.net) · SESSION_LOGIN_HOSTS 로그인 화면 호스트(쉼표 · 기본 swpsso · adfs.m365) ·
 //   SESSION_REQUEST_SECONDS 묻기 하나의 시한(기본 5) · SESSION_PASS_SECONDS --ecm-tab 의 시한(기본 30) ·
@@ -40,6 +40,10 @@
 //   종료 2 · 3 · 4 는 표준 오류의 끝에 「다음: …」 한 줄을 낸다(1 은 까닭만) — 부른 쪽은 그 말대로 가고 사람에게 청할 것은 그대로 전한다. 사내 앱
 //   스킬의 얇은 명령은 3 · 4 와 파일 없는 2 를 제 종료 3 으로 옮겨 스킬 ep-login 을 가리킨다(그 스킬이 대화에서 이끈다).
 //   이 값의 뜻을 바꾸면 그 스킬과 부르는 스킬들을 같은 판에 고친다.
+//
+// 어느 Edge 에 붙나 — 이 PC 에서 디버깅 포트를 연 Edge 를 다 찾아(debugPorts — 띄우는 손의 포트 DEFAULT_PORT 가 먼저) 차례로 붙고,
+//   꼭 서야 하는 앱이 다 선 첫 Edge 의 쿠키를 남긴다. 다른 세션이 이미 띄워 로그인한 Edge 가 있으면 그 로그인을 쓴다 — 새로 띄우거나
+//   로그인을 청하지 않는다. 다 붙었는데 어디서도 안 섰으면 처음 붙은 Edge 의 종료 3 · 4 를 낸다. --ecm-tab 의 탭은 처음 붙은 Edge 에만 연다.
 //
 // 어떻게 붙나 — Playwright 의 connectOverCDP 를 안 쓴다. 디버깅 포트의 브라우저 자리(/json/version 의 웹소켓)에만 붙어
 //   Storage.getCookies 로 쿠키를 읽는다. 탭에는 붙지 않는다 — 그래서 사람의 탭을 안 건드린다. connectOverCDP 는 탭마다 붙고,
@@ -88,7 +92,9 @@ const EP_DIALOG = '다른 PC에서 EP 접속 정보';   // SSO 가 로그인 도
 // ECM 넘김이 멈춘 까닭(follow 의 답) → 사람의 말. login 은 여기 없다 — 로그인 화면에 닿은 판은 종료 3 이다
 const HANDOFF_WORD = { end: '넘김 화면을 따라가지 못했다', outside: '회사 밖 주소로 넘어갔다', 'no-answer': '서버가 답하지 않았다',
   hops: '넘김이 걸음 상한을 넘었다' };
-const VERSION_MS = 2000;             // 디버깅 포트의 /json/version 답 시한 — 포트가 없으면 곧 끊긴다
+const DEFAULT_PORT = '9222';         // 띄우는 손(edge_start.js)이 여는 포트 — 받는 손도 이 포트를 먼저 본다
+const FIND_MS = 5000;                // 디버깅 포트를 연 Edge 찾기(netstat · tasklist) 하나의 시한
+const VERSION_MS = 2000;          // 디버깅 포트의 /json/version 답 시한 — 포트가 없으면 곧 끊긴다
 const OPEN_MS = 5000;                // 브라우저 자리 웹소켓이 열리는 시한
 const CALL_MS = 10000;               // CDP 부름 하나의 시한
 const POLL_MS = 1000;                // --ecm-tab 이 선 것을 다시 보는 사이
@@ -104,7 +110,9 @@ const seconds = (name, fallback) => {
 
 function settings() {
   return {
-    port: env('EDGE_DEBUG_PORT', '9222'),
+    port: env('EDGE_DEBUG_PORT', DEFAULT_PORT).split(',')[0].trim(),   // 띄우는 손이 열 포트 · 받는 손이 먼저 보는 포트
+    // 받는 손이 볼 포트 — 주면 그것만(쉼표로 여럿), 안 주면 null 이고 이 PC 에서 디버깅 포트를 연 Edge 를 다 찾는다(debugPorts)
+    ports: env('EDGE_DEBUG_PORT', '') ? env('EDGE_DEBUG_PORT', '').split(',').map(s => s.trim()).filter(Boolean) : null,
     view: env('MAILBOX_VIEW', 'XML_Inbox'),
     mailbox: env('MAILBOX_URL', ''),
     domino: env('DOMINO_URL', DOMINO_SERVER).replace(/\/+$/, ''),
@@ -424,10 +432,26 @@ function parseArgs(argv) {
 const say = line => console.log(line);
 const label = { domino: 'Domino(메일 · 일정)', ecm: 'ECM' };
 
-// Edge 에 붙는 갈래 — 기본
+// Edge 에 붙는 갈래 — 기본. 볼 포트를 차례로 붙어 보고, 꼭 서야 하는 앱이 다 선 첫 Edge 의 쿠키를 남긴다
 async function attach(cfg, opts, file, needed) {
-  const browser = await browserTarget(cfg);
-  if (!browser) {
+  const ports = cfg.ports || debugPorts(cfg);
+  let attached = 0, first = null;
+  for (const port of ports) {
+    const browser = await browserTarget({ ...cfg, port });
+    if (!browser) continue;
+    try {
+      // --ecm-tab 은 처음 붙은 Edge 에서만 연다 — 사람이 그 탭을 보는 한 자리여야 한다
+      return await harvest(cfg, { ...opts, ecmTab: opts.ecmTab && attached === 0 }, file, needed, browser, port);
+    } catch (error) {
+      if (!(error instanceof Exit) || ![3, 4].includes(error.code)) throw error;
+      first = first || error;                        // 처음 붙은 Edge 의 말을 낸다 — 사람이 평소 쓰는 창이 먼저다
+    } finally {
+      attached += 1;
+      browser.close();                               // 브라우저 자리의 연결만 끊는다 — Edge 와 그 세션은 산다
+    }
+  }
+  if (first) throw first;
+  {
     // 못 붙어도 남은 파일이 아직 살면 그 파일로 선다 — 파일은 안 고친다
     const jar = readFileJar(file);
     if (jar && jar.length) {
@@ -439,13 +463,17 @@ async function attach(cfg, opts, file, needed) {
     // 남은 파일이 있으면 그 경로를 끝 줄로 낸다 — 이 손이 그 파일을 못 가렸어도(서버가 답을 안 줬다) 부르는 쪽이 한 번 써 보고,
     // 서버가 안 받을 때만 스킬 ep-login 을 가리킨다. 파일이 없으면 경로를 안 낸다
     if (fs.existsSync(file)) say(file);
-    throw new Exit(2, `Edge 에 못 붙었다 — 127.0.0.1:${cfg.port} 에 디버깅 포트가 없다` +
+    throw new Exit(2, `Edge 에 못 붙었다 — 127.0.0.1:${ports.join(' · ')} 에 디버깅 포트가 없다` +
       (fs.existsSync(file) ? '(남은 세션 파일로도 확인이 안 섰다 — 서버가 안 받았거나 답이 없었다 · 둘은 못 가르니 「거절됐다」고 말하지 않는다)' : '') +
       '. 다음: 사내망 안인지 먼저 본다(밖이면 Edge 를 띄워도 안 선다) — 안이면 띄우는 손(start-edge.sh)으로 쓰는 사람의 평소 Edge 를 포트와 EP 로그인 탭으로 띄운 뒤 다시 부른다');
   }
-  try {
+}
+
+// 붙은 Edge 하나에서 쿠키를 읽어 꼭 서야 하는 앱을 가리고, 다 섰으면 파일에 쓴다 — 안 서면 Exit 3 · 4
+async function harvest(cfg, opts, file, needed, browser, port) {
+  {
     cfg.userAgent = browser.userAgent;
-    say(`Edge ${browser.version} 에 붙었다`);
+    say(`Edge ${browser.version} 에 붙었다(127.0.0.1:${port})`);
     const jar = (await browser.call('Storage.getCookies')).cookies.map(fromCdp);
     const changed = [];
     const stood = {};
@@ -482,9 +510,22 @@ async function attach(cfg, opts, file, needed) {
     say(`쿠키 ${write(file, jar, cfg)} 개를 남겼다`);
     say(file);                                       // 끝 줄 — 부르는 쪽이 이 경로를 읽는다
     return 0;
-  } finally {
-    browser.close();                                 // 브라우저 자리의 연결만 끊는다 — Edge 와 그 세션은 산다
   }
+}
+
+// 이 PC 에서 디버깅 포트를 연 Edge 의 포트 — 띄우는 손의 포트가 먼저, 나머지는 찾은 차례. 브라우저 프로세스(--type= 없는 것)의
+// 명령줄에서 읽는다 — 포트는 그 Edge 가 처음 뜰 때의 플래그라 명령줄이 원본이다. 못 읽으면(윈도가 아니다 · 시한) 띄우는 손의 포트만
+function debugPorts(cfg) {
+  const found = [];
+  if (process.platform === 'win32') {
+    try {
+      const out = require('child_process').execFileSync('powershell', ['-NoProfile', '-Command',
+        "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object { $_.CommandLine -notmatch '--type=' } | " +
+        'ForEach-Object { $_.CommandLine }'], { encoding: 'utf8', timeout: FIND_MS, windowsHide: true });
+      for (const m of out.matchAll(/--remote-debugging-port=(\d+)/g)) found.push(m[1]);
+    } catch {}
+  }
+  return [...new Set([cfg.port, ...found])];
 }
 
 // --ecm-tab — 뒤쪽 탭 하나로 SSO 넘김 주소를 거치고, 선 것을 보면 그 탭을 닫는다

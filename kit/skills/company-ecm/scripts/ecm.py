@@ -13,7 +13,12 @@
     폴더 나무로 읽어 보고, 그 폴더에 같은 이름이 있나 묻고, 에이전트가
     파일을 서버 임시 자리에 올리고, 등록한 뒤 목록에서 다시 읽어 폴더 · 보안등급이 고른 값인가 본다. 바꾸는 요청은 편집 열기
     (``Ecm.checkout``)와 등록 화면의 두 POST(``Ecm._post`` — 같은 이름 찾기 · 등록)만 짓는다 — 그 밖의 바꾸는 꼴(올리기 요청 · 편집취소 ·
-    지우기)과 잰 꼴 밖의 주소는 서버에 닿기 전에 ``Refused`` 로 막는다. 왜 이렇게 짓나는 결정 0223 · 0224 가 든다.
+    지우기)과 잰 꼴 밖의 주소는 서버에 닿기 전에 ``Refused`` 로 막는다.
+
+    권한(편집 · 복사 · 읽기)은 화면의 「컨텐츠 속성 → 수정하기」와 같은 저장 하나로 주고 거둔다 — ``plan_access`` 가 지금 명단을
+    읽고 사람 · 조직을 ECM 검색으로 사람 열쇠까지 풀어 바뀔 명단과 확인 열쇠를 짓고(서버를 안 바꾼다), ``apply_access`` 가 그 열쇠가
+    맞고 그 사이 명단이 그대로일 때만 속성 저장 POST 하나(``Ecm.save_access``)를 보낸 뒤 명단과 다른 속성을 다시 읽어 본다. 저장 몸은
+    문서의 속성 칸 전부를 다시 싣기에 그 문서의 속성 화면이 든 값을 그대로 받고, 손이 바꾸는 칸은 권한 명단뿐이다.
 
     에이전트는 받은 파일을 그 확장자의 기본 앱으로 **화면에 띄운다.** 그래서 이 손은 사람이 보는 대화에서만 쓰고, 편집은 사람이
     그 문서를 확인한 뒤에만 부른다 — 편집 열기는 동료도 쓰는 문서를 서버에서 잠근다.
@@ -37,12 +42,18 @@
         done = ecm.checkin_document(box, opened.path, docs[0].object_id, "고친 내용 한 줄")
         print(done.version_before, "→", done.version_after)
 
+        plan = ecm.plan_access(box, docs[0].object_id, grant=[("read", "org:T10006"), ("copy", "홍길동/gdhong")],
+                               revoke=["김철수"])               # 서버를 안 바꾼다 — plan.added · removed · moved 를 사람에게 보인다
+        got = ecm.apply_access(box, plan, plan.token)       # 사람이 확인한 열쇠로만 · 다시 읽은 명단을 낸다
+
     명령줄은 ``python -X utf8 ecm.py [--session <세션 파일>] <명령>`` 이다 — ``session`` · ``cabinets`` · ``list`` · ``count`` ·
-    ``version`` · ``open`` · ``read`` · ``edit`` · ``checkin`` · ``folders`` · ``register`` · ``default-app``. 각 명령의 인자는 ``--help`` 가 든다.
+    ``version`` · ``open`` · ``read`` · ``edit`` · ``checkin`` · ``folders`` · ``register`` · ``access`` · ``who`` · ``preview-access`` ·
+    ``apply-access`` · ``default-app``. 각 명령의 인자는 ``--help`` 가 든다.
 
 무엇을 내나
     목록은 ``Doc``, 문서함은 ``Cabinet``, 열기 · 편집 열기는 ``Opened``(받은 파일 경로 · 문서 표 · 기본 앱), 읽기는 ``ReadResult``,
-    올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서는 ``Registered``(열쇠 · 이름 · 판)이다. 명령줄의 종료 값은 0 됨 · 1 실패(메시지 그대로 알린다) · 2 인자가
+    올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서는 ``Registered``(열쇠 · 이름 · 판), 권한은 ``Grant`` ·
+    ``Person`` · ``Organ`` · ``AccessPlan``(앞 명단 · 뒤 명단 · 더함 · 뺌 · 옮김 · 확인 열쇠)이다. 명령줄의 종료 값은 0 됨 · 1 실패(메시지 그대로 알린다) · 2 인자가
     틀렸다(argparse 가 받는 값을 든다) · 3 세션이 없거나 끊겼다(스킬 ep-login 으로 다시 받는다) · 4 사람이 그 확장자의 기본 앱을 한 번
     골라야 한다(메시지가 할 일을 든다). 갈래 예외는 ``EcmError`` 아래에 선다 — ``SessionMissing`` · ``SessionExpired`` · ``Refused`` ·
     ``AgentError`` · ``ReadError``. ``default_app.DefaultAppNeeded`` · ``ValueError``(확장자 꼴) · ``OSError`` ·
@@ -100,6 +111,20 @@
       ``ecm_security_level`` · ``ecm_open_flag`` 따위다 — 화면처럼 칸마다 인코딩하지 않고 이어 붙이고, 이름만 ``encodeURIComponent``
       한다. 답의 ``MS_OBJECT_ID`` 가 새 문서 열쇠이고 판은 0.0 이다. 보안 짝은 화면의 단추 여섯(``SECURITY_PAIRS``)뿐이다.
       감긴 파일도 그대로 올라가고 받은 문서는 감긴 채다. 화면은 설정에 따라 올린 로컬 파일을 지우지만(``filedelete``) 이 손은 안 지운다
+    * 권한 칸은 속성 화면의 iframe ``roleAssignEdit.jsp`` 이고 셋이다 — 편집/복사/읽기/인쇄(공동 R · 역할 ``R``) · 복사/읽기/인쇄(``S``) ·
+      읽기/인쇄(``V``). 지금 명단은 ``json.do?ServiceName=DocPropertyHtml-service&role=true&pageType=user&ECM_DOC_ID=doc<16 hex>`` 의
+      배열(``MS_ROLE`` · ``MS_OBJECT_ID`` · ``MS_USER_CLASS`` …)이고 소유자는 안 든다. 그 밖의 역할(승인 ``A`` · 검토 ``C`` · 조회 ``I`` ·
+      배포 ``D``)은 화면이 그릴 때 ``S`` · ``V`` 칸으로 옮겨 그린다 — 그대로 되보내면 역할이 바뀌므로 그런 문서는 안 바꾼다
+    * 사람 찾기는 ``json.do?ServiceName=searchPeople-service&kind=name&value=<이름>`` — **이름으로만** 찾는다(메일 ID · 사번은 빈
+      답). 답에 메일 ID · 사번 · 부서가 들고, 메일 주소록의 그 사람과 같다. 조직은 ``searchOrgan2-service`` 의 ``search=1``(부서 이름) ·
+      ``getDept=1&kind=dept&deptId=``(바로 아래 부서) · ``getUser=1&deptId=``(바로 든 사람). 회사 열쇠 ``companyId`` 는 메인 화면이 든다
+    * 화면이 조직을 칸에 옮기면 부서가 아니라 **그 순간 바로 든 부서원 개인**으로 펼친다(아래 부서는 안 든다). 부서 줄(``D``)을 명단에
+      넣고 저장하면 「저장 되었습니다」가 오고 아무것도 안 남는다
+    * 저장은 ``POST ajaxAction.do?ServiceName=ModifyDocProperty-service`` 하나 — 몸은 화면의 ``getDocInfoData`` 꼴이다: 속성 화면의 숨은
+      칸(폴더는 ``ecm_folder_id`` · 보안은 ``ecm_security_level`` · 완료일은 ``ecm_EndDate`` 에서) · ``isChangeRoleInfo=TRUE`` · 권한
+      **전체** 명단 XML(``roleList`` — 줄마다 칸 여덟, 역할 · 사람 열쇠 · ``U`` · 회사 열쇠만 차고 나머지는 빈 칸) · 즐겨찾기
+      (``favorite_info`` 의 폴더들) · 체크 칸 셋(화면에 체크 칸이 없으면 ``F``). 화면처럼 칸을 인코딩 없이 이어 붙이고 이름 둘만
+      ``encodeURIComponent`` 한다. 거두기는 그 사람을 뺀 명단을 보내는 것이다. 성공은 ``MSG_I_0147``
     * ⚠ 같은 서비스 모음에 편집취소 · 올리기 요청 · 지우기가 있다 — 이 손은 짓지 않고, 지으려 하면 서버에 닿기 전에 막는다. 잰 꼴 밖의
       서비스 · 칸 · 값도 같이 막는다(닫힌 목록 ``READS`` · 편집 열기 문 ``_guard_edit``)
 """
@@ -197,6 +222,56 @@ TITLE_MAX = 125                         # 화면의 addFile — 이름(확장자
 TITLE_BYTES_MAX = 250
 TITLE_BAD = re.compile(r'[\\/:*?"<>|`]')
 SERVER_NAME = re.compile(r"^[/\w.\-]+$")   # 에이전트가 준 서버 임시 자리 · 파일 이름의 글자 — 몸의 칸을 가르는 & · = · + · % 가 없게
+# 권한 — 속성 화면의 저장 하나(ModifyDocProperty-service)와 그 화면 · 권한 iframe 이 묻는 json.do 읽기들
+JSON_READ = "/json.do"
+PROPERTY_SAVE_QUERY = {"ServiceName": "ModifyDocProperty-service"}
+ROLE_QUERY = {"ServiceName": "DocPropertyHtml-service", "role": "true", "pageType": "user"}            # + ECM_DOC_ID
+FAVORITE_QUERY = {"ServiceName": "DocPropertyHtml-service", "favorite_info": "true", "pageType": "user"}  # + ECM_DOC_ID
+PEOPLE_QUERY = {"ServiceName": "searchPeople-service", "language": "ko", "isHTML": "T", "searchKind": "single", "kind": "name"}
+ORGAN_SERVICE = "searchOrgan2-service"
+ORGAN_FIND = {"search": "1", "searchKind": "role"}           # + value — 부서 이름(일부)
+ORGAN_SUBS = {"getDept": "1", "kind": "dept"}                # + deptId — 바로 아래 부서
+ORGAN_USERS = {"getUser": "1"}                               # + deptId — 그 부서에 바로 든 사람
+# 화면의 권한 칸 셋 — 이 손이 주고 거두는 역할. 그 밖의 역할(승인 A · 검토 C · 조회 I · 배포 D · 승인 대기 W)이 걸린 문서는 안 잰다
+ACCESS_ROLES = {"R": "편집/복사/읽기/인쇄", "S": "복사/읽기/인쇄", "V": "읽기/인쇄"}
+ACCESS_OF_WORD = {"edit": "R", "copy": "S", "read": "V"}
+ROLE_ORDER = "WRCAIDSV"                                      # 화면의 getTabPageRoleSerialize 가 싣는 차례
+PERSON_ID = re.compile(r"^usr[0-9A-Fa-f]+$")
+COMPANY_ID = re.compile(r"^com[0-9A-Fa-f]+$")
+DEPT_CODE = re.compile(r"^[A-Z][0-9A-Z]{4,9}$")
+NAME_MIN = 2                                                 # 화면의 checkValue — 검색어는 두 글자부터
+# 저장 몸 — (보낼 칸, 속성 화면의 숨은 칸). 화면의 getDocInfoData 차례 그대로이고 값은 그 화면이 든 값이다. 이름 둘만 encodeURIComponent 한다
+SAVE_FROM_PAGE = (("sViewStatus", "sViewStatus"), ("MS_ORI_DOC_TITLE", "MS_ORI_DOC_TITLE"),
+                  ("MS_ORI_SECURITY_LEVEL", "MS_ORI_SECURITY_LEVEL"), ("MS_ORI_RETENTION_PERIOD", "MS_ORI_RETENTION_PERIOD"),
+                  ("MS_OBJECT_ID", "MS_OBJECT_ID"), ("MS_DOC_ID", "MS_DOC_ID"), ("MS_COPY_FLAG", "MS_COPY_FLAG"),
+                  ("MS_COPY_DOC_SECURITY_LEVEL", "MS_COPY_DOC_SECURITY_LEVEL"), ("MS_DOC_TITLE", "MS_DOC_TITLE"),
+                  ("MS_DOC_EXTENSION", "MS_DOC_EXTENSION"), ("MS_PROCESS_CODE", "MS_PROCESS_CODE"),
+                  ("MS_FOLDER_ID", "ecm_folder_id"), ("MS_FOLDER_PATH", "MS_FOLDER_PATH"), ("MS_TAG_LIST", "MS_TAG_LIST"),
+                  ("MS_SECURITY_LEVEL", "ecm_security_level"), ("MS_OPEN_FLAG", "ecm_open_flag"),
+                  ("MS_DOC_STATUS", "MS_DOC_STATUS"), ("MS_DOC_TYPE", "ecm_doc_type"), ("MS_OWNER_NAME", "MS_OWNER_NAME"),
+                  ("MS_CABINET_NAME", "MS_CABINET_NAME"), ("MS_REG_DATE", "MS_REG_DATE"),
+                  ("MS_CREATE_USER_NAME", "MS_CREATE_USER_NAME"), ("MS_CONTENT_SOURCE", "MS_CONTENT_SOURCE"),
+                  ("ecm_review_status", "ecm_review_status"), ("ecm_approve_status", "ecm_approve_status"),
+                  ("ecm_approve_cnt", "ecm_approve_cnt"), ("ecm_seculevel_cnt", "ecm_seculevel_cnt"),
+                  ("ecm_protected_cnt", "ecm_protected_cnt"), ("ecm_unprotect_cnt", "ecm_unprotect_cnt"))
+SAVE_ENCODED = ("MS_ORI_DOC_TITLE", "MS_DOC_TITLE")
+SAVE_TAIL_FROM_PAGE = (("isChangeOwner", "isChangeOwner"), ("MS_NEW_OWNER", "MS_NEW_OWNER"), ("MS_DUE_DATE", "ecm_EndDate"))
+SAVE_WORKFLOW_FROM_PAGE = (("ecm_workflow_Process", "ecm_workflow_Process"),
+                           ("ecm_workflowApproveUserId", "ecm_workflowApproveUserId"),
+                           ("ecm_workflowRequestComment", "ecm_workflowRequestComment"),
+                           ("ecm_workflowNewUserId", "ecm_workflowNewUserId"))
+ABSENT_FIELD = "undefined"                                   # 화면에 없는 칸을 jQuery 가 싣는 값 — ecm_security_approve 만 없을 수 있다
+SAVE_OPTIONAL = ("ecm_security_approve",)
+# 이 손이 잰 문서의 꼴 — 이 값이 아니면 화면이 다른 칸 · 다른 차례를 더하므로 보내기 전에 멈춘다
+MEASURED_PAGE = {"sViewStatus": "EDIT", "isChangeOwner": "F", "MS_NEW_OWNER": "", "ecm_workflow_Process": "F"}
+MEASURED_VARS = {"sIsDocTypeCore": "F", "s_IsUseRai": "F"}
+MEASURED_FRAME = {"sIsDocTypeProtected": "F", "lockStatus": "F"}
+UNMEASURED_CHECKS = ("id_setAutoGrant", "id_AiExclusionFlag")   # 화면에 이 체크 칸이 서면 그 값을 싣는다 — 안 쟀다
+RAW_BAD = re.compile(r"[&%+]")                              # 화면은 이 칸들을 인코딩 없이 이어 붙인다 — 이 글자가 들면 칸이 갈린다
+ELEMENT_ID = re.compile(r"<[a-z]+\b[^>]*?\bid\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
+PAGE_VAR = re.compile(r"\bvar\s+(\w+)\s*=\s*[\"']([^\"']*)[\"']")
+ROLE_FRAME = re.compile(r"roleAssignEdit\.jsp\?([^\"']*)")
+TOKEN_LENGTH = 12
 LIST_DEFAULTS = {"isHTML": "T", "formId": MY_DOCS, "wfStatusType": "", "fileType": "ALL_FORMAT", "orderBy": "",
                  "sortDirection": "desc"}
 DEFAULT_PERIOD = "6M"
@@ -293,6 +368,108 @@ class Registered:
     object_id: str
     title: str
     version: str           # 목록에서 다시 읽은 판 — 새 문서는 0.0 이다
+
+
+@dataclass(frozen=True)
+class Grant:
+    """문서에 걸린 역할 하나 — ``role`` 은 R(편집/복사/읽기/인쇄) · S(복사/읽기/인쇄) · V(읽기/인쇄) 따위, ``id`` 는 사람 열쇠(usr…)."""
+    role: str
+    id: str
+    cls: str = "U"         # U 사람 · D 부서 · P 프로젝트
+    name: str = ""
+    dept: str = ""
+    email: str = ""        # 메일 ID(@ 앞)
+    employee: str = ""
+
+    def label(self) -> str:
+        return f"{self.name}/{self.email}" + (f" · {self.dept}" if self.dept else "")
+
+
+@dataclass(frozen=True)
+class Person:
+    """ECM 이 아는 사람 하나 — ``id`` 가 권한 칸에 드는 열쇠다. 메일 ID · 사번은 메일 주소록의 그 사람과 같다."""
+    id: str
+    name: str
+    dept: str
+    dept_code: str
+    email: str
+    employee: str
+    position: str = ""
+
+    def label(self) -> str:
+        return f"{self.name}/{self.email}" + (f" · {self.dept}" if self.dept else "") + (f" · {self.position}" if self.position else "")
+
+
+@dataclass(frozen=True)
+class Organ:
+    """ECM 조직도의 부서 하나 — ``code`` 를 ``org:<코드>`` 로 준다. ``members`` 는 바로 든 사람 수 · ``subs`` 는 바로 아래 부서 수."""
+    code: str
+    name: str
+    upper: str
+    cabinet: str
+    members: int
+    subs: int
+
+
+class PropertyPage:
+    """문서의 속성 화면 — 저장 몸이 실을 숨은 칸(``inputs``), 화면 스크립트의 갈래 값(``vars``), 권한 iframe 주소의 갈래 값(``frame``)."""
+
+    def __init__(self, inputs: dict, vars_: dict, frame: dict):
+        self.inputs, self.vars, self.frame = inputs, vars_, frame
+
+    @classmethod
+    def parse(cls, page: str) -> "PropertyPage":
+        import html.parser
+
+        inputs: dict[str, str] = {}
+
+        class Inputs(html.parser.HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                if tag == "input":
+                    a = dict(attrs)
+                    if a.get("id") and a["id"] not in inputs:
+                        inputs[a["id"]] = a.get("value") or ""
+
+            handle_startendtag = handle_starttag
+
+        Inputs(convert_charrefs=True).feed(page)
+        vars_: dict[str, str] = {}
+        for name, value in PAGE_VAR.findall(page):
+            vars_.setdefault(name, value)
+        frame_match = ROLE_FRAME.search(page)
+        frame = dict(urllib.parse.parse_qsl(html.unescape(frame_match.group(1)), keep_blank_values=True)) if frame_match else {}
+        ids = set(ELEMENT_ID.findall(page))
+        return cls(inputs, {**vars_, "__ids__": ids}, frame)
+
+    def value(self, field: str) -> str:
+        if field in self.inputs:
+            return self.inputs[field]
+        if field in SAVE_OPTIONAL:
+            return ABSENT_FIELD
+        raise EcmError(f"속성 화면에 {field} 칸이 없다 — ECM 화면이 바뀌었을 수 있어 권한을 안 보낸다. 사람이 화면의 「컨텐츠 속성」에서 한다")
+
+    def has_element(self, element_id: str) -> bool:
+        return element_id in self.vars["__ids__"]
+
+    def unmeasured(self) -> str:
+        """이 손이 잰 문서의 꼴이 아니면 그 까닭 — 맞으면 빈 글자."""
+        if not self.frame:
+            return "속성 화면에 권한 칸(roleAssignEdit)이 없다 — 이 문서의 권한을 바꿀 수 없는 사람이거나 화면이 바뀌었다"
+        for field, want in MEASURED_PAGE.items():
+            if self.inputs.get(field) != want:
+                return {"sViewStatus": "이 문서의 속성을 고칠 수 없다(편집 화면이 아니다) — 소유자 · 공동 편집자만 권한을 바꾼다"}.get(
+                    field, f"속성 화면의 {field} 가 {self.inputs.get(field)!r} 다 — 소유자 바꾸기 · 승인 차례가 걸린 문서라 안 잰 꼴이다")
+        for field, want in MEASURED_VARS.items():
+            if self.vars.get(field) != want:
+                return f"핵심기술 · RAI 가 걸린 문서다({field}={self.vars.get(field)!r}) — 화면이 승인 차례를 더하므로 안 잰 꼴이다"
+        for field, want in MEASURED_FRAME.items():
+            if self.frame.get(field) != want:
+                return {"lockStatus": f"문서가 편집으로 잠겨 있다({self.frame.get('lockOwnerName') or '누군가'}) — 편집완료 뒤에 준다"}.get(
+                    field, f"집중보호 문서다({field}={self.frame.get(field)!r}) — 화면이 승인 대기 칸을 쓰므로 안 잰 꼴이다")
+        for element in UNMEASURED_CHECKS:
+            if self.has_element(element):
+                return f"속성 화면에 체크 칸({element})이 있다 — 그 값을 싣는 꼴은 안 쟀다"
+        return ""
 
 
 @dataclass(frozen=True)
@@ -418,6 +595,10 @@ class Ecm:
             raise Refused(f"ECM 서버 밖의 주소라 묻지 않는다: {url}")
         if parts.path == self.context + MAIN_PAGE and not parts.query:
             return
+        if parts.path == self.context + JSON_READ:
+            if _is_json_read(_single_query(parts.query, url)):
+                return
+            raise Refused(f"권한 화면이 묻는 잰 읽기가 아니라 묻지 않는다: {url}")
         if parts.path == self.context + AJAX and _is_folder_query(parts.query, url):
             return
         if parts.path == self.context + PROPERTY_PAGE:
@@ -478,8 +659,9 @@ class Ecm:
         fields = dict(urllib.parse.parse_qsl(body.decode("utf-8"), keep_blank_values=True))
         if not ((query == DUP_QUERY and set(fields) == {"folderID", "title", "fileExt"})
                 or (query == REGISTER_QUERY and fields.get("ServiceName") == REGISTER_SERVICE
-                    and fields.get("register") == "register")):
-            raise Refused(f"등록 화면의 잰 꼴이 아니라 보내지 않는다: {query}")
+                    and fields.get("register") == "register")
+                or (query == PROPERTY_SAVE_QUERY and _is_access_save(fields))):
+            raise Refused(f"등록 · 속성 화면의 잰 꼴이 아니라 보내지 않는다: {query}")
         url = f"{self.server}{self.context}{AJAX}?{urllib.parse.urlencode(query)}"
         request = urllib.request.Request(url, data=body, method="POST", headers={
             "Cookie": self._cookie, "X-Requested-With": "XMLHttpRequest",
@@ -653,6 +835,93 @@ class Ecm:
             raise EcmError("열기 답에 MS_DOC_ID · MS_OBJECT_ID · MS_FILE_NAME 이 다 없다")
         return ticket
 
+    # ── 권한 — 속성 화면이 묻는 읽기와 그 화면의 저장 하나 ──
+
+    def _json(self, query: dict):
+        """``json.do`` 읽기 하나 — 답은 앞에 빈 줄이 붙은 JSON 배열(없으면 ``null``)이다."""
+        body, kind = self._fetch(f"{self.server}{self.context}{JSON_READ}?{urllib.parse.urlencode(query)}")
+        charset = (re.search(r"charset=([\w-]+)", kind, re.IGNORECASE) or [None, "utf-8"])[1]
+        text = body.decode(charset, "replace").strip()
+        if not text:
+            return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise EcmError("ECM 의 답이 JSON 이 아니다 — 세션이 끊겼을 수 있다. 스킬 ep-login 으로 다시 받는다") from exc
+
+    def company(self) -> str:
+        """그 사람의 회사 열쇠(``com…``) — 메인 화면이 든다. 사람 · 조직 찾기가 싣는다."""
+        body, _ = self._fetch(f"{self.server}{self.context}{MAIN_PAGE}")
+        found = re.search(r"\bcompanyId\s*=\s*['\"](com[0-9A-Fa-f]+)['\"]", body.decode("utf-8", "replace"))
+        if not found:
+            raise EcmError("메인 화면에서 회사 열쇠를 못 읽었다 — ECM 화면이 바뀌었을 수 있다")
+        return found.group(1)
+
+    def property_page(self, object_id: str) -> "PropertyPage":
+        """문서의 속성 화면 — 저장 몸이 실을 숨은 칸 · 화면의 갈래 값 · 권한 iframe 의 갈래 값."""
+        object_id = _object_id(object_id)
+        query = urllib.parse.urlencode({**PROPERTY_QUERY, "DOCID": object_id})
+        body, _ = self._fetch(f"{self.server}{self.context}{PROPERTY_PAGE}?{query}")
+        return PropertyPage.parse(body.decode("utf-8", "replace"))
+
+    def roles(self, object_id: str) -> list["Grant"]:
+        """그 문서에 걸린 역할 전부 — 권한 iframe 이 처음 그리는 그 목록(소유자는 안 든다)."""
+        rows = self._json({**ROLE_QUERY, "ECM_DOC_ID": "doc" + _object_id(object_id)})
+        if rows is None:
+            return []
+        if not isinstance(rows, list):
+            # 빈 명단으로 읽으면 저장이 걸려 있던 권한을 다 지운다 — 목록이 아닌 답은 읽기 실패다
+            raise EcmError(f"역할 목록의 답이 목록이 아니다 — 지금 명단을 몰라 권한을 안 바꾼다: {str(rows)[:200]}")
+        return [Grant(str(r.get("MS_ROLE", "")), str(r.get("MS_OBJECT_ID", "")), str(r.get("MS_USER_CLASS", "")),
+                      str(r.get("MS_USER_NAME", "")), str(r.get("MS_DEPT_NAME", "")), str(r.get("MS_EMAIL_ID", "")),
+                      str(r.get("MS_EMPLOYEE_NUMBER", ""))) for r in rows if isinstance(r, dict)]
+
+    def favorites(self, object_id: str) -> str:
+        """그 문서가 든 즐겨찾기 폴더 — 화면이 저장 몸의 ``favFolderList`` 에 쉼표로 이어 싣는다."""
+        rows = self._json({**FAVORITE_QUERY, "ECM_DOC_ID": "doc" + _object_id(object_id)}) or []
+        return ",".join(str(r.get("MS_FAV_FOLDER_ID", "")) for r in rows if isinstance(r, dict) and r.get("MS_FAV_FOLDER_ID"))
+
+    def people(self, name: str, company: str) -> list["Person"]:
+        """이름(일부)으로 사람을 찾는다 — 권한 화면의 성명 탭과 같은 요청. 메일 ID · 사번으로는 안 찾는다(서버가 이름만 본다)."""
+        name = name.strip()
+        if len(name) < NAME_MIN:
+            raise EcmError(f"이름은 {NAME_MIN} 글자부터 찾는다(화면과 같다): {name!r}")
+        rows = self._json({**PEOPLE_QUERY, "companyId": company, "value": name}) or []
+        return [Person(str(r.get("MS_OBJECT_ID", "")), str(r.get("MS_NAME", "")), str(r.get("MS_DEPT_INFO", "")),
+                       str(r.get("MS_DEPT", "")), str(r.get("MS_EMAIL_ID", "")), str(r.get("MS_EMPLOYEE_NUMBER", "")))
+                for r in rows if isinstance(r, dict) and PERSON_ID.match(str(r.get("MS_OBJECT_ID", "")))]
+
+    def organs(self, name: str, company: str) -> list["Organ"]:
+        """부서 이름(일부)으로 부서를 찾는다 — 권한 화면의 조직 탭 찾기."""
+        name = name.strip()
+        if len(name) < NAME_MIN:
+            raise EcmError(f"부서 이름은 {NAME_MIN} 글자부터 찾는다: {name!r}")
+        rows = self._json({"ServiceName": ORGAN_SERVICE, "language": "ko", "companyId": company, **ORGAN_FIND,
+                           "value": name}) or []
+        return [_organ(r) for r in rows if isinstance(r, dict) and DEPT_CODE.match(str(r.get("MS_OBJECT_ID", "")))]
+
+    def sub_organs(self, code: str, company: str) -> list["Organ"]:
+        """그 부서 바로 아래 부서."""
+        rows = self._json({"ServiceName": ORGAN_SERVICE, "language": "ko", "companyId": company, **ORGAN_SUBS,
+                           "deptId": _dept_code(code)}) or []
+        return [_organ(r) for r in rows if isinstance(r, dict) and DEPT_CODE.match(str(r.get("MS_OBJECT_ID", "")))]
+
+    def members(self, code: str, company: str) -> list["Person"]:
+        """그 부서에 바로 든 사람 — 화면이 조직을 칸에 옮길 때 펼치는 그 명단."""
+        code = _dept_code(code)
+        rows = self._json({"ServiceName": ORGAN_SERVICE, "language": "ko", "companyId": company, **ORGAN_USERS,
+                           "deptId": code}) or []
+        return [Person(str(r.get("MS_OBJECT_ID", "")), str(r.get("MS_NAME", "")),
+                       str(r.get("MS_COMPANY_NAME", "")).split(" - ")[0].strip(), str(r.get("ECM_DEPT_CODE", "") or code),
+                       str(r.get("MS_EMAIL_ID", "")), str(r.get("MS_EMPLOYEE_NUMBER", "")), str(r.get("MS_POSITION_NAME", "")))
+                for r in rows if isinstance(r, dict) and PERSON_ID.match(str(r.get("MS_OBJECT_ID", "")))]
+
+    def save_access(self, page: "PropertyPage", favorites: str, grants: list["Grant"], company: str) -> None:
+        """속성 화면의 「수정하기」와 같은 저장 — 속성 칸은 화면이 실을 값 그대로, 권한은 ``grants`` 전체로 바꾼다."""
+        data = _answer(*self._post(PROPERTY_SAVE_QUERY, access_save_body(page, favorites, grants, company)))
+        if str(data.get("MS_OBJECT_ID", "")) != page.value("MS_OBJECT_ID"):
+            raise EcmError(f"저장 답의 문서 열쇠가 다르다 — ECM 화면에서 그 문서의 권한을 본다: {data.get('MS_MSG_DESC', '')}")
+
 
 def _answer(body: bytes, kind: str) -> dict:
     """ECM 의 답(앞에 빈 줄이 붙은 JSON)을 푼다 — ``MB_RTN_VALUE`` 가 참이 아니면 그 까닭으로 진다."""
@@ -670,6 +939,90 @@ def _answer(body: bytes, kind: str) -> dict:
             raise EcmError(f"이 문서를 볼 권한이 없는 것 같다(ECM: {code} {desc}) — 문서함 화면에도 안 보이면 올린 사람에게 공유를 청한다")
         raise EcmError(f"ECM 이 거절했다: {code} {desc}".strip())
     return data
+
+
+def _is_json_read(q: dict) -> bool:
+    """권한 화면이 묻는 json.do 읽기의 잰 꼴인가 — 역할 목록 · 즐겨찾기 · 이름 찾기 · 부서 찾기 · 하위 부서 · 부서원 여섯."""
+    def same(base: dict, extra: set, checks: dict) -> bool:
+        if set(q) != set(base) | extra or any(q.get(k) != v for k, v in base.items()):
+            return False
+        return all(check(q.get(k, "")) for k, check in checks.items())
+    doc_key = lambda v: v.startswith("doc") and bool(OBJECT_ID.match(v[3:]))
+    company = lambda v: bool(COMPANY_ID.match(v))
+    named = lambda v: len(v.strip()) >= NAME_MIN
+    dept = lambda v: bool(DEPT_CODE.match(v))
+    organ = {"ServiceName": ORGAN_SERVICE, "language": "ko"}
+    return (same(ROLE_QUERY, {"ECM_DOC_ID"}, {"ECM_DOC_ID": doc_key})
+            or same(FAVORITE_QUERY, {"ECM_DOC_ID"}, {"ECM_DOC_ID": doc_key})
+            or same(PEOPLE_QUERY, {"companyId", "value"}, {"companyId": company, "value": named})
+            or same({**organ, **ORGAN_FIND}, {"companyId", "value"}, {"companyId": company, "value": named})
+            or same({**organ, **ORGAN_SUBS}, {"companyId", "deptId"}, {"companyId": company, "deptId": dept})
+            or same({**organ, **ORGAN_USERS}, {"companyId", "deptId"}, {"companyId": company, "deptId": dept}))
+
+
+ROLE_ROW = re.compile(r"<row><cell></cell><cell>([RSV])</cell><cell></cell><cell></cell><cell></cell><cell>(usr[0-9A-Fa-f]+)</cell>"
+                      r"<cell>U</cell><cell>(com[0-9A-Fa-f]+)</cell></row>")
+
+
+def _is_access_save(fields: dict) -> bool:
+    """속성 저장 몸이 권한만 바꾸는 잰 꼴인가 — 칸 이름이 화면의 것 그대로이고, 명단은 권한 셋의 사람 줄만 든다."""
+    want = ({k for k, _ in SAVE_FROM_PAGE} | {k for k, _ in SAVE_TAIL_FROM_PAGE} | {k for k, _ in SAVE_WORKFLOW_FROM_PAGE}
+            | {"SYSID", "isChangeRoleInfo", "roleList", "ecm_security_approve", "ecm_workflow_type", "tagList", "favFolderList",
+               "ecm_auto_grant_flag", "ecm_ai_search_flag", "ecm_ori_ai_search_flag"})
+    if set(fields) != want or fields.get("isChangeRoleInfo") != "TRUE" or fields.get("sViewStatus") != "EDIT":
+        return False
+    roles = fields.get("roleList", "")
+    head, tail = "<?xml version='1.0'?><rows>", "</rows>"
+    if not (roles.startswith(head) and roles.endswith(tail)):
+        return False
+    middle = roles[len(head):len(roles) - len(tail)]
+    return ROLE_ROW.sub("", middle) == "" and OBJECT_ID.match(fields.get("MS_OBJECT_ID", "")) is not None
+
+
+def access_save_body(page: PropertyPage, favorites: str, grants: list[Grant], company: str) -> bytes:
+    """속성 화면의 getDocInfoData 가 짓는 몸 — 속성 칸은 그 화면의 값, 권한은 ``grants`` 전체. 화면처럼 칸을 인코딩 없이 이어 붙이고
+    이름 둘만 encodeURIComponent 한다. 이어 붙이는 값에 칸을 가르는 글자(& · % · +)가 들면 보내지 않는다."""
+    if not COMPANY_ID.match(company):
+        raise Refused(f"회사 열쇠 꼴이 아니다: {company!r}")
+    bad = [g for g in grants if g.role not in ACCESS_ROLES or not PERSON_ID.match(g.id) or g.cls != "U"]
+    if bad:
+        raise Refused(f"권한 셋의 사람 줄만 싣는다 — 그 밖: {', '.join(f'{g.role}:{g.id}:{g.cls}' for g in bad)}")
+    rows = "".join(f"<row><cell></cell><cell>{g.role}</cell><cell></cell><cell></cell><cell></cell><cell>{g.id}</cell>"
+                   f"<cell>U</cell><cell>{company}</cell></row>"
+                   for g in sorted(grants, key=lambda g: ROLE_ORDER.index(g.role)))
+    pairs = [("SYSID", AGENT_SYSTEM)]
+    for sent, field in SAVE_FROM_PAGE:
+        value = page.value(field)
+        pairs.append((sent, urllib.parse.quote(value, safe="-_.!~*'()") if sent in SAVE_ENCODED else value))   # 값은 파서가 이미 풀었다
+    pairs.append(("isChangeRoleInfo", "TRUE"))
+    pairs += [(sent, page.value(field)) for sent, field in SAVE_TAIL_FROM_PAGE]
+    pairs.append(("roleList", f"<?xml version='1.0'?><rows>{rows}</rows>"))
+    pairs += [(sent, page.value(field)) for sent, field in SAVE_WORKFLOW_FROM_PAGE]
+    pairs += [("ecm_security_approve", page.value("ecm_security_approve")), ("ecm_workflow_type", page.value("ecm_workflow_type")),
+              ("tagList", page.vars.get("sTagList", "") if page.vars.get("sTagList") != "null" else ""),
+              ("favFolderList", favorites), ("ecm_auto_grant_flag", "F"), ("ecm_ai_search_flag", "F"),
+              ("ecm_ori_ai_search_flag", "F")]
+    raw = [k for k, v in pairs if k not in SAVE_ENCODED and RAW_BAD.search(v)]
+    if raw:
+        raise Refused(f"이어 붙일 칸({', '.join(raw)})에 칸을 가르는 글자(& · % · +)가 들어 보내지 않는다 — 사람이 화면에서 한다")
+    return "&".join(f"{k}={v}" for k, v in pairs).encode("utf-8")
+
+
+def _organ(row: dict) -> Organ:
+    def num(name):
+        try:
+            return int(str(row.get(name, 0)).strip() or 0)
+        except ValueError:
+            return 0
+    return Organ(str(row.get("MS_OBJECT_ID", "")), str(row.get("MS_DEPT_NAME", "")), str(row.get("MS_UPPER_DEPT_NAME", "")),
+                 str(row.get("MS_CABINET_ID", "")), num("MS_USER_ID"), num("MS_CHILD_ID"))
+
+
+def _dept_code(value: str) -> str:
+    value = value.strip()
+    if not DEPT_CODE.match(value):
+        raise EcmError(f"부서 코드 꼴이 아니다: {value!r} — 조직 찾기가 낸 코드를 준다")
+    return value
 
 
 def _is_folder_query(query: str, url: str) -> bool:
@@ -1102,6 +1455,219 @@ def register_document(ecm: Ecm, agent: Agent, path: pathlib.Path, *, cabinet: st
     return Registered(object_id, name, listed[0].version)
 
 
+# ── 권한 — 주고 거두기(미리 보기 → 확인 열쇠 → 저장 → 다시 읽기) ──────────
+
+ORG_PREFIX = "org:"
+
+
+@dataclass(frozen=True)
+class AccessPlan:
+    """권한을 바꾸는 한 판 — 지금 명단 · 바뀔 명단과, 사람에게 보일 더함 · 뺌 · 옮김. ``token`` 이 확인 열쇠다."""
+    object_id: str
+    title: str
+    before: tuple[Grant, ...]
+    after: tuple[Grant, ...]
+    added: tuple[Grant, ...]
+    removed: tuple[Grant, ...]
+    moved: tuple[tuple[Grant, Grant], ...]   # (앞, 뒤)
+    notes: tuple[str, ...]                   # 펼친 조직 · 뺀 본인 따위 — 사람이 읽을 말
+
+    @property
+    def token(self) -> str:
+        return access_token(self.object_id, self.before, self.after)
+
+
+def access_token(object_id: str, before, after) -> str:
+    """지금 명단과 바뀔 명단의 지문 — 미리 본 뒤 누가 명단을 바꿨거나 바랄 명단이 달라지면 열쇠가 달라진다."""
+    key = lambda gs: sorted(f"{g.role}:{g.id}" for g in gs)
+    raw = json.dumps([object_id, key(before), key(after)], separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:TOKEN_LENGTH]
+
+
+def _grant_of(person: Person, role: str) -> Grant:
+    return Grant(role, person.id, "U", person.name, person.dept, person.email, person.employee)
+
+
+def _pick_person(ecm: Ecm, spec: str, company: str) -> Person:
+    """「이름」 또는 「이름/메일ID」 하나를 사람 하나로 — 여럿이면 고르지 않고 후보를 다 보이며 멈춘다."""
+    name, _, email = spec.partition("/")
+    found = ecm.people(name, company)
+    # 이름이 꼭 맞는 사람만 받는다 — 일부만 맞은 사람에게 주면 엉뚱한 사람이 권한을 받는다
+    exact = [p for p in found if p.name == name.strip()]
+    if email.strip():
+        exact = [p for p in exact if p.email.lower() == email.strip().lower()]
+    if len(exact) == 1:
+        return exact[0]
+    if not exact:
+        near = "".join(f"\n  {p.label()}" for p in found)
+        raise EcmError(f"「{spec}」 인 사람을 ECM 에서 못 찾았다 — 이름이 꼭 맞아야 준다. ECM 은 이름으로만 찾는다(메일 ID · 사번은 안 걸린다). "
+                       "이름을 모르면 스킬 company-mail 의 people 로 이름부터 받는다" + (f". 이름 일부가 걸린 사람:{near}" if near else ""))
+    raise EcmError(f"「{spec}」 가 {len(exact)} 명이다 — 고르지 않는다. 이름/메일ID 로 다시 준다:\n" +
+                   "\n".join(f"  {p.label()}" for p in exact))
+
+
+def _pick_organ(ecm: Ecm, spec: str, company: str) -> Organ:
+    """「org:부서코드」 또는 「org:부서 이름」 하나를 부서 하나로 — 이름이 여럿에 걸리면 코드와 함께 다 보이며 멈춘다."""
+    value = spec[len(ORG_PREFIX):].strip()
+    if DEPT_CODE.match(value):
+        return Organ(value, "", "", "", 0, 0)
+    found = ecm.organs(value, company)
+    # 이름이 꼭 맞는 부서만 받는다 — 일부만 맞은 부서를 펼치면 엉뚱한 명단이 권한을 받는다
+    exact = [o for o in found if o.name == value]
+    if len(exact) == 1:
+        return exact[0]
+    if not exact:
+        near = "".join(f"\n  {o.upper} > {o.name} · 코드 {o.code}" for o in found)
+        raise EcmError(f"「{value}」 부서를 ECM 조직도에서 못 찾았다 — 이름이 꼭 맞거나 org:<코드> 여야 준다. 스킬 company-mail 의 org --tree 로 "
+                       "이름을 본다" + (f". 이름 일부가 걸린 부서:{near}" if near else ""))
+    raise EcmError(f"「{value}」 가 부서 {len(exact)} 곳에 걸린다 — 고르지 않는다. org:<코드> 로 다시 준다:\n" +
+                   "\n".join(f"  {o.upper} > {o.name} · 바로 {o.members} 명 · 아래 부서 {o.subs} · 코드 {o.code}" for o in exact))
+
+
+def _expand_organ(ecm: Ecm, organ: Organ, company: str, with_subs: bool) -> tuple[list[Person], list[str]]:
+    """부서를 사람으로 펼친다 — 화면처럼 바로 든 사람만, ``with_subs`` 면 아래 부서를 다 내려간다. (사람, 펼친 부서 말)."""
+    people, said, layer, seen = [], [], [organ.code], set()
+    while layer:
+        below = []
+        for code in layer:
+            if code in seen:
+                continue
+            seen.add(code)
+            got = ecm.members(code, company)
+            people += got
+            dept = got[0].dept if got else code
+            said.append(f"{dept}({code}) {len(got)} 명")
+            if with_subs:
+                below += [o.code for o in ecm.sub_organs(code, company)]
+        layer = below
+    unique = list({p.id: p for p in people}.values())
+    return unique, said
+
+
+def plan_access(ecm: Ecm, object_id: str, *, grant: list[tuple[str, str]] = (), revoke: list[str] = (),
+                clear: bool = False, with_subs: bool = False) -> AccessPlan:
+    """권한 한 판을 짓는다 — 서버를 바꾸지 않는다. ``grant`` 는 (edit|copy|read, 사람 말) 들, ``revoke`` 는 뺄 사람 말 들.
+    사람 말은 「이름」 · 「이름/메일ID」 · 「org:부서코드」 · 「org:부서 이름」. 조직은 그 순간의 부서원으로 펼치고(화면과 같다),
+    ``with_subs`` 면 아래 부서까지. 이미 다른 칸에 든 사람에게 주면 그 칸으로 옮긴다. 소유자 · 본인의 줄은 주기 · 거두기 · 비우기 어느 것도
+    안 바꾼다. 같은 층에서 한 사람에게 다른 칸을 주면 멈춘다.
+    안 잰 꼴의 문서면 ``EcmError`` 로 멈춘다."""
+    object_id = _object_id(object_id)
+    page = ecm.property_page(object_id)
+    why = page.unmeasured()
+    if why:
+        raise EcmError(f"이 문서의 권한은 손으로 안 바꾼다 — {why}")
+    before = ecm.roles(object_id)
+    other = [g for g in before if g.role not in ACCESS_ROLES or g.cls != "U"]
+    if other:
+        raise EcmError("권한 셋(편집 · 복사 · 읽기)의 사람 밖의 역할이 걸린 문서다(" +
+                       ", ".join(f"{g.role}/{g.cls} {g.name or g.id}" for g in other) +
+                       ") — 화면이 그 역할을 다른 칸으로 옮겨 그리므로 손으로 안 바꾼다. 사람이 화면의 「컨텐츠 속성」에서 한다")
+    twice = sorted({g.id for g in before if [h.id for h in before].count(g.id) > 1})
+    if twice:
+        raise EcmError(f"한 사람에게 역할이 둘 넘게 걸린 문서다({', '.join(twice)}) — 한 줄로 합치면 하나가 말없이 사라지므로 손으로 안 바꾼다. "
+                       "사람이 화면의 「컨텐츠 속성」에서 한다")
+    company = ecm.company()
+    # 소유자 · 본인의 줄은 이 손이 안 바꾼다 — 공동 편집자인 본인이 제 편집 권한을 지우면 되돌릴 길이 없다
+    keep = {page.value("MS_OWNER_NAME"), page.vars.get("userId", "")} - {""}
+    current = {g.id: g for g in before}
+    after = {i: g for i, g in current.items() if i in keep} if clear else dict(current)
+    notes: list[str] = []
+    def revoke_ids(spec: str) -> set[str]:
+        if spec.startswith(ORG_PREFIX):
+            people, said = _expand_organ(ecm, _pick_organ(ecm, spec, company), company, with_subs)
+            if not people:
+                raise EcmError(f"「{spec}」 에 든 사람이 없다 — 뺄 것이 없다. 부서 코드 · 이름을 본다(아래 부서에만 사람이 있으면 --with-subs)")
+            notes.append(f"뺄 조직 — {' · '.join(said)}")
+            if any(p.id in keep for p in people):
+                notes.append("소유자 · 본인은 조직으로 빼도 칸을 안 바꾼다")
+            return {p.id for p in people} - keep
+        name, _, email = spec.partition("/")
+        pool = {**current, **after}
+        hit = [g for g in pool.values() if g.name == name.strip() and (not email or g.email.lower() == email.strip().lower())]
+        if len(hit) > 1:
+            raise EcmError(f"「{spec}」 가 명단에 {len(hit)} 명이다 — 이름/메일ID 로 다시 준다:\n" +
+                           "\n".join(f"  {g.label()}" for g in hit))
+        if not hit:
+            raise EcmError(f"「{spec}」 는 이 문서의 권한 명단에 없다 — 뺄 것이 없다")
+        if hit[0].id in keep:
+            raise EcmError(f"「{spec}」 는 소유자 · 본인이라 이 손이 칸을 안 바꾼다 — 제 권한은 사람이 화면의 「컨텐츠 속성」에서 바꾼다")
+        return {hit[0].id}
+
+    # 같은 층(조직끼리 · 사람끼리)에서 한 사람에게 다른 칸을 주면 어느 쪽인지 고르지 않는다
+    given: dict[str, dict[str, tuple[str, str]]] = {"org": {}, "person": {}}
+
+    def grant_people(word: str, spec: str) -> None:
+        role = ACCESS_OF_WORD[word]
+        if spec.startswith(ORG_PREFIX):
+            people, said = _expand_organ(ecm, _pick_organ(ecm, spec, company), company, with_subs)
+            if not people:
+                raise EcmError(f"「{spec}」 에 든 사람이 없다 — 아래 부서에만 사람이 있으면 --with-subs 로 준다")
+            notes.append(f"{ACCESS_ROLES[role]} 조직 — {' · '.join(said)}" + ("" if with_subs else " (바로 든 사람만 · 아래 부서는 --with-subs)"))
+        else:
+            people = [_pick_person(ecm, spec, company)]
+        layer = given["org" if spec.startswith(ORG_PREFIX) else "person"]
+        for p in people:
+            if p.id in keep:
+                notes.append(f"{p.name} 은 소유자 · 본인이라 이 손이 칸을 안 바꾼다")
+                continue
+            prior = layer.get(p.id)
+            if prior and prior[0] != role:
+                raise EcmError(f"{p.label()} 에게 「{prior[1]}」 로 {ACCESS_ROLES[prior[0]]}, 「{spec}」 로 {ACCESS_ROLES[role]} 를 함께 준다 — "
+                               "어느 쪽인지 고르지 않는다. 그 사람을 사람으로 따로 짚거나(사람의 말이 조직의 말을 이긴다) 하나를 뺀다")
+            layer[p.id] = (role, spec)
+            after[p.id] = _grant_of(p, role)
+
+    # 조직 → 사람 차례로 둔다 — 사람으로 짚은 말(「조직은 읽기, 그중 ○○ 님은 복사」 · 「조직은 주되 ○○ 님은 빼」)이 조직의 말을 이긴다
+    is_org = lambda spec: spec.startswith(ORG_PREFIX)
+    for word, spec in grant:
+        if is_org(spec):
+            grant_people(word, spec)
+    for spec in revoke:
+        if is_org(spec):
+            for i in revoke_ids(spec):
+                after.pop(i, None)
+    for word, spec in grant:
+        if not is_org(spec):
+            grant_people(word, spec)
+    for spec in revoke:
+        if not is_org(spec):
+            for i in revoke_ids(spec):
+                gone = after.pop(i, None)
+                if gone and i not in current:
+                    notes.append(f"{gone.label()} 은 조직으로 들어갈 참이었는데 빼라고 해서 안 넣는다")
+    added = tuple(g for i, g in after.items() if i not in current)
+    removed = tuple(g for i, g in current.items() if i not in after)
+    moved = tuple((current[i], g) for i, g in after.items() if i in current and current[i].role != g.role)
+    title = page.value("MS_DOC_TITLE") + "." + page.value("MS_DOC_EXTENSION")
+    return AccessPlan(object_id, title, tuple(before), tuple(after.values()), added, removed, moved, tuple(dict.fromkeys(notes)))
+
+
+def apply_access(ecm: Ecm, plan: AccessPlan, token: str) -> list[Grant]:
+    """미리 본 한 판을 보낸다 — 열쇠가 맞고 그 사이 명단이 그대로일 때만. 보낸 뒤 명단과 속성(보안등급 · 공개 · 폴더 · 이름)을 다시
+    읽어 바란 그대로인가 본다. 다시 읽은 명단을 낸다."""
+    if token != plan.token:
+        raise EcmError("확인 열쇠가 이 판과 다르다 — 미리 보기를 다시 돌려 사람에게 보인 뒤 그 열쇠로 보낸다")
+    page = ecm.property_page(plan.object_id)
+    why = page.unmeasured()
+    if why:
+        raise EcmError(f"이 문서의 권한은 손으로 안 바꾼다 — {why}")
+    now = ecm.roles(plan.object_id)
+    if access_token(plan.object_id, now, plan.after) != token:
+        raise EcmError("미리 본 뒤 이 문서의 권한 명단이 바뀌었다 — 아무것도 안 보냈다. 미리 보기를 다시 돌린다")
+    watched = ("ecm_security_level", "ecm_open_flag", "ecm_folder_id", "MS_DOC_TITLE", "MS_OWNER_NAME")
+    kept = {f: page.value(f) for f in watched}
+    ecm.save_access(page, ecm.favorites(plan.object_id), list(plan.after), ecm.company())
+    got = ecm.roles(plan.object_id)
+    want = sorted(f"{g.role}:{g.id}" for g in plan.after)
+    if sorted(f"{g.role}:{g.id}" for g in got) != want:
+        raise EcmError("저장은 됐다는데 다시 읽은 권한 명단이 바란 것과 다르다 — 다시 보내지 말고 ECM 화면의 「컨텐츠 속성」에서 본다")
+    after_page = ecm.property_page(plan.object_id)
+    drift = [f for f in watched if after_page.value(f) != kept[f]]
+    if drift:
+        raise EcmError(f"권한은 섰는데 다른 속성({', '.join(drift)})이 바뀌었다 — ECM 화면의 「컨텐츠 속성」에서 바로 되돌린다")
+    return got
+
+
 def reader_path() -> pathlib.Path:
     return pathlib.Path(os.environ.get("ECM_DRM_READER", "").strip() or DEFAULT_READER).expanduser()
 
@@ -1162,6 +1728,36 @@ def _print_docs(docs: list[Doc], page: int, where: str = "내 문서함") -> Non
         print(f"{i:>3}. " + " · ".join(b for b in bits if b))
 
 
+def _print_grants(grants) -> None:
+    if not grants:
+        print("  (소유자 말고는 권한 명단이 비었다)")
+    for role in ("R", "S", "V"):
+        mine = [g for g in grants if g.role == role]
+        if mine:
+            print(f"  {ACCESS_ROLES[role]} — {len(mine)} 명")
+            for g in mine:
+                print(f"    {g.label()}")
+    for g in (g for g in grants if g.role not in ACCESS_ROLES):
+        print(f"  역할 {g.role}/{g.cls} — {g.label()}")
+
+
+def _print_plan(plan: "AccessPlan") -> None:
+    print(f"{plan.title} (id {plan.object_id}) — 지금 {len(plan.before)} 명 → 뒤 {len(plan.after)} 명")
+    for note in plan.notes:
+        print(f"  · {note}")
+    for title, rows in (("더함", plan.added), ("뺌", plan.removed)):
+        print(f"{title} {len(rows)} 명")
+        for g in rows:
+            print(f"  {ACCESS_ROLES.get(g.role, g.role)} · {g.label()}")
+    print(f"옮김 {len(plan.moved)} 명")
+    for old, new in plan.moved:
+        print(f"  {old.label()} — {ACCESS_ROLES[old.role]} → {ACCESS_ROLES[new.role]}")
+    print("뒤 명단:")
+    _print_grants(plan.after)
+    print(f"확인 열쇠 {plan.token}")
+    print("사람이 이 명단 그대로 바꾸자고 하면 같은 인자에 apply-access · --confirm <열쇠> 로 보낸다.")
+
+
 def _describe_open(opened: Opened) -> list[str]:
     app = f"기본 앱 {opened.progid or '사람이 고르는 창'}" + (" (이번에 적었다)" if opened.app_written else "")
     return [f"받은 파일: {opened.path}", app]
@@ -1209,6 +1805,22 @@ def main(argv: list[str] | None = None) -> int:
                    help="보안등급 — 1A 기밀 · 2A 사외비A · 2B 사외비B · 3A 일반")
     p.add_argument("--open", required=True, choices=["T", "F"], dest="open_flag", help="공개(T) · 비공개(F) — 1A 는 F, 3A 는 T 만")
     p.add_argument("--title", default="", help="등록 이름(확장자 뺀) — 안 주면 파일 이름")
+    p = sub.add_parser("access", help="문서에 걸린 권한(편집 · 복사 · 읽기) 명단")
+    p.add_argument("object_id")
+    p = sub.add_parser("who", help="ECM 이 아는 사람 · 부서를 찾는다 — 권한에 줄 열쇠를 고른다")
+    p.add_argument("query", help="이름(일부) · 또는 org:부서 이름(일부) · org:부서코드(부서원까지)")
+    for name in ("preview-access", "apply-access"):
+        p = sub.add_parser(name, help="권한 바꾸기를 미리 본다(안 바꾼다)" if name == "preview-access"
+                           else "미리 본 그대로 권한을 바꾼다 — preview-access 와 같은 인자에 --confirm")
+        p.add_argument("object_id")
+        for word in ACCESS_OF_WORD:
+            p.add_argument(f"--{word}", action="append", default=[], metavar="사람",
+                           help=f"{ACCESS_ROLES[ACCESS_OF_WORD[word]]} 로 준다 — 이름 · 이름/메일ID · org:부서코드 · org:부서 이름 (여러 번)")
+        p.add_argument("--revoke", action="append", default=[], metavar="사람", help="권한을 거둔다 — 이름 · 이름/메일ID · org:… (여러 번)")
+        p.add_argument("--clear", action="store_true", help="지금 명단을 다 비우고 시작한다")
+        p.add_argument("--with-subs", action="store_true", help="org: 를 아래 부서까지 펼친다(안 주면 화면처럼 바로 든 사람만)")
+        if name == "apply-access":
+            p.add_argument("--confirm", required=True, help="preview-access 가 낸 확인 열쇠")
     args = parser.parse_args(argv)
 
     try:
@@ -1255,6 +1867,37 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "checkin":
             done = checkin_document(ecm, pathlib.Path(args.path), args.object_id, args.desc)
             print(f"올렸다 — 판 {done.version_before} → {done.version_after} · 고른 판 {done.picked or '?'}")
+            return EXIT_OK
+        if args.command == "access":
+            _print_grants(ecm.roles(args.object_id))
+            return EXIT_OK
+        if args.command == "who":
+            company = ecm.company()
+            if args.query.startswith(ORG_PREFIX):
+                value = args.query[len(ORG_PREFIX):].strip()
+                if DEPT_CODE.match(value):
+                    for s in ecm.sub_organs(value, company):
+                        print(f"  아래 부서 {s.name} · 바로 {s.members} 명 · 아래 부서 {s.subs} · 코드 {s.code}")
+                    for m in ecm.members(value, company):
+                        print(f"  {m.label()}")
+                else:
+                    for o in ecm.organs(value, company):
+                        print(f"{o.upper} > {o.name} · 바로 {o.members} 명 · 아래 부서 {o.subs} · 코드 {o.code}")
+            else:
+                for m in ecm.people(args.query, company):
+                    print(f"{m.label()} · 사번 {m.employee}")
+            return EXIT_OK
+        if args.command in ("preview-access", "apply-access"):
+            grants = [(w, s) for w in ACCESS_OF_WORD for s in getattr(args, w)]
+            if not (grants or args.revoke or args.clear):
+                raise EcmError("줄 사람(--edit · --copy · --read) · 거둘 사람(--revoke) · --clear 가운데 하나는 준다")
+            plan = plan_access(ecm, args.object_id, grant=grants, revoke=args.revoke, clear=args.clear, with_subs=args.with_subs)
+            if args.command == "preview-access":
+                _print_plan(plan)
+                return EXIT_OK
+            got = apply_access(ecm, plan, args.confirm)
+            print(f"바꿨다 — {plan.title} · 더함 {len(plan.added)} · 뺌 {len(plan.removed)} · 옮김 {len(plan.moved)} · 다시 읽은 명단:")
+            _print_grants(got)
             return EXIT_OK
         agent = Agent.from_env()
         if args.command == "edit":

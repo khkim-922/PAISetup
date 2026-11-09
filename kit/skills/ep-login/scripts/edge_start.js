@@ -7,7 +7,7 @@
 //   주소 — 띄운 창의 하나뿐인 탭이 열 곳. 안 주면 데스크톱은 사내 SSO 의 회사 로그인(LOGIN_URL — 통합 인증으로 입력 없이 넘는다),
 //     VDI 는 평소 EP 로그인 화면(EP_LOGIN_URL — 사람이 평소 아이디로 로그인한다)이다.
 //   --profile — 기본 프로필 대신 그 폴더를 프로필로 쓴다. 기본 프로필로 띄웠는데 포트가 안 열리는 Chromium 136 이상의 Edge(종료 3)
-//     에서만 쓴다 — 그 프로필은 사람의 평소 Edge 와 따로 놀아 그 로그인이 평소 Edge 의 EP 세션을 끊는다.
+//     에서만 쓴다 — 그 프로필은 사람의 평소 Edge 와 따로 놀아 그 로그인이 평소 Edge 의 메일 세션을 끊는다.
 //   환경변수 EDGE_DEBUG_PORT 포트 · SESSION_LOGIN_HOSTS 로그인 화면 호스트 · SESSION_LOGIN_WAIT_SECONDS 로그인 탭을 지켜보는 시한 —
 //   뜻과 기본값은 받는 손(edge_session.js)의 settings 한 자리에서 읽는다. 로그인 화면과 받을 창도 그 손의 onLoginScreen · epConfirm 이 가린다.
 //
@@ -60,7 +60,7 @@ const port = cfg.port;
 const loginWaitMs = cfg.loginMs;              // 로그인 탭을 지켜보는 시한 — VDI 는 사람이 그 탭에서 로그인한다
 const say = line => console.log(line);
 const NEXT = ' 다음: 받는 손(session.sh)을 부른다';
-const HUMAN = '다음: 그 창에서 사람이 로그인한다 — 「EP 접속 정보」 창이 뜨면 「확인」이 다른 자리의 EP 세션을 끊는다고 알린다 · 됐다고 하면 받는 손(session.sh)';
+const HUMAN = '다음: 그 창에서 사람이 로그인한다 — 「EP 접속 정보」 창이 뜨면 「확인」이 다른 자리에서 연 메일의 세션을 끊는다고 알린다 · 됐다고 하면 받는 손(session.sh)';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function version() {
@@ -151,8 +151,8 @@ async function main(argv) {
   if (open && open.Browser) { say(`이미 열려 있다 — 127.0.0.1:${port} · ${open.Browser}.${NEXT} — 3 이면 그 Edge 에서 EP 로그인이 안 된 것이라 사람이 그 창에서 로그인한다`); return 0; }
   const exe = findEdge();
   if (!exe) return fail(1, 'Edge 를 못 찾았다');
-  if (!profile && edgeRunning()) return fail(2, 'Edge 가 디버깅 포트 없이 돌고 있다. 다음: 사람에게 Edge 창을 다 닫고 알림 영역(트레이)의 Edge 도 끝내 달라고 한 뒤 다시 부른다 — ' +
-    '이쪽에서 닫지 않는다(열린 탭 · 쓰던 글이 사람 것). 닫았는데 또 2 면 Edge 가 뒤에서 사는 설정(시작 부스트 · 닫은 뒤에도 백그라운드 실행)이 켜진 것이다 — 끌지는 사람이 고른다');
+  if (!profile && edgeRunning()) return fail(2, 'Edge 가 디버깅 포트 없이 돌고 있다 — 떠 있는 Edge 에는 포트를 못 연다. 다음: 사람에게 까닭을 알리고, 사람이 Edge 창과 알림 영역(트레이)의 Edge 를 다 닫거나 ' +
+    '사람이 동의하면 이쪽이 Edge 프로세스를 다 끝낸 뒤 다시 부른다 — 동의 없이 끝내지 않는다(열린 탭 · 쓰던 글이 사람 것 · 탭은 「페이지 복원」으로 돌아온다). 닫았는데 또 2 면 Edge 가 뒤에서 사는 설정(시작 부스트 · 닫은 뒤에도 백그라운드 실행)이 켜진 것이다 — 끌지는 사람이 고른다');
   const start = url || (onVdi() ? EP_LOGIN_URL : LOGIN_URL);
   const args = [`--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1'];
   if (profile) args.push(`--user-data-dir=${path.resolve(profile)}`, '--no-first-run');
@@ -167,7 +167,7 @@ async function main(argv) {
     return fail(profile ? 1 : 3, profile
       ? '띄웠는데 포트가 안 열린다 — 그 프로필의 Edge 가 이미 포트 없이 떠 있거나 회사 정책이 막는다. 다음: 사람에게 Edge 를 트레이까지 다 닫아 달라고 한 뒤 다시 부른다 · 그래도 안 서면 멈추고 알린다'
       : '띄웠는데 포트가 안 열린다. 다음: 사람에게 Edge 주소창에 edge://version 을 열어 첫 줄의 판을 읽어 달라고 한다. Chromium 136 이상이면 기본 프로필에 포트를 안 여는 판이다 — ' +
-        '그 로그인이 평소 Edge 의 EP 세션을 끊는다고 알리고 동의를 받은 뒤 --profile "$LOCALAPPDATA/ep-login/edge-profile" 로 다시 부른다. 그 아래 판이면 포트 없이 떠 있던 Edge(시작 부스트 · 닫은 뒤 백그라운드 실행)나 회사 정책이 까닭이라 2 처럼 트레이까지 닫아 달라고 한 뒤 다시 부른다');
+        '그 로그인이 평소 Edge 의 메일 세션을 끊는다고 알리고 동의를 받은 뒤 --profile "$LOCALAPPDATA/ep-login/edge-profile" 로 다시 부른다. 그 아래 판이면 포트 없이 떠 있던 Edge(시작 부스트 · 닫은 뒤 백그라운드 실행)나 회사 정책이 까닭이라 2 처럼 트레이까지 닫아 달라고 한 뒤 다시 부른다');
   }
   say(`포트가 열렸다 — 127.0.0.1:${port} · ${v.Browser}`);
   const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(r => r.json()).catch(() => []);

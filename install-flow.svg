@@ -266,15 +266,15 @@
           <text x="525.4" y="772" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">Codex 는 이 창에서 · 나머지는 그동안 뒤에서 함께</text>
         </g>
 
-        <g id="node-n9" tabindex="0" role="button" aria-label="Focus 9. [4/11] CLI — 켠 것만, claude · codex · agy · copilot — 자리를 안 가린다, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">9. [4/11] CLI — 켠 것만 · claude · codex · agy · copilot — 자리를 안 가린다 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
-          <rect x="403.4" y="842" width="244" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <rect x="403.4" y="842" width="244" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
-          <g aria-hidden="true" transform="translate(409.4 848) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
+        <g id="node-n9" tabindex="0" role="button" aria-label="Focus 9. [4/11] CLI — 켠 것만, claude · codex · copilot · agy — 자리를 안 가린다 · 오래 걸리는 것은 뒤에서, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
+          <title stroke-width="1px" opacity="1" display="inline" visibility="visible">9. [4/11] CLI — 켠 것만 · claude · codex · copilot · agy — 자리를 안 가린다 · 오래 걸리는 것은 뒤에서 · 설치가 도는 순서 — 위에서 아래로 › 설치 몸통</title>
+          <rect x="365.4" y="842" width="320" height="52" rx="6" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <rect x="365.4" y="842" width="320" height="52" rx="6" stroke-width="1.5px" fill="rgba(52, 211, 153, 0.18)" stroke="rgb(5, 150, 105)" opacity="1" display="inline" visibility="visible"></rect>
+          <g aria-hidden="true" transform="translate(371.4 848) scale(0.6875)" fill="none" stroke="rgb(5, 150, 105)" stroke-width="1.35px" stroke-linecap="round" stroke-linejoin="round" opacity="0.76" display="inline" visibility="visible">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5" stroke-width="1.35px" opacity="1" display="inline" visibility="visible"></path>
           </g>
           <text x="525.4" y="863" font-size="11px" font-weight="600" text-anchor="middle" fill="rgb(15, 23, 42)" stroke-width="1px" opacity="1" display="block" visibility="visible">9. [4/11] CLI — 켠 것만</text>
-          <text x="525.4" y="880" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">claude · codex · agy · copilot — 자리를 안 가린다</text>
+          <text x="525.4" y="880" font-size="6.9px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">claude · codex · copilot · agy — 자리를 안 가린다 · 오래 걸리는 것은 뒤에서</text>
         </g>
 
         <g id="node-nclone" tabindex="0" role="button" aria-label="Focus 저장소를 clone 한다, ~/repos/&lt;저장소 이름&gt;, 설치가 도는 순서 — 위에서 아래로 › 설치 몸통" aria-pressed="false" stroke-width="1px" opacity="1" display="inline" visibility="visible">
@@ -393,8 +393,8 @@
 
 
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
-          <rect x="656" y="874" width="62.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
-          <text x="687.4" y="884" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">둘이 짝이다</text>
+          <rect x="694" y="874" width="62.8" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>
+          <text x="725.4" y="884" font-size="8px" text-anchor="middle" fill="rgb(100, 116, 139)" stroke-width="1px" opacity="1" display="block" visibility="visible">둘이 짝이다</text>
         </g>
         <g stroke-width="1px" opacity="1" display="inline" visibility="visible">
           <rect x="216.39999999999998" y="1654" width="226" height="14" rx="3" fill="rgb(255, 255, 255)" stroke-width="1px" opacity="1" display="inline" visibility="visible"></rect>

@@ -73,6 +73,7 @@ import logging
 import os
 import pathlib
 import re
+import mimetypes
 import smtplib
 import socket
 import ssl
@@ -299,12 +300,15 @@ def _deliver(message: EmailMessage, sender: str, envelope: list[str],
 
 
 def send(subject: str, *, to, cc=None, bcc=None, sender: str | None = None,
-         html: str | None = None, text: str | None = None) -> None:
+         html: str | None = None, text: str | None = None,
+         attachments=None) -> None:
     """메일 한 통을 보낸다. 실패하면 예외다(모듈 머리말의 「무엇을 내나」).
 
     ``html`` 을 주면 HTML 메일이고 ``text`` 는 그 평문 짝이 된다(안 주면 안내 한 줄).
     ``html`` 없이 ``text`` 만 주면 평문 메일이다. ``to`` · ``cc`` · ``bcc`` 는 주소 목록,
     문자열 하나는 주소 하나로 받는다. ``bcc`` 는 머리에 안 쓴다.
+    ``attachments`` 는 ``(파일 이름, 바이트)`` 의 목록이다 — 주면 본문 곁에 파일로 붙는다
+    (``multipart/mixed``). 형식은 이름의 확장자로 짚고, 모르면 ``application/octet-stream`` 이다.
     """
     config = settings()
     sender = _resolve_sender(sender, config, "발송 인자")
@@ -330,6 +334,10 @@ def send(subject: str, *, to, cc=None, bcc=None, sender: str | None = None,
     else:
         message.set_content(HTML_ONLY_NOTE if text is None else text)
         message.add_alternative(html, subtype="html")
+    for name, data in attachments or ():
+        kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        major, minor = kind.split("/", 1)
+        message.add_attachment(data, maintype=major, subtype=minor, filename=name)
 
     envelope = to + cc + bcc
     _deliver(message, sender, envelope, config)

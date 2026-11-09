@@ -278,6 +278,20 @@ def check_message_shape():
     assert relay.mails[0]["rcpts"] == ["a@example.test"], "문자열 수신자가 주소 하나로 안 갔다"
 
 
+def check_attachment_rides_beside_html_body():
+    """첨부 — HTML 본문 · 평문 짝은 그대로 서고, 파일이 한글 이름과 바이트 그대로 곁에 붙는다."""
+    relay = FakeRelay("drop")
+    html, data, name = "<p>보고 본문</p>", "<html><body>보고서</body></html>".encode("utf-8"), "주간 보고.html"
+    with stage(relay):
+        mailer.send("[보고] 첨부", to="a@example.test", sender=SENDER, html=html, attachments=[(name, data)])
+    message = parsed(relay.mails[0])
+    assert message.get_content_type() == "multipart/mixed", message.get_content_type()
+    assert message.get_body(("html",)).get_content().strip() == html, "첨부를 붙이자 HTML 본문이 바뀌었다"
+    files = list(message.iter_attachments())
+    assert [f.get_filename() for f in files] == [name], [f.get_filename() for f in files]
+    assert files[0].get_content_type() == "text/html" and files[0].get_payload(decode=True) == data, "첨부 바이트 · 형식이 바뀌었다"
+
+
 def check_refused_recipient_raises():
     relay = FakeRelay("drop", refuse=["gone@example.test"])
     with stage(relay):

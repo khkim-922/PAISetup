@@ -7,6 +7,9 @@
       전에 멈추나. 대조로 오피스 꼴은 잠금 요청이 닿아야 한다
     * 등록 길이 화면의 두 POST(같은 이름 찾기 · 등록)만 보내나 — 같은 이름이면 에이전트 올림도 등록도 안 가고, 화면에 없는 보안
       짝 · 꼴 밖의 서버 자리 · 다른 서비스의 POST · 그 문서함의 것이 아닌 폴더는 서버에 닿기 전에 막나. 대조로 한 판은 끝까지 서야 한다
+    * 권한 길이 확인 열쇠가 맞을 때만 속성 저장 POST 하나를 보내나 — 그 몸이 화면이 싣는 칸 · 차례 그대로이고 값이 속성 화면의 칸
+      (편집 화면은 폴더 · 보안을 새 값 칸에서)에서 오나, 조직이 바로 든 사람으로 펼쳐지고 소유자가 빠지나, 동명이인을 안 고르나. 틀린 열쇠 ·
+      미리 본 뒤 바뀐 명단 · 핵심기술 · 셋 밖의 역할 · 칸을 더한 몸은 서버에 닿기 전에 막고, 저장 뒤 다른 속성이 바뀌면 잡나
     * 기본 앱 손이 이미 고른 값(UserChoice · UserChoiceLatest)을 덮나, 새 앱 알림 값을 빠진 것만 더하고 있는 값은 두나 — 버릴
       자리(HKCU\\Software\\PAISetupEcmCheck)에서 잰다. 이 PC 의 진짜 확장자 자리와 알림 자리는 안 건드린다
     * (``--office`` 일 때만) 창 닫는 손이 받은 문서 하나만 닫고, 같은 앱에 떠 있는 다른 문서와 앱은 남기나 — 남은 문서가
@@ -16,7 +19,8 @@
       파일을 줘서 띄운다. 오피스가 깔린 PC 에서 화면에 창이 잠깐 뜬다. 그 앱이 이미 떠 있으면 사람의 것이라 안 잰다(못 잼)
 남기는 까닭(check-design §1 넷) — 길이 분명하다(같은 서비스 모음에 문서를 잠그는 편집 열기가 있고 손을 고칠 때마다 막는
 목록이 흔들린다 · 등록은 동료가 보는 문서함에 문서를 더한다 · 기본 앱은 사람이 이미 고른 확장자에서 늘 불린다 · 파워포인트는 사람의 앱에 붙는다) · 깨지면 조용하거나
-되돌릴 수 없다(서버의 잠금 · checkin 이 못 올리는 꼴에 남은 잠금 · 「실패」로 알려진 채 남의 문서함에 올라간 문서 · 바뀐 기본 앱 ·
+되돌릴 수 없다(서버의 잠금 · checkin 이 못 올리는 꼴에 남은 잠금 · 「실패」로 알려진 채 남의 문서함에 올라간 문서 · 볼 수 없어야 할
+동료에게 열린 문서 · 권한을 주다 바뀐 보안등급 · 바뀐 기본 앱 ·
 닫힌 사람의 문서) · 쓰는 사람의 문서함 · 설정 · 문서를 잃는다 · 다른 무엇도 안
 잡는다(회사 ECM 은 회사 PC 에서만 닿는다).
 
@@ -37,7 +41,8 @@
 
 여기서 못 재는 것 — 사내 SSO 와 진짜 에이전트(웹소켓 줄을 에이전트가 받는 꼴 · 받은 파일이 감긴 채인 것 · 기본 앱으로 띄우는 것) ·
 Windows 가 해시를 받아 주는지(그것은 손이 쓸 때마다 ``AssocQueryStringW`` 로 다시 본다) · UCPD 가 막는 판 · 엑셀의 닫기 ·
-감긴 파일을 연 오피스 · 에이전트의 편집완료 창과 오피스 프로세스의 끝 · 에이전트의 실제 올림과 서버의 잠금 · 등록.
+감긴 파일을 연 오피스 · 에이전트의 편집완료 창과 오피스 프로세스의 끝 · 에이전트의 실제 올림과 서버의 잠금 · 등록 ·
+서버가 권한 명단을 받는 꼴(가짜 서버는 받은 줄을 그대로 둔다 — 실물은 부서 줄을 조용히 버린다).
 """
 
 from __future__ import annotations
@@ -86,13 +91,60 @@ PROJECT_CABINET = "cab99a1b2c3d4"
 PROJECT_FOLDER = "fdr99a1b2c3d401"
 NEW_OBJ = "22a1b2c3d4e5f609"
 DOCX_OBJ = "11a1b2c3d4e5f608"
-# 실물 메인 화면의 꼴 — 문서함 고르기 칸의 option 과 제 부서 열쇠(스크립트 줄)
-MAIN_HTML = ("<html><script>var s_UserDeptCabinetId\t= '" + CABINET + "';</script><select name='cabinetSel'>"
+COMPANY = "com1000aa"
+OWNER = "usr00aa0001"
+MATE, MATE2, OTHER = "usr00aa0002", "usr00aa0003", "usr00aa0004"
+DEPT, SUB_DEPT = "T10006", "G51008"
+ACCESS_OBJ = "33a1b2c3d4e5f60a"           # 권한을 바꿀 수 있는 문서
+CORE_OBJ = "44a1b2c3d4e5f60b"             # 핵심기술 문서 — 안 잰 꼴
+APPROVER_OBJ = "55a1b2c3d4e5f60c"         # 승인자 역할이 걸린 문서 — 안 잰 꼴
+# 실물 메인 화면의 꼴 — 문서함 고르기 칸의 option 과 제 부서 열쇠 · 회사 열쇠(스크립트 줄)
+MAIN_HTML = ("<html><script>var s_UserDeptCabinetId\t= '" + CABINET + "';\ncompanyId\t\t\t= '" + COMPANY + "';</script>"
+             "<select name='cabinetSel'>"
              "<option id=\"MENU_DEPT\"\n\t\t\tvalue='" + CABINET + "'>기획그룹</option>"
              "<option id=\"MENU_PROJECT\"\n\t\t\tvalue='" + PROJECT_CABINET + "'>개선 프로젝트</option>"
              "<option id=\"F_LIST_RCB\" value=\"F_LIST_RCB\">휴지통</option></select>main</html>")
 PROPERTY_HTML = ("<html><table><thead><tr><th>소유자<!-- 소유자 --></th><th>최종 수정자</th><th>최종 버전<!-- 최종 버전 --></th></tr>"
                  "</thead><tbody><tr><td>홍길동</td><td>홍길동</td><td>0.3</td> </tr></tbody></table></html>")
+
+
+def _role(role: str, uid: str, name: str) -> dict:
+    """실물 json.do 역할 목록의 한 줄 꼴."""
+    return {"MS_ROLE": role, "MS_OBJECT_ID": uid, "MS_USER_ID": uid, "MS_USER_CLASS": "U", "MS_USER_NAME": name,
+            "MS_DEPT_NAME": "기획그룹", "MS_EMAIL_ID": "mail", "MS_EMPLOYEE_NUMBER": "1"}
+
+
+def property_html(obj: str, drift: dict) -> str:
+    """실물 속성 화면의 꼴 — 숨은 칸(`id = ` 처럼 빈칸 섞임 · 엔티티 든 이름) · 스크립트 갈래 값 · 권한 iframe 주소."""
+    core = "T" if obj == CORE_OBJ else "F"
+    inputs = {"sViewStatus": "EDIT", "MS_ORI_DOC_TITLE": "주간 보고 &amp; 계획", "MS_ORI_SECURITY_LEVEL": "2A",
+              "MS_ORI_RETENTION_PERIOD": "24", "MS_OBJECT_ID": obj, "MS_DOC_ID": "doc" + obj, "MS_COPY_FLAG": "F",
+              "MS_COPY_DOC_SECURITY_LEVEL": "null", "MS_DOC_TITLE": "주간 보고 &amp; 계획", "MS_DOC_EXTENSION": "xlsx",
+              "MS_PROCESS_CODE": "F", "ecm_folder_id": FOLDER, "MS_FOLDER_ID": FOLDER, "MS_FOLDER_PATH": "기획그룹 > 기타",
+              "MS_TAG_LIST": "", "ecm_security_level": "2A", "ecm_open_flag": "F", "MS_DOC_STATUS": "0", "ecm_doc_type": "1",
+              "MS_OWNER_NAME": OWNER, "MS_CABINET_NAME": CABINET, "MS_REG_DATE": "2026-11-06 16:10:29",
+              "MS_CREATE_USER_NAME": OWNER, "MS_CONTENT_SOURCE": "ECM", "ecm_review_status": "0", "ecm_approve_status": "0",
+              "ecm_approve_cnt": "0", "ecm_seculevel_cnt": "0", "ecm_protected_cnt": "0", "ecm_unprotect_cnt": "0",
+              "isChangeRoleInfo": "F", "isChangeOwner": "F", "MS_NEW_OWNER": "", "ecm_EndDate": "0001/01/01",
+              "ecm_workflow_Process": "F", "ecm_workflowApproveUserId": "", "ecm_workflowRequestComment": "",
+              "ecm_workflowNewUserId": "", "ecm_security_approve": "", "ecm_workflow_type": "", "favFolderList": "", **drift}
+    tags = "".join(f'\t<input type="hidden" id = "{k}" name="{k}" \t\tvalue="{v}"/>\n' for k, v in inputs.items())
+    return (f'<html><script>var sysId = "ECM";\nvar companyId = "{COMPANY}";\n\tvar sIsDocTypeCore\t= "{core}";\n'
+            f'\tvar sTagList \t\t= "";\nvar s_IsUseRai\t\t= "F";\n\t\tvar userId    \t= "{OWNER}";</script>{tags}'
+            f'<iframe  src="/ECM/jsp/cabinet/doc/role/roleAssignEdit.jsp?callFrame=docProperty&SYSID=ECM&docUserId={OWNER}'
+            f'&sIsDocTypeCore={core}&sIsDocTypeProtected=F&lockStatus=F&lockOwnerName=&isAesGubun=Y"></iframe></html>')
+
+
+# 화면의 getDocInfoData 가 싣는 칸과 차례 — 실물 속성 화면 스크립트에서 옮긴 견줄 원본(ecm.py 의 상수를 읽어 오지 않는다)
+SCREEN_SAVE_FIELDS = ["SYSID", "sViewStatus", "MS_ORI_DOC_TITLE", "MS_ORI_SECURITY_LEVEL", "MS_ORI_RETENTION_PERIOD", "MS_OBJECT_ID",
+                      "MS_DOC_ID", "MS_COPY_FLAG", "MS_COPY_DOC_SECURITY_LEVEL", "MS_DOC_TITLE", "MS_DOC_EXTENSION",
+                      "MS_PROCESS_CODE", "MS_FOLDER_ID", "MS_FOLDER_PATH", "MS_TAG_LIST", "MS_SECURITY_LEVEL", "MS_OPEN_FLAG",
+                      "MS_DOC_STATUS", "MS_DOC_TYPE", "MS_OWNER_NAME", "MS_CABINET_NAME", "MS_REG_DATE", "MS_CREATE_USER_NAME",
+                      "MS_CONTENT_SOURCE", "ecm_review_status", "ecm_approve_status", "ecm_approve_cnt", "ecm_seculevel_cnt",
+                      "ecm_protected_cnt", "ecm_unprotect_cnt", "isChangeRoleInfo", "isChangeOwner", "MS_NEW_OWNER",
+                      "MS_DUE_DATE", "roleList", "ecm_workflow_Process", "ecm_workflowApproveUserId",
+                      "ecm_workflowRequestComment", "ecm_workflowNewUserId", "ecm_security_approve", "ecm_workflow_type",
+                      "tagList", "favFolderList", "ecm_auto_grant_flag", "ecm_ai_search_flag", "ecm_ori_ai_search_flag"]
 
 
 class Unmeasured(Exception):
@@ -110,6 +162,13 @@ class FakeEcm:
         self.hits: list[tuple[str, str]] = []
         self.bodies: list[str] = []
         self.duplicate = False
+        # 권한 — 문서마다 걸린 역할(실물 json.do 줄 꼴) · 사람 · 부서. 저장 POST 가 roles 를 바꾼다
+        self.roles = {ACCESS_OBJ: [_role("V", MATE, "강동료")], CORE_OBJ: [], APPROVER_OBJ: [_role("A", MATE, "강동료")]}
+        self.people = {MATE: ("강동료", DEPT, "기획그룹", "kang"), MATE2: ("고동료", DEPT, "기획그룹", "ko"),
+                       OTHER: ("강동료", SUB_DEPT, "품질섹션", "kang2"), OWNER: ("나주인", DEPT, "기획그룹", "me")}
+        self.drift: dict = {}      # 저장 뒤 속성 화면의 숨은 칸을 바꿔, 다시 읽기가 다른 속성의 변화를 잡나 잰다
+        self.drift_after_save: dict = {}
+        self.role_answer = None    # 두면 역할 목록 읽기가 이 답을 낸다(목록이 아닌 답을 빈 명단으로 읽나 잰다)
         fake = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -129,9 +188,13 @@ class FakeEcm:
                 parts = urllib.parse.urlsplit(self.path)
                 if parts.path == "/ECM/jsp/main/ecmMain.jsp":
                     return self._send(MAIN_HTML.encode("utf-8"), "text/html;charset=UTF-8")
-                if parts.path == "/ECM/docProperty_simple.do":
-                    return self._send(PROPERTY_HTML.encode("utf-8"), "text/html;charset=UTF-8")
                 q = dict(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
+                if parts.path == "/ECM/docProperty_simple.do":
+                    page = property_html(q.get("DOCID", ""), fake.drift) if q.get("DOCID") in fake.roles else PROPERTY_HTML
+                    return self._send(page.encode("utf-8"), "text/html;charset=UTF-8")
+                if parts.path == "/ECM/json.do":
+                    return self._send(("\r\n\r\n" + json.dumps(fake.json_read(q), ensure_ascii=False)).encode("utf-8"),
+                                      "text/html;charset=UTF-8")
                 body = fake.respond(parts.path, q)
                 self._send(("\n\n\n" + json.dumps(body, ensure_ascii=False)).encode("utf-8"), "text/xml;charset=UTF-8")
 
@@ -152,8 +215,41 @@ class FakeEcm:
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}/ECM"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
+    def json_read(self, q: dict):
+        service = q.get("ServiceName")
+        if service == "DocPropertyHtml-service" and q.get("role") == "true":
+            if self.role_answer is not None:
+                return self.role_answer
+            return self.roles.get(q.get("ECM_DOC_ID", "")[3:]) or None
+        if service == "DocPropertyHtml-service" and q.get("favorite_info") == "true":
+            return [{"MS_FAV_FOLDER_ID": "fav0001"}]
+
+        def person(i):
+            n, code, dept, mail = self.people[i]
+            return {"MS_OBJECT_ID": i, "MS_NAME": n, "MS_DEPT_INFO": dept, "MS_DEPT": code, "MS_EMAIL_ID": mail,
+                    "MS_EMPLOYEE_NUMBER": "1", "MS_COMPANY_NAME": f"{dept} - 회사", "ECM_DEPT_CODE": code, "MS_POSITION_NAME": "일반"}
+        if service == "searchPeople-service":
+            return [person(i) for i in self.people if q.get("value", "") in self.people[i][0]]
+        if service == "searchOrgan2-service" and q.get("search") == "1":
+            hit = q.get("value", "") in "기획그룹"
+            return [{"MS_OBJECT_ID": DEPT, "MS_DEPT_NAME": "기획그룹", "MS_UPPER_DEPT_NAME": "본부", "MS_USER_ID": 3, "MS_CHILD_ID": 1}] if hit else []
+        if service == "searchOrgan2-service" and q.get("getDept") == "1":
+            return [{"MS_OBJECT_ID": SUB_DEPT, "MS_DEPT_NAME": "품질섹션", "MS_UPPER_DEPT_NAME": "기획그룹", "MS_USER_ID": 1,
+                     "MS_CHILD_ID": 0}] if q.get("deptId") == DEPT else []
+        if service == "searchOrgan2-service" and q.get("getUser") == "1":
+            return [person(i) for i in self.people if self.people[i][1] == q.get("deptId")]
+        return None
+
     def respond(self, path: str, q: dict) -> dict:
         service = q.get("ServiceName")
+        if path == "/ECM/ajaxAction.do" and service == "ModifyDocProperty-service":
+            body = dict(urllib.parse.parse_qsl(self.bodies[-1], keep_blank_values=True))
+            rows = re.findall(r"<row><cell></cell><cell>(\w)</cell><cell></cell><cell></cell><cell></cell><cell>(\w+)</cell>"
+                              r"<cell>(\w)</cell>", body["roleList"])
+            obj = body["MS_OBJECT_ID"]
+            self.roles[obj] = [_role(r, i, self.people[i][0]) for r, i, c in rows if c == "U"]   # 부서 줄은 실물처럼 버린다
+            self.drift.update(self.drift_after_save)
+            return {"MB_RTN_VALUE": True, "MS_OBJECT_ID": obj, "MS_MSG_CODE": "MSG_I_0147", "MS_MSG_DESC": "저장 되었습니다."}
         if path == "/ECM/ajaxAction.do" and service == "GetSubNaviMenu-service":
             # 실물 꼴 — MS_MENU_ID 는 <문서함>_<폴더>, MS_HAS_SUB 는 수
             if q.get("menuType") == "MENU_DEPT" and q.get("upperKey") == CABINET:
@@ -479,6 +575,119 @@ def check_register_sends_only_the_screens_two_posts(ecm_mod):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+def check_access_sends_only_the_screens_save_after_the_confirmed_plan(ecm_mod):
+    """권한 — 미리 보기는 서버를 안 바꾸고, 확인 열쇠가 맞을 때만 속성 화면의 저장 POST 하나가 나가며, 그 몸은 화면이 싣는 칸 · 차례와
+    속성 화면의 값 그대로다. 열쇠가 틀리거나 그 사이 명단이 바뀌었거나 안 잰 문서(핵심 · 셋 밖의 역할)면 저장이 안 닿는다."""
+    with stage(ecm_mod) as (fake, box):
+        def saves():
+            return [p for m, p in fake.hits if m == "POST" and "ModifyDocProperty-service" in p]
+
+        # 대조 — 조직은 바로 든 사람으로 펼치고(소유자는 빠진다), 사람으로 짚은 칸이 조직의 칸을 이기고, 거두기가 선다.
+        # 편집 화면은 폴더를 ecm_folder_id 에서, 보안을 ecm_security_level 에서 싣는다 — 옛 값 칸을 다르게 둬 엉뚱한 칸에서 받으면 드러나게 한다
+        fake.drift = {"MS_FOLDER_ID": "fdr00a1b2c3d4ff", "MS_ORI_SECURITY_LEVEL": "2B"}
+        plan = ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("copy", "고동료"), ("read", "org:기획그룹")], revoke=[])
+        assert not saves(), "미리 보기가 저장을 보냈다"
+        assert sorted((g.role, g.id) for g in plan.after) == [("S", MATE2), ("V", MATE)], plan.after
+        assert plan.title == "주간 보고 & 계획.xlsx", plan.title
+        got = ecm_mod.apply_access(box, plan, plan.token)
+        assert sorted((g.role, g.id) for g in got) == [("S", MATE2), ("V", MATE)], got
+        assert len(saves()) == 1, f"저장이 하나로 안 나갔다: {saves()}"
+        assert saves()[0] == "/ECM/ajaxAction.do?ServiceName=ModifyDocProperty-service", saves()
+        raw = fake.bodies[-1]
+        assert [kv.split("=", 1)[0] for kv in raw.split("&")] == SCREEN_SAVE_FIELDS, "저장 몸의 칸 · 차례가 화면과 다르다"
+        body = dict(kv.split("=", 1) for kv in raw.split("&"))
+        assert (body["MS_SECURITY_LEVEL"], body["MS_OPEN_FLAG"], body["MS_FOLDER_ID"], body["MS_OWNER_NAME"], body["isChangeRoleInfo"],
+                body["favFolderList"], body["ecm_security_approve"], body["MS_FOLDER_PATH"]) == \
+               ("2A", "F", FOLDER, OWNER, "TRUE", "fav0001", "", "기획그룹 > 기타"), body
+        assert body["MS_ORI_SECURITY_LEVEL"] == "2B", body
+        fake.drift = {}
+        assert urllib.parse.unquote(body["MS_DOC_TITLE"]) == "주간 보고 & 계획", body["MS_DOC_TITLE"]   # 엔티티를 한 번만 풀고 인코딩한다
+        assert f"<cell>S</cell><cell></cell><cell></cell><cell></cell><cell>{MATE2}</cell><cell>U</cell><cell>{COMPANY}</cell>" in body["roleList"]
+        assert OWNER not in body["roleList"], "소유자를 칸에 넣었다"
+
+        # 아래 부서까지 · 거두기 · 비우기
+        plan = ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("read", "org:" + DEPT)], revoke=["고동료"], with_subs=True)
+        assert sorted((g.role, g.id) for g in plan.after) == [("V", MATE), ("V", OTHER)], plan.after
+        assert [g.id for g in plan.removed] == [MATE2], plan.removed
+        ecm_mod.apply_access(box, plan, plan.token)
+        plan = ecm_mod.plan_access(box, ACCESS_OBJ, clear=True)
+        assert ecm_mod.apply_access(box, plan, plan.token) == [] and len(saves()) == 3, saves()
+
+        # 동명이인은 고르지 않는다 — 이름/메일ID 로 가른다
+        try:
+            ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("read", "강동료")])
+            raise AssertionError("동명이인을 골랐다")
+        except ecm_mod.EcmError as exc:
+            assert "kang2" in str(exc), exc
+        plan = ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("read", "강동료/kang2")])
+        assert [g.id for g in plan.after] == [OTHER], plan.after
+
+        # 막혀야 할 것 — 틀린 열쇠 · 미리 본 뒤 바뀐 명단 · 안 잰 문서 · 다른 칸을 더한 몸. 저장이 서버에 안 닿는다
+        reached = len(saves())
+        try:
+            ecm_mod.apply_access(box, plan, "0" * 12)
+            raise AssertionError("틀린 확인 열쇠로 보냈다")
+        except ecm_mod.EcmError as exc:
+            assert "확인 열쇠" in str(exc), f"틀린 열쇠를 열쇠로 막지 않았다: {exc}"
+        for bad in (                    lambda: (fake.roles.__setitem__(ACCESS_OBJ, [_role("R", MATE2, "고동료")]), ecm_mod.apply_access(box, plan, plan.token)),
+                    lambda: ecm_mod.plan_access(box, CORE_OBJ, grant=[("read", "고동료")]),
+                    lambda: ecm_mod.plan_access(box, APPROVER_OBJ, grant=[("read", "고동료")]),
+                    lambda: box._post({"ServiceName": "ModifyDocProperty-service"}, fake.bodies[-1].replace(
+                        "MS_SECURITY_LEVEL=2A", "MS_SECURITY_LEVEL=3A&MS_RETENTION_PERIOD=1").encode("utf-8")),
+                    lambda: box._post({"ServiceName": "ModifyDocProperty-service"}, fake.bodies[-1].replace(
+                        "</rows>", f"<row><cell></cell><cell>A</cell><cell></cell><cell></cell><cell></cell><cell>{MATE}</cell>"
+                                   f"<cell>U</cell><cell>{COMPANY}</cell></row></rows>").encode("utf-8")),
+                    lambda: box._json({"ServiceName": "DeleteDoc-service", "ECM_DOC_ID": "doc" + ACCESS_OBJ})):
+            try:
+                bad()
+            except ecm_mod.EcmError:
+                continue
+            raise AssertionError("막아야 할 권한 꼴을 보냈다")
+        assert len(saves()) == reached, f"막아야 할 권한 꼴이 서버에 닿았다: {saves()[reached:]}"
+
+        # 저장 뒤 다른 속성이 바뀌면 잡는다
+        fake.roles[ACCESS_OBJ] = []
+        fake.drift_after_save = {"ecm_security_level": "3A"}
+        plan = ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("read", "고동료")])
+        try:
+            ecm_mod.apply_access(box, plan, plan.token)
+            raise AssertionError("저장 뒤 보안등급이 바뀌었는데 섰다고 했다")
+        except ecm_mod.EcmError as exc:
+            assert "ecm_security_level" in str(exc), exc
+        fake.drift_after_save = {}
+
+        # 멈춰야 할 판 — 아무것도 안 짓고 까닭을 낸다. 저장이 서버에 안 닿는다
+        reached = len(saves())
+        def stops(make, word: str, roles=None) -> None:
+            fake.roles[ACCESS_OBJ] = roles if roles is not None else [_role("V", MATE, "강동료")]
+            try:
+                make()
+            except ecm_mod.EcmError as exc:
+                assert word in str(exc), f"멈춘 까닭에 「{word}」 가 없다: {exc}"
+                return
+            raise AssertionError(f"멈춰야 할 판을 지었다({word})")
+        fake.role_answer = {"MB_RTN_VALUE": False, "MS_MSG_CODE": "MSG_E_0001"}   # 목록이 아닌 답 — 빈 명단으로 읽으면 다 지운다
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("read", "고동료")]), "목록이 아니다")
+        fake.role_answer = None
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("read", "고동료")]), "둘 넘게",
+              roles=[_role("R", MATE, "강동료"), _role("V", MATE, "강동료")])
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("read", "고동")]), "고동료")             # 이름 일부만 맞다
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("read", "org:기획")]), DEPT)
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, revoke=["org:G99999"]), "든 사람이 없다")        # 0 명인 부서 코드
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("edit", "고동료"), ("read", "고동료")]), "고르지 않는다")
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("edit", "org:기획그룹"), ("read", "org:" + DEPT)]), "고르지 않는다")
+        mine = [_role("R", OWNER, "나주인"), _role("V", MATE, "강동료")]   # 본인이 공동 편집자로 칸에 든 문서
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, revoke=["나주인"]), "본인", roles=mine)
+        assert len(saves()) == reached, f"멈춰야 할 판이 저장을 보냈다: {saves()[reached:]}"
+
+        # 대조 — 비우기 · 조직으로 빼기도 본인의 줄은 남긴다
+        fake.roles[ACCESS_OBJ] = list(mine)
+        plan = ecm_mod.plan_access(box, ACCESS_OBJ, clear=True)
+        assert [(g.role, g.id) for g in plan.after] == [("R", OWNER)], plan.after
+        plan = ecm_mod.plan_access(box, ACCESS_OBJ, revoke=["org:" + DEPT])
+        assert [(g.role, g.id) for g in plan.after] == [("R", OWNER)], plan.after
+
+
 def check_edit_locks_only_what_checkin_can_upload(ecm_mod):
     """편집 열기 — checkin 이 저장해 올릴 수 없는 꼴(pdf)은 잠금 요청도 기본 앱 적기도 없이 멈추고, 오피스 꼴(docx)은 잠금 요청이
     닿는다. 기본 앱 손은 대역으로 바꿔 이 PC 의 확장자 자리를 안 건드린다."""
@@ -738,6 +947,7 @@ def main(argv: list[str]) -> int:
     print(f"잰다: {tree / 'ecm.py'}")
     checks = [(check_reads_reach_and_changes_never_leave, ecm_mod), (check_edit_locks_only_what_checkin_can_upload, ecm_mod),
               (check_register_sends_only_the_screens_two_posts, ecm_mod),
+              (check_access_sends_only_the_screens_save_after_the_confirmed_plan, ecm_mod),
               (check_existing_choice_is_never_overwritten, app_mod), (check_new_app_toasts_fill_only_the_missing, app_mod)]
     if office:
         checks += [(check_word_closes_only_the_received_document, ecm_mod),

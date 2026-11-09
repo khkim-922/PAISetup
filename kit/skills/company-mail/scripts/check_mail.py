@@ -1,7 +1,7 @@
 """mail.py 의 계약을 가짜 메일함 · 가짜 중계 · 세션 손의 대역으로 잰다 — 127.0.0.1 밖으로는 아무것도 안 나간다.
 
 층 — 쓰는 사람의 계약. 읽는 명령(목록 · 폴더 · 읽기 · 첨부 · 미리 보기)이 **읽음 표시를 바꾸거나 메일을 내보내나** · 확인 열쇠
-없이(또는 미리 본 것과 다른 내용으로) **답장이 나가거나 읽음이 바뀌나** · 답장이 그 메일의 보낸 분 · 받은 분과 제 사본 밖의
+없이(또는 미리 본 것과 다른 내용 · 첨부로) **답장 · 새 메일이 나가거나 읽음이 바뀌나** · 답장이 그 메일의 보낸 분 · 받은 분과 제 사본 밖의
 주소로 가나(본문에 적힌 주소가 받는 사람이 되나) · 바꾸는 손이 그 메일 하나만 바꾸고 다시 읽어 맞았나를 대나 · 세션 손의
 종료 값(0 · 1 · 2 · 3)과 끊긴 메일함 세션을 바르게 갈라 사람을 스킬 ep-login 으로 보내나 · 안 읽음 목록이 받아 온 창만 보고
 「안 읽음 0」이라 하나 · 조직도를 못 받은 새 메일 미리 보기가 받는 사람을 다 「주소록에 없다」로 말하나(사람이 새 메일을
@@ -333,6 +333,29 @@ def check_new_mail_goes_only_with_the_previewed_list():
         assert "주소록에 없다" not in out and "확인 못" in out, f"조직도를 못 받았는데 주소마다 「주소록에 없다」로 냈다:\n{out}"
 
 
+def check_new_mail_attachment_goes_as_previewed():
+    """첨부 — 미리 보기에 이름이 서고 · 미리 본 뒤 파일이 바뀌면 안 나가고 · 본문은 그대로 둔 채 확인한 판의 바이트가 붙는다."""
+    sheet = WORK / "보고서.html"
+    sheet.write_text("<p>첫 판</p>", encoding="utf-8")
+    with stage() as (_, relay, run):
+        args = ("--subject", "주간 보고", "--body-file", body_file("보고서를 붙입니다."), "--attach", str(sheet), "--to", PEER[1])
+        code, out = run("preview-new", *args)
+        assert code == 0 and not relay.mails, out
+        assert "첨부 1 개" in out and "보고서.html" in out, f"첨부 이름을 미리 보기에 안 세웠다:\n{out}"
+        good = key(out)
+        sheet.write_text("<p>바뀐 판</p>", encoding="utf-8")
+        code, out = run("send-new", *args, "--confirm", good)
+        assert code == mail.EXIT_STALE and not relay.mails, f"미리 본 뒤 바뀐 첨부가 같은 열쇠로 나갔다:\n{out}"
+        code, out = run("preview-new", *args)
+        code, out = run("send-new", *args, "--confirm", key(out))
+        assert code == 0 and len(relay.mails) == 1, out
+        msg = email.message_from_bytes(relay.mails[0]["data"], policy=email.policy.default)
+        assert "보고서를 붙입니다." in msg.get_body(("plain",)).get_content(), "첨부를 붙이자 본문이 바뀌었다"
+        files = list(msg.iter_attachments())
+        assert [f.get_filename() for f in files] == ["보고서.html"], [f.get_filename() for f in files]
+        assert files[0].get_payload(decode=True) == sheet.read_bytes(), "첨부가 확인한 판의 바이트가 아니다"
+
+
 def check_unread_list_looks_past_the_window():
     """안 읽음 목록 — 받아 온 창 밖의 안 읽음도 세고 훑은 줄 수를 댄다 · 보낸편지함 · 임시보관함과는 안 받는다."""
     with stage() as (box, _, run):
@@ -363,10 +386,57 @@ def check_reply_all_takes_the_mails_own_people():
         assert sorted(relay.mails[0]["rcpts"]) == sorted([PEER[1], "jm.song@nuri.example", ME]), relay.mails[0]["rcpts"]
 
 
+def check_sender_comes_from_the_session_owner():
+    """보내는 사람을 안 주면 세션 주인 — 메일함 파일 번호(사번)로 주소록의 한 사람만 · 번호가 없거나 못 찾으면 멈춘다."""
+    with stage() as (box, relay, run):
+        os.environ["MAIL_DEFAULT_SENDER"] = ""
+        args = ("--subject", "x", "--body-file", body_file("네."), "--to", PEER[1])
+        code, out = run("preview-new", *args)
+        assert code == 0 and f"보내는 사람: {ME}" in out, f"세션 주인의 주소를 보내는 사람으로 못 받았다:\n{out}"
+        code, out = run("send-new", *args, "--confirm", key(out))
+        assert code == 0 and relay.mails and ME in relay.mails[0]["rcpts"], out
+        code, out = run("preview-reply", U["alone"], "--body-file", body_file("네."))
+        assert code == 0 and f"보내는 사람: {ME}" in out, f"답장의 보내는 사람을 세션으로 못 받았다:\n{out}"
+        # 번호가 주소록의 누구도 아닌 메일함 · 번호 없는 메일함 — 남의 주소를 짓지 않고 멈춘다
+        for url in (box.url.replace(fakes_inbox.DB, "/02/mail2/999999.nsf"), box.url.replace(fakes_inbox.DB, "/mail/dhpark.nsf")):
+            code, out = run("--url", url, "preview-new", *args)
+            assert code == mail.EXIT_CONFIG and "--from" in out, f"사번을 못 이었는데 보내는 사람을 세웠다({url}):\n{out}"
+        assert len(relay.mails) == 1, "멈춰야 할 판에 메일이 나갔다"
+
+
+def check_html_file_goes_as_is():
+    """--html-file 은 그 HTML 을 손대지 않고 싣는다 · 미리 보기는 뽑은 글자 · 열쇠는 HTML 의 지문이다."""
+    page = WORK / "page.html"
+    markup = "<html><head><style>.t{color:#c00}</style></head><body><p class=\"t\">분기 <b>실적</b> 요약</p></body></html>"
+    page.write_text(markup, encoding="utf-8")
+    with stage() as (_, relay, run):
+        args = ("--subject", "요약", "--html-file", str(page), "--to", PEER[1])
+        code, out = run("preview-new", *args)
+        assert code == 0 and "분기 실적 요약" in out and "<style>" not in out, f"미리 보기가 HTML 에서 뽑은 글자가 아니다:\n{out}"
+        good = key(out)
+        page.write_text(markup.replace("실적", "손익"), encoding="utf-8")
+        code, out = run("send-new", *args, "--confirm", good)
+        assert code == mail.EXIT_STALE and not relay.mails, f"미리 본 뒤 바뀐 HTML 이 같은 열쇠로 나갔다:\n{out}"
+        page.write_text(markup, encoding="utf-8")
+        code, out = run("send-new", *args, "--confirm", good)
+        assert code == 0 and len(relay.mails) == 1, out
+        msg = email.message_from_bytes(relay.mails[0]["data"], policy=email.policy.default)
+        html = msg.get_body(("html",)).get_content().strip()
+        assert html == markup, f"HTML 이 그대로 안 나갔다:\n{html}"
+        assert "분기 실적 요약" in msg.get_body(("plain",)).get_content(), "평문 짝이 HTML 에서 뽑은 글자가 아니다"
+        with contextlib.redirect_stderr(io.StringIO()):
+            try:
+                code, out = run("preview-new", *args[:2], "--html-file", str(page), "--body-file", body_file("x"), "--to", PEER[1])
+            except SystemExit as exc:   # argparse 가 둘을 함께 받기를 거절한다
+                code, out = exc.code, ""
+        assert code != 0 and "확인 열쇠" not in out, "평문 · HTML 글을 함께 받았다"
+
+
 def check_reply_needs_sender_and_body():
     with stage() as (_, relay, run):
         os.environ["MAIL_DEFAULT_SENDER"] = ""
-        code, out = run("preview-reply", U["alone"], "--body-file", body_file("네."))
+        code, out = run("--url", os.environ["MAILBOX_URL"].replace(fakes_inbox.DB, "/02/mail2/999999.nsf"),
+                        "preview-reply", U["alone"], "--body-file", body_file("네."))
         assert code == mail.EXIT_CONFIG and "보내는 사람" in out, out
         os.environ["MAIL_DEFAULT_SENDER"] = ME
         code, out = run("preview-reply", U["alone"], "--body-file", body_file("  \n"))

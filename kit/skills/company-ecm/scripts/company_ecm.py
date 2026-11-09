@@ -4,8 +4,8 @@
 
     python -X utf8 <이 스킬>/scripts/company_ecm.py <명령> [인자…]   # 명령 · 인자는 곁의 ecm.py 의 것 그대로(--help)
 
-세션이 드는 명령(session · cabinets · folders · list · count · version · open · read · edit · checkin · register) 가운데 읽는 것은
-세션 파일이 이미 있으면 그것으로 먼저 돌고 ECM 이 끊겼다고 할 때만, 잠그거나 올리는 것(``MUTATING``)은 늘, 형제 스킬
+세션이 드는 명령(``NEEDS_SESSION``) 가운데 읽는 것은
+세션 파일이 이미 있으면 그것으로 먼저 돌고 ECM 이 끊겼다고 할 때만, 잠그거나 올리거나 권한을 바꾸는 것(``MUTATING``)은 늘, 형제 스킬
 ep-login 의 받는 손을 ``ecm`` 으로 말없이 돌린다(까닭과 바퀴는 그 폴더 ``ep_session.session_first`` 의 머리말). 쓰는 사람의 Edge 가 디버깅 포트로 떠 있고 로그인돼 있으면 그 손이 ECM 쿠키를
 세션 파일에 맞추고(``ecm`` 만 재므로 메일 쪽 Domino 세션은 안 본다), 끝 줄에 그 파일의 절대 경로를 낸다 — 그 경로를 ``ecm.py`` 에 ``--session`` 으로 넘긴다. 세션 파일의 기본 자리는 받는 손만 든다.
 
@@ -33,8 +33,9 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
-NEEDS_SESSION = ("session", "cabinets", "folders", "list", "count", "version", "open", "read", "edit", "checkin", "register")
-MUTATING = ("edit", "checkin", "register")      # 서버를 잠그거나 판을 올린다 — 세션 손부터 받아 한 번만 돈다
+NEEDS_SESSION = ("session", "cabinets", "folders", "list", "count", "version", "open", "read", "edit", "checkin", "register",
+                 "access", "who", "preview-access", "apply-access")
+MUTATING = ("edit", "checkin", "register", "apply-access")   # 서버를 잠그거나 판 · 권한을 바꾼다 — 세션 손부터 받아 한 번만 돈다
 
 
 class SessionGone(Exception):

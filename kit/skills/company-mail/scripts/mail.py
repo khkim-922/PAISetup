@@ -8,7 +8,7 @@
         preview-new   → send-new        새 메일 — 같은 꼴
         preview-mark  → apply-mark      읽음으로 · 안 읽음으로 — 같은 꼴
 
-    확인 열쇠는 미리 보인 그 내용(보내는 사람 · 받는 사람 · 참조 · 숨은참조 · 제목 · 본문)의 지문이다. 실행 명령은 같은
+    확인 열쇠는 미리 보인 그 내용(보내는 사람 · 받는 사람 · 참조 · 숨은참조 · 제목 · 본문 · 첨부의 이름과 바이트)의 지문이다. 실행 명령은 같은
     인자로 내용을 다시 지어 지문이 같을 때만 보낸다 — 사람이 본 것과 다른 것이 나가지 않는다. 사람에게 묻는 일은 이
     파일이 아니라 부르는 쪽(SKILL.md 의 절차)이 한다.
 
@@ -34,10 +34,12 @@
     org-groups 갈래 [그룹 이름]                    배포그룹(직책 · 직급 · 지역) 목록, 이름을 주면 그 구성원
     read UNID [--folder 경로] [--max-chars N]     머리 · 본문(글자로 푼 것) · 첨부 목록
     attachment UNID [--save 번호|all] [--out 폴더] [--folder 경로]
-    preview-reply UNID --body-file 파일 [--all] [--cc 주소 ...] [--to 주소] [--no-quote] [--from 주소] [--folder 경로]
+    preview-reply UNID --body-file 파일|--html-file 파일 [--all] [--cc 주소 ...] [--to 주소] [--no-quote] [--from 주소] [--folder 경로]
     send-reply    UNID (preview-reply 와 같은 인자) --confirm 열쇠
-    preview-new --subject 제목 --body-file 파일 --to 주소 ... [--to-file 파일] [--cc 주소 ...] [--cc-file 파일]
-                [--bcc 주소 ...] [--from 주소]      새 메일 미리 보기 — 받는 사람을 다 펼쳐 주소록의 이름 · 부서와 함께 보인다
+    preview-new --subject 제목 --body-file 파일|--html-file 파일 --to 주소 ... [--to-file 파일] [--cc 주소 ...] [--cc-file 파일]
+                [--bcc 주소 ...] [--attach 파일 ...] [--from 주소]
+                                                  새 메일 미리 보기 — 받는 사람을 다 펼쳐 주소록의 이름 · 부서와 함께 보인다.
+                                                  --attach 는 파일로 붙인다(이름 · 크기가 미리 보기에 선다)
     send-new    (preview-new 와 같은 인자) --confirm 열쇠
     preview-mark  UNID --read|--unread [--folder 경로]
     apply-mark    UNID --read|--unread --confirm 열쇠 [--folder 경로]
@@ -45,7 +47,14 @@
     메일 손은 이 파일 곁에, 세션 손은 형제 스킬 ep-login 의 ``scripts/`` 에 있다 — 그 폴더의 ``ep_session.py`` 가 받는 손을
     돌려 종료 값 · 세션 파일을 낸다(검사가 대역을 세울 때만 ``EP_SESSION_HAND``). 메일함 주소는 ``--url`` · ``MAILBOX_URL`` 순이고, 둘 다 없으면 세션으로
     받는다 — 메일 서버(``MAIL_SERVER`` · 기본 ``DEFAULT_MAIL_SERVER``) 첫 화면이 그 세션 주인의 메일함을 댄다
-    (``inbox.discover_mailbox``). 사람에게 묻지 않는다. 보내는 사람은 ``--from`` 이나 ``MAIL_DEFAULT_SENDER`` 다.
+    (``inbox.discover_mailbox``). 사람에게 묻지 않는다. 보내는 사람은 ``--from`` · ``MAIL_DEFAULT_SENDER`` 순이고, 둘 다 없으면
+    세션으로 받는다 — 메일함 파일 번호(``…/<번호>.nsf``)가 그 주인의 사번이라 주소록에 그 사번으로 묻고, 퇴직자가 아닌 한 사람이
+    나올 때만 그 메일을 쓴다(``session_sender``). 0 명 · 둘 넘게면 멈추고 ``--from`` 을 청한다.
+
+글
+    ``--body-file`` 은 UTF-8 평문이라 줄바꿈만 살려 HTML 로 싸고, ``--html-file`` 은 그 HTML 을 손대지 않고 본문으로 싣는다
+    (아뜰리에가 지은 메일 지면처럼 서식이 든 글). HTML 을 못 그리는 받는 쪽이 볼 평문 짝과 미리 보기의 글은 그 HTML 에서 뽑은
+    글자다. 확인 열쇠는 어느 쪽이든 나갈 HTML 전체의 지문이다. 웹메일이 ``<style>`` 블록까지 그리는 것은 회사에서 한 통으로 쟀다.
 
 세션
     읽는 명령은 세션 파일이 이미 있으면 그것으로 먼저 돌고 메일함이 거절할 때만, 바꾸는 명령(``MUTATING``)은 늘, 세션 손
@@ -95,6 +104,7 @@ EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 �
 HWP_EXTS = {"hwp", "hwpx"}
 
 EXIT_OK, EXIT_FAIL, EXIT_CONFIG, EXIT_SESSION, EXIT_STALE = 0, 1, 2, 3, 4
+MAILFILE_NUMBER = re.compile(r"/(\d+)\.nsf$", re.IGNORECASE)   # 메일함 파일 번호 = 그 주인의 사번(회사에서 잼 · <사번>.nsf)
 
 DEFAULT_SCAN = 300            # 메일 하나를 unid 로 찾을 때 첫 판에 보기마다 훑는 새것의 줄 수 — 없으면 그 보기들을 끝까지 훑는다
 DEEP_PAGE = 1000              # 끝까지 훑을 때 한 번에 받는 줄 — 서버가 보기 count 를 1000에서 자른다(inbox.py 머리말)
@@ -549,17 +559,52 @@ def reply_subject(subject: str) -> str:
     return s if s[:3].upper() in REPLY_MARKS[:2] or s.startswith(REPLY_MARKS[2]) else f"{REPLY_PREFIX}{s}"
 
 
+def session_sender(args, box) -> str:
+    """보내는 사람 — ``--from`` · ``MAIL_DEFAULT_SENDER`` 순, 둘 다 없으면 세션 주인을 주소록에서 사번으로 찾는다(머리말).
+
+    ``box`` 는 열린 메일함이거나 None — None 이면 그때만 연다(주소를 받은 새 메일은 메일함을 안 연다).
+    """
+    given = (args.sender or os.environ.get("MAIL_DEFAULT_SENDER", "")).strip()
+    if given:
+        return given
+    if box is None:
+        box = open_mailbox(args, load_hands()[0])
+    found = MAILFILE_NUMBER.search(getattr(args, "mailbox_url", "") or "")
+    ask = "쓰는 사람 제 메일 주소를 --from 으로 준다"
+    if not found:
+        raise Stop(EXIT_CONFIG, f"보내는 사람을 세션으로 못 받았다 — 메일함 주소에 파일 번호가 없다. {ask}")
+    empno = found.group(1)
+    company = (getattr(args, "company", "") or os.environ.get("MAIL_COMPANY", "").strip() or DEFAULT_COMPANY).strip()
+    people = [p for p in box.find_exact(empno, company) if p.empno.strip() == empno and not p.retired and p.email]
+    if len(people) != 1:
+        raise Stop(EXIT_CONFIG, f"보내는 사람을 세션으로 못 받았다 — 주소록에 사번 {empno} 인 사람이 {len(people)} 명이다. {ask}")
+    return people[0].email.strip()
+
+
+def read_body(args, word: str) -> tuple[str, str, bool]:
+    """글 파일 — (나갈 HTML, 평문, HTML 파일이었나). 평문은 줄바꿈만 살려 싸고, HTML 은 그대로 싣고 평문을 거기서 뽑는다."""
+    path = pathlib.Path(args.html_file or args.body_file).expanduser()
+    if not path.is_file():
+        raise Stop(EXIT_CONFIG, f"{word} 파일이 없다: {path}")
+    raw = path.read_text(encoding="utf-8").strip()
+    text = html_to_text(raw) if args.html_file else raw
+    if not raw or not text:
+        raise Stop(EXIT_CONFIG, f"{word}이 비었다")
+    if args.html_file:
+        return raw, text, True
+    return "<div>" + html_lib.escape(raw).replace("\n", "<br>") + "</div>", raw, False
+
+
+def show_body(plan: dict, word: str) -> None:
+    print(f"--- {word}" + (" — HTML 그대로 나간다 · 아래는 거기서 뽑은 글자다. 모양은 그 파일을 브라우저로 열어 본다"
+                          if plan["is_html"] else "") + " ---")
+    print(plan["body"])
+
+
 def plan_reply(args, box, inbox, mailer) -> dict:
     """보낼 답장을 짓는다 — 보내지 않는다. 같은 인자 · 같은 메일함이면 같은 것을 낸다(확인 열쇠가 그 위에 선다)."""
-    sender = (args.sender or os.environ.get("MAIL_DEFAULT_SENDER", "")).strip()
-    if not sender:
-        raise Stop(EXIT_CONFIG, "보내는 사람이 없다 — 쓰는 사람 제 메일 주소를 --from 이나 MAIL_DEFAULT_SENDER 로 준다")
-    body_file = pathlib.Path(args.body_file).expanduser()
-    if not body_file.is_file():
-        raise Stop(EXIT_CONFIG, f"답장 글 파일이 없다: {body_file}")
-    body = body_file.read_text(encoding="utf-8").strip()
-    if not body:
-        raise Stop(EXIT_CONFIG, "답장 글이 비었다")
+    body_html, body, is_html = read_body(args, "답장 글")
+    sender = session_sender(args, box)
     e = find_mail(box, inbox, args.unid, args.folder, args.scan)
     if e.folder == SENT:
         raise Stop(EXIT_CONFIG, "보낸편지함의 메일이다 — 제가 보낸 메일에는 답장하지 않는다. 받는 분께 다시 쓰려면 사람에게 묻는다")
@@ -590,9 +635,8 @@ def plan_reply(args, box, inbox, mailer) -> dict:
         quote_text = "\n\n" + "\n".join(head) + "\n\n" + original_text
         quote_html = ("<br><br><div>" + "<br>".join(html_lib.escape(h) for h in head) + "</div><br>"
                       + (original if original is not None else html_lib.escape(original_text).replace("\n", "<br>")))
-    body_html = html_lib.escape(body).replace("\n", "<br>")
     return {"sender": sender, "to": to, "cc": cc, "bcc": [sender], "subject": reply_subject(e.subject),
-            "html": f"<div>{body_html}</div>{quote_html}", "text": body + quote_text,
+            "html": f"{body_html}{quote_html}", "text": body + quote_text, "is_html": is_html,
             "body": body, "quoted": len(quote_text), "missing": missing, "mail": e}
 
 
@@ -617,8 +661,7 @@ def cmd_preview_reply(args, inbox, mailer):
     for m in plan["missing"]:
         print(f"⚠ 주소가 없어 빠진다: {m}")
     print(f"제목: {plan['subject']}")
-    print("--- 답장 글 ---")
-    print(plan["body"])
+    show_body(plan, "답장 글")
     print("---" + (f" 아래에 원래 메일을 인용한다({plan['quoted']}자)" if plan["quoted"] else " 인용 없음"))
     print(f"확인 열쇠: {reply_token(plan)}")
     print("사람이 이 내용 그대로 보내자고 하면 같은 인자에 send-reply · --confirm <열쇠> 로 보낸다.")
@@ -666,35 +709,35 @@ def addresses(values, files) -> list[str]:
 
 
 def plan_new(args) -> dict:
-    """보낼 새 메일을 짓는다 — 보내지 않는다. 같은 인자면 같은 것을 낸다(확인 열쇠가 그 위에 선다)."""
-    sender = (args.sender or os.environ.get("MAIL_DEFAULT_SENDER", "")).strip()
-    if not sender:
-        raise Stop(EXIT_CONFIG, "보내는 사람이 없다 — 쓰는 사람 제 메일 주소를 --from 이나 MAIL_DEFAULT_SENDER 로 준다")
+    """보낼 새 메일을 짓는다 — 보내지 않는다. 같은 인자 · 같은 세션이면 같은 것을 낸다(확인 열쇠가 그 위에 선다)."""
     subject = (args.subject or "").strip()
     if not subject:
         raise Stop(EXIT_CONFIG, "제목이 없다 — --subject 로 준다")
-    body_file = pathlib.Path(args.body_file).expanduser()
-    if not body_file.is_file():
-        raise Stop(EXIT_CONFIG, f"메일 글 파일이 없다: {body_file}")
-    body = body_file.read_text(encoding="utf-8").strip()
-    if not body:
-        raise Stop(EXIT_CONFIG, "메일 글이 비었다")
+    html, body, is_html = read_body(args, "메일 글")
+    files = []
+    for raw in args.attach or ():
+        path = pathlib.Path(raw).expanduser()
+        if not path.is_file():
+            raise Stop(EXIT_CONFIG, f"첨부할 파일이 없다: {path}")
+        files.append((path.name, path.read_bytes()))
     to = addresses(args.to, args.to_file)
     if not to:
         raise Stop(EXIT_CONFIG, "받는 사람이 없다 — --to 나 --to-file 로 준다")
+    sender = session_sender(args, None)
     taken = {a.casefold() for a in to}
     cc = [a for a in addresses(args.cc, args.cc_file) if a.casefold() not in taken]
     taken |= {a.casefold() for a in cc}
     bcc = [a for a in addresses(args.bcc, None) if a.casefold() not in taken]
     if sender.casefold() not in taken | {a.casefold() for a in bcc}:
         bcc.append(sender)   # 제 사본 — 사내 중계로 보낸 메일은 보낸편지함에 안 남는다
-    body_html = html_lib.escape(body).replace("\n", "<br>")
     return {"sender": sender, "to": to, "cc": cc, "bcc": bcc, "subject": subject,
-            "html": f"<div>{body_html}</div>", "text": body, "body": body}
+            "html": html, "text": body, "body": body, "is_html": is_html, "attachments": files}
 
 
 def new_token(plan: dict) -> str:
-    return token("new", plan["sender"], plan["to"], plan["cc"], plan["bcc"], plan["subject"], plan["html"])
+    # 첨부는 이름과 바이트의 지문으로 든다 — 미리 본 뒤 파일이 바뀌면 열쇠가 달라져 안 나간다
+    files = [(name, hashlib.sha256(data).hexdigest()) for name, data in plan["attachments"]]
+    return token("new", plan["sender"], plan["to"], plan["cc"], plan["bcc"], plan["subject"], plan["html"], files)
 
 
 def label_people(args, inbox, mails) -> tuple[dict | None, str]:
@@ -738,9 +781,12 @@ def cmd_preview_new(args, inbox, mailer):
     if outside:
         print(f"⚠ 주소록에 없는 주소 {len(outside)} 개 — 사외 주소 · 부서 주소 · 퇴직자 · 오타일 수 있다: {', '.join(outside)}")
     print(f"제목: {plan['subject']}")
-    print("--- 메일 글 ---")
-    print(plan["body"])
+    show_body(plan, "메일 글")
     print("---")
+    if plan["attachments"]:
+        print(f"첨부 {len(plan['attachments'])} 개:")
+        for i, (name, data) in enumerate(plan["attachments"], 1):
+            print(f"  {i}. {name} · {max(1, len(data) // 1024)}KB")
     print(f"확인 열쇠: {new_token(plan)}")
     print("사람이 이 명단 · 내용 그대로 보내자고 하면 같은 인자에 send-new · --confirm <열쇠> 로 보낸다.")
 
@@ -752,7 +798,7 @@ def cmd_send_new(args, inbox, mailer):
     envelope = len(plan["to"]) + len(plan["cc"]) + len(plan["bcc"])
     try:
         mailer.send(plan["subject"], to=plan["to"], cc=plan["cc"], bcc=plan["bcc"], sender=plan["sender"],
-                    html=plan["html"], text=plan["text"])
+                    html=plan["html"], text=plan["text"], attachments=plan["attachments"])
     except mailer.MailRefused as exc:
         some = len(exc.refused) < envelope
         raise Stop(EXIT_FAIL, f"중계가 받는 분을 거절했다: {', '.join(exc.refused)} — "
@@ -1001,24 +1047,29 @@ def parser() -> argparse.ArgumentParser:
     q.add_argument("--out", default=None, help="받을 폴더 — 없으면 임시 폴더 아래")
     for name, fn in (("preview-reply", cmd_preview_reply), ("send-reply", cmd_send_reply)):
         q = one(name, fn)
-        q.add_argument("--body-file", required=True, help="답장 글(UTF-8 평문)")
+        way = q.add_mutually_exclusive_group(required=True)
+        way.add_argument("--body-file", help="답장 글(UTF-8 평문)")
+        way.add_argument("--html-file", help="답장 글(UTF-8 HTML) — 그대로 싣는다")
         q.add_argument("--all", action="store_true", help="전체 답장 — 이 메일의 받은 분들을 참조로")
         q.add_argument("--cc", action="append", help="사람이 대화에서 준 참조 주소")
         q.add_argument("--to", default=None, help="보낸 분 주소를 못 찾았을 때 사람이 준 받는 분")
         q.add_argument("--no-quote", action="store_true", help="원래 메일을 인용하지 않는다")
-        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER")
+        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER, 그것도 없으면 세션 주인")
         if name == "send-reply":
             q.add_argument("--confirm", required=True, help="preview-reply 가 낸 확인 열쇠")
     for name, fn in (("preview-new", cmd_preview_new), ("send-new", cmd_send_new)):
         q = one(name, fn, mail=False)
         q.add_argument("--subject", required=True, help="제목")
-        q.add_argument("--body-file", required=True, help="메일 글(UTF-8 평문)")
+        way = q.add_mutually_exclusive_group(required=True)
+        way.add_argument("--body-file", help="메일 글(UTF-8 평문)")
+        way.add_argument("--html-file", help="메일 글(UTF-8 HTML) — 그대로 싣는다")
+        q.add_argument("--attach", action="append", help="붙일 파일(여러 번) — 미리 보기에 이름 · 크기가 서고 열쇠가 바이트를 든다")
         q.add_argument("--to", action="append", help="받는 사람 주소(여러 번 · 쉼표로 여럿)")
         q.add_argument("--to-file", action="append", help="받는 사람 주소 파일 — 한 줄에 하나")
         q.add_argument("--cc", action="append", help="참조 주소")
         q.add_argument("--cc-file", action="append", help="참조 주소 파일")
         q.add_argument("--bcc", action="append", help="숨은참조 주소 — 제 사본은 늘 붙는다")
-        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER")
+        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER, 그것도 없으면 세션 주인")
         q.add_argument("--company", default="", help="주소록 이름을 붙일 회사 값")
         if name == "send-new":
             q.add_argument("--confirm", required=True, help="preview-new 가 낸 확인 열쇠")
