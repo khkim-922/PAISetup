@@ -48,14 +48,14 @@
 #     안 건다(「자동 실행을 켜나」 칸). 설치본도 `#update-repo` 의 최신 릴리스로 간다(「마무리」의 「설치본 자신을 새 릴리스로 간다」 칸).
 #   `-GhLoginOnly <결과 파일>` — 사람이 주는 칸이 아니다. 「프로그램」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
 #     (`Start-GhLoginChild`). 자식은 라이브러리만 읽고 빗장 앞에서 GitHub 로그인 창 하나를 띄운 뒤 결과를 그 파일에 적고 나간다.
-#   `-DesktopAppOnly <요청 파일>` — 사람이 주는 칸이 아니다. 「데스크탑 앱」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
-#     (`Start-DesktopAppChild`). 자식은 라이브러리만 읽고 빗장 앞에서 그 파일이 고른 데스크탑 앱 하나를 깐 뒤 결과를 파일에 적고 나간다.
+#   `-RowOnly <요청 파일>` — 사람이 주는 칸이 아니다. 「데스크탑 앱」 · 「CLI」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
+#     (`Start-RowChild`). 자식은 라이브러리만 읽고 빗장 앞에서 그 파일이 고른 표의 한 행을 깐 뒤 결과를 파일에 적고 나간다.
 # ⚠ **`install.cmd` 에 한글을 넣지 않는다.** cmd.exe 는 배치 파일을 콘솔 OEM 코드페이지(한국은 cp949)로 읽어, UTF-8 한글이
 #   어긋나면 `rem` 이 안 잡히고 깨진 글자가 **명령으로 실행된다.** 그 파일의 설명은 BOM 이 붙은 이 파일이 든다.
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
       [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun, [string]$GhLoginOnly,
-      [switch]$ChoicesFull, [switch]$DevTools, [string]$DesktopAppOnly)
+      [switch]$ChoicesFull, [switch]$DevTools, [string]$RowOnly)
 
 $ErrorActionPreference = 'Stop'
 
@@ -291,7 +291,11 @@ $Clis = @(
   @{ Key='codex';  Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
   # `Cmd` 는 winget 매니페스트의 `Commands:` 가 정한다 — winget 이 받은 `cli_windows_x64.exe` 를 `agy` 로 세워 제 패키지 자리
   #   (`…\WinGet\Packages\Google.AntigravityCLI_…\agy.exe`)에 두고 그 자리를 사용자 PATH 에 심는다.
-  @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'
+  # `Back` — 「CLI」 걸음이 이 행을 숨은 자식(`Start-RowChild`)으로 띄워 두고 「Claude 플러그인」 걸음 끝에서 거둔다. 회사 영속 PC 에서
+  #   이 한 행이 550초 넘게 걸렸고(2026-11-09), 그 사이 뒤 걸음은 `agy` 를 안 부른다 — 회사 설정 · 훅 · 허용 규칙은 파일만 쓴다.
+  #   이 칸을 다는 행의 조건: 뒤 걸음이 그 명령을 안 부르고, 설정 저장소의 세션 훅이 같은 도구를 따로 깔지 않는다(lychee 는 훅이
+  #   winget 사본이 없으면 제 사본을 깐다). 기계 범위 행도 된다 — 승인 문은 자식이 부모와 같은 답을 낸다(요청의 `Yes` · `NoLaunch`).
+  @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'; Back=$true
      Id='Google.AntigravityCLI'; Upgrade = @{ Via = 'updater'; Args = @('update') } }
   # 이 줄은 자리를 안 가린다(결정 0045 · 0093) — 사내에서 안 까는 것은 제품 표의 `When` 이 든다. Codex · Copilot 맡기기가 Copilot 을
   #   쓰나는 자리 값 `CC_BG_AGENTS` 를 읽는 래퍼의 몫이다. winget 의 `GitHub.Copilot` 은 이름이 비슷한 딴 물건이라 npm 꾸러미로 받는다.
@@ -333,8 +337,10 @@ $Clis = @(
   #   winget 은 느린 미러에 걸리면 수백 MB 를 10분 가까이 받는다. 판은 `stable/` 의 가장 높은 판 폴더다 — winget 목록이 대는 판과 같다.
   #   winget 매니페스트가 VC++ 런타임을 짝으로 들어, 벤더 MSI 도 그 런타임이 선 PC 에서만 간다(`NeedsVcRuntime`). 깔린 것을 올리는 일은
   #   winget 이 든다(기계 범위).
+  #   `Back` — 수백 MB 를 받는 자리라 안티그래비티 CLI 처럼 뒤에서 깐다(그 줄의 곁말). 뒤 걸음은 `soffice` 를 안 부르고, 폴더(`PathDir`)는
+  #   거둔 뒤의 마무리가 심는다. 승인 창이 뜨는 PC 면 띄울 때 그 말을 한 줄 미리 한다(「CLI」 걸음).
   @{ Key='libreoffice'; Via='winget'; Cmd='soffice.com'; Label='LibreOffice (덱을 그림으로)'; Id='TheDocumentFoundation.LibreOffice'
-     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude')
+     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude'); Back=$true
      Ways=@(@{ Via='vendor'; Read='listing'; List='https://download.documentfoundation.org/libreoffice/stable/'
                Url='https://download.documentfoundation.org/libreoffice/stable/{ver}/win/x86_64/LibreOffice_{ver}_Win_x86-64.msi'
                Mirrors='metalink'; Msi=$true; SilentArgs='/quiet /norestart'; NeedsVcRuntime=$true; Signer='The Document Foundation' }
@@ -442,7 +448,7 @@ $TlsHosts = @(
 # `Requires` — 짝으로 먼저 깔 런타임. winget 매니페스트의 `Dependencies` 가 비어 winget 이 안 챙기는 자리를 우리가 챈다.
 #   공용 목록(`$Apps`)에 안 넣어 그 앱을 고른 사람만 받는다.
 # `Front` — 「데스크탑 앱」 걸음이 이 행을 설치 창에서 깐다. 설치가 사람이 누를 창으로 넘어갈 수 있는 행이다 — 그 안내 줄은 창이
-#   뜨는 때 서야 한다. 안 적은 행은 숨은 자식(`Start-DesktopAppChild`)으로 다른 행과 동시에 깔고 그 걸음 끝에서 화면 줄을 거둔다.
+#   뜨는 때 서야 한다. 안 적은 행은 숨은 자식(`Start-RowChild`)으로 다른 행과 동시에 깔고 그 걸음 끝에서 화면 줄을 거둔다.
 # Claude 데스크탑의 판 없는 MSIX 주소 — 최신 판의 MSIX 파일로 넘긴다. Claude 행의 벤더 길(판 읽기 · 곁의 Squirrel 설치본)과 MSIX 꼴로 선
 #   PC 의 올리기(`Upgrade.Msix`)가 같이 읽는다.
 $ClaudeMsixLatest = 'https://claude.ai/api/desktop/win32/x64/msix/latest/redirect'
@@ -923,7 +929,7 @@ function Format-VerPart([string]$Ver) {
   return '(버전 확인 안 됨)'
 }
 
-# ── winget 은 이 PC 에서 한 번에 하나 — 설치 몸통과 그 몸통이 띄운 데스크탑 앱 자식(`-DesktopAppOnly`)이 같은 이름의 빗장을 쥔다 ─────────
+# ── winget 은 이 PC 에서 한 번에 하나 — 설치 몸통과 그 몸통이 띄운 행 자식(`-RowOnly` — 데스크탑 앱 · CLI)이 같은 이름의 빗장을 쥔다 ─────────
 # winget 둘이 겹쳐 도는 것은 winget 이 약속하지 않는 꼴이다 — 소스 색인 · 받아 둔 설치본 자리를 같이 쓴다. 그래서 winget 을 부르는 두
 #   러너(`Invoke-Logged` · `Invoke-LoggedCapped`)가 부르기 앞에서 이 빗장을 쥐고 끝나면 놓는다 — 울타리 초는 쥔 뒤부터 센다. winget 이 아닌
 #   부름은 이 두 손을 안 부른다.
@@ -1196,8 +1202,9 @@ function Stop-ProbeTree([Diagnostics.Process]$Proc) {
 }
 
 # ── 백그라운드 부름 — 띄워 두고 뒤 걸음을 잇다가, 정한 자리에서 거둔다 (PAISetup #69) ──────────────────────────
-# 서로 안 기대는 오래 걸리는 부름(VS Code 확장 묶음 · 씨앗의 파이썬 패키지)을 뒤 걸음과 겹쳐 돌린다 — 사내 VDI 는 프로세스 띄우기와
-#   작은 파일 쓰기가 느려, 이 둘을 앞에서 기다리는 몫이 맨바닥 한 판에서 300초 남짓이었다. 띄우기 · 거두기는 이 넷이 든다.
+# 서로 안 기대는 오래 걸리는 부름(VS Code 확장 묶음 · 씨앗의 파이썬 패키지 · 표의 한 행을 까는 자식 `Start-RowChild`)을 뒤 걸음과
+#   겹쳐 돌린다 — 사내 VDI 는 프로세스 띄우기와 작은 파일 쓰기가 느려, 확장 묶음과 파이썬 패키지를 앞에서 기다리는 몫만 맨바닥 한
+#   판에서 300초 남짓이었고 안티그래비티 CLI 한 행이 회사 영속 PC 에서 550초 넘게 걸렸다. 띄우기 · 거두기는 이 넷이 든다.
 #   `Start-BackRun` — 이름 · 명령 · 인자를 받아 띄우고 `$script:BackRuns` 에 그 이름으로 둔다. 같은 이름이 서 있으면 던진다.
 #     `-EmptyCwd` 면 이 회차의 빈 폴더(`%TEMP%\claude-setup-<이름>-<PID>`)를 지어 그 안에서 띄우고 거둘 때 지운다. `-CapSec` 이 0 보다
 #     크면 띄운 때부터 그 초가 울타리다(0 이면 끝까지 기다린다). `-Label` 은 거둘 때 아직 돌고 있으면 기다리는 줄에 댈 이름이다(비면 그
@@ -1345,7 +1352,7 @@ $VendorMirrorProbe = 4MB    # 한 곳을 재려고 받는 앞 토막 — 작으�
 $VendorMirrorCap   = 4      # 곳들을 한꺼번에 재는 마감 초 — 넘기면 그때까지 받은 양으로 잰다. 고르기 전체가 Metalink 한 번 묻기와 이 초 안팎이다
 $DownloadParts    = 8       # 큰 것을 나눠 받는 연결 수(`Get-DownloadParts`) — 연결 하나의 빠르기를 묶는 길(먼 지연 · 프록시)에서 회선을 다 쓴다. 회선이 묶인 자리에서는 4 와 8 이 같다(PAISetup #67)
 $DownloadSplitMin = 32MB    # 이보다 작은 것은 한 연결로 받는다 — 조각을 여는 값이 받는 시간을 넘는다
-# 받는 동안 진척 줄(10% 눈금 · 25 MB 눈금)을 찍나 — 받는 자 둘(`Get-Download` · `Get-DownloadParts`)이 읽는다. 백그라운드 자식(`-DesktopAppOnly`)은
+# 받는 동안 진척 줄(10% 눈금 · 25 MB 눈금)을 찍나 — 받는 자 둘(`Get-Download` · `Get-DownloadParts`)이 읽는다. 백그라운드 자식(`-RowOnly`)은
 #   끄고 돈다 — 그 줄은 거둘 때 한꺼번에 다시 찍혀 「지금 받는 중」이 아니라 지난 눈금만 늘어놓는다. 끝 줄(「다운로드 완료」)은 늘 찍는다.
 $DownloadTicks = $true
 $ClaudePluginCap = 60  # `claude plugin list` · `plugin marketplace list` — node 로 선 CLI 가 플러그인 기록을 읽는다. 첫 실행에 제 짐을 푸는 CLI 가 `--version` 에 20초 가까이 쓴 PC 가 있어(PAISetup #30) 넉넉히 둔다
@@ -4948,46 +4955,73 @@ function Install-DesktopApp($A) {
   Remove-Item $al -ErrorAction SilentlyContinue
 }
 
-# ── 데스크탑 앱 하나를 숨은 자식에서 깐다 — 「데스크탑 앱」 걸음이 앱 여럿을 동시에 깔 때 (PAISetup #69) ─────────────────────────
-# 자식은 이 몸통을 `-DesktopAppOnly <요청 파일>` 로 다시 띄운 것이다 — 라이브러리만 읽고 빗장 앞에서 `Install-DesktopApp` 한 번을 돌린 뒤
+# ── 표의 한 행을 숨은 자식에서 깐다 — 오래 걸리는 행을 뒤 걸음과 겹쳐 돌릴 때 (PAISetup #69) ─────────────────────────
+# 쓰는 자리는 둘이다(`$RowChildKinds`) — 「데스크탑 앱」 걸음이 앱 여럿을 동시에 깔 때(`desktop`)와, 「CLI」 걸음이 표에서 `Back` 을 든
+#   winget CLI 를 「Claude 플러그인」 걸음 끝까지 뒤에서 깔 때(`cli`)다.
+# 자식은 이 몸통을 `-RowOnly <요청 파일>` 로 다시 띄운 것이다 — 라이브러리만 읽고 빗장 앞에서 그 갈래의 까는 손(`Run`) 한 번을 돌린 뒤
 #   결과를 파일에 적고 나간다. 부모의 상태(`$Fails` · 깐 목록 · 못 잰 걸음 · 넘김)는 자식이 못 고치므로 결과 파일로 돌려받아 부모가
 #   거둘 때 덧붙인다. 띄우기 · 기다리기 · 나무째 거두기는 백그라운드 부름(`Start-BackRun` · `Complete-BackRun` · `Stop-BackRuns`)이 든다.
-# 세 손이 짝이다 — 같은 파일 이름(`<임시 폴더>\paisetup-desktop-<열쇠>-<8자>` 뒤에 `.json` 요청 · `.result.json` 결과 · `.detail.log` 세부
+# 세 손이 짝이다 — 같은 파일 이름(`<임시 폴더>\paisetup-<갈래>-<열쇠>-<8자>` 뒤에 `.json` 요청 · `.result.json` 결과 · `.detail.log` 세부
 #   기록)을 쓴다.
-#   `Start-DesktopAppChild` (부모) — 요청을 적고 자식을 띄운다. 요청은 부모가 이미 가른 값이다: 행의 열쇠 · winget 이 없나 · 올리기를
-#     끄나 · 밤 회차인가 · 맨 앞에서 받은 「올릴 것」 목록(`$upgradable` — 못 받았으면 `null`).
-#   `Invoke-DesktopAppChild` (자식) — 요청을 읽어 그 값을 이 프로세스의 같은 이름에 두고 `Install-DesktopApp` 을 돌린다. 화면 줄은 정보
-#     스트림(`6>&1`)으로 받아 글 · 색 · 줄바꿈 없음을 그대로 적는다. 결과 — @{ Key; Lines = @(@{ T; C; N }); Fails; Installed; Just;
-#     Unmeasured; Overflow; ProbeWhy; Threw; Sec }. `Threw` 는 던진 까닭(파일:줄)이고 `Sec` 은 그 한 판의 초다. 다 쓴 뒤 이름을 옮긴다 —
-#     부모는 파일이 있으면 답이 다 섰다고 읽는다. 세부 기록은 요청의 `.detail.log` 에 쓰고, 그 판의 초(`Add-RunSpan`)도 거기 남긴다.
-#   `Complete-DesktopAppChild` (부모) — 그 행의 부름을 거두고(아직 돌면 기다리는 줄 · `Complete-BackRun`) 자식의 세부 기록을 부모의 것에
+#   `Start-RowChild` (부모) — 요청을 적고 자식을 띄운다. 요청은 부모가 이미 가른 값이다: 갈래 · 행의 열쇠 · winget 이 없나 · 올리기를
+#     끄나 · 밤 회차인가 · 사람이 있나를 가르는 깃발 둘(`-Yes` · `-NoLaunch`) · 맨 앞에서 받은 「올릴 것」 목록(`$upgradable` — 못 받았으면
+#     `null`).
+#   `Invoke-RowChild` (자식) — 요청을 읽어 그 값을 이 프로세스의 같은 이름에 두고 그 갈래의 `Run` 을 돌린다. 화면 줄은 정보
+#     스트림(`6>&1`)으로 받아 글 · 색 · 줄바꿈 없음을 그대로 적는다. 결과 — @{ Kind; Key; Lines = @(@{ T; C; N }); Fails; Installed; Just;
+#     Unmeasured; Overflow; ProbeWhy; Threw; Sec }. `Installed` · `Just` 는 데스크탑 앱 갈래가 채우는 두 목록(`InstalledAppRows` ·
+#     `JustInstalledApps`)에 그 행이 섰나다 — CLI 갈래는 그 목록을 안 건드려 늘 거짓이다. `Threw` 는 던진 까닭(파일:줄)이고 `Sec` 은 그 한
+#     판의 초다. 다 쓴 뒤 이름을 옮긴다 — 부모는 파일이 있으면 답이 다 섰다고 읽는다. 세부 기록은 요청의 `.detail.log` 에 쓰고, 그 판의
+#     초(`Add-RunSpan`)도 거기 남긴다.
+#   `Complete-RowChild` (부모) — 그 행의 부름을 거두고(아직 돌면 기다리는 줄 · `Complete-BackRun`) 자식의 세부 기록을 부모의 것에
 #     잇고, 화면 줄을 받은 그대로 다시 찍은 뒤 상태를 덧붙인다. 결과가 없으면(자식이 못 떴거나 죽었다) 빨간 줄 · `$Fails` 와 자식이 낸 끝
 #     줄이다 — 다음 설치가 다시 잰다. 자식을 아예 못 띄웠으면 그 행을 이 창에서 깐다.
 # ⚠ **자식의 진척 줄은 끄고 띄운다**(`$DownloadTicks`) — 화면 줄은 거둘 때 한꺼번에 찍혀, 받는 중의 눈금은 지난 일이 된다.
-function Start-DesktopAppChild($Row, [string]$Engine) {
-  $stem = Join-Path ([IO.Path]::GetTempPath()) ('paisetup-desktop-' + $Row.Key + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-  $req = [ordered]@{ Key = $Row.Key; NoWinget = [bool]$noWinget; NoUpgrade = [bool]$NoUpgrade; NightRun = [bool]$NightRun
+# ⚠ **자식이 바꾼 이 창의 환경은 부모에 안 온다** — 자식이 깔며 태운 PATH(`Update-RuntimePath`)는 자식 것이다. 깐 것을 이 창에서 부를
+#   자리는 거둔 뒤 PATH 를 다시 태운다(「Claude 플러그인」 걸음 끝의 CLI 거두기).
+# ⚠ **자식은 표에 손으로 적힌 행만 안다** — 「준비」가 표에 덧붙이는 행(값 파일의 `#npm-global` 이 드는 npm CLI)은 자식에 없다. 그런 행을
+#   이 길에 태우면 자식이 「표에 없는 열쇠」로 던진다.
+# 갈래 표 — `Rows` 는 그 갈래의 표(이 몸통 머리의 손으로 적힌 표), `Run` 은 행 하나를 받아 재고 까는 함수의 이름(`& $kind.Run $row`),
+#   `Span` 은 세부 기록의 구간 이름 머리다.
+# ⚠ `Run` 은 함수 이름(글자)으로 든다 — 부름(`{ Install-DesktopApp $r }`)으로 적으면 이 줄이 그 함수를 부르는 흐름 문장으로 읽혀, 「데스크탑
+#   칸은 하나」를 재는 검사(claude-config `check-dist-tool-autorun.ps1` 의 P5)가 둘로 센다.
+$RowChildKinds = @{
+  desktop = @{ Rows = { $DesktopApps }; Run = 'Install-DesktopApp'; Span = '데스크탑 앱' }
+  cli     = @{ Rows = { $Clis };        Run = 'Install-WingetCli';  Span = 'CLI' }
+}
+
+function Start-RowChild([string]$Kind, $Row, [string]$Engine) {
+  $stem = Join-Path ([IO.Path]::GetTempPath()) ("paisetup-$Kind-" + $Row.Key + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+  $req = [ordered]@{ Kind = $Kind; Key = $Row.Key; NoWinget = [bool]$noWinget; NoUpgrade = [bool]$NoUpgrade; NightRun = [bool]$NightRun
+                     Yes = [bool]$Yes; NoLaunch = [bool]$NoLaunch
                      Upgradable = $upgradable; Result = "$stem.result.json"; Detail = "$stem.detail.log" }
   [IO.File]::WriteAllText("$stem.json", ($req | ConvertTo-Json -Depth 4), (New-Object Text.UTF8Encoding($false)))
   $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-  Start-BackRun $Row.Label $ps @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Engine, '-DesktopAppOnly', "$stem.json") `
+  Start-BackRun $Row.Label $ps @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Engine, '-RowOnly', "$stem.json") `
     -Label $Row.Label -Keep @{ Stem = $stem; Clean = @("$stem.json", "$stem.result.json", "$stem.result.json.tmp", "$stem.detail.log") }
 }
 
-function Invoke-DesktopAppChild([string]$RequestFile) {
+function Invoke-RowChild([string]$RequestFile) {
   $req = [IO.File]::ReadAllText($RequestFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
-  $out = [ordered]@{ Key = "$($req.Key)"; Lines = @(); Fails = @(); Installed = $false; Just = $false; Unmeasured = @(); Overflow = @()
-                     ProbeWhy = @{}; Threw = ''; Sec = 0.0 }
+  $out = [ordered]@{ Kind = "$($req.Kind)"; Key = "$($req.Key)"; Lines = @(); Fails = @(); Installed = $false; Just = $false
+                     Unmeasured = @(); Overflow = @(); ProbeWhy = @{}; Threw = ''; Sec = 0.0 }
   # ⚠ `List[hashtable]` 을 `ToArray()` 로 꺼낸다 — `List[object]` 를 `@(…)` 로 싸면 이 파워셸(5.1)이 「Argument types do not match」로 던진다
   $lines = New-Object System.Collections.Generic.List[hashtable]
   $sw = [Diagnostics.Stopwatch]::StartNew()
+  $span = "$($req.Kind)"
   try {
-    $row = @($DesktopApps | Where-Object { $_.Key -eq $req.Key })[0]
-    if (-not $row) { throw "데스크탑 앱 표에 없는 열쇠 — $($req.Key)" }
+    $kind = $RowChildKinds["$($req.Kind)"]
+    if (-not $kind) { throw "행 자식 갈래 표에 없는 갈래 — $($req.Kind)" }
+    $span = $kind.Span
+    $row = @(& $kind.Rows | Where-Object { $_.Key -eq $req.Key })[0]
+    if (-not $row) { throw "$($kind.Span) 표에 없는 열쇠 — $($req.Key)" }
     $script:DetailLog        = "$($req.Detail)"
     $script:noWinget         = [bool]$req.NoWinget
     $script:NoUpgrade        = [bool]$req.NoUpgrade
     $script:NightRun         = [bool]$req.NightRun
+    # 승인 창을 누를 사람이 있나(`Test-Attended`)는 이 두 깃발로 가른다 — 자식은 몸통 인자를 안 받아, 안 실으면 로그온 자동 실행(`-Yes
+    #   -NoLaunch`)의 자식도 「사람이 있다」로 읽고 무인 회차에서 승인 창을 띄운다
+    $script:Yes              = [bool]$req.Yes
+    $script:NoLaunch         = [bool]$req.NoLaunch
     $script:upgradable       = if ($null -eq $req.Upgradable) { $null } else { , @($req.Upgradable | ForEach-Object { "$_" }) }
     $script:DownloadTicks    = $false
     $script:JustInstalledApps = @{}
@@ -4995,7 +5029,7 @@ function Invoke-DesktopAppChild([string]$RequestFile) {
     # 막대를 끈다 — 자식은 부모의 콘솔을 같이 쓴다(받기 · MSIX 세우기가 그 위에 막대를 그린다)
     $ProgressPreference = 'SilentlyContinue'
     try {
-      & { Install-DesktopApp $row } 6>&1 | ForEach-Object {
+      & { & $kind.Run $row } 6>&1 | ForEach-Object {
         $m = if ($_ -is [Management.Automation.InformationRecord]) { $_.MessageData } else { $_ }
         if ($m -is [Management.Automation.HostInformationMessage]) {
           $lines.Add(@{ T = "$($m.Message)"; C = $(if ($null -ne $m.ForegroundColor) { "$($m.ForegroundColor)" } else { '' }); N = [bool]$m.NoNewLine })
@@ -5003,10 +5037,11 @@ function Invoke-DesktopAppChild([string]$RequestFile) {
       }
     } finally {
       $out.Sec = $sw.Elapsed.TotalSeconds
-      try { Add-RunSpan "데스크탑 앱 — $($row.Label)" '받기 · 설치 · 올리기 한 판 (백그라운드)' $out.Sec } catch { }
+      try { Add-RunSpan "$span — $($row.Label)" '받기 · 설치 · 올리기 한 판 (백그라운드)' $out.Sec } catch { }
     }
-    $out.Installed = [bool]$script:InstalledAppRows.ContainsKey($row.Label)
-    $out.Just      = [bool]$script:JustInstalledApps.ContainsKey($row.App)
+    # 데스크탑 앱 갈래만 이 두 목록을 채운다 — CLI 행은 `App` 칸이 없어, 빈 이름을 열쇠로 물으면 던진다
+    $out.Installed = [bool]$script:InstalledAppRows.ContainsKey("$($row.Label)")
+    $out.Just      = [bool]($row.App -and $script:JustInstalledApps.ContainsKey($row.App))
   } catch {
     $at = ''
     try { $ii = $_.InvocationInfo; if ($ii -and $ii.ScriptName) { $at = ' ({0}:{1})' -f (Split-Path -Leaf $ii.ScriptName), $ii.ScriptLineNumber } } catch { }
@@ -5022,7 +5057,7 @@ function Invoke-DesktopAppChild([string]$RequestFile) {
   }
 }
 
-function Complete-DesktopAppChild($Row) {
+function Complete-RowChild([string]$Kind, $Row) {
   $name = $Row.Label
   if (-not (Test-BackRun $name)) { return }
   $stem    = $script:BackRuns[$name].Keep.Stem
@@ -5045,7 +5080,7 @@ function Complete-DesktopAppChild($Row) {
       }
       foreach ($l in $stray) { Show-ChildLine $l }
       if ($res.Threw) {
-        Write-Host "  ! $($Row.Label) — 중단됨: $($res.Threw) · 이 앱의 나머지는 건너뜀 (다음 설치에서 다시 확인)" -ForegroundColor Red
+        Write-Host "  ! $($Row.Label) — 중단됨: $($res.Threw) · 이 항목의 나머지는 건너뜀 (다음 설치에서 다시 확인)" -ForegroundColor Red
         $script:Fails.Add("$($Row.Label) (중단됨)")
       }
       Write-Host ('    · 백그라운드에서 진행함 — {0}초' -f [int]$res.Sec) -ForegroundColor DarkGray
@@ -5060,9 +5095,10 @@ function Complete-DesktopAppChild($Row) {
     } elseif (-not $started) {
       Write-Host ''
       Write-Host "  ! $($Row.Label) — 백그라운드로 띄우지 못해 여기서 설치합니다 ($((Get-Content -LiteralPath $done.Log -Raw -ErrorAction SilentlyContinue).Trim()))" -ForegroundColor Yellow
+      $kind = $RowChildKinds[$Kind]
       $daSw = [Diagnostics.Stopwatch]::StartNew()
-      try { Install-DesktopApp $Row }
-      finally { try { Add-RunSpan "데스크탑 앱 — $($Row.Label)" '받기 · 설치 · 올리기 한 판' $daSw.Elapsed.TotalSeconds } catch { } }
+      try { & $kind.Run $Row }
+      finally { try { Add-RunSpan "$($kind.Span) — $($Row.Label)" '받기 · 설치 · 올리기 한 판' $daSw.Elapsed.TotalSeconds } catch { } }
     } else {
       Write-Host ''
       Write-Host "  $($Row.Label)" -ForegroundColor Cyan
@@ -7296,14 +7332,14 @@ if ($GhLoginOnly) {
   exit 0
 }
 
-# ── 데스크탑 앱 하나만 까는 자식 — 「데스크탑 앱」 걸음이 띄운다(`Start-DesktopAppChild`) ───────────────────────
+# ── 표의 한 행만 까는 자식 — 「데스크탑 앱」 · 「CLI」 걸음이 띄운다(`Start-RowChild`) ───────────────────────
 # 위 로그인 창 자식과 같은 자리에서 나간다 — 빗장을 쥐면 저를 띄운 설치와 겹침으로 읽혀 물러나고, 아래 준비는 사람 환경을 만진다.
-#   준비가 가르는 값(winget 유무 · 올릴 것 목록 · 밤 회차)은 요청 파일이 부모의 것을 그대로 든다(`Invoke-DesktopAppChild`).
+#   준비가 가르는 값(winget 유무 · 올릴 것 목록 · 밤 회차)은 요청 파일이 부모의 것을 그대로 든다(`Invoke-RowChild`).
 # ⚠ 던짐은 여기서 받아 까닭을 오류 흐름에 쓰고 1 로 나간다 — 아래 `trap` 은 스크립트 전체에 걸려 이 자리의 던짐도 받는데, 그 손이
 #   부르는 `Stop-RunLog` 는 아직 안 선 자리라 까닭이 「Stop-RunLog 를 모른다」로 가려진다. 부모는 결과 파일이 없으면 그 글을 편다.
-if ($DesktopAppOnly) {
-  try { Invoke-DesktopAppChild $DesktopAppOnly }
-  catch { [Console]::Error.WriteLine("데스크탑 앱 자식이 결과를 쓰지 못함 — $(Say-Why $_)"); exit 1 }
+if ($RowOnly) {
+  try { Invoke-RowChild $RowOnly }
+  catch { [Console]::Error.WriteLine("행 자식이 결과를 쓰지 못함 — $(Say-Why $_)"); exit 1 }
   exit 0
 }
 
@@ -8041,6 +8077,8 @@ $script:InstalledAppRows = @{}
 
 # 숨은 자식으로 띄운 행 — 「데스크탑 앱」 걸음의 `finally` 가 표 차례로 거둔다.
 $deskBack = @()
+# 숨은 자식으로 띄운 CLI 행(`$Clis` 의 `Back`) — 「CLI」 걸음이 띄우고 「Claude 플러그인」 걸음의 `finally` 가 거둔다.
+$cliBack = @()
 
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. 「프로그램」 걸음 앞에도 시간이 든다.
 Write-Elapsed '준비'
@@ -8270,7 +8308,7 @@ Exit-Step 'extensions'
 # ══ 걸음 「데스크탑 앱」 ════════════════════════════════════════════════════════════════════════
 #   층 — 기계
 #   하는 일 — Codex 데스크탑의 샌드박스 키를 두고, 고른 제품의 데스크탑 앱을 깔거나 올린다. 사람이 누를 창으로 넘어갈 수 있는
-#     앱(행의 `Front`)은 이 창에서 깔고, 나머지는 숨은 자식(`-DesktopAppOnly`)으로 동시에 띄워 이 걸음 끝에서 표 차례로 거둔다
+#     앱(행의 `Front`)은 이 창에서 깔고, 나머지는 숨은 자식(`-RowOnly`)으로 동시에 띄워 이 걸음 끝에서 표 차례로 거둔다
 #   앞에서 받는 것 — 준비의 고른 제품 · 자리 · 올릴 것 목록(`$upgradable`) · winget 유무
 #   안 하는 것 — 앱 띄우기(「마무리」의 「연다」 칸) · 데스크탑의 권한 · 프로젝트 심기(「설정 저장소」 걸음)
 # 「VS Code 확장」 걸음 뒤에 선다 — 그 걸음이 백그라운드로 띄운 확장 묶음과 「프로그램」 걸음이 띄운 파이썬 패키지가 이 걸음과 겹쳐 돈다.
@@ -8428,13 +8466,13 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
   if (-not $deskFront.Count -and $deskBack.Count) { $deskFront = @($deskBack[0]); $deskBack = @($deskBack | Select-Object -Skip 1) }
   if ($deskBack.Count) {
     Write-Host ''
-    foreach ($da in $deskBack) { Start-DesktopAppChild $da $PSCommandPath }
+    foreach ($da in $deskBack) { Start-RowChild 'desktop' $da $PSCommandPath }
     Say-Busy (@($deskBack | ForEach-Object { $_.Label }) -join ' · ') 'background' @(
       "$(@($deskFront | ForEach-Object { $_.Label }) -join ' · ') 설치와 함께 진행", '결과는 이 단계 끝에 표시')
   }
   foreach ($da in $deskFront) {
     # 앱마다 받기 · 설치 · 올리기를 한 판으로 재 세부 기록에 남긴다(`Add-RunSpan` — 화면에는 안 찍는다). 숨은 자식은 같은 줄을 제 판에서
-    #   남긴다(`Invoke-DesktopAppChild`) — 벤더 설치본은 `Add-RunDetail` 밖이라 이 줄이 없으면 앱마다의 몫이 안 갈린다(PAISetup #69).
+    #   남긴다(`Invoke-RowChild`) — 벤더 설치본은 `Add-RunDetail` 밖이라 이 줄이 없으면 앱마다의 몫이 안 갈린다(PAISetup #69).
     $daSw = [Diagnostics.Stopwatch]::StartNew()
     try { Install-DesktopApp $da }
     finally { try { Add-RunSpan "데스크탑 앱 — $($da.Label)" '받기 · 설치 · 올리기 한 판' $daSw.Elapsed.TotalSeconds } catch { } }
@@ -8444,13 +8482,14 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
 } catch { Write-StepFault $_ } finally {
 # ── 숨은 자식으로 띄운 데스크탑 앱을 거둔다 — 표 차례로 ──────────────────
 # 걸음 경계의 `finally` 에 선다 — 이 걸음이 도중에 멎어도 거둔다. 거두기마다 제 `try` 로 감싼다(「공용 자산」 걸음의 거두기와 같은 까닭).
-foreach ($da in $deskBack) { try { Complete-DesktopAppChild $da } catch { Write-StepFault $_ } }
+foreach ($da in $deskBack) { try { Complete-RowChild 'desktop' $da } catch { Write-StepFault $_ } }
 }
 Exit-Step 'desktop'
 
 # ══ 걸음 「CLI」 ═══════════════════════════════════════════════════════════════════════════════
 #   층 — 기계
-#   하는 일 — 고른 제품의 CLI(npm · winget) · 사외 로그인 안내
+#   하는 일 — 고른 제품의 CLI(npm · winget) · 사외 로그인 안내. 표에서 `Back` 을 든 winget CLI 는 숨은 자식으로 띄우고 「Claude 플러그인」
+#     걸음 끝에서 거둔다
 #   앞에서 받는 것 — 「프로그램」의 Node · Node 신뢰
 #   안 하는 것 — 사용자 환경변수. 맡기기 값은 「키와 값」이 심는다. 자리를 안 가리고 깔며, 회사 키로 물리나는 「회사 키의 다른
 #     이름 둘」 · 「Codex · 안티그래비티 설정」 칸이 가른다
@@ -8458,13 +8497,26 @@ Exit-Step 'desktop'
 Enter-Step 'cli'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 if (-not $CliPicks) { Write-Host '  선택한 제품이 없어 CLI 를 설치하지 않음' }
+$wingetCliPicks = @($CliPicks | Where-Object { $_.Via -eq 'winget' })
+# 뒤로 보낼 행은 이 걸음 맨 앞에서 띄운다 — 아래 npm · 다른 winget CLI 와도 겹친다(winget 부름끼리는 winget 빗장이 차례를 세운다).
+#   이 흐름을 다른 스크립트가 떼어 돌리면 자식이 그 스크립트를 띄우므로 다 이 창에서 깐다(「데스크탑 앱」 걸음의 같은 가름).
+$cliBack = @(if ([IO.Path]::GetFileName("$PSCommandPath") -ieq 'install.ps1') { $wingetCliPicks | Where-Object { $_.Back } })
+if ($cliBack.Count) {
+  foreach ($c in $cliBack) { Start-RowChild 'cli' $c $PSCommandPath }
+  # 기계 범위 행이 뒤로 갔고, 이 PC 가 승격을 묻지 않고 올리지 못하는데(무인으로 넘기면 `go` 가 아니다) 누를 사람이 있는 판이면 승인
+  #   창이 다른 걸음 사이에 뜬다 — 그 창이 무엇인지 여기서 미리 말한다. 묻지 않고 오르는 PC 와 사람이 없는 판(자식이 노란 줄로 미룬다)은
+  #   안 말한다.
+  $uacNote = if (@($cliBack | Where-Object { $_.Scope -eq 'machine' }).Count -and (Test-Attended) -and
+                 (Get-ElevationGo (Read-ElevationState) $false) -ne 'go') { '관리자 승인 창이 뜨면 승인' } else { '' }
+  Say-Busy (@($cliBack | ForEach-Object { $_.Label }) -join ' · ') 'background' @($uacNote, '결과는 「Claude 플러그인」 단계 끝에 표시')
+}
 # npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
 $npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
 if ($npmCliPicks.Count) { Install-NpmCli $npmCliPicks }
 # 저장소 밖의 스크립트가 `require` 로 부르는 꾸러미(`Link`)는 Node 가 보는 홈 자리에 잇는다 — npm 전역 자리는 Node 의 이름 찾기에 안 든다
 $npmLinkPicks = @($npmCliPicks | Where-Object { $_.Link })
 if ($npmLinkPicks.Count) { Install-NodeHomeLink $npmLinkPicks }
-foreach ($c in @($CliPicks | Where-Object { $_.Via -eq 'winget' })) { Install-WingetCli $c }
+foreach ($c in @($wingetCliPicks | Where-Object { $cliBack -notcontains $_ })) { Install-WingetCli $c }
 
 # 사외는 여기서 로그인 길을 댄다 — 프로그램은 섰고 자격만 사람 몫이라는 것을 한 줄로 둔다. 사내에서 심은 회사 연결이 남아 있으면 그
 #   로그인이 안 서는데, 그 연결은 「사내 연결」 걸음의 「안 세우는 도구」 칸이 걷고 못 걷으면 그 칸이 제 줄을 세운다.
@@ -10652,7 +10704,8 @@ Exit-Step 'repo'
 
 # ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
 #   층 — 등록
-#   하는 일 — Anthropic 공식 스킬 플러그인 둘 · agy 로그인 안내 한 줄(agy 회사 설정이 안 서는 자리)
+#   하는 일 — Anthropic 공식 스킬 플러그인 둘 · agy 로그인 안내 한 줄(agy 회사 설정이 안 서는 자리) · 「CLI」 걸음이 뒤로 보낸 CLI
+#     거두기(경계의 `finally`)
 #   앞에서 받는 것 — 「키와 값」의 구독 로그인
 #   안 하는 것 — 꺼진 플러그인 켜기(사람 몫)
 Enter-Step 'register'
@@ -10787,7 +10840,19 @@ if ($wantAgyDelegate -and -not $wantAgy) {
   Write-Host '  agy 에 아직 로그인하지 않았다면 터미널에서 agy 를 한 번 실행해 Google 계정으로 로그인하세요'
 }
 
-} catch { Write-StepFault $_ }
+} catch { Write-StepFault $_ } finally {
+# ── 「CLI」 걸음이 숨은 자식으로 띄운 CLI 를 거둔다 — **마무리 앞의 정한 자리다** ──────────────────
+# 마무리의 「사용자 범위 명령 자리」가 그 CLI 의 폴더(`PathDir`)를 심고 끝 검증이 그 명령을 재므로 그 앞에서 거둔다. 그 사이 「키와 값」
+#   ~ 이 걸음이 겹쳐 돈다 — 그 걸음들은 뒤로 보낸 CLI 의 명령을 안 부르고(행의 `Back` 곁말) winget 도 안 부른다.
+# 거둔 뒤 이 창의 PATH 를 다시 태운다 — winget 이 휴대용 꾸러미의 자리를 사용자 PATH 에 심은 것은 자식의 창만 알았다.
+# 걸음 경계의 `finally` 에 선다 — 이 걸음이 도중에 멎어도 거둔다. 거두기마다 제 `try` 로 감싼다(「공용 자산」 걸음의 거두기와 같은 까닭).
+if ($cliBack.Count) {
+  Write-Host ''
+  Write-Host '  CLI — 백그라운드 설치 결과' -ForegroundColor Cyan
+  foreach ($c in $cliBack) { try { Complete-RowChild 'cli' $c } catch { Write-StepFault $_ } }
+  try { Update-RuntimePath } catch { Write-StepFault $_ }
+}
+}
 Exit-Step 'register'
 
 # ══ 마무리 ═════════════════════════════════════════════════════════════════════════════════════
