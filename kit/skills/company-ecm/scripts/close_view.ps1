@@ -4,14 +4,14 @@
     부르는 꼴:
         powershell -NoProfile -ExecutionPolicy Bypass -File close_view.ps1 -Path <받은 파일> -App Word|Excel|PPT [-WaitSeconds 30] [-Save]
 
-    내는 것: 표준 출력에 JSON 한 줄({"found":…,"closed":…,"quit":…,"left":…}). 종료 값 0 닫았다 · 2 시한 안에 그 문서가
-    안 떴다(또는 이미 닫혔다) · 1 닫다가 실패했다.
+    내는 것: 표준 출력에 JSON 한 줄({"found":…,"closed":…,"quit":…,"left":…,"others":[…]}). ``others`` 는 앱을 안 끈 판에 그 앱에 남은
+    문서의 이름이다. 종료 값 0 닫았다 · 2 시한 안에 그 문서가 안 떴다(또는 이미 닫혔다) · 1 닫다가 실패했다.
 
     왜 경로로 고르나: 에이전트는 받은 파일을 사람이 쓰던 앱에 띄울 수 있다(파워포인트는 사용자 하나에 하나만 뜨고, 워드 ·
     엑셀도 셸이 연 파일은 떠 있던 앱에 들어간다). 그 앱의 다른 문서는 사람의 것이라, 이름 · 창 제목이 아니라 받은 파일의
     전체 경로가 같은 문서 하나만 닫는다. 앱을 끄는 것은 남은 문서가 0 일 때뿐이다 — 끄면 저장 안 한 사람의 문서가 경고
-    없이 사라진다. 보기로 연 읽기 전용 파일은 저장하지 않고 닫는다. ``-Save`` 는 편집으로 연 파일을 저장한 뒤 닫는다 — 에이전트는
-    오피스 프로세스가 끝나야 편집완료 창을 띄우므로, 남은 문서가 0 이 아니면 그 수를 ``left`` 로 내고 앱은 그대로 둔다.
+    없이 사라진다. 보기로 연 읽기 전용 파일은 저장하지 않고 닫는다. ``-Save`` 는 편집으로 연 파일을 저장한 뒤 닫는다. 남은 문서가
+    0 이 아니면 그 수를 ``left`` 로, 이름을 ``others`` 로 내고 앱은 그대로 둔다.
 
     앱을 어떻게 찾나: 셸이 띄운 오피스는 포커스를 잃기 전까지 실행 중 개체 표(ROT)에 안 올라 ``GetActiveObject`` 가 못 본다 —
     에이전트가 띄운 창이 바로 그 꼴이다. 그래서 오피스 창마다 문서 칸 창에서 ``AccessibleObjectFromWindow``(OBJID_NATIVEOM)로
@@ -110,8 +110,24 @@ function Stop-EmptyApplication($Application) {
     [GC]::Collect(); [GC]::WaitForPendingFinalizers()
 }
 
-function Write-Result([bool]$Found, [bool]$Closed, [bool]$Quit, [int]$Left) {
-    Write-Output (@{ found = $Found; closed = $Closed; quit = $Quit; left = $Left } | ConvertTo-Json -Compress)
+function Write-Result([bool]$Found, [bool]$Closed, [bool]$Quit, [int]$Left, $Others = @()) {
+    Write-Output (@{ found = $Found; closed = $Closed; quit = $Quit; left = $Left; others = @($Others) } | ConvertTo-Json -Compress)
+}
+
+function Get-OpenNames($Application) {
+    <# 그 앱에 남은 문서의 이름 — 사람이 무엇을 닫아야 하나를 알게 낸다. 엑셀은 창이 보이는 통합 문서만 #>
+    $names = @()
+    try {
+        $documents = Get-OpenDocuments $Application
+        foreach ($doc in $documents) {
+            $shown = $true
+            if ($App -eq 'Excel') { $shown = $false; foreach ($w in $doc.Windows) { if ($w.Visible) { $shown = $true }; Release $w } }
+            if ($shown) { $names += [string]$doc.Name }
+            Release $doc
+        }
+        Release $documents
+    } catch { }
+    return , $names
 }
 
 function Release($Object) {
@@ -158,8 +174,10 @@ while ((Get-Date) -lt $deadline) {
             $left = if ($null -eq $count) { -1 } else { [int]$count }
             # 못 셌으면(-1) 안 끈다 — 남은 앱은 사람이 끌 수 있지만 닫힌 사람의 문서는 못 되돌린다
             $quit = ($left -eq 0)
+            $others = @()
+            if (-not $quit -and $left -gt 0) { $others = Get-OpenNames $application }
             if ($quit) { Stop-EmptyApplication $application } else { Release $application }
-            Write-Result $true $true $quit $left
+            Write-Result $true $true $quit $left $others
             exit 0
         } catch {
             Release $application

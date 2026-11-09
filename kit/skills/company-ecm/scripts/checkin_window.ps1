@@ -7,9 +7,10 @@
 
     내는 것: 표준 출력에 JSON 한 줄({"found":…,"choices":[…],"picked":…,"saved":…,"closed":…}). 종료 값 0 올렸다(창이 닫혔다 ·
     ``-FindOnly`` 면 창이 떠 있다) · 2 시한 안에 그 문서의 창이 안 떴다 · 1 창은 떴는데 다음 판을 못 가렸거나 칸을 못 채웠다
-    (``saved`` 거짓 — 아무것도 안 보냈다), 또는 저장을 보냈는데 창이 시한 안에 안 닫혔다(``saved`` 참 — 다시 누르지 않는다).
+    (``saved`` 거짓 — 아무것도 안 보냈다. ``choices`` 가 비었으면 칸을 못 읽은 것이라 새 프로세스로 다시 부르면 읽힌다), 또는
+    저장을 보냈는데 창이 시한 안에 안 닫혔다(``saved`` 참 — 다시 누르지 않는다).
 
-    무엇을 하나: 에이전트는 오피스 프로세스가 끝나면 편집완료 창(WinForms 안의 Internet Explorer_Server)을 띄운다. 그 웹 화면은 UI
+    무엇을 하나: 에이전트는 고친 문서가 닫히면 편집완료 창(WinForms 안의 Internet Explorer_Server)을 띄운다. 그 웹 화면은 UI
     Automation 으로는 단추가 안 보여, 창에 WM_HTML_GETOBJECT 를 보내 문서 개체를 받는다. 창 주소의 ``MS_OBJECT_ID`` 가 맞는 창만
     다룬다 — 다른 문서의 창은 사람의 것이다. 판 고르기 라디오(``choice_version``)는 지금 판(덮어쓰기)이 기본이라 그대로 두지 않는다. 다음 판은
     값으로 가린다 — 라디오 가운데 지금 판(``-Current``)보다 큰 값이 꼭 하나일 때만 그것을 누르고(클릭이라
@@ -33,6 +34,7 @@ $DESC_ID = 'version_desc'
 $SAVE_CALL = 'setTimeout(function(){ fn_save(); }, 0);'
 $POLL_MS = 500
 $CLOSE_SECONDS = 30   # 저장 함수를 부른 뒤 창이 닫히기(올리기가 끝나기)를 기다리는 시한
+$FIELD_SECONDS = 2    # 창을 잡은 뒤 판 라디오 · 수정 내용 칸이 읽히기를 이 프로세스가 기다리는 시한
 
 if (-not ('EcmSeed.IeWindows' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -95,10 +97,14 @@ while ((Get-Date) -lt $deadline -and $null -eq $window) {
 if ($null -eq $window) { Write-Result $false @() '' $false $false; exit 2 }
 if ($FindOnly) { Write-Result $true @() '' $false $false; exit 0 }
 
-# 창이 다 그려지기를 기다린다 — 칸이 없으면 다음 판에 다시 본다
+# 창이 다 그려지기를 기다린다 — 칸이 없으면 다음 판에 다시 본다. ⚠ 창이 다 실리기 전에 문서 개체를 만진 프로세스는 다 실린 뒤에도
+# 칸을 못 읽는다(0x800A01B6 — 그 프로세스 안에서는 개체를 다시 받아도 같다). 그래서 오래 기다리지 않고 종료 1 로 나가고, 부르는 쪽이 새
+# 프로세스로 다시 붙는다
+$fieldsBy = (Get-Date).AddSeconds($FIELD_SECONDS)
+if ($fieldsBy -gt $deadline) { $fieldsBy = $deadline }
 $radios = @()
 $descBox = $null
-while ((Get-Date) -lt $deadline) {
+while ((Get-Date) -lt $fieldsBy) {
     try {
         # IE 의 칸 모음은 PowerShell 이 펼치지 못한다(@() 가 빈다) — length · item(i) 로 꺼낸다
         $found = $window.getElementsByName($CHOICE_NAME)

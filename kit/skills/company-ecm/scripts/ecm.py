@@ -96,7 +96,8 @@
       가 참이면 실패 코드가 같이 와도 선다). 줄의 셋째 값이 ``EDIT_NOCHECKIN`` 이면 에이전트가 ``CHECKOUT`` 아래에 받아 읽기 쓰기로
       연다. 받은 이름은 ``<이름>_<문서 열쇠>_<계정>.<꼴>`` 이다 — ``checkin_document`` 가 이름 속 열쇠로 그 문서를 알아본다.
       받을 때는 이름을 짓지 않고 새로 생긴 파일을 집는다(xlsx 로 쟀다 · docx · pptx 는 안 쟀다)
-    * 편집완료 창은 **오피스 프로세스가 끝나야** 뜬다(문서를 닫기만 해서는 안 뜬다). 창 속은 웹 화면이고 판 라디오
+    * 편집완료 창은 고친 문서를 저장해 닫으면 뜬다 — 같은 앱에 사람의 다른 문서가 남아 앱이 떠 있어도 뜬다. 고친 것 없이 닫으면 창 없이
+      잠금만 풀린다. 창 속은 웹 화면이고 판 라디오
       ``choice_version`` 의 기본은 지금 판(덮어쓰기)이다 — 지금 판보다 큰 값이 꼭 하나일 때만 그것을 고르고, 아니면 아무것도 안 누른다. 수정 내용 칸은 ``version_desc`` · 저장은 그 화면의
       ``fn_save()`` · 올리기는 에이전트가 한다. 판은 문서 정보 화면(``docProperty_simple.do?ServiceName=DocPropertyHtml-service&basicinfo=true
       &DOCID=<16 hex>&getType=user``)의 「최종 버전」 칸이 든다
@@ -168,6 +169,9 @@ AGENT_TIMEOUT = 60.0      # 에이전트가 OK 를 낼 때까지
 FILE_TIMEOUT = 120.0      # OK 뒤 받은 파일이 다 생길 때까지
 WINDOW_WAIT = 30.0        # 받은 파일을 띄운 창이 오피스에 잡힐 때까지
 CHECKIN_WAIT = 60.0       # 오피스가 끝난 뒤 에이전트의 편집완료 창이 뜰 때까지
+CHECKIN_ATTACH_TRIES = 4  # 편집완료 창의 칸을 못 읽었을 때 새 프로세스로 다시 붙는 판 수(첫 판 포함)
+CHECKIN_REATTACH_WAIT = 10.0  # 다시 붙는 판이 창을 찾는 시한 — 창은 이미 떠 있다
+UNCHANGED_WAIT = 3.0      # 오피스가 끝난 뒤 고친 것 없는 판의 잠금이 풀리기를 보는 시한
 VERSION_WAIT = 60.0       # 편집완료를 누른 뒤 문서 정보의 최종 버전이 바뀔 때까지
 VERSION_POLL = 3.0
 FIND_ONLY_DESC = "find-only"   # 찾기만 할 때의 자리 글 — 「-」 하나는 PowerShell 이 인자 이름으로 읽어 부름이 진다
@@ -190,6 +194,10 @@ OWN_CABINET = re.compile(r"\bs_UserDeptCabinetId\s*=\s*'(cab[0-9a-f]+)'", re.IGN
 CABINET_KIND = {"MENU_DEPT": "부서", "MENU_PROJECT": "프로젝트"}
 CABINET_ID = re.compile(r"^cab[0-9A-Fa-f]+$")
 PROPERTY_VERSION = "최종 버전"
+# 문서 정보 화면이 권한 칸 주소에 싣는 잠금 상태 — 편집으로 잠겼으면 T. 고친 것 없이 닫으면 에이전트가 편집완료 창 없이 바로 푼다
+PROPERTY_LOCK = re.compile(r"[?&;]lockStatus=([TF])\b")
+# 에이전트가 받은 파일 이름에 붙이는 꼬리 — <이름>_<문서 열쇠>_<사람 열쇠>.<확장자>. 사람에게 보일 때는 뗀다
+AGENT_FILE_SUFFIX = re.compile(r"_[0-9A-Fa-f]{16}_[^_]+(?=\.[^.]+$)")
 # 읽기로 잰 요청 — 서비스 이름 → (참이어야 하는 갈래 칸 하나, 실을 수 있는 칸). 닫힌 목록이라 새 꼴은 읽기임을 잰 뒤 여기 더해야 묻는다
 READS = {
     "DocList-service": (("getDocList", "getDocCount"),
@@ -788,10 +796,18 @@ class Ecm:
 
     def version(self, object_id: str) -> str:
         """문서 정보 화면의 「최종 버전」 — 판을 올린 뒤 다음 판이 섰나 본다. 못 읽으면 빈 글자."""
+        return property_value(self._property_page(object_id), PROPERTY_VERSION)
+
+    def locked(self, object_id: str) -> bool | None:
+        """문서 정보 화면이 그 문서를 편집 잠금으로 드나 — 못 읽으면 ``None``."""
+        found = PROPERTY_LOCK.search(self._property_page(object_id))
+        return None if not found else found.group(1) == "T"
+
+    def _property_page(self, object_id: str) -> str:
         object_id = _object_id(object_id)
         query = urllib.parse.urlencode({**PROPERTY_QUERY, "DOCID": object_id})
         body, _ = self._fetch(f"{self.server}{self.context}{PROPERTY_PAGE}?{query}")
-        return property_value(body.decode("utf-8", "replace"), PROPERTY_VERSION)
+        return body.decode("utf-8", "replace")
 
     def checkout(self, object_id: str) -> "Ticket":
         """편집 열기 첫 걸음 — 서버가 그 문서를 이 사람 이름으로 잠근다. 에이전트에 넘길 세 값을 낸다.
@@ -1356,12 +1372,25 @@ def edit_document(ecm: Ecm, agent: Agent, object_id: str) -> Opened:
     return Opened(path, locked, ensured.progid, ensured.written)
 
 
+def _released_unchanged(ecm: Ecm, object_id: str, before: str, *, wait: float = UNCHANGED_WAIT) -> bool:
+    """고친 것 없이 닫혀 에이전트가 편집완료 창 없이 잠금만 풀었나 — 잠금이 풀리고 판이 그대로면 참. 고친 판이면 편집완료 창이
+    뜰 때까지 잠금이 남으니, 잠긴 채 ``wait`` 초가 지나면 거짓이다."""
+    deadline = time.monotonic() + wait
+    while True:
+        if ecm.locked(object_id) is False:
+            return ecm.version(object_id) == before
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(POLL)
+
+
 def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *, app: str = "",
                      docs_root=None) -> CheckedIn:
     """편집으로 연 문서를 저장해 닫고, 에이전트의 편집완료 창에서 다음 판 · 수정 내용으로 올린 뒤 판이 올랐나 본다.
 
-    에이전트는 오피스 프로세스가 끝나야 편집완료 창을 띄운다. 같은 앱에 사람의 다른 문서가 남아 있으면 앱을 끄지 않고 멈춘다 —
-    사람이 그 문서들을 닫으면(또는 저장하고 앱을 끄면) 창이 뜨고, 같은 명령을 다시 부르면 창에서 이어 간다."""
+    같은 앱에 사람의 다른 문서가 남아 있으면 앱은 끄지 않고 그 문서만 닫는다 — 그래도 편집완료 창은 뜬다. 창이 시한 안에 안 뜨면 남은
+    문서 이름을 대고 멈추고, 사람이 그 문서들을 닫은 뒤 같은 명령을 다시 부르면 창에서 이어 간다. 고친 것 없이 닫으면 에이전트는 창
+    없이 잠금만 푼다 — 그때는 앞 판 · 뒤 판이 같은 ``CheckedIn`` 을 낸다."""
     object_id = _object_id(object_id)
     desc = desc.strip()
     if not desc:
@@ -1383,23 +1412,38 @@ def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *,
         raise EcmError("문서 정보에서 지금 판을 못 읽었다 — 다음 판을 가릴 수 없어 올리지 않는다")
     window, said = _close(path, app, WINDOW_WAIT, save=True)
     left = said.get("left", -1)
+    if window == "closed" and left == 0 and _released_unchanged(ecm, object_id, before):
+        return CheckedIn(before, before, "")
     if window == "not-found" and not checkin_pending(object_id):
         raise EcmError(f"{WINDOW_WAIT:.0f} 초 안에 열린 그 문서를 못 찾았다 — 저장된 것이 고친 판인지 모르니 올리지 않는다. 문서가 떠 있으면 "
                        "그대로 두고 같은 명령을 다시 부르고, 사람이 이미 저장해 닫았으면 ECM 화면에서 편집완료를 누른다")
-    if window == "closed" and left != 0:
-        what = f"다른 문서 {left} 개가 열려 있어" if left > 0 else "남은 문서를 못 세어"
-        raise EcmError(f"저장해 닫았다. 같은 앱에 {what} 앱을 끄지 않았다 — 에이전트는 앱이 끝나야 편집완료 창을 띄운다. 사람이 그 "
-                       "문서들을 저장해 닫은 뒤(또는 앱을 끈 뒤) 같은 명령을 다시 부른다")
-    proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CHECKIN_SCRIPT),
-                           "-ObjectId", object_id, "-Desc", desc, "-Current", before, "-WaitSeconds", str(int(CHECKIN_WAIT))],
-                          capture_output=True, timeout=CHECKIN_WAIT + 90)
-    out = proc.stdout.decode("utf-8", "replace").strip()
-    try:
-        got = json.loads(out.splitlines()[-1]) if out else {}
-    except json.JSONDecodeError:
-        got = {}
+    # 같은 앱에 사람의 다른 문서가 남아 앱을 안 껐어도 편집완료 창은 문서를 닫으면 뜰 수 있다 — 멈추지 않고 창을 기다린다
+    others = " · ".join(AGENT_FILE_SUFFIX.sub("", str(n)) for n in said.get("others") or [])
+    # 창이 다 실리기 전에 붙은 프로세스는 칸을 끝내 못 읽는다(checkin_window.ps1 머리) — 칸을 못 읽고 나오면(아무것도 안 보냈다)
+    # 새 프로세스로 다시 붙는다. 창이 뜨기를 기다리는 시한은 첫 판에만 쓴다
+    wait = CHECKIN_WAIT
+    for _ in range(CHECKIN_ATTACH_TRIES):
+        proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CHECKIN_SCRIPT),
+                               "-ObjectId", object_id, "-Desc", desc, "-Current", before, "-WaitSeconds", str(int(wait))],
+                              capture_output=True, timeout=wait + 90)
+        out = proc.stdout.decode("utf-8", "replace").strip()
+        try:
+            got = json.loads(out.splitlines()[-1]) if out else {}
+        except json.JSONDecodeError:
+            got = {}
+        if not (proc.returncode == 1 and got.get("found") and not got.get("choices") and not got.get("saved")):
+            break
+        wait = CHECKIN_REATTACH_WAIT
     if proc.returncode == 2:
-        raise EcmError(f"{CHECKIN_WAIT:.0f} 초 안에 편집완료 창이 안 떴다 — 오피스가 아직 떠 있으면 사람이 끄고 같은 명령을 다시 부른다")
+        if _released_unchanged(ecm, object_id, before, wait=0):
+            return CheckedIn(before, before, "")
+        if window == "closed" and left != 0:
+            what = f"다른 문서 {left} 개가 열려 있어" if left > 0 else "남은 문서를 못 세어"
+            raise EcmError(f"저장해 닫았는데 {CHECKIN_WAIT:.0f} 초 안에 편집완료 창이 안 떴다. 같은 앱에 {what} 앱을 끄지 않았다"
+                           f"{f'({others})' if others else ''} — 사람이 그 문서들을 닫은 뒤(또는 앱을 끈 뒤) 같은 명령을 다시 부른다. "
+                           "고친 것은 저장돼 있다")
+        raise EcmError(f"{CHECKIN_WAIT:.0f} 초 안에 편집완료 창이 안 떴고 문서는 아직 잠겨 있다 — 오피스가 아직 떠 있으면 사람이 끄고 같은 "
+                       "명령을 다시 부른다")
     if proc.returncode != 0 and got.get("saved"):
         raise EcmError("편집완료의 저장은 보냈는데 창이 시한 안에 안 닫혔다 — 다시 누르지 말고 잠시 뒤 version 으로 판이 올랐나 본다")
     if proc.returncode != 0:
@@ -1866,6 +1910,9 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_OK
         if args.command == "checkin":
             done = checkin_document(ecm, pathlib.Path(args.path), args.object_id, args.desc)
+            if done.version_after == done.version_before:
+                print(f"고친 것이 없어 올리지 않았다 — 에이전트가 편집완료 창 없이 잠금을 풀었고 판은 {done.version_before} 그대로다")
+                return EXIT_OK
             print(f"올렸다 — 판 {done.version_before} → {done.version_after} · 고른 판 {done.picked or '?'}")
             return EXIT_OK
         if args.command == "access":
