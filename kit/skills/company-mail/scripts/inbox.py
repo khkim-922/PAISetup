@@ -1,4 +1,4 @@
-"""사내 메일함(Lotus Notes · HCL Domino 웹메일)을 읽는 손과, 메일함을 바꾸는 이름 붙은 손 둘 — 표준 라이브러리만 쓰는 파일 하나.
+"""사내 메일함(Lotus Notes · HCL Domino 웹메일)을 읽는 손과, 메일함을 바꾸는 이름 붙은 손들 — 표준 라이브러리만 쓰는 파일 하나.
 
 무엇을 하나
     받은편지함 · 쓰는 사람이 지은 폴더 · 보낸편지함의 목록, 모든편지함의 받는 꼴 · 중요도, 받는 사람 목록 보기, 본문(HTML ·
@@ -6,8 +6,10 @@
     바꾸는 것으로 잰 주소 꼴만 묻고, 그 밖의 주소는 서버에 닿기 전에 ``ChangeRefused`` 로 막는다. 사람이 웹메일에서 열기
     전까지 그 메일은 「안 읽음」으로 남는다.
 
-    메일함을 바꾸는 손은 읽음으로(``mark_read``) · 안 읽음으로(``mark_unread``) 둘뿐이고, 이름 붙은 함수 하나씩이다.
-    읽기 길은 이 둘을 부르지 않는다.
+    메일함을 바꾸는 손은 이름 붙은 함수 하나씩이다 — 읽음으로(``mark_read``) · 안 읽음으로(``mark_unread``) · 폴더 만들기
+    (``create_folder``) · 지우기(``delete_folder``) · 메일 옮기기(``move_mails``) · 휴지통에서 되살리기(``restore_from_trash``) ·
+    메일 규칙 넣기 · 고치기(``save_rule``) · 지우기(``delete_rule``). 읽기 길은 이것들을 부르지 않는다. 폴더 나무(``folder_tree``)와
+    규칙 목록 · 한 건(``rules`` · ``rule``)은 읽기만 한다.
 
 어떻게 부르나
     로그인은 이 파일이 하지 않는다. 스킬 ep-login 의 받는 손(``edge_session.js``)이
@@ -44,6 +46,15 @@
         members = box.group_members(groups[0][0])                     # 그 배포그룹의 (이름, 직급, 부서, 메일)
         box.session_alive()                             # 메일을 안 건드리는 세션 확인
 
+        # ⚠ 아래는 메일함을 바꾼다 — 사람이 확인한 뒤에만(머리말 「메일함을 바꾸는 손」)
+        made = box.create_folder("검토", parent="프로젝트")   # FolderNode — 다시 봐서 선 것
+        box.move_mails([mail.unid], made.path)          # 빈 글자면 받은편지함 — 다시 봐서 다 든 것
+        box.delete_folder(made.path)                    # 빈 폴더만 · 이전메일함 짝까지
+        rules = box.rules()                             # Rule — 조건 · 갈래 · 폴더 · 자동전달인가
+        uid = box.save_rule(inbox.Rule(unid="", box="inbox", action="move_folder", folder="프로젝트",
+                                       conditions={"subject": "[주간]"}))   # unid 를 주면 고친다
+        box.delete_rule(uid)
+
     주소 · 쿠키 파일을 환경변수 대신 바로 줄 때는 ``inbox.Mailbox(url, cookies_file)`` 다. 메일함 주소를 모르면 세션으로
     받는다 — ``inbox.discover_mailbox("http://<메일 서버>", cookies_file)`` 가 그 세션 주인의 ``…/<번호>.nsf`` 를 낸다.
 
@@ -58,10 +69,15 @@
     회사 값으로 부서를 하나도 안 주면 ``DirectoryGap``, 서버가 답을 안 주면 ``MailboxError``(넷 다 이것의 갈래다).
     무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은 이 모듈 이름) — 셈과 방향만 싣고 본문 · 제목 · 이름 · 주소 · 첨부 이름은 안 싣는다.
 
-메일함을 바꾸는 손 둘 — 언제 부르나는 부르는 쪽이 정한다
+메일함을 바꾸는 손 — 언제 부르나는 부르는 쪽이 정한다
     ``mark_read`` · ``mark_unread`` 는 쓰는 사람의 메일함을 바꾼다. 사람이 그 메일 하나를 두고 「읽음으로 · 안 읽음으로」를
     분명히 고른 뒤에만 부른다 — 회차 · 예약 작업 · 모델의 판단이 스스로 부르면 사람이 새 메일을 못 알아본다. 이 파일은
     그 확인을 대신하지 않는다. 손 하나는 메일 하나만 바꾸고, 그 두 꼴 밖의 주소는 ``ChangeRefused`` 로 막는다.
+
+    폴더 · 옮기기 · 규칙의 손도 같다 — 사람이 그 폴더 · 그 메일들 · 그 규칙을 보고 고른 뒤에만 부른다. 손마다 제 주소 꼴만 보내고
+    (``_send_folder`` · ``_send_rule``), 서버의 ``OK`` 를 믿지 않고 보기로 다시 봐서 안 섰으면 ``MailboxError`` 를 낸다.
+    ⚠ 규칙은 서버가 그 뒤의 새 메일에 스스로 쓴다 — 사람이 없는 자리에서 메일함을 계속 바꾸는 손이라 넣기 · 고치기 전의 확인이
+    더 무겁다. 규칙의 자동전달 칸(남에게 메일이 나가는 길)은 이 손이 늘 비워 보내고, 자동전달 규칙은 고치지 않는다(지우기는 된다).
 
 환경변수(``from_env``)
     ``MAILBOX_URL``              메일함 주소 — 웹메일 주소창의 ``…/<번호>.nsf`` 까지(그 뒤는 버린다). 꼭 준다
@@ -142,6 +158,35 @@
       주소이고 메일을 안 건드린다. 세션이 끊긴 때의 이 주소의 답은 안 쟀다 — 그 꼴이 아니면 다 「끊겼다」로 본다 (C)
     * 읽음으로는 ``/<db>/XML_Inbox/<unid>?OpenDocument``, 안 읽음으로는 ``/<db>/ag_read_cancel?OpenAgent&docid=<unid>&imapuser=0``
       (200 · 빈 HTML)이다. 받은편지함 메일로만 쟀다 — 폴더에만 있는 메일에 읽음으로의 주소가 먹는지는 안 쟀다 (D · A3)
+
+    폴더 — 회사에서 잰 판은 mail-secretary#42 의 2026-11-10 실측 코멘트가 든다(꼴은 웹메일 화면 스크립트 ``mail_posco.js`` 그대로)
+    * 폴더 나무는 ``/<db>/fdd_folder_fullpath?ReadViewEntries&outputformat=json&count=-1`` 이다 — 열 ``$6`` 경로 · ``NodeUnid`` 폴더
+      열쇠(``newNode<숫자>``) · ``ParentID`` 부모(맨 위는 ``nodeATag2``). 칸 값은 ``{"text": {"0": 값}}`` 꼴이다. 폴더 보기의 unid
+      (``folders``)와는 다른 열쇠이고 둘은 경로로 잇는다
+    * 만들기는 **GET** ``agt_mail_folder_save?OpenAgent&ulan=kor&act=create&…&pfcode=<부모 열쇠 · 맨 위는 nofolder>&nodeid=<열쇠>`` —
+      열쇠는 만드는 쪽이 지어 보내고 서버가 그대로 쓴다. 하위 폴더도 같은 주소이고 경로는 ``부모\\자식`` 이다
+    * 옮기기는 **POST** ``folder2?OpenForm`` · ``Action=mailmove_action`` · ``nodeUNID=<폴더 열쇠 · 받은편지함은 inbox>`` ·
+      ``UNIDs=<unid,…>`` — ``ParaView`` · ``owner`` 를 비워도 옮겨졌다. 읽음 표시는 그대로다. ⚠ 모르는 열쇠 · 빈 열쇠에도 ``OK`` 를
+      낸다 — 옮겼다는 증거가 아니다
+    * 지우기는 **GET** ``agt_mail_folder_save?OpenAgent&ulan=kor&act=delete_action&nodeid=<열쇠>&…&nodefrom=mail`` 에 같은 주소의
+      ``afdelete=Y&nodefrom=archive`` 를 한 번 더 — 앞의 것만이면 폴더 보기에선 사라지고 나무에 이전메일함 짝이 남는다.
+      ⚠ 메일이 든 채 지우면 그 메일이 휴지통으로 간다
+    * 휴지통에서 되살리기는 **GET** ``TrashDoc?OpenAgent&docid=<unid>&imapuser=&owner=&type=recovery`` → ``{ "result":true }`` 이고
+      받은 메일은 받은편지함으로 안 읽음 그대로 돌아온다
+    * 폴더 이름은 화면처럼 역슬래시 · 따옴표 · ``| _ < >`` 와 시스템 폴더 이름(``inbox`` · ``$trash`` · ``(drafts)`` …)을 막는다
+
+    메일 규칙 — 같은 실측 코멘트가 든다(꼴은 화면 스크립트 ``fmmailrule.js`` 그대로)
+    * 목록은 보기 ``XML_Rule``(``?ReadViewEntries``)이고, 한 건은 그 규칙 문서의 편집 화면 ``/<db>/0/<unid>?EditDocument`` 다 —
+      규칙 문서라 메일 읽음과 무관하지만 ``EditDocument`` 는 읽기 길 목록 밖이라 규칙 목록이 낸 unid 로만 연다. 갈래 · 폴더는 화면
+      머리 ``new FormJS({…})`` 의 ``form``(``rules`` · ``folder_id``)과 ``folders``(``<경로>|<열쇠>^``)가, 조건 · 맞춤 · 받은/보낸은
+      입력 칸의 값이 든다
+    * 넣기는 **POST** ``Mailrule?OpenForm&Seq=1&viewname=(%24webrule)``, 고치기는 **POST** ``/<db>/0/<unid>?EditDocument&Seq=1``,
+      지우기는 **POST** ``Mailrule?OpenForm&Seq=1`` · ``SubmitAction=delete`` · ``ProcessUNID`` — 답은 JSON ``{"result":true, "unid":…}``
+      (지우기의 ``unid`` 는 그 규칙이 아니다). 넣은 규칙은 그 뒤 받은 메일에 서버가 곧바로 썼다
+    * 갈래 ``rules`` 는 ``move_folder`` · ``move_trash`` · ``delete``(화면의 ``copy_folder`` 는 꺼져 있다)이고, 맞춤
+      ``rule_fromType2`` · ``rule_toType2`` 는 화면의 「일치 · 포함」 차례로 1 · 0 이다 — 「일치」로 넣었을 때 서버가 어떻게 맞추나는 안 쟀다
+    * ``AllFwdOpt`` 는 옛 자동전달 탭의 흔적으로 옮기기 규칙에도 1 이 남아 있다(23 가운데 4) — 자동전달의 표지로 안 쓴다
+    * 안 잰 것 — 보낸 메일 규칙 · 조건 여럿의 이음(그리고 · 또는) · 규칙의 차례 · 이미 받은 메일에 규칙을 거꾸로 다는 길
 """
 
 from __future__ import annotations
@@ -153,6 +198,7 @@ import logging
 import os
 import pathlib
 import re
+import secrets
 import time
 import urllib.error
 import urllib.parse
@@ -216,11 +262,16 @@ DIRECTORY_YES = ("Y", "1", "TRUE")
 # 직급 코드(``grade_code``) → 인사 등급. P 는 직원 · 임원 1–10, E 는 현장 직군 1–7 — 같은 글자 안에서만 위아래가 선다.
 # 원본은 사람이 준 인사 등급표(직급명 · 직책명 · 직급명칭명)이고, 코드와의 짝은 2026-11-07 전사 조직도에서 직급명칭명 ·
 # 직책 구성이 표와 맞는 것으로 맞췄다. 29 · 30(둘 다 「임원」)과 34 · 35(둘 다 「과장」)의 차례는 직책 구성과 코드 차례로 고른 것이다.
-# 연구직(45–49) · 소장(44) · 이사(10) · 고문 · 외주직은 표에 없어 등급이 없다
+# 등급을 안 주는 직급 — 연구직(45–49) · 외주직은 등급이 없는 것이 맞다(빈칸이 아니라 사실이다). 소장(44)은 연구소장이면 임원급이고 현장의
+# 소장이면 아니라 직급만으로는 모른다. 이사(10)는 사외이사로 보여 회사의 위아래 밖이다
 GRADE_LEVELS = {
     "24": "P1", "23": "P2", "22": "P3", "21": "P4", "26": "P5", "27": "P6", "28": "P7", "29": "P8", "30": "P9", "31": "P10",
     "43": "E1", "42": "E2", "36": "E3", "35": "E4", "34": "E5", "33": "E6", "32": "E7",
 }
+# 직급 코드가 위 표에 없을 때 직급 이름으로 주는 등급. 고문은 퇴임을 앞두고 고문으로 있는 임원이라 임원급이다. 임원 사이의 차례는 몰라
+# 임원의 낮은 쪽을 준다 — 「임원 이상」 거르기에 들되 다른 임원 위에 서지 않는다. ⚠ 고문의 직급 코드와, 주소록이 직급 이름을 「고문」
+# 그대로 주는지는 안 쟀다 — 다른 글자로 오면 등급 없이 선다
+GRADE_NAME_LEVELS = {"고문": "P8"}
 LEVEL_FORM = re.compile(r"^([A-Z])(\d+)$")
 DIRECTORY_PATH = "/common/profile.nsf/ag_org_search_json?OpenAgent"
 # 조직도 — 웹메일 받는 사람 고름 창이 부르는 손(orgtree.js · org_mail.js). 나무는 부서 코드 → 자식 부서, 구성원은 부서 코드 →
@@ -239,8 +290,28 @@ ID_FORM = re.compile(r"^\s*([^\s()/@]+)\s*\(([^()]+)\)\s*$")
 
 # ⚠ 읽음 표시를 바꾸는 명령 — 읽기 길은 이 주소를 짓지 않고, 지으려 하면 서버에 닿기 전에 막는다
 MARKS_AS_READ = re.compile(r"[?&](opendocument|editdocument)\b", re.IGNORECASE)
-# 메일함을 바꾸는 주소 전부 — 읽음으로 · 안 읽음으로(되돌리기)
-CHANGES_MAILBOX = re.compile(r"[?&](opendocument|editdocument)\b|/ag_read_cancel\b", re.IGNORECASE)
+# 메일함을 바꾸는 주소 전부 — 읽음으로 · 안 읽음으로(되돌리기) · 폴더 만들기 · 지우기 · 메일 옮기기 · 휴지통 되살리기 · 규칙
+CHANGES_MAILBOX = re.compile(r"[?&](opendocument|editdocument)\b|/ag_read_cancel\b|/agt_mail_folder_save\b|/folder2\b"
+                             r"|/trashdoc\b|/mailrule\b", re.IGNORECASE)
+
+# 폴더 나무 — 웹메일 화면이 폴더 고름 상자를 채우는 보기(JSON). 열은 경로 · 폴더 열쇠 · 부모 열쇠(실측)
+FOLDER_TREE_VIEW = "fdd_folder_fullpath"
+TREE_COLUMN_PATH, TREE_COLUMN_NODE, TREE_COLUMN_PARENT = "$6", "NodeUnid", "ParentID"
+FOLDER_NODE = re.compile(r"^newNode\d{1,9}$")   # 폴더 열쇠 — 만드는 쪽이 짓고 서버가 그대로 쓴다(실측)
+TOP_PARENT = "nofolder"                          # 맨 위 폴더를 만들 때의 부모 값 — 나무의 부모 열은 ``nodeATag<n>`` 이다
+INBOX_NODE = "inbox"                             # 옮기기의 받는 자리 — 받은편지함
+FOLDER_NAME_BANNED = re.compile(r"[\\\"'|_<>]")  # 화면이 막는 글자(실측 · mail_posco.js folder_add)
+SYSTEM_FOLDER_NAMES = ("inbox", "sent", "draft", "drafts", "trash", "junk")   # 화면이 막는 이름 — 앞뒤 꾸밈(``$`` · ``imap`` · 괄호)까지
+FOLDER_SAVE_AGENT = "agt_mail_folder_save"
+MOVE_FORM = "folder2"
+TRASH_AGENT = "TrashDoc"
+
+# 메일 규칙(받은 · 보낸 메일을 서버가 스스로 옮기는 기준) — 목록 보기 · 규칙 문서 · 저장 폼(실측 · fmmailrule.js)
+RULE_VIEW = "XML_Rule"
+RULE_FORM = "Mailrule"
+RULE_BOXES = ("inbox", "sent")                         # 받은 메일 · 보낸 메일
+RULE_ACTIONS = ("move_folder", "move_trash", "delete")  # 폴더로 이동 · 휴지통으로 · 영구삭제
+RULE_FIELDS = ("from", "to", "cc", "subject", "attach")  # 보낸 사람 · 받는 사람 · 참조 · 제목 · 첨부 이름 — 폼 칸은 rule_<이것>
 _UNID = re.compile(r"^[0-9A-Fa-f]{32}$")
 _HEX32 = r"[0-9A-Fa-f]{32}"
 
@@ -337,6 +408,31 @@ class Folder:
 
 
 @dataclass(frozen=True)
+class FolderNode:
+    """폴더 나무의 한 마디 — 바꾸는 손(만들기 · 옮기기 · 지우기)이 쓰는 열쇠. ``node`` 는 ``newNode<숫자>`` 꼴이고, ``path`` 는
+    ``Folder.path`` 와 같은 ``부모\\자식`` 경로라 그 폴더의 보기(``Folder``)는 경로로 잇는다. ``parent`` 는 부모의 ``node`` —
+    맨 위 폴더는 ``nodeATag<n>`` 이다."""
+    node: str
+    path: str
+    parent: str
+
+
+@dataclass(frozen=True)
+class Rule:
+    """메일 규칙 하나 — 서버가 들어오는(보내는) 메일에 스스로 적용한다(실측). ``conditions`` 는 ``RULE_FIELDS`` 의 칸 → 글자
+    (빈 칸은 안 든다), ``exact_from`` · ``exact_to`` 는 보낸 · 받는 사람 칸이 「일치」인가(거짓이면 「포함」)다. ``folder`` 는
+    옮길 폴더의 경로(``move_folder`` 만), ``forwards`` 는 남에게 자동전달하는 규칙인가 — 이 손은 그 규칙을 고치지 않는다."""
+    unid: str
+    box: str
+    action: str
+    folder: str
+    conditions: dict
+    exact_from: bool = False
+    exact_to: bool = False
+    forwards: bool = False
+
+
+@dataclass(frozen=True)
 class Marks:
     """모든편지함 한 줄에서 폴더 보기가 못 드는 칸 — 받는 꼴(``xrtype``) · 중요도(``xImportance``) · 보낸 분(``xname`` 을 푼 것) ·
     읽음 열 글자 그대로(``ico-post`` 회신함 · ``ico-remail`` 전달함 …). 시각은 창에서 끊는 데만 쓴다.
@@ -403,8 +499,8 @@ class DirectoryPerson:
 
     @property
     def level(self) -> str:
-        """인사 등급(``P5`` · ``E3`` …) — 표에 없는 직급이면 빈 글자."""
-        return GRADE_LEVELS.get(self.grade_code, "")
+        """인사 등급(``P5`` · ``E3`` …) — 직급 코드의 표가 먼저이고, 코드가 표에 없으면 직급 이름의 표를 본다. 둘 다 없으면 빈 글자."""
+        return GRADE_LEVELS.get(self.grade_code) or GRADE_NAME_LEVELS.get(self.grade.strip(), "")
 
 
 def level_at_least(level: str, floor: str) -> bool:
@@ -542,9 +638,10 @@ class Mailbox:
             raise ChangeRefused(f"읽기 전용으로 잰 주소 꼴이 아니라 묻지 않는다: {url}")
         return self._open(url)
 
-    def _open(self, url: str) -> tuple[bytes, str]:
+    def _open(self, url: str | urllib.request.Request) -> tuple[bytes, str]:
+        request, url = url, url.full_url if isinstance(url, urllib.request.Request) else url
         try:
-            with self._opener.open(url, timeout=self.timeout) as response:
+            with self._opener.open(request, timeout=self.timeout) as response:
                 return response.read(), response.headers.get("Content-Type", "")
         except _Redirected as exc:
             raise SessionExpired(f"세션이 끊겼다(→ {exc.location}) — 다시 로그인한다") from exc
@@ -923,6 +1020,274 @@ class Mailbox:
             raise SessionExpired("메일함을 바꾸는 요청에 로그인 페이지가 왔다 — 반영되지 않았다")
         log.info("메일함을 바꿨다: %s", "읽음으로" if path.endswith("?OpenDocument") else "안 읽음으로")
 
+    # ── 폴더 — 나무 읽기는 읽기 길, 만들기 · 옮기기 · 지우기는 바꾸는 손이다(머리말 「폴더」) ──────────────
+
+    def folder_tree(self) -> list[FolderNode]:
+        """폴더 나무 — 쓰는 사람이 지은 폴더마다 열쇠 · 경로 · 부모. 바꾸는 손이 이 열쇠를 쓴다. 읽음 표시를 안 바꾼다.
+
+        같은 보기가 이전메일함 쪽 짝도 들어, 지운 폴더가 짝이 남은 동안 여기 남을 수 있다 — 지금 있는 폴더는 ``folders`` 가 든다.
+        """
+        body, kind = self._get(f"/{FOLDER_TREE_VIEW}?ReadViewEntries&outputformat=json&count=-1")
+        text = body.decode(_charset(kind), errors="replace")
+        try:
+            answer = json.loads(text)
+        except json.JSONDecodeError as exc:
+            if _looks_like_login(text):
+                raise SessionExpired("폴더 나무 대신 로그인 페이지가 왔다 — 다시 로그인한다") from exc
+            raise MailboxError(f"폴더 나무 JSON 을 못 읽었다: {exc}") from exc
+        nodes = []
+        for row in (answer.get("viewentry") or []) if isinstance(answer, dict) else []:
+            cols = {c.get("@name"): _json_cell(c) for c in row.get("entrydata") or [] if isinstance(c, dict)}
+            node = cols.get(TREE_COLUMN_NODE, "")
+            if FOLDER_NODE.match(node) and cols.get(TREE_COLUMN_PATH):
+                nodes.append(FolderNode(node=node, path=cols[TREE_COLUMN_PATH], parent=cols.get(TREE_COLUMN_PARENT, "")))
+        log.info("폴더 나무: %d마디", len(nodes))
+        return nodes
+
+    def folder_node(self, path: str, *, node: str = "") -> FolderNode | None:
+        """경로가 같은 폴더의 마디 — 지금 있는 폴더(``folders``)만. 없으면 None.
+
+        나무는 지운 폴더의 이전메일함 짝을 같은 경로로 들 수 있어, 그 경로의 줄이 둘 넘으면 고르지 않고 ``MailboxError`` 다 —
+        짝을 고르면 서버는 OK 를 내고 아무것도 안 한다. ``node`` 를 주면(방금 지은 열쇠) 그 줄만 본다.
+        """
+        if path not in {f.path for f in self._fresh_folders()}:
+            return None
+        rows = [n for n in self.folder_tree() if n.path == path and (not node or n.node == node)]
+        if len(rows) > 1:
+            raise MailboxError(f"폴더 나무에 같은 경로가 {len(rows)} 줄이다(지운 폴더의 짝일 수 있다) — 웹메일에서 고른다: {path!r}")
+        return rows[0] if rows else None
+
+    def create_folder(self, name: str, parent: str = "") -> FolderNode:
+        """⚠ 메일함을 바꾼다 — 폴더 하나를 만든다. ``parent`` 는 부모 폴더의 경로(비면 맨 위)다. 만든 폴더의 마디를 낸다.
+
+        이름은 웹메일 화면과 같은 글자를 막고, 같은 자리에 같은 이름이 있으면 만들지 않는다(``MailboxConfigError``). 서버의 ``OK`` 를
+        믿지 않고 보기로 다시 봐서 안 섰으면 ``MailboxError``.
+        """
+        name = name.strip()
+        _check_folder_name(name)
+        path = f"{parent}{FOLDER_SEPARATOR}{name}" if parent else name
+        if any(f.path.casefold() == path.casefold() for f in self._fresh_folders()):
+            raise MailboxConfigError(f"같은 폴더가 이미 있다: {path!r}")
+        if parent:
+            up = self.folder_node(parent)
+            if up is None:
+                raise MailboxConfigError(f"부모 폴더가 없다: {parent!r}")
+            parent_node = up.node
+        else:
+            parent_node = TOP_PARENT
+        node = f"newNode{secrets.randbelow(10 ** 8)}"
+        query = urllib.parse.urlencode({"ulan": "kor", "act": "create", "fid": "", "fname": name, "fcode": "",
+                                        "pfname": "", "pfcode": parent_node, "nodeid": node}, quote_via=urllib.parse.quote)
+        self._send_folder(f"{self.db_path}/{FOLDER_SAVE_AGENT}?OpenAgent&{query}", "폴더를 만들었다")
+        made = self.folder_node(path, node=node)
+        if made is None:
+            raise MailboxError(f"폴더 만들기 요청은 OK 였는데 다시 보니 안 섰다: {path!r}")
+        return made
+
+    def move_mails(self, unids, to: str) -> None:
+        """⚠ 메일함을 바꾼다 — 메일들을 폴더 ``to``(경로)로, ``to`` 가 빈 글자면 받은편지함으로 옮긴다. 읽음 표시는 그대로다(실측).
+
+        서버는 못 옮겨도 ``OK`` 를 내서(실측) 옮긴 뒤 받는 자리의 보기로 다시 본다 — 안 든 메일이 있으면 ``MailboxError``.
+        """
+        ids = [_unid(u) for u in unids]
+        if not ids:
+            raise MailboxConfigError("옮길 메일이 없다")
+        if to:
+            node = self.folder_node(to)
+            if node is None:
+                raise MailboxConfigError(f"그런 폴더가 없다: {to!r}")
+            target = node.node
+        else:
+            target = INBOX_NODE
+        form = {"__Click": "0", "Action": "mailmove_action", "nodeUNID": target, "folderName": "",
+                "UNIDs": ",".join(ids), "ParaView": "", "imapuser": "", "owner": ""}
+        self._send_folder(f"{self.db_path}/{MOVE_FORM}?OpenForm", "메일을 옮겼다", form=form)
+        landed = self._landed(to, ids)
+        missing = [u for u in ids if u.upper() not in landed]
+        if missing:
+            raise MailboxError(f"옮기기 요청은 OK 였는데 {len(missing)}/{len(ids)} 통이 {to or '받은편지함'}에 없다")
+
+    def delete_folder(self, path: str) -> None:
+        """⚠ 메일함을 바꾼다 — 빈 폴더 하나를 지운다. 메일이나 하위 폴더가 든 폴더는 지우지 않는다(``MailboxConfigError``) —
+        메일이 든 채 지우면 그 메일이 휴지통으로 간다(실측). 이전메일함 쪽 짝까지 두 번 보내 나무에서도 지운다."""
+        node = self.folder_node(path)
+        if node is None:
+            raise MailboxConfigError(f"그런 폴더가 없다: {path!r}")
+        if any(f.path.startswith(path + FOLDER_SEPARATOR) for f in self._fresh_folders()):
+            raise MailboxConfigError(f"하위 폴더가 든 폴더라 지우지 않는다: {path!r}")
+        folder = next(f for f in self._fresh_folders() if f.path == path)
+        if self._view(folder.unid, 1, 1).find("viewentry") is not None:
+            raise MailboxConfigError(f"메일이 든 폴더라 지우지 않는다 — 먼저 옮긴다(든 채 지우면 휴지통으로 간다): {path!r}")
+        pointing = [r for r in self.rules() if r.action == "move_folder" and r.folder == path]
+        if pointing:
+            raise MailboxConfigError(f"규칙 {len(pointing)}개가 이 폴더로 메일을 옮긴다 — 그 규칙을 먼저 고치거나 지운다"
+                                     f"(없는 폴더를 가리킨 규칙이 새 메일을 어떻게 하나는 안 쟀다): {path!r}")
+        for side, both in (("mail", ""), ("archive", "Y")):
+            query = urllib.parse.urlencode({"ulan": "kor", "act": "delete_action", "nodeid": node.node, "imapuser": "",
+                                            "power": "", "afdelete": both, "nodefrom": side})
+            self._send_folder(f"{self.db_path}/{FOLDER_SAVE_AGENT}?OpenAgent&{query}", "폴더를 지웠다")
+        if any(f.path == path for f in self._fresh_folders()):
+            raise MailboxError(f"폴더 지우기 요청은 OK 였는데 다시 보니 남았다: {path!r}")
+
+    def restore_from_trash(self, mail: Entry | Found | str) -> None:
+        """⚠ 메일함을 바꾼다 — 휴지통의 메일 하나를 되살린다(받은 메일은 받은편지함으로 · 실측). 답이 ``result`` 참이 아니면 ``MailboxError``."""
+        unid = _unid(mail.unid if isinstance(mail, Found) else mail)
+        data = self._send_folder(f"{self.db_path}/{TRASH_AGENT}?OpenAgent&docid={unid}&imapuser=&owner=&type=recovery",
+                                 "휴지통에서 되살렸다", ok=None)
+        try:
+            answer = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise MailboxError(f"되살리기 답이 JSON 이 아니다: {data[:80]!r}") from exc
+        if not (isinstance(answer, dict) and answer.get("result") is True):
+            raise MailboxError(f"되살리기가 서지 않았다: {data[:80]!r}")
+
+    # ── 메일 규칙 — 목록 · 읽기는 읽기 길, 넣기 · 고치기 · 지우기는 바꾸는 손이다(머리말 「메일 규칙」) ──────────────
+
+    def rules(self) -> list[Rule]:
+        """메일 규칙 전부 — 목록 보기의 unid 마다 그 규칙 문서를 연다(규칙 문서라 메일의 읽음과 무관하다). 읽기만 한다."""
+        unids = self._rule_unids()
+        with ThreadPoolExecutor(max_workers=ORG_WORKERS) as pool:
+            got = list(pool.map(self._rule_by_unid, unids))
+        log.info("메일 규칙: %d개", len(got))
+        return got
+
+    def rule(self, unid: str) -> Rule:
+        """규칙 하나 — 규칙 목록에 없는 unid 면 ``MailboxConfigError``(메일 문서를 규칙으로 열지 않게)."""
+        unid = _unid(unid).upper()
+        if unid not in self._rule_unids():
+            raise MailboxConfigError(f"그런 규칙이 없다: {unid}")
+        return self._rule_by_unid(unid)
+
+    def save_rule(self, rule: Rule) -> str:
+        """⚠ 메일함을 바꾼다 — 규칙을 넣거나(``unid`` 가 빈 글자) 고친다. 규칙 unid 를 낸다. 서버가 그 규칙을 바로 쓴다(실측).
+
+        자동전달 칸은 늘 비워 보낸다 — 남에게 메일이 나가는 규칙은 이 손이 짓지도 고치지도 않는다.
+        """
+        form = self._rule_form(rule)
+        if rule.unid:
+            if self.rule(rule.unid).forwards:
+                raise MailboxConfigError("자동전달 규칙은 이 손이 고치지 않는다 — 웹메일에서 고친다")
+            path = f"{self.db_path}/0/{_unid(rule.unid).lower()}?EditDocument&Seq=1"
+        else:
+            path = f"{self.db_path}/{RULE_FORM}?OpenForm&Seq=1&viewname=(%24webrule)"
+        answer = self._send_rule(path, form, "규칙을 " + ("고쳤다" if rule.unid else "넣었다"))
+        unid = str(answer.get("unid") or "").upper()
+        if unid not in self._rule_unids():
+            raise MailboxError("규칙 저장 답은 참이었는데 목록에 그 규칙이 없다")
+        return unid
+
+    def delete_rule(self, unid: str) -> None:
+        """⚠ 메일함을 바꾼다 — 규칙 하나를 지운다. 자동전달 규칙도 지울 수는 있다(남에게 나가는 길을 닫는 쪽이다)."""
+        unid = self.rule(unid).unid
+        self._send_rule(f"{self.db_path}/{RULE_FORM}?OpenForm&Seq=1",
+                        {"__Click": "0", "%%PostCharset": "UTF-8", "SubmitAction": "delete", "SAResponse": "json",
+                         "ProcessUNID": unid}, "규칙을 지웠다")
+        if unid in self._rule_unids():
+            raise MailboxError("규칙 지우기 답은 참이었는데 목록에 남았다")
+
+    def _rule_form(self, rule: Rule) -> dict:
+        """규칙 → 저장 폼의 칸(실측 · fmmailrule.js save). 조건 없는 규칙 · 모르는 칸 · 없는 폴더는 묻기 전에 막는다."""
+        if rule.box not in RULE_BOXES or rule.action not in RULE_ACTIONS:
+            raise MailboxConfigError(f"규칙 갈래가 아니다: {rule.box!r} · {rule.action!r}")
+        unknown = set(rule.conditions) - set(RULE_FIELDS)
+        if unknown:
+            raise MailboxConfigError(f"모르는 조건 칸: {sorted(unknown)}")
+        cond = {k: str(rule.conditions.get(k) or "").strip() for k in RULE_FIELDS}
+        if not any(cond.values()):
+            raise MailboxConfigError("조건이 하나도 없다 — 모든 메일에 걸리는 규칙은 짓지 않는다")
+        node = None
+        if rule.action == "move_folder":
+            node = self.folder_node(rule.folder) if rule.folder else None
+            if node is None:
+                raise MailboxConfigError(f"옮길 폴더가 없다: {rule.folder!r}")
+        form = {"__Click": "0", "%%PostCharset": "UTF-8", "SubmitAction": "save", "SAResponse": "json",
+                "%%Surrogate_expRule": "1", "expRule": rule.box, "%%Surrogate_rules": "1", "rules": rule.action,
+                "%%Surrogate_select_folder": "1", "select_folder": node.node if node else "", "new_folder": "",
+                "folder_id": node.node if node else "",
+                "folder_name": node.path.rsplit(FOLDER_SEPARATOR, 1)[-1] if node else "",
+                "%%Surrogate_rule_fromType2": "1", "rule_fromType2": "1" if rule.exact_from else "0",
+                "%%Surrogate_rule_toType2": "1", "rule_toType2": "1" if rule.exact_to else "0",
+                # 자동전달 칸 — 늘 비우고 끈다(남에게 나가는 길)
+                "forward_list": "", "AllFwdOpt": "0", "MydeptFwdOpt": "0",
+                "%%Surrogate_rule_fromType1": "1", "rule_fromType1": "0"}
+        form |= {f"rule_{k}": v for k, v in cond.items()} | {f"rule_{k}_1": "" for k in RULE_FIELDS}
+        return form
+
+    def _send_rule(self, path: str, form: dict, done: str) -> dict:
+        """규칙을 바꾸는 POST — 위 손들의 꼴만 받고, 자동전달 칸이 찬 폼은 보내지 않는다. 답(JSON)의 ``result`` 가 참이어야 한다."""
+        db = re.escape(self.db_path)
+        if not (re.fullmatch(rf"{db}/{RULE_FORM}\?OpenForm&Seq=1(&viewname=\(%24webrule\))?", path)
+                or re.fullmatch(rf"{db}/0/{_HEX32}\?EditDocument&Seq=1", path)):
+            raise ChangeRefused(f"규칙을 바꾸는 손의 꼴이 아니다: {path}")
+        if form.get("forward_list") or form.get("AllFwdOpt", "0") != "0" or form.get("MydeptFwdOpt", "0") != "0":
+            raise ChangeRefused("자동전달 칸이 찬 규칙은 보내지 않는다")
+        request = urllib.request.Request(self.server + path, data=urllib.parse.urlencode(form).encode(), method="POST")
+        request.add_header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+        data, kind = self._open(request)
+        text = data.decode(_charset(kind), errors="replace")
+        if _looks_like_login(text):
+            raise SessionExpired("규칙을 바꾸는 요청에 로그인 페이지가 왔다 — 반영되지 않았다")
+        try:
+            answer = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise MailboxError(f"규칙 답이 JSON 이 아니다: {text.strip()[:80]!r}") from exc
+        if not (isinstance(answer, dict) and answer.get("result") is True):
+            raise MailboxError(f"메일함이 규칙을 안 받았다: {text.strip()[:80]!r}")
+        log.info("메일함을 바꿨다: %s", done)
+        return answer
+
+    def _rule_unids(self) -> list[str]:
+        root = self._view(RULE_VIEW, 1000, 1)
+        return [e.get("unid", "").upper() for e in root.iter("viewentry") if _UNID.match(e.get("unid", ""))]
+
+    def _rule_by_unid(self, unid: str) -> Rule:
+        """규칙 문서의 편집 화면을 받아 푼다 — ``EditDocument`` 는 읽기 길 목록 밖이라, 규칙 목록이 낸 unid 로 이 자리에서만 연다."""
+        data, kind = self._open(f"{self.server}{self.db_path}/0/{_unid(unid).lower()}?EditDocument")
+        page = data.decode(_charset(kind), errors="replace")
+        if _looks_like_login(page):
+            raise SessionExpired("규칙 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+        return parse_rule_page(unid, page)
+
+    def _fresh_folders(self) -> list[Folder]:
+        """보기 목록을 새로 받아 지금의 폴더 — 바꾸는 손 앞뒤에는 받아 둔 목록이 낡는다."""
+        self._collections = None
+        return self.folders()
+
+    def _landed(self, to: str, ids: list[str]) -> set[str]:
+        """옮긴 자리(폴더 경로 · 빈 글자는 받은편지함)에 든 ``ids`` — 옛 메일은 새것 창 밖에 서므로 다 찾거나 보기가 끝날 때까지
+        1000 줄씩 받는다(보기는 한 번에 1000 줄에서 잘린다). 서버가 start 를 안 따라 같은 쪽을 다시 주면 거기서 멈춘다."""
+        folder = next((f for f in self._fresh_folders() if f.path == to), None) if to else None
+        if to and folder is None:
+            return set()
+        want, found, start, first = {u.upper() for u in ids}, set(), 1, None
+        while want - found:
+            rows = self.list(count=1000, start=start) if not to else self.list_folder(folder, count=1000, start=start)
+            if not rows or rows[0].unid == first:
+                break
+            found |= want & {e.unid.upper() for e in rows}
+            first, start = rows[0].unid, start + len(rows)
+        return found
+
+    def _send_folder(self, path: str, done: str, *, form: dict | None = None, ok: str | None = "ok") -> str:
+        """폴더 · 휴지통의 바꾸는 주소를 부른다 — 위 손들의 꼴만 받는다. 답 글자를 낸다. ``ok`` 가 있으면 답이 그 낱말이어야 한다."""
+        db = re.escape(self.db_path)
+        if not (re.fullmatch(rf"{db}/{FOLDER_SAVE_AGENT}\?OpenAgent&ulan=kor&act=(create|delete_action)&[\w%.=&-]+", path)
+                or (form is not None and path == f"{self.db_path}/{MOVE_FORM}?OpenForm")
+                or re.fullmatch(rf"{db}/{TRASH_AGENT}\?OpenAgent&docid={_HEX32}&imapuser=&owner=&type=recovery", path)):
+            raise ChangeRefused(f"폴더를 바꾸는 손의 꼴이 아니다: {path}")
+        body = urllib.parse.urlencode(form).encode() if form is not None else None
+        request = urllib.request.Request(self.server + path, data=body, method="POST" if form is not None else "GET")
+        if body is not None:
+            request.add_header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+        data, kind = self._open(request)
+        text = data.decode(_charset(kind), errors="replace")
+        if _looks_like_login(text):
+            raise SessionExpired("메일함을 바꾸는 요청에 로그인 페이지가 왔다 — 반영되지 않았다")
+        if ok is not None and text.strip().lower() != ok:
+            raise MailboxError(f"메일함이 바꾸기를 안 받았다: {text.strip()[:80]!r}")
+        log.info("메일함을 바꿨다: %s", done)
+        return text.strip()
+
 
 # ── 풀기 ─────────────────────────────────────────────────────────────────
 
@@ -1058,6 +1423,75 @@ def _column(entry: ET.Element, name: str) -> str:
         if data.get("name") == name:
             return " ".join(t.strip() for t in data.itertext() if t.strip())
     return ""
+
+
+_RULE_INFO = re.compile(r"new FormJS\((\{.*?\})\);", re.DOTALL)
+_INPUT = re.compile(r"<input\b[^>]*>", re.IGNORECASE)
+_ATTR = re.compile(r"""(?<![\w-])(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""")
+
+
+def parse_rule_page(unid: str, page: str) -> Rule:
+    """규칙 편집 화면 → ``Rule``. 갈래 · 폴더는 화면 머리의 ``new FormJS({…})``, 조건 · 맞춤 · 자동전달은 입력 칸의 값이 든다(실측).
+
+    머리가 없거나 못 읽거나 갈래가 모르는 값이면 ``MailboxError`` — 빈 규칙으로 읽으면 자동전달 규칙을 조용히 숨긴다.
+    """
+    found = _RULE_INFO.search(page)
+    try:
+        info = json.loads(found.group(1)) if found else None
+    except json.JSONDecodeError:
+        info = None
+    form = info.get("form") if isinstance(info, dict) else None
+    if not isinstance(form, dict) or str(form.get("rules") or "") not in (*RULE_ACTIONS, "forward"):
+        raise MailboxError(f"규칙 화면의 꼴이 잰 것과 다르다(머리 · 갈래를 못 읽었다): {unid}")
+    paths = {}
+    for item in info.get("folders") or []:
+        path, _, rest = str(item).rpartition("|")
+        paths[rest.split("^", 1)[0]] = path
+    values: dict[str, str] = {}
+    checked: dict[str, str] = {}
+    for tag in _INPUT.findall(page):
+        attrs = {m.group(1).lower(): html.unescape(next((g for g in m.groups()[1:] if g is not None), ""))
+                 for m in _ATTR.finditer(tag)}
+        name = attrs.get("name", "")
+        if attrs.get("type", "").lower() == "radio":
+            if re.search(r"\bchecked\b", tag, re.IGNORECASE):
+                checked[name] = attrs.get("value", "")
+        elif name:
+            values.setdefault(name, attrs.get("value", ""))
+    conditions = {k: values[f"rule_{k}"].replace("\u200b", "").strip()
+                  for k in RULE_FIELDS if values.get(f"rule_{k}", "").replace("\u200b", "").strip()}
+    action = str(form.get("rules") or "")
+    folder_id = str(form.get("folder_id") or "")
+    # 자동전달은 규칙 갈래(``forward``)나 받는 사람 목록이 든다. ``AllFwdOpt`` 는 옛 자동전달 탭의 흔적으로 옮기기 규칙에도 1 이
+    # 남아 있어(실측 23 가운데 4) 표지로 안 쓴다
+    forwards = action == "forward" or bool(values.get("forward_list", "").strip())
+    return Rule(unid=unid, box=checked.get("expRule", ""), action=action,
+                folder=paths.get(folder_id, str(form.get("folder_name") or "")) if action == "move_folder" else "",
+                conditions=conditions, exact_from=checked.get("rule_fromType2") == "1",
+                exact_to=checked.get("rule_toType2") == "1", forwards=forwards)
+
+
+def _json_cell(cell: dict) -> str:
+    """JSON 보기의 칸 하나 → 글자. 칸은 ``{"text": {"0": 값}}`` 꼴이다(실측) — 값 묶음이면 첫 값."""
+    for key, value in cell.items():
+        if key.startswith("@"):
+            continue
+        while isinstance(value, (dict, list)):
+            value = (value.get("0") if isinstance(value, dict) else value[0]) if value else ""
+        return str(value or "")
+    return ""
+
+
+def _check_folder_name(name: str) -> None:
+    """폴더 이름을 웹메일 화면과 같은 자로 거른다 — 빈 이름 · 막는 글자 · 시스템 폴더 이름(꾸밈까지)."""
+    if not name:
+        raise MailboxConfigError("폴더 이름이 비었다")
+    if FOLDER_NAME_BANNED.search(name):
+        raise MailboxConfigError(f"폴더 이름에 못 쓰는 글자가 있다(역슬래시 · 따옴표 · | _ < >): {name!r}")
+    low = name.casefold()
+    for base in SYSTEM_FOLDER_NAMES:
+        if low in {base, f"imap{base}", f"(imap{base})", f"${base}", f"(${base})", f"({base})"}:
+            raise MailboxConfigError(f"시스템 폴더 이름이라 못 쓴다: {name!r}")
 
 
 def _is_folder(view: dict) -> bool:

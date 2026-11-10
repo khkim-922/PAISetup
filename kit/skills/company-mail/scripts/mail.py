@@ -2,11 +2,14 @@
 
 무엇을 하나
     목록 · 폴더 · 읽기 · 첨부 받기는 메일함을 안 바꾼다(``inbox.py`` 의 읽기 길 — 읽음 표시도 그대로다). 메일함 밖으로 나가거나
-    메일함을 바꾸는 일은 셋이고, 셋 다 **미리 보기와 실행이 다른 명령**이다::
+    메일함을 바꾸는 일은 여섯이고, 여섯 다 **미리 보기와 실행이 다른 명령**이다::
 
-        preview-reply → send-reply      답장 — 미리 보기가 낸 확인 열쇠를 실행에 넘겨야 나간다
-        preview-new   → send-new        새 메일 — 같은 꼴
-        preview-mark  → apply-mark      읽음으로 · 안 읽음으로 — 같은 꼴
+        preview-reply  → send-reply     답장 — 미리 보기가 낸 확인 열쇠를 실행에 넘겨야 나간다
+        preview-new    → send-new       새 메일 — 같은 꼴
+        preview-mark   → apply-mark     읽음으로 · 안 읽음으로 — 같은 꼴
+        preview-folder → apply-folder   폴더 만들기 · 지우기(빈 폴더만) — 같은 꼴
+        preview-move   → apply-move     메일을 폴더 · 받은편지함으로 옮기기 — 같은 꼴
+        preview-rule   → apply-rule     메일 분류 규칙 넣기 · 고치기 · 지우기(자동전달 칸은 늘 빈다) — 같은 꼴
 
     확인 열쇠는 미리 보인 그 내용(보내는 사람 · 받는 사람 · 참조 · 숨은참조 · 제목 · 본문 · 첨부의 이름과 바이트)의 지문이다. 실행 명령은 같은
     인자로 내용을 다시 지어 지문이 같을 때만 보낸다 — 사람이 본 것과 다른 것이 나가지 않는다. 사람에게 묻는 일은 이
@@ -17,9 +20,11 @@
 
     session                                       세션이 살아 있나 · 이 세션의 메일함 주소
     folders                                       쓰는 사람이 지은 폴더
-    list [--folder 경로 | --sent | --drafts] [--count N] [--start N] [--unread]
-                                                  --unread 는 받은편지함 · 폴더만 — 새것부터 UNREAD_SCAN 줄까지 훑어
-                                                  안 읽음 --count 통을 보이고, 훑은 줄 수와 끝까지 봤나를 낸다
+    list [--folder 경로 | --sent | --drafts] [--count N] [--start N] [--unread] [--from 말]
+                                                  --unread · --from(보낸 분 이름 · 주소의 일부)은 받은편지함 · 폴더만 —
+                                                  새것부터 SWEEP_SCAN 줄까지 훑어 걸린 것 --count 통을 보이고, 훑은 줄
+                                                  수와 끝까지 봤나를 낸다
+    summary [--folder 경로] [--top N]             받은편지함 · 폴더 하나를 보낸 분별 · 제목 말머리별로 센다(보기 끝까지)
     search 낱말 [--in 범위] [--field 칸] [--count N] [--page N]
                                                   웹메일 검색 — 범위 all(기본 · 임시보관함까지 함께) · inbox · sent ·
                                                   draft · star · unread · trash, 칸 subject(기본) · body · attachment
@@ -43,6 +48,14 @@
     send-new    (preview-new 와 같은 인자) --confirm 열쇠
     preview-mark  UNID --read|--unread [--folder 경로]
     apply-mark    UNID --read|--unread --confirm 열쇠 [--folder 경로]
+    rules                                         메일 분류 규칙 — 줄 끝의 unid 로 고치고 지운다
+    preview-folder --create 이름 [--parent 경로] | --delete 경로
+    apply-folder   (preview-folder 와 같은 인자) --confirm 열쇠
+    preview-move   UNID ... --to 폴더|--inbox [--scan N]
+    apply-move     (preview-move 와 같은 인자) --confirm 열쇠
+    preview-rule   [--unid 규칙] [--box inbox|sent] [--action move_folder|move_trash|delete] [--folder 경로]
+                   [--from · --to · --cc · --subject · --attach 값] [--exact-from] [--exact-to] | --delete 규칙
+    apply-rule     (preview-rule 와 같은 인자) --confirm 열쇠
 
     메일 손은 이 파일 곁에, 세션 손은 형제 스킬 ep-login 의 ``scripts/`` 에 있다 — 그 폴더의 ``ep_session.py`` 가 받는 손을
     돌려 종료 값 · 세션 파일을 낸다(검사가 대역을 세울 때만 ``EP_SESSION_HAND``). 메일함 주소는 ``--url`` · ``MAILBOX_URL`` 순이고, 둘 다 없으면 세션으로
@@ -108,7 +121,11 @@ MAILFILE_NUMBER = re.compile(r"/(\d+)\.nsf$", re.IGNORECASE)   # 메일함 파�
 
 DEFAULT_SCAN = 300            # 메일 하나를 unid 로 찾을 때 첫 판에 보기마다 훑는 새것의 줄 수 — 없으면 그 보기들을 끝까지 훑는다
 DEEP_PAGE = 1000              # 끝까지 훑을 때 한 번에 받는 줄 — 서버가 보기 count 를 1000에서 자른다(inbox.py 머리말)
-UNREAD_SCAN = 3000            # list --unread 가 안 읽음을 찾아 훑는 줄의 상한 — 그 뒤는 안 봤다고 말한다
+SWEEP_SCAN = 3000             # list --unread · --from 이 보기 하나를 훑는 줄의 상한 — 그 뒤는 안 봤다고 말하고 --start 로 잇는다
+SUMMARY_TOP = 30              # summary 가 보이는 묶음의 수 — 나머지는 한 줄로 접는다
+HEAD_MIN = 2                  # summary 가 제목 말머리를 묶음으로 치는 가장 적은 통 수
+# 제목 머리의 대괄호 말머리 — 앞의 답장 · 전달 머리(RE: · FW: · 회신: · 전달:)는 건너뛴다
+SUBJECT_HEAD = re.compile(r"\s*(?:(?:RE|FW|FWD|회신|전달)\s*:\s*)*(\[[^\[\]]{1,30}\])", re.IGNORECASE)
 DEFAULT_MAX_CHARS = 20000     # 읽기가 내는 본문 글자 상한
 TOKEN_LENGTH = 12
 REPLY_PREFIX = "RE: "
@@ -120,7 +137,7 @@ ORG_CACHE_FORMAT = 1          # 캐시 파일의 꼴 번호 — DirectoryPerson 
 GROUP_KIND_WORDS = {"jobtitle": "직책", "grade": "직급", "location": "지역"}   # 배포그룹 갈래 → 화면의 이름
 
 EP_LOGIN = "스킬 ep-login 으로 사내 세션을 먼저 세운다"
-MUTATING = ("send-reply", "send-new", "apply-mark")   # 메일함 밖으로 나가거나 메일함을 바꾼다 — 세션 손부터 받아 한 번만 돈다
+MUTATING = ("send-reply", "send-new", "apply-mark", "apply-folder", "apply-move", "apply-rule")   # 메일함 밖으로 나가거나 메일함을 바꾼다 — 세션 손부터 받아 한 번만 돈다
 # 평문 형식의 머리 — 오피스 · PDF 확장자인데 이 머리가 아니면 DRM 에 감긴 것이다(스킬 drm-office-read 1 절)
 PLAIN_HEADS = (b"%PDF", b"PK\x03\x04", b"\xd0\xcf\x11\xe0", b"{\\rtf")
 OFFICE_EXTS = {"pdf", "doc", "docx", "docm", "rtf", "xls", "xlsx", "xlsm", "ppt", "pptx", "pptm", "hwp", "hwpx"}
@@ -193,7 +210,7 @@ def open_mailbox(args, inbox):
 # ── 메일 찾기 ─────────────────────────────────────────────────────────────
 
 def deep_hit(fetch, hit, start: int):
-    """보기 하나를 ``start`` 줄부터 끝까지 ``DEEP_PAGE`` 줄씩 받으며 ``hit`` 이 고른 줄을 낸다 — 없으면 None.
+    """보기 하나를 ``start`` 줄부터 끝까지 ``DEEP_PAGE`` 줄씩 받으며 ``hit`` 이 참을 낸 쪽에서 그 값을 낸다 — 끝까지 없으면 None.
 
     빈 쪽이 오면 끝이다. 쪽의 첫 줄이 앞 쪽과 같으면(서버가 start 를 안 따르면) 거기서 멈춘다 — 안 그러면 같은 쪽을 끝없이 받는다.
     """
@@ -210,14 +227,24 @@ def deep_hit(fetch, hit, start: int):
 
 
 def find_mail(box, inbox, unid: str, folder: str | None, scan: int):
-    """unid 의 목록 줄(Entry)을 찾는다 — ``--folder`` 를 주면 그 폴더(``(Drafts)`` · ``(Sent)`` 도), 아니면 받은편지함 · 폴더 ·
-    임시보관함 · 보낸편지함 차례로. 없으면 Stop.
+    """unid 한 통의 목록 줄(Entry) — ``find_mails`` 의 한 통 꼴."""
+    return find_mails(box, inbox, [unid], folder, scan)[0]
 
+
+def find_mails(box, inbox, unids, folder: str | None, scan: int) -> list:
+    """unid 들의 목록 줄(Entry)을 준 차례대로 찾는다 — ``--folder`` 를 주면 그 폴더(``(Drafts)`` · ``(Sent)`` 도), 아니면
+    받은편지함 · 폴더 · 임시보관함 · 보낸편지함 차례로. 하나라도 없으면 Stop.
+
+    보기는 통 수와 상관없이 한 번씩만 훑는다 — 여러 통을 한 통씩 따로 찾으면 통마다 같은 보기를 처음부터 다시 받는다.
     폴더 줄은 보낸 분 주소가 비므로 모든편지함에서 unid 로 채운다(``inbox.list_all``). 휴지통은 안 찾는다.
     """
-    unid = unid.strip().upper()
-    if not re.fullmatch(r"[0-9A-F]{32}", unid):
-        raise Stop(EXIT_CONFIG, f"메일 열쇠(unid 32자리)가 아니다: {unid!r}")
+    wanted = [u.strip().upper() for u in unids]
+    for unid in wanted:
+        if not re.fullmatch(r"[0-9A-F]{32}", unid):
+            raise Stop(EXIT_CONFIG, f"메일 열쇠(unid 32자리)가 아니다: {unid!r}")
+    left = set(wanted)
+    got: dict = {}
+
     def views():
         """찾을 보기를 차례로 — 받은편지함 · 폴더(필요할 때만 목록을 받는다) · 임시보관함 · 보낸편지함. 하나는 (count, start) → 줄."""
         if folder is None:
@@ -235,31 +262,37 @@ def find_mail(box, inbox, unid: str, folder: str | None, scan: int):
         if folder in (None, SENT):
             yield lambda n, s: box.list_sent_mail(count=n, start=s)
 
-    def hit(rows):
-        return next((e for e in rows if e.unid.upper() == unid), None)
+    def hit(rows) -> bool:
+        """이 쪽에서 찾은 줄을 담고, 다 찾았으면 참 — 먼저 훑은 보기의 줄이 선다."""
+        for e in rows:
+            unid = e.unid.upper()
+            if unid in left:
+                left.discard(unid)
+                got[unid] = e
+        return not left
 
     # 첫 판은 보기마다 새것 scan 통 — 대개 여기서 선다. 없으면 같은 보기들을 그 뒤부터 끝까지 훑는다(검색이 찾은 옛 메일)
     seen = []
-    found = None
     for fetch in views():
         seen.append(fetch)
-        found = hit(fetch(scan, 1))
-        if found:
+        if hit(fetch(scan, 1)):
             break
-    for fetch in seen if found is None else []:
-        found = deep_hit(fetch, hit, scan + 1)
-        if found:
+    for fetch in seen if left else []:
+        if deep_hit(fetch, hit, scan + 1):
             break
-    if found is None:
-        raise Stop(EXIT_CONFIG, f"메일을 못 찾았다: {unid} — 받은편지함 · 폴더 · 임시보관함 · 보낸편지함 어디에도 없다. "
+    if left:
+        missing = ", ".join(u for u in dict.fromkeys(wanted) if u in left)
+        raise Stop(EXIT_CONFIG, f"메일을 못 찾았다: {missing} — 받은편지함 · 폴더 · 임시보관함 · 보낸편지함 어디에도 없다. "
                                 f"{TRASH_WORD}은 안 훑는다 — 지운 메일이면 {TRASH_WORD}에 있을 수 있고, 그 본문은 웹메일에서 연다")
-    if found.folder and found.folder not in SYSTEM_BOXES and not found.sender.addr:
+    bare = [u for u, e in got.items() if e.folder and e.folder not in SYSTEM_BOXES and not e.sender.addr]
+    if bare:
+        import dataclasses  # noqa: PLC0415
         marks = {m.unid.upper(): m for m in (box.list_all(count=max(scan, 1000)) or [])}
-        mark = marks.get(unid)
-        if mark is not None:
-            import dataclasses  # noqa: PLC0415
-            found = dataclasses.replace(found, sender=mark.sender if mark.sender.addr else found.sender)
-    return found
+        for unid in bare:
+            mark = marks.get(unid)
+            if mark is not None and mark.sender.addr:
+                got[unid] = dataclasses.replace(got[unid], sender=mark.sender)
+    return [got[u] for u in wanted]
 
 
 def who(sender) -> str:
@@ -328,28 +361,45 @@ def cmd_folders(args, inbox, mailer):
     print(f"— 폴더 {len(folders)}개")
 
 
-def unread_rows(fetch, start: int) -> tuple[list, int, bool]:
-    """보기 하나를 ``start`` 줄부터 ``UNREAD_SCAN`` 줄까지 ``DEEP_PAGE`` 줄씩 받아 안 읽은 줄을 고른다.
+def sweep_rows(fetch, start: int, keep=lambda e: True, limit: int | None = SWEEP_SCAN) -> tuple[list, int, bool]:
+    """보기 하나를 ``start`` 줄부터 ``limit`` 줄까지(None 이면 끝까지) ``DEEP_PAGE`` 줄씩 받아 ``keep`` 이 고른 줄을 모은다.
 
-    내는 것 — (안 읽은 줄 새것부터, 훑은 줄 수, 보기 끝까지 봤나). 빈 쪽이 와야 끝이다 — 덜 찬 쪽은 서버가 한 번에 주는 줄을
+    내는 것 — (고른 줄 새것부터, 훑은 줄 수, 보기 끝까지 봤나). 빈 쪽이 와야 끝이다 — 덜 찬 쪽은 서버가 한 번에 주는 줄을
     잘랐을 수 있어 끝으로 읽지 않는다. 쪽의 첫 줄이 앞 쪽과 같으면(서버가 start 를 안 따르면) 거기서 멈추고 끝까지 봤다고 하지 않는다.
     """
     picked, seen, first = [], 0, None
-    while seen < UNREAD_SCAN:
-        rows = fetch(min(DEEP_PAGE, UNREAD_SCAN - seen), start + seen)
+    while limit is None or seen < limit:
+        rows = fetch(DEEP_PAGE if limit is None else min(DEEP_PAGE, limit - seen), start + seen)
         if not rows:
             return picked, seen, True
         if rows[0].unid == first:
             return picked, seen, False
         first = rows[0].unid
         seen += len(rows)
-        picked += [e for e in rows if e.unread]
+        picked += [e for e in rows if keep(e)]
     return picked, seen, False
 
 
+def view_fetch(args, box):
+    """``--folder`` 가 가리키는 폴더, 없으면 받은편지함의 보기 — ((count, start) → 줄, 사람 말로 그 자리)."""
+    if args.folder:
+        folder = next((f for f in box.folders() if f.path == args.folder), None)
+        if folder is None:
+            raise Stop(EXIT_CONFIG, f"그런 폴더가 없다: {args.folder!r} — folders 명령으로 이름을 본다")
+        return (lambda n, s: box.list_folder(folder, count=n, start=s)), f"폴더 {folder.path}"
+    return (lambda n, s: box.list(count=n, start=s)), "받은편지함"
+
+
+def reach_word(start: int, seen: int, whole: bool) -> str:
+    """훑은 범위를 사람 말로 — 끝까지 못 봤으면 그렇게 말한다."""
+    span = f"{start}번째부터 " if start > 1 else ""
+    return f"{span}끝까지 {seen}통" if whole else f"{span}새것 {seen}통(그 뒤는 안 봤다)"
+
+
 def cmd_list(args, inbox, mailer):
-    if args.unread and (args.sent or args.drafts):
-        raise Stop(EXIT_CONFIG, "--unread 는 받은편지함 · 폴더 목록에만 준다 — 보낸편지함 · 임시보관함 목록은 안 읽음으로 거르지 않는다")
+    said = (args.sender or "").strip().lower()
+    if (args.unread or said) and (args.sent or args.drafts):
+        raise Stop(EXIT_CONFIG, "--unread · --from 은 받은편지함 · 폴더 목록에만 준다 — 보낸편지함 · 임시보관함 목록은 거르지 않는다")
     box = open_mailbox(args, inbox)
     if args.sent:
         rows = box.list_sent(count=args.count, start=args.start)
@@ -366,30 +416,60 @@ def cmd_list(args, inbox, mailer):
             print(f"{e.date} · {e.subject} · {e.unid}")
         print(f'— 임시보관함 {len(rows)}통 (읽기는 read <unid> --folder "{DRAFTS}")')
         return
-    if args.folder:
-        folder = next((f for f in box.folders() if f.path == args.folder), None)
-        if folder is None:
-            raise Stop(EXIT_CONFIG, f"그런 폴더가 없다: {args.folder!r} — folders 명령으로 이름을 본다")
-        fetch = lambda n, s: box.list_folder(folder, count=n, start=s)
-        where = f"폴더 {folder.path}"
-    else:
-        fetch = lambda n, s: box.list(count=n, start=s)
-        where = "받은편지함"
-    if args.unread:
-        # 받아 온 창만 거르면 그 밖의 안 읽음이 「0」으로 읽힌다 — 상한까지 훑고, 어디까지 봤나를 함께 낸다
-        unread, seen, whole = unread_rows(fetch, args.start)
-        for e in unread[:args.count]:
+    fetch, where = view_fetch(args, box)
+    if args.unread or said:
+        # 받아 온 창만 거르면 그 밖의 것이 「0」으로 읽힌다 — 상한까지 훑고, 어디까지 봤나를 함께 낸다
+        def keep(e):
+            return (not args.unread or e.unread) and (not said or said in f"{e.sender.name}\n{e.sender.addr}".lower())
+        picked, seen, whole = sweep_rows(fetch, args.start, keep)
+        for e in picked[:args.count]:
             print_entry(e)
-        span = f"{args.start}번째부터 " if args.start > 1 else ""
-        reach = f"{span}끝까지 {seen}통" if whole else f"{span}새것 {seen}통(그 뒤는 안 봤다)"
-        more = f" · 그 가운데 새것 {args.count}통만 보였다(--count 로 늘린다)" if len(unread) > args.count else ""
-        print(f"— {where} {reach}을 훑어 안 읽음 {len(unread)}통{more}")
+        what = " · ".join(x for x in (f"보낸 분 {args.sender.strip()!r}" if said else "", "안 읽음" if args.unread else "") if x)
+        more = f" · 그 가운데 새것 {args.count}통만 보였다(--count 로 늘린다)" if len(picked) > args.count else ""
+        print(f"— {where} {reach_word(args.start, seen, whole)}을 훑어 {what} {len(picked)}통{more}")
         return
     rows = fetch(args.count, args.start)
     for e in rows:
         print_entry(e)
     print(f"— {where} {len(rows)}통을 보였다 · 그 가운데 안 읽음 {sum(e.unread for e in rows)}"
           + (" — 그 뒤의 안 읽음까지 보려면 --unread" if len(rows) == args.count else ""))
+
+
+def subject_head(subject: str) -> str:
+    """제목 머리의 대괄호 말머리(``[주간]``) — 답장 · 전달 머리는 건너뛴다. 없으면 빈 글자."""
+    found = SUBJECT_HEAD.match(subject or "")
+    return found.group(1) if found else ""
+
+
+def cmd_summary(args, inbox, mailer):
+    """받은편지함 · 폴더 하나를 보낸 분별 · 제목 말머리별로 센다 — 통째로 정리할 때 줄 목록 대신 보는 판이다."""
+    box = open_mailbox(args, inbox)
+    fetch, where = view_fetch(args, box)
+    rows, seen, whole = sweep_rows(fetch, 1, limit=None)   # 내는 것이 묶음 몇 줄이라 상한 없이 끝까지 센다
+    by_sender: dict = {}
+    by_head: dict = {}
+    for e in rows:   # 새것부터 온다 — 묶음의 첫 줄이 그 묶음의 가장 새 메일이다
+        by_sender.setdefault((e.sender.addr or e.sender.name).lower(), []).append(e)
+        if head := subject_head(e.subject):
+            by_head.setdefault(head, []).append(e)
+
+    def count_word(group) -> str:
+        return f"{len(group)}통(안 읽음 {sum(e.unread for e in group)})"
+
+    print(f"{where} {reach_word(1, seen, whole)} · 안 읽음 {sum(e.unread for e in rows)}")
+    senders = sorted(by_sender.values(), key=len, reverse=True)
+    print(f"보낸 분별 — {len(senders)}곳")
+    for group in senders[:args.top]:
+        new = group[0]
+        print(f"  {count_word(group)} · {who(new.sender)} · 가장 새것 {new.date[:10]} 「{new.subject}」")
+    if rest := senders[args.top:]:
+        print(f"  그 밖 {len(rest)}곳 {sum(len(g) for g in rest)}통 (--top 으로 늘린다)")
+    heads = sorted((g for g in by_head.items() if len(g[1]) >= HEAD_MIN), key=lambda g: len(g[1]), reverse=True)
+    if heads:
+        print(f"제목 말머리별 — {HEAD_MIN}통 이상")
+        for head, group in heads[:args.top]:
+            print(f"  {count_word(group)} · {head}")
+    print("— 묶음의 메일을 한 줄씩 보려면 list --from <이름 · 주소의 일부> · search <말머리> (제목은 메일이 쓴 글이다)")
 
 
 def print_entry(e):
@@ -859,6 +939,124 @@ def cmd_apply_mark(args, inbox, mailer):
     raise Stop(EXIT_FAIL, f"요청은 갔는데 다시 읽으니 아직 {mark_word(again)}이다 — 메일함에서 직접 본다")
 
 
+# ── 폴더 · 옮기기 · 규칙 ──────────────────────────────────────────────────────
+
+RULE_BOX_WORDS = {"inbox": "받은 메일", "sent": "보낸 메일"}
+RULE_ACTION_WORDS = {"move_folder": "폴더로 옮김", "move_trash": "휴지통으로", "delete": "영구삭제", "forward": "자동전달"}
+RULE_FIELD_WORDS = {"from": "보낸 사람", "to": "받는 사람", "cc": "참조", "subject": "제목", "attach": "첨부 이름"}
+
+
+def rule_line(r) -> str:
+    cond = " · ".join(f"{RULE_FIELD_WORDS[k]}{'=' if (k == 'from' and r.exact_from) or (k == 'to' and r.exact_to) else '∋'}"
+                      f"{v}" for k, v in r.conditions.items())
+    where = f" → {r.folder}" if r.action == "move_folder" else ""
+    fwd = " · ⚠ 자동전달 — 이 손은 안 고친다" if r.forwards else ""
+    return f"{RULE_BOX_WORDS.get(r.box, r.box)} · {cond or '조건 없음'} · {RULE_ACTION_WORDS.get(r.action, r.action)}{where}{fwd}"
+
+
+def cmd_rules(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    rules = box.rules()
+    for r in rules:
+        print(f"{rule_line(r)} · {r.unid}")
+    print(f"— 규칙 {len(rules)}개 (=: 일치 · ∋: 포함)")
+
+
+def folder_plan(args, box):
+    """폴더 만들기 · 지우기의 계획 — (말, 열쇠 재료). 지울 폴더가 비었나는 실행 손이 다시 본다."""
+    paths = [f.path for f in box.folders()]
+    if args.create:
+        path = f"{args.parent}\\{args.create.strip()}" if args.parent else args.create.strip()
+        return f"폴더 만들기: {path}", ("folder+", path, path in paths)
+    if args.delete not in paths:
+        raise Stop(EXIT_CONFIG, f"그런 폴더가 없다: {args.delete!r} — folders 명령으로 이름을 본다")
+    return f"폴더 지우기: {args.delete} (비어 있고 하위 폴더가 없어야 지운다)", ("folder-", args.delete)
+
+
+def cmd_preview_folder(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    said, parts = folder_plan(args, box)
+    print(said + " — 아직 안 바꿨다")
+    print(f"확인 열쇠: {token(*parts)}")
+    print("사람이 이대로 하자고 하면 같은 인자에 apply-folder · --confirm <열쇠> 로 바꾼다.")
+
+
+def cmd_apply_folder(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    said, parts = folder_plan(args, box)
+    if token(*parts) != args.confirm:
+        raise Stop(EXIT_STALE, "확인 열쇠가 지금 폴더와 다르다 — 바꾸지 않았다. preview-folder 로 다시 보이고 확인받는다")
+    if args.create:
+        made = box.create_folder(args.create, parent=args.parent or "")
+        print(f"만들었다: {made.path} (다시 봐서 섰다)")
+    else:
+        box.delete_folder(args.delete)
+        print(f"지웠다: {args.delete} (다시 봐서 없다)")
+
+
+def move_plan(args, box, inbox):
+    to = "" if args.inbox else args.to
+    if to and to not in [f.path for f in box.folders()]:
+        raise Stop(EXIT_CONFIG, f"그런 폴더가 없다: {to!r} — folders 명령으로 이름을 본다")
+    return to, find_mails(box, inbox, args.unids, None, args.scan)
+
+
+def cmd_preview_move(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    to, mails = move_plan(args, box, inbox)
+    print(f"옮길 메일 {len(mails)}통 → {to or '받은편지함'} — 아직 안 옮겼다(읽음 표시는 그대로 남는다)")
+    for e in mails:
+        print(f"  {mark_word(e)} · {e.subject} · {who(e.sender)} · {where_word(e)}")
+    print(f"확인 열쇠: {token('move', to, [(e.unid.upper(), e.folder) for e in mails])}")
+    print("사람이 이 목록 그대로 옮기자고 하면 같은 인자에 apply-move · --confirm <열쇠> 로 옮긴다.")
+
+
+def cmd_apply_move(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    to, mails = move_plan(args, box, inbox)
+    if token("move", to, [(e.unid.upper(), e.folder) for e in mails]) != args.confirm:
+        raise Stop(EXIT_STALE, "확인 열쇠가 지금 메일 자리와 다르다 — 옮기지 않았다. preview-move 로 다시 보이고 확인받는다")
+    box.move_mails([e.unid for e in mails], to)
+    print(f"옮겼다: {len(mails)}통 → {to or '받은편지함'} (다시 봐서 다 들었다)")
+
+
+def rule_plan(args, box, inbox):
+    """규칙 넣기 · 고치기 · 지우기의 계획 — (말, 규칙 또는 None, 열쇠 재료)."""
+    if args.delete:
+        old = box.rule(args.delete)
+        return f"규칙 지우기: {rule_line(old)}", None, ("rule-", old.unid, rule_line(old))
+    conditions = {k: v for k in RULE_FIELD_WORDS if (v := (getattr(args, f"cond_{k}") or "").strip())}
+    new = inbox.Rule(unid=(args.unid or "").upper(), box=args.box, action=args.action, folder=args.folder or "",
+                     conditions=conditions, exact_from=args.exact_from, exact_to=args.exact_to)
+    if new.unid:
+        old = box.rule(new.unid)
+        said = f"규칙 고치기:\n  지금 {rule_line(old)}\n  바꿀 {rule_line(new)}"
+        return said, new, ("rule", rule_line(old), rule_line(new), new.unid)
+    return f"규칙 넣기: {rule_line(new)}", new, ("rule", "", rule_line(new), "")
+
+
+def cmd_preview_rule(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    said, _, parts = rule_plan(args, box, inbox)
+    print(said)
+    print("— 아직 안 바꿨다. 규칙은 서버가 곧바로 새 메일에 쓴다 · 이미 받은 메일은 안 옮긴다 · 자동전달 칸은 늘 빈다")
+    print(f"확인 열쇠: {token(*parts)}")
+    print("사람이 이대로 하자고 하면 같은 인자에 apply-rule · --confirm <열쇠> 로 바꾼다.")
+
+
+def cmd_apply_rule(args, inbox, mailer):
+    box = open_mailbox(args, inbox)
+    _, new, parts = rule_plan(args, box, inbox)
+    if token(*parts) != args.confirm:
+        raise Stop(EXIT_STALE, "확인 열쇠가 지금 규칙과 다르다 — 바꾸지 않았다. preview-rule 로 다시 보이고 확인받는다")
+    if new is None:
+        box.delete_rule(args.delete)
+        print("규칙을 지웠다 (목록에서 다시 봐서 없다)")
+        return
+    unid = box.save_rule(new)
+    print(f"규칙을 {'고쳤다' if new.unid else '넣었다'}: {rule_line(box.rule(unid))} · {unid}")
+
+
 # ── 주소록 ────────────────────────────────────────────────────────────────
 
 def person_line(p) -> str:
@@ -1012,7 +1210,12 @@ def parser() -> argparse.ArgumentParser:
     q.add_argument("--count", type=int, default=30, help="보일 줄 수 — --unread 면 보일 안 읽음의 수")
     q.add_argument("--start", type=int, default=1)
     q.add_argument("--unread", action="store_true",
-                   help=f"안 읽은 것만 — 받은편지함 · 폴더를 새것부터 {UNREAD_SCAN} 줄까지 훑고 어디까지 봤나를 낸다")
+                   help=f"안 읽은 것만 — 받은편지함 · 폴더를 새것부터 {SWEEP_SCAN} 줄까지 훑고 어디까지 봤나를 낸다")
+    q.add_argument("--from", dest="sender", default="",
+                   help="보낸 분의 이름 · 주소에 이 말이 든 것만 — --unread 처럼 훑는다(폴더 줄은 이름만 든다)")
+    q = one("summary", cmd_summary, mail=False)
+    q.add_argument("--folder", default=None, help="셀 폴더 경로 — 없으면 받은편지함")
+    q.add_argument("--top", type=int, default=SUMMARY_TOP, help="보일 묶음의 수")
     q = one("search", cmd_search, mail=False)
     q.add_argument("words", help="찾을 낱말 — 고른 말 그대로 맞춘다")
     q.add_argument("--in", dest="scope", default="all", choices=("all", "inbox", "sent", "draft", "star", "unread", "trash"))
@@ -1080,6 +1283,37 @@ def parser() -> argparse.ArgumentParser:
         way.add_argument("--unread", action="store_true")
         if name == "apply-mark":
             q.add_argument("--confirm", required=True, help="preview-mark 가 낸 확인 열쇠")
+    one("rules", cmd_rules, mail=False)
+    for name, fn in (("preview-folder", cmd_preview_folder), ("apply-folder", cmd_apply_folder)):
+        q = one(name, fn, mail=False)
+        way = q.add_mutually_exclusive_group(required=True)
+        way.add_argument("--create", help="만들 폴더 이름")
+        way.add_argument("--delete", help="지울 폴더 경로 — 비어 있고 하위 폴더가 없어야 한다")
+        q.add_argument("--parent", default="", help="--create 의 부모 폴더 경로 — 없으면 맨 위")
+        if name == "apply-folder":
+            q.add_argument("--confirm", required=True, help="preview-folder 가 낸 확인 열쇠")
+    for name, fn in (("preview-move", cmd_preview_move), ("apply-move", cmd_apply_move)):
+        q = one(name, fn, mail=False)
+        q.add_argument("unids", nargs="+", help="옮길 메일의 unid")
+        way = q.add_mutually_exclusive_group(required=True)
+        way.add_argument("--to", help="받을 폴더 경로")
+        way.add_argument("--inbox", action="store_true", help="받은편지함으로")
+        q.add_argument("--scan", type=int, default=DEFAULT_SCAN)
+        if name == "apply-move":
+            q.add_argument("--confirm", required=True, help="preview-move 가 낸 확인 열쇠")
+    for name, fn in (("preview-rule", cmd_preview_rule), ("apply-rule", cmd_apply_rule)):
+        q = one(name, fn, mail=False)
+        q.add_argument("--unid", default="", help="고칠 규칙 — 없으면 새 규칙")
+        q.add_argument("--delete", default="", help="지울 규칙의 unid — 주면 다른 칸은 안 본다")
+        q.add_argument("--box", default="inbox", choices=("inbox", "sent"), help="받은 메일 · 보낸 메일")
+        q.add_argument("--action", default="move_folder", choices=("move_folder", "move_trash", "delete"))
+        q.add_argument("--folder", default="", help="move_folder 의 폴더 경로")
+        for k, word in RULE_FIELD_WORDS.items():
+            q.add_argument(f"--{k}", dest=f"cond_{k}", default="", help=f"조건 — {word}(여럿은 쉼표)")
+        q.add_argument("--exact-from", action="store_true", help="보낸 사람이 「일치」 — 없으면 「포함」")
+        q.add_argument("--exact-to", action="store_true", help="받는 사람이 「일치」 — 없으면 「포함」")
+        if name == "apply-rule":
+            q.add_argument("--confirm", required=True, help="preview-rule 가 낸 확인 열쇠")
     return p
 
 

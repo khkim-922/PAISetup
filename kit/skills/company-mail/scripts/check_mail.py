@@ -4,7 +4,7 @@
 없이(또는 미리 본 것과 다른 내용 · 첨부로) **답장 · 새 메일이 나가거나 읽음이 바뀌나** · 답장이 그 메일의 보낸 분 · 받은 분과 제 사본 밖의
 주소로 가나(본문에 적힌 주소가 받는 사람이 되나) · 바꾸는 손이 그 메일 하나만 바꾸고 다시 읽어 맞았나를 대나 · 세션 손의
 종료 값(0 · 1 · 2 · 3)과 끊긴 메일함 세션을 바르게 갈라 사람을 스킬 ep-login 으로 보내나 · 안 읽음 목록이 받아 온 창만 보고
-「안 읽음 0」이라 하나 · 조직도를 못 받은 새 메일 미리 보기가 받는 사람을 다 「주소록에 없다」로 말하나(사람이 새 메일을
+「안 읽음 0」이라 하나 · 보낸 분으로 거른 목록과 요약이 창 밖을 빼고 세나 · 여러 통 옮기기 준비가 통마다 보기를 다시 받나 · 조직도를 못 받은 새 메일 미리 보기가 받는 사람을 다 「주소록에 없다」로 말하나(사람이 새 메일을
 놓치거나 맞는 주소를 고친다).
 남기는 까닭(check-design §1 넷) — 길이 분명하다(이 스크립트는 대화하는 모델이 부르고, 보내기 · 읽음은 그 모델의 한 걸음이다) ·
 나간 메일과 바뀐 읽음은 되돌릴 수 없고 조용하다(사람은 웹메일을 열기 전까지 모른다) · 쓰는 사람의 이름으로 엉뚱한 메일이
@@ -184,7 +184,8 @@ def check_reading_commands_change_nothing():
         box.mails[U["ecm"]].files.update({"보고.docx": b"DRMONE\x00\x01wrapped", "평문.pdf": b"%PDF-1.7\n"})
         before = box.unread()
         steps = [("session",), ("folders",), ("list",), ("list", "--unread"), ("list", "--sent"), ("list", "--drafts"),
-                 ("list", "--folder", fakes_inbox.FOLDER_CHILD), ("search", "시험"), ("search", "초안", "--field", "body"),
+                 ("list", "--folder", fakes_inbox.FOLDER_CHILD), ("list", "--from", PEER[0]), ("summary",),
+                 ("summary", "--folder", fakes_inbox.FOLDER_TOP), ("search", "시험"), ("search", "초안", "--field", "body"),
                  ("read", U["draft"]), ("read", U["draft"], "--folder", mail.DRAFTS),
                  ("read", U["alone"]), ("read", U["f_child"]), ("read", U["ecm"]),
                  ("attachment", U["ecm"], "--save", "all", "--out", str(WORK / "got")),
@@ -370,8 +371,43 @@ def check_unread_list_looks_past_the_window():
         rows = [x for x in out.splitlines() if x.startswith("[")]
         assert len(rows) == 1 and want[0] in rows[0], f"가장 새 안 읽음 한 통을 안 보였다:\n{out}"
         for flag in ("--drafts", "--sent"):
-            code, out = run("list", flag, "--unread")
-            assert code == mail.EXIT_CONFIG, f"{flag} 에 준 --unread 를 말없이 버렸다:\n{out}"
+            for sieve in (("--unread",), ("--from", PEER[0])):
+                code, out = run("list", flag, *sieve)
+                assert code == mail.EXIT_CONFIG, f"{flag} 에 준 {sieve[0]} 를 말없이 버렸다:\n{out}"
+
+
+def check_sender_counts_cover_the_whole_view():
+    """보낸 분으로 거르기 · 요약 — 받아 온 창 밖까지 세고, 요약의 통 수가 그 보낸 분의 메일 수와 같다(틀린 수로 정리안이 선다)."""
+    with stage() as (box, _, run):
+        mails = box.in_inbox()
+        peers = [m for m in mails if PEER[1] in m.sender]
+        assert mails[1:] and 1 < len(peers) < len(mails), "대역의 받은편지함이 한 사람 것뿐이라 이 판이 안 문다"
+        code, out = run("list", "--from", PEER[1].split("@")[0].upper(), "--count", "1")
+        assert code == 0 and f"{len(mails)}통을 훑어" in out and f"{len(peers)}통" in out.splitlines()[-1], \
+            f"보낸 분 {len(peers)}통을 창 하나만 보고 말했다:\n{out}"
+        assert len([x for x in out.splitlines() if x.startswith("[")]) == 1, out
+        code, out = run("summary")
+        assert code == 0 and f"끝까지 {len(mails)}통" in out, out
+        line = next((x for x in out.splitlines() if PEER[1] in x), "")
+        unread = sum(m.unread for m in peers)
+        assert line.strip().startswith(f"{len(peers)}통(안 읽음 {unread})"), f"{PEER[1]} 는 {len(peers)}통 · 안 읽음 {unread} 이다:\n{out}"
+
+
+def check_moving_many_sweeps_the_views_once():
+    """옮기기 준비 — 여러 통을 찾는 요청 수가 한 통과 같다(통마다 보기를 다시 받으면 큰 정리가 통 수만큼 느려진다) · 자리가 다른 통도 다 찾는다."""
+    with stage(folders=(fakes_inbox.FOLDER_EMPTY,)) as (box, _, run):
+        def asked(*unids) -> tuple[int, str]:
+            before = len(box.paths)
+            code, out = run("preview-move", *unids, "--to", fakes_inbox.FOLDER_EMPTY)
+            assert code == 0, out
+            return len(box.paths) - before, out
+        four = (U["f_child"], U["alone"], U["f_top"], U["read_one"])
+        alone = max(asked(u)[0] for u in four)   # 가장 깊이 든 한 통을 찾는 요청 수
+        many, out = asked(*four)
+        assert "옮길 메일 4통" in out and all(w in out for w in ("소재 시험 결과", "시험 일정 검토 요청", "협력사 납기 확인", "이미 읽은 메일")), out
+        assert many <= alone, f"네 통을 찾는 데 요청 {many} 번 — 가장 깊은 한 통은 {alone} 번이다"
+        code, out = run("preview-move", U["alone"], "F" * 32, "--to", fakes_inbox.FOLDER_EMPTY)
+        assert code == mail.EXIT_CONFIG and "F" * 32 in out and U["alone"] not in out, f"없는 통을 짚어 말하지 않았다:\n{out}"
 
 
 def check_reply_all_takes_the_mails_own_people():
@@ -463,6 +499,32 @@ def check_mark_changes_only_that_mail_with_the_key():
         code, out = run("preview-mark", U["alone"], "--unread")
         code, out = run("apply-mark", U["alone"], "--unread", "--confirm", key(out))
         assert code == 0 and box.unread() == before, out
+
+
+def check_organizing_commands_change_only_with_the_previewed_key():
+    """폴더 · 옮기기 · 규칙 — 미리 보기는 아무것도 안 바꾸고, 틀린 열쇠 · 미리 본 뒤 달라진 인자로는 안 바꾼다. 맞는 열쇠면 그것만."""
+    with stage() as (box, _, run):
+        code, out = run("preview-folder", "--create", "검토")
+        assert code == 0 and not box.changes, out
+        good = key(out)
+        assert run("apply-folder", "--create", "검토", "--confirm", "f" * 12)[0] == mail.EXIT_STALE and not box.changes
+        assert run("apply-folder", "--create", "검토2", "--confirm", good)[0] == mail.EXIT_STALE and not box.changes
+        code, out = run("apply-folder", "--create", "검토", "--confirm", good)
+        assert code == 0 and [c[0] for c in box.changes] == ["folder+"], out
+        code, out = run("preview-move", U["alone"], "--to", "검토")
+        assert code == 0 and len(box.changes) == 1 and "안읽음" in out, out
+        moving = key(out)
+        assert run("apply-move", U["alone"], U["cc"], "--to", "검토", "--confirm", moving)[0] == mail.EXIT_STALE
+        code, out = run("apply-move", U["alone"], "--to", "검토", "--confirm", moving)
+        assert code == 0 and box.mails[U["alone"]].folder == "검토" and box.mails[U["alone"]].unread, out
+        code, out = run("preview-rule", "--folder", "검토", "--subject", "[주간]")
+        assert code == 0 and not box.rules, out
+        assert run("apply-rule", "--folder", "검토", "--subject", "[월간]", "--confirm", key(out))[0] == mail.EXIT_STALE
+        code, out = run("apply-rule", "--folder", "검토", "--subject", "[주간]", "--confirm", key(out))
+        assert code == 0 and len(box.rules) == 1, out
+        code, out = run("rules")
+        assert code == 0 and "제목∋[주간]" in out and "→ 검토" in out, out
+        assert not changing(p for p in box.paths if "?EditDocument" not in p), "정리 명령이 메일을 여는 주소를 불렀다"
 
 
 # ── 세션 — 손의 종료 값과 끊긴 메일함을 가른다 ───────────────────────────

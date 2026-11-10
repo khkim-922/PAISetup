@@ -3,7 +3,8 @@
 층 — 쓰는 사람의 계약. 메일함을 읽다가 **읽음 표시를 바꾸나**(사람이 새 메일을 못 알아본다 · 되돌릴 수 없다) · 읽기 길이
 메일함을 바꾸는 주소를 서버에 보내나 · 끊긴 세션을 빈 받은편지함이나 「본문 없음」으로 읽나(새 메일이 안 온 것처럼 조용히
 지나간다) · 하위 폴더 메일을 조용히 빠뜨리나 · 잰 꼴(보낸 사람 열 · 받는 꼴 · 받는 사람 목록 · 본문 · ECM 첨부 이름 · 주소록)을
-잘못 풀어 사람 · 주소를 조용히 잃나 · 메일함을 바꾸는 손 둘이 그 메일 하나만 바꾸나.
+잘못 풀어 사람 · 주소를 조용히 잃나 · 메일함을 바꾸는 손 둘이 그 메일 하나만 바꾸나 · 폴더 · 옮기기 · 규칙 손이 고른 것만 바꾸고
+서버의 헛 「OK」를 옮겼다로 읽지 않나 · 메일이 든 폴더를 지워 메일을 휴지통에 보내나 · 규칙에 자동전달을 실어 남에게 메일이 나가게 하나.
 남기는 까닭(check-design §1 넷) — 길이 분명하다(메일함 손을 고칠 때마다 · 이 파일을 그 자리에서 쓰는 앱이 있다) · 읽음이
 바뀌거나 메일이 빠지면 조용하고 되돌릴 수 없다 · 쓰는 사람이 새 메일을 놓친다 · 다른 무엇도 안 잡는다(회사 메일함은 회사
 PC 에서만 닿는다).
@@ -15,7 +16,9 @@ PC 에서만 닿는다).
 (제목으로 열면 0줄), 받는 사람 목록 보기는 기본 정렬이 날짜순이 아니다. 본문 주소에 501 을 내는 메일이 있다(``unserved``). 폴더 보기의 보낸 사람 열은 ``<이름>-ENG-<영문>``(주소
 없음)이고 읽음 열은 HTML 조각(``class='mail_21'`` 안 읽음 · ``mail_22`` 읽음)이다. 모든편지함은 정렬 없이 날짜 내림차순이고
 ``ResortDescending=1`` 이면 내림차순 두 덩이다 — 실물에서 무엇이 가르는지 몰라 여기서는 날짜 차례의 짝수 자리(가장 새 메일부터)를
-뒤 덩이로 낸다. 밖의 메일이 폴더 보기에서 서는 이름은 안 쟀다 — 여기서는 주소의 앞쪽만 낸다.
+뒤 덩이로 낸다. 밖의 메일이 폴더 보기에서 서는 이름은 안 쟀다 — 여기서는 주소의 앞쪽만 낸다. 폴더 손 흉내는 실물처럼 늘 「OK」를 내고(모르는 열쇠면
+아무것도 안 옮긴다), 메일이 든 폴더를 지우면 그 메일을 휴지통으로 보내며, 메일 쪽을 지워도 이전메일함 짝이 나무에 남는다.
+규칙 흉내는 저장 폼을 그대로 들고 편집 화면(``new FormJS`` 머리 · 입력 칸)으로 돌려준다 — 서버가 규칙을 새 메일에 쓰는 일은 흉내 내지 않는다.
 
 돌리는 법::
 
@@ -269,6 +272,15 @@ class FakeDomino:
         self.all_view = all_view
         self.recipient_view = recipient_view
         self.draft_view = draft_view
+        self.tree: dict[str, tuple[str, str]] = {}   # 폴더 열쇠 → (경로, 부모 열쇠) — 흉내 메일함이 지은 폴더
+        self.archive_twins: set[str] = set()          # 메일 쪽은 지웠는데 이전메일함 짝이 남은 폴더 열쇠(실측)
+        self.rules: dict[str, dict] = {}              # 규칙 unid → 저장 폼의 칸
+        self.posts: list[tuple[str, dict]] = []
+        self.twin: dict[str, tuple[str, str]] = {}
+        self.stuck: set[str] = set()                 # 옮기기에 OK 를 내고 안 옮기는 메일
+        for i, p in enumerate(sorted({*self.extra_folders, *(m.folder for m in self.mails.values() if m.folder)})):
+            if not p.startswith("("):
+                self.tree[f"newNode{1000 + i}"] = (p, "")
         self.paths: list[str] = []
         self.changes: list[tuple[str, str]] = []
         self.lock = threading.Lock()
@@ -282,6 +294,14 @@ class FakeDomino:
                 with box.lock:
                     box.paths.append(self.path)
                     box.answer(self)
+
+            def do_POST(self):
+                size = int(self.headers.get("Content-Length") or 0)
+                form = {k: v[0] for k, v in urllib.parse.parse_qs(self.rfile.read(size).decode(), keep_blank_values=True).items()}
+                with box.lock:
+                    box.paths.append(self.path)
+                    box.posts.append((self.path, form))
+                    box.answer_post(self, form)
 
         try:
             self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -302,7 +322,10 @@ class FakeDomino:
         return sorted((m for m in self.mails.values() if m.folder == ""), key=lambda m: m.stamp, reverse=True)
 
     def folder_paths(self) -> list[str]:
-        return sorted({*SYSTEM_FOLDERS, *self.extra_folders, *(m.folder for m in self.mails.values() if m.folder)})
+        return sorted({*SYSTEM_FOLDERS, *(p for p, _ in self.tree.values()), *(m.folder for m in self.mails.values() if m.folder)})
+
+    def node_of(self, path: str) -> str | None:
+        return next((n for n, (p, _) in self.tree.items() if p == path), None)
 
     def answer(self, h) -> None:
         raw = urllib.parse.unquote(h.path)
@@ -353,6 +376,22 @@ class FakeDomino:
             return self.send(h, 404, b"<html>not found</html>", "text/html")
         rest = raw[len(DB):]
         low = rest.lower()
+        if low.startswith("/fdd_folder_fullpath?readviewentries"):
+            return self.send(h, 200, self.tree_json(), "application/json; charset=UTF-8")
+        if low.startswith("/agt_mail_folder_save?openagent"):
+            return self.folder_save(h, urllib.parse.parse_qs(raw.split("?", 1)[1], keep_blank_values=True))
+        if low.startswith("/trashdoc?openagent"):
+            q = urllib.parse.parse_qs(raw.split("?", 1)[1], keep_blank_values=True)
+            mail = self.mails.get(q.get("docid", [""])[0])
+            if q.get("type") != ["recovery"] or mail is None or mail.folder != "($Trash)":
+                return self.send(h, 200, b'{ "result":false }', "text/html")
+            mail.folder = ""
+            self.changes.append(("restore", mail.unid))
+            return self.send(h, 200, b'{ "result":true } ', "text/html")
+        parts = rest.split("/")
+        if len(parts) == 3 and parts[1] == "0" and parts[2].split("?")[0].upper() in self.rules \
+                and parts[2].lower().endswith("?editdocument"):
+            return self.send(h, 200, self.rule_page(parts[2].split("?")[0].upper()).encode(), "text/html; charset=UTF-8")
         if "?opendocument" in low or "?editdocument" in low:
             for unid, mail in self.mails.items():
                 if unid.lower() in low:
@@ -399,6 +438,91 @@ class FakeDomino:
                 return self.send(h, 200, mail.files["/".join(parts[4:])], "application/octet-stream")
         return self.send(h, 404, b"<html>not found</html>", "text/html")
 
+    def tree_json(self) -> bytes:
+        """폴더 나무 보기(JSON · 실측 꼴) — 경로 · 열쇠 · 수 · 부모 · 이름. 맨 위 폴더의 부모는 ``nodeATag2`` 다."""
+        rows = []
+        # 짝 줄을 산 폴더보다 앞에 낸다 — 실물의 차례는 안 쟀고, 앞의 줄을 집는 손을 가려낸다
+        for node, (path, parent) in [(n, self.twin[n]) for n in sorted(self.archive_twins)] + sorted(self.tree.items()):
+            cell = lambda v: {"text": {"0": v}}
+            rows.append({"@unid": hashlib.md5(node.encode()).hexdigest().upper(), "entrydata": [
+                {"@columnnumber": "0", "@name": "$6", **cell(path)}, {"@columnnumber": "1", "@name": "NodeUnid", **cell(node)},
+                {"@columnnumber": "2", "@name": "cnt", **cell(str(path.count(chr(92)) + 2))},
+                {"@columnnumber": "3", "@name": "ParentID", **cell(parent or "nodeATag2")},
+                {"@columnnumber": "4", "@name": "nodeText", **cell(path.rsplit(chr(92), 1)[-1])}]})
+        return json.dumps({"@toplevelentries": str(len(rows)), "viewentry": rows}, ensure_ascii=False).encode()
+
+    def folder_save(self, h, q: dict) -> None:
+        """폴더 만들기 · 지우기의 흉내 — 실물처럼 늘 ``OK`` 를 낸다. 메일이 든 채 지우면 그 메일은 휴지통으로, 메일 쪽을 지워도
+        이전메일함 짝이 남아 나무에 서다가 ``nodefrom=archive`` 로 한 번 더 지워야 사라진다(실측)."""
+        one = lambda k: q.get(k, [""])[0]
+        act, node = one("act"), one("nodeid")
+        if act == "create" and node and node not in self.tree:
+            parent = "" if one("pfcode") == "nofolder" else one("pfcode")
+            up = self.tree.get(parent, ("", ""))[0] if parent else ""
+            self.tree[node] = (f"{up}{chr(92)}{one('fname')}" if parent else one("fname"), parent)
+            self.changes.append(("folder+", node))
+        elif act == "delete_action" and one("nodefrom") == "mail" and node in self.tree:
+            path = self.tree.pop(node)[0]
+            self.twin[node] = (path, "")
+            self.archive_twins.add(node)
+            for m in self.mails.values():
+                if m.folder == path:
+                    m.folder = "($Trash)"
+                    self.changes.append(("trash", m.unid))
+            self.changes.append(("folder-", node))
+        elif act == "delete_action" and one("nodefrom") == "archive":
+            self.archive_twins.discard(node)
+        return self.send(h, 200, b"OK\n", "text/html")
+
+    def answer_post(self, h, form: dict) -> None:
+        raw = urllib.parse.unquote(h.path)
+        if f"{COOKIE[0]}={COOKIE[1]}" not in (h.headers.get("Cookie") or "") or self.session == "login":
+            return self.send(h, 200, LOGIN_PAGE.encode(), "text/html")
+        rest = raw[len(DB):] if raw.startswith(DB) else ""
+        if rest == "/folder2?OpenForm" and form.get("Action") == "mailmove_action":
+            # 실물처럼 못 옮겨도 OK 를 낸다 — 모르는 폴더 열쇠면 아무것도 안 옮긴다(실측). ``stuck`` 의 메일은 OK 를 내고 안 옮긴다
+            target = form.get("nodeUNID", "")
+            place = "" if target == "inbox" else self.tree.get(target, (None, ""))[0]
+            for unid in filter(None, form.get("UNIDs", "").split(",")):
+                if place is not None and unid in self.mails and unid not in self.stuck:
+                    self.mails[unid].folder = place
+                    self.changes.append(("move", unid))
+            return self.send(h, 200, b"OK", "text/html")
+        if rest.startswith("/Mailrule?OpenForm&Seq=1") or (rest.lower().endswith("?editdocument&seq=1")
+                                                           and rest.split("/")[2].split("?")[0].upper() in self.rules):
+            return self.rule_post(h, rest, form)
+        return self.send(h, 404, b"<html>not found</html>", "text/html")
+
+    def rule_post(self, h, rest: str, form: dict) -> None:
+        if form.get("SubmitAction") == "delete":
+            gone = self.rules.pop(form.get("ProcessUNID", "").upper(), None)
+            self.changes.append(("rule-", form.get("ProcessUNID", "")))
+            return self.send(h, 200, json.dumps({"result": gone is not None, "unid": "F" * 32}).encode(), "text/html")
+        if form.get("SubmitAction") != "save":
+            return self.send(h, 200, b'{"result":false}', "text/html")
+        editing = rest.split("/")[2].split("?")[0].upper() if rest.startswith("/0/") else ""
+        unid = editing or hashlib.md5(f"rule/{len(self.rules)}/{time.time_ns()}".encode()).hexdigest().upper()
+        self.rules[unid] = dict(form)
+        self.changes.append(("rule", unid))
+        return self.send(h, 200, json.dumps({"result": True, "unid": unid, "saveoptions": "1"}).encode(), "text/html")
+
+    def rule_page(self, unid: str) -> str:
+        """규칙 편집 화면의 흉내 — 머리의 ``new FormJS({…})`` 와 입력 칸(실측 꼴 · 라디오는 checked 로 고른 것)."""
+        f = self.rules[unid]
+        folders = [f"{p}|{n}^" for n, (p, _) in sorted(self.tree.items())]
+        info = {"dbPath": DB.lstrip("/"), "isEdit": True, "unid": unid, "folders": folders,
+                "form": {"rules": f.get("rules", ""), "folder_id": f.get("folder_id", ""), "folder_name": f.get("folder_name", "")}}
+        def radio(name, value):
+            on = " checked" if f.get(name, "0") == value else ""
+            return f'<input type="radio" name="{name}" value="{value}"{on}>'
+        fields = "".join(f'<input name="{k}" value="{escape(f.get(k, ""), {chr(34): "&quot;"})}" Type="Text">'
+                         for k in ("forward_list", "AllFwdOpt", "MydeptFwdOpt", "rule_from", "rule_to", "rule_cc",
+                                   "rule_subject", "rule_attach"))
+        radios = "".join(radio(n, v) for n, vs in (("expRule", ("inbox", "sent")), ("rule_fromType2", ("1", "0")),
+                                                     ("rule_toType2", ("1", "0"))) for v in vs)
+        return (f"<html><script>var _form = new FormJS({json.dumps(info, ensure_ascii=False)});</script>"
+                f"<form>{fields}{radios}</form></html>")
+
     def view(self, rest: str) -> bytes:
         name, query = rest[1:].split("?", 1)
         q = urllib.parse.parse_qs(query.replace("ReadViewEntries", "", 1), keep_blank_values=True)
@@ -417,6 +541,9 @@ class FakeDomino:
             got.sort(key=(lambda r: r[1]) if descending else (lambda r: r[0]), reverse=descending)
             rows = [(u, {"xsubject": "", "$101": shown(st)[1], "$91": d, "$102": to, "$103": "", "xname": ""})
                     for u, st, d, to in got]
+        elif key == "xml_rule":
+            rows = [(u, {"$92": "받은메일-ENG-inbox", "$88": f.get("rule_subject", ""), "$80": "", "xallfwdopt": "N"})
+                    for u, f in sorted(self.rules.items())]
         elif self.draft_view and key == DRAFT_VIEW_UNID.lower():
             got = sorted((m for m in self.mails.values() if m.draft), key=lambda m: m.stamp, reverse=True)
             rows = [(m.unid, m.cols(INBOX_COLUMNS)) for m in got]
@@ -584,6 +711,119 @@ def check_marking_hands_change_only_that_mail():
         raises(inbox.SessionExpired, lambda: mailbox.mark_read(unid))
 
 
+def check_folder_hands_make_move_and_delete_only_what_was_asked():
+    """폴더 만들기 · 옮기기 · 지우기 — 그 폴더 · 그 메일만 바뀌고 읽음은 그대로다. 서버의 ``OK`` 는 증거가 아니어서(실측 —
+    못 옮겨도 OK) 손이 다시 봐야 하고, 메일이 든 채 지우면 메일이 휴지통으로 가므로(실측) 든 폴더 · 하위가 있는 폴더는 안 지운다.
+    지우기는 이전메일함 짝까지 두 번이어야 나무에서도 사라진다(실측)."""
+    unid = U["alone"]
+    with stage() as (box, mailbox):
+        before = box.unread()
+        top = mailbox.create_folder("검토")
+        sub = mailbox.create_folder("이번 주", parent="검토")
+        assert (top.path, sub.path, sub.parent) == ("검토", "검토\\이번 주", top.node), (top, sub)
+        assert "검토\\이번 주" in [f.path for f in mailbox.folders()]
+        for bad in ("검토", "a_b", "Inbox", "($Trash)", ""):
+            raises(inbox.MailboxConfigError, lambda b=bad: mailbox.create_folder(b))
+        mailbox.move_mails([unid], "검토\\이번 주")
+        assert box.mails[unid].folder == "검토\\이번 주" and box.unread() == before, "옮기기가 그 메일만 옮기지 않았거나 읽음을 바꿨다"
+        raises(inbox.MailboxConfigError, lambda: mailbox.delete_folder("검토\\이번 주"))
+        raises(inbox.MailboxConfigError, lambda: mailbox.delete_folder("검토"))
+        assert not [c for c in box.changes if c[0] in ("trash", "folder-")], f"든 폴더를 지웠다: {box.changes}"
+        mailbox.move_mails([unid], "")
+        assert box.mails[unid].folder == "" and box.unread() == before
+        mailbox.delete_folder("검토\\이번 주")
+        mailbox.delete_folder("검토")
+        assert not any(n.path.startswith("검토") for n in mailbox.folder_tree()), "이전메일함 짝이 나무에 남았다"
+        raises(inbox.MailboxConfigError, lambda: mailbox.move_mails([unid], "없는 폴더"))
+        assert not changing(box.paths), f"폴더 손이 여는 주소를 불렀다: {changing(box.paths)}"
+
+
+def check_move_that_did_not_land_is_an_error_not_ok():
+    """서버가 OK 를 내도 메일이 그 자리에 없으면 손이 말한다 — 안 그러면 사람은 옮겼다고 믿는다. 거꾸로, 새것 창 밖의 옛 메일을
+    옮겼을 때 「없다」고 하면 안 된다 — 받은편지함이 1000 줄을 넘어도 끝까지 본다."""
+    with stage(folders=(FOLDER_EMPTY,)) as (box, mailbox):
+        box.stuck.add(U["alone"])
+        raises(inbox.MailboxError, lambda: mailbox.move_mails([U["alone"]], FOLDER_EMPTY))
+        assert box.mails[U["alone"]].folder == ""
+    with stage() as (box, mailbox):
+        old = box.mails[U["f_top"]]
+        for i in range(1200):   # 옮길 옛 메일보다 새 메일 1200 통 — 새것 창 하나로는 안 보인다
+            u = f"{0xB0000000 + i:032X}"
+            box.mails[u] = FakeMail(u, f"새 메일 {i}", f"2026111{i % 10}0{i % 60:02d}000"[:14], PEER[1])
+        mailbox.move_mails([old.unid], "")
+        assert old.folder == "", "옛 메일을 받은편지함으로 못 옮겼다"
+
+
+def check_folder_with_twin_row_or_rule_is_not_guessed():
+    """나무에 같은 경로가 둘(지운 폴더의 짝)이면 고르지 않고, 규칙이 메일을 옮기는 폴더는 안 지운다 — 짝을 고르면 서버가 OK 를
+    내고 아무것도 안 하고, 가리키던 폴더가 없어진 규칙이 새 메일을 어떻게 하나는 안 쟀다."""
+    with stage(folders=(FOLDER_EMPTY,)) as (box, mailbox):
+        box.twin["newNode1"] = (FOLDER_EMPTY, "")
+        box.archive_twins.add("newNode1")   # 나무에서 산 폴더보다 먼저 선다
+        raises(inbox.MailboxError, lambda: mailbox.move_mails([U["alone"]], FOLDER_EMPTY))
+        assert box.mails[U["alone"]].folder == "" and not box.posts, "짝 줄을 골라 옮기기를 보냈다"
+    with stage(folders=(FOLDER_EMPTY,)) as (box, mailbox):
+        mailbox.save_rule(inbox.Rule(unid="", box="inbox", action="move_folder", folder=FOLDER_EMPTY,
+                                     conditions={"subject": "[주간]"}))
+        raises(inbox.MailboxConfigError, lambda: mailbox.delete_folder(FOLDER_EMPTY))
+        assert FOLDER_EMPTY in [f.path for f in mailbox.folders()]
+
+
+def check_trash_restore_brings_one_mail_back():
+    with stage() as (box, mailbox):
+        mailbox.restore_from_trash(U["f_trash"])
+        assert box.mails[U["f_trash"]].folder == "" and box.changes == [("restore", U["f_trash"])], box.changes
+        raises(inbox.MailboxError, lambda: mailbox.restore_from_trash(U["alone"]))   # 휴지통에 없는 메일 — 답이 거짓
+
+
+def check_rule_hands_round_trip_and_never_forward():
+    """규칙 넣기 · 읽기 · 고치기 · 지우기 — 자동전달 칸은 늘 비고 꺼져 나간다(남에게 메일이 나가는 길). 조건 없는 규칙(모든
+    메일에 걸린다) · 없는 폴더 · 자동전달 규칙 고치기는 묻기 전에 막는다. 규칙 문서를 여는 주소는 메일 읽음을 안 바꾼다."""
+    with stage(folders=(FOLDER_EMPTY,)) as (box, mailbox):
+        before = box.unread()
+        made = inbox.Rule(unid="", box="inbox", action="move_folder", folder=FOLDER_EMPTY,
+                          conditions={"from": "hn.seo@nuri.example"}, exact_from=True)
+        unid = mailbox.save_rule(made)
+        got = mailbox.rule(unid)
+        assert (got.box, got.action, got.folder, got.conditions, got.exact_from, got.forwards) == (
+            "inbox", "move_folder", FOLDER_EMPTY, {"from": "hn.seo@nuri.example"}, True, False), got
+        assert mailbox.rules() == [got]
+        import dataclasses   # noqa: PLC0415
+        assert mailbox.save_rule(dataclasses.replace(got, conditions={"subject": "[주간]"}, exact_from=False)) == unid
+        assert mailbox.rule(unid).conditions == {"subject": "[주간]"} and len(box.rules) == 1
+        for _, form in box.posts:
+            if form.get("SubmitAction") == "save":
+                assert (form["forward_list"], form["AllFwdOpt"], form["MydeptFwdOpt"]) == ("", "0", "0"), form
+                assert not any(form[f"rule_{k}_1"] for k in inbox.RULE_FIELDS), "자동전달 탭의 조건 칸이 찼다"
+        for bad in (dict(conditions={}), dict(conditions={"body": "x"}), dict(folder="없는 폴더"), dict(box="all")):
+            raises(inbox.MailboxConfigError, lambda b=bad: mailbox.save_rule(dataclasses.replace(made, **b)))
+        box.rules[unid]["forward_list"] = "ext@far-cells.example"
+        raises(inbox.MailboxConfigError, lambda: mailbox.save_rule(dataclasses.replace(got, conditions={"subject": "x"})))
+        mailbox.delete_rule(unid)
+        assert not box.rules and box.unread() == before
+        raises(inbox.MailboxConfigError, lambda: mailbox.rule(U["alone"]))   # 메일 문서를 규칙으로 안 연다
+        assert not [c for c in box.changes if c[0] == "read"], f"규칙 손이 메일 읽음을 바꿨다: {box.changes}"
+
+
+def check_rule_page_of_unknown_shape_is_an_error_not_an_empty_rule():
+    """규칙 화면의 머리를 못 읽거나 갈래가 모르는 값이면 빈 규칙으로 읽지 않는다 — 빈 규칙은 자동전달 규칙을 조용히 숨긴다."""
+    good = '<script>new FormJS({"form": {"rules": "forward", "folder_id": ""}, "folders": []});</script>'
+    assert inbox.parse_rule_page("A" * 32, good).forwards, "자동전달 갈래를 자동전달로 안 읽었다"
+    for page in ("<html></html>", good.replace('"forward"', '"copy_all"'), good.replace("});", "};")):
+        raises(inbox.MailboxError, lambda p=page: inbox.parse_rule_page("A" * 32, p))
+
+
+def check_reading_path_refuses_folder_and_rule_changers():
+    """읽기 길(``_get``)은 폴더 · 휴지통 · 규칙을 바꾸는 주소를 서버에 닿기 전에 막는다 — 만들기 · 지우기 · 되살리기가 GET 이다(실측)."""
+    with stage() as (box, mailbox):
+        for path in ("/agt_mail_folder_save?OpenAgent&act=create&fname=x", "/folder2?OpenForm",
+                     f"/TrashDoc?OpenAgent&docid={U['alone']}&type=recovery", "/Mailrule?OpenForm&Seq=1"):
+            raises(inbox.ChangeRefused, lambda p=path: mailbox._get(p))
+        raises(inbox.ChangeRefused, lambda: mailbox._send_folder(f"{DB}/0/{U['alone']}?OpenDocument", "x"))
+        raises(inbox.ChangeRefused, lambda: mailbox._send_rule(f"{DB}/Mailrule?OpenForm&Seq=1", {"forward_list": "a@b"}, "x"))
+        assert not box.paths, f"막아야 할 주소가 서버에 닿았다: {box.paths}"
+
+
 # ── 잰 꼴 풀기 ────────────────────────────────────────────────────────────
 
 def check_list_shape_sender_role_and_paging():
@@ -740,14 +980,18 @@ def check_exact_lookup_picks_only_that_person():
 
 def check_level_floor_stays_inside_its_track():
     """등급 거르기 — 같은 갈래 안에서만 위아래 · 두 자리 등급(P10)을 글자 차례로 안 읽는다 · 등급 없는 직급은 빠진다."""
-    def at(code, floor):
-        p = inbox.DirectoryPerson(email="", name="", name_eng="", notes="", user_id="", empno="", dept="", grade="",
+    def at(code, floor, grade=""):
+        p = inbox.DirectoryPerson(email="", name="", name_eng="", notes="", user_id="", empno="", dept="", grade=grade,
                                   job_title="", company="", retired=False, grade_code=code)
         return inbox.level_at_least(p.level, floor)
     assert at("26", "P5") and at("27", "p5") and at("31", "P5"), "리더 · 부장 · 사장이 P5 이상에 안 들었다"
     assert not at("21", "P5"), "P4(차장)가 P5 이상에 들었다"
     assert not at("32", "P5"), "E7 이 P 갈래 거르기에 들었다"
     assert not at("45", "P1") and not at("", "E1"), "등급 없는 직급이 걸렀는데 남았다"
+    assert at("", "P8", "고문") and at("99", "P5", " 고문 "), "고문이 임원급으로 안 섰다 — 코드가 표에 없으면 직급 이름을 본다"
+    assert not at("", "P9", "고문"), "고문이 다른 임원 위에 섰다 — 임원의 낮은 쪽이어야 한다"
+    assert not at("44", "P1", "소장") and not at("10", "P1", "이사"), "소장 · 이사는 직급만으로 등급을 안 준다"
+    assert at("21", "P4", "고문") and not at("21", "P5", "고문"), "직급 코드의 표가 직급 이름보다 먼저다"
     raises(inbox.MailboxConfigError, lambda: at("26", "리더"))
 
 

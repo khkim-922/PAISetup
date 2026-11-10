@@ -50,10 +50,10 @@ PC 를 반납하거나 부서를 옮기거나 회사 게이트웨이를 떠나 �
 
 ### 자동 실행 작업
 
-로그온 · 밤마다 도는 자동 실행 작업 `PAISetup-AutoRun` · `PAISetup-AutoRun-Night` 은 「작업 스케줄러」를 열어 두 이름을 지운다.
+로그온 · 밤마다 도는 자동 실행 작업 `PAISetup-AutoRun` · `PAISetup-AutoRun-Night` 과 로그온 EP 로그인 창 작업 `PAISetup-EpLogin`(회사 PC 에만 선다)은 「작업 스케줄러」를 열어 그 이름들을 지운다.
 
 ```powershell
-Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night -Confirm:$false
+Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night,PAISetup-EpLogin -Confirm:$false -ErrorAction SilentlyContinue
 ```
 
 ⚠ 다른 무엇보다 이것을 먼저 지운다 — [지우는 차례](#지우는-차례).
