@@ -11087,7 +11087,7 @@ if (-not $NoVsCode -and (Test-VsCodeRequired $site)) {
 # 사람이 고른 것의 기록은 자동 실행의 몫이 아니다 — 켜든 끄든 「회차를 넘기는 기록」 칸이 쓰고, 몸통이 회차마다 그 기록을 읽는다.
 $AutoRunNightAt       = [datetime]::Today.AddHours(3)
 $AutoRunNightSpread   = New-TimeSpan -Hours 2
-$AutoRunLogonDelay    = New-TimeSpan -Seconds 10
+$AutoRunLogonDelay    = New-TimeSpan -Seconds 3
 $AutoRunSiteWait      = 60
 $AutoRunGate          = 'autorun-gate.ps1'
 $AutoRunProgress      = 'autorun-progress.ps1'
