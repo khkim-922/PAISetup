@@ -643,6 +643,8 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 |---|---|
 | `drm-office-read` | 회사 DRM 이 감싼 오피스 · PDF 에서 글자를 뽑고, 페이지를 그림으로 떠서 표 · 배치를 본다 |
 | `inhouse-app` | 사내 시스템(LLM 게이트웨이 · SSO · 배포 · 회사 CA)에 붙는 코드라면 앱이든 짧은 스크립트든 들고, 거기서 막힌 문제도 푼다 — 회사 코딩 기준은 그 안의 장을 콕 집어 연다 |
+| `company-mail` · `company-calendar` · `company-ecm` · `company-meeting-room` | 사내 메일함 · 일정 · 문서함(ECM) · 회의실 예약을 대화로 다룬다 — 보내기 · 넣기 · 고치기 · 지우기는 그 한 건을 사람이 대화에서 확인한 뒤에만 한다 |
+| `ep-login` | 위 넷이 빌려 쓰는 사내 세션을 평소 Edge 에서 받아 둔다 — 넷이 이 스킬의 세션 손을 불러 쓰므로 다섯은 늘 함께 깔린다 |
 | `agent-envelope` | 다른 에이전트에게 일을 맡길 때 누구에게 맡길지 고르고 작업 지시서를 짓는 맡기기 스킬의 앞문이다 |
 | `agy-background` | agy 에게 일을 맡기고, 한도나 과부하에 걸리면 다음 모델로 넘어간다 |
 | `codex-copilot-background` | Codex 에게 일을 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다 |
@@ -654,10 +656,13 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 | 스킬 | Claude 홈 `~/.claude/skills/` | Codex 홈 `~/.agents/skills/` | agy 홈 `~/.gemini/config/skills/` |
 |---|---|---|---|
 | `drm-office-read` · `inhouse-app` · `agent-envelope` | Claude 를 고르면 | Codex 를 고르면 | 안티그래비티를 고르면 |
+| 사내 앱 다섯(`company-*` 넷 · `ep-login`) | 사내에서 Claude 를 고르면 | 사내에서 Codex 를 고르면 | 사내에서 안티그래비티를 고르면 |
 | `agy-background` | Claude 와 안티그래비티를 같이 고르면 | Codex 와 안티그래비티를 같이 고르면 | — |
 | `codex-copilot-background` | Claude 와 Codex 를 같이 고르면 | — | 안티그래비티와 Codex 를 같이 고르면 |
 | `claude-background` | — | Claude 와 Codex 를 같이 고르면 | Claude 와 안티그래비티를 같이 고르면 |
 
+- 사내 앱 다섯은 사외(회사 게이트웨이에 안 닿는 자리)에서는 안 깐다 — 사내 앱 화면이 안 열려 쓸 데가 없다. 사외로 돈 설치는 앞서
+  사내에서 깐 다섯을 아래 백업 자리로 걷는다
 - Codex 에게 맡기는 줄과 Codex 가 맡기는 줄은 사내에서는 Codex 회사 설정이 서는 자리에서만 선다
 - 위 표의 조건은 제작자 칸을 끈 도구의 홈에서 쓰인다. 칸을 켠 도구의 홈에는 놓는 프로그램이 설치 묶음의(설정 저장소를 넣었으면 그
   저장소의) 스킬을 다 놓는다 — 위 이름들도 고른 제품과 상관없이 그 안에 들고, 받는 쪽 홈의 맡기기 스킬만 빠진다
