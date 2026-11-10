@@ -1,4 +1,6 @@
-"""사내 메일함(Lotus Notes · HCL Domino 웹메일)을 읽는 손과, 메일함을 바꾸는 이름 붙은 손들 — 표준 라이브러리만 쓰는 파일 하나.
+"""사내 메일함(Lotus Notes · HCL Domino 웹메일)을 읽는 손과, 메일함을 바꾸는 이름 붙은 손들 — 표준 라이브러리와 형제 스킬 ep-login 의
+``ep_session``(세션 파일 → 쿠키 통) 만 쓰는 파일 하나. ``ep_session`` 은 스킬 홈에 나란히 깔린 ``../../ep-login/scripts/`` 에서 싣고,
+그 자리가 없으면(이 파일만 옮겨 쓸 때) ``ep_session.py`` 를 이 파일 곁에 함께 둔다.
 
 무엇을 하나
     받은편지함 · 쓰는 사람이 지은 폴더 · 보낸편지함의 목록, 모든편지함의 받는 꼴 · 중요도, 받는 사람 목록 보기, 본문(HTML ·
@@ -192,13 +194,13 @@
 from __future__ import annotations
 
 import html
-import http.cookiejar
 import json
 import logging
 import os
 import pathlib
 import re
 import secrets
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -207,7 +209,12 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-DEFAULT_COOKIES = "~/.mailbox-session.json"
+EP_LOGIN_SCRIPTS = pathlib.Path(__file__).resolve().parent.parent.parent / "ep-login" / "scripts"   # 형제 스킬 — 세션 파일을 읽는 자리
+if str(EP_LOGIN_SCRIPTS) not in sys.path:
+    sys.path.append(str(EP_LOGIN_SCRIPTS))
+import ep_session  # noqa: E402 — 형제 스킬의 자리를 넣은 뒤에 싣는다
+
+DEFAULT_COOKIES ="~/.mailbox-session.json"
 DEFAULT_TIMEOUT = 30.0
 HTTP_NOT_SERVED = 501             # 본문 주소에 이 답을 내는 메일이 있다 — 「본문 없음」으로 받는다
 
@@ -525,34 +532,6 @@ class Dept:
 
 # ── 세션 ─────────────────────────────────────────────────────────────────
 
-def _load_cookies(path: pathlib.Path) -> http.cookiejar.CookieJar:
-    """로그인 손이 남긴 Playwright 저장 상태(``{"cookies": [...]}``)를 쿠키 통으로 읽는다. 시한이 지난 쿠키는 버린다."""
-    if not path.exists():
-        raise MailboxConfigError(f"쿠키 파일이 없다: {path} — 로그인해 세션 쿠키를 먼저 남긴다")
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise MailboxConfigError(f"쿠키 파일이 깨졌다: {exc}") from exc
-    cookies = data.get("cookies") if isinstance(data, dict) else None
-    if not isinstance(cookies, list) or not cookies:
-        raise MailboxConfigError(f"쿠키 파일에 쿠키가 없다: {path}")
-
-    jar = http.cookiejar.CookieJar()
-    now = time.time()
-    for item in cookies:
-        expires = item.get("expires", -1)
-        if expires not in (-1, None) and expires < now:
-            continue
-        domain = item["domain"]
-        jar.set_cookie(http.cookiejar.Cookie(
-            version=0, name=item["name"], value=item["value"], port=None, port_specified=False,
-            domain=domain, domain_specified=True, domain_initial_dot=domain.startswith("."),
-            path=item.get("path", "/"), path_specified=True, secure=bool(item.get("secure")),
-            expires=None if expires in (-1, None) else int(expires), discard=expires in (-1, None),
-            comment=None, comment_url=None, rest={}))
-    return jar
-
-
 def discover_mailbox(server: str, cookies_file, *, timeout: float = DEFAULT_TIMEOUT) -> str:
     """그 세션의 주인 메일함 주소(``<서버>/<경로>.nsf``)를 메일 서버 첫 화면에서 받는다 — 사람에게 묻지 않는다.
 
@@ -562,12 +541,12 @@ def discover_mailbox(server: str, cookies_file, *, timeout: float = DEFAULT_TIME
     root = server.strip().rstrip("/")
     if not re.match(r"^https?://[^/]+$", root, re.IGNORECASE):
         raise MailboxConfigError(f"메일 서버 주소(http://<호스트>)가 아니다: {server!r}")
-    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_load_cookies(pathlib.Path(cookies_file).expanduser())),
-                                         _NoRedirect())
+    jar = ep_session.load_jar(cookies_file, missing=MailboxConfigError)
+    opener = ep_session.opener(jar)
     try:
         with opener.open(root + "/", timeout=timeout) as response:
             text = response.read().decode(_charset(response.headers.get("Content-Type", "")), errors="replace")
-    except _Redirected as exc:
+    except ep_session.Redirected as exc:
         raise SessionExpired(f"세션이 끊겼다(→ {exc.location}) — 다시 로그인한다") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise MailboxError(f"메일 서버에 못 닿았다: {exc}") from exc
@@ -593,10 +572,8 @@ class Mailbox:
         self.view = view
         self.timeout = timeout
         self._collections: list[dict] | None = None
-        jar = _load_cookies(pathlib.Path(cookies_file).expanduser())
-        # 리다이렉트를 따라가지 않는다 — 끊긴 세션은 SSO 로 보내는데, 따라가면 쿠키가 SSO 에 실린다
-        self._opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(jar), _NoRedirect())
+        jar = ep_session.load_jar(cookies_file, missing=MailboxConfigError)
+        self._opener = ep_session.opener(jar)   # 리다이렉트는 안 따라간다 — 따라가면 쿠키가 SSO 에 실린다
         self._read_only = read_only_patterns(self.db_path)
 
     @classmethod
@@ -643,7 +620,7 @@ class Mailbox:
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
                 return response.read(), response.headers.get("Content-Type", "")
-        except _Redirected as exc:
+        except ep_session.Redirected as exc:
             raise SessionExpired(f"세션이 끊겼다(→ {exc.location}) — 다시 로그인한다") from exc
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
@@ -1634,14 +1611,3 @@ def _looks_like_login(text: str) -> bool:
 
 
 _LOGIN_JUMP = re.compile(r"location(?:\.href)?\s*=\s*[\"'][^\"']*swpsso[^\"']*login", re.IGNORECASE)
-
-
-class _Redirected(Exception):
-    def __init__(self, location: str):
-        super().__init__(location)
-        self.location = location
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise _Redirected(newurl)

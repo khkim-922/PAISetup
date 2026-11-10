@@ -1,4 +1,5 @@
-"""사내 일정 앱(HCL Domino 웹 일정)의 내 일정함을 읽는 손과, 일정을 바꾸는 이름 붙은 손 둘 — 표준 라이브러리만 쓰는 파일 하나.
+"""사내 일정 앱(HCL Domino 웹 일정)의 내 일정함을 읽는 손과, 일정을 바꾸는 이름 붙은 손 둘 — 표준 라이브러리와 형제 스킬 ep-login 의
+``ep_session``(세션 파일 → 쿠키 통) 만 쓰는 파일 하나. ``ep_session`` 은 스킬 홈에 나란히 깔린 ``../../ep-login/scripts/`` 에서 싣는다.
 
 무엇을 하나
     읽는 손(``Reader``)은 일정 앱의 JSON 주소 셋만 묻는다 — 일정함 목록(``agGetCalendar``) · 내 일정(``getcalendareventMe``) ·
@@ -90,13 +91,12 @@ import dataclasses
 import hashlib
 import html
 import html.parser
-import http.cookiejar
 import json
 import logging
 import os
 import pathlib
 import re
-import time
+import sys
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -105,6 +105,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+
+EP_LOGIN_SCRIPTS = pathlib.Path(__file__).resolve().parent.parent.parent / "ep-login" / "scripts"   # 형제 스킬 — 세션 파일을 읽는 자리
+if str(EP_LOGIN_SCRIPTS) not in sys.path:
+    sys.path.append(str(EP_LOGIN_SCRIPTS))
+import ep_session  # noqa: E402 — 형제 스킬의 자리를 넣은 뒤에 싣는다
 
 log = logging.getLogger(__name__)
 
@@ -390,53 +395,6 @@ def same_event(e: Event, w: Want) -> bool:
 # ── 읽는 손 ─────────────────────────────────────────────────────────────────────────────────────────
 
 
-def _load_cookies(path: pathlib.Path) -> http.cookiejar.CookieJar:
-    """세션 손이 남긴 저장 상태(``{"cookies": [...]}``)를 쿠키 통으로. 시한이 지난 쿠키 · 꼴이 아닌 쿠키는 버린다. 어느 호스트에
-    실리나는 쿠키 통이 브라우저의 규칙대로 가린다 — 파일에 다른 사내 호스트(ECM 등)의 쿠키가 함께 들어도 일정 서버에는 그
-    서버에 실릴 쿠키만 간다."""
-    if not path.exists():
-        raise SessionMissing("쿠키 파일이 없다 — 사내 세션을 먼저 받아 남긴다")
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise SessionMissing(f"쿠키 파일을 못 읽었다: {type(exc).__name__}") from exc
-    cookies = data.get("cookies") if isinstance(data, dict) else None
-    if not isinstance(cookies, list) or not cookies:
-        raise SessionMissing("쿠키 파일에 쿠키가 없다 — 사내 세션을 먼저 받아 남긴다")
-    jar = http.cookiejar.CookieJar()
-    now = time.time()
-    for item in cookies:
-        if not isinstance(item, dict) or not item.get("domain") or not item.get("name"):
-            continue
-        expires = item.get("expires", -1)
-        if not isinstance(expires, (int, float)):
-            expires = -1
-        if expires not in (-1, None) and 0 <= expires < now:
-            continue
-        domain = str(item["domain"])
-        lasting = expires >= 0
-        jar.set_cookie(http.cookiejar.Cookie(
-            version=0, name=str(item["name"]), value=str(item.get("value", "")), port=None, port_specified=False,
-            domain=domain, domain_specified=True, domain_initial_dot=domain.startswith("."),
-            path=str(item.get("path", "/")), path_specified=True, secure=bool(item.get("secure")),
-            expires=int(expires) if lasting else None, discard=not lasting,
-            comment=None, comment_url=None, rest={}))
-    return jar
-
-
-class _Redirected(Exception):
-    def __init__(self, location: str):
-        super().__init__(location)
-        self.location = location
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """리다이렉트를 안 따라간다 — 끊긴 세션은 SSO 로 보내는데, 따라가면 쿠키가 SSO 에 실린다."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise _Redirected(newurl)
-
-
 class Reader:
     """일정함을 읽는 손 — 읽기 전용으로 잰 주소 셋만 묻는다. 바꾸는 손 둘(``register`` · ``delete``)도 이 손의 세션을 쓴다."""
 
@@ -450,8 +408,8 @@ class Reader:
         self.timeout = timeout
         if not str(cookies_file or "").strip():
             raise SessionMissing("쿠키 파일을 안 줬다 — 세션을 남긴 손이 낸 경로를 넘긴다")
-        jar = _load_cookies(pathlib.Path(cookies_file).expanduser())
-        self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), _NoRedirect())
+        jar = ep_session.load_jar(cookies_file, missing=SessionMissing)   # 다른 사내 호스트의 쿠키는 쿠키 통이 일정 서버에 안 싣는다
+        self._opener = ep_session.opener(jar)   # 리다이렉트는 안 따라간다 — 따라가면 쿠키가 SSO 에 실린다
         db = re.escape(self.db_path)
         day = r"\d{4}-\d{2}-\d{2}"
         # 읽는 손이 물을 수 있는 주소 꼴 — 닫힌 목록이라 새 꼴은 안 바꾸는 것을 잰 뒤 여기에 더해야 묻는다
@@ -513,7 +471,7 @@ class Reader:
         try:
             with self._opener.open(req, timeout=self.timeout) as response:
                 return response.read(), response.headers.get("Content-Type", "")
-        except _Redirected as exc:
+        except ep_session.Redirected as exc:
             raise SessionExpired("세션이 끊겼다 — 일정 서버가 다른 곳으로 보냈다") from exc
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):

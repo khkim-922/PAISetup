@@ -1,5 +1,6 @@
 """사내 문서함(ECM)에서 문서를 찾고 읽고, 사람이 확인한 한 편은 편집해 다음 판으로 올리거나 새 문서로 올리는 손. 표준 라이브러리만 쓴다(곁의
-``default_app.py`` · ``close_view.ps1`` · ``close_acrobat.ps1`` · ``checkin_window.ps1`` 을 함께 쓴다).
+``default_app.py`` · ``close_view.ps1`` · ``close_acrobat.ps1`` · ``checkin_window.ps1`` 과, 세션 파일을 읽는 형제 스킬 ep-login 의
+``ep_session.py`` 를 함께 쓴다 — 스킬 홈에 나란히 깔린 ``../../ep-login/scripts/`` 에서 싣는다).
 
 무엇을 하나
     문서함의 목록 · 찾기 · 건수를 받는다 — 내 문서함, 그리고 그 사람이 볼 수 있는 부서 · 프로젝트 문서함(``Ecm.cabinets`` ·
@@ -155,6 +156,11 @@ from dataclasses import dataclass
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import default_app  # noqa: E402 — 곁의 파일이다
+
+EP_LOGIN_SCRIPTS = pathlib.Path(__file__).resolve().parent.parent.parent / "ep-login" / "scripts"   # 형제 스킬 — 세션 파일을 읽는 자리
+if str(EP_LOGIN_SCRIPTS) not in sys.path:
+    sys.path.append(str(EP_LOGIN_SCRIPTS))
+import ep_session  # noqa: E402 — 형제 스킬의 자리를 넣은 뒤에 싣는다
 
 DEFAULT_URL = "http://swpecm.posco.net:7091/ECM"
 DEFAULT_AGENT = "ws://localhost:8383/"
@@ -523,53 +529,12 @@ def session_path() -> pathlib.Path:
     return pathlib.Path(raw).expanduser()
 
 
-def _domain_matches(host: str, domain: str) -> bool:
-    domain = domain.lstrip(".").lower()
-    return bool(domain) and (host == domain or host.endswith("." + domain))
-
-
-def cookie_header(session_file: pathlib.Path, url: str, *, now: float | None = None) -> str:
-    """세션 파일(Playwright 저장 상태)에서 ``url`` 에 실릴 쿠키만 골라 ``Cookie`` 머리 글로 낸다. 없으면 빈 글자."""
-    if not session_file.exists():
-        raise SessionMissing(f"세션 파일이 없다: {session_file} — 스킬 ep-login 으로 받는다")
-    try:
-        data = json.loads(session_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise SessionMissing(f"세션 파일이 깨졌다({exc}) — 스킬 ep-login 으로 다시 받는다") from exc
-    cookies = data.get("cookies") if isinstance(data, dict) else None
-    if not isinstance(cookies, list):
-        raise SessionMissing(f"세션 파일에 쿠키 목록이 없다: {session_file} — 스킬 ep-login 으로 받는다")
-    parts = urllib.parse.urlsplit(url)
-    host, path, secure = (parts.hostname or "").lower(), parts.path or "/", parts.scheme == "https"
-    now = time.time() if now is None else now
-    picked = []
-    for item in cookies:
-        if not isinstance(item, dict) or not item.get("name"):
-            continue
-        expires = item.get("expires", -1)
-        if isinstance(expires, (int, float)) and expires not in (-1,) and 0 <= expires < now:
-            continue
-        cookie_path = item.get("path") or "/"
-        if not _domain_matches(host, str(item.get("domain", ""))):
-            continue
-        if not (path == cookie_path or path.startswith(cookie_path.rstrip("/") + "/")):
-            continue
-        if item.get("secure") and not secure:
-            continue
-        picked.append((len(cookie_path), f"{item['name']}={item.get('value', '')}"))
-    picked.sort(key=lambda p: -p[0])
-    return "; ".join(text for _, text in picked)
-
-
-class _Redirected(Exception):
-    def __init__(self, location: str):
-        super().__init__(location)
-        self.location = location
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise _Redirected(newurl)
+def cookie_header(session_file: pathlib.Path, url: str) -> str:
+    """세션 파일에서 ``url`` 에 실릴 쿠키만 골라 ``Cookie`` 머리 글로 낸다 — 없으면 빈 글자. 고르기(도메인 · 경로 · secure · 포트를
+    뗀 호스트)는 쿠키 통(``ep_session.load_jar``)이 한다. 파일이 없거나 못 읽거나 비었으면 ``SessionMissing``."""
+    request = urllib.request.Request(url)
+    ep_session.load_jar(session_file, missing=SessionMissing).add_cookie_header(request)
+    return request.get_header("Cookie") or ""
 
 
 # ── 서버 ─────────────────────────────────────────────────────────────────
@@ -588,7 +553,7 @@ class Ecm:
         self._cookie = cookie_header(self.session_file, self.server + self.context + "/")
         if not self._cookie:
             raise SessionMissing(f"세션 파일에 {urllib.parse.urlsplit(self.server).hostname} 의 쿠키가 없다 — 스킬 ep-login 으로 받는다")
-        self._opener = urllib.request.build_opener(_NoRedirect())
+        self._opener = ep_session.opener()   # 쿠키는 머리로 싣고 · 리다이렉트는 안 따라간다
 
     @classmethod
     def from_env(cls) -> "Ecm":
@@ -644,7 +609,7 @@ class Ecm:
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
                 return response.read(), response.headers.get("Content-Type", "")
-        except _Redirected as exc:
+        except ep_session.Redirected as exc:
             raise SessionExpired(f"ECM 이 세션을 안 받았다(→ {exc.location}) — 스킬 ep-login 으로 다시 받는다") from exc
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
@@ -677,7 +642,7 @@ class Ecm:
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
                 return response.read(), response.headers.get("Content-Type", "")
-        except _Redirected as exc:
+        except ep_session.Redirected as exc:
             raise SessionExpired(f"ECM 이 세션을 안 받았다(→ {exc.location}) — 스킬 ep-login 으로 다시 받는다") from exc
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
