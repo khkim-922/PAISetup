@@ -7952,6 +7952,14 @@ $FreeSkills = [ordered]@{
   'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
   'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
+  # 사내 앱(메일 · 일정 · 문서함 · 회의실)을 대화로 다룬다 — 넷이 형제 폴더 ep-login 의 세션 손을 불러 쓰므로 다섯은 한 묶음으로
+  #   같은 홈에 선다. 사내(게이트웨이에 닿는 자리 `$inside`)에서만 깐다 — 사외에서는 사내 앱 화면이 안 열려 쓸 데가 없고, 사외로
+  #   돈 회차는 기록에 든 이 다섯을 백업 자리로 걷는다
+  'ep-login'                 = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'company-mail'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'company-calendar'         = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'company-ecm'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'company-meeting-room'     = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
   'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
   # agy 에게 맡기고 한도에서 넘긴다 — 맡기는 쪽은 Claude · Codex
@@ -12147,9 +12155,10 @@ exit 0
     # 로그온 EP 로그인 창(파일 머리의 `$AutoRunEpTaskName`) — 사람이 Edge 를 먼저 열면 그 Edge 에는 디버깅 포트가 안 서, 그날 사내 앱
     #   스킬이 세션을 못 빌린다. 그래서 자동 실행 몸통을 거치지 않는 작업이 로그온하자마자 스킬 ep-login 의 띄우는 손(`edge_start.js`)을
     #   node 로 바로 부른다 — PowerShell 을 안 띄워 로그온과 창 사이가 가장 짧다. Edge 가 이미 떠 있으면 그 손이 아무것도 안 하고 물러난다.
-    # 띄울 수 있는 PC 인가는 여기서 가른다 — 이번 설치가 사내이고(사외는 EP 로그인 화면이 안 열린다), 그 손이 도구 홈에 놓였고(고른
-    #   도구마다 홈이 달라, 놓는 손 `tool-homes.py` 의 파일 기록 `~/.paisetup/placed.tsv` 에서 찾는다), node 가 있을 때만 걸고 아니면
-    #   걷는다. 자동 실행이 로그온마다 설치를 다시 돌리므로 자리가 바뀐 PC 도 그 회차에 맞춰진다.
+    # 띄울 수 있는 PC 인가는 여기서 가른다 — 이번 설치가 사내이고(사외는 EP 로그인 화면이 안 열린다), 그 손이 도구 홈에 놓였고, node 가
+    #   있을 때만 걸고 아니면 걷는다. 자동 실행이 로그온마다 설치를 다시 돌리므로 자리가 바뀐 PC 도 그 회차에 맞춰진다.
+    # 놓인 손은 그 홈에 쓰는 자의 기록에서 찾는다 — 고른 도구마다 홈이 다르고, 홈마다 쓰는 자가 하나다: 제작자 칸에 든 홈은 손
+    #   `tool-homes.py` 의 파일 기록 `~/.paisetup/placed.tsv`, 안 든 홈은 칸 없이 까는 걸음의 스킬 기록(`$FreeSkillHomes` 의 `Ledger`).
     $epHand = $null
     if ($site -eq 'inside') {
       try {
@@ -12161,6 +12170,17 @@ exit 0
           }
         }
       } catch { }
+      if (-not $epHand) {
+        foreach ($epHome in $FreeSkillHomes.Values) {
+          $epPlace = $epHome.Place
+          if ($epHome.Box -or -not $epPlace) { continue }
+          try {
+            if (@([IO.File]::ReadAllLines($epPlace.Ledger) | ForEach-Object { $_.Trim() }) -notcontains 'ep-login') { continue }
+          } catch { continue }
+          $epPath = Join-Path $epPlace.Skills 'ep-login\scripts\edge_start.js'
+          if (Test-Path -LiteralPath $epPath) { $epHand = (Resolve-Path -LiteralPath $epPath).ProviderPath; break }
+        }
+      }
     }
     $epNode = $null
     if ($epHand) { $epNode = @(Get-Command node.exe -CommandType Application -ErrorAction SilentlyContinue)[0].Source }
