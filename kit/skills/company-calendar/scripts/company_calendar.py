@@ -20,7 +20,7 @@
 내는 것 — 표준 출력에 JSON 하나. 종료 값: 0 됐다 · 1 도구 고장(그대로 알린다) · 2 인자가 틀렸다 · 3 세션이 없다 · 끊겼다(스킬
 ep-login) · 4 일정 앱 주소가 틀렸거나 잰 기본 주소로 내 일정함이 안 읽힌다. 0 이 아니면 ``message`` 가 까닭과 「다음: …」 을 든다.
 일정 줄 — ``handle``(지우기에 넘기는 손잡이 · 사람에게 안 보인다) · ``weekday`` · ``pending``(참석 답을 안 한 받은 초대) · ``keep`` 이
-차면 지우지 않는 줄이고 ``keep_word`` 가 사람에게 할 말이다 · 공유 줄은 ``calendar``(누구 일정함) · ``private``(주인이 비공개로 든 것).
+차면 지우지 않는 줄이고 ``keep_word`` 가 사람에게 할 말이다 · 공유 줄은 ``calendar``(누구 일정함) · ``private``(일정함을 가진 사람이 비공개로 든 것).
 넣기 · 지우기의 끝은 0 과 함께 ``state`` 와 사람에게 할 말 · 다음 걸음이 든 ``state_word`` 가 든다.
 """
 
@@ -135,9 +135,9 @@ def row(agenda, e) -> dict:
            "repeat": e.repeat, "all_day": e.all_day}
     if e.keep_reason:
         out["keep_word"] = KEEP_WORDS.get(e.keep_reason, e.keep_reason)
-    if e.calendar:                       # 공유받은 일정함의 줄 — 누구 일정함인가 · 주인이 비공개로 든 것인가. 지우는 손잡이는 없다
+    if e.calendar:                       # 공유받은 일정함의 줄 — 누구 일정함인가 · 일정함을 가진 사람이 비공개로 든 것인가. 지우는 손잡이는 없다
         out.update(calendar=e.calendar, private=e.private)
-        del out["handle"], out["pending"]  # 참석 답은 그 일정함 주인의 것이라 내 초대로 읽히지 않게 뺀다
+        del out["handle"], out["pending"]  # 참석 답은 그 일정함을 가진 사람의 것이라 내 초대로 읽히지 않게 뺀다
     return out
 
 

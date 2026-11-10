@@ -18,8 +18,7 @@
     · 깔리는 이름은 실물에서 딴다 — 스킬은 폴더 이름(`kit/skills/<이름>`), 훅은 훅 파일 이름(`kit/hooks/<이름>.*`), 규범 · 룰은
       `kit/norms/` 의 조항 · 파일 이름, MCP · 예약 작업은 설치기가 다는 이름이다
     · 받는 도구는 갈 곳 표(`tool-homes.conf` 의 route · not 줄)와 `INSTALLED.md` 의 표에서 딴다 — 맡기기 스킬은 맡기는 쪽에만 간다
-    · 출처 — ECC 는 폴더에 ECC 저자의 MIT `LICENSE` 를 든 스킬, Anthropic 은 공식 마켓에서 그대로 받는 플러그인, Microsoft 는
-      그대로 다는 Playwright MCP 다. 나머지 설치기가 제 것으로 싣는 것은 PAI 다
+    · 출처 — Anthropic 은 공식 마켓에서 그대로 받는 플러그인, Microsoft 는 그대로 다는 Playwright MCP 다. 나머지 설치기가 제 것으로 싣는 것은 PAI 다
     · 범위 — 설치 창에 설정 저장소 주소를 넣었을 때만 생기는 것(그 저장소의 세션 훅 `--install` · `deploy.ps1` 이 하는 일과, 그
       저장소들을 대상으로 하는 일)은 출처 자리에 `설정 저장소` 배지를 달고 「내 설정 저장소」 절(`#repo`)에 모은다. 배지가 없으면
       누구나 받는다 — 「규범 · 룰 · 스킬을 받을 모델」 칸은 저장소가 아니라 그 칸이 켜는 것이라 누구나 쪽이다
@@ -407,7 +406,6 @@
         <h3>출처 — 누가 만들었나</h3>
         <dl>
           <dt><span class="src pai">PAI</span></dt><dd>이 설치기에서 만든 기능</dd>
-          <dt><span class="src ecc">ECC</span></dt><dd>everything-claude-code 에서 빌려 와 옮긴 스킬(MIT)</dd>
           <dt><span class="src anth">Anthropic</span></dt><dd>Anthropic 공식 마켓에서 그대로 받는 것</dd>
           <dt><span class="src ms">Microsoft</span></dt><dd>Microsoft 의 것을 그대로 다는 것</dd>
         </dl>
@@ -757,6 +755,8 @@
       <div class="det">
         <h5>글과 문서</h5>
         <div class="chips-grid">
+          <div class="mini"><b>보고 세우기</b><span class="tag"><code class="nm">report-plan</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
+            <span>보고를 시작할 때 덱 · 문서 · 메일을 고르기 전에, 분석을 세우고 받는 사람이 무엇을 판단하려는지 묻고 구성안을 글로 승인받습니다.</span></div>
           <div class="mini"><b>보고서 덱</b><span class="tag"><code class="nm">ppt-report</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="src pai">PAI</span></span>
             <span>회사 보고 양식으로 슬라이드 덱을 만듭니다. 받는 사람이 누구인지 먼저 묻고, 결론을 앞에 두는 꼴로 세웁니다. 기대는 공식 PPT 스킬이 Claude 에만 있어, Codex · agy 는 이 일을 Claude 에 맡깁니다.</span></div>
           <div class="mini"><b>글 다듬기</b><span class="tag"><code class="nm">explain-the-essence</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
@@ -784,6 +784,8 @@
             <span>이슈를 완성형 한 문장으로 열고 실측 · 끝 조건 · 재는 법 · 닿는 자리를 갖춰 쓰며, 진행은 코멘트로 달다가 한 판을 닫을 때 그 아래 「지금 상태」 칸을 고칩니다.</span></div>
           <div class="mini"><b>다른 저장소에서 옮겨 오기</b><span class="tag"><code class="nm">borrow-spec-as-pair</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
             <span>형제 저장소의 코드 · 규격 · 검사를 옮겨 올 때, 같이 옮겨야 할 짝을 먼저 셉니다.</span></div>
+          <div class="mini"><b>계획 세우기</b><span class="tag"><code class="nm">plan-depth</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
+            <span>계획 · 설계를 내놓기 전에 사안에 박힌 제약을 캐고 떠오른 길들을 속에서 겨뤄, 선택지 목록이 아니라 계획 하나를 기댄 제약 · 버린 길과 함께 냅니다.</span></div>
         </div>
         <h5>검사와 규칙 다듬기</h5>
         <div class="chips-grid">
@@ -793,12 +795,10 @@
             <span>스킬을 만들거나 고칠 때 이미 있는 표준부터 찾아 그 위에 세웁니다.</span></div>
           <div class="mini"><b>규칙 자리 가르기</b><span class="tag"><code class="nm">norm-design</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
             <span>규범 · 룰 · 스킬 · 메모리에 한 줄을 더하거나 걷기 전에, 그 줄이 어느 층에 어떤 꼴로 설지 가릅니다.</span></div>
+          <div class="mini"><b>리뷰 지적 가르기</b><span class="tag"><code class="nm">norm-review-fix</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
+            <span>리뷰 지적 목록에서 이번 변경이 만든 것만 고치고, 사소한 것은 버리고, 원래 있던 것은 이슈로 남깁니다.</span></div>
           <div class="mini"><b>내 설정 저장소 세우기</b><span class="tag"><code class="nm">config-repo-start</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
             <span>설치가 놓은 규범 · 룰 · 스킬을 고치려 할 때, 다음 설치가 되돌리지 않게 내 설정 저장소를 세우고 그 고침을 원본 자리로 옮깁니다.</span></div>
-          <div class="mini"><b>클릭 경로 점검</b><span class="tag"><code class="nm">click-path-audit</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src ecc">ECC</span></span>
-            <span>화면의 버튼마다 상태가 바뀌는 과정을 따라가, 함수는 되는데 화면에서 안 되는 자리를 찾습니다.</span></div>
-          <div class="mini"><b>빠르게 만들기</b><span class="tag"><code class="nm">benchmark-optimization-loop</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src ecc">ECC</span></span>
-            <span>여러 변형을 재 보며 되풀이해 더 빠른 쪽을 고릅니다.</span></div>
         </div>
       </div>
     </details>

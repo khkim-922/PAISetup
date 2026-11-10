@@ -59,9 +59,9 @@
 
     메일 손은 이 파일 곁에, 세션 손은 형제 스킬 ep-login 의 ``scripts/`` 에 있다 — 그 폴더의 ``ep_session.py`` 가 받는 손을
     돌려 종료 값 · 세션 파일을 낸다(검사가 대역을 세울 때만 ``EP_SESSION_HAND``). 메일함 주소는 ``--url`` · ``MAILBOX_URL`` 순이고, 둘 다 없으면 세션으로
-    받는다 — 메일 서버(``MAIL_SERVER`` · 기본 ``DEFAULT_MAIL_SERVER``) 첫 화면이 그 세션 주인의 메일함을 댄다
+    받는다 — 메일 서버(``MAIL_SERVER`` · 기본 ``DEFAULT_MAIL_SERVER``) 첫 화면이 그 세션에 로그인한 사람의 메일함을 댄다
     (``inbox.discover_mailbox``). 사람에게 묻지 않는다. 보내는 사람은 ``--from`` · ``MAIL_DEFAULT_SENDER`` 순이고, 둘 다 없으면
-    세션으로 받는다 — 메일함 파일 번호(``…/<번호>.nsf``)가 그 주인의 사번이라 주소록에 그 사번으로 묻고, 퇴직자가 아닌 한 사람이
+    세션으로 받는다 — 메일함 파일 번호(``…/<번호>.nsf``)가 그 메일함을 쓰는 사람의 사번이라 주소록에 그 사번으로 묻고, 퇴직자가 아닌 한 사람이
     나올 때만 그 메일을 쓴다(``session_sender``). 0 명 · 둘 넘게면 멈추고 ``--from`` 을 청한다.
 
 글
@@ -117,7 +117,7 @@ EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 �
 HWP_EXTS = {"hwp", "hwpx"}
 
 EXIT_OK, EXIT_FAIL, EXIT_CONFIG, EXIT_SESSION, EXIT_STALE = 0, 1, 2, 3, 4
-MAILFILE_NUMBER = re.compile(r"/(\d+)\.nsf$", re.IGNORECASE)   # 메일함 파일 번호 = 그 주인의 사번(회사에서 잼 · <사번>.nsf)
+MAILFILE_NUMBER = re.compile(r"/(\d+)\.nsf$", re.IGNORECASE)   # 메일함 파일 번호 = 그 메일함을 쓰는 사람의 사번(회사에서 잼 · <사번>.nsf)
 
 DEFAULT_SCAN = 300            # 메일 하나를 unid 로 찾을 때 첫 판에 보기마다 훑는 새것의 줄 수 — 없으면 그 보기들을 끝까지 훑는다
 DEEP_PAGE = 1000              # 끝까지 훑을 때 한 번에 받는 줄 — 서버가 보기 count 를 1000에서 자른다(inbox.py 머리말)
@@ -640,7 +640,7 @@ def reply_subject(subject: str) -> str:
 
 
 def session_sender(args, box) -> str:
-    """보내는 사람 — ``--from`` · ``MAIL_DEFAULT_SENDER`` 순, 둘 다 없으면 세션 주인을 주소록에서 사번으로 찾는다(머리말).
+    """보내는 사람 — ``--from`` · ``MAIL_DEFAULT_SENDER`` 순, 둘 다 없으면 세션에 로그인한 사람을 주소록에서 사번으로 찾는다(머리말).
 
     ``box`` 는 열린 메일함이거나 None — None 이면 그때만 연다(주소를 받은 새 메일은 메일함을 안 연다).
     """
@@ -1257,7 +1257,7 @@ def parser() -> argparse.ArgumentParser:
         q.add_argument("--cc", action="append", help="사람이 대화에서 준 참조 주소")
         q.add_argument("--to", default=None, help="보낸 분 주소를 못 찾았을 때 사람이 준 받는 분")
         q.add_argument("--no-quote", action="store_true", help="원래 메일을 인용하지 않는다")
-        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER, 그것도 없으면 세션 주인")
+        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER, 그것도 없으면 세션에 로그인한 사람")
         if name == "send-reply":
             q.add_argument("--confirm", required=True, help="preview-reply 가 낸 확인 열쇠")
     for name, fn in (("preview-new", cmd_preview_new), ("send-new", cmd_send_new)):
@@ -1272,7 +1272,7 @@ def parser() -> argparse.ArgumentParser:
         q.add_argument("--cc", action="append", help="참조 주소")
         q.add_argument("--cc-file", action="append", help="참조 주소 파일")
         q.add_argument("--bcc", action="append", help="숨은참조 주소 — 제 사본은 늘 붙는다")
-        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER, 그것도 없으면 세션 주인")
+        q.add_argument("--from", dest="sender", default=None, help="보내는 사람 — 없으면 MAIL_DEFAULT_SENDER, 그것도 없으면 세션에 로그인한 사람")
         q.add_argument("--company", default="", help="주소록 이름을 붙일 회사 값")
         if name == "send-new":
             q.add_argument("--confirm", required=True, help="preview-new 가 낸 확인 열쇠")

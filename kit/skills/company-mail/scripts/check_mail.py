@@ -423,12 +423,12 @@ def check_reply_all_takes_the_mails_own_people():
 
 
 def check_sender_comes_from_the_session_owner():
-    """보내는 사람을 안 주면 세션 주인 — 메일함 파일 번호(사번)로 주소록의 한 사람만 · 번호가 없거나 못 찾으면 멈춘다."""
+    """보내는 사람을 안 주면 세션에 로그인한 사람 — 메일함 파일 번호(사번)로 주소록의 한 사람만 · 번호가 없거나 못 찾으면 멈춘다."""
     with stage() as (box, relay, run):
         os.environ["MAIL_DEFAULT_SENDER"] = ""
         args = ("--subject", "x", "--body-file", body_file("네."), "--to", PEER[1])
         code, out = run("preview-new", *args)
-        assert code == 0 and f"보내는 사람: {ME}" in out, f"세션 주인의 주소를 보내는 사람으로 못 받았다:\n{out}"
+        assert code == 0 and f"보내는 사람: {ME}" in out, f"세션에 로그인한 사람의 주소를 보내는 사람으로 못 받았다:\n{out}"
         code, out = run("send-new", *args, "--confirm", key(out))
         assert code == 0 and relay.mails and ME in relay.mails[0]["rcpts"], out
         code, out = run("preview-reply", U["alone"], "--body-file", body_file("네."))

@@ -129,7 +129,7 @@ ANTHROPIC_VERSION = "2023-06-01"   # Claude-Posco.setting.md 「Headers」 표�
 # --- 회사 방식 배포(SR → 회사 GitLab → CI/CD)가 CI 변수로 심는 이름. 이름은 회사 기준 씨앗
 # `seeds/vibecoding/` 의 `docs/references/futurem-adapters.md`(llm_gateway 절)가 정했고, 등록은
 # `docs/guides/futurem-deploy.md`(SR 절)가 운영팀에 청하라 한다.
-# ⚠ **접두어를 안 붙인다** — 이름의 주인이 회사라 운영팀이 심는 글자 그대로 읽어야 닿는다.
+# ⚠ **접두어를 안 붙인다** — 이름을 정하는 쪽이 회사라 운영팀이 심는 글자 그대로 읽어야 닿는다.
 COMPANY_URL_ENV = "AI_GW_URL"
 COMPANY_TOKEN_ENV = "AI_GW_TOKEN"
 
@@ -712,7 +712,7 @@ def _local_verdict(owner):
     안 재면 **눌러야 죽는 갈래**가 되는 것처럼 보인다. 재는 자는 게이트웨이 갈래와 같은
     `_probe` 고, 막히면 그 까닭이 그대로 화면 잠금에 선다.
 
-    주인 자리(루프백)는 이 PC 의 로그인이 곧 제 자격이라 로그인까지 잰다. 남의 자리는
+    이 PC 자리(루프백)는 이 PC 의 로그인이 곧 제 자격이라 로그인까지 잰다. 남의 자리는
     **자기 토큰을 실어 오므로** 이 PC 의 로그인 상태가 그 사람과 무관하다 — 재면 남의
     사정으로 남을 잠그게 된다.
     """

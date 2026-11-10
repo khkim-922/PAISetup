@@ -62,7 +62,7 @@
 
 부르는 자리 — 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PostToolUseFailure(agy · Codex 는 PreToolUse). 앞에 셸
 껍데기(`drm-guide.sh` · 곁 파일)가 서서, 입력에 오피스 · PDF 확장자가 있거나 기록에 이 턴의 문서 블록이 있을 때만
-이 몸통을 띄운다. 심는 손과 주인 규율은 그림 문과 같다(`image-gate.py` 머리말).
+이 몸통을 띄운다. 심는 손과 소유 규율은 그림 문과 같다(`image-gate.py` 머리말).
 
 시험 — `python -X utf8 scripts/check-drm-guide.py`.
 """

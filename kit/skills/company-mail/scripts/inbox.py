@@ -58,7 +58,7 @@
         box.delete_rule(uid)
 
     주소 · 쿠키 파일을 환경변수 대신 바로 줄 때는 ``inbox.Mailbox(url, cookies_file)`` 다. 메일함 주소를 모르면 세션으로
-    받는다 — ``inbox.discover_mailbox("http://<메일 서버>", cookies_file)`` 가 그 세션 주인의 ``…/<번호>.nsf`` 를 낸다.
+    받는다 — ``inbox.discover_mailbox("http://<메일 서버>", cookies_file)`` 가 그 세션에 로그인한 사람의 ``…/<번호>.nsf`` 를 낸다.
 
 무엇을 내나
     목록은 ``Entry`` · ``SentEntry`` 를, 폴더는 ``Folder`` 를, 모든편지함은 ``Marks`` 를, 받는 사람 목록은 ``Recipient``
@@ -134,7 +134,7 @@
     * ⚠ **모든편지함의 폴더 열 ``xfoldername`` 은 폴더의 진본이 아니다** — 하위 폴더는 끝 이름만 오고, 어느 폴더 보기에도 없는
       메일이 폴더 이름을 들고 있고, 받은편지함 메일이 폴더 이름을 들기도 한다. 그래서 그 열은 안 읽는다 — 폴더는 폴더 보기가 든다 (A2)
     * 보낸편지함 보기 ``XML_Sent`` 는 받은편지함과 같은 ``?ReadViewEntries`` 이고, 그 보기의 ``xname`` 열이 수신인이다
-    * 메일 서버 첫 화면(``/``)은 세션 주인의 메일 파일 경로를 ``var mailfile = "<경로>.nsf"`` 로 들고 받은편지함으로 넘긴다 —
+    * 메일 서버 첫 화면(``/``)은 세션에 로그인한 사람의 메일 파일 경로를 ``var mailfile = "<경로>.nsf"`` 로 들고 받은편지함으로 넘긴다 —
       웹메일 주소를 사람에게 안 물어도 된다. 끊긴 세션은 그 줄이 없는 화면이다
     * 임시보관함은 보기 ``XML임시편지함`` 이다(``?ReadViewEntries`` · 열은 받은편지함과 같은 꼴 · 보낸 사람 열이 쓰는 사람 자신)
     * 검색은 웹메일 검색 창이 부르는 ``/<db>/ag_detail_search_mailbox?open&…`` 이고 JSON(``total`` · ``page`` · ``data``)을 준다.
@@ -234,7 +234,7 @@ SEARCH_SCOPES = ("all", "inbox", "sent", "draft", "star", "unread", "trash")
 SEARCH_SLOTS = {"subject": "ssbj", "body": "sbdy", "attachment": "satt"}   # 제목 · 본문 · 첨부 이름 → 검색 손의 칸
 SEARCH_FIELDS = tuple(SEARCH_SLOTS)
 SEARCH_PAGE_MOST = 100
-# 메일 서버 첫 화면 — 세션의 주인 메일함 경로를 든다(그 화면이 받은편지함으로 넘기는 스크립트의 값)
+# 메일 서버 첫 화면 — 세션에 로그인한 사람의 메일함 경로를 든다(그 화면이 받은편지함으로 넘기는 스크립트의 값)
 MAILFILE_IN_ROOT = re.compile(r'var\s+mailfile\s*=\s*"([^"]+\.nsf)"', re.IGNORECASE)
 SYSTEM_FOLDER_MARK = "("          # 시스템 폴더의 제목은 이 글자로 시작한다
 FOLDER_SEPARATOR = "\\"           # 폴더 제목의 부모 · 자식 가름
@@ -533,9 +533,9 @@ class Dept:
 # ── 세션 ─────────────────────────────────────────────────────────────────
 
 def discover_mailbox(server: str, cookies_file, *, timeout: float = DEFAULT_TIMEOUT) -> str:
-    """그 세션의 주인 메일함 주소(``<서버>/<경로>.nsf``)를 메일 서버 첫 화면에서 받는다 — 사람에게 묻지 않는다.
+    """그 세션에 로그인한 사람의 메일함 주소(``<서버>/<경로>.nsf``)를 메일 서버 첫 화면에서 받는다 — 사람에게 묻지 않는다.
 
-    첫 화면은 세션 주인의 메일 파일 경로를 들고 받은편지함으로 넘긴다(머리말). 그 경로가 없으면(끊긴 세션의 SSO 화면)
+    첫 화면은 세션에 로그인한 사람의 메일 파일 경로를 들고 받은편지함으로 넘긴다(머리말). 그 경로가 없으면(끊긴 세션의 SSO 화면)
     ``SessionExpired``, 서버에 못 닿으면 ``MailboxError``. 읽음 표시를 안 바꾼다.
     """
     root = server.strip().rstrip("/")

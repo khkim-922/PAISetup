@@ -22,7 +22,7 @@
         for e in r.between(first, last, book):          # 서울 날짜 first ~ last 에 걸친 일정 — 시작 차례
             e.when(), e.title, e.keep_reason, agenda.Seen.of(e).handle
         for b in r.shared_books():                      # 공유받은 일정함(GRW · GRR) — 읽기만 한다
-            r.between(first, last, b)                   # 줄마다 e.calendar(그 일정함 이름) · e.private(주인이 비공개로 든 것)
+            r.between(first, last, b)                   # 줄마다 e.calendar(그 일정함 이름) · e.private(일정함을 가진 사람이 비공개로 든 것)
 
         want = agenda.Want("시험 일정", agenda.kst("2026-11-07 14:00"), agenda.kst("2026-11-07 15:00"))
         got = agenda.register(url, cookies_file, want)  # ⚠ 일정을 바꾼다 — 그 한 건을 사람이 확인한 뒤에만
@@ -56,10 +56,10 @@
     * 일정은 메일함 밖의 따로 선 앱이다 — ``http://pcfca0N.posco.net/02/cal/calperson<NN>.nsf``. 서버 · 번호가 사람마다 다르고, 깔 때
       그 주소를 어디서 받는지는 아직 안 쟀다 — 쓰는 사람이 Edge 에서 메일 → 일정을 열어 주소창에서 받는다 (C1 · C5)
     * 일정함 목록 ``GET agGetCalendar?OpenAgent&calltype=GNB`` → JSON 배열(``text/html`` 로 온다). 내 것은 ``kind=PEO`` 하나고,
-      공유받은 일정함(``GRW`` 쓰기 공유 · ``GRR`` 읽기 공유)은 줄마다 서버(``calhost``) · DB(``caldbpath``)가 제각각이고, 주인은
+      공유받은 일정함(``GRW`` 쓰기 공유 · ``GRR`` 읽기 공유)은 줄마다 서버(``calhost``) · DB(``caldbpath``)가 제각각이고, 일정함을 가진 사람은
       ``sourceowner``(``owner`` 는 보는 사람이다) · 이름은 ``subject`` 다. 그 값은 다 목록이 들어 사람마다 다른 것을 여기 안 적는다 (C1)
     * 공유 일정함의 일정 ``GET http://<calhost>/<caldbpath>/getcalendarevent?readform&callback&calendarId&username=<sourceowner>&start
-      &end&kind=<GRW|GRR>`` → 내 일정과 같은 JSONP. 줄의 ``visibility`` 가 ``private`` 면 주인이 비공개로 든 것이고 제목이 그대로 온다.
+      &end&kind=<GRW|GRR>`` → 내 일정과 같은 JSONP. 줄의 ``visibility`` 가 ``private`` 면 일정함을 가진 사람이 비공개로 든 것이고 제목이 그대로 온다.
       ``editable`` 은 빈 글자다. 일정 화면(``fmcal_mainframe.js``)이 같은 꼴로 묻는다 — 2026-11-06 회사 PC 에서 공유 셋(다른 서버 둘 ·
       같은 서버 하나)을 잼. 사내 도메인(읽는 손 주소의 첫 이름표를 뗀 나머지) 밖 서버는 묻지 않는다 — 세션 쿠키를 밖에 안 싣는다
     * 일정 ``GET getcalendareventMe?readform&callback&calendarId&username&start&end&kind=PEO`` → JSONP. 줄은 두 배열 — ``data`` 반복
@@ -222,7 +222,7 @@ def _stamp(t: datetime) -> str:
 @dataclass(frozen=True)
 class Book:
     """일정함 하나 — 일정함 목록의 한 줄. 내 일정함(``kind=PEO``)은 ``owner`` 가 쓰는 사람의 Notes 이름(``CN=…/OU=…/OU=…/O=…``)이고
-    ``server`` · ``db_path`` 가 비었다(읽는 손의 주소를 쓴다). 공유받은 일정함(``GRW`` · ``GRR``)은 ``owner`` 가 그 일정함 주인의
+    ``server`` · ``db_path`` 가 비었다(읽는 손의 주소를 쓴다). 공유받은 일정함(``GRW`` · ``GRR``)은 ``owner`` 가 그 일정함을 가진 사람의
     Notes 이름 · ``name`` 이 목록에 뜨는 이름 · ``server`` · ``db_path`` 가 그 일정함이 든 자리(목록의 ``calhost`` · ``caldbpath``)다."""
     calendar_id: str
     owner: str
@@ -249,7 +249,7 @@ class Event:
     meeting: bool = False              # eventtype 이 Meeting
     editable: bool = False             # 쓰는 사람이 이 줄을 고칠 수 있다 — 줄의 `editors` 에 그 사람이 든다(`_edits`)
     calendar: str = ""                 # 공유받은 일정함의 이름(``Book.name``) — 내 일정함의 줄이면 빈 글자
-    private: bool = False              # 줄의 visibility 가 private — 주인이 비공개로 든 일정
+    private: bool = False              # 줄의 visibility 가 private — 일정함을 가진 사람이 비공개로 든 일정
 
     @property
     def day(self) -> date:
@@ -510,7 +510,7 @@ class Reader:
         return Book(calendar_id=cid, owner=owner)
 
     def shared_books(self) -> list[Book]:
-        """공유받은 일정함 — 일정함 목록의 ``GRW`` · ``GRR`` 줄(목록 차례). 서버 · DB · 열쇠 · 주인이 빈 줄은 버린다. 사람마다 다른
+        """공유받은 일정함 — 일정함 목록의 ``GRW`` · ``GRR`` 줄(목록 차례). 서버 · DB · 열쇠 · 일정함을 가진 사람이 빈 줄은 버린다. 사람마다 다른
         값(누구의 일정함이 · 어느 서버 · DB 에 있나)은 다 이 목록이 든다."""
         out = []
         for r in self.calendars():
@@ -522,7 +522,7 @@ class Reader:
             host = str(r.get("calhost") or "").strip()
             found = SHARED_DB.match(str(r.get("caldbpath") or "").strip())
             if not (cid and owner and host and found):
-                log.info("공유 일정함 한 줄을 버렸다 — 서버 · DB · 열쇠 · 주인 가운데 빈 칸이 있다")
+                log.info("공유 일정함 한 줄을 버렸다 — 서버 · DB · 열쇠 · 일정함을 가진 사람 가운데 빈 칸이 있다")
                 continue
             name = str(r.get("subject") or "").strip() or _person(owner)
             out.append(Book(calendar_id=cid, owner=owner, kind=kind, name=name, server=host, db_path="/" + found.group(1)))

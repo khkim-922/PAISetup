@@ -27,7 +27,7 @@
 1. 이 폴더를 `sys.path` 에 넣고 `import inbox` · `import mailer` 로 싣는다 — 작업 스케줄러에서 `python -I` 로 띄우면 스크립트 폴더가
    `sys.path` 에 안 서서 스크립트가 부르기 전에 제 폴더를 넣는다(`sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))`)
 2. 세션 쿠키 파일은 스킬 ep-login 의 받는 손이 남기고 그 자리를 끝 줄로 알린다 — 그 경로를 `inbox.Mailbox(url, <자리>)` 로 넘긴다.
-   메일함 주소는 `inbox.discover_mailbox("http://<메일 서버>", <세션 파일>)` 가 그 세션 주인의 것을 낸다. 세션이 끊기면
+   메일함 주소는 `inbox.discover_mailbox("http://<메일 서버>", <세션 파일>)` 가 그 세션에 로그인한 사람의 것을 낸다. 세션이 끊기면
    `SessionExpired` 가 나니 받는 손을 다시 부른다
 3. 메일함을 바꾸는 손(`mark_read` · `mark_unread` · `create_folder` · `delete_folder` · `move_mails` · `restore_from_trash` ·
    `save_rule` · `delete_rule`)은 사람이 그 대상을 고른 자리(확인 단추 같은 것)에서만 부른다

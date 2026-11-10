@@ -69,7 +69,7 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
   우리가 써 온 꼴일 때만 옮긴다 — 맨 위 열쇠가 entries 하나 · 항목 하나 · 그 열쇠가 path 하나이고, 그 path 가 표의 다른
   old 폴더를 목록 파일 폴더 기준 상대 · `~/…` · 이 PC 홈의 절대 경로로 연다(`/` · `\\` · 끝 `/` · 대소문자 · BOM 을 안
   가린다). 그렇게 여는 항목이 다른 것과 섞였으면 WARN 을 내고 둔다 — 사람이 그 줄만 지운다.
-**keep** — 다른 주인의 자리다. 그 아래를 쓰지도 · 걷지도 · 비키지도 · 기록하지도 않는다. 놓을 이름이 그 자리에 떨어지면
+**keep** — 남의 자리다. 그 아래를 쓰지도 · 걷지도 · 비키지도 · 기록하지도 않는다. 놓을 이름이 그 자리에 떨어지면
   WARN 을 내고 건너뛰고, keep 을 품은 copy 대상 폴더가 링크면 옮기지 않고 그 길을 ERROR 로 건너뛴다.
 **받는 쪽 홈의 러너** — not 이름의 폴더가 그 도구의 홈(`*` 는 모든 홈)에 기록 밖으로 있으면 칸과 무관하게 WARN 한 줄을 내고
   둔다 — 우리 것이 아니다.
@@ -1020,7 +1020,7 @@ class Run:
         return os.path.lexists(str(p)) and not self.gone_at(self.rel(p))
 
     def kept(self, rel):
-        """그 자리가 keep 자리이거나 그 아래다 — 다른 주인의 자리라 쓰지도 · 걷지도 · 비키지도 · 기록하지도 않는다."""
+        """그 자리가 keep 자리이거나 그 아래다 — 남의 자리라 쓰지도 · 걷지도 · 비키지도 · 기록하지도 않는다."""
         r = fold(rel.rstrip('/'))
         return any(r == k or r.startswith(k + '/') for k in self.keeps)
 
@@ -1479,7 +1479,7 @@ def open_folder(run, folder, prefix, link_dirs, fresh_dirs):
     if not link_dirs[prefix]:
         return False
     if run.holds_keep(prefix):
-        run.out.error('%s — 링크인데 다른 주인의 자리(keep)를 품었다 · 안 옮기고 이 길을 건너뛴다' % (TILDE + prefix))
+        run.out.error('%s — 링크인데 남의 자리(keep)를 품었다 · 안 옮기고 이 길을 건너뛴다' % (TILDE + prefix))
         return None
     run.backup(folder, True, '링크다 — 걷고 폴더로 쓴다')
     link_dirs[prefix] = False
@@ -1493,7 +1493,7 @@ def copy_files(run, folder, prefix, files, fresh, desired):
         dest = folder / rel
         key = prefix + rel
         if run.kept(key):
-            run.out.warn('%s — 다른 주인의 자리(keep)다 · 안 놓는다' % (TILDE + key))
+            run.out.warn('%s — 남의 자리(keep)다 · 안 놓는다' % (TILDE + key))
             continue
         desired.add(key)
         try:
@@ -1560,7 +1560,7 @@ def place_each(run, table, route, got, link_dirs, fresh_dirs, desired):
         if table.barred(route.item, name, route.tool):
             continue
         if run.kept(prefix + name) or run.holds_keep(prefix + name):
-            run.out.warn('%s%s%s/ — 다른 주인의 자리(keep)에 떨어진다 · 안 놓는다' % (TILDE, prefix, name))
+            run.out.warn('%s%s%s/ — 남의 자리(keep)에 떨어진다 · 안 놓는다' % (TILDE, prefix, name))
             continue
         names.append(name)
     if not names:
@@ -1788,7 +1788,7 @@ def settle_olds(run, table, ledgers):
         try:
             if run.kept(rel) or run.holds_keep(rel):
                 if run.present(p):
-                    run.out.warn('%s — 다른 주인의 자리(keep)다 · 옛 자리로 안 옮긴다' % old.place)
+                    run.out.warn('%s — 남의 자리(keep)다 · 옛 자리로 안 옮긴다' % old.place)
             elif old.listed:
                 settle_list(run, table, old, p)
             elif old.ledgers:
@@ -1855,7 +1855,7 @@ def place(run, table, views, conds):
         path = run.at(target)
         try:
             if run.kept(run.rel(path)):
-                run.out.warn('%s — 다른 주인의 자리(keep)다 · 이 길을 건너뛴다' % target)
+                run.out.warn('%s — 남의 자리(keep)다 · 이 길을 건너뛴다' % target)
             elif first.form == COPY and item.each:
                 placing[target] = place_each(run, table, first, each_won[item.name] if lit(first) else None,
                                              link_dirs, fresh_dirs, desired)

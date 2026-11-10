@@ -60,7 +60,7 @@ import inbox  # noqa: E402 — 잴 나무가 sys.path 에 먼저 서야 한다
 # 「보기가 없다」 경고는 일부러 세운 판의 것이다 — 판정 줄 사이에 안 끼게 받아 버린다
 logging.getLogger(inbox.__name__).addHandler(logging.NullHandler())
 
-DB = "/02/mail2/200001.nsf"   # 파일 번호 = 메일함 주인(OWNER)의 사번 — 회사의 꼴
+DB = "/02/mail2/200001.nsf"   # 파일 번호 = 메일함을 쓰는 사람(OWNER)의 사번 — 회사의 꼴
 COOKIE = ("DomAuthSessId", "good-session")
 # 끊긴 세션에 사내 메일함이 내는 답의 첫머리(실측) — 200 · text/html
 LOGIN_PAGE = ('<html><head><script>document.cookie = "EP_CERTIFY_CA=; path=/; domain=.posco.net;";'
@@ -337,7 +337,7 @@ class FakeDomino:
         if low == "/common/lib_f.nsf/checksessionstatus?openpage":
             return self.send(h, 200, b'{"status":"login"}', "text/html")
         if raw == "/":
-            # 메일 서버 첫 화면 — 세션 주인의 메일 파일 경로를 들고 받은편지함으로 넘긴다(실측)
+            # 메일 서버 첫 화면 — 세션에 로그인한 사람의 메일 파일 경로를 들고 받은편지함으로 넘긴다(실측)
             page = (f'<html><body><script>var mailserver = "127.0.0.1"; var mailfile = "{DB.lstrip("/")}";'
                     'location.replace("http://" + mailserver + "/" + mailfile + "/FrameNew?openform");</script></body></html>')
             return self.send(h, 200, page.encode(), "text/html; charset=UTF-8")

@@ -165,7 +165,7 @@ class FakeEcm:
         # 권한 — 문서마다 걸린 역할(실물 json.do 줄 꼴) · 사람 · 부서. 저장 POST 가 roles 를 바꾼다
         self.roles = {ACCESS_OBJ: [_role("V", MATE, "강동료")], CORE_OBJ: [], APPROVER_OBJ: [_role("A", MATE, "강동료")]}
         self.people = {MATE: ("강동료", DEPT, "기획그룹", "kang"), MATE2: ("고동료", DEPT, "기획그룹", "ko"),
-                       OTHER: ("강동료", SUB_DEPT, "품질섹션", "kang2"), OWNER: ("나주인", DEPT, "기획그룹", "me")}
+                       OTHER: ("강동료", SUB_DEPT, "품질섹션", "kang2"), OWNER: ("나기획", DEPT, "기획그룹", "me")}
         self.drift: dict = {}      # 저장 뒤 속성 화면의 숨은 칸을 바꿔, 다시 읽기가 다른 속성의 변화를 잡나 잰다
         self.drift_after_save: dict = {}
         self.role_answer = None    # 두면 역할 목록 읽기가 이 답을 낸다(목록이 아닌 답을 빈 명단으로 읽나 잰다)
@@ -676,8 +676,8 @@ def check_access_sends_only_the_screens_save_after_the_confirmed_plan(ecm_mod):
         stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, revoke=["org:G99999"]), "든 사람이 없다")        # 0 명인 부서 코드
         stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("edit", "고동료"), ("read", "고동료")]), "고르지 않는다")
         stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("edit", "org:기획그룹"), ("read", "org:" + DEPT)]), "고르지 않는다")
-        mine = [_role("R", OWNER, "나주인"), _role("V", MATE, "강동료")]   # 본인이 공동 편집자로 칸에 든 문서
-        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, revoke=["나주인"]), "본인", roles=mine)
+        mine = [_role("R", OWNER, "나기획"), _role("V", MATE, "강동료")]   # 본인이 공동 편집자로 칸에 든 문서
+        stops(lambda: ecm_mod.plan_access(box, ACCESS_OBJ, revoke=["나기획"]), "본인", roles=mine)
         assert len(saves()) == reached, f"멈춰야 할 판이 저장을 보냈다: {saves()[reached:]}"
 
         # 대조 — 비우기 · 조직으로 빼기도 본인의 줄은 남긴다

@@ -4093,7 +4093,7 @@ install_bg() {
     ( set -C; printf '%s\n' "$$" > "$INSTALL_BG_LOCK" ) 2>/dev/null || {
       echo "$PROJECT_NAME: 다른 세션이 방금 배경 설치를 띄웠다 — 이번엔 안 띄운다"; return 0; }
   fi
-  # ⚠ 자물쇠의 주인은 배경 프로세스가 스스로 적는다 — 부모가 `$!` 로 적으면, 곧 끝난 자식이 자물쇠를
+  # ⚠ 자물쇠를 쥔 쪽은 배경 프로세스가 스스로 적는다 — 부모가 `$!` 로 적으면, 곧 끝난 자식이 자물쇠를
   #   걷은 뒤에 부모가 죽은 번호로 다시 세워 다음 세션이 「끝을 못 봤다」로 잘못 읽는다.
   ( printf '%s\n' "$BASHPID" > "$INSTALL_BG_LOCK"
     trap 'rm -f "$INSTALL_BG_LOCK"' EXIT

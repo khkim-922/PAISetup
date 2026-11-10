@@ -270,7 +270,7 @@ class FakeCalendar:
         here = urllib.parse.urlsplit(self.url).netloc
         groups = []
         for cid, (kind, owner, name, path) in SHARED.items():
-            # 실물 꼴 — `owner` 는 보는 사람(나), 일정함 주인은 `sourceowner`, 목록 이름은 `subject`
+            # 실물 꼴 — `owner` 는 보는 사람(나), 일정함을 가진 사람은 `sourceowner`, 목록 이름은 `subject`
             groups.append(dict(row(kind, cid, OWNER, here, path.lstrip("/")), sourceowner=owner, subject=name))
         if self.calendars == "outside":
             groups.append(dict(row("GRR", "200003_Calendar", OWNER, OUTSIDE_HOST, "02/cal/calperson99.nsf"),
@@ -292,7 +292,7 @@ class FakeCalendar:
                 "url": f"{DB}/vweventprev/{e.unid}?editdocument"}
 
     def shared_jsonp(self, callback: str, cid: str, username: str) -> str:
-        """공유 일정함의 일정 — 그 일정함 주인의 이름으로 물었을 때만 줄을 낸다. 한 줄은 주인이 비공개로 든 것이다."""
+        """공유 일정함의 일정 — 그 일정함을 가진 사람의 이름으로 물었을 때만 줄을 낸다. 한 줄은 그 사람이 비공개로 든 것이다."""
         data2 = []
         if cid in SHARED and username == SHARED[cid][1]:
             for i, (title, vis) in enumerate((("본부 주간회의", "public"), ("병원 진료", "private"))):
@@ -681,7 +681,7 @@ def check_shared_calendars_ask_only_their_event_address():
         assert not changing(cal.paths) and not cal.changes, (cal.paths, cal.changes)
         asked = sorted({urllib.parse.unquote(p).split("?")[0] for p in cal.paths if "getcalendarevent" in p})
         assert asked == sorted(v[3] + "/getcalendarevent" for v in SHARED.values()), asked   # 양성 대조 — 그 일정함 자리에 물었다
-        assert len(got) == 4 and {e.calendar for e in got} == {v[2] for v in SHARED.values()}, got   # 주인 이름으로 물어 줄이 왔다
+        assert len(got) == 4 and {e.calendar for e in got} == {v[2] for v in SHARED.values()}, got   # 일정함을 가진 사람의 이름으로 물어 줄이 왔다
         assert all(e.keep_reason == agenda.KEEP_SHARED for e in got), [e.keep_reason for e in got]
         assert [e.private for e in got if e.title.endswith("병원 진료")] == [True, True], got
         assert all(not e.calendar for e in reader.between(DAY, DAY)), "내 일정함의 줄에 공유 일정함 이름이 붙었다"
