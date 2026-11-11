@@ -1,4 +1,4 @@
-// edge_session.js 의 계약을 가짜 SSO · 가짜 메일함 · 가짜 ECM 과 이 검사가 띄운 Edge(임시 프로필 · 창 없음)로 잰다 —
+// edge_session.js 와 입구(ep_login.js · 로그온 자리 edge_start.js)의 계약을 가짜 SSO · 가짜 메일함 · 가짜 ECM 과 이 검사가 띄운 Edge(임시 프로필 · 창 없음)로 잰다 —
 // 127.0.0.1 · localhost 밖으로 아무것도 안 나가고, 쓰는 사람의 Edge 에는 붙지 않는다.
 //
 // 층 — 쓰는 사람의 계약. 세션 파일에 회사 밖 사이트 · 로그인 화면의 쿠키가 새나(사람의 다른 세션 열쇠가 파일로 나간다) · 붙는 손이
@@ -9,7 +9,9 @@
 // 닫히고 붙기가 멈추는 것을 이 PC 에서 쟀다) · 새는 쿠키와 닫힌 확인 창은 조용하고 되돌릴 수 없다 · 사람의 다른 세션이 남의 손에
 // 가거나 사람이 고르던 창이 사라진다 · 다른 무엇도 안 잡는다(회사 SSO 는 회사 PC 에서만 닿고, 형제 저장소의 검사는 이 손을 안 돈다).
 // 종료 3 · 4 의 가름도 같은 넷이다 — ECM 넘김만 못 따라간 판이 3 으로 나가 로그인이 선 사람이 다시 로그인을 청받았다(오프라인
-// 탐침으로 쟀다). 부르는 쪽은 그 값을 그대로 사람의 말로 옮긴다.
+// 탐침으로 쟀다). 부르는 쪽은 그 값을 그대로 사람의 말로 옮긴다. --restart 의 탭 고르기도 같은 넷이다 — 되살린 사내 탭(포털 · SSO
+// 화면)을 로그인 주소로 안 넘기면 VDI 에서 SSO 화면에 멈추거나 깨진 포털이 남는 일이 실제로 났고(2026-11-11), 만드는 사람의 데스크톱
+// 에서는 조용하다.
 //
 // 가짜의 꼴 — ECM 은 2026-11-06 이 PC 실물의 넘김이다(redirect.jsp?redir_url=index.jsp — action 이 빈 폼을 스크립트가 채워 POST ·
 // ssoToken → index.jsp 가 jID · login.do 주소를 스크립트에 든다 → login.do…&USE_WEBSOCKET=F(302) → 메인 · 세션 없는 메인은
@@ -27,7 +29,9 @@
 // 언제 걷나 — edge_session.js 가 사라지거나, 같은 계약을 실물 회사 SSO 에서 재는 검사가 서서 이 검사가 더하는 믿음이 없어지면.
 //
 // 여기서 못 재는 것 — 실물 SSO 의 넘김 꼴(폼이 정적인가 · 스크립트가 짓는가 · Referer 를 보나) · 기본 프로필의 136 선 · 사람이
-// 화면을 보는 창(검사의 Edge 는 창이 없다) · 회사 PC 의 Node 판. 이 줄들은 mail-secretary 의 회사 확인 대장(#28)이 든다.
+// 화면을 보는 창(검사의 Edge 는 창이 없다) · 회사 PC 의 Node 판 · 입구가 Edge 를 끝내는 --restart 와 기본 프로필로 띄우는 갈래(이 PC 의
+// Edge 를 다 끝낸다 — references/SOURCES.md 「회사에서 잴 것」). --restart 의 탭 고르기(restoredLoginTab)만 검사의 Edge 에서 따로
+// 잰다. 이 줄들은 mail-secretary 의 회사 확인 대장(#28)이 든다.
 
 'use strict';
 const fs = require('fs');
@@ -38,6 +42,7 @@ const { spawn, execSync } = require('child_process');
 
 const TREE = (() => { const p = path.resolve(process.argv[2] || __dirname); return fs.statSync(p).isDirectory() ? p : path.dirname(p); })();
 const HAND = path.join(TREE, 'edge_session.js');
+const ENTRY = path.join(TREE, 'ep_login.js');
 const DB = '/02/mail2/000000.nsf';
 const ECM_MAIN = '/ECM/jsp/main/ecmMain.jsp';
 const HAND_MS = 90000;
@@ -75,6 +80,8 @@ function ssoServer(req, res) {
     return html(res, `<form id="f" method="post" action="/dologin"><input name="id" value="me"><input type="password" name="pw" value="x">` +
       `<input type="hidden" name="to" value="${to}"></form><script>setTimeout(function(){${script}}, 300)</script>`);
   }
+  // 통합 인증이 안 선 로그인 화면 — 입력 칸만 있고 스스로 안 넘는다(VDI 의 ADFS 창 흉내)
+  if (url.pathname === '/idms/U61/jsp/login/stuck.jsp') return html(res, '<form><input type="email" name="u"><input type="password" name="pw"></form>');
   if (url.pathname === '/dologin' && req.method === 'POST') {
     return body(req).then(form => {
       const fresh = token('sso');
@@ -221,7 +228,7 @@ async function personLogsIn(edge) {
 // ── 손 부르기 ───────────────────────────────────────────────────────────
 
 let NODE_PATH = process.env.NODE_PATH || '';
-function hand(args, extra = {}) {
+function hand(args, extra = {}, script = HAND) {
   const inherited = { ...process.env };
   delete inherited.MAILBOX_COOKIES;                  // 이 PC 의 값이 판에 새지 않게 — 판이 주는 값(extra)만 선다
   const env = { ...inherited, NODE_PATH, EDGE_DEBUG_PORT: '1', MAILBOX_URL: `${APP}${DB}`, DOMINO_URL: APP, ECM_URL: `${APP}${ECM_MAIN}`,
@@ -231,7 +238,7 @@ function hand(args, extra = {}) {
   // 가짜 서버가 이 프로세스에 살아서 기다리는 동안에도 답해야 한다 — spawnSync 로 부르면 서버가 멈춰 손의 묻기가 다 시한에 걸린다
   const t0 = Date.now();
   return new Promise(resolve => {
-    const child = spawn(process.execPath, [HAND, ...args], { env });
+    const child = spawn(process.execPath, [script, ...args], { env });
     let out = '', stdout = '';
     child.stdout.on('data', d => { out += d; stdout += d; });
     child.stderr.on('data', d => out += d);
@@ -239,7 +246,7 @@ function hand(args, extra = {}) {
     child.on('close', code => {
       clearTimeout(timer);
       const lines = stdout.split(/\r?\n/).filter(Boolean);
-      resolve({ code, out, last: lines.length ? lines[lines.length - 1] : '', ms: Date.now() - t0 });
+      resolve({ code, out, lines, last: lines.length ? lines[lines.length - 1] : '', ms: Date.now() - t0 });
     });
   });
 }
@@ -261,6 +268,83 @@ function filterTable() {
   const wrong = table.filter(([domain, want]) => mod.keep({ name: 'x', value: 'y', domain }, cfg) !== want);
   judge('파일에 남길 쿠키 — 회사 도메인 안만 · 로그인 화면 호스트 · 밖 · 이름만 닮은 도메인은 뺀다', wrong.length === 0, wrong.map(w => w[0]).join(' '));
 }
+
+// 입구(ep_login.js) — 받아 보고 안 서면 로그인 탭을 열어 지켜본 뒤 다시 받는다. 검사의 Edge 는 포트가 열린 채 로그인이 안 된 Edge 다.
+// 쓰는 사람의 Edge 를 끝내는 --restart 와 기본 프로필로 띄우는 갈래는 재지 않는다 — 이 PC 의 Edge 를 다 끝낸다
+async function entry(edge, port, closed, file) {
+  if (!fs.existsSync(ENTRY)) return judge('입구가 있다', false, ENTRY);
+  const back = `${APP}/federate?back=${encodeURIComponent(`${APP}${DB}/XML_Inbox?ReadViewEntries&count=1`)}`;
+  const login = `${SSO}/idms/U61/jsp/login/login.jsp?to=${encodeURIComponent(back)}`;
+  const stuck = `${SSO}/idms/U61/jsp/login/stuck.jsp`;
+  // 데스크톱으로 고정한다 — VDI 판정이 서면 시작 주소가 평소 EP 로그인 화면으로 바뀐다(VDI 판은 따로 잰다)
+  const desktop = { ViewClient_Broker_DNS_Name: null, USERDNSDOMAIN: null };
+  const run = (args, extra, script = ENTRY) => hand(args, { EDGE_DEBUG_PORT: port, ...desktop, ...extra }, script);
+
+  // 포트 없이 도는 Edge(검사의 Edge 가 msedge.exe 로 돈다) — --restart 없이는 아무것도 안 끝내고 2
+  let r = await run([file], { EDGE_DEBUG_PORT: closed });
+  judge('입구 — 포트 없이 Edge 가 돌면 종료 2 · 아무 Edge 도 안 끝낸다', r.code === 2 && Boolean(await version(port)) && /--restart/.test(r.out),
+    `종료 ${r.code} · ${r.out.trim()}`);
+  // 로그온 작업의 자리 — 남은 세션 파일을 안 보고 띄우기부터 간다. Edge 가 떠 있으면 안 끝내고 2
+  r = await run([file], { EDGE_DEBUG_PORT: closed }, path.join(TREE, 'edge_start.js'));
+  judge('로그온 자리(edge_start.js) — 띄우기부터 · Edge 가 떠 있으면 종료 2 · 아무 Edge 도 안 끝낸다', r.code === 2 && Boolean(await version(port)) && !/붙었다/.test(r.out),
+    `종료 ${r.code} · ${r.out.trim()}`);
+
+  // 통합 인증도 평소 로그인도 안 넘는다 → 시한에 4 · 파일을 안 쓴다
+  r = await run([file], { COMPANY_LOGIN_URL: stuck, EP_LOGIN_URL: stuck, SESSION_LOGIN_WAIT_SECONDS: '12' });
+  judge('입구 — 로그인 시한 안에 안 서면 종료 4 · 파일을 안 쓴다', r.code === 4 && !fs.existsSync(file), `종료 ${r.code} · ${r.out.trim()}`);
+
+  // 로그인이 끊긴 Edge — 그 Edge 에 로그인 탭을 열고, SSO 가 넘으면 받는다
+  let before;
+  r = await run([file], { COMPANY_LOGIN_URL: login, EP_LOGIN_URL: stuck });
+  judge('입구 — 로그인이 끊긴 Edge 에 로그인 탭을 열어 받는다 → 종료 0 · 표준 출력은 경로 한 줄',
+    r.code === 0 && r.lines.length === 1 && r.last === file && names(fileCookies(file)).includes('DomAuthSessId'), `종료 ${r.code} · ${r.out.trim()}`);
+
+  // 통합 인증이 안 서는 화면 → 같은 탭을 평소 EP 로그인 화면으로 넘겨 받는다
+  world.sso.clear(); world.dom.clear();
+  before = (await pages(edge)).length;
+  r = await run([file], { COMPANY_LOGIN_URL: stuck, EP_LOGIN_URL: login });
+  judge('입구 — 통합 인증이 안 서면 같은 탭을 평소 EP 로그인 화면으로 넘겨 받는다 → 종료 0',
+    r.code === 0 && r.last === file && /평소 EP 로그인 화면으로 넘긴다/.test(r.out) && (await pages(edge)).length === before + 1, `종료 ${r.code} · ${r.out.trim()}`);
+
+  // VDI — 통합 인증을 거치지 않고 처음부터 평소 EP 로그인 화면을 연다
+  world.sso.clear(); world.dom.clear();
+  r = await run([file], { COMPANY_LOGIN_URL: stuck, EP_LOGIN_URL: login, ViewClient_Broker_DNS_Name: 'broker.vdi' });
+  judge('입구 — VDI 는 처음부터 평소 EP 로그인 화면을 연다 → 종료 0 · 넘기기 없음',
+    r.code === 0 && r.last === file && !/넘긴다/.test(r.out), `종료 ${r.code} · ${r.out.trim()}`);
+
+  // --restart 의 탭 고르기 — 되살린 사내 탭(포털 화면이든 SSO 화면이든)을 로그인 주소(VDI 는 평소 EP 로그인)로 넘기고 탭을 더
+  // 열지 않는다. 되살린 포털은 세션이 깨져 있고, SSO 화면을 그대로 두면 SSO 가 안 서는 VDI 가 그 화면에 멈춘다
+  const saml = `${SSO}/idms/U61/jsp/login/saml_login.jsp?companyCode=shared`;
+  const portal = `${APP}/wps/myportal/02/restored`;
+  const epAgain = `${stuck}?restart=1`;
+  const probe = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'check-entry-')), 'probe.js');
+  fs.writeFileSync(probe, `require(${JSON.stringify(ENTRY)}).restoredLoginTab(Number(process.env.EDGE_DEBUG_PORT), process.argv[2])` +
+    `.then(t => console.log(t ? t.url : ''), e => { console.error(e.message); process.exit(1); });`);
+  for (const [what, restored] of [['SSO 화면', saml], ['포털 화면', portal]]) {
+    for (const t of await pages(edge)) {               // 앞 판들이 남긴 사내 탭 — 남으면 그 탭이 먼저 잡힌다
+      if (t.url.startsWith(SSO) || t.url.startsWith(APP)) await fetch(`http://127.0.0.1:${port}/json/close/${t.targetId}`).catch(() => {});
+    }
+    await fetch(`http://127.0.0.1:${port}/json/new?${restored}`, { method: 'PUT' });
+    await new Promise(done => setTimeout(done, 500));
+    before = (await pages(edge)).length;
+    r = await run([epAgain], {}, probe);
+    await new Promise(done => setTimeout(done, 1500));
+    const urls = (await pages(edge)).map(t => t.url);
+    judge(`입구 --restart — ${what}에 선 되살린 탭을 로그인 주소로 넘겨 쓴다 · 탭을 더 안 연다`,
+      r.code === 0 && r.last === epAgain && urls.length === before && urls.includes(epAgain) && !urls.some(u => u.startsWith(restored)),
+      `종료 ${r.code} · 낸 탭 ${r.last} · 탭 ${before} → ${urls.length} · ${urls.filter(u => u.startsWith(SSO) || u.startsWith(APP)).join(' ')}`);
+  }
+
+  // ECM 넘김을 화면 없이 못 따라가는 꼴 → 입구가 탭 갈래로 이어 받는다(따로 부르지 않는다). 넘김 탭 닫기는 「--ecm-tab 은 … 그 탭을
+  // 닫는다」 판정 한 자리가 잰다 — 여기서 탭 수까지 보면 닫기와 넘김이 겨루는 시점에 흔들린다
+  world.jsForm = true; world.ecm.clear();
+  r = await run([file, 'domino', 'ecm'], {});
+  world.jsForm = false;
+  judge('입구 — ECM 이 조용히 안 서면 탭 갈래까지 이어 받는다 → 종료 0',
+    r.code === 0 && names(fileCookies(file)) === 'DomAuthSessId,JSESSIONID', `종료 ${r.code} · ${r.out.trim()}`);
+}
+
+const version = port => fetch(`http://127.0.0.1:${port}/json/version`).then(r => r.json()).catch(() => null);
 
 async function main() {
   if (typeof WebSocket !== 'function') cannot(`Node ${process.version} — 22 이상이 든다`);
@@ -295,6 +379,8 @@ async function main() {
     judge('메일함 주소 없이도 Domino 세션 확인으로 가른다 — 로그인 전 → 종료 3', r.code === 3 && !fs.existsSync(file), `종료 ${r.code} · ${r.out.trim()}`);
     r = await hand([file], { EDGE_DEBUG_PORT: port, MAILBOX_URL: 'http://127.0.0.1/no-database' });
     judge('준 메일함 주소가 …/이름.nsf 꼴이 아니다 → 종료 1', r.code === 1, `종료 ${r.code}`);
+
+    await entry(edge, port, closed, file);
 
     // 사람이 로그인하고, 탭 하나에 사람의 확인 창이 떠 있다
     if (!await personLogsIn(edge)) cannot('가짜 로그인이 안 섰다');
@@ -352,8 +438,10 @@ async function main() {
     const beforeTab = (await pages(edge)).length;
     r = await hand([file, 'ecm', '--ecm-tab'], { EDGE_DEBUG_PORT: port });
     const tabState = fileCookies(file);
-    judge('--ecm-tab 은 탭 하나로 넘겨 ECM 을 받고 그 탭을 닫는다',
-      r.code === 0 && tabState && tabState.cookies.some(c => c.name === 'JSESSIONID' && world.ecm.has(c.value)) && (await pages(edge)).length === beforeTab,
+    // 손의 계약은 「넘김 탭을 닫고, 못 닫으면 사람에게 ⚠ 로 알린다」다 — 닫기가 넘김 도중의 탭과 겨루는 시점이 있어 탭 수만 보면 흔들린다
+    const tabLeft = (await pages(edge)).length !== beforeTab;
+    judge('--ecm-tab 은 탭 하나로 넘겨 ECM 을 받고 그 탭을 닫는다 · 못 닫으면 사람에게 알린다',
+      r.code === 0 && tabState && tabState.cookies.some(c => c.name === 'JSESSIONID' && world.ecm.has(c.value)) && (!tabLeft || /넘김에 쓴 탭이 안 닫혔다/.test(r.out)),
       `종료 ${r.code} · 탭 ${beforeTab} → ${(await pages(edge)).map(p => p.url.replace(APP, "APP").replace(SSO, "SSO")).join(" ")} · ${r.out.trim()}`);
     world.jsForm = false;
 

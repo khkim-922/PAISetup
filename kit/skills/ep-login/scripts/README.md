@@ -7,12 +7,14 @@
   안 열고 로그인하지 않는다 — 사람의 세션도 화면도 안 건드린다. 사내 앱을 다루는 손은 세션 파일이 있으면 그것으로 먼저 돌고, 서버가
   거절할 때만 이 손을 세션 파일 인자 없이 부르고(꼭 서야 할 앱만 `ecm` 처럼 붙인다) 종료 0 의 끝 줄에서 세션 파일의 경로를
   읽는다(까닭과 바퀴는 `ep_session.session_first`)
-- **띄우는 손** `edge_start.js` — 쓰는 사람의 평소 Edge 를 디버깅 포트(127.0.0.1 에만)와 EP 로그인 탭 하나로 띄우고 그 탭의 로그인을
-  지켜본다. 포트가 이미 열려 있으면 아무것도 안 띄우고, 포트 없이 도는 Edge 는 닫지 않는다
+- **입구** `ep_login.js` — 대화에서 부르는 하나뿐인 명령. 받는 손을 돌려 보고, 안 서면 Edge 의 상태에 맞게 로그인 탭을 열거나
+  평소 Edge 를 디버깅 포트(127.0.0.1 에만)와 로그인 탭으로 띄워 지켜본 뒤 다시 받는다. 포트 없이 도는 Edge 는 사람이 동의해
+  `--restart` 를 줄 때만 끝낸다
 - **파이썬에서 부르는 자리** `ep_session.py` — 받는 손을 돌려 종료 값 · 세션 파일 · 손의 말을 닫힌 꼴 하나로 내고, 그 세션 파일을
   쿠키 통으로 읽는다(`load_jar`). 사내 앱 스킬의 얇은 명령과 앱 손이 이 폴더를 `sys.path` 에 넣고 싣는다 — 받는 손의 계약과 세션
   파일의 꼴을 읽는 코드가 이 한 자리다
-- `session.sh` · `start-edge.sh` — 대화에서 두 손을 부르는 껍데기
+- **로그온 자리** `edge_start.js` — 설치기의 로그온 작업이 이름으로 부르는 자리. 입구를 띄우기부터(`--at-logon`) 돌린다
+- `login.sh` — 대화에서 입구를 부르는 껍데기
 
 부르는 꼴 · 종료 값과 종료 값마다의 「다음」 · 세션 파일의 자리와 꼴 · 환경변수는 세 파일의 머리말이 든다 — 여기 옮겨 적지 않는다.
 대화에서 쓰는 절차는 스킬 `ep-login` 이 든다. 형제 스킬(company-mail · company-calendar · company-ecm · company-meeting-room)과 깔린 자리에서 부르는
@@ -22,7 +24,7 @@
 ## 돌려 보기
 
 ```bash
-node check_session.js            # 이 폴더의 edge_session.js 를 잰다 — 가짜 SSO · 메일함 · ECM 과 검사가 띄운 Edge(임시 프로필 · 창 없음)
+node check_session.js            # 이 폴더의 edge_session.js · ep_login.js 를 잰다 — 가짜 SSO · 메일함 · ECM 과 검사가 띄운 Edge(임시 프로필 · 창 없음)
 node check_session.js <폴더>     # 다른 폴더의 사본을 잰다
 python -X utf8 -I check_ep_session.py        # ep_session.py 의 바퀴를 잰다 — 파일부터 · 거절되면 손 한 번 · 바꾸는 일은 손부터. 대역 손이라 Edge 는 안 뜬다
 ```

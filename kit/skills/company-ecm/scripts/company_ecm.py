@@ -10,7 +10,7 @@ ep-login 의 받는 손을 ``ecm`` 으로 말없이 돌린다(까닭과 바퀴�
 세션 파일에 맞추고(``ecm`` 만 재므로 메일 쪽 Domino 세션은 안 본다), 끝 줄에 그 파일의 절대 경로를 낸다 — 그 경로를 ``ecm.py`` 에 ``--session`` 으로 넘긴다. 세션 파일의 기본 자리는 받는 손만 든다.
 
 내는 것: 종료 값은 ``ecm.py`` 의 것과 같다 — 0 됨 · 1 실패 · 2 인자가 틀렸다 · 3 사내 세션을 다시 받아야 한다(스킬 ep-login) · 4 기본
-앱을 사람이 한 번 골라야 한다. 붙는 손의 종료 값은 이렇게 읽는다:
+앱을 사람이 한 번 골라야 한다 · 5 기밀 등급이라 받지 않았거나 등급을 못 읽었다. 붙는 손의 종료 값은 이렇게 읽는다:
 
     0  붙었다 → 끝 줄의 경로로 ``ecm.py`` 를 부른다
     1  붙는 손이 고장 났다 → 그 손의 말 그대로 알리고 멈춘다(종료 1)
@@ -18,7 +18,7 @@ ep-login 의 받는 손을 ``ecm`` 으로 말없이 돌린다(까닭과 바퀴�
        사람 손이 안 든다). 경로가 없으면 스킬 ep-login 을 가리킨다(종료 3)
     3  Edge 에서 EP 로그인이 안 됐거나 끊겼다 → 스킬 ep-login 을 가리킨다(종료 3) — 그 스킬이 로그인을 이끈다
     4  EP 로그인은 섰는데 받는 손이 ECM 의 SSO 넘김을 화면 없이 못 따라갔다 → 다시 로그인을 청하지 않고 스킬 ep-login 의
-       탭을 잠깐 여는 갈래(``--ecm-tab``)를 가리킨다(종료 3)
+       입구를 가리킨다 — 그 입구가 탭을 잠깐 여는 갈래까지 돈다(종료 3)
 
 ``ecm.py`` 가 세션이 끊겼다고 하면(ECM 의 ``302 → /ECM/logout.jsp``) 스킬 ep-login 을 가리킨다.
 
@@ -33,7 +33,7 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
-NEEDS_SESSION = ("session", "cabinets", "folders", "list", "count", "version", "open", "read", "edit", "checkin", "register",
+NEEDS_SESSION = ("session", "cabinets", "folders", "list", "count", "version", "security", "open", "read", "edit", "checkin", "register",
                  "access", "who", "preview-access", "apply-access")
 MUTATING = ("edit", "checkin", "register", "apply-access")   # 서버를 잠그거나 판 · 권한을 바꾼다 — 세션 손부터 받아 한 번만 돈다
 
@@ -44,7 +44,7 @@ NO_EDGE_WORD = "쓰는 사람의 Edge 에 못 붙었다(디버깅 포트로 떠 
 NOT_LOGGED_IN_WORD = "Edge 는 떠 있는데 EP 로그인이 안 됐거나 끊겼다"
 ECM_HANDOFF_WORD = "EP 로그인은 섰는데 받는 손이 ECM 넘김을 화면 없이 못 따라갔다 — 다시 로그인할 일은 아니다"
 EP_LOGIN = "스킬 ep-login 으로 사내 세션을 받은 뒤 같은 명령을 다시 돌린다"
-EP_LOGIN_ECM_ONLY = "스킬 ep-login 의 탭을 잠깐 여는 갈래(--ecm-tab)로 ECM 세션을 받은 뒤 같은 명령을 다시 돌린다"
+EP_LOGIN_ECM_ONLY = "다시 로그인할 일은 아니다 — 스킬 ep-login 으로 ECM 세션을 받은 뒤(탭 하나가 잠깐 열린다) 같은 명령을 다시 돌린다"
 
 
 def load_ep_session():

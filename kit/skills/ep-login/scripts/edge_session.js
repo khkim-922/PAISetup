@@ -21,7 +21,7 @@
 //   주소의 첫 경로 칸 아래에서 짓는다) · SSO_REDIRECT_URL SSO 넘김 주소 ·
 //   SESSION_DOMAIN 회사 도메인(기본 posco.net) · SESSION_LOGIN_HOSTS 로그인 화면 호스트(쉼표 · 기본 swpsso · adfs.m365) ·
 //   SESSION_REQUEST_SECONDS 묻기 하나의 시한(기본 5) · SESSION_PASS_SECONDS --ecm-tab 의 시한(기본 30) ·
-//   SESSION_LOGIN_WAIT_SECONDS 띄우는 손(edge_start.js)이 로그인 탭을 지켜보는 시한(기본 300).
+//   SESSION_LOGIN_WAIT_SECONDS 입구(ep_login.js)가 로그인 탭을 지켜보는 시한(기본 300).
 //   도메인 · 호스트 · 주소의 바꿈은 가짜 서버로 재는 검사(check_session.js)를 위해 있다 — 회사에서는 기본값 그대로 쓴다.
 //
 // 내는 것 — 세션 파일(Playwright 저장 상태 꼴 {"cookies": [...], "origins": []}). 종료 0 이면 표준 출력의 끝 줄이 그 파일의
@@ -41,7 +41,7 @@
 //   스킬의 얇은 명령은 3 · 4 와 파일 없는 2 를 제 종료 3 으로 옮겨 스킬 ep-login 을 가리킨다(그 스킬이 대화에서 이끈다).
 //   이 값의 뜻을 바꾸면 그 스킬과 부르는 스킬들을 같은 판에 고친다.
 //
-// 어느 Edge 에 붙나 — 이 PC 에서 디버깅 포트를 연 Edge 를 다 찾아(debugPorts — 띄우는 손의 포트 DEFAULT_PORT 가 먼저) 차례로 붙고,
+// 어느 Edge 에 붙나 — 이 PC 에서 디버깅 포트를 연 Edge 를 다 찾아(debugPorts — 입구의 포트 DEFAULT_PORT 가 먼저) 차례로 붙고,
 //   꼭 서야 하는 앱이 다 선 첫 Edge 의 쿠키를 남긴다. 다른 세션이 이미 띄워 로그인한 Edge 가 있으면 그 로그인을 쓴다 — 새로 띄우거나
 //   로그인을 청하지 않는다. 다 붙었는데 어디서도 안 섰으면 처음 붙은 Edge 의 종료 3 · 4 를 낸다. --ecm-tab 의 탭은 처음 붙은 Edge 에만 연다.
 //
@@ -67,8 +67,8 @@
 //
 // ⚠ 세션 파일은 사내 앱의 열쇠다 — 저장소 밖(홈)에 두고 남에게 넘기지 않는다. 다 쓴 PC · 남에게 넘길 PC 에서는 지운다.
 // ⚠ 디버깅 포트는 이 PC 의 다른 프로그램도 쓸 수 있다 — 127.0.0.1 에만 열고, 이 손은 127.0.0.1 로만 붙는다.
-// ⚠ Chromium 136 부터 기본 프로필에는 디버깅 포트가 안 열린다(Chrome 공지 · Edge 는 공지 없이 같다는 보고) — 띄우는 손
-//   (edge_start.js)이 기본 프로필로 띄워 본 결과로 가르고, 그 판에서 안 열리면 --profile 로 띄운다. 잰 자리의 판은 references/SOURCES.md 「잰 것」.
+// ⚠ Chromium 136 부터 기본 프로필에는 디버깅 포트가 안 열린다(Chrome 공지 · Edge 는 공지 없이 같다는 보고) — 입구
+//   (ep_login.js)가 기본 프로필로 띄워 본 결과로 가르고, 그 판에서 안 열리면 --profile 로 띄운다. 잰 자리의 판은 references/SOURCES.md 「잰 것」.
 //
 // 필요한 것: Node 22 이상(내장 WebSocket · fetch). npm 꾸러미는 안 든다.
 
@@ -92,7 +92,7 @@ const EP_DIALOG = '다른 PC에서 EP 접속 정보';   // SSO 가 로그인 도
 // ECM 넘김이 멈춘 까닭(follow 의 답) → 사람의 말. login 은 여기 없다 — 로그인 화면에 닿은 판은 종료 3 이다
 const HANDOFF_WORD = { end: '넘김 화면을 따라가지 못했다', outside: '회사 밖 주소로 넘어갔다', 'no-answer': '서버가 답하지 않았다',
   hops: '넘김이 걸음 상한을 넘었다' };
-const DEFAULT_PORT = '9222';         // 띄우는 손(edge_start.js)이 여는 포트 — 받는 손도 이 포트를 먼저 본다
+const DEFAULT_PORT = '9222';         // 입구(ep_login.js)가 여는 포트 — 받는 손도 이 포트를 먼저 본다
 const FIND_MS = 5000;                // 디버깅 포트를 연 Edge 찾기(netstat · tasklist) 하나의 시한
 const VERSION_MS = 2000;          // 디버깅 포트의 /json/version 답 시한 — 포트가 없으면 곧 끊긴다
 const OPEN_MS = 5000;                // 브라우저 자리 웹소켓이 열리는 시한
@@ -110,7 +110,7 @@ const seconds = (name, fallback) => {
 
 function settings() {
   return {
-    port: env('EDGE_DEBUG_PORT', DEFAULT_PORT).split(',')[0].trim(),   // 띄우는 손이 열 포트 · 받는 손이 먼저 보는 포트
+    port: env('EDGE_DEBUG_PORT', DEFAULT_PORT).split(',')[0].trim(),   // 입구가 Edge 를 띄울 때 여는 포트 · 받는 손이 먼저 보는 포트
     // 받는 손이 볼 포트 — 주면 그것만(쉼표로 여럿), 안 주면 null 이고 이 PC 에서 디버깅 포트를 연 Edge 를 다 찾는다(debugPorts)
     ports: env('EDGE_DEBUG_PORT', '') ? env('EDGE_DEBUG_PORT', '').split(',').map(s => s.trim()).filter(Boolean) : null,
     view: env('MAILBOX_VIEW', 'XML_Inbox'),
@@ -131,7 +131,7 @@ class Exit extends Error {
 }
 
 // ── 로그인 화면 ──────────────────────────────────────────────────────────
-// 띄우는 손(edge_start.js)이 로그인 탭을 지켜보며 쓰는 자 — 설정(settings)과 한 자리에 둔다
+// 입구(ep_login.js)가 로그인 탭을 지켜보며 쓰는 자 — 설정(settings)과 한 자리에 둔다
 
 // 로그인 화면인가 — 로그인 화면 호스트이고 그 경로다
 function onLoginScreen(url, cfg) {
@@ -465,7 +465,7 @@ async function attach(cfg, opts, file, needed) {
     if (fs.existsSync(file)) say(file);
     throw new Exit(2, `Edge 에 못 붙었다 — 127.0.0.1:${ports.join(' · ')} 에 디버깅 포트가 없다` +
       (fs.existsSync(file) ? '(남은 세션 파일로도 확인이 안 섰다 — 서버가 안 받았거나 답이 없었다 · 둘은 못 가르니 「거절됐다」고 말하지 않는다)' : '') +
-      '. 다음: 사내망 안인지 먼저 본다(밖이면 Edge 를 띄워도 안 선다) — 안이면 띄우는 손(start-edge.sh)으로 쓰는 사람의 평소 Edge 를 포트와 EP 로그인 탭으로 띄운 뒤 다시 부른다');
+      '. 다음: 사내망 안인지 먼저 본다(밖이면 Edge 를 띄워도 안 선다) — 안이면 스킬 ep-login 의 입구(login.sh)가 쓰는 사람의 평소 Edge 를 포트와 로그인 탭으로 띄운다');
   }
 }
 
@@ -502,10 +502,10 @@ async function harvest(cfg, opts, file, needed, browser, port) {
       const word = opts.ecmTab ? '탭으로도 안 섰다' : HANDOFF_WORD[why] || why || '?';
       throw new Exit(4, `붙었지만 ECM 세션을 조용히 못 받았다(${word}) — 로그인 화면에는 안 닿았다. 다시 로그인할 일이 아니다. 다음: ` +
         (opts.ecmTab ? '멈추고 이 말을 사람에게 그대로 전한다'
-          : '사람에게 Edge 에 탭 하나가 잠깐 열렸다 닫힌다고 알린 뒤 `ecm --ecm-tab` 을 붙여 다시 부른다'));
+          : '스킬 ep-login 의 입구(login.sh ecm)가 Edge 에 탭 하나를 잠깐 열어 받는다'));
     }
     if (missing.length) {
-      throw new Exit(3, `붙었지만 ${missing.map(a => label[a]).join(' · ')} 로그인이 안 됐다. 다음: 사람에게 그 Edge 창에서 EP 에 다시 로그인해 달라고 하고, 됐다고 하면 다시 부른다`);
+      throw new Exit(3, `붙었지만 ${missing.map(a => label[a]).join(' · ')} 로그인이 안 됐다. 다음: 스킬 ep-login 의 입구(login.sh)가 그 Edge 에 로그인 탭을 연다`);
     }
     say(`쿠키 ${write(file, jar, cfg)} 개를 남겼다`);
     say(file);                                       // 끝 줄 — 부르는 쪽이 이 경로를 읽는다
@@ -513,8 +513,8 @@ async function harvest(cfg, opts, file, needed, browser, port) {
   }
 }
 
-// 이 PC 에서 디버깅 포트를 연 Edge 의 포트 — 띄우는 손의 포트가 먼저, 나머지는 찾은 차례. 브라우저 프로세스(--type= 없는 것)의
-// 명령줄에서 읽는다 — 포트는 그 Edge 가 처음 뜰 때의 플래그라 명령줄이 원본이다. 못 읽으면(윈도가 아니다 · 시한) 띄우는 손의 포트만
+// 이 PC 에서 디버깅 포트를 연 Edge 의 포트 — 입구의 포트가 먼저, 나머지는 찾은 차례. 브라우저 프로세스(--type= 없는 것)의
+// 명령줄에서 읽는다 — 포트는 그 Edge 가 처음 뜰 때의 플래그라 명령줄이 원본이다. 못 읽으면(윈도가 아니다 · 시한) 입구의 포트만
 function debugPorts(cfg) {
   const found = [];
   if (process.platform === 'win32') {
@@ -578,4 +578,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { keep, store, sentTo, nextStep, settings, onLoginScreen, epConfirm, Exit };
+module.exports = { keep, store, sentTo, nextStep, settings, onLoginScreen, epConfirm, debugPorts, under, Exit };

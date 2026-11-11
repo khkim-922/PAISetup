@@ -8,7 +8,7 @@
   `Target.closeTarget`. 받는 손이 탭에 안 붙고 쓰는 도메인이다(chromedevtools.github.io/devtools-protocol)
 - **Chrome 136 의 디버깅 포트 바꿈** — 기본 데이터 폴더에는 `--remote-debugging-port` 를 안 받고 `--user-data-dir` 이 들어야
   한다(developer.chrome.com/blog/remote-debugging-port). Edge 는 공지가 없고 같은 증상의 사용자 보고가 있다
-  (learn.microsoft.com 의 Q&A 「Microsoft Edge Remote Debugging is Not Working When Using the Default User Profile」). 띄우는 손(`scripts/edge_start.js`)의 종료 3 갈래(`--profile`)가 이 자리다 — 판은 띄워 본 결과로 가른다
+  (learn.microsoft.com 의 Q&A 「Microsoft Edge Remote Debugging is Not Working When Using the Default User Profile」). 입구(`scripts/ep_login.js`)의 종료 3 갈래(`--profile`)가 이 자리다 — 판은 띄워 본 결과로 가른다
 - **RFC 6265** — 받는 손이 SSO 넘김을 따라갈 때 쿠키를 싣고 받는 규칙(도메인 · 경로 · 만료)
 
 ## 본 후보
@@ -34,7 +34,7 @@
   사용자 보고만 있다. 잰 회사 자리의 판은 데스크톱 131 · VDI 107 이다(mail-secretary 결정 0009 · 0023). 판은 깔린 폴더 이름으로 못
   가린다 — 회사 데스크톱의 Application 폴더에 아직 적용 안 된 업데이트의 판 폴더(143)가 도는 판(131)과 함께 있었다. 그래서 띄우는
   손은 판을 묻지 않고 띄워 본 결과(포트가 열리나)로 가른다
-- **띄우는 손이 붙는 자리** — 띄운 탭 하나의 페이지 자리에만 붙는다. 브라우저 자리에 자동 붙기를 걸면 로그인 도중 SSO 가 여는 팝업
+- **입구가 붙는 자리** — 로그인 탭 하나의 페이지 자리에만 붙는다. 브라우저 자리에 자동 붙기를 걸면 로그인 도중 SSO 가 여는 팝업
   (사내 SSO 의 ssoframe 페이지)이 디버거를 기다리며 멈추고, EP 가 빈 화면에 선다 — 회사 데스크톱에서 그렇게 멈췄다
 - **새 창으로 따로 로그인하는 길은 두지 않는다** — 그 로그인이 「EP 접속 정보」로 같은 사람의 다른 세션을 끊고, 사람이 다시 로그인하면
   받아 둔 쿠키도 죽는다 — 한쪽이 늘 끊긴다. 평소 Edge 의 세션을 빌리면 둘 다 산다. 끊기는 것은 메일(Domino)이다 — 2026-11-09 회사
@@ -45,9 +45,14 @@
 ## 회사에서 잴 것 — 가짜로는 못 잰다
 
 회사 PC 에서 한 판씩 잰다. mail-secretary 의 회사 확인 대장(#28)이 Node 판 · 136 판 · SSO 만 선 Edge 에서 Domino 따라가기를 들고,
-아래 넷은 아직 거기 없다.
+아래 줄들은 아직 거기 없다.
 
 - 조용한 ECM 받기가 못 따라갈 때 `--ecm-tab` 이 서나
+- `--restart` 가 끝낸 Edge 를 `--restore-last-session` 이 탭째 되살리나 · 같은 기본 프로필이라 SSO 가 「EP 접속 정보」 창 없이 넘나 ·
+  시작 부스트가 켜진 PC 에서 끝낸 Edge 가 다시 뜨나(가짜 검사는 이 PC 의 Edge 를 다 끝내므로 `--restart` 를 안 잰다)
+- 데스크톱에서 통합 인증이 안 서는 자리(입력 칸 있는 로그인 화면에 머무는 판)를 입구가 평소 EP 로그인 화면으로 넘기는 시한(8 초)이 실물
+  통합 인증의 넘김보다 넉넉한가
+- 포트가 열렸는데 로그인이 끊긴 Edge 에 `/json/new`(PUT)로 로그인 탭을 여는 것이 데스크톱 131 · VDI 107 에서 서나
 - 끊긴 세션에 Domino 의 세션 확인 주소(`checksessionstatus`)가 무엇을 답하나 — 산 답 `{"status":"login"}` 만 쟀다
 - 메일 서버(`DOMINO_URL` 의 기본)가 사람마다 같은가
 - Edge 136 이상 PC 에서 기본 프로필에 포트가 정말 안 열리나 · `--profile` 로는 서나

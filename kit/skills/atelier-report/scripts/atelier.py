@@ -7,7 +7,7 @@
         open   넘김 표를 받아 브라우저로 그 문서의 고치기 화면을 연다 — 화면에는 이 키 · 갈래 · 모델이 골라져 선다
         fetch  그 문서의 최신 판(사람이 화면에서 고친 뒤의 판)을 임시 폴더에 받는다
 
-    받은 HTML 은 스킬 company-mail 의 ``preview-new --html-file`` (본문) · ``--attach`` (첨부)로 넘긴다.
+    받은 HTML 은 스킬 company-mail 의 ``save-draft --html-file`` (본문) · ``--attach`` (첨부)로 넘긴다.
 
 어떻게 부르나
     python -X utf8 -I atelier.py make --source-file 글.txt [--mode mail|web]
@@ -207,7 +207,7 @@ def cmd_fetch(args, server: Server) -> None:
     path = save(server, args.doc, version)
     print(f"받았다: 문서 {args.doc} · 최신 판 {version}")
     print(f"HTML: {path}")
-    print("다음: 이 파일을 company-mail 의 preview-new --html-file(본문) 이나 --attach(첨부)로 넘긴다")
+    print("다음: 이 파일을 company-mail 의 save-draft --html-file(본문) 이나 --attach(첨부)로 넘긴다")
 
 
 def parser() -> argparse.ArgumentParser:

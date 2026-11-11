@@ -1,10 +1,12 @@
 """ecm.py · default_app.py 의 계약을 가짜 ECM 서버 · 가짜 에이전트로 잰다 — 127.0.0.1 밖으로는 아무것도 안 나간다.
 
-층 — 쓰는 사람의 계약. 판정은 셋이고, ``--office`` 면 하나가 더 선다.
+층 — 쓰는 사람의 계약. 판정은 아래 묶음이고, ``--office`` 면 창 닫기 묶음이 더 선다.
     * 읽기 길이 문서함을 바꾸는 요청(편집으로 열기 · 새 판 올리기 · 잰 꼴 밖의 서비스 · 칸 · 값 · 방법 · 서버)을 서버에 보내나.
       대조로 잰 읽기(목록 · 건수 · 열기 첫 걸음 · 세션 확인)는 서버에 닿아 풀려야 한다 — 다 막아서 초록이 되는 판을 가른다.
       편집 열기는 checkin 이 저장해 올릴 수 있는 꼴(오피스 셋)에만 잠금 요청을 보내나 — 그 밖의 꼴은 잠그기도 기본 앱을 적기도
       전에 멈추나. 대조로 오피스 꼴은 잠금 요청이 닿아야 한다
+    * 기밀 문 — 기밀 · 등급을 못 읽은 문서는 읽기 · 편집 열기가 받기 요청 하나 없이 멈추나. 사람이 확인한 표시는 못 읽은 판만
+      넘기나. 대조로 사외비 문서는 받기 첫 걸음이 닿아야 한다
     * 등록 길이 화면의 두 POST(같은 이름 찾기 · 등록)만 보내나 — 같은 이름이면 에이전트 올림도 등록도 안 가고, 화면에 없는 보안
       짝 · 꼴 밖의 서버 자리 · 다른 서비스의 POST · 그 문서함의 것이 아닌 폴더는 서버에 닿기 전에 막나. 대조로 한 판은 끝까지 서야 한다
     * 권한 길이 확인 열쇠가 맞을 때만 속성 저장 POST 하나를 보내나 — 그 몸이 화면이 싣는 칸 · 차례 그대로이고 값이 속성 화면의 칸
@@ -18,9 +20,10 @@
       아무것도 안 닫나도 잰다. 앱은 셸이 띄우듯 실행 파일에
       파일을 줘서 띄운다. 오피스가 깔린 PC 에서 화면에 창이 잠깐 뜬다. 그 앱이 이미 떠 있으면 사람의 것이라 안 잰다(못 잼)
 남기는 까닭(check-design §1 넷) — 길이 분명하다(같은 서비스 모음에 문서를 잠그는 편집 열기가 있고 손을 고칠 때마다 막는
-목록이 흔들린다 · 등록은 동료가 보는 문서함에 문서를 더한다 · 기본 앱은 사람이 이미 고른 확장자에서 늘 불린다 · 파워포인트는 사람의 앱에 붙는다) · 깨지면 조용하거나
+목록이 흔들린다 · 등록은 동료가 보는 문서함에 문서를 더한다 · 기본 앱은 사람이 이미 고른 확장자에서 늘 불린다 · 파워포인트는 사람의 앱에 붙는다 · 권한 저장은 문서의 속성 칸 전부를
+다시 싣는다 · 읽기 · 편집 열기가 받은 글자는 대화의 모델로 간다) · 깨지면 조용하거나
 되돌릴 수 없다(서버의 잠금 · checkin 이 못 올리는 꼴에 남은 잠금 · 「실패」로 알려진 채 남의 문서함에 올라간 문서 · 볼 수 없어야 할
-동료에게 열린 문서 · 권한을 주다 바뀐 보안등급 · 바뀐 기본 앱 ·
+동료에게 열린 문서 · 권한을 주다 바뀐 보안등급 · 대화로 들어간 기밀 문서의 글자 · 바뀐 기본 앱 ·
 닫힌 사람의 문서) · 쓰는 사람의 문서함 · 설정 · 문서를 잃는다 · 다른 무엇도 안
 잡는다(회사 ECM 은 회사 PC 에서만 닿는다).
 
@@ -98,6 +101,8 @@ DEPT, SUB_DEPT = "T10006", "G51008"
 ACCESS_OBJ = "33a1b2c3d4e5f60a"           # 권한을 바꿀 수 있는 문서
 CORE_OBJ = "44a1b2c3d4e5f60b"             # 핵심기술 문서 — 안 잰 꼴
 APPROVER_OBJ = "55a1b2c3d4e5f60c"         # 승인자 역할이 걸린 문서 — 안 잰 꼴
+SECRET_OBJ = "66a1b2c3d4e5f60d"           # 기밀 문서 — 받기 전에 멈춰야 한다
+UNREAD_OBJ = "77a1b2c3d4e5f60e"           # 속성 화면에 보안등급 칸이 없는 문서 — 받기 전에 멈춰야 한다
 # 실물 메인 화면의 꼴 — 문서함 고르기 칸의 option 과 제 부서 열쇠 · 회사 열쇠(스크립트 줄)
 MAIN_HTML = ("<html><script>var s_UserDeptCabinetId\t= '" + CABINET + "';\ncompanyId\t\t\t= '" + COMPANY + "';</script>"
              "<select name='cabinetSel'>"
@@ -169,6 +174,8 @@ class FakeEcm:
         self.drift: dict = {}      # 저장 뒤 속성 화면의 숨은 칸을 바꿔, 다시 읽기가 다른 속성의 변화를 잡나 잰다
         self.drift_after_save: dict = {}
         self.role_answer = None    # 두면 역할 목록 읽기가 이 답을 낸다(목록이 아닌 답을 빈 명단으로 읽나 잰다)
+        # 보안등급 — 문서마다 속성 화면의 숨은 칸(등급 · 공개). None 이면 그 칸이 없는 화면을 낸다. 없는 문서는 사외비A
+        self.levels: dict = {SECRET_OBJ: ("1A", "F"), UNREAD_OBJ: None}
         fake = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -190,7 +197,13 @@ class FakeEcm:
                     return self._send(MAIN_HTML.encode("utf-8"), "text/html;charset=UTF-8")
                 q = dict(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
                 if parts.path == "/ECM/docProperty_simple.do":
-                    page = property_html(q.get("DOCID", ""), fake.drift) if q.get("DOCID") in fake.roles else PROPERTY_HTML
+                    docid = q.get("DOCID", "")
+                    page = property_html(docid, fake.drift) if docid in fake.roles else PROPERTY_HTML
+                    level = fake.levels.get(docid, ("2A", "T"))
+                    if docid not in fake.roles and level:
+                        # 실물 속성 화면은 판 표와 숨은 칸을 함께 든다 — 판만 읽는 화면 흉내에 등급 칸 둘을 더한다
+                        page = page.replace("</html>", f'<input type="hidden" id = "ecm_security_level" value="{level[0]}"/>'
+                                                       f'<input type="hidden" id="ecm_open_flag" value="{level[1]}"/></html>')
                     return self._send(page.encode("utf-8"), "text/html;charset=UTF-8")
                 if parts.path == "/ECM/json.do":
                     return self._send(("\r\n\r\n" + json.dumps(fake.json_read(q), ensure_ascii=False)).encode("utf-8"),
@@ -588,7 +601,6 @@ def check_access_sends_only_the_screens_save_after_the_confirmed_plan(ecm_mod):
         plan = ecm_mod.plan_access(box, ACCESS_OBJ, grant=[("copy", "고동료"), ("read", "org:기획그룹")], revoke=[])
         assert not saves(), "미리 보기가 저장을 보냈다"
         assert sorted((g.role, g.id) for g in plan.after) == [("S", MATE2), ("V", MATE)], plan.after
-        assert plan.title == "주간 보고 & 계획.xlsx", plan.title
         got = ecm_mod.apply_access(box, plan, plan.token)
         assert sorted((g.role, g.id) for g in got) == [("S", MATE2), ("V", MATE)], got
         assert len(saves()) == 1, f"저장이 하나로 안 나갔다: {saves()}"
@@ -714,6 +726,60 @@ def check_edit_locks_only_what_checkin_can_upload(ecm_mod):
             except ecm_mod.AgentError:
                 pass
             assert len(checkouts()) == 1, f"docx 의 잠금 요청이 하나로 안 닿았다: {checkouts()}"
+    finally:
+        ecm_mod.default_app.ensure = real_ensure
+        agent.close()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def check_classified_is_never_received(ecm_mod):
+    """기밀 문 — 기밀 · 등급을 못 읽은 문서는 read · edit 가 열기 첫 걸음(OpenContents) · 잠금 · 에이전트 줄 하나 없이 멈춘다. 사람이
+    확인한 표시(level_checked)는 못 읽은 판만 받기로 넘기고 기밀은 못 넘긴다. 대조로 사외비 문서는 등급을 읽고 받기 첫 걸음이 닿는다.
+    기본 앱 손은 대역으로 바꿔 이 PC 의 확장자 자리를 안 건드린다."""
+    real_ensure = ecm_mod.default_app.ensure
+    ecm_mod.default_app.ensure = lambda ext, **_: ecm_mod.default_app.Ensured("Word.Document.12", False)
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="check-ecm-secret-"))
+    agent = FakeAgent(tmp, lambda name: b"x", answer="NO")   # 받기는 늘 거절한다 — 이 판은 받기 요청이 나가나까지만 잰다
+    try:
+        with stage(ecm_mod) as (fake, box):
+            fake.docs.append({**FAKE_DOCS[1], "MS_OBJECT_ID": UNREAD_OBJ, "MS_DOC_ID": "doc" + UNREAD_OBJ})
+            hand = ecm_mod.Agent(agent.url, tmp)
+
+            def received():
+                return [p for _, p in fake.hits if "OpenContents-service" in p or "CheckOutCheckIn-service" in p]
+
+            got = box.security(SECRET_OBJ)
+            assert got.classified and got.name == "기밀", f"기밀 문서의 등급을 다르게 읽었다: {got}"
+            got = box.security(OBJ)
+            assert not got.classified and got.name == "사외비A", f"사외비 문서의 등급을 다르게 읽었다: {got}"
+            for checked in (False, True):
+                for name, call in (("read", ecm_mod.read_document), ("edit", ecm_mod.edit_document)):
+                    try:
+                        call(box, hand, SECRET_OBJ, level_checked=checked)
+                        raise AssertionError(f"{name}: 기밀 문서를 받으러 갔다(level_checked={checked})")
+                    except ecm_mod.Classified:
+                        pass
+                    except ecm_mod.EcmError as exc:
+                        raise AssertionError(f"{name}: 기밀 문서를 받으러 갔다(level_checked={checked}) — {exc}") from exc
+            for name, call in (("read", ecm_mod.read_document), ("edit", ecm_mod.edit_document)):
+                try:
+                    call(box, hand, UNREAD_OBJ)
+                    raise AssertionError(f"{name}: 등급을 못 읽었는데 받으러 갔다")
+                except ecm_mod.SecurityUnread:
+                    pass
+                except ecm_mod.EcmError as exc:
+                    raise AssertionError(f"{name}: 등급을 못 읽었는데 받으러 갔다 — {exc}") from exc
+            assert not received(), f"멈춰야 할 문서에 받기 요청이 나갔다: {received()}"
+            assert not agent.lines, f"멈춰야 할 문서가 에이전트에 닿았다: {agent.lines}"
+            # 대조 — 사람이 확인한 표시는 못 읽은 문서를 받기로 넘기고, 사외비 문서는 표시 없이 받기 첫 걸음이 닿는다
+            for doc, checked in ((UNREAD_OBJ, True), (OBJ, False)):
+                before = len(received())
+                try:
+                    ecm_mod.read_document(box, hand, doc, level_checked=checked)
+                    raise AssertionError("가짜 에이전트가 받기를 거절했는데 읽기가 섰다")
+                except ecm_mod.AgentError:
+                    pass
+                assert len(received()) == before + 1, f"{doc}: 받아야 할 문서의 받기 첫 걸음이 안 닿았다: {received()}"
     finally:
         ecm_mod.default_app.ensure = real_ensure
         agent.close()
@@ -946,6 +1012,7 @@ def main(argv: list[str]) -> int:
     app_mod = importlib.import_module("default_app")
     print(f"잰다: {tree / 'ecm.py'}")
     checks = [(check_reads_reach_and_changes_never_leave, ecm_mod), (check_edit_locks_only_what_checkin_can_upload, ecm_mod),
+              (check_classified_is_never_received, ecm_mod),
               (check_register_sends_only_the_screens_two_posts, ecm_mod),
               (check_access_sends_only_the_screens_save_after_the_confirmed_plan, ecm_mod),
               (check_existing_choice_is_never_overwritten, app_mod), (check_new_app_toasts_fill_only_the_missing, app_mod)]

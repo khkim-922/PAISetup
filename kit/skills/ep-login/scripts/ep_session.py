@@ -42,7 +42,7 @@ company-calendar · company-ecm · company-meeting-room)과 그 앱 손(``inbox.
 
 무엇을 내나 — ``Attached(code, file, said)``. ``code`` 는 손의 종료 값(``OK`` 0 · ``TOOL`` 1 · ``NO_EDGE`` 2 · ``NOT_LOGGED_IN`` 3 ·
 ``ECM_HANDOFF`` 4 — 그 뜻은 ``edge_session.js`` 머리말. 4 는 ``ecm`` 을 준 부름에서만 나고, 로그인은 섰으니 사람에게 다시 로그인을
-청하지 말고 스킬 ep-login 의 탭을 잠깐 여는 갈래(``--ecm-tab``)를 가리킨다), ``file`` 은 표준 출력 끝 줄의 절대 경로가 있는 파일일 때만, ``said`` 는 손의 말(표준 오류 ·
+청하지 말고 스킬 ep-login 을 가리킨다 — 그 입구가 탭을 잠깐 여는 갈래(``--ecm-tab``)까지 돈다), ``file`` 은 표준 출력 끝 줄의 절대 경로가 있는 파일일 때만, ``said`` 는 손의 말(표준 오류 ·
 없으면 표준 출력)이다. 손 · node 가 없거나 시한을 넘기면 돌리지 않고 ``TOOL`` 과 그 까닭을 낸다 — 예외는 안 낸다.
 0 인데 끝 줄이 있는 파일의 절대 경로가 아니면 ``file`` 이 None 이다 — 부르는 쪽이 도구 고장으로 읽는다.
 

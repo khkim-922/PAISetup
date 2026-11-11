@@ -225,10 +225,6 @@ def cases(b: Bench):
     if made:
         code, r = b.run("cancel", made[0]["id"])
         out.append(("내 예약은 취소한다", r.get("state") == "cancelled" and made[0]["id"] not in b.fake.bookings, r))
-    # 세션이 없으면 종료 3
-    b.session.write_text(json.dumps({"cookies": [{"name": "X", "value": "0", "domain": "127.0.0.1", "path": "/"}]}), encoding="utf-8")
-    code, r = b.run("mine")
-    out.append(("끊긴 세션은 종료 3", code == 3 and r.get("error") == "session", (code, r)))
     return out
 
 

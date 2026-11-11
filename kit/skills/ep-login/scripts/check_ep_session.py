@@ -1,4 +1,4 @@
-"""ep_session.py 의 바퀴를 잰다 — 세션 파일부터 · 거절되면 손을 한 번 · 같은 낡은 파일이면 생략 · 바꾸는 일은 늘 손부터 · 출력 담기.
+"""ep_session.py 의 바퀴를 잰다 — 세션 파일부터 · 거절되면 손을 한 번 · 바꾸는 일은 늘 손부터 · 출력 담기.
 세션 손은 대역(node 스크립트)이라 127.0.0.1 밖으로도, Edge 로도 안 나간다.
 
     python -X utf8 -I check_ep_session.py            # 이 폴더의 ep_session.py 를 잰다
@@ -6,7 +6,7 @@
 
 층 · 걷는 조건 — 손으로 도는 검사(README 「돌려 보기」 · ep_session.py 나 부르는 얇은 명령을 고칠 때). check-design 1 절의 넷 — 결함에 실제 길이 있고(세션 파일이 낡은 채
 남는 자리는 Edge 를 닫을 때마다 온다) · 틀리면 조용하다(손을 매번 띄우거나 낡은 파일로 두 번 돌아도 답은 온다) · 사람의 시간과 말을
-다친다(회사 PC 의 프로세스 값 · 「바꾸지 않았다」는 틀린 말) · 다른 검사는 메일 길만 잰다(check_mail.py).
+다친다(회사 PC 의 프로세스 값 · 「바꾸지 않았다」는 틀린 말) · 다른 검사는 이 바퀴를 안 잰다.
 끝 줄이 「통과 N/N」이면 선 것이다.
 """
 from __future__ import annotations
@@ -153,19 +153,6 @@ def check_expired_file_then_hand_once():
         judge("거절된 첫 판의 출력은 버리고 둘째 판만 나온다", out.strip() == "찍었다 fresh", out)
 
 
-def check_same_stale_file_skips_the_second_round():
-    seen = []
-
-    def use(file):
-        seen.append(cookie_name(file))
-        raise Expired("낡았다")
-
-    with stage(exit_code=2, file="stale"):
-        result, exc, out = run(ep.session_first, use=use, expired=(Expired,))
-        judge("손이 못 붙어 같은 파일만 가리키면 둘째 판 없이 첫 판의 거절을 올린다", isinstance(exc, Expired) and seen == ["stale"] and len(calls()) == 1,
-              f"{seen} {calls()} {exc!r}")
-
-
 def check_mutating_always_attaches_once():
     seen = []
 
@@ -194,25 +181,6 @@ def check_no_file_and_hand_down_is_no_session():
     with stage(exit_code=3, file=None):
         result, exc, out = run(ep.session_first, use=lambda f: "ok", expired=(Expired,))
         judge("파일이 없고 손이 3 이면 NoSession(3)", isinstance(exc, ep.NoSession) and exc.got.code == ep.NOT_LOGGED_IN, repr(exc))
-
-
-def check_bite():
-    """물림 — 일부러 틀린 표본: 손이 2 로 다른 파일을 가리키는 꼴(파일을 새로 쓴 것처럼)에서는 둘째 판을 돌아야 한다."""
-    seen = []
-
-    def use(file):
-        seen.append(file.name)
-        if len(seen) == 1:
-            raise Expired()
-        return "ok"
-
-    other = WORK / "other.json"
-    other.write_text(json.dumps({"cookies": [{"name": "fresh2", "value": "1"}], "origins": []}), encoding="utf-8")
-    with stage(exit_code=2, file="stale"):
-        os.environ["STANDIN_PATH"] = str(other)          # 손이 다른 파일을 가리킨다
-        result, exc, out = run(ep.session_first, use=use, expired=(Expired,))
-        judge("물림 — 손이 다른 파일을 가리키면 둘째 판을 돈다(같은 파일 생략의 거울)", result == "ok" and seen == ["session.json", "other.json"],
-              f"{seen} {exc!r}")
 
 
 CHECKS = [v for k, v in sorted(globals().items()) if k.startswith("check_")]

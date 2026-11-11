@@ -15,14 +15,23 @@ ECM 서버는 파일을 주지 않는다. 화면의 「보기」 · 「편집」
 바꾼다. 손이 짓는 바꾸는 요청은 편집 열기 · 등록 · 권한 저장 셋뿐이고, 편집취소 · 지우기 · 옮기기 · 소유자 바꾸기는 사람이 ECM 화면에서 한다.
 
 ```bash
-python -X utf8 -I "<이 스킬>/scripts/company_ecm.py" <cabinets | list | count | read | open | version | edit | checkin | folders | register | access | who | preview-access | apply-access> …   # 인자는 --help
+python -X utf8 -I "<이 스킬>/scripts/company_ecm.py" <cabinets | list | count | security | read | open | version | edit | checkin | folders | register | access | who | preview-access | apply-access> …   # 인자는 --help
 ```
 
 명령은 사내 세션을 말없이 맞춘다 — 있는 세션 파일로 먼저 가고, 거절되거나 잠그고 올리는 명령이면 쓰는 사람의 Edge 에서 받는다.
 Edge 가 디버깅 포트로 떠 있고 EP 에 로그인돼 있으면 사람 손이 안 든다. 0 이
 아니면 표준 오류의 말이 까닭과 다음 걸음을 드니 그 말대로 가고, 사람에게 청할 것은 그대로 전한다 — 종료 3 은 스킬 **ep-login** 을
 부른 뒤 같은 명령을 다시, 종료 4 는 사람이 그 확장자의 기본 앱을 한 번 골라야 하는 자리다(사람이 「열 때 뜨는 창에서 고르겠다」 하면
-`open` · `read` 에 `--allow-picker` 를 붙이되 「항상 이 앱 사용」을 누르라고 먼저 알린다 — `edit` 는 골라 둔 뒤에만).
+`open` · `read` 에 `--allow-picker` 를 붙이되 「항상 이 앱 사용」을 누르라고 먼저 알린다 — `edit` 는 골라 둔 뒤에만), 종료 5 는
+기밀 등급이라 받지 않았거나 등급을 못 읽은 자리다(아래 「기밀 문서는 받지 않는다」).
+
+## 기밀 문서는 받지 않는다
+
+`read` · `edit` 는 받기 전에 그 문서의 보안등급을 속성 화면에서 읽어(`security <id>` 와 같은 읽기 — 파일을 안 받는다) 기밀이면 종료 5 로
+멈춘다 — 뽑은 글자와 고치는 문서는 대화의 모델로 가기 때문이다. 그 말을 그대로 전하고 사람이 ECM 화면에서 직접 열게 한다. 등급을
+못 읽어도 종료 5 로 멈춘다 — 사람이 ECM 화면의 「컨텐츠 속성」에서 등급을 보고 기밀이 아니라고 한 뒤에만 같은 명령에 `--not-classified`
+를 붙인다. 읽힌 등급이 기밀이면 그 표시로도 안 넘어간다. `open` 은 사람의 화면에 띄우기만 해 막지 않지만, 기밀 문서를 `open` 했으면
+받은 파일을 drm-office-read 로 읽지 않는다. 목록 줄의 「보안」이 등급이다.
 
 ## 찾고 읽는 차례
 

@@ -299,7 +299,7 @@ ID_FORM = re.compile(r"^\s*([^\s()/@]+)\s*\(([^()]+)\)\s*$")
 MARKS_AS_READ = re.compile(r"[?&](opendocument|editdocument)\b", re.IGNORECASE)
 # 메일함을 바꾸는 주소 전부 — 읽음으로 · 안 읽음으로(되돌리기) · 폴더 만들기 · 지우기 · 메일 옮기기 · 휴지통 되살리기 · 규칙
 CHANGES_MAILBOX = re.compile(r"[?&](opendocument|editdocument)\b|/ag_read_cancel\b|/agt_mail_folder_save\b|/folder2\b"
-                             r"|/trashdoc\b|/mailrule\b", re.IGNORECASE)
+                             r"|/trashdoc\b|/mailrule\b|/memo\b|/xam_upload\b", re.IGNORECASE)
 
 # 폴더 나무 — 웹메일 화면이 폴더 고름 상자를 채우는 보기(JSON). 열은 경로 · 폴더 열쇠 · 부모 열쇠(실측)
 FOLDER_TREE_VIEW = "fdd_folder_fullpath"
@@ -319,6 +319,15 @@ RULE_FORM = "Mailrule"
 RULE_BOXES = ("inbox", "sent")                         # 받은 메일 · 보낸 메일
 RULE_ACTIONS = ("move_folder", "move_trash", "delete")  # 폴더로 이동 · 휴지통으로 · 영구삭제
 RULE_FIELDS = ("from", "to", "cc", "subject", "attach")  # 보낸 사람 · 받는 사람 · 참조 · 제목 · 첨부 이름 — 폼 칸은 rule_<이것>
+# 임시저장(웹메일 쓰기 화면의 [임시저장] 단추가 보내는 것 — 실측 · fmmail_new.js saveDoc · xam_handler.js uploadFile)
+MEMO_FORM = "Memo"                                  # 쓰기 화면 폼 — ``/<db>/Memo?openform`` 이 빈 폼, 같은 폼의 POST 가 저장
+SAVE_AGENT_DRAFT = "wSave"                          # 저장 칸 SaveAgent 의 값 — 임시저장. ⚠ ``wSend`` 면 그 자리에서 발송된다
+UPLOAD_DB = "upload/fileupload{digit}.nsf"          # 첨부 업로드 DB — 쓰는 사람 사번 끝자리로 나뉜다
+UPLOAD_AGENT = "xam_upload?open"
+DRAFT_COMPANY_CODE = "02"                           # 첨부 열쇠 가운데 회사 코드 — 쓰기 화면의 add_code(이 메일함으로 잼)
+DRAFT_ATTACH_MOST = 20                              # 쓰기 화면의 첨부 개수 상한(attach_limit_count)
+DRAFT_ATTACH_BIG = 20 * 1024 * 1024                 # 이보다 크면 웹메일이 대용량 전환한다(BigFileUserTransSize) — 임시저장은 대용량을 안 든다
+DRAFT_UPLOAD_TIMEOUT = 180.0                        # 첨부 하나를 올리는 시한 — 수 MB 가 몇 초였다
 _UNID = re.compile(r"^[0-9A-Fa-f]{32}$")
 _HEX32 = r"[0-9A-Fa-f]{32}"
 
@@ -477,6 +486,24 @@ class Found:
     attached: bool
     unread: bool
     draft: bool
+
+
+@dataclass(frozen=True)
+class DraftPerson:
+    """임시메일의 받는 사람 하나 — ``notes`` 는 Notes 이름(``CN=…`` · 웹메일의 SendTo 칸), ``email`` · ``name`` 은 InetSendTo 칸.
+
+    웹메일 화면이 다시 열 때 받는 사람 칸을 이 Notes 이름으로 채운다(실측) — 주소만 주면 화면에 사람으로 안 선다.
+    """
+    notes: str
+    email: str
+    name: str
+
+
+@dataclass(frozen=True)
+class DraftFile:
+    """임시메일에 붙일 파일 하나 — 이름과 바이트."""
+    name: str
+    data: bytes
 
 
 @dataclass(frozen=True)
@@ -1225,6 +1252,101 @@ class Mailbox:
             raise SessionExpired("규칙 대신 로그인 페이지가 왔다 — 다시 로그인한다")
         return parse_rule_page(unid, page)
 
+    # ── 임시저장 — 웹메일 쓰기 화면의 [임시저장] 단추와 같은 요청 ────────────────────
+
+    def save_draft(self, subject: str, to: list[DraftPerson], *, cc: list[DraftPerson] = (), bcc: list[DraftPerson] = (),
+                   html_body: str, files: list[DraftFile] = (), empno: str) -> str:
+        """⚠ 메일함을 바꾼다 — 새 임시메일 하나를 임시보관함에 저장하고 그 unid 를 낸다. **보내지 않는다.**
+
+        ``empno`` 는 쓰는 사람 사번(메일함 파일 번호) — 첨부 업로드 DB 와 첨부 열쇠가 그것으로 선다. 첨부가 있으면 먼저 업로드 DB 에
+        올리고 저장 폼에 그 열쇠를 싣는다. 대용량(``DRAFT_ATTACH_BIG`` 넘음)은 웹메일 임시저장이 안 들어 묻기 전에 막는다.
+        저장 칸 SaveAgent 는 늘 ``wSave`` 다 — 다른 값이면 서버가 그 자리에서 발송한다. 저장 뒤 임시보관함 보기에 그 unid 가 서야 낸다.
+        """
+        if not to:
+            raise MailboxConfigError("받는 사람이 없다")
+        if len(files) > DRAFT_ATTACH_MOST:
+            raise MailboxConfigError(f"첨부가 {len(files)} 개다 — 웹메일은 {DRAFT_ATTACH_MOST} 개까지 든다")
+        big = [f.name for f in files if len(f.data) > DRAFT_ATTACH_BIG]
+        if big:
+            raise MailboxConfigError(f"대용량 첨부는 임시저장이 안 든다(웹메일이 지운다): {', '.join(big)} — 웹메일에서 붙인다")
+        form, action, unid = self._blank_memo()
+        if files:
+            form |= self._upload_draft_files(unid, empno, files)
+        else:
+            form |= {"NoAttach": "T", "am_attachment": "", "$attachpath": "", "$attachkey": ""}
+        form |= {"__Click": "0", "%%PostCharset": "UTF-8", "SAResponse": "json", "SaveAgent": SAVE_AGENT_DRAFT,
+                 "SendOptions": "2", "docMode": "", "nh_Type": "", "ECMCheck": "", "Importance": "2",
+                 "Subject": subject, "Body": "", "MIMEBody": _mime_html(html_body),
+                 "TransBigFile": "0", "BigFileOnlyECM": "0", "FileKey": "", "BigFileNameList": "",
+                 "AllAttachFileNameList": "\n".join(f.name for f in files),
+                 "AllAttachFileSize": ",".join(str(len(f.data)) for f in files)}
+        for field, inet, people in (("SendTo", "InetSendTo", to), ("CopyTo", "InetCopyTo", cc),
+                                    ("BlindCopyTo", "InetBlindCopyTo", bcc)):
+            form[field] = "; ".join(p.notes for p in people)
+            form[inet] = "; ".join(f'"{p.name}" <{p.email}>' if p.name else p.email for p in people)
+        answer = self._post_memo(action, form)
+        saved = str(answer.get("unid") or "").upper()
+        if not _UNID.match(saved):
+            raise MailboxError(f"임시저장 답에 unid 가 없다: {answer!r:.80}")
+        if saved not in {e.unid.upper() for e in (self.list_drafts(count=50) or [])}:
+            raise MailboxError("임시저장 답은 참이었는데 임시보관함에 그 메일이 없다")
+        log.info("메일함을 바꿨다: 임시메일을 저장했다 · 받는 사람 %d · 첨부 %d", len(to) + len(cc) + len(bcc), len(files))
+        return saved
+
+    def _blank_memo(self) -> tuple[dict, str, str]:
+        """빈 쓰기 화면을 받아 (폼 칸, 저장 주소, 이 쓰기의 unid) — 화면이 숨은 칸에 든 기본값을 그대로 물려받는다."""
+        data, kind = self._open(f"{self.base}/{MEMO_FORM}?openform&opentype=popup")
+        page = data.decode(_charset(kind), errors="replace")
+        if _looks_like_login(page):
+            raise SessionExpired("쓰기 화면 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+        return parse_memo_form(page, self.db_path)
+
+    def _upload_draft_files(self, unid: str, empno: str, files: list[DraftFile]) -> dict:
+        """첨부를 업로드 DB 에 올리고 저장 폼에 실을 칸을 낸다. 업로드 답에 그 파일이 다 서야 낸다."""
+        digit = empno[-1:] if empno[-1:].isdigit() else "0"
+        upload_db = UPLOAD_DB.format(digit=digit)
+        unique = secrets.token_hex(8)
+        key = f"{unid}_{unique}_{DRAFT_COMPANY_CODE}_{empno}"
+        for f in files:
+            fields = {"__Click": "0", "Body": "", "unique": unique, "unid": unid, "attachKey": key, "idx": "0",
+                      "lastModified": "", "total_size": str(len(f.data))}
+            body, boundary = _multipart(fields, "%%File", f)
+            request = urllib.request.Request(f"{self.server}/{upload_db}/{UPLOAD_AGENT}", data=body, method="POST")
+            request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+            data, kind = self._open_long(request)
+            text = data.decode(_charset(kind), errors="replace")
+            if _looks_like_login(text):
+                raise SessionExpired("첨부 업로드에 로그인 페이지가 왔다 — 저장하지 않았다")
+            try:
+                got = [g.get("name") for g in json.loads(text).get("files", [])]
+            except (json.JSONDecodeError, AttributeError) as exc:
+                raise MailboxError(f"첨부 업로드 답이 JSON 이 아니다: {text.strip()[:80]!r}") from exc
+            if f.name not in got:
+                raise MailboxError(f"업로드 DB 가 첨부를 안 받았다: {f.name}")
+        return {"NoAttach": "F", "am_attachment": "-spl-".join(f.name for f in files),
+                "$attachpath": upload_db, "$attachkey": key}
+
+    def _open_long(self, request: urllib.request.Request) -> tuple[bytes, str]:
+        """첨부처럼 오래 걸리는 요청 — 시한만 길고 ``_open`` 과 같다."""
+        kept, self.timeout = self.timeout, max(self.timeout, DRAFT_UPLOAD_TIMEOUT)
+        try:
+            return self._open(request)
+        finally:
+            self.timeout = kept
+
+    def _post_memo(self, action: str, form: dict) -> dict:
+        """쓰기 폼의 저장 POST — 쓰기 화면의 저장 주소 꼴만 받는다. 답(JSON 비슷한 글)의 ``result`` 가 참이어야 한다."""
+        db = re.escape(self.db_path)
+        if not re.fullmatch(rf"{db}/{MEMO_FORM}\?OpenForm&Seq=1&opentype=popup", action):
+            raise ChangeRefused(f"임시저장 손의 꼴이 아니다: {action}")
+        request = urllib.request.Request(self.server + action, data=urllib.parse.urlencode(form).encode(), method="POST")
+        request.add_header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+        data, kind = self._open_long(request)
+        text = data.decode(_charset(kind), errors="replace")
+        if _looks_like_login(text):
+            raise SessionExpired("임시저장 요청에 로그인 페이지가 왔다 — 저장되지 않았다")
+        return parse_save_answer(text)
+
     def _fresh_folders(self) -> list[Folder]:
         """보기 목록을 새로 받아 지금의 폴더 — 바꾸는 손 앞뒤에는 받아 둔 목록이 낡는다."""
         self._collections = None
@@ -1590,6 +1712,64 @@ def parse_attachment(listed: str) -> AttachmentName:
                               size_kb=int(found.group("kb")), ecm=True)
     ext = listed.rsplit(".", 1)[1].lower() if "." in listed else ""
     return AttachmentName(listed=listed, name=listed, ext=ext)
+
+
+_MEMO_TAG = re.compile(r'<textarea\b([^>]*)>(.*?)</textarea>|<input\b([^>]*)>', re.IGNORECASE | re.DOTALL)
+_MEMO_ATTR = {k: re.compile(rf'\b{k}\s*=\s*"([^"]*)"', re.IGNORECASE) for k in ("name", "value", "type")}
+_MEMO_SKIP_TYPES = ("file", "radio", "checkbox")     # 화면이 고름으로만 채우는 칸 — 기본값을 물려받지 않는다
+
+
+def parse_memo_form(page: str, db_path: str) -> tuple[dict, str, str]:
+    """쓰기 화면(``Memo?openform``) → (숨은 칸의 기본값, 저장 주소, 이 쓰기의 unid). 폼 ``_Memo`` 가 없으면 ``MailboxError``."""
+    form = re.search(r'<form\b[^>]*name="_Memo"[^>]*>(.*?)</form>', page, re.IGNORECASE | re.DOTALL)
+    action = re.search(r'<form\b[^>]*action="([^"]*)"[^>]*name="_Memo"', page, re.IGNORECASE)
+    unid = re.search(r'"unid"\s*:\s*"([0-9A-Fa-f]{32})"', page)
+    if not (form and action and unid):
+        raise MailboxError("쓰기 화면에 폼 _Memo · 저장 주소 · unid 가 없다 — 웹메일 화면이 바뀌었다")
+    fields: dict = {}
+    for tag in _MEMO_TAG.finditer(form.group(1)):
+        is_area = tag.group(1) is not None
+        attrs = tag.group(1) if is_area else tag.group(3)
+        name = _MEMO_ATTR["name"].search(attrs)
+        kind = (_MEMO_ATTR["type"].search(attrs) or re.search(r"\btype\s*=\s*([a-z]+)", attrs, re.IGNORECASE))
+        if not name or (kind and kind.group(1).lower() in _MEMO_SKIP_TYPES):
+            continue
+        if is_area:
+            value = tag.group(2) or ""
+        else:
+            found = _MEMO_ATTR["value"].search(attrs)
+            value = found.group(1) if found else ""
+        fields.setdefault(html.unescape(name.group(1)), html.unescape(value))
+    return fields, html.unescape(action.group(1)), unid.group(1).upper()
+
+
+def parse_save_answer(text: str) -> dict:
+    """저장 답 → 칸들. 답은 JSON 비슷한 글이라(``message_func`` 칸에 함수가 든다) ``result`` · ``unid`` 만 뽑는다."""
+    result = re.search(r'"result"\s*:\s*(true|false)', text)
+    if not result:
+        raise MailboxError(f"임시저장 답의 꼴이 아니다: {text.strip()[:80]!r}")
+    if result.group(1) != "true":
+        message = re.search(r'"message"\s*:\s*"([^"]*)"', text)
+        raise MailboxError("메일함이 임시저장을 안 받았다" + (f": {message.group(1)}" if message else ""))
+    unid = re.search(r'"unid"\s*:\s*"([0-9A-Fa-f]{32})"', text)
+    return {"result": True, "unid": unid.group(1) if unid else ""}
+
+
+def _mime_html(html_body: str) -> str:
+    """본문 HTML → 쓰기 화면 편집기가 MIMEBody 칸에 싣는 꼴(머리 + 빈 줄 + HTML). Body 칸만 채우면 본문이 비어 저장된다(실측)."""
+    return ('MIME-Version: 1.0\r\nContent-Type: text/html; charset="UTF-8"\r\nContent-Transfer-Encoding: 8bit\r\n\r\n'
+            + html_body)
+
+
+def _multipart(fields: dict, file_field: str, f: DraftFile) -> tuple[bytes, str]:
+    """업로드 한 판의 multipart 몸 — (바이트, 경계). 칸은 업로드 화면이 싣는 것 그대로다."""
+    boundary = "----company-mail-" + secrets.token_hex(12)
+    parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode() for k, v in fields.items()]
+    head = (f'--{boundary}\r\nContent-Disposition: form-data; name="{file_field}"; filename="{f.name}"\r\n'
+            "Content-Type: application/octet-stream\r\n\r\n")
+    parts.append(head.encode() + f.data + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), boundary
 
 
 def _unid(mail: Entry | str) -> str:

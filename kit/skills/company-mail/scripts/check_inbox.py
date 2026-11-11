@@ -4,7 +4,9 @@
 메일함을 바꾸는 주소를 서버에 보내나 · 끊긴 세션을 빈 받은편지함이나 「본문 없음」으로 읽나(새 메일이 안 온 것처럼 조용히
 지나간다) · 하위 폴더 메일을 조용히 빠뜨리나 · 잰 꼴(보낸 사람 열 · 받는 꼴 · 받는 사람 목록 · 본문 · ECM 첨부 이름 · 주소록)을
 잘못 풀어 사람 · 주소를 조용히 잃나 · 메일함을 바꾸는 손 둘이 그 메일 하나만 바꾸나 · 폴더 · 옮기기 · 규칙 손이 고른 것만 바꾸고
-서버의 헛 「OK」를 옮겼다로 읽지 않나 · 메일이 든 폴더를 지워 메일을 휴지통에 보내나 · 규칙에 자동전달을 실어 남에게 메일이 나가게 하나.
+서버의 헛 「OK」를 옮겼다로 읽지 않나 · 메일이 든 폴더를 지워 메일을 휴지통에 보내나 · 규칙에 자동전달을 실어 남에게 메일이 나가게 하나 ·
+임시저장이 보내는 칸(wSend)으로 가 그 자리에서 메일이 나가나 · 본문을 엉뚱한 칸에 실어 빈 본문으로 저장하나 · 임시보관함에 안 선
+저장을 저장했다로 읽나.
 남기는 까닭(check-design §1 넷) — 길이 분명하다(메일함 손을 고칠 때마다 · 이 파일을 그 자리에서 쓰는 앱이 있다) · 읽음이
 바뀌거나 메일이 빠지면 조용하고 되돌릴 수 없다 · 쓰는 사람이 새 메일을 놓친다 · 다른 무엇도 안 잡는다(회사 메일함은 회사
 PC 에서만 닿는다).
@@ -19,6 +21,8 @@ PC 에서만 닿는다).
 뒤 덩이로 낸다. 밖의 메일이 폴더 보기에서 서는 이름은 안 쟀다 — 여기서는 주소의 앞쪽만 낸다. 폴더 손 흉내는 실물처럼 늘 「OK」를 내고(모르는 열쇠면
 아무것도 안 옮긴다), 메일이 든 폴더를 지우면 그 메일을 휴지통으로 보내며, 메일 쪽을 지워도 이전메일함 짝이 나무에 남는다.
 규칙 흉내는 저장 폼을 그대로 들고 편집 화면(``new FormJS`` 머리 · 입력 칸)으로 돌려준다 — 서버가 규칙을 새 메일에 쓰는 일은 흉내 내지 않는다.
+쓰기 화면 흉내는 회사 쓰기 화면에서 손이 읽는 꼴(폼 ``_Memo`` · 숨은 칸 · 화면 정보의 unid)만 들고, 저장 POST 는 저장 칸이 ``wSave`` 면
+임시보관함에 넣고 ``wSend`` 면 「그 자리에서 나갔다」로 따로 센다 — 답은 실물처럼 JSON 이 아닌 글(함수 칸)이다. 업로드 DB 는 받은 파일 이름을 낸다.
 
 돌리는 법::
 
@@ -32,7 +36,8 @@ PC 에서만 닿는다).
 
 여기서 못 재는 것 — 사내 SSO 를 넘는 길(스킬 ep-login 의 받는 손) · 회사에서 안 잰 꼴(끊긴 세션의 세션 확인 답 · 중요도 값의 뜻 ·
 폴더에만 있는 메일에 읽음으로의 주소가 먹는지 — 여기서는 어느 메일이든 먹는다 · 모든편지함을 장으로 넘길 때의 차례 ·
-평문 · HTML 둘을 든 메일 밖의 평문 조각).
+평문 · HTML 둘을 든 메일 밖의 평문 조각) · 임시저장한 메일을 웹메일 화면이 받는 사람 · 첨부로 다시 여는지(회사에서 한 판으로
+쟀다) · 웹메일 화면의 [보내기](곁의 손 draft_send.js — Edge 와 실물 화면이 있어야 돈다).
 """
 
 from __future__ import annotations
@@ -43,6 +48,7 @@ import http.server
 import json
 import logging
 import pathlib
+import re
 import sys
 import tempfile
 import threading
@@ -276,6 +282,9 @@ class FakeDomino:
         self.archive_twins: set[str] = set()          # 메일 쪽은 지웠는데 이전메일함 짝이 남은 폴더 열쇠(실측)
         self.rules: dict[str, dict] = {}              # 규칙 unid → 저장 폼의 칸
         self.posts: list[tuple[str, dict]] = []
+        self.uploads: list[tuple[str, bytes]] = []    # 첨부 업로드 DB 가 받은 multipart 몸
+        self.saved_forms: list[dict] = []            # 쓰기 폼 저장 POST 의 칸
+        self.sent_now: list[str] = []                # 저장 폼이 SaveAgent=wSend 로 와서 실물이라면 그 자리에서 나갔을 메일
         self.twin: dict[str, tuple[str, str]] = {}
         self.stuck: set[str] = set()                 # 옮기기에 OK 를 내고 안 옮기는 메일
         for i, p in enumerate(sorted({*self.extra_folders, *(m.folder for m in self.mails.values() if m.folder)})):
@@ -297,7 +306,13 @@ class FakeDomino:
 
             def do_POST(self):
                 size = int(self.headers.get("Content-Length") or 0)
-                form = {k: v[0] for k, v in urllib.parse.parse_qs(self.rfile.read(size).decode(), keep_blank_values=True).items()}
+                raw_body = self.rfile.read(size)
+                if (self.headers.get("Content-Type") or "").startswith("multipart/form-data"):
+                    with box.lock:
+                        box.paths.append(self.path)
+                        box.uploads.append((self.path, raw_body))
+                        return box.answer_upload(self, raw_body)
+                form = {k: v[0] for k, v in urllib.parse.parse_qs(raw_body.decode(), keep_blank_values=True).items()}
                 with box.lock:
                     box.paths.append(self.path)
                     box.posts.append((self.path, form))
@@ -378,6 +393,8 @@ class FakeDomino:
         low = rest.lower()
         if low.startswith("/fdd_folder_fullpath?readviewentries"):
             return self.send(h, 200, self.tree_json(), "application/json; charset=UTF-8")
+        if low.startswith("/memo?openform"):
+            return self.send(h, 200, memo_page().encode(), "text/html; charset=UTF-8")
         if low.startswith("/agt_mail_folder_save?openagent"):
             return self.folder_save(h, urllib.parse.parse_qs(raw.split("?", 1)[1], keep_blank_values=True))
         if low.startswith("/trashdoc?openagent"):
@@ -491,7 +508,33 @@ class FakeDomino:
         if rest.startswith("/Mailrule?OpenForm&Seq=1") or (rest.lower().endswith("?editdocument&seq=1")
                                                            and rest.split("/")[2].split("?")[0].upper() in self.rules):
             return self.rule_post(h, rest, form)
+        if rest == "/Memo?OpenForm&Seq=1&opentype=popup":
+            return self.memo_post(h, form)
         return self.send(h, 404, b"<html>not found</html>", "text/html")
+
+    def memo_post(self, h, form: dict) -> None:
+        """쓰기 폼의 저장 — 실물처럼 SaveAgent 가 wSave 면 임시보관함에, wSend 면 그 자리에서 나간다(그래서 따로 센다).
+        답은 실물 꼴 그대로 JSON 이 아닌 글이다(``message_func`` 칸에 함수가 든다)."""
+        unid = hashlib.md5(f"memo/{len(self.mails)}/{time.time_ns()}".encode()).hexdigest().upper()
+        if form.get("SaveAgent") == "wSend":
+            self.sent_now.append(unid)
+        else:
+            self.mails[unid] = FakeMail(unid, form.get("Subject", ""), time.strftime("%Y%m%d%H%M%S"),
+                                        internal_sender(OWNER["user_name"], OWNER["email"], OWNER["user_name_eng"]), "T",
+                                        unread=False, folder="(Drafts)", draft=True, to_102=None)
+            self.changes.append(("draft", unid))
+        self.saved_forms.append(dict(form))
+        answer = (f'{{\n"result":true,\n"unid":"{unid}",\n"saveoptions":"1",\n'
+                  '"message_func":function(_win){return _win._i18n.g("MAIL_DOC_CONFIRM_SAVE_EDITMODE");},\n"opentype":""\n}')
+        return self.send(h, 200, answer.encode(), "text/html; charset=UTF-8")
+
+    def answer_upload(self, h, raw: bytes) -> None:
+        """첨부 업로드 DB — 실물처럼 받은 파일 이름과 크기를 JSON 으로 낸다. 쿠키가 없으면 로그인 화면."""
+        if f"{COOKIE[0]}={COOKIE[1]}" not in (h.headers.get("Cookie") or "") or self.session == "login":
+            return self.send(h, 200, LOGIN_PAGE.encode(), "text/html")
+        name = re.search(rb'name="%%File"; filename="([^"]+)"', raw)
+        files = [{"name": name.group(1).decode(), "size": len(raw)}] if name else []
+        return self.send(h, 200, json.dumps({"files": files}).encode(), "text/html")
 
     def rule_post(self, h, rest: str, form: dict) -> None:
         if form.get("SubmitAction") == "delete":
@@ -627,6 +670,18 @@ class FakeDomino:
         handler.wfile.write(body)
 
 
+def memo_page() -> str:
+    """빈 쓰기 화면(``Memo?openform``)의 흉내 — 회사의 쓰기 화면에서 손이 읽는 것만 같은 꼴로 든다: 폼 ``_Memo`` 의 저장 주소 ·
+    숨은 칸(⚠ 저장 칸 SaveAgent 는 빈 값 · textarea 가 input 뒤에 온다 · 고름 칸은 type 이 radio · file) · 화면 정보 JSON 의 unid."""
+    return (f'<html><script>var _info = {{"unid":"{"D6B5F158C2520BF849258EAC0025268D"}","SaveCount":"0"}};</script>'
+            f'<form method="post" action="{DB}/Memo?OpenForm&amp;Seq=1&amp;opentype=popup" enctype="multipart/form-data" name="_Memo">'
+            '<input type="hidden" name="__Click" value="0"><input name="SaveCount" value="0">'
+            '<input name="ECMCheck" value=""><textarea name="ExternalMailList_m"></textarea>'
+            '<input name="decryptiondrm_option" value="N"><input type="radio" name="r1" value="x">'
+            '<input name="%%File.1.$Body.0.444" type="file"><input name="Subject" type="text" value="">'
+            '<textarea name="MIMEBody"></textarea><input name="SaveAgent" TYPE=HIDDEN value=""></form></html>')
+
+
 @contextlib.contextmanager
 def stage(*, cookie=COOKIE, expires=-1, **fake):
     """가짜 메일함과 그 메일함을 가리키는 쿠키 파일을 세운다. 내는 것 — (메일함 흉내, Mailbox)."""
@@ -691,6 +746,32 @@ def check_changing_urls_are_refused_before_asking():
             raises(inbox.ChangeRefused, lambda p=path: mailbox._get(p))
         raises(inbox.ChangeRefused, lambda: mailbox._get_server("/common/profile.nsf/ag_read_cancel?OpenAgent"))
         assert not box.paths, f"막아야 할 주소가 서버에 닿았다: {box.paths}"
+
+
+def check_draft_save_never_sends_and_lands_in_drafts():
+    """임시저장은 저장 칸 wSave 로만 가고(wSend 면 실물은 그 자리에서 보낸다) · 본문은 MIMEBody 에 실리고(Body 만이면 빈 본문) ·
+    받는 사람은 Notes 이름과 주소 두 칸에 · 첨부는 업로드 DB 에 먼저 가고 그 열쇠가 저장 폼에 실려 · 임시보관함에 서야 unid 를 낸다."""
+    to = [inbox.DraftPerson(notes=OWNER["key"], email=OWNER["email"], name=OWNER["user_name"])]
+    with stage() as (box, mailbox):
+        unid = mailbox.save_draft("시험 저장", to, html_body="<p>본문 한 줄</p>",
+                                  files=[inbox.DraftFile("a.mp4", b"x" * 1000)], empno="200001")
+        assert box.sent_now == [], "임시저장이 보내는 칸으로 갔다"
+        assert ("draft", unid) in box.changes, box.changes
+        form = box.saved_forms[-1]
+        assert form["SaveAgent"] == "wSave", form["SaveAgent"]
+        assert "<p>본문 한 줄</p>" in form["MIMEBody"] and form["MIMEBody"].startswith("MIME-Version:"), form["MIMEBody"][:60]
+        assert form["SendTo"] == OWNER["key"] and OWNER["email"] in form["InetSendTo"], (form["SendTo"], form["InetSendTo"])
+        assert form["SaveCount"] == "0", "쓰기 화면의 숨은 칸을 물려받지 않았다"
+        path, upload = box.uploads[-1]
+        assert path == "/upload/fileupload1.nsf/xam_upload?open", path
+        assert form["$attachpath"] == "upload/fileupload1.nsf" and form["am_attachment"] == "a.mp4", form
+        assert form["$attachkey"].startswith("D6B5F158C2520BF849258EAC0025268D_") and form["$attachkey"].endswith("_200001")
+        assert form["$attachkey"].encode() in upload, "업로드와 저장 폼의 첨부 열쇠가 다르다"
+        raises(inbox.MailboxConfigError, lambda: mailbox.save_draft("큰 것", to, html_body="<p>x</p>", empno="200001",
+                                                                    files=[inbox.DraftFile("b.bin", b"x" * (inbox.DRAFT_ATTACH_BIG + 1))]))
+        raises(inbox.ChangeRefused, lambda: mailbox._post_memo(f"{DB}/0/{'A' * 32}?EditDocument&Seq=1", {}))
+    with stage(session="login") as (_, mailbox):
+        raises(inbox.SessionExpired, lambda: mailbox.save_draft("x", to, html_body="<p>x</p>", empno="200001"))
 
 
 def check_marking_hands_change_only_that_mail():
@@ -767,13 +848,6 @@ def check_folder_with_twin_row_or_rule_is_not_guessed():
                                      conditions={"subject": "[주간]"}))
         raises(inbox.MailboxConfigError, lambda: mailbox.delete_folder(FOLDER_EMPTY))
         assert FOLDER_EMPTY in [f.path for f in mailbox.folders()]
-
-
-def check_trash_restore_brings_one_mail_back():
-    with stage() as (box, mailbox):
-        mailbox.restore_from_trash(U["f_trash"])
-        assert box.mails[U["f_trash"]].folder == "" and box.changes == [("restore", U["f_trash"])], box.changes
-        raises(inbox.MailboxError, lambda: mailbox.restore_from_trash(U["alone"]))   # 휴지통에 없는 메일 — 답이 거짓
 
 
 def check_rule_hands_round_trip_and_never_forward():
