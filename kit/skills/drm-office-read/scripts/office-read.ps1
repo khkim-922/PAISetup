@@ -19,6 +19,10 @@
         Visual 의 열쇠는 영어다 — tables · images · shapes · formulas · charts · fields. 0 인 열쇠는 없다. 파워포인트는 글 없는
         낱 도형(그림 · 도형을 안 가른다)을 images 에 센다. 사람 말로 옮기는 것은 부르는 쪽 몫이다(read-drm.ps1 의 Format-Visual)
       · Format-Cell · Get-PptLeafShapes · Measure-*Visual · Add-Count — 위 셋이 쓰는 부품. 따로 불러도 된다
+      · 남긴 글자 — Get-KeptTextDir · Get-KeptPrint -LiteralPath · Find-KeptText -Print · Save-KeptText -Name -Print -Line -Source -Text.
+        읽은 글자를 홈 아래 한 자리($KEPT_TEXT_DIR_ENV 가 없으면 ~/.drm-read-text)에 「파일 이름.지문.md」로 남기고, 같은 바이트의 파일을
+        지문(SHA-256 앞 12 자)으로 알아본다 — 이름이 달라도 바이트가 같으면 같은 글자다. 남긴 파일은 머리 두 줄(읽을 때의 한 줄 · 원본과
+        뽑은 때) 뒤 $KEPT_SPLIT 아래가 글자다. 이 손은 남긴 것을 지우지 않는다 — 치우는 것은 사람이다
       · 상수 — $HANDLER · $PROCESS_OF · $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS ·
         $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
       · 파워포인트 글은 머리 한 줄($PPT_SEAT_LEGEND) 뒤 장마다 도형을 위→아래 · 왼→오른으로 세워 줄마다 [위 · 왼] 꼬리표를 앞세운다.
@@ -34,6 +38,59 @@
 #>
 
 $DRM_OFFICE_READ_CONTRACT = 1
+
+# ── 남긴 글자 — 같은 바이트의 문서는 앱을 다시 안 띄우고 남긴 글자로 답한다(결정 0231) ──────────────────────
+# 감긴 파일은 읽을 때마다 앱을 띄워야 하고(건당 수 초 · 창이 뜬다) 같은 문서를 다시 읽는 일이 잦다. 규칙은 여기 한 자리다 — 스킬의
+# read-drm.ps1 과 이 부품을 싣는 앱이 같은 자리 · 같은 꼴로 남기고 찾는다. 글자 파일은 .md 다 — Fasoo 가 .txt · .csv 는 감싸고 .md 는
+# 평문으로 둔다
+$KEPT_TEXT_DIR_ENV = 'DRM_READ_TEXT_DIR'
+$KEPT_SPLIT = "`n---`n"                # 남긴 파일에서 머리와 글자를 가르는 줄
+$KEPT_TEXT_EXT = '.md'
+$KEPT_PRINT_CHARS = 12                 # 지문 — SHA-256 의 앞 몇 자
+
+function Get-KeptTextDir {
+    $fromEnv = [Environment]::GetEnvironmentVariable($KEPT_TEXT_DIR_ENV)
+    if ($fromEnv) { return $fromEnv }
+    return (Join-Path $HOME '.drm-read-text')
+}
+
+function Get-KeptPrint {
+    # 파일 바이트의 지문. 다른 프로세스가 독점으로 쥔 파일이면 던진다 — 부르는 쪽이 「지문 없음 · 읽기만」으로 받는다
+    param([Parameter(Mandatory = $true)][string]$LiteralPath)
+    return (Get-FileHash -LiteralPath $LiteralPath -Algorithm SHA256).Hash.Substring(0, $KEPT_PRINT_CHARS).ToLower()
+}
+
+function Find-KeptText {
+    # 그 지문으로 남긴 글자 → @{ Path; Line(읽을 때의 한 줄); Text } — 없거나 · 못 읽거나 · 머리가 없거나(이 손이 남긴 것이 아니다) ·
+    # 글자가 비었으면 $null. 빈 글자를 남긴 것으로 치면 그 문서는 다시는 앱으로 안 읽힌다 — 비었으면 앱으로 다시 읽어 본다.
+    # 던지지 않는다 — 남긴 파일을 다른 프로세스가 쥐었어도(백신 · DRM 에이전트가 훑는 동안) 부르는 쪽은 앱으로 읽으면 된다
+    param([Parameter(Mandatory = $true)][string]$Print)
+    try {
+        $dir = Get-KeptTextDir
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return $null }
+        $hit = Get-ChildItem -LiteralPath $dir -File -Filter "*.$Print$KEPT_TEXT_EXT" -ErrorAction Stop | Sort-Object Name | Select-Object -First 1
+        if (-not $hit) { return $null }
+        $raw = [System.IO.File]::ReadAllText($hit.FullName, [System.Text.Encoding]::UTF8)
+        $at = $raw.IndexOf($KEPT_SPLIT)
+        if ($at -lt 0) { return $null }
+        $text = $raw.Substring($at + $KEPT_SPLIT.Length)
+        if (-not $text.Trim()) { return $null }
+        return @{ Path = $hit.FullName; Line = ($raw.Substring(0, $at) -split "`n")[0].Trim(); Text = $text }
+    } catch { return $null }
+}
+
+function Save-KeptText {
+    # 뽑은 글자를 「이름.지문.md」로 남기고 그 경로를 낸다. 남길 자리를 못 짓거나 못 쓰면 던진다 — 부르는 쪽이 「못 남겼다」로 받고
+    # 읽기는 잇는다(글자는 이미 뽑혔고, 못 남긴 것은 다음에 한 번 더 읽힐 뿐이다)
+    param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][string]$Print,
+          [string]$Line = '', [string]$Source = '', [string]$Text = '')
+    $dir = Get-KeptTextDir
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $path = Join-Path $dir ('{0}.{1}{2}' -f $Name, $Print, $KEPT_TEXT_EXT)
+    $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
+    [System.IO.File]::WriteAllText($path, "$Line`n원본 $Source · 뽑은 때 $stamp$KEPT_SPLIT$Text", (New-Object System.Text.UTF8Encoding($false)))
+    return $path
+}
 
 # 어느 확장자를 어느 앱이 드나. PDF 는 워드가 든다 — Acrobat COM 은 이 기계에서
 # 클래스 미등록(0x80040154)이라 못 탄다.

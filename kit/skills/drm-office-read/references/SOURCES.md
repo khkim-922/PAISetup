@@ -6,7 +6,7 @@
 
 | 어디 | 어떻게 따라가나 | 무엇이 같은가 |
 |---|---|---|
-| mail-secretary `secretary/office_read.ps1` · `secretary/office.py` | **부른다** — 홈에 깔린 이 스킬의 `scripts/office-read.ps1` 을 점 소싱하고 계약 판(`$DRM_OFFICE_READ_CONTRACT`)을 제가 아는 판과 견준다. 그 저장소에는 제 꼴(JSON 한 줄)의 본체만 남는다 | 띄우기 · Job · 엑셀 `Value2` + 서식 · 묶음 펴기 · 글 밖 셈 전부 |
+| mail-secretary `secretary/office_read.ps1` · `secretary/office.py` | **부른다** — 홈에 깔린 이 스킬의 `scripts/office-read.ps1` 을 점 소싱하고 계약 판(`$DRM_OFFICE_READ_CONTRACT`)을 제가 아는 판과 견주며, 남긴 글자 함수(`Get-KeptPrint` · `Find-KeptText` · `Save-KeptText`)가 있나를 이름으로 잰다. 그 저장소에는 제 꼴(JSON 한 줄)의 본체만 남는다 | 띄우기 · Job · 엑셀 `Value2` + 서식 · 묶음 펴기 · 글 밖 셈 · 남긴 글자의 자리 · 이름 · 지문 · 꼴 전부 |
 | atelier `app/ps/xlsx_text.ps1` · `app/ps/pptx_text.ps1` · `app/ps/word_pkg.ps1` | **일부러 갈랐다** — 평문 길과 같은 글자를 내야 하는 제 계약 · 골든이 있어 이 스킬을 안 부른다. 결함의 종류는 같으니 고친 결함을 저쪽에서도 찾아본다 | 앱 띄우기 · 시한 · 객체 모델에서 뽑기(워드는 `WordOpenXML` 되감기라 다르다) |
 | 동료 `sejuone-cloud/pgpt-one-click-connect` `app/optional-skills/office-com-read` | **일부러 갈랐다** — 이 스킬에서 갈라져 나가 각자 넓어진다. 빌릴 때는 규격만(아래 절) | 읽기 · 그림 꺼내기 · 세션 규칙 |
 

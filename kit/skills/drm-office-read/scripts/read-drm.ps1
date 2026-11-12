@@ -75,12 +75,10 @@ if ($OutDir -and -not (Test-Path -LiteralPath $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 }
 
-# ── 남긴 글자 — 같은 바이트의 파일은 앱을 안 띄우고 남긴 글자로 답한다 ─────────────
-$KeepDir = if ($env:DRM_READ_TEXT_DIR) { $env:DRM_READ_TEXT_DIR } else { Join-Path $HOME '.drm-read-text' }
-$KEPT_SPLIT = "`n---`n"                # 남긴 파일에서 머리와 글자를 가르는 줄
-$TEXT_EXT = '.md'                      # 글자 파일의 꼴 — 남긴 것도 -OutDir 것도. Fasoo 가 감싸지 않는 꼴이어야 한다
-$UTF8_PLAIN = New-Object System.Text.UTF8Encoding($false)
-$keptPath = @{}                        # 읽을 파일 → 남길 자리. 지문을 못 낸 파일(다른 프로세스가 쥔 파일)은 안 들고, 읽기만 한다
+# ── 남긴 글자 — 같은 바이트의 파일은 앱을 안 띄우고 남긴 글자로 답한다(자리 · 꼴 · 지문은 읽는 부품의 Find-KeptText · Save-KeptText) ──
+$KeepDir = Get-KeptTextDir
+$TEXT_EXT = $KEPT_TEXT_EXT             # -OutDir 의 글자 파일도 남긴 것과 같은 꼴 — Fasoo 가 감싸지 않는 꼴이어야 한다
+$keptPrint = @{}                       # 읽을 파일 → 지문. 지문을 못 낸 파일(다른 프로세스가 쥔 파일)은 안 들고, 읽기만 한다
 $allCount = $targets.Count
 $keptCount = 0
 if (-not $NoKeep) {
@@ -97,26 +95,16 @@ if (-not $NoKeep) {
     foreach ($file in $targets) {
         $name = [System.IO.Path]::GetFileName($file)
         try {
-            $print = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
-            $keptPath[$file] = Join-Path $KeepDir ('{0}.{1}{2}' -f $name, $print, $TEXT_EXT)
+            $keptPrint[$file] = Get-KeptPrint -LiteralPath $file
         } catch {
             $toRead.Add($file)
             continue
         }
-        $dest = $keptPath[$file]
-        $at = -1
-        if (Test-Path -LiteralPath $dest) {
-            # try 안이다 — 이 스크립트는 Stop 으로 돌아, 남긴 파일 하나를 못 열면(다른 프로세스가 쥐었다) 판 전체가 죽는다
-            try {
-                $raw = [System.IO.File]::ReadAllText($dest, [System.Text.Encoding]::UTF8)
-                $at = $raw.IndexOf($KEPT_SPLIT)
-            } catch { $at = -1 }
-        }
-        if ($at -lt 0) { $toRead.Add($file); continue }      # 없거나 · 못 읽거나 · 머리가 없으면(이 손이 남긴 것이 아니다) 새로 읽어 덮는다
-        $first = ($raw.Substring(0, $at) -split "`n")[0].Trim()
-        $text = $raw.Substring($at + $KEPT_SPLIT.Length)
-        Write-Output "[남긴 글자] $name — 같은 파일을 앞서 읽어 앱을 안 띄웠다 · $dest"
-        Write-Output "    읽을 때의 한 줄: $first"
+        $kept = Find-KeptText -Print $keptPrint[$file]
+        if (-not $kept) { $toRead.Add($file); continue }      # 없거나 · 못 읽거나 · 머리가 없으면(이 손이 남긴 것이 아니다) 새로 읽어 남긴다
+        $text = $kept.Text
+        Write-Output "[남긴 글자] $name — 같은 파일을 앞서 읽어 앱을 안 띄웠다 · $($kept.Path)"
+        Write-Output "    읽을 때의 한 줄: $($kept.Line)"
         if ($OutDir) {
             $text | Out-File -LiteralPath (Join-Path $OutDir "$name$TEXT_EXT") -Encoding utf8
         } elseif ($Preview -gt 0 -and $text.Length -gt 0) {
@@ -176,12 +164,11 @@ try {
                 $line = "[$mark] $name — $appName · 글자 $len$(Format-Visual -Counts $read.Visual -AppName $appName) · 머리 [$head]"
                 Write-Output $line
 
-                if ($keptPath.ContainsKey($file)) {
+                if ($keptPrint.ContainsKey($file)) {
                     # 남기기가 져도 읽기는 선다 — 글자는 이미 뽑혔고, 못 남긴 것은 다음에 한 번 더 읽힐 뿐이다
                     try {
-                        $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
-                        [System.IO.File]::WriteAllText($keptPath[$file], "$line`n원본 $file · 뽑은 때 $stamp$KEPT_SPLIT$text", $UTF8_PLAIN)
-                        Write-Output "    남겼다 — $($keptPath[$file])"
+                        $saved = Save-KeptText -Name $name -Print $keptPrint[$file] -Line $line -Source $file -Text $text
+                        Write-Output "    남겼다 — $saved"
                     } catch {
                         Write-Output "    못 남겼다 — $($_.Exception.Message)"
                     }
