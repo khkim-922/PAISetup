@@ -8,9 +8,6 @@
 //   --restart — 디버깅 포트 없이 도는 Edge 를 이 명령이 다 끝내고 포트로 다시 띄운다. 사람이 동의한 뒤에만 준다(종료 2). 다시 띄운
 //     Edge 는 끝낸 탭을 되살리고(--restore-last-session) 로그인 탭 없이 뜬다 — 되살린 사내 탭 하나를 로그인 주소로 넘겨 늘 새로
 //     로그인한다(되살린 세션은 포털이 깨져 있어 받아 보지 않는다). 그런 탭이 없을 때만 로그인 탭을 연다.
-//   --at-logon — 받아 보기를 건너뛰고 띄우기부터 한다(포트를 연 Edge 가 이미 있으면 여느 차례대로 받는다). 로그온 작업이 곁의
-//     edge_start.js 로 부르는 갈래다 — 로그온 직후에는 남은 세션 파일이 살아 있어도 사람이 Edge 를 먼저 열기 전에 포트를 세워야 한다.
-//     Edge 가 이미 떠 있으면 아무것도 안 끝내고 종료 2 로 물러난다.
 //   --profile — 기본 프로필 대신 그 폴더를 프로필로 띄운다. 기본 프로필로 띄웠는데 포트가 안 열리는 Chromium 136 이상의 Edge(종료 3)
 //     에서만, 사람이 동의한 뒤에 준다 — 그 프로필은 평소 Edge 와 쿠키를 안 나눠 그 로그인이 평소 Edge 의 메일 세션을 끊는다.
 //   환경변수 EDGE_DEBUG_PORT 포트 · SESSION_LOGIN_HOSTS 로그인 화면 호스트 · SESSION_LOGIN_WAIT_SECONDS 로그인 시한 — 뜻과 기본값은
@@ -282,10 +279,9 @@ async function launch(exe, start, { profile, restore }) {
 // ── 갈래 ─────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const opts = { pass: [], restart: false, profile: '', atLogon: false };
+  const opts = { pass: [], restart: false, profile: '' };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--restart') opts.restart = true;
-    else if (argv[i] === '--at-logon') opts.atLogon = true;
     else if (argv[i] === '--profile') { opts.profile = argv[++i] || ''; if (!opts.profile) throw new Exit(1, '--profile 뒤에 폴더를 준다'); }
     else if (argv[i].startsWith('--')) throw new Exit(1, `모르는 선택: ${argv[i]}`);
     else opts.pass.push(argv[i]);                    // 세션 파일 · domino · ecm — 받는 손이 가린다
@@ -301,8 +297,7 @@ async function main(argv) {
   const start = vdi ? epLogin : env('COMPANY_LOGIN_URL', COMPANY_LOGIN);
   const fallback = vdi ? '' : epLogin;               // VDI 는 처음부터 평소 EP 로그인 화면이라 넘길 곳이 없다
 
-  // 로그온 갈래는 입구의 포트만 본다 — 포트 찾기(PowerShell)가 사람이 Edge 를 먼저 열 틈을 만들지 않게
-  let got = opts.atLogon && !await version(cfg.port) ? { code: RECEIVED.NO_EDGE, file: '', said: '' } : await receiveAll(opts.pass);
+  let got = await receiveAll(opts.pass);
   if (settled(got)) return finish(got);
 
   const deadline = Date.now() + cfg.loginMs;
@@ -366,7 +361,7 @@ function ecmFailed(got) {
   throw new Exit(4, `EP 로그인은 섰는데 ECM 세션을 탭으로도 못 받았다${got.said ? ` — ${got.said}` : ''}. 다음: 멈추고 이 말을 사람에게 그대로 전한다 — 다시 로그인할 일이 아니다`);
 }
 
-// 명령 한 번 — main 의 종료 값으로 프로세스를 끝낸다. 곧바로 부를 때와 로그온 자리(edge_start.js)가 부를 때 같은 길이다
+// 명령 한 번 — main 의 종료 값으로 프로세스를 끝낸다
 function run(argv) {
   main(argv).then(code => process.exit(code), error => {
     console.error(error.message);
@@ -374,7 +369,7 @@ function run(argv) {
   });
 }
 
-// run 은 로그온 자리가, restoredLoginTab 은 검사(check_session.js)가 쓴다 — --restart 자체는 그 PC 의 Edge 를 다 끝내서 못 잰다
-module.exports = { run, restoredLoginTab };
+// restoredLoginTab 은 검사(check_session.js)가 쓴다 — --restart 자체는 그 PC 의 Edge 를 다 끝내서 못 잰다
+module.exports = { restoredLoginTab };
 
 if (require.main === module) run(process.argv.slice(2));

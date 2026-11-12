@@ -1,4 +1,4 @@
-// edge_session.js 와 입구(ep_login.js · 로그온 자리 edge_start.js)의 계약을 가짜 SSO · 가짜 메일함 · 가짜 ECM 과 이 검사가 띄운 Edge(임시 프로필 · 창 없음)로 잰다 —
+// edge_session.js 와 입구(ep_login.js)의 계약을 가짜 SSO · 가짜 메일함 · 가짜 ECM 과 이 검사가 띄운 Edge(임시 프로필 · 창 없음)로 잰다 —
 // 127.0.0.1 · localhost 밖으로 아무것도 안 나가고, 쓰는 사람의 Edge 에는 붙지 않는다.
 //
 // 층 — 쓰는 사람의 계약. 세션 파일에 회사 밖 사이트 · 로그인 화면의 쿠키가 새나(사람의 다른 세션 열쇠가 파일로 나간다) · 붙는 손이
@@ -283,10 +283,6 @@ async function entry(edge, port, closed, file) {
   // 포트 없이 도는 Edge(검사의 Edge 가 msedge.exe 로 돈다) — --restart 없이는 아무것도 안 끝내고 2
   let r = await run([file], { EDGE_DEBUG_PORT: closed });
   judge('입구 — 포트 없이 Edge 가 돌면 종료 2 · 아무 Edge 도 안 끝낸다', r.code === 2 && Boolean(await version(port)) && /--restart/.test(r.out),
-    `종료 ${r.code} · ${r.out.trim()}`);
-  // 로그온 작업의 자리 — 남은 세션 파일을 안 보고 띄우기부터 간다. Edge 가 떠 있으면 안 끝내고 2
-  r = await run([file], { EDGE_DEBUG_PORT: closed }, path.join(TREE, 'edge_start.js'));
-  judge('로그온 자리(edge_start.js) — 띄우기부터 · Edge 가 떠 있으면 종료 2 · 아무 Edge 도 안 끝낸다', r.code === 2 && Boolean(await version(port)) && !/붙었다/.test(r.out),
     `종료 ${r.code} · ${r.out.trim()}`);
 
   // 통합 인증도 평소 로그인도 안 넘는다 → 시한에 4 · 파일을 안 쓴다
