@@ -6,6 +6,7 @@
     python -X utf8 -I company_calendar.py show [오늘|내일|모레|YYYY-MM-DD] [끝 날]  # 기본 오늘 · 내일 · 내 일정함만
     python -X utf8 -I company_calendar.py show … --shared [--who 이름]              # 공유받은 일정함도 · 그 사람 것만
     python -X utf8 -I company_calendar.py calendars                                 # 공유받은 일정함 목록
+        show 의 답이 OUT_BYTES 를 넘으면 뒤 날짜의 줄부터 덜어 내고(하루를 가운데서 안 끊는다) ``more`` 가 이어 볼 구간을 든다
     python -X utf8 -I company_calendar.py preview --title T --start "YYYY-MM-DD HH:MM" --end "…" [--note N]   # 안 바꾼다
     python -X utf8 -I company_calendar.py add     --title T --start "…" --end "…" [--note N] --seen <preview 의 seen>   # ⚠ 바꾼다
     python -X utf8 -I company_calendar.py delete <handle>                                                    # ⚠ 바꾼다
@@ -91,6 +92,12 @@ def load_ep_session():
     return ep_session
 
 
+try:
+    OUT_BYTES = load_ep_session().OUT_BYTES   # 답 하나의 크기 — 형제 스킬 ep-login 의 한 자리(까닭은 그 자리의 주석)
+except Stop:
+    OUT_BYTES = 0                             # 형제 스킬이 없다 — main 이 같은 까닭으로 멈추고 말한다
+
+
 def no_session(ep, got) -> Stop:
     """받는 손이 못 선 까닭을 종료 값으로 옮긴다 — 남은 파일 없는 2 와 3 은 ep-login(종료 3), 1 과 경로 없는 0 은 도구 고장."""
     tail = (got.said.splitlines() or [""])[-1]
@@ -139,6 +146,23 @@ def row(agenda, e) -> dict:
         out.update(calendar=e.calendar, private=e.private)
         del out["handle"], out["pending"]  # 참석 답은 그 일정함을 가진 사람의 것이라 내 초대로 읽히지 않게 뺀다
     return out
+
+
+def shown(out: dict) -> int:
+    """답이 표준 출력에서 차지할 바이트 수 — main 이 찍는 꼴 그대로 센다."""
+    return len(json.dumps(out, ensure_ascii=False, indent=1).encode("utf-8"))
+
+
+def fit_days(out: dict, last: date, again: str) -> None:
+    """보기의 답이 OUT_BYTES 를 넘으면 뒤 날짜의 줄부터 덜어 낸다 — 하루를 가운데서 끊지 않는다(그날이 비어 보이면 그날에 일정을
+    겹쳐 잡는다). 덜었으면 ``more`` 가 이어 볼 구간을 든다. 하루치만으로 넘치면 그 하루는 그대로 낸다."""
+    lists = [k for k in ("events", "shared") if k in out]
+    days = sorted({r["day"] for k in lists for r in out[k]})
+    while len(days) > 1 and shown(out) > OUT_BYTES:
+        cut = days.pop()
+        for k in lists:
+            out[k] = [r for r in out[k] if r["day"] < cut]
+        out["more"] = f"다음: {cut} 부터는 안 실었다 — show {cut} {last.isoformat()}{again} 로 이어 본다"
 
 
 def shared_books(reader, who: str | None) -> list:
@@ -210,6 +234,7 @@ def run(args, session: pathlib.Path) -> dict:
             out["shared"] = [row(agenda, e) for e in shared]
             if failed:
                 out["shared_failed"] = failed
+        fit_days(out, last, (" --shared" if args.shared else "") + (f" --who {args.who}" if args.who else ""))
         return out
     if args.command in ("preview", "add"):
         w = want_of(args, agenda)

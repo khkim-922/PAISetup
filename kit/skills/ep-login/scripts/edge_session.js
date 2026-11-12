@@ -1,5 +1,5 @@
 // 쓰는 사람의 Edge 에서 사내 세션(메일 · 일정 · 다른 Domino 앱 · ECM)의 쿠키를 받아 세션 파일로 남긴다 — 사내 앱을 다루는
-// 손(스킬 company-mail · company-calendar · company-ecm · company-meeting-room)이 그 파일을 읽는다. 새로 로그인하지 않고 창 · 탭을 열지 않아, 아무 세션도 안 끊고 사람 화면에 아무것도
+// 손(스킬 company-mail · company-calendar · company-ecm · company-meeting-room · company-regulation)이 그 파일을 읽는다. 새로 로그인하지 않고 창 · 탭을 열지 않아, 아무 세션도 안 끊고 사람 화면에 아무것도
 // 안 뜬다. 그 손들은 세션 파일이 있으면 그것으로 먼저 돌고 서버가 거절할 때만 이 손을 부른다(ep_session.session_first) —
 // 붙어서 끝까지 1초 안팎이고 몇 번을 불러도 같다.
 //

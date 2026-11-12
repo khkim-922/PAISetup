@@ -43,7 +43,9 @@ PC 에서만 닿는다).
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
+import html
 import http.server
 import json
 import logging
@@ -175,12 +177,20 @@ class FakeMail:
 
 @dataclass
 class FakeSent:
-    """보낸편지함의 메일 한 통 — 목록의 xname 이 수신인이다."""
+    """보낸편지함의 메일 한 통 — 목록의 xname 이 수신인이다. ``people`` · ``bcc`` 는 그 메일의 받는 사람 칸 둘(``ToCcUserInfoJson``
+    · ``BccUserInfoJson``)의 글이고, None 이면 그 칸이 없다(404)."""
     unid: str
     subject: str
     stamp: str
     to: str
     in_view: bool = True
+    people: str | None = None
+    bcc: str | None = None
+
+
+def people_field(*items: dict) -> str:
+    """보낸 메일의 받는 사람 칸 글 — 실물 꼴(``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 잇고 HTML 이스케이프 · 회사에서 잼)."""
+    return html.escape(inbox.PEOPLE_SEP.join(f"{i['key']}{inbox.PEOPLE_ITEM}{json.dumps(i, ensure_ascii=False)}" for i in items))
 
 
 U = {name: f"{i:032X}" for i, name in enumerate((
@@ -263,8 +273,16 @@ def scenario():
                  OWNER["user_name_eng"]), "T", unread=False, folder="(Drafts)", draft=True, to_102=None,
                  html="<p>초안 본문 — 시험 일정</p>"),
     ]
+    # 받는 사람 칸 — 사람 하나 · 고름 창에서 체크한 조직 하나(받는 사람) · 사외 주소 하나(참조) · 숨은참조 칸의 사람(field 없음)
+    dept = {"type": "dept", "key": "n320_00(07)", "dept_name": "소재시험그룹", "dept_code": "n320_00(07)",
+            "email": "dept_n320_00(07)@nuri.example", "field": "send_to"}
     sent = [FakeSent(U["sent_1"], "회신: 주간 생산 보고", "20261103083000",
-                     "CN=서하늘/OU=HN/O=NURI, 송재민 <jm.song@nuri.example>"),
+                     "CN=서하늘/OU=HN/O=NURI, 송재민 <jm.song@nuri.example>",
+                     people=people_field({"type": "user", "key": COLLEAGUE["key"], "user_name": COLLEAGUE["user_name"],
+                                          "email": COLLEAGUE["email"], "field": "send_to"}, dept,
+                                         {"type": "email", "name": "", "key": EXTERNAL, "email": EXTERNAL, "field": "copy_to"}),
+                     bcc=people_field({"type": "user", "key": TRAINEE["key"], "user_name": TRAINEE["user_name"],
+                                       "email": TRAINEE["email"]})),
             FakeSent(U["sent_2"], "견적 요청", "20261102150000", EXTERNAL, in_view=False)]
     return mails, sent
 
@@ -275,10 +293,10 @@ class FakeDomino:
     """127.0.0.1 의 Domino 웹메일 흉내. ``paths`` 는 받은 요청, ``changes`` 는 메일함을 바꾼 요청."""
 
     def __init__(self, *, session: str = "ok", folders=(), all_view: bool = True, recipient_view: bool = True,
-                 draft_view: bool = True):
+                 draft_view: bool = True, no_bcc: bool = False):
         mails, sent = scenario()
         self.mails = {m.unid: m for m in mails}
-        self.sent = sent
+        self.sent = [dataclasses.replace(x, bcc=None) for x in sent] if no_bcc else sent
         self.session = session            # ok · login(200 HTML) · redirect(302 SSO)
         self.extra_folders = tuple(folders)   # 메일이 없어도 보기 목록에 서는 폴더
         self.all_view = all_view
@@ -445,6 +463,12 @@ class FakeDomino:
         parts = rest.split("/")
         if rest == f"/0/{SIGNATURE_UNID}/Body?OpenField":
             return self.send(h, 200, SIGNATURE_DOC.encode(), "text/html; charset=UTF-8")
+        sent = {x.unid: x for x in self.sent}
+        if len(parts) == 4 and parts[1] == "0" and parts[2] in sent:
+            text = {f"{f}?OpenField": v for f, v in zip(inbox.SENT_PEOPLE_FIELDS, (sent[parts[2]].people, sent[parts[2]].bcc))}
+            if parts[3] in text and text[parts[3]] is not None:
+                return self.send(h, 200, text[parts[3]].encode(), "text/html; charset=UTF-8")
+            return self.send(h, 404 if parts[3] in text else 501, b"<html>no</html>", "text/html")
         if len(parts) >= 4 and parts[1] == "0" and parts[2] in self.mails:
             mail, tail = self.mails[parts[2]], "/".join(parts[3:])
             if tail == "Body?OpenField":
@@ -1029,6 +1053,22 @@ def check_sent_list_recipients():
         sent = {s.unid: s for s in mailbox.list_sent(count=50)}
         assert set(sent) == {U["sent_1"], U["sent_2"]}, sent
         assert sent[U["sent_2"]].recipients == (inbox.Recipient("", EXTERNAL),), sent[U["sent_2"]]
+
+
+def check_sent_mail_people_keep_orgs_and_fields():
+    """보낸 메일 한 통의 받는 사람 — 고름 창에서 체크한 조직은 부서원으로 안 풀리고 조직 하나로 · 칸(받는 사람 · 참조 · 숨은참조)이
+    서고 · 숨은참조 칸이 없으면 숨은참조가 없는 것이고 · 받는 사람 칸이 없으면 빈 명단 대신 멈춘다. 「지난번과 같이 보내」가 이
+    명단으로 서서, 틀리면 다른 사람에게 메일이 간다(넷 가운데 「조용히 넓게」)."""
+    R = inbox.Recipient
+    with stage() as (_, mailbox):
+        got = mailbox.sent_people(U["sent_1"])
+        assert got == (R(COLLEAGUE["user_name"], COLLEAGUE["email"], COLLEAGUE["key"], inbox.PERSON_TYPE, "to"),
+                       R("소재시험그룹", "dept_n320_00(07)@nuri.example", "n320_00(07)", inbox.DEPT_TYPE, "to"),
+                       R("", EXTERNAL, EXTERNAL, inbox.EMAIL_TYPE, "cc"),
+                       R(TRAINEE["user_name"], TRAINEE["email"], TRAINEE["key"], inbox.PERSON_TYPE, "bcc")), got
+        raises(inbox.MailboxError, lambda: mailbox.sent_people(U["sent_2"]))
+    with stage(no_bcc=True) as (_, mailbox):
+        assert [r.field for r in mailbox.sent_people(U["sent_1"])] == ["to", "to", "cc"], "숨은참조 칸이 없는데 숨은참조가 섰다"
 
 
 def check_directory_and_session_probe():

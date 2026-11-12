@@ -7952,14 +7952,15 @@ $FreeSkills = [ordered]@{
   'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
   'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
-  # 사내 앱(메일 · 일정 · 문서함 · 회의실)을 대화로 다룬다 — 넷이 형제 폴더 ep-login 의 세션 손을 불러 쓰므로 다섯은 한 묶음으로
-  #   같은 홈에 선다. 사내(게이트웨이에 닿는 자리 `$inside`)에서만 깐다 — 사외에서는 사내 앱 화면이 안 열려 쓸 데가 없고, 사외로
-  #   돈 회차는 기록에 든 이 다섯을 백업 자리로 걷는다
+  # 사내 앱(메일 · 일정 · 문서함 · 회의실 · 사규)을 대화로 다룬다 — 다섯이 형제 폴더 ep-login 의 세션 손을 불러 쓰므로 여섯은 한
+  #   묶음으로 같은 홈에 선다. 사내(게이트웨이에 닿는 자리 `$inside`)에서만 깐다 — 사외에서는 사내 앱 화면이 안 열려 쓸 데가 없고,
+  #   사외로 돈 회차는 기록에 든 이 여섯을 백업 자리로 걷는다
   'ep-login'                 = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   'company-mail'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   'company-calendar'         = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   'company-ecm'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   'company-meeting-room'     = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'company-regulation'       = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
   'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
   # agy 에게 맡기고 한도에서 넘긴다 — 맡기는 쪽은 Claude · Codex

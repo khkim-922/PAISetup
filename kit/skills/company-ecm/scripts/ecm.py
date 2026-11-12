@@ -73,7 +73,10 @@
     옮기지도 않는다.** 그 폴더는 에이전트의 것이고(ECM 화면에서 사람이 열어도 같은 자리에 같은 꼴로 쌓인다), 파일은 DRM 에 감긴 채라
     그 PC 의 오피스 밖에서는 안 열린다. 비우는 일은 에이전트의 정리 프로그램 몫이다. 읽는 손이 뽑은 평문은 이 손이 지은 임시
     폴더(``ecm-read-…``)에 잠시 놓였다가 글자를 읽자마자 그 폴더째 지우고 부르는 쪽에만 간다 — 지우기가 실패해도 말없이 넘어가므로
-    (``ignore_errors``) 그때는 그 폴더에 남는다.
+    (``ignore_errors``) 그때는 그 폴더에 남는다. 명령줄의 ``read`` 는 글자가 답 하나의 크기
+    (``ep_session.OUT_BYTES``)에 안 들면 — ``--as-file`` 을 주면 짧아도 — 그 글자를 임시 폴더 아래 ``TEXT_DIR`` 에 파일로 남기고
+    경로를 낸다. 긴 문서를 통째로 대화에 싣지 않고 모델이 그 파일을 나눠 읽고 찾게 하는 자리다 — 문서를 받을 때마다 창이 떠서
+    쪽마다 다시 받게 할 수 없다. 그 파일은 ``TEXT_KEEP_HOURS`` 를 넘기면 다음 ``read`` 가 지운다.
 
 환경변수(``from_env``)
     ``ECM_URL``           ECM 주소 — ``…/ECM`` 까지                         기본 ``http://swpecm.posco.net:7091/ECM``
@@ -305,6 +308,8 @@ DEFAULT_PERIOD = "6M"
 # 화면 기간 필터의 값 그대로 — 밖의 값은 MSG_E_0056 으로 거절되거나(1Y · 2Y) 거절 없이 틀린 목록이 온다(1W)
 PERIODS = ("1M", "6M", "12M", "24M", "36M", "60M", "ALL")
 DEFAULT_PER_PAGE = 15
+TEXT_DIR = "company-ecm-text"          # read --as-file 이 뽑은 글자를 두는 자리 — 임시 폴더 아래(저장소 밖)
+TEXT_KEEP_HOURS = 24                   # 그 글자 파일을 두는 시간 — 넘긴 것은 다음 read 가 지운다(평문이 PC 에 쌓이지 않게)
 OBJECT_ID = re.compile(r"^[0-9A-Fa-f]{16}$")
 AGENT_FIELD_SEPARATOR = "\x08"
 AGENT_ACTION_VIEW = "VIEW"
@@ -1762,6 +1767,44 @@ def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> t
         shutil.rmtree(out_dir, ignore_errors=True)
 
 
+def text_dir() -> pathlib.Path:
+    return pathlib.Path(tempfile.gettempdir()) / TEXT_DIR
+
+
+def sweep_texts() -> None:
+    """남겨 둔 글자 파일 가운데 TEXT_KEEP_HOURS 를 넘긴 것을 지운다 — 못 지운 것은 다음 판이 다시 본다."""
+    for path in text_dir().glob("*.txt"):
+        try:
+            if time.time() - path.stat().st_mtime > TEXT_KEEP_HOURS * 3600:
+                path.unlink()
+        except OSError:
+            continue
+
+
+def keep_text(text: str, source: pathlib.Path, object_id: str) -> pathlib.Path:
+    """뽑은 글자를 ``TEXT_DIR`` 에 파일로 남기고 그 경로를 낸다 — 이름은 받은 파일의 이름과 문서 열쇠다."""
+    folder = text_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    name = re.sub(r"[^\w.\-]+", "_", source.stem)[:80].strip("_") or "document"
+    path = folder / f"{name}-{object_id}.txt"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def tell_read(got: ReadResult, object_id: str, *, as_file: bool = False) -> None:
+    """읽은 결과를 낸다 — 한 답(``ep_session.OUT_BYTES``)에 드는 글자는 화면에, 안 드는 글자는(``as_file`` 이면 짧아도) 파일로
+    남기고 경로만. 화면에 찍으면 통째로 실리거나 잘리고, 파일이면 모델이 나눠 읽고 찾는다."""
+    head = "\n".join([got.summary or "[읽음]", *_describe_open(got.opened), f"창: {WINDOW_WORD[got.window]}"])
+    if as_file or len(f"{head}\n---\n{got.text}\n".encode("utf-8")) > ep_session.OUT_BYTES:
+        path = keep_text(got.text, pathlib.Path(got.opened.path), object_id)
+        print(head)
+        print(f"글자 {len(got.text)} 자를 파일로 남겼다: {path} — 그 파일을 앞에서부터 나눠 읽거나 낱말로 찾아 필요한 대목만 본다"
+              f"(통째로 읽지 않는다). 다 본 뒤 지운다 — 안 지워도 {TEXT_KEEP_HOURS} 시간 뒤 다음 read 가 지운다. 다른 자리로 옮기지 않는다")
+        return
+    print(head + "\n---")
+    print(got.text)
+
+
 def check_readable(ecm: Ecm, object_id: str, *, level_checked: bool = False) -> Security | None:
     """글자를 대화로 들이는 일(읽기 · 편집 열기) 앞의 문 — 기밀이면 ``Classified``, 등급을 못 읽으면 ``SecurityUnread`` 로 멈춘다.
 
@@ -1876,6 +1919,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--allow-picker", action="store_true", help="기본 앱이 없어도 열어 사람이 고르는 창에서 고르게 둔다")
         if name == "read":
             p.add_argument("--not-classified", action="store_true", help=NOT_CLASSIFIED_HELP)
+            p.add_argument("--as-file", action="store_true",
+                           help=f"짧은 문서도 글자를 대화에 싣지 않고 임시 폴더의 파일로 남긴다 — 긴 문서는 이 깃발 없이도 그렇게 된다. {TEXT_KEEP_HOURS} 시간 뒤 지워진다")
     p = sub.add_parser("version", help="문서의 최종 버전")
     p.add_argument("object_id")
     p = sub.add_parser("security", help="문서의 보안등급 — 속성 화면만 읽는다(파일을 안 받는다)")
@@ -2010,9 +2055,9 @@ def main(argv: list[str] | None = None) -> int:
             opened = open_document(ecm, agent, args.object_id, allow_picker=args.allow_picker)
             print("\n".join(_describe_open(opened)))
             return EXIT_OK
+        sweep_texts()
         got = read_document(ecm, agent, args.object_id, allow_picker=args.allow_picker, level_checked=args.not_classified)
-        print("\n".join([got.summary or "[읽음]", *_describe_open(got.opened), f"창: {WINDOW_WORD[got.window]}", "---"]))
-        print(got.text)
+        tell_read(got, args.object_id, as_file=args.as_file)
         return EXIT_OK
     except (SessionMissing, SessionExpired) as exc:
         print(exc, file=sys.stderr)

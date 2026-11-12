@@ -6,7 +6,8 @@
 주소로 가나(본문에 적힌 주소가 받는 사람이 되나) · 바꾸는 손이 그 메일 하나만 바꾸고 다시 읽어 맞았나를 대나 · 세션 손의
 종료 값(0 · 1 · 2 · 3)과 끊긴 메일함 세션을 바르게 갈라 사람을 스킬 ep-login 으로 보내나 · 안 읽음 목록이 받아 온 창만 보고
 「안 읽음 0」이라 하나 · 보낸 분으로 거른 목록과 요약이 창 밖을 빼고 세나 · 여러 통 옮기기 준비가 통마다 보기를 다시 받나 · 임시저장이
-주소록에 없는 받는 사람을 싣거나 나가나(사람이 새 메일을 놓치거나 맞는 주소를 고친다).
+주소록에 없는 받는 사람을 싣거나 나가나(사람이 새 메일을 놓치거나 맞는 주소를 고친다) · 조직도에서 고른 사람의 주소 파일이 고른
+사람과 다르거나 빼려던 사람이 든 채 넘어가나.
 남기는 까닭(check-design §1 넷) — 길이 분명하다(이 스크립트는 대화하는 모델이 부르고, 보내기 · 읽음은 그 모델의 한 걸음이다) ·
 나간 메일과 바뀐 읽음은 되돌릴 수 없고 조용하다(사람은 웹메일을 열기 전까지 모른다) · 쓰는 사람의 이름으로 엉뚱한 메일이
 나가거나 새 메일을 못 알아본다 · 다른 무엇도 안 잡는다(곁의 손 검사는 손만 재고 이 명령의 확인 단계를 모른다).
@@ -104,6 +105,7 @@ import mail  # noqa: E402 — 잴 스크립트
 EP = mail.load_ep_session()   # 받는 손의 종료 값 — 형제 스킬 ep-login 의 것
 
 U, OWNER, PEER = fakes_inbox.U, fakes_inbox.OWNER, fakes_inbox.PEER
+PEER_KEY = fakes_inbox.COLLEAGUE["key"]
 COOKIES = WORK / "session.json"
 CALLS = WORK / "standin.log"
 
@@ -277,7 +279,7 @@ def check_search_all_includes_drafts_and_points_to_read():
         line = next(x for x in out.splitlines() if U["sent_1"] in x)
         assert "· 보낸편지함 ·" in line and f'--folder "{mail.SENT}"' in line, line
         code, got = run("read", U["sent_1"], "--folder", mail.SENT, "--scan", "1")
-        assert code == 0 and "받는 분:" in got and "보낸편지함" in got, got
+        assert code == 0 and "받는 사람 1 명 · 조직 1:" in got and "보낸편지함" in got, got
         code, got = run("read", U["sent_2"], "--scan", "1")
         assert code == 0 and "보낸편지함" in got, f"--folder 없는 read 가 보낸편지함을 안 찾았다:\n{got}"
         code, out = run("search", "시험", "--in", "inbox")
@@ -393,6 +395,72 @@ def check_org_lists_the_department_alone_unless_asked():
         assert code == 0 and fakes_inbox.OWNER["email"] in out and PEER[1] not in out, f"하위 조직 사람이 기본으로 들었다:\n{out}"
         code, out = run("org", "소재사업부", "--sub", "--company", C)
         assert code == 0 and PEER[1] in out and fakes_inbox.OWNER["email"] in out, f"--sub 가 하위 조직을 안 넣었다:\n{out}"
+
+
+def check_org_hands_the_picked_people_as_an_address_file():
+    """조직도에서 고른 사람의 주소 파일 — 고른 사람의 주소만 들고 뺀 사람은 안 든다 · 명단에 없는 사람을 빼라면 멈춘다(못 뺀 채
+    넘기면 빼려던 사람에게 메일이 간다)."""
+    with stage() as (_, run):
+        C = fakes_inbox.COMPANY
+        to_file = WORK / "org-to.txt"
+        code, out = run("org", "소재사업부", "--sub", "--except", PEER[1], "--emails-file", str(to_file), "--company", C)
+        assert code == 0, out
+        lines = [x for x in to_file.read_text(encoding="utf-8").splitlines() if x and not x.startswith("#")]
+        assert fakes_inbox.OWNER["email"] in lines and PEER[1] not in lines, f"주소 파일이 고른 사람과 다르다: {lines}\n{out}"
+        listed = [x for x in out.splitlines() if re.match(r"\d+\. ", x)]
+        assert len(listed) == len(lines) and all(a in out for a in lines), f"주소 파일과 보인 명단이 다르다: {lines}\n{out}"
+        code, out = run("org", "소재사업부", "--sub", "--except", "nobody@example.com", "--company", C)
+        assert code != 0 and "명단에 없다" in out, f"명단에 없는 사람을 빼라는데 멈추지 않았다:\n{out}"
+        code, out = run("org", "소재사업부", "--sub", "--match", fakes_inbox.OWNER["user_name"], "--emails-file", str(to_file),
+                        "--company", C)
+        lines = [x for x in to_file.read_text(encoding="utf-8").splitlines() if x and not x.startswith("#")]
+        assert code == 0 and lines == [fakes_inbox.OWNER["email"]], f"--match 가 그 말이 든 사람만 고르지 않았다: {lines}\n{out}"
+
+
+def check_long_bodies_fit_the_tool_limit_and_keep_the_send_key():
+    """긴 본문 — 읽기는 쪽마다 몫(바이트) 밑이고 이으면 빠짐도 겹침도 없다 · 긴 인용이 든 판을 보여도 뒤에 찍는 확인 열쇠가 대화
+    도구의 출력 한도(30 KB · 잰 것) 안에 든다(열쇠가 잘리면 보내기가 그 자리에서 안 선다)."""
+    text = "".join(f"{n} 째 줄이다. 납기와 수량을 다시 확인한다.\n" for n in range(3000))
+    got, start = "", 0
+    for _ in range(200):
+        end = mail.fit_body(text, start, mail.DEFAULT_MAX_CHARS, 20000)
+        assert end > start and len(text[start:end].encode("utf-8")) <= 20000, f"한 쪽이 몫을 넘었다: {start}–{end}"
+        got, start = got + text[start:end], end
+        if start >= len(text):
+            break
+    assert got == text, "쪽을 이은 본문이 원래 본문과 다르다"
+    state = {"to": [f"CN=사람{n}/OU=X/O=Y" for n in range(60)], "cc": [], "bcc": [], "subject": "Re: 긴 인용",
+             "body": "<p>" + text.replace("\n", "<br>") + "</p>", "files": ["a.xlsx:20480"]}
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        mail.show_draft_state(state, mail.load_inbox(), fakes_inbox.COMPANY)
+        print("확인 열쇠: 0123456789abcdef")
+    shown = out.getvalue()
+    assert len(shown.encode("utf-8")) < 30000 - 1000, f"긴 인용이 든 판이 {len(shown.encode('utf-8'))} 바이트다 — 열쇠 뒤의 줄이 잘린다"
+    assert "그 뒤는" in shown, f"본문을 끊고도 끊었다고 말하지 않았다:\n{shown[-300:]}"
+
+
+def check_same_as_last_time_keeps_the_org_as_one_org():
+    """「지난번과 같이」 — recipients 가 보낸 메일의 칸마다 주소 파일을 쓰고, save-draft 가 그 파일로 사람은 사람으로 · 조직은 부서원으로
+    안 풀고 조직 하나로(SendTo 에 부서 코드) 칸을 그대로 싣는다. 틀리면 다른 사람에게 메일이 간다(넷 가운데 「조용히 넓게」)."""
+    C, dept = fakes_inbox.COMPANY, "dept_n320_00(07)@nuri.example"
+    files = {f: WORK / f"last-{f}.txt" for f in ("to", "cc", "bcc")}
+    with stage() as (box, run):
+        code, out = run("recipients", U["sent_1"], *[x for f, p in files.items() for x in (f"--{f}-file", str(p))])
+        assert code == 0 and "소재시험그룹(조직)" in out and "숨은참조 1 명" in out, out
+        lines = {f: [x for x in p.read_text(encoding="utf-8").splitlines() if x and not x.startswith("#")] for f, p in files.items()}
+        assert lines == {"to": [PEER[1], dept], "cc": [], "bcc": [fakes_inbox.TRAINEE["email"]]}, lines
+        # 사외 주소는 임시보관함 길이 못 싣는다 — 파일에 주석으로만 들고 답이 그 주소를 댄다. 세 칸의 파일을 그대로 줘도 저장이 선다
+        assert fakes_inbox.EXTERNAL in files["cc"].read_text(encoding="utf-8") and fakes_inbox.EXTERNAL in out, \
+            f"사외 주소를 말없이 버렸다:\n{out}"
+        code, out = run("save-draft", "--subject", "x", "--body-file", body_file("x"), "--to-file", str(files["to"]),
+                        "--cc-file", str(files["cc"]), "--bcc-file", str(files["bcc"]), "--company", C)
+        assert code == 0 and len(box.saved_forms) == 1 and not box.sent_now, out
+        form = box.saved_forms[0]
+        assert form["SendTo"] == f"{PEER_KEY}; n320_00(07)", form["SendTo"]
+        assert form["BlindCopyTo"] == fakes_inbox.TRAINEE["key"], form["BlindCopyTo"]
+        assert fakes_inbox.HOMONYM["key"] not in form["SendTo"], "조직을 부서원으로 풀었다"
+        assert "소재시험그룹(조직)" in out, out
 
 
 def check_draft_saves_to_the_drafts_and_never_sends():
@@ -619,6 +687,27 @@ def check_session_hand_exits_route_the_person():
     with stage(session="redirect") as (_, run):
         code, out = run("read", U["alone"])
         assert code == mail.EXIT_SESSION and "ep-login" in out, out
+
+
+def check_read_drops_text_the_reader_cannot_see():
+    """받는 사람 눈에 안 보이는 글은 대화로 안 넘어간다 — 숨긴 요소 · 바탕색 글 · 스크립트는 본문에서, 폭 없는 문자는 제목에서도
+    걷히고, 걷었다는 사실은 한 줄로 선다. 보이는 글은 다 남는다."""
+    zw = "​"
+    with stage() as (box, run):
+        m = box.mails[U["alone"]]
+        m.subject = f"시험{zw} 일정 검토 요청"
+        m.text = None
+        m.html = ('<p>보이는 첫 줄</p><div style="display:none">숨긴지시하나</div>'
+                  '<p><span style="color:#ffffff">흰글자둘</span>보이는 둘째 줄</p><script>스크립트셋</script>')
+        code, out = run("read", U["alone"])
+        assert code == 0, out
+        for gone in ("숨긴지시하나", "흰글자둘", "스크립트셋", zw):
+            assert gone not in out, f"안 보이는 글 {gone!r} 이 나왔다:\n{out}"
+        for kept in ("보이는 첫 줄", "보이는 둘째 줄", "시험 일정 검토 요청"):
+            assert kept in out, f"보이는 글 {kept!r} 이 빠졌다:\n{out}"
+        assert "숨긴 글 3덩이를 걷었다" in out, f"걷었다는 줄이 없다:\n{out}"
+        code, out = run("list")
+        assert code == 0 and zw not in out and "시험 일정 검토 요청" in out, f"목록에 폭 없는 문자가 남았다:\n{out}"
 
 
 CHECKS = [value for name, value in sorted(globals().items()) if name.startswith("check_")]

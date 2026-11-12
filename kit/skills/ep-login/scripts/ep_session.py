@@ -1,5 +1,5 @@
 """받는 손(``edge_session.js``)을 파이썬에서 부르고, 그 손이 남긴 세션 파일을 읽는 한 자리 — 사내 앱 스킬의 얇은 명령(company-mail ·
-company-calendar · company-ecm · company-meeting-room)과 그 앱 손(``inbox.py`` · ``agenda.py`` · ``ecm.py`` · ``mrs.py``)이 이 폴더를
+company-calendar · company-ecm · company-meeting-room · company-regulation)과 그 앱 손(``inbox.py`` · ``agenda.py`` · ``ecm.py`` · ``mrs.py`` · ``cbsop.py``)이 이 폴더를
 ``sys.path`` 에 넣고 싣는다. 손을 돌리고 종료 값 · 끝 줄 경로 · 손의 말을 닫힌 꼴 하나로 낸다 — 어느 종료 값에 무엇을 할지는 부르는
 쪽이 제 종료 값과 메시지의 「다음」 으로 옮긴다.
 
@@ -47,6 +47,8 @@ company-calendar · company-ecm · company-meeting-room)과 그 앱 손(``inbox.
 0 인데 끝 줄이 있는 파일의 절대 경로가 아니면 ``file`` 이 None 이다 — 부르는 쪽이 도구 고장으로 읽는다.
 
 손의 자리 — 이 파일 곁의 ``edge_session.js``. 검사가 대역을 세울 때만 환경변수 ``EP_SESSION_HAND`` 가 그 자리를 바꾼다.
+
+**사내 앱 스킬이 대화에 내는 답의 크기도 여기 한 자리다**(``OUT_BYTES``) — 얇은 명령들이 이 모듈을 실으며 함께 읽는다.
 """
 
 from __future__ import annotations
@@ -70,6 +72,11 @@ HAND_ENV = "EP_SESSION_HAND"
 DEFAULT_FILE_RE = re.compile(r"DEFAULT_FILE\s*=\s*'([^']+)'")   # 손의 글에 적힌 기본 자리 — 옮겨 적지 않고 거기서 읽는다
 OK, TOOL, NO_EDGE, NOT_LOGGED_IN, ECM_HANDOFF = 0, 1, 2, 3, 4   # edge_session.js 의 종료 값 — 닫힌 다섯
 TIMEOUT_SECONDS = 180                              # ECM 넘김(열두 걸음 · 걸음마다 5 초)까지 든다
+# 사내 앱 스킬의 얇은 명령이 대화에 내는 답 하나의 크기(바이트) — 이 수가 사는 한 자리다. 대화 도구는 명령의 출력이 30 KB 를 넘으면
+# 파일로 빼고 모델에게는 앞 2 KB 만 싣는다(잰 것 — 스킬 company-regulation 의 references/SOURCES.md 「대화 도구에서 잰 것」). 넘친
+# 답은 종료 0 이고 그럴듯해 아무도 모른다. 한글은 한 자가 3 바이트라 글자 수로는 못 맞춘다 — 명령이 이 수 안에서 줄 · 본문을 덜어
+# 내고 이어 볼 자리를 댄다(끊는 법은 답의 꼴마다 달라 명령이 든다)
+OUT_BYTES = 24000
 
 
 @dataclasses.dataclass(frozen=True)

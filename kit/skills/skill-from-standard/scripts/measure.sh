@@ -23,9 +23,17 @@ if [ -e "$PROJ/.claude/skills" ] || [ -e "$PROJ/.claude/settings.json" ]; then
   echo "작업 폴더에 .claude/skills 나 .claude/settings.json 이 있다 — 두 팔에 다 실려 재기가 안 선다: $PROJ" >&2; exit 4
 fi
 [ -f "$HOME_DIR/.credentials.json" ] || { echo "로그인 파일이 없다($HOME_DIR/.credentials.json) — 이 자리에서는 못 잰다" >&2; exit 4; }
+# ⚠ 두 팔은 로그인 파일의 **사본**으로 돈다 — 도는 중에 토큰이 만료돼 한 팔이 갱신하면 원본과 다른 팔의 사본이 죽고, 사본을 지우면
+#   그 PC 의 로그인이 끊긴다. 곧 만료될 토큰으로는 안 돌리고(MEASURE_LOGIN_MARGIN 분 · 기본 30), 그래도 갱신이 났으면 끝에 새 사본을
+#   원본에 되돌린다(곁의 login.py).
+LEFT="$(python -X utf8 -I "$HERE/login.py" left "$HOME_DIR/.credentials.json")" || { echo "로그인 파일에서 토큰 만료 시각을 못 읽었다 — 이 자리에서는 못 잰다" >&2; exit 4; }
+if [ "$LEFT" -lt "${MEASURE_LOGIN_MARGIN:-30}" ]; then
+  echo "로그인 토큰이 ${LEFT} 분 뒤 만료된다 — 도는 중에 갱신되면 이 PC 의 로그인이 끊긴다. 만료 뒤 claude 를 한 번 열어 갱신한 다음 돌린다" >&2; exit 4
+fi
 for s in "$@"; do rm -rf "$OUT/home-with/skills/$(basename "$s")"; cp -r "$s" "$OUT/home-with/skills/"; done
 find "$OUT/home-with/skills" -name __pycache__ -type d -prune -exec rm -rf {} +
-trap 'rm -rf "$OUT/home-with" "$OUT/home-without"' EXIT      # 로그인 사본과 계정 정보가 든 홈을 통째로 걷는다 — 복사보다 먼저 건다
+# 로그인 사본과 계정 정보가 든 홈을 통째로 걷는다 — 복사보다 먼저 건다. 걷기 전에 갱신된 사본이 있으면 원본에 되돌린다
+trap 'python -X utf8 -I "$HERE/login.py" keep "$HOME_DIR/.credentials.json" "$OUT/home-with/.credentials.json" "$OUT/home-without/.credentials.json"; rm -rf "$OUT/home-with" "$OUT/home-without"' EXIT
 cp "$HOME_DIR/.credentials.json" "$OUT/home-with/"; cp "$HOME_DIR/.credentials.json" "$OUT/home-without/"
 SYS='이 자리는 회사 PC 가 아니고 명령을 실행할 도구가 없다. 그래도 실제로 하듯이 일하라 — 무엇을 어떤 차례로 부르고(명령 줄 그대로), 사람에게 무엇을 묻거나 알릴지(그 말 그대로)를 적고, 사람의 답이 필요한 자리에서 멈춘다. 스킬이 있으면 그 스킬대로.'
 one() {   # $1 열쇠 · $2 팔

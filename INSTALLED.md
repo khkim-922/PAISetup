@@ -643,8 +643,8 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 |---|---|
 | `drm-office-read` | 회사 DRM 이 감싼 오피스 · PDF 에서 글자를 뽑고, 페이지를 그림으로 떠서 표 · 배치를 본다 |
 | `inhouse-app` | 사내 시스템(LLM 게이트웨이 · SSO · 배포 · 회사 CA)에 붙는 코드라면 앱이든 짧은 스크립트든 들고, 거기서 막힌 문제도 푼다 — 회사 코딩 기준은 그 안의 장을 콕 집어 연다 |
-| `company-mail` · `company-calendar` · `company-ecm` · `company-meeting-room` | 사내 메일함 · 일정 · 문서함(ECM) · 회의실 예약을 대화로 다룬다 — 보내기 · 넣기 · 고치기 · 지우기는 그 한 건을 사람이 대화에서 확인한 뒤에만 한다 |
-| `ep-login` | 위 넷이 빌려 쓰는 사내 세션을 평소 Edge 에서 받아 둔다 — 넷이 이 스킬의 세션 손을 불러 쓰므로 다섯은 늘 함께 깔린다 |
+| `company-mail` · `company-calendar` · `company-ecm` · `company-meeting-room` · `company-regulation` | 사내 메일함 · 일정 · 문서함(ECM) · 회의실 예약 · 사규를 대화로 다룬다(사규는 찾고 읽기만) — 보내기 · 넣기 · 고치기 · 지우기는 그 한 건을 사람이 대화에서 확인한 뒤에만 한다 |
+| `ep-login` | 위 다섯이 빌려 쓰는 사내 세션을 평소 Edge 에서 받아 둔다 — 다섯이 이 스킬의 세션 손을 불러 쓰므로 여섯은 늘 함께 깔린다 |
 | `agent-envelope` | 다른 에이전트에게 일을 맡길 때 누구에게 맡길지 고르고 작업 지시서를 짓는 맡기기 스킬의 앞문이다 |
 | `agy-background` | agy 에게 일을 맡기고, 한도나 과부하에 걸리면 다음 모델로 넘어간다 |
 | `codex-copilot-background` | Codex 에게 일을 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다 |

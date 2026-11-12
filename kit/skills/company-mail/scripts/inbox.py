@@ -116,6 +116,12 @@
       ``<objectId>doc<16 hex></objectId>`` 에서 ``doc`` 을 뗀 값이 문서함이 문서를 여는 열쇠다(``MS_OBJECT_ID`` · 받은편지함
       ECM 첨부 29 통 모두 머리가 있었고 pptx · xlsx 23 편이 그 열쇠로 열렸다 · 남의 문서함 문서도 · mail-secretary#28 셋째 판).
       본문 링크의 ``OBJECTID`` 는 6/29 가 이 값과 달라 열쇠로 쓰지 않는다
+    * 보낸 메일의 받는 사람은 보낸편지함 목록 열(``xname``)에 첫 사람만 들고, 한 통의 ``SendTo?OpenField`` 는 501 이다.
+      다 드는 자리는 그 메일의 ``ToCcUserInfoJson``(받는 사람 · 참조) · ``BccUserInfoJson``(숨은참조 · 없으면 404) 칸이다 — 편집
+      화면이 저장할 때 받는 사람마다 ``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 이어 쓴 글이다. JSON 의 ``type`` 이 ``user``
+      (열쇠는 Notes 이름) · ``dept``(웹메일 고름 창에서 조직을 체크한 것 · 열쇠는 ``<부서 코드>(<회사 약칭>)`` · 부서 이름 ·
+      부서 주소가 든다) · ``email``(사외 주소)이고 ``field`` 가 ``send_to`` · ``copy_to`` 다. 보기 ``!전체목록추출용`` 의 ``$102``
+      는 보낸 메일 대부분에 줄이 없고, 든 줄도 마지막 사람들이 마침표로 붙어 온다 — 보낸 메일의 받는 사람으로 쓰지 않는다 (A)
     * 받은편지함 보기(``XML_Inbox``)는 받은편지함만 든다 — 쓰는 사람의 규칙이 하위 폴더로 옮긴 메일은 그 폴더의 보기에만 있다 (A2)
     * 폴더 목록은 보기 목록(``/api/data/collections``)의 ``@folder: true`` 항목이다. 시스템 폴더(``($Inbox)`` · ``($Trash)`` ·
       ``(Drafts)`` · ``(Sent)`` · ``($Alarms)`` · ``(TrashBackup)`` · ``(규칙)`` · ``(폴더템플릿)``)는 제목이 ``(`` 로 시작한다.
@@ -245,6 +251,12 @@ COLUMN_SIZE, COLUMN_IMPORTANCE, COLUMN_ROLE = "xsize", "xImportance", "xrtype"
 COLUMN_ATTACHMENTS, COLUMN_READ, COLUMN_RELATED = "attachment", "read", "xrelatedid"
 # 보낸편지함 목록 열 — 이 보기의 xname 은 수신인이다
 SENT_COLUMN_TO = "xname"
+# 보낸 메일 한 통의 받는 사람 칸 — 웹메일 편집 화면이 저장할 때 받는 사람 · 참조(한 칸)와 숨은참조를 「열쇠 ITEM JSON」 을 SEP 로 이어 쓴다
+SENT_PEOPLE_FIELDS = ("ToCcUserInfoJson", "BccUserInfoJson")
+PEOPLE_ITEM, PEOPLE_SEP = "-=-ITEM-=-", "-=-SEP-=-"
+# 그 칸의 받는 사람 갈래(type) · 칸(field) — 숨은참조 칸의 항목은 field 가 비어 온다(회사에서 잼)
+PERSON_TYPE, DEPT_TYPE, GROUP_TYPE, EMAIL_TYPE = "user", "dept", "group", "email"
+PEOPLE_FIELD_OF = {"send_to": "to", "copy_to": "cc", "bcopy_to": "bcc"}
 # 받는 사람 목록 보기의 열 — 날짜 · 수/발신 · 수신인 · 발신인
 VIEW_COLUMN_DATE, VIEW_COLUMN_DIRECTION, VIEW_COLUMN_TO, VIEW_COLUMN_FROM = "$101", "$91", "$102", "$103"
 
@@ -378,10 +390,15 @@ class Sender:
 
 @dataclass(frozen=True)
 class Recipient:
-    """받는 사람 목록의 한 사람. 주소 없이 오는 사람은 ``notes`` 가 열쇠다 — Notes 이름(``CN=…/O=…``)이나 ``<ID>(<약칭>)``."""
+    """받는 사람 목록의 한 사람. 주소 없이 오는 사람은 ``notes`` 가 열쇠다 — Notes 이름(``CN=…/O=…``)이나 ``<ID>(<약칭>)``.
+
+    ``kind`` 는 받는 사람 갈래(``PERSON_TYPE`` · ``DEPT_TYPE`` · ``GROUP_TYPE`` · ``EMAIL_TYPE`` · 모르면 빈 글자), ``field`` 는
+    든 칸(``to`` · ``cc`` · ``bcc`` · 모르면 빈 글자)이다 — 보낸 메일 한 통의 받는 사람 칸(``Mailbox.sent_people``)만 채운다."""
     name: str
     addr: str
     notes: str = ""
+    kind: str = ""
+    field: str = ""
 
 
 @dataclass(frozen=True)
@@ -498,10 +515,13 @@ class DraftPerson:
     """임시메일의 받는 사람 하나 — ``notes`` 는 Notes 이름(``CN=…`` · 웹메일의 SendTo 칸), ``email`` · ``name`` 은 InetSendTo 칸.
 
     웹메일 화면이 다시 열 때 받는 사람 칸을 이 Notes 이름으로 채운다(실측) — 주소만 주면 화면에 사람으로 안 선다.
+    ``dept`` 면 사람이 아니라 조직 하나다 — ``notes`` 는 부서 코드(``O500_06(02)``), ``email`` 은 부서 주소, ``name`` 은 부서
+    이름이다. 웹메일 고름 창에서 조직을 체크해 저장한 것과 같은 꼴이고, 편집 화면이 그 조직으로 다시 연다(회사에서 잼).
     """
     notes: str
     email: str
     name: str
+    dept: bool = False
 
 
 @dataclass(frozen=True)
@@ -690,6 +710,27 @@ class Mailbox:
                    for e in root.iter("viewentry")]
         log.info("보낸편지함 목록: %d통", len(entries))
         return entries
+
+    def sent_people(self, unid: str) -> tuple[Recipient, ...]:
+        """보낸 메일 한 통의 받는 사람 · 참조 · 숨은참조 모두 — 웹메일이 넣은 차례대로, 조직은 조직 하나로(``kind`` 가 ``dept``).
+
+        그 메일의 받는 사람 칸(``SENT_PEOPLE_FIELDS``)을 푼다. 숨은참조 칸이 없으면(404) 숨은참조가 없는 것이다. 받는 사람 ·
+        참조 칸이 없으면 이 꼴로 저장되지 않은 메일이라 ``MailboxError`` — 빈 명단으로 내면 「지난번과 같이」가 아무도 없이 선다.
+        """
+        out: list[Recipient] = []
+        for name in SENT_PEOPLE_FIELDS:
+            try:
+                body, kind = self._get(f"/0/{_unid(unid)}/{name}?OpenField")
+            except _Missing:
+                if name == SENT_PEOPLE_FIELDS[0]:
+                    raise MailboxError(f"그 메일에 받는 사람 칸({name})이 없다 — 웹메일 편집 화면으로 쓴 메일이 아니다: {unid}") from None
+                continue
+            text = body.decode(_charset(kind), errors="replace")
+            if _looks_like_login(text):
+                raise SessionExpired("받는 사람 칸 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+            out += parse_sent_people(text, default_field="bcc" if name == SENT_PEOPLE_FIELDS[1] else "")
+        log.info("보낸 메일의 받는 사람: %d", len(out))
+        return tuple(out)
 
     def _view_list(self) -> list[dict]:
         """보기 목록(``/api/data/collections``) — 이 메일함 손이 사는 동안 한 번만 받는다."""
@@ -1425,6 +1466,7 @@ def read_only_patterns(db_path: str) -> tuple[re.Pattern, ...]:
         rf"^{db}/[^/?]+\?ReadViewEntries(&[\w$%.=-]*)*$",
         rf"^{db}/api/data/collections$",
         rf"^{db}/0/{_HEX32}/Body\?OpenField$",
+        rf"^{db}/0/{_HEX32}/({'|'.join(SENT_PEOPLE_FIELDS)})\?OpenField$",
         rf"^{db}/0/{_HEX32}/Body/M\d+(\.\d+)*\?OpenElement$",
         rf"^{db}/0/{_HEX32}/\$FILE/[^?#]+$",
         rf"^{db}/{SEARCH_AGENT}\?open(&[\w$%.()+=-]*)*$",
@@ -1446,12 +1488,13 @@ class OrgChart:
     members: dict
 
     def find_depts(self, words: str) -> list[Dept]:
-        """이름 · 코드가 그 말과 같은 부서 — 같은 것이 없으면 이름에 그 말이 든 부서다. 띄어쓰기 · 대소문자는 안 가린다."""
-        want = _squash(words)
+        """이름 · 코드(회사 약칭 괄호는 붙여도 떼도 된다)가 그 말과 같은 부서 — 같은 것이 없으면 이름에 그 말이 든 부서다. 띄어쓰기 ·
+        가운뎃점 · 대소문자는 안 가린다."""
+        want = squash(words)
         if not want:
             return []
-        exact = [d for d in self.depts.values() if want in (_squash(d.name), _squash(d.code))]
-        return exact or [d for d in self.depts.values() if want in _squash(d.name)]
+        exact = [d for d in self.depts.values() if want in (squash(d.name), squash(d.code), squash(d.code.split("(", 1)[0]))]
+        return exact or [d for d in self.depts.values() if want in squash(d.name)]
 
     def path(self, code: str) -> list[Dept]:
         """맨 위 부서부터 그 부서까지."""
@@ -1493,8 +1536,8 @@ class OrgChart:
         return d.name if d else code
 
 
-def _squash(text: str) -> str:
-    return re.sub(r"\s+", "", text or "").casefold()
+def squash(text: str) -> str:
+    return re.sub(r"[\s·ㆍ()]+", "", text or "").casefold()
 
 
 # ── 주소록의 한 사람 ─────────────────────────────────────────────────────
@@ -1707,6 +1750,31 @@ def parse_people(raw: str) -> tuple[Recipient, ...]:
             token.append(ch)
     people.append("".join(token))
     return tuple(p for p in (parse_person(t) for t in people) if p.name or p.addr or p.notes)
+
+
+def parse_sent_people(text: str, default_field: str = "") -> list[Recipient]:
+    """보낸 메일의 받는 사람 칸 글(``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 이은 것 · HTML 이스케이프)을 푼다.
+
+    ``field`` 는 JSON 의 칸이 앞서고, 비었으면 ``default_field`` 다. JSON 이 깨진 항목은 버리지 않고 열쇠만 든 사람으로 둔다 —
+    버리면 함께 받은 사람 수가 조용히 준다."""
+    out = []
+    for chunk in html.unescape(text or "").split(PEOPLE_SEP):
+        key, _, raw = chunk.strip().partition(PEOPLE_ITEM)
+        key = key.strip()
+        if not key:
+            continue
+        try:
+            item = json.loads(raw)
+        except json.JSONDecodeError:
+            item = {}
+        if not isinstance(item, dict):
+            item = {}
+        kind = str(item.get("type") or "")
+        name = str((item.get("dept_name") if kind == DEPT_TYPE else item.get("user_name") or item.get("name")) or "")
+        addr = str(item.get("email") or "")
+        field = PEOPLE_FIELD_OF.get(str(item.get("field") or ""), default_field)
+        out.append(Recipient(name=name, addr=addr, notes=key, kind=kind, field=field))
+    return out
 
 
 def parse_person(token: str) -> Recipient:

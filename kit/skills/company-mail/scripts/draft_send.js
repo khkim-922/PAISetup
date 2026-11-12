@@ -9,6 +9,7 @@
 //                                                     인용 위에 넣고 [임시저장]만 누른다 — 안 보낸다. 새 임시메일의 unid 와 저장 직전의 판 · 그 판의
 //                                                     확인 열쇠를 낸다. 다시 연 판이 같으면 그 열쇠로 send 가 선다 — 다르면 send 가 종료 4 로 멈춘다
 //   node draft_send.js revise <unid> [--subject 제목] [--body-file <HTML 파일>] [--to 주소,…] [--cc 주소,…] [--bcc 주소,…]
+//   (reply · revise 의 --depts <JSON> — 받는 사람 가운데 부서 주소 → 부서 이름. 그 주소는 조직 하나로 넣는다)
 //                                                     임시보관함의 메일 하나를 그 편집 화면에서 고쳐 [임시저장]만 누른다 — 안 보낸다. 준 칸만
 //                                                     바꾼다: 제목은 갈아 끼우고, 받는 사람 칸은 비우고 준 사람들로 채우고(빈 값이면 비우기만),
 //                                                     글은 본문 맨 앞의 넣은 글 표지(TEXT_MARK) 자리만 갈아 끼운다 — 서명 · 인용은 그대로 둔다.
@@ -53,6 +54,8 @@ const REPLY_TYPES = ['Reply', 'AllReply', 'Forward'];
 // 넣은 글을 감싼 div 의 id 머리 — 임시메일을 다시 고칠 때 이 자리만 갈아 끼운다. 새 메일을 저장하는 쪽(mail.py 의 TEXT_MARK)과 같은 글자다
 const TEXT_MARK = 'cm-text-';
 const PEOPLE_FIELDS = {'--to': 'send_to', '--cc': 'copy_to', '--bcc': 'bcopy_to'};   // revise 의 인자 → 편집 화면의 받는 사람 칸 id
+// reply · revise 의 --depts <JSON> — 받는 사람 가운데 부서 주소 → 부서 이름(부르는 쪽이 받아 둔 조직도에서 짓는다)
+const deptsOf = rest => { const i = rest.indexOf('--depts'); return i < 0 ? {} : JSON.parse(rest[i + 1] || '{}'); };
 const SAVE_SECONDS = 60;           // [임시저장] 뒤 저장 답을 기다리는 시한 — 전달의 첨부를 다시 싣는 데 든다
 const BODY_SECONDS = 10;           // 편집기가 넣은 글을 그리기를 기다리는 시한 — setBodyValue 는 늦게 든다(실측)
 const LOOKUP_MS = 20000;           // 주소록 한 번의 시한 — 답이 없어도 이 손이 제 창을 닫고 끝나게
@@ -239,19 +242,23 @@ async function openReplyEditor(cdp, unid, type) {
   throw fail(EXIT.MISSING, `[${type}] 화면이 ${READY_SECONDS} 초 안에 안 열렸다 — 원래 메일이 없거나 웹메일이 거절했다: ${unid}`);
 }
 
-// 받는 사람 칸들에 사내 주소록의 사람을 넣는다 — 화면의 「비서 참조자 자동추가」와 같은 길(ag_org_search_json → tokenInput · duplicate_list).
+// 받는 사람 칸들에 사내 주소록의 사람 · 부서를 넣는다 — 화면의 「비서 참조자 자동추가」와 같은 길(ag_org_search_json → tokenInput · duplicate_list).
 // ``pairs`` 는 [칸 id, 주소] 들, ``clear`` 는 넣기 전에 비울 칸 id 들. 주소록에는 함께 묻고, 다 선 뒤에야 칸을 비우고 준 차례대로
 // 넣는다 — 한 주소라도 사람이 꼭 하나가 아니면 아무 칸도 안 건드리고 「주소 — 까닭」을 낸다(쓰는 사람이 연 화면에 반쯤 고친 판을
 // 안 남긴다). 다 넣었으면 빈 글자
-const addPeople = (pairs, clear = []) => `(function(){
-  var pairs = ${JSON.stringify(pairs)}, clear = ${JSON.stringify(clear)};
+// ``depts`` 는 부서 주소 → 부서 이름 — 그 주소는 사람 대신 조직 하나로 넣는다(고름 창에서 조직을 체크한 것과 같은 항목). 주소록 찾기는
+// 부서를 type=org 에만 내고(type=memo 는 부서 0 곳) 부서 주소로는 안 내고 부서 이름으로 낸다(회사에서 잼) — 이름으로 찾고 주소가
+// 같은 부서 하나를 고른다
+const addPeople = (pairs, clear = [], depts = {}) => `(function(){
+  var pairs = ${JSON.stringify(pairs)}, clear = ${JSON.stringify(clear)}, depts = ${JSON.stringify(depts)};
   function find(addr){ return new Promise(function(ok){
+    var dept = depts[addr.toLowerCase()];
     $.ajax({type:'GET', dataType:'json', cache:false, timeout:${LOOKUP_MS},
-      url:'/' + _form.info.orgDb + '/ag_org_search_json?OpenAgent&type=memo&company=' + add_code
-        + '&search_key=' + encodeURIComponent(addr) + '&email_search_YN=Y',
+      url:'/' + _form.info.orgDb + '/ag_org_search_json?OpenAgent&type=' + (dept ? 'org' : 'memo') + '&company=' + add_code
+        + '&search_key=' + encodeURIComponent(dept || addr) + (dept ? '' : '&email_search_YN=Y'),
       success:function(d){
-        var hit = (d.user || []).filter(function(u){ return (u.email || '').toLowerCase() === addr.toLowerCase(); });
-        ok(hit.length === 1 ? {hit: hit[0]} : {why: '그 주소의 사람이 주소록에 ' + hit.length + ' 명이다'});
+        var hit = ((dept ? d.dept : d.user) || []).filter(function(u){ return (u.email || '').toLowerCase() === addr.toLowerCase(); });
+        ok(hit.length === 1 ? {hit: hit[0]} : {why: (dept ? '그 주소의 부서가 주소록에 ' : '그 주소의 사람이 주소록에 ') + hit.length + (dept ? ' 곳이다' : ' 명이다')});
       },
       error:function(x){ ok({why: '주소록이 답하지 않았다(' + x.status + ')'}); }});
   }); }
@@ -324,7 +331,7 @@ async function saveReply(cdp, unid, rest) {
     await readState(ev);
     const draft = await ev('_form.info.unid');
     const pairs = [...to.map(a => ['send_to', a]), ...cc.map(a => ['copy_to', a])];
-    const why = pairs.length ? await ev(addPeople(pairs, to.length ? ['send_to'] : [])) : '';
+    const why = pairs.length ? await ev(addPeople(pairs, to.length ? ['send_to'] : [], deptsOf(rest))) : '';
     if (why) throw fail(EXIT.MISSING, `${why}. 저장하지 않았다`);
     await putBody(ev, html);
     const state = JSON.parse(await ev(STATE));
@@ -382,7 +389,7 @@ async function reviseDraft(cdp, unid, rest) {
     // 저장 안 된 반쪽 판을 안 남긴다
     if (html !== null && !(await ev(`!!(${FIND_TEXT})(${PARSED})`))) throw fail(EXIT.MISSING, NO_TEXT);
     const pairs = fields.flatMap(name => list(opt(name)).map(a => [PEOPLE_FIELDS[name], a]));
-    const why = fields.length ? await ev(addPeople(pairs, fields.map(name => PEOPLE_FIELDS[name]))) : '';
+    const why = fields.length ? await ev(addPeople(pairs, fields.map(name => PEOPLE_FIELDS[name]), deptsOf(rest))) : '';
     if (why) throw fail(EXIT.MISSING, `${why}. 저장하지 않았다`);
     if (html !== null) await swapText(ev, html);
     if (has('--subject')) await ev(`document.forms[0].Subject.value = ${JSON.stringify(opt('--subject'))}; 1`);

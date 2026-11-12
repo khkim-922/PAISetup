@@ -55,6 +55,7 @@ import contextlib
 import hashlib
 import http.server
 import importlib
+import io
 import json
 import os
 import pathlib
@@ -1002,6 +1003,39 @@ def check_acrobat_closes_only_the_received_pdf(ecm_mod):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def check_long_text_goes_to_a_file_and_kept_text_is_swept(ecm_mod):
+    """긴 문서 — 글자가 화면에 안 실리고(대화 도구의 출력 한도 30 KB 밑 · 잰 것) 글자 전체가 든 파일의 경로가 온다 · 짧은 문서는
+    글자가 화면에 온다 · 남긴 글자 파일은 둘 시간을 넘긴 것만 지워진다(평문이 PC 에 쌓이거나, 읽는 중인 파일이 사라지지 않게)."""
+    text = "".join(f"{n} 째 줄이다. 설비 점검 결과와 조치 계획을 적는다.\n" for n in range(4000))
+
+    def told(body: str) -> str:
+        opened = ecm_mod.Opened(path=pathlib.Path("C:/ecm/VIEW/1/월간 보고서.pptx"), ticket=None, progid="PowerPoint.Show.12", app_written=False)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            ecm_mod.tell_read(ecm_mod.ReadResult(text=body, summary="[읽음]", opened=opened, window="closed"), "0123456789abcdef")
+        return out.getvalue()
+    with tempfile.TemporaryDirectory(prefix="ecm-text-check-") as work:
+        real = tempfile.tempdir
+        tempfile.tempdir = work                          # 글자 파일의 자리(임시 폴더 아래)를 이 시험 폴더로 돌린다
+        try:
+            short = told("한 쪽짜리 메모다.\n")
+            assert "한 쪽짜리 메모다." in short and not list((pathlib.Path(work) / ecm_mod.TEXT_DIR).glob("*.txt")), f"짧은 문서를 화면에 안 냈거나 파일로 남겼다:\n{short}"
+            shown = told(text)
+            files = list((pathlib.Path(work) / ecm_mod.TEXT_DIR).glob("*.txt"))
+            assert len(shown.encode("utf-8")) < 30000 and "1000 째 줄이다" not in shown, f"긴 문서의 글자가 화면에 실렸다({len(shown.encode('utf-8'))} 바이트)"
+            assert len(files) == 1 and str(files[0]) in shown and files[0].read_text(encoding="utf-8") == text, "긴 문서의 글자 파일이 없거나 글자 전체가 아니다"
+            kept = files[0]
+            old = kept.with_name("old-fedcba9876543210.txt")
+            old.write_text("x", encoding="utf-8")
+            past = time.time() - (ecm_mod.TEXT_KEEP_HOURS + 1) * 3600
+            os.utime(old, (past, past))
+            ecm_mod.sweep_texts()
+            assert not old.exists(), "둘 시간을 넘긴 글자 파일이 남았다"
+            assert kept.exists(), "방금 남긴 글자 파일을 지웠다"
+        finally:
+            tempfile.tempdir = real
+
+
 def main(argv: list[str]) -> int:
     office = "--office" in argv
     rest = [a for a in argv if a != "--office"]
@@ -1012,7 +1046,7 @@ def main(argv: list[str]) -> int:
     app_mod = importlib.import_module("default_app")
     print(f"잰다: {tree / 'ecm.py'}")
     checks = [(check_reads_reach_and_changes_never_leave, ecm_mod), (check_edit_locks_only_what_checkin_can_upload, ecm_mod),
-              (check_classified_is_never_received, ecm_mod),
+              (check_classified_is_never_received, ecm_mod), (check_long_text_goes_to_a_file_and_kept_text_is_swept, ecm_mod),
               (check_register_sends_only_the_screens_two_posts, ecm_mod),
               (check_access_sends_only_the_screens_save_after_the_confirmed_plan, ecm_mod),
               (check_existing_choice_is_never_overwritten, app_mod), (check_new_app_toasts_fill_only_the_missing, app_mod)]
