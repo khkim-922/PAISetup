@@ -67,6 +67,12 @@ import inbox  # noqa: E402 — 잴 나무가 sys.path 에 먼저 서야 한다
 logging.getLogger(inbox.__name__).addHandler(logging.NullHandler())
 
 DB = "/02/mail2/200001.nsf"   # 파일 번호 = 메일함을 쓰는 사람(OWNER)의 사번 — 회사의 꼴
+# 서명 문서 — 회사 서명 문서 본문의 꼴(문서 껍데기 · 메일 전체를 덮는 style · 서명 그림 조각 주소 · 회사에서 잼)
+SIGNATURE_UNID = "877BE4287F1F3313492582DD001A3E18"
+SIGNATURE_DOC = ('<html lang="ko"><head><title>제목 없음</title><style type="text/css">#dext_body { font-size:11pt; }</style>'
+                 '<meta http-equiv="Content-Type" content="text/html" charset="utf-8"></head><body id="dext_body">'
+                 f'<table><tr><td><img src="{DB}/0/{SIGNATURE_UNID.lower()}/Body/M1.2?OpenElement"></td>'
+                 '<td><strong>서명 사람</strong> 시험부/차장</td></tr></table></body></html>')
 COOKIE = ("DomAuthSessId", "good-session")
 # 끊긴 세션에 사내 메일함이 내는 답의 첫머리(실측) — 200 · text/html
 LOGIN_PAGE = ('<html><head><script>document.cookie = "EP_CERTIFY_CA=; path=/; domain=.posco.net;";'
@@ -437,6 +443,8 @@ class FakeDomino:
         if low.startswith(SEARCH_AGENT):
             return self.search(h, rest)
         parts = rest.split("/")
+        if rest == f"/0/{SIGNATURE_UNID}/Body?OpenField":
+            return self.send(h, 200, SIGNATURE_DOC.encode(), "text/html; charset=UTF-8")
         if len(parts) >= 4 and parts[1] == "0" and parts[2] in self.mails:
             mail, tail = self.mails[parts[2]], "/".join(parts[3:])
             if tail == "Body?OpenField":
@@ -673,7 +681,9 @@ class FakeDomino:
 def memo_page() -> str:
     """빈 쓰기 화면(``Memo?openform``)의 흉내 — 회사의 쓰기 화면에서 손이 읽는 것만 같은 꼴로 든다: 폼 ``_Memo`` 의 저장 주소 ·
     숨은 칸(⚠ 저장 칸 SaveAgent 는 빈 값 · textarea 가 input 뒤에 온다 · 고름 칸은 type 이 radio · file) · 화면 정보 JSON 의 unid."""
-    return (f'<html><script>var _info = {{"unid":"{"D6B5F158C2520BF849258EAC0025268D"}","SaveCount":"0"}};</script>'
+    return (f'<html><script>var _info = {{"unid":"{"D6B5F158C2520BF849258EAC0025268D"}","SaveCount":"0",'
+            f'"signatureUnid":"{SIGNATURE_UNID}"}};'
+            'var profile = {"signatueYN":"Y","signatue_add1line":"Y","signatue_opt":"71^text3^로고형1"};</script>'
             f'<form method="post" action="{DB}/Memo?OpenForm&amp;Seq=1&amp;opentype=popup" enctype="multipart/form-data" name="_Memo">'
             '<input type="hidden" name="__Click" value="0"><input name="SaveCount" value="0">'
             '<input name="ECMCheck" value=""><textarea name="ExternalMailList_m"></textarea>'
@@ -760,6 +770,10 @@ def check_draft_save_never_sends_and_lands_in_drafts():
         form = box.saved_forms[-1]
         assert form["SaveAgent"] == "wSave", form["SaveAgent"]
         assert "<p>본문 한 줄</p>" in form["MIMEBody"] and form["MIMEBody"].startswith("MIME-Version:"), form["MIMEBody"][:60]
+        body = form["MIMEBody"]
+        assert body.index("<p>본문 한 줄</p>") < body.index("<strong>서명 사람</strong>"), f"넣은 글 뒤에 서명이 없다: {body[-300:]}"
+        assert "<style" not in body and "<body" not in body and "/Body/M1.2?OpenElement" in body, \
+            f"서명 문서의 껍데기가 남았거나 서명 그림이 빠졌다: {body[-300:]}"
         assert form["SendTo"] == OWNER["key"] and OWNER["email"] in form["InetSendTo"], (form["SendTo"], form["InetSendTo"])
         assert form["SaveCount"] == "0", "쓰기 화면의 숨은 칸을 물려받지 않았다"
         path, upload = box.uploads[-1]

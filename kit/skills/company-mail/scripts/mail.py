@@ -157,6 +157,7 @@ TOKEN_LENGTH = 12
 # 답장 · 전달의 갈래 → (웹메일 화면의 type 값 · 사람 말) — 화면 버튼 셋과 같은 값(process_doc 의 action · 회사에서 잼)
 REPLY_KINDS = {"reply": ("Reply", "답장으로"), "all": ("AllReply", "전체답장으로"), "forward": ("Forward", "전달로")}
 TEXT_MARK = "cm-text-"        # 넣은 글을 감싼 div 의 id 머리 — revise-draft 가 이 자리만 갈아 끼운다. draft_send.js 의 TEXT_MARK 와 같은 글자다
+BODY_STYLE = "font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:13pt;line-height:1.8"   # 넣은 글의 기본 모양 — 회사 메일의 본문 꼴
 SAVE_ROOT = "company-mail"    # 첨부를 받는 기본 자리 — 임시 폴더 아래
 ORG_CACHE_DAYS = 30           # 받아 둔 조직도를 다시 받지 않고 쓰는 날 — 전사를 받는 데 15 초쯤 들고 인사는 드물게 바뀐다. 그 사이는 --fresh
 ORG_CACHE_DIR = ".company-mail"   # 받아 둔 조직도의 자리 — 홈 아래(임시 폴더는 정리 도구가 지운다)
@@ -709,7 +710,9 @@ def cmd_attachment(args, inbox):
 # ── 답장 · 전체답장 · 전달 — 웹메일의 그 화면에서 임시보관함에 저장한다(보내기는 임시메일 보내기와 같은 길) ──────────
 
 def read_body(args, word: str) -> tuple[str, str, bool]:
-    """글 파일 — (나갈 HTML, 평문, HTML 파일이었나). 평문은 줄바꿈만 살려 싸고, HTML 은 그대로 싣고 평문을 거기서 뽑는다."""
+    """글 파일 — (나갈 HTML, 평문, HTML 파일이었나). 평문은 줄바꿈만 살려 싸고, HTML 조각은 그대로 싣고 평문을 거기서 뽑는다. 둘 다
+    기본 모양(``BODY_STYLE``)의 div 로 감싼다 — 조각 안에서 따로 정한 모양은 그대로 앞선다. 문서 꼴(``<body>`` 가 든 것 · 아뜰리에가
+    지은 지면)은 제 모양이 있어 안 감싼다."""
     path = pathlib.Path(args.html_file or args.body_file).expanduser()
     if not path.is_file():
         raise Stop(EXIT_CONFIG, f"{word} 파일이 없다: {path}")
@@ -718,8 +721,15 @@ def read_body(args, word: str) -> tuple[str, str, bool]:
     if not raw or not text:
         raise Stop(EXIT_CONFIG, f"{word}이 비었다")
     if args.html_file:
-        return raw, text, True
-    return "<div>" + html_lib.escape(raw).replace("\n", "<br>") + "</div>", raw, False
+        if is_document(raw):
+            return raw, text, True
+        return f'<div style="{BODY_STYLE}">{raw}</div>', text, True
+    return f'<div style="{BODY_STYLE}">' + html_lib.escape(raw).replace("\n", "<br>") + "</div>", raw, False
+
+
+def is_document(html: str) -> bool:
+    """제 모양을 가진 문서 꼴(``<body>`` 가 든 HTML)인가 — 감싸지 않는 쪽이다."""
+    return bool(re.search(r"<body[\s>]", html, re.IGNORECASE))
 
 
 def show_body(plan: dict, word: str) -> None:
@@ -871,7 +881,7 @@ def show_people(word: str, rows) -> None:
 def marked_text(html: str) -> str:
     """나갈 HTML 조각을 표지 달린 div 로 감싼다 — 임시메일을 다시 고칠 때 그 자리만 갈아 끼우게. 문서 꼴(``<body>`` 가 든 것 ·
     아뜰리에가 지은 지면)은 손대지 않는다 — body 안을 감싸면 그 문서의 배치 규칙이 어긋날 수 있다. 그런 메일은 글을 못 고친다."""
-    if re.search(r"<body[\s>]", html, re.IGNORECASE):
+    if is_document(html):
         return html
     return f'<div id="{TEXT_MARK}{os.urandom(6).hex()}">{html}</div>'
 

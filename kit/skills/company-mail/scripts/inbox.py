@@ -328,6 +328,11 @@ DRAFT_COMPANY_CODE = "02"                           # 첨부 열쇠 가운데 �
 DRAFT_ATTACH_MOST = 20                              # 쓰기 화면의 첨부 개수 상한(attach_limit_count)
 DRAFT_ATTACH_BIG = 20 * 1024 * 1024                 # 이보다 크면 웹메일이 대용량 전환한다(BigFileUserTransSize) — 임시저장은 대용량을 안 든다
 DRAFT_UPLOAD_TIMEOUT = 180.0                        # 첨부 하나를 올리는 시한 — 수 MB 가 몇 초였다
+# 서명 — 쓰기 화면의 설정 JSON 칸(실측 · fmmail_new.js getSignature). 서명 문서의 본문은 /0/<unid>/Body?OpenField 로 받는다
+SIGNATURE_ON = re.compile(r'"signatueYN"\s*:\s*"(\w*)"')              # 서명 쓰기 — 칸 이름 철자는 웹메일 그대로
+SIGNATURE_ADD_LINE = re.compile(r'"signatue_add1line"\s*:\s*"(\w*)"')  # 서명 앞 빈 줄
+SIGNATURE_UNID = re.compile(r'"signatureUnid"\s*:\s*"([0-9A-Fa-f]{32})"')
+BLANK_LINE = "<p>&nbsp;</p>"                                          # 웹메일 편집기의 빈 줄
 _UNID = re.compile(r"^[0-9A-Fa-f]{32}$")
 _HEX32 = r"[0-9A-Fa-f]{32}"
 
@@ -1269,7 +1274,8 @@ class Mailbox:
         big = [f.name for f in files if len(f.data) > DRAFT_ATTACH_BIG]
         if big:
             raise MailboxConfigError(f"대용량 첨부는 임시저장이 안 든다(웹메일이 지운다): {', '.join(big)} — 웹메일에서 붙인다")
-        form, action, unid = self._blank_memo()
+        form, action, unid, page = self._blank_memo()
+        html_body = with_signature(html_body, self._signature(page))
         if files:
             form |= self._upload_draft_files(unid, empno, files)
         else:
@@ -1293,13 +1299,34 @@ class Mailbox:
         log.info("메일함을 바꿨다: 임시메일을 저장했다 · 받는 사람 %d · 첨부 %d", len(to) + len(cc) + len(bcc), len(files))
         return saved
 
-    def _blank_memo(self) -> tuple[dict, str, str]:
-        """빈 쓰기 화면을 받아 (폼 칸, 저장 주소, 이 쓰기의 unid) — 화면이 숨은 칸에 든 기본값을 그대로 물려받는다."""
+    def _blank_memo(self) -> tuple[dict, str, str, str]:
+        """빈 쓰기 화면을 받아 (폼 칸, 저장 주소, 이 쓰기의 unid, 화면 HTML) — 화면이 숨은 칸에 든 기본값을 그대로 물려받는다."""
         data, kind = self._open(f"{self.base}/{MEMO_FORM}?openform&opentype=popup")
         page = data.decode(_charset(kind), errors="replace")
         if _looks_like_login(page):
             raise SessionExpired("쓰기 화면 대신 로그인 페이지가 왔다 — 다시 로그인한다")
-        return parse_memo_form(page, self.db_path)
+        return (*parse_memo_form(page, self.db_path), page)
+
+    def _signature(self, page: str) -> Signature | None:
+        """쓰는 사람의 서명 — 쓰기 화면의 설정이 서명을 켰으면 서명 문서의 본문을 받아 낸다. 꺼졌으면 ``None``.
+
+        빈 쓰기 화면은 서명을 안 들고, 화면의 스크립트(fmmail_new.js ``getSignature``)가 뜬 뒤에 따로 받아 편집기에 넣는다 — 이
+        손은 그 스크립트를 안 돌리니 같은 일을 여기서 한다. 받는 주소는 읽기 길의 본문 꼴이다. 못 받으면 경고만 내고 서명 없이 간다
+        (웹메일 화면도 그때 빈 서명으로 간다)."""
+        found = parse_signature_settings(page)
+        if not found:
+            return None
+        sig_unid, add_line = found
+        try:
+            data, kind = self._get(f"/0/{sig_unid}/Body?OpenField")
+        except MailboxError as exc:
+            log.warning("서명을 못 받아 서명 없이 저장한다: %s", exc)
+            return None
+        body = signature_fragment(data.decode(_charset(kind), errors="replace"))
+        if not body:
+            log.warning("서명 문서의 본문이 비어 서명 없이 저장한다")
+            return None
+        return Signature(html=body, add_line=add_line)
 
     def _upload_draft_files(self, unid: str, empno: str, files: list[DraftFile]) -> dict:
         """첨부를 업로드 DB 에 올리고 저장 폼에 실을 칸을 낸다. 업로드 답에 그 파일이 다 서야 낸다."""
@@ -1741,6 +1768,46 @@ def parse_memo_form(page: str, db_path: str) -> tuple[dict, str, str]:
             value = found.group(1) if found else ""
         fields.setdefault(html.unescape(name.group(1)), html.unescape(value))
     return fields, html.unescape(action.group(1)), unid.group(1).upper()
+
+
+@dataclass(frozen=True)
+class Signature:
+    """쓰는 사람의 서명 — ``html`` 은 문서 껍데기(html · head · body)를 벗긴 조각, ``add_line`` 은 서명 앞에 빈 줄을 두라는 설정."""
+    html: str
+    add_line: bool
+
+
+def parse_signature_settings(page: str) -> tuple[str, bool] | None:
+    """쓰기 화면 → (서명 문서 unid, 서명 앞 빈 줄) — 설정이 서명을 껐거나 서명 문서가 없으면 ``None``. 칸 이름의 철자(signatue)는
+    웹메일 그대로다."""
+    on = SIGNATURE_ON.search(page)
+    unid = SIGNATURE_UNID.search(page)
+    if not (on and on.group(1).lower() == "y" and unid):
+        return None
+    line = SIGNATURE_ADD_LINE.search(page)
+    return unid.group(1).upper(), bool(line and line.group(1).lower() == "y")
+
+
+def signature_fragment(doc: str) -> str:
+    """서명 문서의 본문 HTML → 본문에 넣을 조각. 웹메일 편집기(editor.js)가 서명을 넣을 때 벗기는 것(html · head · title · meta ·
+    style · body 태그)을 똑같이 벗긴다 — 서명의 style 이 남으면 메일 전체 글꼴을 덮는다."""
+    for tag in ("head", "title", "style"):
+        doc = re.sub(rf"<{tag}\b.*?</{tag}\s*>", "", doc, flags=re.IGNORECASE | re.DOTALL)
+    doc = re.sub(r"</?(html|body|meta)\b[^>]*>", "", doc, flags=re.IGNORECASE)
+    return doc.strip()
+
+
+def with_signature(html_body: str, sig: Signature | None) -> str:
+    """넣은 글 뒤에 서명을 붙인다 — 웹메일 쓰기 화면이 새 메일에 짓는 차례(빈 줄 · 서명 · 빈 줄)와 같다. 문서 꼴(``<body>`` 가 든
+    것)은 ``</body>`` 앞에 붙인다. ``sig`` 가 없으면 그대로다."""
+    if sig is None:
+        return html_body
+    tail = (BLANK_LINE if sig.add_line else "") + sig.html + BLANK_LINE
+    end = list(re.finditer(r"</body\s*>", html_body, re.IGNORECASE))
+    if end:
+        at = end[-1].start()
+        return html_body[:at] + tail + html_body[at:]
+    return html_body + tail
 
 
 def parse_save_answer(text: str) -> dict:

@@ -314,7 +314,7 @@ def check_reply_saves_through_the_webmail_screen_and_hands_the_send_key():
             (call,) = seen()
             assert call["a"][:2] == ["reply", U["alone"]] and call["a"][call["a"].index("--type") + 1] == "Reply", call
             assert "--to" not in call["a"] and "--cc" not in call["a"], f"본문에 적힌 주소가 받는 사람이 됐다: {call}"
-            assert "attacker@evil.example" in call["body"] and call["body"].startswith("<div>확인했습니다."), call["body"]
+            assert "attacker@evil.example" in call["body"] and call["body"].startswith(f'<div style="{mail.BODY_STYLE}">확인했습니다.'), call["body"]
             assert not box.sent_now and not box.changes, "답장 저장이 웹메일로 나가거나 원래 메일을 바꿨다"
             os.environ["REPLY_UNID"] = "F" * 32
             code, out = run("save-reply", *args)
@@ -466,7 +466,7 @@ def check_revise_touches_only_the_given_parts_of_a_draft():
             assert code == 0, out
             call = seen()[-1]
             assert call["a"][2:4] == ["--cc", ""] and "--to" not in call["a"] and "--subject" not in call["a"], call
-            assert call["body"] == "<div>고친 글</div>", call
+            assert call["body"] == f'<div style="{mail.BODY_STYLE}">고친 글</div>', call
             assert not box.sent_now and not box.changes and not box.saved_forms, "임시메일 고치기가 메일을 내보내거나 다른 것을 바꿨다"
         finally:
             for k in ("REVISE_CALLS",):
