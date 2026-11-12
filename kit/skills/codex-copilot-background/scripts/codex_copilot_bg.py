@@ -435,7 +435,8 @@ JUDGE = {'codex': judge_codex, 'copilot': judge_copilot}
 
 def run_once(agent, cmd_head, a, resume):
     """한 쪽을 한 번 띄워 끝까지 지켜본다. 돌려주는 것 — (갈래, 종료 코드, 답, id, 까닭, 토큰, 웹 검색 수, 날 출력 경로)."""
-    raw_path, err_path = f'{a.out}.{agent}.jsonl', f'{a.out}.{agent}.stderr.txt'
+    # stderr 를 .md 로 둔다 — 회사 PC 의 Fasoo 가 .txt 를 감싸 러너가 제 꼬리를 못 읽는다(.md · .json 은 평문으로 남는다)
+    raw_path, err_path = f'{a.out}.{agent}.jsonl', f'{a.out}.{agent}.stderr.md'
     env = dict(os.environ)
     if agent == 'copilot':
         for k in COPILOT_DROP_ENV:

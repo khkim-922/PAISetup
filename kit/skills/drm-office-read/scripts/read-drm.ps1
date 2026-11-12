@@ -7,8 +7,14 @@
 # 규모가 이 파일을 정당화한다 — 문서가 여러 건이고 확장자가 갈리고, 앱 인스턴스를
 # 재사용해야 느려지지 않는다. 한 건이면 이 파일 없이 인라인으로 해도 된다.
 #
-# 이 파일은 본체다 — 인자 · 대상 모으기 · 화면 · `-OutDir` 출력 · 끝 정리 · 종료 값. 읽는 함수(띄우기 · Job ·
+# 이 파일은 본체다 — 인자 · 대상 모으기 · 남긴 글자 · 화면 · `-OutDir` 출력 · 끝 정리 · 종료 값. 읽는 함수(띄우기 · Job ·
 # `Read-With*` · 글 밖 셈)는 `office-read.ps1` 이 들고, 제 꼴로 내는 앱은 그 부품을 점 소싱해 제 본체를 쓴다.
+#
+# 뽑은 글자는 남긴다 — 감긴 파일은 읽을 때마다 앱을 띄워야 하고(건당 수 초 · 창이 뜬다) 같은 문서를 다시 읽는 일이 잦다.
+# 읽은 글자를 홈 아래 한 자리(`$KeepDir`)에 파일의 지문(SHA-256 앞 12 자)으로 남기고, 같은 바이트의 파일이 다시 오면 앱을 안 띄우고
+# 그 글자로 답한다. 지문이 바이트를 재므로 원본이 바뀌면(다시 감긴 것도) 남긴 글자에 안 걸리고 새로 읽는다. 남긴 파일은 머리 두
+# 줄(읽을 때의 한 줄 · 원본과 뽑은 때) 뒤 `---` 아래가 글자다. 이 손은 남긴 것을 지우지 않는다 — 치우는 것은 사람이다.
+# 글자 파일은 `.md` 다 — Fasoo 가 `.txt` · `.csv` 는 감싸고 `.md` 는 평문으로 둔다.
 
 [CmdletBinding()]
 param(
@@ -20,7 +26,10 @@ param(
     [string]$OutDir,
 
     # 화면에 낼 때 파일마다 보여줄 앞부분 글자 수.
-    [int]$Preview = 300
+    [int]$Preview = 300,
+
+    # 글자를 남기지도, 남긴 글자를 쓰지도 않는다 — 사람이 남기지 말라고 한 문서이거나, 제 자리에 글자를 따로 남기는 손이 부를 때.
+    [switch]$NoKeep
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,6 +75,66 @@ if ($OutDir -and -not (Test-Path -LiteralPath $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 }
 
+# ── 남긴 글자 — 같은 바이트의 파일은 앱을 안 띄우고 남긴 글자로 답한다 ─────────────
+$KeepDir = if ($env:DRM_READ_TEXT_DIR) { $env:DRM_READ_TEXT_DIR } else { Join-Path $HOME '.drm-read-text' }
+$KEPT_SPLIT = "`n---`n"                # 남긴 파일에서 머리와 글자를 가르는 줄
+$TEXT_EXT = '.md'                      # 글자 파일의 꼴 — 남긴 것도 -OutDir 것도. Fasoo 가 감싸지 않는 꼴이어야 한다
+$UTF8_PLAIN = New-Object System.Text.UTF8Encoding($false)
+$keptPath = @{}                        # 읽을 파일 → 남길 자리. 지문을 못 낸 파일(다른 프로세스가 쥔 파일)은 안 들고, 읽기만 한다
+$allCount = $targets.Count
+$keptCount = 0
+if (-not $NoKeep) {
+    # 남길 자리를 못 지으면 남기지 않고 읽기만 한다 — 이 스크립트는 Stop 으로 돌아, 여기서 지면 읽기까지 죽는다
+    try {
+        if (-not (Test-Path -LiteralPath $KeepDir)) { New-Item -ItemType Directory -Path $KeepDir -Force | Out-Null }
+    } catch {
+        Write-Output "남길 자리를 못 지었다 — 남기지 않고 읽기만 한다: $($_.Exception.Message)"
+        $NoKeep = $true
+    }
+}
+if (-not $NoKeep) {
+    $toRead = [System.Collections.Generic.List[string]]::new()
+    foreach ($file in $targets) {
+        $name = [System.IO.Path]::GetFileName($file)
+        try {
+            $print = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
+            $keptPath[$file] = Join-Path $KeepDir ('{0}.{1}{2}' -f $name, $print, $TEXT_EXT)
+        } catch {
+            $toRead.Add($file)
+            continue
+        }
+        $dest = $keptPath[$file]
+        $at = -1
+        if (Test-Path -LiteralPath $dest) {
+            # try 안이다 — 이 스크립트는 Stop 으로 돌아, 남긴 파일 하나를 못 열면(다른 프로세스가 쥐었다) 판 전체가 죽는다
+            try {
+                $raw = [System.IO.File]::ReadAllText($dest, [System.Text.Encoding]::UTF8)
+                $at = $raw.IndexOf($KEPT_SPLIT)
+            } catch { $at = -1 }
+        }
+        if ($at -lt 0) { $toRead.Add($file); continue }      # 없거나 · 못 읽거나 · 머리가 없으면(이 손이 남긴 것이 아니다) 새로 읽어 덮는다
+        $first = ($raw.Substring(0, $at) -split "`n")[0].Trim()
+        $text = $raw.Substring($at + $KEPT_SPLIT.Length)
+        Write-Output "[남긴 글자] $name — 같은 파일을 앞서 읽어 앱을 안 띄웠다 · $dest"
+        Write-Output "    읽을 때의 한 줄: $first"
+        if ($OutDir) {
+            $text | Out-File -LiteralPath (Join-Path $OutDir "$name$TEXT_EXT") -Encoding utf8
+        } elseif ($Preview -gt 0 -and $text.Length -gt 0) {
+            $cut = $text.Substring(0, [Math]::Min($Preview, $text.Length)) -replace '\s+', ' '
+            Write-Output "    $cut"
+        }
+        $keptCount++
+    }
+    $targets = $toRead                 # 아래는 앱으로 읽을 것만 본다 — 끝 정리도 이 판이 연 파일만 건드린다
+}
+if ($targets.Count -eq 0) {
+    Write-Output ''
+    Write-Output "읽음 0 · 남긴 글자 $keptCount · 실패 0 · 전체 $allCount"
+    Write-Output "남긴 글자는 여기 — $KeepDir (머리 두 줄 뒤 --- 아래가 글자다 · 앱으로 다시 읽으려면 -NoKeep)"
+    if ($OutDir) { Write-Output "글자는 여기 — $OutDir" }
+    exit 0
+}
+
 # ── 앱별로 묶어 돈다 — 앱 생성이 비싸므로 확장자별로 모아 한 번만 띄운다 ──────
 $byApp = $targets | Group-Object { $HANDLER[[System.IO.Path]::GetExtension($_).ToLower()] }
 $apps = @{}
@@ -104,10 +173,22 @@ try {
                 }
                 $text = [string]$read.Text
                 $len = $text.Length
-                Write-Output "[$mark] $name — $appName · 글자 $len$(Format-Visual -Counts $read.Visual -AppName $appName) · 머리 [$head]"
+                $line = "[$mark] $name — $appName · 글자 $len$(Format-Visual -Counts $read.Visual -AppName $appName) · 머리 [$head]"
+                Write-Output $line
+
+                if ($keptPath.ContainsKey($file)) {
+                    # 남기기가 져도 읽기는 선다 — 글자는 이미 뽑혔고, 못 남긴 것은 다음에 한 번 더 읽힐 뿐이다
+                    try {
+                        $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
+                        [System.IO.File]::WriteAllText($keptPath[$file], "$line`n원본 $file · 뽑은 때 $stamp$KEPT_SPLIT$text", $UTF8_PLAIN)
+                        Write-Output "    남겼다 — $($keptPath[$file])"
+                    } catch {
+                        Write-Output "    못 남겼다 — $($_.Exception.Message)"
+                    }
+                }
 
                 if ($OutDir) {
-                    $dest = Join-Path $OutDir "$name.txt"
+                    $dest = Join-Path $OutDir "$name$TEXT_EXT"
                     $text | Out-File -LiteralPath $dest -Encoding utf8
                 } elseif ($Preview -gt 0 -and $len -gt 0) {
                     $cut = $text.Substring(0, [Math]::Min($Preview, $len)) -replace '\s+', ' '
@@ -198,6 +279,11 @@ try {
 }
 
 Write-Output ''
-Write-Output "읽음 $done · 실패 $failed · 전체 $($targets.Count)"
+if ($NoKeep) {
+    Write-Output "읽음 $done · 실패 $failed · 전체 $allCount"
+} else {
+    Write-Output "읽음 $done · 남긴 글자 $keptCount · 실패 $failed · 전체 $allCount"
+    Write-Output "남긴 글자는 여기 — $KeepDir (머리 두 줄 뒤 --- 아래가 글자다 · 같은 파일을 다시 읽으면 앱을 안 띄우고 이 글자로 답한다)"
+}
 if ($OutDir) { Write-Output "글자는 여기 — $OutDir" }
 if ($failed -gt 0) { exit 1 }

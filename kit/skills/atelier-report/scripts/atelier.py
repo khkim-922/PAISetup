@@ -10,7 +10,7 @@
     받은 HTML 은 스킬 company-mail 의 ``save-draft --html-file`` (본문) · ``--attach`` (첨부)로 넘긴다.
 
 어떻게 부르나
-    python -X utf8 -I atelier.py make --source-file 글.txt [--mode mail|web]
+    python -X utf8 -I atelier.py make --source-file 글.md [--mode mail|web]
     python -X utf8 -I atelier.py open 문서
     python -X utf8 -I atelier.py fetch 문서
 

@@ -420,7 +420,7 @@ def message(event, paths, attached, sdir, out_dir):
         ps_quote(slash(out_dir)))
     return head + (' 글자는 스킬 %s 가 오피스를 태워 뽑는다 — Fasoo 에이전트가 도는 PC(회사 PC)에서만 풀린다'
                    '(%s — 차례와 주의는 그 2 · 3절). 이 파일들이면: %s'
-                   ' — 뽑은 글자는 -OutDir 에 「<파일 이름>.txt」로 남는다.'
+                   ' — 뽑은 글자는 -OutDir 에 「<파일 이름>.md」로 남는다.'
                    % (SKILL, slash(os.path.join(sdir, 'SKILL.md')), cmd))
 
 

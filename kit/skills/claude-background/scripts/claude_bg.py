@@ -393,7 +393,8 @@ def judge(events, rc, err_text, review=False):
 
 def run_once(cmd_head, a):
     """한 번 띄워 끝까지 지켜본다. 돌려주는 것 — (갈래, 종료 코드, 답, id, 까닭, 토큰, 모델, 도구, 날 출력 경로)."""
-    raw_path, err_path = f'{a.out}.claude.jsonl', f'{a.out}.claude.stderr.txt'
+    # stderr 를 .md 로 둔다 — 회사 PC 의 Fasoo 가 .txt 를 감싸 러너가 제 꼬리를 못 읽는다(.md · .json 은 평문으로 남는다)
+    raw_path, err_path = f'{a.out}.claude.jsonl', f'{a.out}.claude.stderr.md'
     settings_path = f'{a.out}.claude.settings.json'   # 넘길 설정 — 끝나면 지운다(`settings_args`)
     env = {k: v for k, v in os.environ.items() if k not in DROP_ENV}
     started = time.monotonic()
@@ -409,7 +410,7 @@ def run_once(cmd_head, a):
     parts = ([norms] if norms else []) + ([body] if review else [])
     system_path = None
     if parts:
-        system_path = os.path.abspath(f'{a.out}.claude.system.txt')
+        system_path = os.path.abspath(f'{a.out}.claude.system.md')
         with open(system_path, 'wb') as f:   # 바이트로 — 글 모드는 윈도에서 줄끝을 CRLF 로 바꿔 쓴다
             f.write(('\n\n'.join(p.rstrip('\n') for p in parts) + '\n').encode('utf-8'))
     stdin_file = tempfile.TemporaryFile()

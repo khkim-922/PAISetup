@@ -522,7 +522,8 @@ def run(a):
         write(a.out, f'{FOOTER} usage · api: 후보는 키가 있어야 띄운다 — GOOGLE_API_KEY 나 GEMINI_API_KEY 가 없다\n')
         return EXIT['usage']
 
-    log, raw_path, err_path = a.out + '.agy.log', a.out + '.raw.json', a.out + '.stderr.txt'
+    # stderr 를 .md 로 둔다 — 회사 PC 의 Fasoo 가 .txt 를 감싸 러너가 제 꼬리를 못 읽는다(.md · .json 은 평문으로 남는다)
+    log, raw_path, err_path = a.out + '.agy.log', a.out + '.raw.json', a.out + '.stderr.md'
     started = time.monotonic()
     tried = []
     models = candidates(a.model, bool(api_key()))

@@ -135,6 +135,13 @@ Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false
 - 백업 자리의 `install-skills-*` 는 걷은 스킬과 우리 스킬 폴더에서 설치 묶음에 없던 파일을 옮겨 둔 것이고, `install-aside-*` 는 같은 이름이라 비켜 둔 것이다 — 사람 것이면 되살린다
 - 스킬 폴더에는 사람이 둔 스킬도 사니 기록에 없는 이름은 둔다
 
+### 읽어 둔 글자
+
+스킬 `drm-office-read` · `company-ecm` 이 감긴 문서에서 뽑아 남긴 글자다 — 회사 문서의 평문이니 PC 를 넘기거나 더 안 쓰면 지운다.
+
+- `~/.drm-read-text` — 오피스로 읽은 문서의 글자
+- `~/.company-ecm-text` — 문서함(ECM)에서 읽은 문서의 글자
+
 ### 안티그래비티의 훅
 
 설치 창에서 안티그래비티를 빼고 한 번 더 누르면 설치가 걷는다.

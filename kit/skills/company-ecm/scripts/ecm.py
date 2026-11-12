@@ -73,10 +73,12 @@
     옮기지도 않는다.** 그 폴더는 에이전트의 것이고(ECM 화면에서 사람이 열어도 같은 자리에 같은 꼴로 쌓인다), 파일은 DRM 에 감긴 채라
     그 PC 의 오피스 밖에서는 안 열린다. 비우는 일은 에이전트의 정리 프로그램 몫이다. 읽는 손이 뽑은 평문은 이 손이 지은 임시
     폴더(``ecm-read-…``)에 잠시 놓였다가 글자를 읽자마자 그 폴더째 지우고 부르는 쪽에만 간다 — 지우기가 실패해도 말없이 넘어가므로
-    (``ignore_errors``) 그때는 그 폴더에 남는다. 명령줄의 ``read`` 는 글자가 답 하나의 크기
-    (``ep_session.OUT_BYTES``)에 안 들면 — ``--as-file`` 을 주면 짧아도 — 그 글자를 임시 폴더 아래 ``TEXT_DIR`` 에 파일로 남기고
-    경로를 낸다. 긴 문서를 통째로 대화에 싣지 않고 모델이 그 파일을 나눠 읽고 찾게 하는 자리다 — 문서를 받을 때마다 창이 떠서
-    쪽마다 다시 받게 할 수 없다. 그 파일은 ``TEXT_KEEP_HOURS`` 를 넘기면 다음 ``read`` 가 지운다.
+    (``ignore_errors``) 그때는 그 폴더에 남는다. 명령줄의 ``read`` 는 뽑은 글자를 늘 ``text_dir()``(홈 아래 · 저장소 밖)에 문서
+    열쇠마다 한 장으로 남긴다 — ``.md``(Fasoo 가 감싸지 않는 꼴)이고, 머리 두 줄(읽는 손의 한 줄 · 열쇠와 뽑은 때) 뒤 ``---`` 아래가
+    글자다. 같은 열쇠를 다시 읽으면
+    등급 문만 지나 그 파일로 답하고 문서를 받지 않는다(``read_kept``) — 받을 때마다 에이전트가 내려받고 오피스 창이 뜨는 값을 한 번만
+    치른다. 판이 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다. 글자가 답 하나의 크기(``ep_session.OUT_BYTES``)에 안
+    들면 — ``--as-file`` 을 주면 짧아도 — 화면에는 그 파일의 경로만 낸다. 남긴 파일은 이 손이 지우지 않는다 — 치우는 것은 사람이다.
 
 환경변수(``from_env``)
     ``ECM_URL``           ECM 주소 — ``…/ECM`` 까지                         기본 ``http://swpecm.posco.net:7091/ECM``
@@ -85,6 +87,7 @@
     ``ECM_AGENT_URL``     ECM 에이전트 웹소켓                               기본 ``ws://localhost:8383/``
     ``ECM_DOCS_ROOT``     에이전트가 받은 파일을 두는 자리                   기본 ``C:\\Rayful2_Docs``
     ``ECM_DRM_READER``    글자를 뽑는 손                                     기본 ``~/.claude/skills/drm-office-read/scripts/read-drm.ps1``
+    ``ECM_TEXT_DIR``      read 가 뽑은 글자를 남기는 자리                    기본 ``~/.company-ecm-text``
     문서함 열쇠 · 계정은 환경변수로 받지 않는다 — 그 사람의 ECM 메인 화면과 에이전트의 폴더에서 읽는다.
 
 사내 ECM 에서 잰 것 — 어기면 조용히 망가진다
@@ -308,8 +311,10 @@ DEFAULT_PERIOD = "6M"
 # 화면 기간 필터의 값 그대로 — 밖의 값은 MSG_E_0056 으로 거절되거나(1Y · 2Y) 거절 없이 틀린 목록이 온다(1W)
 PERIODS = ("1M", "6M", "12M", "24M", "36M", "60M", "ALL")
 DEFAULT_PER_PAGE = 15
-TEXT_DIR = "company-ecm-text"          # read --as-file 이 뽑은 글자를 두는 자리 — 임시 폴더 아래(저장소 밖)
-TEXT_KEEP_HOURS = 24                   # 그 글자 파일을 두는 시간 — 넘긴 것은 다음 read 가 지운다(평문이 PC 에 쌓이지 않게)
+TEXT_DIR = "~/.company-ecm-text"       # read 가 뽑은 글자를 남기는 자리 — 홈 아래(저장소 밖 · 임시 폴더 정리에 안 걸린다)
+TEXT_DIR_ENV = "ECM_TEXT_DIR"
+TEXT_EXT = ".md"                       # 글자 파일의 꼴 — 읽는 손(-OutDir)이 내는 것도 여기 남기는 것도. Fasoo 가 .txt · .csv 는 감싸고 .md 는 평문으로 둔다
+TEXT_SPLIT = "\n---\n"                 # 남긴 파일에서 머리(읽는 손의 한 줄 · 열쇠와 뽑은 때)와 글자를 가르는 줄
 OBJECT_ID = re.compile(r"^[0-9A-Fa-f]{16}$")
 AGENT_FIELD_SEPARATOR = "\x08"
 AGENT_ACTION_VIEW = "VIEW"
@@ -1746,17 +1751,20 @@ def reader_path() -> pathlib.Path:
 
 
 def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> tuple[str, str]:
-    """받은 파일을 drm-office-read 의 읽는 손에 넘겨 (글자, 그 손의 한 줄)을 낸다. 평문은 임시 폴더째 바로 지운다."""
+    """받은 파일을 drm-office-read 의 읽는 손에 넘겨 (글자, 그 손의 한 줄)을 낸다. 평문은 임시 폴더째 바로 지운다.
+
+    읽는 손에는 ``-NoKeep`` 을 준다 — 문서함의 글자는 등급 문 뒤에서 문서 열쇠로 이 손이 남긴다(``keep_text``). 읽는 손이 제 자리에
+    한 벌 더 남기면 등급 문을 안 지나는 사본이 생긴다."""
     reader = reader or reader_path()
     if not reader.exists():
         raise ReadError(f"글자를 뽑는 손이 없다: {reader} — 스킬 drm-office-read 가 깔렸는지 본다")
     out_dir = pathlib.Path(tempfile.mkdtemp(prefix="ecm-read-"))
     try:
         proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(reader),
-                               str(path), "-OutDir", str(out_dir)], capture_output=True, timeout=READ_TIMEOUT)
+                               str(path), "-OutDir", str(out_dir), "-NoKeep"], capture_output=True, timeout=READ_TIMEOUT)
         lines = [l for l in proc.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
         summary = next((l for l in lines if l.startswith("[")), "")
-        texts = sorted(out_dir.glob("*.txt"))
+        texts = sorted(out_dir.glob(f"*{TEXT_EXT}"))
         if proc.returncode == 0 and not texts and not summary:
             raise ReadError(f"이 꼴({path.suffix})은 읽는 손이 글자로 뽑지 않는다 — 화면에서 보려면 open 으로 연다")
         if proc.returncode != 0 or not texts:
@@ -1768,41 +1776,69 @@ def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> t
 
 
 def text_dir() -> pathlib.Path:
-    return pathlib.Path(tempfile.gettempdir()) / TEXT_DIR
+    return pathlib.Path(os.environ.get(TEXT_DIR_ENV, "").strip() or TEXT_DIR).expanduser()
 
 
-def sweep_texts() -> None:
-    """남겨 둔 글자 파일 가운데 TEXT_KEEP_HOURS 를 넘긴 것을 지운다 — 못 지운 것은 다음 판이 다시 본다."""
-    for path in text_dir().glob("*.txt"):
-        try:
-            if time.time() - path.stat().st_mtime > TEXT_KEEP_HOURS * 3600:
-                path.unlink()
-        except OSError:
-            continue
+def kept_text(object_id: str) -> pathlib.Path | None:
+    """그 문서 열쇠로 남겨 둔 글자 파일 — 없으면 None. 판이 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다."""
+    if not OBJECT_ID.match(object_id):
+        return None
+    found = sorted(text_dir().glob(f"*-{object_id.lower()}{TEXT_EXT}"))
+    return found[0] if found else None
 
 
-def keep_text(text: str, source: pathlib.Path, object_id: str) -> pathlib.Path:
-    """뽑은 글자를 ``TEXT_DIR`` 에 파일로 남기고 그 경로를 낸다 — 이름은 받은 파일의 이름과 문서 열쇠다."""
+def keep_text(text: str, summary: str, source: pathlib.Path, object_id: str) -> pathlib.Path:
+    """뽑은 글자를 ``text_dir()`` 에 남기고 그 경로를 낸다 — 이름은 받은 파일의 이름과 문서 열쇠, 머리는 읽는 손의 한 줄과
+    열쇠 · 뽑은 때다. 같은 열쇠를 다시 받으면(``--fresh``) 같은 이름이라 그 장을 덮어쓴다."""
     folder = text_dir()
     folder.mkdir(parents=True, exist_ok=True)
+    key = object_id.lower()
     name = re.sub(r"[^\w.\-]+", "_", source.stem)[:80].strip("_") or "document"
-    path = folder / f"{name}-{object_id}.txt"
-    path.write_text(text, encoding="utf-8")
+    path = folder / f"{name}-{key}{TEXT_EXT}"
+    head = f"{summary}\n문서 열쇠 {key} · 뽑은 때 {time.strftime('%Y-%m-%d %H:%M')}"
+    path.write_text(head + TEXT_SPLIT + text, encoding="utf-8")
     return path
 
 
-def tell_read(got: ReadResult, object_id: str, *, as_file: bool = False) -> None:
-    """읽은 결과를 낸다 — 한 답(``ep_session.OUT_BYTES``)에 드는 글자는 화면에, 안 드는 글자는(``as_file`` 이면 짧아도) 파일로
-    남기고 경로만. 화면에 찍으면 통째로 실리거나 잘리고, 파일이면 모델이 나눠 읽고 찾는다."""
-    head = "\n".join([got.summary or "[읽음]", *_describe_open(got.opened), f"창: {WINDOW_WORD[got.window]}"])
-    if as_file or len(f"{head}\n---\n{got.text}\n".encode("utf-8")) > ep_session.OUT_BYTES:
-        path = keep_text(got.text, pathlib.Path(got.opened.path), object_id)
+def read_kept(ecm: Ecm, object_id: str, *, level_checked: bool = False) -> pathlib.Path | None:
+    """남겨 둔 글자가 있으면 등급 문(``check_readable``)을 지난 뒤 그 파일을 낸다 — 없으면 None. 문서는 받지 않는다.
+
+    등급 문은 여기서도 선다 — 남긴 뒤 기밀로 바뀐 문서의 글자를 대화로 들이지 않는다(속성 화면만 읽어 파일은 안 받는다)."""
+    path = kept_text(object_id)
+    if path is None:
+        return None
+    check_readable(ecm, object_id, level_checked=level_checked)
+    return path
+
+
+def _tell_text(head: str, text: str, path: pathlib.Path, *, as_file: bool) -> None:
+    """머리와 글자를 낸다 — 한 답(``ep_session.OUT_BYTES``)에 드는 글자는 화면에, 안 드는 글자는(``as_file`` 이면 짧아도) 남긴
+    파일의 경로만. 화면에 찍으면 통째로 실리거나 잘리고, 파일이면 모델이 나눠 읽고 찾는다."""
+    whole = f"{head}\n글자를 남겼다: {path} — 이 문서를 다시 보려면 같은 열쇠로 read 를 부른다(다시 받지 않고 이 파일로 답한다)\n---\n{text}\n"
+    if as_file or len(whole.encode("utf-8")) > ep_session.OUT_BYTES:
         print(head)
-        print(f"글자 {len(got.text)} 자를 파일로 남겼다: {path} — 그 파일을 앞에서부터 나눠 읽거나 낱말로 찾아 필요한 대목만 본다"
-              f"(통째로 읽지 않는다). 다 본 뒤 지운다 — 안 지워도 {TEXT_KEEP_HOURS} 시간 뒤 다음 read 가 지운다. 다른 자리로 옮기지 않는다")
+        print(f"글자 {len(text)} 자는 파일에 있다: {path} — 머리 두 줄과 --- 아래가 글자다. 앞에서부터 나눠 읽거나 낱말로 찾아 필요한 "
+              "대목만 본다(통째로 읽지 않는다). 이 문서를 다시 보려면 같은 열쇠로 read 를 부른다(다시 받지 않고 이 파일로 답한다)")
         return
-    print(head + "\n---")
-    print(got.text)
+    print(whole, end="")
+
+
+def tell_read(got: ReadResult, object_id: str, *, as_file: bool = False) -> None:
+    """읽은 결과를 낸다 — 글자는 늘 파일로 남기고(``keep_text``), 화면에는 ``_tell_text`` 의 갈래로 낸다."""
+    summary = got.summary or "[읽음]"
+    path = keep_text(got.text, summary, pathlib.Path(got.opened.path), object_id)
+    head = "\n".join([summary, *_describe_open(got.opened), f"창: {WINDOW_WORD[got.window]}"])
+    _tell_text(head, got.text, path, as_file=as_file)
+
+
+def tell_kept(path: pathlib.Path, *, as_file: bool = False) -> None:
+    """남겨 둔 글자로 답한다 — 문서를 받지 않았다는 것과, 다시 받아야 하는 자리를 함께 말한다."""
+    head, split, text = path.read_text(encoding="utf-8").partition(TEXT_SPLIT)
+    if not split:
+        head, text = "[읽음]", head
+    note = ("남긴 글자다 — 문서를 다시 받지 않았다(창도 안 떴다). 다음: 표 · 그림을 떠야 하거나(받은 파일이 있어야 한다) 글자가 이상하면 "
+            "--fresh 로 다시 받는다. 문서의 판이 올랐으면 열쇠가 바뀌었다 — list 로 새 열쇠를 받아 그 열쇠로 읽는다")
+    _tell_text(f"{head}\n{note}", text, path, as_file=as_file)
 
 
 def check_readable(ecm: Ecm, object_id: str, *, level_checked: bool = False) -> Security | None:
@@ -1920,7 +1956,9 @@ def main(argv: list[str] | None = None) -> int:
         if name == "read":
             p.add_argument("--not-classified", action="store_true", help=NOT_CLASSIFIED_HELP)
             p.add_argument("--as-file", action="store_true",
-                           help=f"짧은 문서도 글자를 대화에 싣지 않고 임시 폴더의 파일로 남긴다 — 긴 문서는 이 깃발 없이도 그렇게 된다. {TEXT_KEEP_HOURS} 시간 뒤 지워진다")
+                           help="짧은 문서도 글자를 대화에 싣지 않고 남긴 파일의 경로만 낸다 — 긴 문서는 이 깃발 없이도 그렇게 된다")
+            p.add_argument("--fresh", action="store_true",
+                           help="남겨 둔 글자가 있어도 문서를 다시 받는다 — 표 · 그림을 뜨려고 받은 파일이 있어야 하거나 남긴 글자가 이상할 때")
     p = sub.add_parser("version", help="문서의 최종 버전")
     p.add_argument("object_id")
     p = sub.add_parser("security", help="문서의 보안등급 — 속성 화면만 읽는다(파일을 안 받는다)")
@@ -2046,6 +2084,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"바꿨다 — {plan.title} · 더함 {len(plan.added)} · 뺌 {len(plan.removed)} · 옮김 {len(plan.moved)} · 다시 읽은 명단:")
             _print_grants(got)
             return EXIT_OK
+        if args.command == "read" and not args.fresh:
+            kept = read_kept(ecm, args.object_id, level_checked=args.not_classified)
+            if kept is not None:
+                tell_kept(kept, as_file=args.as_file)
+                return EXIT_OK
         agent = Agent.from_env()
         if args.command == "edit":
             opened = edit_document(ecm, agent, args.object_id, level_checked=args.not_classified)
@@ -2055,7 +2098,6 @@ def main(argv: list[str] | None = None) -> int:
             opened = open_document(ecm, agent, args.object_id, allow_picker=args.allow_picker)
             print("\n".join(_describe_open(opened)))
             return EXIT_OK
-        sweep_texts()
         got = read_document(ecm, agent, args.object_id, allow_picker=args.allow_picker, level_checked=args.not_classified)
         tell_read(got, args.object_id, as_file=args.as_file)
         return EXIT_OK
