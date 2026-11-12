@@ -156,8 +156,8 @@ $AutoRunOffRecord = Join-Path $RecordRoot '.autorun-off'
 #   작업이 있나 묻는다. 설치 창은 이름을 모른다 — `-Describe` 의 `autorun|on·off` 줄로 그 답만 받는다.
 $AutoRunTaskName      = 'PAISetup-AutoRun'
 $AutoRunNightTaskName = 'PAISetup-AutoRun-Night'
-# 로그온 EP 로그인 창 작업 — 「부팅 시 자동 실행」 칸이 자동 실행과 함께 걸고 걷는다. 자동 실행이 켜졌나를 묻는 자리(`Get-AutoRunDefault`
-#   · `-Describe`)는 위 둘만 본다 — 이 작업은 띄울 수 있는 PC 에서만 서는 곁가지라 없어도 자동 실행은 켜진 것이다.
+# 로그온 EP 로그인 창 작업 — 설치기는 이 작업을 걸지 않는다. 「부팅 시 자동 실행」 칸이 회차마다 있으면 걷는다(옛 판이 회사 PC 에 걸어
+#   둔 것). 자동 실행이 켜졌나를 묻는 자리(`Get-AutoRunDefault` · `-Describe`)는 위 둘만 본다.
 $AutoRunEpTaskName    = 'PAISetup-EpLogin'
 # 회사 키 덩이 — 이 사용자만 푸는 암호(DPAPI)로 둔 회사 키다. 「키와 값」이 맞추고 푼다(PAISetup #44). `-Describe` 는 풀리는 덩이가 있나만
 #   `company-key|yes·no` 로 낸다 — 값은 안 낸다. 창은 그 답으로 사내 키 칸이 비어도 설치를 받는다.
@@ -12152,59 +12152,16 @@ exit 0
       Write-Host "  ! 야간 자동 실행 스케줄러 등록 실패 — $(Say-Why $_)" -ForegroundColor Yellow
     }
 
-    # 로그온 EP 로그인 창(파일 머리의 `$AutoRunEpTaskName`) — 사람이 Edge 를 먼저 열면 그 Edge 에는 디버깅 포트가 안 서, 그날 사내 앱
-    #   스킬이 세션을 못 빌린다. 그래서 자동 실행 몸통을 거치지 않는 작업이 로그온하자마자 스킬 ep-login 의 띄우는 손(`edge_start.js`)을
-    #   node 로 바로 부른다 — PowerShell 을 안 띄워 로그온과 창 사이가 가장 짧다. Edge 가 이미 떠 있으면 그 손이 아무것도 안 하고 물러난다.
-    # 띄울 수 있는 PC 인가는 여기서 가른다 — 이번 설치가 사내이고(사외는 EP 로그인 화면이 안 열린다), 그 손이 도구 홈에 놓였고, node 가
-    #   있을 때만 걸고 아니면 걷는다. 자동 실행이 로그온마다 설치를 다시 돌리므로 자리가 바뀐 PC 도 그 회차에 맞춰진다.
-    # 놓인 손은 그 홈에 쓰는 자의 기록에서 찾는다 — 고른 도구마다 홈이 다르고, 홈마다 쓰는 자가 하나다: 제작자 칸에 든 홈은 손
-    #   `tool-homes.py` 의 파일 기록 `~/.paisetup/placed.tsv`, 안 든 홈은 칸 없이 까는 걸음의 스킬 기록(`$FreeSkillHomes` 의 `Ledger`).
-    $epHand = $null
-    if ($site -eq 'inside') {
-      try {
-        foreach ($epLine in [IO.File]::ReadAllLines((Join-Path $HOME '.paisetup\placed.tsv'))) {
-          $epRel = ($epLine -split "`t")[0]
-          if ($epRel -like '*/skills/ep-login/scripts/edge_start.js') {
-            $epPath = Join-Path $HOME $epRel
-            if (Test-Path -LiteralPath $epPath) { $epHand = (Resolve-Path -LiteralPath $epPath).ProviderPath; break }
-          }
-        }
-      } catch { }
-      if (-not $epHand) {
-        foreach ($epHome in $FreeSkillHomes.Values) {
-          $epPlace = $epHome.Place
-          if ($epHome.Box -or -not $epPlace) { continue }
-          try {
-            if (@([IO.File]::ReadAllLines($epPlace.Ledger) | ForEach-Object { $_.Trim() }) -notcontains 'ep-login') { continue }
-          } catch { continue }
-          $epPath = Join-Path $epPlace.Skills 'ep-login\scripts\edge_start.js'
-          if (Test-Path -LiteralPath $epPath) { $epHand = (Resolve-Path -LiteralPath $epPath).ProviderPath; break }
-        }
-      }
-    }
-    $epNode = $null
-    if ($epHand) { $epNode = @(Get-Command node.exe -CommandType Application -ErrorAction SilentlyContinue)[0].Source }
-    $epWhy = if ($site -ne 'inside') { '사외' } elseif (-not $epHand) { 'ep-login 스킬이 도구 홈에 없음' } elseif (-not $epNode) { 'node 를 찾지 못함' } else { '' }
+    # 로그온 EP 로그인 창(파일 머리의 `$AutoRunEpTaskName`)은 걸지 않고, 옛 판이 걸어 둔 것이 있으면 걷는다 — 로그온마다 평소 Edge 를
+    #   디버깅 포트로 띄우면 그 포트로 뜬 Edge 와 같이 못 도는 앱이 그날 안 된다. 포트는 사내 앱 스킬이 대화에서 세션이 필요할 때
+    #   스킬 ep-login 으로 연다.
     try {
-      if (-not $epWhy) {
-        # 창 없는 콘솔을 모르는 PC 는 숨긴 PowerShell 로 감싼다 — node 는 콘솔 프로그램이라 그대로 걸면 검은 창이 로그인 내내 뜬다.
-        $epAction = if ($headless) {
-          New-ScheduledTaskAction -Execute $conhost -Argument "--headless `"$epNode`" `"$epHand`""
-        } else {
-          New-ScheduledTaskAction -Execute $psExe -Argument ("-NoProfile -WindowStyle Hidden -Command `"& '" + $epNode.Replace("'", "''") + "' '" + $epHand.Replace("'", "''") + "'`"")
-        }
-        $onEp = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-        Register-ScheduledTask -TaskName $AutoRunEpTaskName -Action $epAction -Trigger $onEp -Principal $principal -Settings $settings `
-                               -Description "PAISetup opens the EP login window on logon, before anything else (company network only)" -Force | Out-Null
-        Write-Host "  로그온 EP 로그인 창 — 등록함 (작업 스케줄러 · $AutoRunEpTaskName · 로그온하자마자 · Edge 가 아직 안 떠 있을 때만)" -ForegroundColor Green
-      } elseif (Test-AutoRunTask $AutoRunEpTaskName) {
+      if (Test-AutoRunTask $AutoRunEpTaskName) {
         Unregister-ScheduledTask -TaskName $AutoRunEpTaskName -Confirm:$false -ErrorAction Stop
-        Write-Host "  로그온 EP 로그인 창 — 등록 해제함 ($epWhy)" -ForegroundColor Green
-      } else {
-        Write-Host "  로그온 EP 로그인 창 — 등록 안 함 ($epWhy)"
+        Write-Host "  로그온 EP 로그인 창 — 등록 해제함 (작업 스케줄러 · $AutoRunEpTaskName · EP 로그인은 대화에서 필요할 때 연다)" -ForegroundColor Green
       }
     } catch {
-      Write-Host "  ! 로그온 EP 로그인 창 스케줄러 — $(Say-Why $_)" -ForegroundColor Yellow
+      Write-Host "  ! 로그온 EP 로그인 창 스케줄러 등록 해제 실패 — $(Say-Why $_)" -ForegroundColor Yellow
     }
   } else {
     # 작업마다 따로 걷는다 — 하나를 못 걷어도 다른 하나는 걷는다.
