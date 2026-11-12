@@ -294,7 +294,8 @@ $Clis = @(
   @{ Key='codex';  Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
   # `Cmd` 는 winget 매니페스트의 `Commands:` 가 정한다 — winget 이 받은 `cli_windows_x64.exe` 를 `agy` 로 세워 제 패키지 자리
   #   (`…\WinGet\Packages\Google.AntigravityCLI_…\agy.exe`)에 두고 그 자리를 사용자 PATH 에 심는다.
-  # `Back` — 「CLI」 걸음이 이 행을 숨은 자식(`Start-RowChild`)으로 띄워 두고 「Claude 플러그인」 걸음 끝에서 거둔다. 회사 영속 PC 에서
+  # `Back` — 「CLI」 걸음이 이 행을 숨은 자식(`Start-RowChild`)으로 띄워 두고 거둔다. 폴더를 심는 행(`PathDir`)은 「Claude 플러그인」 걸음
+  #   끝에서, 이 행처럼 안 심는 행은 끝 검증이 처음 쓰므로 「마무리」 끝에서 거둔다. 회사 영속 PC 에서
   #   이 한 행이 550초 넘게 걸렸고(2026-11-09), 그 사이 뒤 걸음은 `agy` 를 안 부른다 — 회사 설정 · 훅 · 허용 규칙은 파일만 쓴다.
   #   이 칸을 다는 행의 조건: 뒤 걸음이 그 명령을 안 부르고, 설정 저장소의 세션 훅이 같은 도구를 따로 깔지 않는다(lychee 는 훅이
   #   winget 사본이 없으면 제 사본을 깐다). 기계 범위 행도 된다 — 승인 문은 자식이 부모와 같은 답을 낸다(요청의 `Yes` · `NoLaunch`).
@@ -451,7 +452,7 @@ $TlsHosts = @(
 # `Requires` — 짝으로 먼저 깔 런타임. winget 매니페스트의 `Dependencies` 가 비어 winget 이 안 챙기는 자리를 우리가 챈다.
 #   공용 목록(`$Apps`)에 안 넣어 그 앱을 고른 사람만 받는다.
 # `Front` — 「데스크탑 앱」 걸음이 이 행을 설치 창에서 깐다. 설치가 사람이 누를 창으로 넘어갈 수 있는 행이다 — 그 안내 줄은 창이
-#   뜨는 때 서야 한다. 안 적은 행은 숨은 자식(`Start-RowChild`)으로 다른 행과 동시에 깔고 그 걸음 끝에서 화면 줄을 거둔다.
+#   뜨는 때 서야 한다. 안 적은 행은 숨은 자식(`Start-RowChild`)으로 다른 행과 동시에 깔고 「공용 자산」 걸음 끝에서 화면 줄을 거둔다.
 # Claude 데스크탑의 판 없는 MSIX 주소 — 최신 판의 MSIX 파일로 넘긴다. Claude 행의 벤더 길(판 읽기 · 곁의 Squirrel 설치본)과 MSIX 꼴로 선
 #   PC 의 올리기(`Upgrade.Msix`)가 같이 읽는다.
 $ClaudeMsixLatest = 'https://claude.ai/api/desktop/win32/x64/msix/latest/redirect'
@@ -4980,7 +4981,7 @@ function Install-DesktopApp($A) {
 #     줄이다 — 다음 설치가 다시 잰다. 자식을 아예 못 띄웠으면 그 행을 이 창에서 깐다.
 # ⚠ **자식의 진척 줄은 끄고 띄운다**(`$DownloadTicks`) — 화면 줄은 거둘 때 한꺼번에 찍혀, 받는 중의 눈금은 지난 일이 된다.
 # ⚠ **자식이 바꾼 이 창의 환경은 부모에 안 온다** — 자식이 깔며 태운 PATH(`Update-RuntimePath`)는 자식 것이다. 깐 것을 이 창에서 부를
-#   자리는 거둔 뒤 PATH 를 다시 태운다(「Claude 플러그인」 걸음 끝의 CLI 거두기).
+#   자리는 거둔 뒤 PATH 를 다시 태운다(「Claude 플러그인」 걸음 끝 · 「마무리」 끝의 CLI 거두기).
 # ⚠ **자식은 표에 손으로 적힌 행만 안다** — 「준비」가 표에 덧붙이는 행(값 파일의 `#npm-global` 이 드는 npm CLI)은 자식에 없다. 그런 행을
 #   이 길에 태우면 자식이 「표에 없는 열쇠」로 던진다.
 # 갈래 표 — `Rows` 는 그 갈래의 표(이 몸통 머리의 손으로 적힌 표), `Run` 은 행 하나를 받아 재고 까는 함수의 이름(`& $kind.Run $row`),
@@ -8087,10 +8088,13 @@ $script:JustInstalledApps = @{}
 #   여기는 이 판에서 선 것 전부라야 한다 — 어제 깐 앱도 오늘 띄운다. 키는 `Label`(화면에 쓰는 이름), 값은 표의 행이다.
 $script:InstalledAppRows = @{}
 
-# 숨은 자식으로 띄운 행 — 「데스크탑 앱」 걸음의 `finally` 가 표 차례로 거둔다.
+# 숨은 자식으로 띄운 행 — 「공용 자산」 걸음의 `finally` 가 표 차례로 거둔다.
 $deskBack = @()
-# 숨은 자식으로 띄운 CLI 행(`$Clis` 의 `Back`) — 「CLI」 걸음이 띄우고 「Claude 플러그인」 걸음의 `finally` 가 거둔다.
-$cliBack = @()
+# 숨은 자식으로 띄운 CLI 행(`$Clis` 의 `Back`) — 「CLI」 걸음이 띄우고 둘로 갈라 거둔다. 마무리가 쓰는 행(폴더를 PATH 에 심는 `PathDir`)은
+#   「Claude 플러그인」 걸음의 `finally` 가, 그 밖은 끝 검증이 처음 쓰므로 「마무리」의 `finally` 가 거둔다 — 오래 걸리는 행이 마무리와 겹친다.
+$cliBack     = @()
+$cliBackPath = @()
+$cliBackLate = @()
 
 # 「준비」 — 값 파일 읽기 · 자리 프로브 · winget 의 판 대조. 「프로그램」 걸음 앞에도 시간이 든다.
 Write-Elapsed '준비'
@@ -8480,7 +8484,7 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
     Write-Host ''
     foreach ($da in $deskBack) { Start-RowChild 'desktop' $da $PSCommandPath }
     Say-Busy (@($deskBack | ForEach-Object { $_.Label }) -join ' · ') 'background' @(
-      "$(@($deskFront | ForEach-Object { $_.Label }) -join ' · ') 설치와 함께 진행", '결과는 이 단계 끝에 표시')
+      "$(@($deskFront | ForEach-Object { $_.Label }) -join ' · ') 설치와 함께 진행", '결과는 「공용 자산」 단계 끝에 표시')
   }
   foreach ($da in $deskFront) {
     # 앱마다 받기 · 설치 · 올리기를 한 판으로 재 세부 기록에 남긴다(`Add-RunSpan` — 화면에는 안 찍는다). 숨은 자식은 같은 줄을 제 판에서
@@ -8491,17 +8495,13 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
   }
 }
 
-} catch { Write-StepFault $_ } finally {
-# ── 숨은 자식으로 띄운 데스크탑 앱을 거둔다 — 표 차례로 ──────────────────
-# 걸음 경계의 `finally` 에 선다 — 이 걸음이 도중에 멎어도 거둔다. 거두기마다 제 `try` 로 감싼다(「공용 자산」 걸음의 거두기와 같은 까닭).
-foreach ($da in $deskBack) { try { Complete-RowChild 'desktop' $da } catch { Write-StepFault $_ } }
-}
+} catch { Write-StepFault $_ }
 Exit-Step 'desktop'
 
 # ══ 걸음 「CLI」 ═══════════════════════════════════════════════════════════════════════════════
 #   층 — 기계
-#   하는 일 — 고른 제품의 CLI(npm · winget) · 사외 로그인 안내. 표에서 `Back` 을 든 winget CLI 는 숨은 자식으로 띄우고 「Claude 플러그인」
-#     걸음 끝에서 거둔다
+#   하는 일 — 고른 제품의 CLI(npm · winget) · 사외 로그인 안내. 표에서 `Back` 을 든 winget CLI 는 숨은 자식으로 띄우고 폴더를 심는 행은
+#     「Claude 플러그인」 걸음 끝에서, 그 밖은 「마무리」 끝에서 거둔다
 #   앞에서 받는 것 — 「프로그램」의 Node · Node 신뢰
 #   안 하는 것 — 사용자 환경변수. 맡기기 값은 「키와 값」이 심는다. 자리를 안 가리고 깔며, 회사 키로 물리나는 「회사 키의 다른
 #     이름 둘」 · 「Codex · 안티그래비티 설정」 칸이 가른다
@@ -8513,14 +8513,19 @@ $wingetCliPicks = @($CliPicks | Where-Object { $_.Via -eq 'winget' })
 # 뒤로 보낼 행은 이 걸음 맨 앞에서 띄운다 — 아래 npm · 다른 winget CLI 와도 겹친다(winget 부름끼리는 winget 빗장이 차례를 세운다).
 #   이 흐름을 다른 스크립트가 떼어 돌리면 자식이 그 스크립트를 띄우므로 다 이 창에서 깐다(「데스크탑 앱」 걸음의 같은 가름).
 $cliBack = @(if ([IO.Path]::GetFileName("$PSCommandPath") -ieq 'install.ps1') { $wingetCliPicks | Where-Object { $_.Back } })
+$cliBackPath = @($cliBack | Where-Object { $_.PathDir })
+$cliBackLate = @($cliBack | Where-Object { -not $_.PathDir })
 if ($cliBack.Count) {
   foreach ($c in $cliBack) { Start-RowChild 'cli' $c $PSCommandPath }
   # 기계 범위 행이 뒤로 갔고, 이 PC 가 승격을 묻지 않고 올리지 못하는데(무인으로 넘기면 `go` 가 아니다) 누를 사람이 있는 판이면 승인
   #   창이 다른 걸음 사이에 뜬다 — 그 창이 무엇인지 여기서 미리 말한다. 묻지 않고 오르는 PC 와 사람이 없는 판(자식이 노란 줄로 미룬다)은
   #   안 말한다.
-  $uacNote = if (@($cliBack | Where-Object { $_.Scope -eq 'machine' }).Count -and (Test-Attended) -and
-                 (Get-ElevationGo (Read-ElevationState) $false) -ne 'go') { '관리자 승인 창이 뜨면 승인' } else { '' }
-  Say-Busy (@($cliBack | ForEach-Object { $_.Label }) -join ' · ') 'background' @($uacNote, '결과는 「Claude 플러그인」 단계 끝에 표시')
+  $uacAsk = (Test-Attended) -and (Get-ElevationGo (Read-ElevationState) $false) -ne 'go'
+  foreach ($grp in @(@{ Rows = $cliBackPath; Where = '「Claude 플러그인」 단계 끝' }, @{ Rows = $cliBackLate; Where = '검증 앞' })) {
+    if (-not $grp.Rows.Count) { continue }
+    $uacNote = if ($uacAsk -and @($grp.Rows | Where-Object { $_.Scope -eq 'machine' }).Count) { '관리자 승인 창이 뜨면 승인' } else { '' }
+    Say-Busy (@($grp.Rows | ForEach-Object { $_.Label }) -join ' · ') 'background' @($uacNote, "결과는 $($grp.Where)에 표시")
+  }
 }
 # npm CLI 는 함께 넘긴다 — 할 일이 같은 것끼리 npm 한 번에 깐다(`Install-NpmCli` · PAISetup #35 C). winget CLI 는 하나씩이다.
 $npmCliPicks = @($CliPicks | Where-Object { $_.Via -ne 'winget' })
@@ -9944,16 +9949,23 @@ if ($pipPkgs -and -not $pipAsked) {
 }
 
 } catch { Write-StepFault $_ } finally {
-# ── 백그라운드로 띄운 둘을 거둔다 — 파이썬 패키지 · VS Code 확장 묶음 (PAISetup #69) ──────────────────
-# **「설정 저장소」 걸음 앞의 정한 자리다** — 그 걸음의 두 손이 이 둘과 겹치면 안 된다:
+# ── 백그라운드로 띄운 셋을 거둔다 — 파이썬 패키지 · VS Code 확장 묶음 (PAISetup #69) · 숨은 자식으로 깐 데스크탑 앱 ──────────────────
+# **「도구별 홈」 · 「설정 저장소」 걸음 앞의 정한 자리다** — 그 걸음들의 손이 이 셋과 겹치면 안 된다:
 #   · 넘긴 훅이 `pip install --user` 를 부른다 — 같은 파이썬 자리에 두 pip 가 겹쳐 쓴다
 #   · 심기(`--plant` · 넘긴 훅의 `--install`)가 VS Code 의 폴더 신뢰를 심는데, 그 손(`vscode-trust.py`)은 `Code.exe` 가 하나라도 돌면 VS Code
 #     가 떠 있다고 보고 다음 설치로 미룬다 — 확장을 까는 `code` 도 `Code.exe` 다
+#   · 「도구별 홈」이 안티그래비티 앱의 설정(`~/.gemini/config/config.json`)을 쓴다 — 데스크탑 앱의 자리를 처음 만지는 손이다. 그 앞의
+#     「CLI」 ~ 이 걸음은 데스크탑 앱의 자리를 안 만지고, 깔렸나는 끝의 「연다」 칸이 읽어 여기까지 겹쳐 돌린다
 # 걸음 경계의 `finally` 에 선다 — 이 걸음이 도중에 멎어도 거둔다. 띄운 것이 없으면 아무 줄도 안 낸다. 이 걸음의 마지막 줄들이다.
 # ⚠ 거두기마다 제 `try` 로 감싼다 — `finally` 는 위 `catch` 밖이라 여기서 던지면 걸음 고장이 아니라 맨 위 `trap` 까지 가서 설치가 통째로
 #   끝나고, 앞 거두기가 던지면 뒤 거두기는 안 돈다.
 try { Complete-PipPackages } catch { Write-StepFault $_ }
 try { Complete-Extension } catch { Write-StepFault $_ }
+if ($deskBack.Count) {
+  Write-Host ''
+  Write-Host '  데스크탑 앱 — 백그라운드 설치 결과' -ForegroundColor Cyan
+  foreach ($da in $deskBack) { try { Complete-RowChild 'desktop' $da } catch { Write-StepFault $_ } }
+}
 }
 Exit-Step 'assets'
 
@@ -10717,16 +10729,15 @@ Exit-Step 'repo'
 # ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
 #   층 — 등록
 #   하는 일 — Anthropic 공식 스킬 플러그인 둘 · agy 로그인 안내 한 줄(agy 회사 설정이 안 서는 자리) · 「CLI」 걸음이 뒤로 보낸 CLI
-#     거두기(경계의 `finally`)
-#   앞에서 받는 것 — 「키와 값」의 구독 로그인
+#     가운데 폴더를 심을 행 거두기(경계의 `finally`)
+#   앞에서 받는 것 — 「CLI」의 Claude CLI
 #   안 하는 것 — 꺼진 플러그인 켜기(사람 몫)
 Enter-Step 'register'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 
-# ── Anthropic 공식 스킬 — **자격이 설 자리가 다 선 뒤에 돈다** ────────────────────────
-# 「CLI」 걸음이 아니라 여기서 돈다 — CLI 를 깔자마자 붙이면 사외는 「사외 Claude 구독 로그인」 칸 전이고 사내는 「로컬 프록시」
-#   칸 · 「Claude 홈 설정」 걸음 전이라 「Not logged in」으로 질 수 있다. 원인이 로그인 하나인지는 못 박지 않는다 — 자격이 끼어들
-#   수 있는 칸을 다 지난 뒤에 두면 어느 쪽이어도 선다.
+# ── Anthropic 공식 스킬 — **연결이 끼어들 칸을 다 지난 뒤에 돈다** ────────────────────────
+# 받기는 Claude 구독 로그인을 안 든다 — 구독 로그인이 없는 사내 PC 에서도 깔린다(사용자 실측). 「CLI」 걸음이 아니라 여기서 도는 것은
+#   마켓플레이스를 받는 연결 때문이다 — 사내는 「로컬 프록시」 칸 · 「Claude 홈 설정」 걸음이 연결 값을 세우므로 그 뒤에 둔다.
 # 공식 마켓플레이스 `anthropics/skills` 의 플러그인 둘을 각자 받는다 — `document-skills`(pptx · docx · xlsx · pdf)와
 #   `example-skills`(skill-creator · frontend-design · mcp-builder · webapp-testing 등 열둘). 같은 마켓의 나머지 셋은 안 받는다 —
 #   `claude-api` 는 Claude Code 바이너리에 같은 스킬이 묶여 받으면 어느 PC 에서나 두 벌이 되고, `academy-guide` ·
@@ -10853,15 +10864,16 @@ if ($wantAgyDelegate -and -not $wantAgy) {
 }
 
 } catch { Write-StepFault $_ } finally {
-# ── 「CLI」 걸음이 숨은 자식으로 띄운 CLI 를 거둔다 — **마무리 앞의 정한 자리다** ──────────────────
-# 마무리의 「사용자 범위 명령 자리」가 그 CLI 의 폴더(`PathDir`)를 심고 끝 검증이 그 명령을 재므로 그 앞에서 거둔다. 그 사이 「키와 값」
-#   ~ 이 걸음이 겹쳐 돈다 — 그 걸음들은 뒤로 보낸 CLI 의 명령을 안 부르고(행의 `Back` 곁말) winget 도 안 부른다.
+# ── 「CLI」 걸음이 숨은 자식으로 띄운 CLI 가운데 폴더를 심을 행을 거둔다 — **마무리 앞의 정한 자리다** ──────────────────
+# 마무리의 「사용자 범위 명령 자리」가 그 CLI 의 폴더(`PathDir`)를 심으므로 그 앞에서 거둔다 — 폴더는 설치가 끝나야 선다. 그 밖의 행은
+#   끝 검증이 처음 쓰므로 「마무리」의 `finally` 가 거둔다(`$cliBackLate`). 그 사이 「키와 값」 ~ 이 걸음이 겹쳐 돈다 — 그 걸음들은 뒤로
+#   보낸 CLI 의 명령을 안 부르고(행의 `Back` 곁말) winget 도 안 부른다.
 # 거둔 뒤 이 창의 PATH 를 다시 태운다 — winget 이 휴대용 꾸러미의 자리를 사용자 PATH 에 심은 것은 자식의 창만 알았다.
 # 걸음 경계의 `finally` 에 선다 — 이 걸음이 도중에 멎어도 거둔다. 거두기마다 제 `try` 로 감싼다(「공용 자산」 걸음의 거두기와 같은 까닭).
-if ($cliBack.Count) {
+if ($cliBackPath.Count) {
   Write-Host ''
   Write-Host '  CLI — 백그라운드 설치 결과' -ForegroundColor Cyan
-  foreach ($c in $cliBack) { try { Complete-RowChild 'cli' $c } catch { Write-StepFault $_ } }
+  foreach ($c in $cliBackPath) { try { Complete-RowChild 'cli' $c } catch { Write-StepFault $_ } }
   try { Update-RuntimePath } catch { Write-StepFault $_ }
 }
 }
@@ -12229,7 +12241,19 @@ if ($script:ClaudeLogin) {
     Write-Host '  ! 아직 로그인되지 않음 — 새 터미널에서 claude auth login 을 실행하세요' -ForegroundColor Yellow
   }
 }
-} catch { Write-StepFault $_ '마무리' }
+} catch { Write-StepFault $_ '마무리' } finally {
+# ── 「CLI」 걸음이 숨은 자식으로 띄운 CLI 의 나머지를 거둔다 — **검증 앞의 정한 자리다** ──────────────────
+# 폴더를 심지 않는 행(`$cliBackLate` · 안티그래비티 CLI)은 끝 검증이 그 명령을 처음 부르므로 여기까지 겹쳐 돌린다 — 사내 회선에서 오래
+#   걸리는 행이 「Claude 플러그인」 끝에서 설치를 세우지 않게. 마무리는 그 명령을 안 부르고 winget 도 안 부르며, 세션 훅을 다시 부르는
+#   심기는 검증 뒤다. 거둔 뒤 이 창의 PATH 를 다시 태운다(「Claude 플러그인」 끝의 거두기와 같은 까닭) — 검증이 그 명령을 이름으로 찾는다.
+# 「마무리」 칸 경계의 `finally` 에 선다 — 마무리가 도중에 멎어도 거둔다. 거두기마다 제 `try` 로 감싼다.
+if ($cliBackLate.Count) {
+  Write-Host ''
+  Write-Host '  CLI — 백그라운드 설치 결과' -ForegroundColor Cyan
+  foreach ($c in $cliBackLate) { try { Complete-RowChild 'cli' $c } catch { Write-StepFault $_ '마무리' } }
+  try { Update-RuntimePath } catch { Write-StepFault $_ '마무리' }
+}
+}
 
 # ── 검증 — **재고 나서 말한다** ─────────────────────────────────────────────────
 # 안 재고 「됐다」로 끝내면 안 선 기계도 성공으로 보고된다 — 부재가 통과로 읽히는 것을 막는 것이 이 스크립트의 규율이라,
