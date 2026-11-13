@@ -74,8 +74,8 @@
 | `! Claude 데스크탑 — 찾지 못함. 시작 메뉴에서 직접 여세요` (다른 앱 이름으로도 뜬다) | 시작 메뉴에서 직접 열고, 그 줄을 그대로 설치본을 만든 사람에게 보낸다 |
 | 확장은 도는데 응답이 안 온다 | 낡은 창이라 VS Code 를 전부 닫고 새로 연다 |
 | `! gh 로그인이 유효하지 않음 …` · `! gh 로그인 없음 …` | 새 터미널에서 그 줄이 든 명령(`gh auth login -s …`)을 한 번 친다 |
-| 한 PC 에서 gh 로그인하면 다른 PC 의 gh 로그인이 끊긴다 | 같은 범위 조합의 토큰이 열 개를 넘어 GitHub 가 가장 덜 쓴 것을 끊은 것이다. 끊긴 영속 PC(회사 데스크톱)에서 새 터미널에 `gh auth refresh -h github.com -s read:user` 를 한 번 친다 — 그 PC 의 토큰이 VDI 와 다른 범위 조합으로 서서 다시 안 밀린다 |
-| push 가 ``refusing to allow an OAuth App to create or update workflow … without `workflow` scope`` 로 진다 | 로그인이 워크플로 범위 없이 선 것이다. 새 터미널에서 `gh auth refresh -s workflow` 를 한 번 친다 |
+| 한 PC 에서 gh 로그인하면 다른 PC 의 gh 로그인이 끊긴다 | 같은 범위 조합의 토큰이 열 개를 넘어 GitHub 가 가장 덜 쓴 것을 끊은 것이다. 영속 PC(회사 데스크톱)의 토큰이 VDI 와 같은 범위 조합에 서 있으면 다음 설치가 「범위가 VDI 와 같다」는 줄과 함께 로그인 창을 다시 열어 그 PC 의 범위로 받는다 — 거기서 승인하면 다시 안 밀린다 |
+| push 가 ``refusing to allow an OAuth App to create or update workflow … without `workflow` scope`` 로 진다 | 로그인이 워크플로 범위 없이 선 것이다. 다음 설치가 토큰의 범위를 재서 로그인 창을 다시 열어 `workflow` 를 받는다 — 거기서 승인한다 |
 | `! ~/…/skills/<이름>/ — 받는 쪽 홈에 러너가 있다 · 우리 것이 아니라 안 걷는다` | 그 폴더를 지운다 |
 | `! 네트워크 환경을 판단하지 못함 — …` · 창에 「네트워크 환경(사내 · 사외)을 판단하지 못해 설치할 수 없습니다」 | 아무것도 안 깔고 멈춘 자리다. `Setup.exe` 를 새로 받아 다시 누르고, 같으면 그 줄을 그대로 설치본을 보낸 사람에게 보낸다 |
 | `! ANTHROPIC_CUSTOM_MODEL_OPTION 이 settings.json 에만 있다 …` | v1.19.3 보다 옛 판으로 마지막에 깐 PC 에서 뜰 수 있다. `~/.claude/settings.json` 의 `env` 에서 그 줄을 지우고 다시 누른다 |
