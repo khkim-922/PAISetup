@@ -208,4 +208,7 @@ Claude Code 를 손으로 설치하려면 프로그램 몇 개를 깔고, VS Cod
 
 ## 라이선스
 
-MIT 라이선스입니다. 전문은 저장소 맨 위의 LICENSE 파일에 있습니다.
+Apache License 2.0 입니다. 전문은 저장소 맨 위의 LICENSE 파일에 있습니다.
+
+짐에 실린 Anthropic 공식 문서 스킬 넷(`kit/skills/` 의 pptx · docx · xlsx · pdf)은 Anthropic 의 저작물이고, 같은 Apache License
+2.0 으로 각 폴더의 LICENSE.txt 가 그 조건을 듭니다.

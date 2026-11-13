@@ -1,12 +1,12 @@
 ---
 name: ppt-report
-description: 구성안이 선 보고를 회사 양식의 슬라이드 덱(.pptx)으로 지을 때 부른다. "이 구성으로 PPT 만들어줘"·"보고 장표로 구워줘"·"덱으로 만들자". 짓기 · 디자인 · 검수는 공식 pptx 스킬(anthropic-skills:pptx 또는 document-skills:pptx)이 들고, 이 스킬은 그쪽이 모를 수밖에 없는 셋만 든다 — 회사 양식 그림의 자리, 한국어 줄바꿈, 진본이 스크립트라는 것. 보고의 분석 · 맥락 · 구성은 report-plan 이 먼저 세운다.
+description: 구성안이 선 보고를 회사 양식의 슬라이드 덱(.pptx)으로 지을 때 부른다. "이 구성으로 PPT 만들어줘"·"보고 장표로 구워줘"·"덱으로 만들자". 짓기 · 디자인 · 검수는 Anthropic 공식 pptx 스킬이 들고, 이 스킬은 그쪽이 모를 수밖에 없는 셋만 든다 — 회사 양식 그림의 자리, 한국어 줄바꿈, 진본이 스크립트라는 것. 보고의 분석 · 맥락 · 구성은 report-plan 이 먼저 세운다.
 ---
 
 # 보고 덱을 짓는다
 
-공식 pptx 스킬이 짓고 검수한다 — 동기화본 `anthropic-skills:pptx` 가 앞선다. 구성안(report-plan)에서 출발한다. Claude
-전용이다 — 그 스킬이 Claude 로만 온다.
+Anthropic 공식 pptx 스킬이 짓고 검수한다 — Claude 에서는 `anthropic-skills:pptx`(계정 동기화본 · 앞선다) 또는
+`document-skills:pptx`, Codex · agy 에서는 홈의 `pptx` 다. 구성안(report-plan)에서 출발한다.
 
 **회사 양식** — `template/report-a4/ppt/media/` 의 그림 셋을 레이아웃 배경으로 건다: `cover.jpg` · `chapter.jpg` · `body.jpg`.
 지면은 10.833 × 7.5 인치(A4 가로)다. `body.jpg` 의 위 머리 띠가 제목 자리다 — 본문 레이아웃의 제목 자리표시자를

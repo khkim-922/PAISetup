@@ -44,7 +44,7 @@ from _verdict import EXIT_UNMEASURED, Unmeasured, unmeasured, unmeasureds  # noq
 
 LOG = ROOT / "_check" / "log" / "live-probe.log"
 # 기본 검체 — 없다. 씨앗은 복사해 나가는 밑판이라 「이 저장소의 어느 파일」을 가리키면 복사된
-# 뒤에는 뿌리 밖의 없는 자리가 된다(#25). 검체는 인자로 받는다 — 한국어 산문 한 벌이면 헬퍼 결에
+# 뒤에는 뿌리 밖의 없는 자리가 된다. 검체는 인자로 받는다 — 한국어 산문 한 벌이면 헬퍼 결에
 # 가깝고, 제 봉투의 결이면 제 값이다.
 DEFAULT_SPECIMEN = None
 ASK = "배관 측정 중이다. 「확인」 한 낱말만 답해라."

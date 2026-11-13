@@ -1,6 +1,6 @@
 """판정 한 벌 — 검사마다 사본을 뜨던 `report`·`show`·`edge` 와 종료코드 계약을 모은다.
 
-좌표 — AI-prompt-helper 이슈 #52 ① · AI-prompt-helper 결정 0029(종료코드) · 아뜰리에 `_check/_verdict.py`.
+좌표 — AI-prompt-helper (이 판이 난 저장소) · 아뜰리에 `_check/_verdict.py`.
 ⚠ **빌려 온 자다** — 진본은 claude-config `seeds/check/_check/_verdict.py`(같은 저장소 · 같은 판)이고,
   고침은 **진본에서 받는다** — 이 사본을 손으로 고치지 않는다.
 
@@ -37,7 +37,7 @@ import sys
 # stderr 는 파이썬이 `backslashreplace` 로 잡아 애초에 안 죽으므로 안 든다.
 sys.stdout.reconfigure(encoding="utf-8")
 
-# 종료코드 계약 — 숫자의 진본은 이 셋이고, 뜻은 곁 `README.md` §종료코드 가 든다(AI-prompt-helper 결정 0029).
+# 종료코드 계약 — 숫자의 진본은 이 셋이고, 뜻은 곁 `README.md` §종료코드 가 든다.
 # 훅도 CI 도 화면 문구를 안 읽고 코드만 보므로 이 갈림이 곧 계약이다.
 EXIT_OK = 0             # 쟀고 맞다
 EXIT_MISMATCH = 1       # 어긋났다

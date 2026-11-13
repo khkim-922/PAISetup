@@ -5,7 +5,7 @@
     표의 값이다. 나머지는 규격이라 고치면 짝(손잡이·난간·실측·곁말·검사)이 깨진다.
   · 깔린 자리(`~/.claude/seeds/gateway`)에서 그대로 불러온다 — 제 값은 `configure(...)` 로 넘긴다.
     접두어 · 갈래별 모델 표 · 캐시 수명 · 기록 자리처럼 복사하는 쪽이 손으로 고치던 것이 다 거기로 든다.
-  왜 이 값들인지의 판정표는 claude-config 결정 0033 이 든다.
+  왜 이 값들인지는 값마다 곁말이 든다.
 
 **손잡이의 차례 — 부르는 쪽(`configure(...)`) → 환경(`{ENV_PREFIX}_*`) → 기본.** 손잡이를 읽는 자리는
 `_settle` 하나다 — 불러올 때 한 번 돌고(환경 → 기본), `configure` 때마다 다시 돈다. 그래서 모듈 꼭대기의
@@ -108,7 +108,7 @@ KEY_GROUP_CLAUDE_CLI = "claude-cli"
 CLI_EXE = "claude"
 # CLI 가 실제로 치는 API 끝점 — 「로컬」 갈래지만 CLI 는 이 PC 에서 떠서 **밖으로** 나간다.
 # 이 길이 막힌 망에서는 깔려 있고 로그인돼 있어도 못 쓰므로, 로컬 갈래도 닿음 실측을 이
-# 주소로 진다(atelier ADR 0167).
+# 주소로 진다.
 CLI_API_URL = "https://api.anthropic.com"
 
 # --- 계약 — 어떤 말로 묻고 어떤 말로 받나. `providers.py` 가 이걸로 갈린다.
@@ -201,7 +201,7 @@ def _lanes():
                       "betas": (OUTPUT_128K_BETA, *_CACHE_BETAS)},
         # 회사 GPT — `/v1/responses` (OpenAI.-Posco.Setting.md 「Responses API (OpenAI)」 절). 옛 문
         # (`/v1/chat/completions`)은 안 쓴다: 이 게이트웨이가 **다 만든 뒤 몰아 줘서**
-        # 렌더가 길수록 사용자가 빈 화면을 본다(atelier #123 실측 · 커밋 2be4432).
+        # 렌더가 길수록 사용자가 빈 화면을 본다(atelier 실측 · 커밋 2be4432).
         # 상한을 실을 이름이 이 계약만 다르다(같은 절 Request Body 표의 `max_output_tokens`).
         "openai":    {"url": f"{GATEWAY_BASE_URL}{RESPONSES_PATH}",
                       # 사내 문서 예시는 `gpt-5.2` 계열이고 이 둘은 표 밖 · 사용자 확인
@@ -239,8 +239,9 @@ def _lanes():
                           "contract": CONTRACT_ANTHROPIC,
                           # ⚠ **128K 낱말을 안 싣는다 — 안 쟀다.** 이 문에 그 낱말이 아직
                           #   서는지 못 재 봤고, 아래 상한이 안전값이라 실을 값도 없다.
-                          #   캐시 수명 낱말만 싣는다: 캐싱은 필수 규율이라(AI-prompt-helper 결정 0004)
-                          #   두 자리가 같은 수명으로 돌아야 한다.
+                          #   캐시 수명 낱말만 싣는다 — 기본 수명은 사람이 답을 쓰는 사이 식어, 안
+                          #   실으면 바퀴마다 큰 봉투를 새 입력으로 다시 낸다. 두 Anthropic
+                          #   자리가 같은 수명으로 돈다.
                           "betas": _CACHE_BETAS},
         # 내 키로 Gemini — 구글 직결. 회사 갈래와 **같은 계약**이라 코드가 하나다.
         # 첫 항이 기본이다 — 무료 키는 pro 미리보기의 할당량이 0 이라(429 · 2026-09-05 실측) flash 가 앞이다.
@@ -362,7 +363,7 @@ def _settle():
     # 담장 순서 — 표의 등장 순서를 따른다. 손으로 적으면 갈래를 더할 때 어긋난다.
     SITES = tuple(dict.fromkeys(row["site"] for row in _GATEWAY.values()))
 
-    # --- 이 서버가 **여는** 담장 — 띄우는 사람이 선언한다 (atelier ADR 0253) -------------
+    # --- 이 서버가 **여는** 담장 — 띄우는 사람이 선언한다 -------------
     #
     # 비우면 다 연다. 회사에 띄울 때 `posco` 하나만 적으면 바깥 갈래(구글 직결 · 이 PC 구독)가
     # 화면 목록에서 빠지고, 옛 브라우저 저장분이 그
@@ -398,7 +399,7 @@ def _settle():
     # CLI 는 프로세스를 띄우는 일이라 소켓 한 번보다 느리다 — 같은 손잡이에서 넉넉히 파생한다.
     CLI_AUTH_TIMEOUT_S = REACH_TIMEOUT_S * 3
 
-    # 사내 갈래의 **문 출력 상한 — 벽에서 역산한 값이다**(`GATEWAY_WALL_S` 곁말). 실측(atelier 2026-08-14 ·
+    # 사내 갈래의 **문 출력 상한 — 벽에서 역산한 값이다**(`GATEWAY_WALL_S` 곁말). 실측(atelier ·
     # ENV-posco)이 말하는 것은 프리필은 시간을 거의 안 먹고 생성이 초당 34~58 토큰이라는 것이다:
     #     180초 × 51 토큰/초 ≈ 9,177 토큰   ← 빨리 쓰는 판의 몫
     # 상한을 벽 **안쪽**에 두면 절단이 계약(`max_tokens`)으로 와서 이어받기가 정확히 걸리고
@@ -418,7 +419,7 @@ def _settle():
     # 재기동만으로 바퀴를 줄일 수 있게.
     MAX_CONTINUE = _int("MAX_CONTINUE", "5")
 
-    # --- 입력 난간 — 봉투가 벽에 닿기 전에 서는 자 (AI-prompt-helper 결정 0024).
+    # --- 입력 난간 — 봉투가 벽에 닿기 전에 서는 자.
     # 위 상한들이 **얼마를 받나**라면 이 값은 **얼마를 보내나**다. 넘겨 보내면 게이트웨이가
     # 400 을 내거나, 모르는 것을 삼키는 성질대로 빈 채로 끊는다 — 뒤엣것이면
     # `providers.CUT_NO_SIGNAL` 과 구별이 안 되고 원인이 입력 쪽이라 되부르기도 안 듣는다.
@@ -461,15 +462,14 @@ def _settle():
     #   곧 그 박동이다.** 시한을 늘리는 것이 아니라 선을 살려 두는 것이다.
     # ⚠ **위 `WALL_MAX_TOKENS` 와 다른 겹이다** — 저쪽은 스트림이 흐르는 판의 180초 절대 벽을
     #   상한으로 되짚은 값이고, 이쪽은 **아무 조각도 안 흐르는 판**의 자다. 상한을 아무리
-    #   낮춰도 침묵으로 가는 판은 못 막는다(AI-prompt-helper 결정 0017 이 「안 고치는 자리」로 적어 둔 그것).
+    #   낮춰도 침묵으로 가는 판은 못 막는다.
     # ⚠ **켠다고 생각을 더 시키는 것이 아니다** — 끈 판에도 `thoughtsTokenCount` 가 오므로
     #   모델은 어차피 같은 만큼 생각한다. 켜는 것은 그 조각을 **흘려보내라**는 뜻이다.
-    # ⚠ **실측은 아뜰리에가 사내 게이트웨이에서 했다**(atelier `_check/log/thinking-probe-runs.log` ·
-    #   2026-08-27). 400 이 안 오고 생각 조각이 실제로 흐르며, 켠 판이 선을 절반 시각에 연다 —
-    #   61,019자 봉투에서 6.1초→4.1초 · 81,193자에서 7.7초→3.9초. 이 씨앗의 배관으로도 같은
-    #   게이트웨이에서 섰다(`_check/log/live-probe.log` 의 `thoughts` 줄 — 첫 조각 8.6초 전에 생각
-    #   신호 11번 · `thinking_tokens=971`). 「쓰기 전에 프로브로 잰다」는 규율을 그 실측으로
-    #   갈음한다(AI-prompt-helper 결정 0033).
+    # ⚠ **사내 게이트웨이에서 선다**(atelier 실측) — 400 이 안 오고 생각 조각이 실제로 흐르며, 켠 판이
+    #   선을 절반 시각에 연다 — 61,019자 봉투에서 6.1초→4.1초 · 81,193자에서 7.7초→3.9초. 이 씨앗의
+    #   배관으로도 같은 게이트웨이에서 선다(`_check/log/live-probe.log` 의
+    #   `thoughts` 줄 — 첫 조각 8.6초 전에 생각 신호 11번 · `thinking_tokens=971`). 「쓰기 전에 프로브로
+    #   잰다」는 규율을 그 실측으로 갈음한다.
     # ⚠ **게이트웨이 제 504 와 다른 겹이다** — 저쪽이 낸 504 는 코드가 실려 오고 스트림 중이면
     #   200 + `event: error` 로 온다. 우리가 받은 것은 코드 없는 HTML 이라 **게이트웨이가 낸
     #   것이 아니다** — 이 가름이 없으면 다음 504 를 사내 오류 코드표에서 헛짚는다.
@@ -480,8 +480,8 @@ def _settle():
     #   게이트웨이는 모르는 낱말을 조용히 삼키므로 그 낱말은 쓰기 전에 따로 재야 한다.
     raw = _env("GEMINI_THOUGHTS", "1")
     GEMINI_THOUGHTS = raw is True or raw == "1"
-    # --- gemini 는 **생각 몫이 `maxOutputTokens` 안에 든다** — 사내 실측 2026-09-09(AI-prompt-helper #64):
-    # 상한 2,500 인 문이 `out=71 think=2401` 에서 잘렸다. 답 크기에 이 몫을 더해 싣는다
+    # --- gemini 는 **생각 몫이 `maxOutputTokens` 안에 든다** — 사내 게이트웨이에서 상한 2,500 인 문이
+    # `out=71 think=2401` 에서 잘린다. 답 크기에 이 몫을 더해 싣는다
     # (`providers._gm_envelope`). 켜고 끄는 것과 무관하다 — 끈 판에도 생각은 같은 만큼 한다.
     # 값 — 그 판의 바퀴당 최대 생각 2,401 위로 여유를 둔 것. 180초 벽과의 셈: 가장 느리게 본 판(초당
     # 57토큰)으로도 4,000+4,000 은 140초라 벽 안이다. ⚠ 생성 속도는 한 판 실측이다 — **안 쟀다**.
@@ -554,7 +554,7 @@ _KEY_ENV = {
     #   프로브에 `--key` 로 손으로 준다.
     KEY_GROUP_ANTHROPIC: (),
     # `claude setup-token` 이 내주는 장기 토큰. CLI 가 이 이름을 읽고 **이 PC 의 로그인보다
-    # 앞세운다**(atelier 2026-08-24 실측 — authMethod 가 claude.ai → oauth_token 으로
+    # 앞세운다**(atelier 실측 — authMethod 가 claude.ai → oauth_token 으로
     # 뒤집힌다). 권한은 추론뿐이다 — 새도 그 이상은 못 한다.
     KEY_GROUP_CLAUDE_CLI: ("CLAUDE_CODE_OAUTH_TOKEN",),
 }
@@ -582,7 +582,7 @@ def server_token(group):
     return os.environ.get(COMPANY_TOKEN_ENV, "")
 
 
-# --- 닿나 — 한 번 재고 프로세스가 사는 동안 든다 (atelier ADR 0159 · 0167) ----------
+# --- 닿나 — 한 번 재고 프로세스가 사는 동안 든다 ----------
 #
 # 집이냐 회사냐는 **PC 가 갈리지** 도중에 안 바뀐다. 매 요청마다 재면 화면이 그만큼 늦다.
 #
@@ -609,9 +609,9 @@ def _ssl_why(e):
     ⚠ 그래서 `e.reason` 을 바로 읽으면 그 갈래에서 `AttributeError` 가 나고, 그것이
       `except` 절 **안**에서 난 예외라 뒤의 `except OSError` 가 안 받아 `_probe` 밖으로
       나간다 — 까닭을 말하려던 자리가 **말 대신 넘어지고** `/api/status` 가 500 이 된다
-      (atelier 실측 · ADR 0158). 하필 **검사 장비가 인증서를 갈아 끼우는 그 망**이 이
+      (atelier 실측). 하필 **검사 장비가 인증서를 갈아 끼우는 그 망**이 이
       함수가 있는 까닭이다.
-    ⚠ **사내 PC 는 다 그 망을 낀다**(AI-prompt-helper 결정 0016) — 윈도우에서는
+    ⚠ **사내 PC 는 다 그 망을 낀다** — 윈도우에서는
       손으로 지은 예외가 오는 그 갈래가 **오늘 걸리는 자리**다.
     ⚠ 리눅스에서는 안 보인다 — 거긴 OpenSSL 판정이 그대로 남아 `reason` 이 찬다.
       **깨지는 자리와 도는 자리가 갈린다.**
@@ -781,17 +781,17 @@ def why_unreachable(provider, owner=False):
 # 안 온 채 같은 문장을 실은 HTTP 500(`providers.Rejected`). 스트림 길에서만 걸리고 같은 앱의
 # 비스트리밍은 앞단 300초까지 산다(같은 문서의 층 표).
 # ⚠ 앞단 HAProxy(300초 · gateway-front-haproxy.md)와 **다른 겹**이다. 값이 안 맞는다.
-# ⚠ **저쪽의 시계지 우리 자가 아니다(AI-prompt-helper 결정 0017).** 이 값으로 요청을 스스로 끊지 않는다 —
-#   끊으면 사람이 안 시킨 절단이고, 잘린 판은 stop 이 비어 이어받기가 못 붙는다(2026-09-07
-#   실측: 문마다 이 값을 시한으로 걸어 두었더니 벽이 없는 CLI 구독 갈래의 ⑤ 까지 180초에
-#   잘렸다). 여기서 파생하는 것은 하나, 문 출력 상한 `WALL_MAX_TOKENS`(`_settle`)다.
+# ⚠ **저쪽의 시계지 우리 자가 아니다.** 이 값으로 요청을 스스로 끊지 않는다 —
+#   끊으면 사람이 안 시킨 절단이고, 잘린 판은 stop 이 비어 이어받기가 못 붙는다. 문마다 이 값을
+#   시한으로 걸면 벽이 없는 CLI 구독 갈래까지 180초에 잘린다.
+#   여기서 파생하는 것은 하나, 문 출력 상한 `WALL_MAX_TOKENS`(`_settle`)다.
 GATEWAY_WALL_S = 180
 
 # --- 모델별 출력 상한 — 상한을 넘긴 값은 게이트웨이가 400 을 내고 스트림을 머리만
 # 뱉은 뒤 끊는다. 그때 우리 손에는 빈 글자만 남아 **원인이 안 보인다.** 그래서 보내기 전에 이 표로 막는다.
 _UNKNOWN_MAX_TOKENS = 64000          # 표에 없는 모델은 안전값
 _MODEL_MAX_TOKENS = {
-    # 사내 갈래의 값은 게이트웨이 실측(2026-08-12 · atelier `_MODEL_MAX_TOKENS`).
+    # 사내 갈래의 값은 게이트웨이 실측(atelier `_MODEL_MAX_TOKENS`).
     "claude-sonnet-4.6": 128000,
     # ⚠ **이 둘은 안 쟀다** — 넘겨짚어 적었다가 틀리면 위 곁말대로 조용히 실패한다.
     #   실질 손해는 없다: 문 상한(`WALL_MAX_TOKENS`)이 어차피 먼저 온다.
@@ -864,7 +864,7 @@ def creds(provider=None, token=None, model=None, max_tokens=None):
     model = model or row["models"][0]
     cap = _MODEL_MAX_TOKENS.get(model, _UNKNOWN_MAX_TOKENS)
     if row["site"] == SITE_POSCO:
-        # 벽 안쪽으로 — 절단이 계약으로 오게(`WALL_MAX_TOKENS` 곁말 · AI-prompt-helper 결정 0017)
+        # 벽 안쪽으로 — 절단이 계약으로 오게(`WALL_MAX_TOKENS` 곁말)
         cap = min(cap, WALL_MAX_TOKENS)
     token = token or ("" if lowered else server_token(row["key_group"]))
     return Creds(

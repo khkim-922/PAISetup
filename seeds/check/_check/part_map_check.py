@@ -1,8 +1,7 @@
 """부품 지도 문서의 표가 부품 폴더 실물과 맞나 — 양쪽 차집합.
 
-좌표 — 이 자가 난 자리는 아뜰리에 `_check/part_map_check.py`(아뜰리에 #322 「안 하기로 한 것」이
-간선을 뺀 자리를 적어 둔다) · 자기 이빨 규율은 아뜰리에 결정 0112 · 씨앗 규율은 claude-config
-결정 0040.
+좌표 — 이 자가 난 자리는 아뜰리에 `_check/part_map_check.py` ·
+씨앗 규율은 곁 `README.md` 「이 폴더의 규율」.
 
     python -X utf8 _check/part_map_check.py <지도 문서> <부품 폴더> <절 제목>
     python -X utf8 _check/part_map_check.py    # 곁 `part_map.conf` 의 [part_map] doc·app·section 을 적은 저장소

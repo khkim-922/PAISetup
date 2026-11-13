@@ -555,7 +555,9 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
   `discernment-nudge` 는 답의 끝에 끼어든다
 - claude.ai 구독으로 로그인한 PC 는 계정 동기화가 문서 넷과 스킬 만들기를 `anthropic-skills:<이름>` 으로 따로 싣는다. 겹쳐도
   깔고, 한쪽을 끄는 것은 사람 몫이다
-- 배포본에는 싣지 않는다 — 문서 스킬의 라이선스가 제3자 배포를 막아, 각자 마켓에서 받는다
+- Codex · 안티그래비티를 고르면 같은 문서 스킬 넷(pptx · docx · xlsx · pdf)을 그 홈(`~/.agents/skills` · `~/.gemini/config/skills`)에도
+  놓는다. 이쪽은 마켓이 아니라 배포본이 싣고 온 상류 한 판(Apache 2.0)이라 GitHub 이 막힌 PC 에서도 선다. Claude 홈에는 안 놓는다 —
+  플러그인과 두 벌이 된다
 - 사내망이 GitHub 을 막으면 못 받을 수 있다. 그때는 노란 줄과 손으로 할 명령을 찍고 설치를 실패로 세지 않는다
 
 ## 워드의 PDF 변환 안내 끄기

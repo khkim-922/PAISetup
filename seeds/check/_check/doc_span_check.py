@@ -1,7 +1,7 @@
 r"""문서의 백틱 조각이 실물을 가리키나 — 경로는 나무에, 식별자는 코드에 있나.
 
-좌표 — 이 자가 난 자리는 아뜰리에 #322 이고, 자기 이빨 규율은 아뜰리에 결정 0112 ·
-씨앗 규율은 claude-config 결정 0040 이다.
+좌표 — 이 자가 난 자리는 아뜰리에고, 자기 이빨은 아래 §1 이 든다 ·
+씨앗 규율은 곁 `README.md` 「이 폴더의 규율」.
 
     python -X utf8 _check/doc_span_check.py                  # 이 나무 · 선언은 곁 `doc_span.conf`
     python -X utf8 _check/doc_span_check.py <나무뿌리>        # 잴 나무를 지정 (병렬 작업나무)

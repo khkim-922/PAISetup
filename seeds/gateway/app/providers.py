@@ -1,9 +1,9 @@
-"""계약 넷 어댑터 — 능력 넷만 든다 (AI-prompt-helper 결정 0006).
+"""계약 넷 어댑터 — 능력 넷만 든다.
 
 ⚠ **골든 씨앗이다** — 진본은 claude-config `seeds/gateway/` 이고, 새 프로젝트가 이 폴더를
   복사해 출발한다. 몸통은 실측이 있는 쪽에서 왔다 — 씀씀이·이음매·생각 조각은 아뜰리에가
   사내 게이트웨이에서 잰 것이고, 거절·빈손·캐시 경계 셈은 헬퍼가 그 사고를 보고 일반화한
-  것이다. 어느 자리가 어느 쪽에서 왔고 왜인지는 claude-config 결정 0033 → 0219 의 판정표가 든다(판정표는 0219 가 그대로 든다).
+  것이다. 왜 그 꼴인지는 자리마다 곁말이 든다.
 
   - Anthropic: `/v1/messages`            · x-api-key      · `content_block_delta`
   - OpenAI:    `/v1/responses`           · Bearer         · `response.output_text.delta`
@@ -64,7 +64,7 @@ def envelope(system, messages, c):
     ⚠ **계약으로 가른다 — 갈래 이름으로 가르지 않는다.** 한 계약을 두 갈래가 쓴다
       (회사 Gemini·내 키 Gemini). 이름으로 가르면 이름이 안 겹치는 갈래가 통째로
       엉뚱한 계약으로 떨어지는데, 화면에는 그냥 실패로만 보인다.
-    ⚠ **입력 난간이 여기 선다**(AI-prompt-helper 결정 0024). 봉투를 싸는 자리가 하나라 문마다
+    ⚠ **입력 난간이 여기 선다.** 봉투를 싸는 자리가 하나라 문마다
       세지 않는다 — 문마다 적으면 반드시 하나가 빠지고, 빠진 문으로 나간 봉투는 게이트웨이가
       조용히 삼킨다.
     """
@@ -76,7 +76,7 @@ def envelope(system, messages, c):
     return build(layers, messages, c)
 
 
-# ---------- 입력 난간 — 봉투가 벽에 닿기 전에 선다 (결정 0024) ----------
+# ---------- 입력 난간 — 봉투가 벽에 닿기 전에 선다 ----------
 
 class EnvelopeTooLarge(RuntimeError):
     """봉투가 입력 난간을 넘었다 — **보내기 전에** 선다.
@@ -84,7 +84,7 @@ class EnvelopeTooLarge(RuntimeError):
     ⚠ **출력 상한과 다른 축이다.** 저쪽(`gateway.WALL_MAX_TOKENS`)은 우리가 얼마를 받나고
       이쪽은 우리가 얼마를 보내나다. 넘겨 보내면 게이트웨이가 400 을 내거나(그러면
       `_reject_text` 가 말한다) 모르는 것을 삼키는 성질대로 **빈 채로 끊는다** — 뒤엣것이면
-      `CUT_NO_SIGNAL` 과 구별이 안 되고, 원인이 입력 쪽이라 되부르기(결정 0023)도 안 듣는다.
+      `CUT_NO_SIGNAL` 과 구별이 안 되고, 원인이 입력 쪽이라 되부르기도 안 듣는다.
     """
 
     def __init__(self, said, chars, bulk):
@@ -96,8 +96,8 @@ class EnvelopeTooLarge(RuntimeError):
 def envelope_chars(system, messages):
     """이 봉투가 몇 자인가 — **재기만 한다.** 막는 자는 아래 `gauge` 다.
 
-    부르는 쪽이 난간에 닿기 **전에** 스스로 줄일 수 있게 자를 밖으로 낸다(결정 0024 의
-    사슬 접기). 자가 둘이 되지 않게 `gauge` 도 이 함수로 잰다.
+    부르는 쪽이 난간에 닿기 **전에** 스스로 줄일 수 있게 — 대화 사슬의 옛 마디를 접는 따위 — 자를 밖으로 낸다.
+    자가 둘이 되지 않게 `gauge` 도 이 함수로 잰다.
     """
     return (sum(len(x) for x in _layers(system))
             + sum(len(_text_of(m["content"])) for m in messages))
@@ -202,7 +202,7 @@ def stream_once(system, messages, on_text=None, creds=None, on_usage=None,
     우리 예산인가는 성질이 전혀 다른데 기록에는 똑같이 보인다. 그 판의 stop_reason 은
     `None` 이다.
 
-    ⚠ **빈손 둘을 여기서 이름 부른다**(AI-prompt-helper 결정 0023 · 그쪽 #44). 하나는 **빈 채 끊긴 스트림**
+    ⚠ **빈손 둘을 여기서 이름 부른다.** 하나는 **빈 채 끊긴 스트림**
       — 접고 한 번 다시 부른다. 다른 하나는 **여문 빈손**(신호가 섰는데 0자) — 되부르지
       않고 사유만 올린다. 계약 넷 공용인 까닭은 「글자가 0 이다」가 계약을 안 가리는
       **상태**라서다(`_empty_why`).
@@ -234,14 +234,14 @@ def stream_once(system, messages, on_text=None, creds=None, on_usage=None,
                                               deadline, why.append, on_think)
     except urllib.error.HTTPError as e:
         # 왜 거부했는지는 응답 몸통에 있다 — 봉투에서 꺼내 사람 말로 싣는다.
-        # ⚠ **몸통을 여기서 안 자른다**(결정 0030) — 사람 말 한 줄만 상한을 지고 전문은
+        # ⚠ **몸통을 여기서 안 자른다** — 사람 말 한 줄만 상한을 지고 전문은
         #   예외의 칸으로 간다. 자른 것만 지고 오면 그 뒤로는 전문을 되찾을 자리가 없다.
         try:
             body = e.read().decode("utf-8", "replace")
         except Exception:
             body = "(응답 몸통 읽기 실패)"
         raise Rejected(_reject_text(e.code, body[:_REJECT_SAY_CAP]), e.code, body) from e
-    # **빈 채 끊겼으면 접고 한 번 다시 부른다**(결정 0023) — 받은 것이 없어 잃을 것도
+    # **빈 채 끊겼으면 접고 한 번 다시 부른다** — 받은 것이 없어 잃을 것도
     # 겹칠 것도 없는 그 자리에서만.
     folded = ""
     if _fold_wanted(c, text, stop, deadline):
@@ -253,7 +253,7 @@ def stream_once(system, messages, on_text=None, creds=None, on_usage=None,
     if stop is None and not why:
         why.append(CUT_NO_SIGNAL)
     # **여문 빈손** — 신호가 섰으므로 위 줄이 안 잡는다. 안 붙이면 사유가 어느 칸에도 안
-    # 남고 로그에는 `stop=end_turn out=0` 만 선다(AI-prompt-helper #44 B).
+    # 남고 로그에는 `stop=end_turn out=0` 만 선다.
     # ⚠ **anthropic 계약도 낸다** — 회사 Claude 갈래의 5.x 판(Opus 5 · Opus 5.5 · Sonnet 5.5)은
     #   「태그 안에서 먼저 생각하고 답하라」는 지시에 `content: []` · `output_tokens=0` · `end_turn`
     #   으로 답한다(ENV-posco 「우리가 쓰는 모델」 항목 · `pgpt-proxy/README.md` 모델 대체 칸 —
@@ -283,7 +283,7 @@ def stream_resumed(system, messages, continue_ask, on_text=None, creds=None,
     ⚠ **`max_tokens` 에서만 잇는다.** 신호 없이 끊긴 판(`None`)은 안 잇는다 — 짧고
       닫힌 답에 「계속 내라」를 걸면 이을 것이 없는 채로 **없는 말을 지어낸다.**
       끊김은 `on_cut` 이 사유로 말하고 무엇을 할지는 부르는 쪽이 정한다.
-    ⚠ **이음매의 코드 펜스를 벗긴다**(atelier #335 · AI-prompt-helper #45). 지시문으로만 막으면
+    ⚠ **이음매의 코드 펜스를 벗긴다.** 지시문으로만 막으면
       안 먹는 판이 있고, 그때 조각은 ```` ```markdown ```` 으로 열려 온다. `parts` 에 앉기
       **전에** 벗기는 까닭은 그 목록이 다음 바퀴의 앞글(assistant 마디)이기 때문이다 —
       뒤에서 벗기면 산출물은 깨끗한데 모델은 펜스 든 앞글을 보고 다음 이음매에서 또 연다.
@@ -305,7 +305,7 @@ def stream_resumed(system, messages, continue_ask, on_text=None, creds=None,
         if not parts:
             # **이을 것이 없으면 안 잇는다.** 빈 assistant 마디는 계약이 마다하고(400),
             # 「이어 쓴다」는 이을 글이 있을 때의 말이다. 상한에 걸렸다는데 손이 빈 판은
-            # 빈손이라, 그 이름은 `stream_once` 가 이미 사유로 올렸다(결정 0023).
+            # 빈손이라, 그 이름은 `stream_once` 가 이미 사유로 올렸다.
             break
         if on_continue:
             on_continue(i + 1)
@@ -360,9 +360,9 @@ _WALL_FLOOR_S = 1.0         # 예산이 바닥나도 **한 번은** 다녀올 �
 # **여문 빈손** — 저쪽이 「다 말했다」고 신호를 세워 놓고 글자를 한 자도 안 준 판이다.
 # 끊긴 것이 아니라 여문 것이라 이름이 따로 서야 한다: 위 `CUT_NO_SIGNAL` 은 **신호가
 # 없는** 자리를 잡고, 이쪽은 **신호가 선** 자리를 잡는다. 이름이 하나면 뒤엣것이 영영
-# 안 걸린다 — 로그에 `stop=end_turn out=0` 만 서고 사유 칸은 빈다(AI-prompt-helper #44 B).
+# 안 걸린다 — 로그에 `stop=end_turn out=0` 만 서고 사유 칸은 빈다.
 EMPTY_HANDS = "여문 빈손 — 종료 신호가 섰는데 글자가 0 이다"
-# 접은 길 — 빈 채 끊긴 스트림을 **스트리밍만 접고** 한 번 다시 부른 판(AI-prompt-helper 결정 0023).
+# 접은 길 — 빈 채 끊긴 스트림을 **스트리밍만 접고** 한 번 다시 부른 판.
 CUT_FOLDED = "빈 채 끊겨 접고 한 번 다시 불렀다"
 # 안 온 씀씀이 칸의 표. **0 과 갈려야 한다** — 「저쪽이 0 을 실었다」와 「아예 안 실었다」는
 # 다른 진단이고, 빈손을 캘 때 갈리는 것이 바로 그 둘이다. `log.MISSING` 이 표 칸에서 드는
@@ -371,7 +371,7 @@ _NO_CELL = "칸 없음"
 # 빈손 사유에 싣는 씀씀이 — 「생각으로 예산을 다 썼나」를 그 자리에서 묻는 칸들이다.
 # ⚠ **`output_reported` 가 곁에 선다** — 「0 을 실었다」와 「칸을 아예 안 실었다」가
 #   빈손 진단에서 갈리는 두 사실이고, 앞엣것만 보면 게이트웨이가 안 센 판이 모델이 한
-#   자도 안 뱉은 판으로 읽힌다(아뜰리에 #302 ③).
+#   자도 안 뱉은 판으로 읽힌다.
 # ⚠ **`thinking_tokens` 는 든 계약에만 있다** — 없으면 `_NO_CELL` 로 서고, 그것이 곧
 #   「이 갈래는 그 칸을 안 준다」는 참말이다.
 _EMPTY_CELLS = ("output_tokens", "output_reported", "thinking_tokens", "total_input")
@@ -409,12 +409,12 @@ def _plain_env(env):
 
 
 def _fold_wanted(c, text, stop, deadline):
-    """빈 채 끊긴 스트림인가 — 접고 다시 부를 자리인가 (결정 0023).
+    """빈 채 끊긴 스트림인가 — 접고 다시 부를 자리인가.
 
     ⚠ **조건을 좁게 둔다.** 조각이 한 자라도 흘렀으면 안 부른다 — 그 판은 이어받기의
       자리이고, 여기서 다시 부르면 같은 글을 두 번 생성해 값만 두 배가 된다.
     ⚠ **예산이 남았을 때만** — 시간에 걸려 온 판에 한 바퀴를 더 얹지 않는다.
-    ⚠ **anthropic 계약만** — 접은 길을 실측한 자리가 거기 하나다(atelier 0202 · 4.80초).
+    ⚠ **anthropic 계약만** — 접은 길을 실측한 자리가 거기 하나다(atelier 실측 · 4.80초).
       나머지 셋은 **안 쟀다**: gemini 는 접으면 끝점 이름부터 갈리고(`:generateContent`),
       CLI 는 접을 스트림이 없다. 그 갈래들도 빈손이면 위 `_empty_why`·`CUT_NO_SIGNAL` 이
       이름은 부르므로 **조용히 지나가지는 않는다.**
@@ -427,8 +427,8 @@ def _fold_wanted(c, text, stop, deadline):
 
 
 # ---------- 이어쓰기 이음매의 코드 펜스 ----------
-# atelier app/providers.py `seam_unfence`·`_join_seams` 에서 가져왔다 (아뜰리에 #335 ·
-# 2026-09-05 실물). **손으로 따라간다** — 저쪽이 고치면 여기도 고친다(저쪽 그 절에도 적혀 있다).
+# atelier app/providers.py `seam_unfence`·`_join_seams` 에서 가져왔다.
+# **손으로 따라간다** — 저쪽이 고치면 여기도 고친다(저쪽 그 절에도 적혀 있다).
 #
 # 이음매는 **두 자리**에 선다 — 우리 봉합(`stream_resumed` · HTTP 계약 셋)과 **CLI 갈래 안**
 # (`_cli_once` · 앞 메시지가 출력 상한에서 잘리면 CLI 가 스스로 둘째 메시지로 잇는다).
@@ -519,7 +519,7 @@ def _one_line(text):
 
 
 class Rejected(RuntimeError):
-    """게이트웨이가 HTTP 로 거절했다 — **몸통을 자른 데 없이 지고 온다**(AI-prompt-helper 결정 0030).
+    """게이트웨이가 HTTP 로 거절했다 — **몸통을 자른 데 없이 지고 온다.**
 
     사람 말 한 줄은 예외 글자가 들고(그 글자가 화면과 기록에 같이 선다), **전문은 칸으로**
     따로 든다. 두 자리의 상한이 다르기 때문이다 — 화면 줄도 기록 줄도 한 줄 계약이라 자르는데,
@@ -578,8 +578,8 @@ def _sse_events(resp, deadline=None, on_cut=None):
       예외로 오른다. 회사 Claude 갈래의 180초 벽이 흐르던 스트림 끝에 그 프레임으로
       온다(ENV-posco 「스트림 180초 컷」 행 · `CUT_FRAME` 곁말).
     ⚠ **삼키더라도 사유는 올린다**(`on_cut`) — 안 그러면 그 자리에서 사유가 증발한다.
-    ⚠ **쪼개진 봉투를 여민다.** 이 게이트웨이는 긴 몸통을 여러 `data:` 줄로 갈라 보낸
-      적이 있다(atelier #118 회사 실측). Gemini 길은 지금 안 쪼개는 것이 실측이지만
+    ⚠ **쪼개진 봉투를 여민다.** 이 게이트웨이는 긴 몸통을 여러 `data:` 줄로 갈라 보낼
+      수 있다(회사 실측). Gemini 길은 지금 안 쪼개는 것이 실측이지만
       (`pgpt-proxy/README.md` 「`/v1beta` 그대로 넘기기」 칸 — 13,124바이트 JSON 도 한 줄로),
       게이트웨이는 예고 없이 바뀌므로 여미는 손은 둔다. 줄마다 파싱하면 못 읽은 조각이
       **조용히** 버려진다 — 버리게 되면 그 사실과 크기를 사유로 올린다(`CUT_LOST`).
@@ -663,7 +663,7 @@ def _report_usage(on_usage, usage, prompt_key="input_tokens",
 
     ⚠ **총 입력은 계약마다 다르게 센다** — `cache_is_extra` 가 그 갈림이다. Anthropic 은
       `input_tokens` 에서 캐시분을 **빼고** 보고해서 셋을 더해야 봉투 크기가 된다
-      (atelier 실측 2026-08-18: `in=2 · read=5,003 · write=45,310`). OpenAI·Gemini 는
+      (atelier 실측: `in=2 · read=5,003 · write=45,310`). OpenAI·Gemini 는
       프롬프트 총량 하나로 보고하고 캐시 항목은 그 **부분집합**이라 더하면 두 번 센다.
     ⚠ **0 판정은 `input_tokens` 이 아니라 합으로 한다.** 캐시가 통째로 걸리면
       `input_tokens` 가 0 이 되는데 그것으로 거르면 **가장 잘 걸린 판이 기록에서
@@ -685,7 +685,7 @@ def _report_usage(on_usage, usage, prompt_key="input_tokens",
             "total_input": total,
             # 이 바퀴가 뱉은 몫 — 이어받기가 걸리면 다음 바퀴 입력에 되실린다.
             "output_tokens": out,
-            # ⚠ **「0 이었다」와 「칸이 안 왔다」는 다른 일이다**(아뜰리에 #302 ③). 위
+            # ⚠ **「0 이었다」와 「칸이 안 왔다」는 다른 일이다.** 위
             #   `or 0` 이 둘을 같은 숫자로 접는데, 빈손을 진단할 때 갈리는 것이 바로 그
             #   둘이다 — **모델이 정말 한 자도 안 뱉었나**와 **게이트웨이가 안 세고
             #   보냈나**. 숫자 옆에 「보내긴 했나」를 세워 갈라 둔다.
@@ -694,8 +694,8 @@ def _report_usage(on_usage, usage, prompt_key="input_tokens",
             #   안 지워진 채 남는다.
             "output_reported": out_key in usage}
     if isinstance(think, int):
-        # 생각 토큰이 바퀴 기록까지 내려온다 — 「생각으로 예산을 다 썼나」를 긍정도
-        # 부정도 못 하던 자리다(아뜰리에 #302 ③). `on_think` 는 화면 진행 신호라 흘러가
+        # 생각 토큰이 바퀴 기록까지 내려온다 — 안 내려오면 「생각으로 예산을 다 썼나」를
+        # 긍정도 부정도 못 한다. `on_think` 는 화면 진행 신호라 흘러가
         # 사라지고, **기록에 남는 자리는 여기 하나**다.
         seat["thinking_tokens"] = think
     on_usage(seat)
@@ -726,10 +726,9 @@ def _is_sse(resp):
 # ---------- Anthropic 계약 ----------
 
 # 한 요청에 설 수 있는 캐시 경계의 수 — **계약이 정한 상한이다.** 넘기면 요청이 통째로
-# 거절된다 — 캐시가 안 걸리는 것이 아니라 그 부름이 죽는다(atelier 결정 0100 이 실측하고
-# 그 자리에서 물린 값이다).
-# ⚠ **넷을 누가 쓰나는 앱의 정책이다.** system 층 사이에만 두는 앱(헬퍼)과 system 과 대화
-#   마디가 나눠 쓰는 앱(아뜰리에 결정 0109)이 다 맞다 — 그래서 `_ant_system` 이 예산을
+# 거절된다 — 캐시가 안 걸리는 것이 아니라 그 부름이 죽는다.
+# ⚠ **넷을 누가 쓰나는 앱의 정책이다.** system 층 사이에만 두는 앱과 system 과 대화
+#   마디가 나눠 쓰는 앱이 다 맞다 — 그래서 `_ant_system` 이 예산을
 #   인자로 받는다. 마디에도 경계를 두는 앱은 그만큼 뺀 예산을 준다.
 CACHE_MARK_CAP = 4
 # system 층이 쓸 경계 예산 — 마디에도 경계를 두는 앱은 복사한 뒤 여기서 그만큼 뺀다.
@@ -749,15 +748,15 @@ def _ant_system(layers, marks_budget=CACHE_MARK_CAP):
 
     표시는 「여기까지의 앞부분을 캐시하라」는 뜻이다. 층을 `[고정 층…, 턴 지시문]` 순으로
     쌓으면 경계가 갈 자리는 **고정 층 끝마다**고 맨 뒤 턴 지시문 끝에는 안 간다 — 「공통 층
-    → 경계 → 턴 지시문 → 가변부」의 순서다(AI-prompt-helper 결정 0004). 층이 둘이면 경계
+    → 경계 → 턴 지시문 → 가변부」의 순서다. 층이 둘이면 경계
     하나, 셋이면 둘이다.
 
     `marks_budget` — 이 system 이 쓸 수 있는 경계 수. 계약 상한은 넷(`CACHE_MARK_CAP`)이고
     대화 마디에도 경계를 두는 앱은 그만큼 뺀 값을 준다 — 예산을 안 나누면 마디 쪽 경계와
     합쳐 넷을 넘겨 요청이 통째로 거절된다.
 
-    ⚠ **첫 층에만 붙이면 둘째 고정 층이 조용히 캐시 밖으로 나간다**(AI-prompt-helper 결정
-      0014). 표시가 없어도 요청은 멀쩡히 나가고 화면도 그대로라, 안 걸린 것은 **씀씀이
+    ⚠ **첫 층에만 붙이면 둘째 고정 층이 조용히 캐시 밖으로 나간다.**
+      표시가 없어도 요청은 멀쩡히 나가고 화면도 그대로라, 안 걸린 것은 **씀씀이
       기록에서만** 보인다.
     ⚠ **층이 하나면 그 하나에 붙인다.** 위 규칙대로면 경계가 0 이 되는데, 어차피 짧아 계약
       최소 길이에 못 미치는 판이라 붙든 안 붙든 값이 같고 **안 바꾸는 쪽**을 고른다.
@@ -925,7 +924,7 @@ def _oa_usage(on_usage, usage):
 
     걸린 캐시가 한 겹 안에 실려 와서(`input_tokens_details.cached_tokens`) **읽을 때
     한 번 편다** — 안 펴면 「캐시가 걸렸나」를 영영 못 본다. 쓰기 칸은 표준에 없는데
-    이 게이트웨이가 곁에 얹어 준다(atelier #123 실측 · 비표준) — 안 오는 판은 0 이다.
+    이 게이트웨이가 곁에 얹어 준다(atelier 실측 · 비표준) — 안 오는 판은 0 이다.
     `input_tokens` 가 **이미 총량**이라 더할 것이 없다.
     """
     if not usage:
@@ -958,7 +957,7 @@ def _gm_envelope(layers, messages, c):
                           "parts": [{"text": _text_of(m["content"])}]}
                          for m in messages],
             # 생각을 **요청한다** — 그 조각이 흘러 앞단의 무응답 자가 계속 되돌아간다
-            # (`gateway.GEMINI_THOUGHTS` 곁말 · 아뜰리에 실측 2026-08-27).
+            # (`gateway.GEMINI_THOUGHTS` 곁말 · 아뜰리에 실측).
             # ⚠ 생각 조각은 본문이 아니다 — 거르는 자는 아래 `_gemini_take` 다. **난간이
             #   손잡이보다 먼저 서 있었다**: 그 자리는 안 켜던 날에도 있었다.
             "generationConfig": {
@@ -1031,7 +1030,7 @@ def _gm_usage(on_usage, meta, on_think=None):
     든 부분집합이라 더하지 않는다. 쓰기 칸은 이 계약에 없다 — 캐시가 자동이라 우리가
     실을 표도, 저쪽이 「썼다」고 셀 칸도 없다.
 
-    ⚠ **생각 몫도 씀씀이 칸으로 내려보낸다**(아뜰리에 #302 ③) — 아래 `on_think` 는 화면
+    ⚠ **생각 몫도 씀씀이 칸으로 내려보낸다** — 아래 `on_think` 는 화면
       진행 신호라 흘러가 사라지고, 뒤에 「생각으로 예산을 다 썼나」를 물으면 답할 재료가
       아무 데도 안 남는다. 이름 갈아 끼우는 자리가 여기 하나다.
     ⚠ **사내 문서의 `usageMetadata` 목록에 이 칸이 없다** — 그래도 온다(ENV-posco 「Gemini 길
@@ -1104,9 +1103,8 @@ _CLI_ARGS = ["-p", "--safe-mode", "--tools", "",
              "--input-format", "stream-json"]
 
 # 접는 봉투의 첫 줄 — **지시문이 아니라 이 길의 포장이다.** CLI 의 기본 시스템 층이 「도구
-# 있는 에이전트」로 말을 걸어, 도구를 다 꺼도 모델이 긴 글 앞에서 그 습관을 낸다(atelier
-# 실사용 둘: Write 호출을 시도해 파싱 오류로 죽었고, 「파일에 조각으로 조립하겠다」는 서사가
-# 본문에 섞였다). 그래서 접는 자리에서 그 틀을 되집는다.
+# 있는 에이전트」로 말을 걸어, 도구를 다 꺼도 모델이 긴 글 앞에서 그 습관을 낸다 — Write 호출을
+# 시도해 파싱 오류로 죽거나, 「파일에 조각으로 조립하겠다」는 서사가 본문에 섞인다. 그래서 접는 자리에서 그 틀을 되집는다.
 _CLI_FRAME = ("[이 판의 계약] 파일 시스템도 도구도 없다 — Write·Bash 류를 부르거나 부르는 "
               "시늉을 내지 마라. 산출물이 아무리 길어도 **응답 본문의 글자로만** 낸다. "
               "길어서 끊기면 그대로 끊겨라 — 잇는 일은 네 몫이 아니다.")
@@ -1173,9 +1171,8 @@ def _cli_spec(env, c):
 def _cli_evidence(tail):
     """오류 직전의 스트림 꼬리를 파일로 남기고 그 좌표를 돌려준다.
 
-    「모델이 무슨 도구를 어떤 인자로 부르려 했나」 같은 사실은 이 꼬리에만 있다 — 아뜰리에
-    2026-08-22 실사용: 도구 없는 판에서 「tool call could not be parsed」가 났는데 증거가 안
-    남아 진단이 추론에 머물렀다. atelier `providers._cli_evidence` 에서 가져왔고 손으로
+    「모델이 무슨 도구를 어떤 인자로 부르려 했나」 같은 사실은 이 꼬리에만 있다 — 안 남기면
+    도구 없는 판에서 「tool call could not be parsed」가 나도 진단이 추론에 머문다. atelier `providers._cli_evidence` 에서 가져왔고 손으로
     따라간다. 남기다 실패하면 조용히 접는다 — 증거 기록이 본 오류를 가리면 안 된다.
 
     ⚠ **머리와 몸을 한 덩이로 붙인다.** 두 번 나눠 쓰면 겹친 손이 그 사이에 끼어 **남의
@@ -1248,7 +1245,7 @@ def _cli_once(env, c, on_text, on_usage, deadline, on_cut, on_think=None):
     ⚠ **생각(thinking)은 글자가 아니라 진행이다** — 이 CLI 는 생각을 스스로 켜고, 그동안
       text_delta 는 한 조각도 안 온다. 그 신호를 **살아 있음으로 세지 않으면** 생각이 긴
       판이 침묵으로 몰려 죽는다. 누적 추정치는 `on_think` 로 나가 화면의 정적을 메운다
-      (AI-prompt-helper 결정 0030) — 계약 넷 중 그 줄을 내는 것은 이 갈래 하나다.
+      — 계약 넷 중 그 줄을 내는 것은 이 갈래 하나다.
     ⚠ **출력 상한을 지정할 길이 없다** — `c.max_tokens` 가 여기서는 안 걸린다. 모델이
       스스로 멈추고, 이어받기는 stop_reason 이 그대로 든다.
     """
@@ -1320,8 +1317,8 @@ def _cli_once(env, c, on_text, on_usage, deadline, on_cut, on_think=None):
     out, stop = [], None
     # 자식이 스스로 이어 쓴 자리 — `message_start` 가 둘째부터면 앞 메시지가 출력 상한에서
     # 잘려 CLI 가 이은 것이다. 우리 봉합(`stream_resumed`)은 이 안을 못 보므로 여기서
-    # 이음매를 적어 두고(`seams` — `out` 의 자리) 끝에 `_join_seams` 가 벗긴다. 같은 CLI 를
-    # 같은 인자(`_CLI_ARGS`)로 부르므로 아뜰리에가 겪은 자리(#335)가 여기서도 난다.
+    # 이음매를 적어 두고(`seams` — `out` 의 자리) 끝에 `_join_seams` 가 벗긴다. CLI 가
+    # 이은 둘째 메시지도 펜스를 다시 열고 온다 — 안 벗기면 펜스가 산출물 한복판에 앉는다.
     # ⚠ **안 든 것 하나** — 아뜰리에는 바퀴 줄에 「안에서 메시지 몇」을 씀씀이 칸(`messages`)
     #   으로 싣는다. 기록층이 그 칸을 읽는 앱만 얹는다 — 씨앗은 안 든다(안 쓰는 칸이다).
     seams, msgs = [], [0]
@@ -1357,11 +1354,11 @@ def _cli_once(env, c, on_text, on_usage, deadline, on_cut, on_think=None):
                     stop = (ev.get("delta") or {}).get("stop_reason") or stop
                     _report_usage(on_usage, ev.get("usage"))
             elif kind == "system" and msg.get("subtype") == _CLI_THINK:
-                # **생각 진행** — 누적 추정치를 그대로 넘긴다(AI-prompt-helper 결정 0030).
+                # **생각 진행** — 누적 추정치를 그대로 넘긴다.
                 # ⚠ **`stream_event` 쪽 `thinking_delta` 를 안 읽는 까닭** — 이 CLI 는 생각
                 #   본문을 비워 보내고(가림) 증분이 `null` 로도 와서, 그 줄로는 셈이 안
                 #   선다. 아뜰리에가 같은 CLI·같은 인자에서 실측한 자리를 그대로 든다
-                #   (저쪽 `providers._cli_once` · 결정 0115) — **이 저장소는 아직 진짜
+                #   (저쪽 `providers._cli_once`) — **이 저장소는 아직 진짜
                 #   `claude` 를 한 번도 안 불렀다.**
                 n = msg.get("estimated_tokens")
                 if on_think and isinstance(n, int):

@@ -21,11 +21,11 @@
  *
  * ⚠ **앱이 지면을 찍는 파이썬 짝을 두면 이 차례에는 쌍둥이가 생긴다** — 아뜰리에는 `app/shot.py`
  *   의 `browser_exe()` 가 같은 차례를 든다. 언어가 갈려 코드를 못 나누므로 차례를 바꿀 때는
- *   둘 다 바꾼다(아뜰리에 결정 0175). 검사에서만 브라우저를 띄우는 저장소는 쌍둥이가 없다.
+ *   둘 다 바꾼다. 검사에서만 브라우저를 띄우는 저장소는 쌍둥이가 없다.
  *
  * 모듈 자리는 `PW` 가 든다 — 전역(npm -g)에 깔린 playwright 를 쓸 때. 꼴은 셋 다
  * 산다: 패키지 이름 · 폴더(`PW="$(npm root -g)/playwright"`) · 파일(`…/index.js` 나 `file://…`).
- * 윈도우 경로도 그대로 준다 — 모듈 주소로 푸는 것은 아래 `moduleSpec` 이다 (atelier #337).
+ * 윈도우 경로도 그대로 준다 — 모듈 주소로 푸는 것은 아래 `moduleSpec` 이다.
  */
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -33,7 +33,7 @@ import { homedir } from "node:os";
 import { delimiter, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-// 경로로 온 `PW` 를 모듈 주소로 푼다 (atelier #337). ESM 의 `import()` 는 둘을 거절한다 —
+// 경로로 온 `PW` 를 모듈 주소로 푼다. ESM 의 `import()` 는 둘을 거절한다 —
 // 윈도우 경로(드라이브 글자를 「c: 스킴」으로 읽는다)와 폴더(진입점이 없다). 머리말이 시키는 값
 // `PW="$(npm root -g)/playwright"` 가 윈도우에서 바로 그 꼴이라, 안 풀면 첫 줄에서 죽는다.
 // 패키지 이름과 `file://` 주소는 안 건드린다. 진입점은 손으로 안 찾는다 — CJS 해석기가
@@ -49,14 +49,14 @@ export const { chromium } = await import(moduleSpec(PW)).then(m => m.default ?? 
 // 크로미움 계열이 쓰는 실행 파일 이름들 — playwright 판에 따라 헤드리스 셸 이름이 `headless_shell`
 // 이거나 `chrome-headless-shell` 이라 다 문다.
 const EXE_NAMES = ["chrome", "chromium", "headless_shell", "chrome-headless-shell"];
-// 윈도우 실행 파일은 `.exe` 가 붙는다 — 그 꼴이 목록에 없으면 받아 둔 자리를 훑어도 아무것도 안 걸린다
-// (atelier #313). 목록을 손으로 여덟 줄로 늘리지 않고 위 넷에서 파생한다 — 이름의 진본은 위 넷 하나로
-// 두고, 파이썬 쌍둥이가 있는 저장소는 그쪽도 같은 규칙을 든다(아뜰리에 0175).
+// 윈도우 실행 파일은 `.exe` 가 붙는다 — 그 꼴이 목록에 없으면 받아 둔 자리를 훑어도 아무것도 안 걸린다.
+// 목록을 손으로 여덟 줄로 늘리지 않고 위 넷에서 파생한다 — 이름의 진본은 위 넷 하나로
+// 두고, 파이썬 쌍둥이가 있는 저장소는 그쪽도 같은 규칙을 든다.
 const EXE_MATCH = new Set([...EXE_NAMES, ...EXE_NAMES.map(n => `${n}.exe`)]);
 // **받아 둔 자리 안에서는 헤드리스 셸을 먼저 집는다.** 검사는 헤드리스로 띄우고, 회사 PC 에서
-// `chrome.exe` 는 `spawn UNKNOWN` 으로 못 뜨는데 헤드리스 셸은 뜬다(atelier #313). playwright 기본값이
+// `chrome.exe` 는 `spawn UNKNOWN` 으로 못 뜨는데 헤드리스 셸은 뜬다. playwright 기본값이
 // 도는 것도 헤드리스 셸을 쓰기 때문이라, 이름만 맞춰 `chrome.exe` 를 먼저 집으면 잘 돌던 기계가 못 뜬다.
-// 파이썬 쌍둥이가 같은 순서를 든다(아뜰리에 0175). 이 순서는 찾는 차례를 안 바꾼다 — 받아 둔 자리
+// 파이썬 쌍둥이가 같은 순서를 든다. 이 순서는 찾는 차례를 안 바꾼다 — 받아 둔 자리
 // 안에서 무엇을 먼저 집나뿐이다.
 // 내보내는 까닭 — 브라우저 MCP 실행기(claude-config `.claude/hooks/browser-mcp.mjs`)는 창 있게 띄우는 것이
 // 기본이라, 집힌 파일이 헤드리스 셸이면 창 없이 띄우려고 같은 이름표로 묻는다. 이름을 그쪽에 베끼면
@@ -64,7 +64,7 @@ const EXE_MATCH = new Set([...EXE_NAMES, ...EXE_NAMES.map(n => `${n}.exe`)]);
 const HEADLESS_FIRST = ["chrome-headless-shell", "headless_shell"];
 export const HEADLESS_MATCH = new Set([...HEADLESS_FIRST, ...HEADLESS_FIRST.map(n => `${n}.exe`)]);
 // ⚠ **`chrome` 은 이 목록에 안 넣는다.** 이름을 맞추면 회사 PC 에서 `chrome.exe` 가 걸리는데
-//   그 파일은 `spawn UNKNOWN` 으로 못 뜬다 — 잘 돌던 검사가 죽는다(atelier #313).
+//   그 파일은 `spawn UNKNOWN` 으로 못 뜬다 — 잘 돌던 검사가 죽는다.
 //   여기는 배포판이 깔아 두는 이름만 든다 — 확장자는 아래 `PATH_EXTS` 가 든다.
 const ON_PATH = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"];
 // 윈도우는 확장자가 이름의 일부라 `PATHEXT` 를 얹는다 — 안 얹으면 `chromium.exe` 를 못 본다.
@@ -122,9 +122,9 @@ function underBrowsersPath() {
 }
 
 // ⚠ **하위 프로세스를 안 띄우고 `PATH` 를 갈라 파일로 훑는다.** 셸에 묻는 꼴(`command -v`)은 윈도우 cmd 에
-//   `command` 가 없어 이름마다 오류문을 내고, 그 소음을 삼키면 이 갈래가 윈도우에서 늘 「없다」를 낸다
-//   (atelier #337). 파이썬 쌍둥이의 `shutil.which` 는 양쪽에서 답하므로 그때 차례가 플랫폼마다 갈린다
-//   (아뜰리에 0175). 파일 조회는 어디서나 답하고, cmd 를 넷 안 띄우고, Node 24 의 DEP0190 경고도 안 난다.
+//   `command` 가 없어 이름마다 오류문을 내고, 그 소음을 삼키면 이 갈래가 윈도우에서 늘 「없다」를 낸다.
+//   파이썬 쌍둥이의 `shutil.which` 는 양쪽에서 답하므로 그때 차례가 플랫폼마다 갈린다.
+//   파일 조회는 어디서나 답하고, cmd 를 넷 안 띄우고, Node 24 의 DEP0190 경고도 안 난다.
 //   이 자리가 재는 것은 「그 이름이 있나」뿐이다.
 function onPath() {
   const dirs = (process.env.PATH || "").split(delimiter).filter(Boolean);

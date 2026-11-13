@@ -5,7 +5,7 @@
 | 무엇 | 어디가 드나 |
 |---|---|
 | 보고의 분석 문서 · 받는 사람의 맥락 · 구성안 · 보고서의 말 | `report-plan` — 기대는 표준(한국 보고서 관행 · Pyramid Principle)의 출처도 그쪽 `references/SOURCES.md` 가 든다 |
-| 덱 생성 · 엔진 선택 · pptxgenjs 함정 · 템플릿 편집 · QA 3갈래 · 디자인 원칙 | 공식 pptx 스킬 — `anthropic-skills:pptx`(claude.ai 계정 동기화) 또는 `document-skills:pptx`(마켓 플러그인). 두 통로의 판은 같지 않다 — 동기화본이 앞서고(테마 · 레이아웃 · 자리표시자로 짓는 절, `apply_theme.js`, 장 사이 일관성 검사가 거기만 있다) 플러그인본은 마켓 상류가 올려야 따라온다. 회사 PC 는 플러그인본뿐이라 그 차이는 SKILL.md 1 · 2절이 메운다 |
+| 덱 생성 · 엔진 선택 · pptxgenjs 함정 · 템플릿 편집 · QA 3갈래 · 디자인 원칙 | 공식 pptx 스킬 — Claude 는 `anthropic-skills:pptx`(claude.ai 계정 동기화) 또는 `document-skills:pptx`(마켓 플러그인), Codex · agy 는 상류 저장소의 한 판을 받아 둔 홈의 `pptx`(`vendor/anthropic-skills/` · Apache 2.0). 두 통로의 판은 같지 않다 — 동기화본이 앞서고(테마 · 레이아웃 · 자리표시자로 짓는 절, `apply_theme.js`, 장 사이 일관성 검사가 거기만 있다) 플러그인본은 마켓 상류가 올려야 따라온다. 회사 PC 는 플러그인본뿐이라 그 차이는 SKILL.md 1 · 2절이 메운다 |
 | 감긴 오피스 문서 읽기 · 슬라이드 화면 캡처 | `drm-office-read` |
 
 ## 본 후보와 가른 자리

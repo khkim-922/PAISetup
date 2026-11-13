@@ -1,7 +1,7 @@
 """문을 두드리는 한 벌 — 검사마다 제 것이던 포트 잡개와 두드리개를 모은다.
 
-좌표 — AI-prompt-helper 이슈 #52 ② (이 판이 난 저장소) · 아뜰리에 `_check/_serve.py` (`stand`·`stop` 이 온 자리) ·
-씨앗 규율은 claude-config 결정 0040.
+좌표 — AI-prompt-helper (이 판이 난 저장소) · 아뜰리에 `_check/_serve.py` (`stand`·`stop` 이 온 자리) ·
+씨앗 규율은 곁 `README.md` 「이 폴더의 규율」.
 
 부르는 꼴 — `import _serve` 또는 `from _serve import stand, stop, knock, jknock`. 앱을 안 문다 — 앱의
 머리 이름과 값은 부르는 쪽이 `headers` 로 싣는다.
@@ -40,7 +40,8 @@ def stand(handler):
 def stop(httpd, *tmps):
     """서버를 내리고(`shutdown`) 준 임시 폴더를 지운다 — 못 지워도 안 죽는다.
 
-    내리기와 치우기를 한 손에 둔다(아뜰리에 #114 ④).
+    내리기와 치우기를 한 손에 둔다 — 따로 두면 부르는 쪽마다 한쪽을 빠뜨려, 서버가 안 내려가거나
+    임시 폴더가 남는다.
     """
     httpd.shutdown()
     for t in tmps:
@@ -65,7 +66,7 @@ def knock(port, path, body=None, method=None, headers=None, timeout=30, host="12
     「이 부름에는 키가 없다」를 빈 글자가 아니라 None 으로 말하게 둔다.
     닿지 못하면(연결 거절 · 시간 초과) 그 예외가 그대로 오른다.
 
-    머리까지 지고 오는 것은 앱의 응답이 두 꼴이라서다(AI-prompt-helper 결정 0021) — 모델을 부르는
+    머리까지 지고 오는 것은 앱의 응답이 두 꼴이라서다 — 모델을 부르는
     문은 흘려 보내고(`text/event-stream`) 나머지는 한 덩이다. 「어느 문이 어느 꼴로 오나」가
     판정 중 하나라, 몸통만 보면 그 판정을 잴 재료가 없다.
     """

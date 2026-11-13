@@ -1,6 +1,6 @@
 """판정 한 벌 — 검사마다 사본을 뜨던 `report`·`show`·`edge` 와 종료코드 계약을 모은다.
 
-좌표 — AI-prompt-helper 이슈 #52 ① · AI-prompt-helper 결정 0029(종료코드) · 아뜰리에 `_check/_verdict.py`.
+좌표 — AI-prompt-helper (이 판이 난 저장소) · 아뜰리에 `_check/_verdict.py`.
 
 부르는 꼴 — 검사 머리의 `from _verdict import …` 한 줄. `python -X utf8 _check/<검사>.py` 로 돌면 이
 폴더가 이미 경로에 있다. 사본을 뜨지 않는다 — 베끼면 판정 손이 파일마다 갈린다.
@@ -35,7 +35,7 @@ import sys
 # stderr 는 파이썬이 `backslashreplace` 로 잡아 애초에 안 죽으므로 안 든다.
 sys.stdout.reconfigure(encoding="utf-8")
 
-# 종료코드 계약 — 숫자의 진본은 이 셋이고, 뜻은 곁 `README.md` §종료코드 가 든다(AI-prompt-helper 결정 0029).
+# 종료코드 계약 — 숫자의 진본은 이 셋이고, 뜻은 곁 `README.md` §종료코드 가 든다.
 # 훅도 CI 도 화면 문구를 안 읽고 코드만 보므로 이 갈림이 곧 계약이다.
 EXIT_OK = 0             # 쟀고 맞다
 EXIT_MISMATCH = 1       # 어긋났다

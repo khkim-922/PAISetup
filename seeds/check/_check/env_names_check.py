@@ -1,7 +1,7 @@
 """환경변수 문서의 이름이 코드가 **읽는** 이름과 맞나 — 양쪽 차집합.
 
-좌표 — 아뜰리에 #322(이 자가 난 자리 · 「그물이 좁으면 항진명제」는 그 ③) · 아뜰리에 결정 0112
-(자기 이빨 규율) · 씨앗 규율은 claude-config 결정 0040.
+좌표 — 이 자가 난 자리는 아뜰리에다 · 자기 이빨은 아래 §1 이 든다 ·
+씨앗 규율은 곁 `README.md` 「이 폴더의 규율」.
 
     python -X utf8 _check/env_names_check.py --doc <문서> --ours <그물>
     python -X utf8 _check/env_names_check.py <나무뿌리> --doc <문서> --ours <그물>
@@ -512,8 +512,7 @@ def _conf():
 
 
 # ⚠ 열쇠를 글자로 읽는다 — 함수 인자나 지역 이름으로 읽으면(`os.environ.get(name)`) 이 검사가 제 그물의
-#   「못 푼 자리」로 빨강이 된다. 이 파일이 재이는 나무 안에 사는 저장소마다 나고 선언으로 못 피한다
-#   (claude-config #25 A1).
+#   「못 푼 자리」로 빨강이 된다. 이 파일이 재이는 나무 안에 사는 저장소마다 나고 선언으로 못 피한다.
 ENV = {
     "--doc": os.environ.get("ENV_NAMES_DOC"),
     "--ours": os.environ.get("ENV_NAMES_OURS"),

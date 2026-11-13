@@ -1,6 +1,6 @@
 """산출물 HTML 의 인라인 스크립트가 문법에 맞나 — 깨진 것을 잡고 못 재면 못 쟀다고 한다.
 
-좌표 — 원본은 아뜰리에 #335 ㉯ · 씨앗 규율은 claude-config 결정 0040.
+좌표 — 원본은 아뜰리에 · 씨앗 규율은 곁 `README.md` 「이 폴더의 규율」.
 
     python -X utf8 _check/script_syntax_check.py               # 자검만 — 검체는 이 파일이 든다
     python -X utf8 _check/script_syntax_check.py <판.html> …   # 그 산출물까지 잰다
@@ -9,8 +9,8 @@
 하나에서 `node --check` 가 안 돌았다 — 시간 초과 따위). 어긋난 판이 하나라도 있으면 못 잰 판이 있어도 1 이다.
 
 왜 이 검사가 있나 — 글자 유실을 세는 무결 대조는 `<script>` 가 깨져도 조용하다. 이어쓰기 이음매의
-코드 펜스가 JS 템플릿 리터럴 안에 박히면 판이 통째로 죽는데 저장도 화면도 아무 말을 안 한다(아뜰리에
-#335). **글자는 다 있는데 판이 안 도는** 자리라, 글자를 세는 눈으로는 안 보인다. 막는 자가 아니라
+코드 펜스가 JS 템플릿 리터럴 안에 박히면 판이 통째로 죽는데 저장도 화면도 아무 말을 안 한다.
+**글자는 다 있는데 판이 안 도는** 자리라, 글자를 세는 눈으로는 안 보인다. 막는 자가 아니라
 말하는 자다.
 
 판정 함수를 제 안에 들었다 — 앱에서 인자로 안 받는다. 까닭 셋 —
@@ -64,7 +64,7 @@ from _verdict import (EXIT_MISMATCH, EXIT_OK, EXIT_UNMEASURED, Unmeasured, edge,
 
 # 안 재는 종류 — JS 가 아니라 node 가 늘 빨강이다. 그 밖의 `type`(빈 것 · `text/javascript` ·
 # `module` · 저장소가 제 손으로 지은 이름)은 **잰다.** 「아는 종류만 잰다」로 뒤집으면 손수 지은
-# 종류가 대조 밖으로 빠진다 — 아뜰리에 #335 에서 깨진 스크립트가 그 종류이고, ② 의 검체가 그 꼴로 문다.
+# 종류가 대조 밖으로 빠진다 — 그 종류의 스크립트도 깨지고, ② 의 검체가 그 꼴로 문다.
 SCRIPT_TYPES_NOT_JS = {
     "application/json", "application/ld+json", "importmap", "speculationrules",
     "text/html", "text/template", "text/x-template", "text/x-handlebars-template",
@@ -157,7 +157,7 @@ def script_syntax(html_text, find_node=node_exe):
 NL = chr(10)
 FENCE = "```"
 OK_JS = "<html><body><script>const a = `x ${1 + 1}`; console.log(a);</script></body></html>"
-# ② 의 검체 — 템플릿 리터럴 `${` 뒤에 펜스 한 줄이 끼었다. 아뜰리에 #335 의 꼴 그대로이고,
+# ② 의 검체 — 템플릿 리터럴 `${` 뒤에 펜스 한 줄이 끼었다. 이어 쓴 이음매에 펜스가 낀 실물의 꼴이고,
 #   종류도 저장소가 제 손으로 지은 이름이다 — 그 종류를 안 재게 바뀌면 ② 가 빨개진다.
 BROKEN_JS = ("<html><body><script type=\"text/x-own\">const t = `물음: ${" + FENCE + NL
              + "picks[0].text}`;</script></body></html>")
