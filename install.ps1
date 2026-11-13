@@ -221,8 +221,10 @@ $PersonalTools = @(
 #     · `feed`     — `Feed` 가 앱의 갱신 피드(electron-builder 의 `latest-*.yml`)다. 판 · 받을 주소 · SHA512 를 피드가 댄다
 #     · `github`   — `Repo` 의 GitHub 릴리스 `latest` 가 넘기는 태그에서 판을 읽고, 자산 이름은 `Asset` 틀이다(`{tag}` 는 태그에서 머리
 #       `v` 를 뗀 글자). 자산 이름에 판이 박힌 릴리스라 `latest/download/<이름>` 으로는 못 받는다
+#     · `manifest` — `Manifest` 가 앱의 판 목록 JSON 이다(`version` · `url` · `sha512` 16진). 판 · 받을 주소 · SHA512 를 그 JSON 이 댄다
 #   받은 것을 까는 꼴 — `SilentArgs` 면 설치본을 무음으로 돌리고(winget 이 그 설치본에 주는 인자와 같다), `Unzip` 이면 zip 을 고정
-#     자리(`Dir`)에 푼다 — zip 안에서 판마다 이름이 바뀌는 폴더가 `Root`(`{ver}` 틀)다(`Install-VendorZip`). `Msi` 면 받은 것이 MSI 라
+#     자리(`Dir`)에 푼다 — zip 안에서 판마다 이름이 바뀌는 폴더가 `Root`(`{ver}` 틀)다(`Install-VendorZip`). `Exe` 면 받은 것이 실행 파일
+#     하나라 고정 자리(`Dir`)에 행의 `Cmd` 이름으로 둔다(`Install-VendorExe`). `Msi` 면 받은 것이 MSI 라
 #     `msiexec /i` 에 `SilentArgs` 를 붙여 승격으로 돌린다 — 승인 창은 winget 이 그 MSI 에 띄우는 것과 같다
 #   받는 곳 — `Mirrors = 'metalink'` 면 받을 주소의 Metalink(`<주소>.meta4` — 배포 서버가 내는 미러 순위 · 원본 지문)를 읽어 순위 앞
 #     곳들의 받기 빠르기를 재고 가장 빠른 곳에서 받는다(`Get-VendorMirror`). 미러로 넘기는 배포 서버는 회차마다 다른 미러를 주고, 한
@@ -283,8 +285,8 @@ $Extensions = @(
 #   늘(`$CliPicks`). npm 행에서 `Cmd` 대신 `Module` 을 든 줄은 명령이 없는 꾸러미(스크립트가 `require` 로 부른다)라 끝 검증이 새 터미널의
 #   이름 대신 저장소 밖의 `require` 가 풀리나를 잰다(`Measure-NodeResolvable`). `Link` 는 Node 가 보는 홈 자리에 이을 이름이다
 #   (`Install-NodeHomeLink`).
-# 안티그래비티 CLI 는 벤더 설치 스크립트가 아니라 winget(`Google.AntigravityCLI`)으로 받는다 — 매니페스트가 `InstallerSha256`
-#   을 들어 지문을 잴 수 있고(벤더 스크립트는 해시를 안 낸다) arm64 도 함께 든다. winget 판이 벤더 판보다 한 판 뒤처질 수 있다.
+# 안티그래비티 CLI 는 x64 PC 에서 공식 판 목록(공식 설치 스크립트가 읽는 JSON — 판 · 주소 · SHA512)으로 받고, 그 길이 지거나 arm64 면
+#   winget(`Google.AntigravityCLI`)이 받는다. 설치 스크립트는 안 돌린다 — 그 스크립트는 한 연결로 받고, 우리는 같은 파일을 나눠 받는다.
 #   깔린 뒤 올리기는 `agy update`(제 갱신기 · 제 지문을 재고 묻지 않고 돈다)가 든다 — `Upgrade` 칸.
 #   ⚠ **winget 으로는 못 올린다** — agy 는 돌 때 제 손으로 `agy.exe` 를 갈아 끼우고(곁에 `agy.exe.<수>.old`), winget 은 장부의 지문과
 #   다른 휴대용 파일을 「바뀌었다」(`0x8a150057`)로 보고 받은 판을 버린다. 장부의 판도 처음 깐 판에 머물러 「올릴 것」에 늘 뜬다(PAISetup #58).
@@ -304,8 +306,17 @@ $Clis = @(
   #   이 한 행이 550초 넘게 걸렸고(2026-11-09), 그 사이 뒤 걸음은 `agy` 를 안 부른다 — 회사 설정 · 훅 · 허용 규칙은 파일만 쓴다.
   #   이 칸을 다는 행의 조건: 뒤 걸음이 그 명령을 안 부르고, 설정 저장소의 세션 훅이 같은 도구를 따로 깔지 않는다(lychee 는 훅이
   #   winget 사본이 없으면 제 사본을 깐다). 기계 범위 행도 된다 — 승인 문은 자식이 부모와 같은 답을 낸다(요청의 `Yes` · `NoLaunch`).
+  # 처음 깔 때는 공식 판 목록(공식 설치 스크립트가 읽는 그 JSON)의 실행 파일을 직접 받는다 — 2백 MB 넘는 한 파일이라 받는 손이 여러
+  #   연결로 나눠 받고(`$DownloadParts`), 판 목록이 댄 SHA512 가 맞아야 둔다. 자리는 공식 스크립트와 같은 `%LOCALAPPDATA%\agy\bin` 이다.
+  #   판 목록을 못 읽거나 받기 · 확인 · 실행이 지면 winget 이 깐다. 깔린 뒤에는 어느 길로 깔렸든 `agy update` 가 올린다(`Upgrade`).
   @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'; Back=$true
-     Id='Google.AntigravityCLI'; Upgrade = @{ Via = 'updater'; Args = @('update') } }
+     Id='Google.AntigravityCLI'; Upgrade = @{ Via = 'updater'; Args = @('update') }
+     PathDir="$env:LOCALAPPDATA\agy\bin"
+     Ways=@(@{ Via='vendor'; Read='manifest'
+               Manifest='https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json'
+               Exe=@{ Dir="$env:LOCALAPPDATA\agy\bin" }
+               Unsigned='서명에 기대지 않는다 — 공식 판 목록(https)이 댄 SHA512 가 받은 파일과 맞아야 둔다' }
+            @{ Via='winget' }) }
   # 이 줄은 자리를 안 가린다(결정 0045 · 0093) — 사내에서 안 까는 것은 제품 표의 `When` 이 든다. Codex · Copilot 맡기기가 Copilot 을
   #   쓰나는 자리 값 `CC_BG_AGENTS` 를 읽는 래퍼의 몫이다. winget 의 `GitHub.Copilot` 은 이름이 비슷한 딴 물건이라 npm 꾸러미로 받는다.
   @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI' }
@@ -4242,7 +4253,7 @@ function Invoke-VendorAsk([string]$Url, [switch]$Body) {
 
 # 벤더의 지금 최신 판과 그 판을 받을 주소 — 길(`$Way`)의 `Read` 꼴로 읽는다(`$Apps` 머리의 「길 목록」). 내는 것 `@{ Ver; Url; Sha512 }` —
 #   `Ver` 가 비면 판을 못 읽은 것이고(부르는 쪽이 winget 목록으로 물러선다), `Url` 이 비면 받을 주소도 모른다. `redirect` 는 판을 못 읽어도
-#   받을 주소(`Url` 그대로)는 안다. `Sha512` 는 피드가 댄 지문(base64)이다. 받을 주소를 못 지은 꼴(`listing` · `feed` · `github`)은 판도
+#   받을 주소(`Url` 그대로)는 안다. `Sha512` 는 피드 · 판 목록이 댄 지문(base64)이다. 받을 주소를 못 지은 꼴(`listing` · `feed` · `github`)은 판도
 #   비운다 — 판만 읽고 못 받는 길로 올리기를 가르면 회차마다 받으러 나갔다 진다.
 # 판은 `n.n.n[.n]` 첫 토막이다 — 넘김 주소에서는 경로만 읽는다(호스트에는 판이 없고 경로의 지문(16진)에는 점이 없다).
 # 이 손은 앱 이름을 모른다 — 새 앱은 꼴이 맞으면 행 하나로 선다. 망에 묻는 것은 `Invoke-VendorAsk` 하나다.
@@ -4308,6 +4319,24 @@ function Get-VendorLatest($Way) {
           $found.Ver = $ver
           $found.Sha512 = $sha
         } catch { }
+      }
+    }
+    'manifest' {
+      # 앱의 판 목록 JSON — `version` · `url` · `sha512`(16진 128 자). 지문은 피드와 같은 꼴(base64)로 바꿔 울타리가 한 자로 잰다.
+      #   셋 가운데 하나라도 비거나 꼴이 아니면 판도 비운다 — 지문 없이 받는 길을 열지 않는다
+      $a = Invoke-VendorAsk $Way.Manifest -Body
+      $j = $null
+      try { $j = ConvertFrom-Json -InputObject $a.Text -ErrorAction Stop } catch { }
+      $hex = "$($j.sha512)"
+      if ($j -and "$($j.url)" -like 'https://*' -and $hex -match '^[0-9a-fA-F]{128}$') {
+        $ver = & $verIn "$($j.version)"
+        if ($ver) {
+          $bytes = New-Object byte[] 64
+          for ($i = 0; $i -lt 64; $i++) { $bytes[$i] = [Convert]::ToByte($hex.Substring($i * 2, 2), 16) }
+          $found.Ver = $ver
+          $found.Url = "$($j.url)"
+          $found.Sha512 = [Convert]::ToBase64String($bytes)
+        }
       }
     }
   }
@@ -4485,6 +4514,52 @@ function Install-VendorZip([string]$Zip, $Row, $Way, $Found) {
   }
 }
 
+# 벤더 실행 파일 하나를 고정 자리(`$Way.Exe.Dir`)에 갈아 끼운다 — 내는 것과 갈아 끼우는 차례는 `Install-VendorZip` 과 같다. 곁 자리
+#   (`<Dir>.new-*`)에 행의 `Cmd` 이름으로 두고 인터넷 표시를 걷은 뒤(`Unblock-File` — 남기면 띄울 때 경고가 사람을 기다린다) 도는 것을 잰
+#   다음에만 옛 자리를 비킨다. 행의 `PathDir` 는 `Dir` 와 같아야 한다 — 그 자리가 PATH 에 서는 이름의 자리다.
+function Install-VendorExe([string]$Exe, $Row, $Way, $Found) {
+  $dir = [Environment]::ExpandEnvironmentVariables("$($Way.Exe.Dir)").TrimEnd('\')
+  $bin = [Environment]::ExpandEnvironmentVariables("$($Row.PathDir)").TrimEnd('\')
+  if ($bin -ne $dir) { return @{ Rc = $null; Why = "행의 PathDir($bin)가 실행 파일 위치($dir)와 다름" } }
+  $parent = Split-Path -Parent $dir
+  $leaf = Split-Path -Leaf $dir
+  $mark = [guid]::NewGuid().ToString('N').Substring(0, 8)
+  $stage = Join-Path $parent "$leaf.new-$mark"
+  $old = Join-Path $parent "$leaf.old-$mark"
+  try {
+    try {
+      New-Item -ItemType Directory -Path $parent -Force | Out-Null
+      foreach ($left in @(Get-ChildItem -LiteralPath $parent -Directory -ErrorAction SilentlyContinue |
+                          Where-Object { $_.Name -like "$leaf.new-*" -or $_.Name -like "$leaf.old-*" })) {
+        Remove-Item -LiteralPath $left.FullName -Recurse -Force -ErrorAction SilentlyContinue
+      }
+      New-Item -ItemType Directory -Path $stage -Force | Out-Null
+      $probe = Join-Path $stage "$($Row.Cmd).exe"
+      Copy-Item -LiteralPath $Exe -Destination $probe -Force -ErrorAction Stop
+      Unblock-File -LiteralPath $probe -ErrorAction SilentlyContinue
+    } catch { return @{ Rc = $null; Why = "실행 파일을 임시 위치에 두지 못함 — $(Say-Why $_)" } }
+    $arg = if ($Row.Arg) { $Row.Arg } else { '--version' }
+    $runs = Measure-Runs (Join-Path $stage $Row.Cmd) $arg
+    if ($runs -ne 'yes') {
+      $runWhy = if ($runs -eq 'no') { '그 위치에 없어' } else { Get-ProbeWhy "$(Join-Path $stage $Row.Cmd) $arg" }
+      return @{ Rc = $null; Why = "새 버전이 실행되지 않음 — ``$($Row.Cmd) $arg`` 이 ${runWhy}서 이전 버전을 그대로 유지" }
+    }
+    if (Test-Path -LiteralPath $dir) {
+      try { Rename-Item -LiteralPath $dir -NewName (Split-Path -Leaf $old) -ErrorAction Stop }
+      catch { return @{ Rc = $null; Why = "이전 버전을 옮기지 못함 (사용 중일 수 있음) — $(Say-Why $_)" } }
+    }
+    try { Move-Item -LiteralPath $stage -Destination $dir -ErrorAction Stop }
+    catch {
+      if (Test-Path -LiteralPath $old) { Rename-Item -LiteralPath $old -NewName $leaf -ErrorAction SilentlyContinue }
+      return @{ Rc = $null; Why = "새 버전을 그 위치로 옮기지 못함 — $(Say-Why $_)" }
+    }
+    Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue
+    return @{ Rc = 0; Why = '' }
+  } finally {
+    Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
 # 벤더 길 하나로 받아 깐다 — 프로그램 · 데스크탑 앱 · winget CLI 가 이 한 손을 쓴다. `$Found`(`Get-VendorLatest` 의 답 · 판을 안 읽는 길은
 #   `@{ Url = 길의 Url }`)의 주소에서 받아 울타리(`Test-VendorFence`)를 지나면 설치본을 무음으로 돌리거나(`SilentArgs`) 고정 자리에
 #   푼다(`Unzip` · `Install-VendorZip`) · MSI 를 승격으로 돌린다(`Msi`). 미러 순위를 든 길(`Mirrors`)은 받기 전에 받을 곳을 고르고
@@ -4517,6 +4592,9 @@ function Invoke-VendorWay([string]$Label, $Row, $Way, $Found, [string]$Act) {
         if ($Way.Unzip) {
           Say-Busy $Label $Act @('공식 zip', [Environment]::ExpandEnvironmentVariables("$($Way.Unzip.Dir)"))
           $r = Install-VendorZip $file $Row $Way $Found
+        } elseif ($Way.Exe) {
+          Say-Busy $Label $Act @('공식 실행 파일', [Environment]::ExpandEnvironmentVariables("$($Way.Exe.Dir)"))
+          $r = Install-VendorExe $file $Row $Way $Found
         } elseif ($Way.Msi) {
           Say-Busy $Label $Act @('공식 MSI', '승인 창이 뜰 수 있음', '몇 분 걸릴 수 있음')
           try {
@@ -5738,7 +5816,7 @@ function Install-WingetCli($C) {
   # 깐 직후에는 이 창이 그 자리를 모른다 — winget 이 portable 을 심으며 손댄 PATH 는 레지스트리에만 있고, 벤더 zip 의 자리(`PathDir`)는
   #   배선이 이 창 끝에 붙인다.
   Update-RuntimePath
-  if ($placed -and $placed.Unzip) { Write-ShadowedCopy $C }
+  if ($placed -and ($placed.Unzip -or $placed.Exe)) { Write-ShadowedCopy $C }
   if (Test-Runs $C.Cmd $arg) {
     Write-Host "  $($C.Label) — 설치 완료 $(Format-VerPart (Get-Ver $C.Cmd $arg))" -ForegroundColor Green
   } else {
