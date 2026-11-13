@@ -2065,7 +2065,8 @@ except Exception as e:  # 손의 `Busy` · 손을 못 불러옴
 #   고른 도구와 관계없이 VS Code 가 있으면 건다. 고른 도구의 데스크탑 앱 프로젝트 목록(Codex · agy)과 Codex 데스크탑의 기본
 #   권한도 이 칸이 같은 규칙(떠 있으면 미룸 · 사람이 뺀 것은 둠)으로 든다.
 # 거는 집합은 하나다(`targets`) — 이 저장소와 작업 루트 바로 아래 저장소 가운데 세션 훅(`.claude/hooks/session-start.sh`)이
-#   우리 표지를 든 것. 네 도구 · VS Code · 데스크탑 목록이 다 이 목록을 받는다. 그 밖의 폴더는 그대로 묻는다. 신뢰 창은 도구가
+#   우리 표지를 든 것, 그리고 작업 루트의 작업 폴더(`WORK_DIR` — 표지 없이도 건다). 네 도구 · VS Code · 데스크탑 목록이 다 이
+#   목록을 받는다. 그 밖의 폴더는 그대로 묻는다. 신뢰 창은 도구가
 #   훅보다 먼저 띄우므로 저장소를 처음 열기 전에 서 있어야 한다 — 설치기 · 로그인 자동 실행이 부르는 `--install` 이 그 자리다.
 # 고른 제품은 손이 읽는 그대로 읽는다(사용자 값이 먼저 · 비면 Claude 만). 손을 못 부르면 Claude 는 비었을 때의 뜻대로
 #   걸고, Codex · agy · Copilot 은 안 건다 — 고른 줄 모르는 도구에 신뢰를 넓히지 않는다.
@@ -2080,6 +2081,9 @@ import glob as _glob
 #   정규식을 여기서 짓는다 — 어긋나면 설치기가 넘긴 훅과 신뢰를 거는 훅이 다른 답을 낸다. 같은 표본으로 두 자리를 무는 것은
 #   설정 저장소의 검사(`scripts/check-home-hook.sh`)가 든다. `-match` 처럼 대소문자를 안 가리고, 못 읽으면 우리 것이 아니다.
 OUR_HOOK = (".claude", "hooks", "session-start.sh")
+# 작업 폴더 — 설치기가 작업 루트 아래 늘 짓는 자리(`install.ps1` 의 `$WorkDirName` · 두 이름이 같은가는 `scripts/check-home-hook.sh`
+#   가 잰다). 설정 저장소를 안 받은 사람도 처음 여는 자리에 신뢰 창이 안 뜨게, 우리 표지가 없어도 있으면 건다.
+WORK_DIR = "work"
 MARK_LINES = 12
 _MARK_AT = re.escape("claude-config/" + "/".join(OUR_HOOK))
 OUR_MARK = re.compile(r"^\s*(#|//).*(?:(?:진본|원본)은 " + _MARK_AT + r" 다|\(진본: " + _MARK_AT + r"\))", re.IGNORECASE)
@@ -2122,11 +2126,13 @@ def main_checkout(p):
 # 겹침은 경로를 고른 꼴로 가린다 — 이 저장소는 문지기가 넘긴 철자(`C:/…/x`)로, 작업 루트 아래는 훑은 철자(`C:/…\x`)로 와 글자가 갈린다.
 #   집합에는 처음 온 철자를 둔다. 윈도는 대소문자도 안 가린다(`normcase`).
 targets, _target_keys = [], set()
+_work = os.path.join(root, WORK_DIR)
+_work_key = os.path.normcase(os.path.normpath(_work))
 for t in ([proj] if proj else []) + [os.path.dirname(os.path.dirname(os.path.dirname(h)))
-                   for h in _glob.glob(os.path.join(root, "*", *OUR_HOOK))]:
+                   for h in _glob.glob(os.path.join(root, "*", *OUR_HOOK))] + ([_work] if os.path.isdir(_work) else []):
     r = main_checkout(t)
     k = r and os.path.normcase(os.path.normpath(r))
-    if r and k not in _target_keys and our_hook(r):
+    if r and k not in _target_keys and (our_hook(r) or k == _work_key):
         targets.append(r)
         _target_keys.add(k)
 
