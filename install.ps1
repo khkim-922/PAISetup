@@ -10454,9 +10454,16 @@ if (-not (Test-Path -LiteralPath $browserMcpPlant)) {
 } else {
   # 줄은 받는 즉시 옮겨 찍는다. 브라우저를 안 받은 판(`-NoDevTools`)만 조용히 받는다 — 그 판의 SKIP 은 아래 「건너뜀」 한 줄이 대신
   #   말하므로, 흘리면 노란 「안 달았다」가 먼저 서 버린다. 그 판이 건너뜀이 아니면(진 판) 모은 줄을 뒤에서 옮겨 찍는다.
-  if ($browserMcpOn.Count) {
+  # agy 가 「CLI」 걸음에서 아직 뒤로 깔리는 중이면 그 도구의 등록만 거둔 뒤(「Claude 플러그인」 걸음 끝)로 미룬다 — 어댑터는 도구 제
+  #   CLI 로 달아, 그 명령이 PATH 에 아직 없는 맨바닥 PC 에서 그 도구를 「못 달았다」로 센다.
+  $browserMcpLater = @()
+  if (-not $browserGetSkipped -and $browserMcpOn -contains 'agy' -and @($cliBackPath | Where-Object { $_.Cmd -eq 'agy' }).Count -and
+      -not (Get-Command agy -ErrorAction SilentlyContinue)) { $browserMcpLater = @('agy') }
+  $browserMcpNow = @($browserMcpOn | Where-Object { $browserMcpLater -notcontains $_ })
+  if ($browserMcpLater.Count) { Write-Host '  브라우저 MCP (agy) — 안티그래비티 CLI 를 백그라운드에서 설치하는 중이라 설치가 끝난 뒤 등록함' }
+  if ($browserMcpNow.Count) {
     $bmFlow = if ($browserGetSkipped) { $null } else { { param($l) Show-BrowserMcpLine '브라우저 MCP' $l } }
-    $bmInstall = Invoke-BrowserMcp $browserMcpPlant (@('install') + @($browserMcpOn | ForEach-Object { '--host', $_ })) -OnLine $bmFlow
+    $bmInstall = Invoke-BrowserMcp $browserMcpPlant (@('install') + @($browserMcpNow | ForEach-Object { '--host', $_ })) -OnLine $bmFlow
     $browserMcpSkipped = $browserGetSkipped -and $bmInstall.Rc -eq 0 -and @($bmInstall.Lines | Where-Object { $_ -like 'SKIP=*' }).Count -gt 0
     if ($browserMcpSkipped) { Write-Host '  브라우저 MCP — 건너뜀 (-NoDevTools · 브라우저를 다운로드하지 않아 등록하지 않음)' }
     else                    { Show-BrowserMcpLines '브라우저 MCP' $bmInstall -Replay:(-not $bmFlow) }
@@ -11085,6 +11092,13 @@ if ($cliBackPath.Count) {
   Write-Host '  CLI — 백그라운드 설치 결과' -ForegroundColor Cyan
   foreach ($c in $cliBackPath) { try { Complete-RowChild 'cli' $c } catch { Write-StepFault $_ } }
   try { Update-RuntimePath } catch { Write-StepFault $_ }
+  # 「도구별 홈」 걸음이 미룬 agy 의 브라우저 MCP 등록 — agy 가 이제 이 창의 PATH 에 선다
+  if ($browserMcpLater) {
+    try {
+      $bmLater = Invoke-BrowserMcp $browserMcpPlant (@('install') + @($browserMcpLater | ForEach-Object { '--host', $_ })) -OnLine { param($l) Show-BrowserMcpLine '브라우저 MCP' $l }
+      Show-BrowserMcpLines '브라우저 MCP' $bmLater
+    } catch { Write-StepFault $_ }
+  }
 }
 }
 Exit-Step 'register'
