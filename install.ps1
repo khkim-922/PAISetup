@@ -134,6 +134,11 @@ $ConfigSeedHooks = Join-Path $ConfigSeedHome '.claude\hooks'
 # ⚠ **넘겨받는 쪽의 `ROOT` 와 짝이다** — 자리를 옮기면 둘을 같이 고친다. 하나만 고치면 설치는 한 데로 받고 다른 쪽은 딴
 #   데서 찾는다.
 $configRepoRoot = Join-Path $env:USERPROFILE 'repos'
+# 작업 폴더 — 저장소를 받는 자리 아래 늘 짓는 폴더 하나(`New-WorkDir`). 설정 저장소를 안 받은 사람도 처음부터 정해진 자리에서 일하게,
+#   심기(`Invoke-Plant`)가 이 폴더에 고른 도구의 신뢰를 걸고 끝의 VS Code 가 이 폴더로 뜬다.
+# ⚠ **홈 씨앗 몸통의 `WORK_DIR` 과 짝이다** — 몸통이 신뢰를 거는 폴더 이름이 그 값이다. 같은가는 설정 저장소의
+#   `scripts/check-home-hook.sh` 가 잰다.
+$WorkDirName = 'work'
 
 # ── 회차를 넘기는 기록의 자리 — **사람이 고른 것만 든다** (PAISetup #45) ────────────────────────
 # 설치 창 · 콘솔 · 로그온 · 밤 자동 실행이 다 이 자리를 몸통의 한 손(`Read-ChoiceRecord`)으로 읽는다 — 창은 `-Describe` 의
@@ -7233,13 +7238,44 @@ function Stop-App($App) {
 
 #region 심기 · 제공기능 — 홈 씨앗 몸통의 `--plant` 를 부르고, 처음 까는 PC 에서 설치 끝에 「제공기능」을 한 번 연다
 
+# 작업 폴더를 짓는다 — 작업 루트(`$Root`) 아래 `$WorkDirName` 하나. 있으면 그대로 쓰고 안의 것은 읽지도 바꾸지도 않는다(git 저장소여도
+#   같다). 심기보다 앞에 선다 — 몸통은 그때 있는 폴더에만 신뢰를 건다.
+#   · 받을 저장소 가운데 이름이 같은 것이 있으면 안 짓는다 — 그 자리는 clone 몫이다(`Get-ConfigRepoDir` 가 같은 이름을 쓴다)
+#   · 같은 이름의 파일이 서 있으면 안 짓고 알린다
+#   · 비영속 VDI(`Test-FreshProfile`)에서 새로 지었으면, 로그오프하면 안의 파일이 사라진다고 한 줄 붙인다 — 「정해진 폴더에
+#     두었으니 남는다」고 믿기 쉬운 자리다
+# 받는 것 — 작업 루트 · 받을 저장소 주소들. 내는 것 — 쓸 수 있는 작업 폴더의 전체 경로 · 못 세웠으면 빈 글. 실패로 안 센다 — 덤이다.
+function New-WorkDir([string]$Root, [string[]]$RepoUrls) {
+  $dir = Join-Path $Root $WorkDirName
+  if (@($RepoUrls | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_) -ieq $WorkDirName }).Count) { return '' }
+  if (Test-Path -LiteralPath $dir -PathType Leaf) {
+    Write-Host "  ! 작업 폴더 — 같은 이름의 파일이 있어 만들지 않음 ($dir)" -ForegroundColor Yellow
+    return ''
+  }
+  try {
+    $made = -not (Test-Path -LiteralPath $dir -PathType Container)
+    [void][IO.Directory]::CreateDirectory($dir)
+    if ($made) {
+      Write-Host "  작업 폴더를 만듦 — $dir" -ForegroundColor Green
+      if ((Test-FreshProfile) -eq $true) {
+        Write-Host '     이 PC 는 로그오프하면 홈 폴더가 새로 서는 VDI 라, 이 폴더에 둔 파일도 함께 사라집니다 — 남길 것은 다른 곳에 옮기세요' -ForegroundColor Yellow
+      }
+    }
+    return $dir
+  } catch {
+    Write-Host "  ! 작업 폴더를 만들지 못함 — $(Say-Why $_)" -ForegroundColor Yellow
+    return ''
+  }
+}
+
 # 심기만 — 홈 씨앗의 세션 훅을 `--plant <작업 루트>` 로 부른다(claude-config 결정 0134 · 부르는 자리와 차례는 결정 0135). 저장소를
 #   받았든 안 받았든 같은 홈 씨앗을 부른다 — 홈 씨앗은 늘 서 있고, 몸통은 거기서 홈 훅 · 고른 도구의 폴더 신뢰 · 데스크탑 상태를 심는다.
 # 작업 루트는 저장소를 받는 자리(`$configRepoRoot` — `Get-ConfigRepoDir` 가 받는 자리를 짓는 그 값)를 그대로 받는다. 몸통은 받은 글자를
 #   `pwd` 로만 굳혀(대소문자 · 짧은 이름은 그대로) 홈 훅 명령에 박으므로, 받은 저장소의 `--install` 이 제 자리에서 잡는 루트와 글자가
 #   다르면 두 부름이 설치마다 그 명령을 번갈아 갈아 심는다(결정 0032). 없으면 부르는 동안만 짓는다 — 몸통은 없는 루트에 아무것도 안
 #   심는다(2로 끝난다). 이 부름이 지은 루트가 끝에 비어 있으면 걷는다 — 칸이 빈 PC 에 빈 `~/repos` 를 남기지 않는다(claude-config 결정
-#   0138). 심은 홈 훅은 그 자리가 없어도 0 으로 끝나고, 사람이 그 자리에 저장소를 두면 그때부터 훑는다.
+#   0138). 심은 홈 훅은 그 자리가 없어도 0 으로 끝나고, 사람이 그 자리에 저장소를 두면 그때부터 훑는다. 작업 폴더(`New-WorkDir`)가
+#   앞서 섰으면 루트가 이미 있어 이 짓기 · 걷기는 안 걸린다 — 작업 폴더를 못 세운 판의 몫으로 남는다.
 # ⚠ **루트는 `/` 꼴로 끝의 구분자 없이 넘긴다** — 5.1 은 빈칸이 든 인자를 따옴표로 싸는데 끝의 `\` 가 닫는 따옴표를 글자로 만들어
 #   bash 에 `…\"` 가 간다(그러면 몸통이 그 자리로 못 들어가 2로 끝난다). 훅 자리도 `--install` 처럼 `/` 꼴로 넘긴다.
 # 내는 것 — @{ Ran = 불렀나; Ok = 0 으로 끝났나; Why = 안 불렀거나 0 이 아닌 까닭 }. 실패로 셀지는 부르는 쪽이 든다.
@@ -10765,6 +10801,8 @@ $scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny $ConfigSeedHo
 # 못 부른 것(Git Bash · 홈 씨앗의 훅이 없다)은 노란 줄로만 낸다 — Git Bash 가 없는 것은 「프로그램」 걸음이 셌거나 개발 도구를
 #   끈 PC(`-NoDevTools`)가 고른 몫이고, 홈 씨앗이 모자라면 끝 검증의 씨앗 줄이 [X] 다. 불렀는데 0 이 아니면 센다. 0 은 「다
 #   심었다」가 아니다 — 미룬 칸과 걸 저장소가 없는 루트도 0 이다. 무엇을 심고 미뤘나는 몸통이 찍는 줄이 든다.
+# 작업 폴더를 심기 바로 앞에 짓는다 — 몸통이 그때 있는 그 폴더에 신뢰를 걸고, 끝의 VS Code 가 그 폴더로 뜬다(`$script:WorkDir`).
+$script:WorkDir = New-WorkDir $configRepoRoot $configRepoUrls
 $plant = Invoke-Plant $bash $configRepoRoot
 if (-not $plant.Ran) { Write-Host "  ! 설정 적용 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 설정하지 못함" -ForegroundColor Yellow }
 elseif (-not $plant.Ok) { $Fails.Add("설정 적용 --plant ($($plant.Why))") }
@@ -13046,7 +13084,15 @@ if ($NoLaunch) {
   #   그 위에 선다(아래 「역순으로 띄운다」 — 보장은 못 한다). `-NoVsCode` 로 뺀 자리는 안 연다.
   # ⚠ **`$null` 을 배열에 담지 않는다** — `Find-VSCode` 는 못 찾으면 `$null` 을 내는데 `@($null)` 은 빈 배열이 아니라 원소
   #   하나짜리라, 아래 고리들이 그 `$null` 을 든다.
-  if ($hasCode -and -not $NoVsCode) { $apps = @($apps) + @(Find-VSCode | Where-Object { $_ }) }
+  # VS Code 는 작업 폴더(`New-WorkDir`)가 섰으면 그 폴더를 열고 뜬다 — 빈 창으로 뜨면 사람이 폴더를 찾아 열고 신뢰를 다시 고른다.
+  #   그 폴더의 신뢰는 「설정 저장소」 걸음의 심기가 이미 걸었다.
+  if ($hasCode -and -not $NoVsCode) {
+    $vsc = Find-VSCode
+    if ($vsc) {
+      if ($script:WorkDir) { $vsc.Args = '"' + $script:WorkDir + '"' }
+      $apps = @($apps) + @($vsc)
+    }
+  }
 
   $skip = @()
   if (-not $apps) {
@@ -13142,7 +13188,8 @@ if ($NoLaunch) {
       $sendApp = {
         param($one)
         try {
-          if ($one.Exe) { Start-Process -FilePath $one.Exe | Out-Null }
+          if ($one.Exe -and $one.Args) { Start-Process -FilePath $one.Exe -ArgumentList $one.Args | Out-Null }
+          elseif ($one.Exe) { Start-Process -FilePath $one.Exe | Out-Null }
           else          { Start-Process "shell:AppsFolder\$($one.AppId)" | Out-Null }
           return $true
         } catch {
