@@ -355,6 +355,21 @@ $Clis = @(
                Url='https://download.documentfoundation.org/libreoffice/stable/{ver}/win/x86_64/LibreOffice_{ver}_Win_x86-64.msi'
                Mirrors='metalink'; Msi=$true; SilentArgs='/quiet /norestart'; NeedsVcRuntime=$true; Signer='The Document Foundation' }
             @{ Via='winget' }) }
+  # 공식 docx 스킬이 워드 문서를 읽고 바꾸는 손 — pandoc. 공식 문서 스킬이 서는 제품마다 깐다. winget 의 설치본(MSI)이 사용자 범위
+  #   (`%LOCALAPPDATA%\Pandoc`)에 깔려 승격이 없다. 뒤 걸음이 `pandoc` 을 안 불러 뒤에서 깐다(`Back`).
+  @{ Key='pandoc'; Via='winget'; Cmd='pandoc'; Label='pandoc (워드 문서 변환)'; Id='JohnMacFarlane.Pandoc'
+     PathDir="$env:LOCALAPPDATA\Pandoc"; For=@('claude','codex','antigravity'); Back=$true }
+  # 공식 pdf 스킬이 PDF 를 합치고 · 쪼개고 · 고치고 · 줄이는 명령 — qpdf. 망가진 PDF 고치기 · 용량 줄이기 · 웹용 정리는 파이썬 패키지로
+  #   대신 못 한다. 공식 문서 스킬이 서는 제품마다 깐다.
+  #   벤더 길 — GitHub 릴리스의 mingw64 zip 을 고정 자리에 푼다. 그 zip 은 gcc 런타임을 같이 실어 따로 깔 짝이 없고, 판마다 이름이 바뀌는
+  #   폴더(`qpdf-<판>-mingw64`)를 `Dir` 하나로 옮겨 PATH 는 `PathDir` 한 줄이다. winget 설치본(NSIS)은 판 이름이 붙은 폴더에 깔려 그
+  #   줄이 판마다 갈리므로 벤더 길이 먼저다.
+  @{ Key='qpdf'; Via='winget'; Cmd='qpdf'; Label='qpdf (PDF 다루기)'; Id='QPDF.QPDF'; For=@('claude','codex','antigravity')
+     PathDir="$env:LOCALAPPDATA\Programs\qpdf\bin"; Back=$true
+     Ways=@(@{ Via='vendor'; Read='github'; Repo='qpdf/qpdf'; Asset='qpdf-{tag}-mingw64.zip'
+               Unzip=@{ Root='qpdf-{ver}-mingw64'; Dir="$env:LOCALAPPDATA\Programs\qpdf" }
+               Unsigned='실행 파일에 서명이 없다 — GitHub 릴리스 자산을 https 로 받는다' }
+            @{ Via='winget' }) }
   # 제작자 칸이 보내는 스킬이 부르는 도구 — 칸을 켠 PC 에만 깐다(`Maker`). `doc-coordinate-audit` 가 링크 · 경로를 lychee 로 잰다(설정
   #   저장소의 세션 훅도 까지만, 그 저장소를 안 붙인 PC 에도 서야 해서 여기서도 깐다). 선언의 설치법이 GitHub 릴리스라 winget id 를 이
   #   줄이 든다. lychee 는 winget 휴대용(zip)이라 사용자 범위에 풀리고 그 자리(`WinGet\Links` 나 패키지 폴더 — winget 이 PC 마다 고른다)가
@@ -1361,7 +1376,7 @@ $VendorMirrorTries = 8      # 미러 순위(`Mirrors = 'metalink'`)에서 빠르
 $VendorMirrorProbe = 4MB    # 한 곳을 재려고 받는 앞 토막 — 작으면 연결을 여는 시간만 잰다
 $VendorMirrorCap   = 4      # 곳들을 한꺼번에 재는 마감 초 — 넘기면 그때까지 받은 양으로 잰다. 고르기 전체가 Metalink 한 번 묻기와 이 초 안팎이다
 $DownloadParts    = 8       # 큰 것을 나눠 받는 연결 수(`Get-DownloadParts`) — 연결 하나의 빠르기를 묶는 길(먼 지연 · 프록시)에서 회선을 다 쓴다. 회선이 묶인 자리에서는 4 와 8 이 같다(PAISetup #67)
-$DownloadSplitMin = 32MB    # 이보다 작은 것은 한 연결로 받는다 — 조각을 여는 값이 받는 시간을 넘는다
+$DownloadSplitMin = 20MB    # 이보다 작은 것은 한 연결로 받는다 — 조각을 여는 값이 받는 시간을 넘는다. 수십 MB 대의 벤더 zip(qpdf 약 23MB)이 나눠 받는 쪽에 든다
 # 받는 동안 진척 줄(10% 눈금 · 25 MB 눈금)을 찍나 — 받는 자 둘(`Get-Download` · `Get-DownloadParts`)이 읽는다. 백그라운드 자식(`-RowOnly`)은
 #   끄고 돈다 — 그 줄은 거둘 때 한꺼번에 다시 찍혀 「지금 받는 중」이 아니라 지난 눈금만 늘어놓는다. 끝 줄(「다운로드 완료」)은 늘 찍는다.
 $DownloadTicks = $true
