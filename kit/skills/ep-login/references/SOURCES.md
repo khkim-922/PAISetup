@@ -8,7 +8,7 @@
   `Target.closeTarget`. 받는 손이 탭에 안 붙고 쓰는 도메인이다(chromedevtools.github.io/devtools-protocol)
 - **Chrome 136 의 디버깅 포트 바꿈** — 기본 데이터 폴더에는 `--remote-debugging-port` 를 안 받고 `--user-data-dir` 이 들어야
   한다(developer.chrome.com/blog/remote-debugging-port). Edge 는 공지가 없고 같은 증상의 사용자 보고가 있다
-  (learn.microsoft.com 의 Q&A 「Microsoft Edge Remote Debugging is Not Working When Using the Default User Profile」). 입구(`scripts/ep_login.js`)의 종료 3 갈래(`--profile`)가 이 자리다 — 판은 띄워 본 결과로 가른다
+  (learn.microsoft.com 의 Q&A 「Microsoft Edge Remote Debugging is Not Working When Using the Default User Profile」). 입구(`scripts/ep_login.js`)는 늘 따로 사는 프로필로 띄워 이 선에 안 걸린다
 - **RFC 6265** — 받는 손이 SSO 넘김을 따라갈 때 쿠키를 싣고 받는 규칙(도메인 · 경로 · 만료)
 
 ## 본 후보
@@ -32,12 +32,13 @@
   사내 화면은 확인 창을 띄운다(ECM 의 「세션이 종료되었습니다」 · SSO 의 「EP 접속 정보」) — 그래서 받는 손은 브라우저 자리에만 붙는다
 - **136 의 선** — Chrome 은 136 부터 기본 데이터 폴더에 디버깅 포트 플래그를 안 받는다고 공지했다. Edge 의 공지는 없고 같은 증상의
   사용자 보고만 있다. 잰 회사 자리의 판은 데스크톱 131 · VDI 107 이다(mail-secretary 결정 0009 · 0023). 판은 깔린 폴더 이름으로 못
-  가린다 — 회사 데스크톱의 Application 폴더에 아직 적용 안 된 업데이트의 판 폴더(143)가 도는 판(131)과 함께 있었다. 그래서 띄우는
-  손은 판을 묻지 않고 띄워 본 결과(포트가 열리나)로 가른다
+  가린다 — 회사 데스크톱의 Application 폴더에 아직 적용 안 된 업데이트의 판 폴더(143)가 도는 판(131)과 함께 있었다. 띄우는 손이
+  늘 따로 사는 프로필로 띄우는 까닭 하나다 — 판을 가리지 않아도 포트가 선다
 - **입구가 붙는 자리** — 로그인 탭 하나의 페이지 자리에만 붙는다. 브라우저 자리에 자동 붙기를 걸면 로그인 도중 SSO 가 여는 팝업
   (사내 SSO 의 ssoframe 페이지)이 디버거를 기다리며 멈추고, EP 가 빈 화면에 선다 — 회사 데스크톱에서 그렇게 멈췄다
-- **새 창으로 따로 로그인하는 길은 두지 않는다** — 그 로그인이 「EP 접속 정보」로 같은 사람의 다른 세션을 끊고, 사람이 다시 로그인하면
-  받아 둔 쿠키도 죽는다 — 한쪽이 늘 끊긴다. 평소 Edge 의 세션을 빌리면 둘 다 산다. 끊기는 것은 메일(Domino)이다 — 2026-11-09 회사
+- **따로 사는 프로필의 창으로 로그인하면 메일이 서로를 끊는다** — 그 로그인이 「EP 접속 정보」로 같은 사람의 다른 세션을 끊고, 사람이
+  다시 로그인하면 받아 둔 쿠키도 죽는다. 입구는 이 대가를 지고 그 창으로 띄운다 — 평소 Edge 의 세션을 빌리려면 떠 있는 Edge 를 끝내고
+  포트로 다시 띄워야 하는데, 그러면 사람의 창 · 탭 · 쓰던 글이 한꺼번에 닫힌다. 끊기는 것은 메일(Domino)이다 — 2026-11-09 회사
   데스크톱(Edge 131)에서 따로 사는 프로필의 Edge 를 포트 9223 으로 띄워 통합 인증으로 로그인하니, 새 창은 메일 · ECM 이 다 섰고
   평소 Edge 는 EP 포털 · ECM 은 그대로인데 메일만 로그인이 풀렸다(쓰던 메일은 임시보관함에 남았다). 앞서 받은 평소 Edge 의 세션 파일도
   메일 서버가 거절했다
@@ -48,20 +49,19 @@
 아래 줄들은 아직 거기 없다.
 
 - 조용한 ECM 받기가 못 따라갈 때 `--ecm-tab` 이 서나
-- `--restart` 가 끝낸 Edge 를 `--restore-last-session` 이 탭째 되살리나 · 같은 기본 프로필이라 SSO 가 「EP 접속 정보」 창 없이 넘나 ·
-  시작 부스트가 켜진 PC 에서 끝낸 Edge 가 다시 뜨나(가짜 검사는 이 PC 의 Edge 를 다 끝내므로 `--restart` 를 안 잰다)
+- ep-login 창(따로 사는 프로필)이 평소 Edge 가 떠 있는 데스크톱 · VDI 에서 포트를 열고 통합 인증 · 평소 EP 로그인으로 서나 · 디버깅
+  포트로 뜬 Edge 와 같이 못 도는 사내 앱이 그 창에도 걸리나
 - 데스크톱에서 통합 인증이 안 서는 자리(입력 칸 있는 로그인 화면에 머무는 판)를 입구가 평소 EP 로그인 화면으로 넘기는 시한(8 초)이 실물
   통합 인증의 넘김보다 넉넉한가
 - 포트가 열렸는데 로그인이 끊긴 Edge 에 `/json/new`(PUT)로 로그인 탭을 여는 것이 데스크톱 131 · VDI 107 에서 서나
 - 끊긴 세션에 Domino 의 세션 확인 주소(`checksessionstatus`)가 무엇을 답하나 — 산 답 `{"status":"login"}` 만 쟀다
 - 메일 서버(`DOMINO_URL` 의 기본)가 사람마다 같은가
-- Edge 136 이상 PC 에서 기본 프로필에 포트가 정말 안 열리나 · `--profile` 로는 서나
 
 ## 빌린 것
 
 | 무엇 | 어디서 | 따라가는 법 |
 |---|---|---|
 | 붙는 길 · 종료 값 넷 · 메일 목록으로 로그인을 가리기 · 파일에 쓰기 전에 거르기 | mail-secretary 저장소 secretary/edge_session.js(68ad771) · 결정 0009 · 0023 | 일부러 갈랐다 — 브라우저 자리에만 붙고(위 「잰 것」) · ECM 을 함께 받고 · 회사 도메인 전체로 거른다(저쪽은 메일 호스트만). 비서는 이 손을 깔린 자리에서 부르고 제 저장소에 사본을 안 든다(mail-secretary #34 · `secretary/hands.py`) |
-| 띄우는 플래그 · Edge 자리 후보 · 15초 | 같은 저장소 secretary/runner.py 의 `EDGE_FLAGS` · `EDGE_CANDIDATES` · `launch_edge`(68ad771) | 손으로 따라간다 — 이쪽은 `--no-startup-window` 를 안 쓰고 EP 로그인 탭 하나로 띄운다(사람이 그 창에서 로그인하고 그대로 쓴다) |
+| 띄우는 플래그 · Edge 자리 후보 · 15초 | 같은 저장소 secretary/runner.py 의 `EDGE_FLAGS` · `EDGE_CANDIDATES` · `launch_edge`(68ad771) | 손으로 따라간다 — 이쪽은 `--no-startup-window` 를 안 쓰고 따로 사는 프로필 · EP 로그인 탭 하나로 띄운다(사람이 그 창에서 로그인하고 그대로 쓴다) |
 | 회사 로그인 주소 | 같은 저장소 secretary/identity.py 의 `COMPANY_LOGIN_PATH`(68ad771) | 손으로 따라간다 |
 | ECM 메인 · SSO 넘김 주소 · 세션 쿠키 · 넘김의 차례 | 같은 저장소 이슈 #28 의 ECM 첫째 · 둘째 판(2026-11-06 VDI) | 손으로 따라간다 — 실물이 바뀌면 `edge_session.js` 의 상수와 검사의 가짜를 함께 고친다 |

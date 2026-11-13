@@ -2,14 +2,10 @@
 // edge_session.js), 안 서면 그 Edge 의 상태에 맞는 로그인을 띄워 지켜본 뒤 다시 받는다. 띄운 창 · 연 탭은 사람이 그대로 쓴다.
 //
 // 부르는 꼴:
-//     node ep_login.js [세션 파일] [domino] [ecm] [--restart] [--profile <폴더>]
+//     node ep_login.js [세션 파일] [domino] [ecm] [--profile <폴더>]
 //   세션 파일 · domino · ecm — 받는 손에 그대로 넘긴다(뜻은 그 머리말). 받는 손이 ECM 넘김만 화면 없이 못 따라가면(그 손의 4) 탭을
 //     잠깐 여는 갈래(--ecm-tab)로 한 번 더 받는다 — 이 명령은 사람이 아는 자리에서만 돌아, 그 탭을 띄우기 전 알림에 함께 싣는다.
-//   --restart — 디버깅 포트 없이 도는 Edge 를 이 명령이 끝내고 포트로 다시 띄운다. 사람이 로그인 시도에 동의한 뒤에만 준다(종료 2). 다시 띄운
-//     Edge 는 끝낸 탭을 되살리고(--restore-last-session) 로그인 탭 없이 뜬다 — 되살린 사내 탭 하나를 로그인 주소로 넘겨 늘 새로
-//     로그인한다(되살린 세션은 포털이 깨져 있어 받아 보지 않는다). 그런 탭이 없을 때만 로그인 탭을 연다.
-//   --profile — 기본 프로필 대신 그 폴더를 프로필로 띄운다. 기본 프로필로 띄웠는데 포트가 안 열리는 Chromium 136 이상의 Edge(종료 3)
-//     에서만, 사람이 동의한 뒤에 준다 — 그 프로필은 평소 Edge 와 쿠키를 안 나눠 그 로그인이 평소 Edge 의 메일 세션을 끊는다.
+//   --profile — 띄우는 창의 프로필 폴더. 안 주면 PROFILE_DIR(LOCALAPPDATA 아래)이다.
 //   환경변수 EDGE_DEBUG_PORT 포트 · SESSION_LOGIN_HOSTS 로그인 화면 호스트 · SESSION_LOGIN_WAIT_SECONDS 로그인 시한 — 뜻과 기본값은
 //   받는 손의 settings 한 자리에서 읽는다. 로그인 화면과 받을 확인 창도 그 손의 onLoginScreen · epConfirm 이 가린다. EP_LOGIN_URL ·
 //   COMPANY_LOGIN_URL 은 로그인 탭의 주소를 바꾼다 — 가짜 SSO 로 재는 검사(check_session.js)를 위해 있다.
@@ -17,8 +13,8 @@
 // 차례 — 받는 손의 종료 값(상태)으로 가른다:
 //   받는다 → 0 이면 끝
 //   3 붙었는데 로그인이 안 됐다 → 그 Edge 에 로그인 탭 하나를 열어 지켜본 뒤 다시 받는다
-//   2 붙을 Edge 가 없다 → 포트 없이 도는 Edge 가 있고 --restart 가 없으면 종료 2. --restart 면 끝내고 되살리기만으로 띄워 되살린
-//     사내 탭을 로그인 주소로 넘긴다(없으면 로그인 탭을 연다). Edge 가 없으면 포트와 로그인 탭으로 띄운다. 로그인 탭은 지켜본 뒤 다시 받는다
+//   2 붙을 Edge 가 없다 → ep-login 프로필의 Edge 창 하나를 포트와 로그인 탭으로 띄워 지켜본 뒤 다시 받는다. 사람의 평소 Edge 는
+//     떠 있든 아니든 안 건드린다 — 떠 있는 Edge 에는 포트를 못 여는데, 그것을 끝내면 사람의 창 · 탭 · 쓰던 글이 다 닫힌다
 //   4 ECM 만 못 받았다 → --ecm-tab 으로 한 번 더 받는다
 // 로그인 탭 — 데스크톱은 회사 SSO 로그인(통합 인증이 입력 없이 넘는다), VDI 는 평소 EP 로그인 화면(사람이 친다). 데스크톱에서
 //   탭이 입력 칸 있는 로그인 화면에 FALLBACK_MS 넘게 머물면 통합 인증이 안 선 것이라, 같은 탭을 평소 EP 로그인 화면으로 넘기고
@@ -26,17 +22,16 @@
 //   것이라 안 건드린다. 탭이 로그인 화면을 벗어나면 떨어지고, 받기는 로그인 시한 안에서 설 때까지 되풀이한다 — 사람이 다른 탭에서
 //   로그인해도 선다.
 //
-// 내는 것 — 종료 값은 닫힌 다섯이다. 표준 출력은 종료 0 일 때 세션 파일의 절대 경로 한 줄뿐이고, 경과와 「다음: …」 은 표준 오류다:
+// 내는 것 — 종료 값은 닫힌 셋이다. 표준 출력은 종료 0 일 때 세션 파일의 절대 경로 한 줄뿐이고, 경과와 「다음: …」 은 표준 오류다:
 //   0 세션이 섰다
-//   2 포트 없이 도는 Edge 가 있다 — 사람이 로그인 시도에 동의하면 --restart 로 다시 부른다
-//   3 기본 프로필로 띄웠는데 시한 안에 포트가 안 열렸다 — 까닭은 Edge 판으로 갈린다(아래 「다음」)
 //   4 로그인 시한 안에 세션이 안 섰다 · 또는 ECM 을 탭으로도 못 받았다 — 「다음」 대로 간다
-//   1 그 밖 — Edge 를 못 찾음 · 인자 · Edge 를 못 끝냄 · --profile 로 띄웠는데 포트가 안 열림 · 받는 손의 1
+//   1 그 밖 — Edge 를 못 찾음 · 인자 · 띄웠는데 포트가 안 열림 · 받는 손의 1
 //
-// 왜 이렇게 띄우나 — mail-secretary 결정 0009 · 0023 과 그 상주(runner.py 의 EDGE_FLAGS · find_edge · launch_edge)가 회사 데스크톱 ·
-//   VDI 에서 잰 길이다: 쓰는 사람의 평소 Edge 를 포트로 띄우고 사람이 그 창에서 한 번 로그인한다. 플래그 둘(포트 · 127.0.0.1)은
-//   그대로이고, 상주가 쓰는 --no-startup-window 는 안 쓴다 — 여기서는 그 창에서 바로 로그인한다. 판은 묻지 않고 띄워 본 결과로
-//   가린다 — 깔린 폴더에는 아직 적용 안 된 업데이트의 판 폴더가 함께 있어, 폴더 이름의 판은 도는 판이 아니다.
+// 왜 따로 사는 프로필로 띄우나 — 프로필이 따로라 평소 Edge 가 떠 있어도 포트가 서고(Chromium 136 이 기본 프로필에 포트를 안 여는 것도
+//   비켜 간다), 사람의 창은 그대로 산다. 그 창은 평소 Edge 와 쿠키를 안 나눠, 거기서 한 로그인은 SSO 가 앞선 로그인(평소 Edge 의
+//   메일)을 끊고 새로 선다 — 사람이 평소 Edge 에서 메일을 다시 열면 거꾸로 이쪽이 끊기고, 다음 부름이 다시 로그인한다. 플래그 둘
+//   (포트 · 127.0.0.1)은 mail-secretary 상주(runner.py 의 EDGE_FLAGS)와 같고, 상주가 쓰는 --no-startup-window 는 안 쓴다 — 여기서는
+//   그 창에서 바로 로그인한다.
 // ⚠ 포트는 이 PC 의 다른 프로그램도 쓸 수 있어 그 Edge 의 세션을 다 다룬다 — 127.0.0.1 에만 연다.
 // ⚠ 로그인 탭에는 그 탭의 페이지 자리로만 붙는다 — 브라우저 자리에 자동 붙기를 걸면 SSO 가 여는 팝업(ssoframe)이 디버거를 기다리며
 //   멈추고 EP 가 빈 화면에 선다.
@@ -44,7 +39,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { spawn, execFileSync } = require('child_process');
+const { spawn } = require('child_process');
 
 // 사내 SSO 의 회사 로그인 — mail-secretary secretary/identity.py 의 COMPANY_LOGIN_PATH · posco/ENV-posco.md 「사내 메일함」.
 // ADFS 로 넘어가 데스크톱은 통합 인증으로 입력 없이 서지만, VDI 에서는 처음 보는 ADFS 창이 전체 메일 주소를 받는다
@@ -53,8 +48,9 @@ const COMPANY_LOGIN = 'http://swpsso.posco.net/idms/U61/jsp/login/saml_login.jsp
 const EP_LOGIN = 'http://swpsso.posco.net/idms/U61/jsp/login/login.jsp';
 // VMware Horizon VDI 인가 — 에이전트가 세션에 심는 브로커 값 · VDI 도메인
 const onVdi = () => Boolean((process.env.ViewClient_Broker_DNS_Name || '').trim()) || /\.VDI$/i.test(process.env.USERDNSDOMAIN || '');
+// 띄우는 창의 프로필 — 사람의 평소 Edge 와 따로 산다. 로그인 쿠키가 여기 남아, 창을 닫았다 다시 띄워도 세션이 살아 있으면 로그인 없이 받는다
+const PROFILE_DIR = path.join(process.env.LOCALAPPDATA || '', 'ep-login', 'edge-profile');
 const PORT_MS = 15000;                // 띄운 뒤 포트가 열리기를 기다리는 시한(상주의 EDGE_WAIT_SECONDS 와 같다)
-const GONE_MS = 15000;                // --restart 가 끝낸 Edge 가 다 사라지기를 기다리는 시한
 const FALLBACK_MS = 8000;             // 입력 칸 있는 로그인 화면에 이만큼 머물면 통합 인증이 안 선 것으로 본다
 const RETRY_MS = 3000;                // 로그인 뒤 받기를 되풀이하는 사이
 const POLL_MS = 500;
@@ -69,7 +65,7 @@ const HAND = path.join(__dirname, 'edge_session.js');
 const RECEIVED = { OK: 0, TOOL: 1, NO_EDGE: 2, NOT_LOGGED_IN: 3, ECM_HANDOFF: 4 };   // 받는 손의 종료 값(그 머리말)
 
 // 포트 · 로그인 화면 호스트 · 로그인 시한 · 로그인 화면과 받을 창의 가림은 받는 손이 든다 — 두 손이 같은 자로 가린다
-const { settings, onLoginScreen, epConfirm, debugPorts, under, Exit } = require('./edge_session.js');
+const { settings, onLoginScreen, epConfirm, debugPorts, Exit } = require('./edge_session.js');
 const cfg = settings();
 const env = (name, fallback) => (process.env[name] || '').trim() || fallback;
 const say = line => console.error(line);
@@ -89,25 +85,6 @@ function findEdge() {
     if (fs.existsSync(exe)) return exe;
   }
   return '';
-}
-
-// 도는 Edge 가 있나 — 수만 센다(명령줄은 안 읽는다)
-function edgeRunning() {
-  try {
-    const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq msedge.exe', '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
-    return out.split(/\r?\n/).some(line => /^"msedge\.exe"/i.test(line));
-  } catch { return false; }
-}
-
-// --restart — 이 사용자의 Edge 프로세스를 다 끝내고 다 사라질 때까지 본다. 내는 것: 다 사라졌나
-async function endEdge() {
-  try { execFileSync('taskkill', ['/IM', 'msedge.exe', '/T', '/F'], { stdio: 'ignore', windowsHide: true }); } catch {}
-  const deadline = Date.now() + GONE_MS;
-  while (Date.now() < deadline) {
-    if (!edgeRunning()) return true;
-    await sleep(POLL_MS);
-  }
-  return !edgeRunning();
 }
 
 // 포트를 연 Edge 가운데 받는 손이 먼저 붙는 것 — 그 손과 같은 차례(debugPorts)로 처음 답하는 포트
@@ -177,29 +154,13 @@ async function attachPage(wsUrl) {
   return { call, on: h => handlers.push(h), close: () => { try { ws.close(); } catch {} } };
 }
 
-// 로그인 탭을 고른다 — 띄운 Edge 는 되살린 탭도 함께 연다. 로그인 주소 · 로그인 화면 · 로그인 화면 호스트의 다른 화면(넘김 도중)
+// 로그인 탭을 고른다 — 띄운 창은 그 프로필이 지난번에 연 탭도 함께 열 수 있다. 로그인 주소 · 로그인 화면 · 로그인 화면 호스트의 다른 화면(넘김 도중)
 // 차례로 찾는다 — 넘김 도중의 탭을 놓치면 뒤이어 뜨는 「EP 접속 정보」 창을 받을 손이 없다. 셋 다 아니면 이미 넘어갔다
 async function loginTab(port, start) {
   const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(r => r.json()).catch(() => []);
   const pages = targets.filter(t => t.type === 'page' && t.webSocketDebuggerUrl);
   const onLoginHost = url => { try { return cfg.loginHosts.includes(new URL(url).hostname.toLowerCase()); } catch { return false; } };
   return pages.find(t => t.url === start) || pages.find(t => onLoginScreen(t.url, cfg)) || pages.find(t => onLoginHost(t.url)) || null;
-}
-
-// 다시 띄운 Edge 의 로그인 탭 — 회사 도메인 · 로그인 화면 호스트에 선 되살린 탭 하나(로그인 화면에 선 것이 먼저)를 로그인 주소
-// (start)로 넘겨 쓴다. 되살린 사내 탭은 끝내기 전 화면을 다시 그릴 뿐 그 세션을 믿을 수 없다 — 되살린 쿠키로 메일 · ECM 은 서도
-// 포털 서버의 세션은 깨져 404 · 500 을 낸다. 그런 탭이 없거나 붙지 못하면 로그인 탭을 연다 — 사내 탭을 둔 채 새 탭을 열면 같은
-// 포털 탭이 둘 남는다. 내는 것: 지켜볼 탭
-async function restoredLoginTab(port, start) {
-  const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(r => r.json()).catch(() => []);
-  const pages = targets.filter(t => t.type === 'page' && t.webSocketDebuggerUrl);
-  const inCompany = url => { try { const h = new URL(url).hostname.toLowerCase(); return under(h, cfg.domain) || cfg.loginHosts.includes(h); } catch { return false; } };
-  const tab = pages.find(t => t.url === start) || pages.find(t => onLoginScreen(t.url, cfg)) || pages.find(t => inCompany(t.url));
-  if (tab && tab.url === start) return tab;
-  const page = tab && await attachPage(tab.webSocketDebuggerUrl);
-  if (!page) return openTab(port, start);
-  try { await page.call('Page.navigate', { url: start }); } finally { page.close(); }
-  return { ...tab, url: start };
 }
 
 // 포트가 열린 Edge 에 로그인 탭을 하나 연다(앞쪽 탭 — 사람이 볼 자리다)
@@ -252,37 +213,30 @@ async function watchLogin(tab, deadline, fallback) {
 
 // ── 띄우기 ───────────────────────────────────────────────────────────────
 
-// Edge 를 포트로 띄운다 — start 가 있으면 그 로그인 탭 하나와 함께. 내는 것: 열린 포트 · 못 열었으면 Exit
-async function launch(exe, start, { profile, restore }) {
-  const args = [`--remote-debugging-port=${cfg.port}`, '--remote-debugging-address=127.0.0.1'];
-  if (profile) args.push(`--user-data-dir=${path.resolve(profile)}`, '--no-first-run');
-  if (restore) args.push('--restore-last-session');   // 끝낸 탭을 「페이지 복원」 없이 되살린다
-  if (start) args.push(start);
+// 그 프로필의 Edge 창 하나를 포트와 로그인 탭으로 띄운다. 내는 것: 열린 포트 · 못 열었으면 Exit
+async function launch(exe, start, profile) {
+  const dir = path.resolve(profile);
+  const args = [`--remote-debugging-port=${cfg.port}`, '--remote-debugging-address=127.0.0.1', `--user-data-dir=${dir}`,
+    '--no-first-run', '--no-default-browser-check', start];
   const child = spawn(exe, args, { detached: true, stdio: 'ignore', windowsHide: false });
   child.unref();
-  say(`Edge 를 띄웠다 — pid ${child.pid}${profile ? ` · 프로필 ${path.resolve(profile)}` : ''} · ${start || '끝낸 탭만 되살린다'}`);
+  say(`Edge 창을 띄웠다 — pid ${child.pid} · 프로필 ${dir} · ${start}`);
   const deadline = Date.now() + PORT_MS;
   while (Date.now() < deadline) {
     await sleep(POLL_MS);
     const v = await version(cfg.port);
     if (v && v.Browser) { say(`포트가 열렸다 — 127.0.0.1:${cfg.port} · ${v.Browser}`); return cfg.port; }
   }
-  if (profile) {
-    throw new Exit(1, '띄웠는데 포트가 안 열린다 — 그 프로필의 Edge 가 이미 포트 없이 떠 있거나 회사 정책이 막는다. 다음: 멈추고 이 말을 사람에게 그대로 전한다');
-  }
-  throw new Exit(3, '띄웠는데 포트가 안 열린다. 다음: 사람에게 Edge 주소창에 edge://version 을 열어 첫 줄의 판을 읽어 달라고 한다. ' +
-    'Chromium 136 이상이면 기본 프로필에 포트를 안 여는 판이다 — 그 창의 로그인이 평소 Edge 의 메일 세션을 끊는다고 알리고 동의를 받은 뒤 ' +
-    '--profile "$LOCALAPPDATA/ep-login/edge-profile" 을 붙여 다시 부른다. 그 아래 판이면 포트 없이 떠 있던 Edge(시작 부스트 · 닫은 뒤 ' +
-    '백그라운드 실행)나 회사 정책이 까닭이다 — 사람에게 그 설정을 끌지 묻는다');
+  throw new Exit(1, `띄웠는데 포트가 안 열린다 — 그 프로필(${dir})의 Edge 가 이미 포트 없이 떠 있거나, 포트 ${cfg.port} 를 다른 프로그램이 ` +
+    '쓰거나, 회사 정책이 막는다. 다음: 멈추고 이 말을 사람에게 그대로 전한다');
 }
 
 // ── 갈래 ─────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const opts = { pass: [], restart: false, profile: '' };
+  const opts = { pass: [], profile: PROFILE_DIR };
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--restart') opts.restart = true;
-    else if (argv[i] === '--profile') { opts.profile = argv[++i] || ''; if (!opts.profile) throw new Exit(1, '--profile 뒤에 폴더를 준다'); }
+    if (argv[i] === '--profile') { opts.profile = argv[++i] || ''; if (!opts.profile) throw new Exit(1, '--profile 뒤에 폴더를 준다'); }
     else if (argv[i].startsWith('--')) throw new Exit(1, `모르는 선택: ${argv[i]}`);
     else opts.pass.push(argv[i]);                    // 세션 파일 · domino · ecm — 받는 손이 가린다
   }
@@ -309,30 +263,11 @@ async function main(argv) {
     say(`Edge(127.0.0.1:${port})에 로그인이 안 됐다 — 로그인 탭을 연다`);
     tab = await openTab(port, start);
   } else {
-    // 붙을 Edge 가 없다 — 띄운다. 포트 없이 도는 Edge 는 사람의 동의 없이 안 끝낸다
+    // 붙을 Edge 가 없다 — ep-login 프로필의 창 하나를 띄운다. 사람의 평소 Edge 는 떠 있어도 안 건드린다
     const exe = findEdge();
     if (!exe) throw new Exit(1, 'Edge 를 못 찾았다');
-    if (!opts.profile && edgeRunning()) {
-      if (!opts.restart) {
-        throw new Exit(2, 'Edge 가 디버깅 포트 없이 돌고 있다 — 떠 있는 Edge 에는 포트를 못 연다. 다음: 사람에게 「로그인하면 열려 있던 사내 메일 · ' +
-          '일정 화면은 로그인이 끊길 수 있습니다. 쓰던 글이 있으면 먼저 저장해 두세요. 로그인을 시도할까요?」 하고 묻는다. Edge 를 끝내라거나 닫으라고 ' +
-          '하지 않는다. 그러자고 하면 --restart 를 붙여 다시 부른다');
-      }
-      say('Edge 를 다 끝낸다(사람이 동의했다)');
-      if (!await endEdge()) {
-        throw new Exit(1, 'Edge 를 끝냈는데 다시 뜬다 — Edge 가 뒤에서 사는 설정(시작 부스트 · 닫은 뒤에도 백그라운드 실행)이 켜졌을 수 있다. 다음: 사람에게 그 설정을 끌지 묻는다');
-      }
-    }
-    if (opts.restart) {
-      // 되살린 세션으로 받아 보지 않는다 — 되살린 쿠키로 메일 · ECM 이 서도 포털은 깨져 있어, 받아 보면 0 으로 끝나 사람에게 깨진
-      // 포털만 남는다. 로그인 탭 없이 띄우고 되살린 사내 탭을 로그인 주소로 넘겨 새로 로그인한다
-      port = await launch(exe, '', { profile: opts.profile, restore: true });
-      say(`다시 띄운 Edge(127.0.0.1:${port})의 되살린 사내 탭을 로그인 화면으로 넘긴다 — 되살린 세션은 믿지 않는다`);
-      tab = await restoredLoginTab(port, start);
-    } else {
-      port = await launch(exe, start, { profile: opts.profile, restore: false });
-      tab = await loginTab(port, start);
-    }
+    port = await launch(exe, start, opts.profile);
+    tab = await loginTab(port, start);
   }
 
   say(vdi ? '그 창에서 사람이 평소 아이디로 로그인한다 — 이쪽은 로그인이 끝나기를 기다린다' : '로그인 탭을 지켜본다 — 통합 인증이면 입력 없이 넘는다');
@@ -368,8 +303,5 @@ function run(argv) {
     process.exit(error instanceof Exit ? error.code : 1);
   });
 }
-
-// restoredLoginTab 은 검사(check_session.js)가 쓴다 — --restart 자체는 그 PC 의 Edge 를 다 끝내서 못 잰다
-module.exports = { restoredLoginTab };
 
 if (require.main === module) run(process.argv.slice(2));
