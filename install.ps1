@@ -268,17 +268,18 @@ $Apps = @(
 )
 
 # ── 확장과 CLI — **목록이 진본이다.** 깔 때도 끝에 잴 때도 이 두 표에서 판다 (결정 0041 · 0045) ──
-# 어디서나 깐다 — 자리가 가르는 것은 프로그램이 아니라 그 뒤에 무엇으로 붙나다. 사내는 회사 키 · 설정 틀 · 프록시로
+# 어디서나 깐다(행의 `When='offsite'` 는 사외에서만) — 자리가 가르는 것은 대개 프로그램이 아니라 그 뒤에 무엇으로 붙나다. 사내는 회사 키 · 설정 틀 · 프록시로
 #   게이트웨이에 붙고(`$wantCodex` · `$wantAgy`), 사외는 각자 로그인(Codex 는 ChatGPT · 안티그래비티는 Google)으로 쓴다.
 # Codex 확장은 CLI 의 `~/.codex/config.toml` 을 같이 읽어 게이트웨이를 탄다. 사용자 정의 프로바이더에서 CLI 와 다르게 구는
 #   이슈(openai/codex #27695)가 열려 있는 동안 확장 안의 한 턴은 사람이 잰다 — 그 이슈가 닫히면 이 줄을 걷는다.
 # 안티그래비티 확장은 `$DesktopApps` 의 「Antigravity 데스크탑」(VS Code 를 대신하는 별개 편집기)과 다른 물건이다 — VS Code 에
 #   붙어 사이드바를 내고, 짝인 `agy`(`~/.gemini/bin/agy.exe` · 188MB · `AGY_ENABLE_HUB=1` 로 띄운다)를 스스로 받는다. 설치기는
-#   그 바이너리를 안 심는다. 게이트웨이에 물리는 자리는 「사내 연결」의 「Codex · 안티그래비티 설정」 칸이 든다.
+#   그 바이너리를 안 심는다. 사외에서만 깐다(`When='offsite'`) — 사이드바는 Google 계정 · Google Cloud(법인) 로그인을 요구해 회사 키로는
+#   안 서고, 회사 키로 게이트웨이에 붙는 것은 터미널의 안티그래비티 CLI 다(「사내 연결」의 「Codex · 안티그래비티 설정」 칸).
 $Extensions = @(
   @{ Key='claude';      Id='anthropic.claude-code';                  Label='클로드 확장'                }
   @{ Key='codex';       Id='openai.chatgpt';                         Label='Codex 확장'                 }
-  @{ Key='antigravity'; Id='Google.google-antigravity';              Label='안티그래비티 확장'          }
+  @{ Key='antigravity'; Id='Google.google-antigravity';              Label='안티그래비티 확장'; When='offsite' }
 )
 # `Via` — 없으면 npm, `winget` 이면 `Install-WingetCli` 가 든다. 구글이 `agy` 를 npm 으로 안 내주고(그 이름은 남이 올린
 #   자리표시자다), 갈림이 표 안에 있어 CLI 가 늘 때 볼 자리가 한 곳이다. winget 줄은 `Ways` 로 벤더 길을 앞에 둘 수 있다(`$Apps` 머리의
@@ -8468,8 +8469,8 @@ try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFa
 $ExtUpdateCap  = 240
 # 이보다 오래 걸렸으면 걸린 시간을 적는다 — 평소치를 넘은 회차만 기록에 남게.
 $ExtUpdateSlow = 30
-# 고른 제품의 확장만 든다 — 목록이 진본이고 고르는 축은 `$Products` 다.
-$ExtPicks = @($Extensions | Where-Object { $PickKeys -contains $_.Key })
+# 고른 제품의 확장만 든다 — 목록이 진본이고 고르는 축은 `$Products` 다. 행의 `When='offsite'` 는 사외에서만이다(제품 표와 같은 자).
+$ExtPicks = @($Extensions | Where-Object { $PickKeys -contains $_.Key -and (Test-ProductHere $_ (-not $inside)) })
 # 할 일은 확장마다 `Get-InstallAction` 이 가른다 — 깔렸나는 `code --list-extensions` 가 재고, 최신 판은 묻지 않는다(마켓플레이스 판을
 #   따로 물을 손이 없다). 그래서 깔린 확장은 `upcheck` 이고, 그 묻기는 아래 한 호출(`--update-extensions`)이 한꺼번에 한다.
 # ⚠ **`code` 를 못 쟀으면 확장도 못 잰 것이다** — 「안 선다」로 읽어 빨갛게 끝내지 않고 확장마다 안 한 걸음으로 남긴다(결정 0141 · 0145).
