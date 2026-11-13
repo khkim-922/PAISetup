@@ -245,8 +245,11 @@ VS Code 는 Microsoft 의 공식 「최신」 주소에서 받는다 — winget 
 
 Claude · Codex · Copilot 의 CLI 가 Node.js 로 돌아서, 무엇을 골랐든 늘 깔린다.
 
-- 안티그래비티 CLI(`agy`)만은 Node 가 아니라 winget 이 깐다. 깔린 뒤 새 판은 winget 이 아니라 `agy update`(agy 제 갱신기)가 받는다 —
-  agy 는 돌 때 제 파일을 스스로 갈아 끼워서, winget 은 그 파일을 「바뀌었다」고 보고 올리기를 거부한다
+- 안티그래비티 CLI(`agy`)만은 Node 를 안 쓴다. 처음 깔 때는 공식 설치 스크립트가 읽는 판 목록에서 실행 파일(2백 MB 넘는 한
+  파일)을 여러 연결로 나눠 받고, 판 목록이 댄 SHA512 가 맞을 때만 공식 스크립트와 같은 자리(`%LOCALAPPDATA%\agy\bin`)에 두고 그 자리를
+  사용자 PATH 끝에 더한다. 판 목록을 못 읽거나 받기 · 확인 · 실행이 지면 winget 이 깐다
+- 깔린 뒤 새 판은 어느 길로 깔렸든 `agy update`(agy 제 갱신기)가 받는다 — agy 는 돌 때 제 파일을 스스로 갈아 끼워서, winget 은 그
+  파일을 「바뀌었다」고 보고 올리기를 거부한다
 - npm 으로 전역에 깐 CLI 가 서는 폴더는 npm 에 물어 정한다(`npm prefix -g` — 보통 `%APPDATA%\npm` 이고, 사람이 npm 의 자리를 바꿨거나
   Node 를 다른 길로 깐 PC 는 그 자리다). 그 폴더가 있고 새 터미널의 PATH(기계 · 사용자)에 없으면 사용자 PATH 끝에 더한다. 이미 있으면
   안 건드리고, 다른 자리는 그대로 둔다
@@ -260,7 +263,8 @@ Claude · Codex · Copilot 의 CLI 가 Node.js 로 돌아서, 무엇을 골랐�
 
 ### PDF 를 그림으로 여는 poppler
 
-Claude 를 고르면 poppler(`pdftoppm`)를 깐다 — Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로 그리는 손이다. 없으면
+Claude · Codex · 안티그래비티 가운데 하나를 고르면 poppler(`pdftoppm`)를 깐다 — Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로
+그리는 손이고, 공식 문서 스킬이 문서를 그림으로 확인하는 길의 뒷손이다. 없으면
 Read 가 「pdftoppm is not installed」로 지고, 사내 게이트웨이는 PDF 블록(`document`)을 그대로 보내면 삼키므로 PDF 가 모델에 보이는 길은
 그림뿐이다.
 
@@ -275,7 +279,7 @@ Read 가 「pdftoppm is not installed」로 지고, 사내 게이트웨이는 PD
 
 ### 덱을 짓는 pptxgenjs
 
-Claude 를 고르면 pptxgenjs 를 npm 전역에 깔고, 새 판이 있으면 올린다. 공식 pptx 스킬이 덱(.pptx)을 짓는 스크립트가
+Claude · Codex · 안티그래비티 가운데 하나를 고르면 pptxgenjs 를 npm 전역에 깔고, 새 판이 있으면 올린다. 공식 pptx 스킬이 덱(.pptx)을 짓는 스크립트가
 `require('pptxgenjs')` 로 부르는 꾸러미다. 없으면 그 스킬이 양식을 풀어 XML 을 손으로 쓰는 길로 물러나, 덱에 글상자와 표만 남는다.
 
 - npm 전역 폴더는 Node 가 이름을 찾는 자리가 아니라서, 깐 것을 `%USERPROFILE%\.node_modules\pptxgenjs` 에 이어 둔다(정션이라
@@ -284,15 +288,17 @@ Claude 를 고르면 pptxgenjs 를 npm 전역에 깔고, 새 판이 있으면 �
 - `require` 로 부르는 스크립트에서만 풀린다 — `import` 로 부르는 스크립트(`.mjs`)는 이 자리를 안 본다
 - 끝 검증은 저장소 밖에서 `require` 가 이 이름을 푸나를 잰다
 - 설정 저장소를 붙인 PC 는 그 저장소의 세션 훅도 같은 자리에 같은 것을 잇는다
+- 공식 docx 스킬이 워드 문서를 짓는 `docx`(docx-js)도 같은 규칙으로 깔고 같은 자리에 잇는다 — 없으면 그 스킬이 작업 폴더에
+  `npm install docx` 를 해 저장소에 `node_modules` 가 남는다
 
 ### 덱을 그림으로 보는 LibreOffice
 
-Claude 를 고르면 LibreOffice 를 깐다 — 공식 pptx 스킬이 만든 덱을 눈으로 확인할 때 덱을 PDF 로 바꾸는 손(`soffice`)이다.
+Claude · Codex · 안티그래비티 가운데 하나를 고르면 LibreOffice 를 깐다 — 공식 pptx 스킬이 만든 덱을 눈으로 확인할 때 덱을 PDF 로 바꾸는 손(`soffice`)이다.
 그 PDF 를 페이지 그림으로 그리는 것은 위 poppler 다. 회사 PC 에서도 LibreOffice 가 쓴 PDF 는 DRM 이 감싸지 않아(재 본 10분 동안), 덱을
 보는 기본 길이 이것이다.
 
-- PC 전체에 까는 설치본(MSI)이라 관리자 승인 창(UAC)이 한 번 뜰 수 있다. 승인 창이 뜨는 PC 에서 로그온 자동 실행은 누를 사람이
-  없으니 창을 안 띄우고 노란 줄로 미룬다 — 설치 창으로 다시 누르면 그때 한 번 뜬다
+- PC 전체에 까는 설치본(MSI)이다. 회사 PC 는 관리자 승인 창 없이 깔린다. 승인 창(UAC)이 뜨는 PC 에서 로그온 자동 실행은 누를
+  사람이 없으니 창을 안 띄우고 노란 줄로 미룬다 — 설치 창으로 다시 누르면 그때 한 번 뜬다
 - 받는 곳은 LibreOffice 배포 서버가 내는 미러 순위에서 가까운 몇 곳을 재 보고 고른 가장 빠른 곳이다 — 그 줄 밑에 고른 미러와
   빠르기가 찍힌다. 배포 서버가 넘겨 주는 미러를 그대로 타면 미러에 따라 받기가 열 배까지 느려진다
 - 받은 설치본은 배포 서버가 낸 SHA-256 과 서명자(The Document Foundation)가 다 맞을 때만 깐다
@@ -303,6 +309,16 @@ Claude 를 고르면 LibreOffice 를 깐다 — 공식 pptx 스킬이 만든 덱
   있던 터미널 · 세션은 다시 열어야 잡힌다
 - 그 폴더에는 LibreOffice 가 쓰는 `python.exe` 도 들어 있어 늘 끝에 둔다 — 앞에 두면 깔린 Python 대신 그것이 잡힌다
 - pptx 가 이미 DRM 에 감겨 `soffice` 가 못 여는 자리는 `drm-office-read` 가 화면 캡처로 든다
+
+### 문서를 바꾸는 pandoc 과 PDF 를 다루는 qpdf
+
+Claude · Codex · 안티그래비티 가운데 하나를 고르면 둘을 뒤에서 깐다 — 결과 줄은 LibreOffice 처럼 「Claude 플러그인」 걸음 끝에 선다.
+
+- pandoc — 공식 docx 스킬이 워드 문서를 읽고 바꾸는 손이다. winget 으로 깔고, 사용자 범위(`%LOCALAPPDATA%\Pandoc`)라 승인이 안 든다
+- qpdf — 공식 pdf 스킬이 PDF 를 합치고 · 쪼개고 · 고치고 · 줄이는 명령이다. 망가진 PDF 고치기 · 용량 줄이기는 파이썬 패키지로 대신
+  못 한다. GitHub 릴리스의 zip 을 `%LOCALAPPDATA%\Programs\qpdf` 에 풀고 그 안의 bin 폴더를 사용자 PATH 끝에 더한다 — winget 설치본은
+  판 이름이 붙은 폴더에 깔려 PATH 줄이 판마다 갈리기 때문이다. 실행 파일에 서명이 없어 받는 주소가 https 인 것을 울타리로 삼고,
+  배포처를 못 열면 winget 으로 깐다
 
 ### 데스크탑 앱
 
@@ -365,7 +381,7 @@ Python 이 깔리는 판에서는 Microsoft 의 「Visual C++ 재배포 가능 �
 
 - 판은 `C:\Windows\System32\msvcp140.dll` 에서 읽고, 그보다 옛 판이면 winget 으로 올린다(없으면 깐다)
 - PPT 검수 패키지(`markitdown`)가 기대는 부품이 옛 런타임에서는 여는 순간 파이썬째 죽는다
-- ⚠ PC 전체에 까는 것이라 관리자 승인 창(UAC)이 한 번 뜰 수 있다. 승인 없이 올리는 PC 는 창 없이 지나간다
+- ⚠ PC 전체에 까는 것이라 관리자 승인 창(UAC)이 한 번 뜰 수 있다. 승인 없이 올리는 PC 는 창 없이 지나간다 — 회사 PC 가 그렇다
 - 승인 창이 뜨는 PC 에서 로그온 자동 실행은 누를 사람이 없으니 창을 안 띄우고 노란 줄로 미룬다 — 설치 창으로 다시 누르면 그때 한 번
   뜬다
 - 승인을 못 받거나 관리자 권한이 없는 PC 면 까닭을 한 줄로 알리고 나머지는 그대로 깐다. 그 PC 에서는 PPT 검수만 안 서니 IT 에 그
@@ -638,6 +654,9 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
   폴더에 둔 파일은 남기고 알린다
 - 검사 견본의 그림 줄이기가 드는 파이썬 패키지(`pillow`)도 여기서 깐다. 그림 문이 큰 그림을 「줄여서 연다」로 돌려보내면 그 부품이
   돈다. 파이썬이 없으면 건너뛰고, 회사망이 막아 못 깔면 알리고 넘어간다 — 그때 줄이기는 원본 크기로 물러난다
+- 공식 문서 스킬이 부르는 파이썬 패키지도 같은 자리에서 함께 깐다 — pptx 쪽 `markitdown` · `python-pptx` · `defusedxml` · `lxml`,
+  xlsx 쪽 `openpyxl` · `pandas`, pdf 쪽 `pypdf` · `pdfplumber` · `reportlab` · `pypdfium2`. 스캔 PDF 의 글자 읽기(OCR)는 무겁고 드물어
+  안 깔고, 쓸 때 그 스킬이 깐다
 
 ## 칸 없이 깔리는 스킬
 

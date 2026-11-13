@@ -316,6 +316,8 @@
 - Windows 11 Enterprise, PowerShell (Git Bash 병행), VS Code
 - Node.js v24.x (npm 11), Python 3.14.6, Git 2.55
 - PostgreSQL CLI(`psql`) 미설치 — 로컬 DB 필요시 설치 안내 요청
+- 기계 범위 설치(MSI · winget `--scope machine`)도 관리자 승인 창(UAC) 없이 지나간다(사용자 확인) — 설치 길을 고를 때 승인 창을
+  피하려고 느린 길을 고르지 않는다
 - `.env` 로드 시 항상 `load_dotenv(override=True)` — **`.env` 가 이미 선 환경변수를 덮는다**(우선순위 `.env` > `$env:` · 시스템).
   이미 선 값을 이기게 하려면 `override` 를 빼야 한다
 - 근무 외 시간 PC 종료 → 야간 자동화 스케줄러는 별도 협의 전 가정 금지
