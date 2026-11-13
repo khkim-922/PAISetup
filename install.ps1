@@ -224,7 +224,9 @@ $PersonalTools = @(
 #     · `manifest` — `Manifest` 가 앱의 판 목록 JSON 이다(`version` · `url` · `sha512` 16진). 판 · 받을 주소 · SHA512 를 그 JSON 이 댄다
 #   받은 것을 까는 꼴 — `SilentArgs` 면 설치본을 무음으로 돌리고(winget 이 그 설치본에 주는 인자와 같다), `Unzip` 이면 zip 을 고정
 #     자리(`Dir`)에 푼다 — zip 안에서 판마다 이름이 바뀌는 폴더가 `Root`(`{ver}` 틀)다(`Install-VendorZip`). `Exe` 면 받은 것이 실행 파일
-#     하나라 고정 자리(`Dir`)에 행의 `Cmd` 이름으로 둔다(`Install-VendorExe`). `Msi` 면 받은 것이 MSI 라
+#     하나라 고정 자리(`Dir`)에 행의 `Cmd` 이름으로 둔다(`Install-VendorExe`).
+#   이미 받아 둔 같은 파일 — `Local` 이 이 PC 에서 다른 손이 같은 파일을 받아 두는 자리들이면, 받기 전에 그 파일을 울타리에 대 보고
+#     맞으면 받지 않고 그것을 쓴다(지문을 대는 꼴 — `feed` · `manifest` — 에서만). 안 맞거나 못 읽으면 받는다. `Msi` 면 받은 것이 MSI 라
 #     `msiexec /i` 에 `SilentArgs` 를 붙여 승격으로 돌린다 — 승인 창은 winget 이 그 MSI 에 띄우는 것과 같다
 #   받는 곳 — `Mirrors = 'metalink'` 면 받을 주소의 Metalink(`<주소>.meta4` — 배포 서버가 내는 미러 순위 · 원본 지문)를 읽어 순위 앞
 #     곳들의 받기 빠르기를 재고 가장 빠른 곳에서 받는다(`Get-VendorMirror`). 미러로 넘기는 배포 서버는 회차마다 다른 미러를 주고, 한
@@ -301,21 +303,23 @@ $Clis = @(
   @{ Key='codex';  Pkg='@openai/codex';             Cmd='codex';  Label='Codex CLI'       }
   # `Cmd` 는 winget 매니페스트의 `Commands:` 가 정한다 — winget 이 받은 `cli_windows_x64.exe` 를 `agy` 로 세워 제 패키지 자리
   #   (`…\WinGet\Packages\Google.AntigravityCLI_…\agy.exe`)에 두고 그 자리를 사용자 PATH 에 심는다.
-  # `Back` — 「CLI」 걸음이 이 행을 숨은 자식(`Start-RowChild`)으로 띄워 두고 거둔다. 폴더를 심는 행(`PathDir`)은 「Claude 플러그인」 걸음
-  #   끝에서, 이 행처럼 안 심는 행은 끝 검증이 처음 쓰므로 「마무리」 끝에서 거둔다. 회사 영속 PC 에서
+  # `Back` — 「CLI」 걸음이 이 행을 숨은 자식(`Start-RowChild`)으로 띄워 두고 거둔다. 폴더를 심는 행(`PathDir` — 이 행도 든다)은 「Claude
+  #   플러그인」 걸음 끝에서, 안 심는 행은 끝 검증이 처음 쓰므로 「마무리」 끝에서 거둔다. 회사 영속 PC 에서
   #   이 한 행이 550초 넘게 걸렸고(2026-11-09), 그 사이 뒤 걸음은 `agy` 를 안 부른다 — 회사 설정 · 훅 · 허용 규칙은 파일만 쓴다.
   #   이 칸을 다는 행의 조건: 뒤 걸음이 그 명령을 안 부르고, 설정 저장소의 세션 훅이 같은 도구를 따로 깔지 않는다(lychee 는 훅이
   #   winget 사본이 없으면 제 사본을 깐다). 기계 범위 행도 된다 — 승인 문은 자식이 부모와 같은 답을 낸다(요청의 `Yes` · `NoLaunch`).
   # 처음 깔 때는 공식 판 목록(공식 설치 스크립트가 읽는 그 JSON)의 실행 파일을 직접 받는다 — 2백 MB 넘는 한 파일이라 받는 손이 여러
-  #   연결로 나눠 받고(`$DownloadParts`), 판 목록이 댄 SHA512 가 맞아야 둔다. 자리는 공식 스크립트와 같은 `%LOCALAPPDATA%\agy\bin` 이다.
+  #   연결로 나눠 받고(`$DownloadParts`), 서명(Google LLC)과 판 목록이 댄 SHA512 가 다 맞아야 둔다. 자리는 공식 스크립트와 같은 `%LOCALAPPDATA%\agy\bin` 이다.
   #   판 목록을 못 읽거나 받기 · 확인 · 실행이 지면 winget 이 깐다. 깔린 뒤에는 어느 길로 깔렸든 `agy update` 가 올린다(`Upgrade`).
+  #   `Local` — VS Code 의 안티그래비티 확장이 같은 실행 파일을 제 자리(`~\.gemini\bin`)에 받아 둔다. 그 지문이 판 목록과 맞으면 받지
+  #   않고 그것을 복사한다(확장은 그 자리를 바꾸는 설정이 없어, 두 손이 판마다 따로 받는 것을 처음 깔 때만이라도 덜어 준다).
   @{ Key='antigravity'; Via='winget'; Cmd='agy';    Label='안티그래비티 CLI'; Back=$true
      Id='Google.AntigravityCLI'; Upgrade = @{ Via = 'updater'; Args = @('update') }
      PathDir="$env:LOCALAPPDATA\agy\bin"
      Ways=@(@{ Via='vendor'; Read='manifest'
                Manifest='https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json'
-               Exe=@{ Dir="$env:LOCALAPPDATA\agy\bin" }
-               Unsigned='서명에 기대지 않는다 — 공식 판 목록(https)이 댄 SHA512 가 받은 파일과 맞아야 둔다' }
+               Exe=@{ Dir="$env:LOCALAPPDATA\agy\bin" }; Local=@("$env:USERPROFILE\.gemini\bin\agy.exe")
+               Signer='Google LLC' }
             @{ Via='winget' }) }
   # 이 줄은 자리를 안 가린다(결정 0045 · 0093) — 사내에서 안 까는 것은 제품 표의 `When` 이 든다. Codex · Copilot 맡기기가 Copilot 을
   #   쓰나는 자리 값 `CC_BG_AGENTS` 를 읽는 래퍼의 몫이다. winget 의 `GitHub.Copilot` 은 이름이 비슷한 딴 물건이라 npm 꾸러미로 받는다.
@@ -3145,9 +3149,9 @@ function Update-RuntimePath {
   #   위에서 Node 자리를 태운 뒤라야 맨바닥 PC 의 Node 를 깐 다음 부름에서 npm 이 잡혀 물을 수 있다.
   Update-NpmGlobalDir
   Add-ToPath $NpmGlobalDir
-  # ⚠ **`agy` 자리는 여기 안 적는다** — winget 이 portable 을 깔며 제 자리를 사용자 PATH 에 넣고 위 레지스트리 읽기가 태운다.
-  #   이름으로 박으면 저쪽이 자리를 옮길 때(폴더 이름에 소스 해시가 든다) 조용히 어긋나고, 확장이 따로 둔 사본(`~/.gemini/bin`)을
-  #   박으면 그쪽이 앞에 서서 진짜 CLI 를 가린다.
+  # ⚠ **`agy` 의 winget 사본 자리는 여기 안 적는다** — winget 이 portable 을 깔며 제 자리를 사용자 PATH 에 넣고 위 레지스트리 읽기가
+  #   태운다. 이름으로 박으면 저쪽이 자리를 옮길 때(폴더 이름에 소스 해시가 든다) 조용히 어긋난다. 공식 판 목록으로 깐 자리는 행의
+  #   `PathDir` 라 위 `PathDir` 줄이 붙인다. 확장이 따로 둔 사본(`~/.gemini/bin`)은 박지 않는다 — 그쪽이 앞에 서서 진짜 CLI 를 가린다.
 }
 
 # ── 영구 사용자 PATH — **새 터미널이 볼 자리에 한 자리를 덧댄다** (claude-config 결정 0143) ─────────────────
@@ -4538,12 +4542,12 @@ function Install-VendorExe([string]$Exe, $Row, $Way, $Found) {
       Copy-Item -LiteralPath $Exe -Destination $probe -Force -ErrorAction Stop
       Unblock-File -LiteralPath $probe -ErrorAction SilentlyContinue
     } catch { return @{ Rc = $null; Why = "실행 파일을 임시 위치에 두지 못함 — $(Say-Why $_)" } }
+    # 「없다」만 버린다 — 서명 · 지문이 맞은 큰 실행 파일의 첫 실행은 보안 검사가 붙어 확인 시한(`$ProbeCap`)을 넘길 수 있고, 그 판에
+    #   버리면 같은 파일을 winget 으로 한 번 더 받는다. 넘긴 판은 그대로 두고 끝 검증이 이름으로 다시 잰다
     $arg = if ($Row.Arg) { $Row.Arg } else { '--version' }
     $runs = Measure-Runs (Join-Path $stage $Row.Cmd) $arg
-    if ($runs -ne 'yes') {
-      $runWhy = if ($runs -eq 'no') { '그 위치에 없어' } else { Get-ProbeWhy "$(Join-Path $stage $Row.Cmd) $arg" }
-      return @{ Rc = $null; Why = "새 버전이 실행되지 않음 — ``$($Row.Cmd) $arg`` 이 ${runWhy}서 이전 버전을 그대로 유지" }
-    }
+    if ($runs -eq 'no') { return @{ Rc = $null; Why = "새 버전이 그 위치에 없음 — 이전 버전을 그대로 유지" } }
+    if ($runs -ne 'yes') { Write-Host "      · 새 버전의 첫 실행 확인이 $(Get-ProbeWhy "$(Join-Path $stage $Row.Cmd) $arg")서 — 서명 · 지문이 맞아 그대로 둔다" -ForegroundColor DarkGray }
     if (Test-Path -LiteralPath $dir) {
       try { Rename-Item -LiteralPath $dir -NewName (Split-Path -Leaf $old) -ErrorAction Stop }
       catch { return @{ Rc = $null; Why = "이전 버전을 옮기지 못함 (사용 중일 수 있음) — $(Say-Why $_)" } }
@@ -4583,11 +4587,25 @@ function Invoke-VendorWay([string]$Label, $Row, $Way, $Found, [string]$Act) {
         $Found = @{ Ver = $Found.Ver; Url = $m.Url; Sha512 = $Found.Sha512; Sha256 = $m.Sha256 }
         Write-Host ('      · 미러 {0} — {1:N1} MB/s ({2}곳 측정)' -f ([Uri]$m.Url).Host, ($m.Speed / 1MB), $m.Tried) -ForegroundColor DarkGray
       }
-      try {
-        Say-Busy $Label 'fetch' @((Split-Path $file -Leaf), $(if ($Found.Ver) { "$($Found.Ver)" } else { '' }))
-        Get-Download $Found.Url $file
-      } catch { $r.Why = "공식 주소에서 다운로드하지 못함 — $(Say-Why $_)" }
-      if (-not $r.Why) { $bad = Test-VendorFence $file $Way $Found; if ($bad) { $r.Why = "공식 파일을 사용하지 않음 — $bad" } }
+      # 이 PC 에 같은 파일이 이미 있으면(`Local`) 그 지문이 공식 값과 맞을 때만 받기 대신 쓴다 — 떠 있는 프로그램의 파일도 읽기는 된다.
+      #   못 읽거나 안 맞으면 지운 뒤 받는다
+      $reused = ''
+      if ($Found.Sha512) {
+        foreach ($cand in @($Way.Local | Where-Object { $_ } | ForEach-Object { [Environment]::ExpandEnvironmentVariables("$_") })) {
+          if (-not (Test-Path -LiteralPath $cand -PathType Leaf)) { continue }
+          try { Copy-Item -LiteralPath $cand -Destination $file -Force -ErrorAction Stop } catch { continue }
+          if (-not (Test-VendorFence $file $Way $Found)) { $reused = $cand; break }
+          Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue
+        }
+      }
+      if ($reused) { Write-Host "      · 이 PC 에 받아 둔 같은 파일을 씀 — $reused (공식 SHA512 와 같음)" -ForegroundColor DarkGray }
+      else {
+        try {
+          Say-Busy $Label 'fetch' @((Split-Path $file -Leaf), $(if ($Found.Ver) { "$($Found.Ver)" } else { '' }))
+          Get-Download $Found.Url $file
+        } catch { $r.Why = "공식 주소에서 다운로드하지 못함 — $(Say-Why $_)" }
+        if (-not $r.Why) { $bad = Test-VendorFence $file $Way $Found; if ($bad) { $r.Why = "공식 파일을 사용하지 않음 — $bad" } }
+      }
       if (-not $r.Why) {
         if ($Way.Unzip) {
           Say-Busy $Label $Act @('공식 zip', [Environment]::ExpandEnvironmentVariables("$($Way.Unzip.Dir)"))
@@ -12435,7 +12453,7 @@ if ($script:ClaudeLogin) {
 }
 } catch { Write-StepFault $_ '마무리' } finally {
 # ── 「CLI」 걸음이 숨은 자식으로 띄운 CLI 의 나머지를 거둔다 — **검증 앞의 정한 자리다** ──────────────────
-# 폴더를 심지 않는 행(`$cliBackLate` · 안티그래비티 CLI)은 끝 검증이 그 명령을 처음 부르므로 여기까지 겹쳐 돌린다 — 사내 회선에서 오래
+# 폴더를 심지 않는 행(`$cliBackLate` — 지금 표의 `Back` 행은 다 폴더를 심어 비어 있다)은 끝 검증이 그 명령을 처음 부르므로 여기까지 겹쳐 돌린다 — 사내 회선에서 오래
 #   걸리는 행이 「Claude 플러그인」 끝에서 설치를 세우지 않게. 마무리는 그 명령을 안 부르고 winget 도 안 부르며, 세션 훅을 다시 부르는
 #   심기는 검증 뒤다. 거둔 뒤 이 창의 PATH 를 다시 태운다(「Claude 플러그인」 끝의 거두기와 같은 까닭) — 검증이 그 명령을 이름으로 찾는다.
 # 「마무리」 칸 경계의 `finally` 에 선다 — 마무리가 도중에 멎어도 거둔다. 거두기마다 제 `try` 로 감싼다.
