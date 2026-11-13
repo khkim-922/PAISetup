@@ -9,7 +9,8 @@
     python -X utf8 _check/probe_words_check.py
 
 내는 것 — 0 맞다 · 1 어긋났다(`_ssl_why` · `_probe` 가 그 갈래에서 넘어지거나 까닭을 버린다) · 2 못 쟀다(이 망의
-리졸버가 없는 이름을 풀어 줘 「이름이 안 풀린다」 갈래를 못 밟았다).
+리졸버가 없는 이름을 풀어 줘 「이름이 안 풀린다」 갈래를 못 밟았다 · 이 기계의 OpenSSL 이 평문 답에 `reason` 을
+안 달아 견줄 낱말이 없다).
 
 바깥으로 안 나간다 — 루프백에 듣는 자리를 세워 거기로만 붙는다. 토큰도 안 쓴다.
 
@@ -108,8 +109,9 @@ def plaintext_listener(reply=b"HTTP/1.1 400 Bad Request\r\n\r\n"):
     자가서명 인증서를 굽지 않는 까닭: 그러려면 `openssl` 실행 파일이나 선언 안 된 의존이
     있어야 하는데 **씨앗 배관에는 실행 의존이 없고**, 이 결함이 사는 자리가 하필 윈도우라
     거기서 못 도는 검사가 되면 뜻이 없다. 평문 답을 받은 OpenSSL 이 TLS 레코드가 아니라며
-    거부하면 `ssl.SSLError` 가 `reason`(`WRONG_VERSION_NUMBER`)을 달고 온다 — 여기 필요한
-    것은 그 「reason 이 찬 꼴」 하나다.
+    거부하면 `ssl.SSLError` 가 `reason` 을 달고 온다 — 여기 필요한 것은 그 「reason 이 찬 꼴」
+    하나다. 낱말은 OpenSSL 판마다 다르다(`WRONG_VERSION_NUMBER` · `RECORD_LAYER_FAILURE`) —
+    기대값은 `handshake_reason` 이 이 기계에서 받아 온다.
 
     ⚠ **답하기 전에 ClientHello 를 먼저 읽는다** — 안 읽은 수신 버퍼를 둔 채 닫으면 TCP 는
       FIN 이 아니라 RST 로 끊고, 윈도우는 그 RST 를 받은 쪽에 이미 와 있던 바이트를
@@ -144,13 +146,39 @@ def plaintext_listener(reply=b"HTTP/1.1 400 Bad Request\r\n\r\n"):
     return srv, srv.getsockname()[1]
 
 
+def handshake_reason():
+    """이 기계의 OpenSSL 이 평문 답에 다는 `reason` 낱말 — 안 달면 None.
+
+    기대값을 낱말로 박지 않는다 — 같은 거부를 OpenSSL 판마다 다른 낱말로 적어, 박아 두면 판이 다른
+    기계에서 멀쩡한 `_probe` 가 빨개진다. 재이는 `_probe` 를 안 거치고 같은 꼴의 듣는 자리에 직접
+    악수해 받는다 — `_probe` 가 까닭을 버리면 이 낱말이 말에 없어 그대로 어긋난다.
+    """
+    srv, port = plaintext_listener()
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as raw:
+            try:
+                ssl.create_default_context().wrap_socket(raw, server_hostname="127.0.0.1").close()
+            except ssl.SSLError as exc:
+                return getattr(exc, "reason", None) or None
+            except OSError:
+                return None
+    finally:
+        srv.close()
+    return None
+
+
 print("\n실물 말 — 실물 _probe 가 갈래마다 말을 내나 (루프백만 · 바깥으로 안 나간다)")
+want_reason = handshake_reason()
 srv, port = plaintext_listener()
 try:
     # 기준선 ① — 진짜 악수 실패. reason 이 찬 꼴이 그대로 말에 실리나.
     ok, why = gateway._probe(f"https://127.0.0.1:{port}/")
     show("진짜 악수 실패 — 안 닿았다고 한다", ok, False)
-    show("  그 까닭이 말에 실린다", "WRONG_VERSION_NUMBER" in why, True)
+    if want_reason:
+        show(f"  그 까닭이 말에 실린다 ({want_reason})", want_reason in why, True)
+    else:
+        unmeasured("  그 까닭이 말에 실린다",
+                   "이 기계의 OpenSSL 이 평문 답에 reason 을 안 달았다 — 견줄 낱말이 없다")
     show("  이 함수의 존재 이유가 그대로 선다", "검사 장비가 갈아 끼웠을" in why, True)
     print(f"     └ {why}")
 finally:
