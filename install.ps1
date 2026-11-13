@@ -314,7 +314,8 @@ $Clis = @(
   @{ Key='playwright'; Pkg='playwright'; Cmd='playwright'; Label='Playwright (브라우저 MCP)'; For=@('claude','codex','antigravity') }
   # Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로 그리는 손 — poppler 의 `pdftoppm`. 없으면 Read 가 「pdftoppm is not installed」로
   #   지고, 사내 게이트웨이는 `document` 블록을 삼키므로 PDF 가 모델에 보이는 길은 그림뿐이다(claude-config #193 ③㉡ · 회사 실측
-  #   2026-10-18). 사용자 범위라 승인이 안 든다.
+  #   2026-10-18). 사용자 범위라 승인이 안 든다. 공식 pptx 스킬이 덱을 그림으로 보는 길의 뒷손이기도 해서, 그 스킬이 서는 Codex ·
+  #   안티그래비티를 고른 PC 에도 깐다.
   #   ⚠ `Arg='-v'` — pdftoppm 은 `--version` 을 모르는 옵션으로 받아 0 아닌 값을 내니, 그 자로 재면 「못 쟀다」로 접혀 영영 안 깔린다.
   #   벤더 길 — GitHub 릴리스의 zip 을 고정 자리에 푼다. zip 안의 폴더 이름이 판마다 바뀌어(`poppler-<판>`) 그대로 풀면 PATH 줄이 판마다
   #   갈리므로, 그 폴더를 `Dir` 하나로 옮겨 PATH 는 `PathDir` 한 줄로 둔다(아래 LibreOffice 줄의 `PathDir` 와 같은 손이 심는다).
@@ -326,15 +327,15 @@ $Clis = @(
   #   `NeedsVcRuntime` — winget 매니페스트가 드는 짝(VC++ 런타임)을 벤더 zip 은 안 싣는다. 그 런타임이 없는 PC 에서 새 사본을 재면 로더의
   #   「DLL 이 없다」 창이 사람을 기다려 무인 회차가 선다 — 그래서 받기 전에 런타임을 재고(`Measure-VcRuntime`), 없으면 짝을 함께 까는
   #   winget 길로 간다.
-  @{ Key='poppler'; Via='winget'; Cmd='pdftoppm'; Arg='-v'; Label='poppler (PDF 를 그림으로)'; Id='oschwartz10612.Poppler'; For=@('claude')
+  @{ Key='poppler'; Via='winget'; Cmd='pdftoppm'; Arg='-v'; Label='poppler (PDF 를 그림으로)'; Id='oschwartz10612.Poppler'; For=@('claude','codex','antigravity')
      PathDir="$env:LOCALAPPDATA\Programs\poppler\Library\bin"
      Ways=@(@{ Via='vendor'; Read='github'; Repo='oschwartz10612/poppler-windows'; Asset='Release-{tag}.zip'
                Unzip=@{ Root='poppler-{ver}'; Dir="$env:LOCALAPPDATA\Programs\poppler" }; RetireWinget=$true; NeedsVcRuntime=$true
                Unsigned='실행 파일에 서명이 없다 — GitHub 릴리스 자산을 https 로 받는다' }
             @{ Via='winget' }) }
   # 공식 pptx 스킬이 덱을 그림으로 보는 길(soffice → PDF → pdftoppm)의 앞 손 — LibreOffice 의 `soffice`. 그 스킬이 이 이름을 PATH 에서
-  #   부르고, 회사 PC 에서 LibreOffice 가 쓴 PDF 는 10분까지 DRM 에 안 감겼다(claude-config #204 · 결정 0172). 덱 스킬이 Claude 에만
-  #   서서 `For` 가 Claude 하나다.
+  #   부르고, 회사 PC 에서 LibreOffice 가 쓴 PDF 는 10분까지 DRM 에 안 감겼다(claude-config #204 · 결정 0172). 공식 pptx 스킬이 서는
+  #   제품(Claude 는 공식 플러그인 · Codex · 안티그래비티는 짐의 스킬)마다 깐다.
   #   `Scope='machine'` — winget 이 이 꾸러미에 내는 설치본이 기계 범위(MSI)뿐이라 승격이 든다. 문은 `$Apps` 의 같은 칸과 같다.
   #   `PathDir` — winget 도 그 MSI 도 이 자리를 PATH 에 안 심는다. 배선(`Update-RuntimePath`)이 이 창 끝에, 마무리의 「사용자 범위
   #   명령 자리」가 사용자 PATH 끝에 붙이고, 끝 검증이 새 터미널의 PATH(기계 · 사용자)에서 잰다. ⚠ 그 폴더에 LibreOffice 의 `python.exe` 가 같이 서서
@@ -349,7 +350,7 @@ $Clis = @(
   #   `Back` — 수백 MB 를 받는 자리라 안티그래비티 CLI 처럼 뒤에서 깐다(그 줄의 곁말). 뒤 걸음은 `soffice` 를 안 부르고, 폴더(`PathDir`)는
   #   거둔 뒤의 마무리가 심는다. 승인 창이 뜨는 PC 면 띄울 때 그 말을 한 줄 미리 한다(「CLI」 걸음).
   @{ Key='libreoffice'; Via='winget'; Cmd='soffice.com'; Label='LibreOffice (덱을 그림으로)'; Id='TheDocumentFoundation.LibreOffice'
-     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude'); Back=$true
+     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude','codex','antigravity'); Back=$true
      Ways=@(@{ Via='vendor'; Read='listing'; List='https://download.documentfoundation.org/libreoffice/stable/'
                Url='https://download.documentfoundation.org/libreoffice/stable/{ver}/win/x86_64/LibreOffice_{ver}_Win_x86-64.msi'
                Mirrors='metalink'; Msi=$true; SilentArgs='/quiet /norestart'; NeedsVcRuntime=$true; Signer='The Document Foundation' }
@@ -5550,7 +5551,8 @@ function Install-NpmCli($Rows) {
 # 값 파일의 `#npm-global` 한 줄을 CLI 표(`$Clis`)의 npm 행으로 — `@{ Row; Why }`, 못 읽으면 `Row` 없이 까닭만 낸다. 줄은 뽑는 자
 #   (claude-config `scripts/build-dist.sh`)가 전역 도구 선언의 `npm-global` 절 하나로 짓는 `<절> dist=<값> package=<값> [probe=<값>]
 #   [probe-target=<값>] [wiring=<값>]` 이고, 칸의 뜻은 그 선언의 머리말이 든다. 같은 칸이 둘이면 앞의 것이다.
-#   `dist` — 누가 받나: `all` 늘(`Always`) · `maker` 제작자 칸(`Maker`) · 제품 키(`$ProductKeys`) 그 제품(`For`). 그 밖은 못 읽은 줄이다
+#   `dist` — 누가 받나: `all` 늘(`Always`) · `maker` 제작자 칸(`Maker`) · 제품 키(`$ProductKeys`)를 쉼표로 이은 목록 그 제품들(`For`).
+#     그 밖은 못 읽은 줄이다
 #   `probe` — `exec-on-path` · `exec-npm-bin` 은 명령(`Cmd`), `node-resolvable` 은 `require` 로 부르는 꾸러미(`Module`)다
 #   `wiring = node-link` — `probe-target` 을 Node 가 보는 홈 자리에 잇는다(`Link` · `Install-NodeHomeLink`)
 function ConvertFrom-NpmDirective([string]$Line, [string[]]$ProductKeys) {
@@ -5567,7 +5569,7 @@ function ConvertFrom-NpmDirective([string]$Line, [string[]]$ProductKeys) {
   $row = @{ Label = $name; Pkg = $f['package'] }
   if ($f['dist'] -eq 'all')                     { $row.Always = $true }
   elseif ($f['dist'] -eq 'maker')               { $row.Maker = $true }
-  elseif ($ProductKeys -contains $f['dist'])    { $row.For = @($f['dist']) }
+  elseif (@($f['dist'] -split ',' | Where-Object { $ProductKeys -notcontains $_ }).Count -eq 0) { $row.For = @($f['dist'] -split ',') }
   else                                          { return @{ Why = "$name — 알 수 없는 dist 값 ($($f['dist']))" } }
   if ($f['probe'] -eq 'node-resolvable')        { $row.Module = $f['probe-target'] }
   elseif ($f['probe'] -in 'exec-on-path', 'exec-npm-bin') { $row.Cmd = $f['probe-target'] }
@@ -8041,6 +8043,12 @@ $FreeSkills = [ordered]@{
   'company-regulation'       = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
   'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
+  # Anthropic 공식 문서 스킬 넷 — 오피스 · PDF 를 읽고 짓는다. 짐이 상류 한 판(Apache 2.0)을 싣는다. Claude 는 같은 스킬을 「Claude
+  #   플러그인」 걸음의 공식 플러그인으로 받아 칸이 없다
+  'pptx'                     = @{ Codex = $hostCodex; Agy = $hostAgy }
+  'docx'                     = @{ Codex = $hostCodex; Agy = $hostAgy }
+  'xlsx'                     = @{ Codex = $hostCodex; Agy = $hostAgy }
+  'pdf'                      = @{ Codex = $hostCodex; Agy = $hostAgy }
   # agy 에게 맡기고 한도에서 넘긴다 — 맡기는 쪽은 Claude · Codex
   'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Codex = [bool]($hostCodex -and $wantAgyDelegate) }
   # Codex 에게 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude · agy
@@ -10833,8 +10841,8 @@ try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFa
 #   `example-skills`(skill-creator · frontend-design · mcp-builder · webapp-testing 등 열둘). 같은 마켓의 나머지 셋은 안 받는다 —
 #   `claude-api` 는 Claude Code 바이너리에 같은 스킬이 묶여 받으면 어느 PC 에서나 두 벌이 되고, `academy-guide` ·
 #   `discernment-nudge` 는 답의 끝에 끼어든다(결정 0157).
-# ⚠ **배포본에 싣지 않는다** — 문서 스킬의 라이선스는 복제 · 파생 · 제3자 배포를 막고(상업 여부와 상관없다), 이 배포본은 공개
-#   저장소라 실으면 누구나 받는 자리에 올라간다.
+# Codex · 안티그래비티는 같은 문서 스킬 넷을 이 걸음이 아니라 짐에서 받는다 — Apache 2.0 이라 짐이 상류 한 판을 싣고, 칸 없이 까는
+#   스킬(`$FreeSkills`)이 그 홈에 놓는다. Claude 홈에는 안 놓는다(이 플러그인과 두 벌이 된다).
 # 같은 스킬이 다른 통로로도 온다 — claude.ai 구독 로그인 PC 는 계정 동기화가 문서 넷과 skill-creator 를 `anthropic-skills:<이름>`
 #   으로 싣는다. 겹쳐도 깔고, 끄지도 건너뛰지도 않는다 — 동기화본은 로그인한 Claude Code 가 돌 때 생겨 설치 시점에 못 가르고,
 #   사내 PC 는 이 플러그인이 유일한 통로다.
