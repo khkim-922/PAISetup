@@ -6655,6 +6655,29 @@ function Test-GhLoggedIn {
   } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
 }
 
+# gh 가 쓰는 자격이 이 PC 의 로그인 범위(`$GhLoginScopes`)를 다 들었나 — 그 자격으로 `gh api -i user` 한 번을 보내 GitHub 가
+#   답 머리 `X-OAuth-Scopes` 에 적어 주는 범위와 견준다. 범위가 모자란 자격은 VDI 와 같은 범위 조합에 서 있어 VDI 로그온마다
+#   밀려나므로, 부르는 쪽(`Get-GhLoginGo`)이 이 PC 의 범위로 다시 로그인시킨다.
+# 내는 것 — $true(다 들었다) · $false(모자란다) · $null(못 쟀다 — gh 가 안 서거나 · 한도를 넘거나 · 머리가 없다). 못 쟀으면
+#   부르는 쪽은 창을 안 띄운다 — 로그인이 선 PC 에 까닭 없이 창을 띄우지 않는다(`Get-GhLoginGo` 머리말의 규율).
+function Test-GhScopesHeld {
+  if (-not (Test-Runs 'gh' '--version')) { return $null }
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-LoggedCapped 'gh' @('api', '-i', 'user') $log $GhStatusCap -Quiet
+    if ($rc -eq -2) { Add-ProbeOverflow 'gh api -i user' $GhStatusCap }
+    if ($rc -ne 0) { return $null }
+    $head = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue) |
+      Where-Object { $_ -match '^\s*X-OAuth-Scopes\s*:' } | Select-Object -First 1
+    if (-not $head) { return $null }
+    $held = @((($head -split ':', 2)[1]) -split ',' | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+    foreach ($want in ($GhLoginScopes -split ',')) {
+      if ($held -notcontains $want.Trim().ToLowerInvariant()) { return $false }
+    }
+    return $true
+  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+}
+
 # gh 가 키링의 로그인보다 먼저 쓰는 환경변수 토큰 — 이것이 선 셸에서는 `gh auth login` 이 로그인을 안 받는다.
 $GhEnvTokens = @('GH_TOKEN', 'GITHUB_TOKEN')
 
@@ -6725,7 +6748,9 @@ function Get-GhKeyringLines($St, [string[]]$TokenVars) {
 #   함수 블록(`${function:…}`)을 변수로 잡아 넘기면 그 블록은 몸통의 범위에서 돈다.
 # `-Raised` — 가운데 위쪽에 선다. 설치가 같은 때 띄우는 물음창(`Show-AskDialog`)은 화면 한가운데에 서므로, 앞당겨 띄운 창(`Invoke-GhLoginChild`)이
 #   그 자리를 덮지 않고 둘이 다 보이게 한다. 둘 다 맨 위(TopMost) 창이라 어느 것도 다른 창 뒤로 숨지 않는다.
-function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait, [switch]$Raised) {
+# `-Rescope` — 로그인이 이미 선 PC 에서 이 PC 의 범위로 다시 받는 판(`Get-GhLoginGo` 의 rescope). 옛 자격으로도 `gh api user` 가 서므로
+#   틱의 재기를 안 띄우고 로그인 프로세스가 끝나기를 기다리며, 섰나는 새 자격이 범위를 다 들었나(`Test-GhScopesHeld`)로 가른다.
+function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc, [int]$Wait, [switch]$Raised, [switch]$Rescope) {
   Add-Type -AssemblyName System.Windows.Forms
   Add-Type -AssemblyName System.Drawing
   $f = New-Object Windows.Forms.Form
@@ -6757,7 +6782,8 @@ function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc,
   $bSkip = New-Object Windows.Forms.Button; $bSkip.Text = '건너뛰기'
   $bSkip.Location = New-Object Drawing.Point(286, 140); $bSkip.Size = New-Object Drawing.Size(120, 32)
   $f.Controls.AddRange(@($l1, $tCode, $lLeft, $bOpen, $bCopy, $bSkip))
-  $state = @{ Code = ''; Ok = $false; Clock = [Diagnostics.Stopwatch]::StartNew(); NextProbe = 5; Probe = $null; ProbeClock = $null }
+  $firstProbe = if ($Rescope) { [double]::MaxValue } else { 5 }
+  $state = @{ Code = ''; Ok = $false; Clock = [Diagnostics.Stopwatch]::StartNew(); NextProbe = $firstProbe; Probe = $null; ProbeClock = $null }
   $probeCap = $GhStatusCap
   $startProbe = ${function:Start-GhLoginProbe}
   $stopProbe  = ${function:Stop-GhLoginProbe}
@@ -6805,6 +6831,7 @@ function Show-GhLoginWindow([string]$OutFile, [System.Diagnostics.Process]$Proc,
     Stop-GhLoginProbe $state.Probe
     $state.Probe = $null
   }
+  if ($Rescope) { return ((Test-GhScopesHeld) -eq $true) }
   if (-not $state.Ok) { $state.Ok = Test-GhLoggedIn }
   return $state.Ok
 }
@@ -6839,7 +6866,8 @@ function Stop-GhLoginProbe([Diagnostics.Process]$Probe) {
 $GhLoginWait = 180
 # gh 로그인이 기본 범위(repo · read:org · gist) 위로 더 받는 범위 — `workflow` 가 없으면 `.github/workflows/` 를 고친 커밋의
 #   push 를 GitHub 가 거절한다. 로그인 창(`Start-GhLoginProcess`)과 사람에게 주는 되살리는 명령이 이 값을 같이 쓴다.
-#   이미 로그인이 선 PC 는 다시 묻지 않으므로(`Get-GhLoginGo` 의 already) 그 범위 그대로 간다 — 더하려면 `gh auth refresh -s workflow`.
+#   이미 로그인이 선 PC 도 그 자격이 이 범위를 다 들었나 재서(`Test-GhScopesHeld`), 모자라면 이 범위로 로그인 창을 다시 연다
+#   (`Get-GhLoginGo` 의 rescope) — 범위를 가르기 전에 선 로그인이나 손으로 친 로그인이 VDI 와 같은 조합에 남지 않게 한다.
 # 영속 PC 는 `read:user`(프로필 읽기 — 어느 도구도 안 쓴다)를 하나 더 받는다. GitHub 는 같은 사용자 · 같은 앱 · 같은 범위 조합의
 #   토큰을 열 개까지만 두고, 넘치면 가장 덜 쓴 것을 끊는다(OAuth 앱 문서의 토큰 한도). 비영속 VDI 는 로그온마다 새 토큰을 내므로
 #   범위가 같으면 밤새 안 쓴 회사 데스크톱의 토큰을 밀어낸다 — 조합을 갈라 VDI 토큰은 저희끼리만 밀어내게 한다. VDI 는 범위를
@@ -6871,20 +6899,31 @@ $GhLoginGrace = 90
 $GhLoginRaise = 140
 
 # 로그인 창을 띄울 판인가 — 「설정 저장소」 걸음의 로그인 칸과 「프로그램」 걸음의 앞당긴 띄우기가 같은 자를 쓴다.
-# 내는 것 — `open`(띄운다) · `nogh`(gh 가 안 닿는다) · `already`(이미 서 있다) · `unmeasured`(섰나를 울타리 안에 못 쟀다) ·
-#   `night`(밤 자동 실행 · 창을 안 띄운다) · `noreach`(github.com 에 못 닿는다). 그 칸 바깥의 조건(`#config-repo` · git · 개발 도구)은
-#   부르는 쪽이 든다.
+# 내는 것 — `open`(띄운다) · `rescope`(서 있지만 자격이 이 PC 의 범위를 다 안 들었다 — 그 범위로 띄운다) · `nogh`(gh 가 안 닿는다) ·
+#   `already`(이 PC 의 범위로 서 있다 · 범위를 못 쟀으면 여기다) · `unmeasured`(섰나를 울타리 안에 못 쟀다) · `night`(밤 자동 실행 ·
+#   창을 안 띄운다) · `noreach`(github.com 에 못 닿는다). 그 칸 바깥의 조건(`#config-repo` · git · 개발 도구)은 부르는 쪽이 든다.
 #   못 쟀으면 · 망이 막혔으면 창을 안 띄운다 — 로그인이 선 PC 에 창을 띄우거나 못 열릴 브라우저를 사람에게 기다리게 하는 꼴이고,
 #   거짓인 까닭이 망이면 사람은 엉뚱한 데를 고치러 간다(결정 0141 · Claude 로그인 칸과 같은 규율).
 function Get-GhLoginGo {
   if (-not (Test-Runs 'gh' '--version')) { return 'nogh' }
   $timedBefore = $script:ProbeTimedOut.Count
-  if (Test-GhLoggedIn) { return 'already' }
+  if (Test-GhLoggedIn) {
+    if ((Test-GhScopesHeld) -ne $false) { return 'already' }
+    if ($NightRun) { return 'night' }
+    return 'rescope'
+  }
   if ($script:ProbeTimedOut.Count -gt $timedBefore) { return 'unmeasured' }
   if ($NightRun) { return 'night' }
   if (-not (Test-Reach 'github.com:443')) { return 'noreach' }
   return 'open'
 }
+
+# 로그인 창을 띄울 답인가 — `Get-GhLoginGo` 의 답 가운데 창을 여는 둘. 앞당겨 띄우는 자리와 「설정 저장소」 칸이 같은 자를 쓴다.
+$GhLoginOpens = @('open', 'rescope')
+# rescope 로 창을 열 때 사람에게 까닭을 대는 줄 — 로그인이 선 PC 에 창이 뜨는 까닭이다
+$GhRescopeWhy = "이 PC 의 gh 로그인 범위가 다른 PC(VDI)와 같아 서로 로그인을 끊습니다 — 이 PC 의 범위($GhLoginScopes)로 다시 로그인합니다"
+# rescope 창에서 새 로그인이 안 섰을 때의 줄 — 옛 자격은 살아 있어 이번 설치는 그것으로 가고, 다음 설치가 창을 다시 연다
+$GhRescopeMissed = "! gh 로그인 범위를 바꾸지 못함 — 지금 로그인을 그대로 쓰고, 다음 설치에서 다시 엽니다"
 
 # `gh auth login` 을 숨은 cmd 자식으로 띄운다 — 코드 창(`Show-GhLoginWindow`)이 `$OutFile` 과 `$OutFile.err` 에서 코드를 읽는다.
 # ⚠ **gh 는 「Enter 를 누르면 브라우저를 연다」고 묻고 기다린다** — 콘솔이 없는 자식이라 `echo.` 로 빈 줄 하나를 넣어 준다(안 넣으면
@@ -6954,12 +6993,14 @@ function Invoke-GhLoginChild([string]$ResultFile) {
   $gl    = [IO.Path]::GetTempFileName()
   $login = $null
   try {
+    # 부모는 창을 열 답(`$GhLoginOpens`)일 때만 이 자식을 띄우므로, 이미 서 있으면 rescope 다
+    $rescope = [bool](Test-GhLoggedIn)
     $login = Start-GhLoginProcess $gl
     # 창의 한도는 부모가 이 자식을 띄운 때부터 센다 — 부모가 그때부터 UTC 로 재어 거두므로(`Start-GhLoginChild` 의 `Deadline`),
     #   라이브러리를 읽느라 늦게 선 몫만큼 창이 짧아져야 둘이 같은 끝을 본다
     # 두 시각을 다 UTC 로 견준다 — 지역 시각은 서머타임 · 시간대가 바뀌면 그 차만큼 어긋난다
     $age   = [int]([DateTime]::UtcNow - (Get-Process -Id $PID).StartTime.ToUniversalTime()).TotalSeconds
-    $said  = if (Show-GhLoginWindow $gl $login ([Math]::Max(1, $GhLoginWait - $age)) -Raised) { 'ok' } else { 'no' }
+    $said  = if (Show-GhLoginWindow $gl $login ([Math]::Max(1, $GhLoginWait - $age)) -Raised -Rescope:$rescope) { 'ok' } else { 'no' }
   } catch {
     $said = 'err ' + (Say-Why $_)
   } finally {
@@ -8211,9 +8252,11 @@ foreach ($app in $Apps) {
 # 띄우는 조건은 그 칸과 같다 — `#config-repo` 에 GitHub 주소가 있고(`$configRepoOnGitHub`) · git 이 닿고 · 개발 도구를 켰고 · 창을
 #   띄울 판(`Get-GhLoginGo`)일 때. 안 띄운 판은 그 칸이 제 자리에서 다시 잰다.
 $script:GhLoginChild = $null
-if ($configRepoOnGitHub -and -not $NoDevTools -and (Test-Runs 'git' '--version') -and (Get-GhLoginGo) -eq 'open') {
+$ghEarlyGo = if ($configRepoOnGitHub -and -not $NoDevTools -and (Test-Runs 'git' '--version')) { Get-GhLoginGo } else { '' }
+if ($GhLoginOpens -contains $ghEarlyGo) {
   $script:GhLoginChild = Start-GhLoginChild $MyInvocation.MyCommand.Path
   if ($script:GhLoginChild.Proc) {
+    if ($ghEarlyGo -eq 'rescope') { Write-Host "  $GhRescopeWhy" -ForegroundColor Yellow }
     Write-Host "  GitHub 로그인 — 창을 열었습니다 · 코드는 팝업에 표시 (최대 ${GhLoginWait}초) · 설치는 계속 진행됩니다" -ForegroundColor Yellow
   }
 }
@@ -10496,7 +10539,8 @@ if (-not $repoUrl) {
         $ghTimedBefore = $script:ProbeTimedOut.Count
         if (Test-GhLoggedIn) {
           $ghLoggedIn = $true
-          Write-Host '  로그인 완료' -ForegroundColor Green
+          if ($ghEarlyGo -eq 'rescope' -and $ghAns.Said -ne 'ok') { Write-Host "  $GhRescopeMissed" -ForegroundColor Yellow }
+          else { Write-Host '  로그인 완료' -ForegroundColor Green }
           $null = Get-Quiet 'gh' @('auth','setup-git')
         } elseif ($script:ProbeTimedOut.Count -gt $ghTimedBefore) {
           Write-Host "  ! 로그인 상태를 확인하지 못함 — gh api user 가 ${GhStatusCap}초 안에 끝나지 않음" -ForegroundColor Yellow
@@ -10535,14 +10579,23 @@ if (-not $repoUrl) {
           Write-Host '  ! github.com 에 연결할 수 없어 로그인 상태를 확인하지 못함 — 계정 문제가 아니라 네트워크 문제입니다' -ForegroundColor Yellow
         }
         default {
+          # open · rescope 가 여기 온다
+          $ghRescope = ($_ -eq 'rescope')
+          if ($ghRescope) { Write-Host "  $GhRescopeWhy" -ForegroundColor Yellow }
           Write-Host "  브라우저 로그인을 엽니다 — 코드는 팝업에 표시 (최대 ${GhLoginWait}초)" -ForegroundColor Yellow
           $gl = [IO.Path]::GetTempFileName()
           $login = $null
           try {
             $login = Start-GhLoginProcess $gl
-            $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait
+            $ghLoggedIn = Show-GhLoginWindow $gl $login $GhLoginWait -Rescope:$ghRescope
             if ($ghLoggedIn) {
               Write-Host '  로그인 완료' -ForegroundColor Green
+              $null = Get-Quiet 'gh' @('auth','setup-git')
+            } elseif ($ghRescope) {
+              # 옛 자격은 그대로 서 있어 아래 clone 이 그것을 쓴다
+              Stop-GhLoginProcess $login
+              $ghLoggedIn = $true
+              Write-Host "  $GhRescopeMissed" -ForegroundColor Yellow
               $null = Get-Quiet 'gh' @('auth','setup-git')
             } else {
               Stop-GhLoginProcess $login
