@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 19
+VERSION_OURS = 20
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -75,13 +75,15 @@ MAX_UNSTREAM_BYTES = 32 * 1024 * 1024
 WEB_SEARCH = os.environ.get("PGPT_PROXY_WEB_SEARCH", "1").lower() not in {"0", "false", "off"}
 HOIST_TOOL_IMAGES = os.environ.get("PGPT_PROXY_HOIST_TOOL_IMAGES", "1").lower() not in {"0", "false", "off"}
 DOCUMENT_NOTE = os.environ.get("PGPT_PROXY_DOCUMENT_NOTE", "1").lower() not in {"0", "false", "off"}
+# 수명별 캐시 쓰기 묶음 채움 — 왜 채우나는 README 「캐시 수명 묶음 채움」 칸
+FILL_CACHE_TTL = os.environ.get("PGPT_PROXY_FILL_CACHE_TTL", "1").lower() not in {"0", "false", "off"}
 WEB_SEARCH_MODEL = os.environ.get("PGPT_PROXY_WEB_SEARCH_MODEL", "gemini-3.8-flash").strip()
 # 상류 기본 시한(600초)을 따르면 막힌 게이트웨이 앞에서 CLI 가 10분씩 묶인다.
 WEB_SEARCH_TIMEOUT = _env_float("PGPT_PROXY_WEB_SEARCH_TIMEOUT", 90.0)
 # CLI 2.1.293 의 문구다 — CLI 가 바꾸면 메움이 멎는다(/health 의 web_search_filled 가 안 오른다).
 _WEB_SEARCH_PROMPT_HEAD = "Perform a web search for the query: "
 # 경로 시한(180 · 300초) 안에 끝나는 크기 — 셈은 README 「출력 상한」 칸. 0 이면 클라이언트 값 그대로.
-STREAM_MAX_TOKENS = int(_env_float("PGPT_PROXY_STREAM_MAX_TOKENS", 10000))
+STREAM_MAX_TOKENS = int(_env_float("PGPT_PROXY_STREAM_MAX_TOKENS", 12500))
 NONSTREAM_MAX_TOKENS = int(_env_float("PGPT_PROXY_NONSTREAM_MAX_TOKENS", 18000))
 # 100만 입력 토큰을 읽는 초 — 켜면 큰 본문의 출력 상한을 그만큼 더 낮춘다. 기본 0(끔) · 값은 README 「입력 크기로
 # 출력 상한 낮추기」 칸.
@@ -219,6 +221,7 @@ _ACTIVE_REQUESTS = 0
 _WEB_SEARCH_FILLED = 0
 _WEB_SEARCH_FAILED = 0
 _WEB_SEARCH_EMPTY = 0  # filled 에도 든다
+_CACHE_TTL_FILLED = 0
 
 
 class _ClientDisconnected(Exception):
@@ -490,6 +493,31 @@ def _json_usage(body: bytes | bytearray | None) -> dict:
     return seen
 
 
+# 게이트웨이의 캐시 수명은 5분이다(ENV-posco 「캐시 1시간」 실측) — 총량을 이 칸에 싣는다.
+_GATEWAY_CACHE_TTL_KEY = "ephemeral_5m_input_tokens"
+_OTHER_CACHE_TTL_KEY = "ephemeral_1h_input_tokens"
+
+
+def fill_cache_creation(usage: object) -> bool:
+    """usage 에 수명별 캐시 쓰기 묶음(``cache_creation``)이 없고 총량만 있으면 묶음을 채운다. 채웠으면 True.
+
+    묶음이 이미 있으면(Anthropic 직결) 그대로 둔다. 꺼져 있으면(``PGPT_PROXY_FILL_CACHE_TTL=0``) 아무것도 안 한다.
+    """
+    if not FILL_CACHE_TTL or not isinstance(usage, dict) or "cache_creation" in usage:
+        return False
+    total = usage.get("cache_creation_input_tokens")
+    if type(total) is not int:
+        return False
+    usage["cache_creation"] = {_GATEWAY_CACHE_TTL_KEY: total, _OTHER_CACHE_TTL_KEY: 0}
+    return True
+
+
+def _count_cache_ttl_filled() -> None:
+    global _CACHE_TTL_FILLED
+    with _STATS_LOCK:
+        _CACHE_TTL_FILLED += 1
+
+
 def _json_stop_reason(body: bytes | bytearray | None) -> str:
     try:
         message = json.loads(body) if body else None
@@ -552,6 +580,9 @@ def stats() -> dict[str, object]:
             "web_search_filled": _WEB_SEARCH_FILLED,
             "web_search_failed": _WEB_SEARCH_FAILED,
             "web_search_empty": _WEB_SEARCH_EMPTY,
+            "fill_cache_ttl": FILL_CACHE_TTL,
+            # 묶음을 채운 Claude 응답 수 — 회사에서 안 오르면 확장의 캐시 타이머도 안 뜬다
+            "cache_ttl_filled": _CACHE_TTL_FILLED,
             "slow_requests": _SLOW_TOTAL,
             "keepalives": _KEEPALIVE_TOTAL,
             "stream_errors": _STREAM_ERROR_TOTAL,
@@ -777,6 +808,78 @@ class SseObserver:
             else:
                 message = error or kind
             self.error = " ".join(str(message).split())[:200]
+
+
+# SSE 이벤트의 끝 — 줄 끝 둘(CRLF · CR · LF 아무 짝). CRLF 의 CR 만 따로 줄 끝으로 읽지 않는다.
+_SSE_LINE_END = rb"(?:\r\n|\r(?!\n)|\n)"
+_SSE_EVENT_END = re.compile(_SSE_LINE_END + _SSE_LINE_END)
+_SSE_LINE_SPLIT = re.compile(rb"(\r\n|\r|\n)")
+
+
+class CacheTtlFiller:
+    """Claude 스트림의 사용량 이벤트에 수명별 캐시 쓰기 묶음을 채운다(``fill_cache_creation``).
+
+    고칠 이벤트는 다 받아야 다시 쓸 수 있어 완성된 이벤트 단위로 내보낸다 — 끝나지 않은 이벤트는 쥐고 있다가
+    ``flush`` 가 받은 그대로 내놓는다. 고치는 것은 총량이 있고 묶음이 없는 data 줄 하나짜리 이벤트뿐이고, 나머지는
+    받은 바이트 그대로다. 쥔 양이 ``MAX_UNSTREAM_BYTES`` 를 넘으면 다 내놓고 그 스트림은 손대지 않는다.
+    """
+
+    def __init__(self) -> None:
+        self._buffer = bytearray()
+        self._scan = 0
+        self.active = True
+        self.filled = 0
+
+    def feed(self, chunk: bytes) -> bytes:
+        if not self.active:
+            return chunk
+        self._buffer.extend(chunk)
+        out = bytearray()
+        start = 0
+        pos = self._scan
+        while True:
+            end = _SSE_EVENT_END.search(self._buffer, pos)
+            if end is None:
+                break
+            out += self._rewrite(bytes(self._buffer[start:end.start()]))
+            out += self._buffer[end.start():end.end()]
+            start = pos = end.end()
+        del self._buffer[:start]
+        # 줄 끝 짝이 두 읽기에 걸칠 수 있어 끝 두 바이트부터 다시 찾는다
+        self._scan = max(0, len(self._buffer) - 2)
+        if len(self._buffer) > MAX_UNSTREAM_BYTES:
+            out += self.flush()
+            self.active = False
+        return bytes(out)
+
+    def flush(self) -> bytes:
+        rest = bytes(self._buffer)
+        self._buffer.clear()
+        self._scan = 0
+        return rest
+
+    def _rewrite(self, event: bytes) -> bytes:
+        if b'"cache_creation_input_tokens"' not in event or b'"cache_creation"' in event:
+            return event
+        parts = _SSE_LINE_SPLIT.split(event)
+        data_lines = [i for i in range(0, len(parts), 2) if parts[i].startswith(b"data:")]
+        if len(data_lines) != 1:
+            return event
+        index = data_lines[0]
+        value = parts[index][5:]
+        try:
+            payload = json.loads(value[1:] if value.startswith(b" ") else value)
+        except (UnicodeDecodeError, ValueError):
+            return event
+        if not isinstance(payload, dict):
+            return event
+        started = payload.get("message")  # message_start 는 usage 를 message 안에 싣는다
+        usage = started.get("usage") if isinstance(started, dict) else payload.get("usage")
+        if not fill_cache_creation(usage):
+            return event
+        parts[index] = b"data: " + _json_bytes(payload)
+        self.filled += 1
+        return b"".join(parts)
 
 
 def sse_error_message(chunk: bytes) -> str | None:
@@ -1882,7 +1985,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
         끝까지 받았을 때만 chunked 끝 표시를 쓴다. 업스트림이 도중에 끊기면 끝 표시 없이 연결을 닫아 클라이언트가 잘린 응답임을 알게
         한다 — Connection: close 로만 끝내면 정상 종료와 안 갈린다. ``sse``(Anthropic · OpenAI 스트림)면
-        게이트웨이의 ``error`` 프레임을 세고 기록한다 — 180초 시한의 자국이다.
+        게이트웨이의 ``error`` 프레임을 세고 기록한다 — 180초 시한의 자국이다. Claude 스트림(``protocol="anthropic"``)은
+        사용량 이벤트에 수명별 캐시 쓰기 묶음을 채운다(``CacheTtlFiller``) — 그 밖의 바이트는 그대로다.
         """
         observer = SseObserver(protocol) if sse else None
         # 그대로 중계하는 Claude 비스트리밍 응답(클라이언트가 청한 판 — 「Retrying without streaming」)은 드물고 작다 —
@@ -1892,6 +1996,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
         keepalives_before = self._keepalives_sent
         self._stream_outcome = "complete"
         echo = self._model_echo
+        filler = CacheTtlFiller() if (FILL_CACHE_TTL and protocol == "anthropic") else None
+
+        def send(data: bytes) -> None:
+            nonlocal echo
+            if echo is not None:
+                data, echoed = echo_requested_model(data, *echo)
+                if echoed:
+                    echo = None
+            self._emit(data)
+
+        def release_held() -> None:
+            # 쥐고 있던 끝나지 않은 이벤트를 받은 그대로 내놓는다 — 잘린 응답도 받은 데까지는 클라이언트에 간다
+            if filler is not None:
+                send(filler.flush())
+                if filler.filled:
+                    _count_cache_ttl_filled()
 
         def incomplete(reason: str) -> bool:
             self._stream_outcome = "stream_incomplete" if sse else "incomplete"
@@ -1915,11 +2035,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         compact_copy.extend(chunk)
                     else:
                         compact_copy = None
-                if echo is not None:
-                    chunk, echoed = echo_requested_model(chunk, *echo)
-                    if echoed:
-                        echo = None
-                self._emit(chunk)
+                send(filler.feed(chunk) if filler is not None else chunk)
+            release_held()
             # 길이를 선언한 응답이 모자라게 끝나면 read1() 은 예외 없이 빈 바이트를 돌려준다 — 남은 길이로 가린다
             remaining = getattr(response, "length", None)
             if remaining:
@@ -1948,6 +2065,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 log(f"keepalive x{sent} (upstream silent > {keepalive_interval:g}s){self._gw()}")
             return True
         except _UpstreamReadError as error:
+            try:
+                release_held()
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
             return incomplete(f"read aborted: {error.__cause__!r}")
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             # 클라이언트가 갔다(취소 · 시간 초과)
@@ -2247,6 +2368,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     message = json.loads(raw)
                     if self._model_echo is not None and message.get("model") == self._model_echo[0]:
                         message["model"] = self._model_echo[1]
+                    if fill_cache_creation(message.get("usage")):
+                        _count_cache_ttl_filled()
                     events = anthropic_message_events(message, allow_tools=False)
                     for event in events:
                         self._emit(event)

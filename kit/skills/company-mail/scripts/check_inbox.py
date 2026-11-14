@@ -37,7 +37,8 @@ PC 에서만 닿는다).
 여기서 못 재는 것 — 사내 SSO 를 넘는 길(스킬 ep-login 의 받는 손) · 회사에서 안 잰 꼴(끊긴 세션의 세션 확인 답 · 중요도 값의 뜻 ·
 폴더에만 있는 메일에 읽음으로의 주소가 먹는지 — 여기서는 어느 메일이든 먹는다 · 모든편지함을 장으로 넘길 때의 차례 ·
 평문 · HTML 둘을 든 메일 밖의 평문 조각) · 임시저장한 메일을 웹메일 화면이 받는 사람 · 첨부로 다시 여는지(회사에서 한 판으로
-쟀다) · 웹메일 화면의 [보내기](곁의 손 draft_send.js — Edge 와 실물 화면이 있어야 돈다).
+쟀다) · 웹메일 화면의 [보내기](곁의 손 draft_send.js — Edge 와 실물 화면이 있어야 돈다) · 휴지통 보기의 unid 밖의
+열 꼴과 보낸편지함 · 임시보관함 · 폴더 메일을 되살린 자리(여기서는 받은편지함으로 · ``restore_to`` 로 준 자리로 간다).
 """
 
 from __future__ import annotations
@@ -310,7 +311,8 @@ class FakeDomino:
         self.saved_forms: list[dict] = []            # 쓰기 폼 저장 POST 의 칸
         self.sent_now: list[str] = []                # 저장 폼이 SaveAgent=wSend 로 와서 실물이라면 그 자리에서 나갔을 메일
         self.twin: dict[str, tuple[str, str]] = {}
-        self.stuck: set[str] = set()                 # 옮기기에 OK 를 내고 안 옮기는 메일
+        self.stuck: set[str] = set()                 # 옮기기 · 휴지통 · 되살리기에 참을 내고 안 옮기는 메일
+        self.restore_to: dict[str, str] = {}         # 되살리면 받은편지함 밖으로 가는 메일 → 그 자리(보낸 · 임시 · 폴더 메일 흉내)
         for i, p in enumerate(sorted({*self.extra_folders, *(m.folder for m in self.mails.values() if m.folder)})):
             if not p.startswith("("):
                 self.tree[f"newNode{1000 + i}"] = (p, "")
@@ -421,13 +423,23 @@ class FakeDomino:
             return self.send(h, 200, memo_page().encode(), "text/html; charset=UTF-8")
         if low.startswith("/agt_mail_folder_save?openagent"):
             return self.folder_save(h, urllib.parse.parse_qs(raw.split("?", 1)[1], keep_blank_values=True))
+        if low.startswith("/delete_view?openagent"):
+            # 목록의 [삭제] — type 이 비면 휴지통으로 · 답은 빈 글자(실측). ``stuck`` 의 메일은 답만 내고 안 옮긴다
+            q = urllib.parse.parse_qs(raw.split("?", 1)[1], keep_blank_values=True)
+            if q.get("type") == [""]:
+                for unid in filter(None, q.get("docid", [""])[0].split(",")):
+                    if unid in self.mails and unid not in self.stuck:
+                        self.mails[unid].folder = "($Trash)"
+                        self.changes.append(("trash", unid))
+            return self.send(h, 200, b"", "text/html")
         if low.startswith("/trashdoc?openagent"):
             q = urllib.parse.parse_qs(raw.split("?", 1)[1], keep_blank_values=True)
             mail = self.mails.get(q.get("docid", [""])[0])
             if q.get("type") != ["recovery"] or mail is None or mail.folder != "($Trash)":
                 return self.send(h, 200, b'{ "result":false }', "text/html")
-            mail.folder = ""
-            self.changes.append(("restore", mail.unid))
+            if mail.unid not in self.stuck:
+                mail.folder = self.restore_to.get(mail.unid, "")
+                self.changes.append(("restore", mail.unid))
             return self.send(h, 200, b'{ "result":true } ', "text/html")
         parts = rest.split("/")
         if len(parts) == 3 and parts[1] == "0" and parts[2].split("?")[0].upper() in self.rules \
@@ -616,6 +628,9 @@ class FakeDomino:
             got.sort(key=(lambda r: r[1]) if descending else (lambda r: r[0]), reverse=descending)
             rows = [(u, {"xsubject": "", "$101": shown(st)[1], "$91": d, "$102": to, "$103": "", "xname": ""})
                     for u, st, d, to in got]
+        elif key == "xml_trash":
+            rows = [(m.unid, m.cols(INBOX_COLUMNS)) for m in sorted(self.mails.values(), key=lambda m: m.stamp, reverse=True)
+                    if (m.folder or "").startswith("($Trash")]
         elif key == "xml_rule":
             rows = [(u, {"$92": "받은메일-ENG-inbox", "$88": f.get("rule_subject", ""), "$80": "", "xallfwdopt": "N"})
                     for u, f in sorted(self.rules.items())]
@@ -873,6 +888,45 @@ def check_move_that_did_not_land_is_an_error_not_ok():
         assert old.folder == "", "옛 메일을 받은편지함으로 못 옮겼다"
 
 
+def check_trash_sends_only_the_named_mails_and_keeps_unread():
+    """휴지통으로 보내기 — 그 메일들만 휴지통에 가고 읽음은 그대로다. 서버의 답이 비어(실측) 손이
+    휴지통을 다시 봐야 해서, 안 간 메일이 있으면 「보냈다」가 아니라 오류다. 영구삭제 꼴(``type=remove``)은 손이 못 짓는다."""
+    with stage() as (box, mailbox):
+        before = box.unread()
+        mailbox.trash_mails([U["alone"], U["f_top"]])
+        assert {u for k, u in box.changes if k == "trash"} == {U["alone"], U["f_top"]}, box.changes
+        assert box.unread() == before, "휴지통으로 보내며 읽음을 바꿨다"
+        raises(inbox.ChangeRefused, lambda: mailbox._send_folder(
+            f"{DB}/delete_view?OpenAgent&docid={U['alone']}&folderkey=&type=remove&paraview=&imapuser=&owner=", "x", ok=None))
+    with stage() as (box, mailbox):
+        box.stuck.add(U["alone"])
+        raises(inbox.MailboxError, lambda: mailbox.trash_mails([U["alone"]]))
+        assert box.mails[U["alone"]].folder == ""
+
+
+def check_restore_brings_mails_back_and_names_those_not_home():
+    """휴지통에서 되살리기 — 휴지통 목록에 선 메일을 되살리면 읽음은 그대로다. 받은편지함 밖으로 간 메일(보낸 · 임시 · 폴더
+    메일 — 되살린 자리를 안 쟀다)은 그 unid 를 낸다. 서버가 참을 내고 안 꺼냈거나 도중에 지면 「되살렸다」가 아니라 오류다."""
+    with stage() as (box, mailbox):
+        mailbox.trash_mails([U["alone"], U["read_one"]])
+        assert {e.unid for e in mailbox.list_trash(count=50)} >= {U["alone"], U["read_one"], U["f_trash"]}
+        assert "지운 메일" in {e.subject for e in mailbox.list_trash(count=50)}
+        box.restore_to[U["read_one"]] = "(Sent)"
+        before = {u: box.mails[u].unread for u in (U["alone"], U["read_one"])}
+        elsewhere = mailbox.restore_mails([U["alone"], U["read_one"], U["f_trash"]])
+        assert {u for k, u in box.changes if k == "restore"} == {U["alone"], U["read_one"], U["f_trash"]}, box.changes
+        assert [u.upper() for u in elsewhere] == [U["read_one"]], elsewhere
+        assert box.mails[U["alone"]].folder == "" and box.mails[U["f_trash"]].folder == ""
+        assert {u: box.mails[u].unread for u in before} == before, "되살리며 읽음을 바꿨다"
+    with stage() as (box, mailbox):
+        box.stuck.add(U["f_trash"])
+        raises(inbox.MailboxError, lambda: mailbox.restore_mails([U["f_trash"]]))
+    with stage() as (box, mailbox):
+        mailbox.trash_mails([U["alone"]])
+        exc = raises(inbox.MailboxError, lambda: mailbox.restore_mails([U["alone"], U["cc"]]))   # cc 는 휴지통에 없어 서버가 거짓을 낸다
+        assert "1/2" in str(exc) and box.mails[U["alone"]].folder == "", exc
+
+
 def check_folder_with_twin_row_or_rule_is_not_guessed():
     """나무에 같은 경로가 둘(지운 폴더의 짝)이면 고르지 않고, 규칙이 메일을 옮기는 폴더는 안 지운다 — 짝을 고르면 서버가 OK 를
     내고 아무것도 안 하고, 가리키던 폴더가 없어진 규칙이 새 메일을 어떻게 하나는 안 쟀다."""
@@ -929,7 +983,8 @@ def check_reading_path_refuses_folder_and_rule_changers():
     """읽기 길(``_get``)은 폴더 · 휴지통 · 규칙을 바꾸는 주소를 서버에 닿기 전에 막는다 — 만들기 · 지우기 · 되살리기가 GET 이다(실측)."""
     with stage() as (box, mailbox):
         for path in ("/agt_mail_folder_save?OpenAgent&act=create&fname=x", "/folder2?OpenForm",
-                     f"/TrashDoc?OpenAgent&docid={U['alone']}&type=recovery", "/Mailrule?OpenForm&Seq=1"):
+                     f"/TrashDoc?OpenAgent&docid={U['alone']}&type=recovery", "/Mailrule?OpenForm&Seq=1",
+                     f"/delete_view?OpenAgent&docid={U['alone']}&folderkey=&type=&paraview=&imapuser=&owner="):
             raises(inbox.ChangeRefused, lambda p=path: mailbox._get(p))
         raises(inbox.ChangeRefused, lambda: mailbox._send_folder(f"{DB}/0/{U['alone']}?OpenDocument", "x"))
         raises(inbox.ChangeRefused, lambda: mailbox._send_rule(f"{DB}/Mailrule?OpenForm&Seq=1", {"forward_list": "a@b"}, "x"))

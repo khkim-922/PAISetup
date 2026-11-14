@@ -13,13 +13,15 @@
                                         사람 칸)만 바꾸고, 글은 넣은 글의 표지 자리만 갈아 서명 · 인용을 그대로 둔다. 같은 손이 누른다
         preview-draft · preview-reply   저장하지 않고 보이기만 — 사람이 저장 전에 보고 싶어 할 때
 
-    메일이 나가거나 이미 있는 것을 바꾸는 일은 다섯이고, 다섯 다 **미리 보기와 실행이 다른 명령**이다::
+    메일이 나가거나 이미 있는 것을 바꾸는 일은 일곱이고, 일곱 다 **미리 보기와 실행이 다른 명령**이다::
 
         preview-send   → send-draft     임시보관함 메일 하나를 웹메일 화면의 [보내기]로 — 같은 손이 Edge 에서 누른다. 답장 · 전달은
                                         save-reply 가 낸 열쇠로도 선다(저장 뒤 판이 그대로일 때)
         preview-mark   → apply-mark     읽음으로 · 안 읽음으로 — 같은 꼴
         preview-folder → apply-folder   폴더 만들기 · 지우기(빈 폴더만) — 같은 꼴
         preview-move   → apply-move     메일을 폴더 · 받은편지함으로 옮기기 — 같은 꼴
+        preview-trash  → apply-trash    메일을 휴지통으로 보내기(영구삭제는 없다) — 같은 꼴
+        preview-restore → apply-restore 휴지통의 메일 되살리기 — 같은 꼴
         preview-rule   → apply-rule     메일 분류 규칙 넣기 · 고치기 · 지우기(자동전달 칸은 늘 빈다) — 같은 꼴
 
     확인 열쇠는 미리 보인 그 내용의 지문이다 — 보내기는 편집 화면이 든 판(받는 사람 · 참조 · 숨은참조 · 제목 · 본문 · 첨부의 이름과
@@ -93,8 +95,15 @@
     apply-folder   (preview-folder 와 같은 인자) --confirm 열쇠
     preview-move   UNID ... --to 폴더|--inbox [--scan N]
     apply-move     (preview-move 와 같은 인자) --confirm 열쇠
+    preview-trash  UNID ... [--scan N]
+    apply-trash    (preview-trash 와 같은 인자) --confirm 열쇠
+    preview-restore UNID ...                      휴지통의 그 메일들 — unid 는 search 낱말 --in trash 가 낸다
+    apply-restore  (preview-restore 와 같은 인자) --confirm 열쇠
+                                                  받은편지함에 안 돌아온 메일(보낸 · 임시 · 폴더의 것)은 따로 댄다
     preview-rule   [--unid 규칙] [--box inbox|sent] [--action move_folder|move_trash|delete] [--folder 경로]
-                   [--from · --to · --cc · --subject · --attach 값] [--exact-from] [--exact-to] | --delete 규칙
+                   [--from · --to · --cc · --subject · --attach 값] [--exact-from|--contains-from] [--exact-to|--contains-to]
+                   | --delete 규칙
+                                                  --unid 로 고칠 때는 준 칸만 바꾼다 — 조건에 빈 값을 주면 그 조건을 지운다
     apply-rule     (preview-rule 와 같은 인자) --confirm 열쇠
 
     메일 손은 이 파일 곁에, 세션 손은 형제 스킬 ep-login 의 ``scripts/`` 에 있다 — 그 폴더의 ``ep_session.py`` 가 받는 손을
@@ -189,7 +198,7 @@ DEPT_WORD = "(조직)"          # 받는 사람이 사람이 아니라 조직 �
 FIELD_WORDS_PEOPLE = {"to": "받는 사람", "cc": "참조", "bcc": "숨은참조"}   # 받는 사람 칸 → 사람 말
 
 EP_LOGIN = "스킬 ep-login 으로 사내 세션을 먼저 세운다"
-MUTATING = ("save-reply", "save-draft", "revise-draft", "send-draft", "apply-mark", "apply-folder", "apply-move", "apply-rule")   # 메일함 밖으로 나가거나 메일함을 바꾼다 — 세션 손부터 받아 한 번만 돈다
+MUTATING = ("save-reply", "save-draft", "revise-draft", "send-draft", "apply-mark", "apply-folder", "apply-move", "apply-trash", "apply-restore", "apply-rule")   # 메일함 밖으로 나가거나 메일함을 바꾼다 — 세션 손부터 받아 한 번만 돈다
 # 평문 형식의 머리 — 오피스 · PDF 확장자인데 이 머리가 아니면 DRM 에 감긴 것이다(스킬 drm-office-read 1 절)
 PLAIN_HEADS = (b"%PDF", b"PK\x03\x04", b"\xd0\xcf\x11\xe0", b"{\\rtf")
 OFFICE_EXTS = {"pdf", "doc", "docx", "docm", "rtf", "xls", "xlsx", "xlsm", "ppt", "pptx", "pptm", "hwp", "hwpx"}
@@ -1447,16 +1456,96 @@ def cmd_apply_move(args, inbox):
     print(f"옮겼다: {len(mails)}통 → {to or '받은편지함'} (다시 봐서 다 들었다)")
 
 
+def cmd_preview_trash(args, inbox):
+    box = open_mailbox(args, inbox)
+    mails = find_mails(box, inbox, args.unids, None, args.scan)
+    print(f"휴지통으로 보낼 메일 {len(mails)}통 — 아직 안 보냈다(읽음 표시는 그대로 남고, preview-restore 로 되살릴 수 있다)")
+    for e in mails:
+        print(f"  {mark_word(e)} · {e.subject} · {who(e.sender)} · {where_word(e)}")
+    print(f"확인 열쇠: {token('trash', [(e.unid.upper(), e.folder) for e in mails])}")
+    print("사람이 이 목록 그대로 지우자고 하면 같은 인자에 apply-trash · --confirm <열쇠> 로 휴지통에 보낸다.")
+
+
+def cmd_apply_trash(args, inbox):
+    box = open_mailbox(args, inbox)
+    mails = find_mails(box, inbox, args.unids, None, args.scan)
+    if token("trash", [(e.unid.upper(), e.folder) for e in mails]) != args.confirm:
+        raise Stop(EXIT_STALE, "확인 열쇠가 지금 메일 자리와 다르다 — 지우지 않았다. preview-trash 로 다시 보이고 확인받는다")
+    box.trash_mails([e.unid for e in mails])
+    print(f"휴지통으로 보냈다: {len(mails)}통 (다시 봐서 다 들었다) — 되살리려면 preview-restore")
+
+
+def find_trashed(box, unids) -> list:
+    """휴지통에서 unid 들의 줄(Entry)을 준 차례대로 찾는다 — 다 찾거나 보기가 끝날 때까지 ``DEEP_PAGE`` 줄씩. 하나라도 없으면 Stop."""
+    wanted = [u.strip().upper() for u in unids]
+    for unid in wanted:
+        if not re.fullmatch(r"[0-9A-F]{32}", unid):
+            raise Stop(EXIT_CONFIG, f"메일 열쇠(unid 32자리)가 아니다: {unid!r}")
+    left, got, start, first = set(wanted), {}, 1, None
+    while left:
+        rows = box.list_trash(count=DEEP_PAGE, start=start)
+        if not rows or rows[0].unid == first:
+            break
+        for e in rows:
+            if e.unid.upper() in left:
+                left.discard(e.unid.upper())
+                got[e.unid.upper()] = e
+        first, start = rows[0].unid, start + len(rows)
+    if left:
+        raise Stop(EXIT_CONFIG, f"{TRASH_WORD}에 없는 메일이다: {', '.join(sorted(left))} — search --in trash 로 찾는다")
+    return [got[u] for u in wanted]
+
+
+def cmd_preview_restore(args, inbox):
+    box = open_mailbox(args, inbox)
+    mails = find_trashed(box, args.unids)
+    print(f"{TRASH_WORD}에서 되살릴 메일 {len(mails)}통 — 아직 안 되살렸다")
+    for e in mails:
+        print(f"  {mark_word(e)} · {e.subject} · {who(e.sender)}")
+    print("받은 메일은 받은편지함으로 읽음 표시 그대로 돌아오고, 임시보관함 메일은 임시보관함으로 돌아온다. 보낸편지함 · 폴더에 있던 메일이 어디로"
+          " 돌아오는지는 아직 안 쟀다 — 되살린 뒤 받은편지함에 없으면 그렇게 알린다.")
+    print(f"확인 열쇠: {token('restore', [e.unid.upper() for e in mails])}")
+    print("사람이 이 목록 그대로 되살리자고 하면 같은 인자에 apply-restore · --confirm <열쇠> 로 되살린다.")
+
+
+def cmd_apply_restore(args, inbox):
+    box = open_mailbox(args, inbox)
+    mails = find_trashed(box, args.unids)
+    if token("restore", [e.unid.upper() for e in mails]) != args.confirm:
+        raise Stop(EXIT_STALE, "확인 열쇠가 지금 고른 메일과 다르다 — 되살리지 않았다. preview-restore 로 다시 보이고 확인받는다")
+    elsewhere = {u.upper() for u in box.restore_mails([e.unid for e in mails])}
+    print(f"되살렸다: {len(mails)}통 (다시 봐서 {TRASH_WORD}에서 다 빠졌다) — 받은편지함 {len(mails) - len(elsewhere)}통")
+    if elsewhere:
+        print(f"! {len(elsewhere)}통은 받은편지함에 없다 — 임시보관함 메일이면 임시보관함으로 돌아왔다. 보낸편지함 · 폴더 메일의"
+              " 되살린 자리는 아직 안 쟀으니 웹메일에서 본다:")
+        for e in mails:
+            if e.unid.upper() in elsewhere:
+                print(f"  {e.subject} · {who(e.sender)}")
+
+
 def rule_plan(args, box, inbox):
-    """규칙 넣기 · 고치기 · 지우기의 계획 — (말, 규칙 또는 None, 열쇠 재료)."""
+    """규칙 넣기 · 고치기 · 지우기의 계획 — (말, 규칙 또는 None, 열쇠 재료).
+
+    고치기는 준 칸만 바꾸고 안 준 칸은 지금 규칙의 값을 둔다 — 조건에 빈 값을 주면(``--cc ""``) 그 조건을 지운다. 넣기에서 안 준
+    칸은 받은 메일 · 폴더로 옮기기 · 「포함」이다. 폴더는 폴더로 옮기는 규칙만 든다."""
     if args.delete:
         old = box.rule(args.delete)
         return f"규칙 지우기: {rule_line(old)}", None, ("rule-", old.unid, rule_line(old))
-    conditions = {k: v for k in RULE_FIELD_WORDS if (v := (getattr(args, f"cond_{k}") or "").strip())}
-    new = inbox.Rule(unid=(args.unid or "").upper(), box=args.box, action=args.action, folder=args.folder or "",
-                     conditions=conditions, exact_from=args.exact_from, exact_to=args.exact_to)
-    if new.unid:
-        old = box.rule(new.unid)
+    old = box.rule(args.unid) if args.unid else None
+    if old is not None and old.forwards:
+        raise Stop(EXIT_CONFIG, "자동전달 규칙은 이 손이 고치지 않는다 — 웹메일의 규칙 화면에서 고친다(지우기는 된다)")
+    base = old or inbox.Rule(unid="", box="inbox", action="move_folder", folder="", conditions={})
+    conditions = {}
+    for k in RULE_FIELD_WORDS:
+        given = getattr(args, f"cond_{k}")
+        if value := (base.conditions.get(k, "") if given is None else given).strip():
+            conditions[k] = value
+    action = args.action or base.action
+    folder = (base.folder if args.folder is None else args.folder) if action == "move_folder" else ""
+    new = inbox.Rule(unid=base.unid, box=args.box or base.box, action=action, folder=folder, conditions=conditions,
+                     exact_from=base.exact_from if args.exact_from is None else args.exact_from,
+                     exact_to=base.exact_to if args.exact_to is None else args.exact_to)
+    if old is not None:
         said = f"규칙 고치기:\n  지금 {rule_line(old)}\n  바꿀 {rule_line(new)}"
         return said, new, ("rule", rule_line(old), rule_line(new), new.unid)
     return f"규칙 넣기: {rule_line(new)}", new, ("rule", "", rule_line(new), "")
@@ -1838,17 +1927,32 @@ def parser() -> argparse.ArgumentParser:
         q.add_argument("--scan", type=int, default=DEFAULT_SCAN)
         if name == "apply-move":
             q.add_argument("--confirm", required=True, help="preview-move 가 낸 확인 열쇠")
+    for name, fn in (("preview-trash", cmd_preview_trash), ("apply-trash", cmd_apply_trash)):
+        q = one(name, fn, mail=False)
+        q.add_argument("unids", nargs="+", help="휴지통으로 보낼 메일의 unid")
+        q.add_argument("--scan", type=int, default=DEFAULT_SCAN)
+        if name == "apply-trash":
+            q.add_argument("--confirm", required=True, help="preview-trash 가 낸 확인 열쇠")
+    for name, fn in (("preview-restore", cmd_preview_restore), ("apply-restore", cmd_apply_restore)):
+        q = one(name, fn, mail=False)
+        q.add_argument("unids", nargs="+", help="휴지통에서 되살릴 메일의 unid")
+        if name == "apply-restore":
+            q.add_argument("--confirm", required=True, help="preview-restore 가 낸 확인 열쇠")
     for name, fn in (("preview-rule", cmd_preview_rule), ("apply-rule", cmd_apply_rule)):
         q = one(name, fn, mail=False)
-        q.add_argument("--unid", default="", help="고칠 규칙 — 없으면 새 규칙")
+        q.add_argument("--unid", default="", help="고칠 규칙 — 없으면 새 규칙. 고치기는 준 칸만 바꾼다")
         q.add_argument("--delete", default="", help="지울 규칙의 unid — 주면 다른 칸은 안 본다")
-        q.add_argument("--box", default="inbox", choices=("inbox", "sent"), help="받은 메일 · 보낸 메일")
-        q.add_argument("--action", default="move_folder", choices=("move_folder", "move_trash", "delete"))
-        q.add_argument("--folder", default="", help="move_folder 의 폴더 경로")
+        q.add_argument("--box", choices=("inbox", "sent"), help="받은 메일 · 보낸 메일 — 넣기의 기본은 inbox")
+        q.add_argument("--action", choices=("move_folder", "move_trash", "delete"), help="넣기의 기본은 move_folder")
+        q.add_argument("--folder", help="move_folder 의 폴더 경로")
         for k, word in RULE_FIELD_WORDS.items():
-            q.add_argument(f"--{k}", dest=f"cond_{k}", default="", help=f"조건 — {word}(여럿은 쉼표)")
-        q.add_argument("--exact-from", action="store_true", help="보낸 사람이 「일치」 — 없으면 「포함」")
-        q.add_argument("--exact-to", action="store_true", help="받는 사람이 「일치」 — 없으면 「포함」")
+            q.add_argument(f"--{k}", dest=f"cond_{k}", help=f"조건 — {word}(여럿은 쉼표 · 고치기에서 빈 값이면 그 조건을 지운다)")
+        for k, word in (("from", "보낸 사람"), ("to", "받는 사람")):
+            match = q.add_mutually_exclusive_group()
+            match.add_argument(f"--exact-{k}", dest=f"exact_{k}", action="store_const", const=True,
+                               help=f"{word}이 「일치」 — 넣기의 기본은 「포함」")
+            match.add_argument(f"--contains-{k}", dest=f"exact_{k}", action="store_const", const=False,
+                               help=f"{word}이 「포함」(고치기에서 「일치」를 되돌린다)")
         if name == "apply-rule":
             q.add_argument("--confirm", required=True, help="preview-rule 가 낸 확인 열쇠")
     return p

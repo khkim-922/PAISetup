@@ -167,6 +167,51 @@ class StreamingTests(unittest.TestCase):
         self.assertTrue(any("in=40 cache_read=9000 cache_write=300" in line for line in lines))
         self.assertNotIn("private-summary-text", log)
 
+    def test_gateway_usage_gets_cache_ttl_bundle_and_nothing_else_changes(self):
+        """층: 쓰는 사람의 계약 — 모든 Claude 턴이 이 중계를 지난다. 걷는 조건: 게이트웨이가 수명별 묶음을 싣게 되어
+        채움(`PGPT_PROXY_FILL_CACHE_TTL`)을 걷을 때."""
+        zero = {"input_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 0}
+        real = {"input_tokens": 12, "cache_read_input_tokens": 3400, "cache_creation_input_tokens": 56, "output_tokens": 7}
+        start = event("message_start", message={"id": "m", "usage": zero})
+        # 글 안의 같은 낱말은 사용량이 아니다 — 안 건드린다
+        text = event("content_block_delta", delta={"type": "text_delta", "text": '"cache_creation_input_tokens": 9'})
+        delta = event("message_delta", delta={"stop_reason": "end_turn"}, usage=real)
+        expected = [
+            {"type": "message_start", "message": {"id": "m", "usage": dict(zero, cache_creation={
+                "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0})}},
+            json.loads(text.split(b"data: ", 1)[1]),
+            {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": dict(real, cache_creation={
+                "ephemeral_5m_input_tokens": 56, "ephemeral_1h_input_tokens": 0})},
+            {"type": "message_stop"},
+        ]
+
+        def parsed(data):
+            return [json.loads(line[6:]) for line in data.splitlines() if line.startswith(b"data: ")]
+
+        # 이벤트가 어느 바이트에서 쪼개져 와도(CRLF 의 CR 과 LF 사이 포함) 같은 결과다
+        for ending in (b"\n", b"\r\n"):
+            stream = b"".join(frame.replace(b"\n", ending) for frame in (start, text, delta, STOP))
+            for pos in range(1, len(stream)):
+                with self.subTest(ending=ending, pos=pos):
+                    filler = proxy.CacheTtlFiller()
+                    out = filler.feed(stream[:pos]) + filler.feed(stream[pos:]) + filler.flush()
+                    self.assertEqual(parsed(out), expected)
+                    self.assertIn(text.replace(b"\n", ending), out)
+                    self.assertTrue(out.endswith(STOP.replace(b"\n", ending)))
+
+        before = proxy.stats()["cache_ttl_filled"]
+        cut = delta.index(b"usage") + 3
+        _, _, data, error = self.run_case("cache_ttl", [start, text, delta[:cut], delta[cut:], STOP])
+        self.assertIsNone(error)
+        self.assertEqual(parsed(data), expected)
+        self.assertEqual(proxy.stats()["cache_ttl_filled"], before + 1)
+        # 직결 꼴 — 묶음이 이미 있으면 받은 바이트 그대로다
+        direct = event("message_delta", delta={"stop_reason": "end_turn"}, usage=dict(real, cache_creation={
+            "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 56}))
+        _, _, data, error = self.run_case("cache_ttl_direct", [START, direct, STOP])
+        self.assertEqual((data, error), (START + direct + STOP, None))
+        self.assertEqual(proxy.stats()["cache_ttl_filled"], before + 1)
+
     def test_compact_with_runtime_system_tail_is_tuned_on_messages_route(self):
         p = {"model": "claude-opus-5", "thinking": {"type": "adaptive"},
              "output_config": {"effort": "xhigh"}, "max_tokens": 64000,

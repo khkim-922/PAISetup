@@ -638,6 +638,25 @@ def check_organizing_commands_change_only_with_the_previewed_key():
         assert run("apply-move", U["alone"], U["cc"], "--to", "검토", "--confirm", moving)[0] == mail.EXIT_STALE
         code, out = run("apply-move", U["alone"], "--to", "검토", "--confirm", moving)
         assert code == 0 and box.mails[U["alone"]].folder == "검토" and box.mails[U["alone"]].unread, out
+        n = len(box.changes)
+        code, out = run("preview-trash", U["alone"])
+        assert code == 0 and len(box.changes) == n and "안읽음" in out and "검토" in out, out
+        trashing = key(out)
+        assert run("apply-trash", U["alone"], U["cc"], "--confirm", trashing)[0] == mail.EXIT_STALE and len(box.changes) == n
+        code, out = run("apply-trash", U["alone"], "--confirm", trashing)
+        assert code == 0 and box.mails[U["alone"]].folder == "($Trash)" and box.mails[U["alone"]].unread, out
+        n = len(box.changes)
+        code, out = run("preview-restore", U["alone"])
+        assert code == 0 and len(box.changes) == n and "안읽음" in out, out
+        restoring = key(out)
+        assert run("apply-restore", U["alone"], U["f_trash"], "--confirm", restoring)[0] == mail.EXIT_STALE and len(box.changes) == n
+        assert run("preview-restore", U["cc"])[0] == mail.EXIT_CONFIG, "휴지통에 없는 메일을 되살릴 것으로 보였다"
+        code, out = run("apply-restore", U["alone"], "--confirm", restoring)
+        assert code == 0 and box.mails[U["alone"]].folder == "" and box.mails[U["alone"]].unread and "받은편지함 1통" in out, out
+        box.restore_to[U["f_trash"]] = "(Sent)"
+        code, out = run("preview-restore", U["f_trash"])
+        code, out = run("apply-restore", U["f_trash"], "--confirm", key(out))
+        assert code == 0 and "받은편지함 0통" in out and "받은편지함에 없다" in out and "지운 메일" in out, out
         code, out = run("preview-rule", "--folder", "검토", "--subject", "[주간]")
         assert code == 0 and not box.rules, out
         assert run("apply-rule", "--folder", "검토", "--subject", "[월간]", "--confirm", key(out))[0] == mail.EXIT_STALE
@@ -646,6 +665,35 @@ def check_organizing_commands_change_only_with_the_previewed_key():
         code, out = run("rules")
         assert code == 0 and "제목∋[주간]" in out and "→ 검토" in out, out
         assert not changing(p for p in box.paths if "?EditDocument" not in p), "정리 명령이 메일을 여는 주소를 불렀다"
+
+
+def check_rule_change_keeps_what_is_not_given():
+    """규칙 고치기 — 준 칸만 바꾸고 안 준 칸(받은 · 보낸 · 갈래 · 다른 조건 · 일치)은 지금 값을 둔다. 조건에 빈 값을 주면 그 조건을
+    지우고, 「포함」으로 되돌리는 인자가 있다. 안 준 칸을 넣기의 기본값으로 채우면 보낸 메일 규칙이 받은 메일 규칙이 되고 다른
+    조건이 사라진 채 서버가 곧바로 새 메일에 쓴다."""
+    with stage() as (box, run):
+        made = ("--box", "sent", "--action", "move_trash", "--from", "a@nuri.example", "--exact-from", "--subject", "[주간]")
+        code, out = run("preview-rule", *made)
+        code, out = run("apply-rule", *made, "--confirm", key(out))
+        assert code == 0 and len(box.rules) == 1, out
+        (unid,) = box.rules
+
+        def change(*given):
+            code, out = run("preview-rule", "--unid", unid, *given)
+            assert code == 0, out
+            code, out = run("apply-rule", "--unid", unid, *given, "--confirm", key(out))
+            assert code == 0, out
+            return box.rules[unid]
+
+        f = change("--subject", "[월간]")
+        assert (f["expRule"], f["rules"], f["rule_from"], f["rule_fromType2"], f["rule_subject"]) == \
+            ("sent", "move_trash", "a@nuri.example", "1", "[월간]"), f
+        f = change("--from", "", "--cc", "b@nuri.example")
+        assert (f["rule_from"], f["rule_cc"], f["rule_subject"], f["expRule"]) == ("", "b@nuri.example", "[월간]", "sent"), f
+        f = change("--from", "c@nuri.example", "--contains-from")
+        assert (f["rule_from"], f["rule_fromType2"], f["rules"]) == ("c@nuri.example", "0", "move_trash"), f
+        code, out = run("preview-rule", "--unid", unid, "--exact-from", "--contains-from")
+        assert code != 0, "「일치」와 「포함」을 함께 받았다"
 
 
 # ── 세션 — 손의 종료 값과 끊긴 메일함을 가른다 ───────────────────────────

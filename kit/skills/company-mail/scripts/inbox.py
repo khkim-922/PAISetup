@@ -9,9 +9,10 @@
     전까지 그 메일은 「안 읽음」으로 남는다.
 
     메일함을 바꾸는 손은 이름 붙은 함수 하나씩이다 — 읽음으로(``mark_read``) · 안 읽음으로(``mark_unread``) · 폴더 만들기
-    (``create_folder``) · 지우기(``delete_folder``) · 메일 옮기기(``move_mails``) · 휴지통에서 되살리기(``restore_from_trash``) ·
+    (``create_folder``) · 지우기(``delete_folder``) · 메일 옮기기(``move_mails``) · 휴지통으로 보내기(``trash_mails``) ·
+    휴지통에서 되살리기(한 통 ``restore_from_trash`` · 여러 통 ``restore_mails``) ·
     메일 규칙 넣기 · 고치기(``save_rule``) · 지우기(``delete_rule``). 읽기 길은 이것들을 부르지 않는다. 폴더 나무(``folder_tree``)와
-    규칙 목록 · 한 건(``rules`` · ``rule``)은 읽기만 한다.
+    규칙 목록 · 한 건(``rules`` · ``rule``) · 휴지통 목록(``list_trash``)은 읽기만 한다.
 
 어떻게 부르나
     로그인은 이 파일이 하지 않는다. 스킬 ep-login 의 받는 손(``edge_session.js``)이
@@ -51,6 +52,8 @@
         # ⚠ 아래는 메일함을 바꾼다 — 사람이 확인한 뒤에만(머리말 「메일함을 바꾸는 손」)
         made = box.create_folder("검토", parent="프로젝트")   # FolderNode — 다시 봐서 선 것
         box.move_mails([mail.unid], made.path)          # 빈 글자면 받은편지함 — 다시 봐서 다 든 것
+        box.trash_mails([mail.unid])                    # 휴지통으로 — 다시 봐서 다 든 것
+        box.restore_mails([mail.unid])                  # 되살린다 — 받은편지함에 안 돌아온 unid 를 낸다
         box.delete_folder(made.path)                    # 빈 폴더만 · 이전메일함 짝까지
         rules = box.rules()                             # Rule — 조건 · 갈래 · 폴더 · 자동전달인가
         uid = box.save_rule(inbox.Rule(unid="", box="inbox", action="move_folder", folder="프로젝트",
@@ -179,8 +182,13 @@
     * 지우기는 **GET** ``agt_mail_folder_save?OpenAgent&ulan=kor&act=delete_action&nodeid=<열쇠>&…&nodefrom=mail`` 에 같은 주소의
       ``afdelete=Y&nodefrom=archive`` 를 한 번 더 — 앞의 것만이면 폴더 보기에선 사라지고 나무에 이전메일함 짝이 남는다.
       ⚠ 메일이 든 채 지우면 그 메일이 휴지통으로 간다
+    * 휴지통으로 보내기(웹메일 목록의 [삭제])는 **GET** ``delete_view?OpenAgent&docid=<unid,…>&folderkey=&type=&paraview=&imapuser=&owner=``
+      → 200 · 빈 답이다. 받은편지함 · 폴더 · 보낸편지함 · 임시보관함 메일이 다 같은 주소로 휴지통(``XML_Trash``)에 가고, 여러 통을
+      쉼표로 한 번에 보내도 되며, 읽음 표시는 그대로다. ``paraview`` · ``owner`` 를 비워도 같다. 답이 비어 휴지통 보기로 다시 본다.
+      ``type=remove`` 는 영구삭제라 짓지 않는다
     * 휴지통에서 되살리기는 **GET** ``TrashDoc?OpenAgent&docid=<unid>&imapuser=&owner=&type=recovery`` → ``{ "result":true }`` 이고
-      받은 메일은 받은편지함으로 안 읽음 그대로 돌아온다
+      받은 메일은 받은편지함으로 안 읽음 그대로 돌아온다. 임시보관함에 있던 메일은 임시보관함으로 읽음 그대로 돌아온다.
+      보낸편지함 · 폴더에 있던 메일이 어디로 돌아오는지는 안 쟀다. 휴지통 보기(``XML_Trash``)의 열은 받은편지함과 같은 꼴이다(제목 · 보낸 분)
     * 폴더 이름은 화면처럼 역슬래시 · 따옴표 · ``| _ < >`` 와 시스템 폴더 이름(``inbox`` · ``$trash`` · ``(drafts)`` …)을 막는다
 
     메일 규칙 — 같은 실측 코멘트가 든다(꼴은 화면 스크립트 ``fmmailrule.js`` 그대로)
@@ -232,6 +240,7 @@ ALL_VIEW_TITLE = "XML_모든편지함"
 DRAFT_VIEW_TITLE = "XML임시편지함"
 DRAFTS_FOLDER = "(Drafts)"          # 임시보관함 줄의 folder — 시스템 폴더 이름 그대로
 SENT_FOLDER = "(Sent)"              # 보낸편지함 줄의 folder — 같은 꼴
+TRASH_FOLDER = "($Trash)"           # 휴지통 줄의 folder — 같은 꼴
 # 검색 손이 시스템 편지함을 가리키는 표지(``category`` 의 ``[${…}]`` · 메일함마다 같다) → 줄의 folder
 SEARCH_SYSTEM_BOXES = {"${INBOX}": "", "${SENT}": SENT_FOLDER}
 # 검색 — 웹메일 검색 창이 부르는 손(목록 JSON). 범위는 그 창의 고름 상자 값이고, 「전체」는 임시보관함을 안 든다(머리말)
@@ -309,9 +318,9 @@ ID_FORM = re.compile(r"^\s*([^\s()/@]+)\s*\(([^()]+)\)\s*$")
 
 # ⚠ 읽음 표시를 바꾸는 명령 — 읽기 길은 이 주소를 짓지 않고, 지으려 하면 서버에 닿기 전에 막는다
 MARKS_AS_READ = re.compile(r"[?&](opendocument|editdocument)\b", re.IGNORECASE)
-# 메일함을 바꾸는 주소 전부 — 읽음으로 · 안 읽음으로(되돌리기) · 폴더 만들기 · 지우기 · 메일 옮기기 · 휴지통 되살리기 · 규칙
+# 메일함을 바꾸는 주소 전부 — 읽음으로 · 안 읽음으로(되돌리기) · 폴더 만들기 · 지우기 · 메일 옮기기 · 휴지통으로 · 되살리기 · 규칙
 CHANGES_MAILBOX = re.compile(r"[?&](opendocument|editdocument)\b|/ag_read_cancel\b|/agt_mail_folder_save\b|/folder2\b"
-                             r"|/trashdoc\b|/mailrule\b|/memo\b|/xam_upload\b", re.IGNORECASE)
+                             r"|/trashdoc\b|/delete_view\b|/mailrule\b|/memo\b|/xam_upload\b", re.IGNORECASE)
 
 # 폴더 나무 — 웹메일 화면이 폴더 고름 상자를 채우는 보기(JSON). 열은 경로 · 폴더 열쇠 · 부모 열쇠(실측)
 FOLDER_TREE_VIEW = "fdd_folder_fullpath"
@@ -324,6 +333,8 @@ SYSTEM_FOLDER_NAMES = ("inbox", "sent", "draft", "drafts", "trash", "junk")   # 
 FOLDER_SAVE_AGENT = "agt_mail_folder_save"
 MOVE_FORM = "folder2"
 TRASH_AGENT = "TrashDoc"
+TRASH_SEND_AGENT = "delete_view"                 # 웹메일 목록의 [삭제] — type 을 비우면 휴지통으로(type=remove 는 영구삭제라 안 짓는다)
+TRASH_VIEW = "XML_Trash"                         # 휴지통 보기 — 보내기 뒤 다시 보는 자리
 
 # 메일 규칙(받은 · 보낸 메일을 서버가 스스로 옮기는 기준) — 목록 보기 · 규칙 문서 · 저장 폼(실측 · fmmailrule.js)
 RULE_VIEW = "XML_Rule"
@@ -784,6 +795,13 @@ class Mailbox:
         root = self._view(SENT_VIEW, count, start)
         return [_entry(e, folder=SENT_FOLDER) for e in root.iter("viewentry")]
 
+    def list_trash(self, count: int = 30, start: int = 1) -> list[Entry]:
+        """휴지통(``XML_Trash``)을 ``count`` 통 — 줄의 ``folder`` 는 ``TRASH_FOLDER`` 다. 열은 받은편지함과 같은 꼴이다(제목 · 보낸 분)."""
+        root = self._view(TRASH_VIEW, count, start)
+        entries = [_entry(e, folder=TRASH_FOLDER) for e in root.iter("viewentry")]
+        log.info("휴지통 목록: %d통", len(entries))
+        return entries
+
     def list_drafts(self, count: int = 30, start: int = 1) -> list[Entry] | None:
         """임시보관함을 새것부터 ``count`` 통 — 줄의 ``folder`` 는 ``(Drafts)`` 다. 보기가 이 메일함에 없으면 None.
 
@@ -1179,6 +1197,33 @@ class Mailbox:
         if any(f.path == path for f in self._fresh_folders()):
             raise MailboxError(f"폴더 지우기 요청은 OK 였는데 다시 보니 남았다: {path!r}")
 
+    def trash_mails(self, unids) -> None:
+        """⚠ 메일함을 바꾼다 — 메일들을 휴지통으로 보낸다(웹메일 목록의 [삭제]). 받은편지함 · 폴더 · 보낸편지함 · 임시보관함 어디의
+        메일이든 같고 읽음 표시는 그대로다(실측). 영구삭제는 하지 않는다 — 되살리기는 ``restore_mails``.
+
+        서버의 답이 비어 증거가 못 되므로 보낸 뒤 휴지통 보기로 다시 본다 — 안 든 메일이 있으면 ``MailboxError``.
+        """
+        ids = [_unid(u) for u in unids]
+        if not ids:
+            raise MailboxConfigError("휴지통으로 보낼 메일이 없다")
+        self._send_folder(f"{self.db_path}/{TRASH_SEND_AGENT}?OpenAgent&docid={','.join(ids)}"
+                          "&folderkey=&type=&paraview=&imapuser=&owner=", "메일을 휴지통으로 보냈다", ok=None)
+        landed = self._in_trash(ids)
+        missing = [u for u in ids if u.upper() not in landed]
+        if missing:
+            raise MailboxError(f"휴지통으로 보내는 요청은 받았는데 {len(missing)}/{len(ids)} 통이 휴지통에 없다")
+
+    def _in_trash(self, ids: list[str]) -> set[str]:
+        """휴지통 보기에 든 ``ids`` — 다 찾거나 보기가 끝날 때까지 1000 줄씩(``_landed`` 와 같은 꼴)."""
+        want, found, start, first = {u.upper() for u in ids}, set(), 1, None
+        while want - found:
+            rows = [e.get("unid", "").upper() for e in self._view(TRASH_VIEW, 1000, start).iter("viewentry")]
+            if not rows or rows[0] == first:
+                break
+            found |= want & set(rows)
+            first, start = rows[0], start + len(rows)
+        return found
+
     def restore_from_trash(self, mail: Entry | Found | str) -> None:
         """⚠ 메일함을 바꾼다 — 휴지통의 메일 하나를 되살린다(받은 메일은 받은편지함으로 · 실측). 답이 ``result`` 참이 아니면 ``MailboxError``."""
         unid = _unid(mail.unid if isinstance(mail, Found) else mail)
@@ -1190,6 +1235,27 @@ class Mailbox:
             raise MailboxError(f"되살리기 답이 JSON 이 아니다: {data[:80]!r}") from exc
         if not (isinstance(answer, dict) and answer.get("result") is True):
             raise MailboxError(f"되살리기가 서지 않았다: {data[:80]!r}")
+
+    def restore_mails(self, unids) -> list[str]:
+        """⚠ 메일함을 바꾼다 — 휴지통의 메일들을 되살린다(웹메일 휴지통의 [복원] · 한 통씩 ``restore_from_trash``). 받은 메일은
+        받은편지함으로 읽음 표시 그대로 돌아온다(실측). 임시보관함 메일은 임시보관함으로 돌아온다(실측). 보낸편지함 · 폴더에 있던 메일이 어디로 돌아오는지는 안 쟀다.
+
+        서버가 참을 내도 되살린 뒤 휴지통 보기로 다시 본다 — 남은 메일이 있으면 ``MailboxError``. 도중에 지면 몇 통을 되살린 뒤
+        멎었나를 같은 갈래의 오류로 낸다. 내는 것 — 휴지통에서는 빠졌는데 받은편지함에 안 든 unid(되살린 자리를 모르는 메일).
+        """
+        ids = [_unid(u) for u in unids]
+        if not ids:
+            raise MailboxConfigError("되살릴 메일이 없다")
+        for done, u in enumerate(ids):
+            try:
+                self.restore_from_trash(u)
+            except MailboxError as exc:
+                raise type(exc)(f"{done}/{len(ids)} 통을 되살린 뒤 멎었다 — {exc}") from exc
+        left = self._in_trash(ids)
+        if left:
+            raise MailboxError(f"되살리기 요청은 받았는데 {len(left)}/{len(ids)} 통이 아직 휴지통에 있다")
+        home = self._landed("", ids)
+        return [u for u in ids if u.upper() not in home]
 
     # ── 메일 규칙 — 목록 · 읽기는 읽기 길, 넣기 · 고치기 · 지우기는 바꾸는 손이다(머리말 「메일 규칙」) ──────────────
 
@@ -1440,7 +1506,9 @@ class Mailbox:
         db = re.escape(self.db_path)
         if not (re.fullmatch(rf"{db}/{FOLDER_SAVE_AGENT}\?OpenAgent&ulan=kor&act=(create|delete_action)&[\w%.=&-]+", path)
                 or (form is not None and path == f"{self.db_path}/{MOVE_FORM}?OpenForm")
-                or re.fullmatch(rf"{db}/{TRASH_AGENT}\?OpenAgent&docid={_HEX32}&imapuser=&owner=&type=recovery", path)):
+                or re.fullmatch(rf"{db}/{TRASH_AGENT}\?OpenAgent&docid={_HEX32}&imapuser=&owner=&type=recovery", path)
+                or re.fullmatch(rf"{db}/{TRASH_SEND_AGENT}\?OpenAgent&docid={_HEX32}(,{_HEX32})*"
+                                "&folderkey=&type=&paraview=&imapuser=&owner=", path)):
             raise ChangeRefused(f"폴더를 바꾸는 손의 꼴이 아니다: {path}")
         body = urllib.parse.urlencode(form).encode() if form is not None else None
         request = urllib.request.Request(self.server + path, data=body, method="POST" if form is not None else "GET")
