@@ -5429,43 +5429,98 @@ function Complete-PipPackages {
 #   설치가 「설치 실패」 · 끝 검증 `[?]` 로 선다(PAISetup #30). 이 기록의 글자는 node 가 다 선 뒤에 나와 DRM 이 끼는 PC 에서도 안
 #   잃는다(#32).
 # ⚠ **종료코드로 안 가른다** — npm 은 그 패키지가 없거나 전역 폴더에 군더더기가 있으면 1 로 끝나면서도 JSON 은 온전히 낸다. 넘겼거나
-#   못 띄웠거나 JSON 을 못 읽었거나 npm 이 오류를 적었으면 `unmeasured` 다 — 「없다」가 아니다(결정 0141). 넘김의 `Why` 는 비운다
+#   못 띄웠거나 npm 이 오류를 적었으면 `unmeasured` 다 — 「없다」가 아니다(결정 0141). 넘김의 `Why` 는 비운다
 #   (`Add-UnmeasuredStep` 이 `$ProbeCap` 넘김 글로 채운다).
 # 맨바닥 PC 의 `ENOENT` 는 「없다」다 — 전역 폴더(`$NpmGlobalDir`)는 첫 `npm install -g` 가 만들어, 그 전에는 npm 이 그 자리를 못
-#   읽고 `error.code = ENOENT` 를 적는다. 그때 `npm root -g` 로 전역 패키지가 사는 폴더를 묻고, 그 폴더가 정말 없으면 깔린 것이
+#   읽고 `error.code = ENOENT` 를 적는다. 그때 전역 패키지가 사는 폴더를 묻고(`$askRoot`), 그 폴더가 정말 없으면 깔린 것이
 #   없다는 잰 값이다. 폴더가 있는데 `ENOENT` 거나 그 물음이 졌으면 그대로 못 쟀다다.
+# ⚠ **돌았는데 JSON 이 없으면 한 번 더 묻고, 그래도 없으면 전역 폴더를 직접 읽는다**(PAISetup #70). Fasoo DRM 이 끼는 회사 PC 는
+#   금방 끝나는 짧은 실행의 stdout 을 삼킬 수 있다(#32 의 python 과 같은 그림) — 그 한 번으로 CLI 깔기가 통째로 빠졌다. 폴더가
+#   없으면 깔린 것이 없고, 있으면 패키지 폴더가 곧 npm 이 `ls` 로 읽는 기록이다(판은 그 `package.json`). 폴더를 못 물었으면 못 쟀다고
+#   남기되, 까닭에 마지막 판의 종료 값 · stdout · stderr 끝 줄을 단다. 진 판마다 받은 글 원문은 세부 기록에 남긴다 — 재는 부름이라
+#   러너(`-Quiet`)는 안 남긴다.
 function Measure-NpmGlobal([string[]]$Pkgs) {
-  $probe = "npm ls -g $($Pkgs -join ' ') --depth=0 --json"
+  $probe  = "npm ls -g $($Pkgs -join ' ') --depth=0 --json"
+  $lsArgs = @('ls','-g') + $Pkgs + @('--depth=0','--json')
   # 물음 하나가 낸 값을 넘긴 패키지마다 — 판은 없다
   $each = { param([string]$State, [string]$P, [string]$W) $m = @{}; foreach ($k in $Pkgs) { $m[$k] = @{ State = $State; Ver = ''; Probe = $P; Why = $W } }; $m }
-  $log = [IO.Path]::GetTempFileName()
-  try {
-    $rc = Invoke-LoggedCapped 'npm' (@('ls','-g') + $Pkgs + @('--depth=0','--json')) $log $ProbeCap -Quiet
-    if ($rc -eq -2) { Add-ProbeOverflow "npm ls -g $($Pkgs -join ' ')" $ProbeCap; return (& $each 'unmeasured' $probe '') }
-    if ($rc -eq -1) { return (& $each 'unmeasured' $probe (Format-ProbeWhy $rc $ProbeCap)) }
-    $j = $null
-    try { $j = Get-Content -LiteralPath $log -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json } catch { }
-    if (-not $j)   { return (& $each 'unmeasured' $probe 'JSON 을 안 내') }
-    if ($j.error) {
-      if ("$($j.error.code)" -eq 'ENOENT') {
-        $rl = [IO.Path]::GetTempFileName()
-        try {
-          $rrc  = Invoke-LoggedCapped 'npm' @('root','-g') $rl $ProbeCap -Quiet
-          $root = ("$(@(Get-Content -LiteralPath $rl -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0])").Trim()
-        } finally { Remove-Item -LiteralPath $rl, "$rl.err" -ErrorAction SilentlyContinue }
-        if ($rrc -eq -2) { Add-ProbeOverflow 'npm root -g' $ProbeCap; return (& $each 'unmeasured' 'npm root -g' '') }
-        if ($rrc -eq 0 -and $root -and -not (Test-Path -LiteralPath $root)) { return (& $each 'no' '' '') }
+  # JSON 을 못 받은 판의 까닭 — 「``명령`` 이 …」 뒤에 이어 읽힌다. 글은 한 줄로 자르고 주소에 박힌 자격은 가린다
+  $cut  = { param([string]$S) $s = "$S".Trim(); if ($UrlCredential) { $s = $s -replace $UrlCredential, '***@' }; if ($s.Length -gt 120) { $s.Substring(0, 120) + '…' } else { $s } }
+  $miss = { param($Rc, [string]$Out, [string]$Err)
+    $bits = @(('종료 값 {0} (0x{0:X8})' -f $Rc), "stdout $([Text.Encoding]::UTF8.GetByteCount("$Out")) B")
+    $o1 = @("$Out" -split "`r?`n" | Where-Object { $_.Trim() })
+    if ($o1.Count) { $bits += "stdout 첫 줄 「$(& $cut $o1[0])」" }
+    $e1 = @("$Err" -split "`r?`n" | Where-Object { $_.Trim() })
+    $bits += if ($e1.Count) { "stderr 끝 줄 「$(& $cut $e1[-1])」" } else { 'stderr 없음' }
+    "JSON 을 안 내($($bits -join ' · '))" }
+  # `npm ls` 를 한 번 묻는다 — @{ Rc; J; Miss }. 돌았는데 JSON 이 없는 판만 `Miss` 가 선다
+  $ask = {
+    $log = [IO.Path]::GetTempFileName()
+    $took = [Diagnostics.Stopwatch]::StartNew()
+    try {
+      $rc = Invoke-LoggedCapped 'npm' $lsArgs $log $ProbeCap -Quiet
+      $out = ''; $err = ''
+      try { $out = [IO.File]::ReadAllText($log, [Text.Encoding]::UTF8) } catch { }
+      try { $err = [IO.File]::ReadAllText("$log.err", [Text.Encoding]::UTF8) } catch { }
+      $j = $null; $why = ''
+      if ($rc -ne -1 -and $rc -ne -2) {
+        if ("$out".Trim()) { try { $j = $out | ConvertFrom-Json } catch { } }
+        if (-not $j) {
+          $why = & $miss $rc $out $err
+          try { Add-RunDetail 'npm' $lsArgs $rc $took.Elapsed.TotalSeconds @($log, "$log.err") 'JSON 없음' } catch { }
+        }
       }
-      return (& $each 'unmeasured' $probe '오류를 적어')
-    }
+      @{ Rc = $rc; J = $j; Miss = $why }
+    } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+  }
+  # 전역 패키지가 사는 폴더 — @{ Rc; Root }. 배선이 이미 물은 전역 자리(`npm prefix -g`)가 있으면 node 를 다시 띄우지 않고 그 아래
+  #   `node_modules` 다(윈도의 npm 꼴). 없으면 `npm root -g` 에 묻는다. 못 물었으면 `Root` 가 빈 글자다
+  $askRoot = {
+    if ($script:NpmGlobalAsk -and $script:NpmGlobalAsk.State -eq 'asked') { return @{ Rc = 0; Root = (Join-Path $NpmGlobalDir 'node_modules') } }
+    $rl = [IO.Path]::GetTempFileName()
+    try {
+      $rrc  = Invoke-LoggedCapped 'npm' @('root','-g') $rl $ProbeCap -Quiet
+      $root = ("$(@(Get-Content -LiteralPath $rl -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { "$_".Trim() })[0])").Trim()
+    } finally { Remove-Item -LiteralPath $rl, "$rl.err" -ErrorAction SilentlyContinue }
+    if ($rrc -eq -2) { Add-ProbeOverflow 'npm root -g' $ProbeCap }
+    @{ Rc = $rrc; Root = $(if ($rrc -eq 0) { $root } else { '' }) }
+  }
+  $r = & $ask
+  if ($r.Miss) { $r = & $ask }
+  if ($r.Rc -eq -2) { Add-ProbeOverflow "npm ls -g $($Pkgs -join ' ')" $ProbeCap; return (& $each 'unmeasured' $probe '') }
+  if ($r.Rc -eq -1) { return (& $each 'unmeasured' $probe (Format-ProbeWhy $r.Rc $ProbeCap)) }
+  $j = $r.J
+  if (-not $j) {
+    $gr = & $askRoot
+    if ($gr.Rc -eq -2) { return (& $each 'unmeasured' 'npm root -g' '') }
+    if (-not $gr.Root) { return (& $each 'unmeasured' $probe "두 번 다 $($r.Miss)") }
+    try { Add-RunSpan 'npm 기록' "JSON 을 두 번 못 받아 전역 폴더($($gr.Root))를 직접 읽음" 0 } catch { }
+    if (-not (Test-Path -LiteralPath $gr.Root)) { return (& $each 'no' '' '') }
     $m = @{}
     foreach ($k in $Pkgs) {
-      $d = if ($j.dependencies) { $j.dependencies.$k } else { $null }
-      $m[$k] = if (-not $d) { @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
-               else { @{ State = 'yes'; Ver = ("$($d.version)").Trim(); Probe = ''; Why = '' } }
+      $pd = Join-Path $gr.Root $k
+      if (-not (Test-Path -LiteralPath $pd)) { $m[$k] = @{ State = 'no'; Ver = ''; Probe = ''; Why = '' }; continue }
+      $v = ''
+      try { $v = ("$((Get-Content -LiteralPath (Join-Path $pd 'package.json') -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json).version)").Trim() } catch { }
+      $m[$k] = @{ State = 'yes'; Ver = $v; Probe = ''; Why = '' }
     }
     return $m
-  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+  }
+  if ($j.error) {
+    if ("$($j.error.code)" -eq 'ENOENT') {
+      $gr = & $askRoot
+      if ($gr.Rc -eq -2) { return (& $each 'unmeasured' 'npm root -g' '') }
+      if ($gr.Root -and -not (Test-Path -LiteralPath $gr.Root)) { return (& $each 'no' '' '') }
+    }
+    return (& $each 'unmeasured' $probe '오류를 적어')
+  }
+  $m = @{}
+  foreach ($k in $Pkgs) {
+    $d = if ($j.dependencies) { $j.dependencies.$k } else { $null }
+    $m[$k] = if (-not $d) { @{ State = 'no'; Ver = ''; Probe = ''; Why = '' } }
+             else { @{ State = 'yes'; Ver = ("$($d.version)").Trim(); Probe = ''; Why = '' } }
+  }
+  return $m
 }
 
 # npm 이 「깔았다」 한 CLI 가 진짜 실행 파일 대신 자리표시만 들었나 — `@{ State; Probe; Why }`. 행의 `NativeBin` 파일이 4 KB 밑이면
