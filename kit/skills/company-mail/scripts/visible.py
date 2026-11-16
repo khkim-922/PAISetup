@@ -1,21 +1,31 @@
-"""보이는 글 — 메일 글에서 사람 눈에 안 보이는 것을 걷는 한 손. 메일을 모델이 읽게 내기 전에 지난다 — 받는 사람 눈에는 안 보이는데
-모델에게만 읽히는 글(숨긴 지시)이 그대로 넘어가지 않게. 이 스킬의 명령(``mail.py``)과, 깔린 자리에서 이 손을 싣는 앱이 함께 쓴다.
+"""보이는 글 — 사내 앱의 글(메일 · 게시글 · 사규 본문)에서 사람 눈에 안 보이는 것을 걷고 읽을 글자로 푸는 한 손. 글을 모델이 읽게 내기 전에
+지난다 — 사람 눈에는 안 보이는데 모델에게만 읽히는 글(숨긴 지시)이 그대로 넘어가지 않게. 이 스킬의 명령(``mail.py``) · 형제 스킬
+company-board · company-regulation 의 명령 · 깔린 자리에서 이 손을 싣는 앱이 함께 쓴다 — 본문 HTML 을 푸는 손은 이 한 벌이다.
 
 부르는 꼴::
 
-    v = visible.parse(html)                # Visible(text, hidden, comments) — HTML 에서 그려지는 글만
+    v = visible.parse(html)                # Visible(text, hidden, comments, images) — HTML 에서 그려지는 글만
     v = visible.parse(html, quotes=True)   # 인용(`blockquote`) 안의 줄 머리에 `> ` — 인용을 경계로 읽는 쪽이 쓴다
+    v = visible.parse(html, tables=True)   # 표 꼴 — 표의 한 행이 한 줄이고 칸을 `TABLE_SEP` 로 가른다(게시글 · 사규 본문)
+    v = visible.parse(html, tables=True, numbered=False)   # 그림을 번호 없는 「[그림]」 으로 — 받을 길이 없는 조각(사규의 바뀐 자리)
+    v = visible.body(html)                 # 표 꼴로 풀고 글에서 보이지 않는 문자까지 걷은 것 — JSON 으로 답하는 명령의 본문
     text, n = visible.invisible(text)      # 폭 없는 문자 · 방향 뒤집기 · 태그 문자 · 제어 문자를 걷고 그 수
+    answer = visible.shown(answer)         # 답(dict · list · 글자가 겹친 것)의 글자마다 `invisible` 을 지난 사본
 
 `parse` 가 걷는 것 — 안 그리는 태그(스크립트 · 스타일 · 머리 · 개체 …) · 주석 · 숨긴 요소(`hidden` 속성 · display:none · visibility ·
 투명 · 글자 크기 1.5px 이하 · 잘린 0 높이 · 화면 밖으로 민 글) · 바탕과 같은 색의 글. 스타일은 요소의 `style` 과
 `<style>` 의 단순 선택자(태그 · .클래스 · #아이디) 규칙을 함께 본다. 그려진 화면이 아니라 마크업 · 스타일로 가른다. 깨진 HTML 도
-끝까지 읽는다 — 못 닫은 숨긴 요소는 문서 끝까지 숨긴 것으로 본다(브라우저가 그렇게 그린다).
+끝까지 읽는다 — 못 닫은 숨긴 요소는 문서 끝까지 숨긴 것으로 본다(브라우저가 그렇게 그린다). 무엇을 걷나는 어느 꼴로 부르든 같다.
 
-`parse` 가 내는 것 — `Visible`. 글은 그려진 꼴의 줄이다 — 블록 경계가 줄을 가르고, 마크업 안의 줄바꿈 · 겹친 빈칸은 한 빈칸이다(`<pre>`
+`parse` 가 내는 것 — `Visible`. 글은 그려진 꼴의 줄이고, 그려지는 그림은 그 자리에 「[그림 N]」 으로 서며 주소는 `images` 의 N 번째다 — 블록 경계가 줄을 가르고, 마크업 안의 줄바꿈 · 겹친 빈칸은 한 빈칸이다(`<pre>`
 밖). `hidden` 은 걷은 숨긴 덩이(실행 태그 · 숨긴 요소 · 바탕색 글)의 수, `comments` 는 걷은 주석의 글이다 — 주석은 어느 메일
 프로그램도 안 그리는 글이라 걷기만 하고, 숨긴 덩이로 셀지는 부르는 쪽이 가른다(Outlook 의 조건부 주석은 거의 모든 메일에 있다).
 폭 없는 문자는 `parse` 가 안 걷는다 — HTML 이 아닌 글(제목 · 이름 · 평문 본문)에도 들어 `invisible` 이 따로 걷는다.
+
+표 꼴(`tables=True`)의 줄 — 표는 한 행이 한 줄이고 칸을 `TABLE_SEP` 로 가른다. 칸 안의 문단 · 줄바꿈은 빈칸이 되고, 합친 칸(rowspan ·
+colspan)은 차지한 자리마다 같은 글자를 되풀이해 줄마다 칸 수가 같다. 칸 안에 든 표는 그 칸 안에서 행을 `ROW_SEP` 로 잇는다. 숨긴 칸 · 행은
+글자만 빠지고 자리는 지킨다 — 열이 안 밀리고, 글자가 하나도 안 남은 행은 줄을 안 낸다. 표 밖은 블록마다 앞뒤로 줄을 갈라 문단 사이가 빈 줄이고,
+마크업 안의 줄바꿈은 그대로 줄바꿈이다. `quotes` 는 그려진 꼴에만 건다 — 표 꼴에는 인용 머리를 안 단다.
 표준 라이브러리만 쓴다.
 """
 
@@ -42,13 +52,20 @@ _COLOR_NEAR = 24               # 글자색과 바탕이 채널마다 이만큼 �
 _SKIP_TAGS = frozenset({"script", "style", "head", "title", "noscript", "template", "svg", "object",
                         "iframe", "xml", "meta", "link", "embed", "applet", "audio", "video", "canvas"})
 _RUNS = frozenset({"script", "noscript", "template", "iframe", "object"})   # 걷으면 숨긴 덩이로 세는 안 그리는 태그
+_SELF_CLOSED = frozenset({"svg"})   # 안 그리는 태그 가운데 `<svg/>` 꼴로 제 자리에서 닫히는 것 — 안 닫으면 그 뒤의 글이 문서 끝까지 걷힌다
 _VOID_TAGS = frozenset({"br", "img", "hr", "meta", "link", "input", "wbr", "col", "area", "base",
                         "source", "track", "embed", "param", "keygen"})
 _BLOCK_TAGS = frozenset({"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "table", "ul", "ol",
                          "blockquote", "hr", "section", "article", "header", "footer", "pre", "dl", "dt", "dd",
                          "center", "form", "fieldset", "address", "body", "html"})
 _CLOSES_P = _BLOCK_TAGS - {"br", "body", "html"}
+IMAGE_WORD = "그림"             # 글 안에서 그려지는 그림의 자리 — 「[그림 N]」, N 은 ``Visible.images`` 의 차례
 QUOTE_MARK = "> "              # 인용 안의 줄 머리 — 인용을 경계로 읽는 쪽이 이 꼴(`>`)을 읽는다
+TABLE_SEP = " | "              # 표 꼴에서 한 행의 칸을 가르는 자리 — 표의 행인가를 이 글자로 가리는 쪽도 이 이름을 읽는다
+ROW_SEP = " / "                # 표 꼴에서 칸 안에 든 표의 행을 잇는 자리
+_SPAN_MAX = 200                # colspan · rowspan 으로 받는 가장 큰 수 — 깨진 값이 한 줄을 끝없이 늘리지 않게
+# 표 꼴에서 앞뒤로 줄을 가르는 블록 — 줄만 긋는 것(br · hr)과 표의 뼈대(tr · table)는 그 꼴이 따로 다룬다
+_PARA_TAGS = _BLOCK_TAGS - {"br", "hr", "tr", "table"}
 
 
 @dataclass(frozen=True)
@@ -56,6 +73,7 @@ class Visible:
     text: str
     hidden: int = 0                       # 걷은 숨긴 덩이
     comments: tuple[str, ...] = ()        # 걷은 주석의 글(빈 주석 빼고)
+    images: tuple[str, ...] = ()          # 그려지는 그림의 주소 — 본문 차례 · 글의 「[그림 N]」 의 N 번째(1 부터)
 
 
 def _color(value: str) -> tuple[int, int, int] | str | None:
@@ -132,12 +150,60 @@ def _hard_hidden(d: Mapping[str, str], attrs: Mapping[str, str]) -> bool:
     return False
 
 
-class _Parser(HTMLParser):
-    """HTML → 보이는 글. 요소마다 (숨김 · 글자색 · 바탕) 을 쌓아 내려 보낸다."""
+def _span(raw) -> int:
+    """colspan · rowspan 값 — 수가 아니거나 1 보다 작으면 1."""
+    try:
+        return max(1, min(int(raw), _SPAN_MAX))
+    except (TypeError, ValueError):
+        return 1
 
-    def __init__(self, quotes: bool) -> None:
+
+class _Table:
+    """표 하나 — 행을 칸 목록으로 모아 한 줄씩 낸다. 합친 칸은 차지한 자리마다 같은 글자를 채운다(줄마다 열이 맞게)."""
+
+    def __init__(self):
+        self.lines: list[str] = []
+        self.row: list[str] | None = None
+        self.in_cell = False
+        self.carry: dict[int, tuple[int, str]] = {}   # 열 → (아래로 더 채울 행 수, 글자) — 세로로 합친 칸
+
+    def _fill(self) -> None:
+        while len(self.row) in self.carry:
+            left, text = self.carry.pop(len(self.row))
+            if left > 1:
+                self.carry[len(self.row)] = (left - 1, text)
+            self.row.append(text)
+
+    def cell(self, text: str, colspan: int, rowspan: int) -> None:
+        if self.row is None:
+            self.row = []
+        for _ in range(colspan):
+            self._fill()
+            if rowspan > 1:
+                self.carry[len(self.row)] = (rowspan - 1, text)
+            self.row.append(text)
+
+    def close_row(self) -> None:
+        if self.row is None:
+            return
+        self._fill()
+        for col in [c for c in self.carry if c >= len(self.row)]:   # 이 행이 안 닿은 자리의 합친 칸 — 행 수만 센다
+            left, text = self.carry.pop(col)
+            if left > 1:
+                self.carry[col] = (left - 1, text)
+        if any(self.row):
+            self.lines.append(TABLE_SEP.join(self.row))
+        self.row = None
+
+
+class _Parser(HTMLParser):
+    """HTML → 보이는 글. 요소마다 (숨김 · 글자색 · 바탕) 을 쌓아 내려 보낸다. 무엇이 보이나는 이 클래스가 가르고, 보이는 것을 어떤 줄로
+    적나는 갈고리 넷(`_open` · `_close` · `_image` · `_text`)과 `text` 가 든다 — 여기 것은 그려진 꼴의 줄이다."""
+
+    def __init__(self, quotes: bool, numbered: bool = True) -> None:
         super().__init__(convert_charrefs=True)
         self.quotes = quotes
+        self.numbered = numbered
         self.parts: list[str] = []
         self.stack: list[tuple[str, bool, Any, Any, bool]] = []   # (태그, 숨김, 글자색, 바탕, 줄바꿈을 그리나)
         self.skip = 0
@@ -147,6 +213,7 @@ class _Parser(HTMLParser):
         self._style_buf: list[str] | None = None
         self._counted: set[int] = set()
         self.pre = 0
+        self.images: list[str] = []
 
     def _break(self) -> None:
         """블록 경계 — 글 없이 잇단 경계는 한 줄바꿈이다. 빈 블록(`<p>&nbsp;</p>`)만 빈 줄을 낸다 — 빈 줄이 문단을 가른다."""
@@ -165,6 +232,44 @@ class _Parser(HTMLParser):
             if p.strip(" \t\r\n"):
                 return False
         return True
+
+    # 줄 — 그려진 꼴
+    def _open(self, tag: str, attrs: Mapping[str, str]) -> None:
+        """여는 태그가 긋는 줄 경계."""
+        if tag == "br":
+            self.parts.append("\n")
+        elif tag in _BLOCK_TAGS:
+            self._break()
+        if tag == "pre":
+            self.pre += 1
+        if tag in ("td", "th"):
+            self.parts.append(" ")
+
+    def _close(self, tag: str) -> None:
+        """닫는 태그가 긋는 줄 경계."""
+        if tag in _BLOCK_TAGS and tag != "br":
+            self._break()
+        if tag == "pre":
+            self.pre = max(0, self.pre - 1)
+
+    def _image(self, mark: str) -> None:
+        """그려지는 그림의 자리 표지를 적는다."""
+        self.parts.append(mark)
+
+    def _text(self, data: str) -> None:
+        """보이는 글 한 조각을 적는다."""
+        # 마크업 안의 줄바꿈은 그려지면 빈칸이다(`<pre>` 밖) — 안 그러면 `<br>` 뒤의 줄바꿈이 빈 줄로 서서 문단이 쪼개진다
+        data = data if self.pre or (self.stack and self.stack[-1][4]) else data.replace("\n", " ")
+        if self.quotes and data.strip() and any(t == "blockquote" for t, *_ in self.stack):
+            if self._line_open():
+                self.parts.append(QUOTE_MARK)
+            data = data.replace("\n", "\n" + QUOTE_MARK)
+        self.parts.append(data)
+
+    def text(self) -> str:
+        """다 읽은 뒤의 글 — 줄마다 겹친 빈칸을 하나로, 잇단 빈 줄을 하나로."""
+        lines = [" ".join(x.split()) for x in "".join(self.parts).split("\n")]
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
     # 상태
     def _top(self) -> tuple[bool, Any, Any]:
@@ -198,14 +303,14 @@ class _Parser(HTMLParser):
                 self.stack.pop()
             if self.stack:
                 self.stack.pop()
-        if tag == "br":
-            self.parts.append("\n")
-        elif tag in _BLOCK_TAGS:
-            self._break()
-        if tag == "pre":
-            self.pre += 1
-        if tag in ("td", "th"):
-            self.parts.append(" ")
+        self._open(tag, attrs)
+        # 그림의 숨김도 `<style>` 규칙과 제 `style` 을 함께 본다 — 제 `style` 만 보면 클래스로 숨긴 그림이 글에 서고 파일로 받아진다
+        if (tag == "img" and not self.skip and not self._top()[0]
+                and not _hard_hidden({**self._rules_for(tag, attrs), **_decls(attrs.get("style", ""))}, attrs)):
+            src = attrs.get("src", "").strip()
+            if src:
+                self.images.append(src)
+                self._image(f"[{IMAGE_WORD} {len(self.images)}]" if self.numbered else f"[{IMAGE_WORD}]")
         if tag in _VOID_TAGS:
             return
         d = {**self._rules_for(tag, attrs), **_decls(attrs.get("style", ""))}
@@ -230,7 +335,9 @@ class _Parser(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs_list: list[tuple[str, str | None]]) -> None:
         self.handle_starttag(tag, attrs_list)
-        if tag.lower() not in _VOID_TAGS and tag.lower() not in _SKIP_TAGS:
+        tag = tag.lower()
+        # HTML 요소의 `/>` 는 브라우저가 닫음으로 안 받는다(`<script/>` 는 열린 채다) — 바깥 요소(`_SELF_CLOSED`)만 그 자리에서 닫힌다
+        if tag not in _VOID_TAGS and (tag not in _SKIP_TAGS or tag in _SELF_CLOSED):
             self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
@@ -241,10 +348,7 @@ class _Parser(HTMLParser):
                 self._style_buf = None
             self.skip = max(0, self.skip - 1)
             return
-        if tag in _BLOCK_TAGS and tag != "br":
-            self._break()
-        if tag == "pre":
-            self.pre = max(0, self.pre - 1)
+        self._close(tag)
         if any(t == tag for t, *_ in self.stack):
             while self.stack:
                 t = self.stack.pop()[0]
@@ -267,13 +371,7 @@ class _Parser(HTMLParser):
                     self._counted.add(key)
                     self.hidden += 1
             return
-        # 마크업 안의 줄바꿈은 그려지면 빈칸이다(`<pre>` 밖) — 안 그러면 `<br>` 뒤의 줄바꿈이 빈 줄로 서서 문단이 쪼개진다
-        data = data if self.pre or (self.stack and self.stack[-1][4]) else data.replace("\n", " ")
-        if self.quotes and data.strip() and any(t == "blockquote" for t, *_ in self.stack):
-            if self._line_open():
-                self.parts.append(QUOTE_MARK)
-            data = data.replace("\n", "\n" + QUOTE_MARK)
-        self.parts.append(data)
+        self._text(data)
 
     def handle_comment(self, data: str) -> None:
         # 주석은 메일 프로그램도 안 그리고 LLM 에도 안 간다 — 글만 넘기고, 숨긴 글로 셀지는 부르는 쪽이 가른다
@@ -290,18 +388,103 @@ class _Parser(HTMLParser):
                     self.rules.setdefault(one, {}).update(d)
 
 
-def parse(html: str, *, quotes: bool = False) -> Visible:
-    """HTML 한 편 → `Visible`. `quotes` 면 인용 안의 글 줄 머리에 `QUOTE_MARK` 를 단다. 예외를 안 올린다 — `html.parser` 가
-    넘어지면 받은 데까지 쓴다."""
-    p = _Parser(quotes)
+class _TableParser(_Parser):
+    """HTML → 보이는 글, 표 꼴의 줄로(머리말 「표 꼴의 줄」). 무엇이 보이나는 `_Parser` 그대로고 줄을 적는 갈고리만 다르다 — 숨긴
+    요소 안에서도 표의 뼈대(행 · 칸 · 합친 칸)는 따라가 열이 안 밀리게 하고 글자만 뺀다. 안 그리는 태그(`skip`) 안의 뼈대는 안 본다."""
+
+    def __init__(self, numbered: bool) -> None:
+        super().__init__(False, numbered)
+        self.tables: list[_Table] = []                   # 열린 표 — 겹치면 여럿
+        self.cells: list[tuple[list, int, int]] = []     # 열린 칸 — (글자 통, colspan, rowspan)
+
+    def _write(self, piece: str) -> None:
+        (self.cells[-1][0] if self.cells else self.parts).append(piece)
+
+    def _close_cell(self, table: _Table) -> None:
+        if table.in_cell:
+            buf, colspan, rowspan = self.cells.pop()
+            table.cell(re.sub(r"\s+", " ", "".join(buf)).strip(), colspan, rowspan)
+            table.in_cell = False
+
+    def _close_table(self) -> None:
+        table = self.tables[-1]
+        self._close_cell(table)
+        table.close_row()
+        self.tables.pop()
+        if self.cells:                                   # 칸 안에 든 표 — 그 칸의 한 줄에 잇는다
+            self._write(" " + ROW_SEP.join(table.lines) + " ")
+        else:
+            self._write("\n" + "\n".join(table.lines) + "\n")
+
+    def _open(self, tag: str, attrs: Mapping[str, str]) -> None:
+        if self.skip:
+            return
+        table = self.tables[-1] if self.tables else None
+        if tag == "table":
+            self.tables.append(_Table())
+        elif tag == "tr" and table:
+            self._close_cell(table)
+            table.close_row()
+            table.row = []
+        elif tag in ("td", "th") and table:
+            self._close_cell(table)
+            self.cells.append(([], _span(attrs.get("colspan")), _span(attrs.get("rowspan"))))
+            table.in_cell = True
+        elif tag in _PARA_TAGS or tag in ("br", "hr", "tr", "td", "th"):
+            self._write("\n")
+
+    def _close(self, tag: str) -> None:
+        if self.skip:
+            return
+        table = self.tables[-1] if self.tables else None
+        if tag in ("td", "th") and table:
+            self._close_cell(table)
+        elif tag == "tr" and table:
+            self._close_cell(table)
+            table.close_row()
+        elif tag == "table" and table:
+            self._close_table()
+        elif tag in _PARA_TAGS:
+            self._write("\n")
+
+    def _image(self, mark: str) -> None:
+        self._write(f" {mark} ")
+
+    def _text(self, data: str) -> None:
+        data = data.replace("\xa0", " ")
+        table = self.tables[-1] if self.tables else None
+        if table and not table.in_cell:                  # 표 안 · 칸 밖 — 태그 사이의 줄바꿈은 버리고 글자(표 제목)는 한 줄로
+            word = re.sub(r"\s+", " ", data).strip()
+            if word:
+                table.lines.append(word)
+            return
+        self._write(data)
+
+    def text(self) -> str:
+        while self.tables:                               # 안 닫힌 표 — 모은 데까지 낸다
+            self._close_table()
+        lines = [re.sub(r"[ \t\r\f\v]+", " ", line).strip() for line in "".join(self.parts).split("\n")]
+        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def parse(html: str, *, quotes: bool = False, tables: bool = False, numbered: bool = True) -> Visible:
+    """HTML 한 편 → `Visible`. `quotes` 면 인용 안의 글 줄 머리에 `QUOTE_MARK` 를 단다. `tables` 면 표 꼴의 줄로 낸다(머리말 「표 꼴의
+    줄」). `numbered` 가 거짓이면 그림 자리가 번호 없는 「[그림]」 이다 — 주소는 그대로 `images` 에 든다. 예외를 안 올린다 —
+    `html.parser` 가 넘어지면 받은 데까지 쓴다."""
+    p = _TableParser(numbered) if tables else _Parser(quotes, numbered)
     try:
         p.feed(html or "")
         p.close()
     except Exception:   # noqa: BLE001 — html.parser 는 거의 안 넘어지지만 넘어지면 받은 데까지 쓴다
         pass
-    lines = [" ".join(x.split()) for x in "".join(p.parts).split("\n")]
-    text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
-    return Visible(text, p.hidden, tuple(p.comments))
+    return Visible(p.text(), p.hidden, tuple(p.comments), tuple(p.images))
+
+
+def body(html: str | None, *, numbered: bool = True) -> Visible:
+    """사내 앱의 본문 HTML 한 편 → JSON 으로 답하는 명령이 실을 `Visible` — 표 꼴로 풀고(`parse(tables=True)`), 글에서 보이지 않는
+    문자까지 걷는다(`invisible`). 이어 읽기의 자리 · 글자 수를 이 글로 세면 답에 실린 글과 맞는다. `images` · `hidden` 은 `parse` 그대로다."""
+    v = parse(html or "", tables=True, numbered=numbered)
+    return Visible(invisible(v.text)[0], v.hidden, v.comments, v.images)
 
 
 def invisible(text: str) -> tuple[str, int]:
@@ -315,3 +498,15 @@ def invisible(text: str) -> tuple[str, int]:
             continue
         out.append(ch)
     return "".join(out), gone
+
+
+def shown(answer):
+    """답(dict · list · 글자가 겹친 것)의 글자마다 `invisible` 을 지난 사본 — JSON 하나로 답하는 명령이 내기 직전에 지난다. 사내 앱에서
+    온 글이 제목 · 이름 · 본문 어느 칸으로 나가든 이 한 자리를 지나게 하려는 것이다. 열쇠와 글자 아닌 값은 그대로다."""
+    if isinstance(answer, str):
+        return invisible(answer)[0]
+    if isinstance(answer, dict):
+        return {key: shown(value) for key, value in answer.items()}
+    if isinstance(answer, (list, tuple)):
+        return [shown(value) for value in answer]
+    return answer

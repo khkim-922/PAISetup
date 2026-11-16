@@ -5,21 +5,42 @@ Codex 가 넘기는 입력 꼴은 아직 실제 앱에서 못 쟀다(claude-conf
 가운데 처음 것이고, 상대 경로는 입력의 `cwd` 기준이다.
 **못 잰 자리는 말없이 넘기지 않는다** — 경로를 못 찾았거나 재는 자가 죽으면 막지 않고 「못 쟀다」를 곁에 붙인다
 (`image-gate.py` 의 규율과 같다). 말없이 넘기면 그림 문이 선 줄 알고 큰 그림이 그대로 간다.
+**그림 문 몸통은 이 프로세스 안에서 돈다** — 파일로 실어 `main()` 을 부른다. 자식 해석기를 띄우면 그림 한 장에 해석기가
+두 번 뜬다. 그래서 몸통을 따로 끊는 시한은 없다 — 훅을 거는 쪽의 한도가 이 프로세스째 끊는다.
 """
 
+import contextlib
+import importlib.util
+import io
 import json
 import os
-import subprocess
 import sys
 
 PATH_KEYS = ('path', 'file_path', 'image_path')
-GATE_TIMEOUT_SEC = 8   # 훅 한도(10초) 안에서 끝나게 — 넘기면 「못 쟀다」를 붙이고 비킨다
+BODY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'image-gate.py')
+DIED_WHY_CHARS = 160   # 죽은 까닭(예외 글)을 곁말에 싣는 길이
 
 
 def note(text):
     sys.stdout.write(json.dumps({'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext': text}},
                                 ensure_ascii=False))
     return 0
+
+
+def gate(payload):
+    """그림 문 몸통에 입력 하나를 먹인다 → (종료 값, 몸통이 stdout 에 낸 글). 몸통은 stdin 에서 읽고 stdout 에 쓰는 꼴이라 그
+    둘만 이 한 번 갈아 끼우고 되돌린다. 몸통이 죽으면 그 예외(`SystemExit` 포함)가 그대로 오른다."""
+    spec = importlib.util.spec_from_file_location('image_gate_body', BODY)
+    body = importlib.util.module_from_spec(spec)
+    out, stdin = io.StringIO(), sys.stdin
+    sys.stdin = io.StringIO(json.dumps(payload, ensure_ascii=False))
+    try:
+        with contextlib.redirect_stdout(out):
+            spec.loader.exec_module(body)
+            rc = body.main()
+    finally:
+        sys.stdin = stdin
+    return rc, out.getvalue()
 
 
 def main():
@@ -53,24 +74,14 @@ def main():
     adapted['tool_name'] = 'Read'
     adapted['tool_input'] = {'file_path': path}
 
-    body = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'image-gate.py')
     try:
-        proc = subprocess.run(
-            [sys.executable, '-X', 'utf8', body],
-            input=json.dumps(adapted, ensure_ascii=False),
-            text=True,
-            encoding='utf-8',
-            capture_output=True,
-            check=False,
-            timeout=GATE_TIMEOUT_SEC,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return note(f'그림 문 — 재는 자를 못 돌려 안 쟀다({type(exc).__name__})')
-    if proc.stdout:
-        sys.stdout.write(proc.stdout)
-    elif proc.returncode != 0:
-        tail = (proc.stderr or '').strip().splitlines()[-1:] or ['']
-        return note(f'그림 문 — 재는 자가 죽어 안 쟀다(종료 {proc.returncode} · {tail[0][:160]})')
+        rc, said = gate(adapted)
+    except (Exception, SystemExit) as exc:  # noqa: BLE001 — 몸통이 어떻게 죽든 막지 않고 못 쟀다고 댄다
+        return note(f'그림 문 — 재는 자가 죽어 안 쟀다({type(exc).__name__}: {str(exc)[:DIED_WHY_CHARS]})')
+    if said:
+        sys.stdout.write(said)
+    elif rc:
+        return note(f'그림 문 — 재는 자가 죽어 안 쟀다(종료 {rc})')
     return 0
 
 

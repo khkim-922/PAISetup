@@ -31,11 +31,9 @@
 
 from __future__ import annotations
 
-import html
 import json
 import os
 import pathlib
-import re
 import sys
 import time
 import urllib.error
@@ -82,16 +80,6 @@ def _opener(jar=None):
     return urllib.request.build_opener(*parts)
 
 
-def _sso_form(page: str) -> dict:
-    out = {}
-    for tag in re.findall(r"<input[^>]*>", page, flags=re.I):
-        name = re.search(r'name\s*=\s*["\']([^"\']+)', tag, flags=re.I)
-        value = re.search(r'value\s*=\s*["\']([^"\']*)', tag, flags=re.I)
-        if name:
-            out[name.group(1)] = html.unescape(value.group(1)) if value else ""
-    return out
-
-
 class App:
     def __init__(self, session_file: pathlib.Path | str, *, timeout: float = TIMEOUT):
         self._jar = ep_session.load_jar(session_file, missing=SessionMissing)   # 어느 호스트에 실리나는 쿠키 통이 가린다
@@ -108,7 +96,7 @@ class App:
             raise SessionExpired(f"SSO 넘김 화면이 {exc.code} 로 답했다 — 사내 세션이 끊겼다") from exc
         except (urllib.error.URLError, OSError) as exc:
             raise AppError(f"SSO 서버에 못 닿았다: {exc}") from exc
-        form = _sso_form(page)
+        form = ep_session.sso_form(page)
         if not form.get("ssoToken"):
             raise SessionExpired("SSO 넘김 화면에 토큰이 없다 — 사내 세션이 끊겼다")
         body = urllib.parse.urlencode({k: form.get(k, "") for k in SSO_FIELDS}).encode()

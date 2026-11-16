@@ -7,6 +7,7 @@
     python -X utf8 -I regulation.py recent [--days N] [--in 범주] [--from N] [--most N]   # 받아 둔 목록에서 시행일이 최근 N 일 안인 것
     python -X utf8 -I regulation.py search <말> [--body] [--owner] [--from N] [--most N]  # 앱에 묻는다 — 기본은 표준명, --body 는 본문까지, --owner 는 담당자 · 부서 이름까지
     python -X utf8 -I regulation.py read   <processIdx>                      # 문서 한 건 — 짧으면 본문 통째로, 길면 앞머리와 이어 읽는 길
+    python -X utf8 -I regulation.py read   <processIdx> --images             # 본문 그림을 파일로 받아 낸다(앞 body_images.MAX_IMAGES 장까지)
     python -X utf8 -I regulation.py read   <processIdx> --grep <낱말 …>      # 그 낱말(하나라도)이 든 대목만
     python -X utf8 -I regulation.py read   <processIdx> --from N [--max N]   # 본문을 N 째 글자부터
     python -X utf8 -I regulation.py read   <processIdx> --changes            # 최근 개정의 바뀐 자리만
@@ -25,12 +26,16 @@
 번호가 제목으로 섞인다.
 ``--grep`` 은 낱말이 든 줄을 앞뒤의 짧은 줄(GREP_AROUND 줄까지)과 함께 대목으로 묶어 자리 ``at`` 을 붙여 낸다 — 표의 행이
 걸리면 그 표의 첫 행(머리)도 함께 온다. 본문은 글자만이다: 표는 한 행이 한 줄이고 칸을 「 | 」 로 가르며, 합친 칸은 차지한 자리마다 같은
-글자를 되풀이한다. 그림은 ``[그림]`` 한 마디다.
+글자를 되풀이한다. 그림은 ``[그림 N]`` 이다 — N 은 본문에 나온 차례고, ``--images`` 가 받은 그림의 ``no`` 와 같다. 그림은 흔하다
+(작업표준 · 지침의 흐름도 · 설비 사진 — ``references/SOURCES.md``). 그림이 든 문서의 답은 ``images_count`` 를 든다.
+본문 HTML 은 형제 스킬 company-mail 의 ``visible`` 이 푼다(메일 · 게시판과 한 손) — 사람 눈에 안 보이는 글(숨긴 요소 · 바탕색 글 ·
+스크립트)은 걷히고, 걷은 덩이가 있으면 답이 그 수를 ``hidden`` 에 든다. 답의 글자는 어느 칸이든 폭 없는 문자 · 방향 뒤집기 문자를 걷고 나간다.
 
 답 하나는 OUT_BYTES 를 안 넘는다 — 넘을 줄 · 본문 · 대목은 덜어 내고 답의 ``more`` 가 다음 ``--from`` 을 든다.
 
 하는 일 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 로 사내 세션을 쥐고(있는 파일부터 · 거절되면 받는 손으로 한 번 더)
-앱에 들어가 읽는다. 앱에 아무것도 쓰지 않는다 — 열람 기록 주소도 안 부른다(``cbsop.py`` 머리말). 받은 본문은 PC 에 남기지 않는다.
+앱에 들어가 읽는다. 앱에 아무것도 쓰지 않는다 — 열람 기록 주소도 안 부른다(``cbsop.py`` 머리말). 받은 본문 글자는 PC 에 남기지 않는다 —
+``--images`` 의 그림만 임시 폴더 아래 IMAGES_ROOT/<processIdx> 에 남는다(받는 손은 형제 스킬 company-mail 의 ``body_images``).
 
 내는 것 — 표준 출력에 JSON 하나. 종료 값: 0 됐다 · 1 도구 · 앱 고장(그대로 알린다) · 2 인자가 틀렸다 · 3 사내 세션이 없다 ·
 끊겼다(스킬 ep-login). 0 이 아니면 ``message`` 가 까닭과 「다음: …」 을 든다.
@@ -39,23 +44,23 @@
 from __future__ import annotations
 
 import argparse
-import html.parser
 import json
 import os
 import pathlib
-import re
 import sys
+import tempfile
 import time
 from datetime import date, datetime, timedelta
 
 HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
+MAIL_SCRIPTS = HERE.parents[1] / "company-mail" / "scripts"    # 형제 스킬 — 본문을 푸는 손(``visible``) · 본문 그림을 받는 손(``body_images``)이 사는 자리
+IMAGES_ROOT = "company-regulation"   # read --images 가 그림을 받는 자리 — 임시 폴더 아래 <processIdx>
 INDEX_DAYS = 30                # 받아 둔 목록을 다시 안 받고 쓰는 날 — 사규는 드물게 바뀌고 받는 데 1 분 남짓 든다. 그 사이는 refresh
 INDEX_DIR = ".company-regulation"   # 받아 둔 목록의 자리 — 홈 아래(임시 폴더는 정리 도구가 지운다)
 INDEX_FILE = "index.json"
 INDEX_FORMAT = 1               # 받아 둔 파일의 꼴 번호 — 줄의 칸이 바뀌면 올린다
 PATH_SEP = " > "               # 받아 둔 줄의 경로 칸을 잇는 자리 — 사람이 tree 에 주는 경로도 「>」 로 가른다
-TABLE_SEP = " | "              # 본문 글자에서 표의 칸을 가르는 자리
 MOST_FIND = 40                 # find · tree 답에 싣는 줄 수 — count 는 다 센 수다
 MOST_SEARCH = 60               # search 답에 싣는 줄 수
 MOST_RECENT = 80               # recent 답에 싣는 줄 수
@@ -68,36 +73,25 @@ CHANGE_SIDE = 1200             # 바뀐 자리 한쪽(전 · 후)의 글자 수 
 RECENT_DAYS = 30
 RECENT_FRESH_DAYS = 1          # recent 는 이보다 오래된 목록이면 먼저 새로 받는다 — 받아 둔 뒤에 시행된 것을 못 본다
 APP_DATE = "%Y.%m.%d"          # 앱이 시행일을 적는 꼴(잰 것)
-DAY_SECONDS = 86400
 SEARCH_HIT_PREFIX = "searchMenuInList"   # 통합 검색 답에서 범주마다의 결과가 든 칸의 머리
 INDEX_ONLY = ("find", "tree", "recent")   # 받아 둔 목록이 서 있으면 앱을 안 부르는 명령
-EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION = 0, 1, 2, 3
-NEXT_EP_LOGIN = "다음: 스킬 ep-login 으로 사내 세션을 세운 뒤 같은 명령을 다시 부른다"
 NEXT_READ = "다음: 물음에 낱말이 있으면 --grep <낱말 …> 로 그 대목만 · 통째로는 more 의 --from 을 따라 끝까지 읽는다"
 ROW_KEYS = ("processIdx", "processName", "enforcementDate", "hname", "deptnm", "version")
 FIND_KEYS = ("processName", "path", "hname", "deptnm")   # find 가 말을 견주는 칸
 
 
-class Stop(Exception):
-    def __init__(self, code: int, kind: str, message: str):
-        super().__init__(message)
-        self.code, self.kind = code, kind
-
-
-def load(name: str, where: pathlib.Path):
-    """곁의 모듈을 싣는다 — ``-I`` 로 돌면 그 폴더가 ``sys.path`` 에 없어 넣고 싣는다."""
-    if str(where) not in sys.path:
-        sys.path.insert(0, str(where))
-    try:
-        return __import__(name)
-    except ImportError as exc:
-        raise Stop(EXIT_TOOL, "tool", f"{name} 를 못 실었다({where}) — 설치를 다시 돌린다") from exc
-
-
+if str(EP_LOGIN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(EP_LOGIN_SCRIPTS))   # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
 try:
-    OUT_BYTES = load("ep_session", EP_LOGIN_SCRIPTS).OUT_BYTES   # 답 하나(JSON)의 크기 — 형제 스킬 ep-login 의 한 자리(까닭은 그 자리의 주석)
-except Stop:
-    OUT_BYTES = 0              # 형제 스킬이 없다 — main 이 같은 까닭으로 멈추고 말한다
+    import ep_command
+    import ep_session
+    from ep_command import DAY_SECONDS, EXIT_ARGS, Stop, load, size
+except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
+    print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
+    sys.exit(1)
+from ep_session import squash  # noqa: E402 — 견주기 꼴: 빈칸 · 가운뎃점 · 괄호 · 대소문자를 안 본다
+
+OUT_BYTES = ep_command.OUT_BYTES   # 답 하나(JSON)의 크기 — 수가 사는 자리와 까닭은 형제 스킬 ep-login 의 ep_session
 
 
 # ── 받아 둔 목록 ─────────────────────────────────────────────────────────
@@ -138,30 +132,12 @@ def build_index(app) -> dict:
 
 def cached_index() -> dict | None:
     """INDEX_DAYS 안에 받은 같은 꼴의 목록 — 없거나 낡았거나 깨졌으면 None."""
-    try:
-        raw = json.loads(index_path().read_text(encoding="utf-8"))
-        if raw.get("format") != INDEX_FORMAT or time.time() - float(raw["stamp"]) >= INDEX_DAYS * DAY_SECONDS:
-            return None
-        return raw if isinstance(raw.get("rows"), list) else None
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-
-
-def save_index(index: dict) -> None:
-    path = index_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(f".{os.getpid()}.tmp")
-    temp.write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
-    temp.replace(path)                                 # 도중에 죽어도 반쯤 쓴 파일이 안 남는다
+    got = ep_command.kept(index_path(), INDEX_FORMAT, INDEX_DAYS)
+    return got[0] if got and isinstance(got[0].get("rows"), list) else None
 
 
 def stamp_word(index: dict) -> str:
     return datetime.fromtimestamp(index["stamp"]).strftime("%Y-%m-%d %H:%M")
-
-
-def squash(text: str | None) -> str:
-    """견주기 꼴 — 빈칸 · 가운뎃점 · 괄호를 빼고 소문자로(「안전 · 환경」 = 「안전환경」 · 「(포항)화성」 = 「포항화성」)."""
-    return re.sub(r"[\s·()]+", "", text or "").lower()
 
 
 def under_path(rows: list, words: list) -> tuple[list, int]:
@@ -178,11 +154,6 @@ def in_menu(rows: list, word: str | None) -> list:
     return [r for r in rows if key in squash(r["path"].split(PATH_SEP)[0])] if key else rows
 
 
-def size(out: dict) -> int:
-    """답이 표준 출력에서 차지할 바이트 수."""
-    return len(json.dumps(out, ensure_ascii=False).encode("utf-8"))
-
-
 def page(head: dict, rows: list, start: int, most: int) -> dict:
     """head 에 줄을 start 부터 most 줄 싣는다 — 답이 OUT_BYTES 를 넘으면 줄을 던다. 남으면 「다음」 을 단다. count 는 다 센 수다."""
     start, most = max(0, start), max(1, most)
@@ -196,152 +167,32 @@ def page(head: dict, rows: list, start: int, most: int) -> dict:
 
 
 # ── 본문 글자 ────────────────────────────────────────────────────────────
-def _span(raw) -> int:
-    """colspan · rowspan 값 — 수가 아니거나 1 보다 작으면 1."""
-    try:
-        return max(1, min(int(raw), 200))
-    except (TypeError, ValueError):
-        return 1
+def reader():
+    """형제 스킬 company-mail 의 ``visible`` — 본문 HTML 을 글자로 푸는 한 손. 사람 눈에 안 보이는 글(숨긴 요소 · 바탕색 글 · 스크립트 ·
+    머리 · 폭 없는 문자)을 걷고 표를 한 행 한 줄로 낸다. 푸는 법과 줄의 꼴은 그 손의 머리말(「표 꼴의 줄」)이 든다."""
+    return load("visible", MAIL_SCRIPTS)
 
 
-class _Table:
-    """표 하나 — 행을 칸 목록으로 모아 한 줄씩 낸다. 합친 칸은 차지한 자리마다 같은 글자를 채운다(줄마다 열이 맞게)."""
-
-    def __init__(self):
-        self.lines: list[str] = []
-        self.row: list[str] | None = None
-        self.in_cell = False
-        self.carry: dict[int, tuple[int, str]] = {}   # 열 → (아래로 더 채울 행 수, 글자) — 세로로 합친 칸
-
-    def _fill(self) -> None:
-        while len(self.row) in self.carry:
-            left, text = self.carry.pop(len(self.row))
-            if left > 1:
-                self.carry[len(self.row)] = (left - 1, text)
-            self.row.append(text)
-
-    def cell(self, text: str, colspan: int, rowspan: int) -> None:
-        if self.row is None:
-            self.row = []
-        for _ in range(colspan):
-            self._fill()
-            if rowspan > 1:
-                self.carry[len(self.row)] = (rowspan - 1, text)
-            self.row.append(text)
-
-    def close_row(self) -> None:
-        if self.row is None:
-            return
-        self._fill()
-        for col in [c for c in self.carry if c >= len(self.row)]:   # 이 행이 안 닿은 자리의 합친 칸 — 행 수만 센다
-            left, text = self.carry.pop(col)
-            if left > 1:
-                self.carry[col] = (left - 1, text)
-        if any(self.row):
-            self.lines.append(TABLE_SEP.join(self.row))
-        self.row = None
+def plain(fragment: str | None, numbered: bool = True) -> str:
+    """앱의 HTML 조각 → 읽을 글자. ``numbered`` 가 거짓이면(바뀐 자리의 전 · 후) 그림이 번호 없는 [그림] 이다 — 거기 번호를 달면
+    본문 그림의 번호로 읽힌다."""
+    return reader().body(fragment, numbered=numbered).text
 
 
-class Text(html.parser.HTMLParser):
-    """앱의 본문 HTML → 읽을 글자. 표는 한 행을 한 줄로 내고 칸을 「 | 」로 잇는다 — 칸 안의 문단 · 줄바꿈은 빈칸이 되고, 합친
-    칸(rowspan · colspan)은 차지한 자리마다 같은 글자를 되풀이한다. 칸 안에 든 표는 그 칸 안에서 행을 「 / 」로 잇는다. 그림은
-    [그림] 한 마디로, svg · style · script 안은 버린다."""
+def save_images(app, idx: int, srcs: list[str]) -> list[dict]:
+    """본문 그림을 형제 스킬 company-mail 의 ``body_images`` 로 받는다 — 묻는 것은 앱 손(``cbsop.App.image``)이 가린다."""
+    images = load("body_images", MAIL_SCRIPTS)
+    cbsop = sys.modules["cbsop"]
 
-    SKIP = {"svg", "style", "script"}
-    BLOCK = {"p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "dl", "dt", "dd"}
-    VOID_BREAK = {"br", "hr"}
+    def fetch(src: str) -> bytes:
+        try:
+            return app.image(src)
+        except (cbsop.SessionExpired, cbsop.SessionMissing):
+            raise                          # 끊긴 세션은 명령 전체가 다시 세운다
+        except cbsop.AppError as exc:      # 잰 꼴 밖 · 거절 · 못 닿음 — 그 그림만 안 받는다
+            raise images.Refused(str(exc)) from exc
 
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.out: list[str] = []                         # 표 밖의 글자
-        self.skip = 0
-        self.tables: list[_Table] = []                   # 열린 표 — 겹치면 여럿
-        self.cells: list[tuple[list, int, int]] = []     # 열린 칸 — (글자 통, colspan, rowspan)
-
-    def _write(self, piece: str) -> None:
-        (self.cells[-1][0] if self.cells else self.out).append(piece)
-
-    def _close_cell(self, table: _Table) -> None:
-        if table.in_cell:
-            buf, colspan, rowspan = self.cells.pop()
-            table.cell(re.sub(r"\s+", " ", "".join(buf)).strip(), colspan, rowspan)
-            table.in_cell = False
-
-    def _close_table(self) -> None:
-        table = self.tables[-1]
-        self._close_cell(table)
-        table.close_row()
-        self.tables.pop()
-        if self.cells:                                   # 칸 안에 든 표 — 그 칸의 한 줄에 잇는다
-            self._write(" " + " / ".join(table.lines) + " ")
-        else:
-            self._write("\n" + "\n".join(table.lines) + "\n")
-
-    def handle_starttag(self, tag, attrs):
-        if tag in self.SKIP:
-            self.skip += 1
-            return
-        if self.skip:
-            return
-        table = self.tables[-1] if self.tables else None
-        if tag == "table":
-            self.tables.append(_Table())
-        elif tag == "tr" and table:
-            self._close_cell(table)
-            table.close_row()
-            table.row = []
-        elif tag in ("td", "th") and table:
-            self._close_cell(table)
-            span = dict(attrs)
-            self.cells.append(([], _span(span.get("colspan")), _span(span.get("rowspan"))))
-            table.in_cell = True
-        elif tag == "img":
-            self._write(" [그림] ")
-        elif tag in self.BLOCK or tag in self.VOID_BREAK or tag in ("tr", "td", "th"):
-            self._write("\n")
-
-    def handle_endtag(self, tag):
-        if tag in self.SKIP:
-            self.skip = max(0, self.skip - 1)
-            return
-        if self.skip:
-            return
-        table = self.tables[-1] if self.tables else None
-        if tag in ("td", "th") and table:
-            self._close_cell(table)
-        elif tag == "tr" and table:
-            self._close_cell(table)
-            table.close_row()
-        elif tag == "table" and table:
-            self._close_table()
-        elif tag in self.BLOCK:
-            self._write("\n")
-
-    def handle_data(self, data):
-        if self.skip:
-            return
-        data = data.replace("\xa0", " ")
-        table = self.tables[-1] if self.tables else None
-        if table and not table.in_cell:                  # 표 안 · 칸 밖 — 태그 사이의 줄바꿈은 버리고 글자(표 제목)는 한 줄로
-            word = re.sub(r"\s+", " ", data).strip()
-            if word:
-                table.lines.append(word)
-            return
-        self._write(data)
-
-    def text(self) -> str:
-        while self.tables:                               # 안 닫힌 표 — 모은 데까지 낸다
-            self._close_table()
-        joined = "".join(self.out)
-        lines = [re.sub(r"[ \t\r\f\v]+", " ", line).strip() for line in joined.split("\n")]
-        return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
-
-
-def plain(fragment: str | None) -> str:
-    t = Text()
-    t.feed(fragment or "")
-    t.close()
-    return t.text()
+    return images.save(srcs, fetch, pathlib.Path(tempfile.gettempdir()) / IMAGES_ROOT / str(idx))
 
 
 def clip(text: str, most: int) -> str:
@@ -352,8 +203,8 @@ def changes_of(got: dict, room: int) -> tuple[list, int]:
     """최근 개정의 바뀐 자리 — room 바이트 안에 드는 데까지와, 못 실은 건수. 첫 건은 늘 싣는다."""
     out, used, left = [], 0, 0
     for c in got.get("searchTobe") or []:
-        one = {"why": c.get("note"), "before": clip(plain(c.get("oldContent")), CHANGE_SIDE),
-               "after": clip(plain(c.get("toContent")), CHANGE_SIDE)}
+        one = {"why": c.get("note"), "before": clip(plain(c.get("oldContent"), False), CHANGE_SIDE),
+               "after": clip(plain(c.get("toContent"), False), CHANGE_SIDE)}
         if left or (out and used + size(one) > room):
             left += 1
             continue
@@ -371,21 +222,9 @@ def with_changes(out: dict, got: dict, room: int) -> None:
 
 
 def fit_text(out: dict, body: str, start: int, most: int) -> None:
-    """본문을 start 부터 most 자까지 싣되 답이 OUT_BYTES 를 안 넘게 끝을 당긴다 — 남으면 ``more`` 가 다음 자리를 든다."""
-    end = min(len(body), start + most)
-    while True:
-        if end < len(body):
-            line = body.rfind("\n", start, end)          # 줄 가운데서 안 끊는다 — 표의 한 행이 두 쪽에 안 걸치게
-            if line - start > (end - start) // 2:
-                end = line + 1
-        out["text"] = body[start:end]
-        out.pop("more", None)
-        if end < len(body):
-            out["more"] = f"다음: --from {end} 로 이어 읽는다"
-        over = size(out) - OUT_BYTES
-        if over <= 0 or end - start <= 1:
-            return
-        end -= min(end - start - 1, max(1, over // 3))   # 한글 한 자가 3 바이트 — 넘친 만큼 글자를 던다
+    """본문을 start 부터 most 자까지 ``text`` 칸에 싣되 답이 OUT_BYTES 를 안 넘게 끝을 당긴다 — 남으면 ``more`` 가 다음 자리를
+    든다. 줄 끝에서 끊는 법은 ``ep_command.fit_text`` 가 든다."""
+    ep_command.fit_text(out, "text", body, start, most, lambda end: f"다음: --from {end} 로 이어 읽는다", OUT_BYTES)
 
 
 def lines_of(body: str) -> list[tuple[int, str]]:
@@ -403,6 +242,7 @@ def grep(head: dict, body: str, words: list, start: int) -> dict:
     넘으면 남은 대목의 자리를 ``more`` 로 댄다. 표의 행이 걸리면 그 표의 첫 행을 대목 머리에 붙인다."""
     keys = [k for k in (squash(w) for w in words) if k]
     lines = lines_of(body)
+    table_sep = reader().TABLE_SEP                      # 표의 행인가는 본문을 푼 손이 칸을 가른 그 글자로 가린다
     hits = [i for i, (at, line) in enumerate(lines) if at >= start and any(k in squash(line) for k in keys)]
     spans: list[list] = []                               # [첫 줄, 끝 줄, 표의 첫 행(없으면 None), 걸린 첫 줄]
     for i in hits:
@@ -415,9 +255,9 @@ def grep(head: dict, body: str, words: list, start: int) -> dict:
         while last < len(lines) - 1 and last - i < GREP_AROUND and len(lines[last + 1][1]) <= room:
             last += 1
             room -= len(lines[last][1])
-        if TABLE_SEP in lines[i][1]:
+        if table_sep in lines[i][1]:
             top = i
-            while top > 0 and TABLE_SEP in lines[top - 1][1]:
+            while top > 0 and table_sep in lines[top - 1][1]:
                 top -= 1
             top = top if top < first else None
         if spans and first <= spans[-1][1] + 1:
@@ -446,13 +286,13 @@ def usable_index(args) -> dict | None:
     return got
 
 
-def need_index(app, args) -> tuple[dict, bool]:
+def need_index(app, args) -> tuple[dict, bool, str]:
+    """(목록, 방금 받았나, 받은 목록을 PC 에 못 남긴 까닭) — 못 남겨도 받은 목록으로 답한다. 다음 판이 다시 받을 뿐이다."""
     got = usable_index(args)
     if got is not None:
-        return got, False
+        return got, False, ""
     fresh = build_index(app)
-    save_index(fresh)
-    return fresh, True
+    return fresh, True, ep_command.keep(index_path(), fresh)
 
 
 def read(app, args) -> dict:
@@ -460,9 +300,20 @@ def read(app, args) -> dict:
     info = (got.get("ProcessInfo") or [None])[0]
     if not info:
         raise Stop(EXIT_ARGS, "args", f"문서 {args.idx} 가 없다 — 다음: find · search 로 processIdx 를 찾는다")
-    body = plain(info.get("content"))
+    page_ = reader().body(info.get("content"))
+    body = page_.text
     brief = {"processIdx": info.get("processIdx"), "name": info.get("processName"), "rev": info.get("version"),
              "enforced": info.get("enforcementDate"), "security": info.get("securityGradeName"), "length": len(body)}
+    if page_.images:
+        brief["images_count"] = len(page_.images)
+    if page_.hidden:
+        brief["hidden"] = page_.hidden
+    if args.images and (args.grep or args.changes or args.start is not None):
+        raise Stop(EXIT_ARGS, "args", "--images 는 --grep · --changes · --from 과 함께 못 쓴다 — 다음: 그림과 글자를 따로 부른다")
+    if args.images:
+        out = dict(brief)
+        out["images"] = save_images(app, args.idx, list(page_.images)) if page_.images else []
+        return out
     if args.changes:
         out = dict(brief)
         with_changes(out, got, OUT_BYTES - size(brief) - 1000)
@@ -498,8 +349,10 @@ def run(args, session: pathlib.Path | None) -> dict:
     """session 이 None 이면 받아 둔 목록만으로 답하는 판이다(main 이 가린다)."""
     app = None if session is None else load("cbsop", HERE).App(session)
     if args.command in INDEX_ONLY + ("refresh",):
-        index, fresh = need_index(app, args)
+        index, fresh, unkept = need_index(app, args)
         head = {"index_at": stamp_word(index), "fresh": fresh, "total": len(index["rows"])}
+        if unkept:
+            head["index_note"] = f"받은 목록을 PC 에 못 남겼다({unkept}) — 다음 판도 목록을 새로 받는다(1 분 남짓)"
         rows = index["rows"] if args.command == "tree" else in_menu(index["rows"], getattr(args, "inside", None))
         if args.command == "refresh":
             return {**head, "menus": index["menus"]}
@@ -581,37 +434,20 @@ def parser() -> argparse.ArgumentParser:
     d.add_argument("--max", type=int, default=READ_MAX)
     d.add_argument("--grep", nargs="+", metavar="낱말")
     d.add_argument("--changes", action="store_true")
+    d.add_argument("--images", action="store_true", help="본문 그림을 파일로 받아 낸다 — 본문 글자는 안 싣는다")
     sub.add_parser("refresh", **shown)
     return p
 
 
 def main() -> int:
     args = parser().parse_args()
-    try:
-        cbsop, ep = load("cbsop", HERE), load("ep_session", EP_LOGIN_SCRIPTS)
-        try:
-            if args.command in INDEX_ONLY and usable_index(args) is not None:
-                result = run(args, None)                 # 받아 둔 목록으로 선다 — 세션 파일이 없어도 답한다
-            else:
-                result = ep.session_first(lambda f: run(args, f), expired=(cbsop.SessionExpired, cbsop.SessionMissing))
-            code = EXIT_OK
-        except ep.NoSession as exc:
-            tail = (exc.got.said.splitlines() or [""])[-1]
-            if exc.got.code in (ep.NO_EDGE, ep.NOT_LOGGED_IN):
-                raise Stop(EXIT_SESSION, "session", f"사내 세션이 없다 — {tail}. {NEXT_EP_LOGIN}") from exc
-            raise Stop(EXIT_TOOL, "tool", f"세션 손이 종료 {exc.got.code} 로 졌다 — {tail}") from exc
-    except Stop as exc:
-        result, code = {"error": exc.kind, "message": str(exc)}, exc.code
-    except Exception as exc:  # noqa: BLE001 — 손의 예외를 종료 값으로 옮긴다
-        cbsop = sys.modules.get("cbsop")
-        if cbsop and isinstance(exc, (cbsop.SessionExpired, cbsop.SessionMissing)):
-            result, code = {"error": "session", "message": f"{exc}. {NEXT_EP_LOGIN}"}, EXIT_SESSION
-        elif cbsop and isinstance(exc, cbsop.AppError):
-            result, code = {"error": "tool", "message": str(exc)}, EXIT_TOOL
-        else:
-            result, code = {"error": "tool", "message": f"{type(exc).__name__}: {exc}"}, EXIT_TOOL
-    print(json.dumps(result, ensure_ascii=False))
-    return code
+
+    def work(cbsop) -> dict:
+        if args.command in INDEX_ONLY and usable_index(args) is not None:
+            return run(args, None)                       # 받아 둔 목록으로 선다 — 세션 파일이 없어도 답한다
+        return ep_session.session_first(lambda f: run(args, f), expired=(cbsop.SessionExpired, cbsop.SessionMissing))
+
+    return ep_command.finish(lambda cbsop: reader().shown(work(cbsop)), "cbsop", HERE)
 
 
 if __name__ == "__main__":

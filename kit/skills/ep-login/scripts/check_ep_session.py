@@ -1,4 +1,5 @@
-"""ep_session.py 의 바퀴를 잰다 — 세션 파일부터 · 거절되면 손을 한 번 · 바꾸는 일은 늘 손부터 · 출력 담기.
+"""ep_session.py 의 바퀴를 잰다 — 세션 파일부터 · 거절되면 손을 한 번 · 바꾸는 일은 늘 손부터 · 출력 담기. 곁의 ep_command.py 는
+판정 하나 — 받아 둔 파일을 못 남기는 자리에서도 예외 없이 까닭을 낸다(방금 받은 답을 안 잃는다).
 세션 손은 대역(node 스크립트)이라 127.0.0.1 밖으로도, Edge 로도 안 나간다.
 
     python -X utf8 -I check_ep_session.py            # 이 폴더의 ep_session.py 를 잰다
@@ -7,6 +8,9 @@
 층 · 걷는 조건 — 손으로 도는 검사(README 「돌려 보기」 · ep_session.py 나 부르는 얇은 명령을 고칠 때). check-design 1 절의 넷 — 결함에 실제 길이 있고(세션 파일이 낡은 채
 남는 자리는 Edge 를 닫을 때마다 온다) · 틀리면 조용하다(손을 매번 띄우거나 낡은 파일로 두 번 돌아도 답은 온다) · 사람의 시간과 말을
 다친다(회사 PC 의 프로세스 값 · 「바꾸지 않았다」는 틀린 말) · 다른 검사는 이 바퀴를 안 잰다.
+받아 둔 파일의 판정이 걸린 넷 — 길이 분명하다(쓰는 사람의 홈이 잠겼거나 다른 세션이 그 파일을 쥔 순간 · 사규 목록은 받는 데 1 분 남짓 든다) ·
+만드는 PC 에서는 조용하다(여기서는 늘 써진다) · 이미 느린 길을 되풀이시킨다(다 받고 나서 오류로 끝나 부를 때마다 다시 받는다) · 다른 검사는 안
+잰다. 걷는 조건 — 받아 둔 파일을 쓰는 스킬이 없어지면.
 끝 줄이 「통과 N/N」이면 선 것이다.
 """
 from __future__ import annotations
@@ -42,8 +46,8 @@ class Expired(Exception):
     pass
 
 
-def load():
-    spec = importlib.util.spec_from_file_location("ep_session_under_test", HERE / "ep_session.py")
+def load(name: str = "ep_session"):
+    spec = importlib.util.spec_from_file_location(f"{name}_under_test", HERE / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module                   # dataclass 가 제 모듈을 sys.modules 에서 찾는다
     spec.loader.exec_module(module)
@@ -175,6 +179,23 @@ def check_other_errors_keep_the_held_output():
         result, exc, out = run(ep.session_first, use=use, expired=(Expired,))
         judge("거절 아닌 예외로 멈추면 멈춘 자리까지의 출력을 내보내고 올린다", isinstance(exc, RuntimeError) and "받은 파일: a.pdf" in out,
               f"{exc!r} {out!r}")
+
+
+def check_keeping_fails_without_losing_the_answer():
+    cmd = load("ep_command")
+    place = WORK / "kept" / "list.json"
+    wrote = cmd.keep(place, {"format": 1, "stamp": 0, "rows": [1]})
+    judge("받아 둔 파일 — 쓸 수 있는 자리에는 남긴다(대조)", wrote == "" and json.loads(place.read_text(encoding="utf-8"))["rows"] == [1], repr(wrote))
+    blocked = WORK / "blocked"
+    blocked.write_text("폴더 자리에 파일", encoding="utf-8")
+    try:
+        why = cmd.keep(blocked / "list.json", {"format": 1, "stamp": 0, "rows": [1]})
+    except Exception as exc:  # noqa: BLE001 — 올라온 예외가 곧 어긋남이다
+        why = None
+        said = repr(exc)
+    else:
+        said = repr(why)
+    judge("받아 둔 파일 — 못 남기는 자리에서도 예외 없이 까닭을 낸다(받은 답을 안 잃는다)", bool(why), said)
 
 
 def check_no_file_and_hand_down_is_no_session():

@@ -12,11 +12,20 @@
   사람의 평소 Edge 는 떠 있어도 안 끝낸다
 - **파이썬에서 부르는 자리** `ep_session.py` — 받는 손을 돌려 종료 값 · 세션 파일 · 손의 말을 닫힌 꼴 하나로 내고, 그 세션 파일을
   쿠키 통으로 읽는다(`load_jar`). 사내 앱 스킬의 얇은 명령과 앱 손이 이 폴더를 `sys.path` 에 넣고 싣는다 — 받는 손의 계약과 세션
-  파일의 꼴을 읽는 코드가 이 한 자리다. 그 명령들이 대화에 내는 답 하나의 크기(`OUT_BYTES`)도 여기 산다
+  파일의 꼴을 읽는 코드가 이 한 자리다. 그 명령들이 대화에 내는 답 하나의 크기(`OUT_BYTES`)도 여기 산다. 앱 손이 함께 쓰는
+  것도 여기다 — 프록시 없이 묻고 리다이렉트를 안 따라가는 opener · SSO 넘김 화면의 칸 읽기(`sso_form`) · 이름을 견주기 꼴로
+  누르기(`squash`) · 화면을 다루는 node 손 돌리기(`run_hand`)
+- **얇은 명령의 뼈대** `ep_command.py` — 사내 앱 스킬의 얇은 명령이 함께 쓰는 자리. 명령을 멈추는 꼴(`Stop`) · 종료 값 · 답을 JSON
+  하나로 내는 끝(`finish`) · 답 크기에 본문 맞추기(`fit_text`) · 받아 둔 파일 읽고 쓰기(`kept` · `keep`). 새 사내 앱 스킬은 제 서버를
+  묻는 앱 손과 제 명령만 짓고 나머지는 이 두 파일을 부른다 — 한 스킬에서 고친 것이 같은 일을 하는 스킬에 다 닿게
+- **Edge 에 붙는 줄** `edge_cdp.js` — 쓰는 사람의 Edge 에서 화면을 다루는 node 손(`run_hand` 가 돌리는 손)이 함께 싣는 자리. 디버깅
+  포트에 묻기 · CDP 한 줄(Edge 의 답 하나에 두는 시한 · 사건 받기) · 기다리기 · 프레임 펴기. 종료 값은 싣는 손이 준다 — 손마다 표가
+  다르다. 어느 탭 · 어느 프레임에서 무엇을 누르나는 손이 든다. 받는 손(브라우저 자리에만 붙는다)과 입구(로그인 탭 하나의 페이지
+  자리에 붙는다)는 제 줄을 따로 든다
 - `login.sh` — 대화에서 입구를 부르는 껍데기
 
 부르는 꼴 · 종료 값과 종료 값마다의 「다음」 · 세션 파일의 자리와 꼴 · 환경변수는 세 파일의 머리말이 든다 — 여기 옮겨 적지 않는다.
-대화에서 쓰는 절차는 스킬 `ep-login` 이 든다. 형제 스킬(company-mail · company-calendar · company-ecm · company-meeting-room · company-regulation)과 깔린 자리에서 부르는
+대화에서 쓰는 절차는 스킬 `ep-login` 이 든다. 형제 스킬(company-mail · company-calendar · company-ecm · company-meeting-room · company-regulation · company-board)과 깔린 자리에서 부르는
 앱도 이 손을 쓴다 — 복사해 쓰는 밑판이 아니라 불러 쓰는 손이라, 공개 이름과 꼴(부르는 꼴 · 종료 값 · 세션 파일의 꼴)을 바꾸면
 부르는 쪽이 다 깨진다. 바꿀 때는 아래를 돌고 부르는 쪽을 같은 판에 고친다.
 
@@ -25,7 +34,7 @@
 ```bash
 node check_session.js            # 이 폴더의 edge_session.js · ep_login.js 를 잰다 — 가짜 SSO · 메일함 · ECM 과 검사가 띄운 Edge(임시 프로필 · 입구 판정 하나만 창을 잠깐 띄운다)
 node check_session.js <폴더>     # 다른 폴더의 사본을 잰다
-python -X utf8 -I check_ep_session.py        # ep_session.py 의 바퀴를 잰다 — 파일부터 · 거절되면 손 한 번 · 바꾸는 일은 손부터. 대역 손이라 Edge 는 안 뜬다
+python -X utf8 -I check_ep_session.py        # ep_session.py 의 바퀴를 잰다 — 파일부터 · 거절되면 손 한 번 · 바꾸는 일은 손부터. 대역 손이라 Edge 는 안 뜬다. ep_command.py 는 받아 둔 파일을 못 남겨도 답을 안 잃나 하나
 ```
 
 끝 줄이 「통과 N/N」이면 선 것이다. 쓰는 사람의 Edge 에는 붙지 않고 127.0.0.1 · localhost 밖으로 안 나간다. Node 22 이상 · Edge 가

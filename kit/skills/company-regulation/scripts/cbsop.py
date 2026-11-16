@@ -4,7 +4,7 @@
 
     import cbsop
     app = cbsop.App(<세션 파일>)          # 스킬 ep-login 의 받는 손이 남긴 사내 세션(쿠키) 파일
-    app.menus() · app.all_in(menu_idx) · app.search(말, fields) · app.info(process_idx)
+    app.menus() · app.all_in(menu_idx) · app.search(말, fields) · app.info(process_idx) · app.image(본문 그림 주소)
 
 내는 것 — 앱의 JSON 그대로(dict · list). 예외 — ``SessionExpired``(사내 세션이 끊겼다 · 앱이 안 들였다 — 받는 손을 다시 부를
 자리) · ``SessionMissing``(세션 파일이 없다 · 못 읽는다) · ``AppError``(앱이 거절했다 · 답이 꼴이 아니다).
@@ -29,7 +29,6 @@
 
 from __future__ import annotations
 
-import html
 import json
 import os
 import pathlib
@@ -54,6 +53,7 @@ SEARCH_TIMEOUT = 180               # 본문 검색은 흔한 낱말에 20 초 �
 EP_KEY = re.compile(r"encodeURIComponent\('([^']+)'\)")
 URI_COMPONENT_SAFE = "!*'()"       # 화면의 encodeURIComponent 가 안 싸는 글자 — 그 밖(「/」 도)은 다 싼다
 UA = "Mozilla/5.0"
+IMAGE_PATH = re.compile(r"/uploads/output/[^/?#]+/[^/?#]+/media/[^/?#]+")   # 본문 그림의 잰 꼴(2026-11-16 · 30 건 중 18 건 · 155 장이 다 이 꼴)
 
 
 class AppError(Exception):
@@ -68,21 +68,14 @@ class SessionExpired(AppError):
     pass
 
 
-def _sso_form(page: str) -> dict:
-    out = {}
-    for tag in re.findall(r"<input[^>]*>", page, flags=re.I):
-        name = re.search(r'name\s*=\s*["\']([^"\']+)', tag, flags=re.I)
-        value = re.search(r'value\s*=\s*["\']([^"\']*)', tag, flags=re.I)
-        if name:
-            out[name.group(1)] = html.unescape(value.group(1)) if value else ""
-    return out
+class Refused(AppError):
+    """잰 꼴 밖의 주소라 묻지 않았다."""
 
 
 class App:
     def __init__(self, session_file: pathlib.Path | str, *, timeout: float = TIMEOUT):
         self._jar = ep_session.load_jar(session_file, missing=SessionMissing)   # 앱 쿠키도 이 통에 받아 이 판 동안만 산다
-        self._open = urllib.request.build_opener(urllib.request.ProxyHandler({}),
-                                                 urllib.request.HTTPCookieProcessor(self._jar), ep_session.NoRedirect()).open
+        self._open = ep_session.opener(self._jar).open   # 프록시 없이 · 리다이렉트는 안 따라간다
         self._timeout = timeout
         self._in = False
 
@@ -102,7 +95,7 @@ class App:
             raise SessionExpired(f"SSO 넘김 화면이 {exc.code} 로 답했다 — 사내 세션이 끊겼다") from exc
         except (urllib.error.URLError, OSError) as exc:
             raise AppError(f"SSO 서버에 못 닿았다: {exc}") from exc
-        form = _sso_form(page)
+        form = ep_session.sso_form(page)
         if not form.get("ssoToken"):
             raise SessionExpired("SSO 넘김 화면에 토큰이 없다 — 사내 세션이 끊겼다")
         try:
@@ -158,6 +151,27 @@ class App:
         return self.call("/main/ajax/searchListCnt.do",
                          {"searchText": word, "searchText2": word, "menuId": "", "searchConditionPram": fields},
                          timeout=SEARCH_TIMEOUT)
+
+    def image(self, src: str) -> bytes:
+        """본문 ``<img src>`` 하나 — 앱 호스트의 잰 꼴(IMAGE_PATH · 물음표 없이)만 묻고, 그 밖이면 묻지 않고 ``Refused``. 그림은 앱
+        세션 없이도 받아진다(잰 것) — 그래서 들어가기를 안 거친다. 앱은 그림에 Content-Type ``application/octet-stream`` 을 댄다 — 꼴은
+        부르는 쪽이 바이트 머리로 가린다."""
+        url = urllib.parse.urljoin(APP_ROOT + "/", src.strip())
+        parts = urllib.parse.urlsplit(url)
+        if any(seg in (".", "..") for seg in urllib.parse.unquote(parts.path).split("/")):
+            # 잰 꼴의 칸 수만 맞추고 「..」 로 그 밖으로 올라가는 주소 — 서버가 풀면 울타리 밖을 묻게 된다
+            raise Refused(f"경로에 「..」 이 든 그림 주소라 묻지 않는다({parts.path[:40]}) — 화면에서 본다")
+        if f"{parts.scheme}://{parts.netloc}".lower() != APP_ROOT.lower() or parts.query or not IMAGE_PATH.fullmatch(parts.path):
+            raise Refused(f"사규 앱의 본문 그림 꼴이 아니라 묻지 않는다({parts.hostname or '주소 없음'}{parts.path[:40]}) — 화면에서 본다")
+        try:
+            with self._open(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=self._timeout) as r:
+                return r.read()
+        except ep_session.Redirected as exc:
+            raise AppError(f"그림 주소가 다른 곳으로 보냈다({exc.location})") from exc
+        except urllib.error.HTTPError as exc:
+            raise AppError(f"사규 앱이 그림을 {exc.code} 로 거절했다") from exc
+        except (urllib.error.URLError, OSError) as exc:
+            raise AppError(f"사규 앱에 못 닿았다: {exc}") from exc
 
     def info(self, process_idx: int) -> dict:
         """문서 한 건 — ProcessInfo[0](메타 · 본문 HTML) · searchTobe(최근 개정의 바뀐 자리) · 관련 표준 · 첨부."""

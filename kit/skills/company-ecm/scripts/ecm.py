@@ -74,7 +74,7 @@
     그 PC 의 오피스 밖에서는 안 열린다. 비우는 일은 에이전트의 정리 프로그램 몫이다. 읽는 손이 뽑은 평문은 이 손이 지은 임시
     폴더(``ecm-read-…``)에 잠시 놓였다가 글자를 읽자마자 그 폴더째 지우고 부르는 쪽에만 간다 — 지우기가 실패해도 말없이 넘어가므로
     (``ignore_errors``) 그때는 그 폴더에 남는다. 명령줄의 ``read`` 는 뽑은 글자를 늘 ``text_dir()``(홈 아래 · 저장소 밖)에 문서
-    열쇠마다 한 장으로 남긴다 — ``.md``(Fasoo 가 감싸지 않는 꼴)이고, 머리 두 줄(읽는 손의 한 줄 · 열쇠와 뽑은 때) 뒤 ``---`` 아래가
+    열쇠마다 한 장으로 남긴다 — ``.md``(Fasoo 가 감싸지 않는 꼴)이고, 머리 두 줄(읽는 손의 한 줄 · 열쇠와 받은 파일의 자리와 뽑은 때) 뒤 ``---`` 아래가
     글자다. 같은 열쇠를 다시 읽으면
     등급 문만 지나 그 파일로 답하고 문서를 받지 않는다(``read_kept``) — 받을 때마다 에이전트가 내려받고 오피스 창이 뜨는 값을 한 번만
     치른다. 판이 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다. 글자가 답 하나의 크기(``ep_session.OUT_BYTES``)에 안
@@ -313,7 +313,9 @@ PERIODS = ("1M", "6M", "12M", "24M", "36M", "60M", "ALL")
 DEFAULT_PER_PAGE = 15
 TEXT_DIR = "~/.company-ecm-text"       # read 가 뽑은 글자를 남기는 자리 — 홈 아래(저장소 밖 · 임시 폴더 정리에 안 걸린다)
 TEXT_DIR_ENV = "ECM_TEXT_DIR"
-TEXT_EXT = ".md"                       # 글자 파일의 꼴 — 읽는 손(-OutDir)이 내는 것도 여기 남기는 것도. Fasoo 가 .txt · .csv 는 감싸고 .md 는 평문으로 둔다
+KEPT_SOURCE_WORD = " · 받은 파일 "      # 남긴 글자의 머리 둘째 줄에서 받은 파일의 자리를 여는 말 — keep_text 가 쓰고 tell_kept 가 읽는다
+KEPT_WHEN_WORD = " · 뽑은 때 "         # 같은 줄에서 그 자리를 닫는 말
+TEXT_EXT = ".md"                     # 글자 파일의 꼴 — 읽는 손(-OutDir)이 내는 것도 여기 남기는 것도. Fasoo 가 .txt · .csv 는 감싸고 .md 는 평문으로 둔다
 TEXT_SPLIT = "\n---\n"                 # 남긴 파일에서 머리(읽는 손의 한 줄 · 열쇠와 뽑은 때)와 글자를 가르는 줄
 OBJECT_ID = re.compile(r"^[0-9A-Fa-f]{16}$")
 AGENT_FIELD_SEPARATOR = "\x08"
@@ -1266,7 +1268,16 @@ class Agent:
             raise AgentError("열기 답의 값에 제어 글자가 들어 있어 에이전트에 보내지 않는다")
         line = AGENT_FIELD_SEPARATOR.join(("Download", ticket.doc_id, ticket.object_id, action, ticket.file_name, AGENT_SYSTEM))
         before = self._received(folder)
-        answer = ws_exchange(self.url, line)
+        try:
+            answer = ws_exchange(self.url, line)
+        except AgentError as exc:
+            if "답하지 않았다" not in str(exc):
+                raise
+            # 열기 표는 왔는데 에이전트가 말이 없다 — 메일 쪽지의 머리 열쇠로 연 판이 이랬다(회사에서 잼). 사람 누름 길은 선다.
+            # 그 길은 등급 문(check_readable)을 안 지난다 — 메일 첨부로 온 문서는 보낸 쪽이 받는 사람에게 보라고 준 것이라 그대로 읽게 둔다
+            raise AgentError(f"{exc} — 메일 첨부에서 온 열쇠면 company-mail 의 attachment --save 로 열쇠를 다시 받는다(화면이 여는 "
+                             f"링크 쪽 열쇠를 낸다). 그래도 같으면 사람이 그 첨부를 눌러 열게 하고, {self.docs_root} 아래 "
+                             f"{folder} 에 새로 선 파일을 스킬 drm-office-read 로 읽는다") from exc
         if answer.strip().strip('"') != AGENT_OK:
             raise AgentError(f"ECM 에이전트가 OK 대신 이렇게 답했다: {answer[:200]}")
         deadline = time.monotonic() + file_timeout
@@ -1343,20 +1354,30 @@ def open_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool 
     return Opened(path, ticket, progid, written)
 
 
+def _powershell(script: pathlib.Path, *args: str, timeout: float) -> subprocess.CompletedProcess:
+    """PowerShell 손 하나를 띄워 끝까지 기다린다 — 프로필 없이, 실행 정책은 그 프로세스에서만 푼다. 표준 출력 · 오류는 바이트로 잡아
+    돌려주고(푸는 것은 부르는 쪽), 시한을 넘기면 ``subprocess.TimeoutExpired`` 가 그대로 올라간다."""
+    return subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), *args],
+                          capture_output=True, timeout=timeout)
+
+
+def _last_json(out: str) -> dict:
+    """손이 표준 출력 끝 줄에 낸 JSON — 출력이 비었거나 끝 줄이 JSON 이 아니면 빈 dict."""
+    try:
+        return json.loads(out.splitlines()[-1]) if out else {}
+    except json.JSONDecodeError:
+        return {}
+
+
 def _close(path: pathlib.Path, app: str, wait: float, save: bool) -> tuple[str, dict]:
     if app == ACROBAT:     # 보기 전용 — 저장할 것이 없다
-        args = [str(ACROBAT_CLOSE_SCRIPT), "-Path", str(path), "-WaitSeconds", str(int(wait))]
+        script, args = ACROBAT_CLOSE_SCRIPT, ["-Path", str(path), "-WaitSeconds", str(int(wait))]
     else:
-        args = [str(CLOSE_SCRIPT), "-Path", str(path), "-App", app, "-WaitSeconds", str(int(wait)), *(["-Save"] if save else [])]
-    proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", *args],
-                          capture_output=True, timeout=wait + 60)
+        script, args = CLOSE_SCRIPT, ["-Path", str(path), "-App", app, "-WaitSeconds", str(int(wait)), *(["-Save"] if save else [])]
+    proc = _powershell(script, *args, timeout=wait + 60)
     out = proc.stdout.decode("utf-8", "replace").strip()
     if proc.returncode in CLOSE_EXIT:
-        try:
-            said = json.loads(out.splitlines()[-1]) if out else {}
-        except json.JSONDecodeError:
-            said = {}
-        return CLOSE_EXIT[proc.returncode], said
+        return CLOSE_EXIT[proc.returncode], _last_json(out)
     raise EcmError(f"창 닫는 손이 실패했다(종료 {proc.returncode}): {out or proc.stderr.decode('utf-8', 'replace').strip()}")
 
 
@@ -1379,10 +1400,8 @@ class CheckedIn:
 
 def checkin_pending(object_id: str) -> bool:
     """그 문서의 편집완료 창이 이미 떠 있나 — 사람이 오피스를 먼저 끈 판. 창을 찾기만 하고 누르지 않는다."""
-    proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CHECKIN_SCRIPT),
-                           "-ObjectId", object_id, "-Desc", FIND_ONLY_DESC, "-Current", "0", "-WaitSeconds", "2",
-                           "-FindOnly"],
-                          capture_output=True, timeout=60)
+    proc = _powershell(CHECKIN_SCRIPT, "-ObjectId", object_id, "-Desc", FIND_ONLY_DESC, "-Current", "0", "-WaitSeconds", "2",
+                       "-FindOnly", timeout=60)
     return proc.returncode == 0
 
 
@@ -1457,14 +1476,10 @@ def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *,
     # 새 프로세스로 다시 붙는다. 창이 뜨기를 기다리는 시한은 첫 판에만 쓴다
     wait = CHECKIN_WAIT
     for _ in range(CHECKIN_ATTACH_TRIES):
-        proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(CHECKIN_SCRIPT),
-                               "-ObjectId", object_id, "-Desc", desc, "-Current", before, "-WaitSeconds", str(int(wait))],
-                              capture_output=True, timeout=wait + 90)
+        proc = _powershell(CHECKIN_SCRIPT, "-ObjectId", object_id, "-Desc", desc, "-Current", before, "-WaitSeconds", str(int(wait)),
+                           timeout=wait + 90)
         out = proc.stdout.decode("utf-8", "replace").strip()
-        try:
-            got = json.loads(out.splitlines()[-1]) if out else {}
-        except json.JSONDecodeError:
-            got = {}
+        got = _last_json(out)
         if not (proc.returncode == 1 and got.get("found") and not got.get("choices") and not got.get("saved")):
             break
         wait = CHECKIN_REATTACH_WAIT
@@ -1750,6 +1765,9 @@ def reader_path() -> pathlib.Path:
     return pathlib.Path(os.environ.get("ECM_DRM_READER", "").strip() or DEFAULT_READER).expanduser()
 
 
+READER_UNREADABLE = "[못 읽는 꼴]"   # 읽는 손(read-drm.ps1)이 받는 확장자가 아닌 파일에 다는 줄 머리 — 그 꼴은 화면(open)으로 넘긴다
+
+
 def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> tuple[str, str]:
     """받은 파일을 drm-office-read 의 읽는 손에 넘겨 (글자, 그 손의 한 줄)을 낸다. 평문은 임시 폴더째 바로 지운다.
 
@@ -1760,12 +1778,11 @@ def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> t
         raise ReadError(f"글자를 뽑는 손이 없다: {reader} — 스킬 drm-office-read 가 깔렸는지 본다")
     out_dir = pathlib.Path(tempfile.mkdtemp(prefix="ecm-read-"))
     try:
-        proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(reader),
-                               str(path), "-OutDir", str(out_dir), "-NoKeep"], capture_output=True, timeout=READ_TIMEOUT)
+        proc = _powershell(reader, str(path), "-OutDir", str(out_dir), "-NoKeep", timeout=READ_TIMEOUT)
         lines = [l for l in proc.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
         summary = next((l for l in lines if l.startswith("[")), "")
         texts = sorted(out_dir.glob(f"*{TEXT_EXT}"))
-        if proc.returncode == 0 and not texts and not summary:
+        if summary.startswith(READER_UNREADABLE):
             raise ReadError(f"이 꼴({path.suffix})은 읽는 손이 글자로 뽑지 않는다 — 화면에서 보려면 open 으로 연다")
         if proc.returncode != 0 or not texts:
             why = summary or (lines[-1] if lines else proc.stderr.decode("utf-8", "replace").strip()[-300:])
@@ -1789,13 +1806,13 @@ def kept_text(object_id: str) -> pathlib.Path | None:
 
 def keep_text(text: str, summary: str, source: pathlib.Path, object_id: str) -> pathlib.Path:
     """뽑은 글자를 ``text_dir()`` 에 남기고 그 경로를 낸다 — 이름은 받은 파일의 이름과 문서 열쇠, 머리는 읽는 손의 한 줄과
-    열쇠 · 뽑은 때다. 같은 열쇠를 다시 받으면(``--fresh``) 같은 이름이라 그 장을 덮어쓴다."""
+    열쇠 · 받은 파일의 자리 · 뽑은 때다. 같은 열쇠를 다시 받으면(``--fresh``) 같은 이름이라 그 장을 덮어쓴다."""
     folder = text_dir()
     folder.mkdir(parents=True, exist_ok=True)
     key = object_id.lower()
     name = re.sub(r"[^\w.\-]+", "_", source.stem)[:80].strip("_") or "document"
     path = folder / f"{name}-{key}{TEXT_EXT}"
-    head = f"{summary}\n문서 열쇠 {key} · 뽑은 때 {time.strftime('%Y-%m-%d %H:%M')}"
+    head = f"{summary}\n문서 열쇠 {key}{KEPT_SOURCE_WORD}{source}{KEPT_WHEN_WORD}{time.strftime('%Y-%m-%d %H:%M')}"
     path.write_text(head + TEXT_SPLIT + text, encoding="utf-8")
     return path
 
@@ -1836,8 +1853,15 @@ def tell_kept(path: pathlib.Path, *, as_file: bool = False) -> None:
     head, split, text = path.read_text(encoding="utf-8").partition(TEXT_SPLIT)
     if not split:
         head, text = "[읽음]", head
-    note = ("남긴 글자다 — 문서를 다시 받지 않았다(창도 안 떴다). 다음: 표 · 그림을 떠야 하거나(받은 파일이 있어야 한다) 글자가 이상하면 "
-            "--fresh 로 다시 받는다. 문서의 판이 올랐으면 열쇠가 바뀌었다 — list 로 새 열쇠를 받아 그 열쇠로 읽는다")
+    _, _, rest = head.partition(KEPT_SOURCE_WORD)
+    received = pathlib.Path(rest.partition(KEPT_WHEN_WORD)[0]) if rest else None
+    if received is not None and received.is_file():   # 에이전트가 아직 안 비웠다 — 그림은 그 파일로 뜨고, 앞서 뜬 것이면 뜨는 손이 알아본다
+        visuals = (f"받은 파일이 남아 있다: {received} — 표 · 그림은 이 경로로 스킬 drm-office-read 의 그림 뜨기를 부른다(앞서 뜬 "
+                   "그림이면 앱을 안 띄운다). 글자가 이상하면 --fresh 로 다시 받는다")
+    else:
+        visuals = "표 · 그림을 떠야 하거나(받은 파일이 있어야 한다) 글자가 이상하면 --fresh 로 다시 받는다"
+    note = (f"남긴 글자다 — 문서를 다시 받지 않았다(창도 안 떴다). 다음: {visuals}. 문서의 판이 올랐으면 열쇠가 바뀌었다 — list 로 새 "
+            "열쇠를 받아 그 열쇠로 읽는다")
     _tell_text(f"{head}\n{note}", text, path, as_file=as_file)
 
 

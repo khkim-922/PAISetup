@@ -14,22 +14,32 @@
       * 전경 잠금 : 다른 창이 활성이면 AppActivate 가 무시되어 엉뚱한 창이 찍힌다.
         Alt 를 한 번 보내 잠금을 풀고 두 번 부른다.
       * 남는 프로세스 : 캡처 뒤 PowerPoint 가 살아 있으면 덱 파일을 잠가 다음 빌드가
-        PermissionError 로 죽는다. 이 스크립트가 띄운 것만 골라 끝낸다.
+        PermissionError 로 죽는다. 띄우기와 끝내기는 읽는 부품(office-read.ps1)의 New-OfficeApp ·
+        Close-OfficeApps 가 든다 — 이 판이 띄워 Quit 한 것만 끝내고, 찍는 사이 사람이 연 덱이
+        남았으면 앱을 살려 둔다. 띄운 앱은 Job 에 묶여, 이 스크립트가 끊겨도 함께 끝난다.
 
 .PARAMETER Path
     캡처할 .pptx 경로.
 
 .PARAMETER Slides
-    캡처할 슬라이드 번호. 쉼표로 여럿 준다 (예: "3,8"). 생략하면 1번만.
+    캡처할 슬라이드 번호. 쉼표나 공백으로 여럿 준다 (예: "3,8"). 생략하면 1번만.
+    번호가 아닌 낱말(범위 "3-5" 따위)이 있으면 그 낱말을 대며 멈춘다 — 읽는 부품의 ConvertTo-NumberList 가 푼다.
 
 .PARAMETER OutDir
-    이미지를 둘 폴더. 생략하면 임시 폴더 아래 `drm-slides\<덱 이름>-<시각>\` 을 짓는다 —
-    형제 `capture_pages.ps1` 과 같은 자리다. 현재 폴더로 떨구면 그 폴더가 저장소이거나
+    이미지를 더 둘 폴더. 찍은 장은 남긴 자리(아래 「남긴 그림」)에 남고, 이 값을 주면 그 폴더에도
+    `slide-<장>` 으로 한 벌 놓아 그 경로를 낸다. `-NoKeep` 일 때는 여기에만 찍고, 생략하면 임시 폴더
+    아래 `drm-slides\<덱 이름>-<시각>\` 을 짓는다 — 현재 폴더로 떨구면 그 폴더가 저장소이거나
     표본 폴더일 때 산출물이 섞인다.
 
+.PARAMETER NoKeep
+    찍은 그림을 남기지도, 남긴 그림을 쓰지도 않는다. 짓는 중인 덱의 검수처럼 저장할 때마다
+    바이트가 달라지는 덱은 판마다 한 벌씩 쌓이므로 이 값으로 찍는다. 같은 덱에서 앞서 남긴 그 장은
+    걷으니, 잘못 찍혀 남은 그림(빈 첫 화면 · 엉뚱한 창)은 이 값 한 판으로 물린다.
+
 .PARAMETER MaxEdge
-    줄인 뒤 긴 변 픽셀. 기본 1280 — 글자 판독은 되고 토큰은 아끼는 자리.
-    **비전 토큰은 치수가 정한다**(`⌈가로/28⌉ × ⌈세로/28⌉`) — 이 값만이 값을 줄인다.
+    줄인 뒤 긴 변 픽셀. 안 주면 줄이는 손의 기본 눈금을 따른다 — 눈금의 값은 그 손이 든다(읽는 부품의 Convert-ShotsToWebp).
+    **비전 토큰은 치수가 정한다**(`⌈가로/28⌉ × ⌈세로/28⌉`) — 작은 글자를 더 크게 봐야 할 때만 올린다.
+    준 값은 남긴 그림의 이름에 붙어(`.e<긴 변>`), 눈금이 다른 판의 그림과 안 섞인다.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File capture_slides.ps1 -Path out.pptx -Slides "3,8"
@@ -39,12 +49,15 @@ param(
     [Parameter(Mandatory = $true)][string]$Path,
     [string]$Slides = "1",
     [string]$OutDir,
-    [int]$MaxEdge = 1280,
-    [int]$Wait = 4000          # 회사 PC 는 1초 안에 첫 프레임이 안 그려져 빈 화면이 찍힌다
+    [int]$MaxEdge = 0,         # 0 = 줄이는 손의 기본 눈금
+    [int]$Wait = 4000,         # 회사 PC 는 1초 안에 첫 프레임이 안 그려져 빈 화면이 찍힌다
+    # 찍은 그림을 남기지도, 남긴 그림을 쓰지도 않는다 — 전처럼 -OutDir(없으면 임시 폴더)에만 찍는다
+    [switch]$NoKeep
 )
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'office-session.ps1')
+. (Join-Path $PSScriptRoot 'office-read.ps1')      # 띄우기 · 끝내기 · 남긴 자리와 지문 · 그림 줄이기
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type @"
 using System;
@@ -52,52 +65,93 @@ using System.Runtime.InteropServices;
 public class Fg {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(IntPtr h, out int pid);
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   public static int Pid() {
     int pid; GetWindowThreadProcessId(GetForegroundWindow(), out pid); return pid;
   }
 }
 "@
-
-# 앞서 죽은 PowerPoint 가 남긴 복구 항목 중 이 덱에 해당하는 것만 골라 지운다 (사용자 복구 자료 보존)
-$leaf = Split-Path -Path $Path -Leaf
-$officeVerKeys = @(Get-ChildItem -Path "HKCU:\Software\Microsoft\Office" -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d+\.\d+$' })
-foreach ($ver in $officeVerKeys) {
-    $recPath = "HKCU:\Software\Microsoft\Office\$($ver.PSChildName)\PowerPoint\Resiliency\DocumentRecovery"
-    if (Test-Path -LiteralPath $recPath) {
-        try {
-            $item = Get-Item -LiteralPath $recPath -ErrorAction SilentlyContinue
-            if ($item) {
-                foreach ($valName in $item.GetValueNames()) {
-                    if ($valName -like "*$leaf*") {
-                        Remove-ItemProperty -LiteralPath $recPath -Name $valName -Force -ErrorAction SilentlyContinue
-                    }
-                }
-            }
-        } catch { }
-    }
-}
+# ⚠ 화면 배율이 100 % 가 아니면 DPI 를 모르는 프로세스의 Screen.Bounds 는 논리 치수(2560 → 2048)인데 CopyFromScreen 은
+# 실제 픽셀을 집어, 지면의 왼쪽 위만 찍힌다. 치수를 읽기 전에 실제 픽셀로 맞춘다
+[void][Fg]::SetProcessDPIAware()
 
 $full = (Resolve-Path -LiteralPath $Path).Path
-if (-not $OutDir) {
-    $OutDir = Join-Path ([IO.Path]::GetTempPath()) ("drm-slides\{0}-{1}" -f [IO.Path]::GetFileNameWithoutExtension($full), (Get-Date -Format 'yyyyMMdd-HHmmss'))
-}
-$outRoot = (New-Item -ItemType Directory -Path $OutDir -Force).FullName
-$slideList = @($Slides -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+$slideList = @(ConvertTo-NumberList -Value $Slides -Name 'Slides')    # 번호가 아닌 낱말이면 그 낱말을 대며 던진다 — 앱을 띄우기 전이다
 if ($slideList.Count -eq 0) { throw "Slides 에 슬라이드 번호가 없다" }
 
-$before = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
-
-# 창 없이 떠 있는 PowerPoint 는 앞선 자동화가 남긴 껍데기다 — 두면 슬라이드쇼가 서지 않는다.
-# 사람이 띄워 쓰는 것은 건드리지 않는다 — 제목이 아니라 창이 아예 없는지로 가른다(대화창이 뜬 순간
-# 사람의 창도 제목이 빌 수 있다).
-foreach ($p in (Get-Process POWERPNT -ErrorAction SilentlyContinue)) {
-    if ($p.MainWindowHandle -eq [IntPtr]::Zero) {
-        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-        $before = @($before | Where-Object { $_ -ne $p.Id })
+# ── 남긴 그림 — 같은 바이트의 덱에서 앞서 찍은 장은 다시 안 찍는다 ────────────────────────────
+# 찍으려면 파워포인트를 띄우고 슬라이드쇼가 화면을 가져간다. 그림은 남긴 글자 곁의 폴더(office-read.ps1 의 Get-KeptShotDir)에
+# 「slide-<장>.webp」로 남기고(-MaxEdge 를 준 판은 「slide-<장>.e<긴 변>.webp」 — capture_pages.ps1 과 같은 꼴), 그 파일이 있는 장은
+# 안 찍는다. 지문이 바이트를 재므로 덱이 바뀌면 폴더가 달라 새로 찍는다.
+# 줄이기가 져서 PNG 로 남은 장은 남긴 것으로 치지 않는다 — 다시 찍어 줄이기를 한 번 더 해 본다.
+$keepDir = $null
+if (-not $NoKeep) {
+    try {
+        $keepDir = Get-KeptShotDir -Name ([IO.Path]::GetFileName($full)) -Print (Get-KeptPrint -LiteralPath $full)
+        [void](New-Item -ItemType Directory -Path $keepDir -Force)
+    } catch {
+        Write-Warning "남길 자리를 못 지었다($($_.Exception.Message)) — 이번에는 남기지 않고 찍는다"
+        $keepDir = $null
+    }
+} else {
+    # 다시 찍는 판 — 앞서 남긴 그 장을 걷는다. 안 걷으면 잘못 찍혀 남은 그림(빈 첫 화면 · 엉뚱한 창)이 다음 부름에 다시 답으로 나온다.
+    # 짓는 중인 덱은 바이트가 달라 폴더가 없으니 걷을 것도 없다
+    try {
+        $staleDir = Get-KeptShotDir -Name ([IO.Path]::GetFileName($full)) -Print (Get-KeptPrint -LiteralPath $full)
+        if (Test-Path -LiteralPath $staleDir -PathType Container) {
+            foreach ($n in $slideList) {
+                # 그 장으로 남긴 것 전부 — 긴 변을 안 준 판(slide-<장>.webp)과 준 판(slide-<장>.e<긴 변>.webp). 다른 장 · 그림만 뜬 것은 안 걸린다
+                $keptName = '^slide-{0}(\.e\d+)?\.webp$' -f $n
+                Get-ChildItem -LiteralPath $staleDir -File | Where-Object { $_.Name -match $keptName } | Remove-Item -Force
+            }
+        }
+    } catch {
+        Write-Warning "앞서 남긴 그림을 못 걷었다($($_.Exception.Message)) — 다음 부름이 그 그림으로 답할 수 있다"
     }
 }
-if ($before.Count -ne (Get-Process POWERPNT -ErrorAction SilentlyContinue | Measure-Object).Count) {
-    Start-Sleep -Seconds 2
+# 그림의 이름 — 남기는 판에서 긴 변을 줬을 때만 그 값을 단다. 안 준 판은 줄이는 손의 기본 눈금이라 달 값이 없다
+$edgeTag = if ($keepDir -and $MaxEdge -gt 0) { ".e$MaxEdge" } else { '' }
+$stem = { param($n) "slide-{0}{1}" -f $n, $edgeTag }
+$result = @{}                          # 장 번호 → 낼 그림
+if ($keepDir) {
+    foreach ($n in $slideList) {
+        $keptShot = Join-Path $keepDir ((& $stem $n) + '.webp')
+        if (Test-Path -LiteralPath $keptShot) { $result[$n] = $keptShot }
+    }
+}
+$keptCount = $result.Count
+$toShoot = @($slideList | Where-Object { -not $result.ContainsKey($_) } | Select-Object -Unique)
+
+# 낼 그림을 장 차례대로 낸다 — 남긴 자리에서 찍었고 -OutDir 를 받았으면 그 폴더로 베껴 그 경로를 낸다
+function Write-Shots {
+    if ($keptCount -gt 0) {
+        Write-Host ("  남긴 그림 {0}장 — 같은 덱에서 앞서 찍어 다시 안 찍었다 · {1} (다시 찍으려면 -NoKeep)" -f $keptCount, $keepDir)
+    }
+    $copyTo = $null
+    if ($keepDir -and $OutDir) { $copyTo = (New-Item -ItemType Directory -Path $OutDir -Force).FullName }
+    foreach ($n in $slideList) {
+        $shot = $result[$n]
+        if (-not $shot) { continue }
+        if ($copyTo) {
+            $copy = Join-Path $copyTo ("slide-{0}{1}" -f $n, [IO.Path]::GetExtension($shot))
+            Copy-Item -LiteralPath $shot -Destination $copy -Force
+            $shot = $copy
+        }
+        Write-Output $shot
+    }
+}
+if ($toShoot.Count -eq 0) { Write-Shots; return }
+
+# 앞서 죽은 PowerPoint 가 남긴 복구 항목 중 이 덱의 것만 지운다 — 남아 있으면 복구 창이 먼저 떠 슬라이드쇼가 서지 않는다
+Clear-OwnedRecovery -Paths @($full)
+
+if ($keepDir) {
+    $outRoot = $keepDir
+} else {
+    if (-not $OutDir) {
+        $OutDir = Join-Path ([IO.Path]::GetTempPath()) ("drm-slides\{0}-{1}" -f [IO.Path]::GetFileNameWithoutExtension($full), (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    }
+    $outRoot = (New-Item -ItemType Directory -Path $OutDir -Force).FullName
 }
 
 $ws = $null
@@ -106,12 +160,14 @@ $session = $null
 $pres = $null
 $show = $null
 $made = @()
-# 파워포인트는 하나만 뜬다 — 사람이 쓰고 있었으면 끝에서 그 앱을 안 끈다(office-session.ps1)
-$pptWasRunning = Test-OfficeRunning 'POWERPNT'
+# 파워포인트는 하나만 뜬다 — 붙은 자리가 사람이 쓰던 앱인지 New-OfficeApp 이 여기 적어, 끝에서 그 앱을 안 끈다
+$PptWasRunning = $false
+$spawnedPids = @{}                     # 이 판이 띄운 PID → 앱 이름
+$officeJob = New-OfficeJob
 
 try {
     $ws = New-Object -ComObject WScript.Shell
-    $ppt = New-Object -ComObject PowerPoint.Application
+    $ppt = New-OfficeApp -AppName 'PPT' -SpawnedPids ([ref]$spawnedPids) -Job $officeJob
     # 경로 · ReadOnly=$true · Untitled=$false · WithWindow=$true — 사람이 연 덱이면 그 발표로 쇼만 띄우고 안 닫는다
     $session = Open-OwnedDocument -Kind 'PPT' -Collection $ppt.Presentations -Open { $ppt.Presentations.Open($full, $true, $false, $true) }
     $pres = $session.Document
@@ -119,12 +175,19 @@ try {
     $pres.SlideShowSettings.ShowPresenterView = 0
     $pres.SlideShowSettings.Run() | Out-Null
 
-    # 슬라이드쇼 창이 설 때까지 기다린다 — 바로 물으면 null 이 온다
+    # 슬라이드쇼 창이 설 때까지 기다린다 — 바로 물으면 null 이 온다. 지면 「늦었나 · 안 섰나 · 무슨 오류였나」를 실패 문구가 들게
+    # 기다린 시간 · 쇼 창 수 · 마지막 오류를 쥔다 — 안 그러면 드물게 지는 판의 원인이 남지 않는다
+    $showWatch = [Diagnostics.Stopwatch]::StartNew()
+    $showError = $null
     for ($i = 0; $i -lt 25 -and $null -eq $show; $i++) {
         Start-Sleep -Milliseconds 300
-        try { $show = $pres.SlideShowWindow } catch { $show = $null }
+        try { $show = $pres.SlideShowWindow } catch { $show = $null; $showError = $_.Exception.Message }
     }
-    if ($null -eq $show) { throw "슬라이드쇼 창이 뜨지 않았다 — 보호된 보기로 열렸는지 본다" }
+    if ($null -eq $show) {
+        $showCount = try { $ppt.SlideShowWindows.Count } catch { '못 읽음' }
+        throw ("슬라이드쇼 창이 뜨지 않았다 — 보호된 보기로 열렸는지 본다 (기다림 {0:N1} 초 · 쇼 창 {1} · 마지막 오류: {2})" -f `
+            ($showWatch.ElapsedMilliseconds / 1000.0), $showCount, $(if ($showError) { $showError } else { '없음' }))
+    }
 
     $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 
@@ -167,11 +230,19 @@ try {
             $clip.Width, $clip.Height, $clip.X, $clip.Y, $screen.Width, $screen.Height, $band)
     }
 
-    foreach ($n in $slideList) {
+    # 앞에 있는 창이 이 슬라이드쇼 창인가 — 쇼 창의 손잡이로 가린다. 프로세스 Id 만 보면 같은 파워포인트에 열린 다른 덱의 창이 앞에
+    # 있어도 지나간다(파워포인트는 하나만 떠, 찍는 사이 사람이 연 덱이 같은 프로세스다). 쇼 창 손잡이가 비어 오는 판에서는 프로세스 Id 로 본다
+    $showHandle = [IntPtr]::Zero
+    try { $showHandle = [IntPtr][long]$show.HWND } catch { }
+
+    foreach ($n in $toShoot) {
         $show.View.GotoSlide($n)
         # 다른 보안 맥락에서 뜬 POWERPNT 는 StartTime 을 못 읽어 정렬을 통째로 깨뜨린다 — 읽히는 것만 고른다
         $proc = Get-Process POWERPNT | Where-Object { $_.StartTime } |
             Sort-Object StartTime -Descending | Select-Object -First 1
+        $showFront = {
+            if ($showHandle -ne [IntPtr]::Zero) { [Fg]::GetForegroundWindow() -eq $showHandle } else { [Fg]::Pid() -eq $proc.Id }
+        }
 
         # 전경으로 올라왔는지 **확인하고** 찍는다 — 안 올라오면 다른 창이 찍히는데 파일은 멀쩡히 생긴다
         $front = $false
@@ -181,61 +252,32 @@ try {
             $ws.AppActivate($proc.Id) | Out-Null
             Start-Sleep -Milliseconds 350
             $ws.AppActivate($proc.Id) | Out-Null
+            try { $show.Activate() } catch { }  # 프로세스 Id 로는 그 프로세스의 다른 덱 창이 올라올 수 있다 — 쇼 창을 짚어 올린다
             Start-Sleep -Milliseconds 350
-            $front = ([Fg]::Pid() -eq $proc.Id)
+            $front = (& $showFront)
+            if (-not $front) { continue }
+            Start-Sleep -Milliseconds $Wait      # 첫 프레임이 그려질 때까지
+            $front = (& $showFront)              # 기다린 사이 다른 창이 올라왔으면 다시 올린다
         }
-        if (-not $front) { throw "PowerPoint 가 전경으로 오지 않았다 — 다른 창이 찍힐 자리라 멈춘다" }
+        if (-not $front) { throw "슬라이드쇼 창이 전경으로 오지 않았다 — 다른 창이 찍힐 자리라 멈춘다" }
 
-        Start-Sleep -Milliseconds $Wait          # 첫 프레임이 그려질 때까지
-
-        $png = Join-Path $outRoot ("slide-{0}.png" -f $n)
+        $png = Join-Path $outRoot ((& $stem $n) + '.png')
         $bmp = New-Object System.Drawing.Bitmap $clip.Width, $clip.Height
         $g = [System.Drawing.Graphics]::FromImage($bmp)
         $g.CopyFromScreen($clip.Location, [System.Drawing.Point]::Empty, $clip.Size)
         $bmp.Save($png, [System.Drawing.Imaging.ImageFormat]::Png)
         $g.Dispose()
         $bmp.Dispose()
-        $made += $png
+        $made += [pscustomobject]@{ N = $n; Png = $png }
     }
 } finally {
     if ($null -ne $show) { try { $show.View.Exit() } catch { } }
     Close-OwnedDocument $session
-    [void](Exit-OfficeApp -App $ppt -Kind 'PPT' -WasRunning $pptWasRunning)
-    Start-Sleep -Milliseconds 800
-
-    # 이 스크립트가 띄운 것만 끝낸다 — 남으면 다음 빌드가 파일 잠금으로 죽는다
-    foreach ($p in (Get-Process POWERPNT -ErrorAction SilentlyContinue)) {
-        if ($before -notcontains $p.Id) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
-    }
+    # 끄고 끝내는 판정은 읽는 부품이 든다 — 찍는 사이 사람이 연 덱이 남았으면 앱을 살려 둔다
+    Close-OfficeApps -AppByName @{ PPT = $ppt } -SpawnedPids $spawnedPids -Job $officeJob -PptWasRunning $PptWasRunning
 }
 
-# 줄이는 손은 씨앗 부품이 든다 — 이 스킬은 제 사본을 안 든다(진본은 claude-config `seeds/check/`).
-# 못 찾으면 원본 PNG 를 그대로 낸다 — 큰 그림이라고 안 내는 것보다 낫다.
-$shrink = @(
-    (Join-Path $HOME '.claude/seeds/check/_check/_shrink.py'),
-    (Join-Path $PSScriptRoot '..\..\..\..\seeds\check\_check\_shrink.py')
-) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-
-foreach ($png in $made) {
-    if ($shrink) {
-        $webp = [System.IO.Path]::ChangeExtension($png, '.webp')
-        python -X utf8 $shrink $png $webp --max-edge $MaxEdge | Out-Null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $webp)) {
-            Remove-Item -LiteralPath $png -Force
-            Write-Output $webp
-        } else {
-            # ⚠ **진 갈래도 말한다.** 아래 「못 찾았다」는 경고하는데 여기는 조용했다 — 갈래 둘의
-            #   대우가 어긋나면, 줄이기가 진 판이 **큰 그림이 그냥 나온 것**처럼 보인다.
-            #   부품이 낸 오류 글은 위에 찍히지만 그것은 파이썬의 말이지 **이 스크립트의 판정이
-            #   아니다.** 값을 2~3배 물고 나가는 자리라 그 판정이 한 줄 서야 한다.
-            # ⚠ **흔한 까닭을 같이 둔다.** 씨앗이 PIL 을 드는데, 배포본 설치기는 씨앗 곁에서 깔려다
-            #   망에 막히면 알리고 넘어가고 설정 저장소 쪽 PC 는 까는 선언이 없다(claude-config #72).
-            #   그 자리에서 깔게 하는 이 한 줄이 마지막 손이다.
-            Write-Warning "줄이기가 졌다 — 원본 치수 그대로 낸다. 위 오류를 본다 (흔한 까닭은 PIL 이 없는 것: python -m pip install pillow)"
-            Write-Output $png
-        }
-    } else {
-        Write-Warning "줄이는 부품을 못 찾았다 — 원본 치수 그대로 낸다 (~/.claude/seeds/check/_check/_shrink.py)"
-        Write-Output $png
-    }
-}
+# 찍은 장을 한 번에 줄인다(읽는 부품의 Convert-ShotsToWebp) — 못 줄인 장은 PNG 로 나가고 남긴 것으로 안 친다(위 「남긴 그림」)
+$converted = Convert-ShotsToWebp -Png @($made | ForEach-Object { $_.Png }) -MaxEdge $MaxEdge
+foreach ($shot in $made) { $result[$shot.N] = $converted[$shot.Png] }
+Write-Shots

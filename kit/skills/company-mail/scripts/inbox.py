@@ -71,7 +71,8 @@
 
     세션이 끊겼으면 ``SessionExpired`` — 스킬 ep-login 으로 다시 로그인해 쿠키를 새로 남기라는 뜻이다. 읽기 길이 메일함을 바꿀 주소(또는
     읽기 전용으로 잰 꼴 밖의 주소)를 지으려 하면 ``ChangeRefused``. 설정 · 인자가 틀리면 ``MailboxConfigError``, 조직도가 그
-    회사 값으로 부서를 하나도 안 주면 ``DirectoryGap``, 서버가 답을 안 주면 ``MailboxError``(넷 다 이것의 갈래다).
+    회사 값으로 부서를 하나도 안 주면 ``DirectoryGap``, 서버가 답을 안 주면 ``MailboxError``(넷 다 이것의 갈래다). 세션 파일이
+    없거나 못 읽거나 쿠키가 없으면 ``SessionMissing``(``MailboxConfigError`` 의 갈래 — 스킬 ep-login 으로 세션을 받을 자리다).
     무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은 이 모듈 이름) — 셈과 방향만 싣고 본문 · 제목 · 이름 · 주소 · 첨부 이름은 안 싣는다.
 
 메일함을 바꾸는 손 — 언제 부르나는 부르는 쪽이 정한다
@@ -116,9 +117,10 @@
       ``M1.1.1``)의 ``M1.1`` 은 안 쟀다 — 그 자리에 ``text/plain`` 이 아닌 것이 오면 평문 조각은 없는 것으로 낸다 (A)
     * 첨부 이름은 ``attachment`` 열에 ``{}`` 로 이어 온다. 큰 첨부는 ECM 을 가리키는 ``<원래 이름>(<확장자>_<크기>KB).html``
       이다. 그 html 은 문서가 아니라 쪽지다 — 같은 ``$FILE`` 주소로 받아지고, 맨 앞 주석 ``<!--@!ECM!@ … -->`` 안의
-      ``<objectId>doc<16 hex></objectId>`` 에서 ``doc`` 을 뗀 값이 문서함이 문서를 여는 열쇠다(``MS_OBJECT_ID`` · 받은편지함
-      ECM 첨부 29 통 모두 머리가 있었고 pptx · xlsx 23 편이 그 열쇠로 열렸다 · 남의 문서함 문서도 · mail-secretary#28 셋째 판).
-      본문 링크의 ``OBJECTID`` 는 6/29 가 이 값과 달라 열쇠로 쓰지 않는다
+      ``<objectId>doc<16 hex></objectId>`` 는 원래 문서의 열쇠고, 본문 링크(``swp_interface.jsp?ACTID=viewlink&OBJECTID=<hex>``)의
+      ``OBJECTID`` 를 ASCII 로 푼 16 hex 는 사람이 첨부를 누를 때 화면이 여는 문서의 열쇠다. 둘은 대개 같고(받은편지함 29 통 가운데 23)
+      다를 때가 있다. 다른 한 통(pptx · 2026-11-16)은 머리 값으로 열기 표(``OpenContents``)는 왔는데 에이전트가 60 초 넘게 답하지
+      않았고, 링크 값으로는 받아 열렸다 — 그래서 링크 값을 먼저 쓴다 (A · mail-secretary#28 셋째 판)
     * 보낸 메일의 받는 사람은 보낸편지함 목록 열(``xname``)에 첫 사람만 들고, 한 통의 ``SendTo?OpenField`` 는 501 이다.
       다 드는 자리는 그 메일의 ``ToCcUserInfoJson``(받는 사람 · 참조) · ``BccUserInfoJson``(숨은참조 · 없으면 404) 칸이다 — 편집
       화면이 저장할 때 받는 사람마다 ``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 이어 쓴 글이다. JSON 의 ``type`` 이 ``user``
@@ -280,6 +282,8 @@ ECM_ATTACHMENT = re.compile(r"^(?P<name>.+)\((?P<ext>[0-9A-Za-z]+)_(?P<kb>\d+)KB
 # 그 쪽지 맨 앞의 기계가 읽는 머리와, 그 안의 문서 열쇠 — 열쇠는 ``doc`` 뒤의 16 hex 다
 ECM_HEAD = re.compile(r"<!--@!ECM!@(?P<head>.*?)-->", re.DOTALL)
 ECM_OBJECT = re.compile(r"<objectId>\s*doc(?P<key>[0-9A-Fa-f]{16})\s*</objectId>")
+# 쪽지 본문 링크(화면이 누르면 여는 주소)의 OBJECTID — 문서 열쇠 16 hex 글자를 ASCII 16진으로 적은 32 글자다
+ECM_LINK = re.compile(r"swp_interface\.jsp\?ACTID=viewlink&(?:amp;)?OBJECTID=(?P<hex>[0-9A-Fa-f]{32})&")
 
 # 본문 — HTML 은 꼴과 상관없는 한 길, 평문은 조각 하나
 BODY_KINDS = ("html", "text")
@@ -368,6 +372,11 @@ class MailboxError(Exception):
 
 class MailboxConfigError(MailboxError):
     """설정이 틀렸다 — 주소 · 쿠키 파일 · 인자. 묻기 전에 잡힌다."""
+
+
+class SessionMissing(MailboxConfigError):
+    """세션(쿠키) 파일이 없거나 · 못 읽거나 · 쿠키가 하나도 없다 — 주소 · 인자를 고칠 일이 아니라 사내 세션을 다시 받을
+    일이다(스킬 ep-login)."""
 
 
 class SessionExpired(MailboxError):
@@ -604,7 +613,7 @@ def discover_mailbox(server: str, cookies_file, *, timeout: float = DEFAULT_TIME
     root = server.strip().rstrip("/")
     if not re.match(r"^https?://[^/]+$", root, re.IGNORECASE):
         raise MailboxConfigError(f"메일 서버 주소(http://<호스트>)가 아니다: {server!r}")
-    jar = ep_session.load_jar(cookies_file, missing=MailboxConfigError)
+    jar = ep_session.load_jar(cookies_file, missing=SessionMissing)
     opener = ep_session.opener(jar)
     try:
         with opener.open(root + "/", timeout=timeout) as response:
@@ -625,7 +634,7 @@ class Mailbox:
     def __init__(self, url: str, cookies_file, *, view: str = INBOX_VIEW, timeout: float = DEFAULT_TIMEOUT):
         """``url`` 은 ``…/<이름>.nsf`` 까지 든 메일함 주소(그 뒤는 버린다), ``view`` 는 ``list`` 가 읽는 받은편지함 보기다.
 
-        주소 · 쿠키 파일이 틀리면 묻기 전에 ``MailboxConfigError``.
+        주소가 틀리면 묻기 전에 ``MailboxConfigError``, 쿠키 파일이 없거나 못 읽거나 비었으면 그 갈래인 ``SessionMissing``.
         """
         match = re.match(r"^(https?://[^/]+)(/.+?\.nsf)", url.strip(), re.IGNORECASE)
         if not match:
@@ -635,7 +644,7 @@ class Mailbox:
         self.view = view
         self.timeout = timeout
         self._collections: list[dict] | None = None
-        jar = ep_session.load_jar(cookies_file, missing=MailboxConfigError)
+        jar = ep_session.load_jar(cookies_file, missing=SessionMissing)
         self._opener = ep_session.opener(jar)   # 리다이렉트는 안 따라간다 — 따라가면 쿠키가 SSO 에 실린다
         self._read_only = read_only_patterns(self.db_path)
 
@@ -919,10 +928,28 @@ class Mailbox:
         log.info("첨부: %d bytes", len(data))
         return data
 
-    def ecm_key(self, mail: Entry | str, name: AttachmentName | str) -> str:
-        """ECM 첨부 하나가 가리키는 문서함 문서의 열쇠(16 hex 글자)를 낸다 — 쪽지를 받아 그 머리에서 꺼낸다.
+    def body_image(self, src: str) -> bytes:
+        """본문 ``<img src>`` 하나를 받는다 — 이 메일 서버의 읽기 전용으로 잰 주소(본문 조각 ``Body/M…?OpenElement`` 등)만 묻는다.
+        다른 호스트 · 잰 꼴 밖의 주소면 묻지 않고 ``ChangeRefused``. 로그인 화면이 오면 ``SessionExpired``."""
+        url = urllib.parse.urljoin(self.server + self.db_path + "/", src.strip())
+        parts = urllib.parse.urlsplit(url)
+        if f"{parts.scheme}://{parts.netloc}".lower() != self.server.lower():
+            raise ChangeRefused(f"메일 서버 밖의 그림이라 묻지 않는다: {parts.hostname}")
+        if any(seg in (".", "..") for seg in urllib.parse.unquote(parts.path).split("/")):
+            # 잰 꼴의 머리만 맞추고 「..」 로 다른 문서 · 다른 DB 로 올라가는 주소 — 서버가 풀면 울타리 밖을 묻게 된다
+            raise ChangeRefused("경로에 「..」 이 든 그림 주소라 묻지 않는다")
+        data, content_type = self._fetch_read_only(parts.path + (f"?{parts.query}" if parts.query else ""))
+        if "text/html" in content_type.lower() and _looks_like_login(data.decode("utf-8", "replace")):
+            raise SessionExpired("그림 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+        return data
 
-        ECM 첨부가 아니면 ``MailboxConfigError``. 쪽지에 머리나 열쇠가 없으면 ``MailboxError`` — 꼴이 바뀌었거나 다른 쪽지다.
+    def ecm_key(self, mail: Entry | str, name: AttachmentName | str) -> str:
+        """ECM 첨부 하나가 가리키는 문서함 문서의 열쇠(16 hex 글자)를 낸다 — 쪽지 본문 링크의 ``OBJECTID`` 를 먼저, 없으면 머리의
+        ``objectId`` 를 꺼낸다.
+
+        링크 쪽이 사람이 첨부를 누를 때 화면이 여는 문서다 — 메일로 보낸 문서는 그 값이 머리와 다를 수 있고, 머리 값으로는 열기 표는
+        와도 에이전트가 답하지 않는다(회사에서 잼 · 머리 「설명」). ECM 첨부가 아니면 ``MailboxConfigError``. 쪽지에 머리나 열쇠가
+        없으면 ``MailboxError`` — 꼴이 바뀌었거나 다른 쪽지다.
         """
         listed = name.listed if isinstance(name, AttachmentName) else name
         if not ECM_ATTACHMENT.match(listed):
@@ -930,14 +957,13 @@ class Mailbox:
         # 머리를 먼저 본다 — 쪽지는 다른 주소로 넘기는 스크립트 페이지라, 로그인 화면 판정은 머리가 없을 때만 한다
         data, _ = self._get(f"/0/{_unid(mail)}/$FILE/{urllib.parse.quote(listed)}")
         text = data.decode("utf-8", "replace")
-        head = ECM_HEAD.search(text)
-        found = ECM_OBJECT.search(head.group("head")) if head else None
-        if not found:
+        key = ecm_note_key(text)
+        if not key:
             if _looks_like_login(text):
                 raise SessionExpired("ECM 첨부 대신 로그인 페이지가 왔다 — 다시 로그인한다")
             raise MailboxError("ECM 첨부의 머리에 문서 열쇠(objectId)가 없다 — 쪽지 꼴이 잰 것과 다르다")
         log.info("ECM 첨부: 열쇠를 꺼냈다")
-        return found.group("key")
+        return key
 
     def session_alive(self) -> bool:
         """메일을 안 건드리고 세션이 살아 있나 묻는다 — 웹메일이 수십 초마다 부르는 주소다. 살아 있으면 참.
@@ -1604,8 +1630,7 @@ class OrgChart:
         return d.name if d else code
 
 
-def squash(text: str) -> str:
-    return re.sub(r"[\s·ㆍ()]+", "", text or "").casefold()
+squash = ep_session.squash    # 견주기 꼴 — 빈칸 · 가운뎃점 · 괄호 · 대소문자를 안 본다(사내 앱 스킬이 함께 쓰는 한 자리)
 
 
 # ── 주소록의 한 사람 ─────────────────────────────────────────────────────
@@ -1738,6 +1763,27 @@ def _is_folder(view: dict) -> bool:
 def folder_order(path: str) -> tuple:
     """폴더 경로의 차례 — 부모 · 자식 마디마다 견준다(「부모 2」가 「부모」와 「부모\\자식」 사이에 끼지 않게)."""
     return tuple(part.casefold() for part in path.split(FOLDER_SEPARATOR)), path
+
+
+def ecm_note_key(text: str) -> str | None:
+    """ECM 쪽지(첨부 「이름(확장자_NKB).html」의 글) → 문서 열쇠 16 hex 글자. 본문 링크의 ``OBJECTID`` 를 먼저, 없으면 머리의
+    ``objectId`` 를 낸다 — 링크 쪽이 사람이 누를 때 화면이 여는 문서고, 머리와 다를 수 있다(메일 29 통 가운데 6 · 게시판 15 개 가운데
+    3). 머리에 열쇠가 없으면 None — ECM 쪽지가 아니다. 스킬 company-board 도 이 가름을 부른다."""
+    head = ECM_HEAD.search(text)
+    found = ECM_OBJECT.search(head.group("head")) if head else None
+    if not found:
+        return None
+    link = ECM_LINK.search(text)
+    return (_link_key(link.group("hex")) if link else None) or found.group("key")
+
+
+def _link_key(hexed: str) -> str | None:
+    """링크 ``OBJECTID``(ASCII 16진) → 문서 열쇠 16 hex 글자. 풀어서 16 hex 가 아니면 None — 머리 값으로 간다."""
+    try:
+        key = bytes.fromhex(hexed).decode("ascii")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return key if re.fullmatch(r"[0-9A-Fa-f]{16}", key) else None
 
 
 def _found(row: dict) -> Found:

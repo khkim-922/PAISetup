@@ -11,8 +11,8 @@
     적으면 1 이어도 통과 — 「골랐다」가 본이지 값이 본이 아니다. 화면을 재서 눈금에 맞는 scale 을
     곁에 댄다 (윈도우만 · 다른 판은 수만 댄다).
   · `Read` 로 그림 파일 열기 — 이미 있는 그림이라 막아도 픽셀은 안 아껴진다. 그래서
-      긴 변 ≤ MAX_EDGE            조용히 통과
-      MAX_EDGE < 긴 변, 천장 안    통과 + 곁말(치수 · 토큰 · 줄이면 얼마 · 줄이는 한 줄) — 판단은 모델
+      눈금 안                     조용히 통과 — 줄이는 손이 그대로 두는 치수(`fit_page`: 긴 변 ≤ MAX_EDGE, 길쭉한 세로 그림은 한 쪽 폭)
+      눈금 밖, 천장 안             통과 + 곁말(치수 · 토큰 · 줄이면 얼마 · 줄이는 한 줄) — 판단은 모델
       천장 밖(상류가 깎는다)       막는다 — 값 0 인 픽셀이고 어느 판으로 깎일지 못 고른다
   · `Read` 로 PDF 열기 — Read 가 페이지마다 그림 한 장으로 그려 싣는다(poppler `pdftoppm`). 그 치수는 파일에 없고 Read 가
     그리는 dpi(`READ_PDF_DPI`)가 정하는데 사람은 그 값을 못 고른다 — 쥔 손은 `pages`(몇 장을 여나) 하나라 **막지 않고**
@@ -24,10 +24,12 @@
     조용한 선은 새 숫자가 아니다 — 긴 변 MAX_EDGE 정사각형의 패치 수(`patches((MAX_EDGE, MAX_EDGE))`), 곧 그림 한 장이면
     문이 조용히 넘기는 가장 큰 값이다. 작은 페이지도 여러 장이면 그 선을 넘어 사람이 모르는 채 창을 먹으므로 말한다.
 
-⚠ **눈금은 씨앗 `_vision.py` 가 든다** — 여기 숫자를 안 적는다. 못 찾으면 **막지 않고** 「못 쟀다」
-   한 줄만 남긴다: 문이 없는 것과 문이 잘못 잠긴 것은 다른 사고고, 뒤엣것이 더 비싸다.
-⚠ **PIL 을 안 든다** — 치수는 파일 머리에서 읽는다(PNG · JPEG · GIF · WebP). 줄이는 손은 PIL 이
-   드는데 그건 모델이 부르는 자리다(#72). PDF 도 표준 라이브러리로만 읽는다(`re` · `zlib`) — poppler 가 없는 PC 는
+⚠ **눈금은 씨앗 `_vision.py` 가, 그림 머리 읽기는 그 곁의 `_image_head.py` 가 든다** — 여기 숫자도 머리 읽기도 안 적는다.
+   씨앗을 못 찾거나, 찾은 씨앗이 이 문이 읽는 이름을 다 못 대면(문보다 낡은 씨앗) **막지 않고** 「못 쟀다」 한 줄만 남긴다:
+   문이 없는 것과 문이 잘못 잠긴 것은 다른 사고고, 뒤엣것이 더 비싸다. 머리 읽기는 그림 파일을 여는 길만 읽는다 — 그 부품만
+   없는 씨앗에서는 그 길만 「못 쟀다」고, 스크린샷 · PDF 길은 눈금으로 그대로 선다.
+⚠ **PIL 을 안 든다** — 치수는 파일 머리에서 읽는다(PNG · JPEG · GIF · WebP — 씨앗의 머리 읽기도 표준 라이브러리뿐이다).
+   줄이는 손은 PIL 이 드는데 그건 모델이 부르는 자리다(#72). PDF 도 표준 라이브러리로만 읽는다(`re` · `zlib`) — poppler 가 없는 PC 는
    Read 가 애초에 PDF 를 못 여니 문이 그것을 바랄 까닭이 없다.
 ⚠ **PDF 의 dpi 는 Read 구현이 든다** — 곁말은 「그 dpi 로 그린다면」으로 대고, 값의 출처와 다시 읽는 법은 `READ_PDF_DPI`
    곁이 든다. `pages` 없이 연 PDF 는 Claude Code 판과 모델에 따라 통째(document — 상류가 페이지를 그리고 그 해상도는
@@ -45,21 +47,37 @@
 부르는 자리 — 홈 `~/.claude/settings.json` 의 PreToolUse. 앞에 셸 껍데기(`image-gate.sh` · 곁 파일)가
 서서 stdin 에 그림 낌새(그림 · PDF 확장자 · screenshot · zoom)가 있을 때만 이 몸통을 띄운다 — 매 Read 마다 프로세스를
 띄우지 않기 위해서다. 껍데기 글자와 matcher 는 그 파일 한 벌이고, 심는 손은 자리만 채운 한 줄을 심는다.
+**판정은 모두 종료 0 으로 낸다**(막기도 stdout 의 JSON 이다) — 0 이 아닌 종료는 몸통이 죽은 것이고(잡히지 않은 예외는 1),
+껍데기는 그 값으로 「해석기가 안 떴다」와 「몸통이 죽었다」를 가른다. Codex 는 곁의 `codex-image-gate.py` 가 이 파일을 제
+프로세스 안에서 싣고 `main()` 을 부른다.
 **심는 손은 갈 곳 표의 손(`tool-homes.py`) 하나다** — 껍데기 머리말(events · var · matcher)대로, Claude 를 고른
 PC 에만, 이긴 층(설정 저장소가 있으면 개인 층)의 hooks 폴더를 가리키는 한 줄을 심는다(결정 0112).
+
+**지나간 그림을 기록한다** — `Read` 로 연 그림 · PDF 마다 한 줄을 홈의 `LOG_DIR/LOG_FILE`(`LOG_DIR_ENV` 로 옮긴다)에 남긴다: 때 ·
+세션 머리 · 갈래(`image` · `pdf`) · 띠(`quiet` · `note` · `deny` · `unmeasured`) · 치수 · 토큰. 곁말만 붙는 띠(눈금 밖 · 천장 안)는
+곁말이 그림과 **함께** 모델에 닿아 그 판의 값은 이미 든 뒤다 — 그 띠가 얼마나 자주 · 몇 토큰짜리로 지나가나를 재려는 기록이다.
+파일 이름은 안 남긴다 — 확장자와, 확장자를 뗀 경로의 지문(같은 파일을 다시 열었나를 가린다)만 남긴다. 못 남겨도 문은 선다.
+언제 걷나 — 그 띠를 막을지가 정해지면(기록이 판정의 재료가 아니게 되면).
 
 시험 — `python -X utf8 scripts/image-gate-check.py` (양성·음성 표본을 먹여 판정을 문다).
 **심긴 껍데기 층은 홈에 심긴 실물을 읽어 재므로 누가 심었든 그것을 잰다** — 나무에서 고친 껍데기는 나무 껍데기 층이 잰다.
 """
+import hashlib
 import json
 import math
 import os
 import re
-import struct
 import sys
+import time
 import zlib
 
-IMG_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+LOG_DIR_ENV = 'IMAGE_GATE_LOG_DIR'   # 기록을 둘 폴더를 옮긴다 — 검사가 진짜 기록을 안 더럽히게 임시 폴더를 준다
+LOG_DIR = '.image-gate'              # 기록의 자리 — 홈 아래(훅 폴더는 설치가 다시 쓴다)
+LOG_FILE = 'passes.jsonl'
+LOG_MAX_BYTES = 1 << 20              # 넘으면 한 벌(`.1`)로 밀고 새로 쓴다 — 기록이 끝없이 자라지 않게
+LOG_SID_CHARS = 8                    # 세션 id 의 앞 몇 자 — 한 세션 안의 차례를 가리는 데면 족하다
+LOG_STEM_CHARS = 10                  # 경로 지문의 길이
+IMG_EXT =('.png', '.jpg', '.jpeg', '.gif', '.webp')
 PDF_EXT = ('.pdf',)       # 껍데기 글롭은 IMG_EXT 와 이것을 합친 집합과 짝이다
 # Read 가 PDF 페이지를 그리는 해상도 — Claude Code 2.1.302 의 Read 는 `pdftoppm -jpeg -r 100` 을 부른다(설치본
 # `@anthropic-ai/claude-code/bin/claude.exe` 안의 글자). 판이 바뀌면 그 파일에서 `pdftoppm` 곁의 `-r` 값을 다시 읽는다
@@ -71,9 +89,19 @@ SHOT_TOOLS = re.compile(r'^mcp__(Claude_Browser|claude-in-chrome)__(computer|bro
                         r'|^mcp__computer-use__(screenshot|zoom|computer_batch)$')
 
 
-# ── 눈금 — 씨앗에서 읽는다 ─────────────────────────────────────────────────────────
-def load_vision():
-    """`_vision.py` 를 찾는 차례 — 시험이 주는 자리 · 홈 씨앗 · 붙은 저장소 · 이 파일 곁(진본)."""
+# ── 씨앗 — 눈금과 그림 머리 읽기를 거기서 읽는다 ─────────────────────────────────────────
+VISION_NEEDS = ('MAX_EDGE', 'LONG_EDGE_CAP', 'TOKEN_CAP', 'patches', 'fit_page', 'downscaled')   # 이 문이 눈금에서 읽는 이름
+HEAD_NEEDS = ('size_of_file',)                                                                   # 머리 읽기에서 읽는 이름
+SEED_WHY_CHARS = 120   # 씨앗을 못 실은 까닭(예외 글)을 곁말에 싣는 길이
+
+
+def load_seed():
+    """씨앗의 눈금(`_vision`) → (눈금, 그 폴더, 못 읽은 까닭).
+
+    찾는 차례 — 시험이 주는 자리 · 홈 씨앗 · 붙은 저장소 · 이 파일 곁(진본). `_vision.py` 가 있는 첫 폴더가 씨앗이고, 그 폴더를
+    `sys.path` 앞에 얹는다. 읽었으면 까닭은 None, 못 읽었으면 앞 둘이 None 이다 — 씨앗이 없다 · 못 실었다 · 이 문이 읽는 이름
+    (`VISION_NEEDS`)을 다 못 댄다(문보다 낡은 눈금).
+    """
     here = os.path.dirname(os.path.abspath(__file__))
     forced = os.environ.get('IMAGE_GATE_VISION_DIR')
     cands = [forced] if forced else [   # 시험이 자리를 주면 그 자리만 — 「없을 때」를 재려면 대체가 없어야 한다
@@ -86,65 +114,28 @@ def load_vision():
             sys.path.insert(0, d)
             try:
                 import _vision  # noqa: PLC0415
-                return _vision, d
-            except Exception:  # noqa: BLE001 — 눈금이 깨졌으면 없는 것과 같다
-                return None, None
-    return None, None
+            except Exception as exc:  # noqa: BLE001 — 깨진 눈금은 못 읽은 것이다
+                return None, None, '씨앗(%s)의 눈금을 못 실어(%s: %s)' % (d, type(exc).__name__, str(exc)[:SEED_WHY_CHARS])
+            lacks = [n for n in VISION_NEEDS if not hasattr(_vision, n)]
+            if lacks:
+                return None, None, '씨앗(%s)의 눈금이 이 문보다 낡아(없는 이름 %s)' % (d, ' · '.join(lacks))
+            return _vision, d, None
+    return None, None, '눈금(씨앗 _check/_vision.py)을 못 찾아'
 
 
-# ── 치수 — 파일 머리만 읽는다 ─────────────────────────────────────────────────────
-def dims(path):
-    """(가로, 세로) 또는 None. PNG · GIF · WebP(VP8/VP8L/VP8X) · JPEG(SOF)."""
+def load_head(vdir):
+    """눈금 곁의 그림 머리 읽기(`_image_head`) → (머리 읽기, 못 읽은 까닭). `load_seed` 가 `vdir` 을 `sys.path` 앞에 얹은 뒤에 부른다.
+
+    그림 파일을 여는 길만 이것을 읽는다 — 이 부품이 없는 씨앗(문보다 낡은 씨앗)에서도 스크린샷 · PDF 길은 눈금만으로 선다.
+    """
     try:
-        with open(path, 'rb') as f:
-            head = f.read(32)
-            if head.startswith(b'\x89PNG\r\n\x1a\n') and head[12:16] == b'IHDR':
-                return struct.unpack('>II', head[16:24])
-            if head[:6] in (b'GIF87a', b'GIF89a'):
-                return struct.unpack('<HH', head[6:10])
-            if head[:4] == b'RIFF' and head[8:12] == b'WEBP':
-                kind = head[12:16]
-                if kind == b'VP8 ':
-                    w, h = struct.unpack('<HH', head[26:30])
-                    return (w & 0x3FFF, h & 0x3FFF)
-                if kind == b'VP8L':
-                    b = head[21:25]
-                    w = 1 + (((b[1] & 0x3F) << 8) | b[0])
-                    h = 1 + (((b[3] & 0x0F) << 10) | (b[2] << 2) | (b[1] >> 6))
-                    return (w, h)
-                if kind == b'VP8X':
-                    w = 1 + int.from_bytes(head[24:27], 'little')
-                    h = 1 + int.from_bytes(head[27:30], 'little')
-                    return (w, h)
-                return None
-            if head[:2] == b'\xff\xd8':
-                f.seek(2)
-                while True:
-                    b = f.read(1)
-                    if not b:
-                        return None
-                    if b != b'\xff':
-                        continue
-                    marker = f.read(1)
-                    while marker == b'\xff':
-                        marker = f.read(1)
-                    if not marker:
-                        return None
-                    m = marker[0]
-                    if m in (0xD8, 0x01) or 0xD0 <= m <= 0xD7:
-                        continue
-                    seg = f.read(2)
-                    if len(seg) < 2:
-                        return None
-                    ln = struct.unpack('>H', seg)[0]
-                    if 0xC0 <= m <= 0xCF and m not in (0xC4, 0xC8, 0xCC):
-                        body = f.read(5)
-                        h, w = struct.unpack('>xHH', body)
-                        return (w, h)
-                    f.seek(ln - 2, 1)
-    except (OSError, struct.error, IndexError):
-        return None
-    return None
+        import _image_head  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001 — 없거나 깨진 부품은 못 읽은 것이다
+        return None, '씨앗(%s)의 그림 머리 읽기를 못 실어(%s: %s)' % (vdir, type(exc).__name__, str(exc)[:SEED_WHY_CHARS])
+    lacks = [n for n in HEAD_NEEDS if not hasattr(_image_head, n)]
+    if lacks:
+        return None, '씨앗(%s)의 그림 머리 읽기가 이 문보다 낡아(없는 이름 %s)' % (vdir, ' · '.join(lacks))
+    return _image_head, None
 
 
 # ── PDF — 페이지 나무에서 장수와 크기를 읽는다(표준 라이브러리만) ─────────────────────────────
@@ -334,11 +325,33 @@ def pdf_px(size_pt):
     return tuple(max(1, math.ceil(x * k)) for x in size_pt)
 
 
-def pdf_gate(path, pages_arg, v):
+def record(sid, kind, band, path, **facts):
+    """지나간 그림 · PDF 하나를 기록 한 줄로 남긴다(머리말 「지나간 그림을 기록한다」). 무엇이 져도 던지지 않는다 — 기록은 문의 일이 아니다."""
+    try:
+        folder = os.environ.get(LOG_DIR_ENV) or os.path.join(os.path.expanduser('~'), LOG_DIR)
+        os.makedirs(folder, exist_ok=True)
+        log = os.path.join(folder, LOG_FILE)
+        try:
+            if os.path.getsize(log) > LOG_MAX_BYTES:
+                os.replace(log, log + '.1')
+        except OSError:
+            pass
+        stem, ext = os.path.splitext(os.path.abspath(path))
+        line = {'t': time.strftime('%Y-%m-%dT%H:%M:%S'), 'sid': sid[:LOG_SID_CHARS], 'kind': kind, 'band': band, 'ext': ext.lower(),
+                'stem': hashlib.sha1(stem.lower().encode('utf-8', 'replace')).hexdigest()[:LOG_STEM_CHARS]}
+        line.update(facts)
+        with open(log, 'a', encoding='utf-8') as out:
+            out.write(json.dumps(line, ensure_ascii=False) + '\n')
+    except Exception:  # noqa: BLE001 — 못 남긴 기록이 Read 를 세우면 안 된다
+        pass
+
+
+def pdf_gate(path, pages_arg, v, sid=''):
     """Read 로 여는 PDF 의 판정 — 막지 않는다. 조용히 · 곁말(장수 · 장당 · 합) · 장수만 · 「못 쟀다」 가운데 하나를 낸다."""
     name = os.path.basename(path)
     count, sizes, why = pdf_pages(path)
     if count is None:
+        record(sid, 'pdf', 'unmeasured', path)
         return emit(context='그림 문 — %s 의 페이지를 못 읽어 안 쟀다(%s). Read 는 PDF 를 장마다 그림 한 장으로 '
                             '싣는다 — 몇 장 · 얼마인지는 스스로 본다' % (name, why))
     sel, bad = pdf_selection(pages_arg, count)
@@ -352,6 +365,7 @@ def pdf_gate(path, pages_arg, v):
         scope = 'pages "%s" 로 %d 페이지(전체 %d)' % (pages_arg, len(sel), count)
     picked = [sizes[p - 1] for p in sel] if sizes else None
     if picked is None or None in picked:
+        record(sid, 'pdf', 'unmeasured', path, pages=len(sel))
         return emit(context='그림 문 — %s 는 %s — 페이지 크기를 못 읽어 토큰은 안 셌다. Read 는 장마다 그림 한 장을 '
                             '싣는다' % (name, scope))
     px = [pdf_px(s) for s in picked]
@@ -359,7 +373,9 @@ def pdf_gate(path, pages_arg, v):
     total = sum(min(v.patches(p), v.TOKEN_CAP) if v.downscaled(p) else v.patches(p) for p in px)
     quiet = v.patches((v.MAX_EDGE, v.MAX_EDGE))   # 그림 한 장이면 문이 조용히 넘기는 가장 큰 값
     if bad is None and max(max(p) for p in px) <= v.MAX_EDGE and total <= quiet:
+        record(sid, 'pdf', 'quiet', path, pages=len(sel), tokens=total)
         return 0
+    record(sid, 'pdf', 'note', path, pages=len(sel), tokens=total)
     shapes = sorted(set(px), key=v.patches)
     lo, hi = shapes[0], shapes[-1]
     each = ('장당 %d×%d · %s 토큰' % (hi[0], hi[1], format(v.patches(hi), ',')) if lo == hi else
@@ -479,13 +495,21 @@ def shots_without_scale(name, inp):
     return out
 
 
+HINT_SCREENS = (3440, 1920)   # 주 화면을 못 쟀을 때 보기로 대는 긴 변 — 울트라와이드와 FHD
+
+
 def scale_hints(kinds, v):
     """갈래마다 맞는 힌트 — 주 화면 치수는 computer-use 스크린샷에만 맞다(리뷰 2026-09-22)."""
+    def scale(edge):
+        """긴 변 `edge` 인 화면을 눈금에 맞추는 scale — 키우지는 않는다."""
+        return min(1.0, v.MAX_EDGE / edge)
+
     hints = []
     if 'screen' in kinds:
         edge = screen_long_edge()
-        hints.append('화면 긴 변 %d — 눈금 %d 이면 scale ≈ %.2f' % (edge, v.MAX_EDGE, min(1.0, v.MAX_EDGE / edge))
-                     if edge else '눈금은 긴 변 %d (3440 화면이면 ≈ 0.37 · 1920 이면 ≈ 0.67)' % v.MAX_EDGE)
+        hints.append('화면 긴 변 %d — 눈금 %d 이면 scale ≈ %.2f' % (edge, v.MAX_EDGE, scale(edge))
+                     if edge else '눈금은 긴 변 %d (%s)' % (v.MAX_EDGE, ' · '.join(
+                         '%d 화면이면 ≈ %.2f' % (e, scale(e)) for e in HINT_SCREENS)))
     if 'viewport' in kinds:
         hints.append('브라우저는 패널 뷰포트를 찍는다 — 뷰포트 긴 변이 %d 안이면 1, 넘으면 그 비율' % v.MAX_EDGE)
     if 'zoom' in kinds:
@@ -515,9 +539,9 @@ def main():
     if name != 'Read' and not SHOT_TOOLS.match(name):
         return 0
 
-    v, vdir = load_vision()
-    if v is None:
-        return emit(context='그림 문 — 눈금(씨앗 _check/_vision.py)을 못 찾아 안 쟀다. 치수는 스스로 고른다')
+    v, vdir, why = load_seed()
+    if why:
+        return emit(context='그림 문 — %s 안 쟀다. 치수는 스스로 고른다' % why)
 
     if SHOT_TOOLS.match(name):
         missing = shots_without_scale(name, inp)
@@ -530,12 +554,18 @@ def main():
 
     # Read — 확장자 목록(IMG_EXT · PDF_EXT)은 껍데기(`image-gate.sh` 의 case 글롭)와 짝이다
     path = str(inp.get('file_path') or '')
+    sid = str(data.get('session_id') or '')
     if path.lower().endswith(PDF_EXT):
-        return pdf_gate(path, inp.get('pages'), v)
+        return pdf_gate(path, inp.get('pages'), v, sid)
     if not path.lower().endswith(IMG_EXT):
         return 0
-    size = dims(path)
+    head, why = load_head(vdir)
+    if why:
+        record(sid, 'image', 'unmeasured', path)
+        return emit(context='그림 문 — %s %s 를 안 쟀다. 치수는 스스로 고른다' % (why, os.path.basename(path)))
+    size = head.size_of_file(path)
     if not size:
+        record(sid, 'image', 'unmeasured', path)
         return emit(context='그림 문 — %s 의 치수를 머리에서 못 읽어 안 쟀다' % os.path.basename(path))
     w, h = size
     toks = v.patches(size)
@@ -544,21 +574,24 @@ def main():
     # 화면 전체 캡처면 치수 말과 **같이** 낸다 — 막히는 판(천장 밖)에서도 빠지면 안 된다: 원본을 처음
     # 여는 그 순간이 대개 막히는 판이다.
     note = whole_screen_note(path, size, vdir)
+    # 눈금 안인가는 줄이는 손이 긴 변을 안 받았을 때 내는 치수(`fit_page`)로 가린다 — 손이 그대로 두는 그림(한 쪽 폭에 맞춘
+    # 길쭉한 그림 포함)에 「줄이면」을 대면, 대는 수와 그 한 줄이 내는 수가 어긋나고 일부러 지킨 폭을 도로 누르게 한다
+    fw, fh = v.fit_page(size)
+    band = 'deny' if v.downscaled(size) else 'note' if (fw, fh) != size else 'quiet'
+    record(sid, 'image', band, path, w=w, h=h, tokens=toks)
     if v.downscaled(size):
-        fw, fh = v.fit(size, v.MAX_EDGE)
         reason = ('그림 문 — %s 는 %d×%d · %s 토큰인데 상류 천장(긴 변 %d · %s 토큰) 밖이라 보내기 전에 '
                   '깎인다 — 그 픽셀은 값이 0 이고 어느 판으로 깎일지 못 고른다. 먼저 줄인다: %s  '
-                  '(긴 변 %d → %d×%d · %s 토큰 · 글자가 작으면 --max-edge 로 더 크게 · '
+                  '(줄이면 %d×%d · %s 토큰 · 글자가 작으면 --max-edge 로 더 크게 · '
                   'PIL 이 없으면 python -m pip install pillow, 그것도 안 되면 다른 손으로 긴 변 %d 안까지 줄여 연다)'
                   % (os.path.basename(path), w, h, format(toks, ','), v.LONG_EDGE_CAP,
-                     format(v.TOKEN_CAP, ','), shrink, v.MAX_EDGE, fw, fh,
+                     format(v.TOKEN_CAP, ','), shrink, fw, fh,
                      format(v.patches((fw, fh)), ','), v.LONG_EDGE_CAP))
         return emit('deny', reason + ('\n' + note if note else ''))
-    if max(size) > v.MAX_EDGE:
-        fw, fh = v.fit(size, v.MAX_EDGE)
-        ctx = ('그림 문 — %s 는 %d×%d · %s 토큰. 긴 변 %d 이면 %d×%d · %s 토큰 (%s). '
+    if (fw, fh) != size:
+        ctx = ('그림 문 — %s 는 %d×%d · %s 토큰. 줄이면 %d×%d · %s 토큰 (%s). '
                '글자가 작으면 그대로 읽는다 — 고르는 것은 너다'
-               % (os.path.basename(path), w, h, format(toks, ','), v.MAX_EDGE, fw, fh,
+               % (os.path.basename(path), w, h, format(toks, ','), fw, fh,
                   format(v.patches((fw, fh)), ','), shrink))
         return emit(context=ctx + ('\n' + note if note else ''))
     if note:

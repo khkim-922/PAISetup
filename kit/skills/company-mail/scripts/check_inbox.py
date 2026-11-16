@@ -160,6 +160,7 @@ class FakeMail:
     mark: str = ""                  # 읽은 메일의 읽음 열 — 빈 글자면 ico-okmail · 회신함 ico-post · 전달함 ico-remail
     unserved: bool = False          # 본문 주소에 501 — 실물 메일함에 있는 꼴(폴더에 든 한 통 · inbox.py 머리말 N-가)
     draft: bool = False             # 임시보관함의 메일 — 받은편지함 · 폴더 · 모든편지함 보기에 안 서고 임시보관함 보기에만 선다
+    unindexed: bool = False         # 검색 색인에 아직 안 든 새 메일 — 보기에는 서고 검색 손에는 안 걸린다(실물 · 색인은 몇 시간 늦다)
 
     def folder_label(self) -> str:
         """모든편지함의 폴더 열 — 받은편지함 ``[${INBOX}]`` · 하위 폴더는 끝 이름만(실측)."""
@@ -224,13 +225,13 @@ FOLDER_TOP, FOLDER_CHILD, FOLDER_COMMA, FOLDER_EMPTY = "협력사", "프로젝�
 # SSO 주소를 적은 사내 안내 본문 — 끊긴 세션의 화면이 아니다
 NOTICE = '<p>비밀번호 변경: <a href="http://swpsso.posco.net/idms/U61/jsp/pw.jsp">swpsso.posco.net</a></p>'
 ECM_KEY = "1a2b3c4d5e6f7081"
-# 본문 링크의 OBJECTID 는 머리의 열쇠와 다를 수 있다(잰 29 통 가운데 6) — 링크 쪽 값을 열쇠로 집으면 문다
+# 본문 링크의 OBJECTID 는 머리의 열쇠와 다를 수 있다(잰 29 통 가운데 6) — 화면이 여는 것은 링크 쪽이다. 머리 쪽을 집으면 문다
 ECM_LINK_OBJECT = "99aa88bb77cc66dd"
 
 
-def ecm_note(key: str | None) -> bytes:
+def ecm_note(key: str | None, link: str | None = ECM_LINK_OBJECT) -> bytes:
     """ECM 첨부 쪽지 — 잰 꼴(맨 앞 ``<!--@!ECM!@ … -->`` 머리 · 그 뒤 swp_interface.jsp 로 넘기는 본문). 열쇠가 None 이면
-    머리 없는 쪽지다."""
+    머리 없는 쪽지, 링크가 None 이면 본문에 링크가 없는 쪽지다."""
     def hexed(s: str) -> str:
         return s.encode().hex()
     head = ("<!--@!ECM!@<empId>02|usr0123456789abcdef</empId><lineType>01</lineType>"
@@ -239,8 +240,8 @@ def ecm_note(key: str | None) -> bytes:
             f"<servletUrl>http://swpecm.posco.net:7091/ECM/servlet/EcmSendFileServlet?DOCID=doc{key}</servletUrl>"
             "<secretLevelCode>2A</secretLevelCode><sendTime>20261103060000</sendTime>-->\n") if key else ""
     body = ("<html><body><script>location.href='http://swpecm.posco.net:7091/ECM/swp_interface.jsp?ACTID=viewlink"
-            f"&OBJECTID={hexed(ECM_LINK_OBJECT)}&DOCID={hexed('doc' + (key or '0' * 16))}&SYSID={hexed('pcfma')}';"
-            "</script></body></html>")
+            f"&OBJECTID={hexed(link)}&DOCID={hexed('doc' + (key or '0' * 16))}&SYSID={hexed('pcfma')}';"
+            "</script></body></html>") if link else "<html><body></body></html>"
     return (head + body).encode()
 
 
@@ -685,7 +686,7 @@ class FakeDomino:
             if scope == "unread":
                 return m.unread
             return scope == "all"
-        got = sorted((m for m in self.mails.values() if in_scope(m) and all(held(m, k, w) for k, w in wanted.items())),
+        got = sorted((m for m in self.mails.values() if in_scope(m) and not m.unindexed and all(held(m, k, w) for k, w in wanted.items())),
                      key=lambda m: m.stamp, reverse=True)
         if scope in ("all", "sent"):    # 보낸 메일 — 실물의 category 는 시스템 표지 [${SENT}]
             got += [FakeMail(x.unid, x.subject, x.stamp, x.to, unread=False, folder="(Sent)") for x in self.sent
@@ -1066,6 +1067,22 @@ def check_recipient_list_view_shapes():
         assert mailbox.recipient_lists(count=200) is None, "보기가 없는 메일함에서 None 이 아니다"
 
 
+def check_body_image_asks_only_this_server_and_keeps_session_loss():
+    """본문 그림 — 남의 호스트 · 잰 꼴 밖의 주소는 서버에 닿기 전에 막고(추적 픽셀이 사람 몰래 밖에 닿는다), 메일 조각 그림은 받으며,
+    끊긴 세션은 「안 받았다」가 아니라 SessionExpired 로 오른다."""
+    with stage() as (box, mailbox):
+        box.mails[U["alone"]].text = "평문"   # 조각 M1.2 가 서려면 평문 · HTML 둘을 든 메일이어야 한다(흉내의 꼴)
+        part = f"{DB}/0/{U['alone']}/Body/M1.2?OpenElement"
+        assert mailbox.body_image(part), "메일 조각 그림을 못 받았다"
+        asked = len(box.paths)
+        foreign = f"http://tracker.example.com{part}"   # 길은 잰 꼴이어도 호스트가 남이면 막는다 — 길 목록만으로는 못 막는 자리
+        for src in ("http://tracker.example.com/open.gif", "//tracker.example.com/p.png", "/icons/medoc.gif", foreign):
+            raises(inbox.ChangeRefused, lambda s=src: mailbox.body_image(s))
+        assert len(box.paths) == asked, f"막아야 할 그림 주소가 서버에 닿았다: {box.paths[asked:]}"
+    with stage(session="login") as (_, mailbox):
+        raises(inbox.SessionExpired, lambda: mailbox.body_image(f"{DB}/0/{U['alone']}/Body/M1.2?OpenElement"))
+
+
 def check_body_html_one_path_and_text_part():
     with stage() as (box, mailbox):
         assert mailbox.body(U["alone"]) == "<p>본문</p>", "기본 꼴이 HTML 본문이 아니다"
@@ -1094,8 +1111,10 @@ def check_attachments_direct_bytes_and_ecm_names():
         raises(inbox.MailboxConfigError, lambda: mailbox.attachment(e, ecm))
         raises(inbox.MailboxConfigError, lambda: mailbox.ecm_key(e, memo))
         assert len(box.paths) == asked, "ECM 첨부의 바이트를 내러 · ECM 아닌 첨부의 열쇠를 꺼내러 서버에 갔다"
-        assert mailbox.ecm_key(e, ecm) == ECM_KEY, "ECM 첨부의 열쇠가 머리 objectId 가 아니다"
-        assert mailbox.ecm_key(U["ecm"], ecm.listed) == ECM_KEY, "목록의 이름 그대로 꺼내는 길이 다르다"
+        assert mailbox.ecm_key(e, ecm) == ECM_LINK_OBJECT, "ECM 첨부의 열쇠가 화면이 여는 링크 OBJECTID 가 아니다"
+        assert mailbox.ecm_key(U["ecm"], ecm.listed) == ECM_LINK_OBJECT, "목록의 이름 그대로 꺼내는 길이 다르다"
+        box.mails[U["ecm"]].files[ecm.listed] = ecm_note(ECM_KEY, link=None)
+        assert mailbox.ecm_key(e, ecm) == ECM_KEY, "링크 없는 쪽지에서 머리 objectId 로 안 갔다"
         box.mails[U["ecm"]].files[ecm.listed] = ecm_note(None)
         missing = raises(inbox.MailboxError, lambda: mailbox.ecm_key(e, ecm))
         assert type(missing) is inbox.MailboxError, f"머리 없는 쪽지를 {type(missing).__name__} 로 읽었다"

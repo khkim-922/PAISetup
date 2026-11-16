@@ -13,8 +13,13 @@
       · 앱 이름은 'Word' | 'Excel' | 'PPT' — $HANDLER 가 확장자를 이 이름으로 보내고, office-session.ps1 의 Kind 와 같다
       · New-OfficeJob · Set-OfficeJobKill · Join-OfficeJob — 띄운 오피스를 이 프로세스의 Job(KILL_ON_JOB_CLOSE)에 묶는 손
       · Get-FileHead · Test-PlainFormat — 머리 바이트 · 감겼나
-      · New-OfficeApp -AppName -SpawnedPids ([ref]해시) -Job — 앱 하나를 띄워 돌려준다. 띄우기 전에 없던 PID 만 해시(PID → 앱 이름)에
-        더하고 Job 에 넣는다. 파워포인트를 띄울 때 $PptWasRunning 을 부르는 쪽의 스크립트 범위에 둔다(아래)
+      · New-OfficeApp -AppName -SpawnedPids ([ref]해시) -Job — 앱 하나를 띄워 돌려준다. 띄우기 전에 없던 PID 가운데 이 앱의 것만
+        해시(PID → 앱 이름)에 더하고 Job 에 넣는다. 워드 · 엑셀은 매크로를 끈 채 띄운다($MSO_AUTOMATION_FORCE_DISABLE). 파워포인트를 띄울 때
+        $PptWasRunning 을 부르는 쪽의 스크립트 범위에 둔다(아래)
+      · Close-OfficeApps -AppByName (앱 이름 → 앱 개체) -SpawnedPids 해시 -Job -PptWasRunning — 판이 쓴 앱을 끝내는 한 자리다. 앱을
+        끄고(Exit-OfficeApp) · Quit 뒤에도 남은 프로세스를 끝내고 · Job 손잡이를 닫는다. 내는 것은 없다. 프로세스를 강제로 끝내는 줄은
+        이 함수에만 있다. 부르기 전에 이 판이 연 문서를 닫는다(Close-OwnedDocument) — 남은 문서가 곧 판정이다
+      · Get-OfficeAppPid -App -AppName — 앱 개체 뒤의 프로세스 PID. 앱의 창 손잡이로 묻고, 못 물으면 0
       · Read-WithWord · Read-WithExcel · Read-WithPPT -App -LiteralPath → @{ Text = [string]; Visual = [hashtable] }
         Visual 의 열쇠는 영어다 — tables · images · shapes · formulas · charts · fields. 0 인 열쇠는 없다. 파워포인트는 글 없는
         낱 도형(그림 · 도형을 안 가른다)을 images 에 센다. 사람 말로 옮기는 것은 부르는 쪽 몫이다(read-drm.ps1 의 Format-Visual)
@@ -23,15 +28,23 @@
         읽은 글자를 홈 아래 한 자리($KEPT_TEXT_DIR_ENV 가 없으면 ~/.drm-read-text)에 「파일 이름.지문.md」로 남기고, 같은 바이트의 파일을
         지문(SHA-256 앞 12 자)으로 알아본다 — 이름이 달라도 바이트가 같으면 같은 글자다. 남긴 파일은 머리 두 줄(읽을 때의 한 줄 · 원본과
         뽑은 때) 뒤 $KEPT_SPLIT 아래가 글자다. 이 손은 남긴 것을 지우지 않는다 — 치우는 것은 사람이다
-      · 상수 — $HANDLER · $PROCESS_OF · $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS ·
-        $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
+      · 남긴 그림 — Get-KeptShotDir -Name -Print. 같은 자리 아래 폴더 「파일 이름.지문」의 경로를 낸다(짓지 않는다). 그 안의 그림 이름과
+        기록은 그림을 뜨는 손(capture_slides.ps1 · capture_pages.ps1)이 든다
+      · 그림 줄이기 — Convert-ShotsToWebp -Png 경로들 [-MaxEdge] → PNG 경로 → 나갈 경로. 뜬 PNG 들을 씨앗의 줄이는 손에 한 번에 넘겨
+        WebP 로 바꾼다(못 줄인 것은 PNG 그대로). 앱을 다 끝낸 뒤 한 번 부른다 — 줄이는 손은 프로세스를 띄운다.
+        Convert-ShotToWebp -Png [-MaxEdge] 는 한 장짜리 꼴이다
+      · 번호 고름 — ConvertTo-NumberList -Value -Name. 「1,3 5」 꼴의 쪽 · 장 고름을 번호 열로 풀고, 번호가 아닌 낱말이 있으면 그 낱말을
+        대며 던진다. 빈 고름의 뜻과 범위 밖 가름은 부르는 쪽 몫이다
+      · 상수 — $HANDLER · $PROCESS_OF · $MSO_AUTOMATION_FORCE_DISABLE · $OFFICE_EXIT_WAIT_MS · $OFFICE_EXIT_POLL_MS · $SHRINK_ARGS_MAX_CHARS ·
+        $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS · $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
       · 파워포인트 글은 머리 한 줄($PPT_SEAT_LEGEND) 뒤 장마다 도형을 위→아래 · 왼→오른으로 세워 줄마다 [위 · 왼] 꼬리표를 앞세운다.
         표의 합친 칸은 첫 칸에만 글을 두고 덮인 칸은 비운다
     판을 올리는 자 — 함수 이름 · 인자 · 내는 꼴(열쇠 포함) · Job 의 뜻이 바뀌면 1 을 올린다. 함수를 더하거나 안을 고치는 것은 안 올린다.
 
-    $PptWasRunning — New-OfficeApp 이 파워포인트를 띄우기 전에 그 앱이 떠 있었나를 $script: 범위에 둔다. 점 소싱한 함수의 $script: 는
-    실은 쪽의 스크립트 범위라 그 변수는 부르는 쪽 것이다 — 끝에서 Exit-OfficeApp -WasRunning 에 넘긴다. 돌려주지 않는 까닭: 돌려주면
-    New-OfficeApp 의 내는 꼴이 앱 하나에서 둘로 바뀌어 부르는 쪽 셋이 다 풀어 받아야 한다.
+    $PptWasRunning — New-OfficeApp 이 돌려준 파워포인트가 띄우기 전부터 떠 있던 프로세스인가(붙은 자리인가)를 $script: 범위에 둔다.
+    점 소싱한 함수의 $script: 는 실은 쪽의 스크립트 범위라 그 변수는 부르는 쪽 것이다 — 끝에서 Close-OfficeApps -PptWasRunning(제 끝
+    정리를 쓰는 본체는 Exit-OfficeApp -WasRunning)에 넘긴다. 돌려주지 않는 까닭: 돌려주면 New-OfficeApp 의 내는 꼴이 앱 하나에서 둘로
+    바뀌어 부르는 쪽이 다 풀어 받아야 한다.
 
     진단은 Write-Warning 으로 낸다 — 표준 출력에는 아무것도 안 낸다. 표준 출력이 제 계약인 앱(JSON 한 줄 따위)은 경고 흐름을 제 자리로
     보낸다 — 경고를 내는 함수는 고급 함수라 `-WarningVariable` · `-WarningAction` 이 선다(New-OfficeApp 은 안에서 부른 것까지 모은다).
@@ -57,7 +70,8 @@ function Get-KeptTextDir {
 function Get-KeptPrint {
     # 파일 바이트의 지문. 다른 프로세스가 독점으로 쥔 파일이면 던진다 — 부르는 쪽이 「지문 없음 · 읽기만」으로 받는다
     param([Parameter(Mandatory = $true)][string]$LiteralPath)
-    return (Get-FileHash -LiteralPath $LiteralPath -Algorithm SHA256).Hash.Substring(0, $KEPT_PRINT_CHARS).ToLower()
+    # ⚠ -ErrorAction Stop — Get-FileHash 는 모듈 함수라 부르는 쪽의 Stop 을 안 물려받아, 잠긴 파일에 날 오류를 화면에 찍고 $null 을 낸다
+    return (Get-FileHash -LiteralPath $LiteralPath -Algorithm SHA256 -ErrorAction Stop).Hash.Substring(0, $KEPT_PRINT_CHARS).ToLower()
 }
 
 function Find-KeptText {
@@ -92,6 +106,118 @@ function Save-KeptText {
     return $path
 }
 
+# ── 남긴 그림 — 같은 바이트의 문서에서 앞서 뜬 그림은 앱을 다시 안 띄우고 그 그림으로 답한다 ──────────────────
+# 그림을 뜨는 것도 글자와 같은 값을 치른다(앱을 띄우고, 슬라이드쇼는 화면을 가져간다). 자리는 남긴 글자 곁의 폴더 「파일 이름.지문」
+# 이다 — 한 문서의 글자와 그림이 한 자리에 서고 치울 때도 한 자리다. 그림의 이름과 무엇을 떴나의 기록은 뜨는 손이 든다
+function Get-KeptShotDir {
+    # 그 지문의 그림 폴더 경로 — 이미 있으면 그것(이름이 달라도 지문이 같으면 같은 문서다), 없으면 「이름.지문」 자리. 짓지는 않는다
+    param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][string]$Print)
+    $dir = Get-KeptTextDir
+    try {
+        if (Test-Path -LiteralPath $dir -PathType Container) {
+            $hit = Get-ChildItem -LiteralPath $dir -Directory -Filter "*.$Print" -ErrorAction Stop | Sort-Object Name | Select-Object -First 1
+            if ($hit) { return $hit.FullName }
+        }
+    } catch { }
+    return (Join-Path $dir ('{0}.{1}' -f $Name, $Print))
+}
+
+# 줄이는 손에 한 번에 넘기는 그림 이름 글자 수의 한도 — 명령 줄 하나는 cmd 를 거치면 8,191 자까지다(python 이 .cmd · .bat 껍데기로
+# 깔린 PC 가 그렇다 · 바로 뜨는 exe 는 32,767 자). 줄이는 손의 경로와 인자 몫을 남긴 값이고, 그림이 많아 넘으면 묶음을 나눠 부른다
+$SHRINK_ARGS_MAX_CHARS = 6000
+
+function Convert-ShotsToWebp {
+    # 뜬 PNG 들을 씨앗의 줄이는 손(_shrink.py --batch — 진본은 설정 저장소 seeds/check/)에 한 번에 넘겨 무손실 WebP 로 바꾸고,
+    # PNG 경로 → 나갈 경로(줄였으면 WebP · 못 줄였으면 그 PNG)의 해시를 낸다. 긴 변은 -MaxEdge, 안 주면 그 손의 기본 눈금이다. 그림의
+    # 값은 치수가 정하고 WebP 는 바이트만 줄인다. 줄이는 손을 못 찾거나 · 못 띄우거나 · 진 그림은 경고하고 PNG 그대로 둔다 — 큰
+    # 그림이라고 안 내는 것보다 낫고, 값을 더 무는 판이라 그 판정이 한 줄 서야 한다.
+    # 줄였나는 그림마다 WebP 가 생겼나로 가른다 — 넘기기 전에 그 이름의 WebP 를 지운다. 안 지우면 줄이는 손이 통째로 진 판(PIL 없음)에
+    # 앞서 남은 그림이 이번에 줄인 것으로 세어진다.
+    # 줄이는 손은 프로세스를 띄우므로 그림마다 부르지 않는다 — 뜨는 손은 앱을 다 끝낸 뒤 이 함수를 한 번 부른다
+    param([string[]]$Png = @(), [int]$MaxEdge = 0)
+    $converted = @{}
+    foreach ($shot in $Png) { $converted[$shot] = $shot }
+    if ($Png.Count -eq 0) { return $converted }
+    $shrink = @(
+        (Join-Path $HOME '.claude/seeds/check/_check/_shrink.py'),
+        (Join-Path $PSScriptRoot '..\..\..\..\seeds\check\_check\_shrink.py')
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if (-not $shrink) {
+        Write-Warning "줄이는 부품을 못 찾았다 — 원본 치수 그대로 낸다 (~/.claude/seeds/check/_check/_shrink.py)"
+        return $converted
+    }
+    $edge = @()
+    if ($MaxEdge -gt 0) { $edge = @('--max-edge', $MaxEdge) }
+    $webpOf = @{}                          # 넘긴 PNG → 생겨야 할 WebP
+    # 묶음 하나가 줄이는 손 한 번이다 — 한 폴더의 그림을 그 폴더에서 이름만으로 넘긴다(경로째 넘기면 명령 줄이 금세 찬다).
+    # 뜨는 손은 한 폴더에 뜨므로 보통은 한 묶음이고, 폴더가 바뀌거나 글자 한도를 넘을 때만 묶음이 갈린다
+    $bundles = @()                         # @{ Dir; Pairs = (PNG 이름, WebP 이름, …); Chars }
+    $bundle = $null
+    foreach ($shot in $Png) {
+        $webp = [System.IO.Path]::ChangeExtension($shot, '.webp')
+        try {
+            if (Test-Path -LiteralPath $webp) { Remove-Item -LiteralPath $webp -Force }
+        } catch {
+            Write-Warning "앞서 남은 그림을 못 지워 줄이지 않는다($($_.Exception.Message)) — $webp"
+            continue
+        }
+        $shotDir = [System.IO.Path]::GetDirectoryName($shot)
+        if (-not $shotDir) { $shotDir = (Get-Location).ProviderPath }
+        # 이름 앞의 「.\」 — 「-」 로 시작하는 이름이 줄이는 손의 인자 이름으로 읽히지 않는다
+        $pair = @(('.\' + [System.IO.Path]::GetFileName($shot)), ('.\' + [System.IO.Path]::GetFileName($webp)))
+        $cost = $pair[0].Length + $pair[1].Length + 6    # 짝 하나가 명령 줄에서 차지하는 글자 — 따옴표와 빈칸까지
+        if ($null -eq $bundle -or $bundle.Dir -ne $shotDir -or ($bundle.Chars + $cost) -gt $SHRINK_ARGS_MAX_CHARS) {
+            $bundle = @{ Dir = $shotDir; Pairs = @(); Chars = 0 }
+            $bundles += $bundle
+        }
+        $bundle.Pairs += $pair
+        $bundle.Chars += $cost
+        $webpOf[$shot] = $webp
+    }
+    foreach ($bundle in $bundles) {
+        $pairs = $bundle.Pairs
+        Push-Location -LiteralPath $bundle.Dir
+        # 종료 값은 안 본다 — 한 짝이 져도 남은 짝은 구워지므로 아래에서 짝마다 결과 파일로 가른다
+        try { python -X utf8 $shrink --batch @pairs @edge | Out-Null }
+        catch { Write-Warning "줄이는 손을 못 띄웠다: $($_.Exception.Message)" }
+        finally { Pop-Location }
+    }
+    $lost = 0
+    foreach ($shot in @($webpOf.Keys)) {
+        if (Test-Path -LiteralPath $webpOf[$shot]) {
+            Remove-Item -LiteralPath $shot -Force
+            $converted[$shot] = $webpOf[$shot]
+        } else { $lost++ }
+    }
+    if ($lost -gt 0) {
+        Write-Warning "그림 $lost 장의 줄이기가 졌다 — 원본 치수 그대로 낸다. 위 오류를 본다 (흔한 까닭은 PIL 이 없는 것: python -m pip install pillow)"
+    }
+    return $converted
+}
+
+function Convert-ShotToWebp {
+    # 한 장짜리 꼴 — 뜬 PNG 하나를 줄여 나갈 경로(WebP · 못 줄였으면 PNG)를 낸다. 여러 장은 Convert-ShotsToWebp 에 한 번에 넘긴다
+    param([Parameter(Mandatory = $true)][string]$Png, [int]$MaxEdge = 0)
+    return (Convert-ShotsToWebp -Png @($Png) -MaxEdge $MaxEdge)[$Png]
+}
+
+# ── 번호 고름 — 그림을 뜨는 손 둘(capture_pages.ps1 의 -Pages · capture_slides.ps1 의 -Slides)이 같은 꼴을 받는다 ──────────
+function ConvertTo-NumberList {
+    <# 쉼표나 공백으로 나눈 번호 고름 → 정수 열(준 차례 · 겹친 번호는 한 번). 번호가 아닌 낱말이 하나라도 있으면 그 낱말과 받는 꼴을
+       대며 던진다 — 조용히 버리면 고른 것의 일부만 뜨고 부른 쪽은 다 뜬 줄 안다. 빈 고름은 빈 열이다 — 「안 골랐다」의 뜻(전부인가 ·
+       멈추나)과 범위 밖 가름은 부르는 쪽이 정한다(끝 번호는 문서를 열어야 안다). $Name 은 실패 문구에 대는 인자 이름이다 #>
+    param([string]$Value, [Parameter(Mandatory = $true)][string]$Name)
+    $list = @()
+    foreach ($token in ($Value -split '[,\s]+' | Where-Object { $_ })) {
+        if ($token -notmatch '^\d+$') {
+            throw "-$Name 는 쉼표나 공백으로 나눈 번호만 받는다(예: 1,3,5 — 범위는 번호를 낱낱이 적는다) — 번호가 아닌 낱말: $token"
+        }
+        $parsed = [int]$token
+        if ($list -notcontains $parsed) { $list += $parsed }
+    }
+    return $list
+}
+
 # 어느 확장자를 어느 앱이 드나. PDF 는 워드가 든다 — Acrobat COM 은 이 기계에서
 # 클래스 미등록(0x80040154)이라 못 탄다.
 $HANDLER = @{
@@ -100,6 +226,9 @@ $HANDLER = @{
     '.ppt'  = 'PPT';   '.pptx' = 'PPT'
 }
 $PROCESS_OF = @{ 'Word' = 'WINWORD'; 'Excel' = 'EXCEL'; 'PPT' = 'POWERPNT' }
+# 띄운 워드 · 엑셀에 거는 값 — msoAutomationSecurityForceDisable. 자동화로 띄운 앱은 매크로를 다 켜는 것이 기본이라, 안 걸면 여는
+# 순간 도는 매크로(AutoOpen · Workbook_Open)가 사람 확인 없이 돈다
+$MSO_AUTOMATION_FORCE_DISABLE = 3
 $INV = [Globalization.CultureInfo]::InvariantCulture
 # 엑셀의 Value2 는 오류 칸(#N/A 등)을 음수 정수로 준다 — 그대로 적으면 -2146826246 이 진짜 값처럼 보인다
 $XL_ERROR_TEXT = @{ -2146826288 = '#NULL!'; -2146826281 = '#DIV/0!'; -2146826273 = '#VALUE!'; -2146826265 = '#REF!'
@@ -120,8 +249,8 @@ $PPT_CELL_SAME_PT = 0.5
 # 오피스는 COM 서버라 이 PowerShell 의 자식이 아니다 — 부르는 쪽이 시한으로 이 프로세스를 끊으면 본체의
 # finally 가 안 돌고, 숨은 앱이 문서를 연 채 남는다. 그래서 띄운 PID 를 Job(KILL_ON_JOB_CLOSE)에 넣는다 —
 # 이 프로세스가 어떻게 끝나든 Job 손잡이가 닫히며 그 앱이 함께 끝난다. 사람이 먼저 띄운 앱은 안 든다
-# (띄우기 전후의 PID 차이만 넣는다). ⚠ 그 몇 초 사이 사람이 이 숨은 인스턴스로 문서를 열면 함께 닫힌다 —
-# 이 판이 띄운 앱을 끝에서 강제로 끝내는 규칙(파워포인트의 DRM 훅)과 같은 몫이다.
+# (New-OfficeApp 이 이 판이 띄운 프로세스만 넣는다). ⚠ 끊긴 판에서는 그 몇 초 사이 사람이 이 숨은 인스턴스로 연 문서도
+# 함께 닫힌다 — 정상으로 끝나는 판은 Close-OfficeApps 가 남은 문서를 세어 그 앱을 살려 둔다.
 # 한 프로세스에 두 번 실려도 선다 — 같은 이름의 형을 두 번 더하면 Add-Type 이 진다
 if (-not ('DrmRead.Job' -as [type])) {
     Add-Type -Namespace DrmRead -Name Job -MemberDefinition @'
@@ -130,6 +259,11 @@ if (-not ('DrmRead.Job' -as [type])) {
 [DllImport("kernel32.dll", SetLastError = true)] public static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
 [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
 [DllImport("kernel32.dll", SetLastError = true)] public static extern bool CloseHandle(IntPtr handle);
+'@
+}
+if (-not ('DrmRead.Window' -as [type])) {
+    Add-Type -Namespace DrmRead -Name Window -MemberDefinition @'
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
 '@
 }
 
@@ -207,9 +341,28 @@ function Test-PlainFormat {
             ($bytes[0] -eq 0xD0 -and $bytes[1] -eq 0xCF))   # 옛 오피스 OLE
 }
 
+function Get-OfficeAppPid {
+    <# 앱 개체 뒤의 프로세스 PID — 그 앱의 창 손잡이에게 묻는다. 못 물으면 0 이다(워드는 문서 창이 열리기 전에 창 손잡이를 안 준다) #>
+    param($App, [string]$AppName)
+    $handle = 0
+    try {
+        switch ($AppName) {
+            'Word'  { $handle = [long]$App.ActiveWindow.Hwnd }
+            'Excel' { $handle = [long]$App.Hwnd }
+            'PPT'   { $handle = [long]$App.HWND }
+        }
+    } catch { return 0 }
+    if (-not $handle) { return 0 }
+    $owner = [uint32]0
+    [void][DrmRead.Window]::GetWindowThreadProcessId([IntPtr]$handle, [ref]$owner)
+    return [int]$owner
+}
+
 function New-OfficeApp {
     <# 앱 하나를 띄운다. 파일마다 띄우면 건당 수 초씩 붙으므로 앱은 재사용한다.
-       띄우기 전에 없던 PID 만 이 판의 것으로 쳐 $SpawnedPids 에 더하고 Job 에 넣는다 — 사람이 쓰던 프로세스는 안 든다 #>
+       이 판이 띄운 프로세스만 $SpawnedPids 에 더하고 Job 에 넣는다 — 사람이 쓰던 프로세스는 안 든다. 어느 프로세스가 이 앱인가는
+       앱의 창 손잡이가 답한다(Get-OfficeAppPid). 못 물으면 띄우기 전에 없던 PID 가 하나일 때만 그것으로 친다 — 둘 이상이면 띄우는
+       사이 사람이 연 앱이 섞였다는 뜻이라 어느 것도 이 판의 것으로 안 친다(못 가린 프로세스를 Job 에 넣으면 사람의 문서가 함께 끝난다) #>
     [CmdletBinding()]
     param([string]$AppName, [ref]$SpawnedPids, [IntPtr]$Job)
     $beforePids = @(Get-Process -Name $PROCESS_OF[$AppName] -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
@@ -218,24 +371,98 @@ function New-OfficeApp {
             $a = New-Object -ComObject Word.Application
             $a.Visible = $false
             $a.DisplayAlerts = 0          # wdAlertsNone — 변환 대화창이 뜨면 무인 실행이 멈춘다
+            try { $a.AutomationSecurity = $MSO_AUTOMATION_FORCE_DISABLE } catch { }
         }
         'Excel' {
             $a = New-Object -ComObject Excel.Application
             $a.Visible = $false
             $a.DisplayAlerts = $false
+            try { $a.AutomationSecurity = $MSO_AUTOMATION_FORCE_DISABLE } catch { }
         }
         'PPT' {
             # ⚠ 파워포인트는 Visible=$false 를 거부하고 하나만 뜬다(그 앱만 그렇다) — 떠 있었으면 그 앱에 붙는다.
-            #   부르는 쪽의 스크립트 범위에 둔다(머리말) — 끝에서 그 앱을 안 끄는 근거다
-            $script:PptWasRunning = ($beforePids.Count -gt 0)
             $a = New-Object -ComObject PowerPoint.Application
+            # 매크로 끔은 여기 안 건다 — 붙은 자리가 사람의 앱이면 건 값이 그 앱에 남는다
         }
     }
     $newPids = @(Get-Process -Name $PROCESS_OF[$AppName] -ErrorAction SilentlyContinue |
                  Where-Object { $beforePids -notcontains $_.Id } | Select-Object -ExpandProperty Id)
+    $appPid = Get-OfficeAppPid -App $a -AppName $AppName
+    if ($appPid) {
+        $newPids = @($newPids | Where-Object { $_ -eq $appPid })
+    } elseif ($newPids.Count -gt 1) {
+        Write-Warning "$AppName 를 띄우는 사이 같은 앱이 더 떴다 — 어느 것이 이 판의 것인지 못 가려 Job 에 안 넣는다(끊기면 띄운 앱이 남을 수 있다)"
+        $newPids = @()
+    }
+    if ($AppName -eq 'PPT') {
+        # 붙은 자리가 띄우기 전부터 있던 프로세스인가 — 부르는 쪽의 스크립트 범위에 둔다(머리말). 끝에서 그 앱을 안 끄는 근거다.
+        # 프로세스 이름만 세지 않는다 — Quit 뒤에도 남은 껍데기 프로세스가 있으면 새로 띄운 앱까지 「사람의 것」으로 읽혀 안 꺼진다
+        $script:PptWasRunning = if ($appPid) { $beforePids -contains $appPid } else { $beforePids.Count -gt 0 }
+    }
     foreach ($id in $newPids) { $SpawnedPids.Value[$id] = $AppName }
     if ($newPids.Count -gt 0) { Join-OfficeJob -Job $Job -Pids $newPids }
     return $a
+}
+
+# Quit 한 앱이 스스로 끝나기를 기다리는 한도와 그 사이 다시 보는 틈(ms) — 한도를 넘겨 남은 프로세스만 강제로 끝낸다
+$OFFICE_EXIT_WAIT_MS = 800
+$OFFICE_EXIT_POLL_MS = 100
+
+function Close-OfficeApps {
+    <# 판이 쓴 앱들을 끝낸다 — 앱을 끄고 프로세스를 끝내는 판정은 이 함수 하나다(프로세스를 강제로 끝내는 줄은 여기뿐이다).
+       받는 것 — -AppByName(앱 이름 → 앱 개체 · $null 은 건너뛴다) · -SpawnedPids(New-OfficeApp 이 채운 PID → 앱 이름) · -Job(없으면 Zero) ·
+       -PptWasRunning(New-OfficeApp 이 둔 값). 부르기 전에 이 판이 연 문서를 닫는다(Close-OwnedDocument).
+       판정은 PID 가 아니라 앱에게 묻는다 — 「이 판의 것이 아닌 문서가 열려 있나」:
+         1. 앱마다 Exit-OfficeApp — 남은 문서가 없고 붙은 자리(사람이 쓰던 파워포인트)가 아니면 Quit 한다. 문서가 남았으면 판이 도는
+            사이 사람이 이 인스턴스로 연 것이라 앱을 살려 둔다
+         2. Quit 한 앱의 프로세스(이 판이 띄운 것)가 $OFFICE_EXIT_WAIT_MS 안에 스스로 안 끝나면 강제로 끝낸다 — 파워포인트는 Fasoo
+            DRM 훅이 Quit 뒤에도 프로세스를 붙잡아 권한 경고창이 되풀이되고, 남은 프로세스는 문서 파일을 쥐어 다음 읽기 · 빌드를 막는다.
+            Quit 을 안 한 앱은 끝내지 않는다 — 그때 남는 것은 숨은 앱이지 닫힌 사람의 문서가 아니다
+         3. Job 손잡이를 닫는다 — Quit 을 안 한 채 살아 있는 프로세스(이 판이 띄운 것)가 하나라도 있으면 끝내기 규칙을 먼저 끈다
+            (안 끄면 손잡이가 닫히며 그 앱이 함께 끝난다). 없으면 켠 채 닫아 남은 것을 거둔다. 끊긴 판은 여기 안 닿으니 Job 이
+            그대로 끝낸다
+       내는 것은 없다. 부른 뒤 -AppByName 의 앱 개체와 -Job 은 못 쓴다.
+       ⚠ 고급 함수여야 한다 — 인자가 어긋나 못 묶인 값(이름과 값이 붙은 「-AppByName@{…}」)을 단순 함수는 말없이 버리고, 그러면 앱을
+         하나도 안 받은 판이 되어 Job 이 사람의 문서째 끝낸다. 고급 함수는 그 자리에서 던진다 #>
+    [CmdletBinding()]
+    param([hashtable]$AppByName = @{}, [hashtable]$SpawnedPids = @{}, [IntPtr]$Job = [IntPtr]::Zero, [bool]$PptWasRunning = $false)
+    $quitOf = @{}                          # 앱 이름 → Quit 했나. 거짓이면 문서가 남아(또는 못 세어) 살려 둔 것
+    foreach ($kind in @($AppByName.Keys)) {
+        if ($null -eq $AppByName[$kind]) { continue }
+        $quitOf[$kind] = [bool](Exit-OfficeApp -App $AppByName[$kind] -Kind $kind -WasRunning (($kind -eq 'PPT') -and $PptWasRunning))
+    }
+    [GC]::Collect()
+    [GC]::WaitForPendingFinalizers()
+
+    $quitPids = @{}                        # Quit 한 앱의, 이 판이 띄운 PID → 프로세스 이름
+    foreach ($entry in @($SpawnedPids.GetEnumerator())) {
+        if ($quitOf[[string]$entry.Value]) { $quitPids[[int]$entry.Key] = $PROCESS_OF[[string]$entry.Value] }
+    }
+    # 그 PID 가 아직 그 앱인가 — 끝난 PID 를 다른 프로세스가 물려받았으면 이름이 다르다
+    $alive = {
+        @($quitPids.Keys | Where-Object {
+            $left = Get-Process -Id $_ -ErrorAction SilentlyContinue
+            $left -and $left.ProcessName -eq $quitPids[$_]
+        })
+    }
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    while (@(& $alive).Count -gt 0 -and $watch.ElapsedMilliseconds -lt $OFFICE_EXIT_WAIT_MS) {
+        Start-Sleep -Milliseconds $OFFICE_EXIT_POLL_MS
+    }
+    foreach ($id in @(& $alive)) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+
+    if ($Job -ne [IntPtr]::Zero) {
+        $keptAlive = $false                # Quit 을 안 한 앱의 프로세스가 살아 있나 — 앱을 못 받은 판(인자가 빈 판)도 여기 걸려 안 끝낸다
+        foreach ($entry in @($SpawnedPids.GetEnumerator())) {
+            if ($quitOf[[string]$entry.Value]) { continue }
+            $left = Get-Process -Id ([int]$entry.Key) -ErrorAction SilentlyContinue
+            if ($left -and $left.ProcessName -eq $PROCESS_OF[[string]$entry.Value]) { $keptAlive = $true }
+        }
+        if ($keptAlive -and -not (Set-OfficeJobKill -Job $Job -On $false)) {
+            Write-Warning 'Job 의 끝내기 규칙을 못 껐다 — 살려 둔 앱이 이 프로세스와 함께 끝날 수 있다'
+        }
+        [void][DrmRead.Job]::CloseHandle($Job)
+    }
 }
 
 # ── 글 밖에 있는 것을 센다 ────────────────────────────────────────────────

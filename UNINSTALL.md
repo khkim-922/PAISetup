@@ -135,11 +135,15 @@ Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false
 - 백업 자리의 `install-skills-*` 는 걷은 스킬과 우리 스킬 폴더에서 설치 묶음에 없던 파일을 옮겨 둔 것이고, `install-aside-*` 는 같은 이름이라 비켜 둔 것이다 — 사람 것이면 되살린다
 - 스킬 폴더에는 사람이 둔 스킬도 사니 기록에 없는 이름은 둔다
 
+### 그림 문의 기록
+
+`~/.image-gate` — 그림 문이 지나간 그림 · PDF 의 치수와 토큰을 한 줄씩 적은 기록이다. 파일 이름은 들지 않는다. 지워도 된다.
+
 ### 읽어 둔 글자
 
-스킬 `drm-office-read` · `company-ecm` 이 감긴 문서에서 뽑아 남긴 글자다 — 회사 문서의 평문이니 PC 를 넘기거나 더 안 쓰면 지운다.
+스킬 `drm-office-read` · `company-ecm` 이 감긴 문서에서 뽑아 남긴 글자와 뜬 그림이다 — 회사 문서의 평문이니 PC 를 넘기거나 더 안 쓰면 지운다.
 
-- `~/.drm-read-text` — 오피스로 읽은 문서의 글자
+- `~/.drm-read-text` — 오피스로 읽은 문서의 글자, 그리고 문서마다 폴더에 든 뜬 그림
 - `~/.company-ecm-text` — 문서함(ECM)에서 읽은 문서의 글자
 
 ### 안티그래비티의 훅

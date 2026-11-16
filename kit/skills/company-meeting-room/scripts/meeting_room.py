@@ -44,9 +44,8 @@ MOST_FREE = 40                            # free 답에 싣는 빈 회의실 수
 MOST_CANDIDATES = 15                      # 회의실이 여럿 걸릴 때 message 에 보이는 후보 수
 LIVE = ("confirmed", "pending_approval")  # 회의실을 쥔 예약의 상태 — cancelled · rejected 는 비운 것이다
 STATUS_WORDS = {"confirmed": "확정", "pending_approval": "승인 대기", "cancelled": "취소됨", "rejected": "거절됨"}
-EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION = 0, 1, 2, 3
 MUTATING = ("book", "change", "cancel")
-NEXT_EP_LOGIN = "다음: 스킬 ep-login 으로 사내 세션을 세운 뒤 같은 명령을 다시 부른다"
+INDENT = 1                                # 답(JSON)을 찍는 들여쓰기
 STATE_WORDS = {
     "booked": "예약했습니다(내 예약에서 다시 읽어 확인했습니다). 참석자께는 회의 안내가 회사 메일로 갑니다 — 조금 걸릴 수 있습니다. "
               "다음: 이 줄의 id 를 들고 있다가 「방금 것 취소 · 시간 바꿔 줘」에 쓴다",
@@ -62,20 +61,15 @@ STATE_WORDS = {
 }
 
 
-class Stop(Exception):
-    def __init__(self, code: int, kind: str, message: str):
-        super().__init__(message)
-        self.code, self.kind = code, kind
-
-
-def load(name: str, where: pathlib.Path):
-    """곁의 모듈을 싣는다 — ``-I`` 로 돌면 그 폴더가 ``sys.path`` 에 없어 넣고 싣는다."""
-    if str(where) not in sys.path:
-        sys.path.insert(0, str(where))
-    try:
-        return __import__(name)
-    except ImportError as exc:
-        raise Stop(EXIT_TOOL, "tool", f"{name} 를 못 실었다({where}) — 설치를 다시 돌린다") from exc
+if str(EP_LOGIN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(EP_LOGIN_SCRIPTS))   # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
+try:
+    import ep_command
+    import ep_session
+    from ep_command import EXIT_ARGS, Stop, load
+except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
+    print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
+    sys.exit(1)
 
 
 # ── 시각 ────────────────────────────────────────────────────────────────
@@ -469,29 +463,11 @@ def main() -> int:
         if missing:
             print(json.dumps({"error": "args", "message": "새 예약 미리 보기에는 --" + " · --".join(missing) + " 가 든다"}, ensure_ascii=False))
             return EXIT_ARGS
-    try:
-        mrs, ep = load("mrs", HERE), load("ep_session", EP_LOGIN_SCRIPTS)
-        try:
-            result = ep.session_first(lambda f: run(args, f), expired=(mrs.SessionExpired, mrs.SessionMissing),
-                                      file_first=args.command not in MUTATING)
-            code = EXIT_OK
-        except ep.NoSession as exc:
-            tail = (exc.got.said.splitlines() or [""])[-1]
-            if exc.got.code in (ep.NO_EDGE, ep.NOT_LOGGED_IN):
-                raise Stop(EXIT_SESSION, "session", f"사내 세션이 없다 — {tail}. {NEXT_EP_LOGIN}") from exc
-            raise Stop(EXIT_TOOL, "tool", f"세션 손이 종료 {exc.got.code} 로 졌다 — {tail}") from exc
-    except Stop as exc:
-        result, code = {"error": exc.kind, "message": str(exc)}, exc.code
-    except Exception as exc:  # noqa: BLE001 — 손의 예외를 종료 값으로 옮긴다
-        mrs = sys.modules.get("mrs")
-        if mrs and isinstance(exc, (mrs.SessionExpired, mrs.SessionMissing)):
-            result, code = {"error": "session", "message": f"{exc}. {NEXT_EP_LOGIN}"}, EXIT_SESSION
-        elif mrs and isinstance(exc, mrs.AppError):
-            result, code = {"error": "tool", "message": str(exc)}, EXIT_TOOL
-        else:
-            result, code = {"error": "tool", "message": f"{type(exc).__name__}: {exc}"}, EXIT_TOOL
-    print(json.dumps(result, ensure_ascii=False, indent=1))
-    return code
+    # 보기는 세션 파일부터 쓰고 앱이 거절할 때만 받는 손을 띄워 한 번 더, 넣기 · 고치기 · 취소는 늘 손부터 받아 한 번만
+    return ep_command.finish(
+        lambda mrs: ep_session.session_first(lambda f: run(args, f), expired=(mrs.SessionExpired, mrs.SessionMissing),
+                                             file_first=args.command not in MUTATING),
+        "mrs", HERE, indent=INDENT)
 
 
 if __name__ == "__main__":

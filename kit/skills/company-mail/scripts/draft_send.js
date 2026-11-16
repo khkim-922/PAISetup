@@ -18,6 +18,8 @@
 //                                                     확인하고 [보내기]를 누른다. 이미 열린 화면이 있으면 그 탭을 앞으로 올리기만 하고, 닫지 않는다
 //   환경변수 EDGE_DEBUG_PORT(기본 9222 — 형제 스킬 ep-login 의 띄우는 손이 여는 포트) · MAIL_SERVER(필수 · http://<메일 서버>) ·
 //   MAILBOX_DB(필수 · 02/mail2/<번호>.nsf 꼴) — 둘 다 부르는 쪽(mail.py)이 메일함 주소 하나에서 뽑아 준다
+//   Edge 에 붙는 줄(디버깅 포트에 묻기 · CDP 한 줄 · 기다리기)은 형제 스킬 ep-login 의 scripts/edge_cdp.js 를 싣는다 — 포트를 읽는 자리와
+//   Edge 의 답 하나에 두는 시한이 거기 있다. 멈춘 탭을 만나면 그 시한에 「그 탭이 멈췄다」로 끝난다(종료 1)
 //
 // 어느 화면에서 보내나
 //   그 메일이 쓰는 사람의 웹메일 탭 안에 이미 편집으로 열려 있으면 **그 화면**에서 보낸다 — 사람이 그 화면에서 고친 것까지 나간다.
@@ -38,9 +40,9 @@
 //   show 는 {unid, where} 를 낸다
 'use strict';
 const crypto = require('crypto');
+const { sleep, waitFor, framesOf, edgeLine } = require('../../ep-login/scripts/edge_cdp.js');
 
 const SERVER = (process.env.MAIL_SERVER || '').trim().replace(/\/+$/, '');
-const PORT = ((process.env.EDGE_DEBUG_PORT || '').split(',')[0] || '').trim() || '9222';
 // 앞의 / 는 붙여도 떼도 된다 — Git Bash 가 /로 시작하는 값을 윈도 경로로 바꿔 넘기므로 부르는 쪽은 떼고 준다
 const DB = '/' + (process.env.MAILBOX_DB || '').trim().replace(/^\/+/, '');
 const READY_SECONDS = 60;          // 편집 화면이 다 서기를 기다리는 시한 — 편집기 · 첨부 칸이 늦게 선다
@@ -59,68 +61,20 @@ const deptsOf = rest => { const i = rest.indexOf('--depts'); return i < 0 ? {} :
 const SAVE_SECONDS = 60;           // [임시저장] 뒤 저장 답을 기다리는 시한 — 전달의 첨부를 다시 싣는 데 든다
 const BODY_SECONDS = 10;           // 편집기가 넣은 글을 그리기를 기다리는 시한 — setBodyValue 는 늦게 든다(실측)
 const LOOKUP_MS = 20000;           // 주소록 한 번의 시한 — 답이 없어도 이 손이 제 창을 닫고 끝나게
+// 주소록에 묻는 식 하나의 답을 기다리는 시한 — 화면의 주소록 시한(LOOKUP_MS)보다 길어야 「주소록이 답하지 않았다」가 제 까닭으로 온다
+const LOOKUP_SECONDS = LOOKUP_MS / 1000 + 10;
 const EXIT = {OK: 0, FAIL: 1, MISSING: 2, NO_EDGE: 3, STALE: 4, ASKED: 5};
 
-const POLL_MS = 250;               // 화면 · 답을 기다리며 다시 보는 눈금
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-// ``probe`` 가 참을 낼 때까지 POLL_MS 눈금으로 다시 본다 — 그 값을 내고, ``seconds`` 가 지나도록 안 서면 undefined. probe 가 던지면 그대로 나간다
-async function waitFor(seconds, probe) {
-  const until = Date.now() + seconds * 1000;
-  for (;;) {
-    const got = await probe();
-    if (got) return got;
-    if (Date.now() >= until) return undefined;
-    await sleep(POLL_MS);
-  }
-}
 const fail = (code, message, extra = {}) => { const e = new Error(message); e.code = code; e.extra = extra; return e; };
 
 // ── Edge 에 붙기 ───────────────────────────────────────────────────────────
 
-async function devtools(path) {
-  try {
-    const r = await fetch(`http://127.0.0.1:${PORT}${path}`);
-    return await r.json();
-  } catch (e) {
-    throw fail(EXIT.NO_EDGE, `Edge 에 못 붙었다 — 127.0.0.1:${PORT} 에 디버깅 포트가 없다. 스킬 ep-login 으로 Edge 를 띄운다`);
-  }
-}
-
-// CDP 한 줄 — 보내고 답을 기다린다. 사건은 on 으로 받는다
-function connect(wsUrl) {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(wsUrl);
-    let id = 0;
-    const wait = {}, handlers = [];
-    const cdp = {
-      send: (method, params = {}, sessionId) => new Promise((ok, no) => {
-        const i = ++id;
-        wait[i] = m => (m.error ? no(fail(EXIT.FAIL, `${method}: ${m.error.message}`)) : ok(m.result));
-        ws.send(JSON.stringify(sessionId ? {id: i, method, params, sessionId} : {id: i, method, params}));
-      }),
-      on: f => handlers.push(f),
-      close: () => ws.close(),
-    };
-    ws.onmessage = ev => {
-      const m = JSON.parse(ev.data);
-      if (m.id && wait[m.id]) { wait[m.id](m); delete wait[m.id]; return; }
-      handlers.forEach(f => f(m));
-    };
-    ws.onopen = () => resolve(cdp);
-    ws.onerror = () => reject(fail(EXIT.NO_EDGE, 'Edge 의 디버깅 줄이 끊겼다'));
-  });
-}
+// Edge 의 답 하나의 시한은 줄의 것(edge_cdp.js)을 쓴다. 화면의 긴 일이 끝나야 답하는 부름 — 화면 열기(Page.navigate) · 주소록 묻기 ·
+// [보내기] · [임시저장]을 누르는 식 — 만 이 손이 그 일에 둔 시한(READY_SECONDS · LOOKUP_SECONDS · SEND_SECONDS · SAVE_SECONDS)을 준다
+const { devtools, connect } = edgeLine({fail: EXIT.FAIL, noEdge: EXIT.NO_EDGE});
 
 // 이 메일의 편집 화면 주소인가 — 쓰는 사람 탭의 안쪽 프레임이든 새 창이든 /0/<unid>?EditDocument 꼴이다
 const isEditor = (url, unid) => url.toUpperCase().includes(`/0/${unid}`) && /\?editdocument/i.test(url);
-
-function frames(tree) {
-  const out = [];
-  const walk = n => { out.push(n.frame); (n.childFrames || []).forEach(walk); };
-  walk(tree);
-  return out;
-}
 
 // ── 편집 화면 찾기 · 열기 ─────────────────────────────────────────────────────
 
@@ -130,7 +84,7 @@ async function findOpenEditor(cdp, unid) {
   for (const t of pages) {
     const {sessionId} = await cdp.send('Target.attachToTarget', {targetId: t.id, flatten: true});
     const {frameTree} = await cdp.send('Page.getFrameTree', {}, sessionId);
-    const f = frames(frameTree).find(x => isEditor(x.url, unid));
+    const f = framesOf(frameTree).find(x => isEditor(x.url, unid));
     if (f) return {targetId: t.id, sessionId, frameId: f.id, opened: false};
     await cdp.send('Target.detachFromTarget', {sessionId});
   }
@@ -146,12 +100,12 @@ async function openEditor(cdp, unid, url = `${SERVER}${DB}/0/${unid}?EditDocumen
   } catch (e) { /* 창을 못 접어도 보내기는 같다 — 화면에 잠깐 뜰 뿐이다 */ }
   const {sessionId} = await cdp.send('Target.attachToTarget', {targetId, flatten: true});
   await cdp.send('Page.enable', {}, sessionId);
-  await cdp.send('Page.navigate', {url}, sessionId);
+  await cdp.send('Page.navigate', {url}, sessionId, READY_SECONDS);   // 서버가 화면을 내기 시작해야 답이 온다
   const {frameTree} = await cdp.send('Page.getFrameTree', {}, sessionId);
   return {targetId, sessionId, frameId: frameTree.frame.id, opened: true};
 }
 
-// 그 프레임에서 식 하나 — 프레임마다 실행 자리가 따로라 자리를 받아 둔다
+// 그 프레임에서 식 하나 — 프레임마다 실행 자리가 따로라 자리를 받아 둔다. ``limit`` 은 그 식의 답을 기다리는 시한(초) — 안 주면 줄의 것
 async function evaluator(cdp, ed) {
   const contexts = {};
   cdp.on(m => {
@@ -159,9 +113,9 @@ async function evaluator(cdp, ed) {
       contexts[m.params.context.auxData.frameId] = m.params.context.id;
   });
   await cdp.send('Runtime.enable', {}, ed.sessionId);
-  return async expression => {
+  return async (expression, limit) => {
     for (let i = 0; i < 20 && !contexts[ed.frameId]; i++) await sleep(250);
-    const r = await cdp.send('Runtime.evaluate', {expression, contextId: contexts[ed.frameId], returnByValue: true, awaitPromise: true}, ed.sessionId);
+    const r = await cdp.send('Runtime.evaluate', {expression, contextId: contexts[ed.frameId], returnByValue: true, awaitPromise: true}, ed.sessionId, limit);
     if (r.exceptionDetails) throw fail(EXIT.FAIL, `편집 화면에서 식이 깨졌다: ${r.exceptionDetails.text}`);
     return r.result.value;
   };
@@ -214,7 +168,7 @@ async function pressSend(cdp, ed, ev, unid) {
   });
   await cdp.send('Page.enable', {}, ed.sessionId);
   await cdp.send('Network.enable', {}, ed.sessionId);
-  await ev("_form.clickMailSend(); 'pressed'");
+  await ev("_form.clickMailSend(); 'pressed'", SEND_SECONDS);
   const done = await waitFor(SEND_SECONDS, () => {
     if (asked.some(a => !a.accepted)) throw fail(EXIT.ASKED, '웹메일이 발송 확인 앞에 다른 물음을 띄워 「아니오」 했다 — 안 보냈다',
                                                   {asked: asked.map(a => a.message)});
@@ -307,7 +261,7 @@ async function pressSave(cdp, ed, ev, keep = false) {
     cdp.send('Page.handleJavaScriptDialog', {accept: done && keep}, ed.sessionId).catch(() => {});
   });
   await cdp.send('Page.enable', {}, ed.sessionId);
-  await ev("_form.saveDoc(); 'pressed'");
+  await ev("_form.saveDoc(); 'pressed'", SAVE_SECONDS);
   const done = await waitFor(SAVE_SECONDS, () => {
     if (saved) return true;
     if (asked.length) throw fail(EXIT.ASKED, '웹메일이 임시저장 앞에 다른 물음을 띄워 「아니오」 했다 — 저장하지 않았다', {asked});
@@ -331,7 +285,7 @@ async function saveReply(cdp, unid, rest) {
     await readState(ev);
     const draft = await ev('_form.info.unid');
     const pairs = [...to.map(a => ['send_to', a]), ...cc.map(a => ['copy_to', a])];
-    const why = pairs.length ? await ev(addPeople(pairs, to.length ? ['send_to'] : [], deptsOf(rest))) : '';
+    const why = pairs.length ? await ev(addPeople(pairs, to.length ? ['send_to'] : [], deptsOf(rest)), LOOKUP_SECONDS) : '';
     if (why) throw fail(EXIT.MISSING, `${why}. 저장하지 않았다`);
     await putBody(ev, html);
     const state = JSON.parse(await ev(STATE));
@@ -389,7 +343,7 @@ async function reviseDraft(cdp, unid, rest) {
     // 저장 안 된 반쪽 판을 안 남긴다
     if (html !== null && !(await ev(`!!(${FIND_TEXT})(${PARSED})`))) throw fail(EXIT.MISSING, NO_TEXT);
     const pairs = fields.flatMap(name => list(opt(name)).map(a => [PEOPLE_FIELDS[name], a]));
-    const why = fields.length ? await ev(addPeople(pairs, fields.map(name => PEOPLE_FIELDS[name]), deptsOf(rest))) : '';
+    const why = fields.length ? await ev(addPeople(pairs, fields.map(name => PEOPLE_FIELDS[name]), deptsOf(rest)), LOOKUP_SECONDS) : '';
     if (why) throw fail(EXIT.MISSING, `${why}. 저장하지 않았다`);
     if (html !== null) await swapText(ev, html);
     if (has('--subject')) await ev(`document.forms[0].Subject.value = ${JSON.stringify(opt('--subject'))}; 1`);

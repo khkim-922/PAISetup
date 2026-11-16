@@ -4,11 +4,14 @@
 # `%PDF-`·`PK` 가 아니게 되므로 어떤 파서(PDFium·pdfplumber·python-docx·openpyxl)도
 # 형식 인식 단계에서 죽는다. 정식 오피스 앱은 그 보호를 복호해 주므로 그것을 태운다.
 #
-# 규모가 이 파일을 정당화한다 — 문서가 여러 건이고 확장자가 갈리고, 앱 인스턴스를
-# 재사용해야 느려지지 않는다. 한 건이면 이 파일 없이 인라인으로 해도 된다.
+# 문서가 여러 건이고 확장자가 갈려도 앱 인스턴스를 재사용해야 느려지지 않는다 — 그래서 한 번에 몰아 받는다.
+# 한 건이어도 이 파일을 부른다 — 제가 띄운 앱만 끄기 · Job 묶기 같은 끄고 닫는 차례가 여기 있다.
 #
-# 이 파일은 본체다 — 인자 · 대상 모으기 · 남긴 글자 · 화면 · `-OutDir` 출력 · 끝 정리 · 종료 값. 읽는 함수(띄우기 · Job ·
+# 이 파일은 본체다 — 인자 · 대상 모으기 · 남긴 글자 · 화면 · `-OutDir` 출력 · 끝 정리 · 종료 값. 읽는 함수(띄우기 · 끝내기 · Job ·
 # `Read-With*` · 글 밖 셈)는 `office-read.ps1` 이 들고, 제 꼴로 내는 앱은 그 부품을 점 소싱해 제 본체를 쓴다.
+#
+# 종료 값 — 0 은 준 파일을 다 읽었다(남긴 글자로 답한 것 포함), 1 은 하나라도 못 읽었거나 읽을 파일이 없다. 못 읽은 파일은
+# 「[딱지] 이름 — 실패…」 한 줄로 이름을 댄다 — 없는 경로도, 앱이 못 연 파일도, 읽는 부품의 표(`$HANDLER`)에 없는 확장자도 같다.
 #
 # 뽑은 글자는 남긴다 — 감긴 파일은 읽을 때마다 앱을 띄워야 하고(건당 수 초 · 창이 뜬다) 같은 문서를 다시 읽는 일이 잦다.
 # 읽은 글자를 홈 아래 한 자리(`$KeepDir`)에 파일의 지문(SHA-256 앞 12 자)으로 남기고, 같은 바이트의 파일이 다시 오면 앱을 안 띄우고
@@ -56,7 +59,21 @@ function Format-Visual {
     return ' · 글 밖 ' + (($words.Keys | Sort-Object | ForEach-Object { "$_ $($words[$_])" }) -join ' · ')
 }
 
+# 끝 셈을 낸다 — 읽음 · 남긴 글자 · 실패 · 전체 한 줄과 글자가 놓인 자리. $KeptHint 는 남긴 자리 줄의 꼬리말이고, 비면 그 줄을 안 낸다
+function Write-Tally([string]$KeptHint) {
+    Write-Output ''
+    if ($NoKeep) {
+        Write-Output "읽음 $done · 실패 $failed · 전체 $allCount"
+    } else {
+        Write-Output "읽음 $done · 남긴 글자 $keptCount · 실패 $failed · 전체 $allCount"
+        if ($KeptHint) { Write-Output "남긴 글자는 여기 — $KeepDir (머리 두 줄 뒤 --- 아래가 글자다 · $KeptHint)" }
+    }
+    if ($OutDir) { Write-Output "글자는 여기 — $OutDir" }
+}
+
 # ── 대상 모으기 ────────────────────────────────────────────────────────────
+$done = 0
+$failed = 0                            # 못 읽은 것 — 없는 경로 · 받는 확장자가 아닌 파일 · 앱이 못 연 파일
 $targets = [System.Collections.Generic.List[string]]::new()
 foreach ($item in $Path) {
     if (Test-Path -LiteralPath $item -PathType Container) {
@@ -66,10 +83,26 @@ foreach ($item in $Path) {
     } elseif (Test-Path -LiteralPath $item) {
         $targets.Add((Resolve-Path -LiteralPath $item).Path)
     } else {
-        Write-Warning "없는 경로: $item"
+        # 없는 경로도 못 읽은 것이다 — 경고만 하고 넘기면 나머지를 읽은 판이 종료 0 으로 끝나 다 읽은 것으로 보인다
+        Write-Output "[없는 경로] $item — 실패: 그 경로에 파일이 없다"
+        $failed++
     }
 }
 if ($targets.Count -eq 0) { Write-Error '읽을 파일이 없다.'; exit 1 }
+$allCount = $targets.Count + $failed   # 없는 경로도 준 것으로 센다
+
+# ── 못 읽는 꼴 — 읽는 부품의 표($HANDLER)에 없는 확장자는 앱을 띄우기 전에 이름을 대며 실패로 센다 ────────────────
+# 폴더는 위에서 표에 있는 것만 모으니 여기 걸리는 것은 낱으로 준 파일이다. 건너뛰기만 하면 「읽음 0 · 실패 0」에 종료 0 이라 부른 쪽이
+# 읽은 줄 안다. 실패 줄은 앱이 못 연 파일의 줄과 같은 꼴이다 — 부르는 손이 「[」 로 시작하는 첫 줄을 그 파일의 한 줄로 집는다
+$readable = [System.Collections.Generic.List[string]]::new()
+foreach ($file in $targets) {
+    $suffix = [System.IO.Path]::GetExtension($file).ToLower()
+    if ($HANDLER.ContainsKey($suffix)) { $readable.Add($file); continue }
+    $suffixWord = if ($suffix) { $suffix } else { '확장자 없음' }
+    Write-Output "[못 읽는 꼴] $([System.IO.Path]::GetFileName($file)) — 실패: 읽는 손이 받는 확장자가 아니다($suffixWord) · 받는 것: $(($HANDLER.Keys | Sort-Object) -join ' ')"
+    $failed++
+}
+$targets = $readable                   # 아래는 읽는 부품이 받는 것만 본다
 
 if ($OutDir -and -not (Test-Path -LiteralPath $OutDir)) {
     New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
@@ -79,7 +112,6 @@ if ($OutDir -and -not (Test-Path -LiteralPath $OutDir)) {
 $KeepDir = Get-KeptTextDir
 $TEXT_EXT = $KEPT_TEXT_EXT             # -OutDir 의 글자 파일도 남긴 것과 같은 꼴 — Fasoo 가 감싸지 않는 꼴이어야 한다
 $keptPrint = @{}                       # 읽을 파일 → 지문. 지문을 못 낸 파일(다른 프로세스가 쥔 파일)은 안 들고, 읽기만 한다
-$allCount = $targets.Count
 $keptCount = 0
 if (-not $NoKeep) {
     # 남길 자리를 못 지으면 남기지 않고 읽기만 한다 — 이 스크립트는 Stop 으로 돌아, 여기서 지면 읽기까지 죽는다
@@ -116,10 +148,10 @@ if (-not $NoKeep) {
     $targets = $toRead                 # 아래는 앱으로 읽을 것만 본다 — 끝 정리도 이 판이 연 파일만 건드린다
 }
 if ($targets.Count -eq 0) {
-    Write-Output ''
-    Write-Output "읽음 0 · 남긴 글자 $keptCount · 실패 0 · 전체 $allCount"
-    Write-Output "남긴 글자는 여기 — $KeepDir (머리 두 줄 뒤 --- 아래가 글자다 · 앱으로 다시 읽으려면 -NoKeep)"
-    if ($OutDir) { Write-Output "글자는 여기 — $OutDir" }
+    # 앱으로 읽을 것이 안 남았다 — 다 남긴 글자로 답했거나 받는 확장자가 아니었다. 앱도 Job 도 안 띄우고 끝낸다.
+    # 남긴 글자로 답한 것이 없으면 남긴 자리 줄을 안 낸다 — 받는 확장자가 아닌 파일은 -NoKeep 으로 다시 불러도 같다
+    Write-Tally $(if ($keptCount -gt 0) { '앱으로 다시 읽으려면 -NoKeep' })
+    if ($failed -gt 0) { exit 1 }
     exit 0
 }
 
@@ -128,13 +160,10 @@ $byApp = $targets | Group-Object { $HANDLER[[System.IO.Path]::GetExtension($_).T
 $apps = @{}
 $spawnedPids = @{}                     # 이 판이 띄운 PID → 앱 이름
 $officeJob = New-OfficeJob
-$done = 0
-$failed = 0
 
 try {
     foreach ($group in $byApp) {
         $appName = $group.Name
-        if (-not $appName) { continue }
 
         if (-not $apps.ContainsKey($appName)) {
             try {
@@ -191,68 +220,11 @@ try {
     }
 } finally {
     # ⚠ 여기를 건너뛰면 보이지 않는 오피스 프로세스가 쌓여 다음 실행이 느려지거나 멈춘다.
-    #   다만 사람이 쓰던 앱(문서가 남았거나, 원래 떠 있던 파워포인트)은 끄지 않는다(office-session.ps1)
-    $quitOf = @{}                      # 앱마다 Exit-OfficeApp 이 끝냈나 — 거짓이면 문서가 남아(또는 못 세어) 살려 둔 것
-    foreach ($kind in @($apps.Keys)) {
-        $was = ($kind -eq 'PPT') -and $PptWasRunning
-        $quitOf[$kind] = [bool](Exit-OfficeApp -App $apps[$kind] -Kind $kind -WasRunning $was)
-    }
-    $keptAlive = ($quitOf.Values -contains $false)
-    [GC]::Collect()
-    [GC]::WaitForPendingFinalizers()
+    #   끄고 끝내는 판정은 읽는 부품의 Close-OfficeApps 가 든다 — 사람이 쓰던 앱(문서가 남았거나, 원래 떠 있던 파워포인트)은 안 끈다
+    Close-OfficeApps -AppByName $apps -SpawnedPids $spawnedPids -Job $officeJob -PptWasRunning $PptWasRunning
 
-    # ⚠ 파워포인트는 COM Quit 후에도 Fasoo DRM 훅이나 잔여 핸들 때문에 프로세스가 남아
-    # "열람 권한이 없습니다(0x703000...)" 팝업이 무한 반복될 수 있다 — 이 판이 띄운 파워포인트가 Quit 뒤에도 남았으면 강제로
-    # 끝낸다(그 앱만). Quit 을 안 한 판(발표가 남았거나 못 셌다)은 안 끝낸다 — 파워포인트는 하나만 떠서, 판이 도는 몇 초 사이
-    # 사람이 연 발표가 이 인스턴스로 들어와 있을 수 있고 강제로 끝내면 저장 안 한 채 닫힌다. 그때 남는 것은 팝업이지 사람의 발표가
-    # 아니다. 워드 · 엑셀은 Quit 으로 끝난다 — 같은 까닭으로 강제로 끝내지 않는다.
-    if ($quitOf['PPT']) {
-        foreach ($entry in @($spawnedPids.GetEnumerator())) {
-            if ($entry.Value -ne 'PPT') { continue }
-            if (Get-Process -Id $entry.Key -ErrorAction SilentlyContinue) { Stop-Process -Id $entry.Key -Force -ErrorAction SilentlyContinue }
-        }
-    }
-    # 정상으로 끝나는 판에서 Job 손잡이를 닫기 전에 끝내기 규칙을 끈다 — 살려 둔 앱이 있으면 그 문서가 같이 닫힌다.
-    # 살려 둔 것이 없으면 켠 채 닫아 Quit 뒤에도 남은 것을 거둔다. 끊긴 판은 여기 안 닿으니 Job 이 그대로 끝낸다.
-    if ($officeJob -ne [IntPtr]::Zero) {
-        if ($keptAlive) { [void](Set-OfficeJobKill -Job $officeJob -On $false) }
-        [void][DrmRead.Job]::CloseHandle($officeJob)
-    }
-
-    # ⚠ DocumentRecovery 트리를 통째로 지우면 사용자의 정상적인 미저장 복구 파일이 날아간다.
-    # $targets 에 매칭되는 특정 항목만 선별 삭제(Targeted Cleanup)한다.
-    $targetLeaves = @($targets | ForEach-Object { Split-Path -Path $_ -Leaf })
-    $officeVerKeys = @(Get-ChildItem -Path "HKCU:\Software\Microsoft\Office" -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d+\.\d+$' })
-    foreach ($ver in $officeVerKeys) {
-        foreach ($appKey in @('PowerPoint', 'Word', 'Excel')) {
-            $recPath = "HKCU:\Software\Microsoft\Office\$($ver.PSChildName)\$appKey\Resiliency\DocumentRecovery"
-            if (Test-Path -LiteralPath $recPath) {
-                try {
-                    $item = Get-Item -LiteralPath $recPath -ErrorAction SilentlyContinue
-                    if ($item) {
-                        foreach ($valName in $item.GetValueNames()) {
-                            $isMatch = $false
-                            foreach ($tl in $targetLeaves) {
-                                if ($valName -like "*$tl*") { $isMatch = $true; break }
-                            }
-                            if (-not $isMatch) {
-                                try {
-                                    $rawBytes = [byte[]]$item.GetValue($valName)
-                                    $rawText = [System.Text.Encoding]::Unicode.GetString($rawBytes)
-                                    foreach ($tl in $targetLeaves) {
-                                        if ($rawText -like "*$tl*") { $isMatch = $true; break }
-                                    }
-                                } catch { }
-                            }
-                            if ($isMatch) {
-                                Remove-ItemProperty -LiteralPath $recPath -Name $valName -Force -ErrorAction SilentlyContinue
-                            }
-                        }
-                    }
-                } catch { }
-            }
-        }
-    }
+    # 이 판이 연 파일의 복구 항목만 걷는다 — 사람의 복구 자료는 둔다(office-session.ps1 의 Clear-OwnedRecovery)
+    Clear-OwnedRecovery -Paths $targets
 
     # 읽기 과정에서 생성된 임시 락 파일(~$...) 정리
     foreach ($target in $targets) {
@@ -265,12 +237,5 @@ try {
     }
 }
 
-Write-Output ''
-if ($NoKeep) {
-    Write-Output "읽음 $done · 실패 $failed · 전체 $allCount"
-} else {
-    Write-Output "읽음 $done · 남긴 글자 $keptCount · 실패 $failed · 전체 $allCount"
-    Write-Output "남긴 글자는 여기 — $KeepDir (머리 두 줄 뒤 --- 아래가 글자다 · 같은 파일을 다시 읽으면 앱을 안 띄우고 이 글자로 답한다)"
-}
-if ($OutDir) { Write-Output "글자는 여기 — $OutDir" }
+Write-Tally '같은 파일을 다시 읽으면 앱을 안 띄우고 이 글자로 답한다'
 if ($failed -gt 0) { exit 1 }

@@ -19,25 +19,36 @@
 #   그려 싣는 꼴이라 든다 — 몸통이 장수와 합을 곁말로만 대고 막지는 않는다(갈래는 몸통 머리말).
 #   ⚠ **확장자 목록은 몸통의 `IMG_EXT` · `PDF_EXT` 를 합친 것과 짝이다** — `scripts/image-gate-check.py` 가 글자 묶음을 펴서
 #   집합으로 맞대고, 묶음 밖의 맨 글자(대소문자를 가리는 칸)도 어긋남으로 댄다.
-# ⚠ **파이썬은 존재가 아니라 불러 보고 고른다** — 윈도우의 `python3` 는 스토어 껍데기라 49 로 죽는다.
-#   못 뜨면 「못 쟀다」 한 줄을 직접 낸다 — 문이 죽은 사실이 어디에도 안 남는 것이 침묵보다 비싸다.
-#   문이 없는 것과 문이 잘못 잠긴 것은 다른 사고고 뒤엣것이 더 비싸다 — 그래서 막지는 않는다.
+# ⚠ **파이썬은 따로 불러 보지 않고 몸통을 바로 돌린다** — 불러 보는 한 번이 그림마다 해석기를 한 번 더 띄운다. 첫 후보로
+#   몸통을 돌리고, **해석기가 안 뜬 종료 값**일 때만 다음 후보로 넘어간다: 127(그 이름이 없다) · 126(못 돌린다) ·
+#   49(윈도우의 `python3` 같은 스토어 껍데기 — 안내문을 stderr 로 뱉고 49 로 죽는다).
+#   그 밖의 종료 값은 해석기가 뜬 것이다 — 몸통은 언제나 0 으로 끝나므로(몸통 머리말) 0 이 아니면 몸통이 죽은 것이고,
+#   그때는 다른 해석기로 다시 돌리지 않는다.
+#   몸통의 출력은 받아 뒀다가 0 일 때만 낸다 — 안 뜬 후보나 죽은 몸통이 흘린 글자가 훅의 답에 섞이지 않는다.
+#   입력은 here-document 로 먹인다 — 관(`printf … |`)으로 먹이면 `printf` 를 돌릴 셸 갈래가 하나 더 선다.
+# ⚠ **못 쟀으면 그렇다고 한 줄을 직접 낸다** — 해석기가 안 떴든 몸통이 죽었든, 문이 죽은 사실이 어디에도 안 남는 것이
+#   침묵보다 비싸다. 문이 없는 것과 문이 잘못 잠긴 것은 다른 사고고 뒤엣것이 더 비싸다 — 그래서 막지는 않는다.
 # shellcheck shell=sh  # 점으로 읽혀 셔뱅이 없다 — 어느 셸이 읽어도 서게 POSIX 로 잰다
 j=
 while IFS= read -r _l || [ -n "$_l" ]; do j="$j$_l"; done
 case "$j" in
   *.[Pp][Nn][Gg]*|*.[Jj][Pp][Gg]*|*.[Jj][Pp][Ee][Gg]*|*.[Ww][Ee][Bb][Pp]*|*.[Gg][Ii][Ff]*|*.[Pp][Dd][Ff]*|\
   *[Ss][Cc][Rr][Ee][Ee][Nn][Ss][Hh][Oo][Tt]*|*[Zz][Oo][Oo][Mm]*)
-    py=
-    for p in python python3; do
-      "$p" -X utf8 -c "" >/dev/null 2>&1 && { py=$p; break; }
-    done
-    if [ -n "$py" ]; then
+    _rc=127
+    for _p in python python3; do
       # shellcheck disable=SC2154 # _ig 는 홈에 심긴 한 줄이 이 파일을 읽기 전에 세운다(머리말)
-      printf %s "$j" | "$py" -X utf8 "$_ig/image-gate.py"
-    else
-      printf %s '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"그림 문 — 파이썬이 안 떠서 치수를 못 쟀다. 스스로 고른다"}}'
-    fi
+      _out=$("$_p" -X utf8 "$_ig/image-gate.py" <<_IG_INPUT
+$j
+_IG_INPUT
+      )
+      _rc=$?
+      case $_rc in 49|126|127) ;; *) break ;; esac
+    done
+    case $_rc in
+      0) printf %s "$_out" ;;
+      49|126|127) printf %s '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"그림 문 — 파이썬이 안 떠서 치수를 못 쟀다. 스스로 고른다"}}' ;;
+      *) printf %s '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"그림 문 — 재는 자가 죽어(종료 '"$_rc"') 치수를 못 쟀다. 스스로 고른다"}}' ;;
+    esac
     ;;
 esac
 exit 0

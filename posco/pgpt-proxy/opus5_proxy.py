@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 22
+VERSION_OURS = 23
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -82,7 +82,9 @@ FILL_CACHE_TTL = os.environ.get("PGPT_PROXY_FILL_CACHE_TTL", "1").lower() not in
 CACHE_WARM_CYCLES = int(min(max(_env_float("PGPT_PROXY_CACHE_WARM_CYCLES", 3.0), 0.0), 60.0))
 # 수명 300초에서 고르는 틱과 게이트웨이의 첫 바이트 기다림을 뺀 간격이다 — 늦게 닿은 요청은 캐시를 읽지 않고 대화를 다시 쓴다.
 CACHE_WARM_INTERVAL_SEC = max(_env_float("PGPT_PROXY_CACHE_WARM_INTERVAL_SEC", 270.0), 30.0)
-CACHE_WARM_SESSIONS = 3  # 함께 데우는 대화 수 — 사람이 보내지 않은 요청이 한꺼번에 나가는 상한이다
+# 함께 드는 대화 수 — 레인 여럿이 도는 동안에도 가장 오래 쉰 메인이 밀려나지 않을 만큼 둔다. 대화마다 정해진 횟수에서 멈추므로
+# 사람이 보내지 않은 요청의 끝은 이 수가 아니라 「쉬는 큰 대화 수 × 횟수」다.
+CACHE_WARM_SESSIONS = 8
 CACHE_WARM_MIN_BYTES = 100_000  # 이보다 작은 몸은 캐시를 놓쳐도 다시 쓰는 값이 작다
 CACHE_WARM_TIMEOUT_SEC = 60.0
 CACHE_WARM_TICK_SEC = 5.0

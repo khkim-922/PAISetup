@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import importlib.util
 import io
 import json
@@ -213,7 +214,7 @@ def check_attachments_point_to_the_right_reader():
         code, out = run("attachment", U["ecm"], "--save", "all", "--out", str(WORK / "got"))
         assert code == 0, out
         lines = out.splitlines()
-        key = fakes_inbox.ECM_KEY
+        key = fakes_inbox.ECM_LINK_OBJECT   # 화면이 여는 링크 쪽 열쇠(inbox.Mailbox.ecm_key)
         assert any("분기 실적.pptx" in x and f"read {key}" in x and "company-ecm" in x for x in lines), \
             f"ECM 첨부의 열쇠를 company-ecm 의 read 로 안 넘겼다:\n{out}"
         assert not any(p.name.startswith("분기 실적") for p in (WORK / "got").iterdir()), "ECM 쪽지를 파일로 남겼다"
@@ -284,6 +285,28 @@ def check_search_all_includes_drafts_and_points_to_read():
         assert code == 0 and "보낸편지함" in got, f"--folder 없는 read 가 보낸편지함을 안 찾았다:\n{got}"
         code, out = run("search", "시험", "--in", "inbox")
         assert all("· 받은편지함 ·" in x for x in out.splitlines() if x.startswith("[")), out
+
+
+def check_search_adds_new_mail_the_index_has_not_caught():
+    """검색 색인은 새 메일을 몇 시간 늦게 든다(회사에서 잼) — 제목 검색은 보기의 새 메일 가운데 색인에 아직 없는 것을 따로 대고,
+    색인이 이미 든 메일은 두 번 안 대고, 색인이 든 가장 새 메일보다 옛 것은 안 댄다(그것은 검색의 다음 쪽 몫이다).
+    물림 — 색인 밖 메일이 없으면 「아직 안 든」 줄이 안 선다."""
+    with stage() as (box, run):
+        code, out = run("search", "시험")
+        assert code == 0 and "아직 안 든" not in out, f"색인 밖 메일이 없는데 따로 댔다:\n{out}"
+        box.mails[U["f_child"]] = dataclasses.replace(box.mails[U["f_child"]], stamp="20261104090000", unindexed=True)
+        code, out = run("search", "시험")
+        rows = [x for x in out.splitlines() if x.startswith("[")]
+        assert code == 0 and sum(U["f_child"] in x for x in rows) == 1, f"색인 밖 새 메일을 한 번 대지 않았다:\n{out}"
+        assert "그 위 1건은 검색 색인에 아직 안 든 새 메일" in out, out
+        line = next(x for x in rows if U["f_child"] in x)
+        assert f'--folder "{fakes_inbox.FOLDER_CHILD}"' in line, f"색인 밖 줄이 read 에 붙일 폴더를 안 댔다:\n{line}"
+        assert sum(U["alone"] in x for x in rows) == 1, f"색인이 든 메일을 두 번 댔다:\n{out}"
+        box.mails[U["f_child"]] = dataclasses.replace(box.mails[U["f_child"]], stamp="20261101090000")
+        code, out = run("search", "시험")
+        assert code == 0 and "아직 안 든" not in out, f"색인이 든 가장 새 메일보다 옛 메일을 색인 밖으로 댔다:\n{out}"
+        code, out = run("search", "시험", "--field", "body")
+        assert "아직 안 든" not in out, f"본문 검색에도 제목 훑기를 붙였다:\n{out}"
 
 
 # ── 답장 — 확인 열쇠가 맞을 때만 · 그 대화의 사람에게만 ──────────────────

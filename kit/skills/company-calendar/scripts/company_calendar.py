@@ -40,9 +40,9 @@ SAVED_URL = "~/.company-calendar.json"   # 남긴 일정 앱 주소 — 저장�
 DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}
 WEEKDAYS = "월화수목금토일"                 # date.weekday() 의 0 ~ 6 — 답에 요일을 실어 모델이 요일을 제 셈으로 짐작하지 않게
 NO_CLASH = "none"                        # 확인에 보인 겹침이 없다는 seen 값
-EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION, EXIT_URL = 0, 1, 2, 3, 4
+EXIT_URL = 4                             # 일정 앱 주소가 틀렸거나 잰 기본 주소로 내 일정함이 안 읽힌다 — 나머지 종료 값은 ep_command
+INDENT = 1                               # 답(JSON)을 찍는 들여쓰기 — 답의 크기도 이 꼴로 센다
 MUTATING = ("add", "delete")             # 회사 일정을 바꾼다 — 세션 손부터 받아 한 번만 돈다
-NEXT_EP_LOGIN = "다음: 스킬 ep-login 으로 사내 세션을 세운 뒤 같은 명령을 다시 부른다"
 NEXT_URL = "다음: 사람에게 「Edge 에서 메일을 열고 위의 일정 메뉴를 눌러, 열린 일정 화면의 주소창 주소를 그대로 붙여 주세요」 하고, 받은 주소로 remember 를 부른다"
 # 지우지 않는 줄 — 사람에게 할 말. 까닭은 agenda.Event.keep_reason 이 가른다
 KEEP_WORDS = {
@@ -65,48 +65,15 @@ STATE_WORDS = {
 }
 
 
-class Stop(Exception):
-    """명령을 멈춘다 — ``code`` 가 종료 값, ``kind`` 가 JSON 의 error 값이다."""
-
-    def __init__(self, code: int, kind: str, message: str):
-        super().__init__(message)
-        self.code, self.kind = code, kind
-
-
-def load_agenda():
-    """곁의 ``agenda`` 를 싣는다 — ``-I`` 로 돌면 이 폴더가 ``sys.path`` 에 없어 넣고 싣는다."""
-    if str(HERE) not in sys.path:
-        sys.path.insert(0, str(HERE))
-    import agenda  # noqa: PLC0415 — 자리를 넣은 뒤에 싣는다
-    return agenda
-
-
-def load_ep_session():
-    """형제 스킬 ep-login 의 ``ep_session`` 을 싣는다 — 받는 손을 돌리는 한 자리다."""
-    if str(EP_LOGIN_SCRIPTS) not in sys.path:
-        sys.path.insert(0, str(EP_LOGIN_SCRIPTS))
-    try:
-        import ep_session   # noqa: PLC0415 — 자리를 넣은 뒤에 싣는다
-    except ImportError as exc:
-        raise Stop(EXIT_TOOL, "tool", f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다") from exc
-    return ep_session
-
-
+if str(EP_LOGIN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(EP_LOGIN_SCRIPTS))   # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
 try:
-    OUT_BYTES = load_ep_session().OUT_BYTES   # 답 하나의 크기 — 형제 스킬 ep-login 의 한 자리(까닭은 그 자리의 주석)
-except Stop:
-    OUT_BYTES = 0                             # 형제 스킬이 없다 — main 이 같은 까닭으로 멈추고 말한다
-
-
-def no_session(ep, got) -> Stop:
-    """받는 손이 못 선 까닭을 종료 값으로 옮긴다 — 남은 파일 없는 2 와 3 은 ep-login(종료 3), 1 과 경로 없는 0 은 도구 고장."""
-    tail = (got.said.splitlines() or [""])[-1]
-    if got.code in (ep.NO_EDGE, ep.NOT_LOGGED_IN):
-        why = "Edge 에 붙지 못했고 앞서 받은 세션도 없다" if got.code == ep.NO_EDGE else "Edge 가 사내 로그인 전이다"
-        return Stop(EXIT_SESSION, "session", f"사내 세션이 없다 — {why}. {NEXT_EP_LOGIN}")
-    if got.code == ep.OK:
-        return Stop(EXIT_TOOL, "tool", "세션 손이 0 으로 끝났는데 끝 줄에 세션 파일의 절대 경로가 없다")
-    return Stop(EXIT_TOOL, "tool", f"세션 손이 종료 {got.code} 로 졌다 — {tail}")
+    import ep_command
+    import ep_session
+    from ep_command import EXIT_ARGS, OUT_BYTES, Stop, load, size
+except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
+    print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
+    sys.exit(1)
 
 
 def saved_url() -> str:
@@ -148,17 +115,12 @@ def row(agenda, e) -> dict:
     return out
 
 
-def shown(out: dict) -> int:
-    """답이 표준 출력에서 차지할 바이트 수 — main 이 찍는 꼴 그대로 센다."""
-    return len(json.dumps(out, ensure_ascii=False, indent=1).encode("utf-8"))
-
-
 def fit_days(out: dict, last: date, again: str) -> None:
     """보기의 답이 OUT_BYTES 를 넘으면 뒤 날짜의 줄부터 덜어 낸다 — 하루를 가운데서 끊지 않는다(그날이 비어 보이면 그날에 일정을
     겹쳐 잡는다). 덜었으면 ``more`` 가 이어 볼 구간을 든다. 하루치만으로 넘치면 그 하루는 그대로 낸다."""
     lists = [k for k in ("events", "shared") if k in out]
     days = sorted({r["day"] for k in lists for r in out[k]})
-    while len(days) > 1 and shown(out) > OUT_BYTES:
+    while len(days) > 1 and size(out, INDENT) > OUT_BYTES:
         cut = days.pop()
         for k in lists:
             out[k] = [r for r in out[k] if r["day"] < cut]
@@ -185,7 +147,7 @@ def want_of(args, agenda):
 
 
 def run(args, session: pathlib.Path) -> dict:
-    agenda = load_agenda()
+    agenda = load("agenda", HERE)
     url, by_default = resolve(args, agenda.DEFAULT_APP_URL)
     today = datetime.now(agenda.KST).date()
     if args.command == "remember":
@@ -285,28 +247,11 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
-    try:
-        agenda, ep = load_agenda(), load_ep_session()
-        # 보기는 세션 파일부터 쓰고 일정 서버가 거절할 때만 받는 손을 띄워 한 번 더, 넣기 · 지우기는 늘 손부터 받아 한 번만
-        try:
-            result, code = ep.session_first(lambda f: run(args, f), expired=(agenda.SessionExpired, agenda.SessionMissing),
-                                            file_first=args.command not in MUTATING), EXIT_OK
-        except ep.NoSession as exc:
-            raise no_session(ep, exc.got) from exc
-    except Stop as exc:
-        result, code = {"error": exc.kind, "message": str(exc)}, exc.code
-    except Exception as exc:  # noqa: BLE001 — 일정 손의 예외를 종료 값으로 옮긴다
-        agenda = sys.modules.get("agenda")
-        if agenda and isinstance(exc, (agenda.SessionExpired, agenda.SessionMissing)):
-            result, code = {"error": "session", "message": f"{exc}. {NEXT_EP_LOGIN}"}, EXIT_SESSION
-        elif agenda and isinstance(exc, agenda.CalendarConfigError):
-            result, code = {"error": "args", "message": str(exc)}, EXIT_ARGS
-        elif agenda and isinstance(exc, agenda.CalendarError):
-            result, code = {"error": "tool", "message": str(exc)}, EXIT_TOOL
-        else:
-            result, code = {"error": "tool", "message": f"{type(exc).__name__}: {exc}"}, EXIT_TOOL
-    print(json.dumps(result, ensure_ascii=False, indent=1))
-    return code
+    # 보기는 세션 파일부터 쓰고 일정 서버가 거절할 때만 받는 손을 띄워 한 번 더, 넣기 · 지우기는 늘 손부터 받아 한 번만
+    return ep_command.finish(
+        lambda agenda: ep_session.session_first(lambda f: run(args, f), expired=(agenda.SessionExpired, agenda.SessionMissing),
+                                                file_first=args.command not in MUTATING),
+        "agenda", HERE, indent=INDENT, app_error="CalendarError", args_errors=("CalendarConfigError",))   # 설정 · 인자가 틀린 것은 2
 
 
 if __name__ == "__main__":

@@ -3,8 +3,9 @@
 눈금을 바꾼 날 한쪽만 고쳐지고, 그때 문과 손이 서로 다른 값을 말한다.
 
 부르는 꼴 — 이 폴더를 `sys.path` 에 얹고 `import _vision` 또는
-`from _vision import MAX_EDGE, fit, patches`. 내는 것 — 눈금 상수 넷(`PATCH` · `MAX_EDGE` ·
-`LONG_EDGE_CAP` · `TOKEN_CAP`)과 셈 셋(`patches` · `fit` · `downscaled`). 부품이라 종료코드를 안 낸다.
+`from _vision import MAX_EDGE, fit, patches`. 내는 것 — 눈금 상수 다섯(`PATCH` · `MAX_EDGE` ·
+`LONG_EDGE_CAP` · `TOKEN_CAP` · `PAGE_RATIO`)과 셈 넷(`patches` · `fit` · `fit_page` · `downscaled`).
+부품이라 종료코드를 안 낸다.
 
 숫자의 진본은 상류 vision 문서다:
   · 값은 28×28 패치 수 — `⌈가로/28⌉ × ⌈세로/28⌉`. 바이트도 압축률도 아니다
@@ -22,6 +23,7 @@ PATCH = 28            # 모델이 그림을 세는 눈금 — 28×28 픽셀 한 
 MAX_EDGE = 1280       # 줄이는 손의 기본 긴 변 · 문이 「생각해 보라」를 대는 선 — 위 머리말
 LONG_EDGE_CAP = 2576  # 고해상 층 천장 — 이보다 긴 변은 상류가 깎는다
 TOKEN_CAP = 4784      # 같은 층의 패치 천장
+PAGE_RATIO = 2 ** 0.5  # 지면 한 쪽(A 판)의 세로 ÷ 가로 — 이보다 길쭉한 세로 그림은 한 쪽을 넘는 그림이다
 
 
 def patches(size):
@@ -46,6 +48,21 @@ def fit(size, max_edge):
         return (w, h)
     scale = max_edge / float(max(w, h))
     return (max(1, round(w * scale)), max(1, round(h * scale)))
+
+
+def fit_page(size, max_edge=MAX_EDGE):
+    """줄이는 손이 긴 변을 안 받았을 때의 치수 — 지면 한 쪽 꼴까지는 `fit` 과 같고, 그보다 길쭉한 세로
+    그림(쪽을 넘는 표 · 긴 엑셀 범위 · 긴 본문 그림)은 폭을 한 쪽 그림의 폭(`max_edge / PAGE_RATIO`)에 맞춘다.
+
+    긴 변으로 누르면 걸친 쪽 수만큼 글자가 작아진다 — 두 쪽짜리 표의 글자가 한 쪽 그림의 절반이 된다.
+    긴 변은 천장(`LONG_EDGE_CAP`)을 안 넘고, 폭이 한 쪽 폭 안이라 패치 수도 천장 안이다. 키우지 않는다.
+    """
+    w, h = size
+    if h <= w * PAGE_RATIO:
+        return fit(size, max_edge)
+    page_width = max_edge / PAGE_RATIO
+    edge = min(LONG_EDGE_CAP, round(h * min(1.0, page_width / w)))
+    return fit(size, max(max_edge, edge))
 
 
 def downscaled(size):
