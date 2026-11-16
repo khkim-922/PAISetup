@@ -21,12 +21,13 @@
     맞고 그 사이 명단이 그대로일 때만 속성 저장 POST 하나(``Ecm.save_access``)를 보낸 뒤 명단과 다른 속성을 다시 읽어 본다. 저장 몸은
     문서의 속성 칸 전부를 다시 싣기에 그 문서의 속성 화면이 든 값을 그대로 받고, 손이 바꾸는 칸은 권한 명단뿐이다.
 
-    기밀 등급 문서는 받지 않는다 — ``read_document`` · ``edit_document`` 가 받기 전에 ``check_readable`` 로 속성 화면의 보안등급
-    (``Ecm.security`` — 읽기 하나 · 파일을 안 받는다)을 읽어, 기밀(``CLASSIFIED_LEVELS``)이면 ``Classified`` 로 멈춘다. 뽑은 글자와
-    고치는 문서는 대화의 모델로 가기 때문이다. 등급을 못 읽으면 ``SecurityUnread`` 로 멈추고, 사람이 화면에서 등급을 보고 기밀이 아니라고
-    한 뒤에만 ``level_checked`` 로 넘긴다 — 읽힌 등급이 기밀이면 그 값으로도 안 넘는다. 화면에 띄우기만 하는 ``open_document`` 는
-    막지 않는다(사람이 보는 창이다). 「기밀인가」를 가르는 자리는 이 파일 하나다 — 이미 내려온 파일을 읽는 스킬 drm-office-read 는
-    등급을 모르므로 에이전트 폴더(``ECM_DOCS_ROOT``)의 파일을 직접 읽지 않고 이 손으로 돌린다.
+    기밀 · 핵심기술 문서는 사람에게 묻기 전에는 받지 않는다 — ``read_document`` · ``edit_document`` 가 받기 전에 ``check_readable`` 로
+    속성 화면(``Ecm.security`` — 읽기 하나 · 파일을 안 받는다)의 보안등급과 핵심기술 표시를 읽어, 기밀(``CLASSIFIED_LEVELS``)이거나
+    핵심기술 문서면 ``Classified`` 로, 등급을 못 읽으면 ``SecurityUnread`` 로 멈춘다. 뽑은 글자와 고치는 문서는 대화의 모델로 가기
+    때문이다. 멈춘 말은 사람에게 물을 것(``ASK_BEFORE_AI``)을 들고, 사람이 그 문서를 AI 로 보내도 된다고 답한 뒤에만 ``ai_ok`` 로
+    넘긴다. 화면에 띄우기만 하는 ``open_document`` 는 막지 않는다(사람이 보는 창이다). 「물어야 하나」를 가르는 자리는 이 파일
+    하나다 — 이미 내려온 파일을 읽는 스킬 drm-office-read 는 등급을 모르므로 에이전트 폴더(``ECM_DOCS_ROOT``)의 파일을 직접 읽지
+    않고 이 손으로 돌린다.
 
     에이전트는 받은 파일을 그 확장자의 기본 앱으로 **화면에 띄운다.** 그래서 이 손은 사람이 보는 대화에서만 쓰고, 편집은 사람이
     그 문서를 확인한 뒤에만 부른다 — 편집 열기는 동료도 쓰는 문서를 서버에서 잠근다.
@@ -63,8 +64,8 @@
     올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서는 ``Registered``(열쇠 · 이름 · 판), 권한은 ``Grant`` ·
     ``Person`` · ``Organ`` · ``AccessPlan``(앞 명단 · 뒤 명단 · 더함 · 뺌 · 옮김 · 확인 열쇠)이다. 명령줄의 종료 값은 0 됨 · 1 실패(메시지 그대로 알린다) · 2 인자가
     틀렸다(argparse 가 받는 값을 든다) · 3 세션이 없거나 끊겼다(스킬 ep-login 으로 다시 받는다) · 4 사람이 그 확장자의 기본 앱을 한 번
-    골라야 한다(메시지가 할 일을 든다) · 5 기밀 등급이라 받지 않았거나 등급을 못 읽어 멈췄다(메시지가 어느 쪽인지 든다). 보안등급은
-    ``Security``(등급 · 공개 · 이름 · 기밀인가)다. 갈래 예외는 ``EcmError`` 아래에 선다 — ``SessionMissing`` · ``SessionExpired`` · ``Refused`` ·
+    골라야 한다(메시지가 할 일을 든다) · 5 기밀 · 핵심기술 문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다(메시지가 물을 것을 든다). 보안등급은
+    ``Security``(등급 · 공개 · 핵심기술 · 이름 · 물어야 하나)다. 갈래 예외는 ``EcmError`` 아래에 선다 — ``SessionMissing`` · ``SessionExpired`` · ``Refused`` ·
     ``AgentError`` · ``ReadError`` · ``Classified`` · ``SecurityUnread``. ``default_app.DefaultAppNeeded`` · ``ValueError``(확장자 꼴) · ``OSError`` ·
     ``subprocess.TimeoutExpired`` 는 그 아래가 아니다 — 명령줄은 따로 잡아 4 · 1 로 내고, 손으로 부르는 쪽도 따로 잡아야 한다.
 
@@ -246,7 +247,12 @@ AGENT_UPLOAD = "uploadfilecreatedoc"    # 에이전트가 파일을 서버 임�
 # 보안등급 · 공개 — 등록 화면의 단추 여섯이 짓는 짝만 받는다(기밀은 비공개만 · 일반은 공개만)
 SECURITY_PAIRS = {("1A", "F"): "기밀", ("2A", "F"): "사외비A/비공개", ("2A", "T"): "사외비A",
                   ("2B", "F"): "사외비B/비공개", ("2B", "T"): "사외비B", ("3A", "T"): "일반"}
-CLASSIFIED_LEVELS = ("1A",)              # 기밀 — 이 등급의 문서는 받아 글자를 뽑거나 편집으로 열지 않는다
+CLASSIFIED_LEVELS = ("1A",)              # 기밀 — 이 등급의 문서는 사람에게 묻기 전에 받아 글자를 뽑거나 편집으로 열지 않는다
+CORE_VAR = "sIsDocTypeCore"               # 속성 화면의 핵심기술 표시(스크립트 갈래 값) — "T" 면 핵심기술 문서다
+AI_OK_FLAG = "--ai-ok"
+ASK_BEFORE_AI = (f"사람에게 문서 이름과 등급을 밝히고, 국가핵심기술이나 특허처럼 독점적 성격을 띤 정보는 AI 모델에 보내지 않도록 "
+                 f"주의를 당부한 뒤 이 문서를 AI 로 보내도 되는지 묻는다. 된다고 답한 뒤에만 같은 명령에 {AI_OK_FLAG} 를 붙이고, 안 된다고 하면 "
+                 "사람이 ECM 화면에서 직접 연다")
 SECURITY_FIELD, OPEN_FIELD = "ecm_security_level", "ecm_open_flag"   # 속성 화면의 숨은 칸 — 편집 화면이 지금 등급을 싣는 자리
 DOC_TYPE_GENERAL = "1"                  # 화면의 「컨텐츠 등록」이 기본으로 두는 문서 유형
 DOC_STATUS_DRAFT = "0"
@@ -367,18 +373,19 @@ class ReadError(EcmError):
 
 
 class Classified(EcmError):
-    """기밀 등급 문서라 받지 않았다 — 사람이 ECM 화면에서 직접 연다."""
+    """기밀 · 핵심기술 문서라 사람에게 묻기 전에 멈췄다 — AI 로 보내도 된다고 답하면 ``ai_ok`` 로 넘긴다."""
 
 
 class SecurityUnread(EcmError):
-    """속성 화면에서 보안등급을 못 읽어 받지 않았다 — 사람이 화면에서 등급을 보고 기밀이 아니라고 하면 ``level_checked`` 로 넘긴다."""
+    """속성 화면에서 보안등급을 못 읽어 사람에게 묻기 전에 멈췄다 — AI 로 보내도 된다고 답하면 ``ai_ok`` 로 넘긴다."""
 
 
 @dataclass(frozen=True)
 class Security:
-    """문서의 보안등급 · 공개 — 속성 화면의 숨은 칸 그대로."""
+    """문서의 보안등급 · 공개 — 속성 화면의 숨은 칸 그대로. ``core`` 는 핵심기술 표시(``CORE_VAR``)다."""
     level: str
     open_flag: str
+    core: bool = False
 
     @property
     def name(self) -> str:
@@ -388,6 +395,11 @@ class Security:
     @property
     def classified(self) -> bool:
         return self.level in CLASSIFIED_LEVELS
+
+    @property
+    def ask_before_ai(self) -> bool:
+        """글자를 대화로 들이기 전에 사람에게 물어야 하나 — 기밀이거나 핵심기술 문서다."""
+        return self.classified or self.core
 
 
 def level_name(level: str) -> str:
@@ -912,7 +924,7 @@ class Ecm:
         if not any(level == lv for lv, _ in SECURITY_PAIRS):
             what = "없다" if not level else f"모르는 값 {level!r} 이다"
             raise SecurityUnread(f"속성 화면의 보안등급 칸({SECURITY_FIELD})이 {what} — 이 문서의 속성을 볼 수 없는 사람이거나 화면이 바뀌었다")
-        return Security(level, open_flag)
+        return Security(level, open_flag, page.vars.get(CORE_VAR) == "T")
 
     def roles(self, object_id: str) -> list["Grant"]:
         """그 문서에 걸린 역할 전부 — 권한 iframe 이 처음 그리는 그 목록(소유자는 안 든다)."""
@@ -1405,13 +1417,13 @@ def checkin_pending(object_id: str) -> bool:
     return proc.returncode == 0
 
 
-def edit_document(ecm: Ecm, agent: Agent, object_id: str, *, level_checked: bool = False) -> Opened:
+def edit_document(ecm: Ecm, agent: Agent, object_id: str, *, ai_ok: bool = False) -> Opened:
     """편집으로 연다 — 서버가 그 문서를 이 사람 이름으로 잠그고, 에이전트가 읽기 쓰기로 띄운다. 잠그기 전에 둘을 본다 — 끝까지 못
     가는 판에 잠그면 사람이 모르는 잠금이 남는다:
     ``checkin_document`` 가 저장해 올릴 수 있는 꼴(``OFFICE_BY_EXT``)이 아니면 ``EcmError`` 로 멈추고, 기본 앱이 없으면
-    ``DefaultAppNeeded`` 로 멈춘다. 잠근 뒤 받기가 안 서면 그 말을 낸다. 기밀 · 못 읽은 등급은 그 앞에서 ``check_readable`` 이 멈춘다 —
-    고치는 문서는 대화의 모델이 읽는다."""
-    check_readable(ecm, object_id, level_checked=level_checked)
+    ``DefaultAppNeeded`` 로 멈춘다. 잠근 뒤 받기가 안 서면 그 말을 낸다. 기밀 · 핵심기술 · 못 읽은 등급은 그 앞에서 ``check_readable`` 이
+    사람에게 묻게 멈춘다 — 고치는 문서는 대화의 모델이 읽는다."""
+    check_readable(ecm, object_id, ai_ok=ai_ok)
     ticket = ecm.view(object_id)                    # 확장자 · 이름을 먼저 본다 — 읽기라 잠그지 않는다
     if ticket.ext not in OFFICE_BY_EXT:
         raise EcmError(f"이 꼴({ticket.ext or '확장자 없음'})은 편집으로 열어 올리지 못한다 — checkin 은 워드 · 엑셀 · 파워포인트만 "
@@ -1817,14 +1829,15 @@ def keep_text(text: str, summary: str, source: pathlib.Path, object_id: str) -> 
     return path
 
 
-def read_kept(ecm: Ecm, object_id: str, *, level_checked: bool = False) -> pathlib.Path | None:
+def read_kept(ecm: Ecm, object_id: str, *, ai_ok: bool = False) -> pathlib.Path | None:
     """남겨 둔 글자가 있으면 등급 문(``check_readable``)을 지난 뒤 그 파일을 낸다 — 없으면 None. 문서는 받지 않는다.
 
-    등급 문은 여기서도 선다 — 남긴 뒤 기밀로 바뀐 문서의 글자를 대화로 들이지 않는다(속성 화면만 읽어 파일은 안 받는다)."""
+    등급 문은 여기서도 선다 — 남긴 뒤 기밀 · 핵심기술이 된 문서의 글자는 사람에게 묻기 전에 대화로 들이지 않는다(속성 화면만 읽어
+    파일은 안 받는다)."""
     path = kept_text(object_id)
     if path is None:
         return None
-    check_readable(ecm, object_id, level_checked=level_checked)
+    check_readable(ecm, object_id, ai_ok=ai_ok)
     return path
 
 
@@ -1865,31 +1878,32 @@ def tell_kept(path: pathlib.Path, *, as_file: bool = False) -> None:
     _tell_text(f"{head}\n{note}", text, path, as_file=as_file)
 
 
-def check_readable(ecm: Ecm, object_id: str, *, level_checked: bool = False) -> Security | None:
-    """글자를 대화로 들이는 일(읽기 · 편집 열기) 앞의 문 — 기밀이면 ``Classified``, 등급을 못 읽으면 ``SecurityUnread`` 로 멈춘다.
+def check_readable(ecm: Ecm, object_id: str, *, ai_ok: bool = False) -> Security | None:
+    """글자를 대화로 들이는 일(읽기 · 편집 열기) 앞의 문 — 기밀 · 핵심기술 문서면 ``Classified``, 등급을 못 읽으면 ``SecurityUnread``
+    로 멈추고, 그 말이 사람에게 물을 것(``ASK_BEFORE_AI``)을 든다.
 
-    ``level_checked`` 는 사람이 ECM 화면에서 등급을 보고 기밀이 아니라고 한 뒤에만 준다 — 못 읽은 판만 넘기고(그때 None),
-    읽힌 등급이 기밀이면 그래도 멈춘다. 받는 요청보다 먼저 서야 한다 — 받은 뒤 막으면 감긴 파일이 이미 PC 에 와 있다."""
+    ``ai_ok`` 는 사람이 그 문서를 AI 로 보내도 된다고 답한 뒤에만 준다 — 그때는 묻는 문서도 넘긴다(못 읽은 판은 None).
+    받는 요청보다 먼저 서야 한다 — 받은 뒤 막으면 감긴 파일이 이미 PC 에 와 있다."""
     try:
         security = ecm.security(object_id)
     except SecurityUnread as exc:
-        if level_checked:
+        if ai_ok:
             return None
-        raise SecurityUnread(f"보안등급을 못 읽어 받지 않았다 — {exc}. 사람이 ECM 화면의 「컨텐츠 속성」에서 등급을 보고 기밀이 아니라고 "
-                             "하면 같은 명령에 --not-classified 를 붙인다") from exc
-    if security.classified:
-        raise Classified(f"{security.name} 등급 문서라 받지 않았다 — 글자를 대화로 들이지 않는다. 사람이 ECM 화면에서 직접 연다")
+        raise SecurityUnread(f"보안등급을 못 읽어 받지 않았다 — {exc}. {ASK_BEFORE_AI}") from exc
+    if security.ask_before_ai and not ai_ok:
+        what = " · ".join(w for w, on in ((security.name, security.classified), ("핵심기술", security.core)) if on)
+        raise Classified(f"{what} 문서라 받지 않았다 — 글자가 대화의 모델로 간다. {ASK_BEFORE_AI}")
     return security
 
 
 def read_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool = False,
-                  reader: pathlib.Path | None = None, level_checked: bool = False) -> ReadResult:
+                  reader: pathlib.Path | None = None, ai_ok: bool = False) -> ReadResult:
     """보안등급을 보고(``check_readable``) → 열고 → 에이전트가 띄운 창을 닫고 → 받은 파일에서 글자를 뽑는다.
 
     닫는 것이 먼저다 — 오피스가 그 파일을 쥐고 있으면 읽는 손이 파일 머리를 못 읽는다(「다른 프로세스가 사용 중」). 받은 파일은
     닫은 뒤에도 그 자리에 남는다. 화면에 띄워 두고 보려면 ``open_document`` 를 쓴다.
     """
-    check_readable(ecm, object_id, level_checked=level_checked)
+    check_readable(ecm, object_id, ai_ok=ai_ok)
     opened = open_document(ecm, agent, object_id, allow_picker=allow_picker)
     window = close_window(opened.path, viewer_of(opened.progid))
     try:
@@ -1953,7 +1967,7 @@ def _describe_open(opened: Opened) -> list[str]:
     return [f"받은 파일: {opened.path}", app]
 
 
-NOT_CLASSIFIED_HELP = "등급을 못 읽었을 때만 쓰인다 — 사람이 ECM 화면에서 보안등급을 보고 기밀이 아니라고 한 뒤에만 준다"
+AI_OK_HELP = "기밀 · 핵심기술 · 등급을 못 읽은 문서를 받는다 — 사람이 그 문서를 AI 로 보내도 된다고 답한 뒤에만 준다"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1978,7 +1992,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("object_id", help="목록의 id(MS_OBJECT_ID · 16 자리 hex)")
         p.add_argument("--allow-picker", action="store_true", help="기본 앱이 없어도 열어 사람이 고르는 창에서 고르게 둔다")
         if name == "read":
-            p.add_argument("--not-classified", action="store_true", help=NOT_CLASSIFIED_HELP)
+            p.add_argument(AI_OK_FLAG, action="store_true", help=AI_OK_HELP)
             p.add_argument("--as-file", action="store_true",
                            help="짧은 문서도 글자를 대화에 싣지 않고 남긴 파일의 경로만 낸다 — 긴 문서는 이 깃발 없이도 그렇게 된다")
             p.add_argument("--fresh", action="store_true",
@@ -1989,7 +2003,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("object_id")
     p = sub.add_parser("edit", help="편집으로 연다 — 서버가 그 문서를 잠근다. 사람이 확인한 뒤에만 부른다")
     p.add_argument("object_id")
-    p.add_argument("--not-classified", action="store_true", help=NOT_CLASSIFIED_HELP)
+    p.add_argument(AI_OK_FLAG, action="store_true", help=AI_OK_HELP)
     p = sub.add_parser("checkin", help="편집으로 연 문서를 저장해 닫고 다음 판 · 수정 내용으로 올린다")
     p.add_argument("object_id")
     p.add_argument("path", help="edit 가 낸 받은 파일")
@@ -2059,7 +2073,8 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_OK
         if args.command == "security":
             got = ecm.security(args.object_id)
-            print(f"{got.name} ({got.level}/{got.open_flag})" + (" — 기밀이라 read · edit 가 받지 않는다" if got.classified else ""))
+            print(f"{got.name} ({got.level}/{got.open_flag})" + (" · 핵심기술" if got.core else "")
+                  + (f" — read · edit 는 사람에게 AI 로 보내도 되는지 물은 뒤 {AI_OK_FLAG} 로만 받는다" if got.ask_before_ai else ""))
             return EXIT_OK
         if args.command == "folders":
             for f in ecm.folders(args.cabinet, args.parent):
@@ -2109,20 +2124,20 @@ def main(argv: list[str] | None = None) -> int:
             _print_grants(got)
             return EXIT_OK
         if args.command == "read" and not args.fresh:
-            kept = read_kept(ecm, args.object_id, level_checked=args.not_classified)
+            kept = read_kept(ecm, args.object_id, ai_ok=args.ai_ok)
             if kept is not None:
                 tell_kept(kept, as_file=args.as_file)
                 return EXIT_OK
         agent = Agent.from_env()
         if args.command == "edit":
-            opened = edit_document(ecm, agent, args.object_id, level_checked=args.not_classified)
+            opened = edit_document(ecm, agent, args.object_id, ai_ok=args.ai_ok)
             print("\n".join([*_describe_open(opened), "편집으로 열었다 — 서버가 잠갔다. 고친 뒤 checkin 으로 올리거나, 그만두면 ECM 화면에서 「편집취소」한다"]))
             return EXIT_OK
         if args.command == "open":
             opened = open_document(ecm, agent, args.object_id, allow_picker=args.allow_picker)
             print("\n".join(_describe_open(opened)))
             return EXIT_OK
-        got = read_document(ecm, agent, args.object_id, allow_picker=args.allow_picker, level_checked=args.not_classified)
+        got = read_document(ecm, agent, args.object_id, allow_picker=args.allow_picker, ai_ok=args.ai_ok)
         tell_read(got, args.object_id, as_file=args.as_file)
         return EXIT_OK
     except (SessionMissing, SessionExpired) as exc:
