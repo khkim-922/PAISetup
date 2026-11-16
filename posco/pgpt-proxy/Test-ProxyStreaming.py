@@ -170,15 +170,18 @@ class StreamingTests(unittest.TestCase):
     def test_gateway_usage_gets_cache_ttl_bundle_and_nothing_else_changes(self):
         """층: 쓰는 사람의 계약 — 모든 Claude 턴이 이 중계를 지난다. 걷는 조건: 게이트웨이가 수명별 묶음을 싣게 되어
         채움(`PGPT_PROXY_FILL_CACHE_TTL`)을 걷을 때."""
-        zero = {"input_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 0}
+        zero = {"input_tokens": 0, "output_tokens": 0}  # 게이트웨이의 message_start 꼴 — 캐시 칸이 없다(회사 실측 2026-11-16)
         real = {"input_tokens": 12, "cache_read_input_tokens": 3400, "cache_creation_input_tokens": 56, "output_tokens": 7}
         start = event("message_start", message={"id": "m", "usage": zero})
         # 글 안의 같은 낱말은 사용량이 아니다 — 안 건드린다
         text = event("content_block_delta", delta={"type": "text_delta", "text": '"cache_creation_input_tokens": 9'})
         delta = event("message_delta", delta={"stop_reason": "end_turn"}, usage=real)
+        placeholder = proxy.START_CACHE_WRITE_PLACEHOLDER
         expected = [
-            {"type": "message_start", "message": {"id": "m", "usage": dict(zero, cache_creation={
-                "ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0})}},
+            # 확장 웹뷰는 스트림 동안 message_start 로만 타이머를 다시 맞춘다 — 자리표 5분 쓰기가 실린다
+            {"type": "message_start", "message": {"id": "m", "usage": dict(
+                zero, cache_creation_input_tokens=placeholder, cache_creation={
+                    "ephemeral_5m_input_tokens": placeholder, "ephemeral_1h_input_tokens": 0})}},
             json.loads(text.split(b"data: ", 1)[1]),
             {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": dict(real, cache_creation={
                 "ephemeral_5m_input_tokens": 56, "ephemeral_1h_input_tokens": 0})},
@@ -211,6 +214,51 @@ class StreamingTests(unittest.TestCase):
         _, _, data, error = self.run_case("cache_ttl_direct", [START, direct, STOP])
         self.assertEqual((data, error), (START + direct + STOP, None))
         self.assertEqual(proxy.stats()["cache_ttl_filled"], before + 1)
+
+    def test_stream_start_estimate_comes_from_the_same_sessions_last_turn(self):
+        """층: 쓰는 사람의 계약 — 확장 타이머 · 컨텍스트 표시가 message_start 의 사용량으로 선다. 걷는 조건: 게이트웨이가
+        message_start 에 캐시 칸을 싣게 되거나 확장이 message_delta 로 타이머를 맞추게 될 때."""
+        session = "11111111-2222-3333-4444-555555555555"
+        proxy.remember_session_input(session, {"input_tokens": 2, "cache_read_input_tokens": 70000,
+                                               "cache_creation_input_tokens": 500})
+        self.assertEqual(proxy.session_input_estimate(session), 70502)
+        self.assertEqual(proxy.session_input_estimate("other"), 0)
+        filler = proxy.CacheTtlFiller(proxy.session_input_estimate(session))
+        out = filler.feed(event("message_start", message={"id": "m", "usage": {"input_tokens": 0, "output_tokens": 0}}))
+        usage = json.loads(out.split(b"data: ", 1)[1])["message"]["usage"]
+        self.assertEqual(usage["input_tokens"], 70502)
+        self.assertEqual(usage["cache_creation"]["ephemeral_5m_input_tokens"], proxy.START_CACHE_WRITE_PLACEHOLDER)
+        # 직결 꼴 message_start(캐시 칸이 실제 값으로 있다)는 받은 바이트 그대로다
+        direct = event("message_start", message={"id": "m", "usage": {
+            "input_tokens": 3, "cache_read_input_tokens": 900, "cache_creation_input_tokens": 0,
+            "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 0}}})
+        self.assertEqual(proxy.CacheTtlFiller(70502).feed(direct), direct)
+
+    def test_second_turn_through_the_handler_carries_the_first_turns_total(self):
+        """층: 핸들러 연결 — 세션 번호를 뽑아 끝의 실제 사용량을 기억하고 다음 턴 첫 이벤트에 싣는다.
+        걷는 조건은 위 시험과 같다."""
+        session = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+        payload = {"model": "claude-opus-5-5", "stream": True, "max_tokens": 16,
+                   "metadata": {"user_id": json.dumps({"session_id": session})},
+                   "messages": [{"role": "user", "content": "hi"}]}
+        start = event("message_start", message={"id": "m", "usage": {"input_tokens": 0, "output_tokens": 0}})
+        first = event("message_delta", delta={"stop_reason": "end_turn"},
+                      usage={"input_tokens": 9, "cache_creation_input_tokens": 3203, "output_tokens": 6})
+        second = event("message_delta", delta={"stop_reason": "end_turn"},
+                       usage={"input_tokens": 9, "cache_read_input_tokens": 3203, "output_tokens": 6})
+
+        def start_usage(data):
+            line = next(line for line in data.splitlines() if line.startswith(b"data: ") and b"message_start" in line)
+            return json.loads(line[6:])["message"]["usage"]
+
+        _, _, data, error = self.run_case("turn1", [start, first, STOP], payload=payload)
+        self.assertIsNone(error)
+        self.assertEqual(start_usage(data)["input_tokens"], 0)
+        _, _, data, error = self.run_case("turn2", [start, second, STOP], payload=payload)
+        self.assertIsNone(error)
+        self.assertEqual(start_usage(data)["input_tokens"], 9 + 3203)
+        self.assertEqual(start_usage(data)["cache_creation"]["ephemeral_5m_input_tokens"],
+                         proxy.START_CACHE_WRITE_PLACEHOLDER)
 
     def test_compact_with_runtime_system_tail_is_tuned_on_messages_route(self):
         p = {"model": "claude-opus-5", "thinking": {"type": "adaptive"},

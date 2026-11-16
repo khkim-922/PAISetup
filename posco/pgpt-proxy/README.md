@@ -31,6 +31,7 @@
 | `Test-ProxyModelMap.py` | 상류 `tests/` | 모델 대체 — 게이트웨이 목록 조회 · 담아 두기 · 못 읽을 때의 규칙 · `PGPT_PROXY_MODEL_MAP` |
 | `Test-ProxyWebSearch.py` | 상류 `tests/` | Claude 웹서치 메움 — 알아보기 · 답 짓기 · 안 건드릴 요청 · 오류 갈래 |
 | `Test-ProxyChunkedBody.py` | (우리 것) | 본문 받기 — `Transfer-Encoding` 이 붙은 요청이 바르든 깨졌든 411 이고 상류로 안 가나 · 기록에 본문 바이트가 안 남나 |
+| `Test-ProxyCacheWarm.py` | (우리 것) | 쉬는 대화의 캐시 데우기 — 간격마다 세 번에서 멈추나 · 나가는 몸이 상류 몸에서 `max_tokens` 1 · 비스트리밍만 다른가 · 캐시를 못 읽힌 답과 진 답에 멈추나 · 곁 호출과 작은 몸은 안 담나 |
 | `pair_check.py` | (우리 것) | 프록시와 가짜 게이트웨이를 함께 띄워 「직결 400 · 프록시 200 · prefill 1번 뗐다」를 잰다 |
 | `codex_websearch_check.py` | (우리 것) | Codex 검색 메움 — `/v1/alpha/search` 요청이 Responses 웹 검색으로 가고 `SearchResponse` 로 돌아오나 · 상류로 가는 `web_search` 도구가 손대지 않은 꼴인가 |
 | `hoist_live_check.py` | (우리 것) | 그림 끌어내기를 **실호출로** — 직결은 못 보고 프록시 너머는 그림을 맞히나 (눈가림) |
@@ -42,15 +43,15 @@
 
 ## 판과 우리 덩어리
 
-- **판 번호는 두 칸이다 — 지금 `33.20`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 마지막으로 받은 상류 판이라
+- **판 번호는 두 칸이다 — 지금 `33.22`**(`VERSION_UPSTREAM` · `VERSION_OURS`). 앞 칸은 마지막으로 받은 상류 판이라
   33 에 선다. 뒤 칸은 그 위에 우리가 얹은 덩어리 수고, 앞으로 우리 고침은 이 칸이 센다
-  ⚠ **`/health` 는 사람이 읽기 좋게 `33.20` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
+  ⚠ **`/health` 는 사람이 읽기 좋게 `33.22` 한 줄을 내지만, 판을 견주는 설치기는 두 수를 따로 정수로 읽는다** —
   점 찍힌 문자열을 그대로 견주면 `"9" > "10"` 이 되기 때문이다. 설치기는 그렇게 견주어 낮으면 갈아 끼운다
   (`install.ps1` 프록시 칸)
   ⚠ **정수 한 칸(`17`·`26`)이 도는 자리도 받는다** — 옛 판과 상류 판은 두 이름이 없어 「못 읽었다」로 떨어지고,
   그때는 **갈아 끼우는 쪽으로 기운다.** 반대로 두면 옛 프록시가 영영 안 바뀐다
 - 작성자 허락 2026-09-14 (라이선스 파일은 상류에 없다 — 허락으로 든다)
-- **우리 덩어리 여섯** — 상류 v33 에 없는 것이다.
+- **우리 덩어리 일곱** — 상류 v33 에 없는 것이다.
   ⑴ **Codex 검색 메움**(`codex_web_search` 부터 `responses_web_search_to_codex` 까지의 함수 묶음 · `is_generation_request`
   의 `/v1/alpha/search` 줄 · `_forward_request` 의 `codex_fill` 갈래들 · 머리 설명 한 칸) — Codex 의 독립
   `/v1/alpha/search` 는 게이트웨이에 없어, 같은 게이트웨이의 `/v1/responses` + `web_search` 로 바꾸고
@@ -78,9 +79,14 @@
   ⑸ **사용량 칸**(`merge_usage` · `usage_text` · 결정 0175) — Claude 응답의 입력 · 캐시 읽기 · 캐시 쓰기 항을 기존
   `stream …` · `complete …` 줄에 숫자로 싣는다(아래 「진단」 칸). 자체 검사의 사용량 칸(게이트웨이 꼴 · 직결 꼴)과
   `Test-ProxyStreaming.py` 의 진단 줄 시험이 이를 단언한다
-  ⑹ **캐시 수명 묶음 채움**(`fill_cache_creation` · `CacheTtlFiller`) — Claude 응답의 사용량에 수명별 캐시 쓰기 묶음이
-  없으면 총량을 5분 칸에 실어 채운다(아래 「캐시 수명 묶음 채움」 칸). `Test-ProxyStreaming.py` 의 채움 시험(이벤트를
-  어느 바이트에서 쪼개도 사용량 칸만 바뀌나 · 직결 꼴은 그대로인가)이 이를 단언한다
+  ⑹ **캐시 수명 묶음 채움**(`fill_cache_creation` · `fill_stream_start_usage` · `CacheTtlFiller`) — Claude 응답의 사용량에 수명별 캐시 쓰기 묶음이
+  없으면 총량을 5분 칸에 실어 채우고, 캐시 칸이 빈 스트림 첫 이벤트에는 자리표를 싣는다(아래 「캐시 수명 묶음 채움」 칸). `Test-ProxyStreaming.py` 의 채움 시험 둘(이벤트를
+  어느 바이트에서 쪼개도 사용량 칸만 바뀌나 · 직결 꼴은 그대로인가 · 첫 이벤트의 추정이 같은 세션 앞 턴에서 오나)이 이를 단언한다
+  ⑺ **쉬는 대화의 캐시 데우기**(`CacheWarmer` · `cache_warm_candidate` · `cache_warm_body` · `cache_warm_ping` · `_forward_request` 의
+  `warm_key` 갈래) — 큰 대화의 마지막 실제 요청 뒤 270초마다 세 번, 그 요청을 `max_tokens: 1` · 비스트리밍으로 다시 보내 캐시를 읽힌다(아래
+  「캐시 데우기」 칸 · 결정 0241). 규칙은 상류 v42 · v43 의 캐시 유지(`proxy-rs/src/warm.rs` · `712ae7f7`)에서 빌렸고 둘을 일부러 갈랐다 —
+  데우는 기간(상류는 60분 · 우리는 세 번)과 진 요청 다시 보내기(상류는 20초 뒤 한 번 · 우리는 안 보낸다). 상류가 그 규칙을 고치면 여기도 본다.
+  `Test-ProxyCacheWarm.py` 가 고르는 차례 · 나가는 몸 · 멈추는 조건을 단언한다
 - **우리가 먼저 재고 지은 둘은 상류가 같은 꼴로 들여 상류 코드가 든다** — 그림 끌어내기(v31 · 이슈 #76) · Claude
   웹서치 메움(v27 · 이슈 #118 · 결정 0087). 무엇이 같았고 무엇을 더 받았나는 결정 0163.
   그 가운데 그림 끌어내기가 옮기는 블록은 위 ⑶ 이 바꾼다
@@ -116,7 +122,8 @@
 | 상류 연결 — 요청마다 새로 열고 응답을 다 읽으면 닫는다(`UpstreamTarget` · **(우리 것)** 상류 v33 의 keep-alive 풀을 걷었다) | **쓴다** — 다시 써서 아끼는 것이 접속 한 번의 손잡기뿐이다(회사 실측 p50 15.1 ms · 최대 46.4 ms · #226 ⑧ — 게이트웨이가 요청에 쓰는 평균 6.9초의 0.2%). 다시 쓰면 앞단이 쉬는 연결을 **정확히 30.0초**에 닫는 것과 겨루고(`front closed idle connection after 30.0s: EOF (FIN)`), 꺼낸 연결이 응답 전에 끊기면 다시 보내야 한다. 실패한 요청은 다시 보내지 않는다 — 게이트웨이가 이미 처리 중일 수 있어 생성이 두 번 돈다. 클라이언트(Claude Code · Codex)는 오류를 받으면 스스로 다시 보낸다(`cli-log` `attempt 1/11` · 결정 0202) |
 | Anthropic · OpenAI SSE 가 침묵하면 `KEEPALIVE_SEC`(기본 15초)마다 `: keepalive` 주석 한 줄을 클라이언트에 흘린다(상류 v18) — 게이트웨이가 생각 조각을 안 흘려 Claude Code 의 바이트 유휴 워치독이 끊던 자리. **완성된 이벤트 사이에만 끼운다**(v24). `PGPT_PROXY_KEEPALIVE_SEC=0` 이면 끈다 | **쓴다 · 132회** (Claude Code · 옛 판 실측). ⚠ 180초 벽은 못 넘는다 — 유휴가 아니라 요청 실행 시계다(`../ENV-posco.md`) |
 | **스트림 무결성**(v23 · v24) — SSE 는 늘 chunked 로 다시 싼다 · 끝 이벤트(`message_stop` · `response.completed`)를 확인하고, 없이 닫히면 끝 표시 없이 닫아 클라이언트가 잘린 응답으로 안다 · 오류 이벤트는 그대로 넘기고 센다 | **쓴다** — 옛 판에서 가짜 게이트웨이로 재현한 결함 둘을 막는다(2026-10-07): 이벤트 도중에 쉬면 주석이 이벤트 한가운데 끼어 그 이벤트가 깨지던 것 · 길이를 선언한 SSE 에 주석이 얹혀 끝 이벤트가 잘리던 것. 실제 게이트웨이에서 얼마나 잦은지는 모른다 |
-| **(우리 것)** **캐시 수명 묶음 채움**(`PGPT_PROXY_FILL_CACHE_TTL` · 기본 켬) — Claude 응답의 `usage` 에 캐시 쓰기 총량(`cache_creation_input_tokens`)만 있고 수명별 묶음(`cache_creation`)이 없으면 `{"ephemeral_5m_input_tokens": 총량, "ephemeral_1h_input_tokens": 0}` 을 채운다. 스트림은 `message_start` · `message_delta` 이벤트를, 압축 길은 지어 내는 답을 고친다. 고치는 이벤트를 다 받아야 다시 쓸 수 있어 Claude 스트림은 완성된 이벤트 단위로 내보낸다 — 그 밖의 바이트는 그대로다. 묶음이 이미 있으면(직결) 안 건드리고, 그대로 중계하는 비스트리밍 응답(자동 모드 분류기 등)은 길이를 안 바꾸려고 안 고친다 · `/health` 의 `cache_ttl_filled`(채운 응답 수) | **쓴다 · 회사 실측 아직** — 게이트웨이는 총량만 싣고 수명별 묶음을 뺀다(결정 0174). VS Code 확장(2.1.325)은 그 묶음의 5분 · 1시간 칸으로 캐시 수명을 정해 남은 시간 타이머를 띄우고, 묶음이 없으면 수명을 모른다고 보고 안 띄운다 — CLI 는 `message_delta` 의 묶음을 마지막 사용량에 합친다. 5분 칸에 싣는 까닭은 게이트웨이의 캐시 수명이 5분이라서다(`../ENV-posco.md` 「캐시 1시간」). 캐시 쓰기가 0인 턴은 수명을 새로 못 정하지만 확장이 앞 턴의 수명을 이어 쓴다. 회사에서 `cache_ttl_filled` 가 오르는데 타이머가 안 뜨면 확장이 읽는 칸이 바뀐 것이다 |
+| **(우리 것)** **캐시 수명 묶음 채움**(`PGPT_PROXY_FILL_CACHE_TTL` · 기본 켬) — Claude 응답의 `usage` 에 캐시 쓰기 총량(`cache_creation_input_tokens`)만 있고 수명별 묶음(`cache_creation`)이 없으면 `{"ephemeral_5m_input_tokens": 총량, "ephemeral_1h_input_tokens": 0}` 을 채운다. 스트림은 `message_start` · `message_delta` 이벤트를, 압축 길은 지어 내는 답을 고친다. 게이트웨이의 `message_start` 는 캐시 칸 없이 `{"input_tokens":0,"output_tokens":0}` 로 오는데(실제 값은 `message_delta` 에만 온다), 확장 웹뷰는 스트림 동안 `message_start` 의 사용량으로만 타이머를 다시 맞추고 CLI 가 내보내는 `assistant` 메시지도 그 값을 싣는다 — 그래서 그 이벤트에 자리표를 싣는다(`fill_stream_start_usage`): 캐시 쓰기 `START_CACHE_WRITE_PLACEHOLDER`(5분 칸) · `input_tokens` 는 같은 세션(`metadata.user_id` 의 세션 번호) 앞 턴의 총 입력. CLI 는 `message_delta` 의 칸이 0보다 크면 그 값으로 덮어 세션 기록 · 비용 셈은 실제 값이 된다. 고치는 이벤트를 다 받아야 다시 쓸 수 있어 Claude 스트림은 완성된 이벤트 단위로 내보낸다 — 그 밖의 바이트는 그대로다. 묶음이 이미 있으면(직결) 안 건드리고, 그대로 중계하는 비스트리밍 응답(자동 모드 분류기 등)은 길이를 안 바꾸려고 안 고친다 · `/health` 의 `cache_ttl_filled`(채운 응답 수) | **쓴다 · 회사 실측 아직** — 게이트웨이는 총량만 싣고 수명별 묶음을 뺀다(결정 0174). VS Code 확장(2.1.325)은 그 묶음의 5분 · 1시간 칸으로 캐시 수명을 정해 남은 시간 타이머를 띄우고, 묶음이 없으면 수명을 모른다고 보고 안 띄운다 — 스트림 중에는 `message_start` 만 보므로 거기 묶음이 없으면 창을 다시 불러올 때(세션 기록을 다시 읽을 때)만 뜨고 턴마다 다시 맞춰지지 않는다. 5분 칸에 싣는 까닭은 게이트웨이의 캐시 수명이 5분이라서다(`../ENV-posco.md` 「캐시 1시간」). 캐시 쓰기가 0인 턴은 수명을 새로 못 정하지만 확장이 앞 턴의 수명을 이어 쓴다. 회사에서 `cache_ttl_filled` 가 오르는데 타이머가 안 뜨면 확장이 읽는 칸이 바뀐 것이다 |
+| **(우리 것 · 상류 v42 에서 빌림)** **캐시 데우기**(`PGPT_PROXY_CACHE_WARM_CYCLES` · 기본 3 · `0` 이면 끈다 · 간격 `PGPT_PROXY_CACHE_WARM_INTERVAL_SEC` · 기본 270초) — 끝까지 받은(200) Claude 스트림 턴의 상류 몸을 대화마다(세션 번호 · 모델 · `system` 지문) 하나씩, 가장 최근 대화 셋까지 메모리에만 기억한다. 그 대화가 간격만큼 쉬면 같은 몸에서 `max_tokens` 를 1 로 · `stream` 을 끄고 다시 보내 캐시를 읽히고, 마지막 실제 요청 뒤 세 번 보내면 멈춘다(4분 30초 · 9분 · 13분 30초에 나가 18분쯤까지 산다). 담는 조건 — 세션 번호가 있다 · 몸이 100 KB 이상이다 · `cache_control` 표식이 있다 · 생각이 예산 꼴(`thinking` 의 `type` 이 `enabled`)이 아니다 · 압축이 아니다. 답이 200 이 아니거나 캐시를 못 읽혔으면(`cache_read` 0) 그 대화는 버리고 다시 보내지 않는다. 같은 대화의 실제 요청이 지면 담아 둔 몸을 버린다(사람이 끊은 판은 둔다) · `/health` 의 `cache_warm_cycles` · `cache_warm_sessions` · `cache_warm_sent` · `cache_warm_failed` · 기록 `cache warm session=<세션 앞 8자> HTTP 200 cache_read=… bytes=… total=…s` | **쓴다 · 회사 실측 아직**(#258) — 게이트웨이의 캐시는 5분이면 사라져(`../ENV-posco.md` 「캐시 1시간」), 잠깐 자리를 비우거나 레인을 기다린 뒤의 첫 요청이 대화 전체를 다시 쓴다(회사 9일에 25건 · #258). 「5분 안에 읽히면 수명이 새로 선다」와 「`max_tokens: 1` · 적응형 생각 꼴을 게이트웨이가 받는다」는 상류의 회사 실측이다(같은 게이트웨이 · 2026-11-13 · 4분 간격으로 12분까지 `cache_read` 유지) — 우리 프록시 너머로는 안 쟀다. ⚠ **사람이 보내지 않은 요청이 그 사람의 키로 나간다** — 큰 대화가 쉴 때마다 최대 세 번이고, 창을 닫은 대화에도 나간다(프록시는 창이 닫혔는지 모른다). ⚠ 확장의 캐시 타이머는 데우기를 모른다 — 5분에 「식었다」로 보이는 동안에도 캐시는 살아 있다. ⚠ 간격을 300초 가까이 늘리면 늦게 닿은 요청이 캐시를 읽지 않고 대화를 다시 쓴다(쓰기 1.25배) — 고르는 틱 5초와 게이트웨이의 첫 바이트(회사 실측 2~21초 · #237)가 그 안에 들어야 한다. 270초는 여유가 30초다 — 기록에 `cache_read=0` 으로 버린 줄이 보이면 240초로 내린다(상류가 같은 게이트웨이에서 읽히는 것을 잰 간격) |
 | **출력 상한**(v26) — Claude 요청의 `max_tokens` 를 그 요청이 타는 길의 시한 안으로 **낮춘다**(안 올린다): 스트리밍 12,500(`PGPT_PROXY_STREAM_MAX_TOKENS`) · 비스트리밍 18,000(`PGPT_PROXY_NONSTREAM_MAX_TOKENS`) · `enabled` thinking 예산은 상한의 절반 이하로. `0` 이면 그 길은 클라이언트 값 | **쓴다** — 회사 실측(2026-10-30 · #226 ④ ⑦): 64,000 으로 와 10,000 으로 깎인 217건 가운데 상한에 닿은 턴이 0건이고, 같은 꼴을 프록시 없이 보낸 생각 턴은 앞단 300초 벽에 504 로 졌다(n=1) — 상한은 생각 예산도 함께 눌러 그 벽 앞에서 끝낸다. 긴 턴이 180초에 `HTTP 500` 으로 잘리면 Claude Code 가 같은 요청을 최대 10번 다시 보냈다. 상한에 닿으면 `stop_reason=max_tokens` 로 끝나 Claude Code 가 나눠서 이어 쓴다. 스트리밍 12,500 은 상류 실측(Opus 턴 1.2초 + 토큰당 13.77ms · 197건 · 2026-10-06)으로 셈하면 약 173초라 180초 벽 바로 앞이다. ⚠ 코드의 잰 최악값(토큰당 15.0ms)으로는 약 189초 · 우리 아뜰리에의 8월 실측(초당 34~58토큰)으로는 216~368초라 벽을 넘을 수 있다 — `/health` 의 `execution_cuts` · `max_tokens_hits` 로 가린다. ⚠ 12,500 토큰이 넘는 도구 호출 하나(큰 `Write`)는 못 끝난다 — 상한이 없어도 약 12,900 에서 벽이다 |
 | **압축만 비스트리밍**(v25 · `PGPT_PROXY_COMPACT_UNSTREAM` · 기본 켬) — Claude Code 의 압축 요청을 알아보면(v26: 마지막 user 글이 `CRITICAL: Respond with TEXT ONLY` 로 시작하고 앞 4,000자 안에 요약 과제 문장) 상류엔 `"stream": false` 로 보내고 답을 다 받아 SSE 로 지어 낸다. 압축 안의 「Output token limit hit」 이어 쓰기도 같은 길(`kind=compact_continue`) | **쓴다 · 회사 실측 아직**(결정 0082 → 0163) — 비스트리밍 경로에는 180초 상한이 없다(앞단 300초까지 산다 · 0051 실측). 압축은 도구를 안 부르니 그 경로의 도구 인자 유실과 무관하고, 압축 답에 도구 호출이 섞여 오면 내보내지 않고 오류로 돌린다. ⚠ **응답 머리가 올 때까지(최대 300초) 클라이언트로 바이트가 안 간다** — Claude Code 의 바이트 유휴 워치독이 그보다 길어야 하고, 자리 파일이 10분으로 심는다(0044 에서 사는 것) |
 | 진단(v19 · v21 · v23 · v24 · v29) — 시한 근방의 절단을 `execution_cuts`(스트림 180초) · `execution_cuts_300`(비스트리밍 300초) 으로 · 오류 이벤트·잘린 스트림을 `stream_errors` · `stream_incomplete` 로 센다. 생성 요청마다 `request …`(모델 · effort · thinking · `max_tokens`) · `stream …`(첫 이벤트 · 첫 글자 시각 · 출력 토큰 · 종료 사유 · 사용량 — Codex 의 Responses 스트림은 `response.output_text.delta` 의 첫 조각과 `response.completed` 의 출력 토큰을 집는다 · #226 ⑤d) · `complete …`(머리 · 상류 · 전체 초) 줄과 게이트웨이 요청 번호(`gw=`)를 `proxy.log` 에 남긴다. **(우리 것)** 사용량은 Claude 응답의 `in=`(입력) · `cache_read=` · `cache_write=` 세 칸이다 — 스트림은 `stream …` 줄에, 그대로 중계한 비스트리밍(자동 모드 분류기 등)과 압축은 `complete …` 줄에 실린다 | **쓴다** — 위 상한과 압축 길이 맞나를 회사에서 재는 자다. 사용량 칸은 어느 턴이 캐시를 놓치나(`cache_write` 가 대화 크기만큼 튄다) · 곁 호출(`model=claude-sonnet-5` 등)이 캐시를 타나 · 1시간이 서나를 가리는 자다(결정 0175). 회사 실측(사외 VDI 2026-10-20 · #206) — 분류기 곁 호출은 매번 약 5만을 읽는다(`cache_write` 는 비스트리밍이라 `unknown`). 프롬프트·응답 글자·인증 헤더는 안 남긴다. 요청 번호는 게이트웨이 팀이 제 장부를 찾는 열쇠다(옛 판에서 우리가 얹던 것 · #67) |
@@ -148,9 +155,9 @@
 - `proxy.log` · `proxy.log.1` 과 `opus5_proxy.pid` 를 **제 파일 곁에** 쓴다 — 그래서 설치기는 이 파일을 실행 폴더로 복사해 띄운다.
   저장소·홈 사본에서 바로 띄우면 그 곁에 남고, 저장소는 `.gitignore` 가 받는다
 - `GET /health` — `status` · `service` · `version` · `pid` · 계수(`trimmed_prefills` · `hoisted_tool_images` · `documents_noted` · `hoist_cache_marks` · `hoist_cache_marks_skipped` · `web_search_filled` · `web_search_failed` ·
-  `web_search_empty` · `model_substitutions` · `execution_cuts` · `execution_cuts_300` · `max_tokens_hits` 등) · 모델 목록(`model_list_size` ·
+  `web_search_empty` · `model_substitutions` · `execution_cuts` · `execution_cuts_300` · `max_tokens_hits` · `cache_warm_sent` · `cache_warm_failed` 등) · 모델 목록(`model_list_size` ·
   `model_list_fetches` · `model_list_failures`)과 지금 걸린 손잡이(`compact_unstream` · `stream_max_tokens` · `hoist_tool_images` · `document_note` · `web_search` ·
-  `model_list` 등)
+  `cache_warm_cycles` · `model_list` 등)
 - `--self-test` — 보정 함수를 스스로 검사하고 끝난다(프록시는 안 뜬다)
 
 ## 재는 법
@@ -167,6 +174,7 @@ python -X utf8 posco/pgpt-proxy/Test-ProxyImages.py          # 그림 끌어내�
 python -X utf8 posco/pgpt-proxy/Test-ProxyModelMap.py        # 모델 대체 — 목록 조회 · 실패 때 규칙 — 어디서나 (가짜 게이트웨이)
 python -X utf8 posco/pgpt-proxy/Test-ProxyWebSearch.py       # Claude 웹서치 메움 — 알아보기 · 답 짓기 · 오류 갈래 — 어디서나
 python -X utf8 posco/pgpt-proxy/Test-ProxyChunkedBody.py     # Transfer-Encoding 본문 411 — 어디서나
+python -X utf8 posco/pgpt-proxy/Test-ProxyCacheWarm.py       # 캐시 데우기 — 고르는 차례 · 나가는 몸 · 멈추는 조건 — 어디서나
 MOCK_SLOW_SEC=4 MOCK_ANSWER=tool_use python -X utf8 posco/pgpt-proxy/mock_gateway.py 18902
 #   느린 비스트리밍 답 — 답 꼴은 text·tool_use·error500 · 상류가 받은 몸은 GET /gpgpta01-gpt/_mock/last
 PGPT_API_KEY=<회사 키> python -X utf8 posco/pgpt-proxy/Test-AllPgptModels.py   # 회사 · 프록시가 떠 있어야
@@ -216,13 +224,23 @@ python -X utf8 posco/pgpt-proxy/cache_usage_report.py                      # 오
 - `codex-auto-review` 를 GPT 기본 모델로 바꿔 보내기 — Paseo 전용이고 우리는 Paseo 를 안 쓴다. 사람이 안 고른 이름을 조용히 구해 주는 꼴이기도 하다(결정 0164)
 - Claude Fast(`speed` · `fast-mode-*` 표식) · Codex Speed(`service_tier: "priority"`) 걷어 내기 — 사람이 누른 선택을 조용히 지우면 보이는 실패가 가짜 성공이 된다(결정 0164 의 생각). 회사에서 그 선택이 실제로 지는 것을 보면 그때 가른다
 
-**v36 ~ v42(`512be5a2`)에서도 아직 빌린 것은 없다** — 둘은 회사 기록이 가른다(#258):
-
-- 생각만 하다 상한에 끊긴 턴 뒤의 이어 쓰기에 상한 넓히기(v39) · 쉬는 동안 캐시 데우기(v42 · Rust 판에만 있다) — 들이면 v39 는
-  세션 속도를 기억하지 않는 축소판, 캐시는 상류의 60분 방식이 아니라 레인이 도는 동안만 데우는 꼴이다. 무엇을 재서 가르나는 그 이슈가 든다
-
+**v36 ~ v43(`712ae7f7`)에서 빌린 것은 하나다** — 쉬는 동안 캐시 데우기(v42 · v43 · 위 쓰임 표의 캐시 데우기 칸 · 우리 것 ⑺).
 안 빌린 것과 그 까닭:
 
+- 생각만 하다 상한에 끊긴 턴 뒤의 이어 쓰기에 상한 넓히기(v39) — 회사 대화 기록 9일치(2026-11-02 ~ 11-16 · 58 세션 · #258)에 그런 턴이
+  0건이다(`cache_usage_report.py` 의 `생각만끊김`). 한 번이라도 보이면 세션 속도를 기억하지 않는 축소판으로 들인다
+- 데우기를 60분 동안 잇기 · 진 데우기를 20초 뒤 한 번 더 보내기(v42 · v43) — 안 돌아온 대화에 버리는 값을 줄이려고 세 번에서 멈추고,
+  진 요청은 다시 보내지 않는다(위 쓰임 표의 상류 연결 칸)
+- 머리 뒤 침묵 끊기(v43 — 머리가 온 뒤 상류가 말이 없으면 스트림 205초 · 비스트리밍 320초에 끊는다) — 우리 판도 머리 뒤 읽기 시한은
+  `UPSTREAM_TIMEOUT`(600초)이고 keepalive 주석이 그 침묵을 클라이언트에게서 가린다. 회사에서 잰 멈춤은 머리 없이 선 판뿐이고(#237)
+  상류도 실측 없이 넣었다. `proxy.log` 에 머리 뒤 200초 넘게 서다 끊긴 스트림이 보이면 머리 기다림 한도와 같은 꼴로 들인다
+- 비스트리밍 답의 빈 도구 인자를 529 로 돌려 다시 보내게 하기(v43) — 그 유실은 우리 실측이지만(`../ENV-posco.md`) Claude Code 가
+  비스트리밍으로 물러선 판이 모아 둔 회사 CLI 기록(`../../cli-log/`)에 두 번(2026-09)뿐이고, 같은 요청이 같은 빈 답을 내는 결함이라
+  다시 보내게 해도 되풀이된다
+- 캐시 접두사 진단(v43 — 앞 요청과 상류 몸의 지문을 견주어 `prefix=same·changed` 를 기록 줄에 붙인다) — 5분 안에 대화를 다시 쓴
+  요청(같은 9일에 10건)의 까닭은 이 기록이라야 갈리는데, 그 몫이 작아 장치를 새로 지을 값이 안 된다
+- 접속 시한 5초 · 다 지면 0.3초 뒤 한 번 더 열기(v43) — 접속이 진 기록이 없다(위 쓰임 표의 상류 연결 칸)
+- 진단 모드(v43 · 기본 꺼짐) — 사용량 칸은 이미 기록 줄에 든다(위 쓰임 표의 진단 칸)
 - 목록을 못 읽었을 때의 실측 모델 표(v36) — 그 표가 고친 페이블 철자는 목록을 읽는 길이 이미 맞게 보낸다. 목록만 못 읽는 판은
   게이트웨이에 못 닿거나 키가 없어 본 요청도 함께 지는 판이고, 한 번 읽은 목록은 조회가 실패해도 계속 쓴다
 - 분류기 모델 대체(v37) · 응답 머리 기다림 한도(v38) — 상류가 우리 33.17 · 33.19 를 가져간 판이다
