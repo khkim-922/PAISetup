@@ -12,18 +12,11 @@
 예외 — ``SessionExpired``(사내 세션이 끊겼다 · 출입증을 못 받았다 — 받는 손을 다시 부를 자리) · ``SessionMissing``(세션 파일이
 없다 · 못 읽는다) · ``AppError``(앱이 거절했다 · 답이 꼴이 아니다 — ``status`` 와 앱의 말을 든다).
 
-들어가는 길(2026-11-10 회사 PC 에서 잰 것)::
+들어가는 길은 SSO 넘김 → ``api/auth/sso/posco`` 에 폼 꼴 POST(302 의 Location 이 출입증을 든다) → Bearer 출입증으로 부르기 세
+걸음이다 — 걸음마다의 꼴은 ``references/SOURCES.md`` 「들어가는 길」이 든다.
 
-    1. 사내 세션 쿠키를 싣고 SSO 넘김 화면(SSO_PAGE)을 GET — 200 에 숨은 칸 폼(ssoToken · domainName · …)이 온다.
-       세션이 끊겼으면 그 칸이 없다
-    2. 그 칸을 폼 꼴(form-urlencoded)로 ``api/auth/sso/posco`` 에 POST — 302 의 Location 이
-       ``/auth/sso-callback?accessToken=…&refreshToken=…`` 이면 선 것, ``/auth/sso-error?code=SSO_VALIDATION_FAILED`` 면 진 것.
-       JSON 으로 보내면 빈 답이 온다. 같은 세션으로 진 뒤 곧 다시 받으면 서는 일이 있어 한 번 더 받아 본다
-    3. 그 뒤 ``api/<자리>`` 를 ``Authorization: Bearer <accessToken>`` 으로 부른다. 401 은 끊긴 출입증이다
-
-앱이 하지 않는 것(잰 것) — ``reservations/validate`` 는 정책(타사 회의실 · 승인 · 시간 제한)만 보고 **겹치는 예약과 지난 시각은 안 본다**
-— 지난 시각 예약도 넣어진다. 겹침 · 지난 시각은 부르는 쪽이 가린다. ``reservations?startDate&endDate`` 는 그 구간에 걸친 예약(여러
-달에 걸친 장기 예약 포함)을 다 낸다. 넣으면 M365 일정 이벤트(``event_id``)와 회의실 정책이 켠 Teams 링크가 저절로 생긴다.
+⚠ 앱의 ``reservations/validate`` 는 정책(타사 회의실 · 승인 · 시간 제한)만 보고 **겹치는 예약과 지난 시각은 안 본다** — 지난 시각
+예약도 넣어지니, 겹침 · 지난 시각은 부르는 쪽이 가린다.
 
 사내 밖으로는 안 나간다 — 부르는 주소는 이 파일의 두 상수(검사가 가짜를 세울 때만 환경변수 ``MRS_BASE`` · ``MRS_SSO_PAGE`` 가
 바꾼다) 뿐이고, 프록시를 안 탄다(사내 호스트다). 리다이렉트를 따라가지 않는다 — 따라가면 쿠키가 엉뚱한 자리에 실린다.

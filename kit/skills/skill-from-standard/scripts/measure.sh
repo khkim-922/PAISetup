@@ -3,17 +3,12 @@
 #
 #     bash measure.sh <결과 폴더> <물음 tsv> <스킬 폴더>...
 #
-# 물음 tsv — 한 줄에 「열쇠 <탭> 걸려야 할 스킬 이름 <탭> 물음」. 결과 폴더에 runs/<열쇠>.<with|without>.jsonl 과, 곁의 extract.py 가
-# 뽑은 .txt(연 스킬 · 읽은 파일 · 끝 글)가 남고 끝에 한 줄 요약을 찍는다. 판정은 사람이 미리 적어 둔 기준에 .txt 를 대 보는 것이다.
-#
-# 두 팔은 따로 세운 설정 폴더(CLAUDE_CONFIG_DIR)로 돈다 — 홈에 깔린 스킬이 「없을 때」 팔에 섞이지 않게. 로그인 파일(.credentials.json)을
-# 그 폴더에 복사했다가 끝에 지운다. 명령을 실행하는 도구(Bash · 쓰기)는 막는다 — 실제 손은 안 돌고 계획과 사람에게 할 말을 재는 것이다.
-# ⚠ 홈의 전역 CLAUDE.md 는 두 팔에 다 실린다 — 그 글이 가리키는 자리에 스킬의 옛 사본이 있으면 「없을 때」 팔의 모델이 찾아 읽는다.
-#   그런 판은 바닥이 아니라 「옛 판 대 새 판」으로 읽는다(.txt 의 「읽음」 줄이 그것을 보인다).
-# 모델은 MEASURE_MODEL(기본 sonnet — 배포본을 받는 가장 약한 독자에 가깝게), 동시 수는 MEASURE_JOBS(기본 4). 두 팔이 서는 작업 폴더는
-# MEASURE_PROJ(기본은 결과 폴더의 빈 proj) — 물음이 저장소의 파일을 가리키면 그 파일들을 둔 폴더를 준다. ⚠ 그 폴더에 `.claude/skills` ·
-# `.claude/settings.json` 이 있으면 설정 폴더와 무관하게 두 팔에 다 실려(프로젝트 스킬 · 훅) 「없을 때」 팔이 안 선다 — 그런 폴더는 거절한다.
-# 저장소를 재려면 `.claude/` 없는 사본을 준다. 로그인 파일이 없는 자리(게이트웨이 PC)에서는 이 손이 안 돈다.
+# 물음 tsv — 한 줄에 「열쇠 <탭> 걸려야 할 스킬 이름 <탭> 물음」. 결과 폴더에 runs/<열쇠>.<with|without>.jsonl 과 곁의 extract.py 가 뽑은
+# .txt(연 스킬 · 읽은 파일 · 끝 글)가 남고 끝에 한 줄 요약을 찍는다. 판정은 사람이 미리 적어 둔 기준에 .txt 를 대 보는 것이다.
+# 두 팔은 따로 세운 설정 폴더(CLAUDE_CONFIG_DIR — 홈의 스킬이 안 섞이게)로 돌고, 명령을 실행하는 도구는 막는다 — 계획과 할 말을 잰다.
+# 손잡이 — MEASURE_MODEL(기본 sonnet — 배포본의 가장 약한 독자 쪽) · MEASURE_JOBS(기본 4) · MEASURE_PROJ(작업 폴더 · 기본은 빈 proj) ·
+# MEASURE_LOGIN_MARGIN(분 · 기본 30). 종료 4 — 이 자리에서는 못 잰다(로그인 파일 없음 · 곧 만료 · 작업 폴더에 .claude 설정).
+# ⚠ 홈의 전역 CLAUDE.md 는 두 팔에 다 실린다 — 그 글이 가리키는 자리에 스킬의 옛 사본이 있으면 「없을 때」 팔은 「옛 판 대 새 판」으로 읽는다.
 set -eu
 OUT="$(cd "$(mkdir -p "$1" && echo "$1")" && pwd)"; TSV="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -23,9 +18,7 @@ if [ -e "$PROJ/.claude/skills" ] || [ -e "$PROJ/.claude/settings.json" ]; then
   echo "작업 폴더에 .claude/skills 나 .claude/settings.json 이 있다 — 두 팔에 다 실려 재기가 안 선다: $PROJ" >&2; exit 4
 fi
 [ -f "$HOME_DIR/.credentials.json" ] || { echo "로그인 파일이 없다($HOME_DIR/.credentials.json) — 이 자리에서는 못 잰다" >&2; exit 4; }
-# ⚠ 두 팔은 로그인 파일의 **사본**으로 돈다 — 도는 중에 토큰이 만료돼 한 팔이 갱신하면 원본과 다른 팔의 사본이 죽고, 사본을 지우면
-#   그 PC 의 로그인이 끊긴다. 곧 만료될 토큰으로는 안 돌리고(MEASURE_LOGIN_MARGIN 분 · 기본 30), 그래도 갱신이 났으면 끝에 새 사본을
-#   원본에 되돌린다(곁의 login.py).
+# ⚠ 도는 중에 한 팔이 토큰을 갱신하면 원본과 다른 사본이 죽는다 — 곧 만료될 토큰으로는 안 돌리고, 끝에 새 사본을 되돌린다(곁의 login.py)
 LEFT="$(python -X utf8 -I "$HERE/login.py" left "$HOME_DIR/.credentials.json")" || { echo "로그인 파일에서 토큰 만료 시각을 못 읽었다 — 이 자리에서는 못 잰다" >&2; exit 4; }
 if [ "$LEFT" -lt "${MEASURE_LOGIN_MARGIN:-30}" ]; then
   echo "로그인 토큰이 ${LEFT} 분 뒤 만료된다 — 도는 중에 갱신되면 이 PC 의 로그인이 끊긴다. 만료 뒤 claude 를 한 번 열어 갱신한 다음 돌린다" >&2; exit 4

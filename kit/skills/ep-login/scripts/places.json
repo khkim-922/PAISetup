@@ -1,0 +1,6 @@
+{
+  "session_file": "~/.mailbox-session.json",
+  "domino_server": "http://pcfma0b.posco.net",
+  "ecm": "http://swpecm.posco.net:7091/ECM",
+  "ecm_main_page": "/jsp/main/ecmMain.jsp"
+}

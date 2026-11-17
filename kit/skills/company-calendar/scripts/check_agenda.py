@@ -1,19 +1,12 @@
 """agenda.py 의 계약을 가짜 일정 앱으로 잰다 — 127.0.0.1 밖으로는 아무것도 안 나간다.
 
-층 — 쓰는 사람의 계약. 일정 앱은 GET 으로도 바뀐다 — 일정 줄이 내는 주소는 편집 화면이고 지우기도 GET 이다. 읽는 손이 그 주소를 한 번
-지으면 일정이 조용히 지워지고, 넣기가 참석자 칸을 채우면 남에게 초대가 가고, 넣기 · 지우기가 답을 믿으면 「넣었습니다 · 지웠습니다」가
-거짓이 된다. 공유받은 일정함을 읽는 손이 그 일정함 자리의 읽기 꼴 밖을 묻거나 사내 밖 서버에 쿠키를 싣는 것도, 같은 일정을 두 번 넣거나, 받은 초대 · 회의 · 반복 · 하루 종일 일정을 지우거나, 보인 뒤 바뀐 줄을 지우는 것도 여기서 문다.
-남기는 까닭(check-design §1 넷) — 길이 분명하다(일정 줄마다 편집 주소가 실려 오고, 대화하는 모델이 이 손을 부른다 · 이 파일을 그 자리에서
-쓰는 앱이 있다) · 깨지면 조용하고 되돌릴 수 없다(지워진 일정 · 몰래 든 일정 · 남에게 간 알림은 아무 표도 안 낸다) · 크게 다친다(남이
-보는 공유 시스템이 바뀐다) · 다른 무엇도 안 잡는다(회사 일정 앱은 회사 PC 에서만 닿는다).
+층 — 쓰는 사람의 계약. 읽는 손이 편집 · 지우기 주소를 짓나, 넣기가 참석자 칸을 채우나, 넣기 · 지우기가 서버의 답을 믿나, 공유
+일정함 읽기가 잰 꼴 밖이나 사내 밖 서버를 묻나, 같은 일정을 두 번 넣거나 지우지 않는 줄 · 보인 뒤 바뀐 줄을 지우나를 문다.
+남기는 까닭(check-design §1 넷) — 이 앱은 GET 으로도 바뀌고, 지워진 일정 · 몰래 든 일정 · 남에게 간 알림은 아무 표도 안 내며, 남이
+보는 공유 시스템이 바뀌고, 회사 일정 앱은 회사 PC 에서만 닿아 다른 무엇도 안 잡는다. 흉내가 지키는 꼴은 ``references/DESIGN.md`` 「검사」.
 
-가짜 일정 앱은 사내 일정 앱에서 잰 주소 · 꼴을 흉내 낸다 — 꼴의 원본은 agenda.py 머리말 「사내 일정 앱에서 잰 것」이 가리키는 기록이고,
-흉내는 그 앱 저장소(mail-secretary)의 ``_check/_fake_agenda.py``(68ad771)에서 옮겼다(이 파일은 agenda.py 의 값을 읽어 오지 않는다).
-흉내가 지키는 것 — 쿠키가 없거나 세션이 끊긴 판이면 200 에 SSO 로 보내는 HTML. 일정은 두 배열(반복은 날짜마다 한 줄 · 단건)이고 제목은
-HTML 엔티티로 낸다. 등록 화면의 폼은 잰 「값이 찬 칸」과 빈 칸을 숨은 칸으로 내고(고정 값 칸의 실물 값은 안 쟀다 — 지어낸 값이다), 저장은
-폼이 낸 고정 값이 그대로 돌아와야 선다(답은 늘 창 닫기다). 참석자 칸이 찬 저장은 「남에게 알림이 갔다」로 남긴다. 편집 화면 · 지우기
-주소를 부르면 바꾼 요청으로 남긴다. 받은 요청 · 쿠키 머리는 다 적어 「안 불렀다 · 안 실었다」를 그것으로 잰다 — 몸통이 스스로 말하는
-기록이 아니다.
+⚠ 가짜 일정 앱은 ``references/SOURCES.md`` 의 꼴을 따로 흉내 낸다 — agenda.py 의 값을 읽어 오면 재는 자가 곧 재이는 것이 된다.
+「안 불렀다 · 안 실었다」는 가짜가 적은 받은 요청 · 쿠키 머리로 잰다 — 몸통이 스스로 말하는 기록이 아니다.
 
 물림 — 막기를 푼 읽는 손 · 폼을 버리고 잰 칸만 싣는 넣기 · 지우지 않는 까닭을 안 보는 지우기에 같은 판정을 대어 빨강을 본다(매번 돈다).
 일부러 틀린 사본을 다른 폴더에 두고 그 폴더를 주면 사본 전체의 물림을 잰다.
@@ -53,6 +46,7 @@ TREE = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else __file__).resolve()
 TREE = TREE if TREE.is_dir() else TREE.parent
 sys.path.insert(0, str(TREE))
 import agenda  # noqa: E402 — 잴 나무가 sys.path 에 먼저 서야 한다
+import company_calendar  # noqa: E402
 
 logging.getLogger(agenda.__name__).addHandler(logging.NullHandler())
 
@@ -62,17 +56,18 @@ EMPNO = "100001"
 OWNER = f"CN=이도윤/OU={EMPNO}/OU=02/O=gaonnet"
 OTHER = "CN=관리자/OU=100002/OU=02/O=gaonnet"   # 고칠 수 있는 사람이 쓰는 사람이 아닌 줄의 editors
 CALENDAR_ID = f"{EMPNO}_Calendar"
+TEAMS_ID = f"{EMPNO}_Teams"
 SYS_ADMIN = "calAdmin=SYS/02/gaonnet"
 EVENT_AREA = "업무"
 COOKIE = ("DomAuthSessId", "good-session")
 FOREIGN_COOKIE = ("JSESSIONID", "ecm-only")      # 다른 사내 호스트(ECM)의 쿠키 — 세션 파일에 함께 든다
 KST = timezone(timedelta(hours=9))
-# 끊긴 세션에 사내 앱이 내는 답의 첫머리(실측) — 200 · text/html
+# 끊긴 세션에 사내 앱이 내는 답의 첫머리 — 200 · text/html
 LOGIN_PAGE = ('<html><head><script>document.cookie = "EP_CERTIFY_CA=; path=/; domain=.posco.net;";'
               'window.location.href="http://swpsso.posco.net/idms/U61/jsp/login/login.jsp";'
               '</script></head><body></body></html>')
 CLOSE_PAGE = "<html><head><script>try{opener.location.reload();}catch(e){};window.close();</script></head><body></body></html>"
-# 등록 폼의 칸 — 잰 저장 몸통의 「값이 찬 칸」 · 「빈 채로 간 칸」 이름을 그대로(약 90칸 가운데 이름이 잰 것만)
+# 등록 폼의 칸 — 잰 저장 몸통의 「값이 찬 칸」 · 「빈 채로 간 칸」 이름을 그대로(이름을 잰 칸만)
 FILLED = {"Form": "Event", "Subject": "", "Description": "", "StartDate": "", "EndDate": "", "TimeZoneID": "Asia/Seoul",
           "CalendarID": CALENDAR_ID, "EventArea": EVENT_AREA, "visibility": "public",
           "Editors": f"calEditors=이도윤/{EMPNO}/02/gaonnet", "Readers": "calReaders=*", "SysAdmin": SYS_ADMIN,
@@ -134,7 +129,7 @@ class FakeCalendar:
         for e in events:
             self.add(e)
         self.session = session          # ok · login(200 SSO HTML) · redirect(302 SSO) · denied(401)
-        self.calendars = calendars      # normal · none(내 일정함 없음) · two(내 일정함이 둘) · outside(사내 밖 서버의 공유 일정함)
+        self.calendars = calendars      # normal · none(내 일정함 없음) · two(내 일정함이 둘 — 기본 · Teams 같은 owner) · two_owners(둘인데 owner 가 다르다) · two_default(둘 다 기본) · outside(사내 밖 서버의 공유 일정함)
         self.form = form                # normal · changed(잰 칸이 없는 화면) · prefilled(참석자 칸이 찬 폼)
         self.saves = saves              # normal · cut(저장하고 답 없이 끊는다)
         self.deletes = deletes          # normal · ignore(답은 하는데 안 지운다) · cut(지우고 답 없이 끊는다)
@@ -278,7 +273,11 @@ class FakeCalendar:
         if self.calendars == "none":
             return groups
         if self.calendars == "two":
-            return [mine, dict(mine, calendarid="100009_Calendar"), *groups]
+            return [mine, dict(mine, calendarid=TEAMS_ID, calendartype="TeamsCalendar", subject="Teams"), *groups]
+        if self.calendars == "two_owners":
+            return [mine, dict(mine, calendarid="100009_Calendar", calendartype="TeamsCalendar", owner="CN=다른이/OU=100009/OU=02/O=gaonnet"), *groups]
+        if self.calendars == "two_default":
+            return [mine, dict(mine, calendarid=TEAMS_ID), *groups]
         return [mine, *groups]
 
     def _row(self, e: FakeEvent, start: datetime, end: datetime) -> dict:
@@ -308,6 +307,9 @@ class FakeCalendar:
     def events_jsonp(self, callback: str, cid: str, start: str, end: str) -> str:
         lo, hi = datetime.strptime(start, "%Y-%m-%d"), datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)
         data, data2 = [], []
+        if cid == TEAMS_ID:     # Teams 일정함에만 든 일정 한 건 — 기본 일정함에는 없다
+            e = FakeEvent("2026-11-10 16:00", "2026-11-10 17:00", "Teams 정기 미팅", event_id="teams_1", unid=f"{3:026X}teams00")
+            data2.append(dict(self._row(e, _stamp(e.start), _stamp(e.end)), CalendarID=TEAMS_ID, editable="", editors=""))
         if cid == CALENDAR_ID:
             for e in self.events:
                 s, t = _stamp(e.start), _stamp(e.end)
@@ -480,10 +482,56 @@ def check_between_keeps_only_the_asked_days():
         raises(agenda.CalendarConfigError, lambda: reader.between(DAY, DAY - timedelta(days=1)))
 
 
-def check_my_calendar_only_when_exactly_one():
-    for kind in ("none", "two"):
+def check_my_calendar_none_or_foreign_owner_stops():
+    for kind in ("none", "two_owners", "two_default"):
         with stage(calendars=kind) as (_, reader, _ck):
-            raises(agenda.CalendarError, reader.book)
+            raises(agenda.CalendarError, reader.book)      # 남의 일정함 · 기본이 모호한 목록은 내 것으로 안 읽는다
+    with stage(calendars="two_owners") as (cal, reader, _ck):
+        raises(agenda.CalendarError, lambda: reader.mine_between(DAY, DAY))
+        assert not any("getcalendareventme" in p.lower() for p in cal.paths), cal.paths   # 일정을 묻기 전에 멈췄다
+
+
+def check_two_own_calendars_are_read_together_and_changes_go_to_default():
+    with stage(calendars="two") as (cal, reader, _ck):
+        assert reader.book().calendar_id == CALENDAR_ID, reader.book()     # 기본 일정함이 넣기 · 지우기의 자리
+        got, failed = reader.mine_between(DAY, DAY)
+        assert not failed, failed
+        teams = [e for e in got if e.title == "Teams 정기 미팅"]
+        assert len(teams) == 1 and teams[0].calendar == "Teams", got           # Teams 일정함의 줄이 오고 어느 일정함인지 단다
+        assert {e.title for e in got} >= {"4분기 경영회의", "주간 점검"}, got   # 기본 일정함의 줄도 함께
+        assert all(not e.calendar for e in got if e.title != "Teams 정기 미팅"), "기본 일정함의 줄에 이름이 붙었다"
+        assert teams[0].keep_reason == agenda.KEEP_SHARED, "Teams 줄이 지워질 수 있다"
+        assert [e.start for e in got] == sorted(e.start for e in got), "시작 차례가 아니다"
+        asked = {urllib.parse.parse_qs(urllib.parse.urlsplit(p).query)["calendarId"][0] for p in cal.paths if "getcalendareventme" in p.lower()}
+        assert asked == {CALENDAR_ID, TEAMS_ID}, asked
+    with stage(calendars="two") as (cal, reader, ck):     # 넣기는 기본 일정함으로만 간다
+        agenda.register(cal.url, ck, want(), reader=reader)
+        assert cal.posts and all(b.get("CalendarID") == CALENDAR_ID for _, b in cal.posts), cal.posts
+    with stage(calendars="normal") as (_, reader, _ck):    # 일정함이 하나인 사람은 그대로 — 기본 밖 일정함이 없다
+        assert reader.side_books() == []
+        got, failed = reader.mine_between(DAY, DAY)
+        assert not failed and all(not e.calendar for e in got), got
+
+
+def check_preview_flags_a_clash_on_the_other_own_calendar():
+    for fail in (False, True):
+        with stage(calendars="two") as (cal, reader, ck):
+            args = company_calendar.parser().parse_args(["--url", cal.url + DB, "preview", "--title", "새 일정",
+                                                         "--start", "2026-11-10 16:00", "--end", "2026-11-10 16:30"])
+            if fail:     # Teams 일정함만 안 읽힌다 — 미리 보기는 막히지 않고 못 읽었다고 알린다
+                orig = agenda.Reader.between
+                agenda.Reader.between = lambda self, f, l, book=None, _orig=orig: (_ for _ in ()).throw(agenda.CalendarError("x")) if book else _orig(self, f, l, book)
+            try:
+                out = company_calendar.run(args, ck)
+            finally:
+                if fail:
+                    agenda.Reader.between = orig
+            titles = [r["title"] for r in out["clash"]]
+            if fail:
+                assert out["shared_failed"] and out["shared_failed"][0]["calendar"] == "Teams" and "Teams 정기 미팅" not in titles, out
+            else:
+                assert "Teams 정기 미팅" in titles and "보안 교육" in titles, out   # 16:00 에 Teams 회의와 기본 일정함의 일정이 겹친다
+                assert "shared_failed" not in out and out["already"] is None, out
 
 
 def check_login_page_and_redirect_are_session_expired():

@@ -1,22 +1,21 @@
 """mail.py 의 계약을 가짜 메일함 · 세션 손 · 화면 손의 대역으로 잰다 — 127.0.0.1 밖으로는 아무것도 안 나간다.
 
-층 — 쓰는 사람의 계약. 읽는 명령(목록 · 폴더 · 읽기 · 첨부 · 미리 보기)이 **읽음 표시를 바꾸거나 메일을 내보내나** · 확인 열쇠
-없이 **메일이 나가거나 읽음이 바뀌나** · 답장 · 새 메일의 저장이 임시보관함에만 서고 밖으로 안 나가나 · 답장 저장이 저장한 판과
-보내기 열쇠를 내나 · 답장이 그 메일의 보낸 분 · 받은 분과 제 사본 밖의
-주소로 가나(본문에 적힌 주소가 받는 사람이 되나) · 바꾸는 손이 그 메일 하나만 바꾸고 다시 읽어 맞았나를 대나 · 세션 손의
-종료 값(0 · 1 · 2 · 3)과 끊긴 메일함 세션을 바르게 갈라 사람을 스킬 ep-login 으로 보내나 · 안 읽음 목록이 받아 온 창만 보고
-「안 읽음 0」이라 하나 · 보낸 분으로 거른 목록과 요약이 창 밖을 빼고 세나 · 여러 통 옮기기 준비가 통마다 보기를 다시 받나 · 임시저장이
-주소록에 없는 받는 사람을 싣거나 나가나(사람이 새 메일을 놓치거나 맞는 주소를 고친다) · 조직도에서 고른 사람의 주소 파일이 고른
-사람과 다르거나 빼려던 사람이 든 채 넘어가나.
-남기는 까닭(check-design §1 넷) — 길이 분명하다(이 스크립트는 대화하는 모델이 부르고, 보내기 · 읽음은 그 모델의 한 걸음이다) ·
-나간 메일과 바뀐 읽음은 되돌릴 수 없고 조용하다(사람은 웹메일을 열기 전까지 모른다) · 쓰는 사람의 이름으로 엉뚱한 메일이
-나가거나 새 메일을 못 알아본다 · 다른 무엇도 안 잡는다(곁의 손 검사는 손만 재고 이 명령의 확인 단계를 모른다).
+층 — 쓰는 사람의 계약. 재는 것:
+- 읽는 명령(목록 · 폴더 · 읽기 · 첨부 · 미리 보기)은 **읽음 표시를 바꾸지도 메일을 내보내지도 않는다**
+- 확인 열쇠 없이는 메일이 안 나가고 읽음이 안 바뀐다 · 바꾸는 손은 그 메일 하나만 바꾸고 다시 읽어 맞았나를 댄다
+- 답장 · 새 메일의 저장은 임시보관함에만 서고, 답장은 그 대화의 사람에게만 간다(본문에 적힌 주소가 받는 사람이 안 된다) ·
+  주소록에 없는 받는 사람은 안 싣는다 · 조직도에서 고른 명단이 고른 사람과 같다
+- 세션 손의 종료 값과 끊긴 메일함 세션을 갈라 사람을 스킬 ep-login 으로 보낸다
+- 셈과 목록이 받아 온 창 밖을 안 뺀다 — 안 읽음 · 보낸 분 거르기 · 요약 · 폴더 세기 · 「이 시각부터 온 메일」. 상한에 막힌 판을
+  「다 봤다 · 없다」로 안 낸다
+- 옮기기 · 휴지통 · 되살리기의 미리 보기 줄과 「됐다」 줄이 제 메일 · 제 열쇠를 댄다 · 받은 메일 읽기가 받으신 칸 · 함께 받은
+  사람을 짐작으로 안 채운다
+남기는 까닭(check-design §1 넷) — 대화하는 모델이 이 명령을 부르고 보내기 · 읽음이 그 한 걸음이다 · 나간 메일과 바뀐 읽음은
+조용하고 되돌릴 수 없다 · 쓰는 사람의 이름으로 엉뚱한 메일이 나가거나 새 메일을 못 알아본다 · 곁의 손 검사는 손만 재고 이 명령의
+확인 단계를 모른다.
 
-가짜 메일함은 곁의 손 검사(``check_inbox.py`` 의 ``FakeDomino``)를 그
-자리에서 불러 쓴다 — 회사에서 잰 꼴의 흉내는 거기 한 벌이다. 세션 손은 대역이다 — ``EP_SESSION_HAND`` 로 mail.py 에 넘기고,
-스킬 ep-login 의 ``edge_session.js`` 계약(인자 없이 · 자리는 손이 정한다 · 0 이면 쓰고 끝 줄에 그 절대 경로 · 1 도구 고장 ·
-2 못 붙음, 앞서 받은 파일이 있으면 끝 줄에 그 경로 · 3 로그인 안 됨)만 흉내 내고, 대역이 남기는 세션 파일은 메일함의 쿠키와
-다른 사내 호스트의 쿠키를 함께 든다.
+가짜 메일함은 곁의 손 검사(``check_inbox.py`` 의 ``FakeDomino``)를 그 자리에서 불러 쓴다 — 실물 꼴의 흉내는 거기 한 벌이다.
+세션 손(``EP_SESSION_HAND``)과 화면 손(``DRAFT_SEND_HAND``)은 대역이다 — 흉내 내는 계약은 ``STANDIN`` · ``DRAFT_HAND`` 곁의 주석이 든다.
 
 돌리는 법::
 
@@ -28,9 +27,13 @@
 
 언제 걷나 — mail.py 가 사라지거나, 바꾸는 손 앞의 확인을 다른 층(도구의 권한 단계 같은 것)이 같은 꼴로 재게 되면.
 
-여기서 못 재는 것 — 실물 세션 손(Edge 에 붙기) · 사내 SSO · 받는 쪽에서 답장이 원래 대화로 묶이나 ·
-폴더에만 있는 메일에 읽음으로의 주소가 먹나(가짜는 어느 메일이든 먹는다) · 숨은참조 사본이 받은편지함에 오는 꼴 · 실물 검색의
-휴지통 줄 폴더 칸과 범위 all 에 휴지통이 드나 · preview-send · send-draft · 답장 저장과 임시메일 고치기의 화면 쪽(곁의 손이 Edge 에서 실물 화면을 다룬다 — 회사 PC 에서 한 판으로 잰다).
+여기서 못 재는 것:
+- 실물 세션 손(Edge 에 붙기) · 사내 SSO · 받는 쪽에서 답장이 원래 대화로 묶이나
+- preview-send · send-draft · 답장 저장과 임시메일 고치기의 화면 쪽(곁의 손이 Edge 에서 실물 화면을 다룬다)
+- 실물 메일함의 꼴 — 폴더에만 있는 메일에 읽음으로의 주소가 먹나(가짜는 어느 메일이든 먹는다) · 숨은참조 사본이 받은편지함에 오는 꼴 ·
+  검색의 휴지통 줄 폴더 칸과 범위 all 에 휴지통이 드나 · 모든편지함을 장으로 넘길 때의 차례와 폴더 메일이 많을 때 걸리는 시간 ·
+  모든편지함이 휴지통 · 임시보관함 메일을 드나(들면 ``list --since`` 의 「모든편지함에만 있는」 수에 섞인다) · 보기의 시각 칸(xdate)이
+  받은 때인가 보낸 때인가 · 받는 사람 목록 보기(``$102``)가 받은 메일의 받는 사람 · 참조를 웹메일 화면과 같게 드나
 """
 
 from __future__ import annotations
@@ -50,9 +53,9 @@ import traceback
 
 HERE = pathlib.Path(__file__).resolve().parent
 
-# 세션 손의 대역 — edge_session.js 의 계약: 인자 없이 불린다 · 자리는 손이 정한다(여기서는 STANDIN_PATH) · 0 이면 그 자리에 쓰고
-# 끝 줄에 그 절대 경로를 낸다 · 2 면 앞서 받은 파일이 있을 때만 끝 줄에 그 경로를 낸다. 3 도 있으면 경로를 내 둔다 — 3 에서
-# 그 줄을 읽는 쪽을 가려내려고. STANDIN_BAD 면 0 인데 없는 경로를 낸다.
+# 세션 손의 대역 — 스킬 ep-login 의 edge_session.js 계약: 인자 없이 불린다 · 자리는 손이 정한다(여기서는 STANDIN_PATH) · 0 이면 그 자리에
+# 쓰고 끝 줄에 그 절대 경로 · 1 도구 고장 · 2 못 붙음, 앞서 받은 파일이 있을 때만 끝 줄에 그 경로 · 3 로그인 안 됨. 3 에도 경로를 내
+# 두는 것은 3 에서 그 줄을 읽는 쪽을 가려내려고다. STANDIN_BAD 면 0 인데 없는 경로를 낸다. 남기는 세션 파일은 session_cookies 꼴이다.
 STANDIN = r"""
 const fs = require('fs');
 const code = Number(process.env.STANDIN_EXIT || '0');
@@ -188,10 +191,11 @@ def check_reading_commands_change_nothing():
         box.mails[U["ecm"]].files.update({"보고.docx": b"DRMONE\x00\x01wrapped", "평문.pdf": b"%PDF-1.7\n"})
         before = box.unread()
         steps = [("session",), ("folders",), ("list",), ("list", "--unread"), ("list", "--sent"), ("list", "--drafts"),
-                 ("list", "--folder", fakes_inbox.FOLDER_CHILD), ("list", "--from", PEER[0]), ("summary",),
+                 ("list", "--folder", fakes_inbox.FOLDER_CHILD), ("list", "--from", PEER[0]), ("list", "--since", SINCE), ("summary",),
                  ("summary", "--folder", fakes_inbox.FOLDER_TOP), ("search", "시험"), ("search", "초안", "--field", "body"),
                  ("read", U["draft"]), ("read", U["draft"], "--folder", mail.DRAFTS),
                  ("read", U["alone"]), ("read", U["f_child"]), ("read", U["ecm"]),
+                 ("read-many", U["alone"], U["f_child"], U["sent_1"], U["draft"]),
                  ("attachment", U["ecm"], "--save", "all", "--out", str(WORK / "got")),
                  ("preview-reply", U["alone"], "all", "--body-file", body_file("확인했습니다.")),
                  ("preview-mark", U["alone"], "--read"),
@@ -288,7 +292,7 @@ def check_search_all_includes_drafts_and_points_to_read():
 
 
 def check_search_adds_new_mail_the_index_has_not_caught():
-    """검색 색인은 새 메일을 몇 시간 늦게 든다(회사에서 잼) — 제목 검색은 보기의 새 메일 가운데 색인에 아직 없는 것을 따로 대고,
+    """검색 색인은 새 메일을 늦게 든다 — 제목 검색은 보기의 새 메일 가운데 색인에 아직 없는 것을 따로 대고,
     색인이 이미 든 메일은 두 번 안 대고, 색인이 든 가장 새 메일보다 옛 것은 안 댄다(그것은 검색의 다음 쪽 몫이다).
     물림 — 색인 밖 메일이 없으면 「아직 안 든」 줄이 안 선다."""
     with stage() as (box, run):
@@ -442,7 +446,7 @@ def check_org_hands_the_picked_people_as_an_address_file():
 
 def check_long_bodies_fit_the_tool_limit_and_keep_the_send_key():
     """긴 본문 — 읽기는 쪽마다 몫(바이트) 밑이고 이으면 빠짐도 겹침도 없다 · 긴 인용이 든 판을 보여도 뒤에 찍는 확인 열쇠가 대화
-    도구의 출력 한도(30 KB · 잰 것) 안에 든다(열쇠가 잘리면 보내기가 그 자리에서 안 선다)."""
+    도구의 출력 한도 안에 든다(열쇠가 잘리면 보내기가 그 자리에서 안 선다)."""
     text = "".join(f"{n} 째 줄이다. 납기와 수량을 다시 확인한다.\n" for n in range(3000))
     got, start = "", 0
     for _ in range(200):
@@ -465,7 +469,7 @@ def check_long_bodies_fit_the_tool_limit_and_keep_the_send_key():
 
 def check_same_as_last_time_keeps_the_org_as_one_org():
     """「지난번과 같이」 — recipients 가 보낸 메일의 칸마다 주소 파일을 쓰고, save-draft 가 그 파일로 사람은 사람으로 · 조직은 부서원으로
-    안 풀고 조직 하나로(SendTo 에 부서 코드) 칸을 그대로 싣는다. 틀리면 다른 사람에게 메일이 간다(넷 가운데 「조용히 넓게」)."""
+    안 풀고 조직 하나로(SendTo 에 부서 코드) 칸을 그대로 싣는다. 틀리면 다른 사람에게 메일이 간다."""
     C, dept = fakes_inbox.COMPANY, "dept_n320_00(07)@nuri.example"
     files = {f: WORK / f"last-{f}.txt" for f in ("to", "cc", "bcc")}
     with stage() as (box, run):
@@ -484,6 +488,16 @@ def check_same_as_last_time_keeps_the_org_as_one_org():
         assert form["BlindCopyTo"] == fakes_inbox.TRAINEE["key"], form["BlindCopyTo"]
         assert fakes_inbox.HOMONYM["key"] not in form["SendTo"], "조직을 부서원으로 풀었다"
         assert "소재시험그룹(조직)" in out, out
+
+
+def check_recipients_on_received_mail_says_what_it_searched():
+    """recipients 는 보낸편지함만 훑는다 — 받은 메일 번호를 주면 「보낸편지함에 없다」와 그 메일의 read 를 대고, 안 훑은 받은편지함 ·
+    폴더까지 「없다」에 넣지 않는다. 틀리면 받은편지함에 멀쩡히 있는 메일이 사라진 것으로 읽힌다."""
+    with stage() as (box, run):
+        code, out = run("recipients", U["alone"])
+        assert code == mail.EXIT_CONFIG and "보낸편지함에 없다" in out and f"read {U['alone'].upper()}" in out, \
+            f"받은 메일 번호에 훑은 자리와 read 를 안 댔다:\n{out}"
+        assert "받은편지함 · 폴더" not in out, f"안 훑은 받은편지함 · 폴더까지 「없다」에 넣었다:\n{out}"
 
 
 def check_draft_saves_to_the_drafts_and_never_sends():
@@ -530,9 +544,8 @@ def check_draft_send_is_judged_by_where_the_mail_stands():
 
 
 def check_revise_touches_only_the_given_parts_of_a_draft():
-    """임시메일 고치기 — 임시보관함 밖의 메일 · 고칠 것 없는 부름 · 주소록에 없는 받는 사람이면 손을 안 부르고 · 손에는 준 칸만 넘기고
-    (빈 참조는 빈 값으로) · 손이 낸 고친 판과 보내기 열쇠를 보이고 · 아무것도 안 나가고 다른 메일을 안 바꾼다. 새 메일의 저장은 넣은
-    글에 표지를 달아 이 고치기가 그 자리를 찾게 한다."""
+    """임시메일 고치기 — 임시보관함 밖의 메일 · 고칠 것 없는 부름 · 주소록에 없는 받는 사람이면 손을 안 부르고, 손에는 준 칸만
+    넘기며(빈 참조는 빈 값으로), 아무것도 안 나간다. 새 메일의 저장은 넣은 글에 표지를 달아 고치기가 그 자리를 찾게 한다."""
     calls = WORK / "revise_hand.log"
     hand = WORK / "revise_hand.js"
     hand.write_text("if(process.argv[2]==='show'){console.log(JSON.stringify({where:'대역'}));process.exit(0)}const fs=require('fs'); const a=process.argv.slice(2); const i=a.indexOf('--body-file');"
@@ -604,6 +617,223 @@ def check_sender_counts_cover_the_whole_view():
         line = next((x for x in out.splitlines() if PEER[1] in x), "")
         unread = sum(m.unread for m in peers)
         assert line.strip().startswith(f"{len(peers)}통(안 읽음 {unread})"), f"{PEER[1]} 는 {len(peers)}통 · 안 읽음 {unread} 이다:\n{out}"
+
+
+# ── 이 시각부터 온 메일 — 받은편지함 · 폴더 · 보낸편지함을 한 번에 ─────────────
+
+SINCE = "2026-11-03 06:30"   # 대역 이야기(check_inbox.scenario)의 그날 — 이 앞뒤로 받은편지함 · 폴더 · 보낸편지함 메일이 다 있다
+EDGE_IN, EDGE_OUT, TRASHED, LONELY = "B2" * 16, "B1" * 16, "B3" * 16, "B4" * 16
+
+
+def since_plants(box) -> None:
+    """--since 판에 더하는 메일 넷 — 그 분 안(06:30:45 · 받은편지함 · 든다) · 그 분 1초 앞(06:29:59 · 폴더 · 안 든다) · 그 뒤에 지운
+    메일(휴지통 · 안 든다 — 받은 메일 가운데 가장 늦다) · 그 뒤에 왔는데 어느 폴더에도 안 든 메일(모든편지함에만 선다 · 폴더 열은
+    「협력사」를 든다 — 실물에서 폴더 열이 폴더와 어긋나는 꼴)."""
+    F = fakes_inbox
+    peer = F.internal_sender(*F.PEER)
+    for m in (F.FakeMail(EDGE_IN, "경계 분에 온 메일", "20261103063045", peer, "T"),
+              F.FakeMail(EDGE_OUT, "경계 1초 앞 메일", "20261103062959", peer, "T", folder=F.FOLDER_TOP),
+              F.FakeMail(TRASHED, "지운 새 메일", "20261103094500", peer, "T", folder="($Trash)"),
+              F.FakeMail(LONELY, "어느 폴더에도 없는 새 메일", "20261103080000", "notice@nuri.example", "G", folder=None,
+                         label=F.FOLDER_TOP)):
+        box.mails[m.unid] = m
+
+
+# 06:30 부터의 메일 — 그 자리. 받은편지함 메일 cc 는 모든편지함의 폴더 열이 「협력사」인 메일이고, f_child 는 하위 폴더(열은 끝 이름만
+# 든다)이며 시각이 06:30:00 딱이다. 임시보관함 메일(10:00)과 휴지통 메일(09:45)은 받은편지함 · 폴더 · 보낸편지함이 아니라 안 든다
+SINCE_WHERE = {U["cc"]: "받은편지함", U["alone"]: "받은편지함", U["group"]: "받은편지함", EDGE_IN: "받은편지함",
+               U["f_top"]: f"폴더 {fakes_inbox.FOLDER_TOP}", U["f_child"]: f"폴더 {fakes_inbox.FOLDER_CHILD}",
+               U["sent_1"]: "보낸편지함"}
+SINCE_LATEST = ("2026-11-03 09:30:00", U["cc"])   # 그 가운데 가장 늦은 메일 — 그보다 늦은 임시보관함 · 휴지통 메일은 그 자리가 아니다
+
+
+@contextlib.contextmanager
+def patched(**values):
+    """mail 의 이름 붙은 값을 그 판 동안만 바꾼다 — 없던 이름이면 판 뒤에 걷는다."""
+    gone = object()
+    saved = {k: getattr(mail, k, gone) for k in values}
+    for k, v in values.items():
+        setattr(mail, k, v)
+    try:
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is gone:
+                delattr(mail, k)
+            else:
+                setattr(mail, k, v)
+
+
+def mail_rows(out: str) -> list[str]:
+    return [x for x in out.splitlines() if x.startswith("[")]
+
+
+def tail(out: str) -> str:
+    return "\n".join(x for x in out.splitlines() if x.startswith("—"))
+
+
+def check_since_lists_new_mail_of_every_box_newest_first():
+    """--since — 그 시각부터 온 메일을 받은편지함 · 모든 폴더 · 보낸편지함에 걸쳐 새것부터 한 목록으로 내고(보낸 메일은 표시해서), 그 분은
+    들고 1초 앞 · 휴지통 · 임시보관함은 안 들며, 끝 줄이 가장 늦은 메일과 다 봤나 · 모든편지함에만 선 수를 댄다. 쪽을 잘게 나눠도 같다.
+    틀리면 「지난번 뒤 새 메일」을 가르는 쪽이 폴더 · 보낸 메일을 놓치거나 지운 메일을 새 일로 올리거나 경계의 메일을 날마다 잃는다."""
+    with stage() as (box, run):
+        since_plants(box)
+        code, out = run("list", "--since", SINCE)
+        assert code == 0, out
+        rows = mail_rows(out)
+        got = [x[-32:] for x in rows]
+        assert sorted(got) == sorted(SINCE_WHERE), \
+            f"그 시각부터 온 메일 {len(SINCE_WHERE)}통(받은편지함 4 · 폴더 2 · 보낸편지함 1)이 아니다 — 빠진 것 " \
+            f"{sorted(set(SINCE_WHERE) - set(got))} · 더 든 것 {sorted(set(got) - set(SINCE_WHERE))}:\n{out}"
+        dates = [re.search(r"\] (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) · ", x) for x in rows]
+        assert all(dates) and [d.group(1) for d in dates] == sorted((d.group(1) for d in dates), reverse=True), \
+            f"새것부터가 아니다:\n{out}"
+        for line in rows:
+            where = SINCE_WHERE[line[-32:]]
+            assert f" · {where} · " in line, f"{line[-32:]} 의 줄에 든 자리 「{where}」가 안 섰다:\n{line}"
+        sent = next(x for x in rows if x.endswith(U["sent_1"]))
+        assert sent.startswith("[보냄]"), f"보낸 메일을 보낸 메일로 표시하지 않았다:\n{sent}"
+        end = tail(out)
+        latest = next((x for x in end.splitlines() if "가장 늦은 메일" in x), "")
+        assert all(v in latest for v in SINCE_LATEST), f"끝 줄이 가장 늦은 메일 {SINCE_LATEST} 를 안 댔다:\n{out}"
+        assert "그 시각까지 다 봤다" in end and "7통" in end, f"끝 줄이 그 시각부터의 7통과 다 봤나를 안 댔다:\n{out}"
+        assert re.search(r"모든편지함에만 .*1통", end), f"어느 상자에도 없는 새 메일 1통의 수를 안 댔다:\n{out}"
+        with patched(SINCE_PAGE=1):
+            code, paged = run("list", "--since", SINCE)
+        assert code == 0 and mail_rows(paged) == rows, f"쪽을 한 줄씩 받으니 목록이 달라졌다:\n{paged}"
+
+
+def check_since_says_how_far_it_reached_when_a_cap_stops_it():
+    """--since 가 상한에 막히면 「못 내려갔다」를 자리 · 훑은 수 · 잇는 명령과 함께 대고 「다 봤다」 · 모든편지함에만 선 수를 안 낸다 ·
+    「없다」는 다 본 판에만 · 답이 대화 한도를 넘으면 끝 줄을 살리고 남은 줄을 --start 로 잇는다(이어 합치면 한 번에 받은 목록이다).
+    틀리면 막힌 판이 「그 뒤 메일 없음」으로 읽혀 다음 번이 그 사이의 메일을 영영 안 본다."""
+    with stage() as (box, run):
+        since_plants(box)
+        with patched(SWEEP_SCAN=2, SINCE_PAGE=1):   # 상자마다 새것 2줄까지 — 받은편지함은 06:30 부터 넷이라 못 닿고, 다른 상자는 닿는다
+            code, out = run("list", "--since", SINCE)
+        end = tail(out)
+        assert code == 0 and "다 봤다" not in out, f"상한에 막힌 판을 다 봤다고 했다:\n{out}"
+        stuck = next((x for x in end.splitlines() if "못 내려" in x), "")
+        assert "받은편지함" in stuck and "2통" in stuck and "list --start 3" in stuck, \
+            f"못 닿은 자리(받은편지함) · 훑은 수(2통) · 잇는 명령(list --start 3)을 안 댔다:\n{out}"
+        assert not any(w in stuck for w in ("폴더", "보낸편지함")), f"닿은 상자까지 못 닿았다고 했다:\n{out}"
+        assert "모든편지함에만" not in out, f"못 본 메일을 모든편지함에만 선 메일로 셌다:\n{out}"
+        assert {U["cc"], U["alone"]} <= {x[-32:] for x in mail_rows(out)}, f"훑은 새것 둘을 안 보였다:\n{out}"
+
+        code, out = run("list", "--since", "2026-11-04 00:00")
+        assert code == 0 and not mail_rows(out) and "없다" in tail(out) and "그 시각까지 다 봤다" in tail(out), \
+            f"그 시각부터 메일이 없는 판이 다 본 범위와 함께 「없다」를 안 냈다:\n{out}"
+
+        code, whole = run("list", "--since", SINCE)
+        with patched(OUT_BYTES=mail.TAIL_BYTES + 1):   # 메일 줄의 몫이 1 바이트 — 한 줄만 서고 끝 줄은 산다
+            code, first = run("list", "--since", SINCE)
+        assert code == 0 and len(mail_rows(first)) == 1 and "--start 2" in tail(first) and "가장 늦은 메일" in tail(first), \
+            f"답의 한도를 넘는 목록이 끝 줄 · 잇는 자리를 안 남겼다:\n{first}"
+        code, rest = run("list", "--since", SINCE, "--start", "2")
+        assert code == 0 and mail_rows(first) + mail_rows(rest) == mail_rows(whole), \
+            f"이어 받은 줄과 합친 목록이 한 번에 받은 목록과 다르다:\n{first}\n{rest}"
+        code, out = run("list", "--since", SINCE, "--count", "3")
+        assert code == 0 and mail_rows(out) == mail_rows(whole)[:3] and "--start 4" in tail(out), out
+
+
+def check_since_with_one_box_or_a_sieve_stays_in_that_box():
+    """--since 와 상자 하나(--folder · --sent)는 그 상자 안에서만 거르고 --drafts 와는 안 받는다 · --unread · --from 은 받은 메일만
+    거른다(보낸 메일의 사람 칸은 받는 분이라, 걸리면 내가 보낸 메일이 그 사람의 메일로 선다) · 시각 꼴이 아니면 짐작하지 않고 멈춘다."""
+    F = fakes_inbox
+    with stage() as (box, run):
+        since_plants(box)
+        code, out = run("list", "--since", SINCE, "--folder", F.FOLDER_TOP)
+        assert code == 0 and [x[-32:] for x in mail_rows(out)] == [U["f_top"]], f"폴더 「협력사」의 06:30 부터는 한 통이다:\n{out}"
+        code, out = run("list", "--since", SINCE, "--sent")
+        rows = mail_rows(out)
+        assert code == 0 and [x[-32:] for x in rows] == [U["sent_1"]] and rows[0].startswith("[보냄]"), \
+            f"보낸편지함의 06:30 부터는 보낸 메일 한 통이다:\n{out}"
+        code, out = run("list", "--since", SINCE, "--unread")
+        want = {u for u in SINCE_WHERE if u in box.mails and box.mails[u].unread}
+        assert code == 0 and {x[-32:] for x in mail_rows(out)} == want, f"06:30 부터의 안 읽음 {sorted(want)} 이 아니다:\n{out}"
+        code, out = run("list", "--since", SINCE, "--from", PEER[0])
+        want = {u for u in SINCE_WHERE if u in box.mails and PEER[1] in box.mails[u].sender}
+        assert code == 0 and {x[-32:] for x in mail_rows(out)} == want, \
+            f"06:30 부터 {PEER[0]} 님이 보낸 메일 {sorted(want)} 이 아니다(그분께 보낸 메일은 안 든다):\n{out}"
+        code, out = run("list", "--since", SINCE, "--drafts")
+        assert code == mail.EXIT_CONFIG, f"--since 와 --drafts 를 함께 받았다:\n{out}"
+        for said in ("2026-11-03", "어제", "2026-11-03 25:00"):
+            code, out = run("list", "--since", said)
+            assert code == mail.EXIT_CONFIG and not mail_rows(out), f"시각 꼴이 아닌 {said!r} 를 받았다:\n{out}"
+
+
+ALTAIR = ("a.kim@altair-parts.example", "b.lee@altair-parts.example")   # 폴더 「협력사」에 더하는 밖의 회사 메일 둘의 보낸 분
+
+
+def outside_mails(box) -> None:
+    """폴더 「협력사」에 밖의 회사가 보낸 메일 둘을 더한다 — 그 폴더에 보낸 분이 셋(밖의 주소만 온 메일)이 되게."""
+    box.mails["E1" * 16] = fakes_inbox.FakeMail("E1" * 16, "견적 회신", "20261102100000", ALTAIR[0], "T", folder=fakes_inbox.FOLDER_TOP)
+    box.mails["E2" * 16] = fakes_inbox.FakeMail("E2" * 16, "납기 변경", "20261101100000", ALTAIR[1], "C", folder=fakes_inbox.FOLDER_TOP)
+
+
+def check_folder_lists_and_counts_carry_the_sender_address():
+    """폴더 목록 · 세기 — 폴더 보기의 보낸 사람 열에는 주소가 없지만(SOURCES.md 「inbox.py」) 줄마다 보낸 분이 받은편지함 줄과 같은
+    꼴로 서고 · --from 이 주소의 일부와 이름에 다 걸리고 · summary 가 실제 보낸 분마다 묶는다. 틀리면 「그 회사 메일 0통」이 거짓으로 서고
+    밖의 메일이 한 묶음으로 뭉쳐 그 수로 정리안이 선다."""
+    F = fakes_inbox
+    with stage() as (box, run):
+        outside_mails(box)
+        want = {u: m.sender for u, m in box.mails.items() if m.folder == F.FOLDER_TOP}   # 밖의 메일은 보낸 사람 열이 주소 그대로다
+        assert len(set(want.values())) == 3 and all("@" in a and "-=spl=-" not in a for a in want.values()), \
+            f"대역의 폴더 「협력사」가 밖의 보낸 분 셋이 아니라 이 판이 안 문다: {want}"
+        code, out = run("list", "--folder", F.FOLDER_TOP)
+        assert code == 0, out
+        for unid, addr in want.items():
+            line = next((x for x in out.splitlines() if x.endswith(unid)), "")
+            assert f" · {addr} · " in line, f"폴더 줄에 보낸 분 주소 {addr} 가 안 섰다:\n{out}"
+        code, out = run("list", "--folder", F.FOLDER_CHILD)
+        assert code == 0 and f"{F.PEER[0]} <{F.PEER[1]}>" in out, f"사내 메일의 폴더 줄이 「이름 <주소>」 가 아니다:\n{out}"
+        code, out = run("list", "--folder", F.FOLDER_COMMA)
+        assert code == 0 and " · notice@nuri.example · " in out, f"시스템 알림의 폴더 줄에 주소가 안 섰다:\n{out}"
+
+        code, out = run("list", "--folder", F.FOLDER_TOP, "--from", ALTAIR[0].split("@")[1].split(".")[0])
+        rows = [x for x in out.splitlines() if x.startswith("[")]
+        assert code == 0 and sorted(x[-32:] for x in rows) == ["E1" * 16, "E2" * 16] and out.splitlines()[-1].endswith("2통"), \
+            f"--from <주소의 일부> 가 폴더의 그 회사 메일 둘을 다 안 냈다:\n{out}"
+        for said in (F.PEER[1], F.PEER[0]):
+            code, out = run("list", "--folder", F.FOLDER_CHILD, "--from", said)
+            assert code == 0 and U["f_child"] in out and out.splitlines()[-1].endswith("1통"), \
+                f"폴더의 사내 메일이 --from {said!r} 에 안 걸렸다:\n{out}"
+
+        code, out = run("summary", "--folder", F.FOLDER_TOP)
+        assert code == 0 and "보낸 분별 — 3곳" in out and "(보낸 분 없음)" not in out, f"세기가 실제 보낸 분 셋으로 안 묶었다:\n{out}"
+        for addr in want.values():
+            assert any(x.strip().startswith("1통(") and f" · {addr} · " in x for x in out.splitlines()), \
+                f"세기에 {addr} 의 묶음이 없다:\n{out}"
+
+
+def check_folder_fill_says_what_it_could_not_fill():
+    """폴더 줄을 모든편지함에서 못 채우면(앞쪽에 없는 옛 메일 · 그 보기가 없는 메일함) 「보낸 분 없음」이 아니라 「못 채움」으로 서고
+    끝 줄 · 세기 · --from 이 못 채운 수를 댄다. 틀리면 못 잰 것이 「0통」으로 서 사람이 없는 것으로 믿는다."""
+    F = fakes_inbox
+    with stage() as (box, run):
+        newest = max((m for m in box.mails.values() if not m.draft and not (m.folder or "").startswith("(")), key=lambda m: m.stamp)
+        assert newest.folder == "" and newest.stamp > box.mails[U["f_top"]].stamp, \
+            "대역의 가장 새 메일이 받은편지함 메일이 아니라, 모든편지함 새것 한 줄 밖에 폴더 메일이 안 남아 이 판이 안 문다"
+        saved = mail.FILL_SCAN
+        mail.FILL_SCAN = 1   # 모든편지함을 새것 한 줄만 — 폴더 「협력사」의 한 통(f_top)은 그 밖이다
+        try:
+            code, out = run("list", "--folder", F.FOLDER_TOP)
+            line = next((x for x in out.splitlines() if x.endswith(U["f_top"])), "")
+            assert code == 0 and mail.UNFILLED_SENDER in line and "(보낸 분 없음)" not in out, f"못 채운 폴더 줄을 「없음」으로 냈다:\n{out}"
+            assert "보낸 분 주소를 못 채운 폴더 메일 1통(모든편지함 새것 1줄에 없다)" in out.splitlines()[-1], f"끝 줄이 못 채운 수를 안 댔다:\n{out}"
+            code, out = run("list", "--folder", F.FOLDER_TOP, "--from", "haneul-parts")
+            last = out.splitlines()[-1]
+            assert code == 0 and "0통" in last and "못 채운 폴더 메일 1통" in last and "주소로는 못 걸렀다" in last, \
+                f"못 채운 줄을 두고 --from 의 0통을 말없이 냈다:\n{out}"
+            code, out = run("summary", "--folder", F.FOLDER_TOP)
+            assert code == 0 and "못 채운 폴더 메일 1통" in out.splitlines()[0] and mail.UNFILLED_SENDER in out, out
+        finally:
+            mail.FILL_SCAN = saved
+    with stage(all_view=False) as (box, run):
+        code, out = run("list", "--folder", F.FOLDER_TOP)
+        assert code == 0 and "모든편지함 보기가 없어 폴더 메일 1통의 보낸 분 주소를 못 채웠다" in out, \
+            f"모든편지함 보기가 없는 메일함에서 못 채운 까닭을 안 댔다:\n{out}"
 
 
 def check_moving_many_sweeps_the_views_once():
@@ -690,6 +920,54 @@ def check_organizing_commands_change_only_with_the_previewed_key():
         assert not changing(p for p in box.paths if "?EditDocument" not in p), "정리 명령이 메일을 여는 주소를 불렀다"
 
 
+def check_preview_lines_name_their_mail_and_done_lines_their_key():
+    """옮기기 · 휴지통 · 되살리기 — 미리 보기의 메일 줄 끝마다 그 메일의 unid(32자리 대문자)가 서고(차례 · 제목이 겹쳐도) 줄 앞쪽 꼴은
+    그대로며, 「됐다」 줄 끝에 맞춘 확인 열쇠가 선다. 부르는 쪽(바꾼 것을 메일마다 적어 되돌리는 쪽)이 줄을 차례로 이으면 원래 자리가
+    엇갈려 적혀, 되돌릴 때 메일이 엉뚱한 폴더로 간다."""
+    F = fakes_inbox
+    item = re.compile(r"^  (읽음|안읽음) · .* · ([0-9A-F]{32})$")
+    with stage(folders=(F.FOLDER_EMPTY,)) as (box, run):
+        twin, first = box.mails[U["read_one"]], box.mails[U["alone"]]
+        twin.subject, twin.sender = first.subject, first.sender   # 받은편지함의 읽은 한 통을 안 읽은 한 통과 제목 · 보낸 분이 같게
+        given = (U["f_child"], U["read_one"], U["alone"])          # 폴더 하나 · 받은편지함 둘 — 날짜 차례와 다르게 준다
+        for argv in (("preview-trash", *given), ("preview-move", *given, "--to", F.FOLDER_EMPTY)):
+            code, out = run(*argv)
+            lines = [x for x in out.splitlines() if x.startswith("  ")]
+            assert code == 0 and len(lines) == len(given), out
+            for line in lines:
+                got = item.match(line)
+                assert got, f"메일 줄 끝에 그 메일의 unid 가 없거나 줄 앞쪽 꼴이 달라졌다: {line!r}\n{out}"
+                m = box.mails[got.group(2)]
+                place = f"폴더 {m.folder}" if m.folder else "받은편지함"
+                assert m.subject in line and got.group(1) == ("안읽음" if m.unread else "읽음") and f" · {place} · " in line, \
+                    f"줄 끝 번호의 메일이 그 줄의 메일이 아니다: {line!r}"
+            assert sorted(item.match(x).group(2) for x in lines) == sorted(given), f"준 메일과 줄의 번호가 다르다:\n{out}"
+
+        code, out = run("preview-move", U["alone"], "--to", F.FOLDER_EMPTY)
+        moving = key(out)
+        code, out = run("apply-move", U["alone"], "--to", F.FOLDER_EMPTY, "--confirm", moving)
+        done = next((x for x in out.splitlines() if x.startswith("옮겼다: 1통 → ")), "")
+        assert code == 0 and done.endswith(f" · 열쇠 {moving}"), f"「옮겼다」 줄 끝에 맞춘 열쇠가 없다:\n{out}"
+        code, out = run("preview-trash", U["alone"])
+        trashing = key(out)
+        code, out = run("apply-trash", U["alone"], "--confirm", trashing)
+        done = next((x for x in out.splitlines() if x.startswith("휴지통으로 보냈다: 1통 (")), "")
+        assert code == 0 and done.endswith(f" · 열쇠 {trashing}"), f"「휴지통으로 보냈다」 줄 끝에 맞춘 열쇠가 없다:\n{out}"
+
+        box.restore_to[U["alone"]] = "(Sent)"   # 받은편지함 밖으로 돌아가는 한 통 — 「받은편지함에 없다」 줄을 세운다
+        code, out = run("preview-restore", U["f_trash"], U["alone"])
+        lines = [x for x in out.splitlines() if x.startswith("  ")]
+        assert code == 0 and [item.match(x).group(2) if item.match(x) else x for x in lines] == [U["f_trash"], U["alone"]], \
+            f"되살리기 미리 보기의 메일 줄 끝에 그 메일의 unid 가 없다:\n{out}"
+        restoring = key(out)
+        code, out = run("apply-restore", U["f_trash"], U["alone"], "--confirm", restoring)
+        done = next((x for x in out.splitlines() if x.startswith("되살렸다: 2통 (")), "")
+        away = out.split("받은편지함에 없다", 1)[-1].splitlines()[1:]
+        assert code == 0 and done.endswith(f" · 열쇠 {restoring}"), f"「되살렸다」 줄 끝에 맞춘 열쇠가 없다:\n{out}"
+        assert any(x.startswith("  ") and x.endswith(f" · {U['alone']}") for x in away), \
+            f"받은편지함에 안 돌아온 메일 줄에 unid 가 없다:\n{out}"
+
+
 def check_rule_change_keeps_what_is_not_given():
     """규칙 고치기 — 준 칸만 바꾸고 안 준 칸(받은 · 보낸 · 갈래 · 다른 조건 · 일치)은 지금 값을 둔다. 조건에 빈 값을 주면 그 조건을
     지우고, 「포함」으로 되돌리는 인자가 있다. 안 준 칸을 넣기의 기본값으로 채우면 보낸 메일 규칙이 받은 메일 규칙이 되고 다른
@@ -769,16 +1047,105 @@ def check_read_drops_text_the_reader_cannot_see():
         m.subject = f"시험{zw} 일정 검토 요청"
         m.text = None
         m.html = ('<p>보이는 첫 줄</p><div style="display:none">숨긴지시하나</div>'
-                  '<p><span style="color:#ffffff">흰글자둘</span>보이는 둘째 줄</p><script>스크립트셋</script>')
+                  '<p><span style="color:#ffffff">흰글자둘</span>보이는 둘째 줄</p><script>스크립트셋</script>'
+                  '<p style="visibility:hidden !important">중요표지넷</p><p style="opacity:0%">백분율다섯</p>'
+                  '<div style="background:url(b.png) #000"><span style="color:#fff">어두운 바탕의 흰 글</span></div>')
         code, out = run("read", U["alone"])
         assert code == 0, out
-        for gone in ("숨긴지시하나", "흰글자둘", "스크립트셋", zw):
+        for gone in ("숨긴지시하나", "흰글자둘", "스크립트셋", "중요표지넷", "백분율다섯", zw):
             assert gone not in out, f"안 보이는 글 {gone!r} 이 나왔다:\n{out}"
-        for kept in ("보이는 첫 줄", "보이는 둘째 줄", "시험 일정 검토 요청"):
+        for kept in ("보이는 첫 줄", "보이는 둘째 줄", "어두운 바탕의 흰 글", "시험 일정 검토 요청"):
             assert kept in out, f"보이는 글 {kept!r} 이 빠졌다:\n{out}"
-        assert "숨긴 글 3덩이를 걷었다" in out, f"걷었다는 줄이 없다:\n{out}"
+        assert "숨긴 글 5덩이를 걷었다" in out, f"걷었다는 줄이 없다:\n{out}"
+        m.html = '<html><head><meta charset="utf-8"><body><p>머리를 안 닫은 본문</p></body></html>'   # `</head>` 는 빼도 되는 태그다
+        code, out = run("read", U["alone"])
+        assert code == 0 and "머리를 안 닫은 본문" in out, f"`</head>` 없는 문서의 본문을 통째로 잃었다:\n{out}"
         code, out = run("list")
         assert code == 0 and zw not in out and "시험 일정 검토 요청" in out, f"목록에 폭 없는 문자가 남았다:\n{out}"
+
+
+def check_read_of_received_mail_says_how_it_came_and_who_else_got_it():
+    """받은 메일 읽기 — 받으신 칸이 받는 꼴 열(``T`` 받는 사람 · ``C`` 참조 · ``G`` 그룹 · 배포 목록)대로, 함께 받은 사람이 받는 사람 목록
+    보기의 명단으로 서고, 못 읽으면 「0 명」이나 짐작한 칸 대신 못 읽었다고 말한다 · 보낸 메일 · 임시메일에는 안 선다. 틀리면 「나에게
+    직접 온 메일인가 · 누가 함께 받았나」를 틀리게 대고 모델이 그 위에서 판단한다."""
+    F = fakes_inbox
+    with stage() as (box, run):
+        for unid, word in ((U["alone"], "받는 사람"), (U["cc"], "참조"), (U["group"], "그룹 · 배포 목록"), (U["f_child"], "참조")):
+            assert box.mails[unid].role == {"받는 사람": "T", "참조": "C", "그룹 · 배포 목록": "G"}[word], "대역의 받는 꼴이 판의 짝과 다르다"
+            code, out = run("read", unid, "--max-chars", "1")
+            assert code == 0 and f"\n받으신 칸: {word}" in out, f"받는 꼴 {box.mails[unid].role} 인 메일의 받으신 칸이 {word} 가 아니다:\n{out}"
+        code, out = run("read", U["cc"], "--max-chars", "1")   # 받는 사람 목록 보기의 줄 — Notes 이름 하나 · 「이름 <주소>」 둘
+        assert code == 0 and "받는 사람 · 참조 3 명" in out and all(w in out for w in ("강태오", F.OWNER["email"], "jm.song@nuri.example")), \
+            f"함께 받은 사람 셋을 안 보였다:\n{out}"
+        code, out = run("read", U["unmatched"], "--max-chars", "1")   # 받는 사람 목록 보기에 줄이 없는 메일
+        assert code == 0 and "함께 받은 사람: 못 읽었다" in out and " 0 명" not in out, f"보기에 없는 메일을 못 읽었다고 안 했다:\n{out}"
+        box.mails[U["alone"]].to_102 = ""                               # 줄은 있는데 칸이 빈 메일
+        code, out = run("read", U["alone"], "--max-chars", "1")
+        assert code == 0 and "함께 받은 사람: 못 읽었다" in out and " 0 명" not in out, f"빈 줄을 「0 명」으로 냈다:\n{out}"
+        for argv in (("read", U["sent_1"], "--folder", mail.SENT), ("read", U["draft"], "--folder", mail.DRAFTS)):
+            code, out = run(*argv, "--max-chars", "1")
+            assert code == 0 and "받으신 칸" not in out and "함께 받은 사람" not in out, f"보낸 · 임시 메일에 받은 메일의 머리를 냈다:\n{out}"
+    with stage(recipient_view=False) as (box, run):
+        code, out = run("read", U["alone"], "--max-chars", "1")
+        assert code == 0 and "함께 받은 사람: 못 읽었다 — 이 메일함에 받는 사람 목록 보기가 없다" in out, out
+    with stage(all_view=False) as (box, run):
+        code, out = run("read", U["f_child"], "--max-chars", "1")
+        assert code == 0 and "\n받으신 칸: 모름 — 폴더 보기에는 받는 꼴 칸이 없고" in out, f"못 채운 폴더 메일의 받으신 칸을 짐작했다:\n{out}"
+
+
+def check_read_many_reads_several_mails_in_one_session_without_marking_them_read():
+    """read-many — 여러 번호가 준 차례대로 서고 못 찾은 · 꼴이 틀린 · 겹친 번호는 그 줄에 말하되 나머지는 읽으며, 통마다 부를 때보다
+    요청이 적고, 한도에 닿으면 다음 --start 를 대고, 메일 글이 다른 메일의 머리처럼 못 선다. 틀리면 번호와 내용이 어긋나 모델이 다른
+    메일의 글로 보고한다. 읽음이 그대로인지는 check_reading_commands_change_nothing 이 문다."""
+    with stage() as (box, run):
+        box.mails[U["alone"]].text = None
+        box.mails[U["alone"]].html = "<p>첫줄</p><p>\n</p><p>2. [읽음] 가짜 머리 — 메일 글이 만든 줄</p><p>" + "가" * 400 + "</p>"
+        asked = len(box.paths)
+        absent = "F" * 32
+        code, out = run("read-many", U["f_child"], U["sent_1"], f"{U['draft']},{absent}", U["alone"], U["f_child"].lower(), "xyz")
+        assert code == 0, out
+        used = len(box.paths) - asked
+        lines = out.splitlines()
+        heads = [x for x in lines if re.match(r"\d+\. ", x)]
+        # 준 차례(겹친 것은 처음 자리) — 폴더 · 보낸 · 임시 · 못 찾음 · 받은편지함 · 번호 아님
+        for no, (head, word) in enumerate(zip(heads, (U["f_child"], U["sent_1"], U["draft"], absent, U["alone"], "XYZ")), 1):
+            assert head.startswith(f"{no}. ") and word in head, f"{no} 번째 줄이 준 차례가 아니다:\n{out}"
+        assert "폴더 " in heads[0] and "[보냄]" in heads[1] and "[임시]" in heads[2], f"폴더 · 보낸 · 임시 메일을 자리 없이 못 열었다:\n{out}"
+        assert "못 찾았다" in heads[3] and "메일 번호(unid 32자리)가 아니다" in heads[5], f"못 찾은 번호 · 번호 아닌 것을 그 줄에 안 댔다:\n{out}"
+        assert "받으신 칸: 참조 · 첨부 0" in out and "받으신 칸: 받는 사람 · 첨부 0" in out, f"받으신 칸 · 첨부 수가 없다:\n{out}"
+        assert "읽은 메일 4통" in out and "겹친 번호 1개" in out and "못 찾은 번호 1" in out, f"끝 줄의 셈이 다르다:\n{out}"
+        assert not any(x.startswith("2. [읽음]") for x in lines), f"메일 글이 줄을 열어 머리처럼 섰다:\n{out}"
+        assert re.search(r"본문 \d+자 가운데 앞 300자", out) and "⏎ 2. [읽음] 가짜 머리" in out, f"본문을 한 줄로 펴 앞 N 자만 내지 않았다:\n{out}"
+        separate = 0
+        for unid in (U["f_child"], U["sent_1"], U["draft"], U["alone"]):
+            at = len(box.paths)
+            run("read", unid)
+            separate += len(box.paths) - at
+        assert used < separate, f"네 통을 한 세션에 읽은 요청 {used} 번이 통마다 따로 읽은 {separate} 번보다 안 적다"
+        code, out = run("read-many", absent)
+        assert code == mail.EXIT_CONFIG and "못 찾았다" in out, f"하나도 못 찾았는데 종료 값 {code}:\n{out}"
+        code, out = run("read-many", U["alone"], "--start", "2")
+        assert code == mail.EXIT_CONFIG and "--start" in out, f"준 번호 밖의 --start 를 안 막았다:\n{out}"
+    with stage() as (box, run):   # 답의 크기 — 길게 이어 받아도 한 번에 한도 안이고, --start 로 이으면 빠짐 · 겹침 없이 다 읽힌다
+        base = box.mails[U["alone"]]
+        base.text = None
+        ids = []
+        for i in range(30):
+            copy = dataclasses.replace(base, unid=f"{0xABC000 + i:032X}", html=f"<p>{i:02d}번 " + "나" * 3000 + "</p>")
+            box.mails[copy.unid] = copy
+            ids.append(copy.unid)
+        got, at = [], 1
+        while at <= len(ids):
+            code, out = run("read-many", "--max-chars", "3000", "--start", str(at), *ids)
+            assert code == 0 and len(out.encode("utf-8")) <= mail.OUT_BYTES, f"한 번의 답이 한도를 넘었다({len(out.encode('utf-8'))}):\n{out[-300:]}"
+            nos = [int(m.group(1)) for m in re.finditer(r"^(\d+)\. \[", out, re.M)]
+            assert nos and nos[0] == at and nos == list(range(at, at + len(nos))), f"이은 쪽이 {at} 번째부터 차례로 안 섰다: {nos}"
+            got += nos
+            nxt = re.search(r"같은 명령에 --start (\d+)", out)
+            assert (nxt is not None) == (nos[-1] < len(ids)), f"남았는데 다음 --start 를 안 댔거나 다 읽었는데 댔다:\n{out[-300:]}"
+            at = int(nxt.group(1)) if nxt else len(ids) + 1
+            assert not nxt or at == nos[-1] + 1, f"다음 --start {at} 가 보인 마지막 {nos[-1]} 다음이 아니다"
+        assert got == list(range(1, len(ids) + 1)), f"쪽마다 이어 읽어 30통이 빠짐 · 겹침 없이 안 읽혔다: {got}"
 
 
 CHECKS = [value for name, value in sorted(globals().items()) if name.startswith("check_")]

@@ -11,8 +11,9 @@
 
 ## 빌린 것
 
-- 추천 줄 · 서브 줄의 꼴 — atelier `app/static/app.js` 의 `adviceRows` · `adviceSubs` (atelier 7f357211 판). 손으로 따라간다 — 저쪽 곁말이
-  이 자리를 가리킨다
+- 추천 줄 · 서브 줄의 꼴 — atelier `app/static/app.js` 의 `adviceRows` · `adviceSubs` (atelier 7f357211 판). 손으로 따라간다 — 저쪽 지시문
+  (`prompts/advise-system.md` 「어떻게 답하나」)과 정규식이 바뀌면 고치고, 저쪽 곁말이 이 자리를 가리킨다. 이름은 디자인 목록과 대조해
+  없는 것은 버린다(저쪽 난간 그대로). `변형:` 줄은 안 가져왔다 — 다이얼 없이 보내면 렌더가 모드 기본값을 세운다
 - 넘김 표 문(`/api/handoff` · `/api/handoff/take`) — atelier 결정 0307 · `docs/reference/http-api.md` §5
 - 원문에 박힌 그림 — atelier `app/assemble.py` 의 `fold_data_images`(박힌 `<img src="data:image/…">` 를 그림 자리표로 접는다) ·
   `_press_fig`(서버가 누른다) · `fig_tag`(지면에 앉은 그림의 표식 `data-atelier-fig`) · `docs/reference/http-api.md` 4 절의 `extra`
@@ -25,6 +26,12 @@
     알아서 고치기는 안 밟는다. 지면 형태는 `--mode auto` 일 때만 화면처럼 추천 줄의 지면 칸을 따르고, 메일 본문용 기본은
     추천이 무엇을 짚든 문서형태다 — 추천은 지면까지 묶어 디자인을 고르므로, 웹으로 짚은 디자인이 문서형태로 지어질 수 있다
     (추천 문에 지면을 정해 건넬 칸이 없다)
+
+## 안 하는 것
+
+메일 보내기(company-mail 이 한다) · 설계 → 검토 → 상담 · 알아서 고치기(화면의 「알아서 만들기」 사슬 가운데 느린 몫 — 고치기는 사람이
+화면에서 한다) · 문서 파일(오피스 · PDF)을 원문 첨부로 싣기(글 파일 하나와 그 글이 가리킨 그림만 보낸다) · 참고 그림(모양만 따오는 그림)
+싣기 · 원문구조 다이얼(모드 기본값으로 돈다) · 세이프모드(바깥 메일용 지면 — 사내 메일에는 안 쓴다).
 
 ## 회사에서 잴 것
 

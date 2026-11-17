@@ -14,12 +14,7 @@
      준다 — 얹었는지는 기계가 못 가른다. 잠긴 트리(레인이 도는 중)는 `--force` 로도 안 걷고 말한다
 종료 — 0 다 거뒀다 · 1 손에 남은 것이 있다(겹침 · 해시 어긋남 · 충돌 표식 · 잠긴 트리) · 2 못 쟀다(트리가 아니다 · git 이 졌다)
   · 4 부르는 법이 틀렸다
-
-복사이지 패치가 아닌 까닭 — 작업 사본의 줄끝이 색인과 다른 설정에서는 트리에서 뽑은 diff 가 본 사본에 안 붙고, 붙어도 줄끝을
-바꿔 쓴다. 바이트 복사는 레인이 쓴 그대로를 옮기고, 본 사본의 커밋이 훅을 그대로 탄다. 본 사본의 작업 사본 변경도 「그 사이
-바뀐 것」으로 세는 까닭 — 커밋 안 한 변경을 덮으면 되돌릴 데가 없다. 겹친 파일을 레인 브랜치에 임시 커밋을 만들어 옮기지
-않고 `--merge` 로 파일마다 합치는 까닭 — 임시 커밋은 커밋 훅(메시지 형식 · 게이트)을 우회하게 만들고, 파일 합치기는 커밋 없이
-같은 3-way 를 낸다. 게이트는 본 사본의 커밋에서 돈다.
+패치가 아니라 바이트 복사인 까닭 · 임시 커밋 없이 파일마다 합치는 까닭은 references/DESIGN.md 「거두기」 가 든다.
 """
 import argparse
 import hashlib
@@ -34,6 +29,7 @@ MARK_OPEN, MARK_MID, MARK_CLOSE = '<<<<<<< ', '=======', '>>>>>>> '
 TEXT_SCAN_MAX = 4 * 1024 * 1024   # 충돌 표식을 찾을 글 파일의 크기 한도 — 그보다 크면 안 본다고 말한다
 HARNESS_TREES = '.claude/worktrees/'   # 하네스가 트리를 세우는 자리 — 본 사본의 변경을 셀 때 뺀다(다른 레인의 트리다)
 NUL = chr(0)
+MERGE_CONFLICTS_MAX = 127   # `git merge-file` 이 충돌 수로 내는 끝값 — 충돌 수는 127 에서 잘리고, 오류(-1)는 종료 값으로 255 가 된다
 
 
 class GitFailed(Exception):
@@ -84,7 +80,8 @@ def merge_one(main, base, path, src, dst):
         b.write_bytes(git_bytes(main, 'show', f'{base}:{path}'))
         p = subprocess.run(['git', 'merge-file', '-L', 'main', '-L', f'base {base[:7]}', '-L', 'lane', str(dst), str(b), str(src)],
                            capture_output=True, env=ENV)
-    if p.returncode < 0:
+    # 그 위(바이너리 파일 같은 오류)는 충돌이 아니라 진 것이다 — 충돌로 세면 없는 표식을 갈라 얹으라고 말한다
+    if not 0 <= p.returncode <= MERGE_CONFLICTS_MAX:
         return f'git merge-file 이 졌다 — {p.stderr.decode("utf-8", "replace").strip()}'
     return p.returncode
 
@@ -172,8 +169,9 @@ def marker_lines(path):
 
 
 def moved_in_main(main, base, head):
-    """본 사본이 출발점 뒤에 바꾼 것 — (파일 집합, 추적 안 하는 폴더 접두사들)."""
-    files = set(zsplit(git(main, 'diff', '--name-only', '-z', base, head)))
+    """본 사본이 출발점 뒤에 바꾼 것 — (파일 집합, 추적 안 하는 폴더 접두사들). 이름을 바꾼 것은 옛 자리 · 새 자리 둘 다 든다 —
+    `--name-only` 는 이름 바꿈을 새 자리 하나로 접어, 레인이 옛 자리를 고쳤으면 본 사본이 치운 파일을 되살린다."""
+    files = set(zsplit(git(main, 'diff', '--name-only', '--no-renames', '-z', base, head)))
     dirs = []
     for path in worktree_changes(main):
         if path.startswith(HARNESS_TREES):

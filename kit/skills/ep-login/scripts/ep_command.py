@@ -1,5 +1,5 @@
 """사내 앱 스킬의 얇은 명령이 함께 쓰는 뼈대 — 명령을 멈추는 꼴 · 종료 값 · 답을 JSON 하나로 내는 끝 · 답 크기에 본문 맞추기 ·
-받아 둔 파일. 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · 받아 둔 파일은 company-mail 도)이
+받아 둔 파일 · 날 말(오늘 · 내일 · 요일). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · 받아 둔 파일은 company-mail 도)이
 이 폴더를 ``sys.path`` 에 넣고 싣는다. 앱 손(서버를 묻는 쪽)이 쓰는 것 — 세션 파일 · opener · SSO 넘김 칸 · 이름 누르기 · node 손
 돌리기 — 은 곁의 ``ep_session.py`` 가 든다. 새 사내 앱 스킬은 제 서버를 묻는 앱 손과 제 명령만 짓고 나머지는 여기서 부른다.
 
@@ -34,6 +34,7 @@ import os
 import pathlib
 import sys
 import time
+from datetime import date as _date, timedelta as _timedelta
 
 HERE = pathlib.Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -183,3 +184,19 @@ def keep(path: pathlib.Path, data: dict) -> str:
             pass
         return f"{type(exc).__name__}: {exc}"
     return ""
+
+
+# ── 날 말 ─────────────────────────────────────────────────────────────────
+WEEKDAYS = "월화수목금토일"                        # date.weekday() 의 0 ~ 6 — 답에 요일을 실어 모델이 요일을 제 셈으로 짐작하지 않게
+DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}   # 날 말 → 오늘에서 며칠 뒤
+
+
+def day_of(text: str | None, today: _date) -> _date:
+    """사람이 준 날 — 날 말(``DAY_WORDS`` · 대소문자 무시)이나 ``YYYY-MM-DD``. 비면 오늘이다. 꼴이 아니면 Stop(인자)."""
+    word = (text or "오늘").strip().lower()
+    if word in DAY_WORDS:
+        return today + _timedelta(days=DAY_WORDS[word])
+    try:
+        return _date.fromisoformat(word)
+    except ValueError as exc:
+        raise Stop(EXIT_ARGS, "args", f"날은 오늘 · 내일 · 모레 · YYYY-MM-DD 가운데 하나로 준다: {text!r}") from exc

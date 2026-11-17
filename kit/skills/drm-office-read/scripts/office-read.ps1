@@ -1,61 +1,43 @@
 ﻿<#
-    drm-office-read 의 읽는 부품 — Fasoo 에이전트가 도는 PC 의 오피스를 태워 문서에서 글자와 「글 밖」의 셈을 뽑는 함수만 든다.
-    본체(인자 · 대상 모으기 · 화면 · 파일 쓰기 · 끝 정리)는 안 든다 — 스킬의 `read-drm.ps1` 이 그 본체고, 제 꼴로 내는 앱은 제 본체를
-    쓰고 여기를 점 소싱한다. 실어도 아무것도 돌지 않고 표준 출력에 아무것도 안 낸다.
+    drm-office-read 의 읽는 부품 — 오피스를 태워 문서에서 글자와 「글 밖」의 셈을 뽑는 함수만 든다. 본체(인자 · 화면 · 파일 쓰기 · 끝
+    정리)는 스킬의 `read-drm.ps1` 이 들고, 제 꼴로 내는 앱은 제 본체를 쓴다. 실어도 아무것도 돌지 않고 표준 출력에 아무것도 안 낸다 —
+    진단은 Write-Warning 이다(경고를 내는 함수는 고급 함수라 `-WarningVariable` · `-WarningAction` 이 선다).
     점 소싱으로 싣는다 — 세션 규칙이 먼저다(Open-OwnedDocument · Assert-* 를 여기가 부른다):
         . (Join-Path $PSScriptRoot 'office-session.ps1')
         . (Join-Path $PSScriptRoot 'office-read.ps1')
 
-    왜 앱을 태우나: Fasoo DRM 은 파일을 통째로 자기 컨테이너로 감싼다. 머리 바이트가 `%PDF-`·`PK` 가 아니게 되므로 어떤 파서
-    (PDFium·pdfplumber·python-docx·openpyxl)도 형식 인식 단계에서 죽는다. 정식 오피스 앱은 그 보호를 복호해 주므로 그것을 태운다.
-
-    계약 — $DRM_OFFICE_READ_CONTRACT 가 든다. 부르는 쪽은 실은 뒤 이 값을 제가 아는 판과 견준다.
+    계약 — $DRM_OFFICE_READ_CONTRACT 가 든다. 부르는 쪽은 실은 뒤 이 값을 제가 아는 판과 견준다. 함수 이름 · 인자 · 내는 꼴(열쇠 포함) ·
+    Job 의 뜻이 바뀌면 1 을 올린다. 함수를 더하거나 안을 고치는 것은 안 올린다.
       · 앱 이름은 'Word' | 'Excel' | 'PPT' — $HANDLER 가 확장자를 이 이름으로 보내고, office-session.ps1 의 Kind 와 같다
       · New-OfficeJob · Set-OfficeJobKill · Join-OfficeJob — 띄운 오피스를 이 프로세스의 Job(KILL_ON_JOB_CLOSE)에 묶는 손
       · Get-FileHead · Test-PlainFormat — 머리 바이트 · 감겼나
-      · New-OfficeApp -AppName -SpawnedPids ([ref]해시) -Job — 앱 하나를 띄워 돌려준다. 띄우기 전에 없던 PID 가운데 이 앱의 것만
-        해시(PID → 앱 이름)에 더하고 Job 에 넣는다. 워드 · 엑셀은 매크로를 끈 채 띄운다($MSO_AUTOMATION_FORCE_DISABLE). 파워포인트를 띄울 때
-        $PptWasRunning 을 부르는 쪽의 스크립트 범위에 둔다(아래)
-      · Close-OfficeApps -AppByName (앱 이름 → 앱 개체) -SpawnedPids 해시 -Job -PptWasRunning — 판이 쓴 앱을 끝내는 한 자리다. 앱을
-        끄고(Exit-OfficeApp) · Quit 뒤에도 남은 프로세스를 끝내고 · Job 손잡이를 닫는다. 내는 것은 없다. 프로세스를 강제로 끝내는 줄은
-        이 함수에만 있다. 부르기 전에 이 판이 연 문서를 닫는다(Close-OwnedDocument) — 남은 문서가 곧 판정이다
-      · Get-OfficeAppPid -App -AppName — 앱 개체 뒤의 프로세스 PID. 앱의 창 손잡이로 묻고, 못 물으면 0
+      · New-OfficeApp -AppName -SpawnedPids ([ref]해시) -Job → 앱. 이 판이 띄운 PID 만 해시(PID → 앱 이름)에 더하고 Job 에 넣는다.
+        파워포인트가 원래 떠 있었나를 부르는 쪽 스크립트 범위의 $PptWasRunning 에 둔다 — 끝에서 Close-OfficeApps 에 넘긴다
+      · Close-OfficeApps -AppByName (앱 이름 → 앱 개체) -SpawnedPids 해시 -Job -PptWasRunning — 판이 쓴 앱을 끝내는 한 자리다. 내는 것은
+        없다. 부르기 전에 이 판이 연 문서를 닫는다(Close-OwnedDocument) — 남은 문서가 곧 판정이다
+      · Get-OfficeAppPid -App -AppName — 앱 개체 뒤의 프로세스 PID. 못 물으면 0
       · Read-WithWord · Read-WithExcel · Read-WithPPT -App -LiteralPath → @{ Text = [string]; Visual = [hashtable] }
         Visual 의 열쇠는 영어다 — tables · images · shapes · formulas · charts · fields. 0 인 열쇠는 없다. 파워포인트는 글 없는
-        낱 도형(그림 · 도형을 안 가른다)을 images 에 센다. 사람 말로 옮기는 것은 부르는 쪽 몫이다(read-drm.ps1 의 Format-Visual)
+        낱 도형을 images 에 센다. 사람 말로 옮기는 것은 부르는 쪽 몫이다(read-drm.ps1 의 Format-Visual)
       · Format-Cell · Get-PptLeafShapes · Measure-*Visual · Add-Count — 위 셋이 쓰는 부품. 따로 불러도 된다
       · 남긴 글자 — Get-KeptTextDir · Get-KeptPrint -LiteralPath · Find-KeptText -Print · Save-KeptText -Name -Print -Line -Source -Text.
-        읽은 글자를 홈 아래 한 자리($KEPT_TEXT_DIR_ENV 가 없으면 ~/.drm-read-text)에 「파일 이름.지문.md」로 남기고, 같은 바이트의 파일을
-        지문(SHA-256 앞 12 자)으로 알아본다 — 이름이 달라도 바이트가 같으면 같은 글자다. 남긴 파일은 머리 두 줄(읽을 때의 한 줄 · 원본과
-        뽑은 때) 뒤 $KEPT_SPLIT 아래가 글자다. 이 손은 남긴 것을 지우지 않는다 — 치우는 것은 사람이다
-      · 남긴 그림 — Get-KeptShotDir -Name -Print. 같은 자리 아래 폴더 「파일 이름.지문」의 경로를 낸다(짓지 않는다). 그 안의 그림 이름과
-        기록은 그림을 뜨는 손(capture_slides.ps1 · capture_pages.ps1)이 든다
-      · 그림 줄이기 — Convert-ShotsToWebp -Png 경로들 [-MaxEdge] → PNG 경로 → 나갈 경로. 뜬 PNG 들을 씨앗의 줄이는 손에 한 번에 넘겨
-        WebP 로 바꾼다(못 줄인 것은 PNG 그대로). 앱을 다 끝낸 뒤 한 번 부른다 — 줄이는 손은 프로세스를 띄운다.
-        Convert-ShotToWebp -Png [-MaxEdge] 는 한 장짜리 꼴이다
-      · 번호 고름 — ConvertTo-NumberList -Value -Name. 「1,3 5」 꼴의 쪽 · 장 고름을 번호 열로 풀고, 번호가 아닌 낱말이 있으면 그 낱말을
-        대며 던진다. 빈 고름의 뜻과 범위 밖 가름은 부르는 쪽 몫이다
+        자리는 $KEPT_TEXT_DIR_ENV(없으면 ~/.drm-read-text), 이름은 「파일 이름.지문.md」, 머리 두 줄 뒤 $KEPT_SPLIT 아래가 글자다.
+        남긴 것을 지우지 않는다
+      · 남긴 그림 — Get-KeptShotDir -Name -Print. 같은 자리 아래 폴더 「파일 이름.지문」의 경로를 낸다(짓지 않는다)
+      · 그림 줄이기 — Convert-ShotsToWebp -Png 경로들 [-MaxEdge] → PNG 경로 → 나갈 경로(못 줄인 것은 PNG). Convert-ShotToWebp 는 한 장짜리
+      · 번호 고름 — ConvertTo-NumberList -Value -Name
       · 상수 — $HANDLER · $PROCESS_OF · $MSO_AUTOMATION_FORCE_DISABLE · $OFFICE_EXIT_WAIT_MS · $OFFICE_EXIT_POLL_MS · $SHRINK_ARGS_MAX_CHARS ·
         $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS · $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
       · 파워포인트 글은 머리 한 줄($PPT_SEAT_LEGEND) 뒤 장마다 도형을 위→아래 · 왼→오른으로 세워 줄마다 [위 · 왼] 꼬리표를 앞세운다.
         표의 합친 칸은 첫 칸에만 글을 두고 덮인 칸은 비운다
-    판을 올리는 자 — 함수 이름 · 인자 · 내는 꼴(열쇠 포함) · Job 의 뜻이 바뀌면 1 을 올린다. 함수를 더하거나 안을 고치는 것은 안 올린다.
 
-    $PptWasRunning — New-OfficeApp 이 돌려준 파워포인트가 띄우기 전부터 떠 있던 프로세스인가(붙은 자리인가)를 $script: 범위에 둔다.
-    점 소싱한 함수의 $script: 는 실은 쪽의 스크립트 범위라 그 변수는 부르는 쪽 것이다 — 끝에서 Close-OfficeApps -PptWasRunning(제 끝
-    정리를 쓰는 본체는 Exit-OfficeApp -WasRunning)에 넘긴다. 돌려주지 않는 까닭: 돌려주면 New-OfficeApp 의 내는 꼴이 앱 하나에서 둘로
-    바뀌어 부르는 쪽이 다 풀어 받아야 한다.
-
-    진단은 Write-Warning 으로 낸다 — 표준 출력에는 아무것도 안 낸다. 표준 출력이 제 계약인 앱(JSON 한 줄 따위)은 경고 흐름을 제 자리로
-    보낸다 — 경고를 내는 함수는 고급 함수라 `-WarningVariable` · `-WarningAction` 이 선다(New-OfficeApp 은 안에서 부른 것까지 모은다).
+    왜 이 길인가 · 고칠 때 깨지기 쉬운 자리는 `references/DESIGN.md` 가 든다.
 #>
 
 $DRM_OFFICE_READ_CONTRACT = 1
 
-# ── 남긴 글자 — 같은 바이트의 문서는 앱을 다시 안 띄우고 남긴 글자로 답한다(결정 0231) ──────────────────────
-# 감긴 파일은 읽을 때마다 앱을 띄워야 하고(건당 수 초 · 창이 뜬다) 같은 문서를 다시 읽는 일이 잦다. 규칙은 여기 한 자리다 — 스킬의
-# read-drm.ps1 과 이 부품을 싣는 앱이 같은 자리 · 같은 꼴로 남기고 찾는다. 글자 파일은 .md 다 — Fasoo 가 .txt · .csv 는 감싸고 .md 는
-# 평문으로 둔다
+# ── 남긴 글자 — 같은 바이트의 문서는 앱을 다시 안 띄우고 남긴 글자로 답한다 ──────────────────────
+# 규칙은 여기 한 자리다 — read-drm.ps1 과 이 부품을 싣는 앱이 같은 자리 · 같은 꼴로 남기고 찾는다. .md 다 — Fasoo 가 .txt 는 감싼다
 $KEPT_TEXT_DIR_ENV = 'DRM_READ_TEXT_DIR'
 $KEPT_SPLIT = "`n---`n"                # 남긴 파일에서 머리와 글자를 가르는 줄
 $KEPT_TEXT_EXT = '.md'
@@ -75,9 +57,8 @@ function Get-KeptPrint {
 }
 
 function Find-KeptText {
-    # 그 지문으로 남긴 글자 → @{ Path; Line(읽을 때의 한 줄); Text } — 없거나 · 못 읽거나 · 머리가 없거나(이 손이 남긴 것이 아니다) ·
-    # 글자가 비었으면 $null. 빈 글자를 남긴 것으로 치면 그 문서는 다시는 앱으로 안 읽힌다 — 비었으면 앱으로 다시 읽어 본다.
-    # 던지지 않는다 — 남긴 파일을 다른 프로세스가 쥐었어도(백신 · DRM 에이전트가 훑는 동안) 부르는 쪽은 앱으로 읽으면 된다
+    # 그 지문으로 남긴 글자 → @{ Path; Line(읽을 때의 한 줄); Text } — 없거나 · 못 읽거나 · 머리가 없거나 · 글자가 비었으면 $null.
+    # 던지지 않는다 — 부르는 쪽은 앱으로 읽으면 된다. 빈 글자를 남긴 것으로 치면 그 문서는 다시는 앱으로 안 읽힌다
     param([Parameter(Mandatory = $true)][string]$Print)
     try {
         $dir = Get-KeptTextDir
@@ -107,8 +88,7 @@ function Save-KeptText {
 }
 
 # ── 남긴 그림 — 같은 바이트의 문서에서 앞서 뜬 그림은 앱을 다시 안 띄우고 그 그림으로 답한다 ──────────────────
-# 그림을 뜨는 것도 글자와 같은 값을 치른다(앱을 띄우고, 슬라이드쇼는 화면을 가져간다). 자리는 남긴 글자 곁의 폴더 「파일 이름.지문」
-# 이다 — 한 문서의 글자와 그림이 한 자리에 서고 치울 때도 한 자리다. 그림의 이름과 무엇을 떴나의 기록은 뜨는 손이 든다
+# 자리는 남긴 글자 곁의 폴더 「파일 이름.지문」이다. 그림의 이름과 무엇을 떴나의 기록은 뜨는 손이 든다
 function Get-KeptShotDir {
     # 그 지문의 그림 폴더 경로 — 이미 있으면 그것(이름이 달라도 지문이 같으면 같은 문서다), 없으면 「이름.지문」 자리. 짓지는 않는다
     param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][string]$Print)
@@ -127,13 +107,8 @@ function Get-KeptShotDir {
 $SHRINK_ARGS_MAX_CHARS = 6000
 
 function Convert-ShotsToWebp {
-    # 뜬 PNG 들을 씨앗의 줄이는 손(_shrink.py --batch — 진본은 설정 저장소 seeds/check/)에 한 번에 넘겨 무손실 WebP 로 바꾸고,
-    # PNG 경로 → 나갈 경로(줄였으면 WebP · 못 줄였으면 그 PNG)의 해시를 낸다. 긴 변은 -MaxEdge, 안 주면 그 손의 기본 눈금이다. 그림의
-    # 값은 치수가 정하고 WebP 는 바이트만 줄인다. 줄이는 손을 못 찾거나 · 못 띄우거나 · 진 그림은 경고하고 PNG 그대로 둔다 — 큰
-    # 그림이라고 안 내는 것보다 낫고, 값을 더 무는 판이라 그 판정이 한 줄 서야 한다.
-    # 줄였나는 그림마다 WebP 가 생겼나로 가른다 — 넘기기 전에 그 이름의 WebP 를 지운다. 안 지우면 줄이는 손이 통째로 진 판(PIL 없음)에
-    # 앞서 남은 그림이 이번에 줄인 것으로 세어진다.
-    # 줄이는 손은 프로세스를 띄우므로 그림마다 부르지 않는다 — 뜨는 손은 앱을 다 끝낸 뒤 이 함수를 한 번 부른다
+    # 뜬 PNG 들을 씨앗의 줄이는 손(_shrink.py --batch)에 한 번에 넘겨 무손실 WebP 로 바꾸고, PNG 경로 → 나갈 경로(못 줄였으면 그 PNG)를
+    # 낸다. 못 줄인 그림은 경고하고 PNG 그대로 둔다. ⚠ 줄였나는 WebP 가 생겼나로 가르므로 넘기기 전에 그 이름의 WebP 를 지운다
     param([string[]]$Png = @(), [int]$MaxEdge = 0)
     $converted = @{}
     foreach ($shot in $Png) { $converted[$shot] = $shot }
@@ -203,9 +178,8 @@ function Convert-ShotToWebp {
 
 # ── 번호 고름 — 그림을 뜨는 손 둘(capture_pages.ps1 의 -Pages · capture_slides.ps1 의 -Slides)이 같은 꼴을 받는다 ──────────
 function ConvertTo-NumberList {
-    <# 쉼표나 공백으로 나눈 번호 고름 → 정수 열(준 차례 · 겹친 번호는 한 번). 번호가 아닌 낱말이 하나라도 있으면 그 낱말과 받는 꼴을
-       대며 던진다 — 조용히 버리면 고른 것의 일부만 뜨고 부른 쪽은 다 뜬 줄 안다. 빈 고름은 빈 열이다 — 「안 골랐다」의 뜻(전부인가 ·
-       멈추나)과 범위 밖 가름은 부르는 쪽이 정한다(끝 번호는 문서를 열어야 안다). $Name 은 실패 문구에 대는 인자 이름이다 #>
+    <# 쉼표나 공백으로 나눈 번호 고름 → 정수 열(준 차례 · 겹친 번호는 한 번). 번호가 아닌 낱말이 있으면 그 낱말을 대며 던진다 — 조용히
+       버리면 일부만 뜬다. 빈 고름은 빈 열이고 그 뜻과 범위 밖 가름은 부르는 쪽 몫이다. $Name 은 실패 문구에 대는 인자 이름이다 #>
     param([string]$Value, [Parameter(Mandatory = $true)][string]$Name)
     $list = @()
     foreach ($token in ($Value -split '[,\s]+' | Where-Object { $_ })) {
@@ -218,8 +192,7 @@ function ConvertTo-NumberList {
     return $list
 }
 
-# 어느 확장자를 어느 앱이 드나. PDF 는 워드가 든다 — Acrobat COM 은 이 기계에서
-# 클래스 미등록(0x80040154)이라 못 탄다.
+# 어느 확장자를 어느 앱이 드나. PDF 는 워드가 든다 — Acrobat COM 은 Acrobat 이 깔린 PC 에만 있다
 $HANDLER = @{
     '.doc'  = 'Word';  '.docx' = 'Word';  '.rtf'  = 'Word';  '.pdf' = 'Word'
     '.xls'  = 'Excel'; '.xlsx' = 'Excel'; '.xlsm' = 'Excel'; '.csv' = 'Excel'
@@ -246,11 +219,7 @@ $PPT_CELL_BREAK = '<br>'
 $PPT_CELL_SAME_PT = 0.5
 
 # ── 띄운 앱은 이 프로세스에 묶는다 ───────────────────────────────────────
-# 오피스는 COM 서버라 이 PowerShell 의 자식이 아니다 — 부르는 쪽이 시한으로 이 프로세스를 끊으면 본체의
-# finally 가 안 돌고, 숨은 앱이 문서를 연 채 남는다. 그래서 띄운 PID 를 Job(KILL_ON_JOB_CLOSE)에 넣는다 —
-# 이 프로세스가 어떻게 끝나든 Job 손잡이가 닫히며 그 앱이 함께 끝난다. 사람이 먼저 띄운 앱은 안 든다
-# (New-OfficeApp 이 이 판이 띄운 프로세스만 넣는다). ⚠ 끊긴 판에서는 그 몇 초 사이 사람이 이 숨은 인스턴스로 연 문서도
-# 함께 닫힌다 — 정상으로 끝나는 판은 Close-OfficeApps 가 남은 문서를 세어 그 앱을 살려 둔다.
+# 오피스는 COM 서버라 이 프로세스의 자식이 아니다 — 끊긴 판에도 숨은 앱이 안 남게 띄운 PID 를 Job(KILL_ON_JOB_CLOSE)에 넣는다.
 # 한 프로세스에 두 번 실려도 선다 — 같은 이름의 형을 두 번 더하면 Add-Type 이 진다
 if (-not ('DrmRead.Job' -as [type])) {
     Add-Type -Namespace DrmRead -Name Job -MemberDefinition @'
@@ -359,10 +328,8 @@ function Get-OfficeAppPid {
 }
 
 function New-OfficeApp {
-    <# 앱 하나를 띄운다. 파일마다 띄우면 건당 수 초씩 붙으므로 앱은 재사용한다.
-       이 판이 띄운 프로세스만 $SpawnedPids 에 더하고 Job 에 넣는다 — 사람이 쓰던 프로세스는 안 든다. 어느 프로세스가 이 앱인가는
-       앱의 창 손잡이가 답한다(Get-OfficeAppPid). 못 물으면 띄우기 전에 없던 PID 가 하나일 때만 그것으로 친다 — 둘 이상이면 띄우는
-       사이 사람이 연 앱이 섞였다는 뜻이라 어느 것도 이 판의 것으로 안 친다(못 가린 프로세스를 Job 에 넣으면 사람의 문서가 함께 끝난다) #>
+    <# 앱 하나를 띄워 돌려준다(부르는 쪽이 재사용한다). 이 판이 띄운 프로세스만 $SpawnedPids 에 더하고 Job 에 넣는다 — 못 가린
+       프로세스는 안 넣는다(넣으면 사람의 문서가 함께 끝난다 · 가르는 법은 references/DESIGN.md) #>
     [CmdletBinding()]
     param([string]$AppName, [ref]$SpawnedPids, [IntPtr]$Job)
     $beforePids = @(Get-Process -Name $PROCESS_OF[$AppName] -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
@@ -409,21 +376,10 @@ $OFFICE_EXIT_WAIT_MS = 800
 $OFFICE_EXIT_POLL_MS = 100
 
 function Close-OfficeApps {
-    <# 판이 쓴 앱들을 끝낸다 — 앱을 끄고 프로세스를 끝내는 판정은 이 함수 하나다(프로세스를 강제로 끝내는 줄은 여기뿐이다).
-       받는 것 — -AppByName(앱 이름 → 앱 개체 · $null 은 건너뛴다) · -SpawnedPids(New-OfficeApp 이 채운 PID → 앱 이름) · -Job(없으면 Zero) ·
-       -PptWasRunning(New-OfficeApp 이 둔 값). 부르기 전에 이 판이 연 문서를 닫는다(Close-OwnedDocument).
-       판정은 PID 가 아니라 앱에게 묻는다 — 「이 판의 것이 아닌 문서가 열려 있나」:
-         1. 앱마다 Exit-OfficeApp — 남은 문서가 없고 붙은 자리(사람이 쓰던 파워포인트)가 아니면 Quit 한다. 문서가 남았으면 판이 도는
-            사이 사람이 이 인스턴스로 연 것이라 앱을 살려 둔다
-         2. Quit 한 앱의 프로세스(이 판이 띄운 것)가 $OFFICE_EXIT_WAIT_MS 안에 스스로 안 끝나면 강제로 끝낸다 — 파워포인트는 Fasoo
-            DRM 훅이 Quit 뒤에도 프로세스를 붙잡아 권한 경고창이 되풀이되고, 남은 프로세스는 문서 파일을 쥐어 다음 읽기 · 빌드를 막는다.
-            Quit 을 안 한 앱은 끝내지 않는다 — 그때 남는 것은 숨은 앱이지 닫힌 사람의 문서가 아니다
-         3. Job 손잡이를 닫는다 — Quit 을 안 한 채 살아 있는 프로세스(이 판이 띄운 것)가 하나라도 있으면 끝내기 규칙을 먼저 끈다
-            (안 끄면 손잡이가 닫히며 그 앱이 함께 끝난다). 없으면 켠 채 닫아 남은 것을 거둔다. 끊긴 판은 여기 안 닿으니 Job 이
-            그대로 끝낸다
-       내는 것은 없다. 부른 뒤 -AppByName 의 앱 개체와 -Job 은 못 쓴다.
-       ⚠ 고급 함수여야 한다 — 인자가 어긋나 못 묶인 값(이름과 값이 붙은 「-AppByName@{…}」)을 단순 함수는 말없이 버리고, 그러면 앱을
-         하나도 안 받은 판이 되어 Job 이 사람의 문서째 끝낸다. 고급 함수는 그 자리에서 던진다 #>
+    <# 판이 쓴 앱들을 끝낸다 — 프로세스를 강제로 끝내는 줄은 여기뿐이다. 부르기 전에 이 판이 연 문서를 닫는다(Close-OwnedDocument).
+       받는 것 — -AppByName(앱 이름 → 앱 개체 · $null 은 건너뛴다) · -SpawnedPids · -Job(없으면 Zero) · -PptWasRunning. 내는 것은 없고,
+       부른 뒤 앱 개체와 -Job 은 못 쓴다. 차례(Quit → 남은 제 프로세스 끝내기 → Job 닫기)와 까닭은 references/DESIGN.md 「끝내는 판정」.
+       ⚠ 고급 함수여야 한다 — 단순 함수는 못 묶인 인자를 말없이 버려, 앱을 하나도 안 받은 판의 Job 이 사람의 문서째 끝낸다 #>
     [CmdletBinding()]
     param([hashtable]$AppByName = @{}, [hashtable]$SpawnedPids = @{}, [IntPtr]$Job = [IntPtr]::Zero, [bool]$PptWasRunning = $false)
     $quitOf = @{}                          # 앱 이름 → Quit 했나. 거짓이면 문서가 남아(또는 못 세어) 살려 둔 것
@@ -466,12 +422,8 @@ function Close-OfficeApps {
 }
 
 # ── 글 밖에 있는 것을 센다 ────────────────────────────────────────────────
-# 글자만 뽑으면 표 · 그림 · 수식 · 차트는 뽑히지 않거나 평탄해진다. 그래서 「글로 담기지 않는
-# 것이 이 문서에 몇 개 있나」를 문서 자신에게 묻는다 — 셀 수 있는 값이라 0 이면 그림이 필요
-# 없다고 단정할 수 있다. 글자 수로는 못 가른다: 몇 자부터 짧은가는 문서마다 달라 답이 없고,
-# 셀 값만으로 완결된 시트와 수식 하나가 전부인 문서가 같은 길이로 나온다.
-# 묻는 이름은 앱마다 다르다. 못 묻는 항목은 0 으로 둔다 — 판의 차이로 없는 속성이 있다.
-# 열쇠는 영어(머리말의 계약) — 사람 말로 옮기는 것은 부르는 쪽이 한다.
+# 「글로 담기지 않는 것이 몇 개 있나」를 문서 자신에게 묻는다 — 0 이면 그림이 필요 없다(글자 수로 못 가르는 까닭은 references/DESIGN.md).
+# 못 묻는 항목은 0 으로 둔다 — 판의 차이로 없는 속성이 있다. 열쇠는 영어(머리말의 계약)다
 function Add-Count {
     param([hashtable]$Into, [string]$Key, [scriptblock]$Get)
     try {
@@ -509,11 +461,9 @@ function Measure-ExcelVisual {
 }
 
 function Get-PptLeafShapes {
-    <# 도형 모음을 묶음 안까지 편 낱 도형의 열 — 묶음(msoGroup 6)과 묶음이 든 개체 틀(msoPlaceholder 14)은 제 글이
-       없고 GroupItems 가 글을 든다. 안 펴면 묶음 안 글은 안 나오고 묶음 안 그림은 「글 밖」에 안 세어져, 「글 밖이
-       0 이면 글자가 전부다」가 거짓이 된다. 깊이 상한을 넘는 묶음은 그 자리에서 도형 하나로 센다.
-       빌린 규격 — 동료 저장소 sejuone-cloud/pgpt-one-click-connect `office-com-read/scripts/read-office.ps1` 의
-       `Write-PPTShape`(2ef0ddb3f65c): 묶음이 든 개체 틀 · 깊이 상한. 손으로 따라간다 #>
+    <# 도형 모음을 묶음(msoGroup 6 · 묶음이 든 개체 틀 14) 안까지 편 낱 도형의 열 — 안 펴면 묶음 안 글과 그림이 빠진다. 깊이 상한을
+       넘는 묶음은 도형 하나로 센다. 빌린 규격 — sejuone-cloud/pgpt-one-click-connect `office-com-read/scripts/read-office.ps1` 의
+       `Write-PPTShape`(2ef0ddb3f65c). 손으로 따라간다 #>
     param($Shapes, [int]$Depth = 0)
     foreach ($shape in $Shapes) {
         $isGroup = $false
@@ -570,12 +520,9 @@ function Get-Decimals([string]$Fmt) {
 }
 
 function Format-Cell {
-    <# Value2 한 칸 → 사람이 읽는 글. 수는 날짜 · 시각 · 백분율 · 천 단위 · 고정 소수만 열의 서식으로 되살리고
-       나머지는 값 그대로다 — 보이는 글자(.Text)는 칸이 좁으면 날짜 대신 `########` 이 오고 칸마다 묻는 것이라,
-       값을 한 번에 받고 뜻이 갈리는 꼴만 되살린다. 통화 기호 · 사용자 꼴 · 칸마다 다른 꼴은 날값으로 온다 —
-       열마다 서식 하나만 묻기 때문이다.
-       빌린 규격 — mail-secretary `secretary/office_read.ps1` 의 `Format-Cell`(9f9cf9b) · 오류 칸 표는 동료 저장소
-       sejuone-cloud/pgpt-one-click-connect `office-com-read/scripts/read-office.ps1`(2ef0ddb3f65c). 손으로 따라간다 #>
+    <# Value2 한 칸 → 사람이 읽는 글. 수는 날짜 · 시각 · 백분율 · 천 단위 · 고정 소수만 열의 서식 $Fmt 로 되살리고 나머지는 값 그대로다
+       (`.Text` 를 안 쓰는 까닭은 references/DESIGN.md). 빌린 규격 — mail-secretary `secretary/office_read.ps1` 의 `Format-Cell`(9f9cf9b) ·
+       오류 칸 표는 sejuone-cloud/pgpt-one-click-connect `office-com-read/scripts/read-office.ps1`(2ef0ddb3f65c). 손으로 따라간다 #>
     param($Value, [string]$Fmt)
     if ($null -eq $Value) { return '' }
     if ($Value -is [int]) { $e = $XL_ERROR_TEXT[$Value]; if ($e) { return $e } }

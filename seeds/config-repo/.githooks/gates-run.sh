@@ -43,8 +43,10 @@
 #   걷은 조각(`_GATES_RETIRED`)은 예외다 — 못 찾아도 말없이 지나간다.
 #
 # ── 고르기([when]) ──────────────────────────────────────────────────────────
-#   바뀐 경로 — pre-commit 은 담긴 것(`git diff --cached`), pre-push 는 올라갈 가지와 갈라진 자리부터 작업
-#     트리까지다(`repo-gates` 조각 · 결정 0076 과 같은 뜻). 상태로 거르지 않고(지운 것도 바뀐 것이다)
+#   바뀐 경로 — pre-commit 은 담긴 것(`git diff --cached`), pre-push 는 올라갈 가지와 갈라진 자리부터 미는
+#     커밋(HEAD)까지와 작업 트리까지를 합친 것이다(`repo-gates` 조각 · 결정 0076 과 같은 뜻). 둘 다 세는 것은 조각이 재는
+#     자리가 둘이어서다 — 미는 커밋을 재는 조각(shellcheck · skill-checks · tool-homes)은 커밋한 뒤 작업 트리에서만 되돌린
+#     경로를, 작업 트리를 재는 조각은 커밋 안 한 고침을 놓치면 안 된다. 상태로 거르지 않고(지운 것도 바뀐 것이다)
 #     `--no-renames` 로 묻는다(옮긴 파일은 떠난 자리도 바뀐 것이다). 다른 절은 안 고른다
 #   글롭은 뿌리 기준 `/` 경로에 셸 `case` 무늬로 댄다 — `*` 는 `/` 도 넘는다. 넘치게 걸리는 쪽은 조각이
 #     한 번 더 뜨는 값이고, 모자라게 걸리는 쪽은 검사가 조용히 빠지는 값이다
@@ -120,8 +122,13 @@ gates_changed() {
         pre-push)
             _gc_base=$(git merge-base '@{upstream}' HEAD 2>/dev/null) ||
                 { _gates_why='올라갈 가지(upstream)가 없어 고친 경로를 못 가린다'; return 1; }
-            git -c core.quotePath=false diff --name-only --no-renames "$_gc_base" >"$2" 2>/dev/null ||
-                { _gates_why='고친 경로를 못 뽑았다(git diff)'; return 1; } ;;
+            # 두 물음을 한 목록으로 — 겹친 경로는 한 번만 둔다(조각이 같은 파일을 두 번 재지 않게). 뜻은 머리말 「고르기」.
+            # ⚠ 미는 커밋 쪽 줄은 한 줄로 둔다 — 게이트지기 검사가 이 줄을 지운 러너로 양성 대조를 돈다.
+            _gc_w=$(git -c core.quotePath=false diff --name-only --no-renames "$_gc_base" 2>/dev/null) ||
+                { _gates_why='고친 경로를 못 뽑았다(git diff)'; return 1; }
+            _gc_h=$(git -c core.quotePath=false diff --name-only --no-renames "$_gc_base" HEAD 2>/dev/null) || { _gates_why='미는 커밋의 경로를 못 뽑았다(git diff … HEAD)'; return 1; }
+            printf '%s\n%s\n' "${_gc_h:-}" "$_gc_w" | awk 'length && !seen[$0]++' >"$2" ||
+                { _gates_why='고친 경로를 못 적었다'; return 1; } ;;
         *)
             _gates_why="[$1] 절은 바뀐 경로로 안 고른다"; return 1 ;;
     esac

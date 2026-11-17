@@ -1,6 +1,6 @@
-"""보이는 글 — 사내 앱의 글(메일 · 게시글 · 사규 본문)에서 사람 눈에 안 보이는 것을 걷고 읽을 글자로 푸는 한 손. 글을 모델이 읽게 내기 전에
-지난다 — 사람 눈에는 안 보이는데 모델에게만 읽히는 글(숨긴 지시)이 그대로 넘어가지 않게. 이 스킬의 명령(``mail.py``) · 형제 스킬
-company-board · company-regulation 의 명령 · 깔린 자리에서 이 손을 싣는 앱이 함께 쓴다 — 본문 HTML 을 푸는 손은 이 한 벌이다.
+"""보이는 글 — 사내 앱의 본문 HTML(메일 · 게시글 · 사규)에서 사람 눈에 안 보이는 것을 걷고 읽을 글자로 푼다. 모델에게 글을 내기 전에
+지나는 자리라, 숨긴 지시가 대화로 넘어가지 않는다. 이 스킬의 명령 · 형제 스킬 company-board · company-regulation · 이 손을 싣는 앱이
+함께 쓰는 한 벌이다.
 
 부르는 꼴::
 
@@ -12,21 +12,15 @@ company-board · company-regulation 의 명령 · 깔린 자리에서 이 손을
     text, n = visible.invisible(text)      # 폭 없는 문자 · 방향 뒤집기 · 태그 문자 · 제어 문자를 걷고 그 수
     answer = visible.shown(answer)         # 답(dict · list · 글자가 겹친 것)의 글자마다 `invisible` 을 지난 사본
 
-`parse` 가 걷는 것 — 안 그리는 태그(스크립트 · 스타일 · 머리 · 개체 …) · 주석 · 숨긴 요소(`hidden` 속성 · display:none · visibility ·
-투명 · 글자 크기 1.5px 이하 · 잘린 0 높이 · 화면 밖으로 민 글) · 바탕과 같은 색의 글. 스타일은 요소의 `style` 과
-`<style>` 의 단순 선택자(태그 · .클래스 · #아이디) 규칙을 함께 본다. 그려진 화면이 아니라 마크업 · 스타일로 가른다. 깨진 HTML 도
-끝까지 읽는다 — 못 닫은 숨긴 요소는 문서 끝까지 숨긴 것으로 본다(브라우저가 그렇게 그린다). 무엇을 걷나는 어느 꼴로 부르든 같다.
+`parse` 는 안 그리는 태그 · 주석 · 숨긴 요소 · 바탕과 같은 색의 글을 걷는다. 그려진 화면이 아니라 마크업 · 스타일(요소의 `style` 과
+`<style>` 의 단순 선택자 규칙)로 가르고, 못 닫은 숨긴 요소는 브라우저처럼 문서 끝까지 숨긴다. 무엇을 걷나는 어느 꼴로 부르든 같다.
 
-`parse` 가 내는 것 — `Visible`. 글은 그려진 꼴의 줄이고, 그려지는 그림은 그 자리에 「[그림 N]」 으로 서며 주소는 `images` 의 N 번째다 — 블록 경계가 줄을 가르고, 마크업 안의 줄바꿈 · 겹친 빈칸은 한 빈칸이다(`<pre>`
-밖). `hidden` 은 걷은 숨긴 덩이(실행 태그 · 숨긴 요소 · 바탕색 글)의 수, `comments` 는 걷은 주석의 글이다 — 주석은 어느 메일
-프로그램도 안 그리는 글이라 걷기만 하고, 숨긴 덩이로 셀지는 부르는 쪽이 가른다(Outlook 의 조건부 주석은 거의 모든 메일에 있다).
-폭 없는 문자는 `parse` 가 안 걷는다 — HTML 이 아닌 글(제목 · 이름 · 평문 본문)에도 들어 `invisible` 이 따로 걷는다.
+`Visible` — `text` 는 그려진 꼴의 줄이고, 그림은 그 자리에 「[그림 N]」 으로 서며 주소는 `images` 의 N 번째다. `hidden` 은 걷은 숨긴 덩이의
+수, `comments` 는 걷은 주석의 글이다 — 주석을 숨긴 덩이로 셀지는 부르는 쪽이 가른다. 폭 없는 문자는 `parse` 가 안 걷는다 — HTML 아닌
+글(제목 · 이름 · 평문)에도 들어 `invisible` 이 따로 걷는다.
 
-표 꼴(`tables=True`)의 줄 — 표는 한 행이 한 줄이고 칸을 `TABLE_SEP` 로 가른다. 칸 안의 문단 · 줄바꿈은 빈칸이 되고, 합친 칸(rowspan ·
-colspan)은 차지한 자리마다 같은 글자를 되풀이해 줄마다 칸 수가 같다. 칸 안에 든 표는 그 칸 안에서 행을 `ROW_SEP` 로 잇는다. 숨긴 칸 · 행은
-글자만 빠지고 자리는 지킨다 — 열이 안 밀리고, 글자가 하나도 안 남은 행은 줄을 안 낸다. 표 밖은 블록마다 앞뒤로 줄을 갈라 문단 사이가 빈 줄이고,
-마크업 안의 줄바꿈은 그대로 줄바꿈이다. `quotes` 는 그려진 꼴에만 건다 — 표 꼴에는 인용 머리를 안 단다.
-표준 라이브러리만 쓴다.
+표 꼴(`tables=True`) — 표의 한 행이 한 줄이고 칸을 `TABLE_SEP` 로 가른다. 합친 칸은 차지한 자리마다 같은 글자를 되풀이하고 숨긴 칸은
+글자만 빠져, 줄마다 칸 수가 같다. 칸 안에 든 표는 행을 `ROW_SEP` 로 잇는다. `quotes` 는 표 꼴에 안 건다. 표준 라이브러리만 쓴다.
 """
 
 from __future__ import annotations
@@ -47,6 +41,7 @@ _NAMED_COLORS = {"white": (255, 255, 255), "snow": (255, 250, 250), "ivory": (25
                  "silver": (192, 192, 192), "gray": (128, 128, 128), "grey": (128, 128, 128), "navy": (0, 0, 128),
                  "blue": (0, 0, 255)}
 _TRANSPARENT = "transparent"
+_IMPORTANT = re.compile(r"!\s*important\s*$", re.IGNORECASE)
 _PAGE_BG = (255, 255, 255)     # 메일 프로그램의 기본 바탕 — 흰 글씨는 바탕을 안 정했으면 흰 바탕 위에 선다
 _COLOR_NEAR = 24               # 글자색과 바탕이 채널마다 이만큼 안이면 안 보인다고 본다
 _SKIP_TAGS = frozenset({"script", "style", "head", "title", "noscript", "template", "svg", "object",
@@ -90,7 +85,6 @@ def _color(value: str) -> tuple[int, int, int] | str | None:
         if len(h) == 3:
             h = "".join(c * 2 for c in h)
         return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
-    # rgb(255,255,255) · rgb(255 255 255) · rgb(255 255 255 / 0.5) 를 다 받는다
     m = re.fullmatch(r"rgba?\(\s*(\d+)\s*[,\s]\s*(\d+)\s*[,\s]\s*(\d+)\s*(?:[,/]\s*([\d.]+)\s*)?\)", v)
     if m:
         if m.group(4) is not None and float(m.group(4)) <= 0.05:
@@ -100,11 +94,12 @@ def _color(value: str) -> tuple[int, int, int] | str | None:
 
 
 def _decls(style: str) -> dict[str, str]:
+    """선언 글 → {속성: 값}. 값의 `!important` 는 뗀다 — 남기면 `visibility:hidden !important` 같은 값이 숨김 판정에 안 걸린다."""
     out = {}
     for part in (style or "").split(";"):
         if ":" in part:
             k, v = part.split(":", 1)
-            out[k.strip().lower()] = v.strip().lower()
+            out[k.strip().lower()] = _IMPORTANT.sub("", v).strip().lower()
     return out
 
 
@@ -119,15 +114,15 @@ def _length(v: str) -> float | None:
 
 
 def _hard_hidden(d: Mapping[str, str], attrs: Mapping[str, str]) -> bool:
-    """그 요소와 아래가 통째로 안 보이나 — 스타일 · 속성으로만 가른다(그려진 화면이 아니라). 잣대는 쓰는 사람이 메일을 여는
-    웹메일(브라우저)이다 — Outlook 만 안 그리는 `mso-hide:all` · 흰 바탕이 아닌 곳의 흰 글씨 · 넘침을 안 자른 0 높이는 그 화면에
-    그려지므로 숨긴 글이 아니다."""
+    """그 요소와 아래가 통째로 안 보이나 — 스타일 · 속성으로 가른다. 잣대는 메일을 여는 웹메일(브라우저)이라, Outlook 만 안 그리는
+    `mso-hide:all` · 넘침을 안 자른 0 높이는 숨긴 글이 아니다."""
     if "hidden" in attrs:
         return True
     if d.get("display", "").startswith("none") or d.get("visibility", "") in ("hidden", "collapse"):
         return True
+    opacity = d.get("opacity", "").split()[:1]
     try:
-        if "opacity" in d and float(d["opacity"].split()[0]) <= 0.05:
+        if opacity and float(opacity[0].rstrip("%")) / (100 if opacity[0].endswith("%") else 1) <= 0.05:   # `0%` 꼴도 투명이다
             return True
     except ValueError:
         pass
@@ -207,6 +202,7 @@ class _Parser(HTMLParser):
         self.parts: list[str] = []
         self.stack: list[tuple[str, bool, Any, Any, bool]] = []   # (태그, 숨김, 글자색, 바탕, 줄바꿈을 그리나)
         self.skip = 0
+        self.head = 0       # 안 닫힌 `<head>` 의 수 — `</head>` 는 빼도 되는 태그라, `<body>` 가 오면 브라우저처럼 거기서 닫는다
         self.hidden = 0
         self.comments: list[str] = []
         self.rules: dict[str, dict[str, str]] = {}           # 단순 선택자 → 선언
@@ -293,6 +289,10 @@ class _Parser(HTMLParser):
         attrs = {k.lower(): (v or "") for k, v in attrs_list}
         if tag == "style":
             self._style_buf = []
+        if tag == "head":
+            self.head += 1
+        elif tag == "body" and self.head:
+            self.skip, self.head = max(0, self.skip - self.head), 0
         if tag in _SKIP_TAGS:
             if tag not in _VOID_TAGS:
                 self.skip += 1
@@ -319,7 +319,9 @@ class _Parser(HTMLParser):
             d.setdefault("background-color", attrs["bgcolor"])
         if tag == "font" and attrs.get("color"):
             d.setdefault("color", attrs["color"])
-        own_bg = _color(d.get("background-color", "")) or _color(d.get("background", "").split(" ")[0])
+        # 줄임 꼴 `background` 의 색은 어느 자리에도 선다(`url(…) #000`) — 첫 낱말만 보면 어두운 바탕의 흰 글씨를 숨긴 글로 걷는다
+        own_bg = _color(d.get("background-color", "")) or next(
+            (c for c in map(_color, d.get("background", "").split()) if c is not None), None)
         if own_bg is not None and own_bg != _TRANSPARENT:
             bg = own_bg
         own_col = _color(d.get("color", ""))
@@ -343,6 +345,10 @@ class _Parser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
         if tag in _SKIP_TAGS:
+            if tag == "head":
+                if not self.head:
+                    return      # `<body>` 가 이미 닫은 머리 — 다시 빼면 본문의 다른 숨김이 풀린다
+                self.head -= 1
             if tag == "style" and self._style_buf is not None:
                 self._load_rules("".join(self._style_buf))
                 self._style_buf = None
@@ -389,8 +395,8 @@ class _Parser(HTMLParser):
 
 
 class _TableParser(_Parser):
-    """HTML → 보이는 글, 표 꼴의 줄로(머리말 「표 꼴의 줄」). 무엇이 보이나는 `_Parser` 그대로고 줄을 적는 갈고리만 다르다 — 숨긴
-    요소 안에서도 표의 뼈대(행 · 칸 · 합친 칸)는 따라가 열이 안 밀리게 하고 글자만 뺀다. 안 그리는 태그(`skip`) 안의 뼈대는 안 본다."""
+    """HTML → 표 꼴의 줄. 무엇이 보이나는 `_Parser` 그대로고 줄을 적는 갈고리만 다르다 — 숨긴 요소 안에서도 표의 뼈대는 따라가
+    열이 안 밀리게 한다. 안 그리는 태그(`skip`) 안의 뼈대는 안 본다."""
 
     def __init__(self, numbered: bool) -> None:
         super().__init__(False, numbered)
@@ -468,9 +474,8 @@ class _TableParser(_Parser):
 
 
 def parse(html: str, *, quotes: bool = False, tables: bool = False, numbered: bool = True) -> Visible:
-    """HTML 한 편 → `Visible`. `quotes` 면 인용 안의 글 줄 머리에 `QUOTE_MARK` 를 단다. `tables` 면 표 꼴의 줄로 낸다(머리말 「표 꼴의
-    줄」). `numbered` 가 거짓이면 그림 자리가 번호 없는 「[그림]」 이다 — 주소는 그대로 `images` 에 든다. 예외를 안 올린다 —
-    `html.parser` 가 넘어지면 받은 데까지 쓴다."""
+    """HTML 한 편 → `Visible`(꼴은 머리말). `numbered` 가 거짓이면 그림 자리가 번호 없는 「[그림]」 이고 주소는 그대로 `images` 에 든다.
+    예외를 안 올린다 — `html.parser` 가 넘어지면 받은 데까지 쓴다."""
     p = _TableParser(numbered) if tables else _Parser(quotes, numbered)
     try:
         p.feed(html or "")
@@ -481,15 +486,15 @@ def parse(html: str, *, quotes: bool = False, tables: bool = False, numbered: bo
 
 
 def body(html: str | None, *, numbered: bool = True) -> Visible:
-    """사내 앱의 본문 HTML 한 편 → JSON 으로 답하는 명령이 실을 `Visible` — 표 꼴로 풀고(`parse(tables=True)`), 글에서 보이지 않는
-    문자까지 걷는다(`invisible`). 이어 읽기의 자리 · 글자 수를 이 글로 세면 답에 실린 글과 맞는다. `images` · `hidden` 은 `parse` 그대로다."""
+    """본문 HTML 한 편 → JSON 으로 답하는 명령이 실을 `Visible` — 표 꼴로 풀고 보이지 않는 문자까지 걷은 글이다. 이어 읽기의 자리 ·
+    글자 수는 이 글로 센다 — 그래야 답에 실린 글과 맞는다."""
     v = parse(html or "", tables=True, numbered=numbered)
     return Visible(invisible(v.text)[0], v.hidden, v.comments, v.images)
 
 
 def invisible(text: str) -> tuple[str, int]:
-    """(걷은 글, 걷은 수). 서식 문자(폭 없는 문자 · 방향 뒤집기 · 태그 문자)와 줄바꿈 · 탭 밖의 제어 문자를 걷는다 — 낱말을 쪼개
-    눈에 안 띄게 하거나 파일 확장자를 뒤집어 보이는 수를 막는다. 글자를 바꾸지는 않는다(호환 글자 고르기는 부르는 쪽 몫)."""
+    """(걷은 글, 걷은 수). 서식 문자(폭 없는 문자 · 방향 뒤집기 · 태그 문자)와 줄바꿈 · 탭 밖의 제어 문자를 걷는다. 글자를 바꾸지는
+    않는다 — 호환 글자 고르기는 부르는 쪽 몫이다."""
     out, gone = [], 0
     for ch in (text or "").replace("\r\n", "\n").replace("\r", "\n"):
         cat = unicodedata.category(ch)
@@ -501,8 +506,8 @@ def invisible(text: str) -> tuple[str, int]:
 
 
 def shown(answer):
-    """답(dict · list · 글자가 겹친 것)의 글자마다 `invisible` 을 지난 사본 — JSON 하나로 답하는 명령이 내기 직전에 지난다. 사내 앱에서
-    온 글이 제목 · 이름 · 본문 어느 칸으로 나가든 이 한 자리를 지나게 하려는 것이다. 열쇠와 글자 아닌 값은 그대로다."""
+    """답(dict · list · 글자가 겹친 것)의 글자마다 `invisible` 을 지난 사본 — JSON 으로 답하는 명령이 내기 직전에 지나, 어느 칸으로
+    나가든 이 한 자리를 거친다. 열쇠와 글자 아닌 값은 그대로다."""
     if isinstance(answer, str):
         return invisible(answer)[0]
     if isinstance(answer, dict):

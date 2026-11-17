@@ -2,9 +2,8 @@
 명령은 안 쓴다(그 명령은 웹메일 화면으로만 보낸다 — draft_send.js).
 
 무엇을 하나
-    스크립트가 HTML · 평문 메일을 사내 중계(SMTP)로 보낸다. 기본 중계에서 잰
-    동작을 기본값과 난간으로 박아 두었다 — 환경변수를 하나도 안 줘도 사내망
-    안에서는 첫 판에 나간다.
+    HTML · 평문 메일을 사내 중계(SMTP)로 보낸다. 기본값과 난간은 기본 중계에서 잰 동작이라 환경변수를 하나도 안 줘도
+    사내망 안에서는 첫 판에 나간다 — 그 동작은 SOURCES.md 「mailer.py」 가 들고, 회사 PC 에서 다시 재기 전에는 바꾸지 않는다.
 
 어떻게 부르나
     이 파일을 스크립트 곁에 두고 부른다::
@@ -14,8 +13,7 @@
         mailer.send("제목", to=["a@company.com"], sender="me@company.com",
                     html="<p>본문</p>")
 
-    수신자를 파일로 두는 스크립트는 **오래 걸리는 일을 시작하기 전에** 읽는다 —
-    발송 직전에 설정이 틀린 것을 알면 그때까지 한 일을 버린다::
+    수신자를 파일로 두는 스크립트는 **오래 걸리는 일을 시작하기 전에** 읽는다 — 발송 직전에 틀린 줄 알면 그때까지 한 일을 버린다::
 
         recipients = mailer.load_recipients("recipients.json")  # 틀리면 여기서 MailConfigError
         ...오래 걸리는 일...
@@ -30,7 +28,7 @@
     실패 알림처럼 「나가면 좋고, 못 나가도 본 흐름을 막으면 안 되는」 메일은
     ``notify`` 로 보낸다 — 제 오류를 삼킨다::
 
-        mailer.notify("[작업 실패] 20261102", "사유 …", recipients_file="recipients.json")
+        mailer.notify("[작업 실패] 아침 보고", "사유 …", recipients_file="recipients.json")
 
 무엇을 내나
     ``send`` 는 None 을 낸다. 못 보내면 예외다 — 설정이 틀리면 ``MailConfigError``,
@@ -38,33 +36,20 @@
     서면 ``MailError``. 연결 · 시한 오류는 ``smtplib`` · ``socket`` 의 예외가 그대로 온다.
     ``load_recipients`` 는 ``send`` 에 그대로 풀어 넣을 dict(``sender`` · ``to`` · ``cc`` ·
     ``bcc``)를 낸다. ``notify`` 는 보냈으면 True, 못 보냈으면 False 를 내고 예외를 안 낸다.
-    무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은 이 모듈 이름) — 셈 · 크기 · 사유만 싣고 메일 주소 ·
-    제목 · 본문은 안 싣는다(예외의 메시지는 거절된 주소를 든다 — 부르는 쪽이 기록에 옮길 때 가린다).
+    무엇을 했는지는 ``logging``(로거 이름은 이 모듈 이름)으로 셈 · 크기 · 사유만 남기고 주소 · 제목 · 본문은 안 싣는다.
+    ⚠ 예외의 메시지는 거절된 주소를 든다 — 부르는 쪽이 기록에 옮길 때 가린다.
 
 환경변수 — 회사 SMTP 규약의 이름. 비워 둔 값은 안 준 것으로 본다
-    ``MAIL_HOST``             중계 호스트                    기본 ``antispam.posco.net``
-    ``MAIL_PORT``             포트                           기본 ``25``
+    ``MAIL_HOST``             중계 호스트                    기본 ``DEFAULT_HOST``
+    ``MAIL_PORT``             포트                           기본 ``DEFAULT_PORT``
     ``MAIL_DEFAULT_SENDER``   발신자를 따로 안 줬을 때의 발신자
     ``MAIL_USE_TLS``          비움 → STARTTLS 를 시도하고, 안 서면 경고를 남기고 평문으로 보낸다
                               참(1 · true · yes · on) → STARTTLS 가 안 서면 보내지 않고 실패한다
                               거짓(0 · false · no · off) → 시도하지 않고 평문으로 보낸다
-    ``MAIL_TIMEOUT_SECONDS``  연결 · 응답 시한(초)            기본 ``60``
+    ``MAIL_TIMEOUT_SECONDS``  연결 · 응답 시한(초)            기본 ``DEFAULT_TIMEOUT``
 
     ``MAIL_USERNAME`` · ``MAIL_PASSWORD`` · ``MAIL_USE_SSL`` 은 읽지 않는다 — 기본 중계는
     인증도 SSL 직접 연결(465)도 안 쓴다. 그것이 필요한 서버면 이 파일로는 안 나간다.
-
-기본 중계에서 잰 것 — 어기면 조용히 망가진다. 원본은 사내 환경 기록
-(``~/.claude/posco/ENV-posco.md`` 「네트워크 접근」)이다
-    * 인증 없이 25 번으로 받는다. 사내망 밖에서는 닿지 않는다
-    * STARTTLS 를 광고하지만 핸드셰이크에서 서버가 연결을 끊는다. 그래서 기본은
-      「시도 → 끊기면 새 연결로 평문」이고 물러난 사실을 경고로 남긴다 — 본문이
-      평문으로 사내망을 지난다는 뜻이다
-    * 일부 수신자만 거절되면 ``smtplib`` 은 예외 없이 거절 목록만 돌려준다. 그것을
-      성공으로 세면 누군가 조용히 못 받는다 — 그래서 하나라도 거절되면 ``MailRefused``
-    * bcc 는 봉투(RCPT)에만 싣고 머리(헤더)에는 쓰지 않는다
-    * 사내 중계로 보낸 메일은 보낸 사람의 웹메일 보낸편지함에 안 남는다 — 보낸 흔적은 제 주소로 받은 사본뿐이다. 나에게
-      보낸 사본은 보낸 뒤 몇 초 안에 받은편지함에 받는 꼴 ``T`` 로 오고, 보낸 사람 열은 주소만 든다(발신자를 주소만으로
-      줬을 때로 쟀다). 남에게 보내며 나를 bcc 에 넣은 사본의 꼴은 안 쟀다. 회사 확인 대장(mail-secretary 저장소 이슈 #9 · B · B2)
 """
 
 from __future__ import annotations
@@ -122,10 +107,7 @@ class Settings:
 
 
 def settings() -> Settings:
-    """환경변수를 읽어 발송 설정을 세운다. 틀린 값이면 MailConfigError.
-
-    부를 때마다 다시 읽는다 — 스크립트가 도중에 환경변수를 바꿔도 따라간다.
-    """
+    """환경변수를 읽어 발송 설정을 세운다 — 부를 때마다 다시 읽는다. 틀린 값이면 MailConfigError."""
     env = {name: os.environ.get(name, "").strip() for name in (
         "MAIL_HOST", "MAIL_PORT", "MAIL_USE_TLS", "MAIL_TIMEOUT_SECONDS",
         "MAIL_DEFAULT_SENDER")}
@@ -196,18 +178,14 @@ def _resolve_sender(sender: str | None, config: Settings, where: str) -> str:
 
 
 def load_recipients(path) -> dict:
-    """수신자 파일을 읽고 다 쓸 만한지 본다 — **오래 걸리는 일을 시작하기 전에** 부른다.
-
-    발송 설정(환경변수)도 함께 본다. 둘 중 하나라도 틀리면 MailConfigError.
-    내는 것 — ``send`` 에 그대로 풀어 넣을 ``{"sender", "to", "cc", "bcc"}``.
-    ``from`` 이 없으면 ``MAIL_DEFAULT_SENDER`` 로 채운다.
-    """
+    """수신자 파일과 발송 설정을 함께 보고 ``send`` 에 풀어 넣을 ``{"sender", "to", "cc", "bcc"}`` 를 낸다 — 틀리면 MailConfigError.
+    ``from`` 이 없으면 ``MAIL_DEFAULT_SENDER`` 로 채운다."""
     config = settings()
     path = pathlib.Path(path)
     if not path.exists():
         raise MailConfigError(f"수신자 설정이 없다: {path}")
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))   # 윈도 편집기 · 파워셸이 붙인 BOM 도 받는다
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise MailConfigError(f"수신자 설정이 깨졌다: {exc}") from exc
     if not isinstance(data, dict):
@@ -271,8 +249,7 @@ def _secure(server: smtplib.SMTP, config: Settings) -> smtplib.SMTP:
         server.starttls(context=ssl.create_default_context())
         server.ehlo()
     except Exception as exc:
-        # 기본 중계가 여기로 온다 — 광고는 하지만 핸드셰이크에서 연결을 끊는다.
-        # 끊긴 연결은 다시 못 쓰므로 새로 잇는다.
+        # 기본 중계가 여기로 온다 — 광고는 하지만 핸드셰이크에서 끊는다. 끊긴 연결은 다시 못 쓰므로 새로 잇는다
         _close(server)
         if config.tls == "require":
             raise MailError(f"STARTTLS 가 서지 않는다({type(exc).__name__}) — "
@@ -294,7 +271,7 @@ def _deliver(message: EmailMessage, sender: str, envelope: list[str],
             refused = server.sendmail(sender, envelope, message.as_bytes())
         except smtplib.SMTPRecipientsRefused as exc:
             refused = exc.recipients
-        if refused:
+        if refused:     # 일부만 거절되면 smtplib 은 예외 없이 목록만 낸다 — 성공으로 세면 누군가 조용히 못 받는다
             raise MailRefused(f"받기를 거절한 수신자가 있다: {refused}", refused)
     finally:
         _close(server)
@@ -303,13 +280,11 @@ def _deliver(message: EmailMessage, sender: str, envelope: list[str],
 def send(subject: str, *, to, cc=None, bcc=None, sender: str | None = None,
          html: str | None = None, text: str | None = None,
          attachments=None) -> None:
-    """메일 한 통을 보낸다. 실패하면 예외다(모듈 머리말의 「무엇을 내나」).
+    """메일 한 통을 보낸다. 실패하면 예외다(머리말 「무엇을 내나」).
 
-    ``html`` 을 주면 HTML 메일이고 ``text`` 는 그 평문 짝이 된다(안 주면 안내 한 줄).
-    ``html`` 없이 ``text`` 만 주면 평문 메일이다. ``to`` · ``cc`` · ``bcc`` 는 주소 목록,
-    문자열 하나는 주소 하나로 받는다. ``bcc`` 는 머리에 안 쓴다.
-    ``attachments`` 는 ``(파일 이름, 바이트)`` 의 목록이다 — 주면 본문 곁에 파일로 붙는다
-    (``multipart/mixed``). 형식은 이름의 확장자로 짚고, 모르면 ``application/octet-stream`` 이다.
+    ``html`` 을 주면 HTML 메일이고 ``text`` 는 그 평문 짝이다(안 주면 안내 한 줄). ``text`` 만 주면 평문 메일이다. ``to`` · ``cc`` ·
+    ``bcc`` 는 주소 목록이고 문자열 하나는 주소 하나다. ``bcc`` 는 봉투에만 싣고 머리에 안 쓴다. ``attachments`` 는
+    ``(파일 이름, 바이트)`` 목록이고, 형식은 확장자로 짚는다(모르면 ``application/octet-stream``).
     """
     config = settings()
     sender = _resolve_sender(sender, config, "발송 인자")
@@ -352,18 +327,15 @@ def _domain(address: str) -> str | None:
 
 def notify(subject: str, text: str, *, to: str | None = None,
            sender: str | None = None, recipients_file=None) -> bool:
-    """평문 알림 한 통 — **제 오류를 삼킨다.** 보냈으면 True, 못 보냈으면 False.
+    """평문 알림 한 통 — **제 오류를 삼킨다.** 보냈으면 True, 못 보냈으면 False(경고 한 줄). 실패 알림이 본 흐름의 종료 코드 ·
+    마지막 로그를 바꾸면 안 된다.
 
-    실패 알림이 실패해서 본 흐름의 종료 코드 · 마지막 로그가 바뀌면 안 되므로
-    무엇이 틀려도 예외를 내지 않고 경고 한 줄만 남긴다.
-
-    ``to`` 를 안 주면 ``recipients_file`` 의 ``error_notify``, 그것도 없으면 ``to`` 의 첫
-    주소가 받는다. 이 파일은 ``load_recipients`` 보다 너그럽게 읽는다 — 수신자 설정이
-    틀려서 멈춘 판에도 알림 받을 주소만 있으면 알림은 나가야 한다.
+    ``to`` 를 안 주면 ``recipients_file`` 의 ``error_notify``, 없으면 그 ``to`` 의 첫 주소가 받는다. 이 파일은 ``load_recipients``
+    보다 너그럽게 읽는다 — 수신자 설정이 틀려 멈춘 판에도 알림은 나가야 한다.
     """
     try:
         if recipients_file is not None and not (to and sender):
-            data = json.loads(pathlib.Path(recipients_file).read_text(encoding="utf-8"))
+            data = json.loads(pathlib.Path(recipients_file).read_text(encoding="utf-8-sig"))
             listed = data.get("to")
             first = listed if isinstance(listed, str) else (listed or [None])[0]
             to = to or data.get("error_notify") or first

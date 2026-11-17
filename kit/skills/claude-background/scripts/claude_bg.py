@@ -1,48 +1,12 @@
-"""Claude 에게 일을 맡기고 답을 파일로 받는다 — Codex · agy 가 맡기는 쪽일 때의 러너(결정 0098 · 0100).
+"""Claude 에게 일을 맡기고 답을 파일로 받는다 — 맡기는 쪽(Codex · agy)이 콘솔 있는 `python` 으로 부르고 끝날 때까지 기다린다.
 
-**받는 Claude 는 기본이 읽기만 한다.** 쓸 수 있는 도구를 읽기 · 찾기 · 웹 읽기(`READ_TOOLS`)로 좁혀 띄운다 — 셸 · 쓰기
-도구는 모델에게 아예 안 보인다. 그래서 받는 쪽이 다른 에이전트를 다시 띄울 길(셸)도 없다. 묻지 않는 권한 방식(`dontAsk`)이라
-목록 밖 호출은 묻는 대신 거절되고, 거절이 하나라도 있으면 실패로 친다 — 답이 그 도구 없이 지어졌다는 뜻이다(리뷰 모드는 아래).
-**`--write` 를 주면 고치기 레인이다** — 편집 도구 둘(`WRITE_TOOLS`)을 더 보이되 허락은 작업 자리 안(`./**`)만 건다. 그
-밖에 쓰려는 호출은 거절돼 실패로 남는다(실측 Claude Code 2.1.296 · 2026-10-10: 자리 안 `Edit` 은 섰고 자리 밖 `Write`
-는 `permission_denials` 로 거절됐다 · 그 띄우기를 자동 모드 분류기가 안 막았다). 셸은 그래도 안 연다 — 윈도에는 Claude
-샌드박스가 없어 셸이 자리를 못 지킨다. 검사 돌리기는 맡긴 쪽이 한다. 자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
-**`--review [대상]` 을 주면 리뷰 모드다** — 내장 리뷰 스킬(`/code-review`)을 `REVIEW_LEVEL` 로 부르고, 여는 것은 그 스킬이
-드는 만큼이다: 스킬을 켜고(`--disable-slash-commands` 를 뺀다), 셸과 검증 단계가 띄우는 `Agent` 를 보인다. 셸에는 허락 규칙을
-안 건다 — Claude Code 가 읽기로 가르는 명령(`git diff` · `git log` · `cat` · `grep` 같은)만 서고, 코드 돌리기 · 파일로 내보내기
-(`git diff --output=<파일>` 포함)는 거절된다(실측 2.1.300 · 2026-10-15). 사용자 설정의 허락 규칙도 안 선다 — 설정 원천을 안
-싣고 그 파일에서 허락 규칙만 뺀 것을 넘긴다(`settings_args` · 세 레인이 다 그렇다). 그 거절은 울타리가 한 일이라 이 모드에서는 실패로 안
-치고 끝 줄 `denied=` 로 남긴다(`judge`). 표준 입력이 그 슬래시 명령이 되고, 봉투(프롬프트
-파일)는 시스템 프롬프트 덧붙이기(`--append-system-prompt-file`)로 간다 — 명령 뒤에 붙인 글은 리뷰 대상으로 읽힌다. 대상은
-그 스킬의 낱말(`<pr#>` · `<가지>` · `<경로>`)이고 없으면 지금의 diff 다. 고치기 · 올리기 · 클라우드 리뷰 깃발(`--fix` ·
-`--comment` · `ultra`)은 안 싣고, 대상 칸으로도 못 들어오게 깃발 꼴 · 등급 이름을 막는다. 고치기 레인 · 이어 묻기와는 같이
-못 준다(4).
-MCP 서버 · 슬래시 명령(스킬)은 끄고(리뷰 모드는 스킬을 켠다), 사용자 설정은 허락 규칙과 훅만 빼고 읽는다(`settings_args`) —
-설정에는 자리 값(게이트웨이 주소 · 시간 한도 · 웹 가져오기 검증 건너뛰기)이 살고, 훅은 맡긴 일과 무관한 일(세션 시작 동기화
-등)을 하며, 사람의 허락 규칙(이슈 닫기 · 다른 레인 띄우기 · 편집 자리)은 묻지 않는 권한 방식에서 그대로 서서 레인의 울타리를
-넓힌다.
-빌린 자리 — 상류 `pgpt-one-click-connect` 의 `app/optional-skills/pgpt-delegate/scripts/Invoke-PgptAgent.ps1` Claude
-작업자 갈래(커밋 65e981a · 2026-10-09). 플래그 다섯(`--strict-mcp-config` · `--disable-slash-commands` · `--permission-mode
-dontAsk` · `--tools` · `--allowedTools`)과 결과를 가르는 법(`subtype` · `is_error` · `permission_denials` · 빈 답)을
-빌렸다. 일부러 가른 셋 — 설정은 안 끄고 훅만 끈다(상류는 게이트웨이를 제가 알아 값을 직접 넣지만 이 러너는 자리를
-모른다) · 대화를 남긴다(이어 묻기 — agent-envelope 1 절) · 작업 규칙을 덧붙이지 않는다(봉투가 든다 — 결정 0095).
-따라가는 법은 「일부러 갈랐다」 — 상류가 바뀌어도 이 러너는 따라가지 않는다.
+    python claude_bg.py --prompt-file <파일> --out <답 파일> --cwd <작업 자리> [--write | --review [대상]]
+                        [--resume <id>] [--model <이름>] [--timeout <초>] [--max-findings <n>]
 
-**Codex 에서는 앞에서 기다린다** — 콘솔 있는 `python` 으로 부르면 끝날 때까지 돌아오지 않고, 끝나면 종료 코드로 갈래를
-알린다. 답과 끝 줄은 `--out` 파일에 쓴다.
-
-**프롬프트는 표준 입력으로 넘긴다** — 명령줄 길이 한도와 따옴표 해석을 안 탄다. 프롬프트 파일은 UTF-8 로 옮겨(`decode_prompt`)
-넘긴다. npm 이 까는 실행 꼴(`.cmd` 셔틀)은 인자가 cmd.exe 를 거치므로, 셔틀이 부르는 것(꾸러미 `bin` 의 JS 나 실행 파일)을 바로
-부른다.
-
-맨 끝 줄 `[claude-bg] …` 의 칸과 종료 코드의 뜻은 `--help` 가 든다 — `FOOTER_FIELDS` · `EXIT` · `STATUS_WORDS` 에서 지어
-찍으니 여기에 다시 적지 않는다(`--help` 만 표준 출력에 찍고, 나머지 말은 `--out` 파일로 간다).
-**`--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다** — 인자가 틀렸어도, 러너가 멈췄어도 까닭을 적는다.
-**이어 묻기 값은 대화 기록이 실제로 남았을 때만 싣는다** — 받는 Claude 가 제 홈에 못 쓰는 자리(맡긴 쪽의 샌드박스)에서
-돌면 대화 id 는 나와도 기록이 없어 `--resume` 이 「No conversation found」로 진다(실측 2026-10-11 · Codex 샌드박스).
+내는 것 — 답과 맨 끝 줄 `[claude-bg] …` 을 `--out` 파일에 쓴다(인자가 틀렸어도 러너가 멈췄어도). 모드 셋 · 끝 줄의 칸 · 종료
+코드 · 이어 묻기 · 규범이 어떻게 실리나는 `--help` 가 든다(표준 출력에 찍는 것은 그것뿐이다).
+레인마다 무엇을 열고 닫나 · 사용자 설정을 어떻게 싣나 · 빌린 자리는 `references/DESIGN.md` 가 든다.
 """
-import argparse
-import codecs
 import glob
 import json
 import os
@@ -52,12 +16,8 @@ import subprocess
 import sys
 import tempfile
 import time
-import traceback
+from pathlib import Path
 
-CREATE_NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
-DEFAULT_TIMEOUT_SEC = 1800      # 기본 한도 — 짧은 일도 그대로 둔다(끝나는 대로 돌아온다)
-POLL_SEC = 2                    # 끝났나 보는 간격
-STDERR_TAIL_CHARS = 2000        # 실패 때 답 파일에 옮기는 stderr 꼬리
 EXIT = {'ok': 0, 'failed': 1, 'denied': 1, 'quota': 2, 'empty': 2, 'timeout': 3, 'usage': 4}
 FOOTER = '[claude-bg]'
 # 갈래 낱말의 뜻 — `--help` 의 종료 코드 표가 `EXIT` 의 이름마다 단다. 갈래 낱말은 끝 줄의 첫 낱말이기도 하다
@@ -78,17 +38,13 @@ FOOTER_FIELDS = (
     ('resume', '이어 묻기 값 `<id>` — 대화 기록이 실제로 남았을 때만. 아니면 `-` 와 까닭'),
     ('raw', '날 출력(jsonl) 파일 경로 — 답이 안 온 갈래에서만'),
 )
-# 프롬프트 파일이 받는 인코딩 — `decode_prompt` 가 받는 것과 같은 말이고 거절 사유 · `--help` 가 이 글을 읽는다
-PROMPT_ENCODINGS = 'UTF-8(BOM 은 있어도 없어도) · UTF-16 LE/BE(BOM 이 있어야)'
 
 READ_TOOLS = 'Read,Glob,Grep,WebFetch,WebSearch'   # 읽기 · 찾기 · 웹 읽기 — 셸 · 쓰기는 모델이 아예 못 본다
 WRITE_TOOLS = ('Edit', 'Write')                   # 고치기 레인에 더 보이는 것 — 셸은 끝내 안 연다
 WRITE_SCOPE = './**'                              # 허락은 작업 자리 안만 — 띄우는 자리(`--cwd`) 기준이다
 NO_HOOKS = {'disableAllHooks': True}
-# 홈 규범 — 받는 Claude 는 사용자 설정을 설정 원천으로 안 싣는데(`settings_args`), 그 플래그는 홈의 CLAUDE.md 도 같이 끈다(실측
-#   2026-10-15 · Claude Code 2.1.300 · `--add-dir` 로도 안 실린다). 그래서 래퍼가 홈 CLAUDE.md 를 읽어 `@경로` 가져오기를 풀고 시스템
-#   프롬프트에 덧붙인다 — 사람의 허락 규칙은 안 넘기면서 규범은 넘긴다. 경로에 걸리는 룰(`rules/`)은 안 온다 — 파일을 열 때
-#   하네스가 싣는 것이라서다.
+# 홈 규범 — 사용자 설정을 설정 원천으로 안 실으면 홈 CLAUDE.md 도 함께 꺼져, 래퍼가 그 글의 `@경로` 를 풀어 시스템 프롬프트에
+# 덧붙인다(까닭은 references/DESIGN.md 「홈 규범」)
 NORMS_FILE = 'CLAUDE.md'
 IMPORT_DEPTH = 5                                               # `@경로` 를 따라 들어가는 깊이 — 하네스의 한도와 같다
 IMPORT_TOKEN = re.compile(r'(?<![\w`])@(~?[^\s`()\[\]<>]+)')   # 줄 어디서든 `@경로` — 글자 · 백틱 바로 뒤의 @(메일 · 코드)는 아니다
@@ -97,9 +53,8 @@ NO_SKILLS = '--disable-slash-commands'   # 리뷰 모드 밖에서는 스킬을 
 # 리뷰 모드(`--review`) — 내장 리뷰 스킬과 그 등급. 등급은 후보마다 검증 에이전트를 띄우는 가장 낮은 것이다
 REVIEW_COMMAND = '/code-review'
 REVIEW_LEVEL = 'medium'
-# 리뷰 모드에 더 보이는 것 — git 읽기용 셸 · 검증 에이전트. 셸에는 허락 규칙을 안 건다 — Claude Code 가 읽기로 가르는 명령
-# (`git diff` · `git log` · `git show` · `git status`)만 서고, `git diff --output=<파일>` 같은 쓰기 꼴은 거절된다(실측 2.1.300 ·
-# 2026-10-15). `Bash(git diff:*)` 같은 접두 허락은 그 쓰기 꼴까지 연다.
+# 리뷰 모드에 더 보이는 것 — git 읽기용 셸 · 검증 에이전트. ⚠ 셸에 허락 규칙을 걸지 않는다 — `Bash(git diff:*)` 같은 접두
+# 허락은 `git diff --output=<파일>` 같은 쓰기 꼴까지 연다(안 걸면 Claude Code 가 읽기로 가르는 명령만 선다)
 REVIEW_TOOLS = ('Bash', 'Agent')
 # 대상 칸 — 깃발 꼴(`--fix` · `--comment` …)과 등급 이름(`ultra` …)은 그 스킬이 대상이 아니라 다른 뜻으로 읽는다
 REVIEW_TARGET_RE = re.compile(r'[^\s-]\S*')
@@ -109,61 +64,40 @@ MAX_FINDINGS_RE = re.compile(r'[1-9][0-9]*|all')
 # `package.json` 의 `bin` 이 든다 — 판에 따라 JS(`cli.js`)이기도 하고 네이티브 실행 파일(`bin/claude.exe`)이기도 하다.
 NPM_PACKAGE = ('@anthropic-ai', 'claude-code')
 BIN_NAME = 'claude'
-SHIM_EXT = ('.cmd', '.bat')
 # Claude 세션 안에서 불려도 그 세션에 안 섞이게 — 부른 쪽 세션의 표지가 남으면 받는 쪽이 그 대화 id 를 이어 쓴다
-# (실측 2026-10-09 · 리모트 세션: `CLAUDE_CODE_REMOTE_SESSION_ID` 를 걷어야 새 id 가 섰다)
+# (리모트 세션은 `CLAUDE_CODE_REMOTE_SESSION_ID` 까지 걷어야 새 id 가 선다)
 DROP_ENV = ('CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_REMOTE_SESSION_ID')
 # 한도 · 과부하의 꼴 — 결과의 `api_error_status`(429 · 529)나 문구. 다른 실패와 갈라야 「잠시 뒤 다시」와 「고칠 것」이 갈린다
 QUOTA_STATUS = (429, 529)
 QUOTA_RE = re.compile(r'usage limit|rate[_ ]limit|overloaded|\b429\b|\b529\b', re.I)
 MODEL_NAME_RE = re.compile(r'[A-Za-z0-9._:/\[\]-]+')
-# 답 파일의 인코딩. 윈도 PowerShell 5.1 의 `Get-Content` 는 BOM 없는 파일을 ANSI 코드 페이지(한국어 윈도는 949)로 읽어
-# 한글과 끝 줄의 `·` 를 깨뜨린다(`·` → `쨌` — 실측 2026-10-11 · Codex 가 `Get-Content -Tail 1` 로 끝 줄을 읽었다). BOM 이 있으면
-# UTF-8 로 읽는다. 다른 OS 는 BOM 없이 둔다 — 거기 셸은 UTF-8 로 읽고, BOM 은 첫 줄을 `^[claude-bg]` 로 찾는 손을 헛짚게 한다.
-ANSWER_ENCODING = 'utf-8-sig' if os.name == 'nt' else 'utf-8'
-# 대화 기록의 자리 — 설정 폴더(`CLAUDE_CONFIG_DIR`, 없으면 `~/.claude`)의 `projects/<작업 자리 이름>/<id>.jsonl`(실측
-# Claude Code 2.1.296 · 윈도 · 2026-10-11). 작업 자리 이름을 짓는 규칙은 빌리지 않는다 — `projects/*` 를 다 본다.
+# 대화 기록의 자리 — 설정 폴더(`CLAUDE_CONFIG_DIR`, 없으면 `~/.claude`)의 `projects/<작업 자리 이름>/<id>.jsonl`(Claude Code
+# 2.1.296). 작업 자리 이름을 짓는 규칙은 빌리지 않는다 — `projects/*` 를 다 본다.
 CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR'
 NO_RESUME = ('이어 묻기 못 함 — 대화 기록이 안 남았다({where} 에 이 대화가 없다). 받는 Claude 가 제 홈에 못 쓰는 자리'
              '(맡긴 쪽의 샌드박스)에서 돌았거나 대화가 서기 전에 멈췄다')
 
 
-def write(path, text):
-    """답 파일을 쓴다 — 인코딩은 `ANSWER_ENCODING`."""
-    with open(path, 'w', encoding=ANSWER_ENCODING) as f:
-        f.write(text)
-
-
-class Usage(Exception):
-    """인자를 못 갈랐다. argparse 는 그 말을 stderr 에 찍고 끝내지만 부른 쪽은 답 파일을 읽는다 — 답 파일에 옮긴다."""
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message):
-        raise Usage(message)
-
-
-def out_arg(args):
-    """인자를 못 갈랐을 때 답 파일 자리 — `--out <경로>` · `--out=<경로>` 만 찾는다. 없으면 None."""
-    for i, x in enumerate(args):
-        if x == '--out' and i + 1 < len(args):
-            return args[i + 1]
-        if x.startswith('--out='):
-            return x[len('--out='):]
-    return None
-
-
-def decode_prompt(raw):
-    """프롬프트 파일 바이트 → 글. 받는 인코딩은 `PROMPT_ENCODINGS` — 그 밖이면 UnicodeDecodeError. BOM 은 걷힌다.
-    글에 NUL 이 있어도 거절한다: BOM 없는 UTF-16 · BOM 있는 UTF-32 는 UTF-8 로도 읽혀 NUL 이 낀 채 표준 입력으로 간다."""
-    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
-        text = raw.decode('utf-16')
-    else:
-        text = raw.decode('utf-8-sig')
-    if '\x00' in text:
-        raise UnicodeDecodeError('utf-8', raw, 0, len(raw), 'NUL 문자가 든다')
-    return text
-
+# 러너 셋이 함께 쓰는 손은 곁에 깔린 스킬 agent-envelope 의 `runner_common.py` 가 든다. 러너는 창 없이 돌아 말할 곳이 답 파일
+# 뿐이라, 그 부품을 못 실으면 여기서 답 파일에 끝 줄을 남기고 끝낸다.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'agent-envelope' / 'scripts'))
+try:
+    import runner_common as common
+    from runner_common import (CREATE_NO_WINDOW, DEFAULT_TIMEOUT_SEC, POLL_SEC, PROMPT_ENCODINGS, SHIM_EXT, STDERR_TAIL_CHARS,
+                               HelpFormat, Parser, decode_prompt, kill_tree, read_jsonl, write)
+except ImportError as missing:
+    _args = sys.argv[1:]
+    _out = next((x[len('--out='):] for x in _args if x.startswith('--out=')), None)
+    if _out is None and '--out' in _args[:-1]:
+        _out = _args[_args.index('--out') + 1]
+    if _out:
+        try:
+            with open(_out, 'w', encoding='utf-8-sig' if os.name == 'nt' else 'utf-8') as _f:
+                _f.write(f'{FOOTER} failed · 공유 부품이 없다 — {missing}. 스킬 agent-envelope 이 이 스킬 곁에 깔려야 '
+                         '한다(설치를 다시 돌린다)\n')
+        except OSError:
+            pass
+    sys.exit(EXIT['failed'])
 
 def prompt_problem(path):
     """프롬프트 파일을 못 넘기는 까닭 — 없으면 None. 받는 Claude 는 표준 입력을 UTF-8 로 읽는다: PowerShell 5.1 의
@@ -180,15 +114,6 @@ def prompt_problem(path):
     return None
 
 
-def footer_line(status, cells):
-    """끝 줄 — `FOOTER <갈래>` 뒤에 칸을 `FOOTER_FIELDS` 의 차례로 ` · ` 로 잇는다. `cells` 는 {칸 이름: 꼴을 갖춘 글}이고 있는
-    칸만 든다. 이름이 `FOOTER_FIELDS` 에 없으면 KeyError — 칸을 더하면서 뜻을 안 다는 일을 막는다."""
-    unknown = set(cells) - {name for name, _ in FOOTER_FIELDS}
-    if unknown:
-        raise KeyError(f'FOOTER_FIELDS 에 없는 끝 줄 칸: {sorted(unknown)}')
-    return ' · '.join([f'{FOOTER} {status}'] + [cells[name] for name, _ in FOOTER_FIELDS if name in cells])
-
-
 def transcripts_dir():
     return os.path.join(os.environ.get(CONFIG_DIR_ENV) or os.path.join(os.path.expanduser('~'), '.claude'), 'projects')
 
@@ -201,16 +126,6 @@ def resume_field(conv):
     if glob.glob(os.path.join(glob.escape(where), '*', glob.escape(conv) + '.jsonl')):
         return f'resume={conv}'
     return 'resume=- · ' + NO_RESUME.format(where=where)
-
-
-def kill_tree(proc):
-    """띄운 node 와 그 밑 CLI 까지 같이 끊는다 — 머리만 끊으면 자식이 남는다."""
-    if os.name == 'nt':
-        subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)],
-                       capture_output=True, creationflags=CREATE_NO_WINDOW)
-    else:
-        proc.kill()
-    proc.wait()
 
 
 def resolve(found):
@@ -285,7 +200,7 @@ def config_dir():
 def expand_imports(text, base_dir, depth, seen):
     """`@경로` 를 그 파일의 글로 바꾼다 — 상대 경로는 가져오는 파일의 폴더 기준이고 `~` 는 홈이다. 없는 파일 · 되돌이 · 깊이를
     넘긴 것은 그대로 둔다. 돌려주는 것 — (바뀐 글, 푼 파일 수).
-    하네스의 CLAUDE.md 가져오기를 작게 흉내 낸 것이다(결정 0154) — 걷는 조건: 하네스가 `--setting-sources` 와 CLAUDE.md 읽기를 따로
+    하네스의 CLAUDE.md 가져오기를 작게 흉내 낸 것이다 — 걷는 조건: 하네스가 `--setting-sources` 와 CLAUDE.md 읽기를 따로
     가르게 되면 이 함수와 `norms_text` 를 걷고 `--setting-sources user` 로 돌아간다."""
     count = 0
 
@@ -332,22 +247,6 @@ def argv(model, resume, write=False, review=False, system_file=None, settings_fi
         out += ['--model', model]
     if resume:
         out += ['--resume', resume]
-    return out
-
-
-def read_jsonl(path):
-    out = []
-    try:
-        with open(path, encoding='utf-8', errors='replace') as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith('{'):
-                    try:
-                        out.append(json.loads(line))
-                    except ValueError:
-                        pass
-    except OSError:
-        pass
     return out
 
 
@@ -399,9 +298,8 @@ def run_once(cmd_head, a):
     env = {k: v for k, v in os.environ.items() if k not in DROP_ENV}
     started = time.monotonic()
     status = None
-    # 프롬프트는 UTF-8 로 옮겨 넘긴다(`decode_prompt`). 시스템 프롬프트 파일(`system_path` — 끝나면 지운다)에는 홈 규범
-    # (`norms_text`)을 싣고, 리뷰 모드면 그 뒤에 봉투를 잇는다 — 리뷰 모드의 표준 입력은 슬래시 명령이라 봉투가 거기 못 간다.
-    # 받는 쪽은 `--cwd` 에서 돌아 절대 경로로 준다
+    # 시스템 프롬프트 파일(끝나면 지운다)에 홈 규범을 싣고, 리뷰 모드면 봉투를 그 뒤에 잇는다 — 그 모드의 표준 입력은 슬래시
+    # 명령이라 봉투가 거기 못 간다. 받는 쪽은 `--cwd` 에서 돌아 절대 경로로 준다
     with open(a.prompt_file, 'rb') as f:
         prompt_raw = f.read()
     body = decode_prompt(prompt_raw)
@@ -453,13 +351,6 @@ def run_once(cmd_head, a):
     return status, proc.returncode, answer, conv, reason, tokens, model, tools, raw_path, norms_n
 
 
-class HelpFormat(argparse.RawDescriptionHelpFormatter):
-    """`--help` 의 꼴 — 폭만 넓혀 플래그마다 한 줄에 둔다(아래쪽 절은 `help_epilog` 가 짠 그대로 간다)."""
-
-    def __init__(self, prog):
-        super().__init__(prog, max_help_position=26, width=140)
-
-
 def build_parser():
     ap = Parser(add_help=False, formatter_class=HelpFormat,
                 description='Claude 에게 일을 맡기고, 답과 끝 줄을 --out 파일로 받는다. 기본은 읽기만 한다.')
@@ -475,17 +366,6 @@ def build_parser():
                     help='리뷰 모드 — 값은 리뷰 대상(<pr#> · <가지> · <경로> 하나), 없으면 지금의 diff')
     ap.add_argument('--max-findings', metavar='N|all', help='리뷰 모드에서 그 스킬에 넘기는 한도 — 수나 all')
     return ap
-
-
-def exit_table():
-    """종료 코드 표의 줄들 — `EXIT` 에서 같은 코드를 쓰는 이름끼리 묶고 `STATUS_WORDS` 로 뜻을 단다. 이름은 끝 줄의 갈래다."""
-    names = {}
-    for name, code in EXIT.items():
-        names.setdefault(code, []).append(name)
-    joined = {code: ' · '.join(ns) for code, ns in names.items()}
-    width = max(len(j) for j in joined.values())
-    return [f'  {code}  {joined[code]:<{width}}  ' + ' · '.join(STATUS_WORDS.get(n, n) for n in names[code])
-            for code in sorted(names)]
 
 
 def help_epilog():
@@ -517,42 +397,8 @@ def help_epilog():
         '  그 밖(PowerShell 5.1 의 Set-Content 기본인 ANSI 따위)은 `usage` 로 끝나고 까닭이 --out 파일에 남는다.',
         '',
         '종료 코드(끝 줄의 갈래 이름과 같다):',
-        *exit_table(),
+        *common.exit_table(EXIT, STATUS_WORDS),
     ]) + '\n'
-
-
-def show_help(ap):
-    """`--help` — 도움말을 표준 출력에 찍고 0. 인자 검사보다 앞서고 파일은 안 쓴다."""
-    ap.epilog = help_epilog()
-    out = sys.stdout
-    if out is None:   # pythonw 에는 표준 출력이 없다 — 찍을 곳이 없다
-        return EXIT['ok']
-    if hasattr(out, 'reconfigure'):   # 윈도 파이프의 기본 인코딩(cp949)은 `—` 를 못 적어 죽는다 — 에이전트 셸은 UTF-8 로 읽는다
-        out.reconfigure(encoding='utf-8')
-    out.write(ap.format_help())
-    return EXIT['ok']
-
-
-def main():
-    ap = build_parser()
-    args = sys.argv[1:]
-    if '-h' in args or '--help' in args:
-        return show_help(ap)
-    try:
-        a = ap.parse_args(args)
-    except Usage as e:
-        out = out_arg(args)
-        if out:
-            try:
-                write(out, f'{FOOTER} usage · 인자가 틀렸다 — {e}\n')
-            except OSError:
-                pass
-        return EXIT['usage']
-    try:
-        return run(a)
-    except Exception as e:   # 어디서 멈췄든 답 파일과 끝 줄을 남긴다 — 부른 쪽은 그것만 본다
-        write(a.out, f'{traceback.format_exc()}\n{FOOTER} failed · 러너가 멈췄다 — {type(e).__name__}: {e}\n')
-        return EXIT['failed']
 
 
 def review_problem(a):
@@ -605,13 +451,17 @@ def run(a):
         cells['denied'] = f'denied={reason}'   # 리뷰 모드의 거절 — `judge`
     if status != 'ok':
         cells['raw'] = f'raw={raw_path}'
-    footer = footer_line(status, cells)
+    footer = common.footer_line(FOOTER, FOOTER_FIELDS, status, cells)
     if status == 'ok':
         write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
     else:
         # 날 출력은 길어(이벤트 수십 줄) 옮기지 않는다 — 까닭과 그 자리만 적는다
         write(a.out, f'{answer.rstrip()}\n{reason}\n{footer}\n')
     return EXIT[status]
+
+
+def main():
+    return common.main(build_parser, help_epilog, run, FOOTER, EXIT)
 
 
 if __name__ == '__main__':

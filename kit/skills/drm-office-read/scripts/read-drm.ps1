@@ -1,23 +1,12 @@
 ﻿# DRM 감긴 문서에서 글자를 뽑는다 — Fasoo 에이전트가 도는 PC 의 오피스를 태워서.
 #
-# 왜 이 파일이 있나: Fasoo DRM 은 파일을 통째로 자기 컨테이너로 감싼다. 머리 바이트가
-# `%PDF-`·`PK` 가 아니게 되므로 어떤 파서(PDFium·pdfplumber·python-docx·openpyxl)도
-# 형식 인식 단계에서 죽는다. 정식 오피스 앱은 그 보호를 복호해 주므로 그것을 태운다.
+#     powershell -NoProfile -ExecutionPolicy Bypass -File read-drm.ps1 -Path <파일 · 폴더>… [-OutDir <폴더>] [-Preview N] [-NoKeep]
 #
-# 문서가 여러 건이고 확장자가 갈려도 앱 인스턴스를 재사용해야 느려지지 않는다 — 그래서 한 번에 몰아 받는다.
-# 한 건이어도 이 파일을 부른다 — 제가 띄운 앱만 끄기 · Job 묶기 같은 끄고 닫는 차례가 여기 있다.
-#
-# 이 파일은 본체다 — 인자 · 대상 모으기 · 남긴 글자 · 화면 · `-OutDir` 출력 · 끝 정리 · 종료 값. 읽는 함수(띄우기 · 끝내기 · Job ·
-# `Read-With*` · 글 밖 셈)는 `office-read.ps1` 이 들고, 제 꼴로 내는 앱은 그 부품을 점 소싱해 제 본체를 쓴다.
-#
-# 종료 값 — 0 은 준 파일을 다 읽었다(남긴 글자로 답한 것 포함), 1 은 하나라도 못 읽었거나 읽을 파일이 없다. 못 읽은 파일은
-# 「[딱지] 이름 — 실패…」 한 줄로 이름을 댄다 — 없는 경로도, 앱이 못 연 파일도, 읽는 부품의 표(`$HANDLER`)에 없는 확장자도 같다.
-#
-# 뽑은 글자는 남긴다 — 감긴 파일은 읽을 때마다 앱을 띄워야 하고(건당 수 초 · 창이 뜬다) 같은 문서를 다시 읽는 일이 잦다.
-# 읽은 글자를 홈 아래 한 자리(`$KeepDir`)에 파일의 지문(SHA-256 앞 12 자)으로 남기고, 같은 바이트의 파일이 다시 오면 앱을 안 띄우고
-# 그 글자로 답한다. 지문이 바이트를 재므로 원본이 바뀌면(다시 감긴 것도) 남긴 글자에 안 걸리고 새로 읽는다. 남긴 파일은 머리 두
-# 줄(읽을 때의 한 줄 · 원본과 뽑은 때) 뒤 `---` 아래가 글자다. 이 손은 남긴 것을 지우지 않는다 — 치우는 것은 사람이다.
-# 글자 파일은 `.md` 다 — Fasoo 가 `.txt` · `.csv` 는 감싸고 `.md` 는 평문으로 둔다.
+# 본체다 — 인자 · 대상 모으기 · 남긴 글자 · 화면 · `-OutDir` 출력 · 끝 정리. 읽는 함수는 `office-read.ps1` 이 든다.
+# 내는 것 — 파일마다 「[딱지] 이름 …」 한 줄과 앞부분 글자(또는 `-OutDir` 의 `.md`), 끝에 셈 한 줄. 같은 바이트의 파일은 앱을 안 띄우고
+# 남긴 글자로 답한다. 종료 값 — 0 준 파일을 다 읽었다(남긴 글자로 답한 것 포함) · 1 하나라도 못 읽었거나 읽을 파일이 없다(못 읽은
+# 파일은 「[딱지] 이름 — 실패…」 한 줄 — 없는 경로 · 앱이 못 연 파일 · `$HANDLER` 에 없는 확장자가 다 같다).
+# 왜 앱을 태우나 · 남긴 글자의 꼴은 `references/DESIGN.md` 가 든다.
 
 [CmdletBinding()]
 param(
@@ -92,8 +81,7 @@ if ($targets.Count -eq 0) { Write-Error '읽을 파일이 없다.'; exit 1 }
 $allCount = $targets.Count + $failed   # 없는 경로도 준 것으로 센다
 
 # ── 못 읽는 꼴 — 읽는 부품의 표($HANDLER)에 없는 확장자는 앱을 띄우기 전에 이름을 대며 실패로 센다 ────────────────
-# 폴더는 위에서 표에 있는 것만 모으니 여기 걸리는 것은 낱으로 준 파일이다. 건너뛰기만 하면 「읽음 0 · 실패 0」에 종료 0 이라 부른 쪽이
-# 읽은 줄 안다. 실패 줄은 앱이 못 연 파일의 줄과 같은 꼴이다 — 부르는 손이 「[」 로 시작하는 첫 줄을 그 파일의 한 줄로 집는다
+# 건너뛰기만 하면 「읽음 0 · 실패 0」에 종료 0 이라 부른 쪽이 읽은 줄 안다. 실패 줄은 앱이 못 연 파일과 같은 꼴이다 — 부르는 손이 집는다
 $readable = [System.Collections.Generic.List[string]]::new()
 foreach ($file in $targets) {
     $suffix = [System.IO.Path]::GetExtension($file).ToLower()
@@ -148,8 +136,7 @@ if (-not $NoKeep) {
     $targets = $toRead                 # 아래는 앱으로 읽을 것만 본다 — 끝 정리도 이 판이 연 파일만 건드린다
 }
 if ($targets.Count -eq 0) {
-    # 앱으로 읽을 것이 안 남았다 — 다 남긴 글자로 답했거나 받는 확장자가 아니었다. 앱도 Job 도 안 띄우고 끝낸다.
-    # 남긴 글자로 답한 것이 없으면 남긴 자리 줄을 안 낸다 — 받는 확장자가 아닌 파일은 -NoKeep 으로 다시 불러도 같다
+    # 남긴 글자로 답한 것이 없으면 -NoKeep 안내를 안 낸다 — 받는 확장자가 아닌 파일은 -NoKeep 으로 다시 불러도 같다
     Write-Tally $(if ($keptCount -gt 0) { '앱으로 다시 읽으려면 -NoKeep' })
     if ($failed -gt 0) { exit 1 }
     exit 0
@@ -219,14 +206,13 @@ try {
         }
     }
 } finally {
-    # ⚠ 여기를 건너뛰면 보이지 않는 오피스 프로세스가 쌓여 다음 실행이 느려지거나 멈춘다.
-    #   끄고 끝내는 판정은 읽는 부품의 Close-OfficeApps 가 든다 — 사람이 쓰던 앱(문서가 남았거나, 원래 떠 있던 파워포인트)은 안 끈다
+    # ⚠ 여기를 건너뛰면 보이지 않는 오피스 프로세스가 쌓여 다음 실행이 느려지거나 멈춘다(끄는 판정은 Close-OfficeApps 가 든다)
     Close-OfficeApps -AppByName $apps -SpawnedPids $spawnedPids -Job $officeJob -PptWasRunning $PptWasRunning
 
     # 이 판이 연 파일의 복구 항목만 걷는다 — 사람의 복구 자료는 둔다(office-session.ps1 의 Clear-OwnedRecovery)
     Clear-OwnedRecovery -Paths $targets
 
-    # 읽기 과정에서 생성된 임시 락 파일(~$...) 정리
+    # 오피스가 죽으며 못 지운 잠금 파일(~$이름)을 걷는다 — 남으면 다음에 그 파일을 열 때 「다른 사람이 쓰는 중」으로 열린다
     foreach ($target in $targets) {
         $parentDir = Split-Path -Path $target -Parent
         $fileName = Split-Path -Path $target -Leaf

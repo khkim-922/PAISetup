@@ -4,8 +4,8 @@
 새나 · 받기를 거절당한 것을 성공으로 세나. 깨지면 작업 스케줄러 아래서 조용히
 안 나간 날이 쌓이거나(되돌릴 수 없다), bcc 주소가 모두에게 보인다.
 
-가짜 중계는 기본 중계에서 잰 꼴을 흉내 낸다 — STARTTLS 를 광고하고, 명령을
-받으면 핸드셰이크 없이 연결을 끊는다(mailer.py 머리말의 실측).
+가짜 중계는 기본 중계의 꼴을 흉내 낸다 — STARTTLS 를 광고하고, 명령을 받으면
+핸드셰이크 없이 연결을 끊는다(SOURCES.md 「mailer.py」).
 
 돌리는 법::
 
@@ -38,8 +38,7 @@ import tempfile
 import threading
 import traceback
 
-# 이 검사는 이름 풀이도 하지 않는다 — smtplib 이 EHLO 이름으로 부르는 getfqdn 은
-# DNS 를 묻는다. 127.0.0.1 밖으로 아무것도 안 나가게 막는다.
+# smtplib 이 EHLO 이름으로 부르는 getfqdn 은 DNS 를 묻는다 — 막아야 127.0.0.1 밖으로 아무것도 안 나간다
 socket.getfqdn = lambda name="": "check.invalid"
 
 TREE = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else __file__).resolve()
@@ -112,7 +111,7 @@ class FakeRelay:
                     say(*extensions, "250 HELP")
                 elif verb == "STARTTLS":
                     say("220 go ahead")
-                    return              # 실측 꼴 — 핸드셰이크를 받지 않고 끊는다
+                    return              # 핸드셰이크를 받지 않고 끊는다
                 elif verb == "MAIL":
                     mail = {"from": address(line), "rcpts": [], "data": b""}
                     say("250 ok")

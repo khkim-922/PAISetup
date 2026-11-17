@@ -10,17 +10,8 @@
 //   Edge 에 붙는 줄(디버깅 포트에 묻기 · CDP 한 줄 · 기다리기)은 형제 스킬 ep-login 의 scripts/edge_cdp.js 를 싣는다 — 포트를 읽는 자리와
 //   Edge 의 답 하나에 두는 시한이 거기 있다
 //
-// 어떻게 짓나(2026-11-16 회사 PC 에서 잰 것)
-//   게시판 탭(XClickController 화면)이 쓰는 사람의 Edge 에 있어야 한다 — 글쓰기 창은 그 탭의 writeArticle 이 연다. 없으면 이 손이
-//   게시판 입구(포털의 SSO 넘김 주소)를 새 탭으로 열어 선 뒤에 쓴다. 글쓰기 창에서
-//   - 게시판 — 화면의 고름 상자에 값을 넣는 함수(jQuery.setDivisionSelect)로 넣는다. 본문보다 먼저 넣는다 — 게시판을 고르면 화면이
-//     게시판의 본문 틀을 다시 싣고(setBbsTemplate) 앞서 넣은 본문을 덮는다(잼)
-//   - 첨부 — 첨부 틀(html5uploader)의 숨은 파일 칸에 넣는다. 임시저장이 먼저 올리고 글에 묶는다(잼). 본문보다 먼저 넣는다 — 파일
-//     칸을 찾느라 창의 DOM 을 통째로 받는데, 본문 뒤면 본문의 그림(data URI)이 그 답에 실려 Edge 의 답 시한을 넘길 수 있다
-//   - 본문 — 편집기(DEXT5) 틀의 setContent. 그림은 data URI 그대로 본문에 들고 저장된다(잼)
-//   - [임시저장] — 화면의 articleSave('TEMP'). 「저장 하시겠습니까?」 만 「예」 하고, 다른 물음은 「아니오」 하고 그 글을 들고 멈춘다
-//   저장이 섰나는 임시보관함으로 가린다 — 저장 전에 없던, 같은 제목의 글이 서면 그것이 새 글이다. 저장 뒤 창은 닫고(화면도 닫으려 한다)
-//   그 글을 편집 창으로 다시 연다 — 거기서 [등록]을 누르면 그 임시 글이 게시된다.
+// ⚠ 글쓰기 창에는 게시판 → 첨부 → 본문 차례로 넣는다 — 게시판을 고르면 화면이 본문 틀을 다시 실어 앞서 넣은 본문을 덮고, 본문 뒤의
+// 첨부는 본문의 data URI 가 DOM 답에 실려 Edge 의 답 시한을 넘긴다. 걸음마다의 화면 함수와 저장을 가리는 법은 ../references/DESIGN.md 「짓기」.
 //
 // 무엇을 내나 — 표준 출력에 JSON 한 줄 {id, board, title, files, where}. 종료 값 0 됐다 · 1 도구 · 화면 오류 · 2 인자 · 게시판이
 // 거절했다(물은 글이 message 에 든다) · 3 Edge 에 못 붙었다 · 게시판이 로그인을 청한다(스킬 ep-login)
@@ -32,11 +23,11 @@ const { sleep, waitFor, framesOf, edgeLine } = require('../../ep-login/scripts/e
 const ROOT = 'http://swpappr.posco.net:7070/U14/U14010';
 const ENTRY = 'http://swpsso.posco.net/idms/U61/jsp/redirectSMSP.jsp?redir_url='
   + encodeURIComponent(`${ROOT}/dispatcherSubmitSSO.jsp?menu=BBS_ALL`);
-const BOARD_TAB = /\/U14\/U14010\/XClickController$/;   // 게시판 화면 탭의 주소
+const BOARD_TAB = /\/U14\/U14010\/XClickController$/;
 const WRITE_WINDOW = /\/U14\/U14010\/common\/pop\/windowOpenMain\.jsp/;   // 글쓰기 · 편집 창의 주소
 const READY_SECONDS = 60;          // 창 · 편집기 · 첨부 틀이 다 서기를 기다리는 시한
 const SAVE_SECONDS = 120;          // [임시저장] 뒤 저장 답을 기다리는 시한 — 첨부 올리기가 든다
-const TEMPLATE_MS = 4000;          // 게시판을 고른 뒤 화면이 본문 틀을 다시 싣기를 기다리는 몫(잼 — 그 전에 넣은 본문은 덮인다)
+const TEMPLATE_MS = 4000;          // 게시판을 고른 뒤 화면이 본문 틀을 다시 싣기를 기다리는 몫 — 그 전에 넣은 본문은 덮인다
 const WINDOW_NAME = 'boardSkillPop';   // 이 손이 여는 창의 이름 머리 — 부를 때마다 새 이름이라 열린 창을 안 덮는다
 const SAVE_CONFIRM = /^저장 하시겠습니까\?\s*$/;
 const EXIT = {OK: 0, FAIL: 1, ARGS: 2, NO_EDGE: 3};

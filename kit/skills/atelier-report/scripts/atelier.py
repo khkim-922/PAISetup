@@ -1,35 +1,17 @@
 """사내 아뜰리에 서버로 보고 글을 HTML 로 짓고, 그 문서를 브라우저 고치기 화면으로 넘기고, 최신 판을 받는다.
 
-무엇을 하나
-    쓰는 사람 PC 의 환경값 키로 아뜰리에 서버의 문을 차례로 밟는다 — 표준 라이브러리만 쓴다::
-
-        make   추천(디자인 하나로 확정) → 렌더 → 자체 점검. 끝 판을 임시 폴더에 받는다
-        open   넘김 표를 받아 브라우저로 그 문서의 고치기 화면을 연다 — 화면에는 이 키 · 갈래 · 모델이 골라져 선다
-        fetch  그 문서의 최신 판(사람이 화면에서 고친 뒤의 판)을 임시 폴더에 받는다
-
-    받은 HTML 은 스킬 company-mail 의 ``save-draft --html-file`` (본문) · ``--attach`` (첨부)로 넘긴다.
-
-    그림은 원문 글이 든다 — 마크다운 그림 줄 ``![캡션](경로)`` 의 경로가 이 PC 의 파일이면 그 자리에 그림을 박아 보내고,
-    아뜰리에가 그 자리의 그림으로 지면에 앉힌다. 경로는 원문 파일의 폴더에서 풀고, 괄호가 든 경로는 ``(<경로>)`` 로 감싼다.
-    바깥 주소(http · data · cid)의 그림 줄은 글자 그대로 간다.
-
-어떻게 부르나
     python -X utf8 -I atelier.py make --source-file 글.md [--mode mail|web|auto] [--extra "정리 요청 한 줄"]
     python -X utf8 -I atelier.py open 문서
     python -X utf8 -I atelier.py fetch 문서
 
-    서버는 ``ATELIER_URL`` · 없으면 ``DEFAULT_URL``. 키는 ``KEY_ENV``(설치가 까는 회사 키)다. 갈래 · 모델은 ``PROVIDER`` ·
-    ``MODEL`` 이고 자격을 싣는 머리 이름은 서버의 ``/api/status`` 가 댄다. 사내 망의 서버라 시스템 프록시를 안 탄다.
+make 는 추천(디자인 하나로 확정) → 렌더 → 자체 점검을 밟아 끝 판을 임시 폴더에 받고, open 은 넘김 표를 받아 그 문서의 고치기 화면을
+브라우저로 열고, fetch 는 사람이 화면에서 고친 최신 판을 받는다. 원문의 그림 줄 `![캡션](경로)` 이 이 PC 의 파일이면 그 자리에 박아
+보낸다(경로는 원문 파일의 폴더에서 푼다 · 바깥 주소는 글자 그대로). 받은 HTML 은 스킬 company-mail 의 `save-draft` 로 넘긴다.
 
-무엇을 내나
-    사람이 읽을 글줄을 표준 출력에 내고, 끝 줄은 늘 「다음: …」 이다. 종료 값 — 0 됐다 · 1 서버 · 망 오류이거나 서버가
-    문서 대신 말을 돌려줬다 · 2 설정 · 인자가 틀렸다(키 없음 · 파일 없음 · 드라이런으로 떨어짐).
+서버는 `ATELIER_URL` · 없으면 `DEFAULT_URL`, 키는 `KEY_ENV` 다. 사내 망의 서버라 시스템 프록시를 안 탄다.
 
-안 하는 것
-    메일 보내기(company-mail 이 한다) · 설계 → 검토 → 상담 · 알아서 고치기(화면의 「알아서 만들기」 사슬 가운데 느린 몫 —
-    고치기는 사람이 화면에서 한다) · 문서 파일(오피스 · PDF)을 원문 첨부로 싣기(글 파일 하나와 그 글이 가리킨 그림만
-    보낸다) · 참고 그림(모양만 따오는 그림) 싣기 · 원문구조 다이얼(모드 기본값으로 돈다) · 세이프모드(바깥 메일용 지면 —
-    사내 메일에는 안 쓴다).
+내는 것 — 사람이 읽을 글줄을 표준 출력에, 끝 줄은 늘 「다음: …」. 종료 값 — 0 됐다 · 1 서버 · 망 오류이거나 서버가 문서 대신 말을
+돌려줬다 · 2 설정 · 인자가 틀렸다(키 없음 · 파일 없음 · 드라이런으로 떨어짐). 안 하는 것과 빌린 계약은 곁의 `README.md` 가 든다.
 """
 
 from __future__ import annotations
@@ -62,24 +44,20 @@ OUT_ROOT = "atelier-report"        # 받은 HTML 의 자리 — 임시 폴더 �
 
 EXIT_OK, EXIT_FAIL, EXIT_CONFIG = 0, 1, 2
 
-# 추천 줄 · 서브 줄 — atelier `app/static/app.js` 의 `adviceRows` · `adviceSubs` 를 옮겼다(atelier 7f357211 판).
-# 손으로 따라간다: 저쪽 지시문(`prompts/advise-system.md` 「어떻게 답하나」)과 정규식이 바뀌면 여기도 고친다 — 저쪽
-# `adviceRows` 곁말이 이 자리를 가리킨다. 이름은 디자인 목록과 대조해 없는 것은 버린다(저쪽 난간 그대로).
-# `변형:` 줄은 안 가져왔다 — 다이얼 없이 보내면 렌더가 모드 기본값을 세운다(atelier assemble).
+# 추천 줄 · 서브 줄 — atelier `app/static/app.js` 의 `adviceRows` · `adviceSubs` 의 손사본(atelier 7f357211 판 · README 「빌린 것」).
+# 저쪽 지시문 · 정규식이 바뀌면 여기도 고친다
 ADVICE_ROW = re.compile(r"^\s*추천\s*[:：]\s*([^|｜]+?)\s*[|｜]\s*(?:(웹|메일)\s*[|｜]\s*)?(.+?)\s*$")
 ADVICE_SUB = re.compile(r"^\s*서브\s*[:：]\s*([^|｜]+?)\s*[|｜]\s*(.+?)\s*$")
 
 # 원문 글의 그림 줄 — 표준 마크다운 그림 문법. 경로는 `(<…>)` 로 감싼 꼴이 먼저다(괄호 · 빈칸이 든 경로).
 SOURCE_IMAGE = re.compile(r"!\[([^\]]*)\]\(\s*(?:<([^>]+)>|([^)]+?))\s*\)")
 OUTSIDE_REF = re.compile(r"^(?:https?:|data:|cid:)", re.I)   # 이 PC 의 파일이 아닌 그림 줄 — 글자 그대로 둔다
-# 박는 꼴 · 박힌 그림의 이름표 · 지면에 앉은 그림의 표식 — atelier 의 원문 현관이 원문에 박힌 그림을 그림으로 접어
-# 눌러 싣고 렌더 뒤 그 자리에 되꽂는 계약을 빌렸다(atelier b408a7da 판 · `app/assemble.py` `fold_data_images` ·
-# `_DATA_IMG_RE` · `fig_tag` · `docs/reference/http-api.md` 4 절). 손으로 따라간다 — 저쪽 정규식이 바뀌면 여기도 고친다.
+# 박는 꼴 · 이름표 · 앉은 그림의 표식 — atelier `app/assemble.py` 의 박힌 그림 계약의 손사본(atelier b408a7da 판 · README 「빌린 것」).
 # ⚠ 이름표가 `EMBED_MIME` 꼴을 벗어나면 저쪽이 그림으로 못 접어 base64 가 글자로 봉투에 샌다 — 보내기 전에 여기서 막는다.
 EMBED_TAG = '<img src="data:{mime};base64,{data}">'
 EMBED_MIME = re.compile(r"image/[a-z.+-]+")
-# 저쪽이 그림으로 실을 수 있는 바이트의 머리(PNG · JPEG · GIF · BMP · TIFF, WebP 는 `raster` 가 따로 본다) — 저쪽의 접는 문턱은
-# 이름표가 아니라 속이다(같은 판 `fold_data_images` 의 「실을 수 있나」). 이름만 그림인 파일(EMF · WMF · SVG · 그림 아닌 것)은 못 접힌다
+# 저쪽이 그림으로 실을 수 있는 바이트의 머리(WebP 는 `raster` 가 따로 본다) — 저쪽은 이름표가 아니라 속으로 가려, 이름만 그림인
+# 파일(EMF · WMF · SVG)은 못 접힌다
 RASTER_HEADS = (b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"GIF87a", b"GIF89a", b"BM", b"II*\x00", b"MM\x00*")
 SEATED_FIGURE = re.compile(rb'\bdata-atelier-fig="(\d+)"')
 
@@ -120,7 +98,13 @@ class Server:
         except (urllib.error.URLError, OSError) as exc:
             raise Stop(EXIT_FAIL, f"아뜰리에 서버 {self.base} 에 못 닿았다({exc})",
                        f"사내망 안인가 · 서버가 떠 있나 본다. 주소가 다르면 {URL_ENV} 로 준다") from exc
-        return payload if raw else json.loads(payload.decode("utf-8"))
+        if raw:
+            return payload
+        try:
+            return json.loads(payload.decode("utf-8"))
+        except ValueError as exc:   # 아뜰리에가 아닌 서버(포털 · 다른 포트)가 HTML 로 답했다
+            raise Stop(EXIT_FAIL, f"{self.base}{path} 가 JSON 이 아닌 답을 냈다 — 아뜰리에 서버가 아닌가",
+                       f"주소를 본다 — 다르면 {URL_ENV} 로 준다") from exc
 
     def cred_heads(self) -> dict:
         if self.heads is None:
@@ -161,11 +145,8 @@ def raster(raw: bytes) -> bool:
 
 
 def embed_images(source: str, base: pathlib.Path) -> tuple[str, list[str]]:
-    """원문 글의 그림 줄을 박힌 그림 태그로 바꾼다 — (바꾼 글, 박은 파일 이름들).
-
-    그림은 제 줄에 서고 캡션은 그 아랫줄 글자로 남는다. 바깥 주소의 그림 줄은 안 건드린다. 파일이 없거나 그림
-    이름표를 못 얻거나 속이 실을 수 있는 그림(`raster`)이 아니면 `Stop`(설정 오류)이다.
-    """
+    """원문 글의 그림 줄을 제 줄의 박힌 그림 태그로 바꾼다(캡션은 아랫줄 글자) — (바꾼 글, 박은 파일 이름들).
+    파일이 없거나 이름표를 못 얻거나 `raster` 가 아니면 `Stop`(설정 오류)."""
     names = []
 
     def embed(m):

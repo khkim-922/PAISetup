@@ -9,22 +9,14 @@
 내는 것 — 앱의 JSON 그대로(dict · list). 예외 — ``SessionExpired``(사내 세션이 끊겼다 · 앱이 안 들였다 — 받는 손을 다시 부를
 자리) · ``SessionMissing``(세션 파일이 없다 · 못 읽는다) · ``AppError``(앱이 거절했다 · 답이 꼴이 아니다).
 
-들어가는 길(2026-11-12 회사 PC 에서 잰 것)::
+들어가는 길은 SSO 넘김 → 앱 뿌리 POST → ``test_login.do?aes=`` → ``main.do`` 네 걸음이다 — 걸음마다의 꼴은 ``references/SOURCES.md``
+「들어가는 길」이 든다. 앱의 세션 쿠키는 이 손의 쿠키 통에만 살고 세션 파일에 안 쓴다 — 들어가기가 짧아 부를 때마다 다시 들어간다.
 
-    1. 사내 세션 쿠키(.posco.net)를 싣고 SSO 넘김 화면(SSO_PAGE)을 GET — 200 에 숨은 칸 폼(ssoToken · …)이 온다.
-       세션이 끊겼으면 그 칸이 없다
-    2. 그 칸을 앱 뿌리(APP_ROOT)에 POST — 앱이 ``var epId = encodeURIComponent('…')`` 로 열쇠를 든 화면을 낸다
-    3. ``/test/test_login.do?aes=<열쇠>`` 를 GET — 302 → ``/main/main.do`` 면 선 것. 앱은 그때 제 세션(JSESSIONID)을 심는다
-    4. 그 뒤 ``/main/ajax/…`` 를 폼 꼴 POST 로 부른다. 끊긴 앱 세션은 302 → ``/test/closePage.do`` 다
-
-앱의 세션 쿠키는 이 손의 쿠키 통에만 살고 세션 파일에 안 쓴다 — 받는 손이 남기는 것은 회사 도메인(posco.net) 쿠키뿐이고, 들어가기는
-한 번에 1 초 안쪽이라 부를 때마다 다시 들어간다.
-
-⚠ 열람 기록 — 앱의 화면은 문서를 열 때 ``insertSopConnHis.do`` 를 따로 불러 열람 기록을 남긴다. 이 손은 그 주소를 부르지 않는다 —
-읽기(``selectProcessInfo.do``) 쪽에서 서버가 따로 남기는지는 못 쟀다(``references/SOURCES.md``). 남은 기록을 지우는 손은 없다(만들지 않는다).
+⚠ 앱의 화면은 문서를 열 때 ``insertSopConnHis.do`` 로 열람 기록을 따로 남긴다 — 이 손은 그 주소를 부르지 않는다. 읽기 쪽에서 서버가
+따로 남기는지는 못 쟀다(``references/SOURCES.md``).
 
 사내 밖으로는 안 나간다 — 부르는 주소는 이 파일의 상수(검사가 가짜를 세울 때만 환경변수 ``CBSOP_ROOT`` · ``CBSOP_SSO_PAGE`` 가
-바꾼다)뿐이고, 프록시를 안 탄다(사내 호스트다). 리다이렉트를 따라가지 않는다 — 따라가면 쿠키가 엉뚱한 자리에 실린다.
+바꾼다)뿐이고, 프록시를 안 탄다. 리다이렉트를 따라가지 않는다 — 따라가면 쿠키가 엉뚱한 자리에 실린다.
 """
 
 from __future__ import annotations
@@ -48,12 +40,12 @@ SSO_PAGE = os.environ.get("CBSOP_SSO_PAGE",
                           "http://swpsso.posco.net/idms/U61/jsp/redirectSMSP.jsp?redir_url="
                           + urllib.parse.quote(APP_ROOT, safe=""))
 LANDING = "/main/main.do"          # 들어가기가 선 302 의 자리
-TIMEOUT = 60                       # 묻기 하나의 시한 — 큰 범주의 전체 목록이 35 초 남짓 걸린다
-SEARCH_TIMEOUT = 180               # 본문 검색은 흔한 낱말에 20 초 가까이 걸렸다
+TIMEOUT = 60                       # 묻기 하나의 시한 — 큰 범주의 전체 목록이 수십 초 걸린다(잰 값은 ``references/SOURCES.md``)
+SEARCH_TIMEOUT = 180               # 본문 검색의 시한 — 흔한 낱말이면 수십 초 걸려 목록보다 넉넉히 둔다
 EP_KEY = re.compile(r"encodeURIComponent\('([^']+)'\)")
 URI_COMPONENT_SAFE = "!*'()"       # 화면의 encodeURIComponent 가 안 싸는 글자 — 그 밖(「/」 도)은 다 싼다
 UA = "Mozilla/5.0"
-IMAGE_PATH = re.compile(r"/uploads/output/[^/?#]+/[^/?#]+/media/[^/?#]+")   # 본문 그림의 잰 꼴(2026-11-16 · 30 건 중 18 건 · 155 장이 다 이 꼴)
+IMAGE_PATH = re.compile(r"/uploads/output/[^/?#]+/[^/?#]+/media/[^/?#]+")   # 본문 그림의 잰 꼴 — 앱 호스트의 그림 주소는 이 꼴 하나다(``references/SOURCES.md``)
 
 
 class AppError(Exception):
@@ -146,7 +138,7 @@ class App:
 
     def search(self, text: str, fields: str = "subject") -> dict:
         """앱의 통합 검색 — fields 는 subject · content · file_name · user_name · team_name 을 쉼표로. 화면처럼 검색어를 한 번
-        싸서 searchText · searchText2 둘에 다 준다 — searchText2 가 비면 본문 검색이 늘 0 건이다(잰 것)."""
+        싸서 searchText · searchText2 둘에 다 준다 — searchText2 가 비면 본문 검색이 늘 0 건이다."""
         word = urllib.parse.quote(text, safe=URI_COMPONENT_SAFE)
         return self.call("/main/ajax/searchListCnt.do",
                          {"searchText": word, "searchText2": word, "menuId": "", "searchConditionPram": fields},
@@ -154,7 +146,7 @@ class App:
 
     def image(self, src: str) -> bytes:
         """본문 ``<img src>`` 하나 — 앱 호스트의 잰 꼴(IMAGE_PATH · 물음표 없이)만 묻고, 그 밖이면 묻지 않고 ``Refused``. 그림은 앱
-        세션 없이도 받아진다(잰 것) — 그래서 들어가기를 안 거친다. 앱은 그림에 Content-Type ``application/octet-stream`` 을 댄다 — 꼴은
+        세션 없이도 받아진다 — 그래서 들어가기를 안 거친다. 앱은 그림에 Content-Type ``application/octet-stream`` 을 댄다 — 꼴은
         부르는 쪽이 바이트 머리로 가린다."""
         url = urllib.parse.urljoin(APP_ROOT + "/", src.strip())
         parts = urllib.parse.urlsplit(url)

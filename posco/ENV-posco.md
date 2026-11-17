@@ -163,15 +163,11 @@
   생각을 안 한다. 첫 바이트 뒤 아무것도 안 온 채 벽에 닿은 원인은 게이트웨이 안쪽이고 밖에서 못 가른다.
   잡는 길은 하나다 — VS Code 를 `capture_proxy.py serve` 너머로 두면 멈추는 그 요청이 본문과 응답 시각
   (첫 바이트 · 첫 글자 · 벽)을 함께 남긴다
-- **생각을 조일 손잡이는 없다 — 2026-09-09 18:37, `effort_probe.py`.** `claude-opus-5` 에 같은 물음(답 두 줄)을
-  `output_config.effort` low·high·xhigh·max 와 `thinking: disabled` 로 판마다 두 번 보냈다. 초과 토큰이 전부
-  166~201 로 같고 disabled 도 184~199 다. 넷 다 400 없이 200 — **효과값도 disabled 도 모델에 안 닿는다.**
-  `thinking`·`output_config` 는 이 게이트웨이가 통째로 떨구는 필드다
 - **게이트웨이 팀에 낼 보고** — `gateway-report-claude-thinking-2026-09-09.md`(관측 사실 · 여쭙는 것 셋 · curl 재현 ·
   설치본에는 안 실린다). 답이 오면 이 절을 그 답으로 고친다. 이 절의 결함을 다른 보고들과 한 표로 묶어 「Bedrock InvokeModel 꼴
   끝점을 곁에 열면 무엇이 풀리고 무엇이 안 풀리나」로 다시 물은 것이 `gateway-report-bedrock-passthrough-2026-11-02.md` 다 — 끝점이
   어렵다면 지금의 변환기가 `thinking` · `output_config` 를 Converse 의 `additionalModelRequestFields` 로 넘기는 길도 함께 물었다
-- atelier 는 회사에서 `claude-opus-5` 를 쓰므로 **생각이 켜진 채 조용히, 조일 수 없이 돈다.** 렌더 봉투에서
+- atelier 는 회사에서 `claude-opus-5` 를 쓰므로 **생각이 켜진 채 조용히 돈다.** 렌더 봉투에서
   그 생각이 180초를 넘으면 스트림 벽 → 접은 비스트리밍이 300초를 더 태우고 504 (2026-09-07 14:07~14:15 실측,
   atelier `output/_fail/fail-141502`). 이 게이트웨이에서 침묵을 없애는 손잡이는 **모델 이름**뿐이다 — 4.7 은
   생각을 안 한다
@@ -304,7 +300,7 @@
   한글 이름도)를 받고, **이 셋은 메일의 읽음 표시를 안 바꾼다. 문서를 여는 `?OpenDocument` 는 바꾼다.** 읽음은 목록의
   `read` 열이 든다(`ico-nomail` 이 안 읽음). REST(`/api/data`)는 서버에는 서 있지만 메일 문서에 403 이다. 회사 VDI
   실측(2026-11-03 · 제 주소로 보낸 첨부 둘의 시험 메일) — 받는 손은 스킬 company-mail 의 `scripts/inbox.py`, 세션은 스킬 ep-login 의 `scripts/edge_session.js`
-  — 폴더 · 보낸편지함 · 받는 사람 목록(보기 `!전체목록추출용`) · 사내 주소록 · 읽기 전용 막(`ChangeRefused`) · 읽음 반영 손(`mark_read` · `mark_unread`)의 주소와 실측은 그 `inbox.py` 머리가 든다(#235 ④)
+  — 폴더 · 보낸편지함 · 받는 사람 목록(보기 `!전체목록추출용`) · 사내 주소록 · 읽기 전용 막(`ChangeRefused`) · 읽음 반영 손(`mark_read` · `mark_unread`)의 주소와 실측은 `.claude/skills/company-mail/references/SOURCES.md` 「inbox.py」가 든다(#235 ④)
 - npm 레지스트리 접근 가능
 - 신규 패키지는 **유료 라이선스인지만** 본다 — 설치 시점에 이미 걸리는 확인이다. 무료면 그대로 깐다.
   ⚠ **개인 도구 · PC 에서 도는 앱 이야기다** — 회사 방식(SR → 회사 GitLab)으로 배포하는 앱은 사내 승인 패키지만 쓴다(스킬 `inhouse-app`)

@@ -15,23 +15,16 @@
 묶음 게시판(「일반사항」)을 주면 그 아래 게시판을 다 본다. 안 주면 모든 게시판이다. 기간을 안 주면 처음부터 오늘까지다 — 화면의 기본(6
 개월 · 1 년)보다 넓다. ``search`` 의 기본 칸은 제목 · 내용 · 작성자 · 첨부 이름 넷이다.
 
-``save`` 는 쓰는 사람의 Edge 화면(디버깅 포트)에서 [글쓰기] 창을 열어 넣고 [임시저장]만 누른다 — 등록은 안 한다. 저장한 글을 편집 창으로
-띄워 두니 사람이 그 창에서 보고 [등록]을 누른다. 글은 HTML 파일이나 평문 파일이고, ``--image`` 의 그림은 본문 끝에 차례로 붙는다(data URI —
-게시판이 그대로 저장한다 · 잰 것). 묶음 게시판에는 못 쓴다 — 게시판이 막는다.
+⚠ ``save`` 는 쓰는 사람의 Edge 화면(디버깅 포트)에서 [임시저장]만 누르고 등록은 안 한다 — 저장한 글을 편집 창으로 띄워 두면
+사람이 그 창에서 보고 [등록]을 누른다. ``--image`` 의 그림은 본문 끝에 data URI 로 붙는다. 묶음 게시판에는 못 쓴다.
 
-받은 첨부 — 문서함(ECM) 쪽지(「이름(확장자_NKB).html」)는 파일로 안 남기고 문서 열쇠를 낸다(스킬 company-ecm 의 read 로 연다). 그 밖은
-``--out``(기본 임시 폴더 아래 SAVE_ROOT/<글 id>)에 받고, 오피스 · PDF 가 DRM 에 감겼으면 ``note`` 가 그렇다고 말한다 — 읽는 손(스킬
-drm-office-read)이 받는 꼴이면 그 스킬로 넘기고, 안 받는 꼴(한글 · docm …)이면 못 읽는다고 말한다. 저장 이름과 그 가름은 형제 스킬
-company-mail 의 ``attachments`` 가 든다(메일 첨부와 한 가름) — 이름이 서로 다르면 그 이름 그대로, 겹치면 「<번호>-」 를 붙인다.
+받은 첨부 — 문서함(ECM) 쪽지는 파일로 안 남기고 문서 열쇠를 낸다(스킬 company-ecm 의 read 로 연다). 그 밖은 ``--out``(기본 임시 폴더
+아래 SAVE_ROOT/<글 id>)에 받고, DRM 에 감겼으면 ``note`` 가 다음 손을 말한다. 본문 — ``read`` 의 글자는 사람 눈에 안 보이는 글이
+걷히고(걷은 수는 ``hidden``), 그림은 「[그림 N]」(``--images`` 가 받은 그림의 ``no``)이다. 첨부 · 본문을 푸는 손과 그 꼴은
+``references/DESIGN.md``.
 
-본문 — ``read`` 의 글자는 형제 스킬 company-mail 의 ``visible`` 이 푼다(메일 · 사규와 한 손). 사람 눈에 안 보이는 글(숨긴 요소 · 바탕색 글 ·
-스크립트)은 걷히고, 걷은 덩이가 있으면 답이 그 수를 ``hidden`` 에 든다. 표는 한 행이 한 줄이고 칸을 「 | 」 로 가르며, 합친 칸은 차지한
-자리마다 같은 글자를 되풀이한다. 그림은 「[그림 N]」 이다 — N 은 ``--images`` 가 받은 그림의 ``no`` 와 같다. 답의 글자는 어느 칸이든(제목 ·
-작성자 · 첨부 이름도) 폭 없는 문자 · 방향 뒤집기 문자를 걷고 나간다.
-
-하는 일 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 로 사내 세션을 쥐고 게시판에 들어가 읽는다. 읽기는 게시판에 아무것도 안
-남긴다(조회수도 안 올린다 · ``xclick.py`` 머리말). 게시판 나무는 홈에 받아 두고(TREE_DAYS) ``list`` · ``search`` 가 그것으로 이름을
-가린다 — 받아 둔 것에 없는 게시판을 만나면 그 판에 새로 받고, ``boards`` 는 늘 새로 받아 남긴다.
+세션 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 가 쥔다. 읽기는 게시판에 아무것도 안 남긴다(조회수도 안 올린다). 게시판
+나무는 홈에 받아 두고(``TREE_DAYS``) ``boards`` 는 늘 새로 받는다.
 
 내는 것 — 표준 출력에 JSON 하나. 답 하나는 OUT_BYTES 를 안 넘는다 — 넘을 줄 · 본문은 덜고(본문은 줄 끝에서 끊는다) ``more`` 가 다음 ``--from`` 이나 ``--page`` 를
 든다. 목록 줄은 ``id`` · ``title`` · ``writer`` · ``date`` 에, 참일 때만 ``notice``(고정 공지) · ``files``(첨부가 있다)를 든다. 줄의 게시판
@@ -53,12 +46,12 @@ import sys
 import tempfile
 import time
 
-HERE =pathlib.Path(__file__).resolve().parent
+HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
 # 형제 스킬 — 본문을 푸는 손(``visible``) · 본문 그림을 받는 손(``body_images``) · 첨부 가름(``attachments``) · ECM 쪽지의 꼴과 열쇠(``inbox``)가 사는 자리
 MAIL_SCRIPTS = HERE.parents[1] / "company-mail" / "scripts"
 DRAFT_HAND = "draft_board.js"     # 글을 화면에서 짓는 손 — 이 파일 곁
-DRAFT_HAND_SECONDS = 330          # 그 손 한 판의 시한 — 흔한 판은 30 초 안쪽이고, 대화 도구의 시한(스킬 본문의 6 분)보다 짧아야 끊겨도 답이 온다
+DRAFT_HAND_SECONDS = 330          # 그 손 한 판의 시한 — 대화 도구의 명령 시한보다 짧아야 끊겨도 답이 온다
 SAVE_ROOT = "company-board"       # 첨부를 받는 기본 자리 — 임시 폴더 아래
 IMAGES_DIR = "body-images"        # read --images 가 본문 그림을 받는 자리 — 그 글의 첨부 자리 아래
 FIELDS = ("title", "contents", "writer", "filename")   # 찾는 칸 — 화면의 검색조건 넷
@@ -162,7 +155,7 @@ def article_dir(article_id: str) -> pathlib.Path:
 
 
 def ecm_note(name: str) -> bool:
-    """문서함(ECM) 쪽지의 이름 꼴인가 — 꼴은 형제 스킬 company-mail 의 ``inbox`` 가 든다(메일 첨부와 한 가름 · 잰 것)."""
+    """문서함(ECM) 쪽지의 이름 꼴인가 — 꼴은 형제 스킬 company-mail 의 ``inbox`` 가 든다(메일 첨부와 한 가름)."""
     return bool(load("inbox", MAIL_SCRIPTS).ECM_ATTACHMENT.match(name))
 
 
@@ -213,8 +206,10 @@ def cmd_boards(app, args) -> dict:
 
 def cmd_list(app, args, words: str = "", fields: tuple = ()) -> dict:
     boards, where, kept = pick_board(app, args.board if not words else args.within)
-    got = app.articles(where["id"] if where else "BBS85", words=words, fields=fields, since=args.since,
-                       until=args.until or "", page=args.page, count=LIST_COUNT)
+    scope = {"bbs_id": where["id"]} if where else {}          # 안 주면 앱 손의 기본 — 나무의 뿌리(모든 게시판)
+    if args.since:
+        scope["since"] = args.since                            # 안 주면 앱 손의 기본 — 처음부터
+    got = app.articles(**scope, words=words, fields=fields, until=args.until or "", page=args.page, count=LIST_COUNT)
     if kept and not {r["board"] for r in got["rows"]} <= set(board_names(boards)):
         boards = fresh_tree(app)          # 받아 둔 나무에 없는 게시판의 글이 왔다 — 이름을 대려면 새로 받는다
     head = {"board": PATH_SEP.join(where["path"]) if where else "모든 게시판", "total": got["total"], "page": args.page}
@@ -224,8 +219,8 @@ def cmd_list(app, args, words: str = "", fields: tuple = ()) -> dict:
         head.update(words=words, fields=list(fields))
     more = args.page if got["total"] > args.page * LIST_COUNT else None
     rows = got["rows"]
-    if words:   # 고정 공지는 쪽마다 맨 위에 서고 낱말과 상관없이 온다 — total 에도 안 든다(잰 것). 찾은 것과 가른다
-        pinned = [{"id": r["id"], "board": r["board"], "title": r["title"]} for r in rows if r["notice"]]   # 낱말이 든 고정 공지는 찾은 줄에 안 든다(잰 것) — read 로 열 수 있게 id 를 싣는다
+    if words:   # 고정 공지는 쪽마다 맨 위에 서고 낱말과 상관없이 온다 — total 에도 안 든다. 찾은 것과 가른다
+        pinned = [{"id": r["id"], "board": r["board"], "title": r["title"]} for r in rows if r["notice"]]   # 낱말이 든 고정 공지는 찾은 줄에 안 든다 — read 로 열 수 있게 id 를 싣는다
         rows = [r for r in rows if not r["notice"]]
         if pinned and args.page == 1:
             head["pinned_notices"] = pinned
@@ -288,7 +283,7 @@ def save_images(app, article_id: str, srcs: list[str]) -> list[dict]:
 
 def cmd_attachment(app, args) -> dict:
     files = app.files(args.id)
-    notes = [ecm_note(f["name"]) for f in files]      # 문서함 쪽지인가 — 첨부 차례대로
+    notes = [ecm_note(f["name"]) for f in files]
     rows = [{"no": i + 1, "name": f["name"], "bytes": f["size"], **({"ecm": True} if notes[i] else {})}
             for i, f in enumerate(files)]
     if not args.save:
@@ -383,7 +378,7 @@ def parser() -> argparse.ArgumentParser:
             s.add_argument("words")
             s.add_argument("--in", dest="within")
             s.add_argument("--field", action="append", choices=FIELDS)
-        s.add_argument("--since", default="1990-01-01")
+        s.add_argument("--since")
         s.add_argument("--until")
         s.add_argument("--page", type=int, default=1)
     r = sub.add_parser("read")

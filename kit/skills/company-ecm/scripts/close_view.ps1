@@ -7,17 +7,12 @@
     내는 것: 표준 출력에 JSON 한 줄({"found":…,"closed":…,"quit":…,"left":…,"others":[…]}). ``others`` 는 앱을 안 끈 판에 그 앱에 남은
     문서의 이름이다. 종료 값 0 닫았다 · 2 시한 안에 그 문서가 안 떴다(또는 이미 닫혔다) · 1 닫다가 실패했다.
 
-    왜 경로로 고르나: 에이전트는 받은 파일을 사람이 쓰던 앱에 띄울 수 있다(파워포인트는 사용자 하나에 하나만 뜨고, 워드 ·
-    엑셀도 셸이 연 파일은 떠 있던 앱에 들어간다). 그 앱의 다른 문서는 사람의 것이라, 이름 · 창 제목이 아니라 받은 파일의
-    전체 경로가 같은 문서 하나만 닫는다. 앱을 끄는 것은 남은 문서가 0 일 때뿐이다 — 끄면 저장 안 한 사람의 문서가 경고
-    없이 사라진다. 보기로 연 읽기 전용 파일은 저장하지 않고 닫는다. ``-Save`` 는 편집으로 연 파일을 저장한 뒤 닫는다. 남은 문서가
-    0 이 아니면 그 수를 ``left`` 로, 이름을 ``others`` 로 내고 앱은 그대로 둔다.
+    ``-Save`` 는 편집으로 연 파일을 저장한 뒤 닫고, 없으면 저장하지 않고 닫는다.
 
-    앱을 어떻게 찾나: 셸이 띄운 오피스는 포커스를 잃기 전까지 실행 중 개체 표(ROT)에 안 올라 ``GetActiveObject`` 가 못 본다 —
-    에이전트가 띄운 창이 바로 그 꼴이다. 그래서 오피스 창마다 문서 칸 창에서 ``AccessibleObjectFromWindow``(OBJID_NATIVEOM)로
-    앱을 받고, ROT 의 앱도 함께 본다. 워드 · 엑셀이 둘 떠 있어도 그 문서를 든 앱을 찾는다.
-
-    창이 뜨기를 기다린다: 에이전트는 파일을 다 받은 뒤 기본 앱을 띄우므로, 앱이 문서를 잡기까지 몇 초가 걸린다.
+    ⚠ 에이전트는 받은 파일을 사람이 쓰던 앱에 띄울 수 있다 — 그 앱의 다른 문서는 사람의 것이라 받은 파일의 전체 경로가 같은
+    문서 하나만 닫고, 앱은 남은 문서가 0 일 때만 끈다(끄면 저장 안 한 사람의 문서가 경고 없이 사라진다).
+    셸이 띄운 오피스는 포커스를 잃기 전까지 ROT 에 안 올라 ``GetActiveObject`` 가 못 본다 — 그래서 오피스 창마다
+    ``AccessibleObjectFromWindow``(OBJID_NATIVEOM)로 앱을 받고 ROT 의 앱도 함께 본다.
 #>
 [CmdletBinding()]
 param(
@@ -73,8 +68,8 @@ namespace EcmSeed {
 }
 
 function Get-OpenDocuments($Application) {
-    <# 그 앱의 열린 문서 모음(COM 개체 그대로). ⚠ 함수의 출력으로 내면 PowerShell 이 모음을 풀어 낱 문서로 바꾼다 — 문서가 하나
-       남았을 때 .Count 가 비어 0 으로 읽히고, 그러면 사람의 문서가 남은 앱을 끈다. 그래서 쉼표로 감싸 모음째 낸다 #>
+    <# 그 앱의 열린 문서 모음(COM 개체 그대로). ⚠ 쉼표로 감싸 모음째 낸다 — 풀려 나가면 문서가 하나 남았을 때 .Count 가
+       0 으로 읽혀 사람의 문서가 남은 앱을 끈다 #>
     switch ($App) {
         'Word'  { return , $Application.Documents }
         'Excel' { return , $Application.Workbooks }
@@ -95,8 +90,8 @@ function Get-Applications {
 }
 
 function Stop-EmptyApplication($Application) {
-    <# 남은 문서가 없는 앱을 끈다. 이 판이 쥔 COM 참조가 남아 있으면 파워포인트는 Quit 을 받고도 빈 창으로 남는다 — 참조를 다
-       놓은 뒤 그 앱이 아직 문서 0 으로 답하면 한 번 더 끈다. 문서가 0 인 앱만 끄므로 사람의 문서는 안 닫힌다 #>
+    <# 남은 문서가 없는 앱을 끈다. 쥔 COM 참조가 남으면 파워포인트는 Quit 을 받고도 빈 창으로 남아, 참조를 다 놓은 뒤 아직
+       문서 0 으로 답하는 앱을 한 번 더 끈다 #>
     try { $Application.Quit() } catch { }
     Release $Application
     [GC]::Collect(); [GC]::WaitForPendingFinalizers()

@@ -1,74 +1,35 @@
-// 쓰는 사람의 Edge 에서 사내 세션(메일 · 일정 · 다른 Domino 앱 · ECM)의 쿠키를 받아 세션 파일로 남긴다 — 사내 앱을 다루는
-// 손(스킬 company-mail · company-calendar · company-ecm · company-meeting-room · company-regulation · company-board)이 그 파일을 읽는다. 새로 로그인하지 않고 창 · 탭을 열지 않아, 아무 세션도 안 끊고 사람 화면에 아무것도
-// 안 뜬다. 그 손들은 세션 파일이 있으면 그것으로 먼저 돌고 서버가 거절할 때만 이 손을 부른다(ep_session.session_first) —
-// 붙어서 끝까지 1초 안팎이고 몇 번을 불러도 같다.
+// 쓰는 사람의 Edge 에서 사내 세션(메일 · 일정 · 다른 Domino 앱 · ECM)의 쿠키를 받아 세션 파일로 남긴다 — 사내 앱 스킬의 손이
+// 그 파일을 읽는다. 새로 로그인하지 않고 창 · 탭을 열지 않는다(`--ecm-tab` 만 탭 하나를 잠깐 연다). 몇 번을 불러도 같다.
 //
 // 부르는 꼴:
 //     node edge_session.js [세션 파일] [domino] [ecm] [--ecm-tab]
-//   세션 파일 — 안 주면 MAILBOX_COOKIES, 그것도 없으면 이 손의 기본 자리(DEFAULT_FILE · 홈). 기본 자리는 여기 한 곳에만 있다 —
-//     부르는 쪽은 인자 없이 부르고 종료 0 의 끝 줄에서 경로를 읽는다(아래 「내는 것」). git 저장소 안의 자리는 거절한다(종료 1).
-//   domino · ecm — 이번에 꼭 서야 하는 앱. 안 주면 domino 다(메일 · 일정 · 다른 Domino 앱이 쓰는 .posco.net 세션). ECM 세션은
-//     `ecm` 을 준 판에서만 받는다 — 메일 · 일정만 쓰는 판이 ECM 넘김을 매번 치르지 않는다. 문서함을 다루는 쪽이 `ecm` 을 준다.
-//   domino 의 확인 — MAILBOX_URL 이 있으면 그 메일함의 받은편지함 목록 하나, 없으면 Domino 서버(DOMINO_URL)의 세션 확인 주소
-//     (/common/lib_f.nsf/checksessionstatus?Openpage → {"status":"login"} · 웹메일이 수십 초마다 부르는 주소)다. 둘 다 메일을
-//     안 건드린다. 세션 확인 주소의 끊긴 답은 안 쟀다 — 그 꼴이 아니면 다 「로그인 안 됨」으로 본다.
-//   --ecm-tab — 조용한 ECM 받기(아래)가 안 설 때만 쓰는 갈래. 사람의 Edge 에 뒤쪽 탭 하나를 열어 SSO 넘김 주소를 거치고 닫는다.
-//     탭이 잠깐 보이므로 사람이 아는 자리(스킬 ep-login)에서만 준다.
+//   세션 파일 — 안 주면 MAILBOX_COOKIES, 그것도 없으면 places.json 의 기본 자리(홈). 부르는 쪽은 인자 없이 부르고 종료 0 의
+//     끝 줄에서 경로를 읽는다. git 저장소 안의 자리는 거절한다(종료 1).
+//   domino · ecm — 이번에 꼭 서야 하는 앱. 안 주면 domino 다. ECM 세션은 `ecm` 을 준 판에서만 받는다.
+//   --ecm-tab — 조용한 ECM 받기가 안 설 때만 쓰는 갈래. 사람의 Edge 에 뒤쪽 탭 하나를 열어 SSO 넘김을 거치고 닫는다 — 사람이
+//     아는 자리(입구 ep_login.js)에서만 준다.
 //
 // 환경변수 — 다 없어도 된다. MAILBOX_URL 메일함 주소(…/<번호>.nsf 까지 · 주면 domino 를 그 목록으로 가린다) ·
-//   MAILBOX_VIEW 받은편지함 보기(기본 XML_Inbox) · DOMINO_URL Domino 서버(기본 아래 DOMINO_SERVER) ·
-//   EDGE_DEBUG_PORT 디버깅 포트(쉼표로 여럿 · 주면 그 포트만 본다 · 안 주면 아래 「어느 Edge 에 붙나」) · ECM_URL ECM 메인 주소(기본 아래 ECM_MAIN · 넘김이 가리킬 첫 화면 index.jsp 는 그
-//   주소의 첫 경로 칸 아래에서 짓는다) · SSO_REDIRECT_URL SSO 넘김 주소 ·
-//   SESSION_DOMAIN 회사 도메인(기본 posco.net) · SESSION_LOGIN_HOSTS 로그인 화면 호스트(쉼표 · 기본 swpsso · adfs.m365) ·
-//   SESSION_REQUEST_SECONDS 묻기 하나의 시한(기본 5) · SESSION_PASS_SECONDS --ecm-tab 의 시한(기본 30) ·
-//   SESSION_LOGIN_WAIT_SECONDS 입구(ep_login.js)가 로그인 탭을 지켜보는 시한(기본 300).
-//   도메인 · 호스트 · 주소의 바꿈은 가짜 서버로 재는 검사(check_session.js)를 위해 있다 — 회사에서는 기본값 그대로 쓴다.
+//   MAILBOX_VIEW 받은편지함 보기(기본 XML_Inbox) · DOMINO_URL Domino 서버 · ECM_URL ECM 주소(…/ECM 까지 — 스킬 company-ecm 과
+//   같은 뜻) · EDGE_DEBUG_PORT 디버깅 포트(쉼표로 여럿 · 주면 그 포트만 본다) · SSO_REDIRECT_URL SSO 넘김 주소 ·
+//   SESSION_DOMAIN 회사 도메인 · SESSION_LOGIN_HOSTS 로그인 화면 호스트(쉼표) · SESSION_REQUEST_SECONDS 묻기 하나의 시한 ·
+//   SESSION_PASS_SECONDS --ecm-tab 의 시한 · SESSION_LOGIN_WAIT_SECONDS 입구가 로그인 탭을 지켜보는 시한. 기본값은 places.json 과
+//   settings() 가 든다. 서버 · 도메인 · 호스트의 바꿈은 가짜 서버로 재는 검사(check_session.js)를 위해 있다.
 //
-// 내는 것 — 세션 파일(Playwright 저장 상태 꼴 {"cookies": [...], "origins": []}). 종료 0 이면 표준 출력의 끝 줄이 그 파일의
-//   절대 경로 하나다(앞 줄들은 사람이 읽는 경과). 종료 값은 닫힌 다섯이다:
-//   0 파일이 지금 산 세션을 든다 — 꼭 서야 하는 앱마다 그 쿠키로 답이 왔다. 새로 썼거나, Edge 에 못 붙었는데 남은 파일이 아직
-//     산다(그때는 파일을 안 고친다)
-//   2 Edge 에 못 붙었고 남은 파일로도 안 섰다 — 디버깅 포트로 안 떴거나 닫혔다. 남은 파일이 있으면 그 절대 경로를 표준 출력의
-//     끝 줄로 낸다(없으면 경로 줄이 없다) — Edge 가 닫힌 뒤에도 남은 세션이 서버에 살아 있을 수 있어, 부르는 쪽이 한 번 써 보고
-//     서버가 안 받을 때(로그인 화면 · 302 · 401)만 ep-login 을 가리키게
-//   3 붙었지만 꼭 서야 하는 앱이 로그인이 안 됐다 — Edge 에서 로그인이 안 됐거나 끊겼다(ECM 넘김이 로그인 화면에서 멈춘 판도
-//     여기다). 파일은 안 고친다
-//   4 붙었고 로그인 화면에는 안 닿았는데 ECM 만 못 받았다 — 이 손이 ECM 의 SSO 넘김을 화면 없이 못 따라갔다(못 따라가는 꼴 ·
-//     회사 밖 주소 · 답 없음 · 걸음 초과 · --ecm-tab 으로도 안 섰다). 다시 로그인할 일이 아니다. 꼭 서야 하는 다른 앱이 안
-//     섰으면 4 가 아니라 3 이다. 파일은 안 고친다
+// 내는 것 — 세션 파일(Playwright 저장 상태 꼴 {"cookies": [...], "origins": []} · 회사 도메인의 쿠키만). 종료 0 이면 표준 출력의
+//   끝 줄이 그 파일의 절대 경로 하나다(앞 줄들은 사람이 읽는 경과). 종료 값은 닫힌 다섯이다(EXIT):
+//   0 파일이 지금 산 세션을 든다 — 새로 썼거나, Edge 에 못 붙었는데 남은 파일이 아직 산다(그때는 파일을 안 고친다)
+//   2 Edge 에 못 붙었고 남은 파일로도 안 섰다. 남은 파일이 있으면 그 절대 경로를 끝 줄로 낸다 — 부르는 쪽이 한 번 써 보고 서버가
+//     안 받을 때만 ep-login 을 가리킨다
+//   3 붙었지만 꼭 서야 하는 앱이 로그인이 안 됐다(ECM 넘김이 로그인 화면에서 멈춘 판도). 파일은 안 고친다
+//   4 붙었고 로그인은 섰는데 ECM 만 못 받았다 — 다시 로그인할 일이 아니다. 파일은 안 고친다
 //   1 그 밖 — 설정(주소 · 인자 · 저장소 안의 자리) · Node 판 · 도구 고장
-//   종료 2 · 3 · 4 는 표준 오류의 끝에 「다음: …」 한 줄을 낸다(1 은 까닭만) — 부른 쪽은 그 말대로 가고 사람에게 청할 것은 그대로 전한다. 사내 앱
-//   스킬의 얇은 명령은 3 · 4 와 파일 없는 2 를 제 종료 3 으로 옮겨 스킬 ep-login 을 가리킨다(그 스킬이 대화에서 이끈다).
-//   이 값의 뜻을 바꾸면 그 스킬과 부르는 스킬들을 같은 판에 고친다.
-//
-// 어느 Edge 에 붙나 — 이 PC 에서 디버깅 포트를 연 Edge 를 다 찾아(debugPorts — 입구의 포트 DEFAULT_PORT 가 먼저) 차례로 붙고,
-//   꼭 서야 하는 앱이 다 선 첫 Edge 의 쿠키를 남긴다. 다른 세션이 이미 띄워 로그인한 Edge 가 있으면 그 로그인을 쓴다 — 새로 띄우거나
-//   로그인을 청하지 않는다. 다 붙었는데 어디서도 안 섰으면 처음 붙은 Edge 의 종료 3 · 4 를 낸다. --ecm-tab 의 탭은 처음 붙은 Edge 에만 연다.
-//
-// 어떻게 붙나 — Playwright 의 connectOverCDP 를 안 쓴다. 디버깅 포트의 브라우저 자리(/json/version 의 웹소켓)에만 붙어
-//   Storage.getCookies 로 쿠키를 읽는다. 탭에는 붙지 않는다 — 그래서 사람의 탭을 안 건드린다. connectOverCDP 는 탭마다 붙고,
-//   듣는 손이 없으면 사람의 탭에 뜬 확인 창을 「취소」로 닫으며, 한 탭이라도 확인 창을 띄운 채면 붙기 자체가 시한까지 멈춘다
-//   (2026-11-06 이 PC Edge 146 · 임시 프로필로 잼 — references/SOURCES.md 「잰 것」).
-//   묻기(앱 확인 · ECM 받기)는 이 손이 Node 의 http 로 하고, 그 쿠키는 Edge 에서 읽은 것을 싣는다. 답이 고친 쿠키는 Edge 에도
-//   써 둔다(Storage.setCookies) — 사람의 Edge 가 그 주소를 열었을 때 받았을 쿠키와 같은 것이라, Edge 와 서버의 세션이 어긋나지 않는다.
-//
-// ECM — 세션은 swpecm 호스트의 쿠키(JSESSIONID)다. 그 쿠키가 없거나 서버가 안 받을 때만 SSO 넘김 주소
-//   (redirect.jsp?redir_url=<ECM 첫 화면 index.jsp>)를 이 손이 따라가 받는다: 리다이렉트 · 스스로 제출하는 폼(submit() 을 부르는 폼 ·
-//   스크립트가 action 을 채우는 회사 넘김 화면도) · ECM 첫 화면이 에이전트 웹소켓 없는 브라우저에 주는 login.do 주소 ·
-//   location 으로 넘기는 스크립트를 회사 호스트 안에서만 열두 걸음까지 따라가고, 메인에 다다르거나 암호 칸이 있는 화면(로그인)에서
-//   멈춘다. 스크립트가 폼 자체를 지어 내는 꼴처럼 이 손이 못 따라가는 꼴이면 「ECM — 못 받았다」이고(종료 4), 그때의
-//   갈래가 --ecm-tab 이다. 넘김이 로그인 화면에서 멈췄으면 로그인이 끊긴 것이라 3 이다. Domino 도 같다 —
-//   확인이 안 서면 그 확인 주소에서 같은 따라가기를 한 번 한다(SSO 는 섰는데 Domino 서버에 한 번도 안 들른 Edge).
-//
-// 무엇을 파일에 남기나 — 회사 도메인(SESSION_DOMAIN)과 그 아래 호스트에 실리는 쿠키만. 로그인 화면 호스트(SSO · ADFS)가 제
-//   이름으로 받은 쿠키, 회사 밖 사이트의 쿠키, 사이트 저장소(origins)는 안 남긴다 — Edge 는 그 프로필의 모든 사이트 쿠키를 낸다.
-//   .posco.net 쿠키는 메일 · 일정 · 다른 Domino 앱이 다 쓰고(mail-secretary #28 「C. 일정」), ECM 쿠키는 swpecm 호스트에 산다.
-//   한 파일에 둘이 함께 들 수 있고, 읽는 쪽은 호스트로 골라 쓴다 — 어느 호스트의 쿠키가 꼭 있다고 기대지 않는다.
+//   종료 2 · 3 · 4 는 표준 오류의 끝에 「다음: …」 한 줄을 낸다(1 은 까닭만). 이 값의 뜻을 바꾸면 스킬 ep-login 과 부르는 스킬들을
+//   같은 판에 고친다.
+// 어느 Edge 에 붙나 · 어떻게 붙나 · ECM 넘김 따라가기 · 무엇을 파일에 남기나는 references/DESIGN.md 가 든다.
 //
 // ⚠ 세션 파일은 사내 앱의 열쇠다 — 저장소 밖(홈)에 두고 남에게 넘기지 않는다. 다 쓴 PC · 남에게 넘길 PC 에서는 지운다.
 // ⚠ 디버깅 포트는 이 PC 의 다른 프로그램도 쓸 수 있다 — 127.0.0.1 에만 열고, 이 손은 127.0.0.1 로만 붙는다.
-// ⚠ Chromium 136 부터 기본 프로필에는 디버깅 포트가 안 열린다(Chrome 공지 · Edge 는 공지 없이 같다는 보고) — 입구
-//   (ep_login.js)가 기본 프로필로 띄워 본 결과로 가르고, 그 판에서 안 열리면 --profile 로 띄운다. 잰 자리의 판은 references/SOURCES.md 「잰 것」.
 //
 // 필요한 것: Node 22 이상(내장 WebSocket · fetch). npm 꾸러미는 안 든다.
 
@@ -79,13 +40,13 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 
-const ECM_MAIN = 'http://swpecm.posco.net:7091/ECM/jsp/main/ecmMain.jsp';       // mail-secretary #28 ECM 둘째 판(에이전트 ini 의 서버 · 포트)
-const SSO_REDIRECT = 'http://swpsso.posco.net/idms/U61/jsp/redirect.jsp';          // 같은 #28 ECM 첫째 판 · company-facts 「처음 실행」
-const DOMINO_SERVER = 'http://pcfma0b.posco.net';                                  // 메일 서버 — mail-secretary docs/company-facts.md 「메일함」
-const SESSION_CHECK = '/common/lib_f.nsf/checksessionstatus?Openpage';             // 같은 문서의 세션 확인 줄 · 스킬 company-mail 의 inbox.py 머리말
-const DEFAULT_FILE = '~/.mailbox-session.json';                                     // 세션 파일의 기본 자리 — 이 한 곳에만 둔다
-const MAX_HOPS = 12;                 // 따라가기의 걸음 상한 — ECM 넘김은 잰 판에서 여섯 걸음 남짓이다(#28 ECM 둘째 판)
+// 회사 자리 값(메일 서버 · ECM 주소 · 세션 파일의 기본 자리) — 형제 스킬의 파이썬 손은 ep_session.py 를 거쳐 같은 파일을 읽는다
+const PLACES = require('./places.json');
+const SSO_REDIRECT = 'http://swpsso.posco.net/idms/U61/jsp/redirect.jsp';          // SSO 넘김 주소 — redir_url 이 가리키는 앱으로 세션을 넘긴다
+const SESSION_CHECK = '/common/lib_f.nsf/checksessionstatus?Openpage';             // Domino 의 세션 확인 주소 — 웹메일이 수십 초마다 부른다
+const MAX_HOPS = 12;                 // 따라가기의 걸음 상한 — 정상 넘김보다 넉넉하고, 같은 화면을 도는 넘김은 여기서 끊긴다
 const APPS = ['domino', 'ecm'];
+const EXIT = { OK: 0, TOOL: 1, NO_EDGE: 2, NOT_LOGGED_IN: 3, ECM_HANDOFF: 4 };   // 종료 값 — 뜻은 머리말 「내는 것」 · 입구가 이 표를 싣는다
 // 로그인 화면 — 로그인 화면 호스트 위의 이 경로(SSO 의 …/jsp/login/… · ADFS 의 /adfs/…). 같은 호스트의 넘김(redirect.jsp)은 아니다
 const LOGIN_PATH = /\/(login|adfs)\//i;
 const EP_DIALOG = '다른 PC에서 EP 접속 정보';   // SSO 가 로그인 도중 띄우는 확인 창의 글 — 이 창만 「확인」으로 받는다
@@ -93,8 +54,8 @@ const EP_DIALOG = '다른 PC에서 EP 접속 정보';   // SSO 가 로그인 도
 const HANDOFF_WORD = { end: '넘김 화면을 따라가지 못했다', outside: '회사 밖 주소로 넘어갔다', 'no-answer': '서버가 답하지 않았다',
   hops: '넘김이 걸음 상한을 넘었다' };
 const DEFAULT_PORT = '9222';         // 입구(ep_login.js)가 여는 포트 — 받는 손도 이 포트를 먼저 본다
-const FIND_MS = 5000;                // 디버깅 포트를 연 Edge 찾기(netstat · tasklist) 하나의 시한
-const VERSION_MS = 2000;          // 디버깅 포트의 /json/version 답 시한 — 포트가 없으면 곧 끊긴다
+const FIND_MS = 5000;                // 디버깅 포트를 연 Edge 찾기(debugPorts 의 PowerShell 한 번)의 시한
+const VERSION_MS = 2000;             // 디버깅 포트의 /json/version 답 시한 — 포트가 없으면 곧 끊긴다
 const OPEN_MS = 5000;                // 브라우저 자리 웹소켓이 열리는 시한
 const CALL_MS = 10000;               // CDP 부름 하나의 시한
 const POLL_MS = 1000;                // --ecm-tab 이 선 것을 다시 보는 사이
@@ -115,8 +76,8 @@ function settings() {
     ports: env('EDGE_DEBUG_PORT', '') ? env('EDGE_DEBUG_PORT', '').split(',').map(s => s.trim()).filter(Boolean) : null,
     view: env('MAILBOX_VIEW', 'XML_Inbox'),
     mailbox: env('MAILBOX_URL', ''),
-    domino: env('DOMINO_URL', DOMINO_SERVER).replace(/\/+$/, ''),
-    ecm: env('ECM_URL', ECM_MAIN),
+    domino: env('DOMINO_URL', PLACES.domino_server).replace(/\/+$/, ''),
+    ecm: env('ECM_URL', PLACES.ecm).replace(/\/+$/, '') + PLACES.ecm_main_page,   // ECM_URL 은 맥락까지(…/ECM) — 스킬 company-ecm 과 같은 뜻
     sso: env('SSO_REDIRECT_URL', SSO_REDIRECT),
     domain: env('SESSION_DOMAIN', 'posco.net').toLowerCase().replace(/^\./, ''),
     loginHosts: env('SESSION_LOGIN_HOSTS', 'swpsso.posco.net,adfs.m365.posco.net').toLowerCase().split(',').map(s => s.trim()).filter(Boolean),
@@ -271,7 +232,7 @@ function nextStep(page) {
   const html = page.body;
   if (/<input[^>]*type\s*=\s*["']?password/i.test(html)) return { stop: 'login' };
   // ECM 첫 화면(index.jsp) — PC 의 ECM 에이전트 웹소켓을 거치지 않는 갈래로 간다. 그 화면이 웹소켓을 못 쓰는 브라우저에 주는
-  // 주소(login.do …&USE_WEBSOCKET=F)를 그 화면의 값(actionUrl · jID)으로 짓는다 — 2026-11-06 이 PC 실물 index.jsp 의 IsWebSocket()
+  // 주소(login.do …&USE_WEBSOCKET=F)를 그 화면의 값(actionUrl · jID)으로 짓는다 — 실물 index.jsp 의 IsWebSocket() 갈래
   const ecmAction = /\bactionUrl\s*=\s*'(\/login\.do\?[^']+)'/.exec(html);
   const ecmJid = /\bvar\s+jID\s*=\s*"([^"]+)"/.exec(html);
   if (ecmAction && ecmJid) {
@@ -291,7 +252,7 @@ function nextStep(page) {
       fields.push(pct(name) + '=' + pct(attr(input, 'value') || ''));
     }
     // 회사 SSO 넘김 화면은 action 을 비워 두고 스크립트가 숨은 칸 redir_url 의 title 을 action 에 넣어 제출한다 — 빈 action 을 제
-    // 주소로 읽으면 같은 화면에 되보내며 돈다(2026-11-06 이 PC 실물 redirect.jsp)
+    // 주소로 읽으면 같은 화면에 되보내며 돈다
     const redir = /<input\b[^>]*\bid\s*=\s*["']?redir_url\b[^>]*>/i.exec(html);
     const scripted = /\.action\s*=/.test(html) && redir ? attr(redir[0], 'title') : null;
     const target = new URL(attr(tag, 'action') || scripted || page.url.href, page.url);
@@ -332,7 +293,7 @@ async function follow(cfg, jar, changed, start, goal = null) {
 
 function listUrl(cfg) {
   const match = /^(https?:\/\/[^/]+\/.+?\.nsf)/i.exec(cfg.mailbox);
-  if (!match) throw new Exit(1, `MAILBOX_URL 이 메일함 주소(…/이름.nsf)가 아니다: ${cfg.mailbox || '(비었다)'}`);
+  if (!match) throw new Exit(EXIT.TOOL, `MAILBOX_URL 이 메일함 주소(…/이름.nsf)가 아니다: ${cfg.mailbox || '(비었다)'}`);
   return `${match[1]}/${encodeURIComponent(cfg.view)}?ReadViewEntries&count=1`;
 }
 
@@ -345,15 +306,15 @@ async function dominoStands(cfg, jar, changed) {
   return cfg.mailbox ? /xml/i.test(page.type) : /"status"\s*:\s*"login"/.test(page.body);
 }
 
-// ECM — 메인 화면. 세션이 없으면 302 → /ECM/logout.jsp 다(#28 ECM 첫째 판)
+// ECM — 메인 화면. 세션이 없으면 302 → /ECM/logout.jsp 다
 async function ecmStands(cfg, jar, changed) {
   if (!jar.some(c => sentTo(c, new URL(cfg.ecm)))) return false;
   const page = await send(cfg, jar, changed, { url: cfg.ecm });
   return Boolean(page && page.status === 200 && /html/i.test(page.type));
 }
 
-// SSO 넘김이 가리킬 ECM 첫 화면 — 메인을 가리키면 곧장 logout 으로 튕기고, 첫 화면(<맥락 경로>/index.jsp)이 세션을 세운다(2026-11-06
-// 실물). 맥락 경로는 ECM_URL 의 첫 경로 칸이다 — 서버 · 포트 · 맥락을 ECM_URL 한 곳에서만 읽는다
+// SSO 넘김이 가리킬 ECM 첫 화면 — 메인을 가리키면 곧장 logout 으로 튕기고, 첫 화면(<맥락 경로>/index.jsp)이 세션을 세운다.
+// 맥락 경로는 ECM_URL 의 첫 경로 칸이다 — 서버 · 포트 · 맥락을 ECM_URL 한 곳에서만 읽는다
 const ecmEntry = cfg => { const u = new URL(cfg.ecm); return new URL(`/${u.pathname.split('/')[1]}/index.jsp`, u).href; };
 const ecmStart = cfg => `${cfg.sso}${cfg.sso.includes('?') ? '&' : '?'}redir_url=${encodeURIComponent(ecmEntry(cfg))}`;
 const checks = { domino: dominoStands, ecm: ecmStands };
@@ -388,11 +349,11 @@ async function browserTarget(cfg) {
 // ── 파일 ─────────────────────────────────────────────────────────────────
 
 function sessionFile(arg) {
-  const raw = arg || env('MAILBOX_COOKIES', DEFAULT_FILE);
+  const raw = arg || env('MAILBOX_COOKIES', PLACES.session_file);
   const out = path.resolve(raw.replace(/^~(?=$|[\\/])/, os.homedir()));
   for (let dir = path.dirname(out); ; dir = path.dirname(dir)) {
     if (fs.existsSync(path.join(dir, '.git'))) {
-      throw new Exit(1, `세션 파일 자리가 git 저장소(${dir}) 안이다 — 사내 앱의 열쇠라 저장소 밖(홈)에 둔다: ${out}`);
+      throw new Exit(EXIT.TOOL, `세션 파일 자리가 git 저장소(${dir}) 안이다 — 사내 앱의 열쇠라 저장소 밖(홈)에 둔다: ${out}`);
     }
     if (path.dirname(dir) === dir) break;
   }
@@ -422,9 +383,9 @@ function parseArgs(argv) {
   for (const arg of argv) {
     if (arg === '--ecm-tab') opts.ecmTab = true;
     else if (APPS.includes(arg)) opts.apps.push(arg);
-    else if (arg.startsWith('--')) throw new Exit(1, `모르는 선택: ${arg}`);
+    else if (arg.startsWith('--')) throw new Exit(EXIT.TOOL, `모르는 선택: ${arg}`);
     else if (!opts.file) opts.file = arg;
-    else throw new Exit(1, `인자가 남는다: ${arg}`);
+    else throw new Exit(EXIT.TOOL, `인자가 남는다: ${arg}`);
   }
   return opts;
 }
@@ -443,7 +404,7 @@ async function attach(cfg, opts, file, needed) {
       // --ecm-tab 은 처음 붙은 Edge 에서만 연다 — 사람이 그 탭을 보는 한 자리여야 한다
       return await harvest(cfg, { ...opts, ecmTab: opts.ecmTab && attached === 0 }, file, needed, browser, port);
     } catch (error) {
-      if (!(error instanceof Exit) || ![3, 4].includes(error.code)) throw error;
+      if (!(error instanceof Exit) || ![EXIT.NOT_LOGGED_IN, EXIT.ECM_HANDOFF].includes(error.code)) throw error;
       first = first || error;                        // 처음 붙은 Edge 의 말을 낸다 — 사람이 평소 쓰는 창이 먼저다
     } finally {
       attached += 1;
@@ -458,12 +419,12 @@ async function attach(cfg, opts, file, needed) {
       const scratch = [];
       let alive = true;
       for (const app of needed) alive = alive && await checks[app](cfg, jar, scratch);
-      if (alive) { say('Edge 에 못 붙었지만 남은 세션 파일이 아직 산다'); say(file); return 0; }
+      if (alive) { say('Edge 에 못 붙었지만 남은 세션 파일이 아직 산다'); say(file); return EXIT.OK; }
     }
     // 남은 파일이 있으면 그 경로를 끝 줄로 낸다 — 이 손이 그 파일을 못 가렸어도(서버가 답을 안 줬다) 부르는 쪽이 한 번 써 보고,
     // 서버가 안 받을 때만 스킬 ep-login 을 가리킨다. 파일이 없으면 경로를 안 낸다
     if (fs.existsSync(file)) say(file);
-    throw new Exit(2, `Edge 에 못 붙었다 — 127.0.0.1:${ports.join(' · ')} 에 디버깅 포트가 없다` +
+    throw new Exit(EXIT.NO_EDGE, `Edge 에 못 붙었다 — 127.0.0.1:${ports.join(' · ')} 에 디버깅 포트가 없다` +
       (fs.existsSync(file) ? '(남은 세션 파일로도 확인이 안 섰다 — 서버가 안 받았거나 답이 없었다 · 둘은 못 가르니 「거절됐다」고 말하지 않는다)' : '') +
       '. 다음: 사내망 안인지 먼저 본다(밖이면 Edge 를 띄워도 안 선다) — 안이면 스킬 ep-login 의 입구(login.sh)가 쓰는 사람의 평소 Edge 를 포트와 로그인 탭으로 띄운다');
   }
@@ -500,16 +461,16 @@ async function harvest(cfg, opts, file, needed, browser, port) {
     // ECM 만 안 섰고 넘김이 로그인 화면에 안 닿았다 — 로그인은 섰다. 3 으로 내면 부르는 쪽이 사람에게 다시 로그인을 청한다
     if (missing.length === 1 && missing[0] === 'ecm' && why !== 'login') {
       const word = opts.ecmTab ? '탭으로도 안 섰다' : HANDOFF_WORD[why] || why || '?';
-      throw new Exit(4, `붙었지만 ECM 세션을 조용히 못 받았다(${word}) — 로그인 화면에는 안 닿았다. 다시 로그인할 일이 아니다. 다음: ` +
+      throw new Exit(EXIT.ECM_HANDOFF, `붙었지만 ECM 세션을 조용히 못 받았다(${word}) — 로그인 화면에는 안 닿았다. 다시 로그인할 일이 아니다. 다음: ` +
         (opts.ecmTab ? '멈추고 이 말을 사람에게 그대로 전한다'
           : '스킬 ep-login 의 입구(login.sh ecm)가 Edge 에 탭 하나를 잠깐 열어 받는다'));
     }
     if (missing.length) {
-      throw new Exit(3, `붙었지만 ${missing.map(a => label[a]).join(' · ')} 로그인이 안 됐다. 다음: 스킬 ep-login 의 입구(login.sh)가 그 Edge 에 로그인 탭을 연다`);
+      throw new Exit(EXIT.NOT_LOGGED_IN, `붙었지만 ${missing.map(a => label[a]).join(' · ')} 로그인이 안 됐다. 다음: 스킬 ep-login 의 입구(login.sh)가 그 Edge 에 로그인 탭을 연다`);
     }
     say(`쿠키 ${write(file, jar, cfg)} 개를 남겼다`);
     say(file);                                       // 끝 줄 — 부르는 쪽이 이 경로를 읽는다
-    return 0;
+    return EXIT.OK;
   }
 }
 
@@ -562,7 +523,7 @@ async function closeTab(browser, targetId) {
 }
 
 async function main(argv) {
-  if (typeof WebSocket !== 'function' || typeof fetch !== 'function') throw new Exit(1, `Node ${process.version} — 22 이상이 든다(내장 WebSocket)`);
+  if (typeof WebSocket !== 'function' || typeof fetch !== 'function') throw new Exit(EXIT.TOOL, `Node ${process.version} — 22 이상이 든다(내장 WebSocket)`);
   const cfg = settings();
   const opts = parseArgs(argv);
   const file = sessionFile(opts.file);
@@ -574,8 +535,8 @@ async function main(argv) {
 if (require.main === module) {
   main(process.argv.slice(2)).then(code => process.exit(code), error => {
     console.error(error.message);
-    process.exit(error instanceof Exit ? error.code : 1);
+    process.exit(error instanceof Exit ? error.code : EXIT.TOOL);
   });
 }
 
-module.exports = { keep, store, sentTo, nextStep, settings, onLoginScreen, epConfirm, debugPorts, under, Exit };
+module.exports = { keep, store, sentTo, nextStep, settings, onLoginScreen, epConfirm, debugPorts, under, Exit, EXIT, VERSION_MS };

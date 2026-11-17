@@ -1,30 +1,19 @@
-"""본문 그림 — 메일 · 게시글 본문에 든 그림을 파일로 받아 두는 한 손. 모델은 받은 파일을 그림 파일로 열어 읽는다 — 그 여는 순간에 그림 문
-(홈 훅 ``image-gate``)이 치수를 잰다. 그래서 이 손은 바이트를 답에 싣지 않고 파일로만 남기며, 확장자는 서버가 대는 Content-Type 이 아니라
-파일 머리로 붙인다(게시판은 그림에 ``application/smnet`` 을 댄다 · 잼). 그림 문이 재는 꼴(PNG · JPEG · GIF · WebP)만 남기고, 그 밖은
-「못 읽는 꼴」로 낸다 — 확장자 없는 파일은 그림 문을 비켜 간다.
-
-**꼴과 치수는 씨앗의 머리 읽기(``_image_head.py``)가 읽는다** — 그림 문이 부르는 그 읽기다(진본은 설정 저장소 ``seeds/check/``). 여기 따로
-적으면 받아 둔 그림과 문이 재는 그림이 다른 치수를 말한다. 그 부품을 못 찾거나 못 실으면 **그림을 하나도 안 받고**(주소도 안 묻는다) 주소마다
-``skipped`` 에 그 까닭을 낸다 — 꼴을 못 가리면 확장자를 못 붙이고, 확장자 없는 파일은 그림 문을 비켜 가기 때문이다. 본문 글자는 이 손을 안
-거치므로 그대로 온다.
-
-**큰 그림은 받자마자 줄인다** — 그림의 값은 치수가 정하고, 그림 문은 눈금 밖 · 천장 안의 그림을 곁말만 붙여 넘겨 그 값이 이미 든 뒤다
-(천장 밖은 막아, 모델이 손으로 줄이고 다시 여는 걸음이 든다). 그래서 씨앗의 눈금(``_vision.fit_page`` — 긴 변, 길쭉한 세로 그림은 폭)을 넘는 그림은 씨앗의 줄이는
-손(``_shrink.py``)으로 줄여 WebP 로 바꿔 남긴다. **줄이는 손은 본문 하나에 한 번만 띄운다** — 큰 그림을 다 받은 뒤 ``--batch`` 로 한꺼번에
-넘긴다(프로세스를 장마다 띄우면 해석기와 PIL 을 장마다 다시 싣는다). 눈금 · 줄이는 손 · PIL 이 없거나 줄이기가 지면 받은 그대로 남기고
-``note`` 에 그렇다고 적는다 — 그 그림은 그림 문이 여는 순간 잰다. 줄이는 손이 시한(장마다 ``SHRINK_SECONDS``)을 넘기면 끊고, 그때까지 구운
-그림은 줄인 것으로 · 나머지는 받은 그대로 남긴다.
+"""본문 그림 — 메일 · 게시글 본문의 그림을 파일로 받아 둔다. 이 스킬의 명령과 형제 스킬 company-board · company-regulation 이 부른다.
 
 부르는 꼴::
 
     import body_images
-    got = body_images.save(srcs, fetch, out_dir)   # [{"no", "path", "kind", "bytes", "px"[, "shrunk_from" | "note"]} 또는 {"no", "skipped"}]
+    got = body_images.save(srcs, fetch, out_dir)   # [{"no", "path", "kind", "bytes", "px"[, "shrunk_from" | "note"]} · {"no", "same_as"} · {"no", "skipped"}]
 
-``srcs`` 는 본문에 나온 차례의 그림 주소(``visible.parse(html).images`` 나 곁의 본문 풀기가 낸 것)고, ``no`` 는 그 차례(1 부터)다 —
-본문 글자의 ``[그림 N]`` 과 같은 수다. ``fetch(src)`` 는 부르는 쪽의 앱 손이 그 주소를 사내 세션으로 받아 바이트를 내는 함수다 —
-받을 수 없는 주소면 ``Refused`` 를 올린다(까닭이 ``skipped`` 에 든다). 그 밖의 예외는 그대로 오른다(끊긴 세션은 명령 전체가 다시 세운다).
-``data:`` 주소는 묻지 않고 풀어 쓴다. 같은 주소는 한 번만 받는다. ``px`` 는 남긴 그림의 「가로×세로」(머리에서 읽힌 꼴만), ``shrunk_from``
-은 줄이기 전 치수다. 이 파일은 표준 라이브러리만 쓴다 — 씨앗의 머리 읽기와 눈금도 의존성이 없고, 줄이는 손(PIL 이 든다)은 따로 띄운다.
+``srcs`` 는 본문에 나온 차례의 그림 주소고 ``no`` 는 그 차례(1 부터)다 — 본문 글자의 ``[그림 N]`` 과 같은 수다. ``fetch(src)`` 는 그 주소를
+사내 세션으로 받아 바이트를 내고, 받을 수 없는 주소면 ``Refused`` 를 올린다(까닭이 ``skipped`` 에 든다). 그 밖의 예외는 그대로 오른다.
+``data:`` 주소는 묻지 않고 풀고, 같은 주소는 한 번만 받는다. ``px`` 는 남긴 그림의 「가로×세로」, ``shrunk_from`` 은 줄이기 전 치수다.
+
+⚠ 확장자는 Content-Type 이 아니라 파일 머리로 붙인다 — 모델이 파일을 여는 순간 그림 문(홈 훅 ``image-gate``)이 재는데, 확장자 없는 파일은
+그 문을 비켜 간다. 그래서 꼴을 읽는 씨앗 부품(``_image_head.py``)을 못 실으면 그림을 하나도 안 받는다.
+
+눈금(``_vision.fit_page``)을 넘는 그림은 씨앗의 줄이는 손(``_shrink.py``)을 본문 하나에 한 번 띄워 WebP 로 줄이고, 못 줄이면 받은 그대로
+두고 ``note`` 에 적는다. 표준 라이브러리만 쓴다 — PIL 이 드는 줄이는 손은 딴 프로세스다. 까닭은 DESIGN.md 「body_images.py」.
 """
 
 from __future__ import annotations
@@ -39,13 +28,13 @@ import sys
 import urllib.parse
 
 MAX_IMAGES = 12           # 한 본문에서 남기는 그림의 위 — 넘는 것은 「위를 넘었다」로 낸다. 아이콘처럼 안 남긴 것은 안 센다
-MAX_ASKED = 48            # 한 본문에서 묻는 그림 주소의 위 — 아이콘뿐인 긴 본문이 주소마다 서버를 묻지 않게(같은 주소는 한 번만 센다)
+MAX_ASKED = 48            # 한 본문에서 묻는 그림 주소의 위 — 아이콘뿐인 긴 본문이 주소마다 서버를 묻지 않게
 MAX_BYTES = 20_000_000    # 그림 하나의 위 — 넘으면 남기지 않는다
-ICON_EDGE = 48            # 긴 변이 이보다 작으면 아이콘 · 글머리표로 보고 안 남긴다(메일 본문의 첨부 아이콘 · 글머리 점이 흔하다 · 잼)
+ICON_EDGE = 48            # 긴 변이 이보다 작으면 아이콘 · 글머리표로 보고 안 남긴다
 SEED_DIRS = (pathlib.Path.home() / ".claude" / "seeds" / "check" / "_check",                     # 설치가 홈에 놓은 씨앗
              pathlib.Path(__file__).resolve().parents[4] / "seeds" / "check" / "_check")          # 설정 저장소 안에서 돌 때의 진본
-SEED_HEAD = "_image_head.py"   # 씨앗 폴더를 고르는 부품 — 이것이 없으면 이 손은 그림을 못 받는다(머리말)
-SHRINK_SECONDS = 60       # 줄일 그림 한 장 몫의 시한 — 줄이는 손 한 번은 장 수만큼 받는다. 흔한 그림은 한 장에 1 초 안쪽이다
+SEED_HEAD = "_image_head.py"   # 씨앗 폴더를 고르는 부품
+SHRINK_SECONDS = 60       # 줄일 그림 한 장 몫의 시한 — 줄이는 손 한 번은 장 수만큼 받는다
 SHRUNK_TAIL = ".shrunk.webp"   # 줄이는 손이 굽는 임시 이름의 꼬리 — 구운 뒤 ``image-<no>.webp`` 로 옮긴다(원본이 WebP 면 그 이름이 원본이다)
 NO_SEED = "그림의 꼴을 읽는 씨앗 부품(_check/_image_head.py)을 못 찾아 그림을 안 받았다 — 씨앗이 이 스킬보다 낡았거나 없다. 설치를 다시 돌린다"
 NO_SCALE = "눈금(씨앗 _vision.py)을 못 실어 안 줄였다"
@@ -57,8 +46,7 @@ class Refused(Exception):
 
 
 def _seed():
-    """씨앗 폴더와 거기서 실은 머리 읽기 → (폴더, ``_image_head``). 그 부품을 든 첫 폴더를 쓰고, 없거나 못 실으면 (None, None).
-    고른 폴더는 ``sys.path`` 앞에 얹는다 — 눈금(``_vision``)도 같은 폴더에서 실린다."""
+    """(씨앗 폴더, ``_image_head``) — 그 부품을 든 첫 폴더를 ``sys.path`` 앞에 얹고 싣는다. 없거나 못 실으면 (None, None)."""
     where = next((d for d in SEED_DIRS if (d / SEED_HEAD).is_file()), None)
     if where is None:
         return None, None
@@ -72,8 +60,7 @@ def _seed():
 
 
 def _fit_page():
-    """씨앗의 눈금 셈(``_vision.fit_page`` — 줄이는 손이 긴 변을 안 받았을 때 내는 치수). 못 실으면 None — 눈금이 깨졌거나 이 셈이
-    없는 옛 씨앗이다. ``_seed()`` 가 자리를 얹은 뒤에 부른다."""
+    """씨앗의 눈금 셈 ``_vision.fit_page``, 못 실으면 None. ``_seed()`` 가 자리를 얹은 뒤에 부른다."""
     try:
         import _vision  # noqa: PLC0415 — 의존성이 없는 눈금이다
         return _vision.fit_page
@@ -82,10 +69,8 @@ def _fit_page():
 
 
 def _shrink_all(where: pathlib.Path, pairs: list[tuple[pathlib.Path, pathlib.Path]]) -> str:
-    """(원본, 임시 결과) 짝들을 씨앗의 줄이는 손 한 번으로 줄인다 → 그 손을 못 돌렸거나 시한에 끊었으면 그 까닭, 돌았으면 "".
-    어느 짝이 구워졌나는 결과 파일이 있나로 가른다 — 줄이는 손은 진 짝의 결과를 안 남기고, 다 구운 것만 제 이름으로 옮긴다
-    (끊긴 판에도 반쪽 그림이 결과 이름으로 안 남는다). 딴 프로세스로 띄운다 — PIL 이 드는데, 이 파일을 부르는 명령은 격리 모드
-    (``-I``)로 돌아 쓰는 사람 자리에 깐 PIL 을 못 본다."""
+    """(원본, 임시 결과) 짝들을 씨앗의 줄이는 손 한 번으로 줄인다 → 못 돌렸거나 시한에 끊었으면 그 까닭, 돌았으면 "". 어느 짝이
+    구워졌나는 결과 파일이 있나로 가른다 — 그 손은 다 구운 것만 결과 이름으로 옮긴다."""
     for _, part in pairs:
         part.unlink(missing_ok=True)    # 앞 판이 남긴 결과를 이번 판의 것으로 읽지 않게
     argv = [sys.executable, "-X", "utf8", str(where / "_shrink.py"), "--batch", *(str(p) for pair in pairs for p in pair)]

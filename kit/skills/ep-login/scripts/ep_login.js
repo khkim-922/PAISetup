@@ -14,24 +14,15 @@
 //   받는다 → 0 이면 끝
 //   3 붙었는데 로그인이 안 됐다 → 그 Edge 에 로그인 탭 하나를 열어 지켜본 뒤 다시 받는다
 //   2 붙을 Edge 가 없다 → ep-login 프로필의 Edge 창 하나를 포트와 로그인 탭으로 띄워 지켜본 뒤 다시 받는다. 사람의 평소 Edge 는
-//     떠 있든 아니든 안 건드린다 — 떠 있는 Edge 에는 포트를 못 여는데, 그것을 끝내면 사람의 창 · 탭 · 쓰던 글이 다 닫힌다
+//     떠 있든 아니든 안 끝낸다 — 끝내면 사람의 창 · 탭 · 쓰던 글이 다 닫힌다
 //   4 ECM 만 못 받았다 → --ecm-tab 으로 한 번 더 받는다
-// 로그인 탭 — 데스크톱은 회사 SSO 로그인(통합 인증이 입력 없이 넘는다), VDI 는 평소 EP 로그인 화면(사람이 친다). 데스크톱에서
-//   탭이 입력 칸 있는 로그인 화면에 FALLBACK_MS 넘게 머물면 통합 인증이 안 선 것이라, 같은 탭을 평소 EP 로그인 화면으로 넘기고
-//   사람이 친다. 그 탭에 뜬 SSO 의 「다른 PC에서 EP 접속 정보」 확인 창만 「확인」으로 받는다 — 다른 확인 창 · 다른 탭은 사람의
-//   것이라 안 건드린다. 탭이 로그인 화면을 벗어나면 떨어지고, 받기는 로그인 시한 안에서 설 때까지 되풀이한다 — 사람이 다른 탭에서
-//   로그인해도 선다.
+// 로그인 탭을 지켜보는 법 · 왜 따로 사는 프로필로 띄우나는 references/DESIGN.md 가 든다.
 //
 // 내는 것 — 종료 값은 닫힌 셋이다. 표준 출력은 종료 0 일 때 세션 파일의 절대 경로 한 줄뿐이고, 경과와 「다음: …」 은 표준 오류다:
 //   0 세션이 섰다
 //   4 로그인 시한 안에 세션이 안 섰다 · 또는 ECM 을 탭으로도 못 받았다 — 「다음」 대로 간다
 //   1 그 밖 — Edge 를 못 찾음 · 인자 · 띄웠는데 포트가 안 열림 · 받는 손의 1
 //
-// 왜 따로 사는 프로필로 띄우나 — 프로필이 따로라 평소 Edge 가 떠 있어도 포트가 서고(Chromium 136 이 기본 프로필에 포트를 안 여는 것도
-//   비켜 간다), 사람의 창은 그대로 산다. 그 창은 평소 Edge 와 쿠키를 안 나눠, 거기서 한 로그인은 SSO 가 앞선 로그인(평소 Edge 의
-//   메일)을 끊고 새로 선다 — 사람이 평소 Edge 에서 메일을 다시 열면 거꾸로 이쪽이 끊기고, 다음 부름이 다시 로그인한다. 플래그 둘
-//   (포트 · 127.0.0.1)은 mail-secretary 상주(runner.py 의 EDGE_FLAGS)와 같고, 상주가 쓰는 --no-startup-window 는 안 쓴다 — 여기서는
-//   그 창에서 바로 로그인한다.
 // ⚠ 포트는 이 PC 의 다른 프로그램도 쓸 수 있어 그 Edge 의 세션을 다 다룬다 — 127.0.0.1 에만 연다.
 // ⚠ 로그인 탭에는 그 탭의 페이지 자리로만 붙는다 — 브라우저 자리에 자동 붙기를 걸면 SSO 가 여는 팝업(ssoframe)이 디버거를 기다리며
 //   멈추고 EP 가 빈 화면에 선다.
@@ -41,8 +32,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-// 사내 SSO 의 회사 로그인 — mail-secretary secretary/identity.py 의 COMPANY_LOGIN_PATH · posco/ENV-posco.md 「사내 메일함」.
-// ADFS 로 넘어가 데스크톱은 통합 인증으로 입력 없이 서지만, VDI 에서는 처음 보는 ADFS 창이 전체 메일 주소를 받는다
+// 사내 SSO 의 회사 로그인 — ADFS 로 넘어가 데스크톱은 통합 인증으로 입력 없이 서지만, VDI 에서는 처음 보는 ADFS 창이 전체 메일 주소를 받는다
 const COMPANY_LOGIN = 'http://swpsso.posco.net/idms/U61/jsp/login/saml_login.jsp?companyCode=shared';
 // 평소 EP 로그인 — swp.posco.net 이 보내는 화면(VDI 꼴의 아이디 · 비밀번호 칸). 통합 인증이 안 서는 자리에서 사람이 여기서 친다
 const EP_LOGIN = 'http://swpsso.posco.net/idms/U61/jsp/login/login.jsp';
@@ -50,22 +40,21 @@ const EP_LOGIN = 'http://swpsso.posco.net/idms/U61/jsp/login/login.jsp';
 const onVdi = () => Boolean((process.env.ViewClient_Broker_DNS_Name || '').trim()) || /\.VDI$/i.test(process.env.USERDNSDOMAIN || '');
 // 띄우는 창의 프로필 — 사람의 평소 Edge 와 따로 산다. 로그인 쿠키가 여기 남아, 창을 닫았다 다시 띄워도 세션이 살아 있으면 로그인 없이 받는다
 const PROFILE_DIR = path.join(process.env.LOCALAPPDATA || '', 'ep-login', 'edge-profile');
-const PORT_MS = 15000;                // 띄운 뒤 포트가 열리기를 기다리는 시한(상주의 EDGE_WAIT_SECONDS 와 같다)
+const PORT_MS = 15000;                // 띄운 뒤 포트가 열리기를 기다리는 시한
 const FALLBACK_MS = 8000;             // 입력 칸 있는 로그인 화면에 이만큼 머물면 통합 인증이 안 선 것으로 본다
 const RETRY_MS = 3000;                // 로그인 뒤 받기를 되풀이하는 사이
 const POLL_MS = 500;
-const VERSION_MS = 2000;
 const CALL_MS = 5000;                 // CDP 부름 하나의 시한
-const CANDIDATES = [                  // 상주 runner.py 의 EDGE_CANDIDATES 와 같은 차례
+const CANDIDATES = [                  // Edge 가 깔리는 자리 — 시스템 설치(32 · 64 비트)가 먼저, 사용자 설치가 끝
   [process.env['ProgramFiles(x86)'], 'Microsoft', 'Edge', 'Application', 'msedge.exe'],
   [process.env.ProgramFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'],
   [process.env.LOCALAPPDATA, 'Microsoft', 'Edge', 'Application', 'msedge.exe'],
 ];
 const HAND = path.join(__dirname, 'edge_session.js');
-const RECEIVED = { OK: 0, TOOL: 1, NO_EDGE: 2, NOT_LOGGED_IN: 3, ECM_HANDOFF: 4 };   // 받는 손의 종료 값(그 머리말)
 
-// 포트 · 로그인 화면 호스트 · 로그인 시한 · 로그인 화면과 받을 창의 가림은 받는 손이 든다 — 두 손이 같은 자로 가린다
-const { settings, onLoginScreen, epConfirm, debugPorts, Exit } = require('./edge_session.js');
+// 포트 · 로그인 화면 호스트 · 로그인 시한 · 로그인 화면과 받을 창의 가림 · 받는 손의 종료 값(RECEIVED)은 받는 손이 든다 — 두 손이
+// 같은 자로 가린다
+const { settings, onLoginScreen, epConfirm, debugPorts, Exit, EXIT: RECEIVED, VERSION_MS } = require('./edge_session.js');
 const cfg = settings();
 const env = (name, fallback) => (process.env[name] || '').trim() || fallback;
 const say = line => console.error(line);

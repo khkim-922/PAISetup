@@ -18,3 +18,15 @@
 - 반복 예약을 가르는 칸 — 내 예약에 반복이 없어 실물 꼴을 못 봤다. `is_series` 는 화면이 반복을 싣는 두 칸(`is_recurring` · `recurring_end_date`)으로 가린다
 - 넣기 · 고치기의 `status` 를 앱이 그대로 믿는가 — 화면처럼 `confirmed` 를 보내고, 승인 회의실은 앱이 `pending_approval` 로 바꾸는지 다시 읽어 본다
 - 넣기 답이 감싼 꼴로 오는 일 — 잰 답은 예약 그대로(`id` 가 맨 위)였다
+
+## 들어가는 길 — `scripts/mrs.py` 가 기댄다
+
+1. 사내 세션 쿠키를 싣고 SSO 넘김 화면(SSO_PAGE)을 GET — 200 에 숨은 칸 폼(ssoToken · domainName · …)이 온다.
+   세션이 끊겼으면 그 칸이 없다
+2. 그 칸을 폼 꼴(form-urlencoded)로 `api/auth/sso/posco` 에 POST — 302 의 Location 이
+   `/auth/sso-callback?accessToken=…&refreshToken=…` 이면 선 것, `/auth/sso-error?code=SSO_VALIDATION_FAILED` 면 진 것.
+   JSON 으로 보내면 빈 답이 온다. 같은 세션으로 진 뒤 곧 다시 받으면 서는 일이 있어 한 번 더 받아 본다
+3. 그 뒤 `api/<자리>` 를 `Authorization: Bearer <accessToken>` 으로 부른다. 401 은 끊긴 출입증이다
+
+`reservations?startDate&endDate` 는 그 구간에 걸친 예약(여러 달에 걸친 장기 예약 포함)을 다 낸다. 넣으면 M365 일정 이벤트
+(`event_id`)와 회의실 정책이 켠 Teams 링크가 저절로 생긴다.

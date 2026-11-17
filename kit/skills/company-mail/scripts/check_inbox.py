@@ -1,28 +1,17 @@
 """inbox.py 의 계약을 가짜 메일함으로 잰다 — 127.0.0.1 밖으로는 아무것도 안 나간다.
 
-층 — 쓰는 사람의 계약. 메일함을 읽다가 **읽음 표시를 바꾸나**(사람이 새 메일을 못 알아본다 · 되돌릴 수 없다) · 읽기 길이
-메일함을 바꾸는 주소를 서버에 보내나 · 끊긴 세션을 빈 받은편지함이나 「본문 없음」으로 읽나(새 메일이 안 온 것처럼 조용히
-지나간다) · 하위 폴더 메일을 조용히 빠뜨리나 · 잰 꼴(보낸 사람 열 · 받는 꼴 · 받는 사람 목록 · 본문 · ECM 첨부 이름 · 주소록)을
-잘못 풀어 사람 · 주소를 조용히 잃나 · 메일함을 바꾸는 손 둘이 그 메일 하나만 바꾸나 · 폴더 · 옮기기 · 규칙 손이 고른 것만 바꾸고
-서버의 헛 「OK」를 옮겼다로 읽지 않나 · 메일이 든 폴더를 지워 메일을 휴지통에 보내나 · 규칙에 자동전달을 실어 남에게 메일이 나가게 하나 ·
-임시저장이 보내는 칸(wSend)으로 가 그 자리에서 메일이 나가나 · 본문을 엉뚱한 칸에 실어 빈 본문으로 저장하나 · 임시보관함에 안 선
-저장을 저장했다로 읽나.
-남기는 까닭(check-design §1 넷) — 길이 분명하다(메일함 손을 고칠 때마다 · 이 파일을 그 자리에서 쓰는 앱이 있다) · 읽음이
-바뀌거나 메일이 빠지면 조용하고 되돌릴 수 없다 · 쓰는 사람이 새 메일을 놓친다 · 다른 무엇도 안 잡는다(회사 메일함은 회사
-PC 에서만 닿는다).
+층 — 쓰는 사람의 계약. 재는 것:
+- 읽기 길이 메일함을 안 바꾼다 — **읽음 표시가 그대로다** · 바꾸는 주소가 서버에 안 닿는다 · 끊긴 세션을 빈 받은편지함이나
+  「본문 없음」으로 안 읽는다
+- 꼴을 잃지 않고 푼다 — 하위 폴더 메일 · 보낸 사람 열 · 받는 꼴 · 받는 사람 목록 · 본문 · ECM 첨부 이름 · 주소록
+- 바꾸는 손(읽음 둘 · 폴더 · 옮기기 · 휴지통 · 규칙)이 고른 것만 바꾼다 — 서버의 헛 「OK」를 됐다로 안 읽고, 메일이 든 폴더를 안
+  지우고, 규칙에 자동전달을 안 싣는다
+- 임시저장이 안 나간다 — 저장 칸이 wSave · 본문이 MIMEBody · 임시보관함에 선 것만 저장했다로 읽는다
+남기는 까닭(check-design §1 넷) — 메일함 손을 고칠 때마다 길이 열린다(이 파일을 그 자리에서 쓰는 앱도 있다) · 읽음이 바뀌거나
+메일이 빠지면 조용하고 되돌릴 수 없다 · 쓰는 사람이 새 메일을 놓친다 · 회사 메일함은 회사 PC 에서만 닿아 다른 무엇도 안 잡는다.
 
-가짜 메일함은 사내 메일함에서 잰 주소 · 꼴을 흉내 낸다 — 꼴의 원본은 inbox.py 머리말 「사내 메일함에서 잰 것」이 가리키는
-기록이다(이 파일은 inbox.py 의 값을 읽어 오지 않는다). 메일함 흉내가 지키는 것 — 여는 주소(``?OpenDocument`` ·
-``?EditDocument``)를 부르면 그 메일이 읽음이 되고 ``ag_read_cancel`` 은 안 읽음(``z^ico-nomail``)으로 되돌린다. 쿠키가 없거나
-세션이 끊긴 판이면 200 에 SSO 로 보내는 HTML 을 준다. 받은편지함 보기는 받은편지함 메일만 내고, 폴더 보기는 unid 로만 열리며
-(제목으로 열면 0줄), 받는 사람 목록 보기는 기본 정렬이 날짜순이 아니다. 본문 주소에 501 을 내는 메일이 있다(``unserved``). 폴더 보기의 보낸 사람 열은 ``<이름>-ENG-<영문>``(주소
-없음)이고 읽음 열은 HTML 조각(``class='mail_21'`` 안 읽음 · ``mail_22`` 읽음)이다. 모든편지함은 정렬 없이 날짜 내림차순이고
-``ResortDescending=1`` 이면 내림차순 두 덩이다 — 실물에서 무엇이 가르는지 몰라 여기서는 날짜 차례의 짝수 자리(가장 새 메일부터)를
-뒤 덩이로 낸다. 밖의 메일이 폴더 보기에서 서는 이름은 안 쟀다 — 여기서는 주소의 앞쪽만 낸다. 폴더 손 흉내는 실물처럼 늘 「OK」를 내고(모르는 열쇠면
-아무것도 안 옮긴다), 메일이 든 폴더를 지우면 그 메일을 휴지통으로 보내며, 메일 쪽을 지워도 이전메일함 짝이 나무에 남는다.
-규칙 흉내는 저장 폼을 그대로 들고 편집 화면(``new FormJS`` 머리 · 입력 칸)으로 돌려준다 — 서버가 규칙을 새 메일에 쓰는 일은 흉내 내지 않는다.
-쓰기 화면 흉내는 회사 쓰기 화면에서 손이 읽는 꼴(폼 ``_Memo`` · 숨은 칸 · 화면 정보의 unid)만 들고, 저장 POST 는 저장 칸이 ``wSave`` 면
-임시보관함에 넣고 ``wSend`` 면 「그 자리에서 나갔다」로 따로 센다 — 답은 실물처럼 JSON 이 아닌 글(함수 칸)이다. 업로드 DB 는 받은 파일 이름을 낸다.
+가짜 메일함은 사내 메일함의 주소 · 꼴을 흉내 낸다 — 무엇을 흉내 내나는 SOURCES.md 「check_inbox.py」, 지어낸 값은 아래 「여기서 못 재는 것」이 든다.
+inbox.py 의 값을 읽어 오지 않는다 — 읽어 오면 사본끼리 견주게 된다.
 
 돌리는 법::
 
@@ -34,11 +23,14 @@ PC 에서만 닿는다).
 
 언제 걷나 — inbox.py 가 사라지거나, 같은 계약을 실물 메일함에서 재는 검사가 서서 이 검사가 더하는 믿음이 없어지면.
 
-여기서 못 재는 것 — 사내 SSO 를 넘는 길(스킬 ep-login 의 받는 손) · 회사에서 안 잰 꼴(끊긴 세션의 세션 확인 답 · 중요도 값의 뜻 ·
-폴더에만 있는 메일에 읽음으로의 주소가 먹는지 — 여기서는 어느 메일이든 먹는다 · 모든편지함을 장으로 넘길 때의 차례 ·
-평문 · HTML 둘을 든 메일 밖의 평문 조각) · 임시저장한 메일을 웹메일 화면이 받는 사람 · 첨부로 다시 여는지(회사에서 한 판으로
-쟀다) · 웹메일 화면의 [보내기](곁의 손 draft_send.js — Edge 와 실물 화면이 있어야 돈다) · 휴지통 보기의 unid 밖의
-열 꼴과 보낸편지함 · 임시보관함 · 폴더 메일을 되살린 자리(여기서는 받은편지함으로 · ``restore_to`` 로 준 자리로 간다).
+여기서 못 재는 것:
+- 사내 SSO 를 넘는 길(스킬 ep-login 의 받는 손)
+- 웹메일 화면의 [보내기](곁의 손 draft_send.js — Edge 와 실물 화면이 든다) · 임시저장한 메일을 그 화면이 받는 사람 · 첨부로 다시 여는지
+- 실물에서 안 잰 꼴 — 가짜가 값을 지어 낸다: 끊긴 세션의 세션 확인 답 · 중요도 값의 뜻 · 폴더에만 있는 메일에 읽음으로의 주소가
+  먹는지(가짜는 어느 메일이든 먹는다) · 모든편지함을 장으로 넘길 때의 차례와 ``ResortDescending=1`` 의 두 덩이를 가르는 규칙 ·
+  모든편지함 보낸 줄의 보낸 분 · 읽음 열 · 휴지통 · 임시보관함 메일이 모든편지함에 드는지 · 밖의 메일이 폴더 보기에 서는 이름 ·
+  평문 · HTML 둘을 든 메일 밖의 평문 조각 · 휴지통 보기의 unid 밖의 열 · 보낸편지함 · 임시보관함 · 폴더 메일을 되살린 자리 ·
+  폴더 나무에서 짝 줄의 차례 · 가리키던 폴더가 없어진 규칙의 동작
 """
 
 from __future__ import annotations
@@ -70,18 +62,18 @@ import inbox  # noqa: E402 — 잴 나무가 sys.path 에 먼저 서야 한다
 logging.getLogger(inbox.__name__).addHandler(logging.NullHandler())
 
 DB = "/02/mail2/200001.nsf"   # 파일 번호 = 메일함을 쓰는 사람(OWNER)의 사번 — 회사의 꼴
-# 서명 문서 — 회사 서명 문서 본문의 꼴(문서 껍데기 · 메일 전체를 덮는 style · 서명 그림 조각 주소 · 회사에서 잼)
+# 서명 문서 — 회사 서명 문서 본문의 꼴(문서 껍데기 · 메일 전체를 덮는 style · 서명 그림 조각 주소)
 SIGNATURE_UNID = "877BE4287F1F3313492582DD001A3E18"
 SIGNATURE_DOC = ('<html lang="ko"><head><title>제목 없음</title><style type="text/css">#dext_body { font-size:11pt; }</style>'
                  '<meta http-equiv="Content-Type" content="text/html" charset="utf-8"></head><body id="dext_body">'
                  f'<table><tr><td><img src="{DB}/0/{SIGNATURE_UNID.lower()}/Body/M1.2?OpenElement"></td>'
                  '<td><strong>서명 사람</strong> 시험부/차장</td></tr></table></body></html>')
 COOKIE = ("DomAuthSessId", "good-session")
-# 끊긴 세션에 사내 메일함이 내는 답의 첫머리(실측) — 200 · text/html
+# 끊긴 세션에 사내 메일함이 내는 답의 첫머리 — 200 · text/html
 LOGIN_PAGE = ('<html><head><script>document.cookie = "EP_CERTIFY_CA=; path=/; domain=.posco.net;";'
               'window.location.href="http://swpsso.posco.net/idms/U61/jsp/login/login.jsp";'
               '</script></head><body></body></html>')
-# 보기 열(실측) — 받은편지함 · 보낸편지함. 폴더 보기는 받는 꼴 · 중요도 · 관련 문서가 빠지고 셋이 더해지고,
+# 보기 열 — 받은편지함 · 보낸편지함. 폴더 보기는 받는 꼴 · 중요도 · 관련 문서가 빠지고 셋이 더해지고,
 # 모든편지함은 관련 문서가 빠지고 폴더 열이 더해진다
 INBOX_COLUMNS = ("xstar", "$81", "read", "xrtype", "xname", "xsubject", "xdate", "xsize", "$91", "attachment",
                  "xImportance", "xnh_read", "xrelatedid", "xforward_deny", "xremindopt", "xunopenedopt", "xbriefingopt")
@@ -95,7 +87,7 @@ DRAFT_VIEW, DRAFT_VIEW_UNID = "XML임시편지함", "9A8B7C6D5E4F30211203F4E5D6C
 SEARCH_AGENT = "/ag_detail_search_mailbox?open"
 SEARCH_SLOTS = {"ssbj": "subject", "sbdy": "html", "satt": "attachments"}   # 검색 손의 칸 → 흉내 메일의 칸
 SYSTEM_FOLDERS = ("($Inbox)", "($Trash)", "(Drafts)", "(Sent)", "($Alarms)")
-FOLDER_PAGE_MAX = 1000          # 폴더 보기의 count 는 여기서 잘린다(실측)
+FOLDER_PAGE_MAX = 1000          # 폴더 보기의 count 는 여기서 잘린다
 COMPANY = "누리소재(07)"
 
 
@@ -109,12 +101,12 @@ def folder_unid(path: str) -> str:
 
 
 def internal_sender(name: str, addr: str, name_eng: str) -> str:
-    """사내 보낸 사람 열의 글자(XML 을 푼 뒤) — ``&lt;`` 는 XML 안에서 한 번 더 이스케이프된다(실측)."""
+    """사내 보낸 사람 열의 글자(XML 을 푼 뒤) — ``&lt;`` 는 XML 안에서 한 번 더 이스케이프된다."""
     return f"{name}-=spl=-{name} &lt;{addr}&gt;-ENG-{name_eng}-=spl=-{name_eng}&lt;{addr}&gt;"
 
 
 def folder_sender(sender: str) -> str:
-    """폴더 보기의 보낸 사람 열 — 사내는 ``<이름>-ENG-<영문>``(주소 없음 · 실측), 밖의 주소만 온 메일은 주소의 앞쪽만(머리말)."""
+    """폴더 보기의 보낸 사람 열 — 사내는 ``<이름>-ENG-<영문>``(주소 없음), 밖의 주소만 온 메일은 주소의 앞쪽만."""
     if "-=spl=-" in sender:
         ko, _, en = sender.partition("-ENG-")
         return f"{ko.partition('-=spl=-')[0]}-ENG-{en.partition('-=spl=-')[0]}"
@@ -122,13 +114,13 @@ def folder_sender(sender: str) -> str:
 
 
 def folder_read(unid: str, unread: bool, position: int) -> str:
-    """폴더 보기의 읽음 열(XML 을 푼 뒤 · 실측) — ``div`` 와 ``id`` 사이 빈칸 둘 · 제 unid · 보기 안의 차례 번호."""
+    """폴더 보기의 읽음 열(XML 을 푼 뒤) — ``div`` 와 ``id`` 사이 빈칸 둘 · 제 unid · 보기 안의 차례 번호."""
     return (f"<div  id='{unid}'><a href='#' class='{'mail_21' if unread else 'mail_22'}'></a>"
             f"<span id='xp_{position}' style='position:relative; top:-20px; left:25px; display:none;'></span></div>")
 
 
 def shown(stamp: str) -> tuple[str, str]:
-    """YYYYMMDDHHMMSS → (xdate, $91) — 메일함이 주는 두 꼴(실측)."""
+    """YYYYMMDDHHMMSS → (xdate, $91) — 메일함이 주는 두 꼴."""
     s = stamp
     return f"{s[:4]}-{s[4:6]}-{s[6:8]} {s[8:10]}:{s[10:12]}:{s[12:]}", f"{s[:8]}T{s[8:]},00+09"
 
@@ -158,12 +150,12 @@ class FakeMail:
     label: str | None = None
     importance: str = ""
     mark: str = ""                  # 읽은 메일의 읽음 열 — 빈 글자면 ico-okmail · 회신함 ico-post · 전달함 ico-remail
-    unserved: bool = False          # 본문 주소에 501 — 실물 메일함에 있는 꼴(폴더에 든 한 통 · inbox.py 머리말 N-가)
+    unserved: bool = False          # 본문 주소에 501 — 실물 메일함에 있는 꼴(SOURCES.md 「inbox.py」)
     draft: bool = False             # 임시보관함의 메일 — 받은편지함 · 폴더 · 모든편지함 보기에 안 서고 임시보관함 보기에만 선다
-    unindexed: bool = False         # 검색 색인에 아직 안 든 새 메일 — 보기에는 서고 검색 손에는 안 걸린다(실물 · 색인은 몇 시간 늦다)
+    unindexed: bool = False         # 검색 색인에 아직 안 든 새 메일 — 보기에는 서고 검색 손에는 안 걸린다(실물의 색인은 늦게 든다)
 
     def folder_label(self) -> str:
-        """모든편지함의 폴더 열 — 받은편지함 ``[${INBOX}]`` · 하위 폴더는 끝 이름만(실측)."""
+        """모든편지함의 폴더 열 — 받은편지함 ``[${INBOX}]`` · 하위 폴더는 끝 이름만."""
         if self.label is not None:
             return f"[{self.label}]"
         return f"[{self.folder.rsplit(chr(92), 1)[-1]}]" if self.folder else "[${INBOX}]"
@@ -189,9 +181,17 @@ class FakeSent:
     people: str | None = None
     bcc: str | None = None
 
+    def cols(self, columns) -> dict:
+        """모든편지함의 보낸 메일 줄 — 그 보기는 보낸 메일도 들고 폴더 열이 ``[${SENT}]`` 다. 보낸 분 · 읽음 열의 꼴은 안 쟀다 —
+        여기서는 쓰는 사람 자신 · 읽음이다."""
+        xdate, sort = shown(self.stamp)
+        values = {"read": "ico-okmail", "xname": internal_sender(OWNER["user_name"], OWNER["email"], OWNER["user_name_eng"]),
+                  "xsubject": self.subject, "xdate": xdate, "xsize": " 5KB", "$91": sort, "xfoldername": "[${SENT}]"}
+        return {c: values.get(c, "") for c in columns}
+
 
 def people_field(*items: dict) -> str:
-    """보낸 메일의 받는 사람 칸 글 — 실물 꼴(``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 잇고 HTML 이스케이프 · 회사에서 잼)."""
+    """보낸 메일의 받는 사람 칸 글 — 실물 꼴(``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 잇고 HTML 이스케이프)."""
     return html.escape(inbox.PEOPLE_SEP.join(f"{i['key']}{inbox.PEOPLE_ITEM}{json.dumps(i, ensure_ascii=False)}" for i in items))
 
 
@@ -211,7 +211,7 @@ HOMONYM = {**COLLEAGUE, "email": "hn.seo2@nuri.example", "user_id": "hnseo2", "k
 RETIRED = {**COLLEAGUE, "email": "old.kim@nuri.example", "user_name": "김지난", "user_id": "oldkim", "key": "CN=김지난/OU=OK/O=NURI",
            "empno": "199001", "is_retire": "Y"}
 DIRECTORY = (OWNER, COLLEAGUE, HOMONYM, RETIRED)
-# 조직도 — 회사 값 아래 맨 위 부서 둘, 소재사업부 아래 그룹 둘. 칸 이름은 실측 답의 꼴이다(inbox.py 머리말 조직도 줄)
+# 조직도 — 회사 값 아래 맨 위 부서 둘, 소재사업부 아래 그룹 둘. 칸 이름은 실물 답의 꼴이다(SOURCES.md 「inbox.py」)
 ORG_DEPTS = (  # (코드, 이름, 깊이, 위 부서 코드 — 회사 값이면 맨 위)
     ("a100_00(07)", "임원", 1, COMPANY), ("n300_00(07)", "소재사업부", 1, COMPANY),
     ("n310_00(07)", "소재기획그룹", 2, "n300_00(07)"), ("n320_00(07)", "소재시험그룹", 2, "n300_00(07)"))
@@ -225,7 +225,7 @@ FOLDER_TOP, FOLDER_CHILD, FOLDER_COMMA, FOLDER_EMPTY = "협력사", "프로젝�
 # SSO 주소를 적은 사내 안내 본문 — 끊긴 세션의 화면이 아니다
 NOTICE = '<p>비밀번호 변경: <a href="http://swpsso.posco.net/idms/U61/jsp/pw.jsp">swpsso.posco.net</a></p>'
 ECM_KEY = "1a2b3c4d5e6f7081"
-# 본문 링크의 OBJECTID 는 머리의 열쇠와 다를 수 있다(잰 29 통 가운데 6) — 화면이 여는 것은 링크 쪽이다. 머리 쪽을 집으면 문다
+# 본문 링크의 OBJECTID 는 머리의 열쇠와 다를 수 있다 — 화면이 여는 것은 링크 쪽이다. 머리 쪽을 집으면 문다
 ECM_LINK_OBJECT = "99aa88bb77cc66dd"
 
 
@@ -295,8 +295,15 @@ class FakeDomino:
     """127.0.0.1 의 Domino 웹메일 흉내. ``paths`` 는 받은 요청, ``changes`` 는 메일함을 바꾼 요청."""
 
     def __init__(self, *, session: str = "ok", folders=(), all_view: bool = True, recipient_view: bool = True,
-                 draft_view: bool = True, no_bcc: bool = False):
-        mails, sent = scenario()
+                 draft_view: bool = True, no_bcc: bool = False, mails=None, sent=None, broken=None):
+        """``mails`` · ``sent`` — 심을 받은 메일 · 보낸 메일. ``mails`` 를 안 주면 ``scenario()`` 의 둘이고, 그때 ``sent`` 를 주면 보낸 메일만
+        바꾼다. ``broken`` — 보기 이름(소문자 · 폴더 보기는 그 unid 소문자) → 그 자리(``start``)부터 HTTP 500 을 내는 보기(판 도중에
+        고쳐도 먹는다). mailbox-scan 의 ``check_scan.py`` 도 이 생성자로 가짜를 세운다 — 인자를 바꾸면 그쪽이 깨진다."""
+        if mails is None:
+            mails, story_sent = scenario()
+            sent = story_sent if sent is None else sent
+        mails, sent = list(mails), list(sent or ())
+        self.broken: dict[str, int] = dict(broken or {})
         self.mails = {m.unid: m for m in mails}
         self.sent = [dataclasses.replace(x, bcc=None) for x in sent] if no_bcc else sent
         self.session = session            # ok · login(200 HTML) · redirect(302 SSO)
@@ -305,7 +312,7 @@ class FakeDomino:
         self.recipient_view = recipient_view
         self.draft_view = draft_view
         self.tree: dict[str, tuple[str, str]] = {}   # 폴더 열쇠 → (경로, 부모 열쇠) — 흉내 메일함이 지은 폴더
-        self.archive_twins: set[str] = set()          # 메일 쪽은 지웠는데 이전메일함 짝이 남은 폴더 열쇠(실측)
+        self.archive_twins: set[str] = set()          # 메일 쪽은 지웠는데 이전메일함 짝이 남은 폴더 열쇠
         self.rules: dict[str, dict] = {}              # 규칙 unid → 저장 폼의 칸
         self.posts: list[tuple[str, dict]] = []
         self.uploads: list[tuple[str, bytes]] = []    # 첨부 업로드 DB 가 받은 multipart 몸
@@ -379,7 +386,7 @@ class FakeDomino:
         if low == "/common/lib_f.nsf/checksessionstatus?openpage":
             return self.send(h, 200, b'{"status":"login"}', "text/html")
         if raw == "/":
-            # 메일 서버 첫 화면 — 세션에 로그인한 사람의 메일 파일 경로를 들고 받은편지함으로 넘긴다(실측)
+            # 메일 서버 첫 화면 — 세션에 로그인한 사람의 메일 파일 경로를 들고 받은편지함으로 넘긴다
             page = (f'<html><body><script>var mailserver = "127.0.0.1"; var mailfile = "{DB.lstrip("/")}";'
                     'location.replace("http://" + mailserver + "/" + mailfile + "/FrameNew?openform");</script></body></html>')
             return self.send(h, 200, page.encode(), "text/html; charset=UTF-8")
@@ -410,7 +417,7 @@ class FakeDomino:
                 rows = [{"type": "group", "key": k, "group_name": n} for k, n in GROUPS.items()]
                 return self.send(h, 200, json.dumps({"group": rows}, ensure_ascii=False).encode(), "text/html")
             key = query.get("search_key", [""])[0].casefold()
-            # 이름 · 메일 · 사번으로 찾는다 — 부서 이름으로는 사람이 안 온다(실측)
+            # 이름 · 메일 · 사번으로 찾는다 — 부서 이름으로는 사람이 안 온다
             users = [p for p in DIRECTORY if key and key in (p["email"], p["user_name"], p["empno"])]
             return self.send(h, 200, json.dumps({"dept": [], "user": users, "total": len(users)},
                                                 ensure_ascii=False).encode(), "text/html; charset=UTF-8")
@@ -425,7 +432,7 @@ class FakeDomino:
         if low.startswith("/agt_mail_folder_save?openagent"):
             return self.folder_save(h, urllib.parse.parse_qs(raw.split("?", 1)[1], keep_blank_values=True))
         if low.startswith("/delete_view?openagent"):
-            # 목록의 [삭제] — type 이 비면 휴지통으로 · 답은 빈 글자(실측). ``stuck`` 의 메일은 답만 내고 안 옮긴다
+            # 목록의 [삭제] — type 이 비면 휴지통으로 · 답은 빈 글자. ``stuck`` 의 메일은 답만 내고 안 옮긴다
             q = urllib.parse.parse_qs(raw.split("?", 1)[1], keep_blank_values=True)
             if q.get("type") == [""]:
                 for unid in filter(None, q.get("docid", [""])[0].split(",")):
@@ -470,6 +477,11 @@ class FakeDomino:
                 views.append({"@title": DRAFT_VIEW, "@unid": DRAFT_VIEW_UNID, "@folder": False})
             return self.send(h, 200, json.dumps(views, ensure_ascii=False).encode(), "application/json; charset=UTF-8")
         if "?readviewentries" in low:
+            if self.broken:
+                name, _, query = rest[1:].partition("?")
+                start = int(urllib.parse.parse_qs(query).get("start", ["1"])[0])
+                if start >= self.broken.get(name.lower(), start + 1):
+                    return self.send(h, 500, b"<html>server error</html>", "text/html")
             return self.send(h, 200, self.view(rest), "text/xml; charset=UTF-8")
         if low.startswith(SEARCH_AGENT):
             return self.search(h, rest)
@@ -501,7 +513,7 @@ class FakeDomino:
         return self.send(h, 404, b"<html>not found</html>", "text/html")
 
     def tree_json(self) -> bytes:
-        """폴더 나무 보기(JSON · 실측 꼴) — 경로 · 열쇠 · 수 · 부모 · 이름. 맨 위 폴더의 부모는 ``nodeATag2`` 다."""
+        """폴더 나무 보기(JSON) — 경로 · 열쇠 · 수 · 부모 · 이름. 맨 위 폴더의 부모는 ``nodeATag2`` 다."""
         rows = []
         # 짝 줄을 산 폴더보다 앞에 낸다 — 실물의 차례는 안 쟀고, 앞의 줄을 집는 손을 가려낸다
         for node, (path, parent) in [(n, self.twin[n]) for n in sorted(self.archive_twins)] + sorted(self.tree.items()):
@@ -515,7 +527,7 @@ class FakeDomino:
 
     def folder_save(self, h, q: dict) -> None:
         """폴더 만들기 · 지우기의 흉내 — 실물처럼 늘 ``OK`` 를 낸다. 메일이 든 채 지우면 그 메일은 휴지통으로, 메일 쪽을 지워도
-        이전메일함 짝이 남아 나무에 서다가 ``nodefrom=archive`` 로 한 번 더 지워야 사라진다(실측)."""
+        이전메일함 짝이 남아 나무에 서다가 ``nodefrom=archive`` 로 한 번 더 지워야 사라진다."""
         one = lambda k: q.get(k, [""])[0]
         act, node = one("act"), one("nodeid")
         if act == "create" and node and node not in self.tree:
@@ -542,7 +554,7 @@ class FakeDomino:
             return self.send(h, 200, LOGIN_PAGE.encode(), "text/html")
         rest = raw[len(DB):] if raw.startswith(DB) else ""
         if rest == "/folder2?OpenForm" and form.get("Action") == "mailmove_action":
-            # 실물처럼 못 옮겨도 OK 를 낸다 — 모르는 폴더 열쇠면 아무것도 안 옮긴다(실측). ``stuck`` 의 메일은 OK 를 내고 안 옮긴다
+            # 실물처럼 못 옮겨도 OK 를 낸다 — 모르는 폴더 열쇠면 아무것도 안 옮긴다. ``stuck`` 의 메일은 OK 를 내고 안 옮긴다
             target = form.get("nodeUNID", "")
             place = "" if target == "inbox" else self.tree.get(target, (None, ""))[0]
             for unid in filter(None, form.get("UNIDs", "").split(",")):
@@ -595,7 +607,7 @@ class FakeDomino:
         return self.send(h, 200, json.dumps({"result": True, "unid": unid, "saveoptions": "1"}).encode(), "text/html")
 
     def rule_page(self, unid: str) -> str:
-        """규칙 편집 화면의 흉내 — 머리의 ``new FormJS({…})`` 와 입력 칸(실측 꼴 · 라디오는 checked 로 고른 것)."""
+        """규칙 편집 화면의 흉내 — 머리의 ``new FormJS({…})`` 와 입력 칸(라디오는 checked 로 고른 것)."""
         f = self.rules[unid]
         folders = [f"{p}|{n}^" for n, (p, _) in sorted(self.tree.items())]
         info = {"dbPath": DB.lstrip("/"), "isEdit": True, "unid": unid, "folders": folders,
@@ -625,7 +637,7 @@ class FakeDomino:
         elif self.recipient_view and key == RECIPIENT_VIEW_UNID.lower():
             got = [(m.unid, m.stamp, "수신", m.to_102) for m in self.mails.values() if m.to_102 is not None]
             got += [(s.unid, s.stamp, "발신", s.to) for s in self.sent if s.in_view]
-            # 기본 정렬은 날짜순이 아니다(실측) — unid 차례로 낸다. ResortDescending=1 이면 날짜 내림차순
+            # 기본 정렬은 날짜순이 아니다 — unid 차례로 낸다. ResortDescending=1 이면 날짜 내림차순
             got.sort(key=(lambda r: r[1]) if descending else (lambda r: r[0]), reverse=descending)
             rows = [(u, {"xsubject": "", "$101": shown(st)[1], "$91": d, "$102": to, "$103": "", "xname": ""})
                     for u, st, d, to in got]
@@ -640,13 +652,14 @@ class FakeDomino:
             rows = [(m.unid, m.cols(INBOX_COLUMNS)) for m in got]
         elif self.all_view and key == ALL_VIEW_UNID.lower():
             got = [m for m in self.mails.values() if not m.draft and (m.folder is None or not m.folder.startswith("("))]
-            # 정렬 없이는 날짜 내림차순 · ResortDescending=1 이면 내림차순 두 덩이(실측 — 가르는 규칙은 머리말)
+            got += self.sent   # 보낸 메일도 든다
+            # 정렬 없이는 날짜 내림차순 · ResortDescending=1 이면 내림차순 두 덩이 — 실물이 무엇으로 가르는지 몰라 짝수 자리를 뒤로 낸다
             got.sort(key=lambda m: (m.stamp, m.unid), reverse=True)
             if descending:
                 got = got[1::2] + got[0::2]
             rows = [(m.unid, m.cols(ALL_COLUMNS)) for m in got]
         else:
-            # 폴더 보기는 unid 로만 열린다 — 제목으로 열면 0줄(실측). 모르는 보기도 빈 목록이다
+            # 폴더 보기는 unid 로만 열린다 — 제목으로 열면 0줄. 모르는 보기도 빈 목록이다
             folder = next((p for p in self.folder_paths() if folder_unid(p).lower() == key), None)
             got = sorted((m for m in self.mails.values() if folder is not None and m.folder == folder),
                          key=lambda m: m.stamp, reverse=True)
@@ -663,7 +676,7 @@ class FakeDomino:
                 f'toplevelentries="{len(rows)}">{body}</viewentries>').encode()
 
     def search(self, h, rest: str) -> None:
-        """웹메일 검색 손의 흉내(실측 꼴) — ``stype=chatbot`` 에 칸이 하나라도 있어야 답하고(아니면 0 바이트), 칸을 여럿 주면 다
+        """웹메일 검색 손의 흉내 — ``stype=chatbot`` 에 칸이 하나라도 있어야 답하고(아니면 0 바이트), 칸을 여럿 주면 다
         든 메일만 낸다. 범위 ``all`` 은 임시보관함을 안 든다. JSON 은 실물처럼 줄마다 끊어 쓴다."""
         q = urllib.parse.parse_qs(rest.split("?", 1)[1], keep_blank_values=True)
         one = lambda k: q.get(k, [""])[0]
@@ -847,9 +860,9 @@ def check_marking_hands_change_only_that_mail():
 
 
 def check_folder_hands_make_move_and_delete_only_what_was_asked():
-    """폴더 만들기 · 옮기기 · 지우기 — 그 폴더 · 그 메일만 바뀌고 읽음은 그대로다. 서버의 ``OK`` 는 증거가 아니어서(실측 —
-    못 옮겨도 OK) 손이 다시 봐야 하고, 메일이 든 채 지우면 메일이 휴지통으로 가므로(실측) 든 폴더 · 하위가 있는 폴더는 안 지운다.
-    지우기는 이전메일함 짝까지 두 번이어야 나무에서도 사라진다(실측)."""
+    """폴더 만들기 · 옮기기 · 지우기 — 그 폴더 · 그 메일만 바뀌고 읽음은 그대로다. 서버의 ``OK`` 는 증거가 아니어서
+    (못 옮겨도 OK) 손이 다시 봐야 하고, 메일이 든 채 지우면 메일이 휴지통으로 가므로 든 폴더 · 하위가 있는 폴더는 안 지운다.
+    지우기는 이전메일함 짝까지 두 번이어야 나무에서도 사라진다."""
     unid = U["alone"]
     with stage() as (box, mailbox):
         before = box.unread()
@@ -890,7 +903,7 @@ def check_move_that_did_not_land_is_an_error_not_ok():
 
 
 def check_trash_sends_only_the_named_mails_and_keeps_unread():
-    """휴지통으로 보내기 — 그 메일들만 휴지통에 가고 읽음은 그대로다. 서버의 답이 비어(실측) 손이
+    """휴지통으로 보내기 — 그 메일들만 휴지통에 가고 읽음은 그대로다. 서버의 답이 비어 손이
     휴지통을 다시 봐야 해서, 안 간 메일이 있으면 「보냈다」가 아니라 오류다. 영구삭제 꼴(``type=remove``)은 손이 못 짓는다."""
     with stage() as (box, mailbox):
         before = box.unread()
@@ -981,7 +994,7 @@ def check_rule_page_of_unknown_shape_is_an_error_not_an_empty_rule():
 
 
 def check_reading_path_refuses_folder_and_rule_changers():
-    """읽기 길(``_get``)은 폴더 · 휴지통 · 규칙을 바꾸는 주소를 서버에 닿기 전에 막는다 — 만들기 · 지우기 · 되살리기가 GET 이다(실측)."""
+    """읽기 길(``_get``)은 폴더 · 휴지통 · 규칙을 바꾸는 주소를 서버에 닿기 전에 막는다 — 만들기 · 지우기 · 되살리기가 GET 이다."""
     with stage() as (box, mailbox):
         for path in ("/agt_mail_folder_save?OpenAgent&act=create&fname=x", "/folder2?OpenForm",
                      f"/TrashDoc?OpenAgent&docid={U['alone']}&type=recovery", "/Mailrule?OpenForm&Seq=1",
@@ -1160,7 +1173,7 @@ def check_directory_and_session_probe():
         assert mailbox.session_alive() is True
     with stage(session="login") as (_, mailbox):
         assert mailbox.session_alive() is False, "끊긴 세션에 세션 확인이 참이다"
-    # 새 칸 셋은 기본값이 있다 — 칸 셋 없이 한 사람을 짓던 쪽이 그대로 선다
+    # 부서 코드 · 등급 코드 · 직책 칸은 기본값이 있다 — 그 칸 없이 사람을 짓는 쪽이 그대로 선다
     bare = inbox.DirectoryPerson(email="", name="", name_eng="", notes="", user_id="", empno="", dept="", grade="",
                                  job_title="", company="", retired=False)
     assert (bare.dept_code, bare.grade_code, bare.is_boss, bare.job_title_code) == ("", "", False, ""), bare

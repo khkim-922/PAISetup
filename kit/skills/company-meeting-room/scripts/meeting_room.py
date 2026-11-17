@@ -36,8 +36,6 @@ from datetime import date, datetime, timedelta, timezone
 HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
 KST = timezone(timedelta(hours=9))
-WEEKDAYS = "월화수목금토일"
-DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}
 MINE_DAYS = 14                            # mine 의 기본 구간 — 오늘부터 두 주
 MOST_ROOMS = 60                           # rooms 답에 싣는 회의실 수 — count 는 다 센 수다
 MOST_FREE = 40                            # free 답에 싣는 빈 회의실 수
@@ -45,7 +43,7 @@ MOST_CANDIDATES = 15                      # 회의실이 여럿 걸릴 때 messa
 LIVE = ("confirmed", "pending_approval")  # 회의실을 쥔 예약의 상태 — cancelled · rejected 는 비운 것이다
 STATUS_WORDS = {"confirmed": "확정", "pending_approval": "승인 대기", "cancelled": "취소됨", "rejected": "거절됨"}
 MUTATING = ("book", "change", "cancel")
-INDENT = 1                                # 답(JSON)을 찍는 들여쓰기
+INDENT = 1
 STATE_WORDS = {
     "booked": "예약했습니다(내 예약에서 다시 읽어 확인했습니다). 참석자께는 회의 안내가 회사 메일로 갑니다 — 조금 걸릴 수 있습니다. "
               "다음: 이 줄의 id 를 들고 있다가 「방금 것 취소 · 시간 바꿔 줘」에 쓴다",
@@ -66,7 +64,7 @@ if str(EP_LOGIN_SCRIPTS) not in sys.path:
 try:
     import ep_command
     import ep_session
-    from ep_command import EXIT_ARGS, Stop, load
+    from ep_command import EXIT_ARGS, WEEKDAYS, Stop, day_of, load
 except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
     print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
     sys.exit(1)
@@ -91,16 +89,6 @@ def utc(t: datetime) -> str:
 
 def parse_app(text: str) -> datetime:
     return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(KST)
-
-
-def day_of(text: str | None, today: date) -> date:
-    word = (text or "오늘").strip().lower()
-    if word in DAY_WORDS:
-        return today + timedelta(days=DAY_WORDS[word])
-    try:
-        return date.fromisoformat(word)
-    except ValueError as exc:
-        raise Stop(EXIT_ARGS, "args", f"날은 오늘 · 내일 · 모레 · YYYY-MM-DD 가운데 하나로 준다: {text!r}") from exc
 
 
 def day_span(first: date, last: date) -> tuple[str, str]:
@@ -463,7 +451,6 @@ def main() -> int:
         if missing:
             print(json.dumps({"error": "args", "message": "새 예약 미리 보기에는 --" + " · --".join(missing) + " 가 든다"}, ensure_ascii=False))
             return EXIT_ARGS
-    # 보기는 세션 파일부터 쓰고 앱이 거절할 때만 받는 손을 띄워 한 번 더, 넣기 · 고치기 · 취소는 늘 손부터 받아 한 번만
     return ep_command.finish(
         lambda mrs: ep_session.session_first(lambda f: run(args, f), expired=(mrs.SessionExpired, mrs.SessionMissing),
                                              file_first=args.command not in MUTATING),

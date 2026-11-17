@@ -1,36 +1,11 @@
-"""사내 문서함(ECM)에서 문서를 찾고 읽고, 사람이 확인한 한 편은 편집해 다음 판으로 올리거나 새 문서로 올리는 손. 표준 라이브러리만 쓴다(곁의
-``default_app.py`` · ``close_view.ps1`` · ``close_acrobat.ps1`` · ``checkin_window.ps1`` 과, 세션 파일을 읽는 형제 스킬 ep-login 의
-``ep_session.py`` 를 함께 쓴다 — 스킬 홈에 나란히 깔린 ``../../ep-login/scripts/`` 에서 싣는다).
+"""사내 문서함(ECM)에서 문서를 찾고 읽고, 사람이 확인한 한 편은 편집해 다음 판으로 올리거나 새 문서로 올리고, 문서의 권한을
+주고 거두는 손. 표준 라이브러리와 곁의 ``default_app.py`` · ``close_view.ps1`` · ``close_acrobat.ps1`` · ``checkin_window.ps1``,
+형제 스킬 ep-login 의 ``ep_session.py``(스킬 홈에 나란히 깔린 ``../../ep-login/scripts/``)를 쓴다. 차례와 막는 까닭은
+``references/DESIGN.md``, 서버의 주소와 꼴은 ``references/SOURCES.md`` 「사내 ECM 에서 잰 것」이 든다.
 
-무엇을 하나
-    문서함의 목록 · 찾기 · 건수를 받는다 — 내 문서함, 그리고 그 사람이 볼 수 있는 부서 · 프로젝트 문서함(``Ecm.cabinets`` ·
-    ``Ecm.list(cabinet=…)`` · ``Ecm.count``). 문서 하나를 PC 의 ECM 에이전트로 받아 보기로 열고(``open_document``), 에이전트가 띄운
-    창(오피스 · Acrobat)을 닫은 뒤 받은 파일의 글자를 스킬 drm-office-read 의 읽는 손으로 뽑는다(``read_document``).
-
-    편집은 화면과 같은 차례다 — ``edit_document`` 가 워드 · 엑셀 · 파워포인트 문서(``OFFICE_BY_EXT`` — ``checkin_document`` 가
-    저장해 올릴 수 있는 꼴)만 서버에서 잠그고 에이전트로 읽기 쓰기로 열며, 고친 뒤 ``checkin_document`` 가
-    그 문서만 저장해 닫고 에이전트의 편집완료 창에서 **늘 다음 판**을 골라 수정 내용과 함께 올린 뒤 문서 정보의 최종 버전이
-    바뀌었나 본다. 새 문서는 ``register_document`` 가 화면의 「컨텐츠 등록」 차례로 올린다 — 그 폴더가 그 문서함의 것인가를
-    폴더 나무로 읽어 보고, 그 폴더에 같은 이름이 있나 묻고, 에이전트가
-    파일을 서버 임시 자리에 올리고, 등록한 뒤 목록에서 다시 읽어 폴더 · 보안등급이 고른 값인가 본다. 바꾸는 요청은 편집 열기
-    (``Ecm.checkout``)와 등록 화면의 두 POST(``Ecm._post`` — 같은 이름 찾기 · 등록)만 짓는다 — 그 밖의 바꾸는 꼴(올리기 요청 · 편집취소 ·
-    지우기)과 잰 꼴 밖의 주소는 서버에 닿기 전에 ``Refused`` 로 막는다.
-
-    권한(편집 · 복사 · 읽기)은 화면의 「컨텐츠 속성 → 수정하기」와 같은 저장 하나로 주고 거둔다 — ``plan_access`` 가 지금 명단을
-    읽고 사람 · 조직을 ECM 검색으로 사람 열쇠까지 풀어 바뀔 명단과 확인 열쇠를 짓고(서버를 안 바꾼다), ``apply_access`` 가 그 열쇠가
-    맞고 그 사이 명단이 그대로일 때만 속성 저장 POST 하나(``Ecm.save_access``)를 보낸 뒤 명단과 다른 속성을 다시 읽어 본다. 저장 몸은
-    문서의 속성 칸 전부를 다시 싣기에 그 문서의 속성 화면이 든 값을 그대로 받고, 손이 바꾸는 칸은 권한 명단뿐이다.
-
-    기밀 · 핵심기술 문서는 사람에게 묻기 전에는 받지 않는다 — ``read_document`` · ``edit_document`` 가 받기 전에 ``check_readable`` 로
-    속성 화면(``Ecm.security`` — 읽기 하나 · 파일을 안 받는다)의 보안등급과 핵심기술 표시를 읽어, 기밀(``CLASSIFIED_LEVELS``)이거나
-    핵심기술 문서면 ``Classified`` 로, 등급을 못 읽으면 ``SecurityUnread`` 로 멈춘다. 뽑은 글자와 고치는 문서는 대화의 모델로 가기
-    때문이다. 멈춘 말은 사람에게 물을 것(``ASK_BEFORE_AI``)을 들고, 사람이 그 문서를 AI 로 보내도 된다고 답한 뒤에만 ``ai_ok`` 로
-    넘긴다. 화면에 띄우기만 하는 ``open_document`` 는 막지 않는다(사람이 보는 창이다). 「물어야 하나」를 가르는 자리는 이 파일
-    하나다 — 이미 내려온 파일을 읽는 스킬 drm-office-read 는 등급을 모르므로 에이전트 폴더(``ECM_DOCS_ROOT``)의 파일을 직접 읽지
-    않고 이 손으로 돌린다.
-
-    에이전트는 받은 파일을 그 확장자의 기본 앱으로 **화면에 띄운다.** 그래서 이 손은 사람이 보는 대화에서만 쓰고, 편집은 사람이
-    그 문서를 확인한 뒤에만 부른다 — 편집 열기는 동료도 쓰는 문서를 서버에서 잠근다.
+⚠ 에이전트는 받은 파일을 기본 앱으로 **화면에 띄우고**, 편집 열기는 동료도 쓰는 문서를 서버에서 잠근다 — 사람이 보는 대화에서만
+쓰고, 편집은 사람이 그 문서를 확인한 뒤에만 부른다. 바꾸는 요청은 편집 열기 · 등록 · 권한 저장만 짓고 그 밖은 서버에 닿기 전에
+``Refused`` 로 막는다.
 
 어떻게 부르나::
 
@@ -61,92 +36,30 @@
 
 무엇을 내나
     목록은 ``Doc``, 문서함은 ``Cabinet``, 열기 · 편집 열기는 ``Opened``(받은 파일 경로 · 문서 표 · 기본 앱), 읽기는 ``ReadResult``,
-    올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서는 ``Registered``(열쇠 · 이름 · 판), 권한은 ``Grant`` ·
-    ``Person`` · ``Organ`` · ``AccessPlan``(앞 명단 · 뒤 명단 · 더함 · 뺌 · 옮김 · 확인 열쇠)이다. 명령줄의 종료 값은 0 됨 · 1 실패(메시지 그대로 알린다) · 2 인자가
-    틀렸다(argparse 가 받는 값을 든다) · 3 세션이 없거나 끊겼다(스킬 ep-login 으로 다시 받는다) · 4 사람이 그 확장자의 기본 앱을 한 번
-    골라야 한다(메시지가 할 일을 든다) · 5 기밀 · 핵심기술 문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다(메시지가 물을 것을 든다). 보안등급은
-    ``Security``(등급 · 공개 · 핵심기술 · 이름 · 물어야 하나)다. 갈래 예외는 ``EcmError`` 아래에 선다 — ``SessionMissing`` · ``SessionExpired`` · ``Refused`` ·
-    ``AgentError`` · ``ReadError`` · ``Classified`` · ``SecurityUnread``. ``default_app.DefaultAppNeeded`` · ``ValueError``(확장자 꼴) · ``OSError`` ·
+    올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서는 ``Registered``(열쇠 · 이름 · 판), 보안등급은
+    ``Security``(등급 · 공개 · 핵심기술 · 이름 · 물어야 하나), 권한은 ``Grant`` · ``Person`` · ``Organ`` · ``AccessPlan``(앞 명단 ·
+    뒤 명단 · 더함 · 뺌 · 옮김 · 확인 열쇠)이다.
+
+    명령줄의 종료 값은 0 됨 · 1 실패(메시지 그대로 알린다) · 2 인자가 틀렸다(argparse 가 받는 값을 든다) · 3 세션이 없거나 끊겼다
+    (스킬 ep-login 으로 다시 받는다) · 4 사람이 그 확장자의 기본 앱을 한 번 골라야 한다(메시지가 할 일을 든다) · 5 기밀 · 핵심기술
+    문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다(메시지가 물을 것을 든다 — 답을 받은 뒤에만 ``--ai-ok``).
+
+    갈래 예외는 ``EcmError`` 아래에 선다 — ``SessionMissing`` · ``SessionExpired`` · ``Refused`` · ``AgentError`` · ``ReadError`` ·
+    ``Classified`` · ``SecurityUnread``. ``default_app.DefaultAppNeeded`` · ``ValueError``(확장자 꼴) · ``OSError`` ·
     ``subprocess.TimeoutExpired`` 는 그 아래가 아니다 — 명령줄은 따로 잡아 4 · 1 로 내고, 손으로 부르는 쪽도 따로 잡아야 한다.
 
-받은 파일은 어떻게 되나
-    에이전트가 ``<받는 자리>\\<계정>\\VIEW\\<시각 번호>\\``(보기) · ``…\\CHECKOUT\\<시각 번호>\\``(편집)에 둔 파일은 **지우지도
-    옮기지도 않는다.** 그 폴더는 에이전트의 것이고(ECM 화면에서 사람이 열어도 같은 자리에 같은 꼴로 쌓인다), 파일은 DRM 에 감긴 채라
-    그 PC 의 오피스 밖에서는 안 열린다. 비우는 일은 에이전트의 정리 프로그램 몫이다. 읽는 손이 뽑은 평문은 이 손이 지은 임시
-    폴더(``ecm-read-…``)에 잠시 놓였다가 글자를 읽자마자 그 폴더째 지우고 부르는 쪽에만 간다 — 지우기가 실패해도 말없이 넘어가므로
-    (``ignore_errors``) 그때는 그 폴더에 남는다. 명령줄의 ``read`` 는 뽑은 글자를 늘 ``text_dir()``(홈 아래 · 저장소 밖)에 문서
-    열쇠마다 한 장으로 남긴다 — ``.md``(Fasoo 가 감싸지 않는 꼴)이고, 머리 두 줄(읽는 손의 한 줄 · 열쇠와 받은 파일의 자리와 뽑은 때) 뒤 ``---`` 아래가
-    글자다. 같은 열쇠를 다시 읽으면
-    등급 문만 지나 그 파일로 답하고 문서를 받지 않는다(``read_kept``) — 받을 때마다 에이전트가 내려받고 오피스 창이 뜨는 값을 한 번만
-    치른다. 판이 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다. 글자가 답 하나의 크기(``ep_session.OUT_BYTES``)에 안
-    들면 — ``--as-file`` 을 주면 짧아도 — 화면에는 그 파일의 경로만 낸다. 남긴 파일은 이 손이 지우지 않는다 — 치우는 것은 사람이다.
+    부작용 — 에이전트가 받은 파일(``ECM_DOCS_ROOT`` 아래)은 지우지도 옮기지도 않는다. 명령줄의 ``read`` 는 뽑은 글자를
+    ``text_dir()`` 에 문서 열쇠마다 한 장(``.md``)으로 남기고, 같은 열쇠는 그 장으로 답하며, 남긴 장을 지우지 않는다.
 
 환경변수(``from_env``)
-    ``ECM_URL``           ECM 주소 — ``…/ECM`` 까지                         기본 ``http://swpecm.posco.net:7091/ECM``
-    ``MAILBOX_COOKIES``   세션 파일(Playwright 저장 상태) — ``--session`` · 인자를 안 줄 때만. 기본 자리는 없다 — 세션
-                          파일의 자리는 그것을 남기는 받는 손(스킬 ep-login)이 정하고, 부르는 쪽이 그 자리를 넘긴다
+    ``ECM_URL``           ECM 주소 — ``…/ECM`` 까지                         기본 ``DEFAULT_URL``(ep-login ``places.json``)
+    ``MAILBOX_COOKIES``   세션 파일(Playwright 저장 상태) — ``--session`` 을 안 줄 때만. 기본 자리는 없다 — 받는 손(스킬
+                          ep-login)이 정하고 부르는 쪽이 넘긴다
     ``ECM_AGENT_URL``     ECM 에이전트 웹소켓                               기본 ``ws://localhost:8383/``
     ``ECM_DOCS_ROOT``     에이전트가 받은 파일을 두는 자리                   기본 ``C:\\Rayful2_Docs``
     ``ECM_DRM_READER``    글자를 뽑는 손                                     기본 ``~/.claude/skills/drm-office-read/scripts/read-drm.ps1``
     ``ECM_TEXT_DIR``      read 가 뽑은 글자를 남기는 자리                    기본 ``~/.company-ecm-text``
     문서함 열쇠 · 계정은 환경변수로 받지 않는다 — 그 사람의 ECM 메인 화면과 에이전트의 폴더에서 읽는다.
-
-사내 ECM 에서 잰 것 — 어기면 조용히 망가진다
-    * 보안등급은 속성 화면의 숨은 칸 ``ecm_security_level`` · ``ecm_open_flag`` 가 든다(``Ecm.security``) — 내 문서와 메일로 받기만
-      한 문서 모두에서 칸이 든다. 기밀로 바꾼 문서는 소유자에게도 목록 · 화면에서 빠지지만 속성 화면은 열쇠로 그대로 읽힌다.
-      그 화면을 읽는 것이 열람으로 남는지는 안 쟀다. Fasoo 로 감긴 파일 머리에는 등급이 없다 — 등급의 원본은 이 화면뿐이다
-    * 세션은 ``swpecm.posco.net`` 쿠키(``JSESSIONID``)다. 세션 파일에는 다른 호스트의 쿠키도 들어 있다 — 그 호스트에 맞는
-      쿠키만 싣는다(도메인 · 경로 · 시한 · ``secure``). 세션 없이 열면 ``302 → /ECM/logout.jsp`` 가 온다 — 리다이렉트는 따라가지
-      않고 「끊겼다」로 읽는다(따라가면 쿠키가 다른 주소로 실린다)
-    * 목록 · 건수 · 열기는 다 ``GET /ECM/ajaxAction.do?ServiceName=…`` 이다. 답은 ``text/xml`` 로 오지만 몸은 앞에 빈 줄이 붙은
-      JSON 이다. 성공은 ``MB_RTN_VALUE``, 까닭은 ``MS_MSG_CODE`` · ``MS_MSG_DESC``
-    * 목록은 ``DocList-service&getDocList=true`` 의 ``ML_DOC_LIST[]``, 건수는 ``&getDocCount=true`` 의 ``MI_DOC_COUNT`` 다. 내
-      문서함은 ``formId=F_LIST_MYDOC`` · 화면의 기본은 ``docCntPerPage=15`` · ``searchPeriod=6M`` · ``fileType=ALL_FORMAT`` ·
-      ``sortDirection=desc``. 기간 ``searchPeriod`` 는 화면 기간 필터의 일곱 값(``1M`` · ``6M`` · ``12M`` · ``24M`` · ``36M`` ·
-      ``60M`` · ``ALL``)만 뜻대로 선다 — ``1Y`` 는 ``MSG_E_0056`` 으로 거절되고, ``1W`` 는 거절 없이 1M 보다 많은 건수가 온다
-    * 부서 · 프로젝트 문서함은 화면 왼쪽 「내 부서 컨텐츠」와 같은 ``formId=F_LIST_MYDEPT`` · ``listKey=<문서함 열쇠>_<문서함 열쇠>`` 다.
-      그 사람의 문서함은 메인 화면의 ``<option id="MENU_DEPT|MENU_PROJECT" value='cab…'>이름</option>`` 이, 제 부서는
-      ``s_UserDeptCabinetId`` 가 든다. 부서 문서는 내 문서함 찾기에 안 걸린다
-    * 열기는 두 걸음이다 — ``OpenContents-service&view=true&MS_OBJECT_ID=<16 hex>&formId=F_LIST_MYDOC`` 가 ``MS_DOC_ID`` ·
-      ``MS_OBJECT_ID`` · ``MS_FILE_NAME`` 을 주고(파일 바이트는 안 준다 · 부서 문서도 같은 ``formId`` 로 선다), 그 값을 에이전트
-      웹소켓에 한 줄 ``Download␈<MS_DOC_ID>␈<MS_OBJECT_ID>␈VIEW␈<MS_FILE_NAME>␈ECM``(``␈`` = ``\\x08``)로 보내면 ``OK`` 가 온다.
-      에이전트가 파일을 새 폴더에 받고 기본 앱으로 연다
-    * 편집 열기는 ``CheckOutCheckIn-service&checkout=true&MS_OBJECT_ID=<16 hex>`` 가 서버에서 잠그고 같은 세 값을 준다(``MB_RTN_VALUE``
-      가 참이면 실패 코드가 같이 와도 선다). 줄의 셋째 값이 ``EDIT_NOCHECKIN`` 이면 에이전트가 ``CHECKOUT`` 아래에 받아 읽기 쓰기로
-      연다. 받은 이름은 ``<이름>_<문서 열쇠>_<계정>.<꼴>`` 이다 — ``checkin_document`` 가 이름 속 열쇠로 그 문서를 알아본다.
-      받을 때는 이름을 짓지 않고 새로 생긴 파일을 집는다(xlsx 로 쟀다 · docx · pptx 는 안 쟀다)
-    * 편집완료 창은 고친 문서를 저장해 닫으면 뜬다 — 같은 앱에 사람의 다른 문서가 남아 앱이 떠 있어도 뜬다. 고친 것 없이 닫으면 창 없이
-      잠금만 풀린다. 창 속은 웹 화면이고 판 라디오
-      ``choice_version`` 의 기본은 지금 판(덮어쓰기)이다 — 지금 판보다 큰 값이 꼭 하나일 때만 그것을 고르고, 아니면 아무것도 안 누른다. 수정 내용 칸은 ``version_desc`` · 저장은 그 화면의
-      ``fn_save()`` · 올리기는 에이전트가 한다. 판은 문서 정보 화면(``docProperty_simple.do?ServiceName=DocPropertyHtml-service&basicinfo=true
-      &DOCID=<16 hex>&getType=user``)의 「최종 버전」 칸이 든다
-    * 폴더 나무는 ``GetSubNaviMenu-service&menuType=<MENU_DEPT|MENU_PROJECT>&upperKey=<문서함>`` (문서함 바로 아래) ·
-      ``menuType=F_LIST_FOLDER&upperKey=<문서함>_<폴더>`` (폴더 아래)다. 답 ``ML_MENU_LIST[]`` 의 ``MS_MENU_ID`` 가 ``<문서함>_<폴더>``,
-      ``MS_HAS_SUB`` 가 아래 폴더 수다. ``upperKey`` 에 폴더 열쇠만 주면 「폴더 경로를 조회하는데 실패」가 온다
-    * 새 문서 등록은 화면의 「컨텐츠 등록」 저장과 같다 — ① ``POST ajaxAction.do?ServiceName=CheckDuplicatedDoc-service&checkDup=true``
-      (몸 ``folderID`` · ``title`` · ``fileExt``)가 같은 이름을 ``ML_DUPLICATED_LIST`` 로 낸다 ② 에이전트 웹소켓에 한 줄
-      ``uploadfilecreatedoc␈contentName_1|<PC 경로>`` 를 보내면 에이전트가 파일을 ``EcmUploadCreateServlet`` 으로 올리고
-      ``{"LISTID","SERVERFILE","SERVERPATH":"/WAS/ECMTEMP/<uuid>.<확장자>"}`` 를 답한다 ③ ``POST ajaxAction.do?isHTML=T`` 의 몸이
-      ``register=register`` · ``ServiceName=RegisterContents-service`` · 파일 줄 XML(``fileList``) · ``ecm_folder_id`` ·
-      ``ecm_security_level`` · ``ecm_open_flag`` 따위다 — 화면처럼 칸마다 인코딩하지 않고 이어 붙이고, 이름만 ``encodeURIComponent``
-      한다. 답의 ``MS_OBJECT_ID`` 가 새 문서 열쇠이고 판은 0.0 이다. 보안 짝은 화면의 단추 여섯(``SECURITY_PAIRS``)뿐이다.
-      감긴 파일도 그대로 올라가고 받은 문서는 감긴 채다. 화면은 설정에 따라 올린 로컬 파일을 지우지만(``filedelete``) 이 손은 안 지운다
-    * 권한 칸은 속성 화면의 iframe ``roleAssignEdit.jsp`` 이고 셋이다 — 편집/복사/읽기/인쇄(공동 R · 역할 ``R``) · 복사/읽기/인쇄(``S``) ·
-      읽기/인쇄(``V``). 지금 명단은 ``json.do?ServiceName=DocPropertyHtml-service&role=true&pageType=user&ECM_DOC_ID=doc<16 hex>`` 의
-      배열(``MS_ROLE`` · ``MS_OBJECT_ID`` · ``MS_USER_CLASS`` …)이고 소유자는 안 든다. 그 밖의 역할(승인 ``A`` · 검토 ``C`` · 조회 ``I`` ·
-      배포 ``D``)은 화면이 그릴 때 ``S`` · ``V`` 칸으로 옮겨 그린다 — 그대로 되보내면 역할이 바뀌므로 그런 문서는 안 바꾼다
-    * 사람 찾기는 ``json.do?ServiceName=searchPeople-service&kind=name&value=<이름>`` — **이름으로만** 찾는다(메일 ID · 사번은 빈
-      답). 답에 메일 ID · 사번 · 부서가 들고, 메일 주소록의 그 사람과 같다. 조직은 ``searchOrgan2-service`` 의 ``search=1``(부서 이름) ·
-      ``getDept=1&kind=dept&deptId=``(바로 아래 부서) · ``getUser=1&deptId=``(바로 든 사람). 회사 열쇠 ``companyId`` 는 메인 화면이 든다
-    * 화면이 조직을 칸에 옮기면 부서가 아니라 **그 순간 바로 든 부서원 개인**으로 펼친다(아래 부서는 안 든다). 부서 줄(``D``)을 명단에
-      넣고 저장하면 「저장 되었습니다」가 오고 아무것도 안 남는다
-    * 저장은 ``POST ajaxAction.do?ServiceName=ModifyDocProperty-service`` 하나 — 몸은 화면의 ``getDocInfoData`` 꼴이다: 속성 화면의 숨은
-      칸(폴더는 ``ecm_folder_id`` · 보안은 ``ecm_security_level`` · 완료일은 ``ecm_EndDate`` 에서) · ``isChangeRoleInfo=TRUE`` · 권한
-      **전체** 명단 XML(``roleList`` — 줄마다 칸 여덟, 역할 · 사람 열쇠 · ``U`` · 회사 열쇠만 차고 나머지는 빈 칸) · 즐겨찾기
-      (``favorite_info`` 의 폴더들) · 체크 칸 셋(화면에 체크 칸이 없으면 ``F``). 화면처럼 칸을 인코딩 없이 이어 붙이고 이름 둘만
-      ``encodeURIComponent`` 한다. 거두기는 그 사람을 뺀 명단을 보내는 것이다. 성공은 ``MSG_I_0147``
-    * ⚠ 같은 서비스 모음에 편집취소 · 올리기 요청 · 지우기가 있다 — 이 손은 짓지 않고, 지으려 하면 서버에 닿기 전에 막는다. 잰 꼴 밖의
-      서비스 · 칸 · 값도 같이 막는다(닫힌 목록 ``READS`` · 편집 열기 문 ``_guard_edit``)
 """
 
 from __future__ import annotations
@@ -180,7 +93,7 @@ if str(EP_LOGIN_SCRIPTS) not in sys.path:
     sys.path.append(str(EP_LOGIN_SCRIPTS))
 import ep_session  # noqa: E402 — 형제 스킬의 자리를 넣은 뒤에 싣는다
 
-DEFAULT_URL = "http://swpecm.posco.net:7091/ECM"
+DEFAULT_URL = ep_session.ECM_URL
 DEFAULT_AGENT = "ws://localhost:8383/"
 DEFAULT_DOCS_ROOT = r"C:\Rayful2_Docs"
 DEFAULT_READER = "~/.claude/skills/drm-office-read/scripts/read-drm.ps1"
@@ -206,7 +119,7 @@ POLL = 0.5
 EXIT_OK, EXIT_FAIL, EXIT_SESSION, EXIT_DEFAULT_APP, EXIT_CLASSIFIED = 0, 1, 3, 4, 5
 
 AJAX = "/ajaxAction.do"
-MAIN_PAGE = "/jsp/main/ecmMain.jsp"
+MAIN_PAGE = ep_session.ECM_MAIN_PAGE
 MY_DOCS = "F_LIST_MYDOC"
 DEPT_DOCS = "F_LIST_MYDEPT"   # 부서 · 프로젝트 문서함 — listKey 는 <문서함 열쇠>_<문서함 열쇠>(화면의 왼쪽 메뉴)
 PROPERTY_PAGE = "/docProperty_simple.do"
@@ -257,7 +170,7 @@ SECURITY_FIELD, OPEN_FIELD = "ecm_security_level", "ecm_open_flag"   # 속성 �
 DOC_TYPE_GENERAL = "1"                  # 화면의 「컨텐츠 등록」이 기본으로 두는 문서 유형
 DOC_STATUS_DRAFT = "0"
 NO_DUE_DATE = "0001-01-01"
-TITLE_MAX = 125                         # 화면의 addFile — 이름(확장자 뺀) 125 자 · 한글은 3 바이트로 세어 250 까지
+TITLE_MAX = 125                         # 화면의 addFile 이 거는 한도 — 이름은 확장자를 빼고, 바이트는 한글을 3 으로 센다
 TITLE_BYTES_MAX = 250
 TITLE_BAD = re.compile(r'[\\/:*?"<>|`]')
 SERVER_NAME = re.compile(r"^[/\w.\-]+$")   # 에이전트가 준 서버 임시 자리 · 파일 이름의 글자 — 몸의 칸을 가르는 & · = · + · % 가 없게
@@ -314,7 +227,7 @@ TOKEN_LENGTH = 12
 LIST_DEFAULTS = {"isHTML": "T", "formId": MY_DOCS, "wfStatusType": "", "fileType": "ALL_FORMAT", "orderBy": "",
                  "sortDirection": "desc"}
 DEFAULT_PERIOD = "6M"
-# 화면 기간 필터의 값 그대로 — 밖의 값은 MSG_E_0056 으로 거절되거나(1Y · 2Y) 거절 없이 틀린 목록이 온다(1W)
+# 화면 기간 필터의 값 그대로 — 밖의 값은 거절되거나 거절 없이 틀린 목록이 온다
 PERIODS = ("1M", "6M", "12M", "24M", "36M", "60M", "ALL")
 DEFAULT_PER_PAGE = 15
 TEXT_DIR = "~/.company-ecm-text"       # read 가 뽑은 글자를 남기는 자리 — 홈 아래(저장소 밖 · 임시 폴더 정리에 안 걸린다)
@@ -340,7 +253,7 @@ ACROBAT = "Acrobat"
 ACROBAT_PROGID = "acroexch."
 # 닫는 손(close_view.ps1 · close_acrobat.ps1)의 종료 값 → 창의 상태. 그 밖의 값은 실패다
 CLOSE_EXIT = {0: "closed", 2: "not-found", 3: "not-front"}
-# 보기를 거절한 코드 — 사람에게 서버 글 대신 할 일을 낸다. 권한이 없어 문서함 화면에도 안 보이던 문서가 이 코드였다
+# 보기를 거절한 코드 — 사람에게 서버 글 대신 할 일을 낸다. 볼 권한이 없는 문서(문서함 화면에도 안 보인다)에 ECM 이 내는 코드다
 VIEW_DENIED = "MSG_E_0035"
 OFFICE_BY_EXT = {".docx": "Word", ".doc": "Word", ".xlsx": "Excel", ".xls": "Excel", ".xlsm": "Excel",
                  ".pptx": "PPT", ".ppt": "PPT"}
@@ -1285,8 +1198,8 @@ class Agent:
         except AgentError as exc:
             if "답하지 않았다" not in str(exc):
                 raise
-            # 열기 표는 왔는데 에이전트가 말이 없다 — 메일 쪽지의 머리 열쇠로 연 판이 이랬다(회사에서 잼). 사람 누름 길은 선다.
-            # 그 길은 등급 문(check_readable)을 안 지난다 — 메일 첨부로 온 문서는 보낸 쪽이 받는 사람에게 보라고 준 것이라 그대로 읽게 둔다
+            # 열기 표는 왔는데 에이전트가 말이 없다 — 메일 쪽지의 머리 열쇠가 화면이 여는 링크 쪽 열쇠와 다를 때 머리 열쇠로 열면 이렇다.
+            # 사람이 첨부를 눌러 여는 길은 등급 문을 안 지난다(references/DESIGN.md 「기밀 · 핵심기술 문서는 묻고 받는다」)
             raise AgentError(f"{exc} — 메일 첨부에서 온 열쇠면 company-mail 의 attachment --save 로 열쇠를 다시 받는다(화면이 여는 "
                              f"링크 쪽 열쇠를 낸다). 그래도 같으면 사람이 그 첨부를 눌러 열게 하고, {self.docs_root} 아래 "
                              f"{folder} 에 새로 선 파일을 스킬 drm-office-read 로 읽는다") from exc
@@ -1418,11 +1331,10 @@ def checkin_pending(object_id: str) -> bool:
 
 
 def edit_document(ecm: Ecm, agent: Agent, object_id: str, *, ai_ok: bool = False) -> Opened:
-    """편집으로 연다 — 서버가 그 문서를 이 사람 이름으로 잠그고, 에이전트가 읽기 쓰기로 띄운다. 잠그기 전에 둘을 본다 — 끝까지 못
-    가는 판에 잠그면 사람이 모르는 잠금이 남는다:
-    ``checkin_document`` 가 저장해 올릴 수 있는 꼴(``OFFICE_BY_EXT``)이 아니면 ``EcmError`` 로 멈추고, 기본 앱이 없으면
-    ``DefaultAppNeeded`` 로 멈춘다. 잠근 뒤 받기가 안 서면 그 말을 낸다. 기밀 · 핵심기술 · 못 읽은 등급은 그 앞에서 ``check_readable`` 이
-    사람에게 묻게 멈춘다 — 고치는 문서는 대화의 모델이 읽는다."""
+    """편집으로 연다 — 서버가 그 문서를 이 사람 이름으로 잠그고, 에이전트가 읽기 쓰기로 띄운다. ``Opened`` 를 낸다.
+
+    잠그기 전에 멈추는 것 — 등급(``check_readable``) · ``OFFICE_BY_EXT`` 밖의 꼴(``EcmError``) · 기본 앱 없음(``DefaultAppNeeded``).
+    끝까지 못 가는 판에 잠그면 사람이 모르는 잠금이 남는다. 잠근 뒤 받기가 안 서면 「편집취소」를 이르는 ``AgentError``."""
     check_readable(ecm, object_id, ai_ok=ai_ok)
     ticket = ecm.view(object_id)                    # 확장자 · 이름을 먼저 본다 — 읽기라 잠그지 않는다
     if ticket.ext not in OFFICE_BY_EXT:
@@ -1453,9 +1365,8 @@ def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *,
                      docs_root=None) -> CheckedIn:
     """편집으로 연 문서를 저장해 닫고, 에이전트의 편집완료 창에서 다음 판 · 수정 내용으로 올린 뒤 판이 올랐나 본다.
 
-    같은 앱에 사람의 다른 문서가 남아 있으면 앱은 끄지 않고 그 문서만 닫는다 — 그래도 편집완료 창은 뜬다. 창이 시한 안에 안 뜨면 남은
-    문서 이름을 대고 멈추고, 사람이 그 문서들을 닫은 뒤 같은 명령을 다시 부르면 창에서 이어 간다. 고친 것 없이 닫으면 에이전트는 창
-    없이 잠금만 푼다 — 그때는 앞 판 · 뒤 판이 같은 ``CheckedIn`` 을 낸다."""
+    ``CheckedIn`` 을 낸다 — 고친 것 없이 닫혀 에이전트가 잠금만 풀었으면 앞 판 · 뒤 판이 같다. 사람의 다른 문서는 안 닫고, 창이
+    시한 안에 안 뜨면 남은 문서 이름을 대고 ``EcmError`` 로 멈춘다 — 그 문서들을 닫은 뒤 다시 부르면 창에서 이어 간다."""
     object_id = _object_id(object_id)
     desc = desc.strip()
     if not desc:
@@ -1521,10 +1432,10 @@ def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *,
 
 def register_document(ecm: Ecm, agent: Agent, path: pathlib.Path, *, cabinet: str, folder: str, security: str,
                       open_flag: str, title: str = "") -> Registered:
-    """PC 의 파일 하나를 그 문서함 폴더의 새 문서로 올린다 — 화면의 「컨텐츠 등록」과 같은 차례: 같은 이름 찾기 → 에이전트가 서버
-    임시 자리에 올림 → 등록 → 목록에서 다시 읽어 섰나 본다. 그 앞에서 그 폴더가 그 문서함의 것인가를 폴더 나무로 읽어 보고,
-    아니면 아무것도 안 보내고 멈춘다. 보안등급 · 공개는 사람이 대화에서 확인한 짝만 준다 — 잘못 고르면
-    동료 전체에 보인다. 같은 이름이 그 폴더에 있으면 올리지 않는다(다음 판은 edit · checkin 의 몫이다)."""
+    """PC 의 파일 하나를 그 문서함 폴더의 새 문서로 올리고 ``Registered`` 를 낸다 — 화면의 「컨텐츠 등록」과 같은 차례다.
+
+    폴더가 그 문서함에 없거나 같은 이름이 그 폴더에 있으면 아무것도 안 보내고 ``EcmError``. 보안등급 · 공개는 사람이 대화에서
+    확인한 짝만 준다 — 잘못 고르면 동료 전체에 보인다."""
     path = pathlib.Path(path).resolve()       # 에이전트는 다른 프로세스라 상대 경로를 제 자리에서 푼다
     if not path.is_file() or path.stat().st_size == 0:
         raise EcmError(f"올릴 파일이 없거나 비었다: {path}")
@@ -1783,8 +1694,7 @@ READER_UNREADABLE = "[못 읽는 꼴]"   # 읽는 손(read-drm.ps1)이 받는 �
 def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> tuple[str, str]:
     """받은 파일을 drm-office-read 의 읽는 손에 넘겨 (글자, 그 손의 한 줄)을 낸다. 평문은 임시 폴더째 바로 지운다.
 
-    읽는 손에는 ``-NoKeep`` 을 준다 — 문서함의 글자는 등급 문 뒤에서 문서 열쇠로 이 손이 남긴다(``keep_text``). 읽는 손이 제 자리에
-    한 벌 더 남기면 등급 문을 안 지나는 사본이 생긴다."""
+    ``-NoKeep`` 을 준다 — 읽는 손이 제 자리에 한 벌 더 남기면 등급 문을 안 지나는 사본이 생긴다."""
     reader = reader or reader_path()
     if not reader.exists():
         raise ReadError(f"글자를 뽑는 손이 없다: {reader} — 스킬 drm-office-read 가 깔렸는지 본다")
@@ -1832,8 +1742,7 @@ def keep_text(text: str, summary: str, source: pathlib.Path, object_id: str) -> 
 def read_kept(ecm: Ecm, object_id: str, *, ai_ok: bool = False) -> pathlib.Path | None:
     """남겨 둔 글자가 있으면 등급 문(``check_readable``)을 지난 뒤 그 파일을 낸다 — 없으면 None. 문서는 받지 않는다.
 
-    등급 문은 여기서도 선다 — 남긴 뒤 기밀 · 핵심기술이 된 문서의 글자는 사람에게 묻기 전에 대화로 들이지 않는다(속성 화면만 읽어
-    파일은 안 받는다)."""
+    등급 문이 여기서도 서는 까닭 — 남긴 뒤 기밀 · 핵심기술이 된 문서를 막는다."""
     path = kept_text(object_id)
     if path is None:
         return None
@@ -1880,10 +1789,10 @@ def tell_kept(path: pathlib.Path, *, as_file: bool = False) -> None:
 
 def check_readable(ecm: Ecm, object_id: str, *, ai_ok: bool = False) -> Security | None:
     """글자를 대화로 들이는 일(읽기 · 편집 열기) 앞의 문 — 기밀 · 핵심기술 문서면 ``Classified``, 등급을 못 읽으면 ``SecurityUnread``
-    로 멈추고, 그 말이 사람에게 물을 것(``ASK_BEFORE_AI``)을 든다.
+    로 멈추고, 그 말이 사람에게 물을 것(``ASK_BEFORE_AI``)을 든다. ``Security`` 를 낸다.
 
     ``ai_ok`` 는 사람이 그 문서를 AI 로 보내도 된다고 답한 뒤에만 준다 — 그때는 묻는 문서도 넘긴다(못 읽은 판은 None).
-    받는 요청보다 먼저 서야 한다 — 받은 뒤 막으면 감긴 파일이 이미 PC 에 와 있다."""
+    ⚠ 받는 요청보다 먼저 부른다 — 받은 뒤 막으면 감긴 파일이 이미 PC 에 와 있다."""
     try:
         security = ecm.security(object_id)
     except SecurityUnread as exc:
@@ -1898,10 +1807,9 @@ def check_readable(ecm: Ecm, object_id: str, *, ai_ok: bool = False) -> Security
 
 def read_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool = False,
                   reader: pathlib.Path | None = None, ai_ok: bool = False) -> ReadResult:
-    """보안등급을 보고(``check_readable``) → 열고 → 에이전트가 띄운 창을 닫고 → 받은 파일에서 글자를 뽑는다.
+    """보안등급을 보고(``check_readable``) → 열고 → 에이전트가 띄운 창을 닫고 → 받은 파일에서 글자를 뽑아 ``ReadResult`` 를 낸다.
 
-    닫는 것이 먼저다 — 오피스가 그 파일을 쥐고 있으면 읽는 손이 파일 머리를 못 읽는다(「다른 프로세스가 사용 중」). 받은 파일은
-    닫은 뒤에도 그 자리에 남는다. 화면에 띄워 두고 보려면 ``open_document`` 를 쓴다.
+    닫는 것이 먼저다 — 오피스가 그 파일을 쥐고 있으면 읽는 손이 파일 머리를 못 읽는다. 받은 파일은 그 자리에 남는다.
     """
     check_readable(ecm, object_id, ai_ok=ai_ok)
     opened = open_document(ecm, agent, object_id, allow_picker=allow_picker)

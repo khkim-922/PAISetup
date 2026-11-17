@@ -34,8 +34,8 @@
 
 대화에서 쓰는 절차는 스킬 `company-mail` 이 든다. 이 폴더는 그 스킬의 명령과, 깔린 자리에서 이 손을 불러 쓰는 앱이 함께
 쓰는 손이다 — 복사해 쓰는 밑판이 아니라 불러 쓰는 손이라, 공개 이름과 꼴(부르는 꼴 · 내는 것)을 바꾸면 부르는 쪽이 깨진다.
-부르는 꼴 · 내는 것 · 환경변수 · 회사에서 잰 꼴과 그 출처는 `inbox.py` ·
-`mailer.py` · `draft_send.js` 머리말이 든다 — 여기 옮겨 적지 않는다.
+부르는 꼴 · 내는 것 · 환경변수는 `inbox.py` · `mailer.py` · `draft_send.js` · `mail.py` 머리말이, 회사에서 잰 꼴과 그 출처는
+`../references/SOURCES.md` 「회사에서 잰 꼴」이, 주석이 한두 줄로 못 다는 설계의 까닭은 `../references/DESIGN.md` 가 든다 — 여기 옮겨 적지 않는다.
 
 ## 앱에서 쓰기
 
@@ -45,7 +45,7 @@
    메일함 주소는 `inbox.discover_mailbox("http://<메일 서버>", <세션 파일>)` 가 그 세션에 로그인한 사람의 것을 낸다. 세션이 끊기면
    `SessionExpired` 가 나니 받는 손을 다시 부른다
 3. 메일함을 바꾸는 손(`mark_read` · `mark_unread` · `create_folder` · `delete_folder` · `move_mails` · `trash_mails` · `restore_from_trash` · `restore_mails` ·
-   `save_rule` · `delete_rule`)은 사람이 그 대상을 고른 자리(확인 단추 같은 것)에서만 부른다
+   `save_rule` · `delete_rule` · `save_draft`)은 사람이 그 대상을 고른 자리(확인 단추 같은 것)에서만 부른다
 
 ## 돌려 보기
 

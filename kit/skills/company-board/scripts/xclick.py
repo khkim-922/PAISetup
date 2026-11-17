@@ -11,15 +11,9 @@
 내는 것 — 화면의 HTML 을 푼 dict · list. 예외 — ``SessionExpired``(사내 세션이 끊겼다 · 게시판이 안 들였다) · ``SessionMissing``
 (세션 파일이 없다) · ``NotFound``(받은 id 로 글이 안 열렸다) · ``AppError``(게시판이 거절했다 · 답이 잰 꼴이 아니다).
 
-들어가는 길(2026-11-16 회사 PC 에서 잰 것)::
-
-    1. 사내 세션 쿠키(.posco.net)를 싣고 SSO 넘김 화면(SSO_PAGE)을 GET — 숨은 칸 폼(ssoToken · …)이 온다
-    2. 그 칸을 dispatcherSubmitSSO.jsp 에 POST — 게시판이 제 세션(JSESSIONID)을 심고, 사용자 ID 를 든 스크립트(plainTxt = "id=…")를 낸다
-    3. 그 글을 화면의 뒤섞기(``scramble`` — urlsecure.js 의 jQuery.encrypt)로 싸서 cefDispatcherSSO.jsp 에 _xcsparam 으로 POST — 섰다
-    4. 그 뒤 XClickController 에 폼 꼴 POST 로 묻는다. 끊긴 세션은 「openMiniLoginPop」 한 줄을 낸다
-
-조회수 — 글 읽기(viewArticle)는 ``transaction_yn=Y`` 로 부르면 조회수를 하나 올리고 ``N`` 이면 안 올린다(잰 것). 이 손은 늘 N 이다.
-사내 밖으로는 안 나간다 — 부르는 주소는 이 파일의 상수뿐이고 프록시를 안 탄다. 리다이렉트를 따라가지 않는다.
+들어가는 길은 SSO 넘김 → 게시판 세션 → 뒤섞은(``scramble``) 사용자 ID POST 세 걸음이다 — 걸음마다의 꼴은 ``references/SOURCES.md``
+「들어가기」가 든다. ⚠ 글 읽기(viewArticle)는 늘 ``transaction_yn=N`` 으로 부른다 — ``Y`` 면 조회수가 오른다. 사내 밖으로는 안
+나간다 — 부르는 주소는 이 파일의 상수뿐이고 프록시를 안 타며 리다이렉트를 따라가지 않는다.
 """
 
 from __future__ import annotations
@@ -46,8 +40,8 @@ SSO_PAGE = "http://swpsso.posco.net/idms/U61/jsp/redirectSMSP.jsp?redir_url=" + 
 CONTROLLER = ROOT + "/XClickController"
 BOARD_HOST = urllib.parse.urlsplit(ROOT).hostname   # 본문 그림을 묻는 호스트 — 이 밖은 안 묻는다
 ROOT_ORIGIN = "{0.scheme}://{0.netloc}".format(urllib.parse.urlsplit(ROOT)).lower()   # 본문 그림을 묻는 자리 — 잰 스킴 · 호스트 · 포트
-IMAGE_PATH = urllib.parse.urlsplit(ROOT).path + "/DownController.do"   # 본문 그림의 잰 꼴 — 이 길에 fileId 하나만(2026-11-16 · 게시판 15 곳 글 45 건)
-TOP_BBS, TOP_TREE = "BBS85", "BBS_ALL_00001"   # 게시판 나무의 뿌리 — 이 뿌리로 찾으면 모든 게시판을 함께 찾는다(잰 것)
+IMAGE_PATH = urllib.parse.urlsplit(ROOT).path + "/DownController.do"   # 본문 그림의 잰 꼴 — 이 길에 fileId 하나만(``references/SOURCES.md``)
+TOP_BBS, TOP_TREE = "BBS85", "BBS_ALL_00001"   # 게시판 나무의 뿌리 — 이 뿌리로 찾으면 모든 게시판을 함께 찾는다
 SCRAMBLE_KEY = "xclick6"           # 화면의 뒤섞기 열쇠(urlsecure.js 의 URL_SECURE_ENCKEY)
 SCRAMBLE_DELTA, SCRAMBLE_ROUNDS = 123, 3   # 같은 파일의 delta · 돌림 수 — 화면이 고쳐 박은 값이다
 TIMEOUT = 60
@@ -125,8 +119,8 @@ PERIOD = re.compile(r'vsub_title"[^>]*>\s*게시기한\s*</td>\s*<td class="vsub
 STAMP = re.compile(r"(\d{4}-\d\d-\d\d \d\d:\d\d)&nbsp;\s*\|\s*조회수")
 SUBJECT = re.compile(r'<div class="top_subject"[^>]*>(.*?)</div>', re.S)
 CONTENT = re.compile(r'<div id="contentArea_[^"]+"[^>]*>(.*?)</div>\s*</td>\s*</tr>\s*</table>', re.S)
-# 본문 칸 안의 감싸개 — 글 화면이 본문을 한 행 한 칸의 표(`table-layout:auto` · 칸 `min-height:100px`)에 담아 낸다(2026-11-16 · 회사 PC).
-# 글이 아니라 화면의 틀이라 벗긴다 — 두면 본문을 푸는 손이 글의 표를 「칸 안에 든 표」로 읽어 표 전체를 한 줄로 잇는다
+# 본문 칸 안의 감싸개 — 글 화면이 본문을 담는 한 행 한 칸의 표다. 화면의 틀이라 벗긴다 — 두면 본문을 푸는 손이 글의 표를
+# 「칸 안에 든 표」로 읽어 표 전체를 한 줄로 잇는다
 WRAPPER = re.compile(r"\s*<table[^>]*table-layout:\s*auto[^>]*>\s*<tr[^>]*>\s*(?:<!--.*?-->\s*)*<td[^>]*min-height:\s*100px[^>]*>(.*)"
                      r"</td>\s*</tr>\s*</table>\s*", re.S | re.I)
 
@@ -134,9 +128,8 @@ WRAPPER = re.compile(r"\s*<table[^>]*table-layout:\s*auto[^>]*>\s*<tr[^>]*>\s*(?
 def parse_rows(page: str) -> dict:
     """글 목록 화면 → {total, rows}. 줄마다 board(게시판 id) · id · title · board_name · writer · date · views · notice · files.
 
-    칸은 자리가 아니라 꼴로 집는다 — 목록 꼴(게시판 · 찾기 · 모든 게시판)마다 칸의 차례가 다르고 칸 안에 표가 든다(잰 것).
-    제목 · 게시판 id 는 고름 칸의 JSON, 작성자는 사람 꼬리표, 게시일은 날짜 꼴, 조회는 조회자 목록 링크, 게시판 이름은
-    나무에서 그 id 로 대는 쪽(``names``)이 든다 — 화면의 게시판 이름 칸은 꼴마다 있다 없다 한다."""
+    칸은 자리가 아니라 꼴로 집는다 — 목록 꼴(게시판 · 찾기 · 모든 게시판)마다 칸의 차례가 다르고 칸 안에 표가 든다.
+    게시판 이름은 나무에서 그 id 로 대는 쪽(``names``)이 든다 — 화면의 게시판 이름 칸은 꼴마다 있다 없다 한다."""
     rows = []
     for m in ROW.finditer(page):
         block = m.group(1)
@@ -255,7 +248,7 @@ class App:
         """게시판 하나(묶음이면 그 아래 다)의 글 — 낱말을 주면 ``fields`` 칸에서 찾는다. 뿌리면 모든 게시판."""
         data = {"facade": "BBSArticleFacade", "command": "listArticle", "nextpage": "/bbs/articleGenList.jsp",
                 "categoryId": "BBS_ALL", "bbsId": bbs_id, "paging_listcnt": str(count), "currpage_no": str(page),
-                "srchStartDate": since, "srchEndDate": until or date.today().isoformat()}   # 끝 날을 비우면 화면의 기본 기간(1 년)으로 준다(잰 것)
+                "srchStartDate": since, "srchEndDate": until or date.today().isoformat()}   # 끝 날을 비우면 게시판이 화면의 기본 기간만 본다
         if words:
             data.update(srchKeyword=words, srchChkConditionList=CONDITION_SEP.join(CONDITION + f for f in fields), searchMode="Y")
         return parse_rows(self.call(data))
@@ -272,9 +265,9 @@ class App:
                                      "&downYn=Y&innoFDId=innoFDId&fileTitle="))
 
     def image(self, src: str) -> bytes:
-        """본문 ``<img src>`` 하나 — 상대 주소는 글 화면(CONTROLLER)에 대어 풀고, 게시판 호스트 · 포트의 잰 꼴(IMAGE_PATH 에 fileId
-        하나)만 묻는다 — 게시판 호스트의 다른 길은 사내 세션을 싣고 무엇을 할지 모른다. 그 밖이면 묻지 않고
-        ``Refused``. 게시판은 그림에 Content-Type ``application/smnet`` 을 댄다(잼) — 꼴은 부르는 쪽이 바이트 머리로 가린다."""
+        """본문 ``<img src>`` 하나의 바이트 — 상대 주소는 글 화면(CONTROLLER)에 대어 풀고, 게시판 호스트 · 포트의 잰 꼴(IMAGE_PATH 에
+        fileId 하나)만 묻는다 — 그 밖이면 ``Refused``(게시판 호스트의 다른 길은 사내 세션을 싣고 무엇을 할지 모른다). 게시판이 대는
+        Content-Type 은 그림 꼴을 안 말해, 꼴은 부르는 쪽이 바이트 머리로 가린다."""
         url = urllib.parse.urljoin(CONTROLLER, src.strip())
         parts = urllib.parse.urlsplit(url)
         host = (parts.hostname or "").lower()

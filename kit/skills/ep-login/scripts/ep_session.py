@@ -1,32 +1,9 @@
-"""받는 손(``edge_session.js``)을 파이썬에서 부르고, 그 손이 남긴 세션 파일을 읽는 한 자리 — 사내 앱 스킬의 얇은 명령(company-mail ·
-company-calendar · company-ecm · company-meeting-room · company-regulation · company-board)과 그 앱 손(``inbox.py`` · ``agenda.py`` · ``ecm.py`` · ``mrs.py`` · ``cbsop.py`` · ``xclick.py``)이 이 폴더를
-``sys.path`` 에 넣고 싣는다. 손을 돌리고 종료 값 · 끝 줄 경로 · 손의 말을 닫힌 꼴 하나로 낸다 — 어느 종료 값에 무엇을 할지는 부르는
-쪽이 제 종료 값과 메시지의 「다음」 으로 옮긴다.
-
-**세션 파일을 쿠키 통으로 읽는 것도 여기 하나다**(``load_jar``) — 파일의 꼴(Playwright 저장 상태 ``{"cookies": [...]}``)을 아는 자리가
-손과 이 파일 둘뿐이게. 어느 호스트에 어느 쿠키가 실리나는 쿠키 통이 브라우저의 규칙(도메인 · 경로 · secure)대로 가린다 — 파일에 다른
-사내 호스트의 쿠키가 함께 들어도 묻는 서버에는 그 서버의 쿠키만 간다. 만료 칸이 수가 아니거나 음수면 세션 쿠키(Playwright 는 ``-1``
-로 적는다)로 싣고, 지난 시각이면 버리고, 이름 · 도메인이 없는 줄은 건너뛴다.
-
-**그 쿠키를 싣고 사내 앱을 묻는 opener 도 여기서 받는다**(``opener``) — 프록시를 안 탄다(묻는 곳이 다 사내 호스트다 — 시스템 ·
-환경변수의 프록시 설정을 안 따른다). 리다이렉트를 따라가지 않고 ``Redirected``(넘기려던 주소를 든다)로 멈춘다. 끊긴 세션은 SSO 로
-넘기는데, 따라가면 세션 쿠키가 SSO 에 실린다. 부르는 쪽은 ``Redirected`` 를 제 「세션이 끊겼다」로 옮긴다. 3xx 의 ``Location`` 을
-성공 신호로 읽는 앱(회의실 예약의 출입증 받기)은 이 opener 를 안 쓰고 제 처리기를 둔다.
-
-**SSO 넘김 화면의 숨은 칸도 여기서 읽는다**(``sso_form``) — 사내 세션을 제 세션으로 바꿔 받는 앱(회의실 예약 · 사규 · 게시판)의
-손이 그 칸을 앱의 들어가는 자리에 낸다. 화면의 꼴(``<input>`` 의 name · value)을 아는 자리가 여기 하나다.
-
-**앱 손과 얇은 명령이 함께 쓰는 작은 손 둘** — 이름을 견주기 꼴로 누르는 ``squash``(빈칸 · 가운뎃점 · 괄호 · 대소문자를 안 본다)와,
-화면을 다루는 node 손을 돌려 종료 값 · 끝 줄의 답(JSON) · 손의 말을 내는 ``run_hand``. 받는 손을 돌리는 ``attach`` 도 같은 자리
-(``_node``)로 node 를 찾고 띄운다. 얇은 명령의 뼈대(종료 값 · JSON 한 줄로 내기 · 답 크기 맞추기 · 받아 둔 파일)는 곁의
-``ep_command.py`` 가 든다.
-
-**흔한 길에서는 손을 안 띄운다**(``session_first``) — 회사 PC 는 프로세스 하나가 수백 ms 라, 세션 파일이 이미 있으면
-그것으로 먼저 돌고 서버가 거절할 때(``expired``)만 손을 띄워 새 파일로 한 번 더 돈다. 파일의 자리는 손과 같은 차례로
-안다(``known_file`` — ``MAILBOX_COOKIES``, 없으면 손의 글에 적힌 ``DEFAULT_FILE``). 읽는 일만 그렇게 두 번 돌고, 서버를
-바꾸는 일은 ``file_first=False`` 로 늘 손부터 받아 한 번만 돈다 — 바꾼 뒤 끊긴 세션으로 둘째 판이 돌면 「이미 그렇다」는
-틀린 말이 사람에게 간다. 첫 판의 표준 출력은 담아 두었다가 선 뒤에 내보내고, ``expired`` 가 아닌 예외로 멈추면 담은 것을
-먼저 내보내고 올린다 — 되풀이해 찍히지도, 멈춘 자리까지의 글이 사라지지도 않게.
+"""받는 손(``edge_session.js``)을 파이썬에서 부르고 그 손이 남긴 세션 파일을 읽는 한 자리 — 사내 앱 스킬의 얇은 명령과 앱
+손이 이 폴더를 ``sys.path`` 에 넣고 싣는다. 손 돌리기(``attach`` · ``session_first``) · 세션 파일 → 쿠키 통(``load_jar``) · 프록시
+없이 리다이렉트를 안 따르는 ``opener`` · SSO 넘김 화면의 숨은 칸(``sso_form``) · 이름 견주기 꼴(``squash``) · node 손 돌리기
+(``run_hand``) · 회사 자리 값(``places.json`` → ``DEFAULT_FILE`` · ``DOMINO_SERVER`` · ``ECM_URL`` · ``ECM_MAIN_PAGE``) · 대화에 내는
+답 하나의 크기(``OUT_BYTES``)를 든다. 얇은 명령의 뼈대는 곁의 ``ep_command.py`` 가 든다. 파일부터 도는 바퀴 · 리다이렉트를 안
+따르는 까닭 · 쿠키 통이 무엇을 싣나는 ``references/DESIGN.md`` 가 든다.
 
 어떻게 부르나::
 
@@ -63,8 +40,6 @@ company-calendar · company-ecm · company-meeting-room · company-regulation ·
 0 인데 끝 줄이 있는 파일의 절대 경로가 아니면 ``file`` 이 None 이다 — 부르는 쪽이 도구 고장으로 읽는다.
 
 손의 자리 — 이 파일 곁의 ``edge_session.js``. 검사가 대역을 세울 때만 환경변수 ``EP_SESSION_HAND`` 가 그 자리를 바꾼다.
-
-**사내 앱 스킬이 대화에 내는 답의 크기도 여기 한 자리다**(``OUT_BYTES``) — 얇은 명령은 ``ep_command`` 를 거쳐, 앱 손은 여기서 바로 읽는다.
 """
 
 from __future__ import annotations
@@ -86,13 +61,17 @@ import urllib.request
 
 HAND = pathlib.Path(__file__).resolve().with_name("edge_session.js")
 HAND_ENV = "EP_SESSION_HAND"
-DEFAULT_FILE_RE = re.compile(r"DEFAULT_FILE\s*=\s*'([^']+)'")   # 손의 글에 적힌 기본 자리 — 옮겨 적지 않고 거기서 읽는다
+# 회사 자리 값 — 받는 손(edge_session.js)과 같은 파일을 읽는다. 형제 스킬의 파이썬 손은 아래 이름으로 받는다
+PLACES_FILE = "places.json"
+PLACES = json.loads(pathlib.Path(__file__).resolve().with_name(PLACES_FILE).read_text(encoding="utf-8"))
+DEFAULT_FILE = PLACES["session_file"]              # 세션 파일의 기본 자리(``~`` 로 연다)
+DOMINO_SERVER = PLACES["domino_server"]            # 메일(Domino) 서버
+ECM_URL = PLACES["ecm"]                            # ECM 주소 — 맥락(``…/ECM``)까지
+ECM_MAIN_PAGE = PLACES["ecm_main_page"]            # ECM 메인 화면 — ``ECM_URL`` 뒤에 붙는 자리
 OK, TOOL, NO_EDGE, NOT_LOGGED_IN, ECM_HANDOFF = 0, 1, 2, 3, 4   # edge_session.js 의 종료 값 — 닫힌 다섯
 TIMEOUT_SECONDS = 180                              # ECM 넘김(열두 걸음 · 걸음마다 5 초)까지 든다
-# 사내 앱 스킬의 얇은 명령이 대화에 내는 답 하나의 크기(바이트) — 이 수가 사는 한 자리다. 대화 도구는 명령의 출력이 30 KB 를 넘으면
-# 파일로 빼고 모델에게는 앞 2 KB 만 싣는다(잰 것 — 스킬 company-regulation 의 references/SOURCES.md 「대화 도구에서 잰 것」). 넘친
-# 답은 종료 0 이고 그럴듯해 아무도 모른다. 한글은 한 자가 3 바이트라 글자 수로는 못 맞춘다 — 명령이 이 수 안에서 줄 · 본문을 덜어
-# 내고 이어 볼 자리를 댄다(끊는 법은 답의 꼴마다 달라 명령이 든다)
+# 사내 앱 스킬의 얇은 명령이 대화에 내는 답 하나의 크기(바이트) — 대화 도구가 긴 출력을 잘라 싣는 한도 아래에 둔다. 넘친 답은
+# 종료 0 이라 아무도 모른다(한도와 까닭은 references/DESIGN.md 「답 하나의 크기」)
 OUT_BYTES = 24000
 SQUASHED = re.compile(r"[\s·ㆍ()\[\]]+")            # 이름을 견줄 때 안 보는 글자 — 빈칸 · 가운뎃점(두 꼴) · 둥근 괄호 · 대괄호
 INPUT_TAG = re.compile(r"<input[^>]*>", re.IGNORECASE)
@@ -117,19 +96,24 @@ def hand_path() -> pathlib.Path:
     return pathlib.Path(os.environ.get(HAND_ENV, "").strip() or HAND)
 
 
-def known_file() -> pathlib.Path | None:
-    """받는 손을 안 띄우고 세션 파일의 자리를 낸다 — 손과 같은 차례(``MAILBOX_COOKIES`` → 손의 ``DEFAULT_FILE``). 파일이 없으면 None."""
+def session_path() -> pathlib.Path | None:
+    """받는 손이 쓰는 세션 파일의 자리 — 손과 같은 차례(``MAILBOX_COOKIES`` → 손 곁 ``places.json`` 의 기본 자리). 파일이 있는지는
+    안 본다. 손 곁에 그 값이 없으면(검사의 대역 손) None."""
     raw = os.environ.get("MAILBOX_COOKIES", "").strip()
     if not raw:
         try:
-            found = DEFAULT_FILE_RE.search(hand_path().read_text(encoding="utf-8", errors="replace"))
-        except OSError:
-            found = None
-        if not found:
+            raw = json.loads(hand_path().with_name(PLACES_FILE).read_text(encoding="utf-8")).get("session_file") or ""
+        except (OSError, ValueError, AttributeError):
+            raw = ""
+        if not raw:
             return None
-        raw = found.group(1)
-    path = pathlib.Path(os.path.expanduser(raw))
-    return path if path.is_file() else None
+    return pathlib.Path(os.path.expanduser(raw))
+
+
+def known_file() -> pathlib.Path | None:
+    """받는 손을 안 띄우고 세션 파일을 낸다 — ``session_path`` 의 자리에 파일이 있을 때만, 없으면 None."""
+    path = session_path()
+    return path if path is not None and path.is_file() else None
 
 
 class SessionFileError(Exception):
@@ -144,8 +128,9 @@ def _lasting_until(raw) -> float | None:
 
 
 def load_jar(path, *, missing: type[Exception] = SessionFileError) -> http.cookiejar.CookieJar:
-    """세션 파일(``{"cookies": [...]}``)을 쿠키 통으로 낸다 — 걸러 싣는 규칙은 머리말. 파일이 없거나 · JSON 으로 못 읽거나 · 실을
-    쿠키가 하나도 없으면 ``missing``(부르는 앱 손의 「세션 없음」 예외)을 그 까닭과 함께 낸다. 파일을 바꾸지 않는다."""
+    """세션 파일(``{"cookies": [...]}``)을 쿠키 통으로 낸다. 파일이 없거나 · JSON 으로 못 읽거나 · 실을
+    쿠키가 하나도 없으면 ``missing``(부르는 앱 손의 「세션 없음」 예외)을 그 까닭과 함께 낸다. 파일을 바꾸지 않는다. 만료 칸이 수가
+    아니거나 음수면 세션 쿠키로 싣고, 지난 시각이면 버리고, 이름 · 도메인이 없는 줄은 건너뛴다."""
     path = pathlib.Path(path).expanduser()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -182,14 +167,15 @@ class Redirected(Exception):
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
-    """리다이렉트를 따라가지 않고 ``Redirected`` 를 낸다 — 까닭은 머리말."""
+    """리다이렉트를 따라가지 않고 ``Redirected`` 를 낸다 — 따라가면 세션 쿠키가 SSO 에 실린다."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise Redirected(newurl)
 
 
 def opener(jar: http.cookiejar.CookieJar | None = None) -> urllib.request.OpenerDirector:
-    """``jar`` 를 싣고(주면) 프록시 없이 묻고 리다이렉트는 안 따라가는 opener — 3xx 를 만나면 ``Redirected``."""
+    """``jar`` 를 싣고(주면) 프록시 없이 묻고 리다이렉트는 안 따라가는 opener — 3xx 를 만나면 ``Redirected``. 3xx 의 ``Location``
+    을 성공 신호로 읽는 앱은 이 opener 대신 제 처리기를 둔다."""
     handlers = [urllib.request.HTTPCookieProcessor(jar)] if jar is not None else []
     return urllib.request.build_opener(urllib.request.ProxyHandler({}), *handlers, NoRedirect())
 

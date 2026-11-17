@@ -6,17 +6,16 @@
 // (부르는 스킬이 그 값으로 사람에게 무엇을 할지 고른다 — 로그인이 선 사람에게 다시 로그인하라고 하나) · ECM 을 이미 산 세션 위에서
 // 다시 넘나 · 저장소 안에 열쇠를 쓰나.
 // 남기는 까닭(check-design §1 넷) — 길이 분명하다(Edge 는 프로필의 모든 사이트 쿠키를 내고, Playwright 로 붙으면 사람의 확인 창이
-// 닫히고 붙기가 멈추는 것을 이 PC 에서 쟀다) · 새는 쿠키와 닫힌 확인 창은 조용하고 되돌릴 수 없다 · 사람의 다른 세션이 남의 손에
+// 닫히고 붙기가 멈춘다) · 새는 쿠키와 닫힌 확인 창은 조용하고 되돌릴 수 없다 · 사람의 다른 세션이 남의 손에
 // 가거나 사람이 고르던 창이 사라진다 · 다른 무엇도 안 잡는다(회사 SSO 는 회사 PC 에서만 닿고, 형제 저장소의 검사는 이 손을 안 돈다).
-// 종료 3 · 4 의 가름도 같은 넷이다 — ECM 넘김만 못 따라간 판이 3 으로 나가 로그인이 선 사람이 다시 로그인을 청받았다(오프라인
-// 탐침으로 쟀다). 부르는 쪽은 그 값을 그대로 사람의 말로 옮긴다. 입구가 붙을 Edge 없이 불렸을 때 떠 있는 Edge 를 안 끝내나도 같은
+// 종료 3 · 4 의 가름도 같은 넷이다 — ECM 넘김만 못 따라간 판이 3 으로 나가면 로그인이 선 사람이 다시 로그인을 청받는다.
+// 부르는 쪽은 그 값을 그대로 사람의 말로 옮긴다. 입구가 붙을 Edge 없이 불렸을 때 떠 있는 Edge 를 안 끝내나도 같은
 // 넷이다 — 끝내면 사람의 창 · 탭 · 쓰던 글이 한꺼번에 닫히고 되돌릴 수 없다.
 //
-// 가짜의 꼴 — ECM 은 2026-11-06 이 PC 실물의 넘김이다(redirect.jsp?redir_url=index.jsp — action 이 빈 폼을 스크립트가 채워 POST ·
+// 가짜의 꼴 — ECM 은 실물 넘김의 꼴이다(redirect.jsp?redir_url=index.jsp — action 이 빈 폼을 스크립트가 채워 POST ·
 // ssoToken → index.jsp 가 jID · login.do 주소를 스크립트에 든다 → login.do…&USE_WEBSOCKET=F(302) → 메인 · 세션 없는 메인은
-// 302 → /ECM/logout.jsp). 로그인 화면은 mail-secretary 의 docs/company-facts.md 「로그인」이고,
-// 끊긴 메일 세션의 답(200 에 SSO 로 보내는 HTML)은 그 저장소 _check/_fake_domino.py 의 LOGIN_PAGE 꼴이다. 이 파일은
-// edge_session.js 의 값을 읽어 오지 않는다 — 걸러 남길 쿠키의 표는 그 머리말 「무엇을 파일에 남기나」가 원본이다.
+// 302 → /ECM/logout.jsp). 로그인 화면과 끊긴 메일 세션의 답(200 에 SSO 로 보내는 HTML)도 실물의 꼴이다. 이 파일은
+// edge_session.js 의 값을 읽어 오지 않는다 — 걸러 남길 쿠키의 표는 references/DESIGN.md 「무엇을 파일에 남기나」가 원본이다.
 //
 // 돌리는 법:
 //     node check_session.js [edge_session.js 가 든 폴더]
@@ -28,8 +27,7 @@
 // 언제 걷나 — edge_session.js 가 사라지거나, 같은 계약을 실물 회사 SSO 에서 재는 검사가 서서 이 검사가 더하는 믿음이 없어지면.
 //
 // 여기서 못 재는 것 — 실물 SSO 의 넘김 꼴(폼이 정적인가 · 스크립트가 짓는가 · Referer 를 보나) · 따로 사는 프로필의 로그인이 평소
-// Edge 의 메일을 끊는 실물 SSO 의 꼴 · 회사 PC 의 Node 판(references/SOURCES.md 「회사에서 잴 것」). 이 줄들은 mail-secretary 의 회사
-// 확인 대장(#28)이 든다. 입구가 창을 띄우는 판정 하나는 이 PC 에 Edge 창을 잠깐 띄운다 — 검사의 다른 Edge 는 창이 없다.
+// Edge 의 메일을 끊는 실물 SSO 의 꼴 · 회사 PC 의 Node 판(references/SOURCES.md 「회사에서 잴 것」). 입구가 창을 띄우는 판정 하나는 이 PC 에 Edge 창을 잠깐 띄운다 — 검사의 다른 Edge 는 창이 없다.
 
 'use strict';
 const fs = require('fs');
@@ -229,7 +227,7 @@ let NODE_PATH = process.env.NODE_PATH || '';
 function hand(args, extra = {}, script = HAND) {
   const inherited = { ...process.env };
   delete inherited.MAILBOX_COOKIES;                  // 이 PC 의 값이 판에 새지 않게 — 판이 주는 값(extra)만 선다
-  const env = { ...inherited, NODE_PATH, EDGE_DEBUG_PORT: '1', MAILBOX_URL: `${APP}${DB}`, DOMINO_URL: APP, ECM_URL: `${APP}${ECM_MAIN}`,
+  const env = { ...inherited, NODE_PATH, EDGE_DEBUG_PORT: '1', MAILBOX_URL: `${APP}${DB}`, DOMINO_URL: APP, ECM_URL: `${APP}/ECM`,
     SSO_REDIRECT_URL: `${SSO}/idms/U61/jsp/redirect.jsp`, SESSION_DOMAIN: '127.0.0.1', SESSION_LOGIN_HOSTS: 'localhost',
     SESSION_PASS_SECONDS: '15', SESSION_LOGIN_WAIT_SECONDS: '30', ...extra };
   for (const [k, v] of Object.entries(extra)) if (v === null) delete env[k];
@@ -257,7 +255,7 @@ function filterTable() {
   let mod;
   try { mod = require(HAND); } catch (e) { return judge('손을 모듈로 읽는다', false, e.message); }
   const cfg = { domain: 'posco.net', loginHosts: ['swpsso.posco.net', 'adfs.m365.posco.net'] };
-  // 남길 쿠키의 표 — edge_session.js 머리말 「무엇을 파일에 남기나」: 회사 도메인과 그 아래 · 로그인 화면 호스트의 제 쿠키는 뺀다
+  // 남길 쿠키의 표 — references/DESIGN.md 「무엇을 파일에 남기나」: 회사 도메인과 그 아래 · 로그인 화면 호스트의 제 쿠키는 뺀다
   const table = [
     ['.posco.net', true], ['pcfma0b.posco.net', true], ['swpecm.posco.net', true], ['.pcfma0b.posco.net', true],
     ['swpsso.posco.net', false], ['.swpsso.posco.net', false], ['adfs.m365.posco.net', false],
@@ -277,9 +275,8 @@ async function entry(edge, port, closed, file, scratch) {
   const desktop = { ViewClient_Broker_DNS_Name: null, USERDNSDOMAIN: null };
   const run = (args, extra, script = ENTRY) => hand(args, { EDGE_DEBUG_PORT: port, ...desktop, ...extra }, script);
 
-  // 붙을 Edge 가 없다(검사의 Edge 는 msedge.exe 로 돌지만 이 포트에는 없다 — 사람의 포트 없는 Edge 자리) → 떠 있는 Edge 를 안 끝내고
-  // 제 프로필의 창 하나를 띄워 로그인 · 받기. 사람이 부르는 꼴 그대로(--profile 없이) 부르되, 기본 프로필 자리가 이 PC 의 것이 안 되게
-  // LOCALAPPDATA 를 임시 폴더로 돌린다. 그 창은 이 PC 에 잠깐 보이고, 판정 뒤 이 검사가 그 pid 만 끝낸다
+  // 붙을 Edge 가 없다 → 떠 있는 Edge 를 안 끝내고 제 프로필의 창 하나를 띄워 받는다. --profile 없이 부르되 LOCALAPPDATA 를 임시
+  // 폴더로 돌려 기본 프로필 자리가 이 PC 의 것이 안 되게 한다 — 그 창은 잠깐 보이고, 판정 뒤 이 검사가 그 pid 만 끝낸다
   const own = path.join(scratch, 'launched.json');
   const appdata = path.join(scratch, 'appdata');
   let r = await run([own], { EDGE_DEBUG_PORT: closed, COMPANY_LOGIN_URL: login, EP_LOGIN_URL: stuck, LOCALAPPDATA: appdata });

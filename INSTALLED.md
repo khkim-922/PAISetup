@@ -512,6 +512,8 @@ Claude 를 고르면 아래 훅이 홈 설정에 등록된다.
 | 컨텍스트 알림 | 대화가 모델 창의 66 % 를 처음 넘으면 모델 곁에 한 줄을 붙이고, 막지는 않는다 |
 | 머리 없이 선 요청 알림 | 사내에서 요청 하나가 게이트웨이의 첫 바이트 없이 30 초 넘게 섰다가 끊겼으면, 다음에 글을 보낼 때 그 사실을 모델 곁에 한 줄 붙인다 |
 | 이어 묻기 값 | 캐시가 식은 큰 배경 레인에 `SendMessage` 로 이어 물으면 첫 번은 막고, 얼마나 식었고 다시 읽힐 맥락이 얼마인지를 사유로 보인다. 같은 메시지를 그대로 다시 보내면 통과한다 |
+| 리뷰 지적의 자 | `/code-review` 가 지적을 내면 그 결과 곁에, 지적을 고칠지 · 버릴지 · 이슈로 돌릴지 가르는 자가 스킬 `norm-review-fix` 에 있다는 한 줄을 붙이고, 막지는 않는다 |
+| 봉투 꼬리 알림 | 레인을 띄우는 `Agent` 호출의 지시서에 `agent-envelope` 틀의 보고 꼬리가 없으면, 띄운 결과 곁에 그 사실과 거둘 때 쓸 자(`norm-review-fix`)를 한 줄 붙이고, 막지는 않는다 |
 
 - 그림 문은 그림 · PDF 를 읽을 때와 화면 캡처 도구에만, PowerShell UTF-8 BOM 보정은 `.ps1` · `.psm1` · `.psd1` 을 쓸 때만 뜬다 —
   회사 PC 에서는 훅 하나를 띄우는 데 0.3 초쯤 들어, 할 일이 없는 도구 호출에는 안 띄운다
@@ -677,6 +679,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 | `inhouse-app` | 사내 시스템(LLM 게이트웨이 · SSO · 배포 · 회사 CA)에 붙는 코드라면 앱이든 짧은 스크립트든 들고, 거기서 막힌 문제도 푼다 — 회사 코딩 기준은 그 안의 장을 콕 집어 연다 |
 | `company-mail` · `company-calendar` · `company-ecm` · `company-meeting-room` · `company-regulation` · `company-board` | 사내 메일함 · 일정 · 문서함(ECM) · 회의실 예약 · 사규 · 게시판을 대화로 다룬다(사규는 찾고 읽기만 · 게시판 글은 임시저장까지 하고 등록은 사람이 화면에서) — 보내기 · 넣기 · 고치기 · 지우기는 그 한 건을 사람이 대화에서 확인한 뒤에만 한다 |
 | `ep-login` | 위 사내 앱 스킬이 빌려 쓰는 사내 세션을 받아 둔다 — 사람의 Edge 는 그대로 두고 따로 띄운 Edge 창에서 로그인한다 — 그 스킬들이 이 스킬의 세션 손을 불러 쓰므로 다 함께 깔린다 |
+| `daily-brief` · `mailbox-work` · `mailbox-scan` · `mailbox-tidy` | 메일 비서 — 사내 메일과 일정에서 지금 보실 것을 골라 보고 창으로 띄우고, 메일함만 보고 업무를 파악해 업무 파일에 적어 날마다 이어 고치고, 메일함을 사람 없이 정해진 주기로 읽어 쌓아 두고(메일함은 안 바꾼다), 정리가 필요해 보일 때 메일함을 한 안으로 정리하고 되돌린다 — 위 메일 · 일정 스킬을 불러 쓰므로 그 묶음과 함께 깔린다 |
 | `agent-envelope` | 다른 에이전트에게 일을 맡길 때 누구에게 맡길지 고르고 작업 지시서를 짓는 맡기기 스킬의 앞문이다 |
 | `agy-background` | agy 에게 일을 맡기고, 한도나 과부하에 걸리면 다음 모델로 넘어간다 |
 | `codex-copilot-background` | Codex 에게 일을 맡기고, 자리가 허락하면 Codex 한도에서 Copilot 이 받는다 |
@@ -688,7 +691,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 | 스킬 | Claude 홈 `~/.claude/skills/` | Codex 홈 `~/.agents/skills/` | agy 홈 `~/.gemini/config/skills/` |
 |---|---|---|---|
 | `drm-office-read` · `inhouse-app` · `agent-envelope` | Claude 를 고르면 | Codex 를 고르면 | 안티그래비티를 고르면 |
-| 사내 앱 묶음(`company-*` · `ep-login`) | 사내에서 Claude 를 고르면 | 사내에서 Codex 를 고르면 | 사내에서 안티그래비티를 고르면 |
+| 사내 앱 묶음(`company-*` · `ep-login` · 메일 비서 `daily-brief` · `mailbox-work` · `mailbox-scan` · `mailbox-tidy`) | 사내에서 Claude 를 고르면 | 사내에서 Codex 를 고르면 | 사내에서 안티그래비티를 고르면 |
 | `agy-background` | Claude 와 안티그래비티를 같이 고르면 | Codex 와 안티그래비티를 같이 고르면 | — |
 | `codex-copilot-background` | Claude 와 Codex 를 같이 고르면 | — | 안티그래비티와 Codex 를 같이 고르면 |
 | `claude-background` | — | Claude 와 Codex 를 같이 고르면 | Claude 와 안티그래비티를 같이 고르면 |
@@ -928,7 +931,7 @@ Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡�
 제 규범 · 룰 · 스킬은 이 칸이 아니라 「내 저장소 다운로드」에 넣는 제 설정 저장소에 둔다.
 
 설치 묶음은 `Setup.exe` 가 판마다 새 폴더에 펴는 것이라, 거기 든 것을 갈아 끼워 봐야 다음 판에서 말없이 되돌아간다. 설정 저장소의
-갈 곳 표가 적은 자리(`.claude/CLAUDE.global.md` · `.claude/rules.global/` · `agents/` · `.claude/skills/` · `.agents/skills/`)에
+갈 곳 표가 적은 자리(`.claude/CLAUDE.global.md` · `.claude/rules.global/` · `agents/` · `.claude/skills/`)에
 원본을 두면 그것이 가고, 없는 것은 묶음의 것이 간다. 꼴은 그 표의 머리가 든다.
 
 ## 내 저장소 다운로드를 채우면

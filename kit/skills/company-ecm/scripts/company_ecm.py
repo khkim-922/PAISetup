@@ -27,7 +27,9 @@ ep-login 의 받는 손을 ``ecm`` 으로 말없이 돌린다(까닭과 바퀴�
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import io
 import pathlib
 import sys
 
@@ -39,7 +41,9 @@ MUTATING = ("edit", "checkin", "register", "apply-access")   # 서버를 잠그�
 
 
 class SessionGone(Exception):
-    """ecm.py 가 EXIT_SESSION 으로 끝났다 — session_first 의 expired 로 옮기는 신호."""
+    """ecm.py 가 EXIT_SESSION 으로 끝났다 — session_first 의 expired 로 옮기는 신호. 메시지는 그 판의 ecm.py 가 표준 오류에 내려던 말이다."""
+
+
 NO_EDGE_WORD = "쓰는 사람의 Edge 에 못 붙었다(디버깅 포트로 떠 있지 않다)"
 NOT_LOGGED_IN_WORD = "Edge 는 떠 있는데 EP 로그인이 안 됐거나 끊겼다"
 ECM_HANDOFF_WORD = "EP 로그인은 섰는데 받는 손이 ECM 넘김을 화면 없이 못 따라갔다 — 다시 로그인할 일은 아니다"
@@ -68,12 +72,20 @@ def main(argv: list[str]) -> int:
             return ecm.EXIT_FAIL
 
         def use(file):
-            result = ecm.main(["--session", str(file), *argv])
+            # ecm.py 는 까닭을 표준 오류에 낸다 — session_first 는 표준 출력만 담으므로 여기서 담는다. 안 담으면 낡은 세션 파일로 돈 첫 판의
+            # 「세션이 끊겼다 · ep-login」 말이 다시 받아 선 판의 답 곁에 남아, 선 명령을 끊긴 것으로 읽게 한다
+            said = io.StringIO()
+            try:
+                with contextlib.redirect_stderr(said):
+                    result = ecm.main(["--session", str(file), *argv])
+            except BaseException:
+                sys.stderr.write(said.getvalue())
+                raise
             if result == ecm.EXIT_SESSION:
-                raise SessionGone()
+                raise SessionGone(said.getvalue().strip())
+            sys.stderr.write(said.getvalue())
             return result
 
-        # 읽는 명령은 세션 파일부터 · ECM 이 끊겼다고 하면 손을 띄워 한 번 더. 잠그거나 올리는 명령(MUTATING)은 늘 손부터 · 한 번
         try:
             return ep.session_first(use, ("ecm",), expired=(SessionGone,), file_first=argv[0] not in MUTATING)
         except ep.NoSession as exc:
@@ -87,7 +99,9 @@ def main(argv: list[str]) -> int:
             why = f"받는 손이 실패했다(종료 {got.code})" if got.code != ep.OK else "받는 손이 세션 파일 경로를 끝 줄에 안 냈다"
             print(f"{why}: {got.said or '말 없음'}", file=sys.stderr)
             return ecm.EXIT_FAIL
-        except SessionGone:
+        except SessionGone as exc:
+            if str(exc):
+                print(exc, file=sys.stderr)
             print(f"ECM 이 세션을 안 받았다 — {EP_LOGIN}", file=sys.stderr)
             return ecm.EXIT_SESSION
     return ecm.main(argv)

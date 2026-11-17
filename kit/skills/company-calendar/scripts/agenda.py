@@ -1,15 +1,9 @@
-"""사내 일정 앱(HCL Domino 웹 일정)의 내 일정함을 읽는 손과, 일정을 바꾸는 이름 붙은 손 둘 — 표준 라이브러리와 형제 스킬 ep-login 의
-``ep_session``(세션 파일 → 쿠키 통) 만 쓰는 파일 하나. ``ep_session`` 은 스킬 홈에 나란히 깔린 ``../../ep-login/scripts/`` 에서 싣는다.
+"""사내 일정 앱(HCL Domino 웹 일정)의 내 일정함을 읽는 손과, 일정을 바꾸는 이름 붙은 손 둘(``register`` · ``delete``) — 표준
+라이브러리와 형제 스킬 ep-login 의 ``ep_session``(세션 파일 → 쿠키 통, 스킬 홈에 나란히 깔린 ``../../ep-login/scripts/``)만 쓰는
+파일 하나. 막는 까닭과 바꾸는 손의 경계는 ``references/DESIGN.md``, 일정 앱의 주소와 꼴은 ``references/SOURCES.md`` 가 든다.
 
-무엇을 하나
-    읽는 손(``Reader``)은 일정 앱의 JSON 주소 셋만 묻는다 — 일정함 목록(``agGetCalendar``) · 내 일정(``getcalendareventMe``) ·
-    공유받은 일정함의 일정(그 일정함의 서버 · DB 의 ``getcalendarevent``). 그 밖의 주소는 서버에 닿기 전에 ``ChangeRefused`` 로 막는다. 이 앱에서는 「GET 은 안 바꾼다」가 안 선다 — 일정 줄의
-    ``url`` 은 편집 화면(``?editdocument``)이고 지우기도 GET 이다. 그래서 막기는 닫힌 목록이다 — 새 주소는 안 바꾸는 것을 잰 뒤
-    여기에 더해야 묻는다.
-
-    일정을 바꾸는 손은 넣기(``register``)와 지우기(``delete``) 둘뿐이고 이름 붙은 함수 하나씩이다. 둘 다 답이 성공을 못 가려서,
-    끝은 다시 읽은 일정이 정한다. 넣기는 참석자 · 참조 칸을 비워 남에게 알림이 안 가고, 같은 일정(제목 · 시작 · 끝)이 이미 있으면
-    넣지 않는다. 지우기는 쓰는 사람이 손수 든 단건(``Event.keep_reason`` 이 빈 줄)만, 화면이 보인 그 줄이 그대로일 때 지운다.
+⚠ ``register`` · ``delete`` 는 남이 보는 회사 일정을 바꾸고 지운 일정은 되돌릴 손이 없다 — 사람이 그 한 건을 분명히 고른 뒤에만
+부른다. 읽는 손은 잰 JSON 주소 셋 밖을 서버에 닿기 전에 ``ChangeRefused`` 로 막는다(이 앱은 편집 화면 · 지우기도 GET 이다).
 
 어떻게 부르나
     로그인은 이 파일이 하지 않는다. 사내 SSO 세션을 쿠키 파일(Playwright 저장 상태 꼴 ``{"cookies": [...]}``)로 남기는 손이
@@ -18,7 +12,7 @@
         import agenda
 
         r = agenda.Reader(url, cookies_file)            # url — 일정 앱 주소창의 …/calperson<NN>.nsf 까지(그 뒤는 버린다)
-        book = r.book()                                 # 내 일정함(kind=PEO) — 꼭 하나일 때만
+        book = r.book()                                 # 내 기본 일정함(kind=PEO · 여럿이면 defaultCalendar)
         for e in r.between(first, last, book):          # 서울 날짜 first ~ last 에 걸친 일정 — 시작 차례
             e.when(), e.title, e.keep_reason, agenda.Seen.of(e).handle
         for b in r.shared_books():                      # 공유받은 일정함(GRW · GRR) — 읽기만 한다
@@ -34,55 +28,16 @@
     정하지 않는다 — 세션을 남기는 손이 정하고, 부르는 쪽이 그 경로를 넘긴다.
 
 무엇을 내나
-    시각은 다 시간대가 붙은 UTC 이고, 보이기(``Event.when``)는 서울이다. ``Seen`` 은 사람에게 보인 일정 한 줄의 손잡이다 —
-    그 줄의 열쇠 · 그 일정의 열쇠(둘 다 사번이 든 일정 열쇠의 해시) · 제목 · 시작 · 끝의 지문 · 서울 날짜를 한 글줄(``handle``)로
-    들어, 대화를 건너 지우기에 넘긴다. 공유받은 일정함의 줄이라는 표지는 그 글줄에 안 실린다. 세션이 끊겼으면 ``SessionExpired``, 막은 주소 · 지우지 않는 줄은 ``ChangeRefused``(지우지 않는 까닭은 ``reason``),
-    등록 화면의 꼴이 잰 것과 다르면 ``FormChanged``, 쿠키 파일이 없거나 비었으면 ``SessionMissing``(``CalendarConfigError`` 의
-    갈래), 주소 · 인자가 틀리면 ``CalendarConfigError``, 그 밖은 ``CalendarError``(다 이것의 갈래다). 무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은 이 모듈 이름) — 셈과 방향만 싣고
-    일정 제목 · 이름 · 사번은 안 싣는다.
+    시각은 다 시간대가 붙은 UTC 이고, 보이기(``Event.when``)는 서울이다. ``Seen`` 은 사람에게 보인 일정 한 줄의 손잡이다 — 그 줄의
+    열쇠 · 그 일정의 열쇠(둘 다 사번이 든 일정 열쇠의 해시) · 제목 · 시작 · 끝의 지문 · 서울 날짜를 한 글줄(``handle``)로 들어,
+    대화를 건너 지우기에 넘긴다. ``register`` 는 ``Added``, ``delete`` 는 ``Removed`` 를 내고 끝은 다시 읽은 일정이 정한다(``state``).
+    ⚠ 공유받은 일정함의 줄이라는 표지는 글줄에 안 실린다 — ``Seen.parse`` 로 되읽은 손잡이는 내 일정함의 줄로 읽혀, 지우기가 내
+    일정함에서 그 열쇠를 찾고 없으면 ``gone`` 이다. 공유 줄의 글줄 손잡이를 지우기에 넘기지 않는다.
 
-일정을 바꾸는 손 둘 — 언제 부르나는 부르는 쪽이 정한다
-    ``register`` · ``delete`` 는 남이 보는 회사 일정을 바꾸고, 지운 일정은 되돌릴 손이 없다. 사람이 그 한 건을 두고 「넣는다 ·
-    지운다」를 분명히 고른 뒤에만 부른다 — 회차 · 예약 작업 · 모델의 판단이 스스로 부르지 않는다. 이 파일은 그 확인을 대신하지
-    않는다. 반복 일정 · 하루 종일 일정 · 회의 · 받은 초대는 지우지 않는다(``Event.keep_reason``). 남의 일정(공유받지 않은 것) ·
-    회의실 · 참석 답은 이 파일에 없다. 공유받은 일정함은 읽기만 한다 — 그 줄은 ``keep_reason`` 이
-    ``shared`` 이고, 그 줄(``Event``)이나 ``Seen.of`` 로 지은 손잡이를 지우기에 주면 묻기 전에 ``ChangeRefused``(``reason`` 은
-    ``shared``)다. ⚠ ``Seen.parse`` 로 되읽은 손잡이는 그 표지를 잃어 내 일정함의 줄로 읽힌다 — 지우기가 내 일정함에서 그 열쇠를
-    찾고, 없으면 ``gone`` 이다. 공유 줄의 글줄 손잡이를 지우기에 넘기지 않는다.
-
-사내 일정 앱에서 잰 것 — 어기면 조용히 망가진다. 잰 판(셈 · 못 잰 까닭)의 원본은 그 앱 저장소(mail-secretary)의
-``docs/company-facts.md`` 「일정」과 회사 확인 대장(그 저장소 이슈 #28 「C. 일정」 코멘트 둘)이고, 줄 끝 괄호가 그 대장의 줄이다.
-그 앱의 ``secretary/agenda.py``(68ad771)에서 읽는 손 · 넣는 손 · 지우는 손을 옮겨 왔다 — 꼴이 바뀌면 그 문서와 이 파일을 함께 고친다
-    * 일정은 메일함 밖의 따로 선 앱이다 — ``http://pcfca0N.posco.net/02/cal/calperson<NN>.nsf``. 서버 · 번호가 사람마다 다르고, 깔 때
-      그 주소를 어디서 받는지는 아직 안 쟀다 — 쓰는 사람이 Edge 에서 메일 → 일정을 열어 주소창에서 받는다 (C1 · C5)
-    * 일정함 목록 ``GET agGetCalendar?OpenAgent&calltype=GNB`` → JSON 배열(``text/html`` 로 온다). 내 것은 ``kind=PEO`` 하나고,
-      공유받은 일정함(``GRW`` 쓰기 공유 · ``GRR`` 읽기 공유)은 줄마다 서버(``calhost``) · DB(``caldbpath``)가 제각각이고, 일정함을 가진 사람은
-      ``sourceowner``(``owner`` 는 보는 사람이다) · 이름은 ``subject`` 다. 그 값은 다 목록이 들어 사람마다 다른 것을 여기 안 적는다 (C1)
-    * 공유 일정함의 일정 ``GET http://<calhost>/<caldbpath>/getcalendarevent?readform&callback&calendarId&username=<sourceowner>&start
-      &end&kind=<GRW|GRR>`` → 내 일정과 같은 JSONP. 줄의 ``visibility`` 가 ``private`` 면 일정함을 가진 사람이 비공개로 든 것이고 제목이 그대로 온다.
-      ``editable`` 은 빈 글자다. 일정 화면(``fmcal_mainframe.js``)이 같은 꼴로 묻는다 — 2026-11-06 회사 PC 에서 공유 셋(다른 서버 둘 ·
-      같은 서버 하나)을 잼. 사내 도메인(읽는 손 주소의 첫 이름표를 뗀 나머지) 밖 서버는 묻지 않는다 — 세션 쿠키를 밖에 안 싣는다
-    * 일정 ``GET getcalendareventMe?readform&callback&calendarId&username&start&end&kind=PEO`` → JSONP. 줄은 두 배열 — ``data`` 반복
-      일정(날짜마다 한 줄로 풀려 같은 ``eventId`` 가 여러 날에 선다) · ``data2`` 단건. 칸 이름은 철자 그대로(``attRsponseStatus``) ·
-      ``title`` 은 HTML 엔티티(``[`` → ``&#91;``) · ``timeZone`` 은 대개 빈 글자(서울) · 더러 ``+09:00``. 장소 · 참석자 칸은 없다 (C2)
-    * ⚠ **줄의 ``url`` 은 편집 화면(``vweventprev/<unid>?editdocument``)이고, 지우기도 GET 이다** — 읽는 손은 세 JSON 주소의 꼴만
-      짓는다 (C2 · C3)
-    * 넣기는 ``GET Eventquick?OpenForm`` 의 폼(95칸)을 기본값째 싣고 ``CalendarID · Subject · Description · StartDate · EndDate
-      (YYYY-MM-DD HH:MM 서울) · EventArea · visibility · callback=new`` 을 바꿔 ``POST Eventquick?OpenForm&Seq=1`` 하면 선다(이 손은
-      참석자 · 참조 칸 ``att*`` · ``ref*`` 도 비워 보낸다 — 손님 수 칸은 폼 그대로) — 쓰는
-      사람 몫(``Editors`` · ``calEditors``)과 고정 값 칸은 폼이 채운다. 답은 창을 닫는 스크립트라 성공을 못 가린다. 넣은 줄은 단건에
-      ``eventId=<사번>_<만든 시각>`` · ``eventtype`` 빈 · ``attRsponseStatus`` 빈으로 선다 (C3 · 「코드로 등록 · 지우기」)
-    * 넣은 일정은 공개 범위 ``public`` 으로 들어간다 — 폼이 비워 둔 값을 사람이 넣은 판의 값으로 채운다. 남이 제목을 볼 수 있다 (C3)
-    * 지우기는 ``GET (wEventDelete)?openagent&calendarId&eventId&ownerId&userName&alim=&msgtitle=&isediter=true&SAResponse=json&lang=kor
-      &allimTarget=`` 하나로 선다 — 화면이 앞에 부르는 ``(agCheckDoc)`` · ``?editdocument`` · ``confirmDelForNomalEvent`` 는 없어도 된다.
-      답은 늘 ``{"RETURN" : "" }`` 이라 성공을 못 가린다 (「코드로 등록 · 지우기」)
-    * 세션은 메일함과 한 벌이다 — 회사 쿠키는 다 ``.posco.net`` 이라 메일 서버에 실리는 쿠키로 일정이 다 온다. 쿠키 없이 부르면
-      **200 에 SSO 로 넘기는 HTML** 을 준다 — 상태 코드로는 못 가려, JSON · JSONP 가 아니면 끊긴 세션으로 읽는다. 리다이렉트는
-      따라가지 않는다 — 따라가면 쿠키가 SSO 에 실린다 (「코드로 등록 · 지우기」)
-    * 내 일정 줄의 ``editable`` 은 칸은 있되 늘 빈 글자다 — 고칠 수 있는 사람은 ``editors``(``CN=…/OU=…/OU=02/O=posconet,`` 꼴로 이은
-      Notes 이름)가 든다. 내 일정함의 줄은 회의든 단건이든 ``Owner`` · ``owner`` · ``editors`` 에 쓰는 사람이 든다
-    * 안 잰 것 — 반복 일정 · 하루 종일 일정의 지우기(반복은 그날 하나만 걷는지 줄 전체를 걷는지 모른다) · 하루 종일 ·
-      여러 날 일정의 줄 꼴(올해 표본에 0건) · 일정 조회의 ``end`` 가 그날을 드는지 (C5 ~ C7)
+    예외 — 세션이 끊겼으면 ``SessionExpired``, 막은 주소 · 지우지 않는 줄은 ``ChangeRefused``(까닭은 ``reason``), 등록 화면의 꼴이
+    잰 것과 다르면 ``FormChanged``, 쿠키 파일이 없거나 비었으면 ``SessionMissing``(``CalendarConfigError`` 의 갈래), 주소 · 인자가
+    틀리면 ``CalendarConfigError``, 그 밖은 ``CalendarError``(다 이것의 갈래다). 무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은
+    이 모듈 이름) — 셈과 방향만 싣고 일정 제목 · 이름 · 사번은 안 싣는다.
 """
 
 from __future__ import annotations
@@ -120,7 +75,7 @@ TITLE_MOST = 60                     # 회사 일정에 넣는 제목의 상한 �
 NOTE_MOST = 80                      # 설명 칸에 넣는 글의 상한
 REF_LENGTH = 16                     # 손잡이 속 해시의 길이(16진 글자)
 
-# ── 일정 앱의 꼴(잰 값 — 원본은 머리말의 두 자리) ─────────────────────────────────────────────────────
+# ── 일정 앱의 꼴(출처는 references/SOURCES.md) ────────────────────────────────────────────────────────
 APP_URL = re.compile(r"^(https?://[^/]+)(/.+?\.nsf)", re.IGNORECASE)
 # 잰 일정 앱 — 남긴 주소 · CALENDAR_URL 이 없을 때 쓰는 기본. 이 주소로 내 일정함이 안 읽히는 PC 는 그 사람의 일정 화면 주소를 받는다
 DEFAULT_APP_URL = "http://pcfca03.posco.net/02/cal/calperson32.nsf"
@@ -133,6 +88,7 @@ DELETE_PATH = "/(wEventDelete)?openagent"
 DELETE_FIXED = (("alim", ""), ("msgtitle", ""), ("isediter", "true"), ("SAResponse", "json"), ("lang", "kor"),
                 ("allimTarget", ""))
 KIND_MINE = "PEO"
+TYPE_DEFAULT = "defaultCalendar"   # 내 일정함 줄 가운데 기본 일정함 — 일정함 목록의 `calendartype`(다른 값은 `TeamsCalendar`)
 KINDS_SHARED = ("GRW", "GRR")       # 공유받은 일정함 — 일정함 목록이 그 서버(`calhost`) · DB(`caldbpath`)를 든다
 SHARED_DB = re.compile(r"^/?([\w.-]+(?:/[\w.-]+)*\.nsf)$", re.IGNORECASE)
 SHARED_HOST = re.compile(r"^[\w-]+(?:\.[\w-]+)*(?::\d+)?$")
@@ -143,7 +99,7 @@ CHANGES_CALENDAR = re.compile(r"editdocument|eventquick|wEventDelete|agCheckDoc|
 # 등록 화면이 꼭 든 칸 — 잰 저장 몸통의 「값이 찬 칸」 가운데 우리가 덮는 것. 하나라도 없으면 화면의 꼴이 바뀐 것이다
 FORM_NEEDS = ("Form", "Subject", "Description", "StartDate", "EndDate", "CalendarID", "EventArea", "visibility",
               "callback", "Editors")
-FORM_VALUE = "Event"                # `Form` 칸의 값
+FORM_VALUE = "Event"
 VISIBILITY = "public"               # 폼이 비워 둔 공개 범위 — 사람이 넣은 판의 값
 CALLBACK_NEW = "new"
 # 참석자 · 참조 칸 — 비워 보낸다(남에게 알림이 안 가게). 손님 수 칸(`…AadditionalGuests`)은 폼의 값 그대로다
@@ -257,9 +213,8 @@ class Event:
 
     @property
     def keep_reason(self) -> str:
-        """지우지 않는 까닭 — 빈 글자면 지워도 된다(쓰는 사람이 손수 든 단건). 참석 답이 걸린 줄은 남이 연 회의에 든 자리라 지우기가
-        곧 참석 답이다. 회의 줄은 쓰는 사람이 연 회의여도 지우면 참석하실 분께 알림이 갈 수 있다. 반복 · 하루 종일 일정은 지우기를
-        안 쟀다. 쓰는 사람이 고칠 수 있는 줄이 아니면(줄의 ``editors`` 에 그 사람이 안 든다) 안 지운다."""
+        """지우지 않는 까닭 — 빈 글자면 지워도 된다(쓰는 사람이 손수 든 단건). 갈래마다의 까닭은 ``references/DESIGN.md``
+        「지우지 않는 줄」이 든다."""
         if self.calendar:
             return KEEP_SHARED
         if self.response:
@@ -410,6 +365,7 @@ class Reader:
             raise SessionMissing("쿠키 파일을 안 줬다 — 세션을 남긴 손이 낸 경로를 넘긴다")
         jar = ep_session.load_jar(cookies_file, missing=SessionMissing)   # 다른 사내 호스트의 쿠키는 쿠키 통이 일정 서버에 안 싣는다
         self._opener = ep_session.opener(jar)   # 리다이렉트는 안 따라간다 — 따라가면 쿠키가 SSO 에 실린다
+        self._calendars: list[dict] | None = None   # 받은 일정함 목록 — 이 손이 사는 동안 한 번만 묻는다(``calendars``)
         db = re.escape(self.db_path)
         day = r"\d{4}-\d{2}-\d{2}"
         # 읽는 손이 물을 수 있는 주소 꼴 — 닫힌 목록이라 새 꼴은 안 바꾸는 것을 잰 뒤 여기에 더해야 묻는다
@@ -489,7 +445,10 @@ class Reader:
             return data.decode("utf-8", errors="replace")
 
     def calendars(self) -> list[dict]:
-        """일정함 목록 — JSON 배열(``text/html`` 로 온다). 내 것 · 공유받은 것이 다 든다. JSON 이 아니면 끊긴 세션이다."""
+        """일정함 목록 — JSON 배열(``text/html`` 로 온다). 내 것 · 공유받은 것이 다 든다. JSON 이 아니면 끊긴 세션이다.
+        한 손은 목록을 한 번만 받는다 — 오래 쥐고 여러 판을 묻는 앱은 판마다 손을 새로 세워야 새 공유 일정함이 보인다."""
+        if self._calendars is not None:
+            return list(self._calendars)
         data, kind = self._get(LIST_PATH)
         try:
             rows = json.loads(self._text(data, kind))
@@ -497,17 +456,58 @@ class Reader:
             raise SessionExpired("일정함 목록 대신 JSON 이 아닌 답이 왔다 — 세션이 끊긴 것으로 읽는다") from None
         if not isinstance(rows, list):
             raise CalendarError("일정함 목록이 배열이 아니다")
-        return [r for r in rows if isinstance(r, dict)]
+        self._calendars = [r for r in rows if isinstance(r, dict)]
+        return list(self._calendars)
+
+    def _mine(self) -> list[dict]:
+        """내 일정함 줄(``kind=PEO``) — 둘 이상이면 ``owner`` 가 다 같을 때만 선다(내 일정함이 기본 · Teams 둘인 사람). ``owner`` 가
+        다른 줄이 섞이면 ``CalendarError``(남의 일정함을 내 것으로 읽지 않게)."""
+        mine = [r for r in self.calendars() if str(r.get("kind", "")).upper() == KIND_MINE]
+        if not mine:
+            raise CalendarError(f"내 일정함(kind={KIND_MINE})이 0개다")
+        owners = {str(r.get("owner") or "").strip() for r in mine}
+        if len(mine) > 1 and len(owners) != 1:
+            raise CalendarError(f"내 일정함(kind={KIND_MINE})이 {len(mine)}개고 owner 가 서로 다르다")
+        return mine
 
     def book(self) -> Book:
-        """내 일정함 — ``kind=PEO`` 한 줄. 없거나 둘 이상이면 ``CalendarError``(남의 일정함을 내 것으로 읽지 않게)."""
-        mine = [r for r in self.calendars() if str(r.get("kind", "")).upper() == KIND_MINE]
-        if len(mine) != 1:
-            raise CalendarError(f"내 일정함(kind={KIND_MINE})이 {len(mine)}개다")
+        """내 기본 일정함 — 넣기 · 지우기가 가는 곳. ``kind=PEO`` 한 줄이면 그 줄이고, 여럿(같은 ``owner``)이면 ``calendartype=defaultCalendar``
+        한 줄이다. 없거나 그 줄이 하나가 아니면 ``CalendarError``."""
+        mine = self._mine()
+        if len(mine) > 1:
+            mine = [r for r in mine if str(r.get("calendartype") or "") == TYPE_DEFAULT]
+            if len(mine) != 1:
+                raise CalendarError(f"내 일정함이 여럿인데 기본 일정함(calendartype={TYPE_DEFAULT})이 {len(mine)}개다")
         cid, owner = str(mine[0].get("calendarid") or "").strip(), str(mine[0].get("owner") or "").strip()
         if not cid or not owner:
             raise CalendarError("내 일정함 줄에 calendarid · owner 가 없다")
         return Book(calendar_id=cid, owner=owner)
+
+    def side_books(self) -> list[Book]:
+        """기본 일정함 밖의 내 일정함(Teams 따위 · 같은 ``owner``) — 읽기만 한다. ``name`` 이 줄의 ``subject``(없으면 ``calendartype``)다."""
+        main = self.book()
+        out = []
+        for r in self._mine():
+            cid = str(r.get("calendarid") or "").strip()
+            if cid and cid != main.calendar_id:
+                out.append(Book(calendar_id=cid, owner=main.owner, name=str(r.get("subject") or r.get("calendartype") or "").strip() or cid))
+        return out
+
+    def mine_between(self, first: date, last: date) -> tuple[list[Event], list[tuple[str, str]]]:
+        """내 일정함 전부의 서울 날짜 ``first`` ~ ``last`` 일정 — 기본 일정함의 줄과, 기본 밖 일정함의 줄(``calendar`` 에 그 이름 ·
+        지우는 손잡이는 없다)을 시작 차례로 한 목록에 낸다. 기본 밖 일정함이 안 읽히면(세션 끊김이 아닌 한) 나머지는 낸다 —
+        두 번째에 (이름, 까닭)을 단다."""
+        got = self.between(first, last)
+        failed = []
+        for b in self.side_books():
+            try:
+                got += self.between(first, last, b)
+            except SessionExpired:
+                raise
+            except CalendarError as exc:
+                failed.append((b.name, str(exc)))
+        got.sort(key=lambda e: (e.start, e.end, e.title))
+        return got, failed
 
     def shared_books(self) -> list[Book]:
         """공유받은 일정함 — 일정함 목록의 ``GRW`` · ``GRR`` 줄(목록 차례). 서버 · DB · 열쇠 · 일정함을 가진 사람이 빈 줄은 버린다. 사람마다 다른
@@ -556,7 +556,7 @@ class Reader:
                 if e is None:
                     skipped += 1
                     continue
-                if book.shared:
+                if book.shared or book.name:
                     e = dataclasses.replace(e, calendar=book.name or _person(book.owner))
                 out.setdefault(event_key(e), e)
         events = sorted(out.values(), key=lambda e: (e.start, e.end, e.title))
@@ -683,13 +683,10 @@ def _span(day: date, end: datetime) -> tuple[date, date]:
 
 def register(url: str, cookies_file: pathlib.Path | str, want: Want, *, timeout: float = TIMEOUT_SECONDS,
              reader: Reader | None = None, shown_clash: Iterable[str] | None = None) -> Added:
-    """⚠ 회사 일정을 바꾼다 — 내 일정함에 한 건을 넣는다. 사람이 그 한 건을 확인한 뒤에만 부른다.
+    """⚠ 회사 일정을 바꾼다 — 내 일정함에 한 건을 넣고 ``Added`` 를 낸다. 사람이 그 한 건을 확인한 뒤에만 부른다.
 
-    차례 — 내 일정함 → 그날 일정을 읽어 같은 일정이 있으면 넣지 않는다(``already`` — 두 번 부름 · 옛 확인) → ``shown_clash`` 를
-    주면(확인에 보인 겹침의 ``event_ref`` 들) 그 시각에 보인 것 밖의 일정이 생겼을 때 넣지 않는다(``clashed`` — 사람은 그 겹침을
-    모르고 「네」 했다) → 등록 화면을 열어 그 폼의 값을 받는다(잰 칸이 없으면 ``FormChanged`` · 넣지 않음) → 잰 칸만 덮고 참석자 · 참조 칸은 비워 저장 주소에 POST → 그날을
-    다시 읽어 섰으면 ``added``, 안 보이면 ``unsure``(답이 창을 닫는 스크립트라 성공을 못 가린다). 저장 POST 가 도중에 끊겨도 다시
-    읽어 가린다. 등록 화면을 열기 전에 진 것(세션 · 서버)은 아무것도 안 바꿨다 — 그대로 올린다.
+    ``shown_clash`` 는 확인에 보인 겹침의 ``event_ref`` 들이다 — 그 밖의 일정이 그 시각에 생겼으면 ``clashed`` 로 안 넣는다.
+    등록 화면에 잰 칸이 없으면 ``FormChanged``(안 넣음). 등록 화면을 열기 전에 진 것(세션 · 서버)은 아무것도 안 바꾼 채 올린다.
     """
     want = want.cleaned()
     if not want.title or _aware(want.end) <= _aware(want.start):
@@ -745,13 +742,9 @@ def delete(url: str, cookies_file: pathlib.Path | str, target: Event | Seen, *, 
            reader: Reader | None = None) -> Removed:
     """⚠ 회사 일정을 바꾼다 — 내 일정함의 한 줄을 지운다. 사람이 그 한 건을 확인한 뒤에만 부른다.
 
-    ``target`` 은 사람에게 보인 그 줄(``Event``)이나 그 손잡이(``Seen``)다. 차례 — 내 일정함 → 그날을 다시 읽어 그 줄(``ref``)을
-    찾는다: 그 줄은 없는데 같은 일정(``ident``)이 그날 다른 시각에 있으면 ``changed``(옮겨졌다 · 안 지운다), 그것도 없으면
-    ``gone``(그날에 없다 — 이미 지웠거나 다른 날로 옮겼다 · 지우기를 안 부른다), 제목 · 시작 · 끝이 보인 것(``mark``)과 다르면
-    ``changed``(안 지운다),
-    쓰는 사람이 손수 든 단건이 아니면 ``ChangeRefused``(``reason`` 에 까닭 · 안 부른다) → 잰 지우기 주소 GET(내 일정함 · 그 줄 ·
-    쓰는 사람의 Notes 이름) → 그날을 다시 읽어 사라졌으면 ``deleted``, 남았으면 ``unsure``. 지우기 GET 이 도중에 져도 다시 읽어
-    가린다."""
+    ``target`` 은 사람에게 보인 그 줄(``Event``)이나 그 손잡이(``Seen``)다. ``Removed`` 를 낸다 — 그 줄이 옮겨졌거나 제목 · 시작 ·
+    끝이 보인 것(``mark``)과 다르면 ``changed``, 그날에 없으면 ``gone``(둘 다 지우기를 안 부른다). 쓰는 사람이 손수 든 단건이
+    아니면 묻기 전에 ``ChangeRefused``(``reason`` 에 까닭)."""
     seen = target if isinstance(target, Seen) else Seen.of(target)
     if seen.shared:   # 공유받은 일정함의 줄 — 내 일정함에 같은 열쇠의 줄이 있어도 그것을 지우지 않게 묻기 전에 거절한다
         raise ChangeRefused("공유받은 일정함의 줄이라 지우지 않는다", KEEP_SHARED)

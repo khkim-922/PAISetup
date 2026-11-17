@@ -1,11 +1,7 @@
 ﻿<#
     drm-office-read 스크립트들이 함께 쓰는 오피스 세션 규칙 — 사람이 열어 둔 오피스와 문서는 건드리지 않는다.
     점 소싱으로 싣는다:  . (Join-Path $PSScriptRoot 'office-session.ps1')
-
-    파워포인트는 사용자 하나에 하나만 뜨는 COM 서버라 New-Object 가 사람이 쓰는 파워포인트에 붙는다. 그대로
-    Quit 하면 사람의 창과 저장 안 한 발표가 경고 없이 닫힌다. 같은 파일을 이미 열어 두었으면 Open 이 사람의
-    문서 개체를 그대로 돌려준다 — 그것을 닫거나 Saved 를 찍으면 사람의 변경이 사라진다. 워드 · 엑셀은 보통 새
-    인스턴스로 뜨지만 같은 규칙을 건다 — 붙은 자리였을 때 잃는 것이 사람의 문서라서다.
+    함수만 들고 실어도 아무것도 안 돈다. 왜 이 규칙인가는 `references/DESIGN.md` 「사람의 앱과 문서」가 든다.
 #>
 
 function Open-OwnedDocument {
@@ -32,9 +28,8 @@ function Close-OwnedDocument($Session) {
 }
 
 function Assert-WordPdfQuiet($App) {
-    <# 워드로 PDF 를 열기 전에 부른다. 변환 안내창을 끄는 값이 없으면 숨은 워드가 그 창에 갇혀 멈춘다 —
-       DisplayAlerts · ConfirmConversions 로는 그 창이 안 눌린다. 그 값은 사람이 PDF 를 열 때의 워드 동작도 바꾸므로
-       스크립트가 심지 않고 알린다 #>
+    <# 워드로 PDF 를 열기 전에 부른다 — 변환 안내창을 끄는 값이 없으면 던진다(숨은 워드가 그 창에 갇혀 멈춘다).
+       그 값은 사람의 워드 동작도 바꾸므로 심지 않고 알린다 #>
     $version = '16.0'
     try { $version = [string]$App.Version } catch { }
     $key = "HKCU:\Software\Microsoft\Office\$version\Word\Options"
@@ -69,9 +64,8 @@ function Test-RecoveryEntry {
 }
 
 function Clear-OwnedRecovery {
-    <# 오피스가 죽으며 남긴 복구 항목(DocumentRecovery) 가운데 $Paths 의 파일 것만 지운다 — 남아 있으면 그 앱이 다음에 뜰 때 복구
-       창이 먼저 떠 슬라이드쇼가 서지 않는다. 트리를 통째로 지우지 않는다 — 사람의 저장 안 한 복구 자료가 같은 자리에 있다.
-       워드 · 엑셀 · 파워포인트의 모든 판을 훑고, 못 읽거나 못 지운 항목은 건너뛴다(던지지 않는다) #>
+    <# 오피스가 죽으며 남긴 복구 항목(DocumentRecovery) 가운데 $Paths 의 파일 것만 지운다 — 같은 자리에 사람의 복구 자료가 있다.
+       오피스의 모든 판을 훑고, 못 읽거나 못 지운 항목은 건너뛴다(던지지 않는다) #>
     param([string[]]$Paths = @())
     $ownedNames = @($Paths | Where-Object { $_ } | ForEach-Object { Split-Path -Path $_ -Leaf })
     if ($ownedNames.Count -eq 0) { return }

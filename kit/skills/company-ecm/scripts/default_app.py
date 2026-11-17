@@ -1,9 +1,8 @@
 """확장자의 기본 앱(Windows 「항상 이 앱 사용」)을 보고, 비어 있을 때만 깔린 앱으로 채우는 손 — 표준 라이브러리만 쓰는 파일 하나.
 
-무엇을 하나
-    ECM 에이전트는 받은 파일을 그 확장자의 기본 앱으로 연다. 기본 앱이 안 정해진 확장자면 Windows 가 「어떤 앱으로
-    열까요」 창만 띄우고 파일은 안 열린다. 이 파일은 열기 전에 그 자리를 보고(``state``), 비었으면 깔린 앱의 ProgId 를
-    Windows 가 받아 주는 해시와 함께 적는다(``ensure``). **이미 고른 값은 덮지 않는다** — 쓰는 사람이 고른 앱이다.
+ECM 에이전트는 받은 파일을 그 확장자의 기본 앱으로 연다 — 기본 앱이 없으면 Windows 가 고르는 창만 띄우고 파일은 안 열린다.
+**이미 고른 값은 덮지 않는다** — 쓰는 사람이 고른 앱이다. Windows 가 받아 주는 값의 꼴과 출처는 ``references/SOURCES.md``
+「Windows 기본 앱」이 든다.
 
 어떻게 부르나::
 
@@ -16,28 +15,8 @@
 무엇을 내나
     ``ensure`` 는 ``Ensured(progid, written)`` 을 낸다 — ``written`` 이 참이면 이번에 적었다. 사람이 한 번 골라야 하는
     자리(깔린 앱이 없다 · Windows 가 쓰기를 막았다 · 적었는데 Windows 가 안 받았다 · 이 PC 의 해시 계산이 다르다)는
-    ``DefaultAppNeeded`` 다 — 메시지가 사람에게 할 말이다.
-
-Windows 가 받아 주는 값 — 어기면 조용히 망가진다
-    * ``HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.<확장자>\\UserChoice`` 의 ``ProgId`` 와
-      ``Hash`` 둘이 한 벌이다. 해시가 틀리면 Windows 는 그 키를 지우고 고르는 창으로 돌아간다 — 오류는 안 낸다
-    * 해시의 재료는 ``확장자 + 사용자 SID + ProgId + 그 키를 마지막으로 쓴 시각(분으로 내림 · FILETIME 16 자리 hex)
-      + shell32.dll 이 든 「User Choice set via Windows User Experience {…}」 글`` 을 소문자로 이은 것이다. 그래서 키를 쓴
-      분과 해시의 분이 같아야 한다 — 분 경계 직전이면 기다렸다 쓰고, 쓴 뒤 키의 시각으로 다시 지어 맞춘다
-    * 계산의 꼴은 DanysysTeam/PS-SFTA 의 ``SFTA.ps1`` ``Get-Hash`` (커밋 22a32292e576afc976a1167d92b50741ef523066)가 공개한
-      것을 따랐다. 그 저장소는 라이선스 표시가 없어 코드는 옮기지 않았다 — 같은 셈을 부호 없는 32 비트 산술로 우리가 다시 지었다
-    * UserChoice 보호 드라이버(UCPD)는 일부 확장자(``.pdf`` 로 알려짐)의 이 키 쓰기를 막는다. 막히면 ``PermissionError`` 가
-      나고, 그 확장자는 사람이 한 번 「항상 이 앱 사용」을 고르게 이끈다
-    * 적은 뒤 Windows 가 그 확장자를 정말 그 ProgId 로 푸는지 ``AssocQueryStringW`` 로 묻는다 — 안 받았으면 이번에 적은
-      키를 걷고 ``DefaultAppNeeded`` 를 낸다
-
-기본 앱이 서 있어도 고르는 창이 뜨는 자리
-    * 그 확장자를 열 수 있다고 등록된 앱(``HKCR\\.<확장자>\\OpenWithProgids``) 가운데 ``HKCU\\…\\ApplicationAssociationToasts`` 에
-      ``<ProgId>_<확장자>`` 값이 없는 앱이 있으면, Windows 는 그 앱을 새로 깔린 앱으로 보고 그 확장자를 열 때 「이 파일을 열 때
-      사용할 앱」 창을 한 번 띄운다(새 앱 옆에 「새로 만들기」가 붙는다). 그 창이 떠 있는 동안 문서는 안 열린다
-    * 그래서 ``ensure`` 는 기본 앱이 선 확장자에서, 빠진 앱의 값만 DWORD 0 으로 더한다 — Windows 가 그 앱을 보인 뒤 적는 값과
-      같은 꼴이다. 해시가 없는 키라 Windows 가 막지 않는다. 있는 값과 기본 앱은 건드리지 않는다. 그 확장자에서 「새 앱이
-      깔렸다」 알림만 안 보이게 된다
+    ``DefaultAppNeeded`` 다 — 메시지가 사람에게 할 말이다. 기본 앱이 선 확장자에서는 새 앱 알림 값(``quiet_new_apps``)을 빠진
+    것만 더한다.
 """
 
 from __future__ import annotations
@@ -161,7 +140,10 @@ def _pass_two(data: bytes, rounds: int, seed_a: int, seed_b: int) -> tuple[int, 
 
 
 def choice_hash(ext: str, sid: str, progid: str, stamp: str, experience: str) -> str:
-    """UserChoice 의 ``Hash`` 값(base64 여덟 바이트). ``stamp`` 는 키를 쓴 분의 FILETIME 16 자리 hex 다. 너무 짧은 재료면 빈 글자."""
+    """UserChoice 의 ``Hash`` 값(base64 여덟 바이트). ``stamp`` 는 키를 쓴 분의 FILETIME 16 자리 hex 다. 너무 짧은 재료면 빈 글자.
+
+    셈의 꼴은 DanysysTeam/PS-SFTA ``SFTA.ps1`` ``Get-Hash``(커밋 22a32292e576afc976a1167d92b50741ef523066)를 부호 없는 32 비트
+    산술로 다시 지은 것이다 — 그 저장소는 라이선스 표시가 없어 코드는 옮기지 않았다."""
     text = f"{ext}{sid}{progid}{stamp}{experience}".lower()
     data = text.encode("utf-16-le") + b"\0\0"
     size = len(data)
@@ -342,7 +324,8 @@ def write_choice(ext: str, progid: str, *, base: str = FILE_EXTS, sid: str | Non
                  experience: str | None = None) -> str:
     """UserChoice 를 ProgId · Hash 한 벌로 적고, 키의 시각으로 다시 지어 맞을 때까지 고쳐 쓴다. 적은 해시를 낸다.
 
-    이미 고른 값이 있는지는 보지 않는다 — 부르는 쪽(``ensure``)이 본다. 쓰기가 막히면 ``PermissionError`` 가 그대로 난다.
+    이미 고른 값이 있는지는 보지 않는다 — 부르는 쪽(``ensure``)이 본다. 쓰기가 막히면(UserChoice 보호) ``PermissionError`` 가 그대로 난다.
+    ⚠ 해시는 키를 쓴 분을 재료로 든다 — 분이 어긋나면 Windows 가 오류 없이 키를 지운다.
     """
     ext = normalize(ext)
     sid = sid or user_sid()
@@ -391,6 +374,7 @@ def registered_progids(ext: str) -> list[str]:
 
 def quiet_new_apps(ext: str, *, toasts: str = TOASTS) -> list[str]:
     """그 확장자에 등록된 앱 가운데 「보였다」 값이 없는 앱만 값을 더한다 — 더한 값 이름을 낸다. 있는 값은 안 건드린다.
+    값이 빠진 앱이 있으면 Windows 가 그 확장자를 열 때 「사용할 앱」 창을 띄워 문서가 안 열린다.
 
     ``toasts`` 는 검사가 버릴 자리를 줄 때만 바꾼다.
     """

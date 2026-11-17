@@ -3,26 +3,17 @@
     DRM 환경에서 Word 문서와 PDF의 페이지를, 엑셀 통합문서의 차트·그림·도형을 그림(줄인 WebP)으로 꺼낸다.
 
 .DESCRIPTION
-    Word가 화면에 그린 페이지의 EnhMetaFileBits를 메모리에서 받아 PowerShell이 PNG로 쓰고, 씨앗의 줄이는 손으로 줄여 WebP로 낸다
-    (-Width 는 그리는 폭, -MaxEdge 는 줄인 뒤의 긴 변 — 못 줄이면 PNG 그대로 나간다).
-    Office의 내보내기/다른 이름으로 저장을 쓰지 않으므로 원본을 저장하거나 DRM을 해제하지 않는다.
-    read-drm.ps1의 Document.Content.Text가 이미지·도형·머리글 또는 공간 배치를 놓칠 때 쓴다.
+    워드 · PDF 는 쪽마다, 엑셀은 시트 탭 차례대로 시트째 차트 · 시트 사용 영역 · 시트 위 도형마다, 워드의 표는 표마다 한 장을 떠서
+    줄인 WebP 로 낸다(-Width 는 그리는 폭 · 못 줄이면 PNG). 원본을 저장하거나 DRM 을 풀지 않는다 — 디스크를 안 거치는 길이다(references/DESIGN.md).
+    read-drm.ps1 의 글자가 그림 · 도형 · 머리글 · 배치를 놓칠 때 쓴다. 클립보드를 쓰므로 하던 복사는 사라진다.
 
-    엑셀에는 EnhMetaFileBits 같은 메모리 통로가 없다. 그림을 꺼내는 길은 파일 내보내기
-    (Chart.Export)와 클립보드 복사(CopyPicture)뿐인데, DRM 필터는 Office가 디스크에 쓰는
-    산출물을 가로챈다(capture_slides.ps1 머리말). 그래서 클립보드에 벡터 그림(EMF)으로 받아
-    Word와 같은 변환으로 PNG를 쓴다. 시트 탭 차례대로 시트째 차트, 시트 사용 영역, 시트 위 도형마다
-    한 장이다. Word 의 표도 같은 길로 한 장씩 뜬다(table-NN.w<폭>.webp — 남기지 않는 판은 table-NN.webp).
-    클립보드를 쓰므로 하던 복사는 사라지고, 끝나면 보호 문서의 그림을 남기지 않게 비운다.
+    -Pictures 는 문서 안의 그림만 하나씩 뜬다 — 덱(.pptx · .ppt)은 장마다의 그림 도형, 워드는 그림, 엑셀은 차트 · 그림만. 이때
+    -Pages 는 덱에서 장 번호다. PDF 는 안 받는다.
 
-    -Pictures 는 문서 안의 그림만 하나씩 뜬다 — 쪽 · 장 전체의 그림에서는 사진이 작고 흐려서다. 덱(.pptx · .ppt)은 장마다의
-    그림 도형을(창 없이 열어 슬라이드쇼가 없다), 워드는 그림을, 엑셀은 차트 · 그림만 뜨고, 줄여서 WebP 로 낸다. -Pages 는
-    덱에서는 장 번호다. 도형으로 그린 도식과 그림 둘레의 글은 안 담긴다 — 그것은 쪽 · 장 전체의 그림이 든다. PDF 는 안 받는다.
-
-    뜬 그림은 남긴다 — 남긴 글자 곁의 폴더에 두고, 같은 파일을 같은 부름(-Pages · -Width)으로 다시 부르면
-    앱을 안 띄우고 그 그림으로 답한다(아래 「남긴 그림」). -OutDir 를 주면 그 폴더에도 한 벌 놓아 그 경로를
-    낸다. -NoKeep 은 남기지도 남긴 것을 쓰지도 않고 -OutDir(없으면 임시 폴더 아래 drm-pages)에만 뜬다 — 같은 부름으로
-    앞서 남긴 기록은 걷으니, 잘못 떠서 남은 그림은 -NoKeep 한 판으로 물린다.
+    뜬 그림은 남긴 글자 곁의 폴더에 남기고, 같은 파일을 같은 부름(-Pictures · -Pages · -Width · -MaxEdge)으로 다시 부르면 앱을 안
+    띄우고 그 그림으로 답한다. -OutDir 를 주면 그 폴더에도 한 벌 놓아 그 경로를 낸다. -NoKeep 은 남기지도 쓰지도 않고 -OutDir(없으면
+    임시 폴더 아래 drm-pages)에만 뜨며, 같은 부름의 기록을 걷는다 — 잘못 떠서 남은 그림은 -NoKeep 한 판으로 물린다.
+    내는 것 — 요약 한 줄 뒤 그림마다 한 줄(딱지가 있으면 「경로  ← 딱지」).
 
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File capture_pages.ps1 -Path report.pdf
@@ -40,14 +31,14 @@ param(
     [ValidateRange(0, 4000)][int]$MaxEdge = 0,
     # 문서 안의 그림만 하나씩 뜬다(쪽 · 표 · 시트 사용 영역은 안 뜬다) — 덱(.pptx · .ppt)은 이 값일 때만 받는다
     [switch]$Pictures,
-    # 뜬 그림을 남기지도, 남긴 그림을 쓰지도 않는다 — 전처럼 -OutDir(없으면 임시 폴더)에만 뜬다
+    # 뜬 그림을 남기지도, 남긴 그림을 쓰지도 않는다 — -OutDir(없으면 임시 폴더)에만 뜬다
     [switch]$NoKeep
 )
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'office-session.ps1')
 . (Join-Path $PSScriptRoot 'office-read.ps1')      # 띄우기 · 끝내기 · 남긴 자리와 지문 · 그림 줄이기
-# 낸 경고를 모아 둔다 — 남긴 그림으로 답할 때 그 판의 경고(숨겨져 건너뛴 그림 · 그림으로 안 뜬 시트)를 다시 내야 빠진 것이 보인다.
+# 낸 경고를 모아 둔다 — 남긴 그림으로 답할 때 그 판의 경고를 다시 내야 빠진 것이 보인다.
 # 같은 이름의 함수가 cmdlet 보다 먼저 잡혀, 이 스크립트와 실은 부품의 경고가 다 여기를 지난다
 $Warned = New-Object System.Collections.Generic.List[string]
 function Write-Warning([string]$Message) { $Warned.Add($Message); Microsoft.PowerShell.Utility\Write-Warning $Message }
@@ -203,10 +194,8 @@ function Save-Shot($Bitmap, [string]$Target) {
 }
 
 # ── 그림만 — 문서 안의 그림 도형을 하나씩 복사시켜 클립보드에서 받는다(-Pictures) ──────────────────────────
-# 쪽 · 장 전체를 뜬 그림에서는 사진이 작고 흐리다. 그림 도형만 복사하면 화면에 보이는 크기 그대로 온다. 뜬 그림은 다른 갈래와 같이
-# 끝에서 줄인다(Complete-Shots). 상류 office-com-read 의
-# 「-What Pictures」 에서 빌렸다(references/SOURCES.md) — 덱은 Shape.Copy, 워드는 그림을 고른 뒤 Selection.CopyAsPicture 다
-# (Range.CopyAsPicture 는 그림에서 클립보드를 비워 둔다).
+# 상류 office-com-read 의 「-What Pictures」 에서 빌렸다(references/SOURCES.md) — 덱은 Shape.Copy, 워드는 그림을 고른 뒤
+# Selection.CopyAsPicture 다(Range.CopyAsPicture 는 그림에서 클립보드를 비워 둔다)
 
 # 그림 하나를 복사시켜($Copy) 뜬다 → 뜬 PNG 의 경로. 못 뜬 그림은 어느 걸음에서 졌나를 경고로 내고 $null 이다.
 # 클립보드를 못 비우면 복사로 치지 않는다 — 안 비운 채 복사가 조용히 막히면 앞 그림이 이 이름으로 남는다(상류의 난간)
@@ -394,10 +383,8 @@ if ($Ext -notin ($WordExtensions + $ExcelExtensions + $DeckExtensions)) {
 }
 
 # ── 남긴 그림 — 같은 바이트의 문서를 같은 부름(쪽 고름 · 폭)으로 앞서 떴으면 앱을 안 띄우고 그 그림으로 답한다 ──────────
-# 그림은 남긴 글자 곁의 폴더(office-read.ps1 의 Get-KeptShotDir)에 폭을 이름에 달아 남기고, 끝까지 선 부름마다 기록 한 장
-# 「shots-<갈래><쪽 고름>.w<폭>.txt」 을 둔다(갈래는 -Pictures 일 때 pic- · -MaxEdge 를 줬으면 .e<긴 변> 이 더 붙는다) — 첫 줄이 요약, 그 뒤가 그림 이름(탭 뒤에 딱지)과 SHOT_WARNING 으로 시작하는 그 판의 경고다.
-# 낱장이 아니라 부름(갈래 · 쪽 고름 · 폭 · 준 긴 변)으로 가린다 — 쪽을 안 고른 부름은 문서를 열어야 몇 쪽인지 알고, 표와 엑셀 그림의 딱지도 열어야 나온다.
-# 지문이 바이트를 재므로 문서가 바뀌면 폴더가 달라 새로 뜬다.
+# 끝까지 선 부름마다 기록 한 장 「shots-<갈래><쪽 고름>.w<폭>.txt」(갈래는 -Pictures 일 때 pic- · -MaxEdge 를 줬으면 .e<긴 변>)을 둔다 —
+# 첫 줄이 요약, 그 뒤가 그림 이름(탭 뒤에 딱지)과 SHOT_WARNING 으로 시작하는 그 판의 경고다. 부름으로 가리는 까닭은 references/DESIGN.md
 $SHOT_WARNING = '!'
 $KeepDir = $null
 $Record = $null
@@ -493,8 +480,7 @@ function Complete-Shots([string]$Summary, $Visuals) {
     Write-Shots $Summary $Shots $Out
 }
 
-# 띄우기와 끝내기는 읽는 부품이 든다(New-OfficeApp · Close-OfficeApps) — 띄운 앱은 Job 에 묶여 이 스크립트가 끊겨도 함께 끝나고,
-# 뜨는 사이 사람이 연 문서가 남았으면 그 앱을 살려 둔다. 파워포인트는 하나만 떠서, 붙은 자리가 사람이 쓰던 앱인지 New-OfficeApp 이
+# 띄우기와 끝내기는 읽는 부품이 든다(New-OfficeApp · Close-OfficeApps). 붙은 파워포인트가 사람의 것인지 New-OfficeApp 이
 # $PptWasRunning 에 적는다
 $PptWasRunning = $false
 $spawnedPids = @{}                     # 이 판이 띄운 PID → 앱 이름

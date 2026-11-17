@@ -1,43 +1,34 @@
-// 임시보관함의 메일 한 통을 웹메일 화면 그대로 보내는 손 — 쓰는 사람의 Edge(디버깅 포트)에 붙어 그 메일의 편집 화면에서
-// 웹메일의 [보내기]를 누른다. 그래서 웹메일이 보내기 전에 하는 정책 확인 · 첨부 확인을 다 거치고, 보낸편지함에 남는다.
+// 임시보관함의 메일 한 통을 웹메일 화면 그대로 보내는 손 — 쓰는 사람의 Edge(디버깅 포트)에 붙어 그 메일의 편집 화면에서 웹메일의
+// [보내기]를 누른다. 그래서 웹메일이 보내기 전에 하는 정책 · 첨부 확인을 다 거치고 보낸편지함에 남는다.
 //
 // 부르는 꼴
-//   node draft_send.js inspect <unid>                 그 메일의 지금 판(받는 사람 · 제목 · 첨부 · 본문 HTML)과 확인 열쇠를 낸다 — 글자는 부르는 쪽이 뽑는다
+//   node draft_send.js inspect <unid>                 그 메일의 지금 판(받는 사람 · 제목 · 첨부 · 본문 HTML)과 확인 열쇠를 낸다
 //   node draft_send.js send <unid> --confirm <열쇠>    지금 판의 열쇠가 같을 때만 보낸다
 //   node draft_send.js reply <원래 unid> --type Reply|AllReply|Forward --body-file <HTML 파일> [--to 주소,…] [--cc 주소,…]
-//                                                     받은 · 보낸 메일 하나에 웹메일의 [답장] · [전체답장] · [전달] 화면을 열어 글을
-//                                                     인용 위에 넣고 [임시저장]만 누른다 — 안 보낸다. 새 임시메일의 unid 와 저장 직전의 판 · 그 판의
-//                                                     확인 열쇠를 낸다. 다시 연 판이 같으면 그 열쇠로 send 가 선다 — 다르면 send 가 종료 4 로 멈춘다
+//                                                     웹메일의 [답장] · [전체답장] · [전달] 화면을 열어 글을 서명 · 인용 앞에 넣고
+//                                                     [임시저장]만 누른다 — 안 보낸다. 새 임시메일의 unid · 저장한 판 · 그 열쇠를 낸다
 //   node draft_send.js revise <unid> [--subject 제목] [--body-file <HTML 파일>] [--to 주소,…] [--cc 주소,…] [--bcc 주소,…]
+//                                                     임시메일 하나를 그 편집 화면에서 고쳐 [임시저장]만 누른다. 준 칸만 바꾼다 — 받는
+//                                                     사람 칸은 비우고 준 사람들로, 글은 넣은 글 표지(TEXT_MARK) 자리만 갈아 끼운다.
+//                                                     그 자리가 없으면 아무 칸도 안 고치고 종료 2. 고친 판과 그 열쇠를 낸다
 //   (reply · revise 의 --depts <JSON> — 받는 사람 가운데 부서 주소 → 부서 이름. 그 주소는 조직 하나로 넣는다)
-//                                                     임시보관함의 메일 하나를 그 편집 화면에서 고쳐 [임시저장]만 누른다 — 안 보낸다. 준 칸만
-//                                                     바꾼다: 제목은 갈아 끼우고, 받는 사람 칸은 비우고 준 사람들로 채우고(빈 값이면 비우기만),
-//                                                     글은 본문 맨 앞의 넣은 글 표지(TEXT_MARK) 자리만 갈아 끼운다 — 서명 · 인용은 그대로 둔다.
-//                                                     그 자리가 없으면 아무 칸도 안 고치고 종료 2 다. 고친 판과 그 판의 확인 열쇠를 낸다
-//   node draft_send.js show <unid>                    임시보관함의 메일 하나를 쓰는 사람의 Edge 에 편집 화면으로 띄워 둔다 — 사람이 거기서
-//                                                     확인하고 [보내기]를 누른다. 이미 열린 화면이 있으면 그 탭을 앞으로 올리기만 하고, 닫지 않는다
-//   환경변수 EDGE_DEBUG_PORT(기본 9222 — 형제 스킬 ep-login 의 띄우는 손이 여는 포트) · MAIL_SERVER(필수 · http://<메일 서버>) ·
-//   MAILBOX_DB(필수 · 02/mail2/<번호>.nsf 꼴) — 둘 다 부르는 쪽(mail.py)이 메일함 주소 하나에서 뽑아 준다
-//   Edge 에 붙는 줄(디버깅 포트에 묻기 · CDP 한 줄 · 기다리기)은 형제 스킬 ep-login 의 scripts/edge_cdp.js 를 싣는다 — 포트를 읽는 자리와
-//   Edge 의 답 하나에 두는 시한이 거기 있다. 멈춘 탭을 만나면 그 시한에 「그 탭이 멈췄다」로 끝난다(종료 1)
+//   node draft_send.js show <unid>                    임시메일 하나를 쓰는 사람의 Edge 에 편집 화면으로 띄워 둔다 — 사람이 거기서
+//                                                     [보내기]를 누른다. 열린 화면이 있으면 그 탭을 앞으로 올리기만 한다
+//   환경변수 EDGE_DEBUG_PORT(기본 9222) · MAIL_SERVER(필수 · http://<메일 서버>) · MAILBOX_DB(필수 · 02/mail2/<번호>.nsf 꼴) —
+//   뒤의 둘은 부르는 쪽(mail.py)이 메일함 주소에서 뽑아 준다. Edge 에 붙는 줄과 Edge 의 답 하나의 시한은 형제 스킬 ep-login 의
+//   scripts/edge_cdp.js 를 싣는다 — 멈춘 탭은 그 시한에 종료 1 이다
 //
 // 어느 화면에서 보내나
-//   그 메일이 쓰는 사람의 웹메일 탭 안에 이미 편집으로 열려 있으면 **그 화면**에서 보낸다 — 사람이 그 화면에서 고친 것까지 나간다.
-//   ⚠ 열린 화면을 두고 따로 열어 보내면 열린 화면의 다음 저장이 저장 번호가 어긋나 새 임시메일로 갈라진다(wSendCheck 실측) —
-//   그래서 따로 열지 않는다. 열린 화면이 없으면 최소화한 새 창 하나에 열고, 끝나면 그 창만 닫는다. 쓰는 사람의 탭은 안 닫는다.
-//
-// 답장 · 전달 화면(reply)
-//   웹메일의 버튼과 같은 길이다 — process_doc 이 원래 메일에 이어진 새 문서를 짓고 편집 화면을 열면, 화면이 제목 머리(Re: · Fwd:) ·
-//   받는 사람 · 서명 · 인용 · (전달이면) 원래 첨부를 채운다(회사에서 잼). 이 손은 그 위에 글을 서명 앞에 넣고, 전달이면 받는 사람을,
-//   어느 쪽이든 더할 참조를 화면의 주소록 길(ag_org_search_json → tokenInput)로 넣은 뒤 화면의 saveDoc(SaveAgent=wSave)을 부른다.
-//   ⚠ 편집 화면 주소(/0/<원래 unid>?EditDocument&type=Reply)를 바로 열면 머리 · 인용 · 원래 메일과의 이음이 빠진 원래 메일 자체가 열린다
-//   — 늘 process_doc 으로 연다. 저장 전에 멈추면 process_doc 이 지은 문서는 임시보관함에 안 서고 남는다(웹메일에서 창을 닫은 것과 같다).
+//   그 메일이 쓰는 사람의 탭에 이미 편집으로 열려 있으면 **그 화면**에서 한다 — 사람이 거기서 고친 것까지 나간다. 없으면 최소화한
+//   새 창에 열고 끝나면 그 창만 닫는다.
+//   ⚠ 열린 화면을 두고 따로 열어 저장하면 열린 화면의 다음 저장이 새 임시메일로 갈라진다(저장 번호가 어긋난다) — 따로 열지 않는다.
 //
 // 무엇을 내나
-//   표준 출력에 JSON 한 줄 — {where, state, token} 또는 send 의 {pressed, where, ...} 또는 reply 의 {unid, state, token} 또는 revise 의 {unid, where, state, token}. send 의 0 은 「발송 확인에 예 하고 저장 답이
-//   왔다」까지다 — 나갔나는 부르는 쪽이 보낸편지함 · 임시보관함으로 가린다(보낸 뒤의 알림 · 늦은 자동저장은 이 손이 못 가린다). 종료 값 0 됐다 · 1 도구 · 화면 오류 ·
-//   2 그 메일을 못 찾았다 · 3 Edge 에 못 붙었다(스킬 ep-login) · 4 열쇠가 지금 판과 다르다(안 보냈다) · 5 웹메일이 다른 물음을 띄웠다(안 보냈다).
-//   show 는 {unid, where} 를 낸다
+//   표준 출력에 JSON 한 줄 — inspect {where, state, token} · send {pressed, where, asked, …} · reply {unid, type, asked, state, token} ·
+//   revise {unid, where, asked, state, token} · show {unid, where}. 실패는 {error, …}. send 의 0 은 「발송 확인에 예 하고 저장 답이
+//   왔다」까지다 — 나갔나는 부르는 쪽이 보낸편지함 · 임시보관함으로 가린다. 종료 값 0 됐다 · 1 도구 · 화면 오류 · 2 그 메일을 못
+//   찾았다 · 3 Edge 에 못 붙었다(스킬 ep-login) · 4 열쇠가 지금 판과 다르다(안 보냈다) · 5 웹메일이 다른 물음을 띄웠다(안 보냈다).
+//   웹메일 화면의 흐름과 물음의 꼴은 SOURCES.md 「draft_send.js」 가 든다.
 'use strict';
 const crypto = require('crypto');
 const { sleep, waitFor, framesOf, edgeLine } = require('../../ep-login/scripts/edge_cdp.js');
@@ -48,18 +39,19 @@ const DB = '/' + (process.env.MAILBOX_DB || '').trim().replace(/^\/+/, '');
 const READY_SECONDS = 60;          // 편집 화면이 다 서기를 기다리는 시한 — 편집기 · 첨부 칸이 늦게 선다
 const SEND_SECONDS = 120;          // 보내기를 누른 뒤 저장 답을 기다리는 시한 — 첨부 확인이 든다
 const TOKEN_LENGTH = 12;
-// 웹메일이 보내기 전에 묻는 확인 — 이 꼴만 「예」 한다. 앞에 「첨부 없음」 안내 줄이 붙을 수 있다(실측). 다른 물음은 다 「아니오」 하고 멈춘다
+// 웹메일이 보내기 전에 묻는 확인 — 이 꼴만 「예」 한다. 앞에 「첨부 없음」 안내 줄이 붙을 수 있다. 다른 물음은 다 「아니오」 하고 멈춘다
 const SEND_CONFIRM = /^(첨부 문서가 없는 메일 입니다\.\s*)?메일을 발송 하시겠습니까\?\s*$/;
-// 임시저장이 끝나면 화면이 묻는 것 — 「아니오」 하면 창이 닫힌다(실측). 저장 전에 뜬 다른 물음은 다 「아니오」 하고 멈춘다
+// 임시저장이 끝나면 화면이 묻는 것 — 「아니오」 하면 창이 닫힌다. 저장 전에 뜬 다른 물음은 다 「아니오」 하고 멈춘다
 const SAVED_ASK = /^임시저장이 완료되었습니다/;
 const REPLY_TYPES = ['Reply', 'AllReply', 'Forward'];
-// 넣은 글을 감싼 div 의 id 머리 — 임시메일을 다시 고칠 때 이 자리만 갈아 끼운다. 새 메일을 저장하는 쪽(mail.py 의 TEXT_MARK)과 같은 글자다
+// 넣은 글을 감싼 div 의 id 머리 — 임시메일을 다시 고칠 때 이 자리만 갈아 끼운다. 새 메일을 저장하는 쪽(mail.py)이 이 줄을 읽어
+// 같은 표지를 단다 — ⚠ 줄의 꼴(const TEXT_MARK = '…')을 바꾸면 mail.py 의 TEXT_MARK_IN_HAND 도 함께 바꾼다
 const TEXT_MARK = 'cm-text-';
 const PEOPLE_FIELDS = {'--to': 'send_to', '--cc': 'copy_to', '--bcc': 'bcopy_to'};   // revise 의 인자 → 편집 화면의 받는 사람 칸 id
 // reply · revise 의 --depts <JSON> — 받는 사람 가운데 부서 주소 → 부서 이름(부르는 쪽이 받아 둔 조직도에서 짓는다)
 const deptsOf = rest => { const i = rest.indexOf('--depts'); return i < 0 ? {} : JSON.parse(rest[i + 1] || '{}'); };
 const SAVE_SECONDS = 60;           // [임시저장] 뒤 저장 답을 기다리는 시한 — 전달의 첨부를 다시 싣는 데 든다
-const BODY_SECONDS = 10;           // 편집기가 넣은 글을 그리기를 기다리는 시한 — setBodyValue 는 늦게 든다(실측)
+const BODY_SECONDS = 10;           // 편집기가 넣은 글을 그리기를 기다리는 시한 — setBodyValue 는 늦게 든다
 const LOOKUP_MS = 20000;           // 주소록 한 번의 시한 — 답이 없어도 이 손이 제 창을 닫고 끝나게
 // 주소록에 묻는 식 하나의 답을 기다리는 시한 — 화면의 주소록 시한(LOOKUP_MS)보다 길어야 「주소록이 답하지 않았다」가 제 까닭으로 온다
 const LOOKUP_SECONDS = LOOKUP_MS / 1000 + 10;
@@ -141,16 +133,15 @@ async function readState(ev) {
 }
 
 // 본문 안 그림 주소의 문서 번호(…nsf/0/<unid>/Body/…)는 열쇠에서 뺀다 — 서명 그림은 저장 전엔 서명 문서를, 저장 뒤엔 새
-// 임시메일 자신을 가리켜(회사에서 잼), 빼지 않으면 save-reply 가 낸 열쇠가 사람이 본 것과 같은 판에서도 늘 어긋난다
+// 임시메일 자신을 가리켜, 빼지 않으면 save-reply 가 낸 열쇠가 사람이 본 것과 같은 판에서도 늘 어긋난다
 const IN_DOC = /(\.nsf\/0\/)[0-9a-f]{32}(?=\/)/gi;
 const tokenOf = s => crypto.createHash('sha256')
   .update(JSON.stringify([s.subject, s.to, s.cc, s.bcc, s.files, s.body.replace(IN_DOC, '$1-')])).digest('hex').slice(0, TOKEN_LENGTH);
 
 // ── 보내기 ─────────────────────────────────────────────────────────────────
 
-// 웹메일의 [보내기]를 누르고, 발송 확인만 「예」 한다. 발송 확인 **앞에** 뜬 다른 물음(사외 결재 · 경고)은 「아니오」 하고 그 글을 들고
-// 멈춘다 — 그 뒤로는 안 나간다. 발송 확인에 「예」 한 뒤 뜬 것(완료 알림 같은 것)은 「예」 하고 글만 든다 — 이미 나갔을 수 있어
-// 이 손이 「안 보냈다」고 하지 않는다. 저장 답이 오면 「눌렀다」를 낸다
+// [보내기]를 누르고 발송 확인만 「예」 한다 — 그 **앞에** 뜬 다른 물음은 「아니오」 하고 멈춘다(안 나간다). 확인 뒤에 뜬 것은
+// 「예」 하고 글만 든다 — 이미 나갔을 수 있어 「안 보냈다」고 하지 않는다. 저장 답이 오면 물음들의 글을 낸다
 async function pressSend(cdp, ed, ev, unid) {
   const asked = [];
   let saved = null, confirmed = false;
@@ -182,8 +173,8 @@ async function pressSend(cdp, ed, ev, unid) {
 
 // ── 답장 · 전달 화면에서 임시저장 ─────────────────────────────────────────────
 
-// 원래 메일에 웹메일의 [답장] · [전체답장] · [전달]을 누른 것과 같은 화면을 최소화한 새 창에 연다 — process_doc 이 새 문서를 짓고
-// 그 편집 화면으로 넘긴다. 넘어간 뒤의 프레임을 쓴다
+// [답장] · [전체답장] · [전달]을 누른 것과 같은 화면을 최소화한 새 창에 연다 — process_doc 이 새 문서를 짓고 편집 화면으로 넘긴다.
+// ⚠ 편집 화면 주소(?EditDocument&type=Reply)를 바로 열면 머리 · 인용 · 원래 메일과의 이음이 빠진다 — 늘 process_doc 으로 연다
 async function openReplyEditor(cdp, unid, type) {
   const url = `${SERVER}${DB}/process_doc?openagent&action=${type}&forward_deny_type=&forward_deny_fromname=&unid=${unid}`
     + '&lang=kor&callfrom=&imapuser=0&owner=&timezone=+540&opentype=popup';
@@ -196,13 +187,10 @@ async function openReplyEditor(cdp, unid, type) {
   throw fail(EXIT.MISSING, `[${type}] 화면이 ${READY_SECONDS} 초 안에 안 열렸다 — 원래 메일이 없거나 웹메일이 거절했다: ${unid}`);
 }
 
-// 받는 사람 칸들에 사내 주소록의 사람 · 부서를 넣는다 — 화면의 「비서 참조자 자동추가」와 같은 길(ag_org_search_json → tokenInput · duplicate_list).
-// ``pairs`` 는 [칸 id, 주소] 들, ``clear`` 는 넣기 전에 비울 칸 id 들. 주소록에는 함께 묻고, 다 선 뒤에야 칸을 비우고 준 차례대로
-// 넣는다 — 한 주소라도 사람이 꼭 하나가 아니면 아무 칸도 안 건드리고 「주소 — 까닭」을 낸다(쓰는 사람이 연 화면에 반쯤 고친 판을
-// 안 남긴다). 다 넣었으면 빈 글자
-// ``depts`` 는 부서 주소 → 부서 이름 — 그 주소는 사람 대신 조직 하나로 넣는다(고름 창에서 조직을 체크한 것과 같은 항목). 주소록 찾기는
-// 부서를 type=org 에만 내고(type=memo 는 부서 0 곳) 부서 주소로는 안 내고 부서 이름으로 낸다(회사에서 잼) — 이름으로 찾고 주소가
-// 같은 부서 하나를 고른다
+// 받는 사람 칸들에 사내 주소록의 사람 · 부서를 넣는 식 — ``pairs`` 는 [칸 id, 주소] 들, ``clear`` 는 넣기 전에 비울 칸 id 들,
+// ``depts`` 는 부서 주소 → 부서 이름(조직 하나로 넣는다). 한 주소라도 꼭 하나로 안 맞으면 아무 칸도 안 건드리고 「주소 — 까닭」,
+// 다 넣었으면 빈 글자를 낸다 — 쓰는 사람이 연 화면에 반쯤 고친 판을 안 남긴다. 부서는 주소록이 이름으로만 찾아 주어 이름으로 찾고
+// 주소가 같은 하나를 고른다
 const addPeople = (pairs, clear = [], depts = {}) => `(function(){
   var pairs = ${JSON.stringify(pairs)}, clear = ${JSON.stringify(clear)}, depts = ${JSON.stringify(depts)};
   function find(addr){ return new Promise(function(ok){

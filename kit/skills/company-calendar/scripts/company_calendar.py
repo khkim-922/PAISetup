@@ -3,7 +3,7 @@
 부르는 꼴::
 
     python -X utf8 -I company_calendar.py remember "<일정 화면 주소창의 주소>"   # 주소를 재 보고 남긴다
-    python -X utf8 -I company_calendar.py show [오늘|내일|모레|YYYY-MM-DD] [끝 날]  # 기본 오늘 · 내일 · 내 일정함만
+    python -X utf8 -I company_calendar.py show [오늘|내일|모레|YYYY-MM-DD] [끝 날]  # 기본 오늘 · 내일 · 내 일정함(기본 · Teams)만
     python -X utf8 -I company_calendar.py show … --shared [--who 이름]              # 공유받은 일정함도 · 그 사람 것만
     python -X utf8 -I company_calendar.py calendars                                 # 공유받은 일정함 목록
         show 의 답이 OUT_BYTES 를 넘으면 뒤 날짜의 줄부터 덜어 내고(하루를 가운데서 안 끊는다) ``more`` 가 이어 볼 구간을 든다
@@ -13,10 +13,9 @@
 
     공통 — ``--url``(없으면 ``CALENDAR_URL`` → 남긴 주소 → 잰 기본 ``agenda.DEFAULT_APP_URL``). 시각은 다 서울 벽시계다.
 
-하는 일 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 로 세션을 쥔다: 보기는 세션 파일이 이미 있으면 그것으로 먼저
-돌고 일정 서버가 거절할 때만, 넣기 · 지우기(``MUTATING``)는 늘, 받는 손(node)을 띄워 쓰는 사람의 Edge 에서 세션을 받는다
-(까닭과 바퀴는 그 함수의 머리말). 세션 파일의 자리는 그 손이 정하고 여기 다시 적지 않는다. 그 쿠키로 곁의 일정 손을 부른다.
-판단(무엇을 넣을까 · 지워도 되나 묻기)은 여기 없다 — 바꾸는 명령은 사람이 그 한 건을 확인한 뒤에만 부른다(SKILL.md).
+세션 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 가 쥔다: 보기는 있는 세션 파일로 먼저 돌고, 넣기 · 지우기(``MUTATING``)는
+늘 쓰는 사람의 Edge 에서 받는다(까닭은 그 함수의 머리말). ⚠ 판단(무엇을 넣을까 · 지워도 되나)은 여기 없다 — 바꾸는 명령은 사람이
+그 한 건을 확인한 뒤에만 부른다(SKILL.md).
 
 내는 것 — 표준 출력에 JSON 하나. 종료 값: 0 됐다 · 1 도구 고장(그대로 알린다) · 2 인자가 틀렸다 · 3 세션이 없다 · 끊겼다(스킬
 ep-login) · 4 일정 앱 주소가 틀렸거나 잰 기본 주소로 내 일정함이 안 읽힌다. 0 이 아니면 ``message`` 가 까닭과 「다음: …」 을 든다.
@@ -37,8 +36,6 @@ from datetime import date, datetime, timedelta
 HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
 SAVED_URL = "~/.company-calendar.json"   # 남긴 일정 앱 주소 — 저장소 밖 · 비밀이 없다(사번 · 쿠키가 안 든다)
-DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}
-WEEKDAYS = "월화수목금토일"                 # date.weekday() 의 0 ~ 6 — 답에 요일을 실어 모델이 요일을 제 셈으로 짐작하지 않게
 NO_CLASH = "none"                        # 확인에 보인 겹침이 없다는 seen 값
 EXIT_URL = 4                             # 일정 앱 주소가 틀렸거나 잰 기본 주소로 내 일정함이 안 읽힌다 — 나머지 종료 값은 ep_command
 INDENT = 1                               # 답(JSON)을 찍는 들여쓰기 — 답의 크기도 이 꼴로 센다
@@ -70,7 +67,7 @@ if str(EP_LOGIN_SCRIPTS) not in sys.path:
 try:
     import ep_command
     import ep_session
-    from ep_command import EXIT_ARGS, OUT_BYTES, Stop, load, size
+    from ep_command import EXIT_ARGS, OUT_BYTES, WEEKDAYS, Stop, day_of, load, size
 except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
     print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
     sys.exit(1)
@@ -88,15 +85,6 @@ def resolve(args, default: str) -> tuple[str, bool]:
     """일정 앱 주소와 그것이 기본값인가 — ``--url`` → ``CALENDAR_URL`` → 남긴 주소 → 잰 기본(``agenda.DEFAULT_APP_URL``)."""
     given = (args.url or os.environ.get("CALENDAR_URL", "") or saved_url()).strip()
     return (given, False) if given else (default, True)
-
-
-def day_of(text: str, today: date) -> date:
-    if text.strip().lower() in DAY_WORDS:
-        return today + timedelta(days=DAY_WORDS[text.strip().lower()])
-    try:
-        return date.fromisoformat(text.strip())
-    except ValueError as exc:
-        raise Stop(EXIT_ARGS, "args", f"날은 오늘 · 내일 · 모레 · YYYY-MM-DD 가운데 하나로 준다: {text!r}") from exc
 
 
 def weekday_of(day: date) -> str:
@@ -182,20 +170,24 @@ def run(args, session: pathlib.Path) -> dict:
         out = {"today": today.isoformat(), "today_weekday": weekday_of(today),
                "first": first.isoformat(), "last": last.isoformat()}
         if not args.who:
-            out["events"] = [row(agenda, e) for e in reader.between(first, last)]
+            mine, side_failed = reader.mine_between(first, last)
+            out["events"] = [row(agenda, e) for e in mine]
+            failed = [{"calendar": n, "message": m} for n, m in side_failed]
+        else:
+            failed = []
         if args.shared or args.who:
-            shared, failed = [], []
+            shared = []
             for b in shared_books(reader, args.who):
                 try:
                     shared += reader.between(first, last, b)
                 except agenda.CalendarError as exc:   # 한 일정함이 안 읽혀도 나머지는 보인다 — 못 읽은 것은 이름으로 알린다
-                    # 그 서버의 「끊긴 세션」 꼴(403 · SSO 화면)도 여기 든다 — 같은 세션으로 방금 일정함 목록을 읽었으니 내 세션은
-                    # 살았고, 공유가 풀렸거나 그 서버가 안 받는 것이다. ep-login 으로 보내면 같은 끝을 되풀이한다
+                    # 그 서버의 「끊긴 세션」 꼴도 여기 든다 — 방금 같은 세션으로 목록을 읽었으니 공유가 풀렸거나 그 서버가 안 받는
+                    # 것이다. ep-login 으로 보내면 같은 끝을 되풀이한다
                     failed.append({"calendar": b.name, "message": str(exc)})
             shared.sort(key=lambda e: (e.start, e.end, e.calendar))
             out["shared"] = [row(agenda, e) for e in shared]
-            if failed:
-                out["shared_failed"] = failed
+        if failed:
+            out["shared_failed"] = failed
         fit_days(out, last, (" --shared" if args.shared else "") + (f" --who {args.who}" if args.who else ""))
         return out
     if args.command in ("preview", "add"):
@@ -204,14 +196,15 @@ def run(args, session: pathlib.Path) -> dict:
             shown = set() if args.seen == NO_CLASH else set(args.seen.split(","))
             got = agenda.register(url, session, w, reader=reader, shown_clash=shown)
             return {"state": got.state, "state_word": STATE_WORDS[got.state], "event": row(agenda, got.event) if got.event else None}
-        day = reader.between(w.day, agenda.kst_day(w.end))
-        same = next((e for e in day if agenda.same_event(e, w)), None)
+        day, side_failed = reader.mine_between(w.day, agenda.kst_day(w.end))   # 겹침은 기본 일정함과 다른 내 일정함(Teams) 둘 다에서 본다
+        same = next((e for e in day if not e.calendar and agenda.same_event(e, w)), None)   # 이미 있나는 넣을 자리(기본 일정함)에서만
         clash = [e for e in day if e.overlaps(w.start, w.end) and e is not same]
         return {"title": w.title, "note": w.note, "day": w.day.isoformat(), "weekday": weekday_of(w.day),
                 "when": f"{w.start.astimezone(agenda.KST):%H:%M}–{w.end.astimezone(agenda.KST):%H:%M}",
                 "already": row(agenda, same) if same else None, "clash": [row(agenda, e) for e in clash],
                 "seen": ",".join(sorted(agenda.event_ref(e) for e in clash)) or NO_CLASH,
-                "visibility": agenda.VISIBILITY}
+                "visibility": agenda.VISIBILITY,
+                **({"shared_failed": [{"calendar": n, "message": m} for n, m in side_failed]} if side_failed else {})}
     seen = agenda.Seen.parse(args.handle)
     try:
         got = agenda.delete(url, session, seen, reader=reader)
@@ -247,7 +240,6 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = parser().parse_args()
-    # 보기는 세션 파일부터 쓰고 일정 서버가 거절할 때만 받는 손을 띄워 한 번 더, 넣기 · 지우기는 늘 손부터 받아 한 번만
     return ep_command.finish(
         lambda agenda: ep_session.session_first(lambda f: run(args, f), expired=(agenda.SessionExpired, agenda.SessionMissing),
                                                 file_first=args.command not in MUTATING),

@@ -3,20 +3,9 @@
     DRM 환경에서 슬라이드를 화면 캡처로 취득한다 — 육안 QA 용.
 
 .DESCRIPTION
-    파일 보안(DRM) 필터 드라이버는 PowerPoint 가 **디스크에 쓰는** 산출물을 가로챈다.
-    `Slide.Export()` · PDF 변환 · LibreOffice 경로가 모두 이 자리에서 막히거나 암호화된다.
-
-    빠져나가는 길은 디스크를 거치지 않는 것이다 — 슬라이드쇼로 화면에 띄우고
-    `Graphics.CopyFromScreen()` 으로 **화면 버퍼를 직접 읽는다.** DRM 은 화면에 그려진
-    것을 막지 않으므로 그대로 이미지가 나온다.
-
-    두 자리가 잘 걸린다 — 둘 다 이 스크립트가 든다.
-      * 전경 잠금 : 다른 창이 활성이면 AppActivate 가 무시되어 엉뚱한 창이 찍힌다.
-        Alt 를 한 번 보내 잠금을 풀고 두 번 부른다.
-      * 남는 프로세스 : 캡처 뒤 PowerPoint 가 살아 있으면 덱 파일을 잠가 다음 빌드가
-        PermissionError 로 죽는다. 띄우기와 끝내기는 읽는 부품(office-read.ps1)의 New-OfficeApp ·
-        Close-OfficeApps 가 든다 — 이 판이 띄워 Quit 한 것만 끝내고, 찍는 사이 사람이 연 덱이
-        남았으면 앱을 살려 둔다. 띄운 앱은 Job 에 묶여, 이 스크립트가 끊겨도 함께 끝난다.
+    슬라이드쇼로 화면에 띄우고 `Graphics.CopyFromScreen()` 으로 화면 버퍼를 읽어 지면만 집고, 줄인 WebP 로 낸다(못 줄이면 PNG).
+    DRM 필터가 디스크에 쓰는 산출물(`Slide.Export()` · PDF 변환)을 가로채서 디스크를 안 거친다. 찍는 동안 화면을 가져간다.
+    내는 것 — 장 차례대로 그림 경로 한 줄씩. 걸리기 쉬운 자리(전경 잠금 · 화면 배율 · 띠 · 발표자 보기)는 references/DESIGN.md.
 
 .PARAMETER Path
     캡처할 .pptx 경로.
@@ -38,7 +27,7 @@
 
 .PARAMETER MaxEdge
     줄인 뒤 긴 변 픽셀. 안 주면 줄이는 손의 기본 눈금을 따른다 — 눈금의 값은 그 손이 든다(읽는 부품의 Convert-ShotsToWebp).
-    **비전 토큰은 치수가 정한다**(`⌈가로/28⌉ × ⌈세로/28⌉`) — 작은 글자를 더 크게 봐야 할 때만 올린다.
+    비전 토큰은 치수가 정한다(`⌈가로/28⌉ × ⌈세로/28⌉`) — 작은 글자를 더 크게 봐야 할 때만 올린다.
     준 값은 남긴 그림의 이름에 붙어(`.e<긴 변>`), 눈금이 다른 판의 그림과 안 섞인다.
 
 .EXAMPLE
@@ -50,8 +39,8 @@ param(
     [string]$Slides = "1",
     [string]$OutDir,
     [int]$MaxEdge = 0,         # 0 = 줄이는 손의 기본 눈금
-    [int]$Wait = 4000,         # 회사 PC 는 1초 안에 첫 프레임이 안 그려져 빈 화면이 찍힌다
-    # 찍은 그림을 남기지도, 남긴 그림을 쓰지도 않는다 — 전처럼 -OutDir(없으면 임시 폴더)에만 찍는다
+    [int]$Wait = 4000,         # 첫 프레임이 늦게 그려지는 PC 에서도 빈 화면이 안 찍히게 넉넉히 기다린다
+    # 찍은 그림을 남기지도, 남긴 그림을 쓰지도 않는다 — -OutDir(없으면 임시 폴더)에만 찍는다
     [switch]$NoKeep
 )
 
@@ -80,10 +69,8 @@ $slideList = @(ConvertTo-NumberList -Value $Slides -Name 'Slides')    # 번호�
 if ($slideList.Count -eq 0) { throw "Slides 에 슬라이드 번호가 없다" }
 
 # ── 남긴 그림 — 같은 바이트의 덱에서 앞서 찍은 장은 다시 안 찍는다 ────────────────────────────
-# 찍으려면 파워포인트를 띄우고 슬라이드쇼가 화면을 가져간다. 그림은 남긴 글자 곁의 폴더(office-read.ps1 의 Get-KeptShotDir)에
-# 「slide-<장>.webp」로 남기고(-MaxEdge 를 준 판은 「slide-<장>.e<긴 변>.webp」 — capture_pages.ps1 과 같은 꼴), 그 파일이 있는 장은
-# 안 찍는다. 지문이 바이트를 재므로 덱이 바뀌면 폴더가 달라 새로 찍는다.
-# 줄이기가 져서 PNG 로 남은 장은 남긴 것으로 치지 않는다 — 다시 찍어 줄이기를 한 번 더 해 본다.
+# 남긴 글자 곁의 폴더(Get-KeptShotDir)에 「slide-<장>.webp」(-MaxEdge 를 준 판은 「slide-<장>.e<긴 변>.webp」)가 있는 장은 안 찍는다.
+# PNG 로 남은 장(줄이기가 졌다)은 남긴 것으로 치지 않는다 — 다시 찍어 줄이기를 한 번 더 해 본다
 $keepDir = $null
 if (-not $NoKeep) {
     try {
@@ -94,8 +81,7 @@ if (-not $NoKeep) {
         $keepDir = $null
     }
 } else {
-    # 다시 찍는 판 — 앞서 남긴 그 장을 걷는다. 안 걷으면 잘못 찍혀 남은 그림(빈 첫 화면 · 엉뚱한 창)이 다음 부름에 다시 답으로 나온다.
-    # 짓는 중인 덱은 바이트가 달라 폴더가 없으니 걷을 것도 없다
+    # 다시 찍는 판 — 앞서 남긴 그 장을 걷는다. 안 걷으면 잘못 찍혀 남은 그림이 다음 부름에 다시 답으로 나온다
     try {
         $staleDir = Get-KeptShotDir -Name ([IO.Path]::GetFileName($full)) -Print (Get-KeptPrint -LiteralPath $full)
         if (Test-Path -LiteralPath $staleDir -PathType Container) {
@@ -175,8 +161,7 @@ try {
     $pres.SlideShowSettings.ShowPresenterView = 0
     $pres.SlideShowSettings.Run() | Out-Null
 
-    # 슬라이드쇼 창이 설 때까지 기다린다 — 바로 물으면 null 이 온다. 지면 「늦었나 · 안 섰나 · 무슨 오류였나」를 실패 문구가 들게
-    # 기다린 시간 · 쇼 창 수 · 마지막 오류를 쥔다 — 안 그러면 드물게 지는 판의 원인이 남지 않는다
+    # 슬라이드쇼 창이 설 때까지 기다린다 — 바로 물으면 null 이 온다. 지면 원인이 남게 기다린 시간 · 쇼 창 수 · 마지막 오류를 쥔다
     $showWatch = [Diagnostics.Stopwatch]::StartNew()
     $showError = $null
     for ($i = 0; $i -lt 25 -and $null -eq $show; $i++) {
@@ -191,18 +176,9 @@ try {
 
     $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 
-    # ── 지면만 집는다 — **띠도 값이다** ───────────────────────────────────────────
-    # 슬라이드쇼는 지면을 화면 복판에 비율 맞춰 놓고 남는 자리를 띠로 채운다. 화면을 통째로
-    # 찍으면 그 띠에도 값이 붙는다 — 비전 토큰은 **치수로** 매겨지므로(`⌈가로/28⌉ × ⌈세로/28⌉`)
-    # 띠를 옮기느라 값을 쓰고 정작 읽어야 할 글자를 깎는다. 21:9 에서 띠가 41% 다.
-    # ⚠ **띠를 픽셀 색으로 찾지 않는다** — 어두운 지면과 안 갈려서 다크 표지를 잘라먹는다.
-    #   그건 꼴이 아니라 뜻을 읽는 일이다. **비율로 재면 꼴이다**: 지면 치수는 파일이 들고
-    #   (`PageSetup`), 놓이는 규칙은 「복판에 비율 맞춰」라 집을 자리가 곱셈 몇 번으로 나온다.
-    # ⚠ **못 읽으면 화면 통째로 물러난다.** 지면을 못 재는 것과 그림을 못 내는 것은 다른
-    #   명제다 — 여기서 멈추면 QA 가 통째로 선다. 대신 **물러났다는 사실을 말한다.**
-    # ⚠ **「읽었나」를 결과 치수에서 역산하지 않는다.** 화면과 지면의 비율이 같으면(16:9 화면에
-    #   16:9 덱) 띠가 없어 집을 자리가 화면과 **참으로 같아진다** — 그 같음을 실패로 읽으면
-    #   멀쩡한 판이 매번 경고를 낸다. 상태를 따로 든다: 읽었나는 읽은 자리가 안다.
+    # ── 지면만 집는다 ───────────────────────────────────────────
+    # 지면 치수(`PageSetup`)와 「복판에 비율 맞춰」 규칙으로 집을 자리를 셈한다 — 못 읽으면 화면 통째로 물러나고 그렇다고 말한다.
+    # ⚠ 띠를 픽셀 색으로 찾지 않는다 — 어두운 지면과 안 갈려 다크 표지를 잘라먹는다. 읽었나는 결과 치수가 아니라 $pageKnown 이 든다
     $pageKnown = $false
     $clip = [System.Drawing.Rectangle]::new($screen.X, $screen.Y, $screen.Width, $screen.Height)
     try {
@@ -220,8 +196,7 @@ try {
         }
     } catch { }
 
-    # 무엇을 집었나는 **기계가 말하게 한다.** 안 찍으면 「지면만 집었나」를 눈으로 되물어야
-    # 하고, 그 물음은 다음에도 똑같이 안 걸린다.
+    # 무엇을 집었나를 찍어 둔다 — 「지면만 집었나」를 눈으로 되묻지 않게
     if (-not $pageKnown) {
         Write-Warning ("지면 치수를 못 읽어 화면을 통째로 찍는다 ({0}x{1}) — 띠까지 값을 문다" -f $screen.Width, $screen.Height)
     } else {
@@ -230,8 +205,8 @@ try {
             $clip.Width, $clip.Height, $clip.X, $clip.Y, $screen.Width, $screen.Height, $band)
     }
 
-    # 앞에 있는 창이 이 슬라이드쇼 창인가 — 쇼 창의 손잡이로 가린다. 프로세스 Id 만 보면 같은 파워포인트에 열린 다른 덱의 창이 앞에
-    # 있어도 지나간다(파워포인트는 하나만 떠, 찍는 사이 사람이 연 덱이 같은 프로세스다). 쇼 창 손잡이가 비어 오는 판에서는 프로세스 Id 로 본다
+    # 앞에 있는 창이 이 슬라이드쇼 창인가 — 쇼 창의 손잡이로 가린다(프로세스 Id 만 보면 같은 파워포인트의 다른 덱 창도 지나간다).
+    # 쇼 창 손잡이가 비어 오는 판에서는 프로세스 Id 로 본다
     $showHandle = [IntPtr]::Zero
     try { $showHandle = [IntPtr][long]$show.HWND } catch { }
 

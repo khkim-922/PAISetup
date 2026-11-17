@@ -11,10 +11,10 @@
     python -X utf8 -I regulation.py read   <processIdx> --grep <낱말 …>      # 그 낱말(하나라도)이 든 대목만
     python -X utf8 -I regulation.py read   <processIdx> --from N [--max N]   # 본문을 N 째 글자부터
     python -X utf8 -I regulation.py read   <processIdx> --changes            # 최근 개정의 바뀐 자리만
-    python -X utf8 -I regulation.py refresh                                  # 목록을 지금 다시 받는다(1 분 남짓)
+    python -X utf8 -I regulation.py refresh                                  # 목록을 지금 다시 받는다(오래 걸린다)
 
 ``find`` · ``tree`` · ``recent`` 는 받아 둔 목록(INDEX_DAYS 안 · recent 는 RECENT_FRESH_DAYS 안)을 읽고, 없거나 낡았으면 먼저 새로
-받는다 — 그 판만 1 분 남짓 걸린다. 받아 둔 목록으로 서는 판은 세션 파일 없이 답한다.
+받는다 — 그 판만 오래 걸린다. 받아 둔 목록으로 서는 판은 세션 파일 없이 답한다.
 ``find`` 의 말과 ``범주`` · ``tree`` 의 경로 · ``--grep`` 의 낱말은 빈칸 · 가운뎃점 · 괄호 · 대소문자를 안 보고 견준다(「여비관리」 = 「여비
 관리」 · 「안전환경」 = 「안전 · 환경」). ``범주`` 는 맨 위 범주 이름의 일부(정관 · 전사공통 · 에너지소재 · 기초소재 · 안전 · 인증). ``tree`` 의
 경로는 칸을 「>」 로 가르고 칸마다 그 깊이 범주 이름의 일부면 된다(「기초 > 작업표준 > 포항화성」). 셸이 「>」 를 쓰기로 읽으니 경로는
@@ -56,7 +56,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
 MAIL_SCRIPTS = HERE.parents[1] / "company-mail" / "scripts"    # 형제 스킬 — 본문을 푸는 손(``visible``) · 본문 그림을 받는 손(``body_images``)이 사는 자리
 IMAGES_ROOT = "company-regulation"   # read --images 가 그림을 받는 자리 — 임시 폴더 아래 <processIdx>
-INDEX_DAYS = 30                # 받아 둔 목록을 다시 안 받고 쓰는 날 — 사규는 드물게 바뀌고 받는 데 1 분 남짓 든다. 그 사이는 refresh
+INDEX_DAYS = 30                # 받아 둔 목록을 다시 안 받고 쓰는 날 — 사규는 드물게 바뀌고 다시 받기는 오래 걸린다. 그 사이는 refresh
 INDEX_DIR = ".company-regulation"   # 받아 둔 목록의 자리 — 홈 아래(임시 폴더는 정리 도구가 지운다)
 INDEX_FILE = "index.json"
 INDEX_FORMAT = 1               # 받아 둔 파일의 꼴 번호 — 줄의 칸이 바뀌면 올린다
@@ -72,7 +72,7 @@ CHANGES_BYTES = 8000           # 짧은 문서의 답에 바뀐 자리(changes)�
 CHANGE_SIDE = 1200             # 바뀐 자리 한쪽(전 · 후)의 글자 수 — 넘으면 자르고 온 길이를 적는다
 RECENT_DAYS = 30
 RECENT_FRESH_DAYS = 1          # recent 는 이보다 오래된 목록이면 먼저 새로 받는다 — 받아 둔 뒤에 시행된 것을 못 본다
-APP_DATE = "%Y.%m.%d"          # 앱이 시행일을 적는 꼴(잰 것)
+APP_DATE = "%Y.%m.%d"          # 앱이 시행일을 적는 꼴
 SEARCH_HIT_PREFIX = "searchMenuInList"   # 통합 검색 답에서 범주마다의 결과가 든 칸의 머리
 INDEX_ONLY = ("find", "tree", "recent")   # 받아 둔 목록이 서 있으면 앱을 안 부르는 명령
 NEXT_READ = "다음: 물음에 낱말이 있으면 --grep <낱말 …> 로 그 대목만 · 통째로는 more 의 --from 을 따라 끝까지 읽는다"
@@ -333,7 +333,7 @@ def read(app, args) -> dict:
     files = [f.get("fileName") or f.get("orgFileName") for f in got.get("searchProcessFileList") or [] if isinstance(f, dict)]
     if files:
         out["files"] = files
-    if len(body) > READ_FIRST:                           # 긴 문서 — 앞머리만 싣고 읽을 길을 댄다. 바뀐 자리는 수만 센다
+    if len(body) > READ_FIRST:
         changed = len(got.get("searchTobe") or [])
         if changed:
             out["changes_count"] = changed

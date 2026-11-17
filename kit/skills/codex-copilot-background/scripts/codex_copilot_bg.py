@@ -1,69 +1,14 @@
-"""Codex 에게 일을 맡기고, 한도가 차면 Copilot 에게 넘긴다 — 답은 파일로 받는다. 백그라운드 Bash 에서
-`pythonw` 로 부른다. 왜 pythonw 인가(콘솔 없는 부모 밑에서 창이 뜨는 사정)는 agy 래퍼
-`agy-background/scripts/agy_bg.py` 머리말이 든다 — 같은 윈도 사정이고, 여기도 같은 길(「창 없음」)로 띄운다.
+"""Codex 에게 일을 맡기고, Codex 가 한도면 자리 값이 허락할 때 Copilot 이 받는다 — 맡기는 쪽(Claude · agy)이 백그라운드
+Bash 에서 `pythonw` 로 부른다.
 
-**기본은 둘 다 읽기만 한다.** Codex 는 읽기 전용 샌드박스(`sandbox_mode`)에 앱 · 플러그인 · MCP 도구를 끄고, Copilot 은
-읽기 · 웹 읽기 도구만 보이게(`--available-tools`) 띄운다. Copilot 은 거기에 더해 작업 자리와 임시 폴더 밖 파일을 못 연다.
-**`--write` 를 주면 고치기 레인이다**(결정 0100) — Codex 를 작업 자리 쓰기 샌드박스(`workspace-write`)로 띄운다. 쓰는
-자리는 작업 자리(`--cwd`)와 **이 러너가 그 실행에만 세우는 임시 폴더**뿐이고, 셸의 망은 닫힌 채다(Codex 기본값). 앱 ·
-플러그인 · MCP 는 그대로 끈다. 그 샌드박스는 임시 폴더 환경변수(윈도 `TEMP` · `TMP`, 그 밖 `TMPDIR`)가 가리키는 자리와
-유닉스의 `/tmp` 도 쓰게 열어, 그대로 띄우면 작업 자리 밖 `%TEMP%` 밑 어디든 쓴다(실측 2026-10-11 — 셸 · apply_patch 둘 다
-섰다). 그래서 세 변수를 새 빈 폴더로 돌려 띄우고 끝나면 지우며, `/tmp` 와 설정의 덧붙인 쓰기 자리는 끈다
-(`WRITE_SANDBOX` — `exclude_slash_tmp` · `writable_roots`).
-**Copilot 도 고치기 레인을 받는다** — Codex 가 한도면 넘겨받는다. 편집 도구(`COPILOT_EDIT_TOOLS`)를 더 보이고 쓰기를
-허락(`--allow-tool=write`)하되, 쓰는 자리는 Copilot 의 경로 검사가 가둔다: 허락된 자리 밖에 쓰려는 호출은 묻는 자리로 가고,
-물을 사람이 없어(비대화) 거절된다. 그 검사는 기본으로 시스템 임시 폴더도 열어 그대로면 `%TEMP%` 밑 어디든 쓴다 — 그래서
-임시 폴더를 허락에서 빼고(`--disallow-temp-dir`), 임시 폴더 변수는 Codex 처럼 이 실행만의 빈 폴더로 돌린다(CLI 가 제 임시
-파일을 거기 남기고, 끝나면 지워진다). 셸은 안 보인다 — Copilot 의 셸 명령은 OS 샌드박스 없이 사용자 권한으로 돈다(`copilot
-help sandbox`). 예외 하나 — Copilot 이 실행마다 제 홈에 세우는 세션 폴더(`<COPILOT_HOME>/session-state/<id>/`)에는 쓴다.
-(실측 2026-10-11 · Copilot CLI 1.0.95 · apply_patch — 작업 자리 안은 섰고, 밖 · `%TEMP%` · 그 실행의 임시 폴더는 거절됐다.)
-자리를 잘못 물려받지 않게 `--cwd` 를 받아야만 띈다.
-**`--review [대상]` 을 주면 리뷰 모드다** — Codex 의 공식 리뷰 기능으로 시키고, 띄우는 인자는 읽기 레인 그대로다(읽기 전용
-샌드박스에서 git 읽기 명령이 돈다). 대상은 `uncommitted`(기본) · `base:<가지>` · `commit:<sha>` 이고, 래퍼가 프롬프트 앞에
-리뷰 스킬 부르기(`$review-agent`)와 대상 한 줄을 얹는다(`review_head`) — `codex exec review` 는 대상 깃발과 프롬프트를 같이
-못 받아 봉투가 리뷰어에게 안 닿는다. **Copilot 은 리뷰 모드를 안 받는다** — 리뷰에 드는 셸을 읽기로 가둘 길이 없다: 셸 허락은
-명령 · 하위 명령까지만 가르고, Copilot 이 제 손으로 읽기로 가르는 명령에 `git diff --output=<파일>` 이 들어 작업 자리에 파일을
-쓴다(실측 Copilot CLI 1.0.98 · 2026-10-15 — 허락 규칙 없이도 그 명령이 서서 파일이 생겼다). 그래서 리뷰 모드는 Codex 만
-띄우고, Codex 가 한도여도 Copilot 으로 안 넘긴다(2). `--agent copilot` 과 같이 주면 4. 고치기 레인 · 이어 묻기와도 같이 못
-준다(4).
+    pythonw codex_copilot_bg.py --prompt-file <파일> --out <답 파일> --cwd <작업 자리> [--write | --review [대상]]
+                                [--agent codex|copilot] [--resume <쪽>:<id>] [--model <이름>] [--timeout <초>]
 
-**프롬프트는 표준 입력으로 넘긴다** — 명령줄 길이 한도와 따옴표 해석을 안 탄다. 윈도에서 npm 이 까는
-실행 꼴은 `.cmd` 셔틀이라 명령줄 인자가 cmd.exe 를 거친다(8191자 · `& | % ^` 해석). 그래서 셔틀이 부르는
-JS 를 node 로 바로 부른다 — 인자는 고정 플래그뿐이다.
-
-**넘기는 것은 Codex 의 한도뿐이다** — 사용 한도 · 할당량 · 용량 초과 · 429 재시도 소진. 그 밖의 실패와 시간
-초과는 멈춘다: Copilot 으로 다시 띄우면 같은 일이 되풀이되거나 Codex 쪽 고장을 가린다. 깔리지 않은 쪽은
-건너뛴다(끝 줄에 남는다).
-
-**자리마다 다른 값은 환경변수로 받는다** — 배포본 설치기가 자리(사내 · 사외)마다 사용자 환경변수로 심고(차례 · 검색 ·
-샌드박스의 진본은 설치기의 `$CcBgVarsBySite`, 모델 둘은 맡기기 모델 표 `agent-envelope/models.conf`), 래퍼는 자리를 모른
-채 그 값만 읽는다. 없으면 아래 기본값이다. 값이 틀리면 그 이름을 대고 멈춘다(4) — 조용히 기본값으로 물러나면 자리의
-선(어느 쪽에 보내나)이 말없이 바뀐다.
-  · `CC_BG_AGENTS` — 차례이자 쓸 수 있는 쪽(쉼표). 여기 없는 쪽은 `--agent` · `--resume` 으로도 못 부른다
-  · `CC_BG_CODEX_WEB_SEARCH` — Codex 의 `web_search`. `disabled` 만이 검색 도구를 요청에서 뺀다(`cached` 도 싣는다)
-  · `CC_BG_CODEX_WIN_SANDBOX` — Codex 의 `windows.sandbox`. 없으면 안 넘겨 Codex 설정을 따른다
-  · `CC_BG_CODEX_MODEL_DELEGATE` — 맡기기 모델(깊은 판단). `--model` 이 없으면 이것을 먼저 쓴다
-  · `CC_BG_CODEX_MODEL` — 기본 모델(심부름). 맡기기 모델이 없을 때 쓰고, 가벼운 일은 부르는 쪽이 `--model` 로 준다
-Codex 의 `model` 은 `--model`(빈 값은 안 준 것) → 맡기기 모델 → 기본 모델 가운데 처음 선 것이고, 다 없으면 안 넘겨 Codex
-설정의 `model` 로 뜬다. Copilot 에는 모델을 안 넘긴다 — 이름이 Codex 의 것이다.
-
-**말은 전부 `--out` 파일로 간다** — pythonw 에는 표준 출력이 없다(`--help` 만 표준 출력에 찍는다). 맨 끝 줄
-`[cc-bg] …` 의 칸과 종료 코드의 뜻은 `--help` 가 든다 — `FOOTER_FIELDS` · `EXIT` · `STATUS_WORDS` 에서 지어 찍으니 여기에
-다시 적지 않는다.
-`--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다. **이어 묻기 값은 그쪽 대화 기록이 실제로 남았을 때만
-싣는다** — 제 홈에 못 쓰는 자리(부른 쪽의 샌드박스)에서 돌면 id 는 나와도 기록이 없어 이어 묻기가 진다.
-**Copilot 이 gh 로그인의 토큰이 무효라 졌으면 갈래 바로 뒤에 그 말과 되살리는 명령(`gh auth login`)을 싣는다** — Copilot
-CLI 는 따로 로그인하지 않고 gh 로그인을 쓰는데, 그 토큰은 다른 기기의 gh 로그인에 밀려 죽을 수 있고 Copilot 제 안내는
-망을 의심하게 한다(claude-config 결정 0137).
-
-**웹 검색 수(`web=`)는 Codex 가 실제로 마친 검색이다** — 검색을 열어 두어도 검색 없이 기억으로 답할 수 있고,
-모르는 도구를 오류 없이 삼키는 게이트웨이 뒤에서는 그것이 조용히 난다. 답만 보면 안 갈려 끝 줄이 센다.
-Copilot 은 `-` 다 — 검색 도구가 없고, 주소를 연 횟수를 세는 이벤트 꼴은 아직 안 잡았다.
+내는 것 — 답과 맨 끝 줄 `[cc-bg] …` 을 `--out` 파일에 쓴다(어느 갈래로 끝나든). 모드 셋 · 차례 · 자리 값(`CC_BG_*`) · 끝 줄의
+칸 · 종료 코드는 `--help` 가 든다(표준 출력에 찍는 것은 그것뿐이다).
+레인마다 무엇으로 가두나 · 넘기는 까닭 · 자리 값이 오는 길은 `references/DESIGN.md` 가 든다.
 """
-import argparse
-import codecs
 import glob
-import json
 import os
 import re
 import shutil
@@ -71,13 +16,9 @@ import subprocess
 import sys
 import tempfile
 import time
-import traceback
+from pathlib import Path
 
 AGENTS = ('codex', 'copilot')   # 차례 — 1번 · 2번
-CREATE_NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
-DEFAULT_TIMEOUT_SEC = 1800      # 기본 한도 — 짧은 일도 그대로 둔다(끝나는 대로 돌아온다)
-POLL_SEC = 2                    # 끝났나 보는 간격
-STDERR_TAIL_CHARS = 2000        # 실패 때 답 파일에 옮기는 stderr 꼬리
 EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'empty': 2, 'timeout': 3, 'usage': 4}
 FOOTER = '[cc-bg]'
 # 갈래 낱말의 뜻 — `--help` 의 종료 코드 표가 `EXIT` 의 이름마다 단다. 갈래 낱말은 끝 줄의 첫 낱말이기도 하다
@@ -98,48 +39,35 @@ FOOTER_FIELDS = (
     ('resume', '이어 묻기 값 `<쪽>:<id>` — 그쪽 대화 기록이 실제로 남았을 때만. 아니면 `-` 와 까닭'),
     ('raw', '날 출력(jsonl) 파일 경로 — 답이 안 온 갈래에서만'),
 )
-# 프롬프트 파일이 받는 인코딩 — `decode_prompt` 가 받는 것과 같은 말이고 거절 사유 · `--help` 가 이 글을 읽는다
-PROMPT_ENCODINGS = 'UTF-8(BOM 은 있어도 없어도) · UTF-16 LE/BE(BOM 이 있어야)'
 
 # 셔틀(`.cmd`)이 부르는 JS — npm 전역 자리(셔틀 곁의 `node_modules`) 기준
 NPM_ENTRY = {'codex': ('@openai', 'codex', 'bin', 'codex.js'),
              'copilot': ('@github', 'copilot', 'npm-loader.js')}
-SHIM_EXT = ('.cmd', '.bat')
 
 # Codex 의 한도 문구 — openai/codex `codex-rs/protocol/src/error.rs` 의 것이다. 「You’ve」의 아포스트로피가 판마다
 # U+2019 · ASCII 로 갈려 그 뒤부터 문다. 마지막 둘은 API 키 방식 · 일반 429 를 재시도하다 다 쓴 꼴이다.
 CODEX_QUOTA_RE = re.compile(r'hit your usage limit|Quota exceeded\. Check your plan|Selected model is at capacity|'
                             r'exceeded retry limit, last status: 429|rate limit exceeded')
-# 읽기 전용 샌드박스는 셸 명령에만 걸린다 — 앱 커넥터(`codex_apps`) · 플러그인 · MCP 서버의 도구는 샌드박스 밖에서
-# 돌고(쓰기 · 보내기를 하는 도구도 있다) 웹 검색 값과 따로 웹을 연다. 그래서 셋을 다 끄고 띄운다 — 웹으로 가는 길이
-# 검색 도구(`web_search`) 하나로 좁아져, 끝 줄의 `web=` 가 그 길을 다 센다.
-# 승인은 `never` 로 박는다 — 샌드박스가 두 레인의 유일한 울타리여야 한다. 사용자 설정에 `approvals_reviewer = "auto_review"` 가
-# 서면(설치기가 Codex 를 고른 PC 에 심는다 · 결정 0127) `codex exec` 가 승인을 `on-request` 로 바꾸고, 검토자가 샌드박스 밖 쓰기를
-# 승인한다(실측 2026-10-13 · codex-cli 0.162.1 — 읽기 전용 샌드박스에서 작업 자리 밖에 파일이 섰고, 이것을 박으면 막혔다).
+# 앱 · 플러그인 · MCP 를 끄고 승인을 `never` 로 박는다 — 샌드박스가 두 레인의 유일한 울타리여야 한다(까닭은 references/DESIGN.md
+# 「Codex 를 띄우는 고정 인자」)
 CODEX_ARGS = ['-c', 'approval_policy="never"', '-c', 'features.apps=false', '-c', 'features.plugins=false',
               '-c', 'mcp_servers={}', '--skip-git-repo-check', '--json']
 CODEX_SANDBOX = {False: 'read-only', True: 'workspace-write'}   # 읽기 레인 · 고치기 레인
-# 고치기 레인의 쓰는 범위를 작업 자리 + 임시 폴더 변수 하나로 못 박는다 — Codex 설정 낱말 그대로(`sandbox_workspace_write.*`).
-# 임시 폴더 변수는 남긴다(`exclude_tmpdir_env_var=false`) — 그 변수를 러너가 세운 빈 폴더로 돌려 띄우므로 거기만 열린다.
-# 셸 도구 다수가 임시 폴더를 써서 아예 닫으면 검사 · 빌드가 진다. `/tmp` 는 유닉스에서만 열리던 자리다(윈도는 안 본다).
+# 고치기 레인의 쓰는 범위 — 작업 자리와 임시 폴더 변수 하나(러너가 세운 빈 폴더로 돌린다). 그 변수를 아예 닫으면 셸 도구의
+# 검사 · 빌드가 진다
 WRITE_SANDBOX = ['-c', 'sandbox_workspace_write.writable_roots=[]',
                  '-c', 'sandbox_workspace_write.exclude_tmpdir_env_var=false',
                  '-c', 'sandbox_workspace_write.exclude_slash_tmp=true']
-# Codex 가 임시 폴더로 읽는 변수 — 윈도 샌드박스는 `TEMP` · `TMP`, 그 밖은 `TMPDIR`(openai/codex `windows-sandbox-rs` ·
-# `protocol/src/permissions.rs`). 셋 다 같은 새 폴더로 돌린다. 고치기 레인이면 두 쪽 다 돌린다 — Copilot 이 「시스템 임시
-# 폴더」로 여는 자리도 이 변수를 따랐다(실측 2026-10-11 — 돌린 폴더 밑 쓰기는 서고 원래 `%TEMP%` 밑은 거절됐다).
+# 임시 폴더 변수 — Codex 는 윈도에서 `TEMP` · `TMP`, 그 밖에서 `TMPDIR` 을 읽고 Copilot 의 「시스템 임시 폴더」도 이 변수를
+# 따른다. 고치기 레인이면 셋 다 같은 새 폴더로 돌린다
 TEMP_VARS = ('TEMP', 'TMP', 'TMPDIR')
 WRITE_TMP_PREFIX = 'cc-bg-write-'
-# 이어 묻기가 서는 대화 기록의 자리(이 PC 실측 2026-10-11) — Codex 는
-# `<CODEX_HOME>/sessions/<년>/<월>/<일>/rollout-<시각>-<id>.jsonl`, Copilot 은 `<COPILOT_HOME>/session-state/<id>/`.
-# 홈 변수가 없으면 `~/.codex` · `~/.copilot` 이다(두 CLI 의 설명).
+# 이어 묻기가 서는 대화 기록의 자리 — (홈 변수 · 그 변수가 없을 때의 홈 · 홈 아래 폴더 · 파일 이름 꼴). Codex 는
+# `sessions/<년>/<월>/<일>/rollout-<시각>-<id>.jsonl`, Copilot 은 `session-state/<id>/`
 STORE = {'codex': ('CODEX_HOME', '.codex', ('sessions', '*', '*', '*'), 'rollout-*-{id}.jsonl'),
          'copilot': ('COPILOT_HOME', '.copilot', ('session-state',), '{id}')}
 NO_RESUME = ('이어 묻기 못 함 — 대화 기록이 안 남았다({where} 에 이 대화가 없다). 받는 쪽이 제 홈에 못 쓰는 자리'
              '(부른 쪽의 샌드박스)에서 돌았거나 대화가 서기 전에 멈췄다')
-# 답 파일의 인코딩 — 윈도 PowerShell 5.1 의 `Get-Content` 는 BOM 없는 파일을 ANSI 코드 페이지(한국어 윈도는 949)로 읽어
-# 한글과 끝 줄의 `·` 를 깨뜨린다(`·` → `쨌` — 실측 2026-10-11). BOM 이 있으면 UTF-8 로 읽는다. 다른 OS 는 BOM 없이 둔다.
-ANSWER_ENCODING = 'utf-8-sig' if os.name == 'nt' else 'utf-8'
 
 # 자리 값의 이름과 받는 값 — 받는 값은 Codex 설정의 낱말 그대로다(`web_search` · `windows.sandbox`).
 KNOB_AGENTS = 'CC_BG_AGENTS'
@@ -156,14 +84,12 @@ MODEL_NAME_RE = re.compile(r'[A-Za-z0-9._:/-]+')  # TOML 따옴표 안에 그대
 # 끝난 기록도 있어 그것보다 이 이벤트를 먼저 본다.
 COPILOT_QUOTA_TYPES = ('quota', 'rate_limit')
 COPILOT_TOOLS = ('view', 'web_fetch', 'glob', 'rg')   # 읽기 · 웹 읽기만 — 셸 · 쓰기는 모델이 아예 못 본다
-# 고치기 레인에 더 보이는 편집 도구 — Copilot 이 「edit」 갈래로 묶는 넷 그대로다. 모델 계열마다 받는 것이 다르다(GPT 는
-# apply_patch). 셸(`powershell` · `bash` 와 그 딸린 도구)은 고치기 레인에도 안 보인다 — 셸 명령은 OS 샌드박스 없이
-# 사용자 권한으로 돌아(`copilot help sandbox`) 경로 검사를 울타리로 믿을 수 없다.
+# 고치기 레인에 더 보이는 편집 도구 — Copilot 이 「edit」 갈래로 묶는 넷(모델 계열마다 받는 것이 다르다). 셸은 안 보인다 —
+# OS 샌드박스 없이 사용자 권한으로 돌아 경로 검사를 울타리로 못 믿는다
 COPILOT_EDIT_TOOLS = ('apply_patch', 'create', 'edit', 'str_replace_editor')
 COPILOT_ARGS = ['--allow-tool=web_fetch', '--allow-all-urls', '--no-ask-user', '--output-format', 'json']
-# 고치기 레인의 울타리 — 편집 도구의 쓰기를 묻지 않고 허락하되(`write`), 경로 검사의 허락 자리에서 시스템 임시 폴더를 뺀다.
-# 남는 허락 자리는 작업 자리와 Copilot 제 세션 폴더다. 경로 검사를 끄는 깃발(`--allow-all-paths` · `--allow-all` · `--yolo`)과
-# 자리를 더하는 `--add-dir` 은 싣지 않는다.
+# 고치기 레인의 울타리 — 쓰기는 묻지 않고 허락하되 경로 검사의 허락 자리에서 시스템 임시 폴더를 뺀다. 경로 검사를 끄는 깃발
+# (`--allow-all-paths` · `--allow-all` · `--yolo`)과 `--add-dir` 은 싣지 않는다
 COPILOT_WRITE = ['--allow-tool=write', '--disallow-temp-dir']
 # 리뷰 모드(`--review`)의 대상 — 값 꼴과 리뷰어에게 줄 한 줄. 문장은 `codex exec review` 의 세 대상과 같은 뜻이다.
 REVIEW_TARGET_RE = re.compile(r'uncommitted|(base|commit):([A-Za-z0-9._/@^~-]+)')
@@ -172,13 +98,12 @@ REVIEW_TARGETS = {'uncommitted': 'Review the uncommitted changes: staged, unstag
                   'commit': 'Review the changes introduced by commit `{ref}`.'}
 DEFAULT_REVIEW_TARGET = 'uncommitted'
 REVIEW_SKILL = '$review-agent '   # Codex 의 리뷰 스킬을 이름으로 부르는 머리
-REVIEW_AGENT = 'codex'            # 리뷰 모드를 받는 쪽 — Copilot 은 안 받는다(머리말)
+REVIEW_AGENT = 'codex'            # 리뷰 모드를 받는 쪽 — Copilot 은 안 받는다(references/DESIGN.md)
 # 저장된 로그인보다 앞서는 토큰 — Copilot 권한이 없는 토큰이면 인증부터 깨진다. `COPILOT_GITHUB_TOKEN` 은 Copilot 에
 # 쓰라고 둔 것이라 남긴다.
 COPILOT_DROP_ENV = ('GH_TOKEN', 'GITHUB_TOKEN')
-# Copilot 이 gh 로그인의 토큰으로 인증하다 진 꼴 — GitHub 가 그 토큰을 401 로 거절했다. 문구는 실측이다(보관본
-# `copilot-gh-login-401.stderr.txt` · #156). 뒤는 판마다 갈려(「(401): Bad credentials」 · 「(401): GitHub returned: Bad
-# credentials」) 앞머리를 문다.
+# Copilot 이 gh 로그인의 토큰으로 인증하다 진 꼴(GitHub 의 401) — 보관본 references/copilot-gh-login-401.stderr.txt 그대로다.
+# 뒤는 판마다 갈려 앞머리를 문다
 COPILOT_GH_LOGIN_DEAD = 'Failed to fetch GitHub CLI user login (401)'
 # gh 가 키링의 로그인보다 먼저 쓰는 환경변수 토큰 — 이것이 선 셸에서는 `gh auth login` 이 로그인을 안 받는다.
 GH_ENV_TOKENS = ('GH_TOKEN', 'GITHUB_TOKEN')
@@ -187,42 +112,26 @@ GH_LOGIN_DEAD_SAY = ('Copilot 이 쓰는 gh 로그인이 무효가 됐다(대개
 GH_LOGIN_ENV_SAY = '(환경변수 토큰 {names} 이 선 셸에서는 gh 가 로그인을 안 받는다 — 그 변수를 비운 셸에서 친다)'
 
 
-def write(path, text):
-    """답 파일을 쓴다 — 인코딩은 `ANSWER_ENCODING`."""
-    with open(path, 'w', encoding=ANSWER_ENCODING) as f:
-        f.write(text)
-
-
-class Usage(Exception):
-    """인자를 못 갈랐다. argparse 는 그 말을 stderr 에 찍고 끝내지만 pythonw 에는 stderr 가 없다 — 답 파일에 옮긴다."""
-
-
-class Parser(argparse.ArgumentParser):
-    def error(self, message):
-        raise Usage(message)
-
-
-def out_arg(args):
-    """인자를 못 갈랐을 때 답 파일 자리 — `--out <경로>` · `--out=<경로>` 만 찾는다. 없으면 None."""
-    for i, x in enumerate(args):
-        if x == '--out' and i + 1 < len(args):
-            return args[i + 1]
-        if x.startswith('--out='):
-            return x[len('--out='):]
-    return None
-
-
-def decode_prompt(raw):
-    """프롬프트 파일 바이트 → 글. 받는 인코딩은 `PROMPT_ENCODINGS` — 그 밖이면 UnicodeDecodeError. BOM 은 걷힌다.
-    글에 NUL 이 있어도 거절한다: BOM 없는 UTF-16 · BOM 있는 UTF-32 는 UTF-8 로도 읽혀 NUL 이 낀 채 표준 입력으로 간다."""
-    if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
-        text = raw.decode('utf-16')
-    else:
-        text = raw.decode('utf-8-sig')
-    if '\x00' in text:
-        raise UnicodeDecodeError('utf-8', raw, 0, len(raw), 'NUL 문자가 든다')
-    return text
-
+# 러너 셋이 함께 쓰는 손은 곁에 깔린 스킬 agent-envelope 의 `runner_common.py` 가 든다. 러너는 창 없이 돌아 말할 곳이 답 파일
+# 뿐이라, 그 부품을 못 실으면 여기서 답 파일에 끝 줄을 남기고 끝낸다.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'agent-envelope' / 'scripts'))
+try:
+    import runner_common as common
+    from runner_common import (CREATE_NO_WINDOW, DEFAULT_TIMEOUT_SEC, POLL_SEC, PROMPT_ENCODINGS, SHIM_EXT, STDERR_TAIL_CHARS,
+                               HelpFormat, Parser, decode_prompt, kill_tree, read_jsonl, write)
+except ImportError as missing:
+    _args = sys.argv[1:]
+    _out = next((x[len('--out='):] for x in _args if x.startswith('--out=')), None)
+    if _out is None and '--out' in _args[:-1]:
+        _out = _args[_args.index('--out') + 1]
+    if _out:
+        try:
+            with open(_out, 'w', encoding='utf-8-sig' if os.name == 'nt' else 'utf-8') as _f:
+                _f.write(f'{FOOTER} failed · 공유 부품이 없다 — {missing}. 스킬 agent-envelope 이 이 스킬 곁에 깔려야 '
+                         '한다(설치를 다시 돌린다)\n')
+        except OSError:
+            pass
+    sys.exit(EXIT['failed'])
 
 def prompt_problem(path):
     """프롬프트 파일을 못 넘기는 까닭 — 없으면 None. 받는 쪽은 표준 입력을 UTF-8 로 읽는다: PowerShell 5.1 의
@@ -237,15 +146,6 @@ def prompt_problem(path):
         return (f'프롬프트 파일이 받는 인코딩이 아니다 — {PROMPT_ENCODINGS} 만 받는다. '
                 f'PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {path}')
     return None
-
-
-def footer_line(status, cells):
-    """끝 줄 — `FOOTER <갈래>` 뒤에 칸을 `FOOTER_FIELDS` 의 차례로 ` · ` 로 잇는다. `cells` 는 {칸 이름: 꼴을 갖춘 글}이고 있는
-    칸만 든다. 이름이 `FOOTER_FIELDS` 에 없으면 KeyError — 칸을 더하면서 뜻을 안 다는 일을 막는다."""
-    unknown = set(cells) - {name for name, _ in FOOTER_FIELDS}
-    if unknown:
-        raise KeyError(f'FOOTER_FIELDS 에 없는 끝 줄 칸: {sorted(unknown)}')
-    return ' · '.join([f'{FOOTER} {status}'] + [cells[name] for name, _ in FOOTER_FIELDS if name in cells])
 
 
 def resume_field(agent, conv):
@@ -267,16 +167,6 @@ def gh_login_dead_say(agent, status, reason, env):
         return ''
     names = [k for k in GH_ENV_TOKENS if env.get(k)]
     return GH_LOGIN_DEAD_SAY + (GH_LOGIN_ENV_SAY.format(names='·'.join(names)) if names else '')
-
-
-def kill_tree(proc):
-    """띄운 node 와 그 밑 CLI 까지 같이 끊는다 — 머리만 끊으면 자식이 남는다."""
-    if os.name == 'nt':
-        subprocess.run(['taskkill', '/T', '/F', '/PID', str(proc.pid)],
-                       capture_output=True, creationflags=CREATE_NO_WINDOW)
-    else:
-        proc.kill()
-    proc.wait()
 
 
 def head(agent):
@@ -358,22 +248,6 @@ def stdin_for(a):
     tmp.write(((review_head(a.review) if a.review else '') + body).encode('utf-8'))
     tmp.seek(0)
     return tmp
-
-
-def read_jsonl(path):
-    out = []
-    try:
-        with open(path, encoding='utf-8', errors='replace') as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith('{'):
-                    try:
-                        out.append(json.loads(line))
-                    except ValueError:
-                        pass
-    except OSError:
-        pass
-    return out
 
 
 def judge_codex(events, rc, err_text):
@@ -481,13 +355,6 @@ def run_once(agent, cmd_head, a, resume):
     return status, proc.returncode, answer, conv, reason, tokens, searches, raw_path
 
 
-class HelpFormat(argparse.RawDescriptionHelpFormatter):
-    """`--help` 의 꼴 — 폭만 넓혀 플래그마다 한 줄에 둔다(아래쪽 절은 `help_epilog` 가 짠 그대로 간다)."""
-
-    def __init__(self, prog):
-        super().__init__(prog, max_help_position=26, width=140)
-
-
 def build_parser():
     ap = Parser(add_help=False, formatter_class=HelpFormat,
                 description='Codex 에게 일을 맡기고(한도가 차면 자리 값이 허락할 때 Copilot 이 받는다), 답과 끝 줄을 --out 파일로 받는다.')
@@ -505,17 +372,6 @@ def build_parser():
     ap.add_argument('--review', nargs='?', const=DEFAULT_REVIEW_TARGET, metavar='TARGET',
                     help=f'리뷰 모드 — 대상은 {DEFAULT_REVIEW_TARGET}(기본) · base:<가지> · commit:<sha>')   # 대상은 `REVIEW_TARGET_RE`
     return ap
-
-
-def exit_table():
-    """종료 코드 표의 줄들 — `EXIT` 에서 같은 코드를 쓰는 이름끼리 묶고 `STATUS_WORDS` 로 뜻을 단다. 이름은 끝 줄의 갈래다."""
-    names = {}
-    for name, code in EXIT.items():
-        names.setdefault(code, []).append(name)
-    joined = {code: ' · '.join(ns) for code, ns in names.items()}
-    width = max(len(j) for j in joined.values())
-    return [f'  {code}  {joined[code]:<{width}}  ' + ' · '.join(STATUS_WORDS.get(n, n) for n in names[code])
-            for code in sorted(names)]
 
 
 def help_epilog():
@@ -551,42 +407,8 @@ def help_epilog():
         '  그 밖(PowerShell 5.1 의 Set-Content 기본인 ANSI 따위)은 `usage` 로 끝나고 까닭이 --out 파일에 남는다.',
         '',
         '종료 코드(끝 줄의 갈래 이름과 같다):',
-        *exit_table(),
+        *common.exit_table(EXIT, STATUS_WORDS),
     ]) + '\n'
-
-
-def show_help(ap):
-    """`--help` — 도움말을 표준 출력에 찍고 0. 인자 검사보다 앞서고 파일은 안 쓴다."""
-    ap.epilog = help_epilog()
-    out = sys.stdout
-    if out is None:   # pythonw 에는 표준 출력이 없다 — 찍을 곳이 없다
-        return EXIT['ok']
-    if hasattr(out, 'reconfigure'):   # 윈도 파이프의 기본 인코딩(cp949)은 `—` 를 못 적어 죽는다 — 에이전트 셸은 UTF-8 로 읽는다
-        out.reconfigure(encoding='utf-8')
-    out.write(ap.format_help())
-    return EXIT['ok']
-
-
-def main():
-    ap = build_parser()
-    args = sys.argv[1:]
-    if '-h' in args or '--help' in args:
-        return show_help(ap)
-    try:
-        a = ap.parse_args(args)
-    except Usage as e:
-        out = out_arg(args)
-        if out:
-            try:
-                write(out, f'{FOOTER} usage · 인자가 틀렸다 — {e}\n')
-            except OSError:
-                pass
-        return EXIT['usage']
-    try:
-        return run(a)
-    except Exception as e:   # 어디서 멈췄든 답 파일과 끝 줄을 남긴다 — 부른 쪽은 그것만 본다
-        write(a.out, f'{traceback.format_exc()}\n{FOOTER} failed · 러너가 멈췄다 — {type(e).__name__}: {e}\n')
-        return EXIT['failed']
 
 
 def run(a):
@@ -670,13 +492,17 @@ def run(a):
         cells['failover'] = f'failover={"; ".join(tried)}'
     if status != 'ok':
         cells['raw'] = f'raw={raw_path}'
-    footer = footer_line(status, cells)
+    footer = common.footer_line(FOOTER, FOOTER_FIELDS, status, cells)
     if status == 'ok':
         write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
     else:
         # 날 출력은 길어(이벤트 수백 줄) 옮기지 않는다 — 까닭과 그 자리만 적는다
         write(a.out, f'{answer.rstrip()}\n{reason}\n{footer}\n')
     return EXIT[status]
+
+
+def main():
+    return common.main(build_parser, help_epilog, run, FOOTER, EXIT)
 
 
 if __name__ == '__main__':

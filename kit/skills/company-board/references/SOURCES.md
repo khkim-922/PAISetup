@@ -10,6 +10,7 @@
 - 들어가기 — 사내 세션(ep-login 의 세션 파일)만으로 SSO 넘김(`redirectSMSP.jsp?redir_url=…dispatcherSubmitSSO.jsp?menu=BBS_ALL`) →
   dispatcherSubmitSSO.jsp 에 POST(게시판 JSESSIONID 가 심긴다 · `plainTxt = "id=…"` 가 온다) → 그 글을 뒤섞어 cefDispatcherSSO.jsp 에
   `_xcsparam` 으로 POST 하면 선다. 리다이렉트는 없다. 세션 파일에 남은 낡은 게시판 쿠키만으로는 안 선다(로그인 창 한 줄)
+  — 그 뒤는 `XClickController` 에 폼 꼴 POST 로 묻고, 끊긴 세션은 「openMiniLoginPop」 한 줄을 낸다
 - 뒤섞기 — `urlsecure.js` 의 jQuery.encrypt(열쇠 `xclick6` · delta 123 · 세 번). 파이썬 판이 화면과 같은 글자를 냈다(표본 셋 ·
   `check_board.py` 의 기대값)
 - 게시판 나무 — `treeBBSSub` 를 뿌리(BBS85 · BBS_ALL_00001)부터 묶음마다 내려가면 8 번에 0.4 ~ 0.8 초 · 24 곳. `authMode=WRITE` 는 쓸 수 있는

@@ -8,7 +8,7 @@
 층 · 걷는 조건 — 손으로 도는 검사(README 「돌려 보기」 · ep_session.py 나 부르는 얇은 명령을 고칠 때). check-design 1 절의 넷 — 결함에 실제 길이 있고(세션 파일이 낡은 채
 남는 자리는 Edge 를 닫을 때마다 온다) · 틀리면 조용하다(손을 매번 띄우거나 낡은 파일로 두 번 돌아도 답은 온다) · 사람의 시간과 말을
 다친다(회사 PC 의 프로세스 값 · 「바꾸지 않았다」는 틀린 말) · 다른 검사는 이 바퀴를 안 잰다.
-받아 둔 파일의 판정이 걸린 넷 — 길이 분명하다(쓰는 사람의 홈이 잠겼거나 다른 세션이 그 파일을 쥔 순간 · 사규 목록은 받는 데 1 분 남짓 든다) ·
+받아 둔 파일의 판정이 걸린 넷 — 길이 분명하다(쓰는 사람의 홈이 잠겼거나 다른 세션이 그 파일을 쥔 순간 · 사규 목록처럼 받는 데 오래 걸리는 것이 있다) ·
 만드는 PC 에서는 조용하다(여기서는 늘 써진다) · 이미 느린 길을 되풀이시킨다(다 받고 나서 오류로 끝나 부를 때마다 다시 받는다) · 다른 검사는 안
 잰다. 걷는 조건 — 받아 둔 파일을 쓰는 스킬이 없어지면.
 끝 줄이 「통과 N/N」이면 선 것이다.
@@ -113,16 +113,17 @@ def run(fn, **kw):
 
 
 def check_known_file_reads_the_hands_default():
-    real = HERE / "edge_session.js"
-    found = ep.DEFAULT_FILE_RE.search(real.read_text(encoding="utf-8")) if real.is_file() else None
-    judge("known_file 의 정규식이 진짜 손의 DEFAULT_FILE 줄을 찾는다", bool(found and found.group(1).startswith("~")),
-          "없음" if real.is_file() else "곁에 edge_session.js 가 없다")
+    real = HERE / "places.json"
+    places = json.loads(real.read_text(encoding="utf-8")) if real.is_file() else {}
+    judge("받는 손 곁의 places.json 이 세션 파일의 기본 자리(홈 아래)를 든다",
+          str(places.get("session_file", "")).startswith("~/"), "없음" if real.is_file() else "곁에 places.json 이 없다")
+    judge("파이썬 쪽 기본 자리가 그 파일의 값이다", ep.DEFAULT_FILE == places.get("session_file"), ep.DEFAULT_FILE)
     with stage(file="live"):
         judge("MAILBOX_COOKIES 가 가리키는 파일이 있으면 그것이다", ep.known_file() == FILE)
     with stage(file=None):
         judge("파일이 없으면 None", ep.known_file() is None)
     with stage(file="live", cookies_env=False):
-        judge("환경변수 없이 대역 손(DEFAULT_FILE 줄 없음)이면 None — 손부터 간다", ep.known_file() is None)
+        judge("환경변수 없이 대역 손(곁에 places.json 없음)이면 None — 손부터 간다", ep.known_file() is None)
 
 
 def check_file_first_skips_the_hand():

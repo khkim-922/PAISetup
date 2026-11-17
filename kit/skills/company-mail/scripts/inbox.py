@@ -1,31 +1,30 @@
-"""사내 메일함(Lotus Notes · HCL Domino 웹메일)을 읽는 손과, 메일함을 바꾸는 이름 붙은 손들 — 표준 라이브러리와 형제 스킬 ep-login 의
-``ep_session``(세션 파일 → 쿠키 통) 만 쓰는 파일 하나. ``ep_session`` 은 스킬 홈에 나란히 깔린 ``../../ep-login/scripts/`` 에서 싣고,
-그 자리가 없으면(이 파일만 옮겨 쓸 때) ``ep_session.py`` 를 이 파일 곁에 함께 둔다.
+"""사내 메일함(Lotus Notes · HCL Domino 웹메일)을 읽는 손과, 메일함을 바꾸는 이름 붙은 손들. 표준 라이브러리와 형제 스킬 ep-login 의
+``ep_session``(세션 파일 → 쿠키 통)만 쓴다 — ``../../ep-login/scripts/`` 에서 싣고, 그 자리가 없으면(이 파일만 옮겨 쓸 때)
+``ep_session.py`` 와 ``places.json`` 을 이 파일 곁에 둔다.
 
 무엇을 하나
-    받은편지함 · 쓰는 사람이 지은 폴더 · 보낸편지함의 목록, 모든편지함의 받는 꼴 · 중요도, 받는 사람 목록 보기, 본문(HTML ·
-    평문), 첨부, 사내 주소록 찾기, 세션 확인을 받는다. 이 길(읽기 길)은 **메일의 읽음 표시를 바꾸지 않는다** — 읽음을 안
-    바꾸는 것으로 잰 주소 꼴만 묻고, 그 밖의 주소는 서버에 닿기 전에 ``ChangeRefused`` 로 막는다. 사람이 웹메일에서 열기
-    전까지 그 메일은 「안 읽음」으로 남는다.
+    읽기 길 — 받은편지함 · 폴더 · 보낸편지함 · 임시보관함 · 휴지통의 목록, 모든편지함의 받는 꼴 · 중요도, 받는 사람 목록, 검색, 본문 ·
+    첨부, 사내 주소록 · 조직도, 폴더 나무 · 규칙 목록, 세션 확인. ⚠ **읽기 길은 메일의 읽음 표시를 바꾸지 않는다** — 읽음을 안 바꾸는
+    것으로 잰 주소 꼴(``read_only_patterns``)만 묻고, 그 밖은 서버에 닿기 전에 ``ChangeRefused`` 로 막는다.
 
-    메일함을 바꾸는 손은 이름 붙은 함수 하나씩이다 — 읽음으로(``mark_read``) · 안 읽음으로(``mark_unread``) · 폴더 만들기
-    (``create_folder``) · 지우기(``delete_folder``) · 메일 옮기기(``move_mails``) · 휴지통으로 보내기(``trash_mails``) ·
-    휴지통에서 되살리기(한 통 ``restore_from_trash`` · 여러 통 ``restore_mails``) ·
-    메일 규칙 넣기 · 고치기(``save_rule``) · 지우기(``delete_rule``). 읽기 길은 이것들을 부르지 않는다. 폴더 나무(``folder_tree``)와
-    규칙 목록 · 한 건(``rules`` · ``rule``) · 휴지통 목록(``list_trash``)은 읽기만 한다.
+    메일함을 바꾸는 손은 이름 붙은 함수 하나씩이다 — ``mark_read`` · ``mark_unread`` · ``create_folder`` · ``delete_folder`` ·
+    ``move_mails`` · ``trash_mails`` · ``restore_from_trash`` · ``restore_mails`` · ``save_rule`` · ``delete_rule`` · ``save_draft``.
+    사람이 그 대상을 보고 고른 뒤에만 부른다 — 이 파일은 그 확인을 대신하지 않는다. 손마다 제 주소 꼴만 보내고, 서버의 답을 믿지 않고
+    보기로 다시 봐서 안 섰으면 ``MailboxError`` 다. 규칙의 자동전달 칸은 늘 비워 보내고 자동전달 규칙은 고치지 않는다(지우기는 된다).
+
+    회사 메일함 · 웹메일 화면에서 잰 주소 · 칸 · 꼴은 ``references/SOURCES.md`` 「inbox.py」가 든다 — 회사 PC 에서 다시 재기 전에는
+    바꾸지 않는다(집의 검사는 그 꼴을 흉내 낸 가짜라 초록인 채 실물에서 깨진다).
 
 어떻게 부르나
-    로그인은 이 파일이 하지 않는다. 스킬 ep-login 의 받는 손(``edge_session.js``)이
-    사내 SSO 를 넘은 세션 쿠키를 파일로 남기면(Playwright 저장 상태 꼴 ``{"cookies": [...]}`` — 다른 손이 같은 꼴로 남겨도 된다),
-    이 파일은 그 쿠키로 메일 서버에 묻는다. 쿠키는 보낼 주소의 호스트에 맞는 것만 실린다 — 파일에 다른 사내 앱의 쿠키가 함께
-    들어 있어도 된다::
+    로그인은 이 파일이 하지 않는다. 스킬 ep-login 의 받는 손이 남긴 세션 쿠키 파일(Playwright 저장 상태 꼴 ``{"cookies": [...]}``)로
+    묻는다. 쿠키는 보낼 주소의 호스트에 맞는 것만 실린다 — 다른 사내 앱의 쿠키가 함께 들어 있어도 된다::
 
         import inbox
 
         box = inbox.Mailbox.from_env()                  # 설정이 틀리면 여기서 MailboxConfigError
         for mail in box.list(count=20):                 # 받은편지함 — 새것부터
             if mail.unread:
-                html = box.body(mail)                   # HTML 본문 — 꼴과 상관없이 한 길 · 없거나 서버가 안 주면 None
+                html = box.body(mail)                   # HTML 본문 — 없거나 서버가 안 주면 None
                 text = box.body(mail, "text")           # 평문 조각 — 없으면 None
                 for a in mail.attachments:
                     if a.ecm:                           # 문서함(ECM)을 가리키는 쪽지 — 문서는 문서함에 있다
@@ -49,7 +48,7 @@
         members = box.group_members(groups[0][0])                     # 그 배포그룹의 (이름, 직급, 부서, 메일)
         box.session_alive()                             # 메일을 안 건드리는 세션 확인
 
-        # ⚠ 아래는 메일함을 바꾼다 — 사람이 확인한 뒤에만(머리말 「메일함을 바꾸는 손」)
+        # 아래는 메일함을 바꾼다 — 사람이 확인한 뒤에만
         made = box.create_folder("검토", parent="프로젝트")   # FolderNode — 다시 봐서 선 것
         box.move_mails([mail.unid], made.path)          # 빈 글자면 받은편지함 — 다시 봐서 다 든 것
         box.trash_mails([mail.unid])                    # 휴지통으로 — 다시 봐서 다 든 것
@@ -60,151 +59,24 @@
                                        conditions={"subject": "[주간]"}))   # unid 를 주면 고친다
         box.delete_rule(uid)
 
-    주소 · 쿠키 파일을 환경변수 대신 바로 줄 때는 ``inbox.Mailbox(url, cookies_file)`` 다. 메일함 주소를 모르면 세션으로
-    받는다 — ``inbox.discover_mailbox("http://<메일 서버>", cookies_file)`` 가 그 세션에 로그인한 사람의 ``…/<번호>.nsf`` 를 낸다.
+    주소 · 쿠키 파일을 환경변수 대신 바로 줄 때는 ``inbox.Mailbox(url, cookies_file)`` 다. 메일함 주소를 모르면
+    ``inbox.discover_mailbox("http://<메일 서버>", cookies_file)`` 가 그 세션에 로그인한 사람의 ``…/<번호>.nsf`` 를 낸다.
 
 무엇을 내나
-    목록은 ``Entry`` · ``SentEntry`` 를, 폴더는 ``Folder`` 를, 모든편지함은 ``Marks`` 를, 받는 사람 목록은 ``Recipient``
-    묶음을, 주소록은 ``DirectoryPerson`` 을 낸다. 보낸 사람은 ``Sender``(이름 · 주소 · 영문 이름), 첨부 이름은
-    ``AttachmentName`` 이다. 시각은 메일함이 준 글자 그대로 낸다 — 시각으로 푸는 일은 부르는 쪽이 한다. ``body`` 는 글자,
-    ``attachment`` 는 bytes, ``ecm_key`` 는 문서함 문서의 열쇠(16 hex 글자)를 낸다.
+    목록은 ``Entry`` · ``SentEntry`` · ``Found`` 를, 폴더는 ``Folder`` · ``FolderNode`` 를, 모든편지함은 ``Marks`` 를, 받는 사람은
+    ``Recipient`` 묶음을, 주소록은 ``DirectoryPerson`` · ``OrgChart`` 를, 규칙은 ``Rule`` 을 낸다. 시각은 메일함이 준 글자 그대로다 —
+    시각으로 푸는 일은 부르는 쪽이 한다. ``body`` 는 글자, ``attachment`` 는 bytes, ``ecm_key`` 는 문서함 문서의 열쇠(16 hex)다.
 
-    세션이 끊겼으면 ``SessionExpired`` — 스킬 ep-login 으로 다시 로그인해 쿠키를 새로 남기라는 뜻이다. 읽기 길이 메일함을 바꿀 주소(또는
-    읽기 전용으로 잰 꼴 밖의 주소)를 지으려 하면 ``ChangeRefused``. 설정 · 인자가 틀리면 ``MailboxConfigError``, 조직도가 그
-    회사 값으로 부서를 하나도 안 주면 ``DirectoryGap``, 서버가 답을 안 주면 ``MailboxError``(넷 다 이것의 갈래다). 세션 파일이
-    없거나 못 읽거나 쿠키가 없으면 ``SessionMissing``(``MailboxConfigError`` 의 갈래 — 스킬 ep-login 으로 세션을 받을 자리다).
-    무엇을 했는지는 ``logging`` 으로 남긴다(로거 이름은 이 모듈 이름) — 셈과 방향만 싣고 본문 · 제목 · 이름 · 주소 · 첨부 이름은 안 싣는다.
-
-메일함을 바꾸는 손 — 언제 부르나는 부르는 쪽이 정한다
-    ``mark_read`` · ``mark_unread`` 는 쓰는 사람의 메일함을 바꾼다. 사람이 그 메일 하나를 두고 「읽음으로 · 안 읽음으로」를
-    분명히 고른 뒤에만 부른다 — 회차 · 예약 작업 · 모델의 판단이 스스로 부르면 사람이 새 메일을 못 알아본다. 이 파일은
-    그 확인을 대신하지 않는다. 손 하나는 메일 하나만 바꾸고, 그 두 꼴 밖의 주소는 ``ChangeRefused`` 로 막는다.
-
-    폴더 · 옮기기 · 규칙의 손도 같다 — 사람이 그 폴더 · 그 메일들 · 그 규칙을 보고 고른 뒤에만 부른다. 손마다 제 주소 꼴만 보내고
-    (``_send_folder`` · ``_send_rule``), 서버의 ``OK`` 를 믿지 않고 보기로 다시 봐서 안 섰으면 ``MailboxError`` 를 낸다.
-    ⚠ 규칙은 서버가 그 뒤의 새 메일에 스스로 쓴다 — 사람이 없는 자리에서 메일함을 계속 바꾸는 손이라 넣기 · 고치기 전의 확인이
-    더 무겁다. 규칙의 자동전달 칸(남에게 메일이 나가는 길)은 이 손이 늘 비워 보내고, 자동전달 규칙은 고치지 않는다(지우기는 된다).
+    오류는 다 ``MailboxError`` 의 갈래다 — 세션이 끊겼으면 ``SessionExpired``(스킬 ep-login 으로 다시 로그인한다), 읽기 길이 잰 꼴
+    밖의 주소를 지으려 하면 ``ChangeRefused``, 설정 · 인자가 틀리면 ``MailboxConfigError``(세션 파일이 없거나 못 읽거나 비었으면 그
+    갈래인 ``SessionMissing``), 조직도가 그 회사 값으로 부서를 하나도 안 주면 ``DirectoryGap``, 서버가 답을 안 주면 ``MailboxError``.
+    무엇을 했는지는 ``logging``(로거 이름은 모듈 이름)으로 셈과 방향만 남긴다 — 본문 · 제목 · 이름 · 주소 · 첨부 이름은 안 싣는다.
 
 환경변수(``from_env``)
     ``MAILBOX_URL``              메일함 주소 — 웹메일 주소창의 ``…/<번호>.nsf`` 까지(그 뒤는 버린다). 꼭 준다
-    ``MAILBOX_COOKIES``          세션 쿠키 파일                 기본 ``~/.mailbox-session.json``
-    ``MAILBOX_VIEW``             받은편지함 보기 이름           기본 ``XML_Inbox``
-    ``MAILBOX_TIMEOUT_SECONDS``  응답 시한(초)                  기본 ``30``
-
-사내 메일함에서 잰 것 — 어기면 조용히 망가진다. 바탕 사실의 원본은 사내 환경 기록(``~/.claude/posco/ENV-posco.md``
-「네트워크 접근」)이고, 주소 · 꼴마다 잰 판(셈 · 못 잰 까닭)은 그 앱 저장소(mail-secretary)의 ``docs/company-facts.md`` 와
-회사 확인 대장(그 저장소 이슈 #9)이 든다 — 줄 끝 괄호가 그 대장의 줄이다
-    * IMAP · POP3 는 닫혀 있다. 열린 길은 웹(80 · 443)뿐이고, 앞에 사내 SSO 가 선다
-    * ⚠ **문서를 여는 주소(``?OpenDocument`` · ``?EditDocument``)를 부르면 그 메일이 읽음으로 바뀌고, ``ag_read_cancel`` 은
-      안 읽음으로 바꾼다.** 목록(``?ReadViewEntries``) · 본문(``/0/<unid>/Body?OpenField`` · 조각 ``/Body/M…?OpenElement``) ·
-      첨부(``/$FILE/``) · 보기 목록 · 주소록 · 세션 확인은 안 바꾼다. 그래서 읽기 길은 그 꼴(``_read_only``)에 맞는 주소만
-      묻는다 — 닫힌 목록이라, 새 꼴은 읽음을 안 바꾸는 것을 잰 뒤 여기에 더해야 묻는다 (A · A2)
-    * 세션이 끊기면 서버가 오류 대신 **200 에 SSO 로 보내는 HTML** 을 준다 — 상태 코드로는 못 가린다. 답의 꼴(XML · JSON ·
-      기대한 형식)과 SSO 로 보내는 스크립트로 가린다. 낱말 「swpsso」만으로는 안 가른다 — 본문에 SSO 주소를 적은 사내 안내를
-      끊긴 세션으로 읽는다. 리다이렉트는 따라가지 않는다 — 따라가면 쿠키가 SSO 에 실린다
-    * 받은편지함 목록의 ``read`` 열 — ``ico-nomail`` 이 안 읽음이다(되돌린 메일은 ``z^ico-nomail``). ``ico-okmail`` 읽음 ·
-      ``ico-post`` 회신함 · ``ico-remail`` 전달함은 다 읽은 것이다 (A · D)
-    * 보낸 사람 열 ``xname`` — 사내 메일은 ``<이름>-=spl=-<이름> &lt;<주소>&gt;-ENG-<영문>-=spl=-<영문>&lt;<주소>&gt;`` 이
-      XML 안에서 한 번 더 이스케이프돼(``&amp;lt;``) 온다. 밖의 메일 · 시스템은 주소만 온다 (A)
-    * 받는 꼴 열 ``xrtype`` — ``T`` 받는사람 · ``C`` 참조 · ``G`` 받는 사람 목록 밖의 그룹 · 배포 목록 (A)
-    * 받은 메일의 받는 사람은 받은편지함 목록에 없고(``SendTo?OpenField`` 는 501) 보기 ``!전체목록추출용`` 의 ``$102``
-      열이 든다 — 받는사람과 참조를 합친 한 글줄이고 사람마다 Notes 이름 · ``<이름> <주소>`` · ``<ID>(<약칭>)`` · 주소만
-      꼴이 섞인다. 기본 정렬이 날짜순이 아니라 ``&ResortDescending=1`` 로 날짜 내림차순을 받는다. 보기의 unid 는
-      ``/api/data/collections`` 에서 제목으로 찾는다 — 이 보기 이름은 한 메일함으로만 쟀다 (A)
-    * 본문 ``/0/<unid>/Body?OpenField`` 는 조각 꼴(평문만 · 평문+HTML · ``multipart/related``)과 상관없이 HTML 본문을 한 번에
-      준다. 이 주소에 HTTP 501 을 내는 메일이 있다(폴더에 든 한 통 · 첨부 없음 · 보낸 이 이름 없음 — 무엇이 501 을 내는지는
-      모른다) — 404 와 같이 「본문 없음」(None)으로 낸다. 오류로 올리면 메일함을 훑는 회차가 그 한 통에 통째로 진다 (N-가). 조각 ``/Body/M1.1?OpenElement`` 는 평문 · HTML 둘을 든 메일의 평문이다. 다른 꼴(``multipart/related`` 는 본문이
-      ``M1.1.1``)의 ``M1.1`` 은 안 쟀다 — 그 자리에 ``text/plain`` 이 아닌 것이 오면 평문 조각은 없는 것으로 낸다 (A)
-    * 첨부 이름은 ``attachment`` 열에 ``{}`` 로 이어 온다. 큰 첨부는 ECM 을 가리키는 ``<원래 이름>(<확장자>_<크기>KB).html``
-      이다. 그 html 은 문서가 아니라 쪽지다 — 같은 ``$FILE`` 주소로 받아지고, 맨 앞 주석 ``<!--@!ECM!@ … -->`` 안의
-      ``<objectId>doc<16 hex></objectId>`` 는 원래 문서의 열쇠고, 본문 링크(``swp_interface.jsp?ACTID=viewlink&OBJECTID=<hex>``)의
-      ``OBJECTID`` 를 ASCII 로 푼 16 hex 는 사람이 첨부를 누를 때 화면이 여는 문서의 열쇠다. 둘은 대개 같고(받은편지함 29 통 가운데 23)
-      다를 때가 있다. 다른 한 통(pptx · 2026-11-16)은 머리 값으로 열기 표(``OpenContents``)는 왔는데 에이전트가 60 초 넘게 답하지
-      않았고, 링크 값으로는 받아 열렸다 — 그래서 링크 값을 먼저 쓴다 (A · mail-secretary#28 셋째 판)
-    * 보낸 메일의 받는 사람은 보낸편지함 목록 열(``xname``)에 첫 사람만 들고, 한 통의 ``SendTo?OpenField`` 는 501 이다.
-      다 드는 자리는 그 메일의 ``ToCcUserInfoJson``(받는 사람 · 참조) · ``BccUserInfoJson``(숨은참조 · 없으면 404) 칸이다 — 편집
-      화면이 저장할 때 받는 사람마다 ``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 이어 쓴 글이다. JSON 의 ``type`` 이 ``user``
-      (열쇠는 Notes 이름) · ``dept``(웹메일 고름 창에서 조직을 체크한 것 · 열쇠는 ``<부서 코드>(<회사 약칭>)`` · 부서 이름 ·
-      부서 주소가 든다) · ``email``(사외 주소)이고 ``field`` 가 ``send_to`` · ``copy_to`` 다. 보기 ``!전체목록추출용`` 의 ``$102``
-      는 보낸 메일 대부분에 줄이 없고, 든 줄도 마지막 사람들이 마침표로 붙어 온다 — 보낸 메일의 받는 사람으로 쓰지 않는다 (A)
-    * 받은편지함 보기(``XML_Inbox``)는 받은편지함만 든다 — 쓰는 사람의 규칙이 하위 폴더로 옮긴 메일은 그 폴더의 보기에만 있다 (A2)
-    * 폴더 목록은 보기 목록(``/api/data/collections``)의 ``@folder: true`` 항목이다. 시스템 폴더(``($Inbox)`` · ``($Trash)`` ·
-      ``(Drafts)`` · ``(Sent)`` · ``($Alarms)`` · ``(TrashBackup)`` · ``(규칙)`` · ``(폴더템플릿)``)는 제목이 ``(`` 로 시작한다.
-      쓰는 사람이 지은 폴더의 제목(``@title``)은 ``부모\\자식`` 꼴로 경로를 다 든다 — 쉼표 · 점이 든 이름이 있다. 보기 목록에는
-      제목이 겹치는 항목도 있어(폴더는 아니었다) 보기를 제목으로 찾을 때는 폴더를 뺀다 (A2)
-    * 폴더마다의 보기는 **unid 로만 열린다**(``/<unid>?ReadViewEntries`` — 제목을 넣으면 0줄). 기본 정렬이 날짜 내림차순이고
-      ``count`` 는 1000에서 잘린다. 열이 받은편지함과 달라 받는 꼴(``xrtype``) · 중요도(``xImportance``) · 관련 문서
-      (``xrelatedid``)가 없고 ``nh_read`` · ``LOCALSAVE`` · ``Security`` 가 있다 — 받는 꼴 · 중요도는 모든편지함에서 unid 로 채운다 (A2)
-    * 폴더 보기의 칸 꼴은 받은편지함과 다르다. 보낸 사람 열 ``xname`` 은 ``<이름>-ENG-<영문>`` 이라 ``-=spl=-`` 도 주소도 없다 —
-      보낸 분 주소는 모든편지함에서 unid 로 채운다. 읽음 열 ``read`` 는 낱말이 아니라 HTML 조각
-      ``<div  id='<unid>'><a href='#' class='mail_21'></a>…</div>`` 이고, class 는 ``mail_21`` 안 읽음 · ``mail_22`` 읽음 둘뿐이라
-      회신함 · 전달함을 못 가린다 — 그 표시도 모든편지함의 ``read`` 에서 채운다. ``nh_read`` 는 읽음 표지로 안 쓴다 (A5 · K2)
-    * 모든편지함(``XML_모든편지함`` — 이 보기 이름은 한 메일함으로만 쟀다)은 받은 것 · 보낸 것 · 폴더를 다 든다. 정렬 없이
-      부르면 이미 날짜 내림차순이다. ``&ResortDescending=1`` 을 붙이면 내림차순 두 덩이가 이어 붙어 와(가장 새 메일이 뒤 덩이
-      머리) 창에서 끊으면 새 메일을 놓친다 — 무엇이 두 덩이를 가르는지는 모른다. ``xname`` · ``read`` 는 받은편지함과 같은 꼴이다 (A2 · A4)
-    * ⚠ **모든편지함의 폴더 열 ``xfoldername`` 은 폴더의 진본이 아니다** — 하위 폴더는 끝 이름만 오고, 어느 폴더 보기에도 없는
-      메일이 폴더 이름을 들고 있고, 받은편지함 메일이 폴더 이름을 들기도 한다. 그래서 그 열은 안 읽는다 — 폴더는 폴더 보기가 든다 (A2)
-    * 보낸편지함 보기 ``XML_Sent`` 는 받은편지함과 같은 ``?ReadViewEntries`` 이고, 그 보기의 ``xname`` 열이 수신인이다
-    * 메일 서버 첫 화면(``/``)은 세션에 로그인한 사람의 메일 파일 경로를 ``var mailfile = "<경로>.nsf"`` 로 들고 받은편지함으로 넘긴다 —
-      웹메일 주소를 사람에게 안 물어도 된다. 끊긴 세션은 그 줄이 없는 화면이다
-    * 임시보관함은 보기 ``XML임시편지함`` 이다(``?ReadViewEntries`` · 열은 받은편지함과 같은 꼴 · 보낸 사람 열이 쓰는 사람 자신)
-    * 검색은 웹메일 검색 창이 부르는 ``/<db>/ag_detail_search_mailbox?open&…`` 이고 JSON(``total`` · ``page`` · ``data``)을 준다.
-      ``stype=chatbot`` 에 칸 ``ssbj`` 제목 · ``sbdy`` 본문 · ``satt`` 첨부 이름과 범위 ``mbox``(``all`` · ``inbox`` · ``sent`` ·
-      ``draft`` · ``star`` · ``unread`` · ``trash``)를 준다 — 그 꼴이 아닌 칸만 주면 빈 답(0 바이트)이다. 칸을 여럿 주면 그 칸을
-      다 든 메일만 온다(「제목 또는 본문」이 아니다). ``all`` 은 임시보관함을 안 든다. 줄의 폴더는 ``category`` 의 ``[이름]``
-      (임시보관함 · 휴지통은 빈 칸 · 받은편지함은 ``[${INBOX}]`` · 보낸편지함은 ``[${SENT}]`` — 메일함마다 같은 시스템 표지다.
-      그래서 ``Found.folder`` 로는 휴지통 줄과 받은편지함 줄을 못 가린다),
-      시각은 UTC 다. 낱말은 고른 말 그대로 맞춘다 — 「워크샵」과 「워크숍」은 다른 말이다
-    * 주소록 ``/common/profile.nsf/ag_org_search_json?OpenAgent`` 는 이름 · 메일 · 사번으로 찾고 밖의 주소는 0건이다.
-      답은 ``{dept, user, total}`` 이다. ``company`` 는 조직도 고름 상자의 값(``<회사>(<코드>)``)이고 메일함마다 다르다.
-      ``key`` 가 그 사람의 Notes 이름이다 — 주소로 찾은 40 / 40 · ``CN=`` 이름으로 찾은 30 / 30 이 맞았다. 부서 이름을
-      ``search_key`` 로 주면 사람은 0 명이고 이름이 든 부서들만 ``dept`` 에 온다. 직급 · 직책 이름으로는 0 건이다
-    * 조직도는 웹메일 받는 사람 고름 창의 손 둘이다(``orgtree.js``). ``ag_tree_dept_json`` 은 ``dept=<부서 코드>`` 의 바로 아래
-      부서들(``result[]`` · ``key`` 가 코드 · ``depth`` · ``has_child`` · 부서 메일 주소)이고 ``dept`` 에 회사 값을 주면 맨 위
-      부서다. ``ag_tree_user_json`` 은 그 부서에 바로 든 사람이다(하위 부서는 안 든다 · 칸은 주소록 찾기와 같고 ``dept_code`` ·
-      퇴직 칸이 없다 · 비면 ``type`` 이 ``nothing`` 인 한 줄). 본부장은 「임원」과 제 본부에 함께 든다. 전사 189 부서 ·
-      3,388 명을 받는 데 15 초다(2026-11-07)
-    * 배포그룹은 ``ag_org_search_json`` 의 ``type=group`` · ``group_type`` (직책 · 직급 · 지역)이 목록(``group[]`` · ``key`` 는
-      ``[02:직책]리더(02)`` 꼴)을, ``/common/lib_f.nsf/agGetDistribute?openagent&groupname=<key>`` 가 구성원(``memberlist[]``
-      — 이름 · 직급 · 부서 · 메일)을 준다. 개인 주소록은 ``type=private`` 이다(이 메일함은 비었다)
-    * 세션 확인 ``/common/lib_f.nsf/checksessionstatus?Openpage`` → ``{"status":"login"}`` — 웹메일이 수십 초마다 부르는
-      주소이고 메일을 안 건드린다. 세션이 끊긴 때의 이 주소의 답은 안 쟀다 — 그 꼴이 아니면 다 「끊겼다」로 본다 (C)
-    * 읽음으로는 ``/<db>/XML_Inbox/<unid>?OpenDocument``, 안 읽음으로는 ``/<db>/ag_read_cancel?OpenAgent&docid=<unid>&imapuser=0``
-      (200 · 빈 HTML)이다. 받은편지함 메일로만 쟀다 — 폴더에만 있는 메일에 읽음으로의 주소가 먹는지는 안 쟀다 (D · A3)
-
-    폴더 — 회사에서 잰 판은 mail-secretary#42 의 2026-11-10 실측 코멘트가 든다(꼴은 웹메일 화면 스크립트 ``mail_posco.js`` 그대로)
-    * 폴더 나무는 ``/<db>/fdd_folder_fullpath?ReadViewEntries&outputformat=json&count=-1`` 이다 — 열 ``$6`` 경로 · ``NodeUnid`` 폴더
-      열쇠(``newNode<숫자>``) · ``ParentID`` 부모(맨 위는 ``nodeATag2``). 칸 값은 ``{"text": {"0": 값}}`` 꼴이다. 폴더 보기의 unid
-      (``folders``)와는 다른 열쇠이고 둘은 경로로 잇는다
-    * 만들기는 **GET** ``agt_mail_folder_save?OpenAgent&ulan=kor&act=create&…&pfcode=<부모 열쇠 · 맨 위는 nofolder>&nodeid=<열쇠>`` —
-      열쇠는 만드는 쪽이 지어 보내고 서버가 그대로 쓴다. 하위 폴더도 같은 주소이고 경로는 ``부모\\자식`` 이다
-    * 옮기기는 **POST** ``folder2?OpenForm`` · ``Action=mailmove_action`` · ``nodeUNID=<폴더 열쇠 · 받은편지함은 inbox>`` ·
-      ``UNIDs=<unid,…>`` — ``ParaView`` · ``owner`` 를 비워도 옮겨졌다. 읽음 표시는 그대로다. ⚠ 모르는 열쇠 · 빈 열쇠에도 ``OK`` 를
-      낸다 — 옮겼다는 증거가 아니다
-    * 지우기는 **GET** ``agt_mail_folder_save?OpenAgent&ulan=kor&act=delete_action&nodeid=<열쇠>&…&nodefrom=mail`` 에 같은 주소의
-      ``afdelete=Y&nodefrom=archive`` 를 한 번 더 — 앞의 것만이면 폴더 보기에선 사라지고 나무에 이전메일함 짝이 남는다.
-      ⚠ 메일이 든 채 지우면 그 메일이 휴지통으로 간다
-    * 휴지통으로 보내기(웹메일 목록의 [삭제])는 **GET** ``delete_view?OpenAgent&docid=<unid,…>&folderkey=&type=&paraview=&imapuser=&owner=``
-      → 200 · 빈 답이다. 받은편지함 · 폴더 · 보낸편지함 · 임시보관함 메일이 다 같은 주소로 휴지통(``XML_Trash``)에 가고, 여러 통을
-      쉼표로 한 번에 보내도 되며, 읽음 표시는 그대로다. ``paraview`` · ``owner`` 를 비워도 같다. 답이 비어 휴지통 보기로 다시 본다.
-      ``type=remove`` 는 영구삭제라 짓지 않는다
-    * 휴지통에서 되살리기는 **GET** ``TrashDoc?OpenAgent&docid=<unid>&imapuser=&owner=&type=recovery`` → ``{ "result":true }`` 이고
-      받은 메일은 받은편지함으로 안 읽음 그대로 돌아온다. 임시보관함에 있던 메일은 임시보관함으로 읽음 그대로 돌아온다.
-      보낸편지함 · 폴더에 있던 메일이 어디로 돌아오는지는 안 쟀다. 휴지통 보기(``XML_Trash``)의 열은 받은편지함과 같은 꼴이다(제목 · 보낸 분)
-    * 폴더 이름은 화면처럼 역슬래시 · 따옴표 · ``| _ < >`` 와 시스템 폴더 이름(``inbox`` · ``$trash`` · ``(drafts)`` …)을 막는다
-
-    메일 규칙 — 같은 실측 코멘트가 든다(꼴은 화면 스크립트 ``fmmailrule.js`` 그대로)
-    * 목록은 보기 ``XML_Rule``(``?ReadViewEntries``)이고, 한 건은 그 규칙 문서의 편집 화면 ``/<db>/0/<unid>?EditDocument`` 다 —
-      규칙 문서라 메일 읽음과 무관하지만 ``EditDocument`` 는 읽기 길 목록 밖이라 규칙 목록이 낸 unid 로만 연다. 갈래 · 폴더는 화면
-      머리 ``new FormJS({…})`` 의 ``form``(``rules`` · ``folder_id``)과 ``folders``(``<경로>|<열쇠>^``)가, 조건 · 맞춤 · 받은/보낸은
-      입력 칸의 값이 든다
-    * 넣기는 **POST** ``Mailrule?OpenForm&Seq=1&viewname=(%24webrule)``, 고치기는 **POST** ``/<db>/0/<unid>?EditDocument&Seq=1``,
-      지우기는 **POST** ``Mailrule?OpenForm&Seq=1`` · ``SubmitAction=delete`` · ``ProcessUNID`` — 답은 JSON ``{"result":true, "unid":…}``
-      (지우기의 ``unid`` 는 그 규칙이 아니다). 넣은 규칙은 그 뒤 받은 메일에 서버가 곧바로 썼다
-    * 갈래 ``rules`` 는 ``move_folder`` · ``move_trash`` · ``delete``(화면의 ``copy_folder`` 는 꺼져 있다)이고, 맞춤
-      ``rule_fromType2`` · ``rule_toType2`` 는 화면의 「일치 · 포함」 차례로 1 · 0 이다 — 「일치」로 넣었을 때 서버가 어떻게 맞추나는 안 쟀다
-    * ``AllFwdOpt`` 는 옛 자동전달 탭의 흔적으로 옮기기 규칙에도 1 이 남아 있다(23 가운데 4) — 자동전달의 표지로 안 쓴다
-    * 안 잰 것 — 보낸 메일 규칙 · 조건 여럿의 이음(그리고 · 또는) · 규칙의 차례 · 이미 받은 메일에 규칙을 거꾸로 다는 길
+    ``MAILBOX_COOKIES``          세션 쿠키 파일                 기본 ``DEFAULT_COOKIES``
+    ``MAILBOX_VIEW``             받은편지함 보기 이름           기본 ``INBOX_VIEW``
+    ``MAILBOX_TIMEOUT_SECONDS``  응답 시한(초)                  기본 ``DEFAULT_TIMEOUT``
 """
 
 from __future__ import annotations
@@ -230,11 +102,12 @@ if str(EP_LOGIN_SCRIPTS) not in sys.path:
     sys.path.append(str(EP_LOGIN_SCRIPTS))
 import ep_session  # noqa: E402 — 형제 스킬의 자리를 넣은 뒤에 싣는다
 
-DEFAULT_COOKIES ="~/.mailbox-session.json"
+DEFAULT_COOKIES = ep_session.DEFAULT_FILE
 DEFAULT_TIMEOUT = 30.0
 HTTP_NOT_SERVED = 501             # 본문 주소에 이 답을 내는 메일이 있다 — 「본문 없음」으로 받는다
+VIEW_PAGE_MOST = 1000             # 보기 한 번(``?ReadViewEntries``)이 내는 줄의 위 — 서버가 count 를 여기서 자른다. 끝까지 훑는 쪽은 이만큼씩 받는다
 
-# 보기 — 이름은 실측(받은편지함 · 보낸편지함 · 받는 사람 목록 · 모든편지함)
+# 보기 이름(받은편지함 · 보낸편지함 · 받는 사람 목록 · 모든편지함)
 INBOX_VIEW = "XML_Inbox"
 SENT_VIEW = "XML_Sent"
 RECIPIENT_VIEW_TITLE = "!전체목록추출용"
@@ -245,7 +118,7 @@ SENT_FOLDER = "(Sent)"              # 보낸편지함 줄의 folder — 같은 �
 TRASH_FOLDER = "($Trash)"           # 휴지통 줄의 folder — 같은 꼴
 # 검색 손이 시스템 편지함을 가리키는 표지(``category`` 의 ``[${…}]`` · 메일함마다 같다) → 줄의 folder
 SEARCH_SYSTEM_BOXES = {"${INBOX}": "", "${SENT}": SENT_FOLDER}
-# 검색 — 웹메일 검색 창이 부르는 손(목록 JSON). 범위는 그 창의 고름 상자 값이고, 「전체」는 임시보관함을 안 든다(머리말)
+# 검색 — 웹메일 검색 창이 부르는 손(목록 JSON). 범위는 그 창의 고름 상자 값이고, 「전체」는 임시보관함을 안 든다
 SEARCH_AGENT = "ag_detail_search_mailbox"
 SEARCH_SCOPES = ("all", "inbox", "sent", "draft", "star", "unread", "trash")
 SEARCH_SLOTS = {"subject": "ssbj", "body": "sbdy", "attachment": "satt"}   # 제목 · 본문 · 첨부 이름 → 검색 손의 칸
@@ -265,7 +138,7 @@ SENT_COLUMN_TO = "xname"
 # 보낸 메일 한 통의 받는 사람 칸 — 웹메일 편집 화면이 저장할 때 받는 사람 · 참조(한 칸)와 숨은참조를 「열쇠 ITEM JSON」 을 SEP 로 이어 쓴다
 SENT_PEOPLE_FIELDS = ("ToCcUserInfoJson", "BccUserInfoJson")
 PEOPLE_ITEM, PEOPLE_SEP = "-=-ITEM-=-", "-=-SEP-=-"
-# 그 칸의 받는 사람 갈래(type) · 칸(field) — 숨은참조 칸의 항목은 field 가 비어 온다(회사에서 잼)
+# 그 칸의 받는 사람 갈래(type) · 칸(field) — 숨은참조 칸의 항목은 field 가 비어 온다
 PERSON_TYPE, DEPT_TYPE, GROUP_TYPE, EMAIL_TYPE = "user", "dept", "group", "email"
 PEOPLE_FIELD_OF = {"send_to": "to", "copy_to": "cc", "bcopy_to": "bcc"}
 # 받는 사람 목록 보기의 열 — 날짜 · 수/발신 · 수신인 · 발신인
@@ -291,18 +164,14 @@ BODY_TEXT_PART = "M1.1"
 
 # 주소록의 예 · 아니오 칸(퇴직 · 장 여부)이 참인 값
 DIRECTORY_YES = ("Y", "1", "TRUE")
-# 직급 코드(``grade_code``) → 인사 등급. P 는 직원 · 임원 1–10, E 는 현장 직군 1–7 — 같은 글자 안에서만 위아래가 선다.
-# 원본은 사람이 준 인사 등급표(직급명 · 직책명 · 직급명칭명)이고, 코드와의 짝은 2026-11-07 전사 조직도에서 직급명칭명 ·
-# 직책 구성이 표와 맞는 것으로 맞췄다. 29 · 30(둘 다 「임원」)과 34 · 35(둘 다 「과장」)의 차례는 직책 구성과 코드 차례로 고른 것이다.
-# 등급을 안 주는 직급 — 연구직(45–49) · 외주직은 등급이 없는 것이 맞다(빈칸이 아니라 사실이다). 소장(44)은 연구소장이면 임원급이고 현장의
-# 소장이면 아니라 직급만으로는 모른다. 이사(10)는 사외이사로 보여 회사의 위아래 밖이다
+# 직급 코드(``grade_code``) → 인사 등급. P 는 직원 · 임원, E 는 현장 직군 — 같은 글자 안에서만 위아래가 선다. 표에 없는 직급은
+# 등급이 없는 것이 맞다 — 짝을 맞춘 근거와 빠진 직급은 SOURCES.md 「inbox.py · 직급 등급」
 GRADE_LEVELS = {
     "24": "P1", "23": "P2", "22": "P3", "21": "P4", "26": "P5", "27": "P6", "28": "P7", "29": "P8", "30": "P9", "31": "P10",
     "43": "E1", "42": "E2", "36": "E3", "35": "E4", "34": "E5", "33": "E6", "32": "E7",
 }
-# 직급 코드가 위 표에 없을 때 직급 이름으로 주는 등급. 고문은 퇴임을 앞두고 고문으로 있는 임원이라 임원급이다. 임원 사이의 차례는 몰라
-# 임원의 낮은 쪽을 준다 — 「임원 이상」 거르기에 들되 다른 임원 위에 서지 않는다. ⚠ 고문의 직급 코드와, 주소록이 직급 이름을 「고문」
-# 그대로 주는지는 안 쟀다 — 다른 글자로 오면 등급 없이 선다
+# 직급 코드가 위 표에 없을 때 직급 이름으로 주는 등급. 고문은 임원급인데 임원 사이의 차례를 몰라 임원의 낮은 쪽을 준다 —
+# 「임원 이상」 거르기에 들되 다른 임원 위에 서지 않는다
 GRADE_NAME_LEVELS = {"고문": "P8"}
 LEVEL_FORM = re.compile(r"^([A-Z])(\d+)$")
 DIRECTORY_PATH = "/common/profile.nsf/ag_org_search_json?OpenAgent"
@@ -314,7 +183,7 @@ DISTRIBUTE_PATH = "/common/lib_f.nsf/agGetDistribute?openagent"
 ORG_TREE_TYPE = "org"            # 고름 창의 「내 조직」 — 패밀리사 · 파트너사는 안 든다
 ORG_EMPTY = "nothing"            # 구성원이 없는 부서의 답은 이 type 한 줄이다
 GROUP_KINDS = ("jobtitle", "grade", "location")   # 배포그룹 탭의 고름 상자 값 — 직책 · 직급 · 지역(이 회사 코드의 꼴)
-ORG_WORKERS = 8                  # 나무 · 구성원을 함께 묻는 수 — 전사 189 부서 · 3,388 명이 17 초다
+ORG_WORKERS = 8                  # 나무 · 구성원 · 보기를 함께 묻는 수 — 하나씩 물으면 전사 조직도가 부서 수만큼 기다린다
 DUTY_SEPARATOR = "||"            # 업무 칸은 「업무||근무 꼴||휴무」 — 앞 조각이 업무다
 # 받는 사람 목록이 사람을 드는 꼴 — Notes 이름(``CN=…/OU=…`` 또는 약식 ``이름/OU/O``) · ID(``<영문ID>(<약칭>)``)
 NOTES_MARK = "CN="
@@ -326,13 +195,13 @@ MARKS_AS_READ = re.compile(r"[?&](opendocument|editdocument)\b", re.IGNORECASE)
 CHANGES_MAILBOX = re.compile(r"[?&](opendocument|editdocument)\b|/ag_read_cancel\b|/agt_mail_folder_save\b|/folder2\b"
                              r"|/trashdoc\b|/delete_view\b|/mailrule\b|/memo\b|/xam_upload\b", re.IGNORECASE)
 
-# 폴더 나무 — 웹메일 화면이 폴더 고름 상자를 채우는 보기(JSON). 열은 경로 · 폴더 열쇠 · 부모 열쇠(실측)
+# 폴더 나무 — 웹메일 화면이 폴더 고름 상자를 채우는 보기(JSON). 열은 경로 · 폴더 열쇠 · 부모 열쇠
 FOLDER_TREE_VIEW = "fdd_folder_fullpath"
 TREE_COLUMN_PATH, TREE_COLUMN_NODE, TREE_COLUMN_PARENT = "$6", "NodeUnid", "ParentID"
-FOLDER_NODE = re.compile(r"^newNode\d{1,9}$")   # 폴더 열쇠 — 만드는 쪽이 짓고 서버가 그대로 쓴다(실측)
+FOLDER_NODE = re.compile(r"^newNode\d{1,9}$")   # 폴더 열쇠 — 만드는 쪽이 짓고 서버가 그대로 쓴다
 TOP_PARENT = "nofolder"                          # 맨 위 폴더를 만들 때의 부모 값 — 나무의 부모 열은 ``nodeATag<n>`` 이다
 INBOX_NODE = "inbox"                             # 옮기기의 받는 자리 — 받은편지함
-FOLDER_NAME_BANNED = re.compile(r"[\\\"'|_<>]")  # 화면이 막는 글자(실측 · mail_posco.js folder_add)
+FOLDER_NAME_BANNED = re.compile(r"[\\\"'|_<>]")  # 화면이 막는 글자(mail_posco.js folder_add)
 SYSTEM_FOLDER_NAMES = ("inbox", "sent", "draft", "drafts", "trash", "junk")   # 화면이 막는 이름 — 앞뒤 꾸밈(``$`` · ``imap`` · 괄호)까지
 FOLDER_SAVE_AGENT = "agt_mail_folder_save"
 MOVE_FORM = "folder2"
@@ -340,22 +209,22 @@ TRASH_AGENT = "TrashDoc"
 TRASH_SEND_AGENT = "delete_view"                 # 웹메일 목록의 [삭제] — type 을 비우면 휴지통으로(type=remove 는 영구삭제라 안 짓는다)
 TRASH_VIEW = "XML_Trash"                         # 휴지통 보기 — 보내기 뒤 다시 보는 자리
 
-# 메일 규칙(받은 · 보낸 메일을 서버가 스스로 옮기는 기준) — 목록 보기 · 규칙 문서 · 저장 폼(실측 · fmmailrule.js)
+# 메일 규칙(받은 · 보낸 메일을 서버가 스스로 옮기는 기준) — 목록 보기 · 규칙 문서 · 저장 폼(fmmailrule.js)
 RULE_VIEW = "XML_Rule"
 RULE_FORM = "Mailrule"
 RULE_BOXES = ("inbox", "sent")                         # 받은 메일 · 보낸 메일
 RULE_ACTIONS = ("move_folder", "move_trash", "delete")  # 폴더로 이동 · 휴지통으로 · 영구삭제
 RULE_FIELDS = ("from", "to", "cc", "subject", "attach")  # 보낸 사람 · 받는 사람 · 참조 · 제목 · 첨부 이름 — 폼 칸은 rule_<이것>
-# 임시저장(웹메일 쓰기 화면의 [임시저장] 단추가 보내는 것 — 실측 · fmmail_new.js saveDoc · xam_handler.js uploadFile)
+# 임시저장(웹메일 쓰기 화면의 [임시저장] 단추가 보내는 것 — fmmail_new.js saveDoc · xam_handler.js uploadFile)
 MEMO_FORM = "Memo"                                  # 쓰기 화면 폼 — ``/<db>/Memo?openform`` 이 빈 폼, 같은 폼의 POST 가 저장
 SAVE_AGENT_DRAFT = "wSave"                          # 저장 칸 SaveAgent 의 값 — 임시저장. ⚠ ``wSend`` 면 그 자리에서 발송된다
 UPLOAD_DB = "upload/fileupload{digit}.nsf"          # 첨부 업로드 DB — 쓰는 사람 사번 끝자리로 나뉜다
 UPLOAD_AGENT = "xam_upload?open"
-DRAFT_COMPANY_CODE = "02"                           # 첨부 열쇠 가운데 회사 코드 — 쓰기 화면의 add_code(이 메일함으로 잼)
+DRAFT_COMPANY_CODE = "02"                           # 첨부 열쇠 가운데 회사 코드 — 쓰기 화면의 add_code
 DRAFT_ATTACH_MOST = 20                              # 쓰기 화면의 첨부 개수 상한(attach_limit_count)
 DRAFT_ATTACH_BIG = 20 * 1024 * 1024                 # 이보다 크면 웹메일이 대용량 전환한다(BigFileUserTransSize) — 임시저장은 대용량을 안 든다
-DRAFT_UPLOAD_TIMEOUT = 180.0                        # 첨부 하나를 올리는 시한 — 수 MB 가 몇 초였다
-# 서명 — 쓰기 화면의 설정 JSON 칸(실측 · fmmail_new.js getSignature). 서명 문서의 본문은 /0/<unid>/Body?OpenField 로 받는다
+DRAFT_UPLOAD_TIMEOUT = 180.0                        # 첨부 하나를 올리는 시한 — 대용량 상한(DRAFT_ATTACH_BIG) 안쪽 파일을 넉넉히 덮는다
+# 서명 — 쓰기 화면의 설정 JSON 칸(fmmail_new.js getSignature)
 SIGNATURE_ON = re.compile(r'"signatueYN"\s*:\s*"(\w*)"')              # 서명 쓰기 — 칸 이름 철자는 웹메일 그대로
 SIGNATURE_ADD_LINE = re.compile(r'"signatue_add1line"\s*:\s*"(\w*)"')  # 서명 앞 빈 줄
 SIGNATURE_UNID = re.compile(r'"signatureUnid"\s*:\s*"([0-9A-Fa-f]{32})"')
@@ -397,7 +266,7 @@ class _Missing(MailboxError):
 
 
 class _NotServed(MailboxError):
-    """서버가 그 주소를 안 준다(HTTP 501) — 본문 주소에 501 을 내는 메일이 있다(머리말 「사내 메일함에서 잰 것」)."""
+    """서버가 그 주소를 안 준다(HTTP 501) — 본문 주소에 501 을 내는 메일이 있다."""
 
 
 @dataclass(frozen=True)
@@ -437,11 +306,9 @@ class AttachmentName:
 
 @dataclass(frozen=True)
 class Entry:
-    """받은편지함 · 폴더 목록의 한 줄. ``unid`` 가 그 메일의 열쇠다. 시각은 메일함이 준 글자 그대로다.
-
-    ``folder`` 는 받은편지함이면 빈 글자, 폴더 보기에서 왔으면 그 폴더의 경로(``부모\\자식``)다. 폴더 줄은 받는 꼴 · 중요도 ·
-    관련 문서가 빈다 — 그 보기에 열이 없다. 보낸 분 주소도 빈다. ``read_mark`` 는 읽음 열의 class(``mail_21`` · ``mail_22``)라
-    회신함 · 전달함을 못 가린다 — 셋 다 ``Mailbox.list_all`` 로 채운다.
+    """받은편지함 · 폴더 목록의 한 줄. ``unid`` 가 그 메일의 열쇠다. ``folder`` 는 받은편지함이면 빈 글자, 폴더 보기면 그 경로
+    (``부모\\자식``)다. 폴더 줄은 그 보기에 열이 없어 받는 꼴 · 중요도 · 관련 문서 · 보낸 분 주소가 비고 ``read_mark`` 가 회신함 ·
+    전달함을 못 가린다 — ``Mailbox.list_all`` 로 채운다.
     """
     unid: str
     subject: str
@@ -477,9 +344,9 @@ class FolderNode:
 
 @dataclass(frozen=True)
 class Rule:
-    """메일 규칙 하나 — 서버가 들어오는(보내는) 메일에 스스로 적용한다(실측). ``conditions`` 는 ``RULE_FIELDS`` 의 칸 → 글자
+    """메일 규칙 하나 — 서버가 들어오는(보내는) 메일에 스스로 적용한다. ``conditions`` 는 ``RULE_FIELDS`` 의 칸 → 글자
     (빈 칸은 안 든다), ``exact_from`` · ``exact_to`` 는 보낸 · 받는 사람 칸이 「일치」인가(거짓이면 「포함」)다. ``folder`` 는
-    옮길 폴더의 경로(``move_folder`` 만), ``forwards`` 는 남에게 자동전달하는 규칙인가 — 이 손은 그 규칙을 고치지 않는다."""
+    옮길 폴더의 경로(``move_folder`` 만), ``forwards`` 는 남에게 자동전달하는 규칙인가다."""
     unid: str
     box: str
     action: str
@@ -492,10 +359,8 @@ class Rule:
 
 @dataclass(frozen=True)
 class Marks:
-    """모든편지함 한 줄에서 폴더 보기가 못 드는 칸 — 받는 꼴(``xrtype``) · 중요도(``xImportance``) · 보낸 분(``xname`` 을 푼 것) ·
-    읽음 열 글자 그대로(``ico-post`` 회신함 · ``ico-remail`` 전달함 …). 시각은 창에서 끊는 데만 쓴다.
-
-    폴더는 안 든다 — 이 보기의 폴더 열(``xfoldername``)은 경로가 아니다(머리말 「사내 메일함에서 잰 것」).
+    """모든편지함 한 줄에서 폴더 보기가 못 드는 칸 — 받는 꼴 · 중요도 · 보낸 분 · 읽음 열 글자 그대로. 시각은 창에서 끊는 데만 쓴다.
+    폴더는 안 든다 — 이 보기의 폴더 열(``xfoldername``)은 폴더의 진본이 아니다.
     """
     unid: str
     date: str
@@ -517,9 +382,8 @@ class SentEntry:
 
 @dataclass(frozen=True)
 class Found:
-    """검색이 낸 한 줄. ``folder`` 는 검색 손이 준 폴더 이름(``[...]`` 를 벗긴 것 · 받은편지함 · 임시보관함 · 휴지통은 빈
-    글자 · 보낸편지함은 ``SENT_FOLDER``)이고,
-    ``draft`` 는 임시 저장된 메일이다. 시각은 검색 손이 준 글자 그대로(UTC ``YYYYMMDDTHHMMSS,cc Z``)다."""
+    """검색이 낸 한 줄. ``folder`` 는 검색 손이 준 폴더 이름(``[...]`` 를 벗긴 것 · 받은편지함 · 임시보관함 · 휴지통은 빈 글자 ·
+    보낸편지함은 ``SENT_FOLDER``), ``draft`` 는 임시 저장된 메일이다. 시각은 검색 손이 준 글자 그대로(UTC)다."""
     unid: str
     subject: str
     sender: str
@@ -532,11 +396,8 @@ class Found:
 
 @dataclass(frozen=True)
 class DraftPerson:
-    """임시메일의 받는 사람 하나 — ``notes`` 는 Notes 이름(``CN=…`` · 웹메일의 SendTo 칸), ``email`` · ``name`` 은 InetSendTo 칸.
-
-    웹메일 화면이 다시 열 때 받는 사람 칸을 이 Notes 이름으로 채운다(실측) — 주소만 주면 화면에 사람으로 안 선다.
-    ``dept`` 면 사람이 아니라 조직 하나다 — ``notes`` 는 부서 코드(``O500_06(02)``), ``email`` 은 부서 주소, ``name`` 은 부서
-    이름이다. 웹메일 고름 창에서 조직을 체크해 저장한 것과 같은 꼴이고, 편집 화면이 그 조직으로 다시 연다(회사에서 잼).
+    """임시메일의 받는 사람 하나 — ``notes`` 는 Notes 이름(SendTo 칸), ``email`` · ``name`` 은 InetSendTo 칸. ``notes`` 를 비우면
+    웹메일 화면이 다시 열 때 사람으로 안 선다. ``dept`` 면 조직 하나다 — ``notes`` 는 부서 코드, ``email`` · ``name`` 은 부서 주소 · 이름.
     """
     notes: str
     email: str
@@ -607,8 +468,7 @@ class Dept:
 def discover_mailbox(server: str, cookies_file, *, timeout: float = DEFAULT_TIMEOUT) -> str:
     """그 세션에 로그인한 사람의 메일함 주소(``<서버>/<경로>.nsf``)를 메일 서버 첫 화면에서 받는다 — 사람에게 묻지 않는다.
 
-    첫 화면은 세션에 로그인한 사람의 메일 파일 경로를 들고 받은편지함으로 넘긴다(머리말). 그 경로가 없으면(끊긴 세션의 SSO 화면)
-    ``SessionExpired``, 서버에 못 닿으면 ``MailboxError``. 읽음 표시를 안 바꾼다.
+    첫 화면에 메일 파일 경로가 없으면(끊긴 세션의 SSO 화면) ``SessionExpired``, 서버에 못 닿으면 ``MailboxError``. 읽음 표시를 안 바꾼다.
     """
     root = server.strip().rstrip("/")
     if not re.match(r"^https?://[^/]+$", root, re.IGNORECASE):
@@ -629,7 +489,7 @@ def discover_mailbox(server: str, cookies_file, *, timeout: float = DEFAULT_TIME
 
 
 class Mailbox:
-    """메일함 하나. 읽기 길의 손은 다 읽기 전용이다 — 메일함을 바꾸는 손은 ``mark_read`` · ``mark_unread`` 둘뿐이다."""
+    """메일함 하나. 읽기 길의 손은 다 읽기 전용이다 — 메일함을 바꾸는 손은 머리말 「무엇을 하나」 의 이름 붙은 함수들뿐이다."""
 
     def __init__(self, url: str, cookies_file, *, view: str = INBOX_VIEW, timeout: float = DEFAULT_TIMEOUT):
         """``url`` 은 ``…/<이름>.nsf`` 까지 든 메일함 주소(그 뒤는 버린다), ``view`` 는 ``list`` 가 읽는 받은편지함 보기다.
@@ -830,7 +690,7 @@ class Mailbox:
         """웹메일 검색 창과 같은 검색 — ``field``(제목 · 본문 · 첨부 이름) 한 칸에 ``words`` 가 든 메일. 내는 것 — (서버가 센
         모두 건수, 이 쪽의 줄). 읽음 표시를 안 바꾼다.
 
-        한 번에 한 칸이다 — 검색 손은 칸을 여럿 주면 그 칸을 다 든 메일만 낸다(머리말). 여러 칸 · 여러 범위를 합치는 일은
+        한 번에 한 칸이다 — 검색 손은 칸을 여럿 주면 그 칸을 다 든 메일만 낸다. 여러 칸 · 여러 범위를 합치는 일은
         부르는 쪽이 unid 로 한다. ``scope`` 는 ``SEARCH_SCOPES`` 의 하나 — ``all`` 은 임시보관함을 안 든다. 줄은 새것부터다.
         """
         if scope not in SEARCH_SCOPES:
@@ -944,12 +804,8 @@ class Mailbox:
         return data
 
     def ecm_key(self, mail: Entry | str, name: AttachmentName | str) -> str:
-        """ECM 첨부 하나가 가리키는 문서함 문서의 열쇠(16 hex 글자)를 낸다 — 쪽지 본문 링크의 ``OBJECTID`` 를 먼저, 없으면 머리의
-        ``objectId`` 를 꺼낸다.
-
-        링크 쪽이 사람이 첨부를 누를 때 화면이 여는 문서다 — 메일로 보낸 문서는 그 값이 머리와 다를 수 있고, 머리 값으로는 열기 표는
-        와도 에이전트가 답하지 않는다(회사에서 잼 · 머리 「설명」). ECM 첨부가 아니면 ``MailboxConfigError``. 쪽지에 머리나 열쇠가
-        없으면 ``MailboxError`` — 꼴이 바뀌었거나 다른 쪽지다.
+        """ECM 첨부 하나가 가리키는 문서함 문서의 열쇠(16 hex 글자)를 낸다(``ecm_note_key``). ECM 첨부가 아니면
+        ``MailboxConfigError``, 쪽지에 머리나 열쇠가 없으면 ``MailboxError`` — 꼴이 바뀌었거나 다른 쪽지다.
         """
         listed = name.listed if isinstance(name, AttachmentName) else name
         if not ECM_ATTACHMENT.match(listed):
@@ -984,7 +840,7 @@ class Mailbox:
         """사내 주소록의 답을 그대로 낸다(``{dept, user, total}``) — 주소록에 묻는 한 길이고, 안 잰 꼴을 회사에서 재는 자리다.
 
         ``company`` 는 조직도 고름 상자의 값(``<회사>(<코드>)``)이고 메일함마다 다르다 — 부르는 쪽이 설정에서 넘긴다. ``category`` 는
-        웹메일이 빈 값으로 보내는 칸이다(무엇을 가르나는 안 쟀다). 답이 dict 가 아니면 ``MailboxError``.
+        웹메일이 빈 값으로 보내는 칸이다. 답이 dict 가 아니면 ``MailboxError``.
         """
         if not search_key.strip() or not company.strip():
             raise MailboxConfigError("주소록 찾기에는 찾을 말과 회사 값이 다 있어야 한다")
@@ -1090,12 +946,12 @@ class Mailbox:
         return [(m.get("name") or "", m.get("grade") or "", m.get("deptname") or "", m.get("email") or "")
                 for m in answer.get("memberlist") or [] if isinstance(m, dict)]
 
-    # ── 메일함을 바꾸는 손 — 사람이 그 메일 하나를 분명히 고른 뒤에만 부른다(머리말) ──────────────
+    # ── 메일함을 바꾸는 손 — 사람이 그 메일 하나를 분명히 고른 뒤에만 부른다 ──────────────
 
     def mark_read(self, mail: Entry | str) -> None:
         """⚠ 메일함을 바꾼다 — 그 메일 하나를 읽음으로. 읽기 길은 이 손을 부르지 않는다.
 
-        받은편지함 메일로만 쟀다 — 폴더에만 있는 메일에 먹는지는 안 쟀다. 끊긴 세션이면 ``SessionExpired``(반영되지 않았다).
+        폴더에만 있는 메일에 먹는지는 안 쟀다. 끊긴 세션이면 ``SessionExpired``(반영되지 않았다).
         """
         self._send_change(f"{self.db_path}/{INBOX_VIEW}/{_unid(mail)}?OpenDocument")
 
@@ -1114,7 +970,7 @@ class Mailbox:
             raise SessionExpired("메일함을 바꾸는 요청에 로그인 페이지가 왔다 — 반영되지 않았다")
         log.info("메일함을 바꿨다: %s", "읽음으로" if path.endswith("?OpenDocument") else "안 읽음으로")
 
-    # ── 폴더 — 나무 읽기는 읽기 길, 만들기 · 옮기기 · 지우기는 바꾸는 손이다(머리말 「폴더」) ──────────────
+    # ── 폴더 — 나무 읽기는 읽기 길, 만들기 · 옮기기 · 지우기는 바꾸는 손이다 ──────────────
 
     def folder_tree(self) -> list[FolderNode]:
         """폴더 나무 — 쓰는 사람이 지은 폴더마다 열쇠 · 경로 · 부모. 바꾸는 손이 이 열쇠를 쓴다. 읽음 표시를 안 바꾼다.
@@ -1179,9 +1035,9 @@ class Mailbox:
         return made
 
     def move_mails(self, unids, to: str) -> None:
-        """⚠ 메일함을 바꾼다 — 메일들을 폴더 ``to``(경로)로, ``to`` 가 빈 글자면 받은편지함으로 옮긴다. 읽음 표시는 그대로다(실측).
+        """⚠ 메일함을 바꾼다 — 메일들을 폴더 ``to``(경로)로, ``to`` 가 빈 글자면 받은편지함으로 옮긴다. 읽음 표시는 그대로다.
 
-        서버는 못 옮겨도 ``OK`` 를 내서(실측) 옮긴 뒤 받는 자리의 보기로 다시 본다 — 안 든 메일이 있으면 ``MailboxError``.
+        서버는 못 옮겨도 ``OK`` 를 내서 옮긴 뒤 받는 자리의 보기로 다시 본다 — 안 든 메일이 있으면 ``MailboxError``.
         """
         ids = [_unid(u) for u in unids]
         if not ids:
@@ -1203,13 +1059,14 @@ class Mailbox:
 
     def delete_folder(self, path: str) -> None:
         """⚠ 메일함을 바꾼다 — 빈 폴더 하나를 지운다. 메일이나 하위 폴더가 든 폴더는 지우지 않는다(``MailboxConfigError``) —
-        메일이 든 채 지우면 그 메일이 휴지통으로 간다(실측). 이전메일함 쪽 짝까지 두 번 보내 나무에서도 지운다."""
+        메일이 든 채 지우면 그 메일이 휴지통으로 간다. 이전메일함 쪽 짝까지 두 번 보내 나무에서도 지운다."""
         node = self.folder_node(path)
         if node is None:
             raise MailboxConfigError(f"그런 폴더가 없다: {path!r}")
-        if any(f.path.startswith(path + FOLDER_SEPARATOR) for f in self._fresh_folders()):
+        current = self.folders()   # folder_node 가 방금 새로 받은 목록이다 — 다시 받지 않는다
+        if any(f.path.startswith(path + FOLDER_SEPARATOR) for f in current):
             raise MailboxConfigError(f"하위 폴더가 든 폴더라 지우지 않는다: {path!r}")
-        folder = next(f for f in self._fresh_folders() if f.path == path)
+        folder = next(f for f in current if f.path == path)
         if self._view(folder.unid, 1, 1).find("viewentry") is not None:
             raise MailboxConfigError(f"메일이 든 폴더라 지우지 않는다 — 먼저 옮긴다(든 채 지우면 휴지통으로 간다): {path!r}")
         pointing = [r for r in self.rules() if r.action == "move_folder" and r.folder == path]
@@ -1225,7 +1082,7 @@ class Mailbox:
 
     def trash_mails(self, unids) -> None:
         """⚠ 메일함을 바꾼다 — 메일들을 휴지통으로 보낸다(웹메일 목록의 [삭제]). 받은편지함 · 폴더 · 보낸편지함 · 임시보관함 어디의
-        메일이든 같고 읽음 표시는 그대로다(실측). 영구삭제는 하지 않는다 — 되살리기는 ``restore_mails``.
+        메일이든 같고 읽음 표시는 그대로다. 영구삭제는 하지 않는다 — 되살리기는 ``restore_mails``.
 
         서버의 답이 비어 증거가 못 되므로 보낸 뒤 휴지통 보기로 다시 본다 — 안 든 메일이 있으면 ``MailboxError``.
         """
@@ -1240,10 +1097,10 @@ class Mailbox:
             raise MailboxError(f"휴지통으로 보내는 요청은 받았는데 {len(missing)}/{len(ids)} 통이 휴지통에 없다")
 
     def _in_trash(self, ids: list[str]) -> set[str]:
-        """휴지통 보기에 든 ``ids`` — 다 찾거나 보기가 끝날 때까지 1000 줄씩(``_landed`` 와 같은 꼴)."""
+        """휴지통 보기에 든 ``ids`` — 다 찾거나 보기가 끝날 때까지 ``VIEW_PAGE_MOST`` 줄씩(``_landed`` 와 같은 꼴)."""
         want, found, start, first = {u.upper() for u in ids}, set(), 1, None
         while want - found:
-            rows = [e.get("unid", "").upper() for e in self._view(TRASH_VIEW, 1000, start).iter("viewentry")]
+            rows = [e.get("unid", "").upper() for e in self._view(TRASH_VIEW, VIEW_PAGE_MOST, start).iter("viewentry")]
             if not rows or rows[0] == first:
                 break
             found |= want & set(rows)
@@ -1251,7 +1108,7 @@ class Mailbox:
         return found
 
     def restore_from_trash(self, mail: Entry | Found | str) -> None:
-        """⚠ 메일함을 바꾼다 — 휴지통의 메일 하나를 되살린다(받은 메일은 받은편지함으로 · 실측). 답이 ``result`` 참이 아니면 ``MailboxError``."""
+        """⚠ 메일함을 바꾼다 — 휴지통의 메일 하나를 되살린다(받은 메일은 받은편지함으로). 답이 ``result`` 참이 아니면 ``MailboxError``."""
         unid = _unid(mail.unid if isinstance(mail, Found) else mail)
         data = self._send_folder(f"{self.db_path}/{TRASH_AGENT}?OpenAgent&docid={unid}&imapuser=&owner=&type=recovery",
                                  "휴지통에서 되살렸다", ok=None)
@@ -1263,11 +1120,11 @@ class Mailbox:
             raise MailboxError(f"되살리기가 서지 않았다: {data[:80]!r}")
 
     def restore_mails(self, unids) -> list[str]:
-        """⚠ 메일함을 바꾼다 — 휴지통의 메일들을 되살린다(웹메일 휴지통의 [복원] · 한 통씩 ``restore_from_trash``). 받은 메일은
-        받은편지함으로 읽음 표시 그대로 돌아온다(실측). 임시보관함 메일은 임시보관함으로 돌아온다(실측). 보낸편지함 · 폴더에 있던 메일이 어디로 돌아오는지는 안 쟀다.
+        """⚠ 메일함을 바꾼다 — 휴지통의 메일들을 한 통씩 ``restore_from_trash`` 로 되살린다. 받은 메일은 받은편지함으로 읽음 표시
+        그대로 돌아온다.
 
-        서버가 참을 내도 되살린 뒤 휴지통 보기로 다시 본다 — 남은 메일이 있으면 ``MailboxError``. 도중에 지면 몇 통을 되살린 뒤
-        멎었나를 같은 갈래의 오류로 낸다. 내는 것 — 휴지통에서는 빠졌는데 받은편지함에 안 든 unid(되살린 자리를 모르는 메일).
+        되살린 뒤 휴지통 보기로 다시 봐서 남은 메일이 있으면 ``MailboxError``, 도중에 지면 몇 통을 되살린 뒤 멎었나를 같은 갈래의
+        오류로 낸다. 내는 것 — 휴지통에서는 빠졌는데 받은편지함에 안 든 unid(되살린 자리를 모르는 메일).
         """
         ids = [_unid(u) for u in unids]
         if not ids:
@@ -1283,7 +1140,7 @@ class Mailbox:
         home = self._landed("", ids)
         return [u for u in ids if u.upper() not in home]
 
-    # ── 메일 규칙 — 목록 · 읽기는 읽기 길, 넣기 · 고치기 · 지우기는 바꾸는 손이다(머리말 「메일 규칙」) ──────────────
+    # ── 메일 규칙 — 목록 · 읽기는 읽기 길, 넣기 · 고치기 · 지우기는 바꾸는 손이다 ──────────────
 
     def rules(self) -> list[Rule]:
         """메일 규칙 전부 — 목록 보기의 unid 마다 그 규칙 문서를 연다(규칙 문서라 메일의 읽음과 무관하다). 읽기만 한다."""
@@ -1301,7 +1158,7 @@ class Mailbox:
         return self._rule_by_unid(unid)
 
     def save_rule(self, rule: Rule) -> str:
-        """⚠ 메일함을 바꾼다 — 규칙을 넣거나(``unid`` 가 빈 글자) 고친다. 규칙 unid 를 낸다. 서버가 그 규칙을 바로 쓴다(실측).
+        """⚠ 메일함을 바꾼다 — 규칙을 넣거나(``unid`` 가 빈 글자) 고친다. 규칙 unid 를 낸다. 서버가 그 규칙을 바로 쓴다.
 
         자동전달 칸은 늘 비워 보낸다 — 남에게 메일이 나가는 규칙은 이 손이 짓지도 고치지도 않는다.
         """
@@ -1328,7 +1185,7 @@ class Mailbox:
             raise MailboxError("규칙 지우기 답은 참이었는데 목록에 남았다")
 
     def _rule_form(self, rule: Rule) -> dict:
-        """규칙 → 저장 폼의 칸(실측 · fmmailrule.js save). 조건 없는 규칙 · 모르는 칸 · 없는 폴더는 묻기 전에 막는다."""
+        """규칙 → 저장 폼의 칸(fmmailrule.js save). 조건 없는 규칙 · 모르는 칸 · 없는 폴더는 묻기 전에 막는다."""
         if rule.box not in RULE_BOXES or rule.action not in RULE_ACTIONS:
             raise MailboxConfigError(f"규칙 갈래가 아니다: {rule.box!r} · {rule.action!r}")
         unknown = set(rule.conditions) - set(RULE_FIELDS)
@@ -1379,7 +1236,7 @@ class Mailbox:
         return answer
 
     def _rule_unids(self) -> list[str]:
-        root = self._view(RULE_VIEW, 1000, 1)
+        root = self._view(RULE_VIEW, VIEW_PAGE_MOST, 1)
         return [e.get("unid", "").upper() for e in root.iter("viewentry") if _UNID.match(e.get("unid", ""))]
 
     def _rule_by_unid(self, unid: str) -> Rule:
@@ -1441,11 +1298,9 @@ class Mailbox:
         return (*parse_memo_form(page, self.db_path), page)
 
     def _signature(self, page: str) -> Signature | None:
-        """쓰는 사람의 서명 — 쓰기 화면의 설정이 서명을 켰으면 서명 문서의 본문을 받아 낸다. 꺼졌으면 ``None``.
+        """쓰는 사람의 서명 — 쓰기 화면의 설정이 서명을 켰으면 서명 문서의 본문을 받아 낸다. 꺼졌거나 못 받으면 ``None``(경고만 낸다).
 
-        빈 쓰기 화면은 서명을 안 들고, 화면의 스크립트(fmmail_new.js ``getSignature``)가 뜬 뒤에 따로 받아 편집기에 넣는다 — 이
-        손은 그 스크립트를 안 돌리니 같은 일을 여기서 한다. 받는 주소는 읽기 길의 본문 꼴이다. 못 받으면 경고만 내고 서명 없이 간다
-        (웹메일 화면도 그때 빈 서명으로 간다)."""
+        빈 쓰기 화면은 서명을 안 들고 화면 스크립트가 뜬 뒤에 따로 넣는다 — 이 손은 그 스크립트를 안 돌리니 같은 일을 여기서 한다."""
         found = parse_signature_settings(page)
         if not found:
             return None
@@ -1514,13 +1369,14 @@ class Mailbox:
 
     def _landed(self, to: str, ids: list[str]) -> set[str]:
         """옮긴 자리(폴더 경로 · 빈 글자는 받은편지함)에 든 ``ids`` — 옛 메일은 새것 창 밖에 서므로 다 찾거나 보기가 끝날 때까지
-        1000 줄씩 받는다(보기는 한 번에 1000 줄에서 잘린다). 서버가 start 를 안 따라 같은 쪽을 다시 주면 거기서 멈춘다."""
+        ``VIEW_PAGE_MOST`` 줄씩 받는다. 서버가 start 를 안 따라 같은 쪽을 다시 주면 거기서 멈춘다."""
         folder = next((f for f in self._fresh_folders() if f.path == to), None) if to else None
         if to and folder is None:
             return set()
         want, found, start, first = {u.upper() for u in ids}, set(), 1, None
         while want - found:
-            rows = self.list(count=1000, start=start) if not to else self.list_folder(folder, count=1000, start=start)
+            rows = (self.list(count=VIEW_PAGE_MOST, start=start) if not to
+                    else self.list_folder(folder, count=VIEW_PAGE_MOST, start=start))
             if not rows or rows[0].unid == first:
                 break
             found |= want & {e.unid.upper() for e in rows}
@@ -1693,7 +1549,7 @@ _ATTR = re.compile(r"""(?<![\w-])(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""
 
 
 def parse_rule_page(unid: str, page: str) -> Rule:
-    """규칙 편집 화면 → ``Rule``. 갈래 · 폴더는 화면 머리의 ``new FormJS({…})``, 조건 · 맞춤 · 자동전달은 입력 칸의 값이 든다(실측).
+    """규칙 편집 화면 → ``Rule``. 갈래 · 폴더는 화면 머리의 ``new FormJS({…})``, 조건 · 맞춤 · 자동전달은 입력 칸의 값이 든다.
 
     머리가 없거나 못 읽거나 갈래가 모르는 값이면 ``MailboxError`` — 빈 규칙으로 읽으면 자동전달 규칙을 조용히 숨긴다.
     """
@@ -1724,8 +1580,7 @@ def parse_rule_page(unid: str, page: str) -> Rule:
                   for k in RULE_FIELDS if values.get(f"rule_{k}", "").replace("\u200b", "").strip()}
     action = str(form.get("rules") or "")
     folder_id = str(form.get("folder_id") or "")
-    # 자동전달은 규칙 갈래(``forward``)나 받는 사람 목록이 든다. ``AllFwdOpt`` 는 옛 자동전달 탭의 흔적으로 옮기기 규칙에도 1 이
-    # 남아 있어(실측 23 가운데 4) 표지로 안 쓴다
+    # 자동전달은 규칙 갈래(``forward``)나 받는 사람 목록이 든다. ``AllFwdOpt`` 는 옮기기 규칙에도 1 로 남아 있는 일이 있어 표지로 안 쓴다
     forwards = action == "forward" or bool(values.get("forward_list", "").strip())
     return Rule(unid=unid, box=checked.get("expRule", ""), action=action,
                 folder=paths.get(folder_id, str(form.get("folder_name") or "")) if action == "move_folder" else "",
@@ -1734,7 +1589,7 @@ def parse_rule_page(unid: str, page: str) -> Rule:
 
 
 def _json_cell(cell: dict) -> str:
-    """JSON 보기의 칸 하나 → 글자. 칸은 ``{"text": {"0": 값}}`` 꼴이다(실측) — 값 묶음이면 첫 값."""
+    """JSON 보기의 칸 하나 → 글자. 칸은 ``{"text": {"0": 값}}`` 꼴이다 — 값 묶음이면 첫 값."""
     for key, value in cell.items():
         if key.startswith("@"):
             continue
@@ -1767,8 +1622,8 @@ def folder_order(path: str) -> tuple:
 
 def ecm_note_key(text: str) -> str | None:
     """ECM 쪽지(첨부 「이름(확장자_NKB).html」의 글) → 문서 열쇠 16 hex 글자. 본문 링크의 ``OBJECTID`` 를 먼저, 없으면 머리의
-    ``objectId`` 를 낸다 — 링크 쪽이 사람이 누를 때 화면이 여는 문서고, 머리와 다를 수 있다(메일 29 통 가운데 6 · 게시판 15 개 가운데
-    3). 머리에 열쇠가 없으면 None — ECM 쪽지가 아니다. 스킬 company-board 도 이 가름을 부른다."""
+    ``objectId`` 를 낸다 — 둘이 다르면 머리 값으로는 문서가 안 열린다. 머리에 열쇠가 없으면 None — ECM 쪽지가 아니다. 스킬
+    company-board 도 부른다."""
     head = ECM_HEAD.search(text)
     found = ECM_OBJECT.search(head.group("head")) if head else None
     if not found:
@@ -1802,7 +1657,7 @@ def _entry(entry: ET.Element, *, folder: str = "") -> Entry:
     mark = _column(entry, COLUMN_READ)
     unread = UNREAD_MARK in mark
     found = FOLDER_READ_CLASS.search(mark) if folder else None
-    if found:   # 폴더 보기의 읽음 열은 HTML 조각이다 — class 가 안 읽음 · 읽음을 가른다(머리말)
+    if found:   # 폴더 보기의 읽음 열은 HTML 조각이다 — class 가 안 읽음 · 읽음을 가른다
         mark = found.group(1)
         unread = mark == FOLDER_UNREAD_CLASS
     return Entry(
@@ -2005,7 +1860,7 @@ def parse_save_answer(text: str) -> dict:
 
 
 def _mime_html(html_body: str) -> str:
-    """본문 HTML → 쓰기 화면 편집기가 MIMEBody 칸에 싣는 꼴(머리 + 빈 줄 + HTML). Body 칸만 채우면 본문이 비어 저장된다(실측)."""
+    """본문 HTML → 쓰기 화면 편집기가 MIMEBody 칸에 싣는 꼴(머리 + 빈 줄 + HTML). Body 칸만 채우면 본문이 비어 저장된다."""
     return ('MIME-Version: 1.0\r\nContent-Type: text/html; charset="UTF-8"\r\nContent-Transfer-Encoding: 8bit\r\n\r\n'
             + html_body)
 

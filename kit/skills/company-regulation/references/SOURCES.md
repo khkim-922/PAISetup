@@ -48,3 +48,13 @@
   로그오프로는 Edge 째 사라져 첫 판의 종료 3 으로 끝났다
 - 여섯 범주를 동시에 받을 수 있는지 — 한 세션의 동시 요청을 앱이 받으면 새로 받기가 가장 큰 범주 하나(30 초 남짓)로 준다
 - Codex · agy 의 출력 한도 — Claude Code 의 것만 쟀다
+
+## 들어가는 길 — `scripts/cbsop.py` 가 기댄다
+
+1. 사내 세션 쿠키(.posco.net)를 싣고 SSO 넘김 화면(SSO_PAGE)을 GET — 200 에 숨은 칸 폼(ssoToken · …)이 온다.
+   세션이 끊겼으면 그 칸이 없다
+2. 그 칸을 앱 뿌리(APP_ROOT)에 POST — 앱이 `var epId = encodeURIComponent('…')` 로 열쇠를 든 화면을 낸다
+3. `/test/test_login.do?aes=<열쇠>` 를 GET — 302 → `/main/main.do` 면 선 것. 앱은 그때 제 세션(JSESSIONID)을 심는다
+4. 그 뒤 `/main/ajax/…` 를 폼 꼴 POST 로 부른다. 끊긴 앱 세션은 302 → `/test/closePage.do` 다
+
+앱의 세션 쿠키는 앱 호스트에 살아 받는 손이 남기는 세션 파일(회사 도메인 쿠키)에는 안 든다. 들어가기는 한 번에 1 초 안쪽이었다.
