@@ -8209,6 +8209,11 @@ $FreeSkills = [ordered]@{
   'company-meeting-room'     = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   'company-regulation'       = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   'company-board'            = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  # 메일 비서(일일 보고 · 업무 파악 · 메일함 스캔 · 메일함 정리) — 위 사내 앱 손을 불러 쓰므로 같은 묶음 · 같은 조건으로 선다
+  'daily-brief'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'mailbox-work'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'mailbox-scan'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'mailbox-tidy'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
   'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
   # Anthropic 공식 문서 스킬 넷 — 오피스 · PDF 를 읽고 짓는다. 짐이 상류 한 판(Apache 2.0)을 싣는다. Claude 는 같은 스킬을 「Claude
