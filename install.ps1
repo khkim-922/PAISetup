@@ -5428,9 +5428,9 @@ function Complete-PipPackages {
 # ⚠ **그 CLI 를 띄워 재지 않는다** — 첫 실행에 제 짐을 푸는 CLI 는 첫 `--version` 이 울타리(`$ProbeCap`)를 넘겨, npm 이 성공한
 #   설치가 「설치 실패」 · 끝 검증 `[?]` 로 선다(PAISetup #30). 이 기록의 글자는 node 가 다 선 뒤에 나와 DRM 이 끼는 PC 에서도 안
 #   잃는다(#32).
-# ⚠ **종료코드로 안 가른다** — npm 은 그 패키지가 없거나 전역 폴더에 군더더기가 있으면 1 로 끝나면서도 JSON 은 온전히 낸다. 넘겼거나
-#   못 띄웠거나 npm 이 오류를 적었으면 `unmeasured` 다 — 「없다」가 아니다(결정 0141). 넘김의 `Why` 는 비운다
-#   (`Add-UnmeasuredStep` 이 `$ProbeCap` 넘김 글로 채운다).
+# ⚠ **종료코드로 안 가른다** — npm 은 그 패키지가 없거나 전역 폴더에 군더더기가 있으면 1 로 끝나면서도 JSON 은 온전히 낸다. 못
+#   띄웠거나 npm 이 오류를 적었으면 `unmeasured` 다 — 「없다」가 아니다(결정 0141). 넘겼으면 아래 전역 폴더로 다시 재고, 그것도 못
+#   재야 `unmeasured` 다. 넘김의 `Why` 는 비운다(`Add-UnmeasuredStep` 이 `$ProbeCap` 넘김 글로 채운다).
 # 맨바닥 PC 의 `ENOENT` 는 「없다」다 — 전역 폴더(`$NpmGlobalDir`)는 첫 `npm install -g` 가 만들어, 그 전에는 npm 이 그 자리를 못
 #   읽고 `error.code = ENOENT` 를 적는다. 그때 전역 패키지가 사는 폴더를 묻고(`$askRoot`), 그 폴더가 정말 없으면 깔린 것이
 #   없다는 잰 값이다. 폴더가 있는데 `ENOENT` 거나 그 물음이 졌으면 그대로 못 쟀다다.
@@ -5439,6 +5439,10 @@ function Complete-PipPackages {
 #   없으면 깔린 것이 없고, 있으면 패키지 폴더가 곧 npm 이 `ls` 로 읽는 기록이다(판은 그 `package.json`). 폴더를 못 물었으면 못 쟀다고
 #   남기되, 까닭에 마지막 판의 종료 값 · stdout · stderr 끝 줄을 단다. 진 판마다 받은 글 원문은 세부 기록에 남긴다 — 재는 부름이라
 #   러너(`-Quiet`)는 안 남긴다.
+# ⚠ **넘겨도 다시 묻지 않고 전역 폴더를 직접 읽는다** — 맨바닥 PC 에서는 이 물음이 그 판에 막 깐 node 의 첫 npm 이라(캐시를 처음
+#   세우고 백신이 새 파일을 훑는다) 다른 설치와 겹치면 울타리를 넘는다. 그 한 번에 CLI 깔기가 통째로 빠지면 뒤의 로그인 · 훅 신뢰 ·
+#   브라우저 MCP 가 줄줄이 진다. 같은 npm 을 또 띄우면 울타리만 한 번 더 먹는다. 폴더로 잰 판은 넘김을 끝 검증의 넘김 목록에 안
+#   올린다 — 못 잰 것이 없다. 폴더도 못 물었을 때만 이 물음의 넘김으로 남긴다.
 function Measure-NpmGlobal([string[]]$Pkgs) {
   $probe  = "npm ls -g $($Pkgs -join ' ') --depth=0 --json"
   $lsArgs = @('ls','-g') + $Pkgs + @('--depth=0','--json')
@@ -5487,14 +5491,18 @@ function Measure-NpmGlobal([string[]]$Pkgs) {
   }
   $r = & $ask
   if ($r.Miss) { $r = & $ask }
-  if ($r.Rc -eq -2) { Add-ProbeOverflow "npm ls -g $($Pkgs -join ' ')" $ProbeCap; return (& $each 'unmeasured' $probe '') }
   if ($r.Rc -eq -1) { return (& $each 'unmeasured' $probe (Format-ProbeWhy $r.Rc $ProbeCap)) }
   $j = $r.J
   if (-not $j) {
+    $over = $r.Rc -eq -2
     $gr = & $askRoot
-    if ($gr.Rc -eq -2) { return (& $each 'unmeasured' 'npm root -g' '') }
-    if (-not $gr.Root) { return (& $each 'unmeasured' $probe "두 번 다 $($r.Miss)") }
-    try { Add-RunSpan 'npm 기록' "JSON 을 두 번 못 받아 전역 폴더($($gr.Root))를 직접 읽음" 0 } catch { }
+    if (-not $gr.Root) {
+      if ($over) { Add-ProbeOverflow "npm ls -g $($Pkgs -join ' ')" $ProbeCap; return (& $each 'unmeasured' $probe '') }
+      if ($gr.Rc -eq -2) { return (& $each 'unmeasured' 'npm root -g' '') }
+      return (& $each 'unmeasured' $probe "두 번 다 $($r.Miss)")
+    }
+    $how = if ($over) { "${ProbeCap}초 안에 안 끝나" } else { 'JSON 을 두 번 못 받아' }
+    try { Add-RunSpan 'npm 기록' "$how 전역 폴더($($gr.Root))를 직접 읽음" 0 } catch { }
     if (-not (Test-Path -LiteralPath $gr.Root)) { return (& $each 'no' '' '') }
     $m = @{}
     foreach ($k in $Pkgs) {
