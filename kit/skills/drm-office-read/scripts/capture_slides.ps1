@@ -30,6 +30,10 @@
     비전 토큰은 치수가 정한다(`⌈가로/28⌉ × ⌈세로/28⌉`) — 작은 글자를 더 크게 봐야 할 때만 올린다.
     준 값은 남긴 그림의 이름에 붙어(`.e<긴 변>`), 눈금이 다른 판의 그림과 안 섞인다.
 
+.PARAMETER EcmGated
+    문서함(ECM) 에이전트가 받은 파일도 찍는다. 이 값 없이 그 폴더의 덱을 주면 파워포인트를 띄우기 전에 멈춘다 — 이 스킬은 문서의
+    보안등급을 모른다. 스킬 company-ecm 의 손이 등급 문을 지난 답에서 이를 때만 준다(읽는 부품 office-read.ps1 「문서함」).
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File capture_slides.ps1 -Path out.pptx -Slides "3,8"
 #>
@@ -41,7 +45,8 @@ param(
     [int]$MaxEdge = 0,         # 0 = 줄이는 손의 기본 눈금
     [int]$Wait = 4000,         # 첫 프레임이 늦게 그려지는 PC 에서도 빈 화면이 안 찍히게 넉넉히 기다린다
     # 찍은 그림을 남기지도, 남긴 그림을 쓰지도 않는다 — -OutDir(없으면 임시 폴더)에만 찍는다
-    [switch]$NoKeep
+    [switch]$NoKeep,
+    [switch]$EcmGated          # 문서함 에이전트가 받은 파일도 찍는다 — 위 .PARAMETER EcmGated
 )
 
 $ErrorActionPreference = 'Stop'
@@ -65,6 +70,9 @@ public class Fg {
 [void][Fg]::SetProcessDPIAware()
 
 $full = (Resolve-Path -LiteralPath $Path).Path
+if (-not $EcmGated -and (Test-EcmAgentFile -LiteralPath $full -Root (Get-EcmDocsRoot))) {
+    throw "$([IO.Path]::GetFileName($full)) — $ECM_REFUSAL"   # 앱을 띄우기 전이다 — 등급을 모르는 문서함 받은 파일은 안 연다(office-read.ps1 「문서함」)
+}
 $slideList = @(ConvertTo-NumberList -Value $Slides -Name 'Slides')    # 번호가 아닌 낱말이면 그 낱말을 대며 던진다 — 앱을 띄우기 전이다
 if ($slideList.Count -eq 0) { throw "Slides 에 슬라이드 번호가 없다" }
 

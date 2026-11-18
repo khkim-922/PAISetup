@@ -180,3 +180,28 @@ class App:
 
     def delete(self, rid: str) -> None:
         self.call("DELETE", f"reservations/{urllib.parse.quote(rid)}")
+
+    def update_series(self, rid: str, body: dict) -> dict:
+        """반복의 모든 회차를 고친다 — ``rid`` 는 그 반복의 회차 하나. 답은 ``{updatedCount, totalRequested, …}``."""
+        return self.call("PATCH", f"reservations/{urllib.parse.quote(rid)}/series", body)
+
+    def delete_series(self, rid: str) -> dict:
+        """반복의 모든 회차를 지운다 — ``rid`` 는 그 반복의 회차 하나. 답은 ``{deletedCount, totalRequested, …}``."""
+        return self.call("DELETE", f"reservations/{urllib.parse.quote(rid)}/series")
+
+    # ── 내 설정 — 즐겨찾는 회의실 · 참석자 그룹. 바꾸는 손의 답은 다 바뀐 뒤의 설정 전체다 ─────────────────
+    def prefs(self) -> dict:
+        return self.call("GET", "me/preferences")
+
+    def favorite(self, room_id: str, on: bool) -> dict:
+        return self.call("POST" if on else "DELETE", f"me/preferences/favorite-rooms/{urllib.parse.quote(room_id)}")
+
+    def add_group(self, body: dict) -> dict:
+        """참석자 그룹 하나를 만든다 — ``{name, members: [{employee_id, email}]}``."""
+        return self.call("POST", "me/preferences/attendee-groups", body)
+
+    def put_group(self, gid: str, body: dict) -> dict:
+        return self.call("PUT", f"me/preferences/attendee-groups/{urllib.parse.quote(gid)}", body)
+
+    def drop_group(self, gid: str) -> dict:
+        return self.call("DELETE", f"me/preferences/attendee-groups/{urllib.parse.quote(gid)}")

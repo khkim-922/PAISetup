@@ -1,73 +1,61 @@
 # ECM 손
 
-**회사 PC 의 스크립트 · 스킬이 사내 문서함(ECM)에서 문서를 찾아 읽고, 사람이 확인한 한 편은 편집해 다음 판으로 올리며,
+**회사 PC 의 스크립트 · 스킬이 사내 문서함(ECM)에서 문서를 찾아 읽고, 사람이 확인한 한 편은 열린 창에서 고쳐 다음 판으로 올리며,
 PC 의 파일은 사람이 고른 폴더 · 보안등급으로 새 문서로 올리고, 문서의 권한을 사람이 확인한 명단으로 주고 거두는 파일들이다.**
 
-- **찾는 손** `ecm.py` 의 `Ecm` — 내 문서함과, 그 사람이 볼 수 있는 부서 · 프로젝트 문서함(`cabinets`)의 목록 · 찾기 · 건수. 모든
-  요청을 서버에 닿기 전에 잰 꼴에 댄다 — 읽기는 닫힌 목록으로, 바꾸는 요청은 편집 열기와 등록 화면의 두 POST · 속성 저장 POST 만 열고, 그 밖(편집취소 ·
-  올리기 요청 · 지우기 · 잰 꼴 밖의 서비스와 칸)은 막는다
+- **손가락의 표** `ecm.py` 의 `FINGERS` — 명령 하나가 한 줄이다. 명령줄 인자 · 세션이 드나 · 문서함을 바꾸나 · `--help` 의 지도가 이
+  표에서 선다. 손가락을 더하는 일은 표의 한 줄과 그 일을 하는 손 하나다
+- **찾는 손** `ecm.py` 의 `Ecm` — 내 문서함과, 그 사람이 볼 수 있는 부서 · 프로젝트 문서함(`cabinets`)의 목록 · 찾기 · 건수 · 폴더 나무
+  (`walk_folders` · `resolve_folder` · 이름 일부의 후보 `match_folders`) · 문서함을 이름으로(`cabinet_of`) · 속성 화면 한 번
+  읽기(`doc_state`). 모든 요청을 서버에 닿기 전에 잰 꼴에 댄다 — 읽기는 닫힌 목록으로, 바꾸는 요청은 편집 열기와 등록 화면의 두 POST · 속성 저장 POST 만 열고, 그 밖(편집취소 · 올리기 요청 · 지우기 · 잰 꼴 밖의
+  서비스와 칸)은 막는다
 - **여는 손** `ecm.py` 의 `open_document` — 화면의 「보기」와 같은 두 걸음으로 PC 의 ECM 에이전트를 불러 문서를 받는다. 에이전트는
   받은 파일을 그 확장자의 기본 앱으로 **화면에 띄운다** — 사람이 보는 자리에서만 부른다
 - **기본 앱 손** `default_app.py` — 그 확장자의 기본 앱이 안 정해져 있으면 깔린 앱으로 채운다. 이미 고른 값은 안 덮는다
-- **읽는 손** `ecm.py` 의 `read_document` — 에이전트가 띄운 그 문서 하나만 닫고(오피스는 `close_view.ps1` · pdf 는 `close_acrobat.ps1`), 받은 파일의 글자를 스킬
-  drm-office-read 의 읽는 손으로 뽑는다. 명령줄의 `read` 는 그 글자를 문서 열쇠로 남기고, 같은 열쇠를 다시 읽으면 등급 문만 지나
-  남긴 글자로 답한다(`read_kept` — 문서를 받지 않는다)
-- **편집하는 손** `ecm.py` 의 `edit_document` · `checkin_document` — 화면의 「편집」처럼 서버에서 잠가 읽기 쓰기로 열고(체크인이 저장해 올릴 수 있는 워드 · 엑셀 · 파워포인트만 — 그 밖은 잠그기 전에
-  멈춘다), 고친 뒤 그
-  문서만 저장해 닫아(`close_view.ps1 -Save`) 에이전트의 편집완료 창에서 늘 다음 판과 수정 내용으로 올린다(`checkin_window.ps1`). 고친
-  것 없이 닫으면 에이전트는 창 없이 잠금만 풀고, 손은 문서 정보의 잠금 상태로 그것을 알아본다. 바꾸는
-  요청은 편집 열기 하나만 짓는다 — 올리기는 에이전트가 한다. 문서를 잠그므로 사람이 그 문서를 확인한 뒤에만 부른다
-- **새 문서로 올리는 손** `ecm.py` 의 `register_document` · `folders` — 그 폴더가 그 문서함의 것인가를 폴더 나무로 읽어 본 뒤, 화면의 「컨텐츠 등록」처럼 그 폴더에 같은 이름이 있나 묻고,
-  에이전트가 파일을 서버 임시 자리에 올린 뒤 등록하고, 목록에서 다시 읽어 폴더 · 보안등급이 고른 값인가 본다. 같은 이름이 있으면
-  안 올린다(다음 판은 편집하는 손의 몫이다). 보안등급 · 공개는 사람이 확인한 값만 받는다 — 잘못 고르면 동료 전체에 보인다
+- **읽는 손** `ecm.py` 의 `read_document` — 에이전트가 띄운 그 문서 하나만 닫고(오피스는 `close_view.ps1` · pdf 는 `close_acrobat.ps1`),
+  받은 파일의 글자를 스킬 drm-office-read 의 읽는 손으로 뽑는다. 명령줄의 `read` 는 그 글자를 문서 열쇠로 남기고, 같은 열쇠를 다시
+  읽으면 등급 문만 지나 남긴 글자로 답한다(`read_kept` — 문서를 받지 않는다)
+- **편집하는 손** `ecm.py` 의 `edit_document` · `change_document` · `prepare_checkin` · `checkin_document` — 화면의 「편집」처럼 서버에서
+  잠가 읽기 쓰기로 열고(워드 · 엑셀 · 파워포인트만 — 못 할 바꿀 것은 잠그기 전에 멈춘다), 열린 창에서 조각을 바꾸고 평문 파일을 끼워
+  넣어 저장한다(`change_doc.ps1`). 올리기는 미리 보기가 낸 확인 열쇠로만 — 그 문서만 닫아(`close_view.ps1 -RequireClean` · 창에 고침이
+  남으면 안 닫는다) 에이전트의 편집완료 창에서 늘 다음 판과 수정 내용으로 올린다(`checkin_window.ps1`). 고친 것 없이 닫으면 에이전트는
+  창 없이 잠금만 풀고, 손은 문서 정보의 잠금 상태로 그것을 알아본다
+- **오피스 문서를 찾는 손** `office_doc.ps1` — 오피스 앱에 열린 문서 하나를 전체 경로로 찾는다. `close_view.ps1` · `change_doc.ps1` 이 싣는다
+- **새 문서로 올리는 손** `ecm.py` 의 `plan_register` · `register_document` — 그 폴더가 그 문서함의 것인가를 폴더 나무로 읽어 보고,
+  같은 이름이 있나 묻고 확인 열쇠를 낸다. 열쇠가 맞을 때만 에이전트가 파일을 서버 임시 자리에 올린 뒤 등록하고, 목록에서 다시 읽어
+  폴더 · 보안등급이 고른 값인가 본다. 같은 이름이 있으면 안 올린다(다음 판은 편집하는 손의 몫이다)
 - **권한 손** `ecm.py` 의 `plan_access` · `apply_access` — 화면의 「컨텐츠 속성 → 수정하기」처럼 권한 셋(편집 · 복사 · 읽기)을 주고 거둔다.
-  사람 · 조직은 ECM 의 검색으로 사람 열쇠까지 풀고(조직은 그 순간 바로 든 부서원으로 펼친다), 바뀔 명단과 확인 열쇠를 먼저 내며, 열쇠가 맞고
-  그 사이 명단이 그대로일 때만 속성 저장 POST 하나를 보낸 뒤 명단과 다른 속성을 다시 읽어 본다. 저장 몸이 문서의 속성 칸 전부를 다시 싣기에
-  그 문서의 속성 화면이 든 값을 그대로 받고, 안 잰 꼴의 문서(핵심기술 · 집중보호 · 잠김 · 권한 셋 밖의 역할)는 보내기 전에 멈춘다
-- **얇은 명령** `company_ecm.py` — 대화에서 부르는 명령. 형제 스킬 ep-login 의 `ep_session.py` 로 ECM 세션을 받은 뒤(ECM 만 잰다 — 메일 쪽 Domino 세션은 안 본다) `ecm.py` 를
-  그대로 부른다
+  사람 · 조직(명령줄 · 사람 파일)은 ECM 의 검색으로 사람 열쇠까지 풀고(조직은 그 순간 바로 든 부서원으로 펼친다 · 한 줄이라도 못 풀면
+  아무것도 안 짓는다), 바뀔 명단과 확인 열쇠를 먼저 내며, 열쇠가 맞고 그 사이 명단이 그대로일 때만 속성 저장 POST 하나를 보낸 뒤 명단과 다른 속성을 다시 읽어 본다. 안 잰 꼴의 문서(핵심기술 ·
+  집중보호 · 잠김 · 권한 셋 밖의 역할)는 보내기 전에 멈춘다
+- **얇은 명령** `company_ecm.py` — 대화에서 부르는 명령. 인자와 서버 없이 가릴 수 있는 값을 `ecm.py` 의 명령줄 · `precheck` 로 먼저 가리고(`--help` · 틀린 값은 세션 없이 끝난다), 형제 스킬
+  ep-login 의 `ep_session.py` 로 ECM 세션을 받은 뒤(ECM 만 잰다 — 메일 쪽 Domino 세션은 안 본다) `ecm.py` 를 그대로 부른다
 
 대화에서 쓰는 절차는 스킬 `company-ecm` 이 든다. 이 폴더는 그 스킬의 명령과, 깔린 자리에서 불러 쓰는 앱이 함께 쓰는 손이다 — 복사해
-쓰는 밑판이 아니라 불러 쓰는 손이라, 공개 이름과 꼴(부르는 꼴 · 내는 것 · 종료 값)을 바꾸면 그 쪽이 깨진다. 같은 서비스 모음에
-문서를 잠그거나 판을 바꾸는 요청이 섞여 있어 읽기 길은 닫힌 목록으로 들고 편집 열기와 등록은 화면과 같은 차례의 문으로만 연다 — 덮어쓰기 ·
-사람 문서 닫기 · 모르는 잠금이 구조상 안 나게. 차례와 막는 까닭은 `../references/DESIGN.md` 가, 주소 · 꼴의 사실은
-`../references/SOURCES.md` 「사내 ECM 에서 잰 것」이, 기본 앱의 사실과 그 출처는 같은 파일 「Windows 기본 앱」이 든다.
+쓰는 밑판이 아니라 불러 쓰는 손이라, 그 앱이 싣는 이름과 꼴(`ecm.py` 머리말)을 바꾸면 그 쪽이 깨진다. 차례와 막는 까닭은
+`../references/DESIGN.md` 가, 주소 · 꼴의 사실은 `../references/SOURCES.md` 「사내 ECM 에서 잰 것」이, 기본 앱의 사실과 그 출처는 같은
+파일 「Windows 기본 앱」이 든다.
 
 ## 앱에서 쓰기
 
 1. 세션 — 사내 SSO 를 넘은 Edge 의 쿠키를 Playwright 저장 상태 파일로 받는다. 받는 손과 그 파일의 자리는 스킬 ep-login 이 든다 — 이
    손은 그 자리를 받아 쓰기만 한다(`--session <파일>` · 또는 환경변수 `MAILBOX_COOKIES`). 파일에는 다른 호스트의 쿠키도 들어
    있어도 된다 — ECM 호스트에 맞는 쿠키만 싣는다
-2. 부르는 꼴 · 내는 것 · 환경변수 · 종료 값은 `ecm.py` 머리말이, 받은 파일과 남긴 글자가 어떻게 되나는
-   `../references/DESIGN.md` 「받은 파일과 남긴 글자」가 든다
-3. 명령줄로 쓸 때:
-
-   ```bash
-   python -X utf8 ecm.py --session <세션 파일> list --search 보고서
-   python -X utf8 ecm.py --session <세션 파일> cabinets                       # 부서 · 프로젝트 문서함과 열쇠
-   python -X utf8 ecm.py --session <세션 파일> list --cabinet <열쇠> --search 계획
-   python -X utf8 ecm.py --session <세션 파일> read <id>
-   python -X utf8 ecm.py --session <세션 파일> edit <id>                      # 잠그고 읽기 쓰기로 연다
-   python -X utf8 ecm.py --session <세션 파일> checkin <id> <받은 파일> --desc "수정 내용"
-   python -X utf8 ecm.py --session <세션 파일> folders <문서함 열쇠> [--parent <폴더 열쇠>]   # 새 문서를 둘 폴더
-   python -X utf8 ecm.py --session <세션 파일> register <파일> --cabinet <문서함> --folder <폴더> --security 2A --open F
-   python -X utf8 ecm.py --session <세션 파일> access <id>                    # 권한 명단
-   python -X utf8 ecm.py --session <세션 파일> who org:<부서 이름>             # ECM 이 아는 사람 · 부서
-   python -X utf8 ecm.py --session <세션 파일> preview-access <id> --read org:<부서코드> --copy <이름/메일ID> --revoke <이름>
-   python -X utf8 ecm.py --session <세션 파일> apply-access <id> (같은 인자) --confirm <열쇠>
-   python -X utf8 ecm.py default-app .docx      # 기본 앱 상태와 이 PC 의 해시 계산 — 기본 앱이 안 서는 PC 를 들여다볼 때만
-   ```
-
-4. 글자를 뽑는 손은 스킬 drm-office-read 의 `read-drm.ps1` 이다 — 다른 자리에 있으면 `ECM_DRM_READER` 로 준다. 윈도 · 오피스 ·
-   Fasoo 에이전트가 도는 PC 가 전제다
+2. 부르는 꼴 · 내는 것 · 환경변수 · 종료 값은 `ecm.py` 머리말이, 명령의 지도는 `python -X utf8 ecm.py --help` 가, 받은 파일과 남긴
+   글자가 어떻게 되나는 `../references/DESIGN.md` 「받은 파일과 남긴 글자」가 든다
+3. 글자를 뽑는 손은 곁에 깔린 스킬 drm-office-read 의 `read-drm.ps1` 이다 — 다른 자리에 있으면 `ECM_DRM_READER` 로 준다. 에이전트가
+   받은 파일을 두는 자리도 그 스킬의 값 파일(`scripts/places.json`)이 든다 — 그 스킬이 곁에 없으면 이 손이 안 실린다. 이 손은 등급 문을
+   지난 뒤 `-EcmGated` 를 붙여 부른다(그 손은 이 깃발 없이는 에이전트 폴더의 파일을 안 연다). 윈도 · 오피스 · Fasoo 에이전트가 도는
+   PC 가 전제다
 
 ## 돌려 보기
 
 ```bash
 python -X utf8 -I _check/skills/company-ecm/check_ecm.py             # 이 스킬의 ecm.py 를 잰다 — 127.0.0.1 밖으로 안 나간다
-python -X utf8 -I _check/skills/company-ecm/check_ecm.py --office    # 창 닫는 손까지 — 워드 · 파워포인트 · Acrobat(Reader) 창이 잠깐 뜬다
+python -X utf8 -I _check/skills/company-ecm/check_ecm.py --office    # 창 닫는 손 · 고치는 손까지 — 워드 · 파워포인트 · 엑셀 · Acrobat 창이 잠깐 뜬다
 python -X utf8 -I _check/skills/company-ecm/check_ecm.py <폴더>      # 다른 폴더의 사본을 잰다
 ```
 
-검사는 설정 저장소에 있다 — 깔린 스킬 폴더에는 없다. 설정 저장소 루트에서 돌린다. 끝 줄이 「통과 N/N」이면 선 것이다. 가짜 서버 · 가짜 에이전트라 못 재는 길이 있다 — 사내 SSO · 진짜 에이전트 · 편집완료 창 · 서버의
-등록 따위, 목록은 `check_ecm.py` 머리말 「여기서 못 재는 것」이 든다.
+검사는 설정 저장소에 있다 — 깔린 스킬 폴더에는 없다. 설정 저장소 루트에서 돌린다. 끝 줄이 「통과 N/N」이면 선 것이다. 고치는 손의
+시험 덱 · 통합 문서는 python-pptx · openpyxl 로 짓는다 — 없으면 그 판정은 「못 잼」이다. 가짜 서버 · 가짜 에이전트라 못 재는 길이
+있다 — 사내 SSO · 진짜 에이전트 · 감긴 문서 · 편집완료 창 · 서버의 등록 따위, 목록은 `check_ecm.py` 머리말 「여기서 못 재는 것」이 든다.

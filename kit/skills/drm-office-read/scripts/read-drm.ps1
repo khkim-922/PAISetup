@@ -1,17 +1,18 @@
 ﻿# DRM 감긴 문서에서 글자를 뽑는다 — Fasoo 에이전트가 도는 PC 의 오피스를 태워서.
 #
-#     powershell -NoProfile -ExecutionPolicy Bypass -File read-drm.ps1 -Path <파일 · 폴더>… [-OutDir <폴더>] [-Preview N] [-NoKeep]
+#     powershell -NoProfile -ExecutionPolicy Bypass -File read-drm.ps1 -Path <파일 · 폴더>… [-OutDir <폴더>] [-Preview N] [-NoKeep] [-EcmGated]
 #
 # 본체다 — 인자 · 대상 모으기 · 남긴 글자 · 화면 · `-OutDir` 출력 · 끝 정리. 읽는 함수는 `office-read.ps1` 이 든다.
 # 내는 것 — 파일마다 「[딱지] 이름 …」 한 줄과 앞부분 글자(또는 `-OutDir` 의 `.md`), 끝에 셈 한 줄. 같은 바이트의 파일은 앱을 안 띄우고
 # 남긴 글자로 답한다. 종료 값 — 0 준 파일을 다 읽었다(남긴 글자로 답한 것 포함) · 1 하나라도 못 읽었거나 읽을 파일이 없다(못 읽은
-# 파일은 「[딱지] 이름 — 실패…」 한 줄 — 없는 경로 · 앱이 못 연 파일 · `$HANDLER` 에 없는 확장자가 다 같다).
+# 파일은 「[딱지] 이름 — 실패…」 한 줄 — 없는 경로 · 앱이 못 연 파일 · `$HANDLER` 에 없는 확장자 · `-EcmGated` 없이 준 문서함 받은 파일이
+# 다 같다).
 # 왜 앱을 태우나 · 남긴 글자의 꼴은 `references/DESIGN.md` 가 든다.
 
 [CmdletBinding()]
 param(
-    # 읽을 파일들. 폴더를 주면 그 안의 지원 확장자를 전부 훑는다.
-    [Parameter(Mandatory = $true, Position = 0)]
+    # 읽을 파일들. 폴더를 주면 그 안의 지원 확장자를 전부 훑는다. 여럿은 이어 적거나(-File 의 남은 인자를 다 받는다) 쉼표로 잇는다.
+    [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)]
     [string[]]$Path,
 
     # 뽑은 글자를 넣을 폴더. 생략하면 화면으로만 낸다.
@@ -21,7 +22,10 @@ param(
     [int]$Preview = 300,
 
     # 글자를 남기지도, 남긴 글자를 쓰지도 않는다 — 사람이 남기지 말라고 한 문서이거나, 제 자리에 글자를 따로 남기는 손이 부를 때.
-    [switch]$NoKeep
+    [switch]$NoKeep,
+
+    # 문서함(ECM) 에이전트가 받은 파일도 연다 — 스킬 company-ecm 의 손이 등급 문을 지난 답에서 이를 때만 준다(office-read.ps1 「문서함」).
+    [switch]$EcmGated
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,6 +65,13 @@ function Write-Tally([string]$KeptHint) {
 }
 
 # ── 대상 모으기 ────────────────────────────────────────────────────────────
+# -File 로 부르면 「-Path a,b」 가 배열이 아니라 글 하나("a,b")로 온다 — 그 글이 그대로 있는 경로가 아니면 쉼표로 가른다(이름에 쉼표가
+# 든 파일 · 폴더는 그대로 둔다)
+$Path = @(foreach ($item in $Path) {
+    if ($item.Contains(',') -and -not (Test-Path -LiteralPath $item)) {
+        $item -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    } else { $item }
+})
 $done = 0
 $failed = 0                            # 못 읽은 것 — 없는 경로 · 받는 확장자가 아닌 파일 · 앱이 못 연 파일
 $targets = [System.Collections.Generic.List[string]]::new()
@@ -79,6 +90,21 @@ foreach ($item in $Path) {
 }
 if ($targets.Count -eq 0) { Write-Error '읽을 파일이 없다.'; exit 1 }
 $allCount = $targets.Count + $failed   # 없는 경로도 준 것으로 센다
+
+# ── 문서함 받은 파일 — 등급 문을 지난 길(-EcmGated)이 아니면 앱을 띄우기 전에 이름을 대며 실패로 센다 ─────────────────────
+if (-not $EcmGated) {
+    $ecmRoot = Get-EcmDocsRoot
+    $open = [System.Collections.Generic.List[string]]::new()
+    foreach ($file in $targets) {
+        if (Test-EcmAgentFile -LiteralPath $file -Root $ecmRoot) {
+            Write-Output "[문서함 받은 파일] $([System.IO.Path]::GetFileName($file)) — 실패: $ECM_REFUSAL"
+            $failed++
+            continue
+        }
+        $open.Add($file)
+    }
+    $targets = $open
+}
 
 # ── 못 읽는 꼴 — 읽는 부품의 표($HANDLER)에 없는 확장자는 앱을 띄우기 전에 이름을 대며 실패로 센다 ────────────────
 # 건너뛰기만 하면 「읽음 0 · 실패 0」에 종료 0 이라 부른 쪽이 읽은 줄 안다. 실패 줄은 앱이 못 연 파일과 같은 꼴이다 — 부르는 손이 집는다

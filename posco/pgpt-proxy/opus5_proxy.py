@@ -49,14 +49,15 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 24
+VERSION_OURS = 26
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
 LOG_MAX_BYTES = 1_000_000
 MAX_SSE_EVENT_BYTES = 2 * 1024 * 1024
 UPSTREAM_TIMEOUT = 600
-SLOW_REQUEST_SEC = 5.0
+# 요청 하나가 이만큼 넘게 걸리면 `slow` 줄을 남긴다 — 보통 턴의 길이보다 낮게 잡으면 거의 모든 턴에 붙어 오래 선 판을 못 가른다
+SLOW_REQUEST_SEC = 30.0
 
 
 def _env_float(name: str, default: float) -> float:
@@ -75,8 +76,13 @@ MAX_UNSTREAM_BYTES = 32 * 1024 * 1024
 WEB_SEARCH = os.environ.get("PGPT_PROXY_WEB_SEARCH", "1").lower() not in {"0", "false", "off"}
 HOIST_TOOL_IMAGES = os.environ.get("PGPT_PROXY_HOIST_TOOL_IMAGES", "1").lower() not in {"0", "false", "off"}
 DOCUMENT_NOTE = os.environ.get("PGPT_PROXY_DOCUMENT_NOTE", "1").lower() not in {"0", "false", "off"}
+# 출력 상한에 잘린 도구 호출이 오류로 돌아올 때 그 오류에 상한의 사실을 덧붙인다 — README 「잘린 호출 알림」 칸
+TRUNCATION_NOTE = os.environ.get("PGPT_PROXY_TRUNCATION_NOTE", "1").lower() not in {"0", "false", "off"}
+# 게이트웨이에 없는 토큰 세기(`/v1/messages/count_tokens`)를 넘기지 않고 여기서 404 로 답한다 — README 「토큰 세기」 칸.
+# 끄면 그대로 넘긴다 — 게이트웨이가 그 길을 열었는지 이 문 너머로 잴 때
+COUNT_TOKENS_LOCAL = os.environ.get("PGPT_PROXY_COUNT_TOKENS_LOCAL", "1").lower() not in {"0", "false", "off"}
 # 수명별 캐시 쓰기 묶음 채움 — 왜 채우나는 README 「캐시 수명 묶음 채움」 칸
-FILL_CACHE_TTL = os.environ.get("PGPT_PROXY_FILL_CACHE_TTL", "1").lower() not in {"0", "false", "off"}
+FILL_CACHE_TTL =os.environ.get("PGPT_PROXY_FILL_CACHE_TTL", "1").lower() not in {"0", "false", "off"}
 # 쉬는 대화의 캐시 데우기 — 게이트웨이의 캐시는 5분 동안 안 읽히면 사라지고, 그 안에 읽히면 수명이 새로 선다. 큰 대화의 마지막
 # 실제 요청 뒤 간격마다 이 횟수만큼 그 요청을 max_tokens=1 로 다시 보내 캐시를 읽힌다. 0 이면 끈다.
 CACHE_WARM_CYCLES = int(min(max(_env_float("PGPT_PROXY_CACHE_WARM_CYCLES", 3.0), 0.0), 60.0))
@@ -222,6 +228,8 @@ _DOCUMENTS_NOTED = 0
 _HOIST_CACHE_MARKS = 0
 _HOIST_CACHE_MARKS_SKIPPED = 0
 _SLOW_TOTAL = 0
+_TRUNCATION_NOTES = 0
+_COUNT_TOKENS_ANSWERED = 0
 _KEEPALIVE_TOTAL = 0
 _STREAM_ERROR_TOTAL = 0
 _STREAM_INCOMPLETE_TOTAL = 0
@@ -449,6 +457,12 @@ def _count_documents_noted(count: int) -> None:
         _DOCUMENTS_NOTED += count
 
 
+def _count_truncation_notes(count: int) -> None:
+    global _TRUNCATION_NOTES
+    with _STATS_LOCK:
+        _TRUNCATION_NOTES += count
+
+
 def _count_hoist_cache_mark(added: bool | None) -> None:
     global _HOIST_CACHE_MARKS, _HOIST_CACHE_MARKS_SKIPPED
     if added is None:
@@ -464,6 +478,17 @@ def _count_slow() -> None:
     global _SLOW_TOTAL
     with _STATS_LOCK:
         _SLOW_TOTAL += 1
+
+
+def is_count_tokens_request(method: str, path: str) -> bool:
+    """Claude 의 토큰 세기 요청인가 — 생성 요청(`/v1/messages`)은 아니다."""
+    return method == "POST" and path.rstrip("/").endswith("/v1/messages/count_tokens")
+
+
+def _count_count_tokens_answered() -> None:
+    global _COUNT_TOKENS_ANSWERED
+    with _STATS_LOCK:
+        _COUNT_TOKENS_ANSWERED += 1
 
 
 def _count_keepalive() -> None:
@@ -634,6 +659,9 @@ def stats() -> dict[str, object]:
             "hoisted_tool_images": _HOISTED_TOOL_IMAGES,
             "document_note": DOCUMENT_NOTE,
             "documents_noted": _DOCUMENTS_NOTED,
+            "truncation_note": TRUNCATION_NOTE,
+            # 알림을 붙인 횟수 — 같은 오류가 대화 이력으로 다시 실려 오는 요청마다 센다
+            "truncation_notes": _TRUNCATION_NOTES,
             "hoist_cache_marks": _HOIST_CACHE_MARKS,
             # 표식 한도(4)가 차 못 단 수 — 오르면 그림 많은 턴이 캐시를 놓친다
             "hoist_cache_marks_skipped": _HOIST_CACHE_MARKS_SKIPPED,
@@ -650,6 +678,8 @@ def stats() -> dict[str, object]:
             "cache_warm_sent": _CACHE_WARM_SENT,
             "cache_warm_failed": _CACHE_WARM_FAILED,
             "slow_requests": _SLOW_TOTAL,
+            "count_tokens_local": COUNT_TOKENS_LOCAL,
+            "count_tokens_answered": _COUNT_TOKENS_ANSWERED,
             "keepalives": _KEEPALIVE_TOTAL,
             "stream_errors": _STREAM_ERROR_TOTAL,
             "stream_incomplete": _STREAM_INCOMPLETE_TOTAL,
@@ -1569,6 +1599,46 @@ def _note_documents(content: list) -> int:
     return noted
 
 
+# Claude Code 가 도구 인자를 못 받아들였을 때 그 도구의 결과로 돌려보내는 글의 머리와, 잘린 인자가 내는 두 꼴의 표지 —
+# JSON 이 안 읽혔다 · 읽히되 필수 칸이 빠졌다
+_TOOL_INPUT_ERROR_HEAD = "<tool_use_error>InputValidationError:"
+_TOOL_INPUT_ERROR_MARKS = ("could not be parsed as JSON", "The required parameter")
+# 모델이 읽는 글이라 영어로 둔다. 잘렸다고 단정하지 않는다 — 같은 오류는 상한과 무관하게 깨진 인자에도 온다
+_TRUNCATION_NOTE_TEXT = (
+    "[Note from the local proxy: this gateway ends one streamed response at {cap} output tokens, thinking included. "
+    "If this tool call was cut off at that limit, the same call will be cut off again - send its content in several "
+    "smaller calls.]"
+)
+
+
+def _is_tool_input_error(text: object) -> bool:
+    return (isinstance(text, str) and text.lstrip().startswith(_TOOL_INPUT_ERROR_HEAD)
+            and any(mark in text for mark in _TOOL_INPUT_ERROR_MARKS))
+
+
+def _note_truncated_calls(content: list, cap: int) -> int:
+    """user 턴의 tool_result 가운데 인자 오류에 출력 상한의 사실을 덧붙이고 붙인 수를 돌려준다.
+
+    붙이는 글은 오류 글과 상한 값만으로 정해진다 — 같은 메시지가 뒤 요청의 이력으로 다시 와도 같은 바이트가 되어 캐시
+    접두사가 안 흔들린다. 블록의 다른 칸(cache_control 등)은 그대로 둔다.
+    """
+    note = _TRUNCATION_NOTE_TEXT.format(cap=cap)
+    noted = 0
+    for index, block in enumerate(content):
+        if not isinstance(block, dict) or block.get("type") != "tool_result" or block.get("is_error") is not True:
+            continue
+        inner = block.get("content")
+        if _is_tool_input_error(inner):
+            content[index] = {**block, "content": f"{inner}\n{note}"}
+        elif isinstance(inner, list) and any(
+                isinstance(item, dict) and item.get("type") == "text" and _is_tool_input_error(item.get("text")) for item in inner):
+            content[index] = {**block, "content": [*inner, {"type": "text", "text": note}]}
+        else:
+            continue
+        noted += 1
+    return noted
+
+
 def _cache_mark_count(payload: dict, messages: list) -> int:
     """요청이 쓰는 캐시 표식 수 — 최상위 자동 캐시 · tools · system · 메시지 블록 · tool_result 안 블록."""
     count = 1 if "cache_control" in payload else 0
@@ -1652,6 +1722,12 @@ def sanitize_payload(payload: dict[str, object]) -> dict[str, object]:
                         if m["role"] == "user" and isinstance(m["content"], list))
             if noted:
                 _count_documents_noted(noted)
+        stream_cap = output_cap(unstream=False)
+        if TRUNCATION_NOTE and stream_cap:
+            warned = sum(_note_truncated_calls(m["content"], stream_cap) for m in cleaned
+                         if m["role"] == "user" and isinstance(m["content"], list))
+            if warned:
+                _count_truncation_notes(warned)
         if HOIST_TOOL_IMAGES:
             moved = [_hoist_tool_images(m["content"]) if m["role"] == "user" and isinstance(m["content"], list) else 0
                      for m in cleaned]
@@ -2426,6 +2502,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             {"type": "error", "error": {"type": "invalid_request_error", "message": str(error)}},
                             keep_alive=False)
             return
+        if COUNT_TOKENS_LOCAL and is_count_tokens_request(self.command, parsed.path):
+            # 본문을 다 읽은 뒤라 연결은 그대로 쓴다. 클라이언트는 이 호출이 지면 제 어림셈으로 넘어간다.
+            # 기록 줄은 안 남긴다 — 턴마다 오는 호출이라 남기면 기록이 그만큼 빨리 넘어간다. /health 가 센다
+            _count_count_tokens_answered()
+            self._send_json(404, {"type": "error", "error": {"type": "not_found_error", "message": (
+                "Proxy: the gateway does not offer count_tokens; the client estimates tokens locally.")}})
+            return
         if body:
             _note_request_bytes(len(body))
         model_name = ""
@@ -2875,6 +2958,25 @@ def self_test() -> None:
     assert _note_documents(turn) == 0
     noted = sanitize_payload({"model": "claude-opus-5", "messages": [{"role": "user", "content": [doc]}]})
     assert noted["messages"][0]["content"] == [{"type": "text", "text": _DOCUMENT_NOTE_TEXT}]
+
+    # 잘린 호출 알림: 인자 오류 두 꼴(글 · 칸 목록)에만 붙고, 다른 오류 · 오류가 아닌 결과 · 도구 결과가 아닌 글은 그대로다.
+    # 같은 입력에는 같은 글이 붙는다
+    bad_json = f"{_TOOL_INPUT_ERROR_HEAD} Edit was called with input that could not be parsed as JSON.</tool_use_error>"
+    no_field = f"{_TOOL_INPUT_ERROR_HEAD} Bash failed due to the following issue:\nThe required parameter `command` is missing</tool_use_error>"
+
+    def cut_turn() -> list:
+        return [{"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": bad_json, "cache_control": {"type": "ephemeral"}},
+                {"type": "tool_result", "tool_use_id": "t2", "is_error": True, "content": [{"type": "text", "text": no_field}]},
+                {"type": "tool_result", "tool_use_id": "t3", "is_error": True, "content": "Exit code 2\ncould not be parsed as JSON"},
+                {"type": "tool_result", "tool_use_id": "t4", "content": bad_json},
+                {"type": "text", "text": bad_json}]
+
+    turn, again = cut_turn(), cut_turn()
+    cap_note = _TRUNCATION_NOTE_TEXT.format(cap=12500)
+    assert _note_truncated_calls(turn, 12500) == 2 and _note_truncated_calls(again, 12500) == 2 and turn == again
+    assert turn[0]["content"] == f"{bad_json}\n{cap_note}" and turn[0]["cache_control"] == {"type": "ephemeral"}
+    assert turn[1]["content"] == [{"type": "text", "text": no_field}, {"type": "text", "text": cap_note}]
+    assert turn[2:] == cut_turn()[2:] and "12500" in cap_note
 
     # 옮긴 묶음의 캐시 표식: 끝에 표식이 있으면 묶음 앞 tool_result 에 같은 표식을 단다 · 표식이 앞에 있으면 마지막 이름표에 ·
     # 한도(4)가 찼거나 메시지에 표식이 없으면 안 단다 · 마지막이 아닌 user 메시지는 안 본다

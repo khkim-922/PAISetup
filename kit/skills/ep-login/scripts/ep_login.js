@@ -18,7 +18,8 @@
 //   4 ECM 만 못 받았다 → --ecm-tab 으로 한 번 더 받는다
 // 로그인 탭을 지켜보는 법 · 왜 따로 사는 프로필로 띄우나는 references/DESIGN.md 가 든다.
 //
-// 내는 것 — 종료 값은 닫힌 셋이다. 표준 출력은 종료 0 일 때 세션 파일의 절대 경로 한 줄뿐이고, 경과와 「다음: …」 은 표준 오류다:
+// 내는 것 — 종료 값은 닫힌 셋이다. 표준 출력은 종료 0 일 때 세션 파일의 절대 경로 한 줄뿐이고, 경과와 「다음: …」 은 표준 오류다.
+// 어느 종료든 표준 오류의 마지막 줄은 회사 일 앞에 거는 한 줄(BEFORE_WORK)이다:
 //   0 세션이 섰다
 //   4 로그인 시한 안에 세션이 안 섰다 · 또는 ECM 을 탭으로도 못 받았다 — 「다음」 대로 간다
 //   1 그 밖 — Edge 를 못 찾음 · 인자 · 띄웠는데 포트가 안 열림 · 받는 손의 1
@@ -290,10 +291,15 @@ function ecmFailed(got) {
   throw new Exit(4, `EP 로그인은 섰는데 ECM 세션을 탭으로도 못 받았다${got.said ? ` — ${got.said}` : ''}. 다음: 멈추고 이 말을 사람에게 그대로 전한다 — 다시 로그인할 일이 아니다`);
 }
 
+// 끝마다 표준 오류에 거는 한 줄 — 이 입구는 사람이 회사 일을 시킨 대화에서만 돌아(사람 없는 실행은 막혔다), 그 일의 첫 걸음에서
+// 손부터 나가는 것을 한 번 건다. 표준 출력(세션 파일 경로)은 건드리지 않는다
+const BEFORE_WORK = '회사 일 — 이 일의 목적과 가장 나은 길(어떤 스킬을 어떤 차례로 · 무엇을 하위 에이전트에 맡길지)부터 세우고 간다';
+
 // 명령 한 번 — main 의 종료 값으로 프로세스를 끝낸다
 function run(argv) {
-  main(argv).then(code => process.exit(code), error => {
+  main(argv).then(code => { say(BEFORE_WORK); process.exit(code); }, error => {
     console.error(error.message);
+    say(BEFORE_WORK);
     process.exit(error instanceof Exit ? error.code : 1);
   });
 }

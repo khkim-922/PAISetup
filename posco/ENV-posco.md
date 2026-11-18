@@ -240,7 +240,8 @@
     ⚠ **`-preview` 라고 다 없는 것이 아니다** — `gemini-3.1-pro-preview` 는 게이트웨이에 실제로 있고 본 턴이 그 이름으로
     통한다
   - **게이트웨이는 `POST /v1/messages/count_tokens` 를 404(`E006`)로 되돌린다** — 같은 로그. Claude Code 는
-    「count unavailable, estimating locally」로 넘어가 해는 없다. 게이트웨이 팀 보고에 얹을 한 줄
+    「count unavailable, estimating locally」로 넘어가 해는 없다. 게이트웨이 팀 보고에 얹을 한 줄. 프록시 너머의 Claude Code 는
+    이 404 를 게이트웨이가 아니라 프록시에게서 받는다(`pgpt-proxy/README.md` 쓰임 표의 토큰 세기 칸)
   - **Gemini 길(`/v1beta`)의 답은 Gemini API(AI Studio) 꼴이다 — Vertex AI 꼴이 아니다(회사 실측 2026-10-30 · #226 ⑯).** 맨 위 칸이
     candidates · modelVersion · responseId · usageMetadata 넷이고 usageMetadata 에 serviceTier · thoughtsTokenCount 가 실린다.
     Vertex 의 답에 서는 createTime · usageMetadata.trafficType 은 없다 — 이 길의 답을 견줄 공개 문서는 Gemini API 의 것이다

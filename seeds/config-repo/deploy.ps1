@@ -969,12 +969,14 @@ $PullTargetTimeoutSec = 60   # 몸통에 멈출 커밋을 묻는 한도(저장�
 $DrmClearTimeoutSec = 60     # 몸통이 감싼 사본을 백업하고 되돌리는 한도(저장소마다) — 디스크 일이지만 몸통을 Git Bash 로 띄우는 값이 든다
 $pulledRepos = @{}   # 저장소 -> 이번 회차에 그 저장소로 밀어도 되나 (당김 판정)
 
-# 대상은 `personal.conf` 의 REPOS 중 이 PC 에 `.git` 을 든 것이다 — 목록을 여기 안 적는다. 이 저장소 자신은 대상이 아니다 —
+# 대상은 `personal.conf` 의 REPOS · REPOS_PLAIN 중 이 PC 에 `.git` 을 든 것이다 — 목록을 여기 안 적는다. 이 저장소 자신은 대상이 아니다 —
 #   부팅 라인에서 이 스크립트가 도는 것은 설치의 「설정 저장소」 걸음이 이미 그것을 당긴 뒤이고, 지금 도는 몸통이 곧 그 판이다.
+# REPOS_PLAIN 은 당김에만 든다 — 게이트 · 훅 사본 · 메모리를 놓는 뒤의 걸음은 `$globalRuleTargets` 만 읽는다.
 # 계획 쪽 초(`$planSecs`)는 실행 고리의 `$stepSecs` 밖이라 따로 잰다 — 보고 머리에 한 줄로 낸다.
 $planSecs = [ordered]@{}
 $tPull = $deploySw.Elapsed.TotalMilliseconds
-Sync-Repos $globalRuleTargets
+$plainRepos = @(($pc['REPOS_PLAIN'] -split '\s+') | Where-Object { $_ } | ForEach-Object { Join-Path $repoRoot $_ })
+Sync-Repos (@($globalRuleTargets) + $plainRepos)
 $planSecs['당김'] = $deploySw.Elapsed.TotalMilliseconds - $tPull
 
 

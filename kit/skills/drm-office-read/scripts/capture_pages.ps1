@@ -15,6 +15,9 @@
     임시 폴더 아래 drm-pages)에만 뜨며, 같은 부름의 기록을 걷는다 — 잘못 떠서 남은 그림은 -NoKeep 한 판으로 물린다.
     내는 것 — 요약 한 줄 뒤 그림마다 한 줄(딱지가 있으면 「경로  ← 딱지」).
 
+    문서함(ECM) 에이전트가 받은 파일은 -EcmGated 없이는 앱을 띄우기 전에 멈춘다 — 그 깃발은 스킬 company-ecm 의 손이 등급 문을 지난
+    답에서만 이른다.
+
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File capture_pages.ps1 -Path report.pdf
     powershell -NoProfile -ExecutionPolicy Bypass -File capture_pages.ps1 -Path report.docx -Pages "1,3"
@@ -32,7 +35,9 @@ param(
     # 문서 안의 그림만 하나씩 뜬다(쪽 · 표 · 시트 사용 영역은 안 뜬다) — 덱(.pptx · .ppt)은 이 값일 때만 받는다
     [switch]$Pictures,
     # 뜬 그림을 남기지도, 남긴 그림을 쓰지도 않는다 — -OutDir(없으면 임시 폴더)에만 뜬다
-    [switch]$NoKeep
+    [switch]$NoKeep,
+    # 문서함(ECM) 에이전트가 받은 파일도 뜬다 — 스킬 company-ecm 의 손이 등급 문을 지난 답에서 이를 때만 준다(office-read.ps1 「문서함」)
+    [switch]$EcmGated
 )
 
 $ErrorActionPreference = 'Stop'
@@ -371,6 +376,9 @@ function Save-ExcelVisuals([IO.FileInfo]$File, [string]$Selection, [string]$Out,
 }
 
 $File = Get-Item -LiteralPath $Path
+if (-not $EcmGated -and (Test-EcmAgentFile -LiteralPath $File.FullName -Root (Get-EcmDocsRoot))) {
+    throw "$($File.Name) — $ECM_REFUSAL"    # 앱을 띄우기 전이다 — 등급을 모르는 문서함 받은 파일은 안 연다(office-read.ps1 「문서함」)
+}
 $Ext = $File.Extension.ToLowerInvariant()
 if ($Ext -in $DeckExtensions -and -not $Pictures) {
     throw '덱의 장 전체는 capture_slides.ps1 로 찍습니다 — 이 스크립트는 -Pictures(장 안의 그림만)일 때만 덱을 받습니다.'

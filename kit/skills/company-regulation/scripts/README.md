@@ -8,13 +8,14 @@
 - **검사** 설정 저장소의 `_check/skills/company-regulation/check_regulation.py` — 앱 없이 얇은 명령의 답 꼴을 잰다. 판정과 걷는 조건은 그 머리말이 든다
 
 로그인은 이 손이 하지 않는다 — 사내 세션은 메일함과 한 벌이고, 그 세션을 파일로 남기는 손은 스킬 ep-login 이 든다. 들어가는 길은
-`../references/SOURCES.md`, 열람 기록을 안 남기는 까닭은 `cbsop.py` 머리말, 부르는 꼴 · 내는 것 · 종료 값 · 받아 둔 목록의 자리는 `regulation.py` 머리말이 든다.
+`../references/SOURCES.md`, 열람 기록을 안 남기는 까닭은 `cbsop.py` 머리말, 부르는 꼴 · 내는 것 · 종료 값은 `regulation.py --help`, 받아 둔 목록의 자리는 `regulation.py` 머리말이 든다.
 대화에서 쓰는 절차는 스킬 `company-regulation` 이 든다.
 
 ## 돌려 보기
 
 ```bash
 python -X utf8 -I regulation.py find 출장      # 회사 PC — 받아 둔 목록이 없으면 먼저 받는다
+python -X utf8 -I regulation.py find 출장 --in 전사공통 --days 90   # 말 × 범주 × 기간 한 부름
 python -X utf8 -I regulation.py read <processIdx> --max 2000
 python -X utf8 -I _check/skills/company-regulation/check_regulation.py           # 어느 PC 에서나 — 앱 없이 본문 풀기 · 답의 크기 · recent 의 목록 나이를 잰다
 ```

@@ -26,6 +26,8 @@
       · 남긴 그림 — Get-KeptShotDir -Name -Print. 같은 자리 아래 폴더 「파일 이름.지문」의 경로를 낸다(짓지 않는다)
       · 그림 줄이기 — Convert-ShotsToWebp -Png 경로들 [-MaxEdge] → PNG 경로 → 나갈 경로(못 줄인 것은 PNG). Convert-ShotToWebp 는 한 장짜리
       · 번호 고름 — ConvertTo-NumberList -Value -Name
+      · 문서함 받은 파일 — Get-EcmDocsRoot(환경변수 → 곁의 places.json · 모르면 $null) · Test-EcmAgentFile -LiteralPath -Root · 멈춘 말 $ECM_REFUSAL. 본체가 앱을 띄우기
+        전에 가린다 — 이 부품의 읽는 함수는 안 가린다(그 함수를 바로 싣는 쪽이 제 등급 문을 든다)
       · 상수 — $HANDLER · $PROCESS_OF · $MSO_AUTOMATION_FORCE_DISABLE · $OFFICE_EXIT_WAIT_MS · $OFFICE_EXIT_POLL_MS · $SHRINK_ARGS_MAX_CHARS ·
         $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS · $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
       · 파워포인트 글은 머리 한 줄($PPT_SEAT_LEGEND) 뒤 장마다 도형을 위→아래 · 왼→오른으로 세워 줄마다 [위 · 왼] 꼬리표를 앞세운다.
@@ -190,6 +192,40 @@ function ConvertTo-NumberList {
         if ($list -notcontains $parsed) { $list += $parsed }
     }
     return $list
+}
+
+# ── 문서함(ECM) 에이전트가 받은 파일 — 등급 문을 지난 길에서만 연다 ─────────────────────────────────────────────
+# 이 스킬은 문서의 보안등급을 몰라, 받는 자리 밑의 파일은 부르는 쪽이 -EcmGated 를 줄 때만 연다(읽는 손 · 뜨는 손이 앱을 띄우기 전에
+# 가린다). 그 깃발은 스킬 company-ecm 의 손이 등급 문을 지난 답에서만 이르고, 제 읽기에서 read-drm.ps1 을 부를 때도 준다. 받는 자리는
+# 환경변수, 없으면 곁의 값 파일 places.json 의 ecm_docs_root 다 — 그 손과 DRM 길잡이 훅도 같은 파일을 읽는다. 값 파일이 이 스킬 안에
+# 있어 company-ecm 이 안 깔린 홈(그 손을 안 고른 도구 홈)에서도 문이 같은 자리에 선다
+$ECM_DOCS_ROOT_ENV = 'ECM_DOCS_ROOT'
+$ECM_PLACES = Join-Path $PSScriptRoot 'places.json'
+$ECM_PLACES_KEY = 'ecm_docs_root'
+$ECM_REFUSAL = ('문서함(ECM) 에이전트가 받은 파일이다 — 이 스킬은 문서의 보안등급을 몰라 열지 않는다. 다음: 스킬 company-ecm 의 ' +
+                'read <문서 열쇠> 로 받는다(기밀 · 핵심기술이면 그 손이 사람에게 묻게 멈추고, 표 · 그림을 뜰 길은 그 손의 답이 든다)')
+
+function Get-EcmDocsRoot {
+    # 문서함 에이전트가 받은 파일을 두는 자리 — company-ecm 손의 agent_docs_root 와 같은 차례(환경변수 → 값 파일)로 읽는다. 값 파일을 못
+    # 읽으면 $null(거르지 않는다) — 값 파일은 이 스킬과 함께 깔리므로 깨진 설치에서만 그렇다
+    $fromEnv = "$([Environment]::GetEnvironmentVariable($ECM_DOCS_ROOT_ENV))".Trim()
+    if ($fromEnv) { return $fromEnv }
+    try {
+        $value = "$((Get-Content -LiteralPath $ECM_PLACES -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json).$ECM_PLACES_KEY)".Trim()
+    } catch { return $null }
+    if ($value) { return $value }
+    return $null
+}
+
+function Test-EcmAgentFile {
+    # 그 경로가 받는 자리($Root — 부르는 쪽이 Get-EcmDocsRoot 로 한 번 읽어 준다) 밑인가. 자리를 모르거나 경로를 못 풀면 거짓
+    param([Parameter(Mandatory = $true)][string]$LiteralPath, [string]$Root)
+    if (-not $Root) { return $false }
+    try {
+        $full = [IO.Path]::GetFullPath($LiteralPath)
+        $base = [IO.Path]::GetFullPath($Root).TrimEnd([char[]]'\/') + [IO.Path]::DirectorySeparatorChar
+    } catch { return $false }
+    return $full.StartsWith($base, [StringComparison]::OrdinalIgnoreCase)
 }
 
 # 어느 확장자를 어느 앱이 드나. PDF 는 워드가 든다 — Acrobat COM 은 Acrobat 이 깔린 PC 에만 있다

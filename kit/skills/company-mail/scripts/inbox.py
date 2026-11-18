@@ -151,6 +151,8 @@ FOLDER_READ_CLASS = re.compile(r"class='(mail_2[12])'")
 ATTACHMENT_SEPARATOR = "{}"
 SPLIT_MARK, ENG_MARK = "-=spl=-", "-ENG-"
 # ECM 을 가리키는 큰 첨부 — <원래 이름>(<확장자>_<크기>KB).html
+# 목록의 한 칸에 든 줄바꿈 글자 — 목록은 메일 한 통이 한 줄이라, 이 글자가 제목 · 이름에 남으면 줄로 읽는 쪽이 한 통을 두 줄로 가른다
+LINE_BREAKS = re.compile("[\n\r\x0b\x0c\x1c-\x1e\x85\u2028\u2029]+")
 ECM_ATTACHMENT = re.compile(r"^(?P<name>.+)\((?P<ext>[0-9A-Za-z]+)_(?P<kb>\d+)KB\)\.html$", re.IGNORECASE)
 # 그 쪽지 맨 앞의 기계가 읽는 머리와, 그 안의 문서 열쇠 — 열쇠는 ``doc`` 뒤의 16 hex 다
 ECM_HEAD = re.compile(r"<!--@!ECM!@(?P<head>.*?)-->", re.DOTALL)
@@ -224,6 +226,12 @@ DRAFT_COMPANY_CODE = "02"                           # 첨부 열쇠 가운데 �
 DRAFT_ATTACH_MOST = 20                              # 쓰기 화면의 첨부 개수 상한(attach_limit_count)
 DRAFT_ATTACH_BIG = 20 * 1024 * 1024                 # 이보다 크면 웹메일이 대용량 전환한다(BigFileUserTransSize) — 임시저장은 대용량을 안 든다
 DRAFT_UPLOAD_TIMEOUT = 180.0                        # 첨부 하나를 올리는 시한 — 대용량 상한(DRAFT_ATTACH_BIG) 안쪽 파일을 넉넉히 덮는다
+# 메일속성 — 쓰기 화면의 체크 칸이 저장에 싣는 칸과 켠 값(saveDoc). 끈 값은 빈 글자, 긴급만 끈 값이 「2」다
+DRAFT_URGENT = ("Importance", "1", "2")             # 긴급메일 — (칸, 켠 값, 끈 값)
+DRAFT_NO_FORWARD = "Forward_Deny"                   # 전달불가 — 켜면 「1」
+DRAFT_ONE_BY_ONE = "IndividualSend"                 # 한명씩 발송 — 켜면 「1」
+DRAFT_SEND_AT = ("ReservationOpt", "SDay", "SHour", "SMin")   # 예약발송 — 켬 「1」 · 날짜(YYYY-MM-DD) · 시(두 자리) · 분(두 자리)
+SEND_AT_STEP_IN_PAGE = re.compile(r'var\s+Reservation_Interval\s*=\s*"(\d+)"')   # 예약발송 분의 눈금 — 쓰기 화면의 분 고름 상자가 이 값으로 선다
 # 서명 — 쓰기 화면의 설정 JSON 칸(fmmail_new.js getSignature)
 SIGNATURE_ON = re.compile(r'"signatueYN"\s*:\s*"(\w*)"')              # 서명 쓰기 — 칸 이름 철자는 웹메일 그대로
 SIGNATURE_ADD_LINE = re.compile(r'"signatue_add1line"\s*:\s*"(\w*)"')  # 서명 앞 빈 줄
@@ -398,11 +406,45 @@ class Found:
 class DraftPerson:
     """임시메일의 받는 사람 하나 — ``notes`` 는 Notes 이름(SendTo 칸), ``email`` · ``name`` 은 InetSendTo 칸. ``notes`` 를 비우면
     웹메일 화면이 다시 열 때 사람으로 안 선다. ``dept`` 면 조직 하나다 — ``notes`` 는 부서 코드, ``email`` · ``name`` 은 부서 주소 · 이름.
+    ``group`` 이면 배포그룹 하나다 — ``notes`` 는 그룹 열쇠, ``name`` 은 그룹 이름, ``email`` 은 빈 글자(보내는 순간의 구성원에게 간다).
     """
     notes: str
     email: str
     name: str
     dept: bool = False
+    group: bool = False
+
+
+@dataclass(frozen=True)
+class DraftOptions:
+    """임시메일의 메일속성 — 쓰기 화면의 체크 칸. ``send_at`` 은 예약발송 시각(``YYYY-MM-DD HH:MM`` · 분은 쓰기 화면의 눈금
+    ``SEND_AT_STEP_IN_PAGE`` — ``save_draft`` 가 그 화면에서 읽어 가린다) · 빈 글자면 예약하지 않는다. 화면 손에 넘기는 ops 의 ``options`` 도 이 칸 이름 그대로다."""
+    urgent: bool = False
+    no_forward: bool = False
+    one_by_one: bool = False
+    send_at: str = ""
+
+    def form(self) -> dict:
+        """저장 폼에 실을 칸 — 쓰기 화면의 saveDoc 이 싣는 값 그대로다."""
+        field, on, off = DRAFT_URGENT
+        opt, day, hour, minute = DRAFT_SEND_AT
+        out = {field: on if self.urgent else off, DRAFT_NO_FORWARD: "1" if self.no_forward else "",
+               DRAFT_ONE_BY_ONE: "1" if self.one_by_one else "", opt: "", day: "", hour: "", minute: ""}
+        if self.send_at:
+            d, _, hm = self.send_at.partition(" ")
+            h, _, m = hm.partition(":")
+            out |= {opt: "1", day: d, hour: h, minute: m}
+        return out
+
+
+def people_info(fields: dict) -> str:
+    """받는 사람 칸(``SENT_PEOPLE_FIELDS``) 하나의 글 — ``fields`` 는 칸(to · cc · bcc) → 받는 사람들. 배포그룹만 싣는다. 사람 · 조직은
+    화면이 Notes 이름 · 부서 코드로 다시 세우지만, 배포그룹은 이 글이 없으면 열쇠만 남은 「기타」로 선다. 웹메일 화면이 짓는 꼴(열쇠
+    ITEM {type, key, group_name, field})과 같다 — ``field`` 가 있어야 다시 읽을 때(``parse_sent_people``) 받는 사람 · 참조가 갈린다."""
+    screen = {v: k for k, v in PEOPLE_FIELD_OF.items()}
+    return PEOPLE_SEP.join(p.notes + PEOPLE_ITEM + json.dumps({"type": GROUP_TYPE, "key": p.notes, "group_name": p.name,
+                                                               "field": screen[f]}, ensure_ascii=False)
+                           for f, people in fields.items() for p in people if p.group)
 
 
 @dataclass(frozen=True)
@@ -594,16 +636,17 @@ class Mailbox:
     def sent_people(self, unid: str) -> tuple[Recipient, ...]:
         """보낸 메일 한 통의 받는 사람 · 참조 · 숨은참조 모두 — 웹메일이 넣은 차례대로, 조직은 조직 하나로(``kind`` 가 ``dept``).
 
-        그 메일의 받는 사람 칸(``SENT_PEOPLE_FIELDS``)을 푼다. 숨은참조 칸이 없으면(404) 숨은참조가 없는 것이다. 받는 사람 ·
-        참조 칸이 없으면 이 꼴로 저장되지 않은 메일이라 ``MailboxError`` — 빈 명단으로 내면 「지난번과 같이」가 아무도 없이 선다.
+        그 메일의 받는 사람 칸(``SENT_PEOPLE_FIELDS``)을 푼다. 숨은참조 칸은 보내면 웹메일이 걷어 404 · 501 로 오니, 숨은참조가 든
+        것은 그 칸이 남은 메일뿐이고 빈 숨은참조는 「없었다」가 아니라 「모른다」다. 받는 사람 · 참조 칸이 없으면(404 · 501) 이 꼴로
+        저장되지 않은 메일이라 ``MailboxError`` — 빈 명단으로 내면 「지난번과 같이」가 아무도 없이 선다.
         """
         out: list[Recipient] = []
         for name in SENT_PEOPLE_FIELDS:
             try:
                 body, kind = self._get(f"/0/{_unid(unid)}/{name}?OpenField")
-            except _Missing:
+            except (_Missing, _NotServed) as exc:
                 if name == SENT_PEOPLE_FIELDS[0]:
-                    raise MailboxError(f"그 메일에 받는 사람 칸({name})이 없다 — 웹메일 편집 화면으로 쓴 메일이 아니다: {unid}") from None
+                    raise MailboxError(f"그 메일에 받는 사람 칸({name})이 없다 — 웹메일 편집 화면으로 쓴 메일이 아니다: {unid}") from exc
                 continue
             text = body.decode(_charset(kind), errors="replace")
             if _looks_like_login(text):
@@ -1250,11 +1293,12 @@ class Mailbox:
     # ── 임시저장 — 웹메일 쓰기 화면의 [임시저장] 단추와 같은 요청 ────────────────────
 
     def save_draft(self, subject: str, to: list[DraftPerson], *, cc: list[DraftPerson] = (), bcc: list[DraftPerson] = (),
-                   html_body: str, files: list[DraftFile] = (), empno: str) -> str:
+                   html_body: str, files: list[DraftFile] = (), empno: str, options: DraftOptions = DraftOptions()) -> str:
         """⚠ 메일함을 바꾼다 — 새 임시메일 하나를 임시보관함에 저장하고 그 unid 를 낸다. **보내지 않는다.**
 
         ``empno`` 는 쓰는 사람 사번(메일함 파일 번호) — 첨부 업로드 DB 와 첨부 열쇠가 그것으로 선다. 첨부가 있으면 먼저 업로드 DB 에
         올리고 저장 폼에 그 열쇠를 싣는다. 대용량(``DRAFT_ATTACH_BIG`` 넘음)은 웹메일 임시저장이 안 들어 묻기 전에 막는다.
+        ``options`` 는 메일속성(긴급 · 전달불가 · 한명씩 · 예약)이다 — 예약해도 저장만 한다(나가는 것은 [보내기] 뒤 그 시각이다).
         저장 칸 SaveAgent 는 늘 ``wSave`` 다 — 다른 값이면 서버가 그 자리에서 발송한다. 저장 뒤 임시보관함 보기에 그 unid 가 서야 낸다.
         """
         if not to:
@@ -1265,13 +1309,19 @@ class Mailbox:
         if big:
             raise MailboxConfigError(f"대용량 첨부는 임시저장이 안 든다(웹메일이 지운다): {', '.join(big)} — 웹메일에서 붙인다")
         form, action, unid, page = self._blank_memo()
+        if options.send_at:
+            step = SEND_AT_STEP_IN_PAGE.search(page)
+            if not step:
+                raise MailboxError("쓰기 화면에 예약발송 분 눈금(Reservation_Interval)이 없다 — 웹메일 화면이 바뀌었다. 예약 없이 저장하거나 화면에서 넣는다")
+            if int(options.send_at[-2:]) % int(step.group(1)):
+                raise MailboxConfigError(f"예약발송의 분은 {step.group(1)} 분 눈금이다(웹메일 화면의 고름 상자) — {options.send_at} 를 눈금에 맞춰 다시 준다")
         html_body = with_signature(html_body, self._signature(page))
         if files:
             form |= self._upload_draft_files(unid, empno, files)
         else:
             form |= {"NoAttach": "T", "am_attachment": "", "$attachpath": "", "$attachkey": ""}
         form |= {"__Click": "0", "%%PostCharset": "UTF-8", "SAResponse": "json", "SaveAgent": SAVE_AGENT_DRAFT,
-                 "SendOptions": "2", "docMode": "", "nh_Type": "", "ECMCheck": "", "Importance": "2",
+                 "SendOptions": "2", "docMode": "", "nh_Type": "", "ECMCheck": "", **options.form(),
                  "Subject": subject, "Body": "", "MIMEBody": _mime_html(html_body),
                  "TransBigFile": "0", "BigFileOnlyECM": "0", "FileKey": "", "BigFileNameList": "",
                  "AllAttachFileNameList": "\n".join(f.name for f in files),
@@ -1279,7 +1329,9 @@ class Mailbox:
         for field, inet, people in (("SendTo", "InetSendTo", to), ("CopyTo", "InetCopyTo", cc),
                                     ("BlindCopyTo", "InetBlindCopyTo", bcc)):
             form[field] = "; ".join(p.notes for p in people)
-            form[inet] = "; ".join(f'"{p.name}" <{p.email}>' if p.name else p.email for p in people)
+            form[inet] = "; ".join(p.name if p.group else f'"{p.name}" <{p.email}>' if p.name else p.email for p in people)
+        form[SENT_PEOPLE_FIELDS[0]] = people_info({"to": to, "cc": cc})
+        form[SENT_PEOPLE_FIELDS[1]] = people_info({"bcc": bcc})
         answer = self._post_memo(action, form)
         saved = str(answer.get("unid") or "").upper()
         if not _UNID.match(saved):
@@ -1539,8 +1591,13 @@ def directory_query(handle: str):
 def _column(entry: ET.Element, name: str) -> str:
     for data in entry.iter("entrydata"):
         if data.get("name") == name:
-            return " ".join(t.strip() for t in data.itertext() if t.strip())
+            return one_line(" ".join(t.strip() for t in data.itertext() if t.strip()))
     return ""
+
+
+def one_line(text: str) -> str:
+    """목록 한 칸의 글 — 안에 든 줄바꿈 글자를 빈칸 하나로 접는다."""
+    return LINE_BREAKS.sub(" ", text).strip()
 
 
 _RULE_INFO = re.compile(r"new FormJS\((\{.*?\})\);", re.DOTALL)
@@ -1647,7 +1704,7 @@ def _found(row: dict) -> Found:
     folder = category[1:-1] if category.startswith("[") and category.endswith("]") else category
     folder = SEARCH_SYSTEM_BOXES.get(folder, folder)
     who = str(row.get("from") or "")
-    return Found(unid=str(row.get("unid") or "").upper(), subject=html.unescape(str(row.get("subject") or "")),
+    return Found(unid=str(row.get("unid") or "").upper(), subject=one_line(html.unescape(str(row.get("subject") or ""))),
                  sender=who.split(ENG_MARK, 1)[0].strip() or who.strip(), date=str(row.get("date") or ""),
                  folder=folder, attached=str(row.get("attach") or "") == "T",
                  unread=UNREAD_MARK in str(row.get("icon") or ""), draft=str(row.get("isdraft") or "") == "Y")
@@ -1739,7 +1796,8 @@ def parse_sent_people(text: str, default_field: str = "") -> list[Recipient]:
         if not isinstance(item, dict):
             item = {}
         kind = str(item.get("type") or "")
-        name = str((item.get("dept_name") if kind == DEPT_TYPE else item.get("user_name") or item.get("name")) or "")
+        name = str((item.get("dept_name") if kind == DEPT_TYPE else item.get("group_name") if kind == GROUP_TYPE
+                    else item.get("user_name") or item.get("name")) or "")
         addr = str(item.get("email") or "")
         field = PEOPLE_FIELD_OF.get(str(item.get("field") or ""), default_field)
         out.append(Recipient(name=name, addr=addr, notes=key, kind=kind, field=field))

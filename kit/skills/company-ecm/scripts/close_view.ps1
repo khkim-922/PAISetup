@@ -1,93 +1,31 @@
 ﻿<#
-    ECM 에이전트가 띄운 오피스 문서 하나를 닫는다 — 그 경로의 문서만 닫고, 그 앱에 남은 문서가 없을 때만 앱을 끈다.
+    ECM 에이전트가 띄운 오피스 문서 하나를 닫는다 — 그 경로의 문서만 닫고, 그 앱에 남은 문서가 없을 때만 앱을 끈다. 저장은 하지 않는다
+    (편집의 고침은 change_doc.ps1 이 앞서 저장한다).
 
     부르는 꼴:
-        powershell -NoProfile -ExecutionPolicy Bypass -File close_view.ps1 -Path <받은 파일> -App Word|Excel|PPT [-WaitSeconds 30] [-Save]
+        powershell -NoProfile -ExecutionPolicy Bypass -File close_view.ps1 -Path <받은 파일> -App Word|Excel|PPT [-WaitSeconds 30]
+            [-RequireClean]
 
     내는 것: 표준 출력에 JSON 한 줄({"found":…,"closed":…,"quit":…,"left":…,"others":[…]}). ``others`` 는 앱을 안 끈 판에 그 앱에 남은
-    문서의 이름이다. 종료 값 0 닫았다 · 2 시한 안에 그 문서가 안 떴다(또는 이미 닫혔다) · 1 닫다가 실패했다.
+    문서의 이름이다. 종료 값 0 닫았다 · 2 시한 안에 그 문서가 안 떴다(또는 이미 닫혔다) · 4 ``-RequireClean`` 인데 저장 안 된 고침이
+    있어 안 닫았다 · 1 닫다가 실패했다.
 
-    ``-Save`` 는 편집으로 연 파일을 저장한 뒤 닫고, 없으면 저장하지 않고 닫는다.
+    ``-RequireClean`` 은 올리기 앞에서 쓴다 — 미리 본 뒤 창에서 고친 것이 있으면 닫지 않고 멈춘다(없으면 닫아도 잃는 것이 없다).
+    그 밖에는 저장 안 된 고침을 버리고 닫는다(보기로 받은 읽기 전용 문서다).
 
-    ⚠ 에이전트는 받은 파일을 사람이 쓰던 앱에 띄울 수 있다 — 그 앱의 다른 문서는 사람의 것이라 받은 파일의 전체 경로가 같은
-    문서 하나만 닫고, 앱은 남은 문서가 0 일 때만 끈다(끄면 저장 안 한 사람의 문서가 경고 없이 사라진다).
-    셸이 띄운 오피스는 포커스를 잃기 전까지 ROT 에 안 올라 ``GetActiveObject`` 가 못 본다 — 그래서 오피스 창마다
-    ``AccessibleObjectFromWindow``(OBJID_NATIVEOM)로 앱을 받고 ROT 의 앱도 함께 본다.
+    ⚠ 앱은 남은 문서가 0 일 때만 끈다 — 끄면 저장 안 한 사람의 문서가 경고 없이 사라진다. 찾는 손은 곁의 office_doc.ps1 이 든다.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Path,
     [Parameter(Mandatory = $true)][ValidateSet('Word', 'Excel', 'PPT')][string]$App,
     [int]$WaitSeconds = 30,
-    [switch]$Save
+    [switch]$RequireClean
 )
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-$COM_NAME = @{ 'Word' = 'Word.Application'; 'Excel' = 'Excel.Application'; 'PPT' = 'PowerPoint.Application' }
-# 앱의 맨 위 창 class → 그 안의 문서 칸 창 class. 문서 칸에서 받는 개체가 그 앱의 창 개체다(.Application 이 앱)
-$WINDOW_CLASS = @{ 'Word' = @('OpusApp', '_WwG'); 'Excel' = @('XLMAIN', 'EXCEL7'); 'PPT' = @('PPTFrameClass', 'mdiClass') }
-$POLL_MS = 500
-
-if (-not ('EcmSeed.OfficeWindows' -as [type])) {
-    Add-Type -TypeDefinition @'
-using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Text;
-namespace EcmSeed {
-    public static class OfficeWindows {
-        delegate bool EnumProc(IntPtr hwnd, IntPtr param);
-        [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr param);
-        [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc proc, IntPtr param);
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder name, int size);
-        [DllImport("oleacc.dll")] static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint id, ref Guid iid,
-            [MarshalAs(UnmanagedType.IDispatch)] out object found);
-        const uint OBJID_NATIVEOM = 0xFFFFFFF0;
-        static string ClassOf(IntPtr hwnd) { var s = new StringBuilder(256); GetClassName(hwnd, s, 256); return s.ToString(); }
-        // 맨 위 창 class 가 frame 인 창마다, class 가 pane 인 첫 자식 창의 개체 하나
-        public static object[] Find(string frame, string pane) {
-            var found = new List<object>();
-            EnumWindows((top, _) => {
-                if (ClassOf(top) != frame) return true;
-                EnumChildWindows(top, (child, __) => {
-                    if (ClassOf(child) != pane) return true;
-                    Guid iid = new Guid("00020400-0000-0000-C000-000000000046");   // IDispatch
-                    object o;
-                    if (AccessibleObjectFromWindow(child, OBJID_NATIVEOM, ref iid, out o) == 0 && o != null) { found.Add(o); return false; }
-                    return true;
-                }, IntPtr.Zero);
-                return true;
-            }, IntPtr.Zero);
-            return found.ToArray();
-        }
-    }
-}
-'@
-}
-
-function Get-OpenDocuments($Application) {
-    <# 그 앱의 열린 문서 모음(COM 개체 그대로). ⚠ 쉼표로 감싸 모음째 낸다 — 풀려 나가면 문서가 하나 남았을 때 .Count 가
-       0 으로 읽혀 사람의 문서가 남은 앱을 끈다 #>
-    switch ($App) {
-        'Word'  { return , $Application.Documents }
-        'Excel' { return , $Application.Workbooks }
-        'PPT'   { return , $Application.Presentations }
-    }
-}
-
-function Get-Applications {
-    <# 그 앱의 인스턴스들 — 창에서 받은 것과 ROT 의 것. 같은 앱이 둘로 들 수 있지만 문서를 찾으면 거기서 멈춘다 #>
-    $apps = @()
-    $classes = $WINDOW_CLASS[$App]
-    foreach ($window in @([EcmSeed.OfficeWindows]::Find($classes[0], $classes[1]))) {
-        try { $apps += $window.Application } catch { }
-        Release $window
-    }
-    try { $apps += [Runtime.InteropServices.Marshal]::GetActiveObject($COM_NAME[$App]) } catch { }
-    return $apps
-}
+. (Join-Path $PSScriptRoot 'office_doc.ps1')
 
 function Stop-EmptyApplication($Application) {
     <# 남은 문서가 없는 앱을 끈다. 쥔 COM 참조가 남으면 파워포인트는 Quit 을 받고도 빈 창으로 남아, 참조를 다 놓은 뒤 아직
@@ -125,63 +63,43 @@ function Get-OpenNames($Application) {
     return , $names
 }
 
-function Release($Object) {
-    if ($null -ne $Object) { try { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($Object) } catch { } }
+$found = Find-OpenDocument $Path $WaitSeconds
+if ($null -eq $found) { Write-Result $false $false $false -1; exit 2 }
+$application, $match = $found.Application, $found.Document
+if ($RequireClean -and -not (Test-Clean $match)) {
+    Release $match; Release $application
+    Write-Result $true $false $false -1
+    exit 4
 }
-
-$target = [System.IO.Path]::GetFullPath($Path)
-$deadline = (Get-Date).AddSeconds($WaitSeconds)
-
-while ((Get-Date) -lt $deadline) {
-    foreach ($application in @(Get-Applications)) {
-        $match = $null
-        $documents = $null
+try {
+    try { $match.Saved = $true } catch { }   # 고침은 앞서 저장됐거나 버릴 것이다 — 닫기는 늘 묻지 않고
+    if ($App -eq 'PPT') { $match.Close() } else { $match.Close($false) }
+    Release $match
+    $count = $null
+    try { $after = Get-OpenDocuments $application; $count = $after.Count; Release $after } catch { }
+    # 엑셀은 숨은 통합 문서(개인 매크로 PERSONAL.XLSB 따위)도 센다 — 창이 하나도 안 보이는 통합 문서는 사람이 연 문서가 아니다
+    if ($App -eq 'Excel' -and $null -ne $count) {
         try {
-            $documents = Get-OpenDocuments $application
-            foreach ($doc in $documents) {
-                $full = ''
-                try { $full = [System.IO.Path]::GetFullPath([string]$doc.FullName) } catch { }
-                if ($full -and [string]::Equals($full, $target, [StringComparison]::OrdinalIgnoreCase)) { $match = $doc; break }
-                Release $doc
+            $visible = 0
+            foreach ($book in $application.Workbooks) {
+                $shown = $false
+                foreach ($w in $book.Windows) { if ($w.Visible) { $shown = $true }; Release $w }
+                if ($shown) { $visible++ }
+                Release $book
             }
-        } catch { }   # 앱이 아직 뜨는 중이면 목록이 안 선다 — 다음 판에 다시 본다
-        Release $documents
-        if ($null -eq $match) { Release $application; continue }
-        try {
-            if ($Save) { $match.Save() } else { try { $match.Saved = $true } catch { } }
-            if ($App -eq 'PPT') { $match.Close() } else { $match.Close($false) }   # 저장할 것은 위에서 했다 — 닫기는 늘 묻지 않고
-            Release $match
-            $count = $null
-            try { $after = Get-OpenDocuments $application; $count = $after.Count; Release $after } catch { }
-            # 엑셀은 숨은 통합 문서(개인 매크로 PERSONAL.XLSB 따위)도 센다 — 창이 하나도 안 보이는 통합 문서는 사람이 연 문서가 아니다
-            if ($App -eq 'Excel' -and $null -ne $count) {
-                try {
-                    $visible = 0
-                    foreach ($book in $application.Workbooks) {
-                        $shown = $false
-                        foreach ($w in $book.Windows) { if ($w.Visible) { $shown = $true }; Release $w }
-                        if ($shown) { $visible++ }
-                        Release $book
-                    }
-                    $count = $visible
-                } catch { $count = $null }
-            }
-            $left = if ($null -eq $count) { -1 } else { [int]$count }
-            # 못 셌으면(-1) 안 끈다 — 남은 앱은 사람이 끌 수 있지만 닫힌 사람의 문서는 못 되돌린다
-            $quit = ($left -eq 0)
-            $others = @()
-            if (-not $quit -and $left -gt 0) { $others = Get-OpenNames $application }
-            if ($quit) { Stop-EmptyApplication $application } else { Release $application }
-            Write-Result $true $true $quit $left $others
-            exit 0
-        } catch {
-            Release $application
-            Write-Output ('닫다가 실패했다: ' + $_.Exception.Message)
-            exit 1
-        }
+            $count = $visible
+        } catch { $count = $null }
     }
-    Start-Sleep -Milliseconds $POLL_MS
+    $left = if ($null -eq $count) { -1 } else { [int]$count }
+    # 못 셌으면(-1) 안 끈다 — 남은 앱은 사람이 끌 수 있지만 닫힌 사람의 문서는 못 되돌린다
+    $quit = ($left -eq 0)
+    $others = @()
+    if (-not $quit -and $left -gt 0) { $others = Get-OpenNames $application }
+    if ($quit) { Stop-EmptyApplication $application } else { Release $application }
+    Write-Result $true $true $quit $left $others
+    exit 0
+} catch {
+    Release $application
+    Write-Output ('닫다가 실패했다: ' + $_.Exception.Message)
+    exit 1
 }
-
-Write-Result $false $false $false -1
-exit 2

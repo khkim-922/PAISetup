@@ -1,41 +1,23 @@
 """게시판 스킬의 얇은 명령 — 곁의 손(``xclick.py`` 읽기 · ``draft_board.js`` 짓기)으로 사내 게시판을 찾고 읽고, 글을 임시저장한다.
 
-부르는 꼴::
+부르는 꼴 · 명령마다의 인자 · 답의 칸 · 종료 값은 ``--help`` 가 낸다 — 그 글은 이 파일의 표(``READS`` · ``WRITE_STARTS`` ·
+``WRITE_CHANGES`` · ``NOT_HERE`` · ``EXITS``)와 argparse 에서 서고, 이 머리말은 고치는 사람이 읽는 계약만 든다.
 
-    python -X utf8 -I board.py boards [--write]                              # 게시판 나무 — --write 는 글을 쓸 수 있는 곳만
-    python -X utf8 -I board.py list   [게시판] [--since 날] [--until 날] [--page N]
-    python -X utf8 -I board.py search <말> [--in 게시판] [--field title|contents|writer|filename …] [--since 날] [--until 날] [--page N]
-    python -X utf8 -I board.py read   <글 id> --board <게시판 id> [--from N] [--images]   # 글 한 건 — 본문 글자 · 첨부 목록 · --images 면 본문 그림 파일. 조회수는 안 올린다
-    python -X utf8 -I board.py attachment <글 id> [--save 번호|all] [--out 폴더]
-    python -X utf8 -I board.py drafts                                        # 임시 · 예약보관함
-    python -X utf8 -I board.py save --board <게시판> --title <제목> (--html-file 파일 | --text-file 파일) [--image 그림 …] [--file 첨부 …]
-    python -X utf8 -I board.py show <글 id> --board <게시판 id>              # 임시보관함 글을 편집 창으로 띄운다
-
-``게시판`` 은 id(BBS…)나 이름의 일부(「식단」 · 「업무공지」 · 「일반사항 > 기타」)다 — 이름이 여럿에 걸리면 종료 2 가 후보를 든다.
-묶음 게시판(「일반사항」)을 주면 그 아래 게시판을 다 본다. 안 주면 모든 게시판이다. 기간을 안 주면 처음부터 오늘까지다 — 화면의 기본(6
-개월 · 1 년)보다 넓다. ``search`` 의 기본 칸은 제목 · 내용 · 작성자 · 첨부 이름 넷이다.
-
-⚠ ``save`` 는 쓰는 사람의 Edge 화면(디버깅 포트)에서 [임시저장]만 누르고 등록은 안 한다 — 저장한 글을 편집 창으로 띄워 두면
-사람이 그 창에서 보고 [등록]을 누른다. ``--image`` 의 그림은 본문 끝에 data URI 로 붙는다. 묶음 게시판에는 못 쓴다.
-
-받은 첨부 — 문서함(ECM) 쪽지는 파일로 안 남기고 문서 열쇠를 낸다(스킬 company-ecm 의 read 로 연다). 그 밖은 ``--out``(기본 임시 폴더
-아래 SAVE_ROOT/<글 id>)에 받고, DRM 에 감겼으면 ``note`` 가 다음 손을 말한다. 본문 — ``read`` 의 글자는 사람 눈에 안 보이는 글이
-걷히고(걷은 수는 ``hidden``), 그림은 「[그림 N]」(``--images`` 가 받은 그림의 ``no``)이다. 첨부 · 본문을 푸는 손과 그 꼴은
-``references/DESIGN.md``.
-
-세션 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 가 쥔다. 읽기는 게시판에 아무것도 안 남긴다(조회수도 안 올린다). 게시판
-나무는 홈에 받아 두고(``TREE_DAYS``) ``boards`` 는 늘 새로 받는다.
-
-내는 것 — 표준 출력에 JSON 하나. 답 하나는 OUT_BYTES 를 안 넘는다 — 넘을 줄 · 본문은 덜고(본문은 줄 끝에서 끊는다) ``more`` 가 다음 ``--from`` 이나 ``--page`` 를
-든다. 목록 줄은 ``id`` · ``title`` · ``writer`` · ``date`` 에, 참일 때만 ``notice``(고정 공지) · ``files``(첨부가 있다)를 든다. 줄의 게시판
-(``board`` · ``board_name``)은 머리의 ``board_id``(게시판 하나만 본 답)와 다를 때만 든다. 종료 값: 0 됐다 · 1 도구 · 앱 고장(그대로 알린다) · 2 인자가 틀렸다(글 id 와 게시판 id 가 안 맞는 것도) · 게시판이 저장을 막았다 · 3 사내 세션이 없다 · 끊겼다(스킬 ep-login).
-0 이 아니면 ``message`` 가 까닭과 「다음: …」 을 든다.
+- 세션 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 가 쥔다. ``save`` 의 인자 · 파일 · 표에 없는 조합은 세션 전에 다 가린다(``write_plan``)
+- 읽기 — 게시판에 아무것도 안 남긴다(조회수를 안 올리는 길은 ``xclick.py`` 머리말). 게시판 나무는 홈에 받아 두고(``TREE_DAYS``) ``boards`` 는
+  늘 새로 받는다
+- 본문 · 첨부 — 본문은 형제 스킬 company-mail 의 ``visible`` 이, 본문 그림은 ``body_images`` 가, 첨부 이름과 저장은 ``attachments`` 가, 문서함
+  쪽지의 꼴과 열쇠는 ``inbox`` 가 든다. 꼴과 까닭은 ``references/DESIGN.md``
+- 짓기 — ``save`` · ``show`` 는 짓는 손을 node 로 부르고 그 손의 종료 값을 이 명령의 것으로 옮긴다(``hand``). 두 표가 같아야 하는 까닭은
+  ``WRITE_STARTS`` 위의 주석
+- 내는 것 — 표준 출력에 JSON 하나 · ``OUT_BYTES`` 를 안 넘는다(``ep_command.finish`` · ``fit_text``)
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import dataclasses
 import html as html_lib
 import json
 import mimetypes
@@ -65,6 +47,70 @@ READ_MAX = 12000                  # read 가 한 번에 내는 본문 글자 수
 SAVED_TEXT_FILE = "article.txt"   # read 가 본문 글자 전부를 남기는 파일 이름 — 긴 글은 이 파일을 나눠 읽는다
 PATH_SEP = " > "
 BODY_STYLE = "font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:10pt;line-height:1.6"   # 평문 글을 싸는 모양 — 게시판 편집기의 기본 글꼴
+
+
+@dataclasses.dataclass(frozen=True)
+class Flag:
+    """바꿀 것 하나가 받는 인자 하나."""
+    option: str          # 인자 — 「--html-file」
+    meta: str            # --help 의 자리 말
+    many: bool = False   # 여러 번 준다
+
+    @property
+    def dest(self) -> str:
+        return self.option.lstrip("-").replace("-", "_")
+
+
+@dataclasses.dataclass(frozen=True)
+class Start:
+    """글 짓기의 출발 하나 — 게시판의 화면 하나다."""
+    word: str        # 사람 말
+    screen: str      # 그 화면이 무엇을 든 채 열리나 — --help 의 지도
+    takes: str       # --id 로 받는 것의 말 — 빈 글자면 --id 를 안 받는다
+    needs: tuple     # 꼭 받는 바꿀 것의 이름 — 빈 화면이면 다 준다
+    proof: str       # 저장이 섰나를 무엇으로 가리나
+    unmeasured: str = ""   # 회사에서 안 잰 채 지은 출발이면 안 잰 것 — save --help 의 지도가 「회사에서 안 쟀다」로 낸다
+
+
+@dataclasses.dataclass(frozen=True)
+class Change:
+    """글 짓기의 바꿀 것 하나 — 손가락 하나다."""
+    flags: tuple     # 받는 인자(Flag)
+    starts: tuple    # 받는 출발
+    word: str        # 사람 말 — 「 — 」 앞이 이름이다
+    elsewhere: str = ""   # 받지 않는 출발에서 그 일을 어디서 하나 — 명령이 멈추며 댄다
+
+
+# 글 짓기의 손가락 — 출발 하나 × 바꿀 것 아무 조합 → [임시저장]. 손가락을 더하거나 빼는 일은 이 두 표의 줄과 짓는 손(draft_board.js)의
+# STARTS · CHANGES 의 줄 하나다. 인자 · 거르기 · save --help 의 지도가 다 이 표에서 선다.
+# ⚠ 출발 이름 · 바꿀 것 이름 · 출발마다 받는 것(starts)과 꼭 받는 것(needs)은 짓는 손의 표와 같아야 한다 — 한쪽에만 더하면 이 명령이 받은
+# 손가락을 짓는 손이 거절하거나 그 반대다. 설정 저장소의 게시판 검사가 두 표를 맞춰 본다
+WRITE_STARTS = {
+    "new": Start("새 글", "[글쓰기] 창 — 빈 창에 게시판 · 제목 · 글을 넣는다", "", ("board", "title", "body"),
+                 "임시보관함에 그 제목의 새 글이 서면 섰다"),
+    "draft": Start("임시글", "임시보관함 글의 편집 창 — 저장된 제목 · 게시판 · 본문 · 첨부가 든 채 열린다. 쓰는 사람이 그 글을 열어 두었으면 "
+                   "그 창에서 고친다(둘째 창을 안 연다 · 그 창에서 사람이 고치던 것도 함께 저장된다)", "임시글 id(drafts 의 id)", (),
+                   "임시보관함의 그 글 줄(제목 · 날짜)이 바뀌면 섰다. 줄이 안 바뀌면 「못 가렸다」(종료 1)고 편집 창을 띄워 둔다",
+                   "편집 창에서 고쳐 [임시저장]하는 한 판 — 같은 글이 고쳐지나 · 새 임시글로 갈라지나 · 더한 첨부가 묶이나 · 쓰는 사람이 연 창이 "
+                   "어떻게 되나. 답이 「섰다」여도 사람에게 띄운 창에서 보고 확인받는다"),
+}
+WRITE_CHANGES = {
+    "board": Change((Flag("--board", "게시판"),), ("new",),
+                    "게시판 — 묶음이 아닌 게시판 하나(id 나 이름의 일부 · boards --write)",
+                    "임시글의 게시판은 띄운 편집 창에서 사람이 고른다 — 고르면 화면이 본문 틀을 다시 실어 본문이 지워진다"),
+    "title": Change((Flag("--title", "제목"),), ("new", "draft"), "제목 — 앞뒤 빈칸은 걷힌다"),
+    "body": Change((Flag("--html-file", "파일"), Flag("--text-file", "파일"), Flag("--image", "그림", many=True)), ("new", "draft"),
+                   "글 — 통째로. HTML 조각이나 평문 파일 하나 · --image 의 그림은 그 글 끝에 차례로 붙는다. 임시글은 있던 글 · 그림이 다 이 글로 간다"),
+    "files": Change((Flag("--file", "첨부", many=True),), ("new", "draft"), "첨부 — 파일을 더한다. 있던 첨부는 그대로다"),
+}
+WRITE_END = "[임시저장]만 누르고 그 글의 편집 창을 띄워 둔다. [등록](게시)은 사람이 그 창에서 보고 누른다"
+WRITE_NOT_YET = ("글 일부 바꾸기 · 첨부 빼기 · 임시글의 게시판 바꾸기 · 말머리 · 게시기한 · 공개 범위 · 다른 글 재사용 — 회사에서 안 잰 화면 "
+                 "동작이라 손가락이 없다. 띄운 편집 창에서 사람이 한다")
+NOT_HERE = ("[등록](게시) · 게시된 글 고치기 · 지우기 · 의견(댓글) · 추천 · 열람 권한(비공개 · 대상자) · 예약 게시 — 손에 없다. 사람이 띄운 편집 "
+            "창 · 게시판 화면에서 한다. 사람이 「바로 게시해」라고 해도 임시저장과 창 띄우기까지다")
+EXITS = ("0 됐다 · 1 도구 · 앱 고장 · 임시글의 저장이 섰는지 못 가렸다(그대로 알리고 다시 부르지 않는다) · 2 인자가 틀렸다(게시판 이름이 여럿에 "
+         "걸리면 후보를 든다 · 글 id 와 게시판 id 가 안 맞음 · 그 출발이 안 받는 바꿀 것) · 게시판이 저장을 막았다 · 3 사내 세션이 없다 · 끊겼다"
+         "(스킬 ep-login 을 부른 뒤 같은 명령을 다시). 0 이 아니면 message 가 까닭과 「다음: …」 을 든다")
 
 
 if str(EP_LOGIN_SCRIPTS) not in sys.path:
@@ -162,7 +208,7 @@ def ecm_note(name: str) -> bool:
 def compose(args) -> str:
     """save 의 본문 — HTML 파일은 그대로, 평문은 줄바꿈을 살려 싸고, 그림은 끝에 data URI 로 붙인다."""
     if bool(args.html_file) == bool(args.text_file):
-        raise Stop(EXIT_ARGS, "args", "글은 --html-file 이나 --text-file 하나로 준다")
+        raise Stop(EXIT_ARGS, "args", "글은 --html-file 이나 --text-file 하나로 준다 — --image 의 그림은 그 글 끝에 붙는다")
     src = pathlib.Path(args.html_file or args.text_file).expanduser()
     if not src.is_file():
         raise Stop(EXIT_ARGS, "args", f"글 파일이 없다: {src}")
@@ -334,30 +380,170 @@ def hand(verb: str, *extra: str) -> dict:
     raise Stop(EXIT_ARGS if ran.code == EXIT_ARGS else EXIT_TOOL, "args" if ran.code == EXIT_ARGS else "tool", word)
 
 
-def cmd_save(app, args) -> dict:
-    where = resolve(app.tree(write=True), args.board, leaf=True)
-    if where is None or where["folder"]:
-        raise Stop(EXIT_ARGS, "args", "글은 묶음이 아닌 게시판 하나에 쓴다 — boards --write 로 고른다")
+def change_name(change: Change) -> str:
+    return change.word.split(" — ")[0]
+
+
+def write_fingers(args) -> list[str]:
+    """이 부름이 받은 바꿀 것의 이름 — 출발이 안 받는 것 · 꼭 받을 것이 빠진 것 · --id 의 있고 없음이 출발과 안 맞는 것은 게시판도 화면도
+    부르기 전에 Stop(인자)."""
+    start = WRITE_STARTS[args.start]
+    got = [name for name, ch in WRITE_CHANGES.items() if any(getattr(args, f.dest) not in (None, []) for f in ch.flags)]
+    for name in got:
+        ch = WRITE_CHANGES[name]
+        if args.start not in ch.starts:
+            raise Stop(EXIT_ARGS, "args", f"{start.word} 출발에는 「{change_name(ch)}」 손가락이 없다. {ch.elsewhere}")
+    missing = [change_name(WRITE_CHANGES[n]) for n in start.needs if n not in got]
+    if missing:
+        raise Stop(EXIT_ARGS, "args", f"{start.word} 출발에 꼭 줄 것이 빠졌다: {' · '.join(missing)} — save --help 의 지도를 본다")
+    if not got:
+        raise Stop(EXIT_ARGS, "args", f"{start.word} 출발은 바꿀 것을 하나는 받는다 — 편집 창을 띄우기만 하려면 show")
+    if start.takes and not args.id:
+        raise Stop(EXIT_ARGS, "args", f"{start.word} 출발은 --id 로 {start.takes} 를 받는다")
+    if not start.takes and args.id:
+        raise Stop(EXIT_ARGS, "args", f"{start.word} 출발은 --id 를 안 받는다")
+    return got
+
+
+def write_map() -> str:
+    """save --help 의 지도 — 두 표에서 짓는다."""
+    out = ["출발(--start) — 화면 하나를 연다"]
+    for name, s in WRITE_STARTS.items():
+        takes = f" · --id 로 {s.takes}" if s.takes else ""
+        needs = f" · 꼭 받는다: {' · '.join(change_name(WRITE_CHANGES[n]) for n in s.needs)}" if s.needs else ""
+        out.append(f"  {name:6} {s.word}: {s.screen}{takes}{needs}\n         저장을 가리는 법: {s.proof}")
+        if s.unmeasured:
+            out.append(f"         회사에서 안 쟀다: {s.unmeasured}")
+    out.append("바꿀 것 — 한 부름에 아무 조합을 한 화면에 넣는다")
+    for ch in WRITE_CHANGES.values():
+        flags = " | ".join(f.option for f in ch.flags)
+        out.append(f"  {flags}  [{' · '.join(ch.starts)}]  {ch.word}")
+    out.append(f"끝 — {WRITE_END}")
+    out.append(f"아직 없는 손가락 — {WRITE_NOT_YET}")
+    return "\n".join(out)
+
+
+@dataclasses.dataclass(frozen=True)
+class WritePlan:
+    """세션 · 게시판 · 화면을 부르기 전에 가린 글 짓기 — 받은 바꿀 것 · 걷은 제목 · 첨부의 절대 경로 · 지은 본문(없으면 None)."""
+    changes: list
+    title: str | None
+    files: list
+    body: str | None
+
+
+def write_plan(args) -> WritePlan:
+    """save 의 인자를 다 가린다 — 하나라도 걸리면 Stop(인자). 세션도 게시판도 안 부른다."""
+    got = write_fingers(args)
+    title = None if args.title is None else args.title.strip()
+    if title == "":
+        raise Stop(EXIT_ARGS, "args", "--title 이 비었다")
     files = [str(pathlib.Path(f).expanduser().resolve()) for f in args.file or []]
     for f in files:
         if not pathlib.Path(f).is_file():
             raise Stop(EXIT_ARGS, "args", f"첨부 파일이 없다: {f}")
-    body = compose(args)
-    with tempfile.NamedTemporaryFile("w", suffix=".html", encoding="utf-8", delete=False) as tmp:
-        tmp.write(body)
+    return WritePlan(got, title, files, compose(args) if "body" in got else None)
+
+
+def cmd_save(app, args, plan: WritePlan | None = None) -> dict:
+    plan = plan or write_plan(args)
+    title, files, body = plan.title, plan.files, plan.body
+    extra = ["--start", args.start]
+    if args.start == "draft":
+        row = next((r for r in app.drafts()["rows"] if r["id"] == args.id), None)
+        if row is None:
+            raise Stop(EXIT_ARGS, "args", f"임시보관함 첫 쪽에 {args.id} 가 없다 — drafts 로 임시글 id 를 본다")
+        extra += ["--id", args.id, "--at", row["board"]]
+        board_name = board_names(kept_tree() or []).get(row["board"], row["board"])
+    else:
+        where = resolve(app.tree(write=True), args.board, leaf=True)
+        if where is None or where["folder"]:
+            raise Stop(EXIT_ARGS, "args", "글은 묶음이 아닌 게시판 하나에 쓴다 — boards --write 로 고른다")
+        extra += ["--board", where["id"]]
+        board_name = PATH_SEP.join(where["path"])
+    if title is not None:
+        extra += ["--title", title]
+    for f in files:
+        extra += ["--file", f]
+    tmp = None
+    if body is not None:
+        with tempfile.NamedTemporaryFile("w", suffix=".html", encoding="utf-8", delete=False) as tmp:
+            tmp.write(body)
+        extra += ["--body-file", tmp.name]
     try:
-        extra = ["--board", where["id"], "--title", args.title, "--body-file", tmp.name]
-        for f in files:
-            extra += ["--file", f]
-        got = hand("save", *extra)
+        out = hand("save", *extra)
     finally:
-        pathlib.Path(tmp.name).unlink(missing_ok=True)
-    return dict(got, board_name=PATH_SEP.join(where["path"]), saved="임시보관함에 저장했다(아직 게시 안 됨)",
-                next="사람이 띄운 편집 창에서 보고 [등록]을 누르면 게시된다 — 고칠 것이 있으면 그 창에서 고친다")
+        if tmp is not None:
+            pathlib.Path(tmp.name).unlink(missing_ok=True)
+    out.update(board_name=board_name, saved="임시보관함에 저장했다(아직 게시 안 됨)",
+               next=f"사람이 띄운 편집 창에서 보고 [등록]을 누르면 게시된다 — 더 고칠 것은 save --start draft --id {out.get('id')} 로")
+    if out.get("forked_from"):
+        out["note"] = (f"임시글 {out['forked_from']} 은 그대로 남고 고친 판이 새 임시글로 저장됐다 — 임시보관함에 둘이 있다. 띄운 창(새 글)을 보고"
+                       " [등록]하도록 이른다")
+    return out
 
 
 def cmd_show(app, args) -> dict:
     return hand("show", args.id, "--board", args.board)
+
+
+def board_word() -> str:
+    """게시판 인자의 말 — list · search · save 가 함께 쓴다."""
+    return "게시판 id(BBS…)나 이름의 일부(「식단」 · 「업무공지」 · 「일반사항 > 기타」) — 묶음이면 그 아래를 다 본다. 이름이 여럿에 걸리면 종료 2 가 후보를 든다"
+
+
+# 명령마다 (한 줄 — 맨 위 --help 의 지도와 명령 목록, 그 명령의 --help 에 덧붙는 답의 칸). --help 는 이 표와 글 짓기의 두 표에서만 선다
+READS = {
+    "boards": ("게시판 나무 — id · 경로 · 묶음(group). --write 는 글을 쓸 수 있는 곳만(늘 게시판에서 새로 받는다)",
+               "답: boards — 줄마다 id · path, 묶음 게시판이면 group"),
+    "list": ("새 글부터 목록 — 게시판 · 기간으로 좁힌다(기간을 안 주면 처음부터 오늘까지)",
+             f"답: board(본 게시판) · page · total(다 센 수) · rows(한 쪽 {LIST_COUNT} 줄 — id · title · writer · date, 참일 때만 notice(고정 공지) · files(첨부 있음)) · "
+             "next(다음 --page) · more(답 한도에 걸려 줄을 덜었다). 게시판 하나만 본 답은 머리에 board_id 를 한 번 싣고, 줄의 board · board_name 은 "
+             "그와 다를 때만 든다. 고정 공지는 첫 쪽에만 싣는다"),
+    "search": ("낱말 찾기 — 기본 칸은 제목 · 내용 · 작성자 · 첨부 이름 넷(칸끼리는 「또는」)",
+               f"답: list 와 같다 — total · rows(한 쪽 {LIST_COUNT} 줄) · next · more · words · fields. pinned_notices 는 쪽마다 맨 위에 고정된 "
+               "공지라 찾은 것이 아니다 — 낱말이 든 고정 공지는 rows 에 안 드니 그 id 로 read 한다"),
+    "read": ("글 한 건 — 본문 글자 · 첨부 목록(조회수를 안 올린다). --images 면 본문 그림 파일",
+             f"답: title · writer · posted · period · attachments(no · name, 문서함 쪽지면 ecm) · body(한 번에 {READ_MAX} 자까지 · 줄 끝에서 "
+             "끊는다) · more(다음 --from) · text_file(본문 글자 전부 — 긴 글은 이 파일을 나눠 읽어도 된다) · chars. 사람 눈에 안 보이게 감춘 글은 "
+             "걷히고 그 덩이 수가 hidden 이다. 그림 자리는 「[그림 N]」 이고, 그림이 있으면 note 가 그 수를 든다. --images 면 images — 줄마다 no(「[그림 "
+             "N]」 의 N) · path(큰 그림은 줄여 받는다 · note 가 서면 못 줄인 것), 안 받은 그림은 skipped 에 까닭(게시판 밖 · 아이콘 · 못 읽는 꼴), "
+             "같은 그림은 same_as"),
+    "attachment": ("첨부 목록 · 받기 — 문서함(ECM) 쪽지는 파일 대신 문서 열쇠",
+                   f"답: --save 없이는 attachments(no · name · bytes · ecm). --save 면 saved — 파일은 path · bytes(DRM 이면 note 가 다음 손을 "
+                   f"말한다), 문서함 쪽지는 ecm_key(스킬 company-ecm 의 read 로 연다). --out 을 안 주면 임시 폴더 아래 {SAVE_ROOT}/<글 id> 에 받는다"),
+    "drafts": ("임시 · 예약보관함 — save --start draft 의 --id 와 show 의 글 id · 게시판 id",
+               "답: rows — 첫 쪽(50 줄)의 줄마다 id · board(게시판 id) · title · date · state"),
+    "save": ("⚠ 글 짓기 — 출발 화면 하나를 열고 바꿀 것을 아무 조합으로 넣어 [임시저장]만 한다(등록은 안 한다)",
+             "답: id · start · board · board_name · title · files(더한 첨부 수) · where(띄운 창) · saved · next. reused 가 서면 쓰는 사람이 연 창에서 고쳤다 — 그 창에서 "
+             "사람이 고치던 것도 함께 저장됐다. forked_from 이 서면 임시글이 새 임시글로 갈라졌다(옛 글은 남는다 · note 를 그대로 전한다)"),
+    "show": ("임시보관함 글을 편집 창으로 띄운다 — 이미 열린 창이 있으면 앞으로 올린다",
+             "답: id · board · where(쓰는 사람이 연 창 · 새 창)"),
+}
+
+
+def top_map() -> str:
+    """맨 위 --help 의 지도 — READS · 글 짓기의 두 표 · NOT_HERE · EXITS 에서 짓는다."""
+    out = ["읽기 — 게시판에 아무것도 안 남긴다(조회수도 안 올린다)"]
+    out += [f"  {name:11} {READS[name][0]}" for name in ("boards", "list", "search", "read", "attachment", "drafts")]
+    out.append(f"\n글 짓기 — save 한 번이 게시판 화면 한 판: 출발 하나 × 바꿀 것 아무 조합 → {WRITE_END}. 바꿀 것이 여럿이면 한 번에 준다")
+    out.append("출발(--start)")
+    for name, st in WRITE_STARTS.items():
+        takes = f" · --id <{st.takes}>" if st.takes else ""
+        out.append(f"  {name:6} {st.word}{takes} — {st.screen}" + (" · 회사에서 안 쟀다" if st.unmeasured else ""))
+    out.append("바꿀 것 (● 꼭 든다 · ○ 받는다 · △ 받되 회사에서 안 쟀다 · — 없다)")
+    for key, ch in WRITE_CHANGES.items():
+        marks = " ".join(f"{name}{'●' if key in st.needs else ('—' if name not in ch.starts else ('△' if st.unmeasured else '○'))}"
+                         for name, st in WRITE_STARTS.items())
+        out.append(f"  {' · '.join(f.option for f in ch.flags):38} {marks:12} {ch.word}")
+    out += [f"  — 의 자리({change_name(ch)}): {ch.elsewhere}" for ch in WRITE_CHANGES.values() if ch.elsewhere]
+    out.append(f"아직 없는 손가락 — {WRITE_NOT_YET}")
+    out.append("\n창 띄우기 — 저장한 임시글을 사람이 보고 [등록]하게")
+    out.append(f"  {'show':11} {READS['show'][0]}")
+    out.append(f"\n안 하는 것 — {NOT_HERE}")
+    out.append(f"종료 값 — {EXITS}")
+    out.append("답은 표준 출력의 JSON 하나다. 명령마다의 인자와 답의 칸은 <명령> --help")
+    return "\n".join(out)
 
 
 COMMANDS = {"boards": cmd_boards, "list": cmd_list, "search": cmd_search, "read": cmd_read, "attachment": cmd_attachment,
@@ -366,41 +552,51 @@ NEEDS_APP = set(COMMANDS) - {"show"}
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="board.py", description="사내 게시판을 찾고 읽고, 글을 임시저장한다")
-    sub = p.add_subparsers(dest="command", required=True)
-    b = sub.add_parser("boards")
-    b.add_argument("--write", action="store_true")
+    raw = argparse.RawDescriptionHelpFormatter
+    p = argparse.ArgumentParser(prog="board.py", description="사내 게시판 — 찾기 · 읽기 · 첨부 받기 · 글 임시저장(등록은 사람이)",
+                                epilog=top_map(), formatter_class=raw)
+    sub = p.add_subparsers(dest="command", required=True, metavar="<명령>")
+
+    def command(name: str, **extra) -> argparse.ArgumentParser:
+        line, answer = READS[name]
+        # help 를 안 준다 — 명령마다의 한 줄은 맨 위 지도(epilog)가 묶음째 내고, 여기서도 주면 같은 줄이 두 번 찍힌다
+        return sub.add_parser(name, description=f"{line}\n\n{answer}", formatter_class=raw, **extra)
+
+    b = command("boards")
+    b.add_argument("--write", action="store_true", help="글을 쓸 수 있는 게시판만")
     for name in ("list", "search"):
-        s = sub.add_parser(name)
+        s = command(name)
         if name == "list":
-            s.add_argument("board", nargs="?")
+            s.add_argument("board", nargs="?", metavar="게시판", help=board_word() + ". 안 주면 모든 게시판")
         else:
-            s.add_argument("words")
-            s.add_argument("--in", dest="within")
-            s.add_argument("--field", action="append", choices=FIELDS)
-        s.add_argument("--since")
-        s.add_argument("--until")
-        s.add_argument("--page", type=int, default=1)
-    r = sub.add_parser("read")
-    r.add_argument("id")
-    r.add_argument("--board", required=True)
-    r.add_argument("--from", dest="start", type=int, default=0)
-    r.add_argument("--images", action="store_true")
-    a = sub.add_parser("attachment")
-    a.add_argument("id")
-    a.add_argument("--save")
-    a.add_argument("--out")
-    sub.add_parser("drafts")
-    s = sub.add_parser("save")
-    s.add_argument("--board", required=True)
-    s.add_argument("--title", required=True)
-    s.add_argument("--html-file")
-    s.add_argument("--text-file")
-    s.add_argument("--image", action="append")
-    s.add_argument("--file", action="append")
-    w = sub.add_parser("show")
-    w.add_argument("id")
-    w.add_argument("--board", required=True)
+            s.add_argument("words", metavar="말", help="찾을 말 — 빈칸이 든 말은 따옴표로 한 덩이")
+            s.add_argument("--in", dest="within", metavar="게시판", help=board_word() + ". 안 주면 모든 게시판")
+            s.add_argument("--field", action="append", choices=FIELDS, help="찾는 칸 — 여러 번 준다. 안 주면 넷 다. 사람 이름이면 writer, "
+                                                                           "양식 · 파일이면 filename, 제목에 들 말이면 title")
+        s.add_argument("--since", metavar="YYYY-MM-DD", help="이날부터 — 안 주면 처음부터(처음부터 찾기는 3 초 남짓, 6 개월이면 0.5 초 안쪽)")
+        s.add_argument("--until", metavar="YYYY-MM-DD", help="이날까지 — 안 주면 오늘까지")
+        s.add_argument("--page", type=int, default=1, metavar="N", help=f"쪽 — 한 쪽 {LIST_COUNT} 줄 · 답의 next 가 다음 쪽을 댄다(기본 1)")
+    r = command("read")
+    r.add_argument("id", metavar="글_id", help="목록 줄의 id")
+    r.add_argument("--board", required=True, metavar="게시판_id", help="게시판 id — 목록 줄의 board, 없으면 답 머리의 board_id")
+    r.add_argument("--from", dest="start", type=int, default=0, metavar="N", help="본문을 N 째 글자부터 — 답의 more 가 댄다(기본 0)")
+    r.add_argument("--images", action="store_true", help="본문 그림을 파일로 받아 낸다 — 그림뿐인 공지 · 식단이 흔하다")
+    a = command("attachment")
+    a.add_argument("id", metavar="글_id", help="목록 줄의 id")
+    a.add_argument("--save", metavar="번호|all", help="받을 첨부 — attachments 의 no 하나나 all. 안 주면 목록만")
+    a.add_argument("--out", metavar="폴더", help=f"받을 폴더 — 안 주면 임시 폴더 아래 {SAVE_ROOT}/<글 id>")
+    command("drafts")
+    s = command("save", epilog=write_map())
+    s.add_argument("--start", required=True, choices=list(WRITE_STARTS),
+                   help=" · ".join(f"{name}: {st.word}" for name, st in WRITE_STARTS.items()) + " — 아래 지도")
+    s.add_argument("--id", help=" · ".join(f"{name}: {st.takes}" for name, st in WRITE_STARTS.items() if st.takes))
+    for change in WRITE_CHANGES.values():
+        for flag in change.flags:
+            s.add_argument(flag.option, dest=flag.dest, metavar=flag.meta, action="append" if flag.many else "store",
+                           help=change_name(change) + (" — 여러 번 준다" if flag.many else ""))
+    w = command("show")
+    w.add_argument("id", metavar="글_id", help="drafts 의 id")
+    w.add_argument("--board", required=True, metavar="게시판_id", help="그 글의 게시판 id — drafts 줄의 board")
     return p
 
 
@@ -413,13 +609,10 @@ def main() -> int:
     def work(xclick) -> dict:
         if args.command not in NEEDS_APP:
             return run(None, args)
-        return ep_session.session_first(lambda f: run(xclick.App(f), args), expired=(xclick.SessionExpired, xclick.SessionMissing))
+        extra = (write_plan(args),) if args.command == "save" else ()   # 표에 없는 조합 · 없는 파일은 세션도 안 받고 멈춘다
+        return ep_session.session_first(lambda f: run(xclick.App(f), args, *extra), expired=(xclick.SessionExpired, xclick.SessionMissing))
 
-    def shown(xclick) -> dict:
-        """게시판에서 온 글이 어느 칸으로 나가든 보이지 않는 문자(폭 없는 문자 · 방향 뒤집기)를 걷는다 — 나가는 문 하나."""
-        return load("visible", MAIL_SCRIPTS).shown(work(xclick))
-
-    return ep_command.finish(shown, "xclick", HERE, args_errors=("NotFound",))   # 글 id 와 게시판 id 가 안 맞는 것은 인자가 틀린 것이다
+    return ep_command.finish(work, "xclick", HERE, args_errors=("NotFound",))   # 글 id 와 게시판 id 가 안 맞는 것은 인자가 틀린 것이다
 
 
 if __name__ == "__main__":

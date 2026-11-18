@@ -28,7 +28,8 @@
     정하지 않는다 — 세션을 남기는 손이 정하고, 부르는 쪽이 그 경로를 넘긴다.
 
 무엇을 내나
-    시각은 다 시간대가 붙은 UTC 이고, 보이기(``Event.when``)는 서울이다. ``Seen`` 은 사람에게 보인 일정 한 줄의 손잡이다 — 그 줄의
+    시각은 다 시간대가 붙은 UTC 이고, 보이기(``Event.when``)는 서울이다. 시각을 못 읽은 줄은 버리고 ``Reader.unread`` 에 일정함마다
+    그 수를 쌓는다. ``Seen`` 은 사람에게 보인 일정 한 줄의 손잡이다 — 그 줄의
     열쇠 · 그 일정의 열쇠(둘 다 사번이 든 일정 열쇠의 해시) · 제목 · 시작 · 끝의 지문 · 서울 날짜를 한 글줄(``handle``)로 들어,
     대화를 건너 지우기에 넘긴다. ``register`` 는 ``Added``, ``delete`` 는 ``Removed`` 를 내고 끝은 다시 읽은 일정이 정한다(``state``).
     ⚠ 공유받은 일정함의 줄이라는 표지는 글줄에 안 실린다 — ``Seen.parse`` 로 되읽은 손잡이는 내 일정함의 줄로 읽혀, 지우기가 내
@@ -366,6 +367,9 @@ class Reader:
         jar = ep_session.load_jar(cookies_file, missing=SessionMissing)   # 다른 사내 호스트의 쿠키는 쿠키 통이 일정 서버에 안 싣는다
         self._opener = ep_session.opener(jar)   # 리다이렉트는 안 따라간다 — 따라가면 쿠키가 SSO 에 실린다
         self._calendars: list[dict] | None = None   # 받은 일정함 목록 — 이 손이 사는 동안 한 번만 묻는다(``calendars``)
+        # 시각을 못 읽어 버린 줄 — (일정함 이름 · 내 기본 일정함은 빈 글자, 줄 수)를 묻는 차례로 쌓는다. 버린 줄은 목록에 안 서니,
+        # 부르는 쪽이 「그 일정함에 안 보인 일정이 있다」를 알릴 길은 이것뿐이다
+        self.unread: list[tuple[str, int]] = []
         db = re.escape(self.db_path)
         day = r"\d{4}-\d{2}-\d{2}"
         # 읽는 손이 물을 수 있는 주소 꼴 — 닫힌 목록이라 새 꼴은 안 바꾸는 것을 잰 뒤 여기에 더해야 묻는다
@@ -560,6 +564,8 @@ class Reader:
                     e = dataclasses.replace(e, calendar=book.name or _person(book.owner))
                 out.setdefault(event_key(e), e)
         events = sorted(out.values(), key=lambda e: (e.start, e.end, e.title))
+        if skipped:
+            self.unread.append((book.name or (_person(book.owner) if book.shared else ""), skipped))
         log.info("일정: %d줄(반복 %d · 단건 %d) · 못 읽은 줄 %d", len(events), len(body.get("data") or ()),
                  len(body.get("data2") or ()), skipped)
         return events
@@ -681,12 +687,27 @@ def _span(day: date, end: datetime) -> tuple[date, date]:
     return day, kst_day(end) + timedelta(days=1)
 
 
+def _side_events(r: Reader, first: date, last: date) -> list[Event]:
+    """기본 밖 내 일정함(Teams 따위)의 ``first`` ~ ``last`` 일정 — 안 읽히는 일정함은 건너뛴다(끊긴 세션은 올린다)."""
+    out: list[Event] = []
+    for b in r.side_books():
+        try:
+            out += r.events(first, last, b)
+        except SessionExpired:
+            raise
+        except CalendarError as exc:
+            log.info("일정 넣기 — 기본 밖 일정함 하나를 못 읽어 그 일정함 없이 겹침을 가린다(%s)", type(exc).__name__)
+    return out
+
+
 def register(url: str, cookies_file: pathlib.Path | str, want: Want, *, timeout: float = TIMEOUT_SECONDS,
              reader: Reader | None = None, shown_clash: Iterable[str] | None = None) -> Added:
-    """⚠ 회사 일정을 바꾼다 — 내 일정함에 한 건을 넣고 ``Added`` 를 낸다. 사람이 그 한 건을 확인한 뒤에만 부른다.
+    """⚠ 회사 일정을 바꾼다 — 내 기본 일정함에 한 건을 넣고 ``Added`` 를 낸다. 사람이 그 한 건을 확인한 뒤에만 부른다.
 
-    ``shown_clash`` 는 확인에 보인 겹침의 ``event_ref`` 들이다 — 그 밖의 일정이 그 시각에 생겼으면 ``clashed`` 로 안 넣는다.
-    등록 화면에 잰 칸이 없으면 ``FormChanged``(안 넣음). 등록 화면을 열기 전에 진 것(세션 · 서버)은 아무것도 안 바꾼 채 올린다.
+    ``shown_clash`` 는 확인에 보인 겹침의 ``event_ref`` 들이다 — 확인은 내 일정함 전부(기본 · Teams)의 겹침을 보이므로, 그 밖의
+    일정이 그 시각에 어느 내 일정함에든 생겼으면 ``clashed`` 로 안 넣는다. 기본 밖 일정함이 안 읽히면(세션 끊김이 아닌 한) 그
+    일정함 없이 가린다 — 확인도 그 일정함을 못 읽었다고 알렸다. 등록 화면에 잰 칸이 없으면 ``FormChanged``(안 넣음). 등록 화면을
+    열기 전에 진 것(세션 · 서버)은 아무것도 안 바꾼 채 올린다.
     """
     want = want.cleaned()
     if not want.title or _aware(want.end) <= _aware(want.start):
@@ -700,7 +721,8 @@ def register(url: str, cookies_file: pathlib.Path | str, want: Want, *, timeout:
         log.info("일정 넣기 — 같은 일정이 이미 있어 넣지 않았다")
         return Added(ALREADY, hit)
     if shown_clash is not None:
-        fresh = {event_ref(e) for e in before if e.overlaps(want.start, want.end)} - set(shown_clash)
+        around = before + _side_events(r, first, last)
+        fresh = {event_ref(e) for e in around if e.overlaps(want.start, want.end)} - set(shown_clash)
         if fresh:
             log.info("일정 넣기 — 확인 뒤 그 시각에 새 일정 %d건이 들어 넣지 않았다", len(fresh))
             return Added(CLASHED)

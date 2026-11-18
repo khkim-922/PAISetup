@@ -9,7 +9,7 @@ make 는 추천(디자인 하나로 확정) → 렌더 → 자체 점검을 밟�
 브라우저로 열고, fetch 는 사람이 화면에서 고친 최신 판을 받는다. 원문의 그림 줄 `![캡션](경로)` 이 이 PC 의 파일이면 그 자리에 박아
 보낸다(경로는 원문 파일의 폴더에서 푼다 · 바깥 주소는 글자 그대로). 원문 파일이 `.html` · `.htm` 이면 갈아입히기다 — 통짜로
 보내 서버가 글 · 데이터는 내용으로 살리고 태그 · 스타일은 옛 옷으로 걷어 새 디자인으로 다시 짓게 하고, 추천은 보이는 글자만
-본다. 받은 HTML 은 스킬 company-mail 의 `save-draft` 로 넘긴다.
+본다. 받은 HTML 은 스킬 company-mail 의 `draft` 로 넘긴다.
 
 서버는 `ATELIER_URL` · 없으면 `DEFAULT_URL` 이다. 갈래 · 모델은 `PROVIDER_ENV` · `MODEL_ENV` 로 바꾸고, 비우면 `PROVIDER` · `MODEL`
 이다(모델만 비면 그 갈래의 첫 모델). 키는 서버의 갈래 표가 그 갈래에 댄 키 묶음의 환경값(`KEY_ENV_OF_GROUP`)에서만 읽고, 표가
@@ -318,7 +318,7 @@ def cmd_fetch(args, server: Server) -> None:
     path = save(server, args.doc, version)
     print(f"받았다: 문서 {args.doc} · 최신 판 {version}")
     print(f"HTML: {path}")
-    print("다음: 이 파일을 company-mail 의 save-draft --html-file(본문) 이나 --attach(첨부)로 넘긴다")
+    print("다음: 이 파일을 company-mail 의 draft new --html-file(본문) 이나 --attach(첨부)로 넘긴다")
 
 
 def parser() -> argparse.ArgumentParser:

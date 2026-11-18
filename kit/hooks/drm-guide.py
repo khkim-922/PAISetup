@@ -54,6 +54,9 @@
 ⚠ **스킬을 못 찾으면 그 사실을 말한다** — 감긴 파일이 있는데 읽을 길이 이 PC 에 없다는 것도 모델이 알아야 할 사실이다.
    그때는 표가 없어 확장자로 거르지 않고(감긴 표지가 거른다), 읽을 손이 없으니 첨부도 안 떨군다.
 ⚠ **파일 내용은 안 싣는다** — 덧말에는 이름과 자리만 든다. 읽기는 스킬의 스크립트가 하고, 이 훅은 길을 가리킨다(#120).
+⚠ **문서함(ECM) 에이전트가 받은 파일에는 읽는 명령을 안 댄다** — 그 폴더의 파일은 스킬이 보안등급을 몰라 스크립트가 거절하고, 등급을
+   보는 길은 스킬 company-ecm 의 `read` 다. 그 폴더는 그 손 · 읽는 부품과 같은 차례(환경변수 · 스킬의 값 파일 `places.json`)로 읽고,
+   감긴 파일이 걸린 턴에만 읽는다.
 ⚠ **덧말은 사실로 쓴다** — 명령조의 바깥 글은 프롬프트 주입 방어에 걸릴 수 있다(웹 다시 찾기와 같은 까닭).
 ⚠ **명령의 경로는 슬래시로 적는다** — 모델이 Bash 로 칠 때 겹따옴표 안의 역슬래시는 셸이 접고, 겹역슬래시는 홈 훅
    (`bash-backslash-deny.sh`)이 두 배로 고쳐 넘긴다(결정 0185). PowerShell 은 슬래시 경로를 그대로 받는다.
@@ -91,6 +94,11 @@ ATTACH_MEDIA = {'application/pdf': '.pdf'}   # 첨부 문서 블록의 형식 �
 TAIL_MAX_BYTES = 64 << 20
 TAIL_CHUNK = 1 << 20      # 거꾸로 읽는 한 번의 크기
 SKILL_DIR_ENV = 'DRM_GUIDE_SKILL_DIR'   # 시험이 스킬 자리를 줄 때 — 빈 값이면 「스킬 없음」
+# 문서함(ECM) 에이전트가 받은 파일의 자리 — 환경변수, 없으면 스킬의 값 파일(읽는 부품 · company-ecm 손과 같은 파일)
+ECM_SKILL = 'company-ecm'   # 등급을 보는 손 — 그 폴더의 파일에 대는 다음 걸음
+ECM_PLACES = os.path.join('scripts', 'places.json')
+ECM_PLACES_KEY = 'ecm_docs_root'
+ECM_ROOT_ENV = 'ECM_DOCS_ROOT'
 
 ATTACH = re.compile(r'@"([^"\r\n]+)"')                                     # 「+」 · 끌어다 놓기
 MENTION = re.compile(r'(?:^|(?<=[\s(\[{,]))@([^\s"\'<>|]+)')               # 손으로 친 @경로
@@ -138,6 +146,26 @@ def handled_exts(sdir):
         return set()
     m = re.search(r'^\$HANDLER\s*=\s*@\{(.*?)^\}', src, re.M | re.S)
     return {e.lower() for e in re.findall(r"'(\.\w+)'\s*=", m.group(1))} if m else set()
+
+
+def ecm_root(sdir):
+    """문서함 에이전트가 받은 파일의 자리 — 읽는 부품 · company-ecm 손과 같은 차례: 환경변수, 없으면 스킬의 값 파일
+    (`scripts/places.json` 의 `ecm_docs_root`). 그 파일을 못 읽으면 None(거르지 않는다 — 스킬과 함께 깔리므로 깨진 설치에서만)."""
+    env = (os.environ.get(ECM_ROOT_ENV) or '').strip()
+    if env:
+        return env
+    try:
+        with open(os.path.join(sdir, ECM_PLACES), encoding='utf-8-sig') as f:
+            value = json.load(f).get(ECM_PLACES_KEY)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def under(path, root):
+    """경로가 그 폴더 밑인가 — 대소문자 · 구분자 꼴은 가리지 않는다."""
+    p, r = os.path.normcase(os.path.abspath(path)), os.path.normcase(os.path.abspath(root))
+    return p.startswith(r.rstrip('\\/') + os.sep)
 
 
 # ── 경로 — 뽑고 다듬고 푼다 ─────────────────────────────────────────────────────
@@ -410,11 +438,20 @@ def message(event, paths, attached, sdir, out_dir):
     if not sdir:
         return head + (' 글자를 뽑는 스킬 %s 가 이 PC 에 없다(~/.claude/skills · ~/.agents/skills · ~/.gemini/config/skills 에 없음) — 이 자리에서는 읽을 길이 없다.'
                        % SKILL)
+    root = ecm_root(sdir) if paths else None
+    held = [p for p in paths if root and under(p, root)]
+    if held:
+        head += (' 그 가운데 %s 는 문서함(ECM) 에이전트가 받은 파일이다 — 스킬 %s 는 보안등급을 몰라 그 폴더의 파일을 안 연다(스크립트가'
+                 ' 거절한다). 글자 · 그림은 스킬 %s 의 read <문서 열쇠> 로 받는다 — 기밀 · 핵심기술이면 그 손이 사람에게 묻게 멈춘다.'
+                 % (' · '.join(os.path.basename(p) for p in held), SKILL, ECM_SKILL))
+        paths = [p for p in paths if p not in held]
     written = [p for _, p in attached if p]
     if written:
         head += (' 첨부는 경로 없이 본문으로 와서, 같은 바이트(감긴 그대로)를 디스크에 떨궜다: %s.'
                  % ' · '.join('%s → %s' % (t, slash(p)) for t, p in attached if p))
-    cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -Command "& %s -Path %s -OutDir %s"' % (
+    if not paths and not written:
+        return head
+    cmd ='powershell -NoProfile -ExecutionPolicy Bypass -Command "& %s -Path %s -OutDir %s"' % (
         ps_quote(slash(os.path.join(sdir, READER))),
         ','.join(ps_quote(slash(p)) for p in list(paths) + written),
         ps_quote(slash(out_dir)))

@@ -1,5 +1,5 @@
 """사내 앱 스킬의 얇은 명령이 함께 쓰는 뼈대 — 명령을 멈추는 꼴 · 종료 값 · 답을 JSON 하나로 내는 끝 · 답 크기에 본문 맞추기 ·
-받아 둔 파일 · 날 말(오늘 · 내일 · 요일). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · 받아 둔 파일은 company-mail 도)이
+받아 둔 파일 · 날 말(오늘 · 내일 · 요일) · 빈 틈 셈(바쁜 구간 사이의 비는 때). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · 받아 둔 파일은 company-mail 도)이
 이 폴더를 ``sys.path`` 에 넣고 싣는다. 앱 손(서버를 묻는 쪽)이 쓰는 것 — 세션 파일 · opener · SSO 넘김 칸 · 이름 누르기 · node 손
 돌리기 — 은 곁의 ``ep_session.py`` 가 든다. 새 사내 앱 스킬은 제 서버를 묻는 앱 손과 제 명령만 짓고 나머지는 여기서 부른다.
 
@@ -19,6 +19,7 @@
 
     raise Stop(EXIT_ARGS, "args", "까닭. 다음: …")              # 명령 어디서든 — finish 가 종료 값과 JSON 으로 옮긴다
     ep_command.fit_text(out, "text", body, start, most, lambda end: f"--from {end}", ep_command.OUT_BYTES)
+    gaps = ep_command.gaps_of([(시작, 끝), …], lo, hi, need)     # lo ~ hi 안에서 need 이상 비는 (시작, 끝) 들
     got = ep_command.kept(path, FORMAT, DAYS)                   # (받아 둔 dict, 받은 시각) 이나 None
     why = ep_command.keep(path, {"format": FORMAT, "stamp": time.time(), ...})   # 못 남긴 까닭 — 남겼으면 빈 글자
 
@@ -34,7 +35,7 @@ import os
 import pathlib
 import sys
 import time
-from datetime import date as _date, timedelta as _timedelta
+from datetime import date as _date, datetime as _datetime, timedelta as _timedelta
 
 HERE = pathlib.Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -42,6 +43,11 @@ if str(HERE) not in sys.path:
 import ep_session  # noqa: E402 — 이 폴더를 넣은 뒤에 싣는다
 
 EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION = 0, 1, 2, 3
+# 명령이 더 두는 종료 값 — 사내 앱 명령마다 한 값은 한 뜻이라, 새 갈래는 여기서 빈 값을 골라 이름을 더한다(5 는 메일의 보내는 손이 쓴다)
+EXIT_STALE = 4          # 확인 열쇠가 지금과 다르다 — 미리 본 뒤 바뀌어 아무것도 안 바꿨다. 미리 보기를 다시 사람에게 보인다
+EXIT_DEFAULT_APP = 6    # 사람이 그 확장자의 기본 앱을 한 번 골라야 한다
+EXIT_CLASSIFIED = 7     # 기밀 · 핵심기술 문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다 — 답을 받은 뒤에만 넘긴다
+EXIT_URL = 8            # 그 앱의 주소가 틀렸거나 잰 기본 주소로 안 읽힌다 — 사람에게 앱 화면의 주소를 받는다
 NEXT_EP_LOGIN = "다음: 스킬 ep-login 으로 사내 세션을 세운 뒤 같은 명령을 다시 부른다"
 OUT_BYTES = ep_session.OUT_BYTES                   # 답 하나(JSON)의 크기 — 수가 사는 자리와 까닭은 ep_session
 DAY_SECONDS = 86400
@@ -189,6 +195,8 @@ def keep(path: pathlib.Path, data: dict) -> str:
 # ── 날 말 ─────────────────────────────────────────────────────────────────
 WEEKDAYS = "월화수목금토일"                        # date.weekday() 의 0 ~ 6 — 답에 요일을 실어 모델이 요일을 제 셈으로 짐작하지 않게
 DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}   # 날 말 → 오늘에서 며칠 뒤
+# 날 말에 없는 말을 어떻게 주나 — 날을 받는 명령의 --help 와 멈추는 말이 함께 쓴다
+DAY_COUNT = "요일 · 「다음 주 금요일」 같은 말은 안 받는다 — 오늘 날짜에서 세어 YYYY-MM-DD 로 준다"
 
 
 def day_of(text: str | None, today: _date) -> _date:
@@ -200,3 +208,19 @@ def day_of(text: str | None, today: _date) -> _date:
         return _date.fromisoformat(word)
     except ValueError as exc:
         raise Stop(EXIT_ARGS, "args", f"날은 오늘 · 내일 · 모레 · YYYY-MM-DD 가운데 하나로 준다: {text!r}") from exc
+
+
+# ── 빈 틈 셈 ──────────────────────────────────────────────────────────────
+def gaps_of(busy, lo: _datetime, hi: _datetime, need: _timedelta) -> list[tuple[_datetime, _datetime]]:
+    """``lo`` ~ ``hi`` 안에서 ``need`` 이상 비는 때를 (시작, 끝) 차례로 낸다. ``busy`` 는 바쁜 구간 ``(시작, 끝)`` 들이다 — 차례 ·
+    겹침 · ``lo`` ~ ``hi`` 밖으로 삐져나감은 아무래도 된다(그 안으로 잘라 시작 차례로 겹친다). 시각은 다 시간대가 붙은 것이다."""
+    out, at = [], lo
+    for a, b in sorted((max(a, lo), min(b, hi)) for a, b in busy):
+        if b <= a:
+            continue
+        if a - at >= need:
+            out.append((at, a))
+        at = max(at, b)
+    if hi - at >= need:
+        out.append((at, hi))
+    return out

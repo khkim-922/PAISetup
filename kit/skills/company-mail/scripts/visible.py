@@ -10,7 +10,6 @@
     v = visible.parse(html, tables=True, numbered=False)   # 그림을 번호 없는 「[그림]」 으로 — 받을 길이 없는 조각(사규의 바뀐 자리)
     v = visible.body(html)                 # 표 꼴로 풀고 글에서 보이지 않는 문자까지 걷은 것 — JSON 으로 답하는 명령의 본문
     text, n = visible.invisible(text)      # 폭 없는 문자 · 방향 뒤집기 · 태그 문자 · 제어 문자를 걷고 그 수
-    answer = visible.shown(answer)         # 답(dict · list · 글자가 겹친 것)의 글자마다 `invisible` 을 지난 사본
 
 `parse` 는 안 그리는 태그 · 주석 · 숨긴 요소 · 바탕과 같은 색의 글을 걷는다. 그려진 화면이 아니라 마크업 · 스타일(요소의 `style` 과
 `<style>` 의 단순 선택자 규칙)로 가르고, 못 닫은 숨긴 요소는 브라우저처럼 문서 끝까지 숨긴다. 무엇을 걷나는 어느 꼴로 부르든 같다.
@@ -503,15 +502,3 @@ def invisible(text: str) -> tuple[str, int]:
             continue
         out.append(ch)
     return "".join(out), gone
-
-
-def shown(answer):
-    """답(dict · list · 글자가 겹친 것)의 글자마다 `invisible` 을 지난 사본 — JSON 으로 답하는 명령이 내기 직전에 지나, 어느 칸으로
-    나가든 이 한 자리를 거친다. 열쇠와 글자 아닌 값은 그대로다."""
-    if isinstance(answer, str):
-        return invisible(answer)[0]
-    if isinstance(answer, dict):
-        return {key: shown(value) for key, value in answer.items()}
-    if isinstance(answer, (list, tuple)):
-        return [shown(value) for value in answer]
-    return answer

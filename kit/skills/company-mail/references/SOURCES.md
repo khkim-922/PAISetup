@@ -30,7 +30,7 @@
 - `scripts/inbox.py` — 보기 이름 · 열 이름 · 주소 꼴 상수, 폴더 · 규칙 · 임시저장 폼의 칸과 그 함수 머리
 - `scripts/draft_send.js` — 발송 확인 · 임시저장 물음의 꼴(`SEND_CONFIRM` · `SAVED_ASK`) · 기다리는 시한
 - `scripts/mail.py` — 회사 값(`DEFAULT_COMPANY`) · 메일함 파일 번호가 사번이라는 것(`MAILFILE_NUMBER`) · 보낸 메일이 서는 자리(`SENT_CHECK_ROWS`) ·
-  검색 색인이 새 메일을 늦게 드는 것(`RECENT_SCAN`) · 받는 꼴(`ROLE_WORDS`) · 답장 단추 값(`REPLY_KINDS`) · 부서 주소 꼴(`DEPT_MAIL`)
+  검색 색인이 새 메일을 늦게 드는 것(`RECENT_SCAN`) · 받는 꼴(`ROLE_WORDS`) · 부서 주소 꼴(`DEPT_MAIL`)
 - `scripts/body_images.py` — 본문 아이콘 크기(`ICON_EDGE`)
 - 설정 저장소의 `_check/skills/company-mail/check_inbox.py` · `check_mail.py` · `check_mailer.py` — 가짜 메일함 · 중계는 이 절의 꼴을 흉내 낸다. 실물에서 꼴이 달라졌으면
   가짜를 먼저 실물에 맞추고 손을 고친다
@@ -75,10 +75,10 @@
   날짜순이 아니라 ``&ResortDescending=1`` 로 날짜 내림차순을 받는다. 보기의 unid 는 ``/api/data/collections`` 에서 제목으로 찾는다 —
   이 보기 이름은 한 메일함으로만 쟀다
 - 보낸 메일의 받는 사람은 보낸편지함 목록 열(``xname``)에 첫 사람만 들고, 한 통의 ``SendTo?OpenField`` 는 501 이다. 다 드는 자리는
-  그 메일의 ``ToCcUserInfoJson``(받는 사람 · 참조) · ``BccUserInfoJson``(숨은참조 · 없으면 404) 칸이다 — 편집 화면이 저장할 때 받는
+  그 메일의 ``ToCcUserInfoJson``(받는 사람 · 참조) · ``BccUserInfoJson``(숨은참조) 칸이다 — 편집 화면이 저장할 때 받는
   사람마다 ``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 이어 쓴 글이다. JSON 의 ``type`` 이 ``user``(열쇠는 Notes 이름) ·
   ``dept``(웹메일 고름 창에서 조직을 체크한 것 · 열쇠는 ``<부서 코드>(<회사 약칭>)`` · 부서 이름 · 부서 주소가 든다) · ``email``
-  (사외 주소)이고 ``field`` 가 ``send_to`` · ``copy_to`` 다. 숨은참조 칸의 항목은 ``field`` 가 비어 온다. 보기 ``!전체목록추출용`` 의
+  (사외 주소)이고 ``field`` 가 ``send_to`` · ``copy_to`` 다. 숨은참조 칸의 항목은 ``field`` 가 비어 온다. 숨은참조 칸은 임시메일에만 남는다 — 보낸 뒤에는 숨은참조를 넣어 보낸 메일도 404, 넣지 않은 메일 대부분은 501 이라(보낸편지함 40 통 · 2026-11-18 회사에서 잼) 보낸 메일의 숨은참조는 못 읽는다. 새 메일 화면으로 지은 임시메일은 받는 사람 칸까지 501 이다. 보기 ``!전체목록추출용`` 의
   ``$102`` 는 보낸 메일 대부분에 줄이 없고, 든 줄도 마지막 사람들이 마침표로 붙어 온다 — 보낸 메일의 받는 사람으로 쓰지 않는다
 
 #### inbox.py · 본문 · 첨부
@@ -203,6 +203,18 @@
   화면은 서명을 안 든다 — 화면 스크립트가 뜬 뒤에 서명 문서의 본문을 따로 받아 편집기에 넣는다. 서명 문서의 본문은 읽기 길의 본문
   꼴(``/0/<unid>/Body?OpenField``)로 받는다. 편집기는 서명을 넣을 때 html · head · title · meta · style · body 태그를 벗긴다 —
   서명의 style 이 남으면 메일 전체 글꼴을 덮는다. 새 메일의 차례는 넣은 글 · (빈 줄) · 서명 · 빈 줄이다
+- 메일속성은 쓰기 화면의 체크 칸이고 ``saveDoc`` 이 저장 칸으로 싣는다 — 긴급메일 ``Importance``(켬 ``1`` · 끔 ``2``) · 전달불가
+  ``Forward_Deny`` · 한명씩 발송 ``IndividualSend``(켬 ``1`` · 끔 빈 글자) · 예약발송 ``ReservationOpt`` · ``SDay``(``YYYY-MM-DD``) ·
+  ``SHour`` · ``SMin``(두 자리). 저장 폼에 그 값을 실으면 저장되고 편집 화면을 다시 열면 체크가 선다(회사에서 시험 임시글로 쟀다).
+  예약의 분 고름은 ``Reservation_Interval``(10) 눈금이고, 지난 시각은 [보내기] 때 서버 시각(``agGetServerTime``)과 견줘 막는다 —
+  임시저장은 안 막는다. 전달불가는 DRM 복호화 발송(``decryptiondrm``)과 함께 못 고른다(``duplicate_chk``)
+- 다른 이름으로 발송(``preferrednameOption`` · ``InetFrom`` 고름)은 프로필의 ``PreferredNameList`` 가 비면 이름이 하나뿐이라 고를 것이
+  없다. 회신요청 · 사외제한 · 보고메일 · PWP 등록은 쓰기 화면의 켬 값(``useRemind`` · ``useUnopened`` · ``useBriefing`` ·
+  ``UseTaskManagement``)이 ``0`` 인 계정에는 안 선다. 팀즈문서 링크 공유는 따로 뜨는 고름 창(``frmTeamsAttachFileManager``)이다 · 안 쟀다
+- 배포그룹 하나를 받는 사람으로 넣으면 ``SendTo`` 계열 칸에 그룹 열쇠(``[<회사 코드>:<갈래 말>]<이름>(<회사 코드>)``), ``InetSendTo``
+  계열에 그룹 이름이 들고(``checkUser``), ``ToCcUserInfoJson`` · ``BccUserInfoJson`` 에 「열쇠 ``-=-ITEM-=-`` {type: group, key,
+  group_name}」 이 ``-=-SEP-=-`` 로 이어 든다(``ORG_JSONTOTEXT``). 그 꼴로 저장한 임시메일은 편집 화면을 다시 열어도 그룹 토큰 하나로 선다
+  — 사람으로 안 풀린다(회사에서 쟀다). 정보 칸이 없으면 화면이 열쇠를 「기타」 토큰으로 세운다
 
 ### mailer.py
 
@@ -232,6 +244,52 @@
   사외 결재 · 경고 같은 다른 물음이 그 앞에 뜰 수 있다
 - 서명 그림 주소는 저장 전엔 서명 문서를, 저장 뒤엔 새 임시메일 자신을 가리킨다(`…nsf/0/<unid>/Body/…`)
 - 편집기 · 받는 사람 칸 · 첨부 칸은 화면이 뜬 뒤에 늦게 서고, 편집기의 `setBodyValue` 는 늦게 그려진다
+- 웹메일 [재사용]은 읽기 화면의 `_form.copyEdit('Resend')` 다 — 답장 · 전달(`copyEdit('Reply' · 'AllReply' · 'Forward')`)과 같은 함수가
+  `process_doc?openagent&action=Resend` 로 원래 메일에 이어진 새 문서를 짓고 편집 화면(`?editdocument&type=Resend&UNID=<원래>`)을 연다
+- [재사용]은 보낸 메일의 읽기 화면에만 있다(`_form.info.isSent` 가 참) — 받은 메일에는 [답장] · [전체답장] · [전달]뿐이다
+- [재사용] 화면은 원래 메일의 받는 사람 · 제목(머리 없이) · 본문 HTML(서명 그대로 · 본문의 `<style>` · 표 · 넣은 글 표지 `TEXT_MARK` 까지)
+  · 첨부를 그대로 채운다. 인용 머리(「원본 메시지」)와 서명을 하나 더 붙이지 않는다. 본문 그림 주소는 새 문서를 가리키게 바뀐다
+- [재사용] 화면에서 [임시저장]하면 새 임시메일이 서고 원래 보낸 메일은 보낸편지함에 그대로 남는다 — 저장 물음은 답장과 같은
+  「임시저장이 완료되었습니다」 하나다
+- 답장 · 전달 · 재사용(`copyEdit`) 앞의 알림은 막지 않고 알리기만 한다 — 대용량 첨부 메일은 「다운로드 가능기간 ~ 까지」(답장 둘은 안 뜬다),
+  기간이 지났으면 「기간이 경과한 대용량 파일」, 결재취소(반려)된 대용량 메일은 「재사용하실 수 없습니다」다. 전달 금지 메일은 [재사용] 앞에서
+  안 막고, 원 발신자가 나인 전달불가 회신 메일만 「답장할 수 없습니다」로 막는다(``Forward_Deny_Type``) — 화면 스크립트로 읽었다 · 알림을
+  띄운 메일로는 안 쟀다
+- 편집 화면의 메일속성은 체크(``important_check`` · ``notforward`` · ``OnePost`` · ``chbox_reservation``)를 바꾸면 [임시저장]이 그 체크에서
+  칸을 싣는다. 예약은 체크 뒤 ``_form.drawTimeList()`` 가 시 · 분 고름(``shour`` · ``smin``)을 그려야 값이 들고, 날짜는 ``SDay`` 칸이다.
+  끄고 저장하면 ``Importance`` 2 · ``ReservationOpt`` 0 · ``SDay`` 빈 글자로 선다(회사에서 쟀다)
+- 편집 화면에 배포그룹을 더하는 것은 고름 창의 [배포그룹] 탭과 같은 토큰(``{type: group, key, group_name}``)을 ``duplicate_list`` 와
+  칸의 ``tokenInput('add')`` 에 넣고 ``setRecipients`` 하는 길이다 — 저장한 판을 다시 열면 그룹 토큰 하나로 선다(회사에서 쟀다)
+- 본문 편집기는 DEXT5 다. `_PWEC` 는 `init · isReady · setValue · setBodyValue · getHTML · getMIME · dext5DecodeMime · destroy · isEmpty`
+  와 글꼴 · 포커스 · 안내 글 함수만 내는 얇은 덮개고(일부 고치기 함수가 없다), 일부를 고치는 길은 전역 `DEXT5` 에 있다 —
+  `getDext5DocumentDom` · `getDext5BodyDom`(편집기 문서 · body 를 그대로) · `replaceText` · `replaceTextAll` · `findWord` · `setElementInnerHTML`
+  · `getSelectedContent` · `isDirty` 따위
+- 편집기 문서는 편집 화면 안 `iframe#dext_frame_WEC` 안의 `iframe#dext5_design_WEC` 이고 같은 출처라 손이 바로 닿는다. body 는
+  `contenteditable`(`designMode` 는 off)이고 id 는 `dext_body` 다
+- 화면의 [임시저장] `saveDoc` 은 `_PWEC.getMIME()` 으로 편집기 문서에서 그 자리에서 본문을 짓는다 — 편집기 body 를 바로 고쳐도(글자 마디 하나)
+  `isDirty` 가 참이 되고 `getHTML` · 저장에 실린다. 그 길과 `getHTML` → 조각 바꾸기 → `setBodyValue` 의 길은 저장한 본문이 바이트째 같고,
+  두 길 다 고친 조각 밖은 그대로다(문서 번호를 빼고 견줘서)
+- ⚠ 편집기는 메일을 열 때 메일 본문의 `<style>` 을 버린다 — head 에 있든(문서 꼴) body 맨 앞에 있든(조각 꼴). `getHTML` 의 head 에는
+  편집기 제 서식(`<style data-destyle="deDefaultStyle">`) 하나만 든다. 그래서 아무것도 안 고치고 [임시저장]만 해도 저장한 본문에서
+  메일의 `<style>` 이 사라진다. `setBodyValue` 로 다시 넣은 `<style>` 도 버린다. 편집기 문서의 head(또는 body)에 `<style>` 요소를 바로
+  달면 `getHTML` · 저장에 실리고, 저장한 본문에 남는다. 다음에 편집으로 열면 또 버린다
+- 저장된 본문 HTML 은 편집 화면 프레임에서 `fetch('<문서 주소>/Body?OpenField')` 로 같은 출처로 읽힌다 — 메일의 `<style>` 이 든 그대로고,
+  편집기 제 서식은 `data-destyle` 이 달려 가려진다
+- 본문의 `data:` 그림은 첫 저장에서 그 임시메일의 본문 조각(`…nsf/0/<unid>/Body/M1.N?OpenElement`)으로 바뀐다. 서명 그림의 조각 번호는
+  그 뒤로 밀린다. 한 번 저장된 뒤에는 다시 저장해도 그림 · 서명 주소가 그대로다
+- 웹메일에서 직접 쓴 임시메일은 저장된 본문에 메일 `<style>` 이 없다(편집기가 지은 그대로) — 그 메일에서는 잃을 서식이 없다
+- 첨부 칸은 편집 화면 안 `iframe#KAM`(`fileupload/XAM_upload.html`, jQuery-fileupload 위의 XAM)이다. `am_handler.xam.g.getFileList()` 가
+  `{name, size, status}` 를 내고 status 는 `complete`(저장된 것) · `ready`(올릴 것) · `remove`(뺄 것)다
+- 첨부 더하기는 KAM 의 파일 입력(`input[name="%%File"]`, multiple)에 `DOM.setFileInputFiles` 로 파일을 주면 [추가]로 고른 것과 같다 —
+  곧 `ready` 로 서고, [임시저장]이 올려 저장된 첨부가 된다. 물음은 안 뜬다
+- 첨부 빼기는 웹메일의 [삭제/취소] 단추(`#btn_delete`)다 — KAM 의 `#file_list` 에서 그 줄에 `click-on` 을 달고 단추를 누르면 줄에 `remove` 가
+  붙어 status 가 `remove` 가 되고, [임시저장]하면 그 첨부가 빠진다. 다시 누르면 「삭제 취소」다
+- 첨부 칸은 칸에 이미 있는 이름의 파일을 안 받는다 — `remove` 로 고른 파일과 같은 이름이어도 「이미 첨부된 파일이 존재합니다. 중복된 파일 :
+  <이름>」 을 띄운다. 같은 이름으로 갈려면 빼서 저장한 뒤 다시 붙인다
+- 저장한 본문 HTML(`Body?OpenField`)에는 첨부마다 서버가 지은 표(`/icons/medoc.gif` · Type · Name)가 끝에 붙는다 — 편집기 판(`getHTML`)에는
+  안 든다
+- 편집 화면은 열려 있는 동안 웹메일이 1 분쯤마다 저절로 저장한다(`_autoSaveRequest` — `_form.isAutosaveCancel` 이 `'Y'` 면 멈춘다).
+  다른 화면이 같은 임시메일을 저장해 저장 번호가 어긋난 화면은 그 자동저장마다 새 임시메일을 하나씩 갈라 세운다
 
 ### mail.py
 
@@ -271,6 +329,26 @@
 - 업로드 DB 는 받은 파일 이름을 낸다
 
 가짜가 실물에서 안 재 지어낸 값은 `check_inbox.py` 머리말 「여기서 못 재는 것」 이 든다.
+
+## 회사에서 잴 것 — 아직 없는 손가락을 세우려면
+
+잰 판이 서면 `scripts/mail.py` 의 표에 한 줄과 그 일을 하는 손 하나로 더한다(`DESIGN.md` 「mail.py · 받는 사람 찾기」).
+
+- 배포그룹 하나로 보낸 메일이 받는 쪽에서 구성원 낱낱에게 가나 — 저장 꼴은 쟀다(「inbox.py · 임시저장 · 서명」), 보낸 판은 안 쟀다
+- 팀즈문서 링크 공유 — 고름 창(`frmTeamsAttachFileManager`)이 무엇을 골라 본문 · 첨부 칸에 넣나(`insertTeamsAttachFileTable`)
+- 표에 「회사에서 안 쟀다」 로 선 손가락(`mail.py` 의 `DRAFT_STARTS` · `DRAFT_CHANGES` 의 `unmeasured`) — [재사용] 화면에서 원래 보낸 메일의
+  저장된 본문 `<style>` 을 받아(`STORED_STYLES`) 편집기 head 에 되달아 저장하면 서식이 남나 · [답장] · [전체답장] · [전달] · [재사용] 화면의
+  첨부 칸에 파일을 줘 [임시저장]하면 붙나 · 편집 화면에서 저장된 첨부를 이름으로 골라 빼면(`DETACH`) [임시저장]에 빠지나. 한 번씩 돌려
+  저장한 판이 바란 대로면 그 `unmeasured` 칸에서 뺀다
+- 새 메일(`draft new`)을 저장한 뒤 손이 그 임시메일을 편집 화면으로 다시 연다(`show_on_screen`). 편집기는 열 때 메일의 `<style>` 을 버리고
+  1 분쯤마다 저절로 저장한다(위 「draft_send.js」) — 서식 있는 새 메일이 그 창이 열린 채 자동저장되면 서식 없이 나가나, 그때 `draft` 가 낸
+  판으로 `send-draft` 하면 종료 4 가 나나
+- 답장 · 전달 화면을 여는 `process_doc` 에 손은 `forward_deny_type` 을 빈 값으로 준다(`draft_send.js` 의 `openReplyEditor`) — 「전달 금지」
+  메일 · 대용량 첨부 메일이 그래도 전달 화면으로 열리나, 웹메일의 `copyEdit` 이 띄우는 알림과 같은 길로 막히나
+- 답장 · 전달 화면을 여는 것(`process_doc`)이 안 읽은 원본을 읽음으로 바꾸나 — 바꾸면 `draft reply` · `all` · `forward` 가 읽음을 지키는
+  선을 넘는다
+- 메일 조직도의 부서 코드(`Dept.code` · 받는 사람 칸의 `dept` 열쇠)가 문서함(ECM) 조직의 부서 코드와 같은 값인가 — 같으면 `who --out` 의
+  사람 파일에 조직을 `org:<부서 코드>` 줄로 넣는다
 
 ## 본 후보와 탈락
 

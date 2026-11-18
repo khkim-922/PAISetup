@@ -1359,6 +1359,8 @@ deploy_personal() {   # deploy_personal auto|install
   _bc="$CONFIG_ROOT/personal.conf"
   _gn="$(conf_get "$_bc" GIT_NAME)"; _ge="$(conf_get "$_bc" GIT_EMAIL)"
   _repos="$(conf_get "$_bc" REPOS)"; _url="$(conf_get "$_bc" REPO_URL)"
+  # 게이트 없는 저장소 — 받기 · 당기기는 `REPOS` 와 같고, 게이트 · 훅 사본 · 메모리는 `REPOS` 만 읽어 여기엔 안 놓인다.
+  _plain="$(conf_get "$_bc" REPOS_PLAIN)"
   # `$HOME` 을 값에 쓸 수 있게 한 자리만 펴 준다 — 통째로 eval 하지 않는 대신이다.
   _root="$(conf_get "$_bc" ROOT)"; _root="$(printf '%s' "$_root" | sed "s|\$HOME|$HOME|g;s|^~|$HOME|")"
   [ -n "$_root" ] || _root="$HOME/repos"
@@ -1386,7 +1388,7 @@ deploy_personal() {   # deploy_personal auto|install
   # 형제 저장소 — **없는 것만 받는다.** 당김은 각 저장소의 세션(auto)과 deploy.ps1 이 든다. `--install` 만 —
   # 망을 타고, 맨바닥 VDI 의 첫 판은 설치기가 부르는 이 갈래가 지지 세션 훅의 시간 한도가 지지 않는다.
   # 받은 나무는 당김 문의 답에 세운다(`gate_fresh_clone`) — clone 은 원격 끝을 받고 그 뒤의 당김은 뒤로 못 간다.
-  if [ "$1" = install ] && [ -n "$_repos" ]; then
+  if [ "$1" = install ] && [ -n "$_repos$_plain" ]; then
     if [ -z "$_url" ]; then
       echo "$PROJECT_NAME: ⚠ personal.conf 에 REPOS 는 있는데 REPO_URL 이 없다 — 어디서 받을지 모른다"
     else
@@ -1399,7 +1401,7 @@ deploy_personal() {   # deploy_personal auto|install
       # 이번 회차에 받은 저장소의 이름 — deploy.ps1 이 그 저장소를 다시 안 당긴다(`CLAUDE_CONFIG_FRESH_CLONES` · 아래 넘기는 줄).
       CLONED_NOW=''; _cone=''; _cpar=''; _cpids=''; _cwait=''
       _cdir="${TMPDIR:-/tmp}/sibling-clone-$$"
-      for _r in $_repos; do
+      for _r in $_repos $_plain; do
         [ -d "$_root/$_r/.git" ] && continue
         if [ -z "$_cpar" ]; then
           clone_sibling "$_r" "$_root" "$_url"

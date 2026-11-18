@@ -107,15 +107,15 @@ LANE_FILE = "lane.md"                    # 업무 파악 · 일일 보고 스킬
 NESTED_ENV = ("CLAUDECODE",)             # 대화 안에서 부른 판(run --now)이 띄울 때 걷는 변수 — 있으면 claude 가 겹친 세션이라며 안 뜬다
 # 손의 읽는 명령 — 사람 없는 보고에 여는 것(손 mail.py 머리말 「어떻게 부르나」 · company_calendar.py 머리말). 권한 규칙의 꼴 그대로다 —
 # 끝의 「 *」는 그 뒤에 무엇이 와도(인자 · `2>&1`) 되고 명령만 써도 된다. 「;」 · 「&&」 · 「|」로 이은 다른 명령은 따로 대어 막힌다
-MAIL_READS = ("session *", "folders *", "rules *", "list *", "read *", "read-many *", "summary *", "search *", "people *")
-# session 은 보고 창의 메일함 주소를, folders · rules 는 업무 파악이 폴더 · 규칙을(스캔이 낡았을 때), people 은 사용자 · 윗분을 짐작하는 주소록을
-# 받는다(업무 파악 스킬의 「읽는 법」 · first-understanding.md). org 는 안 연다 — `--emails-file` 로 준 자리에 아무 파일이나 쓴다
+MAIL_READS = ("session *", "folders *", "rules *", "list *", "read *", "read-many *", "summary *", "search *", "who *")
+# session 은 보고 창의 메일함 주소를, folders · rules 는 업무 파악이 폴더 · 규칙을(스캔이 낡았을 때), who 는 사용자 · 윗분을 짐작하는 주소록 ·
+# 조직도를 받는다(업무 파악 스킬의 「읽는 법」 · first-understanding.md). who 의 `--out` 은 아래에서 막는다 — 준 자리에 아무 파일이나 쓴다
 CALENDAR_READS = ("show *", "calendars *")
 # 막는 명령 — 사용자 설정의 allow 가 함께 실려도 막을 자리다(deny 가 어느 allow 보다 앞선다): 손의 바꾸는 · 내보내는 · 파일을 쓰는
 # 명령, EP 로그인 · 문서함 스킬, 밖으로 나가거나 무엇이든 돌리는 프로그램, MCP.
-# ⚠ 열린 명령의 깃발이 파일을 쓰면(`read --images`) 열린 꼴에 맞으므로 여기서 따로 막는다
-BRIEF_DENY = ("Bash(*mail.py*save-*)", "Bash(*mail.py*revise-draft*)", "Bash(*mail.py*send-draft*)", "Bash(*mail.py*apply-*)",
-              "Bash(*mail.py*preview-*)", "Bash(*mail.py*attachment*)", "Bash(*mail.py*recipients*)", "Bash(*mail.py*--emails-file*)",
+# ⚠ 열린 명령의 깃발이 파일을 쓰면(`read --images` · `who --out`) 열린 꼴에 맞으므로 여기서 따로 막는다
+BRIEF_DENY = ("Bash(*mail.py* draft *)", "Bash(*mail.py*send-draft*)", "Bash(*mail.py*apply-*)",
+              "Bash(*mail.py*preview-*)", "Bash(*mail.py*attachment*)", "Bash(*mail.py*--out*)",
               "Bash(*mail.py*--images*)",
               "Bash(*company_calendar.py*add*)", "Bash(*company_calendar.py*delete*)", "Bash(*company_calendar.py*preview*)",
               "Bash(*company_calendar.py*remember*)",

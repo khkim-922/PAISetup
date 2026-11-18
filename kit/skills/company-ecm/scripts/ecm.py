@@ -1,11 +1,11 @@
 """사내 문서함(ECM)에서 문서를 찾고 읽고, 사람이 확인한 한 편은 편집해 다음 판으로 올리거나 새 문서로 올리고, 문서의 권한을
-주고 거두는 손. 표준 라이브러리와 곁의 ``default_app.py`` · ``close_view.ps1`` · ``close_acrobat.ps1`` · ``checkin_window.ps1``,
-형제 스킬 ep-login 의 ``ep_session.py``(스킬 홈에 나란히 깔린 ``../../ep-login/scripts/``)를 쓴다. 차례와 막는 까닭은
-``references/DESIGN.md``, 서버의 주소와 꼴은 ``references/SOURCES.md`` 「사내 ECM 에서 잰 것」이 든다.
+주고 거두는 손. 표준 라이브러리와 곁의 ``default_app.py`` · ``office_doc.ps1``(``close_view.ps1`` · ``change_doc.ps1`` 이 싣는다) ·
+``close_acrobat.ps1`` · ``checkin_window.ps1``, 형제 스킬 ep-login 의 ``ep_session.py``(스킬 홈에 나란히 깔린 ``../../ep-login/scripts/``)를
+쓴다. 차례와 막는 까닭은 ``references/DESIGN.md``, 서버의 주소와 꼴은 ``references/SOURCES.md`` 「사내 ECM 에서 잰 것」이 든다.
 
 ⚠ 에이전트는 받은 파일을 기본 앱으로 **화면에 띄우고**, 편집 열기는 동료도 쓰는 문서를 서버에서 잠근다 — 사람이 보는 대화에서만
 쓰고, 편집은 사람이 그 문서를 확인한 뒤에만 부른다. 바꾸는 요청은 편집 열기 · 등록 · 권한 저장만 짓고 그 밖은 서버에 닿기 전에
-``Refused`` 로 막는다.
+``Refused`` 로 막는다. 되돌리기 어려운 끝(등록 · 판 올리기 · 권한 저장)은 미리 보기가 낸 확인 열쇠로만 간다.
 
 어떻게 부르나::
 
@@ -18,35 +18,49 @@
         got = ecm.read_document(box, ecm.Agent.from_env(), docs[0].object_id)
         print(got.text)                                  # 글자 · got.summary 는 읽는 손의 한 줄(「글 밖」 셈)
 
-        top = box.folders(dept.key)                       # 문서함의 폴더 한 층 — 아래는 folders(dept.key, top[0].id)
-        new = ecm.register_document(box, ecm.Agent.from_env(), path, cabinet=dept.key, folder=top[0].id,
-                                    security="2A", open_flag="F")   # 보안 짝은 사람이 확인한 값
-        opened = ecm.edit_document(box, ecm.Agent.from_env(), docs[0].object_id)   # 잠그고 읽기 쓰기로 연다
-        # … 오피스 COM 으로 opened.path 의 문서를 고친다(닫지 않는다 — 저장해 닫기는 다음 걸음이 한다) …
-        done = ecm.checkin_document(box, opened.path, docs[0].object_id, "고친 내용 한 줄")
+        folder = box.resolve_folder(dept.key, "기획 > 보고")   # 폴더 경로(화면의 꼴) → (경로, Folder)
+        plan = ecm.plan_register(box, path, cabinet=dept.key, folder=folder[1].id, security="2A", open_flag="F")
+        new = ecm.register_document(box, ecm.Agent.from_env(), path, cabinet=dept.key, folder=folder[1].id,
+                                    security="2A", open_flag="F", confirm=plan.token)   # 사람이 미리 보기를 확인한 열쇠로만
+        changes = ecm.Changes(replace=(("120 억", "150 억"),))
+        opened = ecm.edit_document(box, ecm.Agent.from_env(), docs[0].object_id, changes=changes)   # 바꿀 것을 잠그기 전에 가린다
+        ecm.change_document(opened.path, ecm.OFFICE_BY_EXT[opened.ticket.ext], changes)   # 열린 창에서 고치고 저장한다
+        pending = ecm.prepare_checkin(box, opened.path, docs[0].object_id, "고친 내용 한 줄")   # 서버를 안 바꾼다 — 열쇠를 낸다
+        done = ecm.checkin_document(box, opened.path, docs[0].object_id, "고친 내용 한 줄", confirm=pending.token)
         print(done.version_before, "→", done.version_after)
 
         plan = ecm.plan_access(box, docs[0].object_id, grant=[("read", "org:T10006"), ("copy", "홍길동/gdhong")],
                                revoke=["김철수"])               # 서버를 안 바꾼다 — plan.added · removed · moved 를 사람에게 보인다
         got = ecm.apply_access(box, plan, plan.token)       # 사람이 확인한 열쇠로만 · 다시 읽은 명단을 낸다
 
-    명령줄은 ``python -X utf8 ecm.py [--session <세션 파일>] <명령>`` 이다 — ``session`` · ``cabinets`` · ``list`` · ``count`` ·
-    ``version`` · ``security`` · ``open`` · ``read`` · ``edit`` · ``checkin`` · ``folders`` · ``register`` · ``access`` · ``who`` · ``preview-access`` ·
-    ``apply-access`` · ``default-app``. 각 명령의 인자는 ``--help`` 가 든다.
+    명령줄은 ``python -X utf8 ecm.py [--session <세션 파일>] <명령>`` 이다. 명령은 손가락의 표(``FINGERS``)가 든다 — 인자 · 세션이
+    드나 · 바꾸는가 · ``--help`` 의 지도가 다 그 표에서 선다(``python -X utf8 ecm.py --help``).
+
+    깔린 자리에서 이 파일을 싣는 앱(메일 비서)이 부르는 이름 — ``Ecm``(``view`` · ``security``) · ``Agent``(``download_view``) ·
+    ``Security.ask_before_ai`` · ``close_window`` · ``viewer_of`` · ``default_app`` · ``url_from_env`` · ``kept_text`` · ``keep_text`` ·
+    ``TEXT_SPLIT`` · 예외 ``EcmError`` · ``SessionMissing`` · ``SessionExpired`` · ``AgentError``. 이 이름과 꼴을 바꾸면 그 앱이 싣는
+    자리에서 멈춘다.
 
 무엇을 내나
-    목록은 ``Doc``, 문서함은 ``Cabinet``, 열기 · 편집 열기는 ``Opened``(받은 파일 경로 · 문서 표 · 기본 앱), 읽기는 ``ReadResult``,
-    올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서는 ``Registered``(열쇠 · 이름 · 판), 보안등급은
-    ``Security``(등급 · 공개 · 핵심기술 · 이름 · 물어야 하나), 권한은 ``Grant`` · ``Person`` · ``Organ`` · ``AccessPlan``(앞 명단 ·
-    뒤 명단 · 더함 · 뺌 · 옮김 · 확인 열쇠)이다.
+    목록은 ``Doc``, 문서함은 ``Cabinet``, 문서 하나의 속성 화면은 ``DocState``(판 · 잠금 · 등급 · 이름), 열기 · 편집 열기는
+    ``Opened``(받은 파일 경로 · 문서 표 · 기본 앱), 읽기는 ``ReadResult``, 고치기는 ``Changed``(고친 것 · 저장했나), 올리기 미리
+    보기는 ``CheckinPlan``, 올리기는 ``CheckedIn``(앞 판 · 뒤 판 · 고른 판), 폴더는 ``Folder``, 새 문서 미리 보기는 ``RegisterPlan``,
+    새 문서는 ``Registered``(열쇠 · 이름 · 판), 보안등급은 ``Security``(등급 · 공개 · 핵심기술 · 이름 · 물어야 하나), 권한은
+    ``Grant`` · ``Person`` · ``Organ`` · ``AccessPlan``(앞 명단 · 뒤 명단 · 더함 · 뺌 · 옮김 · 확인 열쇠)이다. 미리 보기의 ``token`` 이
+    확인 열쇠다 — 그 사이 문서 · 명단 · 파일이 바뀌면 열쇠가 달라져 바꾸는 끝이 안 나간다.
 
-    명령줄의 종료 값은 0 됨 · 1 실패(메시지 그대로 알린다) · 2 인자가 틀렸다(argparse 가 받는 값을 든다) · 3 세션이 없거나 끊겼다
-    (스킬 ep-login 으로 다시 받는다) · 4 사람이 그 확장자의 기본 앱을 한 번 골라야 한다(메시지가 할 일을 든다) · 5 기밀 · 핵심기술
-    문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다(메시지가 물을 것을 든다 — 답을 받은 뒤에만 ``--ai-ok``).
+    명령줄의 종료 값은 사내 앱 명령이 함께 쓰는 한 표다 — 값은 형제 스킬 ep-login 의 ``ep_command`` 가 들고, 뜻은 이렇다:
+    ``EXIT_OK`` 됨 · ``EXIT_FAIL`` 실패(메시지 그대로 알린다) · ``EXIT_ARGS`` 준 값이 틀렸거나 아무것도 가리키지 않는다(argparse 와
+    ``ArgsError`` — 아무것도 안 건드렸다. 메시지대로 고쳐 다시 부른다. 서버 없이 가릴 수 있는 값은 ``precheck`` 가 세션보다 먼저
+    가린다) · ``EXIT_SESSION`` 세션이 없거나 끊겼다(스킬 ep-login 으로 다시
+    받는다) · ``EXIT_STALE`` 확인 열쇠가 지금과 다르다(``Stale`` — 미리 본 뒤 바뀌어 아무것도 안 바꿨다. 미리 보기를 다시 사람에게
+    보인다) · ``EXIT_DEFAULT_APP`` 사람이 그 확장자의 기본 앱을 한 번 골라야 한다(메시지가 할 일을 든다) · ``EXIT_CLASSIFIED`` 기밀 ·
+    핵심기술 문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다(메시지가 물을 것을 든다 — 답을 받은 뒤에만 ``--ai-ok``).
 
     갈래 예외는 ``EcmError`` 아래에 선다 — ``SessionMissing`` · ``SessionExpired`` · ``Refused`` · ``AgentError`` · ``ReadError`` ·
-    ``Classified`` · ``SecurityUnread``. ``default_app.DefaultAppNeeded`` · ``ValueError``(확장자 꼴) · ``OSError`` ·
-    ``subprocess.TimeoutExpired`` 는 그 아래가 아니다 — 명령줄은 따로 잡아 4 · 1 로 내고, 손으로 부르는 쪽도 따로 잡아야 한다.
+    ``Classified`` · ``SecurityUnread`` · ``ArgsError`` · ``Stale``. ``default_app.DefaultAppNeeded`` · ``ValueError``(확장자 꼴) ·
+    ``OSError`` · ``subprocess.TimeoutExpired`` 는 그 아래가 아니다 — 명령줄은 따로 잡아 ``EXIT_DEFAULT_APP`` · ``EXIT_FAIL`` 로 내고,
+    손으로 부르는 쪽도 따로 잡아야 한다.
 
     부작용 — 에이전트가 받은 파일(``ECM_DOCS_ROOT`` 아래)은 지우지도 옮기지도 않는다. 명령줄의 ``read`` 는 뽑은 글자를
     ``text_dir()`` 에 문서 열쇠마다 한 장(``.md``)으로 남기고, 같은 열쇠는 그 장으로 답하며, 남긴 장을 지우지 않는다.
@@ -56,8 +70,10 @@
     ``MAILBOX_COOKIES``   세션 파일(Playwright 저장 상태) — ``--session`` 을 안 줄 때만. 기본 자리는 없다 — 받는 손(스킬
                           ep-login)이 정하고 부르는 쪽이 넘긴다
     ``ECM_AGENT_URL``     ECM 에이전트 웹소켓                               기본 ``ws://localhost:8383/``
-    ``ECM_DOCS_ROOT``     에이전트가 받은 파일을 두는 자리                   기본 ``C:\\Rayful2_Docs``
-    ``ECM_DRM_READER``    글자를 뽑는 손                                     기본 ``~/.claude/skills/drm-office-read/scripts/read-drm.ps1``
+    ``ECM_DOCS_ROOT``     에이전트가 받은 파일을 두는 자리                   기본 ``DEFAULT_DOCS_ROOT``(곁의 스킬 drm-office-read 의
+                                                                             ``scripts/places.json`` 의 ``ecm_docs_root``)
+    ``ECM_DRM_READER``    글자를 뽑는 손                                     기본 ``DEFAULT_READER``(곁의 스킬 drm-office-read 의
+                                                                             ``scripts/read-drm.ps1``)
     ``ECM_TEXT_DIR``      read 가 뽑은 글자를 남기는 자리                    기본 ``~/.company-ecm-text``
     문서함 열쇠 · 계정은 환경변수로 받지 않는다 — 그 사람의 ECM 메인 화면과 에이전트의 폴더에서 읽는다.
 """
@@ -88,18 +104,32 @@ from dataclasses import dataclass
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import default_app  # noqa: E402 — 곁의 파일이다
 
-EP_LOGIN_SCRIPTS = pathlib.Path(__file__).resolve().parent.parent.parent / "ep-login" / "scripts"   # 형제 스킬 — 세션 파일을 읽는 자리
+SKILLS_HOME = pathlib.Path(__file__).resolve().parents[2]   # 스킬 홈 — 형제 스킬이 나란히 깔린다(도구 홈마다 · 설정 저장소에서도)
+EP_LOGIN_SCRIPTS = SKILLS_HOME / "ep-login" / "scripts"     # 형제 스킬 — 세션 파일을 읽는 자리
 if str(EP_LOGIN_SCRIPTS) not in sys.path:
     sys.path.append(str(EP_LOGIN_SCRIPTS))
-import ep_session  # noqa: E402 — 형제 스킬의 자리를 넣은 뒤에 싣는다
+import ep_command  # noqa: E402 — 형제 스킬의 자리를 넣은 뒤에 싣는다
+import ep_session  # noqa: E402
 
 DEFAULT_URL = ep_session.ECM_URL
 DEFAULT_AGENT = "ws://localhost:8383/"
-DEFAULT_DOCS_ROOT = r"C:\Rayful2_Docs"
-DEFAULT_READER = "~/.claude/skills/drm-office-read/scripts/read-drm.ps1"
+DRM_READ_SCRIPTS = SKILLS_HOME / "drm-office-read" / "scripts"   # 형제 스킬 — 글자를 뽑는 손과 받는 자리의 값 파일
+# 에이전트가 받은 파일을 두는 자리의 원본 — 등급 문을 세우는 읽는 손 · 뜨는 손 · DRM 길잡이 훅이 함께 읽는 값 파일 하나다. 그 스킬이
+# 어느 도구 홈에나 깔려 이 스킬이 없는 홈에서도 문이 같은 자리에 선다
+DRM_PLACES_FILE = DRM_READ_SCRIPTS / "places.json"
+try:
+    DEFAULT_DOCS_ROOT = json.loads(DRM_PLACES_FILE.read_text(encoding="utf-8"))["ecm_docs_root"]
+except (OSError, ValueError, KeyError) as _exc:
+    raise ImportError(f"문서함 받는 자리의 값 파일을 못 읽었다: {DRM_PLACES_FILE} ({_exc}) — 스킬 drm-office-read 가 이 스킬 곁에 "
+                      "깔렸는지 본다(설치를 다시 돌린다)") from _exc
+DOCS_ROOT_ENV = "ECM_DOCS_ROOT"
+DEFAULT_READER = DRM_READ_SCRIPTS / "read-drm.ps1"
+# 읽는 손 · 뜨는 손이 받는 자리 밑의 파일을 여는 깃발 — 그 손은 이 깃발 없이는 문서함 받은 파일을 안 연다. 이 손은 등급 문을 지난 뒤에만 준다
+READER_GATE_FLAG = "-EcmGated"
 CLOSE_SCRIPT = pathlib.Path(__file__).resolve().parent / "close_view.ps1"
 ACROBAT_CLOSE_SCRIPT = pathlib.Path(__file__).resolve().parent / "close_acrobat.ps1"
 CHECKIN_SCRIPT = pathlib.Path(__file__).resolve().parent / "checkin_window.ps1"
+CHANGE_SCRIPT = pathlib.Path(__file__).resolve().parent / "change_doc.ps1"
 
 HTTP_TIMEOUT = 30.0
 AGENT_TIMEOUT = 60.0      # 에이전트가 OK 를 낼 때까지
@@ -113,10 +143,12 @@ VERSION_WAIT = 60.0       # 편집완료를 누른 뒤 문서 정보의 최종 �
 VERSION_POLL = 3.0
 FIND_ONLY_DESC = "find-only"   # 찾기만 할 때의 자리 글 — 「-」 하나는 PowerShell 이 인자 이름으로 읽어 부름이 진다
 READ_TIMEOUT = 600.0      # 읽는 손 한 판
+CHANGE_TIMEOUT = 300.0    # 고치는 손 한 판 — 문서를 찾는 시한 뒤에 더한다(큰 덱 · 시트를 옮기는 데 든다)
 POLL = 0.5
 
-# 명령줄의 종료 값 — 머리말 「무엇을 내나」
-EXIT_OK, EXIT_FAIL, EXIT_SESSION, EXIT_DEFAULT_APP, EXIT_CLASSIFIED = 0, 1, 3, 4, 5
+# 명령줄의 종료 값 — 사내 앱 명령이 함께 쓰는 한 표(ep_command)를 그대로 쓴다. 뜻은 머리말 「무엇을 내나」
+EXIT_OK, EXIT_FAIL, EXIT_ARGS, EXIT_SESSION = ep_command.EXIT_OK, ep_command.EXIT_TOOL, ep_command.EXIT_ARGS, ep_command.EXIT_SESSION
+EXIT_STALE, EXIT_DEFAULT_APP, EXIT_CLASSIFIED = ep_command.EXIT_STALE, ep_command.EXIT_DEFAULT_APP, ep_command.EXIT_CLASSIFIED
 
 AJAX = "/ajaxAction.do"
 MAIN_PAGE = ep_session.ECM_MAIN_PAGE
@@ -151,6 +183,8 @@ FOLDER_ROOT_TYPES = ("MENU_DEPT", "MENU_PROJECT")
 FOLDER_TYPE = "F_LIST_FOLDER"
 FOLDER_ID = re.compile(r"^fdr[0-9A-Fa-f]+$")
 FOLDER_KEY = re.compile(r"^(cab[0-9A-Fa-f]+)_(fdr[0-9A-Fa-f]+)$")
+FOLDER_SEP = ">"                        # 폴더 경로의 마디 — 화면이 보이는 꼴(「기획그룹 > 기타」) 그대로 받고 낸다
+FOLDER_WALK_MAX = 200                   # 폴더 나무를 훑는 한 판의 요청 상한 — 넘으면 멈추고 경로로 달라고 한다(큰 문서함을 끝없이 안 묻는다)
 # 등록 화면의 두 POST — 같은 이름 찾기(읽기)와 등록(바꾼다). 몸은 화면의 getData · checkDocDuplication 이 짓는 꼴 그대로다
 DUP_QUERY = {"ServiceName": "CheckDuplicatedDoc-service", "checkDup": "true"}
 REGISTER_QUERY = {"isHTML": "T"}
@@ -160,12 +194,17 @@ AGENT_UPLOAD = "uploadfilecreatedoc"    # 에이전트가 파일을 서버 임�
 # 보안등급 · 공개 — 등록 화면의 단추 여섯이 짓는 짝만 받는다(기밀은 비공개만 · 일반은 공개만)
 SECURITY_PAIRS = {("1A", "F"): "기밀", ("2A", "F"): "사외비A/비공개", ("2A", "T"): "사외비A",
                   ("2B", "F"): "사외비B/비공개", ("2B", "T"): "사외비B", ("3A", "T"): "일반"}
+# 공개 짝이 누구에게 보이나 — 등록 미리 보기가 사람에게 그대로 보인다(잘못 고르면 동료 전체에 보인다)
+AUDIENCE = {("2A", "T"): "부서원이 본다", ("2B", "T"): "전 직원이 검색으로 본다", ("3A", "T"): "전 직원이 본다"}
 CLASSIFIED_LEVELS = ("1A",)              # 기밀 — 이 등급의 문서는 사람에게 묻기 전에 받아 글자를 뽑거나 편집으로 열지 않는다
 CORE_VAR = "sIsDocTypeCore"               # 속성 화면의 핵심기술 표시(스크립트 갈래 값) — "T" 면 핵심기술 문서다
 AI_OK_FLAG = "--ai-ok"
 ASK_BEFORE_AI = (f"사람에게 문서 이름과 등급을 밝히고, 국가핵심기술이나 특허처럼 독점적 성격을 띤 정보는 AI 모델에 보내지 않도록 "
                  f"주의를 당부한 뒤 이 문서를 AI 로 보내도 되는지 묻는다. 된다고 답한 뒤에만 같은 명령에 {AI_OK_FLAG} 를 붙이고, 안 된다고 하면 "
                  "사람이 ECM 화면에서 직접 연다")
+# 등급 문에서 멈춘 자리 — 무엇을 안 했고 무엇이 모델로 가나(멈춘 말의 앞)
+GATE_RECEIVE = "받지 않았다 — 글자가 대화의 모델로 간다"
+GATE_EDIT = "창의 문서를 건드리지 않았다 — 편집 패스는 고친 자리를 찍어 대화의 모델로 보인다"
 SECURITY_FIELD, OPEN_FIELD = "ecm_security_level", "ecm_open_flag"   # 속성 화면의 숨은 칸 — 편집 화면이 지금 등급을 싣는 자리
 DOC_TYPE_GENERAL = "1"                  # 화면의 「컨텐츠 등록」이 기본으로 두는 문서 유형
 DOC_STATUS_DRAFT = "0"
@@ -230,6 +269,19 @@ DEFAULT_PERIOD = "6M"
 # 화면 기간 필터의 값 그대로 — 밖의 값은 거절되거나 거절 없이 틀린 목록이 온다
 PERIODS = ("1M", "6M", "12M", "24M", "36M", "60M", "ALL")
 DEFAULT_PER_PAGE = 15
+# 이 손이 안 하는 것 — 열쇠 → 사람에게 할 말(어디서 하나). 멈추는 말과 --help 의 지도가 이 표 하나를 읽는다. 안 잰 화면 동작이
+# 회사에서 잰 꼴이 되면 그 줄을 걷고 손가락 하나(표의 한 줄과 그 일을 하는 손)를 더한다
+NOT_HERE = {
+    "folder_in_cabinet": "부서 · 프로젝트 문서함 안 폴더의 목록 — 그 요청은 아직 안 쟀다. folders 로 폴더를 찾아 보이고, 문서는 그 문서함에서 "
+                         "--search 로 좁힌다(목록 줄의 폴더 칸이 그 문서의 폴더다)",
+    "cancel": "편집취소 — 사람이 ECM 화면에서 그 문서의 「편집취소」를 누른다(그 요청은 아직 안 쟀다). 잠금이 남으면 동료가 그 문서를 못 고친다",
+    "delete": "지우기 · 옮기기 — 사람이 ECM 화면에서 한다",
+    "owner": "소유자 · 보안등급 바꾸기 — 사람이 화면의 「컨텐츠 속성」에서 한다",
+    "props": "이름 · 태그 · 완료일 바꾸기 — 속성 화면의 그 칸들은 아직 안 쟀다. 사람이 화면의 「컨텐츠 속성 → 수정하기」에서 한다",
+    "history": "지난 판 보기 · 판 이력 — 그 화면은 아직 안 쟀다. 사람이 화면의 「컨텐츠 속성」에서 연다",
+    "company_search": "전사 검색(다른 부서의 공개 문서) — 그 요청은 아직 안 쟀다. 사람이 ECM 화면의 검색에서 찾아 문서 열쇠나 이름을 준다",
+    "mail_link": "문서함 문서를 메일 첨부(문서함 쪽지)로 보내기 — 그 화면은 아직 안 쟀다. 사람이 ECM · 웹메일 화면에서 붙인다",
+}
 TEXT_DIR = "~/.company-ecm-text"       # read 가 뽑은 글자를 남기는 자리 — 홈 아래(저장소 밖 · 임시 폴더 정리에 안 걸린다)
 TEXT_DIR_ENV = "ECM_TEXT_DIR"
 KEPT_SOURCE_WORD = " · 받은 파일 "      # 남긴 글자의 머리 둘째 줄에서 받은 파일의 자리를 여는 말 — keep_text 가 쓰고 tell_kept 가 읽는다
@@ -252,7 +304,13 @@ OFFICE_OF_PROGID = {"word.": "Word", "excel.": "Excel", "powerpoint.": "PPT"}
 ACROBAT = "Acrobat"
 ACROBAT_PROGID = "acroexch."
 # 닫는 손(close_view.ps1 · close_acrobat.ps1)의 종료 값 → 창의 상태. 그 밖의 값은 실패다
-CLOSE_EXIT = {0: "closed", 2: "not-found", 3: "not-front"}
+CLOSE_EXIT = {0: "closed", 2: "not-found", 3: "not-front", 4: "dirty"}
+# 고치는 손(change_doc.ps1)의 종료 값 — 0 고치고 저장했다 · 2 그 문서가 안 떴다 · 3 아무것도 안 고쳤다(까닭) · 그 밖은 고치다 멈췄다
+CHANGE_DONE, CHANGE_NOT_FOUND, CHANGE_REFUSED = 0, 2, 3
+# 끼워 넣을 평문 파일의 꼴 — 받는 앱마다(파워포인트는 장, 엑셀은 시트, 워드는 본문)
+INSERT_FAMILY = {"PPT": (".pptx", ".ppt"), "Excel": (".xlsx", ".xls", ".xlsm"), "Word": (".docx", ".doc")}
+WORD_FIND_MAX = 255                     # 워드 찾기가 받는 글자 수 — 조각이 길면 워드가 못 찾는다
+LINE_BREAK = re.compile(r"[\r\n\v]")
 # 보기를 거절한 코드 — 사람에게 서버 글 대신 할 일을 낸다. 볼 권한이 없는 문서(문서함 화면에도 안 보인다)에 ECM 이 내는 코드다
 VIEW_DENIED = "MSG_E_0035"
 OFFICE_BY_EXT = {".docx": "Word", ".doc": "Word", ".xlsx": "Excel", ".xls": "Excel", ".xlsm": "Excel",
@@ -291,6 +349,14 @@ class Classified(EcmError):
 
 class SecurityUnread(EcmError):
     """속성 화면에서 보안등급을 못 읽어 사람에게 묻기 전에 멈췄다 — AI 로 보내도 된다고 답하면 ``ai_ok`` 로 넘긴다."""
+
+
+class ArgsError(EcmError):
+    """준 값이 틀렸거나 아무것도 가리키지 않는다 — 아무것도 안 건드렸다. 메시지대로 인자를 고쳐 다시 부른다."""
+
+
+class Stale(EcmError):
+    """확인 열쇠가 지금과 다르다 — 미리 본 뒤 문서 · 파일 · 명단이 바뀌어 아무것도 안 바꿨다. 미리 보기를 다시 사람에게 보인다."""
 
 
 @dataclass(frozen=True)
@@ -361,6 +427,16 @@ class Registered:
     object_id: str
     title: str
     version: str           # 목록에서 다시 읽은 판 — 새 문서는 0.0 이다
+
+
+@dataclass(frozen=True)
+class DocState:
+    """문서 하나의 속성 화면 한 번 읽기 — 판 · 잠금 · 보안등급 · 이름. 못 읽은 칸은 빈 글자 · ``None`` 이다."""
+    version: str
+    locked: bool | None    # 편집 잠금 — 못 읽으면 None
+    lock_owner: str
+    security: "Security | None"
+    title: str
 
 
 @dataclass(frozen=True)
@@ -500,6 +576,13 @@ def url_from_env() -> str:
     return os.environ.get("ECM_URL", "").strip() or DEFAULT_URL
 
 
+def agent_docs_root() -> pathlib.Path:
+    """에이전트가 받은 파일을 두는 자리 — 환경변수 ``ECM_DOCS_ROOT``, 비었으면 ``DEFAULT_DOCS_ROOT``(``DRM_PLACES_FILE``). 스킬
+    drm-office-read 의 읽는 부품(``Get-EcmDocsRoot``)과 DRM 길잡이 훅이 같은 차례 · 같은 값 파일로 읽어 그 자리 밑의 파일을 등급 문
+    밖에서 안 연다."""
+    return pathlib.Path(os.environ.get(DOCS_ROOT_ENV, "").strip() or DEFAULT_DOCS_ROOT)
+
+
 def session_path() -> pathlib.Path:
     """환경변수 ``MAILBOX_COOKIES`` 의 세션 파일 자리. 비었으면 ``SessionMissing`` — 자리는 스킬 ep-login 의 받는 손이 정한다."""
     raw = os.environ.get("MAILBOX_COOKIES", "").strip()
@@ -525,7 +608,7 @@ class Ecm:
     def __init__(self, url: str = DEFAULT_URL, session_file=None, *, timeout: float = HTTP_TIMEOUT):
         match = re.match(r"^(https?://[^/?#]+)(/[^?#]*?)/?$", url.strip(), re.IGNORECASE)
         if not match or not match.group(2):
-            raise EcmError(f"ECM 주소(…/ECM)가 아니다: {url!r}")
+            raise ArgsError(f"ECM 주소(…/ECM)가 아니다: {url!r}")
         self.server, self.context = match.group(1), match.group(2)
         self.timeout = timeout
         self.session_file = pathlib.Path(session_file).expanduser() if session_file else session_path()
@@ -533,6 +616,7 @@ class Ecm:
         if not self._cookie:
             raise SessionMissing(f"세션 파일에 {urllib.parse.urlsplit(self.server).hostname} 의 쿠키가 없다 — 스킬 ep-login 으로 받는다")
         self._opener = ep_session.opener()   # 쿠키는 머리로 싣고 · 리다이렉트는 안 따라간다
+        self._main: str | None = None        # 메인 화면 — 한 판(명령 한 번) 안에서는 한 번만 받는다(문서함 · 회사 열쇠가 든다)
 
     @classmethod
     def from_env(cls) -> "Ecm":
@@ -636,10 +720,9 @@ class Ecm:
 
     def folders(self, cabinet: str, parent: str = "") -> list[Folder]:
         """문서함의 폴더 한 층 — ``parent`` 를 비우면 문서함 바로 아래, 주면 그 폴더(``fdr…``) 아래. 등록 화면의 폴더 나무와 같다."""
-        if not CABINET_ID.match(cabinet):
-            raise EcmError(f"문서함 열쇠(cab…)가 아니다: {cabinet!r} — cabinets 가 낸 열쇠를 준다")
-        if parent and not FOLDER_ID.match(parent):
-            raise EcmError(f"폴더 열쇠(fdr…)가 아니다: {parent!r} — folders 가 낸 열쇠를 준다")
+        cabinet_key(cabinet)
+        if parent:
+            folder_key(parent)
         if parent:
             menu, upper = FOLDER_TYPE, f"{cabinet}_{parent}"
         else:
@@ -656,22 +739,66 @@ class Ecm:
                                     str(row.get("MS_HAS_SUB", "0")) not in ("0", "")))
         return found
 
-    def has_folder(self, cabinet: str, folder: str) -> bool:
-        """그 폴더(``fdr…``)가 그 문서함의 폴더 나무에 있나 — ``folders`` 로 문서함 바로 아래부터 한 층씩 내려가며 찾는다. 읽기만
-        하고, 아래 폴더가 있는 폴더만 열며, 찾으면 거기서 멈춘다."""
-        if not FOLDER_ID.match(folder):
-            raise EcmError(f"폴더 열쇠(fdr…)가 아니다: {folder!r} — folders 가 낸 열쇠를 준다")
-        layer, opened = self.folders(cabinet), set()
+    def walk_folders(self, cabinet: str):
+        """문서함의 폴더 나무를 문서함 바로 아래부터 한 층씩 훑으며 (이름 경로, Folder) 를 낸다 — 읽기만 하고, 아래 폴더가 있는 폴더만
+        연다. 부르는 쪽이 찾으면 거기서 멈춘다(늦게 연다). 요청이 ``FOLDER_WALK_MAX`` 를 넘으면 ``EcmError``."""
+        layer, asked = [((f.name,), f) for f in self.folders(cabinet)], 1
         while layer:
-            if any(f.id == folder for f in layer):
-                return True
             below = []
-            for f in layer:
-                if f.has_sub and f.id not in opened:
-                    opened.add(f.id)
-                    below.extend(self.folders(cabinet, f.id))
+            for path, f in layer:
+                yield path, f
+                if f.has_sub:
+                    if asked >= FOLDER_WALK_MAX:
+                        raise EcmError(f"문서함 {cabinet} 의 폴더가 많아 {FOLDER_WALK_MAX} 번 넘게 물어야 한다 — 다 훑지 않았다. "
+                                       f"폴더 경로(이름 {FOLDER_SEP} 이름)로 준다")
+                    asked += 1
+                    below.extend((path + (s.name,), s) for s in self.folders(cabinet, f.id))
             layer = below
-        return False
+
+    def folder_path(self, cabinet: str, folder: str) -> tuple[str, ...] | None:
+        """그 폴더(``fdr…``)의 이름 경로 — 그 문서함의 폴더 나무에 없으면 None. 찾으면 거기서 훑기를 멈춘다."""
+        folder_key(folder)
+        return next((path for path, f in self.walk_folders(cabinet) if f.id == folder), None)
+
+    def find_folders(self, cabinet: str, name: str) -> list[tuple[tuple[str, ...], Folder]]:
+        """이름이 꼭 맞는 폴더를 나무 전체에서 — 같은 이름이 여러 층에 있을 수 있어 끝까지 훑는다."""
+        return self.match_folders(cabinet, name)[0]
+
+    def match_folders(self, cabinet: str, name: str) -> tuple[list[tuple[tuple[str, ...], Folder]], list[tuple[tuple[str, ...], Folder]]]:
+        """나무를 한 번 끝까지 훑어 (이름이 꼭 맞는 폴더, 이름에 그 글이 든 폴더)를 낸다 — 뒤엣것은 대소문자 · 빈칸을 안 가리고, 앞엣것과
+        겹치지 않는다. 고르지 않는다 — 꼭 맞는 것이 없을 때 사람에게 보일 후보다."""
+        name = name.strip()
+        if not name:
+            raise ArgsError("찾을 폴더 이름이 비었다")
+        want = _loose(name)
+        exact, near = [], []
+        for path, f in self.walk_folders(cabinet):
+            if f.name == name:
+                exact.append((path, f))
+            elif want in _loose(f.name):
+                near.append((path, f))
+        return exact, near
+
+    def resolve_folder(self, cabinet: str, path_text: str) -> tuple[tuple[str, ...], Folder]:
+        """폴더 경로(「이름 > 이름」 — 화면의 꼴)를 한 층씩 꼭 맞는 이름으로 따라가 (이름 경로, Folder) 를 낸다. 경로 첫 마디가 그
+        문서함 이름이면 뗀다(목록 줄 · 속성 화면의 폴더 칸은 문서함 이름부터 든다). 한 층에 같은 이름이 둘이거나 없으면 ``EcmError``."""
+        parts = [p.strip() for p in path_text.split(FOLDER_SEP) if p.strip()]
+        own = next((c.name for c in self.cabinets() if c.key == cabinet), "")
+        if parts and own and parts[0] == own:
+            parts = parts[1:]
+        if not parts:
+            raise ArgsError(f"폴더 경로가 비었다 — 「이름 {FOLDER_SEP} 이름」 꼴로 준다")
+        layer, here, folder = self.folders(cabinet), (), None
+        for i, part in enumerate(parts):
+            hit = [f for f in layer if f.name == part]
+            if len(hit) != 1:
+                seen = " · ".join(f.name for f in layer) or "(아래 폴더 없음)"
+                what = "없다" if not hit else f"{len(hit)} 개다"
+                raise ArgsError(f"「{path_word(here + (part,))}」 폴더가 그 자리에 {what} — 그 층의 폴더: {seen}")
+            folder, here = hit[0], here + (part,)
+            if i + 1 < len(parts):
+                layer = self.folders(cabinet, folder.id) if folder.has_sub else []
+        return here, folder
 
     def duplicates(self, folder: str, title: str, ext: str) -> list[str]:
         """그 폴더에 같은 이름 · 확장자의 문서가 있나 — 화면이 등록 전에 묻는 같은 요청. 걸린 이름들을 낸다."""
@@ -706,10 +833,17 @@ class Ecm:
             raise EcmError(f"등록 답에 문서 열쇠가 없다 — ECM 화면에서 그 폴더를 본다: {data.get('MS_MSG_DESC', '')}")
         return object_id
 
+    def _main_page(self) -> str:
+        """메인 화면 — 한 판에 한 번만 받는다. 문서함 목록 · 제 부서 · 회사 열쇠가 들고, 명령 한 번 사이에는 안 바뀐다."""
+        if self._main is None:
+            body, _ = self._fetch(f"{self.server}{self.context}{MAIN_PAGE}")
+            self._main = body.decode("utf-8", "replace")
+        return self._main
+
     def session_alive(self) -> bool:
         """메인 화면이 200 이면 산 세션이다 — ``302 → logout.jsp`` 면 거짓. 문서를 건드리지 않는다."""
         try:
-            self._fetch(f"{self.server}{self.context}{MAIN_PAGE}")
+            self._main_page()
             return True
         except SessionExpired:
             return False
@@ -717,18 +851,18 @@ class Ecm:
     @staticmethod
     def _list_params(search: str, period: str, folder: str, cabinet: str = "") -> dict:
         if period not in PERIODS:
-            raise EcmError(f"기간(--period)은 화면의 값만 받는다: {' · '.join(PERIODS)} — 받은 값 {period!r}")
+            raise ArgsError(f"기간(--period)은 화면의 값만 받는다: {' · '.join(PERIODS)} — 받은 값 {period!r}")
         if cabinet:
-            if not CABINET_ID.match(cabinet):
-                raise EcmError(f"문서함 열쇠(cab…)가 아니다: {cabinet!r} — cabinets 가 낸 열쇠를 준다")
+            cabinet_key(cabinet)
+            if folder:   # 부서 문서함 목록은 폴더 칸을 안 싣는다 — 그대로 보내면 문서함 전체가 그 폴더의 목록인 듯 온다
+                raise ArgsError(f"--folder 는 내 문서함의 폴더만 받는다 — {NOT_HERE['folder_in_cabinet']}")
             return {**LIST_DEFAULTS, "formId": DEPT_DOCS, "listKey": f"{cabinet}_{cabinet}", "searchValue": search,
                     "searchPeriod": period}
         return {**LIST_DEFAULTS, "listKey": folder, "searchValue": search, "searchPeriod": period}
 
     def cabinets(self) -> list["Cabinet"]:
         """그 사람이 볼 수 있는 부서 · 프로젝트 문서함 — 메인 화면이 든 목록 그대로. 제 부서가 맨 앞이다."""
-        body, _ = self._fetch(f"{self.server}{self.context}{MAIN_PAGE}")
-        page = body.decode("utf-8", "replace")
+        page = self._main_page()
         own = OWN_CABINET.search(page)
         found, seen = [], set()
         for kind, key, name in CABINET_OPTION.findall(page):
@@ -738,14 +872,41 @@ class Ecm:
                                      bool(own and own.group(1) == key)))
         return sorted(found, key=lambda c: not c.own)
 
+    def cabinet_of(self, text: str) -> Cabinet:
+        """문서함 열쇠(``cab…``) 또는 이름으로 문서함 하나 — 열쇠는 그대로 받고(목록을 안 묻는다), 이름은 ``cabinets`` 에서 꼭 맞는
+        이름을 먼저, 없으면 이름에 그 글이 든 것을 찾는다(대소문자 · 빈칸을 안 가린다). 여럿이 걸리거나 없으면 고르지 않고 후보를
+        다 보이며 ``ArgsError`` — 엉뚱한 문서함에 올리거나 그 목록을 그 부서의 것으로 읽게 된다."""
+        text = text.strip()
+        if CABINET_ID.match(text):
+            return Cabinet(text, "", "", False)
+        if not text:
+            raise ArgsError("문서함 이름이 비었다 — 이름(일부) · 열쇠(cab…) 가운데 하나를 준다")
+        every = self.cabinets()
+        hit = [c for c in every if c.name == text] or [c for c in every if _loose(text) in _loose(c.name)]
+        if len(hit) == 1:
+            return hit[0]
+        seen = "\n".join(f"  {c.name} · {c.kind}{' · 내 부서' if c.own else ''} · 열쇠 {c.key}" for c in (hit or every))
+        if hit:
+            raise ArgsError(f"「{text}」 가 문서함 {len(hit)} 곳에 걸린다 — 고르지 않는다. 이름을 더 주거나 열쇠로 다시 준다:\n{seen}")
+        raise ArgsError(f"「{text}」 문서함이 없다 — 이 사람이 볼 수 있는 문서함:\n{seen or '  (없다)'}")
+
     def version(self, object_id: str) -> str:
         """문서 정보 화면의 「최종 버전」 — 판을 올린 뒤 다음 판이 섰나 본다. 못 읽으면 빈 글자."""
-        return property_value(self._property_page(object_id), PROPERTY_VERSION)
+        return self.doc_state(object_id).version
 
-    def locked(self, object_id: str) -> bool | None:
-        """문서 정보 화면이 그 문서를 편집 잠금으로 드나 — 못 읽으면 ``None``."""
-        found = PROPERTY_LOCK.search(self._property_page(object_id))
-        return None if not found else found.group(1) == "T"
+    def doc_state(self, object_id: str) -> DocState:
+        """속성 화면을 한 번 읽어 판 · 잠금 · 보안등급 · 이름을 낸다 — 늘 새로 읽는다(판을 올린 뒤 바뀌기를 보는 자리가 부른다).
+        등급 칸을 못 읽으면 ``security`` 가 None 이다 — 그 판정은 ``security`` · ``check_readable`` 이 든다."""
+        raw = self._property_page(object_id)
+        page = PropertyPage.parse(raw)
+        lock = PROPERTY_LOCK.search(raw)
+        level, open_flag = page.inputs.get(SECURITY_FIELD, "").strip(), page.inputs.get(OPEN_FIELD, "").strip()
+        security = (Security(level, open_flag, page.vars.get(CORE_VAR) == "T")
+                    if any(level == lv for lv, _ in SECURITY_PAIRS) else None)
+        title = page.inputs.get("MS_DOC_TITLE", "").strip()
+        ext = page.inputs.get("MS_DOC_EXTENSION", "").strip()
+        return DocState(property_value(raw, PROPERTY_VERSION), None if not lock else lock.group(1) == "T",
+                        page.frame.get("lockOwnerName", ""), security, f"{title}.{ext}" if title and ext else title)
 
     def _property_page(self, object_id: str) -> str:
         object_id = _object_id(object_id)
@@ -770,7 +931,7 @@ class Ecm:
         """문서함의 한 쪽 — 새것부터. 비우면 내 문서함, ``cabinet`` 이면 그 부서 · 프로젝트 문서함(``cabinets`` 의 열쇠).
         ``folder`` 는 내 문서함 목록 줄의 ``folder_id``."""
         if page < 1 or per_page < 1:
-            raise EcmError("쪽 번호 · 쪽마다 건수는 1 이상이다")
+            raise ArgsError("쪽 번호 · 쪽마다 건수는 1 이상이다")
         params = {**self._list_params(search, period, folder, cabinet), "pageNumber": str(page),
                   "docCntPerPage": str(per_page)}
         data = self._ajax("DocList-service", "getDocList", params)
@@ -811,25 +972,21 @@ class Ecm:
 
     def company(self) -> str:
         """그 사람의 회사 열쇠(``com…``) — 메인 화면이 든다. 사람 · 조직 찾기가 싣는다."""
-        body, _ = self._fetch(f"{self.server}{self.context}{MAIN_PAGE}")
-        found = re.search(r"\bcompanyId\s*=\s*['\"](com[0-9A-Fa-f]+)['\"]", body.decode("utf-8", "replace"))
+        found = re.search(r"\bcompanyId\s*=\s*['\"](com[0-9A-Fa-f]+)['\"]", self._main_page())
         if not found:
             raise EcmError("메인 화면에서 회사 열쇠를 못 읽었다 — ECM 화면이 바뀌었을 수 있다")
         return found.group(1)
 
     def property_page(self, object_id: str) -> "PropertyPage":
         """문서의 속성 화면 — 저장 몸이 실을 숨은 칸 · 화면의 갈래 값 · 권한 iframe 의 갈래 값."""
-        object_id = _object_id(object_id)
-        query = urllib.parse.urlencode({**PROPERTY_QUERY, "DOCID": object_id})
-        body, _ = self._fetch(f"{self.server}{self.context}{PROPERTY_PAGE}?{query}")
-        return PropertyPage.parse(body.decode("utf-8", "replace"))
+        return PropertyPage.parse(self._property_page(object_id))
 
     def security(self, object_id: str) -> Security:
-        """문서의 보안등급 — 속성 화면 읽기 하나(파일을 안 받는다). 칸이 없거나 모르는 등급이면 ``SecurityUnread``. 세션이 끊긴 것은
-        그대로 올린다 — 세션을 다시 받으면 읽히는 자리다."""
+        """문서의 보안등급 — 속성 화면 읽기 하나(파일을 안 받는다). 칸이 없거나 모르는 등급이면 ``SecurityUnread``. 세션이 끊긴 것과
+        문서 열쇠의 꼴이 틀린 것(``ArgsError`` — 서버에 안 갔다)은 그대로 올린다 — 세션 · 열쇠를 고치면 읽히는 자리다."""
         try:
             page = self.property_page(object_id)
-        except (SessionMissing, SessionExpired):
+        except (SessionMissing, SessionExpired, ArgsError):
             raise
         except EcmError as exc:
             raise SecurityUnread(f"속성 화면을 못 읽었다 — {exc}") from exc
@@ -858,9 +1015,7 @@ class Ecm:
 
     def people(self, name: str, company: str) -> list["Person"]:
         """이름(일부)으로 사람을 찾는다 — 권한 화면의 성명 탭과 같은 요청. 메일 ID · 사번으로는 안 찾는다(서버가 이름만 본다)."""
-        name = name.strip()
-        if len(name) < NAME_MIN:
-            raise EcmError(f"이름은 {NAME_MIN} 글자부터 찾는다(화면과 같다): {name!r}")
+        name = person_name(name)
         rows = self._json({**PEOPLE_QUERY, "companyId": company, "value": name}) or []
         return [Person(str(r.get("MS_OBJECT_ID", "")), str(r.get("MS_NAME", "")), str(r.get("MS_DEPT_INFO", "")),
                        str(r.get("MS_DEPT", "")), str(r.get("MS_EMAIL_ID", "")), str(r.get("MS_EMPLOYEE_NUMBER", "")))
@@ -868,9 +1023,7 @@ class Ecm:
 
     def organs(self, name: str, company: str) -> list["Organ"]:
         """부서 이름(일부)으로 부서를 찾는다 — 권한 화면의 조직 탭 찾기."""
-        name = name.strip()
-        if len(name) < NAME_MIN:
-            raise EcmError(f"부서 이름은 {NAME_MIN} 글자부터 찾는다: {name!r}")
+        name = organ_name(name)
         rows = self._json({"ServiceName": ORGAN_SERVICE, "language": "ko", "companyId": company, **ORGAN_FIND,
                            "value": name}) or []
         return [_organ(r) for r in rows if isinstance(r, dict) and DEPT_CODE.match(str(r.get("MS_OBJECT_ID", "")))]
@@ -993,10 +1146,41 @@ def _organ(row: dict) -> Organ:
                  str(row.get("MS_CABINET_ID", "")), num("MS_USER_ID"), num("MS_CHILD_ID"))
 
 
+def person_name(name: str) -> str:
+    """사람 찾기에 줄 이름 — 화면의 checkValue 처럼 두 글자부터. 다듬은 이름을 낸다."""
+    name = name.strip()
+    if len(name) < NAME_MIN:
+        raise ArgsError(f"이름은 {NAME_MIN} 글자부터 찾는다(화면과 같다): {name!r}")
+    return name
+
+
+def organ_name(name: str) -> str:
+    """부서 찾기에 줄 이름(일부) — 두 글자부터. 다듬은 이름을 낸다."""
+    name = name.strip()
+    if len(name) < NAME_MIN:
+        raise ArgsError(f"부서 이름은 {NAME_MIN} 글자부터 찾는다: {name!r}")
+    return name
+
+
+def check_person_spec(spec: str) -> None:
+    """권한에 줄 사람 말 하나를 서버 없이 가린다 — 「org:코드|부서 이름」 · 「이름[/메일ID|/메일 주소]」. 이름 없이 주소만 준 말은
+    ECM 이 못 찾는다(이름으로만 찾는다). 못 쓸 말이면 ``ArgsError``."""
+    if spec.startswith(ORG_PREFIX):
+        value = spec[len(ORG_PREFIX):].strip()
+        if not DEPT_CODE.match(value):
+            organ_name(value)
+        return
+    name, _, _ = spec.partition("/")
+    if "@" in name:
+        raise ArgsError(f"「{spec}」 — 메일 주소만으로는 ECM 이 사람을 못 찾는다(이름으로만 찾는다). 「이름/메일 주소」 로 준다 — 이름은 "
+                        "스킬 company-mail 의 who 가 낸다")
+    person_name(name)
+
+
 def _dept_code(value: str) -> str:
     value = value.strip()
     if not DEPT_CODE.match(value):
-        raise EcmError(f"부서 코드 꼴이 아니다: {value!r} — 조직 찾기가 낸 코드를 준다")
+        raise ArgsError(f"부서 코드 꼴이 아니다: {value!r} — 조직 찾기가 낸 코드를 준다")
     return value
 
 
@@ -1021,11 +1205,11 @@ def check_title(title: str) -> str:
     """등록할 이름(확장자 뺀) — 화면의 addFile 이 막는 것을 먼저 막는다. 다듬은 이름을 낸다."""
     title = title.strip()
     if not title or title.lower() == "null":
-        raise EcmError("등록할 이름이 비었다")
+        raise ArgsError("등록할 이름이 비었다")
     if TITLE_BAD.search(title):
-        raise EcmError('이름에 \\ / : * ? " < > | ` 는 못 쓴다')
+        raise ArgsError('이름에 \\ / : * ? " < > | ` 는 못 쓴다')
     if len(title) > TITLE_MAX or sum(3 if ord(c) > 255 else 1 for c in title) > TITLE_BYTES_MAX:
-        raise EcmError(f"이름이 길다 — {TITLE_MAX} 자(한글은 3 바이트로 세어 {TITLE_BYTES_MAX}) 까지")
+        raise ArgsError(f"이름이 길다 — {TITLE_MAX} 자(한글은 3 바이트로 세어 {TITLE_BYTES_MAX}) 까지")
     return title
 
 
@@ -1040,8 +1224,36 @@ def _single_query(query: str, url: str) -> dict:
 def _object_id(value: str) -> str:
     value = value.strip()
     if not OBJECT_ID.match(value):
-        raise EcmError(f"문서 열쇠(MS_OBJECT_ID · 16 자리 hex)가 아니다: {value!r}")
+        raise ArgsError(f"문서 열쇠(MS_OBJECT_ID · 16 자리 hex)가 아니다: {value!r}")
     return value
+
+
+def cabinet_key(value: str) -> str:
+    if not CABINET_ID.match(value):
+        raise ArgsError(f"문서함 열쇠(cab…)가 아니다: {value!r} — cabinets 가 낸 열쇠를 준다")
+    return value
+
+
+def folder_key(value: str) -> str:
+    if not FOLDER_ID.match(value):
+        raise ArgsError(f"폴더 열쇠(fdr…)가 아니다: {value!r} — folders 가 낸 열쇠를 준다")
+    return value
+
+
+def _loose(text: str) -> str:
+    """이름 일부를 견줄 꼴 — 대소문자 · 빈칸을 안 가린다(「월간보고」 · 「월간 보고」가 같다)."""
+    return re.sub(r"\s+", "", text).casefold()
+
+
+def path_word(path) -> str:
+    """폴더의 이름 경로를 화면의 꼴(「기획 > 보고」)로."""
+    return f" {FOLDER_SEP} ".join(path)
+
+
+def token(*parts) -> str:
+    """확인 열쇠 — 미리 보기가 사람에게 보인 판의 지문. 같은 판이면 같은 열쇠가 다시 선다."""
+    raw = json.dumps(parts, ensure_ascii=False, separators=(",", ":"), default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:TOKEN_LENGTH]
 
 
 def property_value(page: str, label: str) -> str:
@@ -1168,8 +1380,7 @@ class Agent:
 
     @classmethod
     def from_env(cls) -> "Agent":
-        return cls(os.environ.get("ECM_AGENT_URL", "").strip() or DEFAULT_AGENT,
-                   os.environ.get("ECM_DOCS_ROOT", "").strip() or DEFAULT_DOCS_ROOT)
+        return cls(os.environ.get("ECM_AGENT_URL", "").strip() or DEFAULT_AGENT, agent_docs_root())
 
     def _received(self, folder: str) -> set[pathlib.Path]:
         """``<받는 자리>\\<계정>\\<folder>\\<시각 번호>\\`` 아래 받은 파일들(잠금 파일 ``~$`` 은 뺀다)."""
@@ -1199,10 +1410,13 @@ class Agent:
             if "답하지 않았다" not in str(exc):
                 raise
             # 열기 표는 왔는데 에이전트가 말이 없다 — 메일 쪽지의 머리 열쇠가 화면이 여는 링크 쪽 열쇠와 다를 때 머리 열쇠로 열면 이렇다.
-            # 사람이 첨부를 눌러 여는 길은 등급 문을 안 지난다(references/DESIGN.md 「기밀 · 핵심기술 문서는 묻고 받는다」)
-            raise AgentError(f"{exc} — 메일 첨부에서 온 열쇠면 company-mail 의 attachment --save 로 열쇠를 다시 받는다(화면이 여는 "
-                             f"링크 쪽 열쇠를 낸다). 그래도 같으면 사람이 그 첨부를 눌러 열게 하고, {self.docs_root} 아래 "
-                             f"{folder} 에 새로 선 파일을 스킬 drm-office-read 로 읽는다") from exc
+            # 사람이 첨부를 눌러 연 파일은 등급 문을 안 지났다 — 그 파일을 모델이 읽으라고 이르지 않는다(references/DESIGN.md
+            # 「기밀 · 핵심기술 문서는 묻고 받는다」)
+            again = "company-mail 의 attachment --save 로 열쇠를 다시 받는다(화면이 여는 링크 쪽 열쇠를 낸다)"
+            if action == AGENT_ACTION_VIEW:
+                again += (". 그래도 같으면 사람이 그 첨부를 눌러 화면에서 본다 — 그렇게 내려온 파일은 등급 문을 안 지나 스킬 "
+                          "drm-office-read 로 열지 않는다")
+            raise AgentError(f"{exc} — 메일 첨부에서 온 열쇠면 {again}") from exc
         if answer.strip().strip('"') != AGENT_OK:
             raise AgentError(f"ECM 에이전트가 OK 대신 이렇게 답했다: {answer[:200]}")
         deadline = time.monotonic() + file_timeout
@@ -1294,11 +1508,13 @@ def _last_json(out: str) -> dict:
         return {}
 
 
-def _close(path: pathlib.Path, app: str, wait: float, save: bool) -> tuple[str, dict]:
+def _close(path: pathlib.Path, app: str, wait: float, require_clean: bool) -> tuple[str, dict]:
+    """그 문서만 닫는다 — 저장하지 않는다. ``require_clean`` 이면 저장 안 된 고침이 있을 때 안 닫고 "dirty" 를 낸다."""
     if app == ACROBAT:     # 보기 전용 — 저장할 것이 없다
         script, args = ACROBAT_CLOSE_SCRIPT, ["-Path", str(path), "-WaitSeconds", str(int(wait))]
     else:
-        script, args = CLOSE_SCRIPT, ["-Path", str(path), "-App", app, "-WaitSeconds", str(int(wait)), *(["-Save"] if save else [])]
+        script, args = CLOSE_SCRIPT, ["-Path", str(path), "-App", app, "-WaitSeconds", str(int(wait)),
+                                      *(["-RequireClean"] if require_clean else [])]
     proc = _powershell(script, *args, timeout=wait + 60)
     out = proc.stdout.decode("utf-8", "replace").strip()
     if proc.returncode in CLOSE_EXIT:
@@ -1311,16 +1527,158 @@ def close_window(path: pathlib.Path, app: str, *, wait: float = WINDOW_WAIT) -> 
     pdf 가 앞 탭이라 안 건드렸다) · not-office 를 낸다."""
     if not app:
         return "not-office"
-    return _close(path, app, wait, save=False)[0]
+    return _close(path, app, wait, require_clean=False)[0]
 
 
-# ── 편집 — 잠그고 열기 · 저장하고 다음 판으로 올리기 ─────────────────────
+# ── 편집 — 잠그고 열기 · 열린 창에서 고치기 · 미리 보고 다음 판으로 올리기 ─────────
+
+@dataclass(frozen=True)
+class Changes:
+    """편집 패스의 바꿀 것 — 한 부름에 아무 조합으로 묶는다. ``replace`` 는 (옛 조각, 새 조각) 들, ``insert`` 는 옮길 평문 파일들,
+    ``after`` 는 파워포인트 장 · 엑셀 시트 번호(그 뒤에 넣는다 · None 이면 끝)다. 무엇을 받나는 ``EDIT_CHANGES`` 표가 든다."""
+    replace: tuple[tuple[str, str], ...] = ()
+    insert: tuple[pathlib.Path, ...] = ()
+    after: int | None = None
+
+    def empty(self) -> bool:
+        return not self.replace and not self.insert
+
+
+@dataclass(frozen=True)
+class Changed:
+    applied: tuple[dict, ...]   # 고친 것 — {"op", "where", …}
+    saved: bool                  # 이 판에 저장했나(고친 것이 없고 창의 판이 이미 저장돼 있으면 거짓)
+
+
+def check_change_shape(changes: Changes) -> None:
+    """바꿀 것 가운데 문서의 꼴을 몰라도 가릴 수 있는 것 — 빈 조각 · 줄바꿈 · 같은 글 · 조각끼리 겹침 · 넣을 파일이 있나 · 자리
+    (``--after``). 서버 · 문서 없이 돌아 명령줄이 세션보다 먼저 부른다(``precheck``). 못 할 까닭이 있으면 ``ArgsError``."""
+    olds = [old.strip() for old, _ in changes.replace]
+    for (old, new), bare in zip(changes.replace, olds):
+        if not bare:
+            raise ArgsError("바꿀 조각이 비었다")
+        if LINE_BREAK.search(bare):
+            raise ArgsError(f"「{bare}」 에 줄바꿈이 들었다 — 한 문단 · 한 칸 안의 조각을 준다(문단마다 따로 준다)")
+        if bare == new:
+            raise ArgsError(f"「{bare}」 를 같은 글로 바꾸라고 했다")
+    # 조각끼리 겹치면 앞 조각을 바꾼 판에서 뒤 조각이 다른 자리에 걸린다 — 문서를 한 번만 세는 손은 그 차례를 못 가린다
+    for i, a in enumerate(olds):
+        for j, b in enumerate(olds):
+            if i != j and a in b:
+                raise ArgsError(f"조각 「{a}」 가 다른 조각 「{b}」 안에 든다 — 한 부름에 하나씩 준다")
+        for j, (_, new) in enumerate(changes.replace):
+            if i != j and a in new:
+                raise ArgsError(f"조각 「{a}」 가 다른 조각의 새 글 「{new}」 안에 든다 — 한 부름에 하나씩 준다")
+    for file in changes.insert:
+        file = pathlib.Path(file)
+        if not file.is_file() or file.stat().st_size == 0:
+            raise ArgsError(f"넣을 파일이 없거나 비었다: {file}")
+    if changes.after is not None:
+        if not changes.insert:
+            raise ArgsError("--after 는 --insert-from 과 함께만 준다")
+        if changes.after < 0:
+            raise ArgsError("--after 는 0(맨 앞)부터다")
+
+
+def check_changes(changes: Changes, app: str) -> None:
+    """바꿀 것을 문서를 건드리기 전에 가린다(잠그기 전에도 부른다) — 못 할 까닭이 있으면 ``EcmError``. 어느 앱이 어느 바꿀 것을
+    받나는 ``EDIT_CHANGES`` 의 ``apps`` 칸이 든다. 문서 안에서 조각이 몇 번 나오나는 열린 창에서만 셀 수 있어 고치는
+    손(change_doc.ps1)이 다시 가린다."""
+    if app not in EDITABLE_APPS:
+        raise EcmError(f"이 꼴의 문서는 고치지 못한다({app or '모름'}) — {' · '.join(sorted(EDITABLE_APPS))} 만")
+    for key, given in (("replace", changes.replace), ("insert", changes.insert)):
+        if given and app not in EDIT_CHANGES[key].apps:
+            raise ArgsError(f"이 문서({app})에는 바꿀 것 {key} 를 못 한다 — {' · '.join(EDIT_CHANGES[key].apps)} 만 받는다")
+    check_change_shape(changes)
+    for old, _ in changes.replace:
+        if app == "Word" and len(old.strip()) > WORD_FIND_MAX:
+            raise ArgsError(f"워드는 {WORD_FIND_MAX} 자가 넘는 조각을 못 찾는다 — 더 짧은 조각을 준다")
+    for file in changes.insert:
+        if pathlib.Path(file).suffix.lower() not in INSERT_FAMILY[app]:
+            raise ArgsError(f"넣을 파일의 꼴({pathlib.Path(file).suffix})이 이 문서({app})에 안 맞는다 — {' · '.join(INSERT_FAMILY[app])} 만 넣는다")
+    if changes.after is not None and app == "Word":
+        raise ArgsError("워드는 본문 끝에만 넣는다 — --after 를 빼고 준다")
+
+
+def change_document(path: pathlib.Path, app: str, changes: Changes, *, wait: float = WINDOW_WAIT) -> Changed:
+    """편집으로 열린 그 문서를 창 안에서 고치고 저장한다(창은 남긴다). 바꿀 것이 비면 저장 안 된 고침이 있을 때만 저장한다.
+
+    못 할 까닭이 있으면 아무것도 안 고치고 ``EcmError``(조각이 0 번 · 여러 번 · 수식 칸 · 넣을 자리 밖 · 그 문서가 안 떴다). 고치다
+    멈추면 고친 것까지 대고 ``EcmError`` — 그 판은 저장하지 않아 창에만 남는다."""
+    check_changes(changes, app)
+    spec = {"replace": [{"old": old.strip(), "new": new} for old, new in changes.replace],
+            "insert": [str(pathlib.Path(f).resolve()) for f in changes.insert], "after": changes.after}
+    work = pathlib.Path(tempfile.mkdtemp(prefix="ecm-change-"))
+    try:
+        ops = work / "ops.json"
+        ops.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
+        proc = _powershell(CHANGE_SCRIPT, "-Path", str(path), "-App", app, "-Ops", str(ops), "-WaitSeconds", str(int(wait)),
+                           timeout=wait + CHANGE_TIMEOUT)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    out = proc.stdout.decode("utf-8", "replace").strip()
+    got = _last_json(out)
+    applied = tuple(got.get("applied") or ())
+    if proc.returncode == CHANGE_DONE:
+        return Changed(applied, bool(got.get("saved")))
+    if proc.returncode == CHANGE_NOT_FOUND:
+        raise EcmError(f"{wait:.0f} 초 안에 열린 그 문서를 못 찾았다 — 아무것도 안 고쳤다. 문서가 닫혔으면 edit 로 다시 연다")
+    if proc.returncode == CHANGE_REFUSED:
+        raise EcmError(f"{got.get('why') or '못 고칠 까닭이 있다'} — 아무것도 안 고쳤다")
+    done = "; ".join(f"{a.get('where')} {a.get('op')}" for a in applied) or "없음"
+    raise EcmError(f"{got.get('why') or out or proc.stderr.decode('utf-8', 'replace').strip()} — 고친 것: {done}. 저장하지 않았다 — "
+                   "창에 그 판이 떠 있으니 사람이 보고 되돌리거나(Ctrl+Z) 그대로 둔다")
+
+
+def checkout_file(path: pathlib.Path, object_id: str, docs_root=None) -> pathlib.Path:
+    """에이전트가 그 문서를 편집으로 받은 파일인가 — <받는 자리>\\<계정>\\CHECKOUT\\<시각 번호>\\<이름에 그 문서 열쇠>. 아니면
+    ``EcmError``. 편집 패스는 여러 부름을 건너므로 모델이 이 경로를 들고 다닌다 — 손이 부를 때마다 다시 잰다."""
+    path = pathlib.Path(path)
+    root = pathlib.Path(docs_root) if docs_root else agent_docs_root()
+    try:
+        inside = path.resolve().relative_to(root.resolve()).parts
+    except ValueError:
+        inside = ()
+    if len(inside) != 4 or inside[1].lower() != CHECKOUT_FOLDER.lower() or object_id.lower() not in path.name.lower():
+        raise ArgsError(f"그 문서({object_id})를 편집으로 받은 파일(…\\{CHECKOUT_FOLDER}\\…)이 아니다: {path} — edit 가 낸 경로를 그대로 준다")
+    if path.suffix.lower() not in OFFICE_BY_EXT:
+        raise EcmError(f"이 꼴({path.suffix})은 오피스로 고쳐 올리지 못한다 — ECM 화면에서 편집완료를 누른다")
+    return path
+
 
 @dataclass(frozen=True)
 class CheckedIn:
     version_before: str
     version_after: str
     picked: str            # 편집완료 창에서 고른 판
+
+
+@dataclass(frozen=True)
+class CheckinPlan:
+    """올리기 미리 보기 — 서버를 안 바꾼다. ``token`` 이 확인 열쇠다(문서 · 지금 판 · 수정 내용 · 미리 본 때 디스크의 그 파일 판)."""
+    object_id: str
+    name: str
+    version: str
+    desc: str
+    path: pathlib.Path
+    stamp: tuple[int, int]   # 미리 본 때 그 파일의 (고친 시각 ns, 크기) — 올릴 때 다시 재어 견준다
+    saved: bool              # 이 미리 보기가 창의 고침을 저장했나
+    closed: bool             # 문서 창이 이미 닫혀 편집완료 창이 떠 있나(사람이 먼저 닫았다)
+
+    @property
+    def token(self) -> str:
+        return checkin_token(self.object_id, self.version, self.desc, self.path, self.stamp)
+
+
+def file_stamp(path: pathlib.Path) -> tuple[int, int]:
+    """디스크의 그 파일 판 — (고친 시각 ns, 크기). 오피스가 쥔 감긴 파일은 바이트를 못 읽어 시각 · 크기로 잰다."""
+    stat = pathlib.Path(path).stat()
+    return stat.st_mtime_ns, stat.st_size
+
+
+def checkin_token(object_id: str, version: str, desc: str, path: pathlib.Path, stamp: tuple[int, int]) -> str:
+    """올리기의 확인 열쇠 — 판이 바뀌거나, 그 파일이 다시 저장되거나(사람 · change), 수정 내용 글이 다르면 달라진다."""
+    return token("checkin", object_id.lower(), version, desc.strip(), str(pathlib.Path(path).resolve()).lower(), *stamp)
 
 
 def checkin_pending(object_id: str) -> bool:
@@ -1330,69 +1688,104 @@ def checkin_pending(object_id: str) -> bool:
     return proc.returncode == 0
 
 
-def edit_document(ecm: Ecm, agent: Agent, object_id: str, *, ai_ok: bool = False) -> Opened:
+def edit_document(ecm: Ecm, agent: Agent, object_id: str, *, ai_ok: bool = False, changes: Changes | None = None) -> Opened:
     """편집으로 연다 — 서버가 그 문서를 이 사람 이름으로 잠그고, 에이전트가 읽기 쓰기로 띄운다. ``Opened`` 를 낸다.
 
-    잠그기 전에 멈추는 것 — 등급(``check_readable``) · ``OFFICE_BY_EXT`` 밖의 꼴(``EcmError``) · 기본 앱 없음(``DefaultAppNeeded``).
-    끝까지 못 가는 판에 잠그면 사람이 모르는 잠금이 남는다. 잠근 뒤 받기가 안 서면 「편집취소」를 이르는 ``AgentError``."""
+    잠그기 전에 멈추는 것 — 등급(``check_readable``) · ``OFFICE_BY_EXT`` 밖의 꼴(``EcmError``) · 그 꼴에 못 할 바꿀 것
+    (``check_changes``) · 기본 앱 없음(``DefaultAppNeeded``). 끝까지 못 가는 판에 잠그면 사람이 모르는 잠금이 남는다. 잠근 뒤 받기가
+    안 서면 「편집취소」를 이르는 ``AgentError``. 바꿀 것은 가리기만 한다 — 고치는 일은 ``change_document`` 가 한다."""
     check_readable(ecm, object_id, ai_ok=ai_ok)
     ticket = ecm.view(object_id)                    # 확장자 · 이름을 먼저 본다 — 읽기라 잠그지 않는다
     if ticket.ext not in OFFICE_BY_EXT:
         raise EcmError(f"이 꼴({ticket.ext or '확장자 없음'})은 편집으로 열어 올리지 못한다 — checkin 은 워드 · 엑셀 · 파워포인트만 "
-                       "저장해 닫는다. 잠그지 않았다 — 고치려면 사람이 ECM 화면에서 편집한다")
+                       "올린다. 잠그지 않았다 — 고치려면 사람이 ECM 화면에서 편집한다")
+    if changes is not None and not changes.empty():
+        check_changes(changes, OFFICE_BY_EXT[ticket.ext])
     ensured = default_app.ensure(ticket.ext)
     locked = ecm.checkout(object_id)
     try:
         path = agent.download_edit(locked)
     except AgentError as exc:
-        raise AgentError(f"{exc} — 문서는 서버에서 잠겼다. ECM 화면에서 그 문서를 「편집취소」해 잠금을 푼다") from exc
+        raise AgentError(f"{exc} — 문서는 서버에서 잠겼다. {NOT_HERE['cancel']}") from exc
     return Opened(path, locked, ensured.progid, ensured.written)
+
+
+DESC_EMPTY_PREVIEW = "동료가 판 이력에서 읽을 한 줄을 적는다"   # 수정 내용이 빈 판의 말 — 미리 보기
+DESC_EMPTY_CHECKIN = "무엇을 고쳤나를 한 줄 적는다"              # 같은 판의 말 — 올리기
+
+
+def checkin_inputs(path, object_id: str, desc: str, empty_why: str, docs_root=None) -> tuple[str, str, pathlib.Path]:
+    """올리기 · 그 미리 보기의 값 가운데 서버 없이 가릴 수 있는 것 — 문서 열쇠 · 수정 내용 · 그 문서를 편집으로 받은 파일인가.
+    (열쇠, 다듬은 수정 내용, 받은 파일)을 낸다. 명령줄은 세션보다 먼저 부른다(``precheck``)."""
+    object_id = _object_id(object_id)
+    desc = desc.strip()
+    if not desc:
+        raise ArgsError(f"수정 내용(--desc)이 비었다 — {empty_why}")
+    return object_id, desc, checkout_file(path, object_id, docs_root)
+
+
+def prepare_checkin(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *, ai_ok: bool = False,
+                    docs_root=None) -> CheckinPlan:
+    """올리기를 미리 본다 — 창의 고침을 저장하고(저장 안 된 고침이 있을 때만) 지금 판 · 잠금을 읽어 확인 열쇠를 낸다. 서버를 안
+    바꾼다. 문서가 잠겨 있지 않거나(편집이 취소됐다) 판을 못 읽거나 문서 창도 편집완료 창도 없으면 ``EcmError``.
+
+    창을 건드리기 전에 등급 문(``gate``)을 지난다 — 미리 보기는 고친 자리를 찍어 보이라는 말을 내고, 사람이 ECM 화면에서 편집으로 연
+    파일을 이어받은 판은 앞 걸음(``edit_document``)의 문이 없다. 등급은 이미 읽는 속성 화면(``doc_state``)의 것이다."""
+    object_id, desc, path = checkin_inputs(path, object_id, desc, DESC_EMPTY_PREVIEW, docs_root)
+    state = ecm.doc_state(object_id)
+    gate(state.security, ai_ok=ai_ok, stopped=GATE_EDIT)
+    if not state.version:
+        raise EcmError("문서 정보에서 지금 판을 못 읽었다 — 다음 판을 가릴 수 없어 올리기를 미리 보지 않는다")
+    if state.locked is False:
+        raise EcmError("문서가 편집으로 잠겨 있지 않다 — 편집이 취소됐거나 이미 올라갔다. 고치려면 edit 로 다시 연다")
+    closed = False
+    try:
+        saved = change_document(path, OFFICE_BY_EXT[path.suffix.lower()], Changes()).saved
+    except EcmError:
+        if not checkin_pending(object_id):
+            raise
+        saved, closed = False, True             # 사람이 문서를 먼저 닫았다 — 디스크의 판이 올라갈 판이다
+    return CheckinPlan(object_id, AGENT_FILE_SUFFIX.sub("", path.name), state.version, desc, path, file_stamp(path), saved, closed)
 
 
 def _released_unchanged(ecm: Ecm, object_id: str, before: str, *, wait: float = UNCHANGED_WAIT) -> bool:
     """고친 것 없이 닫혀 에이전트가 편집완료 창 없이 잠금만 풀었나 — 잠금이 풀리고 판이 그대로면 참. 고친 판이면 편집완료 창이
-    뜰 때까지 잠금이 남으니, 잠긴 채 ``wait`` 초가 지나면 거짓이다."""
+    뜰 때까지 잠금이 남으니, 잠긴 채 ``wait`` 초가 지나면 거짓이다. 한 번 볼 때 속성 화면을 한 번 읽는다."""
     deadline = time.monotonic() + wait
     while True:
-        if ecm.locked(object_id) is False:
-            return ecm.version(object_id) == before
+        state = ecm.doc_state(object_id)
+        if state.locked is False:
+            return state.version == before
         if time.monotonic() >= deadline:
             return False
         time.sleep(POLL)
 
 
-def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *, app: str = "",
-                     docs_root=None) -> CheckedIn:
-    """편집으로 연 문서를 저장해 닫고, 에이전트의 편집완료 창에서 다음 판 · 수정 내용으로 올린 뒤 판이 올랐나 본다.
+def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *, confirm: str, docs_root=None) -> CheckedIn:
+    """미리 본 그대로 올린다 — 확인 열쇠가 지금 판 · 디스크의 그 파일 · 수정 내용과 맞고 창에 저장 안 된 고침이 없을 때만 문서를
+    닫고, 에이전트의 편집완료 창에서 늘 다음 판 · 수정 내용으로 올린 뒤 판이 올랐나 본다.
 
-    ``CheckedIn`` 을 낸다 — 고친 것 없이 닫혀 에이전트가 잠금만 풀었으면 앞 판 · 뒤 판이 같다. 사람의 다른 문서는 안 닫고, 창이
-    시한 안에 안 뜨면 남은 문서 이름을 대고 ``EcmError`` 로 멈춘다 — 그 문서들을 닫은 뒤 다시 부르면 창에서 이어 간다."""
-    object_id = _object_id(object_id)
-    desc = desc.strip()
-    if not desc:
-        raise EcmError("수정 내용(--desc)이 비었다 — 무엇을 고쳤나를 한 줄 적는다")
-    path = pathlib.Path(path)
-    root = pathlib.Path(docs_root or os.environ.get("ECM_DOCS_ROOT", "").strip() or DEFAULT_DOCS_ROOT)
-    try:
-        inside = path.resolve().relative_to(root.resolve()).parts
-    except ValueError:
-        inside = ()
-    # 에이전트가 편집으로 받은 그 문서만 — <받는 자리>\<계정>\CHECKOUT\<시각 번호>\<이름에 그 문서 열쇠>
-    if len(inside) != 4 or inside[1].lower() != CHECKOUT_FOLDER.lower() or object_id.lower() not in path.name.lower():
-        raise EcmError(f"그 문서({object_id})를 편집으로 받은 파일(…\\{CHECKOUT_FOLDER}\\…)이 아니다: {path} — edit 가 낸 경로를 그대로 준다")
-    app = app or OFFICE_BY_EXT.get(path.suffix.lower(), "")
-    if not app:
-        raise EcmError(f"이 꼴({path.suffix})은 오피스로 저장해 닫지 못한다 — ECM 화면에서 편집완료를 누른다")
+    ``CheckedIn`` 을 낸다 — 고친 것 없이 닫혀 에이전트가 잠금만 풀었으면 앞 판 · 뒤 판이 같다. 열쇠가 다르거나 창에 고침이 남았으면
+    아무것도 안 닫고 ``EcmError``. 사람의 다른 문서는 안 닫고, 창이 시한 안에 안 뜨면 남은 문서 이름을 대고 ``EcmError`` 로 멈춘다 —
+    그 문서들을 닫은 뒤 다시 부르면 창에서 이어 간다."""
+    object_id, desc, path = checkin_inputs(path, object_id, desc, DESC_EMPTY_CHECKIN, docs_root)
+    app = OFFICE_BY_EXT[path.suffix.lower()]
     before = ecm.version(object_id)
     if not before:
         raise EcmError("문서 정보에서 지금 판을 못 읽었다 — 다음 판을 가릴 수 없어 올리지 않는다")
-    window, said = _close(path, app, WINDOW_WAIT, save=True)
+    if confirm != checkin_token(object_id, before, desc, path, file_stamp(path)):
+        raise Stale("확인 열쇠가 지금과 다르다 — 미리 본 뒤 문서가 다시 저장됐거나(사람 · change) 판이 바뀌었거나 수정 내용 글이 "
+                       "다르다. 아무것도 안 닫았다. preview-checkin 으로 다시 보이고 그 열쇠로 올린다")
+    window, said = _close(path, app, WINDOW_WAIT, require_clean=True)
+    if window == "dirty":
+        raise Stale("창의 문서에 미리 본 뒤 고친 것(저장 안 됨)이 있다 — 아무것도 안 닫았다. preview-checkin 으로 그 판을 저장해 "
+                       "다시 보이고 그 열쇠로 올린다")
     left = said.get("left", -1)
     if window == "closed" and left == 0 and _released_unchanged(ecm, object_id, before):
         return CheckedIn(before, before, "")
     if window == "not-found" and not checkin_pending(object_id):
-        raise EcmError(f"{WINDOW_WAIT:.0f} 초 안에 열린 그 문서를 못 찾았다 — 저장된 것이 고친 판인지 모르니 올리지 않는다. 문서가 떠 있으면 "
-                       "그대로 두고 같은 명령을 다시 부르고, 사람이 이미 저장해 닫았으면 ECM 화면에서 편집완료를 누른다")
+        raise EcmError(f"{WINDOW_WAIT:.0f} 초 안에 열린 그 문서도 편집완료 창도 못 찾았다 — 올리지 않았다. 문서가 떠 있으면 그대로 두고 "
+                       "같은 명령을 다시 부르고, 사람이 이미 올렸으면 doc 으로 판을 본다")
     # 같은 앱에 사람의 다른 문서가 남아 앱을 안 껐어도 편집완료 창은 문서를 닫으면 뜰 수 있다 — 멈추지 않고 창을 기다린다
     others = " · ".join(AGENT_FILE_SUFFIX.sub("", str(n)) for n in said.get("others") or [])
     # 창이 다 실리기 전에 붙은 프로세스는 칸을 끝내 못 읽는다(checkin_window.ps1 머리) — 칸을 못 읽고 나오면(아무것도 안 보냈다)
@@ -1411,13 +1804,13 @@ def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *,
             return CheckedIn(before, before, "")
         if window == "closed" and left != 0:
             what = f"다른 문서 {left} 개가 열려 있어" if left > 0 else "남은 문서를 못 세어"
-            raise EcmError(f"저장해 닫았는데 {CHECKIN_WAIT:.0f} 초 안에 편집완료 창이 안 떴다. 같은 앱에 {what} 앱을 끄지 않았다"
+            raise EcmError(f"닫았는데 {CHECKIN_WAIT:.0f} 초 안에 편집완료 창이 안 떴다. 같은 앱에 {what} 앱을 끄지 않았다"
                            f"{f'({others})' if others else ''} — 사람이 그 문서들을 닫은 뒤(또는 앱을 끈 뒤) 같은 명령을 다시 부른다. "
                            "고친 것은 저장돼 있다")
         raise EcmError(f"{CHECKIN_WAIT:.0f} 초 안에 편집완료 창이 안 떴고 문서는 아직 잠겨 있다 — 오피스가 아직 떠 있으면 사람이 끄고 같은 "
                        "명령을 다시 부른다")
     if proc.returncode != 0 and got.get("saved"):
-        raise EcmError("편집완료의 저장은 보냈는데 창이 시한 안에 안 닫혔다 — 다시 누르지 말고 잠시 뒤 version 으로 판이 올랐나 본다")
+        raise EcmError("편집완료의 저장은 보냈는데 창이 시한 안에 안 닫혔다 — 다시 누르지 말고 잠시 뒤 doc 으로 판이 올랐나 본다")
     if proc.returncode != 0:
         raise EcmError(f"편집완료 창을 누르지 않았다 — 창이 떠 있으면 사람이 「새로운 버전」을 고르고 누른다: "
                        f"{out or proc.stderr.decode('utf-8', 'replace').strip()}")
@@ -1430,45 +1823,93 @@ def checkin_document(ecm: Ecm, path: pathlib.Path, object_id: str, desc: str, *,
     return CheckedIn(before, after, str(got.get("picked", "")))
 
 
-def register_document(ecm: Ecm, agent: Agent, path: pathlib.Path, *, cabinet: str, folder: str, security: str,
-                      open_flag: str, title: str = "") -> Registered:
-    """PC 의 파일 하나를 그 문서함 폴더의 새 문서로 올리고 ``Registered`` 를 낸다 — 화면의 「컨텐츠 등록」과 같은 차례다.
+# ── 새 문서 등록 — 미리 보기 → 확인 열쇠 → 올리기 → 다시 읽기 ─────────────
 
-    폴더가 그 문서함에 없거나 같은 이름이 그 폴더에 있으면 아무것도 안 보내고 ``EcmError``. 보안등급 · 공개는 사람이 대화에서
-    확인한 짝만 준다 — 잘못 고르면 동료 전체에 보인다."""
+@dataclass(frozen=True)
+class RegisterPlan:
+    """새 문서 등록의 미리 보기 — 서버를 안 바꾼다(같은 이름 찾기만 묻는다). ``token`` 이 확인 열쇠다."""
+    path: pathlib.Path
+    title: str
+    ext: str
+    size: int
+    cabinet: str
+    cabinet_name: str
+    folder: str
+    folder_path: tuple[str, ...]
+    security: str
+    open_flag: str
+    digest: str            # 올릴 파일 바이트의 지문 — 미리 본 뒤 파일이 바뀌면 열쇠가 달라진다
+
+    @property
+    def token(self) -> str:
+        return token("register", self.digest, self.cabinet, self.folder, self.security, self.open_flag, self.title)
+
+
+def register_inputs(path, *, folder: str, folder_path: str, security: str, open_flag: str, title: str) -> tuple[pathlib.Path, str, str]:
+    """등록할 값 가운데 서버 없이 가릴 수 있는 것 — 파일 · 보안 짝 · 폴더를 하나로 줬나 · 폴더 열쇠의 꼴 · 확장자 · 이름. (풀어 둔 파일
+    경로, 확장자, 다듬은 이름)을 낸다. 명령줄은 세션보다 먼저 부른다(``precheck``). 못 할 까닭이 있으면 ``ArgsError``."""
     path = pathlib.Path(path).resolve()       # 에이전트는 다른 프로세스라 상대 경로를 제 자리에서 푼다
     if not path.is_file() or path.stat().st_size == 0:
-        raise EcmError(f"올릴 파일이 없거나 비었다: {path}")
-    if not CABINET_ID.match(cabinet):         # 올린 뒤에 지면 올라간 문서를 「실패」로 알리게 된다 — 서버에 닿기 전에 본다
-        raise EcmError(f"문서함 열쇠(cab…)가 아니다: {cabinet!r} — cabinets 가 낸 열쇠를 준다")
+        raise ArgsError(f"올릴 파일이 없거나 비었다: {path}")
     if (security, open_flag) not in SECURITY_PAIRS:
-        raise EcmError("보안등급 · 공개 짝이 화면의 여섯 가운데 하나가 아니다 — " +
+        raise ArgsError("보안등급 · 공개 짝이 화면의 여섯 가운데 하나가 아니다 — " +
                        " · ".join(f"{s}/{o}={n}" for (s, o), n in SECURITY_PAIRS.items()))
-    if not FOLDER_ID.match(folder):
-        raise EcmError(f"폴더 열쇠(fdr…)가 아니다: {folder!r} — folders 가 낸 열쇠를 준다")
+    if bool(folder) == bool(folder_path):
+        raise ArgsError("폴더는 --folder(열쇠) 와 --folder-path(경로) 가운데 하나로 준다")
+    if folder:
+        folder_key(folder)
     ext = path.suffix.lstrip(".").lower()
     if not ext or not ext.isalnum():
-        raise EcmError(f"확장자가 없는 파일은 화면도 안 받는다: {path.name}")
-    name = check_title(title or path.stem)
-    if (name + "." + ext) != path.name and title:
-        log.info("등록 이름을 파일 이름과 달리 둔다: %s", name)
-    if not ecm.has_folder(cabinet, folder):    # 등록 뒤의 목록 견줌만으로는 남의 문서함에 이미 올라간 문서를 「실패」로 알리게 된다
-        raise EcmError(f"그 폴더({folder})가 문서함 {cabinet} 에 없다 — 아무것도 안 올렸다. folders {cabinet} 가 낸 폴더를 준다")
+        raise ArgsError(f"확장자가 없는 파일은 화면도 안 받는다: {path.name}")
+    return path, ext, check_title(title or path.stem)
+
+
+def plan_register(ecm: Ecm, path: pathlib.Path, *, cabinet: str, folder: str = "", folder_path: str = "", security: str,
+                  open_flag: str, title: str = "") -> RegisterPlan:
+    """새 문서로 올리기 전에 못 할 까닭을 다 가리고 ``RegisterPlan`` 을 낸다 — 파일 · 문서함 · 보안 짝 · 폴더가 그 문서함의 것인가
+    (폴더 열쇠면 나무에서 찾고, 경로면 꼭 맞는 이름으로 따라간다) · 이름 · 그 폴더의 같은 이름. 서버를 안 바꾼다."""
+    path, ext, name = register_inputs(path, folder=folder, folder_path=folder_path, security=security, open_flag=open_flag,
+                                      title=title)
+    cabinet_key(cabinet)                      # 올린 뒤에 지면 올라간 문서를 「실패」로 알리게 된다 — 서버에 닿기 전에 본다
+    # 등록 뒤의 목록 견줌만으로는 남의 문서함에 이미 올라간 문서를 「실패」로 알리게 된다 — 폴더가 그 문서함의 것인가를 먼저 본다
+    if folder_path:
+        where, found = ecm.resolve_folder(cabinet, folder_path)
+        folder = found.id
+    else:
+        where = ecm.folder_path(cabinet, folder)
+        if where is None:
+            raise ArgsError(f"그 폴더({folder})가 문서함 {cabinet} 에 없다 — 아무것도 안 올렸다. folders {cabinet} 가 낸 폴더를 준다")
     clash = ecm.duplicates(folder, name, ext)
     if clash:
         raise EcmError(f"그 폴더에 같은 이름의 문서가 있다({', '.join(clash)}) — 고쳐 올리려면 edit · checkin 으로 다음 판을 올리고, "
-                       "새 문서면 이름을 바꾼다")
-    server_path, server_file = agent.upload_new(path)
-    object_id = ecm.register(folder=folder, title=name, ext=ext, size=path.stat().st_size, server_path=server_path,
+                       "새 문서면 --title 로 이름을 바꾼다")
+    cabinet_name = next((c.name for c in ecm.cabinets() if c.key == cabinet), "")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    return RegisterPlan(path, name, ext, path.stat().st_size, cabinet, cabinet_name, folder, where, security, open_flag, digest)
+
+
+def register_document(ecm: Ecm, agent: Agent, path: pathlib.Path, *, cabinet: str, folder: str = "", folder_path: str = "",
+                      security: str, open_flag: str, title: str = "", confirm: str) -> Registered:
+    """미리 본 그대로 새 문서로 올리고 ``Registered`` 를 낸다 — 화면의 「컨텐츠 등록」과 같은 차례다.
+
+    올리기 전에 미리 보기의 가림을 다시 다 돌린다(그 사이 같은 이름이 섰거나 파일이 바뀌었으면 열쇠가 달라진다). 열쇠가 다르면
+    에이전트에도 서버 등록에도 안 가고 ``EcmError``. 보안등급 · 공개는 사람이 미리 보기에서 확인한 짝이다 — 잘못 고르면 동료 전체에 보인다."""
+    plan = plan_register(ecm, path, cabinet=cabinet, folder=folder, folder_path=folder_path, security=security,
+                         open_flag=open_flag, title=title)
+    if confirm != plan.token:
+        raise Stale("확인 열쇠가 지금과 다르다 — 미리 본 뒤 파일 · 폴더 · 보안등급 · 이름 가운데 무엇이 바뀌었다. 아무것도 안 올렸다. "
+                       "preview-register 로 다시 보이고 그 열쇠로 올린다")
+    server_path, server_file = agent.upload_new(plan.path)
+    object_id = ecm.register(folder=plan.folder, title=plan.title, ext=plan.ext, size=plan.size, server_path=server_path,
                              server_file=server_file, security=security, open_flag=open_flag)
-    listed = [d for d in ecm.list(search=name, cabinet=cabinet) if d.object_id == object_id]
+    listed = [d for d in ecm.list(search=plan.title, cabinet=cabinet) if d.object_id == object_id]
     if not listed:
         raise EcmError(f"등록은 됐는데(문서 {object_id}) 그 문서함 목록에서 못 찾았다 — 폴더가 그 문서함 것이 아닐 수 있다. "
                        "다시 올리지 말고 ECM 화면에서 그 폴더를 본다")
-    if listed[0].folder_id != folder or listed[0].security != security:
+    if listed[0].folder_id != plan.folder or listed[0].security != security:
         raise EcmError(f"올린 문서({object_id})의 폴더 · 보안등급이 고른 값과 다르다(폴더 {listed[0].folder_id} · 보안 "
                        f"{listed[0].security}) — ECM 화면에서 그 문서의 속성을 본다")
-    return Registered(object_id, name, listed[0].version)
+    return Registered(object_id, plan.title, listed[0].version)
 
 
 # ── 권한 — 주고 거두기(미리 보기 → 확인 열쇠 → 저장 → 다시 읽기) ──────────
@@ -1496,29 +1937,37 @@ class AccessPlan:
 def access_token(object_id: str, before, after) -> str:
     """지금 명단과 바뀔 명단의 지문 — 미리 본 뒤 누가 명단을 바꿨거나 바랄 명단이 달라지면 열쇠가 달라진다."""
     key = lambda gs: sorted(f"{g.role}:{g.id}" for g in gs)
-    raw = json.dumps([object_id, key(before), key(after)], separators=(",", ":"))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:TOKEN_LENGTH]
+    return token(object_id, key(before), key(after))
 
 
 def _grant_of(person: Person, role: str) -> Grant:
     return Grant(role, person.id, "U", person.name, person.dept, person.email, person.employee)
 
 
+def same_mail(given: str, held: str) -> bool:
+    """사람 말의 메일 칸(「메일ID」 · 「메일ID@도메인」)이 ECM 사람 줄의 메일 칸과 같은 사람인가 — ECM 의 사람 줄은 메일 ID(@ 앞)를
+    든다(``Grant.email``). 사람 줄이 온 주소를 들면 온 주소끼리, ID 만 들면 @ 앞끼리 견준다(대소문자는 안 가린다)."""
+    given, held = given.strip().lower(), held.strip().lower()
+    if "@" in held:
+        return given == held
+    return given.partition("@")[0] == held
+
+
 def _pick_person(ecm: Ecm, spec: str, company: str) -> Person:
-    """「이름」 또는 「이름/메일ID」 하나를 사람 하나로 — 여럿이면 고르지 않고 후보를 다 보이며 멈춘다."""
+    """「이름」 · 「이름/메일ID」 · 「이름/메일 주소」 하나를 사람 하나로 — 여럿이면 고르지 않고 후보를 다 보이며 멈춘다."""
     name, _, email = spec.partition("/")
     found = ecm.people(name, company)
     # 이름이 꼭 맞는 사람만 받는다 — 일부만 맞은 사람에게 주면 엉뚱한 사람이 권한을 받는다
     exact = [p for p in found if p.name == name.strip()]
     if email.strip():
-        exact = [p for p in exact if p.email.lower() == email.strip().lower()]
+        exact = [p for p in exact if same_mail(email, p.email)]
     if len(exact) == 1:
         return exact[0]
     if not exact:
         near = "".join(f"\n  {p.label()}" for p in found)
-        raise EcmError(f"「{spec}」 인 사람을 ECM 에서 못 찾았다 — 이름이 꼭 맞아야 준다. ECM 은 이름으로만 찾는다(메일 ID · 사번은 안 걸린다). "
-                       "이름을 모르면 스킬 company-mail 의 people 로 이름부터 받는다" + (f". 이름 일부가 걸린 사람:{near}" if near else ""))
-    raise EcmError(f"「{spec}」 가 {len(exact)} 명이다 — 고르지 않는다. 이름/메일ID 로 다시 준다:\n" +
+        raise ArgsError(f"「{spec}」 인 사람을 ECM 에서 못 찾았다 — 이름이 꼭 맞아야 준다. ECM 은 이름으로만 찾는다(메일 ID · 사번은 안 걸린다). "
+                       "이름을 모르면 스킬 company-mail 의 who --name 으로 이름부터 받는다" + (f". 이름 일부가 걸린 사람:{near}" if near else ""))
+    raise ArgsError(f"「{spec}」 가 {len(exact)} 명이다 — 고르지 않는다. 이름/메일ID 로 다시 준다:\n" +
                    "\n".join(f"  {p.label()}" for p in exact))
 
 
@@ -1534,9 +1983,9 @@ def _pick_organ(ecm: Ecm, spec: str, company: str) -> Organ:
         return exact[0]
     if not exact:
         near = "".join(f"\n  {o.upper} > {o.name} · 코드 {o.code}" for o in found)
-        raise EcmError(f"「{value}」 부서를 ECM 조직도에서 못 찾았다 — 이름이 꼭 맞거나 org:<코드> 여야 준다. 스킬 company-mail 의 org --tree 로 "
+        raise ArgsError(f"「{value}」 부서를 ECM 조직도에서 못 찾았다 — 이름이 꼭 맞거나 org:<코드> 여야 준다. 스킬 company-mail 의 who --tree 로 "
                        "이름을 본다" + (f". 이름 일부가 걸린 부서:{near}" if near else ""))
-    raise EcmError(f"「{value}」 가 부서 {len(exact)} 곳에 걸린다 — 고르지 않는다. org:<코드> 로 다시 준다:\n" +
+    raise ArgsError(f"「{value}」 가 부서 {len(exact)} 곳에 걸린다 — 고르지 않는다. org:<코드> 로 다시 준다:\n" +
                    "\n".join(f"  {o.upper} > {o.name} · 바로 {o.members} 명 · 아래 부서 {o.subs} · 코드 {o.code}" for o in exact))
 
 
@@ -1561,11 +2010,13 @@ def _expand_organ(ecm: Ecm, organ: Organ, company: str, with_subs: bool) -> tupl
 
 
 def plan_access(ecm: Ecm, object_id: str, *, grant: list[tuple[str, str]] = (), revoke: list[str] = (),
-                clear: bool = False, with_subs: bool = False) -> AccessPlan:
+                clear: bool = False, with_subs: bool = False, origins: dict[str, str] | None = None) -> AccessPlan:
     """권한 한 판을 짓는다 — 서버를 바꾸지 않는다. ``grant`` 는 (edit|copy|read, 사람 말) 들, ``revoke`` 는 뺄 사람 말 들.
-    사람 말은 「이름」 · 「이름/메일ID」 · 「org:부서코드」 · 「org:부서 이름」. 조직은 그 순간의 부서원으로 펼치고(화면과 같다),
-    ``with_subs`` 면 아래 부서까지. 이미 다른 칸에 든 사람에게 주면 그 칸으로 옮긴다. 소유자 · 본인의 줄은 주기 · 거두기 · 비우기 어느 것도
-    안 바꾼다. 같은 층에서 한 사람에게 다른 칸을 주면 멈춘다.
+    사람 말은 「이름」 · 「이름/메일ID」 · 「이름/메일 주소」 · 「org:부서코드」 · 「org:부서 이름」. 조직은 그 순간의 부서원으로
+    펼치고(화면과 같다), ``with_subs`` 면 아래 부서까지. 이미 다른 칸에 든 사람에게 주면 그 칸으로 옮긴다. 소유자 · 본인의 줄은 주기 ·
+    거두기 · 비우기 어느 것도 안 바꾼다. 같은 층에서 한 사람에게 다른 칸을 주면 멈춘다.
+    못 푼 말(없는 사람 · 동명이인 · 여러 부서)이 하나라도 있으면 일부만 짓지 않고, 못 푼 말을 다 대며 ``ArgsError`` 로 멈춘다 —
+    ``origins`` 는 사람 말 → 그 말이 온 자리(「파일:줄」)로, 그 말 앞에 붙인다.
     안 잰 꼴의 문서면 ``EcmError`` 로 멈춘다."""
     object_id = _object_id(object_id)
     page = ecm.property_page(object_id)
@@ -1592,35 +2043,40 @@ def plan_access(ecm: Ecm, object_id: str, *, grant: list[tuple[str, str]] = (), 
         if spec.startswith(ORG_PREFIX):
             people, said = _expand_organ(ecm, _pick_organ(ecm, spec, company), company, with_subs)
             if not people:
-                raise EcmError(f"「{spec}」 에 든 사람이 없다 — 뺄 것이 없다. 부서 코드 · 이름을 본다(아래 부서에만 사람이 있으면 --with-subs)")
+                raise ArgsError(f"「{spec}」 에 든 사람이 없다 — 뺄 것이 없다. 부서 코드 · 이름을 본다(아래 부서에만 사람이 있으면 --with-subs)")
             notes.append(f"뺄 조직 — {' · '.join(said)}")
             if any(p.id in keep for p in people):
                 notes.append("소유자 · 본인은 조직으로 빼도 칸을 안 바꾼다")
             return {p.id for p in people} - keep
         name, _, email = spec.partition("/")
         pool = {**current, **after}
-        hit = [g for g in pool.values() if g.name == name.strip() and (not email or g.email.lower() == email.strip().lower())]
+        hit = [g for g in pool.values() if g.name == name.strip() and (not email.strip() or same_mail(email, g.email))]
         if len(hit) > 1:
-            raise EcmError(f"「{spec}」 가 명단에 {len(hit)} 명이다 — 이름/메일ID 로 다시 준다:\n" +
+            raise ArgsError(f"「{spec}」 가 명단에 {len(hit)} 명이다 — 이름/메일ID 로 다시 준다:\n" +
                            "\n".join(f"  {g.label()}" for g in hit))
         if not hit:
-            raise EcmError(f"「{spec}」 는 이 문서의 권한 명단에 없다 — 뺄 것이 없다")
+            raise ArgsError(f"「{spec}」 는 이 문서의 권한 명단에 없다 — 뺄 것이 없다")
         if hit[0].id in keep:
-            raise EcmError(f"「{spec}」 는 소유자 · 본인이라 이 손이 칸을 안 바꾼다 — 제 권한은 사람이 화면의 「컨텐츠 속성」에서 바꾼다")
+            raise ArgsError(f"「{spec}」 는 소유자 · 본인이라 이 손이 칸을 안 바꾼다 — 제 권한은 사람이 화면의 「컨텐츠 속성」에서 바꾼다")
         return {hit[0].id}
 
     # 같은 층(조직끼리 · 사람끼리)에서 한 사람에게 다른 칸을 주면 어느 쪽인지 고르지 않는다
     given: dict[str, dict[str, tuple[str, str]]] = {"org": {}, "person": {}}
+
+    picked: dict[str, Person] = {}   # 같은 사람 말이 여러 칸 · 파일에 들어도 ECM 에 한 번만 묻는다
+    staying: list[str] = []          # 준 칸에 이미 든 사람 — 더함에 안 서니 따로 보인다
 
     def grant_people(word: str, spec: str) -> None:
         role = ACCESS_OF_WORD[word]
         if spec.startswith(ORG_PREFIX):
             people, said = _expand_organ(ecm, _pick_organ(ecm, spec, company), company, with_subs)
             if not people:
-                raise EcmError(f"「{spec}」 에 든 사람이 없다 — 아래 부서에만 사람이 있으면 --with-subs 로 준다")
+                raise ArgsError(f"「{spec}」 에 든 사람이 없다 — 아래 부서에만 사람이 있으면 --with-subs 로 준다")
             notes.append(f"{ACCESS_ROLES[role]} 조직 — {' · '.join(said)}" + ("" if with_subs else " (바로 든 사람만 · 아래 부서는 --with-subs)"))
         else:
-            people = [_pick_person(ecm, spec, company)]
+            if spec not in picked:
+                picked[spec] = _pick_person(ecm, spec, company)
+            people = [picked[spec]]
         layer = given["org" if spec.startswith(ORG_PREFIX) else "person"]
         for p in people:
             if p.id in keep:
@@ -1628,29 +2084,45 @@ def plan_access(ecm: Ecm, object_id: str, *, grant: list[tuple[str, str]] = (), 
                 continue
             prior = layer.get(p.id)
             if prior and prior[0] != role:
-                raise EcmError(f"{p.label()} 에게 「{prior[1]}」 로 {ACCESS_ROLES[prior[0]]}, 「{spec}」 로 {ACCESS_ROLES[role]} 를 함께 준다 — "
+                raise ArgsError(f"{p.label()} 에게 「{prior[1]}」 로 {ACCESS_ROLES[prior[0]]}, 「{spec}」 로 {ACCESS_ROLES[role]} 를 함께 준다 — "
                                "어느 쪽인지 고르지 않는다. 그 사람을 사람으로 따로 짚거나(사람의 말이 조직의 말을 이긴다) 하나를 뺀다")
             layer[p.id] = (role, spec)
             after[p.id] = _grant_of(p, role)
+            if p.id in current and current[p.id].role == role:
+                staying.append(f"{ACCESS_ROLES[role]} · {p.label()}")
+
+    # 못 푼 말은 모아 한 번에 낸다 — 첫 말에서 멈추면 사람이 한 줄씩 고치며 여러 번 부르고, 건너뛰면 일부만 권한을 받는다
+    problems: list[str] = []
+
+    def each(spec: str, run, *args, **kwargs) -> None:
+        """말 하나를 풀다 멈추면 그 까닭을 모아 두고 다음 말로 간다 — 다 모은 뒤 한 번에 멈춘다."""
+        try:
+            run(*args, **kwargs)
+        except ArgsError as exc:
+            where = (origins or {}).get(spec)
+            problems.append(f"{where}: {exc}" if where else str(exc))
+
+    def drop(spec: str, *, org: bool) -> None:
+        for i in revoke_ids(spec):
+            gone = after.pop(i, None)
+            if not org and gone and i not in current:
+                notes.append(f"{gone.label()} 은 조직으로 들어갈 참이었는데 빼라고 해서 안 넣는다")
 
     # 조직 → 사람 차례로 둔다 — 사람으로 짚은 말(「조직은 읽기, 그중 ○○ 님은 복사」 · 「조직은 주되 ○○ 님은 빼」)이 조직의 말을 이긴다
     is_org = lambda spec: spec.startswith(ORG_PREFIX)
-    for word, spec in grant:
-        if is_org(spec):
-            grant_people(word, spec)
-    for spec in revoke:
-        if is_org(spec):
-            for i in revoke_ids(spec):
-                after.pop(i, None)
-    for word, spec in grant:
-        if not is_org(spec):
-            grant_people(word, spec)
-    for spec in revoke:
-        if not is_org(spec):
-            for i in revoke_ids(spec):
-                gone = after.pop(i, None)
-                if gone and i not in current:
-                    notes.append(f"{gone.label()} 은 조직으로 들어갈 참이었는데 빼라고 해서 안 넣는다")
+    for org in (True, False):
+        for word, spec in grant:
+            if is_org(spec) == org:
+                each(spec, grant_people, word, spec)
+        for spec in revoke:
+            if is_org(spec) == org:
+                each(spec, drop, spec, org=org)
+    if len(problems) == 1:
+        raise ArgsError(problems[0])
+    if problems:
+        raise ArgsError(f"못 푼 말이 {len(problems)} 개라 아무것도 짓지 않았다 — 다 고쳐 다시 부른다:\n" + "\n".join(f"- {p}" for p in problems))
+    if staying:
+        notes.append(f"준 칸에 이미 든 사람 {len(staying)} 명(그대로 둔다) — " + " · ".join(dict.fromkeys(staying)))
     added = tuple(g for i, g in after.items() if i not in current)
     removed = tuple(g for i, g in current.items() if i not in after)
     moved = tuple((current[i], g) for i, g in after.items() if i in current and current[i].role != g.role)
@@ -1662,14 +2134,14 @@ def apply_access(ecm: Ecm, plan: AccessPlan, token: str) -> list[Grant]:
     """미리 본 한 판을 보낸다 — 열쇠가 맞고 그 사이 명단이 그대로일 때만. 보낸 뒤 명단과 속성(보안등급 · 공개 · 폴더 · 이름)을 다시
     읽어 바란 그대로인가 본다. 다시 읽은 명단을 낸다."""
     if token != plan.token:
-        raise EcmError("확인 열쇠가 이 판과 다르다 — 미리 보기를 다시 돌려 사람에게 보인 뒤 그 열쇠로 보낸다")
+        raise Stale("확인 열쇠가 이 판과 다르다 — 미리 보기를 다시 돌려 사람에게 보인 뒤 그 열쇠로 보낸다")
     page = ecm.property_page(plan.object_id)
     why = page.unmeasured()
     if why:
         raise EcmError(f"이 문서의 권한은 손으로 안 바꾼다 — {why}")
     now = ecm.roles(plan.object_id)
     if access_token(plan.object_id, now, plan.after) != token:
-        raise EcmError("미리 본 뒤 이 문서의 권한 명단이 바뀌었다 — 아무것도 안 보냈다. 미리 보기를 다시 돌린다")
+        raise Stale("미리 본 뒤 이 문서의 권한 명단이 바뀌었다 — 아무것도 안 보냈다. 미리 보기를 다시 돌린다")
     watched = ("ecm_security_level", "ecm_open_flag", "ecm_folder_id", "MS_DOC_TITLE", "MS_OWNER_NAME")
     kept = {f: page.value(f) for f in watched}
     ecm.save_access(page, ecm.favorites(plan.object_id), list(plan.after), ecm.company())
@@ -1700,7 +2172,7 @@ def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> t
         raise ReadError(f"글자를 뽑는 손이 없다: {reader} — 스킬 drm-office-read 가 깔렸는지 본다")
     out_dir = pathlib.Path(tempfile.mkdtemp(prefix="ecm-read-"))
     try:
-        proc = _powershell(reader, str(path), "-OutDir", str(out_dir), "-NoKeep", timeout=READ_TIMEOUT)
+        proc = _powershell(reader, str(path), "-OutDir", str(out_dir), "-NoKeep", READER_GATE_FLAG, timeout=READ_TIMEOUT)
         lines = [l for l in proc.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
         summary = next((l for l in lines if l.startswith("[")), "")
         texts = sorted(out_dir.glob(f"*{TEXT_EXT}"))
@@ -1766,7 +2238,7 @@ def tell_read(got: ReadResult, object_id: str, *, as_file: bool = False) -> None
     """읽은 결과를 낸다 — 글자는 늘 파일로 남기고(``keep_text``), 화면에는 ``_tell_text`` 의 갈래로 낸다."""
     summary = got.summary or "[읽음]"
     path = keep_text(got.text, summary, pathlib.Path(got.opened.path), object_id)
-    head = "\n".join([summary, *_describe_open(got.opened), f"창: {WINDOW_WORD[got.window]}"])
+    head = "\n".join([summary, *_describe_open(got.opened, gated=True), f"창: {WINDOW_WORD[got.window]}"])
     _tell_text(head, got.text, path, as_file=as_file)
 
 
@@ -1778,8 +2250,8 @@ def tell_kept(path: pathlib.Path, *, as_file: bool = False) -> None:
     _, _, rest = head.partition(KEPT_SOURCE_WORD)
     received = pathlib.Path(rest.partition(KEPT_WHEN_WORD)[0]) if rest else None
     if received is not None and received.is_file():   # 에이전트가 아직 안 비웠다 — 그림은 그 파일로 뜨고, 앞서 뜬 것이면 뜨는 손이 알아본다
-        visuals = (f"받은 파일이 남아 있다: {received} — 표 · 그림은 이 경로로 스킬 drm-office-read 의 그림 뜨기를 부른다(앞서 뜬 "
-                   "그림이면 앱을 안 띄운다). 글자가 이상하면 --fresh 로 다시 받는다")
+        visuals = (f"받은 파일이 남아 있다: {received} — {RECEIVED_GATED}(앞서 뜬 그림이면 앱을 안 띄운다). 글자가 이상하면 --fresh "
+                   "로 다시 받는다")
     else:
         visuals = "표 · 그림을 떠야 하거나(받은 파일이 있어야 한다) 글자가 이상하면 --fresh 로 다시 받는다"
     note = (f"남긴 글자다 — 문서를 다시 받지 않았다(창도 안 떴다). 다음: {visuals}. 문서의 판이 올랐으면 열쇠가 바뀌었다 — list 로 새 "
@@ -1787,22 +2259,31 @@ def tell_kept(path: pathlib.Path, *, as_file: bool = False) -> None:
     _tell_text(f"{head}\n{note}", text, path, as_file=as_file)
 
 
-def check_readable(ecm: Ecm, object_id: str, *, ai_ok: bool = False) -> Security | None:
-    """글자를 대화로 들이는 일(읽기 · 편집 열기) 앞의 문 — 기밀 · 핵심기술 문서면 ``Classified``, 등급을 못 읽으면 ``SecurityUnread``
-    로 멈추고, 그 말이 사람에게 물을 것(``ASK_BEFORE_AI``)을 든다. ``Security`` 를 낸다.
+def gate(security: Security | None, *, ai_ok: bool, stopped: str, unread: str = "") -> Security | None:
+    """등급 문의 판정 하나 — 문서의 글자 · 그림을 대화로 들이는 손가락(읽기 · 편집 열기 · 고치기 · 올리기 미리 보기)이 다 이것을
+    지난다. 기밀 · 핵심기술 문서면 ``Classified``, 등급을 못 읽었으면(``security`` 가 None) ``SecurityUnread`` 로 멈추고, 그 말이
+    멈춘 자리(``stopped``)와 사람에게 물을 것(``ASK_BEFORE_AI``)을 든다. ``unread`` 는 못 읽은 까닭이다.
 
-    ``ai_ok`` 는 사람이 그 문서를 AI 로 보내도 된다고 답한 뒤에만 준다 — 그때는 묻는 문서도 넘긴다(못 읽은 판은 None).
+    ``ai_ok`` 는 사람이 그 문서를 AI 로 보내도 된다고 답한 뒤에만 준다 — 그때는 묻는 문서도 넘긴다(못 읽은 판은 None)."""
+    if security is None:
+        if ai_ok:
+            return None
+        raise SecurityUnread(f"보안등급을 못 읽어({unread or '속성 화면에 등급 칸이 없다'}) {stopped}. {ASK_BEFORE_AI}")
+    if security.ask_before_ai and not ai_ok:
+        what = " · ".join(w for w, on in ((security.name, security.classified), ("핵심기술", security.core)) if on)
+        raise Classified(f"{what} 문서라 {stopped}. {ASK_BEFORE_AI}")
+    return security
+
+
+def check_readable(ecm: Ecm, object_id: str, *, ai_ok: bool = False, stopped: str = GATE_RECEIVE) -> Security | None:
+    """속성 화면을 읽어(``Ecm.security``) 등급 문(``gate``)을 지난다 — ``Security`` 를 낸다.
+
     ⚠ 받는 요청보다 먼저 부른다 — 받은 뒤 막으면 감긴 파일이 이미 PC 에 와 있다."""
     try:
         security = ecm.security(object_id)
     except SecurityUnread as exc:
-        if ai_ok:
-            return None
-        raise SecurityUnread(f"보안등급을 못 읽어 받지 않았다 — {exc}. {ASK_BEFORE_AI}") from exc
-    if security.ask_before_ai and not ai_ok:
-        what = " · ".join(w for w, on in ((security.name, security.classified), ("핵심기술", security.core)) if on)
-        raise Classified(f"{what} 문서라 받지 않았다 — 글자가 대화의 모델로 간다. {ASK_BEFORE_AI}")
-    return security
+        return gate(None, ai_ok=ai_ok, stopped=stopped, unread=str(exc))
+    return gate(security, ai_ok=ai_ok, stopped=stopped)
 
 
 def read_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool = False,
@@ -1823,6 +2304,11 @@ def read_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool 
 
 # ── 명령줄 ───────────────────────────────────────────────────────────────
 
+# 받은 파일 줄의 뒤 — 에이전트 폴더의 파일을 drm-office-read 로 열어도 된다는 말은 등급 문을 지난 답만 낸다(그 스킬이 이 말을 따른다)
+RECEIVED_GATED = (f"등급 문을 지났다: 표 · 그림은 이 경로로 스킬 drm-office-read 의 그림 뜨기를 {READER_GATE_FLAG} 를 붙여 부른다"
+                  "(그 손은 이 깃발 없이는 문서함 받은 파일을 안 연다)")
+RECEIVED_SHOWN = ("사람이 보는 창이라 등급 문을 안 지났다: 이 파일은 스킬 drm-office-read 로 열지 않는다 — 글자 · 표 · 그림이 필요하면 "
+                  "read {object_id} 로 받는다")
 WINDOW_WORD = {"closed": "닫았다", "not-found":f"{WINDOW_WAIT:.0f} 초 안에 못 찾았다 — 떠 있으면 사람이 닫는다",
                "not-front": "다른 pdf 가 앞 탭이라 안 건드렸다 — 다 봤으면 사람이 그 탭을 닫는다",
                "not-office": "닫을 줄 아는 앱(오피스 · Acrobat)이 아니라 안 닫았다 — 다 봤으면 사람이 닫는다"}
@@ -1870,196 +2356,652 @@ def _print_plan(plan: "AccessPlan") -> None:
     print("사람이 이 명단 그대로 바꾸자고 하면 같은 인자에 apply-access · --confirm <열쇠> 로 보낸다.")
 
 
-def _describe_open(opened: Opened) -> list[str]:
+def _describe_open(opened: Opened, *, gated: bool, object_id: str = "") -> list[str]:
+    """받은 파일과 기본 앱의 두 줄 — 받은 파일 줄은 등급 문을 지났나(``gated``)에 따라 그 파일을 drm-office-read 로 열어도 되나를 든다."""
     app = f"기본 앱 {opened.progid or '사람이 고르는 창'}" + (" (이번에 적었다)" if opened.app_written else "")
-    return [f"받은 파일: {opened.path}", app]
+    after = RECEIVED_GATED if gated else RECEIVED_SHOWN.format(object_id=object_id)
+    return [f"받은 파일: {opened.path} — {after}", app]
+
+
+def _print_changed(done: Changed) -> None:
+    for a in done.applied:
+        if a.get("op") == "replace":
+            print(f"고침 · {a.get('where')}: 「{a.get('old')}」 → 「{a.get('new')}」")
+        else:
+            print(f"넣음 · {a.get('where')}: {pathlib.Path(str(a.get('file', ''))).name}")
+    print("저장했다 — 창은 그대로 떠 있다" if done.saved else "저장할 고침이 없었다 — 창의 판이 디스크의 판이다")
+
+
+def _print_checkin_plan(plan: CheckinPlan) -> None:
+    print(f"올리기 미리 보기 — {plan.name} (id {plan.object_id})")
+    print(f"지금 판 {plan.version} → 다음 판(편집완료 창의 지금보다 큰 판 — 지금 판을 덮어쓰지 않는다)")
+    print(f"수정 내용: {plan.desc}")
+    print("올라갈 판: " + ("사람이 문서 창을 닫았다 — 디스크에 저장된 판" if plan.closed else
+                       "창의 그 문서 — 방금 저장했다" if plan.saved else "창의 그 문서 — 이미 저장돼 있다"))
+    print(f"확인 열쇠 {plan.token}")
+    print(f"다음: 고친 자리를 스킬 drm-office-read 로 {READER_GATE_FLAG} 를 붙여 찍어 사람에게 보이고(받은 파일: {plan.path}), 사람이 이대로 올리자고 하면 "
+          f"checkin {plan.object_id} <받은 파일> --desc <같은 글> --confirm <열쇠>. 그 사이 문서를 고치거나 저장하면 열쇠가 바뀐다 — "
+          f"그만두려면 {NOT_HERE['cancel']}")
+
+
+def _print_register_plan(plan: RegisterPlan) -> None:
+    pair = (plan.security, plan.open_flag)
+    print(f"등록 미리 보기 — {plan.path.name} ({plan.size:,} 바이트)")
+    print(f"이름: {plan.title}.{plan.ext}")
+    print(f"자리: {plan.cabinet_name or plan.cabinet} {FOLDER_SEP} {path_word(plan.folder_path)} (폴더 {plan.folder})")
+    print(f"보안: {SECURITY_PAIRS[pair]} ({plan.security}/{plan.open_flag})" + (f" — {AUDIENCE[pair]}" if pair in AUDIENCE else ""))
+    print(f"확인 열쇠 {plan.token}")
+    print("다음: 사람이 이 자리 · 보안등급 그대로 올리자고 하면 같은 인자에 register · --confirm <열쇠>. 파일을 다시 지었으면 열쇠가 바뀐다")
 
 
 AI_OK_HELP = "기밀 · 핵심기술 · 등급을 못 읽은 문서를 받는다 — 사람이 그 문서를 AI 로 보내도 된다고 답한 뒤에만 준다"
+DEFAULT_APP_NEXT = ("다음: 사람이 「열 때 뜨는 창에서 고르겠다」 하면 open · read 에 --allow-picker 를 붙이되 그 창에서 「항상 이 앱 사용」을 "
+                    "누르라고 먼저 알린다 — edit 는 기본 앱을 골라 둔 뒤에만 연다")
+
+
+def changes_of(args) -> Changes:
+    """명령줄의 바꿀 것 → ``Changes``. 조각 파일은 UTF-8 로 읽는다(끝 줄바꿈 하나는 뗀다)."""
+    pairs = [(old, new) for old, new in args.replace or ()]
+    for old_file, new_file in args.replace_file or ():
+        read = lambda p: pathlib.Path(p).read_text(encoding="utf-8").removesuffix("\n").removesuffix("\r")
+        pairs.append((read(old_file), read(new_file)))
+    return Changes(tuple(pairs), tuple(pathlib.Path(p) for p in args.insert_from or ()), args.after)
+
+
+# ── 손가락의 구현 — (명령줄 인자, ECM 서버 | None) → 종료 값 ─────────────
+
+def cmd_session(args, ecm: Ecm) -> int:
+    alive = ecm.session_alive()
+    print("ECM 세션이 살았다" if alive else "ECM 세션이 끊겼다 — 스킬 ep-login 으로 다시 받는다")
+    return EXIT_OK if alive else EXIT_SESSION
+
+
+def cmd_cabinets(args, ecm: Ecm) -> int:
+    for c in ecm.cabinets():
+        print(f"{c.name} · {c.kind}{' · 내 부서' if c.own else ''} · 열쇠 {c.key}")
+    return EXIT_OK
+
+
+def cmd_folders(args, ecm: Ecm) -> int:
+    cabinet = ecm.cabinet_of(args.cabinet).key
+    if args.find:
+        hits, near = ecm.match_folders(cabinet, args.find)
+        if not hits and not near:
+            raise ArgsError(f"「{args.find}」 폴더가 문서함 {cabinet} 에 없다 — 이름이 꼭 맞거나 이름에 그 글이 든 폴더가 없다. "
+                            f"folders {cabinet} 로 첫 층을 본다")
+        if not hits:
+            print(f"「{args.find}」 와 이름이 꼭 맞는 폴더는 없다 — 이름에 그 글이 든 폴더 {len(near)} 개다. 고르지 않았다 — 사람에게 "
+                  "보이고 고른 폴더의 열쇠(--folder)나 경로(--folder-path)로 간다:")
+        for path, f in hits or near:
+            print(f"{path_word(path)} · 열쇠 {f.id}{' · 아래 폴더 있음' if f.has_sub else ''}")
+        return EXIT_OK
+    for f in ecm.folders(cabinet, args.parent):
+        print(f"{f.name} · 열쇠 {f.id}{' · 아래 폴더 있음' if f.has_sub else ''}")
+    return EXIT_OK
+
+
+CABINET_ALL = "all"       # --cabinet 의 「모든 문서함」 — 한 요청으로 다 묻는 꼴은 안 쟀다. 내 문서함과 볼 수 있는 문서함을 하나씩 묻는다
+CABINET_ALL_MAX = 20      # all 이 묻는 문서함의 상한(내 문서함 빼고) — 제 부서가 맨 앞이다. 넘는 문서함은 이름을 대고 안 묻는다
+
+
+def _places(ecm: Ecm, cabinet: str) -> tuple[list[tuple[str, str]], list[Cabinet]]:
+    """--cabinet 값 → ([(문서함 열쇠 · 내 문서함은 빈 글자, 목록의 머리)], 상한을 넘어 안 물은 문서함). 열쇠로 준 문서함의 머리는
+    「문서함 <열쇠>」 그대로이고, 이름 · all 로 푼 문서함은 머리에 이름을 붙인다."""
+    if not cabinet:
+        return [("", "내 문서함")], []
+    if cabinet == CABINET_ALL:
+        every = ecm.cabinets()
+        asked = every[:CABINET_ALL_MAX]
+        return [("", "내 문서함")] + [(c.key, f"문서함 {c.key} 「{c.name}」") for c in asked], every[CABINET_ALL_MAX:]
+    found = ecm.cabinet_of(cabinet)
+    return [(found.key, f"문서함 {found.key}" + (f" 「{found.name}」" if found.name else ""))], []
+
+
+def _tell_skipped(skipped: list[Cabinet]) -> None:
+    if skipped:
+        print(f"문서함이 많아 앞 {CABINET_ALL_MAX} 곳까지만 물었다 — 안 물은 {len(skipped)} 곳은 --cabinet <이름> 으로 묻는다: "
+              + " · ".join(c.name for c in skipped))
+
+
+def cmd_list(args, ecm: Ecm) -> int:
+    places, skipped = _places(ecm, args.cabinet)
+    for key, where in places:
+        docs = ecm.list(search=args.search, page=args.page, per_page=args.per_page, period=args.period, folder=args.folder,
+                        cabinet=key)
+        if args.json:
+            for d in docs:
+                row = dataclasses.asdict(d)
+                if args.cabinet == CABINET_ALL:
+                    row["cabinet"] = key            # 여러 문서함을 한 판에 냈다 — 줄마다 어느 문서함인가(내 문서함은 빈 글자)
+                print(json.dumps(row, ensure_ascii=False))
+        else:
+            _print_docs(docs, args.page, where)
+    _tell_skipped(skipped)
+    return EXIT_OK
+
+
+def cmd_count(args, ecm: Ecm) -> int:
+    places, skipped = _places(ecm, args.cabinet)
+    if args.cabinet != CABINET_ALL:
+        print(ecm.count(search=args.search, period=args.period, folder=args.folder, cabinet=places[0][0]))
+        return EXIT_OK
+    total = 0
+    for key, where in places:
+        n = ecm.count(search=args.search, period=args.period, folder=args.folder, cabinet=key)
+        total += n
+        print(f"{where}: {n}")
+    print(f"합 {total}")
+    _tell_skipped(skipped)
+    return EXIT_OK
+
+
+def cmd_doc(args, ecm: Ecm) -> int:
+    state = ecm.doc_state(args.object_id)
+    if state.title:
+        print(f"이름: {state.title}")
+    print(f"판: {state.version or '못 읽었다'}")
+    print("잠금: " + ("못 읽었다" if state.locked is None else
+                    f"편집으로 잠겨 있다({state.lock_owner or '누군가'})" if state.locked else "안 잠겼다"))
+    if state.security is None:
+        print("보안: 못 읽었다 — read · edit 는 사람에게 AI 로 보내도 되는지 물은 뒤 --ai-ok 로만 받는다")
+    else:
+        s = state.security
+        print(f"보안: {s.name} ({s.level}/{s.open_flag})" + (" · 핵심기술" if s.core else "")
+              + (f" — read · edit 는 사람에게 AI 로 보내도 되는지 물은 뒤 {AI_OK_FLAG} 로만 받는다" if s.ask_before_ai else ""))
+    return EXIT_OK
+
+
+def cmd_access(args, ecm: Ecm) -> int:
+    _print_grants(ecm.roles(args.object_id))
+    return EXIT_OK
+
+
+def cmd_who(args, ecm: Ecm) -> int:
+    company = ecm.company()
+    if args.query.startswith(ORG_PREFIX):
+        value = args.query[len(ORG_PREFIX):].strip()
+        if DEPT_CODE.match(value):
+            for s in ecm.sub_organs(value, company):
+                print(f"  아래 부서 {s.name} · 바로 {s.members} 명 · 아래 부서 {s.subs} · 코드 {s.code}")
+            for m in ecm.members(value, company):
+                print(f"  {m.label()}")
+        else:
+            for o in ecm.organs(value, company):
+                print(f"{o.upper} > {o.name} · 바로 {o.members} 명 · 아래 부서 {o.subs} · 코드 {o.code}")
+    else:
+        for m in ecm.people(args.query, company):
+            print(f"{m.label()} · 사번 {m.employee}")
+    return EXIT_OK
+
+
+def cmd_open(args, ecm: Ecm) -> int:
+    opened = open_document(ecm, Agent.from_env(), args.object_id, allow_picker=args.allow_picker)
+    print("\n".join(_describe_open(opened, gated=False, object_id=args.object_id)))
+    return EXIT_OK
+
+
+def cmd_read(args, ecm: Ecm) -> int:
+    if not args.fresh:
+        kept = read_kept(ecm, args.object_id, ai_ok=args.ai_ok)
+        if kept is not None:
+            tell_kept(kept, as_file=args.as_file)
+            return EXIT_OK
+    got = read_document(ecm, Agent.from_env(), args.object_id, allow_picker=args.allow_picker, ai_ok=args.ai_ok)
+    tell_read(got, args.object_id, as_file=args.as_file)
+    return EXIT_OK
+
+
+def _change_and_maybe_plan(ecm: Ecm, args, path: pathlib.Path, changes: Changes, *, opened_now: bool) -> int:
+    """열린 그 문서를 고치고(바꿀 것이 있으면), ``--desc`` 가 있으면 올리기 미리 보기와 열쇠까지 낸다."""
+    if not changes.empty():
+        try:
+            _print_changed(change_document(path, OFFICE_BY_EXT[path.suffix.lower()], changes))
+        except EcmError as exc:
+            if opened_now:
+                raise EcmError(f"{exc} — 문서는 편집으로 열려 있고 서버에서 잠겼다. 조각을 고쳐 change {args.object_id} <받은 파일> 로 "
+                               f"다시 부르거나, 그만두면 {NOT_HERE['cancel']}") from exc
+            raise
+    if args.desc:
+        _print_checkin_plan(prepare_checkin(ecm, path, args.object_id, args.desc, ai_ok=args.ai_ok))
+    else:
+        print(f"다음: 더 고치려면 change {args.object_id} <받은 파일> … (사람이 창에서 고쳐도 된다), 다 고쳤으면 preview-checkin "
+              f"{args.object_id} <받은 파일> --desc <수정 내용> 으로 올리기를 미리 본다(그 자리에서 change 에 --desc 를 줘도 된다)")
+    return EXIT_OK
+
+
+def cmd_edit(args, ecm: Ecm) -> int:
+    changes = changes_of(args)
+    opened = edit_document(ecm, Agent.from_env(), args.object_id, ai_ok=args.ai_ok, changes=changes)
+    print("\n".join([*_describe_open(opened, gated=True), "편집으로 열었다 — 서버가 잠갔다"]))
+    return _change_and_maybe_plan(ecm, args, opened.path, changes, opened_now=True)
+
+
+def cmd_change(args, ecm: Ecm) -> int:
+    changes, path = _pre_change(args)
+    check_readable(ecm, args.object_id, ai_ok=args.ai_ok, stopped=GATE_EDIT)   # 사람이 화면에서 편집으로 연 파일은 edit 의 문을 안 지났다
+    return _change_and_maybe_plan(ecm, args, path, changes, opened_now=False)
+
+
+def cmd_preview_checkin(args, ecm: Ecm) -> int:
+    _print_checkin_plan(prepare_checkin(ecm, pathlib.Path(args.path), args.object_id, args.desc, ai_ok=args.ai_ok))
+    return EXIT_OK
+
+
+def cmd_checkin(args, ecm: Ecm) -> int:
+    done = checkin_document(ecm, pathlib.Path(args.path), args.object_id, args.desc, confirm=args.confirm)
+    if done.version_after == done.version_before:
+        print(f"고친 것이 없어 올리지 않았다 — 에이전트가 편집완료 창 없이 잠금을 풀었고 판은 {done.version_before} 그대로다")
+        return EXIT_OK
+    print(f"올렸다 — 판 {done.version_before} → {done.version_after} · 고른 판 {done.picked or '?'}. 판이 오르면 문서 열쇠가 바뀐다 — "
+          "다시 읽거나 고치려면 list 로 새 열쇠를 받는다")
+    return EXIT_OK
+
+
+def _register_args(args, ecm: Ecm) -> dict:
+    return dict(cabinet=ecm.cabinet_of(args.cabinet).key, folder=args.folder, folder_path=args.folder_path, security=args.security,
+                open_flag=args.open_flag, title=args.title)
+
+
+def cmd_preview_register(args, ecm: Ecm) -> int:
+    _print_register_plan(plan_register(ecm, pathlib.Path(args.path), **_register_args(args, ecm)))
+    return EXIT_OK
+
+
+def cmd_register(args, ecm: Ecm) -> int:
+    done = register_document(ecm, Agent.from_env(), pathlib.Path(args.path), **_register_args(args, ecm), confirm=args.confirm)
+    print(f"올렸다 — {done.title} · 판 {done.version} · 보안 {SECURITY_PAIRS[(args.security, args.open_flag)]} · id {done.object_id}")
+    return EXIT_OK
+
+
+PEOPLE_COMMENT = "#"      # 사람 파일에서 이 글자 뒤는 버린다 — company-mail 의 who --out 이 쓰는 꼴과 같다
+
+
+@dataclass(frozen=True)
+class AccessSpecs:
+    """명령줄 · 사람 파일에서 모은 권한 말 — ``grant`` 는 (edit|copy|read, 사람 말), ``origins`` 는 파일에서 온 말 → 「파일:줄」,
+    ``files`` 는 사람에게 보일 파일마다의 한 줄."""
+    grant: tuple[tuple[str, str], ...]
+    origins: dict
+    files: tuple[str, ...]
+
+
+def read_people_file(path: str) -> list[tuple[str, str]]:
+    """사람 파일 하나 → [(「파일:줄」, 사람 말)] — 한 줄에 사람 말 하나(「이름」 · 「이름/메일ID」 · 「이름/메일 주소」 · 「org:…」),
+    ``PEOPLE_COMMENT`` 뒤와 빈 줄은 버린다. 못 읽거나 사람 말이 한 줄도 없으면 ``ArgsError``."""
+    file = pathlib.Path(path)
+    try:
+        lines = file.read_text(encoding="utf-8-sig").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ArgsError(f"사람 파일을 못 읽었다: {file} ({exc}) — UTF-8 글 파일을 준다") from exc
+    got = [(f"{file.name}:{n}", line.split(PEOPLE_COMMENT, 1)[0].strip()) for n, line in enumerate(lines, 1)]
+    got = [(where, spec) for where, spec in got if spec]
+    if not got:
+        raise ArgsError(f"사람 파일에 사람이 한 줄도 없다: {file}")
+    return got
+
+
+def access_specs(args) -> AccessSpecs:
+    """명령줄의 권한 말과 사람 파일(``--<칸>-file``)을 모아 서버 없이 가린다 — 못 쓸 말(두 글자가 안 되는 이름 · 주소만 준 말)은 다 대며
+    ``ArgsError``. 세션보다 먼저 돌고(``precheck``), 미리 보기 · 보내기가 같은 것을 다시 모은다."""
+    grant: list[tuple[str, str]] = []
+    origins: dict[str, str] = {}
+    files: list[str] = []
+    for word, role in ACCESS_OF_WORD.items():
+        grant += [(word, spec) for spec in getattr(args, word)]
+        for path in getattr(args, f"{word}_file"):
+            got = read_people_file(path)
+            files.append(f"{ACCESS_ROLES[role]} 로 줄 파일 {pathlib.Path(path).name} — 사람 말 {len(got)} 줄")
+            for where, spec in got:
+                grant.append((word, spec))
+                origins.setdefault(spec, where)
+    if not (grant or args.revoke or args.clear):
+        raise ArgsError("줄 사람(--edit · --copy · --read · 그 -file) · 거둘 사람(--revoke) · --clear 가운데 하나는 준다")
+    problems = []
+    for spec in [s for _, s in grant] + list(args.revoke):
+        try:
+            check_person_spec(spec)
+        except ArgsError as exc:
+            problems.append(f"{origins[spec]}: {exc}" if spec in origins else str(exc))
+    problems = list(dict.fromkeys(problems))
+    if len(problems) == 1:
+        raise ArgsError(problems[0])
+    if problems:
+        raise ArgsError(f"못 쓸 말이 {len(problems)} 개라 아무것도 묻지 않았다 — 다 고쳐 다시 부른다:\n" + "\n".join(f"- {p}" for p in problems))
+    return AccessSpecs(tuple(grant), origins, tuple(files))
+
+
+def _access_plan(args, ecm: Ecm) -> "AccessPlan":
+    specs = access_specs(args)
+    plan = plan_access(ecm, args.object_id, grant=list(specs.grant), revoke=args.revoke, clear=args.clear, with_subs=args.with_subs,
+                       origins=specs.origins)
+    return dataclasses.replace(plan, notes=specs.files + plan.notes) if specs.files else plan
+
+
+def cmd_preview_access(args, ecm: Ecm) -> int:
+    _print_plan(_access_plan(args, ecm))
+    return EXIT_OK
+
+
+def cmd_apply_access(args, ecm: Ecm) -> int:
+    plan = _access_plan(args, ecm)
+    got = apply_access(ecm, plan, args.confirm)
+    print(f"바꿨다 — {plan.title} · 더함 {len(plan.added)} · 뺌 {len(plan.removed)} · 옮김 {len(plan.moved)} · 다시 읽은 명단:")
+    _print_grants(got)
+    return EXIT_OK
+
+
+def cmd_default_app(args, ecm: None) -> int:
+    ext = default_app.normalize(args.ext)
+    now, check = default_app.state(ext), default_app.preflight()
+    print(f"{ext} — 지금 {now.progid or '안 정해짐'}{f' ({now.where})' if now.where else ''} · Windows 가 푸는 앱 "
+          f"{default_app.resolved_progid(ext) or '없음'} · 고를 앱 {default_app.pick_progid(ext) or '없음'}")
+    print(f"이 PC 의 해시 계산 — Windows 가 적은 {check.total} 개 중 {check.matched} 개가 같다")
+    return EXIT_OK
+
+
+# ── 세션 전에 가리기 — 서버 없이 가릴 수 있는 값은 세션을 받기 전에 멈춘다 ──────────────
+# 틀린 열쇠 하나로 사람이 로그인을 다시 하고 나서야 「열쇠가 틀렸다」를 듣지 않게 한다. 말은 손 안의 같은 함수가 내니 세션 뒤의 말과
+# 같다 — 손을 바로 부르는 쪽(라이브러리)도 그 함수들을 그대로 지난다
+
+def _check_query(value: str) -> None:
+    """who 의 찾는 말 — 이름(일부)은 두 글자부터, org: 뒤는 부서 코드이거나 두 글자부터."""
+    if value.startswith(ORG_PREFIX):
+        rest = value[len(ORG_PREFIX):].strip()
+        if not DEPT_CODE.match(rest):
+            organ_name(rest)
+    else:
+        person_name(value)
+
+
+def _no_all(args) -> None:
+    if args.cabinet.strip() == CABINET_ALL:
+        raise ArgsError(f"{args.command} 는 문서함 하나에서만 한다 — {CABINET_ALL} 대신 이름이나 열쇠(cab…)로 준다")
+
+
+def _pre_folders(args) -> None:
+    _no_all(args)
+    if args.find and args.parent:
+        raise ArgsError("--find 와 --parent 는 함께 안 준다 — --find 는 문서함 나무 전체에서 찾는다")
+
+
+def _pre_list(args) -> None:
+    if args.cabinet and args.folder:   # 부서 문서함 목록은 폴더 칸을 안 싣는다 — 그대로 보내면 문서함 전체가 그 폴더의 목록인 듯 온다
+        raise ArgsError(f"--folder 는 내 문서함의 폴더만 받는다 — {NOT_HERE['folder_in_cabinet']}")
+
+
+def _pre_edit(args) -> None:
+    check_change_shape(changes_of(args))
+
+
+def _pre_change(args) -> tuple[Changes, pathlib.Path]:
+    """change 의 값 — (바꿀 것, 그 문서를 편집으로 받은 파일). cmd_change 도 이것으로 받는다."""
+    changes = changes_of(args)
+    if changes.empty() and not args.desc:
+        raise ArgsError("바꿀 것(--replace · --replace-file · --insert-from)을 하나는 준다 — 올리기만 보려면 preview-checkin")
+    check_change_shape(changes)
+    return changes, checkout_file(args.path, _object_id(args.object_id))
+
+
+def _pre_register(args) -> None:
+    _no_all(args)
+    register_inputs(args.path, folder=args.folder, folder_path=args.folder_path, security=args.security, open_flag=args.open_flag,
+                    title=args.title)
+
+
+ARG_CHECKS = {        # ARGS 의 열쇠 → 그 칸 하나를 서버 없이 가리는 손(빈 값은 안 본다)
+    "object_id": _object_id,
+    "parent": folder_key,
+    "reg_folder": folder_key,
+    "query": _check_query,
+}
+
+
+def _dest(key: str) -> str:
+    flags, kw = ARGS[key]
+    return kw.get("dest") or flags[0].lstrip("-").replace("-", "_")
+
+
+def precheck(args) -> None:
+    """서버 없이 가릴 수 있는 값을 세션보다 먼저 가린다 — 칸 하나는 ``ARG_CHECKS``, 칸 여럿은 그 손가락의 ``check``. 못 쓸 값이면
+    ``ArgsError``(받은 파일이 오피스 꼴이 아니면 ``EcmError`` · 조각 파일을 못 읽으면 ``OSError``). 아무것도 안 건드린다."""
+    finger = FINGERS[args.command]
+    for key in finger.args:
+        value = getattr(args, _dest(key), None)
+        if key in ARG_CHECKS and isinstance(value, str) and value.strip():
+            ARG_CHECKS[key](value)
+    if finger.check:
+        finger.check(args)
+
+
+# ── 손가락의 표 — 명령 하나가 한 줄이다 ───────────────────────────────────
+# 손가락을 더하거나 빼는 일은 이 표의 줄(과 필요하면 ARGS · EDIT_CHANGES 의 줄)과 그 일을 하는 손 하나다. 명령줄의 인자 · 세션이
+# 드나 · 바꾸는가(company_ecm.py 가 세션 손부터 받아 한 번만 돈다) · --help 의 지도가 다 이 표에서 선다
+
+@dataclass(frozen=True)
+class Pass:
+    """화면 패스 하나 — 사람이 웹 앱에서 화면 하나를 열고 칸을 바꾸고 끝 단추를 누르는 단위."""
+    start: str       # 출발 — 무엇에서 시작하나
+    end: str         # 끝 — 무엇으로 끝나나
+    guard: str = ""  # 손이 지키는 선 — 끝이 되돌리기 어려우면 열쇠
+
+
+@dataclass(frozen=True)
+class Finger:
+    """손가락 하나 — 명령 하나다."""
+    pass_name: str           # PASSES 의 열쇠
+    word: str                # 무엇을 하나 — --help 의 한 줄
+    args: tuple[str, ...]    # ARGS 의 열쇠들
+    run: object              # (명령줄 인자, Ecm | None) → 종료 값
+    session: bool = True     # 사내 세션이 드나
+    mutating: bool = False   # 문서함을 바꾸나(잠금 · 판 · 새 문서 · 권한)
+    check: object = None     # (명령줄 인자) → 없음 — 칸 여럿에 걸친 값을 서버 없이 가린다(precheck). 칸 하나는 ARG_CHECKS 가 든다
+
+
+@dataclass(frozen=True)
+class Change:
+    """편집 패스의 바꿀 것 하나."""
+    flags: tuple[str, ...]   # ARGS 의 열쇠들
+    apps: tuple[str, ...]    # 받는 앱 — check_changes 가 이 칸으로 가린다
+    word: str
+    unmeasured: tuple[str, ...] = ()   # 받되 어느 PC 에서도 안 잰 앱 — --help 가 「회사에서 안 쟀다」를 낸다
+
+
+PASSES = {
+    "찾기": Pass("내 문서함 · 부서 · 프로젝트 문서함 · 폴더 나무", "읽기만"),
+    "문서": Pass("문서 열쇠", "읽기만 — 속성 화면 · 권한 명단 · 사람 찾기"),
+    "보기": Pass("문서 열쇠", "에이전트가 받아 화면에 띄운다 — read 는 창을 닫고 글자를 남긴다",
+                 "기밀 · 핵심기술 · 등급 모름은 받기 전에 멈춘다(사람에게 물은 뒤 --ai-ok)"),
+    "편집": Pass("문서 열쇠(잠그고 연다) → 그 받은 파일", "checkin --confirm — 늘 다음 판으로 올린다",
+                 "잠그기 전에 못 할 까닭을 가린다 · 기밀 · 핵심기술 · 등급 모름은 걸음마다 멈춘다(--ai-ok) · 올리기는 미리 보기의 "
+                 "열쇠로만 · 창에 고침이 남으면 안 닫는다"),
+    "등록": Pass("PC 의 파일", "register --confirm — 새 문서 0.0 판", "폴더가 그 문서함의 것 · 같은 이름이면 안 올린다 · 열쇠로만"),
+    "권한": Pass("문서 열쇠", "apply-access --confirm — 속성 화면의 저장 하나",
+                 "명단을 사람까지 풀어 보이고 열쇠로만 · 소유자 · 본인 줄은 안 바꾼다 · 안 잰 꼴의 문서는 멈춘다"),
+    "손질": Pass("이 PC", "읽기만"),
+}
+
+ARGS = {
+    "object_id": (("object_id",), dict(help="문서 열쇠(16 자리 hex) — list · 메일 · 게시판의 문서함 첨부가 낸다")),
+    "search": (("--search",), dict(default="", help="찾을 낱말(화면의 찾기 칸)")),
+    "period": (("--period",), dict(default=DEFAULT_PERIOD, choices=PERIODS,
+                                   help=f"기간 — 화면의 기간 필터 값(1년은 12M · 전체는 ALL). 기본 {DEFAULT_PERIOD}")),
+    "folder_mine": (("--folder",), dict(default="", help="내 문서함의 폴더 키(목록 줄의 folder_id) — --cabinet 과 함께는 안 받는다")),
+    "cabinet_opt": (("--cabinet",), dict(default="", help="부서 · 프로젝트 문서함 — 열쇠(cab…) · 이름(일부 · 여럿이 걸리면 후보를 내고 "
+                                                          "멈춘다) · all(내 문서함과 볼 수 있는 문서함을 하나씩 — 앞 "
+                                                          f"{CABINET_ALL_MAX} 곳까지). 안 주면 내 문서함")),
+    "page": (("--page",), dict(type=int, default=1)),
+    "per_page": (("--per-page",), dict(type=int, default=DEFAULT_PER_PAGE)),
+    "json": (("--json",), dict(action="store_true", help="줄마다 JSON 으로 낸다")),
+    "cabinet": (("cabinet",), dict(help="문서함 — cabinets 의 열쇠(cab…) · 이름(일부 · 여럿이 걸리면 후보를 내고 멈춘다)")),
+    "parent": (("--parent",), dict(default="", help="이 폴더(fdr…) 아래 층 — 안 주면 문서함 바로 아래")),
+    "find": (("--find",), dict(default="", help="이름이 꼭 맞는 폴더를 나무 전체에서 찾아 경로와 열쇠를 낸다 — 없으면 이름에 그 글이 "
+                                                "든 폴더를 후보로 낸다(고르지 않는다)")),
+    "query": (("query",), dict(help="이름(일부) · 또는 org:부서 이름(일부) · org:부서코드(부서원까지)")),
+    "allow_picker": (("--allow-picker",), dict(action="store_true", help="기본 앱이 없어도 열어 사람이 고르는 창에서 고르게 둔다")),
+    "ai_ok": ((AI_OK_FLAG,), dict(action="store_true", help=AI_OK_HELP)),
+    "as_file": (("--as-file",), dict(action="store_true",
+                                     help="짧은 문서도 글자를 대화에 싣지 않고 남긴 파일의 경로만 낸다 — 긴 문서는 이 깃발 없이도 그렇게 된다")),
+    "fresh": (("--fresh",), dict(action="store_true",
+                                 help="남겨 둔 글자가 있어도 문서를 다시 받는다 — 표 · 그림을 뜨려고 받은 파일이 있어야 하거나 남긴 글자가 이상할 때")),
+    "path": (("path",), dict(help="edit 가 낸 받은 파일")),
+    "replace": (("--replace",), dict(nargs=2, action="append", default=[], metavar=("옛조각", "새조각"),
+                                     help="문서 글자에 꼭 한 번 나오는 조각을 바꾼다(여러 번)")),
+    "replace_file": (("--replace-file",), dict(nargs=2, action="append", default=[], metavar=("옛파일", "새파일"),
+                                               help="조각이 길거나 따옴표가 들 때 — UTF-8 파일 둘")),
+    "insert_from": (("--insert-from",), dict(action="append", default=[], metavar="파일",
+                                             help="평문 파일(대화에서 지은 덱 · 통합 문서 · 문서)을 열린 문서로 옮긴다(여러 번 · 준 차례로)")),
+    "after": (("--after",), dict(type=int, default=None, help="파워포인트 장 · 엑셀 시트 번호 — 그 뒤에 넣는다(0 은 맨 앞 · 안 주면 끝)")),
+    "desc_opt": (("--desc",), dict(default="", help="수정 내용 — 주면 고친 뒤 올리기 미리 보기와 확인 열쇠까지 낸다")),
+    "desc": (("--desc",), dict(required=True, help="수정 내용 — 편집완료 창의 글칸 · 동료가 판 이력에서 읽을 한 줄")),
+    "confirm_checkin": (("--confirm",), dict(required=True, help="preview-checkin(또는 --desc 를 준 edit · change)이 낸 확인 열쇠")),
+    "file": (("path",), dict(help="올릴 PC 의 파일")),
+    "reg_cabinet": (("--cabinet",), dict(required=True, help="문서함 — 열쇠(cab…) · 이름(일부 · 여럿이 걸리면 후보를 내고 멈춘다)")),
+    "reg_folder": (("--folder",), dict(default="", help="폴더 열쇠(fdr…) — folders 가 낸다")),
+    "reg_folder_path": (("--folder-path",), dict(default="", help=f"폴더 경로 — 「이름 {FOLDER_SEP} 이름」(화면 · 목록 줄의 꼴)")),
+    "security": (("--security",), dict(required=True, choices=sorted({s for s, _ in SECURITY_PAIRS}),
+                                       help="보안등급 — 1A 기밀 · 2A 사외비A · 2B 사외비B · 3A 일반")),
+    "open": (("--open",), dict(required=True, choices=["T", "F"], dest="open_flag", help="공개(T) · 비공개(F) — 1A 는 F, 3A 는 T 만")),
+    "title": (("--title",), dict(default="", help="등록 이름(확장자 뺀) — 안 주면 파일 이름")),
+    "confirm_register": (("--confirm",), dict(required=True, help="preview-register 가 낸 확인 열쇠")),
+    **{f"grant_{word}": ((f"--{word}",), dict(action="append", default=[], metavar="사람",
+                                              help=f"{ACCESS_ROLES[role]} 로 준다 — 이름 · 이름/메일ID · 이름/메일 주소 · org:부서코드 · "
+                                                   "org:부서 이름 (여러 번)"))
+       for word, role in ACCESS_OF_WORD.items()},
+    **{f"grant_{word}_file": ((f"--{word}-file",), dict(action="append", default=[], metavar="파일",
+                                                        help=f"{ACCESS_ROLES[role]} 로 줄 사람 파일 — 줄마다 --{word} 에 줄 말 하나 · "
+                                                             f"{PEOPLE_COMMENT} 뒤는 버린다(company-mail 의 who --out 이 쓰는 "
+                                                             "people.txt 그대로). 한 줄이라도 못 풀면 아무것도 안 짓는다 (여러 번)"))
+       for word, role in ACCESS_OF_WORD.items()},
+    "revoke": (("--revoke",), dict(action="append", default=[], metavar="사람",
+                                   help="권한을 거둔다 — 이름 · 이름/메일ID · 이름/메일 주소 · org:… (여러 번)")),
+    "clear": (("--clear",), dict(action="store_true", help="지금 명단을 다 비우고 시작한다(소유자 · 본인 줄은 남는다)")),
+    "with_subs": (("--with-subs",), dict(action="store_true", help="org: 를 아래 부서까지 펼친다(안 주면 화면처럼 바로 든 사람만)")),
+    "confirm_access": (("--confirm",), dict(required=True, help="preview-access 가 낸 확인 열쇠")),
+    "ext": (("ext",), dict(help="확장자(.docx 꼴)")),
+}
+
+EDIT_CHANGES = {
+    "replace": Change(("replace", "replace_file"), ("Word", "Excel", "PPT"),
+                      "글 일부 — 문서 글자에 꼭 한 번 나오는 조각만(한 문단 · 한 칸 안, 빈칸 수는 너그럽게). 바꾼 글은 그 자리의 서식을 "
+                      "따른다. 엑셀은 수식 칸을 안 고친다", unmeasured=("Word",)),
+    "insert": Change(("insert_from", "after"), ("Word", "Excel", "PPT"),
+                     "끼워 넣기 — 평문 파일의 장(파워포인트) · 시트(엑셀)를 --after 뒤에, 본문(워드)을 끝에 옮긴다. 옮긴 장은 받는 덱의 "
+                     "디자인을 따른다", unmeasured=("Word",)),
+}
+EDITABLE_APPS = frozenset(app for c in EDIT_CHANGES.values() for app in c.apps)   # 편집 패스가 고치는 앱 — 표의 apps 칸에서
+EDIT_CHANGE_ARGS = tuple(a for c in EDIT_CHANGES.values() for a in c.flags)
+APP_WORD = {"Word": "워드", "Excel": "엑셀", "PPT": "파워포인트"}   # --help 가 앱 이름을 사람 말로 낼 때
+
+
+def unmeasured_word() -> str:
+    """안 잰 앱의 바꿀 것을 한 줄로 — 표의 unmeasured 칸에서 짓는다. 없으면 빈 글자. --help 의 지도와 편집 명령의 --help 가 낸다."""
+    by_app: dict[str, list[str]] = {}
+    for key, c in EDIT_CHANGES.items():
+        for app in c.unmeasured:
+            by_app.setdefault(app, []).append(key)
+    return " · ".join(
+        f"{APP_WORD.get(app, app)} 문서의 바꿀 것({' · '.join(keys)})은 회사에서 안 쟀다 — 고치다 멈추면 문서는 서버에 잠긴 채 남아 사람이 "
+        "ECM 화면에서 「편집취소」를 눌러야 풀린다. 고치기 전에 사람에게 이 말을 한다" for app, keys in by_app.items())
+REGISTER_ARGS = ("file", "reg_cabinet", "reg_folder", "reg_folder_path", "security", "open", "title")
+ACCESS_ARGS = ("object_id", *(f"grant_{w}" for w in ACCESS_OF_WORD), *(f"grant_{w}_file" for w in ACCESS_OF_WORD), "revoke", "clear",
+               "with_subs")
+
+FINGERS = {
+    "cabinets": Finger("찾기", "볼 수 있는 부서 · 프로젝트 문서함과 그 열쇠 — 제 부서가 맨 앞", (), cmd_cabinets),
+    "folders": Finger("찾기", "문서함의 폴더 한 층과 열쇠 — --find 면 나무 전체에서 이름으로 찾아 경로를 낸다(꼭 맞는 것이 없으면 "
+                      "이름에 그 글이 든 후보)", ("cabinet", "parent", "find"), cmd_folders, check=_pre_folders),
+    "list": Finger("찾기", "문서 목록 · 찾기 — 줄마다 판 · 올린 이 · 폴더 · 보안 · 잠금 · 문서 열쇠",
+                   ("search", "period", "folder_mine", "cabinet_opt", "page", "per_page", "json"), cmd_list, check=_pre_list),
+    "count": Finger("찾기", "문서 건수 — --cabinet all 이면 문서함마다와 합", ("search", "period", "folder_mine", "cabinet_opt"),
+                    cmd_count, check=_pre_list),
+    "doc": Finger("문서", "문서 하나의 판 · 잠금 · 보안등급 · 이름 — 속성 화면 한 번 읽기(파일을 안 받는다)", ("object_id",), cmd_doc),
+    "access": Finger("문서", "문서에 걸린 권한(편집 · 복사 · 읽기) 명단", ("object_id",), cmd_access),
+    "who": Finger("문서", "ECM 이 아는 사람 · 부서 — 권한에 줄 사람을 고른다", ("query",), cmd_who),
+    "open": Finger("보기", "문서를 받아 화면에 띄운다(창이 남는다 · 사람이 보는 창이라 등급 문을 안 지난다 — 글자 · 그림은 read 로)",
+                   ("object_id", "allow_picker"), cmd_open),
+    "read": Finger("보기", "문서를 받아 글자를 뽑고 창을 닫는다 — 글자는 문서 열쇠로 남고, 같은 열쇠는 남긴 글자로 답한다",
+                   ("object_id", "allow_picker", "ai_ok", "as_file", "fresh"), cmd_read),
+    "edit": Finger("편집", "잠그고 읽기 쓰기로 연다 — 바꿀 것을 주면 열린 창에서 고쳐 저장하고, --desc 면 올리기 미리 보기까지",
+                   ("object_id", "ai_ok", *EDIT_CHANGE_ARGS, "desc_opt"), cmd_edit, mutating=True, check=_pre_edit),
+    "change": Finger("편집", "편집으로 열린 그 문서를 창 안에서 고쳐 저장한다(창은 남긴다) — --desc 면 올리기 미리 보기까지",
+                     ("object_id", "path", "ai_ok", *EDIT_CHANGE_ARGS, "desc_opt"), cmd_change, check=_pre_change),
+    "preview-checkin": Finger("편집", "올리기 미리 보기 — 창의 고침을 저장하고 지금 판 · 수정 내용 · 확인 열쇠를 낸다(서버를 안 바꾼다)",
+                              ("object_id", "path", "desc", "ai_ok"), cmd_preview_checkin,
+                              check=lambda a: checkin_inputs(a.path, a.object_id, a.desc, DESC_EMPTY_PREVIEW)),
+    "checkin": Finger("편집", "미리 본 그대로 다음 판으로 올린다 — 열쇠가 맞고 창에 고침이 안 남았을 때만",
+                      ("object_id", "path", "desc", "confirm_checkin"), cmd_checkin, mutating=True,
+                      check=lambda a: checkin_inputs(a.path, a.object_id, a.desc, DESC_EMPTY_CHECKIN)),
+    "preview-register": Finger("등록", "새 문서 등록 미리 보기 — 자리 · 이름 · 보안 · 확인 열쇠(올리지 않는다)", REGISTER_ARGS,
+                               cmd_preview_register, check=_pre_register),
+    "register": Finger("등록", "미리 본 그대로 새 문서로 올린다 — 열쇠가 맞을 때만", (*REGISTER_ARGS, "confirm_register"), cmd_register,
+                       mutating=True, check=_pre_register),
+    "preview-access": Finger("권한", "권한 바꾸기 미리 보기 — 더함 · 뺌 · 옮김 · 뒤 명단 · 확인 열쇠(안 바꾼다)", ACCESS_ARGS,
+                             cmd_preview_access, check=access_specs),
+    "apply-access": Finger("권한", "미리 본 그대로 권한을 바꾸고 다시 읽는다 — 열쇠가 맞을 때만", (*ACCESS_ARGS, "confirm_access"),
+                           cmd_apply_access, mutating=True, check=access_specs),
+    "session": Finger("손질", "ECM 세션이 살았나 본다", (), cmd_session),
+    "default-app": Finger("손질", "확장자의 기본 앱 상태와 이 PC 의 해시 계산을 본다 — 쓰지 않는다(기본 앱이 안 서는 PC 를 들여다볼 때만)",
+                          ("ext",), cmd_default_app, session=False),
+}
+
+
+def help_map() -> str:
+    """--help 의 지도 — 패스마다 출발 → 손가락 → 끝 · 지키는 선, 편집 패스의 바꿀 것, 안 하는 것. 표에서 짓는다."""
+    lines = ["할 수 있는 것의 지도 — 패스(사람이 화면 하나를 열고 칸을 바꾸고 끝 단추를 누르는 단위)마다 출발 → 손가락 → 끝.",
+             "되돌리기 어려운 끝(등록 · 판 올리기 · 권한 저장)은 미리 보기가 낸 확인 열쇠로만 간다. 인자는 <명령> --help."]
+    for name, ps in PASSES.items():
+        lines.append(f"\n{name} — 출발: {ps.start} · 끝: {ps.end}" + (f"\n  지키는 선: {ps.guard}" if ps.guard else ""))
+        lines += [f"  {cmd:<17}{f.word}" for cmd, f in FINGERS.items() if f.pass_name == name]
+        if name == "편집":
+            lines += [f"  바꿀 것 {key:<9}{c.word}" for key, c in EDIT_CHANGES.items()]
+            if unmeasured_word():
+                lines.append(f"  ⚠ {unmeasured_word()}")
+    lines.append("\n안 하는 것 — 사람이 화면에서 한다")
+    lines += [f"  {w}" for w in NOT_HERE.values()]
+    return "\n".join(lines)
+
+
+def parser() -> argparse.ArgumentParser:
+    """명령줄 — 손가락의 표에서 짓는다. 부르는 쪽(company_ecm.py)도 이것으로 인자를 먼저 가린다(--help 는 세션 없이 끝난다)."""
+    p = argparse.ArgumentParser(description="사내 문서함(ECM) — 찾고 읽고, 사람이 확인한 문서는 고쳐 다음 판으로 올리고, "
+                                "새 문서로 올리고, 권한을 주고 거둔다", epilog=help_map(), formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--session", help="세션 파일(Playwright 저장 상태) — 안 주면 MAILBOX_COOKIES")
+    sub = p.add_subparsers(dest="command", required=True)
+    for name, finger in FINGERS.items():
+        changes_here = any(a in EDIT_CHANGE_ARGS for a in finger.args)
+        q = sub.add_parser(name, help=finger.word, description=f"{finger.pass_name} — {finger.word}",
+                           epilog=f"⚠ {unmeasured_word()}" if changes_here and unmeasured_word() else None)
+        for key in finger.args:
+            flags, kw = ARGS[key]
+            q.add_argument(*flags, **kw)
+    return p
+
+
+REPORTED = (EcmError, default_app.DefaultAppNeeded, ValueError, OSError, subprocess.TimeoutExpired)   # report 가 종료 값으로 옮기는 것
+
+
+def report(exc: BaseException) -> int:
+    """명령이 멈춘 까닭을 표준 오류에 내고 종료 값을 낸다 — 뜻은 머리말 「무엇을 내나」. 부르는 쪽(company_ecm.py)도 같은 표로 낸다."""
+    if isinstance(exc, default_app.DefaultAppNeeded):
+        print(f"{exc}\n{DEFAULT_APP_NEXT}", file=sys.stderr)
+        return EXIT_DEFAULT_APP
+    print(exc, file=sys.stderr)
+    for kinds, code in (((SessionMissing, SessionExpired), EXIT_SESSION), ((Classified, SecurityUnread), EXIT_CLASSIFIED),
+                        ((Stale,), EXIT_STALE), ((ArgsError,), EXIT_ARGS)):
+        if isinstance(exc, kinds):
+            return code
+    return EXIT_FAIL
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="ecm.py", description="사내 문서함(ECM) — 찾고 읽고, 사람이 확인한 문서는 편집해 다음 판으로 올린다")
-    parser.add_argument("--session", help="세션 파일(Playwright 저장 상태) — 안 주면 MAILBOX_COOKIES")
-    sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("session", help="ECM 세션이 살았나 본다")
-    sub.add_parser("cabinets", help="볼 수 있는 부서 · 프로젝트 문서함과 그 열쇠")
-    for name in ("list", "count"):
-        p = sub.add_parser(name, help="문서함 목록" if name == "list" else "문서함 건수")
-        p.add_argument("--search", default="", help="찾을 낱말(화면의 찾기 칸)")
-        p.add_argument("--period", default=DEFAULT_PERIOD, choices=PERIODS,
-                       help=f"기간 — 화면의 기간 필터 값(1년은 12M · 전체는 ALL). 기본 {DEFAULT_PERIOD}")
-        p.add_argument("--folder", default="", help="내 문서함의 폴더 키(목록 줄의 folder_id)")
-        p.add_argument("--cabinet", default="", help="부서 · 프로젝트 문서함 열쇠(cabinets 의 cab…) — 안 주면 내 문서함")
-        if name == "list":
-            p.add_argument("--page", type=int, default=1)
-            p.add_argument("--per-page", type=int, default=DEFAULT_PER_PAGE)
-            p.add_argument("--json", action="store_true", help="줄마다 JSON 으로 낸다")
-    for name in ("open", "read"):
-        p = sub.add_parser(name, help="문서를 받아 연다(창이 남는다)" if name == "open" else "문서를 받아 글자를 뽑고 창을 닫는다")
-        p.add_argument("object_id", help="목록의 id(MS_OBJECT_ID · 16 자리 hex)")
-        p.add_argument("--allow-picker", action="store_true", help="기본 앱이 없어도 열어 사람이 고르는 창에서 고르게 둔다")
-        if name == "read":
-            p.add_argument(AI_OK_FLAG, action="store_true", help=AI_OK_HELP)
-            p.add_argument("--as-file", action="store_true",
-                           help="짧은 문서도 글자를 대화에 싣지 않고 남긴 파일의 경로만 낸다 — 긴 문서는 이 깃발 없이도 그렇게 된다")
-            p.add_argument("--fresh", action="store_true",
-                           help="남겨 둔 글자가 있어도 문서를 다시 받는다 — 표 · 그림을 뜨려고 받은 파일이 있어야 하거나 남긴 글자가 이상할 때")
-    p = sub.add_parser("version", help="문서의 최종 버전")
-    p.add_argument("object_id")
-    p = sub.add_parser("security", help="문서의 보안등급 — 속성 화면만 읽는다(파일을 안 받는다)")
-    p.add_argument("object_id")
-    p = sub.add_parser("edit", help="편집으로 연다 — 서버가 그 문서를 잠근다. 사람이 확인한 뒤에만 부른다")
-    p.add_argument("object_id")
-    p.add_argument(AI_OK_FLAG, action="store_true", help=AI_OK_HELP)
-    p = sub.add_parser("checkin", help="편집으로 연 문서를 저장해 닫고 다음 판 · 수정 내용으로 올린다")
-    p.add_argument("object_id")
-    p.add_argument("path", help="edit 가 낸 받은 파일")
-    p.add_argument("--desc", required=True, help="수정 내용 — 편집완료 창의 글칸에 적힌다")
-    p = sub.add_parser("default-app", help="확장자의 기본 앱 상태와 이 PC 의 해시 계산을 본다 — 쓰지 않는다")
-    p.add_argument("ext")
-    p = sub.add_parser("folders", help="문서함의 폴더 한 층과 열쇠 — 새 문서를 둘 자리를 고른다")
-    p.add_argument("cabinet", help="cabinets 의 문서함 열쇠(cab…)")
-    p.add_argument("--parent", default="", help="이 폴더(fdr…) 아래 층 — 안 주면 문서함 바로 아래")
-    p = sub.add_parser("register", help="PC 의 파일 하나를 새 문서로 올린다 — 폴더 · 보안등급 · 공개를 사람이 확인한 뒤에만 부른다")
-    p.add_argument("path", help="올릴 파일")
-    p.add_argument("--cabinet", required=True, help="문서함 열쇠(cab…)")
-    p.add_argument("--folder", required=True, help="폴더 열쇠(fdr…) — folders 가 낸다")
-    p.add_argument("--security", required=True, choices=sorted({s for s, _ in SECURITY_PAIRS}),
-                   help="보안등급 — 1A 기밀 · 2A 사외비A · 2B 사외비B · 3A 일반")
-    p.add_argument("--open", required=True, choices=["T", "F"], dest="open_flag", help="공개(T) · 비공개(F) — 1A 는 F, 3A 는 T 만")
-    p.add_argument("--title", default="", help="등록 이름(확장자 뺀) — 안 주면 파일 이름")
-    p = sub.add_parser("access", help="문서에 걸린 권한(편집 · 복사 · 읽기) 명단")
-    p.add_argument("object_id")
-    p = sub.add_parser("who", help="ECM 이 아는 사람 · 부서를 찾는다 — 권한에 줄 열쇠를 고른다")
-    p.add_argument("query", help="이름(일부) · 또는 org:부서 이름(일부) · org:부서코드(부서원까지)")
-    for name in ("preview-access", "apply-access"):
-        p = sub.add_parser(name, help="권한 바꾸기를 미리 본다(안 바꾼다)" if name == "preview-access"
-                           else "미리 본 그대로 권한을 바꾼다 — preview-access 와 같은 인자에 --confirm")
-        p.add_argument("object_id")
-        for word in ACCESS_OF_WORD:
-            p.add_argument(f"--{word}", action="append", default=[], metavar="사람",
-                           help=f"{ACCESS_ROLES[ACCESS_OF_WORD[word]]} 로 준다 — 이름 · 이름/메일ID · org:부서코드 · org:부서 이름 (여러 번)")
-        p.add_argument("--revoke", action="append", default=[], metavar="사람", help="권한을 거둔다 — 이름 · 이름/메일ID · org:… (여러 번)")
-        p.add_argument("--clear", action="store_true", help="지금 명단을 다 비우고 시작한다")
-        p.add_argument("--with-subs", action="store_true", help="org: 를 아래 부서까지 펼친다(안 주면 화면처럼 바로 든 사람만)")
-        if name == "apply-access":
-            p.add_argument("--confirm", required=True, help="preview-access 가 낸 확인 열쇠")
-    args = parser.parse_args(argv)
-
+    args = parser().parse_args(argv)
+    finger = FINGERS[args.command]
     try:
-        if args.command == "default-app":
-            ext = default_app.normalize(args.ext)
-            now, check = default_app.state(ext), default_app.preflight()
-            print(f"{ext} — 지금 {now.progid or '안 정해짐'}{f' ({now.where})' if now.where else ''} · Windows 가 푸는 앱 "
-                  f"{default_app.resolved_progid(ext) or '없음'} · 고를 앱 {default_app.pick_progid(ext) or '없음'}")
-            print(f"이 PC 의 해시 계산 — Windows 가 적은 {check.total} 개 중 {check.matched} 개가 같다")
-            return EXIT_OK
-        ecm = Ecm(url_from_env(), args.session or session_path())
-        if args.command == "session":
-            alive = ecm.session_alive()
-            print("ECM 세션이 살았다" if alive else "ECM 세션이 끊겼다 — 스킬 ep-login 으로 다시 받는다")
-            return EXIT_OK if alive else EXIT_SESSION
-        if args.command == "cabinets":
-            for c in ecm.cabinets():
-                print(f"{c.name} · {c.kind}{' · 내 부서' if c.own else ''} · 열쇠 {c.key}")
-            return EXIT_OK
-        if args.command == "list":
-            docs = ecm.list(search=args.search, page=args.page, per_page=args.per_page, period=args.period, folder=args.folder,
-                            cabinet=args.cabinet)
-            if args.json:
-                for d in docs:
-                    print(json.dumps(dataclasses.asdict(d), ensure_ascii=False))
-            else:
-                _print_docs(docs, args.page, f"문서함 {args.cabinet}" if args.cabinet else "내 문서함")
-            return EXIT_OK
-        if args.command == "count":
-            print(ecm.count(search=args.search, period=args.period, folder=args.folder, cabinet=args.cabinet))
-            return EXIT_OK
-        if args.command == "version":
-            print(ecm.version(args.object_id) or "못 읽었다")
-            return EXIT_OK
-        if args.command == "security":
-            got = ecm.security(args.object_id)
-            print(f"{got.name} ({got.level}/{got.open_flag})" + (" · 핵심기술" if got.core else "")
-                  + (f" — read · edit 는 사람에게 AI 로 보내도 되는지 물은 뒤 {AI_OK_FLAG} 로만 받는다" if got.ask_before_ai else ""))
-            return EXIT_OK
-        if args.command == "folders":
-            for f in ecm.folders(args.cabinet, args.parent):
-                print(f"{f.name} · 열쇠 {f.id}{' · 아래 폴더 있음' if f.has_sub else ''}")
-            return EXIT_OK
-        if args.command == "register":
-            done = register_document(ecm, Agent.from_env(), pathlib.Path(args.path), cabinet=args.cabinet, folder=args.folder,
-                                     security=args.security, open_flag=args.open_flag, title=args.title)
-            print(f"올렸다 — {done.title} · 판 {done.version} · 보안 {SECURITY_PAIRS[(args.security, args.open_flag)]} · id {done.object_id}")
-            return EXIT_OK
-        if args.command == "checkin":
-            done = checkin_document(ecm, pathlib.Path(args.path), args.object_id, args.desc)
-            if done.version_after == done.version_before:
-                print(f"고친 것이 없어 올리지 않았다 — 에이전트가 편집완료 창 없이 잠금을 풀었고 판은 {done.version_before} 그대로다")
-                return EXIT_OK
-            print(f"올렸다 — 판 {done.version_before} → {done.version_after} · 고른 판 {done.picked or '?'}")
-            return EXIT_OK
-        if args.command == "access":
-            _print_grants(ecm.roles(args.object_id))
-            return EXIT_OK
-        if args.command == "who":
-            company = ecm.company()
-            if args.query.startswith(ORG_PREFIX):
-                value = args.query[len(ORG_PREFIX):].strip()
-                if DEPT_CODE.match(value):
-                    for s in ecm.sub_organs(value, company):
-                        print(f"  아래 부서 {s.name} · 바로 {s.members} 명 · 아래 부서 {s.subs} · 코드 {s.code}")
-                    for m in ecm.members(value, company):
-                        print(f"  {m.label()}")
-                else:
-                    for o in ecm.organs(value, company):
-                        print(f"{o.upper} > {o.name} · 바로 {o.members} 명 · 아래 부서 {o.subs} · 코드 {o.code}")
-            else:
-                for m in ecm.people(args.query, company):
-                    print(f"{m.label()} · 사번 {m.employee}")
-            return EXIT_OK
-        if args.command in ("preview-access", "apply-access"):
-            grants = [(w, s) for w in ACCESS_OF_WORD for s in getattr(args, w)]
-            if not (grants or args.revoke or args.clear):
-                raise EcmError("줄 사람(--edit · --copy · --read) · 거둘 사람(--revoke) · --clear 가운데 하나는 준다")
-            plan = plan_access(ecm, args.object_id, grant=grants, revoke=args.revoke, clear=args.clear, with_subs=args.with_subs)
-            if args.command == "preview-access":
-                _print_plan(plan)
-                return EXIT_OK
-            got = apply_access(ecm, plan, args.confirm)
-            print(f"바꿨다 — {plan.title} · 더함 {len(plan.added)} · 뺌 {len(plan.removed)} · 옮김 {len(plan.moved)} · 다시 읽은 명단:")
-            _print_grants(got)
-            return EXIT_OK
-        if args.command == "read" and not args.fresh:
-            kept = read_kept(ecm, args.object_id, ai_ok=args.ai_ok)
-            if kept is not None:
-                tell_kept(kept, as_file=args.as_file)
-                return EXIT_OK
-        agent = Agent.from_env()
-        if args.command == "edit":
-            opened = edit_document(ecm, agent, args.object_id, ai_ok=args.ai_ok)
-            print("\n".join([*_describe_open(opened), "편집으로 열었다 — 서버가 잠갔다. 고친 뒤 checkin 으로 올리거나, 그만두면 ECM 화면에서 「편집취소」한다"]))
-            return EXIT_OK
-        if args.command == "open":
-            opened = open_document(ecm, agent, args.object_id, allow_picker=args.allow_picker)
-            print("\n".join(_describe_open(opened)))
-            return EXIT_OK
-        got = read_document(ecm, agent, args.object_id, allow_picker=args.allow_picker, ai_ok=args.ai_ok)
-        tell_read(got, args.object_id, as_file=args.as_file)
-        return EXIT_OK
-    except (SessionMissing, SessionExpired) as exc:
-        print(exc, file=sys.stderr)
-        return EXIT_SESSION
-    except default_app.DefaultAppNeeded as exc:
-        print(exc, file=sys.stderr)
-        return EXIT_DEFAULT_APP
-    except (Classified, SecurityUnread) as exc:
-        print(exc, file=sys.stderr)
-        return EXIT_CLASSIFIED
-    except (EcmError, ValueError, OSError, subprocess.TimeoutExpired) as exc:
-        print(exc, file=sys.stderr)
-        return EXIT_FAIL
+        precheck(args)
+        ecm = Ecm(url_from_env(), args.session or session_path()) if finger.session else None
+        return finger.run(args, ecm)
+    except REPORTED as exc:
+        return report(exc)
 
 
 if __name__ == "__main__":

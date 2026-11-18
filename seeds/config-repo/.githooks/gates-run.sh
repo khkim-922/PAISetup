@@ -208,12 +208,12 @@ _gates_msg_shadow() {
     printf '· [%s] 는 이 저장소의 조각이 설정 저장소 원본을 가리고 돈다 — 옛 사본이면 지운다.\n' "$1"
 }
 
-# _gates_judge <이름> <종료코드> — 판정을 모은다.
+# _gates_judge <이름> <종료코드> [<자리 번호>] — 판정을 모은다. 빨간 조각은 이름과, 출력을 받아 둔 판이면 그 자리 번호를 적어 둔다.
 _gates_judge() {
     case "$2" in
         0) ;;
         2) _cant="$_cant $1" ;;
-        *) _fail=1 ;;
+        *) _fail=1; _red="$_red $1"; [ -z "${3:-}" ] || _redat="$_redat $3" ;;
     esac
 }
 
@@ -277,7 +277,7 @@ run_gates() {
     # ⚠ 안 넘어오면 저장소 자리로 물러난다 — 이 값을 모르는 옛 몸통이 새 러너를 부르는 자리다.
     _home="${GATES_DIR:-$PROJECT_DIR/.githooks}"
 
-    _fail=0; _cant=''; _ran=0; _skip=''; _nskip=0; _plan=''; _tmpd=''; _retired=''
+    _fail=0; _cant=''; _ran=0; _skip=''; _nskip=0; _plan=''; _tmpd=''; _retired=''; _red=''; _redat=''
     _gates_now; _gw0=$_gn
 
     # 저장소 조각 폴더와 러너 곁이 같은 자리인가 — 같으면(설정 저장소 자신) 가림을 잴 까닭이 없다.
@@ -362,10 +362,11 @@ EOF
     if [ "$_jobs" -gt 1 ] && [ "$_nrun" -gt 1 ] && [ -n "${EPOCHREALTIME:-}" ]; then
         case "${BASH_VERSION:-}" in 5.[1-9]*|[6-9].*|[1-9][0-9].*) _pool=1 ;; esac
     fi
-    if [ -n "$_pool" ] && [ -z "$_tmpd" ]; then
+    # 조각의 출력을 받아 둘 자리 — 같이 띄우는 판은 이것이 있어야 하고, 차례로 도는 판은 없어도 돈다.
+    if [ -z "$_tmpd" ] && [ "$_nrun" -gt 0 ]; then
         _tmpd=$(mktemp -d 2>/dev/null) || _tmpd=''
-        [ -n "$_tmpd" ] || _pool=''
     fi
+    [ -n "$_tmpd" ] || _pool=''
 
     if [ -n "$_pool" ]; then
         _gjobs_used="동시 $_jobs"
@@ -396,7 +397,7 @@ EOF
                 case "$_rc" in
                     skip) ;;
                     gone) _gates_replay "$_tmpd/$_flush.out"; _cant="$_cant $_g" ;;
-                    *) _gates_replay "$_tmpd/$_flush.out"; _ran=$((_ran + 1)); _gates_judge "$_g" "$_rc" ;;
+                    *) _gates_replay "$_tmpd/$_flush.out"; _ran=$((_ran + 1)); _gates_judge "$_g" "$_rc" "$_flush" ;;
                 esac
                 _flush=$((_flush + 1))
             done
@@ -442,11 +443,21 @@ EOF
             _gates_now; _t0=$_gn
             # ⚠ **표준입력을 막는다** — 이 판은 목록을 변수에서 돌지만, 조각이 입력을 읽어도 훅이 받은
             #   입력(pre-push 의 참조 목록 따위)을 못 먹게 한다.
-            sh "$_f" "$@" </dev/null
-            _rc=$?
-            _gates_now
+            #   출력은 받아 뒀다가 낸다 — 빨간 조각의 까닭을 끝에서 한 번 더 내려면 들고 있어야 한다. 받을 자리가 없으면 곧장 낸다.
+            if [ -n "$_tmpd" ]; then
+                sh "$_f" "$@" </dev/null >"$_tmpd/$_gi.out" 2>&1
+                _rc=$?
+                _gates_now
+                _gates_replay "$_tmpd/$_gi.out"
+                _at=$_gi
+            else
+                sh "$_f" "$@" </dev/null
+                _rc=$?
+                _gates_now
+                _at=''
+            fi
             [ -n "$_t0" ] && [ -n "$_gn" ] && eval "_gtm_$_gi=\$((_gn - _t0))"
-            _gates_judge "$_g" "$_rc"
+            _gates_judge "$_g" "$_rc" "$_at"
         done
     fi
 
@@ -459,6 +470,17 @@ EOF
     [ "$_ran" -gt 0 ] || [ -n "$_cant" ] || [ -n "$_skip" ] || [ -n "$_retired" ] ||
         printf '· [%s] 절에 켜진 조각이 없다 — 이 단계는 아무것도 안 잰다.\n' "$_stage" >&2
     _gates_times
+
+    # 빨간 조각을 맨 끝에 이름으로 대고 그 출력을 한 번 더 낸다 — 까닭은 그 조각의 차례에 이미 나갔지만 뒤 조각들의 출력과
+    #   위 요약 줄에 밀려 올라가, 끝 몇 줄만 읽는 쪽은 무엇이 왜 막았는지 못 보고 한 번 더 돌린다.
+    if [ "$_fail" -ne 0 ]; then
+        if [ -n "$_redat" ]; then
+            printf '✖ 막은 조각:%s — 그 조각이 낸 것을 다시 낸다:\n' "$_red" >&2
+            for _ra in $_redat; do _gates_replay "$_tmpd/$_ra.out"; done
+        else
+            printf '✖ 막은 조각:%s — 까닭은 위 그 조각의 줄에 있다.\n' "$_red" >&2
+        fi
+    fi
 
     [ -z "$_tmpd" ] || rm -rf "$_tmpd"
     [ "$_fail" -eq 0 ] || printf '\n' >&2

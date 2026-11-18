@@ -4,13 +4,16 @@
 
     python -X utf8 <이 스킬>/scripts/company_ecm.py <명령> [인자…]   # 명령 · 인자는 곁의 ecm.py 의 것 그대로(--help)
 
-세션이 드는 명령(``NEEDS_SESSION``) 가운데 읽는 것은
-세션 파일이 이미 있으면 그것으로 먼저 돌고 ECM 이 끊겼다고 할 때만, 잠그거나 올리거나 권한을 바꾸는 것(``MUTATING``)은 늘, 형제 스킬
-ep-login 의 받는 손을 ``ecm`` 으로 말없이 돌린다(까닭과 바퀴는 그 폴더 ``ep_session.session_first`` 의 머리말). 쓰는 사람의 Edge 가 디버깅 포트로 떠 있고 로그인돼 있으면 그 손이 ECM 쿠키를
-세션 파일에 맞추고(``ecm`` 만 재므로 메일 쪽 Domino 세션은 안 본다), 끝 줄에 그 파일의 절대 경로를 낸다 — 그 경로를 ``ecm.py`` 에 ``--session`` 으로 넘긴다. 세션 파일의 기본 자리는 받는 손만 든다.
+인자는 세션보다 먼저 ``ecm.py`` 의 명령줄(``ecm.parser``)과 값 가리기(``ecm.precheck`` — 열쇠의 꼴 · 파일 · 짝처럼 서버 없이 가릴
+수 있는 값)로 가린다 — ``--help`` · 틀린 인자 · 틀린 값은 세션 없이 그 자리에서 끝난다(종료 값은 ``ecm.report``).
+세션이 드는 명령 가운데 읽는 것은 세션 파일이 이미 있으면 그것으로 먼저 돌고 ECM 이 끊겼다고 할 때만, 잠그거나 올리거나 권한을
+바꾸는 것은 늘, 형제 스킬 ep-login 의 받는 손을 ``ecm`` 으로 말없이 돌린다(까닭과 바퀴는 그 폴더 ``ep_session.session_first`` 의
+머리말). 어느 명령이 세션이 들고 바꾸는가는 ``ecm.py`` 의 손가락 표(``FINGERS`` 의 ``session`` · ``mutating``)가 든다. 쓰는 사람의
+Edge 가 디버깅 포트로 떠 있고 로그인돼 있으면 그 손이 ECM 쿠키를 세션 파일에 맞추고(``ecm`` 만 재므로 메일 쪽 Domino 세션은 안
+본다), 끝 줄에 그 파일의 절대 경로를 낸다 — 그 경로를 ``ecm.py`` 에 ``--session`` 으로 넘긴다. 세션 파일의 기본 자리는 받는 손만 든다.
 
-내는 것: 종료 값은 ``ecm.py`` 의 것과 같다 — 0 됨 · 1 실패 · 2 인자가 틀렸다 · 3 사내 세션을 다시 받아야 한다(스킬 ep-login) · 4 기본
-앱을 사람이 한 번 골라야 한다 · 5 기밀 · 핵심기술 문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다. 붙는 손의 종료 값은 이렇게 읽는다:
+내는 것: 종료 값은 ``ecm.py`` 의 것 그대로다(뜻은 그 머리말 「무엇을 내나」) — 붙는 손이 못 서면 그 표의 ``EXIT_SESSION`` ·
+``EXIT_FAIL`` 로 옮긴다. 붙는 손의 종료 값은 이렇게 읽는다:
 
     0  붙었다 → 끝 줄의 경로로 ``ecm.py`` 를 부른다
     1  붙는 손이 고장 났다 → 그 손의 말 그대로 알리고 멈춘다(종료 1)
@@ -35,9 +38,6 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
-NEEDS_SESSION = ("session", "cabinets", "folders", "list", "count", "version", "security", "open", "read", "edit", "checkin", "register",
-                 "access", "who", "preview-access", "apply-access")
-MUTATING = ("edit", "checkin", "register", "apply-access")   # 서버를 잠그거나 판 · 권한을 바꾼다 — 세션 손부터 받아 한 번만 돈다
 
 
 class SessionGone(Exception):
@@ -65,7 +65,13 @@ def main(argv: list[str]) -> int:
     if str(HERE) not in sys.path:
         sys.path.insert(0, str(HERE))   # -I 로 돌면 이 폴더가 sys.path 에 없다
     ecm = importlib.import_module("ecm")
-    if argv and argv[0] in NEEDS_SESSION:
+    args = ecm.parser().parse_args(argv)   # --help · 틀린 인자는 여기서 끝난다(SystemExit) — 세션을 안 부른다
+    try:
+        ecm.precheck(args)                 # 서버 없이 가릴 수 있는 값(열쇠의 꼴 · 파일 · 짝)도 세션보다 먼저 — 틀린 값에 로그인을 청하지 않는다
+    except ecm.REPORTED as exc:
+        return ecm.report(exc)
+    finger = ecm.FINGERS[args.command]
+    if finger.session:
         ep = load_ep_session()
         if ep is None:
             print(f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다", file=sys.stderr)
@@ -87,7 +93,7 @@ def main(argv: list[str]) -> int:
             return result
 
         try:
-            return ep.session_first(use, ("ecm",), expired=(SessionGone,), file_first=argv[0] not in MUTATING)
+            return ep.session_first(use, ("ecm",), expired=(SessionGone,), file_first=not finger.mutating)
         except ep.NoSession as exc:
             got = exc.got
             if got.code == ep.ECM_HANDOFF:
