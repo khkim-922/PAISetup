@@ -99,6 +99,12 @@ jobs:
           [ -n "$pkg" ] || { echo "::error::설치기 도구 표에서 Codex 꾸러미 이름을 못 읽었다 ($DIST_DIR/install.ps1)"; exit 1; }
           npm i -g --no-audit --no-fund "$pkg"
 
+      # 메일 비서 스킬은 서울 시계의 PC(회사 PC)를 전제한다 — 보고 창 손은 PC 시계로 보고 글 이름을 짓고 스캔은 서울 날짜로 찾아, 그
+      #   검사는 서울이 아닌 시계에서 「못 쟀다」로 물러선다. 러너는 UTC 라 여기서 맞춘다. Git Bash 는 `/s` 를 경로로 바꿔 파워셸로 띄운다.
+      - name: 러너 시계를 서울로
+        shell: pwsh
+        run: tzutil /s "Korea Standard Time"
+
       # ⚠ **사람이 친 값을 본문에 끼워 넣지 않는다** — 환경변수로 건넨다(까닭은 `release.yml` 의 같은 곁말).
       - name: 밤 판
         env:
