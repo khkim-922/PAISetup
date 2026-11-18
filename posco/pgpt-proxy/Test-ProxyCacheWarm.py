@@ -135,6 +135,36 @@ class PickTests(unittest.TestCase):
         self.assertEqual({entry.key for entry in warmer.due(1000.0)},
                          {f"k{index}" for index in range(2, proxy.CACHE_WARM_SESSIONS + 2)})
 
+    def test_alive_is_the_life_already_secured_and_outlasts_the_last_ping(self):
+        # 기대값 — 캐시는 마지막으로 읽힌 때(실제 요청의 시작 · 캐시를 읽힌 데우기의 시작)에서 수명만큼 산다. 아직 안 나간 데우기는
+        # 셈에 안 넣는다 — 그 데우기가 지면 그 사이 「살았다」가 거짓이 된다
+        ttl = 300.0
+        warmer = proxy.CacheWarmer(2, 240.0, ttl)
+        warmer.remember("k", SESSION, "/p", {}, b"{}", started=0.0, message_id="msg_a")
+        self.assertEqual(warmer.alive(10.0), {"msg_a": ttl})
+        [entry] = warmer.due(240.0)
+        warmer.finish(entry, True, 240.0)
+        self.assertEqual(warmer.alive(250.0), {"msg_a": 240.0 + ttl})
+        [entry] = warmer.due(480.0)
+        warmer.finish(entry, True, 480.0)                # 횟수를 다 써 데울 목록에서 빠진다
+        self.assertEqual(warmer.sessions(), 0)
+        self.assertEqual(warmer.alive(700.0), {"msg_a": 480.0 + ttl})   # 마지막 데우기가 확보한 수명은 남는다
+        self.assertEqual(warmer.alive(480.0 + ttl), {})                 # 그 끝이 지나면 걷힌다
+
+    def test_alive_drops_what_is_not_known_to_be_alive(self):
+        warmer = proxy.CacheWarmer(3, 240.0, 300.0)
+        warmer.remember("k", SESSION, "/p", {}, b"{}", started=0.0, message_id="msg_a")
+        [entry] = warmer.due(240.0)
+        warmer.finish(entry, False, 240.0)               # 캐시를 못 읽힌 데우기 — 이미 사라진 캐시다
+        self.assertEqual(warmer.alive(250.0), {})
+        warmer.remember("j", SESSION, "/p", {}, b"{}", started=300.0, message_id="msg_b")
+        warmer.forget("j")                               # 같은 대화의 실제 요청이 졌다
+        self.assertEqual(warmer.alive(310.0), {})
+        warmer.remember("i", SESSION, "/p", {}, b"{}", started=400.0, message_id='msg_"},x')
+        self.assertEqual(warmer.alive(410.0), {})        # /health 를 셸로 가르는 쪽이 못 읽는 글자는 안 싣는다
+        warmer.remember("h", SESSION, "/p", {}, b"{}", started=500.0)
+        self.assertEqual(warmer.alive(510.0), {})        # 응답 id 를 모르면 짚을 길이 없다
+
     def test_what_is_warmed_and_what_the_ping_carries(self):
         body = json.dumps(turn()).encode()
         big = proxy.CACHE_WARM_MIN_BYTES
@@ -217,6 +247,28 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(warm["headers"]["Authorization"], "Bearer test-key-xxxx")
         self.assertEqual(proxy.stats()["cache_warm_sent"], before + 1)
         self.assertIn("cache warm session=aaaaaaaa HTTP 200 cache_read=5000", proxy.LOG_PATH.read_text(encoding="utf-8"))
+
+    def test_health_names_the_response_whose_cache_is_kept_alive(self):
+        # 이어 묻기 값 훅이 읽는 칸 — 응답 id 는 대화 기록의 마지막 assistant 줄이 드는 그 id(스트림 message_start 의 message.id)다
+        self.send(turn())
+        status, health = self.health()
+        self.assertEqual(status, 200)
+        alive = health["cache_warm_alive_until"]
+        self.assertEqual(list(alive), ["m"])
+        self.assertLessEqual(alive["m"], time.time() + proxy.GATEWAY_CACHE_TTL_SEC)
+        self.assertGreater(alive["m"], time.time() + proxy.GATEWAY_CACHE_TTL_SEC - 10)
+        ANSWER.update(cache_read=0)
+        self.ping_due()                                  # 캐시를 못 읽힌 데우기 뒤에는 살았다고 내지 않는다
+        self.assertEqual(self.health()[1]["cache_warm_alive_until"], {})
+
+    def health(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            conn.request("GET", "/health")
+            response = conn.getresponse()
+            return response.status, json.loads(response.read())
+        finally:
+            conn.close()
 
     def test_three_pings_then_nothing_more_goes_out(self):
         self.send(turn())

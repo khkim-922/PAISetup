@@ -1,16 +1,19 @@
-"""일일 보고 창이 절 수와 상관없이 같은 꼴로 서고, 링크는 메일 번호에서만 짓고, 글은 글자로 세우고, 보고 글을 곁에 남기나를 문다.
+"""일일 보고 창이 절 수와 상관없이 같은 꼴로 서고, 링크는 메일 번호에서만 짓고, 글은 글자로 세우고, 보고 글을 곁에 남기고,
+「끝났음」 표시를 제 메일 번호로 받아 보고 글에 한 번만 거두나를 문다.
 
     python -X utf8 -I check_window.py [스킬 폴더] [--teeth]
 
-층 — 쓰는 사람의 계약. 곁의 `window.py` 를 명령 그대로 부르고 지은 HTML 을 표준 라이브러리의 HTML 읽개로 잰다(브라우저는 가짜가 받는다).
+층 — 쓰는 사람의 계약. 곁의 `window.py` · `ticks.py` 를 명령 그대로 부르고 지은 HTML 을 표준 라이브러리의 HTML 읽개로 잰다(브라우저와
+로그인 Edge 의 디버깅 포트는 가짜가 받는다).
 남기는 까닭 — 판정마다 check-design 1 절의 넷을 다 지난다(판정별 표 · 표본은 `references/DESIGN.md` 「검사가 남는 까닭」).
 언제 걷나 — 보고 창이 스킬에서 빠지거나 그 계약을 다른 검사가 들 때. 보고 글을 다음 보고의 기록으로 삼지 않게 되면 「곁에 남는다」 · 「끝의 두 절」.
-여기서 못 재는 것 — 디자인이 보이는 그대로 · 실제 브라우저 · 회사 웹메일에서 링크가 열리나 · 모델이 꼴대로 쓰나(같은 문서).
+창의 「끝났음」 표시를 걷으면 「끝났음 상자」 · 「표시를 거둔다」.
+여기서 못 재는 것 — 디자인이 보이는 그대로 · 실제 브라우저(창의 스크립트가 돌고 표시가 남나) · 회사 웹메일에서 링크가 열리나 · 모델이 꼴대로 쓰나(같은 문서).
 
 물림 — `--teeth` 는 계약 판정에 이어 판정마다 그 판정이 지키는 한 줄을 끈 사본에서 빨강을 본다. 계약 판정이 하나라도 빨가면 안 돌린다 —
 늘 지는 판 앞에서는 모든 사본이 「잡혔다」로 센다. 사본을 못 심으면 그 물림이 빨갛다. 푸시 문은 인자 없이 불러 계약 판정만 돈다.
 
-폴더를 안 주면 이 파일이 든 스킬 폴더(`SKILL.md` · `scripts/` · `assets/`)만 읽는다 — 푸시 문(`skill-checks`)은 `.claude/skills` 만
+폴더를 안 주면 이 파일이 든 스킬 폴더(`lane.md` · `scripts/` · `assets/`)만 읽는다 — 푸시 문(`skill-checks`)은 `.claude/skills` 만
 임시 자리로 내보내 거기서 돌린다. 기대값은 표본을 지은 뜻 · 꼴의 표시를 센 수 · 계약에서 낸다 — 돌린 값에서 거꾸로 내지 않는다.
 종료 값 — 끝 줄이 「통과 N/N」이면 0, 하나라도 어긋나면 1, 스크립트 · 틀을 못 찾았으면 2.
 """
@@ -18,8 +21,11 @@
 from __future__ import annotations
 
 import ast
+import base64
+import hashlib
 import html.parser
 import http.server
+import json
 import os
 import socket
 import threading
@@ -71,7 +77,10 @@ ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 WITH_TEETH = "--teeth" in sys.argv[1:]          # 물림까지 — 정기 판의 몫(머리말 「물림」)
 SKILL = pathlib.Path(ARGS[0]).resolve() if ARGS else HERE.parent
 SCRIPT_REL = pathlib.Path("scripts") / "window.py"
+TICKS_REL = pathlib.Path("scripts") / "ticks.py"
 TEMPLATE_REL = pathlib.Path("assets") / "report.html"
+PAGE_JS_REL = pathlib.Path("assets") / "report.js"
+FORM_DOC = "lane.md"                      # 「보고 글의 꼴」과 그 예를 든 글 — 보고를 짓는 쪽이 따라 쓰는 차례
 TIMEOUT_S = 30
 
 MAILBOX = "https://mail.gaon.example/mail3/20231234.nsf"     # 회사 메일 손의 session 이 내는 꼴 — 가상의 호스트
@@ -79,6 +88,10 @@ MAIL_HREF = "{mailbox}/XML_Inbox/{unid}?OpenDocument"       # 계약 — 이 꼴
 REF = re.compile(r"\]\(mail:([0-9A-Fa-f]{32})\)")           # 꼴의 메일 링크 표시 — 표본에서 기대 링크를 센다
 HEX32 = re.compile(r"\b[0-9A-Fa-f]{32}\b")
 END_SECTIONS = ("이 보고가 본 데", "끝났다고 하신 것")      # 계약 — 다음 보고가 기대는 끝의 두 절(사용자가 정한 겉 · 스킬 글 「남긴다」)
+DONE_PREFIX = "brief-done:"                                 # 계약 — 창이 표시를 두는 localStorage 열쇠 머리(창과 거두는 손이 함께 읽는다)
+VIA_EDGE = "via=edge"                                       # 계약 — 로그인 Edge 로 연 창의 주소 꼬리
+REOPEN = "안 끝났다고 하신 것"                                # 계약 — 푸신 일을 다음 업무 파악이 다시 여는 절(스킬 글 「남긴다」 · 업무 파악 「끝난 일」)
+EXIT_NO_EDGE = 3                                            # 계약 — 거두는 손이 로그인 Edge 에 못 닿았다(`ticks.py` 머리말)
 
 # ── 표본 — 꼴대로 쓴 가상의 하루(가상의 회사 · 사람) ─────────────────────────────
 
@@ -190,7 +203,7 @@ BAD_MAILBOXES = ["", "javascript:alert(1)//x.nsf", "https://mail.gaon.example/ma
 GOOD_MAILBOXES = {MAILBOX + "/": MAILBOX, "https://mail.gaon.example:8443/MAIL/Box.NSF": "https://mail.gaon.example:8443/MAIL/Box.NSF"}
 
 # 바깥을 부르는 꼴 — 지은 창에 하나도 없어야 한다
-OUTSIDE_TAGS = {"script", "link", "img", "iframe", "object", "embed", "video", "audio", "source", "base", "form"}
+OUTSIDE_TAGS = {"link", "img", "iframe", "object", "embed", "video", "audio", "source", "base", "form"}
 OUTSIDE_STYLE = re.compile(r"(?i)@import|url\s*\(|https?://")
 CSP_NONE = "default-src 'none'"
 
@@ -290,8 +303,8 @@ def run(skill: pathlib.Path, md: str, mailbox: str = MAILBOX, data: bytes | None
 
 
 def skill_example(skill: pathlib.Path) -> str | None:
-    """스킬 글 「보고 글의 꼴」의 예 — 그 절 안의 첫 ```markdown 덩이."""
-    text = (skill / "SKILL.md").read_text(encoding="utf-8")
+    """`lane.md` 「보고 글의 꼴」의 예 — 그 절 안의 첫 ```markdown 덩이."""
+    text = (skill / FORM_DOC).read_text(encoding="utf-8")
     part = text.split("## 보고 글의 꼴", 1)
     if len(part) < 2:
         return None
@@ -338,7 +351,7 @@ def marks_render(skill: pathlib.Path) -> tuple[bool, list[str]]:
     """스킬 글의 예가 쓴 꼴마다 제 생김새가 선다 — 기대 수는 예의 표시를 센 것이다."""
     md = skill_example(skill)
     if md is None:
-        return False, ["스킬 글에 「보고 글의 꼴」 절의 ```markdown 예가 없다 — 모델이 따라 쓸 꼴이 없다"]
+        return False, [f"{FORM_DOC} 에 「보고 글의 꼴」 절의 ```markdown 예가 없다 — 모델이 따라 쓸 꼴이 없다"]
     r = run(skill, md)
     if r.code != 0 or r.tree is None:
         return False, [f"예를 못 지었다: 종료 값 {r.code} — {r.out.strip()[-200:]}"]
@@ -409,9 +422,11 @@ def text_stays_text(skill: pathlib.Path) -> tuple[bool, list[str]]:
             why.append(f"글자로 서야 할 글이 없다: {w}")
     if "<img src=x onerror=alert(1)>" not in title:
         why.append(f"창의 이름에 제목이 글자로 안 섰다: {title!r}")
-    bad_tags = sorted({n.tag for n in r.tree.root.walk() if n.tag in {"script", "img", "b"}})
+    bad_tags = sorted({n.tag for n in r.tree.root.walk() if n.tag in {"img", "b"}})
     if bad_tags:
         why.append(f"메일 글이 요소로 섰다: {bad_tags}")
+    if len(r.tree.root.find("script")) != 1:
+        why.append(f"메일 글이 스크립트로 섰다 — 창의 스크립트는 틀의 하나뿐이어야 한다: {len(r.tree.root.find('script'))}개")
     handlers = sorted({k for n in r.tree.root.walk() for k in n.attrs if k.startswith("on")})
     if handlers:
         why.append(f"on… 속성이 섰다: {handlers}")
@@ -458,9 +473,24 @@ def no_outside(skill: pathlib.Path) -> tuple[bool, list[str]]:
     if hit:
         why.append(f"CSS 가 바깥을 부른다: {hit[:3]}")
     csp = [n.attrs.get("content", "") for n in r.tree.root.find("meta") if (n.attrs.get("http-equiv") or "").lower() == "content-security-policy"]
-    if not csp or CSP_NONE not in csp[0] or "script-src" in csp[0]:
-        why.append(f"바깥과 스크립트를 닫는 CSP(「{CSP_NONE}」 · script-src 없음)가 없다: {csp}")
+    if not csp or CSP_NONE not in csp[0]:
+        why.append(f"바깥을 닫는 CSP(「{CSP_NONE}」)가 없다: {csp}")
+    why += script_pinned(r, csp[0] if csp else "")
     return not why, why
+
+
+def script_pinned(r: Run, csp: str) -> list[str]:
+    """창의 스크립트는 하나 — src 없이 안에 든 글이고, CSP 의 script-src 는 그 글의 sha256 하나만 연다(unsafe-… · 주소 없음).
+    그래야 메일에서 온 글이 <script> · on… 속성으로 서도 돌지 않는다. 해시는 지은 창의 스크립트 글에서 낸다 — 손으로 옮긴 값과 견주지 않는다."""
+    why: list[str] = []
+    scripts = r.tree.root.find("script")
+    if len(scripts) != 1 or scripts[0].attrs.get("src") is not None:
+        return [f"창의 스크립트가 src 없는 하나가 아니다: {[s.attrs for s in scripts]}"]
+    digest = base64.b64encode(hashlib.sha256(scripts[0].text().encode("utf-8")).digest()).decode("ascii")
+    srcs = [d.strip().split()[1:] for d in csp.split(";") if d.strip().startswith("script-src")]
+    if srcs != [[f"'sha256-{digest}'"]]:
+        why.append(f"CSP 의 script-src 가 창의 스크립트 해시 하나('sha256-{digest[:12]}…')만 열지 않는다: {srcs}")
+    return why
 
 
 def text_kept(skill: pathlib.Path) -> tuple[bool, list[str]]:
@@ -546,14 +576,16 @@ def opens_in_login_edge(skill: pathlib.Path) -> tuple[bool, list[str]]:
         out = go(ok_port)
         if len(seen) != 1 or seen[0][0] != "PUT":
             why.append(f"열린 포트에 PUT 한 번이어야 한다: {seen}")
-        elif not seen[0][1].startswith("/json/new?file:///") or not seen[0][1].endswith(".html"):
-            why.append(f"/json/new? 뒤에 지은 HTML 의 file: 주소가 와야 한다: {seen[0][1]}")
+        elif not seen[0][1].startswith("/json/new?file:///") or not seen[0][1].endswith(".html?" + VIA_EDGE):
+            why.append(f"/json/new? 뒤에 지은 HTML 의 file: 주소와 꼬리 ?{VIA_EDGE} 가 와야 한다 — 꼬리가 없으면 창이 「끝났음」 상자를 안 꺼낸다: {seen[0][1]}")
         if "로그인된 Edge" not in out or got_file.exists():
             why.append(f"로그인 Edge 에 열었으면 끝 줄이 그렇게 말하고 기본 브라우저는 안 부른다: {out.splitlines()[-1:]}")
         seen.clear()
         out = go(str(closed))
-        if "기본 브라우저" not in out or not got_file.exists() or not got_file.read_text(encoding="utf-8").startswith("file:///"):
-            why.append(f"포트가 닫히면 기본 브라우저가 file: 주소를 받고 끝 줄이 그렇게 말해야 한다: {out.splitlines()[-1:]}")
+        got_uri = got_file.read_text(encoding="utf-8") if got_file.exists() else ""
+        if "기본 브라우저" not in out or not got_uri.startswith("file:///") or VIA_EDGE in got_uri:
+            why.append(f"포트가 닫히면 기본 브라우저가 꼬리 없는 file: 주소를 받고 끝 줄이 그렇게 말해야 한다 — 거둘 수 없는 창은 상자를 안 꺼낸다: "
+                       f"{got_uri!r} · {out.splitlines()[-1:]}")
         got_file.unlink(missing_ok=True)
         status[0] = 500
         out = go(str(srv.server_address[1]))
@@ -572,9 +604,303 @@ def opens_in_login_edge(skill: pathlib.Path) -> tuple[bool, list[str]]:
     return not why, why
 
 
+# 끝났음 상자 — 줄마다 그 줄의 첫 메일 번호. 기대값은 표본을 지은 뜻이다(어느 줄이 어느 메일의 일인가)
+THREE_BOXES = {"0000000000000000A1B2C3D4E5F70001": "시험 성적서 승인", "0000000000000000A1B2C3D4E5F70002": "협력사 납기 회신",
+               "0000000000000000A1B2C3D4E5F70003": "설비 점검 결과"}        # 「하반기 교육 일정 회신」은 메일이 없고, 「하계 휴가」는 끝의 절이다
+HOSTILE_BOXES = {"0000000000000000C1B2C3D4E5F60001": "[긴급] 납품 대금 확인 요청"}   # 둘째 줄은 짧은 번호 · 링크 아닌 번호뿐이다
+# 「끝났다고 하신 것」의 줄 — 눌린 것이 바탕인 상자(풀면 끝나지 않았다고 되돌리신 것)
+THREE_DONE = {"0000000000000000A1B2C3D4E5F70004": "하계 휴가 계획 회신"}
+
+
+def boxes_keyed(skill: pathlib.Path) -> tuple[bool, list[str]]:
+    """메일 번호가 든 줄(카드든 줄이든)마다 그 줄의 첫 메일 번호를 열쇠로 한 「끝났음」 상자 하나가 숨은 채 서고, 메일이 없는 줄 · 「이 보고가
+    본 데」에는 안 선다. 「끝났다고 하신 것」의 줄에는 눌린 것이 바탕인 상자(`data-done`)가 서고, 할 일의 상자는 그 표지가 없다."""
+    why: list[str] = []
+    for name, md, want, want_done in (("절 셋", THREE, THREE_BOXES, THREE_DONE), ("메일 속 주소", HOSTILE, HOSTILE_BOXES, {})):
+        r = run(skill, md)
+        if r.tree is None:
+            why.append(f"{name}: 창이 없다 — {r.out.strip()[-200:]}")
+            continue
+        boxes = [n for n in r.tree.root.find("input") if "data-unid" in n.attrs]
+        todo = {n.attrs["data-unid"]: n.attrs.get("data-title") for n in boxes if "data-done" not in n.attrs}
+        done = {n.attrs["data-unid"]: n.attrs.get("data-title") for n in boxes if n.attrs.get("data-done") == "1"}
+        if len(boxes) != len(todo) + len(done) or todo != want:
+            why.append(f"{name}: 할 일의 상자 {todo} — 줄마다 첫 메일 번호와 그 일 이름이어야 한다 {want}")
+        if done != want_done:
+            why.append(f"{name}: 「끝났다고 하신 것」의 상자 {done} — 그 절의 줄마다 눌린 것이 바탕인 상자여야 한다 {want_done}")
+        shown = [n for n in r.tree.root.find("label", "tick") if "hidden" not in n.attrs]
+        if shown:
+            why.append(f"{name}: 처음부터 보이는 상자 {len(shown)}개 — 스크립트가 거둘 수 있는 창에서만 꺼내야 한다(스크립트가 막히면 누를 수 없는 상자가 선다)")
+        for sec in r.tree.root.find("section"):
+            head = sec.find("h2")[0].text().strip() if sec.find("h2") else ""
+            if head.startswith(END_SECTIONS[0]) and sec.find("input"):
+                why.append(f"{name}: 끝의 절 「{head}」에 상자가 섰다 — 다음 보고의 기록이지 할 일이 아니다")
+    return not why, why
+
+
+class FakeEdge:
+    """가짜 로그인 Edge — `/json/version` 과 브라우저 자리의 웹소켓(CDP)을 흉내 낸다. localStorage 는 file: 탭에서만 보이는 dict 다
+    (Chromium 은 file: 창끼리 한 저장소를 쓰고, about:blank 는 다른 저장소다)."""
+
+    GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+    def __init__(self, tabs: list[str], store: dict[str, str]):
+        self.tabs = {f"t{i}": u for i, u in enumerate(tabs)}
+        self.store = dict(store)
+        self.created: list[str] = []
+        self.closed: list[str] = []
+        self.sessions: dict[str, str] = {}
+        fake = self
+
+        class H(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *a: object) -> None:
+                pass
+
+            def do_GET(self) -> None:
+                if self.path == "/json/version":
+                    body = json.dumps({"webSocketDebuggerUrl": f"ws://127.0.0.1:{fake.port}/devtools/browser/fake-1"}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                key = self.headers.get("Sec-WebSocket-Key", "")
+                accept = base64.b64encode(hashlib.sha1((key + FakeEdge.GUID).encode()).digest()).decode()
+                self.send_response(101)
+                self.send_header("Upgrade", "websocket")
+                self.send_header("Connection", "Upgrade")
+                self.send_header("Sec-WebSocket-Accept", accept)
+                self.end_headers()
+                self.wfile.flush()
+                while True:
+                    msg = fake.recv(self.rfile)
+                    if msg is None:
+                        break
+                    for out in fake.answer(json.loads(msg)):
+                        fake.send(self.wfile, json.dumps(out))
+                self.close_connection = True
+
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.port = self.srv.server_address[1]
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    @staticmethod
+    def recv(f) -> str | None:
+        head = f.read(2)
+        if len(head) < 2 or head[0] & 0x0F == 0x8:
+            return None
+        n = head[1] & 0x7F
+        n = int.from_bytes(f.read(2), "big") if n == 126 else int.from_bytes(f.read(8), "big") if n == 127 else n
+        mask = f.read(4)
+        return bytes(b ^ mask[i % 4] for i, b in enumerate(f.read(n))).decode()
+
+    @staticmethod
+    def send(f, text: str) -> None:
+        data = text.encode()
+        n = len(data)
+        size = bytes([n]) if n < 126 else bytes([126]) + n.to_bytes(2, "big") if n < 65536 else bytes([127]) + n.to_bytes(8, "big")
+        f.write(bytes([0x81]) + size + data)
+        f.flush()
+
+    def answer(self, msg: dict) -> list[dict]:
+        method, params, mid = msg.get("method"), msg.get("params") or {}, msg.get("id")
+        events = [{"method": "Target.targetInfoChanged", "params": {}}]       # 답 앞의 사건 — 거두는 손은 버려야 한다
+        if method == "Target.getTargets":
+            infos = [{"targetId": k, "type": "page", "url": u} for k, u in self.tabs.items()]
+            infos.append({"targetId": "sw", "type": "service_worker", "url": "file:///C:/sw.js"})
+            return events + [{"id": mid, "result": {"targetInfos": infos}}]
+        if method == "Target.createTarget":
+            tid = f"t{len(self.tabs) + len(self.closed)}"
+            self.tabs[tid] = params.get("url", "")
+            self.created.append(params.get("url", "") + (" background" if params.get("background") else ""))
+            return events + [{"id": mid, "result": {"targetId": tid}}]
+        if method == "Target.attachToTarget":
+            sid = "s-" + params["targetId"]
+            self.sessions[sid] = self.tabs.get(params["targetId"], "")
+            return [{"id": mid, "result": {"sessionId": sid}}]
+        if method == "Target.closeTarget":
+            self.closed.append(self.tabs.pop(params["targetId"], ""))
+            return [{"id": mid, "result": {"success": True}}]
+        if method == "Runtime.evaluate":
+            url, expr = self.sessions.get(msg.get("sessionId", ""), ""), params.get("expression", "")
+            filed = url.startswith("file:")
+            if "setItem" in expr:
+                rows = json.loads(expr[expr.rindex(")(") + 2:-1]) if filed else []
+                self.store.update({k: v for k, v in rows})
+                value = len(rows)
+            elif "localStorage" in expr:
+                value = json.dumps([[k, v] for k, v in self.store.items()] if filed else [])
+            elif "location.protocol" in expr:
+                value = "file:" if filed else "about:"
+            else:
+                return [{"id": mid, "error": {"code": -32000, "message": "모르는 식"}}]
+            return [{"id": mid, "result": {"result": {"type": "string", "value": value}}}]
+        return [{"id": mid, "error": {"code": -32601, "message": f"모르는 명령 {method}"}}]
+
+    def stop(self) -> None:
+        self.srv.shutdown()
+        self.srv.server_close()
+
+
+def tick(title: str, at: str = "2026-11-17T23:10:00.000Z", folded: str | None = None, done: bool | None = None) -> str:
+    return json.dumps({"title": title, "at": at, **({"folded": folded} if folded else {}), **({"done": done} if done is not None else {})},
+                      ensure_ascii=False)
+
+
+def section_of(md: str, name: str) -> str:
+    """보고 글의 절 `name` 의 몸 — 그 머리 다음 줄부터 다음 머리 앞까지. 절이 없으면 빈 글."""
+    part = md.split(f"## {name}\n", 1)
+    return part[1].split("\n## ", 1)[0] if len(part) == 2 else ""
+
+
+def done_section(md: str) -> str:
+    """보고 글의 「끝났다고 하신 것」 절 몸 — 그 머리 다음 줄부터 다음 머리 앞까지."""
+    part = md.split(f"## {END_SECTIONS[1]}\n", 1)
+    return part[1].split("\n## ", 1)[0] if len(part) == 2 else ""
+
+
+def run_ticks(skill: pathlib.Path, folder: pathlib.Path, port: int) -> tuple[int, str]:
+    env = dict(os.environ, EDGE_DEBUG_PORT=str(port))
+    r = subprocess.run([sys.executable, "-X", "utf8", "-I", str(skill / TICKS_REL), "--dir", str(folder)], capture_output=True,
+                       timeout=TIMEOUT_S, env=env)
+    return r.returncode, (r.stdout + r.stderr).decode("utf-8", errors="replace")
+
+
+U = {c: f"0000000000000000DDDDDDDDDDDD000{c}" for c in "ABCDEF"}     # 가상의 메일 번호(끝 글자도 16진)
+EVIL_TITLE = "증설 보고 자료\n## 가짜 절 [여기](mail:0000000000000000FFFFFFFFFFFFFFFF) {!x}"
+LATEST = f"""# 11/17(화) 아침 보고
+
+## 오늘 정하실 것
+1. **회신** — 오늘 [협력사](mail:{U['E']})
+   - 근거만
+
+## {END_SECTIONS[1]}
+- 지난 일 — 11/16 보고 뒤에 말씀하셨습니다 [인사팀](mail:{U['D']})
+
+## {END_SECTIONS[0]}
+11/17 07:50 — 새 메일 3통
+"""
+EMPTY_LAST = f"# 11/18(수) 아침 보고\n\n## {END_SECTIONS[0]}\n11/18 07:50\n\n## {END_SECTIONS[1]}\n- 없습니다\n"
+NO_SECTION = f"# 11/19(목) 아침 보고\n\n## {END_SECTIONS[0]}\n11/19 07:50\n"
+OLDER = "# 11/16(월) 아침 보고\n\n## 끝났다고 하신 것\n- 없습니다\n"
+
+
+def ticks_fold(skill: pathlib.Path) -> tuple[bool, list[str]]:
+    """창의 표시를 가장 늦은 보고 글의 「끝났다고 하신 것」에 메일 번호째 한 줄씩 한 번만 더한다 — 이미 남긴 표시 · 그 절에 든 번호는 더하지 않고,
+    「없음」 줄은 걷고, 절이 없으면 세우고, 창의 글은 절 머리 · 링크로 서지 못하고, 앞 보고 글과 절 밖은 그대로다. 더한 표시에는 「남겼다」가
+    적히고, 다시 불러도 글이 안 바뀐다. 열린 file: 탭이 없으면 보고 창을 뒤 탭으로 열어 읽고 닫는다. Edge 가 없으면 3 으로 나가고 아무것도 안 고친다."""
+    why: list[str] = []
+    work = pathlib.Path(tempfile.mkdtemp())
+    try:
+        # 하나 — 절이 가운데 있고, 열린 file: 탭이 없다
+        f1 = work / "one"
+        f1.mkdir()
+        (f1 / "brief-2026-11-16-0800.md").write_text(OLDER, encoding="utf-8")
+        latest = f1 / "brief-2026-11-17-0750.md"
+        latest.write_text(LATEST, encoding="utf-8")
+        latest.with_suffix(".html").write_text("<!DOCTYPE html>", encoding="utf-8")
+        (f1 / "brief-notes.md").write_text("이름이 보고 글 꼴이 아닌 사용자 파일\n", encoding="utf-8")
+        store = {DONE_PREFIX + U["A"]: tick(EVIL_TITLE), DONE_PREFIX + U["B"]: tick("이미 남긴 일", folded="2026-11-17T08:00:00+09:00"),
+                 DONE_PREFIX + U["D"]: tick("지난 일"), DONE_PREFIX + U["E"]: tick("회신"), DONE_PREFIX + "XYZ": tick("번호가 아닌 열쇠"),
+                 "other:" + U["F"]: tick("남의 열쇠")}
+        edge_ = FakeEdge(["about:blank"], store)
+        try:
+            code, out = run_ticks(skill, f1, edge_.port)
+            got = latest.read_text(encoding="utf-8")
+            sec = done_section(got)
+            if code != 0:
+                why.append(f"하나: 종료 값 {code} — {out.strip()[-200:]}")
+            want_lines = {U["A"]: "증설 보고 자료", U["E"]: "회신"}
+            for unid, title in want_lines.items():
+                lines = [ln for ln in sec.splitlines() if f"(mail:{unid})" in ln]
+                if len(lines) != 1 or title not in lines[0]:
+                    why.append(f"하나: 「{title}」 표시가 그 절에 메일 번호째 한 줄로 안 섰다 {lines}")
+            if got.count(f"(mail:{U['D']})") != 1 or U["B"] in got or U["F"] in got or "XYZ" in got:
+                why.append(f"하나: 그 절에 든 번호 · 이미 남긴 표시 · 꼴이 아닌 열쇠가 더해졌다:\n{sec}")
+            if any(ln.startswith("#") and "가짜" in ln for ln in got.splitlines()) or "FFFFFFFF" in got:
+                why.append(f"하나: 창의 글이 절 머리나 링크로 섰다:\n{sec}")
+            outside = got.replace(sec, "")
+            if outside != LATEST.replace(done_section(LATEST), ""):
+                why.append("하나: 「끝났다고 하신 것」 절 밖의 글이 바뀌었다")
+            if (f1 / "brief-2026-11-16-0800.md").read_text(encoding="utf-8") != OLDER:
+                why.append("하나: 가장 늦은 보고 글이 아닌 앞 보고 글을 고쳤다")
+            marked = {u for u in "ADE" if json.loads(edge_.store[DONE_PREFIX + U[u]]).get("folded")}
+            if marked != set("ADE") or json.loads(edge_.store[DONE_PREFIX + U["B"]])["folded"] != "2026-11-17T08:00:00+09:00":
+                why.append(f"하나: 「남겼다」가 거둔 표시마다 적히지 않았다(적힌 것 {sorted(marked)})")
+            if edge_.created != [latest.with_suffix(".html").resolve().as_uri() + " background"] or len(edge_.closed) != 1:
+                why.append(f"하나: 열린 file: 탭이 없으면 보고 창을 뒤 탭으로 열고 닫아야 한다 — 연 것 {edge_.created} · 닫은 것 {edge_.closed}")
+            code, out = run_ticks(skill, f1, edge_.port)
+            if code != 0 or latest.read_text(encoding="utf-8") != got:
+                why.append(f"하나: 다시 부르니 보고 글이 바뀌었다(종료 값 {code}) — {out.strip()[-160:]}")
+        finally:
+            edge_.stop()
+
+        # 둘 — 「없음」뿐인 절이 끝에 있고, file: 탭이 열려 있다 · 셋 — 절이 없다
+        for name, md, unid in (("둘", EMPTY_LAST, U["F"]), ("셋", NO_SECTION, U["C"])):
+            f = work / name
+            f.mkdir()
+            brief = f / "brief-2026-11-18-0750.md"
+            brief.write_text(md, encoding="utf-8")
+            edge_ = FakeEdge([brief.with_suffix(".html").resolve().as_uri() + "?" + VIA_EDGE], {DONE_PREFIX + unid: tick("새 일")})
+            try:
+                code, out = run_ticks(skill, f, edge_.port)
+                got = brief.read_text(encoding="utf-8")
+                sec = done_section(got)
+                lines = [ln for ln in sec.splitlines() if ln.strip()]
+                if code != 0 or len(lines) != 1 or f"(mail:{unid})" not in lines[0] or not got.startswith(md.split(f"## {END_SECTIONS[1]}")[0]):
+                    why.append(f"{name}: 절에 「새 일」 한 줄만 서야 한다(「없음」은 걷는다 · 없으면 세운다) — 종료 값 {code}:\n{got}")
+                if edge_.created:
+                    why.append(f"{name}: 열린 file: 탭이 있는데 새 탭을 열었다 {edge_.created}")
+            finally:
+                edge_.stop()
+
+        # 다섯 — 「끝났다고 하신 것」의 D 를 푸셨고(그 절에서 걷혀 「안 끝났다고 하신 것」으로), 앞서 푼 C 를 다시 누르셨다(맞은편으로 돌아온다)
+        f5 = work / "five"
+        f5.mkdir()
+        brief = f5 / "brief-2026-11-18-0750.md"
+        md5 = LATEST + f"\n## {REOPEN}\n- 앞서 푼 일 — 보고 창에서 끝나지 않았다고 표시하셨습니다 [근거 메일](mail:{U['C']})\n"
+        brief.write_text(md5, encoding="utf-8")
+        edge_ = FakeEdge([brief.with_suffix(".html").resolve().as_uri() + "?" + VIA_EDGE],
+                         {DONE_PREFIX + U["D"]: tick("지난 일", done=False), DONE_PREFIX + U["C"]: tick("앞서 푼 일", done=True)})
+        try:
+            code, out = run_ticks(skill, f5, edge_.port)
+            got = brief.read_text(encoding="utf-8")
+            done, back = section_of(got, END_SECTIONS[1]), section_of(got, REOPEN)
+            if code != 0 or U["D"] in done or f"(mail:{U['D']})" not in back or got.count(f"(mail:{U['D']})") != 1:
+                why.append(f"다섯: 푸신 일이 「{END_SECTIONS[1]}」에서 걷혀 「{REOPEN}」에 한 줄로 서야 한다 — 종료 값 {code}:\n{got}")
+            if f"(mail:{U['C']})" not in done or U["C"] in back:
+                why.append(f"다섯: 다시 누르신 일이 「{REOPEN}」에서 걷혀 「{END_SECTIONS[1]}」에 서야 한다:\n{got}")
+            if not all(json.loads(edge_.store[DONE_PREFIX + U[u]]).get("folded") for u in "CD"):
+                why.append("다섯: 거둔 표시마다 「남겼다」가 적히지 않았다")
+            again = got
+            code, out = run_ticks(skill, f5, edge_.port)
+            if code != 0 or brief.read_text(encoding="utf-8") != again:
+                why.append(f"다섯: 다시 부르니 보고 글이 바뀌었다(종료 값 {code})")
+        finally:
+            edge_.stop()
+
+        # 넷 — 로그인 Edge 가 없다
+        with socket.socket() as s0:
+            s0.bind(("127.0.0.1", 0))
+            closed = s0.getsockname()[1]
+        before = latest.read_bytes()
+        code, out = run_ticks(skill, f1, closed)
+        if code != EXIT_NO_EDGE or latest.read_bytes() != before or "다음:" not in out:
+            why.append(f"넷: Edge 가 없으면 {EXIT_NO_EDGE} 로 나가고 보고 글을 안 고치고 다음 걸음을 말해야 한다 — 종료 값 {code} · {out.strip()[-160:]}")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return not why, why
+
+
 # 홀로 선다 — import 말고 코드를 싣는 길과, 메일함에 닿을 수 있는 모듈. 이 손이 짓는 주소는 부르면 메일을 읽음으로 바꾼다
 LOADERS = ("spec_from_file_location", "SourceFileLoader", "runpy", "import_module", "__import__(")
 NETWORK = {"urllib", "http", "socket", "ssl", "ftplib", "smtplib", "asyncio", "subprocess"}
+# 열린 예외 — 로그인 Edge 의 디버깅 포트로 창을 열고(http.client) 표시를 거두는(socket 위의 웹소켓) 길. 대신 잇는 곳은 늘 EDGE_HOST 다
+NETWORK_OPEN = {"http.client", "socket"}
+CONNECTS = {"HTTPConnection", "create_connection"}            # 이 둘로만 잇는다 — 첫 인자(또는 그 짝의 첫 칸)가 EDGE_HOST 여야 한다
+SELF_PATH = "sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))"   # 제 폴더의 곁 손을 싣는 한 꼴
 
 
 def hands(scripts: pathlib.Path) -> list[pathlib.Path]:
@@ -597,11 +923,30 @@ def strangers(scripts: pathlib.Path) -> list[str]:
                 continue
             full = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module]
             out += [f"{f.name}:{node.lineno} import {n}" for n in names if n not in sys.stdlib_module_names and n not in own]
-            # 열린 예외는 http.client 하나 — 로그인 Edge 의 디버깅 포트(127.0.0.1)로 창을 여는 길. 그 밖의 망 모듈은 막는다
             out += [f"{f.name}:{node.lineno} import {n} — 메일함에 닿을 수 있다"
-                    for n, d in zip(names, full) if n in NETWORK and d != "http.client"]
+                    for n, d in zip(names, full) if n in NETWORK and d not in NETWORK_OPEN]
         out += [f"{f.name}: {w}" for w in LOADERS if w in text]
-        out += [f"{f.name}:{i} {line.strip()}" for i, line in enumerate(text.splitlines(), 1) if "sys.path.insert" in line or "sys.path.append" in line]
+        out += [f"{f.name}:{i} {line.strip()}" for i, line in enumerate(text.splitlines(), 1)
+                if ("sys.path.insert" in line or "sys.path.append" in line) and line.strip().split("#")[0].strip() != SELF_PATH]
+        out += [f"{f.name}:{n} {what}" for n, what in stray_connects(ast.parse(text))]
+    return out
+
+
+def stray_connects(tree: ast.AST) -> list[tuple[int, str]]:
+    """EDGE_HOST 가 아닌 곳으로 잇는 자리 — 잇는 부름(`CONNECTS`)의 첫 인자가 EDGE_HOST 이름(또는 그 짝의 첫 칸)이 아니거나, 다른 길로 잇는다."""
+    def host_ok(arg: ast.AST) -> bool:
+        if isinstance(arg, ast.Tuple) and arg.elts:
+            arg = arg.elts[0]
+        return (isinstance(arg, ast.Name) and arg.id == "EDGE_HOST") or (isinstance(arg, ast.Attribute) and arg.attr == "EDGE_HOST")
+    out = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+        if name in CONNECTS and not (node.args and host_ok(node.args[0])):
+            out.append((node.lineno, f"{name}(…) 가 EDGE_HOST 가 아닌 곳으로 잇는다 — 메일함에 닿을 수 있다"))
+        elif name in {"connect", "connect_ex", "HTTPSConnection", "urlopen"}:
+            out.append((node.lineno, f"{name}(…) — 디버깅 포트로 잇는 길(CONNECTS)이 아니다"))
     return out
 
 
@@ -624,8 +969,12 @@ JUDGES = [
      text_kept),
     ("끝의 두 절 — 「이 보고가 본 데」 · 「끝났다고 하신 것」을 갖춘 글은 경고 없이 서고, 빠진 글은 창과 글이 남되 빠진 절마다 경고와 다음 걸음을 받는다",
      ends_named),
-    ("창은 로그인 Edge 로 — 디버깅 포트(127.0.0.1)에 새 탭을 PUT 하고, 포트가 닫혔거나 오류면 기본 브라우저로, --no-open 이면 아무것도 안 띄운다",
-     opens_in_login_edge),
+    ("창은 로그인 Edge 로 — 디버깅 포트(127.0.0.1)에 새 탭을 꼬리(?via=edge)와 함께 PUT 하고, 포트가 닫혔거나 오류면 꼬리 없이 기본 브라우저로, "
+     "--no-open 이면 아무것도 안 띄운다", opens_in_login_edge),
+    ("끝났음 상자 — 메일 번호가 든 줄마다 그 줄의 첫 메일 번호로 숨은 상자 하나, 「끝났다고 하신 것」은 눌린 것이 바탕, 메일이 없는 줄 · "
+     "「이 보고가 본 데」에는 없다", boxes_keyed),
+    ("표시를 거둔다 — 가장 늦은 보고 글의 「끝났다고 하신 것」에 메일 번호째 한 번만 · 「없음」은 걷고 · 절은 세우고 · 창의 글은 글자로만 · "
+     "「남겼다」를 적고 · Edge 가 없으면 안 고친다", ticks_fold),
 ]
 
 
@@ -636,7 +985,7 @@ def mutant(rel: pathlib.Path, old: str, new: str) -> pathlib.Path | None:
     tmp = pathlib.Path(tempfile.mkdtemp()) / "daily-brief"
     for part in ("scripts", "assets"):
         shutil.copytree(SKILL / part, tmp / part, ignore=shutil.ignore_patterns("__pycache__", "check_*.py"))
-    shutil.copy2(SKILL / "SKILL.md", tmp / "SKILL.md")
+    shutil.copy2(SKILL / FORM_DOC, tmp / FORM_DOC)
     target = tmp / rel
     text = target.read_text(encoding="utf-8")
     if old not in text:
@@ -664,6 +1013,33 @@ TEETH = [
      '<title>$page_title</title>\n<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600" rel="stylesheet">\n', no_outside),
     ("CSP 를 뺀 틀에서는 「바깥을 안 부른다」가 빨갛다", TEMPLATE_REL,
      '<meta http-equiv="Content-Security-Policy"', '<meta name="x-no-csp"', no_outside),
+    ("스크립트를 해시 말고 unsafe-inline 으로도 여는 틀에서는 「바깥을 안 부른다」가 빨갛다(메일 글의 스크립트가 돈다)", TEMPLATE_REL,
+     "script-src $script_hash;", "script-src $script_hash 'unsafe-inline';", no_outside),
+    ("실은 글과 다른 글에서 해시를 내는 손에서는 「바깥을 안 부른다」가 빨갛다(창의 스크립트가 막혀 상자가 안 선다)", SCRIPT_REL,
+     'hashlib.sha256(code.encode("utf-8"))', 'hashlib.sha256((code + " ").encode("utf-8"))', no_outside),
+    ("로그인 Edge 로 연 창에 꼬리를 안 다는 손에서는 「창은 로그인 Edge 로」가 빨갛다", SCRIPT_REL,
+     '"/json/new?" + uri + "?" + VIA_EDGE)', '"/json/new?" + uri)', opens_in_login_edge),
+    ("줄의 마지막 메일 번호를 열쇠로 삼는 손에서는 「끝났음 상자」가 빨갛다(엉뚱한 일이 닫힌다)", SCRIPT_REL,
+     "(first_unid(s) for s in [it.text, *it.subs])", "(first_unid(s) for s in [*reversed(it.subs), it.text])", boxes_keyed),
+    ("끝의 절에도 상자를 다는 손에서는 「끝났음 상자」가 빨갛다", SCRIPT_REL,
+     "tick=section_tick(sec.title))", "tick=TICK_TODO)", boxes_keyed),
+    ("처음부터 상자를 보이는 손에서는 「끝났음 상자」가 빨갛다", SCRIPT_REL,
+     "<label class=\"tick\" hidden>", "<label class=\"tick\">", boxes_keyed),
+    ("그 절에 든 번호를 또 더하는 손에서는 「표시를 거둔다」가 빨갛다", TICKS_REL,
+     "            elif unid in have:\n", "            elif False:\n", ticks_fold),
+    ("푼 표시도 끝났다고 읽는 손에서는 「표시를 거둔다」가 빨갛다(끝나지 않았다고 하신 일이 닫힌 채 남는다)", TICKS_REL,
+     '            if value.get("done") is False:\n', "            if False:\n", ticks_fold),
+    ("「남겼다」를 안 적는 손에서는 「표시를 거둔다」가 빨갛다", TICKS_REL,
+     "            page.write(marks)\n", "            pass\n", ticks_fold),
+    ("창의 글을 거르지 않는 손에서는 「표시를 거둔다」가 빨갛다(일 이름이 절 머리 · 링크로 선다)", TICKS_REL,
+     '    words = " ".join(str(value.get("title") or "").split())\n    words = re.sub(',
+     '    words = str(value.get("title") or "")\n    words = (lambda *a: a[2])(', ticks_fold),
+    ("「없음」 줄을 남기는 손에서는 「표시를 거둔다」가 빨갛다", TICKS_REL,
+     "not (lines and W.NONE_LINE.match(r.strip()))", "True", ticks_fold),
+    ("file: 탭이 아닌 탭에서 읽는 손에서는 「표시를 거둔다」가 빨갛다(다른 저장소라 표시가 안 보인다)", TICKS_REL,
+     'if t.get("type") == "page" and str(t.get("url", "")).startswith("file:")]', 'if t.get("type") == "page"]', ticks_fold),
+    ("Edge 에 못 닿아도 거뒀다고 하는 손에서는 「표시를 거둔다」가 빨갛다", TICKS_REL,
+     "        return EXIT_NO_EDGE\n    page = None\n", "        return EXIT_OK\n    page = None\n", ticks_fold),
     ("보고 글을 안 남기는 손에서는 「보고 글이 창 곁에 남는다」가 빨갛다", SCRIPT_REL,
      '        kept.write_text(text.replace("\\r\\n", "\\n")', '        kept.with_suffix(".txt").write_text(text.replace("\\r\\n", "\\n")', text_kept),
     ("줄끝을 맞추지 않는 손에서는 「보고 글이 창 곁에 남는다」가 빨갛다(CRLF 로 온 글이 CRLF 로 남는다)", SCRIPT_REL,
@@ -682,10 +1058,11 @@ TEETH = [
 def check_teeth() -> None:
     body = mutant(SCRIPT_REL, "import sys\n", "import sys\nfrom secretary import judge\n")
     net = mutant(SCRIPT_REL, "import sys\n", "import sys\nimport urllib.request\n")
-    report("물림 — 몸통을 싣거나 망에 닿는 모듈을 더한 사본에서는 「홀로 선다 · 메일함에 안 닿는다」가 빨갛다",
-           body is not None and net is not None and bool(strangers(body / "scripts")) and bool(strangers(net / "scripts")),
-           ["물림 표본을 못 심었다 — window.py 의 import 줄이 바뀌었으면 이 물림을 다시 짓는다"])
-    for tmp in (body, net):
+    away = mutant(TICKS_REL, "socket.create_connection((W.EDGE_HOST, port)", "socket.create_connection((info.get(\"host\", W.EDGE_HOST), port)")
+    report("물림 — 몸통을 싣거나 망에 닿는 모듈을 더하거나 디버깅 포트 밖으로 잇는 사본에서는 「홀로 선다 · 메일함에 안 닿는다」가 빨갛다",
+           None not in (body, net, away) and all(strangers(m / "scripts") for m in (body, net, away)),
+           ["물림 표본을 못 심었다 — window.py 의 import 줄이나 ticks.py 의 잇는 줄이 바뀌었으면 이 물림을 다시 짓는다"])
+    for tmp in (body, net, away):
         if tmp is not None:
             shutil.rmtree(tmp.parent, ignore_errors=True)
     for name, rel, old, new, judge in TEETH:
@@ -712,8 +1089,9 @@ def main() -> int:
             raise
         except Exception:   # noqa: BLE001 — 판정 하나가 넘어져도 나머지를 잰다
             report(f"판정이 넘어지지 않고 끝난다 ({check.__name__})", False, traceback.format_exc().splitlines()[-8:])
-    edge("창이 고른 디자인 그대로 보이나 · 링크를 눌러 회사 웹메일에서 그 메일이 한 번에 열리나는 여기서 못 잰다(머리말)")
-    print("\n잰 것 — 홀로 선다 · 절 수 · 생김새 · 메일 링크 · 글자 · 메일함 주소 · 바깥 · 보고 글 · 끝의 두 절 · 로그인 Edge"
+    edge("창이 고른 디자인 그대로 보이나 · 실제 Edge 에서 창의 스크립트가 돌고 표시가 남나 · 링크를 눌러 회사 웹메일에서 그 메일이 한 번에 열리나는 "
+         "여기서 못 잰다(머리말)")
+    print("\n잰 것 — 홀로 선다 · 절 수 · 생김새 · 메일 링크 · 글자 · 메일함 주소 · 바깥 · 보고 글 · 끝의 두 절 · 로그인 Edge · 끝났음 상자 · 표시를 거둔다"
           + (f" · 물림 {1 + len(TEETH)}" if WITH_TEETH else " (물림은 --teeth)") + (f" — 어긋남 {len(FAILS)}건" if FAILS else ""))
     # 건수는 손으로 적지 않는다 — 이번 판에서 실제로 선 판정을 센다
     print(f"통과 {len(PASSES)}/{len(PASSES) + len(FAILS)}")

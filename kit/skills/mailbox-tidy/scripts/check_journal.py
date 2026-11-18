@@ -283,6 +283,86 @@ def holds_only_as_shown(scripts: pathlib.Path) -> tuple[bool, list[str]]:
     return not why, why
 
 
+def lists_shown(scripts: pathlib.Path) -> tuple[bool, list[str]]:
+    """적어 둔 안 — shown 이 show 가 조각마다 보인 메일 줄을 조각 차례로 그대로 다시 내고, 안이 없으면 1 로 멈춘다."""
+    why: list[str] = []
+    with Home() as home:
+        code, out = run(scripts, "journal.py", ["shown"], home)
+        if code != 1:
+            why.append(f"안이 없는데 종료 값 {code} — {out[-200:]}")
+        run(scripts, "journal.py", ["show", "move", "--piece", "1", "--to", TARGET, U_INBOX, U_TOP, U_CHILD], home, PREVIEW_MOVE)
+        run(scripts, "journal.py", ["show", "move", "--piece", "2", "--to", KEEP, U_READ, U_COMMA], home, PREVIEW_TRASH)
+        code, out = run(scripts, "journal.py", ["shown"], home)
+        lines = out.splitlines()
+        one = [x for x in PREVIEW_MOVE.splitlines() if x.startswith("  ")]
+        two = [x for x in PREVIEW_TRASH.splitlines() if x.startswith("  ")]
+        heads = [i for i, x in enumerate(lines) if x.startswith("[조각 ")]
+        at = {x: i for i, x in enumerate(lines)}
+        in_order = (len(heads) == 2 and all(x in at for x in one + two)
+                    and all(heads[0] < at[x] < heads[1] for x in one) and all(at[x] > heads[1] for x in two))
+        if code != 0 or not in_order or (home / HELD_FILE).exists():
+            why.append(f"두 조각의 메일 줄을 조각 차례로 다 안 냈거나 바꿈을 잡았다: 종료 값 {code} — {out[-400:]}")
+        # 다음 차례(3)가 아닌 번호 — 다른 안의 옛 조각 번호를 그대로 준 꼴. 지금 안에 섞이지 않고 1 로 멈춘다
+        code, out = run(scripts, "journal.py", ["show", "trash", "--piece", "2", U_READ, U_COMMA], home, PREVIEW_TRASH)
+        _, after = run(scripts, "journal.py", ["shown"], home)
+        if code != 1 or after.splitlines() != lines:
+            why.append(f"지금 안의 다음 차례가 아닌 조각 번호를 받아 안을 바꿨다: 종료 값 {code} — {out[-300:]}")
+    with Home() as home:
+        code, out = run(scripts, "journal.py", ["show", "trash", "--piece", "2", U_READ, U_COMMA], home, PREVIEW_TRASH)
+        _, after = run(scripts, "journal.py", ["shown"], home)
+        if code != 1 or "[조각 " in after:
+            why.append(f"안이 없는데 1 이 아닌 조각 번호로 안을 열었다: 종료 값 {code} — {out[-300:]}")
+    return not why, why
+
+
+# 안 바꾼 조각 — 무리 이름 · 까닭 한 줄(show --why)과 조각 밖에서 한 통만 「보관」으로 옮긴 실행
+WHY = "행사 안내 · 지난 것"
+APPLY_ONE = f"옮겼다: 1통 → {KEEP} (다시 봐서 다 들었다) · 열쇠 0123456789ab\n"
+PLANS_FILE = "mailbox-tidy-plans.jsonl"
+
+
+def keeps_unexecuted(scripts: pathlib.Path) -> tuple[bool, list[str]]:
+    """안 바꾼 조각 — 다음 안의 1번 조각이 덮어도 plans 가 그 조각의 메일 번호를 보인 차례로 낸다. 보인 뒤 「됐다」로 맺은 기록이 바꾼 조각 ·
+    메일은 빼고(조각 밖에서 따로 잡은 바꿈도), 보이기 전의 기록은 안 센다. 안들의 파일에는 메일의 제목 · 보낸 분이 없다."""
+    why: list[str] = []
+    with Home() as home:
+        run(scripts, "journal.py", ["hold", "trash", U_READ, U_COMMA], home, PREVIEW_TRASH)
+        run(scripts, "journal.py", ["done"], home, APPLY_TRASH)                # 기록 1 — 안을 보이기 전(그 뒤 웹메일에서 되살렸다)
+        run(scripts, "journal.py", ["show", "move", "--piece", "1", "--to", TARGET, U_INBOX, U_TOP, U_CHILD], home, PREVIEW_MOVE)
+        run(scripts, "journal.py", ["show", "move", "--piece", "2", "--why", WHY, "--to", KEEP, U_READ, U_COMMA], home, PREVIEW_TRASH)
+        run(scripts, "journal.py", ["hold", "move", "--to", TARGET, "--shown", "1", U_INBOX, U_TOP, U_CHILD], home, PREVIEW_MOVE)
+        run(scripts, "journal.py", ["done"], home, APPLY_MOVE)                 # 기록 2 — 조각 1 을 바꿨다
+        run(scripts, "journal.py", ["hold", "move", "--to", KEEP, U_COMMA], home, PREVIEW_ONE)
+        run(scripts, "journal.py", ["done"], home, APPLY_ONE)                  # 기록 3 — 조각 2 의 한 통을 조각 밖에서 바꿨다
+        run(scripts, "journal.py", ["show", "folder-create", "--piece", "1"], home, PREVIEW_FOLDER)   # 새 안이 앞 안을 덮는다
+        code, out = run(scripts, "journal.py", ["plans"], home)
+        kept = (home / PLANS_FILE).read_text(encoding="utf-8") if (home / PLANS_FILE).exists() else ""
+        held = (home / HELD_FILE).exists()
+    blocks: dict[str, list[str]] = {}
+    head = ""
+    for line in out.splitlines():
+        if line.startswith("[안 "):
+            head = line.split("]", 1)[0] + "]"
+        if head:
+            blocks.setdefault(head, []).append(line)
+    one, two = blocks.get("[안 1]", []), blocks.get("[안 2]", [])
+    piece = [x for x in one if U_READ in x]
+    if code != 0 or held:
+        why.append(f"종료 값 {code} · 바꿈을 잡았나 {held} — {out[-300:]}")
+    if len(piece) != 1 or WHY not in piece[0] or U_COMMA in piece[0]:
+        why.append(f"덮인 안의 안 바꾼 조각이 남은 메일 번호(보이기 전 기록은 안 센다) · 까닭으로 서지 않았다 — {out[-500:]}")
+    if not any("기록 3" in x and "1통" in x for x in one):
+        why.append(f"조각 밖에서 바꾼 한 통을 뺀 기록을 대지 않았다 — {out[-500:]}")
+    if any(u in out for u in (U_INBOX, U_TOP, U_CHILD)):
+        why.append(f"바꾼 조각 1 의 메일 번호가 아직 서 있다 — {out[-500:]}")
+    if not any("폴더 만들기" in x and TARGET in x for x in two):
+        why.append(f"지금 안(안 2)의 조각이 안 섰다 — {out[-500:]}")
+    leaked = [s for s in (*MOVE_SUBJECTS, MOVE_SENDER_ADDR, "gr.yoon@gaon.example", "이미 읽은 메일", "사내 행사 일정") if s in kept]
+    if not kept or leaked:
+        why.append(f"안들의 파일이 없거나 메일 글이 들었다: {leaked} — {kept[:300]}")
+    return not why, why
+
+
 def echoes_preview(scripts: pathlib.Path) -> tuple[bool, list[str]]:
     """hold 는 받은 미리 보기를 그대로 다시 낸다 — 미리 보기는 파이프로 기록에 흘러가 사람에게 보일 글이 이것뿐이다."""
     with Home() as home:
@@ -357,6 +437,11 @@ def check_journal() -> None:
     report("기록 — 바꾼 메일 보기는 원래 자리 → 간 자리마다 메일 번호를 묶고 뒤에 다시 바꾼 기록을 댄다", *shows_changed_mails(SCRIPTS))
     report("기록 — 보여 드린 안은 조각의 메일 줄을 다 보이고, 실행 직전 미리 보기가 그 조각과 같을 때만 잡고 다르면 다른 점을 대며 멈춘다",
            *holds_only_as_shown(SCRIPTS))
+    report("기록 — 적어 둔 안은 show 가 조각마다 보인 메일 줄을 조각 차례로 그대로 다시 내고(안을 지은 쪽과 보이는 쪽이 달라도 같은 줄), "
+           "다음 차례가 아닌 조각 번호는 안에 안 섞는다",
+           *lists_shown(SCRIPTS))
+    report("기록 — 안 바꾼 조각은 다음 안에 덮여도 plans 가 메일 번호째 내고, 보인 뒤 바꾼 조각 · 메일은 빼며, 안들의 파일에 메일 글이 없다",
+           *keeps_unexecuted(SCRIPTS))
 
 
 # ── 홀로 선다 — 스킬의 스크립트는 표준 라이브러리와 제 폴더의 것만 싣는다 ─────────────────────
@@ -455,6 +540,18 @@ TEETH = [
      "        moved = [u for u in now if u in was and now[u] != was[u]]\n", "        moved = []\n", holds_only_as_shown),
     ("조각의 메일 줄을 안 보이는 show 에서는 「보여 드린 안」 판정이 빨갛다", "journal.py",
      "*body, SHOWN.format(", "SHOWN.format(", holds_only_as_shown),
+    ("조각의 메일 줄을 안 다시 내는 shown 에서는 「적어 둔 안」 판정이 빨갛다", "journal.py",
+     "        for line in body if isinstance(body, list) and body else [SHOWN_NO_BODY]:\n",
+     "        for line in [SHOWN_NO_BODY]:\n", lists_shown),
+    ("조각 번호의 차례를 안 보는 show 에서는 「적어 둔 안」 판정이 빨갛다", "journal.py",
+     "        if args.piece != FIRST_PIECE and args.piece != nxt:\n", "        if False:\n", lists_shown),
+    ("조각을 안들에 안 남기는 show 에서는 「안 바꾼 조각」 판정이 빨갛다", "journal.py",
+     "    _append_line(folder / PLANS_FILE, row)\n", "    pass\n", keeps_unexecuted),
+    ("그 뒤 바꾼 기록을 안 빼는 plans 에서는 「안 바꾼 조각」 판정이 빨갛다", "journal.py",
+     '    later = [r for r in rows if r["id"] >= int(row.get("log_from") or 0) and r.get("outcome") == DONE]\n',
+     "    later = []\n", keeps_unexecuted),
+    ("보이기 전의 기록도 세는 plans 에서는 「안 바꾼 조각」 판정이 빨갛다", "journal.py",
+     'r["id"] >= int(row.get("log_from") or 0) and ', "", keeps_unexecuted),
 ]
 
 
@@ -477,7 +574,7 @@ def main() -> int:
     edge("회사 메일 스킬의 꼴이 바뀌었나 · 대화가 미리 보기 · 실행을 기록에 흘려 보내나는 여기서 못 잰다(머리말)")
     print("\n잰 것 — 홀로 선다 · 기록의 자리 · 되돌리는 차례 · 기록에 메일 글 없음 · 꼴이 다르면 멈춤 · 안 바뀐 실행 · "
           "휴지통 되돌리기 · 규칙 열쇠 · 되돌린 기록 · 경고 줄 · 미리 보기를 다시 냄 · 잡아 둔 채 · 놓기 · 다른 실행 · 바꾼 메일 보기 · "
-          "보여 드린 안" + (f" · 물림 {2 + len(TEETH)}" if WITH_TEETH else " (물림은 --teeth)") + (f" — 어긋남 {len(FAILS)}건" if FAILS else ""))
+          "보여 드린 안 · 적어 둔 안 · 안 바꾼 조각" +(f" · 물림 {2 + len(TEETH)}" if WITH_TEETH else " (물림은 --teeth)") + (f" — 어긋남 {len(FAILS)}건" if FAILS else ""))
     # 건수는 손으로 적지 않는다 — 이번 판에서 실제로 선 판정을 센다
     print(f"통과 {len(PASSES)}/{len(PASSES) + len(FAILS)}")
     return EXIT_MISMATCH if FAILS else EXIT_OK

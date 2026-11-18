@@ -51,6 +51,7 @@ const CANDIDATES = [                  // Edge 가 깔리는 자리 — 시스템
   [process.env.LOCALAPPDATA, 'Microsoft', 'Edge', 'Application', 'msedge.exe'],
 ];
 const HAND = path.join(__dirname, 'edge_session.js');
+const BLANK = 'about:blank';          // 로그인 탭이 붙기 전에 서는 자리 — 로그인 주소는 붙은 뒤에 연다(blankTab)
 
 // 포트 · 로그인 화면 호스트 · 로그인 시한 · 로그인 화면과 받을 창의 가림 · 받는 손의 종료 값(RECEIVED)은 받는 손이 든다 — 두 손이
 // 같은 자로 가린다
@@ -143,27 +144,29 @@ async function attachPage(wsUrl) {
   return { call, on: h => handlers.push(h), close: () => { try { ws.close(); } catch {} } };
 }
 
-// 로그인 탭을 고른다 — 띄운 창은 그 프로필이 지난번에 연 탭도 함께 열 수 있다. 로그인 주소 · 로그인 화면 · 로그인 화면 호스트의 다른 화면(넘김 도중)
-// 차례로 찾는다 — 넘김 도중의 탭을 놓치면 뒤이어 뜨는 「EP 접속 정보」 창을 받을 손이 없다. 셋 다 아니면 이미 넘어갔다
-async function loginTab(port, start) {
-  const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(r => r.json()).catch(() => []);
-  const pages = targets.filter(t => t.type === 'page' && t.webSocketDebuggerUrl);
-  const onLoginHost = url => { try { return cfg.loginHosts.includes(new URL(url).hostname.toLowerCase()); } catch { return false; } };
-  return pages.find(t => t.url === start) || pages.find(t => onLoginScreen(t.url, cfg)) || pages.find(t => onLoginHost(t.url)) || null;
+// 빈 로그인 탭 — 로그인 주소는 붙은 뒤에 연다. 데스크톱 SSO 는 통합 인증이 입력 없이 넘어 「EP 접속 정보」 창을 화면이 서자마자 띄우고,
+// 붙기 전에 떠 있던 창은 붙은 뒤의 Page.enable 이 다시 알리지 않아 받을 손이 없다. 띄운 창은 시작 주소의 빈 탭을, 떠 있던 Edge 는 새 빈
+// 탭을 쓴다(앞쪽 탭 — 사람이 볼 자리다)
+async function blankTab(port, launched) {
+  if (launched) {
+    const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then(r => r.json()).catch(() => []);
+    const blank = targets.find(t => t.type === 'page' && t.webSocketDebuggerUrl && t.url === BLANK);
+    if (blank) return blank;
+  }
+  return fetch(`http://127.0.0.1:${port}/json/new?${BLANK}`, { method: 'PUT' }).then(r => r.json()).catch(() => null);
 }
 
-// 포트가 열린 Edge 에 로그인 탭을 하나 연다(앞쪽 탭 — 사람이 볼 자리다)
-async function openTab(port, start) {
-  return fetch(`http://127.0.0.1:${port}/json/new?${start}`, { method: 'PUT' }).then(r => r.json()).catch(() => null);
-}
-
-// 로그인 탭을 지켜본다 — 로그인 화면의 EP 접속 정보 창만 「확인」으로 받고, 통합 인증이 안 서면 평소 EP 로그인 화면으로 넘기고,
-// 탭이 로그인 화면을 벗어나거나 시한이 지나면 떨어진다. 내는 것: 넘어갔나
-async function watchLogin(tab, deadline, fallback) {
+// 로그인 탭을 지켜본다 — 빈 탭에 붙어 창 알림을 켠 뒤 로그인 주소로 넘기고, 로그인 화면의 EP 접속 정보 창만 「확인」으로 받고,
+// 통합 인증이 안 서면 평소 EP 로그인 화면으로 넘기고, 탭이 로그인 화면을 벗어나거나 시한이 지나면 떨어진다. 내는 것: 넘어갔나
+async function watchLogin(port, tab, start, deadline, fallback) {
   const page = await attachPage(tab.webSocketDebuggerUrl);
-  if (!page) { say('로그인 탭에 못 붙었다 — 받기만 되풀이한다'); return false; }
+  if (!page) {
+    say('로그인 탭에 못 붙었다 — 주소만 열고 받기를 되풀이한다. 「EP 접속 정보」 창이 뜨면 사람이 「확인」을 누른다');
+    await fetch(`http://127.0.0.1:${port}/json/new?${start}`, { method: 'PUT' }).catch(() => null);
+    return false;
+  }
   try {
-    let url = tab.url;
+    let url = start;
     let accepted = 0;
     page.on(m => {
       if (m.method === 'Page.frameNavigated' && !m.params.frame.parentId) url = m.params.frame.url;
@@ -172,7 +175,8 @@ async function watchLogin(tab, deadline, fallback) {
         page.call('Page.handleJavaScriptDialog', { accept: true });
       }
     });
-    await page.call('Page.enable');                  // 붙기 전에 이미 떠 있던 창도 이것이 다시 알린다
+    await page.call('Page.enable');
+    await page.call('Page.navigate', { url: start });
     let typingSince = 0;
     let fellBack = !fallback;
     while (Date.now() < deadline) {
@@ -202,14 +206,14 @@ async function watchLogin(tab, deadline, fallback) {
 
 // ── 띄우기 ───────────────────────────────────────────────────────────────
 
-// 그 프로필의 Edge 창 하나를 포트와 로그인 탭으로 띄운다. 내는 것: 열린 포트 · 못 열었으면 Exit
-async function launch(exe, start, profile) {
+// 그 프로필의 Edge 창 하나를 포트와 빈 탭으로 띄운다(로그인 주소는 붙은 뒤에 연다 — blankTab). 내는 것: 열린 포트 · 못 열었으면 Exit
+async function launch(exe, profile) {
   const dir = path.resolve(profile);
   const args = [`--remote-debugging-port=${cfg.port}`, '--remote-debugging-address=127.0.0.1', `--user-data-dir=${dir}`,
-    '--no-first-run', '--no-default-browser-check', start];
+    '--no-first-run', '--no-default-browser-check', BLANK];
   const child = spawn(exe, args, { detached: true, stdio: 'ignore', windowsHide: false });
   child.unref();
-  say(`Edge 창을 띄웠다 — pid ${child.pid} · 프로필 ${dir} · ${start}`);
+  say(`Edge 창을 띄웠다 — pid ${child.pid} · 프로필 ${dir}`);
   const deadline = Date.now() + PORT_MS;
   while (Date.now() < deadline) {
     await sleep(POLL_MS);
@@ -250,17 +254,18 @@ async function main(argv) {
     port = await openPort();
     if (!port) throw new Exit(1, '받는 손은 붙었다는데 포트를 연 Edge 를 못 찾았다');
     say(`Edge(127.0.0.1:${port})에 로그인이 안 됐다 — 로그인 탭을 연다`);
-    tab = await openTab(port, start);
+    tab = await blankTab(port, false);
   } else {
     // 붙을 Edge 가 없다 — ep-login 프로필의 창 하나를 띄운다. 사람의 평소 Edge 는 떠 있어도 안 건드린다
     const exe = findEdge();
     if (!exe) throw new Exit(1, 'Edge 를 못 찾았다');
-    port = await launch(exe, start, opts.profile);
-    tab = await loginTab(port, start);
+    port = await launch(exe, opts.profile);
+    tab = await blankTab(port, true);
   }
 
   say(vdi ? '그 창에서 사람이 평소 아이디로 로그인한다 — 이쪽은 로그인이 끝나기를 기다린다' : '로그인 탭을 지켜본다 — 통합 인증이면 입력 없이 넘는다');
-  if (tab) await watchLogin(tab, deadline, fallback);
+  if (tab) await watchLogin(port, tab, start, deadline, fallback);
+  else say('로그인 탭을 못 열었다 — 받기만 되풀이한다');
   got = await receiveUntil(opts.pass, deadline);
   if (got.code === RECEIVED.NOT_LOGGED_IN) {
     throw new Exit(4, `로그인 시한(${Math.round(cfg.loginMs / 1000)}초) 안에 세션이 안 섰다${got.said ? ` — ${got.said}` : ''}. ` +

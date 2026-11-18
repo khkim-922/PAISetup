@@ -55,6 +55,11 @@
   통합 인증의 넘김보다 넉넉한가
 - 포트가 열렸는데 로그인이 끊긴 Edge 에 `/json/new`(PUT)로 로그인 탭을 여는 것이 데스크톱 131 · VDI 107 에서 서나
 - 끊긴 세션에 Domino 의 세션 확인 주소(`checksessionstatus`)가 무엇을 답하나 — 산 답 `{"status":"login"}` 만 쟀다
+- 실물 「EP 접속 정보」 창(데스크톱 · Edge 131)은 `confirm` 이고 글에 「다른 PC에서 EP 접속 정보」가 들며(띄어쓰기는 보통 공백),
+  로그인 화면(`swpsso.posco.net/idms/U61/jsp/login/VDI_loginProc.jsp`) 안의 틀 `swpsso.posco.net/idms/U61/jsp/manysession.jsp` 에서
+  통합 인증이 넘자마자 뜬다 — 뜬 주소가 로그인 경로 밖이라 받을 창은 로그인 화면 호스트로 가린다. 입구가 붙기 전에 뜬 창은 붙은 뒤의
+  `Page.enable` 이 다시 알리지 않는다(쟀다). 빈 탭에 먼저 붙고 호스트로 가리는 입구가 그 창을 받나는 입구 한 판(`login.sh` 를 다른
+  자리에서 로그인해 둔 채)의 경과 줄 「「EP 접속 정보」 창을 「확인」으로 받았다」로 잰다. VDI 에서 그 창이 뜨는 주소는 안 쟀다
 - 메일 서버(`DOMINO_URL` 의 기본)가 사람마다 같은가
 
 ## 빌린 것

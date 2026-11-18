@@ -475,6 +475,8 @@ def brief_wanted(args) -> tuple[str | None, pathlib.Path | None, str]:
     at = B.clock(args.brief_at)
     if at is None:
         return None, None, f"보고 시각 {args.brief_at!r} 이 「HH:MM」 꼴이 아니다"
+    if B.too_late(at):
+        return None, None, B.too_late(at)
     claude = B.find_claude(args.claude)
     if claude is None:
         return None, None, NO_CLAUDE.format(where=f"({args.claude})" if args.claude else "(PATH)")
@@ -484,7 +486,7 @@ def brief_wanted(args) -> tuple[str | None, pathlib.Path | None, str]:
 def show_brief_plan(at: str, claude: pathlib.Path, hand: pathlib.Path | None) -> None:
     """걸면 띄울 것 — 명령 · 열린 명령 · 막은 명령(`--dry-run`)."""
     cmd, settings, _ = B.plan({"at": at, "claude": str(claude)}, hand, st.scan_dir())
-    print(f"[아침 보고 — 날마다 {at}(서울) 뒤 첫 판에 사내 세션이 있으면 띄운다: {_show(cmd)} < {st.scan_dir() / C.BRIEF_PROMPT_FILE}]")
+    print(f"[아침 보고 — {B.window_words(at)} 띄운다(로그인은 안 한다): {_show(cmd)} < {st.scan_dir() / C.BRIEF_PROMPT_FILE}]")
     print("  열린 명령: " + " | ".join(settings["permissions"]["allow"]))
     print("  막은 명령: " + " | ".join(settings["permissions"]["deny"]))
 
@@ -531,7 +533,7 @@ def cmd_register(args) -> int:
     print(f"[예약 — {T.TASK_NAME} 을 걸었다: {args.every}분마다 · 메일함 전체는 {args.full_every}분마다 · 앞 판이 돌면 그 주기는 건너뛴다]")
     if brief_at:
         B.save(st.scan_dir(make=True), brief_at, claude)
-        print(f"[아침 보고 — 날마다 {brief_at}(서울) 뒤 첫 판에 사내 세션이 있으면 일일 보고를 띄운다 · claude {claude}]")
+        print(f"[아침 보고 — {B.window_words(brief_at)} 일일 보고를 띄운다 · claude {claude}]")
     elif args.brief_off and B.clear(st.scan_dir()):
         print("[아침 보고 — 내렸다]")
     return EXIT_OK
@@ -557,7 +559,7 @@ def cmd_brief(args) -> int:
         show_brief_plan(brief_at, claude, hand)
         return EXIT_OK
     B.save(st.scan_dir(make=True), brief_at, claude)
-    print(f"[아침 보고 — 날마다 {brief_at}(서울) 뒤 첫 판에 사내 세션이 있으면 일일 보고를 띄운다 · claude {claude}. "
+    print(f"[아침 보고 — {B.window_words(brief_at)} 일일 보고를 띄운다 · claude {claude}. "
           "스캔이 작업 스케줄러에 걸려 있어야 돈다(status 가 보인다)]")
     return EXIT_OK
 
@@ -620,13 +622,14 @@ def parser() -> argparse.ArgumentParser:
     how.add_argument("--validate", action="store_true", help="작업 스케줄러가 정의를 받나만 묻는다(등록 안 함)")
     wake = g.add_mutually_exclusive_group()
     wake.add_argument("--brief-at", nargs="?", const=C.BRIEF_AT_DEFAULT, metavar="HH:MM",
-                      help=f"아침 보고도 건다 — 날마다 그 시각(서울 · 기본 {C.BRIEF_AT_DEFAULT}) 뒤 첫 판에 사내 세션이 있으면 일일 보고를 띄운다")
+                      help=f"아침 보고도 건다 — 날마다 그 시각(서울 · 기본 {C.BRIEF_AT_DEFAULT})부터 마감({C.BRIEF_UNTIL})까지 사내 세션이 서는 "
+                           "첫 판에 일일 보고를 띄운다")
     wake.add_argument("--brief-off", action="store_true", help="아침 보고를 내린다")
     g.add_argument("--claude", help="띄울 claude 의 자리 — 없으면 PATH 에서 찾는다")
     b = sub.add_parser("brief", help="아침 보고만 걸고 · 바꾸고 · 내린다(작업 스케줄러는 안 건드린다)")
     which = b.add_mutually_exclusive_group(required=True)
     which.add_argument("--at", dest="brief_at", nargs="?", const=C.BRIEF_AT_DEFAULT, metavar="HH:MM",
-                       help=f"그 시각(서울 · 기본 {C.BRIEF_AT_DEFAULT}) 뒤 첫 판에 띄운다")
+                       help=f"그 시각(서울 · 기본 {C.BRIEF_AT_DEFAULT})부터 마감({C.BRIEF_UNTIL})까지 사내 세션이 서는 첫 판에 띄운다")
     which.add_argument("--off", action="store_true", help="내린다")
     b.add_argument("--claude", help="띄울 claude 의 자리 — 없으면 PATH 에서 찾는다")
     b.add_argument("--dry-run", action="store_true", help="걸지 않고 띄울 명령 · 열린 명령 · 막은 명령만 보인다")

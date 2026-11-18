@@ -9,6 +9,8 @@
 // 닫히고 붙기가 멈춘다) · 새는 쿠키와 닫힌 확인 창은 조용하고 되돌릴 수 없다 · 사람의 다른 세션이 남의 손에
 // 가거나 사람이 고르던 창이 사라진다 · 다른 무엇도 안 잡는다(회사 SSO 는 회사 PC 에서만 닿고, 형제 저장소의 검사는 이 손을 안 돈다).
 // 종료 3 · 4 의 가름도 같은 넷이다 — ECM 넘김만 못 따라간 판이 3 으로 나가면 로그인이 선 사람이 다시 로그인을 청받는다.
+// 입구가 로그인 화면의 「EP 접속 정보」 창만 받나도 같은 넷이다 — 안 받으면 그 창 앞에서 로그인이 조용히 시한까지 멈추고, 아무 창이나
+// 받으면 사람의 물음에 사람 대신 답한다.
 // 부르는 쪽은 그 값을 그대로 사람의 말로 옮긴다. 입구가 붙을 Edge 없이 불렸을 때 떠 있는 Edge 를 안 끝내나도 같은
 // 넷이다 — 끝내면 사람의 창 · 탭 · 쓰던 글이 한꺼번에 닫히고 되돌릴 수 없다.
 //
@@ -55,7 +57,12 @@ function cannot(why) { throw new Cannot(why); }   // 정리(finally)를 지난 �
 // ── 가짜 사내망 ──────────────────────────────────────────────────────────
 // SSO 는 localhost, 메일함 · ECM 은 127.0.0.1 — 호스트가 달라야 「로그인 화면의 쿠키를 안 남긴다」를 잰다
 
-const world = { sso: new Set(), dom: new Set(), ecm: new Set(), relay: new Set(), jid: new Set(), ssoHits: 0, jsForm: false, n: 0 };
+const world = { sso: new Set(), dom: new Set(), ecm: new Set(), relay: new Set(), jid: new Set(), ssoHits: 0, jsForm: false, n: 0,
+  ask: '', answered: null };
+// 로그인 화면이 넘기 전에 띄우는 확인 창 — 「EP 접속 정보」는 회사 SSO 가 같은 사람의 다른 로그인이 있을 때 띄우는 글의 꼴(IP · 때는 지어낸
+// 값)이고, 다른 하나는 같은 화면에 뜰 수 있는 사람의 물음이다
+const EP_NOTICE = '[보안알림] 다른 PC에서 EP 접속 정보가 있어 안내드립니다. - 사용중인 IP/일시 : 10.0.0.7 / 2026.11.07 09:00';
+const OTHER_QUESTION = '비밀번호를 지금 바꾸시겠습니까?';
 const token = prefix => `${prefix}-${++world.n}`;
 const cookies = req => Object.fromEntries((req.headers.cookie || '').split(/;\s*/).filter(Boolean).map(p => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]));
 const body = req => new Promise(res => { let s = ''; req.on('data', c => s += c); req.on('end', () => res(new URLSearchParams(s))); });
@@ -71,11 +78,21 @@ function ssoServer(req, res) {
   if (url.pathname === '/idms/U61/jsp/login/login.jsp') {
     const to = url.searchParams.get('to') || '';
     if (live) return go(res, `${to}${to.includes('?') ? '&' : '?'}t=${encodeURIComponent(sid)}`);
-    // 사내 로그인 화면 — 암호 칸이 있다. 가짜는 통합 인증처럼 스스로 넘는다(사람 손 흉내)
-    const script = 'document.getElementById("f").submit()';
-    return html(res, `<form id="f" method="post" action="/dologin"><input name="id" value="me"><input type="password" name="pw" value="x">` +
-      `<input type="hidden" name="to" value="${to}"></form><script>setTimeout(function(){${script}}, 300)</script>`);
+    // 사내 로그인 화면 — 암호 칸이 있다. 가짜는 통합 인증처럼 스스로 넘는다(사람 손 흉내). world.ask 가 서면 넘기 전에 확인 창을 띄운다 —
+    // 「EP 접속 정보」는 「확인」을 받아야 넘고, 다른 물음은 답을 /answered 로 알리고 안 넘는다.
+    // 「EP 접속 정보」는 실물 데스크톱의 꼴대로 화면이 서자마자(지연 없이) 로그인 화면 안의 틀(manysession.jsp — 로그인 경로 밖)에서
+    // 띄운다 — 통합 인증이 입력 없이 넘어 입구가 탭에 붙기 전에 뜨고, 이미 떠 있는 창은 붙은 뒤의 Page.enable 이 다시 알리지 않는다
+    const submit = 'document.getElementById("f").submit()';
+    const form = `<form id="f" method="post" action="/dologin"><input name="id" value="me"><input type="password" name="pw" value="x">` +
+      `<input type="hidden" name="to" value="${to}"></form>`;
+    if (world.ask === 'ep') return html(res, `${form}<iframe src="/idms/U61/jsp/manysession.jsp"></iframe>`);
+    const script = world.ask === 'other' ? `var a=confirm(${JSON.stringify(OTHER_QUESTION)});new Image().src="/answered?v="+a;` : submit;
+    return html(res, `${form}<script>setTimeout(function(){${script}}, 300)</script>`);
   }
+  if (url.pathname === '/idms/U61/jsp/manysession.jsp') {
+    return html(res, `<script>if (confirm(${JSON.stringify(EP_NOTICE)})) parent.document.getElementById("f").submit();</script>`);
+  }
+  if (url.pathname === '/answered') { world.answered = url.searchParams.get('v'); res.writeHead(204); return res.end(); }
   // 통합 인증이 안 선 로그인 화면 — 입력 칸만 있고 스스로 안 넘는다(VDI 의 ADFS 창 흉내)
   if (url.pathname === '/idms/U61/jsp/login/stuck.jsp') return html(res, '<form><input type="email" name="u"><input type="password" name="pw"></form>');
   if (url.pathname === '/dologin' && req.method === 'POST') {
@@ -309,6 +326,34 @@ async function entry(edge, port, closed, file, scratch) {
   r = await run([file], { COMPANY_LOGIN_URL: stuck, EP_LOGIN_URL: login, ViewClient_Broker_DNS_Name: 'broker.vdi' });
   judge('입구 — VDI 는 처음부터 평소 EP 로그인 화면을 연다 → 종료 0 · 넘기기 없음',
     r.code === 0 && r.last === file && !/넘긴다/.test(r.out), `종료 ${r.code} · ${r.out.trim()}`);
+
+  // 로그인 화면의 다른 확인 창 — 「EP 접속 정보」가 아니면 받지도 닫지도 않고 사람에게 둔다. 로그인이 안 넘어 시한에 4 다
+  world.sso.clear(); world.dom.clear(); world.ask = 'other'; world.answered = null;
+  const tabs = new Set((await pages(edge)).map(t => t.targetId));
+  r = await run([file], { COMPANY_LOGIN_URL: login, EP_LOGIN_URL: stuck, SESSION_LOGIN_WAIT_SECONDS: '12' });
+  await sleep(500);
+  judge('입구 — 로그인 화면의 다른 확인 창은 받지도 닫지도 않는다(사람의 물음이다) → 로그인이 안 넘어 종료 4',
+    r.code === 4 && world.answered === null, `종료 ${r.code} · 창의 답 ${world.answered} · ${r.out.trim()}`);
+  for (const t of await pages(edge)) if (!tabs.has(t.targetId)) await edge.browser.call('Target.closeTarget', { targetId: t.targetId });
+
+  // 띄운 창의 「EP 접속 정보」 — 창이 뜨고 포트가 열리기까지 걸려, 로그인 화면을 시작 주소로 띄우면 확인 창이 입구가 붙기 전에 선다.
+  // 입구는 빈 탭에 먼저 붙고 그 뒤에 로그인 주소로 넘겨야 그 창을 받는다
+  world.sso.clear(); world.dom.clear(); world.ask = 'ep';
+  const ownEp = path.join(scratch, 'launched-ep.json');
+  r = await run([ownEp], { EDGE_DEBUG_PORT: closed, COMPANY_LOGIN_URL: login, EP_LOGIN_URL: stuck, LOCALAPPDATA: path.join(scratch, 'appdata-ep'),
+    SESSION_LOGIN_WAIT_SECONDS: '20' });
+  world.ask = '';
+  const launchedEp = (r.out.match(/pid (\d+)/) || [])[1];
+  if (launchedEp) { try { execSync(`taskkill /PID ${launchedEp} /T /F`, { stdio: 'ignore' }); } catch {} }
+  judge('입구 — 띄운 창의 로그인 화면이 곧바로 띄운 「EP 접속 정보」 창도 「확인」으로 받아 넘긴다 → 종료 0',
+    r.code === 0 && r.last === ownEp && /EP 접속 정보/.test(r.out) && names(fileCookies(ownEp)).includes('DomAuthSessId'), `종료 ${r.code} · ${r.out.trim()}`);
+
+  // 로그인 화면의 「EP 접속 정보」 확인 창 — 「확인」으로 받아야 로그인이 넘고, 받았다고 알린다(다른 자리의 메일 세션이 끊긴다)
+  world.sso.clear(); world.dom.clear(); world.ask = 'ep';
+  r = await run([file], { COMPANY_LOGIN_URL: login, EP_LOGIN_URL: stuck, SESSION_LOGIN_WAIT_SECONDS: '20' });
+  world.ask = '';
+  judge('입구 — 로그인 화면의 「EP 접속 정보」 확인 창을 「확인」으로 받아 넘기고 받았다고 알린다 → 종료 0',
+    r.code === 0 && r.last === file && /EP 접속 정보/.test(r.out) && names(fileCookies(file)).includes('DomAuthSessId'), `종료 ${r.code} · ${r.out.trim()}`);
 
   // ECM 넘김을 화면 없이 못 따라가는 꼴 → 입구가 탭 갈래로 이어 받는다(따로 부르지 않는다). 넘김 탭 닫기는 「--ecm-tab 은 … 그 탭을
   // 닫는다」 판정 한 자리가 잰다 — 여기서 탭 수까지 보면 닫기와 넘김이 겨루는 시점에 흔들린다

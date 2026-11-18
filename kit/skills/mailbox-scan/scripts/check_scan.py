@@ -188,7 +188,8 @@ class World:
             self.hand.write_text((LOGGED_HAND if wrap == "log" else DRIFTED_HAND).format(log=str(self.log), hand=str(hand)), encoding="utf-8")
         self.home = self.tmp / "home"
         self.env = {**os.environ, "MAIL_SECRETARY_HOME": str(self.home), "MAILBOX_URL": self.box.url, "MAILBOX_COOKIES": str(self.cookies),
-                    "EP_SESSION_HAND": str(stub), "MAIL_ORG_CACHE_DIR": str(self.tmp / "org"), "MAILBOX_SCAN_HAND": str(self.hand)}
+                    "EP_SESSION_HAND": str(stub), "MAIL_ORG_CACHE_DIR": str(self.tmp / "org"), "MAILBOX_SCAN_HAND": str(self.hand),
+                    UNTIL_ENV: OPEN_UNTIL}
         self.env.pop("SECRETARY_SKILLS", None)
 
     def _run(self, script: pathlib.Path, args, inp: str | None = None) -> tuple[int, str]:
@@ -314,10 +315,15 @@ J_PARTIAL, J_INRUN = "덜 본 판은 견주지 않고 다음 판이 잇는다", 
 J_SESSION, J_BUSY, J_STALE, J_SHAPE = "세션이 끊기면 멈추고 적고 안 두드린다", "겹쳐 안 돈다", "남은 잠금이 풀린다", "손의 글 꼴이 바뀌면 멈춘다"
 J_MINUTE, J_THIRD = "폴더 메일의 때가 분까지여도 풀려 새 메일에 선다", "때의 꼴이 둘 밖이면 멈춘다"
 J_TASK, J_ALONE = "예약 — 한 번에 하나 · 주기 · 손을 명령줄에", "홀로 선다 — 싣는 것"
-J_DEFAULTS = "예약 — 기본 주기는 새 메일 15분 · 전체 120분이고 전체 주기는 잇는 기한보다 짧아야 걸린다"
+J_DEFAULTS = ("예약 — 기본 주기는 새 메일 15분 · 전체 120분이고 전체 주기는 잇는 기한보다 짧아야 걸린다 · 아침 보고는 07:30 부터 마감 12:00 "
+              "까지이고 보고 시각은 마감보다 일러야 걸린다")
 J_SIGNALS = "정리 신호의 재료 — 받은편지함의 지금과 흐름 · 규칙이 채우는 폴더 · 폴더마다 가장 새 메일의 때를 센다"
 # 사용자가 정한 기본 주기 — 회사 PC 에서 한 판을 잰 뒤 바뀌면 여기와 함께 바꾼다
 DEFAULT_EVERY, DEFAULT_FULL_EVERY, PENDING_LIMIT = 15, 120, 180
+# 사용자가 정한 아침 보고 시각과 기다리는 마감(마감은 임시값 — 사용자가 다른 때를 주시면 여기와 함께 바꾼다)
+DEFAULT_BRIEF_AT, DEFAULT_UNTIL = "07:30", "12:00"
+UNTIL_ENV = "MAILBOX_SCAN_BRIEF_UNTIL"           # 마감을 바꾸는 검사용 환경변수 — 판이 하루 어느 때에 돌아도 같은 판을 재게
+OPEN_UNTIL = "23:59"                             # 세계가 기본으로 주는 마감 — 보고 시각 00:00 의 판이 늘 기다리는 창 안에 선다
 
 
 def story_new(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
@@ -738,6 +744,19 @@ def check_defaults(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
             v.need(J_DEFAULTS, code == 2 and "--full-every" in out, f"{args[0]} 가 잇는 기한에 닿는 전체 주기를 안 막았다: {code} · {out[-200:]}")
         code, out = scan("register", "--hand", str(hand), "--full-every", str(PENDING_LIMIT - 1), "--dry-run")
         v.need(J_DEFAULTS, code == 0 and f"--full-every {PENDING_LIMIT - 1}" in out, f"잇는 기한 바로 아래 전체 주기를 막았다: {out[-200:]}")
+        # 아침 보고 — 걸기 전 보이기가 시각과 마감을 사람 말로 댄다(일일 보고의 첫 확인이 이 줄로 말씀드린다)
+        env.pop(UNTIL_ENV, None)
+        claude = sys.executable                                     # 있는 파일이면 claude 자리로 받는다 — 걸지 않고 보이기만 한다
+        code, out = scan("register", "--hand", str(hand), "--brief-at", "--claude", claude, "--dry-run")
+        line = next((x for x in out.splitlines() if x.startswith("[아침 보고")), "")
+        v.need(J_DEFAULTS, code == 0 and DEFAULT_BRIEF_AT in line and DEFAULT_UNTIL in line,
+               f"걸기 전 보이기가 아침 보고 시각 {DEFAULT_BRIEF_AT} · 마감 {DEFAULT_UNTIL} 을 안 댄다: {line or out[-300:]}")
+        code, out = scan("brief", "--at", DEFAULT_UNTIL, "--claude", claude)
+        brief_file = pathlib.Path(env["MAIL_SECRETARY_HOME"]) / "mailbox-scan" / "brief.json"
+        v.need(J_DEFAULTS, code == 1 and DEFAULT_UNTIL in out and not brief_file.exists(),
+               f"마감에 닿는 보고 시각을 걸었다(기다릴 틈이 없어 날마다 안 뜬다): {code} · {out[-200:]}")
+        code, out = scan("brief", "--at", "11:59", "--claude", claude)
+        v.need(J_DEFAULTS, code == 0 and brief_file.exists(), f"양성 대조 — 마감 바로 앞 보고 시각을 안 걸었다: {code} · {out[-200:]}")
     finally:
         shutil.rmtree(env["MAIL_SECRETARY_HOME"], ignore_errors=True)
     return v
@@ -774,13 +793,17 @@ def check_alone(scripts: pathlib.Path) -> Verdicts:
 
 # ── 아침 보고 — 스캔 판이 정한 때 뒤에 일일 보고를 사람 없이 한 번 띄운다 ─────────────────────────
 
-J_BRIEF_A, J_BRIEF_B = "아침 보고 — 세션이 없으면 세 번 살펴보고 그날은 그만둔다", "아침 보고 — 세션을 찾은 살펴보기는 한 번 띄우고 그친다"
-J_BRIEF_C, J_BRIEF_D = "아침 보고 — 살펴보기는 5분 넘게 띄운다(작업이 더 자주 깨워도)", "아침 보고 — 날이 바뀌면 다시 센다"
+J_BRIEF_A = ("아침 보고 — 세션이 없으면 마감까지 살펴보다 세션이 서는 첫 판에 띄운다(세션 파일이 새로 쓰이면 틈을 안 기다리고 그 판에) · "
+             "로그인은 안 한다")
+J_BRIEF_B = "아침 보고 — 세션을 찾은 살펴보기는 한 번 띄우고 그친다"
+J_BRIEF_C, J_BRIEF_D = "아침 보고 — 판이 답을 안 준 주기의 살펴보기는 5분 넘게 띄운다(작업이 더 자주 깨워도)", "아침 보고 — 날이 바뀌면 새 날로 본다"
+J_BRIEF_E = "아침 보고 — 마감 뒤에는 그날 살펴보지도 띄우지도 않고 status 가 건너뛰었다고 말한다"
 J_BRIEF_WHEN = "아침 보고 — 때 전 · 그날 보고 글이 선 뒤 · 띄운 보고가 도는 동안은 안 띄운다"
 J_BRIEF_OPEN = "아침 보고 — 띄운 claude 는 읽는 명령만 연다(로그인 · 문서함 · 바꾸기 · 내보내기 없음)"
 J_BRIEF_SET = "아침 보고 — claude 가 없으면 안 걸고 그렇다고 말한다"
 J_BRIEF_WORK = "아침 보고 — 업무 파일은 업무 파악의 쓰는 손으로만 쓰고(파일 도구 없음), 업무 파악부터 한다"
-GAP_MIN, TRIES_MOST = 5, 3                      # 사용자가 정한 수 — 하루 세 번 · 5분 넘게 띄어
+GAP_MIN = 5                                     # 사용자가 정한 틈 — 손에 묻는 살펴보기는 5분 넘게 띄어
+LANE = "lane.md"                                # 업무 파악 · 일일 보고 스킬의 걸음을 든 글 — 사람 없는 보고는 그 글대로 한다
 # 사람 없는 보고에 여는 명령의 표(계약) — 원본은 손 mail.py 머리말 「어떻게 부르나」의 읽기와 업무 파악이 읽는 보기(폴더 · 규칙 · 세는
 # 보기 · 주소록)다
 OPEN_MAIL = ("session *", "folders *", "rules *", "list *", "read *", "read-many *", "summary *", "search *", "people *")
@@ -821,13 +844,17 @@ def at_minute_start() -> None:
         time.sleep(61 - second)
 
 
-def st_hhmm(when: str) -> str:
-    return datetime.fromisoformat(when).astimezone(KST).strftime("%H:%M")
+def seoul_hhmm() -> str:
+    return datetime.now(KST).strftime("%H:%M")
 
 
-def story_brief_tries(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
-    """세션이 없는 아침 — 첫 살펴보기는 그 판의 답(세션 없음)을 쓰고, 기다리는 주기에는 손의 session 을 한 번씩, 세 번째 뒤로는 안 본다."""
+def story_brief_wait(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
+    """세션이 없는 아침 — 첫 살펴보기는 그 판의 답을 쓰고, 기다리는 주기에는 손의 session 을 한 번씩, 세 번을 넘어서도 마감까지 본다.
+    세션 파일이 새로 쓰이면(대화의 EP 로그인 · 다른 사내 앱 스킬이 새로 받음) 틈을 안 기다리고 그 판에 띄운다."""
     v = Verdicts()
+    if seoul_hhmm() >= "23:50":
+        unmeasured(J_BRIEF_A, f"서울 시각이 마감 {OPEN_UNTIL} 에 너무 가깝다 — 판 사이에 마감을 넘을 수 있다")
+        return v
     w = World(scripts, hand, [mail(1, "그대로", 0)], wrap="log")
     try:
         w.scan("run")
@@ -838,21 +865,58 @@ def story_brief_tries(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
         v.need(J_BRIEF_A, [t.get("session") for t in day.get("tries") or []] == ["lost"] and not day.get("launched"),
                f"세션이 끊긴 판이 첫 살펴보기(세션 없음)로 안 적혔다: {day}")
         v.need(J_BRIEF_A, w.hand_calls("session") == 0, "그 판이 이미 세션 없음을 받았는데 손의 session 을 또 불렀다")
-        for n in (2, 3):
+        for n in (2, 3, 4, 5):                       # 하루 세 번을 넘어서도 본다
             w.rewind(GAP_MIN + 1)
             _, out = w.scan("run")
             v.need(J_BRIEF_A, len(w.day().get("tries") or []) == n and w.hand_calls("session") == n - 1,
                    f"기다리는 주기의 {n}번째 살펴보기가 손의 session 한 번으로 안 섰다: {w.day()} · {out[-200:]}")
-        w.rewind(GAP_MIN + 1)
-        before = w.hand_calls("session")
-        w.scan("run")
-        v.need(J_BRIEF_A, len(w.day().get("tries") or []) == TRIES_MOST and w.hand_calls("session") == before,
-               f"세 번 다 세션이 없었는데 네 번째로 살펴봤다: {w.day()}")
         v.need(J_BRIEF_A, w.launches() == [], "세션이 없는데 보고를 띄웠다")
         _, status = w.scan("status", "--dry-run")
-        times = [st_hhmm(t["at"]) for t in w.day().get("tries") or []]
-        v.need(J_BRIEF_A, "건너뛰었다" in status and all(t in status for t in times) and "EP 로그인" in status,
-               f"status 가 오늘 보고를 세 번 살펴본 때와 함께 건너뛰었다고 · 다음 걸음을 안 말한다: {status[-400:]}")
+        v.need(J_BRIEF_A, "아직 못 띄웠다" in status and f"{OPEN_UNTIL} 까지" in status and "EP 로그인" in status and "5번" in status,
+               f"status 가 기다리는 것(사내 세션) · 마감 · 살펴본 수 · 다음 걸음을 안 말한다: {status[-400:]}")
+        sessions = w.hand_calls("session")
+        w.box.session = "ok"
+        later = time.time() + 5
+        os.utime(w.cookies, (later, later))         # 대화에서 EP 로그인을 해 세션 파일이 새로 쓰였다 — 마지막 살펴보기에서 틈이 안 지났다
+        w.scan("run")
+        day = w.day()
+        v.need(J_BRIEF_A, len(w.launches(1)) == 1 and (day.get("launched") or {}).get("pid") and day["tries"][-1].get("session") == "live",
+               f"세션 파일이 새로 쓰인 판이 보고를 안 띄웠다(틈을 기다렸거나 판이 안 돌았다): {day}")
+        v.need(J_BRIEF_A, w.hand_calls("session") == sessions, "판이 메일함까지 닿았는데 손의 session 을 또 불렀다")
+    finally:
+        w.close()
+    return v
+
+
+def story_brief_closed(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
+    """마감 뒤 — 세션이 없던 아침이 마감을 넘기면 살펴보지도 띄우지도 않고, 세션이 서도 그날은 안 띄운다. 마감을 다시 늦추면 띄운다(양성 대조)."""
+    v = Verdicts()
+    if not "00:03" <= seoul_hhmm() < "23:50":
+        unmeasured(J_BRIEF_E, "서울 시각이 이 판이 세우는 마감(00:01 · 23:59) 곁이다 — 판 사이에 갈린다")
+        return v
+    w = World(scripts, hand, [mail(1, "그대로", 0)], wrap="log")
+    try:
+        w.scan("run")
+        w.set_brief("00:00")
+        w.box.session = "login"
+        w.scan("run")                                # 마감 안 — 세션 없음을 한 번 적는다
+        w.env[UNTIL_ENV] = "00:01"                   # 마감이 지났다
+        w.rewind(GAP_MIN + 1)
+        sessions, tries = w.hand_calls("session"), len(w.day().get("tries") or [])
+        w.scan("run")
+        v.need(J_BRIEF_E, len(w.day().get("tries") or []) == tries and w.hand_calls("session") == sessions,
+               f"마감 뒤 판이 사내 세션을 또 살펴봤다: {w.day()}")
+        _, status = w.scan("status", "--dry-run")
+        v.need(J_BRIEF_E, "건너뛰었다" in status and "00:01" in status and "아침 보고 해 줘" in status,
+               f"status 가 마감까지 세션이 안 서 건너뛰었다 · 다음 걸음을 안 말한다: {status[-400:]}")
+        w.box.session = "ok"
+        later = time.time() + 5
+        os.utime(w.cookies, (later, later))
+        w.scan("run")
+        v.need(J_BRIEF_E, w.launches() == [] and not w.day().get("launched"), f"마감 뒤 세션이 선 판이 보고를 띄웠다: {w.day()}")
+        w.env[UNTIL_ENV] = OPEN_UNTIL
+        w.scan("run")
+        v.need(J_BRIEF_E, len(w.launches(1)) == 1, "양성 대조 — 마감 안에서 세션이 있는 판이 안 띄웠다")
     finally:
         w.close()
     return v
@@ -888,6 +952,19 @@ def story_brief_launch(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
     return v
 
 
+def sections_named(v: Verdicts, name: str, scripts: pathlib.Path, lane: pathlib.Path, heads: list[str]) -> None:
+    """부탁 글이 이름으로 대는 절이 그 걸음 글에 절 머리(「## 」)로 서나 — 글이 갈리거나 절 이름이 바뀌면 사람 없는 보고가 없는 절을 찾는다.
+    원본은 그 걸음 글이다. 곁에 그 글이 없으면 저장소 · 설치에서는 빨강, 다른 폴더를 잴 때는 안 본다."""
+    try:
+        text = lane.read_text(encoding="utf-8")
+    except OSError:
+        if scripts.resolve() == HERE:
+            v.need(name, False, f"부탁 글이 가리키는 걸음 글이 곁에 없다 — 저장소 · 설치에서는 늘 곁에 선다: {lane}")
+        return
+    found = [h for h in heads if re.search(rf"^## {re.escape(h)}", text, re.M)]
+    v.need(name, found == heads, f"부탁 글이 대는 절이 {lane} 에 절 머리로 없다: {sorted(set(heads) - set(found))}")
+
+
 def story_brief_open(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
     """띄운 것 — 진짜 손 곁에서 띄워 대역이 받은 명령줄 · 자리 · 부탁 글 · 권한을 읽는 명령의 표와 손이 든 바꾸는 명령에 댄다."""
     v = Verdicts()
@@ -909,8 +986,9 @@ def story_brief_open(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
         v.need(J_BRIEF_OPEN, pathlib.Path(one["cwd"]).resolve() == w.home.resolve() and one["nested"] == [],
                f"사용자 폴더에서 안 떴거나 겹친 세션 변수가 따라갔다: {one['cwd']} · {one['nested']}")
         brief_skill = scripts.parents[1] / "daily-brief"        # 스캔 스킬 곁의 일일 보고 스킬
-        v.need(J_BRIEF_OPEN, (brief_skill / "SKILL.md").as_posix() in one["stdin"] and "사람 없는 예약 실행" in one["stdin"],
-               "부탁 글이 일일 보고 스킬의 글과 그 사람 없는 실행 절을 가리키지 않는다")
+        v.need(J_BRIEF_OPEN, (brief_skill / LANE).as_posix() in one["stdin"] and "사람 없는 예약 실행" in one["stdin"],
+               f"부탁 글이 일일 보고 스킬의 걸음 글({LANE})과 그 사람 없는 실행 절을 가리키지 않는다")
+        sections_named(v, J_BRIEF_OPEN, scripts, brief_skill / LANE, ["사람 없는 예약 실행"])
         try:
             perms = json.loads(pathlib.Path(flag("--settings")).read_text(encoding="utf-8"))["permissions"]
         except (OSError, ValueError, KeyError):
@@ -925,7 +1003,7 @@ def story_brief_open(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
         work_skill = scripts.parents[1] / WORK_SKILL                # 스캔 스킬 곁의 업무 파악 스킬
         writer = f"Bash({runs(work_skill / pathlib.Path(*WORK_WRITER))} *)"
         expect += [f"Bash({runs(scripts / 'reader.py')} *)", f'Bash({runs(brief_skill / "scripts" / "window.py")} --no-open --dir "{home}" *)',
-                   writer]
+                   writer, f'Bash({runs(brief_skill / "scripts" / "ticks.py")} --dir "{home}")']
         allow = perms.get("allow") or []
         bash_allow = [a for a in allow if a.startswith("Bash(")]
         v.need(J_BRIEF_OPEN, sorted(bash_allow) == sorted(expect),
@@ -962,10 +1040,11 @@ def story_brief_open(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
         v.need(J_BRIEF_WORK, writer in bash_allow, f"업무 파악의 쓰는 손이 열린 명령에 그 꼴로 없다: {writer}")
         stdin = one["stdin"]
         name = pathlib.Path(*WORK_WRITER).name
-        at_work, at_brief = stdin.find(f"{work_skill.as_posix()}/SKILL.md"), stdin.find(f"{brief_skill.as_posix()}/SKILL.md")
+        at_work, at_brief = stdin.find(f"{work_skill.as_posix()}/{LANE}"), stdin.find(f"{brief_skill.as_posix()}/{LANE}")
         step = stdin[at_work:at_brief] if 0 <= at_work < at_brief else ""
         v.need(J_BRIEF_WORK, all(word in step for word in ("두 길", f"{name} where", "이어 파악", f"{name} write")),
                f"부탁 글이 업무 파악(두 길 · {name} where · 이어 파악 · {name} write)을 보고 짓기보다 먼저 시키지 않는다")
+        sections_named(v, J_BRIEF_WORK, scripts, work_skill / LANE, ["두 길", "이어 파악", "사람이 없을 때"])
         dirs = [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--add-dir"]
         if work_skill.is_dir():
             v.need(J_BRIEF_WORK, str(work_skill) in dirs, f"업무 파악 스킬 폴더를 읽게 열지 않았다(--add-dir): {dirs}")
@@ -1008,7 +1087,7 @@ def story_brief_gap(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
 
 
 def story_brief_day(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
-    """어제 세 번 다 세션이 없었던 날 뒤 — 오늘은 새로 세어 세션이 있으면 띄운다."""
+    """어제 띄운 날 뒤 — 오늘은 새 날로 보아 세션이 있으면 띄운다."""
     v = Verdicts()
     w = World(scripts, hand, [mail(1, "그대로", 0)], wrap="log")
     try:
@@ -1017,14 +1096,14 @@ def story_brief_day(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
         yesterday = datetime.now(KST) - timedelta(days=1)
 
         def put(state):
-            state["brief"] = {"date": yesterday.strftime("%Y-%m-%d"), "launched": None,
-                              "tries": [{"at": (yesterday - timedelta(minutes=10 * i)).isoformat(timespec="seconds"), "session": "lost"}
-                                        for i in range(TRIES_MOST)]}
+            state["brief"] = {"date": yesterday.strftime("%Y-%m-%d"),
+                              "launched": {"at": yesterday.isoformat(timespec="seconds"), "pid": 1, "log": ""},
+                              "tries": [{"at": yesterday.isoformat(timespec="seconds"), "session": "live"}]}
         w.edit_state(put)
         w.scan("run")
         day = w.day()
         v.need(J_BRIEF_D, day.get("date") == datetime.now(KST).strftime("%Y-%m-%d") and len(day.get("tries") or []) == 1
-               and (day.get("launched") or {}).get("pid") and len(w.launches(1)) == 1, f"날이 바뀌었는데 새로 세어 띄우지 않았다: {day}")
+               and (day.get("launched") or {}).get("pid") and len(w.launches(1)) == 1, f"날이 바뀌었는데 어제 띄운 것에 막혀 오늘을 안 띄웠다: {day}")
     finally:
         w.close()
     return v
@@ -1046,8 +1125,8 @@ def story_brief_when(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
         w.close()
     w = World(scripts, hand, [mail(1, "그대로", 0)], wrap="log")
     try:
-        if datetime.now(KST).strftime("%H:%M") < "23:58":
-            w.set_brief("23:59")
+        if seoul_hhmm() < "23:57":
+            w.set_brief("23:58")
             w.scan("run")
             v.need(J_BRIEF_WHEN, not w.day().get("tries") and w.launches() == [], f"보고 시각 전에 살펴봤다: {w.day()}")
         w.set_brief("00:00")
@@ -1083,12 +1162,13 @@ def story_brief_set(scripts: pathlib.Path, hand: pathlib.Path) -> Verdicts:
 
 # 판 — 혼자 잰 시간이 긴 판부터 선다. 일꾼 넷이 앞에서부터 집어 가, 긴 판이 끝에 서면 혼자 돌며 판 전체를 늘인다. 차례는 판정과 무관하다
 STORIES = [story_brief_when, story_brief_launch, story_secretary, story_signals, story_inrun, story_partial, story_user, story_dates,
-           story_brief_tries, story_brief_gap, story_new, story_brief_day, story_session, story_lock, story_brief_open, story_shape,
-           story_brief_set]
-NEEDS_NODE = {story_secretary: J_SECRETARY, story_session: J_SESSION, story_brief_tries: J_BRIEF_A, story_brief_gap: J_BRIEF_C,
+           story_brief_wait, story_brief_closed, story_brief_gap, story_new, story_brief_day, story_session, story_lock, story_brief_open,
+           story_shape, story_brief_set]
+NEEDS_NODE = {story_secretary: J_SECRETARY, story_session: J_SESSION, story_brief_wait: J_BRIEF_A, story_brief_closed: J_BRIEF_E,
+              story_brief_gap: J_BRIEF_C,
               story_signals: J_SIGNALS}
 ORDER = [J_FIRST, J_NEW, J_READS, J_SLICE, J_USER, J_SECRETARY, J_PARTIAL, J_INRUN, J_SESSION, J_BUSY, J_STALE, J_SHAPE, J_MINUTE, J_THIRD,
-         J_TASK, J_DEFAULTS, J_ALONE, J_SIGNALS, J_BRIEF_A, J_BRIEF_B, J_BRIEF_C, J_BRIEF_D, J_BRIEF_WHEN, J_BRIEF_OPEN, J_BRIEF_WORK,
+         J_TASK, J_DEFAULTS, J_ALONE, J_SIGNALS, J_BRIEF_A, J_BRIEF_B, J_BRIEF_C, J_BRIEF_D, J_BRIEF_E, J_BRIEF_WHEN, J_BRIEF_OPEN, J_BRIEF_WORK,
          J_BRIEF_SET]
 
 # 물림 — (판정, 파일, 끌 줄, 바꿀 줄). 끄는 것은 그 판정이 지키는 한 줄이다
@@ -1113,10 +1193,14 @@ MUTATIONS = [
     (J_TASK, "scan_task.py", "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
      "<MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>"),
     (J_ALONE, "scan.py", "import scan_const as C  # noqa: E402", "import scan_const as C  # noqa: E402\nimport secretary  # noqa: E402,F401"),
-    (J_BRIEF_A, "scan_brief.py", "    if len(tries) >= C.BRIEF_TRIES_MOST:\n        return \"gave-up\"", "    if False:\n        return \"gave-up\""),
+    (J_BRIEF_A, "scan_brief.py", '    if at >= until_time(at):\n        return "closed"\n',
+     '    if len(day.get("tries") or []) >= 3:\n        return "gave-up"\n    if at >= until_time(at):\n        return "closed"\n'),
+    (J_BRIEF_A, "scan_brief.py", '    if evidence is None:\n        if not spaced(day, at):\n            return ""\n',
+     '    if not spaced(day, at):\n        return ""\n    if evidence is None:\n'),
+    (J_BRIEF_E, "scan_brief.py", '    if at >= until_time(at):\n        return "closed"\n', '    if False:\n        return "closed"\n'),
     (J_BRIEF_B, "scan_brief.py", '    if day.get("launched"):\n        return "launched"', '    if False:\n        return "launched"'),
-    (J_BRIEF_C, "scan_brief.py", "    if last is not None and minute(at) - minute(last) < C.BRIEF_TRY_GAP_MIN:",
-     "    if last is not None and minute(at) - minute(last) < 0:"),
+    (J_BRIEF_C, "scan_brief.py", "    return last is None or minute(at) - minute(last) >= C.BRIEF_TRY_GAP_MIN",
+     "    return last is None or minute(at) - minute(last) >= 0"),
     (J_BRIEF_D, "scan_brief.py", '    if not isinstance(got, dict) or got.get("date") != seoul_date(at):', "    if not isinstance(got, dict):"),
     (J_BRIEF_WHEN, "scan_brief.py", '    if made_today(at):\n        return "made"', '    if False:\n        return "made"'),
     (J_BRIEF_OPEN, "scan_brief.py", '"--permission-mode", "dontAsk"', '"--permission-mode", "acceptEdits"'),
@@ -1124,12 +1208,15 @@ MUTATIONS = [
     (J_BRIEF_WORK, "scan_const.py", 'CLAUDE_TOOLS = "Bash,Read,Glob,Grep"', 'CLAUDE_TOOLS = "Bash,Read,Glob,Grep,Write"'),
     (J_BRIEF_WORK, "scan_brief.py", """, f"{run(p['work_writer'])} *"]""", "]"),
     (J_DEFAULTS, "scan_const.py", "\nEVERY_MIN = 15 ", "\nEVERY_MIN = 5 "),
+    (J_DEFAULTS, "scan_const.py", 'BRIEF_UNTIL = "12:00"', 'BRIEF_UNTIL = "13:00"'),
+    (J_BRIEF_WORK, "scan_brief.py", 'work_lane=(p["work_skill"] / C.LANE_FILE).as_posix()', 'work_lane=(p["work_skill"] / "SKILL.md").as_posix()'),
     (J_SIGNALS, "reader.py", "before = [wc for wc in counts if wc[0] <= edge]", "before = counts"),
     (J_BRIEF_SET, "scan.py", "    if claude is None:\n        return None, None, NO_CLAUDE", "    if False:\n        return None, None, NO_CLAUDE"),
 ]
 WHO = {J_FIRST: story_new, J_NEW: story_new, J_READS: story_new, J_SLICE: story_new, J_USER: story_user,
        J_SECRETARY: story_secretary, J_PARTIAL: story_partial, J_INRUN: story_inrun, J_SESSION: story_session, J_BUSY: story_lock,
-       J_STALE: story_lock, J_SHAPE: story_shape, J_MINUTE: story_dates, J_THIRD: story_dates, J_BRIEF_A: story_brief_tries,
+       J_STALE: story_lock, J_SHAPE: story_shape, J_MINUTE: story_dates, J_THIRD: story_dates, J_BRIEF_A: story_brief_wait,
+       J_BRIEF_E: story_brief_closed,
        J_BRIEF_B: story_brief_launch, J_BRIEF_C: story_brief_gap, J_BRIEF_D: story_brief_day, J_BRIEF_WHEN: story_brief_when,
        J_BRIEF_OPEN: story_brief_open, J_BRIEF_SET: story_brief_set, J_TASK: check_task, J_ALONE: check_alone,
        J_BRIEF_WORK: story_brief_open, J_DEFAULTS: check_defaults, J_SIGNALS: story_signals}

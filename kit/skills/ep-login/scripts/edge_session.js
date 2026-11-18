@@ -99,9 +99,15 @@ function onLoginScreen(url, cfg) {
   try { const u = new URL(url); return cfg.loginHosts.includes(u.hostname.toLowerCase()) && LOGIN_PATH.test(u.pathname); } catch { return false; }
 }
 
-// 「확인」으로 받을 창인가 — 로그인 화면에 뜬 「EP 접속 정보」 확인 창만. 받는 것: 창의 꼴(confirm · alert …) · 글 · 뜬 주소
+// 로그인 화면 호스트의 화면인가 — 경로는 안 본다
+function onLoginHost(url, cfg) {
+  try { return cfg.loginHosts.includes(new URL(url).hostname.toLowerCase()); } catch { return false; }
+}
+
+// 「확인」으로 받을 창인가 — 로그인 화면 호스트에 뜬 「EP 접속 정보」 확인 창만. 받는 것: 창의 꼴(confirm · alert …) · 글 · 뜬 주소.
+// 뜬 주소는 로그인 화면 경로가 아니다 — SSO 는 로그인 화면 안의 틀(manysession.jsp)에서 그 창을 띄운다
 function epConfirm(type, message, url, cfg) {
-  return type === 'confirm' && String(message || '').includes(EP_DIALOG) && onLoginScreen(url, cfg);
+  return type === 'confirm' && String(message || '').includes(EP_DIALOG) && onLoginHost(url, cfg);
 }
 
 // ── 쿠키 ─────────────────────────────────────────────────────────────────
@@ -426,7 +432,7 @@ async function attach(cfg, opts, file, needed) {
     if (fs.existsSync(file)) say(file);
     throw new Exit(EXIT.NO_EDGE, `Edge 에 못 붙었다 — 127.0.0.1:${ports.join(' · ')} 에 디버깅 포트가 없다` +
       (fs.existsSync(file) ? '(남은 세션 파일로도 확인이 안 섰다 — 서버가 안 받았거나 답이 없었다 · 둘은 못 가르니 「거절됐다」고 말하지 않는다)' : '') +
-      '. 다음: 사내망 안인지 먼저 본다(밖이면 Edge 를 띄워도 안 선다) — 안이면 스킬 ep-login 의 입구(login.sh)가 쓰는 사람의 평소 Edge 를 포트와 로그인 탭으로 띄운다');
+      '. 다음: 사내망 안인지 먼저 본다(밖이면 Edge 를 띄워도 안 선다) — 안이면 스킬 ep-login 의 입구(login.sh)가 ep-login 용 Edge 창 하나를 포트와 로그인 탭으로 띄운다(사람의 Edge 는 그대로 둔다)');
   }
 }
 

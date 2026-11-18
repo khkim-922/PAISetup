@@ -2,7 +2,7 @@
 
     python -X utf8 -I window.py --dir <사용자 폴더> --mailbox <메일함 주소> [--in <보고 글>] [--no-open]
 
-    보고 글 — `--in` 의 파일, 없으면 표준 입력(UTF-8 · BOM 있는 UTF-16 · cp949). 꼴은 스킬 글 「보고 글의 꼴」이 든다
+    보고 글 — `--in` 의 파일, 없으면 표준 입력(UTF-8 · BOM 있는 UTF-16 · cp949). 꼴은 `lane.md` 「보고 글의 꼴」이 든다
     --dir     — 창과 보고 글을 남길 사용자 폴더. 한 번만 받는다(사람 없는 실행이 고정한 경계라서다) · 없는 폴더는 만들지 않는다
     --mailbox — 회사 메일 스킬의 `session` 이 낸 메일함 주소. 없거나 꼴이 아니면 메일 줄을 링크 없이 세운다
     --no-open — 짓기만 하고 띄우지 않는다. 띄울 때는 로그인 Edge 의 새 탭이 먼저고, 안 되면 기본 브라우저다
@@ -17,7 +17,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import datetime as dt
+import hashlib
 import html
 import http.client
 import os
@@ -29,6 +31,7 @@ import webbrowser
 from dataclasses import dataclass, field
 
 TEMPLATE = pathlib.Path(__file__).resolve().parent.parent / "assets" / "report.html"
+SCRIPT = TEMPLATE.with_name("report.js")      # 창의 하나뿐인 스크립트 — 「끝났음」 표시. CSP 는 지을 때마다 이 글의 해시만 연다
 FILE_NAME = "brief-{:%Y-%m-%d-%H%M}.html"
 # 요일 이름 — ep-login 의 `ep_command.WEEKDAYS` 의 손사본이다(이 손은 홀로 서야 해서 못 싣는다). 하나를 고치면 다른 하나도 고친다
 WEEKDAYS = "월화수목금토일"
@@ -40,8 +43,19 @@ EDGE_TIMEOUT_S = 2
 
 EXIT_OK, EXIT_FAIL = 0, 1                     # 틀린 인자는 argparse 가 2 로 나간다
 
-# 끝의 두 절 — 다음 보고가 남은 글에서 어디부터 읽을지와 다시 올리지 않을 것을 찾는 자리(스킬 글 「남긴다」). 머리가 이 말로 시작하면 그 절이다
+# 끝의 두 절 — 다음 보고가 남은 글에서 어디부터 읽을지와 다시 올리지 않을 것을 찾는 자리(`lane.md` 「남긴다」). 머리가 이 말로 시작하면 그 절이다
 END_SECTIONS = ("이 보고가 본 데", "끝났다고 하신 것")
+DONE_SECTION = END_SECTIONS[1]
+# 끝나지 않았다고 되돌리신 일 — 있을 때만 서는 끝의 절. 다음 업무 파악이 이 절로 「끝난 일」에서 그 일을 다시 연다
+REOPEN_SECTION = "안 끝났다고 하신 것"
+RECORD_SECTIONS = (*END_SECTIONS, REOPEN_SECTION)   # 다음 보고의 기록인 절 — 「끝났음」 상자는 「끝났다고 하신 것」에만 선다
+NONE_LINE = re.compile(r"^(?:[-*+]\s*)?(?:없음|없습니다|없다)\s*\.?$")   # 줄 대신 쓴 「없음」 — 이 줄뿐인 「끝났다고 하신 것」은 창에 안 세운다
+
+# 「끝났음」 표시 — 창은 메일 번호마다 localStorage 의 이 열쇠에 남기고, 곁의 ticks.py 가 같은 이름으로 거둔다
+DONE_PREFIX = "brief-done:"
+TICK_NONE, TICK_TODO, TICK_DONE = "", "todo", "done"   # 줄의 상자 — 없음 · 할 일의 줄(바탕은 안 눌림) · 「끝났다고 하신 것」의 줄(바탕은 눌림)
+VIA_EDGE = "via=edge"                          # 로그인 Edge 로 연 창의 주소 꼬리 — 표시가 거둬지는 창만 상자를 보인다
+TICK_OFF = "이 창은 메일 비서의 Edge 밖에서 열려 「끝났음」 표시를 받지 않습니다 — 끝난 일은 대화에서 말씀해 주세요."
 
 # 메일함 주소 — `http(s)://<호스트>[:<포트>]/…/<이름>.nsf`. 호스트 앞에 사용자 칸(@)이 서는 꼴 · 따옴표 · 빈칸 · 물음표는 받지 않는다
 MAILBOX = re.compile(r"^https?://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d{1,5})?(?:/[A-Za-z0-9._~%-]+)*/[A-Za-z0-9._~%-]+\.nsf$",
@@ -49,7 +63,7 @@ MAILBOX = re.compile(r"^https?://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d
 MAIL_URL = "{mailbox}/XML_Inbox/{unid}?OpenDocument"   # 웹메일에서 그 메일을 여는 주소 — 폴더에만 든 메일에도 먹는다
 UNID = re.compile(r"^[0-9A-Fa-f]{32}$")
 
-# 줄의 꼴 — 스킬 글 「보고 글의 꼴」
+# 줄의 꼴 — `lane.md` 「보고 글의 꼴」
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 NUMBERED = re.compile(r"^(\d{1,3})[.)]\s+(.*)$")
 BULLET = re.compile(r"^[-*+]\s+(.*)$")
@@ -198,11 +212,12 @@ def parse(text: str) -> Report:
 
 @dataclass
 class Ink:
-    """줄 안을 짓는 손 — 메일함 주소를 들고, 지은 링크 · 링크로 못 지은 메일 번호 · 번호 꼴이 아닌 mail: 표시를 센다."""
+    """줄 안을 짓는 손 — 메일함 주소를 들고, 지은 링크 · 링크로 못 지은 메일 번호 · 번호 꼴이 아닌 mail: 표시 · 「끝났음」 상자를 센다."""
     mailbox: str | None
     links: int = 0
     unlinked: int = 0
     bad_refs: int = 0
+    boxes: int = 0
 
     def mail(self, label_html: str, unid: str) -> str:
         unid = unid.upper()
@@ -241,6 +256,18 @@ class Ink:
         return "".join(out)
 
 
+def first_unid(text: str) -> str | None:
+    """글에서 처음 걸린 메일 번호(대문자) — 링크로 서는 `[글](mail:<번호>)` 만 센다(굵게 속도). 고정 글자 속 · 번호 꼴이 아닌 것은 안 센다."""
+    for m in INLINE.finditer(text):
+        if m.group("ref") is not None and UNID.match(m.group("ref")):
+            return m.group("ref").upper()
+        if m.group("bold") is not None:
+            got = first_unid(m.group("bold"))
+            if got:
+                return got
+    return None
+
+
 def plain(text: str) -> str:
     """꼴 표시를 걷은 맨글자 — 창의 이름(<title>)에 쓴다. 이스케이프는 부르는 쪽이 한다."""
     def strip(m: re.Match) -> str:
@@ -266,13 +293,31 @@ def split_facts(subs: list[str]) -> tuple[list[str], list[tuple[str, str]]]:
     return subs[:cut], facts
 
 
-def render_item(it: Item, ink: Ink) -> tuple[str, str]:
-    """줄 하나 — (무리, HTML). 무리는 card(점이 딸린 줄) · row."""
+def tick_box(it: Item, ink: Ink, tick: str) -> str:
+    """「끝났음」 상자 — 줄의 첫 메일 번호가 열쇠다(업무 파일은 일을 그 일을 연 메일로 잇는다). 메일 번호가 없으면 빈 글.
+    `tick` 이 `TICK_DONE` 이면 「끝났다고 하신 것」의 줄이라 눌린 것이 바탕이다(`data-done`) — 풀면 끝나지 않았다고 되돌리신 것이다.
+    처음엔 숨어 있다 — 창의 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다. 스크립트가 막혀도 누를 수 없는 상자는 안 선다."""
+    unid = next(filter(None, (first_unid(s) for s in [it.text, *it.subs])), None)
+    if unid is None:
+        return ""
+    ink.boxes += 1
+    m = LEAD_BOLD.match(it.text)
+    title = " ".join(plain(m.group("head") if m else it.text).split())
+    if tick == TICK_DONE:                          # 「일 — 언제 말씀하셨나 [근거]」 줄 — 일 이름은 줄표 앞이다
+        title = title.split(" — ", 1)[0]
+    base = ' data-done="1"' if tick == TICK_DONE else ""
+    return (f'<label class="tick" hidden><input type="checkbox" data-unid="{unid}"{base} data-title="{html.escape(title, quote=True)}">'
+            '<span class="tick-word">끝났음</span><span class="tick-note" aria-live="polite"></span></label>')
+
+
+def render_item(it: Item, ink: Ink, tick: str = TICK_NONE) -> tuple[str, str]:
+    """줄 하나 — (무리, HTML). 무리는 card(점이 딸린 줄) · row. `tick` 이 있으면 메일 번호가 든 줄에 「끝났음」 상자를 단다."""
     points, facts = split_facts(it.subs)
+    box = tick_box(it, ink, tick) if tick else ""
     if points:
         m = LEAD_BOLD.match(it.text)
         head, rest = (m.group("head"), m.group("rest")) if m else (it.text, "")
-        parts = [f"<h3>{ink.inline(head)}</h3>"]
+        parts = [f'<div class="task-top"><h3>{ink.inline(head)}</h3>{box}</div>' if box else f"<h3>{ink.inline(head)}</h3>"]
         if rest:
             parts.append(f'<p class="when">{ink.inline(rest)}</p>')
         parts.append('<ul class="points">' + "".join(f"<li>{ink.inline(p)}</li>" for p in points) + "</ul>")
@@ -285,17 +330,19 @@ def render_item(it: Item, ink: Ink) -> tuple[str, str]:
         return "card", f'<li class="task"><span class="task-num">{html.escape(it.num)}</span><div>{body}</div></li>'
     tail = "".join(f' <span class="src-inline">({ink.inline(k)}: {ink.inline(v)})</span>' for k, v in facts)
     body = ink.inline(it.text) + tail
+    if box:
+        body = f'<div class="row-top"><div>{body}</div>{box}</div>'
     if it.num is None:
         return "row", f"<li>{body}</li>"
     return "row", f'<li><span class="num">{html.escape(it.num)}</span><div>{body}</div></li>'
 
 
-def render_list(items: list[Item], ink: Ink) -> str:
+def render_list(items: list[Item], ink: Ink, tick: str = TICK_NONE) -> str:
     """잇단 줄 — 같은 무리(카드 · 줄)와 같은 표(번호 · 「-」)끼리 한 목록으로 묶는다."""
     out: list[str] = []
     group: tuple[str, bool] | None = None
     for it in items:
-        kind, piece = render_item(it, ink)
+        kind, piece = render_item(it, ink, tick)
         key = (kind, it.num is not None)
         if key != group:
             if group is not None:
@@ -359,8 +406,8 @@ def render_clock(b: Block, ink: Ink) -> str:
     return "".join(parts)
 
 
-def render_blocks(blocks: list[Block], ink: Ink, sid: str, toc: list[str], head: bool) -> str:
-    """덩이를 차례대로 — 제목 밑의 문단은 요약 상자로 묶고, 절 머리 바로 뒤 문단은 머리말로 세운다."""
+def render_blocks(blocks: list[Block], ink: Ink, sid: str, toc: list[str], head: bool, tick: str = TICK_TODO) -> str:
+    """덩이를 차례대로 — 제목 밑의 문단은 요약 상자로 묶고, 절 머리 바로 뒤 문단은 머리말로 세운다. `tick` 이 있으면 줄에 「끝났음」 상자를 단다."""
     out: list[str] = []
     summary: list[str] = []
     prev = "head"                                  # 바로 앞 덩이 — head(절 머리) · sub(작은 절 머리) · 그 밖
@@ -392,7 +439,7 @@ def render_blocks(blocks: list[Block], ink: Ink, sid: str, toc: list[str], head:
             toc.append(f'<li><a class="sub" href="#{anchor}">{ink.inline(b.lines[0], links=False)}</a></li>')
             out.append(f'<div class="sub-head" id="{anchor}"><h3>{ink.inline(b.lines[0])}</h3></div>')
         elif b.kind == "list":
-            out.append(render_list(b.lines, ink))
+            out.append(render_list(b.lines, ink, tick))
         elif b.kind == "quote":
             out.append(render_quote(b.lines, ink))
         elif b.kind == "clock":
@@ -401,6 +448,34 @@ def render_blocks(blocks: list[Block], ink: Ink, sid: str, toc: list[str], head:
             out.append(render_clock(b, ink))
     close_summary()
     return "".join(out)
+
+
+def section_tick(title: str | None) -> str:
+    """절의 줄에 다는 상자 — 「끝났다고 하신 것」은 눌린 것이 바탕인 상자, 다른 기록의 절은 없음, 나머지는 할 일의 상자."""
+    name = plain(title or "").strip()
+    if name.startswith(DONE_SECTION):
+        return TICK_DONE
+    return TICK_NONE if any(name.startswith(end) for end in RECORD_SECTIONS) else TICK_TODO
+
+
+def is_empty_done(sec: Section) -> bool:
+    """줄이 없거나 「없음」 한 줄뿐인 「끝났다고 하신 것」 · 「안 끝났다고 하신 것」 — 창에 안 세운다(보고 글에는 그대로 남아 다음 보고가 잇는다)."""
+    if not (sec.title and plain(sec.title).strip().startswith((DONE_SECTION, REOPEN_SECTION))):
+        return False
+    words: list[str] = []
+    for b in sec.blocks:
+        if b.kind == "list":
+            words += [w for i in b.lines for w in (i.text, *i.subs)]
+        else:
+            words += [*b.lines, *b.label, *b.after]
+    return all(NONE_LINE.match(w.strip()) for w in words)
+
+
+def page_script() -> tuple[str, str]:
+    """창에 싣는 스크립트와 그것만 여는 CSP 칸(`'sha256-…'`). 해시는 실을 글 그대로에서 낸다 — 손으로 옮긴 해시는 없다."""
+    code = string.Template(SCRIPT.read_text(encoding="utf-8")).substitute(done_prefix=DONE_PREFIX, via_edge=VIA_EDGE)
+    digest = base64.b64encode(hashlib.sha256(code.encode("utf-8")).digest()).decode("ascii")
+    return code, f"'sha256-{digest}'"
 
 
 def build(rep: Report, ink: Ink, now: dt.datetime) -> tuple[str, int, int]:
@@ -412,26 +487,34 @@ def build(rep: Report, ink: Ink, now: dt.datetime) -> tuple[str, int, int]:
     hero = [f"<h1>{ink.inline(title)}</h1>"]
     if head_blocks and head_blocks[0].kind == "para":
         hero.append(f'<p class="lede">{ink.inline(" ".join(head_blocks.pop(0).lines))}</p>')
-    hero.append(f'<p class="dateline">{DATELINE.format(now, WEEKDAYS[now.weekday()], now)}</p>')
+    made = now.astimezone().isoformat(timespec="seconds")      # 창의 스크립트가 이보다 먼저 거둔 표시를 이 창에서 안 쓴다(report.js)
+    hero.append(f'<p class="dateline" data-made="{made}">{DATELINE.format(now, WEEKDAYS[now.weekday()], now)}</p>')
     hero.append(render_blocks(head_blocks, ink, "s0", toc, head=True))
     sections, lines = [], sum(len(b.lines) for b in head_blocks if b.kind == "list")
     for n, sec in enumerate(rep.sections[1:], 1):
+        if is_empty_done(sec):
+            continue
         sid = f"s{n}"
         toc.append(f'<li><a href="#{sid}">{ink.inline(sec.title or "", links=False)}</a></li>')
         sub_toc: list[str] = []
-        body = render_blocks(sec.blocks, ink, sid, sub_toc, head=False)
+        body = render_blocks(sec.blocks, ink, sid, sub_toc, head=False, tick=section_tick(sec.title))
         toc += sub_toc
         lines += sum(len(b.lines) for b in sec.blocks if b.kind == "list")
         sections.append(f'<section id="{sid}" aria-labelledby="h-{sid}"><h2 id="h-{sid}">{ink.inline(sec.title or "")}</h2>'
                         f"{body}</section>")
+    if ink.boxes:
+        hero.append(f'<p class="tick-off" id="tick-off" hidden>{html.escape(TICK_OFF)}</p>')
+    code, script_hash = page_script()
     page = template.substitute(
         page_title=html.escape(plain(title), quote=True),
         side_title=ink.inline(title, links=False),
         toc="\n".join(toc),
         hero="\n".join(hero),
         sections="\n".join(sections),
+        script=code,
+        script_hash=script_hash,
     )
-    return page, len(rep.sections) - 1, lines
+    return page, len(sections), lines
 
 
 # ── 들고 나기 ─────────────────────────────────────────────────────────────
@@ -463,15 +546,29 @@ def missing_ends(rep: Report) -> list[str]:
     return [end for end in END_SECTIONS if not any(h.startswith(end) for h in named)]
 
 
+def kept_briefs(folder: pathlib.Path) -> list[pathlib.Path]:
+    """폴더에 남은 보고 글 — 이름이 `FILE_NAME` 꼴(.md)인 것만, 이름 차례(곧 지은 때의 차례)로."""
+    shape = FILE_NAME.replace("{:", "").replace("}", "").removesuffix(".html") + ".md"
+    out = []
+    for f in folder.glob("brief-*.md"):
+        try:
+            dt.datetime.strptime(f.name, shape)
+        except ValueError:
+            continue
+        out.append(f)
+    return sorted(out, key=lambda f: f.name)
+
+
 def open_report(uri: str) -> str:
     """보고 창을 로그인 Edge 의 새 탭에, 안 되면 기본 브라우저로 띄우고 어디에 띄웠나를 한 줄로 낸다.
-    로그인 Edge 가 먼저다 — 메일 링크가 같은 세션에서 열려야 로그인 창이 안 뜬다."""
+    로그인 Edge 가 먼저다 — 메일 링크가 같은 세션에서 열려야 로그인 창이 안 뜬다. 그 Edge 로 연 창만 주소 꼬리(`VIA_EDGE`)를 달아,
+    「끝났음」 표시가 거둬지는 창에서만 상자가 선다."""
     port = (os.environ.get("EDGE_DEBUG_PORT", "").split(",")[0]).strip()
     port = port if port.isdigit() and 0 < int(port) < 65536 else EDGE_PORT_DEFAULT
     try:
         conn = http.client.HTTPConnection(EDGE_HOST, int(port), timeout=EDGE_TIMEOUT_S)
         try:
-            conn.request("PUT", "/json/new?" + uri)          # 새 Chromium 은 PUT 만 받는다
+            conn.request("PUT", "/json/new?" + uri + "?" + VIA_EDGE)   # 새 Chromium 은 PUT 만 받는다
             ok = conn.getresponse().status == 200
         finally:
             conn.close()
@@ -495,7 +592,7 @@ class Once(argparse.Action):
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="보고 글(md)을 보고 창의 틀에 채워 그날의 HTML 로 남기고, 그 글을 곁에 같은 이름의 .md 로 남기고, "
-                                             "띄운다. 글의 꼴은 스킬 글 「보고 글의 꼴」 · 「남긴다」가 든다.")
+                                             "띄운다. 글의 꼴은 스킬 폴더의 lane.md 「보고 글의 꼴」 · 「남긴다」가 든다.")
     ap.add_argument("--dir", required=True, action=Once, help="그날의 HTML 과 보고 글을 남길 폴더 — 업무 파일(work.md)이 있는 사용자 폴더(한 번만)")
     ap.add_argument("--mailbox", default="", help="회사 메일 스킬 session 이 낸 메일함 주소 http(s)://<호스트>/…/<이름>.nsf")
     ap.add_argument("--in", dest="src", default="", help="보고 글 파일 — 없으면 표준 입력")

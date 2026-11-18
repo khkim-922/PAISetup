@@ -3,12 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- 바깥을 부르는 길과 스크립트를 페이지가 스스로 닫는다 — 글은 메일에서 온 것을 품는다. 링크를 눌러 웹메일로 가는 것은 막지 않는다 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<!-- 바깥을 부르는 길과 스크립트를 페이지가 스스로 닫는다 — 글은 메일에서 온 것을 품는다. 링크를 눌러 웹메일로 가는 것은 막지 않는다.
+     스크립트는 곁의 report.js 하나만 그 해시로 연다 — 메일에서 온 글이 스크립트 · on… 속성으로 서도 돌지 않는다 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src $script_hash; base-uri 'none'; form-action 'none'">
 <title>$page_title</title>
 <!--
   보고 창의 틀 — 사용자가 고른 디자인(ember-studio · 세리프)에서 뼈대와 CSS 만 떴다. 내용은 하나도 들지 않는다.
-  채우는 손은 곁 폴더의 scripts/window.py 이고, $$ 로 시작하는 자리 다섯(page_title · side_title · toc · hero · sections)에 그날 보고를 넣는다.
+  채우는 손은 곁 폴더의 scripts/window.py 이고, $$ 로 시작하는 자리 다섯(page_title · side_title · toc · hero · sections)에 그날 보고를,
+  script · script_hash 에 곁의 report.js 와 그 해시를 넣는다.
   글꼴은 이 PC 에 깔린 것만 쓴다 — 바깥 글꼴을 부르지 않는다.
 -->
 <style>
@@ -209,6 +211,41 @@
   .facts dt { font-weight: 600; color: var(--text-2); }
   .facts dd { margin: 0; }
 
+  /* 「끝났음」 상자 — 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다 */
+  .task-top, .row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .task-top h3 { min-width: 0; }
+  .row-top > div { min-width: 0; }
+  .tick {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 50%;
+    padding: 4px 12px 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 9999px;
+    background: var(--bg);
+    font-size: 14px;
+    color: var(--text-2);
+    line-height: 1.5;
+    cursor: pointer;
+    user-select: none;
+  }
+  .tick[hidden] { display: none; }
+  .tick:hover { border-color: var(--primary); color: var(--text); }
+  .tick input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); cursor: pointer; flex: none; }
+  .tick input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .tick-word { font-weight: 600; white-space: nowrap; }
+  .tick-note:empty { display: none; }
+  .tick-note { font-size: 12px; color: var(--neutral); }
+  .tick:has(input:checked) { border-color: var(--primary); background: var(--surface); color: var(--primary-hover); }
+  .tick:has(input:disabled) { cursor: default; border-style: dashed; }
+  .tick:has(input:disabled) input { cursor: default; }
+  .is-done h3, .is-done > .row-top > div, .is-done > div > .row-top > div { color: var(--neutral); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .is-done .points, .is-done .facts, .is-done .when { opacity: 0.6; }
+  .tick-off { margin: 12px 0 0; font-size: 14px; color: var(--text-2); }
+  .tick-off[hidden] { display: none; }
+
   /* 작은 절 */
   .sub-head { margin: 40px 0 0; }
   .sub-head h3 { font-size: 20px; font-weight: 600; line-height: 1.4; margin: 0; }
@@ -297,6 +334,8 @@
     h1 { font-size: 28px; }
     .lede { font-size: 16px; }
     .task { padding: 16px; gap: 12px; }
+    .task-top, .row-top { flex-direction: column; gap: 8px; }
+    .tick { max-width: 100%; }
   }
 </style>
 </head>
@@ -326,5 +365,6 @@ $sections
     </footer>
   </main>
 </div>
+<script>$script</script>
 </body>
 </html>

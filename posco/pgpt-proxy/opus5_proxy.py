@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 23
+VERSION_OURS = 24
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -88,6 +88,11 @@ CACHE_WARM_SESSIONS = 8
 CACHE_WARM_MIN_BYTES = 100_000  # 이보다 작은 몸은 캐시를 놓쳐도 다시 쓰는 값이 작다
 CACHE_WARM_TIMEOUT_SEC = 60.0
 CACHE_WARM_TICK_SEC = 5.0
+# 게이트웨이 캐시의 수명 — 마지막으로 읽힌 때에서 이만큼 지나면 사라진다. /health 의 cache_warm_alive_until 이 대화마다
+# 「이미 확보한 수명」을 이 값으로 낸다 — 이어 묻기 값 훅이 그 칸을 읽어, 데우는 레인을 식었다고 막지 않는다.
+GATEWAY_CACHE_TTL_SEC = 300.0
+# 응답 id 를 /health 에 싣는 글자 — 이어 묻기 값 훅이 셸 패턴으로 그 칸을 가르므로 쉼표 · 따옴표 · 중괄호가 들면 안 된다
+_WARM_MESSAGE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 WEB_SEARCH_MODEL = os.environ.get("PGPT_PROXY_WEB_SEARCH_MODEL", "gemini-3.8-flash").strip()
 # 상류 기본 시한(600초)을 따르면 막힌 게이트웨이 앞에서 CLI 가 10분씩 묶인다.
 WEB_SEARCH_TIMEOUT = _env_float("PGPT_PROXY_WEB_SEARCH_TIMEOUT", 90.0)
@@ -661,6 +666,10 @@ def stats() -> dict[str, object]:
             "model_substitutions": _MODEL_SUBSTITUTION_TOTAL,
         }
     base["cache_warm_sessions"] = _WARMER.sessions()
+    # 응답 id → 그 대화의 캐시가 이미 확보한 수명의 끝(유닉스 초 · 내림). 아직 안 나간 데우기는 셈에 안 든다
+    now_mono, now_wall = time.monotonic(), time.time()
+    base["cache_warm_alive_until"] = {message_id: int(now_wall + (deadline - now_mono))
+                                      for message_id, deadline in _WARMER.alive(now_mono).items()}
     base.update(_GATEWAY_MODELS.stats())
     return base
 
@@ -754,6 +763,7 @@ class SseObserver:
         self.output_tokens: int | None = None
         self.stop_reason = "none"
         self.usage: dict = {}
+        self.message_id = ""        # message_start 의 message.id — 데운 대화를 /health 에서 그 응답으로 짚는다
 
     @property
     def can_keepalive(self) -> bool:
@@ -854,6 +864,8 @@ class SseObserver:
         started_message = payload.get("message")  # message_start 는 usage 를 message 안에 싣는다
         if isinstance(started_message, dict):
             merge_usage(self.usage, started_message.get("usage"))
+            if kind == "message_start" and isinstance(started_message.get("id"), str):
+                self.message_id = started_message["id"]
         if ((self.protocol == "anthropic" and kind == "message_stop") or
                 (self.protocol == "responses" and kind == "response.completed")):
             self.terminal = True
@@ -1010,11 +1022,13 @@ def cache_warm_body(body: bytes) -> bytes | None:
 class _WarmEntry:
     """데울 대화 하나 — 끝까지 받은 마지막 실제 요청(상류로 나간 길 · 머리 · 몸)과 그 시각들."""
 
-    __slots__ = ("key", "label", "path", "headers", "body", "last_touch", "pings", "busy")
+    __slots__ = ("key", "label", "message_id", "path", "headers", "body", "last_touch", "pings", "busy")
 
-    def __init__(self, key: str, label: str, path: str, headers: dict, body: bytes, last_touch: float) -> None:
+    def __init__(self, key: str, label: str, path: str, headers: dict, body: bytes, last_touch: float,
+                 message_id: str = "") -> None:
         self.key = key
         self.label = label          # 기록 줄에 싣는 세션 번호 앞 8자
+        self.message_id = message_id  # 그 실제 요청이 받은 응답의 id — 대화 기록의 마지막 assistant 줄이 같은 id 를 든다
         self.path = path
         self.headers = headers
         self.body = body
@@ -1028,17 +1042,35 @@ class CacheWarmer:
 
     시각은 부르는 쪽이 준다(``time.monotonic`` 초). 가장 최근 대화 ``CACHE_WARM_SESSIONS`` 개만 들고, 한 대화는 마지막 실제 요청
     뒤 ``cycles`` 번까지만 데운다 — 창을 열어 둔 채 쉬는 대화에 끝없이 나가지 않는다.
+
+    곁에 응답 id 마다 그 캐시가 이미 확보한 수명의 끝(``alive``)을 든다 — 캐시가 읽혔다고 아는 때(실제 요청의 시작 · 캐시를 읽힌
+    데우기의 시작)에 ``ttl_sec`` 를 더한 값이다. 데울 목록에서 빠진 뒤(횟수를 다 썼다 · 밀려났다)에도 그 끝까지 남는다. 캐시를 못
+    읽힌 데우기와 진 실제 요청은 그 id 를 바로 지운다 — 살았는지 모르는 캐시를 살았다고 내지 않는다.
     """
 
-    def __init__(self, cycles: int, interval_sec: float) -> None:
+    def __init__(self, cycles: int, interval_sec: float, ttl_sec: float = GATEWAY_CACHE_TTL_SEC) -> None:
         self.cycles = cycles
         self.interval_sec = interval_sec
+        self.ttl_sec = ttl_sec
         self._entries: list[_WarmEntry] = []
+        self._alive: dict[str, float] = {}
         self._lock = threading.Lock()
 
     def sessions(self) -> int:
         with self._lock:
             return len(self._entries)
+
+    def alive(self, now: float) -> dict[str, float]:
+        """응답 id → 확보한 수명의 끝(``now`` 와 같은 시계). 끝이 지난 것은 이때 걷는다."""
+        with self._lock:
+            self._alive = {message_id: end for message_id, end in self._alive.items() if end > now}
+            return dict(self._alive)
+
+    def _secure(self, message_id: str, since: float) -> None:
+        # 잠금 안에서만 부른다. 쓸 때도 끝난 것을 걷는다 — /health 를 아무도 안 읽어도 쌓이지 않게
+        self._alive = {known: end for known, end in self._alive.items() if end > since}
+        if _WARM_MESSAGE_ID.fullmatch(message_id):
+            self._alive[message_id] = since + self.ttl_sec
 
     def touch(self, key: str, now: float) -> None:
         """실제 요청이 시작됐다 — 곧 그 요청이 캐시를 읽으니 그 대화의 데우기를 미룬다."""
@@ -1047,15 +1079,21 @@ class CacheWarmer:
                 if entry.key == key:
                     entry.last_touch = now
 
-    def remember(self, key: str, session_id: str, path: str, headers: dict, body: bytes, started: float) -> None:
-        """끝까지 받은 실제 요청을 담는다 — 같은 대화면 바꿔 끼워 횟수를 처음부터 센다. ``started`` 는 그 요청이 시작한 때다."""
-        entry = _WarmEntry(key, session_id[:8], path, headers, body, started)
+    def remember(self, key: str, session_id: str, path: str, headers: dict, body: bytes, started: float,
+                 message_id: str = "") -> None:
+        """끝까지 받은 실제 요청을 담는다 — 같은 대화면 바꿔 끼워 횟수를 처음부터 센다. ``started`` 는 그 요청이 시작한 때고,
+        ``message_id`` 는 그 요청이 받은 응답의 id 다(``alive`` 에 ``started`` 부터의 수명으로 든다)."""
+        entry = _WarmEntry(key, session_id[:8], path, headers, body, started, message_id)
         with self._lock:
             self._entries = ([entry] + [old for old in self._entries if old.key != key])[:CACHE_WARM_SESSIONS]
+            self._secure(message_id, started)
 
     def forget(self, key: str) -> None:
-        """그 대화를 더 데우지 않는다 — 실제 요청이 졌거나 데울 꼴이 아니게 됐다."""
+        """그 대화를 더 데우지 않는다 — 실제 요청이 졌거나 데울 꼴이 아니게 됐다. 그 대화의 확보한 수명도 지운다."""
         with self._lock:
+            for entry in self._entries:
+                if entry.key == key:
+                    self._alive.pop(entry.message_id, None)
             self._entries = [entry for entry in self._entries if entry.key != key]
 
     def due(self, now: float) -> list[_WarmEntry]:
@@ -1076,6 +1114,10 @@ class CacheWarmer:
             entry.busy = False
             entry.last_touch = touched
             entry.pings += 1
+            if kept:
+                self._secure(entry.message_id, touched)
+            else:
+                self._alive.pop(entry.message_id, None)
             if not kept or entry.pings >= self.cycles:
                 self._entries = [old for old in self._entries if old is not entry]
 
@@ -1995,6 +2037,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     _keepalives_sent = 0
     _stream_outcome = "complete"
     _session_id = ""
+    _message_id = ""
 
     def _client_disconnected(self) -> bool:
         """요청 · 이어 온 바이트를 소비하지 않고, 소켓 시한도 안 바꾸고 들여다본다."""
@@ -2280,6 +2323,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             release_held()
             if observer is not None and protocol == "anthropic":
                 remember_session_input(self._session_id, observer.usage)
+                self._message_id = observer.message_id
             # 길이를 선언한 응답이 모자라게 끝나면 read1() 은 예외 없이 빈 바이트를 돌려준다 — 남은 길이로 가린다
             remaining = getattr(response, "length", None)
             if remaining:
@@ -2347,6 +2391,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._compact_request = False
         self._claude_messages = False
         self._session_id = ""
+        self._message_id = ""
         self._keepalives_sent = 0
         self._stream_outcome = "complete"
         self._gw_request_id = ""
@@ -2715,7 +2760,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             if warm_candidate:
                 if outcome == "complete" and upstream_status == 200:
-                    _WARMER.remember(warm_key, self._session_id, upstream_path, headers, body, started)
+                    _WARMER.remember(warm_key, self._session_id, upstream_path, headers, body, started,
+                                     self._message_id)
                 elif outcome != "client_cancelled":
                     # 진 요청의 몸은 게이트웨이가 못 받는 꼴일 수 있다 — 다음 성공이 다시 담는다. 사람이 끊은 판은 앞 몸을 둔다
                     _WARMER.forget(warm_key)

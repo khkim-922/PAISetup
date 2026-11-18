@@ -1,6 +1,8 @@
 """ep_session.py 의 바퀴를 잰다 — 세션 파일부터 · 거절되면 손을 한 번 · 바꾸는 일은 늘 손부터 · 출력 담기. 곁의 ep_command.py 는
 판정 하나 — 받아 둔 파일을 못 남기는 자리에서도 예외 없이 까닭을 낸다(방금 받은 답을 안 잃는다).
-세션 손은 대역(node 스크립트)이라 127.0.0.1 밖으로도, Edge 로도 안 나간다.
+세션 손은 대역(node 스크립트)이라 127.0.0.1 밖으로도, Edge 로도 안 나간다. 끝에 곁의 check_session.js(창 없는 Edge 와 가짜 서버로
+받는 손 · 로그인 입구 · 「EP 접속 정보」 창 누르기를 잰다)를 함께 불러 그 결과를 판정 하나로 싣는다 — 푸시 문은 check_*.py 만 부르기 때문이다.
+node · Edge 가 없으면 그 판정은 못 쟀다(종료 2)다.
 
     python -X utf8 -I check_ep_session.py            # 이 폴더의 ep_session.py 를 잰다
     python -X utf8 -I check_ep_session.py <폴더>     # 다른 폴더의 사본을 잰다
@@ -22,6 +24,7 @@ import json
 import os
 import pathlib
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -208,14 +211,43 @@ def check_no_file_and_hand_down_is_no_session():
 CHECKS = [v for k, v in sorted(globals().items()) if k.startswith("check_")]
 
 
+JS_CHECK = "check_session.js"
+JS_TIMEOUT_S = 600          # 창 없는 Edge 를 띄워 판마다 1분 남짓 걸린다
+
+
+def browser_check() -> bool:
+    """곁의 check_session.js 를 불러 판정 하나로 싣는다 — 못 쟀으면(node 가 없다 · 그 검사가 2) False 를 돌려준다."""
+    node = shutil.which("node")
+    script = HERE / JS_CHECK
+    if node is None or not script.is_file():
+        print(f"못 쟀다 — {JS_CHECK} 를 못 돌린다(node {'없음' if node is None else '있음'} · 파일 {'있음' if script.is_file() else '없음'})")
+        return False
+    try:
+        got = subprocess.run([node, str(script), str(HERE)], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=JS_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        judge(f"{JS_CHECK} — {JS_TIMEOUT_S}초 안에 끝난다", False, "시한을 넘겼다")
+        return True
+    tail = [x for x in got.stdout.splitlines() if x.strip()][-1:] or [""]
+    if got.returncode == 2:
+        print(f"못 쟀다 — {JS_CHECK}: {tail[0]}")
+        return False
+    judge(f"{JS_CHECK} — 받는 손 · 로그인 입구 · 「EP 접속 정보」 창 누르기", got.returncode == 0,
+          tail[0] if got.returncode == 0 else got.stdout[-1500:])
+    return True
+
+
 def main() -> int:
     print(f"잰다: {HERE / 'ep_session.py'} · 대역 손 {HAND}")
     for check in CHECKS:
         check()
     shutil.rmtree(WORK, ignore_errors=True)
+    measured = browser_check()
     passed = sum(1 for _, ok, _ in RESULTS if ok)
     print(f"{'통과' if passed == len(RESULTS) else '어긋남'} {passed}/{len(RESULTS)}")
-    return 0 if passed == len(RESULTS) else 1
+    if passed != len(RESULTS):
+        return 1
+    return 0 if measured else 2
 
 
 if __name__ == "__main__":

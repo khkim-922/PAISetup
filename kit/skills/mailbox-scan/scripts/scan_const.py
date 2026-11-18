@@ -82,14 +82,18 @@ BRIEF_PROMPT_FILE = "brief-prompt.txt"   # 띄울 때마다 짓는 부탁 글 �
 BRIEF_LOG_FILE = "brief-run.log"         # 마지막으로 띄운 보고의 출력 — 띄울 때마다 새로 쓴다
 BRIEF_FORMAT = 1                         # brief.json 의 꼴 번호
 BRIEF_AT_DEFAULT = "07:30"               # 보고 시각의 기본(서울) — 사용자가 `--brief-at` 으로 바꾼다
-BRIEF_TRIES_MOST = 3                     # 하루에 사내 세션을 살펴보는 수 — 세 번 다 없으면 그날은 그만둔다(사용자가 정한 수)
-BRIEF_TRY_GAP_MIN = 5                    # 살펴보기 사이의 가장 짧은 틈(분) — 작업이 더 자주 깨워도 이보다 촘촘히 안 본다. 분 단위로 잰다:
-                                         # 작업은 정각 분에 깨우고 프로세스가 뜨는 데 몇십 초가 들어, 초까지 재면 5분마다의 판이 한 판씩 건너뛴다
+BRIEF_UNTIL = "12:00"                    # 보고를 기다리는 마감(서울) — 보고 시각부터 이때까지 사내 세션이 서는 첫 판에 띄우고, 지나면 그날은
+                                         # 그만둔다. ⚠ 임시값 — 사용자가 다른 때를 주시면 고친다. 보고 시각은 이보다 앞서야 걸린다
+BRIEF_UNTIL_ENV = "MAILBOX_SCAN_BRIEF_UNTIL"   # 검사가 마감을 바꿀 때만 준다 — 하루 어느 때에 돌아도 같은 판을 재게
+BRIEF_TRY_GAP_MIN = 5                    # 판이 답을 안 준 주기에 손의 session 으로 살펴보는 사이의 가장 짧은 틈(분) — 작업이 더 자주 깨워도 이보다
+                                         # 촘촘히 안 묻는다. 분 단위로 잰다: 작업은 정각 분에 깨우고 프로세스가 뜨는 데 몇십 초가 들어, 초까지 재면
+                                         # 5분마다의 판이 한 판씩 건너뛴다
 BRIEF_LOCK_STALE_S = 60 * 60             # 띄운 보고가 이보다 오래 안 끝났으면 멈춘 것으로 본다(회사에서 한 판의 값을 재기 전의 기본값)
 BRIEF_MADE = "brief-{date}-*.md"         # 그날 보고 글 — 사용자 폴더에 일일 보고의 손이 남긴다(원본은 스킬 daily-brief 의 scripts/window.py
                                          # `FILE_NAME` — 이름은 지은 때의 PC 시계다. 회사 PC 는 서울 시계라 서울 날짜로 찾는다)
 BRIEF_SKILL = "daily-brief"              # 이 스킬과 같은 스킬 뿌리에 나란히 선다
 BRIEF_WINDOW = ("scripts", "window.py")  # 보고 창을 짓는 손 — 사람 없는 실행은 `--no-open`
+BRIEF_TICKS = ("scripts", "ticks.py")    # 보고 창의 「끝났음」 표시를 지난 보고 글에 거두는 손 — 업무 파악보다 먼저 돈다
 CALENDAR_SKILL = "company-calendar"      # 회사 메일 손과 같은 스킬 뿌리에 나란히 선다
 CALENDAR_SCRIPT = ("scripts", "company_calendar.py")
 CLAUDE_NAMES = ("claude.exe", "claude")  # PATH 에서 찾는 차례 — 네이티브 판이 먼저, 없으면 npm 판의 claude.cmd(PATHEXT 가 붙인다)
@@ -98,6 +102,8 @@ CLAUDE_TOOLS = "Bash,Read,Glob,Grep"     # 사람 없는 실행에 남기는 기
 WORK_SKILL = "mailbox-work"              # 업무 파악 스킬 — 이 스킬과 같은 스킬 뿌리에 나란히 선다. 사람 없는 보고가 짓기 전에 그 업무 파악을 한다
 WORK_WRITER = ("scripts", "work.py")     # 그 스킬의 쓰는 손 — 업무 파일 하나만 바꿔 쓰고 앞 판의 절이 빠진 글 · 빈 글은 안 쓴다(사람 없는 실행에 연다)
 WORK_FILE = "work.md"                    # 업무 파일 — 사용자 폴더에 산다(주인은 스킬 mailbox-work · 원본 이름은 그 쓰는 손의 WORK_FILE)
+LANE_FILE = "lane.md"                    # 업무 파악 · 일일 보고 스킬의 걸음을 든 글 — 사람 없는 보고는 맡길 곳이 없어 그 글대로 한다(SKILL.md 는
+                                         # 맡기는 쪽의 글이다)
 NESTED_ENV = ("CLAUDECODE",)             # 대화 안에서 부른 판(run --now)이 띄울 때 걷는 변수 — 있으면 claude 가 겹친 세션이라며 안 뜬다
 # 손의 읽는 명령 — 사람 없는 보고에 여는 것(손 mail.py 머리말 「어떻게 부르나」 · company_calendar.py 머리말). 권한 규칙의 꼴 그대로다 —
 # 끝의 「 *」는 그 뒤에 무엇이 와도(인자 · `2>&1`) 되고 명령만 써도 된다. 「;」 · 「&&」 · 「|」로 이은 다른 명령은 따로 대어 막힌다

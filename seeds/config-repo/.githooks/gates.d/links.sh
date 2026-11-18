@@ -30,7 +30,16 @@ set -- --offline --no-progress --include-fragments
 #     0 깨끗하다  ·  1 입력을 못 찾았다  ·  **2 링크가 깨졌다**  ·  3 설정을 못 읽었다
 #   물어야 할 것은 **2** 하나다. 나머지는 전부 「못 쟀다」여서, 물면 없는 깨짐을 대고
 #   안 물면 **재는 자가 지고도 초록이 난다.**
-out="$(lychee "$@" . 2>&1)"; rc=$?
+# ⚠ **숨은 폴더는 `.` 만으로는 안 읽힌다** — `.claude/` 아래(스킬 · 룰)는 입력으로 따로 대야 잰다.
+#   스킬을 부모 글 · 레인 글로 가른 뒤로 둘 사이의 가리킴이 파일 · 절 링크로만 이어져, 절 이름을 바꾸면
+#   하위 에이전트가 엉뚱한 자리를 읽는다. `--hidden` 은 안 쓴다 — `.git` · `.claude/worktrees` 까지 끌려온다.
+#   그 폴더가 없는 저장소(익명 조각이다)는 그냥 지나간다.
+inputs="."
+for d in .claude/skills .claude/rules.global; do
+    [ -d "$d" ] && inputs="$inputs $d"
+done
+# shellcheck disable=SC2086
+out="$(lychee "$@" $inputs 2>&1)"; rc=$?
 case "$rc" in
     0) ;;
     2) # 링크가 깨졌다 — 우리가 무는 자리다

@@ -1,6 +1,8 @@
 """메일함에서 바꾼 것을 적어 두고, 되돌릴 차례를 낸다 — 회사 메일 스킬의 미리 보기와 실행이 낸 글을 받는다. 메일함에는 닿지 않는다.
 
-    <미리 보기> | python -X utf8 journal.py show <종류> --piece <n> [--to <폴더> | --inbox] [<메일 번호> …]   안의 조각 n 으로 적고 보인다
+    <미리 보기> | python -X utf8 journal.py show <종류> --piece <n> [--why <무리 · 까닭>] [--to <폴더> | --inbox] [<메일 번호> …]   안의 조각 n 으로 적고 보인다
+    python -X utf8 journal.py shown                     적어 둔 안 — show 가 보인 줄을 조각마다 그대로(읽기만)
+    python -X utf8 journal.py plans [--most N]          적어 둔 안들 — 아직 안 바꾼 조각의 받을 자리 · 메일 번호 · 까닭(읽기만 · 새것부터)
     <미리 보기> | python -X utf8 journal.py hold <종류> [--to <폴더> | --inbox] [--shown <n>] [--undoes <기록 번호>] [<메일 번호> …]
     <실행>      | python -X utf8 journal.py done
     python -X utf8 journal.py drop                      사람이 안 하기로 하신 미리 보기를 놓는다 — 실행하지 않았을 때만
@@ -15,8 +17,10 @@ rule-delete. `move` 는 회사 메일 스킬에 준 받을 자리를 같이 준�
 
 명령마다 무엇을 대나는 `references/DESIGN.md` 「명령마다 하는 일」이 든다.
 
-남기는 것 — 사용자 폴더(`home()`)의 `LOG_FILE`(덧붙이기만) · 잡아 둔 바꿈 `HELD_FILE` · 보여 드린 안의 조각 `SHOWN_FILE`. 메일 번호 ·
-자리 · 폴더 경로 · 규칙의 판만 적고 제목 · 보낸 분 · 본문은 안 적는다.
+남기는 것 — 사용자 폴더(`home()`)의 `LOG_FILE`(덧붙이기만) · 잡아 둔 바꿈 `HELD_FILE` · 보여 드린 안의 조각 `SHOWN_FILE` · 적어 둔
+안들 `PLANS_FILE`(덧붙이기만). 기록 · 잡아 둔 바꿈 · 적어 둔 안들은 메일 번호 · 자리 · 폴더 경로 · 규칙의 판(안들은 조각의 까닭 한 줄도)만
+적고 제목 · 보낸 분 · 본문은 안 적는다. 안의 조각은 손의 메일 줄(제목 · 보낸 분)도 든다 — 안을 지은 쪽과 사용자께 보이는 쪽이 달라도 같은
+줄이 서게. 다음 안의 1번 조각이 덮는다 — 덮인 안의 메일 번호는 적어 둔 안들에 남는다.
 
 종료 값 — 0 됐다 · 1 못 했다(꼴이 다르다 · 보여 드린 조각과 다르다 · 실행의 글이 잡아 둔 바꿈과 다르다 · 잡아 둔 것이 없다 · 그런
 기록이 없다 — 다음 걸음을 끝 줄이 말한다) · 2 인자가 틀렸다.
@@ -43,7 +47,9 @@ HOME_NAME = "mail-secretary"             # %LOCALAPPDATA% 아래의 사용자 �
 LOG_FILE = "mailbox-tidy-log.jsonl"
 HELD_FILE = "mailbox-tidy-held.json"
 SHOWN_FILE = "mailbox-tidy-shown.json"
+PLANS_FILE = "mailbox-tidy-plans.jsonl"
 FIRST_PIECE = 1                          # 이 번호의 조각을 적으면 새 안이다 — 앞서 적은 조각을 걷는다
+PLANS_MOST = 5                           # plans 가 기본으로 보일 안의 수 — 안 바꾼 조각이 남은 안만 센다
 
 EXIT_OK, EXIT_FAILED = 0, 1                 # 틀린 인자는 argparse 가 2 로 나간다
 
@@ -119,12 +125,15 @@ WHY_TARGET_MISSING = "옮기기는 받을 자리를 준다(--to 폴더 경로 ·
 WHY_NO_UNIDS = "메일 번호를 받지 못했다"
 WHY_RULE_LINES = "규칙의 지금 · 바꿀 두 줄을 못 읽었다"
 WHY_FOR_MAILS = "메일 번호와 받을 자리는 메일을 건드리는 바꿈(move · trash · restore)에만 준다"
+WHY_PIECE_NEXT = ("조각은 안 안에서 차례대로 적는다 — 지금 안의 다음 조각은 {next}번이다. 새 안이면 --piece 1 부터 센다(plans 가 보인 "
+                  "옛 조각 번호는 새 안에서 다시 센다)")
 
 # 보여 드린 안 — 한 번 확인받는 안의 조각과, 실행 직전에 다시 받은 미리 보기를 그 조각에 대기
 SHOWN_ROW = "[조각 {n}] {what}"
-SHOWN = ("[기록 — 안의 {n}번 조각으로 적었다{reset}. 조각을 다 보인 뒤 안 전체를 한 번 여쭙는다 — 하자고 하시면 조각마다 새 미리 보기를 "
-         "journal.py hold … --shown {n} 에 준다]")
-SHOWN_RESET = " · 1번 조각이라 앞서 적어 둔 안(조각 {count}개)은 걷었다"
+SHOWN = ("[기록 — 안 {plan} 의 {n}번 조각으로 적었다{reset}. 조각을 다 보인 뒤 안 전체를 한 번 여쭙는다 — 하자고 하시면 조각마다 새 "
+         "미리 보기를 journal.py hold … --shown {n} 에 준다]")
+SHOWN_RESET = (" · 1번 조각이라 앞서 적어 둔 안(조각 {count}개)은 걷었다 — 그 안의 안 바꾼 조각은 메일 번호째 journal.py plans 가 "
+               "든다")
 NOT_SHOWN = ("[기록 — 이 조각을 적지 않았다: {why}. 다음: 회사 메일 스킬에 준 것과 같은 종류 · 받을 자리 · 메일 번호(같은 차례)로 미리 "
              "보기부터 다시 받는다]")
 HELD_SHOWN = ("[기록 — 보여 드린 {piece}번 조각과 같아 이 바꿈을 잡아 두었다({kind}{n}). 확인받은 안의 그 조각이니 실행하고 그 글을 "
@@ -134,6 +143,10 @@ SHOWN_DIFF_TAIL = ("  그래서 잡지 않았다 — 실행하지 않는다. 다
                    "이 미리 보기를 --shown 없이 hold 로 잡는다]")
 SHOWN_NONE = ("[기록 — {n}번 조각을 보인 기록이 없어 잡지 않았다. 다음: 이 미리 보기를 사용자께 보이고 확인받은 뒤 --shown 없이 hold 로 "
               "잡는다]")
+SHOWN_EMPTY = "[기록 — 적어 둔 안이 없다. 다음: 조각마다 미리 보기를 journal.py show … --piece <n> 으로 흘려 안을 적는다]"
+SHOWN_NO_BODY = "  (이 조각은 메일 줄 없이 적혔다 — 그 미리 보기를 다시 받아 show 로 적어야 줄이 선다)"
+SHOWN_LIST = ("[기록 — 적어 둔 안: 조각 {count}개 · 처음 적은 때 {first} · 마지막 {last}. 이 줄들을 사용자께 그대로 보이고 안 전체를 한 번 "
+              "여쭙는다 — 하자고 하시면 조각마다 새 미리 보기를 journal.py hold … --shown <n> 에 준다]")
 DIFF_KIND = "  - 종류: 보인 것 {was} · 지금 {now}"
 DIFF_TARGET = "  - 받을 자리: 보인 것 {was} · 지금 {now}"
 DIFF_ADDED = "  - 보인 조각에 없던 메일 {count}통: {unids}"
@@ -141,6 +154,17 @@ DIFF_GONE = "  - 보인 조각에 있었는데 이 미리 보기에 없는 메�
 DIFF_PLACE = "  - 그 사이 자리가 바뀐 메일 {count}통: {moves}"
 DIFF_PATH = "  - 폴더: 보인 것 「{was}」 · 지금 「{now}」"
 DIFF_RULE = "  - 규칙: 보인 것 {was} · 지금 {now}"
+
+# 적어 둔 안들 — show 가 적은 조각을 안마다 남기고, 그 뒤 「됐다」로 맺은 기록이 바꾼 것은 빼고 보인다
+PLANS_HEAD = "[안 {plan}] 적은 때 {when} · 조각 {total}개 가운데 안 바꾼 것 {left}개"
+PLANS_PIECE = "  [조각 {n}] {what}{why}{unids}"
+PLANS_WHY = " — {why}"
+PLANS_UNIDS = ": {unids}"
+PLANS_LATER = "    보인 뒤 기록 {ids} 이 바꾼 메일 {count}통은 뺐다"
+PLANS_FOOT = ("[기록 — 안 바꾼 조각은 확인받은 안이 아니라 미리 보기의 입력이다. 다시 다루려면 조각마다 이 받을 자리와 메일 번호(같은 "
+              "차례)로 손의 미리 보기를 다시 받아 journal.py show … --piece <n> 으로 새 안을 적고(위의 조각 번호가 아니라 새 안에서 1 부터 "
+              "다시 센다), shown 의 줄을 사용자께 보이고 한 번 여쭙는다]")
+PLANS_EMPTY = "[기록 — 안 바꾼 조각이 남은 안이 없다. 다음: 메일함에서 안을 새로 짓는다]"
 
 LOG_EMPTY = "바꾼 것의 기록이 없다"
 LOG_BAD = "[기록 — 기록 파일의 {n}번째 줄을 못 읽어 건너뛰었다]"
@@ -238,9 +262,8 @@ def _write_atomic(path: pathlib.Path, text: str) -> None:
     os.replace(temp, path)
 
 
-def entries(folder: pathlib.Path) -> tuple[list[dict[str, Any]], list[int]]:
-    """기록 전부(옛것부터)와 못 읽은 줄의 번호."""
-    path = folder / LOG_FILE
+def _lines(path: pathlib.Path, key: str) -> tuple[list[dict[str, Any]], list[int]]:
+    """덧붙이기만 하는 파일의 줄 전부(옛것부터)와 못 읽은 줄의 번호 — `key` 칸이 정수인 줄만 읽은 것으로 센다."""
     if not path.exists():
         return [], []
     rows, bad = [], []
@@ -249,7 +272,7 @@ def entries(folder: pathlib.Path) -> tuple[list[dict[str, Any]], list[int]]:
             continue
         try:
             row = json.loads(line)
-            if not isinstance(row, dict) or not isinstance(row.get("id"), int):
+            if not isinstance(row, dict) or not isinstance(row.get(key), int):
                 raise ValueError
             rows.append(row)
         except ValueError:
@@ -257,15 +280,25 @@ def entries(folder: pathlib.Path) -> tuple[list[dict[str, Any]], list[int]]:
     return rows, bad
 
 
+def _append_line(path: pathlib.Path, row: dict[str, Any]) -> None:
+    """한 줄을 덧붙인다 — 있는 줄은 고치지 않는다."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def entries(folder: pathlib.Path) -> tuple[list[dict[str, Any]], list[int]]:
+    """기록 전부(옛것부터)와 못 읽은 줄의 번호."""
+    return _lines(folder / LOG_FILE, "id")
+
+
 def append(folder: pathlib.Path, entry: dict[str, Any]) -> int:
     """기록 한 줄을 덧붙이고 그 번호를 낸다 — 있는 줄은 고치지 않는다."""
     rows, _ = entries(folder)
-    entry = {"id": max((r["id"] for r in rows), default=0) + 1, **entry}
-    folder.mkdir(parents=True, exist_ok=True)
-    with (folder / LOG_FILE).open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        f.flush()
-        os.fsync(f.fileno())
+    entry = {"id": next_id(rows), **entry}
+    _append_line(folder / LOG_FILE, entry)
     return entry["id"]
 
 
@@ -611,35 +644,133 @@ def given(args) -> tuple[list[str], str | None]:
     return unids, "" if args.inbox else args.to
 
 
-def shown_pieces(folder: pathlib.Path) -> dict[str, dict[str, Any]]:
-    """보여 드린 안의 조각 — 조각 번호(글자) → 조각. 없거나 못 읽으면 빈 것."""
+def _shown(folder: pathlib.Path) -> dict[str, Any]:
+    """보여 드린 안 파일 — {"plan": 안 번호, "pieces": …}. 없거나 못 읽으면 빈 것."""
     try:
         got = json.loads((folder / SHOWN_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    pieces = got.get("pieces") if isinstance(got, dict) else None
+    return got if isinstance(got, dict) else {}
+
+
+def shown_pieces(folder: pathlib.Path) -> dict[str, dict[str, Any]]:
+    """보여 드린 안의 조각 — 조각 번호(글자) → 조각. 없거나 못 읽으면 빈 것."""
+    pieces = _shown(folder).get("pieces")
     return pieces if isinstance(pieces, dict) else {}
+
+
+def plan_rows(folder: pathlib.Path) -> list[dict[str, Any]]:
+    """적어 둔 안들의 조각 줄 전부(옛것부터) — 못 읽은 줄은 건너뛴다."""
+    return _lines(folder / PLANS_FILE, "plan")[0]
 
 
 def cmd_show(args, folder: pathlib.Path) -> int:
     text = read_input(args.infile)
+    pieces, plan = shown_pieces(folder), _shown(folder).get("plan")
     try:
         unids, to = given(args)
         piece, body = read_shown(args.kind, text, unids, to)
+        # 1 이 아닌 번호는 지금 안의 다음 차례만 받는다 — 다른 안의 옛 번호를 그대로 주면 지금 안에 섞이고 그 자리의 조각이 plans 에서 덮인다
+        nxt = max((int(k) for k in pieces if k.isdigit()), default=0) + 1 if isinstance(plan, int) else FIRST_PIECE
+        if args.piece != FIRST_PIECE and args.piece != nxt:
+            raise Refused(WHY_PIECE_NEXT.format(next=nxt))
     except Refused as exc:
         for line in text.splitlines():       # 적지 못한 조각은 손의 글을 그대로 보인다 — 파이프가 받아 갔다
             print(line)
         print(NOT_SHOWN.format(why=exc))
         return EXIT_FAILED
-    pieces = shown_pieces(folder)
     reset = ""
+    if args.piece == FIRST_PIECE or not isinstance(plan, int):
+        plan = max((r["plan"] for r in plan_rows(folder)), default=0) + 1
     if args.piece == FIRST_PIECE:
         reset = SHOWN_RESET.format(count=len(pieces)) if pieces else ""
         pieces = {}
-    pieces[str(args.piece)] = {**piece, "at": _now()}
-    _write_atomic(folder / SHOWN_FILE, json.dumps({"pieces": pieces}, ensure_ascii=False))
-    for line in [SHOWN_ROW.format(n=args.piece, what=describe(piece)), *body, SHOWN.format(n=args.piece, reset=reset)]:
+    at = _now()
+    # 안들에는 메일 줄(제목 · 보낸 분)을 안 싣는다. log_from — 이 조각을 보인 뒤에 붙는 첫 기록 번호(그 뒤 바꾼 것을 가르는 금)
+    row = {"plan": plan, "piece": args.piece, **piece, "at": at, "log_from": next_id(entries(folder)[0])}
+    if args.why:
+        row["why"] = args.why.strip()
+    _append_line(folder / PLANS_FILE, row)
+    pieces[str(args.piece)] = {**piece, "body": body, "at": at}
+    _write_atomic(folder / SHOWN_FILE, json.dumps({"plan": plan, "pieces": pieces}, ensure_ascii=False))
+    for line in [SHOWN_ROW.format(n=args.piece, what=describe(piece)), *body, SHOWN.format(plan=plan, n=args.piece, reset=reset)]:
         print(line)
+    return EXIT_OK
+
+
+def left_of(row: dict[str, Any], rows: Sequence[dict[str, Any]]) -> tuple[dict[str, Any] | None, dict[int, int]]:
+    """적어 둔 조각에서 아직 안 바꾼 몫 → (남은 조각 · 다 바꿨으면 None, 그 뒤 메일을 바꾼 기록 번호 → 뺀 통 수).
+    조각을 보인 뒤(`log_from` 부터) 「됐다」로 맺은 기록만 바꾼 것으로 센다 — 결과 모름은 남긴다(다시 받는 미리 보기가 지금 자리를 보인다).
+    메일 바꿈은 어느 안 · 어느 조각에서 왔든 그 메일 번호를 바꾼 기록이면 뺀다 — 조각 밖에서 따로 잡은 바꿈도 메일함을 바꿨다."""
+    later = [r for r in rows if r["id"] >= int(row.get("log_from") or 0) and r.get("outcome") == DONE]
+    kind = row.get("kind")
+    if kind in MAIL_KINDS:
+        by: dict[str, int] = {}
+        for r in later:
+            for m in r.get("mails") or []:
+                by.setdefault(m.get("unid", ""), r["id"])
+        keep = [m for m in row.get("mails") or [] if m.get("unid") not in by]
+        cut: dict[int, int] = {}
+        for m in row.get("mails") or []:
+            if m.get("unid") in by:
+                cut[by[m["unid"]]] = cut.get(by[m["unid"]], 0) + 1
+        return ({**row, "mails": keep} if keep else None), cut
+    if kind in (FOLDER_CREATE, FOLDER_DELETE):
+        same = any(r.get("kind") == kind and r.get("path") == row.get("path") for r in later)
+    else:
+        def plain(rule: Any) -> dict[str, Any]:
+            return {k: v for k, v in (rule or {}).items() if k != "unid"}   # 넣은 규칙의 열쇠는 맺을 때 붙는다
+        same = any(r.get("kind") == kind and plain(r.get("rule")) == plain(row.get("rule")) for r in later)
+    return (None if same else row), {}
+
+
+def cmd_plans(args, folder: pathlib.Path) -> int:
+    rows, _ = entries(folder)
+    last: dict[int, dict[int, dict[str, Any]]] = {}
+    for r in plan_rows(folder):                  # 같은 안의 같은 조각을 다시 적었으면 나중 줄이 선다
+        last.setdefault(r["plan"], {})[int(r.get("piece") or FIRST_PIECE)] = r
+    out: list[str] = []
+    shown = 0
+    for plan in sorted(last, reverse=True):
+        if args.most and shown >= args.most:
+            break
+        pieces = last[plan]
+        lines: list[str] = []
+        left = 0
+        for n in sorted(pieces):
+            rest, cut = left_of(pieces[n], rows)
+            if rest is None:
+                continue
+            left += 1
+            why = PLANS_WHY.format(why=rest["why"]) if rest.get("why") else ""
+            unids = PLANS_UNIDS.format(unids=" ".join(m["unid"] for m in rest["mails"])) if rest.get("kind") in MAIL_KINDS else ""
+            lines.append(PLANS_PIECE.format(n=n, what=describe(rest), why=why, unids=unids))
+            if cut:
+                lines.append(PLANS_LATER.format(ids=" · ".join(map(str, sorted(cut))), count=sum(cut.values())))
+        if not left:
+            continue
+        shown += 1
+        when = min(str(p.get("at") or "")[:16].replace("T", " ") or WHEN_UNKNOWN for p in pieces.values())
+        out += [PLANS_HEAD.format(plan=plan, when=when, total=len(pieces), left=left), *lines]
+    for line in [*out, PLANS_FOOT] if out else [PLANS_EMPTY]:
+        print(line)
+    return EXIT_OK
+
+
+def cmd_shown(args, folder: pathlib.Path) -> int:
+    pieces = shown_pieces(folder)
+    if not pieces:
+        print(SHOWN_EMPTY)
+        return EXIT_FAILED
+    order = sorted(pieces, key=lambda k: int(k) if k.isdigit() else 0)
+    for n in order:
+        p = pieces[n]
+        body = p.get("body")
+        print(SHOWN_ROW.format(n=n, what=describe(p)))
+        for line in body if isinstance(body, list) and body else [SHOWN_NO_BODY]:
+            print(line)
+    ats = sorted(str(pieces[n].get("at") or "")[:16].replace("T", " ") or WHEN_UNKNOWN for n in order)
+    print(SHOWN_LIST.format(count=len(order), first=ats[0], last=ats[-1]))
     return EXIT_OK
 
 
@@ -816,11 +947,15 @@ def parser() -> argparse.ArgumentParser:
         q.add_argument("--in", dest="infile", help="표준 입력 대신 읽을 파일")
         q.add_argument("unids", nargs="*", help="회사 메일 스킬에 준 메일 번호 — 같은 차례로")
     s.add_argument("--piece", type=piece_number, required=True, help=f"안에서 이 조각의 번호 — {FIRST_PIECE} 이면 새 안을 연다")
+    s.add_argument("--why", help="이 조각의 무리 이름과 까닭 한 줄 — plans 가 다음 판에 같이 낸다. 메일 제목 · 보낸 분은 안 적는다")
     h.add_argument("--shown", type=piece_number, help="확인받은 안의 이 조각과 같을 때만 잡는다")
     h.add_argument("--undoes", type=int, help="이 바꿈이 되돌리는 기록 번호")
     d = sub.add_parser("done", help="실행의 글을 읽어 잡아 둔 바꿈을 기록으로 맺는다")
     d.add_argument("--in", dest="infile", help="표준 입력 대신 읽을 파일")
     sub.add_parser("drop", help="사람이 안 하기로 하신 미리 보기를 기록 없이 놓는다 — 실행하지 않았을 때만(실행했으면 done)")
+    sub.add_parser("shown", help="적어 둔 안 — show 가 조각마다 보인 줄을 그대로 다시 낸다(읽기만)")
+    pl = sub.add_parser("plans", help="적어 둔 안들 — 아직 안 바꾼 조각의 받을 자리 · 메일 번호 · 까닭(읽기만 · 새것부터). 미리 보기의 입력일 뿐이다")
+    pl.add_argument("--most", type=int, default=PLANS_MOST, help="보일 안의 수 — 안 바꾼 조각이 남은 안만 센다(0 이면 다)")
     lg = sub.add_parser("log", help="바꾼 것의 기록 — 새것부터 · 잡아 둔 채인 바꿈과 되돌림의 사슬도")
     lg.add_argument("--most", type=int, default=20, help="보일 기록의 수(0 이면 다)")
     ml = sub.add_parser("mails", help="바꾼 메일 — 기록마다 메일 번호 · 원래 자리 → 간 자리 · 뒤에 다시 바꾼 기록(읽기만 · 옛것부터)")
@@ -835,8 +970,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     args = parser().parse_args(argv)
     folder = home()
-    return {"show": cmd_show, "hold": cmd_hold, "done": cmd_done, "drop": cmd_drop, "log": cmd_log, "mails": cmd_mails,
-            "undo": cmd_undo}[args.command](args, folder)
+    return {"show": cmd_show, "shown": cmd_shown, "plans": cmd_plans, "hold": cmd_hold, "done": cmd_done, "drop": cmd_drop, "log": cmd_log,
+            "mails": cmd_mails, "undo": cmd_undo}[args.command](args, folder)
 
 
 if __name__ == "__main__":
