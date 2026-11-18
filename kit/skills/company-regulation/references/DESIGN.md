@@ -3,7 +3,7 @@
 `scripts/regulation.py` · `scripts/cbsop.py` 를 고치기 전에 읽는다. 부르는 꼴 · 내는 것은 그 파일 머리말이, 앱의 자리와 꼴은
 `SOURCES.md` 가 든다.
 
-## 검사 — `scripts/check_regulation.py` 를 남기는 까닭(check-design §1 넷)
+## 검사 — 설정 저장소의 `_check/skills/company-regulation/check_regulation.py` 를 남기는 까닭(check-design §1 넷)
 
 이 스킬의 답은 사람이 회사 규정으로 믿고 움직이는 말이 된다. 표의 열이 밀리면 한도 금액이 엉뚱한 구분에 붙고, 답이 대화 도구의 출력
 한도를 넘으면 모델은 앞머리만 보고 답하고, 낡은 목록으로 「요즘 바뀐 것」을 답하면 「바뀐 것 없음」이 된다. 낱말 찾기가 조 하나를

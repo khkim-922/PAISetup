@@ -12,7 +12,7 @@
   `docs/company-facts.md` 「일정」과 회사 확인 대장(그 저장소 이슈 #28 「C. 일정」 코멘트 둘 — 줄 C1 ~ C7 · 「코드로 등록 · 지우기」)이고,
   읽는 손 · 넣는 손 · 지우는 손은 그 앱의 `secretary/agenda.py`(68ad771)에서 옮겨 왔다. 공유 일정함의 묻는 꼴은 회사 PC 에서 공유 셋
   (다른 서버 둘 · 같은 서버 하나)으로 쟀다(2026-11-06)
-- 검사의 가짜 일정 앱 — `scripts/check_agenda.py` 의 흉내는 그 앱의 `_check/_fake_agenda.py`(68ad771)에서 옮겨 왔다
+- 검사의 가짜 일정 앱 — 설정 저장소 `_check/skills/company-calendar/check_agenda.py` 의 흉내는 그 앱의 `_check/_fake_agenda.py`(68ad771)에서 옮겨 왔다
 - 넣기 · 지우기의 경계(누름에서만 · 참석자 비움 · 손수 든 단건만 · 다시 읽어 가림) — mail-secretary 결정 0026 · 0027(68ad771).
   그 앱의 「로컬 화면의 확인 POST」 자리를 이 스킬에서는 「대화에서 그 한 건을 확인받은 뒤」가 든다
 - 범위 — claude-config 이슈 #240 「갈래」 3 · 「경계」

@@ -1,6 +1,6 @@
 # 메일 손
 
-**회사 PC 의 스크립트 · 스킬이 사내 메일을 보내고 받는 파일들과, 그것을 무는 검사다.**
+**회사 PC 의 스크립트 · 스킬이 사내 메일을 보내고 받는 파일들이다.**
 
 - **중계로 보내는 손** `mailer.py` — 메일 비서가 깔린 자리에서 싣는 손이다(사람 없이 나가는 알림 · 보고 메일). 스킬의 명령은 이 손을
   안 쓰고 웹메일 화면으로만 보낸다(`draft_send.js`) — 다른 앱 · 스크립트에 이 손을 권하지 않는다. 환경변수를 하나도 안 줘도 사내망 안에서는 첫 판에 나간다. 사내 중계에서 잰 동작(인증
@@ -50,12 +50,12 @@
 ## 돌려 보기
 
 ```bash
-python -X utf8 -I check_mailer.py            # 이 폴더의 mailer.py 를 잰다 — 127.0.0.1 밖으로 안 나간다
-python -X utf8 -I check_inbox.py             # 이 폴더의 inbox.py 를 잰다 — 127.0.0.1 밖으로 안 나간다
-python -X utf8 -I check_mailer.py <폴더>     # 다른 폴더의 사본을 잰다(check_inbox.py 도 같다)
-python -X utf8 -I check_mail.py              # 스킬의 명령 mail.py 를 잰다 — 세션 손은 대역 · node 가 든다
+python -X utf8 -I _check/skills/company-mail/check_mailer.py            # 이 스킬의 mailer.py 를 잰다 — 127.0.0.1 밖으로 안 나간다
+python -X utf8 -I _check/skills/company-mail/check_inbox.py             # 이 스킬의 inbox.py 를 잰다 — 127.0.0.1 밖으로 안 나간다
+python -X utf8 -I _check/skills/company-mail/check_mailer.py <폴더>     # 다른 폴더의 사본을 잰다(check_inbox.py 도 같다)
+python -X utf8 -I _check/skills/company-mail/check_mail.py              # 스킬의 명령 mail.py 를 잰다 — 세션 손은 대역 · node 가 든다
 ```
 
-끝 줄이 「통과 N/N」이면 선 것이다. 가짜 중계 · 가짜 메일함이라 못 재는 길이 있다 — 보내기는 STARTTLS 가 실제로
+검사는 설정 저장소에 있다 — 깔린 스킬 폴더에는 없다. 설정 저장소 루트에서 돌린다. 끝 줄이 「통과 N/N」이면 선 것이다. 가짜 중계 · 가짜 메일함이라 못 재는 길이 있다 — 보내기는 STARTTLS 가 실제로
 서는 길, 받기는 사내 SSO 를 넘는 길(스킬 ep-login)과 회사에서 안 잰 꼴(`check_inbox.py` 머리말 「여기서 못 재는
 것」). 첫 실발송 · 첫 실수신은 회사 PC 에서 제 주소로 한 통 보내 그 메일로 잰다.

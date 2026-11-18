@@ -1,6 +1,6 @@
 # 일정 손
 
-**회사 PC 의 스크립트가 사내 일정 앱의 내 일정함을 읽고, 한 건을 넣고, 한 건을 지우는 파일과, 그것을 무는 검사다.**
+**회사 PC 의 스크립트가 사내 일정 앱의 내 일정함을 읽고, 한 건을 넣고, 한 건을 지우는 파일이다.**
 
 - **읽는 손** `agenda.py` 의 `Reader` — 일정함 목록 · 내 일정 · 공유받은 일정함의 일정, 세 JSON 주소만 묻는다.
   공유받은 일정함은 읽기만 하고, 누구의 일정함이 어느 서버에 있나는 일정함 목록에서 받는다(사람마다 다르다). 이 앱은 편집 화면을 여는 주소도 지우기도
@@ -30,9 +30,9 @@ ep-login 이 든다. 부르는 꼴 · 내는 것 · 환경변수는 `agenda.py` 
 ## 돌려 보기
 
 ```bash
-python -X utf8 -I check_agenda.py            # 이 폴더의 agenda.py 를 잰다 — 127.0.0.1 밖으로 안 나간다
-python -X utf8 -I check_agenda.py <폴더>     # 다른 폴더의 사본을 잰다
+python -X utf8 -I _check/skills/company-calendar/check_agenda.py            # 이 스킬의 agenda.py 를 잰다 — 127.0.0.1 밖으로 안 나간다
+python -X utf8 -I _check/skills/company-calendar/check_agenda.py <폴더>     # 다른 폴더의 사본을 잰다
 ```
 
-끝 줄이 「통과 N/N」이면 선 것이다. 가짜 일정 앱이라 못 재는 길이 있다 — 사내 SSO 를 넘는 길과 회사에서 안 잰 꼴(`check_agenda.py`
+검사는 설정 저장소에 있다 — 깔린 스킬 폴더에는 없다. 설정 저장소 루트에서 돌린다. 끝 줄이 「통과 N/N」이면 선 것이다. 가짜 일정 앱이라 못 재는 길이 있다 — 사내 SSO 를 넘는 길과 회사에서 안 잰 꼴(`check_agenda.py`
 머리말 「여기서 못 재는 것」). 첫 실제 넣기 · 지우기는 회사 PC 에서 시험 일정 하나를 넣고 지워 잰다.

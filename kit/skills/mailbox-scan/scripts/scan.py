@@ -149,12 +149,12 @@ def run_new(run: Run, state: dict[str, Any], at: datetime) -> tuple[str, list[di
 
 def sweep_box(run: Run, box: str, folder: str) -> dict[str, Any]:
     """상자 하나를 끝까지 읽는다 — 끝을 가르는 법은 `references/DESIGN.md` 「상자 하나를 끝까지」.
-    내는 것 — {mails, complete, why, said, unfilled, read_at}."""
+    내는 것 — {mails, complete, why, said, unfilled, read_at, paged — 한 번에 다 못 받은 상자인가(쪽이 찼거나 둘째 쪽에 줄이 왔다)}."""
     read_at = st.stamp(st.now())
     where = ["--folder", folder] if box == D.FOLDER else ["--sent"] if box == D.SENT else []
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
-    start, unfilled = 1, 0
+    start, unfilled, paged = 1, 0, False
     for _ in range(C.PAGES_MOST):
         got = run.hand(["list", *where, "--count", str(C.PAGE), "--start", str(start)])
         if got.code == C.HAND_EXIT_CONFIG and H.NO_FOLDER.match(got.said):
@@ -166,8 +166,10 @@ def sweep_box(run: Run, box: str, folder: str) -> dict[str, Any]:
         fresh = [m for m in page.mails if m["unid"] not in seen]
         if not fresh:
             done = not page.mails or (bool(rows) and all(m["unid"] == rows[-1]["unid"] for m in page.mails))
-            return {"mails": rows, "complete": done, "why": "" if done else "repeated", "unfilled": unfilled, "read_at": read_at}
+            return {"mails": rows, "complete": done, "why": "" if done else "repeated", "unfilled": unfilled, "read_at": read_at,
+                    "paged": paged}
         seen.update(m["unid"] for m in fresh)
+        paged = paged or bool(rows) or len(page.mails) >= C.PAGE
         rows += fresh
         start += len(page.mails)
         if run.over_budget():
@@ -216,7 +218,8 @@ def run_full(run: Run, state: dict[str, Any], folder: pathlib.Path, at: datetime
                 continue
             swept = sweep_box(run, box, path)
             if swept["complete"]:
-                done[key] = {"read_at": swept["read_at"], "unfilled": swept.get("unfilled", 0), "mails": swept["mails"]}
+                done[key] = {"read_at": swept["read_at"], "unfilled": swept.get("unfilled", 0), "mails": swept["mails"],
+                             "paged": bool(swept.get("paged"))}
             else:
                 short.append({"box": key, "why": swept["why"], **({"said": swept["said"]} if swept.get("said") else {})})
     except SessionLost:
@@ -256,7 +259,9 @@ def run_full(run: Run, state: dict[str, Any], folder: pathlib.Path, at: datetime
         events += D.compare_folders(picture.get("folders") or [], folders, stamp, journal, since)
         if rules_read and picture.get("rules_read", True):
             events += D.compare_rules(picture.get("rules") or [], rules, stamp, journal, since)
-        state["mails"], made = D.compare(state["mails"], picture["started"], seen, read_at, stamp, last_look, state["gone"], journal)
+        paged = {key for key, v in done.items() if v.get("paged")}
+        state["mails"], made = D.compare(state["mails"], picture["started"], seen, read_at, paged, stamp, last_look, state["gone"],
+                                         journal)
         events += made
         outcome = DONE
     state["picture"] = {"started": min(read_at.values()), "ended": st.stamp(st.now()), "folders": folders, "rules": rules,

@@ -77,7 +77,7 @@ drm-office-read 는 등급을 모르므로 에이전트 폴더(`ECM_DOCS_ROOT`)�
 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다. 글자가 답 하나의 크기(`ep_session.OUT_BYTES`)에 안 들면 — `--as-file` 을
 주면 짧아도 — 화면에는 그 파일의 경로만 낸다. 남긴 파일은 이 손이 지우지 않는다 — 치우는 것은 사람이다.
 
-## 검사 — `scripts/check_ecm.py` 를 남기는 까닭
+## 검사 — 설정 저장소의 `_check/skills/company-ecm/check_ecm.py` 를 남기는 까닭
 
 check-design §1 의 넷이 다 걸린다.
 

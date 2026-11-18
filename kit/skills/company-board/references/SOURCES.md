@@ -12,7 +12,7 @@
   `_xcsparam` 으로 POST 하면 선다. 리다이렉트는 없다. 세션 파일에 남은 낡은 게시판 쿠키만으로는 안 선다(로그인 창 한 줄)
   — 그 뒤는 `XClickController` 에 폼 꼴 POST 로 묻고, 끊긴 세션은 「openMiniLoginPop」 한 줄을 낸다
 - 뒤섞기 — `urlsecure.js` 의 jQuery.encrypt(열쇠 `xclick6` · delta 123 · 세 번). 파이썬 판이 화면과 같은 글자를 냈다(표본 셋 ·
-  `check_board.py` 의 기대값)
+  설정 저장소 `_check/skills/company-board/check_board.py` 의 기대값)
 - 게시판 나무 — `treeBBSSub` 를 뿌리(BBS85 · BBS_ALL_00001)부터 묶음마다 내려가면 8 번에 0.4 ~ 0.8 초 · 24 곳. `authMode=WRITE` 는 쓸 수 있는
   곳만(「일반사항」 이 빠졌다). 같은 이름이 둘 이상이다(「기타」 둘 · 「안전환경 > 안전환경」)
 - 찾기 — `listArticle` 에 `bbsId`(뿌리면 모든 게시판 · 묶음이면 그 아래) · `srchKeyword` · `srchChkConditionList`(칸 이름을 `\x0c` 로

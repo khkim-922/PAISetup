@@ -231,12 +231,12 @@ def commands(p: dict[str, pathlib.Path]) -> list[str]:
         return f'python -X utf8 -I "{script.as_posix()}"'
     got = [f"{run(p['mail'])} {r}" for r in C.MAIL_READS] if "mail" in p else []
     got += [f"{run(p['calendar'])} {r}" for r in C.CALENDAR_READS] if "calendar" in p else []
-    got += [f"{run(p['reader'])} *", f'{run(p["window"])} --no-open --dir "{p["home"].as_posix()}" *', f"{run(p['work_writer'])} *",
+    got += [f"{run(p['reader'])} *", f'{run(p["window"])} --dir "{p["home"].as_posix()}" *', f"{run(p['work_writer'])} *",
             f'{run(p["ticks"])} --dir "{p["home"].as_posix()}"']
     return got
 
 
-PROMPT = """사람 없는 예약 실행이다 — 메일함 스캔이 {at} 뒤 판에서 사내 세션이 살아 있는 것을 보고 띄웠다. 오늘의 일일 보고를 지어 남긴다.
+PROMPT = """사람 없는 예약 실행이다 — 메일함 스캔이 {at} 뒤 판에서 사내 세션이 살아 있는 것을 보고 띄웠다. 오늘의 일일 보고를 지어 창으로 띄워 둔다 — 사용자가 오셔서 그 창을 본다.
 
 0. 맨 먼저 열린 명령의 ticks.py 로 보고 창의 「끝났음」 표시를 지난 보고 글에 거둔다 — 업무 파악이 그 절을 읽는다. Edge 에 못 닿으면(종료 3) 그대로 넘어간다.
 1. 그 뒤 스킬 mailbox-work 의 글 {work_lane} 를 읽고 「두 길」대로 업무 파악을 한다 — {writer} where 가 업무 파일이 있다고 하면 「이어 파악」, 없으면 처음 파악(그 스킬 폴더의 first-understanding.md)이고, 「사람이 없을 때」 절이 이 실행의 경계다. 업무 파일은 {writer} write 로만 쓴다 — 이 실행에는 파일을 쓰는 도구가 없다.

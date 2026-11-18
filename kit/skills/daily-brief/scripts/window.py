@@ -596,7 +596,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dir", required=True, action=Once, help="그날의 HTML 과 보고 글을 남길 폴더 — 업무 파일(work.md)이 있는 사용자 폴더(한 번만)")
     ap.add_argument("--mailbox", default="", help="회사 메일 스킬 session 이 낸 메일함 주소 http(s)://<호스트>/…/<이름>.nsf")
     ap.add_argument("--in", dest="src", default="", help="보고 글 파일 — 없으면 표준 입력")
-    ap.add_argument("--no-open", action="store_true", help="짓기만 하고 브라우저로 띄우지 않는다(예약 실행)")
+    ap.add_argument("--no-open", action="store_true", help="짓기만 하고 브라우저로 띄우지 않는다")
     args = ap.parse_args(argv)
 
     try:
@@ -647,7 +647,7 @@ def main(argv: list[str] | None = None) -> int:
     shown = "띄우지 않았다(--no-open)" if args.no_open else open_report(out.resolve().as_uri())
     print(f"보고 창을 지었다: {out} · 남긴 보고 글: {kept} — 절 {sections} · 줄 {lines} · 메일 링크 {ink.links} · {shown}")
     if ends:
-        print(f"다음: 남긴 보고 글 끝에 {' · '.join(f'「## {e}」' for e in ends)} 절을 더한다 — 다음 보고가 그 글에서 어디부터 읽을지와 "
+        print(f"다음: 남긴 보고 글 끝에 {' · '.join(f'「## {e}」' for e in ends)} 절을 더한다(파일을 쓸 도구가 없는 실행이면 그 절을 넣은 글로 다시 부른다) — 다음 보고가 그 글에서 어디부터 읽을지와 "
               "다시 올리지 않을 것을 찾는다")
     if ink.unlinked:
         why = "메일함 주소가 없어" if not args.mailbox.strip() else "메일함 주소가 꼴(http(s)://<호스트>/…/<이름>.nsf)에 안 맞아"

@@ -1,6 +1,6 @@
 # 업무 파일 쓰는 손의 설계
 
-`scripts/work.py` · `scripts/check_work.py` 를 고치는 사람이 읽는다. 부르는 꼴 · 지키는 것의 한 줄 · 종료 값은 `work.py` 머리말이, 업무
+`scripts/work.py` · 설정 저장소의 `_check/skills/mailbox-work/check_work.py` 를 고치는 사람이 읽는다. 부르는 꼴 · 지키는 것의 한 줄 · 종료 값은 `work.py` 머리말이, 업무
 파일의 절은 `lane.md` 「업무 파일」이 든다 — 여기는 왜 그렇게 지키나다.
 
 ## 왜 앞 판의 절을 지키나
@@ -18,7 +18,7 @@
   정리한 뒤의 셈과 사용자가 마다한 것을 잃는다
 - `lane.md` 「업무 파일」의 절이 바뀌면 옛 이름을 `RENAMED` 에 더한다 — 안 더하면 그 절을 든 앞 판 위로는 업무 파일을 끝내 못 쓴다
 
-## 검사가 남는 까닭 — `check_work.py`
+## 검사가 남는 까닭 — 설정 저장소의 `_check/skills/mailbox-work/check_work.py`
 
 | 판정 | 길 | 조용하다 | 다친다 |
 |---|---|---|---|

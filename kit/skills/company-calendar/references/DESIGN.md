@@ -36,7 +36,7 @@
 
 남의 일정(공유받지 않은 것) · 회의실 · 참석 답은 이 파일에 없다.
 
-## 검사 — `scripts/check_agenda.py` 의 가짜 일정 앱이 지키는 꼴
+## 검사 — 설정 저장소의 `_check/skills/company-calendar/check_agenda.py` 의 가짜 일정 앱이 지키는 꼴
 
 - 쿠키가 없거나 세션이 끊긴 판이면 200 에 SSO 로 보내는 HTML
 - 일정은 두 배열(반복은 날짜마다 한 줄 · 단건)이고 제목은 HTML 엔티티로 낸다

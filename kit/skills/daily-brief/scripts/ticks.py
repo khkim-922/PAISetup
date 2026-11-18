@@ -49,7 +49,6 @@ WRITE_EXPR = ("(function (rows) { rows.forEach(function (r) { localStorage.setIt
 WHERE_EXPR = "location.protocol"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"   # RFC 6455 의 고정값 — 손잡기 답을 재는 데 쓴다
 BROWSER_PATH = re.compile(r"^ws://[^/]+(/devtools/browser/[A-Za-z0-9._-]+)$")
-MAIL_REF = re.compile(r"\(mail:([0-9A-Fa-f]{32})\)")
 NUMBERISH = re.compile(r"\(?mail:[^\s)]*\)?|\b[0-9A-Fa-f]{32}\b")   # 일 이름 속 메일 번호 꼴 — 다음 업무 파악이 그 번호를 이 일의 메일로 읽는다
 
 
@@ -257,7 +256,8 @@ def when_of(value: dict) -> str:
 
 
 def fold(text: str, name: str, lines: list[str], drop: set[str] = frozenset()) -> tuple[str, set[str]]:
-    """보고 글의 절 `name` 에서 `drop` 의 메일 번호가 든 줄을 걷고 끝에 `lines` 를 더한 글과, 고치기 전 그 절에 든 메일 번호.
+    """보고 글의 절 `name` 에서 첫 메일 번호가 `drop` 에 든 줄을 걷고 끝에 `lines` 를 더한 글과, 고치기 전 그 절 줄들의 첫 메일 번호.
+    줄의 열쇠는 첫 메일 번호다(창의 상자와 같다) — 둘째부터의 번호는 근거일 뿐이라 그 번호의 표시가 이 줄을 건드리지 않는다.
     절이 없으면 더할 줄이 있을 때만 글 끝에 세운다. 줄을 더할 때 그 절의 「없음」 줄은 걷는다 — 남기면 「없음」과 일이 한 절에 함께 선다."""
     rows = text.split("\n")
     start = end = None
@@ -278,11 +278,10 @@ def fold(text: str, name: str, lines: list[str], drop: set[str] = frozenset()) -
         return f"{body}\n\n## {name}\n" + "\n".join(lines) + "\n", set()
     end = len(rows) if end is None else end
     section = rows[start + 1:end]
-    have = {u.upper() for u in MAIL_REF.findall("\n".join(section))}
+    have = {k for k in map(W.first_unid, section) if k}
     if not lines and not (drop & have):
         return text, have
-    kept = [r for r in section if not (lines and W.NONE_LINE.match(r.strip()))
-            and not {u.upper() for u in MAIL_REF.findall(r)} & drop]
+    kept = [r for r in section if not (lines and W.NONE_LINE.match(r.strip())) and W.first_unid(r) not in drop]
     while kept and not kept[-1].strip():
         kept.pop()
     tail = [""] if end < len(rows) else []

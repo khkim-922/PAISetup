@@ -1,6 +1,6 @@
 # 보고 창 손의 설계
 
-`scripts/window.py` · `scripts/ticks.py` · `assets/report.js` · `scripts/check_window.py` 를 고치는 사람이 읽는다. 부르는 꼴 · 내는 것 ·
+`scripts/window.py` · `scripts/ticks.py` · `assets/report.js` · 설정 저장소의 `_check/skills/daily-brief/check_window.py` 를 고치는 사람이 읽는다. 부르는 꼴 · 내는 것 ·
 종료 값은 두 손의 머리말이, 보고 글의 꼴은 `lane.md` 「보고 글의 꼴」 · 「남긴다」가 든다 — 여기는 손이 무엇을 지키고 왜 그런가다.
 
 ## 받는 것의 경계
@@ -64,7 +64,7 @@ PUT 으로만 받는다. 포트는 이 PC(127.0.0.1)만 부르고 짧게 기다�
 - **「없음」 줄은 걷는다** — 줄을 더할 때 그 절의 「없음」 한 줄을 걷는다. 절이 없으면 글 끝에 세운다
 - **Edge 가 없으면 아무것도 안 고친다** — 종료 3. 표시는 그 Edge 프로필에 남아 다음 판이 거둔다
 
-## 검사가 남는 까닭 — `check_window.py`
+## 검사가 남는 까닭 — 설정 저장소의 `_check/skills/daily-brief/check_window.py`
 
 판정마다 check-design 1 절의 넷:
 

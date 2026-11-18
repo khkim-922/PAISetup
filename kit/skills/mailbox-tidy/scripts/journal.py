@@ -126,7 +126,8 @@ WHY_NO_UNIDS = "메일 번호를 받지 못했다"
 WHY_RULE_LINES = "규칙의 지금 · 바꿀 두 줄을 못 읽었다"
 WHY_FOR_MAILS = "메일 번호와 받을 자리는 메일을 건드리는 바꿈(move · trash · restore)에만 준다"
 WHY_PIECE_NEXT = ("조각은 안 안에서 차례대로 적는다 — 지금 안의 다음 조각은 {next}번이다. 새 안이면 --piece 1 부터 센다(plans 가 보인 "
-                  "옛 조각 번호는 새 안에서 다시 센다)")
+                  "옛 조각 번호는 새 안에서 다시 센다). 이미 보인 조각을 빼거나 고칠 때도 --piece 1 부터 안을 다시 적는다 — 고친 조각을 "
+                  "뒤 번호로 덧붙이면 옛 조각이 안에 남아 함께 잡힌다")
 
 # 보여 드린 안 — 한 번 확인받는 안의 조각과, 실행 직전에 다시 받은 미리 보기를 그 조각에 대기
 SHOWN_ROW = "[조각 {n}] {what}"
@@ -767,7 +768,8 @@ def cmd_shown(args, folder: pathlib.Path) -> int:
         p = pieces[n]
         body = p.get("body")
         print(SHOWN_ROW.format(n=n, what=describe(p)))
-        for line in body if isinstance(body, list) and body else [SHOWN_NO_BODY]:
+        # 메일 줄이 원래 없는 조각(폴더 · 규칙)은 머리 줄이 전부다 — 줄이 빠졌다는 말은 메일을 건드리는 조각에만 한다
+        for line in body if isinstance(body, list) and body else [SHOWN_NO_BODY] if p.get("kind") in MAIL_KINDS else []:
             print(line)
     ats = sorted(str(pieces[n].get("at") or "")[:16].replace("T", " ") or WHEN_UNKNOWN for n in order)
     print(SHOWN_LIST.format(count=len(order), first=ats[0], last=ats[-1]))

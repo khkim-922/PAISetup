@@ -8,7 +8,7 @@
 //   --profile — 띄우는 창의 프로필 폴더. 안 주면 PROFILE_DIR(LOCALAPPDATA 아래)이다.
 //   환경변수 EDGE_DEBUG_PORT 포트 · SESSION_LOGIN_HOSTS 로그인 화면 호스트 · SESSION_LOGIN_WAIT_SECONDS 로그인 시한 — 뜻과 기본값은
 //   받는 손의 settings 한 자리에서 읽는다. 로그인 화면과 받을 확인 창도 그 손의 onLoginScreen · epConfirm 이 가린다. EP_LOGIN_URL ·
-//   COMPANY_LOGIN_URL 은 로그인 탭의 주소를 바꾼다 — 가짜 SSO 로 재는 검사(check_session.js)를 위해 있다.
+//   COMPANY_LOGIN_URL 은 로그인 탭의 주소를 바꾼다 — 가짜 SSO 로 재는 검사(설정 저장소 _check/skills/ep-login/check_session.js)를 위해 있다.
 //
 // 차례 — 받는 손의 종료 값(상태)으로 가른다:
 //   받는다 → 0 이면 끝

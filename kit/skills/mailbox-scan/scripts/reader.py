@@ -49,7 +49,7 @@ DATA_OPEN, DATA_CLOSE = "<<<메일함 글 시작>>>", "<<<메일함 글 끝>>>"
 NO_SCAN = ("[스캔 — {what}. 다음: 회사 메일 스킬(company-mail)로 메일함을 읽는다 — 스캔이 걸려 있으면 다음 판이 메일함에서 다시 짓고, "
            "안 걸려 있으면 이 스킬의 scan.py register]")
 SEP = " · "
-BY_WORDS = {D.USER: "사람", D.SECRETARY: "비서", D.UNKNOWN: "모름(정리의 바꿈이 도중이다)"}
+BY_WORDS = {D.USER: "사람", D.SECRETARY: "비서", D.UNKNOWN: "모름(정리의 바꿈이 도중이거나 결과를 모른 채 맺혔다)"}
 KIND_WORDS = {D.READ: "읽음이 됨", D.UNREAD: "안 읽음으로 되돌림", D.OPENED: "처음 볼 때 이미 읽음", D.MOVED: "옮겨짐",
               D.GONE: "사라짐", D.BACK: "다시 나타남", D.FOLDER_ADDED: "폴더 생김", D.FOLDER_REMOVED: "폴더 없어짐",
               D.RULE_ADDED: "규칙 생김", D.RULE_CHANGED: "규칙 바뀜", D.RULE_REMOVED: "규칙 없어짐"}

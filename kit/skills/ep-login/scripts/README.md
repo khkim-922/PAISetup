@@ -1,7 +1,7 @@
 # 세션 손
 
 **회사 PC 의 스크립트 · 스킬이 사내 앱(메일 · 일정 · 다른 Domino 앱 · ECM)을 부를 때 쓸 세션 쿠키를, 쓰는 사람의 Edge 에서 받아
-파일로 남기는 손과 그것을 무는 검사다.**
+파일로 남기는 손이다.**
 
 - **받는 손** `edge_session.js` — 디버깅 포트로 떠 있는 Edge 의 브라우저 자리에만 붙어 사내 세션 쿠키를 세션 파일로 남긴다. 창 · 탭을
   안 열고 로그인하지 않는다 — 사람의 세션도 화면도 안 건드린다. 사내 앱을 다루는 손은 세션 파일이 있으면 그것으로 먼저 돌고, 서버가
@@ -32,12 +32,12 @@
 ## 돌려 보기
 
 ```bash
-node check_session.js            # 이 폴더의 edge_session.js · ep_login.js 를 잰다 — 가짜 SSO · 메일함 · ECM 과 검사가 띄운 Edge(임시 프로필 · 입구 판정 하나만 창을 잠깐 띄운다)
-node check_session.js <폴더>     # 다른 폴더의 사본을 잰다
-python -X utf8 -I check_ep_session.py        # ep_session.py 의 바퀴를 잰다 — 파일부터 · 거절되면 손 한 번 · 바꾸는 일은 손부터. 대역 손이라 Edge 는 안 뜬다. ep_command.py 는 받아 둔 파일을 못 남겨도 답을 안 잃나 하나
+node _check/skills/ep-login/check_session.js            # 이 스킬의 edge_session.js · ep_login.js 를 잰다 — 가짜 SSO · 메일함 · ECM 과 검사가 띄운 Edge(임시 프로필 · 입구 판정 하나만 창을 잠깐 띄운다)
+node _check/skills/ep-login/check_session.js <폴더>     # 다른 폴더의 사본을 잰다
+python -X utf8 -I _check/skills/ep-login/check_ep_session.py        # ep_session.py 의 바퀴를 잰다 — 파일부터 · 거절되면 손 한 번 · 바꾸는 일은 손부터. 대역 손이라 Edge 는 안 뜬다. ep_command.py 는 받아 둔 파일을 못 남겨도 답을 안 잃나 하나
 ```
 
-끝 줄이 「통과 N/N」이면 선 것이다. 쓰는 사람의 Edge 에는 붙지 않고 127.0.0.1 · localhost 밖으로 안 나간다. Node 22 이상 · Edge 가
-든다. `ep_session.py` 는 `check_mail.py`(스킬 company-mail)가 대역 손으로 잰다.
+검사는 설정 저장소에 있다 — 깔린 스킬 폴더에는 없다. 설정 저장소 루트에서 돌린다. 끝 줄이 「통과 N/N」이면 선 것이다. 쓰는 사람의 Edge 에는 붙지 않고 127.0.0.1 · localhost 밖으로 안 나간다. Node 22 이상 · Edge 가
+든다. `ep_session.py` 는 `check_mail.py`(설정 저장소 `_check/skills/company-mail/`)가 대역 손으로 잰다.
 
 왜 이 길인가와 잰 것 · 빌린 것 · 가짜로 못 재어 회사에서 잴 것은 `../references/SOURCES.md` 가 든다.

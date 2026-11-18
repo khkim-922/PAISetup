@@ -14,7 +14,7 @@
 //   같은 뜻) · EDGE_DEBUG_PORT 디버깅 포트(쉼표로 여럿 · 주면 그 포트만 본다) · SSO_REDIRECT_URL SSO 넘김 주소 ·
 //   SESSION_DOMAIN 회사 도메인 · SESSION_LOGIN_HOSTS 로그인 화면 호스트(쉼표) · SESSION_REQUEST_SECONDS 묻기 하나의 시한 ·
 //   SESSION_PASS_SECONDS --ecm-tab 의 시한 · SESSION_LOGIN_WAIT_SECONDS 입구가 로그인 탭을 지켜보는 시한. 기본값은 places.json 과
-//   settings() 가 든다. 서버 · 도메인 · 호스트의 바꿈은 가짜 서버로 재는 검사(check_session.js)를 위해 있다.
+//   settings() 가 든다. 서버 · 도메인 · 호스트의 바꿈은 가짜 서버로 재는 검사(설정 저장소 _check/skills/ep-login/check_session.js)를 위해 있다.
 //
 // 내는 것 — 세션 파일(Playwright 저장 상태 꼴 {"cookies": [...], "origins": []} · 회사 도메인의 쿠키만). 종료 0 이면 표준 출력의
 //   끝 줄이 그 파일의 절대 경로 하나다(앞 줄들은 사람이 읽는 경과). 종료 값은 닫힌 다섯이다(EXIT):

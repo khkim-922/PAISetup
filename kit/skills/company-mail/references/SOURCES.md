@@ -32,7 +32,7 @@
 - `scripts/mail.py` — 회사 값(`DEFAULT_COMPANY`) · 메일함 파일 번호가 사번이라는 것(`MAILFILE_NUMBER`) · 보낸 메일이 서는 자리(`SENT_CHECK_ROWS`) ·
   검색 색인이 새 메일을 늦게 드는 것(`RECENT_SCAN`) · 받는 꼴(`ROLE_WORDS`) · 답장 단추 값(`REPLY_KINDS`) · 부서 주소 꼴(`DEPT_MAIL`)
 - `scripts/body_images.py` — 본문 아이콘 크기(`ICON_EDGE`)
-- `scripts/check_inbox.py` · `check_mail.py` · `check_mailer.py` — 가짜 메일함 · 중계는 이 절의 꼴을 흉내 낸다. 실물에서 꼴이 달라졌으면
+- 설정 저장소의 `_check/skills/company-mail/check_inbox.py` · `check_mail.py` · `check_mailer.py` — 가짜 메일함 · 중계는 이 절의 꼴을 흉내 낸다. 실물에서 꼴이 달라졌으면
   가짜를 먼저 실물에 맞추고 손을 고친다
 
 ### inbox.py

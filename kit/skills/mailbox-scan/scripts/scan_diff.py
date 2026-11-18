@@ -3,7 +3,7 @@
 부르는 꼴::
 
     journal = Journal.load(scan_store.home())          # 정리 스킬의 기록 · 잡아 둔 바꿈
-    mails, events = compare(prev_mails, prev_started, seen, read_at, at, last_look, gone, journal)
+    mails, events = compare(prev_mails, prev_started, seen, read_at, paged, at, last_look, gone, journal)
 
 견주는 법과 「누가」를 가르는 자는 `references/DESIGN.md` 「바뀜을 견주는 법」이 든다.
 """
@@ -139,10 +139,11 @@ def new_mail(mail: dict[str, Any], at: str, last_look: datetime | None, gone: di
     return entry, events
 
 
-def compare(prev: dict[str, dict[str, Any]], prev_started: str, seen: dict[str, dict[str, Any]], read_at: dict[str, str], at: str,
+def compare(prev: dict[str, dict[str, Any]], prev_started: str, seen: dict[str, dict[str, Any]], read_at: dict[str, str],
+            paged: set[str], at: str,
             last_look: datetime | None, gone: dict[str, Any], journal: Journal) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
     """앞 모습(`prev` · 그 판을 보기 시작한 때 `prev_started`)과 이번에 다 본 상자들(`seen` — 메일 번호 → 머리 · `read_at[상자 열쇠]`)을
-    견준다. 내는 것 — (새 지금 모습의 메일들, 바뀜). 부작용 — 사라진 메일의 기억 `gone` 을 고친다."""
+    견준다. `paged` 는 한 번에 다 못 받은 상자의 열쇠다. 내는 것 — (새 지금 모습의 메일들, 바뀜). 부작용 — 사라진 메일의 기억 `gone` 을 고친다."""
     events: list[dict[str, Any]] = []
     out: dict[str, dict[str, Any]] = {}
     first_box = min(read_at, key=lambda k: read_at[k]) if read_at else ""
@@ -163,7 +164,8 @@ def compare(prev: dict[str, dict[str, Any]], prev_started: str, seen: dict[str, 
     for unid, old in prev.items():
         if unid in seen:
             continue
-        settled = old.get("missing_since") or box_key(*place(old)) == first_box
+        # 가장 먼저 읽은 상자라도 한 번에 다 못 받았으면 미룬다 — 쪽을 받는 사이 앞쪽 메일이 빠지면 뒤 쪽의 첫 줄이 당겨져 안 보인다
+        settled = old.get("missing_since") or (box_key(*place(old)) == first_box and first_box not in paged)
         if not settled:
             out[unid] = {**old, "missing_since": at, "seen_until": prev_started}
             continue

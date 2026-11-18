@@ -5,7 +5,8 @@
 | `atelier.py` | 아뜰리에 서버 문을 밟아 짓고(`make`) · 고치기 화면으로 넘기고(`open`) · 최신 판을 받는다(`fetch`). 계약은 머리말 |
 
 영구 검사는 없다 — 깨지는 길(추천을 못 읽음 · 드라이런 · 넘김 표 없음 · 그림 파일 없음 · 그림이 지면에서 빠짐)이 다 종료 값과
-「다음:」 줄로 시끄럽고, 지은 HTML 은 보내기 전에 사람이 본다. 돌려 보기는 로컬 아뜰리에 서버를 띄워 `ATELIER_URL` 로 가리킨다.
+「다음:」 줄로 시끄럽고, 지은 HTML 은 보내기 전에 사람이 본다. 돌려 보기는 로컬 아뜰리에 서버를 띄워 `ATELIER_URL` 로 가리키고,
+그 서버에서 닿는 갈래를 `ATELIER_REPORT_PROVIDER` 로 준다(기본 갈래는 회사 게이트웨이에 닿는 망에서만 열린다).
 서버 없이 그림 박기만 볼 때는 atelier 의 파이썬으로 `embed_images` 가 낸 글을 `app.assemble.fold_data_images` ·
 `assemble.assemble` 에 댄다 — 그림 수만큼 자리표가 제 줄에 서고 `unfoldable` 이 비면 선 것이다.
 
@@ -15,6 +16,14 @@
   (`prompts/advise-system.md` 「어떻게 답하나」)과 정규식이 바뀌면 고치고, 저쪽 곁말이 이 자리를 가리킨다. 이름은 디자인 목록과 대조해
   없는 것은 버린다(저쪽 난간 그대로). `변형:` 줄은 안 가져왔다 — 다이얼 없이 보내면 렌더가 모드 기본값을 세운다
 - 넘김 표 문(`/api/handoff` · `/api/handoff/take`) — atelier 결정 0307 · `docs/reference/http-api.md` §5
+- 갈래 표(`/api/status` 의 `providers`)의 `key_group` · `local` · `reach` · `why` — atelier `app/config.py` 의 `provider_rows`
+  (atelier 5d3d008d 판). 키 묶음 이름(`KEY_GROUP_POSCO` · `KEY_GROUP_ANTHROPIC`)은 손으로 따라간다 — 저쪽이 이름을 바꾸면
+  「키가 어느 환경값에 드는지 모른다」로 멈춘다. 화면이 묶음마다 키 칸을 따로 두는 것과 같은 금이다 — 묶음이 다른 갈래에는
+  키를 안 싣는다. 키 자리를 안 둔 묶음(「내 키로 Gemini」)은 화면에서만 쓴다
+- 갈아입히기 — `/api/render` 의 `redress` 칸(atelier 결정 0057 · 0058 · `app/server.py` · `app/assemble.py`). 화면의 「완성 HTML」 문과
+  같은 칸이고, 그 문처럼 원문 칸은 비우지 않고 완성 HTML 통짜가 원문이 된다. 화면이 갈아입히기 중 추천을 잠그는 것과 달리 여기는
+  보이는 글자(`visible_text`)로 추천을 받는다 — 디자인을 사람에게 안 묻는 스킬이라 추천 없이는 고를 수 없다. 보충 원문
+  (`supplement`)은 안 싣는다
 - 원문에 박힌 그림 — atelier `app/assemble.py` 의 `fold_data_images`(박힌 `<img src="data:image/…">` 를 그림 자리표로 접는다) ·
   `_press_fig`(서버가 누른다) · `fig_tag`(지면에 앉은 그림의 표식 `data-atelier-fig`) · `docs/reference/http-api.md` 4 절의 `extra`
   (atelier b408a7da 판). 손으로 따라간다 — 저쪽에는 이 자리를 가리키는 곁말이 없다. 저쪽 꼴이 바뀌어 그림이 안 접히면

@@ -92,7 +92,7 @@ BRIEF_LOCK_STALE_S = 60 * 60             # 띄운 보고가 이보다 오래 안
 BRIEF_MADE = "brief-{date}-*.md"         # 그날 보고 글 — 사용자 폴더에 일일 보고의 손이 남긴다(원본은 스킬 daily-brief 의 scripts/window.py
                                          # `FILE_NAME` — 이름은 지은 때의 PC 시계다. 회사 PC 는 서울 시계라 서울 날짜로 찾는다)
 BRIEF_SKILL = "daily-brief"              # 이 스킬과 같은 스킬 뿌리에 나란히 선다
-BRIEF_WINDOW = ("scripts", "window.py")  # 보고 창을 짓는 손 — 사람 없는 실행은 `--no-open`
+BRIEF_WINDOW = ("scripts", "window.py")  # 보고 창을 짓고 띄우는 손 — 사람 없는 실행도 창을 띄워 둔다
 BRIEF_TICKS = ("scripts", "ticks.py")    # 보고 창의 「끝났음」 표시를 지난 보고 글에 거두는 손 — 업무 파악보다 먼저 돈다
 CALENDAR_SKILL = "company-calendar"      # 회사 메일 손과 같은 스킬 뿌리에 나란히 선다
 CALENDAR_SCRIPT = ("scripts", "company_calendar.py")
