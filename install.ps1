@@ -1030,13 +1030,13 @@ function Invoke-Logged([string]$File, [string[]]$CmdArgs, [string]$LogPath, [scr
 
 # 하는 부름 한 번을 세부 기록(`$script:DetailLog`)에 덧붙인다 — 명령 · 받은 글 원문 전체 · 종료 값 · 걸린 초. 화면의 거름
 #   (`Show-ChildLine`)은 화면에만 걸리고 여기는 다 남는다. `$Paths` 는 러너가 받은 파일(stdout · stderr 차례)이다.
-#   주소에 박힌 자격(`https://사람:토큰@`)은 명령과 글 둘 다에서 가린다. 세부 기록 자리가 안 섰으면 아무것도 안 한다.
+#   주소에 박힌 자격(`https://사람:토큰@`)은 명령 · 곁말 · 글에서 다 가린다 — 못 띄운 까닭의 곁말은 띄우려던 줄을 그대로 든다. 세부 기록 자리가 안 섰으면 아무것도 안 한다.
 #   `$Note` 는 머리 줄 끝의 대괄호 곁말이다 — 백그라운드 부름(`Complete-BackRun`)이 띄운 시각과 거둘 때 기다린 초를 단다.
 function Add-RunDetail([string]$File, [string[]]$CmdArgs, $Rc, [double]$Sec, [string[]]$Paths, [string]$Note = '') {
   if (-not $script:DetailLog) { return }
   $hide = $UrlCredential
   $sb = New-Object Text.StringBuilder
-  $tail = if ($Note) { " [$Note]" } else { '' }
+  $tail = if ($Note) { " [$($Note -replace $hide, '***@')]" } else { '' }
   [void]$sb.AppendLine("──── $(Get-Date -Format 'HH:mm:ss') $(((@($File) + @($CmdArgs)) -join ' ') -replace $hide, '***@')$tail")
   for ($i = 0; $i -lt @($Paths).Count; $i++) {
     if (-not (Test-Path -LiteralPath $Paths[$i])) { continue }
@@ -1165,9 +1165,9 @@ function Join-NativeArgs([string[]]$CmdArgs) {
 #   기다리는 동안 두 파일에 붙은 줄을 그 손에 넘긴다(`Read-LogTail` · 반 초 틈) — stderr 도 읽는다: git · npm · 셸 손은 진행을 거기 쓴다.
 function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec, [scriptblock]$OnLine, [switch]$Quiet) {
   # 띄운 결과는 `Invoke-ProbeCapped` 와 같은 꼴로 `$script:ProbeLaunch` 에 남는다 — -1 의 까닭은 부르는 쪽이 `Format-ProbeWhy` 로 가른다
-  $script:ProbeLaunch = @{ Started = $false; Err = $null; Line = ''; Why = '' }
+  $script:ProbeLaunch = @{ Started = $false; Err = $null; Line = $File }
   $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
-  if (-not $psi) { $script:ProbeLaunch.Why = "이 창에서 띄울 실행 파일로 풀리지 않음 ($File)"; return -1 }
+  if (-not $psi) { return -1 }
   if (-not $OnLine -and -not $Quiet) { $OnLine = ${function:Show-ChildLine} }
   $lock = if ($File -eq 'winget') { Enter-WingetLock } else { $null }
   $rc = -1; $took = [Diagnostics.Stopwatch]::StartNew()
@@ -1450,10 +1450,11 @@ function Measure-Runs([string]$Cmd, [string]$Arg, [int]$Site = 0) {
   $script:ProbeLaunch = $null
   $took = [Diagnostics.Stopwatch]::StartNew()
   $rc = Invoke-ProbeCapped $Cmd $Arg $ProbeCap
-  $why = if ($rc -eq 0) { '' } else { Format-ProbeWhy $rc $ProbeCap $script:ProbeLaunch }
-  # 물음마다 세부 기록에 한 판 — 화면의 「못 쟀다」 하나로는 같은 이름이 그 판의 앞뒤에서 섰나 · 무엇으로 풀렸나를 못 견준다
-  try { Add-RunDetail $Cmd @($Arg) $rc $took.Elapsed.TotalSeconds @() "프로브 · $($c.Source)$(if ($why) { " · $why" })" } catch { }
   if ($rc -eq 0) { return 'yes' }
+  $why = Format-ProbeWhy $rc $ProbeCap $script:ProbeLaunch
+  # 진 물음은 세부 기록에 한 판 — 풀린 자리 · 종료 값 · 까닭. 선 물음은 안 적는다(재는 부름은 기록에 안 남기는 규칙): 진 것이 다
+  #   남으므로 그 판에 같은 이름의 줄이 없으면 그 앞뒤의 물음은 섰다
+  try { Add-RunDetail $Cmd @($Arg) $rc $took.Elapsed.TotalSeconds @() "프로브 · $($c.Source) · $why" } catch { }
   if ($rc -eq -2) { $script:ProbeTimedOut.Add(@{ Probe = $probe; Site = $Site; Cap = $ProbeCap }) }
   elseif ("$($c.Source)" -like '*\Microsoft\WindowsApps\*') { return 'no' }
   $script:ProbeWhy[$probe] = $why
@@ -1493,25 +1494,24 @@ function Add-ProbeOverflow([string]$Probe, [int]$Cap) {
 }
 
 # 울타리 손이 낸 값을 「``명령`` 이 …」 뒤에 이어 읽히는 까닭으로 — -2 넘김 · -1 못 띄움 · 그 밖은 종료 값.
-#   `$Launch` 는 그 부름 바로 뒤의 `$script:ProbeLaunch` 다(두 울타리 손이 남긴다). 주면 -1 을 가른다 — 자식이 섰고 예외도 까닭도 없으면
-#   자식이 스스로 낸 -1(강제로 꺼진 자식의 값)이고, 있으면 그것을 붙인다. 예외는 맨 안쪽의 갈래 · Win32 번호 · 첫 줄과 띄우려던 줄로
-#   댄다 — 「띄우지 못해」만으로는 사람이 무엇이 막았나를 못 찾는다. 안 주면 -1 은 늘 못 띄움이다.
+#   `$Launch` 는 그 부름 바로 뒤의 `$script:ProbeLaunch` 다(두 울타리 손이 남긴다). 주면 -1 을 가른다 — 자식이 섰고 예외가 없으면 자식이
+#   스스로 낸 -1(강제로 꺼진 자식의 값)이고, 예외면 맨 안쪽의 갈래 · Win32 번호 · 첫 줄과 띄우려던 줄을 붙이고, 둘 다 아니면 이름이 띄울
+#   실행 파일로 안 풀린 것이다 — 「띄우지 못해」만으로는 사람이 무엇이 막았나를 못 찾는다. 안 주면 -1 은 늘 못 띄움이다.
 function Format-ProbeWhy([int]$Rc, [int]$Cap, $Launch = $null) {
   if ($Rc -eq -2) { return "${Cap}초 안에 안 끝나" }
   if ($Rc -ne -1) { return ('{0} (0x{0:X8}) 로 끝나' -f $Rc) }
   if (-not $Launch) { return '띄우지 못해' }
-  $what = "$($Launch.Why)"
-  if ($Launch.Err) {
-    $e = $Launch.Err
-    while ($e.InnerException) { $e = $e.InnerException }
-    $num = if ($e -is [ComponentModel.Win32Exception]) { " $($e.NativeErrorCode)" } else { '' }
-    $what = "$($e.GetType().Name)$num : $((("$($e.Message)" -split '\r?\n')[0]).Trim()) — $($Launch.Line)"
-    if ($what.Length -gt 240) { $what = $what.Substring(0, 240) + '…' }
+  if (-not $Launch.Err) {
+    if ($Launch.Started) { return ('{0} (0x{0:X8}) 로 끝나' -f $Rc) }
+    return "띄우지 못해 (이 창에서 띄울 실행 파일로 풀리지 않음 — $($Launch.Line))"
   }
-  if ($Launch.Started -and -not $what) { return ('{0} (0x{0:X8}) 로 끝나' -f $Rc) }
+  $e = $Launch.Err
+  while ($e.InnerException) { $e = $e.InnerException }
+  $num = if ($e -is [ComponentModel.Win32Exception]) { " $($e.NativeErrorCode)" } else { '' }
+  $what = "$($e.GetType().Name)$num : $((("$($e.Message)" -split '\r?\n')[0]).Trim()) — $($Launch.Line)"
+  if ($what.Length -gt 240) { $what = $what.Substring(0, 240) + '…' }
   if ($Launch.Started) { return "띄운 뒤 끝을 읽지 못해 ($what)" }
-  if ($what) { return "띄우지 못해 ($what)" }
-  return '띄우지 못해'
+  return "띄우지 못해 ($what)"
 }
 
 # `Measure-Runs` 가 쓰는 울타리 — 종료코드만 쥐고 글자는 버린다. 내는 값은 `Invoke-LoggedCapped` 와 같다(0 이상 · -1 · -2).
@@ -1520,13 +1520,13 @@ function Format-ProbeWhy([int]$Rc, [int]$Cap, $Launch = $null) {
 #   손잡이가 `WaitForExit(ms)` 와 거둠의 전제이고, 파일의 꼴은 `New-NativeStart` 가 가른다.
 # 거둠의 성공을 기다리지 않는다 — `taskkill /T /F` 도 관리자 `Stop-Process -Force` 도 못 끄는 자식이 있다. 걸어 보고 바로 -2 를
 #   내고, 손잡이를 `Dispose` 로 놓아 이 프로세스가 남은 자식에 매이지 않는다.
-# 띄운 결과는 `$script:ProbeLaunch` 에 남는다 — @{ Started = 자식이 섰나; Err = 띄우거나 기다리다 던진 예외; Line = 그때 띄우려던 줄;
-#   Why = 예외 없이 못 띄운 까닭 }. -1 은 「못 띄웠다」와 「자식이 스스로 -1 로 끝났다(다른 프로그램이 강제로 끈 자식의 값)」 둘 다라
+# 띄운 결과는 `$script:ProbeLaunch` 에 남는다 — @{ Started = 자식이 섰나; Err = 띄우거나 기다리다 던진 예외; Line = 띄우려던 줄(실행
+#   파일로 안 풀렸으면 받은 이름) }. -1 은 「못 띄웠다」와 「자식이 스스로 -1 로 끝났다(다른 프로그램이 강제로 끈 자식의 값)」 둘 다라
 #   값만으로는 못 가른다 — 부르는 쪽이 `Format-ProbeWhy` 에 이것을 넘겨 까닭을 가른다.
 function Invoke-ProbeCapped([string]$File, [string]$Arg, [int]$CapSec) {
-  $script:ProbeLaunch = @{ Started = $false; Err = $null; Line = ''; Why = '' }
+  $script:ProbeLaunch = @{ Started = $false; Err = $null; Line = $File }
   $psi = New-NativeStart $File $Arg
-  if (-not $psi) { $script:ProbeLaunch.Why = "이 창에서 띄울 실행 파일로 풀리지 않음 ($File)"; return -1 }
+  if (-not $psi) { return -1 }
   $p = $null
   try {
     $p = [Diagnostics.Process]::Start($psi)
@@ -5376,8 +5376,9 @@ function Complete-Extension {
   $listExt = {
     $ll = [IO.Path]::GetTempFileName()
     try {
+      $script:ProbeLaunch = $null
       $lrc = Invoke-LoggedCapped 'code' @('--list-extensions') $ll $ExtListCap -Quiet
-      @{ Rc = $lrc; Ids = @(Get-Content -LiteralPath $ll -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() }) }
+      @{ Rc = $lrc; Launch = $script:ProbeLaunch; Ids = @(Get-Content -LiteralPath $ll -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() }) }
     } finally { Remove-Item -LiteralPath $ll, "$ll.err" -ErrorAction SilentlyContinue }
   }
   #   다시 묻기는 깐 확장이 다 뜰 때까지 다섯 번 · 2초 틈이다 — 느린 `code` 에서도 그 횟수는 묻는다(끝 시각으로 자르면 한 번이 몇 초 걸리는
@@ -5394,7 +5395,7 @@ function Complete-Extension {
   foreach ($x in $todo) {
     $Id = $x.Id; $Label = $x.Label; $rc = $rcs[$Id]; $xlog = $logs[$Id]
     if ($ls.Ids -notcontains $Id -and $ls.Rc -ne 0) {
-      Add-UnmeasuredStep $Label 'code --list-extensions' '설치 여부를 확인하지 못함' (Format-ProbeWhy $ls.Rc $ExtListCap)
+      Add-UnmeasuredStep $Label 'code --list-extensions' '설치 여부를 확인하지 못함' (Format-ProbeWhy $ls.Rc $ExtListCap $ls.Launch)
     } elseif ($ls.Ids -contains $Id) {
       Write-Host "  $Label — 설치 완료" -ForegroundColor Green
     } else {
