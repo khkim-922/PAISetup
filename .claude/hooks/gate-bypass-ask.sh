@@ -12,6 +12,9 @@
 # ⚠ **셸 밖의 프로세스를 하나도 안 띄운다** — 회사에서는 프로세스 하나가 약 0.3 초이고 이 훅은 Bash 호출마다 돈다. 그래서 입력은
 #   `cat` 이 아니라 셸 `read` 로 받고, 등록(`.claude/settings.json`)은 이 파일을 실행하지 않고 점(`.`)으로 읽는다 — 실행하면
 #   `sh -c` 가 셔뱅으로 `sh` 를 하나 더 세운다. 점으로 읽히면 끝의 `exit 0` 이 훅을 끝낸다. 셔뱅은 직접 돌릴 때를 위해 둔다.
+# ⚠ **등록은 `command` 곁에 `"powershell": "exit 0"` 을 든다** — Copilot CLI 도 신뢰한 저장소의 이 등록을 읽는데, 윈도에서는
+#   `command` 글자를 PowerShell 로 돌려 sh 문법인 이 줄이 지고, 진 훅은 그 셸 호출을 막는다. 그 키가 있으면 Copilot 은 그 키만
+#   돌려 아무것도 안 하고 지나가고, Claude Code 는 그 키를 안 읽는다. 그래서 이 물음은 Claude Code 에서만 선다.
 j=; while IFS= read -r _l || [ -n "$_l" ]; do j="$j$_l"; done
 case "$j" in
   *git*--no-verify*|*git*core.hooksPath=*)
