@@ -8198,8 +8198,9 @@ $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
 #   물린 자리(`$wantCodex`)에서만 받는다 — 사내 Codex 는 ChatGPT 로그인이 아니라 회사 설정 틀로 게이트웨이를 타서, 틀이 안 심긴
 #   사내 PC 에서는 붙을 데가 없다(결정 0086). 받는 쪽의 Copilot 은 조건에 안 든다 — 래퍼는 Copilot CLI 가 없으면 Codex 만으로 돈다.
 # 자리마다 다른 값은 래퍼가 읽는 사용자 환경변수로 심는다 — 래퍼는 자리를 모르고 이 값만 읽는다(agy 의 `$AgyModelVarsBySite` 와
-#   같은 꼴). 받는 값은 래퍼 머리말이 들고, 래퍼 검사(claude-config `scripts/check-codex-copilot-bg.py`)가 이 표를 읽어 두 자리
-#   값이 래퍼에서 서는지 잰다.
+#   같은 꼴). 받는 값은 래퍼 머리말이 든다. 이 표를 읽는 검사는 claude-config `scripts/check-dist-hooks.ps1` 의 「맡기기 러너 값」 판(러너 값이
+#   settings.json 에 사본으로 남지 않나)과 `scripts/check-dist-keys.ps1` 이다 — 표의 값이 래퍼에서 서는지는 래퍼 검사
+#   (`scripts/check-codex-copilot-bg.py`)가 안 잰다(그 검사는 제 값으로 돈다). 틀린 값은 래퍼가 `usage` 로 크게 진다.
 #   * `CC_BG_AGENTS` — 차례이자 쓸 수 있는 쪽. 사내는 Codex 만 —Copilot 은 GitHub(회사 밖)로 가고, 사내에서 개인
 #     구독은 막혀 보이며 회사 계정으로 CLI 를 쓰는 정책은 정해진 것이 없다. 이 값은 래퍼가 무엇을 띄우나만 가른다 —
 #     Copilot CLI 가 깔리나는 이 값이 아니라 제품 칸과 제품 표의 `When` 이 가른다(지금은 사외에서만)
