@@ -8265,11 +8265,12 @@ $FreeSkills = [ordered]@{
   'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
   'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
-  # 사내 앱(메일 · 일정 · 문서함 · 회의실 · 사규 · 게시판)을 대화로 다룬다 — 이들이 형제 폴더 ep-login 의 세션 손을 불러 쓰므로 다 한
+  # 사내 앱(메일 · 주소록 · 일정 · 문서함 · 회의실 · 사규 · 게시판)을 대화로 다룬다 — 이들이 형제 폴더 ep-login 의 세션 손을 불러 쓰고 메일 손은 주소록 손을 불러 쓰므로 다 한
   #   묶음으로 같은 홈에 선다. 사내(게이트웨이에 닿는 자리 `$inside`)에서만 깐다 — 사외에서는 사내 앱 화면이 안 열려 쓸 데가 없고,
   #   사외로 돈 회차는 기록에 든 이 묶음을 백업 자리로 걷는다. Copilot 칸은 그 제품을 사내에서 안 내놓는 동안(`$PickHeld`) 늘 거짓이다
   'ep-login'                 = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
   'company-mail'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'company-directory'        = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
   'company-calendar'         = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
   'company-ecm'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
   'company-meeting-room'     = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
