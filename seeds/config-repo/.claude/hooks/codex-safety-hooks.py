@@ -29,6 +29,7 @@ import sys
 
 
 POWERSHELL_EXT = ('.ps1', '.psm1', '.psd1')
+UTF16_BOMS = (b'\xff\xfe', b'\xfe\xff')   # 이 머리가 선 파일에는 UTF-8 BOM 을 안 붙인다(`add_bom`)
 # 받은 명령줄의 겹역슬래시를 접는 셸 — Git for Windows 의 bash · sh. 맨 이름 `bash` 는 PowerShell 에서 WSL 의 bash.exe 로
 # 풀릴 수도 있지만 bash 로 넘기는 명령이라 함께 본다
 BASH_PROGRAMS = ('bash', 'bash.exe', 'sh', 'sh.exe')
@@ -78,7 +79,9 @@ def patch_paths(text):
 
 
 def add_bom(path, cwd):
-    """PowerShell 파일이면 UTF-8 BOM 을 앞에 붙인다 — 이미 있거나 다른 파일이면 그대로. agy 어댑터도 부른다."""
+    """PowerShell 파일이면 UTF-8 BOM 을 앞에 붙인다 — 이미 있거나 다른 파일이면 그대로. agy · Copilot 어댑터도 부른다.
+    ⚠ UTF-16 BOM(FF FE · FE FF)이 선 파일도 그대로다 — 그 앞에 UTF-8 BOM 을 붙이면 PowerShell 5.1 이 깨진 글로 읽는다
+      (Claude 쪽 BOM 훅 `utf8-bom.sh` 와 같은 판정이다)."""
     path = os.path.expanduser(path)
     if not os.path.isabs(path):
         path = os.path.join(cwd, path)
@@ -88,7 +91,7 @@ def add_bom(path, cwd):
     try:
         with open(path, 'rb') as f:
             body = f.read()
-        if not body.startswith(b'\xef\xbb\xbf'):
+        if not body.startswith((b'\xef\xbb\xbf',) + UTF16_BOMS):
             part = path + '.codex-bom-part'
             with open(part, 'wb') as f:
                 f.write(b'\xef\xbb\xbf' + body)

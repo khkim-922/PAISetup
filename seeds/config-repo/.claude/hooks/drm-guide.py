@@ -63,7 +63,8 @@
 ⚠ **재다 져도 막지 않는다** — 뜻밖의 예외는 그 이름만 대는 한 줄로 바꾸고 0 으로 끝낸다. 길잡이가 죽은 사실은 남기되
    사람이 보낸 글은 그대로 간다.
 
-부르는 자리 — 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PostToolUseFailure(agy · Codex 는 PreToolUse). 앞에 셸
+부르는 자리 — 홈 `~/.claude/settings.json` 의 UserPromptSubmit · PostToolUseFailure(agy · Codex 는 PreToolUse · Copilot 은
+그 어댑터 `copilot-hooks.py` 가 userPromptSubmitted 에서 이 몸통을, 도구 호출 앞에서 agy 어댑터의 판정을 부른다). 앞에 셸
 껍데기(`drm-guide.sh` · 곁 파일)가 서서, 입력에 오피스 · PDF 확장자가 있거나 기록에 이 턴의 문서 블록이 있을 때만
 이 몸통을 띄운다. 심는 손과 소유 규율은 그림 문과 같다(`image-gate.py` 머리말).
 
@@ -115,8 +116,9 @@ UNSAFE_NAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')   # 윈도우 파일 이름�
 # ── 스킬 — 자리와 확장자 표 ──────────────────────────────────────────────────────
 def skill_dirs():
     """선 스킬 폴더를 찾는 차례대로 — 이 파일 곁(설정 저장소의 진본) · Claude 홈 · Codex 홈(`~/.agents/skills`) · agy 홈
-    (`~/.gemini/config/skills`). `SKILL.md` · `read-drm.ps1` · `office-read.ps1` 이 다 있어야 선다. 도구마다 제 홈을 들어 한 PC 에 여럿일 수
-    있고, Claude 를 안 고른 PC 에는 뒤의 둘만 있다(결정 0097 · 0099 · 0111)."""
+    (`~/.gemini/config/skills`) · Copilot 홈(`COPILOT_HOME`, 없으면 `~/.copilot` 의 `skills`). `SKILL.md` · `read-drm.ps1` ·
+    `office-read.ps1` 이 다 있어야 선다. 도구마다 제 홈을 들어 한 PC 에 여럿일 수 있고, Claude 를 안 고른 PC 에는 뒤의 셋만
+    있다(결정 0097 · 0099 · 0111)."""
     forced = os.environ.get(SKILL_DIR_ENV)
     if forced is not None:   # 시험이 자리를 주면 그 자리만(여럿이면 `os.pathsep` 으로 잇는다) — 「없을 때」를 재려면 대체가 없어야 한다
         cands = forced.split(os.pathsep)
@@ -126,7 +128,8 @@ def skill_dirs():
         cands = [os.path.normpath(os.path.join(here, '..', 'skills', SKILL)),
                  os.path.join(home, '.claude', 'skills', SKILL),
                  os.path.join(home, '.agents', 'skills', SKILL),
-                 os.path.join(home, '.gemini', 'config', 'skills', SKILL)]
+                 os.path.join(home, '.gemini', 'config', 'skills', SKILL),
+                 os.path.join(os.environ.get('COPILOT_HOME') or os.path.join(home, '.copilot'), 'skills', SKILL)]
     return [d for d in cands
             if d and all(os.path.isfile(os.path.join(d, f)) for f in ('SKILL.md', READER, LIBRARY))]
 
@@ -436,7 +439,7 @@ def message(event, paths, attached, sdir, out_dir):
         parts.append('이 턴의 첨부 가운데 Fasoo DRM 에 감긴 것: %s' % ' · '.join(t for t, _ in attached))
     head = '%s — %s (머리에 DRMONE). 감긴 파일은 Read 와 파서가 형식 인식 단계에서 진다.' % (NAME, ' · '.join(parts))
     if not sdir:
-        return head + (' 글자를 뽑는 스킬 %s 가 이 PC 에 없다(~/.claude/skills · ~/.agents/skills · ~/.gemini/config/skills 에 없음) — 이 자리에서는 읽을 길이 없다.'
+        return head + (' 글자를 뽑는 스킬 %s 가 이 PC 에 없다(~/.claude/skills · ~/.agents/skills · ~/.gemini/config/skills · ~/.copilot/skills 에 없음) — 이 자리에서는 읽을 길이 없다.'
                        % SKILL)
     root = ecm_root(sdir) if paths else None
     held = [p for p in paths if root and under(p, root)]

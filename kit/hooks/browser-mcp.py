@@ -1,10 +1,10 @@
 """브라우저 MCP 어댑터 — 곁의 실행기(`browser-mcp.mjs`)를 고른 도구의 MCP 서버 `playwright` 로 등록 · 걷기 · 확인한다 (결정 0149).
 
-    python -X utf8 browser-mcp.py install --host claude --host codex --host agy
+    python -X utf8 browser-mcp.py install --host claude --host codex --host agy --host copilot
     python -X utf8 browser-mcp.py remove  --host codex
-    python -X utf8 browser-mcp.py check   --host claude --host agy [--gone codex]
+    python -X utf8 browser-mcp.py check   --host claude --host agy --host copilot [--gone codex]
 
-**쓰는 손은 도구 제 CLI 다** — `claude mcp add -s user` · `codex mcp add` · `agy mcp add`(와 각자의 `remove`). 설정 파일을 우리가
+**쓰는 손은 도구 제 CLI 다** — `claude mcp add -s user` · `codex mcp add` · `agy mcp add` · `copilot mcp add`(와 각자의 `remove`). 설정 파일을 우리가
 고쳐 쓰지 않는다 — Claude 의 `~/.claude.json` 은 도는 세션이 같이 쓰는 파일이다. Codex 만 예외다: 그 CLI 는 도구 시간 한도를
 못 적고, 다시 달면 표를 통째로 새로 써 사람이 둔 키를 잃는다. 그래서 Codex 는 처음 달 때만 CLI 를 쓰고, 시간 한도와 옛 꼴
 고치기(명령 · 인자)는 곁의 Codex 틀 병합기(`codex-config-merge.py` 의 `merge`)가 그 자리만 맞춘다. 이 판의 첫 쓰기 전에 원본을
@@ -17,18 +17,19 @@
 아래만 끊는다 — 윈도는 띄울 때 묶은 작업 개체(job object · 그 안에서 태어난 프로세스만 든다), 그 밖은 프로세스 묶음.
 출력 글자는 UTF-8 로 읽고, 안 읽히면 윈도의 ANSI 코드 페이지(`cmd.exe` 의 메시지)로 읽는다.
 **읽는 손은 등록 파일이다** — 우리 것인가 · 꼴이 맞나는 파일을 되읽어 가른다(Claude `<설정 자리>/.claude.json` 의 `mcpServers` ·
-Codex `<CODEX_HOME>/config.toml` 의 `mcp_servers` · agy `~/.gemini/config/mcp_config.json` 의 `mcpServers`).
+Codex `<CODEX_HOME>/config.toml` 의 `mcp_servers` · agy `~/.gemini/config/mcp_config.json` 의 `mcpServers` ·
+Copilot `<COPILOT_HOME>/mcp-config.json` 의 `mcpServers` — 끈 값은 같은 자리 `settings.json` 의 `disabledMcpServers`).
 
 **우리 것은 꼴로 가린다 — 이름이 아니다**(#132). 이름 `playwright` 는 사람이 손으로 붙이는 흔한 이름이라, 이름만 보고 덮으면 남의
 서버를 지우고, 이름만 보고 건너뛰면 우리 옛 꼴이 안 옮겨 간다.
   · 우리 것 — 명령의 파일 이름이 `node` 이고 첫 인자의 파일 이름이 `browser-mcp.mjs` 다(어느 자리의 실행기든 — 옛 자리도 우리 것)
-  · 맞는 꼴 — 첫 인자가 곁의 실행기다(Codex 는 위 시간 한도까지). 다르면 그 자리만 고친다 — Claude · agy 는 걷고 다시 달고,
+  · 맞는 꼴 — 첫 인자가 곁의 실행기다(Codex 는 위 시간 한도까지). 다르면 그 자리만 고친다 — Claude · agy · Copilot 은 걷고 다시 달고,
     Codex 는 그 자리만 맞춘다
   · 남의 것 — 같은 이름인데 우리 것이 아니면 안 건드리고 WARN 을 낸다. 그 PC 에서는 우리 서버가 안 선다
   ⚠ **우리 항목에서 우리 몫은 실행기 자리(첫 인자)와 Codex 시간 한도뿐이다** — 명령(어느 `node` 인가) · 실행기 뒤의 인자(실행기가
     서버로 넘긴다) · 환경값 · 켜고 끈 값은 사람 것이라, 견줄 때 안 보고 고칠 때 그대로 잇는다. 서버의 손잡이
     (`PLAYWRIGHT_MCP_HEADLESS` · `--viewport-size` 같은)는 사람이 거기 둔다.
-  ⚠ **고친 뒤 되읽어 사람 것이 그대로가 아니면 고치기 전 항목으로 되돌린다**(Claude · agy 는 옛 값으로 다시 달고 끈 값도 다시
+  ⚠ **고친 뒤 되읽어 사람 것이 그대로가 아니면 고치기 전 항목으로 되돌린다**(Claude · agy · Copilot 은 옛 값으로 다시 달고 끈 값도 다시
     끄고, Codex 는 고치기 전 글로 되쓴다) — 그대로 두면 다음 판은 꼴이 맞아 말없이 지나간다. 되돌리기까지 지면 그 까닭을 함께 낸다.
     되돌리기까지 져 사람 것이 바뀐 채 남으면 지키려던 것과 그때의 항목 지문을 표지(`~/.paisetup/browser-mcp-pending.json`)에
     적는다 — 다음 `install` 은 항목이 그 지문 그대로일 때만 그것을 목표로 다시 맞추고(다르면 사람이 고친 것이라 버린다),
@@ -69,7 +70,7 @@ LAUNCHER = HERE / 'browser-mcp.mjs'
 LAUNCHER_NAME = LAUNCHER.name
 SERVER = 'playwright'
 NODE = 'node'
-HOSTS = ('claude', 'codex', 'agy')
+HOSTS = ('claude', 'codex', 'agy', 'copilot')
 CODEX_MERGER = 'codex-config-merge.py'   # TOML 한 자리를 뜻으로 재고 맞추는 손의 진본 — 이 파일 곁에 같이 실린다
 CODEX_HOOK_MERGER = 'codex-hook-install.py'   # 위 손이 부르는 원본 떠 두기 · 옆 파일 쓰기 · TOML 값 짓기의 진본
 CODEX_BACKUP_SUFFIX = '.before-browser-mcp-'
@@ -97,6 +98,11 @@ PENDING_FILE = 'browser-mcp-pending.json'
 
 
 # ── 자리 ─────────────────────────────────────────────────────────────────────────
+def copilot_home():
+    base = os.environ.get('COPILOT_HOME')
+    return pathlib.Path(base) if base else pathlib.Path.home() / '.copilot'
+
+
 def registry_path(host):
     if host == 'claude':
         base = os.environ.get('CLAUDE_CONFIG_DIR')
@@ -104,6 +110,8 @@ def registry_path(host):
     if host == 'codex':
         base = os.environ.get('CODEX_HOME')
         return (pathlib.Path(base) if base else pathlib.Path.home() / '.codex') / 'config.toml'
+    if host == 'copilot':
+        return copilot_home() / 'mcp-config.json'
     return pathlib.Path.home() / '.gemini' / 'config' / 'mcp_config.json'
 
 
@@ -138,7 +146,23 @@ def read_entry(host):
         data = json.loads(text) if text.strip() else {}
         table = data.get('mcpServers') if isinstance(data, dict) else None
     entry = table.get(SERVER) if isinstance(table, dict) else None
-    return entry if isinstance(entry, dict) else None
+    if not isinstance(entry, dict):
+        return None
+    if host == 'copilot' and copilot_disabled():
+        entry = dict(entry, disabled=True)   # Copilot 는 끈 값을 항목이 아니라 설정 파일에 둔다 — agy 처럼 항목의 `disabled` 로 읽는다
+    return entry
+
+
+def copilot_disabled():
+    """Copilot 설정(`settings.json`)이 우리 서버를 꺼 뒀나 — 파일이 없으면 켜진 것이고, 있는데 못 읽으면 예외다.
+    못 읽는 채로 「켜짐」으로 보면 사람이 끈 서버를 다시 달 때 켜 버린다(부르는 쪽이 그 도구를 못 쟀다로 세운다)."""
+    try:
+        with open(copilot_home() / 'settings.json', encoding='utf-8-sig') as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return False
+    names = data.get('disabledMcpServers') if isinstance(data, dict) else None
+    return isinstance(names, list) and SERVER in names
 
 
 def ours(entry):
@@ -182,7 +206,7 @@ def shape_diff(host, entry):
 def disabled(host, entry):
     if host == 'codex':
         return entry.get('enabled') is False
-    if host == 'agy':
+    if host in ('agy', 'copilot'):
         return entry.get('disabled') is True
     return False
 
@@ -381,7 +405,7 @@ def refuse_unsafe(host, command, args, env):
 
 
 def cli_add(host, command, args, env):
-    """그 꼴로 단다 — 깃발 자리는 도구마다 다르다(Claude 는 이름 뒤 · agy · Codex 는 이름 앞)."""
+    """그 꼴로 단다 — 깃발 자리는 도구마다 다르다(Claude 는 이름 뒤 · agy · Codex · Copilot 은 이름 앞)."""
     cmd = ['--', command] + list(args)
     pairs = env_pairs(env)
     if host == 'claude':   # `-e` 는 여러 값을 먹어 이름 앞에 두면 이름을 삼킨다 · 기본 범위는 그 폴더 하나(local)다
@@ -491,7 +515,7 @@ def resolve():
 
 # ── 걸음 ─────────────────────────────────────────────────────────────────────────
 def readd(host, entry, target):
-    """Claude · agy — 사람 것(`target`)을 이어 우리 꼴로 다시 단다. 이미 걷었는데 진 것은 예외로 낸다."""
+    """Claude · agy · Copilot — 사람 것(`target`)을 이어 우리 꼴로 다시 단다. 이미 걷었는데 진 것은 예외로 낸다."""
     if entry is not None:
         rc, tail = cli_remove(host)
         if rc != 0:
@@ -500,7 +524,7 @@ def readd(host, entry, target):
     rc, tail = cli_add(host, command, wanted_args() + (target['args'] if target else []), target['env'] if target else {})
     if rc != 0:
         raise RuntimeError(f'못 달았다({rc}: {tail})')
-    if target and target['disabled'] and host == 'agy':   # agy 의 `mcp add` 는 꺼 둔 값도 켠다
+    if target and target['disabled'] and host in ('agy', 'copilot'):   # agy 의 `mcp add` 는 꺼 둔 값도 켜고, Copilot 의 `mcp remove` 는 끈 값을 지운다
         rc, tail = run_cli(host, ['mcp', 'disable', SERVER])
         if rc != 0:
             raise RuntimeError(f'사람이 끈 항목을 다시 못 껐다({rc}: {tail})')

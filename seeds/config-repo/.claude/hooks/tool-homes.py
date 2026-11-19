@@ -176,7 +176,9 @@ COND_LABELS = {COND_BOX: '제작자 칸', COND_PICK: '고른 제품'}
 USER_ENV_KEY = 'Environment'           # HKCU 아래
 NAMES_NONE = 'none'
 NAMES_EMPTY = ('claude',)              # 값이 비었을 때
-# 고른 제품 값에 들지만 이 표에 길이 없는 제품 — 세션 훅이 폴더 신뢰만 건다(결정 0122). 손은 모르는 이름으로 안 센다
+# 고른 제품 값에 드는데 읽는 표에 길이 없을 수 있는 제품 — 고른 제품의 낱말은 설치기가 정하고 표는 저장소마다 제 것이라
+#   (씨앗으로 만든 저장소의 표는 만든 사람이 고친다), 그 도구의 길을 안 든 표에서는 모르는 이름으로 안 세고 조용히 건너뛴다.
+#   길을 든 표에서는 다른 도구와 같이 읽는다
 PICK_ROUTELESS = ('copilot',)
 NAMES_SPLIT = re.compile(r'[,\s]+')
 
@@ -197,25 +199,30 @@ LIST_OURS, LIST_MIXED = 'ours', 'mixed'
 RUNNER_WARN = '받는 쪽 홈에 러너가 있다 · 우리 것이 아니라 안 걷는다'
 ANY_WARN = '어느 홈에도 안 놓는 이름이 있다 · 우리 것이 아니라 안 걷는다'
 IMPORT, BLOCK, LINES, INCLUDE, LIST, COPY, HOOK = 'import', 'block', 'lines', 'include', 'list', 'copy', 'hook'
+RENAME = 'rename'
 FILE_FORMS = (IMPORT, BLOCK, LINES, INCLUDE, LIST, HOOK)
+FOLDER_FORMS = (COPY, RENAME)          # 폴더 항목의 파일을 폴더에 놓고 기록에 적는 꼴
 
 ENTRY_BARRED = ('/', '..')             # 가져올 파일 칸을 열 수 없는 글자 — 항목 폴더 안의 상대 자리라야 한다
+RULE_END = '.md'                       # 룰 · 지시 글 파일의 이름 끝 — lines 가 읽는 룰과 rename 이 놓는 파일이 같은 끝이다
+RENAME_BARRED = ('/', '\\')            # 바꿔 붙일 이름 끝에 못 드는 글자 — 대상 폴더 바로 밑의 이름이라야 한다
 
 BEGIN = '<!-- paisetup:norms BEGIN -->'
 END = '<!-- paisetup:norms END -->'
 IMPORT_LINE = '@~/%s/%s/%s'            # HUB · 층 · 층 안의 자리(폴더 항목이면 뒤에 가져올 파일)
 
-# 늘 읽히는 세 자리(Claude import 블록 · Codex 블록 · agy include 파일)의 머리 한 줄 — 사본을 고치려는 모델을 원본으로
+# 늘 읽히는 자리(import 블록 · block 블록 · include 파일)의 머리 한 줄 — 사본을 고치려는 모델을 원본으로
 #   돌린다(결정 0193). 스킬 설명만으로는 스킬을 읽고도 사본을 고치는 도구가 있다
 HOME_NOTE = '여기와 설치가 홈에 놓은 규범 · 룰 · 스킬 사본은 다음 설치가 다시 쓴다 — 고치려면 먼저 `config-repo-start` 스킬을 부른다.'
 
-# Codex 블록의 글 — 홈에 이미 깔린 블록과 바이트 꼴이 같아야 다시 놓을 때 룰 줄의 자리(이긴 층)만 바뀐다
+# block 블록의 글(Codex 에서 지은 이름 그대로 · block 길의 모든 도구가 쓴다) — 홈에 이미 깔린 블록과 바이트 꼴이 같아야 다시
+#   놓을 때 룰 줄의 자리(이긴 층)만 바뀐다
 CODEX_HEAD = '%s\n%s\n\n' % (BEGIN, HOME_NOTE)
 CODEX_RULES_HEAD = ('\n## 영역 룰 — 파일을 만질 때만 걸리는 원칙\n\n'
                     '아래 파일을 만지기 전에 가리킨 룰을 읽고 따른다. 위 규범이 「룰이 든다」고 적은 자리가 이것들이다.\n\n')
 CODEX_RULE_LINE = '- `%s` 를 만질 때는 `%s/%s` 를 먼저 읽는다'
 CODEX_RULE_DESC = ' — '
-RULE_GLOB = '*.md'
+RULE_GLOB = '*' + RULE_END
 FRONT = re.compile(r'\A---\r?\n(.*?)\r?\n---\r?\n', re.S)
 
 # agy — 앱은 목록의 `path` 로 드라이브 문자로 여는 절대 경로만 받고 CLI 는 `~/` 를 거절한다. 그래서 이 PC 홈의 절대 경로를
@@ -253,8 +260,9 @@ LINK_TAGS = (getattr(stat, 'IO_REPARSE_TAG_SYMLINK', 0xA000000C), getattr(stat, 
 
 # path — 층 안의 자리 · repos — 설정 저장소 안의 자리들 · local · each — 표지 낱말
 Item = collections.namedtuple('Item', 'name path repos local each')
-# entry — 폴더 항목의 import 가 가리킬 항목 폴더 안의 파일(길 줄의 끝 칸). 다른 길에는 없다(None)
-Route = collections.namedtuple('Route', 'item tool form target cond entry', defaults=(None,))
+# tail — 길 줄의 끝 칸. 폴더 항목의 import 는 가리킬 항목 폴더 안의 파일, rename 은 바꿔 붙일 이름 끝이다. 다른 길에는
+#   없다(None)
+Route = collections.namedtuple('Route', 'item tool form target cond tail', defaults=(None,))
 Not = collections.namedtuple('Not', 'item name tool')
 Was = collections.namedtuple('Was', 'target ledger shared')
 # ledgers — 옛 기록들(없으면 빈 묶음 — 통째로 옮긴다) · listed — 우리가 써 온 목록 꼴일 때만 옮긴다
@@ -503,25 +511,28 @@ def read_table(path):
             bad.append('길 %s → %s — 모르는 조건이다(%s)' % (r.item, r.target, r.cond))
         elif not r.target.startswith(TILDE):
             bad.append('길 %s → %s — 자리는 `~/` 로 연다' % (r.item, r.target))
-        elif r.form not in FILE_FORMS + (COPY,):
+        elif r.form not in FILE_FORMS + FOLDER_FORMS:
             bad.append('길 %s → %s — 모르는 꼴이다(%s)' % (r.item, r.target, r.form))
         elif item.each and r.form != COPY:
             bad.append('길 %s → %s — %s 항목의 길은 copy 만 선다' % (r.item, r.target, EACH))
-        elif r.form == COPY and not (r.target.endswith('/') and folder_item):
-            bad.append('길 %s → %s — copy 는 폴더 항목을 폴더에 놓는다' % (r.item, r.target))
+        elif r.form in FOLDER_FORMS and not (r.target.endswith('/') and folder_item):
+            bad.append('길 %s → %s — %s 는 폴더 항목을 폴더에 놓는다' % (r.item, r.target, r.form))
+        elif r.form == RENAME and (not r.tail or any(c in r.tail for c in RENAME_BARRED)):
+            bad.append('길 %s → %s — rename 은 바꿔 붙일 이름 끝 칸이 서고 그 칸에 %s 가 못 든다'
+                       % (r.item, r.target, ' · '.join(RENAME_BARRED)))
         elif r.form in FILE_FORMS and r.target.endswith('/'):
             bad.append('길 %s → %s — %s 의 자리는 파일이다' % (r.item, r.target, r.form))
         elif r.form == BLOCK and folder_item:
             bad.append('길 %s → %s — block 은 파일 항목을 쓴다' % (r.item, r.target))
         elif r.form in (LINES, HOOK) and not folder_item:
             bad.append('길 %s → %s — %s 는 폴더 항목을 쓴다' % (r.item, r.target, r.form))
-        elif r.form == IMPORT and folder_item and r.entry is None:
+        elif r.form == IMPORT and folder_item and r.tail is None:
             bad.append('길 %s → %s — 폴더 항목의 import 는 가져올 파일 칸이 선다' % (r.item, r.target))
-        elif r.form == IMPORT and folder_item and r.entry.startswith(ENTRY_BARRED):
+        elif r.form == IMPORT and folder_item and r.tail.startswith(ENTRY_BARRED):
             bad.append('길 %s → %s — 가져올 파일은 항목 폴더 안의 상대 자리다(%s 로 열 수 없다)'
                        % (r.item, r.target, ' · '.join(ENTRY_BARRED)))
-        elif r.entry is not None and not (r.form == IMPORT and folder_item):
-            bad.append('길 %s → %s — 가져올 파일 칸은 폴더 항목의 import 만 쓴다' % (r.item, r.target))
+        elif r.tail is not None and not ((r.form == IMPORT and folder_item) or r.form == RENAME):
+            bad.append('길 %s → %s — 끝 칸은 폴더 항목의 import 와 rename 만 쓴다' % (r.item, r.target))
     tools = set(r.tool for r in routes)
     for x in nots:
         item = items.get(x.item)
@@ -542,7 +553,7 @@ def read_table(path):
             continue        # 한 자리에 import 길이 여럿 설 수 있다 — 길마다 한 줄
         if all(x == INCLUDE for x in forms):
             continue        # include 도 — 길마다 가리킴 한 줄
-        if len(forms) == 1 and forms[0] in (LIST, COPY, HOOK):
+        if len(forms) == 1 and forms[0] in (LIST, HOOK) + FOLDER_FORMS:
             continue
         bad.append('자리 %s — 한 자리에 맞지 않는 꼴들이다(%s)' % (target, ' · '.join(forms)))
     return table, bad
@@ -1243,13 +1254,13 @@ def import_line(run, route, item, got):
     if not got:
         return None
     layer, files = got
-    if route.entry is None:
+    if route.tail is None:
         return IMPORT_LINE % (HUB, layer, item.path)
-    if route.entry not in files:
+    if route.tail not in files:
         run.out.warn('%s — 이긴 층(%s)의 %s 에 가져올 파일 %s 가 없다 · 그 가져오기 줄을 뺀다'
-                     % (route.target, layer, item.path, route.entry))
+                     % (route.target, layer, item.path, route.tail))
         return None
-    return IMPORT_LINE % (HUB, layer, item.path + route.entry)
+    return IMPORT_LINE % (HUB, layer, item.path + route.tail)
 
 
 def layer_abs(run, layer, item):
@@ -1530,6 +1541,16 @@ def place_copy(run, route, got, link_dirs, fresh_dirs, desired):
     fresh = open_folder(run, folder, prefix, link_dirs, fresh_dirs)
     if fresh is not None:
         copy_files(run, folder, prefix, got[1], fresh, desired)
+
+
+def renamed(got, tail):
+    """rename 길이 놓을 것 — (층, {놓을 이름: 원본}). 항목 폴더 바로 밑에서 이름이 RULE_END 로 끝나는 파일만 그 끝을 tail
+    로 바꾼다 — 이름으로 파일을 고르는 도구는 다른 이름을 안 읽는다. got 이 None 이거나 놓을 파일이 없으면 None(걷기만 한다)."""
+    if not got:
+        return None
+    layer, files = got
+    out = dict((k[:-len(RULE_END)] + tail, p) for k, p in files.items() if '/' not in k and k.endswith(RULE_END))
+    return (layer, out) if out else None
 
 
 def owned(ledger, top):
@@ -1861,6 +1882,8 @@ def place(run, table, views, conds):
                                              link_dirs, fresh_dirs, desired)
             elif first.form == COPY:
                 place_copy(run, first, chosen(first), link_dirs, fresh_dirs, desired)
+            elif first.form == RENAME:
+                place_copy(run, first, renamed(chosen(first), first.tail), link_dirs, fresh_dirs, desired)
             elif first.form == IMPORT:
                 lines = [import_line(run, r, table.items[r.item], chosen(r)) for r in routes]
                 lines = [x for x in lines if x]
@@ -1891,7 +1914,7 @@ def place(run, table, views, conds):
                             [table.items[r.item] for r in routes])
         except Exception as e:  # noqa: BLE001 — 한 자리가 막혀도 나머지는 간다
             run.out.error('%s — %s: %s' % (target, type(e).__name__, e))
-    tops = sorted(set(run.rel(run.at(r.target)) + '/' for r in table.routes if r.form == COPY))
+    tops = sorted(set(run.rel(run.at(r.target)) + '/' for r in table.routes if r.form in FOLDER_FORMS))
     sweep_ledger(run, desired, whole, link_dirs, fresh_dirs, tops)
     on = set(r.target for r in table.routes if lit(r))
     known = dict((name, set(got)) for name, got in each_won.items())

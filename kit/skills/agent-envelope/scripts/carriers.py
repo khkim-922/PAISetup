@@ -27,8 +27,9 @@ RUNNER = {'claude': 'claude-background', 'agy': 'agy-background', 'codex': 'code
 FENCE = {'claude': '같은 앱의 서브에이전트: 셸 ○ · 격리 워크트리. 러너(claude-background): 셸 × · 허락 + 작업 자리',
          'agy': '셸 ○ · 묻지 않고 쓰니 울타리는 작업 자리뿐',
          'codex': '셸은 고치기 레인에만 · 샌드박스 + 작업 자리. Copilot 이 받으면 셸 ×'}
-# 러너 스킬이 깔리는 자리 — 설치기의 갈 곳 표(tool-homes.conf)가 드는 세 홈과, 이 스킬 곁(저장소의 스킬 폴더)
-HOMES = (('Claude 홈', ('.claude', 'skills')), ('Codex 홈', ('.agents', 'skills')), ('agy 홈', ('.gemini', 'config', 'skills')))
+# 러너 스킬이 깔리는 자리 — 설치기의 갈 곳 표(tool-homes.conf)가 맡기기 러너를 놓는 스킬 홈과, 이 스킬 곁(저장소의 스킬 폴더)
+HOMES = (('Claude 홈', ('.claude', 'skills')), ('Codex 홈', ('.agents', 'skills')), ('agy 홈', ('.gemini', 'config', 'skills')),
+         ('Copilot 홈', ('.copilot', 'skills')))
 
 
 class BadTable(Exception):
