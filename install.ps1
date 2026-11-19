@@ -1164,8 +1164,10 @@ function Join-NativeArgs([string[]]$CmdArgs) {
 # 줄 넘기기는 `Invoke-Logged` 와 같은 규칙이다 — 하는 부름은 손에 넘기고 재는 부름은 `-Quiet`, 손은 `$OnLine` 이고 없으면 `Show-ChildLine`.
 #   기다리는 동안 두 파일에 붙은 줄을 그 손에 넘긴다(`Read-LogTail` · 반 초 틈) — stderr 도 읽는다: git · npm · 셸 손은 진행을 거기 쓴다.
 function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath, [int]$CapSec, [scriptblock]$OnLine, [switch]$Quiet) {
+  # 띄운 결과는 `Invoke-ProbeCapped` 와 같은 꼴로 `$script:ProbeLaunch` 에 남는다 — -1 의 까닭은 부르는 쪽이 `Format-ProbeWhy` 로 가른다
+  $script:ProbeLaunch = @{ Started = $false; Err = $null; Line = ''; Why = '' }
   $psi = New-NativeStart $File (Join-NativeArgs $CmdArgs)
-  if (-not $psi) { return -1 }
+  if (-not $psi) { $script:ProbeLaunch.Why = "이 창에서 띄울 실행 파일로 풀리지 않음 ($File)"; return -1 }
   if (-not $OnLine -and -not $Quiet) { $OnLine = ${function:Show-ChildLine} }
   $lock = if ($File -eq 'winget') { Enter-WingetLock } else { $null }
   $rc = -1; $took = [Diagnostics.Stopwatch]::StartNew()
@@ -1179,6 +1181,7 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
     $sink = @(New-Object IO.FileStream($LogPath, 'Create', 'Write', 'ReadWrite', $bufSize))
     $sink += New-Object IO.FileStream("$LogPath.err", 'Create', 'Write', 'ReadWrite', $bufSize)
     $p = [Diagnostics.Process]::Start($psi)
+    $script:ProbeLaunch.Started = $true
     $p.StandardInput.Close()
     $pump = @($p.StandardOutput.BaseStream.CopyToAsync($sink[0]),
               $p.StandardError.BaseStream.CopyToAsync($sink[1]))
@@ -1197,12 +1200,21 @@ function Invoke-LoggedCapped([string]$File, [string[]]$CmdArgs, [string]$LogPath
       try { if (-not $p.HasExited) { $p.Kill() } } catch { }
       $rc = -2
     }
-  } catch { $rc = -1 }
+  } catch {
+    $rc = -1
+    $script:ProbeLaunch.Err = $_.Exception
+    $script:ProbeLaunch.Line = "$($psi.FileName) $($psi.Arguments)"
+  }
   finally {
     if ($lock) { Exit-WingetLock $lock }
     foreach ($s in $sink) { try { $s.Dispose() } catch { } }
-    # 세부 기록은 파일을 닫은 뒤에 읽는다 — 쓰는 손이 쥔 동안은 읽기가 공유 위반으로 진다
-    if (-not $Quiet) { try { Add-RunDetail $File $CmdArgs $rc $took.Elapsed.TotalSeconds @($LogPath, "$LogPath.err") } catch { } }
+    # 세부 기록은 파일을 닫은 뒤에 읽는다 — 쓰는 손이 쥔 동안은 읽기가 공유 위반으로 진다. -1 은 그 까닭을 머리 줄에 단다
+    if (-not $Quiet) {
+      try {
+        $note = if ($rc -eq -1) { Format-ProbeWhy $rc $CapSec $script:ProbeLaunch } else { '' }
+        Add-RunDetail $File $CmdArgs $rc $took.Elapsed.TotalSeconds @($LogPath, "$LogPath.err") $note
+      } catch { }
+    }
   }
   return $rc
 }
@@ -1434,11 +1446,17 @@ function Measure-Runs([string]$Cmd, [string]$Arg, [int]$Site = 0) {
   $c = Get-Command $Cmd -ErrorAction SilentlyContinue | Select-Object -First 1
   if (-not $c) { return 'no' }
   $probe = "$Cmd $Arg"
+  # 울타리 손을 갈아 끼운 판(검사의 대역)은 띄운 결과를 안 남긴다 — 앞 부름의 것을 읽지 않게 비우고 부른다
+  $script:ProbeLaunch = $null
+  $took = [Diagnostics.Stopwatch]::StartNew()
   $rc = Invoke-ProbeCapped $Cmd $Arg $ProbeCap
+  $why = if ($rc -eq 0) { '' } else { Format-ProbeWhy $rc $ProbeCap $script:ProbeLaunch }
+  # 물음마다 세부 기록에 한 판 — 화면의 「못 쟀다」 하나로는 같은 이름이 그 판의 앞뒤에서 섰나 · 무엇으로 풀렸나를 못 견준다
+  try { Add-RunDetail $Cmd @($Arg) $rc $took.Elapsed.TotalSeconds @() "프로브 · $($c.Source)$(if ($why) { " · $why" })" } catch { }
   if ($rc -eq 0) { return 'yes' }
   if ($rc -eq -2) { $script:ProbeTimedOut.Add(@{ Probe = $probe; Site = $Site; Cap = $ProbeCap }) }
   elseif ("$($c.Source)" -like '*\Microsoft\WindowsApps\*') { return 'no' }
-  $script:ProbeWhy[$probe] = Format-ProbeWhy $rc $ProbeCap
+  $script:ProbeWhy[$probe] = $why
   return 'unmeasured'
 }
 
@@ -1475,10 +1493,25 @@ function Add-ProbeOverflow([string]$Probe, [int]$Cap) {
 }
 
 # 울타리 손이 낸 값을 「``명령`` 이 …」 뒤에 이어 읽히는 까닭으로 — -2 넘김 · -1 못 띄움 · 그 밖은 종료 값.
-function Format-ProbeWhy([int]$Rc, [int]$Cap) {
+#   `$Launch` 는 그 부름 바로 뒤의 `$script:ProbeLaunch` 다(두 울타리 손이 남긴다). 주면 -1 을 가른다 — 자식이 섰고 예외도 까닭도 없으면
+#   자식이 스스로 낸 -1(강제로 꺼진 자식의 값)이고, 있으면 그것을 붙인다. 예외는 맨 안쪽의 갈래 · Win32 번호 · 첫 줄과 띄우려던 줄로
+#   댄다 — 「띄우지 못해」만으로는 사람이 무엇이 막았나를 못 찾는다. 안 주면 -1 은 늘 못 띄움이다.
+function Format-ProbeWhy([int]$Rc, [int]$Cap, $Launch = $null) {
   if ($Rc -eq -2) { return "${Cap}초 안에 안 끝나" }
-  if ($Rc -eq -1) { return '띄우지 못해' }
-  return ('{0} (0x{0:X8}) 로 끝나' -f $Rc)
+  if ($Rc -ne -1) { return ('{0} (0x{0:X8}) 로 끝나' -f $Rc) }
+  if (-not $Launch) { return '띄우지 못해' }
+  $what = "$($Launch.Why)"
+  if ($Launch.Err) {
+    $e = $Launch.Err
+    while ($e.InnerException) { $e = $e.InnerException }
+    $num = if ($e -is [ComponentModel.Win32Exception]) { " $($e.NativeErrorCode)" } else { '' }
+    $what = "$($e.GetType().Name)$num : $((("$($e.Message)" -split '\r?\n')[0]).Trim()) — $($Launch.Line)"
+    if ($what.Length -gt 240) { $what = $what.Substring(0, 240) + '…' }
+  }
+  if ($Launch.Started -and -not $what) { return ('{0} (0x{0:X8}) 로 끝나' -f $Rc) }
+  if ($Launch.Started) { return "띄운 뒤 끝을 읽지 못해 ($what)" }
+  if ($what) { return "띄우지 못해 ($what)" }
+  return '띄우지 못해'
 }
 
 # `Measure-Runs` 가 쓰는 울타리 — 종료코드만 쥐고 글자는 버린다. 내는 값은 `Invoke-LoggedCapped` 와 같다(0 이상 · -1 · -2).
@@ -1487,12 +1520,17 @@ function Format-ProbeWhy([int]$Rc, [int]$Cap) {
 #   손잡이가 `WaitForExit(ms)` 와 거둠의 전제이고, 파일의 꼴은 `New-NativeStart` 가 가른다.
 # 거둠의 성공을 기다리지 않는다 — `taskkill /T /F` 도 관리자 `Stop-Process -Force` 도 못 끄는 자식이 있다. 걸어 보고 바로 -2 를
 #   내고, 손잡이를 `Dispose` 로 놓아 이 프로세스가 남은 자식에 매이지 않는다.
+# 띄운 결과는 `$script:ProbeLaunch` 에 남는다 — @{ Started = 자식이 섰나; Err = 띄우거나 기다리다 던진 예외; Line = 그때 띄우려던 줄;
+#   Why = 예외 없이 못 띄운 까닭 }. -1 은 「못 띄웠다」와 「자식이 스스로 -1 로 끝났다(다른 프로그램이 강제로 끈 자식의 값)」 둘 다라
+#   값만으로는 못 가른다 — 부르는 쪽이 `Format-ProbeWhy` 에 이것을 넘겨 까닭을 가른다.
 function Invoke-ProbeCapped([string]$File, [string]$Arg, [int]$CapSec) {
+  $script:ProbeLaunch = @{ Started = $false; Err = $null; Line = ''; Why = '' }
   $psi = New-NativeStart $File $Arg
-  if (-not $psi) { return -1 }
+  if (-not $psi) { $script:ProbeLaunch.Why = "이 창에서 띄울 실행 파일로 풀리지 않음 ($File)"; return -1 }
   $p = $null
   try {
     $p = [Diagnostics.Process]::Start($psi)
+    $script:ProbeLaunch.Started = $true
     $p.StandardInput.Close()
     # ⚠ **두 스트림을 읽어 버린다** — 안 읽으면 파이프 버퍼가 차서 자식이 멈추고, 울타리가 우리 손으로 만든 멈춤을 잰다.
     #   비동기로 걸어 두고 결과는 안 쓴다.
@@ -1502,7 +1540,11 @@ function Invoke-ProbeCapped([string]$File, [string]$Arg, [int]$CapSec) {
     try { Stop-ProbeTree $p } catch { }
     try { if (-not $p.HasExited) { $p.Kill() } } catch { }
     return -2
-  } catch { return -1 }
+  } catch {
+    $script:ProbeLaunch.Err = $_.Exception
+    $script:ProbeLaunch.Line = "$($psi.FileName) $($psi.Arguments)"
+    return -1
+  }
   finally { if ($p) { try { $p.Dispose() } catch { } } }
 }
 
@@ -5240,9 +5282,10 @@ function Complete-RowChild([string]$Kind, $Row) {
 function Get-ExtVersions {
   $log = [IO.Path]::GetTempFileName()
   try {
+    $script:ProbeLaunch = $null
     $rc = Invoke-LoggedCapped 'code' @('--list-extensions','--show-versions') $log $ExtListCap -Quiet
     if ($rc -eq -2) { Add-ProbeOverflow 'code --list-extensions --show-versions' $ExtListCap }
-    if ($rc -ne 0) { return @{ Vers = $null; Why = (Format-ProbeWhy $rc $ExtListCap) } }
+    if ($rc -ne 0) { return @{ Vers = $null; Why = (Format-ProbeWhy $rc $ExtListCap $script:ProbeLaunch) } }
     $m = @{}
     foreach ($l in @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue)) {
       if ($l -match '^(.+)@([^@]+)$') { $m[$Matches[1]] = $Matches[2] }
@@ -12663,10 +12706,13 @@ $extList = @()
 # 깔린 확장 목록도 울타리 안에서 묻는다(`$ExtListCap`) — 못 읽었으면(넘김 · 0 아닌 값) 고른 확장 칸이 다 그 물음 하나에 걸린 「못 쟀다」다
 #   (못 읽은 목록은 빈 목록이 아니다 — 결정 0145).
 $extListRc = 0
+$extListLaunch = $null
 if ($hasCode) {
   $el = [IO.Path]::GetTempFileName()
   try {
+    $script:ProbeLaunch = $null
     $extListRc = Invoke-LoggedCapped 'code' @('--list-extensions') $el $ExtListCap -Quiet
+    $extListLaunch = $script:ProbeLaunch
     if ($extListRc -eq -2) { Add-ProbeOverflow 'code --list-extensions' $ExtListCap }
     $extList = @(Get-Content -LiteralPath $el -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() })
   } finally { Remove-Item -LiteralPath $el, "$el.err" -ErrorAction SilentlyContinue }
@@ -12685,7 +12731,7 @@ if (-not $NoVsCode) {
     if ($hasCode) { Add-Check (New-NewShellRow 'VS Code' (Measure-NewShellCommand 'code' '--version' $psNow)) }
     else          { Add-Check @{ Name = 'VS Code'; Ok = $false } }
     foreach ($x in $ExtPicks) {
-      if ($extListRc -ne 0) { Add-Check @{ Name = $x.Label; State = 'unmeasured'; Probe = 'code --list-extensions'; Why = (Format-ProbeWhy $extListRc $ExtListCap) } }
+      if ($extListRc -ne 0) { Add-Check @{ Name = $x.Label; State = 'unmeasured'; Probe = 'code --list-extensions'; Why = (Format-ProbeWhy $extListRc $ExtListCap $extListLaunch) } }
       else                   { Add-Check @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) } }
     }
   }
