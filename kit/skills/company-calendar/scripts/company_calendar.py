@@ -3,7 +3,8 @@
 부르는 꼴::
 
     python -X utf8 -I company_calendar.py --help      # 지도 — 출발 × 바꿀 것 × 끝 · 읽기. 아래 표(STARTS · CHANGES · ENDS · READS)에서 짓는다
-    python -X utf8 -I company_calendar.py show [오늘|내일|모레|YYYY-MM-DD] [끝 날] [--shared] [--who 이름 …] [--free 분 [--hours HH:MM-HH:MM]]
+    python -X utf8 -I company_calendar.py show [오늘|내일|모레|YYYY-MM-DD] [끝 날] [--shared] [--who 이름 …] [--people-file people.json …]
+                                               [--free 분 [--hours HH:MM-HH:MM]]
     python -X utf8 -I company_calendar.py calendars
     python -X utf8 -I company_calendar.py preview --title T --start "YYYY-MM-DD HH:MM" --end "…" [--note N]   # 안 바꾼다 · key 를 낸다
     python -X utf8 -I company_calendar.py add     …preview 와 같은 값… --confirm <preview 의 key>               # ⚠ 바꾼다
@@ -21,14 +22,13 @@
 세션 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 가 쥔다: 보기는 있는 세션 파일로 먼저 돌고, 넣기 · 지우기(``MUTATING``)는
 늘 쓰는 사람의 Edge 에서 받는다(까닭은 그 함수의 머리말). 판단(무엇을 넣을까 · 지워도 되나)은 여기 없다.
 
-내는 것 — 표준 출력에 JSON 하나. 종료 값: 0 됐다 · 1 도구 고장(그대로 알린다) · 2 인자가 틀렸다(없는 손가락 · 빠진 값 — ``message`` 가
-다음 걸음을 든다) · 3 세션이 없다 · 끊겼다(스킬 ep-login) · 8 일정 앱 주소가 틀렸거나 잰 기본 주소로 내 일정함이 안 읽힌다. 0 이 아니면
-``message`` 가 까닭과 「다음: …」 을 든다. 일정 줄 — ``day`` · ``weekday`` · ``when`` · ``start`` · ``end`` · ``handle``(지우기의 열쇠 ·
+내는 것 — 표준 출력에 JSON 하나. 종료 값과 그 뜻은 맨 위 ``--help`` 의 범례(``EXITS`` — ``ep_command.exit_legend``)가 낸다. 일정 줄 — ``day`` · ``weekday`` · ``when`` · ``start`` · ``end`` · ``handle``(지우기의 열쇠 ·
 사람에게 안 보인다) · ``pending``(참석 답을 안 한 받은 초대) · ``keep`` 이 차면 지우지 않는 줄이고 ``keep_word`` 가 사람에게 할 말이다 ·
 기본 밖 내 일정함 · 공유 줄은 ``calendar``(어느 일정함) · 공유 줄은 ``private``(일정함을 가진 사람이 비공개로 든 것). 시각을 못 읽어
 뺀 줄이 있으면 show 가 ``unread_rows``(일정함 · 줄 수)를 단다. ``--free`` 를 주면 show 가 ``free`` 를 더 낸다 — 읽은 일정함 전부가
-그 분 이상 함께 비는 때(``slots``)와 시각을 짐작해 센 줄(``assumed``) · 사람에게 할 말(``word``). 어느 줄을 어떻게 세나는
-``free_of``. preview 는 ``state``(ready · already) · ``key`` 를, 넣기 · 지우기는 ``state`` 와 사람에게 할 말 · 다음 걸음이 든
+그 분 이상 함께 비는 때(``slots``)와 시각을 짐작해 센 줄(``assumed``) · 일정함을 못 본 사람(``unseen``) · 사람에게 할 말(``word``).
+어느 줄을 어떻게 세나는 ``free_of``. ``--people-file`` 을 주면 show 가 ``people``(그 일정함으로 본 사람 ``seen`` · 공유받지 않아 못 본
+사람 ``unseen`` · 할 말)을 더 낸다 — 사람을 일정함에 잇는 법은 ``people_books``. preview 는 ``state``(ready · already) · ``key`` 를, 넣기 · 지우기는 ``state`` 와 사람에게 할 말 · 다음 걸음이 든
 ``state_word`` 를 낸다.
 """
 
@@ -46,10 +46,20 @@ from datetime import date, datetime, time, timedelta
 
 HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
+if str(EP_LOGIN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(EP_LOGIN_SCRIPTS))   # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
+try:
+    import ep_command
+    import ep_session
+    from ep_command import (DAY_COUNT, DAY_WORDS, EXIT_ARGS, EXIT_OK, EXIT_SESSION, EXIT_TOOL, EXIT_URL, OUT_BYTES, STAMP_HELP, WEEKDAYS, Stop, date_of, day_of, gaps_of, load,
+                            size, stamp)
+except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
+    print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
+    sys.exit(1)
+
 SAVED_URL = "~/.company-calendar.json"   # 남긴 일정 앱 주소 — 저장소 밖 · 비밀이 없다(사번 · 쿠키가 안 든다)
 INDENT = 1                               # 답(JSON)을 찍는 들여쓰기 — 답의 크기도 이 꼴로 센다
 KEY_LENGTH = 16                          # 열쇠(보인 판의 해시)의 길이 — 16진 글자
-STAMP_HELP = "YYYY-MM-DD HH:MM(서울)"
 # 사람이 회사 일정 화면을 여는 길 — 화면 주소는 사람마다 서버 · 번호가 달라 길로 댄다(references/SOURCES.md 「사내 일정 앱에서 잰 것」)
 MENU = "Edge 에서 메일을 열고 위의 일정 메뉴"
 SCREEN = f"회사 일정 화면({MENU}로 연다)"
@@ -107,52 +117,75 @@ STARTS = {
     "new": Start("새 일정", "빠른 등록 화면 — 내 기본 일정함에 한 건. 참석자 · 참조 칸은 늘 비워 누구에게도 알림이 안 간다"),
     "event": Start("내 일정 한 건", "show 가 보인 일정 줄 — 그 줄의 handle", "--handle"),
 }
-EDIT_LATER = (f"일정 고치기 · 옮기기는 회사에서 아직 안 잰 손가락이다 — 사람에게 {SCREEN}에서 고치시라 권한다(손수 든 단건이면 "
-              "지우고 새로 넣는 길도 있다 — 확인을 두 번 받는다)")
-CHANGES = {
-    "title": Change((("--title", {}),), ("new",), "제목 — 60 자에서 자르고 줄바꿈 · 안 보이는 글자를 걷는다", EDIT_LATER, ("new",)),
-    "start": Change((("--start", {"help": STAMP_HELP}),), ("new",), "시작", EDIT_LATER, ("new",)),
-    "end": Change((("--end", {"help": STAMP_HELP}),), ("new",), "끝 — 사람이 끝을 안 말했으면 지어 넣지 말고 묻는다", EDIT_LATER, ("new",)),
-    "note": Change((("--note", {}),), ("new",), "설명 — 80 자에서 자른다", EDIT_LATER),
-}
-# 아직 없는 손가락 — 회사에서 그 화면 동작을 재 오면 이 줄을 걷고 CHANGES 한 줄과 register 의 그 칸을 더한다
 ON_SCREEN = f"사람에게 {SCREEN}에서 하시라 권한다"
+EDIT_ON_SCREEN = f"한 건 고치기는 제목 · 장소 · 시각만 받는다(일정 화면의 미리 보기 [저장] · 끌어 옮기기와 같은 크기). {ON_SCREEN}(그 일정의 [상세보기])"
+NEW_ONLY = f"넣을 때만 고른다 — 넣은 일정의 이 칸은 {SCREEN}의 [상세보기]에서 고친다"
+CHANGES = {
+    "title": Change((("--title", {}),), ("new", "event"), "제목 — 60 자에서 자르고 줄바꿈 · 안 보이는 글자를 걷는다", "", ("new",)),
+    "start": Change((("--start", {"help": f"{STAMP_HELP} — 하루 종일이면 YYYY-MM-DD(첫날)"}),), ("new", "event"),
+                    "시작 — 한 건 고치기에서 시작만 주면 길이를 지켜 옮긴다", "", ("new",)),
+    "end": Change((("--end", {"help": f"{STAMP_HELP} — 하루 종일이면 YYYY-MM-DD(끝날 · 그날도 든다)"}),), ("new", "event"),
+                  "끝 — 사람이 끝을 안 말했으면 지어 넣지 말고 묻는다", "", ("new",)),
+    "place": Change((("--place", {}),), ("new", "event"), "장소 — 60 자에서 자른다. 회의실 예약은 아니다(스킬 company-meeting-room)", ""),
+    "note": Change((("--note", {}),), ("new",), "설명 — 80 자에서 자른다", EDIT_ON_SCREEN),
+    "private": Change((("--private", {"action": "store_const", "const": True}),), ("new",),
+                      "비공개 — 다른 분께 제목이 안 보이고 바쁜 때로만 선다", NEW_ONLY),
+    "all_day": Change((("--all-day", {"action": "store_const", "const": True}),), ("new",),
+                      "하루 종일 — --start · --end 를 날짜(YYYY-MM-DD · 끝날도 든다)로 준다", NEW_ONLY),
+    "important": Change((("--important", {"action": "store_const", "const": True}),), ("new",), "중요 표시", NEW_ONLY),
+}
+# 아직 없는 손가락 — 회사에서 그 화면 동작을 재 오면 이 줄을 걷고 CHANGES 한 줄과 손의 그 칸을 더한다. 안 짓는 것은 까닭을 든다
 NOT_YET = {
-    "all_day": NotYet("하루 종일로 넣기", f"등록 화면의 하루 종일 칸을 회사에서 아직 안 쟀다. {ON_SCREEN} — 시각을 정해 넣을 것이면 --all-day 없이 부른다",
-                      (("--all-day", {"action": "store_true"}),)),
-    "private": NotYet("비공개로 넣기", f"비공개를 고른 판의 값을 회사에서 아직 안 쟀다. {ON_SCREEN} — 여기서 넣으면 공개로 들어가 다른 분이 제목을 본다",
-                      (("--private", {"action": "store_true"}),)),
-    "repeat": NotYet("반복 일정 넣기", f"반복 칸을 회사에서 아직 안 쟀다. {ON_SCREEN} — 한 번만 넣을 것이면 --repeat 없이 부른다",
+    "repeat": NotYet("반복 일정 넣기 · 회차 지우기", f"반복은 상세 화면에만 있고 회사에서 아직 안 쟀다. {ON_SCREEN} — 한 번만 넣을 것이면 --repeat 없이 부른다",
                      (("--repeat", {"metavar": "주기"}),)),
+    "remind": NotYet("알림(메일 · 팝업) 걸기", f"알림은 상세 화면에만 있고 회사에서 아직 안 쟀다(울리는 것은 그 시각이 와야 잰다). {ON_SCREEN}",
+                     (("--remind", {"metavar": "분"}),)),
     "invite": NotYet("참석자 부르기", "이 손은 참석자 칸을 늘 비워 누구에게도 알림이 안 간다. 사람들과 만나는 회의는 스킬 company-meeting-room 으로 "
                      f"회의실과 함께 잡는다(참석자에게 안내가 간다). 회의실 없이 초대만 보낼 것이면 {ON_SCREEN}",
                      (("--to", {"nargs": "*", "metavar": "메일"}),)),
     "shared": NotYet("공유받은 일정함에 넣기 · 지우기", f"공유받은 일정함은 읽기만 한다. {ON_SCREEN}", (("--who", {"action": "append", "metavar": "이름"}),)),
-    "reply": NotYet("참석 답(수락 · 거절)", f"초대 메일이나 {SCREEN}에서 사람이 한다"),
-    "detail": NotYet("일정 한 건의 장소 · 참석자 · 설명 읽기", f"일정 줄에 그 칸이 안 온다. {ON_SCREEN}(그 일정을 열어 본다)"),
+    "reply": NotYet("참석 답(수락 · 거절)", f"답하면 초대한 분께 알림이 가 회사에서 아직 안 쟀다. 초대 메일이나 {SCREEN}에서 사람이 한다"),
+    "copy": NotYet("일정 복사 · 여러 건 한꺼번에 지우기 · 지난 일정 한꺼번에 지우기",
+                   f"한 번 부름은 일정 한 건이다 — 복사는 새로 넣기(preview → add)로, 지우기는 건마다 delete 로 한다. 한꺼번에는 {ON_SCREEN}"),
+    "notice": NotYet("참석자 · 참조자 부르기 · 메일 알림 · PC 영상회의 만들기",
+                     "남에게 메일이 가는 일이다 — 사람들과 만나는 회의는 스킬 company-meeting-room 이 회의실 · 참석자 · Teams 링크와 함께 잡는다"),
+    "settings": NotYet("일정함 색 · 보임 · 공유 일정함 더하기 · 환경설정", f"일정 내용이 아니라 화면 설정이다. {ON_SCREEN}"),
 }
 ENDS = {
-    "add": End("넣기", ("new",), "--confirm <preview 의 key> — 보인 값(제목 · 날 · 시각 · 설명 · 공개 범위)과 내 일정함 전부의 겹침 · "
-               "이미 있나. 다시 지은 판이 다르면 안 넣는다", True),
+    "add": End("넣기", ("new",), "--confirm <preview 의 key> — 보인 값(제목 · 날 · 시각 · 장소 · 설명 · 공개 범위 · 하루 종일 · 중요)과 "
+               "내 일정함 전부의 겹침 · 이미 있나. 다시 지은 판이 다르면 안 넣는다", True),
+    "edit": End("고치기", ("event",), "--confirm <preview --handle 의 key> — 지금 값과 바뀔 값 · 새 시각의 겹침. 보인 뒤 그 줄이 바뀌었으면 "
+                "안 고친다. 손수 든 단건이고 참석자 · 참조자가 없는 것만 고친다", True),
     "delete": End("지우기", ("event",), "--handle 이 곧 열쇠 — 보인 줄의 지문(제목 · 시작 · 끝)이라 그 줄이 바뀌었으면 안 지운다. "
                   "손수 든 단건만 지운다(keep 이 빈 줄)", False),
 }
 READS = {
     "show": "일정 — 날 하나나 구간(기본 오늘 · 내일). 내 일정함(기본 · Teams)은 늘 들고, --who 이름(여럿)은 그 공유 일정함을 곁에, "
+            "--people-file(주소록의 people.json)은 사람마다 그 사람의 공유 일정함을 곁에(공유받지 않은 사람은 이름으로 따로 선다), "
             f"--shared 는 공유 일정함 전부를 곁에. --free 분 은 읽은 일정함 전부가 그 분 이상 함께 비는 때(평일 · 기본 {WORK_HOURS} · "
             "--hours 로 구간을 준다 — 사람이 고른 한 때가 되나도 그 구간을 주어 본다)",
     "calendars": "공유받은 일정함 목록 — 누가 있나는 사람마다 달라 --who 의 이름을 여기서 본다",
+    "event": "일정 한 건 — show · find 의 줄의 id 로 장소 · 설명 · 참석자와 응답 · 참조자 · Teams 링크(내 일정함 · Teams 의 줄만)",
+    "find": "찾기 — --text 낱말(제목 · 설명 · 장소 어디든 · 기간 없이) 이나 --title · --place · --note · --attendee(함께 건다 · "
+            "--from · --to 기간, 기본 앞뒤 1 년). 내 기본 일정함과 Teams 일정함(회의실 예약이 드는 곳 — 제목으로만 · 칸 조건이면 그 기간, "
+            "--text 면 오늘 앞뒤 1 년)",
 }
 MUTATING = tuple(ENDS)                   # 회사 일정을 바꾼다 — 세션 손부터 받아 한 번만 돈다
+# 이 명령이 내는 종료 값 — 뜻은 ep_command 의 한 표, 여기는 이 손이 덧붙일 말만. 「보인 판과 다르다」는 종료 값이 아니라 0 의 state moved 다
+EXITS = ep_command.exit_legend((EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION, EXIT_URL),
+                               {EXIT_OK: "넣기 · 고치기 · 지우기가 보인 판과 달라 안 했으면 0 에 state moved — 답의 지금 판을 다시 보인다",
+                                EXIT_ARGS: "없는 손가락 · 빠진 값이면 어디서 하나나 받는 꼴을 댄다"})
 
 # 지우지 않는 줄 — 사람에게 할 말. 까닭은 agenda.Event.keep_reason 이 가른다
 KEEP_WORDS = {
     "invite": "받은 회의 초대입니다 — 지우면 곧 참석 답이 됩니다. 참석 답은 초대 메일이나 회사 일정 화면에서 해 주세요",
     "meeting": "회의로 든 일정입니다 — 지우면 참석하실 분께 알림이 갈 수 있어 여기서는 지우지 않습니다. 회사 일정 화면에서 지워 주세요",
     "repeat": "반복 일정입니다 — 지우기가 그날 하나만 걷는지 아직 확인하지 않아 여기서는 지우지 않습니다. 회사 일정 화면에서 지워 주세요",
-    "all_day": "하루 종일 일정입니다 — 지우기를 아직 확인하지 않아 여기서는 지우지 않습니다. 회사 일정 화면에서 지워 주세요",
+    "all_day": "하루 종일 일정입니다 — 시각을 옮기거나 시각 있는 일정으로 바꾸는 것은 여기서 하지 않습니다(제목 · 장소 고치기 · 지우기는 합니다). 회사 일정 화면에서 해 주세요",
     "locked": "고칠 수 있는 일정으로 읽히지 않았습니다 — 일정 앱이 막은 것인지 그 표시를 못 알아본 것인지 가리지 못해 여기서는 지우지 않습니다. 회사 일정 화면에서 지워 주세요",
     "shared": "다른 일정함(공유받은 것 · Teams)의 일정입니다 — 여기서는 읽기만 합니다",
+    "no_doc": "일정 줄에 문서 열쇠가 없어 그 일정을 열어 보지 못했습니다 — 참석자가 있는지 몰라 여기서는 고치지 않습니다. 회사 일정 화면에서 고쳐 주세요",
+    "guests": "참석자 · 참조자가 든 일정입니다 — 고치거나 지우면 그분들께 알림이 갈 수 있어 여기서는 하지 않습니다. 회사 일정 화면에서 해 주세요",
 }
 # 넣기 · 지우기의 끝 — 낱말 하나가 뜻 하나다(형제 스킬 company-meeting-room 의 같은 낱말과도 같은 뜻)
 STATE_WORDS = {
@@ -161,6 +194,7 @@ STATE_WORDS = {
     "moved": "보여 드린 뒤 달라진 것이 있어 하지 않았습니다. 다음: 답의 preview · event(지금 판)를 보이고 다시 묻는다 — 답에 없으면 "
              "preview · show 로 다시 읽어 보인다",
     "deleted": "지웠습니다(다시 읽어 사라진 것을 확인했습니다)",
+    "edited": "고쳤습니다(다시 읽어 바뀐 값을 확인했습니다). 다음: 답의 event 의 handle 이 새 손잡이다 — 옛 handle 은 안 맞는다",
     "gone": "그날 일정에 없습니다 — 이미 지워졌거나 다른 날로 옮겨졌습니다",
     "refused": "여기서는 하지 않습니다 — 답의 reason 에 맞는 말을 그대로 전한다",
     "unsure": "됐는지 확인하지 못했습니다. 다음: 다시 부르지 말고 show 로 그날을 읽어 보인다",
@@ -168,17 +202,8 @@ STATE_WORDS = {
 # 손(agenda)의 끝 낱말 → 이 명령의 낱말 — 손의 clashed(확인 뒤 새 겹침) · changed(보인 뒤 바뀐 줄)는 다 「보인 판과 다르다」다
 ADDED_STATE = {"added": "added", "already": "already", "clashed": "moved", "unsure": "unsure"}
 REMOVED_STATE = {"deleted": "deleted", "gone": "gone", "changed": "moved", "unsure": "unsure"}
+EDITED_STATE = {"edited": "edited", "gone": "gone", "changed": "moved", "unsure": "unsure"}
 
-
-if str(EP_LOGIN_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(EP_LOGIN_SCRIPTS))   # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
-try:
-    import ep_command
-    import ep_session
-    from ep_command import DAY_COUNT, DAY_WORDS, EXIT_ARGS, EXIT_URL, OUT_BYTES, WEEKDAYS, Stop, day_of, gaps_of, load, size
-except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
-    print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
-    sys.exit(1)
 
 
 # ── 표에서 짓는 것 — 지도 · 인자 거르기 ────────────────────────────────────────────────────────────
@@ -239,6 +264,12 @@ def fingers(args) -> str:
     missing = [c.flags[0][0] for c in CHANGES.values() if start in c.need and not given(args, c)]
     if missing:
         raise Stop(EXIT_ARGS, "args", f"「{word}」에는 {' · '.join(missing)} 가 든다")
+    changing = [c.flags[0][0] for c in CHANGES.values() if given(args, c)]
+    if not ENDS[end].confirm and changing:
+        raise Stop(EXIT_ARGS, "args", f"{end}({ENDS[end].word})는 바꿀 것({' · '.join(changing)})을 안 받는다 — 바꾸려면 preview --handle … 로 "
+                                      "고칠 판을 보이고 edit 로 부른다")
+    if start != "new" and ENDS[end].confirm and not changing:
+        raise Stop(EXIT_ARGS, "args", f"「{word}」을 고치려면 바꿀 것(--title · --place · --start · --end)을 하나는 준다")
     return start
 
 
@@ -268,15 +299,14 @@ def weekday_of(day: date) -> str:
     return WEEKDAYS[day.weekday()]
 
 
-def stamp(agenda, t: datetime) -> str:
-    """서울 벽시계 ``YYYY-MM-DD HH:MM`` — 명령이 받는 꼴 그대로."""
-    return t.astimezone(agenda.KST).strftime(agenda.STAMP_FORM)
-
-
 def row(agenda, e) -> dict:
-    out = {"day": e.day.isoformat(), "weekday": weekday_of(e.day), "when": e.when(), "start": stamp(agenda, e.start),
-           "end": stamp(agenda, e.end), "title": e.title, "handle": agenda.Seen.of(e).handle, "keep": e.keep_reason,
+    out = {"day": e.day.isoformat(), "weekday": weekday_of(e.day), "when": e.when(), "start": stamp(e.start),
+           "end": stamp(e.end), "title": e.title, "handle": agenda.Seen.of(e).handle, "keep": e.keep_reason,
            "pending": e.response == agenda.RESPONSE_PENDING, "meeting": e.meeting, "repeat": e.repeat, "all_day": e.all_day}
+    if e.important:                      # 「중요」 표시 — 켠 줄에만 싣는다(답의 꼴을 늘리지 않게)
+        out["important"] = True
+    if e.unid:                           # 한 건 읽기(event <id>)의 열쇠 — 내 일정함(기본 · Teams)의 줄
+        out["id"] = e.unid
     if e.keep_reason:
         out["keep_word"] = KEEP_WORDS.get(e.keep_reason, e.keep_reason)
     if e.calendar:                       # 기본 밖 내 일정함 · 공유받은 일정함의 줄 — 어느 일정함인가. 지우는 손잡이는 없다
@@ -289,6 +319,7 @@ def shared_row(agenda, e) -> dict:
     out = row(agenda, e)
     out["private"] = e.private           # 일정함을 가진 사람이 비공개로 든 것
     del out["pending"]                   # 참석 답은 그 일정함을 가진 사람의 것이라 내 초대로 읽히지 않게 뺀다
+    out.pop("id", None)                  # 남의 서버 · DB 의 문서라 한 건 읽기가 안 묻는다
     return out
 
 
@@ -317,8 +348,52 @@ def shared_books(reader, who: list | None) -> list:
     return [b for b in books if any(w in b.name for w in names)]
 
 
+NOT_SHARED = "일정함을 공유받지 않았다"
+NO_NOTES = "주소록에 Notes 이름이 없어 일정함을 못 맞췄다 — 이름으로 맞추면 동명이인을 엉뚱한 일정함에 잇는다. --who 로 일정함을 고른다"
+UNSEEN_WORD = ("일정함을 못 본 분({who})은 셈에 없다 — 그분이 그때 비는지는 모른다고 사람에게 말하고 그분께 직접 여쭙게 한다(공유하지 않은 "
+               "일정함의 빈 때를 보는 길은 회사에서 안 쟀다).")
+
+
+def unseen_word(unseen: list) -> str:
+    """일정함을 못 본 사람들을 사람에게 할 말 하나로 — 동명이인이 갈리게 부서를 붙인다."""
+    return UNSEEN_WORD.format(who=", ".join(" · ".join(filter(None, (u.get("name"), u.get("dept")))) for u in unseen))
+
+
+def people_books(reader, people) -> tuple[list, list, list]:
+    """사람 파일의 사람마다 그 사람의 일정함 — (곁에 읽을 공유 일정함, 본 사람, 못 본 사람). 사람은 Notes 이름으로만 일정함에 잇는다 —
+    공유 일정함 줄의 일정함을 가진 사람(``Book.owner``)이 그것이고, 이름은 동명이인이 갈라지지 않는다. 쓰는 사람 자신은 내 일정함이다.
+    공유받지 않은 사람 · Notes 이름이 빈 사람은 못 본 사람으로 까닭과 함께 낸다 — 셈에서 말없이 「빈다」로 넘어가지 않게."""
+    mine = ep_command.notes_key(reader.book().owner)
+    by_owner: dict[str, list] = {}
+    for b in reader.shared_books():                  # 한 사람이 일정함을 둘 이상 공유했으면 다 읽는다
+        by_owner.setdefault(ep_command.notes_key(b.owner), []).append(b)
+    books, seen, unseen = [], [], []
+    for p in people:
+        key = ep_command.notes_key(p.notes)
+        who = {k: v for k, v in (("name", p.name), ("dept", p.dept), ("grade", p.grade)) if v}
+        if key and key == mine:
+            seen.append({**who, "calendar": MY_BOOK})
+        elif key in by_owner:
+            for b in by_owner[key]:
+                seen.append({**who, "calendar": b.name})
+                if b not in books:
+                    books.append(b)
+        else:
+            unseen.append({**who, "why": NO_NOTES if not key else NOT_SHARED})
+    return books, seen, unseen
+
+
+def whole_day_of(text: str) -> date:
+    return date_of(text, "하루 종일은 --start · --end 를")
+
+
 def want_of(args, agenda):
-    w = agenda.Want(args.title, agenda.kst(args.start), agenda.kst(args.end), args.note or "").cleaned()
+    if args.all_day:
+        start, end = agenda.whole_days(whole_day_of(args.start), whole_day_of(args.end))
+    else:
+        start, end = agenda.kst(args.start), agenda.kst(args.end)
+    w = agenda.Want(args.title, start, end, args.note or "", place=args.place or "", private=bool(args.private),
+                    all_day=bool(args.all_day), important=bool(args.important)).cleaned()
     if not w.title or w.end <= w.start:
         raise Stop(EXIT_ARGS, "args", "제목이 비었거나 끝이 시작보다 앞이다")
     return w
@@ -328,17 +403,174 @@ def plan_new(args, agenda, reader) -> tuple[dict, object, list]:
     """새 일정 한 건의 판 — (보일 판 · 넣을 것 · 겹친 줄). 바꾸지 않는다. preview 와 add 가 같은 판을 짓고, 판 전체의 해시가 key 다 —
     값이든 겹침이든 이미 있나든 보인 뒤 달라졌으면 key 가 달라진다."""
     w = want_of(args, agenda)
-    mine, side_failed = reader.mine_between(w.day, agenda.kst_day(w.end))   # 겹침은 내 일정함 전부(기본 · Teams)에서 본다
+    mine, side_failed = reader.mine_between(w.day, w.last_day)   # 겹침은 내 일정함 전부(기본 · Teams)에서 본다
     same = next((e for e in mine if not e.calendar and agenda.same_event(e, w)), None)   # 이미 있나는 넣을 자리(기본 일정함)에서만
     clash = [e for e in mine if e.overlaps(w.start, w.end) and e is not same]
+    when = (f"하루 종일({w.day.isoformat()}" + (f" ~ {w.last_day.isoformat()})" if w.last_day != w.day else ")") if w.all_day
+            else f"{w.start.astimezone(agenda.KST):%H:%M}–{w.end.astimezone(agenda.KST):%H:%M}")
     view = {"state": "already" if same else "ready", "title": w.title, "note": w.note, "day": w.day.isoformat(),
-            "weekday": weekday_of(w.day), "when": f"{w.start.astimezone(agenda.KST):%H:%M}–{w.end.astimezone(agenda.KST):%H:%M}",
-            "start": stamp(agenda, w.start), "end": stamp(agenda, w.end), "visibility": agenda.VISIBILITY,
+            "weekday": weekday_of(w.day), "when": when,
+            "start": w.day.isoformat() if w.all_day else stamp(w.start),
+            "end": w.last_day.isoformat() if w.all_day else stamp(w.end),
+            "visibility": agenda.PRIVATE if w.private else agenda.VISIBILITY,
             "already": row(agenda, same) if same else None, "clash": [row(agenda, e) for e in clash]}
+    for k, v in (("place", w.place), ("all_day", w.all_day), ("important", w.important)):
+        if v:
+            view[k] = v
+    if w.all_day:
+        view["last_day"], view["last_weekday"] = w.last_day.isoformat(), weekday_of(w.last_day)
     if side_failed:
         view["shared_failed"] = [{"calendar": n, "message": m} for n, m in side_failed]
     view["key"] = key_of(view)
     return view, w, clash
+
+
+def change_of(args, agenda):
+    return agenda.Change(title=args.title, place=args.place, start=agenda.kst(args.start) if args.start else None,
+                         end=agenda.kst(args.end) if args.end else None).cleaned()
+
+
+def plan_edit(args, agenda, reader) -> dict:
+    """내 일정 한 건을 고칠 판 — 지금 값 · 바뀔 값 · 새 시각의 겹침 · 고칠 수 있나. 바꾸지 않는다. preview 와 edit 가 같은 판을 짓고
+    그 해시가 key 다 — 보인 뒤 그 줄 · 장소 · 겹침이 바뀌었으면 key 가 달라진다."""
+    seen = agenda.Seen.parse(args.handle)
+    state, hit = agenda.locate(reader, reader.book(), seen)
+    if state:
+        state = EDITED_STATE[state]
+        return {"state": state, "event": row(agenda, hit) if hit else None}
+    c = change_of(args, agenda)
+    doc = reader.detail(hit.unid) if hit.unid else None
+    start = c.start or hit.start
+    end = c.end or (start + (hit.end - hit.start) if c.start else hit.end)
+    if end <= start:
+        raise Stop(EXIT_ARGS, "args", "옮길 끝이 시작보다 앞이다")
+    if c.title is not None and not c.title:
+        raise Stop(EXIT_ARGS, "args", "제목을 비울 수는 없다 — 바꿀 제목을 준다")
+    refuse = hit.keep_reason
+    if not refuse and hit.all_day and c.moves:
+        refuse = agenda.KEEP_ALL_DAY
+    if not refuse and (doc is None or doc.guests):
+        refuse = agenda.KEEP_GUESTS if doc is not None else "no_doc"
+    was = {"title": agenda.clean_title(hit.title), "place": doc.place if doc else "", "when": hit.when(), "start": stamp(hit.start),
+           "end": stamp(hit.end), "day": hit.day.isoformat(), "weekday": weekday_of(hit.day)}
+    new_day = agenda.kst_day(start)
+    becomes = {"title": c.title if c.title is not None else was["title"], "place": c.place if c.place is not None else was["place"],
+               "when": hit.when() if hit.all_day else f"{start.astimezone(agenda.KST):%H:%M}–{end.astimezone(agenda.KST):%H:%M}",
+               "start": stamp(start), "end": stamp(end), "day": new_day.isoformat(), "weekday": weekday_of(new_day)}
+    view = {"state": "refused" if refuse else "ready", "was": was, "becomes": becomes, "clash": []}
+    if refuse:
+        view["reason"], view["state_word"] = refuse, KEEP_WORDS.get(refuse, refuse)
+    elif c.moves:
+        mine, side_failed = reader.mine_between(new_day, agenda.kst_day(end - timedelta(microseconds=1)))
+        view["clash"] = [row(agenda, e) for e in mine if e.overlaps(start, end) and e.event_id != hit.event_id]
+        if side_failed:
+            view["shared_failed"] = [{"calendar": n, "message": m} for n, m in side_failed]
+    view["key"] = key_of(view)
+    return view
+
+
+def detail_of(agenda, reader, unid: str) -> dict:
+    """일정 한 건의 답 — 줄에 안 오는 칸. 사람 칸은 이름 · 메일 · 응답 · 한마디."""
+    d = reader.detail(unid)
+    people = lambda xs: [{k: v for k, v in {"name": x.name, "email": x.email, "response": x.response,   # noqa: E731
+                                            "comment": x.comment}.items() if v} for x in xs]
+    out = {"id": d.unid, "title": d.title, "place": d.place, "note": d.note, "attendees": people(d.attendees),
+           "references": people(d.references), "meeting_url": d.meeting_url, "organizer": d.organizer,
+           "private": d.visibility == agenda.PRIVATE}
+    pending = [x.name for x in d.attendees if x.response == agenda.RESPONSE_PENDING]
+    out["word"] = (f"참석자 {len(d.attendees)} 명(답 전 {len(pending)})" if d.attendees else "참석자 없음") + \
+        (f" · 참조 {len(d.references)} 명" if d.references else "") + (" · Teams 링크가 있다" if d.meeting_url else "") + \
+        ". 참석 답 · 참석자 바꾸기는 여기서 하지 않는다"
+    return out
+
+
+FIND_SPAN_DAYS = 366                      # 찾기의 기본 기간 — 오늘 앞뒤로 이만큼(화면 상세검색은 올해 하나다)
+
+
+def find_span(args, today: date) -> tuple[date, date] | None:
+    """찾기의 인자 — 본문 낱말(--text)이면 None, 칸 조건이면 (첫날, 끝날). 세션 없이 가린다 — 섞인 조건 · 빈 조건 · 틀린 날 · 거꾸로 선
+    기간은 Stop(인자)."""
+    if args.text:
+        if any((args.title, args.place, args.note, args.attendee, args.since, args.until)):
+            raise Stop(EXIT_ARGS, "args", "--text 는 홀로 준다(칸 조건 · 기간과 섞지 않는다) — 칸으로 찾으려면 --title · --place … 로")
+        return None
+    if not any((args.title, args.place, args.note, args.attendee)):
+        raise Stop(EXIT_ARGS, "args", "찾을 것을 준다 — --text 낱말 · --title · --place · --note · --attendee 가운데 하나는")
+    try:
+        first = day_of(args.since, today) if args.since else today - timedelta(days=FIND_SPAN_DAYS)
+        last = day_of(args.until, today) if args.until else today + timedelta(days=FIND_SPAN_DAYS)
+    except Stop as exc:
+        raise Stop(EXIT_ARGS, "args", f"{exc}. 다음: {DAY_COUNT}") from exc
+    if last < first:
+        raise Stop(EXIT_ARGS, "args", "--to 가 --from 보다 앞이다")
+    return first, last
+
+
+TEAMS_SKIPPED = ("Teams 일정함(회의실 예약이 드는 곳)은 줄에 장소 · 설명 · 참석자 칸이 안 와 이 조건으로는 안 봤다 — 회의실 예약은 스킬 "
+                 "company-meeting-room 의 mine 이 회의실 · 참석자와 함께 낸다. ")
+
+
+def side_found(args, agenda, reader, span, today: date) -> tuple[list, list, bool]:
+    """찾기의 Teams 일정함 쪽 — 찾기 화면은 그 일정함을 안 찾아(회사에서 잼 · 0 건), show · preview 가 겹침을 볼 때 읽는 일정 목록을
+    기간째 읽고 제목으로 거른다. 줄에 장소 · 설명 · 참석자가 안 와 그 조건이 들면 안 읽는다. (걸린 줄, 못 읽은 일정함, 읽었나)."""
+    if any((args.place, args.note, args.attendee)):
+        return [], [], False
+    word = agenda.clean_title(args.text or args.title or "").casefold()
+    if not word:
+        return [], [], False
+    first, last = span or (today - timedelta(days=FIND_SPAN_DAYS), today + timedelta(days=FIND_SPAN_DAYS))
+    hits, failed, books = [], [], reader.side_books()
+    for b in books:
+        try:
+            rows = reader.between(first, last, b)
+        except agenda.SessionExpired:
+            raise
+        except agenda.CalendarError as exc:      # 한 일정함이 안 읽혀도 기본 일정함의 찾기는 낸다 — 못 읽은 것은 이름으로 알린다
+            failed.append({"calendar": b.name, "message": str(exc)})
+            continue
+        hits += [e for e in rows if word in agenda.clean_title(e.title).casefold()]
+    return hits, failed, bool(books)
+
+
+def find_of(args, agenda, reader, today: date) -> dict:
+    """찾기 — 본문 낱말(--text) 이나 칸 조건(--title · --place · --note · --attendee · 기간). 내 기본 일정함과, 제목으로는 Teams
+    일정함(``side_found``)도."""
+    span = find_span(args, today)
+    if span is None:
+        got, how = reader.search_text(args.text), "text"
+    else:
+        got = reader.search(title=args.title or "", place=args.place or "", note=args.note or "", attendee=args.attendee or "",
+                            first=span[0], last=span[1])
+        how = "fields"
+    side, failed, side_read = side_found(args, agenda, reader, span, today)
+    have = {agenda.event_key(e) for e in got}
+    rows = []
+    for e in sorted(got + [e for e in side if agenda.event_key(e) not in have], key=lambda e: (e.start, e.title)):
+        r = {"day": e.day.isoformat(), "weekday": weekday_of(e.day), "start": stamp(e.start), "title": e.title,
+             "id": e.unid, "meeting": e.meeting, "repeat": e.repeat, "all_day": e.all_day,
+             "pending": e.response == agenda.RESPONSE_PENDING}
+        if (how == "text" or e.calendar) and e.end > e.start:   # Teams 일정함의 줄은 일정 목록에서 와 끝 시각이 든다
+            r["end"] = stamp(e.end)
+        if e.calendar:
+            r["calendar"] = e.calendar
+        rows.append(r)
+    out = {"found": rows, "count": len(rows),
+           "word": ("본문 낱말로 찾았다 — 지난 해 일정도 든다. " if how == "text" else
+                    "칸 조건으로 찾았다 — 기본 일정함의 줄은 끝 시각이 안 온다(시각은 event 나 show 그날로 본다). ") +
+                   ((f"Teams 일정함(회의실 예약이 드는 곳)은 제목으로 {'오늘 앞뒤 1 년' if span is None else '같은 기간'} 안에서 찾았다 — 그 줄은 "
+                     "calendar 가 붙는다. " if side_read else TEAMS_SKIPPED if reader.side_books() else "")) +
+                   "다음: 장소 · 참석자는 event <id>, 고치기 · 지우기는 show <그날> 의 handle 로"}
+    if failed:
+        out["shared_failed"] = failed
+    return out
+
+
+def holidays_of(reader, agenda, first: date, last: date) -> tuple[dict, str]:
+    """공휴일 {날: 이름} 과 못 읽은 까닭 — 못 읽어도 보기는 선다(끊긴 세션은 올린다)."""
+    try:
+        return reader.holidays(first, last), ""
+    except agenda.CalendarError as exc:   # 끊김 꼴(공용 DB 가 다른 곳으로 보냄)도 — 일정은 이미 읽혔으니 보기를 막지 않는다
+        return {}, str(exc)
 
 
 def show_days(args, today: date) -> tuple[date, date]:
@@ -383,7 +615,9 @@ def busy_of(agenda, e) -> tuple[tuple[datetime, datetime] | None, str]:
             last -= timedelta(days=1)                      # 다음 날 0 시에 끝나는 꼴 — 그 날은 안 든다
         last = max(first, last)
         span = (datetime.combine(first, time(0), agenda.KST), datetime.combine(last + timedelta(days=1), time(0), agenda.KST))
-        return span, f"하루 종일 일정이다 — 줄의 시각 꼴을 {UNMEASURED}. 그날 내내 바쁜 것으로 셌다"
+        if first == last:                                  # 하루짜리는 그날 00:00:30 ~ 23:59:59 로 온다(회사에서 잼) — 그날 내내 바쁘다
+            return span, ""
+        return span, f"여러 날 하루 종일 일정이다 — 줄의 꼴을 {UNMEASURED}. 그날들 내내 바쁜 것으로 셌다"
     if e.end <= e.start:
         return None, "끝이 시작과 같은 줄이다 — 길이를 몰라 바쁜 때로 안 셌다"
     if agenda.kst_day(e.start) != agenda.kst_day(e.end - timedelta(microseconds=1)):
@@ -400,10 +634,11 @@ def next_step(t: datetime) -> datetime:
 
 
 def free_of(agenda, events: list, first: date, last: date, minutes: int, hours: tuple[time, time], now: datetime,
-            counted: list, failed: list, unread: list) -> dict:
+            counted: list, failed: list, unread: list, holidays: dict | None = None, holidays_failed: str = "",
+            unseen: list | None = None) -> dict:
     """읽은 일정함 전부가 ``minutes`` 분 이상 함께 비는 때 — 평일마다 ``hours`` 안에서, 지난 시각은 빼고. 바쁜 구간은 ``busy_of`` 가
-    정하고 틈은 ``ep_command.gaps_of`` 가 센다. 시각을 짐작한 줄 · 못 읽은 일정함 · 시각을 못 읽어 뺀 줄은 답에 달고 ``word`` 가 사람에게
-    그렇다고 말하라 이른다 — 셈에서 말없이 「빈다」로 넘어가지 않게."""
+    정하고 틈은 ``ep_command.gaps_of`` 가 센다. 시각을 짐작한 줄 · 못 읽은 일정함 · 시각을 못 읽어 뺀 줄 · 일정함을 못 본 사람(``unseen`` —
+    ``people_books``)은 답에 달고 ``word`` 가 사람에게 그렇다고 말하라 이른다 — 셈에서 말없이 「빈다」로 넘어가지 않게."""
     spans, doubt = [], []
     for e in events:
         span, why = busy_of(agenda, e)
@@ -411,11 +646,14 @@ def free_of(agenda, events: list, first: date, last: date, minutes: int, hours: 
             spans.append(span)
         if why:
             doubt.append((e, span, why))
-    windows, weekend = [], []
+    windows, weekend, off = [], [], []
+    holidays = holidays or {}
     day = first
     while day <= last:
         if day.weekday() in WEEKEND:
             weekend.append(day.isoformat())
+        elif day in holidays:
+            off.append({"day": day.isoformat(), "weekday": weekday_of(day), "name": holidays[day]})
         else:
             lo = max(datetime.combine(day, hours[0], agenda.KST), next_step(now.astimezone(agenda.KST)))
             hi = datetime.combine(day, hours[1], agenda.KST)
@@ -426,8 +664,8 @@ def free_of(agenda, events: list, first: date, last: date, minutes: int, hours: 
     slots = [g for lo, hi in windows for g in gaps_of(spans, lo, hi, need)]
     out = {"minutes": minutes, "hours": f"{hours[0]:%H:%M}–{hours[1]:%H:%M}", "counted": counted,
            "slots": [{"day": a.astimezone(agenda.KST).date().isoformat(), "weekday": weekday_of(a.astimezone(agenda.KST).date()),
-                      "when": f"{a.astimezone(agenda.KST):%H:%M}–{b.astimezone(agenda.KST):%H:%M}", "start": stamp(agenda, a),
-                      "end": stamp(agenda, b), "minutes": int((b - a).total_seconds() // 60)} for a, b in slots]}
+                      "when": f"{a.astimezone(agenda.KST):%H:%M}–{b.astimezone(agenda.KST):%H:%M}", "start": stamp(a),
+                      "end": stamp(b), "minutes": int((b - a).total_seconds() // 60)} for a, b in slots]}
 
     def touches(e, span) -> bool:
         a, b = span or (e.start, e.start)
@@ -438,10 +676,19 @@ def free_of(agenda, events: list, first: date, last: date, minutes: int, hours: 
         out["assumed"] = assumed
     if weekend:
         out["weekend"] = weekend
+    if off:
+        out["holidays"] = off
     said = [f"{', '.join(counted)} 의 일정을 견줘 평일 {out['hours']} 안에서 {minutes} 분 이상 함께 비는 때 {len(slots)} 곳"
-            + ("" if slots else " — 그 구간에 모두 비는 때가 없다") + "(주말 · 지난 시각은 뺐다)."]
+            + ("" if slots else " — 그 구간에 모두 비는 때가 없다") + "(주말 · 공휴일 · 지난 시각은 뺐다)."]
+    if off:
+        said.append(f"공휴일({', '.join(h['day'] + ' ' + h['name'] for h in off)})은 뺐다 — 사람에게 그렇다고 말한다.")
+    if holidays_failed:
+        said.append("공휴일 목록을 못 읽어 공휴일을 안 뺐다 — 고른 날이 공휴일인지 사람에게 확인받는다.")
     if failed:
         said.append(f"못 읽은 일정함({', '.join(f['calendar'] for f in failed)})은 셈에 없다 — 그분의 일정은 안 견줬다고 말한다.")
+    if unseen:
+        out["unseen"] = unseen
+        said.append(unseen_word(unseen))
     if unread:
         said.append("시각을 못 읽어 뺀 줄이 있다(unread_rows) — 그 일정함에 셈에 없는 일정이 있을 수 있다고 말한다.")
     if assumed:
@@ -481,6 +728,10 @@ def run(args, session: pathlib.Path) -> dict:
             raise Stop(EXIT_URL, "url", f"기본 일정 앱 주소({url})로 내 일정함이 안 읽힌다({exc}) — 일정 DB 가 다른 서버에 있는 사람이다. {NEXT_URL}") from exc
     if args.command == "calendars":
         return {"shared": [{"name": b.name, "kind": b.kind} for b in reader.shared_books()]}
+    if args.command == "event":
+        return detail_of(agenda, reader, args.id)
+    if args.command == "find":
+        return find_of(args, agenda, reader, today)
     if args.command == "show":
         first, last = show_days(args, today)
         out = {"today": today.isoformat(), "today_weekday": weekday_of(today), "first": first.isoformat(), "last": last.isoformat()}
@@ -490,8 +741,13 @@ def run(args, session: pathlib.Path) -> dict:
         failed = [{"calendar": n, "message": m} for n, m in side_failed]
         counted = [MY_BOOK] + [b.name for b in reader.side_books() if b.name not in {n for n, _ in side_failed}]
         shared = []
-        if args.shared or args.who:
-            for b in shared_books(reader, args.who):
+        picked = shared_books(reader, args.who) if args.shared or args.who else []
+        seen, unseen = [], []
+        if args.people_file:
+            books, seen, unseen = people_books(reader, ep_command.distinct(ep_command.people_of(args.people_file)))
+            picked += [b for b in books if b not in picked]
+        if picked or args.shared or args.who:
+            for b in picked:
                 try:
                     shared += reader.between(first, last, b)
                     counted.append(b.name)
@@ -501,14 +757,27 @@ def run(args, session: pathlib.Path) -> dict:
                     failed.append({"calendar": b.name, "message": str(exc)})
             shared.sort(key=lambda e: (e.start, e.end, e.calendar))
             out["shared"] = [shared_row(agenda, e) for e in shared]
+        if args.people_file:
+            lost = {f["calendar"] for f in failed}       # 일정함을 골랐어도 못 읽은 분은 본 분이 아니다
+            unseen += [{**{k: v for k, v in s.items() if k != "calendar"}, "why": f"일정함({s['calendar']})을 못 읽었다 — shared_failed"}
+                       for s in seen if s["calendar"] in lost]
+            seen = [s for s in seen if s["calendar"] not in lost]
+            out["people"] = {"seen": seen, "unseen": unseen,
+                             "word": (unseen_word(unseen) + " " if unseen else "") + "본 분의 일정은 그 일정함(seen 의 calendar)으로 읽었다"}
         if failed:
             out["shared_failed"] = failed
         if reader.unread:
             out["unread_rows"] = [{"calendar": n or MY_BOOK, "rows": k} for n, k in reader.unread]
+        holidays, holidays_failed = holidays_of(reader, agenda, first, last)
+        if holidays:
+            out["holidays"] = [{"day": d.isoformat(), "weekday": weekday_of(d), "name": n} for d, n in sorted(holidays.items())]
+        if holidays_failed:
+            out["holidays_failed"] = holidays_failed
         if hours:
             out["free"] = free_of(agenda, mine + shared, first, last, args.free, hours, datetime.now(agenda.KST), counted, failed,
-                                  reader.unread)
-        fit_days(out, last, (" --shared" if args.shared else "") + "".join(f" --who {w}" for w in args.who or ()))
+                                  reader.unread, holidays, holidays_failed, unseen)
+        fit_days(out, last, (" --shared" if args.shared else "") + "".join(f" --who {w}" for w in args.who or ())
+                 + "".join(f' {ep_command.PEOPLE_FLAG} "{f}"' for f in args.people_file or ()))
         return out
     start = fingers(args)
     if start == "new":
@@ -522,6 +791,25 @@ def run(args, session: pathlib.Path) -> dict:
         got = agenda.register(url, session, w, reader=reader, shown_clash={agenda.event_ref(e) for e in clash})
         state = ADDED_STATE[got.state]
         return {"state": state, "state_word": STATE_WORDS[state], "event": row(agenda, got.event) if got.event else None}
+    if args.command in ("preview", "edit"):
+        view = plan_edit(args, agenda, reader)
+        if args.command == "preview" or view["state"] in ("moved", "gone"):
+            return view if args.command == "preview" else {**view, "state_word": STATE_WORDS[view["state"]]}
+        if view["key"] != args.confirm:
+            return {"state": "moved", "state_word": STATE_WORDS["moved"], "preview": view}
+        if view["state"] == "refused":
+            return {"state": "refused", "reason": view["reason"], "state_word": view["state_word"]}
+        try:
+            got = agenda.edit(url, session, agenda.Seen.parse(args.handle), change_of(args, agenda), reader=reader)
+        except agenda.ChangeRefused as exc:
+            return {"state": "refused", "reason": exc.reason, "state_word": KEEP_WORDS.get(exc.reason) or str(exc)}
+        state = EDITED_STATE[got.state]
+        out = {"state": state, "state_word": STATE_WORDS[state], "event": row(agenda, got.event) if got.event else None}
+        if got.place is not None:
+            out["place"] = got.place
+        if got.notice:
+            out["notice"] = "일정 앱이 「참석자께 알릴까」를 물었다 — 알림은 안 보냈다"
+        return out
     try:
         got = agenda.delete(url, session, agenda.Seen.parse(args.handle), reader=reader)
     except agenda.ChangeRefused as exc:
@@ -532,7 +820,7 @@ def run(args, session: pathlib.Path) -> dict:
 
 def parser() -> argparse.ArgumentParser:
     raw = argparse.RawDescriptionHelpFormatter
-    p = argparse.ArgumentParser(description="회사 일정 — 보기 · 넣기 · 지우기", epilog=finger_map(), formatter_class=raw)
+    p = argparse.ArgumentParser(description="회사 일정 — 보기 · 넣기 · 지우기", epilog=f"{finger_map()}\n\n{EXITS}", formatter_class=raw)
     p.add_argument("--url", help="일정 앱 주소(…/calperson<NN>.nsf) — 없으면 CALENDAR_URL · 남긴 주소 · 잰 기본")
     sub = p.add_subparsers(dest="command", required=True)
     r = sub.add_parser("remember", help="일정 앱 주소를 재 보고 남긴다")
@@ -542,9 +830,20 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("last", nargs="?", metavar="끝날", help="첫날과 같은 꼴 — 주면 첫날부터 그날까지(둘 다 든다), 안 주면 첫날 하루")
     s.add_argument("--shared", action="store_true", help="공유받은 일정함 전부를 곁에")
     s.add_argument("--who", action="append", help="공유받은 일정함 가운데 이름에 이 글자가 든 것을 곁에(여럿이면 거듭 준다)")
+    ep_command.add_people_file(s, "사람마다 그 사람의 공유 일정함을 곁에. 공유받지 않은 사람은 답의 people.unseen 에 이름으로 선다")
     s.add_argument("--free", type=int, metavar="분", help="읽은 일정함 전부가 이 분 이상 함께 비는 때를 낸다(주말 · 지난 시각은 뺀다)")
     s.add_argument("--hours", metavar="HH:MM-HH:MM", help=f"--free 가 찾는 하루의 구간(기본 {WORK_HOURS})")
     sub.add_parser("calendars", help=READS["calendars"])
+    e = sub.add_parser("event", help=READS["event"])
+    e.add_argument("id", help="show · find 의 줄의 id")
+    f = sub.add_parser("find", help=READS["find"])
+    f.add_argument("--text", help="본문 낱말 — 제목 · 설명 · 장소 어디든(다른 조건과 섞지 않는다)")
+    f.add_argument("--title", help="제목에 든 글자")
+    f.add_argument("--place", help="장소에 든 글자")
+    f.add_argument("--note", help="설명에 든 글자")
+    f.add_argument("--attendee", help="참석자 이름에 든 글자")
+    f.add_argument("--from", dest="since", metavar="첫날", help=f"기간의 첫날({' · '.join(DAY_WORDS)} · YYYY-MM-DD · 기본 1 년 전)")
+    f.add_argument("--to", dest="until", metavar="끝날", help="기간의 끝날(기본 1 년 뒤)")
     for name in ("preview", *ENDS):
         a = sub.add_parser(name, help="넣을 꼴 미리 보기 · key(바꾸지 않는다)" if name == "preview" else f"⚠ {ENDS[name].word}",
                            epilog=finger_map(), formatter_class=raw)
@@ -567,10 +866,17 @@ def main() -> int:
 
     def work(agenda):
         if args.command in ("preview", *ENDS):
-            fingers(args)                # 없는 손가락 · 빠진 값은 세션을 받기 전에 멈춘다
+            start = fingers(args)        # 없는 손가락 · 빠진 값은 세션을 받기 전에 멈춘다
+            try:                         # 날 · 시각의 꼴도 세션을 받기 전에 — 넣기 · 고치기는 손부터 받는 길이다
+                want_of(args, agenda) if start == "new" else (args.handle and agenda.Seen.parse(args.handle), change_of(args, agenda))
+            except agenda.CalendarConfigError as exc:
+                raise Stop(EXIT_ARGS, "args", str(exc)) from exc
         if args.command == "show":
             show_days(args, datetime.now(agenda.KST).date())   # 날이 틀렸으면 세션을 받기 전에 멈춘다
             free_window(args)            # --free · --hours 가 틀렸으면 세션을 받기 전에 멈춘다
+            ep_command.people_of(args.people_file)   # 사람 파일이 없거나 꼴이 아니면 세션을 받기 전에 멈춘다
+        if args.command == "find":
+            find_span(args, datetime.now(agenda.KST).date())   # 섞인 조건 · 틀린 날도 세션을 받기 전에 — 로그인을 청할 일이 아니다
         return ep_session.session_first(lambda f: run(args, f), expired=(agenda.SessionExpired, agenda.SessionMissing),
                                         file_first=args.command not in MUTATING)
 

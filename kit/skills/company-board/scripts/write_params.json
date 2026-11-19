@@ -1,0 +1,11 @@
+{
+  "_": "게시판 쓰기 창을 여는 writeArticle 의 칸 — 짓는 손(draft_board.js)이 창을 열 때와 앱 손(xclick.py)이 같은 폼을 GET 으로 읽을 때 이 한 벌을 쓴다. {board} · {id} 는 부를 때 채운다",
+  "new": {"facade": "BBSArticleFacade", "command": "writeArticle", "nextpage": "/bbs/articleWrite.jsp", "writeGbn": "NEW",
+          "categoryId": "BBS_ALL", "bbsId": "{board}", "popYn": "Y", "isCop": "false", "copId": "", "msgId": "BBS-000105"},
+  "draft": {"facade": "BBSArticleFacade", "command": "writeArticle", "nextpage": "/bbs/articleWrite.jsp", "writeGbn": "EDIT",
+            "categoryId": "BBS_ALL", "bbsId": "{board}", "articleId": "{id}", "orgArticleId": "{id}", "menuGbn": "TEMP", "popYn": "Y",
+            "isCop": "false", "msgId": "BBS-000105"},
+  "copy": {"facade": "BBSArticleFacade", "command": "writeArticle", "nextpage": "/bbs/articleWrite.jsp", "writeGbn": "EDIT",
+           "bbsId": "{board}", "orgArticleId": "{id}", "articleCopyYn": "Y", "popYn": "Y", "articleId": "", "msgId": "BBS-000105",
+           "categoryId": "BBS_ALL"}
+}

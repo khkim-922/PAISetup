@@ -4,7 +4,8 @@
 //
 // 부르는 꼴
 //   node draft_board.js save --start new --board <게시판 id> --title <제목> --body-file <HTML 파일> [--file <경로> …]
-//   node draft_board.js save --start draft --id <임시글 id> --at <그 글의 게시판 id> [--title <제목>] [--body-file <HTML 파일>] [--file <경로> …]
+//   node draft_board.js save --start draft --id <임시글 id> --at <그 글의 게시판 id> [--title <제목>]
+//                       [--body-file <HTML 파일> | --swap-file <[[옛 조각, 새 조각]…] JSON>] [--file <경로> …] [--drop <첨부 이름> …] [--end YYYY-MM-DD]
 //                                     출발마다 받는 바꿀 것은 STARTS 의 takes · 꼭 받는 것은 needs 다. 못 할 까닭(인자 · 파일 · 그 출발이 안
 //                                     받는 바꿀 것)은 창을 열기 전에 다 가린다 — 하나라도 걸리면 아무 창도 안 열고 종료 2. 임시글은 쓰는
 //                                     사람이 그 글을 열어 둔 창이 있으면 그 창에서 고친다(둘째 창을 안 연다)
@@ -35,6 +36,7 @@ const TEMPLATE_MS = 4000;          // 게시판을 고른 뒤 화면이 본문 �
 const WINDOW_NAME = 'boardSkillPop';   // 이 손이 여는 창의 이름 머리 — 부를 때마다 새 이름이라 열린 창을 안 덮는다
 const SAVE_CONFIRM = /^저장 하시겠습니까\?\s*$/;
 const EXIT = {OK: 0, FAIL: 1, ARGS: 2, NO_EDGE: 3};
+const LOOK_MS = 3000;              // [임시저장] 뒤 임시보관함 · 그 글의 모습을 다시 묻는 사이
 const PROBE_MS = 5000;             // 열린 창 하나가 어느 글인가를 묻는 시한 — 저장 중 · 닫히는 창은 답을 안 한다
 
 const trace = word => { if (process.env.DRAFT_BOARD_TRACE) process.stderr.write(`${new Date().toISOString().slice(11, 19)} ${word}\n`); };
@@ -137,18 +139,57 @@ const DRAFT_ROWS = `(()=>{ ${TEMP_LIST}
   return Array.from(doc.querySelectorAll('input[name="chkid"]'), el => { const k = JSON.parse(el.value); box.innerHTML = k.title || '';
     const tr = el.closest('tr'); return {id: k.articleId, title: box.value, text: (tr ? tr.textContent : '').replace(/\\s+/g, ' ').trim()}; }); })()`;
 
-// 임시글 고치기의 저장이 섰나 — 임시보관함의 줄(누르기 앞 ``before`` · 뒤 ``after``)로 가린다. 편집 창의 [임시저장]이 무엇을 남기는지는
-// 회사에서 아직 안 쟀다 — 그래서 보이는 것이 바뀐 판만 센다. 앞에 없던 줄이 요청한 제목으로 서면 'forked'(새 임시글로 갈라졌다 · 옛 글은
-// 남는다), 그 글의 줄이 요청한 제목이고 제목이나 줄의 글자(날짜 · 상태)가 바뀌었으면 'saved', 그 밖은 'unproven' 이다. 그 글이 앞 목록에
-// 없었으면 견줄 것이 없어 'unproven' 이다
-function draftProof(before, after, id, title) {
-  const was = before.find(r => r.id === id);
-  const now = after.find(r => r.id === id);
-  const fork = after.find(r => r.id !== id && r.title === title && !before.some(b => b.id === r.id));
+// 임시글 고치기의 저장이 섰나 — 누르기 앞 · 뒤의 모습 둘(``before`` · ``after`` = {rows: 임시보관함 줄, state: 그 글의 모습})과 요청(``want``)으로
+// 가린다. 임시보관함 줄의 날짜는 하루 단위라 그것만으로는 제목을 안 바꾼 저장이 늘 「못 가렸다」였다(회사 PC 2026-11-18). 그래서 그 글의 모습
+// (draftState — 제목 · 게시 시각(분) · 게시기한 · 본문 글자 · 첨부 이름)을 함께 본다.
+// - 앞에 없던 다른 줄이 요청한 제목으로 서면 'forked'(새 임시글로 갈라졌다 · 옛 글은 남는다)
+// - 그 글의 모습이 앞과 다르고 요청한 것이 다 들었으면 'saved'
+// - 모습은 바뀌었는데 요청한 것이 안 들었으면 'unproven' 과 그 까닭(why)
+// - 그 밖(아무것도 안 바뀜 · 모습을 못 읽음 · 앞 목록에 그 글이 없었음)은 'unproven'
+// ``want`` = {title, files: 더한 이름, drop: 뺀 이름, end: 게시종료일, body: 글 일부를 바꾼 판의 보이는 글자(빈칸은 안 본다)}
+function draftProof(before, after, id, want) {
+  const title = want.title;
+  const fork = after.rows.find(r => r.id !== id && r.title === title && !before.rows.some(b => b.id === r.id));
   if (fork) return {verdict: 'forked', id: fork.id};
-  if (was && now && now.title === title && (was.title !== now.title || was.text !== now.text)) return {verdict: 'saved', id};
-  return {verdict: 'unproven'};
+  const was = before.state, now = after.state;
+  if (!before.rows.some(r => r.id === id) || !was || !now) return {verdict: 'unproven'};
+  if (JSON.stringify(was) === JSON.stringify(now)) return {verdict: 'unproven'};
+  const miss = [];
+  if (now.title !== title) miss.push(`제목이 「${now.title}」 이다`);
+  for (const f of want.files || []) if (!now.files.includes(f)) miss.push(`첨부 ${f} 가 없다`);
+  for (const f of want.drop || []) if (now.files.includes(f)) miss.push(`뺄 첨부 ${f} 가 남았다`);
+  if (want.end && !now.period.includes(want.end)) miss.push(`게시기한이 「${now.period}」 이다`);
+  const flat = t => String(t).replace(/[\s\u200b\ufeff]+/g, '');
+  if (want.body !== undefined && flat(now.text) !== flat(want.body)) miss.push('본문 글자가 바꾼 판과 다르다');
+  return miss.length ? {verdict: 'unproven', why: miss.join(' · ')} : {verdict: 'saved', id};
 }
+
+// 그 글의 모습을 게시판 탭에서 묻는 식 — 글 화면(viewArticle · 조회수를 안 올린다)과 첨부 목록. 못 읽으면 null
+const DRAFT_STATE = (id, bbs) => `(()=>{ const ask = (u, d) => { const x = new XMLHttpRequest(); x.open(d ? 'POST' : 'GET', _webapp + u, false);
+  if (d) x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded'); x.send(d ? jQuery.param(d) : null); return x.responseText; };
+  const v = new DOMParser().parseFromString(ask('/XClickController', {facade:'BBSArticleFacade', command:'viewArticle', nextpage:'/bbs/articleView.jsp',
+    transaction_yn:'N', articleId:${JSON.stringify(id)}, articleBbsId:${JSON.stringify(bbs)}, categoryId:'BBS_ALL', popYn:'Y'}), 'text/html');
+  const body = v.querySelector('[id^="contentArea_"]'); const subject = v.querySelector('.top_subject');
+  if (!body || !subject) return null;
+  const flat = s => (s || '').replace(/\\s+/g, ' ').trim();
+  const stamp = (flat(subject.parentNode.textContent).match(/(\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d)\\s*\\|\\s*조회수/) || [])[1] || '';
+  const cells = Array.from(v.querySelectorAll('td.vsub_title')); const per = cells.find(c => flat(c.textContent) === '게시기한');
+  const files = []; const re = /_fileArr\\.push\\(\\[url\\+"\\?fileId=[^"]+","((?:[^"\\\\]|\\\\.)*)",\\d+\\]/g; let m;
+  const list = ask('/common/fileattach/download.jsp?refId=' + encodeURIComponent(${JSON.stringify(id)}) + '&downYn=Y&innoFDId=innoFDId&fileTitle=');
+  while ((m = re.exec(list))) files.push(JSON.parse('"' + m[1] + '"'));
+  return {title: flat(subject.textContent), posted: stamp, period: per ? flat(per.nextElementSibling.textContent).replace(/^:\\s*/, '') : '',
+          text: flat(body.textContent), files: files.sort()}; })()`;
+
+// 편집기 본문에서 조각을 바꾸는 손은 형제 스킬 company-mail 의 짓는 손(draft_send.js 의 rebody)이 든다 — 메일과 같은 계약(보이는 글자에서
+// 꼭 한 번 · 한 글자 마디 안)이다. require 로 실으면 그 손은 아무것도 안 돌고 함수만 내준다. 게시판 편집기의 본문은 문서 꼴
+// (<html><head><style>…<body>)이라, 바꾼 body 안을 원래 문서의 body 자리에 되넣어 머리의 서식을 지킨다
+const { rebody } = require('../../company-mail/scripts/draft_send.js');
+// 지은 body 안(``built``)을 원래 문서(``html``)의 body 자리에 되넣는다 — body 가 없으면 지은 것 그대로
+function intoBody(html, built) {
+  const m = html.match(/(<body[^>]*>)[\s\S]*?(<\/body>|$)/i);
+  return m ? html.slice(0, m.index) + m[1] + built + (m[2] || '') + html.slice(m.index + m[0].length) : built;
+}
+const BODY_NOW = "document.getElementById('editor1').contentWindow.getHtml()";   // 화면의 저장(saveArticle)이 본문을 읽는 그 함수
 
 async function formFrameEval(win, expr) {
   for (const f of (await win.page.frames()).filter(x => FORM.test(x.url))) {
@@ -199,21 +240,27 @@ function dialogs(cdp, win) {
 
 // 인자 → {start, id, at, board, title, bodyFile, files}. 값 없는 칸은 undefined 로 남겨 「안 줬다」와 「빈 값을 줬다」를 가른다
 function parseArgs(argv) {
-  const out = {files: []};
-  const keys = {'--start': 'start', '--id': 'id', '--at': 'at', '--board': 'board', '--title': 'title', '--body-file': 'bodyFile'};
+  const out = {files: [], drop: [], swaps: []};
+  const keys = {'--start': 'start', '--id': 'id', '--at': 'at', '--board': 'board', '--title': 'title', '--body-file': 'bodyFile',
+                '--end': 'end', '--swap-file': 'swapFile'};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (keys[a]) out[keys[a]] = argv[++i] ?? '';
     else if (a === '--file') out.files.push(argv[++i] ?? '');
+    else if (a === '--drop') out.drop.push(argv[++i] ?? '');
     else if (out.id === undefined) out.id = a;   // show <글 id>
   }
   return out;
 }
 
-const newParams = board => ({facade: 'BBSArticleFacade', command: 'writeArticle', nextpage: '/bbs/articleWrite.jsp', writeGbn: 'NEW',
-  categoryId: 'BBS_ALL', bbsId: board, popYn: 'Y', isCop: 'false', copId: '', msgId: 'BBS-000105'});   // 화면의 writeArticle 이 넘기는 칸 그대로
-const editParams = (board, id) => ({facade: 'BBSArticleFacade', command: 'writeArticle', nextpage: '/bbs/articleWrite.jsp', writeGbn: 'EDIT',
-  categoryId: 'BBS_ALL', bbsId: board, articleId: id, orgArticleId: id, menuGbn: 'TEMP', popYn: 'Y', isCop: 'false', msgId: 'BBS-000105'});
+// writeArticle 의 칸 — 곁의 write_params.json 한 벌(앱 손 xclick.py 가 같은 폼을 GET 으로 읽을 때도 그것을 쓴다)
+const WRITE_PARAMS = JSON.parse(fs.readFileSync(path.join(__dirname, 'write_params.json'), 'utf8'));
+const paramsOf = (kind, board, id = '') => Object.fromEntries(Object.entries(WRITE_PARAMS[kind])
+  .map(([k, v]) => [k, String(v).replace('{board}', board).replace('{id}', id)]));
+const newParams = board => paramsOf('new', board);   // 화면의 writeArticle 이 넘기는 칸 그대로
+const editParams = (board, id) => paramsOf('draft', board, id);
+// 화면 리본 [재활용](userContents.jsp 의 copyArticle)이 여는 창 — 원글 id 를 orgArticleId 로, articleId 는 비운다. 저장은 화면이 새 글로 바꾼다
+const copyParams = (board, id) => paramsOf('copy', board, id);
 const openExpr = params => `(()=>{ const w = openPopupWindowInCenter(_webapp + '/XClickController?' + jQuery.param(${JSON.stringify(params)}),`
   + ` ${JSON.stringify(WINDOW_NAME + Date.now())}, 850, screen.availHeight - 100, false); w.focus(); return true; })()`;   // 화면의 창 이름(wrtieArticlePop)을 쓰면 사람이 연 글쓰기 창을 덮는다
 
@@ -257,20 +304,39 @@ const STARTS = {
     // 화면의 writeArticle 은 목록 칸의 카테고리를 읽어, 그 칸이 비면 「카테고리가 존재하지 않는다」 경고에 창이 멈춘다 — 값을 직접 준다
     open: async (cdp, board, a) => ({...(await popup(cdp, board, openExpr(newParams(a.board)))), mine: true}),
     verify: async () => true,
-    rows: (board, title) => board.page.ev('_tabIfr0', DRAFT_IDS(title)),
+    rows: (board, title) => board.page.ev('_tabIfr0', DRAFT_IDS(title)).then(ids => (Array.isArray(ids) ? ids : null)),
+    proof: (before, after) => { const id = (after || []).find(x => !before.includes(x)); return id ? {verdict: 'saved', id} : null; },
+  },
+  copy: {
+    takes: ['files', 'title', 'end', 'body', 'swap'], needs: [],
+    check: a => (!/^QF_\d+$/.test(a.id || '') ? '--id 는 원글 id(QF_ 와 숫자) 다'
+      : !/^BBS\d+$/.test(a.at || '') ? '--at 은 원글의 게시판 id(BBS 와 숫자) 다' : ''),
+    open: async (cdp, board, a) => ({...(await popup(cdp, board, openExpr(copyParams(a.at, a.id)))), mine: true}),
+    // 재활용 창이다 — 원글을 가리키고 새 글(articleId 빈 값)이다. 아니면 원글을 고칠 수 있어 아무것도 안 넣는다
+    verify: async (win, a) => (await formFrameEval(win, `(()=>{ const f = document.form2;
+      return f.articleCopyYn.value === 'Y' && f.orgArticleId.value === ${JSON.stringify(a.id)} && f.articleId.value === ''; })()`)) === true,
+    rows: (board, title) => board.page.ev('_tabIfr0', DRAFT_IDS(title)).then(ids => (Array.isArray(ids) ? ids : null)),
     proof: (before, after) => { const id = (after || []).find(x => !before.includes(x)); return id ? {verdict: 'saved', id} : null; },
   },
   draft: {
-    // 게시판은 안 받는다 — 고르면 화면이 본문 틀을 다시 실어 저장된 본문을 덮는데, 편집기의 지금 본문을 읽어 되돌리는 잰 길이 없다
-    takes: ['files', 'title', 'body'], needs: [],
+    // 게시판은 안 받는다 — 편집 창에는 게시판 고름이 없다(「게시판 위치」 는 글자뿐)
+    takes: ['files', 'drop', 'title', 'end', 'body', 'swap'], needs: [],
     check: a => (!/^QF_\d+$/.test(a.id || '') ? '--id 는 임시글 id(QF_ 와 숫자) 다'
-      : !/^BBS\d+$/.test(a.at || '') ? '--at 은 그 임시글의 게시판 id(BBS 와 숫자) 다' : ''),
+      : !/^BBS\d+$/.test(a.at || '') ? '--at 은 그 임시글의 게시판 id(BBS 와 숫자) 다'
+      : ''),
     // 쓰는 사람이 그 글을 열어 둔 창이 있으면 그 창에서 — 같은 글의 둘째 창을 열지 않는다
     open: async (cdp, board, a) => (await windowOf(cdp, a.id)) || {...(await popup(cdp, board, openExpr(editParams(a.at, a.id)))), mine: true},
     verify: async (win, a) => (await formFrameEval(win, 'document.form2.articleId.value')) === a.id,
-    rows: board => board.page.ev('_tabIfr0', DRAFT_ROWS),
+    // 임시보관함 줄(갈라짐을 본다)과 그 글의 모습(제목 · 게시 시각 · 게시기한 · 본문 글자 · 첨부 이름 — 저장을 가린다)
+    rows: async (board, title, a) => {
+      const rows = await board.page.ev('_tabIfr0', DRAFT_ROWS);
+      const state = await board.page.ev('_tabIfr0', DRAFT_STATE(a.id, a.at)).catch(() => null);
+      return Array.isArray(rows) ? {rows, state} : null;
+    },
     proof: (before, after, a, title) => {
-      const got = after ? draftProof(before, after, a.id, title) : {verdict: 'unproven'};
+      const got = after ? draftProof(before, after, a.id, {title, files: a.files.map(f => path.basename(f)), drop: a.drop, end: a.end,
+                                                           body: a.body}) : {verdict: 'unproven'};
+      if (got.why) a.why = got.why;
       return got.verdict === 'unproven' ? null : got;
     },
   },
@@ -287,14 +353,54 @@ const CHANGES = [
     await sleep(TEMPLATE_MS);
   }},
   {name: 'files', word: '첨부', given: a => a.files.length > 0, run: (cdp, win, a) => attachFiles(cdp, win, a.files)},
+  // 있던 첨부 빼기 — 첨부 틀의 줄(_fileQueue)에서 이름으로 고르고 화면의 [파일삭제](deleteSelectFiles)와 같은 걸음을 밟는다: 줄을 빼고
+  // _OnBeforeRemoveItem 이 그 파일 id 를 지울 목록에 모은다. 저장(saveArticle)이 그 목록을 폼의 delFileIdLists 로 실어 보낸다
+  {name: 'drop', word: '첨부 빼기', given: a => a.drop.length > 0, run: async (cdp, win, a) => {
+    const got = await win.page.ev(/html5uploader\/upload\.jsp/, `(()=>{ const names = ${JSON.stringify(a.drop)}; const out = {gone: [], miss: []};
+      for (const n of names) { const f = _fileQueue.getFileAtName(n);
+        if (!f || f.status !== 'Temp') { out.miss.push(n); continue; } }
+      if (out.miss.length) return out;
+      for (const n of names) { const f = _fileQueue.remove(n); if (window._OnBeforeRemoveItem) _OnBeforeRemoveItem(f);
+        jQuery('.filelistTR').filter(function(){ return this.id === n; }).remove(); out.gone.push(n); }
+      if (window.updateStatusBar) updateStatusBar(); return {...out, list: getDelFileList()}; })()`);
+    if (!got) throw fail(EXIT.FAIL, '첨부 틀을 못 찾았다');
+    if (got.miss.length) throw fail(EXIT.ARGS, `임시글에 없는 첨부다: ${got.miss.join(' · ')} — read 의 attachments 이름 그대로 준다`);
+  }},
   {name: 'title', word: '제목', given: a => a.title !== undefined,
     run: (cdp, win, a) => formFrameEval(win, `(()=>{ document.form2.title.value = ${JSON.stringify(a.title)}; return true; })()`)},
+  // 게시종료일 — 화면은 게시판 옵션 termModifyYn 이 Y 일 때만 날짜 고름을 켠다(N 이면 기본 기간 고정). 명령이 그 값을 미리 보고 막는다
+  {name: 'end', word: '게시기한', given: a => a.end !== undefined, run: async (cdp, win, a) => {
+    const got = await formFrameEval(win, `(()=>{ const f = document.form2; if (jQuery('#endDate').datepicker('isDisabled')) return 'off';
+      const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10); if (${JSON.stringify(a.end)} <= today) return 'early'; f.endDate.value = ${JSON.stringify(a.end)}; return f.endDate.value; })()`);
+    if (got === 'off') throw fail(EXIT.ARGS, '이 게시판은 게시종료일을 못 바꾼다(화면이 칸을 잠갔다)');
+    if (got === 'early') throw fail(EXIT.ARGS, `게시종료일 ${a.end} 이 오늘(한국 시각)이거나 지났다`);
+    if (got !== a.end) throw fail(EXIT.FAIL, '게시종료일 칸에 날짜가 안 들었다');
+  }},
   {name: 'body', word: '글', given: a => a.bodyFile !== undefined,
     run: (cdp, win, a) => formFrameEval(win, `(()=>{ document.getElementById('editor1').contentWindow.setContent(${JSON.stringify(a.html)}); return true; })()`)},
+  // 글 일부 바꾸기 — 편집기의 지금 본문을 읽어(getHtml — 화면의 저장이 읽는 함수) 조각만 바꾼 판을 되넣고, 선 판의 글자가 지은 판과 같은지 본다
+  {name: 'swap', word: '글 일부', given: a => a.swaps.length > 0, run: async (cdp, win, a) => {
+    const now = await formFrameEval(win, BODY_NOW);
+    const built = await formFrameEval(win, `(${rebody})(${JSON.stringify(now)}, ${JSON.stringify({swaps: a.swaps})})`);
+    if (built.why) throw fail(EXIT.ARGS, built.why);
+    await formFrameEval(win, `(()=>{ document.getElementById('editor1').contentWindow.setContent(${JSON.stringify(intoBody(now, built.html))}); return true; })()`);
+    const drawn = await waitFor(10, async () => {
+      const again = await formFrameEval(win, `(${rebody})(${BODY_NOW}, {}).text`).catch(() => '');
+      return again === built.text;
+    });
+    if (!drawn) throw fail(EXIT.FAIL, '편집기에 선 본문의 글자가 지은 판과 다르다 — 저장하지 않는다. 띄운 편집 창에서 본다');
+    a.body = built.text;   // 저장 뒤 글 화면의 본문 글자가 이 판과 같아야 섰다(draftProof 의 body)
+  }},
 ];
 
 // 창을 열기 전에 가린다 — 못 할 까닭 하나를 말로, 없으면 빈 글자. 이 손은 이것이 빈 뒤에야 Edge 에 붙는다
 function refusal(a) {
+  if (a.swapFile !== undefined) {   // 글 일부 — [[옛 조각, 새 조각], …] 의 JSON 파일(명령이 짓는다)
+    if (!exists(a.swapFile)) return `--swap-file 이 없다: ${a.swapFile}`;
+    try { a.swaps = JSON.parse(fs.readFileSync(a.swapFile, 'utf8')); } catch (e) { return '--swap-file 이 JSON 이 아니다'; }
+    if (!Array.isArray(a.swaps) || !a.swaps.length || a.swaps.some(x => !Array.isArray(x) || x.length !== 2 || !String(x[0]).trim()))
+      return '--swap-file 은 [[옛 조각, 새 조각], …] 이다';
+  }
   const start = STARTS[a.start];
   if (!start) return `--start 는 ${Object.keys(STARTS).join(' · ')} 가운데 하나다`;
   const given = CHANGES.filter(c => c.given(a)).map(c => c.name);
@@ -308,6 +414,9 @@ function refusal(a) {
   if (a.bodyFile !== undefined && !exists(a.bodyFile)) return `--body-file 이 없다: ${a.bodyFile}`;
   const gone = a.files.find(f => !exists(f));
   if (gone !== undefined) return `첨부 파일이 없다: ${gone}`;
+  if (a.end !== undefined && !/^\d{4}-\d\d-\d\d$/.test(a.end)) return '--end 는 YYYY-MM-DD 다';
+  if (a.drop.some(n => !n.trim())) return '--drop 이 비었다';
+  if (a.bodyFile !== undefined && a.swaps.length) return '글 통째(--body-file)와 글 일부(--swap-file)는 한 부름에 같이 안 받는다';
   return start.check(a);
 }
 
@@ -341,10 +450,13 @@ async function save(cdp, a) {
 
 async function fill(cdp, a, start, board, win) {
   await ready(win);
-  if (!(await start.verify(win, a))) throw fail(EXIT.ARGS, `임시글 ${a.id} 의 편집 창이 안 열렸다 — drafts 로 id 를 본다`);
+  if (!(await start.verify(win, a))) {
+    throw fail(EXIT.ARGS, a.start === 'copy' ? `글 ${a.id} 의 재활용 창이 안 열렸다 — 목록 줄의 id · board 를 본다`
+      : `임시글 ${a.id} 의 편집 창이 안 열렸다 — drafts 로 id 를 본다`);
+  }
   const title = (a.title ?? await formFrameEval(win, 'document.form2.title.value')).trim();   // 저장 뒤 임시보관함에서 찾을 제목
-  const before = await start.rows(board, title).catch(() => null);
-  if (!Array.isArray(before)) throw fail(EXIT.FAIL, '임시보관함 목록을 못 읽었다 — 아무 칸도 안 바꿨다');
+  const before = await start.rows(board, title, a).catch(() => null);
+  if (before == null) throw fail(EXIT.FAIL, '임시보관함 목록을 못 읽었다 — 아무 칸도 안 바꿨다');
   // 여기부터 창을 바꾼다 — 쓰는 사람이 연 창이면 멈춰도 넣은 것이 남으니 무엇을 넣기 시작했나를 적는다(save 가 알린다)
   if (!win.mine) win.touched = [];
   for (const c of CHANGES) {
@@ -361,14 +473,16 @@ async function fill(cdp, a, start, board, win) {
   const done = await waitFor(SAVE_SECONDS, async () => {
     if (box.asked.length) return {verdict: 'asked'};
     if (box.said.length && !(await formFrameEval(win, 'true').catch(() => false))) return {verdict: 'gone'};
-    return start.proof(before, await start.rows(board, title).catch(() => null), a, title);
+    if (Date.now() < (a.nextLook || 0)) return null;
+    a.nextLook = Date.now() + LOOK_MS;   // 저장 답 하나를 보는 데 게시판에 묻는 것이 셋이다 — 촘촘히 안 묻는다
+    return start.proof(before, await start.rows(board, title, a).catch(() => null), a, title);
   });
   box.stop();
   if (done && done.verdict === 'asked') throw fail(EXIT.ARGS, `게시판이 저장을 막았다: ${box.asked.join(' / ')}`);
   const said = box.said.length ? `게시판이 띄운 글: ${box.said.join(' / ')} — ` : '';
   const saved = !!done && (done.verdict === 'saved' || done.verdict === 'forked');
   win.touched = null;   // [임시저장]을 눌러 막히지 않았다 — 섰거나, 못 가린 판은 아래 말이 창을 보라고 이른다
-  if (!saved && a.start === 'new') {
+  if (!saved && a.start !== 'draft') {
     throw fail(EXIT.FAIL, `${said}저장이 섰는지 못 가렸다 — 다시 부르기 전에 drafts 로 임시보관함을 본다(섰으면 show 로 띄운다)`);
   }
   if (win.mine) {   // 이 손이 연 창은 닫기를 막아 두었다 — 닫고 그 글의 편집 창으로 다시 연다(새 글이면 창이 아직 「새 글」 판이다)
@@ -384,7 +498,7 @@ async function fill(cdp, a, start, board, win) {
   const where = await showDraft(cdp, board, id, at).catch(e => `못 띄웠다(${e.message}) — show ${id} --board ${at} 로 다시 띄운다`);
   if (!saved) {
     throw fail(EXIT.FAIL, `${said}[임시저장]을 눌렀는데${box.confirmed ? '(「저장 하시겠습니까?」에 예 했다)' : '(저장 물음이 안 떴다)'} 임시보관함의 그 글`
-      + ` 줄이 안 바뀌어 섰는지 못 가렸다 — 임시글 편집 창의 저장 꼴은 회사에서 아직 안 쟀다. 다시 부르지 않는다: 띄운 편집 창(${where})에서`
+      + `${a.why ? `이 바뀌었으나 요청한 것이 안 보여(${a.why})` : '과 글 모습이 안 바뀌어'} 섰는지 못 가렸다. 다시 부르지 않는다: 띄운 편집 창(${where})에서`
       + ' 제목 · 본문 · 첨부를 보고 사람에게 확인받는다');
   }
   return {id, start: a.start, board: at, title, files: a.files.length, where, reused: !win.mine,
@@ -392,7 +506,8 @@ async function fill(cdp, a, start, board, win) {
 }
 
 const USAGE = '꼴: save --start new --board <id> --title <제목> --body-file <파일> [--file <경로> …] · '
-  + 'save --start draft --id <임시글 id> --at <게시판 id> [--title …] [--body-file …] [--file …] · show <글 id> --board <id>';
+  + 'save --start draft --id <임시글 id> --at <게시판 id> [--title …] [--body-file … | --swap-file …] [--file …] [--drop <이름> …]'
+  + ' [--end YYYY-MM-DD] · show <글 id> --board <id>';
 
 async function main() {
   const [verb, ...rest] = process.argv.slice(2);

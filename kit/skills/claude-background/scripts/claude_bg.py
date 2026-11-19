@@ -11,8 +11,6 @@ import glob
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -60,20 +58,25 @@ REVIEW_TOOLS = ('Bash', 'Agent')
 REVIEW_TARGET_RE = re.compile(r'[^\s-]\S*')
 REVIEW_LEVEL_NAMES = ('low', 'medium', 'high', 'xhigh', 'max', 'ultra')
 MAX_FINDINGS_RE = re.compile(r'[1-9][0-9]*|all')
-# 셔틀(`.cmd`)이 부르는 꾸러미 — npm 전역 자리(셔틀 곁의 `node_modules`) 기준. 실제로 띄울 것은 꾸러미의
-# `package.json` 의 `bin` 이 든다 — 판에 따라 JS(`cli.js`)이기도 하고 네이티브 실행 파일(`bin/claude.exe`)이기도 하다.
+# 셔틀(`.cmd`)이 부르는 꾸러미 — npm 전역 자리(셔틀 곁의 `node_modules`) 기준. 띄울 것은 그 `package.json` 의 `bin` 이
+# 든다(`common.npm_head`)
 NPM_PACKAGE = ('@anthropic-ai', 'claude-code')
 BIN_NAME = 'claude'
 # Claude 세션 안에서 불려도 그 세션에 안 섞이게 — 부른 쪽 세션의 표지가 남으면 받는 쪽이 그 대화 id 를 이어 쓴다
 # (리모트 세션은 `CLAUDE_CODE_REMOTE_SESSION_ID` 까지 걷어야 새 id 가 선다)
 DROP_ENV = ('CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_REMOTE_SESSION_ID')
+# 러너가 띄운 대화의 표 — 요청이 루프백 프록시를 지날 때만 받는 Claude 의 모든 요청(그 레인 것까지)에 머리 하나를 싣는다. 프록시는
+# 그 대화를 레인처럼 도구 결과를 기다릴 때만 데운다 — 답하고 끝난 러너의 대화에 데우기를 안 버린다. 이름은 프록시의
+# `RUNNER_HEADER` 와 같아야 한다. 하네스의 머리 칸(`Name: Value` 를 줄마다)에 이미 든 머리는 그대로 두고 덧붙인다
+CUSTOM_HEADERS_ENV = 'ANTHROPIC_CUSTOM_HEADERS'
+RUNNER_HEADER = 'x-agent-runner'
+RUNNER_HEADER_VALUE = 'claude-background'
 # 한도 · 과부하의 꼴 — 결과의 `api_error_status`(429 · 529)나 문구. 다른 실패와 갈라야 「잠시 뒤 다시」와 「고칠 것」이 갈린다
 QUOTA_STATUS = (429, 529)
 QUOTA_RE = re.compile(r'usage limit|rate[_ ]limit|overloaded|\b429\b|\b529\b', re.I)
 MODEL_NAME_RE = re.compile(r'[A-Za-z0-9._:/\[\]-]+')
-# 대화 기록의 자리 — 설정 폴더(`CLAUDE_CONFIG_DIR`, 없으면 `~/.claude`)의 `projects/<작업 자리 이름>/<id>.jsonl`(Claude Code
-# 2.1.296). 작업 자리 이름을 짓는 규칙은 빌리지 않는다 — `projects/*` 를 다 본다.
-CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR'
+# 대화 기록의 자리 — 설정 폴더(`config_dir`)의 `projects/<작업 자리 이름>/<id>.jsonl`(Claude Code 2.1.296). 작업 자리 이름을
+# 짓는 규칙은 빌리지 않는다 — `projects/*` 를 다 본다.
 NO_RESUME = ('이어 묻기 못 함 — 대화 기록이 안 남았다({where} 에 이 대화가 없다). 받는 Claude 가 제 홈에 못 쓰는 자리'
              '(맡긴 쪽의 샌드박스)에서 돌았거나 대화가 서기 전에 멈췄다')
 
@@ -83,8 +86,7 @@ NO_RESUME = ('이어 묻기 못 함 — 대화 기록이 안 남았다({where} �
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'agent-envelope' / 'scripts'))
 try:
     import runner_common as common
-    from runner_common import (CREATE_NO_WINDOW, DEFAULT_TIMEOUT_SEC, POLL_SEC, PROMPT_ENCODINGS, SHIM_EXT, STDERR_TAIL_CHARS,
-                               HelpFormat, Parser, decode_prompt, kill_tree, read_jsonl, write)
+    from runner_common import DEFAULT_TIMEOUT_SEC, PROMPT_ENCODINGS, write
 except ImportError as missing:
     _args = sys.argv[1:]
     _out = next((x[len('--out='):] for x in _args if x.startswith('--out=')), None)
@@ -99,23 +101,9 @@ except ImportError as missing:
             pass
     sys.exit(EXIT['failed'])
 
-def prompt_problem(path):
-    """프롬프트 파일을 못 넘기는 까닭 — 없으면 None. 받는 Claude 는 표준 입력을 UTF-8 로 읽는다: PowerShell 5.1 의
-    `Set-Content` 기본값(ANSI)으로 쓴 파일은 글자가 깨진 채 넘어가 답이 조용히 틀어진다. 그래서 `decode_prompt` 가 받는
-    인코딩만 넘기고, 넘길 때(`run_once`)는 UTF-8 로 옮긴다."""
-    try:
-        with open(path, 'rb') as f:
-            decode_prompt(f.read())
-    except OSError as e:
-        return f'프롬프트 파일을 못 읽었다 — {e}'
-    except UnicodeDecodeError:
-        return (f'프롬프트 파일이 받는 인코딩이 아니다 — {PROMPT_ENCODINGS} 만 받는다. '
-                f'PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {path}')
-    return None
-
 
 def transcripts_dir():
-    return os.path.join(os.environ.get(CONFIG_DIR_ENV) or os.path.join(os.path.expanduser('~'), '.claude'), 'projects')
+    return os.path.join(common.config_dir(), 'projects')
 
 
 def resume_field(conv):
@@ -128,30 +116,9 @@ def resume_field(conv):
     return 'resume=- · ' + NO_RESUME.format(where=where)
 
 
-def resolve(found):
-    """찾은 실행 꼴 → 띄울 머리. 셔틀이면 꾸러미의 `bin` 을 따라간다 — JS 면 node 로, 실행 파일이면 그대로. 못 풀면 None."""
-    if not found.lower().endswith(SHIM_EXT):
-        return [found]
-    pkg = os.path.join(os.path.dirname(found), 'node_modules', *NPM_PACKAGE)
-    try:
-        with open(os.path.join(pkg, 'package.json'), encoding='utf-8') as f:
-            bin_field = json.load(f).get('bin')
-    except (OSError, ValueError):
-        return None
-    rel = bin_field.get(BIN_NAME) if isinstance(bin_field, dict) else bin_field
-    target = os.path.join(pkg, rel) if isinstance(rel, str) else ''
-    if not os.path.isfile(target):
-        return None
-    if not target.lower().endswith(('.js', '.mjs', '.cjs')):
-        return [target]
-    node = shutil.which('node')
-    return [node, target] if node else None
-
-
 def head():
     """띄울 머리. 못 찾으면 None."""
-    found = shutil.which(BIN_NAME)
-    return resolve(found) if found else None
+    return common.npm_head(BIN_NAME, NPM_PACKAGE)
 
 
 def tool_args(write, review=False):
@@ -173,7 +140,7 @@ def settings_args(dest):
     선다. 자리 값(`env` · 모델)과 막는 규칙은 그대로 간다. 파일은 띄울 때마다 다시 읽는다 — 사본을 안 든다.
     ⚠ 설정을 명령줄에 JSON 으로 싣지 않는다 — `env` 에 키가 든 설정이면 그 키가 같은 사용자의 모든 프로세스 목록에 보이고,
     명령줄 한도(32767 자)도 넘을 수 있다. `dest` 는 부르는 쪽(`run_once`)이 끝나면 지운다."""
-    path = os.path.join(config_dir(), 'settings.json')
+    path = os.path.join(common.config_dir(), 'settings.json')
     try:
         with open(path, encoding='utf-8-sig') as f:
             settings = json.load(f)
@@ -190,11 +157,6 @@ def review_command(target, max_findings):
     """리뷰 모드의 표준 입력 — 내장 리뷰 스킬을 부르는 한 줄. 두 값은 `run` 이 꼴을 본 것이다."""
     return ' '.join([REVIEW_COMMAND, REVIEW_LEVEL, *(['--max-findings', max_findings] if max_findings else []),
                      *([target] if target else [])])
-
-
-def config_dir():
-    """받는 Claude 의 설정 폴더 — `CLAUDE_CONFIG_DIR` 가 서 있으면 그것, 아니면 홈의 `.claude`."""
-    return os.environ.get(CONFIG_DIR_ENV) or os.path.join(os.path.expanduser('~'), '.claude')
 
 
 def expand_imports(text, base_dir, depth, seen):
@@ -290,21 +252,28 @@ def judge(events, rc, err_text, review=False):
     return status, answer, conv, reason, tokens, model, tools
 
 
+def child_env(env):
+    """받는 Claude 에 줄 환경 — 부른 쪽 세션의 표지를 걷고, 요청이 루프백 프록시를 지나면 러너의 표 머리를 싣는다(`RUNNER_HEADER`).
+    프록시가 없는 자리(사외 · 게이트웨이 직결)는 머리를 안 싣는다 — 그 자리의 요청은 지금과 같다."""
+    out = {k: v for k, v in env.items() if k not in DROP_ENV}
+    if common.loopback_proxy(out):
+        lines = [line for line in (out.get(CUSTOM_HEADERS_ENV) or '').splitlines()
+                 if line.strip() and line.split(':', 1)[0].strip().lower() != RUNNER_HEADER]
+        out[CUSTOM_HEADERS_ENV] = '\n'.join(lines + [f'{RUNNER_HEADER}: {RUNNER_HEADER_VALUE}'])
+    return out
+
+
 def run_once(cmd_head, a):
     """한 번 띄워 끝까지 지켜본다. 돌려주는 것 — (갈래, 종료 코드, 답, id, 까닭, 토큰, 모델, 도구, 날 출력 경로)."""
     # stderr 를 .md 로 둔다 — 회사 PC 의 Fasoo 가 .txt 를 감싸 러너가 제 꼬리를 못 읽는다(.md · .json 은 평문으로 남는다)
     raw_path, err_path = f'{a.out}.claude.jsonl', f'{a.out}.claude.stderr.md'
     settings_path = f'{a.out}.claude.settings.json'   # 넘길 설정 — 끝나면 지운다(`settings_args`)
-    env = {k: v for k, v in os.environ.items() if k not in DROP_ENV}
-    started = time.monotonic()
-    status = None
+    env = child_env(os.environ)
     # 시스템 프롬프트 파일(끝나면 지운다)에 홈 규범을 싣고, 리뷰 모드면 봉투를 그 뒤에 잇는다 — 그 모드의 표준 입력은 슬래시
-    # 명령이라 봉투가 거기 못 간다. 받는 쪽은 `--cwd` 에서 돌아 절대 경로로 준다
-    with open(a.prompt_file, 'rb') as f:
-        prompt_raw = f.read()
-    body = decode_prompt(prompt_raw)
+    # 명령이라 봉투가 거기 못 간다. 받는 쪽은 `--cwd` 에서 돌아 절대 경로로 준다. 봉투 글은 `run` 이 읽어 둔 것이다
+    body = a.prompt
     review = a.review is not None
-    norms, norms_n = norms_text(config_dir())
+    norms, norms_n = norms_text(common.config_dir())
     parts = ([norms] if norms else []) + ([body] if review else [])
     system_path = None
     if parts:
@@ -314,50 +283,24 @@ def run_once(cmd_head, a):
     stdin_file = tempfile.TemporaryFile()
     stdin_file.write((review_command(a.review, a.max_findings) if review else body).encode('utf-8'))
     stdin_file.seek(0)
-    # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
     try:
-        with stdin_file as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
-            try:
-                proc = subprocess.Popen(cmd_head + argv(a.model, a.resume, a.write, review, system_path, settings_path),
-                                        cwd=a.cwd, env=env, stdin=stdin, stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
-            except OSError as e:
-                return 'spawn', None, '', None, str(e), 'in=- out=-', '-', {}, raw_path, norms_n
-            while proc.poll() is None:
-                if time.monotonic() > started + a.timeout:
-                    kill_tree(proc)
-                    status = 'timeout'
-                    break
-                time.sleep(POLL_SEC)
+        with stdin_file as stdin:
+            waited, rc, events, err_text = common.watch(
+                cmd_head + argv(a.model, a.resume, a.write, review, system_path, settings_path),
+                a.cwd, env, stdin, raw_path, err_path, a.timeout)
     finally:
-        for path in (settings_path, system_path):
-            try:
-                if path:
-                    os.remove(path)
-            except OSError:
-                pass
-    with open(err_path, encoding='utf-8', errors='replace') as f:
-        err_text = f.read()
-    judged, answer, conv, reason, tokens, model, tools = judge(read_jsonl(raw_path), proc.returncode, err_text, review)
-    if status is None:
-        status = judged
-    if status == 'ok':
-        for p in (raw_path, err_path):
-            try:
-                os.remove(p)
-            except OSError:
-                pass
-    else:
-        reason = '\n'.join(s for s in (reason, err_text[-STDERR_TAIL_CHARS:].strip()) if s)
-    return status, proc.returncode, answer, conv, reason, tokens, model, tools, raw_path, norms_n
+        common.remove(settings_path, system_path)
+    if waited == 'spawn':
+        return 'spawn', None, '', None, err_text, 'in=- out=-', '-', {}, raw_path, norms_n
+    judged, answer, conv, reason, tokens, model, tools = judge(events, rc, err_text, review)
+    status = waited or judged
+    reason = common.wrap_up(status, reason, err_text, raw_path, err_path)
+    return status, rc, answer, conv, reason, tokens, model, tools, raw_path, norms_n
 
 
 def build_parser():
-    ap = Parser(add_help=False, formatter_class=HelpFormat,
-                description='Claude 에게 일을 맡기고, 답과 끝 줄을 --out 파일로 받는다. 기본은 읽기만 한다.')
-    ap.add_argument('-h', '--help', action='store_true', help='이 도움말을 표준 출력에 찍고 끝낸다(파일은 안 쓴다)')
-    ap.add_argument('--prompt-file', required=True, metavar='FILE', help='맡길 프롬프트 파일 — 받는 인코딩은 아래 「프롬프트 파일」')
-    ap.add_argument('--out', required=True, metavar='FILE', help='답 파일 — 어느 갈래로 끝나든 답과 끝 줄을 여기 쓴다')
-    ap.add_argument('--cwd', required=True, metavar='DIR', help='받는 Claude 를 띄울 작업 자리 — 없는 폴더면 안 띄운다. --write 가 고치는 범위이기도 하다')
+    ap = common.base_parser('Claude 에게 일을 맡기고, 답과 끝 줄을 --out 파일로 받는다. 기본은 읽기만 한다.',
+                            '받는 Claude 를 띄울 작업 자리 — 없는 폴더면 안 띄운다. --write 가 고치는 범위이기도 하다')
     ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC, metavar='SEC', help=f'시간 한도(초). 기본 {DEFAULT_TIMEOUT_SEC}')
     ap.add_argument('--model', metavar='NAME', help='받는 Claude 의 모델. 안 주면 사용자 설정의 모델로 뜬다')
     ap.add_argument('--resume', metavar='ID', help='이어 묻기 — 끝 줄 resume= 의 값을 그대로')
@@ -415,14 +358,11 @@ def review_problem(a):
 
 
 def run(a):
-    if not os.path.isfile(a.prompt_file):
-        write(a.out, f'{FOOTER} usage · 프롬프트 파일이 없다 — {a.prompt_file}\n')
-        return EXIT['usage']
-    bad = prompt_problem(a.prompt_file)
+    a.prompt, bad = common.read_prompt(a.prompt_file)
     if bad:
         write(a.out, f'{FOOTER} usage · {bad}\n')
         return EXIT['usage']
-    if not (a.cwd and os.path.isdir(a.cwd)):
+    if not os.path.isdir(a.cwd):
         write(a.out, f'{FOOTER} usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
         return EXIT['usage']
     if a.model and not MODEL_NAME_RE.fullmatch(a.model):
@@ -452,11 +392,7 @@ def run(a):
     if status != 'ok':
         cells['raw'] = f'raw={raw_path}'
     footer = common.footer_line(FOOTER, FOOTER_FIELDS, status, cells)
-    if status == 'ok':
-        write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
-    else:
-        # 날 출력은 길어(이벤트 수십 줄) 옮기지 않는다 — 까닭과 그 자리만 적는다
-        write(a.out, f'{answer.rstrip()}\n{reason}\n{footer}\n')
+    common.write_answer(a.out, status, answer, footer, reason)
     return EXIT[status]
 
 

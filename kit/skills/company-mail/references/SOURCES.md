@@ -29,8 +29,9 @@
 
 - `scripts/inbox.py` — 보기 이름 · 열 이름 · 주소 꼴 상수, 폴더 · 규칙 · 임시저장 폼의 칸과 그 함수 머리
 - `scripts/draft_send.js` — 발송 확인 · 임시저장 물음의 꼴(`SEND_CONFIRM` · `SAVED_ASK`) · 기다리는 시한
-- `scripts/mail.py` — 회사 값(`DEFAULT_COMPANY`) · 메일함 파일 번호가 사번이라는 것(`MAILFILE_NUMBER`) · 보낸 메일이 서는 자리(`SENT_CHECK_ROWS`) ·
-  검색 색인이 새 메일을 늦게 드는 것(`RECENT_SCAN`) · 받는 꼴(`ROLE_WORDS`) · 부서 주소 꼴(`DEPT_MAIL`)
+- `scripts/mail.py` — 보낸 메일이 서는 자리(`SENT_CHECK_ROWS`) · 검색 색인이 새 메일을 늦게 드는 것(`RECENT_SCAN`) · 받는 꼴(`ROLE_WORDS`)
+- 사내 주소록 · 조직도 · 배포그룹 · 직급 등급 · 회사 값 · 메일함 파일 번호가 사번이라는 것 · 부서 주소 꼴 — 묻는 손은 `scripts/inbox.py` 지만
+  사실은 형제 스킬 company-directory 의 `references/SOURCES.md` 「회사에서 잰 꼴」 이 든다
 - `scripts/body_images.py` — 본문 아이콘 크기(`ICON_EDGE`)
 - 설정 저장소의 `_check/skills/company-mail/check_inbox.py` · `check_mail.py` · `check_mailer.py` — 가짜 메일함 · 중계는 이 절의 꼴을 흉내 낸다. 실물에서 꼴이 달라졌으면
   가짜를 먼저 실물에 맞추고 손을 고친다
@@ -122,30 +123,9 @@
   (메일함마다 같은 시스템 표지). 그래서 ``Found.folder`` 로는 휴지통 줄과 받은편지함 줄을 못 가린다. 하위 폴더는 끝 이름만 온다
 - 시각은 UTC 다. 낱말은 고른 말 그대로 맞춘다 — 「워크샵」과 「워크숍」은 다른 말이다
 
-#### inbox.py · 주소록 · 조직도 · 배포그룹
+#### inbox.py · 주소록 · 조직도 · 배포그룹 · 직급 등급
 
-- 주소록 ``/common/profile.nsf/ag_org_search_json?OpenAgent`` 는 이름 · 메일 · 사번으로 찾고 밖의 주소는 0건이다. 답은
-  ``{dept, user, total}`` 이다. ``company`` 는 조직도 고름 상자의 값(``<회사>(<코드>)``)이고 메일함마다 다르다. ``key`` 가 그
-  사람의 Notes 이름이다 — 주소로 찾든 ``CN=`` 이름으로 찾든 같다. 부서 이름을 ``search_key`` 로 주면 사람은 0 명이고 이름이 든
-  부서들만 ``dept`` 에 온다. 직급 · 직책 이름으로는 0 건이다. ``category`` 는 웹메일이 빈 값으로 보내는 칸이다(무엇을 가르나는 안 쟀다)
-- 이름 찾기의 답에는 이름이 같은 다른 사람과 이름에 그 글자가 든 사람이 섞여 온다(``find_exact`` 가 거른다)
-- 조직도는 웹메일 받는 사람 고름 창의 손 둘이다(``orgtree.js``). ``ag_tree_dept_json`` 은 ``dept=<부서 코드>`` 의 바로 아래
-  부서들(``result[]`` · ``key`` 가 코드 · ``depth`` · ``has_child`` · 부서 메일 주소)이고 ``dept`` 에 회사 값을 주면 맨 위 부서다.
-  ``ag_tree_user_json`` 은 그 부서에 바로 든 사람이다(하위 부서는 안 든다 · 칸은 주소록 찾기와 같고 ``dept_code`` · 퇴직 칸이 없다 ·
-  비면 ``type`` 이 ``nothing`` 인 한 줄). 본부장은 「임원」과 제 본부에 함께 든다. 전사를 다 받으면 십수 초가 든다 — 부르는 쪽이
-  받아 두고 쓴다
-- 배포그룹은 ``ag_org_search_json`` 의 ``type=group`` · ``group_type``(직책 · 직급 · 지역)이 목록(``group[]`` · ``key`` 는
-  ``[02:직책]리더(02)`` 꼴)을, ``/common/lib_f.nsf/agGetDistribute?openagent&groupname=<key>`` 가 구성원(``memberlist[]`` —
-  이름 · 직급 · 부서 · 메일)을 준다. 개인 주소록은 ``type=private`` 이다(잰 메일함은 비었다)
-
-#### inbox.py · 직급 등급
-
-- ``GRADE_LEVELS`` 의 원본은 회사의 인사 등급표(직급명 · 직책명 · 직급명칭명)이고, 코드와의 짝은 전사 조직도의 직급명칭명 · 직책
-  구성이 표와 맞는 것으로 맞췄다. 29 · 30(둘 다 「임원」)과 34 · 35(둘 다 「과장」)의 차례는 직책 구성과 코드 차례로 고른 것이다
-- 등급을 안 주는 직급 — 연구직(45–49) · 외주직은 등급이 없는 것이 맞다(빈칸이 아니라 사실이다). 소장(44)은 연구소장이면 임원급이고
-  현장의 소장이면 아니라 직급만으로는 모른다. 이사(10)는 사외이사로 보여 회사의 위아래 밖이다
-- ``GRADE_NAME_LEVELS`` — 고문은 퇴임을 앞두고 고문으로 있는 임원이라 임원급이다. 고문의 직급 코드와, 주소록이 직급 이름을 「고문」
-  그대로 주는지는 안 쟀다 — 다른 글자로 오면 등급 없이 선다
+형제 스킬 company-directory 의 `references/SOURCES.md` 「회사에서 잰 꼴」 이 든다 — 사람을 찾는 스킬이 그 사실의 자리다.
 
 #### inbox.py · 폴더 손
 
@@ -304,8 +284,6 @@
 #### mail.py · 걸리는 시간
 
 - 모든편지함 보기 한 장은 1 초 안쪽이라 ``FILL_SCAN`` 줄을 끝까지 받아도 몇 초다
-- 조직도 전사를 받는 데 십수 초(15 초쯤)가 든다 — ``ORG_CACHE_DAYS`` 동안 받아 둔 판을 쓰고, 임시메일의 받는 사람 잇기(``draft_book``)는
-  받아 둔 판이 없으면 새로 받지 않는 까닭이다
 - 한글 메일 한 통은 머리까지 1 KB 안팎이라, ``PEEK_CHARS`` 기본으로 답 하나(``OUT_BYTES``)에 20 통 안팎이 든다
 
 ### body_images.py
@@ -347,8 +325,6 @@
   메일 · 대용량 첨부 메일이 그래도 전달 화면으로 열리나, 웹메일의 `copyEdit` 이 띄우는 알림과 같은 길로 막히나
 - 답장 · 전달 화면을 여는 것(`process_doc`)이 안 읽은 원본을 읽음으로 바꾸나 — 바꾸면 `draft reply` · `all` · `forward` 가 읽음을 지키는
   선을 넘는다
-- 메일 조직도의 부서 코드(`Dept.code` · 받는 사람 칸의 `dept` 열쇠)가 문서함(ECM) 조직의 부서 코드와 같은 값인가 — 같으면 `who --out` 의
-  사람 파일에 조직을 `org:<부서 코드>` 줄로 넣는다
 
 ## 본 후보와 탈락
 

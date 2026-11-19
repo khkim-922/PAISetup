@@ -4,10 +4,10 @@
 envelope — the conversation does not travel with it. Write it in English — the model's medium is English, so a Korean
 envelope only adds one translation; keep paths, names and quoted literal strings verbatim, or the lane cannot find them.)
 
-(Parent, before filling: is this a review? Then this file is not the vehicle — Claude → `/code-review`, Codex and
-Claude runner → `--review` with the git tree as cwd, a Copilot session → `/review`, agy and a Copilot launched by our
-runner → this file. A cross-model review is each
-harness's own review feature on the same tree, never one packet folder for every carrier.)
+(Parent, before filling: is this a review? Then this file is not the vehicle — each tool reviews with its own review
+feature, and `python scripts/carriers.py` prints, per tool, how to call it and whether this PC has it (its 「리뷰」 line).
+Only a tool that line marks 「리뷰 기능 없음」 gets this file for a review. A cross-model review is each harness's own
+review feature on the same tree, never one packet folder for every carrier.)
 
 ## Task
 - Source: <issue URL or path — the lane opens it itself; never paste its body here. Parent: open every path and
@@ -20,11 +20,19 @@ harness's own review feature on the same tree, never one packet folder for every
 - Ours: <the one or two things that make it ours, if the owner named any — else "find one and propose it in the report">
 - Done is judged by: <acceptance lane — whenever anything a person sees or does changes | checks only — nothing a person sees or does changes | the owner's eye on drafts — then drafts come before the engine>
 - Weight: <deep | errand>
-- Review: <yes — run this harness's own review feature on your commits (on your uncommitted diff when rule ③ keeps you from
-  committing) and wait for it in the foreground (a lane that ends its turn with the review still in the background returns
+- Review: <triage — when the change is done, ask the three questions of rule [Review Triage] in order and stop at the first
+  that decides: (1) would a failure here spread silently and widely — every session, several machines, data — with nobody
+  noticing? → review. (2) Can you name the places you did not look at? → measure just those and finish; if you cannot name
+  them or the list is long → review. (3) Do checks that were red before the change and green after it cover both sides —
+  catching what must be caught and leaving what must be left? → then a review adds little: skip it. When the answer is
+  review: run this harness's own review feature <Parent: write the call here from the 「리뷰」 line of `carriers.py` — and
+  the target as the lane's worktree PATH, since a bare branch name is resolved against the session's own folder> on your
+  commits (on your uncommitted diff when rule ③ keeps you from committing) and wait for it in the foreground (a lane that ends its turn with the review still in the background returns
   without the table), sort every finding with the review-fix skill named under Materials, fix what that ruler says to fix,
-  and commit again where you commit | no — the reason, by rule [Review Triage]. Parent: yes for every lane that edits
-  code; the review is yours after harvest only when the lane's harness has no review feature (the note at the top)>
+  and commit again where you commit | yes — you already asked those questions for this work; name the one that decided |
+  no — the reason, by the same rule. Parent: "it edits code" is not a reason — a review finds something whenever it is
+  asked; what decides is whether it sees what the maker could not. Whoever decides, the lane runs the review itself; it is
+  yours after harvest only when the lane's harness has no review feature (the note at the top)>
 - Carrier · model: <e.g. Claude subagent · sonnet | agy | Codex --write>
 
 ## Ownership (writing lanes only — finding and measuring lanes get the goal and the criteria, not a fence)
@@ -38,7 +46,9 @@ harness's own review feature on the same tree, never one packet folder for every
 - Output or report file: <path>
 
 ## Materials · tools
-- Open these: <paths or URLs the lane can reach. Anything it cannot reach is copied into the work directory: <path>>
+- Open these: <paths or URLs the lane can reach. Anything it cannot reach is copied into the work directory: <path>. A
+  result that already exists and the lane would otherwise re-measure — the last full run's log, timings, a baseline — goes
+  here as a path with the tree it measured: a lane re-runs whatever it is not handed>
 - Tools you have: <shell · edit · probes — whatever the work needs to test its own claims. A lane without hands reports guesses as findings; what the fence blocks is state change outside ownership, never writing itself>
 - Work directory: <path> — it is the fence; nothing outside it changes
 - Skills to name (the lane gets its rulers only through this envelope): <norm-design when the lane edits norms, rules,
@@ -62,7 +72,9 @@ harness's own review feature on the same tree, never one packet folder for every
 
 - Commits you made: hash · subject, oldest first — the parent carries exactly these onto the main checkout. Anything left
   uncommitted: say what and why. "None — no isolated worktree" when rule ③ kept you from committing.
-- Your review, when the Task block says yes: one table, one row per finding — made by this change or pre-existing · severity ·
+- Review triage, whenever you edited code: which of the three questions decided, one line of reason for each question you
+  asked — a bare "reviewed" or "not needed" is not a report.
+- Your review, when triage or the Task block says review: one table, one row per finding — made by this change or pre-existing · severity ·
   real path · verdict (fixed in <hash>, or fixed — uncommitted | dropped — the threshold it missed | issue). The parent reads this table instead of
   your diff. A report sent while the review is still running, or without the table, is not a report.
 - Checks you added, if any: for each, which of the four keep-criteria of check-design §1 it meets. If you verified once without adding a check, say so, with the command and its result.

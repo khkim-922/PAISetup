@@ -711,7 +711,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 |---|---|
 | `drm-office-read` | 회사 DRM 이 감싼 오피스 · PDF 에서 글자를 뽑고, 페이지를 그림으로 떠서 표 · 배치를 본다 |
 | `inhouse-app` | 사내 시스템(LLM 게이트웨이 · SSO · 배포 · 회사 CA)에 붙는 코드라면 앱이든 짧은 스크립트든 들고, 거기서 막힌 문제도 푼다 — 회사 코딩 기준은 그 안의 장을 콕 집어 연다 |
-| `company-mail` · `company-calendar` · `company-ecm` · `company-meeting-room` · `company-regulation` · `company-board` | 사내 메일함 · 일정 · 문서함(ECM) · 회의실 예약 · 사규 · 게시판을 대화로 다룬다(사규는 찾고 읽기만 · 게시판 글은 임시저장까지 하고 등록은 사람이 화면에서) — 보내기 · 넣기 · 고치기 · 지우기는 그 한 건을 사람이 대화에서 확인한 뒤에만 한다 |
+| `company-mail` · `company-directory` · `company-calendar` · `company-ecm` · `company-meeting-room` · `company-regulation` · `company-board` | 사내 메일함 · 주소록 · 일정 · 문서함(ECM) · 회의실 예약 · 사규 · 게시판을 대화로 다룬다(주소록이 찾은 사람은 사람 파일로 다른 손에 그대로 넘어간다 · 사규는 찾고 읽기만 · 게시판 글은 임시저장까지 하고 등록은 사람이 화면에서) — 보내기 · 넣기 · 고치기 · 지우기는 그 한 건을 사람이 대화에서 확인한 뒤에만 한다 |
 | `ep-login` | 위 사내 앱 스킬이 빌려 쓰는 사내 세션을 받아 둔다 — 사람의 Edge 는 그대로 두고 따로 띄운 Edge 창에서 로그인한다 — 그 스킬들이 이 스킬의 세션 손을 불러 쓰므로 다 함께 깔린다 |
 | `daily-brief` · `mailbox-work` · `mailbox-scan` · `mailbox-tidy` | 메일 비서 — 사내 메일과 일정에서 지금 보실 것을 골라 보고 창으로 띄우고, 메일함만 보고 업무를 파악해 업무 파일에 적어 날마다 이어 고치고, 메일함을 사람 없이 정해진 주기로 읽어 쌓아 두고(메일함은 안 바꾼다), 정리가 필요해 보일 때 메일함을 한 안으로 정리하고 되돌린다 — 위 메일 · 일정 스킬을 불러 쓰므로 그 묶음과 함께 깔린다 |
 | `agent-envelope` | 다른 에이전트에게 일을 맡길 때 누구에게 맡길지 고르고 작업 지시서를 짓는 맡기기 스킬의 앞문이다 |
@@ -720,8 +720,9 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 | `claude-background` | Claude 에게 일을 맡긴다 |
 
 맡기기 스킬만 홈이 갈린다 — 일을 맡기는 쪽 홈에 깔리고, 받는 쪽 홈에는 안 간다. 받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을
-들기 때문이다. 그래서 Claude · Codex · 안티그래비티를 다 고르면 도구마다 나머지 둘에게 맡기는 스킬을 받는다. Copilot 은 맡기는
-쪽이기만 해서, 같이 고른 셋에게 다 맡기는 스킬을 받는다.
+들기 때문이다. 그래서 Claude · Codex · 안티그래비티를 다 고르면 도구마다 나머지 둘에게 맡기는 스킬을 받는다. Copilot 은 같이 고른
+셋에게 다 맡기는 스킬을 받는다 — `codex-copilot-background` 는 Codex 한도에서 Copilot 이 받기도 하지만, Copilot 이 부르면 그 스킬이
+Copilot 을 빼고 Codex 에게만 맡긴다.
 
 | 스킬 | Claude 홈 `~/.claude/skills/` | Codex 홈 `~/.agents/skills/` | agy 홈 `~/.gemini/config/skills/` | Copilot 홈 `~/.copilot/skills/` |
 |---|---|---|---|---|
@@ -755,7 +756,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 
 ### 안티그래비티를 고르면
 
-제품 칸에서 구글 Antigravity 를 고르면 사내든 사외든, Claude · Codex 를 안 골라도 일하는 도구 스킬과 훅 셋이 선다.
+제품 칸에서 구글 Antigravity 를 고르면 사내든 사외든, Claude · Codex 를 안 골라도 일하는 도구 스킬과 훅 셋, 리뷰 에이전트가 선다.
 
 사내 agy CLI 를 회사 키로 쓸 때도 같은 홈 설정을 읽는다.
 
@@ -763,6 +764,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 |---|---|
 | 스킬 — 위 표의 agy 홈 줄 | `~/.gemini/config/skills/` — agy 가 목록 없이 싣는 기본 스킬 자리이자, agy 가 스킬 본문을 열 수 있는 유일한 설정 폴더다 |
 | 훅 셋 | `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` · `paisetup-context-alert` 항목이다 |
+| 리뷰 에이전트 `change-review` | `~/.gemini/config/agents/change-review.md` — agy 가 제 고침을 이 이름으로 불러 리뷰받는다. 읽기만 하고, 그 고침이 만든 결함만 꼬리표 셋(이 고침이 만들었나 · 심각도 · 닿는 길)을 달아 낸다 |
 | Python | 훅 셋이 돌아서, 개발 도구를 빼도 깐다 |
 
 | agy 훅 | 하는 일 |
@@ -778,6 +780,9 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
   떠 둔다
 - 우리 항목을 `"enabled": false` 로 꺼 두면 다음 설치도 꺼진 채 둔다
 - 안티그래비티를 빼고 다시 누르면 이 세 항목만 걷는다(꺼 둔 것도)
+- 리뷰 에이전트는 놓는 프로그램이 놓고, 안티그래비티를 빼면 걷는다. 상류 두 저작물(OpenAI Codex 의 리뷰 기준 · Anthropic 공개
+  플러그인 `code-review`)의 글을 표시한 자리에 그대로 실어, 두 저작물의 라이선스(Apache 2.0) 전문과 NOTICE 를 설치 묶음의
+  `kit/agy-agents/` 에 함께 싣는다
 - 스킬 자리에는 사람이 둔 스킬도 같이 산다([기록과 비켜 두기](#깐-스킬의-기록과-비켜-두기)). 옛 판이 깐 자리 `~/.gemini/config/paisetup-skills/`
   와 그 자리를 여는 목록 `~/.gemini/config/skills.json` 은 놓는 프로그램이 걷는다 — 옛 기록에 든 이름의 폴더만
   `~/.paisetup/backups/<시각>/` 으로 옮기고(다 옮겨 비면 그 자리도), 목록은 우리가 깐 꼴일 때만 옮긴다. 옛 자리에 기록에 없는 것은

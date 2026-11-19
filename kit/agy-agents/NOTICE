@@ -1,0 +1,9 @@
+agy 리뷰 에이전트 change-review(agents/change-review.md)는 Apache License 2.0 저작물 둘의 글을 표시한 자리에 그대로 싣는다 —
+openai/codex(rust-v0.170.0)의 codex-rs/prompts/templates/review/rubric.md 와 anthropics/claude-plugins-official(df9699a5)의
+plugins/code-review/commands/code-review.md 다. 라이선스 전문은 곁의 LICENSE-2.0 이다.
+
+아래는 openai/codex 의 NOTICE(rust-v0.170.0)에서 이 글에 닿는 줄을 그대로 옮긴 것이다. 같은 파일의 Ratatui 줄은 그 저장소의
+화면 코드에 닿는 것이라 이 글에는 안 닿는다.
+
+OpenAI Codex
+Copyright 2025 OpenAI

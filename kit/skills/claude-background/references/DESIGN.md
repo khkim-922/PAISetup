@@ -37,13 +37,22 @@ dontAsk` · `--tools` · `--allowedTools`)과 결과를 가르는 법(`subtype` 
 
 **프롬프트는 표준 입력으로 넘긴다** — 명령줄 길이 한도와 따옴표 해석을 안 탄다. 프롬프트 파일은 UTF-8 로 옮겨(`decode_prompt`)
 넘긴다. npm 이 까는 실행 꼴(`.cmd` 셔틀)은 인자가 cmd.exe 를 거치므로, 셔틀이 부르는 것(꾸러미 `bin` 의 JS 나 실행 파일)을 바로
-부른다.
+부른다(`runner_common.npm_head` — Codex · Copilot 러너와 같은 손이다).
 
 맨 끝 줄 `[claude-bg] …` 의 칸과 종료 코드의 뜻은 `--help` 가 든다 — `FOOTER_FIELDS` · `EXIT` · `STATUS_WORDS` 에서 지어
 찍으니 여기에 다시 적지 않는다(`--help` 만 표준 출력에 찍고, 나머지 말은 `--out` 파일로 간다).
 **`--out` 을 받았으면 어느 갈래로 끝나든 답 파일과 끝 줄을 남긴다** — 인자가 틀렸어도, 러너가 멈췄어도 까닭을 적는다.
 **이어 묻기 값은 대화 기록이 실제로 남았을 때만 싣는다** — 받는 Claude 가 제 홈에 못 쓰는 자리(맡긴 쪽의 샌드박스)에서
 돌면 대화 id 는 나와도 기록이 없어 `--resume` 이 「No conversation found」로 진다(Codex 샌드박스 안이 그 자리다).
+
+## 루프백 프록시 앞에서
+
+요청이 루프백 프록시를 지나는 자리(`ANTHROPIC_BASE_URL` 이 `http://127.0.0.1:<포트>/…` · `localhost` · `[::1]` — 사내)에서는 받는
+Claude 의 요청 머리 칸(`ANTHROPIC_CUSTOM_HEADERS`)에 `x-agent-runner: claude-background` 를 덧붙인다(`child_env` · 있던 머리는
+둔다). 그 프록시는 쉬는 대화의 캐시를 데우는데, 이 머리가 선 대화는 레인처럼 도구 결과를 기다릴 때만 데운다 — 답하고 끝난
+러너의 대화에 사람이 안 보낸 읽기를 안 버린다. 5분 안의 이어 묻기는 그래도 캐시로 읽힌다. 프록시가 없는 자리에서는 머리를 안
+싣는다. 부른 쪽이 Claude 면 러너 셋이 함께 쓰는 부품(`runner_common.waiting_notice`)이 러너가 도는 동안 그 프록시에 부른 대화를
+알려, 부른 대화가 식지 않는다. 까닭과 버린 길은 결정 0262 가 든다.
 
 ## 홈 규범
 

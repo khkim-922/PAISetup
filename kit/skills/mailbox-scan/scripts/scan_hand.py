@@ -4,13 +4,14 @@
 출력은 UTF-8 로만 풀고 못 풀면 멈춘다 — 잘못 풀면 폴더 경로가 앞 판과 어긋나 거짓 옮김이 사람이 한 일로 선다.
 
     hand = find_hand(explicit)               # --hand · MAILBOX_SCAN_HAND · SECRETARY_SKILLS · 도구 홈 차례 — 없으면 HandMissing
-    has_since(hand)                          # 「list --since」가 있는 판인가(`list --help` 로 묻는다)
-    got = call(hand, ["folders"])            # Called(code, lines, said) — 손의 종료 값 그대로
+    has_since(hand) · has_serve(hand)        # 「list --since」 · 「serve」가 있는 판인가(`--help` 로 묻는다)
+    got = call(hand, ["folders"])            # Called(code, lines, said) — 손의 종료 값 그대로. 한 번 띄워 한 번 묻는다
+    served = Served(hand); served.ask(["folders"]) … served.close()   # 같은 Called — 손 하나를 띄워 두고 잇달아 묻는다(`serve`)
     parse_folders(got.lines) · parse_rules · parse_list(got.lines, box, folder) · parse_since(got.lines, folders)
     rule_folder(rule["text"])                # 그 규칙이 메일을 옮기는 폴더 — 폴더로 옮기지 않는 규칙이면 None
 
 꼴의 원본 — 손 `mail.py` 의 `cmd_folders` · `cmd_rules` · `rule_line` · `cmd_list` · `entry_line` · `who_sent` · `since_line` ·
-`list_since` 가 찍는 줄(6d3d1add 판). 손이 기계가 읽는 꼴(JSON)을 내면 이 파일이 걷힌다.
+`list_since` 가 찍는 줄(6d3d1add 판), 그리고 `serve` 의 답 꼴(`SERVE_HELP`). 손이 기계가 읽는 꼴(JSON)을 내면 이 파일이 걷힌다.
 """
 
 from __future__ import annotations
@@ -18,9 +19,11 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import queue
 import re
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -130,28 +133,144 @@ def _quiet() -> dict[str, Any]:
     return {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
 
+def _hand_env() -> dict[str, str]:
+    return {**os.environ, "PYTHONIOENCODING": "utf-8"}
+
+
+def _called(code: int, out: bytes, command: str) -> Called:
+    """손의 종료 값 · 표준 출력 → `Called`. 출력을 UTF-8 로 못 풀면 `ShapeError`."""
+    try:
+        text = out.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ShapeError(f"{command} — 손의 출력을 UTF-8 로 못 풀었다({exc.start}째 바이트)") from exc
+    lines = [x.rstrip("\r") for x in text.splitlines() if x.strip()]
+    return Called(code, lines, lines[-1] if lines and code != 0 else "", command)
+
+
+def _timed_out(timeout: float, command: str) -> Called:
+    return Called(1, [], f"회사 메일 손이 {timeout:.0f}초 안에 안 끝났다", command)
+
+
 def call(hand: pathlib.Path, args: list[str], timeout: float = HAND_TIMEOUT_S) -> Called:
     """손 한 번 — 종료 값 · 표준 출력의 줄 · 0 이 아닐 때의 까닭. 표준 오류(손의 경고)는 안 읽는다. 출력을 UTF-8 로 못 풀면 `ShapeError`.
     시한을 넘기면 손의 종료 1 과 같게 낸다(`said` 가 시한을 말한다)."""
     command = " ".join(a for a in args[:1])
     try:
         done = subprocess.run([sys.executable, "-X", "utf8", "-I", str(hand), *args], capture_output=True, timeout=timeout,
-                              env={**os.environ, "PYTHONIOENCODING": "utf-8"}, stdin=subprocess.DEVNULL, **_quiet())
+                              env=_hand_env(), stdin=subprocess.DEVNULL, **_quiet())
     except subprocess.TimeoutExpired:
-        return Called(1, [], f"회사 메일 손이 {timeout:.0f}초 안에 안 끝났다", command)
+        return _timed_out(timeout, command)
+    return _called(done.returncode, done.stdout, command)
+
+
+class Served:
+    """손 하나(`mail.py serve`)를 판 내내 띄워 두고 명령을 하나씩 묻는다 — 명령마다 파이썬을 새로 안 띄운다. 한 번 묻기(`ask`)의 꼴과
+    뜻은 `call` 과 같다(종료 값 · 줄 · 까닭 · 시한). 손이 답 없이 지거나 시한을 넘기면 그 손을 거두고 그 물음은 그 손의 종료 값으로
+    지며, 다음 물음은 새 손이 받는다 — 한 상자의 고장이 뒤 상자를 못 읽게 하지 않는다. 답의 꼴은 손 `mail.py` 의 `SERVE_HELP` 다."""
+
+    def __init__(self, hand: pathlib.Path):
+        self.hand = hand
+        self.proc: subprocess.Popen | None = None
+        self.answers: queue.Queue = queue.Queue()
+        self.asked = 0
+
+    def _start(self) -> None:
+        self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-I", str(self.hand), "serve"], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=_hand_env(), **_quiet())
+        self.answers = queue.Queue()
+        threading.Thread(target=_read_answers, args=(self.proc.stdout, self.answers), daemon=True).start()
+
+    def _drop(self) -> int:
+        """손을 거둔다 — 그 손의 종료 값(거둬서 끝났으면 그 값)."""
+        proc, self.proc = self.proc, None
+        if proc is None:
+            return 1
+        if proc.poll() is None:
+            proc.kill()
+        try:
+            return proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            return 1
+
+    def ask(self, args: list[str], timeout: float = HAND_TIMEOUT_S) -> Called:
+        command = " ".join(a for a in args[:1])
+        self.asked += 1
+        request = json.dumps({"id": self.asked, "argv": args}).encode("ascii") + b"\n"
+        for last in (False, True):
+            if self.proc is None or self.proc.poll() is not None:
+                self._drop()
+                self._start()
+            try:
+                self.proc.stdin.write(request)
+                self.proc.stdin.flush()
+                break
+            except OSError:               # 손이 앞 답 뒤에 졌다 — 이 물음은 아직 안 받았으니 새 손에 한 번 더
+                self._drop()
+                if last:
+                    return Called(1, [], "회사 메일 손을 띄웠는데 물음을 못 받았다", command)
+        try:
+            got = self.answers.get(timeout=timeout)
+        except queue.Empty:
+            self._drop()
+            return _timed_out(timeout, command)
+        if got is None:
+            code = self._drop()
+            return Called(code or 1, [], f"회사 메일 손이 답 없이 끝났다(종료 값 {code})", command)
+        if isinstance(got, bytes):        # 손이 답의 꼴 밖에서 말하고 끝났다(싣다가 졌다) — 따로 부른 손의 실패처럼 그 글과 종료 값으로
+            return _called(self._drop() or 1, got, command)
+        head, body = got
+        if head.get("id") != self.asked:
+            self._drop()
+            raise ShapeError(f"{command} — 손의 답이 물은 차례({self.asked})의 것이 아니다({head.get('id')!r})")
+        return _called(head["code"], body, command)
+
+    def close(self) -> None:
+        """표준 입력을 닫아 손이 스스로 끝나게 한다 — 안 끝나면 거둔다."""
+        proc, self.proc = self.proc, None
+        if proc is None:
+            return
+        try:
+            proc.stdin.close()
+            proc.wait(timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            proc.kill()
+            proc.wait(timeout=30)
+
+
+def _read_answers(out, answers: queue.Queue) -> None:
+    """손의 답을 하나씩 큐에 넣는다 — (머리, 몸) · 답 머리가 아닌 줄이 오면 그 줄부터 끝까지의 바이트 · 끝(답이 다 오기 전의 끝 포함)이면
+    None."""
     try:
-        text = done.stdout.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise ShapeError(f"{command} — 손의 출력을 UTF-8 로 못 풀었다({exc.start}째 바이트)") from exc
-    lines = [x.rstrip("\r") for x in text.splitlines() if x.strip()]
-    said = lines[-1] if lines and done.returncode != 0 else ""
-    return Called(done.returncode, lines, said, command)
+        while True:
+            line = out.readline()
+            if not line:
+                break
+            try:
+                head = json.loads(line)
+                size = head["bytes"]
+                if not isinstance(head.get("code"), int) or not isinstance(size, int) or size < 0:
+                    raise ValueError
+            except (ValueError, KeyError, TypeError):
+                answers.put(line + out.read())
+                return
+            body = out.read(size)
+            if len(body) != size:
+                break
+            answers.put((head, body))
+    except (OSError, ValueError):
+        pass
+    answers.put(None)
 
 
 def has_since(hand: pathlib.Path) -> bool:
     """「list --since」를 받는 판인가 — 손의 `list --help` 에 그 깃발이 서나로 묻는다(그 깃발이 없는 옛 판의 손이 깔린 PC 도 있다)."""
     got = call(hand, ["list", "--help"], timeout=60)
     return got.code == 0 and any(re.search(r"(?<![\w-])--since\b", x) for x in got.lines)
+
+
+def has_serve(hand: pathlib.Path) -> bool:
+    """명령 여럿을 한 프로세스로 받는 판인가(`serve`) — 없는 옛 판의 손이면 명령마다 `call` 로 부른다."""
+    return call(hand, ["serve", "--help"], timeout=60).code == 0
 
 
 def session_file(hand: pathlib.Path) -> pathlib.Path | None:

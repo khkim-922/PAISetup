@@ -1,6 +1,6 @@
 ---
 name: drm-office-read
-description: "Fasoo DRM 이 감싼 오피스·PDF 문서에서 글자를 뽑거나 페이지·슬라이드의 표, 그림, 배치를 확인할 때 부른다. 파서가 「Data format error」·「형식이 잘못됐다」로 죽는데 그 파일은 오피스로 멀쩡히 열리는 자리다. PDF·Word는 페이지 그림으로, 엑셀은 차트·그림 한 장씩으로 누락을 보완하고, 만든 덱(pptx)은 화면 캡처로 본다. 윈도 + 오피스 + 그 파일을 감싼 Fasoo 에이전트가 도는 PC(회사 PC)가 전제다."
+description: "Fasoo DRM 이 감싼 오피스 · PDF 파일에서 글자 · 표 · 그림을 뽑을 때 부른다 — 파서가 「Data format error」 · 「형식이 잘못됐다」로 죽는데 오피스로는 열리는 파일이 그 자리다. 만든 덱(pptx)을 화면 그림으로 볼 때도 여기다. 문서함(ECM)의 문서는 company-ecm 에서 연다. 회사 PC(오피스 + Fasoo 에이전트)가 전제다."
 ---
 
 # 감긴 파일은 파서가 아니라 앱이 연다

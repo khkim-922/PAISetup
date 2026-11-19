@@ -1,9 +1,9 @@
 """메일함 스캔 — 회사 메일 손을 명령으로 불러 메일함의 지금을 사용자 폴더에 쌓고, 그 스캔을 작업 스케줄러에 걸고 · 보고 · 끈다.
 
     python -X utf8 -I scan.py run [--full | --new] [--now] [--hand <mail.py>] [--full-every 분]
-    python -X utf8 -I scan.py register [--every 분] [--full-every 분] [--hand <mail.py>] [--brief-at [HH:MM] | --brief-off] [--claude <claude>]
-                                       [--dry-run | --validate]
-    python -X utf8 -I scan.py brief (--at [HH:MM] | --off) [--claude <claude>] [--dry-run]
+    python -X utf8 -I scan.py register [--every 분] [--full-every 분] [--hand <mail.py>] [--brief-at [HH:MM …] | --brief-off]
+                                       [--claude <claude>] [--brief-login | --brief-no-login] [--dry-run | --validate]
+    python -X utf8 -I scan.py brief (--at [HH:MM …] | --off) [--login | --no-login] [--claude <claude>] [--dry-run]
     python -X utf8 -I scan.py status [--dry-run]
     python -X utf8 -I scan.py unregister [--dry-run]
 
@@ -11,10 +11,12 @@ run — 한 판. 지금 모습이 없거나 `--full-every` 분이 지났으면 �
     견준 바뀜을 적고, 그 사이에는 「이 시각 뒤」 새 메일만 더한다. 손의 읽는 명령만 부른다 — 메일함 · 본문 · 모델에 안 닿는다
 register · status · unregister — 작업 스케줄러의 작업 하나(`scan_task.TASK_NAME`)를 걸고 · 보이고 · 지운다. `--dry-run` 은 보이기만,
     `--validate` 는 작업 스케줄러가 정의를 받나만 묻는다
-brief — 아침 보고의 시각과 띄울 claude 를 사용자 폴더에 남기거나(`--at`) 내린다(`--off`). 띄우는 판정은 `scan_brief.py` 가 든다
+brief — 정한 시각의 보고(보고 시각표 · 시각 하나 이상)와 띄울 claude 를 사용자 폴더에 남기거나(`--at`) 내린다(`--off`). 시각은 전부를
+    준다 — 준 시각들이 시각표를 바꾼다. 띄우는 판정은 `scan_brief.py` 가 든다. `--claude` 를 안 주면 걸려 있던 claude 를 그대로 쓴다.
+    스스로 로그인(`--login` · register 는 `--brief-login`)은 켠 PC 의 그날 첫 시각에서만 선다 — 안 주면 걸려 있던 값을 그대로 둔다
 
 남기는 것 — 사용자 폴더 `mailbox-scan/` 의 `state.json`(지금 모습) · `events.jsonl`(새 메일과 바뀜) · `runs.jsonl`(판마다의 값) ·
-`pending.json`(이어 볼 상자) · `brief*`(아침 보고). 왜 이 꼴인가는 `references/DESIGN.md` 가 든다.
+`pending.json`(이어 볼 상자) · `brief*`(정한 시각의 보고). 왜 이 꼴인가는 `references/DESIGN.md` 가 든다.
 
 종료 값 — 0 됐다(앞 판이 돌아 건너뛴 것도) · 1 멈췄다(세션 · 손 · 손의 글 꼴 · 다 못 봄 · 작업 스케줄러가 거절 — 다음 걸음을 끝 줄이
 말한다) · 2 인자가 틀렸다.
@@ -57,10 +59,12 @@ class HandFailed(Exception):
 
 
 class Run:
-    """한 판의 셈 — 손 부르기 · 받은 줄 · 시간의 상한."""
+    """한 판의 셈 — 손 부르기 · 받은 줄 · 시간의 상한. 손이 `serve` 를 받으면 판 내내 손 하나에 잇달아 묻고(`H.Served`), 옛 판의 손이면
+    명령마다 띄운다(`H.call`) — 어느 쪽이든 메일함에 가는 요청과 그 차례는 같다."""
 
-    def __init__(self, hand: pathlib.Path):
+    def __init__(self, hand: pathlib.Path, served: bool):
         self.hand_path = hand
+        self.served = H.Served(hand) if served else None
         self.calls = 0
         self.lines = 0
         self.began = time.monotonic()
@@ -70,11 +74,15 @@ class Run:
 
     def hand(self, args: list[str]) -> H.Called:
         self.calls += 1
-        got = H.call(self.hand_path, args)
+        got = self.served.ask(args) if self.served else H.call(self.hand_path, args)
         self.lines += len(got.lines)
         if got.code == C.HAND_EXIT_SESSION:
             raise SessionLost(got.said)
         return got
+
+    def close(self) -> None:
+        if self.served:
+            self.served.close()
 
     def seconds(self) -> float:
         return round(time.monotonic() - self.began, 1)
@@ -360,10 +368,11 @@ def _run(args, folder: pathlib.Path, at: datetime, lock: st.Lock, cleared: dict[
         return EXIT_STOPPED
     probe_key = {"path": str(hand), "mtime": hand.stat().st_mtime, "size": hand.stat().st_size}
     probe = state.get("probe") or {}
-    if {k: probe.get(k) for k in probe_key} != probe_key:
-        probe = {**probe_key, "since": H.has_since(hand)}
+    if {k: probe.get(k) for k in probe_key} != probe_key or "serve" not in probe:
+        since = H.has_since(hand)
+        probe = {**probe_key, "since": since, "serve": since and H.has_serve(hand)}   # list --since 없는 손은 판이 안 돈다
         state["probe"] = probe
-    run = Run(hand)
+    run = Run(hand, served=probe["serve"])
     if not probe["since"]:
         return finish(folder, lock, state, at, "-", HAND_OLD, [], {"note": f"회사 메일 손이 「list --since」 없는 옛 판이다: {hand}"},
                       run, notes)
@@ -372,7 +381,10 @@ def _run(args, folder: pathlib.Path, at: datetime, lock: st.Lock, cleared: dict[
             or (not args.new and at - last_full_try >= timedelta(minutes=args.full_every)))
     mode = FULL if full else NEW
     try:
-        outcome, events, info = run_full(run, state, folder, at) if full else run_new(run, state, at)
+        try:
+            outcome, events, info = run_full(run, state, folder, at) if full else run_new(run, state, at)
+        finally:
+            run.close()                  # 판을 맺기(보고 띄우기 포함) 전에 손을 거둔다
     except SessionLost as exc:
         mark_session_lost(state, at, str(exc))
         return finish(folder, lock, state, at, mode, SESSION, [], {"said": str(exc)}, run, notes)
@@ -402,8 +414,8 @@ def finish(folder: pathlib.Path, lock: st.Lock, state: dict[str, Any], at: datet
         return EXIT_STOPPED
     evidence = B.LIVE if outcome in (DONE, FIRST, PARTIAL) else B.LOST if outcome == SESSION else None
     brief = B.after_run(state, folder, evidence, run.hand_path if run else None, at)
-    if brief:
-        record["brief"] = state["brief"]["tries"][-1]["session"]
+    if brief and B.last_try(state):
+        record["brief"] = B.last_try(state)
     for e in events:
         e["run"] = record["started"]
     state["last_run"] = {k: record[k] for k in ("started", "ended", "mode", "outcome") if k in record}
@@ -469,29 +481,40 @@ def _show(cmd: list[str]) -> str:
     return " ".join(f'"{c}"' if " " in c else c for c in cmd)
 
 
-NO_CLAUDE = ("Claude Code 명령줄(claude)을 못 찾았다{where}. 아침 보고는 claude -p 로 띄운다 — VS Code 확장만 깐 PC 면 확장 폴더의 "
+NO_CLAUDE = ("Claude Code 명령줄(claude)을 못 찾았다{where}. 정한 시각의 보고는 claude -p 로 띄운다 — VS Code 확장만 깐 PC 면 확장 폴더의 "
              "resources/native-binary/claude.exe 를 --claude 로 준다")
 
 
-def brief_wanted(args) -> tuple[str | None, pathlib.Path | None, str]:
-    """`--brief-at` · `--claude` 를 받아 (보고 시각, claude, 거절의 말). 보고를 안 청했으면 (None, None, "")."""
+def brief_wanted(args, hand: pathlib.Path | None) -> tuple[list[str] | None, pathlib.Path | None, bool, str]:
+    """`--brief-at` · `--claude` · 스스로 로그인 선택을 받아 (보고 시각표, claude, 스스로 로그인, 거절의 말). 보고를 안 청했으면
+    (None, None, False, ""). 시각을 안 주면 기본 시각 하나다. claude 는 안 주면 걸려 있던 것(그 파일이 있으면), 없으면 PATH 에서 찾는다.
+    스스로 로그인은 안 주면 걸려 있던 값이고, 새로 켜는데 입구나 node 가 없으면 거절한다."""
     if args.brief_at is None:
-        return None, None, ""
-    at = B.clock(args.brief_at)
-    if at is None:
-        return None, None, f"보고 시각 {args.brief_at!r} 이 「HH:MM」 꼴이 아니다"
-    if B.too_late(at):
-        return None, None, B.too_late(at)
-    claude = B.find_claude(args.claude)
+        if args.brief_login is not None:
+            return None, None, False, "스스로 로그인은 보고 예약을 거는 선택이다 — 보고 시각과 함께 준다"
+        return None, None, False, ""
+    times, bad = B.times_given(args.brief_at or [C.BRIEF_AT_DEFAULT])
+    if bad:
+        return None, None, False, f"{bad}. {B.in_force(B.load(st.scan_dir())[0])}"
+    held, _ = B.load(st.scan_dir())
+    if B.no_room(times, set(times) - set(held["times"] if held else [])):
+        return None, None, False, f"{B.no_room(times, set(times) - set(held['times'] if held else []))}. {B.in_force(held)}"
+    kept = pathlib.Path(held["claude"]) if held and not args.claude and pathlib.Path(held["claude"]).is_file() else None
+    claude = kept or B.find_claude(args.claude)
     if claude is None:
-        return None, None, NO_CLAUDE.format(where=f"({args.claude})" if args.claude else "(PATH)")
-    return at, claude, ""
+        return None, None, False, NO_CLAUDE.format(where=f"({args.claude})" if args.claude else "(PATH)")
+    login = bool(held and held.get("login")) if args.brief_login is None else args.brief_login
+    if args.brief_login and B.login_command(hand) is None:
+        return None, None, False, "스스로 로그인을 켤 수 없다 — 로그인 입구(스킬 ep-login)나 node 를 못 찾았다. 다음: 그 선택 없이 건다"
+    return times, claude, login, ""
 
 
-def show_brief_plan(at: str, claude: pathlib.Path, hand: pathlib.Path | None) -> None:
-    """걸면 띄울 것 — 명령 · 열린 명령 · 막은 명령(`--dry-run`)."""
-    cmd, settings, _ = B.plan({"at": at, "claude": str(claude)}, hand, st.scan_dir())
-    print(f"[아침 보고 — {B.window_words(at)} 띄운다(로그인은 안 한다): {_show(cmd)} < {st.scan_dir() / C.BRIEF_PROMPT_FILE}]")
+def show_brief_plan(times: list[str], claude: pathlib.Path, hand: pathlib.Path | None, login: bool) -> None:
+    """걸면 띄울 것 — 명령 · 스스로 로그인의 명령 · 열린 명령 · 막은 명령(`--dry-run`)."""
+    cmd, settings, _ = B.plan({"times": times, "claude": str(claude)}, hand, st.scan_dir())
+    print(f"[보고 예약 — {B.window_words(times)} 띄운다({B.login_words(login)}): {_show(cmd)} < {st.scan_dir() / C.BRIEF_PROMPT_FILE}]")
+    if login:
+        print("  스스로 로그인: " + (_show(B.login_command(hand)) if B.login_command(hand) else "⚠ 로그인 입구나 node 를 못 찾았다 — 이대로는 안 선다"))
     print("  열린 명령: " + " | ".join(settings["permissions"]["allow"]))
     print("  막은 명령: " + " | ".join(settings["permissions"]["deny"]))
 
@@ -505,7 +528,7 @@ def cmd_register(args) -> int:
     if not H.has_since(hand):
         print(f"[예약 — 걸지 않았다: 회사 메일 손이 「list --since」 없는 옛 판이다({hand}). 다음: PAISetup 을 다시 깔아 손을 새 판으로 올린다]")
         return EXIT_STOPPED
-    brief_at, claude, refused = brief_wanted(args)
+    brief_at, claude, login, refused = brief_wanted(args, hand)
     if refused:
         print(f"[예약 — 걸지 않았다: {refused}]")
         return EXIT_STOPPED
@@ -517,9 +540,9 @@ def cmd_register(args) -> int:
         print(f"[예약 — 걸지 않고 보이기만 한다. 걸면 새 메일을 {args.every}분마다 · 메일함 전체를 {args.full_every}분마다 읽는다(앞 판이 돌면 "
               f"그 주기는 건너뛴다): {_show(T.register_command(path))}]")
         if brief_at:
-            show_brief_plan(brief_at, claude, hand)
+            show_brief_plan(brief_at, claude, hand, login)
         elif args.brief_off:
-            print("[아침 보고 — 걸면 보고 예약을 내린다]")
+            print("[보고 예약 — 걸면 보고 예약을 내린다]")
         print(xml)
         return EXIT_OK
     T.write_xml(path, xml)
@@ -537,10 +560,10 @@ def cmd_register(args) -> int:
         return EXIT_STOPPED
     print(f"[예약 — {T.TASK_NAME} 을 걸었다: {args.every}분마다 · 메일함 전체는 {args.full_every}분마다 · 앞 판이 돌면 그 주기는 건너뛴다]")
     if brief_at:
-        B.save(st.scan_dir(make=True), brief_at, claude)
-        print(f"[아침 보고 — {B.window_words(brief_at)} 일일 보고를 띄운다 · claude {claude}]")
+        B.save(st.scan_dir(make=True), brief_at, claude, login)
+        print(f"[보고 예약 — {B.window_words(brief_at)} 일일 보고를 띄운다 · {B.login_words(login)} · claude {claude}]{told()}")
     elif args.brief_off and B.clear(st.scan_dir()):
-        print("[아침 보고 — 내렸다]")
+        print(f"[보고 예약 — 내렸다]{told()}")
     return EXIT_OK
 
 
@@ -548,32 +571,43 @@ def cmd_brief(args) -> int:
     """보고 예약만 걸고 · 바꾸고 · 내린다 — 작업 스케줄러는 안 건드린다(스캔 판이 이 설정을 읽는다)."""
     if args.off:
         if args.dry_run:
-            print("[아침 보고 — 내리지 않고 보이기만 한다]")
+            print("[보고 예약 — 내리지 않고 보이기만 한다]")
             return EXIT_OK
-        print("[아침 보고 — 내렸다]" if B.clear(st.scan_dir()) else "[아침 보고 — 걸려 있지 않았다]")
+        print(f"[보고 예약 — 내렸다]{told()}" if B.clear(st.scan_dir()) else "[보고 예약 — 걸려 있지 않았다]")
         return EXIT_OK
-    brief_at, claude, refused = brief_wanted(args)
+    try:
+        hand = H.find_hand(None)
+    except H.HandMissing:
+        hand = None
+    brief_at, claude, login, refused = brief_wanted(args, hand)
     if refused:
-        print(f"[아침 보고 — 걸지 않았다: {refused}]")
+        print(f"[보고 예약 — 걸지 않았다: {refused}]")
         return EXIT_STOPPED
     if args.dry_run:
-        try:
-            hand = H.find_hand(None)
-        except H.HandMissing:
-            hand = None
-        show_brief_plan(brief_at, claude, hand)
+        show_brief_plan(brief_at, claude, hand, login)
         return EXIT_OK
-    B.save(st.scan_dir(make=True), brief_at, claude)
-    print(f"[아침 보고 — {B.window_words(brief_at)} 일일 보고를 띄운다 · claude {claude}. "
-          "스캔이 작업 스케줄러에 걸려 있어야 돈다(status 가 보인다)]")
+    B.save(st.scan_dir(make=True), brief_at, claude, login)
+    task = subprocess.run(T.query_command(), capture_output=True).returncode == 0
+    print(f"[보고 예약 — {B.window_words(brief_at)} 일일 보고를 띄운다 · {B.login_words(login)} · claude {claude}]{told()}")
+    if not task:
+        print(f"  ⚠ 메일함 스캔이 작업 스케줄러에 안 걸려 있어 이 보고는 안 뜬다 — 스캔 판이 보고를 띄운다. 다음: register --brief-at "
+              f"{' '.join(brief_at)} 로 스캔과 함께 건다")
     return EXIT_OK
 
 
+def told() -> str:
+    """대화에서 바꾼 것을 열린 보고 창에 알렸으면 그 한 구절."""
+    said = B.tell_window(st.scan_dir())
+    return f" · {said}" if said else ""
+
+
 def cmd_status(args) -> int:
+    task = None                     # 작업 스케줄러에 걸렸나 — 안 물었으면 None
     if args.dry_run:
         print(f"[예약 — 묻지 않고 보이기만 한다. 물으면: {_show(T.query_command())}]")
     else:
         done = subprocess.run(T.query_command(), capture_output=True)
+        task = done.returncode == 0
         if done.returncode != 0:
             print(f"[예약 — 걸린 작업이 없다(또는 못 읽었다): {(_decode(done.stdout) + _decode(done.stderr)).strip()[-300:]}]")
         else:
@@ -587,16 +621,16 @@ def cmd_status(args) -> int:
               f"{OUTCOME_WORDS.get(last.get('outcome'), last.get('outcome'))}")
     else:
         print("  스캔한 적이 없다 — 스캔 파일이 없다")
-    for line in B.describe(state, st.scan_dir(), st.now()):
+    for line in B.describe(state, st.scan_dir(), st.now(), task):
         print(line)
     return EXIT_OK
 
 
 def cmd_unregister(args) -> int:
     if args.dry_run:
-        print(f"[예약 — 끄지 않고 보이기만 한다. 끄면: {_show(T.delete_command())} · 아침 보고도 내린다]")
+        print(f"[예약 — 끄지 않고 보이기만 한다. 끄면: {_show(T.delete_command())} · 보고 예약도 내린다]")
         return EXIT_OK
-    brief = " · 아침 보고도 내렸다" if B.clear(st.scan_dir()) else ""     # 끄기를 청하셨으니 작업이 없어도 보고는 내린다
+    brief = " · 보고 예약도 내렸다" if B.clear(st.scan_dir()) else ""     # 끄기를 청하셨으니 작업이 없어도 보고는 내린다
     done = subprocess.run(T.delete_command(), capture_output=True)
     if done.returncode != 0:
         print(f"[예약 — 못 껐다(걸린 작업이 없을 수 있다){brief}: {(_decode(done.stdout) + _decode(done.stderr)).strip()[-300:]}]")
@@ -605,7 +639,19 @@ def cmd_unregister(args) -> int:
     return EXIT_OK
 
 
+BRIEF_AT_HELP = (f"보고 시각표 — 시각 하나 이상(서울 · 빈칸이나 쉼표로 · 안 주면 {C.BRIEF_AT_DEFAULT}). 시각마다 그 시각부터 다음 시각까지(길어야 "
+                 f"{C.BRIEF_WAIT_MIN}분 · 그날 자정까지) 사내 세션이 서는 첫 판에 일일 보고를 한 번 띄운다. 시각마다 {C.BRIEF_ROOM_MIN}분 넘게 띄어야 걸린다")
 FULL_EVERY_HELP = f"메일함 전체를 다시 보는 주기(분 · 기본 {C.FULL_EVERY_MIN} · 다 못 본 판을 잇는 기한 {C.PENDING_MAX_MIN}분보다 짧게)"
+
+
+def login_flags(p: argparse.ArgumentParser, on: str, off: str) -> None:
+    """스스로 로그인을 켜고 끄는 선택 한 쌍 — 둘 다 안 주면 걸려 있던 값을 그대로 둔다(`brief_login` 이 None)."""
+    pair = p.add_mutually_exclusive_group()
+    pair.add_argument(on, dest="brief_login", action="store_const", const=True, default=None,
+                      help="그날 첫 보고 시각의 보고 앞에 한 번 스스로 로그인한다(사내 세션이 살아 있어도 · 뒤 시각은 안 한다) — 입력 없이 넘는 통합 인증으로만(VDI 는 안 선다). "
+                           "평소 Edge 에 로그인 탭이 하나 열리고 ep-login 창이 떠 있게 되며, 평소 Edge · 다른 자리에서 열어 둔 메일과 EP "
+                           "포털은 다시 로그인해야 할 수 있다")
+    pair.add_argument(off, dest="brief_login", action="store_const", const=False, help="스스로 로그인을 끈다 — 사내 세션이 설 때까지 기다린다")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -626,21 +672,20 @@ def parser() -> argparse.ArgumentParser:
     how.add_argument("--dry-run", action="store_true", help="걸지 않고 정의와 명령만 보인다")
     how.add_argument("--validate", action="store_true", help="작업 스케줄러가 정의를 받나만 묻는다(등록 안 함)")
     wake = g.add_mutually_exclusive_group()
-    wake.add_argument("--brief-at", nargs="?", const=C.BRIEF_AT_DEFAULT, metavar="HH:MM",
-                      help=f"아침 보고도 건다 — 날마다 그 시각(서울 · 기본 {C.BRIEF_AT_DEFAULT})부터 마감({C.BRIEF_UNTIL})까지 사내 세션이 서는 "
-                           "첫 판에 일일 보고를 띄운다")
-    wake.add_argument("--brief-off", action="store_true", help="아침 보고를 내린다")
+    wake.add_argument("--brief-at", nargs="*", metavar="HH:MM", help=BRIEF_AT_HELP)
+    wake.add_argument("--brief-off", action="store_true", help="보고 예약을 내린다")
+    login_flags(g, "--brief-login", "--brief-no-login")
     g.add_argument("--claude", help="띄울 claude 의 자리 — 없으면 PATH 에서 찾는다")
-    b = sub.add_parser("brief", help="아침 보고만 걸고 · 바꾸고 · 내린다(작업 스케줄러는 안 건드린다)")
+    b = sub.add_parser("brief", help="보고 예약만 걸고 · 바꾸고 · 내린다(작업 스케줄러는 안 건드린다)")
     which = b.add_mutually_exclusive_group(required=True)
-    which.add_argument("--at", dest="brief_at", nargs="?", const=C.BRIEF_AT_DEFAULT, metavar="HH:MM",
-                       help=f"그 시각(서울 · 기본 {C.BRIEF_AT_DEFAULT})부터 마감({C.BRIEF_UNTIL})까지 사내 세션이 서는 첫 판에 띄운다")
+    which.add_argument("--at", dest="brief_at", nargs="*", metavar="HH:MM", help=BRIEF_AT_HELP)
     which.add_argument("--off", action="store_true", help="내린다")
+    login_flags(b, "--login", "--no-login")
     b.add_argument("--claude", help="띄울 claude 의 자리 — 없으면 PATH 에서 찾는다")
     b.add_argument("--dry-run", action="store_true", help="걸지 않고 띄울 명령 · 열린 명령 · 막은 명령만 보인다")
-    s = sub.add_parser("status", help="걸린 작업 · 마지막 판 · 아침 보고")
+    s = sub.add_parser("status", help="걸린 작업 · 마지막 판 · 보고 예약")
     s.add_argument("--dry-run", action="store_true", help="작업 스케줄러에 묻지 않는다(사용자 폴더의 것만 보인다)")
-    u = sub.add_parser("unregister", help="작업을 지우고 아침 보고를 내린다(쌓인 스캔 파일은 그대로)")
+    u = sub.add_parser("unregister", help="작업을 지우고 보고 예약을 내린다(쌓인 스캔 파일은 그대로)")
     u.add_argument("--dry-run", action="store_true")
     return ap
 

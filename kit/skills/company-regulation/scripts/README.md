@@ -17,6 +17,8 @@
 python -X utf8 -I regulation.py find 출장      # 회사 PC — 받아 둔 목록이 없으면 먼저 받는다
 python -X utf8 -I regulation.py find 출장 --in 전사공통 --days 90   # 말 × 범주 × 기간 한 부름
 python -X utf8 -I regulation.py read <processIdx> --max 2000
+python -X utf8 -I regulation.py read <processIdx> --history        # 개정이력 — 지난 판은 --rev <판>
+python -X utf8 -I regulation.py search --used                     # 내가 사규 화면에서 최근 연 문서
 python -X utf8 -I _check/skills/company-regulation/check_regulation.py           # 어느 PC 에서나 — 앱 없이 본문 풀기 · 답의 크기 · recent 의 목록 나이를 잰다
 ```
 

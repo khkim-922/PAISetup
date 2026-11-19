@@ -36,7 +36,7 @@ PC 를 반납하거나 부서를 옮기거나 회사 게이트웨이를 떠나 �
 | 설치 창에서 | 걷히는 것 |
 |---|---|
 | Claude 를 뺀다 | 홈 설정의 Claude 훅 등록을 놓는 프로그램이 걷는다 |
-| 안티그래비티를 뺀다 | `~/.gemini/config/hooks.json` 의 우리 항목 셋을 걷는다(꺼 둔 것도) |
+| 안티그래비티를 뺀다 | `~/.gemini/config/hooks.json` 의 우리 항목 셋을 걷는다(꺼 둔 것도). 리뷰 에이전트 `~/.gemini/config/agents/change-review.md` 는 놓는 프로그램이 걷는다 |
 | Codex 를 뺀다 | `~/.codex/config.toml` 의 우리 훅을 걷는다 — 파이썬 3.11 이상이 있을 때만이고, 없으면 노란 줄로 알리고 남긴다 |
 | Copilot 을 뺀다(사외) | `~/.copilot/settings.json` 의 우리 훅 항목을 걷고, 사용자 환경변수 `SKILL_CHAR_BUDGET` 은 설치가 심은 값 그대로일 때만 걷는다 |
 | 그 도구를 뺀다 | 칸을 끈 그 도구 홈에 칸 없이 깐 스킬(기록에 든 이름 — 그 홈의 백업 자리로 옮긴다)과, 자동 승인 값 가운데 설치가 심은 그대로인 것을 걷는다 |
@@ -155,6 +155,12 @@ Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false
 
 손으로는 `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` · `paisetup-context-alert` 항목을 지운다. 다른
 항목은 사람이 넣은 것일 수 있으니 두고, 고치기 전 것은 곁의 `hooks.json.before-paisetup-*` 에 있다.
+
+### 안티그래비티의 리뷰 에이전트
+
+설치 창에서 안티그래비티를 빼고 한 번 더 누르면 놓는 프로그램이 걷는다.
+
+손으로는 `~/.gemini/config/agents/change-review.md` 를 지운다. 같은 폴더의 다른 에이전트는 사람이 둔 것이니 둔다.
 
 ### Copilot 의 훅과 스킬 설명 한도
 

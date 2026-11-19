@@ -74,26 +74,49 @@ SEOUL_OFFSET_H = 9       # 메일함의 시각(`xdate`)은 서울 시각이다(�
 MAIL_DATE = "%Y-%m-%d %H:%M:%S"   # 손이 받은편지함 · 보낸편지함 줄에 찍는 메일의 때 꼴(초까지) — 쌓을 때의 꼴도 이것이다
 MAIL_DATE_MINUTE = "%Y-%m-%d %H:%M"   # 손이 폴더 줄에 찍는 꼴(분까지) — 쌓을 때 「:00」 을 붙여 위 꼴로 맞춘다
 
-# ── 아침 보고 — 스캔 판이 정한 때 뒤에 일일 보고를 사람 없이 한 번 띄운다 ──────────────
-BRIEF_FILE = "brief.json"                # 보고를 걸었나 · 몇 시 · 띄울 claude — `register --brief-at` · `brief --at` 이 쓰고 판이 읽는다
+# ── 정한 시각의 보고 — 스캔 판이 보고 시각표의 시각마다 일일 보고를 사람 없이 한 번씩 띄운다 ──────────────
+BRIEF_FILE = "brief.json"                # 보고를 걸었나 · 보고 시각표 · 띄울 claude — `register --brief-at` · `brief --at` 이 쓰고 판이 읽는다
 BRIEF_LOCK_FILE = "brief.lock"           # 스캔이 띄운 보고 하나 — 띄운 때를 적고, 그 때로 푼다(`BRIEF_LOCK_STALE_S`)
 BRIEF_SETTINGS_FILE = "brief-settings.json"   # 띄울 때마다 짓는 claude 의 권한(열린 명령 · 막은 명령) — `claude --settings` 로 준다
 BRIEF_PROMPT_FILE = "brief-prompt.txt"   # 띄울 때마다 짓는 부탁 글 — claude 의 표준 입력으로 준다(명령줄에 한글 · 따옴표를 안 싣는다)
 BRIEF_LOG_FILE = "brief-run.log"         # 마지막으로 띄운 보고의 출력 — 띄울 때마다 새로 쓴다
-BRIEF_FORMAT = 1                         # brief.json 의 꼴 번호
-BRIEF_AT_DEFAULT = "07:30"               # 보고 시각의 기본(서울) — 사용자가 `--brief-at` 으로 바꾼다
-BRIEF_UNTIL = "12:00"                    # 보고를 기다리는 마감(서울) — 보고 시각부터 이때까지 사내 세션이 서는 첫 판에 띄우고, 지나면 그날은
-                                         # 그만둔다. ⚠ 임시값 — 사용자가 다른 때를 주시면 고친다. 보고 시각은 이보다 앞서야 걸린다
-BRIEF_UNTIL_ENV = "MAILBOX_SCAN_BRIEF_UNTIL"   # 검사가 마감을 바꿀 때만 준다 — 하루 어느 때에 돌아도 같은 판을 재게
+BRIEF_FORMAT = 2                         # brief.json 의 꼴 번호 — 2 는 시각표(`times`). 1(시각 하나 `at`)도 읽는다 — 그 꼴로 걸어 둔 PC 가 다시 안 걸어도 돈다
+BRIEF_FORMATS_READ = (1, 2)
+BRIEF_AT_DEFAULT = "07:30"               # 보고 시각표의 기본(서울) — 시각 하나. 사용자가 `--brief-at` 으로 바꾸고 더한다
+BRIEF_WAIT_MIN = 270                     # 시각 하나가 사내 세션을 기다리는 가장 긴 틈(분) — 그 시각부터 다음 시각까지, 다음 시각이 더 멀면 이만큼까지
+                                         # 띄우고 그 뒤 그 시각은 건너뛴다. 기본 07:30 이 12:00 까지 기다리던 것과 같은 값이다 — 아침 보고가 오후에
+                                         # 서지 않고, 사내 인증을 하루 내내 두드리지 않는다. 어느 시각도 그날(서울 자정)을 넘겨 기다리지 않는다
+BRIEF_ROOM_MIN = 30                      # 시각마다 있어야 할 가장 짧은 틈(분) — 이보다 짧으면 거는 명령이 거절한다. 스캔은 기본 15분마다 깨어, 틈이
+                                         # 이보다 짧으면 그 시각에 판이 하나도 안 돌아 날마다 조용히 안 뜬다
+BRIEF_UNTIL_ENV = "MAILBOX_SCAN_BRIEF_UNTIL"   # 검사가 기다림의 끝을 서울 시각 하나로 바꿀 때만 준다(`BRIEF_WAIT_MIN` 대신) — 하루 어느 때에 돌아도
+                                               # 같은 판을 재게
 BRIEF_TRY_GAP_MIN = 5                    # 판이 답을 안 준 주기에 손의 session 으로 살펴보는 사이의 가장 짧은 틈(분) — 작업이 더 자주 깨워도 이보다
                                          # 촘촘히 안 묻는다. 분 단위로 잰다: 작업은 정각 분에 깨우고 프로세스가 뜨는 데 몇십 초가 들어, 초까지 재면
                                          # 5분마다의 판이 한 판씩 건너뛴다
+# 스스로 로그인 — 사용자가 켠 PC 에서만, 그날 첫 시각의 보고 앞에 형제 스킬 ep-login 의 입구를 사람 없는 꼴로 하루 한 번 부른다. 뒤 시각은
+# 살아 있는 세션에서만 띄운다 — 낮의 사람 없는 로그인은 사람이 일하던 EP 세션을 끊을 수 있다
+LOGIN_ENTRANCE = ("scripts", "ep_login.js")   # 그 스킬의 입구 — 받아 보고, 안 서면 평소 Edge 에서 먼저 · 이어 제 창을 띄워 통합 인증으로
+                                              # 세운다(명령으로만 부른다)
+LOGIN_ENTRANCE_ENV = "EP_LOGIN_ENTRANCE"  # 검사가 입구를 대역으로 바꿀 때만 준다
+LOGIN_ARGS = ("domino", "--unattended")   # 메일 · 일정의 세션만 · 사람이 쳐야 하는 자리(VDI · 통합 인증이 안 선 화면)에서는 입구가 기다리지 않고 4 다
+LOGIN_NODE = "node"                       # 입구를 돌릴 node — PATH 에서 찾는다(회사 메일 손이 세션 손을 돌리는 것과 같은 node)
+LOGIN_TIMEOUT_S = 240                     # 입구 한 번의 시한 — 입구가 사람 없는 부름의 두 걸음(평소 Edge · ep-login 창)에 저마다 쓰는 시한(1분씩)과
+                                          # 창 · 포트가 서는 틈보다 넉넉히. 넘기면 입구가 끝말 없이 끊겨 status 가 까닭을 못 댄다
+LOGIN_SAID_CHARS = 200                    # status 가 옮겨 보이는 입구의 끝말 글자 수
 BRIEF_LOCK_STALE_S = 60 * 60             # 띄운 보고가 이보다 오래 안 끝났으면 멈춘 것으로 본다(회사에서 한 판의 값을 재기 전의 기본값)
 BRIEF_MADE = "brief-{date}-*.md"         # 그날 보고 글 — 사용자 폴더에 일일 보고의 손이 남긴다(원본은 스킬 daily-brief 의 scripts/window.py
                                          # `FILE_NAME` — 이름은 지은 때의 PC 시계다. 회사 PC 는 서울 시계라 서울 날짜로 찾는다)
 BRIEF_SKILL = "daily-brief"              # 이 스킬과 같은 스킬 뿌리에 나란히 선다
 BRIEF_WINDOW = ("scripts", "window.py")  # 보고 창을 짓고 띄우는 손 — 사람 없는 실행도 창을 띄워 둔다
-BRIEF_TICKS = ("scripts", "ticks.py")    # 보고 창의 「끝났음」 표시를 지난 보고 글에 거두는 손 — 업무 파악보다 먼저 돈다
+BRIEF_TICKS = ("scripts", "ticks.py")    # 보고 창에서 누르신 것을 거두는 손 — 띄운 보고가 업무 파악보다 먼저 부르고, 판은 그 창에서 고르신
+                                         # 보고 시각만 묻는다(`--times` · 열린 창이 없으면 아무것도 안 연다)
+BRIEF_TIMES_TIMEOUT_S = 20               # 판이 보고 창의 시각을 묻는 손 한 번의 시한 — 그 손은 이 PC 의 디버깅 포트만 짧게 부른다
+# 그 손을 띄우기 전에 로그인 Edge 의 디버깅 포트가 받나만 본다 — 이름과 기본값의 원본은 스킬 daily-brief 의 `window.py`(EDGE_HOST ·
+# EDGE_PORT_DEFAULT · 환경변수 EDGE_DEBUG_PORT · 쉼표로 여럿이면 첫 것). 서로의 코드를 안 실어 옮겨 든다 — 바꾸면 함께 바꾼다
+EDGE_HOST = "127.0.0.1"
+EDGE_PORT_ENV = "EDGE_DEBUG_PORT"
+EDGE_PORT_DEFAULT = 9222
+EDGE_PROBE_S = 0.5
 CALENDAR_SKILL = "company-calendar"      # 회사 메일 손과 같은 스킬 뿌리에 나란히 선다
 CALENDAR_SCRIPT = ("scripts", "company_calendar.py")
 CLAUDE_NAMES = ("claude.exe", "claude")  # PATH 에서 찾는 차례 — 네이티브 판이 먼저, 없으면 npm 판의 claude.cmd(PATHEXT 가 붙인다)
@@ -118,7 +141,7 @@ BRIEF_DENY = ("Bash(*mail.py* draft *)", "Bash(*mail.py*send-draft*)", "Bash(*ma
               "Bash(*mail.py*preview-*)", "Bash(*mail.py*attachment*)", "Bash(*mail.py*--out*)",
               "Bash(*mail.py*--images*)",
               "Bash(*company_calendar.py*add*)", "Bash(*company_calendar.py*delete*)", "Bash(*company_calendar.py*preview*)",
-              "Bash(*company_calendar.py*remember*)",
+              "Bash(*company_calendar.py*edit*)", "Bash(*company_calendar.py*remember*)",
               "Bash(*ep-login/scripts*)", "Bash(*edge_session.js*)", "Bash(*ep_login.js*)", "Bash(*company-ecm/scripts*)",
               "Bash(gh *)", "Bash(git *)", "Bash(curl *)", "Bash(wget *)", "Bash(node *)", "Bash(npx *)", "Bash(powershell*)",
               "Bash(pwsh*)", "Bash(cmd*)", "Bash(claude*)", "Bash(schtasks*)", "mcp__*")

@@ -1,12 +1,13 @@
 """사내 게시판(Posco Family Groupware · XClick U14)의 손 — EP 세션으로 게시판에 들어가, 게시판 나무 · 글 목록 · 찾기 · 글 한 건 ·
-첨부 목록 · 첨부 받기 · 임시보관함 목록을 읽는다. 게시판에 쓰지 않는다 — 글을 짓는 일은 곁의 ``draft_board.js`` 가 화면에서 한다.
+첨부 목록 · 첨부 받기 · 임시보관함 목록 · 글의 의견 · 열람내역 · 게시판 옵션 · 쓰기 창의 폼(임시글 · 재활용)을 읽는다. 게시판에 쓰지 않는다 — 글을 짓는 일은 곁의 ``draft_board.js`` 가 화면에서 한다.
 
 부르는 꼴::
 
     import xclick
     app = xclick.App(<세션 파일>)                 # 스킬 ep-login 의 받는 손이 남긴 사내 세션(쿠키) 파일
     app.tree(write=False) · app.articles(bbs_id, …) · app.article(bbs_id, article_id) · app.files(article_id)
-    app.download(file_id) · app.drafts()
+    app.download(file_id) · app.drafts() · app.readers(bbs_id, article_id) · app.options(bbs_id)
+    app.draft_form(bbs_id, draft_id) · app.copy_form(bbs_id, article_id) · article_link(bbs_id, article_id)
 
 내는 것 — 화면의 HTML 을 푼 dict · list. 예외 — ``SessionExpired``(사내 세션이 끊겼다 · 게시판이 안 들였다) · ``SessionMissing``
 (세션 파일이 없다) · ``NotFound``(받은 id 로 글이 안 열렸다) · ``AppError``(게시판이 거절했다 · 답이 잰 꼴이 아니다).
@@ -49,6 +50,14 @@ UA = "Mozilla/5.0"
 LOGGED_OUT = "openMiniLoginPop"    # 끊긴 세션이 내는 한 줄의 낱말
 CONDITION = "//condition-searchCondition-"   # 찾기 칸의 이름 머리 — 뒤에 title · contents · writer · filename
 CONDITION_SEP = "\x0c"             # 여러 칸을 잇는 글자(화면의 "\14")
+WRITE_PARAMS = json.loads((pathlib.Path(__file__).resolve().parent / "write_params.json").read_text(encoding="utf-8"))   # 짓는 손과 한 벌
+
+
+def write_params(kind: str, board: str, article_id: str = "") -> dict:
+    """writeArticle 의 칸(곁의 write_params.json — 짓는 손이 창을 열 때와 같은 한 벌)."""
+    return {k: str(v).replace("{board}", board).replace("{id}", article_id) for k, v in WRITE_PARAMS[kind].items() if k != "_"}
+
+
 EARLIEST = "1990-01-01"            # 기간을 안 주면 이날부터 — 화면의 기본(6 개월)보다 넓게 찾는다
 
 
@@ -125,6 +134,62 @@ WRAPPER = re.compile(r"\s*<table[^>]*table-layout:\s*auto[^>]*>\s*<tr[^>]*>\s*(?
                      r"</td>\s*</tr>\s*</table>\s*", re.S | re.I)
 
 
+COMMENT_COUNT = re.compile(r"<font style='color:#f26522'>\[(\d+)\]</font>")   # 목록 줄 제목 끝의 의견 수
+ROW_KEY = re.compile(r'"(articleId|bbsId)":"([^"]*)"')
+ROW_TITLE = re.compile(r"<a id='list[^']*'[^>]*>\s*<font[^>]*>(.*?)</font>\s*</a>", re.S)
+COMMENT_LINE = re.compile(r'<table[^>]*class="c_line"[^>]*>(.*?)</table>\s*<div style="display:none;" id="_refCommentDiv', re.S)
+COMMENT_WHO = re.compile(r'<span class="c_name">(.*?)</span>', re.S)
+COMMENT_AT = re.compile(r'<span[^>]*class="c_date">\s*([\d-]+ [\d:]+)\s*</span>')
+COMMENT_TEXT = re.compile(r'<td class="c_text"[^>]*>(.*?)</td>', re.S)
+COMMENT_TAG = re.compile(r'img/tag_\w+\.png" title="([^"]*)"')
+COMMENT_TOTAL = re.compile(r"의견\((\d+)\s*건\)")
+READER_ROW = re.compile(r'<tr class="table_m\d">\s*(.*?)</tr>', re.S)
+TD = re.compile(r"<td[^>]*>(.*?)</td>", re.S)
+LINK_SSO = "http://swpsso.posco.net/idms/U61/jsp/redirectSMSP.jsp?redir_url="   # 화면 「URL복사」 의 시스템 값 ssoURL(xclick-cef //articleURL)
+LINK_ARTICLE = ROOT + "/dispatcherSubmitSSO.jsp?"                               # 같은 자리의 articleURL
+
+
+def row_key(raw: str) -> dict:
+    """목록 줄 고름 칸의 JSON — 상세검색 꼴은 제목의 큰따옴표를 안 감싸 JSON 이 깨진다. 그때는 id 둘만 꼴로 집는다(제목은 링크 글자에서)."""
+    text = html.unescape(raw)
+    try:
+        return json.loads(text)
+    except ValueError:
+        return dict(ROW_KEY.findall(text))
+
+
+def article_link(bbs_id: str, article_id: str) -> str:
+    """글 화면 「URL복사」 와 같은 바로가기 — ssoURL + encodeURIComponent(articleURL + menu · bbsid · articleid)."""
+    target = f"{LINK_ARTICLE}menu=BBS_ALL&bbsid={bbs_id}&articleid={article_id}"
+    return LINK_SSO + urllib.parse.quote(target, safe="-_.!~*'()")
+
+
+def parse_comments(page: str) -> dict:
+    """글 화면의 의견 칸 → {total, rows}. 줄마다 who(이름과 직함 · 부서 — 화면 글자 그대로) · at · text · kind(기타 · 질문 …) ·
+    reply(남의 의견에 단 답글). 화면이 한 번에 다 싣는다 — 쪽이 없다."""
+    total = COMMENT_TOTAL.search(page)
+    rows = []
+    for block in COMMENT_LINE.findall(page):
+        who, at, body = COMMENT_WHO.search(block), COMMENT_AT.search(block), COMMENT_TEXT.search(block)
+        kind = COMMENT_TAG.search(block)
+        text = body.group(1).replace("<br>", "\n") if body else ""
+        rows.append({"who": text_of(who.group(1)) if who else "", "at": at.group(1) if at else "",
+                     "text": "\n".join(text_of(x) for x in text.split("\n")).strip(),
+                     **({"kind": kind.group(1)} if kind else {}), **({"reply": True} if "icon_reply" in block else {})})
+    return {"total": int(total.group(1)) if total else len(rows), "rows": rows}
+
+
+def parse_readers(page: str) -> dict:
+    """열람내역 창 → {total, rows}. 줄마다 at · name · dept · title(직함). 사번 칸은 싣지 않는다."""
+    rows = []
+    for block in READER_ROW.findall(page):
+        cells = [text_of(c) for c in TD.findall(block)]
+        if len(cells) >= 5 and cells[0].isdigit():
+            rows.append({"at": cells[1], "name": cells[2], "dept": cells[3], "title": cells[4]})
+    total = TOTAL.search(text_of(page))
+    return {"total": int(total.group(1).replace(",", "")) if total else len(rows), "rows": rows}
+
+
 def parse_rows(page: str) -> dict:
     """글 목록 화면 → {total, rows}. 줄마다 board(게시판 id) · id · title · board_name · writer · date · views · notice · files.
 
@@ -136,19 +201,39 @@ def parse_rows(page: str) -> dict:
         chk = CHK.search(block)
         if not chk:
             continue
-        key = json.loads(html.unescape(chk.group(1)))
+        key = row_key(chk.group(1))
         writer = WRITER_TAG.search(block)
         posted = DATE_CELL.search(block)
         views = VIEWS_LINK.search(block)
+        said = COMMENT_COUNT.search(block)
+        shown = ROW_TITLE.search(block)
+        title = html.unescape(key["title"]) if "title" in key else (text_of(COMMENT_COUNT.sub("", shown.group(1))) if shown else "")
         rows.append({
             "board": key.get("bbsId", ""), "id": key.get("articleId", ""),
-            "title": html.unescape(key.get("title", "")),
+            "title": title, "comments": int(said.group(1)) if said else 0,
             "writer": text_of(writer.group(1)) if writer else "",
             "date": posted.group(1) if posted else "", "views": int(views.group(1)) if views else None,
             "notice": "icon_notice" in block, "files": "viewArticleAttachFile" in block,
         })
     total = TOTAL.search(text_of(page))
-    return {"total": int(total.group(1).replace(",", "")) if total else len(rows), "rows": rows}
+    # 「총 N 건」 은 찾은 줄이 하나도 없으면 화면에 안 선다 — 그때 남는 줄은 낱말과 상관없이 오는 고정 공지뿐이라 센 수는 0 이다
+    return {"total": int(total.group(1).replace(",", "")) if total else sum(not r["notice"] for r in rows), "rows": rows}
+
+
+def form_value(page: str, name: str) -> str:
+    """쓰기 창 폼의 ``<input id=name …>`` 값 — 칸의 속성 차례는 칸마다 다르다(제목 칸은 value 앞에 objtitle 이 선다)."""
+    tag = re.search(rf'<input\b[^>]*\bid="{name}"[^>]*>', page)
+    got = re.search(r'\bvalue="([^"]*)"', tag.group(0)) if tag else None
+    return html.unescape(got.group(1)) if got else ""
+
+
+def parse_write_form(page: str) -> dict:
+    """쓰기 · 편집 창 폼 → {article_id, org_id, copy, title, html(숨은 content 칸의 저장된 본문 전문), end_date, notify_date, status, board}."""
+    body = re.search(r'<textarea id="content" name="content"[^>]*>(.*?)</textarea>', page, re.S)
+    return {"article_id": form_value(page, "articleId"), "org_id": form_value(page, "orgArticleId"), "copy": form_value(page, "articleCopyYn"),
+            "title": form_value(page, "title"), "html": html.unescape(body.group(1)) if body else "",
+            "end_date": form_value(page, "endDate"), "notify_date": form_value(page, "notifyDate"), "status": form_value(page, "status"),
+            "board": form_value(page, "bbsId")}
 
 
 def parse_tree(page: str) -> list:
@@ -172,7 +257,7 @@ def parse_article(page: str) -> dict:
         raise NotFound("글 화면에 본문 칸이 없다 — 게시판 id 와 글 id 가 맞는지 본다(목록 줄의 id 를 그대로 쓴다)")
     pick = lambda rx: text_of(rx.search(page).group(1)).lstrip(": ").strip() if rx.search(page) else ""   # noqa: E731
     return {"title": pick(SUBJECT), "writer": pick(WRITER), "posted": STAMP.search(page).group(1) if STAMP.search(page) else "",
-            "period": pick(PERIOD), "html": unwrap(body.group(1))}
+            "period": pick(PERIOD), "html": unwrap(body.group(1)), "comments": parse_comments(page)}
 
 
 def unwrap(content: str) -> str:
@@ -244,19 +329,49 @@ class App:
         return out
 
     def articles(self, bbs_id: str = TOP_BBS, *, words: str = "", fields: tuple = (), since: str = EARLIEST,
-                 until: str = "", page: int = 1, count: int = 20) -> dict:
-        """게시판 하나(묶음이면 그 아래 다)의 글 — 낱말을 주면 ``fields`` 칸에서 찾는다. 뿌리면 모든 게시판."""
+                 until: str = "", page: int = 1, count: int = 20, filters: dict | None = None, without: str = "") -> dict:
+        """게시판 하나(묶음이면 그 아래 다)의 글 — 낱말을 주면 ``fields`` 칸에서 찾는다. 뿌리면 모든 게시판.
+
+        ``filters`` 는 화면 [추가기능 > 필터링] 의 칸(``notifyYn`` 공지감추기 · ``unreadArticleYn`` 안읽은게시물만 · ``myArticleYn`` 내게시물만)에
+        "true" 를 준다. ``without`` 을 주면 화면의 상세검색(listSearchArticle)으로 묻는다 — 제외할 단어는 그 명령에서만 걸린다"""
+        if without:
+            return self.detail_search(bbs_id, words=words, fields=fields, since=since, until=until, page=page, count=count, without=without)
         data = {"facade": "BBSArticleFacade", "command": "listArticle", "nextpage": "/bbs/articleGenList.jsp",
                 "categoryId": "BBS_ALL", "bbsId": bbs_id, "paging_listcnt": str(count), "currpage_no": str(page),
                 "srchStartDate": since, "srchEndDate": until or date.today().isoformat()}   # 끝 날을 비우면 게시판이 화면의 기본 기간만 본다
         if words:
             data.update(srchKeyword=words, srchChkConditionList=CONDITION_SEP.join(CONDITION + f for f in fields), searchMode="Y")
+        data.update({k: "true" for k in filters or {}})
         return parse_rows(self.call(data))
+
+    def detail_search(self, bbs_id: str, *, words: str, fields: tuple, since: str, until: str, page: int, count: int, without: str) -> dict:
+        """화면 상세검색(listSearchArticle) — ``srchTargetCurMap=N`` 이 「하위포함」이다(화면이 뜻을 거꾸로 쓴다). 고정 공지를 따로 안 세우고
+        낱말이 든 고정 공지도 찾은 줄로 낸다. 줄 꼴은 목록과 같고 날짜에 해가 없다(``MM-DD HH:MM``)."""
+        data = {"facade": "BBSArticleFacade", "command": "listSearchArticle", "nextpage": "/bbs/articleSrchList.jsp", "categoryId": "BBS_ALL",
+                "srchDetailSearchYn": "Y", "srchBBSId": bbs_id, "bbsId": bbs_id, "srchTargetCurMap": "N",
+                "paging_listcnt": str(count), "currpage_no": str(page), "srchStartDate": since, "srchEndDate": until or date.today().isoformat(),
+                "srchKeyword": words, "srchChkConditionList": CONDITION_SEP.join(CONDITION + f for f in fields), "srchExceptWord": without}
+        return parse_rows(self.call(data))
+
+    def readers(self, bbs_id: str, article_id: str, *, page: int = 1, count: int = 100) -> dict:
+        """글 하나의 열람내역(화면의 조회수 링크) — 읽기만 한다. 연 사람의 읽음 · 조회수는 안 바뀌었다(``references/SOURCES.md``)."""
+        return parse_readers(self.call({"facade": "BBSArticleFacade", "command": "listArticleReadUser", "nextpage": "/bbs/pop/bbsReadUserListPop.jsp",
+                                        "articleId": article_id, "bbsId": bbs_id, "paging_listcnt": str(count), "currpage_no": str(page)}))
+
+    def options(self, bbs_id: str) -> dict:
+        """게시판 하나의 옵션(쓰기 창이 칸을 켜고 끄는 값 — ``termModifyYn`` 게시기한을 바꾸게 하나 · ``dispPeriod`` 기본 게시 기간 …)."""
+        if not self._in:
+            self.login()
+        raw = self._get(f"{ROOT}/AjaxController?facade=BBSFacade&command=getBBSOptionAjax&categoryId=BBS_ALL&bbsId={urllib.parse.quote(bbs_id)}")
+        try:
+            return json.loads(raw)["bbsOptVO"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise AppError(f"게시판 옵션 답이 잰 꼴이 아니다: {bbs_id}") from exc
 
     def article(self, bbs_id: str, article_id: str) -> dict:
         page = self.call({"facade": "BBSArticleFacade", "command": "viewArticle", "nextpage": "/bbs/articleView.jsp",
                           "transaction_yn": "N", "articleId": article_id, "articleBbsId": bbs_id, "categoryId": "BBS_ALL", "popYn": "Y"})
-        return parse_article(page)
+        return dict(parse_article(page), link=article_link(bbs_id, article_id))
 
     def files(self, article_id: str) -> list:
         if not self._in:
@@ -287,6 +402,23 @@ class App:
         if not self._in:
             self.login()
         return self._raw(f"{ROOT}/DownController?fileId={urllib.parse.quote(file_id)}&down_filename=f")
+
+    def draft_form(self, bbs_id: str, article_id: str) -> dict:
+        """임시글 편집 창의 폼(writeArticle EDIT · TEMP)을 GET 으로 — 창을 안 띄운다. 숨은 content 칸이 저장된 본문 전문을 든다."""
+        page = self.call(write_params("draft", bbs_id, article_id))
+        got = parse_write_form(page)
+        if got["article_id"] != article_id:
+            raise NotFound(f"임시글 {article_id} 의 편집 폼이 안 열렸다 — drafts 로 id 와 게시판을 본다")
+        return got
+
+    def copy_form(self, bbs_id: str, article_id: str) -> dict:
+        """화면 리본 「재활용」 이 여는 창(writeArticle EDIT · articleCopyYn=Y)의 폼을 GET 으로 — 원글은 안 건드리고 아무것도 안 생긴다.
+        {title, html, end_date, …, article_id(빈 값이어야 새 글이다) · copy(Y)}. 그 글이 아니면 NotFound."""
+        page = self.call(write_params("copy", bbs_id, article_id))
+        got = parse_write_form(page)
+        if got["org_id"] != article_id or got["copy"] != "Y" or got["article_id"]:
+            raise NotFound(f"글 {article_id} 의 재활용 폼이 안 열렸다 — 게시판 id 와 글 id 가 맞는지 본다")
+        return got
 
     def drafts(self) -> dict:
         """임시 · 예약보관함 — 줄마다 board · id · title · date · state."""

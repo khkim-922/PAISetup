@@ -18,9 +18,19 @@ from pathlib import Path
 AGY = 'agy'
 # 한도 초과의 두 꼴 — 로그인 방식(로그) · API 키 방식(로그의 `Error 429` · stderr 의 `AGY_ERROR` JSON)
 QUOTA_RE = re.compile(r'RESOURCE_EXHAUSTED \(code 429\)|"error_code":\s*429|Error 429\b')
-# 과부하의 꼴 — API 키 방식 로그의 `Run: attempt N failed (Error 503, … Status: UNAVAILABLE …)`.
-# ⚠ 로그인 방식의 503 꼴은 이 식이 모른다 — 그 꼴이 로그에 보이면 여기에 더한다(그 전에는 로그인 방식이 503 에서 안 넘어간다).
+# 과부하의 꼴은 방식마다 무는 때가 다르다.
+# API 키 방식 — 로그의 `Run: attempt N failed (Error 503, … Status: UNAVAILABLE …)`. 보이면 바로 끊고 넘어간다.
 OVERLOAD_RE = re.compile(r'Error 503\b')
+# 로그인 방식 — 로그의 `Run: attempt N failed (UNAVAILABLE (code 503): No capacity …), retrying in 4s` · 결과 JSON `error` 의 같은 꼴 ·
+# stderr `AGY_ERROR` JSON 의 `"error_code":503`. 이 줄에서는 안 끊는다 — agy 가 스스로 다시 걸어 몇 분 뒤 답을 다 내는 판이
+# 잦아, 첫 줄에서 끊으면 곧 올 답을 버린다. 판이 답 없이 끝났을 때만 이 꼴로 넘어간다(`verdict`).
+UNAVAILABLE_RE = re.compile(r'UNAVAILABLE \(code 503\)|"error_code":\s*503')
+# 다시 걸어 넘긴 과부하의 자국 — agy 는 503 을 한 번이라도 만난 판을 답이 다 와도 `status: ERROR` · `finished_reason: error` 로 내고
+# 그 503 을 `error` 에 `API error (attempt N): UNAVAILABLE (code 503): …` 로 적는다(agy 1.5.12). 판이 실패로 끝났으면 agy 는
+# 종료 3 과 stderr `AGY_ERROR` 줄을 함께 낸다 — 답이 반만 온 판도 같다(agy 1.2.10 부터). 그래서 「답이 왔나」는 `status` 한
+# 칸이 아니라 종료 코드 · 그 줄 · 이 자국으로 가른다(`answered`).
+RECOVERED_RE = re.compile(r'API error \(attempt \d+\): UNAVAILABLE \(code 503\)')
+AGY_ERROR = 'AGY_ERROR'
 # 넘어가는 갈래 — 이 둘은 다음 후보로 다시 띄운다. 나머지(실패 · 빈 답 · 시간 초과)는 모델 탓이 아니라 멈춘다.
 FAILOVER = ('quota', 'overload')
 API_PREFIX = 'api:'                          # 이 머리를 단 후보는 API 키 방식으로 띄운다
@@ -32,8 +42,9 @@ LOG_CARRY_CHARS = 200       # 읽기 경계에 걸친 패턴을 놓치지 않게
 MAX_PROMPT_CHARS = 30000    # 윈도 명령줄 한도(32,767자) 안에 인자 전체가 들게 남긴다
 EXIT = {'ok': 0, 'failed': 1, 'quota': 2, 'overload': 2, 'empty': 2, 'timeout': 3, 'usage': 4}
 # 갈래 낱말의 뜻 — `--help` 의 종료 코드 표가 `EXIT` 의 이름마다 단다. 갈래 낱말은 끝 줄의 첫 낱말이기도 하다
-STATUS_WORDS = {'ok': '답이 왔다', 'failed': 'agy 가 실패했다(API 홈을 못 지은 것 · 러너가 멈춘 것 포함)', 'quota': '한도 초과',
-                'overload': '과부하', 'empty': '빈 답', 'timeout': '시간 초과',
+STATUS_WORDS = {'ok': '답이 다 왔다(과부하를 만났어도 agy 가 다시 걸어 다 냈으면 이것이다)',
+                'failed': 'agy 가 실패했다(API 홈을 못 지은 것 · 러너가 멈춘 것 포함)', 'quota': '한도 초과',
+                'overload': '과부하로 답 없이 끝났다', 'empty': '빈 답', 'timeout': '시간 초과',
                 'usage': '부르는 법이 틀렸다(인자 · 작업 자리 · 프롬프트 파일의 인코딩 · 길이)'}
 FOOTER = '[agy-bg]'
 # 끝 줄의 칸 — (이름, 뜻). 끝 줄을 짓는 `footer_line` 과 `--help` 가 같이 읽고, 차례가 끝 줄의 차례다
@@ -53,6 +64,7 @@ HOOKS_FILE = 'hooks.json'
 # 까닭은 references/DESIGN.md 「API 홈의 스킬 자리」)
 DEFAULT_SKILLS = ('.gemini', 'config', 'skills')
 SKILLS_LIST = 'skills.json'
+AGENTS_DIR = 'agents'       # 사용자 에이전트 자리 — `<홈>/.gemini/config/agents/` (설치가 리뷰 에이전트를 여기 둔다)
 # 대화가 남는 자리 — `<홈>/.gemini/antigravity-cli/conversations/<id>.db`(agy 1.3.3 · 로그인 · API 홈 둘 다)
 CONVERSATIONS = ('.gemini', 'antigravity-cli', 'conversations')
 CONVERSATION_FILE = '{id}.db'
@@ -65,8 +77,7 @@ NO_RESUME = ('이어 묻기 못 함 — 대화가 안 남았다({where} 에 이 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'agent-envelope' / 'scripts'))
 try:
     import runner_common as common
-    from runner_common import (CREATE_NO_WINDOW, DEFAULT_TIMEOUT_SEC, POLL_SEC, PROMPT_ENCODINGS, HelpFormat, Parser,
-                               decode_prompt, kill_tree, write)
+    from runner_common import CREATE_NO_WINDOW, DEFAULT_TIMEOUT_SEC, POLL_SEC, PROMPT_ENCODINGS, kill_tree, write
 except ImportError as missing:
     _args = sys.argv[1:]
     _out = next((x[len('--out='):] for x in _args if x.startswith('--out=')), None)
@@ -118,6 +129,31 @@ def failover_reason(text):
     if OVERLOAD_RE.search(text):
         return 'overload'
     return None
+
+
+def answered(rc, res, err_text):
+    """agy 가 답을 다 냈나 — 종료 0 · stderr 에 `AGY_ERROR` 없음 · 빈 답 아님에, 판이 그대로 끝났거나(`SUCCESS` · `finished_reason`
+    없음) 다시 걸어 넘긴 503 의 자국(`RECOVERED_RE`)만 남은 판이다. 잘린 판(`print_timeout` · `interrupted` · 그 밖의 `error`)은 안 센다."""
+    if rc != 0 or AGY_ERROR in err_text or not (res.get('response') or '').strip():
+        return False
+    if res.get('status') == 'SUCCESS' and not res.get('finished_reason'):
+        return True
+    return (res.get('status') == 'ERROR' and res.get('finished_reason') == 'error'
+            and bool(RECOVERED_RE.match(res.get('error') or '')))
+
+
+def verdict(rc, res, err_text):
+    """끊지 않고 끝난 판의 갈래 — (agy 의 종료 코드, 결과 JSON, stderr) 만 보고 가른다. 한도 · API 키 방식 과부하는 이 앞에서 이미
+    갈렸다. 답 없이 끝난 판에 로그인 방식 503 이 남았으면 과부하다 — 다음 후보로 넘어간다."""
+    if PRINT_TIMEOUT_RE.search(err_text) or res.get('finished_reason') == 'print_timeout':
+        return 'timeout'
+    if answered(rc, res, err_text):
+        return 'ok'
+    if UNAVAILABLE_RE.search(f'{res.get("error") or ""}\n{err_text}'):
+        return 'overload'
+    if rc != 0 or res.get('status') != 'SUCCESS' or res.get('finished_reason'):
+        return 'failed'
+    return 'empty'
 
 
 def put(path, text):
@@ -204,7 +240,7 @@ def api_home_path(real_home):
 
 
 def api_home(real_home):
-    """API 키 방식으로 띄울 홈을 짓는다 — 방식 한 줄과, 진짜 홈의 규범·스킬·룰·훅 설정에서 **매번 다시 지은**
+    """API 키 방식으로 띄울 홈을 짓는다 — 방식 한 줄과, 진짜 홈의 규범·스킬·룰·훅 설정 · 사용자 에이전트에서 **매번 다시 지은**
     가리킴 파일들. 스킬 목록에는 진짜 홈의 기본 스킬 자리를 더한다(`with_default_skills` — 우리 스킬이 거기 산다).
     사본을 들고 있지 않으므로 진짜 설정을 고치면 다음 실행에 따라오고, **진짜 설정에서 빠진 파일은
     여기서도 걷는다** — 남기면 로그인 방식에는 없는 규범으로 돌고, 걷힌 훅 파일을 부르는 훅은 도구마다 오류를 낸다.
@@ -216,13 +252,23 @@ def api_home(real_home):
     put_settings(os.path.join(cli, 'settings.json'), API_SETTINGS)
     src = os.path.join(real_home, '.gemini', 'config')
     dst = os.path.join(home, '.gemini', 'config')
+    mirror(src, dst, real_home, lambda derived: with_default_skills(derived.get(SKILLS_LIST), real_home))
+    # 사용자 에이전트(`<홈>/.gemini/config/agents/*.md`) — agy 는 제 홈의 그 폴더만 읽는다. 안 옮기면 API 키 방식 agy 는 이름 댄
+    # 에이전트(리뷰 에이전트 `change-review` 따위)를 못 찾는다
+    mirror(os.path.join(src, AGENTS_DIR), os.path.join(dst, AGENTS_DIR), real_home)
+    return home
+
+
+def mirror(src, dst, real_home, extra_list=None):
+    """`src` 폴더 바로 밑의 설정 파일을 `derive_config` 로 지어 `dst` 에 둔다 — 같은 것은 안 쓰고, `src` 에서 빠진 것은 `dst` 에서도
+    걷는다(이 함수가 지을 꼴만 · agy 가 제 손으로 둔 파일은 둔다). `extra_list` 는 지은 것들을 받아 스킬 목록 글(없으면 None)을 낸다."""
     derived = {}
     if os.path.isdir(src):
         for name in os.listdir(src):
             text = derive_config(os.path.join(src, name), src, real_home)
             if text is not None:
                 derived[name] = text
-    listed = with_default_skills(derived.get(SKILLS_LIST), real_home)
+    listed = extra_list(derived) if extra_list else None
     if listed is not None:
         derived[SKILLS_LIST] = listed
     if derived:
@@ -234,7 +280,6 @@ def api_home(real_home):
             path = os.path.join(dst, name)
             if name not in derived and derive_config(path, dst, real_home) is not None:
                 os.remove(path)
-    return home
 
 
 def candidates(model, has_key):
@@ -276,10 +321,7 @@ def run_once(a, prompt, model, log, raw_path, err_path, env=None):
     if a.conversation:
         cmd += ['--conversation', a.conversation]
     # 앞 시도의 로그를 걷는다 — 남아 있으면 그 429 · 503 줄을 이번 시도의 것으로 읽는다.
-    try:
-        os.remove(log)
-    except OSError:
-        pass
+    common.remove(log)
 
     started = time.monotonic()
     status = None
@@ -312,28 +354,14 @@ def run_once(a, prompt, model, log, raw_path, err_path, env=None):
         res = json.loads(raw_text)
     except ValueError:
         res = {}
-    answer = res.get('response') or ''
     if status is None:
-        status = tail.failover_hit() or failover_reason(err_text)
-    if status is None:
-        if PRINT_TIMEOUT_RE.search(err_text):
-            status = 'timeout'
-        elif proc.returncode != 0 or res.get('status') != 'SUCCESS':
-            status = 'failed'
-        elif not answer.strip():
-            status = 'empty'
-        else:
-            status = 'ok'
+        status = tail.failover_hit() or failover_reason(err_text) or verdict(proc.returncode, res, err_text)
     return status, proc.returncode, res, raw_text, err_text
 
 
 def build_parser():
-    ap = Parser(add_help=False, formatter_class=HelpFormat,
-                description='agy(Antigravity CLI · 제미나이)에게 일을 맡기고, 답과 끝 줄을 --out 파일로 받는다.')
-    ap.add_argument('-h', '--help', action='store_true', help='이 도움말을 표준 출력에 찍고 끝낸다(파일은 안 쓴다)')
-    ap.add_argument('--prompt-file', required=True, metavar='FILE', help='맡길 프롬프트 파일 — 받는 인코딩은 아래 「프롬프트 파일」')
-    ap.add_argument('--out', required=True, metavar='FILE', help='답 파일 — 어느 갈래로 끝나든 답과 끝 줄을 여기 쓴다')
-    ap.add_argument('--cwd', required=True, metavar='DIR', help='agy 를 띄울 작업 자리 — 없는 폴더면 안 띄운다')
+    ap = common.base_parser('agy(Antigravity CLI · 제미나이)에게 일을 맡기고, 답과 끝 줄을 --out 파일로 받는다.',
+                            'agy 를 띄울 작업 자리 — 없는 폴더면 안 띄운다')
     ap.add_argument('--model', metavar='NAME', help='이 모델 하나만 쓴다(안 넘어간다). 안 주면 자리 값(AGY_*)의 차례')
     ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC, metavar='SEC',
                     help=f'agy 한 번의 시간 한도(초). 기본 {DEFAULT_TIMEOUT_SEC}')
@@ -345,7 +373,7 @@ def help_epilog():
     """`--help` 의 아래쪽 — 모드 · 끝 줄 · 이어 묻기 · 프롬프트 파일 · 종료 코드. 끝 줄 칸은 `FOOTER_FIELDS` 에서, 종료 코드는
     `EXIT` 에서 짓는다."""
     return '\n'.join([
-        '모드: 없다 — agy 는 권한을 묻지 않고 돈다. 쓰기를 프롬프트로는 못 막으니 작업 자리(--cwd)로 막는다.',
+        '모드: 없다 — agy 는 권한을 묻지 않고 돌고 작업 자리 밖에도 쓴다. 작업 자리(--cwd)는 울타리가 아니라 출발점이다.',
         '  조사만 시키면 --cwd 는 스크래치패드로 주고, 저장소를 줬으면 끝난 뒤 `git status --porcelain` 으로 남긴 것을 본다.',
         '',
         f'끝 줄: 답 파일의 맨 끝 줄이다. `{FOOTER} <갈래>` 뒤에 아래 칸이 " · " 로 이어진다(없는 칸은 빠진다).',
@@ -366,21 +394,13 @@ def help_epilog():
 
 
 def run(a):
-    # 자리는 `--cwd` 가 필수라 늘 오지만, 그 선언이 퇴행하면 `None` 이 여기로 와 멈춘다 — 멈춤은 갈래 1 이고
-    # 부르는 쪽은 까닭을 못 읽는다. 관문이 제 갈래(4)로 내게 `None` 도 같이 문다
-    if not (a.cwd and os.path.isdir(a.cwd)):
+    if not os.path.isdir(a.cwd):
         write(a.out, f'{FOOTER} usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
         return EXIT['usage']
-    try:
-        # 글로 읽는다 — 프롬프트는 명령줄로 가니 UTF-8 로 옮기는 일은 파이썬이 한다. BOM 은 걷힌다(`decode_prompt`)
-        with open(a.prompt_file, 'rb') as f:
-            prompt = decode_prompt(f.read())
-    except OSError as e:
-        write(a.out, f'{FOOTER} usage · 프롬프트 파일을 못 읽었다 — {e}\n')
-        return EXIT['usage']
-    except UnicodeDecodeError:
-        write(a.out, f'{FOOTER} usage · 프롬프트 파일이 받는 인코딩이 아니다 — {PROMPT_ENCODINGS} 만 받는다. '
-                     f'PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {a.prompt_file}\n')
+    # 글로 읽는다 — 프롬프트는 명령줄로 가니 UTF-8 로 옮기는 일은 파이썬이 한다
+    prompt, bad = common.read_prompt(a.prompt_file)
+    if bad:
+        write(a.out, f'{FOOTER} usage · {bad}\n')
         return EXIT['usage']
     if len(prompt) > MAX_PROMPT_CHARS:
         write(a.out, f'{FOOTER} usage · 프롬프트가 {len(prompt)}자다 — {MAX_PROMPT_CHARS}자를 넘으면 '
@@ -427,15 +447,9 @@ def run(a):
         cells['log'] = f'log={log}'
     footer = common.footer_line(FOOTER, FOOTER_FIELDS, status, cells)
     if status == 'ok':
-        for p in (raw_path, err_path, log):
-            try:
-                os.remove(p)
-            except OSError:
-                pass
-        write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
-    else:
-        # 답이 없으면 agy 가 낸 것을 그대로 둔다 — 까닭이 거기 있다. 로그도 남긴다.
-        write(a.out, f'{answer or raw_text}\n{err_text}\n{footer}\n')
+        common.remove(raw_path, err_path, log)
+    # 실패 때는 다른 러너와 달리 agy 가 낸 것(답이 없으면 날 출력)과 stderr 를 통째로 둔다 — 까닭이 거기 있다. 로그도 남긴다
+    common.write_answer(a.out, status, answer, footer, failure=f'{answer or raw_text}\n{err_text}')
     return EXIT[status]
 
 

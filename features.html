@@ -489,24 +489,30 @@
         <div class="app">
           <h5>메일</h5>
           <p>찾아 읽고 답장 · 전달하고, 새 메일을 씁니다(첨부 · 꾸민 HTML 본문). 쓴 메일은 임시보관함에 저장되고 그 메일 창이 바로 떠서, 거기서 확인하고 [보내기]를 누르면 됩니다. 더 고쳐 달라고 하거나 보내 달라고 해도 같은 창에서 합니다 — 저장한 메일을 고쳐도 꾸민 서식이 남고, 첨부를 붙이고 뺄 수도 있습니다. 보낸 메일을 본떠 새 메일을 쓰고, 배포그룹을 그룹째 받는 사람에 넣고, 긴급 · 예약발송 같은 메일 속성도 켜고 끕니다. 메일을 폴더로 옮겨 정리하고, 앞으로 올 메일을 나눌 분류 규칙을 둡니다. 주소록 · 조직도 · 지난 메일의 받는 사람에서 사람과 부서를 찾아 받는 사람 명단을 지어 줍니다.</p>
-          <div class="say"><span>이렇게 말해 보세요</span><q>안 읽은 메일 뭐 있어</q><q>앞으로 이 사람 메일은 그 폴더로 가게 해 줘</q><q>이 부서 사람들 누구야</q></div>
+          <div class="say"><span>이렇게 말해 보세요</span><q>안 읽은 메일 뭐 있어</q><q>앞으로 이 사람 메일은 그 폴더로 가게 해 줘</q><q>이 메일 ○○ 님께 전달해 줘</q></div>
           <span class="tag"><code class="nm">company-mail</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         </div>
         <div class="app">
+          <h5>주소록</h5>
+          <p>사내 주소록과 조직도에서 사람 · 부서를 찾습니다. 이름 · 부서 · 직급으로 거르고, 나 · 내 부서 · 누구의 윗분에서 출발할 수도 있습니다. 찾은 사람은 파일 하나로 메일 받는 사람 · 회의 참석자 · 일정의 다 비는 때 · 문서 권한에 그대로 넘어가, 이름이나 주소를 다시 불러 줄 일이 없습니다. 읽기만 합니다.</p>
+          <div class="say"><span>이렇게 말해 보세요</span><q>이 부서 사람들 누구야</q><q>○○ 님 윗분이 누구야</q><q>우리 팀 과장 이상만 뽑아 줘</q></div>
+          <span class="tag"><code class="nm">company-directory</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
+        </div>
+        <div class="app">
           <h5>일정</h5>
-          <p>내 일정을 보고, 한 건씩 넣고 지웁니다. 공유받은 분의 일정함과 견주어 함께 비는 때도 찾아 줍니다.</p>
+          <p>내 일정을 보고 찾고, 한 건씩 넣고 고치고 지웁니다. 회의실 예약으로 잡힌 회의도 함께 찾습니다. 주소록에서 고른 분들과 함께 비는 때를 찾아 주고, 일정함을 공유하지 않은 분은 빈 것으로 치지 않고 「못 봤다」고 알려 드립니다.</p>
           <div class="say"><span>이렇게 말해 보세요</span><q>내일 일정 보여 줘</q><q>팀장님이랑 나 둘 다 비는 시간</q><q>금요일 3시에 일정 넣어 줘</q></div>
           <span class="tag"><code class="nm">company-calendar</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         </div>
         <div class="app">
           <h5>문서함(ECM)</h5>
-          <p>내 문서함 · 부서 문서함의 문서를 이름으로 찾아 읽습니다. 고른 문서를 고쳐 다음 판으로 올리거나 PC 의 파일을 새 문서로 올리고, 편집 · 복사 · 읽기 권한을 주고 거둡니다 — 메일로 뽑은 받는 사람 명단으로 한꺼번에 줄 수도 있습니다. 기밀 · 핵심기술 문서는 AI 로 보내도 되는지 먼저 묻고, 된다고 하면 읽습니다 — 아니면 화면에서 직접 엽니다.</p>
+          <p>내 문서함 · 부서 문서함의 문서를 이름으로 찾아 읽습니다. 고른 문서를 고쳐 다음 판으로 올리거나 PC 의 파일을 새 문서로 올리고, 편집 · 복사 · 읽기 권한을 주고 거둡니다 — 주소록에서 뽑은 명단으로 한꺼번에 줄 수도 있습니다. 올린 뒤에는 새 판의 열쇠와 문서 링크를 알려 드리고, 지난 판을 읽으면 더 새 판이 있다고 짚어 드립니다. 기밀 · 핵심기술 문서는 AI 로 보내도 되는지 먼저 묻고, 된다고 하면 읽습니다 — 아니면 화면에서 직접 엽니다.</p>
           <div class="say"><span>이렇게 말해 보세요</span><q>문서함에서 예산 파일 찾아 줘</q><q>이 문서 우리 그룹에 읽기로 공유해 줘</q></div>
           <span class="tag"><code class="nm">company-ecm</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         </div>
         <div class="app">
           <h5>회의실</h5>
-          <p>빈 회의실과 내 예약을 보고, 예약을 한 건씩 넣고 고치고 취소합니다. 참석자는 메일 주소록에서 정해서, 받은 메일의 수신인이나 부서 사람들로도 회의를 잡을 수 있습니다. 「금요일까지 날마다」처럼 업무일마다의 반복 예약을 넣고 반복 전체를 고치거나 취소하며, 자주 쓰는 회의실과 참석자 그룹을 즐겨찾기로 저장해 둡니다. 내 예약에는 Teams 링크 · 회의 ID · 암호가 함께 보이고, 예약은 내 Teams 일정함에도 저절로 듭니다.</p>
+          <p>빈 회의실과 내 예약을 보고, 예약을 한 건씩 넣고 고치고 취소합니다. 참석자는 주소록에서 정해서, 받은 메일의 수신인이나 부서 사람들로도 회의를 잡을 수 있습니다. 「금요일까지 날마다」처럼 업무일마다의 반복 예약을 넣고 반복 전체를 고치거나 취소하며, 자주 쓰는 회의실과 참석자 그룹을 즐겨찾기로 저장해 둡니다. 내 예약에는 Teams 링크 · 회의 ID · 암호가 함께 보이고, 예약은 내 Teams 일정함에도 저절로 듭니다.</p>
           <div class="say"><span>이렇게 말해 보세요</span><q>내일 3시에 본관 회의실 잡아 줘</q><q>이 메일 받은 사람들로 회의 잡아 줘</q></div>
           <span class="tag"><code class="nm">company-meeting-room</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         </div>
@@ -547,8 +553,8 @@
         </div>
         <div class="app">
           <h5>오늘 볼 것 보고</h5>
-          <p>지난 보고 뒤의 메일과 오늘 · 내일 일정에서 지금 보셔야 할 것을 까닭과 함께 날마다 같은 꼴의 보고 창으로 띄웁니다. 줄을 누르면 그 메일이 웹메일에서 바로 열립니다. 끝난 일은 카드의 「끝났음」을 눌러 두면 다음 보고부터 안 올리고, 잘못 눌렀거나 다시 살아난 일은 풀면 다시 엽니다. 아침 보고를 걸어 두면 정한 시각부터 낮 12시 사이에 사내 로그인이 서는 첫 때에 스스로 한 번 띄우고, 메일함 정리가 필요해 보이는 날엔 까닭과 함께 권합니다.</p>
-          <div class="say"><span>이렇게 말해 보세요</span><q>보고해 줘</q><q>뭐부터 봐야 해</q></div>
+          <p>지난 보고 뒤의 메일과 오늘 · 내일 일정에서 지금 보셔야 할 것을 까닭과 함께 날마다 같은 꼴의 보고 창으로 띄웁니다. 줄을 누르면 그 메일이 웹메일에서 바로 열립니다. 줄마다 「끝났음」 · 「내일 다시」 · 「안 올려도 됨」을 눌러 두면 다음 보고가 그대로 따릅니다 — 끝난 일은 안 올리고, 미룬 일은 다음 날 첫 보고에 돌아오며, 안 올려도 된다고 하신 종류는 배워서 빼고 창 아래에 적어 두어 언제든 되돌립니다. 요약 아래에는 「나를 기다리는 분 · 내가 기다리는 분」이 사람별로 한 번 더 섭니다. 보고는 하루에 여러 번, 원하는 시각에 걸 수 있고(대화로도, 보고 창 아래 「보고 맞추기」에서도) 시각마다 사내 로그인이 서는 첫 때에 스스로 한 번 띄우며, 메일함 정리가 필요해 보이는 날엔 까닭과 함께 권합니다.</p>
+          <div class="say"><span>이렇게 말해 보세요</span><q>보고해 줘</q><q>뭐부터 봐야 해</q><q>오후 1시에도 보고해 줘</q></div>
           <span class="tag"><code class="nm">daily-brief</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         </div>
         <div class="app">
@@ -872,11 +878,13 @@
          받는 쪽을 띄우는 스킬은 맡기는 도구에만 깔려, 받은 도구가 다시 되맡기는 일은 없습니다 — 아래 도구 칩이 그 스킬을 받는 쪽, 곧 맡기는 쪽입니다.</p>
       <div class="chips-grid">
         <div class="mini"><b>agy 에게</b><span class="tag"><code class="nm">agy-background</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="src pai">PAI</span></span>
-          <span>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 넘깁니다. 한도에 걸리거나 서버가 몰리면 다음 모델로 다시 띄웁니다.</span></div>
+          <span>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 넘깁니다. 한도에 걸리거나 서버가 몰려 답을 못 내면 다음 모델로 다시 띄웁니다.</span></div>
         <div class="mini"><b>Codex 에게</b><span class="tag"><code class="nm">codex-copilot-background</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
           <span>긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 웹 조사를 넘깁니다.</span></div>
         <div class="mini"><b>Claude 에게</b><span class="tag"><code class="nm">claude-background</code><span class="k skill">Skill</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
           <span>리뷰 · 조사 · 다른 모델의 의견을 넘깁니다.</span></div>
+        <div class="mini"><b>agy 의 제 고침 리뷰</b><span class="tag"><code class="nm">change-review</code><span class="k agent">Agent</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
+          <span>agy 에게 고치는 일을 맡기면 agy 가 끝내기 전에 이 리뷰 에이전트를 불러 제 고침을 리뷰받습니다. 읽기만 하고, 그 고침이 만든 결함만 내놓습니다 — OpenAI Codex 와 Anthropic 공개 플러그인의 리뷰 기준을 그대로 실었습니다(Apache 2.0). 안티그래비티를 고르면 섭니다.</span></div>
       </div>
       <h5>쓰는 범위</h5>
       <p class="flush">맡기는 일에 맞춰 권한을 줍니다 — 읽기만 할 일은 읽기만, 고치거나 적어 봐야 할 일은 맡기는 쪽이 따로 세운 작업 폴더 안에서만 씁니다.</p>

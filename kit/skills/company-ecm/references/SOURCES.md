@@ -20,7 +20,6 @@
 ## 회사에서 잴 것 — 남긴 글자
 
 - 받은 파일을 에이전트가 비운 뒤 다시 `read` 하면 「--fresh 로 다시 받는다」 쪽 답이 오나
-- 판이 오른 문서의 옛 열쇠로 속성 화면(등급 읽기)이 무엇을 답하나 — 지금은 옛 판의 글자와 「list 로 새 열쇠를 받는다」를 낸다
 
 ## 집 PC 에서 잰 것 — 편집 패스의 고치는 손 (2026-11-18)
 
@@ -45,13 +44,193 @@
 - 아무것도 안 고친 채 `preview-checkin`(저장 안 함) → `checkin` 하면 에이전트가 창 없이 잠금만 푸나
 - 감긴 문서의 `Saved` 표시가 고침을 따라가나 — 틀리면 `-RequireClean` 이 고침이 없는 창을 「고친 것이 있다」로 막는다(그때는
   `preview-checkin` 을 다시 부르면 저장해 맞춘다)
-- 부서 · 프로젝트 문서함 안 폴더를 왼쪽 나무에서 눌렀을 때의 목록 요청(`formId` · `listKey`) — 재면 `--cabinet` 과 `--folder` 를 함께
-  받는다(지금은 멈춘다)
+- 감긴 덱 · 통합 문서에서 편집취소(`cancel-edit`) — 잰 것은 평문 워드 문서 하나다
 
 ## 회사에서 잴 것 — 찾기 · 권한
 
-- 볼 수 있는 문서함 전부를 한 요청으로 찾는 꼴(전사 검색과 다르다) — 재면 `--cabinet all` 이 문서함마다 묻지 않고 그 요청 하나로 간다
+- 전사 검색 줄의 `ECM_MODIFY_DATE` 와 목록 줄의 고친 날이 늘 같은가 — 검색엔진은 등록 뒤 곧바로 걸렸다(잰 한 판)
+- 태그로 전사 검색(`ecmtaglist`) · 결재 문서 거르기(`approval`) — 칸은 아래 「읽기지만 안 지은 것」 줄에 있다. 안 보냈다
 - 권한 사람 줄의 `MS_EMAIL_ID` 가 메일 ID(@ 앞)만 드나 — 손은 ID · 온 주소를 다 받아 견준다
+- `link` 가 열쇠만으로 지은 링크(아래 「URL 복사」의 꼴)가 회사 Edge 에서 열리나 — 16진 글자의 대소문자 · 화면이 내는 링크와 글자째
+  같은가를 화면의 「URL 복사」 한 번과 견준다. 그 링크가 다음 판이 오른 뒤에도 문서를 여나(지금 판을 여나 · 그 판을 여나)
+- 「보기(최신버전)」 걸음(`OpenContents-service&view=true&…&MS_CURRENT_YN=T`)이 활용 건수의 열람을 하나 올리나 — `read` · `checkin` ·
+  `link` 가 그 걸음으로 지금 판을 묻는다. `versions --more` 의 열람 수를 앞뒤로 본다
+
+## 회사에서 잰 것 — 화면에 있는데 손가락이 없던 것 (2026-11-19 · #292 B)
+
+화면 코드(`ecmMain.js` · `docList.js` · `contents_new.js` · 속성 · 이력 · 상세검색 화면)에서 사용자 쪽 요청을 뽑아 손이 안 부르던 것을
+쟀다. 바꾸는 측정은 사람이 고른 시험 문서 하나(사람의 개인폴더 · 사외비A/비공개 · 권한 없음)에서만 했고 끝에 이름 · 태그 · 완료일을
+되돌렸다. 시험 문서는 지우지 않았다(지우기는 손가락이 아니다).
+
+- **판 이력** — `json.do?ServiceName=DocPropertyHtml-service&history=true&pageType=user&R_OBJECT_ID=<doc 열쇠>&isIncludeCntQry=T|F
+  &pageNumber=<0=건수 · 1…>&docCntPerPage=<n>&isMinorManagement=F`. 건수 답 `[{MI_COUNT}]` · 줄 `MS_OBJECT_ID`(그 판의 열쇠) ·
+  `MS_IS_CURRENT`(CURRENT · NOT) · `MS_VERSION_LABEL` · `MS_CREATOR_NAME` · `MS_CREATOR_DEPT_NAME` · `MS_CREATION_DATE` ·
+  `MS_VERSION_DESC`(수정 내용 — 빈칸 하나로 오기도 한다) · `MS_CONTENT_SIZE`. `R_OBJECT_ID` 는 **doc 열쇠**다 — 문서 열쇠로 물으면 0 판
+- **문서 열쇠와 doc 열쇠** — 문서 열쇠(`MS_OBJECT_ID`)는 판마다 바뀌고, doc 열쇠(`MS_DOC_ID` · `doc…`)는 판이 올라도 같다. 첫 판(0.0)은
+  `doc` + 문서 열쇠지만 판이 오른 문서는 다르다 — 그 문서의 역할 목록을 `doc` + 문서 열쇠로 물으면 빈 답(`null`)이 왔다. doc 열쇠는 속성
+  화면의 숨은 칸 `MS_DOC_ID` 가 든다. ⚠ 빈 답을 빈 명단으로 읽고 권한을 저장하면 걸린 명단이 다 지워진다 — 손은 늘 `MS_DOC_ID` 로 묻는다
+- **옛 열쇠 → 지금 판** — 옛 열쇠는 옛 판을 가리키고 저절로 새 열쇠가 되지 않는다(보기 첫 걸음은 옛 판을 준다). 화면의 「보기(최신버전)」
+  처럼 `OpenContents-service&view=true&MS_OBJECT_ID=<옛 열쇠>&formId=F_LIST_MYDOC&MS_CURRENT_YN=T` 가 지금 판의 `MS_OBJECT_ID` 를 준다.
+  옛 열쇠로 속성 화면을 열면 지금 판의 화면이 온다
+- **보안등급 변경 이력 · 활용 건수** — 같은 `json.do` 에 `&security=true&pageType=user&ECM_DOC_ID=<doc 열쇠>&isIncludeCntQry&pageNumber&
+  docCntPerPage`(줄 `MS_EVENT_DATE` · `MS_USER_INFO` · `MS_BEFORE_VALUE_DD` · `MS_AFTER_VALUE_DD`) · `&useinfo=true&pageType=user&
+  ECM_DOC_ID=<doc 열쇠>`(`ECM_VIEW` · `ECM_ATTACH` · `ECM_COPY` · `ECM_RECOMMEND`). 속성 저장 한 번이 등급이 그대로여도 보안등급 변경
+  이력에 한 줄(같은 등급 → 같은 등급)을 남겼다
+- **우클릭 메뉴(지금 할 수 있는 것)** — `POST ajaxAction.do?ServiceName=GetContextMenu-service&isHTML=T` 몸 `formId=F_LIST_MYDOC&
+  itemObjIds=<열쇠>&IsChorme=T` → `ML_MENU_LIST[{MS_DD_VALUE, MB_IS_ENABLED}]`. 조회다. 잠긴 판에는 편집 꺼짐 · 편집완료 · 편집취소 켜짐
+- **잠근 이가 나인가** — `CheckOutCheckIn-service&checkuser=true&MS_OBJECT_ID=` → `MS_IS_CHECKOUT_EQUAL` T|F. 안 잠긴 문서도 F
+- **편집취소** — 화면의 차례는 서버 걸음 `CheckOutCheckIn-service&cancelcheckout=true&MS_OBJECT_ID=`(성공 답 · `MS_CHECKOUT_PATH` ·
+  `MS_CANCEL_CHECKOUT_FOLDER`)과 에이전트 웹소켓 한 줄 `cancelcheckout␈<열쇠>` 다. **잠금을 푸는 것은 에이전트 줄이다** — 서버 걸음만
+  보낸 뒤 속성 화면 · `checkuser` 는 잠긴 채였다. 편집 창이 떠 있으면 에이전트는 `현재 파일을 사용 중입니다.` 로 안 풀었고, 창을 닫은 뒤
+  `OK` 로 풀었다. 안 잠긴 문서에는 `java.lang.Exception: CancelCheckOut` 을 답했다. 고친 것 없이 연 창을 닫으면 에이전트가 창 없이
+  잠금을 푼다. ⚠ 저장된 고침이 있는 창을 닫으면 에이전트의 「편집완료」 창이 뜨고, 편집취소 뒤에도 그 창은 남는다 — 그 창의 저장을
+  누르면 버린 고침이 새 판으로 올라간다. 동시편집 문서의 `officecancelcheckout` 은 안 쟀다
+- **속성 저장(이름 · 태그 · 완료일)** — 권한과 같은 `ModifyDocProperty-service` 몸이다. 화면은 권한 탭을 안 건드린 저장에도 그 탭의 지금
+  명단을 싣고 `isChangeRoleInfo=F` 로 둔다. 이름은 `MS_DOC_TITLE`(encodeURIComponent) · 태그는 `tagList`(쉼표로 이음 · 한글 · 영문 ·
+  숫자 · 10 개) · 완료일은 `MS_DUE_DATE`(YYYY-MM-DD). 지금 완료일은 숨은 칸 `MS_DUE_DATE` 가 든다 — 고르는 칸 `ecm_EndDate` 는 늘
+  `0001/01/01` 로 그려진다. 저장 몸의 완료일이 `0001/01/01` 이면 서버는 완료일을 안 바꿨다 — 완료일을 없애는 길은 없다. 새로 등록한
+  문서의 완료일은 서버가 등록일 + 14 일로 넣었다
+- **이름의 #** — 등록 이름의 `#` 는 서버가 말없이 뗐다(「[테스트] #292 …」 → 「[테스트] 292 …」). 속성 화면은 `%` 와 작은따옴표 꼴을 막는다
+- **문서함 안 폴더의 목록** — 왼쪽 나무에서 폴더를 누른 꼴 `DocList-service&getDocList|getDocCount=true&formId=F_LIST_FOLDER&
+  listKey=<문서함>_<폴더>` 다. 그 폴더에 바로 든 문서만 온다(아래 폴더는 안 든다). `F_LIST_MYDEPT` 에 폴더 열쇠를 주면 30 초 시한을
+  넘겼다. ⚠ 문서함 열쇠를 틀리게 붙여도 같은 폴더의 목록이 온다 — 서버는 폴더 열쇠만 본다
+- **왼쪽 메뉴의 다른 목록** — 같은 `DocList-service` 에 `formId` 만 바꾸고 `listKey` 는 빈 글자다: `F_LIST_RECENT_ACCESS`(최근 활용 ·
+  `MS_EVENT_DATE`) · `F_LIST_RECENT_REGIST` · `F_LIST_SHARED_DOC`(공유받은 · `MS_SHARED_USER_NAME` · `MS_ROLE`) · `F_LIST_CORESPONSIBLE` ·
+  `F_LIST_FAVFOLDER`(중요) · `F_LIST_CHECKOUT`(편집 중) · `F_LIST_RCB`(휴지통 · `MS_DELETE_DATE`) · `F_LIST_GRANT` · `F_LIST_REQUESTED_GRANT`
+  (`MS_REQUEST_USER_NAME` · `MS_REQUEST_DATE` · `MS_WORKFLOW_STATUS`). 목록 줄의 잠금 칸 `MS_LOCK_USER_ID` 는 안 잠긴 줄에도 빈칸 하나(" ")로
+  온다 — 다듬지 않으면 모든 줄이 잠긴 것으로 읽힌다
+- **정렬 · 꼴 모아보기** — `orderBy` 는 `ms_modify_date` · `ms_title` · `ms_file_size` · `ms_owner_name` · `ms_security_level` ·
+  `ms_doc_version` 이 먹었고 `ms_reg_date` 는 `MB_RTN_VALUE` 거짓이었다. `fileType` 은 `GATHER_POWERPOINT|EXCEL|WORD|PDF|HWP|IMAGE` ·
+  `ALL_FORMAT` — 모르는 값은 거절 없이 0 건이다
+- **알림 숫자** — `GetDashboardCount-service&getNoticeCount=true` → `APP_PERMIT` · `REQ_PERMIT` · `APP_SECURITY` · `REQ_SECURITY` ·
+  `APP_REVIEW` · `REQ_REVIEW`
+- **전사 검색 · 본문 검색** — `POST ajaxAction.do?ServiceName=DocList-service&getDocListEcmEsSearch=true` 몸 `q=posmeta:{…}&page_idx&num&
+  backCategory=doc&sysId=ecm`. posmeta 칸은 화면이 짓는 것 그대로(`reqsysid` · `adv_search_type=b` · `subject` · `subject_operator` AND|OR ·
+  `allintext`(본문) · `owner` · `creator` · `udaterange|cdaterange`(`YYYY-MM-DD..YYYY-MM-DD`) · `format` · `security` · `docbox` · `folderbox` ·
+  `sort` · `subfolder_yn`). 답은 `MB_RTN_VALUE` 없이 `gsa_data_key`(XML — `<M>` 총 건수 · `<R>` 줄의 `<MT N= V=>` 칸 · `R_OBJECT_ID` 가
+  지금 판의 열쇠) · `gsa_error_key`(빈 글자면 됐다 · `NO_AUTH`). `docbox` 가 비면 전사(볼 수 있는 문서)이고, 메인 화면의
+  `s_deptCabinets`(제 부서는 부서 코드 · 프로젝트는 cab 열쇠 · 끝 쉼표)를 그대로 주면 **볼 수 있는 문서함 전부를 한 요청으로** 찾는다.
+  `security` 는 `2A,` 처럼 쉼표로 끝나야 걸리고 `docbox` 가 비면 늘 0 건이었다. 등록한 문서는 곧바로 걸렸다
+- **폴더 이름 찾기** — `POST json.do?ServiceName=searchFolder-service&search_html=true&isHTML=T&deptExceptFlag=` 몸 `companyId=&userId=
+  <내 사람 열쇠>&value=<두 글자부터>` → `{jsonList:[{MS_OBJECT_ID(fdr…), MS_CABINET_ID, MS_FOLDER_NAME(「문서함/폴더/…」), MS_FOLDER_NAME2}]}`.
+  볼 수 있는 모든 문서함을 한 요청으로 찾는다. 내 사람 열쇠는 메인 화면의 `<option id="MENU_PERSONAL" value='usr…'>` 가 든다.
+  경로의 `/` 는 이름 안에도 든다(「관세/외국환…」) — 가르지 않는다
+- **개인컨텐츠함** — 메인 화면에 `MENU_PERSONAL` 이 있지만 왼쪽 메뉴에는 안 보이고, 등록 길은 문서함(`cab…`)만 받는다. 사람의 개인 문서는
+  부서 문서함 안 「개인폴더 > 이름」 에 든다
+- **URL 복사(`InterfaceAttachURLGet-service`)는 순수 조회가 아니다** — 아래 「서버에 파일을 짓는 동작」 줄
+
+## 화면 코드에서 읽은 것 · 쟀으나 안 지은 것 — 다음에 다시 훑지 않게 (2026-11-19 · #292 B)
+
+손가락으로 안 지은 화면 동작의 요청 꼴이다. 「읽음」은 화면 코드(`ecmMain.js` · `docList.js` · `contents_new.js` · 속성 · 이력 · 상세검색
+화면 · `popups/*.jsp`)에서 꼴만 읽고 서버에 안 보낸 것, 「쟀다」는 읽기로 한 번 보낸 것이다. 칸 값이 서버에서 받아들여지는지는 「읽음」
+줄에서는 모른다. 짓기 전에 그 줄의 바꾸는 요청을 사람이 고른 시험 문서로 한 번 잰다. 안 지은 까닭은 줄 끝에 적었다 — 「사람이 화면에서
+한다」의 말은 `ecm.py` 의 `NOT_HERE` 가 든다.
+
+### 바꾸는 동작 — 읽음
+
+- **복사** — 확인 `CopyDoc-service&checkValid=true&obj_id=` → 복사 `CopyDoc-service&obj_id=&formId=&favFolderId=&copyRoleFlag=T|F`(역할자를
+  같이 복사하나). 폴더를 고르는 팝업은 `&folder_id=&cabinet_id=` 를 더한다. 이력 화면의 「새 컨텐츠로 복사」도 같은 서비스다. 새 문서가 선다
+- **폴더 이동** — `MoveDoc-service&obj_id=<열쇠,…>&folder_id=<fdr…>`(미분류로는 `&isUnclassified=T`). 문서함 사이 이동은 다른 주소
+  `moveDocToCabinet_new.do?ServiceName=MoveDocToCabinet-service`
+- **삭제 · 휴지통** — 휴지통으로 `DeleteRCB-service&obj_id=` · 판을 골라 지우기 `DeleteDoc-service&obj_id=&deleteflag=&<deleteflag>=true` ·
+  되살리기 `RestoreRCB-service&obj_id=&isAdmin=` · 완전삭제 `CompleteDelete-service&obj_id=&isAdmin=` · 즉시 삭제 `&delFlag=now` · 휴지통
+  비우기 `&delFlag=all`. 휴지통 목록 읽기는 손가락이 있다(`list --box trash`). 되돌리기 어려워 안 지었다
+- **소유권 변경** — `ChangeOwner-service&mode=self&fbflag=f&objIds=`(`popups/changeOwnerMyself.jsp`). 속성 저장 몸의 `isChangeOwner` ·
+  `MS_NEW_OWNER` 갈래도 있다 — 이 손은 그 칸이 `F` · 빈 글자인 문서만 저장한다(`MEASURED_PAGE`)
+- **보안등급 변경** — `POST ChangeSecurityLevel-service` 몸 `user=true&MS_OBJ_ID=<열쇠,…>&MS_SELECTED_LEVEL=&MS_SELECTED_OPEN_FLAG=&
+  MS_AUTO_GRANT_FLAG=&MS_ECM_AI_SEARCH_FLAG=`(`popups/changeScrtLevel.jsp`). 기밀을 낮추는 판은 승인 차례(`ecm_security_approve` ·
+  `ecm_workflow_type=secuLevel`)가 붙는다. 동료에게 보이는 범위가 바뀌어 사람이 화면에서 한다
+- **태그 일괄** — `POST RegisterTags-service` 몸 `MS_OBJ_ID=<열쇠,…>&MS_TAG_LIST=<태그,…>&MS_REGISTER_TYPE=A(더하기)|R(갈아 끼우기)`
+  (`popups/registerHashTags.jsp`). 한 문서의 태그는 속성 저장(`apply-props`)이 든다 — 여러 문서를 한 번에 바꾸는 말이 오면 이 꼴을 잰다
+- **즐겨찾기** — 더하기 `POST AddFavLinkDoc-service&add=true`(몸 `obj_id` …) · 옮기기 `&move=true` · 빼기
+  `DeleteFavoriteLinkInfo-service&delete_link=true&removeType=LR&objIDs=` · 즐겨찾기 폴더 목록 `GetSubNaviMenu-service&
+  menuType=F_LIST_FAVORITE_FOLDER`. 즐겨찾는 사람 · 폴더 차례는 `ModifyPriorityFavor-service`. 속성 화면의 `favorite_info` 읽기와 저장 몸의
+  `favFolderList` 는 손이 이미 쓴다. 왼쪽 「즐겨찾기 링크」 목록은 `F_LIST_FAV_LINK`(건수 읽기를 쟀다)
+- **참조하기 · 공유하기(추천)** — 참조 `FavoriteDoc-service&add=true&obj_id=` · 해제 `&remove=true&favObjId=&targetType=F|R` · 추천
+  `json.do?ServiceName=FavoriteDoc-service&recommendAdd=true&ObjectID=&saveFlag=F`(`popups/addRecommendDoc.jsp` — 받는 사람 칸은 팝업 몸이라
+  안 읽었다). 남에게 알림이 간다. 읽기 범위를 남에게 주는 일은 권한 패스가 든다
+- **편집 예약** — `CheckoutReservationDoc-service&docId=<doc 열쇠>`. 남이 편집 중일 때만 켜진다
+- **완료(편집불가)** — `CompleteDoc-service&docObjIds=`. 완료한 문서 목록은 `F_LIST_COMPLETE`(건수 읽기를 쟀다)
+- **2 년 연장보관** — `DocKeepExtend-service&obj_id=`. 보존연한이 지난 목록은 `F_LIST_UNUSED_1YEAR`(건수 읽기를 쟀다). 속성 화면은 보존연한을
+  안 바꾼다(저장 몸에도 없다)
+- **편집권한 · 공유권한 반납** — `DeleteRolePermit-service&docId=&roleType=R|S`. 내 권한이 빠져 되돌릴 길이 없다
+- **권한 요청 · 승인 · 반려** — 요청 `POST RequestAuthority-service`(몸은 `popups/requestPermission_multi.jsp` 가 짓는다 — 안 읽었다) · 받은
+  요청 목록 `RequestAuthority-service&getDocList=true` · 응답 `&response=true`(`popups/approvePermission.jsp`) · 보안등급 요청 취소
+  `RequestSecurityLevel-service&cancel=true&wfId=`. 목록 읽기는 손가락이 있다(`list --box asked-me · i-asked` · `notices`). 남에게 가는
+  결재 흐름이라 사람이 한다
+- **검토 요청 · 검토 의견** — 요청 `DocCoaching-service&requestCoaching=true&docObjId=` · 의견 목록 `&getCommentList=true&docId=`. 의견 목록을
+  문서 열쇠 · doc 열쇠 둘로 보냈더니 둘 다 `MSG_E_0232`(조회 실패)였다 — 열쇠 종류 탓인지 의견이 없어서인지는 못 갈랐다
+- **동시편집 취소** — `CheckOutCheckIn-service&officecancelcheckout=true&MS_OBJECT_ID=`. 화면은 「Teams 에 등록된 문서는 삭제된다」를 묻는다.
+  Teams 쪽 문서가 지워져 안 지었다 — `cancel-edit` 은 이 갈래를 막는다
+- **지난 판으로 되돌리기 · 판 지우기 · 중간버전** — 되돌리기 `RecoverContentVersion-service&view=true&MS_OBJECT_ID=&CURRENT_VERSION_ID=` ·
+  판 지우기 `DeleteDoc-service` · 중간버전 `DocPropertyHtml-service&minor_manage|update_minor_manage|delete_minor_manage`. 지난 판 읽기는
+  손가락이 있다(`versions` → `read <그 판의 열쇠>`)
+- **자동열람** — `DocAutoGrant-service&docId=&revokeFlag=T|F`. 속성 저장 몸의 `ecm_auto_grant_flag` 와 화면의 체크 칸 `id_setAutoGrant` 가
+  짝이다 — 손은 그 칸이 선 문서를 안 저장한다(`UNMEASURED_CHECKS`)
+- **편집권한 일괄 · 부서 밖 편집권한 회수** — `CoresponUser-service&DOC_OBJECT_ID=` · `DeleteCoresponUser-service&ecmObjId=` ·
+  `GrantCoresponUser-service`
+- **임원보고 · 복호화(사외 반출) · 구글 공동작성** — 결재 팝업 `jsp/decryption/decryption.jsp`(`ECM_WORKFLOW_TYPE=mailAttach|htmlAttach|google`
+  — 팝업 몸을 안 읽었다) · 구글 `DocShereToGoogle-service&googleUploadDoc|googleCancelDoc|googleDownloadDoc=true&wfId=&docObjId=`
+- **보기 환경** — `userRegistSeting-service&setThumbNailUserConfig=true` · `&setCountPerPage=true&countPerPage=` — 사람의 화면 설정이다
+
+### 서버에 파일을 짓는 동작 — 쟀다 · 읽음
+
+- **URL 복사** — 쟀다(한 번): `InterfaceAttachURLGet-service&MS_OBJECT_ID=<열쇠>&ACTID=COPYURL&SYSID=ECM` → `MSG_I_0228` · `COPY_URL_INFO`
+  (`/ECM/swp_interface.jsp?ACTID=viewlink&OBJECTID=<문서 열쇠의 ASCII hex>&DOCID=<doc 열쇠의 ASCII hex>&SYSID=<"ECM" 의 hex>`) ·
+  `SERVER_FILE_NAME`(`/WAS/ECMTEMP/<월>/<일>/<년>/<부서>/<문서 열쇠>_<사람 열쇠>_<시각>_A.html`) · `CLIENT_FILE_ORG`(PC 쪽 바로가기
+  html 이름 `<문서 이름>(<꼴>_<크기>KB).html`). 서버가 부를 때마다 임시 html 을 짓는 것으로 보인다 — 메일의 「이름(확장자_NKB).html」 첨부가
+  이것이다. 링크 글은 열쇠만으로 지을 수 있는 꼴이지만 서버 기록(사용 로그 · 임시 파일)을 안 가렸다.
+  잴 것 — 시험 문서로 두 번 불러 `SERVER_FILE_NAME` 의 시각 마디가 매번 새로 서나 보고, 그 링크를 다른 사람이 열 때 권한 검사를 받나
+  (역할자에 없는 사람)를 본다. 화면의 답 글이 「타시스템 첨부 시 역할자에 추가하시기 바랍니다」 다 — 링크만으로는 안 열린다
+- **메일로 첨부하기** — 읽음: 문서마다 `InterfaceContentAttachFile-service&mailAttachHtml=true&MS_OBJECT_ID=&SYSID=pcpma|pcfma&ACTID=attach` →
+  `SERVER_FILE_NAME` 들을 모아 `&mailAttach=true&ServerFullPath=` → 답 `url`(웹메일 쓰기 창)을 연다 · 사용 로그
+  `CreateLog-service&eventType=ATTACH…`. 받는 사람 · 본문은 company-mail 이 든다 — 두 스킬 사이 어디서 잇나는 부모가 정한다
+- **PC 에 저장(작업방 내리기)** — 읽음: `DownWorkPlace-service&MS_OBJECT_ID=<열쇠>[&isDecrypt=T]` 뒤 에이전트 웹소켓. `read` 가 이미
+  에이전트로 받는다(`VIEW`) — 다른 점은 받은 파일이 사람의 PC 작업방에 남는 것이다. 다운로드 로그가 남는다
+
+### 읽기지만 안 지은 것 — 쟀다 · 읽음
+
+- **상세검색(DB · 「실시간 컨텐츠명 검색」)** — 쟀다: `DocList-service&getDocList|getDocCount=true&isHTML=T&formId=F_LIST_DB_SEARCH&search=true&
+  formType=DB&conditionType=AND|OR&conditionTagType=&searchTagVal=&conditionDate=srchModifyDate|srchRegistDate&ownerName=&registerName=&
+  secretLevel='2A','2B'&fromInputDateVal=&toInputDateVal=&listKey=ALLCABINET_<cab>|<폴더>&childCheck=T&cabinetId=&folderId=&
+  wfStatusType=searchProperty&etcVar=&selCabinetType=MENU_DEPT&searchValue=<제목>&fileType=&approval=`. 줄은 목록 줄과 같은 칸이다. 전사
+  검색(`search`)이 같은 칸(소유자 · 등록자 · 보안등급 · 기간 · 꼴)을 한 요청으로 받아 안 지었다 — 문서함 하나 안에서만 찾고, 검색엔진에
+  아직 안 걸린 새 문서를 찾아야 할 때 이 길을 잰다
+- **태그 · 결재 문서로 전사 검색** — 읽음: posmeta 의 `ecmtaglist`(빈칸으로 이은 태그) · `ecmtaglist_operator` AND|OR · `approval=Y`(결재
+  문서만). 안 보냈다
+- **문서의 폴더 경로** — 쟀다: `GetDocFolderPath-service&docId=<doc 열쇠>` → `MS_FOLDER_ID` · `MS_FOLDER_PATH` · `MS_CABINET_ID` ·
+  `MS_CABINET_NAME` · `MS_CABINET_TYPE`. 문서 열쇠로 물으면 「폴더 경로를 조회하는데 실패」. 목록 줄의 `MS_FOLDER_PATH` 와 속성 화면의
+  `MS_FOLDER_PATH` 가 이미 답해 안 지었다
+- **이력 탭의 다른 칸** — 쟀다(0 줄): 인수 이력 `DocPropertyHtml-service&handover=true` · 유통 DRM `&swpdrm=true` · 복합컨텐츠 하위
+  `&subdoc=true&s_DocId=`. 읽음: 활용 상세 `&usedetail=true&EVENT_CODE=<코드>`. 시험한 문서에 줄이 없어 줄의 꼴을 못 봤다
+- **목록을 엑셀로** — 읽음: `POST DocList-service&getDocExcelExport=true` 몸 `formId · selectedEcmObjId …`. 화면이 답으로 파일을 짓는다 —
+  대화는 `list --json` 으로 같은 줄을 받는다
+- **빠른 보기(퀵뷰)** — 읽음: `OpenContents-service&quickview=true&MS_OBJECT_ID=&formId=` → `MS_QUICKVIEW_URL` 로 form POST. 그 앞에
+  에이전트 웹소켓의 `getssologininfo` 로 SSO 토큰을 받는다. `read` 가 글자를 든다
+- **챗봇 검색** — `ecmChatbotMain` · `F_LIST_CHATBOT_SEARCH`(`chatbot_searchlist-service`). 대화의 모델이 이미 그 자리다
+
+### 대화로 시킬 일이 아니어서 안 지은 것
+
+- 핵심기술 설정 · 해제(`A_CC_CORE_CONFIG` · `A_CC_CORE_RELEASE` · `popups/requestProtectedRelease.jsp`) · 집중 보호기술 · RAI — 보안 결재가
+  붙는다. 손은 그런 문서를 「안 잰 꼴」로 멈춘다(`MEASURED_VARS`)
+- 관리자 화면(`adminMain.jsp` · `AdminIfSystemMgmt-service` · `GetAdminManual-service` · 개인별 일괄 회수 · 정리 대상 비우기) — 관리자에게만
+  보인다
+- 승인 · 반려 · 복호화 승인(`A_CC_APPROVE_REJECT` …) · 사외 반출 요청 · 그룹사 유통 권한 회수 — 결재 흐름이다
+- POSTalk · Teams 로 공유(`A_CC_SEND_POSTALK` · `A_CC_SEND_TEAMSBOT` · `grantCoresponUser.jsp?…posTalkSahredDoc=T`) — 받는 사람을 팝업에서
+  사람이 고른다. 메일 · 권한 손과 겹친다
+- 구글 공동작성 · 동시편집(`A_CC_START_GOOGLEDOCS` · `A_CC_COEDIT` · `A_CC_INSERT_COEDIT`) — 바깥 편집기 창을 연다
+- 본문 첨부 이미지 임시 보관(`F_LIST_TEMP` · `TempFileDoc-service` · `TempDocCopy-service` · `F_LIST_TEMPDOC`) — 메일 본문 그림용이라 문서함
+  문서가 아니다
+- 개인 컨텐츠(`F_LIST_PERSONALFOLDER` · `A_PC_*` · `PersonalFolder-service`) — 위 「개인컨텐츠함」 줄
+- 목록의 알림 설정 · 보기 설정 · 썸네일 · 팁(`goTip`) — 화면 모양이다
+
+### 손이 안 부르는 화면 줄 — 빈자리가 아니다
+
+- 전사 검색을 누르면 화면이 따로 부르는 검색 로그(`createESSearchLog`) — 결과에 안 든다. 손은 안 부르고, 그 꼴은 검색 POST 문이 막는다
+- 우클릭 메뉴의 「편집 · 편집완료 · 컨텐츠 속성 · 보기」 — 손가락 `edit` · `checkin` · `doc`/`preview-props` · `open`/`read` 가 든다
+- 「부서 컨텐츠함」 탭 하나로 부서 · 프로젝트 문서를 한꺼번에 — `search` 의 기본 범위(`s_deptCabinets`)가 같은 일이다
+- 「최신버전으로 보기」 — `latest`
+- 메인 화면 휴지통 고르기 칸(`F_LIST_RCB` option) — `list --box trash`
 
 ## 사내 ECM 에서 잰 것 — 어기면 조용히 망가진다
 
@@ -108,7 +287,7 @@
   **전체** 명단 XML(`roleList` — 줄마다 칸 여덟, 역할 · 사람 열쇠 · `U` · 회사 열쇠만 차고 나머지는 빈 칸) · 즐겨찾기
   (`favorite_info` 의 폴더들) · 체크 칸 셋(화면에 체크 칸이 없으면 `F`). 화면처럼 칸을 인코딩 없이 이어 붙이고 이름 둘만
   `encodeURIComponent` 한다. 거두기는 그 사람을 뺀 명단을 보내는 것이다. 성공은 `MSG_I_0147`
-- ⚠ 같은 서비스 모음에 편집취소 · 올리기 요청 · 지우기가 있다 — 이 손은 짓지 않고, 지으려 하면 서버에 닿기 전에 막는다. 잰 꼴 밖의
+- ⚠ 같은 서비스 모음에 올리기 요청 · 지우기 · 동시편집 취소가 있다 — 이 손은 짓지 않고, 지으려 하면 서버에 닿기 전에 막는다. 잰 꼴 밖의
   서비스 · 칸 · 값도 같이 막는다(닫힌 목록 `READS` · 편집 열기 문 `_guard_edit`)
 
 ## Windows 기본 앱 — 받아 주는 값 · 어기면 조용히 망가진다

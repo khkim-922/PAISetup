@@ -9,14 +9,15 @@
     python -X utf8 -I meeting_room.py day   [말 …] [--date 오늘|내일|YYYY-MM-DD]
     python -X utf8 -I meeting_room.py mine  [오늘|YYYY-MM-DD] [끝 날]
     python -X utf8 -I meeting_room.py preview [--id 예약 | --copy 예약] [--room R] [--title T] [--start S] [--end E] [--note N]
-                                              [--to 메일 …] [--to-file 파일 …] [--add-to 메일 …] [--add-to-file 파일 …] [--drop-to 메일 …]
+                                              [--to 메일 …] [--to-file 파일 …] [--people-file people.json …]
+                                              [--add-to 메일 …] [--add-to-file 파일 …] [--drop-to 메일 …]
     python -X utf8 -I meeting_room.py book    [--copy 예약] …preview 와 같은 값… --confirm <preview 의 key>   # ⚠ 넣는다
     python -X utf8 -I meeting_room.py change  --id 예약 …preview 와 같은 값… --confirm <preview 의 key>       # ⚠ 고친다
     python -X utf8 -I meeting_room.py cancel  --id 예약 --confirm <mine 이 낸 그 줄의 key>                    # ⚠ 취소한다
 
     시각은 다 서울 벽시계 ``YYYY-MM-DD HH:MM`` 이고, 답의 ``start`` · ``end`` 도 그 꼴이라 그대로 다음 명령(이 스킬 · 회사 일정)에 준다.
     참석자는 메일 주소로 준다 — 사람은 스킬 company-mail 의 who 로 정하고, 그 --out 이 쓴 주소 파일(한 줄에 하나 · ``#`` 뒤는 버린다)을
-    ``--to-file`` 로 그대로 준다.
+    ``--to-file`` 로, 주소록이 쓴 사람 파일(people.json)은 ``--people-file`` 로 그대로 준다.
 
 한 번 부름이 예약 한 건을 한 번 다룬다 — 출발 하나(새 예약 · 내 예약 한 건 · 본뜰 예약)에 바꿀 것을 아무 조합으로 주고 끝 하나로
 맺는다. 넣기 · 고치기 · 취소는 참석자에게 회사 메일로 안내가 가 되돌릴 수 없어, 한 건을 여러 번에 나눠 바꾸지 않는다(부를 때마다
@@ -28,9 +29,8 @@
 해시가 key 라, 보인 뒤 무엇이든 달라졌으면 안 바꾼다. 취소의 key 는 mine 이 보인 그 줄의 해시다. 앱의 미리 검사는 정책만 보아,
 겹침 · 지난 시각은 여기서 가린다.
 
-내는 것 — 표준 출력에 JSON 하나. 종료 값: 0 됐다 · 1 도구 · 앱 고장(그대로 알린다) · 2 인자가 틀렸다(없는 손가락 · 빠진 값 · 회의실이
-여럿 걸림 — ``message`` 가 후보와 다음 걸음을 든다) · 3 사내 세션이 없다 · 끊겼다(스킬 ep-login). 0 이 아니면 ``message`` 가 까닭과
-「다음: …」 을 든다. preview 는 ``state``(ready · blocked) · ``blocks``(못 하는 까닭) · ``notes``(할 수는 있으나 사람이 알아야 할 것) ·
+내는 것 — 표준 출력에 JSON 하나. 종료 값과 그 뜻은 맨 위 ``--help`` 의 범례(``EXITS`` — ``ep_command.exit_legend``)가 낸다.
+preview 는 ``state``(ready · blocked) · ``blocks``(못 하는 까닭) · ``notes``(할 수는 있으나 사람이 알아야 할 것) ·
 ``key`` 를, 바꾸는 명령은 ``state`` 와 사람에게 할 말 · 다음 걸음이 든 ``state_word`` 를 낸다. 예약 줄의 ``attendees`` 는 이름과 메일
 주소, ``teams`` 는 Teams 링크 · 회의 ID · 암호(현황 ``day`` 의 남의 줄은 붙었다는 것만)다. 취소 ``key`` 는 내가 주관한 줄(mine ·
 day · preview 의 was · 넣기 · 고치기의 답)에만 선다.
@@ -49,9 +49,17 @@ from datetime import date, datetime, timedelta, timezone
 
 HERE = pathlib.Path(__file__).resolve().parent
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
-KST = timezone(timedelta(hours=9))
-STAMP = "%Y-%m-%d %H:%M"                  # 서울 벽시계 — 받는 꼴이자 답의 start · end 꼴
-STAMP_HELP = "YYYY-MM-DD HH:MM(서울)"
+if str(EP_LOGIN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(EP_LOGIN_SCRIPTS))   # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
+try:
+    import ep_command
+    import ep_session
+    from ep_command import (DAY_COUNT, DAY_WORDS, EXIT_ARGS, EXIT_OK, EXIT_SESSION, EXIT_TOOL, OUT_BYTES, SEOUL as KST, STAMP_HELP, WEEKDAYS, Stop, date_of, day_of, gaps_of,
+                            load, size, stamp, stamp_of as kst)   # 시각의 꼴은 일정 손과 한 벌 — 일정의 show --free 답을 free · preview 가 받는다
+except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
+    print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
+    sys.exit(1)
+
 MINE_DAYS = 14                            # mine 의 기본 구간 — 오늘부터 두 주
 MOST_ROOMS = 60                           # rooms 답에 싣는 회의실 수 — count 는 다 센 수다
 MOST_FREE = 40                            # free 답에 싣는 빈 회의실 수
@@ -148,8 +156,11 @@ CHANGES = {
                     "반복 — 이 날까지 업무일(주말 · 공휴일 빼고)마다 같은 시각에 한 회차씩. 공휴일은 앱이 뺀다",
                     "반복은 새로 넣을 때만 정한다 — 있던 예약을 반복으로 바꾸지 않는다. 반복 전체는 --series 로 고친다"),
     "note": Change((("--note", {}),), ALL, "설명"),
-    "to": Change((("--to", {"nargs": "*"}), ("--to-file", {"nargs": "*"})), ALL,
-                 "참석자 — 메일 주소(빈칸 · 쉼표로 여럿, 파일은 한 줄에 하나). 있던 예약 · 본뜨기의 참석자를 이 사람들로 통째로 간다"),
+    "to": Change((("--to", {"nargs": "*"}), ("--to-file", {"nargs": "*"}),
+                  (ep_command.PEOPLE_FLAG, {"action": "append", "metavar": "파일",
+                                            "help": f"{ep_command.PEOPLE_HELP} — 사람마다 그 메일 주소로 참석자에 넣는다(주관자인 나는 뺀다)"})), ALL,
+                 "참석자 — 메일 주소(빈칸 · 쉼표로 여럿, 파일은 한 줄에 하나) · 주소록의 사람 파일. 있던 예약 · 본뜨기의 참석자를 이 사람들로 "
+                 "통째로 간다"),
     "add_to": Change((("--add-to", {"nargs": "*"}), ("--add-to-file", {"nargs": "*"})), HELD,
                      "참석자 더하기 — 있던 참석자는 그대로 두고 더한다", NEW_EMPTY),
     "drop_to": Change((("--drop-to", {"nargs": "*"}),), HELD, "참석자 빼기 — 지금 참석자의 메일 주소(mine · preview 의 attendees)", NEW_EMPTY),
@@ -186,6 +197,10 @@ PREF_ACTIONS = {
     "drop_group": ("--drop-group", "참석자 그룹 지우기 — 그룹 이름"),
 }
 MUTATING = (*ENDS, "pref")
+# 이 명령이 내는 종료 값 — 뜻은 ep_command 의 한 표, 여기는 이 손이 덧붙일 말만. 「보인 판과 다르다」는 종료 값이 아니라 0 의 state moved 다
+EXITS = ep_command.exit_legend((EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION),
+                               {EXIT_OK: "넣기 · 고치기 · 취소 · 내 설정 바꾸기가 보인 판과 달라 안 했으면 0 에 state moved — 답의 지금 판을 다시 보인다",
+                                EXIT_ARGS: "없는 손가락 · 빠진 값이면 어디서 하나나 받는 꼴을, 회의실이 여럿 걸리면 후보를 댄다"})
 
 # 바꾸는 명령의 끝 — 낱말 하나가 뜻 하나다(형제 스킬 company-calendar 의 같은 낱말과도 같은 뜻)
 STATE_WORDS = {
@@ -209,16 +224,6 @@ REFUSE_WORDS = {
     "single": "반복 예약이 아닙니다 — 한 건은 --id 로 고치고 취소한다",
 }
 
-
-if str(EP_LOGIN_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(EP_LOGIN_SCRIPTS))   # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
-try:
-    import ep_command
-    import ep_session
-    from ep_command import DAY_COUNT, DAY_WORDS, EXIT_ARGS, OUT_BYTES, WEEKDAYS, Stop, day_of, gaps_of, load, size
-except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
-    print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
-    sys.exit(1)
 
 
 # ── 표에서 짓는 것 — 지도 · 인자 거르기 ────────────────────────────────────────────────────────────
@@ -297,20 +302,8 @@ def fingerprint(*parts) -> str:
 
 
 # ── 시각 ────────────────────────────────────────────────────────────────
-def kst(text: str) -> datetime:
-    try:
-        t = datetime.strptime(text.strip(), STAMP)
-    except ValueError as exc:
-        raise Stop(EXIT_ARGS, "args", f"시각은 「YYYY-MM-DD HH:MM」(서울)으로 준다: {text!r}") from exc
-    return t.replace(tzinfo=KST)
-
-
 def iso(t: datetime) -> str:
     return t.astimezone(KST).isoformat(timespec="seconds")
-
-
-def stamp(t: datetime) -> str:
-    return t.astimezone(KST).strftime(STAMP)
 
 
 def utc(t: datetime) -> str:
@@ -453,10 +446,7 @@ def workdays(first: date, last: date) -> list:
 
 def until_day(text: str) -> date:
     """``--until`` 의 날 — 꼴이 틀리면 Stop(인자)."""
-    try:
-        return date.fromisoformat(text)
-    except ValueError:
-        raise Stop(EXIT_ARGS, "args", f"--until 은 YYYY-MM-DD 로 준다: {text!r}") from None
+    return date_of(text, "--until 은")
 
 
 def series_took(app, rid: str, body: dict) -> bool:
@@ -541,6 +531,18 @@ def addresses(values, files) -> list[str]:
     return out
 
 
+def people_addresses(files) -> tuple[list[str], list[str]]:
+    """사람 파일(``ep_command.people_of``)의 사람들 → (메일 주소, 주소가 없는 사람의 말 「이름 · 부서(파일:몇째)」). 회의실 앱은 사람을
+    메일 주소로 안다."""
+    emails, no_mail = [], []
+    for p in ep_command.distinct(ep_command.people_of(files)):
+        if p.email:
+            emails.append(p.email)
+        else:
+            no_mail.append(f"{p.label()}({p.where})")
+    return emails, no_mail
+
+
 class Directory:
     """앱의 사람 목록 — 한 부름에서 한 번만 받는다(전사 목록이라 크다)."""
 
@@ -594,9 +596,20 @@ def attendees_plan(args, start: str, base: dict | None, me: dict, book: Director
         if not mine_to_change(base, me.get("id", "")):
             notes.append(f"원래 주관자({person(base.get('organizer_id'))})는 참석자에 안 든다 — 함께 부르려면 --add-to 로 그분 주소를 준다")
     unknown = []
-    if args.to is not None or args.to_file is not None:
-        current, lost = book.resolve(addresses(args.to, args.to_file))
+    people_file = getattr(args, "people_file", None)
+    if args.to is not None or args.to_file is not None or people_file is not None:
+        from_people, no_mail = people_addresses(people_file)
+        if no_mail:
+            blocks.append("사람 파일에 메일 주소가 없는 분이 있어 참석자로 못 넣는다: " + ", ".join(no_mail) + " — 주소록으로 그분을 다시 "
+                          "찾거나 사람에게 주소를 받아 --to 로 준다")
+        current, lost = book.resolve(addresses([*(args.to or ()), *from_people], args.to_file))
         unknown += lost
+        # 사람 파일에 든 나(주관자)는 참석자로 안 넣는다 — 「나와 ○○ 님」으로 찾은 파일이 흔하다. 나는 앱의 사람 열쇠로 가린다(주관자 칸의 값)
+        listed = {a.casefold() for a in addresses(args.to, args.to_file)} if args.to or args.to_file else set()
+        mine = [a for a in current if a.get("employee_id") == me.get("id") and a["email"].casefold() not in listed]
+        if mine:
+            current = [a for a in current if a not in mine]
+            notes.append("사람 파일에 든 나(주관자)는 참석자로 안 넣었다 — 주관자는 참석자로 안 넣어도 회의에 든다")
     adds = addresses(getattr(args, "add_to", None), getattr(args, "add_to_file", None))
     if getattr(args, "group", None):
         members = [m.get("email") for m in find_group(book.app.prefs(), args.group).get("members") or [] if m.get("email")]
@@ -773,6 +786,14 @@ def fit(out: dict, key: str, group, more) -> None:
         out["more"] = more(cut)
 
 
+def free_span(args) -> tuple[datetime, datetime]:
+    """free 의 --start · --end — 꼴이 아니거나 끝이 시작보다 앞이면 Stop(인자). 세션 없이 가린다."""
+    start, end = kst(args.start), kst(args.end)
+    if end <= start:
+        raise Stop(EXIT_ARGS, "args", "끝이 시작보다 앞이다")
+    return start, end
+
+
 def asked_day(text, today: date) -> date:
     """사람이 준 날 하나 — ``day_of`` 에 요일 · 「다음 주」를 어떻게 줄지를 덧붙여 Stop(인자)."""
     try:
@@ -825,11 +846,14 @@ def pref(app, args) -> dict:
         def check(got):
             return (room["id"] in (got.get("favorite_rooms") or [])) == on
     elif action == "save_group":
-        got, lost = book.resolve(addresses(args.to, args.to_file))
+        from_people, no_mail = people_addresses(args.people_file)
+        if no_mail:
+            raise Stop(EXIT_ARGS, "args", "사람 파일에 메일 주소가 없는 분이 있다: " + ", ".join(no_mail) + " — 주소록으로 그분을 다시 찾는다")
+        got, lost = book.resolve(addresses([*(args.to or ()), *from_people], args.to_file))
         if lost:
             raise Stop(EXIT_ARGS, "args", "회의실 예약 앱의 사람 목록에 없는 주소: " + ", ".join(lost) + f" — {UNKNOWN_NEXT}")
         if not got:
-            raise Stop(EXIT_ARGS, "args", "그룹에 넣을 사람을 --to · --to-file 로 준다")
+            raise Stop(EXIT_ARGS, "args", f"그룹에 넣을 사람을 --to · --to-file · {ep_command.PEOPLE_FLAG} 로 준다")
         old = next((g for g in prefs.get("attendee_groups") or [] if g.get("name") == value), None)
         body = {"name": value, "members": [{"employee_id": a["employee_id"], "email": a["email"]} for a in got]}
         view = {"do": "참석자 그룹 고치기" if old else "참석자 그룹 짓기",
@@ -880,9 +904,7 @@ def read(app, args, now: datetime) -> dict:
         return {"count": len(got), "rooms": got[:MOST_ROOMS], "cut": len(got) > MOST_ROOMS}
     me = app.me()
     if args.command == "free":
-        start, end = kst(args.start), kst(args.end)
-        if end <= start:
-            raise Stop(EXIT_ARGS, "args", "끝이 시작보다 앞이다")
+        start, end = free_span(args)
         places = Places(app.hierarchy())
         cand = [r for r in favorites_only(app, args, find_rooms(app.rooms(), places, args.where))
                 if room_row(r, places)["bookable"] and not cross_company(r, places, me)
@@ -1043,7 +1065,8 @@ def run(args, session: pathlib.Path) -> dict:
 
 def parser() -> argparse.ArgumentParser:
     raw = argparse.RawDescriptionHelpFormatter
-    p = argparse.ArgumentParser(description="회의실 예약 — 보기 · 넣기 · 고치기 · 본떠 넣기 · 취소", epilog=finger_map(), formatter_class=raw)
+    p = argparse.ArgumentParser(description="회의실 예약 — 보기 · 넣기 · 고치기 · 본떠 넣기 · 취소", epilog=f"{finger_map()}\n\n{EXITS}",
+                                formatter_class=raw)
     sub = p.add_subparsers(dest="command", required=True)
     r = sub.add_parser("rooms", help=READS["rooms"])
     r.add_argument("word", nargs="*", help="이름 · 지역 · 건물 · 층의 일부(빈칸으로 여럿)")
@@ -1067,6 +1090,7 @@ def parser() -> argparse.ArgumentParser:
         pr.add_argument(flag, dest=k, default=None, help=word)
     pr.add_argument("--to", nargs="*", default=None, help="그룹의 사람 — 메일 주소(빈칸 · 쉼표로 여럿)")
     pr.add_argument("--to-file", nargs="*", default=None, help="그룹의 사람 — 주소 파일(한 줄에 하나)")
+    ep_command.add_people_file(pr, "그룹의 사람 — 사람마다 그 메일 주소")
     pr.add_argument("--confirm", default=None, help="미리 본 key — 주면 바꾼다")
     for name in ("preview", *ENDS):
         a = sub.add_parser(name, help="넣을 · 고칠 꼴 미리 보기 · key(바꾸지 않는다)" if name == "preview" else f"⚠ {ENDS[name].word}",
@@ -1095,10 +1119,17 @@ def main() -> int:
             mine_days(args, today)       # 날이 틀렸으면 세션을 받기 전에 멈춘다
         if args.command == "day":
             asked_day(args.date, today)
+        if args.command == "free":
+            free_span(args)              # 시각의 꼴 · 차례도 세션을 받기 전에 — 로그인을 청할 일이 아니다
         if args.command in ("preview", *ENDS):
             fingers(args)                # 없는 손가락 · 빠진 값은 세션을 받기 전에 멈춘다
+            for given_at in (getattr(args, "start", None), getattr(args, "end", None)):
+                if given_at:
+                    kst(given_at)        # 시각의 꼴도 — 차례는 있던 예약의 시각을 읽어야 가려 plan 의 blocks 가 든다
             if getattr(args, "until", None):
                 until_day(args.until)
+        if args.command in ("preview", *ENDS, "pref"):
+            ep_command.people_of(getattr(args, "people_file", None))   # 사람 파일이 없거나 꼴이 아니면 세션을 받기 전에 멈춘다
         return ep_session.session_first(lambda f: run(args, f), expired=(mrs.SessionExpired, mrs.SessionMissing),
                                         file_first=args.command not in MUTATING)
 

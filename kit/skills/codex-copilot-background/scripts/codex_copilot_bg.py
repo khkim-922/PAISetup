@@ -38,12 +38,14 @@ FOOTER_FIELDS = (
     ('tokens', '`tokens in=<N> out=<N>` — Copilot 은 `in=- out=-`'),
     ('web', 'Codex 가 실제로 마친 웹 검색 수 — 0 이면 기억으로 낸 답이다. Copilot 은 `-`'),
     ('resume', '이어 묻기 값 `<쪽>:<id>` — 그쪽 대화 기록이 실제로 남았을 때만. 아니면 `-` 와 까닭'),
+    ('reviewer', 'Copilot 리뷰에서만 — 내장 리뷰 에이전트(code-review)가 끝까지 돌았으면 `code-review`, 아니면 `-`(본 세션이 스스로 '
+                 '답했다 — 도구 · 에이전트 이름이 바뀐 판일 수 있다). 리뷰할 변경이 없어 띄우지 않았으면 `none`'),
     ('raw', '날 출력(jsonl) 파일 경로 — 답이 안 온 갈래에서만'),
 )
 
-# 셔틀(`.cmd`)이 부르는 JS — npm 전역 자리(셔틀 곁의 `node_modules`) 기준
-NPM_ENTRY = {'codex': ('@openai', 'codex', 'bin', 'codex.js'),
-             'copilot': ('@github', 'copilot', 'npm-loader.js')}
+# 셔틀(`.cmd`)이 부르는 꾸러미 — npm 전역 자리(셔틀 곁의 `node_modules`) 기준. 띄울 것은 그 `package.json` 의 `bin` 이
+# 든다(`common.npm_head`) — 꾸러미가 JS 에서 실행 파일로 옮겨도 따라간다
+NPM_PACKAGE = {'codex': ('@openai', 'codex'), 'copilot': ('@github', 'copilot')}
 
 # Codex 의 한도 문구 — openai/codex `codex-rs/protocol/src/error.rs` 의 것이다. 「You’ve」의 아포스트로피가 판마다
 # U+2019 · ASCII 로 갈려 그 뒤부터 문다. 마지막 둘은 API 키 방식 · 일반 429 를 재시도하다 다 쓴 꼴이다.
@@ -99,21 +101,41 @@ COPILOT_ARGS = ['--allow-tool=web_fetch', '--allow-all-urls', '--no-ask-user', '
 # (`--allow-all-paths` · `--allow-all` · `--yolo`)과 `--add-dir` 은 싣지 않는다
 COPILOT_WRITE = ['--allow-tool=write', '--disallow-temp-dir']
 # 리뷰 모드(`--review`)의 대상 — 값 꼴과 리뷰어에게 줄 한 줄. 문장은 `codex exec review` 의 세 대상과 같은 뜻이다.
-REVIEW_TARGET_RE = re.compile(r'uncommitted|(base|commit):([A-Za-z0-9._/@^~-]+)')
+REVIEW_TARGET_RE = re.compile(r'uncommitted|(base|commit):([A-Za-z0-9._/@^~][A-Za-z0-9._/@^~-]*)')   # `-` 머리는 git 깃발이 된다
 REVIEW_TARGETS = {'uncommitted': 'Review the uncommitted changes: staged, unstaged and untracked.',
                   'base': 'Review the changes this branch would merge into `{ref}` (diff against `git merge-base HEAD {ref}`).',
                   'commit': 'Review the changes introduced by commit `{ref}`.'}
 DEFAULT_REVIEW_TARGET = 'uncommitted'
-REVIEW_SKILL = '$review-agent '   # Codex 의 리뷰 스킬을 이름으로 부르는 머리
-REVIEW_AGENT = 'codex'            # 리뷰 모드를 받는 쪽 — Copilot 은 안 받는다(references/DESIGN.md)
-# 저장된 로그인보다 앞서는 토큰 — Copilot 권한이 없는 토큰이면 인증부터 깨진다. `COPILOT_GITHUB_TOKEN` 은 Copilot 에
-# 쓰라고 둔 것이라 남긴다.
+# 리뷰 모드에서 프롬프트 앞에 얹는 머리 — 쪽마다 제 공식 리뷰를 부른다. Codex 는 리뷰 스킬을 이름으로, Copilot 은 `/review` 가
+# 부르는 내장 에이전트(`code-review`)를 `task` 도구로
+REVIEW_CALL = {'codex': '$review-agent ',
+               'copilot': ('Use the task tool with agent_type "code-review" (your built-in review agent) for this review, and '
+                           'answer with the findings exactly as that agent returns them. ')}
+# Copilot 리뷰의 diff 안내 — 그 세션에는 셸이 없어 러너가 대상의 diff 를 미리 뽑아 파일로 준다(`review_diff`). 본 세션이 diff 를
+# 줄여 옮기지 않게 그 경로를 리뷰 에이전트에 그대로 넘기라고 한다
+REVIEW_DIFF_SAY = ('This session has no shell, so git cannot run here. The runner has already written the complete diff of that '
+                   'target to `{path}`. Pass this exact path to the code-review agent (do not paste or summarise the diff '
+                   'yourself) and have it read the diff with the view tool (in ranges if it is long) and the changed files in '
+                   'the working directory. Findings cite line numbers of the changed files themselves (the new side of each '
+                   'hunk, or the file as viewed), never line positions inside the diff file.')
+# Copilot 리뷰 레인 — 읽기 레인 도구에 하위 에이전트(`task` · 그 답을 읽는 `read_agent`)만 더 보인다. 셸 · 편집 도구는 안
+# 보이고, 하위 에이전트도 이 도구만 받는다(Copilot CLI 1.0.114 실측) — 리뷰어가 작업 자리를 고칠 길이 도구째 없다
+COPILOT_REVIEW_TOOLS = COPILOT_TOOLS + ('task', 'read_agent')
+REVIEW_AGENT_NAME = 'code-review'              # 끝 줄 `reviewer=` 가 찾는 하위 에이전트 이름(`subagent.completed` 의 `agentName`)
+# 러너가 diff 를 뽑는 git — 페이저 · 바깥 diff 도구 · 글 바꾸기(textconv) · 파일 감시(fsmonitor)를 끄고, 색인을 다시 안 쓰고
+# (`GIT_OPTIONAL_LOCKS`), 부분 클론이 객체를 받아 오지 않게 한다(`GIT_NO_LAZY_FETCH`). 파일 이름은 그대로(`core.quotePath`)
+REVIEW_GIT = ['git', '--no-pager', '-c', 'core.quotePath=false', '-c', 'core.fsmonitor=false']
+REVIEW_GIT_DIFF = ['--no-ext-diff', '--no-textconv', '--no-color']
+REVIEW_GIT_ENV = {'GIT_OPTIONAL_LOCKS': '0', 'GIT_PAGER': 'cat', 'GIT_NO_LAZY_FETCH': '1', 'GIT_TERMINAL_PROMPT': '0'}
+REVIEW_DIFF_PREFIX = 'cc-bg-review-'           # diff 를 두는 이 실행만의 임시 폴더 — 작업 자리 밖이고 끝나면 지운다
+REVIEW_NOTHING = '리뷰할 변경이 없다 — 대상 `{target}` 의 diff 가 비어 Copilot 을 띄우지 않았다.'
+# 저장된 로그인(gh 키링)보다 앞서는 환경변수 토큰 — 받는 Copilot 에는 걷는다(Copilot 권한이 없는 토큰이면 인증부터 깨진다 ·
+# `COPILOT_GITHUB_TOKEN` 은 Copilot 에 쓰라고 둔 것이라 남긴다). 이것이 선 셸에서는 `gh auth login` 이 로그인을 안 받는다
+# (`gh_login_dead_say`)
 COPILOT_DROP_ENV = ('GH_TOKEN', 'GITHUB_TOKEN')
 # Copilot 이 gh 로그인의 토큰으로 인증하다 진 꼴(GitHub 의 401) — 보관본 references/copilot-gh-login-401.stderr.txt 그대로다.
 # 뒤는 판마다 갈려 앞머리를 문다
 COPILOT_GH_LOGIN_DEAD = 'Failed to fetch GitHub CLI user login (401)'
-# gh 가 키링의 로그인보다 먼저 쓰는 환경변수 토큰 — 이것이 선 셸에서는 `gh auth login` 이 로그인을 안 받는다.
-GH_ENV_TOKENS = ('GH_TOKEN', 'GITHUB_TOKEN')
 GH_LOGIN_DEAD_SAY = ('Copilot 이 쓰는 gh 로그인이 무효가 됐다(대개 다른 기기에서 같은 범위로 gh 에 로그인한 탓이다) — '
                      '터미널에서 `gh auth login` 한 번이면 되살아난다')
 GH_LOGIN_ENV_SAY = '(환경변수 토큰 {names} 이 선 셸에서는 gh 가 로그인을 안 받는다 — 그 변수를 비운 셸에서 친다)'
@@ -124,8 +146,7 @@ GH_LOGIN_ENV_SAY = '(환경변수 토큰 {names} 이 선 셸에서는 gh 가 로
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'agent-envelope' / 'scripts'))
 try:
     import runner_common as common
-    from runner_common import (CREATE_NO_WINDOW, DEFAULT_TIMEOUT_SEC, POLL_SEC, PROMPT_ENCODINGS, SHIM_EXT, STDERR_TAIL_CHARS,
-                               HelpFormat, Parser, decode_prompt, kill_tree, read_jsonl, write)
+    from runner_common import CREATE_NO_WINDOW, DEFAULT_TIMEOUT_SEC, PROMPT_ENCODINGS, STDERR_TAIL_CHARS, write
 except ImportError as missing:
     _args = sys.argv[1:]
     _out = next((x[len('--out='):] for x in _args if x.startswith('--out=')), None)
@@ -139,20 +160,6 @@ except ImportError as missing:
         except OSError:
             pass
     sys.exit(EXIT['failed'])
-
-def prompt_problem(path):
-    """프롬프트 파일을 못 넘기는 까닭 — 없으면 None. 받는 쪽은 표준 입력을 UTF-8 로 읽는다: PowerShell 5.1 의
-    `Set-Content` 기본값(ANSI)으로 쓴 파일은 글자가 깨진 채 넘어가 답이 조용히 틀어진다. 그래서 `decode_prompt` 가 받는
-    인코딩만 넘기고, 넘길 때(`stdin_for`)는 UTF-8 로 옮긴다."""
-    try:
-        with open(path, 'rb') as f:
-            decode_prompt(f.read())
-    except OSError as e:
-        return f'프롬프트 파일을 못 읽었다 — {e}'
-    except UnicodeDecodeError:
-        return (f'프롬프트 파일이 받는 인코딩이 아니다 — {PROMPT_ENCODINGS} 만 받는다. '
-                f'PowerShell 5.1 이면 `Set-Content -Encoding utf8` 로 쓴다: {path}')
-    return None
 
 
 def resume_field(agent, conv):
@@ -169,23 +176,16 @@ def resume_field(agent, conv):
 def gh_login_dead_say(agent, status, reason, env):
     """끝 줄에 실을 「gh 로그인이 무효다」 말 — 해당이 없으면 빈 글. Copilot 이 실패로 끝났고 그 까닭(오류 이벤트 · stderr)에
     `COPILOT_GH_LOGIN_DEAD` 가 들 때만이다 — 답 본문은 안 본다(그 문구를 인용한 답이 성공으로 올 수 있다). `env` 에
-    `GH_ENV_TOKENS` 가 서 있으면 그 이름을 대고 그 셸에서는 로그인이 안 선다고 덧붙인다 — 값은 안 싣는다."""
+    `COPILOT_DROP_ENV` 가 서 있으면 그 이름을 대고 그 셸에서는 로그인이 안 선다고 덧붙인다 — 값은 안 싣는다."""
     if agent != 'copilot' or status != 'failed' or COPILOT_GH_LOGIN_DEAD not in reason:
         return ''
-    names = [k for k in GH_ENV_TOKENS if env.get(k)]
+    names = [k for k in COPILOT_DROP_ENV if env.get(k)]
     return GH_LOGIN_DEAD_SAY + (GH_LOGIN_ENV_SAY.format(names='·'.join(names)) if names else '')
 
 
 def head(agent):
-    """띄울 머리 — 셔틀이면 그것이 부르는 JS 를 node 로. 못 찾으면 None."""
-    found = shutil.which(agent)
-    if not found:
-        return None
-    if not found.lower().endswith(SHIM_EXT):
-        return [found]
-    entry = os.path.join(os.path.dirname(found), 'node_modules', *NPM_ENTRY[agent])
-    node = shutil.which('node')
-    return [node, entry] if node and os.path.isfile(entry) else None
+    """띄울 머리. 못 찾으면 None."""
+    return common.npm_head(agent, NPM_PACKAGE[agent])
 
 
 def read_knobs(env):
@@ -225,36 +225,103 @@ def codex_config(knobs, model=''):
     return out
 
 
-def argv(agent, resume, knobs, write=False, model=''):
+def argv(agent, resume, knobs, write=False, model='', review=False):
     """머리 뒤에 붙일 인자 — 프롬프트는 안 싣는다(표준 입력). 이어 물을 때도 고치기 레인이면 `--write` 를 다시 준다.
-    `model` 은 `--model` 로 받은 이름이고 Codex 에만 간다. 리뷰 모드도 이 인자 그대로다 — 리뷰는 프롬프트 머리
-    (`review_head`)가 부른다."""
+    `model` 은 `--model` 로 받은 이름이고 Codex 에만 간다. `review` 면 Copilot 은 리뷰 레인 도구(`COPILOT_REVIEW_TOOLS`)로 뜬다.
+    Codex 의 리뷰 모드는 읽기 레인 인자 그대로다 — 리뷰는 프롬프트 머리(`review_head`)가 부른다."""
     if agent == 'codex':
         tail = ['-c', f'sandbox_mode="{CODEX_SANDBOX[write]}"', *(WRITE_SANDBOX if write else []), *CODEX_ARGS,
                 *codex_config(knobs, model)]
         if resume:
             return ['exec', 'resume', *tail, resume, '-']
         return ['exec', *tail, '-']
+    if review:
+        return ['--available-tools', *COPILOT_REVIEW_TOOLS, *COPILOT_ARGS]
     tools = COPILOT_TOOLS + (COPILOT_EDIT_TOOLS if write else ())
     return (['--available-tools', *tools, *COPILOT_ARGS, *(COPILOT_WRITE if write else [])]
             + ([f'--resume={resume}'] if resume else []))
 
 
-def review_head(target):
-    """리뷰 모드에서 프롬프트 앞에 얹을 글 — 리뷰 스킬 부르기 + 대상 한 줄. `target` 은 `REVIEW_TARGET_RE` 를 통과한 값이다."""
+def review_head(agent, target, diff_path=None):
+    """리뷰 모드에서 프롬프트 앞에 얹을 글 — 그 쪽의 공식 리뷰 부르기 + 대상 한 줄(+ Copilot 이면 러너가 뽑은 diff 의 자리).
+    `target` 은 `REVIEW_TARGET_RE` 를 통과한 값이다."""
     kind, _, ref = target.partition(':')
-    return f'{REVIEW_SKILL}{REVIEW_TARGETS[kind].format(ref=ref)}\n\n'
+    said = REVIEW_DIFF_SAY.format(path=diff_path) if diff_path else ''
+    return f'{REVIEW_CALL[agent]}{REVIEW_TARGETS[kind].format(ref=ref)}{" " + said if said else ""}\n\n'
 
 
-def stdin_for(a):
-    """표준 입력으로 넘길 파일 — 프롬프트를 UTF-8(BOM 없이)로 옮긴 임시 파일이고 닫으면 지워진다. 리뷰 모드면 앞에 머리를
-    얹는다. BOM 은 걷는다(`decode_prompt`) — 머리 뒤에 남으면 본문 첫 글자가 된다."""
-    with open(a.prompt_file, 'rb') as f:
-        body = decode_prompt(f.read())
+def stdin_for(a, agent, diff_path=None):
+    """표준 입력으로 넘길 파일 — 프롬프트(`run` 이 읽어 BOM 을 걷은 글 — 머리 뒤에 BOM 이 남으면 본문 첫 글자가 된다)를
+    UTF-8(BOM 없이)로 옮긴 임시 파일이고 닫으면 지워진다. 리뷰 모드면 앞에 그 쪽의 머리를 얹는다."""
     tmp = tempfile.TemporaryFile()
-    tmp.write(((review_head(a.review) if a.review else '') + body).encode('utf-8'))
+    tmp.write(((review_head(agent, a.review, diff_path) if a.review else '') + a.prompt).encode('utf-8'))
     tmp.seek(0)
     return tmp
+
+
+# ── Copilot 리뷰의 diff ─────────────────────────────────────────────────────────────────────────────────────────
+def _git(cwd, *args, ok=(0,), quiet=False):
+    """`REVIEW_GIT` 로 git 을 한 번 — (표준 출력 바이트, 진 까닭 글). 종료 코드가 `ok` 밖이면 까닭에 명령과 stderr 를 싣는다.
+    `quiet` 면 stderr 의 `error:` · `fatal:` 줄도 진 것이다 — `diff --no-index` 는 못 읽은 파일도 1(「다르다」)로 끝낸다(줄끝
+    바꿈 경고 같은 `warning:` 은 그대로 둔다)."""
+    cmd = [*REVIEW_GIT, *args]
+    try:
+        # 표준 입력은 비워 준다 — 물려받은 파이프를 `hash-object --stdin` 이 끝없이 기다리지 않게. 물려받은 `GIT_*` 는 다 걷는다 —
+        # git 훅 안에서 불리면 `GIT_DIR` · `GIT_INDEX_FILE` 이 서 있어 `--cwd` 가 아닌 저장소를 뽑는다(이 러너를 들여오는 검사가
+        # 커밋 게이트 안에서 돈다)
+        env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+        done = subprocess.run(cmd, cwd=cwd, input=b'', capture_output=True, env={**env, **REVIEW_GIT_ENV},
+                              creationflags=CREATE_NO_WINDOW, timeout=300)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return b'', f'`git {" ".join(args)}` 을 못 돌렸다 — {e}'
+    said_error = quiet and any(line.startswith((b'error:', b'fatal:')) for line in done.stderr.splitlines())
+    if done.returncode not in ok or said_error:
+        err = done.stderr.decode('utf-8', errors='replace').strip()[-STDERR_TAIL_CHARS:]
+        return b'', f'`git {" ".join(args)}` 이 {done.returncode} 로 졌다 — {err}'
+    return done.stdout, ''
+
+
+def review_diff(cwd, target):
+    """Copilot 리뷰에 줄 diff 를 뽑는다 — (바이트, 진 까닭). 대상마다 Codex 리뷰가 보는 것과 같은 변경 묶음이다:
+      · uncommitted — HEAD(없으면 빈 트리)와 작업 트리의 차이(색인 · 작업 트리) + 추적 안 하는 파일 하나하나를 새 파일로
+      · base:<가지> — `git merge-base HEAD <가지>` 와 작업 트리의 차이(Codex 의 기준 가지 리뷰가 시키는 `git diff <merge base>`)
+      · commit:<sha> — 그 커밋이 들인 변경(병합 커밋은 첫 부모에 대어)
+    git 은 작업 자리를 안 고치는 꼴로만 돈다(`REVIEW_GIT` · `REVIEW_GIT_DIFF` · `REVIEW_GIT_ENV`). 바이너리 파일은 「다르다」 한 줄이다.
+    `--cwd` 가 저장소 안 아래 폴더여도 저장소 뿌리에서 뽑는다 — 경로가 다 뿌리 기준으로 서고 추적 안 하는 파일도 저장소 전체에서
+    모인다. 추적 안 하는 저장소(`<이름>/`)는 이 저장소의 변경이 아니라 빼고, diff 끝에 뺀 이름을 한 줄로 적는다."""
+    kind, _, ref = target.partition(':')
+    top, bad = _git(cwd, 'rev-parse', '--show-toplevel')
+    if bad:
+        return b'', bad
+    cwd = top.decode('utf-8', errors='surrogateescape').strip()
+    if kind == 'commit':
+        return _git(cwd, 'show', *REVIEW_GIT_DIFF, '--diff-merges=first-parent', '--format=fuller', ref, '--')
+    if kind == 'base':
+        base, bad = _git(cwd, 'merge-base', 'HEAD', ref)
+        return (b'', bad) if bad else _git(cwd, 'diff', *REVIEW_GIT_DIFF, base.decode().strip(), '--')
+    head, _ = _git(cwd, 'rev-parse', '--verify', '-q', 'HEAD^{commit}', ok=(0, 1))
+    if not head.strip():   # 첫 커밋 전 — 빈 트리에 댄다(객체는 안 쓴다 — `-w` 없음)
+        head, bad = _git(cwd, 'hash-object', '-t', 'tree', '--stdin')
+        if bad:
+            return b'', bad
+    out, bad = _git(cwd, 'diff', *REVIEW_GIT_DIFF, head.decode().strip(), '--')
+    if bad:
+        return b'', bad
+    names, bad = _git(cwd, 'ls-files', '--others', '--exclude-standard', '-z')
+    if bad:
+        return b'', bad
+    parts, nested = [out], []
+    for name in filter(None, names.decode('utf-8', errors='surrogateescape').split('\0')):
+        if name.endswith('/'):
+            nested.append(name)
+            continue
+        part, bad = _git(cwd, 'diff', '--no-index', *REVIEW_GIT_DIFF, '--', '/dev/null', name, ok=(0, 1), quiet=True)
+        if bad:
+            return b'', bad
+        parts.append(part)
+    if nested:
+        parts.append(f'# untracked nested repositories left out of this diff: {", ".join(nested)}\n'.encode('utf-8'))
+    return b''.join(parts), ''
 
 
 def judge_codex(events, rc, err_text):
@@ -315,7 +382,9 @@ JUDGE = {'codex': judge_codex, 'copilot': judge_copilot}
 
 
 def run_once(agent, cmd_head, a, resume):
-    """한 쪽을 한 번 띄워 끝까지 지켜본다. 돌려주는 것 — (갈래, 종료 코드, 답, id, 까닭, 토큰, 웹 검색 수, 날 출력 경로)."""
+    """한 쪽을 한 번 띄워 끝까지 지켜본다. 돌려주는 것 — (갈래, 종료 코드, 답, id, 까닭, 토큰, 웹 검색 수, 날 출력 경로, 리뷰어).
+    리뷰어는 Copilot 리뷰에서만 선다 — 내장 리뷰 에이전트가 끝까지 돌았으면 `REVIEW_AGENT_NAME`, 아니면 `-`, 리뷰할 변경이 없어 안
+    띄웠으면 `none`. 그 밖은 None."""
     # stderr 를 .md 로 둔다 — 회사 PC 의 Fasoo 가 .txt 를 감싸 러너가 제 꼬리를 못 읽는다(.md · .json 은 평문으로 남는다)
     raw_path, err_path = f'{a.out}.{agent}.jsonl', f'{a.out}.{agent}.stderr.md'
     env = dict(os.environ)
@@ -327,48 +396,45 @@ def run_once(agent, cmd_head, a, resume):
     tmp = tempfile.mkdtemp(prefix=WRITE_TMP_PREFIX) if a.write else None
     if tmp:
         env.update({k: tmp for k in TEMP_VARS})
-    started = time.monotonic()
-    status = None
+    # Copilot 리뷰는 셸이 없어 러너가 대상의 diff 를 작업 자리 밖 이 실행만의 폴더에 미리 뽑아 둔다(`review_diff`)
+    review = agent == 'copilot' and bool(a.review)
+    diff_dir = diff_path = None
+    if review:
+        diff, bad = review_diff(a.cwd, a.review)
+        if bad:
+            return 'failed', None, '', None, f'리뷰 대상을 못 뽑았다 — {bad}', 'in=- out=-', None, None, None
+        if b'diff --git' not in diff:   # 리뷰할 변경이 없다 — 띄우지 않는다(빈 대상에 요청을 쓰지 않는다)
+            return 'ok', None, REVIEW_NOTHING.format(target=a.review), None, '', 'in=- out=-', None, None, 'none'
+        # Copilot 이 읽게 두는 시스템 임시 폴더에 둔다 — 윈도의 Node 는 TEMP · TMP 를, 파이썬은 TMPDIR 을 먼저 본다
+        temp_root = (os.environ.get('TEMP') or os.environ.get('TMP')) if os.name == 'nt' else None
+        diff_dir = tempfile.mkdtemp(prefix=REVIEW_DIFF_PREFIX, dir=temp_root or None)
+        diff_path = os.path.join(diff_dir, 'review.diff')
+        with open(diff_path, 'wb') as f:
+            f.write(diff)
     try:
-        # 답은 파이프가 아니라 파일로 받는다 — 파이프를 안 비운 채 기다리면 큰 답에서 멈춘다.
-        with stdin_for(a) as stdin, open(raw_path, 'wb') as raw, open(err_path, 'wb') as err:
-            try:
-                proc = subprocess.Popen(cmd_head + argv(agent, resume, a.knobs, a.write, a.model), cwd=a.cwd, env=env,
-                                        stdin=stdin, stdout=raw, stderr=err, creationflags=CREATE_NO_WINDOW)
-            except OSError as e:
-                return 'spawn', None, '', None, str(e), 'in=- out=-', None, raw_path
-            while proc.poll() is None:
-                if time.monotonic() > started + a.timeout:
-                    kill_tree(proc)
-                    status = 'timeout'
-                    break
-                time.sleep(POLL_SEC)
+        with stdin_for(a, agent, diff_path) as stdin:
+            waited, rc, events, err_text = common.watch(cmd_head + argv(agent, resume, a.knobs, a.write, a.model, review),
+                                                        a.cwd, env, stdin, raw_path, err_path, a.timeout)
     finally:
-        if tmp:
-            shutil.rmtree(tmp, ignore_errors=True)
-    with open(err_path, encoding='utf-8', errors='replace') as f:
-        err_text = f.read()
-    judged, answer, conv, reason, tokens, searches = JUDGE[agent](read_jsonl(raw_path), proc.returncode, err_text)
-    if status is None:
-        status = judged
-    if status == 'ok':
-        for p in (raw_path, err_path):
-            try:
-                os.remove(p)
-            except OSError:
-                pass
-    else:
-        reason = '\n'.join(s for s in (reason, err_text[-STDERR_TAIL_CHARS:].strip()) if s)
-    return status, proc.returncode, answer, conv, reason, tokens, searches, raw_path
+        for d in (tmp, diff_dir):
+            if d:
+                shutil.rmtree(d, ignore_errors=True)
+    if waited == 'spawn':
+        return 'spawn', None, '', None, err_text, 'in=- out=-', None, raw_path, None
+    judged, answer, conv, reason, tokens, searches = JUDGE[agent](events, rc, err_text)
+    reviewer = None
+    if review:
+        reviewer = REVIEW_AGENT_NAME if any(e.get('type') == 'subagent.completed'
+                                            and (e.get('data') or {}).get('agentName') == REVIEW_AGENT_NAME
+                                            for e in events) else '-'
+    status = waited or judged
+    reason = common.wrap_up(status, reason, err_text, raw_path, err_path)
+    return status, rc, answer, conv, reason, tokens, searches, raw_path, reviewer
 
 
 def build_parser():
-    ap = Parser(add_help=False, formatter_class=HelpFormat,
-                description='Codex 에게 일을 맡기고(한도가 차면 자리 값이 허락할 때 Copilot 이 받는다), 답과 끝 줄을 --out 파일로 받는다.')
-    ap.add_argument('-h', '--help', action='store_true', help='이 도움말을 표준 출력에 찍고 끝낸다(파일은 안 쓴다)')
-    ap.add_argument('--prompt-file', required=True, metavar='FILE', help='맡길 프롬프트 파일 — 받는 인코딩은 아래 「프롬프트 파일」')
-    ap.add_argument('--out', required=True, metavar='FILE', help='답 파일 — 어느 갈래로 끝나든 답과 끝 줄을 여기 쓴다')
-    ap.add_argument('--cwd', required=True, metavar='DIR', help='띄울 작업 자리 — 없는 폴더면 안 띄운다. --write 가 고치는 범위이기도 하다')
+    ap = common.base_parser('Codex 에게 일을 맡기고(한도가 차면 자리 값이 허락할 때 Copilot 이 받는다), 답과 끝 줄을 --out 파일로 받는다.',
+                            '띄울 작업 자리 — 없는 폴더면 안 띄운다. --write 가 고치는 범위이기도 하다')
     ap.add_argument('--timeout', type=int, default=DEFAULT_TIMEOUT_SEC, metavar='SEC',
                     help=f'한 쪽을 한 번 띄우는 시간 한도(초). 기본 {DEFAULT_TIMEOUT_SEC}')
     ap.add_argument('--agent', choices=AGENTS, help='처음부터 이 쪽에 맡긴다(안 주면 차례대로). 차례에 없는 쪽은 안 띄운다')
@@ -389,8 +455,11 @@ def help_epilog():
         '  read(기본)       읽기만 한다. Codex 는 읽기 전용 샌드박스에 앱 · 플러그인 · MCP 를 끄고 승인 never, Copilot 은 읽기 · 웹 읽기 도구만 보인다.',
         '  --write          고치기 레인 — 작업 자리(--cwd) 안만 고친다. Codex 는 쓰기 샌드박스에 임시 폴더를 이 실행만의 빈 폴더로 돌리고,',
         '                   Copilot 은 편집 도구 + 쓰기 허락(셸은 안 보인다). 이어 물을 때도 다시 준다(안 주면 읽기 레인으로 이어진다).',
-        f'  --review [대상]  리뷰 — {REVIEW_AGENT} 만 받는다(한도여도 Copilot 으로 안 넘긴다). 읽기 레인 인자 그대로 리뷰 스킬을 프롬프트 머리로 부른다.',
-        f'                   대상은 {DEFAULT_REVIEW_TARGET}(기본) · base:<가지> · commit:<sha>. --write · --resume · --agent copilot 과 같이 못 준다(`usage`).',
+        '  --review [대상]  리뷰 — 받는 차례는 읽기 레인과 같다. 쪽마다 제 공식 리뷰를 프롬프트 머리로 부른다: Codex 는 읽기 레인 인자 그대로',
+        '                   리뷰 스킬을, Copilot 은 내장 리뷰 에이전트(code-review)를 — 읽기 레인 도구에 task · read_agent 만 더한다(셸 · 편집 도구 없음).',
+        '                   Copilot 에는 러너가 대상의 diff 를 작업 자리 밖 임시 파일로 뽑아 그 자리를 준다. diff 가 비면 안 띄우고',
+        '                   답 파일에 그 말을 쓴다(ok · reviewer=none). 끝 줄 reviewer= 가 내장 에이전트가 정말 돌았나를 적는다.',
+        f'                   대상은 {DEFAULT_REVIEW_TARGET}(기본) · base:<가지> · commit:<sha>. --write · --resume 과 같이 못 준다(`usage`).',
         '',
         f'차례: 자리 값 {KNOB_AGENTS} 가 정한다(없으면 {" → ".join(AGENTS)}). 차례에 없는 쪽은 --agent · --resume 으로도 안 띄운다(`usage`).',
         '  Codex 가 한도(사용 한도 · 할당량 · 용량 초과)면 다음 쪽이 받고, 그 밖의 실패 · 시간 초과는 그 자리에서 멈춘다.',
@@ -421,10 +490,7 @@ def help_epilog():
 
 
 def run(a):
-    if not os.path.isfile(a.prompt_file):
-        write(a.out, f'{FOOTER} usage · 프롬프트 파일이 없다 — {a.prompt_file}\n')
-        return EXIT['usage']
-    bad = prompt_problem(a.prompt_file)
+    a.prompt, bad = common.read_prompt(a.prompt_file)
     if bad:
         write(a.out, f'{FOOTER} usage · {bad}\n')
         return EXIT['usage']
@@ -443,9 +509,6 @@ def run(a):
         if a.write or a.resume:
             write(a.out, f'{FOOTER} usage · --review 는 --write · --resume 과 같이 못 준다 — 리뷰는 읽기만 하는 새 대화다\n')
             return EXIT['usage']
-        if a.agent not in (None, REVIEW_AGENT):
-            write(a.out, f'{FOOTER} usage · --review 는 {REVIEW_AGENT} 만 받는다 — {a.agent} 셸은 읽기로 못 가둔다\n')
-            return EXIT['usage']
     allowed = a.knobs['agents']
     caller_copilot = bool(os.environ.get(COPILOT_CALLER_ENV))
     if caller_copilot:
@@ -458,8 +521,6 @@ def run(a):
             return EXIT['usage']
         # 대화가 그쪽에 있다 — 다른 쪽으로 넘기면 앞 맥락이 없다
         order = [agent]
-    elif a.review is not None:
-        order = [REVIEW_AGENT]   # 한도여도 안 넘긴다 — 받는 쪽이 리뷰 모드를 안 받는다
     else:
         order = [a.agent] if a.agent else allowed
     # 부른 쪽이 Copilot 이면 Copilot 은 손으로 골라도 안 띄운다 — 까닭이 자리 값이 아니라 부른 쪽이라 따로 말한다
@@ -470,7 +531,7 @@ def run(a):
     if any(x not in allowed for x in order):
         write(a.out, f'{FOOTER} usage · 이 자리에서 안 쓰는 쪽이다 — {KNOB_AGENTS}={",".join(allowed)}\n')
         return EXIT['usage']
-    if not (a.cwd and os.path.isdir(a.cwd)):
+    if not os.path.isdir(a.cwd):
         write(a.out, f'{FOOTER} usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
         return EXIT['usage']
 
@@ -494,28 +555,26 @@ def run(a):
     elapsed = int(time.monotonic() - started)
 
     if ran is None:
-        write(a.out, f'{FOOTER} usage · 띄울 쪽이 없다 — {"; ".join(tried) or "차례가 비었다"}\n')
+        write(a.out, f'{FOOTER} usage · 띄울 쪽이 없다 — {"; ".join(tried)}\n')
         return EXIT['usage']
-    agent, status, rc, answer, conv, reason, tokens, searches, raw_path = ran
+    agent, status, rc, answer, conv, reason, tokens, searches, raw_path, reviewer = ran
     model = (codex_model(a.knobs, a.model) or '-') if agent == 'codex' else '-'
     said = gh_login_dead_say(agent, status, reason, os.environ)
-    cells = {'rc': f'rc={rc}', 'elapsed': f'{elapsed}s', 'mode': f'mode={"write" if a.write else "review" if a.review else "read"}',
+    cells = {'rc': f'rc={"-" if rc is None else rc}', 'elapsed': f'{elapsed}s', 'mode': f'mode={"write" if a.write else "review" if a.review else "read"}',
              'agent': f'agent={agent}', 'model': f'model={model}', 'tokens': f'tokens {tokens}',
              'web': f'web={"-" if searches is None else searches}', 'resume': resume_field(agent, conv)}
+    if reviewer:
+        cells['reviewer'] = f'reviewer={reviewer}'
     if said:
         cells['note'] = said
     if caller_copilot:
         cells['caller'] = 'caller=copilot'
     if tried:
         cells['failover'] = f'failover={"; ".join(tried)}'
-    if status != 'ok':
+    if status != 'ok' and raw_path:   # 띄우기 전에 진 갈래(리뷰 대상 뽑기)는 날 출력이 없다(None)
         cells['raw'] = f'raw={raw_path}'
     footer = common.footer_line(FOOTER, FOOTER_FIELDS, status, cells)
-    if status == 'ok':
-        write(a.out, f'{answer.rstrip()}\n\n{footer}\n')
-    else:
-        # 날 출력은 길어(이벤트 수백 줄) 옮기지 않는다 — 까닭과 그 자리만 적는다
-        write(a.out, f'{answer.rstrip()}\n{reason}\n{footer}\n')
+    common.write_answer(a.out, status, answer, footer, reason)
     return EXIT[status]
 
 

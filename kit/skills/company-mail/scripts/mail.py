@@ -26,9 +26,17 @@
     인자의 꼴(출발과 손가락의 짝 · 빠진 값 · 없는 파일)이 틀리면 세션을 받기 전에 종료 2 로 멈춘다 — 명령마다 ``check`` 로 단 거름이
     메일함에 닿기 전에 돈다(``_run``).
 
+    명령을 잇달아 부르는 앱은 ``mail.py serve`` 하나를 띄워 두고 표준 입력으로 명령을 하나씩 준다 — 답의 꼴은 ``serve --help``
+    (``SERVE_HELP``)가 든다. 요청마다 명령을 따로 부른 것과 같은 글 · 같은 종료 값이 오고, 메일함에 가는 요청도 같다.
+
     메일함 주소는 ``--url`` · ``MAILBOX_URL`` 순이고, 둘 다 없으면 메일 서버(``MAIL_SERVER`` · 기본 ``ep_session.DOMINO_SERVER``) 첫
     화면이 그 세션의 메일함을 댄다(``inbox.discover_mailbox``) — 세션 쿠키의 지문과 함께 받아 둔다. 받아 둔 것의 자리는
-    ``MAIL_ORG_CACHE_DIR`` · 홈 아래 ``ORG_CACHE_DIR``. 보내는 사람은 묻지 않는다 — 웹메일 화면이 그 세션의 사람으로 보낸다.
+    형제 스킬 company-directory 의 ``cache_dir``(받아 둔 조직도와 같은 자리)다. 보내는 사람은 묻지 않는다 — 웹메일 화면이 그 세션의
+    사람으로 보낸다.
+
+사람
+    받는 사람 찾기(``who``)는 형제 스킬 company-directory 의 찾기(``directory.py``)에 지난 메일 출처(``--last``) 하나를 더해 부른다 — 출처 ·
+    거르기 · 내는 꼴 · 받아 둔 조직도는 그 스킬이 든다. 임시메일의 받는 사람 잇기도 그 스킬의 자(``address_people``)를 쓴다.
 
 글
     ``--body-file`` 은 UTF-8 평문이라 줄바꿈만 살려 HTML 로 싸고, ``--html-file`` 은 그 HTML 을 손대지 않고 본문으로 싣는다.
@@ -66,11 +74,9 @@ import pathlib
 import re
 import sys
 import tempfile
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = pathlib.Path(__file__).resolve().parent
-DEFAULT_COMPANY = "poscochem(02)"   # 주소록의 회사 값 — 조직도 고름 상자의 값(메일함마다 다르다)
 SEARCH_PAGE = 30
 TRASH_SCOPE, TRASH_WORD = "trash", "휴지통"   # 검색 범위 trash 의 줄은 다 휴지통 메일이다 — 줄의 폴더 칸으로는 못 가린다(inbox.Found)
 EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
@@ -88,7 +94,6 @@ UNID_SPLIT = re.compile(r"[\s,]+")   # read-many 가 한 인자에 여럿 든 �
 PEEK_CHARS = 300              # read-many 가 메일마다 내는 본문 앞 글자의 기본 — 한 문단쯤이라 답 하나(OUT_BYTES)에 여러 통이 든다
 PEEK_BREAK = " ⏎ "           # read-many 가 본문의 줄바꿈을 한 줄로 펴며 끼우는 표지 — 메일의 글이 줄을 열어 다음 메일의 머리처럼 못 서게 한다
 PEEK_INDENT = "   "
-MAILFILE_NUMBER = re.compile(r"/(\d+)\.nsf$", re.IGNORECASE)   # 메일함 파일 번호 = 그 메일함을 쓰는 사람의 사번(<사번>.nsf)
 MAILBOX_PARTS = re.compile(r"^(https?://[^/]+)/(.+?\.nsf)", re.IGNORECASE)   # 메일함 주소 → (서버, 서버 뒤의 경로 — 앞의 / 없이)
 SENT_CHECK_ROWS = 50          # 보낸 뒤 그 메일이 섰나 볼 보낸편지함 새것의 줄 수 — 방금 보낸 것은 맨 앞에 선다
 DRAFT_HAND = "draft_send.js"   # 임시메일을 웹메일 화면 그대로 보내는 손 — 이 파일 곁
@@ -180,24 +185,9 @@ TEXT_MARK = TEXT_MARK_IN_HAND.search((HERE / DRAFT_HAND).read_text(encoding="utf
 BODY_STYLE = "font-family:'맑은 고딕','Malgun Gothic',sans-serif;font-size:13pt;line-height:1.8"   # 넣은 글의 기본 모양 — 회사 메일의 본문 꼴
 SAVE_ROOT = "company-mail"    # 첨부를 받는 기본 자리 — 임시 폴더 아래
 IMAGES_DIR = "body-images"    # 본문 그림을 받는 자리 — 그 메일의 첨부 자리 아래
-ORG_CACHE_DAYS = 30           # 받아 둔 조직도를 다시 받지 않고 쓰는 날 — 전사를 받는 데 오래 걸리고 인사는 드물게 바뀐다. 그 사이는 --fresh
-ORG_CACHE_DIR = ".company-mail"   # 받아 둔 조직도의 자리 — 홈 아래(임시 폴더는 정리 도구가 지운다)
-MAILBOX_CACHE_FILE = "mailbox.json"   # 받아 둔 메일함 주소 — 같은 자리 · 세션 쿠키의 지문에 묶인다(``session_mark``)
-ORG_CACHE_FORMAT = 2          # 캐시 파일의 꼴 번호 — DirectoryPerson · Dept 칸이나 받아 두는 칸이 바뀌면 올린다
-ORG_CACHE_BLANK = ("empno", "user_id", "name_eng")   # 받아 둘 때 비우는 칸 — 받아 둔 판을 읽는 손이 안 쓰는 사번 · ID · 영문 이름
-PEOPLE_SHOWN = 40             # 받는 사람 한 칸 · who 의 명단에서 이름을 보이는 수 — 넘으면 수만 댄다(명단은 편집 화면 · --list · 주소 파일)
-HELD_SHOWN = 10               # who 가 따로 둔 줄 하나 아래 늘어놓는 후보(동명이인 · 그 글자가 든 사람 · 여럿 걸린 부서)의 수 — 넘으면 좁혀 다시 달라고 한다
-TALLY_TOP = 15                # who 의 부서별 수가 보이는 부서의 수 — 넘는 부서는 한 덩이로 접는다
-NAME_SPLIT = re.compile(r"[,;·ㆍ、]")   # who --name 한 값에 여럿을 이은 가름 — 사람이 말한 「김철수 · 이영희」 를 그대로 넘겨도 된다
-WHO_FILE = "{field}.txt"      # who --out 폴더 안의 칸마다 주소 파일 — draft 의 --to-file · --cc-file · --bcc-file 이 읽는 꼴(한 줄에 주소 하나 · # 뒤는 버린다)
-# who --out 폴더 안의 사람 파일 — 칸 셋을 합친 사람마다 「이름/메일ID」 한 줄(# 로 시작하는 줄은 주석). 스킬 company-ecm 의 권한 칸이
-# 사람 하나를 받는 꼴이고, 메일 ID 는 주소의 @ 앞이다(문서함의 메일 ID 는 메일 주소록의 그 사람과 같다 — 그 스킬의 SOURCES.md)
-PEOPLE_FILE = "people.txt"
+MAILBOX_CACHE_FILE = "mailbox.json"   # 받아 둔 메일함 주소 — 받아 둔 조직도와 같은 자리(``cache_dir``) · 세션 쿠키의 지문에 묶인다(``session_mark``)
 SENT_TO_SCAN = 100            # list --sent --to 가 한 번에 훑는 보낸 메일의 수 — 받는 사람 칸을 메일마다 한 번씩 읽어 그 수만큼 요청이 든다
 TAIL_BYTES = 2500             # 본문 뒤에 찍는 줄(첨부 · 확인 열쇠 · 다음 걸음)에 남겨 두는 몫 — 본문이 길어도 그 줄들이 한도 안에 든다
-GROUP_KIND_WORDS = {"jobtitle": "직책", "grade": "직급", "location": "지역"}   # 배포그룹 갈래 → 화면의 이름
-DEPT_MAIL = re.compile(r"^dept_[^@\s]+@", re.IGNORECASE)   # 조직도의 부서 주소 꼴(dept_<회사>_<부서 코드>@) — 이 꼴만 부서로 찾는다
-DEPT_WORD = "(조직)"          # 받는 사람이 사람이 아니라 조직 하나일 때 이름 뒤에 붙이는 표지
 GROUP_WORD = "(배포그룹)"      # 받는 사람이 배포그룹 하나일 때 이름 뒤에 붙이는 표지
 GROUP_KEY = re.compile(r"^\[\w+:(\w+)\](.+)\(\w+\)$")   # 배포그룹 열쇠의 꼴([<회사 코드>:<갈래 말>]<이름>(<회사 코드>)) — 화면이 든 열쇠를 풀어 보인다
 SEND_AT_FORMAT = "%Y-%m-%d %H:%M"   # --send-at 의 꼴
@@ -205,7 +195,6 @@ SEND_AT_OFF = "off"           # --send-at 의 이 값은 예약을 푼다
 OPTION_WORDS = {"urgent": "긴급메일", "no_forward": "전달불가", "one_by_one": "한명씩 발송"}   # 메일속성 칸 → 사람 말(화면 이름)
 OPTION_FLAGS = {"urgent": ("--urgent", "--no-urgent"), "no_forward": ("--no-forward", "--forward-ok"),
                 "one_by_one": ("--one-by-one", "--all-at-once")}   # 메일속성 칸 → (켜는 인자, 끄는 인자)
-FIELD_WORDS_PEOPLE = {"to": "받는 사람", "cc": "참조", "bcc": "숨은참조"}   # 받는 사람 칸 → 사람 말
 BCC_UNKNOWN = "숨은참조 — 보낸 메일에는 웹메일이 숨은참조를 안 남겨 있었는지 모른다. 있었으면 사람이 다시 넣는다"
 
 EP_LOGIN = "스킬 ep-login 으로 사내 세션을 먼저 세운다"
@@ -214,12 +203,19 @@ MUTATING = ("draft", "send-draft", "apply-mark", "apply-folder", "apply-move", "
 log = logging.getLogger("company-mail")
 
 
-class Stop(Exception):
-    """명령을 멈춘다 — ``code`` 가 종료 값, 메시지가 사람에게 낼 글이다."""
-
-    def __init__(self, code: int, message: str):
-        super().__init__(message)
-        self.code = code
+DIRECTORY_SCRIPTS = HERE.parents[1] / "company-directory" / "scripts"   # 형제 스킬 — 사내 주소록 · 조직도에서 사람을 찾는 자리
+if str(DIRECTORY_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(DIRECTORY_SCRIPTS))
+try:
+    import directory as DIRECTORY                 # 사람 찾기 · 받아 둔 조직도 · 받는 사람 잇기 · 명령을 멈추는 꼴(Stop)이 그 자리에 산다
+except ImportError:                               # 형제 스킬이 곁에 없다 — 받는 사람을 잇는 자가 없어 임시메일이 못 선다
+    print(f"스킬 company-directory 가 이 스킬 곁에 없다: {DIRECTORY_SCRIPTS} — 설치를 다시 돌린다")
+    sys.exit(1)
+Stop = DIRECTORY.Stop                             # 명령을 멈춘다 — code 가 종료 값, 메시지가 사람에게 낼 글이다. 사람 찾기와 한 꼴이다
+FIELD_WORDS_PEOPLE = DIRECTORY.FIELD_WORDS        # 받는 사람 칸 → 사람 말 — 사람 찾기의 칸과 한 표다
+DEPT_WORD = DIRECTORY.DEPT_WORD                   # 받는 사람이 조직 하나일 때 이름 뒤에 붙이는 표지
+MAILFILE_NUMBER = DIRECTORY.MAILFILE_NUMBER       # 메일함 파일 번호 = 그 메일함을 쓰는 사람의 사번 — 임시저장의 첨부 자리가 쓴다
+PEOPLE_SHOWN = DIRECTORY.SHOWN                    # 받는 사람 한 칸 · 함께 받은 사람에서 이름을 보이는 수 — 사람 찾기의 명단과 한 수다
 
 
 class NotFound(Stop):
@@ -331,10 +327,7 @@ def open_mailbox(args, inbox):
 
 # ── 받아 둔 메일함 주소 — 명령마다 메일 서버 첫 화면에 다시 묻지 않는다 ─────────────────────
 
-def cache_dir() -> pathlib.Path:
-    """받아 둔 것(조직도 · 메일함 주소)의 자리 — ``MAIL_ORG_CACHE_DIR`` 이 있으면 그 폴더, 없으면 홈 아래 ``ORG_CACHE_DIR``."""
-    root = os.environ.get("MAIL_ORG_CACHE_DIR", "").strip()
-    return pathlib.Path(root) if root else pathlib.Path.home() / ORG_CACHE_DIR
+cache_dir = DIRECTORY.cache_dir   # 받아 둔 것(조직도 · 메일함 주소)의 자리 — 사람 찾기가 든다
 
 
 def session_mark(server: str, session) -> str:
@@ -1428,72 +1421,25 @@ def token(*parts) -> str:
 
 # ── 임시보관함 — 저장해 두고, 사람이 웹메일에서 누르거나 이 명령이 웹메일 화면 그대로 보낸다 ──────────
 
-def chart_book(chart) -> dict:
-    """조직도 한 판의 주소 → 사람들(퇴직자 빼고) — 주소로 사람을 잇는 표다."""
-    book: dict[str, list] = {}
-    for p in chart.people():
-        if p.email and not p.retired:
-            book.setdefault(p.email.casefold(), []).append(p)
-    return book
-
-
-def draft_book(inbox, company: str) -> tuple[dict, str]:
-    """받아 둔 조직도의 주소 → 사람들(``chart_book``)과 그 판의 날짜. 받아 둔 판이 없으면 빈 표 · 빈 날짜다 — 전사를 받는 데 오래
-    걸려 새로 받지 않는다."""
-    got = cached_org(inbox, company)
-    return (chart_book(got[0]), got[1]) if got else ({}, "")
-
-
-def dept_book(args, inbox, company: str) -> dict:
-    """부서 주소 → 그 부서(``inbox.Dept``) — 받아 둔 조직도로, 없으면 조직도를 받아 둔 뒤. 웹메일 고름 창에서 조직을 체크한 것과
-    같이 조직 하나를 받는 사람으로 넣는 자리다(부서원을 풀지 않는다 — 보내는 순간의 구성원에게 간다)."""
-    chart, _ = load_org(args, inbox, company)
-    return {d.email.casefold(): d for d in chart.depts.values() if d.email}
-
-
-def address_people(box, inbox, mails: list[str], company: str, book: dict) -> dict:
-    """주소 → 그 주소의 주소록 사람(퇴직자 빼고)이 꼭 하나이고 Notes 이름이 있으면 그 사람, 아니면 None. 임시메일의 받는 사람 잇기
-    (``draft_people``)와 받는 사람 찾기(``cmd_who``)가 이 한 자를 쓴다 — who 가 파일에 넣은 주소는 draft 가 받는다.
-
-    받아 둔 조직도(``book``)에 있는 주소는 거기서 잇고, 없는 주소만 주소록에 함께(``inbox.ORG_WORKERS`` 만큼) 묻는다 — 그때만
-    ``box`` 가 쓰인다. 웹메일 화면은 받는 사람을 Notes 이름으로 다시 연다. 그래서 주소록에 없는 주소(사외 · 부서 주소)는 사람으로 안
-    선다 — 부서 주소는 ``book_people`` 이 조직도에서 조직으로 잇는다.
-    """
-    def ask(a: str) -> list:
-        return [p for p in box.find_exact(a, company) if p.email.casefold() == a.casefold() and not p.retired]
-    unknown = list(dict.fromkeys(a for a in mails if a.casefold() not in book))
-    with ThreadPoolExecutor(inbox.ORG_WORKERS) as pool:
-        asked = dict(zip(unknown, pool.map(ask, unknown)))
-    found = {}
-    for a in mails:
-        people = book.get(a.casefold()) or asked.get(a, [])
-        found[a] = people[0] if len(people) == 1 and people[0].notes else None
-    return found
-
-
 def draft_people(box, inbox, mails: list[str], company: str, book: dict) -> tuple[list, list[str]]:
     """주소 → 웹메일 받는 사람(``inbox.DraftPerson``). 그 주소의 사람이 꼭 하나일 때만 든다(``address_people``) — 둘째 값이 못 든 주소다."""
-    found = address_people(box, inbox, mails, company, book)
+    found = DIRECTORY.address_people(box, mails, company, book)
     got = [inbox.DraftPerson(notes=p.notes, email=p.email, name=p.name) for a in mails if (p := found[a]) is not None]
     return got, [a for a in mails if found[a] is None]
 
 
-def company_of(args) -> str:
-    """주소록의 회사 값 — ``--company`` · ``MAIL_COMPANY`` · ``DEFAULT_COMPANY`` 순."""
-    return (getattr(args, "company", "") or os.environ.get("MAIL_COMPANY", "").strip() or DEFAULT_COMPANY).strip()
-
-
 def book_people(box, inbox, args, fields: dict[str, list[str]], outside: str) -> tuple[dict, str]:
-    """칸(``to`` · ``cc`` · ``bcc``)마다의 주소를 웹메일 받는 사람으로 잇는다 — (칸 → 사람들, 받아 둔 조직도 판의 날짜).
-    사람으로 안 선 주소 가운데 부서 주소 꼴(``DEPT_MAIL``)은 조직도의 부서로 잇고 조직 하나로 넣는다. 그래도 안 선 주소가 하나라도
-    있으면 그 주소를 대고 Stop — ``outside`` 는 사외 주소를 어떻게 하나의 말이다."""
-    company = company_of(args)
-    book, chart = draft_book(inbox, company)
+    """칸(``to`` · ``cc`` · ``bcc``)마다의 주소를 웹메일 받는 사람으로 잇는다 — (칸 → 사람들, 받아 둔 조직도 판의 날짜). 주소는 사람
+    찾기의 자(``DIRECTORY.address_people`` — 받아 둔 조직도부터)로 잇는다. 사람으로 안 선 주소 가운데 부서 주소 꼴(``DIRECTORY.DEPT_MAIL``)은
+    조직도의 부서로 잇고 조직 하나로 넣는다. 그래도 안 선 주소가 하나라도 있으면 그 주소를 대고 Stop — ``outside`` 는 사외 주소를 어떻게
+    하나의 말이다."""
+    company = DIRECTORY.company_of(args)
+    book, chart = DIRECTORY.kept_book(company)
     people, missing, depts = {}, [], None
     for field, mails in fields.items():
         people[field], gone = draft_people(box, inbox, mails, company, book)
-        if any(DEPT_MAIL.match(a) for a in gone):
-            depts = dept_book(args, inbox, company) if depts is None else depts
+        if any(DIRECTORY.DEPT_MAIL.match(a) for a in gone):
+            depts = DIRECTORY.dept_book(args, company, lambda a: open_mailbox(a, inbox)) if depts is None else depts
             order = {a.casefold(): i for i, a in enumerate(mails)}
             found = [(a, depts[a.casefold()]) for a in gone if a.casefold() in depts]
             people[field] += [inbox.DraftPerson(notes=d.code, email=d.email, name=d.name, dept=True) for _, d in found]
@@ -1576,13 +1522,13 @@ def show_saved_options(options: dict) -> None:
 def group_people(args, box, inbox) -> dict:
     """--to-group · --cc-group · --bcc-group → 칸마다 배포그룹(``inbox.DraftPerson`` · group). 그룹은 갈래마다의 목록에서 이름이
     꼭 하나로 서야 든다 — 안 서면 Stop. 구성원을 풀지 않는다(보내는 순간의 구성원에게 간다)."""
-    wants = [(field, *split_kind(v)) for field in FIELD_WORDS_PEOPLE for v in getattr(args, f"{field}_group", None) or ()]
+    wants = [(field, *DIRECTORY.split_kind(v)) for field in FIELD_WORDS_PEOPLE for v in getattr(args, f"{field}_group", None) or ()]
     if not wants:
         return {}
-    lists = group_lists(box, inbox, company_of(args), wants)
+    lists = DIRECTORY.group_lists(box, DIRECTORY.company_of(args), wants)
     out: dict = {}
     for field, ks, name in wants:
-        hit = one_group(lists, inbox, ks, name)
+        hit = DIRECTORY.one_group(lists, ks, name)
         if isinstance(hit, str):
             raise Stop(EXIT_CONFIG, hit)
         _, key, title = hit
@@ -1664,7 +1610,7 @@ def show_draft_state(s: dict, inbox, company: str) -> None:
     """편집 화면이 든 판 하나를 보인다 — 받는 사람은 화면이 든 열쇠(Notes 이름)를 받아 둔 조직도에서 이름 · 부서 · 주소로 풀고,
     거기 없는 열쇠(사외 주소 · 받아 둔 판이 없다)는 열쇠 그대로 보인다. 글은 화면의 HTML 에서 뽑은 글자다."""
     with counted() as head:
-        got = cached_org(inbox, company)
+        got = DIRECTORY.cached_org(company)
         known = {inbox.notes_key(p.notes): p for p in (got[0].people() if got else ()) if p.notes}
         depts = got[0].depts if got else {}
         for word, field in (("받는 사람", "to"), ("참조", "cc"), ("숨은참조", "bcc")):
@@ -1726,27 +1672,6 @@ def draft_map() -> str:
     lines += ["", f"「{UNMEASURED_WORD}」 는 회사 웹메일 화면에서 아직 한 번도 돌려 보지 않은 몫이다 — 집의 대역으로만 섰다. 쓰면 저장한 판을 "
                   "사람에게 꼭 보인다",
               "", "끝은 늘 임시저장이다 — 안 나간다. 보내기는 preview-send → send-draft 로 따로 한다. --preview 는 저장 없이 보이기만 한다"]
-    return "\n".join(lines)
-
-
-def who_map() -> str:
-    """who --help 의 지도 — 출처 · 거르기 · 보기 표에서 짓는다."""
-    def head(k, takes, metavar):
-        return flag_of(k) + (f" <{metavar}>" if takes != "none" else "")
-    lines = ["출처 — 한 부름에 아무 조합이나 준다(값은 여러 번). 값 앞에 cc: · bcc: 를 붙이면 그 칸으로, 없으면 받는 사람"]
-    for k, s in WHO_SOURCES.items():
-        lines.append(f"  {head(k, s.takes, s.metavar)}" + (f"  [{flag_of(s.switch[0])}]" if s.switch else ""))
-        lines.append(f"      {s.word}" + (f" · {flag_of(s.switch[0])} 는 {s.switch[1]}" if s.switch else "")
-                     + (" (세션)" if s.box else " (받아 둔 조직도 — 세션 없이도)"))
-    lines += ["", "거르기 — 모든 출처를 합친 명단의 사람에게 건다. 조직 · 사외 주소는 못 걸러 파일에서 빼고 따로 둔다"]
-    lines += [f"  {head(k, s.takes, s.metavar)}\n      {s.word}" for k, s in WHO_SIEVES.items()]
-    lines += ["", "빼기 — 거르기 앞에서 명단의 꼭 한 사람을 뺀다. 안 서면 아무 파일도 안 쓰고 멈춘다", "  --except <주소|이름>",
-              "", "보기 — 사람 대신 목록. 출처 · 거르기 · --out 과 함께 안 받는다"]
-    lines += [f"  {flag_of(k)} [{v.metavar}]\n      {v.word}" + (" (세션)" if v.box else " (받아 둔 조직도)") for k, v in WHO_VIEWS.items()]
-    lines += ["", f"내는 꼴 — 늘: 출처 · 거르기 · 칸마다 수 · 등급별 · 직급별 · 직책별 수와 {PEOPLE_SHOWN} 줄까지의 명단(넘으면 부서별 수 · --list),",
-              "  따로 둔 것(동명이인 · 못 찾은 이름 · 여럿 걸린 부서 · 못 거른 조직 — 파일에 안 든다).",
-              "  --out <폴더> 면 칸마다 주소 파일을 쓰고 draft 에 그대로 줄 인자(--to-file … )를 댄다 — 주소를 옮겨 적지 않는다.",
-              f"  같은 폴더에 사람 파일({PEOPLE_FILE} — 한 줄에 「이름/메일ID」)도 써 문서함(company-ecm) 권한에 그대로 준다 — 조직 · 사외 주소는 안 든다"]
     return "\n".join(lines)
 
 
@@ -1964,7 +1889,7 @@ def save_on_screen(args, box, inbox, plan: dict) -> None:
               "list --drafts 로 어느 쪽이 고친 판인지 본다")
     warn_unmeasured(args)
     print("저장한 판 — 편집 화면이 든 그대로다(받는 사람은 화면이 채운 것까지)")
-    show_draft_state(answer["state"], inbox, company_of(args))
+    show_draft_state(answer["state"], inbox, DIRECTORY.company_of(args))
     if answer.get("options"):
         show_saved_options(answer["options"])
     show_on_screen(args, unid)
@@ -2018,7 +1943,7 @@ def cmd_preview_send(args, inbox):
     answer = draft_hand(args, "inspect")
     print("보낼 임시메일의 지금 판 — 아직 안 나갔다")
     print(f"화면: {answer['where']}")
-    show_draft_state(answer["state"], inbox, company_of(args))
+    show_draft_state(answer["state"], inbox, DIRECTORY.company_of(args))
     print(f"확인 열쇠: {answer['token']}")
     print("사람이 이 판 그대로 보내자고 하면 send-draft · 같은 unid · --confirm <열쇠> 로 웹메일의 [보내기]를 누른다.")
 
@@ -2141,6 +2066,52 @@ def cmd_rules(args, inbox):
     for r in rules:
         print(f"{rule_line(r)} · {r.unid}")
     print(f"— 규칙 {len(rules)}개 (=: 일치 · ∋: 포함)")
+
+
+# ── 여러 명령을 한 프로세스로 — serve ───────────────────────────────────────
+
+SERVE_HELP = ("명령 여럿을 한 프로세스로 잇달아 묻는다 — 명령을 잇달아 부르는 앱(메일함 스캔)이 명령마다 파이썬을 새로 띄우지 않게. "
+              '표준 입력 한 줄에 요청 하나 {"id": <값>, "argv": [<인자>, …]}(JSON · argv 는 이 명령줄에 줄 인자 그대로), 답마다 머리 한 줄 '
+              '{"id": <같은 값>, "code": <종료 값>, "bytes": <몸의 바이트 수>} 뒤에 그 명령을 따로 불렀을 때의 표준 출력을 UTF-8 로 그 바이트 '
+              "수만큼 낸다. 요청은 받은 차례대로 하나씩 돌고, 명령마다 세션 · 메일함을 따로 불렀을 때와 똑같이 세운다 — 메일함에 묻는 요청은 "
+              "명령을 따로 부를 때와 같다. 표준 입력이 닫히면 끝난다")
+
+
+def serve(p: argparse.ArgumentParser) -> int:
+    """``SERVE_HELP`` 의 꼴로 요청을 받는 대로 답한다 — 표준 입력이 닫히면 0. 표준 오류(경고 · 인자 오류의 말)는 그대로 흐른다.
+    인자 정의 ``p`` 는 한 번 지은 것을 요청마다 쓴다."""
+    frames = sys.stdout.buffer
+    for raw in iter(sys.stdin.buffer.readline, b""):
+        if not raw.strip():
+            continue
+        ident, code, body = serve_one(p, raw)
+        frames.write(json.dumps({"id": ident, "code": code, "bytes": len(body)}).encode("ascii") + b"\n" + body)
+        frames.flush()
+    return EXIT_OK
+
+
+def serve_one(p: argparse.ArgumentParser, raw: bytes) -> tuple[object, int, bytes]:
+    """요청 한 줄 → (id, 종료 값, 표준 출력의 바이트). 명령은 ``dispatch`` 를 그대로 지난다 — 따로 불렀을 때 프로세스가 졌을 판(잡히지
+    않은 예외)은 그 요청만 종료 1 로 진다."""
+    try:
+        request = json.loads(raw)
+        ident, argv = request["id"], request["argv"]
+        if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
+            raise TypeError
+    except (ValueError, KeyError, TypeError):
+        return None, EXIT_CONFIG, '요청 줄이 {"id": …, "argv": [<글자>, …]} 꼴의 JSON 이 아니다\n'.encode("utf-8")
+    if argv[:1] == ["serve"]:
+        return ident, EXIT_CONFIG, "serve 안에서 serve 를 또 부르지 않는다\n".encode("utf-8")
+    held = io.StringIO()
+    with contextlib.redirect_stdout(held):
+        try:
+            code = dispatch(p, argv)
+        except SystemExit as exc:                   # argparse — --help 는 0, 틀린 인자는 2(말은 표준 오류로 갔다)
+            code = exc.code if isinstance(exc.code, int) else EXIT_FAIL if exc.code else EXIT_OK
+        except Exception:                           # noqa: BLE001 — 따로 불렀으면 프로세스가 1 로 졌을 판이다
+            log.exception("%s 가 졌다", " ".join(argv[:1]))
+            code = EXIT_FAIL
+    return ident, code, held.getvalue().encode("utf-8")
 
 
 def folder_plan(args, box):
@@ -2345,318 +2316,10 @@ def cmd_apply_rule(args, inbox):
     print(f"규칙을 {'고쳤다' if new.unid else '넣었다'}: {rule_line(box.rule(unid))} · {unid}")
 
 
-# ── 받는 사람 찾기 — 출처 아무 조합 × 거르기 → 사람이 볼 표 · draft 가 그대로 받는 칸마다 주소 파일(WHO_SOURCES · WHO_SIEVES) ──
+# ── 받는 사람 찾기 — 스킬 company-directory 의 찾기에 지난 메일 출처(--last) 하나를 더해 부른다 ─────────────────────
+# 출처 · 거르기 · 내는 꼴 · 받아 둔 조직도는 그 스킬의 directory.py 가 든다. 여기는 메일함을 읽어야 서는 출처 하나다
 
-def person_line(p, dept: bool = True) -> str:
-    """사람 한 줄 — 이름 · 부서 · 직급(인사 등급) · 직책 · 장 · 근무지 · 담당 업무 · 주소. ``dept`` 가 거짓이면 부서를 뺀다(한 부서의
-    명단은 머리 줄이 부서를 댄다)."""
-    marks = [m for m, on in (("장", p.is_boss), ("퇴직", p.retired)) if on]
-    grade = f"{p.grade}({p.level})" if p.grade and p.level else p.grade
-    return " · ".join(x for x in (p.name, p.dept if dept else "", grade, p.job_title, *marks, p.location, p.duty, p.email) if x)
-
-
-def show_rows(rows: list[str], start: int = 0) -> None:
-    """번호 붙인 줄을 start 째부터 낸다 — 답이 OUT_BYTES 를 넘기 전까지. 남으면 남은 수와 다음 --start 를 댄다."""
-    start, room = max(0, start), OUT_BYTES
-    for i, row in enumerate(rows[start:], start + 1):
-        line = f"{i}. {row}"
-        room -= len(line.encode("utf-8")) + 1
-        if room < 0 and i > start + 1:
-            print(f"… 남은 {len(rows) - i + 1} 명 — 다음: 같은 명령에 --start {i - 1}")
-            return
-        print(line)
-
-
-def org_cache_path(company: str) -> pathlib.Path:
-    """받아 둔 조직도의 자리 — ``MAIL_ORG_CACHE_DIR`` 이 있으면 그 폴더, 없으면 홈 아래 ``ORG_CACHE_DIR``."""
-    return cache_dir() / f"org-{load_attachments().UNSAFE_NAME.sub('_', company)}.json"
-
-
-def cached_org(inbox, company: str):
-    """받아 둔 조직도 — ``ORG_CACHE_DAYS`` 안에 받은 판이 있으면 (OrgChart, 받은 시각 글자), 없거나 낡았거나 깨졌으면 None.
-    서버에 묻지 않는다."""
-    got = load_ep_command().kept(org_cache_path(company), ORG_CACHE_FORMAT, ORG_CACHE_DAYS, by_mtime=True)
-    if not got:
-        return None
-    raw, stamp = got
-    try:
-        chart = inbox.OrgChart(
-            company=raw["company"],
-            depts={c: inbox.Dept(**d) for c, d in raw["depts"].items()},
-            members={c: [inbox.DirectoryPerson(**p) for p in ps] for c, ps in raw["members"].items()})
-    except (ValueError, KeyError, TypeError, AttributeError):
-        return None   # 칸이 안 맞는 캐시 — 없는 것으로 친다
-    return chart, time.strftime("%m-%d %H:%M", time.localtime(stamp))
-
-
-def load_org(args, inbox, company: str):
-    """회사 조직 한 판 — 받아 둔 판(``cached_org``)이 있으면 그것을, 없거나 ``--fresh`` 면 조직도에서 새로 받아 둔다.
-    내는 것 (OrgChart, 받은 시각 글자). 받은 판을 PC 에 못 남겨도 받은 것으로 답한다 — 그때는 경고 한 줄을 낸다."""
-    got = None if getattr(args, "fresh", False) else cached_org(inbox, company)
-    if got:
-        return got
-    chart = open_mailbox(args, inbox).org_snapshot(company)
-    blank = dict.fromkeys(ORG_CACHE_BLANK, "")
-    unkept = load_ep_command().keep(org_cache_path(company), {
-        "format": ORG_CACHE_FORMAT, "company": chart.company,
-        "depts": {c: dataclasses.asdict(d) for c, d in chart.depts.items()},
-        "members": {c: [dataclasses.asdict(p) | blank for p in ps] for c, ps in chart.members.items()}})
-    if unkept:
-        log.warning("받은 조직도를 PC 에 못 남겼다(%s) — 다음 판도 조직도에서 새로 받는다", unkept)
-    return chart, "방금"
-
-
-def tally(people, field: str, top: int | None = None) -> str:
-    """사람들의 그 칸 값별 수 — 많은 것부터. ``top`` 을 주면 그만큼만 보이고 나머지는 한 덩이로 접는다."""
-    counts: dict[str, int] = {}
-    for p in people:
-        key = getattr(p, field) or "(빈 값)"
-        counts[key] = counts.get(key, 0) + 1
-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    rest = ranked[top:] if top else []
-    return " · ".join(f"{k} {n}" for k, n in ranked[:top]) + (f" · 그 밖 {len(rest)} 곳 {sum(n for _, n in rest)}" if rest else "")
-
-
-def by_branch(chart, code, company: str, picked) -> str:
-    """고른 사람을 그 조직 바로 아래 부서별로 센다 — 그 조직에 바로 든 사람은 「(바로)」. 많은 것부터."""
-    branch = {}
-    for top in [d for d in chart.depts.values() if d.parent == (code or company)]:
-        for d in chart.subtree(top.code):
-            branch[d.code] = top.name
-    counts: dict[str, int] = {}
-    for p in picked:
-        key = branch.get(p.dept_code) or ("(바로)" if p.dept_code == code else "(그 밖)")
-        counts[key] = counts.get(key, 0) + 1
-    return " · ".join(f"{k} {n}" for k, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
-
-
-@dataclasses.dataclass(frozen=True)
-class Pick:
-    """찾은 받는 사람 하나 — 주소록의 한 사람(``person``) · 조직 하나(``org`` — 부서 주소 하나로 들어 보내는 순간의 구성원에게 간다) ·
-    사외 주소(둘 다 아니다 — 임시보관함 길이 못 싣는다) 가운데 하나다. ``field`` 는 든 칸이다."""
-    field: str
-    person: object = None    # inbox.DirectoryPerson
-    name: str = ""           # 조직 · 사외의 이름
-    email: str = ""          # 조직 · 사외의 주소
-    org: bool = False
-
-    @property
-    def mail(self) -> str:
-        return (self.person.email if self.person is not None else self.email).strip()
-
-    @property
-    def label(self) -> str:
-        return (self.person.name if self.person is not None else self.name).strip()
-
-    @property
-    def outside(self) -> bool:
-        return self.person is None and not self.org
-
-    def line(self) -> str:
-        if self.person is not None:
-            return person_line(self.person)
-        if self.org:
-            return f"{self.name}{DEPT_WORD} · {self.email}"
-        return f"{self.email} (사외 — 임시보관함 길이 못 싣는다)"
-
-
-@dataclasses.dataclass
-class Haul:
-    """출처 값 하나가 데려온 것 — ``said`` 는 출처 줄의 사람 말, ``held`` 는 파일에 안 넣고 사람에게 물을 줄이다. ``branch`` 는 부서별
-    수를 그 조직 바로 아래로 셀 때의 뿌리((부서 코드,) · 회사 전체면 (None,))다."""
-    said: str
-    picks: list
-    held: list
-    branch: tuple = ()
-
-
-class WhoRun:
-    """받는 사람 찾기 한 판 — 메일함 · 조직도는 그 출처가 처음 부를 때 한 번만 연다(조직도만 쓰는 판은 세션 없이 선다)."""
-
-    def __init__(self, args, inbox):
-        self.args, self.inbox, self.company = args, inbox, company_of(args)
-        self._box = self._chart = None
-        self._book_when = ""        # 주소로 사람을 이을 때 쓴 받아 둔 조직도의 날짜 — 이 판에 조직도를 안 받았을 때
-
-    @property
-    def box(self):
-        if self._box is None:
-            self._box = open_mailbox(self.args, self.inbox)
-        return self._box
-
-    def chart(self):
-        """(OrgChart, 받은 시각 글자) — 받아 둔 판이 있으면 그것, 없거나 --fresh 면 새로 받아 둔다."""
-        if self._chart is None:
-            self._chart = load_org(self.args, self.inbox, self.company)
-        return self._chart
-
-    @property
-    def when(self) -> str:
-        """이 판이 기댄 조직도의 날짜 — 받은 판이 없고 받아 둔 판으로 주소를 잇지도 않았으면 빈 글자."""
-        return self._chart[1] if self._chart else self._book_when
-
-    def people_of(self, mails: list[str]) -> dict:
-        """주소 → 주소록의 그 한 사람(``address_people``) — 이 판에 받은 조직도가 있으면 그것을, 없으면 받아 둔 판을 먼저 본다."""
-        if self._chart:
-            book = chart_book(self._chart[0])
-        else:
-            book, self._book_when = draft_book(self.inbox, self.company)
-        return address_people(self.box if any(a.casefold() not in book for a in mails) else None, self.inbox, mails,
-                              self.company, book)
-
-
-def split_field(value: str, default: str | None = "to") -> tuple[str | None, str]:
-    """출처 값 앞의 칸 머리(``cc:`` · ``bcc:`` · ``to:``)를 뗀다 — (칸, 나머지). 머리가 없으면 ``default``."""
-    head, sep, rest = value.partition(":")
-    if sep and head.strip().lower() in FIELD_WORDS_PEOPLE:
-        return head.strip().lower(), rest.strip()
-    return default, value.strip()
-
-
-def split_kind(value: str) -> tuple[tuple, str]:
-    """배포그룹 값 앞의 갈래 머리(``직책:`` · ``jobtitle:`` …)를 뗀다 — (찾을 갈래들, 그룹 이름). 머리가 없으면 갈래 셋 다다."""
-    head, sep, rest = value.partition(":")
-    names = {**{k: k for k in GROUP_KIND_WORDS}, **{w: k for k, w in GROUP_KIND_WORDS.items()}}
-    kind = names.get(head.strip().lower()) if sep else None
-    return ((kind,), rest.strip()) if kind else (tuple(GROUP_KIND_WORDS), value.strip())
-
-
-def bullets(rows: list[str], most: int = HELD_SHOWN, more: str = "") -> str:
-    """따로 둔 줄 아래의 후보들 — ``most`` 개까지, 넘으면 남은 수와 ``more``(좁히는 법)를 댄다."""
-    out = "".join(f"\n      · {r}" for r in rows[:most])
-    return out + (f"\n      … 외 {len(rows) - most}{' — ' + more if more else ''}" if len(rows) > most else "")
-
-
-def one_dept(chart, words: str):
-    """부서 이름 · 코드 → (그 부서, 빈 글자) 또는 (None, 따로 둘 줄) — 못 찾았거나 여럿 걸리면 고르지 않는다."""
-    hits = chart.find_depts(words)
-    if len(hits) == 1:
-        return hits[0], ""
-    if not hits:
-        return None, f"못 찾은 부서 「{words}」 — 조직도에 그 이름 · 코드가 든 부서가 없다. 이름을 줄여 다시 주거나 who --tree 로 나무를 본다"
-    paths = [f"{' > '.join(x.name for x in chart.path(d.code))} ({d.code})" for d in hits]
-    return None, (f"여럿 걸린 부서 「{words}」 {len(hits)} 곳 — 고르지 않는다. 사람이 고른 줄의 괄호 속 부서 코드로 다시 준다:"
-                  + bullets(paths, more="이름을 길게 주어 좁힌다"))
-
-
-def from_names(run, values) -> list:
-    """이름 · 주소 · 사번 · Notes 이름 · ID 여럿 — 주소록에 하나씩(함께) 묻고, 그 꼴이 꼭 같은 사람이 하나일 때만 든다. 동명이인 ·
-    못 찾은 이름 · 퇴직은 후보와 함께 따로 둔다 — 고르는 것은 사람이다."""
-    asks = [split_field(h) for v in values for h in NAME_SPLIT.split(v) if h.strip()]
-    queries = [run.inbox.directory_query(h) for _, h in asks]
-    box = run.box
-    with ThreadPoolExecutor(run.inbox.ORG_WORKERS) as pool:
-        answers = list(pool.map(lambda q: box.find_people(q[0], run.company) if q else [], queries))
-    picks, held = [], []
-    for (field, handle), q, every in zip(asks, queries, answers):
-        same = [p for p in every if q and q[1](p)]
-        live = [p for p in same if not p.retired]
-        if len(live) == 1 and live[0].email and live[0].notes:
-            picks.append(Pick(field, person=live[0]))
-        elif len(live) > 1:
-            held.append(f"동명이인 「{handle}」 {len(live)} 명 — 고르지 않는다. 누구인지 묻고 그 사람의 주소로 다시 준다:"
-                        + bullets([person_line(p) for p in live], more="부서 · 직급을 대며 묻는다"))
-        elif live:
-            held.append(f"「{handle}」 — 주소록의 그 사람에게 메일 주소 · Notes 이름이 없어 받는 사람으로 못 넣는다: {person_line(live[0])}")
-        elif same:
-            held.append(f"「{handle}」 — 퇴직한 사람이다:" + bullets([person_line(p) for p in same]))
-        else:
-            near = [person_line(p) for p in every if not p.retired]
-            held.append(f"못 찾은 이름 「{handle}」 — 주소록에 그 이름 · 주소 · 사번이 꼭 같은 사람이 없다"
-                        + (" · 그 글자가 든 사람:" + bullets(near, more="더 길게 주어 좁힌다") if near else ""))
-    return [Haul(f"이름 {len(asks)} 개(선 사람 {len(picks)})", picks, held)]
-
-
-def from_depts(run, values) -> list:
-    """부서의 사람 — 그 부서에 바로 든 사람, ``--sub`` 면 하위 조직까지. 받아 둔 조직도로 선다."""
-    chart, _ = run.chart()
-    out = []
-    for v in values:
-        field, words = split_field(v)
-        d, why = one_dept(chart, words)
-        if d is None:
-            out.append(Haul(f"부서 「{words}」(못 섰다)", [], [why]))
-            continue
-        people = chart.people(d.code, deep=run.args.sub)
-        scope = "하위 조직까지" if run.args.sub else "그 부서만"
-        out.append(Haul(f"부서 {' > '.join(x.name for x in chart.path(d.code))}({scope}) {len(people)} 명",
-                        [Pick(field, person=p) for p in people], [], (d.code,) if run.args.sub else ()))
-    return out
-
-
-def from_orgs(run, values) -> list:
-    """부서를 조직 하나로 — 그 부서의 주소 하나가 든다(웹메일 고름 창에서 조직을 체크한 것). 부서원으로 풀지 않는다."""
-    chart, _ = run.chart()
-    out = []
-    for v in values:
-        field, words = split_field(v)
-        d, why = one_dept(chart, words)
-        if d is not None and not d.email:
-            d, why = None, f"부서 {d.name} 에 부서 주소가 없어 조직 하나로 못 넣는다 — 부서원으로 넣으려면 --dept"
-        if d is None:
-            out.append(Haul(f"조직 「{words}」(못 섰다)", [], [why]))
-            continue
-        out.append(Haul(f"조직 {' > '.join(x.name for x in chart.path(d.code))}(조직 하나로)",
-                        [Pick(field, name=d.name, email=d.email, org=True)], []))
-    return out
-
-
-def from_all(run, on) -> list:
-    """회사 전체의 사람 — 받아 둔 조직도로 선다."""
-    chart, _ = run.chart()
-    people = chart.people()
-    return [Haul(f"회사 전체({run.company}) {len(people)} 명", [Pick("to", person=p) for p in people], [], (None,))]
-
-
-def group_lists(box, inbox, company: str, wants) -> dict:
-    """찾을 그룹들(``wants`` — (칸, 갈래들, 이름))이 걸친 갈래마다의 배포그룹 목록 — 갈래 → [(열쇠, 이름)]. 함께 묻는다."""
-    kinds = sorted({k for _, ks, _ in wants for k in ks})
-    with ThreadPoolExecutor(inbox.ORG_WORKERS) as pool:
-        return dict(zip(kinds, pool.map(lambda k: box.org_groups(company, k), kinds)))
-
-
-def one_group(lists: dict, inbox, kinds: tuple, name: str) -> tuple[str, str, str] | str:
-    """갈래들(``kinds``)의 목록에서 이름이 같은 배포그룹 하나 — (갈래, 열쇠, 이름). 꼭 하나로 안 서면 그 까닭 글을 낸다. 이름이 꼭
-    같은 것이 먼저고, 없으면 빈칸 · 괄호를 안 보고(``inbox.squash``) 견준다. ``who --group`` 과 ``draft --to-group`` 이 이 한 자를 쓴다."""
-    hits = ([(k, key, n) for k in kinds for key, n in lists[k] if n.strip() == name]
-            or [(k, key, n) for k in kinds for key, n in lists[k] if inbox.squash(n) == inbox.squash(name)])
-    hits = list({key: (k, key, n) for k, key, n in hits}.values())   # 그룹은 열쇠가 하나다 — 갈래마다 같은 열쇠로 오면 한 그룹이다
-    if not hits:
-        return f"없는 배포그룹 「{name}」 — 갈래마다의 목록은 who --groups"
-    if len(hits) > 1:
-        return (f"배포그룹 「{name}」 이 {' · '.join(GROUP_KIND_WORDS[k] for k, _, _ in hits)} 갈래에 다 있다 — 고르지 않는다. "
-                f"「{GROUP_KIND_WORDS[hits[0][0]]}:{name}」 꼴로 갈래를 붙여 다시 준다")
-    return hits[0]
-
-
-def from_groups(run, values) -> list:
-    """배포그룹의 구성원 — 갈래(직책 · 직급 · 지역)마다의 목록에서 이름이 같은 그룹 하나를 찾아 구성원을 받고, 구성원은 주소로 주소록의
-    한 사람에 잇는다(그래야 거르기가 직책 · 등급까지 걸리고 draft 가 그 주소를 받는다). 그룹 자체를 한 받는 사람으로 넣지 않는다."""
-    wants = [(field, *split_kind(rest)) for field, rest in (split_field(v) for v in values)]
-    box = run.box
-    lists = group_lists(box, run.inbox, run.company, wants)
-    out, found = [], []
-    for field, ks, name in wants:
-        hit = one_group(lists, run.inbox, ks, name)
-        if isinstance(hit, str):
-            out.append(Haul(f"배포그룹 「{name}」(못 섰다)", [], [hit]))
-            continue
-        kind, key, title = hit
-        found.append((field, kind, title, box.group_members(key)))
-    people = run.people_of([m[3].strip() for *_, members in found for m in members if m[3].strip()])
-    for field, kind, title, members in found:
-        picks, lost = [], []
-        for name, grade, dept, email in members:
-            p = people.get(email.strip()) if email.strip() else None
-            if p is None:
-                lost.append(" · ".join(x for x in (name, dept, grade, email) if x))
-            else:
-                picks.append(Pick(field, person=p))
-        held = [f"배포그룹 「{title}」 구성원 가운데 주소록에서 한 사람으로 안 선 {len(lost)} 명(주소 없음 · 퇴직 · 주소록에 없음) — "
-                "웹메일에서 본다:" + bullets(lost)] if lost else []
-        out.append(Haul(f"배포그룹 {GROUP_KIND_WORDS[kind]} 「{title}」 {len(members)} 명", picks, held))
-    return out
-
+Pick, Haul, bullets, split_field = DIRECTORY.Pick, DIRECTORY.Haul, DIRECTORY.bullets, DIRECTORY.split_field
 
 def from_last(run, values) -> list:
     """지난 메일의 받는 사람 — 값 앞에 칸 머리를 주면 모두 그 칸으로. 사람은 주소록의 한 사람에, 사외 주소는 사외로 든다.
@@ -2679,7 +2342,7 @@ def from_last(run, values) -> list:
     sent = [r for _, e, rows in got if e.folder == SENT for r in rows]
     people = run.people_of([r.addr.strip() for r in sent if r.addr.strip() and r.kind not in (inbox.DEPT_TYPE, inbox.EMAIL_TYPE)])
     heard = handle_people(run, [r for _, e, rows in got if e.folder != SENT for r in rows])
-    me = owner_person(run) if any(e.folder != SENT for _, e, _ in got) else None
+    me = run.me() if any(e.folder != SENT for _, e, _ in got) else None
     out = []
     for forced, e, rows in got:
         if e.folder != SENT:
@@ -2741,7 +2404,7 @@ def handle_people(run, rows) -> dict:
         return {}
     inbox = run.inbox
     by_addr = run.people_of([r.addr.strip() for r in rows if r.addr.strip()])
-    got = cached_org(inbox, run.company)
+    got = DIRECTORY.cached_org(run.company)
     known = {inbox.notes_key(p.notes): p for p in (got[0].people() if got else ()) if p.notes and p.email and not p.retired}
     out, ask = {}, []
     for r in rows:
@@ -2758,16 +2421,6 @@ def handle_people(run, rows) -> dict:
         live = [p for p in every if not p.retired]
         out[id(r)] = live[0] if len(live) == 1 and live[0].email and live[0].notes else None
     return out
-
-
-def owner_person(run):
-    """쓰는 사람(이 메일함의 주인) — 메일함 파일 번호가 사번이라(``MAILFILE_NUMBER``) 주소록에 그 사번으로 묻는다. 꼭 한 사람이 아니면 None."""
-    box = run.box                                   # 메일함을 열어야 그 주소(args.mailbox_url)가 선다
-    number = MAILFILE_NUMBER.search(getattr(run.args, "mailbox_url", "") or "")
-    if not number:
-        return None
-    hits = [p for p in box.find_exact(number.group(1), run.company) if p.empno.strip() == number.group(1) and not p.retired]
-    return hits[0] if len(hits) == 1 else None
 
 
 def received_haul(forced, e, rows, heard: dict, me) -> Haul:
@@ -2791,305 +2444,22 @@ def received_haul(forced, e, rows, heard: dict, me) -> Haul:
                 f"(두 칸을 합친 명단이라 {FIELD_WORDS_PEOPLE[forced or 'to']} 칸으로 · {me_word} · 보낸 분은 안 든다)", picks, held)
 
 
-def show_tree(run, words: str) -> None:
-    """부서 나무 — 부서마다 인원(하위 조직까지 · 바로 든 사람)과 부서 주소. 부서를 주면 그 아래만, 안 주면 회사 전체."""
-    chart, when = run.chart()
-    code = None
-    if words:
-        d, why = one_dept(chart, words)
-        if d is None:
-            raise Stop(EXIT_CONFIG, why)
-        code = d.code
-    print(f"{' > '.join(x.name for x in chart.path(code)) if code else f'회사 전체({run.company})'} — 조직도 {when} 판")
-    top = chart.depts[code].depth if code else 1
-    for root in (chart.subtree(code) if code else [d for d in chart.depts.values() if d.parent == run.company]):
-        for x in (chart.subtree(root.code) if code is None else [root]):
-            print(f"{'  ' * (x.depth - top)}- {x.name} · {len(chart.people(x.code))} 명"
-                  f"(바로 {len(chart.members.get(x.code, []))}) · {x.email}")
-    print("— 부서원은 who --dept <부서>(하위 조직까지는 --sub), 조직 하나로 보내려면 who --org <부서>")
-
-
-def show_groups(run, kind: str) -> None:
-    """배포그룹 목록 — 갈래를 주면 그 갈래만, 안 주면 셋 다."""
-    kinds, _ = split_kind(f"{kind}:") if kind else (tuple(GROUP_KIND_WORDS), "")
-    if kind and len(kinds) != 1:
-        raise Stop(EXIT_CONFIG, f"배포그룹 갈래는 {' · '.join(f'{k}({w})' for k, w in GROUP_KIND_WORDS.items())} 가운데 하나다: {kind!r}")
-    box = run.box
-    with ThreadPoolExecutor(run.inbox.ORG_WORKERS) as pool:
-        lists = list(pool.map(lambda k: box.org_groups(run.company, k), kinds))
-    for k, groups in zip(kinds, lists):
-        print(f"배포그룹 — {GROUP_KIND_WORDS[k]} {len(groups)} 개")
-        for _, name in groups:
-            print(f"- {name}")
-    print("— 구성원은 who --group <이름>(갈래가 겹치면 「직책:<이름>」)")
-
-
-@dataclasses.dataclass(frozen=True)
-class Source:
-    """받는 사람 찾기의 출처 하나 — 사람을 데려오는 자리다."""
-    takes: str        # many — 값을 여러 번(값 앞에 cc: · bcc: 를 붙이면 그 칸) · none — 켜기만
-    metavar: str
-    word: str         # 사람 말 — --help 의 지도
-    box: bool         # 메일함(세션)에 묻나 — 거짓이면 받아 둔 조직도만으로 선다
-    gather: object    # (WhoRun, 인자 값) → [Haul]
-    switch: tuple = ()   # 이 출처에만 붙는 켜기 — (인자, 사람 말)
-
-
-@dataclasses.dataclass(frozen=True)
-class Sieve:
-    """받는 사람 찾기의 거르기 하나 — 모든 출처를 합친 명단의 사람에게 건다."""
-    takes: str        # many · one · none
-    metavar: str
-    word: str
-    keep: object      # (inbox.DirectoryPerson, 인자 값) → 남기나
-    said: object      # 인자 값 → 거르기 줄의 사람 말
-
-
-@dataclasses.dataclass(frozen=True)
-class View:
-    """받는 사람 찾기의 보기 하나 — 사람 대신 목록을 낸다. 출처 · 거르기 · --out 과 함께 안 받는다."""
-    metavar: str
-    word: str
-    box: bool
-    show: object      # (WhoRun, 값) → None
-
-
-def match_keys(words) -> list[str]:
-    return [k for k in (INBOX.squash(w) for w in words or ()) if k]
-
-
-# 받는 사람 찾기의 손가락 — 출처 아무 조합(합친다) × 거르기 아무 조합(합친 명단 전체에) → 표와 칸마다 주소 파일. 출처 · 거르기를 더하거나
-# 빼는 일은 이 표의 줄과 그 일을 하는 손 하나다. 인자 · 거름 · --help 의 지도가 다 이 표에서 선다
-WHO_SOURCES = {
-    "name": Source("many", "이름|주소|사번", "이름 · 주소 · 사번 · Notes 이름 · ID 여럿(쉼표 · 가운뎃점으로 이어도 된다) — 그 꼴이 꼭 같은 "
-                   "사람이 하나일 때만 든다. 동명이인 · 못 찾은 이름은 후보와 함께 따로 둔다", True, from_names),
-    "dept": Source("many", "부서", "부서의 사람 — 그 부서에 바로 든 사람. 이름 일부 · 부서 코드도 된다", False, from_depts,
-                   ("sub", "하위 조직의 사람까지 — 사람이 「하위 조직까지 · 산하 전체」라고 할 때만")),
-    "org": Source("many", "부서", "부서를 조직 하나로 — 부서 주소 하나가 들어 보내는 순간의 구성원에게 간다(부서원으로 안 푼다)", False,
-                  from_orgs),
-    "all": Source("none", "", "회사 전체의 사람", False, from_all),
-    "group": Source("many", "[갈래:]이름", "배포그룹(직책 · 직급 · 지역)의 구성원 — 갈래가 겹치면 「직책:팀장」 꼴", True, from_groups),
-    "last": Source("many", "UNID", "지난 메일의 받는 사람 — 보낸 메일은 받는 사람 · 참조 · 숨은참조를 칸 그대로, 조직은 조직 하나로"
-                   "(「지난번과 같이」). 받은 메일은 받는 사람 · 참조를 합친 명단(read 의 「함께 받은 사람」)을 받는 사람 칸으로 — 쓰는 "
-                   "사람 자신과 보낸 분은 안 든다", True, from_last),
-}
-WHO_SIEVES = {
-    "grade": Sieve("many", "직급", "이 직급만(여러 번) — 과장 · 차장 같은 직급 이름", lambda p, v: p.grade.strip() in {x.strip() for x in v},
-                   lambda v: f"직급 {'/'.join(v)}"),
-    "title": Sieve("many", "직책", "이 직책만(여러 번) — 리더 · 그룹장 같은 직책 이름", lambda p, v: p.job_title.strip() in {x.strip() for x in v},
-                   lambda v: f"직책 {'/'.join(v)}"),
-    "boss": Sieve("none", "", "조직의 장만", lambda p, v: p.is_boss, lambda v: "조직의 장"),
-    "at_least": Sieve("one", "P5", "이 인사 등급 이상만(P5 · E3 꼴 — 같은 갈래끼리) — 등급이 없는 사람은 빠진다",
-                      lambda p, v: INBOX.level_at_least(p.level, v), lambda v: f"{v.upper()} 이상"),
-    "match": Sieve("many", "말", "이름 · 부서 · 직급 · 직책 · 근무지 · 담당 업무 · 주소에 이 말이 든 사람만(여러 번 주면 다 든 사람)",
-                   lambda p, v: all(k in INBOX.squash("|".join((p.name, p.dept, p.grade, p.job_title, p.location, p.duty, p.email)))
-                                    for k in match_keys(v)),
-                   lambda v: " · ".join(f"「{w}」 이 든" for w in v)),
-}
-WHO_VIEWS = {
-    "tree": View("부서", "부서 나무 · 부서마다 인원 · 부서 주소 — 부서를 주면 그 아래만", False, show_tree),
-    "groups": View("갈래", "배포그룹 목록 — 갈래(jobtitle · grade · location)를 주면 그 갈래만", True, show_groups),
-}
-
-
-def given_of(args, table: dict) -> list[str]:
-    """그 표에서 값이 든 줄 — 켜기는 참, 값은 빈 것이 아닐 때."""
-    return [k for k in table if getattr(args, k, None) not in (None, [], False, "")]
-
-
-def view_of(args) -> list[str]:
-    """준 보기 — 보기는 값 없이도(빈 글자) 준 것이다."""
-    return [k for k in WHO_VIEWS if getattr(args, k, None) is not None]
-
-
-def who_asks_box(args) -> bool:
-    """이 판이 메일함(세션)에 묻나 — 준 출처 · 보기 가운데 하나라도 메일함에 묻거나 조직도를 새로 받을 때. 거짓이면 받아 둔 조직도로 선다."""
-    return bool(getattr(args, "fresh", False)
-                or any(WHO_SOURCES[k].box for k in given_of(args, WHO_SOURCES))
-                or any(WHO_VIEWS[k].box for k in view_of(args)))
+WHO_SOURCES = {**DIRECTORY.SOURCES,
+               "last": DIRECTORY.Source("many", "UNID", "지난 메일의 받는 사람 — 보낸 메일은 받는 사람 · 참조 · 숨은참조를 칸 그대로, 조직은 "
+                                        "조직 하나로(「지난번과 같이」). 받은 메일은 받는 사람 · 참조를 합친 명단(read 의 「함께 받은 사람」)을 받는 "
+                                        "사람 칸으로 — 쓰는 사람 자신과 보낸 분은 안 든다", True, from_last)}
 
 
 def check_who_args(args) -> None:
     """출처 · 거르기 · 보기가 표에 맞나 — 세션 · 메일함 · 조직도에 닿기 전에 가린다(``_run``)."""
-    sources, views = given_of(args, WHO_SOURCES), view_of(args)
-    narrowing = given_of(args, WHO_SIEVES) + (["except"] if args.without else []) + (["out"] if args.out else [])
-    if len(views) > 1:
-        raise Stop(EXIT_CONFIG, "보기(--tree · --groups)는 한 번에 하나다")
-    if views and (sources or narrowing):
-        raise Stop(EXIT_CONFIG, f"--{views[0]} 는 목록을 보이는 보기라 출처 · 거르기 · 빼기 · --out 과 함께 안 받는다 — 사람을 찾으려면 "
-                                "--name · --dept 같은 출처만 준다")
     for v in args.last or ():
         unid_shape(split_field(v, None)[1])
-    if not views and not sources:
-        raise Stop(EXIT_CONFIG, "찾을 출처가 없다 — who --help 의 지도에서 출처(--" + " · --".join(WHO_SOURCES) + ")를 하나 넘게 준다")
-    for k, s in WHO_SOURCES.items():
-        if s.switch and getattr(args, s.switch[0]) and k not in sources:
-            raise Stop(EXIT_CONFIG, f"--{s.switch[0]} 는 --{k} 에 붙는다 — {s.switch[1]}")
-    if args.at_least:
-        try:
-            INBOX.level_at_least("", args.at_least)
-        except INBOX.MailboxConfigError as exc:
-            raise Stop(EXIT_CONFIG, f"--at-least — {exc}") from exc
-
-
-def merge_picks(hauls) -> tuple[list, list[str]]:
-    """출처마다 데려온 것을 한 명단으로 — 같은 주소는 한 번이고 칸이 다르면 앞 칸(받는 사람 · 참조 · 숨은참조 차례)이 선다. 주소가 없는
-    사람은 따로 둔다."""
-    rank = {f: i for i, f in enumerate(FIELD_WORDS_PEOPLE)}
-    kept: dict[str, Pick] = {}
-    bare = []
-    for h in hauls:
-        for p in h.picks:
-            if not p.mail:
-                bare.append(p.line())
-            elif (have := kept.get(p.mail.casefold())) is None:
-                kept[p.mail.casefold()] = p
-            elif rank[p.field] < rank[have.field]:
-                kept[p.mail.casefold()] = dataclasses.replace(have, field=p.field)
-    picks = sorted(kept.values(), key=lambda p: rank[p.field])   # 칸 차례로 — 같은 칸 안은 데려온 차례 그대로
-    return picks, ([f"주소가 없어 받는 사람으로 못 넣는 {len(bare)}:" + bullets(bare)] if bare else [])
-
-
-def without_picks(picks: list, words) -> tuple[list, list]:
-    """명단에서 뺄 사람(주소나 이름)을 뺀다 — (남은 것, 뺀 것). 뺄 말이 명단의 꼭 하나에 안 서면 Stop — 못 뺀 채 나가면 빼려던 사람에게
-    메일이 간다. 거르기 앞에서 빼니 거르기에 걸려 나갈 사람을 빼라 해도 선다."""
-    gone = []
-    for word in [w.strip() for chunk in words or () for w in chunk.split(",") if w.strip()]:
-        hits = [p for p in picks if word.casefold() == p.mail.casefold() or word == p.label]
-        if len(hits) != 1:
-            why = "명단에 없다" if not hits else f"명단에 {len(hits)} 명이다 — 주소로 준다: " + ", ".join(p.mail for p in hits)
-            raise Stop(EXIT_CONFIG, f"--except 「{word}」 — {why}. 아무 파일도 안 썼다")
-        gone.append(hits[0])
-        picks = [p for p in picks if p is not hits[0]]
-    return picks, gone
-
-
-def sieve_picks(args, picks: list) -> tuple[list, int, list[str], list[str]]:
-    """준 거르기를 모든 출처를 합친 명단에 건다 — (남은 것, 걸러 나간 사람 수, 거르기 줄의 말, 따로 둘 줄). 조직 · 사외 주소는 직급 ·
-    직책이 없어 거르지 못하니 파일에 넣지 않고 따로 둔다 — 넣으면 거르기 밖의 사람에게 간다."""
-    given = [(WHO_SIEVES[k], getattr(args, k)) for k in given_of(args, WHO_SIEVES)]
-    if not given:
-        return picks, 0, [], []
-    kept, dropped, unjudged = [], 0, []
-    for p in picks:
-        if p.person is None:
-            unjudged.append(p)
-        elif all(s.keep(p.person, v) for s, v in given):
-            kept.append(p)
-        else:
-            dropped += 1
-    held = [f"거르기가 못 거는 받는 사람 {len(unjudged)} — 조직 · 사외 주소는 직급 · 직책이 없어 파일에서 뺐다. 조직을 사람으로 풀어 "
-            "거르려면 --dept <부서>:" + bullets([p.line() for p in unjudged])] if unjudged else []
-    return kept, dropped, [s.said(v) for s, v in given], held
-
-
-def write_who_files(folder: str, picks: list, head: str) -> list[tuple[str, pathlib.Path, int]]:
-    """칸마다 주소 파일을 쓴다 — 칸 셋을 다 쓰고(빈 칸은 머리 줄만 · 앞 판의 파일이 남지 않게) 사람이 든 칸만 (칸, 경로, 주소 수)로 낸다.
-    사외 주소는 저장 명령이 못 실어 주석으로만 둔다 — 칸의 파일을 그대로 줘도 저장이 선다."""
-    root = pathlib.Path(folder).expanduser().resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    head = " ".join(head.split())   # 머리는 한 줄이다 — 출처 말(제목 · 부서 이름)에 줄바꿈이 섞이면 그 뒤가 주소 줄로 읽힌다
-    out = []
-    for field, word in FIELD_WORDS_PEOPLE.items():
-        rows = [p for p in picks if p.field == field]
-        inside = [p.mail for p in rows if not p.outside]
-        path = root / WHO_FILE.format(field=field)
-        path.write_bytes(("\n".join([f"# who · {word} · {head}", *inside,
-                                     *(f"# 사외 주소 — 저장 명령이 못 싣는다: {p.mail}" for p in rows if p.outside)]) + "\n").encode("utf-8"))
-        if inside:
-            out.append((field, path, len(inside)))
-    return out
-
-
-def write_people_file(folder: str, picks: list, head: str) -> tuple[pathlib.Path, int, list, list]:
-    """칸 셋을 합친 사람마다 「이름/메일ID」 한 줄의 사람 파일을 쓴다(``PEOPLE_FILE``) — (경로, 사람 수, 안 넣은 조직, 안 넣은 사외 주소).
-    조직은 메일 조직도의 부서 코드가 문서함의 것과 같은지 안 재서, 사외 주소는 한 사람의 「이름/메일ID」 로 안 서서 주석으로만 둔다."""
-    path = pathlib.Path(folder).expanduser().resolve() / PEOPLE_FILE
-    people = list({p.mail.casefold(): p for p in picks if p.person is not None}.values())
-    orgs, outside = [p for p in picks if p.org], [p for p in picks if p.outside]
-    path.write_bytes(("\n".join([f"# who · 사람 · {' '.join(head.split())}", "# 한 줄에 「이름/메일ID」 — 스킬 company-ecm 의 권한 칸이 받는 꼴",
-                                 *(f"{p.label}/{p.mail.split('@', 1)[0]}" for p in people),
-                                 *(f"# 조직 — 안 넣었다: {p.name} · {p.mail}" for p in orgs),
-                                 *(f"# 사외 주소 — 안 넣었다: {p.mail}" for p in outside)]) + "\n").encode("utf-8"))
-    return path, len(people), orgs, outside
+    DIRECTORY.check_args(args, WHO_SOURCES)
 
 
 def cmd_who(args, inbox):
-    """받는 사람을 찾는다 — 출처(WHO_SOURCES) 아무 조합을 합치고 거르기(WHO_SIEVES)를 그 명단 전체에 건 뒤, 사람이 볼 수 · 표와
-    (``--out`` 을 주면) draft 가 그대로 받는 칸마다 주소 파일을 낸다. 보기(WHO_VIEWS)는 사람 대신 목록을 낸다. 메일함을 안 바꾼다.
-    인자의 꼴은 ``check_who_args`` 가 세션 앞에서 이미 봤다."""
-    run = WhoRun(args, inbox)
-    if views := view_of(args):
-        WHO_VIEWS[views[0]].show(run, getattr(args, views[0]))
-        return
-    hauls = [h for k in given_of(args, WHO_SOURCES) for h in WHO_SOURCES[k].gather(run, getattr(args, k))]
-    picks, bare = merge_picks(hauls)
-    picks, gone = without_picks(picks, args.without)
-    picks, dropped, sieved, unjudged = sieve_picks(args, picks)
-    held = [x for h in hauls for x in h.held] + bare + unjudged
-    show_who(run, hauls, picks, gone, dropped, sieved, held)
-
-
-def show_who(run, hauls, picks, gone, dropped, sieved, held) -> None:
-    """찾은 명단을 보이고 --out 이면 칸마다 주소 파일을 쓴다 — 수 · 등급별 · 직급별 · 직책별(많으면 부서별)은 늘, 명단은 PEOPLE_SHOWN
-    까지(넘으면 --list), 따로 둔 것은 늘 다 댄다."""
-    args = run.args
-    people = [p.person for p in picks if p.person is not None]
-    fields = {f: sum(p.field == f for p in picks) for f in FIELD_WORDS_PEOPLE}
-    print("받는 사람 찾기" + (f" — 조직도 {run.when} 판" if run.when else ""))
-    print("출처: " + " · ".join(h.said for h in hauls))
-    if sieved:
-        print(f"거르기: {' · '.join(sieved)} — 걸러 나간 사람 {dropped} 명")
-    for p in gone:
-        print(f"뺐다(--except): {p.line()}")
-    counts = " · ".join(f"{FIELD_WORDS_PEOPLE[f]} {n}" for f, n in fields.items() if n or f == "to")
-    orgs, outside = sum(p.org for p in picks), sum(p.outside for p in picks)
-    print(f"{counts} — 사람 {len(people)} 명" + (f" · 조직 {orgs}" if orgs else "") + (f" · 사외 {outside}" if outside else "")
-          + " (같은 주소는 한 번 · 칸이 겹치면 앞 칸)")
-    if people:
-        print(f"등급별: {tally(people, 'level')}")
-        print(f"직급별: {tally(people, 'grade')}")
-        print(f"직책별: {tally(people, 'job_title')}")
-    several = sum(n > 0 for n in fields.values()) > 1
-    rows = [(f"[{FIELD_WORDS_PEOPLE[p.field]}] " if several else "") + p.line() for p in picks]
-    if len(rows) > PEOPLE_SHOWN and not args.list and not args.start:
-        branch = hauls[0].branch if len(hauls) == 1 else ()
-        print("부서별: " + (by_branch(run.chart()[0], branch[0], run.company, people) if branch
-                            else tally(people, "dept", TALLY_TOP)))
-        print(f"명단은 {len(rows)} 줄이라 안 실었다 — 수를 묻는 물음은 위의 수로 답한다. 다음: 좁히려면 거르기(--grade · --title · "
-              "--at-least · --match), 명단을 보려면 같은 명령에 --list")
-    else:
-        show_rows(rows, args.start)
-    if held:
-        print(f"⚠ 따로 둔 것 {len(held)} — 파일에 안 넣었다. 고르지 말고 사람에게 묻고, 고른 것을 줄마다 댄 꼴로 다시 준다:")
-        for line in held:
-            print(f"  - {line}")
-    if not args.out:
-        print("— 받는 사람으로 쓰려면 같은 명령에 --out <저장소 밖 폴더> — 칸마다 주소 파일을 쓰고 draft 에 그대로 줄 인자를 댄다"
-              "(주소를 옮겨 적지 않는다)")
-        return
-    head = f"{' · '.join(h.said for h in hauls)}" + (f" · 거르기 {' · '.join(sieved)}" if sieved else "") + (
-        f" · 조직도 {run.when} 판" if run.when else "")
-    try:
-        written = write_who_files(args.out, picks, head)
-        sheet, persons, kept_orgs, kept_outside = write_people_file(args.out, picks, head)
-    except OSError as exc:
-        raise Stop(EXIT_CONFIG, f"--out 폴더에 주소 파일을 못 썼다({exc}) — 쓸 수 있는 저장소 밖 폴더를 준다") from exc
-    if not written:
-        print("— 파일에 넣을 받는 사람이 없다 — draft 인자를 안 낸다")
-        return
-    print("주소 파일: " + " · ".join(f"{FIELD_WORDS_PEOPLE[f]} {n} 개 → {path}" for f, path, n in written))
-    print("draft 에 그대로: " + " ".join(f'--{f}-file "{path}"' for f, path, _ in written))
-    if outside:
-        print(f"사외 주소 {outside} 개는 파일에 주석으로만 뒀다 — 저장한 뒤 웹메일에서 더하라고 이른다")
-    print(f"사람 파일: {persons} 명 → {sheet} — 한 줄에 「이름/메일ID」(칸 셋을 합쳤다). 문서함(company-ecm) 권한에 그 파일을 그대로 준다")
-    if kept_orgs or kept_outside:
-        print("사람 파일에 안 넣은 것 — "
-              + " · ".join(x for x in (
-                  f"조직 {len(kept_orgs)}({', '.join(p.name for p in kept_orgs)} — 메일 조직도의 부서 코드가 문서함의 것과 같은지 안 쟀다. "
-                  "부서는 문서함 쪽에서 부서 이름으로 준다)" if kept_orgs else "",
-                  f"사외 주소 {len(kept_outside)}({', '.join(p.mail for p in kept_outside)} — 한 사람의 이름/메일ID 로 안 선다)"
-                  if kept_outside else "") if x))
+    """받는 사람을 찾는다 — 스킬 company-directory 의 찾기(``DIRECTORY.find``)에 지난 메일 출처를 더해 부른다. 메일함을 안 바꾼다."""
+    DIRECTORY.find(args, lambda a: open_mailbox(a, inbox), WHO_SOURCES, "받는 사람 찾기")
 
 
 # ── 인자 ──────────────────────────────────────────────────────────────────
@@ -3202,6 +2572,7 @@ def parser() -> argparse.ArgumentParser:
 
     one("session", cmd_session, mail=False)
     one("folders", cmd_folders, mail=False)
+    sub.add_parser("serve", description=SERVE_HELP)   # 앱이 부르는 꼴 — 대화의 지도(COMMAND_MAP)에는 안 싣는다
     q = one("list", cmd_list, mail=False)
     q.set_defaults(check=check_list_args)
     where = q.add_mutually_exclusive_group()
@@ -3233,33 +2604,12 @@ def parser() -> argparse.ArgumentParser:
     q.add_argument("--field", default="subject", choices=tuple(FIELD_WORDS))
     q.add_argument("--count", type=int, default=SEARCH_PAGE)
     q.add_argument("--page", type=int, default=1)
-    q = sub.add_parser("who", formatter_class=argparse.RawDescriptionHelpFormatter, epilog=who_map(),
+    q = sub.add_parser("who", formatter_class=argparse.RawDescriptionHelpFormatter, epilog=DIRECTORY.find_map(WHO_SOURCES),
                        description="받는 사람을 찾는다 — 출처 아무 조합을 합치고 거르기를 그 명단 전체에 건다. 사람이 볼 수 · 표와 "
-                                   "(--out) draft 가 그대로 받는 칸마다 주소 파일을 낸다. 메일함을 안 바꾼다")
+                                   "(--out) draft 가 그대로 받는 칸마다 주소 파일 · 사람 파일을 낸다. 메일함을 안 바꾼다. 스킬 company-directory 의 "
+                                   "찾기에 지난 메일 출처(--last)를 더한 것이다")
     q.set_defaults(fn=cmd_who, check=check_who_args)
-    for k, s in WHO_SOURCES.items():
-        if s.takes == "none":
-            q.add_argument(flag_of(k), dest=k, action="store_true", help=s.word)
-        else:
-            q.add_argument(flag_of(k), dest=k, action="append", metavar=s.metavar, help=s.word)
-        if s.switch:
-            q.add_argument(flag_of(s.switch[0]), dest=s.switch[0], action="store_true", help=f"{flag_of(k)} 에 붙어 {s.switch[1]}")
-    for k, s in WHO_SIEVES.items():
-        how = {"none": {"action": "store_true"}, "one": {"default": "", "metavar": s.metavar},
-               "many": {"action": "append", "metavar": s.metavar}}[s.takes]
-        q.add_argument(flag_of(k), dest=k, help=s.word, **how)
-    q.add_argument("--except", dest="without", action="append", metavar="주소|이름",
-                   help="명단에서 이 사람을 뺀다(여러 번) — 거르기 앞에서. 명단의 꼭 한 사람에 안 서면 아무 파일도 안 쓰고 멈춘다")
-    for k, v in WHO_VIEWS.items():
-        q.add_argument(flag_of(k), dest=k, nargs="?", const="", default=None, metavar=v.metavar, help=v.word)
-    q.add_argument("--out", default="", metavar="폴더",
-                   help="칸마다 주소 파일(" + " · ".join(WHO_FILE.format(field=f) for f in FIELD_WORDS_PEOPLE) + ")을 이 폴더에 쓰고 "
-                        f"draft 에 그대로 줄 인자를 댄다. 칸 셋을 합친 사람 파일({PEOPLE_FILE} — 한 줄에 「이름/메일ID」 · 문서함 권한이 "
-                        "받는 꼴)도 쓴다 — 저장소 밖 폴더")
-    q.add_argument("--list", action="store_true", help=f"명단이 {PEOPLE_SHOWN} 줄을 넘어도 낸다(끊어 낸다) — 없으면 수만 낸다")
-    q.add_argument("--start", type=int, default=0, help="명단을 이 줄 다음부터 — 답이 잘렸을 때 댄 값")
-    q.add_argument("--fresh", action="store_true", help="받아 둔 조직도를 버리고 새로 받는다")
-    q.add_argument("--company", default="", help=f"회사 값 — 없으면 MAIL_COMPANY, 그것도 없으면 {DEFAULT_COMPANY}")
+    DIRECTORY.add_find_args(q, WHO_SOURCES)
     q = one("read", cmd_read)
     q.add_argument("--images", action="store_true", help="본문 그림을 파일로 받아 경로를 댄다 — 그림 파일로 열어 읽는다")
     q.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
@@ -3375,13 +2725,19 @@ def main(argv=None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     logging.basicConfig(level=logging.WARNING, format="경고: %(message)s")
-    p = parser()
+    return dispatch(parser(), argv)
+
+
+def dispatch(p: argparse.ArgumentParser, argv) -> int:
+    """인자를 풀어 명령 하나를 돌린다 — 명령줄 한 번(``main``)과 serve 의 요청 하나가 같이 지난다."""
     args, extra = p.parse_known_args(argv)
     if extra and args.command in SINGLE_UNID and all(UNID.fullmatch(x.strip().upper()) for x in extra):
         print(f"{args.command} 는 메일 한 통(unid 하나)만 받는다 — 준 번호 {len(extra) + 1}개. 다음: {SINGLE_UNID[args.command]}")
         return EXIT_CONFIG                           # 세션 · 메일함에 닿기 전이다
     if extra:
         p.parse_args(argv)                           # 그 밖의 모르는 인자는 argparse 의 말 그대로(종료 2)
+    if args.command == "serve":
+        return serve(p)                              # 요청마다 dispatch 를 다시 지난다 — 세션은 요청마다 _run 이 세운다
     return _run(args)
 
 
@@ -3398,7 +2754,8 @@ def _run(args) -> int:
             args.fn(args, inbox)
 
         try:
-            if args.command == "who" and not who_asks_box(args) and cached_org(inbox, company_of(args)):
+            if (args.command == "who" and not DIRECTORY.asks_box(args, WHO_SOURCES)
+                    and DIRECTORY.cached_org(DIRECTORY.company_of(args))):
                 once(None)                               # 받아 둔 조직도로 선다 — 세션 파일이 없어도 답한다
             else:
                 # 읽는 명령은 세션 파일부터 · 거절되면 손을 띄워 한 번 더. 보내기 · 읽음 바꾸기는 늘 손부터 받아 한 번만 돈다

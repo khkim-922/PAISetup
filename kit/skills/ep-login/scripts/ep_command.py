@@ -1,5 +1,6 @@
 """사내 앱 스킬의 얇은 명령이 함께 쓰는 뼈대 — 명령을 멈추는 꼴 · 종료 값 · 답을 JSON 하나로 내는 끝 · 답 크기에 본문 맞추기 ·
-받아 둔 파일 · 날 말(오늘 · 내일 · 요일) · 빈 틈 셈(바쁜 구간 사이의 비는 때). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · 받아 둔 파일은 company-mail 도)이
+받아 둔 파일 · 날 말(오늘 · 내일 · 요일) · 서울 시각과 날짜의 꼴 · 모델이 쓴 글 파일 · 사람 파일(한 손이 찾은 사람을 다음 손이 받는 people.json) ·
+종료 값의 뜻 · 빈 틈 셈(바쁜 구간 사이의 비는 때). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · company-ecm(종료 값 · 글 파일 · 범례 · 사람 파일) · 종료 값 · 받아 둔 파일 · 본문 맞추기는 company-mail 도)이
 이 폴더를 ``sys.path`` 에 넣고 싣는다. 앱 손(서버를 묻는 쪽)이 쓰는 것 — 세션 파일 · opener · SSO 넘김 칸 · 이름 누르기 · node 손
 돌리기 — 은 곁의 ``ep_session.py`` 가 든다. 새 사내 앱 스킬은 제 서버를 묻는 앱 손과 제 명령만 짓고 나머지는 여기서 부른다.
 
@@ -20,12 +21,18 @@
     raise Stop(EXIT_ARGS, "args", "까닭. 다음: …")              # 명령 어디서든 — finish 가 종료 값과 JSON 으로 옮긴다
     ep_command.fit_text(out, "text", body, start, most, lambda end: f"--from {end}", ep_command.OUT_BYTES)
     gaps = ep_command.gaps_of([(시작, 끝), …], lo, hi, need)     # lo ~ hi 안에서 need 이상 비는 (시작, 끝) 들
+    at = ep_command.stamp_of("2026-11-20 15:00")                # 서울 벽시계 → 서울 시각(꼴이 아니면 Stop(인자)) · stamp(at) 가 거꾸로
+    day = ep_command.date_of("2026-11-20", "--since 는")         # 있는 날의 YYYY-MM-DD 만 — 아니면 Stop(인자)
+    piece = ep_command.text_file(path, "--swap-file 의 파일")     # 모델이 쓴 글 파일 — BOM · 끝 줄바꿈을 걷는다 · 없으면 Stop(인자)
+    ep_command.add_people_file(sub_parser)                      # 사람을 받는 손의 한 인자 --people-file(여러 번) — args.people_file
+    people = ep_command.distinct(ep_command.people_of(args.people_file))   # 사람 파일 → Person 들 · 꼴이 아니면 Stop(인자)
     got = ep_command.kept(path, FORMAT, DAYS)                   # (받아 둔 dict, 받은 시각) 이나 None
     why = ep_command.keep(path, {"format": FORMAT, "stamp": time.time(), ...})   # 못 남긴 까닭 — 남겼으면 빈 글자
 
 내는 것(``finish``) — 표준 출력에 JSON 하나와 종료 값: 0 됐다(명령의 답 그대로) · 1 도구 · 앱 고장 · 2 인자가 틀렸다 · 3 사내
 세션이 없다 · 끊겼다(스킬 ep-login). 0 이 아니면 ``{"error": 갈래, "message": 까닭과 「다음: …」}`` 다. 명령이 제 종료 값을 더
-두면(일정의 4) ``Stop`` 에 그 값과 갈래를 실어 올린다.
+두면(일정의 8) ``Stop`` 에 그 값과 갈래를 실어 올린다. 값마다의 뜻은 ``EXIT_MEANINGS`` 한 표이고, 손의 맨 위 ``--help`` 는
+``exit_legend(그 손이 내는 값, 손이 덧붙일 말)`` 로 범례를 짓는다 — 손으로 범례를 적지 않는다.
 """
 
 from __future__ import annotations
@@ -33,9 +40,11 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import sys
 import time
-from datetime import date as _date, datetime as _datetime, timedelta as _timedelta
+from dataclasses import dataclass
+from datetime import date as _date, datetime as _datetime, timedelta as _timedelta, timezone as _timezone
 
 HERE = pathlib.Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -48,6 +57,18 @@ EXIT_STALE = 4          # 확인 열쇠가 지금과 다르다 — 미리 본 �
 EXIT_DEFAULT_APP = 6    # 사람이 그 확장자의 기본 앱을 한 번 골라야 한다
 EXIT_CLASSIFIED = 7     # 기밀 · 핵심기술 문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다 — 답을 받은 뒤에만 넘긴다
 EXIT_URL = 8            # 그 앱의 주소가 틀렸거나 잰 기본 주소로 안 읽힌다 — 사람에게 앱 화면의 주소를 받는다
+# 종료 값의 뜻 — 한 값은 어느 명령에서나 한 뜻이다. 손마다의 맨 위 --help 가 이 표에서 그 손이 내는 값의 범례를 짓는다(exit_legend)
+EXIT_MEANINGS = {
+    EXIT_OK: "됐다",
+    EXIT_TOOL: "도구 · 앱 고장 — 그대로 알리고 다시 부르지 않는다",
+    EXIT_ARGS: "인자가 틀렸거나 그 값으로는 안 된다 — 아무것도 안 바꿨다. 말의 「다음: …」 을 따른다",
+    EXIT_SESSION: "사내 세션이 없다 · 끊겼다 — 스킬 ep-login 을 부른 뒤 같은 명령을 다시",
+    EXIT_STALE: "확인 열쇠가 지금과 다르다 — 미리 본 뒤 바뀌어 아무것도 안 바꿨다. 미리 보기를 다시 사람에게 보인다",
+    EXIT_DEFAULT_APP: "사람이 그 확장자의 기본 앱을 한 번 골라야 한다 — 말이 할 일을 든다",
+    EXIT_CLASSIFIED: "기밀 · 핵심기술 문서이거나 등급을 못 읽어 사람에게 묻기 전에 멈췄다 — 답을 받은 뒤에만 넘긴다",
+    EXIT_URL: "그 앱의 주소가 틀렸거나 잰 기본 주소로 안 읽힌다 — 사람에게 앱 화면의 주소를 받는다",
+}
+SAID_JSON = "0 이 아니면 답의 message 가 까닭과 「다음: …」 을 든다"
 NEXT_EP_LOGIN = "다음: 스킬 ep-login 으로 사내 세션을 세운 뒤 같은 명령을 다시 부른다"
 OUT_BYTES = ep_session.OUT_BYTES                   # 답 하나(JSON)의 크기 — 수가 사는 자리와 까닭은 ep_session
 DAY_SECONDS = 86400
@@ -74,6 +95,18 @@ def load(name: str, where: pathlib.Path):
 def size(out: dict, indent: int | None = None) -> int:
     """답이 표준 출력에서 차지할 바이트 수 — ``finish`` 가 찍는 꼴(``indent``) 그대로 센다."""
     return len(json.dumps(out, ensure_ascii=False, indent=indent).encode("utf-8"))
+
+
+def exit_legend(codes, more: dict | None = None, said: str = SAID_JSON) -> str:
+    """맨 위 --help 의 종료 값 범례 — 그 손이 내는 값(``codes``)마다 ``EXIT_MEANINGS`` 의 뜻을 한 줄씩, 손이 덧붙일 것(``more`` — 값 → 말)은
+    그 아래 줄에 단다. ``said`` 는 0 이 아닐 때 까닭이 어디 서나다(JSON 답의 message · 표준 오류)."""
+    more = more or {}
+    lines = ["종료 값"]
+    for code in sorted(codes):
+        lines.append(f"  {code} {EXIT_MEANINGS[code]}")
+        if code in more:
+            lines.append(f"      {more[code]}")
+    return "\n".join(lines + ([f"  {said}"] if said else []))
 
 
 # ── 명령의 끝 ────────────────────────────────────────────────────────────
@@ -192,6 +225,115 @@ def keep(path: pathlib.Path, data: dict) -> str:
     return ""
 
 
+# ── 모델이 쓴 글 파일 ─────────────────────────────────────────────────────
+def text_file(name: str, lead: str = "글 파일") -> str:
+    """모델이 쓴 글 파일 하나(바꿀 조각 · 글) — UTF-8 로 읽어 앞의 BOM 과 끝 줄바꿈을 걷는다. PowerShell 5.1 의 Out-File 은 BOM 을, 편집기와
+    Out-File 은 끝 줄바꿈을 붙인다 — 글이 아니라서 남기면 문서에 그대로 실린다(BOM 은 안 보이는 글자로). 없거나 UTF-8 이 아니면
+    Stop(인자) — ``lead`` 는 무엇이 틀렸나다(「--swap-file 의 파일」)."""
+    path = pathlib.Path(name).expanduser()
+    if not path.is_file():
+        raise Stop(EXIT_ARGS, "args", f"{lead}이 없다: {path}")
+    try:
+        return path.read_text(encoding="utf-8-sig").rstrip("\r\n")
+    except UnicodeDecodeError as exc:
+        raise Stop(EXIT_ARGS, "args", f"{lead}이 UTF-8 이 아니다: {path}. 다음: UTF-8 로 다시 쓴다(PowerShell 5.1 이면 Out-File · Set-Content 에 "
+                                      "-Encoding utf8)") from exc
+    except OSError as exc:
+        raise Stop(EXIT_ARGS, "args", f"{lead}을 못 읽었다: {path} ({exc})") from exc
+
+
+# ── 사람 파일 ─────────────────────────────────────────────────────────────
+# 한 손이 찾은 사람을 다음 손이 옮겨 적지 않고 받는 파일 — 주소록(스킬 company-directory)의 찾기가 --out 에 쓰는 people.json 이다.
+# 사람을 받는 손은 다 같은 이름의 인자(PEOPLE_FLAG)로 받고 이 한 벌이 읽는다. 손마다 사람을 아는 열쇠만 고른다 — 메일 · 회의실은
+# email, 문서함은 name + mail_id, 일정은 notes(그 사람의 공유 일정함)
+PEOPLE_FLAG = "--people-file"
+PEOPLE_FORMAT = 1
+PEOPLE_TEXT = ("name", "email", "mail_id", "empno", "dept", "dept_code", "grade", "job_title", "notes", "field")
+PEOPLE_FIELDS = ("to", "cc", "bcc")
+PEOPLE_HELP = "사람 파일 — 주소록(스킬 company-directory)의 찾기가 --out 에 쓴 people.json 그대로(여러 번 준다)"
+PEOPLE_NEXT = "다음: 주소록(스킬 company-directory)으로 사람을 다시 찾아 --out 이 쓴 people.json 을 그대로 준다 — 손으로 고쳐 쓰지 않는다"
+
+
+@dataclass(frozen=True)
+class Person:
+    """사람 파일의 한 사람 — 칸은 파일의 칸 그대로이고, ``where`` 는 그 사람이 든 자리(「파일:몇째」)다. 모르는 사실은 빈 글자다."""
+    name: str
+    email: str
+    mail_id: str
+    empno: str
+    dept: str
+    dept_code: str
+    grade: str
+    job_title: str
+    is_boss: bool
+    notes: str
+    field: str
+    where: str = ""
+
+    def label(self) -> str:
+        """사람에게 보일 한 줄 — 동명이인이 부서 · 직급으로 갈리게."""
+        return " · ".join(x for x in (self.name, self.dept, self.grade or self.job_title) if x)
+
+
+def add_people_file(parser, more: str = "") -> None:
+    """사람 파일 인자 하나를 단다 — 이름 · 꼴(여러 번 · 안 주면 None) · 도움말이 손마다 같게."""
+    parser.add_argument(PEOPLE_FLAG, dest="people_file", action="append", default=None, metavar="파일",
+                        help=PEOPLE_HELP + (f" — {more}" if more else ""))
+
+
+def people_of(paths) -> list[Person]:
+    """사람 파일들 → 사람들(준 차례 · 파일 안 차례 그대로). 꼴이 아니면 Stop(인자) — 없거나 UTF-8 이 아닌 파일 · JSON 이 아닌 글 · 꼴
+    번호가 다른 파일 · 칸이 빠졌거나 값의 꼴이 틀린 사람 · 사람이 하나도 없는 파일. 같은 사람이 두 번 들어도(받는 칸이 달라) 그대로
+    낸다 — 한 번씩만 쓸 손은 ``distinct`` 를 거친다."""
+    out: list[Person] = []
+    for name in paths or ():
+        path = pathlib.Path(name).expanduser()
+        if not path.is_file():
+            raise Stop(EXIT_ARGS, "args", f"사람 파일이 없다: {path}. {PEOPLE_NEXT}")
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8-sig"))
+        except UnicodeDecodeError as exc:
+            raise Stop(EXIT_ARGS, "args", f"사람 파일이 UTF-8 이 아니다: {path}. {PEOPLE_NEXT}") from exc
+        except ValueError as exc:
+            raise Stop(EXIT_ARGS, "args", f"사람 파일이 JSON 이 아니다: {path} ({exc}). {PEOPLE_NEXT}") from exc
+        except OSError as exc:
+            raise Stop(EXIT_ARGS, "args", f"사람 파일을 못 읽었다: {path} ({exc})") from exc
+        if not isinstance(raw, dict) or raw.get("format") != PEOPLE_FORMAT or not isinstance(raw.get("people"), list):
+            raise Stop(EXIT_ARGS, "args", f"사람 파일의 꼴이 아니다(format {PEOPLE_FORMAT} 과 people 목록이 든다): {path}. {PEOPLE_NEXT}")
+        if not raw["people"]:
+            raise Stop(EXIT_ARGS, "args", f"사람 파일에 사람이 하나도 없다: {path}")
+        for i, row in enumerate(raw["people"], 1):
+            where = f"{path.name}:{i}"
+            bad = ("사람이 객체가 아니다" if not isinstance(row, dict) else
+                   next((f"칸 {k} 가 없거나 글자가 아니다" for k in PEOPLE_TEXT if not isinstance(row.get(k), str)), "")
+                   or ("칸 is_boss 가 참 · 거짓이 아니다" if not isinstance(row.get("is_boss"), bool) else "")
+                   or (f"칸 field 가 {' · '.join(PEOPLE_FIELDS)} 가운데 하나가 아니다" if row.get("field") not in PEOPLE_FIELDS else "")
+                   or ("이름이 비었다" if not row["name"].strip() else ""))
+            if bad:
+                raise Stop(EXIT_ARGS, "args", f"사람 파일의 {where} — {bad}. {PEOPLE_NEXT}")
+            out.append(Person(**{k: row[k].strip() for k in PEOPLE_TEXT}, is_boss=row["is_boss"], where=where))
+    return out
+
+
+def distinct(people) -> list[Person]:
+    """한 사람은 한 번 — 사번 · 메일 주소 · Notes 이름 · (이름, 메일 ID) 가운데 먼저 찬 것으로 같은 사람을 가린다(이름만으로는 안 가린다 —
+    동명이인이 하나로 접힌다). 먼저 든 줄이 남는다."""
+    seen, out = set(), []
+    for p in people:
+        key = (("empno", p.empno) if p.empno else ("email", p.email.casefold()) if p.email else
+               ("notes", notes_key(p.notes)) if p.notes else ("name", p.name, p.mail_id.casefold()))
+        if key not in seen:
+            seen.add(key)
+            out.append(p)
+    return out
+
+
+def notes_key(notes: str) -> str:
+    """Notes 이름을 견줄 꼴 — 「CN=홍길동/OU=…/O=…」 와 줄인 꼴 「홍길동/…/…」 을 같게(마디마다 「이름=」 을 떼고 대소문자를 안 가린다)."""
+    parts = [p.split("=", 1)[-1].strip() for p in (notes or "").strip().split("/")]
+    return "/".join(parts).casefold() if any(parts) else ""
+
+
 # ── 날 말 ─────────────────────────────────────────────────────────────────
 WEEKDAYS = "월화수목금토일"                        # date.weekday() 의 0 ~ 6 — 답에 요일을 실어 모델이 요일을 제 셈으로 짐작하지 않게
 DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}   # 날 말 → 오늘에서 며칠 뒤
@@ -204,10 +346,59 @@ def day_of(text: str | None, today: _date) -> _date:
     word = (text or "오늘").strip().lower()
     if word in DAY_WORDS:
         return today + _timedelta(days=DAY_WORDS[word])
+    got = _real_date(word)
+    if got is None:
+        raise Stop(EXIT_ARGS, "args", f"날은 오늘 · 내일 · 모레 · YYYY-MM-DD 가운데 하나로 준다: {text!r}")
+    return got
+
+
+# ── 서울 시각 · 날짜의 꼴 ───────────────────────────────────────────────────
+# 일정 · 회의실이 주고받는 시각 — 일정의 show --free 가 낸 start · end 를 회의실의 free · preview 가 그대로 받는다. 받는 꼴과 답의 꼴이
+# 한 벌이라 여기 하나만 둔다
+SEOUL = _timezone(_timedelta(hours=9), "KST")      # 서울은 일광 절약이 없어 +09:00 고정이다 — 윈도의 zoneinfo 는 tzdata 없이 서울을 모른다
+STAMP_FORM = "%Y-%m-%d %H:%M"                      # 서울 벽시계 — 받는 꼴이자 답의 start · end 꼴
+STAMP_HELP = "YYYY-MM-DD HH:MM(서울)"
+DATE_FORM = re.compile(r"\d{4}-\d{2}-\d{2}")       # 날짜는 이 꼴만 — fromisoformat 은 「20261120」 · 「2026-W47-5」 도 받는다
+
+
+def _real_date(word: str) -> _date | None:
+    """``YYYY-MM-DD`` 꼴의 있는 날 — 꼴이 아니거나 없는 날(2026-13-45 · 2026-02-30)이면 None."""
+    if not DATE_FORM.fullmatch(word):
+        return None
     try:
         return _date.fromisoformat(word)
+    except ValueError:
+        return None
+
+
+def today_word() -> str:
+    """멈추는 말에 싣는 오늘 — 모델이 「내일」 · 「다음 주 금요일」 을 제 셈으로 날짜로 바꿀 때 기댈 자리."""
+    today = _datetime.now(SEOUL).date()
+    return f"오늘은 {today.isoformat()} {WEEKDAYS[today.weekday()]}요일"
+
+
+def date_of(text: str | None, lead: str = "날은") -> _date:
+    """사람이 준 날짜 — 있는 날의 ``YYYY-MM-DD`` 만. 아니면 Stop(인자) — 말은 ``lead``(「--since 는」 처럼 무엇이 틀렸나) · 받는 꼴 · 오늘을
+    든다. 날 말(오늘 · 내일)까지 받는 자리는 ``day_of``."""
+    got = _real_date((text or "").strip())
+    if got is None:
+        raise Stop(EXIT_ARGS, "args", f"{lead} 있는 날의 YYYY-MM-DD 로 준다: {text!r}. 다음: {DAY_COUNT}({today_word()})")
+    return got
+
+
+def stamp_of(text: str | None) -> _datetime:
+    """서울 벽시계 ``YYYY-MM-DD HH:MM`` → 서울 시간대가 붙은 시각. 꼴이 아니면 Stop(인자) — 말이 받는 꼴과 오늘에서 세는 법을 든다."""
+    try:
+        return _datetime.strptime((text or "").strip(), STAMP_FORM).replace(tzinfo=SEOUL)
     except ValueError as exc:
-        raise Stop(EXIT_ARGS, "args", f"날은 오늘 · 내일 · 모레 · YYYY-MM-DD 가운데 하나로 준다: {text!r}") from exc
+        tomorrow = _datetime.now(SEOUL).date() + _timedelta(days=1)
+        raise Stop(EXIT_ARGS, "args", f"시각은 {STAMP_HELP} 꼴로 준다: {text!r}. 다음: 날 말 · 「3시」 같은 말은 안 받는다 — {today_word()}이니 "
+                                      f"거기서 세어 24 시로 준다(내일 오후 3시면 「{tomorrow.isoformat()} 15:00」)") from exc
+
+
+def stamp(t: _datetime) -> str:
+    """시각 → 서울 벽시계 ``YYYY-MM-DD HH:MM`` — ``stamp_of`` 가 받는 꼴 그대로라 답의 시각을 다음 명령(일정 · 회의실)에 그대로 준다."""
+    return t.astimezone(SEOUL).strftime(STAMP_FORM)
 
 
 # ── 빈 틈 셈 ──────────────────────────────────────────────────────────────

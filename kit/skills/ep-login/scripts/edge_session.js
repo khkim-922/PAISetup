@@ -13,7 +13,9 @@
 //   MAILBOX_VIEW 받은편지함 보기(기본 XML_Inbox) · DOMINO_URL Domino 서버 · ECM_URL ECM 주소(…/ECM 까지 — 스킬 company-ecm 과
 //   같은 뜻) · EDGE_DEBUG_PORT 디버깅 포트(쉼표로 여럿 · 주면 그 포트만 본다) · SSO_REDIRECT_URL SSO 넘김 주소 ·
 //   SESSION_DOMAIN 회사 도메인 · SESSION_LOGIN_HOSTS 로그인 화면 호스트(쉼표) · SESSION_REQUEST_SECONDS 묻기 하나의 시한 ·
-//   SESSION_PASS_SECONDS --ecm-tab 의 시한 · SESSION_LOGIN_WAIT_SECONDS 입구가 로그인 탭을 지켜보는 시한. 기본값은 places.json 과
+//   SESSION_PASS_SECONDS --ecm-tab 의 시한 · SESSION_LOGIN_WAIT_SECONDS 입구가 로그인 탭을 지켜보는 시한 ·
+//   SESSION_ORDINARY_SECONDS 입구가 평소 Edge 에 EP 포털을 열어 두는 틈 · SESSION_FALLBACK_SECONDS 입구가 입력 칸 있는 로그인 화면에
+//   머물러 통합 인증이 안 선 것으로 보기까지. 기본값은 places.json 과
 //   settings() 가 든다. 서버 · 도메인 · 호스트의 바꿈은 가짜 서버로 재는 검사(설정 저장소 _check/skills/ep-login/check_session.js)를 위해 있다.
 //
 // 내는 것 — 세션 파일(Playwright 저장 상태 꼴 {"cookies": [...], "origins": []} · 회사 도메인의 쿠키만). 종료 0 이면 표준 출력의
@@ -84,6 +86,8 @@ function settings() {
     requestMs: seconds('SESSION_REQUEST_SECONDS', 5) * 1000,
     passMs: seconds('SESSION_PASS_SECONDS', 30) * 1000,
     loginMs: seconds('SESSION_LOGIN_WAIT_SECONDS', 300) * 1000,
+    fallbackMs: seconds('SESSION_FALLBACK_SECONDS', 8) * 1000,    // 입구가 입력 칸 있는 로그인 화면에 이만큼 머물면 통합 인증이 안 선 것으로 본다
+    ordinaryMs: seconds('SESSION_ORDINARY_SECONDS', 30) * 1000,   // 입구가 평소 Edge 에 EP 포털을 열고 확인 창을 기다리는 틈 — 통합 인증의 넘김과 넘어간 화면이 설 틈
   };
 }
 

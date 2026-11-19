@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 26
+VERSION_OURS = 32
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -91,6 +91,8 @@ CACHE_WARM_INTERVAL_SEC = max(_env_float("PGPT_PROXY_CACHE_WARM_INTERVAL_SEC", 2
 # 함께 드는 대화 수 — 레인 여럿이 도는 동안에도 가장 오래 쉰 메인이 밀려나지 않을 만큼 둔다. 대화마다 정해진 횟수에서 멈추므로
 # 사람이 보내지 않은 요청의 끝은 이 수가 아니라 「쉬는 큰 대화 수 × 횟수」다.
 CACHE_WARM_SESSIONS = 8
+CACHE_WARM_SHAPES = 64       # 꼴 줄을 남긴 열쇠를 기억하는 수 — 넘으면 오래된 것부터 잊는다(다시 오면 줄을 한 번 더 남길 뿐이다)
+CACHE_WARM_SHAPE_MARKS = 4   # 한 열쇠에서 기억하는 갈래 값의 수 — 값이 요청마다 흔들리는 칸이 섞여도 줄이 끝없이 늘지 않게
 CACHE_WARM_MIN_BYTES = 100_000  # 이보다 작은 몸은 캐시를 놓쳐도 다시 쓰는 값이 작다
 CACHE_WARM_TIMEOUT_SEC = 60.0
 CACHE_WARM_TICK_SEC = 5.0
@@ -99,6 +101,19 @@ CACHE_WARM_TICK_SEC = 5.0
 GATEWAY_CACHE_TTL_SEC = 300.0
 # 응답 id 를 /health 에 싣는 글자 — 이어 묻기 값 훅이 셸 패턴으로 그 칸을 가르므로 쉼표 · 따옴표 · 중괄호가 들면 안 된다
 _WARM_MESSAGE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
+# 서브에이전트(레인)의 요청에만 서는 머리 — 값은 그 레인의 번호라 턴을 넘어 같고 레인마다 다르다. 메인의 요청에는 없다.
+# 레인은 멈추면 데우지 않는다(`cache_warm_holds`). 클라이언트가 이 머리를 안 보내면 모든 대화가 메인으로 보여 다 데워진다
+LANE_ID_HEADER = "x-claude-code-agent-id"
+# 레인이 띄운 레인의 요청에만 서는 머리 — 값은 띄운 레인의 번호다. 메인이 띄운 레인의 요청에는 없다
+LANE_PARENT_HEADER = "x-claude-code-parent-agent-id"
+# 레인이 일을 마치며 부르는 보고 도구 — 이 호출만으로 멈춘 레인은 도구 결과를 기다리는 것이 아니라 끝난 것이다
+LANE_REPORT_TOOL = "SubagentHandback"
+# 맡기기 러너(claude-background)가 띄운 `claude -p` 의 요청에만 서는 머리 — 러너가 `ANTHROPIC_CUSTOM_HEADERS` 로 싣고, 클라이언트는
+# 그 머리를 그 대화와 그 레인의 모든 요청에 싣는다. 그 대화는 레인처럼 도구 결과를 기다릴 때만 담는다(`cache_warm_holds`)
+RUNNER_HEADER = "x-agent-runner"
+# 러너가 도는 동안 「이 세션(의 이 레인)이 나를 기다린다」를 알려 오는 로컬 문 — 상류로 안 넘긴다. 몸은 {"session", "lane"}
+RUNNER_WAIT_PATH = "/runner-wait"
+_RUNNER_LANE = re.compile(r"[A-Za-z0-9_-]{0,128}")
 WEB_SEARCH_MODEL = os.environ.get("PGPT_PROXY_WEB_SEARCH_MODEL", "gemini-3.8-flash").strip()
 # 상류 기본 시한(600초)을 따르면 막힌 게이트웨이 앞에서 CLI 가 10분씩 묶인다.
 WEB_SEARCH_TIMEOUT = _env_float("PGPT_PROXY_WEB_SEARCH_TIMEOUT", 90.0)
@@ -248,6 +263,7 @@ _WEB_SEARCH_EMPTY = 0  # filled 에도 든다
 _CACHE_TTL_FILLED = 0
 _CACHE_WARM_SENT = 0
 _CACHE_WARM_FAILED = 0
+_RUNNER_WAITS = 0
 
 
 class _ClientDisconnected(Exception):
@@ -677,6 +693,8 @@ def stats() -> dict[str, object]:
             # 캐시를 읽힌 데우기 요청 수 · 못 읽혔거나 진 수 — failed 만 오르면 게이트웨이가 그 꼴을 안 받는 것이다
             "cache_warm_sent": _CACHE_WARM_SENT,
             "cache_warm_failed": _CACHE_WARM_FAILED,
+            # 러너가 「나를 기다리는 대화가 있다」고 알려 온 수 — 회사에서 러너를 띄웠는데 안 오르면 러너가 이 문을 못 찾는 것이다
+            "runner_waits": _RUNNER_WAITS,
             "slow_requests": _SLOW_TOTAL,
             "count_tokens_local": COUNT_TOKENS_LOCAL,
             "count_tokens_answered": _COUNT_TOKENS_ANSWERED,
@@ -794,6 +812,7 @@ class SseObserver:
         self.stop_reason = "none"
         self.usage: dict = {}
         self.message_id = ""        # message_start 의 message.id — 데운 대화를 /health 에서 그 응답으로 짚는다
+        self.tool_names: list[str] = []   # 이 응답이 부른 도구들 — 멈춘 레인이 도구 결과를 기다리나 끝났나를 가른다
 
     @property
     def can_keepalive(self) -> bool:
@@ -896,6 +915,10 @@ class SseObserver:
             merge_usage(self.usage, started_message.get("usage"))
             if kind == "message_start" and isinstance(started_message.get("id"), str):
                 self.message_id = started_message["id"]
+        block = payload.get("content_block")
+        if (kind == "content_block_start" and isinstance(block, dict) and block.get("type") == "tool_use"
+                and isinstance(block.get("name"), str)):
+            self.tool_names.append(block["name"])
         if ((self.protocol == "anthropic" and kind == "message_stop") or
                 (self.protocol == "responses" and kind == "response.completed")):
             self.terminal = True
@@ -1008,10 +1031,121 @@ def _json_bytes(payload: dict[str, object]) -> bytes:
         return json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("ascii")
 
 
-def cache_warm_key(session_id: str, payload: dict) -> str:
-    """데울 대화의 열쇠 — 세션 번호 · 모델 · system 의 지문. 서브에이전트는 세션 번호가 같아도 system 이 다르다."""
-    system = json.dumps(payload.get("system"), ensure_ascii=True, sort_keys=True)
-    return f"{session_id}|{payload.get('model')}|{hashlib.sha256(system.encode('ascii')).hexdigest()[:16]}"
+def _without_cache_marks(value: object) -> object:
+    if isinstance(value, dict):
+        return {key: _without_cache_marks(item) for key, item in value.items() if key != "cache_control"}
+    if isinstance(value, list):
+        return [_without_cache_marks(item) for item in value]
+    return value
+
+
+def _fingerprint(value: object) -> str:
+    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True).encode("ascii")).hexdigest()[:16]
+
+
+def cache_warm_key(session_id: str, payload: dict, lane_id: str = "") -> str:
+    """데울 대화의 열쇠 — 세션 번호 · 모델 · system 의 지문 · 첫 메시지의 지문, 레인이면 그 레인의 번호(``lane_id``)까지.
+
+    서브에이전트는 부모와 세션 번호가 같고, 같은 종류의 형제 레인은 system 까지 같다 — 레인마다 다른 것은 첫 메시지(봉투)다.
+    첫 메시지는 한 대화 안에서 안 바뀌어 다음 턴도 같은 열쇠에 든다. 캐시 표식은 지문에서 뺀다 — 클라이언트가 표식을 마지막
+    메시지로 옮겨, 첫 턴에만 첫 메시지에 표식이 선다. 레인 번호는 부모의 system · 첫 메시지를 그대로 물려받는 레인(포크)과
+    같은 봉투의 레인 둘을 가른다 — 멈춘 레인을 걷을 때 메인의 칸이 함께 걷히지 않는다.
+    """
+    messages = payload.get("messages")
+    first = messages[0] if isinstance(messages, list) and messages else None
+    return (f"{session_id}|{payload.get('model')}|{_fingerprint(payload.get('system'))}"
+            f"|{_fingerprint(_without_cache_marks(first))}" + (f"|{lane_id}" if lane_id else ""))
+
+
+def cache_warm_holds(lane_id: str, stop_reason: str, tool_names: tuple[str, ...], runner: bool = False) -> bool:
+    """끝까지 받은 이 요청의 대화를 데울 목록에 두나 — 메인은 늘 두고, 레인은 도구 결과를 기다리며 멈췄을 때만 둔다.
+
+    도구 호출에서 멈춘 레인은 그 결과(앞에서 기다리는 자식 레인 · 긴 명령)가 오면 반드시 돌아온다. 턴을 끝냈거나 보고 도구만
+    부르고 멈춘 레인은 누가 다시 부를지 모른다 — 안 데운다. 멈춘 까닭이나 부른 도구를 못 읽었으면 기다리는 쪽으로 본다 —
+    틀리면 끝난 레인이 더 읽힐 뿐이다. 러너가 띄운 `claude -p`(``runner`` — 요청에 ``RUNNER_HEADER`` 가 선다)도 레인과 같다 —
+    답하고 끝난 그 대화는 이어 물을 수는 있어도 대개 다시 안 온다.
+    """
+    if not (lane_id or runner) or stop_reason in ("", "none"):
+        return True
+    return stop_reason == "tool_use" and (not tool_names or any(name != LANE_REPORT_TOOL for name in tool_names))
+
+
+SHAPE_VALUE_NAMES = re.compile(r"agent|claude|depth|parent|side|spawn|app", re.I)   # 값까지 남길 이름 — 레인의 갈래를 가를 만한 칸
+SHAPE_SECRET_NAMES = re.compile(r"auth|key|token|cookie|secret", re.I)               # 값을 절대 안 남길 이름
+SHAPE_VALUE_CHARS = 60      # 남기는 값 하나의 길이
+SHAPE_HEAD_CHARS = 160      # system 덩이 하나에서 남기는 머리의 길이 — 첫 덩이(청구 머리줄)의 칸들이 다 들게
+SHAPE_NAMES_MOST = 40       # 남기는 이름 묶음 하나의 수 — 넘는 수는 수로만 적는다
+
+
+def _shape_text(value: object, most: int = SHAPE_VALUE_CHARS) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    return "".join(ch if ch.isprintable() else " " for ch in text)[:most]
+
+
+def _shape_names(names: list[str]) -> str:
+    listed = ",".join(names[:SHAPE_NAMES_MOST])
+    return listed + (f",+{len(names) - SHAPE_NAMES_MOST}" if len(names) > SHAPE_NAMES_MOST else "")
+
+
+def _shape_values(pairs: list[tuple[str, object]]) -> str:
+    return ";".join(f"{name}={_shape_text(value)}" for name, value in pairs
+                    if SHAPE_VALUE_NAMES.search(name) and not SHAPE_SECRET_NAMES.search(name))
+
+
+def _shape_marks(headers: object, payload: dict) -> list[str]:
+    """요청의 갈래를 가를 만한 값들 — 설정(effort · 생각 꼴) · 값을 남기는 머리와 ``user_id`` 칸 · 도구 묶음. 꼴 줄의 앞머리이고,
+    한 열쇠 안에서 이 값이 달라지면 다른 대화다(``CacheWarmer.first_seen``)."""
+    pairs = sorted((str(name).lower(), value) for name, value in getattr(headers, "items", lambda: [])())
+    output, thinking = payload.get("output_config"), payload.get("thinking")
+    meta = payload.get("metadata")
+    try:
+        user = json.loads(meta.get("user_id") or "null") if isinstance(meta, dict) else None
+    except (TypeError, ValueError):
+        user = None
+    user = user if isinstance(user, dict) else {}
+    tools = payload.get("tools")
+    names = [str(tool.get("name")) for tool in tools if isinstance(tool, dict)] if isinstance(tools, list) else []
+    built_in = sorted(name for name in names if not name.startswith("mcp__"))
+    return [f"effort={_shape_text(output.get('effort')) if isinstance(output, dict) else '-'}",
+            f"thinking={_shape_text(thinking.get('type')) if isinstance(thinking, dict) else '-'}",
+            f"header_values=[{_shape_values(pairs)}]",
+            f"user_values=[{_shape_values(sorted((str(key), value) for key, value in user.items()))}]",
+            f"tools={len(names)}", f"built_in={_shape_names(built_in)}", f"mcp={len(names) - len(built_in)}"]
+
+
+def conversation_shape(headers: object, payload: dict) -> str:
+    """요청의 꼴 한 줄 — 메인 · 레인 · 그 자식 레인 · 포크를 요청의 무엇이 가르나를 기록에서 견주는 재료다.
+
+    칸의 이름을 남긴다. 값은 대화의 열쇠에 드는 모델, 갈래를 가를 만한 값(``_shape_marks``), 출력 상한만 짧게 남기고, 인증 값과
+    메시지의 글은 안 남긴다. ``system`` 은 지문 · 길이와 앞 덩이 둘의 머리만, 첫 메시지는 지문 · 길이만이다.
+    """
+    names = sorted(str(name).lower() for name, _ in getattr(headers, "items", lambda: [])())
+    meta = payload.get("metadata")
+    meta = meta if isinstance(meta, dict) else {}
+    try:
+        user = json.loads(meta.get("user_id") or "null")
+    except (TypeError, ValueError):
+        user = None
+    user = user if isinstance(user, dict) else {}
+    system = payload.get("system")
+    blocks = system if isinstance(system, list) else [system] if system else []
+    heads = [_shape_text(block.get("text", "") if isinstance(block, dict) else block, SHAPE_HEAD_CHARS) for block in blocks[:2]]
+    messages = payload.get("messages")
+    messages = messages if isinstance(messages, list) else []
+    first = _without_cache_marks(messages[0]) if messages else None
+    return " ".join([
+        f"model={_shape_text(payload.get('model'))}", *_shape_marks(headers, payload),
+        f"max_tokens={_shape_text(payload.get('max_tokens'))}", f"headers={_shape_names(names)}",
+        f"top={_shape_names(sorted(str(key) for key in payload))}", f"meta={_shape_names(sorted(str(key) for key in meta))}",
+        f"user_id={_shape_names(sorted(str(key) for key in user))}",
+        f"system={_fingerprint(system)[:8]}/{len(json.dumps(system, ensure_ascii=False))}",
+        f"system_heads={json.dumps(heads, ensure_ascii=False)}",
+        f"first={_fingerprint(first)[:8]}/{len(json.dumps(first, ensure_ascii=False))}", f"messages={len(messages)}"])
+
+
+def warm_label(session_id: str, key: str) -> str:
+    """기록 줄에서 대화를 부르는 이름 — 세션 앞 8자와 열쇠 지문 앞 8자. 한 세션의 레인들이 기록에서 갈린다."""
+    return f"{session_id[:8]} conv={_fingerprint(key)[:8]}"
 
 
 def _has_cache_mark(value: object) -> bool:
@@ -1052,16 +1186,20 @@ def cache_warm_body(body: bytes) -> bytes | None:
 class _WarmEntry:
     """데울 대화 하나 — 끝까지 받은 마지막 실제 요청(상류로 나간 길 · 머리 · 몸)과 그 시각들."""
 
-    __slots__ = ("key", "label", "message_id", "path", "headers", "body", "last_touch", "pings", "busy")
+    __slots__ = ("key", "label", "session", "lane", "message_id", "path", "headers", "body", "started", "last_touch",
+                 "pings", "busy")
 
     def __init__(self, key: str, label: str, path: str, headers: dict, body: bytes, last_touch: float,
-                 message_id: str = "") -> None:
+                 message_id: str = "", session: str = "", lane: str = "") -> None:
         self.key = key
-        self.label = label          # 기록 줄에 싣는 세션 번호 앞 8자
+        self.session = session      # 세션 번호 — 한 세션의 메인과 레인을 잇는다
+        self.lane = lane            # 레인 번호 — 메인이면 빈 글
+        self.label = label          # 기록 줄에 싣는 이름 — 세션 번호 앞 8자 · 열쇠 지문 앞 8자
         self.message_id = message_id  # 그 실제 요청이 받은 응답의 id — 대화 기록의 마지막 assistant 줄이 같은 id 를 든다
         self.path = path
         self.headers = headers
         self.body = body
+        self.started = last_touch     # 담긴 실제 요청이 시작한 때 — 한 세션에 남은 몸들 가운데 지금의 대화를 고른다
         self.last_touch = last_touch  # 캐시가 마지막으로 읽힌 때(실제 요청은 시작한 때) — 간격을 여기서 잰다
         self.pings = 0                # 마지막 실제 요청 뒤에 캐시를 읽힌 데우기 수
         self.busy = False             # 데우기 요청이 나가 있다
@@ -1070,8 +1208,12 @@ class _WarmEntry:
 class CacheWarmer:
     """쉬는 대화의 캐시를 데울 차례를 고른다 — 대화마다 마지막 실제 요청 하나를 메모리에만 기억한다.
 
-    시각은 부르는 쪽이 준다(``time.monotonic`` 초). 가장 최근 대화 ``CACHE_WARM_SESSIONS`` 개만 들고, 한 대화는 마지막 실제 요청
-    뒤 ``cycles`` 번까지만 데운다 — 창을 열어 둔 채 쉬는 대화에 끝없이 나가지 않는다.
+    시각은 부르는 쪽이 준다(``time.monotonic`` 초). 대화 ``CACHE_WARM_SESSIONS`` 개까지 들고, 한 대화는 마지막 실제 요청
+    뒤 ``cycles`` 번까지만 데운다 — 창을 열어 둔 채 쉬는 대화에 끝없이 나가지 않는다. 레인을 기다리는 대화는 그 레인이
+    요청을 보내는 동안 그 횟수를 처음부터 다시 센다(``lane_active``) — 자식이 도는 동안은 반드시 돌아올 대화다.
+
+    자리가 넘치면 몸이 가장 작은 대화가 빠진다 — 놓쳤을 때 다시 쓰는 양이 가장 작은 대화다. 가장 오래 쉬는 대화(레인을 기다리는
+    메인 · 자식을 기다리는 부모)는 봉투 위에 대화를 쌓아 끝난 자식 레인보다 대개 커서, 최근에 끝난 레인들에 밀려나지 않는다.
 
     곁에 응답 id 마다 그 캐시가 이미 확보한 수명의 끝(``alive``)을 든다 — 캐시가 읽혔다고 아는 때(실제 요청의 시작 · 캐시를 읽힌
     데우기의 시작)에 ``ttl_sec`` 를 더한 값이다. 데울 목록에서 빠진 뒤(횟수를 다 썼다 · 밀려났다)에도 그 끝까지 남는다. 캐시를 못
@@ -1084,6 +1226,7 @@ class CacheWarmer:
         self.ttl_sec = ttl_sec
         self._entries: list[_WarmEntry] = []
         self._alive: dict[str, float] = {}
+        self._shapes: dict[str, list[str]] = {}
         self._lock = threading.Lock()
 
     def sessions(self) -> int:
@@ -1102,6 +1245,20 @@ class CacheWarmer:
         if _WARM_MESSAGE_ID.fullmatch(message_id):
             self._alive[message_id] = since + self.ttl_sec
 
+    def first_seen(self, key: str, marks: str) -> bool:
+        """그 열쇠에서 이 갈래 값을 처음 보나 — 처음이면 기억한다. 새 대화의 첫 요청이거나, 한 열쇠를 나눠 쓰는 다른 대화(포크)다."""
+        with self._lock:
+            seen = self._shapes.pop(key, [])
+            fresh = marks not in seen
+            if fresh and len(seen) < CACHE_WARM_SHAPE_MARKS:
+                seen.append(marks)
+            else:
+                fresh = fresh and not seen
+            self._shapes[key] = seen                  # 방금 본 열쇠가 맨 뒤다 — 넘치면 앞에서 잊는다
+            for old in list(self._shapes)[:-CACHE_WARM_SHAPES]:
+                del self._shapes[old]
+            return fresh
+
     def touch(self, key: str, now: float) -> None:
         """실제 요청이 시작됐다 — 곧 그 요청이 캐시를 읽으니 그 대화의 데우기를 미룬다."""
         with self._lock:
@@ -1110,13 +1267,43 @@ class CacheWarmer:
                     entry.last_touch = now
 
     def remember(self, key: str, session_id: str, path: str, headers: dict, body: bytes, started: float,
-                 message_id: str = "") -> None:
+                 message_id: str = "", hold: bool = True, lane_id: str = "") -> None:
         """끝까지 받은 실제 요청을 담는다 — 같은 대화면 바꿔 끼워 횟수를 처음부터 센다. ``started`` 는 그 요청이 시작한 때고,
-        ``message_id`` 는 그 요청이 받은 응답의 id 다(``alive`` 에 ``started`` 부터의 수명으로 든다)."""
-        entry = _WarmEntry(key, session_id[:8], path, headers, body, started, message_id)
+        ``message_id`` 는 그 요청이 받은 응답의 id 다(``alive`` 에 ``started`` 부터의 수명으로 든다). 자리가 넘치면 몸이 가장
+        작은 대화가 빠진다 — 새로 온 것일 수도 있다. 크기가 같으면 최근에 담긴 것이 남는다.
+
+        ``hold`` 가 거짓이면 데울 목록에 안 담고 그 대화의 옛 몸도 걷는다(멈춘 레인). 확보한 수명은 똑같이 든다 — 방금 읽힌
+        캐시라, 그 끝 안에 누가 이어 물으면 캐시로 읽힌다."""
+        entry = _WarmEntry(key, warm_label(session_id, key), path, headers, body, started, message_id,
+                           session_id, lane_id)
         with self._lock:
-            self._entries = ([entry] + [old for old in self._entries if old.key != key])[:CACHE_WARM_SESSIONS]
+            if not hold:
+                self._entries = [old for old in self._entries if old.key != key]
+                self._secure(message_id, started)
+                return
+            held = [entry] + [old for old in self._entries if old.key != key]
+            if len(held) > CACHE_WARM_SESSIONS:
+                # 정렬은 안정이라 크기가 같으면 목록 차례(새로 담긴 것이 앞)가 남는다
+                held = sorted(held, key=lambda kept: len(kept.body), reverse=True)[:CACHE_WARM_SESSIONS]
+            self._entries = held
             self._secure(message_id, started)
+
+    def lane_active(self, session_id: str, parent_lane_id: str = "") -> int:
+        """레인의 실제 요청이 왔다 — 그 레인을 기다리는 대화(같은 세션의 메인 · ``parent_lane_id`` 가 댄 부모 레인)의 데우기
+        횟수를 처음부터 센다. 기다리는 쪽은 자식이 요청을 보내는 동안 횟수를 다 쓰지 않고, 자식이 조용해지면 그 뒤 정해진
+        횟수에서 멈춘다. 간격은 안 건드린다 — 자식의 요청은 기다리는 쪽의 캐시를 읽지 않는다. 러너의 알림(``RUNNER_WAIT_PATH``)도
+        같은 손이다 — 러너는 부른 대화의 자식이고, ``parent_lane_id`` 는 러너를 부른 레인이다.
+
+        메인 · 부모마다 가장 나중에 담긴 몸 하나만 다시 센다 — 압축했거나 모델을 바꾼 대화의 옛 몸은 열쇠가 달라 목록에
+        남는데, 다시 안 이어질 몸이라 제 횟수에서 멈추게 둔다. 다시 센 대화 수를 낸다."""
+        restarted = 0
+        with self._lock:
+            for lane in {"", parent_lane_id}:
+                waiting = [entry for entry in self._entries if entry.session == session_id and entry.lane == lane]
+                if waiting:
+                    max(waiting, key=lambda entry: entry.started).pings = 0
+                    restarted += 1
+        return restarted
 
     def forget(self, key: str) -> None:
         """그 대화를 더 데우지 않는다 — 실제 요청이 졌거나 데울 꼴이 아니게 됐다. 그 대화의 확보한 수명도 지운다."""
@@ -1155,6 +1342,28 @@ class CacheWarmer:
 _WARMER = CacheWarmer(CACHE_WARM_CYCLES, CACHE_WARM_INTERVAL_SEC)
 
 
+def runner_waiting(body: bytes | None) -> tuple[int, dict[str, object]]:
+    """러너의 알림 하나를 받는다 — (HTTP 상태, 답). 몸 {"session": <세션 번호>, "lane": <러너를 부른 레인 번호 · 메인이면 빈 글>}
+    이 꼴에 맞으면 그 세션의 메인과 그 레인의 데우기 횟수를 처음부터 센다(``CacheWarmer.lane_active``). 꼴이 틀리면 400 이고
+    아무것도 안 건드린다. 다른 세션 · 그 세션의 다른 레인은 안 건드린다."""
+    global _RUNNER_WAITS
+    try:
+        notice = json.loads(body) if body else None
+    except (ValueError, UnicodeDecodeError):
+        notice = None
+    session = notice.get("session") if isinstance(notice, dict) else None
+    lane = notice.get("lane", "") if isinstance(notice, dict) else None
+    if not (isinstance(session, str) and _SESSION_ID.fullmatch(session)
+            and isinstance(lane, str) and _RUNNER_LANE.fullmatch(lane)):
+        return 400, {"type": "error", "error": {"type": "invalid_request_error",
+                                                "message": 'expected {"session": "<uuid>", "lane": "<lane id or empty>"}'}}
+    restarted = _WARMER.lane_active(session, lane)
+    with _STATS_LOCK:
+        _RUNNER_WAITS += 1
+    log(f"runner wait session={session[:8]} lane={lane or '-'} restarted={restarted}")
+    return 200, {"status": "ok", "restarted": restarted}
+
+
 def _count_cache_warm(kept: bool) -> None:
     global _CACHE_WARM_SENT, _CACHE_WARM_FAILED
     with _STATS_LOCK:
@@ -1185,7 +1394,7 @@ def cache_warm_ping(warmer: CacheWarmer, entry: _WarmEntry) -> None:
     """고른 대화 하나를 데우고 결말을 적는다 — 200 이고 캐시를 읽혔을 때만 그 대화를 계속 데운다.
 
     200 인데 캐시를 못 읽혔으면 이미 사라진 캐시다 — 계속 보내면 간격마다 대화를 다시 쓰기만 해서 버린다.
-    기록 줄에는 세션 번호 앞 8자와 숫자만 싣는다.
+    기록 줄에는 세션 번호 앞 8자 · 열쇠 지문 앞 8자와 숫자만 싣는다.
     """
     started = time.monotonic()
     kept = False
@@ -2114,6 +2323,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
     _stream_outcome = "complete"
     _session_id = ""
     _message_id = ""
+    _stop_reason = ""
+    _tool_names: tuple[str, ...] = ()
 
     def _client_disconnected(self) -> bool:
         """요청 · 이어 온 바이트를 소비하지 않고, 소켓 시한도 안 바꾸고 들여다본다."""
@@ -2400,6 +2611,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if observer is not None and protocol == "anthropic":
                 remember_session_input(self._session_id, observer.usage)
                 self._message_id = observer.message_id
+                self._stop_reason = observer.stop_reason
+                self._tool_names = tuple(observer.tool_names)
             # 길이를 선언한 응답이 모자라게 끝나면 read1() 은 예외 없이 빈 바이트를 돌려준다 — 남은 길이로 가린다
             remaining = getattr(response, "length", None)
             if remaining:
@@ -2446,7 +2659,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
     def _forward(self) -> None:
         global _ACTIVE_REQUESTS
-        tracked = urlsplit(self.path).path != "/health"
+        tracked = urlsplit(self.path).path not in ("/health", RUNNER_WAIT_PATH)
         if tracked:
             with _STATS_LOCK:
                 _ACTIVE_REQUESTS += 1
@@ -2468,6 +2681,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._claude_messages = False
         self._session_id = ""
         self._message_id = ""
+        self._stop_reason = ""
+        self._tool_names = ()
         self._keepalives_sent = 0
         self._stream_outcome = "complete"
         self._gw_request_id = ""
@@ -2482,6 +2697,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
             }
             payload.update(stats())
             self._send_json(200, payload)
+            return
+        if parsed.path == RUNNER_WAIT_PATH and self.command == "POST":
+            try:
+                status, answer = runner_waiting(self._read_body())
+            except _BadRequestBody as error:
+                status, answer = error.status, {"type": "error", "error": {"type": "invalid_request_error", "message": str(error)}}
+            self._send_json(status, answer, keep_alive=status == 200)
             return
         # 접두어만 보면 /gpgpta01-gpt/../other 같은 경로가 게이트웨이의 다른 서비스로 간다 — 점 세그먼트도 막는다
         segments = unquote_plus(parsed.path).split("/")
@@ -2513,6 +2735,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _note_request_bytes(len(body))
         model_name = ""
         warm_key = ""
+        lane_id = ""
         warm_candidate = False
         claude_unstream = False
         upstream_stream = False
@@ -2598,10 +2821,17 @@ class ProxyHandler(BaseHTTPRequestHandler):
                                 f"tool_descriptions_filled={filled}"
                             )
                         if CACHE_WARM_CYCLES > 0 and self._session_id:
-                            warm_key = cache_warm_key(self._session_id, payload_obj)
+                            lane_id = (self.headers.get(LANE_ID_HEADER) or "").strip()
+                            warm_key = cache_warm_key(self._session_id, payload_obj, lane_id)
+                            if lane_id:
+                                _WARMER.lane_active(self._session_id, (self.headers.get(LANE_PARENT_HEADER) or "").strip())
                             # 스트림으로 가는 턴만 담는다 — 비스트리밍 곁 호출(자동 모드 분류기)과 압축은 이어질 대화가 아니다
                             warm_candidate = (upstream_stream and not compact_request
                                               and cache_warm_candidate(self._session_id, payload_obj, len(body)))
+                            if warm_candidate and _WARMER.first_seen(warm_key, " ".join(_shape_marks(self.headers, payload_obj))):
+                                # 이 열쇠에서 처음 보는 갈래다 — 그 요청의 꼴을 한 줄 남긴다(요청이 져도 남는다)
+                                log(f"cache warm shape session={warm_label(self._session_id, warm_key)} bytes={len(body)} "
+                                    f"{conversation_shape(self.headers, payload_obj)}")
                     if changed:
                         body = _json_bytes(payload_obj)
 
@@ -2609,7 +2839,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             key: value
             for key, value in self.headers.items()
             if key.lower() not in HOP_BY_HOP
-            and key.lower() not in {"host", "content-length", "accept-encoding", "expect"}
+            # 러너의 표 머리는 이 프록시만 읽는다 — 상류가 모르는 머리를 어떻게 받나에 러너의 요청을 걸지 않는다
+            and key.lower() not in {"host", "content-length", "accept-encoding", "expect", RUNNER_HEADER}
         }
         query = parsed.query
         headers = normalize_anthropic_auth(headers)
@@ -2843,8 +3074,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             if warm_candidate:
                 if outcome == "complete" and upstream_status == 200:
+                    runner = bool((self.headers.get(RUNNER_HEADER) or "").strip())
+                    hold = cache_warm_holds(lane_id, self._stop_reason, self._tool_names, runner)
                     _WARMER.remember(warm_key, self._session_id, upstream_path, headers, body, started,
-                                     self._message_id)
+                                     self._message_id, hold, lane_id)
+                    if not hold:
+                        log(f"cache warm skip session={warm_label(self._session_id, warm_key)} "
+                            f"{'lane' if lane_id else 'runner'} stopped "
+                            f"stop_reason={self._stop_reason or 'none'} id={self._message_id or '-'}")
                 elif outcome != "client_cancelled":
                     # 진 요청의 몸은 게이트웨이가 못 받는 꼴일 수 있다 — 다음 성공이 다시 담는다. 사람이 끊은 판은 앞 몸을 둔다
                     _WARMER.forget(warm_key)

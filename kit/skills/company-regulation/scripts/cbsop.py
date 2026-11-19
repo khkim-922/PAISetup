@@ -4,7 +4,9 @@
 
     import cbsop
     app = cbsop.App(<세션 파일>)          # 스킬 ep-login 의 받는 손이 남긴 사내 세션(쿠키) 파일
-    app.menus() · app.all_in(menu_idx) · app.search(말, fields) · app.info(process_idx) · app.image(본문 그림 주소)
+    app.menus() · app.all_in(menu_idx) · app.changed(부터, 까지, 상태) · app.search(말, fields) · app.info(process_idx) · app.related(process_idx)
+    app.screen_allows(process_idx) · app.history · past · tobe · trail(개정이력과 그 판) · app.person(사번) · app.used · access(내 목록)
+    app.image(본문 그림 주소)
 
 내는 것 — 앱의 JSON 그대로(dict · list). 예외 — ``SessionExpired``(사내 세션이 끊겼다 · 앱이 안 들였다 — 받는 손을 다시 부를
 자리) · ``SessionMissing``(세션 파일이 없다 · 못 읽는다) · ``AppError``(앱이 거절했다 · 답이 꼴이 아니다).
@@ -45,6 +47,12 @@ SEARCH_TIMEOUT = 180               # 본문 검색의 시한 — 흔한 낱말�
 EP_KEY = re.compile(r"encodeURIComponent\('([^']+)'\)")
 URI_COMPONENT_SAFE = "!*'()"       # 화면의 encodeURIComponent 가 안 싸는 글자 — 그 밖(「/」 도)은 다 싼다
 UA = "Mozilla/5.0"
+SCREEN_DOC = "/main/goProcessInfoPop.do"   # 사람이 문서를 여는 화면 창 — 등급 문서를 읽기 전에 그 창이 여나를 본다(``screen_allows``)
+SCREEN_DENIED = "권한이 없습니다"            # 그 창이 막을 때 내는 스크립트의 말
+MY_SCREEN = "/myProcessList/oftenUseProcess.do"   # 내 목록 화면 — 앱이 쓰는 사람의 사번을 박아 둔다
+MY_EMPCD = re.compile(r'empcd\s*:\s*"(\d+)"')
+OPEN_GRADE = "일반"             # 화면에 묻지 않고 여는 보안등급 — 그 밖은 화면의 문서 창이 여나를 먼저 본다(``screen_allows``)
+GRADES = {"기밀": "SEC", "사외비A/비공개": "APR", "사외비A": "ADE", "사외비B/비공개": "BPR", "사외비B": "BPB", OPEN_GRADE: "NPB"}   # 화면 「접근 가능한 표준」 의 등급 칸
 IMAGE_PATH = re.compile(r"/uploads/output/[^/?#]+/[^/?#]+/media/[^/?#]+")   # 본문 그림의 잰 꼴 — 앱 호스트의 그림 주소는 이 꼴 하나다(``references/SOURCES.md``)
 
 
@@ -65,11 +73,14 @@ class Refused(AppError):
 
 
 class App:
+    GRADES = GRADES                    # 부르는 쪽이 등급 이름을 코드로 바꿀 때 — 화면의 표 그대로
+
     def __init__(self, session_file: pathlib.Path | str, *, timeout: float = TIMEOUT):
         self._jar = ep_session.load_jar(session_file, missing=SessionMissing)   # 앱 쿠키도 이 통에 받아 이 판 동안만 산다
         self._open = ep_session.opener(self._jar).open   # 프록시 없이 · 리다이렉트는 안 따라간다
         self._timeout = timeout
         self._in = False
+        self._me: str | None = None        # 쓰는 사람의 사번 — ``me`` 가 한 번 받는다
 
     def _get(self, url: str, data: dict | None = None, timeout: float | None = None) -> str:
         body = None if data is None else urllib.parse.urlencode(data).encode()
@@ -111,17 +122,21 @@ class App:
         raise SessionExpired("사규 앱이 들어가기에 답만 하고 넘기지 않았다")
 
     # ── 부르기 ───────────────────────────────────────────────────────────
-    def call(self, path: str, data: dict | None = None, timeout: float | None = None):
+    def screen(self, path: str, data: dict | None = None, timeout: float | None = None) -> str:
+        """앱의 한 자리를 들어간 세션으로 받아 글자 그대로 — data 가 있으면 폼 POST, 없으면 GET. 끊긴 세션 · 거절 · 못 닿음을 손의 예외로."""
         if not self._in:
             self.login()
         try:
-            raw = self._get(APP_ROOT + path, data or {}, timeout)
+            return self._get(APP_ROOT + path, data, timeout)
         except ep_session.Redirected as exc:
             raise SessionExpired(f"사규 앱 세션이 끊겼다({exc.location})") from exc
         except urllib.error.HTTPError as exc:
             raise AppError(f"사규 앱이 {exc.code} 로 거절했다: {path}") from exc
         except (urllib.error.URLError, OSError) as exc:
             raise AppError(f"사규 앱에 못 닿았다: {exc}") from exc
+
+    def call(self, path: str, data: dict | None = None, timeout: float | None = None):
+        raw = self.screen(path, data or {}, timeout)
         try:
             return json.loads(raw)
         except ValueError as exc:
@@ -136,12 +151,13 @@ class App:
         """한 범주 아래 문서 전부(화면의 「EXCEL」 이 받는 목록) — [{processIdx, processName, categoriName0..3, …}]."""
         return self.call("/main/ajax/getProcessListAll.do", {"preIdx": menu_idx})["processList"]
 
-    def search(self, text: str, fields: str = "subject") -> dict:
+    def search(self, text: str, fields: str = "subject", menu_id: int | str = "") -> dict:
         """앱의 통합 검색 — fields 는 subject · content · file_name · user_name · team_name 을 쉼표로. 화면처럼 검색어를 한 번
-        싸서 searchText · searchText2 둘에 다 준다 — searchText2 가 비면 본문 검색이 늘 0 건이다."""
+        싸서 searchText · searchText2 둘에 다 준다 — searchText2 가 비면 본문 검색이 늘 0 건이다. menu_id 는 맨 위 범주의 menuIdx(빈 글자면
+        모든 범주)."""
         word = urllib.parse.quote(text, safe=URI_COMPONENT_SAFE)
         return self.call("/main/ajax/searchListCnt.do",
-                         {"searchText": word, "searchText2": word, "menuId": "", "searchConditionPram": fields},
+                         {"searchText": word, "searchText2": word, "menuId": menu_id, "searchConditionPram": fields},
                          timeout=SEARCH_TIMEOUT)
 
     def image(self, src: str) -> bytes:
@@ -166,5 +182,69 @@ class App:
             raise AppError(f"사규 앱에 못 닿았다: {exc}") from exc
 
     def info(self, process_idx: int) -> dict:
-        """문서 한 건 — ProcessInfo[0](메타 · 본문 HTML) · searchTobe(최근 개정의 바뀐 자리) · 관련 표준 · 첨부."""
+        """문서 한 건 — ProcessInfo[0](메타 · 본문 HTML) · searchTobe(최근 개정의 바뀐 자리) · searchProcessFileList(첨부) ·
+        reviewerList · searchRelationSite. 관련 표준은 여기 없다 — ``related``."""
         return self.call("/main/ajax/selectProcessInfo.do", {"processIdx": process_idx})
+
+    def related(self, process_idx: int) -> list:
+        """화면 「관련표준」 표 — [{processIdx, processName, menuName, reDeptnm, hname, regDate, stateNm, …}]."""
+        return self.call("/main/ajax/selectRelationProcessList.do", {"processIdx": process_idx}).get("relationProcessList") or []
+
+    def screen_allows(self, process_idx: int) -> bool:
+        """사람의 화면이 이 문서를 여나 — 화면의 문서 창(``goProcessInfoPop.do``)을 GET 해 가린다. 막으면 「권한이 없습니다」 스크립트
+        하나가 오고, 열면 그 문서 번호를 든 화면이 온다. 둘 다 아니면 가리지 못한 것이라 ``AppError``(여는 쪽으로 넘기지 않는다).
+        창의 스크립트는 안 돌린다 — 화면이 여는 순간 부르는 열람 기록(``insertSopConnHis.do``)은 그 스크립트가 따로 부른다."""
+        page = self.screen(f"{SCREEN_DOC}?processIdx={int(process_idx)}")
+        if SCREEN_DENIED in page:
+            return False
+        if f'var processIdx = "{int(process_idx)}"' in page:
+            return True
+        raise AppError(f"문서 {process_idx} 의 화면이 여는지 막는지 가리지 못했다(잰 꼴이 아니다) — 사규 화면에서 연다")
+
+    def changed(self, since: str, until: str, state: str) -> list:
+        """화면 「최근 변경된 표준」 — 날은 앱 꼴(YYYY.MM.DD), state 는 공개 · 삭제 · 빈 글자(전체)."""
+        return self.call("/myProcessList/getChangedProcessList.do",
+                         {"fromDate": since, "toDate": until, "state": state, "searchText": ""}).get("changedProcessList") or []
+
+    def history(self, process_idx: int) -> list:
+        """화면 「개정이력」 — 판마다 [{version, enforcementDate, mainContent | revisedContent, hname, reHname, workIdx, processHisIdx, …}].
+        새 판부터."""
+        return self.call("/main/ajax/selectRevisionHistoryInfo.do", {"processIdx": process_idx}).get("revisionHistoryInfo") or []
+
+    def past(self, process_his_idx: int) -> dict:
+        """지난 판 한 건 — ProcessHisInfo[0](메타 · 본문 HTML) · 첨부 · 관련사이트."""
+        return self.call("/main/ajax/selectProcessHisInfo.do", {"processHisIdx": process_his_idx})
+
+    def tobe(self, work_idx: int) -> list:
+        """한 개정의 전후대비표 — [{tobeGubunNm, oldContent, toContent, note}]."""
+        return self.call("/myProcessList/searchTobeList.do", {"workIdx": work_idx}).get("searchTobeList") or []
+
+    def trail(self, work_idx: int) -> list:
+        """한 개정의 결재 경과 — [{apRegDate, codeName, reHname, apHname, opinion}]."""
+        return self.call("/main/ajax/selectRevisionHistoryDetailInfo.do", {"workIdx": work_idx}).get("revisionHistoryDetailInfo") or []
+
+    def person(self, empcd: str) -> dict | None:
+        """화면에서 이름을 누르면 뜨는 사람 창 — {hname, deptcdDisp, jikwicdDisp, jikckcdDisp, responsibility, officePhone, handpon, email}.
+        퇴사자면 None."""
+        return self.call("/cmmn/ajax/getEmpInfo.do", {"empcd": empcd}).get("empInfo")
+
+    def me(self) -> str:
+        """쓰는 사람의 사번 — 앱은 내 목록 화면에 그 값을 박아 둔다(``empcd : "…"``). 이 판 동안 한 번만 받는다."""
+        if self._me is None:
+            found = set(MY_EMPCD.findall(self.screen(MY_SCREEN)))
+            if len(found) != 1:
+                raise AppError(f"내 목록 화면에서 내 사번을 하나로 못 읽었다({len(found)} 개) — 사규 화면에서 본다")
+            self._me = found.pop()
+        return self._me
+
+    def used(self, since: str, until: str) -> list:
+        """화면 「최근 사용 표준」(내가 화면에서 연 문서) — [{processIdx, processName, menuName1..3, reDeptnm, hname, reRegDate, txtIdx}]."""
+        return self.call("/myProcessList/searchOftenUseProcessList.do",
+                         {"fromDate": since, "toDate": until, "empcd": self.me()}).get("OftenUseProcessList") or []
+
+    def access(self, grade: str) -> list:
+        """화면 「접근 가능한 표준」 의 한 등급(읽기 범위) — 등급 코드는 ``GRADES``. 빈 등급(전체)은 1 분 가까이 걸려 안 받는다."""
+        if grade not in GRADES.values():
+            raise Refused(f"등급 코드가 아니다: {grade}")
+        return self.call("/myProcessList/getMyAuthProcessList.do",
+                         {"empcd": self.me(), "securityGrade": grade, "authRange": "r"}).get("myProcessList") or []

@@ -211,40 +211,83 @@
   .facts dt { font-weight: 600; color: var(--text-2); }
   .facts dd { margin: 0; }
 
-  /* 「끝났음」 상자 — 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다 */
+  /* 누름 단추 — 끝났음 · 내일 다시 · 안 올려도 됨. 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다 */
   .task-top, .row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
   .task-top h3 { min-width: 0; }
   .row-top > div { min-width: 0; }
-  .tick {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    max-width: 50%;
-    padding: 4px 12px 4px 8px;
+  .marks { flex: none; display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; max-width: 55%; }
+  .marks[hidden] { display: none; }
+  .mark {
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 3px 11px;
     border: 1px solid var(--border);
     border-radius: 9999px;
     background: var(--bg);
-    font-size: 14px;
     color: var(--text-2);
-    line-height: 1.5;
     cursor: pointer;
-    user-select: none;
+    white-space: nowrap;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
   }
-  .tick[hidden] { display: none; }
-  .tick:hover { border-color: var(--primary); color: var(--text); }
-  .tick input { width: 18px; height: 18px; margin: 0; accent-color: var(--primary); cursor: pointer; flex: none; }
-  .tick input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-  .tick-word { font-weight: 600; white-space: nowrap; }
-  .tick-note:empty { display: none; }
-  .tick-note { font-size: 12px; color: var(--neutral); }
-  .tick:has(input:checked) { border-color: var(--primary); background: var(--surface); color: var(--primary-hover); }
-  .tick:has(input:disabled) { cursor: default; border-style: dashed; }
-  .tick:has(input:disabled) input { cursor: default; }
-  .is-done h3, .is-done > .row-top > div, .is-done > div > .row-top > div { color: var(--neutral); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .mark:hover { border-color: var(--primary); color: var(--text); }
+  .mark:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .mark[aria-pressed="true"] { border-color: var(--primary); background: var(--primary); color: var(--bg); font-weight: 600; }
+  .mark-note { flex-basis: 100%; text-align: right; font-size: 12px; color: var(--neutral); }
+  .mark-note:empty { display: none; }
+  .is-done h3, .is-done > .row-top > div:first-child, .is-done > div > .row-top > div:first-child { color: var(--neutral); text-decoration: line-through; text-decoration-thickness: 1px; }
   .is-done .points, .is-done .facts, .is-done .when { opacity: 0.6; }
+  .is-later h3, .is-later > .row-top > div:first-child, .is-later > div > .row-top > div:first-child { color: var(--neutral); }
+  .is-later .points, .is-later .facts, .is-later .when { opacity: 0.6; }
+  .is-quiet h3, .is-quiet .points, .is-quiet .facts, .is-quiet .when, .is-quiet > .row-top > div:first-child,
+  .is-quiet > div > .row-top > div:first-child { opacity: 0.5; }
   .tick-off { margin: 12px 0 0; font-size: 14px; color: var(--text-2); }
   .tick-off[hidden] { display: none; }
+
+  /* 사람별 — 같은 줄을 사람으로 한 번 더 */
+  .people { margin-top: 32px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; scroll-margin-top: 24px; }
+  .pcol { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; }
+  .pcol h3 { margin: 0; font-size: 17px; font-weight: 600; }
+  .pcol .sub { margin: 2px 0 12px; font-size: 13px; color: var(--neutral); }
+  .pcol ul { list-style: none; margin: 0; padding: 0; }
+  .pcol li { display: grid; grid-template-columns: minmax(6em, max-content) 1.6em minmax(0, 1fr); gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 14px; }
+  .pcol .who { font-weight: 600; }
+  .pcol .cnt { color: var(--primary); font-weight: 600; }
+  .pcol .none { margin: 0; font-size: 14px; color: var(--neutral); }
+
+  /* 보고 맞추기 — 보고 시각 · 올리지 않기로 한 것 */
+  .prefs { margin-top: var(--section-gap); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .prefs h2 { font-size: 22px; border: 0; padding: 0; margin: 0 0 4px; }
+  .prefs .hint { margin: 0 0 8px; font-size: 14px; color: var(--text-2); }
+  .prefs h3 { font-size: 15px; font-weight: 600; margin: 20px 0 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 9999px;
+          background: var(--bg); font-family: var(--serif); font-weight: 600; font-size: 18px; }
+  .chip.is-new { border-color: var(--primary); border-style: dashed; }
+  .chip-new { font-family: var(--sans); font-weight: 400; font-size: 11px; color: var(--primary-hover); }
+  .pcol .item.is-done a { color: var(--neutral); text-decoration: line-through; }
+  .pcol .item.is-done .pill { opacity: 0.5; }
+  .pref-list li.is-fresh > span:first-child { color: var(--primary-hover); }
+  .pref-none[hidden], .hint[hidden], #later-head[hidden] { display: none; }
+  .chip-x, .undo { font: inherit; font-family: var(--sans); font-weight: 400; font-size: 12px; border: 1px solid var(--border); background: var(--bg);
+                   border-radius: 9999px; padding: 1px 8px; cursor: pointer; color: var(--text-2); }
+  .chip-x:hover, .undo:hover { border-color: var(--primary); color: var(--text); }
+  .chip-x[hidden], .undo[hidden], .add-time[hidden], .btn[hidden] { display: none; }
+  .add-time { display: inline-flex; gap: 6px; align-items: center; }
+  .add-time input { font: inherit; padding: 3px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .btn { font: inherit; font-size: 14px; padding: 5px 14px; border-radius: 9999px; border: 1px solid var(--primary); background: var(--primary);
+         color: var(--bg); cursor: pointer; font-weight: 600; }
+  .btn.ghost { background: var(--bg); color: var(--primary); }
+  .btn:focus-visible, .chip-x:focus-visible, .undo:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .pref-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+  .pref-list li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 12px; padding: 10px 0;
+                  border-bottom: 1px solid var(--border); font-size: 14px; }
+  .pref-list li.is-undone > span:first-child { color: var(--neutral); text-decoration: line-through; }
+  .undo-note { flex-basis: 100%; text-align: right; font-size: 12px; color: var(--neutral); }
+  .undo-note:empty { display: none; }
+  .pref-none { margin: 0; font-size: 14px; color: var(--neutral); }
+  .note { font-size: 13px; color: var(--neutral); margin: 8px 0 0; }
+  .note:empty { display: none; }
 
   /* 작은 절 */
   .sub-head { margin: 40px 0 0; }
@@ -299,7 +342,7 @@
   .to-top:hover { text-decoration: underline; }
 
   @media (prefers-reduced-motion: reduce) {
-    .toc a { transition: none; }
+    .toc a, .mark { transition: none; }
   }
 
   @media (max-width: 1024px) { :root { --section-gap: 32px; } }
@@ -335,7 +378,11 @@
     .lede { font-size: 16px; }
     .task { padding: 16px; gap: 12px; }
     .task-top, .row-top { flex-direction: column; gap: 8px; }
-    .tick { max-width: 100%; }
+    .marks { max-width: 100%; justify-content: flex-start; gap: 8px; }
+    .mark { min-height: 40px; padding: 6px 14px; font-size: 14px; }
+    .chip-x, .undo { min-height: 32px; padding: 4px 10px; }
+    .mark-note { text-align: left; }
+    .people { grid-template-columns: minmax(0, 1fr); }
   }
 </style>
 </head>
