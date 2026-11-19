@@ -4,7 +4,7 @@
 #   .\install.ps1 -Yes               안 묻는다 — 값 파일이 다 들고 있을 때만 (자동화용)
 #   .\install.ps1 -NoDevTools        git·python·gh 를 건너뛴다 (확장만 쓸 사람)
 #   .\install.ps1 -DevTools          기록에 남은 위 끔을 되돌려 git·python·gh 를 깐다
-#   .\install.ps1 -PersonalFor claude,codex,agy  제작자의 규범·룰·스킬을 그 도구에 (고른 것만 · 결정 0099 ·
+#   .\install.ps1 -PersonalFor claude,codex,agy,copilot  제작자의 규범·룰·스킬을 그 도구에 (고른 것만 · 결정 0099 ·
 #                                  설정 저장소를 넣었으면 그 저장소의 것이 간다 · 결정 0107)
 #   .\install.ps1 -WithPersonalConfig  위를 Claude 에만 (옛 자동 실행 기록이 드는 칸 — 아래 「옛 제작자 칸」)
 #   .\install.ps1 -NoLaunch          끝에 창을 안 띄운다 (기본은 띄운다)
@@ -195,6 +195,7 @@ $PersonalTools = @(
   @{ Tool = 'claude'; Product = 'claude';      Label = 'Claude' }
   @{ Tool = 'codex';  Product = 'codex';       Label = 'Codex' }
   @{ Tool = 'agy';    Product = 'antigravity'; Label = 'agy' }
+  @{ Tool = 'copilot'; Product = 'copilot';    Label = 'Copilot' }
 )
 
 # ── 공용 프로그램 — **목록이 진본이다.** 늘리려면 한 줄을 더한다 ────────────────
@@ -327,7 +328,7 @@ $Clis = @(
   @{ Key='copilot'; Pkg='@github/copilot';          Cmd='copilot'; Label='Copilot CLI' }
   # 브라우저 MCP 의 꾸러미 — 고른 제품이 `For` 가운데 하나라도 있으면 깐다. 그 제품들에 다는 서버(`playwright mcp`)가 이 전역
   #   꾸러미에 들어 있다(claude-config 결정 0149). 브라우저 받기와 등록은 「도구별 홈」 걸음의 「브라우저 MCP」 칸이 든다.
-  @{ Key='playwright'; Pkg='playwright'; Cmd='playwright'; Label='Playwright (브라우저 MCP)'; For=@('claude','codex','antigravity') }
+  @{ Key='playwright'; Pkg='playwright'; Cmd='playwright'; Label='Playwright (브라우저 MCP)'; For=@('claude','codex','antigravity','copilot') }
   # Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로 그리는 손 — poppler 의 `pdftoppm`. 없으면 Read 가 「pdftoppm is not installed」로
   #   지고, 사내 게이트웨이는 `document` 블록을 삼키므로 PDF 가 모델에 보이는 길은 그림뿐이다(claude-config #193 ③㉡ · 회사 실측
   #   2026-10-18). 사용자 범위라 승인이 안 든다. 공식 pptx 스킬이 덱을 그림으로 보는 길의 뒷손이기도 해서, 그 스킬이 서는 Codex ·
@@ -343,7 +344,7 @@ $Clis = @(
   #   `NeedsVcRuntime` — winget 매니페스트가 드는 짝(VC++ 런타임)을 벤더 zip 은 안 싣는다. 그 런타임이 없는 PC 에서 새 사본을 재면 로더의
   #   「DLL 이 없다」 창이 사람을 기다려 무인 회차가 선다 — 그래서 받기 전에 런타임을 재고(`Measure-VcRuntime`), 없으면 짝을 함께 까는
   #   winget 길로 간다.
-  @{ Key='poppler'; Via='winget'; Cmd='pdftoppm'; Arg='-v'; Label='poppler (PDF 를 그림으로)'; Id='oschwartz10612.Poppler'; For=@('claude','codex','antigravity')
+  @{ Key='poppler'; Via='winget'; Cmd='pdftoppm'; Arg='-v'; Label='poppler (PDF 를 그림으로)'; Id='oschwartz10612.Poppler'; For=@('claude','codex','antigravity','copilot')
      PathDir="$env:LOCALAPPDATA\Programs\poppler\Library\bin"
      Ways=@(@{ Via='vendor'; Read='github'; Repo='oschwartz10612/poppler-windows'; Asset='Release-{tag}.zip'
                Unzip=@{ Root='poppler-{ver}'; Dir="$env:LOCALAPPDATA\Programs\poppler" }; RetireWinget=$true; NeedsVcRuntime=$true
@@ -366,7 +367,7 @@ $Clis = @(
   #   `Back` — 수백 MB 를 받는 자리라 안티그래비티 CLI 처럼 뒤에서 깐다(그 줄의 곁말). 뒤 걸음은 `soffice` 를 안 부르고, 폴더(`PathDir`)는
   #   거둔 뒤의 마무리가 심는다. 승인 창이 뜨는 PC 면 띄울 때 그 말을 한 줄 미리 한다(「CLI」 걸음).
   @{ Key='libreoffice'; Via='winget'; Cmd='soffice.com'; Label='LibreOffice (덱을 그림으로)'; Id='TheDocumentFoundation.LibreOffice'
-     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude','codex','antigravity'); Back=$true
+     Scope='machine'; PathDir="$env:ProgramFiles\LibreOffice\program"; For=@('claude','codex','antigravity','copilot'); Back=$true
      Ways=@(@{ Via='vendor'; Read='listing'; List='https://download.documentfoundation.org/libreoffice/stable/'
                Url='https://download.documentfoundation.org/libreoffice/stable/{ver}/win/x86_64/LibreOffice_{ver}_Win_x86-64.msi'
                Mirrors='metalink'; Msi=$true; SilentArgs='/quiet /norestart'; NeedsVcRuntime=$true; Signer='The Document Foundation' }
@@ -374,13 +375,13 @@ $Clis = @(
   # 공식 docx 스킬이 워드 문서를 읽고 바꾸는 손 — pandoc. 공식 문서 스킬이 서는 제품마다 깐다. winget 의 설치본(MSI)이 사용자 범위
   #   (`%LOCALAPPDATA%\Pandoc`)에 깔려 승격이 없다. 뒤 걸음이 `pandoc` 을 안 불러 뒤에서 깐다(`Back`).
   @{ Key='pandoc'; Via='winget'; Cmd='pandoc'; Label='pandoc (워드 문서 변환)'; Id='JohnMacFarlane.Pandoc'
-     PathDir="$env:LOCALAPPDATA\Pandoc"; For=@('claude','codex','antigravity'); Back=$true }
+     PathDir="$env:LOCALAPPDATA\Pandoc"; For=@('claude','codex','antigravity','copilot'); Back=$true }
   # 공식 pdf 스킬이 PDF 를 합치고 · 쪼개고 · 고치고 · 줄이는 명령 — qpdf. 망가진 PDF 고치기 · 용량 줄이기 · 웹용 정리는 파이썬 패키지로
   #   대신 못 한다. 공식 문서 스킬이 서는 제품마다 깐다.
   #   벤더 길 — GitHub 릴리스의 mingw64 zip 을 고정 자리에 푼다. 그 zip 은 gcc 런타임을 같이 실어 따로 깔 짝이 없고, 판마다 이름이 바뀌는
   #   폴더(`qpdf-<판>-mingw64`)를 `Dir` 하나로 옮겨 PATH 는 `PathDir` 한 줄이다. winget 설치본(NSIS)은 판 이름이 붙은 폴더에 깔려 그
   #   줄이 판마다 갈리므로 벤더 길이 먼저다.
-  @{ Key='qpdf'; Via='winget'; Cmd='qpdf'; Label='qpdf (PDF 다루기)'; Id='QPDF.QPDF'; For=@('claude','codex','antigravity')
+  @{ Key='qpdf'; Via='winget'; Cmd='qpdf'; Label='qpdf (PDF 다루기)'; Id='QPDF.QPDF'; For=@('claude','codex','antigravity','copilot')
      PathDir="$env:LOCALAPPDATA\Programs\qpdf\bin"; Back=$true
      Ways=@(@{ Via='vendor'; Read='github'; Repo='qpdf/qpdf'; Asset='qpdf-{tag}-mingw64.zip'
                Unzip=@{ Root='qpdf-{ver}-mingw64'; Dir="$env:LOCALAPPDATA\Programs\qpdf" }
@@ -6115,7 +6116,7 @@ function Read-FreeSkillTable([string]$Table) {
   return $t
 }
 
-# 그 도구 홈에 깔 이름 — `$FreeSkills` 의 그 도구 칸(`Claude` · `Codex` · `Agy`)이 참이고, 갈 곳 표가 그 홈에 안 놓는다고 하지 않은
+# 그 도구 홈에 깔 이름 — `$FreeSkills` 의 그 도구 칸(`Claude` · `Codex` · `Agy` · `Copilot`)이 참이고, 갈 곳 표가 그 홈에 안 놓는다고 하지 않은
 #   것. 까는 칸과 끝 검증이 같은 목록을 쓴다.
 function Get-FreeSkillNames([string]$Tool) {
   $not = @($FreeSkillHomes[$Tool].Place.Not)
@@ -6125,7 +6126,8 @@ function Get-FreeSkillNames([string]$Tool) {
 # 한 도구 홈의 칸 없이 까는 걸음 — 고르기(`Get-FreeSkillNames`) · 깔기 · 기록 맞추기. 홈의 자리는 `$FreeSkillHomes` 의 `Place`(갈 곳
 #   표에서 지었다)가 든다. 짐에 없는 스킬 · 표에 자리가 없는 홈은 빨간 줄 · `$Fails` 다.
 # ⚠ **한 스킬 폴더에 쓰는 자는 하나다.** 그 도구가 제작자 칸에 들면(`Box`) 손(`tool-homes.py`)이 짐 · 저장소의 스킬을 다 놓으므로
-#   이 함수는 그 홈을 안 건드린다 — 안 깔고 · 안 걷고 · 기록을 안 쓴다. 칸에 안 들면 이 함수만 그 홈에 스킬을 쓴다.
+#   이 함수는 그 홈을 안 건드린다 — 안 깔고 · 안 걷고 · 기록을 안 쓴다. 칸에 안 들면 이 함수만 그 홈에 스킬을 쓴다. 그 제품을 이
+#   자리에서 안 내놓는 판(`Hold`)도 그 홈을 안 건드린다.
 #   · 우리 것은 이 설치기의 기록(`.paisetup-skills`)에 든 이름뿐이다 — 그 홈에는 사람이나 다른 도구가 둔 스킬이 섞여 산다. 깔
 #     자리에 기록에 없는 같은 이름의 폴더가 있으면 통째로 백업 자리(`<Root>/backups/install-aside-<시각>/`)로 옮긴 뒤 깔고(그 위에
 #     복사하면 남의 파일과 섞인다) 노란 줄로 알린다. 기록이 없는 홈에는 우리 것이 없다 — 깔 이름이 아닌 폴더는 이름이 무엇이든
@@ -6144,7 +6146,7 @@ function Get-FreeSkillNames([string]$Tool) {
 # 짝 — 설정 저장소 `scripts/check-free-skills.ps1` 이 이 함수를 떼어 가짜 홈에 부른다.
 function Install-FreeSkills([string]$Tool) {
   $h = $FreeSkillHomes[$Tool]
-  if ($h.Box) { return }
+  if ($h.Box -or $h.Hold) { return }
   $names = @(Get-FreeSkillNames $Tool)
   $p     = $h.Place
   if (-not $p) {
@@ -6467,7 +6469,7 @@ function Remove-UnpickedHooks([string]$Label, [string]$Config, [string[]]$Parts,
 #region 도구별 · 브라우저 MCP — 고른 도구에 우리 크로미움을 물린 playwright MCP 를 달고 안 고른 도구에서 걷는다 (claude-config 결정 0149)
 
 # 고른 제품 키 → 어댑터(`browser-mcp.py`)의 도구 이름. 표 밖의 제품은 브라우저 MCP 와 무관하다.
-$BrowserMcpHosts = [ordered]@{ claude = 'claude'; codex = 'codex'; antigravity = 'agy' }
+$BrowserMcpHosts = [ordered]@{ claude = 'claude'; codex = 'codex'; antigravity = 'agy'; copilot = 'copilot' }
 # 브라우저 받기(`get-browser.sh`)의 울타리(초) — 받는 것이 크로미움 스냅숏 하나(수백 MB)라 느린 회선에서도 끝나는 값이다.
 #   넘기면 노랑으로 남기고 잇는다 — 어댑터는 브라우저가 없으면 안 단다.
 $BrowserGetCap = 900
@@ -6500,7 +6502,7 @@ function Invoke-BrowserMcp([string]$Adapter, [string[]]$AdapterArgs, [int]$CapSe
 # `CHANGE=<도구> <동사>` 는 한국어 한 줄로 옮긴다 — 동사 목록은 어댑터 머리말의 줄 계약이 든다. 그대로 찍으면 `codex timeout` 처럼
 #   「시간을 넘겼다」로 읽힌다(뜻은 「도구 시간 한도를 맞췄다」다). 모르는 동사는 그대로 낸다.
 function Show-BrowserMcpLine([string]$Label, [string]$Line) {
-  $hostName = @{ claude = 'Claude'; codex = 'Codex'; agy = 'agy' }
+  $hostName = @{ claude = 'Claude'; codex = 'Codex'; agy = 'agy'; copilot = 'Copilot' }
   $verb = @{ add = ' 에 등록함'; readd = ' 에 다시 등록함'; fix = ' 등록을 수정함'; remove = ' 에서 제거함'
              timeout = ' 의 도구 시간 제한(tool_timeout_sec)을 설정함' }
   $ln = "$Line".Trim()
@@ -8103,7 +8105,7 @@ $configRepoUrls = @($repoUrl -split '\s+' | Where-Object { $_ })
 $configRepoOnGitHub = [bool]@($configRepoUrls | Where-Object { $_ -match 'github\.com' }).Count
 
 # ── 제작자 세트를 받을 도구 — 도구마다 고른다 (결정 0099) ───────────────────────────────────────
-# `-PersonalFor claude,codex,agy` 가 고른다. `-WithPersonalConfig` 만 주면 Claude 다 — 이전 판의 단일 칸이라, 그 칸으로 자동 실행이
+# `-PersonalFor claude,codex,agy,copilot` 이 고른다. `-WithPersonalConfig` 만 주면 Claude 다 — 이전 판의 단일 칸이라, 그 칸으로 자동 실행이
 #   오면 Claude 로 깔고 끝에 설치 창을 한 번 띄운다. 고른 제품이 아닌 도구는 빠진다 — 깔 홈이 없다. 고른 것은 사용자 환경변수
 #   `PAISETUP_PERSONAL` 로도 심어, 설정 저장소의 배포 · 세션 훅이 같은 값을 읽는다(「도구별 홈」 걸음). 아무것도 안 골랐으면
 #   `none` — 비운 값은 「이 설치기를 안 돌렸다」와 갈라야 한다.
@@ -8116,15 +8118,22 @@ $personalAsked  = if ($PersonalFor) { @($PersonalFor -split '[,\s]+' | Where-Obj
                   elseif ($WithPersonalConfig) { @('claude') } else { @() }
 # 칸이 사는 도구 — 고른 도구 가운데 그 도구의 홈이 서는 제품(`$PersonalTools` 의 `Product`)도 고른 것만. 도구 ↔ 제품은 그 표 하나가 든다.
 $personalOn     = @($PersonalTools | Where-Object { ($personalAsked -contains $_.Tool) -and ($PickKeys -contains $_.Product) } | ForEach-Object { $_.Tool })
-$personalClaude = [bool]($personalOn -contains 'claude')
-$personalCodex  = [bool]($personalOn -contains 'codex')
-$personalAgy    = [bool]($personalOn -contains 'agy')
-$personalAny    = [bool]($personalClaude -or $personalCodex -or $personalAgy)
+$personalClaude  = [bool]($personalOn -contains 'claude')
+$personalCodex   = [bool]($personalOn -contains 'codex')
+$personalAgy     = [bool]($personalOn -contains 'agy')
+$personalCopilot = [bool]($personalOn -contains 'copilot')
+$personalAny     = [bool]($personalClaude -or $personalCodex -or $personalAgy -or $personalCopilot)
+# 이 자리에서 안 내놓는 제품(`$PickHeld`)의 칸 — 고른 칸은 기록에 남기고(`$PersonalRecord`), 사용자 환경 값에는 지금 그 값에 든 것만
+#   잇는다(`$personalKept`). 손이 그 값으로 놓고 걷으므로, 새로 넣으면 그 자리에서 심고 빼면 그 자리에서 걷는다 — 둘 다 이 자리가 안 할 일이다.
+$personalHeld   = @($PersonalTools | Where-Object { ($personalAsked -contains $_.Tool) -and ($PickHeld -contains $_.Product) } | ForEach-Object { $_.Tool })
+$personalNow    = @([string][Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -split '[,\s]+' | ForEach-Object { $_.ToLower() })
+$personalKept   = @($personalHeld | Where-Object { $personalNow -contains $_ })
 # ⚠ **값은 표를 지나 고른다 — `$(if …)` 를 늘어놓아 배열을 짓지 않는다.** 아무것도 안 낸 `$()` 둘이 앞자리에 서면 5.1 의 파이프가
 #   뒤의 값까지 삼켜, agy 하나만 고른 판이 빈 값(→ `none`)이 된다. 아래 `$PickValue` 도 같다.
-$PersonalValue  = @(([ordered]@{ claude = $personalClaude; codex = $personalCodex; agy = $personalAgy }).GetEnumerator() |
-                    Where-Object { $_.Value } | ForEach-Object { $_.Key }) -join ','
+$PersonalValue  = @($PersonalTools | Where-Object { (@($personalOn) + @($personalKept)) -contains $_.Tool } | ForEach-Object { $_.Tool }) -join ','
 if (-not $PersonalValue) { $PersonalValue = 'none' }
+$PersonalRecord = @($PersonalTools | Where-Object { (@($personalOn) + @($personalHeld)) -contains $_.Tool } | ForEach-Object { $_.Tool }) -join ','
+if (-not $PersonalRecord) { $PersonalRecord = 'none' }
 $personalByRepo = [bool]$configRepoUrls.Count
 # ── 고른 제품 — 갈 곳 표의 도구 이름으로 (결정 0102 · claude-config #133 「훅」 걸음 · claude-config 결정 0122) ──────
 # 손(`tool-homes.py`)의 조건 `pick` 이 읽는 값이라 표의 도구 이름(claude · codex · agy)으로 짓고, 표에 길은 없지만 세션 훅이
@@ -8134,14 +8143,16 @@ $personalByRepo = [bool]$configRepoUrls.Count
 $PickValue = @(([ordered]@{ claude = 'claude'; codex = 'codex'; antigravity = 'agy'; copilot = 'copilot' }).GetEnumerator() |
                Where-Object { $PickKeys -contains $_.Key } | ForEach-Object { $_.Value }) -join ','
 if (-not $PickValue) { $PickValue = 'none' }
-$wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex'))
+# Copilot 도 맡기는 쪽이다 — Copilot 세션이 러너 셋(`claude-background` · `agy-background` · `codex-copilot-background`)을 띄워 끝까지
+#   거둔다. 러너가 그 자리에서 무엇을 띄우나(Copilot 이 부른 Codex 맡기기는 한도에서 Copilot 으로 안 넘긴다)는 러너가 든다.
+$hostCopilot     = [bool]($PickKeys -contains 'copilot')
+$wantAgentHost   = [bool](($PickKeys -contains 'claude') -or ($PickKeys -contains 'codex') -or $hostCopilot)
 $wantAgyDelegate = [bool]($wantAgentHost -and $hostAgy)
 # ── Codex · Copilot 맡기기 — 스킬 `codex-copilot-background` · 그 래퍼가 도는 파이썬 · 자리 값 (claude-config 결정 0092 · 0093) ──
 # Codex 에게 일을 뒤에서 맡기고(맡긴 쪽은 읽기 전용 샌드박스), 자리가 허락하면 Codex 한도에서 Copilot 이 받는다.
 # 맡기는 쪽과 받는 쪽(Codex)이 다 있어야 선다 — 맡기는 쪽 조건은 아래 `$wantCcBg*` 가 든다. 사내는 Codex 를 회사 게이트웨이에
 #   물린 자리(`$wantCodex`)에서만 받는다 — 사내 Codex 는 ChatGPT 로그인이 아니라 회사 설정 틀로 게이트웨이를 타서, 틀이 안 심긴
-#   사내 PC 에서는 붙을 데가 없다(결정 0086). Copilot 은 조건에 안 든다 — 받는 쪽일 뿐이라, 래퍼는 Copilot
-#   CLI 가 없으면 Codex 만으로 돈다.
+#   사내 PC 에서는 붙을 데가 없다(결정 0086). 받는 쪽의 Copilot 은 조건에 안 든다 — 래퍼는 Copilot CLI 가 없으면 Codex 만으로 돈다.
 # 자리마다 다른 값은 래퍼가 읽는 사용자 환경변수로 심는다 — 래퍼는 자리를 모르고 이 값만 읽는다(agy 의 `$AgyModelVarsBySite` 와
 #   같은 꼴). 받는 값은 래퍼 머리말이 들고, 래퍼 검사(claude-config `scripts/check-codex-copilot-bg.py`)가 이 표를 읽어 두 자리
 #   값이 래퍼에서 서는지 잰다.
@@ -8173,19 +8184,21 @@ $CcBgVarsBySite = @{
   }
 }
 $CcBgVars       = $CcBgVarsBySite[$ModelSite]
-# 맡기는 쪽은 Claude 나 agy 다 — 래퍼가 읽는 자리 값과 파이썬은 둘 가운데 하나라도 서면 선다(결정 0099). Codex 가 받는 쪽으로
-#   서는 자리는 사외이거나, 사내에서 Codex 회사 설정이 서는 자리다.
-$codexReceives  = [bool](($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
-$wantCcBgClaude = [bool](($PickKeys -contains 'claude') -and $codexReceives)
-$wantCcBgAgy    = [bool]($hostAgy -and $codexReceives)
-$wantCcBg       = [bool]($wantCcBgClaude -or $wantCcBgAgy)
+# 맡기는 쪽은 Claude · agy · Copilot 이다 — 래퍼가 읽는 자리 값과 파이썬은 셋 가운데 하나라도 서면 선다(결정 0099). Codex 가 받는
+#   쪽으로 서는 자리는 사외이거나, 사내에서 Codex 회사 설정이 서는 자리다.
+$codexReceives    = [bool](($PickKeys -contains 'codex') -and ((-not $inside) -or $wantCodex))
+$wantCcBgClaude   = [bool](($PickKeys -contains 'claude') -and $codexReceives)
+$wantCcBgAgy      = [bool]($hostAgy -and $codexReceives)
+$wantCcBgCopilot  = [bool]($hostCopilot -and $codexReceives)
+$wantCcBg         = [bool]($wantCcBgClaude -or $wantCcBgAgy -or $wantCcBgCopilot)
 # ── Claude 맡기기 — 스킬 `claude-background` (claude-config 결정 0098) ──────────────────────────────
-# 위 Codex · Copilot 맡기기의 거울이다 — Codex 나 agy 가 맡기는 쪽이고 Claude 가 받는다. 받는 Claude 는 읽기 도구만 열고 뜬다.
-# Codex 쪽 조건은 위와 같은 사실이라(두 CLI 가 다 서는 자리에서 서로에게 맡긴다) 따로 짓지 않고 가리킨다. agy 쪽은 Claude 와
-#   안티그래비티를 같이 고르면 선다(결정 0099).
-$wantClaudeBgCodex = $wantCcBgClaude
-$wantClaudeBgAgy   = [bool](($PickKeys -contains 'claude') -and $hostAgy)
-$wantClaudeBg      = [bool]($wantClaudeBgCodex -or $wantClaudeBgAgy)
+# 위 Codex · Copilot 맡기기의 거울이다 — Codex · agy · Copilot 이 맡기는 쪽이고 Claude 가 받는다. 받는 Claude 는 읽기 도구만 열고 뜬다.
+# Codex 쪽 조건은 위와 같은 사실이라(두 CLI 가 다 서는 자리에서 서로에게 맡긴다) 따로 짓지 않고 가리킨다. agy · Copilot 쪽은 Claude 와
+#   그 제품을 같이 고르면 선다(결정 0099).
+$wantClaudeBgCodex   = $wantCcBgClaude
+$wantClaudeBgAgy     = [bool](($PickKeys -contains 'claude') -and $hostAgy)
+$wantClaudeBgCopilot = [bool](($PickKeys -contains 'claude') -and $hostCopilot)
+$wantClaudeBg        = [bool]($wantClaudeBgCodex -or $wantClaudeBgAgy -or $wantClaudeBgCopilot)
 # ── 도구 홈 짐 — `kit/` (claude-config 결정 0101) ────────────────────────────────────────────
 # 받는 PC 의 도구 홈 여럿에 나눠 깔 것(규범 · 룰 · 스킬)과 그것을 놓는 손(`tool-homes.py` · 그 표 `tool-homes.conf`)이 한
 # 폴더에 산다. 도구가 스스로 읽는 자리 이름(`.claude/skills` · `.agents/skills`)에 안 두는 것이 요점이다 — 이 폴더를
@@ -8204,48 +8217,51 @@ $hostClaude = [bool]($PickKeys -contains 'claude')
 $hostCodex  = [bool]($PickKeys -contains 'codex')
 $FreeSkills = [ordered]@{
   # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
-  'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
+  'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
-  'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
+  'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 사내 앱(메일 · 일정 · 문서함 · 회의실 · 사규 · 게시판)을 대화로 다룬다 — 이들이 형제 폴더 ep-login 의 세션 손을 불러 쓰므로 다 한
   #   묶음으로 같은 홈에 선다. 사내(게이트웨이에 닿는 자리 `$inside`)에서만 깐다 — 사외에서는 사내 앱 화면이 안 열려 쓸 데가 없고,
-  #   사외로 돈 회차는 기록에 든 이 묶음을 백업 자리로 걷는다
-  'ep-login'                 = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'company-mail'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'company-calendar'         = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'company-ecm'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'company-meeting-room'     = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'company-regulation'       = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'company-board'            = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  #   사외로 돈 회차는 기록에 든 이 묶음을 백업 자리로 걷는다. Copilot 칸은 그 제품을 사내에서 안 내놓는 동안(`$PickHeld`) 늘 거짓이다
+  'ep-login'                 = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'company-mail'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'company-calendar'         = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'company-ecm'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'company-meeting-room'     = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'company-regulation'       = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'company-board'            = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
   # 메일 비서(일일 보고 · 업무 파악 · 메일함 스캔 · 메일함 정리) — 위 사내 앱 손을 불러 쓰므로 같은 묶음 · 같은 조건으로 선다
-  'daily-brief'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'mailbox-work'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'mailbox-scan'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
-  'mailbox-tidy'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside) }
+  'daily-brief'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'mailbox-work'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'mailbox-scan'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'mailbox-tidy'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
-  'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy }
+  'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # Anthropic 공식 문서 스킬 넷 — 오피스 · PDF 를 읽고 짓는다. 짐이 상류 한 판(Apache 2.0)을 싣는다. Claude 는 같은 스킬을 「Claude
   #   플러그인」 걸음의 공식 플러그인으로 받아 칸이 없다
-  'pptx'                     = @{ Codex = $hostCodex; Agy = $hostAgy }
-  'docx'                     = @{ Codex = $hostCodex; Agy = $hostAgy }
-  'xlsx'                     = @{ Codex = $hostCodex; Agy = $hostAgy }
-  'pdf'                      = @{ Codex = $hostCodex; Agy = $hostAgy }
-  # agy 에게 맡기고 한도에서 넘긴다 — 맡기는 쪽은 Claude · Codex
-  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Codex = [bool]($hostCodex -and $wantAgyDelegate) }
-  # Codex 에게 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude · agy
-  'codex-copilot-background' = @{ Claude = $wantCcBgClaude; Agy = $wantCcBgAgy }
-  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy
-  'claude-background'        = @{ Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy }
+  'pptx'                     = @{ Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'docx'                     = @{ Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'xlsx'                     = @{ Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'pdf'                      = @{ Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  # agy 에게 맡기고 한도에서 넘긴다 — 맡기는 쪽은 Claude · Codex · Copilot
+  'agy-background'           = @{ Claude = [bool]($hostClaude -and $wantAgyDelegate); Codex = [bool]($hostCodex -and $wantAgyDelegate); Copilot = [bool]($hostCopilot -and $wantAgyDelegate) }
+  # Codex 에게 맡기고 한도면 Copilot 이 받는다 — 맡기는 쪽은 Claude · agy · Copilot
+  'codex-copilot-background' = @{ Claude = $wantCcBgClaude; Agy = $wantCcBgAgy; Copilot = $wantCcBgCopilot }
+  # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy · Copilot
+  'claude-background'        = @{ Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy; Copilot = $wantClaudeBgCopilot }
 }
 # 칸 없이 까는 스킬의 홈 — 위 표의 칸 이름마다 화면의 이름(`Label`) · 그 도구가 제작자 칸에 드나(`Box` — 들면 그 홈은 손이
 #   쓴다) · 자리(`Place` — 스킬 홈 · 기록 · 기록이 든 폴더 · 안 놓는 이름). 자리는 짐의 갈 곳 표에서 짓는다(`Read-FreeSkillTable`) —
 #   칸을 켜면 손이 같은 기록을 넘겨받으므로 그 자리의 원본은 그 표 하나다. Codex 홈이 Codex 공식 문서 「Build skills」의 사용자 범위
 #   자리이고 agy 홈이 agy 가 목록 없이 싣는 기본 전역 스킬 자리라는 것도 표가 든다(claude-config 결정 0111).
+# `Hold` — 그 제품을 이 자리에서 안 내놓는 판(`$PickHeld`)은 그 홈을 안 건드린다(안 깔고 · 안 걷고 · 기록을 안 쓴다) — 칸이 다 거짓이라
+#   그대로 부르면 지난 판이 깐 것을 이 자리에서 걷는다.
 $FreeSkillTable = Read-FreeSkillTable (Join-Path $Kit 'tool-homes.conf')
 $FreeSkillHomes = [ordered]@{
-  Claude = @{ Label = 'Claude 홈'; Box = $personalClaude; Place = $FreeSkillTable.Homes['claude'] }
-  Codex  = @{ Label = 'Codex 홈'; Box = $personalCodex; Place = $FreeSkillTable.Homes['codex'] }
-  Agy    = @{ Label = 'agy 홈'; Box = $personalAgy; Place = $FreeSkillTable.Homes['agy'] }
+  Claude  = @{ Label = 'Claude 홈'; Box = $personalClaude; Place = $FreeSkillTable.Homes['claude'] }
+  Codex   = @{ Label = 'Codex 홈'; Box = $personalCodex; Place = $FreeSkillTable.Homes['codex'] }
+  Agy     = @{ Label = 'agy 홈'; Box = $personalAgy; Place = $FreeSkillTable.Homes['agy'] }
+  Copilot = @{ Label = 'Copilot 홈'; Box = $personalCopilot; Hold = [bool]($PickHeld -contains 'copilot'); Place = $FreeSkillTable.Homes['copilot'] }
 }
 # 개발도구 칸을 꺼도 파이썬을 까는 까닭들 — 「프로그램」 걸음이 곁말로 그대로 찍는다.
 $needPythonWhy = @()
@@ -8255,6 +8271,7 @@ if ($wantCcBg)        { $needPythonWhy += 'Codex · Copilot 위임 실행 도구
 if ($wantClaudeBg)    { $needPythonWhy += 'Claude 위임 실행 도구가 Python 으로 실행됨' }
 if ($PickKeys -contains 'codex') { $needPythonWhy += 'Codex 훅이 Python 으로 실행됨' }
 if ($hostAgy)                    { $needPythonWhy += 'agy DRM · BOM 훅이 Python 으로 실행됨' }
+if ($hostCopilot)                { $needPythonWhy += 'Copilot 훅(셸 실수 · DRM · BOM)이 Python 으로 실행됨' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'DRM 안내 훅이 암호화된 첨부를 Python 으로 확인함' }
 if ($PickKeys -contains 'claude') { $needPythonWhy += 'Claude 훅 등록 도구(tool-homes.py)가 Python 으로 실행됨' }
 # 제작자 칸을 켰으면 고른 기능이 손(`tool-homes.py`)으로 선다 — 칸을 켠 도구가 위 까닭을 이미 들어도 이 까닭은 따로 적는다
@@ -10240,9 +10257,10 @@ Exit-Step 'assets'
 # ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 홈
 #   하는 일 — 제작자 칸 값 · 고른 제품 값 · 자리 값 · 규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록(짐의 손 `tool-homes.py` 를 부른다 —
-#     표준 층과 세 도구 홈) · 칸 없이 까는 스킬(제작자 칸에 안 든 도구의 홈) · Claude(걷힌 룰) · agy(훅 — 안 골랐으면 걷기) ·
-#     Codex(훅 병합과 신뢰 — 안 골랐으면 걷기) · 묻지 않고 돌기(고른 agy · Copilot · Codex 의 제 승인 설정) · 그 값과 Codex 데스크탑 샌드박스
-#     키의 장부(안 고르게 되면 장부의 우리 값만 걷는다) · 이 판의 마지막 장부 쓰기
+#     표준 층과 네 도구 홈) · 칸 없이 까는 스킬(제작자 칸에 안 든 도구의 홈) · Claude(걷힌 룰) · agy(훅 — 안 골랐으면 걷기) ·
+#     Codex(훅 병합과 신뢰 — 안 골랐으면 걷기) · 브라우저 MCP · 묻지 않고 돌기(고른 agy · Copilot · Codex 의 제 승인 설정) · Copilot(훅 ·
+#     스킬 설명 한도 — 안 골랐으면 걷기) · 그 값들과 Codex 데스크탑 샌드박스 키의 장부(안 고르게 되면 장부의 우리 값만 걷는다) · 이 판의
+#     마지막 장부 쓰기
 #   앞에서 받는 것 — 준비의 짐(`$Kit` — 손과 그 표가 뿌리에 실린다), 「공용 자산」의 씨앗(훅 몸통 · 병합기 · 어댑터)
 #   안 하는 것 — 설정 저장소를 안 받는다 · 홈 `settings.json` 을 쓰지 않는다(손만 쓴다 — 「Claude 홈 설정」 머리의 ⚠)
 #   ⚠ 제작자 칸 값(`PAISETUP_PERSONAL`)과 고른 제품 값(`PAISETUP_PICK`)은 사용자 환경에 심지만 이 걸음에 선다 — 「Claude 홈
@@ -10476,8 +10494,9 @@ $browserMcpSkipped = $false
 $browserGetSkipped = $false
 $browserMcpPlant = Join-Path $ConfigSeedHooks 'browser-mcp.py'
 $browserGet      = Join-Path $ConfigSeedHome '.claude\get-browser.sh'
+# 이 자리에서 안 내놓는 제품(`$PickHeld`)은 어느 쪽에도 안 든다 — 달지도 걷지도 않는다.
 $browserMcpOn    = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -contains $_ }    | ForEach-Object { $BrowserMcpHosts[$_] })
-$browserMcpOff   = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -notcontains $_ } | ForEach-Object { $BrowserMcpHosts[$_] })
+$browserMcpOff   = @($BrowserMcpHosts.Keys | Where-Object { $PickKeys -notcontains $_ -and $PickHeld -notcontains $_ } | ForEach-Object { $BrowserMcpHosts[$_] })
 # python 은 `Measure-Runs` 로 묻는다 — 넘김을 「없다」로 읽으면 멀쩡한 PC 가 빨강이 된다(결정 0141).
 $browserMcpPython = Measure-Runs 'python' '--version'
 if ($browserMcpOn.Count) {
@@ -10659,6 +10678,73 @@ foreach ($at in $autoAts) {
   if ($sv.Did -cne 'same' -and $sv.Did -cne 'written') {
     Set-LedgerSlice $Ledger @('tool') $at $snap
     Write-Host "  ! 자동 승인 — 이전 설치가 설정한 값을 제거하지 못함 ($($sv.Why)) · 변경하지 않음 ($($where.Path))" -ForegroundColor Yellow
+  }
+}
+
+# ── Copilot 훅 — 씨앗 어댑터의 우리 항목을 Copilot 설정(`settings.json`)의 hooks 에 얹는다 ─────────────────
+# Copilot 을 고르면 선다. 무엇을 싣나 · 우리 항목을 무엇으로 가리나 · 남의 항목과 그 파일의 다른 열쇠를 어떻게 두나는 씨앗의
+#   `copilot-hooks.py` 머리말이 든다 — 여기 이름을 늘어놓지 않는다.
+# ⚠ **씨앗 자리의 것을 회차마다 부른다** — 등록에 부른 파일의 경로와 부른 해석기(`sys.executable`)가 박힌다. 이 폴더의 사본을 부르면
+#   내려받은 임시 폴더를 가리키고, 회차마다 다시 불러야 해석기가 옮긴 PC 에서도 등록이 따라간다(같으면 안 쓴다).
+# ⚠ **묻지 않고 돌기 뒤에 돈다** — 같은 파일을 바로 위 칸(`$ToolAutoRun` 의 Copilot 두 줄)이 PowerShell 의 JSON 으로 다시 짓는다.
+#   어댑터는 남의 열쇠 · 들여쓰기 · BOM 을 두고 우리 항목만 고쳐 쓰므로 뒤에 두면 그 파일의 마지막 쓰기가 등록을 제 꼴로 남긴다. 두 손
+#   다 쓰기 직전에 파일을 새로 읽어 앞 손이 쓴 것을 잃지 않고, 끝 검증이 두 몫을 따로 되읽는다.
+# 이 자리에서 안 내놓는 판(`$PickHeld`)은 심지도 걷지도 않는다.
+$copilotHookPlant = Join-Path $ConfigSeedHooks 'copilot-hooks.py'
+if ($PickKeys -contains 'copilot') {
+  if (-not (Test-Path -LiteralPath $copilotHookPlant)) {
+    Write-Host '  ! Copilot 훅 — 씨앗에 연결 도구가 없어 등록하지 않음' -ForegroundColor Red
+    $Fails.Add('Copilot 훅 (씨앗 없음)')
+  } elseif (($copilotHookPython = Measure-Runs 'python' '--version') -eq 'unmeasured') {
+    Add-UnmeasuredStep 'Copilot 훅' 'python --version' '등록도 건너뛰기도 하지 않음'
+  } elseif ($copilotHookPython -ne 'yes') {
+    Write-Host '  ! Copilot 훅 — python 이 실행되지 않아 등록하지 않음' -ForegroundColor Red
+    $Fails.Add('Copilot 훅 (python 없음)')
+  } else {
+    $copilotHookLog = [IO.Path]::GetTempFileName()
+    try {
+      $copilotHookRc = Invoke-Logged 'python' @('-X', 'utf8', $copilotHookPlant, 'install', '--config', $CopilotCfg) $copilotHookLog
+      $copilotHookOut = @(Get-Content -LiteralPath $copilotHookLog -Encoding UTF8 -ErrorAction SilentlyContinue |
+                          ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+      $copilotHookWhy = @($copilotHookOut | Where-Object { $_ -like 'ERROR=*' }) | Select-Object -First 1
+      if ($copilotHookRc -ne 0 -or $copilotHookWhy) {
+        Write-Host "  ! Copilot 훅 — 등록 실패 · settings.json 은 그대로입니다$(if ($copilotHookWhy) { " ($($copilotHookWhy.Substring('ERROR='.Length)))" }). 마지막 출력:" -ForegroundColor Red
+        Show-Log $copilotHookLog
+        $Fails.Add('Copilot 훅 (settings.json 병합 실패)')
+      } elseif ($copilotHookOut -contains 'CHANGED=1') {
+        Write-Host '  Copilot 훅 — 씨앗 연결 도구(copilot-hooks.py)의 훅을 settings.json 에 등록함' -ForegroundColor Green
+        $copilotHookBak = @($copilotHookOut | Where-Object { $_ -like 'BACKUP=*' }) | Select-Object -First 1
+        if ($copilotHookBak) { Write-Host "     변경 전 파일은 $($copilotHookBak.Substring('BACKUP='.Length)) 에 백업함" }
+      } else {
+        Write-Host '  Copilot 훅 — 이미 등록됨'
+      }
+    } finally { Remove-Item -LiteralPath $copilotHookLog -ErrorAction SilentlyContinue }
+  }
+} elseif ($PickHeld -notcontains 'copilot') {
+  # 안 골랐으면 우리 항목(인자에 `copilot-hooks.py` 가 선 것)만 걷는다 — 어댑터의 걷기 판. 고치기 전 원본을 떠 두는 손은 곁의 Codex
+  #   병합기라 둘 다 있어야 부른다.
+  Remove-UnpickedHooks 'Copilot 훅' $CopilotCfg @($copilotHookPlant, (Join-Path $ConfigSeedHooks 'codex-hook-install.py')) `
+                       @('remove', '--config', $CopilotCfg) @('--version') 'python 이'
+}
+
+# ── Copilot 스킬 설명 한도 — 사용자 환경변수 `SKILL_CHAR_BUDGET` ─────────────────────────────────────
+# Copilot 은 세션에 싣는 스킬 설명 목록을 이 글자 수에서 자른다 — 기본 한도로는 짐 · 저장소의 스킬이 다 안 실려, 잘린 스킬은 이름을
+#   불러도 안 열린다. 값은 지금 짐의 스킬 설명이 다 들어가고 남는 크기다. 머리(`COPILOT_`)가 없는 이름이지만 이 설치기가 까는 다른
+#   도구는 이 이름을 안 읽는다.
+# 장부의 `user-env` 줄(심은 손 `copilot-skills`)로 맞춘다 — 사람이 둔 값은 안 덮고(guard), Copilot 을 빼면 장부의 값 그대로일 때만
+#   걷는다. 이 자리에서 안 내놓는 판(`$PickHeld`)은 심지도 걷지도 않는다(`-Hold`).
+# 「Claude 홈 설정」 뒤인 이 걸음에 심는다 — 그 앞에서 심으면 그 걸음의 env 밀기가 Claude 의 settings.json 에도 민다. 사용자 환경을
+#   읽고 쓰는 손은 「키와 값」의 셋이라 그 걸음이 손을 짓기 전에 멎은 판은 안 맞춘다.
+$CopilotSkillBudget = [ordered]@{ SKILL_CHAR_BUDGET = '60000' }
+$budgetWant = if ($PickKeys -contains 'copilot') { $CopilotSkillBudget } else { [ordered]@{} }
+$budgetHold = if ($PickHeld -contains 'copilot') { [string[]]@($CopilotSkillBudget.Keys) } else { [string[]]@() }
+if ($budgetWant.Count -or @(Find-LedgerRows $Ledger 'user-env' 'HKCU' 'copilot-skills').Count) {
+  if (-not $UserEnvGet) {
+    Write-Host '  ! Copilot 스킬 설명 한도 — 「키와 값」 단계가 끝나지 않아 맞추지 않음 (다음 설치에서 다시 진행)' -ForegroundColor Yellow
+  } else {
+    $null = Sync-Planted -Ledger $Ledger -Place 'user-env' -At 'HKCU' -By 'copilot-skills' -Want $budgetWant -Mode 'guard' -Hold $budgetHold `
+              -Get $UserEnvGet -Set $UserEnvSet -Remove $UserEnvRemove -Label @{ SKILL_CHAR_BUDGET = 'Copilot 스킬 설명 한도(SKILL_CHAR_BUDGET)' } `
+              -SayKept -ShowValue
   }
 }
 
@@ -11203,7 +11289,8 @@ if ($PSBoundParameters.ContainsKey('EnvFile') -and $EnvFile) {
 #   정한 것)을 적는다 — 자동 실행을 켰나 · 밤 회차인가와 상관없다. 짐의 줄 · `#site` · 키는 안 적는다(키는 사용자 환경에만 산다).
 # 오타뿐인 `-Pick`(「고른 제품」 칸이 빨강으로 센 판)은 제품을 못 정한 판이라 지난 기록의 제품과 그에 매인 제작자 칸을 잇는다 — 제작자
 #   칸은 고른 제품에서만 서서, 그 판의 값(`none`)을 적으면 오타 한 번에 제작자 칸이 지워진다.
-# 제품은 이 자리에서 안 내놓아 걸음에서 뺀 것(`$PickHeld`)도 적는다 — 그 칸이 없는 자리의 판이 사람의 고름을 지우지 않게.
+# 제품은 이 자리에서 안 내놓아 걸음에서 뺀 것(`$PickHeld`)도 적는다 — 그 칸이 없는 자리의 판이 사람의 고름을 지우지 않게. 제작자 칸도
+#   같다 — 그 제품의 칸(`$PersonalRecord`)을 적는다.
 # VS Code 는 사람이 고른 값(`$NoVsCodeChosen`)을 적는다 — 사내에서 필수라 깐 판(「준비」의 「자리」 칸)도 사람의 「끔」을 지우지 않는다.
 # 새 기록을 쓴 뒤 옛 꼴 둘을 걷는다 — 남겨 두면 그 꼴을 읽는 옛 자동 실행 스크립트가 지난 판 짐의 줄과 낡은 선택을 다시 넘긴다.
 #   못 쓰면 옛 꼴을 두고 말한다 — 다음 회차가 그것을 다시 읽는다.
@@ -11212,7 +11299,7 @@ $recValue = @{
                     else { $recPick = @(@($PickKeys) + @($PickHeld) | Where-Object { $_ }); if ($recPick.Count) { $recPick -join ',' } else { $ChoiceNone } })
   'vscode'      = $(if ($NoVsCodeChosen) { 'no' } else { 'yes' })
   'devtools'    = $(if ($NoDevTools) { 'no' } else { 'yes' })
-  'personal'    = $(if ($PickUnreadable -and $Recorded['personal']) { $Recorded['personal'] } else { $PersonalValue })
+  'personal'    = $(if ($PickUnreadable -and $Recorded['personal']) { $Recorded['personal'] } else { $PersonalRecord })
   'config-repo' = $(if ($configRepoUrls.Count) { $configRepoUrls -join ' ' } else { $ChoiceNone })
   'gateway-url' = $(if ($TypedGatewayUrl) { $TypedGatewayUrl } else { $ChoiceNone })
 }
@@ -12857,7 +12944,7 @@ if ($PickKeys -contains 'codex') {
 foreach ($t in $FreeSkillHomes.Keys) {
   $fh = $FreeSkillHomes[$t]
   $freeWant = @(Get-FreeSkillNames $t)
-  if ($fh.Box -or -not $freeWant.Count) { continue }
+  if ($fh.Box -or $fh.Hold -or -not $freeWant.Count) { continue }
   if (-not $fh.Place) { Add-Check @{ Name = "기본 설치 스킬 — $($fh.Label) (설치 위치 표에 항목 없음)"; Ok = $false }; continue }
   $freeUnread = @(); $freeUnreadSay = @()
   $freeBad = @(foreach ($n in $freeWant) {
@@ -12908,6 +12995,48 @@ if ($hostAgy) {
   Add-Check @{ Name = 'agy 훅 배선 (~/.gemini/config/hooks.json 의 PreToolUse · PostToolUse · PreInvocation · agy 와 같은 방식으로 실행해 확인)'
                 Ok = ($agyWired.Count -eq 3 -and $agyRan.Count -eq 3) }
 }
+# Copilot 묶음 — 훅 · 스킬 설명 한도. 심는 조건 그대로(고른 판만) 잰다.
+# 훅 — 이벤트마다 우리 항목(인자에 `copilot-hooks.py` 가 선 것)이 꼭 하나고, 그 등록이 부르는 해석기와 어댑터가 디스크에 있나. 등록은
+#   `cmd.exe` 가 둘 다 있을 때만 띄우고 진 끝도 0 으로 바꿔(어댑터 머리말 「재다 져도 막지 않는다」) 빠진 것은 훅이 말없이 안 돈 채로
+#   남는다 — 그래서 돌려 보지 않고 경로를 잰다. 이벤트 셋은 어댑터의 배선 표(`EVENTS`)와 짝이다. 부품 줄은 어댑터가 곁에서 불러 쓰는
+#   파일이고, 목록은 어댑터 머리의 파일 이름 줄(`<이름> = '<파일>.py'`)에서 짓는다 — 몸통 하나가 빠지면 그 판정만 말없이 진다.
+if ($PickKeys -contains 'copilot') {
+  $cpEvents = @('preToolUse', 'postToolUse', 'userPromptSubmitted')
+  $cpNow = $null; $cpWhy = ''
+  try { $cpNow = Get-Content -LiteralPath $CopilotCfg -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $cpWhy = 'settings.json 을 읽지 못함' }
+  if (-not $cpWhy -and -not $cpNow) { $cpWhy = 'settings.json 이 비었음' }
+  $cpBad = @()
+  if (-not $cpWhy) {
+    foreach ($ev in $cpEvents) {
+      $cpOurs = @(if ($cpNow.PSObject.Properties['hooks'] -and $cpNow.hooks.PSObject.Properties[$ev]) {
+        @($cpNow.hooks.$ev) | Where-Object { @(@($_.args) | Where-Object { ([string]$_ -split '[\\/]')[-1] -ieq 'copilot-hooks.py' }).Count } })
+      if ($cpOurs.Count -ne 1) { $cpBad += "$ev 의 우리 항목 $($cpOurs.Count)개"; continue }
+      $cpArgs = @(@($cpOurs[0].args) | ForEach-Object { [string]$_ })
+      $cpX = [array]::IndexOf($cpArgs, '-X')
+      $cpPy = if ($cpX -gt 0) { $cpArgs[$cpX - 1] } else { '' }
+      $cpSc = @($cpArgs | Where-Object { ($_ -split '[\\/]')[-1] -ieq 'copilot-hooks.py' }) | Select-Object -Last 1
+      if (-not $cpPy -or -not (Test-Path -LiteralPath $cpPy -PathType Leaf)) { $cpBad += "$ev 의 해석기가 없음($cpPy)" }
+      if (-not (Test-Path -LiteralPath $cpSc -PathType Leaf)) { $cpBad += "$ev 의 어댑터가 없음($cpSc)" }
+    }
+  }
+  $cpSay = if ($cpWhy) { $cpWhy } elseif ($cpBad.Count) { $cpBad -join ' · ' } else { '' }
+  # 「도구별 홈」이 python 을 못 재 등록을 안 한 판은 [?] 다 — 브라우저 MCP 칸과 같은 자다
+  if ($copilotHookPython -eq 'unmeasured') { Add-Check @{ Name = 'Copilot 훅 배선'; State = 'unmeasured'; Probe = 'python --version' } }
+  else { Add-Check @{ Name = "Copilot 훅 배선 ($CopilotCfg 의 $($cpEvents -join ' · ')$(if ($cpSay) { ' — ' + $cpSay }))"; Ok = (-not $cpSay) } }
+  $cpParts = @()
+  try {
+    $cpParts = @([regex]::Matches([IO.File]::ReadAllText($copilotHookPlant), "(?m)^[A-Z_]+\s*=\s*'([^'\s]+\.py)'") |
+                 ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -ne 'copilot-hooks.py' } | Select-Object -Unique)
+  } catch { }
+  $cpGone = @(@('copilot-hooks.py') + $cpParts | Where-Object { -not (Test-Path -LiteralPath (Join-Path $ConfigSeedHooks $_) -PathType Leaf) })
+  Add-Check @{ Name = ("Copilot 훅 부품 (씨앗의 어댑터 · 어댑터가 부르는 파일 $($cpParts.Count) 개" + $(if ($cpGone.Count) { ' — 없는 것 ' + ($cpGone -join ' · ') } else { '' }) + ')')
+                Ok = ($cpParts.Count -gt 0 -and -not $cpGone.Count) }
+  # 스킬 설명 한도 — 사람이 둔 다른 값도 선 것이다(그 값은 안 덮는다). 장부의 우리 값 그대로인가는 위 장부 칸이 잰다.
+  $cpBudget = [string]$userEnv['SKILL_CHAR_BUDGET']
+  $cpBudgetWant = if ($CopilotSkillBudget) { [string]$CopilotSkillBudget['SKILL_CHAR_BUDGET'] } else { '' }
+  $cpBudgetSay = if (-not $cpBudget) { '없음' } elseif ($cpBudget -ceq $cpBudgetWant) { $cpBudget } else { "$cpBudget · 사용자가 정한 값이라 덮어쓰지 않음" }
+  Add-Check @{ Name = "Copilot 스킬 설명 한도 (사용자 환경 SKILL_CHAR_BUDGET = $cpBudgetSay)"; Ok = [bool]$cpBudget }
+}
 # 고른 도구 값 · 고른 제품 값 — 손 · 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0102 · 0107 · 0112)
 Add-Check @{ Name = "제작자 칸 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
@@ -12919,7 +13048,7 @@ Add-Check @{ Name = "네트워크 환경 값 (PAISETUP_SITE = $ModelSite)"
 # 규범 · 룰 · 에이전트 · 스킬 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
 if ($toolHomesOn) { Add-Check (Get-ToolHomesCheck $toolHomesHand) }
-# 브라우저 MCP — 어댑터의 `check` 한 번(claude-config 결정 0149). 고른 도구가 셋 가운데 없으면 칸을 안 세운다 —
+# 브라우저 MCP — 어댑터의 `check` 한 번(claude-config 결정 0149). 고른 도구가 표(`$BrowserMcpHosts`)에 없으면 칸을 안 세운다 —
 #   안 쓰기로 한 것을 [X] 로 찍지 않는다. python 이 안 서면 「도구별 홈」이 이미 빨강으로 셌고, 못 쟀으면 [?] 다. 개발 도구를 꺼
 #   브라우저를 안 받아 안 단 판(`$browserMcpSkipped`)도 칸을 안 세운다 — 안 깔기로 한 것이다.
 if ($browserMcpOn.Count -and $browserMcpPython -eq 'yes' -and -not $browserMcpSkipped) {
@@ -13114,7 +13243,7 @@ if ($wantAutoRun -eq $true) {
 # 규범 · 룰 · 스킬이 어디서 와 어느 홈에 갔나 — 제작자 칸은 저장소 칸 하나로 뜻이 바뀌어(비면 설치 묶음의 제작자 세트, 차면 그
 #   저장소의 배포 · 결정 0107) 창의 출처 줄이 그것을 말하고(PAISetup #53), 끝에서도 같은 말을 한 줄로 한다. 판정은 위 칸들
 #   (`PAISETUP_PERSONAL` · 손의 check)이 든다 — 이 줄은 무엇이 돌았나만 말하고 세지 않는다.
-$persLabels = @($PersonalTools | Where-Object { ",$PersonalValue," -like "*,$($_.Tool),*" } | ForEach-Object { $_.Label })
+$persLabels = @($PersonalTools | Where-Object { $personalOn -contains $_.Tool } | ForEach-Object { $_.Label })
 $persHomes  = ($persLabels -join ' · ') + ' 홈'
 $persRepo   = if ($dest) { Split-Path -Leaf $dest } else { '' }
 $persHanded = [bool]$handOff   # 훅에 넘겼나 — 이름을 따로 둔다: 넘김 칸의 그 갈래 머리는 훅 검사(check-dist-hooks)가 글자로 한 곳만 찾는다
@@ -13205,7 +13334,7 @@ if ($sessionOld.Count) {
   Write-Host ''
 }
 if (-not $personalAny -and -not $personalByRepo) {
-  Write-Host '  제작자의 규범·룰·스킬도 쓰려면:  설치 창의 제작자 칸에서 도구를 선택하세요 (.\install.ps1 -PersonalFor claude,codex,agy)'
+  Write-Host '  제작자의 규범·룰·스킬도 쓰려면:  설치 창의 제작자 칸에서 도구를 선택하세요 (.\install.ps1 -PersonalFor claude,codex,agy,copilot)'
   Write-Host ''
 }
 

@@ -183,7 +183,7 @@ Claude Code 를 손으로 설치하려면 프로그램 몇 개를 깔고, VS Cod
 ```powershell
 .\Setup.exe -NoDevTools                # 개발 도구(Git · Python · GitHub CLI)를 빼고 설치합니다
 .\Setup.exe -DevTools                  # 뺀 개발 도구를 다시 설치합니다
-.\Setup.exe -PersonalFor claude,codex  # 규범 · 룰 · 스킬을 받을 모델을 골라 둡니다(claude · codex · agy)
+.\Setup.exe -PersonalFor claude,codex  # 규범 · 룰 · 스킬을 받을 모델을 골라 둡니다(claude · codex · agy · copilot)
 .\Setup.exe -WithPersonalConfig        # 규범 · 룰 · 스킬을 받을 모델을 Claude 로 골라 둡니다
 .\Setup.exe -NoUpgrade                 # 이미 깔린 것은 최신으로 올리지 않습니다
 ```

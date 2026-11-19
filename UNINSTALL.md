@@ -38,6 +38,8 @@ PC 를 반납하거나 부서를 옮기거나 회사 게이트웨이를 떠나 �
 | Claude 를 뺀다 | 홈 설정의 Claude 훅 등록을 놓는 프로그램이 걷는다 |
 | 안티그래비티를 뺀다 | `~/.gemini/config/hooks.json` 의 우리 항목 셋을 걷는다(꺼 둔 것도) |
 | Codex 를 뺀다 | `~/.codex/config.toml` 의 우리 훅을 걷는다 — 파이썬 3.11 이상이 있을 때만이고, 없으면 노란 줄로 알리고 남긴다 |
+| Copilot 을 뺀다(사외) | `~/.copilot/settings.json` 의 우리 훅 항목을 걷고, 사용자 환경변수 `SKILL_CHAR_BUDGET` 은 설치가 심은 값 그대로일 때만 걷는다 |
+| 그 도구를 뺀다 | 칸을 끈 그 도구 홈에 칸 없이 깐 스킬(기록에 든 이름 — 그 홈의 백업 자리로 옮긴다)과, 자동 승인 값 가운데 설치가 심은 그대로인 것을 걷는다 |
 | 브라우저 MCP 를 단 도구를 뺀다 | 그 도구의 `playwright` 등록 가운데 우리 것만 걷는다 |
 | 제작자 칸을 다 끈다 | 놓는 프로그램이 제가 놓은 규범 · 룰 · 에이전트 · 스킬을 걷는다 |
 | 자동 실행 칸을 끈다 | 자동 실행 작업과 딸린 파일을 걷고, 끈 것을 적어 두어 다음 창도 이 칸을 꺼진 채로 띄운다 |
@@ -131,6 +133,7 @@ Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false
 | Claude | `~/.claude/skills/` | `~/.claude/.paisetup-skills` | `~/.claude/backups/` |
 | Codex | `~/.agents/skills/` | `~/.agents/.paisetup-skills` | `~/.agents/backups/` |
 | 안티그래비티 | `~/.gemini/config/skills/` | `~/.gemini/.paisetup-skills` | `~/.gemini/backups/` |
+| Copilot | `~/.copilot/skills/` | `~/.copilot/.paisetup-skills` | `~/.copilot/backups/` |
 
 - 백업 자리의 `install-skills-*` 는 걷은 스킬과 우리 스킬 폴더에서 설치 묶음에 없던 파일을 옮겨 둔 것이고, `install-aside-*` 는 같은 이름이라 비켜 둔 것이다 — 사람 것이면 되살린다
 - 스킬 폴더에는 사람이 둔 스킬도 사니 기록에 없는 이름은 둔다
@@ -153,6 +156,17 @@ Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false
 손으로는 `~/.gemini/config/hooks.json` 의 `paisetup-drm-guide` · `paisetup-utf8-bom` · `paisetup-context-alert` 항목을 지운다. 다른
 항목은 사람이 넣은 것일 수 있으니 두고, 고치기 전 것은 곁의 `hooks.json.before-paisetup-*` 에 있다.
 
+### Copilot 의 훅과 스킬 설명 한도
+
+설치 창에서 Copilot 을 빼고 사외에서 한 번 더 누르면 설치가 우리 훅 항목을 걷고, 한도 값은 설치가 심은 값 그대로일 때만 걷는다.
+사내에서 누른 설치는 둘 다 안 건드린다.
+
+- 훅은 `~/.copilot/settings.json`(`COPILOT_HOME` 이 서면 그 안)의 `hooks` 에서 `preToolUse` · `postToolUse` · `userPromptSubmitted` 마다
+  `args` 에 `copilot-hooks.py` 가 든 항목을 지운다. 다른 항목은 사람이 넣은 것일 수 있으니 두고, 고치기 전 것은 곁의
+  `settings.json.before-paisetup-*` 에 있다
+- 사용자 환경변수 `SKILL_CHAR_BUDGET` 은 값이 `60000` 이고 설치기 폴더의 기록 `claude-settings.tsv` 에 그 이름이 든 줄이 있을 때만
+  설치가 넣은 것이다 — 다른 값이면 사람이 넣은 것이라 둔다
+
 ### 브라우저 MCP
 
 설치 창에서 그 도구를 빼고 한 번 더 누르면 설치가 우리 등록만 걷는다.
@@ -161,17 +175,19 @@ Unregister-ScheduledTask -TaskName PGPTProxy-Watchdog -Confirm:$false
 claude mcp remove -s user playwright
 codex mcp remove playwright
 agy mcp remove playwright
+copilot mcp remove playwright
 ```
 
 - 지우기 전에 그 항목이 우리 것(명령 `node` · 첫 인자가 `browser-mcp.mjs`)인지 본다
 - Codex 를 고치기 전 것은 `config.toml.before-browser-mcp-<시각>` 에 있다
+- Copilot 의 등록은 `~/.copilot/mcp-config.json`(`COPILOT_HOME` 이 서면 그 안)에 있다
 - 꾸러미는 `npm uninstall -g playwright`, 받은 브라우저는 `%USERPROFILE%\.cache\ms-playwright\chromium-snapshot-*` 폴더다
 
 ### 자동 승인
 
-고른 agy · Copilot · Codex 에 심은 자동 승인 설정은 설치가 걷지 않는다.
+고른 agy · Copilot · Codex 에 심은 자동 승인 설정은 설치 창에서 그 도구를 빼고 한 번 더 누르면 설치가 심은 값 그대로인 것만 걷는다.
 
-손으로 지우거나, 그 도구의 설정 화면에서 다른 값을 고른다.
+손으로는 아래 자리를 지우거나, 그 도구의 설정 화면에서 다른 값을 고른다.
 
 | 도구 | 지울 자리 |
 |---|---|
@@ -186,9 +202,9 @@ agy mcp remove playwright
 
 손으로 할 때도 아래 자리들이고, 경계 표시 줄 밖은 사람이 쓴 글이다.
 
-- `~/.claude/CLAUDE.md` 와 `~/.codex/AGENTS.md` 의 경계 표시 줄(`<!-- paisetup:norms BEGIN -->` · `END`) 사이
+- `~/.claude/CLAUDE.md` · `~/.codex/AGENTS.md` · `~/.copilot/copilot-instructions.md` 의 경계 표시 줄(`<!-- paisetup:norms BEGIN -->` · `END`) 사이
 - `~/.gemini/config/AGENTS.md` · `~/.gemini/config/rules.json`
-- 기록 `~/.paisetup/placed.tsv` 에 든 룰 · 에이전트 · 스킬 사본
+- 기록 `~/.paisetup/placed.tsv` 에 든 룰 · 에이전트 · 스킬 사본(Copilot 의 룰은 `~/.copilot/instructions/<이름>.instructions.md`)
 
 ### paisetup 폴더와 고른 도구 값
 
@@ -199,13 +215,13 @@ agy mcp remove playwright
 
 ### agy 맡기기 값
 
-Claude · 안티그래비티를 같이 골랐으면 사용자 환경변수 `AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE` 를 지운다.
+Claude · Codex · Copilot 가운데 하나와 안티그래비티를 같이 골랐으면 사용자 환경변수 `AGY_DEFAULT_MODEL` · `AGY_FALLBACK_MODELS` · `AGY_MODEL_DELEGATE` 를 지운다.
 
 옛 판이 옛 스킬 목록을 떠 둔 `~/.claude/backups/install-agy-*` 도 지운다.
 
 ### Codex 와 Copilot 맡기기 값
 
-Claude · Codex 를 같이 골랐으면 사용자 환경변수 `CC_BG_AGENTS` · `CC_BG_CODEX_WEB_SEARCH` · `CC_BG_CODEX_WIN_SANDBOX` 를 지운다.
+Codex 와 함께 Claude · 안티그래비티 · Copilot 가운데 하나를 골랐으면 사용자 환경변수 `CC_BG_AGENTS` · `CC_BG_CODEX_WEB_SEARCH` · `CC_BG_CODEX_WIN_SANDBOX` 를 지운다.
 
 맡기기 모델 표가 Codex 모델 이름을 준 자리면 `CC_BG_CODEX_MODEL` · `CC_BG_CODEX_MODEL_DELEGATE` 도 지운다.
 

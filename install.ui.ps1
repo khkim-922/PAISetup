@@ -553,7 +553,7 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
               <WrapPanel x:Name="PersPanel"/>
               <!-- 늘 서는 한 줄 알림 칸(결정 0167 의 박힌 자리) -->
               <TextBlock x:Name="CfgTested" Style="{StaticResource Note}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
-                         Text="Claude 에 최적화되어 있습니다 — Codex · agy 에서도 사용할 수 있습니다"/>
+                         Text="Claude 에 최적화되어 있습니다 — Codex · agy · Copilot 에서도 사용할 수 있습니다"/>
             </StackPanel>
           </StackPanel>
         </Border>
@@ -787,7 +787,7 @@ $cUpg.Checked = -not $NoUpgrade
 #   설치 묶음의 제작자 세트, 차면 설치 끝에 그 저장소의 배포가 고른 도구 홈에 푼다) 그것이 화면에 안 보이면 숨은 설정이 된다(#53).
 #   고른 것은 몸통이 사용자 환경변수 `PAISETUP_PERSONAL` 로 심어 설정 저장소의 배포 · 세션 훅도 같은 값을 따른다.
 # **첫 상태 — 기록이 있으면 기록, 없으면 Claude 만 켠다**(#52 마감). Claude 가 주로 일하는 도구라 처음 온 사람도 규율을 받고,
-#   가끔 맡기는 도구(Codex · agy)는 부를 때 가볍게 둔다. 다 끈 기록(`personal=none`)도 기록이다 — 기록이 없는 것과 가른다.
+#   가끔 맡기는 도구(Codex · agy · Copilot)는 부를 때 가볍게 둔다. 다 끈 기록(`personal=none`)도 기록이다 — 기록이 없는 것과 가른다.
 # 제품 칸에서 안 고른 도구는 끈다 — 깔 홈이 없다. 꺼진 칸은 켜져 있어도 넘기지 않는다.
 $lCfg = Get-El 'CfgLabel'
 $lSrc = Get-El 'CfgSource'
@@ -817,9 +817,10 @@ function Test-PersonalBoxLive($c) {
   $prod = @($cApps | Where-Object { [string]$_.Tag -eq $c.Tag.Pick }) | Select-Object -First 1
   return [bool]((-not $cApps.Count) -or ($prod -and $prod.Checked))
 }
-# 제품 칸과 묶는다 — 그 제품을 끄면 이 칸도 꺼진다(고른 값은 남아 다시 켜면 돌아온다)
+# 제품 칸과 묶는다 — 그 제품을 끄면 이 칸도 꺼진다(고른 값은 남아 다시 켜면 돌아온다). 이 자리에서 안 내놓는 제품(`$NotHere`)의
+#   칸은 제품 칸처럼 잠근다 — 고른 기록은 그대로 보이고 그대로 넘어가며, 몸통이 이 자리에서는 심지도 걷지도 않는다(`$PickHeld`).
 function Sync-PersonalBoxes {
-  foreach ($c in $cPers) { $c.Enabled = Test-PersonalBoxLive $c }
+  foreach ($c in $cPers) { $c.Enabled = (Test-PersonalBoxLive $c) -and -not $NotHere[$c.Tag.Pick] }
 }
 
 # `Get-RepoName <저장소 칸 글>` → 첫 주소의 저장소 이름(끝마디 · `.git` 뗌), 여럿이면 「이름 외 N개」, 비었으면 ''.

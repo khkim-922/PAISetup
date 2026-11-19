@@ -33,6 +33,7 @@ FOOTER_FIELDS = (
     ('mode', '레인 — read(읽기만) · write(--write) · review(--review)'),
     ('agent', '답한(마지막에 띄운) 쪽 — codex · copilot'),
     ('model', 'Codex 에 넘긴 모델 이름. 안 넘겼거나 Copilot 이면 `-`'),
+    ('caller', '부른 쪽이 Copilot 이면 `copilot` — 그 쪽은 차례에서 빠져 있다(Copilot 이 부른 일을 Copilot 으로 되돌리지 않는다)'),
     ('failover', 'Codex 한도로 다음 쪽에 넘어온 자취 `<쪽>: <갈래>`(`;` 로 여럿) — 있을 때만'),
     ('tokens', '`tokens in=<N> out=<N>` — Copilot 은 `in=- out=-`'),
     ('web', 'Codex 가 실제로 마친 웹 검색 수 — 0 이면 기억으로 낸 답이다. Copilot 은 `-`'),
@@ -79,6 +80,12 @@ WEB_SEARCH_MODES = ('disabled', 'cached', 'indexed', 'live')
 WIN_SANDBOX_MODES = ('elevated', 'unelevated', 'mxc')
 DEFAULT_WEB_SEARCH = 'live'                       # 값이 없으면 실시간 검색
 MODEL_NAME_RE = re.compile(r'[A-Za-z0-9._:/-]+')  # TOML 따옴표 안에 그대로 들어간다 — 따옴표 · 공백을 막는다
+
+# 이 러너를 Copilot 세션이 불렀다는 표 — Copilot 의 셸 도구가 세션 안에서 도는 명령에만 심는 환경변수다. 같은 때 심기는 CLI
+# 설치 · 판 이름(`COPILOT_CLI*`)도 있으나 그것은 세션 없이 CLI 만 깔려도 서는 이름이라 「Copilot 이 부른 중」을 못 가른다.
+# 러너가 시작할 때 제 환경에서만 읽는다 — 받는 쪽에 넘기는 환경(`run_once` 의 `env`)과 섞지 않는다
+COPILOT_CALLER_ENV = 'COPILOT_AGENT_SESSION_ID'
+CALLER_COPILOT_SAY = '부른 쪽이 Copilot 세션이다 — Copilot 이 부른 일은 Copilot 으로 되돌려 맡기지 않는다(차례는 codex 만)'
 
 # Copilot 이 한도로 멈춘 꼴 — `session.error` 의 `errorType`(quota · 402 / rate_limit · 429). 종료 코드는 0 으로
 # 끝난 기록도 있어 그것보다 이 이벤트를 먼저 본다.
@@ -387,6 +394,8 @@ def help_epilog():
         '',
         f'차례: 자리 값 {KNOB_AGENTS} 가 정한다(없으면 {" → ".join(AGENTS)}). 차례에 없는 쪽은 --agent · --resume 으로도 안 띄운다(`usage`).',
         '  Codex 가 한도(사용 한도 · 할당량 · 용량 초과)면 다음 쪽이 받고, 그 밖의 실패 · 시간 초과는 그 자리에서 멈춘다.',
+        f'  Copilot 세션이 부른 러너(환경변수 {COPILOT_CALLER_ENV} 가 선 셸)는 차례에서 copilot 이 빠진다 — Codex 한도는 Codex 의 실패로 끝나고,',
+        '  --agent copilot · --resume copilot:<id> 는 띄우기 전에 `usage` 다. 끝 줄 caller=copilot 이 그 자국이다.',
         '',
         '자리 값(환경변수 — 설치기가 자리마다 심고, 없으면 기본):',
         f'  {KNOB_AGENTS:<27}차례이자 쓸 수 있는 쪽(쉼표)',
@@ -438,6 +447,9 @@ def run(a):
             write(a.out, f'{FOOTER} usage · --review 는 {REVIEW_AGENT} 만 받는다 — {a.agent} 셸은 읽기로 못 가둔다\n')
             return EXIT['usage']
     allowed = a.knobs['agents']
+    caller_copilot = bool(os.environ.get(COPILOT_CALLER_ENV))
+    if caller_copilot:
+        allowed = [x for x in allowed if x != 'copilot']
     resume = None
     if a.resume:
         agent, _, resume = a.resume.partition(':')
@@ -450,6 +462,10 @@ def run(a):
         order = [REVIEW_AGENT]   # 한도여도 안 넘긴다 — 받는 쪽이 리뷰 모드를 안 받는다
     else:
         order = [a.agent] if a.agent else allowed
+    # 부른 쪽이 Copilot 이면 Copilot 은 손으로 골라도 안 띄운다 — 까닭이 자리 값이 아니라 부른 쪽이라 따로 말한다
+    if caller_copilot and ('copilot' in order or not order):
+        write(a.out, f'{FOOTER} usage · {CALLER_COPILOT_SAY}\n')
+        return EXIT['usage']
     # 자리가 안 쓰는 쪽은 손으로 골라도 안 띄운다 — 그쪽으로 보내지 않는 것이 그 자리의 선이다
     if any(x not in allowed for x in order):
         write(a.out, f'{FOOTER} usage · 이 자리에서 안 쓰는 쪽이다 — {KNOB_AGENTS}={",".join(allowed)}\n')
@@ -488,6 +504,8 @@ def run(a):
              'web': f'web={"-" if searches is None else searches}', 'resume': resume_field(agent, conv)}
     if said:
         cells['note'] = said
+    if caller_copilot:
+        cells['caller'] = 'caller=copilot'
     if tried:
         cells['failover'] = f'failover={"; ".join(tried)}'
     if status != 'ok':

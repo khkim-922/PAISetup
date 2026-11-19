@@ -16,6 +16,7 @@ PAISetup 설치본이 이 PC 의 어디에 무엇을 어떤 조건으로 까는�
 - [회사 게이트웨이 연결](#회사-게이트웨이-연결)
 - [Claude Code 홈 설정](#claude-code-홈-설정)
 - [Codex 훅](#codex-훅)
+- [Copilot 훅과 스킬 설명 한도](#copilot-훅과-스킬-설명-한도)
 - [브라우저 MCP](#브라우저-mcp)
 - [Anthropic 공식 스킬](#anthropic-공식-스킬)
 - [워드의 PDF 변환 안내 끄기](#워드의-pdf-변환-안내-끄기)
@@ -40,7 +41,7 @@ PAISetup 설치본이 이 PC 의 어디에 무엇을 어떤 조건으로 까는�
 | 훅의 세 부분 | 몸통 · 껍데기 · 배선 | 일하는 파이썬 파일 · 그것을 부르는 셸 파일 · 설정 파일에 적힌 등록이다 |
 | 경계 표시 줄 | 표지 | `<!-- paisetup:norms BEGIN -->` 와 `END` 두 줄이고, 설치는 그 사이만 쓴다 |
 | 자리 | 사내 · 사외 | 설치가 회사 게이트웨이에 닿는지를 재서 가른 값이다 — 재는 줄(`install.env` 의 `#site-probe`)이 없거나 꼴이 틀린 묶음은 아무것도 안 깔고 멈춘다 |
-| 도구 홈 | 홈 | 도구가 제 설정을 읽는 폴더다 — Claude `~/.claude/` · Codex `~/.codex/` 와 `~/.agents/` · 안티그래비티 `~/.gemini/` |
+| 도구 홈 | 홈 | 도구가 제 설정을 읽는 폴더다 — Claude `~/.claude/` · Codex `~/.codex/` 와 `~/.agents/` · 안티그래비티 `~/.gemini/` · Copilot `~/.copilot/` |
 | 러너 | 러너 | 다른 도구에 일을 맡기는 스킬(`agy-background` · `codex-copilot-background` · `claude-background`)과, 그 안에서 받는 도구를 띄우는 파이썬 프로그램이다 |
 | 장부 | 장부 | 설치가 심은 값을 자리마다 적어 두는 파일 `%LOCALAPPDATA%\Claude Code Setup\claude-settings.tsv` 다 — 다음 설치가 이것으로 우리가 심은 값과 사람이 둔 값을 가른다. 키는 안 적는다 |
 
@@ -190,17 +191,19 @@ VS Code 는 Microsoft 의 공식 「최신」 주소에서 받는다 — winget 
 
 ### 제작자 칸
 
-「자세히 설정」 안의 「규범 · 룰 · 스킬을 받을 모델」이 이 칸이다. 규범 · 룰 · 스킬을 모델(Claude · Codex · agy)마다 골라 받고,
+「자세히 설정」 안의 「규범 · 룰 · 스킬을 받을 모델」이 이 칸이다. 규범 · 룰 · 스킬을 모델(Claude · Codex · agy · Copilot)마다 골라 받고,
 처음에는 Claude 만 켜진 채로 뜬다 — 지난번에 고른 것이 있으면 그대로 뜬다.
 
-- 제품 칸에서 고른 도구의 칸만 켤 수 있다
+- 제품 칸에서 고른 도구의 칸만 켤 수 있다. 사내에서는 Copilot 칸이 제품 칸처럼 잠기고 고른 기록은 그대로 남는다. 사내 설치는 Copilot 을
+  깔거나 올리지 않고, Copilot 의 훅 · 브라우저 MCP · 스킬 설명 한도 · 칸 없이 깐 스킬 · 자동 승인도 심지도 걷지도 않는다. 다만 사외에서
+  이 칸을 켜 `~/.copilot` 에 놓인 규범 · 룰 · 제작자 스킬은 다른 도구처럼 설치 묶음의 판으로 맞춰 둔다
 - 칸 바로 아래 한 줄이 무엇이 깔리나를 말하고 「연결」의 「내 저장소 다운로드」를 따라 바뀐다 — 비었으면 「설정 저장소를 넣지 않았으니,
   고른 모델에 제작자의 규범 · 룰 · 스킬이 깔립니다」, 주소를 넣으면 「설정 저장소를 넣었으니, 고른 모델에 내 규범 · 룰 · 스킬(<이름>)이
   깔립니다」. 내 것은 그 저장소가 갈 곳 표를 들 때만 가고, 없는 것은 제작자의 것이 간다. 줄 끝의 「?」는 이 글을 연다
 - 「자세히 설정」을 접어 두어도 머리의 한 줄이 「규범: Claude ← 제작자」 · 「규범: Claude ← 내 저장소」처럼 어느 모델에 누구의 것이
   가나를 보인다
-- 칸 아래 한 줄이 늘 「Claude 에 최적화되어 있습니다 — Codex · agy 에서도 사용할 수 있습니다」를 말한다 — 제작자 세트는 Claude 에 맞춰 지었고,
-  Codex · agy 도 같은 것을 받는다
+- 칸 아래 한 줄이 늘 「Claude 에 최적화되어 있습니다 — Codex · agy · Copilot 에서도 사용할 수 있습니다」를 말한다 — 제작자 세트는 Claude 에
+  맞춰 지었고, Codex · agy · Copilot 도 같은 것을 받는다
 - 설치가 끝나면 검증 칸 아래 한 줄(「규범 · 룰 · 스킬 — …」)이 무엇이 돌았나를 말한다 — 설치 묶음의 제작자 세트를 놓았나, 내 저장소의
   훅에 넘겼나, 넘길 훅이 없거나 훅이 져 묶음의 것만 있나. 판정은 그 위 칸들이 든다
 - 켜면 개발 도구를 빼도(`-NoDevTools`) Python 을 깐다
@@ -267,7 +270,7 @@ Claude · Codex · Copilot 의 CLI 가 Node.js 로 돌아서, 무엇을 골랐�
 
 ### PDF 를 그림으로 여는 poppler
 
-Claude · Codex · 안티그래비티 가운데 하나를 고르면 poppler(`pdftoppm`)를 깐다 — Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로
+Claude · Codex · 안티그래비티 · Copilot 가운데 하나를 고르면 poppler(`pdftoppm`)를 깐다 — Claude Code 의 Read 가 PDF 를 열 때 페이지를 그림으로
 그리는 손이고, 공식 문서 스킬이 문서를 그림으로 확인하는 길의 뒷손이다. 없으면
 Read 가 「pdftoppm is not installed」로 지고, 사내 게이트웨이는 PDF 블록(`document`)을 그대로 보내면 삼키므로 PDF 가 모델에 보이는 길은
 그림뿐이다.
@@ -283,7 +286,7 @@ Read 가 「pdftoppm is not installed」로 지고, 사내 게이트웨이는 PD
 
 ### 덱을 짓는 pptxgenjs
 
-Claude · Codex · 안티그래비티 가운데 하나를 고르면 pptxgenjs 를 npm 전역에 깔고, 새 판이 있으면 올린다. 공식 pptx 스킬이 덱(.pptx)을 짓는 스크립트가
+Claude · Codex · 안티그래비티 · Copilot 가운데 하나를 고르면 pptxgenjs 를 npm 전역에 깔고, 새 판이 있으면 올린다. 공식 pptx 스킬이 덱(.pptx)을 짓는 스크립트가
 `require('pptxgenjs')` 로 부르는 꾸러미다. 없으면 그 스킬이 양식을 풀어 XML 을 손으로 쓰는 길로 물러나, 덱에 글상자와 표만 남는다.
 
 - npm 전역 폴더는 Node 가 이름을 찾는 자리가 아니라서, 깐 것을 `%USERPROFILE%\.node_modules\pptxgenjs` 에 이어 둔다(정션이라
@@ -297,7 +300,7 @@ Claude · Codex · 안티그래비티 가운데 하나를 고르면 pptxgenjs �
 
 ### 덱을 그림으로 보는 LibreOffice
 
-Claude · Codex · 안티그래비티 가운데 하나를 고르면 LibreOffice 를 깐다 — 공식 pptx 스킬이 만든 덱을 눈으로 확인할 때 덱을 PDF 로 바꾸는 손(`soffice`)이다.
+Claude · Codex · 안티그래비티 · Copilot 가운데 하나를 고르면 LibreOffice 를 깐다 — 공식 pptx 스킬이 만든 덱을 눈으로 확인할 때 덱을 PDF 로 바꾸는 손(`soffice`)이다.
 그 PDF 를 페이지 그림으로 그리는 것은 위 poppler 다. 회사 PC 에서도 LibreOffice 가 쓴 PDF 는 DRM 이 감싸지 않아(재 본 10분 동안), 덱을
 보는 기본 길이 이것이다.
 
@@ -316,7 +319,7 @@ Claude · Codex · 안티그래비티 가운데 하나를 고르면 LibreOffice 
 
 ### 문서를 바꾸는 pandoc 과 PDF 를 다루는 qpdf
 
-Claude · Codex · 안티그래비티 가운데 하나를 고르면 둘을 뒤에서 깐다 — 결과 줄은 LibreOffice 처럼 「Claude 플러그인」 걸음 끝에 선다.
+Claude · Codex · 안티그래비티 · Copilot 가운데 하나를 고르면 둘을 뒤에서 깐다 — 결과 줄은 LibreOffice 처럼 「Claude 플러그인」 걸음 끝에 선다.
 
 - pandoc — 공식 docx 스킬이 워드 문서를 읽고 바꾸는 손이다. winget 으로 깔고, 사용자 범위(`%LOCALAPPDATA%\Pandoc`)라 승인이 안 든다
 - qpdf — 공식 pdf 스킬이 PDF 를 합치고 · 쪼개고 · 고치고 · 줄이는 명령이다. 망가진 PDF 고치기 · 용량 줄이기는 파이썬 패키지로 대신
@@ -374,6 +377,9 @@ Git · Python · GitHub CLI 는 코드를 짤 사람용이고, 설치 창에 칸
 | 칸 없이 깔리는 맡기기 스킬의 래퍼 | 그 스킬이 설 때 |
 | Claude 의 DRM 길잡이 훅 | Claude 를 고르면 |
 | Codex 훅 | Codex 를 고르면 |
+| agy 훅 | 안티그래비티를 고르면 |
+| Copilot 훅 | Copilot 을 고르면 |
+| 브라우저 MCP 를 다는 프로그램 | 브라우저 MCP 를 받는 도구를 하나라도 고르면 |
 | 놓는 프로그램 | 제작자 칸을 하나라도 켜거나 Claude 를 고르면 |
 
 pip 가 사용자 자리 `%APPDATA%\Python\Python<판>\Scripts` 에 깐 명령(`markitdown` 등)이 있으면, 설치가 끝날 무렵 그 폴더를 사용자
@@ -553,13 +559,41 @@ Codex 를 고르면 자리와 관계없이 우리 훅 다섯이 `~/.codex/config
 - Codex 를 빼고 다시 누르면 우리 훅만 걷는다. 사람 훅과 뒤 항목의 자리 · 적어 둔 신뢰는 둔다
 - 걷는 일은 파이썬 3.11 이상으로 돌아서, 없으면 노란 줄로 알리고 넘어간다
 
+## Copilot 훅과 스킬 설명 한도
+
+제품 칸에서 GitHub Copilot 을 고르면 우리 훅 넷이 Copilot 설정에 서고, 우리 스킬 설명이 다 실리게 그 한도를 넓힌다. 사내에서는
+Copilot 을 안 내놓아 이 둘도 심지도 걷지도 않는다.
+
+| 자리 | 무엇 |
+|---|---|
+| `~/.copilot/settings.json` 의 `hooks` | `preToolUse` · `postToolUse` · `userPromptSubmitted` 에 우리 항목 하나씩 — 견본 폴더의 `copilot-hooks.py` 를 부른다 |
+| 사용자 환경변수 `SKILL_CHAR_BUDGET` | `60000` — Copilot 이 세션에 싣는 스킬 설명 목록의 글자 한도다. 기본 한도로는 우리 스킬 설명이 다 안 실려, 잘린 스킬은 이름만 실리고 언제 여는지를 적은 글이 모델에 안 간다 |
+
+| Copilot 훅 | 하는 일 |
+|---|---|
+| 셸 실수 문 | 이름 · 창 제목으로 프로그램을 끄는 명령은 묻고, 상태를 바꾸는 스크립트의 출력을 앞만 읽고 끊는 명령은 막는다 — Copilot 의 셸(PowerShell) 문법으로 가른다 |
+| 게이트 건너뛰기 물음 | 세션을 연 저장소의 커밋 게이트를 건너뛰는 git 명령을 묻는다 — Copilot 이 신뢰한 폴더에서만 그 저장소의 훅을 부른다 |
+| DRM 길잡이 | 사람의 글에 감긴 파일의 경로가 있으면 그 턴에 길잡이를 붙이고, 모델이 감긴 파일을 열려 하면 막고 까닭을 준다 |
+| PowerShell UTF-8 BOM 보정 | 고친 PowerShell 파일에 BOM 을 단다 |
+
+- 대화형 Copilot 에서 「묻기」는 사람에게 묻고, autopilot · `-p` 에서는 Copilot 이 막기로 바꿔 까닭이 모델에 닿는다
+- `COPILOT_HOME` 이 서면 훅은 그 안의 `settings.json` 에 선다. 스킬은 늘 `~/.copilot/skills/` 다
+- 등록은 `cmd.exe` 가 해석기와 어댑터가 있을 때만 띄우고 진 끝도 0 으로 바꾼다 — 깨진 훅이 Copilot 의 셸 · 읽기를 막지 않는다. 그
+  대신 빠진 부품은 훅이 말없이 안 도는 것으로 남아, 끝 검증이 등록이 가리키는 해석기 · 어댑터와 어댑터가 부르는 파일이 디스크에 있나를 잰다
+- 등록에는 설치가 부른 Python 의 자리가 박힌다 — 설치가 돌 때마다 그 자리로 다시 맞춘다
+- 사람의 다른 훅 항목 · 그 파일의 다른 설정 · 들여쓰기 · BOM 은 둔다. 고쳐 쓰기 전 원본을 곁(`settings.json.before-paisetup-…`)에 떠 둔다
+- 같은 파일을 [자동 승인](#자동-승인)도 쓴다 — 설치는 자동 승인을 먼저 심고 훅을 뒤에 얹는다
+- 한도는 사람이 둔 값이 있으면 안 덮는다. Copilot 을 빼고 다시 누르면 우리 훅 항목만 걷고, 한도는 [장부](#이-글에-나오는-말)의 값 그대로일
+  때만 걷는다
+
 ## 브라우저 MCP
 
-Claude · Codex · 구글 Antigravity 가운데 하나라도 고르면, 모델이 웹 페이지를 띄우고 읽고 누르고 입력하고 찍는 브라우저 도구를 단다.
+Claude · Codex · 구글 Antigravity · GitHub Copilot 가운데 하나라도 고르면, 모델이 웹 페이지를 띄우고 읽고 누르고 입력하고 찍는 브라우저 도구를 단다.
 
 - 자바스크립트로 그리는 화면까지 읽는다. 브라우저 도구가 없는 자리에서 쓴다
 - playwright 를 npm 전역에 깔고, 브라우저(크로미움)는 처음 한 번 구글 공식 스냅샷에서 받는다(수백 MB · 이미 있으면 안 받는다)
-- 고른 도구마다 MCP 서버 `playwright` 로 달고, 안 고른 도구에서는 설치가 단 것만 걷는다
+- 고른 도구마다 MCP 서버 `playwright` 로 달고, 안 고른 도구에서는 설치가 단 것만 걷는다. Copilot 은 `~/.copilot/mcp-config.json` 에 달고,
+  사람이 Copilot 설정에서 그 서버를 꺼 두었으면 꺼진 채 둔다. 사내에서는 Copilot 에 달지도 걷지도 않는다
 - 창을 띄운 채 돈다 — 모델이 하는 일을 보며 로그인 · 확인 창처럼 사람 손이 드는 자리에서 거든다
 - 세션마다 새 프로필로 뜨므로 로그인은 세션을 넘어 안 남는다
 - 같은 이름(`playwright`)으로 손수 붙인 서버가 있으면 그것을 두고 우리 것은 안 단다(노란 줄)
@@ -580,8 +614,8 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
   `discernment-nudge` 는 답의 끝에 끼어든다
 - claude.ai 구독으로 로그인한 PC 는 계정 동기화가 문서 넷과 스킬 만들기를 `anthropic-skills:<이름>` 으로 따로 싣는다. 겹쳐도
   깔고, 한쪽을 끄는 것은 사람 몫이다
-- Codex · 안티그래비티를 고르면 같은 문서 스킬 넷(pptx · docx · xlsx · pdf)을 그 홈(`~/.agents/skills` · `~/.gemini/config/skills`)에도
-  놓는다. 이쪽은 마켓이 아니라 배포본이 싣고 온 상류 한 판(Apache 2.0)이라 GitHub 이 막힌 PC 에서도 선다. Claude 홈에는 안 놓는다 —
+- Codex · 안티그래비티 · Copilot 을 고르면 같은 문서 스킬 넷(pptx · docx · xlsx · pdf)을 그 홈(`~/.agents/skills` ·
+  `~/.gemini/config/skills` · `~/.copilot/skills`)에도 놓는다. 이쪽은 마켓이 아니라 배포본이 싣고 온 상류 한 판(Apache 2.0)이라 GitHub 이 막힌 PC 에서도 선다. Claude 홈에는 안 놓는다 —
   플러그인과 두 벌이 된다
 - 사내망이 GitHub 을 막으면 못 받을 수 있다. 그때는 노란 줄과 손으로 할 명령을 찍고 설치를 실패로 세지 않는다
 
@@ -624,8 +658,8 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
   동의한 판도 쓴다. 파일이 없으면 안 만든다. 로그온 자동 실행은 Codex 가 떠 있어 못 쓴다
 - 사람이 둔 값은 안 덮는다. 그 키가 이미 있으면(agy 앱은 세 칸 가운데 하나라도, Codex 는 `approval_policy` 도) 그 도구 줄을 통째로
   둔다. 못 읽는 파일은 안 건드리고 빨간 줄로 알린다
-- agy · Copilot 의 이 설정은 위험을 가르는 판단 없이 다 돌린다. agy 에 걸린 우리 훅 가운데 DRM 길잡이는 감긴 파일을 읽기 전에 그대로
-  막고, Copilot 에는 우리 훅이 안 걸린다
+- agy · Copilot 의 이 설정은 위험을 가르는 판단 없이 다 돌린다. 두 도구에 걸린 우리 훅 가운데 DRM 길잡이는 감긴 파일을 읽기 전에 그대로
+  막고, Copilot 은 이 모드에서 셸 실수 문 · 게이트 건너뛰기 물음의 「묻기」를 막기로 바꾼다 — [Copilot 훅](#copilot-훅과-스킬-설명-한도)
 - 심은 값은 [장부](#이-글에-나오는-말)에 적는다 — 사람이 같은 값을 둔 것과 글자로는 안 갈려서다. 도구를 빼고 다시 누르면(Codex 는
   사내로 가도) 장부의 값 그대로인 것만 걷고, 설치가 심는 값이 새 판에서 바뀌면 장부의 옛 값 그대로인 것만 새 값으로 간다. 사람이 바꾼
   값은 두고 그 이름을 알린다. 끄려면 그 도구의 설정에서 다른 값을 고르고, 다음 설치는 그 값을 안 덮는다(Codex 데스크탑의 모드만 예외다)
@@ -671,7 +705,7 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 
 아래 스킬은 회사에서 일할 때 쓰는 도구라, 제작자 칸과 상관없이 고른 도구의 스킬 자리에 깔린다.
 
-모두 제작자의 규범 없이도 혼자 돈다. Codex 나 안티그래비티를 고르면 Claude 를 고른 자리와 같은 기본기를 받는다.
+모두 제작자의 규범 없이도 혼자 돈다. Codex · 안티그래비티 · Copilot 을 고르면 Claude 를 고른 자리와 같은 기본기를 받는다.
 
 | 스킬 | 무엇을 하나 |
 |---|---|
@@ -686,19 +720,21 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 | `claude-background` | Claude 에게 일을 맡긴다 |
 
 맡기기 스킬만 홈이 갈린다 — 일을 맡기는 쪽 홈에 깔리고, 받는 쪽 홈에는 안 간다. 받는 쪽 홈에 서면 그 도구가 제게 맡기는 길을
-들기 때문이다. 그래서 셋을 다 고르면 도구마다 나머지 둘에게 맡기는 스킬을 받는다.
+들기 때문이다. 그래서 Claude · Codex · 안티그래비티를 다 고르면 도구마다 나머지 둘에게 맡기는 스킬을 받는다. Copilot 은 맡기는
+쪽이기만 해서, 같이 고른 셋에게 다 맡기는 스킬을 받는다.
 
-| 스킬 | Claude 홈 `~/.claude/skills/` | Codex 홈 `~/.agents/skills/` | agy 홈 `~/.gemini/config/skills/` |
-|---|---|---|---|
-| `drm-office-read` · `inhouse-app` · `agent-envelope` | Claude 를 고르면 | Codex 를 고르면 | 안티그래비티를 고르면 |
-| 사내 앱 묶음(`company-*` · `ep-login` · 메일 비서 `daily-brief` · `mailbox-work` · `mailbox-scan` · `mailbox-tidy`) | 사내에서 Claude 를 고르면 | 사내에서 Codex 를 고르면 | 사내에서 안티그래비티를 고르면 |
-| `agy-background` | Claude 와 안티그래비티를 같이 고르면 | Codex 와 안티그래비티를 같이 고르면 | — |
-| `codex-copilot-background` | Claude 와 Codex 를 같이 고르면 | — | 안티그래비티와 Codex 를 같이 고르면 |
-| `claude-background` | — | Claude 와 Codex 를 같이 고르면 | Claude 와 안티그래비티를 같이 고르면 |
+| 스킬 | Claude 홈 `~/.claude/skills/` | Codex 홈 `~/.agents/skills/` | agy 홈 `~/.gemini/config/skills/` | Copilot 홈 `~/.copilot/skills/` |
+|---|---|---|---|---|
+| `drm-office-read` · `inhouse-app` · `agent-envelope` | Claude 를 고르면 | Codex 를 고르면 | 안티그래비티를 고르면 | Copilot 을 고르면 |
+| 사내 앱 묶음(`company-*` · `ep-login` · 메일 비서 `daily-brief` · `mailbox-work` · `mailbox-scan` · `mailbox-tidy`) | 사내에서 Claude 를 고르면 | 사내에서 Codex 를 고르면 | 사내에서 안티그래비티를 고르면 | — (사내에서는 Copilot 을 안 내놓는다) |
+| `agy-background` | Claude 와 안티그래비티를 같이 고르면 | Codex 와 안티그래비티를 같이 고르면 | — | Copilot 과 안티그래비티를 같이 고르면 |
+| `codex-copilot-background` | Claude 와 Codex 를 같이 고르면 | — | 안티그래비티와 Codex 를 같이 고르면 | Copilot 과 Codex 를 같이 고르면 |
+| `claude-background` | — | Claude 와 Codex 를 같이 고르면 | Claude 와 안티그래비티를 같이 고르면 | Claude 와 Copilot 을 같이 고르면 |
 
 - 사내 앱 묶음은 사외(회사 게이트웨이에 안 닿는 자리)에서는 안 깐다 — 사내 앱 화면이 안 열려 쓸 데가 없다. 사외로 돈 설치는 앞서
   사내에서 깐 묶음을 아래 백업 자리로 걷는다
 - Codex 에게 맡기는 줄과 Codex 가 맡기는 줄은 사내에서는 Codex 회사 설정이 서는 자리에서만 선다
+- 사내 설치는 Copilot 홈에 칸 없이 깐 스킬과 그 기록을 그대로 둔다 — 깔지도 걷지도 않고, 사외로 나가면 다시 맞춘다
 - 위 표의 조건은 제작자 칸을 끈 도구의 홈에서 쓰인다. 칸을 켠 도구의 홈에는 놓는 프로그램이 설치 묶음의(설정 저장소를 넣었으면 그
   저장소의) 스킬을 다 놓는다 — 위 이름들도 고른 제품과 상관없이 그 안에 들고, 받는 쪽 홈의 맡기기 스킬만 빠진다
 - 한 홈의 스킬 폴더를 쓰는 것은 늘 하나라, 둘이 같은 폴더를 번갈아 덮지 않는다
@@ -707,9 +743,9 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 
 칸을 끈 홈에 설치가 깐 스킬 이름은 홈마다 기록에 남는다.
 
-- 기록은 `~/.claude/.paisetup-skills` · `~/.agents/.paisetup-skills` · `~/.gemini/.paisetup-skills` 다
+- 기록은 `~/.claude/.paisetup-skills` · `~/.agents/.paisetup-skills` · `~/.gemini/.paisetup-skills` · `~/.copilot/.paisetup-skills` 다
 - 설치는 누를 때마다 그 기록 가운데 이번에 깔 목록에 없는 것(설치 묶음에서 빠졌다 · 그 제품을 더는 안 골랐다 · 옛 판이 깐 제작자
-  스킬)을 그 홈의 `backups/install-skills-<시각>/` 로 옮긴다(`~/.claude` · `~/.agents` · `~/.gemini` 아래)
+  스킬)을 그 홈의 `backups/install-skills-<시각>/` 로 옮긴다(`~/.claude` · `~/.agents` · `~/.gemini` · `~/.copilot` 아래)
 - 그 홈에는 사람이 둔 스킬도 같이 산다. 깔 이름과 같은 폴더가 기록에 없으면 덮지 않고 통째로 그 홈의 `backups/install-aside-<시각>/`
   로 옮긴 뒤 깔고, 노란 줄로 알린다. 깔 이름이 아닌 폴더는 기록에 없으면 이름이 무엇이든 안 건드린다
 - 기록에 든 스킬 폴더는 거울로 깔린다. 그 폴더에 설치 묶음에 없는 파일(빠진 옛 파일 · 사람이 둔 메모)이 있으면 지우지 않고
@@ -750,14 +786,14 @@ Claude 를 고르면 Anthropic 공식 마켓플레이스(GitHub 저장소 anthro
 
 ### agy 맡기기
 
-Claude 또는 Codex 와 안티그래비티를 같이 고르면 사내든 사외든 agy 에게 일을 맡기는 데 드는 셋이 선다.
+Claude · Codex · Copilot 가운데 하나와 안티그래비티를 같이 고르면 agy 에게 일을 맡기는 데 드는 셋이 선다(Copilot 은 사외에서만).
 
 맡기는 길은 스킬 `agy-background` 하나다 — agy 를 뒤에서 띄워 대화를 안 막고, 끝나면 맡긴 쪽이 결과를 거둔다.
 
 | 무엇 | 어디에 |
 |---|---|
 | agy 모델 값 | 사용자 환경변수 `AGY_DEFAULT_MODEL` · `AGY_MODEL_DELEGATE` · `AGY_FALLBACK_MODELS` 에 심고, 스킬 `agy-background` 가 읽는다 |
-| 스킬 `agy-background` | `~/.claude/skills/`, Codex 를 골랐으면 `~/.agents/skills/` 에도 깐다 |
+| 스킬 `agy-background` | `~/.claude/skills/`, Codex 를 골랐으면 `~/.agents/skills/`, Copilot 을 골랐으면 `~/.copilot/skills/` 에도 깐다 |
 | Python | 그 스킬의 래퍼가 돌아서(Claude 는 `pythonw` 로 뒤에서, Codex 는 `python` 으로 앞에서) 개발 도구를 빼도 깐다 |
 
 - 모델 값은 자리마다 다르고, 맡기기 모델 표(스킬 `agent-envelope` 폴더의 `models.conf`)에서 온다. 자리 · 일의 무게마다 어느 모델을
@@ -775,11 +811,12 @@ Claude 또는 Codex 와 안티그래비티를 같이 고르면 사내든 사외�
 Claude 와 Codex 를 같이 고르면 Claude 가 Codex 에게 일을 뒤에서 맡기는 스킬 `codex-copilot-background` 가 선다.
 
 긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 다른 모델의 의견 · 웹 조사를 맡긴다. 안티그래비티와 Codex 를 같이 고르면 agy 도 같은 스킬로
-맡기고, agy 에서는 끝날 때까지 기다려 답을 읽는다. 사내는 Codex 를 회사 키로 게이트웨이에 물리는 회사 설정이 서는 자리에서 선다.
+맡기고, agy 에서는 끝날 때까지 기다려 답을 읽는다. Copilot 과 Codex 를 같이 고르면 Copilot 도 같은 스킬로 맡긴다 — Copilot 이 부른
+맡기기는 Codex 한도가 차도 Copilot 으로 넘기지 않는다. 사내는 Codex 를 회사 키로 게이트웨이에 물리는 회사 설정이 서는 자리에서 선다.
 
 | 무엇 | 어디에 · 언제 |
 |---|---|
-| 스킬 `codex-copilot-background` | `~/.claude/skills/`, 안티그래비티를 같이 골랐으면 `~/.gemini/config/skills/` 에도 깐다 |
+| 스킬 `codex-copilot-background` | `~/.claude/skills/`, 안티그래비티를 같이 골랐으면 `~/.gemini/config/skills/`, Copilot 을 같이 골랐으면 `~/.copilot/skills/` 에도 깐다 |
 | Python | 그 스킬이 돌아서(Claude 는 `pythonw` 로 뒤에서, agy 는 `python` 으로 앞에서) 개발 도구를 빼도 깐다 |
 | 자리 값 | 사용자 환경변수 `CC_BG_AGENTS` · `CC_BG_CODEX_WEB_SEARCH` · `CC_BG_CODEX_WIN_SANDBOX` 에 심고, 스킬의 래퍼가 읽는다 |
 | Copilot CLI | 제품 칸에서 Copilot 을 고르면 사외에서 깔리고(사내는 회사 지원 전이라 안 깐다), Codex 한도가 찼을 때 받는 쪽도 사외다 |
@@ -806,11 +843,11 @@ Claude 와 Codex 를 같이 고르면 Claude 가 Codex 에게 일을 뒤에서 �
 
 위의 거울로, 같은 조건에서 Codex 가 Claude 에게 일을 맡기는 스킬 `claude-background` 가 Codex 홈에 선다.
 
-Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡긴다.
+Claude 와 안티그래비티를 같이 고르면 agy 도, Claude 와 Copilot 을 같이 고르면 Copilot 도 같은 스킬로 맡긴다.
 
 | 무엇 | 어디에 · 언제 |
 |---|---|
-| 스킬 `claude-background` | Codex 를 골랐으면 `~/.agents/skills/`, 안티그래비티를 골랐으면 `~/.gemini/config/skills/` 에 깐다 |
+| 스킬 `claude-background` | Codex 를 골랐으면 `~/.agents/skills/`, 안티그래비티를 골랐으면 `~/.gemini/config/skills/`, Copilot 을 골랐으면 `~/.copilot/skills/` 에 깐다 |
 | Python | 그 스킬의 래퍼가 `python` 으로 돌아서 개발 도구를 빼도 깐다 |
 
 - `--write` 없이 맡기면 받는 Claude 는 읽기 · 찾기 · 웹 읽기 도구만 보이게 뜨고, MCP 서버 · 스킬 · 훅은 끈다
@@ -851,15 +888,18 @@ Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡�
 | Claude | `~/.claude/CLAUDE.md` 의 경계 표시 줄 사이에 `~/.paisetup` 의 규범을 읽어 오는 가져오기 한 줄이 선다 |
 | Codex | `~/.codex/AGENTS.md` 의 같은 경계 표시 줄 사이에 규범 본문과 룰마다 「이 파일들을 만질 때는 이 룰을 먼저 읽는다」 한 줄이 선다 |
 | 안티그래비티 | `~/.gemini/config/AGENTS.md`(규범을 가리키는 한 줄)와 `~/.gemini/config/rules.json`(룰 폴더를 가리킨다)이 선다 |
+| Copilot | `~/.copilot/copilot-instructions.md` 의 경계 표시 줄 사이에 규범 본문이, `~/.copilot/instructions/` 에 룰마다 `<이름>.instructions.md` 사본이 선다 |
 | 스킬 | 도구마다 제 스킬 자리에 스킬 폴더째 사본으로 선다 |
 
 - 경계 표시 줄 밖에 손수 쓴 글은 그대로 둔다
 - Claude 의 룰은 `~/.claude/rules/` 에 사본으로 깔린다 — 룰이 언제 걸리나가 그 파일 머리에 적혀 있어 가리킬 수 없다. 에이전트는
   설정 저장소가 든 PC 에서만 `~/.claude/agents/` 에 사본으로 깔린다(설치 묶음에는 없다)
-- Codex 는 다른 파일을 끌어오지 못해 규범 본문을 싣는다
+- Codex 는 다른 파일을 끌어오지 못해 규범 본문을 싣는다. Copilot 도 지시 파일 안에서 홈 밖을 가리키는 가져오기를 거절해 본문을 싣는다
+- Copilot 의 룰은 맞는 파일을 볼 때만 실린다 — 룰 머리말의 `paths:` 를 Copilot 이 그대로 읽어, `paths:` 없이 `globs:` 만 든 룰은 늘 실린다.
+  `COPILOT_HOME` 과 상관없이 늘 `~/.copilot/` 에 놓는다
 - 안티그래비티의 두 파일은 옮겨 적은 사본이 아니라 `~/.paisetup` 의 규범 · 룰을 이 PC 홈의 절대 경로로 가리키는 파일이다 —
   데스크탑 앱이 그 꼴만 받는다. 우리가 쓴 꼴이 아닌 같은 이름 파일은 `~/.paisetup/backups/<시각>/` 에 떠 둔다
-- 스킬 자리는 Claude `~/.claude/skills/` · Codex `~/.agents/skills/` · agy `~/.gemini/config/skills/` 다. 설치 묶음의 스킬이 다 가고
+- 스킬 자리는 Claude `~/.claude/skills/` · Codex `~/.agents/skills/` · agy `~/.gemini/config/skills/` · Copilot `~/.copilot/skills/` 다. 설치 묶음의 스킬이 다 가고
   칸 없이 깔리는 스킬의 이름도 고른 제품과 상관없이 든다. 맡기기 스킬만 그 일을 받는 도구의 홈에는 안 가고, 어느 이름이 어느 홈에
   안 가나는 갈 곳 표의 `not` 줄이 든다
 - 그 자리에는 사람이 둔 스킬도 산다. 같은 이름의 폴더가 놓는 프로그램의 기록에 없으면 바이트가 같을 때만 그대로 두고 기록하고,
@@ -874,7 +914,7 @@ Claude 와 안티그래비티를 같이 고르면 agy 도 같은 스킬로 맡�
 
 칸을 끄면 그 도구에서 놓는 프로그램이 놓은 것만 걷는다.
 
-- 걷는 것은 경계 표시 줄 사이 블록(Claude · Codex) · 우리가 쓴 꼴 그대로인 agy 파일 둘 · 기록에 든 룰 · 에이전트 · 스킬 사본이다
+- 걷는 것은 경계 표시 줄 사이 블록(Claude · Codex · Copilot) · 우리가 쓴 꼴 그대로인 agy 파일 둘 · 기록에 든 룰 · 에이전트 · 스킬 사본이다
 - 놓은 그대로면 지우고, 사람이 고쳤으면 `~/.paisetup/backups/<시각>/` 으로 옮긴다. 블록을 걷고 남은 글이 없으면 그 파일을 지운다
 - 경계 밖의 글과 기록에 없는 파일은 안 건드린다
 - 스위치는 이 칸 하나다 — 도구 폴더가 있나는 안 본다

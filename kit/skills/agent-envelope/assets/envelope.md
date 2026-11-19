@@ -5,7 +5,8 @@ envelope — the conversation does not travel with it. Write it in English — t
 envelope only adds one translation; keep paths, names and quoted literal strings verbatim, or the lane cannot find them.)
 
 (Parent, before filling: is this a review? Then this file is not the vehicle — Claude → `/code-review`, Codex and
-Claude runner → `--review` with the git tree as cwd, agy and Copilot → this file. A cross-model review is each
+Claude runner → `--review` with the git tree as cwd, a Copilot session → `/review`, agy and a Copilot launched by our
+runner → this file. A cross-model review is each
 harness's own review feature on the same tree, never one packet folder for every carrier.)
 
 ## Task
@@ -19,6 +20,11 @@ harness's own review feature on the same tree, never one packet folder for every
 - Ours: <the one or two things that make it ours, if the owner named any — else "find one and propose it in the report">
 - Done is judged by: <acceptance lane — whenever anything a person sees or does changes | checks only — nothing a person sees or does changes | the owner's eye on drafts — then drafts come before the engine>
 - Weight: <deep | errand>
+- Review: <yes — run this harness's own review feature on your commits (on your uncommitted diff when rule ③ keeps you from
+  committing) and wait for it in the foreground (a lane that ends its turn with the review still in the background returns
+  without the table), sort every finding with the review-fix skill named under Materials, fix what that ruler says to fix,
+  and commit again where you commit | no — the reason, by rule [Review Triage]. Parent: yes for every lane that edits
+  code; the review is yours after harvest only when the lane's harness has no review feature (the note at the top)>
 - Carrier · model: <e.g. Claude subagent · sonnet | agy | Codex --write>
 
 ## Ownership (writing lanes only — finding and measuring lanes get the goal and the criteria, not a fence)
@@ -36,8 +42,9 @@ harness's own review feature on the same tree, never one packet folder for every
 - Tools you have: <shell · edit · probes — whatever the work needs to test its own claims. A lane without hands reports guesses as findings; what the fence blocks is state change outside ownership, never writing itself>
 - Work directory: <path> — it is the fence; nothing outside it changes
 - Skills to name (the lane gets its rulers only through this envelope): <norm-design when the lane edits norms, rules,
-  skills or memory · check-design when it edits code or checks · borrow-spec-as-pair when it carries another repository's
-  spec here — or "none">
+  skills or memory · check-design when it edits code or checks · the review-fix ruler (the skill this file's last report
+  line names) when it reviews its own commits · borrow-spec-as-pair when it carries another repository's spec here — or
+  "none">
 
 ## Output contract
 - Each finding: `file:line` plus a concrete failure scenario. Both, or it is an impression, not a finding.
@@ -53,6 +60,11 @@ harness's own review feature on the same tree, never one packet folder for every
 - Probes take the tree as an argument; never hardcode a path — the parent re-runs them before and after.
 - Checks you ran: counts, the mutation result (a deliberately wrong specimen went red) and the tree fingerprint (commit or hash). <Parent: if the repository's gate runner stamps the tree, name it here (seed runner: `--run-gates --only <name>`) — a check file called directly leaves no stamp and the push re-measures.>
 
+- Commits you made: hash · subject, oldest first — the parent carries exactly these onto the main checkout. Anything left
+  uncommitted: say what and why. "None — no isolated worktree" when rule ③ kept you from committing.
+- Your review, when the Task block says yes: one table, one row per finding — made by this change or pre-existing · severity ·
+  real path · verdict (fixed in <hash>, or fixed — uncommitted | dropped — the threshold it missed | issue). The parent reads this table instead of
+  your diff. A report sent while the review is still running, or without the table, is not a report.
 - Checks you added, if any: for each, which of the four keep-criteria of check-design §1 it meets. If you verified once without adding a check, say so, with the command and its result.
 - Report in English as your final message. Files a human will open directly: Korean.
 - End every report with the block "What the parent must open with their own eyes" — required, even when it has one row. A
@@ -62,9 +74,10 @@ harness's own review feature on the same tree, never one packet folder for every
   plus anything else the parent should read before accepting. The parent reads this report no
   matter what; a rule kept anywhere else is not open at the moment of harvest.
 - Below that table, print this line verbatim as the report's last line — it is the parent's gauge, carried by the report
-  because nothing else is open at harvest: `Parent — before fixing anything, sort every finding in a table, one row each: made by this change or
-  pre-existing · severity · real path · verdict (fix · issue · drop) — the ruler for the verdict is norm-review-fix; a finding
-  outside ownership is reproduced here first, then handed to the lane that holds that place or to the finder with its ownership
+  because nothing else is open at harvest: `Parent — the lane's review table is its own sorting: re-judge only what it dropped at
+  medium or above. Every finding not yet sorted (a review lane's, or one outside the lane's ownership) you sort before fixing
+  anything, one row each: made by this change or pre-existing · severity · real path · verdict (fix · issue · drop) — the ruler
+  for the verdict is norm-review-fix; a finding outside ownership is reproduced here first, then handed to the lane that holds that place or to the finder with its ownership
   widened (agent-envelope §3) — an issue only when no lane can take it now, with its measuring command (issue-write §4); not
   reproduced → 「확인 안 됨」, never a fact.`
 
@@ -74,7 +87,7 @@ harness's own review feature on the same tree, never one packet folder for every
 ## Lane rules (absolute — paste verbatim)
 ① Edit only what you own — reading anywhere is fine; another lane may be editing next to you. Report defects outside your ownership; do not fix them.
 ② A "could not measure" mark counts as red — never say "done" while one stands.
-③ Never change state through git. The parent commits — leave changes uncommitted in the worktree.
+③ Commit only inside your own isolated git worktree, on its branch, with hooks on — never `--no-verify`. Never push, stash, switch branches, or touch any other tree or branch: what leaves your tree (the main checkout, push, issues) is the parent's. If this envelope gives you no isolated worktree of a single repository (a shared tree, a bare work directory, work spanning two repositories), do not commit — leave your changes uncommitted.
 ④ Never derive expected values from what you measured, and never bless goldens or snapshots — a human approves those. Write why the value must be what it is; if the measurement differs, report it.
 ⑤ Before reporting "absent", run a positive control — first ask whether the specimen really has that shape.
 ⑥ Never run commands that print the environment or the process list (env, printenv, set, ps aux, pgrep -af) — they write secrets into the transcript.

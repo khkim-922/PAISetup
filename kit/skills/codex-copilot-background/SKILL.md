@@ -23,6 +23,9 @@ Copilot 리뷰는 읽기 레인에 봉투로.
   주고, 뒤로 넘어가면 끝난 뒤 `--out` 을 읽는다. 승인 건너뛰기 없이 뜬 헤드리스 agy(`agy -p`)는 이 명령을 자동 거절한다 —
   권한 설정을 고쳐 뚫지 말고 거절됐다고 알리고 멈춘다
 
+- **Copilot 에서는** 끝날 때까지 기다려 `--out` 을 읽는다(agy 와 같다). Copilot 이 부른 러너는 Codex 만 부른다 — Codex 가 한도여도
+  Copilot 으로 넘기지 않고(끝 줄 `caller=copilot`), `--agent copilot` 은 안 띄운다
+
 ## 맡기기 전에 가를 것
 
 - **웹이 드는 조사** — 자리 값 `CC_BG_CODEX_WEB_SEARCH` 가 `disabled` 인 자리의 Codex 는 웹을 못 보니 Claude 서브에이전트나

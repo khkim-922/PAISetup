@@ -1,20 +1,23 @@
-"""레인 작업 트리 거두기 — 레인이 손댄 파일을 본 사본에 복사하고, 본 사본도 그 사이 바꾼 파일은 손에 남긴다.
+"""레인 작업 트리 거두기 — 레인의 커밋은 커밋째 본 사본에 얹고, 커밋 안 한 파일은 복사하며, 본 사본도 그 사이 바꾼 것은 손에 남긴다.
 
     python harvest_worktree.py <트리> [--into <본 사본>] [--merge] [--dry-run] [--remove [--force]]
 
 차례
-  1. 트리의 출발점(본 사본 HEAD 와의 공통 조상)을 잡고, 레인이 손댄 파일을 센다 — 커밋 안 한 것과 출발점 뒤에 커밋한 것
-  2. 본 사본이 그 사이 바꾼 파일을 센다 — 출발점 뒤의 커밋과 지금 작업 사본의 변경
-  3. 본 사본과 레인이 이미 같은 파일은 「같다」로 두고(앞서 거둔 것), 겹치지 않는 파일은 바이트 그대로 복사하고(레인이 지운 것은
-     지운다) 해시로 같음을 본다. 겹친 파일은 손대지 않고 양쪽을 볼 명령을 댄다 — 어떻게 얹나는 사람의 판단이다.
+  1. 트리의 출발점(본 사본 HEAD 와의 공통 조상)을 잡고, 본 사본이 그 사이 바꾼 파일을 센다 — 출발점 뒤의 커밋과 지금 작업 사본의 변경
+  2. 레인이 커밋한 것 가운데 본 사본에 같은 고침이 아직 없는 커밋을 오래된 것부터 본 사본 HEAD 위에 하나씩 얹는다(`git cherry-pick`).
+     못 얹은 커밋(충돌 · 본 사본의 커밋 안 한 변경과 겹침)은 그 얹기를 되물려 본 사본을 얹기 전 꼴로 두고, 거기서 멈춘다 — 종료 1.
+     이미 든 고침은 「같다」로 둔다(두 번째 부름 · 손으로 얹은 뒤)
+  3. 레인이 커밋 안 한 파일 — 본 사본과 이미 같으면 「같다」로 두고, 겹치지 않으면 바이트 그대로 복사하고(레인이 지운 것은 지운다)
+     해시로 같음을 본다. 겹친 파일은 손대지 않고 양쪽을 볼 명령을 댄다 — 어떻게 얹나는 사람의 판단이다.
      `--merge` 면 겹친 파일 가운데 양쪽이 고치기만 한 것을 파일마다 3-way 로 얹는다(`git merge-file` — 출발점 판이 바탕). 충돌이
      난 파일은 표식을 남긴 채 손에 남긴다. 본 사본에 커밋 안 한 변경이 있는 파일과 더하기 · 지우기가 엇갈린 파일은 안 얹는다
   4. 복사한 글 파일에서 충돌 표식(`<<<<<<<` 로 열리고 `=======` · `>>>>>>>` 가 따르는 것)을 찾는다
-  5. `--remove` 면 겹침 · 어긋남 · 표식이 없을 때만 트리와 그 브랜치를 걷는다. 겹친 파일을 손으로 얹은 뒤에는 `--force` 를 같이
+  5. `--remove` 면 못 얹은 커밋 · 겹침 · 어긋남 · 표식이 없을 때만 트리와 그 브랜치를 걷는다. 손으로 얹은 뒤에는 `--force` 를 같이
      준다 — 얹었는지는 기계가 못 가른다. 잠긴 트리(레인이 도는 중)는 `--force` 로도 안 걷고 말한다
-종료 — 0 다 거뒀다 · 1 손에 남은 것이 있다(겹침 · 해시 어긋남 · 충돌 표식 · 잠긴 트리) · 2 못 쟀다(트리가 아니다 · git 이 졌다)
-  · 4 부르는 법이 틀렸다
-패치가 아니라 바이트 복사인 까닭 · 임시 커밋 없이 파일마다 합치는 까닭은 references/DESIGN.md 「거두기」 가 든다.
+종료 — 0 다 거뒀다 · 1 손에 남은 것이 있다(못 얹은 커밋 · 겹침 · 해시 어긋남 · 충돌 표식 · 잠긴 트리) · 2 못 쟀다(트리가 아니다 ·
+  git 이 졌다) · 4 부르는 법이 틀렸다
+안 하는 것 — 레인 가지의 병합 커밋은 안 얹는다 · 본 사본을 밀지 않는다.
+커밋은 커밋째 · 파일은 바이트 복사인 까닭 · 임시 커밋 없이 파일마다 합치는 까닭은 references/DESIGN.md 「거두기」 가 든다.
 """
 import argparse
 import hashlib
@@ -113,22 +116,27 @@ def worktree_changes(repo):
     return out
 
 
-def committed_changes(repo, base, head):
-    """출발점 뒤에 커밋한 변경 — 꼴은 worktree_changes 와 같다."""
-    items = zsplit(git(repo, 'diff', '--name-status', '-z', base, head))
-    out, i = {}, 0
-    while i < len(items):
-        st = items[i][0]
-        if st in 'RC':
-            old, new = items[i + 1], items[i + 2]
-            i += 3
-            if st == 'R':
-                out[old] = 'D'
-            out[new] = 'A'
-            continue
-        out[items[i + 1]] = 'D' if st == 'D' else ('A' if st == 'A' else 'M')
-        i += 2
-    return out
+def lane_commits(main, main_head, tree_head):
+    """레인이 커밋했고 본 사본에 같은 고침이 아직 없는 커밋 — 오래된 것부터. 패치가 같은 커밋(앞서 얹은 것)과 병합 커밋은 뺀다."""
+    return git(main, 'rev-list', '--reverse', '--no-merges', '--cherry-pick', '--right-only', f'{main_head}...{tree_head}').split()
+
+
+def carry(main, commit):
+    """레인 커밋 하나를 본 사본 HEAD 위에 얹는다 — ('carried' | 'same' | 'stuck', 까닭). 못 얹은 얹기는 되물려 본 사본을 얹기 전 꼴로 둔다.
+    'same' 은 얹어 보니 빈 커밋인 것 — 그 고침이 본 사본에 이미 들었다."""
+    p = subprocess.run(['git', '-C', str(main), 'cherry-pick', commit], capture_output=True, env=ENV)
+    if p.returncode == 0:
+        return 'carried', ''
+    why = (p.stderr or p.stdout).decode('utf-8', 'replace').strip().splitlines()
+    why = why[0] if why else 'git cherry-pick 이 졌다'
+    # 되물리는 것은 이 부름이 연 얹기뿐이다 — 본 사본이 다른 얹기 도중이라 시작도 못 했으면 그것은 남의 일이다
+    head = subprocess.run(['git', '-C', str(main), 'rev-parse', '-q', '--verify', 'CHERRY_PICK_HEAD'], capture_output=True, env=ENV)
+    if head.returncode != 0 or head.stdout.decode().strip() != commit:
+        return 'stuck', why
+    staged = subprocess.run(['git', '-C', str(main), 'diff', '--cached', '--quiet'], env=ENV).returncode != 0
+    empty = not staged and not git(main, 'ls-files', '-u').strip()
+    git(main, 'cherry-pick', '--abort')
+    return ('same', '') if empty else ('stuck', why)
 
 
 def main_checkout_of(tree):
@@ -211,16 +219,33 @@ def run(a):
         branch = None
     ahead = git(main, 'rev-list', '--count', f'{base}..{main_head}').strip()
 
-    lane = committed_changes(tree, base, tree_head)
-    lane.update(worktree_changes(tree))
+    lane = worktree_changes(tree)
     moved, moved_dirs = moved_in_main(main, base, main_head)
+    todo = lane_commits(main, main_head, tree_head)
 
     print(f'트리 {tree}' + (f' · 브랜치 {branch}' if branch else ' · 떼어 낸 HEAD') + f' · 출발점 {base[:7]} · 본 사본 {main} HEAD {main_head[:7]}'
-          + (f' (출발점에서 {ahead} 커밋 앞)' if ahead != '0' else ''))
+          + (f' (출발점에서 {ahead} 커밋 앞)' if ahead != '0' else '') + (f' · 얹을 레인 커밋 {len(todo)}' if todo else ''))
     tag = '(dry-run) ' if a.dry_run else ''
-    pending, overlaps, copied = [], [], []
-    if not lane:
-        print('레인이 손댄 파일이 없다')
+    pending, overlaps, copied, stuck, carried = [], [], [], [], 0
+    for n, commit in enumerate(todo):
+        subject = git(main, 'log', '-1', '--format=%h %s', commit).strip()
+        if a.dry_run:
+            print(f'{tag}커밋 얹음  {subject}')
+            continue
+        state, why = carry(main, commit)
+        if state == 'stuck':
+            print(f'✗ 커밋 못 얹음  {subject} — {why}')
+            stuck = todo[n:]
+            break
+        carried += state == 'carried'
+        print(f'커밋 얹음  {subject}' if state == 'carried' else f'같다  {subject} (본 사본에 이미 든 고침이다)')
+    if stuck and not (a.remove and a.force):
+        print(f'남은 것 — 못 얹은 커밋 {len(stuck)}. 이 부름이 연 얹기는 되물렸고 커밋 안 한 파일은 안 옮겼다.\n'
+              f'다음: 그 레인에 이어 물어 제 가지를 본 사본 HEAD({git(main, "rev-parse", "--short", "HEAD").strip()}) 위로 다시 세우게(rebase) 한 뒤 '
+              f'다시 거둔다. 손으로 얹었으면 다시 부른다 — 이미 든 고침은 「같다」로 센다')
+        return 1
+    if not lane and not todo:
+        print('레인이 손댄 것이 없다')
     for path in sorted(lane):
         kind, src, dst = lane[path], tree / path, main / path
         # 이미 거둔 것 — 본 사본과 레인이 같으면 할 일이 없다(두 번째 부름 · 손으로 얹은 뒤의 --remove)
@@ -288,6 +313,8 @@ def run(a):
         elif blockers:
             print(f'걷지 않는다 — 손에 남은 것이 {len(blockers)} 이다' + (' (겹친 파일을 손으로 얹었으면 --force)' if overlaps else ''))
         else:
+            if stuck:
+                print(f'못 얹은 커밋 {len(stuck)} 은 손으로 얹은 것으로 보고 걷는다(--force)')
             if overlaps:
                 print(f'겹침 {len(overlaps)} 은 손으로 얹은 것으로 보고 걷는다(--force)')
             entry = worktree_entry(main, tree)
@@ -315,11 +342,13 @@ def run(a):
         print('dry-run — 아무것도 바꾸지 않았다')
     elif not a.remove:
         print('다 거뒀다 — 트리는 --remove 로 걷는다')
+    if carried:
+        print('다음: 레인들을 다 얹은 뒤 얹은 나무를 한 번 잰다 — 레인의 게이트는 제 트리만 쟀다')
     return 0
 
 
 def main():
-    ap = argparse.ArgumentParser(description='레인 작업 트리의 변경을 본 사본에 복사하고, 본 사본도 그 사이 바꾼 파일은 손에 남긴다')
+    ap = argparse.ArgumentParser(description='레인의 커밋은 커밋째 본 사본에 얹고 커밋 안 한 파일은 복사하며, 본 사본도 그 사이 바꾼 것은 손에 남긴다')
     ap.add_argument('tree', help='레인의 작업 트리(저장소 뿌리)')
     ap.add_argument('--into', help='본 사본 — 없으면 트리가 매인 본 사본')
     ap.add_argument('--merge', action='store_true', help='겹친 파일 가운데 양쪽이 고치기만 한 것을 파일마다 3-way 로 얹는다(git merge-file)')
