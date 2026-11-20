@@ -33,6 +33,8 @@
     "TROUBLESHOOTING.md",
     "UNINSTALL.md",
     // 남의 코드가 들고 온 문서. markdownlint 는 `.gitignore` 를 안 본다
-    "node_modules/**"
+    "node_modules/**",
+    // 코드 그래프(graphify)가 지어 둔 보고서 — 커밋 안 하는 산출물이다
+    "graphify-out/**"
   ]
 }
