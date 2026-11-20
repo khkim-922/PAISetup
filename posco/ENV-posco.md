@@ -279,6 +279,20 @@
   HTTPS 는 TLS 가 아예 안 서고(`WRONG_VERSION_NUMBER`) 평문은 안내 페이지가 온다(2026-10-27 · #215). docs.claude.com ·
   platform.claude.com · anthropic.com 은 열린다. 그 문서가 필요하면 사외에서 `.md` 를 붙여 받는다
   (`https://code.claude.com/docs/en/<쪽>.md`) — 해제 요청은 자주 읽게 되는 날 낸다
+- **chatgpt.com 도 같은 기본정책에 막힌다** — HTTP 200 · `Server: ePrism` · 안내 iframe HTML 이 온다(회사 PC 실측 #302).
+  모델 요청은 루프백 프록시 → 게이트웨이로 가 이 차단과 무관하지만, **Codex VS Code 확장은 사용자 정의 제공자로 써도
+  chatgpt.com 의 ces/v1/rgstr · ces/v1/telemetry/intake · ces/statsc/flush(사용 통계) · /wham/usage(사용량 표시)를 webview 에서
+  직접 부르고, 진 것을 `[error] Error fetching` 으로 몇 초마다 남긴다**(같은 실측). [확장 설정 문서](https://learn.chatgpt.com/codex/developer-settings?surface=ide)
+  에는 이것을 끄는 설정이 없다. **Codex 설정 파일(config.toml)의 `[analytics] enabled = false` 가 그 가운데 ces/* 셋을 끈다** —
+  문서상으로는 Codex 본체의 지표 내보내기를 끄는 키인데(openai/codex [otel/src/config.rs](https://github.com/openai/codex/blob/78f6b113039b6cd6119bc857081d726c8924df9d/codex-rs/otel/src/config.rs)) 확장 화면의 호출에도
+  먹는다: 대화가 도는 동안 ces/v1/rgstr 오류가 1 분에 43 ~ 160 줄이던 것이 키를 넣고 VS Code 를 다시 연 뒤 0 줄이다(회사 PC 실측
+  2026-11-20 · #302). Codex 서버가 뜰 때 읽는 값이라 이미 떠 있던 창에는 안 먹는다. 그래서 회사 Codex 틀(`posco/Codex-CLI.setting.toml`)이
+  이 키를 든다. /wham/usage(3 분에 10 줄 남짓)와 ab.chatgpt.com/v1/initialize(창이 뜰 때 3 줄)는 이 키로 안 꺼지고 끄는 설정도 없다 —
+  같은 증상의 상류 이슈는 [openai/codex#19371](https://github.com/openai/codex/issues/19371)(열림)
+- **Codex 는 게이트웨이의 HTTP 500 을 본문과 상관없이 「We’re currently experiencing high demand…」로 바꿔 보인다**
+  (openai/codex [api_bridge.rs](https://github.com/openai/codex/blob/78f6b113039b6cd6119bc857081d726c8924df9d/codex-rs/codex-api/src/api_bridge.rs) 가 500 을 고정 오류 하나로 · [error.rs](https://github.com/openai/codex/blob/78f6b113039b6cd6119bc857081d726c8924df9d/codex-rs/protocol/src/error.rs) 가 그 오류를 이 문구로).
+  그 문구는 과부하의 증거가 아니고, 어느 층이 졌나(P-GPT 코드)는 루프백 프록시의 `complete …` 줄 오류 칸에만 남는다
+  (`pgpt-proxy/README.md` 「진단」 칸)
 - Git 인증 세팅 완료: `credential.helper=manager` (GCM + OAuth 방식, PAT 불필요, 첫 push 때 브라우저 로그인)
 - Git 신원·기본 브랜치·`core.autocrlf` 는 **세션 훅이 심는다** — 원본은 훅 몸통
   `claude-config/.claude/hooks/session-start-body.sh` 의 개인 칸(`deploy_personal`)이다(`session-start.sh` 는

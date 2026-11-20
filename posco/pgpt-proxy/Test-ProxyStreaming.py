@@ -326,6 +326,24 @@ class StreamingTests(unittest.TestCase):
         self.assertEqual(data, body)
         self.assertIsNone(error)
 
+    def test_upstream_5xx_is_logged_as_failure_with_gateway_code(self):
+        """층: 쓰는 사람의 계약 — 회사에서 모델 요청이 진 층을 가르는 기록. 걷는 조건: Codex 가 500 본문을 사용자에게 보이게 되거나
+        프록시가 오류 응답을 더는 그대로 중계하지 않을 때."""
+        # 게이트웨이의 Responses 오류는 OpenAI 봉투로 온다(errors-Posco.setting.md 「LlmApiExceptionHandler」 · P099 = 500 server_error).
+        # Codex 는 500 본문을 버리고 고정 문구만 보이므로, 그 코드가 남는 자리는 프록시 기록뿐이다 — 그리고 본문을 끝까지 옮겼다고
+        # `result=complete` 로 남기면 실패가 성공으로 세진다.
+        body = json.dumps({"error": {"message": "서버 내부 오류", "type": "server_error", "code": "P099"}},
+                          ensure_ascii=False).encode()
+        status, _, _, error = self.run_case("gw500", [body], path="/v1/responses", fixed=True,
+                                            status=500, content_type="application/json")
+        self.assertEqual(status, 500)
+        self.assertIsNone(error)
+        lines = [line for line in proxy.LOG_PATH.read_text(encoding="utf-8").splitlines()
+                 if " complete " in line and "gw=test-gw500" in line]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("result=http_error", lines[0])
+        self.assertIn('error_code="P099"', lines[0])
+
     def test_unknown_sse_route_does_not_require_model_terminal(self):
         self.assertIsNone(self.run_case("unknown", [b"data: custom\n\n"], path="/custom")[3])
 

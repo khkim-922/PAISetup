@@ -302,7 +302,8 @@ class Want:
 def whole_days(first: date, last: date) -> tuple[datetime, datetime]:
     """하루 종일 일정의 (시작, 끝) — 첫날 서울 0 시부터 끝날 다음 날 0 시까지(UTC)."""
     if last < first:
-        raise CalendarConfigError("하루 종일 일정의 끝날이 첫날보다 앞이다")
+        raise CalendarConfigError(f"하루 종일 일정의 끝날({last})이 첫날({first})보다 앞이다. 다음: --start <첫날> --end <끝날> 차례로 준다 — "
+                                  "하루면 둘을 같게")
     lo = datetime(first.year, first.month, first.day, tzinfo=KST)
     hi = datetime(last.year, last.month, last.day, tzinfo=KST) + timedelta(days=1)
     return lo.astimezone(timezone.utc), hi.astimezone(timezone.utc)
@@ -334,7 +335,7 @@ class Seen:
     def parse(cls, text: str) -> Seen:
         m = cls._HANDLE.match((text or "").strip())
         if not m:
-            raise CalendarConfigError("일정 손잡이의 꼴이 아니다 — 일정을 읽은 답의 handle 을 그대로 준다")
+            raise CalendarConfigError("일정 손잡이의 꼴이 아니다. 다음: show 로 그날을 읽어 그 줄의 handle 을 손대지 않고 준다")
         try:
             day = date.fromisoformat(m.group(4))
         except ValueError as exc:

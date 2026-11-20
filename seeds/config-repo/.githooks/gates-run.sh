@@ -28,7 +28,29 @@
 #              commit-msg 절의 조각은 메시지 파일 경로를 $1 로 받는다
 #              pre-push 절의 조각은 원격 이름 · 주소를 $1 · $2 로 받는다
 #              표준입력은 늘 비어 있다 — 러너가 막는다(아래 고리)
+#              훅이 내보낸 저장소 변수(GIT_DIR · GIT_INDEX_FILE …)는 **없다** — 아래 「git 자리」
 #   나오는 것    0 통과 · 1 어긋남 · **2 못 쟀다**(도구가 없어 이 검사를 못 돌렸다)
+#
+# ── git 자리 ─────────────────────────────────────────────────────────────────
+#   git 은 훅에 저장소 변수를 내보낸다 — 커밋 훅은 GIT_INDEX_FILE · GIT_PREFIX, 연결된 작업 트리에서는 GIT_DIR 까지(절대
+#   경로로). 그 값이 조각과 조각이 띄운 검사에 그대로 가면, 임시 저장소를 짓는 검사의 `git init` · `add` · `commit` 이 임시
+#   자리가 아니라 진짜 저장소의 공유 설정 · 색인 · 가지를 고친다 — 공유 `.git/config` 에 `core.bare = true` 가 서면 그 저장소의
+#   모든 작업 트리에서 git 이 선다. 검사마다 손으로 걷게 두면 잊는 검사 하나가 같은 일을 낸다.
+#   그래서 러너가 걷는다 — 조각은 그 변수 없이 뜨고(`git rev-parse --local-env-vars` 의 이름 · -c 설정 둘은 남긴다 — git 이
+#   다른 저장소로 건널 때와 같다), 조각의 git 은 작업 디렉터리(저장소 뿌리)에서 같은 저장소를 찾는다.
+#   담긴 판은 그대로 읽힌다 —
+#     · 훅이 준 색인이 제 자리의 기본 색인(`$GIT_DIR/index`)이면 걷는 것으로 끝난다. 조각의 git 이 찾아 읽는 것이 같은 파일이다
+#     · 그 밖(`commit -a` · 경로를 댄 커밋 · `-p` — git 이 임시 색인을 지어 GIT_INDEX_FILE 로 준다)은 조각마다 **그 색인의 사본**을
+#       GIT_INDEX_FILE 로 준다. 담긴 판은 같고, 조각 안의 검사가 그 색인에 써도 진짜 커밋의 색인은 그대로다
+#   ⚠ **진짜 저장소의 변수를 손에 쥔 조각은 없다** — 받는 쪽 목록을 따로 두지 않는 까닭: 조각 거의 다가 담긴 판을 읽어(문의
+#     `git diff --cached`) 목록이 곧 전부가 되고, 그러면 걷는 것이 아무것도 안 지킨다. 담긴 판은 위 둘로 다 닿는다.
+#   ⚠ **못 세우면 조각을 안 띄우고 「못 쟀다」다** — git 이 걷을 이름을 못 대거나 색인 사본을 못 뜨면, 사본 없는 조각은 커밋 전
+#     색인을 재 그 문이 조용히 초록이 된다. 띄우지 않고 까닭을 말한다
+#   ⚠ git 자리를 환경으로 정한 커밋(`--git-dir` · `--work-tree`)은 다루지 않는다 — 걷은 조각이 제 자리에서 그 저장소를 못 찾는다.
+#     그렇게 커밋하는 자리가 없다
+#   ⚠ 러너 자신(바뀐 경로 묻기)은 훅의 변수 그대로 git 을 부른다 — 임시 저장소를 짓지 않는다
+#   ⚠ 변수를 걷는 것은 `scripts/check-gate-gatekeeper.sh` ㉑ 이 미끼 저장소에서 잰다 — 걷지 않는 러너로 공유 설정의 `core.bare` 가
+#     뒤집히는 꼴을 되살려 빨개지나까지. 색인 사본은 영구 검사가 없다
 #
 # ⚠ **2 를 어긋남으로 안 센다.** 재는 자가 없는 기계에서 무관한 커밋까지 막으면
 #   `--no-verify` 가 습관이 되고, 그러면 게이트가 없는 것만 못해진다.
@@ -217,6 +239,48 @@ _gates_judge() {
     esac
 }
 
+# _gates_gitenv — 조각에 물릴 git 자리를 정한다(뜻은 머리말 「git 자리」). 0 = 섰다 · 1 = 못 세웠다(까닭은 _gwhy).
+#   둔다: _gunset — 조각 앞에서 걷을 이름들 · _gidx — 조각마다 사본을 떠 줄 색인(빈 값 = 조각이 제 자리에서 찾는 색인이 곧 담긴 판이다).
+_gates_gitenv() {
+    _gunset=''; _gidx=''; _gwhy=''
+    # 걷을 이름은 git 이 댄다 — 손으로 적은 목록은 git 이 이름을 더하는 날 조용히 낡는다
+    _ge_out="$(git rev-parse --local-env-vars 2>/dev/null)" ||
+        { _gwhy='훅의 git 자리를 못 물었다(git rev-parse --local-env-vars)'; return 1; }
+    while IFS= read -r _ge_l; do
+        case "$_ge_l" in
+            # -c 설정은 저장소를 가리키지 않는다 — git 도 다른 저장소로 건널 때 이 둘만 남긴다
+            GIT_CONFIG_PARAMETERS|GIT_CONFIG_COUNT) ;;
+            GIT_*[!A-Z0-9_]*) _gwhy="git 이 낸 저장소 변수 이름을 못 읽었다($_ge_l)"; return 1 ;;
+            GIT_?*) _gunset="$_gunset $_ge_l" ;;
+            *) _gwhy="git 이 낸 저장소 변수 이름을 못 읽었다($_ge_l)"; return 1 ;;
+        esac
+    done <<EOF
+$_ge_out
+EOF
+    # 색인 — 훅이 준 것이 제 자리의 기본 색인이면 걷는 것으로 끝난다(조각의 git 이 찾아 읽는 것이 같은 파일이다). 그 밖
+    #   (`commit -a` · 경로를 댄 커밋 · `-p` — git 이 임시 색인을 지어 준다)은 조각마다 사본을 떠 준다.
+    case "${GIT_INDEX_FILE-}" in
+        '' | "${GIT_DIR:-.git}/index") ;;
+        /* | [A-Za-z]:[/\\]*) _gidx=$GIT_INDEX_FILE ;;
+        *) _gidx="$PWD/$GIT_INDEX_FILE" ;;
+    esac
+    return 0
+}
+
+# _gates_piece <자리 번호> <조각 파일> [인자…] — 조각을 띄운다. **하위 셸에서만 부른다** — 변수를 걷고 그 자리를 조각으로 갈아 끼운다.
+#   색인 사본을 못 뜨면 조각을 안 띄우고 「못 쟀다」(2)로 끝난다 — 사본 없이 띄우면 조각은 담긴 판이 아니라 커밋 전 색인을 잰다.
+_gates_piece() {
+    _gp=$1; shift
+    # shellcheck disable=SC2086 # 이름 목록을 낱말로 가른다
+    unset $_gunset
+    if [ -n "$_gidx" ]; then
+        { [ -n "$_tmpd" ] && cp "$_gidx" "$_tmpd/$_gp.idx"; } 2>/dev/null ||
+            { printf '· 담긴 판의 색인 사본을 못 떠(%s) 이 조각을 안 띄웠다 — 못 쟀다.\n' "$_gidx" >&2; exit 2; }
+        GIT_INDEX_FILE="$_tmpd/$_gp.idx"; export GIT_INDEX_FILE
+    fi
+    exec sh "$@"
+}
+
 # _gates_times — 돈 조각마다의 시간과 꼬리 한 줄을 낸다. 읽는 것: _gn_n · _gnm_<i> · _gtm_<i> · _gw0 · _gjobs_used.
 _gates_times() {
     [ "$_ran" -gt 0 ] && [ -n "$_gw0" ] || return 0
@@ -355,6 +419,17 @@ EOF
 $_list
 EOF
 
+    # 조각에 물릴 git 자리 — 뜻은 머리말 「git 자리」. 못 세우면 띄울 조각을 하나도 안 띄우고 「못 쟀다」에 올린다.
+    _gunset=''; _gidx=''; _gwhy=''
+    if [ "$_nrun" -gt 0 ] && ! _gates_gitenv; then
+        _gi=0
+        while [ "$_gi" -lt "$_gn_n" ]; do
+            _gi=$((_gi + 1))
+            eval "[ \"\$_gst_$_gi\" != run ] || _gst_$_gi=nogit"
+        done
+        _nrun=0
+    fi
+
     # 같이 띄우나 — 수 · 셸 · 시계 · 띄울 조각이 둘 이상인가.
     _jobs=${GATES_JOBS:-$_GATES_JOBS_DEFAULT}
     case "$_jobs" in ''|*[!0-9]*|0) _jobs=$_GATES_JOBS_DEFAULT ;; esac
@@ -386,7 +461,7 @@ EOF
                 if [ -n "$_sh" ]; then _gates_msg_shadow "$_g" >"$_o"; else : >"$_o"; fi
                 _gates_now; eval "_gt0_$_next=\$_gn"
                 # ⚠ **표준입력을 막는다** — 조각이 입력을 읽어도 러너의 것을 못 먹는다.
-                sh "$_f" "$@" </dev/null >>"$_o" 2>&1 &
+                _gates_piece "$_next" "$_f" "$@" </dev/null >>"$_o" 2>&1 &
                 _pidmap="$_pidmap$!:$_next "
                 _running=$((_running + 1)); _next=$((_next + 1))
             done
@@ -437,6 +512,7 @@ EOF
             case "$_st" in
                 skip) continue ;;
                 gone) _gates_msg_gone "$_g" >&2; _cant="$_cant $_g"; continue ;;
+                nogit) _cant="$_cant $_g"; continue ;;
             esac
             [ -z "$_sh" ] || _gates_msg_shadow "$_g" >&2
             _ran=$((_ran + 1))
@@ -445,13 +521,13 @@ EOF
             #   입력(pre-push 의 참조 목록 따위)을 못 먹게 한다.
             #   출력은 받아 뒀다가 낸다 — 빨간 조각의 까닭을 끝에서 한 번 더 내려면 들고 있어야 한다. 받을 자리가 없으면 곧장 낸다.
             if [ -n "$_tmpd" ]; then
-                sh "$_f" "$@" </dev/null >"$_tmpd/$_gi.out" 2>&1
+                ( _gates_piece "$_gi" "$_f" "$@" ) </dev/null >"$_tmpd/$_gi.out" 2>&1
                 _rc=$?
                 _gates_now
                 _gates_replay "$_tmpd/$_gi.out"
                 _at=$_gi
             else
-                sh "$_f" "$@" </dev/null
+                ( _gates_piece "$_gi" "$_f" "$@" ) </dev/null
                 _rc=$?
                 _gates_now
                 _at=''
@@ -466,6 +542,7 @@ EOF
     #   도구는 있는데 못 잰 자리에서 그 문장이 거짓이 된다.
     [ -z "$_skip" ] || printf '· 안 돌렸다 %s개 — 바뀐 경로가 지키는 자리([when]) 밖이다:%s\n' "$_nskip" "$_skip" >&2
     [ -z "$_plan" ] || printf '· %s\n' "$_plan" >&2
+    [ -z "$_gwhy" ] || printf '· 조각을 안 띄웠다 — %s\n' "$_gwhy" >&2
     [ -z "$_cant" ] || printf '· 못 쟀다:%s — 위 까닭을 본다. 초록은 여기까지다.\n' "$_cant" >&2
     [ "$_ran" -gt 0 ] || [ -n "$_cant" ] || [ -n "$_skip" ] || [ -n "$_retired" ] ||
         printf '· [%s] 절에 켜진 조각이 없다 — 이 단계는 아무것도 안 잰다.\n' "$_stage" >&2

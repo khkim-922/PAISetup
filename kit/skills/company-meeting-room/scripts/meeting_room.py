@@ -39,7 +39,6 @@ day · preview 의 was · 넣기 · 고치기의 답)에만 선다.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import pathlib
 import re
@@ -54,8 +53,8 @@ if str(EP_LOGIN_SCRIPTS) not in sys.path:
 try:
     import ep_command
     import ep_session
-    from ep_command import (DAY_COUNT, DAY_WORDS, EXIT_ARGS, EXIT_OK, EXIT_SESSION, EXIT_TOOL, OUT_BYTES, SEOUL as KST, STAMP_HELP, WEEKDAYS, Stop, date_of, day_of, gaps_of,
-                            load, size, stamp, stamp_of as kst)   # 시각의 꼴은 일정 손과 한 벌 — 일정의 show --free 답을 free · preview 가 받는다
+    from ep_command import (DAY_HELP, EXIT_ARGS, EXIT_OK, EXIT_SESSION, EXIT_TOOL, OUT_BYTES, SEOUL as KST, STAMP_HELP, WEEKDAYS, Change, NotYet,
+                            Start, Stop, day_of, gaps_of, given, load, size, stamp, stamp_of as kst)   # 시각의 꼴은 일정 손과 한 벌 — 일정의 show --free 답을 free · preview 가 받는다
 except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 답의 꼴(JSON 하나 · 종료 1)은 지킨다
     print(json.dumps({"error": "tool", "message": f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"}, ensure_ascii=False))
     sys.exit(1)
@@ -65,7 +64,6 @@ MOST_ROOMS = 60                           # rooms 답에 싣는 회의실 수 �
 MOST_FREE = 40                            # free 답에 싣는 빈 회의실 수
 MOST_GRID = 30                            # day 답에 싣는 회의실 수 — 한 회의실의 그날 예약이 한 묶음이다
 MOST_CANDIDATES = 15                      # 회의실이 여럿 걸릴 때 message 에 보이는 후보 수
-KEY_LENGTH = 16                           # 열쇠(보인 판의 해시)의 길이 — 16진 글자
 LIVE = ("confirmed", "pending_approval")  # 회의실을 쥔 예약의 상태 — cancelled · rejected 는 비운 것이다
 STATUS_WORDS = {"confirmed": "확정", "pending_approval": "승인 대기", "cancelled": "취소됨", "rejected": "거절됨"}
 INDENT = 1
@@ -81,39 +79,7 @@ SCREEN = "https://mrs.posco.net/scheduler"   # 사람이 쓰는 회의실 예약
 UNMEASURED = "회사에서 안 쟀다"             # 지은 손가락 가운데 회사에서 그 판을 아직 안 잰 자리의 표시 — --help 와 preview 의 notes 가 같은 말을 쓴다
 
 
-# ── 손가락의 표 — 출발 × 바꿀 것 × 끝. 손가락을 더하거나 빼는 일은 이 표의 줄과 그 일을 하는 손 하나다 ─────────────────
-@dataclass(frozen=True)
-class Start:
-    """출발 하나 — 예약 앱의 창 하나."""
-    word: str        # 사람 말
-    screen: str      # 그 창이 무엇을 채우나 — --help 의 지도
-    takes: str = ""  # 그 출발을 고르는 인자 — 빈 글자면 아무것도 안 주면 이 출발이다
-
-    @property
-    def dest(self) -> str:
-        return self.takes.lstrip("-").replace("-", "_")
-
-
-@dataclass(frozen=True)
-class Change:
-    """바꿀 것 하나 — 손가락 하나."""
-    flags: tuple             # ((인자, argparse 의 덧값), …)
-    starts: tuple            # 받는 출발
-    word: str                # 사람 말 — 「 — 」 앞이 이름이다
-    elsewhere: str = ""      # 받지 않는 출발에서 그 일을 어디서 하나 — 명령이 멈추며 댄다
-    need: tuple = ()         # 이 손가락이 꼭 드는 출발
-    unmeasured: tuple = ()   # 받되 회사에서 그 판을 아직 안 잰 출발 — --help 가 표시하고 preview 가 notes 로 알린다
-
-
-@dataclass(frozen=True)
-class NotYet:
-    """아직 없는 손가락 하나 — 회사에서 안 잰 화면 동작이라 짓지 않았다. 인자가 있으면 받아 두었다가 세션 전에 멈추며 어디서 하나를 댄다."""
-    word: str                # 무엇을 못 하나
-    where: str               # 사람이 어디서 하나
-    flags: tuple = ()        # ((인자, argparse 의 덧값), …) — 모델이 짐작해 줄 만한 인자. 비면 --help 의 지도에만 선다
-    again: str = ""          # 거듭 주면 이 손가락을 바란 것으로 읽는 바꿀 것(CHANGES 의 열쇠 · 그 인자는 Again 으로 받는다)
-
-
+# ── 손가락의 표 — 출발 × 바꿀 것 × 끝. 손가락을 더하거나 빼는 일은 이 표의 줄과 그 일을 하는 손 하나다(칸의 꼴은 ep_command) ──────
 class Again(argparse.Action):
     """한 번만 받는 칸 — 거듭 주면 ``<dest>_again`` 을 세워 거름이 멈추게 한다. argparse 기본은 뒤 값만 남겨 앞 값을 말없이 버린다."""
 
@@ -205,10 +171,12 @@ EXITS = ep_command.exit_legend((EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION),
 # 바꾸는 명령의 끝 — 낱말 하나가 뜻 하나다(형제 스킬 company-calendar 의 같은 낱말과도 같은 뜻)
 STATE_WORDS = {
     "booked": "예약했습니다(내 예약에서 다시 읽어 확인했습니다). 참석자께는 회의 안내가 회사 메일로 갑니다 — 조금 걸릴 수 있습니다. "
+              "회사 일정의 Teams 일정함에도 「[회의실 예약] 제목」 줄이 저절로 든다 — 일정 손으로 따로 넣거나 확인하지 않는다. "
               "다음: 이 줄의 id · key 를 들고 있다가 「방금 것 취소 · 시간 바꿔 줘」에 쓴다",
     "pending": "넣었지만 이 회의실은 승인이 필요해 「승인 대기」입니다 — 승인되면 확정됩니다",
     "updated": "고쳤습니다(다시 읽어 확인했습니다). 참석자께는 바뀐 안내가 갑니다",
-    "cancelled": "취소했습니다(내 예약에서 사라진 것을 확인했습니다). 참석자께는 취소 안내가 갑니다",
+    "cancelled": "취소했습니다(내 예약에서 사라진 것을 확인했습니다). 참석자께는 취소 안내가 갑니다. 회사 일정의 Teams 일정함의 "
+                 "「[회의실 예약]」 줄도 함께 사라진다 — 일정 손으로 따로 지우거나 확인하지 않는다",
     "gone": "내 예약에 그 예약이 없습니다 — 이미 취소됐거나 id 가 틀렸습니다. 다음: mine 으로 내 예약을 읽어 보인다",
     "refused": "여기서는 하지 않습니다 — 답의 reason 에 맞는 말을 그대로 전한다",
     "moved": "보여 드린 뒤 그 사이에 바뀐 것이 있어 하지 않았습니다. 다음: 답의 preview · booking(지금 판)을 보이고 다시 묻는다",
@@ -227,78 +195,59 @@ REFUSE_WORDS = {
 
 
 # ── 표에서 짓는 것 — 지도 · 인자 거르기 ────────────────────────────────────────────────────────────
+def common_steps() -> str:
+    """맨 위 --help 의 머리 — 자주 쓰는 길을 그대로 칠 수 있는 꼴로, 그리고 오늘과 날짜 표. 요일로 말한 날을 모델이 고르는 자리다."""
+    return "\n".join([
+        f"회의실 예약 — 보기 · 넣기 · 고치기 · 본떠 넣기 · 취소. {ep_command.today_word()}", "",
+        "자주 쓰는 길 — 그대로 쳐서 쓴다(<…> 만 갈아 끼운다)",
+        "  비는 회의실   free --start \"<날> HH:MM\" --end \"<날> HH:MM\" [--where <건물 · 층>] [--people <인원>] [--favorites]",
+        "  잡기          preview --room <free 의 id> --title <제목> --start … --end … --people-file <people.json>  →  book …같은 값… --confirm <key>",
+        "  옮기기        mine 의 id → preview --id <id> --start \"<날> HH:MM\"  →  change …같은 값… --confirm <key>",
+        "  더하고 빼기   preview --id <id> --add-to <메일> --drop-to <메일>  →  change …같은 값… --confirm <key>",
+        "  취소          cancel --id <id> --confirm <mine 의 그 줄 key>",
+        f"  날은 {DAY_HELP} · 시각은 \"<날> HH:MM\"(「내일 15:00」) — 답의 when 으로 사람이 바로잡게 보인다",
+        f"  요일로 말한 날은 어느 날인지 정해 날짜로 준다(손이 고르지 않는다) — 날짜 표: {ep_command.weeks_word(datetime.now(ep_command.SEOUL).date())}",
+        "  넣은 · 취소한 예약은 회사 일정의 Teams 일정함에 저절로 서고 사라진다 — 일정 손으로 따로 넣거나 확인하지 않는다"])
+
+
 def finger_map() -> str:
     """--help 의 지도 — 표 넷에서 짓는다."""
     names = list(STARTS)
     lines = ["지도 — 출발 하나 × 바꿀 것 아무 조합 × 끝 하나. 한 번 부름이 예약 한 건을 한 번 다룬다", "", "출발"]
     lines += [f"  {k:<8} {s.takes + ' <id>' if s.takes else '(인자 없음)':<12} {s.word} — {s.screen}" for k, s in STARTS.items()]
     lines += ["", f"바꿀 것 (● 꼭 든다 · ○ 받는다 · △ 받되 {UNMEASURED} · — 없다)"]
-    elsewhere: dict[str, list[str]] = {}
-    for c in CHANGES.values():
-        marks = " ".join(f"{k}{'●' if k in c.need else '△' if k in c.unmeasured else '○' if k in c.starts else '—'}" for k in names)
-        lines.append(f"  {' · '.join(f for f, _ in c.flags):<28} {marks}   {c.word}")
-        if c.elsewhere:
-            elsewhere.setdefault(c.elsewhere, []).append(c.flags[0][0])
-    lines += [f"  — 의 자리({' · '.join(flags)}): {text}" for text, flags in elsewhere.items()]
-    lines += [f"  △ 의 자리({c.flags[0][0]} · {' · '.join(c.unmeasured)}): 그 판은 {UNMEASURED} — preview 의 notes 로 사람에게 알리고, 고친 뒤 "
-              f"다시 읽어 그대로 섰는지 본다" for c in CHANGES.values() if c.unmeasured]
+    lines += ep_command.change_lines(CHANGES, names, 28, f"그 판은 {UNMEASURED} — preview 의 notes 로 사람에게 알리고, 고친 뒤 "
+                                                         "다시 읽어 그대로 섰는지 본다")
     lines += ["", "끝 (⚠ 참석자에게 회사 메일로 안내가 가고 되돌릴 수 없다 — 사람이 그 한 건을 보고 「네」 한 뒤에만)"]
     lines += [f"  {k:<7} 출발 {' · '.join(e.starts):<12} {e.word} — 열쇠: {e.key}" + ("" if e.changes else " · 바꿀 것은 안 받는다")
               for k, e in ENDS.items()]
     lines += ["", "읽기"] + [f"  {k:<6} {w}" for k, w in READS.items()]
     lines += ["", "아직 없는 손가락 (인자를 주면 세션 전에 사람이 어디서 하나를 대며 종료 2 로 멈춘다)"]
-    lines += [f"  {not_yet_flags(n):<14} {n.word} — {n.where}" for n in NOT_YET.values()]
+    lines += ep_command.not_yet_lines(NOT_YET, CHANGES, 14)
     return "\n".join(lines)
-
-
-def not_yet_flags(n: NotYet) -> str:
-    """아직 없는 손가락을 부르는 인자 — --help 의 지도에 보인다."""
-    if n.again:
-        return f"{CHANGES[n.again].flags[0][0]} 거듭"
-    return " · ".join(f for f, _ in n.flags)
-
-
-def dest(flag: str) -> str:
-    """인자의 argparse 이름 — ``--add-to`` → ``add_to``."""
-    return flag.lstrip("-").replace("-", "_")
-
-
-def given(args, change: Change) -> bool:
-    return any(getattr(args, dest(f), None) is not None for f, _ in change.flags)
 
 
 def fingers(args) -> str:
     """부른 명령의 출발을 고르고 표에 대 본다 — 아직 없는 손가락 · 출발에 없는 끝 · 손가락, 빠진 값은 그 일을 어디서 하는지 대며
     Stop(인자). 출발을 낸다."""
-    for n in NOT_YET.values():
-        asked = any(getattr(args, dest(f), None) is not None for f, _ in n.flags)
-        if asked or (n.again and getattr(args, f"{dest(CHANGES[n.again].flags[0][0])}_again", False)):
-            raise Stop(EXIT_ARGS, "args", f"「{n.word}」 손가락은 아직 없다. 다음: {n.where}")
-    picked = [k for k, s in STARTS.items() if s.takes and getattr(args, s.dest, None) is not None]
-    if len(picked) > 1:
-        raise Stop(EXIT_ARGS, "args", f"출발은 하나다 — {' · '.join(STARTS[k].takes for k in picked)} 가운데 하나만 준다")
-    start = picked[0] if picked else next(k for k, s in STARTS.items() if not s.takes)
+    ep_command.refuse_not_yet(args, NOT_YET, CHANGES)
+    start = ep_command.pick_start(args, STARTS)
     word = STARTS[start].word
     ends = [k for k, e in ENDS.items() if start in e.starts]
     end = args.command if args.command != "preview" else next(k for k in ends if ENDS[k].changes)
     if start not in ENDS[end].starts:
         raise Stop(EXIT_ARGS, "args", f"「{word}」에서는 {end}({ENDS[end].word})를 못 한다 — 이 출발의 끝: {' · '.join(ends)}. "
                                       f"다음: 출발을 바꾸거나({' · '.join(s.takes or k for k, s in STARTS.items())}) 끝을 바꾼다")
-    for c in CHANGES.values():
-        if given(args, c) and start not in c.starts:
-            raise Stop(EXIT_ARGS, "args", f"「{word}」에는 「{c.word.split(' — ')[0]}」 손가락이 없다. 다음: {c.elsewhere}")
-        if given(args, c) and not ENDS[end].changes:
-            raise Stop(EXIT_ARGS, "args", f"{end}({ENDS[end].word})는 바꿀 것을 안 받는다. 다음: 고치려면 change 로 부른다")
-    missing = [c.flags[0][0] for c in CHANGES.values() if start in c.need and not given(args, c)]
-    if missing:
-        raise Stop(EXIT_ARGS, "args", f"「{word}」에는 {' · '.join(missing)} 가 든다")
+    ep_command.refuse_foreign(args, CHANGES, start, word)
+    if not ENDS[end].changes and any(given(args, c) for c in CHANGES.values()):
+        raise Stop(EXIT_ARGS, "args", f"{end}({ENDS[end].word})는 바꿀 것을 안 받는다. 다음: 고치려면 change 로 부른다")
+    ep_command.refuse_missing(args, CHANGES, start, word)
     return start
 
 
 def fingerprint(*parts) -> str:
-    """보인 판의 열쇠 — 사람이 본 것과 바꿀 때의 판(값 · 겹침 · 출발 예약의 꼴)이 같은지 가린다."""
-    blob = json.dumps(parts, ensure_ascii=False, sort_keys=True, default=str)
-    return hashlib.sha256(blob.encode()).hexdigest()[:KEY_LENGTH]
+    """보인 판의 열쇠 — 사람이 본 것과 바꿀 때의 판(값 · 겹침 · 출발 예약의 꼴)이 같은지 가린다(``ep_command.fingerprint``)."""
+    return ep_command.fingerprint(list(parts))
 
 
 # ── 시각 ────────────────────────────────────────────────────────────────
@@ -445,8 +394,11 @@ def workdays(first: date, last: date) -> list:
 
 
 def until_day(text: str) -> date:
-    """``--until`` 의 날 — 꼴이 틀리면 Stop(인자)."""
-    return date_of(text, "--until 은")
+    """``--until`` 의 날 — 날 말 · 요일 말 · YYYY-MM-DD(``day_of``). 꼴이 틀리면 Stop(인자)."""
+    try:
+        return day_of(text, datetime.now(KST).date())
+    except Stop as exc:
+        raise Stop(EXIT_ARGS, "args", f"--until 은 반복의 끝 날이다 — {exc}") from exc
 
 
 def series_took(app, rid: str, body: dict) -> bool:
@@ -520,7 +472,7 @@ def addresses(values, files) -> list[str]:
     for f in files or ():
         path = pathlib.Path(f).expanduser()
         if not path.is_file():
-            raise Stop(EXIT_ARGS, "args", f"주소 파일이 없다: {path}")
+            raise Stop(EXIT_ARGS, "args", f"주소 파일이 없다: {path}. 다음: 스킬 company-mail 의 who --out 이 끝 줄에 댄 파일 경로를 그대로 준다")
         chunks += [line.split("#", 1)[0] for line in path.read_text(encoding="utf-8-sig").splitlines()]
     out, seen = [], set()
     for chunk in chunks:
@@ -679,9 +631,9 @@ def plan(app, args, me: dict, now: datetime, start: str) -> dict:
     note = args.note if args.note is not None else (base or {}).get("user_description", "")
     attendees, blocks, notes = attendees_plan(args, start, base, me, Directory(app))
     if not title:
-        blocks.append("제목이 비었다")
+        blocks.append("제목이 비었다 — --title 로 준다")
     if e <= s:
-        blocks.append("끝이 시작보다 앞이다")
+        blocks.append(f"끝({stamp(e)})이 시작({stamp(s)})보다 앞이거나 같다 — 끝을 시작 뒤로 준다(있던 예약 · 본뜨기에 시작만 주면 길이를 둔다)")
     if s < now and start != "series":
         blocks.append("지난 시각이다 — 회의실 예약 앱은 지난 시각도 받지만 여기서는 넣지 않는다")
     if start == "series" and any(parse_app(x["start_time"]) < now for x in rows):
@@ -790,16 +742,17 @@ def free_span(args) -> tuple[datetime, datetime]:
     """free 의 --start · --end — 꼴이 아니거나 끝이 시작보다 앞이면 Stop(인자). 세션 없이 가린다."""
     start, end = kst(args.start), kst(args.end)
     if end <= start:
-        raise Stop(EXIT_ARGS, "args", "끝이 시작보다 앞이다")
+        raise Stop(EXIT_ARGS, "args", f"--end({stamp(end)})가 --start({stamp(start)})보다 앞이거나 같다. 다음: 끝을 시작 뒤로 준다 — "
+                                      "사람이 끝을 안 말했으면 지어 넣지 말고 묻는다")
     return start, end
 
 
 def asked_day(text, today: date) -> date:
-    """사람이 준 날 하나 — ``day_of`` 에 요일 · 「다음 주」를 어떻게 줄지를 덧붙여 Stop(인자)."""
+    """사람이 준 날 하나 — ``day_of`` 의 멈춤(받는 꼴 · 요일 말이면 날짜 표)을 이 손의 Stop(인자)으로 낸다."""
     try:
         return day_of(text, today)
     except Stop as exc:
-        raise Stop(EXIT_ARGS, "args", f"{exc}. 다음: {DAY_COUNT}") from exc
+        raise Stop(EXIT_ARGS, "args", str(exc)) from exc
 
 
 def mine_days(args, today: date) -> tuple[date, date]:
@@ -807,18 +760,22 @@ def mine_days(args, today: date) -> tuple[date, date]:
     first = asked_day(args.first, today)
     last = asked_day(args.last, today) if args.last else first + timedelta(days=MINE_DAYS)
     if last < first:
-        raise Stop(EXIT_ARGS, "args", f"끝날({last})이 첫날({first})보다 앞이다 — mine <첫날> <끝날> 차례로 준다")
+        raise Stop(EXIT_ARGS, "args", f"끝날({last})이 첫날({first})보다 앞이다. 다음: mine <첫날> <끝날> 차례로 준다")
     return first, last
 
 
-def favorites_only(app, args, rooms: list) -> list:
-    """``--favorites`` 면 즐겨찾는 회의실만 — 즐겨찾기가 비었으면 Stop(인자)."""
+NO_FAVORITES = "즐겨찾는 회의실이 없어 모든 회의실에서 찾았다 — 즐겨찾기는 사람이 바라면 pref --favorite <회의실> 로 넣는다"
+
+
+def favorites_only(app, args, rooms: list) -> tuple[list, str]:
+    """``--favorites`` 면 즐겨찾는 회의실만 — (회의실들, 사람에게 할 말). 즐겨찾기가 비었으면 모든 회의실에서 찾고 그렇다고 말한다 —
+    「늘 쓰던 회의실」 은 즐겨찾기가 없는 사람에게도 나오는 말이라, 멈추면 같은 찾기를 한 번 더 부르게 된다."""
     if not getattr(args, "favorites", False):
-        return rooms
+        return rooms, ""
     fav = set(app.prefs().get("favorite_rooms") or [])
     if not fav:
-        raise Stop(EXIT_ARGS, "args", "즐겨찾는 회의실이 없다. 다음: --favorites 없이 부르거나 pref --favorite <회의실> 로 넣는다")
-    return [r for r in rooms if r["id"] in fav]
+        return rooms, NO_FAVORITES
+    return [r for r in rooms if r["id"] in fav], ""
 
 
 # ── 내 설정 바꾸기 ────────────────────────────────────────────────────────
@@ -827,7 +784,8 @@ def pref(app, args) -> dict:
     보인 뒤 설정이 바뀌었으면 ``moved`` 로 안 바꾼다. 바꾼 뒤는 앱이 낸 설정 전체에서 섰나를 가린다."""
     picked = [k for k in PREF_ACTIONS if getattr(args, k, None) is not None]
     if len(picked) != 1:
-        raise Stop(EXIT_ARGS, "args", f"pref 는 하나씩 한다 — {' · '.join(f for f, _ in PREF_ACTIONS.values())} 가운데 하나")
+        raise Stop(EXIT_ARGS, "args", f"pref 는 하나씩 한다. 다음: {' · '.join(f for f, _ in PREF_ACTIONS.values())} 가운데 하나만 주어 "
+                                      "부르고, 다음 것은 따로 부른다")
     action, value = picked[0], getattr(args, picked[0])
     prefs, book = app.prefs(), Directory(app)
     if action in ("favorite", "unfavorite"):
@@ -848,12 +806,12 @@ def pref(app, args) -> dict:
     elif action == "save_group":
         from_people, no_mail = people_addresses(args.people_file)
         if no_mail:
-            raise Stop(EXIT_ARGS, "args", "사람 파일에 메일 주소가 없는 분이 있다: " + ", ".join(no_mail) + " — 주소록으로 그분을 다시 찾는다")
+            raise Stop(EXIT_ARGS, "args", "사람 파일에 메일 주소가 없는 분이 있다: " + ", ".join(no_mail) + ". 다음: 주소록으로 그분을 다시 찾거나 사람에게 주소를 받아 --to 로 준다")
         got, lost = book.resolve(addresses([*(args.to or ()), *from_people], args.to_file))
         if lost:
-            raise Stop(EXIT_ARGS, "args", "회의실 예약 앱의 사람 목록에 없는 주소: " + ", ".join(lost) + f" — {UNKNOWN_NEXT}")
+            raise Stop(EXIT_ARGS, "args", "회의실 예약 앱의 사람 목록에 없는 주소: " + ", ".join(lost) + f". 다음: {UNKNOWN_NEXT}")
         if not got:
-            raise Stop(EXIT_ARGS, "args", f"그룹에 넣을 사람을 --to · --to-file · {ep_command.PEOPLE_FLAG} 로 준다")
+            raise Stop(EXIT_ARGS, "args", f"그룹에 넣을 사람이 없다. 다음: --to · --to-file · {ep_command.PEOPLE_FLAG} 로 준다")
         old = next((g for g in prefs.get("attendee_groups") or [] if g.get("name") == value), None)
         body = {"name": value, "members": [{"employee_id": a["employee_id"], "email": a["email"]} for a in got]}
         view = {"do": "참석자 그룹 고치기" if old else "참석자 그룹 짓기",
@@ -900,14 +858,18 @@ def read(app, args, now: datetime) -> dict:
                 "groups": [group_row(g, book) for g in prefs.get("attendee_groups") or []]}
     if args.command == "rooms":
         places = Places(app.hierarchy())
-        got = [room_row(r, places) for r in favorites_only(app, args, find_rooms(app.rooms(), places, args.word))]
-        return {"count": len(got), "rooms": got[:MOST_ROOMS], "cut": len(got) > MOST_ROOMS}
+        picked, note = favorites_only(app, args, find_rooms(app.rooms(), places, args.word))
+        got = [room_row(r, places) for r in picked]
+        out = {"count": len(got), "rooms": got[:MOST_ROOMS], "cut": len(got) > MOST_ROOMS}
+        if note:
+            out["note"] = note
+        return out
     me = app.me()
     if args.command == "free":
         start, end = free_span(args)
         places = Places(app.hierarchy())
-        cand = [r for r in favorites_only(app, args, find_rooms(app.rooms(), places, args.where))
-                if room_row(r, places)["bookable"] and not cross_company(r, places, me)
+        picked, note = favorites_only(app, args, find_rooms(app.rooms(), places, args.where))
+        cand = [r for r in picked if room_row(r, places)["bookable"] and not cross_company(r, places, me)
                 and (not args.people or (r.get("capacity") or 0) >= args.people)]
         booked = [x for x in app.between(utc(start), utc(end)) if live(x) and overlaps(x, start, end)]
         if not args.minutes:
@@ -925,6 +887,11 @@ def read(app, args, now: datetime) -> dict:
             rows.sort(key=lambda x: (x["gaps"][0]["start"], x["name"]))
             out = {"within": when(start, end), "minutes": args.minutes, "count": len(rows), "rooms": rows[:MOST_FREE],
                    "cut": len(rows) > MOST_FREE}
+        if note:
+            out["note"] = note
+        if not out["count"]:             # 없다로 끝내지 않고 넓힐 길을 댄다 — 비는 곳을 짓지 않는다
+            out["word"] = (f"그 구간 안에 {args.minutes} 분 넘게 비는 회의실이 없다. 다음: 구간을 넓히거나 --where 를 넓혀 다시 본다" if args.minutes else
+                           "그 시각 내내 빈 회의실이 없다. 다음: --minutes <분> 을 더해 그 구간 안에서 비는 때를 보거나 --where 를 넓혀 다시 본다")
         fit(out, "rooms", lambda x: x["id"], lambda _: "다음: 뒤의 회의실은 안 실었다 — --where 낱말을 좁혀 다시 부른다")
         return out
     if args.command == "day":
@@ -1065,24 +1032,23 @@ def run(args, session: pathlib.Path) -> dict:
 
 def parser() -> argparse.ArgumentParser:
     raw = argparse.RawDescriptionHelpFormatter
-    p = argparse.ArgumentParser(description="회의실 예약 — 보기 · 넣기 · 고치기 · 본떠 넣기 · 취소", epilog=f"{finger_map()}\n\n{EXITS}",
-                                formatter_class=raw)
+    p = argparse.ArgumentParser(description=common_steps(), epilog=f"{finger_map()}\n\n{EXITS}", formatter_class=raw)
     sub = p.add_subparsers(dest="command", required=True)
     r = sub.add_parser("rooms", help=READS["rooms"])
     r.add_argument("word", nargs="*", help="이름 · 지역 · 건물 · 층의 일부(빈칸으로 여럿)")
-    r.add_argument("--favorites", action="store_true", help="즐겨찾는 회의실만")
+    r.add_argument("--favorites", action="store_true", help="즐겨찾는 회의실만(즐겨찾기가 없으면 전부에서 찾고 note 로 말한다)")
     f = sub.add_parser("free", help=READS["free"])
     f.add_argument("--start", required=True, help=STAMP_HELP)
     f.add_argument("--end", required=True, help=STAMP_HELP)
     f.add_argument("--minutes", type=int, help="이만큼 넘게 비는 때를 그 구간 안에서 찾는다")
     f.add_argument("--where", nargs="*", help="지역 · 건물 · 층 · 이름의 일부")
     f.add_argument("--people", type=int, help="주관자 포함 인원 — 정원이 이보다 작은 곳은 뺀다")
-    f.add_argument("--favorites", action="store_true", help="즐겨찾는 회의실만")
+    f.add_argument("--favorites", action="store_true", help="즐겨찾는 회의실만(즐겨찾기가 없으면 전부에서 찾고 note 로 말한다)")
     d = sub.add_parser("day", help=READS["day"])
     d.add_argument("words", nargs="*", help="지역 · 건물 · 층 · 이름의 일부(다 든 회의실들)")
-    d.add_argument("--date", help=f"{' · '.join(DAY_WORDS)} · YYYY-MM-DD(기본 오늘). {DAY_COUNT}")
+    d.add_argument("--date", help=f"{DAY_HELP}(기본 오늘)")
     m = sub.add_parser("mine", help=READS["mine"])
-    m.add_argument("first", nargs="?", metavar="첫날", help=f"{' · '.join(DAY_WORDS)} · YYYY-MM-DD(기본 오늘). {DAY_COUNT}")
+    m.add_argument("first", nargs="?", metavar="첫날", help=f"{DAY_HELP}(기본 오늘)")
     m.add_argument("last", nargs="?", metavar="끝날", help=f"첫날과 같은 꼴 — 주면 첫날부터 그날까지(둘 다 든다), 안 주면 첫날부터 {MINE_DAYS} 날")
     sub.add_parser("prefs", help=READS["prefs"])
     pr = sub.add_parser("pref", help="⚠ 내 설정 하나 바꾸기 — --confirm 없이 부르면 미리 보기 · key, 그 key 로 다시 부르면 바꾼다")

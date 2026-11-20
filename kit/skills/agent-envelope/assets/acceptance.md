@@ -2,8 +2,9 @@
 
 (For the parent: this lane sits in the owner's seat. It gets the finished form and the running product, nothing else.
 Do not paste the build lane's envelope, report or diff here, and do not name the files that changed — a judge who knows
-where the work was done looks there and nowhere else. The lane reports in English; the parent carries findings back to
-the build lane and brings the next build back here until PASS.)
+where the work was done looks there and nowhere else. The lane reports in English. It runs once: the parent sorts the
+findings, carries the ones to fix back to the build lane, and confirms each fix with its own eyes — a judge asked again finds
+something again. Launch it a second time only when the fix changed much of what the person sees, or the owner asks.)
 
 ## What finished looks like
 - Finished form: <the same one or two lines the build lanes got, verbatim — what the person sees and does when the whole

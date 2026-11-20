@@ -649,7 +649,7 @@ def login_flags(p: argparse.ArgumentParser, on: str, off: str) -> None:
     pair = p.add_mutually_exclusive_group()
     pair.add_argument(on, dest="brief_login", action="store_const", const=True, default=None,
                       help="그날 첫 보고 시각의 보고 앞에 한 번 스스로 로그인한다(사내 세션이 살아 있어도 · 뒤 시각은 안 한다) — 입력 없이 넘는 통합 인증으로만(VDI 는 안 선다). "
-                           "평소 Edge 에 로그인 탭이 하나 열리고 ep-login 창이 떠 있게 되며, 평소 Edge · 다른 자리에서 열어 둔 메일과 EP "
+                           "평소 Edge 에 EP 포털 탭이 없으면 하나 열리고 ep-login 창이 떠 있게 되며, 평소 Edge · 다른 자리에서 열어 둔 메일과 EP "
                            "포털은 다시 로그인해야 할 수 있다")
     pair.add_argument(off, dest="brief_login", action="store_const", const=False, help="스스로 로그인을 끈다 — 사내 세션이 설 때까지 기다린다")
 

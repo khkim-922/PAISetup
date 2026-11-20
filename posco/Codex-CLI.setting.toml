@@ -39,3 +39,7 @@ supports_standalone_web_search = true
 # 사내는 `unelevated` — `elevated` 는 회사 로그온 정책에 막혀(`CreateProcessWithLogonW` 1385) 셸이 통째로 안 선다(결정 0127 사내 샌드박스 더함)
 [windows]
 sandbox = "unelevated"
+
+# 회사망은 chatgpt.com 을 막아, 켜 두면 확장이 사용 통계(ces/*)를 못 보낸 오류를 대화 내내 쌓는다 — 끄면 그 줄이 0 이다(회사 PC 실측 · claude-config #302)
+[analytics]
+enabled = false

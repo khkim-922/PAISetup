@@ -392,7 +392,8 @@ class SentEntry:
 @dataclass(frozen=True)
 class Found:
     """검색이 낸 한 줄. ``folder`` 는 검색 손이 준 폴더 이름(``[...]`` 를 벗긴 것 · 받은편지함 · 임시보관함 · 휴지통은 빈 글자 ·
-    보낸편지함은 ``SENT_FOLDER``), ``draft`` 는 임시 저장된 메일이다. 시각은 검색 손이 준 글자 그대로(UTC)다."""
+    보낸편지함은 ``SENT_FOLDER``), ``draft`` 는 임시 저장된 메일이다. 시각은 검색 손이 준 글자 그대로(UTC)다. ``sender_eng`` 는
+    보낸 사람 칸의 ``-ENG-`` 뒤(영문 이름) — 없으면 빈 글자다."""
     unid: str
     subject: str
     sender: str
@@ -401,6 +402,7 @@ class Found:
     attached: bool
     unread: bool
     draft: bool
+    sender_eng: str = ""
 
 
 @dataclass(frozen=True)
@@ -1705,10 +1707,12 @@ def _found(row: dict) -> Found:
     folder = category[1:-1] if category.startswith("[") and category.endswith("]") else category
     folder = SEARCH_SYSTEM_BOXES.get(folder, folder)
     who = str(row.get("from") or "")
+    ko, _, eng = who.partition(ENG_MARK)
     return Found(unid=str(row.get("unid") or "").upper(), subject=one_line(html.unescape(str(row.get("subject") or ""))),
-                 sender=who.split(ENG_MARK, 1)[0].strip() or who.strip(), date=str(row.get("date") or ""),
+                 sender=ko.strip() or who.strip(), date=str(row.get("date") or ""),
                  folder=folder, attached=str(row.get("attach") or "") == "T",
-                 unread=UNREAD_MARK in str(row.get("icon") or ""), draft=str(row.get("isdraft") or "") == "Y")
+                 unread=UNREAD_MARK in str(row.get("icon") or ""), draft=str(row.get("isdraft") or "") == "Y",
+                 sender_eng=eng.split(SPLIT_MARK, 1)[0].strip())
 
 
 def _entry(entry: ET.Element, *, folder: str = "") -> Entry:

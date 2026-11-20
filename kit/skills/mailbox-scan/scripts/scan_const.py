@@ -111,6 +111,9 @@ BRIEF_WINDOW = ("scripts", "window.py")  # 보고 창을 짓고 띄우는 손 �
 BRIEF_TICKS = ("scripts", "ticks.py")    # 보고 창에서 누르신 것을 거두는 손 — 띄운 보고가 업무 파악보다 먼저 부르고, 판은 그 창에서 고르신
                                          # 보고 시각만 묻는다(`--times` · 열린 창이 없으면 아무것도 안 연다)
 BRIEF_TIMES_TIMEOUT_S = 20               # 판이 보고 창의 시각을 묻는 손 한 번의 시한 — 그 손은 이 PC 의 디버깅 포트만 짧게 부른다
+BRIEF_PRESSES_WITHIN_S = 360             # 판이 보고 창의 「일정에 넣기」 누름을 거두는 데 쓰는 시간 — 그 손은 이 안에 일정 손의 시한이 다 드는 넣기만
+                                         # 시작하고 남은 누름은 다음 판에 둔다. 판 전체의 시한(TASK_TIME_LIMIT_MIN)을 넘기지 않게 짧게 둔다
+BRIEF_PRESSES_TIMEOUT_S = BRIEF_PRESSES_WITHIN_S + 60   # 그 손 한 번의 시한 — 넣기 도중에 끊으면 들었는지 모르는 끝이 남아 넉넉히 둔다
 # 그 손을 띄우기 전에 로그인 Edge 의 디버깅 포트가 받나만 본다 — 이름과 기본값의 원본은 스킬 daily-brief 의 `window.py`(EDGE_HOST ·
 # EDGE_PORT_DEFAULT · 환경변수 EDGE_DEBUG_PORT · 쉼표로 여럿이면 첫 것). 서로의 코드를 안 실어 옮겨 든다 — 바꾸면 함께 바꾼다
 EDGE_HOST = "127.0.0.1"
@@ -119,6 +122,8 @@ EDGE_PORT_DEFAULT = 9222
 EDGE_PROBE_S = 0.5
 CALENDAR_SKILL = "company-calendar"      # 회사 메일 손과 같은 스킬 뿌리에 나란히 선다
 CALENDAR_SCRIPT = ("scripts", "company_calendar.py")
+MEETING_SKILL = "company-meeting-room"   # 회의실 예약 손 — 같은 스킬 뿌리에 선다. 보고의 회의 한 장이 내 예약을 읽는다
+MEETING_SCRIPT = ("scripts", "meeting_room.py")
 CLAUDE_NAMES = ("claude.exe", "claude")  # PATH 에서 찾는 차례 — 네이티브 판이 먼저, 없으면 npm 판의 claude.cmd(PATHEXT 가 붙인다)
 CLAUDE_TOOLS = "Bash,Read,Glob,Grep"     # 사람 없는 실행에 남기는 기본 도구 — 쓰기 · 고치기 · 웹 · 스킬 · 하위 에이전트 · PowerShell 은 아예 없다.
                                          # 업무 파일은 아래 쓰는 손(열린 명령)으로만 쓴다 — 파일 도구를 주면 그 손의 절 지킴을 건너뛴다
@@ -128,20 +133,36 @@ WORK_FILE = "work.md"                    # 업무 파일 — 사용자 폴더에
 LANE_FILE = "lane.md"                    # 업무 파악 · 일일 보고 스킬의 걸음을 든 글 — 사람 없는 보고는 맡길 곳이 없어 그 글대로 한다(SKILL.md 는
                                          # 맡기는 쪽의 글이다)
 NESTED_ENV = ("CLAUDECODE",)             # 대화 안에서 부른 판(run --now)이 띄울 때 걷는 변수 — 있으면 claude 가 겹친 세션이라며 안 뜬다
+# 띄운 보고의 표 — 요청이 루프백 프록시를 지날 때만 그 claude 의 모든 요청에 머리 하나를 싣는다. 프록시는 그 대화를 도구 결과를
+# 기다릴 때만 데우고, 답하고 끝난 보고에는 데우기를 안 버린다 — 머리가 없으면 사람의 메인 대화로 보여 끝난 뒤에도 데워진다.
+# 빌린 곳 — 이 저장소 스킬 claude-background 의 claude_bg.py `child_env` · `RUNNER_HEADER`(31aa5f11 판)와 agent-envelope 의
+# runner_common.py `loopback_proxy`. 손으로 따라간다 — 머리 이름은 프록시(posco/pgpt-proxy/opus5_proxy.py)의 `RUNNER_HEADER` 와 같아야 한다.
+# 값만 다르다(그쪽은 claude-background) — 프록시는 값을 안 가린다
+CUSTOM_HEADERS_ENV = "ANTHROPIC_CUSTOM_HEADERS"
+RUNNER_HEADER = "x-agent-runner"
+RUNNER_HEADER_VALUE = "mailbox-scan"
+BASE_URL_ENV = "ANTHROPIC_BASE_URL"
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 # 손의 읽는 명령 — 사람 없는 보고에 여는 것(손 mail.py 머리말 「어떻게 부르나」 · company_calendar.py 머리말). 권한 규칙의 꼴 그대로다 —
 # 끝의 「 *」는 그 뒤에 무엇이 와도(인자 · `2>&1`) 되고 명령만 써도 된다. 「;」 · 「&&」 · 「|」로 이은 다른 명령은 따로 대어 막힌다
 MAIL_READS = ("session *", "folders *", "rules *", "list *", "read *", "read-many *", "summary *", "search *", "who *")
 # session 은 보고 창의 메일함 주소를, folders · rules 는 업무 파악이 폴더 · 규칙을(스캔이 낡았을 때), who 는 사용자 · 윗분을 짐작하는 주소록 ·
 # 조직도를 받는다(업무 파악 스킬의 「읽는 법」 · first-understanding.md). who 의 `--out` 은 아래에서 막는다 — 준 자리에 아무 파일이나 쓴다
-CALENDAR_READS = ("show *", "calendars *")
+CALENDAR_READS = ("show *", "calendars *", "event *", "preview *")
+# event 는 회의 한 장의 참석자 · 곳 · Teams 를, preview 는 「일정에 없는 약속」 카드의 값과 열쇠를 받는다(일정을 안 바꾼다 — 넣기는 사람이 카드를
+# 누른 뒤 일일 보고의 넣는 손이 그 열쇠로 한다)
+MEETING_READS = ("mine *",)              # 회의 한 장이 그 시각에 내 회의실 예약이 있나를 본다(손 meeting_room.py 머리말)
 # 막는 명령 — 사용자 설정의 allow 가 함께 실려도 막을 자리다(deny 가 어느 allow 보다 앞선다): 손의 바꾸는 · 내보내는 · 파일을 쓰는
 # 명령, EP 로그인 · 문서함 스킬, 밖으로 나가거나 무엇이든 돌리는 프로그램, MCP.
 # ⚠ 열린 명령의 깃발이 파일을 쓰면(`read --images` · `who --out`) 열린 꼴에 맞으므로 여기서 따로 막는다
+# ⚠ 일정 손의 바꾸는 명령은 스크립트 이름 바로 뒤의 자리로만 막는다 — 열린 `preview` 는 메일에서 온 제목 · 곳을 인자로 받아, 글자만 보면
+#   「credit · address」 가 든 미리 보기가 막혀 그 약속의 카드가 말없이 안 선다
 BRIEF_DENY = ("Bash(*mail.py* draft *)", "Bash(*mail.py*send-draft*)", "Bash(*mail.py*apply-*)",
               "Bash(*mail.py*preview-*)", "Bash(*mail.py*attachment*)", "Bash(*mail.py*--out*)",
               "Bash(*mail.py*--images*)",
-              "Bash(*company_calendar.py*add*)", "Bash(*company_calendar.py*delete*)", "Bash(*company_calendar.py*preview*)",
-              "Bash(*company_calendar.py*edit*)", "Bash(*company_calendar.py*remember*)",
+              *(f"Bash(*company_calendar.py{q} {c}*)" for c in ("add", "delete", "edit", "remember") for q in ('"', "")),
+              "Bash(*meeting_room.py*book*)", "Bash(*meeting_room.py*change*)", "Bash(*meeting_room.py*cancel*)",
+              "Bash(*meeting_room.py*preview*)", "Bash(*meeting_room.py*pref*)",
               "Bash(*ep-login/scripts*)", "Bash(*edge_session.js*)", "Bash(*ep_login.js*)", "Bash(*company-ecm/scripts*)",
               "Bash(gh *)", "Bash(git *)", "Bash(curl *)", "Bash(wget *)", "Bash(node *)", "Bash(npx *)", "Bash(powershell*)",
               "Bash(pwsh*)", "Bash(cmd*)", "Bash(claude*)", "Bash(schtasks*)", "mcp__*")

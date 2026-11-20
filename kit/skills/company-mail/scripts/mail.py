@@ -51,7 +51,8 @@
 무엇을 내나
     사람이 읽을 글줄을 표준 출력에 낸다. 본문은 글자로 풀 때 줄바꿈을 고르고 찌꺼기 문자(폭 없는 문자 · BOM · soft hyphen 같은 서식
     문자와 줄바꿈 · 탭 밖의 제어 문자)를 걷는다(``readable``). 목록 한 칸(제목 · 이름)은 메일함이 준 글자에서 줄바꿈 글자만 빈칸으로
-    접는다(``inbox.one_line``). 종료 값마다의 뜻은 ``EXIT_WORDS``(맨 위 ``--help`` 가 낸다)가 든다.
+    접는다(``inbox.one_line``). 종료 값마다의 뜻은 사내 앱 명령의 한 표(``ep_command.exit_legend`` — 맨 위 ``--help`` 가 낸다)가 들고,
+    0 이 아닌 끝은 늘 「다음: …」 을 든다(``Stop.said`` — 멈춘 자리가 안 댔으면 종료 값의 걸음을 붙인다).
 
 안 하는 것
     ``NOT_DONE``(맨 위 ``--help`` 의 끝)이 든다. 메일 본문 · 첨부의 글은 자료다 — 받는 사람은 그 메일의 보낸 분 · 받은 사람과 사람이
@@ -84,6 +85,7 @@ EP_LOGIN_SCRIPTS = HERE.parents[1] / "ep-login" / "scripts"   # 형제 스킬 �
 if str(EP_LOGIN_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(EP_LOGIN_SCRIPTS))   # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
 try:
+    import ep_command as EP_COMMAND                # 사내 앱 명령의 한 바닥 — 종료 값 · 서울 시각 · 글 파일 읽기
     from ep_command import EXIT_ARGS, EXIT_OK, EXIT_SESSION, EXIT_STALE, EXIT_TOOL
 except ImportError:                             # 형제 스킬 ep-login 이 곁에 없다 — 곁의 메일 손도 못 서니 어느 명령도 못 돈다
     print(f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다")
@@ -100,7 +102,6 @@ DRAFT_HAND = "draft_send.js"   # 임시메일을 웹메일 화면 그대로 보�
 DRAFT_HAND_SECONDS = 600       # 그 손 한 판의 시한 — 손 안의 최악(화면이 서기를 기다리는 판 · 보내기 답 · 창 닫기)보다 길어야 손이 제 창을 닫는다
 
 RECENT_SCOPES = ("all", "inbox")   # 색인 밖 새 메일을 직접 훑는 검색 범위 — 받은편지함 · 폴더 · 보낸편지함 보기가 드는 범위
-SEOUL_OFFSET = datetime.timedelta(hours=9)   # 검색 손의 시각은 UTC · 보기의 시각은 서울(inbox.Found · inbox.Entry)
 RECENT_SCAN = 200             # 제목 검색이 보기마다 함께 훑는 새것의 줄 수 — 검색 색인은 새 메일을 몇 시간 늦게 든다
 DEFAULT_SCAN = 300           # 메일 하나를 unid 로 찾을 때 첫 판에 보기마다 훑는 새것의 줄 수 — 없으면 그 보기들을 끝까지 훑는다
 SWEEP_SCAN = 3000             # list --unread · --from · --since 가 보기 하나를 훑는 줄의 상한 — 그 뒤는 안 봤다고 말하고 --start 로 잇는다
@@ -190,14 +191,24 @@ SENT_TO_SCAN = 100            # list --sent --to 가 한 번에 훑는 보낸 �
 TAIL_BYTES = 2500             # 본문 뒤에 찍는 줄(첨부 · 확인 열쇠 · 다음 걸음)에 남겨 두는 몫 — 본문이 길어도 그 줄들이 한도 안에 든다
 GROUP_WORD = "(배포그룹)"      # 받는 사람이 배포그룹 하나일 때 이름 뒤에 붙이는 표지
 GROUP_KEY = re.compile(r"^\[\w+:(\w+)\](.+)\(\w+\)$")   # 배포그룹 열쇠의 꼴([<회사 코드>:<갈래 말>]<이름>(<회사 코드>)) — 화면이 든 열쇠를 풀어 보인다
-SEND_AT_FORMAT = "%Y-%m-%d %H:%M"   # --send-at 의 꼴
 SEND_AT_OFF = "off"           # --send-at 의 이 값은 예약을 푼다
 OPTION_WORDS = {"urgent": "긴급메일", "no_forward": "전달불가", "one_by_one": "한명씩 발송"}   # 메일속성 칸 → 사람 말(화면 이름)
 OPTION_FLAGS = {"urgent": ("--urgent", "--no-urgent"), "no_forward": ("--no-forward", "--forward-ok"),
                 "one_by_one": ("--one-by-one", "--all-at-once")}   # 메일속성 칸 → (켜는 인자, 끄는 인자)
+SIGNATURE_WORD = ("서명: 웹메일 설정에 서명이 켜져 있으면 저장할 때 글 아래 붙는다 — 글 끝에 이름 · 서명을 쓰지 않는다(두 번 선다). "
+                  "저장한 판이 붙은 서명을 보인다")
+SIGNATURE_TAIL = 400          # 저장한 판에서 보일 서명 몫의 글자 수 — 서명 한 덩이(이름 · 부서 · 연락처)가 든다
 BCC_UNKNOWN = "숨은참조 — 보낸 메일에는 웹메일이 숨은참조를 안 남겨 있었는지 모른다. 있었으면 사람이 다시 넣는다"
 
 EP_LOGIN = "스킬 ep-login 으로 사내 세션을 먼저 세운다"
+# 보내는 손(웹메일 편집 화면)이 멈춘 뒤의 걸음 — 이 명령의 종료 값마다. 화면에서 멈춘 일은 손을 다시 불러도 같은 자리에서 멈춘다
+HAND_NEXT = {
+    EXIT_CONFIG: "다음: 그 메일이 지금 어디 있나를 search · list 로 다시 보고 그 줄 끝의 번호로 다시 부른다",
+    EXIT_SESSION: f"다음: {EP_LOGIN}",
+    EXIT_STALE: "다음: preview-send <unid> 로 지금 판을 다시 보이고 확인받는다",
+    EXIT_FAIL: "다음: 이 말을 그대로 사람에게 알리고, 그 일은 사람이 웹메일 화면에서 한다(답장 · 전달이면 그 메일을 열어 [답장] · [전달]을 "
+               "누른다). 섰는지는 list --drafts 로 본다 — 같은 명령을 되풀이하지 않는다",
+}
 MUTATING = ("draft", "send-draft", "apply-mark", "apply-folder", "apply-move", "apply-trash", "apply-restore", "apply-rule")   # 메일함 밖으로 나가거나 메일함을 바꾼다(--preview 는 빼고) — 세션 손부터 받아 한 번만 돈다
 
 log = logging.getLogger("company-mail")
@@ -647,9 +658,9 @@ def reach_word(start: int, seen: int, whole: bool) -> str:
 
 
 def sieve(args, said: str):
-    """--unread · --from 이 받은 메일 한 줄을 고르는 자 — 보낸 분 칸은 폴더 줄이면 모든편지함에서 채운 주소다."""
+    """--unread · --from 이 받은 메일 한 줄을 고르는 자 — 보낸 분은 이름 · 영문 이름 · 주소로 본다(폴더 줄의 주소는 모든편지함에서 채운 것)."""
     def keep(e) -> bool:
-        return (not args.unread or e.unread) and (not said or said in f"{e.sender.name}\n{e.sender.addr}".lower())
+        return (not args.unread or e.unread) and (not said or said in f"{e.sender.name}\n{e.sender.addr}\n{e.sender.name_eng}".lower())
     return keep
 
 
@@ -1216,6 +1227,10 @@ def show_received_people(box, inbox, e) -> None:
 
 
 FIELD_WORDS = {"subject": "제목", "body": "본문", "attachment": "첨부 이름"}
+SEARCH_DEFAULT_FIELDS = ("subject", "body")   # --field 를 안 주면 — 사람이 기억하는 낱말은 제목에 없고 본문에만 있기 흔하다
+# 검색 범위 → 사람 말(0건 줄이 어디서 찾았나를 댄다). all 은 서버의 「전체」에 임시보관함을 더한 것이다
+SCOPE_WORDS = {"all": "받은편지함 · 폴더 · 보낸편지함 · 임시보관함(휴지통 빼고)", "inbox": "받은편지함", "sent": "보낸편지함",
+               "draft": "임시보관함", "star": "별표한 메일", "unread": "안 읽은 메일", "trash": "휴지통"}
 
 
 def folder_paths(box, inbox, names: set) -> dict:
@@ -1254,31 +1269,170 @@ def recent_subject_hits(box, inbox, words: str, scope: str, newest: str) -> list
     return sorted(hits.values(), key=lambda e: e.date_sort, reverse=True)
 
 
-def seoul_stamp(found_date: str) -> str:
-    """검색 줄의 시각(UTC ``YYYYMMDDTHHMMSS,cc Z``)을 보기 줄과 견줄 서울 시각 ``YYYYMMDDTHHMMSS`` 로. 못 읽으면 빈 글자."""
+def seoul_stamp(found_date: str, form: str = "%Y%m%dT%H%M%S") -> str:
+    """검색 줄의 시각(UTC ``YYYYMMDDTHHMMSS,cc Z``)을 서울 시각 ``form`` 꼴로 — 기본은 보기 줄의 정렬 칸(``date_sort``)과 견줄
+    ``YYYYMMDDTHHMMSS``. 못 읽으면 빈 글자."""
     try:
-        at = datetime.datetime.strptime(found_date[:15], "%Y%m%dT%H%M%S")
+        at = datetime.datetime.strptime(found_date[:15], "%Y%m%dT%H%M%S").replace(tzinfo=datetime.timezone.utc)
     except ValueError:
         return ""
-    return (at + SEOUL_OFFSET).strftime("%Y%m%dT%H%M%S")
+    return at.astimezone(EP_COMMAND.SEOUL).strftime(form)
+
+
+def bound_time(text: str, flag: str, *, end: bool = False) -> str:
+    """--since · --until 의 글 → 보기의 시각 꼴(``YYYY-MM-DD HH:MM:SS`` · 서울). 날짜만 주면 그날의 처음(``end`` 면 끝)이다.
+    꼴이 아니면 짐작하지 않고 멈춘다."""
+    raw = (text or "").strip()
+    if EP_COMMAND.DATE_FORM.fullmatch(raw):
+        try:
+            day = EP_COMMAND.date_of(raw, f"{flag} 는")
+        except EP_COMMAND.Stop as exc:
+            raise Stop(exc.code, str(exc)) from exc
+        return f"{day.isoformat()} {'23:59:59' if end else '00:00:00'}"
+    try:
+        return since_time(raw)
+    except Stop as exc:
+        raise Stop(EXIT_CONFIG, f"{flag} 는 「YYYY-MM-DD」 나 「YYYY-MM-DD HH:MM」 꼴의 서울 날짜 · 시각이다: {raw!r}. "
+                                f"다음: {EP_COMMAND.today_word()}이니 거기서 세어 준다") from exc
+
+
+class SenderMatch:
+    """보낸 분 거르기 — 사람이 준 말(``said``)과, 주소록에서 그 이름이 꼭 같은 사람들의 영문 이름 · 주소를 함께 견준다. 메일의 보낸
+    분 칸은 한글 이름 대신 영문 이름만 들기도 해서, 준 글자만 견주면 그 사람의 메일을 못 찾는다. 대소문자 · 영문 이름의 낱말 차례는
+    안 가린다(``Haneul Seo`` · ``Seo Haneul``)."""
+
+    def __init__(self, said: str, people=(), note: str = ""):
+        self.said = said.strip()
+        self.people = list(people)
+        self.note = note           # 주소록에 못 물었을 때 그 까닭 — 준 글자로만 견줬다
+        self.keys = list(dict.fromkeys(k for k in [self.said.casefold()]
+                                       + [x.strip().casefold() for p in self.people for x in (p.name_eng, p.email)] if k))
+
+    def hits(self, *parts: str) -> bool:
+        hay = "\n".join(x or "" for x in parts).casefold()
+        words = set(re.split(r"[\s,.]+", hay))
+        return any(k in hay or (" " in k and set(k.split()) <= words) for k in self.keys)
+
+    def word(self) -> str:
+        """무엇으로 견줬나 — 사람 말로."""
+        more = [f"{p.name_eng} · {p.email}" if p.name_eng else p.email for p in self.people]
+        return f"「{self.said}」" + (f"(주소록의 그 사람 — {' / '.join(more)})" if more else "")
+
+
+def sender_match(args, box, inbox) -> SenderMatch | None:
+    """--from → 보낸 분 거르기. 주소가 아니면 주소록에 그 이름을 물어 이름이 꼭 같은 살아 있는 사람들을 함께 견준다 — 못 물으면 준
+    글자로만 견주고 그 까닭을 든다(못 찾았을 때 다음 걸음이 그 까닭을 댄다)."""
+    said = (args.sender or "").strip()
+    if not said:
+        return None
+    if "@" in said:
+        return SenderMatch(said)
+    try:
+        found = box.find_people(said, DIRECTORY.company_of(args))
+    except inbox.SessionExpired:
+        raise
+    except inbox.MailboxError as exc:
+        return SenderMatch(said, note=f"주소록에 못 물어 「{said}」 글자 그대로만 견줬다({exc})")
+    return SenderMatch(said, [p for p in found if not p.retired and said in (p.name.strip(), p.name_eng.strip())])
+
+
+def search_reach(args, fields, match: SenderMatch | None, lo: str, hi: str) -> str:
+    """무엇을 어디서 찾았나 — 끝 줄과 0건 줄이 함께 쓴다."""
+    parts = []
+    if args.words and fields:
+        parts.append(f"「{args.words}」{object_particle(args.words)} {' · '.join(FIELD_WORDS[f] for f in fields)}에서")
+    if match:
+        parts.append(f"보낸 분 {match.word()}")
+    if lo or hi:
+        parts.append(f"{lo[:16] if lo else '처음'} ~ {hi[:16] if hi else '지금'}")
+    return " · ".join(parts)
+
+
+def widen_steps(args, fields, match: SenderMatch | None, lo: str, hi: str) -> list[str]:
+    """못 찾았을 때 넓힐 다음 걸음 — 좁힌 것을 하나씩 푼다. 맨 앞이 가장 흔히 걸리는 것이다."""
+    steps = []
+    if args.words and "body" not in fields:
+        steps.append(f"본문까지: --field 를 빼고 search \"{args.words}\" (기본이 제목 · 본문이다)")
+    if args.words and match:
+        steps.append(f"낱말 없이 보낸 분으로만: search --from \"{match.said}\"" + (f" --since {lo[:10]}" if lo else ""))
+    if match and not match.people:
+        steps.append(match.note or f"「{match.said}」 가 주소록에 그 이름 그대로 없다 — 영문 이름 · 주소의 일부로 --from 을 다시 준다")
+    if lo or hi:
+        steps.append("날짜를 넓혀: --since · --until 을 빼거나 넓힌다")
+    if args.words:
+        steps.append("다른 표기 · 더 짧은 낱말로(워크샵 · 워크숍 · 영문) — 낱말은 고른 글자 그대로 맞춘다")
+    steps.append(f"지운 메일이면: search <낱말> --in {TRASH_SCOPE}")
+    return steps
+
+
+def homonym_note(match: SenderMatch | None) -> None:
+    """보낸 분 말이 주소록의 여러 사람에게 맞으면 그 사람들을 대고 한 사람만 보는 길을 이른다 — 동명이인의 메일이 섞인 목록을 한
+    사람의 것으로 읽지 않게."""
+    if match and len(match.people) > 1:
+        print(f"— ⚠ 「{match.said}」 는 주소록에 {len(match.people)} 명이다 — 그 사람들의 메일이 섞였을 수 있다. 다음: 한 사람만 보려면 "
+              "--from 에 그 사람의 주소를 준다: " + " / ".join(DIRECTORY.person_line(p) for p in match.people))
+
+
+def print_zero(args, fields, match, lo: str, hi: str, where: str) -> None:
+    """0건 줄 — 무엇을 어디서 찾았나와 넓힐 다음 걸음. 「메일이 없다」 가 아니라 「이 말로 이 칸에서 못 찾았다」 로 말하게 한다."""
+    print(f"— 0건 · 찾은 것: {search_reach(args, fields, match, lo, hi)} · 찾은 곳: {where}. 이 말 · 이 칸 · 이 범위로는 못 찾았다는 "
+          "뜻이지 그런 메일이 없다는 뜻이 아니다 — 사람에게도 그렇게 말한다")
+    for i, step in enumerate(widen_steps(args, fields, match, lo, hi), 1):
+        print(f"  다음 {i}: {step}")
+
+
+def check_search_args(args) -> None:
+    """찾기의 인자 — 세션 · 메일함에 닿기 전에 가린다(``_run``)."""
+    if not (args.words or "").strip() and not (args.sender or "").strip() and not (args.since or args.until):
+        raise Stop(EXIT_CONFIG, "찾을 것이 없다. 다음: search <낱말> · search --from <이름 · 주소> · 둘을 함께(--since · --until 로 날짜도)")
+    if not (args.words or "").strip() and (args.scope != "all" or args.field):
+        raise Stop(EXIT_CONFIG, "--in · --field 는 낱말 검색에만 준다 — 낱말 없이 찾기는 받은편지함 · 폴더를 보낸 분 · 날짜로 훑는다. "
+                                "다음: 낱말을 함께 주거나 --in · --field 를 뺀다")
+    lo = bound_time(args.since, "--since") if args.since else ""
+    hi = bound_time(args.until, "--until", end=True) if args.until else ""
+    if lo and hi and lo > hi:
+        raise Stop(EXIT_CONFIG, f"--since {args.since} 가 --until {args.until} 보다 뒤다. 다음: 두 값을 바꿔 준다")
 
 
 def cmd_search(args, inbox):
-    """웹메일 검색 — 범위 all 은 서버의 「전체」(임시보관함을 안 든다)에 임시보관함을 더해 unid 로 합친다."""
+    """찾기 — 낱말 × 보낸 분 × 날짜를 한 번에. 낱말이 있으면 웹메일 검색(칸마다 한 번 · 범위 all 은 서버의 「전체」에 임시보관함을
+    더해 unid 로 합친다)의 줄을 보낸 분 · 날짜로 거르고, 낱말이 없으면 받은편지함 · 폴더를 보낸 분 · 날짜로 훑는다."""
     box = open_mailbox(args, inbox)
+    fields = tuple(dict.fromkeys(args.field or SEARCH_DEFAULT_FIELDS))
+    match = sender_match(args, box, inbox)
+    lo = bound_time(args.since, "--since") if args.since else ""
+    hi = bound_time(args.until, "--until", end=True) if args.until else ""
+    if not (args.words or "").strip():
+        return search_views(args, box, inbox, match, lo, hi)
+    args.words = args.words.strip()
+
+    def in_range(seoul: str) -> bool:
+        return (not lo or (seoul and seoul >= lo)) and (not hi or (seoul and seoul <= hi))
+
+    def kept(scope: str, r) -> bool:
+        if match and (scope == "draft" or r.folder == SENT or not match.hits(r.sender, r.sender_eng)):
+            return False   # 보낸 · 임시 메일의 보낸 분은 쓰는 사람이다 — 받는 사람으로는 list --sent --to
+        return in_range(seoul_stamp(r.date, "%Y-%m-%d %H:%M:%S")) if lo or hi else True
+
+    sieved = bool(match or lo or hi)
     scopes = ("all", "draft") if args.scope == "all" else (args.scope,)
-    # 검색 손이 한 쪽에 내는 줄의 위 — 그 위로 잘린 쪽을 넘긴 수로 「다음 쪽」을 셈하면 남은 줄이 안 보이고 다음 쪽도 안 댄다
+    # 검색 손이 한 쪽에 내는 줄의 위 — 그 위로 잘린 쪽을 넘긴 수로 「다음 쪽」을 셈하면 남은 줄이 안 보이고 다음 쪽도 안 댄다.
+    # 거를 때는 한 쪽을 가득 받아 거른다 — 거른 뒤 남은 줄이 적어도 그 쪽의 줄은 다 본 것이다
     args.count = max(1, min(args.count, inbox.SEARCH_PAGE_MOST))
+    asked = inbox.SEARCH_PAGE_MOST if sieved else args.count
     seen: dict = {}
     totals = []
     for scope in scopes:
-        total, rows = box.search(args.words, scope=scope, field=args.field, count=args.count, page=args.page)
-        totals.append((scope, total))
-        for r in rows:
-            seen.setdefault(r.unid, (scope, r))
+        for field in fields:
+            total, rows = box.search(args.words, scope=scope, field=field, count=asked, page=args.page)
+            totals.append((field, scope, total))
+            for r in rows:
+                if kept(scope, r):
+                    seen.setdefault(r.unid, (scope, r))
     paths = folder_paths(box, inbox, {r.folder for scope, r in seen.values()
                                       if scope not in ("draft", TRASH_SCOPE) and r.folder and r.folder not in SYSTEM_BOXES})
-    for scope, r in seen.values():
+    shown = list(seen.values())[:args.count] if sieved else list(seen.values())
+    for scope, r in shown:
         if scope == "draft":
             where, hint = SYSTEM_BOXES[DRAFTS], f' --folder "{DRAFTS}"'
         elif scope == TRASH_SCOPE:
@@ -1290,13 +1444,23 @@ def cmd_search(args, inbox):
             where, hint = (path or r.folder or "받은편지함"), (f' --folder "{path}"' if path else "")
         files = " · 첨부" if r.attached else ""
         mark = "안읽음" if r.unread else "읽음"
-        print(f"[{mark}] {r.date[:8]} · {r.sender} · {r.subject}{files} · {where} · {r.unid}{hint}")
-    counted = " · ".join(f"{SYSTEM_BOXES[DRAFTS] if s == 'draft' else s} {n}건" for s, n in totals)
-    more = any(n > args.page * args.count for _, n in totals)
-    print(f"— 「{args.words}」 {FIELD_WORDS[args.field]} 검색 {counted}" + (f" · 다음 쪽은 --page {args.page + 1}" if more else ""))
-    if args.field == "subject" and args.scope in RECENT_SCOPES and args.page == 1:
+        person = f"{r.sender} ({r.sender_eng})" if match and r.sender_eng and r.sender_eng != r.sender else r.sender
+        print(f"[{mark}] {seoul_stamp(r.date)[:8] or r.date[:8]} · {person} · {r.subject}{files} · {where} · {r.unid}{hint}")
+    counted = " / ".join(f"{FIELD_WORDS[f]} — " + " · ".join(f"{SYSTEM_BOXES[DRAFTS] if s == 'draft' else s} {n}건"
+                                                            for g, s, n in totals if g == f) for f in fields)
+    more = any(n > args.page * asked for _, _, n in totals)
+    head = f"— 「{args.words}」 검색 {counted}"
+    if sieved:
+        head += f" · 그 가운데 {search_reach(args, (), match, lo, hi)} — 걸린 것 {len(seen)}건"
+        head += f"(새것 {args.count}건만 보였다 — --count 로 늘린다)" if len(seen) > args.count else ""
+        head += f" · 서버가 낸 줄 가운데 쪽마다 새것 {asked}건만 걸렀다" if more else ""
+    print(head + (f" · 다음 쪽은 --page {args.page + 1}" if more else ""))
+    recent = []
+    if "subject" in fields and args.scope in RECENT_SCOPES and args.page == 1:
         newest = max((seoul_stamp(r.date) for scope, r in seen.values() if scope != "draft"), default="")
-        recent = recent_subject_hits(box, inbox, args.words, args.scope, newest)
+        recent = [e for e in recent_subject_hits(box, inbox, args.words, args.scope, newest)
+                  if (not match or (e.folder != SENT and match.hits(e.sender.name, e.sender.name_eng, e.sender.addr)))
+                  and (not (lo or hi) or ((not lo or e.date >= lo) and (not hi or e.date <= hi)))]
         for e in recent:
             hint = f' --folder "{e.folder}"' if e.folder else ""
             files = " · 첨부" if e.attachments else ""
@@ -1305,7 +1469,47 @@ def cmd_search(args, inbox):
         if recent:
             print(f"— 그 위 {len(recent)}건은 검색 색인에 아직 안 든 새 메일이다 — 보기마다 새것 {RECENT_SCAN}통의 제목을 직접 훑었다"
                   f"(색인은 새 메일을 몇 시간 늦게 든다)")
+    if not seen and not recent:
+        print_zero(args, fields, match, lo, hi, SCOPE_WORDS.get(args.scope, f"범위 {args.scope}"))
+    else:
+        homonym_note(match)
     print("  낱말은 고른 말 그대로 맞춘다 — 비슷한 말(워크샵 · 워크숍)은 따로 찾는다. 줄 끝의 --folder 를 read 에 붙이면 빠르다")
+
+
+def search_views(args, box, inbox, match: SenderMatch | None, lo: str, hi: str) -> None:
+    """낱말 없는 찾기 — 받은편지함 · 폴더를 새것부터 보낸 분 · 날짜로 훑어 한 목록으로 낸다(보기마다 ``SWEEP_SCAN`` 줄까지 ·
+    ``--since`` 가 있으면 그보다 옛 줄에서 멈춘다). 상한에 막힌 보기는 「거기까지만 봤다」 로 댄다 — 그 앞을 「없다」 로 읽게 두지 않는다.
+    보낸편지함은 안 훑는다(보낸 분이 쓰는 사람이다)."""
+    boxes = [("받은편지함", lambda n, s: box.list(count=n, start=s))]
+    boxes += [(f"폴더 {f.path}", lambda n, s, f=f: box.list_folder(f, count=n, start=s)) for f in box.folders()]
+
+    def keep(e) -> bool:
+        return ((not match or match.hits(e.sender.name, e.sender.name_eng, e.sender.addr))
+                and (not lo or e.date >= lo) and (not hi or e.date <= hi))
+    with ThreadPoolExecutor(inbox.ORG_WORKERS) as pool:
+        swept = list(pool.map(lambda b: sweep_rows(b[1], 1, keep, SWEEP_SCAN, page=SINCE_PAGE,
+                                                   stop=lambda e: bool(lo and e.date and e.date < lo)), boxes))
+    walked, rows = set(), []
+    for picked, _, _ in swept:
+        for e in picked:
+            if e.unid.upper() not in walked:
+                walked.add(e.unid.upper())
+                rows.append(e)
+    filled = AllMail(box)
+    rows = sorted(filled.fill(rows), key=lambda e: e.date, reverse=True)
+    for e in rows[:args.count]:
+        print(entry_line(e, where=True))
+    stuck = [f"{where} 새것 {seen}통" for (where, _), (_, seen, reached) in zip(boxes, swept) if not reached]
+    where = f"받은편지함 · 폴더 {len(boxes) - 1}개" + (f"(거기까지만 봤다 — {' · '.join(stuck)})" if stuck else "")
+    if not rows:
+        print_zero(args, (), match, lo, hi, where)
+    else:
+        more = f"(새것 {args.count}통만 보였다 — --count 로 늘린다)" if len(rows) > args.count else ""
+        print(f"— {search_reach(args, (), match, lo, hi)} — {where}에서 {len(rows)}통{more} · 보낸편지함은 안 훑는다(보낸 메일은 "
+              "list --sent --to <받는 사람>)")
+        homonym_note(match)
+    if note := fill_note(filled):
+        print(f"— {note}")
 
 
 def print_body_images(box, inbox, unid: str, images, save: bool) -> None:
@@ -1389,10 +1593,7 @@ def read_body(args, word: str) -> tuple[str, str, bool]:
     지은 지면)은 제 모양이 있어 안 감싼다."""
     if not (args.html_file or args.body_file):
         raise Stop(EXIT_CONFIG, f"{word}이 없다 — --body-file(평문) 이나 --html-file(HTML) 로 준다")
-    path = pathlib.Path(args.html_file or args.body_file).expanduser()
-    if not path.is_file():
-        raise Stop(EXIT_CONFIG, f"{word} 파일이 없다: {path}")
-    raw = path.read_text(encoding="utf-8-sig").strip()   # 윈도 편집기 · 파워셸이 붙인 BOM 은 글이 아니다 — 남기면 나갈 메일에 실린다
+    raw = floor_text(args.html_file or args.body_file, f"{word} 파일").strip()
     text = html_to_text(raw) if args.html_file else raw
     if not raw or not text:
         raise Stop(EXIT_CONFIG, f"{word}이 비었다")
@@ -1401,6 +1602,15 @@ def read_body(args, word: str) -> tuple[str, str, bool]:
             return raw, text, True
         return f'<div style="{BODY_STYLE}">{raw}</div>', text, True
     return f'<div style="{BODY_STYLE}">' + html_lib.escape(raw).replace("\n", "<br>") + "</div>", raw, False
+
+
+def floor_text(name: str, lead: str) -> str:
+    """모델이 쓴 글 파일 하나 — 사내 앱 명령의 한 바닥(``ep_command.text_file`` — BOM · 끝 줄바꿈을 걷고 UTF-8 이 아니면 다음 걸음을
+    댄다)으로 읽어, 그 바닥의 멈춤을 이 명령의 멈춤(종료 2)으로 옮긴다."""
+    try:
+        return EP_COMMAND.text_file(name, lead)
+    except EP_COMMAND.Stop as exc:
+        raise Stop(exc.code, str(exc)) from exc
 
 
 def is_document(html: str) -> bool:
@@ -1484,12 +1694,12 @@ def send_at_of(args, inbox) -> str | None:
     if raw.lower() == SEND_AT_OFF:
         return ""
     try:
-        when = datetime.datetime.strptime(raw, SEND_AT_FORMAT)
-    except ValueError as exc:
-        raise Stop(EXIT_CONFIG, f"--send-at 은 「YYYY-MM-DD HH:MM」 꼴이다(예약을 풀려면 {SEND_AT_OFF}): {raw!r}") from exc
-    if when <= datetime.datetime.now():
-        raise Stop(EXIT_CONFIG, f"예약 시각 {raw} 가 지났다 — 앞으로의 시각을 준다")
-    return when.strftime(SEND_AT_FORMAT)
+        when = EP_COMMAND.stamp_of(raw)
+    except EP_COMMAND.Stop as exc:
+        raise Stop(EXIT_CONFIG, f"--send-at {exc} (예약을 풀려면 {SEND_AT_OFF})") from exc
+    if when <= datetime.datetime.now(EP_COMMAND.SEOUL):
+        raise Stop(EXIT_CONFIG, f"예약 시각 {raw} 가 지났다. 다음: 앞으로의 시각을 준다({EP_COMMAND.today_word()})")
+    return EP_COMMAND.stamp(when)
 
 
 def options_of(args, inbox) -> dict:
@@ -1567,6 +1777,29 @@ def show_draft_plan(plan: dict) -> None:
             print(f"  {i}. {f.name} · {max(1, len(f.data) // 1024)}KB")
 
 
+def show_saved_tail(box, inbox, unid: str, body: str) -> None:
+    """저장한 새 메일의 글 뒤에 붙은 것(서명)을 저장한 판에서 읽어 보인다 — 서명은 웹메일 설정이 켰을 때 저장하며 붙고, 켰는지는 이
+    PC 가 미리 모른다. 판에서 읽은 그대로라 「서명이 붙나 · 끝에 이름을 쓸까」 를 짐작하지 않게 한다. 못 읽으면 그 말만 내고 멈추지
+    않는다 — 저장은 이미 섰다."""
+    try:
+        markup = box.body(unid)
+    except inbox.SessionExpired:
+        raise
+    except inbox.MailboxError as exc:
+        print(f"저장한 판의 끝을 못 읽었다({exc}) — 서명이 붙었나는 띄운 창에서 본다")
+        return
+    text = html_to_text(markup or "")
+    last = next((x.strip() for x in reversed(body.strip().splitlines()) if x.strip()), "")
+    at = text.rfind(last) if last else -1
+    tail = text[at + len(last):].strip() if at >= 0 else ""
+    if tail:
+        print(f"--- 글 뒤에 붙은 것(서명) — 저장한 판 그대로다. 글 끝에 이름 · 서명을 또 쓰지 않는다 ---\n{tail[-SIGNATURE_TAIL:]}\n---")
+    elif at >= 0:
+        print("서명: 안 붙었다 — 웹메일 설정에서 서명이 꺼졌거나 서명 문서를 못 받았다. 끝인사 · 이름은 글에 쓴 그대로 나간다")
+    else:
+        print("저장한 판에서 넣은 글의 끝을 못 찾아 서명이 붙었나를 못 가렸다 — 띄운 창에서 본다")
+
+
 def show_on_screen(args, unid: str) -> None:
     """저장한 임시메일을 쓰는 사람의 Edge 에 편집 화면으로 띄워 둔다 — 사람이 거기서 바로 확인하고 [보내기]를 누른다. 뒤의
     ``draft draft`` · ``send-draft`` 도 열린 그 화면을 쓴다. 못 띄워도 저장은 이미 섰으니 멈추지 않고 그 말만 낸다."""
@@ -1603,7 +1836,7 @@ def draft_hand(args, verb: str, *extra, unid: str = "") -> dict:
     if asked:
         word += " · 웹메일이 띄운 글: " + " / ".join(a.replace("\n", " ") for a in asked)
     code = {2: EXIT_CONFIG, 3: EXIT_SESSION, 4: EXIT_STALE}.get(ran.code, EXIT_FAIL)
-    raise Stop(code, word + (f" — {EP_LOGIN}" if code == EXIT_SESSION else ""))
+    raise Stop(code, word if verb == "show" else f"{word}. {HAND_NEXT[code]}")   # 창 띄우기는 부르는 쪽이 제 말로 잇는다
 
 
 def show_draft_state(s: dict, inbox, company: str) -> None:
@@ -1786,13 +2019,7 @@ def swaps_of(args) -> list[list[str]]:
     """바꿀 조각들 — [옛 글, 새 글]. 파일로 준 것은 BOM · 끝 줄바꿈을 걷는다(편집기 · 파워셸이 붙인 것이라 글이 아니다)."""
     pairs = [list(p) for p in args.swap or ()]
     for old_file, new_file in args.swap_file or ():
-        texts = []
-        for f in (old_file, new_file):
-            path = pathlib.Path(f).expanduser()
-            if not path.is_file():
-                raise Stop(EXIT_CONFIG, f"조각 파일이 없다: {path}")
-            texts.append(path.read_text(encoding="utf-8-sig").rstrip("\r\n"))
-        pairs.append(texts)
+        pairs.append([floor_text(f, "조각 파일") for f in (old_file, new_file)])
     for old, new in pairs:
         if not old.strip():
             raise Stop(EXIT_CONFIG, "바꿀 조각이 비었다 — 본문에 보이는 글자를 준다")
@@ -1919,6 +2146,7 @@ def cmd_draft(args, inbox):
     if args.preview:
         print("임시보관함에 저장할 메일 — 아직 저장도 안 했다 · 저장해도 안 나간다")
         show_draft_plan(plan)
+        print(SIGNATURE_WORD)
         print("저장은 같은 인자에서 --preview 를 뺀다.")
         return
     empno = MAILFILE_NUMBER.search(args.mailbox_url)
@@ -1931,6 +2159,7 @@ def cmd_draft(args, inbox):
         raise Stop(EXIT_CONFIG, str(exc)) from exc
     print(f"임시보관함에 저장했다(안 나갔다): {plan['subject']} · {unid}")
     show_draft_plan(plan)
+    show_saved_tail(box, inbox, unid, plan["body"])
     show_on_screen(args, unid)
     print(f"사람이 「보내」라고 했으면 preview-send {unid} 로 지금 판과 보내기 열쇠를 받아 보이고 확인받는다. 더 고칠 것은 "
           f"draft draft {unid} … 로 같은 임시메일을 고친다. 사람이 띄운 창에서 직접 [보내기]를 눌러도 된다.")
@@ -1977,10 +2206,7 @@ def addresses(values, files) -> list[str]:
     seen: set[str] = set()
     chunks = list(values or ())
     for f in files or ():
-        path = pathlib.Path(f).expanduser()
-        if not path.is_file():
-            raise Stop(EXIT_CONFIG, f"주소 파일이 없다: {path}")
-        chunks += [line.split("#", 1)[0] for line in path.read_text(encoding="utf-8-sig").splitlines()]   # BOM 이 첫 주소에 붙지 않게
+        chunks += [line.split("#", 1)[0] for line in floor_text(f, "주소 파일").splitlines()]
     for chunk in chunks:
         for a in re.split(r"[,;\s]+", chunk):
             if a and a.casefold() not in seen:
@@ -2480,7 +2706,7 @@ COMMAND_HELP = {
     "folders": "쓰는 사람이 지은 폴더",
     "list": "받은편지함 · 폴더 · 보낸편지함 · 임시보관함 목록 — 안 읽음 · 보낸 분 · 받는 사람 거르기와 「이 시각부터 온 메일」(--since)",
     "summary": "받은편지함 · 폴더 하나를 보낸 분별 · 제목 말머리별로 센다(보기 끝까지)",
-    "search": "웹메일 검색 — 제목 · 본문 · 첨부 이름(범위 all 은 임시보관함까지)",
+    "search": "메일 찾기 — 낱말(제목 · 본문) × 보낸 분 × 날짜를 한 번에. 0건이면 무엇을 찾았나와 넓힐 다음 걸음을 댄다",
     "who": "받는 사람 찾기 · 사람과 부서 찾기 — 출처 아무 조합 × 거르기 → 표와 칸마다 주소 파일",
     "read": "메일 한 통 — 머리 · 받는 사람 · 본문(글자로 푼 것) · 첨부 목록. 읽음은 그대로다",
     "read-many": "메일 여러 통의 앞부분을 한 세션에 준 차례대로 — 머리 · 받으신 칸 · 첨부 수 · 본문 앞 N 자",
@@ -2502,13 +2728,12 @@ COMMAND_MAP = (
     ("바꾸기 — 미리 보기 → 확인 열쇠 → 실행", "사람이 미리 보기를 보고 「이대로」 한 뒤에만 실행한다 · 실행은 같은 인자에 --confirm <열쇠>",
      ("mark", "folder", "move", "trash", "restore", "rule")),
 )
-# 이 명령의 종료 값마다의 뜻과 다음 걸음 — 값은 사내 앱 명령의 종료 값 한 표(ep_command)의 이름이다
-EXIT_WORDS = {
-    EXIT_OK: "됐다",
-    EXIT_FAIL: "도구 · 메일함 · 웹메일 화면 오류 — 그 말을 그대로 사람에게 알린다(ep-login 으로 덮지 않는다)",
-    EXIT_CONFIG: "인자가 틀렸거나 그 메일에 할 수 없다(주소 · 제목 · 글 · 받는 사람 · 폴더 · 첨부 · 못 찾은 메일) — 말이 댄 대로 고쳐 다시",
-    EXIT_SESSION: "사내 세션이 없거나 끊겼다 — 스킬 ep-login 을 부른 뒤 같은 명령을 다시",
-    EXIT_STALE: "미리 본 뒤 그 판이 바뀌었다(사람이 화면에서 고쳤거나 메일이 옮겨졌다) — 아무것도 안 바꿨다. 미리 보기부터 다시 사람에게 보인다",
+# 이 명령이 내는 종료 값과, 그 뜻(사내 앱 명령의 한 표 ep_command.EXIT_MEANINGS)에 메일 손이 덧붙이는 말 — 맨 위 --help 의 범례
+EXIT_CODES = (EXIT_OK, EXIT_FAIL, EXIT_CONFIG, EXIT_SESSION, EXIT_STALE)
+EXIT_MORE = {
+    EXIT_FAIL: "메일함 · 웹메일 화면 오류도 여기다 — ep-login 으로 덮지 않는다",
+    EXIT_CONFIG: "주소 · 제목 · 글 · 받는 사람 · 폴더 · 첨부 · 못 찾은 메일",
+    EXIT_STALE: "사람이 화면에서 고쳤거나 메일이 옮겨졌다",
 }
 # 이 손이 안 하는 것과 사람이 하는 자리 — 맨 위 --help 의 끝
 NOT_DONE = (
@@ -2546,8 +2771,7 @@ def top_map() -> str:
     lines = ["할 수 있는 것의 지도 — 명령마다의 인자 · 손가락은 <명령> --help(draft · who 는 그 지도가 든다).", ""]
     for (head, guard, _), group in zip(COMMAND_MAP, rows):
         lines += [head, f"  지키는 선: {guard}", *(f"  {name:<{width}}  {word}" for name, word in group), ""]
-    lines.append("종료 값 — 0 이 아니면 끝 줄이 까닭과 다음 걸음을 든다")
-    lines += [f"  {code}  {word}" for code, word in EXIT_WORDS.items()]
+    lines.append(EP_COMMAND.exit_legend(EXIT_CODES, EXIT_MORE, said="0 이 아니면 끝 줄이 까닭과 「다음: …」 을 든다"))
     lines += ["", "안 하는 것 — 사람이 하는 자리"]
     lines += [f"  {what}: {where}" for what, where in NOT_DONE]
     return "\n".join(lines)
@@ -2599,11 +2823,18 @@ def parser() -> argparse.ArgumentParser:
     q.add_argument("--folder", default=None, help="셀 폴더 경로 — 없으면 받은편지함")
     q.add_argument("--top", type=int, default=SUMMARY_TOP, help="보일 묶음의 수")
     q = one("search", cmd_search, mail=False)
-    q.add_argument("words", help="찾을 낱말 — 고른 말 그대로 맞춘다")
-    q.add_argument("--in", dest="scope", default="all", choices=INBOX.SEARCH_SCOPES)
-    q.add_argument("--field", default="subject", choices=tuple(FIELD_WORDS))
+    q.set_defaults(check=check_search_args)
+    q.add_argument("words", nargs="?", default="", help="찾을 낱말 — 고른 말 그대로 맞춘다. 없으면 --from · --since 로만 받은편지함 · 폴더를 훑는다")
+    q.add_argument("--from", dest="sender", default="", metavar="이름|주소",
+                   help="보낸 분 — 한글 이름이면 주소록의 그 사람의 영문 이름 · 주소로도 견준다(메일의 보낸 분 칸은 영문만 들기도 한다)")
+    q.add_argument("--since", default=None, metavar="YYYY-MM-DD[ HH:MM]", help="이 서울 날짜 · 시각부터(포함)")
+    q.add_argument("--until", default=None, metavar="YYYY-MM-DD[ HH:MM]", help="이 서울 날짜(그날 끝까지) · 시각까지")
+    q.add_argument("--in", dest="scope", default="all", choices=INBOX.SEARCH_SCOPES, help="낱말 검색의 범위 — 기본 all(휴지통 빼고 다)")
+    q.add_argument("--field", action="append", choices=tuple(FIELD_WORDS),
+                   help="낱말을 볼 칸(여러 번) — 기본은 제목 · 본문 둘 다")
     q.add_argument("--count", type=int, default=SEARCH_PAGE)
     q.add_argument("--page", type=int, default=1)
+    q.add_argument("--company", default="", help="주소록의 회사 값 — --from 의 이름을 물을 때")
     q = sub.add_parser("who", formatter_class=argparse.RawDescriptionHelpFormatter, epilog=DIRECTORY.find_map(WHO_SOURCES),
                        description="받는 사람을 찾는다 — 출처 아무 조합을 합치고 거르기를 그 명단 전체에 건다. 사람이 볼 수 · 표와 "
                                    "(--out) draft 가 그대로 받는 칸마다 주소 파일 · 사람 파일을 낸다. 메일함을 안 바꾼다. 스킬 company-directory 의 "
@@ -2772,7 +3003,7 @@ def _run(args) -> int:
         except inbox.MailboxError as exc:
             raise Stop(EXIT_FAIL, f"메일함에서 못 받았다: {exc}") from exc
     except Stop as stop:
-        print(str(stop))
+        print(stop.said())
         return stop.code
     return EXIT_OK
 

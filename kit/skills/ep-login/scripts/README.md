@@ -7,11 +7,11 @@
   안 열고 로그인하지 않는다 — 사람의 세션도 화면도 안 건드린다. 사내 앱을 다루는 손은 세션 파일이 있으면 그것으로 먼저 돌고, 서버가
   거절할 때만 이 손을 세션 파일 인자 없이 부르고(꼭 서야 할 앱만 `ecm` 처럼 붙인다) 종료 0 의 끝 줄에서 세션 파일의 경로를
   읽는다(까닭과 바퀴는 `ep_session.session_first`)
-- **입구** `ep_login.js` — 대화에서 부르는 하나뿐인 명령. 이 윈도 로그온에 아직이면 먼저 사람의 평소 Edge 에 EP 포털을 열어
-  로그인하고, 받는 손을 돌려 보고, 안 서면 포트가 열린 Edge 에 로그인 탭을 열거나, 붙을 Edge 가 없으면 ep-login 프로필의 Edge 창 하나를
+- **입구** `ep_login.js` — 대화에서 부르는 하나뿐인 명령. 먼저 사용자의 평소 Edge 에 EP 포털 탭이 있나를 보고, 없으면 그 Edge 에
+  EP 포털을 열어 로그인을 먼저 세우고(못 읽으면 사용자에게 묻게 한다), 받는 손을 돌려 보고, 안 서면 포트가 열린 Edge 에 로그인 탭을 열거나, 붙을 Edge 가 없으면 ep-login 프로필의 Edge 창 하나를
   디버깅 포트(127.0.0.1 에만)와 로그인 탭으로 띄워 지켜본 뒤 다시 받는다. 사람의 평소 Edge 는 떠 있어도 안 끝낸다
 - **평소 Edge 를 보는 눈** `ordinary_edge.ps1` — 포트 없는 평소 Edge 의 물음 창을 윈도 UI 자동화로 알리고 입구가 시킨
-  단추 하나를 누른다. 입구만 부른다 — 무엇을 누를지는 입구가 받는 손의 자로 가린다
+  단추 하나를 누른다. 탭 줄 · 주소창을 읽어 EP 포털 · 로그인 화면에 맞는 탭의 수만 낸다(사람의 다른 탭은 안 낸다). 입구만 부른다 — 무엇을 누를지는 입구가 받는 손의 자로 가린다
 - **파이썬에서 부르는 자리** `ep_session.py` — 받는 손을 돌려 종료 값 · 세션 파일 · 손의 말을 닫힌 꼴 하나로 내고, 그 세션 파일을
   쿠키 통으로 읽는다(`load_jar`). 사내 앱 스킬의 얇은 명령과 앱 손이 이 폴더를 `sys.path` 에 넣고 싣는다 — 받는 손의 계약과 세션
   파일의 꼴을 읽는 코드가 이 한 자리다. 그 명령들이 대화에 내는 답 하나의 크기(`OUT_BYTES`)도 여기 산다. 앱 손이 함께 쓰는
@@ -36,7 +36,7 @@
 ## 돌려 보기
 
 ```bash
-node _check/skills/ep-login/check_session.js            # 이 스킬의 edge_session.js · ep_login.js · ordinary_edge.ps1 을 잰다 — 가짜 SSO · 메일함 · ECM 과 검사가 띄운 Edge(임시 프로필 · 평소 Edge 의 대역은 창으로 내내 뜨고, 입구 판정 셋이 창을 잠깐 띄운다)
+node _check/skills/ep-login/check_session.js            # 이 스킬의 edge_session.js · ep_login.js · ordinary_edge.ps1 을 잰다 — 가짜 SSO · 메일함 · ECM · EP 포털과 검사가 띄운 Edge(임시 프로필 · 평소 Edge 의 대역은 화면 밖에 창으로 내내 뜨고, 입구 판정 둘이 창을 잠깐 띄운다)
 node _check/skills/ep-login/check_session.js <폴더>     # 다른 폴더의 사본을 잰다
 python -X utf8 -I _check/skills/ep-login/check_ep_session.py        # ep_session.py 의 바퀴를 잰다 — 파일부터 · 거절되면 손 한 번 · 바꾸는 일은 손부터. 대역 손이라 Edge 는 안 뜬다. ep_command.py 는 받아 둔 파일을 못 남겨도 답을 안 잃나 하나
 ```

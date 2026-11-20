@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 32
+VERSION_OURS = 33
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -58,6 +58,10 @@ MAX_SSE_EVENT_BYTES = 2 * 1024 * 1024
 UPSTREAM_TIMEOUT = 600
 # 요청 하나가 이만큼 넘게 걸리면 `slow` 줄을 남긴다 — 보통 턴의 길이보다 낮게 잡으면 거의 모든 턴에 붙어 오래 선 판을 못 가른다
 SLOW_REQUEST_SEC = 30.0
+# 상류 4xx · 5xx 본문은 그대로 중계하면서 이만큼만 곁에 떠 `complete` 줄에 오류 칸(code · type · message)을 남긴다 —
+# Codex 는 HTTP 500 의 본문을 버리고 고정 문구(「high demand」)만 보여, 어느 층이 졌나는 이 기록에만 남는다.
+ERROR_BODY_LOG_BYTES = 8192
+ERROR_FIELD_LOG_CHARS = 200
 
 
 def _env_float(name: str, default: float) -> float:
@@ -770,6 +774,84 @@ def log(message: str) -> None:
                 handle.write(f"{stamp} {message}\n")
     except OSError:
         pass
+
+
+def _log_field(value: object) -> str:
+    """기록 한 칸 — 줄바꿈 · 겹친 공백을 하나로 접고 ``ERROR_FIELD_LOG_CHARS`` 에서 자른 따옴표 글."""
+    text = " ".join(str(value).split())
+    if len(text) > ERROR_FIELD_LOG_CHARS:
+        text = text[:ERROR_FIELD_LOG_CHARS] + "…"
+    return json.dumps(text, ensure_ascii=False)
+
+
+def upstream_error_summary(content_type: str, raw: bytes, truncated: bool = False) -> str:
+    """상류 오류 본문을 ``complete`` 줄에 붙일 칸들로 줄인다 — 어느 층이 졌나를 가르는 자리다.
+
+    게이트웨이의 OpenAI 봉투(``{"error": {"code", "type", "message", "detail"?}}``)는 ``error_code=P003`` 꼴로 코드를 싣고,
+    Claude 봉투(``{"type": "error", "error": {...}}``)는 코드 없이 type · message 다. JSON 이 아닌 본문(흔히 앞단의 HTML)은
+    태그를 걷은 앞머리만 ``error_body=`` 로 남긴다. ``truncated`` 면 곁에 뜬 사본이 본문의 앞부분뿐이다.
+    """
+    fields = [f"error_content_type={_log_field(content_type.split(';')[0].strip() or 'none')}"]
+    try:
+        parsed = json.loads(raw) if raw else None
+    except ValueError:
+        parsed = None
+    error = parsed.get("error") if isinstance(parsed, dict) else None
+    if isinstance(error, dict):
+        for key in ("code", "type", "message", "detail"):
+            if error.get(key) not in (None, ""):
+                fields.append(f"error_{key}={_log_field(error[key])}")
+    elif isinstance(error, str) and error:
+        fields.append(f"error_message={_log_field(error)}")
+    elif raw:
+        text = raw.decode("utf-8", "replace")
+        # 사본 한도에 잘린 봉투(긴 detail)는 JSON 으로 못 읽는다 — 앞머리의 코드만은 집는다
+        code = re.search(r'"code"\s*:\s*"([^"]{1,40})"', text)
+        if code:
+            fields.append(f"error_code={_log_field(code.group(1))}")
+        # 머리 · 스크립트 · 스타일의 글이 앞을 채우면 한도 안에 읽을 문장이 안 남는다 — 통째로 걷고 남은 태그를 걷는다
+        text = re.sub(r"(?is)<(head|script|style)\b.*?</\1\s*>", " ", text)
+        fields.append(f"error_body={_log_field(re.sub(r'<[^>]*>', ' ', text))}")
+    else:
+        fields.append("error_body=empty")
+    if truncated:
+        fields.append("error_body_truncated=1")
+    return " ".join(fields)
+
+
+class FailureRuns:
+    """모델마다 잇달아 진 생성 요청을 세고, 다음 성공에 「다시 섰다」를 한 줄로 남긴다.
+
+    클라이언트(Codex · Claude Code)는 진 요청을 제 손으로 다시 보내므로, 실패 줄만으로는 다시 보낸 끝이 섰나를
+    사람이 시각을 맞춰 읽어야 안다. 열쇠는 프록시가 아는 ``provider model`` 이라 클라이언트 머리에 기대지 않는다 —
+    같은 모델을 함께 쓰는 다른 대화의 성공도 「게이트웨이가 그 모델에 다시 답했다」로 센다.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        # 열쇠 → (진 수, 첫 실패 벽시계, 첫 실패 gw, 마지막 실패 gw)
+        self._runs: dict[str, tuple[int, float, str, str]] = {}
+
+    def failed(self, key: str, gw: str) -> int:
+        """진 요청 하나를 더하고 그 열쇠의 연속 실패 수를 돌려준다."""
+        with self._lock:
+            # 첫 실패에 요청 번호가 없으면(머리 전에 진 판) 빈 채로 둔다 — 뒤 실패의 번호를 첫 번호로 넘기면 엉뚱한 요청을 가리킨다
+            count, first_at, first_gw, _ = self._runs.get(key, (0, time.time(), gw, ""))
+            self._runs[key] = (count + 1, first_at, first_gw, gw)
+            return count + 1
+
+    def recovered(self, key: str) -> str:
+        """성공 하나 — 앞서 진 것이 있었으면 그 판을 닫고 기록 꼬리를, 없었으면 빈 글을 돌려준다."""
+        with self._lock:
+            run = self._runs.pop(key, None)
+        if run is None:
+            return ""
+        count, first_at, first_gw, last_gw = run
+        return (f"after {count} failed request(s) since {time.strftime('%H:%M:%S', time.localtime(first_at))} "
+                f"({time.time() - first_at:.0f}s) first_gw={first_gw or '-'} last_gw={last_gw or '-'}")
+
+
+_FAILURE_RUNS = FailureRuns()
 
 
 class _BadRequestBody(Exception):
@@ -2325,6 +2407,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
     _message_id = ""
     _stop_reason = ""
     _tool_names: tuple[str, ...] = ()
+    _error_copy: bytearray | None = None
+    _error_copy_truncated = False
 
     def _client_disconnected(self) -> bool:
         """요청 · 이어 온 바이트를 소비하지 않고, 소켓 시한도 안 바꾸고 들여다본다."""
@@ -2563,6 +2647,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
         # stop_reason 을 읽으려고 한도 있는 사본을 둔다.
         claude_messages = getattr(self, "_claude_messages", False)
         compact_copy = bytearray() if (claude_messages and not sse) else None
+        # 오류 응답은 바이트를 그대로 넘기며 앞부분만 곁에 뜬다 — 부르는 쪽이 ``_error_copy`` 로 오류 칸을 짓는다
+        error_copy = bytearray() if getattr(response, "status", 200) >= 400 else None
+        self._error_copy = error_copy
+        self._error_copy_truncated = False
         keepalives_before = self._keepalives_sent
         self._stream_outcome = "complete"
         echo = self._model_echo
@@ -2601,6 +2689,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         _count_stream_error()
                         elapsed = time.monotonic() - self._upstream_started if self._upstream_started else 0.0
                         log(f"stream error after {elapsed:.1f}s: {observer.error} {self._request_context}{self._gw()}")
+                if error_copy is not None:
+                    room = ERROR_BODY_LOG_BYTES - len(error_copy)
+                    error_copy.extend(chunk[:max(room, 0)])
+                    self._error_copy_truncated = self._error_copy_truncated or len(chunk) > room
                 if compact_copy is not None:
                     if len(compact_copy) + len(chunk) <= MAX_UNSTREAM_BYTES:
                         compact_copy.extend(chunk)
@@ -2686,6 +2778,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._keepalives_sent = 0
         self._stream_outcome = "complete"
         self._gw_request_id = ""
+        self._error_copy = None
+        self._error_copy_truncated = False
         parsed = urlsplit(self.path)
         if parsed.path == "/health":
             payload: dict[str, object] = {
@@ -3065,6 +3159,9 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 outcome = self._stream_outcome
             elif not fully_read:
                 outcome = "incomplete"
+            elif upstream_status >= 400:
+                # 오류 본문을 끝까지 옮긴 것은 전송이 끝난 것일 뿐 모델이 답한 것이 아니다 — `complete` 로 세면 실패가 성공에 섞인다
+                outcome = "http_error"
         except (_ClientDisconnected, BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             # 클라이언트가 응답을 받기 전에 끊었다(취소 · 시간 초과) — 조용히 끝낸다.
             outcome = "client_cancelled"
@@ -3097,10 +3194,30 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     f"HTTP {upstream_status} (possible gateway timeout; limit "
                     f"~{NONSTREAM_LIMIT_SEC if cut_300 else EXECUTION_LIMIT_SEC:g}s) {self._request_context}{self._gw()}"
                 )
+            error_fields = ""
+            if self._error_copy is not None:
+                error_fields = " " + upstream_error_summary(
+                    (response.getheader("Content-Type") or "") if response is not None else "",
+                    bytes(self._error_copy), self._error_copy_truncated)
+            # 같은 모델의 생성 요청이 잇달아 지면 몇 번째인가를 싣고, 다음 성공에 그 판을 닫는다. 사람이 끊은 판 · 요청 탓의 4xx 는
+            # 게이트웨이가 섰나와 무관해 판을 안 건드린다 — 408 · 429 는 요청 탓이 아니라 시한 · 수용량이라 실패로 센다
+            run_key = f"{provider} {model_name or '?'}"
+            run_field = recovered = ""
+            request_side = 400 <= upstream_status < 500 and upstream_status not in (408, 429)
+            if generation and not web_search and outcome != "client_cancelled" and not request_side:
+                if (upstream_status >= 500 or upstream_status in (408, 429)
+                        or outcome in ("head_cut", "upstream_error", "stream_error", "stream_incomplete", "incomplete")):
+                    run_field = f" failures_in_row={_FAILURE_RUNS.failed(run_key, self._gw_request_id)}"
+                elif outcome in ("complete", "stream_unverified") and 200 <= upstream_status < 300:
+                    # 끝 이벤트가 검사 한도를 넘어 확인만 못 한 2xx 도 게이트웨이가 답한 판이다
+                    recovered = _FAILURE_RUNS.recovered(run_key)
             if generation or outcome != "complete":
                 log(f"complete {self.command} {parsed.path} HTTP {client_status} result={outcome} "
                     f"headers={headers_sec:.3f}s upstream={upstream_sec:.3f}s "
-                    f"total={elapsed:.3f}s {self._request_context}{self._gw()}")
+                    f"total={elapsed:.3f}s{run_field}{error_fields} {self._request_context}{self._gw()}")
+            if recovered:
+                log(f"recovered {self.command} {parsed.path} model={model_name or '?'} provider={provider} "
+                    f"{recovered}{self._gw()}")
             if (self._session_id and response is None and outcome in ("client_cancelled", "head_cut")
                     and upstream_sec >= STALL_NOTE_MIN_SEC):
                 how = ("프록시가 게이트웨이의 스트림 시한 대신 500 으로 끊었고, Claude Code 는 그 요청을 다시 보낸다"

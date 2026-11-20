@@ -6,12 +6,13 @@
     times, bad = times_given(["07:30", "13:00"]) # 받은 시각들 → 정렬한 시각표 · 꼴이 아니면 까닭
     refused = no_room(times)                     # 기다릴 틈이 모자란 시각이 있으면 거절의 말 — 받으면 ""
     line = after_run(state, folder, evidence, hand, at)   # 판 끝 — 지금 칸의 시각이 사내 세션이 살아 있는 첫 판에 띄운다. 할 말이 없으면 ""
+                                                          # 그 뒤에 보고 창의 「일정에 넣기」 누름을 거둔다(보고를 안 걸었어도)
                                                           # 스스로 로그인을 켠 PC 는 그날 첫 시각의 띄우기 앞에 한 번 로그인 입구를 부른다
     lines = describe(state, folder, at)          # status 가 말할 줄 — 시각마다
     words = window_words(times)                  # 거는 말 · status 가 함께 쓰는 「언제 띄우나」 한 구절
     cmd, settings, prompt = plan(setting, hand, folder)   # 띄울 명령 · 권한 · 부탁 글(띄우기와 `--dry-run` 이 같은 것을 쓴다)
 
-언제 띄우나 · 띄운 claude 에 무엇을 여나 · 로그인을 언제 하고 언제 안 하나 · 보고 창에서 고르신 시각을 어떻게 받나는
+언제 띄우나 · 띄운 claude 에 무엇을 여나 · 로그인을 언제 하고 언제 안 하나 · 보고 창에서 고르신 시각과 누르신 「일정에 넣기」를 어떻게 받나는
 `references/DESIGN.md` 「정한 시각의 보고」가 든다.
 """
 
@@ -27,6 +28,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 
 import scan_const as C
 import scan_hand as H
@@ -353,6 +355,14 @@ def sign_in(hand: pathlib.Path | None, at: datetime) -> dict[str, Any]:
 
 
 def after_run(state: dict[str, Any], folder: pathlib.Path, evidence: str | None, hand: pathlib.Path | None, at: datetime) -> str:
+    """판 끝 — 고르신 시각과 띄우기(`brief_step`)를 먼저 하고, 보고 창의 「일정에 넣기」 누름을 그 뒤에 거둔다(보고를 안 걸었어도). 누름을
+    거두는 데 몇 분이 들 수 있어 띄우기가 그것을 기다리지 않게 뒤에 둔다. 내는 것 — 판 끝에 찍을 줄(할 말이 없으면 "")."""
+    said = brief_step(state, folder, evidence, hand, at)
+    pressed = window_presses()
+    return "\n".join(x for x in (said, pressed) if x)
+
+
+def brief_step(state: dict[str, Any], folder: pathlib.Path, evidence: str | None, hand: pathlib.Path | None, at: datetime) -> str:
     """판 끝 — 보고 창에서 고르신 시각을 먼저 받고, 지금 칸의 시각이 살펴볼 때면 사내 세션을 보고 살아 있으면 띄운다. `evidence` 는 그
     판이 손에서 받은 답이라 늘 쓰고(세션 파일이 새로 쓰여 판이 돌았으면 그 판에 바로 띄운다), 답이 없는 판(None)만 틈(`spaced`)을 지켜
     손에 묻는다. 세션이 없으면 로그인은 안 하고 기다린다 — 사용자가 스스로 로그인을 켠 PC 만 그날 첫 시각의 띄우기 앞에 한 번 입구를
@@ -534,6 +544,19 @@ def apply_window(folder: pathlib.Path, setting: dict[str, Any], added: list[str]
     return ". ".join(parts), bool(dropped)
 
 
+def window_presses() -> str:
+    """보고 창에서 누르신 「일정에 넣기」를 거둔다 — 창 곁의 손이 없을 때의 뒷받침이다. 판단 없이 일일 보고의 넣는 손(`ticks.py --presses`)이
+    누른 카드의 열쇠로 일정 손을 부르고 끝을 그 창에 돌려 적는다(창 곁의 손이 먼저 넣은 누름은 그 손의 기록으로 지나간다). 보고를 걸었든
+    안 걸었든 판마다 한다 — 대화에서 청한 보고의 창도 누름을 받는다. 열린 보고 창이 없거나 Edge 에 못 닿으면 아무것도 안 한다.
+    내는 것 — 판 끝에 찍을 한 줄(할 말이 없으면 "")."""
+    ticks = SKILLS_ROOT / C.BRIEF_SKILL / pathlib.Path(*C.BRIEF_TICKS)
+    if not ticks.is_file() or not edge_listening():
+        return ""
+    lines = ask_window(ticks, ["--presses", "--within", str(C.BRIEF_PRESSES_WITHIN_S)], C.BRIEF_PRESSES_TIMEOUT_S).strip().splitlines()
+    said = lines[-1].strip() if lines else ""
+    return f"[보고 창 — {said}]" if said.startswith("보고 창의") else ""
+
+
 def tell_window(folder: pathlib.Path) -> str:
     """대화에서 시각표를 바꾼 뒤 열린 보고 창에 바로 알린다 — 일일 보고의 거두는 손(`ticks.py --sync`)으로 이 PC 의 디버깅 포트가 받을 때만.
     창이 없거나 못 닿으면 ""(창은 그 뒤 스캔 판이나 다음 거두기가 알린다)."""
@@ -544,11 +567,11 @@ def tell_window(folder: pathlib.Path) -> str:
     return said[-1] if said and said[-1].startswith("열린 보고 창에") else ""
 
 
-def ask_window(ticks: pathlib.Path, args: list[str]) -> str:
+def ask_window(ticks: pathlib.Path, args: list[str], timeout: int = C.BRIEF_TIMES_TIMEOUT_S) -> str:
     """보고 창 손 한 번 — 표준 출력. 못 돌았으면 빈 글."""
     try:
         done = subprocess.run([sys.executable, "-X", "utf8", "-I", str(ticks), "--dir", str(st.home()), *args], capture_output=True,
-                              timeout=C.BRIEF_TIMES_TIMEOUT_S, stdin=subprocess.DEVNULL, env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                              timeout=timeout, stdin=subprocess.DEVNULL, env={**os.environ, "PYTHONIOENCODING": "utf-8"},
                               **H._quiet())
     except (subprocess.TimeoutExpired, OSError):
         return ""
@@ -558,7 +581,8 @@ def ask_window(ticks: pathlib.Path, args: list[str]) -> str:
 # ── 띄우기 ───────────────────────────────────────────────────────────────────
 
 def places(hand: pathlib.Path | None) -> dict[str, pathlib.Path]:
-    """띄운 보고가 쓰는 자리 — 손 · 일정 손 · 스캔의 읽는 명령 · 보고 창 · 업무 파일의 쓰는 손 · 스킬 폴더 · 사용자 폴더. 없는 일정 손은 뺀다."""
+    """띄운 보고가 쓰는 자리 — 손 · 일정 손 · 회의실 손 · 스캔의 읽는 명령 · 보고 창 · 업무 파일의 쓰는 손 · 스킬 폴더 · 사용자 폴더. 없는 일정 ·
+    회의실 손은 뺀다."""
     got = {"home": st.home(), "reader": SCRIPT_DIR / "reader.py", "scan_skill": SCRIPT_DIR.parent,
            "brief_skill": SKILLS_ROOT / C.BRIEF_SKILL, "work_skill": SKILLS_ROOT / C.WORK_SKILL,
            "window": SKILLS_ROOT / C.BRIEF_SKILL / pathlib.Path(*C.BRIEF_WINDOW),
@@ -569,6 +593,9 @@ def places(hand: pathlib.Path | None) -> dict[str, pathlib.Path]:
         calendar = hand.parents[2] / C.CALENDAR_SKILL / pathlib.Path(*C.CALENDAR_SCRIPT)
         if calendar.is_file():
             got["calendar"], got["calendar_skill"] = calendar, calendar.parents[1]
+        meeting = hand.parents[2] / C.MEETING_SKILL / pathlib.Path(*C.MEETING_SCRIPT)
+        if meeting.is_file():
+            got["meeting"], got["meeting_skill"] = meeting, meeting.parents[1]
     return got
 
 
@@ -578,6 +605,7 @@ def commands(p: dict[str, pathlib.Path]) -> list[str]:
         return f'python -X utf8 -I "{script.as_posix()}"'
     got = [f"{run(p['mail'])} {r}" for r in C.MAIL_READS] if "mail" in p else []
     got += [f"{run(p['calendar'])} {r}" for r in C.CALENDAR_READS] if "calendar" in p else []
+    got += [f"{run(p['meeting'])} {r}" for r in C.MEETING_READS] if "meeting" in p else []
     got += [f"{run(p['reader'])} *", f'{run(p["window"])} --dir "{p["home"].as_posix()}" *', f"{run(p['work_writer'])} *",
             f'{run(p["ticks"])} --dir "{p["home"].as_posix()}"']
     return got
@@ -588,7 +616,7 @@ PROMPT = """사람 없는 예약 실행이다 — 메일함 스캔이 보고 시
 0. 맨 먼저 열린 명령의 ticks.py 로 보고 창에서 누르신 것을 거둔다 — 업무 파악이 그 절을 읽고, 끝 줄들이 올리지 않을 것과 미룬 것을 댄다. Edge 에 못 닿으면(종료 3) 그대로 넘어간다.
 1. 그 뒤 스킬 mailbox-work 의 글 {work_lane} 를 읽고 「두 길」대로 업무 파악을 한다 — {writer} where 가 업무 파일이 있다고 하면 「이어 파악」, 없으면 처음 파악(그 스킬 폴더의 first-understanding.md)이고, 「사람이 없을 때」 절이 이 실행의 경계다. 업무 파일은 {writer} write 로만 쓴다 — 이 실행에는 파일을 쓰는 도구가 없다.
 2. 그 뒤 스킬 daily-brief 의 글 {brief_lane} 를 읽고 그 글대로 짓는다 — 「사람 없는 예약 실행」 절이 이 실행의 경계다.
-3. 회사 메일 · 일정 손을 부르는 꼴은 그 스킬의 글({skills})이, 메일함 스캔이 쌓은 것을 읽는 꼴은 {scan_skill}/SKILL.md 가 든다.
+3. 회사 메일 · 일정 · 회의실 손을 부르는 꼴은 그 스킬의 글({skills})이, 메일함 스캔이 쌓은 것을 읽는 꼴은 {scan_skill}/SKILL.md 가 든다.
 4. 이 실행에서 열린 명령은 아래 꼴뿐이다 — 경로와 따옴표까지 그대로 쓰고, 「…」 자리에 인자를 둔다. 그 밖의 명령은 막혀 있다.
 {commands}
 5. 사용자 폴더는 {home} 이다(지금 자리) — 업무 파일 {work_name} 와 지난 보고 글 brief-….md 가 여기 있다.
@@ -602,11 +630,11 @@ def plan(setting: dict[str, Any], hand: pathlib.Path | None, folder: pathlib.Pat
     p = places(hand)
     opened = commands(p)
     settings = {"permissions": {"allow": [f"Bash({c})" for c in opened], "deny": list(C.BRIEF_DENY)}}
-    dirs = [p[k] for k in ("brief_skill", "work_skill", "scan_skill", "mail_skill", "calendar_skill") if k in p and p[k].is_dir()]
+    dirs = [p[k] for k in ("brief_skill", "work_skill", "scan_skill", "mail_skill", "calendar_skill", "meeting_skill") if k in p and p[k].is_dir()]
     cmd = [str(setting["claude"]), "-p", "--settings", str(folder / C.BRIEF_SETTINGS_FILE), "--permission-mode", "dontAsk",
            "--tools", C.CLAUDE_TOOLS, "--strict-mcp-config", "--no-session-persistence",
            *[a for d in dirs for a in ("--add-dir", str(d))]]
-    skills = " · ".join(f"{p[k].as_posix()}/SKILL.md" for k in ("mail_skill", "calendar_skill") if k in p)
+    skills = " · ".join(f"{p[k].as_posix()}/SKILL.md" for k in ("mail_skill", "calendar_skill", "meeting_skill") if k in p)
     prompt = PROMPT.format(at=at or setting["times"][0], brief_lane=(p["brief_skill"] / C.LANE_FILE).as_posix(),
                            skills=skills or "회사 메일 스킬 company-mail", work_lane=(p["work_skill"] / C.LANE_FILE).as_posix(),
                            writer=pathlib.Path(*C.WORK_WRITER).name, work_name=C.WORK_FILE,
@@ -622,6 +650,27 @@ def _detached() -> dict[str, Any]:
     return {"start_new_session": True}
 
 
+def _loopback_proxy(env: dict[str, str]) -> bool:
+    """claude 의 요청이 루프백 프록시를 지나나 — `ANTHROPIC_BASE_URL` 이 `http://<루프백>:<포트>/…` 일 때만."""
+    try:
+        parts = urlsplit(env.get(C.BASE_URL_ENV) or "")
+        port = parts.port
+    except ValueError:
+        return False
+    return parts.scheme == "http" and parts.hostname in C.LOOPBACK_HOSTS and bool(port)
+
+
+def child_env(env: dict[str, str]) -> dict[str, str]:
+    """띄울 claude 의 환경 — 겹친 세션의 표지를 걷고, 루프백 프록시를 지나면 보고의 표 머리를 싣는다(`C.RUNNER_HEADER`).
+    이미 든 다른 머리 줄은 그대로 둔다. 프록시가 없는 자리(사외 · 게이트웨이 직결)는 머리를 안 싣는다."""
+    out = {k: v for k, v in env.items() if k not in C.NESTED_ENV}
+    if _loopback_proxy(out):
+        lines = [line for line in (out.get(C.CUSTOM_HEADERS_ENV) or "").splitlines()
+                 if line.strip() and line.split(":", 1)[0].strip().lower() != C.RUNNER_HEADER]
+        out[C.CUSTOM_HEADERS_ENV] = "\n".join(lines + [f"{C.RUNNER_HEADER}: {C.RUNNER_HEADER_VALUE}"])
+    return out
+
+
 def launch(setting: dict[str, Any], hand: pathlib.Path | None, folder: pathlib.Path, at: datetime, slot: str | None = None,
            skipped: list[str] | None = None) -> dict[str, Any]:
     """권한 · 부탁 글을 사용자 폴더에 지어 claude 를 띄우고 기다리지 않는다(출력은 `BRIEF_LOG_FILE`). 내는 것 — {at, pid, log} 이나 {at, error}."""
@@ -629,7 +678,7 @@ def launch(setting: dict[str, Any], hand: pathlib.Path | None, folder: pathlib.P
     st.write_json(folder / C.BRIEF_SETTINGS_FILE, settings)
     (folder / C.BRIEF_PROMPT_FILE).write_text(prompt, encoding="utf-8")
     log = folder / C.BRIEF_LOG_FILE
-    env = {k: v for k, v in os.environ.items() if k not in C.NESTED_ENV}
+    env = child_env(dict(os.environ))
     try:
         with (folder / C.BRIEF_PROMPT_FILE).open("rb") as given, log.open("wb") as out:
             proc = subprocess.Popen(cmd, cwd=str(st.home()), stdin=given, stdout=out, stderr=subprocess.STDOUT, env=env, close_fds=True,

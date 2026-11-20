@@ -6,18 +6,21 @@
     python -X utf8 -I ticks.py --dir <사용자 폴더> --times                                  보고 창에서 고르신 보고 시각만 읽는다
     python -X utf8 -I ticks.py --dir <사용자 폴더> --times-done <고르신 때> --said <말> [--refused]   받았나를 그 창에 돌려 적는다
     python -X utf8 -I ticks.py --dir <사용자 폴더> --sync                                   열린 보고 창에 지금 모습만 알린다
+    python -X utf8 -I ticks.py --dir <사용자 폴더> --presses [--within 초]                  「일정에 넣기」 누름을 거둬 넣는다(스캔 판)
+    python -X utf8 -I ticks.py --dir <사용자 폴더> --watch                                  창 곁에 남아 그 누름을 바로 거둔다(창을 여는 손이 띄운다)
     (셋 다 · 그리고 거둔 뒤에도 열린 창에 지금 모습(`window.state_of` — 시각표 · 규칙의 수 · 맞춤 파일의 두 절)을 적는다 — 창은 그보다 앞서
     고른 것을 낡았다고 알고, 대화에서 바꾸신 것을 다음 스캔을 기다리지 않고 보인다. `--sync` 는 그것을 바꾸는 대화의 명령이 부른다)
 
     --dir — 보고 글(brief-….md)이 사는 사용자 폴더. 한 번만 받는다 · 그 안의 이름이 가장 늦은 보고 글 하나만 고친다
     --times · --times-done — 스킬 mailbox-scan 의 스캔 판이 부른다(보고 시각표의 주인은 그 스킬이다). 열린 file: 탭이 없으면 아무것도 안 연다
+    --presses · --watch — 곁의 `presses.py` 가 든다(그 머리말). 열린 보고 창이 없으면 아무것도 안 연다
 
 표시는 창(file://)의 localStorage 에 있다(`assets/report.js`). 로그인 Edge(스킬 ep-login 이 연 디버깅 포트 — `EDGE_DEBUG_PORT`
 기본 9222)의 file: 탭 하나에서 읽고, 열린 file: 탭이 없으면 가장 늦은 보고 창을 뒤 탭으로 잠깐 열어 읽고 닫는다. 옮긴 표시에는 남긴 때를
 적어 두어 다시 옮기지 않고, 그 절에 이미 든 메일 번호도 더하지 않는다. 부르는 곳은 이 PC 의 디버깅 포트뿐이다 — 메일함에 닿지 않는다.
 
 내는 것 — 표준 출력의 끝 줄이 더한 수 · 이미 든 수 · 고친 보고 글을 말하고, 거둘 수 없었으면 「다음: …」이 뒤에 선다. 그 앞 줄들이
-맞춤 파일의 올리지 않을 것 · 돌아온 것 · 미룬 것이다(Edge 에 못 닿아도 댄다).
+맞춤 파일의 올리지 않을 것 · 돌아온 것 · 미룬 것과 지난 보고 뒤 창에서 누르신 「일정에 넣기」의 끝이다(Edge 에 못 닿아도 댄다).
 `--times` 의 끝 줄 — 고르신 것이 있으면 「고르신 보고 시각: HH:MM … · 보던 시각: HH:MM …(없으면 -) · 고르신 때 <때>」(`TIMES_LINE` · 스캔이
 이 꼴로 읽는다 — 보던 시각에서 무엇을 더하고 빼셨나로 걸린 시각표를 고친다).
 종료 값 — 0 거뒀다(거둘 표시가 없었던 것도) · 1 보고 글이나 맞춤 파일을 못 고쳤다 · 2 인자가 틀렸다 · 3 로그인 Edge 에 못 닿았다(표시는 그
@@ -59,7 +62,7 @@ MARKS = ("done", "open", "later", "quiet", "clear")    # 표시의 값 — `asse
 
 # 창의 localStorage 를 읽고 쓰는 식 — 창에서 받은 글로 식을 짓지 않는다. 쓰는 식은 이 손이 지은 JSON 한 덩이만 인자로 받는다
 READ_EXPR = ("JSON.stringify(Object.keys(localStorage).filter(function (k) { return %s.some(function (p) { return k.indexOf(p) === 0; }); })"
-             ".map(function (k) { return [k, localStorage.getItem(k)]; }))") % json.dumps([W.DONE_PREFIX, W.UNQUIET_PREFIX, W.TIMES_KEY])
+             ".map(function (k) { return [k, localStorage.getItem(k)]; }))") % json.dumps([W.DONE_PREFIX, W.UNQUIET_PREFIX, W.TIMES_KEY, W.CAL_PREFIX])
 WRITE_EXPR = ("(function (rows) { rows.forEach(function (r) { localStorage.setItem(r[0], r[1]); });"
               " window.dispatchEvent(new StorageEvent(\"storage\")); return rows.length; })(%s)")
 WHERE_EXPR = "location.protocol"
@@ -535,9 +538,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--said", default="", help="--times-done 과 함께 — 그 창에 보일 한 줄")
     ap.add_argument("--refused", action="store_true", help="--times-done 과 함께 — 안 받았다")
     way.add_argument("--sync", action="store_true", help="열린 보고 창에 지금 모습만 알린다(그것을 바꾸는 대화의 명령이 부른다)")
+    way.add_argument("--presses", action="store_true", help="열린 보고 창의 「일정에 넣기」 누름을 거둬 넣는다(스캔 판이 부른다)")
+    way.add_argument("--watch", action="store_true", help="보고 창 곁에 남아 누름을 바로 거둔다(창을 여는 손이 띄운다)")
+    ap.add_argument("--within", type=int, default=0, metavar="초", help="--presses 와 함께 — 이 안에 끝낼 수 있는 넣기만 시작한다")
     args = ap.parse_args(argv)
 
     folder = pathlib.Path(args.dir)
+    if args.presses or args.watch:
+        import presses                 # 곁의 손 — presses 가 이 파일을 싣으므로 여기서만 싣는다
+        return presses.watch(folder) if args.watch else presses.round_once(folder, args.within)
     if args.times or args.times_done is not None:
         return times(folder, args.times_done, args.said, args.refused)
     if args.sync:
@@ -553,6 +562,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"경고: 돌아온 것을 보고 맞춤 파일에서 못 걷었다({exc}) — 다음 보고도 돌아온 것으로 다시 댄다")
     sync(folder)                       # 열린 창이 거둔 뒤의 모습을 보이게 — 대화에서 걷은 것도 여기서 따라간다
     for line in summary(prefs.quiet, back, wait):
+        print(line)
+    import presses                     # 곁의 손 — presses 가 이 파일을 싣으므로 여기서만 싣는다
+    for line in presses.recent_lines(folder):
         print(line)
     print(last)
     return code

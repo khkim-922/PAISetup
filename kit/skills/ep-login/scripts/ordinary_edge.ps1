@@ -10,6 +10,11 @@
 #   look      → 표준 출력에 JSON 한 줄: {"dialogs":[{"i":번호,"title":창 제목,"message":글,"buttons":단추 수,
 #               "edit":입력 칸이 있나}]}
 #   press <i> → 바로 앞 look 의 물음 i 의 첫 단추를 누르고 {"pressed":i,"button":단추 이름} 한 줄(못 누르면 {"pressed":-1,"why":…})
+#   tabs      → 창마다 앞 탭의 주소(주소창)와 모든 탭의 제목(탭 줄)을 읽어, EP 에 맞는 수만 JSON 한 줄로 낸다:
+#               {"browsers":브라우저 프로세스 수,"windows":창 수,"unread":탭 줄도 주소창도 안 읽힌 Edge 창 수,"portal":앞 탭이 포털 호스트인 창 수,
+#                "login":앞 탭이 로그인 화면 호스트인 창 수,"titled":제목이 포털 제목인 탭 수}
+#               ⚠ 사람의 다른 탭의 주소 · 제목은 이 프로세스 밖으로 안 낸다 — 견주기만 하고 세어 낸다. 견줄 값은 환경변수로 받는다:
+#               EP_TAB_PORTAL · EP_TAB_LOGIN 호스트 이름(쉼표로 여럿 · 포트는 안 본다) · EP_TAB_TITLE 포털 탭의 제목(통째로 같아야 센다 · 비면 제목은 안 본다 · 대소문자를 가린다)
 #   빈 줄 · 끝 → 끝낸다(입구가 죽어 표준 입력이 닫혀도 여기서 끝난다 — 남지 않는다)
 # 첫 단추가 「확인」인 까닭 — 윈도의 Chromium 물음 창은 「확인」을 앞에 둔다(views 의 PlatformStyle::kIsOkButtonLeading). 물음 창의 꼴
 # (JavaScriptTabModalDialogViewViews · 제목 「<호스트>의 메시지」)은 references/SOURCES.md 「잰 것」이 든다.
@@ -20,6 +25,7 @@ $AE = [System.Windows.Automation.AutomationElement]
 $Scope = [System.Windows.Automation.TreeScope]
 $Kind = [System.Windows.Automation.ControlType]
 $Walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+$RawWalker = [System.Windows.Automation.TreeWalker]::RawViewWalker
 $DialogDepth = 3          # 물음 창(RootView)이 브라우저 창 아래 놓이는 깊이의 위 끝 — 페이지 나무까지 내려가지 않는다
 $Profile = $env:EP_ORDINARY_PROFILE
 
@@ -63,7 +69,50 @@ function Dialogs($top) {
     , $out                                            # 짝 하나만 있어도 짝의 목록으로 낸다 — 안 싸면 PowerShell 이 그 짝을 풀어 낸다
 }
 
-$IdsEvery = 8             # 브라우저 프로세스를 다시 묻는 눈금(보기 수) — 평소 Edge 가 안 떠 있던 판은 못 찾은 동안 매번 묻는다
+$PortalHosts = @(([string]$env:EP_TAB_PORTAL).ToLower().Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$LoginHosts = @(([string]$env:EP_TAB_LOGIN).ToLower().Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$PortalTitle = [string]$env:EP_TAB_TITLE
+
+# 주소창의 글에서 호스트 이름만 — 주소창은 스킴을 떼고 보이기도 한다(「swp.posco.net/…」). 포트 · 경로는 뗀다
+function HostOf([string]$text) {
+    $rest = ($text.Trim() -replace '^[a-zA-Z][a-zA-Z0-9+.-]*://', '')
+    $hostPort = ($rest -split '[/?#]', 2)[0]
+    if ($hostPort -match '^\[([^\]]+)\]') { return $Matches[1].ToLower() }
+    return ($hostPort -split ':', 2)[0].ToLower()
+}
+
+# 탭 줄과 주소창을 세어 낸다 — 둘 다 안 잡히는 창은 unread 로 센다(그 창은 못 본 것이지 포털이 없는 것이 아니다)
+function Tabs($ids) {
+    $count = @{ browsers = @($ids).Count; windows = 0; unread = 0; portal = 0; login = 0; titled = 0 }
+    foreach ($top in (Windows $ids)) {
+        try {
+            $count.windows++
+            # 브라우저 칸(창 바로 아래의 BrowserRootView)에서 찾는다 — 창에서 한 번에 찾으면 탭이 그린 화면(Chrome_RenderWidgetHostHWND)이 창
+            # 아래 여럿 선 뒤로는 브라우저 칸 아래를 안 훑어 탭 줄 · 주소창을 놓친다(references/SOURCES.md 「잰 것」). 페이지 안은 안 훑는다
+            $roots = @(); $child = $RawWalker.GetFirstChild($top)
+            while ($child) { if ($child.Current.ClassName -eq 'BrowserRootView') { $roots += $child }; $child = $RawWalker.GetNextSibling($child) }
+            if (-not $roots.Count) { $roots = @($top) }
+            $tabs = @(); $omnibox = $null
+            foreach ($root in $roots) {
+                $tabs += @($root.FindAll($Scope::Descendants, (Cond $AE::ControlTypeProperty $Kind::TabItem)))
+                if (-not $omnibox) { $omnibox = $root.FindFirst($Scope::Descendants, (Cond $AE::ClassNameProperty 'OmniboxViewViews')) }
+            }
+            if (-not $tabs.Count -and -not $omnibox) { $count.unread++; continue }
+            # 제목은 통째로 같아야 센다 — 일부만 견주면 포털 제목을 든 다른 화면(로그인 화면 따위)의 탭도 포털로 센다
+            if ($PortalTitle) { foreach ($t in $tabs) { if ($t.Current.Name.Trim() -ceq $PortalTitle) { $count.titled++ } } }
+            if ($omnibox) {
+                $address = ''
+                try { $address = $omnibox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value } catch { }
+                $h = HostOf $address
+                if ($h -and $PortalHosts -contains $h) { $count.portal++ }
+                elseif ($h -and $LoginHosts -contains $h) { $count.login++ }
+            }
+        } catch { $count.unread++ }                   # 보는 사이 닫힌 창 — 못 본 것으로 센다
+    }
+    $count
+}
+
+$IdsEvery = 8            # 브라우저 프로세스를 다시 묻는 눈금(보기 수) — 평소 Edge 가 안 떠 있던 판은 못 찾은 동안 매번 묻는다
 $seen = @()
 $ids = @()
 $looks = 0
@@ -86,6 +135,10 @@ while ($true) {
     }
     if (-not $ids.Count -or $looks % $IdsEvery -eq 0) { $ids = @(Browsers) }   # 프로세스 묻기는 비싸다 — 몇 번에 한 번, 못 찾았으면 매번
     $looks++
+    if ($line -eq 'tabs') {
+        [Console]::Out.WriteLine(((Tabs $ids) | ConvertTo-Json -Compress)); [Console]::Out.Flush()
+        continue
+    }
     $dialogs = @(); $seen = @()
     foreach ($top in (Windows $ids)) {
         try {

@@ -1,6 +1,6 @@
 """사내 앱 스킬의 얇은 명령이 함께 쓰는 뼈대 — 명령을 멈추는 꼴 · 종료 값 · 답을 JSON 하나로 내는 끝 · 답 크기에 본문 맞추기 ·
-받아 둔 파일 · 날 말(오늘 · 내일 · 요일) · 서울 시각과 날짜의 꼴 · 모델이 쓴 글 파일 · 사람 파일(한 손이 찾은 사람을 다음 손이 받는 people.json) ·
-종료 값의 뜻 · 빈 틈 셈(바쁜 구간 사이의 비는 때). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · company-ecm(종료 값 · 글 파일 · 범례 · 사람 파일) · 종료 값 · 받아 둔 파일 · 본문 맞추기는 company-mail 도)이
+받아 둔 파일 · 날 말(오늘 · 내일 · 모레) · 요일 말에 돌려주는 날짜 표 · 서울 시각과 날짜의 꼴(「<날 말> HH:MM」 도) · 모델이 쓴 글 파일 · 사람 파일(한 손이 찾은 사람을 다음 손이 받는 people.json) ·
+종료 값의 뜻 · 빈 틈 셈(바쁜 구간 사이의 비는 때) · 손가락의 표(한 건을 다루는 손 — 일정 · 회의실 — 의 출발 · 바꿀 것 · 아직 없는 손가락 칸과 그 거름 · 지도 줄 · 확인 열쇠). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · company-ecm(종료 값 · 글 파일 · 범례 · 사람 파일) · 종료 값 · 받아 둔 파일 · 본문 맞추기는 company-mail 도)이
 이 폴더를 ``sys.path`` 에 넣고 싣는다. 앱 손(서버를 묻는 쪽)이 쓰는 것 — 세션 파일 · opener · SSO 넘김 칸 · 이름 누르기 · node 손
 돌리기 — 은 곁의 ``ep_session.py`` 가 든다. 새 사내 앱 스킬은 제 서버를 묻는 앱 손과 제 명령만 짓고 나머지는 여기서 부른다.
 
@@ -37,6 +37,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -337,18 +338,37 @@ def notes_key(notes: str) -> str:
 # ── 날 말 ─────────────────────────────────────────────────────────────────
 WEEKDAYS = "월화수목금토일"                        # date.weekday() 의 0 ~ 6 — 답에 요일을 실어 모델이 요일을 제 셈으로 짐작하지 않게
 DAY_WORDS = {"오늘": 0, "today": 0, "내일": 1, "tomorrow": 1, "모레": 2}   # 날 말 → 오늘에서 며칠 뒤
-# 날 말에 없는 말을 어떻게 주나 — 날을 받는 명령의 --help 와 멈추는 말이 함께 쓴다
-DAY_COUNT = "요일 · 「다음 주 금요일」 같은 말은 안 받는다 — 오늘 날짜에서 세어 YYYY-MM-DD 로 준다"
+# 날짜(date_of)만 받는 자리가 날 말을 어떻게 주라고 이르나 — 그 명령의 --help 와 멈추는 말이 함께 쓴다
+DAY_COUNT = "요일 · 「다음 주 금요일」 같은 말은 안 받는다 — 어느 날을 뜻하나를 정해 YYYY-MM-DD 로 준다"
+# 요일 말(「금요일」 · 「다음 주 금요일」)이 어느 날인가는 말한 맥락을 읽어야 서는 판단이다 — 손이 규칙 하나로 고르면 틀린 날을 조용히 낸다.
+# 손은 고르지 않고 셈만 댄다: 요일 말이 오면 오늘과 앞으로 세 주의 날짜 · 요일 표(``weeks_word``)를 돌려주고, 모델이 그 표에서 날을 정한다
+WEEKDAY_WORD = re.compile(r"[월화수목금토일]요일")
+WEEKS_SHOWN = 3                                    # 표에 내는 주의 수 — 이번 주부터
+DAY_HELP = "오늘 · 내일 · 모레 · YYYY-MM-DD"
+
+
+def weeks_word(today: _date) -> str:
+    """이번 주부터 ``WEEKS_SHOWN`` 주의 날짜 · 요일 표 한 줄 — 요일로 말한 날을 모델이 세지 않고 고르게."""
+    monday = today - _timedelta(days=today.weekday())
+    weeks = []
+    for w in range(WEEKS_SHOWN):
+        days = [monday + _timedelta(days=7 * w + d) for d in range(7)]
+        weeks.append(" ".join(f"{WEEKDAYS[d.weekday()]} {d.month}/{d.day}" for d in days))
+    return " | ".join(weeks)
 
 
 def day_of(text: str | None, today: _date) -> _date:
-    """사람이 준 날 — 날 말(``DAY_WORDS`` · 대소문자 무시)이나 ``YYYY-MM-DD``. 비면 오늘이다. 꼴이 아니면 Stop(인자)."""
+    """사람이 준 날 — 날 말(``DAY_WORDS`` · 대소문자 무시)이나 ``YYYY-MM-DD``. 비면 오늘이다. 요일 말은 날을 고르지 않고 Stop(인자)으로
+    날짜 표를 돌려준다. 그 밖에 꼴이 아니면 Stop(인자) — 말이 받는 꼴과 오늘을 든다."""
     word = (text or "오늘").strip().lower()
     if word in DAY_WORDS:
         return today + _timedelta(days=DAY_WORDS[word])
+    if WEEKDAY_WORD.search(word):
+        raise Stop(EXIT_ARGS, "args", f"요일로 말한 날은 손이 고르지 않는다: {text!r}. 다음: 말한 맥락으로 어느 날인지 정해 YYYY-MM-DD 로 준다 — "
+                                      f"{today_word()} · 날짜 표: {weeks_word(today)}")
     got = _real_date(word)
     if got is None:
-        raise Stop(EXIT_ARGS, "args", f"날은 오늘 · 내일 · 모레 · YYYY-MM-DD 가운데 하나로 준다: {text!r}")
+        raise Stop(EXIT_ARGS, "args", f"날은 {DAY_HELP} 가운데 하나로 준다: {text!r}. 다음: 그 꼴로 다시 준다({today_word()})")
     return got
 
 
@@ -386,14 +406,28 @@ def date_of(text: str | None, lead: str = "날은") -> _date:
     return got
 
 
+WORD_STAMP = re.compile(r"(.+?)\s+(\d{1,2}:\d{2})")   # 「<날 말> HH:MM」 — 「내일 15:00」
+
+
 def stamp_of(text: str | None) -> _datetime:
-    """서울 벽시계 ``YYYY-MM-DD HH:MM`` → 서울 시간대가 붙은 시각. 꼴이 아니면 Stop(인자) — 말이 받는 꼴과 오늘에서 세는 법을 든다."""
+    """서울 벽시계 ``YYYY-MM-DD HH:MM`` 이나 「<날 말> HH:MM」(오늘 · 내일 · 모레) → 서울 시간대가 붙은 시각. 요일 말이 든 시각은 날을 고르지
+    않고 Stop(인자)으로 날짜 표를 돌려준다(``day_of``). 그 밖에 꼴이 아니면 Stop(인자) — 말이 받는 꼴을 든다."""
+    word = (text or "").strip()
     try:
-        return _datetime.strptime((text or "").strip(), STAMP_FORM).replace(tzinfo=SEOUL)
+        return _datetime.strptime(word, STAMP_FORM).replace(tzinfo=SEOUL)
     except ValueError as exc:
+        m = WORD_STAMP.fullmatch(word)
+        if m:
+            today = _datetime.now(SEOUL).date()
+            try:
+                if m.group(1).lower() in DAY_WORDS or WEEKDAY_WORD.search(m.group(1)):
+                    return _datetime.combine(day_of(m.group(1), today), _datetime.strptime(m.group(2), "%H:%M").time(), SEOUL)
+            except ValueError:
+                pass
         tomorrow = _datetime.now(SEOUL).date() + _timedelta(days=1)
-        raise Stop(EXIT_ARGS, "args", f"시각은 {STAMP_HELP} 꼴로 준다: {text!r}. 다음: 날 말 · 「3시」 같은 말은 안 받는다 — {today_word()}이니 "
-                                      f"거기서 세어 24 시로 준다(내일 오후 3시면 「{tomorrow.isoformat()} 15:00」)") from exc
+        raise Stop(EXIT_ARGS, "args", f"시각은 {STAMP_HELP} 나 「<날 말> HH:MM」(「내일 15:00」) 꼴로 준다: {text!r}. 다음: 「3시」 · 「오후 3시」 "
+                                      f"같은 말은 안 받는다 — {today_word()}이니 24 시로 준다(내일 오후 3시면 「{tomorrow.isoformat()} 15:00」 · "
+                                      "「내일 15:00」)") from exc
 
 
 def stamp(t: _datetime) -> str:
@@ -415,3 +449,113 @@ def gaps_of(busy, lo: _datetime, hi: _datetime, need: _timedelta) -> list[tuple[
     if hi - at >= need:
         out.append((at, hi))
     return out
+
+
+# ── 손가락의 표 ───────────────────────────────────────────────────────────
+# 한 건을 다루는 손(일정 · 회의실)이 함께 쓰는 표의 칸과 거름 — 출발 × 바꿀 것 × 끝. 끝(End)과 거르는 차례(fingers)는 손마다 다르다:
+# 일정의 끝은 「미리 보기의 key 를 받나」, 회의실의 끝은 「바꿀 것을 받나」를 들고, 거르는 차례도 그 뜻을 따라 갈린다
+KEY_LENGTH = 16                                    # 확인 열쇠(보인 판의 해시)의 길이 — 16진 글자
+
+
+@dataclass(frozen=True)
+class Start:
+    """출발 하나 — 앱의 화면 · 창 하나."""
+    word: str        # 사람 말
+    screen: str      # 그 화면이 무엇인가 — --help 의 지도
+    takes: str = ""  # 그 출발을 고르는 인자 — 빈 글자면 아무것도 안 주면 이 출발이다
+
+    @property
+    def dest(self) -> str:
+        return flag_dest(self.takes)
+
+
+@dataclass(frozen=True)
+class Change:
+    """바꿀 것 하나 — 손가락 하나."""
+    flags: tuple             # ((인자, argparse 의 덧값), …)
+    starts: tuple            # 받는 출발
+    word: str                # 사람 말 — 「 — 」 앞이 이름이다
+    elsewhere: str = ""      # 받지 않는 출발에서 그 일을 어디서 하나 — 명령이 멈추며 댄다
+    need: tuple = ()         # 이 손가락이 꼭 드는 출발
+    unmeasured: tuple = ()   # 받되 회사에서 그 판을 아직 안 잰 출발 — --help 가 △ 로 표시하고 손이 사람에게 알린다
+
+    @property
+    def name(self) -> str:
+        return self.word.split(" — ")[0]
+
+
+@dataclass(frozen=True)
+class NotYet:
+    """아직 없는 손가락 하나 — 회사에서 안 잰 화면 동작이라 짓지 않았다. 인자가 있으면 받아 두었다가 세션 전에 멈추며 어디서 하나를 댄다."""
+    word: str                # 무엇을 못 하나
+    where: str               # 사람이 어디서 하나
+    flags: tuple = ()        # ((인자, argparse 의 덧값), …) — 모델이 짐작해 줄 만한 인자. 비면 --help 의 지도에만 선다
+    again: str = ""          # 거듭 주면 이 손가락을 바란 것으로 읽는 바꿀 것(표의 열쇠 · 그 인자는 거듭을 적는 Action 으로 받는다)
+
+
+def flag_dest(flag: str) -> str:
+    """인자의 argparse 이름 — ``--add-to`` → ``add_to``."""
+    return flag.lstrip("-").replace("-", "_")
+
+
+def given(args, row) -> bool:
+    """표의 줄(``Change`` · ``NotYet``)의 인자 가운데 하나라도 받았나."""
+    return any(getattr(args, flag_dest(f), None) is not None for f, _ in row.flags)
+
+
+def fingerprint(view) -> str:
+    """보인 판의 열쇠 — 판 전체(JSON 으로 옮길 것)의 해시. 같은 판이면 늘 같은 글자이고, 무엇이든 달라지면 달라진다."""
+    blob = json.dumps(view, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:KEY_LENGTH]
+
+
+def refuse_not_yet(args, not_yet: dict, changes: dict) -> None:
+    """아직 없는 손가락을 받았으면 사람이 어디서 하나를 대며 Stop(인자) — 거듭 준 칸(``NotYet.again``)도 그 손가락을 바란 것이다."""
+    for n in not_yet.values():
+        again = bool(n.again) and getattr(args, f"{flag_dest(changes[n.again].flags[0][0])}_again", False)
+        if given(args, n) or again:
+            raise Stop(EXIT_ARGS, "args", f"「{n.word}」 손가락은 아직 없다. 다음: {n.where}")
+
+
+def pick_start(args, starts: dict) -> str:
+    """부른 명령의 출발 — 출발을 고르는 인자 가운데 받은 것, 없으면 인자 없는 출발. 둘 이상 받았으면 Stop(인자)."""
+    picked = [k for k, s in starts.items() if s.takes and getattr(args, s.dest, None) is not None]
+    if len(picked) > 1:
+        raise Stop(EXIT_ARGS, "args", f"출발은 하나다 — {' · '.join(starts[k].takes for k in picked)} 가운데 하나만 준다. 다음: 다룰 한 건의 "
+                                      "인자 하나로 다시 부른다")
+    return picked[0] if picked else next(k for k, s in starts.items() if not s.takes)
+
+
+def refuse_foreign(args, changes: dict, start: str, word: str) -> None:
+    """그 출발이 안 받는 손가락을 받았으면 그 일을 어디서 하나를 대며 Stop(인자)."""
+    for c in changes.values():
+        if given(args, c) and start not in c.starts:
+            raise Stop(EXIT_ARGS, "args", f"「{word}」에는 「{c.name}」 손가락이 없다. 다음: {c.elsewhere}")
+
+
+def refuse_missing(args, changes: dict, start: str, word: str, have=lambda c: False) -> None:
+    """그 출발이 꼭 드는 손가락이 빠졌으면 Stop(인자). ``have(줄)`` 이 참이면 다른 인자가 그 줄을 채운 것이다."""
+    missing = [c.flags[0][0] for c in changes.values() if start in c.need and not given(args, c) and not have(c)]
+    if missing:
+        raise Stop(EXIT_ARGS, "args", f"「{word}」에는 {' · '.join(missing)} 가 든다. 다음: 그 값을 더해 다시 부른다")
+
+
+def change_lines(changes: dict, names: list, width: int, unmeasured_word: str = "") -> list[str]:
+    """--help 지도의 「바꿀 것」 줄 — 손가락마다 출발별 표시(● 꼭 든다 · △ 받되 안 쟀다 · ○ 받는다 · — 없다)와 사람 말, 그 아래 — 의
+    자리 · △ 의 자리."""
+    lines, elsewhere = [], {}
+    for c in changes.values():
+        marks = " ".join(f"{k}{'●' if k in c.need else '△' if k in c.unmeasured else '○' if k in c.starts else '—'}" for k in names)
+        lines.append(f"  {' · '.join(f for f, _ in c.flags):<{width}} {marks}   {c.word}")
+        if c.elsewhere:
+            elsewhere.setdefault(c.elsewhere, []).append(c.flags[0][0])
+    lines += [f"  — 의 자리({' · '.join(flags)}): {text}" for text, flags in elsewhere.items()]
+    lines += [f"  △ 의 자리({c.flags[0][0]} · {' · '.join(c.unmeasured)}): {unmeasured_word}" for c in changes.values() if c.unmeasured]
+    return lines
+
+
+def not_yet_lines(not_yet: dict, changes: dict, width: int) -> list[str]:
+    """--help 지도의 「아직 없는 손가락」 줄 — 부르는 인자(거듭이면 「인자 거듭」)와 무엇을 · 어디서."""
+    def flags(n: NotYet) -> str:
+        return f"{changes[n.again].flags[0][0]} 거듭" if n.again else " · ".join(f for f, _ in n.flags)
+    return [f"  {flags(n):<{width}} {n.word} — {n.where}" for n in not_yet.values()]

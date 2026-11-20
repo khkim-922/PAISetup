@@ -10,6 +10,7 @@
 내는 것 — `<--dir>/brief-YYYY-MM-DD-HHMM.html`(이 PC 의 시각)과 같은 이름의 `.md`(받은 보고 글 · 다음 보고가 읽는 기록). 표준 출력의 끝
 줄이 두 파일 · 절 · 줄 · 메일 링크의 수 · 띄웠나를 말하고, 경고 줄이 앞에, 「다음: …」이 뒤에 선다. 메일함 주소는 부르지 않는다.
 창의 끝에는 「보고 맞추기」가 선다 — 같은 폴더의 보고 시각표(스킬 mailbox-scan 의 설정)와 보고 맞춤 파일(곁의 `prefs.py`)을 읽기만 해 보인다.
+「넣을 일정」 칸이 든 카드에는 「일정에 넣기」 단추가 서고, 로그인 Edge 에 연 창이면 그 곁에 누름을 바로 거두는 손(곁의 `presses.py`)을 띄운다.
 무엇을 지키고 왜 그런가는 `references/DESIGN.md` 가 든다.
 
 종료 값 — 0 지었다 · 1 못 지었다(제목이 없다 · 글을 못 읽었다 · 폴더가 없다 · 못 썼다 — 끝 줄이 다음 걸음을 말한다) · 2 인자가 틀렸다.
@@ -62,6 +63,23 @@ TIMES_KEY = "brief-times"                      # 「보고 맞추기」에서 �
 STATE_KEY = "brief-state"                      # 창이 보이는 지금 모습(`state_of` — 시각표 · 규칙의 수 · 올리지 않을 것 · 내일 다시 볼 것) — 그것을 바꾸는
                                                # 명령(대화의 scan.py brief · prefs.py)과 스캔 판 · 거두는 손이 ticks.py 로 열린 창에 바로 적는다
 UNQUIET_PREFIX = "brief-unquiet:"              # 「올리지 않기로 한 것」의 「다시 올리기」 — 맞춤 파일 줄의 열쇠(`prefs.key`)마다
+CAL_PREFIX = "brief-cal:"                      # 「일정에 넣기」의 누름 — 카드의 열쇠(일정 손 preview 의 key)마다. 곁의 presses.py 가 거둬 넣고 끝을 돌려 적는다
+HAND_KEY = "brief-hand"                        # 창 곁의 거두는 손이 살아 있다는 숨 표 — 창이 누름 직후의 말을 고르는 데 쓴다
+HAND_BEAT_S = 5                                # 그 손이 숨 표를 적는 사이(초). 창은 이 세 배 넘게 숨 표가 없으면 손이 없다고 본다
+# 일정에 없는 약속 — 카드 끝의 칸(`lane.md` 「보고 글의 꼴」). 「넣을 일정」의 값은 일정 손 preview 답을 손대지 않고 옮긴 것이다:
+#   <start> | <end> | <title> | 곳 <place> | <visibility> | 열쇠 <key>   (곳은 없으면 뺀다)
+PUT_FIELD = "넣을 일정"
+NO_TIME_FIELD, NO_TIME_VALUE = "시각", "메일에 없음"   # 날은 있고 시각이 없는 모임 — 단추 대신 대화로 가는 말을 단다
+PUT_SPLIT, PLACE_MARK, KEY_MARK = " | ", "곳 ", "열쇠 "
+VISIBILITY = {"public": False, "공개": False, "private": True, "비공개": True}   # preview 의 visibility(앞) · 사람 말(뒤) → 비공개인가
+PUT_KEY = re.compile(r"^[0-9a-f]{8,64}$")      # 일정 손의 key(판의 해시 · 16진) — 길이는 그 손이 정한다
+PUT_STAMP = re.compile(r"^\d{4}-\d{2}-\d{2} (?:[01]\d|2[0-3]):[0-5]\d$")   # 일정 손의 시각 꼴(서울 벽시계)
+PUT_OFF = "이 창에서는 넣을 수 없습니다 — 대화에서 「그 약속 넣어 줘」 하시면 넣습니다"
+PUT_BAD = "넣을 값의 꼴이 틀려 이 창에서는 넣을 수 없습니다 — 대화에서 「그 약속 넣어 줘」 하시면 넣습니다"
+NO_TIME_SAID = "메일에 시각이 없어 넣지 못합니다 — 시각을 정해 대화에서 「그 약속 ○시로 넣어 줘」 하시면 넣습니다."
+VIS_WORDS = {False: "공개 — 다른 분이 제목을 볼 수 있습니다", True: "비공개 — 다른 분께는 바쁜 때로만 보입니다"}
+# 오늘 · 내일 회의의 한 장 — 회의는 일이 아니라 이 절의 카드에는 누름 단추를 안 단다(그 안의 답 안 한 요청은 제 카드에서 누른다)
+MEETING_SECTION = "오늘 · 내일 회의"
 TICK_NONE, TICK_TODO, TICK_DONE = "", "todo", "done"   # 줄의 단추 — 없음 · 할 일의 줄(셋 · 바탕은 안 눌림) · 「끝났다고 하신 것」의 줄(끝났음 하나 · 바탕은 눌림)
 # 할 일의 줄에 서는 단추 — (표시의 값, 단추 글, 단추에 올리면 보이는 말). 「끝났다고 하신 것」의 줄에는 첫 것만 선다
 MARKS = (("done", "끝났음", "끝난 일 — 다음 보고부터 올리지 않습니다"),
@@ -239,6 +257,8 @@ class Ink:
     unlinked: int = 0
     bad_refs: int = 0
     boxes: int = 0
+    puts: int = 0                   # 「일정에 넣기」를 단 카드
+    bad_puts: int = 0               # 「넣을 일정」 칸의 꼴이 틀려 단추를 못 단 카드
     waits: list = field(default_factory=list)
 
     def mail(self, label_html: str, unid: str) -> str:
@@ -298,6 +318,79 @@ def plain(text: str) -> str:
                 return plain(m.group(name)) if name in ("label", "bold") else m.group(name)
         return m.group(0)
     return INLINE.sub(strip, text)
+
+
+# ── 일정에 없는 약속 — 카드의 「넣을 일정」 칸 ─────────────────────────────────
+
+@dataclass(frozen=True)
+class Put:
+    """카드 하나가 넣을 일정 — 창이 사람에게 보이는 글과 거두는 손이 일정 손에 주는 값이 다 이것에서 나온다."""
+    start: str
+    end: str
+    title: str
+    place: str
+    private: bool
+    key: str
+
+    def words(self) -> str:
+        """사람이 읽는 「무엇을 넣나」 — 날 · 요일 · 시각 · 제목 · 곳. 공개 범위는 따로(`VIS_WORDS`)."""
+        a, b = (dt.datetime.strptime(s, "%Y-%m-%d %H:%M") for s in (self.start, self.end))
+        day = f"{a.month}월 {a.day}일({WEEKDAYS[a.weekday()]})"
+        when = (f"{day} {a:%H:%M}–{b:%H:%M}" if a.date() == b.date()
+                else f"{day} {a:%H:%M} – {b.month}월 {b.day}일({WEEKDAYS[b.weekday()]}) {b:%H:%M}")
+        return " · ".join(filter(None, (when, self.title, self.place)))
+
+
+def put_of(value: str) -> Put | None:
+    """「넣을 일정」 칸의 값 → Put. 꼴이 아니면 None — 시각 둘 · 제목 · (곳) · 공개 범위 · 열쇠. 제목에 「 | 」가 들어도 끝에서부터 읽는다."""
+    parts = [p.strip() for p in value.strip().strip("`").split(PUT_SPLIT)]
+    if len(parts) < 5 or not parts[-1].startswith(KEY_MARK) or parts[-2] not in VISIBILITY:
+        return None
+    start, end, key, middle = parts[0], parts[1], parts[-1][len(KEY_MARK):].strip(), parts[2:-2]
+    place = middle.pop()[len(PLACE_MARK):].strip() if len(middle) > 1 and middle[-1].startswith(PLACE_MARK) else ""
+    title = PUT_SPLIT.join(middle).strip()
+    if not (PUT_STAMP.match(start) and PUT_STAMP.match(end) and start < end and title and PUT_KEY.match(key)):
+        return None
+    return Put(start, end, title, place, VISIBILITY[parts[-2]], key)
+
+
+def take_put(facts: list[tuple[str, str]]) -> tuple[Put | None, bool, bool, list[tuple[str, str]]]:
+    """끝의 칸에서 「넣을 일정」 · 「시각: 메일에 없음」을 떼어 낸다 — (Put, 그 칸이 있었나, 시각 없는 모임인가, 남은 칸)."""
+    put, had, no_time, rest = None, False, False, []
+    for label, value in facts:
+        if label == PUT_FIELD:
+            had, put = True, put or put_of(value)
+        elif label == NO_TIME_FIELD and plain(value).strip().startswith(NO_TIME_VALUE):
+            no_time = True
+        else:
+            rest.append((label, value))
+    return put, had, no_time, rest
+
+
+def cards_of(text: str) -> dict[str, tuple[Put, str]]:
+    """보고 글에서 「넣을 일정」을 든 카드 — {열쇠: (Put, 카드의 맨글자)}. 거두는 손이 누름을 이 글의 카드에 대어 그 값으로 넣는다 —
+    창이 사람에게 보인 글과 같은 글이다."""
+    out: dict[str, tuple[Put, str]] = {}
+    for sec in parse(text).sections:
+        for b in sec.blocks:
+            for it in b.lines if b.kind == "list" else ():
+                put, _, _, _ = take_put(split_facts(it.subs)[1])
+                if put and put.key not in out:
+                    out[put.key] = (put, plain(" ".join([it.text, *it.subs])))
+    return out
+
+
+def put_row(put: Put | None, ink: Ink) -> str:
+    """카드 끝의 「무엇을 넣나 · 일정에 넣기」 — 단추는 처음엔 숨고 말은 거둘 수 없는 창의 말이다. 창의 스크립트가 거둘 수 있는 창에서만
+    단추를 꺼내고 말을 비운다 — 스크립트가 막혀도 누를 수 없는 단추는 안 선다. 꼴이 틀린 칸은 단추 없이 그렇다는 말만."""
+    if put is None:
+        ink.bad_puts += 1
+        return f'<div class="put-row"><p class="put-note no">{html.escape(PUT_BAD)}</p></div>'
+    ink.puts += 1
+    attrs = " ".join(f'data-{k}="{html.escape(v, quote=True)}"' for k, v in (("key", put.key), ("start", put.start)))
+    return (f'<div class="put-row"><span class="put-what">{html.escape(put.words())} <span class="vis">· {VIS_WORDS[put.private]}</span></span>'
+            f'<button type="button" class="put" {attrs} aria-pressed="false" hidden>일정에 넣기</button>'
+            f'<p class="put-note" aria-live="polite">{html.escape(PUT_OFF)}</p></div>')
 
 
 # ── 짓기 — 덩이를 틀의 자리로 ──────────────────────────────────────────────
@@ -364,23 +457,30 @@ def note_waits(it: Item, ink: Ink, facts: list[tuple[str, str]]) -> str:
 def render_item(it: Item, ink: Ink, tick: str = TICK_NONE) -> tuple[str, str]:
     """줄 하나 — (무리, HTML). 무리는 card(점이 딸린 줄) · row. `tick` 이 있으면 메일 번호가 든 줄에 「끝났음」 상자를 단다."""
     points, facts = split_facts(it.subs)
+    put, had_put, no_time, facts = take_put(facts)
     box = tick_box(it, ink, tick) if tick else ""
     anchor = note_waits(it, ink, facts) if tick == TICK_TODO else ""
     at = f' id="{anchor}"' if anchor else ""
-    if points:
+    if points or had_put or no_time:
         m = LEAD_BOLD.match(it.text)
         head, rest = (m.group("head"), m.group("rest")) if m else (it.text, "")
         parts = [f'<div class="task-top"><h3>{ink.inline(head)}</h3>{box}</div>' if box else f"<h3>{ink.inline(head)}</h3>"]
         if rest:
             parts.append(f'<p class="when">{ink.inline(rest)}</p>')
-        parts.append('<ul class="points">' + "".join(f"<li>{ink.inline(p)}</li>" for p in points) + "</ul>")
+        if points:
+            parts.append('<ul class="points">' + "".join(f"<li>{ink.inline(p)}</li>" for p in points) + "</ul>")
         if facts:
             parts.append('<dl class="facts">' + "".join(f"<dt>{ink.inline(k)}</dt><dd>{ink.inline(v)}</dd>" for k, v in facts)
                          + "</dl>")
+        if had_put:
+            parts.append(put_row(put, ink))
+        elif no_time:
+            parts.append(f'<p class="no-time">{html.escape(NO_TIME_SAID)}</p>')
         body = "".join(parts)
+        appt = " appt" if had_put or no_time else ""
         if it.num is None:
-            return "card", f'<li class="task plain"{at}><div>{body}</div></li>'
-        return "card", f'<li class="task"{at}><span class="task-num">{html.escape(it.num)}</span><div>{body}</div></li>'
+            return "card", f'<li class="task plain{appt}"{at}><div>{body}</div></li>'
+        return "card", f'<li class="task{appt}"{at}><span class="task-num">{html.escape(it.num)}</span><div>{body}</div></li>'
     tail = "".join(f' <span class="src-inline">({ink.inline(k)}: {ink.inline(v)})</span>' for k, v in facts)
     body = ink.inline(it.text) + tail
     if box:
@@ -508,7 +608,7 @@ def section_tick(title: str | None) -> str:
     name = plain(title or "").strip()
     if name.startswith(DONE_SECTION):
         return TICK_DONE
-    return TICK_NONE if any(name.startswith(end) for end in RECORD_SECTIONS) else TICK_TODO
+    return TICK_NONE if any(name.startswith(end) for end in (*RECORD_SECTIONS, MEETING_SECTION)) else TICK_TODO
 
 
 def is_empty_done(sec: Section) -> bool:
@@ -527,7 +627,9 @@ def is_empty_done(sec: Section) -> bool:
 def page_script() -> tuple[str, str]:
     """창에 싣는 스크립트와 그것만 여는 CSP 칸(`'sha256-…'`). 해시는 실을 글 그대로에서 낸다 — 손으로 옮긴 해시는 없다."""
     code = string.Template(SCRIPT.read_text(encoding="utf-8")).substitute(done_prefix=DONE_PREFIX, via_edge=VIA_EDGE, times_key=TIMES_KEY,
-                                                                          unquiet_prefix=UNQUIET_PREFIX, state_key=STATE_KEY)
+                                                                          unquiet_prefix=UNQUIET_PREFIX, state_key=STATE_KEY,
+                                                                          cal_prefix=CAL_PREFIX, hand_key=HAND_KEY,
+                                                                          hand_stale_ms=str(3 * HAND_BEAT_S * 1000))
     digest = base64.b64encode(hashlib.sha256(code.encode("utf-8")).digest()).decode("ascii")
     return code, f"'sha256-{digest}'"
 
@@ -709,23 +811,27 @@ def missing_ends(rep: Report) -> list[str]:
     return [end for end in END_SECTIONS if not any(h.startswith(end) for h in named)]
 
 
-def kept_briefs(folder: pathlib.Path) -> list[pathlib.Path]:
-    """폴더에 남은 보고 글 — 이름이 `FILE_NAME` 꼴(.md)인 것만, 이름 차례(곧 지은 때의 차례)로."""
-    shape = FILE_NAME.replace("{:", "").replace("}", "").removesuffix(".html") + ".md"
-    out = []
-    for f in folder.glob("brief-*.md"):
+def made_of(name: str) -> dt.datetime | None:
+    """보고 창(.html) · 보고 글(.md)의 이름에서 지은 때 — 이 PC 의 시각(`FILE_NAME` 이 그렇게 짓는다). 꼴이 아니면 None."""
+    shape = FILE_NAME.replace("{:", "").replace("}", "").removesuffix(".html")
+    for suffix in (".html", ".md"):
         try:
-            dt.datetime.strptime(f.name, shape)
+            return dt.datetime.strptime(name, shape + suffix)
         except ValueError:
             continue
-        out.append(f)
-    return sorted(out, key=lambda f: f.name)
+    return None
 
 
-def open_report(uri: str) -> str:
+def kept_briefs(folder: pathlib.Path) -> list[pathlib.Path]:
+    """폴더에 남은 보고 글 — 이름이 `FILE_NAME` 꼴(.md)인 것만, 이름 차례(곧 지은 때의 차례)로."""
+    return sorted((f for f in folder.glob("brief-*.md") if made_of(f.name)), key=lambda f: f.name)
+
+
+def open_report(uri: str, hand_for: pathlib.Path | None = None) -> str:
     """보고 창을 로그인 Edge 의 새 탭에, 안 되면 기본 브라우저로 띄우고 어디에 띄웠나를 한 줄로 낸다.
     로그인 Edge 가 먼저다 — 메일 링크가 같은 세션에서 열려야 로그인 창이 안 뜬다. 그 Edge 로 연 창만 주소 꼬리(`VIA_EDGE`)를 달아,
-    누르신 표시가 거둬지는 창에서만 단추가 선다."""
+    누르신 표시가 거둬지는 창에서만 단추가 선다. `hand_for`(사용자 폴더)를 주면 그 Edge 에 연 때만 창 곁에 누름을 바로 거두는 손을
+    띄운다(곁의 `presses.start_hand`) — 기본 브라우저로 연 창은 거둘 수 없는 창이라 안 띄운다."""
     port = (os.environ.get("EDGE_DEBUG_PORT", "").split(",")[0]).strip()
     port = port if port.isdigit() and 0 < int(port) < 65536 else EDGE_PORT_DEFAULT
     try:
@@ -736,7 +842,12 @@ def open_report(uri: str) -> str:
         finally:
             conn.close()
         if ok:
-            return "띄웠다(로그인된 Edge 의 새 탭)"
+            if hand_for is None:
+                return "띄웠다(로그인된 Edge 의 새 탭)"
+            import presses                         # 곁의 손 — presses 가 이 파일을 싣으므로 여기서만 싣는다
+            said = {True: "곁에 누름을 바로 거두는 손을 띄웠다", False: "누름을 바로 거두는 손이 이미 돈다",
+                    None: "누름을 바로 거두는 손을 못 띄웠다 — 누르신 것은 메일함 스캔이 받는다"}[presses.start_hand(hand_for)]
+            return f"띄웠다(로그인된 Edge 의 새 탭 · {said})"
     except (OSError, http.client.HTTPException, ValueError):
         pass
     if webbrowser.open(uri):
@@ -807,8 +918,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"알림: 글에 쓴 주소 {urls}개는 링크로 짓지 않고 글자로 두었다 — 링크는 메일 번호에서만 선다")
     for end in ends:
         print(f"경고: 끝에 「{end}」 절이 없다 — 다음 보고는 남은 이 글만 읽고 잇는다")
-    shown = "띄우지 않았다(--no-open)" if args.no_open else open_report(out.resolve().as_uri())
-    print(f"보고 창을 지었다: {out} · 남긴 보고 글: {kept} — 절 {sections} · 줄 {lines} · 메일 링크 {ink.links} · {shown}")
+    if ink.bad_puts:
+        print(f"경고: 「{PUT_FIELD}」 칸 {ink.bad_puts}곳의 꼴이 틀려 「일정에 넣기」를 안 달았다 — 칸은 일정 손 preview 답의 start · end · title · "
+              "place · visibility · key 를 「 | 」로 그대로 잇는다(lane.md 「보고 글의 꼴」)")
+    shown = "띄우지 않았다(--no-open)" if args.no_open else open_report(out.resolve().as_uri(), folder if ink.puts else None)
+    puts = f" · 일정에 넣기 {ink.puts}" if ink.puts else ""
+    print(f"보고 창을 지었다: {out} · 남긴 보고 글: {kept} — 절 {sections} · 줄 {lines} · 메일 링크 {ink.links}{puts} · {shown}")
     if ends:
         print(f"다음: 남긴 보고 글 끝에 {' · '.join(f'「## {e}」' for e in ends)} 절을 더한다(파일을 쓸 도구가 없는 실행이면 그 절을 넣은 글로 다시 부른다) — 다음 보고가 그 글에서 어디부터 읽을지와 "
               "다시 올리지 않을 것을 찾는다")

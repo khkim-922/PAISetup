@@ -87,7 +87,17 @@ DEPT_MAIL = re.compile(r"^dept_[^@\s]+@", re.IGNORECASE)   # 조직도의 부서
 DEPT_WORD = "(조직)"          # 사람이 아니라 조직 하나일 때 이름 뒤에 붙이는 표지
 MAILFILE_NUMBER = re.compile(r"/(\d+)\.nsf$", re.IGNORECASE)   # 메일함 파일 번호 = 그 메일함을 쓰는 사람의 사번(<사번>.nsf)
 PHONE_MOST = 10               # --phone 이 사람 창을 묻는 사람 수의 위 — 사람마다 사규 앱에 한 번씩 묻는다
+NEXT_MARK = "다음:"           # 멈춘 말이 다음 걸음을 드는 표지
+# 「다음:」 이 빠진 멈춤에 붙는 걸음 — 종료 값마다 하나. 멈추는 자리가 제 걸음을 대면 그 말이 앞선다(``Stop.said``)
+NEXT_WORDS = {
+    EXIT_TOOL: "다음: 이 말을 그대로 사람에게 알린다 — 같은 명령을 되풀이하지 않는다. 웹메일 화면에서 할 일이면 사람이 웹메일에서 한다",
+    EXIT_ARGS: "다음: 위 말이 짚은 값을 고쳐 다시 부른다 — 같은 인자로 되풀이하지 않는다(인자의 꼴은 <명령> --help)",
+    EXIT_SESSION: ep_command.NEXT_EP_LOGIN,
+    ep_command.EXIT_STALE: "다음: 미리 보기(preview-…)를 다시 불러 지금 판을 사람에게 보이고 확인받는다",
+}
 FILE_COMMENT = "#"            # --from-file 글 파일의 주석 — 주소 파일과 같이 그 뒤는 버린다
+PICK_FORM = re.compile(r"^\s*([^\[\]]+?)\s*\[([^\[\]]+)\]\s*$")   # 「이름[부서]」 — 동명이인 가운데 그 부서의 사람(괄호 () 는 ID 꼴이 쓴다)
+RECENT_MAIL_SCAN = 300        # 동명이인 후보마다 최근 주고받은 메일을 셀 때 받은편지함 · 보낸편지함에서 받는 새것의 수 — 한 쪽씩이다
 
 log = logging.getLogger("company-directory")
 
@@ -98,6 +108,12 @@ class Stop(Exception):
     def __init__(self, code: int, message: str):
         super().__init__(message)
         self.code = code
+
+    def said(self) -> str:
+        """사람에게 낼 글 — 「다음: …」 이 없으면 종료 값의 걸음(``NEXT_WORDS``)을 붙인다. 0 이 아닌 끝은 늘 다음 걸음을 든다."""
+        text = str(self)
+        step = NEXT_WORDS.get(self.code)
+        return text if NEXT_MARK in text or not step else f"{text}\n{step}"
 
 
 def load_mail():
@@ -428,22 +444,82 @@ def boss_above(chart, p, dept) -> tuple[object, str]:
 
 # ── 출처 ─────────────────────────────────────────────────────────────────
 
+def split_pick(handle: str) -> tuple[str, str]:
+    """「이름[부서]」 → (이름, 부서 말) — 동명이인 가운데 그 부서의 사람을 고른 꼴이다. 꼴이 아니면 (그대로, 빈 글자)."""
+    found = PICK_FORM.match(handle)
+    return (found.group(1).strip(), found.group(2).strip()) if found else (handle, "")
+
+
+def dept_path(run, p) -> str:
+    """그 사람의 부서 길(「맨 위 > … > 그 부서」) — 이 판에 받은 조직도나 받아 둔 판으로만 짓고 새로 받지 않는다. 판이 없거나 그 사람이
+    조직도에 없으면 주소록의 부서 이름이다."""
+    got = run._chart or cached_org(run.company)
+    d = home_dept(got[0], p) if got else None
+    return " > ".join(x.name for x in got[0].path(d.code)) if d is not None else p.dept
+
+
+def recent_mail(run, people) -> dict:
+    """주소 → 최근 메일을 주고받은 말(「최근 메일 받은 2 · 보낸 1 · 마지막 11-03」) — 받은편지함 · 보낸편지함의 새것 ``RECENT_MAIL_SCAN``
+    통을 한 번씩 받아 센다. 동명이인을 사람이 가를 실마리다. 못 받으면 빈 표다(후보 줄은 그 말 없이 선다)."""
+    want = {p.email.casefold() for p in people if p.email}
+    try:
+        got = run.box.list(count=RECENT_MAIL_SCAN)
+        sent = run.box.list_sent(count=RECENT_MAIL_SCAN)
+    except inbox.SessionExpired:
+        raise
+    except inbox.MailboxError:
+        return {}
+    marks: dict = {}
+    for kind, addr, when in [("받은", e.sender.addr, e.date) for e in got] + [("보낸", r.addr, s.date) for s in sent for r in s.recipients]:
+        a = (addr or "").casefold()
+        if a in want:
+            m = marks.setdefault(a, {"받은": 0, "보낸": 0, "last": ""})
+            m[kind] += 1
+            m["last"] = max(m["last"], when or "")
+    out = {a: f"최근 메일 받은 {m['받은']} · 보낸 {m['보낸']} · 마지막 {m['last'][5:10]}" for a, m in marks.items()}
+    return {a: out.get(a, f"최근 메일 없음(받은 · 보낸 새것 {RECENT_MAIL_SCAN}통에서)") for a in want}
+
+
+def homonym_lines(run, name: str, live) -> list[str]:
+    """동명이인 후보 줄 — 부서 길 · 직급 · 직책 · 주소 · 최근 주고받은 메일과, 고르면 다음 부름에 그대로 줄 꼴(「이름[부서]」 — 부서가
+    후보마다 다를 때. 같으면 주소). 「이름[부서]」 는 한 글자 틀려도 다른 사람이 아니라 아무도 안 선다."""
+    recent = recent_mail(run, live)
+    leaves = [inbox.squash(p.dept) for p in live]
+    rows = []
+    for p, leaf in zip(live, leaves):
+        pick = f"{name}[{p.dept}]" if p.dept.strip() and leaves.count(leaf) == 1 else p.email
+        mark = recent.get(p.email.casefold(), "")
+        rows.append(" · ".join(x for x in (person_line(p, dept=False), dept_path(run, p), mark) if x) + f"  → 고르면 --name \"{pick}\"")
+    return rows
+
+
 def resolve(run, asks) -> list:
-    """(칸, 이름 · 주소 · 사번 · Notes 이름 · ID) 여럿 → 줄마다 (칸, 그 말, 그 한 사람 또는 None, 따로 둘 줄). 주소록에 함께 묻고, 그
-    꼴이 꼭 같은 살아 있는 사람이 하나일 때만 선다. 동명이인 · 못 찾은 이름 · 퇴직은 후보와 함께 따로 둘 줄이다 — 고르는 것은 사람이다."""
-    queries = [inbox.directory_query(h) for _, h in asks]
+    """(칸, 이름 · 주소 · 사번 · Notes 이름 · ID · 「이름[부서]」) 여럿 → 줄마다 (칸, 그 말, 그 한 사람 또는 None, 따로 둘 줄). 주소록에
+    함께 묻고, 그 꼴이 꼭 같은 살아 있는 사람이 하나일 때만 선다. 「이름[부서]」 는 그 이름의 사람 가운데 부서(주소록의 부서 이름 ·
+    조직도의 부서 길)에 그 말이 든 사람이다.
+    동명이인 · 못 찾은 이름 · 퇴직은 후보와 함께 따로 둘 줄이다 — 고르는 것은 사람이다."""
+    picks = [split_pick(h) for _, h in asks]
+    queries = [inbox.directory_query(base) for base, _ in picks]
     box = run.box if any(queries) else None
     with ThreadPoolExecutor(inbox.ORG_WORKERS) as pool:
         answers = list(pool.map(lambda q: box.find_people(q[0], run.company) if q else [], queries))
     out = []
-    for (field, handle), q, every in zip(asks, queries, answers):
+    for (field, handle), (base, where), q, every in zip(asks, picks, queries, answers):
         same = [p for p in every if q and q[1](p)]
         live = [p for p in same if not p.retired]
+        if where and live:
+            narrowed = [p for p in live if inbox.squash(where) in inbox.squash(f"{p.dept} {dept_path(run, p)}")]
+            if not narrowed:
+                out.append((field, handle, None, f"「{handle}」 — {base} 가운데 부서 길에 「{where}」 가 든 사람이 없다. 고르지 않는다:"
+                            + bullets(homonym_lines(run, base, live))))
+                continue
+            live = narrowed
         if len(live) == 1:
             out.append((field, handle, live[0], ""))
         elif len(live) > 1:
-            out.append((field, handle, None, f"동명이인 「{handle}」 {len(live)} 명 — 고르지 않는다. 누구인지 묻고 그 사람의 주소로 다시 준다:"
-                        + bullets([person_line(p) for p in live], more="부서 · 직급을 대며 묻는다")))
+            out.append((field, handle, None, f"동명이인 「{handle}」 {len(live)} 명 — 고르지 않는다. 누구인지 묻고, 사람이 고른 줄의 "
+                        "「고르면」 꼴을 다음 부름에 그대로 준다(주소를 옮겨 적지 않는다):"
+                        + bullets(homonym_lines(run, base, live), more="부서 · 직급을 대며 묻는다")))
         elif same:
             out.append((field, handle, None, f"「{handle}」 — 퇴직한 사람이다:" + bullets([person_line(p) for p in same])))
         else:
@@ -1181,7 +1257,7 @@ def main(argv=None) -> int:
         except inbox.MailboxError as exc:
             raise Stop(EXIT_TOOL, f"주소록 · 조직도에서 못 받았다: {exc}") from exc
     except Stop as stop:
-        print(str(stop))
+        print(stop.said())
         return stop.code
     return EXIT_OK
 

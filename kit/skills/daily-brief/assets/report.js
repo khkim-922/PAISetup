@@ -7,6 +7,7 @@
 (function () {
   "use strict";
   var PREFIX = "$done_prefix", TIMES = "$times_key", UNQUIET = "$unquiet_prefix", STATE = "$state_key";
+  var CAL = "$cal_prefix", HAND = "$hand_key", HAND_STALE_MS = $hand_stale_ms;
   var CLOCK = /^([01]\d|2[0-3]):[0-5]\d$$/;          // 끝의 겹친 표지는 window.py 가 채울 때 하나가 된다(string.Template)
   var UNID = /^[0-9A-Fa-f]{32}$$/;
   var FRESH_SCAN_MS = 40 * 60 * 1000;                // 스캔이 이만큼 안에 돌았으면 「다음 스캔에 받는다」고 말한다(기본 15분마다)
@@ -430,13 +431,116 @@
     if (none2 && s.times.length) none2.textContent = "지금 걸린 보고 시각은 " + s.times.join(" · ") + " 입니다 — 다음 보고 창부터 여기서 고르실 수 있습니다";
   }
 
+  // ── 일정에 넣기 ──
+  // 누름 — { at, brief(누른 창의 파일 이름) }. 넣을 값은 거두는 손이 그 창의 보고 글에서 이 열쇠의 카드를 찾아 읽는다 — 창은 열쇠만 남긴다.
+  // 거두는 손이 끝을 돌려 적는다 — { …, state, said, done(맺은 때) } · 사내 로그인이 끊겼으면 done 없이 { state: "session", said, tried }.
+  // 같은 카드를 또 눌러도 안 들 끝(넣었다 · 이미 있다 · 지났다 · 그 사이 바뀜)과 확인 안 됨은 잠긴다 — 못 넣음만 다시 누르면 새 누름이다.
+  // 시작이 지난 카드는 누르기 전부터 잠긴다. 「다시 누르시면 취소」는 누름이 정말 기다리는 때(손이 없다 · 사내 로그인이 끊겼다)에만 말한다 —
+  // 손이 살아 있으면 누름은 1초 안에 들어 취소할 틈이 없다
+  var puts = Array.prototype.slice.call(document.querySelectorAll("button.put[data-key]"));
+  var LOCKED = { added: true, already: true, past: true, unsure: true, moved: true };
+  var CANCEL = " · 다시 누르시면 취소";
+  var SAID = {
+    soon: "곧 넣습니다",
+    noHand: "바로 넣는 손이 이 창 곁에 없어 다음 메일함 스캔(15분 안팎)에 넣습니다 — 그 사이 일정이 바뀌면 넣지 않습니다" + CANCEL,
+    nobody: "바로 넣는 손도 메일함 스캔도 돌지 않아 아직 못 넣었습니다 — 대화에서 「그 약속 넣어 줘」 하시면 넣습니다" + CANCEL,
+    past: "지난 약속이라 넣지 않았습니다"
+  };
+
+  function pageName() {
+    try {
+      return decodeURIComponent(location.pathname.split("/").pop() || "");
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function startOf(b) {
+    return time((b.getAttribute("data-start") || "").replace(" ", "T") + ":00+09:00");   // 카드의 시각은 서울 벽시계다
+  }
+
+  function handAlive() {
+    var h = parse(HAND);
+    return !!h && Date.now() - time(h.beat) < HAND_STALE_MS;
+  }
+
+  // 이 창을 짓기 전에 맺은 누름은 이 창의 카드가 아니다 — 같은 판을 다음 보고가 다시 세운 카드(지운 일정)는 처음부터 누를 수 있어야 한다
+  function putRecord(b) {
+    var v = parse(CAL + b.getAttribute("data-key"));
+    if (v && v.done && !isNaN(made) && time(v.done) < made) return null;
+    return v;
+  }
+
+  function paintPut(b) {
+    var v = putRecord(b);
+    var note = b.parentNode.querySelector(".put-note");
+    var said = "", cls = "", pressed = false, locked = false, label = "일정에 넣기";
+    if ((!v || (v.done && !LOCKED[v.state])) && startOf(b) <= Date.now()) {
+      said = SAID.past;
+      locked = true;
+    } else if (v && v.done) {
+      said = v.said || "";
+      locked = !!LOCKED[v.state];
+      pressed = v.state === "added" || v.state === "unsure";
+      cls = v.state === "added" ? "ok" : (v.state === "already" || v.state === "past") ? "" : "no";
+      if (v.state === "added") label = "넣었습니다";
+    } else if (v) {
+      pressed = true;
+      var age = Date.now() - time(v.at);
+      if (v.state === "session") said = (v.said || "") + CANCEL;
+      else if (handAlive() || !(age >= HAND_STALE_MS)) said = SAID.soon;
+      else if (Date.now() - time(live().seen) < FRESH_SCAN_MS) said = SAID.noHand;
+      else said = SAID.nobody;
+    }
+    b.hidden = false;
+    b.textContent = label;
+    b.disabled = locked;
+    b.setAttribute("aria-pressed", pressed ? "true" : "false");
+    if (note) {
+      note.textContent = said;
+      note.className = "put-note" + (cls ? " " + cls : "");
+    }
+  }
+
+  // 누르면 그 한 건의 누름을 남기고, 아직 안 거둔 누름을 다시 누르면 지운다(누른 적 없는 것과 같다). 잠긴 끝은 안 바뀐다. 시작이 지난
+  // 약속은 남기지 않는다 — 거두는 손도 지난 약속은 안 넣는다(그리면 잠긴다)
+  function pressPut(b) {
+    var key = CAL + b.getAttribute("data-key");
+    var v = putRecord(b);
+    if (v && v.done && LOCKED[v.state]) return;
+    if (v && !v.done) {
+      store.removeItem(key);
+      return;
+    }
+    if (startOf(b) <= Date.now()) return;
+    store.setItem(key, JSON.stringify({ at: new Date().toISOString(), brief: pageName() }));
+  }
+
+  puts.forEach(function (b) {
+    b.addEventListener("click", function () {
+      try {
+        pressPut(b);
+      } catch (e) {
+        b.parentNode.querySelector(".put-note").textContent = "누름을 못 남겼습니다 — 대화에서 「그 약속 넣어 줘」 하시면 넣습니다";
+        return;
+      }
+      paintPut(b);
+    });
+  });
+
   function paintAll() {
     groups.forEach(paintGroup);
     if (timesBox) paintTimes();
     paintLists();
+    puts.forEach(paintPut);
   }
 
   window.addEventListener("storage", paintAll);
   window.addEventListener("focus", paintAll);
+  if (puts.length) {                                 // 걸린 누름의 말이 손의 숨 표 · 흐른 때로 바뀐다 — 걸린 누름이 없으면 안 그린다
+    window.setInterval(function () {
+      if (puts.some(function (b) { var v = putRecord(b); return v && !v.done; })) puts.forEach(paintPut);
+    }, 2000);
+  }
   paintAll();
 })();
