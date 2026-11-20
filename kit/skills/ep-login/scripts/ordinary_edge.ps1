@@ -27,6 +27,9 @@ $Kind = [System.Windows.Automation.ControlType]
 $Walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
 $RawWalker = [System.Windows.Automation.TreeWalker]::RawViewWalker
 $DialogDepth = 3          # 물음 창(RootView)이 브라우저 창 아래 놓이는 깊이의 위 끝 — 페이지 나무까지 내려가지 않는다
+# Edge 가 탭의 접근성 이름 끝에 붙이는 메모리 사용량 꼬리(` - 메모리 사용량 - 21.3 MB` · 영문 ` - Memory usage - 21.3 MB`) — 붙는 때와
+#   안 붙는 때가 갈려, 떼지 않고 견주면 같은 포털 탭을 판마다 다르게 센다
+$MemoryTail = [regex]' - [^-]+ - [0-9][0-9.,]* ?[KMG]B$'
 $Profile = $env:EP_ORDINARY_PROFILE
 
 function Cond($property, $value) { New-Object System.Windows.Automation.PropertyCondition($property, $value) }
@@ -99,7 +102,7 @@ function Tabs($ids) {
             }
             if (-not $tabs.Count -and -not $omnibox) { $count.unread++; continue }
             # 제목은 통째로 같아야 센다 — 일부만 견주면 포털 제목을 든 다른 화면(로그인 화면 따위)의 탭도 포털로 센다
-            if ($PortalTitle) { foreach ($t in $tabs) { if ($t.Current.Name.Trim() -ceq $PortalTitle) { $count.titled++ } } }
+            if ($PortalTitle) { foreach ($t in $tabs) { if ($MemoryTail.Replace($t.Current.Name.Trim(), '') -ceq $PortalTitle) { $count.titled++ } } }
             if ($omnibox) {
                 $address = ''
                 try { $address = $omnibox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).Current.Value } catch { }
