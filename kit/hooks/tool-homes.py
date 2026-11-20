@@ -1,13 +1,13 @@
 """갈 곳 표를 읽어 규범 · 룰 · 에이전트 · 공용 메모리 목차 · 스킬 · Claude 훅 등록을 도구 홈에 놓는 손 하나 (결정 0112 · 0113).
 
-    python -X utf8 tool-homes.py sync  --layer standard|personal --from <뿌리> [--dry-run] [--home <홈>] [--box <값>] [--pick <값>]
-    python -X utf8 tool-homes.py place [--dry-run] [--home <홈>] [--box <값>] [--pick <값>]
-    python -X utf8 tool-homes.py check [--home <홈>] [--box <값>] [--pick <값>]
+    python -X utf8 tool-homes.py sync  --layer standard|personal --from <뿌리> [--dry-run] [--home <홈>] [--box <값>] [--pick <값>] [--site <값>]
+    python -X utf8 tool-homes.py place [--dry-run] [--home <홈>] [--box <값>] [--pick <값>] [--site <값>]
+    python -X utf8 tool-homes.py check [--home <홈>] [--box <값>] [--pick <값>] [--site <값>]
 
 부르는 자는 셋이다 — 설치기는 짐으로 표준 층을(`sync --layer standard --from <짐>` · 끝 검증은 `check`), 배포와 세션 훅은
 설정 저장소로 개인 층을(`sync --layer personal --from <저장소>`) 채운다. 배포는 `--dry-run` 의 줄을 계획 화면에 싣고 확인
-뒤 같은 명령을 돌린다. `--home`(기본 사용자 홈) · `--box` · `--pick`(조건 값을 덮는다)은 가짜 홈 시험용이라 부르는 셋은 안
-준다.
+뒤 같은 명령을 돌린다. `--home`(기본 사용자 홈) · `--box` · `--pick` · `--site`(조건 · 자리 값을 덮는다)는 가짜 홈 시험용이라
+부르는 셋은 안 준다.
 
 **무엇이 어느 홈에 어떤 꼴로 가나는 갈 곳 표(`<뿌리>/tool-homes.conf`)만 든다.** 항목 · 길 · 옛 자리와 꼴 · 조건의 뜻은 그
 표의 머리가 든다 — 여기서는 놓는 법만 든다. 손은 표를 읽어 PC 의 중립 한 벌 `~/.paisetup` 의 두 층(standard · personal)을
@@ -45,7 +45,7 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
   지난 릴리스의 표준 층에 남아 계속 깔린다. each 항목은 그 안의 폴더 하나(스킬 하나)가 단위다 — 이름마다 그 이름이 든 앞
   층(개인 → 표준)의 폴더가 통째로 간다. 저장소에서 지운 스킬이 새 짐을 깔 때까지 짐 판으로 놓이는 것은 받아들인 값이다.
 **each 항목 놓기** — 놓을 이름은 길의 조건이 선 도구마다 두 층 이름의 합에서 그 도구의 not 과 keep 에 떨어지는 이름을 뺀
-  것이다. 홈의 그 폴더가 없으면 쓰고, 링크면 백업으로 옮기고 쓰고, 기록에 그 폴더 아래 줄이 있으면 copy 그대로다. 기록에
+  것이다(사외면 inside 이름도 뺀다). 홈의 그 폴더가 없으면 쓰고, 링크면 백업으로 옮기고 쓰고, 기록에 그 폴더 아래 줄이 있으면 copy 그대로다. 기록에
   없으면(처음 만남) 파일 묶음과 바이트가 이긴 층과 같을 때(`__pycache__` 는 두 쪽 다 안 본다) 쓰지 않고 기록에만 올리고,
   다르면(파일이 더 있거나 모자라도) 폴더째 백업으로 옮기고 새로 쓴다 — 우리 것이 아닌 같은 이름 위에 파일 하나씩 덮으면
   사람의 파일이 우리 폴더에 섞여 남는다. 옮기기가 막히면(윈도에서 안의 파일이 열림) ERROR 를 내고 그 이름은 안 건드린다.
@@ -113,6 +113,9 @@ check — place --dry-run 이 바꿀 것이 없으면 0, 있으면 그 줄과 �
   이 없으면 사용자 값(윈도 레지스트리 `HKCU\\Environment`)을 먼저, 그다음 프로세스 값을 읽는다. 값을 바꾸기 전에 뜬 앱의
   프로세스는 옛 값을 들고 있어 사용자 값이 진본이다. 쉼표 · 빈칸으로 가르고 대소문자를 안 가린다. 빈 값(`--box ""` 도)은
   claude 만, `none` 은 아무것도 아니다. 표에 없는 도구 이름은 WARN 을 내고 건너뛴다. 표의 길이 쓰는 조건만 읽는다.
+**자리 값(inside)** — 표에 inside 줄이 있으면 `PAISETUP_SITE` 를 조건 값과 같은 차례로 읽는다(`--site` 가 덮는다). 앞뒤 빈칸 ·
+  대소문자를 안 가리고 `outside` 일 때만 사외다 — 그때 inside 이름은 not `*` 처럼 어느 홈에도 안 놓고, 놓았던 것은 걷기가 걷는다.
+  비었거나 다른 값이면 inside 줄이 없는 것과 같다.
 **한 번에 하나** — 잠금 파일 `~/.paisetup/.lock`. 잡혀 있으면 LOCK_WAIT 초까지 기다리고 못 잡으면 ERROR. 아무것도 안 쓰는
   판(--dry-run · check)은 잠금을 안 잡고 그 파일도 안 만든다.
 **표가 틀리면 아무것도 안 한다** — 계약과 까닭은 표 머리가 든다.
@@ -181,10 +184,15 @@ NAMES_EMPTY = ('claude',)              # 값이 비었을 때
 #   길을 든 표에서는 다른 도구와 같이 읽는다
 PICK_ROUTELESS = ('copilot',)
 NAMES_SPLIT = re.compile(r'[,\s]+')
+# 자리 — inside 줄의 이름을 놓을지 가르는 사용자 값. 설치기가 잰 자리의 낱말을 그대로 받는다. 이 낱말일 때만 사외로 읽고,
+#   비었거나 다른 값이면 놓는다 — 회사 PC 에서 자리를 잘못 읽어 회사 스킬을 걷는 쪽이 집에 남기는 쪽보다 해롭다
+SITE_VAR = 'PAISETUP_SITE'
+SITE_OUTSIDE = 'outside'
 
 KIND_ITEM, KIND_ROUTE, KIND_OLD = 'item', 'route', 'old'
 KIND_STAMP = 'stamp'                   # 도장 줄 — 그 표가 배포본의 사본이라는 표시. 뒤 칸은 안 읽는다
 KIND_NOT, KIND_KEEP, KIND_WAS = 'not', 'keep', 'was'
+KIND_INSIDE = 'inside'                 # 사내에서만 놓는 이름 — 자리 값이 사외면 어느 홈에도 안 놓는다
 LOCAL = 'local'                        # item 줄의 표지 낱말 — 짐에 안 싣는 항목(뽑는 자가 읽는다)
 EACH = 'each'                          # item 줄의 표지 낱말 — 항목 폴더 안의 폴더 하나하나가 이기는 단위이자 비키는 단위다
 ITEM_FLAGS = (LOCAL, EACH)             # 다섯째 칸부터 · 차례가 없다
@@ -264,7 +272,8 @@ Item = collections.namedtuple('Item', 'name path repos local each')
 #   없다(None)
 Route = collections.namedtuple('Route', 'item tool form target cond tail', defaults=(None,))
 Not = collections.namedtuple('Not', 'item name tool')
-Was = collections.namedtuple('Was', 'target ledger shared')
+Inside = collections.namedtuple('Inside', 'item name')
+Was =collections.namedtuple('Was', 'target ledger shared')
 # ledgers — 옛 기록들(없으면 빈 묶음 — 통째로 옮긴다) · listed — 우리가 써 온 목록 꼴일 때만 옮긴다
 Old = collections.namedtuple('Old', 'place ledgers listed')
 
@@ -417,9 +426,10 @@ def same_files(a, b):
 
 # ── 갈 곳 표 ─────────────────────────────────────────────────────────────────────────────────────────────
 class Table:
-    def __init__(self, items, routes, olds, nots=(), keeps=(), wases=()):
+    def __init__(self, items, routes, olds, nots=(), keeps=(), wases=(), insides=()):
         self.items, self.routes, self.olds = items, routes, olds
         self.nots, self.keeps, self.wases = list(nots), list(keeps), list(wases)
+        self.insides = list(insides)
         self.groups = collections.OrderedDict()            # 대상 → 길들(표의 차례)
         for r in routes:
             self.groups.setdefault(r.target, []).append(r)
@@ -429,6 +439,10 @@ class Table:
     def barred(self, item, name, tool):
         """not 줄이 그 이름을 그 도구의 홈에 안 놓게 하나."""
         return any(x.item == item and x.name == name and x.tool in (tool, ANY_TOOL) for x in self.nots)
+
+    def inside_only(self, item, name):
+        """inside 줄이 그 이름을 사내에서만 놓게 하나."""
+        return any(x.item == item and x.name == name for x in self.insides)
 
     def route_of(self, target):
         """each 항목의 copy 길 — 그 대상 폴더로 가는 길 하나. 없으면 None."""
@@ -462,7 +476,7 @@ def read_table(path):
     if not path.is_file():
         return None, []
     items, routes, olds, bad = collections.OrderedDict(), [], [], []
-    nots, keeps, wases = [], [], []
+    nots, keeps, wases, insides = [], [], [], []
     for n, raw in enumerate(path.read_text(encoding='utf-8-sig').splitlines(), 1):
         f = raw.split()
         if not f or f[0].startswith('#'):
@@ -487,6 +501,8 @@ def read_table(path):
             routes.append(Route(*f[1:]))
         elif f[0] == KIND_NOT and len(f) == 4:
             nots.append(Not(*f[1:]))
+        elif f[0] == KIND_INSIDE and len(f) == 3:
+            insides.append(Inside(*f[1:]))
         elif f[0] == KIND_KEEP and len(f) == 2 and f[1].startswith(TILDE):
             keeps.append(f[1])
         elif f[0] == KIND_WAS and (len(f) == 3 or (len(f) == 4 and f[3] == SHARED)):
@@ -540,7 +556,11 @@ def read_table(path):
             bad.append('not %s %s — %s 항목이 아니다' % (x.item, x.name, EACH))
         elif x.tool != ANY_TOOL and x.tool not in tools:
             bad.append('not %s %s — 표에 없는 도구다(%s)' % (x.item, x.name, x.tool))
-    table = Table(items, routes, olds, nots, keeps, wases)
+    for x in insides:
+        item = items.get(x.item)
+        if item is None or not item.each:
+            bad.append('inside %s %s — %s 항목이 아니다' % (x.item, x.name, EACH))
+    table = Table(items, routes, olds, nots, keeps, wases, insides)
     for w in wases:
         if table.route_of(w.target) is None:
             bad.append('was %s — %s 항목의 copy 길 대상이 아니다' % (w.target, EACH))
@@ -734,6 +754,14 @@ def read_conds(a, table, out):
     """{조건: 켠 도구들} — 표의 길이 쓰는 조건만 읽는다(안 쓰는 값의 모르는 이름으로 WARN 을 안 낸다)."""
     given = {COND_BOX: a.box, COND_PICK: a.pick}
     return dict((c, read_cond(c, given[c], table.tools, out)) for c in COND_VARS if any(r.cond == c for r in table.routes))
+
+
+def read_offsite(a, table):
+    """사외인가 — 표에 inside 줄이 있을 때만 읽는다. --site 가 없으면 사용자 값 · 프로세스 값 차례(조건 값과 같다)."""
+    if not table.insides:
+        return False
+    raw = user_value(SITE_VAR) if a.site is None else a.site
+    return raw.strip().lower() == SITE_OUTSIDE
 
 
 # ── 잠금 ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1568,9 +1596,9 @@ def units(files):
     return found
 
 
-def place_each(run, table, route, got, link_dirs, fresh_dirs, desired):
+def place_each(run, table, route, got, link_dirs, fresh_dirs, desired, offsite):
     """each 항목의 copy 길 — 이름마다 이긴 층의 폴더를 통째로 놓는다. got — {이름: (층, 파일들)} · 조건이 안 서면 None.
-    돌려주는 것은 놓을 이름들이다(not 과 keep 에 떨어지는 이름을 뺀다)."""
+    돌려주는 것은 놓을 이름들이다(not 과 keep 에 떨어지는 이름, 사외이면 inside 이름을 뺀다)."""
     folder = run.at(route.target)
     prefix = run.rel(folder) + '/'
     link_dirs[prefix] = is_link(folder)
@@ -1578,7 +1606,7 @@ def place_each(run, table, route, got, link_dirs, fresh_dirs, desired):
         return set()
     names = []
     for name in sorted(got):
-        if table.barred(route.item, name, route.tool):
+        if table.barred(route.item, name, route.tool) or (offsite and table.inside_only(route.item, name)):
             continue
         if run.kept(prefix + name) or run.holds_keep(prefix + name):
             run.out.warn('%s%s%s/ — 남의 자리(keep)에 떨어진다 · 안 놓는다' % (TILDE, prefix, name))
@@ -1836,8 +1864,8 @@ def warn_runners(run, table):
                 run.out.warn('%s%s/ — %s' % (TILDE, top, ANY_WARN if x.tool == ANY_TOOL else RUNNER_WARN))
 
 
-def place(run, table, views, conds):
-    """표대로 놓는다. views — 층 → (항목 → 파일들 또는 None) · conds — 조건 → 켠 도구들.
+def place(run, table, views, conds, offsite=False):
+    """표대로 놓는다. views — 층 → (항목 → 파일들 또는 None) · conds — 조건 → 켠 도구들 · offsite — 사외인가(read_offsite).
 
     차례 — 길마다 놓기 · 기록 훑기(걷기 · 빈 폴더) · 옛 기록(was)의 이름 · 옛 자리(old) · 옛 기록 파일 · 받는 쪽 홈의 러너 ·
     원본이 사라진 개인 층 옮기기(run.retire).
@@ -1879,7 +1907,7 @@ def place(run, table, views, conds):
                 run.out.warn('%s — 남의 자리(keep)다 · 이 길을 건너뛴다' % target)
             elif first.form == COPY and item.each:
                 placing[target] = place_each(run, table, first, each_won[item.name] if lit(first) else None,
-                                             link_dirs, fresh_dirs, desired)
+                                             link_dirs, fresh_dirs, desired, offsite)
             elif first.form == COPY:
                 place_copy(run, first, chosen(first), link_dirs, fresh_dirs, desired)
             elif first.form == RENAME:
@@ -2022,6 +2050,8 @@ def passthrough(a):
         args += ['--box', a.box]
     if a.pick is not None:
         args += ['--pick', a.pick]
+    if a.site is not None:
+        args += ['--site', a.site]
     return args
 
 
@@ -2067,15 +2097,15 @@ def cmd_place(a, home, out, dry, check):
         out.error(why)
     if bad:
         return absent
-    conds = read_conds(a, table, out)
+    conds, offsite = read_conds(a, table, out), read_offsite(a, table)
     if dry:
         run = Run(home, True, out)
-        place(run, table, layer_views(run), conds)
+        place(run, table, layer_views(run), conds, offsite)
     else:
         try:
             with Lock(home / HUB):
                 run = Run(home, False, out)
-                place(run, table, layer_views(run), conds)
+                place(run, table, layer_views(run), conds, offsite)
         except Busy as e:
             out.error(e)
     if check:
@@ -2123,7 +2153,7 @@ def dry_place(a, home, table, fills, winner, out):
             return 1
     run = Run(home, True, out)
     views = layer_views(run, (a.layer, fills))
-    place(run, table, views, read_conds(a, table, out))
+    place(run, table, views, read_conds(a, table, out), read_offsite(a, table))
     return 1 if out.failed else 0
 
 
@@ -2144,6 +2174,7 @@ def main(argv=None):
         x.add_argument('--home')
         x.add_argument('--box')
         x.add_argument('--pick')
+        x.add_argument('--site')
     a = ap.parse_args(argv)
     home = pathlib.Path(os.path.abspath(a.home)) if a.home else pathlib.Path.home()
     out = Out()

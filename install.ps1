@@ -6125,12 +6125,12 @@ function Install-VcRuntime([bool]$Attended) {
 
 # 짐의 갈 곳 표(`tool-homes.conf`)에서 칸 없이 까는 걸음이 쓰는 두 사실을 읽는다 — 도구마다 스킬 홈과 기록 자리(`was <대상> <기록>
 #   shared` 줄 · 그 대상으로 가는 `route <항목> <도구> copy <대상>` 줄이 도구 이름을 댄다)와, 그 홈에 안 놓는 이름(`not <항목> <이름>
-#   <도구 | *>`). 두 사실은 손(`tool-homes.py`)이 칸을 켠 홈에서 같은 줄로 쓴다 — 칸을 켜고 끌 때 손과 이 걸음이 같은 기록을 넘겨받고,
+#   <도구 | *>` · 사외에서만 안 놓는 `inside <항목> <이름>`). 두 사실은 손(`tool-homes.py`)이 칸을 켠 홈에서 같은 줄로 쓴다 — 칸을 켜고 끌 때 손과 이 걸음이 같은 기록을 넘겨받고,
 #   받는 쪽 홈에 러너가 안 가는 것이 두 손에서 같다. 그래서 여기 다시 적지 않고 표에서 짓는다(PAISetup #47 ⑤).
-# 표의 꼴(주석은 `#` 로 여는 줄 전체 · 칸은 빈칸으로 가른다)은 표 머리가 든다. 여기는 세 낱말의 줄만 읽고 나머지 줄은 안 본다 —
+# 표의 꼴(주석은 `#` 로 여는 줄 전체 · 칸은 빈칸으로 가른다)은 표 머리가 든다. 여기는 네 낱말의 줄만 읽고 나머지 줄은 안 본다 —
 #   표의 다른 줄을 가르는 것은 손의 몫이다. 파이썬을 안 부른다 — 칸 없이 까는 걸음은 Codex · agy 만 고른 PC(파이썬이 안 깔릴 수
 #   있다)에서도 돈다.
-# 내는 것 — @{ Homes = @{ <도구> = @{ Skills; Ledger; Root; Not } }; Why }. Root 는 기록이 든 폴더(백업의 뿌리)다. 표가 없거나 못
+# 내는 것 — @{ Homes = @{ <도구> = @{ Skills; Ledger; Root; Not; Inside } }; Why }. Root 는 기록이 든 폴더(백업의 뿌리)다. 표가 없거나 못
 #   읽으면 Homes 가 비고 Why 가 까닭이다 — 그 홈은 부르는 쪽이 빨간 줄로 댄다.
 function Read-FreeSkillTable([string]$Table) {
   $t = @{ Homes = @{}; Why = '' }
@@ -6140,7 +6140,7 @@ function Read-FreeSkillTable([string]$Table) {
     $p = $p.TrimEnd('/')
     if ($p.StartsWith('~/')) { $p = Join-Path $env:USERPROFILE ($p.Substring(2).Replace('/', '\')) }
     $p }
-  $routes = @(); $wases = @(); $nots = @()
+  $routes = @(); $wases = @(); $nots = @(); $insides = @()
   foreach ($ln in $lines) {
     $s = $ln.Trim()
     if (-not $s -or $s.StartsWith('#')) { continue }
@@ -6148,22 +6148,26 @@ function Read-FreeSkillTable([string]$Table) {
     if ($f[0] -ceq 'route' -and $f.Count -ge 6 -and $f[3] -ceq 'copy') { $routes += @{ Item = $f[1]; Tool = $f[2]; At = $f[4].TrimEnd('/') } }
     elseif ($f[0] -ceq 'was' -and $f.Count -ge 4 -and $f[3] -ceq 'shared') { $wases += @{ At = $f[1].TrimEnd('/'); Ledger = $f[2] } }
     elseif ($f[0] -ceq 'not' -and $f.Count -ge 4) { $nots += @{ Item = $f[1]; Name = $f[2]; Tool = $f[3] } }
+    elseif ($f[0] -ceq 'inside' -and $f.Count -ge 3) { $insides += @{ Item = $f[1]; Name = $f[2] } }
   }
   foreach ($w in $wases) {
     $r = @($routes | Where-Object { $_.At -ceq $w.At }) | Select-Object -First 1
     if (-not $r) { continue }
     $ledger = & $expand $w.Ledger
     $t.Homes[$r.Tool] = @{ Skills = (& $expand $w.At); Ledger = $ledger; Root = (Split-Path $ledger -Parent)
-                           Not = @($nots | Where-Object { $_.Item -ceq $r.Item -and ($_.Tool -ceq $r.Tool -or $_.Tool -ceq '*') } | ForEach-Object { $_.Name }) }
+                           Not = @($nots | Where-Object { $_.Item -ceq $r.Item -and ($_.Tool -ceq $r.Tool -or $_.Tool -ceq '*') } | ForEach-Object { $_.Name })
+                           Inside = @($insides | Where-Object { $_.Item -ceq $r.Item } | ForEach-Object { $_.Name }) }
   }
   if (-not $t.Homes.Count) { $t.Why = "설치 위치 표에 기본 설치 스킬용 기록 줄(was … shared)이 없음 ($Table)" }
   return $t
 }
 
 # 그 도구 홈에 깔 이름 — `$FreeSkills` 의 그 도구 칸(`Claude` · `Codex` · `Agy` · `Copilot`)이 참이고, 갈 곳 표가 그 홈에 안 놓는다고 하지 않은
-#   것. 까는 칸과 끝 검증이 같은 목록을 쓴다.
+#   것. 사내(`$inside`)가 아니면 표의 `inside` 줄 이름도 뺀다 — 사내에서만 놓는 이름은 그 표 한 자리가 들고, 손도 같은 줄을 읽는다
+#   (claude-config 결정 0279). 까는 칸과 끝 검증이 같은 목록을 쓴다.
 function Get-FreeSkillNames([string]$Tool) {
   $not = @($FreeSkillHomes[$Tool].Place.Not)
+  if (-not $inside) { $not += @($FreeSkillHomes[$Tool].Place.Inside) }
   return @($FreeSkills.Keys | Where-Object { $FreeSkills[$_].$Tool -and $not -notcontains $_ })
 }
 
@@ -8261,26 +8265,27 @@ $KitSkills = Join-Path $Kit 'skills'
 $hostClaude = [bool]($PickKeys -contains 'claude')
 $hostCodex  = [bool]($PickKeys -contains 'codex')
 $FreeSkills = [ordered]@{
-  # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다
+  # 회사 DRM 이 감싼 오피스 · PDF 를 읽는다 — 회사 PC 의 Fasoo 에이전트가 있어야 풀어, 사외에서는 짐의 갈 곳 표 `inside` 줄로 빠진다
   'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
   'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 사내 앱(메일 · 주소록 · 일정 · 문서함 · 회의실 · 사규 · 게시판)을 대화로 다룬다 — 이들이 형제 폴더 ep-login 의 세션 손을 불러 쓰고 메일 손은 주소록 손을 불러 쓰므로 다 한
   #   묶음으로 같은 홈에 선다. 사내(게이트웨이에 닿는 자리 `$inside`)에서만 깐다 — 사외에서는 사내 앱 화면이 안 열려 쓸 데가 없고,
-  #   사외로 돈 회차는 기록에 든 이 묶음을 백업 자리로 걷는다. Copilot 칸은 그 제품을 사내에서 안 내놓는 동안(`$PickHeld`) 늘 거짓이다
-  'ep-login'                 = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'company-mail'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'company-directory'        = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'company-calendar'         = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'company-ecm'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'company-meeting-room'     = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'company-regulation'       = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'company-board'            = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  #   사외로 돈 회차는 기록에 든 이 묶음을 백업 자리로 걷는다. 그 이름은 짐의 갈 곳 표 `inside` 줄이 들고 `Get-FreeSkillNames` 가 뺀다 —
+  #   여기 칸에 자리를 다시 적지 않는다. Copilot 은 그 제품을 사내에서 안 내놓는 동안(`$PickHeld`) 홈을 안 건드린다(`Hold`)
+  'ep-login'                 = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'company-mail'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'company-directory'        = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'company-calendar'         = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'company-ecm'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'company-meeting-room'     = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'company-regulation'       = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'company-board'            = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 메일 비서(일일 보고 · 업무 파악 · 메일함 스캔 · 메일함 정리) — 위 사내 앱 손을 불러 쓰므로 같은 묶음 · 같은 조건으로 선다
-  'daily-brief'              = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'mailbox-work'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'mailbox-scan'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
-  'mailbox-tidy'             = @{ Claude = [bool]($hostClaude -and $inside); Codex = [bool]($hostCodex -and $inside); Agy = [bool]($hostAgy -and $inside); Copilot = [bool]($hostCopilot -and $inside) }
+  'daily-brief'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'mailbox-work'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'mailbox-scan'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'mailbox-tidy'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
   'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # Anthropic 공식 문서 스킬 넷 — 오피스 · PDF 를 읽고 짓는다. 짐이 상류 한 판(Apache 2.0)을 싣는다. Claude 는 같은 스킬을 「Claude

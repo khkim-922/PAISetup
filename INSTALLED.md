@@ -230,7 +230,7 @@ VS Code 는 Microsoft 의 공식 「최신」 주소에서 받는다 — winget 
 - **사내** — 켠 도구가 같은 회사 키로 [로컬 프록시](#로컬-프록시)를 거쳐 게이트웨이에 붙는다
 - **사외** — 각자 로그인한다. Codex 는 `codex login`(ChatGPT 계정), 안티그래비티는 처음 실행할 때 Google 로그인이다
 - 설치가 잰 자리는 사용자 환경변수 `PAISETUP_SITE`(`inside` · `outside`)에 남는다. 일을 맡기는 세션이 맡기기
-  모델 표에서 이 자리 줄을 읽는다
+  모델 표에서 이 자리 줄을 읽고, 놓는 프로그램이 사내에서만 놓는 스킬을 가른다
 - 안티그래비티 확장은 사외에서만 깐다. 사이드바는 Google 계정이나 Google Cloud(법인) 로그인을 요구해 회사 키로는 안 서고, 회사
   키로 게이트웨이에 붙는 것은 터미널의 안티그래비티 CLI 다. 사내에서도 개인 구독으로 사이드바를 쓰려면 VS Code 마켓에서 확장을
   직접 깔고 Google 로그인한다
@@ -726,18 +726,21 @@ Copilot 을 빼고 Codex 에게만 맡긴다.
 
 | 스킬 | Claude 홈 `~/.claude/skills/` | Codex 홈 `~/.agents/skills/` | agy 홈 `~/.gemini/config/skills/` | Copilot 홈 `~/.copilot/skills/` |
 |---|---|---|---|---|
-| `drm-office-read` · `inhouse-app` · `agent-envelope` | Claude 를 고르면 | Codex 를 고르면 | 안티그래비티를 고르면 | Copilot 을 고르면 |
-| 사내 앱 묶음(`company-*` · `ep-login` · 메일 비서 `daily-brief` · `mailbox-work` · `mailbox-scan` · `mailbox-tidy`) | 사내에서 Claude 를 고르면 | 사내에서 Codex 를 고르면 | 사내에서 안티그래비티를 고르면 | — (사내에서는 Copilot 을 안 내놓는다) |
+| `inhouse-app` · `agent-envelope` | Claude 를 고르면 | Codex 를 고르면 | 안티그래비티를 고르면 | Copilot 을 고르면 |
+| 사내 앱 묶음(`company-*` · `ep-login` · 메일 비서 `daily-brief` · `mailbox-work` · `mailbox-scan` · `mailbox-tidy`)과 `drm-office-read` | 사내에서 Claude 를 고르면 | 사내에서 Codex 를 고르면 | 사내에서 안티그래비티를 고르면 | — (사내에서는 Copilot 을 안 내놓는다) |
 | `agy-background` | Claude 와 안티그래비티를 같이 고르면 | Codex 와 안티그래비티를 같이 고르면 | — | Copilot 과 안티그래비티를 같이 고르면 |
 | `codex-copilot-background` | Claude 와 Codex 를 같이 고르면 | — | 안티그래비티와 Codex 를 같이 고르면 | Copilot 과 Codex 를 같이 고르면 |
 | `claude-background` | — | Claude 와 Codex 를 같이 고르면 | Claude 와 안티그래비티를 같이 고르면 | Claude 와 Copilot 을 같이 고르면 |
 
-- 사내 앱 묶음은 사외(회사 게이트웨이에 안 닿는 자리)에서는 안 깐다 — 사내 앱 화면이 안 열려 쓸 데가 없다. 사외로 돈 설치는 앞서
-  사내에서 깐 묶음을 아래 백업 자리로 걷는다
+- 사내 앱 묶음과 `drm-office-read` 는 사외(회사 게이트웨이에 안 닿는 자리)에서는 안 깐다 — 사내 앱 화면이 안 열리고 DRM 을 푸는 Fasoo
+  에이전트가 없어 쓸 데가 없다. 사외로 돈 설치는 앞서 사내에서 깐 것을 아래 백업 자리로 걷는다. 그 이름은 설치 묶음의 갈 곳 표
+  (`tool-homes.conf`)의 `inside` 줄이 든다
 - Codex 에게 맡기는 줄과 Codex 가 맡기는 줄은 사내에서는 Codex 회사 설정이 서는 자리에서만 선다
 - 사내 설치는 Copilot 홈에 칸 없이 깐 스킬과 그 기록을 그대로 둔다 — 깔지도 걷지도 않고, 사외로 나가면 다시 맞춘다
 - 위 표의 조건은 제작자 칸을 끈 도구의 홈에서 쓰인다. 칸을 켠 도구의 홈에는 놓는 프로그램이 설치 묶음의(설정 저장소를 넣었으면 그
-  저장소의) 스킬을 다 놓는다 — 위 이름들도 고른 제품과 상관없이 그 안에 들고, 받는 쪽 홈의 맡기기 스킬만 빠진다
+  저장소의) 스킬을 다 놓는다 — 위 이름들도 고른 제품과 상관없이 그 안에 들고, 받는 쪽 홈의 맡기기 스킬만 빠진다. 사내 앱 묶음과
+  `drm-office-read` 는 칸을 켠 홈에서도 사내에서만 선다 — 설치가 잰 자리(`PAISETUP_SITE`)가 사외면 놓는 프로그램이 걷는다. 사외에서는
+  부를 수 없는데 스킬 목록의 설명 몫만 먹기 때문이다. 아뜰리에 보고(`atelier-report`)는 사외에서도 쓰는 겸용이라 어디서나 놓는다
 - 한 홈의 스킬 폴더를 쓰는 것은 늘 하나라, 둘이 같은 폴더를 번갈아 덮지 않는다
 
 ### 깐 스킬의 기록과 비켜 두기
