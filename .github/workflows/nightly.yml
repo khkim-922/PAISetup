@@ -50,11 +50,14 @@ jobs:
       SRC_DIR: repos/claude-config
 
     steps:
+      # 두 저장소 다 이력째 받는다 — 세션 훅 넘기기 물림이 두 저장소의 옛 커밋을 견본으로 읽는다(`git show <커밋>:<자리>`).
+      #   얕게 받으면 그 걸음이 「견본의 커밋을 못 읽어 못 잼」으로 선다.
       - name: 배포본을 받는다
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || github.ref }}
           path: ${{ env.DIST_DIR }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: 진본을 곁에 받는다 (비공개 — 시크릿이 든다)
@@ -65,6 +68,7 @@ jobs:
           ref: ${{ inputs.source-ref }}
           token: ${{ secrets.CLAUDE_CONFIG_TOKEN }}
           path: ${{ env.SRC_DIR }}
+          fetch-depth: 0
           persist-credentials: false
 
       # 판의 진본은 진본 저장소의 도구 선언이고, 읽는 자도 거기 한 벌(`scripts/decl-python-version.sh`)이다. 못 읽으면 멈춘다.
