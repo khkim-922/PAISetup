@@ -6,10 +6,12 @@
     python -X utf8 _check/env_names_check.py --doc <문서> --ours <그물>
     python -X utf8 _check/env_names_check.py <나무뿌리> --doc <문서> --ours <그물>
     python -X utf8 _check/env_names_check.py <나무뿌리> --doc <문서> --ours '*' --skip 산출물,기록
+    python -X utf8 _check/env_names_check.py --doc <문서> --ours <그물> --ours-in app   # ①을 `app/` 의 읽기로 좁힌다
     python -X utf8 _check/env_names_check.py           # 곁 `env_names.conf` 에 [env_names] doc·ours·skip 과 [not_ours] 를 적은 저장소
 
 내는 것 — 0 두 차집합이 비고 못 푼 읽기 · 그물 밖 읽기 꼴이 없다 · 1 그 가운데 하나가 있거나 자기 이빨이 안
-문다 · 2 못 쟀다(`--doc`·`--ours` 가 없다 · 소유 그물이 빈 글자다 · 문서가 없다 · 문서나 코드가 빈손이다).
+문다 · 2 못 쟀다(`--doc`·`--ours` 가 없다 · 소유 그물이 빈 글자다 · `--ours-in` 안에 잴 원문이 없다 · 문서가 없다 ·
+문서나 코드가 빈손이다).
 
 **왜 이 검사가 있나.** 환경변수는 들여도 지워도 아무 데서도 안 터진다. 새 손잡이를 들이면
 문서가 그것을 영영 안 들고, 읽는 줄을 지우면 문서만 없는 손잡이를 계속 약속한다. 비싼 쪽은
@@ -33,6 +35,13 @@
   · **안 주면 「못 쟀다」(2)다.** 어느 쪽도 기본값으로 깔지 않는다 — 좁게 깔면 ①이 조용히
     아무것도 안 물고, 넓게 깔면 남의 이름으로 빨강이 나서 사람이 검사를 끈다
 
+**나무 그물(`--ours-in`)은 ①을 폴더로 한 번 더 좁힌다.** 쓰는 사람이 손잡이로 쥐는 이름은 앱 나무가 읽는
+것이고, 검사 · 프로브만 읽는 이름은 만드는 사람이 그 파일을 열어 본다 — 그 이름까지 문서에 줄을 요구하면 프로브를
+고칠 때마다 문서 쫓아가기 빨강이 난다. 그래서 저장소가 쉼표로 폴더(나무뿌리 기준 · 예 `app`)를 주면 ①은 그 폴더
+안에서 읽는 이름만 문다. 안 주면 나무 전부다. 그물 안에 잴 원문이 한 장도 없으면(오타 · 뺀 폴더) 「못 쟀다」다. ②는 이 그물도 안 본다 — 문서가 든 이름은 나무 어디서든
+읽는 자리가 있으면 된다. 못 푼 읽기 · 그물 밖 읽기 꼴도 ①의 눈을 가리는 자리라 같은 폴더 안에서만 빨강이고, 밖의
+그것은 판정 곁에 이름으로 선다.
+
 **그물이 좁으면 이 검사는 항진명제다.** 그래서 읽기를 AST 로 가르고 리터럴만 세지 않는다:
   · `os.environ.get("X")` · `os.environ["X"]` · `.setdefault("X")` · `.pop("X")` · `os.getenv("X")`
   · **이름이 표에 담겨 도는 자리**도 푼다 — 이름표를 `for n in …` 으로 돌며 읽는 꼴이라,
@@ -49,12 +58,13 @@
   · 소유 그물 밖의 새 읽기(위 가름) · `NOT_OURS` 에 까닭을 달고 뺀 이름
   · 산출물·기록·옛 세대 폴더(`SKIP` 과 `--skip`)와 점으로 시작하는 폴더
   · 표 밖 산문이 든 이름 — 문서가 「변수가 아닌데 환경이 정하는 것」으로 따로 가른 자리다
-  · 어느 나무가 읽나 — 앱이 읽는 표와 검사만 읽는 표를 문서가 갈라도 한 자루로 센다
+  · 어느 표가 어느 나무의 것인가 — 앱이 읽는 표와 검사만 읽는 표를 문서가 갈라도 ②는 한 자루로 센다. 나무
+    그물을 준 저장소에서 이름이 앱에서 검사로 옮겨 앉으면 ①은 그 이름을 놓는다(문서의 줄은 ②가 계속 든다)
   · 그 줄이 무엇을 정하나 — 재는 것은 「이름이 있나」까지다. 뜻은 사람이 실물을 읽고 적은
     판단이라 기계가 대신 못 한다
 
 **이 자는 제 손잡이를 환경변수로도 받는다** — 그래서 이 파일이 재이는 나무 안에 살면
-그 이름들(`ENV_NAMES_DOC` 따위)이 제 그물에 든다. 접두어 그물에서는 밖이라 조용하고,
+그 이름들(`ENV_NAMES_DOC` 따위)이 제 그물에 든다(나무 그물이 이 폴더를 안 덮으면 ①에는 안 든다). 접두어 그물에서는 밖이라 조용하고,
 `*` 를 고른 저장소에서는 문서에 줄을 두거나 `[not_ours]` 에 까닭을 달아 뺀다. 판정 곁의
 고지가 그 자리를 말한다.
 
@@ -99,8 +109,9 @@ NOT_OURS = {}
 
 # 이 자가 제 손잡이를 받는 환경변수 — argv 가 먼저, 이것이 그 다음, 곁 선언이 마지막이다. 훅·CI 가
 # 한 번 세워 두면 부르는 자리마다 안 적는다. 이 이름들이 제 그물에 드는 자리는 머리말이 든다.
-ENV_DOC, ENV_OURS, ENV_SKIP = "ENV_NAMES_DOC", "ENV_NAMES_OURS", "ENV_NAMES_SKIP"
-FLAGS = ("--doc", "--ours", "--skip")
+ENV_DOC, ENV_OURS, ENV_SKIP, ENV_OURS_IN = ("ENV_NAMES_DOC", "ENV_NAMES_OURS", "ENV_NAMES_SKIP",
+                                            "ENV_NAMES_OURS_IN")
+FLAGS = ("--doc", "--ours", "--skip", "--ours-in")
 
 
 class Code(NamedTuple):
@@ -329,6 +340,30 @@ def scan_code(root, skip=SKIP):
     return Code(names, indirect, unresolved, outside, whole, files, js_files)
 
 
+def in_trees(where, trees):
+    """읽는 자리(`상대경로:줄`)가 나무 그물 안인가 — `trees` 가 None 이면 나무 전부다."""
+    if trees is None:
+        return True
+    rel = where.split(":", 1)[0]
+    return any(rel == t or rel.startswith(t + "/") for t in trees)
+
+
+def scoped(code, trees):
+    """나무 그물 안에서 읽는 이름 → 그 안의 읽는 자리들. ①이 이 사전만 본다."""
+    out = {}
+    for n, where in code.items():
+        inside = [w for w in where if in_trees(w, trees)]
+        if inside:
+            out[n] = inside
+    return out
+
+
+def blind_spots(code, trees):
+    """(못 푼 읽기, 그물 밖 읽기 꼴) 가운데 나무 그물 안의 것 — ①의 눈을 가리는 자리라 그 안에서만 빨강이다."""
+    return ([w for w in code.unresolved if in_trees(w, trees)],
+            [w for w in code.outside if in_trees(w, trees)])
+
+
 def is_ours(name, ours):
     """이 이름이 **우리가 지은 것**인가 — ①이 무는 범위가 이 한 줄이다."""
     if name in NOT_OURS:
@@ -336,13 +371,14 @@ def is_ours(name, ours):
     return True if ours == ALL else name.startswith(tuple(ours))
 
 
-def compare(doc, code, ours):
+def compare(doc, code, ours, trees=None):
     """(문서에 없는 이름, 실물 없는 줄).
 
-    ①만 그물을 본다. **②는 접두사를 안 본다** — 문서가 든 이름은 우리 것이든 아니든 읽는
-    자리가 있어야 한다. 소유 밖으로 뺀 이름만 양쪽에서 함께 빠진다.
+    ①만 그물을 본다 — 소유 그물(`ours`)과 나무 그물(`trees` · None 이면 나무 전부). **②는 둘 다 안 본다** —
+    문서가 든 이름은 우리 것이든 아니든, 어느 나무에서든 읽는 자리가 있으면 된다. 소유 밖으로 뺀 이름만 양쪽에서
+    함께 빠진다.
     """
-    missing = sorted(n for n in code if is_ours(n, ours) and n not in doc)
+    missing = sorted(n for n in scoped(code, trees) if is_ours(n, ours) and n not in doc)
     ghost = sorted(n for n in doc if n not in code and n not in NOT_OURS)
     return missing, ghost
 
@@ -380,9 +416,9 @@ def _plant(doc_text, code_text, js_text=None):
     return root
 
 
-def _survey(root, ours=FIX_OURS):
+def _survey(root, ours=FIX_OURS, trees=None):
     doc = scan_doc((root / FIX_DOC).read_text(encoding="utf-8"))
-    return compare(doc, scan_code(root).names, ours)
+    return compare(doc, scan_code(root).names, ours, trees)
 
 
 def teeth():
@@ -485,6 +521,35 @@ def teeth():
             del NOT_OURS[lent], NOT_OURS[ghosted]
         report("㉸ 소유 밖으로 뺀 이름은 ①도 ②도 안 문다", got == ([], []),
                [f"실측 {got} — 기대 ([], []). 한쪽만 빠지면 넓은 그물을 든 저장소가 ①을 끈다"])
+
+        # ㉹㉺ **나무 그물이 ①만 좁히고 ②는 안 좁히나** — 한 나무를 두 그물로 잰다. 그물 안(`src`)의 새 읽기 하나와
+        #     프로브 폴더만 읽는 이름 둘 — 문서에 없는 것(①의 몫)과 문서에 있는 것(②의 몫). 그물을 `src` 로 주면 안의
+        #     새 읽기만 물고, 프로브의 새 이름은 놓고, 프로브만 읽는 문서 줄은 「실물 없는 줄」로 세우지 않아야 한다.
+        #     그물을 안 주면 새 읽기 둘을 다 문다. 이 둘이 없으면 그물이 ②까지 좁혀 프로브만 읽는 줄이 통째로
+        #     빨개지거나, 그물이 아무것도 안 좁혀도(옛 판) · 그물 안까지 놓아도 위 이빨이 다 초록이다.
+        src_new, probe_new, probe_doc = "SEEDNET_SRC_NEW", "SEEDNET_PROBE_ONLY", "SEEDNET_PROBE_DOC"
+        trees = _plant(SEED_DOC + f"| `{probe_doc}` | 프로브만 읽는다 |\n",
+                       SEED_CODE + f'S = os.environ.get("{src_new}")\n')
+        tmps.append(trees)
+        (trees / "probe").mkdir()
+        (trees / "probe" / "y.py").write_text(
+            f'import os\nP = os.environ.get("{probe_new}")\nQ = os.environ.get("{probe_doc}")\n'
+            'R = os.environ.get(globals()["z"])\n', encoding="utf-8")
+        got = _survey(trees, FIX_OURS, ("src",))
+        report(f"㉹ 나무 그물(`src`) 안의 새 읽기만 ①이 문다 · 밖에서만 읽는 새 이름은 안 문다 · 밖에서 읽는 문서 "
+               f"줄은 ②가 안 문다 ({src_new} · {probe_new} · {probe_doc})", got == ([src_new], []),
+               [f"실측 {got} — 기대 ([{src_new!r}], []). ②까지 좁히면 프로브만 읽는 문서 줄이 「실물 없는 줄」로 뜨고, "
+                "그물 안까지 놓으면 ①이 빈다"])
+        got = _survey(trees, FIX_OURS, None)
+        report(f"㉺ 나무 그물을 안 주면 밖의 새 이름도 ①이 문다 ({probe_new})",
+               got == (sorted([probe_new, src_new]), []),
+               [f"실측 {got} — 기대 ({sorted([probe_new, src_new])!r}, []). 안 물면 그물 없는 저장소의 ①이 좁아진 것이다"])
+        stuck = scan_code(trees)
+        inside = blind_spots(stuck, ("src",))[0]
+        stuck = stuck.unresolved
+        report("㉻ 나무 그물 밖의 못 푼 읽기는 그물 안 빨강에서 빠진다 (`probe/y.py`)",
+               bool(stuck) and not inside,
+               [f"실측 전부 {stuck} · 그물 안 {inside} — 기대 전부 한 자리 이상 · 그물 안 없음"])
     finally:
         for t in tmps:
             shutil.rmtree(t, ignore_errors=True)
@@ -496,7 +561,7 @@ CONF = "env_names.conf"
 
 
 def _conf():
-    """곁 선언 — `[env_names]` 의 doc · ours · skip 과 `[not_ours]` 의 이름 = 까닭. 없으면 빈 둘.
+    """곁 선언 — `[env_names]` 의 doc · ours · skip · ours_in 과 `[not_ours]` 의 이름 = 까닭. 없으면 빈 둘.
 
     씨앗은 선언을 안 싣는다. 받은 저장소가 이 파일을 안 고치고 값을 줄 자리다 — 사본은 진본과
     글자가 같아야 `borrowed_check` 가 초록이다.
@@ -517,6 +582,7 @@ ENV = {
     "--doc": os.environ.get("ENV_NAMES_DOC"),
     "--ours": os.environ.get("ENV_NAMES_OURS"),
     "--skip": os.environ.get("ENV_NAMES_SKIP"),
+    "--ours-in": os.environ.get("ENV_NAMES_OURS_IN"),
 }
 
 
@@ -525,7 +591,7 @@ def _opt(argv, flag):
     if flag in argv:
         i = argv.index(flag)
         return argv[i + 1] if i + 1 < len(argv) else None
-    return ENV.get(flag) or _conf()[0].get(flag.lstrip("-"))
+    return ENV.get(flag) or _conf()[0].get(flag.lstrip("-").replace("-", "_"))
 
 
 def _positional(argv):
@@ -544,7 +610,8 @@ def _positional(argv):
 
 
 HOWTO = ("어떻게 주나 — `--doc <나무뿌리 기준 문서 경로>` 와 `--ours <접두어[,접두어…]>` 또는 "
-         f"`--ours '{ALL}'`(읽는 이름 전부가 우리 것). 환경변수 {ENV_DOC}·{ENV_OURS} 로도 받는다. "
+         f"`--ours '{ALL}'`(읽는 이름 전부가 우리 것). ①을 폴더로 좁히려면 `--ours-in <폴더[,폴더…]>`. "
+         f"환경변수 {ENV_DOC}·{ENV_OURS}·{ENV_OURS_IN} 로도 받는다. "
          "나무뿌리는 첫 자리 인자이고 안 주면 이 폴더의 윗자리다. 그물을 기본값으로 안 까는 "
          "까닭은 이 파일 머리말이 든다")
 
@@ -555,6 +622,7 @@ def main(argv):
     doc_arg = _opt(argv, "--doc")
     ours_arg = _opt(argv, "--ours")
     skip_arg = _opt(argv, "--skip")
+    trees_arg = _opt(argv, "--ours-in")
     NOT_OURS.update(_conf()[1])         # 저장소의 소유 선언 — 바깥 이름과 그 까닭
 
     lack = [n for n, v in (("--doc", doc_arg), ("--ours", ours_arg)) if not v]
@@ -568,6 +636,19 @@ def main(argv):
                          f"된다. {HOWTO}")
     skip = SKIP | {d.strip() for d in (skip_arg or "").split(",") if d.strip()}
     doc_path = Path(doc_arg) if Path(doc_arg).is_absolute() else root / doc_arg
+    trees = None
+    if trees_arg:
+        # 읽는 자리는 나무뿌리 기준 `/` 경로라 그물도 그 꼴로 편다(`./app` · `app\\` · 절대 경로가 그대로면 안 걸린다)
+        trees = tuple(t for t in (Path(x.strip()).as_posix().strip("/") for x in trees_arg.split(","))
+                      if t not in ("", "."))
+        trees = tuple(t[2:] if t.startswith("./") else t for t in trees)
+        # 그물 안에 잴 원문이 한 장도 없으면 ①이 아무것도 안 물고 초록이 난다 — 오타 · 나무 밖 · 뺀 폴더가 그 판이다
+        empty = [t for t in trees or ("(빈 글자)",)
+                 if Path(t).is_absolute() or ".." in Path(t).parts
+                 or not any(in_trees(rel.as_posix(), (t,)) for sfx in (".py", ".mjs") for _p, rel in _walk(root, sfx, skip))]
+        if empty:
+            raise Unmeasured(f"[안 잼] 나무 그물 안에 잴 원문이 없다 — {' · '.join(empty)}(나무뿌리 기준 폴더 · 뺀 폴더와 "
+                             f"점 폴더 밖이어야 한다). ①이 아무것도 안 물어 항진명제가 된다. {HOWTO}")
 
     print("--- §1 자기 이빨 — 손댄 사본이 정말 빨강을 내나 (양성 대조가 먼저 선다)")
     teeth()
@@ -588,16 +669,18 @@ def main(argv):
 
     rel_doc = doc_arg if not Path(doc_arg).is_absolute() else doc_path.name
     net = "읽는 이름 전부" if ours == ALL else " · ".join(f"`{p}…`" for p in ours)
-    missing, ghost = compare(doc, code.names, ours)
-    report(f"문서에 없는 이름이 없다 — 코드가 읽는 소유 그물({net}) 마다 제 줄이 있다",
+    where = "나무 전부" if trees is None else " · ".join(f"`{t}/`" for t in trees)
+    missing, ghost = compare(doc, code.names, ours, trees)
+    unresolved, outside = blind_spots(code, trees)
+    report(f"문서에 없는 이름이 없다 — {where} 의 코드가 읽는 소유 그물({net}) 마다 제 줄이 있다",
            not missing,
            [f"{n} — 읽는데 {rel_doc} 에 줄이 없다 ({' · '.join(code.names[n])})"
             for n in missing])
     report("실물 없는 줄이 없다 — 문서의 이름마다 읽는 자리가 있다", not ghost,
            [f"{n} — {rel_doc} 에 줄은 있는데 읽는 자리가 없다" for n in ghost])
-    report("열쇠를 못 푼 읽기 자리가 없다", not code.unresolved,
-           [f"{w} — 이름을 못 세 이 자리는 대조 밖이다" for w in code.unresolved])
-    report("그물 밖의 읽기 꼴이 없다", not code.outside, list(code.outside))
+    report(f"열쇠를 못 푼 읽기 자리가 없다 — {where}", not unresolved,
+           [f"{w} — 이름을 못 세 이 자리는 대조 밖이다" for w in unresolved])
+    report(f"그물 밖의 읽기 꼴이 없다 — {where}", not outside, list(outside))
 
     edge(f"쟀다: 문서 이름 {len(doc)}개 ↔ 코드가 읽는 이름 {len(code.names)}개 "
          f"(파이썬 {code.files}장 — 표 칸 대 AST · `.mjs` {code.js_files}장 — 정규식)")
@@ -608,6 +691,12 @@ def main(argv):
     if not NOT_OURS:
         edge("소유 밖으로 뺀 이름 — 이 나무에는 없다(`NOT_OURS` 가 비었다). 바깥이 정한 "
              "이름을 뺄 자리가 거기다 — 까닭 없이 빼면 눈감은 것이다")
+    if trees is not None:
+        beyond = sorted(n for n in code.names if n not in scoped(code.names, trees) and is_ours(n, ours))
+        edge(f"안 쟀다 — 나무 그물({where}) 밖에서만 읽는 우리 이름은 ①이 안 문다(문서에 줄이 있으면 ②가 든다). "
+             f"이번 판에서 그런 이름: " + (" · ".join(beyond) or "없다"))
+        for w in [w for w in code.unresolved + code.outside if not in_trees(w, trees)]:
+            edge(f"안 쟀다 — 나무 그물 밖의 못 푼 읽기 · 그물 밖 읽기 꼴 {w}")
     outsiders = sorted(n for n in code.names if not is_ours(n, ours))
     edge(f"안 쟀다 — 소유 그물({net}) 밖의 **새** 읽기는 ①이 안 문다. 이번 판에서 그런 "
          f"이름: " + (" · ".join(outsiders) or "없다"))
@@ -620,10 +709,10 @@ def main(argv):
          + " (자식에게 환경을 물려주는 꼴이라 셀 이름이 없다)")
     edge("안 쟀다 — 표 밖 산문이 든 이름. 문서가 「변수가 아닌데 환경이 정하는 것」으로 "
          "따로 가른 자리(`PATH` 따위)라, 물면 변수 아닌 것을 변수로 세운다")
-    edge("안 쟀다 — **어느 나무가** 읽나. 문서가 앱이 읽는 표와 검사만 읽는 표를 갈라 "
-         "적어도 이 검사는 둘을 한 자루로 센다 — 이름이 앱에서 검사로 옮겨 앉아도 조용하다")
+    edge("안 쟀다 — 어느 **표**가 어느 나무의 것인가. 문서가 앱이 읽는 표와 검사만 읽는 표를 갈라 "
+         "적어도 ②는 둘을 한 자루로 센다 — 이름이 앱에서 검사로 옮겨 앉아도 문서의 줄은 조용하다")
     edge(f"안 쟀다 — 이 파일이 제 손잡이를 받는 환경변수({ENV_DOC} · {ENV_OURS} · "
-         f"{ENV_SKIP})가 **제 그물에 드는가**. 이 파일이 재이는 나무 안에 살면 든다 — "
+         f"{ENV_SKIP} · {ENV_OURS_IN})가 **제 그물에 드는가**. 이 파일이 재이는 나무 안에 살면 든다 — "
          "접두어 그물에서는 밖이라 조용하고, 전부를 고른 저장소는 문서에 줄을 두거나 "
          "소유 밖으로 뺀다")
     edge("안 쟀다 — 그 줄이 **무엇을 정하나**. 뜻은 사람이 실물을 읽고 적은 판단이다")

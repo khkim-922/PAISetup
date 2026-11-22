@@ -117,8 +117,7 @@ def say(src, dest, before, after):
     """줄인 결과를 찍는다 — 치수와 시각 토큰 한 줄 · 바이트 한 줄 · 값이 그대로면 한 줄 더.
 
     치수와 시각 토큰을 함께 내는 것은 바이트만 적으면 값을 오해해서다.
-    이름이 `report` 가 아닌 까닭 — 이 폴더에서 그 낱말은 판정을 세우는 손(`_verdict.py`)이라
-    `exit_code_check.py` 가 그 이름을 보고 판정 검사로 센다. 여기는 판정을 안 낸다.
+    이름이 `report` 가 아닌 까닭 — 이 폴더에서 그 낱말은 판정을 세우는 손(`_verdict.py`)이다. 여기는 판정을 안 낸다.
     """
     was, now = patches(before), patches(after)
     cut = "" if was == now else f" ({(1 - now / was) * 100:.0f}% 줄었다)"

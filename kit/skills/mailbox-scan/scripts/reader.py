@@ -77,7 +77,10 @@ class Scan:
 
 
 def open_scan() -> Scan | int:
-    state, broken = st.load_state(st.scan_dir())
+    try:
+        state, broken = st.load_state(st.scan_dir())
+    except st.Unreadable as exc:
+        state, broken = None, str(exc)
     if state is None:
         print(NO_SCAN.format(what=f"스캔 파일을 못 읽었다({broken})" if broken else "스캔 파일이 없다"))
         return EXIT_NO_SCAN

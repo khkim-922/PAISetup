@@ -62,6 +62,9 @@ except ImportError:                             # 형제 스킬 ep-login 이 곁
 MINE_DAYS = 14                            # mine 의 기본 구간 — 오늘부터 두 주
 MOST_ROOMS = 60                           # rooms 답에 싣는 회의실 수 — count 는 다 센 수다
 MOST_FREE = 40                            # free 답에 싣는 빈 회의실 수
+# free --minutes 의 비는 때는 방의 것뿐이다 — 이 손은 누구의 일정도 안 보니, 때를 고르는 쪽이 사람들의 비는 때와 견줄 자리를 함께 댄다
+ROOM_GAPS_ONLY = ("gaps 는 방이 비는 때뿐이다 — 사용자 본인과 참석자의 일정은 이 손이 안 본다. 때를 고르려면 스킬 company-calendar 의 "
+                  "show <날> --who <참석자> --free <분> --hours <구간>(본인 일정도 함께 센다)의 비는 때와 견줘 둘 다 비는 때를 고른다")
 MOST_GRID = 30                            # day 답에 싣는 회의실 수 — 한 회의실의 그날 예약이 한 묶음이다
 MOST_CANDIDATES = 15                      # 회의실이 여럿 걸릴 때 message 에 보이는 후보 수
 LIVE = ("confirmed", "pending_approval")  # 회의실을 쥔 예약의 상태 — cancelled · rejected 는 비운 것이다
@@ -201,6 +204,7 @@ def common_steps() -> str:
         f"회의실 예약 — 보기 · 넣기 · 고치기 · 본떠 넣기 · 취소. {ep_command.today_word()}", "",
         "자주 쓰는 길 — 그대로 쳐서 쓴다(<…> 만 갈아 끼운다)",
         "  비는 회의실   free --start \"<날> HH:MM\" --end \"<날> HH:MM\" [--where <건물 · 층>] [--people <인원>] [--favorites]",
+        "  때가 뭉뚱그려졌으면  free … --minutes <분> — 그 구간 안에서 그만큼 비는 방과 때(사람들의 일정은 company-calendar 의 show --free)",
         "  잡기          preview --room <free 의 id> --title <제목> --start … --end … --people-file <people.json>  →  book …같은 값… --confirm <key>",
         "  옮기기        mine 의 id → preview --id <id> --start \"<날> HH:MM\"  →  change …같은 값… --confirm <key>",
         "  더하고 빼기   preview --id <id> --add-to <메일> --drop-to <메일>  →  change …같은 값… --confirm <key>",
@@ -886,7 +890,7 @@ def read(app, args, now: datetime) -> dict:
                     rows.append({**room_row(r, places), "gaps": [{"start": stamp(a), "end": stamp(b), "when": when(a, b)} for a, b in gaps]})
             rows.sort(key=lambda x: (x["gaps"][0]["start"], x["name"]))
             out = {"within": when(start, end), "minutes": args.minutes, "count": len(rows), "rooms": rows[:MOST_FREE],
-                   "cut": len(rows) > MOST_FREE}
+                   "cut": len(rows) > MOST_FREE, "word": ROOM_GAPS_ONLY}
         if note:
             out["note"] = note
         if not out["count"]:             # 없다로 끝내지 않고 넓힐 길을 댄다 — 비는 곳을 짓지 않는다

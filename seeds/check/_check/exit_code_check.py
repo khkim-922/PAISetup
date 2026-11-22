@@ -1,11 +1,11 @@
-"""검사가 종료코드 계약과 초록 줄 건수를 지키나 — 파이썬은 AST 로, 노드·셸·파워셸은 글자 꼴로 문다.
+"""검사가 종료코드 계약을 지키나 — 파이썬은 AST 로, 노드·셸·파워셸은 글자 꼴로 문다.
 
 층 — 만드는 사람의 흐름
-걷는 조건 — 검사가 나가는 자리와 초록 줄을 공용 부품의 손으로만 내서 맨 나가는 자리와 손글자 건수가 남지 않으면 걷는다
+걷는 조건 — 검사가 나가는 자리를 공용 부품의 손으로만 내서 맨 나가는 자리가 남지 않으면 걷는다
 
 좌표 — 계약의 뜻은 곁 `README.md` §종료코드 가, 숫자와 「못 쟀다」 손은 `_verdict.py` 가 든다 · 받아 간 사본은
-손으로 고치지 않고 진본에서 받는다 · 무엇을 남기고 걷나는 스킬 check-design — 종료코드 · 초록 줄 건수 · 셸
-원문을 이 한 벌이 함께 무는 까닭은 아래 「왜 이 검사가 있나」, 리터럴 2 를 안 무는 까닭은 아래 「리터럴 0·1·2 는
+손으로 고치지 않고 진본에서 받는다 · 무엇을 남기고 걷나는 스킬 check-design — 종료코드와 셸 원문을 이 한 벌이
+함께 무는 까닭은 아래 「왜 이 검사가 있나」, 리터럴 2 를 안 무는 까닭은 아래 「리터럴 0·1·2 는
 안 문다」가 든다.
 
     python -X utf8 _check/exit_code_check.py            # 이 폴더 + 이 나무의 `.githooks/`
@@ -18,19 +18,14 @@
 
 **왜 이 검사가 있나.** 훅과 CI 가 읽는 말은 종료코드(0 쟀고 맞다 · 1 어긋났다 · 2 못 쟀다) 하나고, 그 계약은
 언어를 안 가린다. 계약을 어겨도 화면은 맞는 말을 하고 코드만 조용히 틀려 사람이 보는 자리에서는 안 걸린다 —
-「못 쟀다」가 「어긋났다」로 새면 빨강이 소음이 되고, 소음이 된 빨강은 아무도 안 읽는다. 초록 줄의 건수도
-같다 — 손으로 적은 수는 판정 절이 통째로 사라져도 그대로라 판정이 준 것을 볼 자가 없다.
+「못 쟀다」가 「어긋났다」로 새면 빨강이 소음이 되고, 소음이 된 빨강은 아무도 안 읽는다.
 
-재는 것 다섯 — 원문 한 장을 한 번 읽어(파이썬은 AST 한 벌, 셋은 걷은 사본 한 벌) 다섯을 같이 본다:
+재는 것 셋 — 원문 한 장을 한 번 읽어(파이썬은 AST 한 벌, 셋은 걷은 사본 한 벌) 셋을 같이 본다:
 
   ① **문자열로 나간다** — `.py` 의 `sys.exit("글자")` · `raise SystemExit("글자")` · `.mjs` 의
      `process.exit("글자")`. 파이썬은 그 글자를 찍고 무조건 1 로 나가고, 노드는 그 값을 계약의 셋으로 못 읽는다.
   ② **계약 밖 값** — 네 갈래 다. 0·1·2 아닌 정수로 나가면 훅이 갈래를 못 가르고 대개 「어긋남」으로 뭉갠다.
   ③ **인자 없이 나간다** — `.mjs` 의 `process.exit()` 는 `process.exitCode`(안 세우면 0)로 나가 뜻 없이 초록이 난다.
-  ④ **판정을 세우고 계수를 안 읽는다** — `.py` 가 `report(`·`show(` 를 부르면서 `passes` 를 한 번도 안 부른다.
-     초록 줄이 건수를 파생할 재료가 그 파일에 없다.
-  ⑤ **초록 줄 건수가 손글자다** — `.py` 는 「전부 통과」 뒤 같은 상수 조각의 숫자, `.mjs` 는 `console.log` 안
-     「통과」 문구 속 「숫자+셈낱말」. 건수는 `len(passes())` · `${…length}` 가 센다.
 
 **나가는 자리를 세는 법** — `.py` 는 `sys.exit(…)` · `exit(…)` · `raise SystemExit(…)` · 계약의 제 손
 `raise Unmeasured(…)`(세기만 한다) 에 더해 `sys.exit(f(…))` · `exit(f(…))` · `raise SystemExit(f(…))` 가 부르는
@@ -47,15 +42,15 @@
 나간다. 이름으로 쓰라고 무는 판정은 멀쩡한 코드를 고치게 할 뿐 결함을 못 잡는다(스킬 check-design
 「꼴 — 가장 싼 자리에 한 줄로」).
 
-**양성 대조가 판정보다 먼저 선다.** §1 양성 대조가 갈래마다 일부러 어긋난 검체로 다섯이 정말 무는지, §2 음성
+**양성 대조가 판정보다 먼저 선다.** §1 양성 대조가 갈래마다 일부러 어긋난 검체로 셋이 정말 무는지, §2 음성
 대조가 네 갈래의 제 꼴은 안 무는지 센 자리 수까지, §2' 원문 집기가 심은 나무에서 원문을 정말 집는지 보인다.
 원문을 한 장도 못 읽으면 초록이 아니라 「못 쟀다」(2)로 나간다.
 
 **안 재는 것** — 인자 없는 `raise SystemExit` · `sys.exit()`(값이 없어 갈래를 못 가른다) · `.sh`·`.ps1` 의 인자 없는
 `exit`(`$?` 로 나가는데 그 값은 원문에 없다) · `sys.exit` 에 안 물린 함수의 `return` · `process.exitCode = N` 꼴 ·
 `.mjs` 템플릿 `${…}` 속 코드 · 따옴표를 든 정규식을 문자열로 잘못 읽은 판(따옴표가 안 닫혀 「못 읽은 파일」로
-빠진다) · `.sh`·`.ps1` 의 초록 줄 · 머리말(docstring)에 적힌 꼴 · 한국어 수사로 적은 건수(「계약 아홉」 — 글자가
-곧 뜻이라 사람이 읽는다) · 「못 쟀다」의 갈래 선택(못 잰 것을 0 으로 내보내는 셸 자리는 세기만 한다) · 문자열 안에
+빠진다) · 초록 줄이 적은 건수(손으로 적은 수가 판정 수와 갈려도 만드는 사람의 화면만 틀리고 바로 보여 고친다 —
+스킬 check-design 1 절의 「크게 다친다」를 못 넘는다) · 머리말(docstring)에 적힌 꼴 · 「못 쟀다」의 갈래 선택(못 잰 것을 0 으로 내보내는 셸 자리는 세기만 한다) · 문자열 안에
 든 자식 코드 · 계약 상수에 엉뚱한 값을 단 자리(`EXIT_OK = 2` — 이름을 믿는다) · `_check/` 의 하위 폴더와
 `.githooks/` 밖 · 그 코드로 실제로 나가나(돌려 보지 않고 원문만 읽는다).
 
@@ -81,13 +76,6 @@ SHELLS = (".mjs", ".sh", ".ps1")
 # 들려 보낸다) 종료코드는 `_verdict` 가 숫자로 쥔다. ① 을 대면 계약이 권하는 꼴이 곧 어긋남으로 뜬다.
 SANCTIONED = ("raise Unmeasured",)
 
-# ── 초록 줄 · 파이썬 ──────────────────────────────────────────────────────────
-JUDGES = ("report", "show")          # 판정을 세우는 손 — `edge`·`unmeasured` 는 계수에 안 든다
-COUNTER = "passes"
-# 「전부 통과」 뒤에 구분자 한 자 이상(빈칸·괄호·줄표·쉼표·콜론)이 오고 그 뒤 같은 줄에 리터럴 숫자가 앉은 자리.
-# 구분자를 요구해야 「전부 통과다」처럼 낱말이 이어지는 자리와 갈리고, 괄호에 안 가둬야 줄표·콜론 꼴도 문다.
-HAND_DIGIT = re.compile(r"전부 통과[\s\(（—–,，:：-]+[^\n\)）]*?\d")
-
 # ── 셋 · 글자 꼴 ──────────────────────────────────────────────────────────────
 # 확장자가 없는 훅 몸통(`pre-commit`·`commit-msg`)의 갈래는 첫 줄이 말한다 — 확장자로만 걷으면 그 둘이 빠진다.
 SHEBANG = re.compile(r"^#!.*\b\w*sh\b")
@@ -96,7 +84,6 @@ BLOCK_COMMENT = {".mjs": ("/*", "*/"), ".ps1": ("<#", "#>")}
 QUOTES = {".mjs": "'\"`", ".sh": "'\"", ".ps1": "'\""}
 
 MJS_EXIT = re.compile(r"process\s*\.\s*exit\s*\(")
-MJS_LOG = re.compile(r"console\s*\.\s*log\s*\(")
 SH_EXIT = re.compile(r"(?<![\w.$-])exit(?![\w-])")
 PS_EXIT = re.compile(r"(?<![\w.$-])exit(?![\w-])", re.IGNORECASE)
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
@@ -105,10 +92,6 @@ HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 REGEX_OPENS = set("(,=:[!&|?{};+-*%~^<>")
 REGEX_WORD = re.compile(r"(?:^|[^\w$])(return|typeof|instanceof|case|do|else|void|yield|await)$")
 
-GREEN_WORD = "통과"
-ESCAPES = re.compile(r"\\u\{[^}]*\}|\\u[0-9a-fA-F]{4}|\\x[0-9a-fA-F]{2}|\\.")
-# 손글자 건수는 셈낱말이 바로 뒤에 붙은 숫자만이다 — 그냥 숫자를 다 물면 절 이름(「[3] 문 넷 — … 통과시키나」)이 걸린다.
-HAND_COUNT = re.compile(r"\d+\s*[건장곳개항줄]")
 INT_ONLY = re.compile(r"[+-]?\d+")
 NAME_ONLY = re.compile(r"[\w.$\[\]{}:@-]+")
 
@@ -209,44 +192,6 @@ def values(node):
         yield "못 가름", ast.unparse(node)
 
 
-# ── 파이썬 — 초록 줄 ──────────────────────────────────────────────────────────
-
-def _called(tree, name):
-    """그 이름을 부르는 자리가 있나 — 맨이름(`passes()`)과 속성(`_verdict.passes()`) 둘 다."""
-    for n in ast.walk(tree):
-        if isinstance(n, ast.Call):
-            f = n.func
-            if isinstance(f, ast.Name) and f.id == name:
-                return True
-            if isinstance(f, ast.Attribute) and f.attr == name:
-                return True
-    return False
-
-
-def _docstrings(tree):
-    """머리말로 선 글자 조각들 — **무는 자리에서 뺀다.** 머리말은 어긋난 꼴을 *말하는* 자리라 물면 제 머리말을 문다."""
-    out = set()
-    for n in ast.walk(tree):
-        if not isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        first = n.body[0] if n.body else None
-        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
-                and isinstance(first.value.value, str):
-            out.add(id(first.value))
-    return out
-
-
-def _hand_digits(tree):
-    """「전부 통과 … 숫자」 꼴의 상수 조각 — `(줄, 글자)`."""
-    said = _docstrings(tree)
-    out = []
-    for n in ast.walk(tree):
-        if isinstance(n, ast.Constant) and isinstance(n.value, str) \
-                and id(n) not in said and HAND_DIGIT.search(n.value):
-            out.append((n.lineno, n.value.strip()[:60]))
-    return out
-
-
 def _judge_py(src, rel):
     tree = ast.parse(src)
     bad, found = [], []
@@ -262,13 +207,7 @@ def _judge_py(src, rel):
                             "나간다. 「못 쟀다」가 판정으로 샌다"))
             elif kind == "정수" and val not in CONTRACT:
                 bad.append((rel, lineno, "②", f"`{how}({val})` — 계약 밖 값이다. 계약은 0·1·2 뿐이다"))
-    judges = any(_called(tree, j) for j in JUDGES)
-    if judges and not _called(tree, COUNTER):
-        bad.append((rel, 0, "④", "판정을 세우는데 `passes()` 를 한 번도 안 읽는다 — 초록 줄이 건수를 파생할 "
-                                 "재료가 없다"))
-    for lineno, text in _hand_digits(tree):
-        bad.append((rel, lineno, "⑤", f"초록 줄에 숫자가 손글자로 앉았다 — {text!r}. 건수는 `len(passes())` 가 센다"))
-    return bad, found, judges
+    return bad, found
 
 
 # ── 셋 — 주석과 문자열을 걷는다 · 자리는 남긴다 ────────────────────────────────
@@ -445,7 +384,7 @@ def blank(src, suffix):
     return "".join(out), strings
 
 
-# ── 셋 — 나가는 자리와 초록 줄 ────────────────────────────────────────────────
+# ── 셋 — 나가는 자리 ────────────────────────────────────────────────
 
 def _close_paren(masked, i):
     """`(` 자리에서 짝이 되는 `)` — 못 닫으면 None. 문자열은 이미 지워져 있다."""
@@ -517,49 +456,8 @@ def sites(src, masked, suffix):
     return out
 
 
-def _log_spans(masked):
-    """`console.log( … )` 의 자리들 — 문자열이 그 안에 드는지 자리로 가른다."""
-    out = []
-    for m in MJS_LOG.finditer(masked):
-        close = _close_paren(masked, m.end() - 1)
-        if close is not None:
-            out.append((m.start(), close))
-    return out
-
-
-def _strip_interp(text):
-    """템플릿의 `${…}` 를 걷는다 — 중첩 중괄호까지 센다. 파생 건수는 여기서 사라진다."""
-    out, i = [], 0
-    while i < len(text):
-        if text.startswith("${", i):
-            depth, j = 1, i + 2
-            while j < len(text) and depth:
-                depth += {"{": 1, "}": -1}.get(text[j], 0)
-                j += 1
-            i = j
-            continue
-        out.append(text[i])
-        i += 1
-    return "".join(out)
-
-
-def green_flaws(src, masked, strings, rel):
-    """`.mjs` 초록 줄의 손글자 숫자들 — `(파일, 줄, 갈래, 말)`."""
-    spans, out = _log_spans(masked), []
-    for off, text in strings:
-        if GREEN_WORD not in text or not any(a <= off < b for a, b in spans):
-            continue
-        bare = ESCAPES.sub("", _strip_interp(text))
-        hit = HAND_COUNT.search(bare)
-        if hit:
-            out.append((rel, src.count("\n", 0, off) + 1, "⑤",
-                        f"초록 줄의 건수가 손글자다 — {hit.group()!r} in {bare.strip()[:60]!r}. "
-                        "건수는 `${…length}` 가 센다"))
-    return out
-
-
 def _judge_shell(src, rel, suffix):
-    masked, strings = blank(src, suffix)
+    masked, _strings = blank(src, suffix)
     bad, found = [], sites(src, masked, suffix)
     for lineno, how, kinds in found:
         for kind, val in kinds:
@@ -573,16 +471,14 @@ def _judge_shell(src, rel, suffix):
                             "**뜻을 안 적고 초록이 난다**"))
             elif kind == "정수" and val not in CONTRACT:
                 bad.append((rel, lineno, "②", f"`{how}({val})` — 계약 밖 값이다. 계약은 0·1·2 뿐이다"))
-    if suffix == ".mjs":
-        bad += green_flaws(src, masked, strings, rel)
-    return bad, found, False
+    return bad, found
 
 
 def judge(src, rel, suffix):
-    """원문 한 장을 한 번 읽는다 — `(어긋남들, 나가는 자리들, 판정을 세우나)`.
+    """원문 한 장을 한 번 읽는다 — `(어긋남들, 나가는 자리들)`.
 
     어긋남은 `(파일, 줄, 갈래, 말)` 이고 제 꼴이면 빈 목록이다. 나가는 자리는 `(줄, 부르는 꼴, [(갈래, 값)])`.
-    「판정을 세우나」는 `.py` 만 잰다. `.py` 문법 오류는 `SyntaxError`, 셋의 안 닫힌 따옴표는 `ValueError` 로 올라간다.
+    `.py` 문법 오류는 `SyntaxError`, 셋의 안 닫힌 따옴표는 `ValueError` 로 올라간다.
     """
     return _judge_py(src, rel) if suffix == PY else _judge_shell(src, rel, suffix)
 
@@ -669,30 +565,27 @@ def sources(check_dir):
 
 
 def survey(check_dir):
-    """실물 전수 — 사전 하나: 어긋남 · 갈래별 파일 수 · 나가는 자리 수 · 판정을 세우는 `.py` 수 · 셈 둘 · 못 읽은 파일."""
-    got = {"bad": [], "seen": {s: 0 for s in (PY, *SHELLS)}, "sites": 0, "judging": 0,
+    """실물 전수 — 사전 하나: 어긋남 · 갈래별 파일 수 · 나가는 자리 수 · 셈 둘 · 못 읽은 파일."""
+    got = {"bad": [], "seen": {s: 0 for s in (PY, *SHELLS)}, "sites": 0,
            "bound": 0, "no2": 0, "unreadable": []}
     for p, suffix, name in sources(check_dir):
         try:
             src = p.read_text(encoding="utf-8-sig")
-            bad, found, judges = judge(src, name, suffix)
+            bad, found = judge(src, name, suffix)
         except (OSError, SyntaxError, ValueError) as exc:
             got["unreadable"].append(f"{name} — {type(exc).__name__}: {exc}")
             continue
         got["bad"] += bad
         got["seen"][suffix] += 1
         got["sites"] += len(found)
-        got["judging"] += 1 if judges else 0
         if suffix != PY:
             got["bound"] += boundaries(src, found)
             got["no2"] += 1 if found and not has_unmeasured_branch(found) else 0
     return got
 
 
-# ── §1 양성 대조 — 갈래마다 일부러 어긋난 검체로 다섯이 정말 무는지 먼저 보인다 ─────
+# ── §1 양성 대조 — 갈래마다 일부러 어긋난 검체로 셋이 정말 무는지 먼저 보인다 ───────
 
-# 초록 줄 손글자 검체(⑤)는 이 파일에서는 이어 붙여 둔다 — 한 상수로 두면 이 검사가 §3 실물 전수에서 제 검체를
-# ⑤ 로 문다. 검체 원문은 이어 붙인 결과라 그대로 한 글자고, 그래서 판정이 문다.
 BAD = [
     ("①", ".py — 문자열로 나간다", PY, """
 import sys
@@ -728,36 +621,6 @@ def main():
     return EXIT_OK
 sys.exit(main())
 """),
-    ("④", ".py — 판정을 세우고 계수를 안 읽는다", PY, """
-from _verdict import fails, report
-report("하나", True)
-print("전부 통과" if not fails() else "어긋남")
-"""),
-    ("⑤", ".py — 초록 줄 숫자가 손글자다 · 괄호 꼴", PY, """
-from _verdict import fails, passes, report
-report("하나", True)
-print("✅ 전부 통과 (판정 """ + """20건 — 넷·셋)" if not fails() else f"{len(fails())}건 · {len(passes())}")
-"""),
-    ("⑤", ".py — 초록 줄 숫자가 손글자다 · 줄표 꼴", PY, """
-from _verdict import fails, passes, report
-report("하나", True)
-print("✅ 전부 통과 — 판정 """ + """20건" if not fails() else f"{len(fails())}건 · {len(passes())}")
-"""),
-    ("⑤", ".py — 초록 줄 숫자가 손글자다 · 콜론 꼴", PY, """
-from _verdict import fails, passes, report
-report("하나", True)
-print("✅ 전부 통과: 판정 """ + """20건" if not fails() else f"{len(fails())}건 · {len(passes())}")
-"""),
-    ("⑤", ".py — 초록 줄 숫자가 손글자다 · 쉼표 꼴", PY, """
-from _verdict import fails, passes, report
-report("하나", True)
-print("✅ 전부 통과, 판정 """ + """20건" if not fails() else f"{len(fails())}건 · {len(passes())}")
-"""),
-    ("⑤", ".py — 초록 줄 숫자가 손글자다 · 빈칸 하나", PY, """
-from _verdict import fails, passes, report
-report("하나", True)
-print("✅ 전부 통과 """ + """20건" if not fails() else f"{len(fails())}건 · {len(passes())}")
-"""),
     ("①", ".mjs — 문자열로 나간다", ".mjs", """
 process.exit("못 쟀다 — 검체가 없다");
 """),
@@ -769,9 +632,6 @@ process.exit(bad ? 1 : 3);
 """),
     ("③", ".mjs — 인자 없이 나간다", ".mjs", """
 process.exit();
-"""),
-    ("⑤", ".mjs — 초록 줄 숫자가 손글자다", ".mjs", """
-console.log(`✅ 전부 통과 (판정 """ + """20건 — 넷·셋)`);
 """),
     ("②", ".sh — 계약 밖 값으로 나간다", ".sh", """
 exit 7
@@ -822,7 +682,6 @@ raise SystemExit
 const EXIT_OK = 0, EXIT_MISMATCH = 1, EXIT_UNMEASURED = 2;
 // 주석의 process.exit(3) 은 걷는다
 const said = "process.exit(9) 라고 적힌 글자";
-const note = "통과 3건 — console.log 밖이라 ⑤ 가 안 본다";
 // 따옴표를 든 정규식 — 글자로 안 걷으면 여기서 문자열이 열려 **아래가 다 글자가 된다**
 const HOME = (readFileSync(f, "utf8").match(/HOME_SCREEN = "([^"]+)"/) || [])[1];
 if (!HOME) { console.log("못 쟀다 — 진본에 그 이름이 없다"); process.exit(EXIT_UNMEASURED); }
@@ -872,14 +731,14 @@ def positive_control():
     """검체가 실제로 그 꼴인지부터 묻는다 — 이 절이 빨강이면 아래 §3 실물 전수의 0 은 뜻이 없다."""
     print(f"--- §1 양성 대조 — 일부러 어긋난 검체 {len(BAD)}이 정말 빨개지나")
     for want, said, suffix, src in BAD:
-        got, _, _ = judge(src, "<검체>", suffix)
+        got, _ = judge(src, "<검체>", suffix)
         report(f"{want} {said}",
                len(got) == 1 and got[0][2] == want,
                [f"{len(got)}건 · 갈래 {[r[2] for r in got]} (기대 {want} 하나)"])
 
     print("\n--- §2 음성 대조 — 네 갈래의 제 꼴은 한 자리도 안 문다")
     for suffix, src in GOOD.items():
-        clean, found, _ = judge(src, "<제 꼴>", suffix)
+        clean, found = judge(src, "<제 꼴>", suffix)
         report(f"{suffix} — 계약을 지킨 원문은 어긋남 0 이다 (리터럴 2 도 제 꼴이다)", not clean,
                [f"{r[0]}:{r[1]} {r[2]} {r[3]}" for r in clean])
         show(f"  {suffix} 에서 센 「나가는 자리」", len(found), GOOD_SITES[suffix])
@@ -926,7 +785,7 @@ def main(argv):
 
     positive_control()
 
-    print("\n--- §3 실물 전수 — 이 폴더와 게이트 조각이 종료코드 계약과 초록 줄을 지키나")
+    print("\n--- §3 실물 전수 — 이 폴더와 게이트 조각이 종료코드 계약을 지키나")
     got = survey(check_dir)
     seen = got["seen"]
 
@@ -938,8 +797,7 @@ def main(argv):
     for rel, lineno, kind, said in got["bad"]:
         report(f"{rel}:{lineno} — {kind}", False, [said])
     tally = " · ".join(f"`{s}` {seen[s]}장" for s in (PY, *SHELLS))
-    report(f"계약을 어기는 자리가 없다 ({tally} · 나가는 자리 {got['sites']}곳 · "
-           f"판정을 세우는 `.py` {got['judging']}장)", not got["bad"])
+    report(f"계약을 어기는 자리가 없다 ({tally} · 나가는 자리 {got['sites']}곳)", not got["bad"])
 
     for row in got["unreadable"]:
         edge(f"**못 읽은 파일** — {row}")
@@ -958,7 +816,7 @@ def main(argv):
         edge("**`.mjs`·`.sh`·`.ps1` 원문이 0장이다** — 그 팔은 이 판에서 비었다(셋 갈래 판정은 안 섰다).")
     edge(f"**「못 쟀다」를 찍고 `exit 0` 으로 나가는 셸 자리 {got['bound']}곳 · 2 로 나가는 갈래가 한 자리도 없는 "
          f"셸 원문 {got['no2']}장** — 판정이 아니다. 그 갈래가 옳은지는 꼴이 아니라 뜻이라 **사람이 읽는다**.")
-    edge("**리터럴 `0`·`1`·`2` 는 안 문다** — 숫자는 계약이 못박았다. 한국어 수사로 적은 건수도 안 문다.")
+    edge("**리터럴 `0`·`1`·`2` 는 안 문다** — 숫자는 계약이 못박았다. 초록 줄이 적은 건수도 안 문다.")
     edge("**「그 코드로 실제로 나가나」는 안 잰다** — 원문의 꼴까지다. 돌려 보지 않는다.")
 
     print()

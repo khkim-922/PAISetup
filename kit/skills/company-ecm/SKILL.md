@@ -9,8 +9,17 @@ ECM 서버는 파일을 주지 않는다. 화면의 「보기」 · 「편집」
 받아 **DRM 에 감긴 채** 두고 그 확장자의 기본 앱으로 **화면에 띄운다.** 그래서 **사람이 보는 대화에서만 쓴다** — 예약 작업이나 사람이
 없는 회차에서 부르면 쓰는 사람의 화면에 창이 뜨고 쓰던 오피스에 들어간다.
 
+자주 쓰는 길은 그대로 친다 — 첫 부름이 일하는 부름이 되게.
+
 ```bash
-python -X utf8 -I "<이 스킬>/scripts/company_ecm.py" <명령> …   # 할 수 있는 것의 지도는 --help, 인자는 <명령> --help
+E="<이 스킬>/scripts/company_ecm.py"
+python -X utf8 -I "$E" search <사람이 말한 문서 이름>      # 제목 낱말로 내 문서함들 전부 — 전사는 --scope company · 문서 안의 글은 --text
+python -X utf8 -I "$E" read <문서 열쇠>                     # 글자를 뽑고 창을 닫는다
+python -X utf8 -I "$E" preview-access <문서 열쇠> --read <이름> --read <이름>   # 이름으로 읽기 권한(편집은 --edit) — 주소록이 찾은 사람이면
+                                                           # --people-file <people.json> --people-as read. 지금 명단 · 더함 · 뒤 명단 · 확인 열쇠를 낸다
+                                                           # — 「네」 뒤 apply-access …같은 값… --confirm <key>
+python -X utf8 -I "$E" link <문서 열쇠>                     # 메일 본문에 넣을 보기 링크
+python -X utf8 -I "$E" --help                               # 그 밖의 지도(편집 · 등록 · 속성 · 목록) — 인자는 <명령> --help
 ```
 
 명령은 사내 세션을 말없이 맞춘다. 0 이 아니면 표준 오류의 말이 까닭과 다음 걸음을 드니 그 말대로 가고, 사람에게 청할 것은 그대로

@@ -60,6 +60,19 @@ Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night,PAISe
 
 ⚠ 다른 무엇보다 이것을 먼저 지운다 — [지우는 차례](#지우는-차례).
 
+### 메일 비서가 건 작업과 그 기록
+
+회사 PC 에서 메일 비서에게 메일함 스캔이나 아침 보고를 걸게 했으면 작업 스케줄러의 mail-secretary 폴더에 mailbox-scan 작업이 서서
+몇 분마다 돈다. 설치가 건 것이 아니라 비서가 대화에서 건 것이라 설치를 다시 눌러도 안 걷힌다 — 스킬을 지우기 전에 AI 에게
+「메일함 스캔 꺼 줘」라고 하거나 아래 명령으로 지운다.
+
+```powershell
+Unregister-ScheduledTask -TaskPath '\mail-secretary\' -TaskName mailbox-scan -Confirm:$false -ErrorAction SilentlyContinue
+```
+
+비서가 쌓은 기록(스캔 · 업무 파일 · 보고 글 · 맡긴 일의 기록)은 `%LOCALAPPDATA%\mail-secretary` 에, 보고 창에서 맡긴 일이 쓴 파일은
+작업 폴더(`~/repos/work`)의 `handed` 아래에 남는다. 메일의 제목 · 보낸 분 · 요약이 들었으니 PC 를 반납할 때는 둘 다 지운다.
+
 ### 사용자 환경변수
 
 설치가 심은 사용자 환경변수는 시작 메뉴에서 「환경 변수」로 검색해 「계정의 환경 변수 편집」에서 지운다.
@@ -214,7 +227,7 @@ copilot mcp remove playwright
 
 ### paisetup 폴더와 고른 도구 값
 
-`~/.paisetup/` 폴더와 사용자 환경변수 `PAISETUP_PERSONAL` · `PAISETUP_PICK` · `PAISETUP_SITE` 는 다른 칸을 다 지운 뒤 지운다.
+`~/.paisetup/` 폴더와 사용자 환경변수 `PAISETUP_PERSONAL` · `PAISETUP_PICK` · `PAISETUP_SITE` · `PAISETUP_WORK` 는 다른 칸을 다 지운 뒤 지운다.
 
 폴더에는 두 층 `~/.paisetup/standard/` · `~/.paisetup/personal/` 과 기록 `~/.paisetup/placed.tsv`, 덮거나 걷기 전에 떠 둔 백업
 `~/.paisetup/backups/` 가 든다 — 백업에 사람 것이 들었으면 되살린다.
@@ -307,6 +320,9 @@ PowerShell 의 스크립트 실행이 윈도 기본값으로 막혀 있던 PC �
 
 설치가 `~/repos` 아래 저장소에 걸어 둔 폴더 신뢰(고른 도구 · VS Code)와 데스크탑 앱의 프로젝트 목록도 그 저장소들만 가리키니 남겨도
 된다.
+
+VS Code 사용자 설정 `extensions.confirmedUriHandlerExtensionIds` 의 `anthropic.claude-code` 도 남겨도 된다 — 그 확장의 주소를 열 때만
+묻지 않게 하는 이름이다. 지우려면 그 목록에서 이름을 뺀다.
 
 ## 사외에서 다시 누르면
 

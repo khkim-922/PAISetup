@@ -11,6 +11,8 @@
     python -X utf8 -I company_calendar.py add     …preview 와 같은 값… --confirm <preview 의 key>               # ⚠ 바꾼다
     python -X utf8 -I company_calendar.py delete  --handle <show 의 handle>                                    # ⚠ 바꾼다
     python -X utf8 -I company_calendar.py remember "<일정 화면 주소창의 주소>"                                # 주소를 재 보고 남긴다
+    python -X utf8 -I company_calendar.py teams-meeting [--title T] [--start …] [--end …] [--note N] [--to 메일 …] [--people-file people.json …]
+                                                                         # ⚠ 사람 화면에 Teams 회의 예약 창을 띄운다 — 회사 일정은 안 바꾼다
 
     공통 — ``--url``(없으면 ``CALENDAR_URL`` → 남긴 주소 → 잰 기본 ``agenda.DEFAULT_APP_URL``). 시각은 다 서울 벽시계 ``YYYY-MM-DD HH:MM``
     이고, 답의 ``start`` · ``end`` 도 그 꼴이라 그대로 다음 명령(이 스킬 · 회의실 예약)에 준다.
@@ -30,7 +32,8 @@
 그 분 이상 함께 비는 때(``slots``)와 시각을 짐작해 센 줄(``assumed``) · 일정함을 못 본 사람(``unseen``) · 사람에게 할 말(``word``).
 어느 줄을 어떻게 세나는 ``free_of``. ``--people-file`` 을 주면 show 가 ``people``(그 일정함으로 본 사람 ``seen`` · 공유받지 않아 못 본
 사람 ``unseen`` · 할 말)을 더 낸다 — 사람을 일정함에 잇는 법은 ``people_books``. preview 는 ``state``(ready · already) · ``key`` 를, 넣기 · 지우기는 ``state`` 와 사람에게 할 말 · 다음 걸음이 든
-``state_word`` 를 낸다.
+``state_word`` 를 낸다. teams-meeting 은 세션 없이 돈다(일정 앱에 안 닿는다) — ``state``(opened) · 연 주소(``link``) · 채운 칸(``form``) ·
+어디에 열었나(``where``) · ``state_word`` 를 낸다.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ import os
 import pathlib
 import re
 import sys
+import urllib.parse
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
@@ -74,6 +78,18 @@ ROOM_BOOKING = "[회의실 예약]"            # 회의실 예약 앱이 Teams �
 # 기한 알림(preview --due) — 시각이 있는 기한은 그 시각에 끝나는 알림, 시각이 없는 기한은 그날 근무 구간(WORK_HOURS)의 첫 빈 자리
 REMINDER_MINUTES = 15
 ALONG_SPLIT = "|"                         # --alongside 「시작|끝|제목」 — preview 답의 alongside 가 이 꼴 그대로다
+# Teams 회의 예약 창(teams-meeting) — Microsoft 가 문서로 든 딥 링크 하나를 지어 연다. 꼴 · 한도의 원본은 references/SOURCES.md
+# 「Teams 회의 예약 창」이다
+TEAMS_ORIGIN = "https://teams.microsoft.com"
+TEAMS_NEW_MEETING = TEAMS_ORIGIN + "/l/meeting/new"
+# 그 주소를 받은 teams.microsoft.com 은 제 시작 화면 주소로 넘기며 받은 주소를 한 번 더 인코딩해 싣는다 — 길이 한도는 그 넘긴 주소에 걸린다
+TEAMS_RELAY_HEAD = TEAMS_ORIGIN + "/dl/launcher/launcher.html?url="
+TEAMS_RELAY_PATH = "/_#"
+TEAMS_RELAY_TAIL = "&type=meeting&deeplinkId=" + "0" * 36 + "&directDl=true&msLaunch=true&enableMobilePage=true"
+TEAMS_URL_MOST = 8188                     # 넘긴 주소가 이보다 길면 teams.microsoft.com 이 404 를 낸다
+TEAMS_SINK_ENV = "TEAMS_LINK_SINK"        # 시험장이 채운다 — 차면 창을 안 열고 그 파일에 연 주소를 한 줄 적는다
+ADDRESS = re.compile(r"[^@\s,;<>\"'()]+@[^@\s,;<>\"'()]+\.[^@\s,;<>\"'().]+")   # 참석자 주소의 꼴(fullmatch) — 앞 · @ · 점 든 도메인
+ADDRESS_SPLIT = re.compile(r"[\s,;]+")    # --to 한 칸에 여럿을 이은 꼴 — 빈칸 · 쉼표 · 쌍반점
 
 
 # ── 손가락의 표 — 출발 × 바꿀 것 × 끝. 손가락을 더하거나 빼는 일은 이 표의 줄과 그 일을 하는 손 하나다(칸의 꼴은 ep_command) ──────
@@ -122,14 +138,16 @@ NOT_YET = {
     "remind": NotYet("알림(메일 · 팝업) 걸기", f"알림은 상세 화면에만 있고 회사에서 아직 안 쟀다(울리는 것은 그 시각이 와야 잰다). {ON_SCREEN}",
                      (("--remind", {"metavar": "분"}),)),
     "invite": NotYet("참석자 부르기", "이 손은 참석자 칸을 늘 비워 누구에게도 알림이 안 간다. 사람들과 만나는 회의는 스킬 company-meeting-room 으로 "
-                     f"회의실과 함께 잡는다(참석자에게 안내가 간다). 회의실 없이 초대만 보낼 것이면 {ON_SCREEN}",
+                     "회의실과 함께 잡는다(참석자에게 안내가 간다). 회의실 없이 영상 회의로 부를 것이면 teams-meeting 으로 Teams 회의 예약 창을 "
+                     "채워 띄운다(보내기는 사람이 누른다)",
                      (("--to", {"nargs": "*", "metavar": "메일"}),)),
     "shared": NotYet("공유받은 일정함에 넣기 · 지우기", f"공유받은 일정함은 읽기만 한다. {ON_SCREEN}", (("--who", {"action": "append", "metavar": "이름"}),)),
     "reply": NotYet("참석 답(수락 · 거절)", f"답하면 초대한 분께 알림이 가 회사에서 아직 안 쟀다. 초대 메일이나 {SCREEN}에서 사람이 한다"),
     "copy": NotYet("일정 복사 · 여러 건 한꺼번에 지우기 · 지난 일정 한꺼번에 지우기",
                    f"한 번 부름은 일정 한 건이다 — 복사는 새로 넣기(preview → add)로, 지우기는 건마다 delete 로 한다. 한꺼번에는 {ON_SCREEN}"),
     "notice": NotYet("참석자 · 참조자 부르기 · 메일 알림 · PC 영상회의 만들기",
-                     "남에게 메일이 가는 일이다 — 사람들과 만나는 회의는 스킬 company-meeting-room 이 회의실 · 참석자 · Teams 링크와 함께 잡는다"),
+                     "남에게 메일이 가는 일이다 — 사람들과 만나는 회의는 스킬 company-meeting-room 이 회의실 · 참석자 · Teams 링크와 함께 잡고, "
+                     "회의실 없는 영상 회의는 teams-meeting 이 Teams 회의 예약 창을 채워 띄운다"),
     "settings": NotYet("일정함 색 · 보임 · 공유 일정함 더하기 · 환경설정", f"일정 내용이 아니라 화면 설정이다. {ON_SCREEN}"),
 }
 ENDS = {
@@ -193,12 +211,15 @@ def common_steps() -> str:
     return "\n".join([
         f"회사 일정 — 보기 · 넣기 · 지우기. {ep_command.today_word()}", "",
         "자주 쓰는 길 — 그대로 쳐서 쓴다(<…> 만 갈아 끼운다)",
-        "  여럿이 다 비는 때  show <날> [<끝날>] --who <이름> --free <분> [--hours HH:MM-HH:MM]   (주소록의 사람이면 --people-file <people.json>)",
+        "  며칠 치 내 일정    show <첫날> <끝날>   (둘 다 든다 — 하루면 끝날을 뺀다)",
+        "  여럿이 다 비는 때  show <날> [<끝날>] --who <이름> [--who <이름> …] --free <분> [--hours HH:MM-HH:MM]   (내 일정도 함께 센다 · 주소록의 사람이면 --people-file <people.json>)",
         "  새 일정            preview --title <제목> --start \"<날> HH:MM\" --end \"<날> HH:MM\"  →  add …같은 값… --confirm <key>",
         "  기한 알림          preview --title <제목> --due \"<날>[ HH:MM]\"  →  add --title <제목> --start <답의 start> --end <답의 end> --confirm <key>",
         "  여러 건을 함께     둘째 건부터 preview · add 에 --alongside <앞 건 preview 답의 alongside> — 앞 건을 넣어도 뒤 건의 key 가 그대로다",
         "  한 건 옮기기       show <날> 의 그 줄 handle → preview --handle <handle> --start \"<날> HH:MM\"  →  edit …같은 값… --confirm <key>",
         "  한 건 지우기       delete --handle <show 의 handle>",
+        "  영상 회의 창       teams-meeting --title <제목> --start \"<날> HH:MM\" --end \"<날> HH:MM\" --people-file <people.json> [--note <설명>]"
+        "  (채운 Teams 회의 예약 창을 띄운다 — 보내기는 사람이)",
         f"  날은 {DAY_HELP} · 시각은 \"<날> HH:MM\"(「내일 15:00」) — 답의 day · weekday 로 사람이 바로잡게 보인다",
         f"  요일로 말한 날은 어느 날인지 정해 날짜로 준다(손이 고르지 않는다) — 날짜 표: {ep_command.weeks_word(datetime.now(ep_command.SEOUL).date())}"])
 
@@ -212,6 +233,7 @@ def finger_map() -> str:
     lines += ["", "끝 (⚠ 회사 일정을 바꾼다 — 사람이 그 한 건을 보고 「네」 한 뒤에만)"]
     lines += [f"  {k:<7} 출발 {' · '.join(e.starts):<6} {e.word} — 열쇠: {e.key}" for k, e in ENDS.items()]
     lines += ["", "읽기"] + [f"  {k:<10} {w}" for k, w in READS.items()]
+    lines += ["", "화면 띄우기 (⚠ 사람의 화면에 창을 연다 — 회사 일정은 안 바꾸고, 세션도 안 쓴다)", f"  teams-meeting {TEAMS_HELP}"]
     lines += ["", "아직 없는 손가락 (인자를 주면 세션 전에 사람이 어디서 하나를 대며 종료 2 로 멈춘다)"]
     lines += ep_command.not_yet_lines(NOT_YET, CHANGES, 10)
     return "\n".join(lines)
@@ -797,6 +819,112 @@ def due_span(args, agenda, reader, now: datetime) -> tuple[datetime, datetime, s
     return lo, lo + length, f"마감 시각이 없고 그날 {WORK_HOURS} 에 빈 {REMINDER_MINUTES}분이 없어 첫 자리 — 겹치는 일정은 clash 를 보인다"
 
 
+# ── Teams 회의 예약 창 ─────────────────────────────────────────────────────────────────────────────
+TEAMS_HELP = ("Teams 회의 예약 창을 제목 · 시각 · 설명 · 참석자로 채워 사람의 화면에 띄운다(받은 칸만 — 다 비워도 빈 창이 선다). 회의가 잡히는 "
+              "것은 사람이 Teams 에서 [보내기]를 누를 때다. 장소는 채울 수 없다. 영상 회의로 할지 · 누구 · 언제는 손이 안 고른다 — 사람은 "
+              "주소록의 사람 파일(--people-file)이나 --to 메일, 함께 비는 때는 show --free 의 start · end 로")
+TEAMS_FIELDS = (("title", "subject"), ("start", "startTime"), ("end", "endTime"), ("note", "content"))   # 답의 칸 → 링크의 칸(문서의 차례)
+TEAMS_WORD = ("그 창에는 form 의 칸이 채워져 있다. 사람이 Teams 에서 [보내기]를 누르기 전에는 회의가 잡히지 않고 누구에게도 초대가 안 간다 — "
+              "사람에게 창을 보고 보내시라고 말한다. 보내면 Teams 일정에 들고 회사 일정 화면에도 보이니 일정에 따로 "
+              "넣지 않는다(넣으면 같은 회의가 두 건이 된다). 장소는 이 창에 채울 수 없다 — 회의실이 드는 회의면 이 창을 보내지 말고 스킬 "
+              "company-meeting-room 으로 잡는다(그 예약이 Teams 링크까지 만든다 — 둘 다 하면 회의가 둘이 된다)")
+TEAMS_EMPTY = {"title": "제목", "start": "시작", "end": "끝", "note": "설명", "attendees": "참석자"}
+TEAMS_TOO_LONG = ("Teams 회의 창의 주소가 너무 길다 — teams.microsoft.com 이 넘겨받는 주소가 {n} 자다(한도 {most} 자 · 넘으면 Teams 가 창 대신 "
+                  "404 를 낸다). 한글 한 자가 넘긴 주소에서 15 자를 먹어 긴 설명이 먼저 넘친다. 다음: 설명(--note)을 줄이거나 빼고 다시 부른다 — "
+                  "설명은 사람이 창에 붙여 넣을 수 있다. 참석자만으로 넘치면 몇 분을 빼고 열고, 뺀 분은 창에서 더하시라고 사람에게 말한다")
+
+
+def teams_attendees(args) -> list[str]:
+    """참석자 메일 주소 — --to(빈칸 · 쉼표로 여럿)와 사람 파일(사람마다 그 email)을 준 차례대로, 같은 주소는 한 번. 주소 꼴이 아닌 것과
+    주소가 없는 사람 파일의 사람은 Stop(인자) — 빼고 열면 사람이 모르는 채 그분이 빠진다."""
+    given_ = [a for chunk in args.to or () for a in ADDRESS_SPLIT.split(chunk) if a]
+    people = ep_command.distinct(ep_command.people_of(args.people_file))
+    no_mail = [f"{p.label()}({p.where})" for p in people if not p.email]
+    if no_mail:
+        raise Stop(EXIT_ARGS, "args", f"사람 파일에 메일 주소가 없는 분이 있어 참석자로 못 넣는다: {', '.join(no_mail)}. 다음: 주소록으로 그분을 다시 "
+                                      "찾거나 사람에게 주소를 받아 --to 로 준다")
+    bad = [a for a in given_ + [p.email for p in people] if not ADDRESS.fullmatch(a)]
+    if bad:
+        raise Stop(EXIT_ARGS, "args", f"메일 주소의 꼴이 아니다: {', '.join(bad)}. 다음: 그분의 메일 주소(아이디@도메인)를 주거나 주소록의 사람 파일을 "
+                                      f"{ep_command.PEOPLE_FLAG} 로 준다 — Teams 는 참석자를 메일 주소로만 받는다")
+    out: dict[str, str] = {}
+    for a in given_ + [p.email for p in people]:
+        out.setdefault(a.casefold(), a)                 # 먼저 준 꼴이 남는다
+    return list(out.values())
+
+
+def teams_link(args) -> tuple[str, dict]:
+    """Teams 회의 예약 창의 주소와 채운 칸(답의 ``form``) — 받은 칸만 싣고 무엇도 고르지 않는다. 값은 퍼센트 인코딩한다(빈칸은 ``%20`` —
+    Teams 는 ``+`` 를 빈칸으로 안 받고, 시각의 ``+09:00`` 은 ``%2B`` 여야 산다). 시각은 서울 벽시계를 시간대가 붙은 ISO 8601 로 옮긴다.
+    링크로 안 서는 것은 세션 전에 Stop(인자) — 시작 없는 끝 · 시작보다 앞이거나 같은 끝 · 참석자 주소(``teams_attendees``) · Teams 가
+    넘겨받지 못하는 길이(``teams_relayed``). 바꾸지 않는다."""
+    form: dict = {}
+    if args.title is not None and " ".join(args.title.split()):
+        form["title"] = " ".join(args.title.split())     # 제목은 한 줄이다 — 줄바꿈 · 겹친 빈칸을 하나로
+    start = ep_command.stamp_of(args.start) if args.start else None
+    end = ep_command.stamp_of(args.end) if args.end else None
+    if end is not None and start is None:
+        raise Stop(EXIT_ARGS, "args", "--end 만 주고 --start 가 없다 — 끝이 시작 뒤인지 못 본다. 다음: --start 를 함께 준다")
+    if start is not None and end is not None and end <= start:
+        raise Stop(EXIT_ARGS, "args", f"끝({stamp(end)})이 시작({stamp(start)})보다 앞이거나 같다. 다음: 끝을 시작 뒤로 준다 — 사람이 끝을 안 "
+                                      "말했으면 지어 넣지 말고 묻는다")
+    if start is not None:
+        form.update({"start": stamp(start), "day": start.date().isoformat(), "weekday": weekday_of(start.date())})
+    if end is not None:
+        form["end"] = stamp(end)
+        form["when"] = f"{start:%H:%M}–{end:%H:%M}" if end.date() == start.date() else f"{stamp(start)} – {stamp(end)}"
+    note = (args.note or "").replace("\r\n", "\n").strip()
+    if note:
+        form["note"] = note
+    attendees = teams_attendees(args)
+    if attendees:
+        form["attendees"] = attendees
+    values = {"title": form.get("title"), "note": form.get("note"),
+              "start": start.isoformat(timespec="seconds") if start else None, "end": end.isoformat(timespec="seconds") if end else None}
+    query = [f"{name}={urllib.parse.quote(values[key], safe='')}" for key, name in TEAMS_FIELDS if values[key]]
+    if attendees:   # 문서의 꼴 그대로 @ 와 이음표 쉼표는 날로 둔다 — 주소 안의 + 따위만 인코딩한다
+        query.append("attendees=" + ",".join(urllib.parse.quote(a, safe="@") for a in attendees))
+    link = TEAMS_NEW_MEETING + ("?" + "&".join(query) if query else "")
+    relayed = teams_relayed(link)
+    if relayed > TEAMS_URL_MOST:
+        raise Stop(EXIT_ARGS, "args", TEAMS_TOO_LONG.format(n=relayed, most=TEAMS_URL_MOST))
+    return link, form
+
+
+def teams_relayed(link: str) -> int:
+    """teams.microsoft.com 이 이 링크를 받아 넘기는 주소의 길이 — 그쪽이 경로부터의 글을 한 번 더 인코딩해 시작 화면 주소에 싣는다."""
+    return len(TEAMS_RELAY_HEAD) + len(urllib.parse.quote(TEAMS_RELAY_PATH + link[len(TEAMS_ORIGIN):], safe="")) + len(TEAMS_RELAY_TAIL)
+
+
+def open_teams(link: str) -> str:
+    """링크를 연다 — 등록된 https 처리기(기본 브라우저)가 받고, Teams 가 제 앱이나 웹에 예약 창을 띄운다. 시험장이 ``TEAMS_SINK_ENV`` 를
+    채웠으면 열지 않고 그 파일에 한 줄(``at`` · ``argv``) 적는다 — 그때의 말은 진짜 길과 같은 「열었다」에 대역이라는 괄호만 단다(메일 손의 임시메일
+    띄우기 대역과 같은 꼴). 「안 열었다」고 말하면 답의 ``state: opened`` 와 어긋나 부른 쪽이 들었는지 모른다고 읽는다. 어디에 열었나의 말을 낸다.
+    못 열면 Stop(도구) — 링크를 말에 싣는다."""
+    sink = os.environ.get(TEAMS_SINK_ENV, "").strip()
+    if sink:
+        path = pathlib.Path(sink)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"at": datetime.now(ep_command.SEOUL).isoformat(timespec="seconds"), "argv": [link]}, ensure_ascii=False) + "\n")
+        return "사람의 기본 브라우저로 열었다(가짜 회사 — 창 없음)"
+    try:
+        os.startfile(link)                # ShellExecute — 등록된 https 처리기가 받는다(윈도에만 있다)
+    except (AttributeError, OSError, ValueError) as exc:
+        raise Stop(EXIT_TOOL, "tool", f"Teams 회의 창을 못 열었다({type(exc).__name__}: {exc}). 다음: 사람에게 이 주소를 Edge 주소창에 붙여 여시라고 "
+                                      f"전한다 — {link}") from exc
+    return "사람의 기본 브라우저로 열었다(Teams 가 제 앱이나 웹에 예약 창을 띄운다)"
+
+
+def teams_meeting(args) -> dict:
+    """teams-meeting 의 답 — 링크를 짓고 연다. 세션 · 일정 앱에 안 닿는다."""
+    link, form = teams_link(args)
+    where = open_teams(link)
+    empty = [w for k, w in TEAMS_EMPTY.items() if k not in form]
+    word = f"Teams 회의 예약 창 — {where}. " + TEAMS_WORD + (f". 안 채운 칸({' · '.join(empty)})은 Teams 가 정한 값이거나 빈칸이다 — 사람이 창에서 채운다" if empty else "")
+    return {"state": "opened", "link": link, "form": form, "where": where, "state_word": word}
+
+
 def run(args, session: pathlib.Path) -> dict:
     agenda = load("agenda", HERE)
     url, by_default = resolve(args, agenda.DEFAULT_APP_URL)
@@ -951,6 +1079,13 @@ def parser() -> argparse.ArgumentParser:
     f.add_argument("--attendee", help="참석자 이름에 든 글자")
     f.add_argument("--from", dest="since", metavar="첫날", help=f"기간의 첫날({DAY_HELP} · 기본 1 년 전)")
     f.add_argument("--to", dest="until", metavar="끝날", help="기간의 끝날(기본 1 년 뒤)")
+    t = sub.add_parser("teams-meeting", help=f"⚠ {TEAMS_HELP}")
+    t.add_argument("--title", help="회의 제목 — 한 줄로 싣는다")
+    t.add_argument("--start", help=f"시작 — {STAMP_HELP} 나 「<날 말> HH:MM」")
+    t.add_argument("--end", help="끝 — 시작과 같은 꼴. 사람이 끝을 안 말했으면 지어 넣지 말고 묻는다")
+    t.add_argument("--note", help="설명(회의 내용 칸) — 줄바꿈도 그대로. 길면 주소 한도에 걸린다")
+    t.add_argument("--to", nargs="*", default=None, metavar="메일", help="참석자 메일 주소(빈칸 · 쉼표로 여럿)")
+    ep_command.add_people_file(t, "사람마다 그 메일 주소로 참석자에 넣는다(주소가 없는 분이 있으면 안 연다)")
     for name in ("preview", *ENDS):
         a = sub.add_parser(name, help="넣을 꼴 미리 보기 · key(바꾸지 않는다)" if name == "preview" else f"⚠ {ENDS[name].word}",
                            epilog=finger_map(), formatter_class=raw)
@@ -972,6 +1107,8 @@ def main() -> int:
     args = parser().parse_args()
 
     def work(agenda):
+        if args.command == "teams-meeting":
+            return teams_meeting(args)   # 일정 앱 · 세션에 안 닿는다 — 창 하나를 띄울 뿐이다
         if args.command in ("preview", *ENDS):
             start = fingers(args)        # 없는 손가락 · 빠진 값은 세션을 받기 전에 멈춘다
             try:                         # 날 · 시각의 꼴도 세션을 받기 전에 — 넣기 · 고치기는 손부터 받는 길이다

@@ -17,7 +17,8 @@
 
     확인 열쇠는 미리 보인 내용의 지문이다 — 실행 때 그 판(보내기는 편집 화면이 든 받는 사람 · 제목 · 본문 · 첨부)이 달라졌으면
     아무것도 안 바꾸고 종료 4 다. 사람에게 묻는 일은 부르는 쪽(SKILL.md)이 한다. 옮기기 · 휴지통 · 되살리기는 미리 보기의 메일 줄
-    끝에 unid 를, 「됐다」 줄 끝에 확인 열쇠를 단다 — 부르는 쪽이 줄을 메일에 잇는다.
+    끝에 unid 를 단다 — 부르는 쪽이 줄을 메일에 잇는다. 폴더 · 옮기기 · 휴지통 · 되살리기 · 규칙의 「됐다」 줄은 끝에 맞춘 확인 열쇠를
+    「 · 열쇠 <열쇠>」로 단다 — 부르는 쪽이 그 실행을 어느 미리 보기에 잇나를 그 열쇠로 가린다.
 
 어떻게 부르나
     python -X utf8 -I mail.py [--url 메일함] <명령> ...
@@ -49,7 +50,7 @@
     받은 파일로 잇고, 없으면 종료 3 · 3(로그인 안 됨)이면 종료 3 · 1 이면 도구 고장(종료 1). 읽은 파일을 메일함이 거절해도 종료 3.
 
 무엇을 내나
-    사람이 읽을 글줄을 표준 출력에 낸다. 본문은 글자로 풀 때 줄바꿈을 고르고 찌꺼기 문자(폭 없는 문자 · BOM · soft hyphen 같은 서식
+    사람이 읽을 글줄을 표준 출력에 낸다 — ``session --json`` 만 다른 코드가 읽을 JSON 한 줄(메일함 주소)을 낸다. 본문은 글자로 풀 때 줄바꿈을 고르고 찌꺼기 문자(폭 없는 문자 · BOM · soft hyphen 같은 서식
     문자와 줄바꿈 · 탭 밖의 제어 문자)를 걷는다(``readable``). 목록 한 칸(제목 · 이름)은 메일함이 준 글자에서 줄바꿈 글자만 빈칸으로
     접는다(``inbox.one_line``). 종료 값마다의 뜻은 사내 앱 명령의 한 표(``ep_command.exit_legend`` — 맨 위 ``--help`` 가 낸다)가 들고,
     0 이 아닌 끝은 늘 「다음: …」 을 든다(``Stop.said`` — 멈춘 자리가 안 댔으면 종료 값의 걸음을 붙인다).
@@ -603,6 +604,9 @@ def cmd_session(args, inbox):
     box = open_mailbox(args, inbox)
     if not box.session_alive():
         raise Stop(EXIT_SESSION, f"메일함 세션이 끊겼다 — {EP_LOGIN}.")
+    if args.json:
+        print(json.dumps({"mailbox": args.mailbox_url}, ensure_ascii=False))
+        return
     print(f"세션이 살아 있다. 메일함 {args.mailbox_url}")
 
 
@@ -2362,14 +2366,15 @@ def cmd_preview_folder(args, inbox):
 def cmd_apply_folder(args, inbox):
     box = open_mailbox(args, inbox)
     said, parts = folder_plan(args, box)
-    if token(*parts) != args.confirm:
+    key = token(*parts)
+    if key != args.confirm:
         raise Stop(EXIT_STALE, "확인 열쇠가 지금 폴더와 다르다 — 바꾸지 않았다. preview-folder 로 다시 보이고 확인받는다")
     if args.create:
         made = box.create_folder(args.create, parent=args.parent or "")
-        print(f"만들었다: {made.path} (다시 봐서 섰다)")
+        print(f"만들었다: {made.path} (다시 봐서 섰다) · 열쇠 {key}")
     else:
         box.delete_folder(args.delete)
-        print(f"지웠다: {args.delete} (다시 봐서 없다)")
+        print(f"지웠다: {args.delete} (다시 봐서 없다) · 열쇠 {key}")
 
 
 def move_plan(args, box, inbox):
@@ -2532,14 +2537,15 @@ def cmd_preview_rule(args, inbox):
 def cmd_apply_rule(args, inbox):
     box = open_mailbox(args, inbox)
     _, new, parts = rule_plan(args, box, inbox)
-    if token(*parts) != args.confirm:
+    key = token(*parts)
+    if key != args.confirm:
         raise Stop(EXIT_STALE, "확인 열쇠가 지금 규칙과 다르다 — 바꾸지 않았다. preview-rule 로 다시 보이고 확인받는다")
     if new is None:
         box.delete_rule(args.delete)
-        print("규칙을 지웠다 (목록에서 다시 봐서 없다)")
+        print(f"규칙을 지웠다 (목록에서 다시 봐서 없다) · 열쇠 {key}")
         return
     unid = box.save_rule(new)
-    print(f"규칙을 {'고쳤다' if new.unid else '넣었다'}: {rule_line(box.rule(unid))} · {unid}")
+    print(f"규칙을 {'고쳤다' if new.unid else '넣었다'}: {rule_line(box.rule(unid))} · {unid} · 열쇠 {key}")
 
 
 # ── 받는 사람 찾기 — 스킬 company-directory 의 찾기에 지난 메일 출처(--last) 하나를 더해 부른다 ─────────────────────
@@ -2732,7 +2738,7 @@ COMMAND_MAP = (
 EXIT_CODES = (EXIT_OK, EXIT_FAIL, EXIT_CONFIG, EXIT_SESSION, EXIT_STALE)
 EXIT_MORE = {
     EXIT_FAIL: "메일함 · 웹메일 화면 오류도 여기다 — ep-login 으로 덮지 않는다",
-    EXIT_CONFIG: "주소 · 제목 · 글 · 받는 사람 · 폴더 · 첨부 · 못 찾은 메일",
+    EXIT_CONFIG: f"주소 · 제목 · 글 · 받는 사람 · 폴더 · 첨부 · 못 찾은 메일 · who: {DIRECTORY.HELD_LEGEND}",
     EXIT_STALE: "사람이 화면에서 고쳤거나 메일이 옮겨졌다",
 }
 # 이 손이 안 하는 것과 사람이 하는 자리 — 맨 위 --help 의 끝
@@ -2777,6 +2783,13 @@ def top_map() -> str:
     return "\n".join(lines)
 
 
+class JoinWords(argparse.Action):
+    """자리 낱말 여럿을 빈칸으로 이은 한 말로 둔다 — 사람의 말이 셸에서 빈칸마다 갈라 와도 따옴표로 준 것과 같은 말을 찾는다."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, " ".join(values))
+
+
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="mail.py", formatter_class=argparse.RawDescriptionHelpFormatter, epilog=top_map(),
                                 description="사내 메일함(Lotus Notes · Domino 웹메일)을 찾고 읽고, 임시메일을 지어 웹메일 화면으로 보내고, "
@@ -2794,7 +2807,9 @@ def parser() -> argparse.ArgumentParser:
             q.set_defaults(check=check_unid_args)
         return q
 
-    one("session", cmd_session, mail=False)
+    q = one("session", cmd_session, mail=False)
+    q.add_argument("--json", action="store_true",
+                   help='코드가 읽을 꼴 — 세션이 살아 있으면 {"mailbox": <메일함 주소>} 한 줄만 낸다(끊겼을 때의 종료 값 · 말은 같다)')
     one("folders", cmd_folders, mail=False)
     sub.add_parser("serve", description=SERVE_HELP)   # 앱이 부르는 꼴 — 대화의 지도(COMMAND_MAP)에는 안 싣는다
     q = one("list", cmd_list, mail=False)
@@ -2824,7 +2839,8 @@ def parser() -> argparse.ArgumentParser:
     q.add_argument("--top", type=int, default=SUMMARY_TOP, help="보일 묶음의 수")
     q = one("search", cmd_search, mail=False)
     q.set_defaults(check=check_search_args)
-    q.add_argument("words", nargs="?", default="", help="찾을 낱말 — 고른 말 그대로 맞춘다. 없으면 --from · --since 로만 받은편지함 · 폴더를 훑는다")
+    q.add_argument("words", nargs="*", default="", action=JoinWords,
+                   help="찾을 낱말 — 고른 말 그대로 맞춘다(따옴표 없이 여럿이면 빈칸으로 이은 한 말). 없으면 --from · --since 로만 받은편지함 · 폴더를 훑는다")
     q.add_argument("--from", dest="sender", default="", metavar="이름|주소",
                    help="보낸 분 — 한글 이름이면 주소록의 그 사람의 영문 이름 · 주소로도 견준다(메일의 보낸 분 칸은 영문만 들기도 한다)")
     q.add_argument("--since", default=None, metavar="YYYY-MM-DD[ HH:MM]", help="이 서울 날짜 · 시각부터(포함)")

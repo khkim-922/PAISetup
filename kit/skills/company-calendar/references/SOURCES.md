@@ -79,6 +79,23 @@
 - 안 잰 것 — 반복 일정의 지우기(그날 하나만 걷는지 줄 전체를 걷는지 모른다) · 여러 날 하루 종일 일정의 줄 꼴 · 일정 조회의 `end` 가
   그날을 드는지 · 시각 크기 조절(`agSetEventDateTime` — 끝만 바꾸는 부름도 `agSetEventDate` 로 보낸다) · 참석자가 든 일정의 고치기 알림
 
+## Teams 회의 예약 창 — 문서와 회사 밖에서 잰 것
+
+- 꼴 — Microsoft Learn 「Deep links for workflows in Teams app」(https://learn.microsoft.com/en-us/microsoftteams/platform/concepts/build-and-test/deep-link-workflow ·
+  그 판의 원본 커밋 `5751bb46`)의 「Deep link to open a meeting scheduling dialog」: `https://teams.microsoft.com/l/meeting/new?subject=&startTime=&endTime=&content=&attendees=`.
+  칸은 다 고를 수 있고, 참석자는 쉼표로 이은 UserPrincipalName(대개 메일 주소)이며 링크를 연 사람이 주관자다. 시각은 시간대(UTC 차이)가 붙은
+  ISO 8601 이어야 한다. 그 문서는 빈칸에 `+` 를 안 받는다며 이렇게 쓴다 — "Ensure your URI encoding code returns `%20` for spaces".
+  장소는 못 채운다. 링크가 여는 것은 예약 창이고, 문서는 회의가 저절로 선다고 하지 않는다
+- 넘기는 주소와 길이 한도 — 회사 밖에서 로그인 없이 지어낸 값만 실어 잰 것(2026-11-22). `teams.microsoft.com/l/meeting/new?…` 는 302 로
+  `/dl/launcher/launcher.html?url=<경로부터를 한 번 더 인코딩한 글>&type=meeting&deeplinkId=<36 자>&directDl=true&msLaunch=true&enableMobilePage=true`
+  로 넘기고, 손의 셈(`teams_relayed`)이 그 길이와 세 링크(한글 · 기호 · 짧은 글)에서 글자 하나 안 틀리고 맞았다. 넘긴 주소가 8,188 자면 200 ·
+  8,189 자면 404 — 첫 주소 쪽도 8,188 자까지만 302 다. 손이 지은 시험 회의 링크(한글 제목 · `&` `#` `+` 따옴표 든 설명 · 참석자 셋)는 302 → 200 이었다
+- 보낸 회의가 Teams 일정과 회사 일정 화면에 함께 보인다는 것은 사용자의 말이다(Teams 로 넘어가는 시기라 기존 일정과 Teams 일정 둘이 있다).
+  손이 읽는 Teams 일정함(`TeamsCalendar`)에 회의실 예약이 저절로 서는 것은 쟀지만(위 「사내 일정 앱에서 잰 것」), Teams 에서 바로 잡은 회의가
+  거기 서는지는 안 쟀다 — 아래 「회사에서 잴 것」
+- 안 잰 것 — 로그인한 Teams 가 예약 창을 열고 칸을 채우는지(앱 · 웹 어느 쪽에 뜨나) · 참석자에 나를 넣으면 어떻게 되나 · 끝 없이 시작만 준
+  창의 끝 · 회사망(프록시)이 이 길이를 그대로 넘기나
+
 ## 화면에 있는데 손가락이 없는 것 — 잰 것과 코드로 읽은 것
 
 일정 화면(`mainframe` · `Event` · `Eventquick` · `quickRegistration` · `copyEvent2` · `ProfileTab` 폼과 `fmcal_mainframe.js` ·
@@ -147,5 +164,10 @@
   `--people-file` 은 그분을 셈에 안 넣고 이름으로 댄다
 - Teams 일정함을 `find` 의 기본 기간(오늘 앞뒤 1 년)째 한 번에 읽는 판 — 그렇게 긴 기간의 일정 읽기는 안 쟀다. 답이 늦거나 잘리면 기간을
   나눈다
+- Teams 회의 예약 창(`teams-meeting`) — 회사 PC 의 Edge 주소창에 시험 링크 하나를 붙여 연다:
+  `https://teams.microsoft.com/l/meeting/new?subject=%EC%8B%9C%ED%97%98%20%E2%80%94%20%EC%97%B4%EB%A6%AC%EB%8A%94%EC%A7%80%EB%A7%8C%20%EB%B4%85%EB%8B%88%EB%8B%A4&startTime=2026-11-24T15%3A00%3A00%2B09%3A00&endTime=2026-11-24T15%3A30%3A00%2B09%3A00&content=%EB%B3%B4%EB%82%B4%EC%A7%80%20%EB%A7%90%EA%B3%A0%20%EB%8B%AB%EC%95%84%20%EC%A3%BC%EC%84%B8%EC%9A%94`
+  (제목 「시험 — 열리는지만 봅니다」 · 2026-11-24 15:00–15:30 · 설명 「보내지 말고 닫아 주세요」 · 참석자 없음). Teams(앱이든 웹이든)에 새 회의
+  예약 창이 떠 제목 · 날 · 시각 · 설명이 그대로 찼으면 선다 — 보내지 말고 닫는다. 창 대신 다른 화면(로그인 · 오류 · 빈 창)이 뜨면 그 화면을 적어 온다.
+  더 볼 것 하나 — 참석자 한 분(본인)을 넣은 회의를 한 번 보내 보고, 다음 날 `show <그날>` 에 그 회의가 Teams 일정함 줄(`calendar`)로 서는지 본다
 - 참석 답(수락 · 거절) — 위 「참석 답」의 칸. 부르면 초대한 분께 알림이 가서
   남이 든 초대로는 못 잰다 — 사용자 본인이 연 시험 회의(참석자 = 본인)에 본인이 답해 알림 메일이 서는지를 본 뒤 손가락을 짓는다

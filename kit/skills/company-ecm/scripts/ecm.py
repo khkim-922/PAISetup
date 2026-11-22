@@ -1424,7 +1424,7 @@ def check_search(query: SearchQuery) -> SearchQuery:
     """전사 검색의 칸을 서버 없이 가린다 — 못 쓸 값이면 ``ArgsError``. 다 빈 판 · 꼴이 깨지는 글자 · 날짜 꼴 · 등급 · 범위."""
     words = {"제목": query.title, "본문": query.text, "소유자": query.owner, "등록자": query.creator, "꼴": query.file_ext}
     if not any(v.strip() for v in (query.title, query.text, query.owner, query.creator)):
-        raise ArgsError("찾을 것(--title · --text · --owner · --creator)을 하나는 준다 — 다 비우면 전사의 모든 문서가 온다")
+        raise ArgsError("찾을 것(문서 이름 낱말 · --text · --owner · --creator)을 하나는 준다 — 다 비우면 전사의 모든 문서가 온다")
     bad = [k for k, v in words.items() if SEARCH_WORD_BAD.search(v)]
     if bad:
         raise ArgsError(f"{' · '.join(bad)} 칸에 따옴표 · 역빗금 · 중괄호는 못 쓴다 — 검색 몸의 꼴이 깨진다")
@@ -3058,14 +3058,32 @@ def cmd_count(args, ecm: Ecm) -> int:
 
 
 def _search_query(args) -> SearchQuery:
-    return (SearchQuery(args.title, args.any_word, args.text, args.owner, args.creator, args.since, args.until,
+    # 자리 낱말은 사람이 말한 문서 이름이다 — 셸이 빈칸에서 갈라 여러 인자로 와도, --title 의 값 곁에 남아도 제목 낱말 하나로 잇는다
+    title = " ".join(w for w in (args.title, *args.words) if w.strip())
+    return (SearchQuery(title, args.any_word, args.text, args.owner, args.creator, args.since, args.until,
                                     args.date_by, args.file_ext, tuple(args.security_in or ()), args.scope))
 
 
+def search_widen(query: SearchQuery) -> str:
+    """0 건일 때 넓힐 다음 걸음 — 이 칸 · 이 범위로 못 찾았다는 뜻이지 그런 문서가 없다는 뜻이 아니다. 아직 안 쓴 넓히기만 든다."""
+    steps = []
+    if len(query.title.split()) > 1 and not query.any_word:
+        steps.append("제목 낱말 가운데 하나만 맞아도 — 같은 부름에 --any-word")
+    if query.title and not query.text:
+        steps.append(f"문서 안의 글로 — 제목 낱말 대신 --text \"{query.title}\"")
+    if query.scope == SEARCH_MINE:
+        steps.append(f"볼 수 있는 전사 문서로 — 같은 부름에 --scope {SEARCH_COMPANY}")
+    head = "이 칸 · 이 범위로 못 찾았다는 뜻이지 그런 문서가 없다는 뜻이 아니다 — 사람에게도 그렇게 말한다"
+    return head + (". 넓히는 길: " + " · ".join(steps) if steps else "")
+
+
 def cmd_search(args, ecm: Ecm) -> int:
-    total, hits = ecm.search_all(_search_query(args), page=args.page, per_page=args.per_page)
+    query = _search_query(args)
+    total, hits = ecm.search_all(query, page=args.page, per_page=args.per_page)
     where = "볼 수 있는 전사 문서" if args.scope == SEARCH_COMPANY else "내 문서함들(제 부서 · 프로젝트)"
     print(f"{where}에서 {total} 건 — 쪽 {args.page} · {len(hits)} 줄 (내가 볼 수 있는 문서만 온다)")
+    if not total:
+        print(search_widen(query))
     for i, h in enumerate(hits, (args.page - 1) * args.per_page + 1):
         bits = [h.title + (f".{h.ext}" if h.ext else ""), f"올린 이 {h.author}" if h.author else "",
                 f"부서 {h.dept}" if h.dept else "", f"보안 {level_name(h.security)}" if h.security else "",
@@ -3613,6 +3631,8 @@ ARGS = {
                                help="정렬 — 목록 머리 글(등록일 정렬은 서버가 안 받는다). 안 주면 고친 날 새것부터")),
     "direction": (("--direction",), dict(default="desc", choices=["asc", "desc"], help="정렬 방향 — 기본 desc")),
     "type": (("--type",), dict(default="", choices=list(FILE_TYPES), help="꼴 모아보기 — 목록 위 아이콘과 같다")),
+    "s_words": (("words",), dict(nargs="*", default=[], metavar="낱말",
+                                 help="사람이 말한 문서 이름 그대로 — 따옴표 없이 여럿이어도 된다. 제목 낱말로 찾는다(--title 에 더한다)")),
     "s_title": (("--title",), dict(default="", help="제목 낱말(빈칸으로 여럿 — 기본은 다 맞아야)")),
     "any_word": (("--any-word",), dict(action="store_true", help="제목 낱말 가운데 하나만 맞아도")),
     "s_text": (("--text",), dict(default="", help="본문 낱말 — 문서 안의 글로 찾는다")),
@@ -3736,7 +3756,7 @@ FINGERS = {
     "count": Finger("찾기", "문서 건수 — --cabinet all 이면 문서함마다와 합", ("search", "period", "folder_mine", "cabinet_opt", "box",
                                                                          "type"), cmd_count, check=_pre_list),
     "search": Finger("찾기", "전사 검색 · 본문 검색 — 제목 · 본문 · 소유자 · 등록자 · 기간 · 꼴 · 보안등급으로. 내가 볼 수 있는 문서만",
-                     ("s_title", "any_word", "s_text", "s_owner", "s_creator", "since", "until", "date_by", "s_ext", "security_in",
+                     ("s_words", "s_title", "any_word", "s_text", "s_owner", "s_creator", "since", "until", "date_by", "s_ext", "security_in",
                       "scope", "page", "s_per_page"), cmd_search, check=_pre_search),
     "find-folder": Finger("찾기", "볼 수 있는 모든 문서함에서 이름에 그 글이 든 폴더와 열쇠 — 요청 하나(문서함 하나의 나무를 다 훑으려면 "
                           "folders --find)", ("name",), cmd_find_folder, check=_pre_find_folder),

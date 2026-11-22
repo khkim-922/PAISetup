@@ -28,7 +28,10 @@
 
 무엇을 내나
     사람이 읽을 글줄을 표준 출력에 낸다. 종료 값마다의 뜻은 맨 위 ``--help`` 의 범례(사내 앱 명령의 한 표 ``ep_command``)가 든다.
-    「⚠ 따로 둔 것」(동명이인 · 못 찾은 이름 · 여럿 걸린 부서 · 못 거른 조직)은 파일에 안 든다 — 고르는 것은 사람이다.
+    「⚠ 따로 둔 것」(동명이인 · 못 찾은 이름 · 여럿 걸린 부서 · 못 거른 조직)은 파일에 안 든다 — 고르는 것은 사람이다. ``--out`` 의
+    찾기에 이름으로 댄 것 가운데 안 선 줄(``Ask`` — 동명이인 · 못 찾은 이름 · 여럿 걸린 부서)이 있으면 파일을 안 쓰고 종료 2 로
+    끝난다(``HELD_STOP``) — 이은 다음 손도 따로 부른 손도 빠진 명단으로 돌지 않게. 무리의 구성원이 안 선 줄 · 알림 줄은 파일을 쓰고 0
+    이다(선 사람이 없으면 받는 손이 빈 파일에서 멈춘다).
 """
 
 from __future__ import annotations
@@ -95,6 +98,14 @@ NEXT_WORDS = {
     EXIT_SESSION: ep_command.NEXT_EP_LOGIN,
     ep_command.EXIT_STALE: "다음: 미리 보기(preview-…)를 다시 불러 지금 판을 사람에게 보이고 확인받는다",
 }
+# --out 의 찾기에서 이름으로 댄 것이 안 섰을 때의 끝 말(종료 2) — 그때 쓴 파일은 사람이 말한 명단의 일부다. 받는 손(임시저장 · 일정 ·
+# 회의실 · 문서함)은 파일에 없는 사람을 몰라 답에도 안 세우니, 파일을 안 써야 이은 걸음도 따로 부른 걸음도 그 일부로 말없이 돌지 않는다.
+# 이름 하나하나는 고르거나 빼서 다시 줄 수 있어 안 써도 막히는 길이 없다. 고르는 것은 사람이다
+HELD_STOP = ("⚠ 파일을 안 썼다 — 이름으로 댄 것 가운데 한 사람 · 한 부서로 안 선 {n} 줄(위 「⚠ 따로 둔 것」)이 있다. 쓰면 그 파일을 받는 "
+             "손(임시저장 · 일정 · 회의실 · 문서함)이 그 사람 없이 돌고 답에도 그 사람을 안 세운다. 다음: 그 줄을 사람에게 묻고 고른 꼴로 같은 "
+             "명령을 다시 부른다. 사람이 그 사람은 빼라고 하면 그 이름 없이 다시 부른다 — 어느 쪽이든 그때 다 든 파일이 선다")
+HELD_LEGEND = ("--out 의 찾기에서 이름으로 댄 사람 · 부서가 한 사람 · 한 부서로 안 섰다(동명이인 · 못 찾은 이름 · 여럿 걸린 부서) — "
+               "파일을 안 썼다. 사람에게 묻고 고른 꼴로(빼라면 그 이름 없이) 다시 부른다")   # 맨 위 --help 범례의 덧말
 FILE_COMMENT = "#"            # --from-file 글 파일의 주석 — 주소 파일과 같이 그 뒤는 버린다
 PICK_FORM = re.compile(r"^\s*([^\[\]]+?)\s*\[([^\[\]]+)\]\s*$")   # 「이름[부서]」 — 동명이인 가운데 그 부서의 사람(괄호 () 는 ID 꼴이 쓴다)
 RECENT_MAIL_SCAN = 300        # 동명이인 후보마다 최근 주고받은 메일을 셀 때 받은편지함 · 보낸편지함에서 받는 새것의 수 — 한 쪽씩이다
@@ -322,6 +333,13 @@ class Pick:
         return f"{self.email} (사외 — 임시보관함 길이 못 싣는다)"
 
 
+class Ask(str):
+    """따로 둘 줄 가운데 사람이 이름으로 댄 것이 한 사람으로 안 선 줄 — 동명이인 · 못 찾은 이름 · 퇴직 · 주소 없는 사람 · 못 찾았거나 여럿
+    걸린 부서. 사람이 고르거나 빼서 다시 줄 수 있어, ``--out`` 의 찾기는 이 줄이 하나라도 서면 파일을 안 쓰고 2 로 멈춘다(``HELD_STOP``).
+    무리의 구성원(배포그룹 · 지난 메일 · 파일 · 거르기)이 한 사람으로 안 선 줄과 알림 줄(못 가린 「나」 · 맨 위의 장 · 숨은참조를 모른다)은
+    보통 글자다 — 다시 불러도 안 갈려 알리기만 한다."""
+
+
 @dataclasses.dataclass
 class Haul:
     """출처 값 하나가 데려온 것 — ``said`` 는 출처 줄의 사람 말, ``held`` 는 파일에 안 넣고 사람에게 물을 줄이다. ``branch`` 는 부서별
@@ -402,10 +420,10 @@ def one_dept(chart, words: str):
     if len(hits) == 1:
         return hits[0], ""
     if not hits:
-        return None, f"못 찾은 부서 「{words}」 — 조직도에 그 이름 · 코드가 든 부서가 없다. 이름을 줄여 다시 주거나 --tree 로 나무를 본다"
+        return None, Ask(f"못 찾은 부서 「{words}」 — 조직도에 그 이름 · 코드가 든 부서가 없다. 이름을 줄여 다시 주거나 --tree 로 나무를 본다")
     paths = [f"{' > '.join(x.name for x in chart.path(d.code))} ({d.code})" for d in hits]
-    return None, (f"여럿 걸린 부서 「{words}」 {len(hits)} 곳 — 고르지 않는다. 사람이 고른 줄의 괄호 속 부서 코드로 다시 준다:"
-                  + bullets(paths, more="이름을 길게 주어 좁힌다"))
+    return None, Ask(f"여럿 걸린 부서 「{words}」 {len(hits)} 곳 — 고르지 않는다. 사람이 고른 줄의 괄호 속 부서 코드로 다시 준다:"
+                     + bullets(paths, more="이름을 길게 주어 좁힌다"))
 
 
 def home_dept(chart, p):
@@ -526,7 +544,7 @@ def resolve(run, asks) -> list:
             near = [person_line(p) for p in every if not p.retired]
             out.append((field, handle, None, f"못 찾은 이름 「{handle}」 — 주소록에 그 이름 · 주소 · 사번이 꼭 같은 사람이 없다"
                         + (" · 그 글자가 든 사람:" + bullets(near, more="더 길게 주어 좁힌다") if near else "")))
-    return out
+    return [(f, h, p, Ask(why) if p is None else why) for f, h, p, why in out]
 
 
 def name_picks(run, asks) -> tuple[list, list]:
@@ -536,7 +554,7 @@ def name_picks(run, asks) -> tuple[list, list]:
         if p is not None and p.email and p.notes:
             picks.append(Pick(field, person=p))
         elif p is not None:
-            held.append(f"「{handle}」 — 주소록의 그 사람에게 메일 주소 · Notes 이름이 없어 받는 사람으로 못 넣는다: {person_line(p)}")
+            held.append(Ask(f"「{handle}」 — 주소록의 그 사람에게 메일 주소 · Notes 이름이 없어 받는 사람으로 못 넣는다: {person_line(p)}"))
         else:
             held.append(why)
     return picks, held
@@ -579,7 +597,7 @@ def from_orgs(run, values) -> list:
         field, words = split_field(v)
         d, why = one_dept(chart, words)
         if d is not None and not d.email:
-            d, why = None, f"부서 {d.name} 에 부서 주소가 없어 조직 하나로 못 넣는다 — 부서원으로 넣으려면 --dept"
+            d, why = None, Ask(f"부서 {d.name} 에 부서 주소가 없어 조직 하나로 못 넣는다 — 부서원으로 넣으려면 --dept")
         if d is None:
             out.append(Haul(f"조직 「{words}」(못 섰다)", [], [why]))
             continue
@@ -935,6 +953,8 @@ def find_map(sources: dict = SOURCES) -> str:
     lines += ["", f"내는 꼴 — 늘: 출처 · 거르기 · 칸마다 수 · 등급별 · 직급별 · 직책별 수와 {SHOWN} 줄까지의 명단(넘으면 부서별 수 · --list),",
               "  따로 둔 것(동명이인 · 못 찾은 이름 · 여럿 걸린 부서 · 못 거른 조직 — 파일에 안 든다).",
               "  --out <폴더> 면 칸마다 주소 파일을 쓰고 메일 draft 에 그대로 줄 인자(--to-file … )를 댄다 — 주소를 옮겨 적지 않는다.",
+              "  이름으로 댄 것이 안 서 따로 두면(동명이인 · 못 찾은 이름 · 여럿 걸린 부서) 파일을 안 쓰고 종료 2 다 — 고른 꼴로(빼라면 그",
+              "  이름 없이) 다시 부르면 다 든 파일이 선다. 무리의 구성원(배포그룹 · 지난 메일 · 파일)이 안 선 줄은 알리기만 하고 0 이다.",
               f"  같은 폴더에 사람 파일 둘 — {PEOPLE_JSON}(일정 · 회의실 · 문서함이 --people-file 로 받는다 — 문서함 권한은 --people-as 와 함께)과 {PEOPLE_FILE}(한 줄에 "
               "「이름/메일ID」 — 문서함 권한). 조직 · 사외 주소는 안 든다.",
               f"  --phone 이면 명단의 사람({PHONE_MOST} 명까지)마다 사규 앱의 사람 창에 사번으로 물어 회사 전화 · 휴대 전화를 줄에 단다(세션)"]
@@ -1172,6 +1192,8 @@ def show(run, title, hauls, picks, gone, dropped, sieved, held) -> None:
         print("— 받는 사람으로 쓰려면 같은 명령에 --out <저장소 밖 폴더> — 칸마다 주소 파일을 쓰고 draft 에 그대로 줄 인자를 댄다"
               "(주소를 옮겨 적지 않는다)")
         return
+    if asks := [x for x in held if isinstance(x, Ask)]:
+        raise Stop(EXIT_ARGS, HELD_STOP.format(n=len(asks)))   # 파일을 안 쓴다 — 앞 판이 쓴 파일도 그대로다(빼기가 안 선 판과 같다)
     head = f"{' · '.join(h.said for h in hauls)}" + (f" · 거르기 {' · '.join(sieved)}" if sieved else "") + (
         f" · 조직도 {run.when} 판" if run.when else "")
     try:
@@ -1210,7 +1232,8 @@ NOT_DONE = (
 
 def parser() -> argparse.ArgumentParser:
     lines = ["명령", "  find  사람 찾기 — 출처 아무 조합 × 거르기 → 표와 칸마다 주소 파일 · 사람 파일(인자의 지도는 find --help)", "",
-             ep_command.exit_legend((EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION), said="0 이 아니면 끝 줄이 까닭과 다음 걸음을 든다"),
+             ep_command.exit_legend((EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION), {EXIT_ARGS: HELD_LEGEND},
+                                    said="0 이 아니면 끝 줄이 까닭과 다음 걸음을 든다"),
              "", "안 하는 것 — 사람이 하는 자리", *(f"  {what}: {where}" for what, where in NOT_DONE)]
     p = argparse.ArgumentParser(prog="directory.py", formatter_class=argparse.RawDescriptionHelpFormatter, epilog="\n".join(lines),
                                 description="사내 주소록 · 조직도 · 배포그룹에서 사람과 부서를 찾는다 — 읽기만 한다")

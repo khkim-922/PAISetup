@@ -1,6 +1,7 @@
 """업무 파일(work.md)의 자리를 대고, 받은 글로 그 파일을 바꿔 쓴다 — 업무 파악 스킬의 쓰는 손. 메일함에는 닿지 않는다.
 
     python -X utf8 -I work.py where                 사용자 폴더 · 업무 파일의 자리 · 있나 · 마지막으로 쓴 때
+    python -X utf8 -I work.py where --json          코드가 읽을 한 줄 — {"folder": 사용자 폴더, "work_file": 업무 파일의 자리}
     python -X utf8 -I work.py write [--in <파일>]   받은 글 전부로 업무 파일을 바꿔 쓴다(없으면 표준 입력)
 
 받는 것 — `write` 의 글은 업무 파일 전부다(UTF-8 · BOM 있는 UTF-16 · cp949). 절(`## ` 머리)의 이름과 차례는 `lane.md` 「업무 파일」이 든다.
@@ -17,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
 import sys
@@ -108,9 +110,11 @@ def move_to_tidy(folder: pathlib.Path, old_text: str, names: list[str]) -> list[
     return add
 
 
-def cmd_where(_args, folder: pathlib.Path) -> int:
+def cmd_where(args, folder: pathlib.Path) -> int:
     path = folder / WORK_FILE
-    if path.is_file():
+    if args.json:
+        print(json.dumps({"folder": str(folder), "work_file": str(path)}, ensure_ascii=False))
+    elif path.is_file():
         at = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
         print(WHERE_HAS.format(path=path, at=at, folder=folder))
     else:
@@ -163,7 +167,9 @@ def cmd_write(args, folder: pathlib.Path) -> int:
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="업무 파일(work.md)의 자리를 대고 받은 글로 바꿔 쓴다 — 메일함에는 닿지 않는다")
     sub = ap.add_subparsers(dest="command", required=True)
-    sub.add_parser("where", help="사용자 폴더 · 업무 파일의 자리 · 있나 · 마지막으로 쓴 때")
+    where = sub.add_parser("where", help="사용자 폴더 · 업무 파일의 자리 · 있나 · 마지막으로 쓴 때")
+    where.add_argument("--json", action="store_true",
+                       help='코드가 읽을 꼴 — {"folder": <사용자 폴더>, "work_file": <업무 파일의 자리>} 한 줄만 낸다(있나 · 쓴 때는 그 파일에서 본다)')
     w = sub.add_parser("write", help="받은 글 전부로 업무 파일을 바꿔 쓴다 — 앞 판의 절이 빠졌거나 빈 글이면 안 쓴다")
     w.add_argument("--in", dest="infile", help="표준 입력 대신 읽을 파일")
     return ap

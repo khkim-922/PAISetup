@@ -5,6 +5,11 @@
 
 from __future__ import annotations
 
+import pathlib
+
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent   # 이 스킬의 스크립트 자리 — 곁의 손(reader · 보내는 손)을 여기서 찾는다
+SKILLS_ROOT = SCRIPT_DIR.parents[1]                     # 이 스킬과 형제 스킬(일일 보고 · 업무 파악)이 나란히 선 스킬 뿌리
+
 # ── 자리 — 사용자 폴더. 메일 비서 스킬(스캔 · 정리 · 업무 파악 · 일일 보고)이 함께 쓰는 자리이고 원본은 여기다 ──────────
 # 바꾸면 사본 둘(mailbox-tidy `scripts/journal.py` · mailbox-work `scripts/work.py` 의 같은 이름)을 함께 바꾼다 — 서로의 코드를 안 싣는다
 HOME_ENV = "MAIL_SECRETARY_HOME"         # 개발 · 검사가 사용자 폴더를 바꿀 때만 준다
@@ -22,6 +27,7 @@ FORMAT = 1                               # 스캔 파일의 꼴 번호 — 칸�
 MODE_FULL, MODE_NEW = "full", "new"
 RUN_DONE, RUN_FIRST, RUN_PARTIAL, RUN_SESSION, RUN_BUSY = "done", "first", "partial", "session", "busy"
 RUN_HAND_MISSING, RUN_HAND_OLD, RUN_HAND_ERROR, RUN_SHAPE, RUN_SWAP = "hand-missing", "hand-old", "hand-error", "shape", "swap-failed"
+RUN_UNREAD = "unreadable"                # 판이 기대는 파일(지금 모습 · 정리 스킬의 잡아 둔 바꿈)이 있는데 못 읽어 아무것도 안 쓰고 멈췄다
 
 # 메일함 정리 스킬의 기록 — 비서가 바꾼 것을 「비서가 한 일」로 가르려고 읽기만 한다. 꼴의 원본은 스킬 `mailbox-tidy` 의 `scripts/journal.py`
 TIDY_LOG_FILE = "mailbox-tidy-log.jsonl"
@@ -75,7 +81,8 @@ MAIL_DATE = "%Y-%m-%d %H:%M:%S"   # 손이 받은편지함 · 보낸편지함 �
 MAIL_DATE_MINUTE = "%Y-%m-%d %H:%M"   # 손이 폴더 줄에 찍는 꼴(분까지) — 쌓을 때 「:00」 을 붙여 위 꼴로 맞춘다
 
 # ── 정한 시각의 보고 — 스캔 판이 보고 시각표의 시각마다 일일 보고를 사람 없이 한 번씩 띄운다 ──────────────
-BRIEF_FILE = "brief.json"                # 보고를 걸었나 · 보고 시각표 · 띄울 claude — `register --brief-at` · `brief --at` 이 쓰고 판이 읽는다
+BRIEF_FILE = "brief.json"                # 보고를 걸었나 · 보고 시각표 · 띄울 claude · 자리 밖에서 보기(`away`) — `register --brief-at` · `brief` 가
+                                         # 쓰고 판이 읽는다
 BRIEF_LOCK_FILE = "brief.lock"           # 스캔이 띄운 보고 하나 — 띄운 때를 적고, 그 때로 푼다(`BRIEF_LOCK_STALE_S`)
 BRIEF_SETTINGS_FILE = "brief-settings.json"   # 띄울 때마다 짓는 claude 의 권한(열린 명령 · 막은 명령) — `claude --settings` 로 준다
 BRIEF_PROMPT_FILE = "brief-prompt.txt"   # 띄울 때마다 짓는 부탁 글 — claude 의 표준 입력으로 준다(명령줄에 한글 · 따옴표를 안 싣는다)
@@ -104,7 +111,7 @@ LOGIN_TIMEOUT_S = 240                     # 입구 한 번의 시한 — 입구�
                                           # 창 · 포트가 서는 틈보다 넉넉히. 넘기면 입구가 끝말 없이 끊겨 status 가 까닭을 못 댄다
 LOGIN_SAID_CHARS = 200                    # status 가 옮겨 보이는 입구의 끝말 글자 수
 BRIEF_LOCK_STALE_S = 60 * 60             # 띄운 보고가 이보다 오래 안 끝났으면 멈춘 것으로 본다(회사에서 한 판의 값을 재기 전의 기본값)
-BRIEF_MADE = "brief-{date}-*.md"         # 그날 보고 글 — 사용자 폴더에 일일 보고의 손이 남긴다(원본은 스킬 daily-brief 의 scripts/window.py
+BRIEF_MADE = "brief-{date}-*.md"         # 그날 보고 글 — 사용자 폴더에 일일 보고의 손이 남긴다(원본은 스킬 daily-brief 의 scripts/brief_const.py
                                          # `FILE_NAME` — 이름은 지은 때의 PC 시계다. 회사 PC 는 서울 시계라 서울 날짜로 찾는다)
 BRIEF_SKILL = "daily-brief"              # 이 스킬과 같은 스킬 뿌리에 나란히 선다
 BRIEF_WINDOW = ("scripts", "window.py")  # 보고 창을 짓고 띄우는 손 — 사람 없는 실행도 창을 띄워 둔다
@@ -114,12 +121,29 @@ BRIEF_TIMES_TIMEOUT_S = 20               # 판이 보고 창의 시각을 묻는
 BRIEF_PRESSES_WITHIN_S = 360             # 판이 보고 창의 「일정에 넣기」 누름을 거두는 데 쓰는 시간 — 그 손은 이 안에 일정 손의 시한이 다 드는 넣기만
                                          # 시작하고 남은 누름은 다음 판에 둔다. 판 전체의 시한(TASK_TIME_LIMIT_MIN)을 넘기지 않게 짧게 둔다
 BRIEF_PRESSES_TIMEOUT_S = BRIEF_PRESSES_WITHIN_S + 60   # 그 손 한 번의 시한 — 넣기 도중에 끊으면 들었는지 모르는 끝이 남아 넉넉히 둔다
-# 그 손을 띄우기 전에 로그인 Edge 의 디버깅 포트가 받나만 본다 — 이름과 기본값의 원본은 스킬 daily-brief 의 `window.py`(EDGE_HOST ·
-# EDGE_PORT_DEFAULT · 환경변수 EDGE_DEBUG_PORT · 쉼표로 여럿이면 첫 것). 서로의 코드를 안 실어 옮겨 든다 — 바꾸면 함께 바꾼다
+# 그 손을 띄우기 전에 로그인 Edge 의 디버깅 포트가 받나만 본다 — 이름과 기본값의 원본은 스킬 daily-brief 의 `brief_const.py`(EDGE_HOST ·
+# EDGE_PORT_DEFAULT)와 `edge.py` 의 `port`(환경변수 EDGE_DEBUG_PORT · 쉼표로 여럿이면 첫 것). 서로의 코드를 안 실어 옮겨 든다 — 바꾸면 함께 바꾼다
 EDGE_HOST = "127.0.0.1"
 EDGE_PORT_ENV = "EDGE_DEBUG_PORT"
 EDGE_PORT_DEFAULT = 9222
 EDGE_PROBE_S = 0.5
+# 자리 밖에서 보기 — 사용자가 켠 PC 에서만, 사람 없이 띄운 보고가 남긴 보고 글 한 장을 칸마다 한 통 본인 주소로 보낸다. 보내는 것은 판의
+# 코드다 — 띄운 claude 에는 보내는 명령이 없다(BRIEF_DENY 그대로)
+DIRECTORY_SKILL = "company-directory"    # 본인 주소를 받는 주소록 손 — 회사 메일 손과 같은 스킬 뿌리에 나란히 선다
+DIRECTORY_SCRIPT = ("scripts", "directory.py")
+DIRECTORY_ME = ("find", "--me")          # 그 손의 「나」 — 이 세션의 메일함을 쓰는 사람(그 손 find --help)
+DIRECTORY_PEOPLE = "people.json"         # 그 손이 --out 폴더에 쓰는 사람 파일(원본 이름은 그 손의 PEOPLE_JSON)
+DIRECTORY_TIMEOUT_S = HAND_TIMEOUT_S     # 주소록 손 한 번의 시한 — 그 손도 세션을 받아 메일 서버에 묻는다
+AWAY_SENDER = "scan_mail.py"             # 보내는 손 — 이 스킬 폴더에 산다(머리말)
+AWAY_SENDING_FILE = "away-sending.json"  # 중계를 부르기 전에 굳히는 「보내는 중」 표지(그날 · 칸의 시각 · 때) — 다음 판이 칸의 기록과 견줘 걷는다
+AWAY_SHEET_TIMEOUT_S = 60                # 보고 창 손이 보고 글 한 장을 메일 한 장으로 짓는 시한 — 파일 하나를 읽어 바꾸기만 한다
+AWAY_SEND_TIMEOUT_S = 300                # 보내는 손 한 번의 시한 — 중계는 걸음(연결 · 인사 · STARTTLS 뒤 다시 연결 · 넘기기)마다 메일 손의 응답
+                                         # 시한(mailer.py 기본 60초)을 쓴다. 넘겨 끊으면 중계가 받았는지 모르는 끝으로 적고 다시 안 보낸다
+AWAY_LATEST_S = LOCK_STALE_S - AWAY_SHEET_TIMEOUT_S - AWAY_SEND_TIMEOUT_S - BRIEF_PRESSES_TIMEOUT_S
+# ↑ 판이 시작한 뒤 메일 한 통 · 주소록 한 번을 새로 시작해도 되는 끝(초) — 그 일과 뒤의 누름 거두기가 판의 잠금이 낡기(LOCK_STALE_S) 전에, 곧
+#   작업의 시한(TASK_TIME_LIMIT_MIN) 전에 다 끝나게. 넘긴 판은 안 보내고 다음 판(기본 15분 뒤)에 둔다
+AWAY_SENT, AWAY_RETRY, AWAY_UNSURE = "sent", "retry", "unsure"   # 칸의 메일 기록(`slots.<시각>.mail.state`)
+SEND_EXIT_SENT, SEND_EXIT_BEFORE, SEND_EXIT_UNSURE = 0, 4, 5   # 보내는 손의 종료 값 — 보냈다 · 넘기기 전에 졌다 · 넘기는 도중이나 뒤에 졌다
 CALENDAR_SKILL = "company-calendar"      # 회사 메일 손과 같은 스킬 뿌리에 나란히 선다
 CALENDAR_SCRIPT = ("scripts", "company_calendar.py")
 MEETING_SKILL = "company-meeting-room"   # 회의실 예약 손 — 같은 스킬 뿌리에 선다. 보고의 회의 한 장이 내 예약을 읽는다
@@ -151,16 +175,19 @@ MAIL_READS = ("session *", "folders *", "rules *", "list *", "read *", "read-man
 CALENDAR_READS = ("show *", "calendars *", "event *", "preview *")
 # event 는 회의 한 장의 참석자 · 곳 · Teams 를, preview 는 「일정에 없는 약속」 카드의 값과 열쇠를 받는다(일정을 안 바꾼다 — 넣기는 사람이 카드를
 # 누른 뒤 일일 보고의 넣는 손이 그 열쇠로 한다)
-MEETING_READS = ("mine *",)              # 회의 한 장이 그 시각에 내 회의실 예약이 있나를 본다(손 meeting_room.py 머리말)
-# 막는 명령 — 사용자 설정의 allow 가 함께 실려도 막을 자리다(deny 가 어느 allow 보다 앞선다): 손의 바꾸는 · 내보내는 · 파일을 쓰는
-# 명령, EP 로그인 · 문서함 스킬, 밖으로 나가거나 무엇이든 돌리는 프로그램, MCP.
+MEETING_READS = ("mine *", "free *", "rooms *")
+# mine 은 회의 한 장이 그 시각에 내 회의실 예약이 있나를, 그리고 지난 날을 주면 늘 잡던 건물 · 층을 본다. free(그 시각에 빈 회의실) · rooms(회의실
+# 찾기)는 카드의 「회의실 잡기」 줄에 그 시각에 정말 비는 방 하나를 적으려 읽는다(일일 보고 lane.md 「맡길 일」). 셋 다 예약 · 설정을 안 바꾸고
+# 파일을 안 쓰고 창을 안 띄운다(손 meeting_room.py 머리말 · 그 READS 표). 사람의 근무지는 열린 who(주소록)가 낸다
+# 막는 명령 — 사용자 설정의 allow 가 함께 실려도 막을 자리다(deny 가 어느 allow 보다 앞선다): 손의 바꾸는 · 내보내는 · 파일을 쓰는 ·
+# 사람의 화면에 창을 띄우는(일정 손의 teams-meeting) 명령, EP 로그인 · 문서함 스킬, 밖으로 나가거나 무엇이든 돌리는 프로그램, MCP.
 # ⚠ 열린 명령의 깃발이 파일을 쓰면(`read --images` · `who --out`) 열린 꼴에 맞으므로 여기서 따로 막는다
 # ⚠ 일정 손의 바꾸는 명령은 스크립트 이름 바로 뒤의 자리로만 막는다 — 열린 `preview` 는 메일에서 온 제목 · 곳을 인자로 받아, 글자만 보면
 #   「credit · address」 가 든 미리 보기가 막혀 그 약속의 카드가 말없이 안 선다
 BRIEF_DENY = ("Bash(*mail.py* draft *)", "Bash(*mail.py*send-draft*)", "Bash(*mail.py*apply-*)",
               "Bash(*mail.py*preview-*)", "Bash(*mail.py*attachment*)", "Bash(*mail.py*--out*)",
               "Bash(*mail.py*--images*)",
-              *(f"Bash(*company_calendar.py{q} {c}*)" for c in ("add", "delete", "edit", "remember") for q in ('"', "")),
+              *(f"Bash(*company_calendar.py{q} {c}*)" for c in ("add", "delete", "edit", "remember", "teams-meeting") for q in ('"', "")),
               "Bash(*meeting_room.py*book*)", "Bash(*meeting_room.py*change*)", "Bash(*meeting_room.py*cancel*)",
               "Bash(*meeting_room.py*preview*)", "Bash(*meeting_room.py*pref*)",
               "Bash(*ep-login/scripts*)", "Bash(*edge_session.js*)", "Bash(*ep_login.js*)", "Bash(*company-ecm/scripts*)",

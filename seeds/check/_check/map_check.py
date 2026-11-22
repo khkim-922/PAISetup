@@ -15,7 +15,7 @@
     python _check/map_check.py --write      # ③ 의 칸과 ⑤ 의 표를 머리 첫 줄 · 곁 선언에서 다시 쓴다
     python _check/map_check.py --write --check  # 안 쓰고 판정만 — 다시 쓰면 바뀔 자리가 하나라도 있으면 빨강
     python _check/map_check.py --teeth      # 정기 판 — 물림 전부(심은 표본 · 실물 사본 · 러너 모의). 판정 ①–⑤ 는 안 낸다
-    python _check/map_check.py --gates      # 게이트 명부를 한 줄에 하나 — 줄끝은 늘 LF
+    python _check/map_check.py --gates      # CI 가 태울 게이트를 한 줄에 하나 — `[needs_arg]` · `[ci_skip]` 을 뺀다 · 줄끝은 늘 LF
     python _check/map_check.py --decl       # 곁 선언 전부를 JSON 한 덩이로 — 다른 언어의 러너가 이 읽개로 읽는다
     python _check/map_check.py --run-gates  # 그 목록을 차례로 돌리고 모아 판정한다
     python _check/map_check.py --run-gates --push --jobs 4  # 푸시 직전 판 — 곁 선언 `[push_skip]` 을 빼고 넷씩 동시에
@@ -43,8 +43,8 @@
   ④ **푸시 선언** — 곁 선언이 게이트 명부 · 트리와 맞나. 셋을 문다:
      ㉠ **죽은 글롭** — `[push_when]` 의 글롭이 트리 파일(추적 파일 + 무시 안 된 새 파일) 한 장에도 안 걸린다. 그
         글롭이 지키려던 자리를 고쳐도 게이트가 안 돌고 푸시는 초록으로 보인다
-     ㉡ **모르는 이름** — `[needs_arg]` · `[push_skip]` · `[push_when]` · `[push_fresh]` · `[push_always]` · `[serial]` 의
-        이름이 게이트 명부에 없다. 오타면 선언한 사람은 가렸다고 믿는데 러너는 그 이름을 모른다. 선언이 명부인
+     ㉡ **모르는 이름** — `[needs_arg]` · `[push_skip]` · `[push_when]` · `[push_fresh]` · `[push_always]` · `[ci_skip]` ·
+        `[serial]` 의 이름이 게이트 명부에 없다. 오타면 선언한 사람은 가렸다고 믿는데 러너는 그 이름을 모른다. 선언이 명부인
         저장소는 명부의 이름이 이 폴더의 검사 파일인가도 묻는다 — 명부를 짓는 절의 오타는 명부에 그대로 든다
      ㉢ **선언 없는 게이트** — `[needs_arg]` 밖의 게이트마다 `[push_when]` 글롭이나 `[push_always]` 의 「이름 = 까닭」
         이 있어야 한다. 선언이 명부인 저장소에서는 선언이 빠진 게이트가 명부에서도 빠져 아무도 안 돌리므로, 이
@@ -91,8 +91,15 @@ LF 로 내고, 태우기는 목록을 읽은 자가 파일이 있나를 먼저 �
 
 **푸시 직전 판(`--push`)은 저장소가 뺀 게이트를 뺀다.** 한 바퀴를 통째로 돌면 분 단위라 푸시마다 물 수 없다 —
 무엇을 뺄지는 저장소가 곁 선언 `[push_skip]` 에 `이름 = 까닭` 으로 적는다(`[needs_arg]` 와 같은 꼴). 여기 적지 않은
-게이트는 푸시에서도 돈다 — 새 게이트가 조용히 빠지지 않게 빼는 쪽을 선언한다. CI 는 `--gates` 로 목록 전부를 받으므로
+게이트는 푸시에서도 돈다 — 새 게이트가 조용히 빠지지 않게 빼는 쪽을 선언한다. CI 는 `--gates` 로 목록을 받으므로
 여기서 뺀 게이트도 거기서는 돈다.
+**CI 목록(`--gates`)은 저장소가 뺀 게이트를 뺀다.** CI 러너가 구조적으로 못 재는 게이트(늘 「못 쟀다」인 오피스 COM 처럼)나
+CI 대신 정기 판이 부르는 게이트는 곁 선언 `[ci_skip]` 에 `이름 = 까닭` 으로 적는다 — `--gates` 가 `[needs_arg]` 와 함께 빼고
+까닭을 stderr 에 찍고, 그 목록을 도는 CI 판(`--push` · `--only` 없는 `--run-gates`)도 같이 뺀다. 푸시 판
+(`--run-gates --push`)과 `--only` 는 이 절을 안 읽는다 — 푸시에서는 그대로 돈다.
+늘 「못 쟀다」인 줄은 CI 판정 곁에 상수로 서서 아무도 안 읽게 되므로 목록에서 빼되, 이름은 선언에 남긴다. 이름이 게이트
+명부에 없으면 ④ ㉡ 이 문다. `[push_skip]` 에도 든 게이트는 푸시에서도 CI 에서도 안 돌므로 ④ 가 그 이름을 판정 곁에 찍는다 —
+그 게이트를 부르는 손(정기 판의 걸음)은 워크플로가 들고, 이 검사는 그것을 못 본다.
 **푸시 판은 고친 경로로도 가린다(`--changed`).** 게이트마다 지키는 경로를 곁 선언 `[push_when]` 에
 `이름 = 글롭 글롭 …` 으로 적으면, 고친 경로가 그 글롭에 하나도 안 걸린 게이트는 푸시에서 안 돈다. 저장소 전체를
 보는 게이트처럼 늘 돌아야 하는 게이트는 `[push_always]` 에 `이름 = 까닭` 으로 적는다 — 경로 고르기에게는 선언이
@@ -194,7 +201,7 @@ TABLE_RE = re.compile(r"^<!-- generated\(표 · (게이트|\[([A-Za-z0-9_-]+)\])
 TABLE_HEAD = ("| 검사 | 무엇을 재나 | 언제 돌리나 |", "|---|---|---|")
 # 게이트 표 셋째 칸의 꼬리표 — 글롭 밖의 절이 그 게이트에 무엇을 말하나. 까닭(값)은 곁 선언이 든다.
 GATE_TAGS = (("push_always", "늘 돈다"), ("needs_arg", "인자가 든다 — 목록 밖에서 부른다"),
-             ("push_skip", "푸시에서 뺀다"), ("push_fresh", "도장을 안 믿는다"))
+             ("push_skip", "푸시에서 뺀다"), ("push_fresh", "도장을 안 믿는다"), ("ci_skip", "CI 에서 뺀다"))
 ORDINAL = ("", "첫째", "둘째", "셋째", "넷째")    # ⑤ 의 어긋남이 칸을 부르는 말 — 표 칸 자리(1부터)
 
 
@@ -262,6 +269,12 @@ def _push_skip(check_dir):
     return {n: f"푸시에서 뺀다 — {why}" for n, why in _conf_section(check_dir, "push_skip").items()}
 
 
+def gates_skip(decl):
+    """CI 목록(`--gates`)에서 뺄 게이트 → 까닭 — `[needs_arg]`(씨앗의 `NEEDS_ARG` 포함)와 `[ci_skip]`. 머리말 「CI 목록」."""
+    return {**NEEDS_ARG, **decl.get("needs_arg", {}),
+            **{n: f"CI 에서 뺀다 — {why}" for n, why in decl.get("ci_skip", {}).items()}}
+
+
 def _push_when(check_dir):
     """곁 선언의 `[push_when]` — 게이트 → 그 게이트가 지키는 경로 글롭들(공백으로 가른다)."""
     return {n: v.split() for n, v in _conf_section(check_dir, "push_when").items()}
@@ -282,7 +295,7 @@ def _serial(check_dir):
 # 열쇠가 게이트 이름인 절. `[serial]` 은 열쇠가 묶음 이름이고 값이 게이트 이름들이라 따로 읽는다.
 # `[push_always]` 는 경로 고르기(`push_scope`)가 안 읽는다 — 거기서는 선언이 없는 것과 같아 늘 돈다. 읽는 자리는
 # 명부(`decl_is_roster` · `gate_roster`) · ④ ㉢ · ⑤ 의 꼬리표(`GATE_TAGS`)다.
-NAMED_SECTIONS = ("needs_arg", "push_skip", "push_when", "push_fresh", "push_always")
+NAMED_SECTIONS = ("needs_arg", "push_skip", "push_when", "push_fresh", "push_always", "ci_skip")
 
 
 def read_decl(check_dir):
@@ -434,6 +447,10 @@ def judge_decl(check_dir, map_text, decl, rows):
          f"늘 돈다 선언 {len(decl.get('push_always', {}))}개 · 인자가 드는 게이트 {len(decl.get('needs_arg', {}))}개 · "
          f"트리 파일 {len(files) if files is not None else '안 뽑음'}"
          + (f" · 명부 밖에서 자리를 받은 검사 {len(claimed)}개(⑤ 의 다른 절 {len(tables)}개 · 사람 표)" if used else ""))
+    nowhere = sorted(set(decl.get("ci_skip", {})) & set(decl.get("push_skip", {})))
+    if nowhere:
+        edge(f"푸시에서도 CI 에서도 안 도는 게이트 — {' · '.join(nowhere)}(`[push_skip]` · `[ci_skip]` 둘 다). 그 게이트를 "
+             "부르는 손(정기 판의 걸음)은 워크플로가 들고 이 검사는 못 본다 — 손이 없으면 아무 데서도 안 돈다")
     edge("안 잰 것 — 글롭이 게이트가 실제로 읽는 자리를 다 덮나. 사람이 든다")
 
 
@@ -1254,10 +1271,12 @@ DECL_FILES = ["docs/a.md", "_check/a_check.py"]
 DECL_BAD = ("[needs_arg]\nd_check.py = 인자가 든다\n"
             "[push_when]\na_check.py = docs/*.md\nb_check.py = nowhere/*.txt\n"
             "[push_always]\nzz_typo_check.py = 오타 난 이름\n"
+            "[ci_skip]\nxx_typo_check.py = 오타 난 이름\n"
             "[serial]\ng = a_check.py yy_typo_check.py\n")
 DECL_GOOD = ("[needs_arg]\nd_check.py = 인자가 든다\n"
              "[push_when]\na_check.py = docs/*.md\nb_check.py = _check/*\n"
              "[push_always]\nc_check.py = 저장소 전체를 본다\n"
+             "[ci_skip]\nb_check.py = 리눅스 러너가 못 잰다\n"
              "[serial]\ng = a_check.py b_check.py\n")
 DECL_NONE = "[needs_arg]\nd_check.py = 인자가 든다\n"
 DECL_BROKEN = "절 머리가 없는 줄\n"
@@ -1430,12 +1449,14 @@ def main(argv):
         # ⚠ **줄끝을 LF 로 못박는다** — 윈도 파이썬의 텍스트 표준출력은 `\n` 을 `\r\n` 으로
         #   쓰고, 루프가 받은 이름 끝에 `\r` 이 붙어 게이트가 하나도 안 돈다(머리말 「태우는 자도 여기 있다」 ⓐ).
         sys.stdout.reconfigure(newline="\n")
-        return print_gates(roster, source, needs)
+        return print_gates(roster, source, gates_skip(decl or {}))
     if run:
         plan, known, when = None, {}, _push_when(check_dir)
         book = StampBook.here(check_dir, when)
         # `--only` 는 「이것을 돌려라」다 — 푸시 판의 거르기(`[push_skip]` · 경로 · 도장)를 안 탄다. 걸렀다가 빠지면
         # 레인이 돌려 달라고 한 게이트가 말없이 안 돌고 도장도 안 선다.
+        if "--push" not in argv[1:] and not only:
+            needs = gates_skip(decl or {})     # CI 판 — `--gates` 와 같은 목록을 돈다(머리말 「CI 목록」)
         if "--push" in argv[1:] and not only:
             needs = {**needs, **_push_skip(check_dir)}
             changed, why = read_changed(changed_path) if changed_path else (None, None)
@@ -1524,16 +1545,17 @@ def main(argv):
                [f"실측 앉은 줄 {c_seated} · 어긋남 {c_gaps} · 흠 {c_flaw} — 기대 {bent_name} 한 줄만"])
 
         # ④ 의 심은 표본 — 기대는 선언의 뜻에서 온다: 한 장에도 안 걸리는 글롭(`nowhere/*.txt`)만 죽은 글롭이고(㉠),
-        #   게이트 절에 없는 이름은 `[push_always]` 의 열쇠든 `[serial]` 의 값이든 모르는 이름이며(㉡), `[needs_arg]` 의
+        #   게이트 절에 없는 이름은 `[push_always]` · `[ci_skip]` 의 열쇠든 `[serial]` 의 값이든 모르는 이름이며(㉡), `[needs_arg]` 의
         #   게이트는 빠지고 선언이 없는 `c_check.py` 만 선언 없는 게이트다(㉢). 다 맞은 선언은 셋 다 비고, 경로 고르기를
         #   안 쓰면 ㉢ 이 안 서며, 못 읽는 선언은 「못 쟀다」로 간다. 선언은 임시 폴더에 심어 읽는 손까지 같은 자로 잰다.
         bad_decl, _ = _read_planted_decl(DECL_BAD)
         dead, unknown, undeclared, used = decl_gaps(DECL_ROWS, bad_decl or {}, DECL_FILES)
         report("④ 물림 ㉠ — 죽은 글롭을 심으면 그 글롭만 빨강이다", dead == [("b_check.py", "nowhere/*.txt")],
                [f"실측 {dead} — 기대 [('b_check.py', 'nowhere/*.txt')]"])
-        report("④ 물림 ㉡ — 모르는 이름을 심으면 그 이름만 빨강이다 (`[push_always]` · `[serial]`)",
-               unknown == [("push_always", "zz_typo_check.py"), ("serial", "yy_typo_check.py")],
-               [f"실측 {unknown} — 기대 [('push_always', 'zz_typo_check.py'), ('serial', 'yy_typo_check.py')]"])
+        want_unknown = [("ci_skip", "xx_typo_check.py"), ("push_always", "zz_typo_check.py"),
+                        ("serial", "yy_typo_check.py")]
+        report("④ 물림 ㉡ — 모르는 이름을 심으면 그 이름만 빨강이다 (`[push_always]` · `[ci_skip]` · `[serial]`)",
+               unknown == want_unknown, [f"실측 {unknown} — 기대 {want_unknown}"])
         report("④ 물림 ㉢ — 선언 없는 게이트를 심으면 그 게이트만 빨강이다 (`[needs_arg]` 는 빠진다)",
                used and undeclared == ["c_check.py"], [f"실측 쓰나 {used} · {undeclared} — 기대 ['c_check.py']"])
         good_decl, _ = _read_planted_decl(DECL_GOOD)
@@ -1546,6 +1568,16 @@ def main(argv):
                and broken is None and bool(broken_why),
                [f"실측 다 맞음 {g_gaps} · 안 씀 {n_gaps} · 못 읽음 {broken!r} {broken_why!r} — "
                 "기대 ([], [], [], True) · ([], [], [], False) · None 과 까닭"])
+        # CI 목록 — 기대는 선언의 뜻에서 온다: `[needs_arg]` 의 d 와 `[ci_skip]` 의 b 가 빠지고 a · c 만 서며, 뺀 둘은
+        #   까닭과 함께 stderr 에 선다. 이것이 없으면 `[ci_skip]` 을 안 읽어도 ㉡ 은 초록이라 리눅스가 못 재는 게이트가
+        #   CI 판정 곁에 늘 「못 쟀다」로 남는다.
+        listed, said = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(listed), contextlib.redirect_stderr(said):
+            code = print_gates(DECL_ROWS, CONF, gates_skip(good_decl or {}))
+        report("④ 물림 — CI 목록(`--gates`)은 `[needs_arg]` · `[ci_skip]` 의 게이트를 까닭과 함께 뺀다",
+               code == EXIT_OK and listed.getvalue().split() == ["a_check.py", "c_check.py"]
+               and "b_check.py · CI 에서 뺀다" in said.getvalue() and "d_check.py" in said.getvalue(),
+               [f"실측 종료코드 {code} · 목록 {listed.getvalue().split()} · 뺀 줄 {said.getvalue()!r} — 기대 a · c, 뺀 줄에 b(CI) · d"])
 
         # 명부 · ⑤ 의 심은 표본 — 기대는 선언의 뜻에서 온다(`TABLE_WANT` 머리 곁말). 같은 선언에서 게이트 명부는 선언의
         #   열쇠이고(경로 고르기를 안 쓰면 지도의 게이트 절), 사람이 적은 표 그대로면 ⑤ 가 초록 · 칸 하나를 손대면 그 줄의

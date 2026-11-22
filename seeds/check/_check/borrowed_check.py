@@ -1,4 +1,4 @@
-"""빌려 온 사본이 진본과 같은가 — 머리말의 「빌려 온 자다 — 진본은 …」 곁말을 읽어 그 자리와 견준다.
+"""빌려 온 사본이 진본과 같은가 — 머리말의 「빌려 온 자다 — 진본은 …」 곁말을 읽어 그 자리 · 그 판과 견준다.
 
 층 — 만드는 사람의 흐름
 걷는 조건 — 씨앗 사본에 곁말을 달아 손으로 받는 길이 사라지면(사본을 진본에서 만들어 내면) 걷는다
@@ -9,13 +9,13 @@
     python -X utf8 _check/borrowed_check.py                       # 이 폴더 · 진본은 ~/.claude/seeds/
     python -X utf8 _check/borrowed_check.py <폴더>                # 잴 `_check/` 를 지정
     python -X utf8 _check/borrowed_check.py <폴더> --seeds <뿌리>  # 진본 뿌리를 지정 (씨앗 저장소 안에서는 `seeds`)
-    python -X utf8 _check/borrowed_check.py --receive              # 어긋난 사본을 진본으로 **받는다** — 곁말은 같은 자리에, 판은 올린다
+    python -X utf8 _check/borrowed_check.py --receive              # 갈린 사본을 진본으로 **받는다** — 곁말은 같은 자리에, 판은 올린다
 
-내는 것 — 0 곁말 든 사본이 다 진본과 같다 · 1 어긋난 사본이나 옛 도장, 또는 안 무는 양성 대조가 있다
-(`--receive` 를 주면 받은 뒤의 판정) · 2 못 쟀다(진본 뿌리가 없다 · 곁말 든 파일이 한 장도 없다 ·
-진본과 견준 것이 0 이다).
+내는 것 — 0 손댄 사본이 없다(진본이 앞서 가 받을 판이 있는 사본은 판정 곁에 이름으로 선다) · 1 손댄 사본이나
+옛 도장, 또는 안 무는 양성 대조가 있다(`--receive` 를 주면 받은 뒤의 판정) · 2 못 쟀다(진본 뿌리가 없다 · 곁말
+든 파일이 한 장도 없다 · 손댐을 가른 것이 0 이다).
 
-받는 손(`--receive`) — 어긋난 사본과 옛 도장의 사본마다 진본 글자를 놓고 곁말 블록을 받기 전 자리
+받는 손(`--receive`) — 지금 진본과 갈린 사본(손댄 것 · 받을 판 · 못 가른 것)과 옛 도장의 사본마다 진본 글자를 놓고 곁말 블록을 받기 전 자리
 (같은 문단 끝)에 되살리며 **판 번호를 진본 뿌리의 판으로 올린다**(아래 「어느 판의 진본과 견줬나」의
 차례 그대로 · 판을 모르면 받은 날짜를 적는다 — 곁말의 그 자리는 사람이 읽는 영수증이고, 판정 줄은 그
 날짜를 안 쓴다). 줄끝·BOM 은 받기 전 사본의 것을 지킨다.
@@ -28,7 +28,12 @@
 곁말은 파일을 열어야 보이고 폴더를 훑는 사람은 안 연다 — 그래서 곁말을 기계가
 읽고, 그 약속을 이 검사가 문다.
 
-재는 것 — 곁말이 든 파일마다 **진본과 글자가 같은가.** 곁말 블록만 빼고 본다.
+재는 것 — 곁말이 든 파일마다 **곁말이 적은 판의 진본과 글자가 같은가**(손대지 않았나). 곁말 블록만 빼고 본다.
+지금 진본과 같으면 거기서 끝이다. 갈렸으면 곁말의 판으로 가른다(`triage()`) — 그 판의 진본 그대로면 **받을 판이
+있을 뿐**이라 빨강이 아니고(진본 저장소가 앞서 간 것은 받은 저장소의 결함이 아니다 — 빨강으로 세면 진본 저장소의
+커밋마다 받은 저장소가 붉어진다), 그 판과도 다르면 손댄 것이라 빨강이다. 그 판을 꺼낼 수 있는 것은 진본 뿌리가
+git 나무일 때다(진본 저장소의 `seeds` 를 `--seeds` 로 준 판). 홈 씨앗처럼 git 나무가 아니면 뿌리의 판(`.version`)이
+곁말의 판과 같을 때만 손댐을 가르고, 다르면 「못 가른다」를 판정 곁에 찍는다 — 안 잰 자리다.
 
   곁말 블록 = 머리 `HEAD_LINES` 줄 안에서 굵은 꼴 「빌려 온 자다」가 든 줄 + 그 뒤 빈 줄 전까지의
   이어 줄들. 그래서 곁말은 **문단 끝에** 둔다 — 문단 머리에 두면 그 문단이 통째로 곁말로 읽혀
@@ -50,13 +55,13 @@
 
 **도장은 조건부로 잰다** — 곁말의 `(<판> 판)` 이 가리키는 판의 진본 본문을 꺼내 사본 본문과 견준다.
 진본 뿌리가 git 나무일 때만이다(진본 저장소가 붙은 PC · CI 의 `--seeds`) — 몸통이 지금 판과 같아도
-영수증이 옛 판이면 「영수증만 옛 판이다」 빨강이고 `--receive` 가 도장을 올린다(영수증은 사본이 낡았을
-때 어디서부터 diff 를 볼지 드는 좌표라, 틀린 채 두면 다음 사람이 엉뚱한 판을 편다). 뿌리가 git 나무가
+영수증이 옛 판이면 「영수증만 옛 판이다」 빨강이고 `--receive` 가 도장을 올린다(영수증은 진본이 앞서 갔을
+때 손댐과 받을 판을 가르는 기준이라, 틀린 채 두면 다음에 진본이 움직일 때 손 안 댄 사본이 손댄 것으로 선다). 뿌리가 git 나무가
 아니면(홈 씨앗 · 설치본) 그 항은 판정 없이 「도장은 못 쟀다」고 고지한다 — 초록으로 세지 않는다.
 판을 해시로 안 적은 곁말(「같은 저장소 · 같은 판」 · 날짜)은 도장 항이 없고 몸통 견줌만 든다.
 
-**안 재는 것** — 곁말 없이 베낀 사본(이름이 같아도 곁말이 없으면 이 자에게는 남이다 — 그것은
-`drift_check` 류 재는 자의 몫) · 진본 뿌리가 그 나무의 최신 판인가(판을 찍기만 하고 묻지 않는다 — 찍힌 판이
+**안 재는 것** — git 나무가 아닌 진본 뿌리에서 곁말의 판과 뿌리의 판이 다른 사본의 손댐(위 「못 가른다」) ·
+곁말 없이 베낀 사본(이름이 같아도 곁말이 없으면 이 자에게는 남이다 — 그것은 `drift_check` 류 재는 자의 몫) · 진본 뿌리가 그 나무의 최신 판인가(판을 찍기만 하고 묻지 않는다 — 찍힌 판이
 그 물음의 재료다) · 곁말 밖에서 일부러 갈랐다고 선언한 파일(그 선언이 있으면 곁말도 없어야
 한다 — 둘 다 있으면 어긋남으로 뜬다, 그것이 맞다) · 곁말을 못 다는 `.githooks/` 배포본(가리킬
 `seeds/…` 자리가 없다 — 형제는 그 몸통만 들고 조각은 러너가 설정 저장소, 없으면 홈 씨앗에서 찾는다).
@@ -279,6 +284,8 @@ def compare(copy_text, source_text, start):
 
 # ── 도장 — 곁말의 판이 가리키는 진본과 사본이 맞나 ────────────────────────────
 STAMP_RE = re.compile(r"\(([0-9a-f]{7,40}) 판\)")
+# 진본과 같은 저장소에 사는 사본의 곁말(씨앗끼리 · 게이트웨이 씨앗의 두 사본) — 판을 따로 안 적고 지금 진본과 같다고 약속한다.
+SAME_TREE = "같은 저장소"
 
 
 def stamp_of(text, start):
@@ -391,6 +398,65 @@ def stamp_report(st):
              "도장 항이 없다 — 몸통 견줌만 든다")
 
 
+# ── 갈린 사본 가르기 — 손댄 것인가, 받을 판이 있는 것인가 ────────────────────────
+
+def _same_version(a, b):
+    """짧은 해시 둘이 같은 판인가 — 길이가 다를 수 있어 앞머리로 본다."""
+    return bool(a and b) and (a.startswith(b) or b.startswith(a))
+
+
+def triage(rows, seeds_root, ver):
+    """지금 진본과 갈린 사본들을 셋으로 가른다 — 견주는 자는 지금 진본이 아니라 **곁말이 적은 판**이다.
+
+    받는 것 — `survey()` 가 낸 갈린 것들 `[(파일, 곁말 줄, rel, 진본 경로, 갈린 줄)]` · 진본 뿌리 · 그 뿌리의 판(`_stamp`).
+    돌려주는 것 — `behind` [(이름, rel, 도장, 갈린 줄)] 곁말의 판 그대로라 받을 판이 있을 뿐인 사본 · `bad`
+    [(이름, rel, 갈린 줄, 까닭)] 곁말의 판과도 다른 사본 · `undecided` [(이름, rel, 까닭)] 어느 쪽인지 못 가른 사본.
+
+    갈래 —
+      · 곁말이 「같은 저장소 · 같은 판」이다 → `bad`. 지금 진본과 같다고 약속한 사본이다
+      · 곁말의 판이 해시가 아니다(판을 모르는 뿌리에서 `--receive` 가 적은 받은 날짜 · 릴리스 판 번호) → `undecided`.
+        그 판을 꺼낼 데가 없다
+      · 뿌리가 git 나무다 → 그 판의 진본을 꺼내 견준다. 같으면 `behind`, 다르면 `bad`, 그 판을 못 찾으면 `undecided`
+      · 뿌리가 git 나무가 아니다(홈 씨앗 · 설치본) → 뿌리의 판이 곁말의 판이면 지금 진본이 곧 그 판이라 `bad`,
+        아니면(또는 판 모름) 옛 판을 꺼낼 데가 없어 `undecided`
+    ⚠ 받을 판이 있다는 것은 받은 저장소의 결함이 아니다 — 진본이 앞서 간 것이라 빨강으로 세면 진본 저장소의 커밋마다
+      받은 저장소가 붉어진다. 손댄 사본만 빨강이다.
+    """
+    out = {"behind": [], "bad": [], "undecided": []}
+    top = _git_toplevel(seeds_root)
+    keyed = []
+    for p, start, rel, source, n in rows:
+        st = stamp_of(p.read_text(encoding="utf-8"), start)
+        if st is None and SAME_TREE in "\n".join(block(p.read_text(encoding="utf-8"), start)):
+            out["bad"].append((p.name, rel, n, f"곁말이 「{SAME_TREE}」이다 — 지금 진본과 같다고 약속한 사본이다"))
+        elif st is None:
+            out["undecided"].append((p.name, rel, "곁말의 판이 해시가 아니라(받은 날짜 · 릴리스 판) 그 판을 꺼낼 데가 없다"))
+        elif top is None:
+            if _same_version(st, ver):
+                out["bad"].append((p.name, rel, n, f"진본 뿌리가 곁말의 {st} 판인데 다르다"))
+            else:
+                out["undecided"].append((p.name, rel, f"진본 뿌리는 {ver or '판 모름'}, 곁말은 {st} 판이고 뿌리가 "
+                                                     "git 나무가 아니라 그 판을 꺼낼 데가 없다"))
+        else:
+            try:
+                inside = source.resolve().relative_to(top).as_posix()
+            except ValueError:
+                out["undecided"].append((p.name, rel, f"진본 {source} 이 나무 {top} 밖이다"))
+                continue
+            keyed.append((p, start, rel, n, st, f"{st}:{inside}"))
+    blobs = _git_blobs(top, sorted({k[5] for k in keyed})) if keyed else {}
+    for p, start, rel, n, st, key in keyed:
+        body = blobs.get(key)
+        if body is None:
+            out["undecided"].append((p.name, rel, f"{st} 판 — 이 나무에 그 판이나 그 판의 파일이 없다(얕은 클론이거나 "
+                                                 "판이 잘못 적혔다)"))
+        elif compare(p.read_text(encoding="utf-8"), body, start)[0]:
+            out["behind"].append((p.name, rel, st, n))
+        else:
+            out["bad"].append((p.name, rel, n, f"곁말의 {st} 판과도 다르다 — 손으로 고쳤거나 판이 틀렸다"))
+    return out
+
+
 # ── `.githooks/` 뿌리 찾기 — 곁 `exit_code_check.py` 가 불러 간다 ──────────────────
 
 def hooks_root(start):
@@ -472,6 +538,24 @@ def positive_control():
         got = _stamp(bare)
         report("판 파일이 있으면 그 첫 낱말이 판이고 날짜가 곁말로 선다",
                got[0] == "abc1234" and "2026-09-13" in got[1], [repr(got)])
+        # ── 갈린 사본 가르기 · git 나무가 아닌 뿌리 — 뿌리의 판이 곁말의 판이면 손댐이고, 아니면 못 가른다 ──
+        #    기대는 뜻에서 온다: 지금 진본이 곧 곁말의 판인데 다르면 그 차이는 사본에서 났다 · 판이 다르면 옛 판을
+        #    꺼낼 데가 없다. 이 둘이 없으면 홈 씨앗으로 도는 커밋 훅이 진본이 앞서 갈 때마다 붉어지거나(옛 판),
+        #    판이 같은 손댐까지 놓친다.
+        bsrc = bare / "check" / "_check"
+        bsrc.mkdir(parents=True)
+        (bsrc / "_part.py").write_text(SOURCE, encoding="utf-8")
+        rows = []
+        for st in ("abc1234", "def5678", "2026-09-13"):
+            c = tmp / f"bare_{st}.py"
+            c.write_text(_copy(SOURCE, [one[0].replace("abc1234", st), one[1]], mutate="X = 3"), encoding="utf-8")
+            rows.append((c, marker(c.read_text(encoding="utf-8"))[0], "seeds/check/_check/_part.py",
+                         bsrc / "_part.py", 1))
+        got = triage(rows, bare, "abc1234")
+        report("git 나무가 아닌 뿌리 — 뿌리의 판과 같은 판의 갈린 사본은 손댐 · 다른 판과 받은 날짜는 못 가른다",
+               [r[0] for r in got["bad"]] == ["bare_abc1234.py"]
+               and sorted(r[0] for r in got["undecided"]) == ["bare_2026-09-13.py", "bare_def5678.py"]
+               and not got["behind"], [repr(got)])
         tree = tmp / "git-root"
         tree.mkdir()
         head = _git_tree(tree)
@@ -503,6 +587,23 @@ def positive_control():
                        and got["ok"] == 1 and len(got["unknown"]) == 1, [repr(got)])
                 got = stamp_pass(good, bare)
                 report("git 나무가 아닌 뿌리에서는 도장을 못 쟀다고 말한다", not got["measured"], [repr(got)])
+                # ── 갈린 사본 가르기 · git 나무 — 견주는 자는 곁말의 판이다 ──
+                #    셋: 첫 판 그대로인 사본(진본만 앞서 갔다 → 받을 판) · 첫 판에서 손댄 사본(→ 어긋남) · 판 해시 없이
+                #    「같은 저장소 · 같은 판」인 사본(→ 지금 진본과 같아야 하니 어긋남). 받을 판을 빨강으로 세면 진본
+                #    저장소의 커밋마다 받은 저장소가 붉어지고, 손댐을 받을 판으로 세면 손으로 고친 사본이 조용히 산다.
+                rows = []
+                for tag, text in (
+                        ("behind", _copy(SOURCE, [one[0].replace("abc1234", v1), one[1]])),
+                        ("edited", _copy(SOURCE, [one[0].replace("abc1234", v1), one[1]], mutate="X = 3")),
+                        ("nohash", _copy(SOURCE, [one[0].replace("abc1234", "같은 저장소 · 같은"), one[1]]))):
+                    c = tree / f"drift_{tag}.py"
+                    c.write_text(text, encoding="utf-8")
+                    rows.append((c, marker(text)[0], "seeds/check/_check/_part.py", gsrc / "_part.py", 1))
+                got = triage(rows, tree / "seeds", v2)
+                report("git 나무 — 곁말의 판 그대로면 받을 판 · 그 판에서 손댔거나 판 해시가 없으면 어긋남",
+                       [r[0] for r in got["behind"]] == ["drift_behind.py"]
+                       and sorted(r[0] for r in got["bad"]) == ["drift_edited.py", "drift_nohash.py"]
+                       and not got["undecided"], [repr(got)])
             else:
                 edge("**도장 갈래는 못 쟀다** — 임시 나무에 커밋을 못 세웠다")
         else:
@@ -535,7 +636,8 @@ def collect(check_dir):
 
 
 def survey(found, seeds_root):
-    """(어긋남들, 같음 수, 진본 없음들, 경로 못 읽음들, 맞은 것들 [(파일, 곁말 줄, rel, 진본 경로)]).
+    """(지금 진본과 갈린 것들 [(파일, 곁말 줄, rel, 진본 경로, 갈린 줄)], 같음 수, 진본 없음들, 경로 못 읽음들,
+    맞은 것들 [(파일, 곁말 줄, rel, 진본 경로)]). 갈린 것을 손댐 · 받을 판으로 가르는 자는 `triage()` 다.
 
     같은 사본마다 `= 같음` 한 줄을 찍는다 — 판정은 부르는 쪽이 세운다.
     """
@@ -555,7 +657,7 @@ def survey(found, seeds_root):
             good.append((p, start, rel, source))
             print(f"  = 같음   {p.name}  ← {rel}")
         else:
-            bad.append((p.name, rel, n))
+            bad.append((p, start, rel, source, n))
     return bad, same, missing, unreadable, good
 
 
@@ -590,39 +692,46 @@ def main(argv):
     print("\n--- §2 실물 전수 — 곁말 든 사본이 진본과 같은가")
     ver, where = _stamp(seeds_root)
     print(f"진본 판 — {ver or '모름'} ({where})")
-    bad, same, missing, unreadable, good = survey(found, seeds_root)
+    drift, same, missing, unreadable, good = survey(found, seeds_root)
     stamps = stamp_pass(good, seeds_root)
-    if (bad or stamps["stale"]) and "--receive" in argv:
+    if (drift or stamps["stale"]) and "--receive" in argv:
         # 곁말의 판 자리는 사람이 읽는 영수증이라 판을 모르면 받은 날짜를 적는다 — 판정 줄은 그 날짜를
         # 안 쓴다(돌린 날은 진본의 판이 아니다 · `_stamp()` 머리말).
         stamp = ver or datetime.date.today().isoformat()
-        for name, rel, _n in bad:
-            copy_path = check_dir / name
-            at = marker(copy_path.read_text(encoding="utf-8"))
-            receive(copy_path, Path(seeds_root) / Path(rel).relative_to("seeds"), at[0], stamp)
-            print(f"  ← 받았다 {name}  ← {rel} ({stamp} 판)")
+        # 손댄 사본 · 받을 판 · 못 가른 것을 가리지 않고 받는다 — 받는 손의 뜻은 「이 뿌리의 지금 판으로 맞춘다」다
+        for copy_path, at, rel, source, _n in drift:
+            receive(copy_path, source, at, stamp)
+            print(f"  ← 받았다 {copy_path.name}  ← {rel} ({stamp} 판)")
         for name, rel, old, _n in stamps["stale"]:
             copy_path = check_dir / name
             at = marker(copy_path.read_text(encoding="utf-8"))
             receive(copy_path, Path(seeds_root) / Path(rel).relative_to("seeds"), at[0], stamp)
             print(f"  ← 도장 올림 {name}  ({old} → {stamp} 판)")
         n_stale = len(stamps["stale"])
-        edge(f"**받았다** — 어긋난 사본 {len(bad)}장을 진본으로 놓고 옛 도장 {n_stale}장을 {stamp} 판으로 올렸다. 아래는 받은 뒤의 판정이다")
+        edge(f"**받았다** — 갈린 사본 {len(drift)}장을 진본으로 놓고 옛 도장 {n_stale}장을 {stamp} 판으로 올렸다. 아래는 받은 뒤의 판정이다")
         # 받으면 곁말 줄이 밀린다 — 다시 걷어야 그 뒤의 견줌이 제 자리를 본다
-        bad, same, missing, unreadable, good = survey(collect(check_dir), seeds_root)
+        drift, same, missing, unreadable, good = survey(collect(check_dir), seeds_root)
         stamps = stamp_pass(good, seeds_root)
+    split = triage(drift, seeds_root, ver)
+    bad, behind, undecided = split["bad"], split["behind"], split["undecided"]
 
     # 센티널 — 곁말은 있는데 견준 것이 0 이면 어긋남도 0 이라 아무것도 안 잰 초록이 난다. 진본을 한 장도
     # 못 찾은 판(홈에 씨앗이 안 깔린 PC · 뿌리를 잘못 준 판)이 그렇다 — 그 판은 「못 쟀다」다.
-    if not (same or bad):
-        raise Unmeasured(f"[안 잼] 곁말 든 파일 {len(missing) + len(unreadable)}장 중 진본과 견준 것이 "
-                         f"0 이다 — 진본 없음 {len(missing)} · 경로 못 읽음 {len(unreadable)}. "
-                         f"진본 뿌리 {seeds_root} 가 맞는가")
-    for name, rel, n in bad:
-        report(f"{name} — 진본 {rel} 과 어긋남", False, [f"갈린 줄 {n}"])
-    report(f"곁말 든 사본이 진본과 같다 (같음 {same} · 어긋남 {len(bad)} · "
-           f"진본 판 {ver or '모름'})", not bad)
+    if not (same or bad or behind):
+        raise Unmeasured(f"[안 잼] 곁말 든 파일 {len(found)}장 중 손댐을 가른 것이 0 이다 — 진본 없음 {len(missing)} · "
+                         f"경로 못 읽음 {len(unreadable)} · 판이 달라 못 가름 {len(undecided)}. "
+                         f"진본 뿌리 {seeds_root} 가 맞는가 — 진본 저장소의 `seeds` 를 `--seeds` 로 주면 가른다")
+    for name, rel, n, why in bad:
+        report(f"{name} — 진본 {rel} 과 어긋남", False, [f"갈린 줄 {n} · {why}"])
+    report(f"곁말 든 사본이 곁말의 판과 같다 — 손댄 사본이 없다 (지금 판과 같음 {same} · 받을 판이 있음 "
+           f"{len(behind)} · 어긋남 {len(bad)} · 못 가름 {len(undecided)} · 진본 판 {ver or '모름'})", not bad)
     stamp_report(stamps)
+    for name, _rel, st, n in behind:
+        edge(f"**받을 판이 있다** — {name}: 곁말의 {st} 판 그대로이고 지금 진본({ver or '판 모름'})과 갈린 줄 {n}. "
+             "이 저장소의 결함이 아니다 — 받는 손은 `--receive`")
+    for name, _rel, why in undecided:
+        edge(f"**손댄 것인지 받을 판인지 못 가른다** — {name}: {why}. 판정이 아니라 **안 잰 자리**다 — 진본 저장소의 "
+             "`seeds` 를 `--seeds` 로 주면 가른다")
 
     for row in missing:
         edge(f"**진본이 없다** — {row}. 곁말이 가리키는 자리에 파일이 없다 — 옮겨졌거나 곁말이 낡았다")
@@ -632,7 +741,7 @@ def main(argv):
     if missing or unreadable:
         edge("진본이 없거나 경로를 못 읽은 파일은 판정이 아니라 **안 잰 자리**다 — 위 건수에서 빠져 있다")
 
-    edge(f"잰 범위 — `{check_dir.name}/` 의 곁말 든 파일 {same + len(bad)}장. "
+    edge(f"잰 범위 — `{check_dir.name}/` 의 곁말 든 파일 {same + len(bad) + len(behind)}장. "
          "곁말 없이 베낀 사본은 안 든다 — 그것은 갈림을 세우는 자(`drift_check` 류)의 몫이다")
     if ver is None:
         edge(f"**진본의 판을 모른다** — {where}. 이 판정은 「지금 이 뿌리와 같다」까지고 "
@@ -646,7 +755,7 @@ def main(argv):
     print()
     if fails():
         print(f"{len(fails())}건 어긋남 (진본 판 {ver or '모름'}) — {' · '.join(fails())}")
-        print("고치는 법: 진본에서 다시 받는다. 사본을 고쳐야 했다면 그 고침은 진본으로 올린다")
+        print("고치는 법: 진본에서 다시 받는다(`--receive`). 사본을 고쳐야 했다면 그 고침은 진본으로 올린다")
         return EXIT_MISMATCH
     print(f"전부 통과 (판정 {len(passes())}건 — 양성 대조 {self_test} · 실물 전수 "
           f"{len(passes()) - self_test}) — 견준 진본 판 {ver or '모름'}")

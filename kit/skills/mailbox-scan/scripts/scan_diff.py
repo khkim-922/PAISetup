@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import json
 import pathlib
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -58,12 +57,16 @@ class Journal:
 
     @classmethod
     def load(cls, home: pathlib.Path) -> Journal:
+        """정리 스킬의 기록을 읽는다 — 있는데 못 읽으면 `st.Unreadable` 이 그대로 나간다(판이 멈춘다): 잡아 둔 바꿈을 빈 것으로 읽으면 비서가
+        하는 중인 옮김을 사람이 한 일로 바뀜 기록에 굳힌다. 글이 깨진 잡아 둔 바꿈은 없는 것으로 본다(기다려도 안 바뀐다)."""
         rows, _ = st.read_jsonl(home / TIDY_LOG_FILE)
         try:
-            held = json.loads((home / TIDY_HELD_FILE).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            held = st.read_json(home / TIDY_HELD_FILE)
+        except st.Unreadable as exc:
+            if not exc.broken:
+                raise
             held = None
-        return cls(rows, held if isinstance(held, dict) else None)
+        return cls(rows, held)
 
     def _within(self, since: datetime | None) -> list[dict[str, Any]]:
         """`since` 뒤의 기록 — 때를 못 읽은 기록은 남긴다(사람 탓으로 안 돌린다). `since` 가 없으면 다."""

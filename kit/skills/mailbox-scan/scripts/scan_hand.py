@@ -128,7 +128,7 @@ def find_hand(explicit: str | None = None) -> pathlib.Path:
     raise HandMissing("회사 메일 손(company-mail 의 scripts/mail.py)을 못 찾았다 — 본 자리: " + " · ".join(tried))
 
 
-def _quiet() -> dict[str, Any]:
+def quiet() -> dict[str, Any]:
     """창 없는 실행(작업 스케줄러의 pythonw)에서 손 · 손이 띄우는 node 가 콘솔 창을 안 띄우게 — 손에 창 없는 콘솔을 준다."""
     return {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
@@ -157,7 +157,7 @@ def call(hand: pathlib.Path, args: list[str], timeout: float = HAND_TIMEOUT_S) -
     command = " ".join(a for a in args[:1])
     try:
         done = subprocess.run([sys.executable, "-X", "utf8", "-I", str(hand), *args], capture_output=True, timeout=timeout,
-                              env=_hand_env(), stdin=subprocess.DEVNULL, **_quiet())
+                              env=_hand_env(), stdin=subprocess.DEVNULL, **quiet())
     except subprocess.TimeoutExpired:
         return _timed_out(timeout, command)
     return _called(done.returncode, done.stdout, command)
@@ -176,7 +176,7 @@ class Served:
 
     def _start(self) -> None:
         self.proc = subprocess.Popen([sys.executable, "-X", "utf8", "-I", str(self.hand), "serve"], stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=_hand_env(), **_quiet())
+                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=_hand_env(), **quiet())
         self.answers = queue.Queue()
         threading.Thread(target=_read_answers, args=(self.proc.stdout, self.answers), daemon=True).start()
 
