@@ -8531,6 +8531,8 @@ $FreeSkills = [ordered]@{
   'mailbox-work'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   'mailbox-scan'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   'mailbox-tidy'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  # 회사 일의 바탕 — 사내 세션 · 메일함 주소 · 사용자 폴더 · 오늘 보고 · 업무 파일을 한 번에 낸다. 메일 손과 업무 파악 손을 불러 쓰므로 같은 묶음 · 같은 조건으로 선다
+  'company-work'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 맡기기의 앞문 — 누구에게 맡기나 · 작업 지시서(0095)
   'agent-envelope'           = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # Anthropic 공식 문서 스킬 넷 — 오피스 · PDF 를 읽고 짓는다. 짐이 상류 한 판(Apache 2.0)을 싣는다. Claude 는 같은 스킬을 「Claude
