@@ -139,6 +139,8 @@ $configRepoRoot = Join-Path $env:USERPROFILE 'repos'
 # ⚠ **홈 씨앗 몸통의 `WORK_DIR` 과 짝이다** — 몸통이 신뢰를 거는 폴더 이름이 그 값이다. 같은가는 설정 저장소의
 #   `scripts/check-home-hook.sh` 가 잰다.
 $WorkDirName = 'work'
+# 작업 폴더의 자리를 남기는 사용자 환경값 — 보고 창의 여는 손과 맡긴 일을 띄우는 손이 이 이름 하나로 작업 폴더를 안다(`Set-WorkDirVar`).
+$WorkDirVar = 'PAISETUP_WORK'
 
 # ── 회차를 넘기는 기록의 자리 — **사람이 고른 것만 든다** (PAISetup #45) ────────────────────────
 # 설치 창 · 콘솔 · 로그온 · 밤 자동 실행이 다 이 자리를 몸통의 한 손(`Read-ChoiceRecord`)으로 읽는다 — 창은 `-Describe` 의
@@ -277,8 +279,10 @@ $Apps = @(
 #   붙어 사이드바를 내고, 짝인 `agy`(`~/.gemini/bin/agy.exe` · 188MB · `AGY_ENABLE_HUB=1` 로 띄운다)를 스스로 받는다. 설치기는
 #   그 바이너리를 안 심는다. 사외에서만 깐다(`When='offsite'`) — 사이드바는 Google 계정 · Google Cloud(법인) 로그인을 요구해 회사 키로는
 #   안 서고, 회사 키로 게이트웨이에 붙는 것은 터미널의 안티그래비티 CLI 다(「사내 연결」의 「Codex · 안티그래비티 설정」 칸).
+# `OpenUri` — 바깥(일일 보고 창 등)이 `vscode://<확장>/…` 주소로 그 확장을 부르는 행이다. VS Code 는 그 주소를 열 때마다 확장마다
+#   묻는데, 고른 확장의 일이 그 물음 없이 끝까지 서게 VS Code 사용자 설정에 묻지 않을 확장으로 적는다(`Add-VsCodeUriConsent`).
 $Extensions = @(
-  @{ Key='claude';      Id='anthropic.claude-code';                  Label='클로드 확장'                }
+  @{ Key='claude';      Id='anthropic.claude-code';                  Label='클로드 확장'; OpenUri=$true }
   @{ Key='codex';       Id='openai.chatgpt';                         Label='Codex 확장'                 }
   @{ Key='antigravity'; Id='Google.google-antigravity';              Label='안티그래비티 확장'; When='offsite' }
 )
@@ -6749,6 +6753,226 @@ function Get-ToolAutoRunCheck($Row) {
 
 #endregion 도구별 · 묻지 않고 돌기
 
+#region 도구별 · VS Code 사용자 설정 — 고른 확장의 주소를 VS Code 가 묻지 않고 열게 사용자 설정에 이름을 더하고, 끝 검증이 되읽는다
+
+# VS Code 가 바깥 주소(`vscode://<확장>/…`)를 묻지 않고 넘기는 확장 목록의 설정 키. VS Code 는 이 목록이나 제 저장소(확인 창의 「Do not ask me
+#   again for this extension」 칸이 쓰는 자리)에 든 확장이면 묻지 않는다. 목록은 확장 이름을 소문자로 견준다 — VS Code 가 이름을 소문자 열쇠로
+#   바꿔 찾는다. ⚠ 앱 범위 설정이라 VS Code 프로필을 써도 기본 프로필의 `User\settings.json` 에서만 읽힌다 — 프로필 폴더에 적으면 안 먹는다.
+$VsCodeUriConsentKey = 'extensions.confirmedUriHandlerExtensionIds'
+# 우리가 새로 여는 줄의 들여쓰기 — VS Code 가 새 설정 파일을 짓는 꼴(빈칸 넷)이다. 이미 줄이 있으면 그 줄의 들여쓰기를 따른다.
+$JsoncIndent = '    '
+# JSON-with-comments 글의 낱말 하나 — 빈칸 · 주석(`//` · `/* */`) · 글 · 문장부호 · 수와 참거짓과 빈 값. JSON 빈칸이 아닌 글자 · 닫히지 않은
+#   글이나 주석 · 이스케이프가 틀린 글은 어느 갈래에도 안 걸려 거기서 읽기가 멈춘다.
+$JsoncTokenPattern = '\G(?:(?<w>[ \t\r\n]+)|(?<c>//[^\r\n]*|/\*[\s\S]*?\*/)|(?<s>"(?:[^"\\\x00-\x1F]|\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4}))*")|' +
+                     '(?<p>[{}\[\]:,])|(?<v>(?:-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null)(?![A-Za-z0-9_.$])))'
+
+# VS Code 사용자 설정 파일 — 원본은 VS Code 가 사용자 데이터 자리를 고르는 규칙(`userDataPath.ts` — `VSCODE_APPDATA`, 없으면 `APPDATA` 아래
+#   제품 이름 `Code`)이고, 그 아래 `User\settings.json` 이다. 휴대판(`data` 폴더) · `--user-data-dir` 은 안 따른다 — 깐 VS Code 의 기본 자리만 본다.
+function Get-VsCodeUserSettings {
+  $base = if ($env:VSCODE_APPDATA) { $env:VSCODE_APPDATA } elseif ($env:APPDATA) { $env:APPDATA } else { [IO.Path]::Combine($env:USERPROFILE, 'AppData\Roaming') }
+  # 글자로만 잇는다 — `Join-Path` 는 없는 드라이브를 가리키는 값에서 던진다
+  return [IO.Path]::Combine($base, 'Code\User\settings.json')
+}
+
+# JSON-with-comments 글을 낱말로 나눈다 — 받는 것: 글. 내는 것 — @{ Tokens = 뜻 있는 낱말 목록(@{ K = 문장부호 그 글자 · 글 's' · 값 'v'; At; End;
+#   T = 그 글자들 }); Stop = 읽기가 멈춘 자리(다 읽었으면 글 길이) }. 빈칸 · 주석은 목록에 안 든다.
+function Get-JsoncTokens([string]$Text) {
+  $toks = New-Object System.Collections.Generic.List[object]
+  $stop = 0
+  foreach ($m in [regex]::Matches($Text, $JsoncTokenPattern)) {
+    $stop = $m.Index + $m.Length
+    foreach ($g in 's', 'p', 'v') {
+      if ($m.Groups[$g].Success) { $toks.Add(@{ K = $(if ($g -eq 'p') { $m.Value } else { $g }); At = $m.Index; End = $stop; T = $m.Value }) }
+    }
+  }
+  return @{ Tokens = $toks; Stop = $stop }
+}
+
+# JSON-with-comments 글의 맨 위 표와 그 안의 한 키를 찾는다 — VS Code 설정 파일의 꼴(주석 · 꼬리 쉼표)을 받는다. 글은 안 고친다.
+# 받는 것 — 글 · 키(따옴표 안의 글자 그대로 견준다 — 이스케이프로 쓴 키는 다른 키로 본다).
+# 내는 것 — @{ Why = 못 읽은 까닭(읽었으면 빈 글); Empty = 뜻 있는 낱말이 없다(빈 글 · 빈칸 · 주석뿐); Top = 맨 위 표의 마디; Hits = 그 키를 든 맨
+#   위 항목의 값 마디들; Count = 뜻 있는 낱말 수 }. 마디는 @{ Kind('{' · '[' · 's' · 'v'); At; End; Close = 닫는 괄호 자리; Items = 값 마디들;
+#   KeyAts = 표 항목의 키 자리들; Comma = 마지막 항목 뒤 꼬리 쉼표의 자리(없으면 -1); Text = 글 · 값 마디의 글자 }.
+# 엄격한 쪽으로 읽는다 — 읽기가 멈춘 글 · 맨 위가 표가 아닌 글 · 표 뒤에 남은 글은 못 읽은 것이다. VS Code 는 그런 파일도 될 수 있는 데까지
+#   읽지만, 사람의 파일은 더할 자리를 확신할 때만 고친다.
+function Read-JsoncTop([string]$Text, [string]$Key) {
+  $res = @{ Why = ''; Empty = $false; Top = $null; Hits = @(); Count = 0 }
+  $lex = Get-JsoncTokens $Text
+  if ($lex.Stop -ne $Text.Length) {
+    $res.Why = "$($Text.Substring(0, $lex.Stop).Split("`n").Count) 번째 줄을 JSON 으로 읽지 못함"
+    return $res
+  }
+  $toks = $lex.Tokens
+  $res.Count = $toks.Count
+  if (-not $toks.Count) { $res.Empty = $true; return $res }
+  $st = @{ I = 0 }
+  function Read-JsoncNode {
+    if ($st.I -ge $toks.Count) { throw '글이 중간에 끝남' }
+    $t = $toks[$st.I]; $st.I++
+    if ($t.K -ceq 's' -or $t.K -ceq 'v') { return @{ Kind = $t.K; At = $t.At; End = $t.End; Text = $t.T } }
+    if ($t.K -ne '{' -and $t.K -ne '[') { throw "뜻밖의 「$($t.T)」" }
+    $close = if ($t.K -eq '{') { '}' } else { ']' }
+    $node = @{ Kind = $t.K; At = $t.At; End = -1; Close = -1; Comma = -1
+               Items = (New-Object System.Collections.Generic.List[object]); KeyAts = (New-Object System.Collections.Generic.List[int])
+               Keys = (New-Object System.Collections.Generic.List[string]) }
+    $sep = $false
+    while ($true) {
+      if ($st.I -ge $toks.Count) { throw "「$($t.T)」 이 닫히지 않음" }
+      $n = $toks[$st.I]
+      if ($n.K -eq $close) { $st.I++; $node.Close = $n.At; $node.End = $n.End; return $node }
+      if ($sep) {
+        if ($n.K -ne ',') { throw "「,」 가 있어야 할 자리에 「$($n.T)」" }
+        $st.I++; $node.Comma = $n.At; $sep = $false
+        continue
+      }
+      $node.Comma = -1
+      if ($t.K -eq '{') {
+        if ($n.K -cne 's') { throw "키가 있어야 할 자리에 「$($n.T)」" }
+        $st.I++
+        if ($st.I -ge $toks.Count -or $toks[$st.I].K -ne ':') { throw "키 $($n.T) 뒤에 「:」 가 없음" }
+        $st.I++
+        $node.Keys.Add($n.T); $node.KeyAts.Add($n.At)
+      }
+      $node.Items.Add((Read-JsoncNode))
+      $sep = $true
+    }
+  }
+  try {
+    $top = Read-JsoncNode
+    if ($top.Kind -ne '{') { throw '맨 위가 표({ })가 아님' }
+    if ($st.I -ne $toks.Count) { throw "표 뒤에 글이 남음(「$($toks[$st.I].T)」)" }
+  } catch { $res.Why = "JSON 으로 읽지 못함 — $($_.Exception.Message)"; return $res }
+  $res.Top = $top
+  $want = ConvertTo-PlainJson $Key
+  $res.Hits = @(for ($i = 0; $i -lt $top.Keys.Count; $i++) { if ($top.Keys[$i] -ceq $want) { $top.Items[$i] } })
+  return $res
+}
+
+# 표 · 목록 마디의 끝에 항목 하나를 끼운다 — 받는 것: 글 · 마디(`Read-JsoncTop` 의 꼴) · 끼울 항목의 글 · 줄끝. 내는 것 — @{ Text = 끼운 글; Added =
+#   끼운 글자들만 이은 것(뜻 있는 낱말을 세는 데 쓴다) }. 끼우기만 한다 — 원래 글자는 하나도 안 지우고 안 옮긴다.
+#   · 항목이 있으면 마지막 항목 뒤에 쉼표를 붙이고(꼬리 쉼표가 이미 있으면 그 뒤에서) 새 항목을 잇는다. 마지막 항목의 줄이 거기서 끝나면(그 뒤에
+#     같은 줄 주석만 있어도) 그 줄 끝에 줄을 바꿔 마지막 항목의 들여쓰기로 세우고, 아니면 같은 줄에 잇는다 — 같은 줄 주석이 새 항목으로 안 넘어간다
+#   · 빈 목록은 괄호 안에 바로, 빈 표는 줄을 바꿔 세운다
+function Add-JsoncItem([string]$Text, $Node, [string]$Item, [string]$Eol) {
+  $lineHead = { param([int]$At) $Text.LastIndexOf("`n", [Math]::Max($At - 1, 0)) + 1 }
+  if (-not $Node.Items.Count) {
+    if ($Node.Kind -eq '[') { $add = $Item; $p = $Node.At + 1; return @{ Text = $Text.Insert($p, $add); Added = $add } }
+    $h = & $lineHead $Node.At
+    $pad = $Text.Substring($h, $Node.At - $h) -replace '[^ \t]', ' '
+    $inner = $Text.Substring($Node.At + 1, $Node.Close - $Node.At - 1)
+    $add = $Eol + $pad + $JsoncIndent + $Item + $(if ($inner.Contains("`n")) { '' } else { $Eol + $pad })
+    return @{ Text = $Text.Insert($Node.At + 1, $add); Added = $add }
+  }
+  $first = if ($Node.Kind -eq '{') { $Node.KeyAts[$Node.KeyAts.Count - 1] } else { $Node.Items[$Node.Items.Count - 1].At }
+  $p = if ($Node.Comma -ge 0) { $Node.Comma + 1 } else { $Node.Items[$Node.Items.Count - 1].End }
+  $comma = if ($Node.Comma -ge 0) { '' } else { ',' }
+  $q = $p + [regex]::Match($Text.Substring($p), '^(?:[ \t]+|//[^\r\n]*|/\*(?:(?!\*/)[^\r\n])*\*/)*').Length
+  if ($q -lt $Text.Length -and ($Text[$q] -eq "`r" -or $Text[$q] -eq "`n")) {
+    $h = & $lineHead $first
+    $pad = $Text.Substring($h, $first - $h)
+    if ($pad -cnotmatch '^[ \t]*$') {
+      $ho = & $lineHead $Node.At
+      $pad = ($Text.Substring($ho, $Node.At - $ho) -replace '[^ \t]', ' ') + $JsoncIndent
+    }
+    $tail = $Eol + $pad + $Item
+    return @{ Text = $Text.Substring(0, $p) + $comma + $Text.Substring($p, $q - $p) + $tail + $Text.Substring($q); Added = $comma + $tail }
+  }
+  $add = $comma + ' ' + $Item
+  return @{ Text = $Text.Insert($p, $add); Added = $add }
+}
+
+# VS Code 사용자 설정의 바이트를 읽어 묻지 않을 확장 목록을 낸다 — 받는 것: 바이트(파일이 없으면 $null). 내는 것 — @{ Why = 안전하게 못 읽은 까닭
+#   (읽었으면 빈 글); Text; Bom; Eol = 그 파일의 줄끝(줄이 하나뿐이거나 없는 파일은 CRLF); Doc = `Read-JsoncTop` 의 답; Have = 목록에 든 이름들(따옴표째) }.
+# 못 읽은 것으로 보는 판 — UTF-8 이 아님 · JSON 으로 못 읽음 · 그 키가 두 번 · 그 키의 값이 목록이 아님 · 목록에 글이 아닌 값.
+function Read-VsCodeSettings($Bytes) {
+  $r = @{ Why = ''; Text = ''; Bom = $false; Eol = "`r`n"; Doc = $null; Have = @() }
+  if ($null -ne $Bytes) {
+    $b = [byte[]]$Bytes; $skip = 0
+    if ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF) { $r.Bom = $true; $skip = 3 }
+    try { $r.Text = (New-Object Text.UTF8Encoding($false, $true)).GetString($b, $skip, $b.Length - $skip) }
+    catch { $r.Why = 'UTF-8 글이 아님'; return $r }
+    if (-not $r.Text.Contains("`r`n") -and $r.Text.Contains("`n")) { $r.Eol = "`n" }
+  }
+  $r.Doc = Read-JsoncTop $r.Text $VsCodeUriConsentKey
+  if ($r.Doc.Why) { $r.Why = $r.Doc.Why; return $r }
+  $hits = @($r.Doc.Hits)
+  if ($hits.Count -gt 1) { $r.Why = "$VsCodeUriConsentKey 키가 $($hits.Count)번 있음"; return $r }
+  if ($hits.Count) {
+    if ($hits[0].Kind -ne '[') { $r.Why = "$VsCodeUriConsentKey 의 값이 목록이 아님"; return $r }
+    if (@($hits[0].Items | Where-Object { $_.Kind -cne 's' }).Count) { $r.Why = "$VsCodeUriConsentKey 목록에 글이 아닌 값이 있음"; return $r }
+    $r.Have = @($hits[0].Items | ForEach-Object { $_.Text })
+  }
+  return $r
+}
+
+# VS Code 사용자 설정에 묻지 않을 확장을 더한다 — 받는 것: 파일 자리 · 확장 이름들(소문자로 적는다). 사람의 설정 · 주석 · 빈칸 · 줄끝 · BOM 은 바이트째
+#   두고 우리 글자만 끼운다 — 키가 없으면 맨 위 표의 끝에 그 키 한 줄, 있으면 그 목록 끝에 빠진 이름(`Add-JsoncItem`). 파일이 없거나 뜻 있는 글자가
+#   없으면 그 키 하나를 든 표를 짓는다(주석은 그 앞에 둔다).
+# 안전하게 못 읽는 파일(`Read-VsCodeSettings` 의 Why)은 안 고친다. 끼운 글은 곁 파일에서 다시 읽어 — 읽히고, 그 키가 하나이고, 이름이 다 들고, 뜻 있는
+#   낱말이 끼운 만큼만 늘었을 때만 끼운다. 쓰기는 갈아 끼우는 손(`Write-FileSafely`)이 든다 — 링크 · 재는 사이 바뀐 파일은 안 덮는다.
+# 내는 것 — @{ Did = kept(다 들었다) · made(파일을 지었다) · added(더했다) · left(안 고쳤다) · 그 밖은 `Write-FileSafely` 의 것(linked · raced · overrun ·
+#   refused); Why; Path }. 화면 줄은 부르는 쪽이 든다.
+function Add-VsCodeUriConsent([string]$Path, [string[]]$Ids) {
+  $vcWant = @($Ids | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique)
+  $vcOld = $null
+  if (Test-Path -LiteralPath $Path -PathType Leaf) {
+    try { $vcOld = [IO.File]::ReadAllBytes($Path) } catch { return @{ Did = 'left'; Why = "읽지 못함 ($(Say-Why $_))"; Path = $Path } }
+  }
+  $cur = Read-VsCodeSettings $vcOld
+  if ($cur.Why) { return @{ Did = 'left'; Why = $cur.Why; Path = $Path } }
+  $miss = @($vcWant | Where-Object { $cur.Have -cnotcontains (ConvertTo-PlainJson $_) })
+  if (-not $miss.Count) { return @{ Did = 'kept'; Path = $Path } }
+  $names = (@($miss | ForEach-Object { ConvertTo-PlainJson $_ }) -join ', ')
+  $member = (ConvertTo-PlainJson $VsCodeUriConsentKey) + ': [' + $names + ']'
+  $t = $cur.Text; $eol = $cur.Eol
+  if ($cur.Doc.Empty) {
+    $add = $(if ($t.Length -and -not $t.EndsWith("`n")) { $eol } else { '' }) + '{' + $eol + $JsoncIndent + $member + $eol + '}' + $eol
+    $ins = @{ Text = $t + $add; Added = $add }
+  } elseif (@($cur.Doc.Hits).Count) {
+    $ins = Add-JsoncItem $t @($cur.Doc.Hits)[0] $names $eol
+  } else {
+    $ins = Add-JsoncItem $t $cur.Doc.Top $member $eol
+  }
+  $vcCount = $cur.Doc.Count + (Get-JsoncTokens $ins.Added).Tokens.Count
+  $check = {
+    param($side)
+    $r = Read-VsCodeSettings ([IO.File]::ReadAllBytes($side))
+    if ($r.Why -or @($r.Doc.Hits).Count -ne 1 -or $r.Doc.Count -ne $vcCount) { return $false }
+    return (-not @($vcWant | Where-Object { $r.Have -cnotcontains (ConvertTo-PlainJson $_) }).Count)
+  }
+  $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($ins.Text)
+  if ($cur.Bom) { $bytes = [byte[]](@(0xEF, 0xBB, 0xBF) + $bytes) }
+  $w = Write-FileSafely $Path $bytes $vcOld -Check $check
+  $did = if ($w.Did -eq 'written') { if ($null -eq $vcOld) { 'made' } else { 'added' } } else { $w.Did }
+  return @{ Did = $did; Why = $w.Why; Path = $Path }
+}
+
+# 끝 검증 칸 — 고른 확장의 주소를 VS Code 가 묻지 않고 여나를 그 설정 파일에서 다시 읽어 잰다. 받는 것: 파일 자리 · 확장 이름들. 내는 것 — 칸 하나.
+#   · 다 들었다 — 선 칸
+#   · 사람의 파일이라 일부러 안 고친 판(안전하게 못 읽음 · 링크) — 알림 칸(`Advice`)에 까닭과 사람이 할 길을 댄다. 그 확장은 처음 한 번 묻는다
+#   · 읽히는데 없다 — 진 칸(「VS Code 확장」 걸음이 못 썼거나 그 걸음이 멎었다)
+function Get-VsCodeUriConsentCheck([string]$Path, [string[]]$Ids) {
+  $ids = @($Ids | ForEach-Object { $_.ToLowerInvariant() } | Select-Object -Unique)
+  $label = "VS Code 가 확장 주소를 묻지 않고 엶 ($($ids -join ', '))"
+  # 길은 둘이다 — 그 파일에 한 줄을 넣으면 이 칸이 선다. 묻는 창의 칸은 VS Code 제 저장소에 적혀 물음은 멎지만 이 칸은 그 파일만 읽어 남는다
+  $fix = "$Path 에 $(ConvertTo-PlainJson $VsCodeUriConsentKey): [$(@($ids | ForEach-Object { ConvertTo-PlainJson $_ }) -join ', ')] 를 직접 넣으세요 " +
+         "(처음 열 때 VS Code 가 묻는 창에서 「Do not ask me again for this extension」 을 켜고 Open 을 눌러도 물음은 멎지만 이 줄은 남습니다)"
+  $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+  $linked = $item -and (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or [string]$item.LinkType -ceq 'HardLink')
+  $b = $null
+  if ($item) {
+    try { $b = [IO.File]::ReadAllBytes($Path) } catch { return @{ Name = "$label — 설정 파일을 읽지 못함 ($(Say-Why $_)) · $fix"; Ok = $false; Advice = $true } }
+  }
+  $r = Read-VsCodeSettings $b
+  if ($r.Why) { return @{ Name = "$label — 설정 파일을 안전하게 고칠 수 없어 그대로 둠: $($r.Why) · $fix"; Ok = $false; Advice = $true } }
+  $miss = @($ids | Where-Object { $r.Have -cnotcontains (ConvertTo-PlainJson $_) })
+  if (-not $miss.Count) { return @{ Name = $label; Ok = $true } }
+  if ($linked) { return @{ Name = "$label — 설정 파일이 링크라 고치지 않음 · $fix"; Ok = $false; Advice = $true } }
+  return @{ Name = "$label — $Path 에 없음 · $fix"; Ok = $false }
+}
+
+#endregion 도구별 · VS Code 사용자 설정
+
 #region 도구별 · 로컬 프록시 — 살았나 · 문을 여나 재고, 끄고, 돌릴 파이썬과 판 번호를 가린다
 
 # 로컬 프록시의 건강 답(JSON)을 3초 안에 받아 낸다 — 못 받으면 `$null`.
@@ -7493,6 +7717,27 @@ function New-WorkDir([string]$Root, [string[]]$RepoUrls) {
     Write-Host "  ! 작업 폴더를 만들지 못함 — $(Say-Why $_)" -ForegroundColor Yellow
     return ''
   }
+}
+
+# 작업 폴더의 자리를 사용자 환경값(`$WorkDirVar`)으로 남긴다 — 이 값의 원본은 설치기다. 읽는 쪽(보고 창의 여는 손 · 맡긴 일을 띄우는 손)은 경로를
+#   제 안에 안 든다. 받는 것 — 이번에 세운 작업 폴더(`New-WorkDir` 의 답 — 못 세웠으면 빈 글). 내는 것 없음.
+#   · 세웠으면 그 경로를 심는다 — 다른 값이 있으면 덮는다(다른 `PAISETUP_*` 값과 같다). 홈 폴더가 바뀌어 자리가 옮겨 간 판도 새 자리로 덮고,
+#     옛 폴더는 안 건드린다
+#   · 못 세웠으면 이 설치가 세우는 자리(`$configRepoRoot` 아래 `$WorkDirName`)를 든 값만 걷는다 — 그 자리에 받은 저장소나 같은 이름의 파일이
+#     섰으면 그 값은 작업 폴더가 아닌 것을 가리킨다. 다른 값은 사람이 둔 것이라 두고 알린다
+# 진 것은 `Plant-Var` · `Remove-UserVar` 가 빨간 줄과 `$Fails` 로 낸다.
+function Set-WorkDirVar([string]$Dir) {
+  $cur = [Environment]::GetEnvironmentVariable($WorkDirVar, 'User')
+  if ($Dir) {
+    if ($cur -eq $Dir) {
+      Set-Item -Path "Env:$WorkDirVar" -Value $Dir
+      Write-Host "  $WorkDirVar — 이미 설정됨 ($Dir)"
+    } else { Plant-Var $WorkDirVar $Dir }
+    return
+  }
+  if (-not $cur) { return }
+  if ($cur -eq (Join-Path $configRepoRoot $WorkDirName)) { Remove-UserVar $WorkDirVar '작업 폴더를 만들지 않은 설치' }
+  else { Write-Host "  $WorkDirVar — 설치기가 넣은 값이 아니라 유지 ($cur)" }
 }
 
 # 심기만 — 홈 씨앗의 세션 훅을 `--plant <작업 루트>` 로 부른다(claude-config 결정 0134 · 부르는 자리와 차례는 결정 0135). 저장소를
@@ -8652,6 +8897,18 @@ if ($NoVsCode) {
 } else {
   Write-Host '  ! code 가 이 창의 PATH 에 없어 건너뜀 — VS Code 설치를 먼저 확인하세요' -ForegroundColor Red
   $Fails.Add('VS Code 확장 (code 를 찾을 수 없음)')
+}
+# ── 고른 확장의 주소를 VS Code 가 묻지 않고 연다 — 바깥(일일 보고 창)이 `vscode://anthropic.claude-code/…` 로 연 대화가 확인 창에 안 막히게 ──
+# 확장 표의 `OpenUri` 행 가운데 고른 것만 든다. VS Code 를 뺐거나 `code` 가 안 서면 안 쓴다 — 그 판은 위가 이미 말했다. 확장이 아직 안 깔렸어도
+#   쓴다 — 값은 이름이라 확장이 서는 순간부터 먹는다. 덧붙이기만 한다 — 제품을 꺼도 확장을 안 걷듯 이 이름도 안 걷는다.
+# 못 고친 판은 실패로 안 센다 — VS Code 가 처음 한 번 묻고, 거기서 「다시 묻지 않음」을 켜면 같은 데 닿는다. 그 까닭과 길은 끝 검증이 댄다.
+$uriConsentIds = @($ExtPicks | Where-Object { $_.OpenUri } | ForEach-Object { $_.Id })
+if ($uriConsentIds.Count -and -not $NoVsCode -and $extCodeRuns -ne 'no') {
+  $uc = Add-VsCodeUriConsent (Get-VsCodeUserSettings) $uriConsentIds
+  if ($uc.Did -eq 'kept') { Write-Host "  VS Code 주소 열기 — 이미 묻지 않게 설정됨 ($($uriConsentIds -join ', '))" }
+  elseif ($uc.Did -eq 'made' -or $uc.Did -eq 'added') {
+    Write-Host "  VS Code 주소 열기 — 묻지 않게 설정함 ($($uriConsentIds -join ', ') · $($uc.Path))" -ForegroundColor Green
+  } else { Write-Host "  ! VS Code 주소 열기 — 설정 파일을 고치지 않음: $($uc.Why) ($($uc.Path))" -ForegroundColor Yellow }
 }
 
 } catch { Write-StepFault $_ }
@@ -11134,8 +11391,10 @@ $scanHooks = Invoke-WorkRootScan $configRepoRoot $got $personalAny $ConfigSeedHo
 # 못 부른 것(Git Bash · 홈 씨앗의 훅이 없다)은 노란 줄로만 낸다 — Git Bash 가 없는 것은 「프로그램」 걸음이 셌거나 개발 도구를
 #   끈 PC(`-NoDevTools`)가 고른 몫이고, 홈 씨앗이 모자라면 끝 검증의 씨앗 줄이 [X] 다. 불렀는데 0 이 아니면 센다. 0 은 「다
 #   심었다」가 아니다 — 미룬 칸과 걸 저장소가 없는 루트도 0 이다. 무엇을 심고 미뤘나는 몸통이 찍는 줄이 든다.
-# 작업 폴더를 심기 바로 앞에 짓는다 — 몸통이 그때 있는 그 폴더에 신뢰를 걸고, 끝의 VS Code 가 그 폴더로 뜬다(`$script:WorkDir`).
+# 작업 폴더를 심기 바로 앞에 짓는다 — 몸통이 그때 있는 그 폴더에 신뢰를 걸고, 끝의 VS Code 가 그 폴더로 뜬다(`$script:WorkDir`). 그 자리는
+#   바로 사용자 환경값으로 남긴다 — 끝 검증이 `$script:WorkDir` 가 섰나로 이 두 줄이 돌았나를 가른다.
 $script:WorkDir = New-WorkDir $configRepoRoot $configRepoUrls
+Set-WorkDirVar $script:WorkDir
 $plant = Invoke-Plant $bash $configRepoRoot
 if (-not $plant.Ran) { Write-Host "  ! 설정 적용 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 설정하지 못함" -ForegroundColor Yellow }
 elseif (-not $plant.Ok) { $Fails.Add("설정 적용 --plant ($($plant.Why))") }
@@ -12743,6 +13002,9 @@ if (-not $NoVsCode) {
       else                   { Add-Check @{ Name = $x.Label; Ok = ($hasCode -and ($extList -contains $x.Id)) } }
     }
   }
+  # 고른 확장의 주소를 묻지 않고 여나 — 「VS Code 확장」 걸음이 더한 사용자 설정을 디스크에서 다시 읽는다. `code` 가 안 서는 판은 위 VS Code 칸이 든다.
+  $uriConsentNow = @($ExtPicks | Where-Object { $_.OpenUri } | ForEach-Object { $_.Id })
+  if ($uriConsentNow.Count -and $codeRuns -ne 'no') { Add-Check (Get-VsCodeUriConsentCheck (Get-VsCodeUserSettings) $uriConsentNow) }
 }
 # npm 으로 깐 CLI 는 「CLI」 걸음과 같은 자(npm 의 기록)로 잰다 — 띄우지 않고(PAISetup #30 ③) 기록은 한 번에 읽는다
 #   (PAISetup #35 C). winget CLI 는 이름이 서나를 띄워 잰다. 섰으면 새 터미널에서 그 이름이 서나를 잰다(PAISetup #56) — 기록에
@@ -13099,6 +13361,19 @@ Add-Check @{ Name = "선택한 제품 값 (PAISETUP_PICK = $PickValue)"
 # 자리 값 — 맡기는 세션이 맡기기 모델 표의 자리 줄을 고른다(결정 0123)
 Add-Check @{ Name = "네트워크 환경 값 (PAISETUP_SITE = $ModelSite)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_SITE', 'User') -eq $ModelSite) }
+# 작업 폴더 값 — 보고 창의 여는 손 · 맡긴 일을 띄우는 손이 작업 폴더를 이 값으로 안다. 바라는 값은 「설정 저장소」 걸음이 정한 작업 폴더다
+#   (`Set-WorkDirVar`) — 그 걸음이 작업 폴더를 정하기 전에 멎었으면(`$script:WorkDir` 가 없다) 무엇이어야 하는지 몰라 진 칸이다.
+$workNow = [Environment]::GetEnvironmentVariable($WorkDirVar, 'User')
+if ($null -eq $script:WorkDir) {
+  Add-Check @{ Name = "작업 폴더 값 ($WorkDirVar — 「$(Get-StepTitle 'repo')」 단계가 중단되어 정하지 못함)"; Ok = $false }
+} elseif ($script:WorkDir) {
+  Add-Check @{ Name = "작업 폴더 값 ($WorkDirVar = $($script:WorkDir))"
+               Ok = ($workNow -eq $script:WorkDir -and (Test-Path -LiteralPath $script:WorkDir -PathType Container)) }
+} elseif ($workNow -eq (Join-Path $configRepoRoot $WorkDirName)) {
+  Add-Check @{ Name = "작업 폴더 값 ($WorkDirVar — 작업 폴더를 만들지 않았는데 남은 값을 지우지 못함: $workNow)"; Ok = $false }
+} else {
+  Add-Check @{ Name = "작업 폴더 값 ($WorkDirVar — 작업 폴더를 만들지 않아 $(if ($workNow) { "설치기가 넣지 않은 값을 그대로 둠: $workNow" } else { '비워 둠' }))"; Ok = $true }
+}
 # 규범 · 룰 · 에이전트 · 스킬 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
 if ($toolHomesOn) { Add-Check (Get-ToolHomesCheck $toolHomesHand) }
