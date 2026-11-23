@@ -1234,56 +1234,176 @@ $bRepoSwap.Add_Click({ Start-Run 'repo' })
 # 무엇을 걷고 · 묻고 · 남기나는 몸통의 걷어내기 표가 든다 — 창은 `-Only uninstall -Preview` 의 줄(`remove|always|…` · `remove|ask|열쇠|…` ·
 #   `remove|keep|…`)로 칸을 짓기만 한다. 물어서 걷는 칸은 꺼진 채로 뜬다 — 프로그램은 설치 전부터 쓰던 것일 수 있고 기록은 사람의 자료다.
 # 도는 중에는 안 받는다 — 두 몸통이 한 홈을 같이 고치게 된다(몸통의 빗장이 기다리게 하지만 창이 막는 편이 덜 헷갈린다).
-function Show-UninstallConfirm {
+# `Read-UninstallPlan` — 몸통의 미리 보기 줄을 읽어 `@{ Always = @(@(이름, 무엇)…); Ask = @(@(열쇠, 이름, 무엇)…); Keep = @(@(이름, 까닭)…) }`
+#   로 낸다. 몸통을 못 부르면 셋 다 빈다.
+function Read-UninstallPlan {
   $raw = @()
   try { $raw = @(& (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $Engine -Only uninstall -Preview) } catch { }
-  $always = @(); $ask = @(); $keep = @()
+  $plan = @{ Always = @(); Ask = @(); Keep = @() }
   # ⚠ 칸 이름을 `$f` 로 두지 않는다 — 파워셸 이름은 대소문자를 안 가려 창(`$F`)을 가린다.
   foreach ($ln in $raw) {
     $cols = "$ln".Split('|')
-    if ($cols.Count -ge 4 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'always') { $always += ,@($cols[2], $cols[3]) }
-    elseif ($cols.Count -ge 5 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'ask') { $ask += ,@($cols[2], $cols[3], $cols[4]) }
-    elseif ($cols.Count -ge 4 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'keep') { $keep += ,@($cols[2], $cols[3]) }
+    if ($cols.Count -ge 4 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'always') { $plan.Always += ,@($cols[2], $cols[3]) }
+    elseif ($cols.Count -ge 5 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'ask') { $plan.Ask += ,@($cols[2], $cols[3], $cols[4]) }
+    elseif ($cols.Count -ge 4 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'keep') { $plan.Keep += ,@($cols[2], $cols[3]) }
   }
-  if (-not $always.Count) {
+  $plan
+}
+
+# `Show-UninstallConfirm` — 확인 창을 띄워 사람이 고른 물어서 걷는 열쇠들을 낸다(아무것도 안 골랐으면 빈 배열). 취소하거나 목록을
+#   못 받았으면 `$null`.
+# 창은 메인 창의 문법을 그대로 쓴다 — 흰 카드 · 접는 머리 · 아래 흰 띠. 붓 · 스타일은 메인 창의 사전을 물려받아(`MergedDictionaries`)
+#   두 벌을 안 둔다. 그래서 칸의 스타일은 `DynamicResource` 다 — 사전은 XAML 을 읽은 뒤에 붙고, `StaticResource` 는 읽는 그 자리에서 찾다 깨진다.
+# 차례는 사람이 판단하는 차례다 — 무엇이 늘 걷히나(이름만 · 펼치면 무엇이 드나) → 무엇을 골라서 걷나(고르는 칸 — 유일하게 손댈 자리라
+#   스크롤 없이 보이는 데 둔다) → 무엇이 남나. [걷어내기]는 Enter 에 안 묶는다 — 되돌릴 수 없는 단추가 기본이면 손버릇에 눌린다.
+function Show-UninstallConfirm {
+  $plan = Read-UninstallPlan
+  if (-not $plan.Always.Count) {
     [void][Windows.MessageBox]::Show($F, '설치기에서 걷어낼 목록을 받지 못했습니다 — 설치 파일(Setup.exe)을 새로 받아 다시 실행하세요.', $AppName, 'OK', 'Warning')
     return $null
   }
-  $w = New-Object Windows.Window
-  $w.Title = "$AppName — 걷어내기"; $w.Owner = $F; $w.WindowStartupLocation = 'CenterOwner'
-  $w.Width = 560; $w.Height = 640; $w.FontFamily = $F.FontFamily; $w.FontSize = 13; $w.Background = $F.Background
-  $dock = New-Object Windows.Controls.DockPanel
-  $bar = New-Object Windows.Controls.StackPanel; $bar.Orientation = 'Horizontal'; $bar.HorizontalAlignment = 'Right'; $bar.Margin = '16,10,16,14'
-  [Windows.Controls.DockPanel]::SetDock($bar, 'Bottom')
-  $go = New-Object Windows.Controls.Button; $go.Content = '걷어내기'; $go.Style = $F.FindResource('Primary'); $go.Margin = '0,0,8,0'
-  $no = New-Object Windows.Controls.Button; $no.Content = '취소'; $no.Style = $F.FindResource('Secondary'); $no.IsCancel = $true
-  [void]$bar.Children.Add($go); [void]$bar.Children.Add($no)
-  [void]$dock.Children.Add($bar)
-  $sv = New-Object Windows.Controls.ScrollViewer; $sv.VerticalScrollBarVisibility = 'Auto'
-  $body = New-Object Windows.Controls.StackPanel; $body.Margin = '18,14,18,4'
-  $addText = {
-    param([string]$Text, [bool]$Head = $false, [string]$Tone = 'Ink', [string]$Margin = '0,0,0,6')
-    $t = New-Object Windows.Controls.TextBlock; $t.Text = $Text; $t.TextWrapping = 'Wrap'; $t.Margin = $Margin; $t.Foreground = $Brush[$Tone]
-    if ($Head) { $t.FontWeight = 'SemiBold'; $t.FontSize = 14 }
-    [void]$body.Children.Add($t)
+  [xml]$x = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="600" SizeToContent="Height" ResizeMode="NoResize" ShowInTaskbar="False" WindowStartupLocation="CenterOwner"
+        Background="#F3F3F3" Foreground="#1B1B1B" FontSize="13"
+        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True"
+        FocusManager.FocusedElement="{Binding ElementName=No}">
+  <Window.Resources>
+    <!-- 되돌릴 수 없는 일의 단추 — 설치의 파란 단추와 갈라 보인다 -->
+    <Style x:Key="Danger" TargetType="Button">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="B" Background="#C42B1C" CornerRadius="4" Padding="20,7">
+            <ContentPresenter HorizontalAlignment="Center" TextElement.Foreground="White" TextElement.FontWeight="SemiBold"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="#B12619"/></Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="Background" Value="#9E2216"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value></Setter>
+    </Style>
+  </Window.Resources>
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="#E5E5E5" BorderThickness="0,1,0,0" Padding="20,12">
+      <DockPanel Height="36">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+          <Button x:Name="Go" Style="{StaticResource Danger}" Content="걷어내기" Margin="0,0,8,0"/>
+          <Button x:Name="No" Style="{DynamicResource Secondary}" Content="취소" IsCancel="True"/>
+        </StackPanel>
+        <TextBlock x:Name="Tally" Style="{DynamicResource Note}" VerticalAlignment="Center"/>
+      </DockPanel>
+    </Border>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+      <StackPanel Margin="20,18,20,8">
+        <TextBlock Text="설치한 것 걷어내기" FontSize="20" FontWeight="SemiBold"/>
+        <TextBlock Style="{DynamicResource Note}" FontSize="13" Margin="0,4,0,12"
+                   Text="설치가 넣은 것을 걷고 Python · Git · Node.js 는 남깁니다. 걷은 뒤에도 이 PC 는 설치 전처럼 쓸 수 있습니다."/>
+        <Border Background="#FFF4CE" CornerRadius="6" Padding="12,9" Margin="0,0,0,10">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" Foreground="#9D5D00" VerticalAlignment="Top" Margin="0,2,10,0"/>
+            <TextBlock TextWrapping="Wrap" Text="걷기 전에 열려 있는 VS Code · 터미널의 작업을 저장하세요."/>
+          </DockPanel>
+        </Border>
+
+        <Border Style="{DynamicResource Card}" Padding="16,12">
+          <StackPanel>
+            <ToggleButton x:Name="AlwaysFold" Style="{DynamicResource Fold}">
+              <DockPanel>
+                <TextBlock x:Name="AlwaysCount" DockPanel.Dock="Right" Style="{DynamicResource Note}" VerticalAlignment="Center"/>
+                <TextBlock Text="늘 걷는 것" FontSize="14" FontWeight="SemiBold"/>
+              </DockPanel>
+            </ToggleButton>
+            <TextBlock Style="{DynamicResource Note}" Margin="21,2,0,8" Text="설치가 넣었다는 기록이 있거나 우리 이름이 든 것만 걷습니다."/>
+            <UniformGrid x:Name="AlwaysNames" Columns="2" Margin="21,0,0,0"/>
+            <StackPanel x:Name="AlwaysRows" Visibility="Collapsed" Margin="21,0,0,0"/>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{DynamicResource Card}">
+          <StackPanel>
+            <TextBlock Text="골라서 걷는 것" Style="{DynamicResource CardTitle}"/>
+            <TextBlock Style="{DynamicResource Note}" Margin="0,2,0,8" Text="설치 전부터 쓰던 것이거나 내 자료일 수 있어 꺼 둔 채로 시작합니다. 고른 것만 걷습니다."/>
+            <StackPanel x:Name="AskRows"/>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{DynamicResource Card}" Padding="16,12">
+          <StackPanel>
+            <ToggleButton x:Name="KeepFold" Style="{DynamicResource Fold}">
+              <DockPanel>
+                <TextBlock x:Name="KeepCount" DockPanel.Dock="Right" Style="{DynamicResource Note}" VerticalAlignment="Center"/>
+                <TextBlock Text="남기는 것" FontSize="14" FontWeight="SemiBold"/>
+              </DockPanel>
+            </ToggleButton>
+            <UniformGrid x:Name="KeepNames" Columns="2" Margin="21,8,0,0"/>
+            <StackPanel x:Name="KeepRows" Visibility="Collapsed" Margin="21,8,0,0"/>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>
+'@
+  $w = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $x))
+  $w.Resources.MergedDictionaries.Add($F.Resources)
+  $w.Title = "$AppName — 걷어내기"; $w.Owner = $F; $w.FontFamily = $F.FontFamily
+  # 화면보다 길면 몸만 스크롤하고 아래 띠는 늘 보인다
+  $w.MaxHeight = [Windows.SystemParameters]::WorkArea.Height - 40
+  $el = @{}; foreach ($n in 'Go', 'Tally', 'AlwaysFold', 'AlwaysCount', 'AlwaysNames', 'AlwaysRows', 'AskRows',
+                           'KeepFold', 'KeepCount', 'KeepNames', 'KeepRows') { $el[$n] = $w.FindName($n) }
+  $note = $w.FindResource('Note')
+
+  # 접힌 판은 이름만 두 줄로, 펼친 판은 이름 아래 무엇이 드나를 든다 — 표지 글자는 걷히나(✕ 빨강) · 남나(✓ 초록)
+  $fillList = {
+    param($Items, $Names, $Rows, $Count, $Fold, [string]$Mark, $Tone)
+    foreach ($it in $Items) {
+      $cell = New-Object Windows.Controls.DockPanel; $cell.Margin = '0,2,12,2'; $cell.ToolTip = $it[1]
+      $g = New-Object Windows.Controls.TextBlock; $g.Text = $Mark; $g.FontFamily = 'Segoe MDL2 Assets'; $g.FontSize = 10
+      $g.Foreground = $Tone; $g.VerticalAlignment = 'Center'; $g.Margin = '0,1,8,0'; [Windows.Controls.DockPanel]::SetDock($g, 'Left')
+      $t = New-Object Windows.Controls.TextBlock; $t.Text = $it[0]; $t.TextTrimming = 'CharacterEllipsis'
+      [void]$cell.Children.Add($g); [void]$cell.Children.Add($t); [void]$Names.Children.Add($cell)
+      $row = New-Object Windows.Controls.StackPanel; $row.Margin = '0,0,0,8'
+      $h = New-Object Windows.Controls.TextBlock; $h.Text = $it[0]; $h.TextWrapping = 'Wrap'
+      $d = New-Object Windows.Controls.TextBlock; $d.Text = $it[1]; $d.Style = $note; $d.Margin = '0,1,0,0'
+      [void]$row.Children.Add($h); [void]$row.Children.Add($d); [void]$Rows.Children.Add($row)
+    }
+    $n = $Items.Count
+    $swap = { $Rows.Visibility = $(if ($Fold.IsChecked) { 'Visible' } else { 'Collapsed' })
+              $Names.Visibility = $(if ($Fold.IsChecked) { 'Collapsed' } else { 'Visible' })
+              $Count.Text = $(if ($Fold.IsChecked) { "$n 가지 · 접기" } else { "$n 가지 · 펼쳐서 자세히" }) }.GetNewClosure()
+    $Fold.Add_Checked($swap); $Fold.Add_Unchecked($swap)
+    & $swap
   }
-  & $addText '설치가 넣은 것을 걷습니다. 파이썬 · Git · Node 는 남고, 이 PC 는 설치 전처럼 쓸 수 있습니다. 걷기 전에 열려 있는 VS Code · 터미널의 작업을 저장하세요.' $false 'Ink' '0,0,0,12'
-  & $addText '늘 걷는 것 — 설치가 넣었다는 기록이 있거나 우리 이름이 든 것만' $true
-  foreach ($a in $always) { & $addText "· $($a[0]) — $($a[1])" $false 'Muted' '8,0,0,4' }
-  & $addText '골라서 걷는 것 — 고른 것만 걷습니다' $true 'Ink' '0,12,0,6'
-  $boxes = @()
-  foreach ($q in $ask) {
-    $c = New-Object Windows.Controls.CheckBox; $c.Tag = $q[0]; $c.Margin = '8,0,0,6'
-    $ct = New-Object Windows.Controls.TextBlock; $ct.Text = "$($q[1]) — $($q[2])"; $ct.TextWrapping = 'Wrap'
-    $c.Content = $ct
-    [void]$body.Children.Add($c); $boxes += $c
+  & $fillList $plan.Always $el.AlwaysNames $el.AlwaysRows $el.AlwaysCount $el.AlwaysFold ([string][char]0xE711) $Brush.Bad
+  & $fillList $plan.Keep $el.KeepNames $el.KeepRows $el.KeepCount $el.KeepFold ([string][char]0xE73E) $Brush.Ok
+
+  # 고르는 칸 — 첫 줄은 이름과 왜 묻나(몸통 표의 「무엇 — 까닭」 가운데 첫 ` — ` 뒤), 둘째 줄은 무엇이 드나
+  $boxes = New-Object System.Collections.ArrayList
+  foreach ($q in $plan.Ask) {
+    $what, $why = "$($q[2])" -split ' — ', 2
+    $c = New-Object Windows.Controls.CheckBox; $c.Tag = $q[0]; $c.Margin = '0,4,0,6'
+    $sp = New-Object Windows.Controls.StackPanel
+    $head = New-Object Windows.Controls.TextBlock; $head.TextWrapping = 'Wrap'
+    [void]$head.Inlines.Add((New-Object Windows.Documents.Run $q[1]))
+    if ($why) { $r = New-Object Windows.Documents.Run "   $why"; $r.Foreground = $Brush.Muted; $r.FontSize = 12; [void]$head.Inlines.Add($r) }
+    $sub = New-Object Windows.Controls.TextBlock; $sub.Text = $what; $sub.Style = $note; $sub.Margin = '0,1,0,0'
+    [void]$sp.Children.Add($head)
+    if ($what -ne $q[1]) { [void]$sp.Children.Add($sub) }
+    $c.Content = $sp
+    [void]$el.AskRows.Children.Add($c); [void]$boxes.Add($c)
   }
-  & $addText '남기는 것' $true 'Ink' '0,12,0,6'
-  foreach ($k in $keep) { & $addText "· $($k[0]) — $($k[1])" $false 'Muted' '8,0,0,4' }
-  $sv.Content = $body
-  [void]$dock.Children.Add($sv)
-  $w.Content = $dock
-  $go.Add_Click({ $w.DialogResult = $true })
+  # 아래 띠는 누르면 무엇이 일어나나를 한 줄로 든다 — 고를 때마다 바뀐다
+  $tally = {
+    $n = @($boxes | Where-Object { $_.IsChecked }).Count
+    $el.Tally.Text = $(if ($n) { "늘 걷는 것과 고른 $n 가지를 걷습니다" } else { '늘 걷는 것만 걷습니다' })
+  }.GetNewClosure()
+  foreach ($c in $boxes) { $c.Add_Checked($tally); $c.Add_Unchecked($tally) }
+  & $tally
+
+  $el.Go.Add_Click({ $w.DialogResult = $true }.GetNewClosure())
   if (-not $w.ShowDialog()) { return $null }
   return ,@($boxes | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
 }
