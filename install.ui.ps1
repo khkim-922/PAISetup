@@ -1299,9 +1299,7 @@ function Show-UninstallConfirm {
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
       <StackPanel Margin="20,18,20,8">
         <TextBlock Text="설치한 것 걷어내기" FontSize="20" FontWeight="SemiBold"/>
-        <TextBlock Style="{DynamicResource Note}" FontSize="13" Margin="0,4,0,12"
-                   Text="설치가 넣은 것을 걷고 Python · Git · Node.js 는 남깁니다. 걷은 뒤에도 이 PC 는 설치 전처럼 쓸 수 있습니다."/>
-        <Border Background="#FFF4CE" CornerRadius="6" Padding="12,9" Margin="0,0,0,10">
+        <Border Background="#FFF4CE" CornerRadius="6" Padding="12,9" Margin="0,12,0,10">
           <DockPanel>
             <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" Foreground="#9D5D00" VerticalAlignment="Top" Margin="0,2,10,0"/>
             <TextBlock TextWrapping="Wrap" Text="걷기 전에 열려 있는 VS Code · 터미널의 작업을 저장하세요."/>
