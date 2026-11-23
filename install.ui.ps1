@@ -1254,7 +1254,7 @@ function Read-UninstallPlan {
 #   못 받았으면 `$null`.
 # 창은 메인 창의 문법을 그대로 쓴다 — 흰 카드 · 접는 머리 · 아래 흰 띠. 붓 · 스타일은 메인 창의 사전을 물려받아(`MergedDictionaries`)
 #   두 벌을 안 둔다. 그래서 칸의 스타일은 `DynamicResource` 다 — 사전은 XAML 을 읽은 뒤에 붙고, `StaticResource` 는 읽는 그 자리에서 찾다 깨진다.
-# 차례는 사람이 판단하는 차례다 — 무엇이 늘 걷히나(이름만 · 펼치면 무엇이 드나) → 무엇을 골라서 걷나(고르는 칸 — 유일하게 손댈 자리라
+# 차례는 사람이 판단하는 차례다 — 무엇이 늘 지워지나(이름만 · 펼치면 무엇이 드나) → 무엇을 골라서 지우나(고르는 칸 — 유일하게 손댈 자리라
 #   스크롤 없이 보이는 데 둔다) → 무엇이 남나. [걷어내기]는 Enter 에 안 묶는다 — 되돌릴 수 없는 단추가 기본이면 손버릇에 눌린다.
 function Show-UninstallConfirm {
   $plan = Read-UninstallPlan
@@ -1302,7 +1302,7 @@ function Show-UninstallConfirm {
         <Border Background="#FFF4CE" CornerRadius="6" Padding="12,9" Margin="0,12,0,10">
           <DockPanel>
             <TextBlock DockPanel.Dock="Left" Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" Foreground="#9D5D00" VerticalAlignment="Top" Margin="0,2,10,0"/>
-            <TextBlock TextWrapping="Wrap" Text="걷기 전에 열려 있는 VS Code · 터미널의 작업을 저장하세요."/>
+            <TextBlock TextWrapping="Wrap" Text="시작하기 전에 열려 있는 VS Code 와 터미널의 작업을 저장하세요."/>
           </DockPanel>
         </Border>
 
@@ -1311,10 +1311,10 @@ function Show-UninstallConfirm {
             <ToggleButton x:Name="AlwaysFold" Style="{DynamicResource Fold}">
               <DockPanel>
                 <TextBlock x:Name="AlwaysCount" DockPanel.Dock="Right" Style="{DynamicResource Note}" VerticalAlignment="Center"/>
-                <TextBlock Text="늘 걷는 것" FontSize="14" FontWeight="SemiBold"/>
+                <TextBlock Text="항상 지우는 것" FontSize="14" FontWeight="SemiBold"/>
               </DockPanel>
             </ToggleButton>
-            <TextBlock Style="{DynamicResource Note}" Margin="21,2,0,8" Text="설치가 넣었다는 기록이 있거나 우리 이름이 든 것만 걷습니다."/>
+            <TextBlock Style="{DynamicResource Note}" Margin="21,2,0,8" Text="설치 기록에 남아 있거나 이름에 PAISetup 이 붙은 것만 지웁니다."/>
             <UniformGrid x:Name="AlwaysNames" Columns="2" Margin="21,0,0,0"/>
             <StackPanel x:Name="AlwaysRows" Visibility="Collapsed" Margin="21,0,0,0"/>
           </StackPanel>
@@ -1322,8 +1322,8 @@ function Show-UninstallConfirm {
 
         <Border Style="{DynamicResource Card}">
           <StackPanel>
-            <TextBlock Text="골라서 걷는 것" Style="{DynamicResource CardTitle}"/>
-            <TextBlock Style="{DynamicResource Note}" Margin="0,2,0,8" Text="설치 전부터 쓰던 것이거나 내 자료일 수 있어 꺼 둔 채로 시작합니다. 고른 것만 걷습니다."/>
+            <TextBlock Text="골라서 지우는 것" Style="{DynamicResource CardTitle}"/>
+            <TextBlock Style="{DynamicResource Note}" Margin="0,2,0,8" Text="설치 전부터 쓰던 프로그램이나 내 자료일 수 있어 처음에는 선택하지 않았습니다. 체크한 것만 지웁니다."/>
             <StackPanel x:Name="AskRows"/>
           </StackPanel>
         </Border>
@@ -1371,7 +1371,7 @@ function Show-UninstallConfirm {
     $n = $Items.Count
     $swap = { $Rows.Visibility = $(if ($Fold.IsChecked) { 'Visible' } else { 'Collapsed' })
               $Names.Visibility = $(if ($Fold.IsChecked) { 'Collapsed' } else { 'Visible' })
-              $Count.Text = $(if ($Fold.IsChecked) { "$n 가지 · 접기" } else { "$n 가지 · 펼쳐서 자세히" }) }.GetNewClosure()
+              $Count.Text = $(if ($Fold.IsChecked) { "${n}개 · 접기" } else { "${n}개 · 자세히 보기" }) }.GetNewClosure()
     $Fold.Add_Checked($swap); $Fold.Add_Unchecked($swap)
     & $swap
   }
@@ -1396,7 +1396,7 @@ function Show-UninstallConfirm {
   # 아래 띠는 누르면 무엇이 일어나나를 한 줄로 든다 — 고를 때마다 바뀐다
   $tally = {
     $n = @($boxes | Where-Object { $_.IsChecked }).Count
-    $el.Tally.Text = $(if ($n) { "늘 걷는 것과 고른 $n 가지를 걷습니다" } else { '늘 걷는 것만 걷습니다' })
+    $el.Tally.Text = $(if ($n) { "항상 지우는 것과 고른 ${n}개를 지웁니다" } else { '항상 지우는 것만 지웁니다' })
   }.GetNewClosure()
   foreach ($c in $boxes) { $c.Add_Checked($tally); $c.Add_Unchecked($tally) }
   & $tally

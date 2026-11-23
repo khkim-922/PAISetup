@@ -629,40 +629,40 @@ $OnlyBundles = [ordered]@{
 #     `$Extensions` · `$Apps`)에서 뽑는다 — 이름과 Id 를 여기 다시 적지 않는다
 #   · 남긴다(`$UninstallKeep`) — 사용자가 남기라 한 것 · 다른 프로그램이 쓰는 것 · 누가 넣었는지 못 가리는 것 · 사람의 작업
 $UninstallAlways = @(
-  @{ Label = '자동 실행 작업'; What = "$AutoRunTaskName · $AutoRunNightTaskName · $AutoRunEpTaskName (작업 스케줄러)" }
-  @{ Label = '회사 게이트웨이 연결'; What = '게이트웨이 주소 · 키와 그 사본(사용자 환경변수) · 로컬 프록시와 감시 작업 · Codex · 안티그래비티 회사 설정' }
-  @{ Label = '설치가 심은 값'; What = '맡기기 값 · 공통값 · 클라이언트 스위치 · 권한 · 모델 목록 (사용자 환경변수 · ~/.claude/settings.json — 설치 기록의 값 그대로인 것만)' }
-  @{ Label = '도구 홈에 놓은 것'; What = '규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록 · 칸 없이 깐 스킬 · Codex · agy · Copilot 훅 · 브라우저 MCP 등록 · 자동 승인 값 · Copilot 스킬 설명 한도' }
-  @{ Label = '홈에 깐 환경 자료'; What = '~/.claude/posco(설치 기록의 바이트 그대로인 파일) · ~/.claude/seeds · ~/.node_modules 의 연결 · 회사 인증서 사본(node-ca.pem)' }
-  @{ Label = '바로 가기'; What = '바탕화면 · 시작 메뉴의 설치기 바로 가기(설치기를 가리키는 것만)' }
-  @{ Label = '설치 묶음 · 기록 · 고른 도구 값'; What = '~/.paisetup(백업 폴더는 남김) · PAISETUP_* 값 · %LOCALAPPDATA%\Claude Code Setup(설치 기록 · 펴 둔 묶음 — 지금 쓰는 판의 폴더는 창을 닫으면 지움 · logs 는 남김)' }
+  @{ Label = '자동 업데이트 작업'; What = "작업 스케줄러에 등록한 $AutoRunTaskName · $AutoRunNightTaskName 작업" }
+  @{ Label = '회사 게이트웨이 연결'; What = '게이트웨이 주소와 API 키, 로컬 프록시, Codex · Antigravity 의 회사 설정' }
+  @{ Label = '설치가 넣은 설정 값'; What = '환경변수와 Claude 설정(settings.json)에 넣은 값 — 설치 뒤 직접 바꾼 값은 그대로 둡니다' }
+  @{ Label = '도구에 넣은 규범 · 스킬'; What = 'Claude · Codex · agy · Copilot 에 넣은 규범 · 룰 · 에이전트 · 스킬 · 훅, 브라우저 MCP 등록, 자동 승인 설정' }
+  @{ Label = '홈 폴더에 넣은 자료'; What = '~/.claude 의 posco · seeds 폴더, 회사 인증서 사본, Node 모듈 연결 — 설치 뒤 직접 고친 파일은 그대로 둡니다' }
+  @{ Label = '바로 가기'; What = '바탕화면과 시작 메뉴에 만든 설치기 바로 가기' }
+  @{ Label = '설치 파일과 기록'; What = '~/.paisetup · %LOCALAPPDATA%\Claude Code Setup 의 설치 파일과 기록, PAISETUP_* 환경변수 — 백업과 설치 로그(logs)는 남기고, 지금 실행 중인 설치 파일은 창을 닫은 뒤 지웁니다' }
 )
 $UninstallProductKeys = @($Products | ForEach-Object { $_.Key })
 $UninstallAsk = @(
-  @{ Key = 'cli'; Label = '고른 도구의 CLI'; Why = '설치 전부터 쓰던 것일 수 있다'
+  @{ Key = 'cli'; Label = '도구 CLI'; Why = '설치 전부터 쓰던 것일 수 있습니다'
      Npm = @($Clis | Where-Object { $_.Pkg -and $UninstallProductKeys -contains $_.Key })
      Winget = @($Clis | Where-Object { $_.Via -eq 'winget' -and $_.Id -and $UninstallProductKeys -contains $_.Key }) }
-  @{ Key = 'doc-tools'; Label = '문서 도구'; Why = '설치 전부터 쓰던 것일 수 있다'
+  @{ Key = 'doc-tools'; Label = '문서 도구'; Why = '설치 전부터 쓰던 것일 수 있습니다'
      Winget = @($Clis | Where-Object { $_.Via -eq 'winget' -and $_.Id -and $UninstallProductKeys -notcontains $_.Key }) }
-  @{ Key = 'browser'; Label = '브라우저 MCP 꾸러미와 받은 브라우저'; Why = '다른 도구가 쓸 수 있다'
+  @{ Key = 'browser'; Label = 'Playwright 와 내려받은 브라우저'; Why = '다른 도구도 쓸 수 있습니다'
      Npm = @($Clis | Where-Object { $_.Key -eq 'playwright' }); Dirs = @((Join-Path $env:LOCALAPPDATA 'ms-playwright')) }
-  @{ Key = 'desktop'; Label = '데스크탑 앱'; Why = '설치 전부터 쓰던 것일 수 있다'; Desktop = @($DesktopApps) }
-  @{ Key = 'vscode-ext'; Label = '설치가 깐 VS Code 확장'; Why = '설치 전부터 쓰던 것일 수 있다'; Ext = @($Extensions) }
-  @{ Key = 'vscode'; Label = 'VS Code'; Why = '다른 일에도 쓰는 편집기다'; Winget = @($Apps | Where-Object { $_.Need -eq 'vscode' } | ForEach-Object { @{ Label = $_.Name; Id = $_.Id } }) }
-  @{ Key = 'gh'; Label = 'GitHub CLI'; Why = '다른 일에도 쓴다'; Winget = @($Apps | Where-Object { $_.Cmd -eq 'gh' } | ForEach-Object { @{ Label = $_.Name; Id = $_.Id } }) }
+  @{ Key = 'desktop'; Label = '데스크탑 앱'; Why = '설치 전부터 쓰던 것일 수 있습니다'; Desktop = @($DesktopApps) }
+  @{ Key = 'vscode-ext'; Label = 'VS Code 확장'; Why = '설치 전부터 쓰던 것일 수 있습니다'; Ext = @($Extensions) }
+  @{ Key = 'vscode'; Label = 'VS Code'; Why = '다른 작업에도 쓰는 편집기입니다'; Winget = @($Apps | Where-Object { $_.Need -eq 'vscode' } | ForEach-Object { @{ Label = $_.Name; Id = $_.Id } }) }
+  @{ Key = 'gh'; Label = 'GitHub CLI'; Why = '다른 작업에도 쓸 수 있습니다'; Winget = @($Apps | Where-Object { $_.Cmd -eq 'gh' } | ForEach-Object { @{ Label = $_.Name; Id = $_.Id } }) }
   # 아래 셋의 자리는 스킬 · 훅이 쓰는 자리다(설치기가 심지 않는다) — 걷어내기가 찾아 걷을 수 있게 여기 둔다.
-  @{ Key = 'mail'; Label = '메일 비서가 건 작업과 쌓은 기록'; Why = '사람의 자료다 — PC 를 넘길 때는 지운다'
+  @{ Key = 'mail'; Label = '메일 비서의 예약 작업과 기록'; Why = '내 자료입니다 — PC 를 넘길 때는 지우세요'
      Tasks = @(@{ Path = '\mail-secretary\'; Name = 'mailbox-scan' }); Dirs = @((Join-Path $env:LOCALAPPDATA 'mail-secretary')) }
-  @{ Key = 'texts'; Label = '읽어 둔 문서의 글자 · 그림 문의 기록'; Why = '사람의 자료다 — 회사 문서의 평문이 들어 PC 를 넘길 때는 지운다'
+  @{ Key = 'texts'; Label = '문서에서 뽑아 둔 글과 이미지 문의 기록'; Why = '회사 문서 내용이 들어 있습니다 — PC 를 넘길 때는 지우세요'
      Dirs = @((Join-Path $env:USERPROFILE '.drm-read-text'), (Join-Path $env:USERPROFILE '.company-ecm-text'), (Join-Path $env:USERPROFILE '.image-gate')) }
-  @{ Key = 'key-blob'; Label = '회사 키의 암호화 사본'; Why = '사내로 돌아오면 키를 다시 안 넣게 해 준다'; Files = @($CompanyKeyBlob) }
+  @{ Key = 'key-blob'; Label = '암호화해 둔 회사 API 키'; Why = '남겨 두면 다시 설치할 때 키를 새로 넣지 않아도 됩니다'; Files = @($CompanyKeyBlob) }
 )
 $UninstallKeep = @(
-  @{ Label = 'Python · Git · Node.js'; Why = '기본으로 쓰는 도구라 남긴다' }
-  @{ Label = 'VC++ 런타임'; Why = '다른 프로그램도 쓴다' }
-  @{ Label = '사용자 PATH 의 두 줄(npm 전역 · pip 사용자 폴더) · PowerShell 스크립트 실행 값 · winget 받기 설정'; Why = '누가 넣었는지 가릴 수 없다 — 되돌리는 법은 안내 글(UNINSTALL.md)' }
-  @{ Label = '워드의 PDF 변환 안내 값'; Why = '설치가 바꿨다는 기록이 없다 — 되돌리는 법은 안내 글(UNINSTALL.md)' }
-  @{ Label = '~/repos 아래 저장소와 그 폴더 신뢰'; Why = '사람의 작업이다' }
+  @{ Label = 'Python · Git · Node.js'; Why = '다른 작업에도 쓰는 기본 도구입니다' }
+  @{ Label = 'VC++ 런타임'; Why = '다른 프로그램도 사용합니다' }
+  @{ Label = 'PATH 의 npm · pip 폴더, PowerShell 실행 정책, winget 설정'; Why = '다른 프로그램이 넣었을 수도 있어 그대로 둡니다 — 되돌리려면 UNINSTALL.md 를 보세요' }
+  @{ Label = 'Word 의 PDF 변환 설정'; Why = '설치가 바꿨는지 알 수 없어 그대로 둡니다 — 되돌리려면 UNINSTALL.md 를 보세요' }
+  @{ Label = '~/repos 의 저장소와 폴더 신뢰 설정'; Why = '내 작업물입니다' }
 )
 
 # 이번 실행이 도는 걸음 — 묶음을 안 골랐으면 묶음 전용(`Only`)이 아닌 걸음 전부다. 머리줄의 번호 · 분모(`Get-StepTitle`)와 걸음의
@@ -7976,13 +7976,12 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
 #   두고 그 자리를 댄다. 진 것은 빨간 줄 · `$Fails` 다 — 걷어내기는 이어 간다.
 
 # 물어서 걷는 것 한 줄이 무엇을 드나 — 미리 보기의 줄과 걷는 줄이 같이 쓴다. 내는 것: 「 · 」로 이은 이름들.
+# 프로그램 이름 끝의 괄호 덧말(`poppler (PDF 를 그림으로)`)은 뗀다 — 설치 줄에서는 왜 까는지를 알리지만, 지울지 고르는 한 줄에서는
+#   이름만으로 알아보고 덧말이 줄을 두세 줄로 늘린다.
 function Get-UninstallAskWhat($Item) {
-  $names = @()
-  $names += @($Item.Npm | Where-Object { $_ } | ForEach-Object { $_.Label })
-  $names += @($Item.Winget | Where-Object { $_ } | ForEach-Object { $_.Label })
-  $names += @($Item.Desktop | Where-Object { $_ } | ForEach-Object { $_.Label })
-  $names += @($Item.Ext | Where-Object { $_ } | ForEach-Object { $_.Label })
-  $names += @($Item.Tasks | Where-Object { $_ } | ForEach-Object { "작업 $($_.Path)$($_.Name)" })
+  $programs = @($Item.Npm) + @($Item.Winget) + @($Item.Desktop) + @($Item.Ext)
+  $names = @($programs | Where-Object { $_ } | ForEach-Object { $_.Label -replace '\s*\([^)]*\)$', '' })
+  $names += @($Item.Tasks | Where-Object { $_ } | ForEach-Object { "예약 작업 $($_.Path)$($_.Name)" })
   $names += @($Item.Dirs | Where-Object { $_ } | ForEach-Object { ConvertTo-LedgerAt $_ })
   $names += @($Item.Files | Where-Object { $_ } | ForEach-Object { ConvertTo-LedgerAt $_ })
   return (@($names | Where-Object { $_ }) -join ' · ')
