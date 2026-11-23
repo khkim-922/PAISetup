@@ -434,11 +434,12 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
 
   <DockPanel>
     <!-- 아래 띠 — 한 줄이다. 윈도 마법사 · 대화상자의 관례대로 오른쪽은 할 일이 먼저, 그다음 닫기([설치 시작] = Enter · [닫기] = Esc).
-         왼쪽 끝은 문제가 생겼을 때 가는 데(설치기록), 그 사이는 상태 칸(높이가 박힌 두 줄 · 넘치는 글은 줄임표와 툴팁 · 알림이 없으면 빈다).
+         왼쪽 끝은 문제가 생겼을 때 가는 데(설치기록)와 무르는 데(걷어내기 — 확인 창을 먼저 띄운다), 그 사이는 상태 칸(높이가 박힌 두 줄 · 넘치는 글은 줄임표와 툴팁 · 알림이 없으면 빈다).
          알림이 서고 걷혀도 창의 크기와 칸 자리가 안 바뀐다 -->
     <Border DockPanel.Dock="Bottom" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="20,12">
       <DockPanel Height="36">
         <Button x:Name="LnkLog" DockPanel.Dock="Left" Style="{StaticResource Link}" Content="설치기록" FontSize="12" VerticalAlignment="Center" Margin="0,0,14,0"/>
+        <Button x:Name="LnkRemove" DockPanel.Dock="Left" Style="{StaticResource Link}" Content="걷어내기" FontSize="12" VerticalAlignment="Center" Margin="0,0,14,0"/>
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
           <Button x:Name="BGo" Style="{StaticResource Primary}" Content="설치 시작" IsDefault="True" Margin="0,0,8,0"/>
           <Button x:Name="BClose" Style="{StaticResource Secondary}" Content="닫기" IsCancel="True"/>
@@ -1071,9 +1072,11 @@ function Add-Log([string]$line) {
 # 바꾸기는 그 칸의 값과 자리만 넘긴다 — 제품 · 제작자 칸 · 자동 실행 같은 고른 것은 몸통이 지난번 기록으로 채운다. 넘기면 묶음 밖 걸음이
 #   안 도는데 기록만 새 선택으로 바뀌어, 깔지 않은 것이 깔린 것으로 남는다. 키 바꾸기는 저장소 줄을, 저장소 바꾸기는 키 줄을 안 넘긴다 —
 #   안 넘긴 저장소는 기록이 채우고, 키는 그 묶음이 안 읽는다.
-function Start-Run([string]$Only) {
+#   `uninstall` 은 「걷어내기」다 — 확인 창이 고른 물어서 걷는 열쇠(`$RemoveKeys`)를 `-Remove` 로 넘기고, 칸의 값은 안 넘긴다. 자리를 못
+#   정한 판도 받는다(몸통이 재지 않고 사외로 본다).
+function Start-Run([string]$Only, [string[]]$RemoveKeys = @()) {
   # 자리를 못 정한 판은 안 받는다 — 단추는 이미 잠겼고(위 「자리를 못 정한 판」), 여기는 그 잠금이 풀린 자리의 마지막 울타리다.
-  if (-not $Site) { return }
+  if (-not $Site -and $Only -ne 'uninstall') { return }
   # ⚠ **비어 있는 것은 안 막는다** — 사외는 둘 다 비우는 것이 맞는 답이다. 막는 것은
   #   **반만 넣은 것** 하나다: 한쪽만 있으면 게이트웨이가 안 서는데 화면은 멀쩡해 보인다.
   #   주소만 있고 키 칸이 빈 것은 이 PC 에 맡겨 둔 회사 키(`$KeySaved`)가 있으면 반이 아니다 — 몸통이 그 키를 풀어 심는다.
@@ -1084,7 +1087,7 @@ function Start-Run([string]$Only) {
   $stop = ''
   if ($Only -eq 'key' -and -not $key) { $stop = '바꿀 API 키를 입력하세요.' }
   elseif ($Only -eq 'repo' -and -not $repo) { $stop = '받을 저장소 주소를 입력하세요.' }
-  elseif ($Only -ne 'repo' -and -not $noAsk -and (($url -and -not $key -and -not $KeySaved) -or ($key -and -not $url))) {
+  elseif ($Only -notin 'repo', 'uninstall' -and -not $noAsk -and (($url -and -not $key -and -not $KeySaved) -or ($key -and -not $url))) {
     $stop = if ($urlPreset) { 'API 키를 입력하세요 — 키가 없으면 연결할 수 없습니다.' } else { '주소와 API 키는 둘 다 입력하거나 둘 다 비워 두세요.' }
   }
   if ($stop) {
@@ -1092,10 +1095,10 @@ function Start-Run([string]$Only) {
     return
   }
   # 도는 동안 고르는 칸들은 접고 「설치하는 중」 칸이 앞에 선다 — 접힌 칸은 못 만지므로 따로 잠그지 않는다.
-  $script:runNoun = if ($Only) { '바꾸기' } else { '설치' }
+  $script:runNoun = if ($Only -eq 'uninstall') { '걷어내기' } elseif ($Only) { '바꾸기' } else { '설치' }
   $bGo.Enabled = $false
   Show-Form $false
-  $runCard.Visibility = 'Visible'; $runTitle.Text = $(if ($Only) { '바꾸는 중' } else { '설치하는 중' })
+  $runCard.Visibility = 'Visible'; $runTitle.Text = $(if ($Only -eq 'uninstall') { '걷어내는 중' } elseif ($Only) { '바꾸는 중' } else { '설치하는 중' })
   $log.Clear(); $bar.Value = 0; Set-State '시작합니다…'
   # 준비 구간(0–8)을 미리 연다 — 첫 `[n/N]` 이 나오기 전에도 할 일이 있다(winget 이 없으면 되살리느라 수십 MB 를 받는다).
   #   그동안 구간이 0/0 이면 심장박동이 못 뛰어 막대가 0 에 박히고, 사람은 아무것도 안 하는 줄 안다.
@@ -1115,11 +1118,11 @@ function Start-Run([string]$Only) {
   #   선다(파일 머리 「여기에는 설치 로직이 없다」 · 몸통 머리 「짐의 사실을 읽는 값 파일」).
   # 사외에도 칸 값을 그대로 넘긴다 — 무엇을 버릴지는 몸통이 가른다(몸통의 `$Vars` 표 `Gateway=$true` · `$InsideOnly` 목록).
   # 빈 값은 안 적는다 — 줄이 없는 것이 「안 넣었다」다. 저장소 칸을 비운 것은 몸통이 「저장소 없음」으로 기록한다(`-Pick` 을 준 판).
-  if ($Only -ne 'repo') {
+  if ($Only -notin 'repo', 'uninstall') {
     if ($url) { $lines.Add("ANTHROPIC_BASE_URL=$url") }
     if ($key) { $lines.Add("ANTHROPIC_AUTH_TOKEN=$key") }
   }
-  if ($repo -and $Only -ne 'key') { $lines.Add("#config-repo = $repo") }
+  if ($repo -and $Only -notin 'key', 'uninstall') { $lines.Add("#config-repo = $repo") }
   # ⚠ **이 창이 칸을 지은 자리를 몸통에 넘긴다(`#site`).** 몸통은 다시 재고, 이 값과 다르면 아무것도 안 심고 「창을 연 뒤 자리가
   #   바뀌었다」로 멈춘다 — 창을 연 뒤 망이 바뀌면(무선 전환 · 회사망 재인증) 여기서 받은 키를 몸통이 버리거나 사외 칸이 안 받은
   #   주소 없이 게이트웨이를 써, **둘 다 초록으로 끝나기 때문이다.**
@@ -1130,6 +1133,7 @@ function Start-Run([string]$Only) {
             '-EnvFile', $script:tmpEnv)
   if ($Only) {
     $argv += @('-Only', $Only)
+    if ($RemoveKeys.Count) { $argv += @('-Remove', ($RemoveKeys -join ',')) }
   } else {
   # `-NoDevTools` 는 화면에 칸이 없다 — Claude Code 를 깔러 온 사람에게 git · python · gh 는 옵션이 아니다. 이 껍데기를
   #   `-NoDevTools` 로 부른 사람의 뜻과, 지난번 기록의 끔(`$Saved.NoDevTools`)을 그대로 넘긴다 — 안 넘기면 바탕화면 아이콘처럼
@@ -1225,6 +1229,70 @@ Update-RepoSwap
 $tRepo.Add_TextChanged({ Update-RepoSwap })
 $bKeySwap.Add_Click({ Start-Run 'key' })
 $bRepoSwap.Add_Click({ Start-Run 'repo' })
+
+# ── 걷어내기 — 확인 창을 먼저 띄운다 ──────────────────────────────────────────────
+# 무엇을 걷고 · 묻고 · 남기나는 몸통의 걷어내기 표가 든다 — 창은 `-Only uninstall -Preview` 의 줄(`remove|always|…` · `remove|ask|열쇠|…` ·
+#   `remove|keep|…`)로 칸을 짓기만 한다. 물어서 걷는 칸은 꺼진 채로 뜬다 — 프로그램은 설치 전부터 쓰던 것일 수 있고 기록은 사람의 자료다.
+# 도는 중에는 안 받는다 — 두 몸통이 한 홈을 같이 고치게 된다(몸통의 빗장이 기다리게 하지만 창이 막는 편이 덜 헷갈린다).
+function Show-UninstallConfirm {
+  $raw = @()
+  try { $raw = @(& (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $Engine -Only uninstall -Preview) } catch { }
+  $always = @(); $ask = @(); $keep = @()
+  # ⚠ 칸 이름을 `$f` 로 두지 않는다 — 파워셸 이름은 대소문자를 안 가려 창(`$F`)을 가린다.
+  foreach ($ln in $raw) {
+    $cols = "$ln".Split('|')
+    if ($cols.Count -ge 4 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'always') { $always += ,@($cols[2], $cols[3]) }
+    elseif ($cols.Count -ge 5 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'ask') { $ask += ,@($cols[2], $cols[3], $cols[4]) }
+    elseif ($cols.Count -ge 4 -and $cols[0] -ceq 'remove' -and $cols[1] -ceq 'keep') { $keep += ,@($cols[2], $cols[3]) }
+  }
+  if (-not $always.Count) {
+    [void][Windows.MessageBox]::Show($F, '설치기에서 걷어낼 목록을 받지 못했습니다 — 설치 파일(Setup.exe)을 새로 받아 다시 실행하세요.', $AppName, 'OK', 'Warning')
+    return $null
+  }
+  $w = New-Object Windows.Window
+  $w.Title = "$AppName — 걷어내기"; $w.Owner = $F; $w.WindowStartupLocation = 'CenterOwner'
+  $w.Width = 560; $w.Height = 640; $w.FontFamily = $F.FontFamily; $w.FontSize = 13; $w.Background = $F.Background
+  $dock = New-Object Windows.Controls.DockPanel
+  $bar = New-Object Windows.Controls.StackPanel; $bar.Orientation = 'Horizontal'; $bar.HorizontalAlignment = 'Right'; $bar.Margin = '16,10,16,14'
+  [Windows.Controls.DockPanel]::SetDock($bar, 'Bottom')
+  $go = New-Object Windows.Controls.Button; $go.Content = '걷어내기'; $go.Style = $F.FindResource('Primary'); $go.Margin = '0,0,8,0'
+  $no = New-Object Windows.Controls.Button; $no.Content = '취소'; $no.Style = $F.FindResource('Secondary'); $no.IsCancel = $true
+  [void]$bar.Children.Add($go); [void]$bar.Children.Add($no)
+  [void]$dock.Children.Add($bar)
+  $sv = New-Object Windows.Controls.ScrollViewer; $sv.VerticalScrollBarVisibility = 'Auto'
+  $body = New-Object Windows.Controls.StackPanel; $body.Margin = '18,14,18,4'
+  $addText = {
+    param([string]$Text, [bool]$Head = $false, [string]$Tone = 'Ink', [string]$Margin = '0,0,0,6')
+    $t = New-Object Windows.Controls.TextBlock; $t.Text = $Text; $t.TextWrapping = 'Wrap'; $t.Margin = $Margin; $t.Foreground = $Brush[$Tone]
+    if ($Head) { $t.FontWeight = 'SemiBold'; $t.FontSize = 14 }
+    [void]$body.Children.Add($t)
+  }
+  & $addText '설치가 넣은 것을 걷습니다. 파이썬 · Git · Node 는 남고, 이 PC 는 설치 전처럼 쓸 수 있습니다. 걷기 전에 열려 있는 VS Code · 터미널의 작업을 저장하세요.' $false 'Ink' '0,0,0,12'
+  & $addText '늘 걷는 것 — 설치가 넣었다는 기록이 있거나 우리 이름이 든 것만' $true
+  foreach ($a in $always) { & $addText "· $($a[0]) — $($a[1])" $false 'Muted' '8,0,0,4' }
+  & $addText '골라서 걷는 것 — 고른 것만 걷습니다' $true 'Ink' '0,12,0,6'
+  $boxes = @()
+  foreach ($q in $ask) {
+    $c = New-Object Windows.Controls.CheckBox; $c.Tag = $q[0]; $c.Margin = '8,0,0,6'
+    $ct = New-Object Windows.Controls.TextBlock; $ct.Text = "$($q[1]) — $($q[2])"; $ct.TextWrapping = 'Wrap'
+    $c.Content = $ct
+    [void]$body.Children.Add($c); $boxes += $c
+  }
+  & $addText '남기는 것' $true 'Ink' '0,12,0,6'
+  foreach ($k in $keep) { & $addText "· $($k[0]) — $($k[1])" $false 'Muted' '8,0,0,4' }
+  $sv.Content = $body
+  [void]$dock.Children.Add($sv)
+  $w.Content = $dock
+  $go.Add_Click({ $w.DialogResult = $true })
+  if (-not $w.ShowDialog()) { return $null }
+  return ,@($boxes | Where-Object { $_.IsChecked } | ForEach-Object { [string]$_.Tag })
+}
+(Get-El 'LnkRemove').Add_Click({
+  if ($script:proc -and -not $script:proc.HasExited) { return }
+  $chosen = Show-UninstallConfirm
+  if ($null -eq $chosen) { return }
+  Start-Run 'uninstall' @($chosen)
+})
 
 # ── 한 줄을 화면에 반영하는 자 ─────────────────────────────────────────────────
 # `Step-Line <줄>` — 몸통이 찍은 한 줄을 기록 칸에 옮기고 막대 · 상태 글을 민다. 내는 것 없음. 줄 꼴은 몸통이 사람에게 찍는

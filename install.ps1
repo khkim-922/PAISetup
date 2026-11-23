@@ -51,6 +51,10 @@
 #   `-Only key|repo` — 「바꾸기」. 설치 창의 키 칸 · 설정 저장소 칸 곁 단추가 준다. 그 값이 닿는 걸음 묶음(`$OnlyBundles`)만 돌고, 끝
 #     검증도 그 묶음의 줄만 잰다. 고른 것은 지난번 기록이 채우고(`-Pick` · `-ChoicesFull` 을 안 받는다) 기록이 없으면 안 돈다 — 한 번은 설치
 #     전체가 서야 묶음이 기댈 바탕(프로그램 · 홈 씨앗 · 기록)이 있다. 넘겨받은 값 파일이 그 칸의 값(키 · 주소 · `#config-repo`)을 든다.
+#   `-Only uninstall` — 「걷어내기」. 설치 창의 [걷어내기]가 준다. 고른 것을 다 끈 채(제품 · 제작자 칸 없음 · 자동 실행 · 올리기 끔 ·
+#     자리는 사외로 본다) 걷는 손이 든 걸음을 돌리고, 끝 걸음 「걷어내기」가 그 길로 안 걷히는 것을 걷는다. 기록이 없어도 돈다.
+#     `-Remove a,b` 는 물어서 걷는 것 가운데 사람이 고른 열쇠(`$UninstallAsk`)고, `-Preview` 는 아무것도 안 건드리고 걷힐 것 · 물을
+#     것 · 남길 것을 줄로 내주고 나간다(`remove|<갈래>|…` · 줄의 꼴은 `$UninstallPlan` 머리말이 든다).
 #   `-RowOnly <요청 파일>` — 사람이 주는 칸이 아니다. 「데스크탑 앱」 · 「CLI」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
 #     (`Start-RowChild`). 자식은 라이브러리만 읽고 빗장 앞에서 그 파일이 고른 표의 한 행을 깐 뒤 결과를 파일에 적고 나간다.
 # ⚠ **`install.cmd` 에 한글을 넣지 않는다.** cmd.exe 는 배치 파일을 콘솔 OEM 코드페이지(한국은 cp949)로 읽어, UTF-8 한글이
@@ -58,7 +62,7 @@
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
       [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun, [string]$GhLoginOnly,
-      [switch]$ChoicesFull, [switch]$DevTools, [string]$RowOnly, [string]$Only)
+      [switch]$ChoicesFull, [switch]$DevTools, [string]$RowOnly, [string]$Only, [string]$Remove, [switch]$Preview)
 
 $ErrorActionPreference = 'Stop'
 
@@ -594,6 +598,8 @@ $Steps = @(
   @{ Key = 'tools';      Title = '도구별 홈' }
   @{ Key = 'repo';       Title = '설정 저장소' }
   @{ Key = 'register';   Title = 'Claude 플러그인' }
+  # `Only` — 묶음이 이름을 댈 때만 도는 걸음이다. 설치 전체의 흐름에는 안 들어 그 머리줄 번호 · 분모에도 안 센다.
+  @{ Key = 'remove';     Title = '걷어내기'; Only = $true }
 )
 
 # ── 「바꾸기」 묶음 — 사람이 바꾼 값 하나가 닿는 걸음만 다시 돈다(`-Only`) ─────────────────────────────
@@ -601,14 +607,68 @@ $Steps = @(
 #   `Steps` — 도는 걸음. 걸음 차례는 `$Steps` 의 차례다. 묶음의 걸음이 기대는 앞 걸음은 묶음 안에 둔다 — 빠지면 `Assert-StepsDone` 이
 #     그 걸음을 멈춘다(빈 값으로 걷거나 심지 않는다).
 #   `Launch` — 끝에 앱을 다시 여나. 환경을 바꾼 묶음만 연다 — 이미 뜬 창은 새 환경을 안 문다.
+#   `Record` — 지난번에 고른 것의 기록 위에서만 도나(바꾸기). 걷어내기는 기록이 없는 PC 에서도 돈다.
 # 키 묶음에 「사내 연결」이 드는 것은 실제 키로 게이트웨이에 묻는 끝 검증이 그 걸음이 세운 프록시를 지나고 주소가 바뀌면 프록시 포트도
 #   바뀌어서다. 「Claude 홈 설정」은 사외 판에서 홈 settings.json 의 env 로 미는 주소 · 모델과 옛 키 사본을 맞춘다.
+# 걷어내기 묶음은 칸을 끈 도구의 것을 걷는 손이 든 걸음이다 — 고른 것을 다 끄고 돌리면 그 손들이 우리 것을 걷는다. 그래서 걸음에 심는
+#   자리를 더하면서 칸을 껐을 때 걷는 손을 같이 지으면 걷어내기에도 저절로 든다. 프로그램 · 확장 · 앱 · CLI · 공용 자산 · 설정 저장소 ·
+#   플러그인 걸음은 까는 걸음이라 안 돈다. 그 길로 안 걷히는 것은 끝 걸음 「걷어내기」가 든다.
 $OnlyBundles = [ordered]@{
-  key  = @{ Steps = @('keys', 'site', 'home'); Launch = $true }
-  repo = @{ Steps = @('repo');                 Launch = $false }
+  key       = @{ Steps = @('keys', 'site', 'home');                    Launch = $true;  Record = $true }
+  repo      = @{ Steps = @('repo');                                    Launch = $false; Record = $true }
+  uninstall = @{ Steps = @('keys', 'site', 'home', 'tools', 'remove'); Launch = $false; Record = $false }
 }
-# 이번 실행이 도는 걸음 — 묶음을 안 골랐으면 전부다. 머리줄의 번호 · 분모(`Get-StepTitle`)와 걸음의 문(`Test-StepOn`)이 이것을 읽는다.
-$StepsOn = @($Steps | ForEach-Object { $_.Key })
+# ── 걷어내기 표 — 미리 보기와 끝 걸음 「걷어내기」가 같이 읽는다 ─────────────────────────────────────────
+# 갈래는 셋이다. 미리 보기(`-Preview`)는 갈래마다 한 줄씩 낸다 — `remove|always|<이름>|<무엇>` · `remove|ask|<열쇠>|<이름>|<무엇>` ·
+#   `remove|keep|<이름>|<까닭>`. 설치 창이 그 줄로 확인 창을 짓는다.
+#   · 늘 걷는다(`$UninstallAlways`) — 설치가 넣었다는 기록이 있거나 우리 이름이 든 것. 앞 넷은 걷어내기 묶음의 걸음이 칸을 끈 도구의
+#     것을 걷는 손으로 걷고, 뒤 셋은 끝 걸음이 걷는다. 차례가 곧 걷는 차례다 — 자동 실행 작업이 맨 먼저(남기면 로그온 · 밤 회차가 다
+#     깐다), `~/.paisetup` 과 고른 도구 값이 맨 나중(그 값을 읽는 손이 다 돈 뒤다)
+#   · 물어서 걷는다(`$UninstallAsk`) — 설치 전부터 쓰던 프로그램일 수 있고 기록 · 글자는 사람의 자료다. 설치가 「깔았다」와 「이미
+#     있었다」를 적어 두지 않아 프로그램은 다 묻는다. 고른 열쇠만 `-Remove` 로 받는다. 프로그램은 설치 표(`$Clis` · `$DesktopApps` ·
+#     `$Extensions` · `$Apps`)에서 뽑는다 — 이름과 Id 를 여기 다시 적지 않는다
+#   · 남긴다(`$UninstallKeep`) — 사용자가 남기라 한 것 · 다른 프로그램이 쓰는 것 · 누가 넣었는지 못 가리는 것 · 사람의 작업
+$UninstallAlways = @(
+  @{ Label = '자동 실행 작업'; What = "$AutoRunTaskName · $AutoRunNightTaskName · $AutoRunEpTaskName (작업 스케줄러)" }
+  @{ Label = '회사 게이트웨이 연결'; What = '게이트웨이 주소 · 키와 그 사본(사용자 환경변수) · 로컬 프록시와 감시 작업 · Codex · 안티그래비티 회사 설정' }
+  @{ Label = '설치가 심은 값'; What = '맡기기 값 · 공통값 · 클라이언트 스위치 · 권한 · 모델 목록 (사용자 환경변수 · ~/.claude/settings.json — 설치 기록의 값 그대로인 것만)' }
+  @{ Label = '도구 홈에 놓은 것'; What = '규범 · 룰 · 에이전트 · 스킬 · Claude 훅 등록 · 칸 없이 깐 스킬 · Codex · agy · Copilot 훅 · 브라우저 MCP 등록 · 자동 승인 값 · Copilot 스킬 설명 한도' }
+  @{ Label = '홈에 깐 환경 자료'; What = '~/.claude/posco(설치 기록의 바이트 그대로인 파일) · ~/.claude/seeds · ~/.node_modules 의 연결 · 회사 인증서 사본(node-ca.pem)' }
+  @{ Label = '바로 가기'; What = '바탕화면 · 시작 메뉴의 설치기 바로 가기(설치기를 가리키는 것만)' }
+  @{ Label = '설치 묶음 · 기록 · 고른 도구 값'; What = '~/.paisetup(백업 폴더는 남김) · PAISETUP_* 값 · %LOCALAPPDATA%\Claude Code Setup(설치 기록 · 펴 둔 묶음 — 지금 쓰는 판의 폴더는 창을 닫으면 지움 · logs 는 남김)' }
+)
+$UninstallProductKeys = @($Products | ForEach-Object { $_.Key })
+$UninstallAsk = @(
+  @{ Key = 'cli'; Label = '고른 도구의 CLI'; Why = '설치 전부터 쓰던 것일 수 있다'
+     Npm = @($Clis | Where-Object { $_.Pkg -and $UninstallProductKeys -contains $_.Key })
+     Winget = @($Clis | Where-Object { $_.Via -eq 'winget' -and $_.Id -and $UninstallProductKeys -contains $_.Key }) }
+  @{ Key = 'doc-tools'; Label = '문서 도구'; Why = '설치 전부터 쓰던 것일 수 있다'
+     Winget = @($Clis | Where-Object { $_.Via -eq 'winget' -and $_.Id -and $UninstallProductKeys -notcontains $_.Key }) }
+  @{ Key = 'browser'; Label = '브라우저 MCP 꾸러미와 받은 브라우저'; Why = '다른 도구가 쓸 수 있다'
+     Npm = @($Clis | Where-Object { $_.Key -eq 'playwright' }); Dirs = @((Join-Path $env:LOCALAPPDATA 'ms-playwright')) }
+  @{ Key = 'desktop'; Label = '데스크탑 앱'; Why = '설치 전부터 쓰던 것일 수 있다'; Desktop = @($DesktopApps) }
+  @{ Key = 'vscode-ext'; Label = '설치가 깐 VS Code 확장'; Why = '설치 전부터 쓰던 것일 수 있다'; Ext = @($Extensions) }
+  @{ Key = 'vscode'; Label = 'VS Code'; Why = '다른 일에도 쓰는 편집기다'; Winget = @($Apps | Where-Object { $_.Need -eq 'vscode' } | ForEach-Object { @{ Label = $_.Name; Id = $_.Id } }) }
+  @{ Key = 'gh'; Label = 'GitHub CLI'; Why = '다른 일에도 쓴다'; Winget = @($Apps | Where-Object { $_.Cmd -eq 'gh' } | ForEach-Object { @{ Label = $_.Name; Id = $_.Id } }) }
+  # 아래 셋의 자리는 스킬 · 훅이 쓰는 자리다(설치기가 심지 않는다) — 걷어내기가 찾아 걷을 수 있게 여기 둔다.
+  @{ Key = 'mail'; Label = '메일 비서가 건 작업과 쌓은 기록'; Why = '사람의 자료다 — PC 를 넘길 때는 지운다'
+     Tasks = @(@{ Path = '\mail-secretary\'; Name = 'mailbox-scan' }); Dirs = @((Join-Path $env:LOCALAPPDATA 'mail-secretary')) }
+  @{ Key = 'texts'; Label = '읽어 둔 문서의 글자 · 그림 문의 기록'; Why = '사람의 자료다 — 회사 문서의 평문이 들어 PC 를 넘길 때는 지운다'
+     Dirs = @((Join-Path $env:USERPROFILE '.drm-read-text'), (Join-Path $env:USERPROFILE '.company-ecm-text'), (Join-Path $env:USERPROFILE '.image-gate')) }
+  @{ Key = 'key-blob'; Label = '회사 키의 암호화 사본'; Why = '사내로 돌아오면 키를 다시 안 넣게 해 준다'; Files = @($CompanyKeyBlob) }
+)
+$UninstallKeep = @(
+  @{ Label = 'Python · Git · Node.js'; Why = '기본으로 쓰는 도구라 남긴다' }
+  @{ Label = 'VC++ 런타임'; Why = '다른 프로그램도 쓴다' }
+  @{ Label = '사용자 PATH 의 두 줄(npm 전역 · pip 사용자 폴더) · PowerShell 스크립트 실행 값 · winget 받기 설정'; Why = '누가 넣었는지 가릴 수 없다 — 되돌리는 법은 안내 글(UNINSTALL.md)' }
+  @{ Label = '워드의 PDF 변환 안내 값'; Why = '설치가 바꿨다는 기록이 없다 — 되돌리는 법은 안내 글(UNINSTALL.md)' }
+  @{ Label = '~/repos 아래 저장소와 그 폴더 신뢰'; Why = '사람의 작업이다' }
+)
+
+# 이번 실행이 도는 걸음 — 묶음을 안 골랐으면 묶음 전용(`Only`)이 아닌 걸음 전부다. 머리줄의 번호 · 분모(`Get-StepTitle`)와 걸음의
+#   문(`Test-StepOn`)이 이것을 읽는다.
+$StepsOn = @($Steps | Where-Object { -not $_.Only } | ForEach-Object { $_.Key })
+$Uninstalling = ($Only -ceq 'uninstall')
 if ($Only) {
   if (-not $OnlyBundles.Contains($Only)) {
     Write-Host "! -Only 는 $(@($OnlyBundles.get_Keys()) -join ' · ') 가운데 하나입니다 — 받은 값: $Only" -ForegroundColor Red
@@ -622,6 +682,17 @@ if ($Only) {
     exit 2
   }
   $StepsOn = @($Steps | ForEach-Object { $_.Key } | Where-Object { $OnlyBundles[$Only].Steps -contains $_ })
+}
+if (($Remove -or $Preview) -and -not $Uninstalling) {
+  Write-Host '! -Remove · -Preview 는 걷어내기(-Only uninstall)에서만 씁니다' -ForegroundColor Red
+  exit 2
+}
+# 물어서 걷을 것 가운데 사람이 고른 열쇠 — 표에 없는 열쇠는 멈춘다(오타 하나로 걷을 것이 조용히 빠지지 않게).
+$RemoveKeys = @($Remove -split '[,\s]+' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+$removeUnknown = @($RemoveKeys | Where-Object { @($UninstallAsk | ForEach-Object { $_.Key }) -notcontains $_ })
+if ($removeUnknown.Count) {
+  Write-Host "! -Remove 에 모르는 열쇠 — $($removeUnknown -join ' · ') (쓸 수 있는 것: $(@($UninstallAsk | ForEach-Object { $_.Key }) -join ' · '))" -ForegroundColor Red
+  exit 2
 }
 
 # 「도는 중」 한 줄(`Say-Busy`)이 고르는 동작 낱말 표 — 줄의 꼴 `  <대상> — <동작>중 … (<수단> · <덧말>)` 은 그 함수 하나가 든다.
@@ -1615,6 +1686,23 @@ function Test-ScheduledTaskExists([string]$Name) {
 # 자동 실행 작업이 있나 — `Test-ScheduledTaskExists` 를 그대로 부른다.
 function Test-AutoRunTask([string]$Name) {
   return (Test-ScheduledTaskExists $Name)
+}
+
+# 자동 실행 작업 셋(로그온 · 밤 · 옛 EP 로그인)을 걷는다 — 「마무리」의 자동 실행 끄기와 걷어내기가 같이 쓴다. 작업마다 따로 걷어 하나를
+#   못 걷어도 나머지는 걷는다. 내는 것 — 걷은 작업 이름들. 못 걷은 것은 노란 줄이다(작업 스케줄러가 막은 PC 는 IT 몫이다).
+function Remove-AutoRunTasks {
+  $gone = @()
+  foreach ($tn in @($AutoRunTaskName, $AutoRunNightTaskName, $AutoRunEpTaskName)) {
+    try {
+      if (Test-AutoRunTask $tn) {
+        Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction Stop
+        $gone += $tn
+      }
+    } catch {
+      Write-Host "  ! 자동 실행 스케줄러 등록 해제 실패 ($tn) — $(Say-Why $_)" -ForegroundColor Yellow
+    }
+  }
+  return $gone
 }
 
 # 깃발 없는 판의 자동 실행 — 짐의 `#autorun` 지시로 켬(`$true`) · 걷음(`$false` — 지시가 `no`) · 그대로 둠(`$null`)을 낸다. 「자동
@@ -7882,6 +7970,291 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
 
 #endregion 심기 · 제공기능
 
+#region 걷어내기 — 걷어내기 묶음(`-Only uninstall`)의 끝 걸음과 마지막 정리가 부르는 손
+# 무엇을 어느 갈래로 걷나는 걷어내기 표(`$UninstallAlways` · `$UninstallAsk` · `$UninstallKeep`)가 든다. 여기 손들은 그 표의 한 줄이나
+#   늘 걷는 갈래의 한 자리를 걷는다. 우리 것이라는 근거(설치 기록의 값 · 바이트 · 우리 이름 · 가리키는 곳)가 서는 것만 걷고, 안 서면
+#   두고 그 자리를 댄다. 진 것은 빨간 줄 · `$Fails` 다 — 걷어내기는 이어 간다.
+
+# 물어서 걷는 것 한 줄이 무엇을 드나 — 미리 보기의 줄과 걷는 줄이 같이 쓴다. 내는 것: 「 · 」로 이은 이름들.
+function Get-UninstallAskWhat($Item) {
+  $names = @()
+  $names += @($Item.Npm | Where-Object { $_ } | ForEach-Object { $_.Label })
+  $names += @($Item.Winget | Where-Object { $_ } | ForEach-Object { $_.Label })
+  $names += @($Item.Desktop | Where-Object { $_ } | ForEach-Object { $_.Label })
+  $names += @($Item.Ext | Where-Object { $_ } | ForEach-Object { $_.Label })
+  $names += @($Item.Tasks | Where-Object { $_ } | ForEach-Object { "작업 $($_.Path)$($_.Name)" })
+  $names += @($Item.Dirs | Where-Object { $_ } | ForEach-Object { ConvertTo-LedgerAt $_ })
+  $names += @($Item.Files | Where-Object { $_ } | ForEach-Object { ConvertTo-LedgerAt $_ })
+  return (@($names | Where-Object { $_ }) -join ' · ')
+}
+
+# 폴더 하나를 통째로 지운다 — 없으면 아무것도 안 한다. 내는 것: 지웠으면 참. 진 것은 빨간 줄 · `$Fails`.
+function Remove-OwnedDir([string]$Path, [string]$Label) {
+  if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $false }
+  try {
+    Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+    Write-Host "  $Label — 지움 ($Path)" -ForegroundColor Green
+    return $true
+  } catch {
+    Write-Host "  ! $Label — 지우지 못함: $(Say-Why $_) ($Path)" -ForegroundColor Red
+    $script:Fails.Add("$Label (지우지 못함)")
+    return $false
+  }
+}
+
+# 설치 기록의 자산 파일(자리 `file` · 심은 손 `assets`)을 걷는다 — 놓은 바이트 그대로인 파일만 지우고, 바뀐 것은 사람이 고친 것이라 두고
+#   알린다. 지운 뒤 빈 폴더는 그 자리(기록의 그 안의 자리) 아래에서 위로 걷는다. 장부를 못 읽으면 아무것도 안 지운다(노란 줄).
+function Remove-LedgerFiles {
+  $L = Read-PlantLedger $ClaudePlantLedger
+  if ($L.Why) { Write-Host "  ! 홈에 깐 자료 — 설치 기록을 읽지 못해 정리하지 않음 ($($L.Why))" -ForegroundColor Yellow; return }
+  $rows = @($L.Rows | Where-Object { $_.Place -ceq 'file' -and $_.By -ceq 'assets' })
+  $gone = 0; $kept = @(); $roots = @{}
+  foreach ($r in $rows) {
+    $root = (ConvertFrom-LedgerAt $r.At).Path
+    $roots[$root] = $true
+    $p = Join-Path $root $r.Name
+    if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+    try {
+      if ((Get-FileHash -LiteralPath $p -Algorithm SHA256 -ErrorAction Stop).Hash -ceq $r.Value) { Remove-Item -LiteralPath $p -Force -ErrorAction Stop; $gone++ }
+      else { $kept += $p }
+    } catch {
+      Write-Host "  ! 홈에 깐 자료 — 지우지 못함: $(Say-Why $_) ($p)" -ForegroundColor Red
+      $script:Fails.Add('홈에 깐 자료 (지우지 못함)')
+    }
+  }
+  foreach ($root in $roots.Keys) {
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+    foreach ($d in @(Get-ChildItem -LiteralPath $root -Recurse -Directory -Force -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending) + @(Get-Item -LiteralPath $root -Force)) {
+      if (-not @(Get-ChildItem -LiteralPath $d.FullName -Force -ErrorAction SilentlyContinue).Count) { Remove-Item -LiteralPath $d.FullName -Force -ErrorAction SilentlyContinue }
+    }
+  }
+  if ($gone) { Write-Host "  홈에 깐 자료 — 설치한 그대로인 파일 ${gone}개 지움 ($(@($roots.Keys | ForEach-Object { ConvertTo-LedgerAt $_ }) -join ' · '))" -ForegroundColor Green }
+  foreach ($k in $kept) { Write-Host "  ! $k — 설치한 뒤 바뀐 파일이라 남김" -ForegroundColor Yellow }
+  # 그 자리에 남은 기록 밖의 파일 — 설정 저장소의 배포 · 사람 · 도는 프로그램이 둔 것이라 두고 수만 댄다.
+  foreach ($root in $roots.Keys) {
+    $other = @(Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $kept -notcontains $_.FullName })
+    if ($other.Count) { Write-Host "  $(ConvertTo-LedgerAt $root) — 설치 기록에 없는 파일 $($other.Count)개는 남김 (설정 저장소 · 사람이 둔 것)" }
+  }
+}
+
+# Node 가 보는 홈 자리(`$NodeHomeModules`)의 연결 가운데 npm 전역 자리를 가리키는 것만 걷는다 — 연결만 걷고 너머의 실물은 안 지운다.
+#   ⚠ **`Remove-Item -Recurse` 를 정션에 쓰지 않는다** — 파워셸 5.1 은 정션 너머로 내려가 실물을 지운다. 비재귀 `Directory.Delete` 는
+#   정션 자체만 걷는다. 걷은 뒤 그 자리가 비면 그 폴더도 걷는다.
+function Remove-NodeHomeLinks {
+  if (-not $NodeHomeModules -or -not (Test-Path -LiteralPath $NodeHomeModules)) { return }
+  $globalMods = [IO.Path]::GetFullPath((Join-Path $NpmGlobalDir 'node_modules')).TrimEnd('\') + '\'
+  $cands = @(Get-ChildItem -LiteralPath $NodeHomeModules -Force -ErrorAction SilentlyContinue)
+  $cands += @($cands | Where-Object { $_.PSIsContainer -and $_.Name.StartsWith('@') -and -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) } |
+              ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue })
+  $gone = @()
+  foreach ($c in $cands) {
+    if (-not ($c.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+    $t = @($c.Target | Where-Object { $_ }) | Select-Object -First 1
+    if (-not $t) { continue }
+    $tFull = try { [IO.Path]::GetFullPath([string]$t).TrimEnd('\') + '\' } catch { '' }
+    if (-not $tFull.StartsWith($globalMods, [StringComparison]::OrdinalIgnoreCase)) { continue }
+    try { [IO.Directory]::Delete($c.FullName); $gone += $c.Name }
+    catch { Write-Host "  ! Node 홈 연결 — 걷지 못함: $(Say-Why $_) ($($c.FullName))" -ForegroundColor Red; $script:Fails.Add('Node 홈 연결 (걷지 못함)') }
+  }
+  foreach ($d in @(Get-ChildItem -LiteralPath $NodeHomeModules -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name.StartsWith('@') }) + @(Get-Item -LiteralPath $NodeHomeModules -Force)) {
+    if (-not ($d.Attributes -band [IO.FileAttributes]::ReparsePoint) -and -not @(Get-ChildItem -LiteralPath $d.FullName -Force -ErrorAction SilentlyContinue).Count) {
+      Remove-Item -LiteralPath $d.FullName -Force -ErrorAction SilentlyContinue
+    }
+  }
+  if ($gone.Count) { Write-Host "  Node 홈 연결 — 걷음 ($($gone -join ' · ') · 연결만 · npm 전역의 실물은 남김)" -ForegroundColor Green }
+}
+
+# 회사 인증서 사본 — 홈의 `node-ca.pem` 과 그것을 가리키는 `NODE_EXTRA_CA_CERTS` 를 걷는다. 그 값이 다른 파일을 가리키면 사람 것이라 둔다.
+function Remove-NodeCa {
+  $pem = Join-Path $homeDir 'node-ca.pem'
+  $cur = [Environment]::GetEnvironmentVariable('NODE_EXTRA_CA_CERTS', 'User')
+  if ($cur) {
+    $same = try { [IO.Path]::GetFullPath($cur) -ieq [IO.Path]::GetFullPath($pem) } catch { $false }
+    if ($same) { Remove-UserVar 'NODE_EXTRA_CA_CERTS' '설치가 넣은 회사 인증서 연결' }
+    else { Write-Host "  ! NODE_EXTRA_CA_CERTS — 설치가 넣은 값이 아니라 남김 ($cur)" -ForegroundColor Yellow }
+  }
+  if (Test-Path -LiteralPath $pem -PathType Leaf) {
+    try { Remove-Item -LiteralPath $pem -Force -ErrorAction Stop; Write-Host "  회사 인증서 사본 — 지움 ($(ConvertTo-LedgerAt $pem))" -ForegroundColor Green }
+    catch { Write-Host "  ! 회사 인증서 사본 — 지우지 못함: $(Say-Why $_)" -ForegroundColor Red; $script:Fails.Add('회사 인증서 사본 (지우지 못함)') }
+  }
+}
+
+# 바탕화면 · 시작 메뉴의 설치기 바로 가기 — 지금 이름(`$AppName`)과 옛 이름(`$OldLnkNames`) 가운데 설치기(`…\Claude Code Setup\Setup.exe`)를
+#   가리키는 것만 걷는다. 같은 이름이어도 다른 곳을 가리키면 사람 것이라 둔다.
+function Remove-OurShortcuts {
+  $launcher = Join-Path $env:LOCALAPPDATA 'Claude Code Setup\Setup.exe'
+  $gone = @()
+  try { $sh = New-Object -ComObject WScript.Shell } catch { Write-Host "  ! 바로 가기 — 확인하지 못함: $(Say-Why $_)" -ForegroundColor Yellow; return }
+  foreach ($dir in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {
+    if (-not $dir -or -not (Test-Path -LiteralPath $dir)) { continue }
+    foreach ($n in @(@($AppName) + @($OldLnkNames) | Where-Object { $_ } | Select-Object -Unique)) {
+      $lnk = Join-Path $dir "$n.lnk"
+      if (-not (Test-Path -LiteralPath $lnk -PathType Leaf)) { continue }
+      $target = try { [string]$sh.CreateShortcut($lnk).TargetPath } catch { '' }
+      if ($target -and $target -ieq $launcher) {
+        try { Remove-Item -LiteralPath $lnk -Force -ErrorAction Stop; $gone += $lnk }
+        catch { Write-Host "  ! 바로 가기 — 지우지 못함: $(Say-Why $_) ($lnk)" -ForegroundColor Red; $script:Fails.Add('바로 가기 (지우지 못함)') }
+      } else { Write-Host "  ! $lnk — 설치기를 가리키지 않아 남김" -ForegroundColor Yellow }
+    }
+  }
+  if ($gone.Count) { Write-Host "  바로 가기 — 지움 ($(@($gone | ForEach-Object { Split-Path -Leaf (Split-Path -Parent $_) }) -join ' · '))" -ForegroundColor Green }
+}
+
+# winget 으로 깐 것 하나를 지운다 — 받는 것: 화면 이름 · winget Id. 내는 것: 'gone' · 'absent' · 'failed'. winget 이 없으면 failed 다.
+#   「깔린 것이 없다」(0x8A150014)는 실패가 아니라 없는 것이다. 지우는 판은 winget 의 조용한 지우기다(설치본마다 창이 뜰 수 있다).
+function Remove-WingetPackage([string]$Label, [string]$Id) {
+  if ($noWinget -or -not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host "  ! $Label — winget 이 없어 지우지 못함 (설정 › 앱에서 직접 지우세요)" -ForegroundColor Red
+    $script:Fails.Add("$Label (winget 없음)"); return 'failed'
+  }
+  Say-Busy $Label 'remove' @('winget uninstall', $Id)
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-Logged 'winget' @('uninstall', '--id', $Id, '--exact', '--silent', '--accept-source-agreements', '--disable-interactivity') $log
+    if ($rc -eq 0) { Write-Host "  $Label — 지움 (winget · $Id)" -ForegroundColor Green; return 'gone' }
+    if ($rc -eq -1978335212) { Write-Host "  $Label — 깔려 있지 않음"; return 'absent' }
+    Write-Host "  ! $Label — 지우지 못함 (winget 종료 코드 $rc · $Id)" -ForegroundColor Red
+    Show-Log $log
+    $script:Fails.Add("$Label (지우지 못함)"); return 'failed'
+  } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+}
+
+# 물어서 걷는 것 한 줄을 걷는다 — 사람이 고른 열쇠의 줄만 부른다. 한 줄의 갈래마다 걷고, 진 것은 그 줄의 빨간 줄 · `$Fails` 다.
+function Invoke-UninstallAsk($Item) {
+  Write-Host ''
+  Write-Host "  $($Item.Label)" -ForegroundColor Cyan
+  if (@($Item.Npm | Where-Object { $_ }).Count) {
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+      Write-Host "  ! npm 이 없어 지우지 못함 — $(@($Item.Npm | ForEach-Object { $_.Label }) -join ' · ')" -ForegroundColor Red
+      $script:Fails.Add("$($Item.Label) (npm 없음)")
+    } else {
+      $have = Measure-NpmGlobal @($Item.Npm | ForEach-Object { $_.Pkg })
+      foreach ($r in $Item.Npm) {
+        if ($have[$r.Pkg].State -eq 'no') { Write-Host "  $($r.Label) — 깔려 있지 않음"; continue }
+        Say-Busy $r.Label 'remove' @('npm uninstall -g', $r.Pkg)
+        $log = [IO.Path]::GetTempFileName()
+        try {
+          $rc = Invoke-Logged 'npm' @('uninstall', '-g', $r.Pkg) $log
+          if ($rc -eq 0) { Write-Host "  $($r.Label) — 지움 (npm 전역 · $($r.Pkg))" -ForegroundColor Green }
+          else { Write-Host "  ! $($r.Label) — 지우지 못함 (npm 종료 코드 $rc)" -ForegroundColor Red; Show-Log $log; $script:Fails.Add("$($r.Label) (지우지 못함)") }
+        } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+      }
+    }
+  }
+  foreach ($w in @($Item.Winget | Where-Object { $_ })) { $null = Remove-WingetPackage $w.Label $w.Id }
+  foreach ($d in @($Item.Desktop | Where-Object { $_ })) {
+    if ($d.Appx) {
+      $pk = @(Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.PackageFamilyName -eq $d.Appx })
+      if (-not $pk.Count) { Write-Host "  $($d.Label) — 깔려 있지 않음"; continue }
+      try { $pk | Remove-AppxPackage -ErrorAction Stop; Write-Host "  $($d.Label) — 지움 (앱 패키지 · $($d.Appx))" -ForegroundColor Green }
+      catch { Write-Host "  ! $($d.Label) — 지우지 못함: $(Say-Why $_)" -ForegroundColor Red; $script:Fails.Add("$($d.Label) (지우지 못함)") }
+    } elseif ($d.Id) { $null = Remove-WingetPackage $d.Label $d.Id }
+  }
+  if (@($Item.Ext | Where-Object { $_ }).Count) {
+    if (-not (Get-Command code -ErrorAction SilentlyContinue)) {
+      Write-Host '  VS Code 가 없어 확장을 지우지 않음 (VS Code 를 지웠으면 확장도 함께 사라짐)'
+    } else {
+      $installed = @(Get-Quiet 'code' @('--list-extensions') | ForEach-Object { "$_".Trim() })
+      foreach ($x in $Item.Ext) {
+        if ($installed -notcontains $x.Id) { Write-Host "  $($x.Label) — 깔려 있지 않음"; continue }
+        $log = [IO.Path]::GetTempFileName()
+        try {
+          $rc = Invoke-Logged 'code' @('--uninstall-extension', $x.Id) $log
+          if ($rc -eq 0) { Write-Host "  $($x.Label) — 지움 ($($x.Id))" -ForegroundColor Green }
+          else { Write-Host "  ! $($x.Label) — 지우지 못함 (종료 코드 $rc)" -ForegroundColor Red; Show-Log $log; $script:Fails.Add("$($x.Label) (지우지 못함)") }
+        } finally { Remove-Item -LiteralPath $log, "$log.err" -ErrorAction SilentlyContinue }
+      }
+    }
+  }
+  foreach ($t in @($Item.Tasks | Where-Object { $_ })) {
+    try {
+      if (Get-ScheduledTask -TaskPath $t.Path -TaskName $t.Name -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskPath $t.Path -TaskName $t.Name -Confirm:$false -ErrorAction Stop
+        Write-Host "  작업 $($t.Path)$($t.Name) — 등록 해제함" -ForegroundColor Green
+      }
+    } catch { Write-Host "  ! 작업 $($t.Path)$($t.Name) — 등록 해제 실패: $(Say-Why $_)" -ForegroundColor Red; $script:Fails.Add("작업 $($t.Name) (해제 실패)") }
+  }
+  foreach ($d in @($Item.Dirs | Where-Object { $_ })) { $null = Remove-OwnedDir $d $Item.Label }
+  foreach ($f in @($Item.Files | Where-Object { $_ })) {
+    if (-not (Test-Path -LiteralPath $f)) { continue }
+    try { Remove-Item -LiteralPath $f -Force -ErrorAction Stop; Write-Host "  $($Item.Label) — 지움 ($f)" -ForegroundColor Green }
+    catch { Write-Host "  ! $($Item.Label) — 지우지 못함: $(Say-Why $_) ($f)" -ForegroundColor Red; $script:Fails.Add("$($Item.Label) (지우지 못함)") }
+  }
+}
+
+# 마지막 정리 — 다른 손이 다 돈 뒤(끝 검증까지)에 걷는다: 고른 도구 값(`PAISETUP_*` — 손 · 세션 훅이 읽는다) · `~/.paisetup`(백업 폴더는
+#   남긴다 — 걷어내기 동안 사람이 고친 파일을 손이 그리로 옮겼다) · 설치 폴더(`%LOCALAPPDATA%\Claude Code Setup` — 설치 기록 · 고른 것의
+#   기록 · 펴 둔 묶음). 설치 폴더의 `logs` 는 남기고, 회사 키 사본은 물어서 걷는 줄(`key-blob`)을 골랐을 때만 걷는다.
+# 지금 도는 판의 폴더(`$Here`)와 그 곁 `Setup.exe` 는 이 창과 설치 창이 쥐고 있어 지금 못 지운다 — 숨은 파워셸 하나를 띄워 이 실행과
+#   설치 창이 끝나기를(프로세스가 사라지기를) 기다렸다가 지운다. 그 사이 PC 를 끄면 그 폴더가 남는다 — 다시 걷어내기를 누르면 지운다.
+function Remove-UninstallLast {
+  Write-Host ''
+  Write-Host '  마지막 정리' -ForegroundColor Cyan
+  foreach ($n in @('PAISETUP_PERSONAL', 'PAISETUP_PICK', 'PAISETUP_SITE', $WorkDirVar)) {
+    if ([Environment]::GetEnvironmentVariable($n, 'User')) { Remove-UserVar $n '설치가 넣은 고른 도구 값' }
+  }
+  $pai = Join-Path $env:USERPROFILE '.paisetup'
+  if (Test-Path -LiteralPath $pai) {
+    $keepBak = Join-Path $pai 'backups'
+    $left = @()
+    foreach ($c in @(Get-ChildItem -LiteralPath $pai -Force -ErrorAction SilentlyContinue)) {
+      if ($c.Name -ieq 'backups') { continue }
+      try { Remove-Item -LiteralPath $c.FullName -Recurse -Force -ErrorAction Stop } catch { $left += $c.FullName }
+    }
+    if (-not (Test-Path -LiteralPath $keepBak)) { Remove-Item -LiteralPath $pai -Force -ErrorAction SilentlyContinue }
+    if ($left.Count) { Write-Host "  ! ~/.paisetup — 일부를 지우지 못함 ($($left -join ' · '))" -ForegroundColor Red; $script:Fails.Add('~/.paisetup (일부를 지우지 못함)') }
+    elseif (Test-Path -LiteralPath $keepBak) { Write-Host "  ~/.paisetup — 지움 · 백업 폴더는 남김 ($keepBak)" -ForegroundColor Green }
+    else { Write-Host '  ~/.paisetup — 지움' -ForegroundColor Green }
+  }
+  # 걷는 손들이 백업 자리로 쓰려고 지은 폴더가 비었으면 걷는다 — 옮긴 것이 있으면 사람의 것이라 둔다.
+  $claudeBak = Join-Path $homeDir 'backups'
+  if ((Test-Path -LiteralPath $claudeBak -PathType Container) -and -not @(Get-ChildItem -LiteralPath $claudeBak -Force -ErrorAction SilentlyContinue).Count) {
+    Remove-Item -LiteralPath $claudeBak -Force -ErrorAction SilentlyContinue
+  }
+  $root = Join-Path $env:LOCALAPPDATA 'Claude Code Setup'
+  if (Test-Path -LiteralPath $root) {
+    $hereFull = try { [IO.Path]::GetFullPath($Here).TrimEnd('\') } catch { '' }
+    $keep = @('logs') + @(if ($RemoveKeys -notcontains 'key-blob') { Split-Path -Leaf $CompanyKeyBlob })
+    # 남긴 것의 말 — 그 자리에 실제로 있는 것만 댄다.
+    $keptSaid = @(@{ Name = 'logs'; Say = '설치 기록 파일' }, @{ Name = (Split-Path -Leaf $CompanyKeyBlob); Say = '회사 키 사본' } |
+                  Where-Object { $keep -icontains $_.Name -and (Test-Path -LiteralPath (Join-Path $root $_.Name)) } | ForEach-Object { $_.Say })
+    $keptTail = if ($keptSaid.Count) { " · 남긴 것: $($keptSaid -join ' · ')" } else { '' }
+    $later = @()
+    foreach ($c in @(Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue)) {
+      if ($keep -icontains $c.Name) { continue }
+      if ($c.FullName.TrimEnd('\') -ieq $hereFull) { $later += $c.FullName; continue }
+      try { Remove-Item -LiteralPath $c.FullName -Recurse -Force -ErrorAction Stop } catch { $later += $c.FullName }
+    }
+    if ($later.Count) {
+      # 기다릴 프로세스 — 이 실행과 그 위 사슬(설치 창이 띄운 cmd · 설치 창)이다. 사라지면 지운다(정해 둔 시간이 아니라 그 상태를 본다).
+      $watch = @($PID)
+      $p = Get-CimInstance Win32_Process -Filter "ProcessId = $PID" -ErrorAction SilentlyContinue
+      for ($i = 0; $i -lt 2 -and $p -and $p.ParentProcessId; $i++) {   # 두 단계까지 — 더 오르면 탐색기를 기다린다
+        $watch += [int]$p.ParentProcessId
+        $p = Get-CimInstance Win32_Process -Filter "ProcessId = $($p.ParentProcessId)" -ErrorAction SilentlyContinue
+      }
+      $q = { param($s) "'" + ($s -replace "'", "''") + "'" }
+      $body = "`$ErrorActionPreference = 'SilentlyContinue'`n" +
+              "while (@($(@($watch | ForEach-Object { "$_" }) -join ',') | ForEach-Object { Get-Process -Id `$_ -ErrorAction SilentlyContinue }).Count) { Start-Sleep -Seconds 2 }`n" +
+              (@($later | ForEach-Object { "Remove-Item -LiteralPath $(& $q $_) -Recurse -Force" }) -join "`n") + "`n" +
+              "Remove-Item -LiteralPath `$PSCommandPath -Force`n"
+      $cleaner = Join-Path ([IO.Path]::GetTempPath()) ("paisetup-cleanup-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.ps1')
+      try {
+        [IO.File]::WriteAllText($cleaner, $body, (New-Object Text.UTF8Encoding($true)))
+        Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -WindowStyle Hidden `
+          -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$cleaner`"") | Out-Null
+        Write-Host "  설치 폴더 — 지움 · 지금 쓰는 판의 폴더는 이 창을 닫으면 지움$keptTail ($root)" -ForegroundColor Green
+      } catch {
+        Write-Host "  ! 설치 폴더 — 지금 쓰는 판의 폴더를 나중에 지울 준비를 못 함: $(Say-Why $_) — 창을 닫은 뒤 직접 지우세요 ($($later -join ' · '))" -ForegroundColor Yellow
+      }
+    } else {
+      Write-Host "  설치 폴더 — 지움$keptTail ($root)" -ForegroundColor Green
+    }
+  }
+}
+
+#endregion 걷어내기
+
 #endregion 라이브러리
 
 # ── 앱 이름 — **진본은 값 파일의 `#app-name` 한 줄이다** ─────────────────────────
@@ -7892,6 +8265,11 @@ function Open-FeaturesOnce([string]$Version, [bool]$NoticeShown, [string]$Record
 $AppNameDefault = 'PAI Setup Wizard'
 $AppName = Read-Directive $DistEnvFile 'app-name'
 if (-not $AppName) { $AppName = $AppNameDefault }
+# 우리가 예전에 쓴 바로 가기 이름 — `.lnk` 는 파일 이름이 곧 표시 이름이라, 이름을 바꾸면 옛 것이 그대로 남아 같은 `Setup.exe` 를
+#   가리키는 아이콘이 둘 선다. 마무리의 바로 가기 칸이 옛 이름을 걷고, 걷어내기가 지금 이름과 함께 걷는다.
+# ⚠ **값 파일의 `#app-name` 을 바꾸는 판에 지금 이름을 이 목록에 더한다** — 지금 이름은 그 줄이 진본이고(`$AppName`), 옛 이름은
+#   어느 원본에도 안 남는 이력이라 여기만 든다. 남이 만든 바로가기를 안 지우려고 아무 `.lnk` 가 아니라 목록으로 걷는다.
+$OldLnkNames = @('Claude Code 설치')
 
 # ── `-Describe` 갈래 — 고를 목록 · 저장소 자리 · 지난번에 고른 것 · 몸통만 아는 사실을 내주고 나간다 ──────────────────────
 # 내는 줄 — `product|키|글자|기본값`(제품마다) · `product-here|키|no`(이 자리에서 안 내놓는 제품 · `Test-ProductHere`) · `config-repo-root|자리` · `record|이름|값`(기록에 든 것마다 · `Read-ChoiceRecord`) ·
@@ -7962,6 +8340,16 @@ if ($GhLoginOnly) {
 if ($RowOnly) {
   try { Invoke-RowChild $RowOnly }
   catch { [Console]::Error.WriteLine("행 자식이 결과를 쓰지 못함 — $(Say-Why $_)"); exit 1 }
+  exit 0
+}
+
+# ── 걷어내기 미리 보기 — 아무것도 안 건드리고 걷어내기 표의 줄을 내주고 나간다(`-Only uninstall -Preview`) ──────────────
+# 줄의 꼴은 걷어내기 표 머리말이 든다. 설치 창이 이 줄로 확인 창(늘 걷는 것 · 고를 것 · 남기는 것)을 짓는다 — 창이 목록을 따로 들면
+#   걷는 것과 보여 준 것이 갈린다.
+if ($Preview) {
+  foreach ($a in $UninstallAlways) { 'remove|always|{0}|{1}' -f $a.Label, $a.What }
+  foreach ($q in $UninstallAsk) { 'remove|ask|{0}|{1}|{2} — {3}' -f $q.Key, $q.Label, (Get-UninstallAskWhat $q), $q.Why }
+  foreach ($k in $UninstallKeep) { 'remove|keep|{0}|{1}' -f $k.Label, $k.Why }
   exit 0
 }
 
@@ -8103,11 +8491,16 @@ $ChoicesGiven = [bool]$ChoicesFull
 $Recorded     = Read-ChoiceRecord $ChoiceRecord $LegacyChoiceArgs $LegacyChoiceEnv
 # 「바꾸기」는 지난번 기록 위에서만 돈다 — 기록이 없는 PC 는 설치 전체가 선 적이 없어, 묶음이 기댈 프로그램 · 홈 씨앗이 없고 고른
 #   것도 기본값으로 서서 사람의 선택과 어긋난다.
-if ($Only -and -not $Recorded.Count) {
+if ($Only -and $OnlyBundles[$Only].Record -and -not $Recorded.Count) {
   Write-Host '! 이 PC 에 지난 설치 기록이 없어 바꾸기를 하지 않음 — 설치 전체를 먼저 한 번 실행하세요' -ForegroundColor Red
   exit 2
 }
 $PickSet      = $PSBoundParameters.ContainsKey('Pick')
+# 걷어내기는 고른 것을 다 끈 판이다 — 칸을 끈 도구 · 뺀 제품의 것을 걷는 손들이 그 판에서 우리 것을 다 걷는다. 기록으로 안 채운다.
+if ($Uninstalling) {
+  $ChoicesGiven = $true; $Pick = $ChoiceNone; $PickSet = $true; $PersonalFor = ''; $WithPersonalConfig = $false
+  $NoVsCode = $true; $AutoRun = $false; $NoAutoRun = $true; $NoUpgrade = $true
+}
 if (-not $ChoicesGiven) {
   if (-not $PickSet -and $Recorded['pick']) { $Pick = $Recorded['pick']; $PickSet = $true }
   if ($Recorded['vscode'] -eq 'no')   { $NoVsCode = $true }
@@ -8273,7 +8666,9 @@ if ($script:DetailLog) { Write-Host "  세부 기록 — $script:DetailLog"; Wri
 # 프로브는 짐의 사실이라 짐에서, `#site` 는 이 회차가 받은 것이라 넘겨받은 값 파일에서 읽는다.
 $probe      = Read-Directive $DistEnvFile 'site-probe'
 $sitePassed = Read-Directive $EnvFile 'site'
-$siteFact   = Measure-Site $probe
+# 걷어내기는 재지 않고 사외로 본다 — 사외 판의 「사내 잔재」 칸이 회사 연결 값(주소 · 키 · 프록시 · 감시 작업)을 우리 것만 가려 걷고,
+#   사내 전용 이름도 안 심는다. 망이 안 닿아 자리를 못 재는 PC 도 걷어낼 수 있어야 한다.
+if ($Uninstalling) { $sitePassed = ''; $siteFact = @{ Site = 'outside' } } else { $siteFact = Measure-Site $probe }
 if (-not $siteFact.Site) {
   Write-Host "  ! 네트워크 환경을 판단하지 못함 — $($siteFact.Why)" -ForegroundColor Red
   Write-Host '    아무것도 설치하지 않고 중단합니다 — 사내인지 사외인지 모른 채 설치하면 회사 연결을 지우거나 연결할 수 없는 주소를 설정하게 됩니다'
@@ -8345,10 +8740,11 @@ foreach ($npmLine in @(Read-Directive $DistEnvFile 'npm-global' -All)) {
 #   런타임이 이미 깔린 일이 흔하다. 조용히 넘기지도 않는다 — 못 깐 것은 아래에서 이름을 대고 실패로 적힌다.
 
 $noWinget = -not (Get-Command winget -ErrorAction SilentlyContinue)
-if ($noWinget) {
+# 걷어내기는 winget 을 되살리지 않는다 — 까는 판이 아니다. 없으면 물어서 걷는 프로그램이 그 줄에서 「winget 이 없어 못 지움」을 낸다.
+if ($noWinget -and -not $Uninstalling) {
   if (Restore-Winget) { $noWinget = $false; Update-RuntimePath }
 }
-if ($noWinget) {
+if ($noWinget -and -not $Uninstalling) {
   Write-Host '  winget 을 복구하지 못했습니다 — 프로그램을 새로 설치할 수 없습니다.' -ForegroundColor Yellow
   Write-Host '  이미 설치된 프로그램으로 진행합니다. 빠진 프로그램은 마지막에 알려 드립니다.'
   Write-Host '  (사내 PC 라면 스토어가 막혀 있을 수 있습니다 — 빠진 프로그램은 IT 에 요청하세요)'
@@ -8367,8 +8763,8 @@ Update-RuntimePath
 # 심는 손은 도구 설정을 사람 값을 안 덮고 심는 손(`Set-ToolAutoRun`)이다 — 사람이 두 키 가운데 하나라도 정해 뒀으면 둔다. 옛 판이
 #   심은 값(`"downloader": "wininet"` 한 칸)만 서 있으면 우리 것이라 새 값으로 간다(`Was`). 그 파일이 주석 든 JSON 이라 못 읽으면 안
 #   건드리고 노란 줄로 남긴다(winget 은 `winget settings` 를 연 PC 에만 그 파일을 주석과 함께 짓는다).
-# 장부에 안 적는다 — 걷지 않는 설정이고, 지울 자리는 UNINSTALL 「winget 다운로드 방식」이 든다.
-if (-not $noWinget) {
+# 장부에 안 적는다 — 걷지 않는 설정이고, 지울 자리는 UNINSTALL 「winget 다운로드 방식」이 든다. 걷어내기는 심지 않는다.
+if (-not $noWinget -and -not $Uninstalling) {
   $WingetCfg = @{ Label = 'winget 다운로드 방식'; Under = 'network'; Set = [ordered]@{ downloader = 'do'; doProgressTimeoutInSeconds = 60 }
                   Was = [ordered]@{ downloader = 'wininet' }
                   Path = (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\settings.json') }
@@ -8412,6 +8808,15 @@ elseif ($NoAutoRun) { $wantAutoRun = $false }
 else {
   $wantAutoRun = Get-AutoRunDefault $autoDirective
   $autoKeptOff = [bool]($autoDirective -eq 'yes' -and $null -eq $wantAutoRun)
+}
+
+# 걷어내기는 자동 실행 작업부터 걷는다 — 걷는 도중에 멎으면 남은 작업이 다음 로그온 · 밤에 다 다시 깐다. 그 작업이 쓰던 파일은
+#   끝 걸음이 설치 폴더째 걷는다.
+if ($Uninstalling) {
+  Write-Host ''
+  $arGone = @(Remove-AutoRunTasks)
+  if ($arGone.Count) { Write-Host "  자동 실행 작업 — 등록 해제함 ($($arGone -join ' · '))" -ForegroundColor Green }
+  else { Write-Host '  자동 실행 작업 — 등록되어 있지 않음' }
 }
 
 $AutoRunSiteFile   = '.autorun-site'
@@ -9376,6 +9781,7 @@ if (-not $useGateway) {
 }
 
 foreach ($v in $Vars) {
+  if ($Uninstalling) { continue }   # 걷어내기는 심을 것이 없다 — 남은 우리 값은 아래 장부 · 「사내 잔재」 칸이 걷는다
   $val = $fromFile[$v.Name]
 
   # 파일에 없는 비밀은 환경변수에 이미 심긴 값을 쓴다 — 사람이 매번 다시 칠 까닭이 없고, 자동 실행이 키 없는 값 파일로 서는 것도
@@ -9469,6 +9875,7 @@ if ($useGateway -and $DistEnvFile -ne $EnvFile -and $distKey -and $plantedKey -a
 $known = $Vars | ForEach-Object { $_.Name }
 foreach ($k in $fromFile.Keys) {
   if ($known -contains $k) { continue }
+  if ($Uninstalling) { continue }   # 걷어내기는 심을 것이 없다
   $val = $fromFile[$k]
   if (-not $val) { continue }
   if (-not $useGateway -and (Test-ProxyValue $val)) {
@@ -9643,9 +10050,11 @@ foreach ($k in @($Planted.Keys | Sort-Object)) {
   if ($valueNames -notcontains $k -or $SettingsEnvSkip -contains $k) { continue }
   if ($DistValues.ContainsKey($k) -and (Test-SameText $DistValues[$k] $Planted[$k])) { $valuesWant[$k] = $Planted[$k] } else { $HumanValueNames += $k }
 }
+# 걷어내기는 「값으로 가르는 손이 가른 이름」을 안 둔다(`-Owned` 거짓) — 그 손(「사내 잔재」)은 사내 전용 · 게이트웨이 · 프록시 이름만
+#   걷어, 짐의 나머지 이름(모델 · 스위치)은 장부의 우리 값 그대로일 때 여기서 걷어야 남지 않는다.
 $null = Sync-Planted -Ledger $Ledger -Place 'user-env' -At 'HKCU' -By 'values' -Want $valuesWant -Complete $DistComplete `
           -Get $UserEnvGet -Set $UserEnvSet -Remove $UserEnvRemove `
-          -Owned { param($n, $c) (-not $useGateway) -and ($DistNames -contains $n) -and -not $Planted.ContainsKey($n) }
+          -Owned { param($n, $c) (-not $Uninstalling) -and (-not $useGateway) -and ($DistNames -contains $n) -and -not $Planted.ContainsKey($n) }
 $null = Save-PlantLedger $Ledger
 
 # ── 워드의 PDF 변환 안내 — **워드가 깔린 PC 면 자리 · 고른 제품과 상관없이 끈다** ────────────────
@@ -9654,7 +10063,10 @@ $null = Save-PlantLedger $Ledger
 # 설치 창에 칸을 두지 않는다 — 고를 것을 늘리지 않고, 심었으면 기록 한 줄이 그 뜻(사람이 PDF 를 열 때도 안내가 안 뜬다)을 밝힌다.
 $WordPdfQuiet = @{ Office = 'HKCU:\Software\Microsoft\Office'; Name = 'DisableConvertPdfWarning' }
 $WordVersions = @(Get-WordVersions)
-if (-not $WordVersions.Count) {
+if ($Uninstalling) {
+  # 걷지 않는다 — 설치가 그 값을 바꿨는지 사람이 정했는지 가를 기록이 없다. 되돌리는 법은 안내 글이 든다.
+  Write-Host '  워드 PDF 변환 안내 — 걷어내기는 건드리지 않음 (설치가 바꿨다는 기록이 없음 · 되돌리는 법은 UNINSTALL.md)'
+} elseif (-not $WordVersions.Count) {
   Write-Host '  워드 PDF 변환 안내 — 워드가 없어 건너뜀'
 } else {
   $wordDid  = @(Set-WordPdfQuiet $WordVersions)
@@ -9684,7 +10096,7 @@ if (-not $WordVersions.Count) {
 # 띄운 로그인(숨은 `cmd` 와 그 아래 CLI)은 거두지 않는다 — 설치가 끝난 뒤에 브라우저에서 마쳐도 그 CLI 가 자격을 적는다.
 
 $script:ClaudeLogin = $null
-if ($offsite) {
+if ($offsite -and -not $Uninstalling) {   # 걷어내기는 사외로 보고 돌 뿐 로그인을 세우지 않는다
   Write-Host ''
   Write-Host '  Claude 구독 로그인' -ForegroundColor Cyan
   $loginTimedBefore = $script:ProbeTimedOut.Count
@@ -10140,6 +10552,9 @@ if (Test-Path -LiteralPath $homeCfg) {
     Write-Host '  ! settings.json 을 읽지 못함 (형식 오류) — 변경하지 않음' -ForegroundColor Red
     $Fails.Add('홈 settings.json 을 읽지 못함')
   }
+} elseif ($Uninstalling) {
+  # 걷어내기는 없는 설정 파일을 짓지 않는다 — 걷을 것도 없다. `$cfg` 가 비어 아래 쓰기 칸(`if ($cfg)`)이 다 비켜선다.
+  Write-Host '  설정 파일 없음 — 걷을 것 없음'
 } else {
   # 새 파일에 옮기는 것은 이 걸음이 고른 씨앗의 맨 위 키뿐이다(`$HomeSeedKeys` — 이름은 여기, 값은 씨앗 `$HomeSeed` · PAISetup #47 ⑦). 씨앗은
   #   사외 VDI 의 홈을 통째로 덮는 바탕이라 그 사람 취향의 키(테마 따위)도 들어, 다 옮기면 이 설치가 고른 적 없는 값을 심는다. `env` 는
@@ -10230,8 +10645,9 @@ if ($cfg) {
   if ($null -eq $Features) {
     Write-Host "  ! 기능 스위치 — 홈 설정 씨앗을 읽지 못해 변경하지 않음$(if ($HomeSeed -and $HomeSeed.Why) { " ($($HomeSeed.Why))" })" -ForegroundColor Yellow
   }
-  $fx = Sync-Planted -Ledger $Ledger -Place 'settings-env' -At $homeAt -By 'features' -Want $(if ($null -ne $Features) { $Features } else { [ordered]@{} }) `
-          -Complete ($null -ne $Features) -Get $EnvGet -Set $EnvSet -Remove $EnvRemove -Where '기능 스위치 · env' -Speak
+  # 걷어내기는 스위치를 하나도 안 심는다 — 빈 선언을 다 든 것으로 넘겨 장부의 우리 스위치를 다 걷는다.
+  $fx = Sync-Planted -Ledger $Ledger -Place 'settings-env' -At $homeAt -By 'features' -Want $(if ($Uninstalling -or $null -eq $Features) { [ordered]@{} } else { $Features }) `
+          -Complete ($Uninstalling -or $null -ne $Features) -Get $EnvGet -Set $EnvSet -Remove $EnvRemove -Where '기능 스위치 · env' -Speak
   if (& $HomeChanged $fx) { $dirty = $true }
 
   # 고를 모델 목록 — **게이트웨이에 닿는 자리에만 선다** (선언은 위 `$ModelPicker`). 사외면 선언이 비어 우리가 둔 목록을 걷는다 — 사내에서
@@ -10423,9 +10839,10 @@ if ($cfg) {
       $pushWant[$k] = $Planted[$k]
     }
   }
+  # 걷어내기는 `-Owned` 를 안 쓴다 — 「키와 값」의 장부 칸과 같은 까닭(짐의 나머지 이름을 장부 값 그대로일 때 걷는다).
   $push = Sync-Planted -Ledger $Ledger -Place 'settings-env' -At $homeAt -By 'env-push' -Want $pushWant -Complete ([bool]$DistComplete) `
             -Get $EnvGet -Set $EnvSet -Remove $EnvRemove -Where 'settings.json 의 env' `
-            -Owned { param($n, $c) (-not $useGateway) -and ($DistNames -contains $n) -and -not $Planted.ContainsKey($n) }
+            -Owned { param($n, $c) (-not $Uninstalling) -and (-not $useGateway) -and ($DistNames -contains $n) -and -not $Planted.ContainsKey($n) }
   if (& $HomeChanged $push) { $dirty = $true }
   if ($pushWant.Count) { Write-Host "  env 항목 $($pushWant.Count)개 설정함 (#settings-env = yes · 키와 위임 실행 값은 환경 변수에만 둠)" -ForegroundColor Green }
   elseif (-not $wantEnv) { Write-Host '  env 항목은 설정하지 않음 — 설정 파일에 #settings-env 가 없음 · 이전 설치가 넣은 값은 제거' }
@@ -10746,11 +11163,13 @@ if (-not $toolHomesOn -and $toolHomesProbe -ne 'unmeasured') {
   Write-Host '  ! 규범 · 룰 · 에이전트 · 스킬 — python 이 실행되지 않아 설치하지 못함' -ForegroundColor Red
   $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (python 없음)')
 } else {
-  Say-Busy '규범 · 룰 · 에이전트 · 스킬' 'install' @('tool-homes.py')
+  Say-Busy '규범 · 룰 · 에이전트 · 스킬' $(if ($Uninstalling) { 'remove' } else { 'install' }) @('tool-homes.py')
   $th = Invoke-ToolHomes $toolHomesHand @('sync', '--layer', 'standard', '--from', $Kit)
   if ($th.Rc -ne 0 -or $th.Errors.Count) {
     Write-Host "  ! 규범 · 룰 · 에이전트 · 스킬 — 일부를 설치하지 못함 (종료 코드 $($th.Rc))" -ForegroundColor Red
     $Fails.Add('규범 · 룰 · 에이전트 · 스킬 (일부 설치 실패)')
+  } elseif ($th.Changes.Count -and $Uninstalling) {
+    Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 걷음 (파일 $($th.Changes.Count)개 · 우리가 놓은 그대로인 것만 지우고 고친 것은 ~/.paisetup/backups 로 옮김)" -ForegroundColor Green
   } elseif ($th.Changes.Count) {
     Write-Host "  규범 · 룰 · 에이전트 · 스킬 — 업데이트함 (파일 $($th.Changes.Count)개 · 제작자 칸 $PersonalValue · 선택한 제품 $PickValue)" -ForegroundColor Green
   } else {
@@ -11717,6 +12136,28 @@ if ($cliBackPath.Count) {
 Exit-Step 'register'
 }  # 걸음 문 「register」
 
+# ══ 걸음 「걷어내기」 ═══════════════════════════════════════════════════════════════════════════
+#   층 — 걷기(걷어내기 묶음에서만 돈다 · 걸음 표의 `Only`)
+#   하는 일 — 앞 걸음들이 칸을 끈 판의 손으로 못 걷는 것을 걷는다: 홈에 깐 환경 자료(설치 기록의 자산 파일 · 씨앗 폴더 · Node 홈 연결 ·
+#     회사 인증서 사본) · 바로 가기 · 사람이 고른 물어서 걷는 것(`-Remove` · `$UninstallAsk`)
+#   앞에서 받는 것 — 걷어내기 표 · 고른 열쇠(`$RemoveKeys`) · 장부 · npm 전역 자리
+#   안 하는 것 — 고른 도구 값 · `~/.paisetup` · 설치 폴더(끝 검증 뒤의 「마지막 정리」 · `Remove-UninstallLast` — 앞 걸음의 손과 끝 검증이
+#     그것을 읽는다) · 남긴다 갈래(`$UninstallKeep`)
+if (Test-StepOn 'remove') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
+Enter-Step 'remove'
+try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
+Remove-LedgerFiles
+$null = Remove-OwnedDir (Join-Path $homeDir 'seeds') '홈 씨앗(~/.claude/seeds)'
+Remove-NodeHomeLinks
+Remove-NodeCa
+Remove-OurShortcuts
+foreach ($q in @($UninstallAsk | Where-Object { $RemoveKeys -contains $_.Key })) { Invoke-UninstallAsk $q }
+$askLeft = @($UninstallAsk | Where-Object { $RemoveKeys -notcontains $_.Key } | ForEach-Object { $_.Label })
+if ($askLeft.Count) { Write-Host ''; Write-Host "  고르지 않아 남긴 것 — $($askLeft -join ' · ')" }
+} catch { Write-StepFault $_ }
+Exit-Step 'remove'
+}  # 걸음 문 「remove」
+
 # ══ 마무리 ═════════════════════════════════════════════════════════════════════════════════════
 #   층 — 없음(걸음 뒤)
 #   하는 일 — 넘겨받은 임시 값 파일 지우기 · 회차를 넘기는 기록 · 사용자 범위 명령 자리를 사용자 PATH 에 · PowerShell 의 스크립트
@@ -11864,11 +12305,7 @@ if (Test-Path -LiteralPath $launcher) {
       @{ Name = '바탕화면';   Dir = [Environment]::GetFolderPath('Desktop') }
       @{ Name = '시작 메뉴'; Dir = [Environment]::GetFolderPath('Programs') }
     )
-    # 우리가 예전에 쓴 이름의 아이콘을 걷는다 — `.lnk` 는 파일 이름이 곧 표시 이름이라, 이름을 바꾸면 옛 것이 그대로 남아 같은
-    #   `Setup.exe` 를 가리키는 아이콘이 둘 선다.
-    # ⚠ **값 파일의 `#app-name` 을 바꾸는 판에 지금 이름을 이 목록에 더한다** — 지금 이름은 그 줄이 진본이고(`$AppName`), 옛 이름은
-    #   어느 원본에도 안 남는 이력이라 여기만 든다. 남이 만든 바로가기를 안 지우려고 아무 `.lnk` 가 아니라 목록으로 걷는다.
-    $OldLnkNames = @('Claude Code 설치')
+    # 우리가 예전에 쓴 이름의 아이콘을 걷는다(`$OldLnkNames` — 그 목록의 까닭은 앱 이름 칸이 든다).
     foreach ($spot in $spots) {
       if (-not $spot.Dir -or -not (Test-Path -LiteralPath $spot.Dir)) { continue }
       foreach ($old in $OldLnkNames) {
@@ -12677,7 +13114,7 @@ $CloseOkSec = 4
 $WinW = 360
 $WinH = 112
 $Edge = 12
-# 첫 머리줄이 오기 전 막대의 분모 — 설치기가 이 파일을 쓸 때 제 걸음 표(`$Steps`)의 길이로 채운다. 머리줄(`[n/N]`)이 오면 그 분모로 간다.
+# 첫 머리줄이 오기 전 막대의 분모 — 설치기가 이 파일을 쓸 때 설치 전체가 도는 걸음 수(`$Steps` 의 묶음 전용이 아닌 행)로 채운다. 머리줄(`[n/N]`)이 오면 그 분모로 간다.
 $StepsDefault = @@STEPS@@
 
 try {
@@ -12880,7 +13317,7 @@ try { if ($script:reader) { $script:reader.Dispose() } } catch { }
 exit 0
 '@
     try {
-      [IO.File]::WriteAllText((Join-Path $setupRoot $AutoRunProgress), $progressText.Replace('@@STEPS@@', "$($Steps.Count)"), [System.Text.Encoding]::UTF8)
+      [IO.File]::WriteAllText((Join-Path $setupRoot $AutoRunProgress), $progressText.Replace('@@STEPS@@', "$(@($Steps | Where-Object { -not $_.Only }).Count)"), [System.Text.Encoding]::UTF8)
     } catch {
       Write-Host "  ! 자동 실행 진행 창 파일을 저장하지 못함 — $(Say-Why $_) (로그온 자동 실행은 창 없이 진행)" -ForegroundColor Yellow
     }
@@ -13020,18 +13457,7 @@ exit 0
       Write-Host "  ! 로그온 EP 로그인 창 스케줄러 등록 해제 실패 — $(Say-Why $_)" -ForegroundColor Yellow
     }
   } else {
-    # 작업마다 따로 걷는다 — 하나를 못 걷어도 다른 하나는 걷는다.
-    $gone = @()
-    foreach ($tn in @($AutoRunTaskName, $AutoRunNightTaskName, $AutoRunEpTaskName)) {
-      try {
-        if (Test-AutoRunTask $tn) {
-          Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction Stop
-          $gone += $tn
-        }
-      } catch {
-        Write-Host "  ! 자동 실행 스케줄러 등록 해제 실패 ($tn) — $(Say-Why $_)" -ForegroundColor Yellow
-      }
-    }
+    $gone = @(Remove-AutoRunTasks)
     if ($gone) {
       # 걷으면 저것이 쓰던 파일도 같이 걷는다 — 남겨 두면 다음에 켤 때 지난 회차의 표지(「오늘 끝났다」 · 지난 자리)를 물려받는다.
       #   사람이 고른 것의 기록(`$ChoiceRecord`)은 자동 실행의 것이 아니라 안 걷는다 — 다음 설치 창 · 콘솔이 그것을 읽는다(PAISetup #45).
@@ -13316,7 +13742,7 @@ if ($hostClaude) {
 }  # 칸 문 「Claude 훅」
 if (Test-StepOn 'keys') {  # 칸 문 「워드의 PDF 안내」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # 워드의 PDF 변환 안내 — 「키와 값」 걸음이 읽은 판 목록 그대로 되읽는다. 워드가 없으면 줄이 없다.
-$wordCheck = Get-WordPdfQuietCheck $WordVersions
+$wordCheck = if ($Uninstalling) { $null } else { Get-WordPdfQuietCheck $WordVersions }   # 걷어내기는 그 값을 안 건드린다
 if ($wordCheck) { Add-Check $wordCheck }
 }  # 칸 문 「워드의 PDF 안내」
 if (Test-StepOn 'home') {  # 칸 문 「Claude 홈 설정」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
@@ -13370,7 +13796,7 @@ if ($wantCcBg) {
                 Ok = (@($CcBgVars.Keys | Where-Object { $userEnv[$_] -ne $CcBgVars[$_] }).Count -eq 0) }
 }
 }  # 칸 문 「맡기기 값」
-if (Test-StepOn 'tools') {  # 칸 문 「도구 훅 · 고른 도구 값」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
+if (Test-StepOn 'tools') {  # 칸 문 「도구 훅」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # Codex 훅 — 부품(설정 저장소 씨앗) · config.toml 배선 · Codex 가 읽은 신뢰. Codex 를 골랐을 때만 잰다.
 if ($PickKeys -contains 'codex') {
   $codexHookText = ''
@@ -13522,6 +13948,8 @@ if ($PickKeys -contains 'copilot') {
   $cpBudgetSay = if (-not $cpBudget) { '없음' } elseif ($cpBudget -ceq $cpBudgetWant) { $cpBudget } else { "$cpBudget · 사용자가 정한 값이라 덮어쓰지 않음" }
   Add-Check @{ Name = "Copilot 스킬 설명 한도 (사용자 환경 SKILL_CHAR_BUDGET = $cpBudgetSay)"; Ok = [bool]$cpBudget }
 }
+}  # 칸 문 「도구 훅」
+if (-not $Only) {  # 칸 문 「고른 도구 값」 — 설치 전체에서만 잰다 · 걷어내기는 끝에 이 값들을 걷는다
 # 고른 도구 값 · 고른 제품 값 — 손 · 설정 저장소의 배포 · 세션 훅이 읽는다(결정 0102 · 0107 · 0112)
 Add-Check @{ Name = "제작자 칸 도구 값 (PAISETUP_PERSONAL = $PersonalValue)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_PERSONAL', 'User') -eq $PersonalValue) }
@@ -13530,7 +13958,7 @@ Add-Check @{ Name = "선택한 제품 값 (PAISETUP_PICK = $PickValue)"
 # 자리 값 — 맡기는 세션이 맡기기 모델 표의 자리 줄을 고른다(결정 0123)
 Add-Check @{ Name = "네트워크 환경 값 (PAISETUP_SITE = $ModelSite)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_SITE', 'User') -eq $ModelSite) }
-}  # 칸 문 「도구 훅 · 고른 도구 값」
+}  # 칸 문 「고른 도구 값」
 if (Test-StepOn 'repo') {  # 칸 문 「작업 폴더 값」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # 작업 폴더 값 — 보고 창의 여는 손 · 맡긴 일을 띄우는 손이 작업 폴더를 이 값으로 안다. 바라는 값은 「설정 저장소」 걸음이 정한 작업 폴더다
 #   (`Set-WorkDirVar`) — 그 걸음이 작업 폴더를 정하기 전에 멎었으면(`$script:WorkDir` 가 없다) 무엇이어야 하는지 몰라 진 칸이다.
@@ -13857,7 +14285,14 @@ if (-not $personalAny -and -not $personalByRepo) {
 }
 }  # 칸 문 「제작자 칸 안내」
 
-# ── 연다 — **깐 것을, 이 창의 자식으로** ───────────────────────────────────────
+# ── 걷어내기의 마지막 정리 — **끝 검증 뒤다** — 고른 도구 값 · `~/.paisetup` · 설치 폴더는 앞 걸음의 손과 끝 검증이 읽는다 ──────────
+# 칸 경계 밖이라 손이 제 안에서 받는다(`Remove-UninstallLast` 는 지는 자리마다 빨간 줄 · `$Fails` 로 낸다). 진 것은 아래 종료 코드가 센다.
+if ($Uninstalling) {
+  try { Remove-UninstallLast } catch { Write-Host "  ! 마지막 정리 — 중단됨: $(Say-Why $_)" -ForegroundColor Red; $Fails.Add('마지막 정리 (중단됨)') }
+  if ($Fails.Count -gt 0) { Write-Host ''; Write-Host "걷어내기를 다 마치지 못함 — 남은 문제 $($Fails.Count)개 (위 ! 줄)" -ForegroundColor Red }
+}
+
+# ── 연다 — **깐 것을, 이 창의 자식으로**───────────────────────────────────────
 # 안내로 끝내지 않고 여기서 띄운다 — 창은 뜰 때 PATH 와 환경변수를 한 번 복사하고 그 뒤에 바뀐 것은 안 따라온다. 이 창은 심은
 #   값을 제 프로세스에도 들고 있어(`Plant-Var`), 여기서 난 자식은 로그아웃 없이 그 값을 문다.
 # 무엇을 띄우나는 자리가 아니라 깐 것이 정한다(아래 「열 것을 모은다」). 자리(`$offsite`)는 끝 줄의 기본값만 고른다 — 사외는 구독
@@ -13870,7 +14305,9 @@ if (-not $personalAny -and -not $personalByRepo) {
 
 # ⚠ **화면 껍데기의 완료 문구는 마지막 `=== 끝 ===` 줄에서 난다** — 저쪽에 같은 문장을 또 적으면 갈래가 늘 때마다 한쪽만 낡는다.
 # 이 줄만 사람에게 건네는 말이라 「…하세요」로 적는다 — 위는 다 기록이다.
-$tail = if ($Only -and -not $OnlyBundles[$Only].Launch) {
+$tail = if ($Uninstalling) {
+  '걷어내기를 마쳤습니다 — 걷은 것 · 남긴 것과 그 까닭은 위 줄에 있습니다 · 열려 있는 VS Code · 터미널은 닫고 새로 여세요'
+} elseif ($Only -and -not $OnlyBundles[$Only].Launch) {
   '설정 저장소 바꾸기를 마쳤습니다 — 받은 결과는 위 줄에 있습니다'
 } elseif ($offsite) {
   '구독 계정 로그인으로 사용합니다 — Claude 데스크탑이나 VS Code 를 새로 여세요'
@@ -13906,7 +14343,7 @@ try {
 if ($NoLaunch) {
   Write-Host '  프로그램을 실행하지 않음 (-NoLaunch)'
 } elseif ($Only -and -not $OnlyBundles[$Only].Launch) {
-  Write-Host '  프로그램을 실행하지 않음 — 이 바꾸기는 환경을 바꾸지 않음'
+  Write-Host $(if ($Uninstalling) { '  프로그램을 실행하지 않음 — 걷어내기' } else { '  프로그램을 실행하지 않음 — 이 바꾸기는 환경을 바꾸지 않음' })
 } else {
   # ⚠ **띄우기 직전에 새 창이 볼 자리(사용자 환경)를 이 창으로 당긴다** — 저장소의 훅으로 넘긴 판에서는 훅이 개인 키를 심었고
   #   그 값은 레지스트리에만 있어, 그대로 자식을 내면 낡은 환경을 물려준다. 검증 칸이 훅이 끝난 뒤에 읽어 둔 값(`$userEnv`)이다.
