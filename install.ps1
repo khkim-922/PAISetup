@@ -9096,6 +9096,10 @@ $FreeSkills = [ordered]@{
   'codex-copilot-background' = @{ Claude = $wantCcBgClaude; Agy = $wantCcBgAgy; Copilot = $wantCcBgCopilot }
   # Claude 에게 읽기만 하는 일을 맡긴다 — 맡기는 쪽은 Codex · agy · Copilot
   'claude-background'        = @{ Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy; Copilot = $wantClaudeBgCopilot }
+  # 셸 · 커밋이 드는 레인을 `claude -p` 로 제 격리 워크트리에 띄운다 — Claude CLI 가 서야 돌아 Claude 를 고른 자리에만 선다. 위 러너와
+  #   달리 Claude 홈에도 간다: 서브에이전트는 맡기는 세션의 한도 · 결제를 함께 쓰는데, 이 러너는 레인을 따로 띄운 프로세스와 API 크레딧
+  #   길로 돌려 Claude 세션도 맡기는 쪽이 된다. 다른 홈은 Claude 맡기기와 같은 사실(그 제품과 Claude 가 함께 선다)이라 그 값을 가리킨다
+  'claude-lane'              = @{ Claude = $hostClaude; Codex = $wantClaudeBgCodex; Agy = $wantClaudeBgAgy; Copilot = $wantClaudeBgCopilot }
 }
 # 칸 없이 까는 스킬의 홈 — 위 표의 칸 이름마다 화면의 이름(`Label`) · 그 도구가 제작자 칸에 드나(`Box` — 들면 그 홈은 손이
 #   쓴다) · 자리(`Place` — 스킬 홈 · 기록 · 기록이 든 폴더 · 안 놓는 이름). 자리는 짐의 갈 곳 표에서 짓는다(`Read-FreeSkillTable`) —
