@@ -1,10 +1,16 @@
 """사규 스킬의 얇은 명령 — 곁의 손(``cbsop.py``)으로 사규관리 앱의 목록을 받아 두고, 거기서 찾고, 앱에 검색하고, 한 건을 읽는다.
 
-부르는 꼴 · 명령마다의 인자 · 답의 칸 · 종료 값은 ``--help`` 가 낸다 — 그 글은 이 파일의 표(``READS`` · ``NOT_HERE`` · ``EXITS``)와 argparse
-에서 서고, 이 머리말은 고치는 사람이 읽는 계약만 든다.
+부르는 꼴 · 명령마다의 인자 · 답의 칸 · 종료 값은 ``--help`` 가 낸다 — 그 글은 이 파일의 표(``reads`` · ``NOT_HERE`` · ``EXITS`` · 짝의
+표 ``VIEW_PAIRS``)와 argparse 에서 서고, 이 머리말은 고치는 사람이 읽는 계약만 든다.
+
+- 짜임 — ``main`` 이 거르고(``gate``) 세션 길을 고르면 ``run`` 이 명령의 손(``INDEX_HANDS`` · ``APP_HANDS``)에 넘긴다. ``read`` 는 문서를
+  연(``opened``) 뒤, 이력 · 사람 · 결재 경과는 바로 그 보기로(결재 경과의 판은 ``revision``), 본문 쪽 보기는 판을 고르고(``edition``)
+  보기 손가락 하나(``*_view`` · ``grep``)에 넘긴다
+- 보기 칸의 짝 — 어느 칸이 무엇과 함께 서나는 ``VIEW_FLAGS`` · ``VIEW_PAIRS`` 한 자리가 든다. 거름(``view_refusal``)과 ``read --help`` 의
+  짝 표(``pairs_help``)가 다 거기서 나온다
 
 - 세션 — 형제 스킬 ep-login 의 ``ep_session.session_first`` 가 쥔다(있는 파일부터 · 거절되면 받는 손으로 한 번 더). 함께 못 서는 인자
-  (``refusal``) · 없는 등급(``grade_of``)은 세션 · 목록 받기 전에 종료 2 로 멈춘다
+  (명령마다의 거름 ``REFUSALS``) · 없는 등급(``grade_of``)은 세션 · 목록 받기 전에 종료 2 로 멈춘다
 - 받아 둔 목록 — ``find`` · ``tree`` · ``recent`` 는 홈의 목록(``index_path``)으로 답하고 앱을 안 부른다. ``INDEX_DAYS`` 가 지나거나, 최근
   시행을 묻는 판(``wants_fresh``)에 ``RECENT_FRESH_DAYS`` 가 지나면 먼저 새로 받는다
 - 등급 문서는 사람의 화면이 여는 만큼만 — 본문 글자를 내는 손가락은 다 ``opened`` 로 문서를 연다
@@ -12,7 +18,7 @@
   임시 폴더 아래 ``IMAGES_ROOT/<processIdx>`` 에 남는다
 - 본문 — 형제 스킬 company-mail 의 ``visible`` 이 푼다(표는 한 행 한 줄 · 사람 눈에 안 보이는 글은 걷고 그 수를 ``hidden`` 에). 그림은
   ``body_images`` 가 받는다. 목차를 안 내는 까닭과 잰 사실은 ``references/SOURCES.md``
-- 내는 것 — 표준 출력에 JSON 하나 · ``OUT_BYTES`` 를 안 넘는다(``page`` · ``fit_text`` · ``grep``)
+- 내는 것 — 표준 출력에 JSON 하나 · ``OUT_BYTES`` 를 안 넘는다(``page`` · ``ep_command.fit_text`` · ``grep``)
 """
 
 from __future__ import annotations
@@ -43,6 +49,7 @@ READ_MAX = 20000               # read 가 한 번에 내는 본문 글자 수의
 GREP_AROUND = 2                # --grep 이 걸린 줄의 앞뒤로 함께 내는 줄 수 — 짧은 줄(표의 행 · 항목)만
 GREP_AROUND_CHARS = 200        # 앞 · 뒤로 함께 내는 줄의 글자 수 합 — 긴 문단이 이웃이면 걸린 줄만 낸다
 CHANGES_BYTES = 8000           # 짧은 문서의 답에 바뀐 자리(changes)를 함께 실을 때 내주는 몫 — 넘는 항목은 수만 센다
+CHANGES_SLACK = 1000           # --changes 답에서 바뀐 자리 몫을 셀 때 머리 밖에 남겨 두는 바이트 — grep · count · note · changes_more 가 든다
 CHANGE_SIDE = 1200             # 바뀐 자리 한쪽(전 · 후)의 글자 수 — 넘으면 자르고 온 길이를 적는다
 RECENT_DAYS = 30
 RECENT_FRESH_DAYS = 1          # recent 는 이보다 오래된 목록이면 먼저 새로 받는다 — 받아 둔 뒤에 시행된 것을 못 본다
@@ -53,9 +60,49 @@ GONE_REV = "폐지"              # 폐지 문서의 판 — 앱이 폐지된 문
 SEARCH_HIT_PREFIX = "searchMenuInList"   # 통합 검색 답에서 범주마다의 결과가 든 칸의 머리
 INDEX_ONLY = ("find", "tree", "recent")   # 받아 둔 목록이 서 있으면 앱을 안 부르는 명령
 FRESH_ONLY = ("recent",)       # 늘 RECENT_FRESH_DAYS 안의 목록을 쓰는 명령 — find 는 --days 를 받았을 때만 그렇다
+NO_CHANGE_HIT = "다음: 낱말을 짧게 바꿔 다시 찾거나, --changes 만으로 바뀐 자리를 다 본다"   # 낱말로 거른 바뀐 자리가 0 건일 때
+CHANGES_LEFT = "바뀐 자리 {} 건은 못 실었다 — 사규 화면에서 본다"                       # 답의 크기에 못 실은 바뀐 자리
+GREP_MORE = "다음: --grep {} --from {} 로 남은 대목을 본다"                       # 답의 크기에 못 실은 대목이 있을 때
+GREP_NONE = "다음: 낱말을 짧게 바꿔 다시 찾거나, --from 0 부터 more 를 따라 본문을 읽는다"   # 낱말이 든 줄이 없을 때
+GONE_HINT = " · 같은 조건에 폐지된 문서 {} 건이 걸린다 — --abolished 로 본다"   # 공개된 문서에 0 건인 find 의 next 뒤에
+UNKEPT = "받은 목록을 PC 에 못 남겼다({}) — 다음 판도 목록을 새로 받는다(1 분 남짓)"
+TREE_NONE = "「{}」에 걸리는 칸이 없다 — 다음: 경로 없이 tree 로 범주 이름을 본다"
 NEXT_READ = "다음: 물음에 낱말이 있으면 --grep <낱말 …> 로 그 대목만 · 통째로는 more 의 --from 을 따라 끝까지 읽는다"
+NEXT_CHANGES = " · 바뀐 자리는 --changes"   # 긴 본문의 첫 답에 바뀐 자리가 있으면 NEXT_READ 뒤에 붙는다
+NEXT_HISTORY = "다음: 지난 판 본문은 --rev <판>, 그 개정의 전후대비는 --rev <판> --changes, 결재 경과는 --rev <판> --trail"
+NO_TRAIL = "이 판에는 결재 경과가 없다(첫 판 · 옮겨 온 판은 비어 온다)"
+NO_TOBE = "이 판에는 전후대비표가 없다(첫 판 · 옮겨 온 판은 비어 온다)"
+CONTACT_ROLES = (("담당", "empcd", "hname"), ("검토", "reviewerCd", "reviewer"), ("승인", "approvalCd", "approval"))   # --contacts — (역할, 사번 칸, 이름 칸)
 ROW_KEYS = ("processIdx", "processName", "enforcementDate", "hname", "deptnm", "version")
 FIND_KEYS = ("processName", "path", "hname", "deptnm", "number")   # find 가 말을 견주는 칸 — number 는 표준번호(앱 검색도 번호를 받는다)
+VIEW_FLAGS = (   # read 의 보기 칸 — (칸, args 의 이름, 안 서는 짝일 때 말 끝에 붙는 두루 쓰는 다음 길). 차례가 거름이 보는 차례다
+    ("--history", "history", "다음: 따로 부른다"),
+    ("--contacts", "contacts", "다음: 따로 부른다"),
+    ("--trail", "trail", "다음: 따로 부른다"),
+    ("--images", "images", "다음: 그림과 글자를 따로 부른다"),
+    ("--changes", "changes", "다음: 따로 부른다"),
+    ("--grep", "grep", "다음: 따로 부른다"),
+    ("--from", "start", "다음: 따로 부른다"),
+    ("--max", "max", "다음: 따로 부른다"),
+    ("--rev", "rev", "다음: 따로 부른다"),
+)
+VIEW_PAIRS = {   # 함께 서는 짝과 그 뜻 — 여기 없는 두 칸은 함께 못 쓴다(거름과 --help 의 짝 표가 다 여기서)
+    ("--trail", "--rev"): "그 개정의 결재 경과",
+    ("--changes", "--grep"): "그 낱말이 든 바뀐 자리만",
+    ("--changes", "--rev"): "그 개정의 전후대비표(줄마다 kind 가 변경 · 신설 · 삭제)",
+    ("--grep", "--from"): "--from 은 찾기를 시작하는 자리",
+    ("--grep", "--rev"): "그 지난 판의 본문에서",
+    ("--from", "--max"): "--from 자리부터 --max 자까지",
+    ("--from", "--rev"): "그 지난 판의 본문에서",
+    ("--max", "--rev"): "그 지난 판의 본문에서",
+}
+CHANGES_NOT_TEXT = "바뀐 자리는 본문의 글자 자리가 아니다. 다음: 따로 부른다(낱말로 거르려면 --grep)"
+PAIR_TAIL = {   # 한 짝에만 맞는 까닭 · 다음 길 — 안 서는 짝의 말 끝에 칸의 두루 쓰는 다음 길 대신 붙는다(짝의 차례는 안 가린다)
+    ("--changes", "--from"): CHANGES_NOT_TEXT,
+    ("--changes", "--max"): CHANGES_NOT_TEXT,
+    ("--grep", "--max"): "대목은 답의 크기까지 다 온다. 다음: --max 를 빼고 부른다",
+}
+PAIR_WHY = {("--images", "--rev"): "--images 는 지금 판의 그림만 받는다 — 지난 판의 그림은 사규 화면의 개정이력에서 본다"}   # 짝마다 따로 드는 말 전체 — 안 서는 짝의 말을 통째로 바꾼다(짝의 차례는 안 가린다)
 USED_DAYS = 30                 # search --used 의 기본 기간 — 화면 「최근 사용 표준」 이 처음 여는 기간과 같다
 
 
@@ -81,6 +128,7 @@ def index_path() -> pathlib.Path:
 
 
 def path_of(row: dict) -> list:
+    """앱 줄의 범주 칸(categoriName0..3) 가운데 빈 것을 뺀 경로."""
     return [row.get(f"categoriName{i}") for i in range(4) if row.get(f"categoriName{i}")]
 
 
@@ -99,6 +147,7 @@ def with_number(out: dict, raw: dict) -> dict:
 
 
 def row_of(raw: dict) -> dict:
+    """앱의 전체 목록 줄 → 받아 둔 줄 — ``ROW_KEYS`` 칸 · 범주 경로 · 있으면 관련 이름 · 표준번호 · 유효기간 끝."""
     out = {k: raw.get(k) for k in ROW_KEYS}
     out["path"] = PATH_SEP.join(path_of(raw))
     if raw.get("relationName"):
@@ -136,6 +185,7 @@ def cached_index() -> dict | None:
 
 
 def stamp_word(index: dict) -> str:
+    """받아 둔 목록을 받은 시각 — 「YYYY-MM-DD HH:MM」."""
     return datetime.fromtimestamp(index["stamp"]).strftime("%Y-%m-%d %H:%M")
 
 
@@ -208,47 +258,72 @@ def save_images(app, idx: int, srcs: list[str]) -> list[dict]:
     return images.save(srcs, fetch, pathlib.Path(tempfile.gettempdir()) / IMAGES_ROOT / str(idx))
 
 
+def keys_of(words: list | None) -> list:
+    """사람이 준 말 → 견주는 열쇠 — 낱말마다 ``squash`` 한 것 가운데 빈 것을 뺀다."""
+    return [k for k in (squash(w) for w in words or []) if k]
+
+
 def clip(text: str, most: int) -> str:
+    """글을 ``most`` 자까지 자르고 잘렸으면 전체 길이를 단다."""
     return text if len(text) <= most else f"{text[:most]} …(잘림 · 전체 {len(text)} 자)"
 
 
-def changes_of(got: dict, room: int, words: list | None = None) -> tuple[list, int, int]:
-    """최근 개정의 바뀐 자리 — (room 바이트 안에 드는 데까지, 못 실은 건수, 걸린 건수). ``words`` 를 주면 까닭 · 전 · 후 어디에 그 낱말
-    (하나라도 · ``squash`` 로 견준다)이 든 자리만 센다 — 덜어 내기 전에 거른다. 첫 건은 늘 싣는다."""
-    keys = [k for k in (squash(w) for w in words or []) if k]
-    out, used, left, hit = [], 0, 0, 0
-    for c in got.get("searchTobe") or []:
+def tobe_of(got: dict) -> list:
+    """앱의 답에 든 바뀐 자리(전후대비)의 줄 — 없으면 빈 목록."""
+    return got.get("searchTobe") or []
+
+
+def changes_hit(got: dict, keys: list) -> list:
+    """바뀐 자리 가운데 열쇠(하나라도)가 까닭 · 전 · 후 어디에 든 것 — 줄마다 why · before · after(한쪽 CHANGE_SIDE 자까지) · 있으면
+    kind. 열쇠가 없으면 다."""
+    rows = []
+    for c in tobe_of(got):
         before, after = plain(c.get("oldContent"), False), plain(c.get("toContent"), False)
         if keys and not any(k in squash(f"{c.get('note') or ''}|{before}|{after}") for k in keys):
             continue
-        hit += 1
         one = {"why": c.get("note"), "before": clip(before, CHANGE_SIDE), "after": clip(after, CHANGE_SIDE)}
         if c.get("tobeGubunNm"):                         # 판마다의 전후대비표는 구분(변경 · 신설 · 삭제)을 든다
             one["kind"] = c["tobeGubunNm"]
+        rows.append(one)
+    return rows
+
+
+def packed(rows: list, room: int) -> tuple[list, int]:
+    """줄을 차례로 room 바이트 안에 드는 데까지 싣는다 — (실은 줄, 못 실은 수). 첫 줄은 늘 싣고, 하나가 안 들면 그 뒤는 다 센다."""
+    out, used, left = [], 0, 0
+    for one in rows:
         if left or (out and used + size(one) > room):
             left += 1
             continue
         used += size(one)
         out.append(one)
-    return out, left, hit
+    return out, left
+
+
+def changes_said(filtered: bool, hit: int, left: int) -> dict:
+    """바뀐 자리 답의 말 — 낱말로 걸러 0 건이면 next, 못 실은 것이 있으면 changes_more."""
+    said = {}
+    if filtered and not hit:
+        said["next"] = NO_CHANGE_HIT
+    if left:
+        said["changes_more"] = CHANGES_LEFT.format(left)
+    return said
 
 
 def with_changes(out: dict, got: dict, room: int, words: list | None = None) -> None:
-    changes, left, hit = changes_of(got, room, words)
+    """바뀐 자리를 답 out 에 싣는다 — 낱말로 거른다 → room 바이트 안에 싣는다 → 센 수를 말로 단다. 덜어 내기 전에 거른다."""
+    rows = changes_hit(got, keys_of(words))
+    changes, left = packed(rows, room)
     if words:
-        out.update(grep=words, count=hit)
-        if not hit:
-            out["next"] = "다음: 낱말을 짧게 바꿔 다시 찾거나, --changes 만으로 바뀐 자리를 다 본다"
+        out.update(grep=words, count=len(rows))
     if changes:
         out["changes"] = changes
-    if left:
-        out["changes_more"] = f"바뀐 자리 {left} 건은 못 실었다 — 사규 화면에서 본다"
+    out.update(changes_said(bool(words), len(rows), left))
 
 
-def fit_text(out: dict, body: str, start: int, most: int) -> None:
-    """본문을 start 부터 most 자까지 ``text`` 칸에 싣되 답이 OUT_BYTES 를 안 넘게 끝을 당긴다 — 남으면 ``more`` 가 다음 자리를
-    든다. 줄 끝에서 끊는 법은 ``ep_command.fit_text`` 가 든다."""
-    ep_command.fit_text(out, "text", body, start, most, lambda end: f"다음: --from {end} 로 이어 읽는다", OUT_BYTES)
+def more_text(end: int) -> str:
+    """본문이 남은 답의 ``more`` — 이어 읽을 자리 end 를 든 말."""
+    return f"다음: --from {end} 로 이어 읽는다"
 
 
 def lines_of(body: str) -> list[tuple[int, str]]:
@@ -261,43 +336,78 @@ def lines_of(body: str) -> list[tuple[int, str]]:
     return out
 
 
-def grep(head: dict, body: str, words: list, start: int) -> dict:
-    """본문에서 낱말(하나라도)이 든 줄을 앞뒤의 짧은 줄과 함께 대목으로 묶어 낸다 — start 자리부터 찾고, 답이 OUT_BYTES 를
-    넘으면 남은 대목의 자리를 ``more`` 로 댄다. 표의 행이 걸리면 그 표의 첫 행을 대목 머리에 붙인다."""
-    keys = [k for k in (squash(w) for w in words) if k]
-    lines = lines_of(body)
-    table_sep = reader().TABLE_SEP                      # 표의 행인가는 본문을 푼 손이 칸을 가른 그 글자로 가린다
-    hits = [i for i, (at, line) in enumerate(lines) if at >= start and any(k in squash(line) for k in keys)]
-    spans: list[list] = []                               # [첫 줄, 끝 줄, 표의 첫 행(없으면 None), 걸린 첫 줄]
+def hit_lines(lines: list, keys: list, start: int) -> list:
+    """열쇠(하나라도)가 든 줄의 차례 번호 — 글자 자리 start 부터의 줄만."""
+    return [i for i, (at, line) in enumerate(lines) if at >= start and any(k in squash(line) for k in keys)]
+
+
+def widened(lines: list, i: int) -> tuple[int, int]:
+    """걸린 줄 i 의 대목 — (첫 줄, 끝 줄). 앞뒤로 GREP_AROUND 줄까지, 이웃 글자 합이 GREP_AROUND_CHARS 안인 짧은 줄만 붙인다."""
+    first, last = i, i
+    room = GREP_AROUND_CHARS
+    while first > 0 and i - first < GREP_AROUND and len(lines[first - 1][1]) <= room:
+        first -= 1
+        room -= len(lines[first][1])
+    room = GREP_AROUND_CHARS
+    while last < len(lines) - 1 and last - i < GREP_AROUND and len(lines[last + 1][1]) <= room:
+        last += 1
+        room -= len(lines[last][1])
+    return first, last
+
+
+def table_top(lines: list, i: int, first: int, table_sep: str) -> int | None:
+    """걸린 줄 i 가 표의 행이면 그 표의 첫 행 — 대목 안에 이미 들었거나 표의 행이 아니면 None."""
+    if table_sep not in lines[i][1]:
+        return None
+    top = i
+    while top > 0 and table_sep in lines[top - 1][1]:
+        top -= 1
+    top = top if top < first else None
+    return top
+
+
+def passages(lines: list, hits: list, table_sep: str) -> list:
+    """걸린 줄마다 대목을 지어 겹치거나 맞닿은 것을 잇는다 — [첫 줄, 끝 줄, 표의 첫 행(없으면 None), 걸린 첫 줄]의 목록."""
+    spans: list[list] = []
     for i in hits:
-        first, last, top = i, i, None
-        room = GREP_AROUND_CHARS
-        while first > 0 and i - first < GREP_AROUND and len(lines[first - 1][1]) <= room:
-            first -= 1
-            room -= len(lines[first][1])
-        room = GREP_AROUND_CHARS
-        while last < len(lines) - 1 and last - i < GREP_AROUND and len(lines[last + 1][1]) <= room:
-            last += 1
-            room -= len(lines[last][1])
-        if table_sep in lines[i][1]:
-            top = i
-            while top > 0 and table_sep in lines[top - 1][1]:
-                top -= 1
-            top = top if top < first else None
+        first, last = widened(lines, i)
+        top = table_top(lines, i, first, table_sep)
         if spans and first <= spans[-1][1] + 1:
             spans[-1][1] = last
         else:
             spans.append([first, last, top, i])
-    out = {**head, "grep": words, "count": len(hits), "hits": []}
+    return spans
+
+
+def fit_passages(out: dict, lines: list, spans: list) -> int | None:
+    """대목을 차례로 out 의 hits 에 싣되 답이 OUT_BYTES 를 넘으면 멈춘다(첫 대목은 늘) — 못 실은 첫 대목의 걸린 줄 글자 자리, 다 실었으면 None."""
     for first, last, top, hit in spans:
         text = "\n".join(line for _, line in lines[first:last + 1])
         out["hits"].append({"at": lines[first][0], "text": text if top is None else f"{lines[top][1]}\n…\n{text}"})
         if len(out["hits"]) > 1 and size(out) > OUT_BYTES:
             out["hits"].pop()
-            out["more"] = f"다음: --grep {' '.join(words)} --from {lines[hit][0]} 로 남은 대목을 본다"
-            break
-    if not hits:
-        out["next"] = "다음: 낱말을 짧게 바꿔 다시 찾거나, --from 0 부터 more 를 따라 본문을 읽는다"
+            return lines[hit][0]
+    return None
+
+
+def grep_said(words: list, left_at: int | None, found: bool) -> dict:
+    """대목 답의 말 — 못 실은 대목이 있으면 그 자리로 잇는 more, 하나도 안 걸렸으면 next."""
+    said = {}
+    if left_at is not None:
+        said["more"] = GREP_MORE.format(" ".join(words), left_at)
+    if not found:
+        said["next"] = GREP_NONE
+    return said
+
+
+def grep(head: dict, body: str, words: list, start: int) -> dict:
+    """대목 보기 — 낱말이 든 줄을 찾는다 → 짧은 이웃 줄 · 표의 첫 행과 함께 대목으로 묶는다 → 답의 크기 안에 싣는다 → 남은 것을 말로."""
+    lines = lines_of(body)
+    table_sep = reader().TABLE_SEP                      # 표의 행인가는 본문을 푼 손이 칸을 가른 그 글자로 가린다
+    hits = hit_lines(lines, keys_of(words), start)
+    out = {**head, "grep": words, "count": len(hits), "hits": []}
+    left_at = fit_passages(out, lines, passages(lines, hits, table_sep))
+    out.update(grep_said(words, left_at, bool(hits)))
     return out
 
 
@@ -317,7 +427,7 @@ def usable_index(args) -> dict | None:
 
 def find_refusal(args) -> str:
     """find 가 거르기를 하나도 안 받았으면 그 까닭 — 서면 빈 글자. 목록을 새로 받기 전에 가린다."""
-    if any(squash(w) for w in args.words) or squash(args.inside) or args.days is not None or args.abolished:
+    if keys_of(args.words) or squash(args.inside) or args.days is not None or args.abolished:
         return ""
     return "find 는 말 · --in · --days · --abolished 가운데 하나는 받는다 — 다음: 구조는 tree, 최근 시행은 recent 로 본다"
 
@@ -327,50 +437,66 @@ def pool(index: dict, args) -> list:
     return index["gone"] if args.abolished else index["rows"]
 
 
-def find(head: dict, rows: list, args, gone: list | None = None) -> dict:
-    """받아 둔 목록을 말 × 범주(어느 깊이든) × 기간으로 거른다. 기간을 주면 새 시행일부터, 아니면 제목에 말이 다 든 것부터 경로 · 이름
-    차례. 0 건이면 ``next`` 가 무엇을 찾았고 무엇을 풀어 볼지를 든다."""
-    keys = [k for k in (squash(w) for w in args.words) if k]
-    if args.days is not None:
-        head = {**head, "since": since_of(args.days)}
-    hit = matched(rows, args, keys, head.get("since"))
-    if args.days is not None:
-        hit.sort(key=lambda r: r["enforcementDate"] or "", reverse=True)
-    else:
-        hit.sort(key=lambda r: (not all(k in squash(r["processName"]) for k in keys), r["path"], r["processName"]))
-    out = page(head, hit, args.start, args.most)
+def find(head: dict, index: dict, args) -> dict:
+    """find 명령 — 받아 둔 목록을 말 × 범주(어느 깊이든) × 기간으로 거른다 → 차례를 세운다 → 쪽으로 넘긴다. 0 건이면 ``next`` 가 무엇을
+    찾았고 무엇을 풀어 볼지(같은 조건에 걸리는 폐지 문서 수까지)를 든다."""
+    rows, gone = pool(index, args), None if args.abolished else index["gone"]
+    keys = keys_of(args.words)
+    since = None if args.days is None else since_of(args.days)
+    hit = ordered(matched(rows, args, keys, since), keys, since is not None)
+    out = page(head if since is None else {**head, "since": since}, hit, args.start, args.most)
     if not hit:
-        out["next"] = find_hint(rows, args, keys, head.get("since"))
-        if gone:                                         # 공개된 문서에 없으면 — 폐지된 문서에 같은 거르기가 걸리나
-            left = len(matched(gone, args, keys, head.get("since")))
-            if left:
-                out["next"] += f" · 같은 조건에 폐지된 문서 {left} 건이 걸린다 — --abolished 로 본다"
+        out["next"] = find_hint(args, keys, since, category_state(rows, args.inside), gone_left(gone, args, keys, since), True)
     return out
 
 
 def matched(rows: list, args, keys: list, since: str | None) -> list:
-    """find 의 거르기 — 범주(어느 깊이든) × 시행일 since 부터 × 말이 다 든 줄. 차례는 부르는 쪽이 정한다."""
+    """find · recent 의 거르기 — 범주(어느 깊이든) × 시행일 since 부터 × 말이 다 든 줄. 받은 차례 그대로 — 차례는 부르는 쪽이 정한다."""
     scoped = under_category(rows, args.inside)
     if since is not None:
         scoped = [r for r in scoped if (r["enforcementDate"] or "") >= since]
     return [r for r in scoped if all(k in squash("|".join(str(r.get(c) or "") for c in FIND_KEYS)) for k in keys)]
 
 
-def find_hint(rows: list, args, keys: list, since: str | None) -> str:
-    """0 건인 find · recent 의 ``next`` — 무엇으로 찾았나와, 거르기마다 풀어 볼 길. recent 는 말이 없다(``keys`` 가 빈다)."""
+def newest_first(rows: list) -> list:
+    """줄을 시행일이 새것부터 — 같은 날은 받은 차례 그대로."""
+    return sorted(rows, key=lambda r: r["enforcementDate"] or "", reverse=True)
+
+
+def ordered(hit: list, keys: list, by_date: bool) -> list:
+    """find 답의 차례 — 기간을 주었으면 새 시행일부터, 아니면 제목에 말이 다 든 것부터 경로 · 이름 차례."""
+    if by_date:
+        return newest_first(hit)
+    return sorted(hit, key=lambda r: (not all(k in squash(r["processName"]) for k in keys), r["path"], r["processName"]))
+
+
+def gone_left(gone: list | None, args, keys: list, since: str | None) -> int:
+    """같은 거르기에 걸리는 폐지 문서 수 — 폐지 문서를 따로 안 견주는 find --abolished 는 gone 이 None 이라 0, 폐지 문서가 없어도 0."""
+    return len(matched(gone, args, keys, since)) if gone else 0
+
+
+def category_state(rows: list, word: str | None) -> bool | None:
+    """범주 말의 상태 — 말이 없으면 None, 있으면 그 범주 아래 줄이 목록에 있나."""
+    return bool(under_category(rows, word)) if squash(word) else None
+
+
+def find_hint(args, keys: list, since: str | None, category: bool | None, gone: int, days_optional: bool) -> str:
+    """0 건인 find · recent 의 ``next`` — 무엇으로 찾았나와, 거르기마다 풀어 볼 길. recent 는 말이 없다(``keys`` 가 빈다). ``category`` 는
+    ``category_state``, ``gone`` 은 같은 조건에 걸리는 폐지 문서 수, ``days_optional`` 은 기간을 빼고 찾을 수 있는 명령인가(find)."""
     searched, tries = [], []
     if keys:
         searched.append(f"말 「{' '.join(args.words)}」(표준명 · 경로 · 담당 · 부서)")
-    if squash(args.inside):
+    if category is not None:
         searched.append(f"범주 「{args.inside}」 아래(어느 깊이든)")
-        tries.append("--in 을 빼고 모든 범주에서 찾는다" if under_category(rows, args.inside)
+        tries.append("--in 을 빼고 모든 범주에서 찾는다" if category
                      else f"범주 「{args.inside}」 에 걸리는 칸이 목록에 없다 — tree 로 범주 이름을 보고 고친다")
     if since:
         searched.append(f"시행일 {since} 이후")
-        tries.append("--days 를 늘리거나 빼고 찾는다" if args.command == "find" else "--days 를 늘려 찾는다")
+        tries.append("--days 를 늘리거나 빼고 찾는다" if days_optional else "--days 를 늘려 찾는다")
     if keys:
         tries.append("말을 짧게 · 다른 말로 바꾼다(「해외 출장 숙박비」 → 「출장」) · 그래도 없으면 search <말> --body 로 앱이 본문까지 찾는다")
-    return f"0 건 — 받아 둔 목록에서 찾은 조건: {' × '.join(searched)}. 다음: {' · '.join(tries)}"
+    said = f"0 건 — 받아 둔 목록에서 찾은 조건: {' × '.join(searched)}. 다음: {' · '.join(tries)}"
+    return said + (GONE_HINT.format(gone) if gone else "")
 
 
 def need_index(app, args) -> tuple[dict, bool, str]:
@@ -382,35 +508,56 @@ def need_index(app, args) -> tuple[dict, bool, str]:
     return fresh, True, ep_command.keep(index_path(), fresh)
 
 
+def views_on(args) -> list:
+    """read 에 준 보기 칸 — 짝의 표(``VIEW_FLAGS``) 차례로. 켜지 않은 칸은 argparse 의 기본값(None · False)이다."""
+    return [flag for flag, name, _ in VIEW_FLAGS if getattr(args, name) is not None and getattr(args, name) is not False]
+
+
+def stands(one: str, other: str) -> bool:
+    """두 보기 칸이 함께 서나 — 짝의 표(``VIEW_PAIRS``)에 든 짝만 선다."""
+    return (one, other) in VIEW_PAIRS or (other, one) in VIEW_PAIRS
+
+
+def partners(flag: str) -> list:
+    """보기 칸 하나와 함께 서는 칸 — ``VIEW_FLAGS`` 차례로."""
+    return [other for other, _, _ in VIEW_FLAGS if other != flag and stands(flag, other)]
+
+
 def view_refusal(args) -> str:
     """read 의 보기 칸이 함께 설 수 없으면 그 까닭 — 서면 빈 글자. 안 먹는 칸을 말없이 버리면 물음에 걸린 자리가 빠진 답이 「됐다」로 나간다.
-    --grep 은 본문에서도(--from 은 찾기 시작 자리) 바뀐 자리에서도(--changes) 거른다. --from · --max 는 본문 글자의 자리라 본문을 읽는 판에만 든다."""
-    alone = [f for f, on in (("--history", args.history), ("--contacts", args.contacts)) if on]
-    if alone and (len(alone) > 1 or args.rev is not None or args.trail or args.images or args.grep or args.changes
-                  or args.start is not None or args.max is not None):
-        return f"{alone[0]} 는 혼자만 든다 — 다음: 따로 부른다"
-    if args.trail and (args.images or args.grep or args.changes or args.start is not None or args.max is not None):
-        return "--trail 은 --rev 하고만 함께 든다 — 다음: 따로 부른다"
-    if args.rev is not None and args.images:
-        return "--images 는 지금 판의 그림만 받는다 — 지난 판의 그림은 사규 화면의 개정이력에서 본다"
-    if args.images and (args.grep or args.changes or args.start is not None or args.max is not None):
-        return "--images 는 --grep · --changes · --from · --max 와 함께 못 쓴다 — 다음: 그림과 글자를 따로 부른다"
-    if args.changes and (args.start is not None or args.max is not None):
-        return "--changes 는 --from · --max 와 함께 못 쓴다 — 바뀐 자리는 본문의 글자 자리가 아니다. 다음: 따로 부른다(낱말로 거르려면 --grep)"
-    if args.grep and args.max is not None:
-        return "--grep 은 --max 와 함께 못 쓴다 — 대목은 답의 크기까지 다 온다. 다음: --max 를 빼고 부른다"
+    준 칸을 ``VIEW_FLAGS`` 차례로 보아, 짝이 아닌 칸과 함께 받은 첫 칸의 말을 낸다 — 짝마다의 말(``PAIR_WHY``)이 있으면 그 말, 없으면
+    짝마다의 까닭(``PAIR_TAIL``)이나 칸의 두루 쓰는 다음 길을 붙인 말."""
+    on = views_on(args)
+    for flag in on:
+        bad = [other for other in on if other != flag and not stands(flag, other)]
+        if bad:
+            return pair_value(PAIR_WHY, flag, bad) or pair_said(flag, bad, partners(flag),
+                                                               pair_value(PAIR_TAIL, flag, bad) or flag_tail(flag))
     return ""
 
 
-def refusal(args) -> str:
-    """함께 못 서는 인자의 까닭 — 서면 빈 글자. 세션도 목록 받기도 부르기 전에 main 이 종료 2 로 멈춘다."""
-    if args.command == "find":
-        return find_refusal(args)
-    if args.command == "read":
-        return view_refusal(args)
-    if args.command == "search":
-        return search_refusal(args)
-    return ""
+def pair_value(table: dict, flag: str, bad: list) -> str | None:
+    """짝마다의 표에서 flag 와 안 서는 칸들 가운데 처음 걸린 짝의 값 — 짝의 두 칸 차례는 안 가린다. 걸린 짝이 없으면 None."""
+    return next((table.get((flag, other)) or table[(other, flag)] for other in bad
+                 if (flag, other) in table or (other, flag) in table), None)
+
+
+def flag_tail(flag: str) -> str:
+    """보기 칸의 두루 쓰는 다음 길(``VIEW_FLAGS`` 의 셋째 칸)."""
+    return next(tail for one, _, tail in VIEW_FLAGS if one == flag)
+
+
+def pair_said(flag: str, bad: list, mates: list, tail: str) -> str:
+    """안 서는 짝의 말 — 함께 못 쓰는 칸 · 그 칸의 짝 · 끝에 붙는 까닭 · 다음 길."""
+    return f"함께 못 쓰는 칸 — {flag} · {' · '.join(bad)}. {flag} 의 짝: {' · '.join(mates) or '없다(혼자만 든다)'}. {tail}"
+
+
+def pairs_help() -> str:
+    """read --help 의 「함께 서는 짝」 — 보기 칸마다 함께 줄 수 있는 칸과, 짝마다의 뜻(짝의 표에서)."""
+    rows = [f"  {flag:11}{' · '.join(partners(flag)) or '혼자만'}" for flag, _, _ in VIEW_FLAGS]
+    means = [f"  {one + ' · ' + other:21}{what}" for (one, other), what in VIEW_PAIRS.items()]
+    return ("함께 서는 짝 — 보기 칸마다 함께 줄 수 있는 칸이다. 안 서는 짝은 세션 전에 종료 2 다\n" + "\n".join(rows)
+            + "\n짝의 뜻\n" + "\n".join(means))
 
 
 def search_refusal(args) -> str:
@@ -420,7 +567,7 @@ def search_refusal(args) -> str:
         if len(lists) > 1 or args.words or args.body or args.owner or args.files or args.inside:
             return f"{lists[0]} 는 말 · --body · --owner · --files · --in 과 함께 못 쓴다 — 내 목록은 화면의 표 그대로다. 다음: 따로 부른다"
         return ""
-    if not any(squash(w) for w in args.words):
+    if not keys_of(args.words):
         return "search 는 말을 받는다 — 다음: search <말>, 내 목록은 --used · --access <등급>"
     return ""
 
@@ -472,148 +619,256 @@ def card(role: str, got: dict | None, name: str | None) -> dict:
             "mobile": got.get("handpon"), "email": got.get("email")}
 
 
-def read(app, args) -> dict:
-    got, info = opened(app, args.idx)                    # 화면이 막는 등급 문서면 여기서 멈춘다 — 아래 보기는 다 그 뒤다
-    head = {"processIdx": info.get("processIdx"), "name": info.get("processName")}
-    if args.history:
-        return {**head, "rev": info.get("version"), "security": info.get("securityGradeName"), "history": history_rows(app.history(args.idx)),
-                "next": "다음: 지난 판 본문은 --rev <판>, 그 개정의 전후대비는 --rev <판> --changes, 결재 경과는 --rev <판> --trail"}
-    if args.contacts:
-        people = (("담당", "empcd", "hname"), ("검토", "reviewerCd", "reviewer"), ("승인", "approvalCd", "approval"))
-        return {**head, "contacts": [card(role, app.person(info[code]) if info.get(code) else None, info.get(name))
-                                     for role, code, name in people if info.get(code) or info.get(name)]}
-    one = revision(app, args.idx, args.rev) if args.rev is not None else None
-    if args.trail:
-        work = one.get("workIdx") if one else info.get("workIdx")
-        out = {**head, "rev": one.get("version") if one else info.get("version"), "trail": trail_rows(app.trail(work)) if work else []}
-        if not out["trail"]:
-            out["note"] = "이 판에는 결재 경과가 없다(첫 판 · 옮겨 온 판은 비어 온다)"
-        return out
-    src = info
-    if one is not None:                                  # 지난 판 — 본문 · 바뀐 자리를 그 판의 것으로 바꿔 아래 보기를 그대로 건다
-        if args.changes:
-            got = {"searchTobe": app.tobe(one["workIdx"]) if one.get("workIdx") else []}
-        else:
-            src = (app.past(one["processHisIdx"]).get("ProcessHisInfo") or [None])[0] or {}
-    page_ = None if args.changes and one is not None else reader().body(src.get("content"))
-    body = page_.text if page_ else ""
+def head_of(info: dict) -> dict:
+    """보기마다 답의 맨 앞 — 문서 번호와 이름."""
+    return {"processIdx": info.get("processIdx"), "name": info.get("processName")}
+
+
+def history_view(app, idx: int, head: dict, info: dict) -> dict:
+    """--history 보기 — 지금 판 · 등급과 개정이력의 줄, 지난 판으로 가는 길."""
+    return {**head, "rev": info.get("version"), "security": info.get("securityGradeName"), "history": history_rows(app.history(idx)),
+            "next": NEXT_HISTORY}
+
+
+def contacts_view(app, head: dict, info: dict) -> dict:
+    """--contacts 보기 — 담당 · 검토 · 승인 가운데 사번이나 이름이 있는 사람마다 사람 창."""
+    return {**head, "contacts": [card(role, app.person(info[code]) if info.get(code) else None, info.get(name))
+                                 for role, code, name in CONTACT_ROLES if info.get(code) or info.get(name)]}
+
+
+def trail_view(app, head: dict, info: dict, one: dict | None) -> dict:
+    """--trail 보기 — 고른 판(없으면 지금 판)의 결재 경과. 비었으면 그렇다는 note."""
+    work = one.get("workIdx") if one else info.get("workIdx")
+    out = {**head, "rev": one.get("version") if one else info.get("version"), "trail": trail_rows(app.trail(work)) if work else []}
+    if not out["trail"]:
+        out["note"] = NO_TRAIL
+    return out
+
+
+def edition(app, got: dict, info: dict, one: dict | None, changes: bool) -> tuple[dict, dict | None]:
+    """판 고르기 — (바뀐 자리를 든 앱의 답, 본문을 든 줄). 지금 판이면 받은 그대로, 지난 판이면 바뀐 자리는 그 개정의 전후대비표로,
+    본문은 그 판의 것으로 바꾼다. 지난 판의 바뀐 자리만 묻는 판은 본문이 없다(None)."""
+    if one is None:
+        return got, info
+    if changes:
+        return {"searchTobe": app.tobe(one["workIdx"]) if one.get("workIdx") else []}, None
+    return got, (app.past(one["processHisIdx"]).get("ProcessHisInfo") or [None])[0] or {}
+
+
+def page_of(src: dict | None):
+    """본문을 든 줄 → 본문을 푼 꼴(``visible`` 의 글자 · 그림 주소 · 숨긴 덩이 수). 본문이 없는 판은 None."""
+    return None if src is None else reader().body(src.get("content"))
+
+
+def brief_of(head: dict, info: dict, one: dict | None, page_) -> dict:
+    """본문 쪽 보기의 머리 — 고른 판 · 그 시행일 · 등급에, 본문이 있으면 글자 수 · 그림 수 · 숨긴 덩이 수, 지난 판이면 지금 판."""
     brief = {**head, "rev": one.get("version") if one else info.get("version"),
              "enforced": one.get("enforcementDate") if one else info.get("enforcementDate"),
              "security": info.get("securityGradeName")}
     if page_:
-        brief["length"] = len(body)
+        brief["length"] = len(page_.text)
     if one is not None:
         brief["current_rev"] = info.get("version")
     if page_ and page_.images:
         brief["images_count"] = len(page_.images)
     if page_ and page_.hidden:
         brief["hidden"] = page_.hidden
-    most = READ_MAX if args.max is None else max(1, args.max)
-    if args.images:
-        out = dict(brief)
-        out["images"] = save_images(app, args.idx, list(page_.images)) if page_.images else []
-        return out
-    if args.changes:                                     # --grep 을 주면 그 낱말이 든 바뀐 자리만
-        out = dict(brief)
-        with_changes(out, got, OUT_BYTES - size(brief) - 1000, args.grep)
-        if one is not None and not got["searchTobe"]:
-            out["note"] = "이 판에는 전후대비표가 없다(첫 판 · 옮겨 온 판은 비어 온다)"
-        return out
-    if args.grep:
-        return grep(brief, body, args.grep, max(0, args.start or 0))
-    if args.start is not None or one is not None:        # 본문을 짚은 자리부터 · 지난 판 — 지금 판의 메타는 되풀이하지 않는다
-        out = {**brief, "from": max(0, args.start or 0)}
-        fit_text(out, body, out["from"], most)
-        return out
-    out = {**brief, "path": info.get("processPath"), "next_review": info.get("examineDate"),
+    return brief
+
+
+def start_of(args) -> int:
+    """본문을 읽거나 찾기 시작하는 글자 자리 — --from, 없거나 음수면 0."""
+    return max(0, args.start or 0)
+
+
+def read_most(args) -> int:
+    """본문을 읽는 판이 한 번에 싣는 글자 수의 위 — --max, 없으면 READ_MAX."""
+    return READ_MAX if args.max is None else max(1, args.max)
+
+
+def images_view(app, idx: int, brief: dict, page_) -> dict:
+    """--images 보기 — 본문 그림을 받아 둔 파일의 줄."""
+    return {**brief, "images": save_images(app, idx, list(page_.images)) if page_.images else []}
+
+
+def changes_view(brief: dict, got: dict, one: dict | None, words: list | None) -> dict:
+    """--changes 보기 — 바뀐 자리를 답의 크기 안에서(낱말을 주면 그 낱말이 든 자리만). 지난 판에 전후대비표가 없으면 그렇다는 note."""
+    out = dict(brief)
+    with_changes(out, got, OUT_BYTES - size(brief) - CHANGES_SLACK, words)
+    if one is not None and not tobe_of(got):
+        out["note"] = NO_TOBE
+    return out
+
+
+def continue_view(brief: dict, body: str, args) -> dict:
+    """이어 읽기 보기 — 본문을 --from 자리부터 --max 와 답의 크기 안에서."""
+    out = {**brief, "from": start_of(args)}
+    ep_command.fit_text(out, "text", body, out["from"], read_most(args), more_text, OUT_BYTES)
+    return out
+
+
+def meta_of(info: dict) -> dict:
+    """첫 답의 메타 — 경로 · 다음 검토일 · 담당 · 검토 · 승인 · 마지막 개정, 있으면 표준번호 · 인증서의 유효기간."""
+    out = {"path": info.get("processPath"), "next_review": info.get("examineDate"),
            "hname": info.get("hname"), "deptnm": info.get("deptnm"), "reviewer": info.get("reviewer"),
            "approver": info.get("approval"), "last_change": info.get("mainContent")}
     if info.get("txtIdx"):
         out["number"] = info["txtIdx"]
     if info.get("fromDate") or info.get("toDate"):       # 인증서 — 화면은 시행일 자리에 유효기간을 적는다
         out["valid"] = f"{info.get('fromDate') or ''} ~ {info.get('toDate') or ''}"
-    related = [{"processIdx": r.get("processIdx"), "name": r.get("processName"), "menu": r.get("menuName"), "deptnm": r.get("reDeptnm")}
-               for r in app.related(args.idx) if isinstance(r, dict)]
-    if related:
-        out["related"] = related
-    files = [f.get("fileName") or f.get("orgFileName") for f in got.get("searchProcessFileList") or [] if isinstance(f, dict)]
-    if files:
-        out["files"] = files
-    if len(body) > READ_FIRST:
-        changed = len(got.get("searchTobe") or [])
-        if changed:
-            out["changes_count"] = changed
-        out["next"] = NEXT_READ + (" · 바뀐 자리는 --changes" if changed else "")
-    else:
-        with_changes(out, got, CHANGES_BYTES)
-    out["from"] = 0
-    fit_text(out, body, 0, min(most, READ_FIRST))
     return out
 
 
-def run(args, session: pathlib.Path | None) -> dict:
-    """session 이 None 이면 받아 둔 목록만으로 답하는 판이다(main 이 가린다)."""
-    app = None if session is None else load("cbsop", HERE).App(session)
-    if args.command in INDEX_ONLY + ("refresh",):
-        index, fresh, unkept = need_index(app, args)
-        head = {"index_at": stamp_word(index), "fresh": fresh, "total": len(index["rows"])}
-        if args.command != "tree" and getattr(args, "abolished", False):
-            head["abolished"] = len(index["gone"])        # 거른 것이 폐지 문서다 — total 은 공개된 문서의 수 그대로
-        if unkept:
-            head["index_note"] = f"받은 목록을 PC 에 못 남겼다({unkept}) — 다음 판도 목록을 새로 받는다(1 분 남짓)"
-        if args.command == "refresh":
-            return {**head, "menus": index["menus"], "abolished": len(index["gone"])}
-        if args.command == "find":
-            return find(head, pool(index, args), args, None if args.abolished else index["gone"])
-        if args.command == "tree":
-            rows = index["rows"]
-            hit, depth = under_path(rows, args.inside)
-            if not hit:
-                raise Stop(EXIT_ARGS, "args", f"「{' '.join(args.inside)}」에 걸리는 칸이 없다 — 다음: 경로 없이 tree 로 범주 이름을 본다")
-            tree: dict = {}
-            leaf = []
-            for r in hit:
-                parts = r["path"].split(PATH_SEP)[depth:]
-                if not parts:
-                    leaf.append(r)
-                    continue
-                node = tree
-                for p in parts:
-                    node = node.setdefault(p, {"count": 0, "under": {}})
-                    node["count"] += 1
-                    node = node["under"]
-            out = {**head, "paths": sorted({r["path"] for r in hit})[:MOST_FIND]} if depth else {**head}
-            if tree:
-                out["tree"] = tree
-            if leaf:                                       # 경로가 맨 아래 칸에 닿았다 — 그 칸의 문서를 넘겨 본다
-                leaf.sort(key=lambda r: r["processName"])
-                return page(out, leaf, args.start, args.most)
-            return out
-        since = since_of(args.days)
-        rows = under_category(pool(index, args), args.inside)
-        hit = sorted((r for r in rows if (r["enforcementDate"] or "") >= since), key=lambda r: r["enforcementDate"], reverse=True)
-        out = page({**head, "since": since}, hit, args.start, args.most)
-        if not hit:
-            out["next"] = find_hint(pool(index, args), args, [], since)
-        return out
-    if args.command == "search":
-        if args.used is not None or args.access:
-            return mine(app, args)
-        fields = (["subject"] + (["content"] if args.body else []) + (["user_name", "team_name"] if args.owner else [])
-                  + (["file_name"] if args.files else []))
-        menu = top_menu(app, args.inside) if args.inside else None
-        got = app.search(" ".join(args.words), ",".join(fields), menu["menuIdx"] if menu else "")
-        hits = []
-        for key, value in sorted(got.items()):
-            if key.startswith(SEARCH_HIT_PREFIX) and isinstance(value, list):
-                for x in value:
-                    hits.append({"processIdx": x.get("processIdx"), "processName": x.get("processName"),
-                                 "path": x.get("processPath"), "enforcementDate": x.get("enforcementDate"),
-                                 "hname": x.get("hname"), "deptnm": x.get("deptnm")})
-        out = page({"fields": fields, **({"in": menu["menuName"]} if menu else {})}, hits, args.start, args.most)
-        out["count"] = got.get("searchListCnt", len(hits))
-        return out
-    return read(app, args)
+def related_of(app, idx: int) -> list:
+    """화면 「관련표준」 의 줄 — 줄마다 processIdx · name · menu · deptnm."""
+    return [{"processIdx": r.get("processIdx"), "name": r.get("processName"), "menu": r.get("menuName"), "deptnm": r.get("reDeptnm")}
+            for r in app.related(idx) if isinstance(r, dict)]
+
+
+def files_of(got: dict) -> list:
+    """앱의 답에 든 첨부 파일 이름."""
+    return [f.get("fileName") or f.get("orgFileName") for f in got.get("searchProcessFileList") or [] if isinstance(f, dict)]
+
+
+def long_next(got: dict) -> dict:
+    """긴 본문의 첫 답에 붙는 것 — 바뀐 자리가 있으면 그 수와, 읽는 길."""
+    changed = len(tobe_of(got))
+    return {**({"changes_count": changed} if changed else {}), "next": NEXT_READ + (NEXT_CHANGES if changed else "")}
+
+
+def first_view(app, args, brief: dict, info: dict, got: dict, body: str) -> dict:
+    """첫 답 보기 — 메타 → 관련 → 첨부 → 짧은 본문이면 바뀐 자리 · 긴 본문이면 읽는 길 → 본문 앞머리."""
+    out = {**brief, **meta_of(info)}
+    related = related_of(app, args.idx)
+    if related:
+        out["related"] = related
+    files = files_of(got)
+    if files:
+        out["files"] = files
+    if len(body) > READ_FIRST:
+        out.update(long_next(got))
+    else:
+        with_changes(out, got, CHANGES_BYTES)
+    out["from"] = 0
+    ep_command.fit_text(out, "text", body, 0, min(read_most(args), READ_FIRST), more_text, OUT_BYTES)
+    return out
+
+
+def read(app, args) -> dict:
+    """read 명령 — 문서를 연다 → 판을 고른다 → 보기 하나로 답한다. 화면이 막는 등급 문서면 여는 자리(``opened``)에서 멈춘다."""
+    got, info = opened(app, args.idx)
+    head = head_of(info)
+    if args.history:
+        return history_view(app, args.idx, head, info)
+    if args.contacts:
+        return contacts_view(app, head, info)
+    one = revision(app, args.idx, args.rev) if args.rev is not None else None
+    if args.trail:
+        return trail_view(app, head, info, one)
+    got, src = edition(app, got, info, one, args.changes)
+    page_ = page_of(src)
+    body = page_.text if page_ else ""
+    brief = brief_of(head, info, one, page_)
+    if args.images:
+        return images_view(app, args.idx, brief, page_)
+    if args.changes:                                     # --grep 을 주면 그 낱말이 든 바뀐 자리만
+        return changes_view(brief, got, one, args.grep)
+    if args.grep:
+        return grep(brief, body, args.grep, start_of(args))
+    if args.start is not None or one is not None:        # 본문을 짚은 자리부터 · 지난 판 — 지금 판의 메타는 되풀이하지 않는다
+        return continue_view(brief, body, args)
+    return first_view(app, args, brief, info, got, body)
+
+
+def index_head(index: dict, fresh: bool, unkept: str, args) -> dict:
+    """목록 명령의 답 머리 — 받은 때 · 방금 받았나 · 전체 수, 폐지 문서를 거르는 판이면 그 수, 목록을 못 남겼으면 그 말."""
+    head = {"index_at": stamp_word(index), "fresh": fresh, "total": len(index["rows"])}
+    if args.command != "tree" and getattr(args, "abolished", False):
+        head["abolished"] = len(index["gone"])        # 거른 것이 폐지 문서다 — total 은 공개된 문서의 수 그대로
+    if unkept:
+        head["index_note"] = UNKEPT.format(unkept)
+    return head
+
+
+def branches(hit: list, depth: int) -> tuple[dict, list]:
+    """(경로의 depth 칸 아래 나무 — 칸마다 count · under, 경로가 맨 아래 칸에 닿은 줄 — 이름순)."""
+    nodes: dict = {}
+    leaf = []
+    for r in hit:
+        parts = r["path"].split(PATH_SEP)[depth:]
+        if not parts:
+            leaf.append(r)
+            continue
+        node = nodes
+        for p in parts:
+            node = node.setdefault(p, {"count": 0, "under": {}})
+            node["count"] += 1
+            node = node["under"]
+    leaf.sort(key=lambda r: r["processName"])
+    return nodes, leaf
+
+
+def tree(head: dict, index: dict, args) -> dict:
+    """tree 명령 — 경로로 거른다 → 그 아래 나무를 짓는다 → 맨 아래 칸에 닿았으면 그 칸의 문서를 쪽으로 넘긴다."""
+    hit, depth = under_path(index["rows"], args.inside)
+    if not hit:
+        raise Stop(EXIT_ARGS, "args", TREE_NONE.format(" ".join(args.inside)))
+    nodes, leaf = branches(hit, depth)
+    out = {**head, "paths": sorted({r["path"] for r in hit})[:MOST_FIND]} if depth else {**head}
+    if nodes:
+        out["tree"] = nodes
+    if leaf:                                           # 경로가 맨 아래 칸에 닿았다 — 그 칸의 문서를 넘겨 본다
+        return page(out, leaf, args.start, args.most)
+    return out
+
+
+def recent(head: dict, index: dict, args) -> dict:
+    """recent 명령 — 범주 안에서 시행일이 최근 N 일 안인 줄을 새 시행일부터 낸다. 0 건이면 ``next``."""
+    since = since_of(args.days)
+    rows = pool(index, args)
+    hit = newest_first(matched(rows, args, [], since))
+    out = page({**head, "since": since}, hit, args.start, args.most)
+    if not hit:
+        out["next"] = find_hint(args, [], since, category_state(rows, args.inside), 0, False)
+    return out
+
+
+def refresh(head: dict, index: dict, args) -> dict:
+    """refresh 명령 — 방금 받은 목록의 머리에 맨 위 범주와 폐지 문서 수를 단다."""
+    return {**head, "menus": index["menus"], "abolished": len(index["gone"])}
+
+
+def search_fields(args) -> list:
+    """search 가 앱에 묻는 칸 — 표준명에 --body 본문 · --owner 담당 · 부서 · --files 첨부 이름을 더한다."""
+    return (["subject"] + (["content"] if args.body else []) + (["user_name", "team_name"] if args.owner else [])
+            + (["file_name"] if args.files else []))
+
+
+def search_rows(got: dict) -> list:
+    """앱의 통합 검색 답 → 답의 줄 — 범주마다의 결과 칸(``SEARCH_HIT_PREFIX``)을 칸 이름 차례로 잇는다."""
+    hits = []
+    for key, value in sorted(got.items()):
+        if key.startswith(SEARCH_HIT_PREFIX) and isinstance(value, list):
+            for x in value:
+                hits.append({"processIdx": x.get("processIdx"), "processName": x.get("processName"),
+                             "path": x.get("processPath"), "enforcementDate": x.get("enforcementDate"),
+                             "hname": x.get("hname"), "deptnm": x.get("deptnm")})
+    return hits
+
+
+def search(app, args) -> dict:
+    """search 명령 — 내 목록이면 그 목록, 아니면 칸 고르기 → 범주 → 앱 묻기 → 줄 모으기."""
+    if args.access:
+        return access_list(app, args)
+    if args.used is not None:
+        return used_list(app, args)
+    fields = search_fields(args)
+    menu = top_menu(app, args.inside) if args.inside else None
+    got = app.search(" ".join(args.words), ",".join(fields), menu["menuIdx"] if menu else "")
+    hits = search_rows(got)
+    out = page({"fields": fields, **({"in": menu["menuName"]} if menu else {})}, hits, args.start, args.most)
+    out["count"] = got.get("searchListCnt", len(hits))
+    return out
 
 
 def top_menu(app, word: str) -> dict:
@@ -634,26 +889,46 @@ def grade_of(grades: dict, word: str) -> str:
     return code
 
 
-def mine(app, args) -> dict:
-    """내 목록 — 화면 「최근 사용 표준」(--used) · 「접근 가능한 표준」(--access 등급)."""
-    def line(x: dict) -> dict:
-        out = {"processIdx": x.get("processIdx"), "processName": x.get("processName"),
-               "path": PATH_SEP.join(x.get(k) for k in ("menuName1", "menuName2", "menuName3") if x.get(k)),
-               "hname": x.get("hname"), "deptnm": x.get("reDeptnm") or x.get("deptnm")}
-        for key, raw in (("number", "txtIdx"), ("enforcementDate", "enforcementDate"), ("enforcementDate", "reRegDate"),
-                         ("security", "securityGradeN"), ("state", "stateNm")):
-            if x.get(raw) and key not in out:            # 최근 사용 줄은 시행일을 reRegDate 에 든다(SOURCES.md) · 등급 이름은 securityGradeN
-                out[key] = x[raw]
-        return out
+def mine_row(x: dict) -> dict:
+    """내 목록(최근 사용 · 접근 가능)의 앱 줄 → 답의 줄. 최근 사용 줄은 시행일을 reRegDate 에 들고(SOURCES.md), 등급 이름은 securityGradeN 이다."""
+    out = {"processIdx": x.get("processIdx"), "processName": x.get("processName"),
+           "path": PATH_SEP.join(x.get(k) for k in ("menuName1", "menuName2", "menuName3") if x.get(k)),
+           "hname": x.get("hname"), "deptnm": x.get("reDeptnm") or x.get("deptnm")}
+    for key, raw in (("number", "txtIdx"), ("enforcementDate", "enforcementDate"), ("enforcementDate", "reRegDate"),
+                     ("security", "securityGradeN"), ("state", "stateNm")):
+        if x.get(raw) and key not in out:
+            out[key] = x[raw]
+    return out
 
-    if args.access:
-        rows = [line(x) for x in app.access(grade_of(app.GRADES, args.access))]
-        rows.sort(key=lambda r: (r["path"], r["processName"] or ""))
-        return page({"access": args.access, "range": "읽기"}, rows, args.start, args.most)
+
+def access_list(app, args) -> dict:
+    """search --access — 화면 「접근 가능한 표준」 의 그 등급 문서를 경로 · 이름 차례로."""
+    rows = [mine_row(x) for x in app.access(grade_of(app.GRADES, args.access))]
+    rows.sort(key=lambda r: (r["path"], r["processName"] or ""))
+    return page({"access": args.access, "range": "읽기"}, rows, args.start, args.most)
+
+
+def used_list(app, args) -> dict:
+    """search --used — 화면 「최근 사용 표준」 의 최근 N 일을 앱의 차례 그대로(줄은 연 날을 안 든다)."""
     until = date.today()
     since = until - timedelta(days=max(0, args.used))
-    rows = [line(x) for x in app.used(since.strftime(APP_DATE), until.strftime(APP_DATE))]   # 앱의 차례 그대로 — 줄은 연 날을 안 든다
+    rows = [mine_row(x) for x in app.used(since.strftime(APP_DATE), until.strftime(APP_DATE))]
     return page({"used_since": since.strftime(APP_DATE)}, rows, args.start, args.most)
+
+
+INDEX_HANDS = {"find": find, "tree": tree, "recent": recent, "refresh": refresh}   # 받아 둔 목록으로 답하는 명령의 손
+APP_HANDS = {"search": search, "read": read}                                      # 앱에 묻는 명령의 손
+REFUSALS = {"find": find_refusal, "read": view_refusal, "search": search_refusal}  # main 이 세션 · 목록 받기 전에 부르는 명령마다의 거름
+
+
+def run(args, session: pathlib.Path | None) -> dict:
+    """명령 하나를 그 명령의 손에 넘긴다 — 앱 손과, 목록 명령이면 받아 둔 목록과 답 머리를 앞에 한 번 세운다. session 이 None 이면
+    받아 둔 목록만으로 답하는 판이다(main 이 가린다)."""
+    app = None if session is None else load("cbsop", HERE).App(session)
+    if args.command in INDEX_HANDS:
+        index, fresh, unkept = need_index(app, args)
+        return INDEX_HANDS[args.command](index_head(index, fresh, unkept, args), index, args)
+    return APP_HANDS[args.command](app, args)
 
 
 NOT_HERE = ("개정 · 폐지 · 신규 제정 · 인계인수 · 이슈 등록 · 검토 · 승인 · 윤독 완료 · 첨부 받기 · 본문 PDF 받기 · 화면 조작 — 손에 없다. 사람에게 사규 화면에서 하도록 "
@@ -664,9 +939,20 @@ EXITS = ep_command.exit_legend((ep_command.EXIT_OK, ep_command.EXIT_TOOL, EXIT_A
                                            "denied — 본문은 안 왔다. 사규 화면의 [권한신청]을 권한다)"})
 
 
-def reads() -> dict:
-    """명령마다 (한 줄 — 맨 위 --help 의 지도와 명령 목록, 그 명령의 --help 에 덧붙는 설명 · 답의 칸). --help 는 이 표와 argparse 에서만 선다."""
-    images = ep_command.load("body_images", MAIL_SCRIPTS).MAX_IMAGES   # 그림 수의 위는 받는 손의 값 그대로 — 손을 대역으로 바꾼 판에도 도움말은 선다
+def image_most() -> int:
+    """--images 가 받는 장 수의 위 — 그림을 받는 손의 값(``body_images.MAX_IMAGES``) 그대로. 이름으로 바로 싣는다 — 손을 대역으로 바꾼
+    판에도 도움말은 선다."""
+    return ep_command.load("body_images", MAIL_SCRIPTS).MAX_IMAGES
+
+
+def grade_names() -> list:
+    """--access 가 받는 등급 이름 — 앱 손의 등급 표(``cbsop.GRADES``) 그대로. 이름으로 바로 싣는다 — 손을 대역으로 바꾼 판에도 도움말은 선다."""
+    return list(ep_command.load("cbsop", HERE).GRADES)
+
+
+def reads(images: int) -> dict:
+    """명령마다 (한 줄 — 맨 위 --help 의 지도와 명령 목록, 그 명령의 --help 에 덧붙는 설명 · 답의 칸). --help 는 이 표와 argparse 에서만 선다.
+    ``images`` 는 --images 가 받는 장 수의 위."""
     rows = "답: index_at(목록을 받은 때) · fresh(이 판에 새로 받았나) · total(목록 전체 건수) · count(걸린 건수) · from · rows(줄마다 processIdx · " \
            "processName · enforcementDate · hname(담당) · deptnm(부서) · version · path · 있으면 number(표준번호) · valid_to(인증서 유효기간 끝)) · " \
            "more(다음 --from)"
@@ -696,16 +982,14 @@ def reads() -> dict:
                  f"낱말 없이 부르면 메타(판 · 시행일 · 다음 검토일 · 담당 · 검토 · 승인 · 보안등급)와 본문 앞 {READ_FIRST} 자가 온다 — 본문이 그 안이면 "
                  "통째로 오고 바뀐 자리(changes)도 함께 온다. 넘으면 more 가 다음 --from 을, next 가 읽는 길을 든다. 목차는 안 낸다(제목 줄의 꼴이 "
                  "문서마다 달라 틀린 조를 가리킨다)\n\n"
-                 "함께 서는 짝 — --grep 은 본문에서도(--from 은 찾기 시작 자리) 바뀐 자리에서도(--changes) 거른다. --from · --max 는 본문을 읽는 판에만, "
-                 "--images 는 혼자만 든다. 안 서는 짝은 세션 전에 종료 2 다\n\n"
-                 "개정이력 — --history 가 판마다 rev · enforced · summary · hname · by 를 낸다. --rev <판> 은 그 지난 판을 지금 판처럼 읽는다(본문 · "
-                 "--grep · --from · --max) — 답은 rev · current_rev(지금 판) · text. --rev <판> --changes 는 그 개정의 전후대비표(changes 의 줄마다 "
-                 "kind 가 변경 · 신설 · 삭제), --trail 은 그 개정의 결재 경과(trail — at · step · from · to · opinion). --history · --contacts 는 혼자만 든다\n\n"
+                 f"{pairs_help()}\n\n"
+                 "개정이력 — --history 가 판마다 rev · enforced · summary · hname · by 를 낸다. --rev <판> 은 그 지난 판을 지금 판처럼 읽는다(함께 서는 칸과 그 뜻은 위 짝 표) — "
+                 "답은 rev · current_rev(지금 판) · text. --trail 의 답은 trail(걸음마다 at · step · from · to · opinion)\n\n"
                  "사람 — --contacts 가 담당 · 검토 · 승인의 사람 창(contacts — role · name · dept · grade · title · duty · office · mobile · email)을 낸다. "
-                 "메일을 보내려면 company-mail 의 who --name <name> 으로 받는 사람 파일을 짓는다\n\n"
+                 "메일을 보내려면 company-directory 의 find --name <name> 으로 받는 사람 파일을 짓는다\n\n"
                  "등급 문서 — 「일반」 이 아닌 문서는 쓰는 사람의 사규 화면이 여는지 먼저 묻는다. 막으면 어느 보기든 본문 없이 종료 2(error: denied)\n\n"
                  "답: processIdx · name · rev · enforced · security · length(본문 글자 수) · path · next_review · hname · deptnm(받는 사람 찾기 — "
-                 "company-mail 의 who --name <hname>, 동명이인이면 deptnm 으로 고른다) · reviewer · approver · last_change · related(화면 「관련표준」 — 줄마다 processIdx · name · menu · deptnm) · files · "
+                 "company-directory 의 find --name <hname>, 동명이인이면 deptnm 으로 고른다) · reviewer · approver · last_change · related(화면 「관련표준」 — 줄마다 processIdx · name · menu · deptnm) · files · "
                  "number(표준번호) · valid(인증서의 유효기간 — 시작 ~ 끝) · text · from · more · next. --grep 은 hits(대목마다 at — 그 자리부터 --from 으로 둘레를 더 읽는다 · text) · count, --changes 는 "
                  "changes(why · before · after) · changes_more, 긴 문서의 첫 답은 changes_count. 본문은 글자만이다 — 표는 한 행 한 줄 · 칸 사이 「 | 」 · 합친 칸은 자리마다 같은 "
                  "글자, 그림은 「[그림 N]」(images_count 가 그 수). 사람 눈에 안 보이게 감춘 글은 걷히고 그 덩이 수가 hidden 이다 — 찾는 대목이 "
@@ -734,8 +1018,9 @@ def top_map(table: dict) -> str:
 
 
 def parser() -> argparse.ArgumentParser:
+    """명령줄의 꼴 — 명령 여섯과 인자를 세우고, 명령마다의 설명 · 맨 위 지도를 도움말 표(``reads`` · ``top_map``)에서 붙인다."""
     raw = argparse.RawDescriptionHelpFormatter
-    table = reads()
+    table = reads(image_most())
     p = argparse.ArgumentParser(prog="regulation.py", description="사내 사규관리 앱 — 사규 · 표준 · 지침 · 작업표준 · 검사기준 · 인증서를 찾고 읽는다(읽기만)",
                                 epilog=top_map(table), formatter_class=raw)
     sub = p.add_subparsers(dest="command", required=True, metavar="<명령>")
@@ -776,35 +1061,40 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--used", nargs="?", type=int, const=USED_DAYS, default=None, metavar="N",
                    help=f"내가 사규 화면에서 최근 N 일(기본 {USED_DAYS})에 연 문서 — 화면 「최근 사용 표준」. 이 손의 read 는 안 남는다")
     s.add_argument("--access", metavar="등급", help="내가 읽을 수 있는 그 등급의 문서 — 화면 「접근 가능한 표준」(등급 하나씩 · 수 초). "
-                   + " · ".join(ep_command.load("cbsop", HERE).GRADES))
+                   + " · ".join(grade_names()))
     paged(s, MOST_SEARCH)
     d = command("read")
     d.add_argument("idx", type=int, metavar="processIdx", help="find · tree · recent · search 줄의 processIdx")
     d.add_argument("--from", dest="start", type=int, default=None, metavar="N",
-                   help="본문을 N 째 글자부터 — more 가 댄다. --grep 과 함께면 찾기를 시작하는 자리")
+                   help="본문을 N 째 글자부터 — more 가 댄다")
     d.add_argument("--max", type=int, default=None, metavar="N", help=f"본문을 읽는 판의 글자 수 위(기본 {READ_MAX})")
     d.add_argument("--grep", nargs="+", metavar="낱말",
                    help=f"그 낱말(하나라도)이 든 대목만 — 걸린 줄과 앞뒤의 짧은 줄 {GREP_AROUND} 줄까지, 표의 행이면 그 표의 첫 행도 함께")
-    d.add_argument("--changes", action="store_true", help="최근 개정의 바뀐 자리 — --grep 을 함께 주면 그 낱말이 든 자리만")
+    d.add_argument("--changes", action="store_true", help="최근 개정의 바뀐 자리")
     d.add_argument("--images", action="store_true", help="본문 그림을 파일로 받아 낸다 — 본문 글자는 안 싣는다")
     d.add_argument("--history", action="store_true", help="개정이력 — 판마다 rev · enforced · summary(주요 개정 내용) · hname · by(올린 사람)")
-    d.add_argument("--rev", metavar="판", help="지난 판 하나(--history 의 rev) — 본문 · --grep · --from · --max 가 그 판에 걸린다. "
-                   "--changes 는 그 개정의 전후대비표, --trail 은 그 개정의 결재 경과")
+    d.add_argument("--rev", metavar="판", help="지난 판 하나(--history 의 rev) — 함께 준 칸이 그 판에 걸린다(위 짝 표)")
     d.add_argument("--trail", action="store_true", help="개정의 결재 경과(검토 · 승인의 걸음 · 때 · 사람 · 의견) — 없으면 지금 판")
     d.add_argument("--contacts", action="store_true", help="담당 · 검토 · 승인의 사람 창(부서 · 직급 · 직책 · 담당 업무 · 회사 전화 · 휴대 전화 · 메일)")
     command("refresh")
     return p
 
 
+def gate(args, cbsop) -> None:
+    """세션 · 목록 받기 전의 거름 — 명령의 거름(``REFUSALS``)이 막거나 --access 의 등급이 앱 손의 표에 없으면 Stop(인자)."""
+    refused = REFUSALS[args.command](args) if args.command in REFUSALS else ""
+    if refused:
+        raise Stop(EXIT_ARGS, "args", refused)
+    if args.command == "search" and args.access:
+        grade_of(cbsop.GRADES, args.access)              # 없는 등급도 세션 전에 — 로그인을 청할 일이 아니다
+
+
 def main() -> int:
+    """명령 입구 — 인자를 읽고, 거른 뒤, 받아 둔 목록으로 서면 세션 없이 · 아니면 세션 바퀴 안에서 run 을 돌려 답 하나와 종료 값을 낸다."""
     args = parser().parse_args()
 
     def work(cbsop) -> dict:
-        refused = refusal(args)
-        if refused:
-            raise Stop(EXIT_ARGS, "args", refused)
-        if args.command == "search" and args.access:
-            grade_of(cbsop.GRADES, args.access)          # 없는 등급도 세션 전에 — 로그인을 청할 일이 아니다
+        gate(args, cbsop)
         if args.command in INDEX_ONLY and usable_index(args) is not None:
             return run(args, None)                       # 받아 둔 목록으로 선다 — 세션 파일이 없어도 답한다
         return ep_session.session_first(lambda f: run(args, f), expired=(cbsop.SessionExpired, cbsop.SessionMissing))

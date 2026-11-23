@@ -82,6 +82,7 @@ def _shrink_all(where: pathlib.Path, pairs: list[tuple[pathlib.Path, pathlib.Pat
 
 
 def _data_uri(src: str) -> bytes:
+    """base64 data 주소의 바이트를 푼다 — base64 가 아니거나 못 풀면 Refused."""
     meta, _, payload = src.partition(",")
     if ";base64" not in meta.lower():
         raise Refused("base64 가 아닌 data 주소다")

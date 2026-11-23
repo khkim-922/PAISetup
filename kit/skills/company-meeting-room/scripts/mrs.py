@@ -48,25 +48,31 @@ LOGIN_TRIES = 2          # SSO_VALIDATION_FAILED 뒤 같은 세션으로 한 번
 
 
 class AppError(Exception):
+    """회의실 예약 앱의 손이 낸 실패 — 사람에게 전할 말과, 앱이 답했으면 그 HTTP 상태."""
     def __init__(self, message: str, status: int | None = None):
         super().__init__(message)
         self.status = status
 
 
 class SessionMissing(AppError):
+    """세션 파일이 없거나 비었다 — 받는 손(스킬 ep-login)을 부를 자리다."""
     pass
 
 
 class SessionExpired(AppError):
+    """사내 세션이 끊겼거나 앱이 출입증을 거절했다 — 받는 손을 다시 부를 자리다."""
     pass
 
 
 class _Stay(urllib.request.HTTPRedirectHandler):
+    """넘김(3xx)을 따라가지 않는 손잡이 — 넘김은 HTTPError 로 올라와 Location 을 읽는다."""
     def redirect_request(self, *a, **k):   # 따라가지 않는다 — 3xx 는 HTTPError 로 올라와 Location 을 읽는다
+        """넘김을 따라가지 않는다 — None 이면 urllib 이 3xx 를 HTTPError 로 올린다."""
         return None
 
 
 def _opener(jar=None):
+    """프록시를 거치지 않고 넘김을 안 따라가는 여는 손 — 쿠키 통을 주면 그 쿠키를 싣는다."""
     parts = [urllib.request.ProxyHandler({}), _Stay()]
     if jar is not None:
         parts.append(urllib.request.HTTPCookieProcessor(jar))
@@ -74,6 +80,7 @@ def _opener(jar=None):
 
 
 class App:
+    """회의실 예약 앱 한 판 — 사내 세션의 쿠키로 출입증을 받고, 앱의 JSON 자리를 부른다."""
     def __init__(self, session_file: pathlib.Path | str, *, timeout: float = TIMEOUT):
         self._jar = ep_session.load_jar(session_file, missing=SessionMissing)   # 어느 호스트에 실리나는 쿠키 통이 가린다
         self._timeout = timeout
@@ -82,6 +89,7 @@ class App:
 
     # ── 출입증 ───────────────────────────────────────────────────────────
     def _login_once(self) -> str:
+        """SSO 넘김 화면에서 토큰을 받아 앱에 넘기고, 앱이 넘김 주소에 실어 준 출입증(accessToken)을 낸다 — 못 받으면 SessionExpired."""
         try:
             r = _opener(self._jar).open(SSO_PAGE, timeout=self._timeout)
             page = r.read().decode("utf-8", "ignore")
@@ -107,6 +115,7 @@ class App:
         raise SessionExpired(f"회의실 예약 앱이 출입증을 안 줬다({(q.get('code') or ['답 없음'])[0]})")
 
     def login(self) -> None:
+        """출입증을 받아 둔다 — 앱이 SSO 검증에 지면 같은 세션으로 ``LOGIN_TRIES`` 번까지."""
         last = None
         for i in range(LOGIN_TRIES):
             try:
@@ -120,6 +129,7 @@ class App:
 
     # ── 부르기 ───────────────────────────────────────────────────────────
     def call(self, method: str, path: str, data=None, query: dict | None = None):
+        """앱의 자리 하나를 출입증으로 부르고 답 JSON 을 낸다 — 401 은 SessionExpired, 그 밖의 거절 · 닿지 못함은 AppError."""
         if not self._token:
             self.login()
         url = BASE + path + ("?" + urllib.parse.urlencode(query) if query else "")
@@ -148,24 +158,31 @@ class App:
 
     # ── 읽기 ─────────────────────────────────────────────────────────────
     def me(self) -> dict:
+        """나 — 앱이 아는 쓰는 사람(id · 이름 · 메일 · 회사)."""
         return self.call("GET", "auth/me")["user"]
 
     def rooms(self) -> list:
+        """회의실 목록 — 정책(승인 · 예약 권한 · Teams)까지."""
         return self.call("GET", "rooms")
 
     def hierarchy(self) -> list:
+        """회사 → 지역 → 건물 → 층의 나무."""
         return self.call("GET", "rooms/hierarchy")
 
     def between(self, first_utc: str, last_utc: str) -> list:
+        """그 구간(UTC 글자)에 걸친 모든 예약."""
         return self.call("GET", "reservations", query={"startDate": first_utc, "endDate": last_utc})
 
     def mine(self) -> list:
+        """내 예약 — 내가 주관한 것과 나를 부른 것."""
         return self.call("GET", "reservations/my")
 
     def directory(self) -> list:
+        """앱의 전사 사람 목록 — 참석자 메일을 앱의 사람에 잇는 데 쓴다."""
         return self.call("GET", "users/directory")["users"]
 
     def validate(self, room_ids: list, start: str, end: str, reservation_id: str | None = None) -> dict:
+        """넣거나 고칠 예약을 앱의 정책에 미리 대 본다 — 읽기다(앱의 화면도 입력마다 부른다)."""
         body = {"room_ids": room_ids, "start_time": start, "end_time": end}
         if reservation_id:
             body["reservation_id"] = reservation_id
@@ -173,12 +190,15 @@ class App:
 
     # ── 바꾸기 ⚠ ──────────────────────────────────────────────────────────
     def create(self, body: dict) -> dict:
+        """⚠ 예약 하나를 넣는다 — 참석자에게 안내가 간다."""
         return self.call("POST", "reservations", body)
 
     def update(self, rid: str, body: dict) -> dict:
+        """⚠ 예약 하나를 고친다 — 참석자에게 바뀐 안내가 간다."""
         return self.call("PATCH", f"reservations/{urllib.parse.quote(rid)}", body)
 
     def delete(self, rid: str) -> None:
+        """⚠ 예약 하나를 지운다 — 참석자에게 취소 안내가 간다."""
         self.call("DELETE", f"reservations/{urllib.parse.quote(rid)}")
 
     def update_series(self, rid: str, body: dict) -> dict:
@@ -191,9 +211,11 @@ class App:
 
     # ── 내 설정 — 즐겨찾는 회의실 · 참석자 그룹. 바꾸는 손의 답은 다 바뀐 뒤의 설정 전체다 ─────────────────
     def prefs(self) -> dict:
+        """내 설정 — 즐겨찾는 회의실과 참석자 그룹."""
         return self.call("GET", "me/preferences")
 
     def favorite(self, room_id: str, on: bool) -> dict:
+        """회의실 하나를 즐겨찾기에 넣거나 뺀다."""
         return self.call("POST" if on else "DELETE", f"me/preferences/favorite-rooms/{urllib.parse.quote(room_id)}")
 
     def add_group(self, body: dict) -> dict:
@@ -201,7 +223,9 @@ class App:
         return self.call("POST", "me/preferences/attendee-groups", body)
 
     def put_group(self, gid: str, body: dict) -> dict:
+        """참석자 그룹 하나를 통째로 간다."""
         return self.call("PUT", f"me/preferences/attendee-groups/{urllib.parse.quote(gid)}", body)
 
     def drop_group(self, gid: str) -> dict:
+        """참석자 그룹 하나를 지운다."""
         return self.call("DELETE", f"me/preferences/attendee-groups/{urllib.parse.quote(gid)}")

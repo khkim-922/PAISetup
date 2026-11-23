@@ -62,6 +62,7 @@ EARLIEST = "1990-01-01"            # 기간을 안 주면 이날부터 — 화�
 
 
 class AppError(Exception):
+    """게시판 손이 낸 실패 — 게시판이 거절했거나 답이 잰 꼴이 아니거나 게시판에 못 닿았다."""
     pass
 
 
@@ -74,10 +75,12 @@ class NotFound(AppError):
 
 
 class SessionMissing(AppError):
+    """세션 파일이 없거나 비었다 — 받는 손(스킬 ep-login)을 부를 자리다."""
     pass
 
 
 class SessionExpired(AppError):
+    """사내 세션이 끊겼거나 게시판이 안 들였다 — 받는 손을 다시 부를 자리다."""
     pass
 
 
@@ -158,6 +161,14 @@ def row_key(raw: str) -> dict:
         return dict(ROW_KEY.findall(text))
 
 
+def row_title(key: dict, block: str) -> str:
+    """목록 줄의 제목 — 고름 칸의 JSON 에 있으면 그것, 깨진 꼴(``row_key`` 가 id 만 집은 것)이면 줄의 링크 글자(의견 수는 걷는다)."""
+    if "title" in key:
+        return html.unescape(key["title"])
+    shown = ROW_TITLE.search(block)
+    return text_of(COMMENT_COUNT.sub("", shown.group(1))) if shown else ""
+
+
 def article_link(bbs_id: str, article_id: str) -> str:
     """글 화면 「URL복사」 와 같은 바로가기 — ssoURL + encodeURIComponent(articleURL + menu · bbsid · articleid)."""
     target = f"{LINK_ARTICLE}menu=BBS_ALL&bbsid={bbs_id}&articleid={article_id}"
@@ -206,11 +217,9 @@ def parse_rows(page: str) -> dict:
         posted = DATE_CELL.search(block)
         views = VIEWS_LINK.search(block)
         said = COMMENT_COUNT.search(block)
-        shown = ROW_TITLE.search(block)
-        title = html.unescape(key["title"]) if "title" in key else (text_of(COMMENT_COUNT.sub("", shown.group(1))) if shown else "")
         rows.append({
             "board": key.get("bbsId", ""), "id": key.get("articleId", ""),
-            "title": title, "comments": int(said.group(1)) if said else 0,
+            "title": row_title(key, block), "comments": int(said.group(1)) if said else 0,
             "writer": text_of(writer.group(1)) if writer else "",
             "date": posted.group(1) if posted else "", "views": int(views.group(1)) if views else None,
             "notice": "icon_notice" in block, "files": "viewArticleAttachFile" in block,
@@ -218,6 +227,20 @@ def parse_rows(page: str) -> dict:
     total = TOTAL.search(text_of(page))
     # 「총 N 건」 은 찾은 줄이 하나도 없으면 화면에 안 선다 — 그때 남는 줄은 낱말과 상관없이 오는 고정 공지뿐이라 센 수는 0 이다
     return {"total": int(total.group(1).replace(",", "")) if total else sum(not r["notice"] for r in rows), "rows": rows}
+
+
+def parse_drafts(page: str) -> dict:
+    """임시 · 예약보관함 화면 → {rows}. 줄마다 board · id · title · date · state(임시저장 · 예약저장 · 예약)."""
+    rows = []
+    for m in ROW.finditer(page):
+        chk = CHK.search(m.group(1))
+        if chk:
+            key = row_key(chk.group(1))
+            posted = DATE_CELL.search(m.group(1))
+            state = DRAFT_STATE.search(text_of(m.group(1)))
+            rows.append({"board": key.get("bbsId", ""), "id": key.get("articleId", ""), "title": row_title(key, m.group(1)),
+                         "date": posted.group(1) if posted else "", "state": state.group(0) if state else ""})
+    return {"rows": rows}
 
 
 def form_value(page: str, name: str) -> str:
@@ -267,6 +290,7 @@ def unwrap(content: str) -> str:
 
 
 class App:
+    """게시판 한 판 — 사내 세션의 쿠키로 들어가 게시판 화면을 읽고 푼다."""
     def __init__(self, session_file: pathlib.Path | str, *, timeout: float = TIMEOUT):
         self._jar = ep_session.load_jar(session_file, missing=SessionMissing)
         self._open = ep_session.opener(self._jar).open   # 프록시 없이 · 리다이렉트는 안 따라간다
@@ -274,6 +298,7 @@ class App:
         self._in = False
 
     def _raw(self, url: str, data: dict | list | None = None) -> bytes:
+        """주소 하나를 (``data`` 를 주면 폼 POST 로) 열어 받은 바이트 — 넘김은 SessionExpired, 그 밖의 거절 · 닿지 못함은 AppError."""
         body = None if data is None else urllib.parse.urlencode(data).encode()
         req = urllib.request.Request(url, data=body, headers={"User-Agent": UA})
         try:
@@ -286,13 +311,21 @@ class App:
         except (urllib.error.URLError, OSError) as exc:
             raise AppError(f"게시판에 못 닿았다: {exc}") from exc
 
+    def _ask(self, url: str, data: dict | list | None = None) -> bytes:
+        """게시판에 묻는 바이트 — 아직 안 들어갔으면 먼저 들어간다(``login``). 들어가기 밖의 모든 물음이 이 한 자리를 지난다."""
+        if not self._in:
+            self.login()
+        return self._raw(url, data)
+
     def _get(self, url: str, data: dict | list | None = None) -> str:
-        page = self._raw(url, data).decode("utf-8", "replace")
+        """게시판 화면 한 장의 글 — 로그인 창이 왔으면 ``SessionExpired``."""
+        page = self._ask(url, data).decode("utf-8", "replace")
         if LOGGED_OUT in page[:300]:
             raise SessionExpired("게시판이 로그인 창을 냈다 — 사내 세션이 끊겼다")
         return page
 
     def login(self) -> None:
+        """게시판에 들어간다 — SSO 넘김 화면의 토큰을 게시판에 넘기고, 받은 사용자 ID 를 뒤섞어(``scramble``) 내어 게시판 세션을 연다. 못 들어가면 SessionExpired."""
         page = self._raw(SSO_PAGE).decode("utf-8", "replace")
         form = ep_session.sso_form(page)
         if not form.get("ssoToken"):
@@ -306,15 +339,12 @@ class App:
         self._in = True
 
     def call(self, data: dict | list) -> str:
-        if not self._in:
-            self.login()
+        """게시판 컨트롤러(``CONTROLLER``)에 폼 하나를 내고 받은 화면의 글."""
         return self._get(CONTROLLER, data)
 
     # ── 읽기 ────────────────────────────────────────────────────────────
     def tree(self, *, write: bool = False) -> list:
         """게시판 나무 전체 — [{id, name, path, folder}]. ``write`` 면 쓸 수 있는 게시판만(화면의 글쓰기 고름 상자와 같다)."""
-        if not self._in:
-            self.login()
         out = []
 
         def walk(bbs, tree_id, path):
@@ -360,8 +390,6 @@ class App:
 
     def options(self, bbs_id: str) -> dict:
         """게시판 하나의 옵션(쓰기 창이 칸을 켜고 끄는 값 — ``termModifyYn`` 게시기한을 바꾸게 하나 · ``dispPeriod`` 기본 게시 기간 …)."""
-        if not self._in:
-            self.login()
         raw = self._get(f"{ROOT}/AjaxController?facade=BBSFacade&command=getBBSOptionAjax&categoryId=BBS_ALL&bbsId={urllib.parse.quote(bbs_id)}")
         try:
             return json.loads(raw)["bbsOptVO"]
@@ -369,13 +397,13 @@ class App:
             raise AppError(f"게시판 옵션 답이 잰 꼴이 아니다: {bbs_id}") from exc
 
     def article(self, bbs_id: str, article_id: str) -> dict:
+        """글 한 건 — 조회수를 안 올리고(``transaction_yn=N``) 글 화면을 풀어 바로가기(link)를 붙인다. 글이 안 열리면 NotFound."""
         page = self.call({"facade": "BBSArticleFacade", "command": "viewArticle", "nextpage": "/bbs/articleView.jsp",
                           "transaction_yn": "N", "articleId": article_id, "articleBbsId": bbs_id, "categoryId": "BBS_ALL", "popYn": "Y"})
         return dict(parse_article(page), link=article_link(bbs_id, article_id))
 
     def files(self, article_id: str) -> list:
-        if not self._in:
-            self.login()
+        """글 하나의 첨부 목록 — [{id, name, size}]."""
         return parse_files(self._get(f"{ROOT}/common/fileattach/download.jsp?refId={urllib.parse.quote(article_id)}"
                                      "&downYn=Y&innoFDId=innoFDId&fileTitle="))
 
@@ -391,17 +419,14 @@ class App:
         keys = [k for k, _ in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)]
         if f"{parts.scheme}://{parts.netloc}".lower() != ROOT_ORIGIN or parts.path != IMAGE_PATH or keys != ["fileId"]:
             raise Refused(f"게시판 본문 그림의 잰 꼴(DownController.do?fileId=)이 아니라 묻지 않는다({parts.path[:60]}) — 화면에서 본다")
-        if not self._in:
-            self.login()
-        data = self._raw(url)
+        data = self._ask(url)
         if LOGGED_OUT.encode() in data[:300]:
             raise SessionExpired("그림 대신 로그인 창이 왔다 — 사내 세션이 끊겼다")
         return data
 
     def download(self, file_id: str) -> bytes:
-        if not self._in:
-            self.login()
-        return self._raw(f"{ROOT}/DownController?fileId={urllib.parse.quote(file_id)}&down_filename=f")
+        """첨부 하나의 바이트."""
+        return self._ask(f"{ROOT}/DownController?fileId={urllib.parse.quote(file_id)}&down_filename=f")
 
     def draft_form(self, bbs_id: str, article_id: str) -> dict:
         """임시글 편집 창의 폼(writeArticle EDIT · TEMP)을 GET 으로 — 창을 안 띄운다. 숨은 content 칸이 저장된 본문 전문을 든다."""
@@ -422,15 +447,5 @@ class App:
 
     def drafts(self) -> dict:
         """임시 · 예약보관함 — 줄마다 board · id · title · date · state."""
-        page = self.call({"facade": "BBSArticleFacade", "command": "listTempArticle", "nextpage": "/bbs/articleTempList.jsp",
-                          "categoryId": "BBS_ALL", "menuGbn": "TEMP", "paging_listcnt": "50", "currpage_no": "1"})
-        rows = []
-        for m in ROW.finditer(page):
-            chk = CHK.search(m.group(1))
-            if chk:
-                key = json.loads(html.unescape(chk.group(1)))
-                posted = DATE_CELL.search(m.group(1))
-                state = DRAFT_STATE.search(text_of(m.group(1)))
-                rows.append({"board": key.get("bbsId", ""), "id": key.get("articleId", ""), "title": html.unescape(key.get("title", "")),
-                             "date": posted.group(1) if posted else "", "state": state.group(0) if state else ""})
-        return {"rows": rows}
+        return parse_drafts(self.call({"facade": "BBSArticleFacade", "command": "listTempArticle", "nextpage": "/bbs/articleTempList.jsp",
+                                       "categoryId": "BBS_ALL", "menuGbn": "TEMP", "paging_listcnt": "50", "currpage_no": "1"}))

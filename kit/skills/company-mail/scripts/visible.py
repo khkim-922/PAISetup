@@ -64,6 +64,7 @@ _PARA_TAGS = _BLOCK_TAGS - {"br", "hr", "tr", "table"}
 
 @dataclass(frozen=True)
 class Visible:
+    """본문 HTML 을 푼 결과 — 보이는 글 · 걷은 숨긴 덩이 수 · 주석 글 · 그림 주소(꼴은 머리말)."""
     text: str
     hidden: int = 0                       # 걷은 숨긴 덩이
     comments: tuple[str, ...] = ()        # 걷은 주석의 글(빈 주석 빼고)
@@ -71,6 +72,7 @@ class Visible:
 
 
 def _color(value: str) -> tuple[int, int, int] | str | None:
+    """CSS 색 값 → (R, G, B) · 「transparent」 · 모르면 None — 이름 몇 · #hex · rgb()/rgba() 만 읽고, 거의 투명한 rgba 는 투명이다."""
     v = (value or "").strip().lower().replace("!important", "").strip()
     if not v:
         return None
@@ -162,6 +164,7 @@ class _Table:
         self.carry: dict[int, tuple[int, str]] = {}   # 열 → (아래로 더 채울 행 수, 글자) — 세로로 합친 칸
 
     def _fill(self) -> None:
+        """지금 행의 다음 자리가 위에서 세로로 합친 칸이면 그 글자로 채워 나간다."""
         while len(self.row) in self.carry:
             left, text = self.carry.pop(len(self.row))
             if left > 1:
@@ -169,6 +172,7 @@ class _Table:
             self.row.append(text)
 
     def cell(self, text: str, colspan: int, rowspan: int) -> None:
+        """칸 하나를 지금 행에 넣는다 — 가로로 합친 수만큼 되풀이하고, 세로로 합쳤으면 아래 행에 채울 글자로 남긴다."""
         if self.row is None:
             self.row = []
         for _ in range(colspan):
@@ -178,6 +182,7 @@ class _Table:
             self.row.append(text)
 
     def close_row(self) -> None:
+        """지금 행을 닫아 칸을 TABLE_SEP 로 이은 한 줄로 낸다 — 빈 행은 안 내고, 이 행이 안 닿은 세로 합친 칸도 한 행을 센다."""
         if self.row is None:
             return
         self._fill()
@@ -268,12 +273,14 @@ class _Parser(HTMLParser):
 
     # 상태
     def _top(self) -> tuple[bool, Any, Any]:
+        """지금 요소의 (숨김, 글자색, 바탕) — 쌓인 것이 없으면 안 숨김 · 색 없음 · 흰 바탕."""
         if self.stack:
             _, hid, col, bg, _ = self.stack[-1]
             return hid, col, bg
         return False, None, _PAGE_BG
 
     def _rules_for(self, tag: str, attrs: Mapping[str, str]) -> dict[str, str]:
+        """`<style>` 에서 모은 단순 선택자 규칙 가운데 이 요소(태그 · 클래스 · id)에 걸리는 선언을 합친다."""
         d: dict[str, str] = {}
         classes = (attrs.get("class") or "").split()
         keys = [tag] + [f".{c}" for c in classes] + [f"{tag}.{c}" for c in classes]
@@ -284,6 +291,7 @@ class _Parser(HTMLParser):
         return d
 
     def handle_starttag(self, tag: str, attrs_list: list[tuple[str, str | None]]) -> None:
+        """여는 태그 하나 — 안 그리는 태그는 건너뛸 깊이로 세고, 그 밖은 줄 경계와 그림 자리를 적은 뒤 규칙 · 스타일로 가린 (숨김 · 글자색 · 바탕) 을 쌓는다."""
         tag = tag.lower()
         attrs = {k.lower(): (v or "") for k, v in attrs_list}
         if tag == "style":
@@ -335,6 +343,7 @@ class _Parser(HTMLParser):
         self.stack.append((tag, now_hidden, col, bg, keeps))
 
     def handle_startendtag(self, tag: str, attrs_list: list[tuple[str, str | None]]) -> None:
+        """`<tag/>` 꼴 — 여는 태그로 받고, 브라우저가 그 자리에서 닫는 요소만 곧바로 닫는다."""
         self.handle_starttag(tag, attrs_list)
         tag = tag.lower()
         # HTML 요소의 `/>` 는 브라우저가 닫음으로 안 받는다(`<script/>` 는 열린 채다) — 바깥 요소(`_SELF_CLOSED`)만 그 자리에서 닫힌다
@@ -342,6 +351,7 @@ class _Parser(HTMLParser):
             self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
+        """닫는 태그 하나 — 안 그리는 태그면 건너뛸 깊이를 풀고(`<style>` 이면 모은 규칙을 싣고), 그 밖은 줄 경계를 긋고 그 요소까지 쌓인 것을 걷는다."""
         tag = tag.lower()
         if tag in _SKIP_TAGS:
             if tag == "head":
@@ -361,6 +371,7 @@ class _Parser(HTMLParser):
                     break
 
     def handle_data(self, data: str) -> None:
+        """글 조각 하나 — 안 그리는 태그 · 숨긴 요소 안이면 버리고, 바탕과 같은 색이면 걷어 숨긴 덩이로 세고, 보이면 적는다."""
         if self._style_buf is not None:
             self._style_buf.append(data)
         if self.skip:
@@ -379,11 +390,13 @@ class _Parser(HTMLParser):
         self._text(data)
 
     def handle_comment(self, data: str) -> None:
+        """빈 주석이 아니면 그 글을 `comments` 에 모으고 본문에는 안 적는다."""
         # 주석은 메일 프로그램도 안 그리고 LLM 에도 안 간다 — 글만 넘기고, 숨긴 글로 셀지는 부르는 쪽이 가른다
         if data.strip():
             self.comments.append(data)
 
     def _load_rules(self, css: str) -> None:
+        """`<style>` 글에서 단순 선택자(태그 · .클래스 · #id 와 그 짝)의 규칙만 골라 `rules` 에 더한다."""
         css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
         for sel, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
             d = _decls(body)
@@ -403,15 +416,18 @@ class _TableParser(_Parser):
         self.cells: list[tuple[list, int, int]] = []     # 열린 칸 — (글자 통, colspan, rowspan)
 
     def _write(self, piece: str) -> None:
+        """글 조각을 열린 칸이 있으면 그 칸에, 없으면 본문에 적는다."""
         (self.cells[-1][0] if self.cells else self.parts).append(piece)
 
     def _close_cell(self, table: _Table) -> None:
+        """열린 칸이 있으면 모은 글자를 한 줄로 접어 표에 넣고 닫는다."""
         if table.in_cell:
             buf, colspan, rowspan = self.cells.pop()
             table.cell(re.sub(r"\s+", " ", "".join(buf)).strip(), colspan, rowspan)
             table.in_cell = False
 
     def _close_table(self) -> None:
+        """맨 안쪽 표를 닫아 그 줄들을 내놓는다 — 칸 안에 든 표면 ROW_SEP 로 이어 그 칸에, 아니면 본문에 줄로 적는다."""
         table = self.tables[-1]
         self._close_cell(table)
         table.close_row()
@@ -422,6 +438,7 @@ class _TableParser(_Parser):
             self._write("\n" + "\n".join(table.lines) + "\n")
 
     def _open(self, tag: str, attrs: Mapping[str, str]) -> None:
+        """여는 태그가 표의 뼈대(표 · 행 · 칸)를 열거나 줄을 가른다 — 안 그리는 태그 안에서는 안 본다."""
         if self.skip:
             return
         table = self.tables[-1] if self.tables else None
@@ -439,6 +456,7 @@ class _TableParser(_Parser):
             self._write("\n")
 
     def _close(self, tag: str) -> None:
+        """닫는 태그가 칸 · 행 · 표를 닫거나 줄을 가른다 — 안 그리는 태그 안에서는 안 본다."""
         if self.skip:
             return
         table = self.tables[-1] if self.tables else None
@@ -453,9 +471,11 @@ class _TableParser(_Parser):
             self._write("\n")
 
     def _image(self, mark: str) -> None:
+        """그림 자리 표지를 앞뒤 빈칸과 함께 지금 칸이나 본문에 적는다."""
         self._write(f" {mark} ")
 
     def _text(self, data: str) -> None:
+        """보이는 글 한 조각을 적는다 — 표 안 · 칸 밖의 글자(표 제목)는 표의 한 줄로 따로 세운다."""
         data = data.replace("\xa0", " ")
         table = self.tables[-1] if self.tables else None
         if table and not table.in_cell:                  # 표 안 · 칸 밖 — 태그 사이의 줄바꿈은 버리고 글자(표 제목)는 한 줄로
@@ -466,6 +486,7 @@ class _TableParser(_Parser):
         self._write(data)
 
     def text(self) -> str:
+        """다 읽은 뒤의 표 꼴 글 — 안 닫힌 표를 모은 데까지 닫고, 줄마다 겹친 빈칸을 하나로, 잇단 빈 줄을 하나로."""
         while self.tables:                               # 안 닫힌 표 — 모은 데까지 낸다
             self._close_table()
         lines = [re.sub(r"[ \t\r\f\v]+", " ", line).strip() for line in "".join(self.parts).split("\n")]

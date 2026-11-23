@@ -77,6 +77,7 @@ class Choice:
 
 @dataclass(frozen=True)
 class Ensured:
+    """``ensure`` 의 답 — ``progid`` 는 선 기본 앱이고, ``written`` 이 참이면 이번에 적었다."""
     progid: str
     written: bool
 
@@ -96,14 +97,17 @@ class Preflight:
 # ── 해시 ─────────────────────────────────────────────────────────────────
 
 def _words(data: bytes, offset: int) -> int:
+    """``offset`` 자리의 리틀엔디언 부호 없는 32 비트 한 낱."""
     return struct.unpack_from("<I", data, offset)[0]
 
 
 def _hi(x: int) -> int:
+    """32 비트로 자른 값의 위 16 비트."""
     return (x & U32) >> 16
 
 
 def _pass_one(data: bytes, rounds: int, seed_a: int, seed_b: int) -> tuple[int, int]:
+    """해시의 첫 셈 — 두 낱씩 차례로 섞어 (마지막 carry, 누적 합)을 낸다."""
     mul_a, mul_b = ((seed_a | 1) + 0x69FB0000) & U32, ((seed_b | 1) + 0x13DB0000) & U32
     carry = acc = 0
     for i in range(rounds):
@@ -121,6 +125,7 @@ def _pass_one(data: bytes, rounds: int, seed_a: int, seed_b: int) -> tuple[int, 
 
 
 def _pass_two(data: bytes, rounds: int, seed_a: int, seed_b: int) -> tuple[int, int]:
+    """해시의 둘째 셈 — 첫 셈과 다른 곱수로 두 낱씩 차례로 섞어 (마지막 carry, 누적 합)을 낸다."""
     mul_a, mul_b = (seed_a | 1) & U32, (seed_b | 1) & U32
     carry = acc = 0
     for i in range(rounds):
@@ -164,6 +169,7 @@ def minute_stamp(filetime: int) -> str:
 
 
 def now_filetime() -> int:
+    """지금 시각을 FILETIME(100 ns · 1601 기준)으로."""
     return int(time.time() * 10_000_000) + 116444736000000000
 
 
@@ -218,6 +224,7 @@ def user_experience() -> str:
 
 
 def _progid_installed(progid: str) -> bool:
+    """HKCR 에 그 ProgId 키가 있으면 깔린 앱으로 본다."""
     try:
         winreg.CloseKey(winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, progid))
         return True
@@ -248,6 +255,7 @@ def app_name(progid: str) -> str:
 
 
 def _notify_assoc_changed() -> None:
+    """탐색기에 파일 연결이 바뀌었다고 알린다(``SHChangeNotify`` · SHCNE_ASSOCCHANGED)."""
     shell32 = ctypes.WinDLL("shell32")
     shell32.SHChangeNotify.argtypes = [ctypes.c_long, wt.UINT, ctypes.c_void_p, ctypes.c_void_p]
     shell32.SHChangeNotify(SHCNE_ASSOCCHANGED, 0, None, None)
@@ -256,6 +264,7 @@ def _notify_assoc_changed() -> None:
 # ── 보기 · 채우기 ────────────────────────────────────────────────────────
 
 def _read_value(path: str, name: str) -> str:
+    """HKCU 의 그 키에서 값 하나를 글자로 — 키나 값이 없으면 빈 글자."""
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as key:
             value, _ = winreg.QueryValueEx(key, name)
@@ -304,6 +313,7 @@ def preflight() -> Preflight:
 
 
 def normalize(ext: str) -> str:
+    """확장자를 점 하나로 시작하는 소문자로 다듬는다 — 확장자 꼴이 아니면 ``ValueError``."""
     ext = ext.strip().lower()
     if not ext.startswith("."):
         ext = "." + ext
@@ -347,6 +357,7 @@ def write_choice(ext: str, progid: str, *, base: str = FILE_EXTS, sid: str | Non
 
 
 def _remove_choice(ext: str, base: str = FILE_EXTS) -> None:
+    """그 확장자의 UserChoice 키를 지운다 — 없으면 그대로 둔다."""
     try:
         winreg.DeleteKey(winreg.HKEY_CURRENT_USER, rf"{base}\{ext}\UserChoice")
     except OSError:
@@ -404,6 +415,7 @@ def ensure(ext: str, *, base: str = FILE_EXTS, toasts: str = TOASTS) -> Ensured:
 
 
 def _ensure_choice(ext: str, base: str) -> Ensured:
+    """그 확장자에 고름이 없으면 깔린 앱으로 적고 Windows 가 받았나 본다 — 이미 있으면 그대로 두고, 사람이 골라야 하면 ``DefaultAppNeeded``."""
     now = state(ext, base=base)
     if now.progid:
         return Ensured(now.progid, False)

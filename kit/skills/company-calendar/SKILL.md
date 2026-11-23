@@ -5,6 +5,10 @@ description: "사내 일정(내 일정함)을 보고 · 찾고, 일정 한 건�
 
 # 회사 일정은 일정 손으로 보고 · 넣고 · 지운다
 
+<!-- drawn:head · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
+> 회사 일 — 이 일의 목적과 가장 나은 길(어떤 스킬을 어떤 차례로 · 무엇을 하위 에이전트에 맡길지)부터 세우고 간다
+<!-- /drawn:head -->
+
 회사 일정은 남이 보는 공유 시스템이고, 지운 일정은 되돌릴 손이 없다. 그래서 **넣기 · 지우기는 그 한 건을 사람에게 보이고 「네」를
 받은 뒤에만 부른다.** 무엇을 넣을지 · 무엇이 급한지 같은 판단은 여기 없다.
 
@@ -20,6 +24,10 @@ python -X utf8 -I "$C" preview --handle <show 의 handle> --start "내일 10:00"
 python -X utf8 -I "$C" teams-meeting --title "<제목>" --start "<날> 15:00" --end "<날> 16:00" --people-file <people.json>   # 영상 회의 창 — 보내기는 사람이
 python -X utf8 -I "$C" --help                                                      # 그 밖의 지도 — 출발 × 바꿀 것 × 끝 · 읽기와 인자 · 오늘 날짜
 ```
+
+<!-- drawn:meeting-path · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
+**회의 하나** — 참석자(스킬 company-directory 의 `find`) → 다 비는 때(스킬 company-calendar 의 `show`) → 빈 방(스킬 company-meeting-room 의 `free`) → 미리 보기(`preview`). 어느 방 · 어느 때는 모델이 고르고, 넣기(book)는 사람의 「네」 뒤에만. 칠 수 있는 꼴은 스킬 company-meeting-room 의 글에 있다.
+<!-- /drawn:meeting-path -->
 
 **손가락은 한 번의 셸 부름에 `&&` 로 이어 친다.** 뒤 걸음이 앞 답을 읽고 고를 것이 없으면 잇는다 — 사람 찾기(`--out D`)와 `show … --people-file D/people.json`, 넣을 여러 건의 `preview` 가 그렇다. 앞이 0 이 아닌 값으로 멈추면 뒤는 안 돈다. 끊는 자리는 둘뿐이다 — 앞 답을 읽고 골라야 할 때와, 사람의 「네」가 들 때다. 여기서 고르는 것은 비는 때 가운데 어느 때이고, 「네」가 드는 것은 `add` · `edit` · `delete` 다. 서로 안 기대는 읽기(내 일정 `show` 와 회의실 손의 `free` · `mine`)는 `;` 로 한 부름에 함께 친다.
 

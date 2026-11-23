@@ -297,7 +297,22 @@ def cmd_make(args, server: Server) -> None:
         print(f"다음: 사람에게 그림이 빠졌다고 말하고 open {doc} 으로 고치기 화면에서 그림을 놓게 하거나, 원문의 그림 자리를 "
               "다듬어 다시 짓는다")
         return
-    print(f"다음: 사람에게 이 HTML 을 확인하거나 고칠지 묻는다 — 고치면 open {doc} · 그대로 보내면 이 파일을 company-mail 로")
+    drafts = mail_draft_commands(path)
+    print(f"다음: 사람에게 이 HTML 을 확인하거나 고칠지 묻는다 — 고치면 open {doc} · 그대로 보내면 "
+          + (f"본문으로 {drafts[0]} · 첨부로 {drafts[1]}" if drafts else "이 파일을 company-mail 로"))
+
+
+def mail_draft_commands(html_path: pathlib.Path) -> tuple[str, str] | None:
+    """방금 쓴 HTML 을 메일 임시저장으로 넘기는 명령 둘(본문 · 첨부) — 사람이 말할 것(제목 · 받는 사람)만 꺾쇠로 비운다.
+
+    메일 손이 이 스킬 곁에 깔려 있지 않으면 None — 돌 수 없는 명령은 안 낸다. 그 스크립트는 경로만 가리키고 불러 오지 않는다."""
+    script = pathlib.Path(__file__).resolve().parents[2] / "company-mail" / "scripts" / "mail.py"
+    if not script.is_file():
+        return None
+    head = f'python -X utf8 -I "{script.as_posix()}" draft new --subject "<제목>" --to-file "<임시 폴더>/to.txt"'
+    html_file = html_path.resolve().as_posix()
+    return (f'{head} --html-file "{html_file}"',
+            f'{head} --body-file "<글 파일>" --attach "{html_file}"')
 
 
 def cmd_open(args, server: Server) -> None:
@@ -318,7 +333,9 @@ def cmd_fetch(args, server: Server) -> None:
     path = save(server, args.doc, version)
     print(f"받았다: 문서 {args.doc} · 최신 판 {version}")
     print(f"HTML: {path}")
-    print("다음: 이 파일을 company-mail 의 draft new --html-file(본문) 이나 --attach(첨부)로 넘긴다")
+    drafts = mail_draft_commands(path)
+    print(f"다음: 이 파일을 company-mail 로 임시저장한다 — 본문으로 {drafts[0]} · 첨부로 {drafts[1]}" if drafts
+          else "다음: 이 파일을 company-mail 의 draft new --html-file(본문) 이나 --attach(첨부)로 넘긴다")
 
 
 def parser() -> argparse.ArgumentParser:

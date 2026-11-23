@@ -1,0 +1,17 @@
+{
+  "_": "글 짓기 손가락 표의 한 벌 — 출발마다 꼭 받는 바꿀 것(needs), 바꿀 것마다 사람 말 이름(name)과 받는 출발(starts). 명령(board.py)의 인자 · 거르기 · save --help 의 지도와 짓는 손(draft_board.js)의 창 전 가림 · 남은 고침의 말이 이 한 벌을 읽는다. 출발 · 바꿀 것마다의 인자 · 화면 함수 · 차례는 저마다의 표가 든다",
+  "starts": {
+    "new": {"needs": ["board", "title", "body"]},
+    "draft": {"needs": []},
+    "copy": {"needs": []}
+  },
+  "changes": {
+    "board": {"name": "게시판", "starts": ["new"]},
+    "title": {"name": "제목", "starts": ["new", "draft", "copy"]},
+    "body": {"name": "글", "starts": ["new", "draft", "copy"]},
+    "files": {"name": "첨부", "starts": ["new", "draft", "copy"]},
+    "drop": {"name": "첨부 빼기", "starts": ["draft"]},
+    "end": {"name": "게시기한", "starts": ["draft", "copy"]},
+    "swap": {"name": "글 일부", "starts": ["draft", "copy"]}
+  }
+}

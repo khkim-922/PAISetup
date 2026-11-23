@@ -3,7 +3,7 @@
 **회사 일을 맡은 대화가 첫 회사 일 앞에 「지금」을 한 번에 받는 자리다.**
 
 - **`now.py`** — 사내 세션 · 메일함 주소 · 사용자 폴더 · 오늘 보고 · 업무 파일을 한 번에 낸다. 메일함 · 일정 · 비서의 파일은 안 바꾼다. 형제 스킬 company-mail ·
-  mailbox-work 의 명령을 부르고 daily-brief · mailbox-work 가 남긴 파일을 읽는다 — 그 스킬들이 스킬 홈에 나란히 깔려 있어야 칸이 다 선다
+  mailbox-work · daily-brief 의 명령을 부르고 mailbox-work 가 남긴 업무 파일을 읽는다 — 그 스킬들이 스킬 홈에 나란히 깔려 있어야 칸이 다 선다
 
 대화에서 쓰는 법은 스킬 `company-work` 가, 칸마다 무엇을 어디서 받나는 `now.py` 머리말이, 설계의 까닭은 `../references/DESIGN.md` 가
 든다 — 여기 옮겨 적지 않는다.

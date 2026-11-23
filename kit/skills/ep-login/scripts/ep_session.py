@@ -1,7 +1,7 @@
 """받는 손(``edge_session.js``)을 파이썬에서 부르고 그 손이 남긴 세션 파일을 읽는 한 자리 — 사내 앱 스킬의 얇은 명령과 앱
 손이 이 폴더를 ``sys.path`` 에 넣고 싣는다. 손 돌리기(``attach`` · ``session_first``) · 세션 파일 → 쿠키 통(``load_jar``) · 프록시
 없이 리다이렉트를 안 따르는 ``opener`` · SSO 넘김 화면의 숨은 칸(``sso_form``) · 이름 견주기 꼴(``squash``) · node 손 돌리기
-(``run_hand``) · 회사 자리 값(``places.json`` → ``DEFAULT_FILE`` · ``DOMINO_SERVER`` · ``ECM_URL`` · ``ECM_MAIN_PAGE``) · 대화에 내는
+(``run_hand``) · 이 로그온에 평소 EP 로그인이 섰나(``ordinary_login`` — 아무것도 안 연다) · 회사 자리 값(``places.json`` → ``DEFAULT_FILE`` · ``DOMINO_SERVER`` · ``ECM_URL`` · ``ECM_MAIN_PAGE``) · 대화에 내는
 답 하나의 크기(``OUT_BYTES``)를 든다. 얇은 명령의 뼈대는 곁의 ``ep_command.py`` 가 든다. 파일부터 도는 바퀴 · 리다이렉트를 안
 따르는 까닭 · 쿠키 통이 무엇을 싣나는 ``references/DESIGN.md`` 가 든다.
 
@@ -82,6 +82,7 @@ SAID_TAIL = 300                                    # 손이 답 없이 졌을 �
 
 @dataclasses.dataclass(frozen=True)
 class Attached:
+    """받는 손을 한 번 돌린 결과 — 손의 종료 값(code) · 손이 쓴 세션 파일(file · 없으면 None) · 손의 말(said)."""
     code: int
     file: pathlib.Path | None
     said: str
@@ -93,6 +94,7 @@ class Attached:
 
 
 def hand_path() -> pathlib.Path:
+    """받는 손(``edge_session.js``)의 자리 — ``EP_SESSION_HAND`` 이 있으면 그 값, 없으면 이 파일 곁."""
     return pathlib.Path(os.environ.get(HAND_ENV, "").strip() or HAND)
 
 
@@ -170,6 +172,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     """리다이렉트를 따라가지 않고 ``Redirected`` 를 낸다 — 따라가면 세션 쿠키가 SSO 에 실린다."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        """넘김을 따라가지 않는다 — 넘기려던 주소를 들고 ``Redirected`` 를 낸다."""
         raise Redirected(newurl)
 
 
@@ -307,3 +310,29 @@ def attach(apps: tuple[str, ...] = (), *, env: dict | None = None, timeout: floa
     file = last if last is not None and last.is_absolute() and last.is_file() else None
     said = (done.stderr or "").strip() or "\n".join(lines)
     return Attached(done.returncode, file, said)
+
+
+# ── 평소 EP 로그인 — 빌려 주는 답 ────────────────────────────────────────────
+STATUS = pathlib.Path(__file__).resolve().with_name("ordinary_status.js")
+STATUS_ENV = "EP_ORDINARY_STATUS"                  # 그 답의 문을 바꾼다 — 검사가 대역을 둔다
+ORDINARY_STOOD, ORDINARY_TRIED, ORDINARY_MISSING = "stood", "tried", "missing"   # ordinary_status.js 가 내는 낱말 — 닫힌 셋
+ORDINARY_UNSURE = "unsure"                         # 평소 Edge 를 못 읽고 로그온 열쇠도 없다 — 가릴 수 없다. 부르는 쪽은 「해 봤다」처럼 잇는다
+ORDINARY_UNKNOWN = "unknown"                       # 그 문이 답을 못 냈다(node 없음 · 시한 · 낯선 낱말) — 부르는 쪽은 「해 봤다」처럼 잇는다
+EYE_START_S, EYE_LOOK_S = PLACES["eye_start_s"], PLACES["eye_look_s"]   # 평소 Edge 를 보는 눈의 두 시한(ordinary_logon.js 가 같은 값을 쓴다) — 뜨기 · 보기 하나
+# 그 문의 시한 — 뜨기 셋(node · 로그온 열쇠를 묻는 PowerShell · 눈)을 다 덮어 느리게 뜬 멀쩡한 눈을 먼저 끊지 않고, 뜬 뒤의 물음들(열쇠의
+# 물음 하나 · 한 번 읽기의 보기 몇 번)에는 보기 시한 다섯 몫을 준다. 뜬 뒤가 그보다 길면 눈이 보다 멈춘 것이라 「못 가렸다」가 맞다
+STATUS_TIMEOUT_SECONDS = 3 * EYE_START_S + 5 * EYE_LOOK_S
+
+
+def ordinary_login(*, env: dict | None = None, timeout: float = STATUS_TIMEOUT_SECONDS) -> str:
+    """이 윈도 로그온에 평소 EP 로그인이 한 번 섰나 — 아무것도 안 열고 안 쓴다(입구의 「섰다」 기록을 먼저 읽고, 기록이 없을 때만 눈으로
+    평소 Edge 를 본다). 내는 것: ``ORDINARY_STOOD`` · ``ORDINARY_TRIED``(해 봤는데 섰는지 모른다) · ``ORDINARY_MISSING``(없다 — 입구를 ecm
+    으로 부른다) · ``ORDINARY_UNSURE``(못 읽고 로그온 열쇠도 없다) · ``ORDINARY_UNKNOWN``(못 가렸다). 문서함 손이 PC 의 문서함 에이전트를 부르기 전에 묻는다 — 입구를 대신 부르지 않는다."""
+    script = pathlib.Path(os.environ.get(STATUS_ENV, "").strip() or STATUS)
+    try:
+        done = _node(script, (), env, timeout)
+    except (NoNode, TimedOut, OSError):
+        return ORDINARY_UNKNOWN
+    word = (done.stdout or "").strip().splitlines()[-1:] or [""]
+    return word[0] if done.returncode == 0 and word[0] in (ORDINARY_STOOD, ORDINARY_TRIED, ORDINARY_MISSING, ORDINARY_UNSURE) else ORDINARY_UNKNOWN
+

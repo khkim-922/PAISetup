@@ -16,10 +16,10 @@
 //   SESSION_PASS_SECONDS --ecm-tab 의 시한 · SESSION_LOGIN_WAIT_SECONDS 입구가 로그인 탭을 지켜보는 시한 ·
 //   SESSION_ORDINARY_SECONDS 입구가 평소 Edge 에 EP 포털을 열어 두는 틈 · SESSION_FALLBACK_SECONDS 입구가 입력 칸 있는 로그인 화면에
 //   머물러 통합 인증이 안 선 것으로 보기까지. 기본값은 places.json 과
-//   settings() 가 든다. 서버 · 도메인 · 호스트의 바꿈은 가짜 서버로 재는 검사(설정 저장소 _check/skills/ep-login/check_session.js)를 위해 있다.
+//   ep_places.js 의 settings() 가 든다. 서버 · 도메인 · 호스트의 바꿈은 가짜 서버로 재는 검사(설정 저장소 _check/skills/ep-login/check_session.js)를 위해 있다.
 //
 // 내는 것 — 세션 파일(Playwright 저장 상태 꼴 {"cookies": [...], "origins": []} · 회사 도메인의 쿠키만). 종료 0 이면 표준 출력의
-//   끝 줄이 그 파일의 절대 경로 하나다(앞 줄들은 사람이 읽는 경과). 종료 값은 닫힌 다섯이다(EXIT):
+//   끝 줄이 그 파일의 절대 경로 하나다(앞 줄들은 사람이 읽는 경과). 종료 값은 닫힌 다섯이다(ep_exit.js 의 EXIT):
 //   0 파일이 지금 산 세션을 든다 — 새로 썼거나, Edge 에 못 붙었는데 남은 파일이 아직 산다(그때는 파일을 안 고친다)
 //   2 Edge 에 못 붙었고 남은 파일로도 안 섰다. 남은 파일이 있으면 그 절대 경로를 끝 줄로 낸다 — 부르는 쪽이 한 번 써 보고 서버가
 //     안 받을 때만 ep-login 을 가리킨다
@@ -42,77 +42,24 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 
-// 회사 자리 값(메일 서버 · ECM 주소 · 세션 파일의 기본 자리) — 형제 스킬의 파이썬 손은 ep_session.py 를 거쳐 같은 파일을 읽는다
-const PLACES = require('./places.json');
-const SSO_REDIRECT = 'http://swpsso.posco.net/idms/U61/jsp/redirect.jsp';          // SSO 넘김 주소 — redir_url 이 가리키는 앱으로 세션을 넘긴다
+// 회사 자리 값과 로그인 화면의 자 · Edge 찾기 · 종료 값은 입구와 함께 쓰는 바탕이다 — 이 손이 내놓는 이름(module.exports)도 거기서 다시 낸다
+const { PLACES, env, settings, onLoginScreen, epConfirm } = require('./ep_places.js');
+const { VERSION_MS, version, debugPorts, portsToSee } = require('./edge_process.js');
+const { EXIT, Exit, needNode } = require('./ep_exit.js');
 const SESSION_CHECK = '/common/lib_f.nsf/checksessionstatus?Openpage';             // Domino 의 세션 확인 주소 — 웹메일이 수십 초마다 부른다
 const MAX_HOPS = 12;                 // 따라가기의 걸음 상한 — 정상 넘김보다 넉넉하고, 같은 화면을 도는 넘김은 여기서 끊긴다
-const APPS = ['domino', 'ecm'];
-const EXIT = { OK: 0, TOOL: 1, NO_EDGE: 2, NOT_LOGGED_IN: 3, ECM_HANDOFF: 4 };   // 종료 값 — 뜻은 머리말 「내는 것」 · 입구가 이 표를 싣는다
-// 로그인 화면 — 로그인 화면 호스트 위의 이 경로(SSO 의 …/jsp/login/… · ADFS 의 /adfs/…). 같은 호스트의 넘김(redirect.jsp)은 아니다
-const LOGIN_PATH = /\/(login|adfs)\//i;
-const EP_DIALOG = '다른 PC에서 EP 접속 정보';   // SSO 가 로그인 도중 띄우는 확인 창의 글 — 이 창만 「확인」으로 받는다
+const APPS = ['domino', 'ecm'];      // 앱의 차례 — 세우기 · 말이 이 차례다(부른 인자의 차례가 아니다)
+// 따라가다 멈춘 까닭 — 닫힌 다섯(nextStep 의 stop 은 LOGIN · END 와 같은 글자다)
+const FOLLOW = { END: 'end', LOGIN: 'login', OUTSIDE: 'outside', NO_ANSWER: 'no-answer', HOPS: 'hops' };
 // ECM 넘김이 멈춘 까닭(follow 의 답) → 사람의 말. login 은 여기 없다 — 로그인 화면에 닿은 판은 종료 3 이다
-const HANDOFF_WORD = { end: '넘김 화면을 따라가지 못했다', outside: '회사 밖 주소로 넘어갔다', 'no-answer': '서버가 답하지 않았다',
-  hops: '넘김이 걸음 상한을 넘었다' };
-const DEFAULT_PORT = '9222';         // 입구(ep_login.js)가 여는 포트 — 받는 손도 이 포트를 먼저 본다
-const FIND_MS = 5000;                // 디버깅 포트를 연 Edge 찾기(debugPorts 의 PowerShell 한 번)의 시한
-const VERSION_MS = 2000;             // 디버깅 포트의 /json/version 답 시한 — 포트가 없으면 곧 끊긴다
+const HANDOFF_WORD = { [FOLLOW.END]: '넘김 화면을 따라가지 못했다', [FOLLOW.OUTSIDE]: '회사 밖 주소로 넘어갔다',
+  [FOLLOW.NO_ANSWER]: '서버가 답하지 않았다', [FOLLOW.HOPS]: '넘김이 걸음 상한을 넘었다' };
 const OPEN_MS = 5000;                // 브라우저 자리 웹소켓이 열리는 시한
 const CALL_MS = 10000;               // CDP 부름 하나의 시한
 const POLL_MS = 1000;                // --ecm-tab 이 선 것을 다시 보는 사이
 const CLOSE_ROUNDS = 2;              // --ecm-tab 의 탭 닫기를 되풀이하는 수
 const CLOSE_MS = 3000;               // 닫은 탭이 사라지기를 기다리는 시한(한 번마다)
 const CLOSE_POLL_MS = 200;
-
-const env = (name, fallback) => (process.env[name] || '').trim() || fallback;
-const seconds = (name, fallback) => {
-  const value = Number(env(name, String(fallback)));
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-};
-
-function settings() {
-  return {
-    port: env('EDGE_DEBUG_PORT', DEFAULT_PORT).split(',')[0].trim(),   // 입구가 Edge 를 띄울 때 여는 포트 · 받는 손이 먼저 보는 포트
-    // 받는 손이 볼 포트 — 주면 그것만(쉼표로 여럿), 안 주면 null 이고 이 PC 에서 디버깅 포트를 연 Edge 를 다 찾는다(debugPorts)
-    ports: env('EDGE_DEBUG_PORT', '') ? env('EDGE_DEBUG_PORT', '').split(',').map(s => s.trim()).filter(Boolean) : null,
-    view: env('MAILBOX_VIEW', 'XML_Inbox'),
-    mailbox: env('MAILBOX_URL', ''),
-    domino: env('DOMINO_URL', PLACES.domino_server).replace(/\/+$/, ''),
-    ecm: env('ECM_URL', PLACES.ecm).replace(/\/+$/, '') + PLACES.ecm_main_page,   // ECM_URL 은 맥락까지(…/ECM) — 스킬 company-ecm 과 같은 뜻
-    sso: env('SSO_REDIRECT_URL', SSO_REDIRECT),
-    domain: env('SESSION_DOMAIN', 'posco.net').toLowerCase().replace(/^\./, ''),
-    loginHosts: env('SESSION_LOGIN_HOSTS', 'swpsso.posco.net,adfs.m365.posco.net').toLowerCase().split(',').map(s => s.trim()).filter(Boolean),
-    requestMs: seconds('SESSION_REQUEST_SECONDS', 5) * 1000,
-    passMs: seconds('SESSION_PASS_SECONDS', 30) * 1000,
-    loginMs: seconds('SESSION_LOGIN_WAIT_SECONDS', 300) * 1000,
-    fallbackMs: seconds('SESSION_FALLBACK_SECONDS', 8) * 1000,    // 입구가 입력 칸 있는 로그인 화면에 이만큼 머물면 통합 인증이 안 선 것으로 본다
-    ordinaryMs: seconds('SESSION_ORDINARY_SECONDS', 30) * 1000,   // 입구가 평소 Edge 에 EP 포털을 열고 확인 창을 기다리는 틈 — 통합 인증의 넘김과 넘어간 화면이 설 틈
-  };
-}
-
-class Exit extends Error {
-  constructor(code, message) { super(message); this.code = code; }
-}
-
-// ── 로그인 화면 ──────────────────────────────────────────────────────────
-// 입구(ep_login.js)가 로그인 탭을 지켜보며 쓰는 자 — 설정(settings)과 한 자리에 둔다
-
-// 로그인 화면인가 — 로그인 화면 호스트이고 그 경로다
-function onLoginScreen(url, cfg) {
-  try { const u = new URL(url); return cfg.loginHosts.includes(u.hostname.toLowerCase()) && LOGIN_PATH.test(u.pathname); } catch { return false; }
-}
-
-// 로그인 화면 호스트의 화면인가 — 경로는 안 본다
-function onLoginHost(url, cfg) {
-  try { return cfg.loginHosts.includes(new URL(url).hostname.toLowerCase()); } catch { return false; }
-}
-
-// 「확인」으로 받을 창인가 — 로그인 화면 호스트에 뜬 「EP 접속 정보」 확인 창만. 받는 것: 창의 꼴(confirm · alert …) · 글 · 뜬 주소.
-// 뜬 주소는 로그인 화면 경로가 아니다 — SSO 는 로그인 화면 안의 틀(manysession.jsp)에서 그 창을 띄운다
-function epConfirm(type, message, url, cfg) {
-  return type === 'confirm' && String(message || '').includes(EP_DIALOG) && onLoginHost(url, cfg);
-}
 
 // ── 쿠키 ─────────────────────────────────────────────────────────────────
 // 안의 꼴은 Playwright 저장 상태의 쿠키 꼴이다 — domain 이 「.」으로 시작하면 도메인 쿠키, 아니면 그 호스트에만 실린다(CDP 도 같다)
@@ -283,20 +230,20 @@ async function follow(cfg, jar, changed, start, goal = null) {
   let req = { method: 'GET', url: start };
   for (let hop = 0; hop < MAX_HOPS; hop++) {
     const host = new URL(req.url).hostname.toLowerCase();
-    if (!under(host, cfg.domain) && !cfg.loginHosts.includes(host)) return 'outside';
+    if (!under(host, cfg.domain) && !cfg.loginHosts.includes(host)) return FOLLOW.OUTSIDE;
     const page = await send(cfg, jar, changed, req);
-    if (!page) return 'no-answer';
+    if (!page) return FOLLOW.NO_ANSWER;
     if (page.status >= 300 && page.status < 400 && page.location) {
       req = { method: 'GET', url: new URL(page.location, page.url).href, referer: req.referer };
       continue;
     }
-    if (page.status !== 200 || !/html/i.test(page.type)) return 'end';
-    if (goal && samePage(page.url, goal)) return 'end';  // 다다랐다 — 메인 화면의 폼을 따라 되보내지 않는다
+    if (page.status !== 200 || !/html/i.test(page.type)) return FOLLOW.END;
+    if (goal && samePage(page.url, goal)) return FOLLOW.END;  // 다다랐다 — 메인 화면의 폼을 따라 되보내지 않는다
     const step = nextStep(page);
     if (step.stop) return step.stop;
     req = { ...step, referer: page.url.href };
   }
-  return 'hops';
+  return FOLLOW.HOPS;
 }
 
 // ── 앱마다의 확인 ──────────────────────────────────────────────────────────
@@ -327,15 +274,27 @@ async function ecmStands(cfg, jar, changed) {
 // 맥락 경로는 ECM_URL 의 첫 경로 칸이다 — 서버 · 포트 · 맥락을 ECM_URL 한 곳에서만 읽는다
 const ecmEntry = cfg => { const u = new URL(cfg.ecm); return new URL(`/${u.pathname.split('/')[1]}/index.jsp`, u).href; };
 const ecmStart = cfg => `${cfg.sso}${cfg.sso.includes('?') ? '&' : '?'}redir_url=${encodeURIComponent(ecmEntry(cfg))}`;
-const checks = { domino: dominoStands, ecm: ecmStands };
+// 앱마다 「서나 → 안 서면 따라가고 다시 본다」의 재료 — 서나를 묻는 손가락 · 따라갈 첫 주소 · 다다를 화면(없으면 끝까지 따라간다)
+const APP_STEPS = {
+  domino: { stands: dominoStands, start: dominoUrl, goal: () => null },
+  ecm: { stands: ecmStands, start: ecmStart, goal: cfg => new URL(cfg.ecm) },
+};
+
+// 앱 하나를 세운다 — 쿠키 통으로 서나 보고, 안 서면 그 앱의 넘김을 따라간 뒤 다시 본다. 내는 것: [섰나, 따라가다 멈춘 까닭('' 이면 안 따라갔다)]
+async function standUp(cfg, app, jar, changed) {
+  const step = APP_STEPS[app];
+  if (await step.stands(cfg, jar, changed)) return [true, ''];
+  const why = await follow(cfg, jar, changed, step.start(cfg), step.goal(cfg));
+  return [await step.stands(cfg, jar, changed), why];
+}
 
 // ── Edge 의 브라우저 자리 ────────────────────────────────────────────────────
 
+// 그 포트의 Edge 의 브라우저 자리에 붙는다 — {version, userAgent, call, close} · 못 붙으면 null
 async function browserTarget(cfg) {
-  const version = await fetch(`http://127.0.0.1:${cfg.port}/json/version`, { signal: AbortSignal.timeout(VERSION_MS) })
-    .then(r => r.json()).catch(() => null);
-  if (!version || !version.webSocketDebuggerUrl) return null;
-  const ws = new WebSocket(version.webSocketDebuggerUrl);
+  const answer = await version(cfg.port);
+  if (!answer || !answer.webSocketDebuggerUrl) return null;
+  const ws = new WebSocket(answer.webSocketDebuggerUrl);
   const waiting = new Map();
   let id = 0;
   ws.onmessage = event => {
@@ -353,8 +312,14 @@ async function browserTarget(cfg) {
     waiting.set(++id, message => { clearTimeout(timer); message.error ? reject(new Error(`${method}: ${message.error.message}`)) : resolve(message.result); });
     ws.send(JSON.stringify({ id, method, params }));
   });
-  return { version: version.Browser || '?', userAgent: version['User-Agent'], call, close: () => { try { ws.close(); } catch {} } };
+  return { version: answer.Browser || '?', userAgent: answer['User-Agent'], call, close: () => { try { ws.close(); } catch {} } };
 }
+
+// 붙은 Edge 의 쿠키를 저장 상태 꼴로 읽는다
+const edgeCookies = async browser => (await browser.call('Storage.getCookies')).cookies.map(fromCdp);
+
+// 따라가며 바뀐 쿠키를 Edge 에 되쓴다 — 사람의 Edge 도 같은 세션을 쓴다
+const putCookies = (browser, changed) => browser.call('Storage.setCookies', { cookies: changed.map(toCdp) });
 
 // ── 파일 ─────────────────────────────────────────────────────────────────
 
@@ -403,9 +368,17 @@ function parseArgs(argv) {
 const say = line => console.log(line);
 const label = { domino: 'Domino(메일 · 일정)', ecm: 'ECM' };
 
-// Edge 에 붙는 갈래 — 기본. 볼 포트를 차례로 붙어 보고, 꼭 서야 하는 앱이 다 선 첫 Edge 의 쿠키를 남긴다
+// 받기 — 볼 포트의 Edge 에 차례로 붙어 거두고, 붙을 Edge 가 없으면 남은 파일로 선다. 내는 것: EXIT.OK · 안 서면 Exit
 async function attach(cfg, opts, file, needed) {
-  const ports = cfg.ports || debugPorts(cfg);
+  const ports = portsToSee(cfg);
+  const got = await harvestEach(cfg, opts, file, needed, ports);
+  if (got !== null) return got;
+  return leftoverEnd(await leftover(cfg, file, needed), file, ports);
+}
+
+// 볼 포트마다 붙어 거둔다 — 꼭 서야 하는 앱이 다 선 첫 Edge 의 답(EXIT.OK)을 낸다. 붙은 Edge 가 다 안 섰으면 처음 붙은 Edge 의 멈춤을
+// 던지고(사람이 평소 쓰는 창이 먼저다), 붙은 Edge 가 없으면 null
+async function harvestEach(cfg, opts, file, needed, ports) {
   let attached = 0, first = null;
   for (const port of ports) {
     const browser = await browserTarget({ ...cfg, port });
@@ -415,88 +388,122 @@ async function attach(cfg, opts, file, needed) {
       return await harvest(cfg, { ...opts, ecmTab: opts.ecmTab && attached === 0 }, file, needed, browser, port);
     } catch (error) {
       if (!(error instanceof Exit) || ![EXIT.NOT_LOGGED_IN, EXIT.ECM_HANDOFF].includes(error.code)) throw error;
-      first = first || error;                        // 처음 붙은 Edge 의 말을 낸다 — 사람이 평소 쓰는 창이 먼저다
+      first = first || error;
     } finally {
       attached += 1;
       browser.close();                               // 브라우저 자리의 연결만 끊는다 — Edge 와 그 세션은 산다
     }
   }
   if (first) throw first;
-  {
-    // 못 붙어도 남은 파일이 아직 살면 그 파일로 선다 — 파일은 안 고친다
-    const jar = readFileJar(file);
-    if (jar && jar.length) {
-      const scratch = [];
-      let alive = true;
-      for (const app of needed) alive = alive && await checks[app](cfg, jar, scratch);
-      if (alive) { say('Edge 에 못 붙었지만 남은 세션 파일이 아직 산다'); say(file); return EXIT.OK; }
-    }
-    // 남은 파일이 있으면 그 경로를 끝 줄로 낸다 — 이 손이 그 파일을 못 가렸어도(서버가 답을 안 줬다) 부르는 쪽이 한 번 써 보고,
-    // 서버가 안 받을 때만 스킬 ep-login 을 가리킨다. 파일이 없으면 경로를 안 낸다
-    if (fs.existsSync(file)) say(file);
-    throw new Exit(EXIT.NO_EDGE, `Edge 에 못 붙었다 — 127.0.0.1:${ports.join(' · ')} 에 디버깅 포트가 없다` +
-      (fs.existsSync(file) ? '(남은 세션 파일로도 확인이 안 섰다 — 서버가 안 받았거나 답이 없었다 · 둘은 못 가르니 「거절됐다」고 말하지 않는다)' : '') +
-      '. 다음: 사내망 안인지 먼저 본다(밖이면 Edge 를 띄워도 안 선다) — 안이면 스킬 ep-login 의 입구(login.sh)가 ep-login 용 Edge 창 하나를 포트와 로그인 탭으로 띄운다(사람의 Edge 는 그대로 둔다)');
-  }
+  return null;
 }
 
-// 붙은 Edge 하나에서 쿠키를 읽어 꼭 서야 하는 앱을 가리고, 다 섰으면 파일에 쓴다 — 안 서면 Exit 3 · 4
+// 남은 세션 파일의 상태 — 닫힌 셋
+const LEFTOVER = {
+  ALIVE: 'alive',          // 꼭 서야 하는 앱이 다 그 파일로 선다
+  DEAD: 'dead',            // 파일은 있는데 안 선다(못 읽었거나 서버가 안 받았다 · 답이 없었다)
+  NONE: 'none',            // 파일이 없다
+};
+
+// 쿠키 통으로 꼭 서야 하는 앱이 다 서나 — 앞 앱이 안 서면 뒤 앱은 안 묻는다. 통은 안 고친다
+async function jarStands(cfg, jar, needed) {
+  const scratch = [];
+  let alive = true;
+  for (const app of needed) alive = alive && await APP_STEPS[app].stands(cfg, jar, scratch);
+  return alive;
+}
+
+// 그 자리에 파일이 있나
+const hasFile = file => fs.existsSync(file);
+
+// 남은 세션 파일의 상태를 가린다 — 읽고 · 서나 묻고 · 없으면 있나를 본다. 파일은 안 고친다
+async function leftover(cfg, file, needed) {
+  const jar = readFileJar(file);
+  if (jar && jar.length && await jarStands(cfg, jar, needed)) return LEFTOVER.ALIVE;
+  return hasFile(file) ? LEFTOVER.DEAD : LEFTOVER.NONE;
+}
+
+// 남은 파일의 상태를 이 손의 끝으로 옮긴다 — 산 파일은 그 경로로 0, 아니면 2. 남은 파일이 있으면 그 경로를 끝 줄로 낸다 — 이 손이 그
+// 파일을 못 가렸어도(서버가 답을 안 줬다) 부르는 쪽이 한 번 써 보고, 서버가 안 받을 때만 스킬 ep-login 을 가리킨다
+function leftoverEnd(state, file, ports) {
+  if (state === LEFTOVER.ALIVE) { say(SAID_LEFTOVER_ALIVE); say(file); return EXIT.OK; }
+  if (state === LEFTOVER.DEAD) say(file);
+  throw new Exit(EXIT.NO_EDGE, NO_EDGE_SAID(state, ports));
+}
+
+const SAID_LEFTOVER_ALIVE = 'Edge 에 못 붙었지만 남은 세션 파일이 아직 산다';
+// Edge 에 못 붙은 끝의 까닭과 「다음」 — 남은 파일이 있었으면 그것으로도 안 섰다고 덧붙인다
+const NO_EDGE_SAID = (state, ports) => `Edge 에 못 붙었다 — 127.0.0.1:${ports.join(' · ')} 에 디버깅 포트가 없다` +
+  (state === LEFTOVER.DEAD ? '(남은 세션 파일로도 확인이 안 섰다 — 서버가 안 받았거나 답이 없었다 · 둘은 못 가르니 「거절됐다」고 말하지 않는다)' : '') +
+  '. 다음: 사내망 안인지 먼저 본다(밖이면 Edge 를 띄워도 안 선다) — 안이면 스킬 ep-login 의 입구(login.sh)가 ep-login 용 Edge 창 하나를 포트와 로그인 탭으로 띄운다(사람의 Edge 는 그대로 둔다)';
+
+// 붙은 Edge 하나에서 거둔다 — 쿠키를 받아 꼭 서야 하는 앱을 세우고, 바뀐 쿠키를 되쓰고, 앱마다의 말 뒤에 끝 상태대로 파일을 쓰거나
+// 멈춘다(Exit 3 · 4)
 async function harvest(cfg, opts, file, needed, browser, port) {
-  {
-    cfg.userAgent = browser.userAgent;
-    say(`Edge ${browser.version} 에 붙었다(127.0.0.1:${port})`);
-    const jar = (await browser.call('Storage.getCookies')).cookies.map(fromCdp);
-    const changed = [];
-    const stood = {};
-    if (needed.includes('domino')) {
-      stood.domino = await dominoStands(cfg, jar, changed);
-      if (!stood.domino) {
-        await follow(cfg, jar, changed, dominoUrl(cfg));
-        stood.domino = await dominoStands(cfg, jar, changed);
-      }
-    }
-    // ECM 은 부른 쪽이 `ecm` 을 줄 때만 받는다 — 메일 · 일정만 쓰는 판이 ECM 넘김(최대 열두 걸음)을 매번 치르지 않게
-    const tryEcm = needed.includes('ecm');
-    stood.ecm = tryEcm && await ecmStands(cfg, jar, changed);
-    let why = '';
-    if (tryEcm && !stood.ecm) {
-      why = await follow(cfg, jar, changed, ecmStart(cfg), new URL(cfg.ecm));
-      stood.ecm = await ecmStands(cfg, jar, changed);
-    }
-    if (changed.length) await browser.call('Storage.setCookies', { cookies: changed.map(toCdp) });
-    if (tryEcm && !stood.ecm && opts.ecmTab) stood.ecm = await ecmTab(cfg, browser, jar);
-    if (stood.domino !== undefined) say(`${label.domino} — ${stood.domino ? '섰다' : '로그인이 안 됐다'}`);
-    if (tryEcm) say(`ECM — ${stood.ecm ? '섰다' : `못 받았다(${opts.ecmTab ? '탭으로도 안 섰다' : why || '?'})`}`);
-    const missing = needed.filter(app => !stood[app]);
-    // ECM 만 안 섰고 넘김이 로그인 화면에 안 닿았다 — 로그인은 섰다. 3 으로 내면 부르는 쪽이 사람에게 다시 로그인을 청한다
-    if (missing.length === 1 && missing[0] === 'ecm' && why !== 'login') {
-      const word = opts.ecmTab ? '탭으로도 안 섰다' : HANDOFF_WORD[why] || why || '?';
-      throw new Exit(EXIT.ECM_HANDOFF, `붙었지만 ECM 세션을 조용히 못 받았다(${word}) — 로그인 화면에는 안 닿았다. 다시 로그인할 일이 아니다. 다음: ` +
-        (opts.ecmTab ? '멈추고 이 말을 사람에게 그대로 전한다'
-          : '스킬 ep-login 의 입구(login.sh ecm)가 Edge 에 탭 하나를 잠깐 열어 받는다'));
-    }
-    if (missing.length) {
-      throw new Exit(EXIT.NOT_LOGGED_IN, `붙었지만 ${missing.map(a => label[a]).join(' · ')} 로그인이 안 됐다. 다음: 스킬 ep-login 의 입구(login.sh)가 그 Edge 에 로그인 탭을 연다`);
-    }
-    say(`쿠키 ${write(file, jar, cfg)} 개를 남겼다`);
-    say(file);                                       // 끝 줄 — 부르는 쪽이 이 경로를 읽는다
-    return EXIT.OK;
-  }
+  cfg.userAgent = browser.userAgent;
+  sayAttached(browser.version, port);
+  const jar = await edgeCookies(browser);
+  const changed = [];
+  const stood = {}, why = {};
+  // ECM 은 부른 쪽이 `ecm` 을 줄 때만 세운다 — 메일 · 일정만 쓰는 판이 ECM 넘김(최대 열두 걸음)을 매번 치르지 않게
+  for (const app of APPS.filter(a => needed.includes(a))) [stood[app], why[app]] = await standUp(cfg, app, jar, changed);
+  if (changed.length) await putCookies(browser, changed);
+  if (wantsEcmTab(needed, stood, opts)) stood.ecm = await ecmTab(cfg, browser, jar);
+  const states = appStates(needed, stood, why.ecm, opts.ecmTab);
+  sayApps(states);
+  const missing = missingApps(needed, stood);
+  const end = harvestEnd(missing, why.ecm);
+  if (end !== EXIT.OK) throw new Exit(end, notStood(end, missing, states.ecm));
+  sayKept(write(file, jar, cfg));
+  say(file);                                         // 끝 줄 — 부르는 쪽이 이 경로를 읽는다
+  return EXIT.OK;
 }
 
-// 이 PC 에서 디버깅 포트를 연 Edge 의 포트 — 입구의 포트가 먼저, 나머지는 찾은 차례. 브라우저 프로세스(--type= 없는 것)의
-// 명령줄에서 읽는다 — 포트는 그 Edge 가 처음 뜰 때의 플래그라 명령줄이 원본이다. 못 읽으면(윈도가 아니다 · 시한) 입구의 포트만
-function debugPorts(cfg) {
-  const found = [];
-  if (process.platform === 'win32') {
-    try {
-      const out = require('child_process').execFileSync('powershell', ['-NoProfile', '-Command',
-        "Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object { $_.CommandLine -notmatch '--type=' } | " +
-        'ForEach-Object { $_.CommandLine }'], { encoding: 'utf8', timeout: FIND_MS, windowsHide: true });
-      for (const m of out.matchAll(/--remote-debugging-port=(\d+)/g)) found.push(m[1]);
-    } catch {}
+// ECM 을 탭 갈래로 한 번 더 받나 — 꼭 서야 하는데 조용히 안 섰고, 부른 쪽이 탭을 허락했다(--ecm-tab)
+const wantsEcmTab = (needed, stood, opts) => needed.includes('ecm') && !stood.ecm && opts.ecmTab;
+
+// 꼭 서야 하는데 안 선 앱 — 부른 쪽이 준 차례로
+const missingApps = (needed, stood) => needed.filter(app => !stood[app]);
+
+// 거둔 Edge 의 끝 상태 — 섰다(OK) · ECM 만 안 섰고 넘김이 로그인 화면에 안 닿았다(ECM_HANDOFF — 로그인은 섰다. 3 으로 내면 부르는 쪽이
+// 사람에게 다시 로그인을 청한다) · 그 밖에 안 선 앱이 있다(NOT_LOGGED_IN)
+function harvestEnd(missing, ecmWhy) {
+  if (!missing.length) return EXIT.OK;
+  return missing.length === 1 && missing[0] === 'ecm' && ecmWhy !== FOLLOW.LOGIN ? EXIT.ECM_HANDOFF : EXIT.NOT_LOGGED_IN;
+}
+
+// 앱 하나의 상태 — STOOD 섰다 · LOST 로그인이 안 됐다(domino) · TAB 탭으로도 안 섰다(ecm) · UNKNOWN 까닭을 모른다. ecm 은 그 밖에 따라가다
+// 멈춘 까닭(FOLLOW 의 글자)을 상태로 든다
+const APP_STATE = { STOOD: 'stood', LOST: 'lost', TAB: 'tab', UNKNOWN: '?' };
+
+// 꼭 서야 하는 앱마다의 상태를 가린다 — 안 받은 앱은 없다
+function appStates(needed, stood, ecmWhy, ecmTab) {
+  const states = {};
+  if (needed.includes('domino')) states.domino = stood.domino ? APP_STATE.STOOD : APP_STATE.LOST;
+  if (needed.includes('ecm')) states.ecm = stood.ecm ? APP_STATE.STOOD : ecmTab ? APP_STATE.TAB : ecmWhy || APP_STATE.UNKNOWN;
+  return states;
+}
+
+// 앱마다 섰나를 한 줄씩 알린다 — 꼭 서야 하는 앱만, APPS 의 차례로
+function sayApps(states) {
+  if (states.domino) say(`${label.domino} — ${states.domino === APP_STATE.STOOD ? '섰다' : '로그인이 안 됐다'}`);
+  if (states.ecm) say(`ECM — ${states.ecm === APP_STATE.STOOD ? '섰다' : `못 받았다(${states.ecm === APP_STATE.TAB ? '탭으로도 안 섰다' : states.ecm})`}`);
+}
+
+// 붙은 Edge 를 알린다
+const sayAttached = (version, port) => say(`Edge ${version} 에 붙었다(127.0.0.1:${port})`);
+
+// 남긴 쿠키의 수를 알린다
+const sayKept = count => say(`쿠키 ${count} 개를 남겼다`);
+
+// 안 선 끝 상태의 까닭과 「다음」 — ECM 의 말은 그 앱의 상태(appStates)로 고른다
+function notStood(end, missing, ecmState) {
+  if (end === EXIT.ECM_HANDOFF) {
+    const word = ecmState === APP_STATE.TAB ? '탭으로도 안 섰다' : HANDOFF_WORD[ecmState] || ecmState;
+    return `붙었지만 ECM 세션을 조용히 못 받았다(${word}) — 로그인 화면에는 안 닿았다. 다시 로그인할 일이 아니다. 다음: ` +
+      (ecmState === APP_STATE.TAB ? '멈추고 이 말을 사람에게 그대로 전한다' : '스킬 ep-login 의 입구(login.sh ecm)가 Edge 에 탭 하나를 잠깐 열어 받는다');
   }
-  return [...new Set([cfg.port, ...found])];
+  return `붙었지만 ${missing.map(a => label[a]).join(' · ')} 로그인이 안 됐다. 다음: 스킬 ep-login 의 입구(login.sh)가 그 Edge 에 로그인 탭을 연다`;
 }
 
 // --ecm-tab — 뒤쪽 탭 하나로 SSO 넘김 주소를 거치고, 선 것을 보면 그 탭을 닫는다
@@ -506,34 +513,47 @@ async function ecmTab(cfg, browser, jar) {
     const deadline = Date.now() + cfg.passMs;
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, POLL_MS));
-      const fresh = (await browser.call('Storage.getCookies')).cookies.map(fromCdp);
+      const fresh = await edgeCookies(browser);
       if (await ecmStands(cfg, fresh, [])) { jar.splice(0, jar.length, ...fresh); return true; }
     }
     return false;
   } finally {
-    await closeTab(browser, targetId);
+    sayTabLeft(await closeTab(browser, targetId, ecmStart(cfg)));
   }
 }
 
 // 탭을 닫고 정말 사라질 때까지 본다 — 넘김 도중(리다이렉트 · 폼 제출)에 닫은 탭은 닫기의 답이 온 뒤에도 잠시 남는다.
-// 시한 안에 안 사라지면 한 번 더 닫는다. 끝내 남으면 그 탭의 주소를 알린다 — 사람이 그 탭을 닫는다
-async function closeTab(browser, targetId) {
-  const alive = async () => (await browser.call('Target.getTargets').catch(() => ({ targetInfos: [] })))
-    .targetInfos.find(t => t.targetId === targetId);
+// 시한 안에 안 사라지면 한 번 더 닫는다. 내는 것: 닫혔으면 '' · 아니면 남은 탭의 주소(마지막으로 본 주소 — 못 봤으면 연 주소 url).
+// ⚠ 「닫혔다」는 답이 온 탭 목록에 그 탭이 없을 때만이다 — 목록 물음이 지면(바쁜 PC 에서 CDP 부름이 시한에 진다) 닫혔나를 모르는 것이라 남은
+// 것으로 낸다. 그것을 「없다」로 읽으면 사람의 Edge 에 넘김 탭이 알림 없이 남는다
+async function closeTab(browser, targetId, url) {
+  let last = url;
+  // 그 탭이 아직 있나 — true · false(목록에 없다) · null(물음이 졌다)
+  const alive = async () => {
+    const got = await browser.call('Target.getTargets').catch(() => null);
+    if (!got) return null;
+    const tab = got.targetInfos.find(t => t.targetId === targetId);
+    if (tab) last = tab.url;
+    return Boolean(tab);
+  };
   for (let round = 0; round < CLOSE_ROUNDS; round++) {
     await browser.call('Target.closeTarget', { targetId }).catch(() => {});
     const deadline = Date.now() + CLOSE_MS;
     while (Date.now() < deadline) {
-      if (!await alive()) return;
+      if (await alive() === false) return '';
       await new Promise(r => setTimeout(r, CLOSE_POLL_MS));
     }
   }
-  const left = await alive();
-  if (left) say(`⚠ 넘김에 쓴 탭이 안 닫혔다 — Edge 에서 그 탭을 닫아 주세요: ${left.url}`);
+  return await alive() === false ? '' : last;
+}
+
+// 넘김에 쓴 탭이 끝내 남았으면 알린다 — 사람이 그 탭을 닫는다
+function sayTabLeft(url) {
+  if (url) say(`⚠ 넘김에 쓴 탭이 안 닫혔다 — Edge 에서 그 탭을 닫아 주세요: ${url}`);
 }
 
 async function main(argv) {
-  if (typeof WebSocket !== 'function' || typeof fetch !== 'function') throw new Exit(EXIT.TOOL, `Node ${process.version} — 22 이상이 든다(내장 WebSocket)`);
+  needNode();
   const cfg = settings();
   const opts = parseArgs(argv);
   const file = sessionFile(opts.file);
@@ -549,4 +569,5 @@ if (require.main === module) {
   });
 }
 
+// settings · onLoginScreen · epConfirm(ep_places.js) · debugPorts · VERSION_MS(edge_process.js) · Exit · EXIT(ep_exit.js)는 바탕의 것을 다시 낸다
 module.exports = { keep, store, sentTo, nextStep, settings, onLoginScreen, epConfirm, debugPorts, under, Exit, EXIT, VERSION_MS };

@@ -58,35 +58,24 @@ REVIEW_TOOLS = ('Bash', 'Agent')
 REVIEW_TARGET_RE = re.compile(r'[^\s-]\S*')
 REVIEW_LEVEL_NAMES = ('low', 'medium', 'high', 'xhigh', 'max', 'ultra')
 MAX_FINDINGS_RE = re.compile(r'[1-9][0-9]*|all')
-# 셔틀(`.cmd`)이 부르는 꾸러미 — npm 전역 자리(셔틀 곁의 `node_modules`) 기준. 띄울 것은 그 `package.json` 의 `bin` 이
-# 든다(`common.npm_head`)
-NPM_PACKAGE = ('@anthropic-ai', 'claude-code')
-BIN_NAME = 'claude'
-# Claude 세션 안에서 불려도 그 세션에 안 섞이게 — 부른 쪽 세션의 표지가 남으면 받는 쪽이 그 대화 id 를 이어 쓴다
-# (리모트 세션은 `CLAUDE_CODE_REMOTE_SESSION_ID` 까지 걷어야 새 id 가 선다)
-DROP_ENV = ('CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_REMOTE_SESSION_ID')
 # 러너가 띄운 대화의 표 — 요청이 루프백 프록시를 지날 때만 받는 Claude 의 모든 요청(그 레인 것까지)에 머리 하나를 싣는다. 프록시는
 # 그 대화를 레인처럼 도구 결과를 기다릴 때만 데운다 — 답하고 끝난 러너의 대화에 데우기를 안 버린다. 이름은 프록시의
 # `RUNNER_HEADER` 와 같아야 한다. 하네스의 머리 칸(`Name: Value` 를 줄마다)에 이미 든 머리는 그대로 두고 덧붙인다
 CUSTOM_HEADERS_ENV = 'ANTHROPIC_CUSTOM_HEADERS'
 RUNNER_HEADER = 'x-agent-runner'
 RUNNER_HEADER_VALUE = 'claude-background'
-# 한도 · 과부하의 꼴 — 결과의 `api_error_status`(429 · 529)나 문구. 다른 실패와 갈라야 「잠시 뒤 다시」와 「고칠 것」이 갈린다
-QUOTA_STATUS = (429, 529)
-QUOTA_RE = re.compile(r'usage limit|rate[_ ]limit|overloaded|\b429\b|\b529\b', re.I)
-MODEL_NAME_RE = re.compile(r'[A-Za-z0-9._:/\[\]-]+')
 # 대화 기록의 자리 — 설정 폴더(`config_dir`)의 `projects/<작업 자리 이름>/<id>.jsonl`(Claude Code 2.1.296). 작업 자리 이름을
 # 짓는 규칙은 빌리지 않는다 — `projects/*` 를 다 본다.
 NO_RESUME = ('이어 묻기 못 함 — 대화 기록이 안 남았다({where} 에 이 대화가 없다). 받는 Claude 가 제 홈에 못 쓰는 자리'
              '(맡긴 쪽의 샌드박스)에서 돌았거나 대화가 서기 전에 멈췄다')
 
 
-# 러너 셋이 함께 쓰는 손은 곁에 깔린 스킬 agent-envelope 의 `runner_common.py` 가 든다. 러너는 창 없이 돌아 말할 곳이 답 파일
-# 뿐이라, 그 부품을 못 실으면 여기서 답 파일에 끝 줄을 남기고 끝낸다.
+# 러너 넷이 함께 쓰는 손은 곁에 깔린 스킬 agent-envelope 의 `runner_common.py` 가 들고, 싣는 이름은 그 스킬의 `handout.py` 에
+# 적힌 것뿐이다. 러너는 창 없이 돌아 말할 곳이 답 파일뿐이라, 그 부품을 못 실으면 여기서 답 파일에 끝 줄을 남기고 끝낸다.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'agent-envelope' / 'scripts'))
 try:
     import runner_common as common
-    from runner_common import DEFAULT_TIMEOUT_SEC, PROMPT_ENCODINGS, write
+    from runner_common import CLAUDE_DROP_ENV, CLAUDE_MODEL_RE, DEFAULT_TIMEOUT_SEC, PROMPT_ENCODINGS, write
 except ImportError as missing:
     _args = sys.argv[1:]
     _out = next((x[len('--out='):] for x in _args if x.startswith('--out=')), None)
@@ -117,8 +106,8 @@ def resume_field(conv):
 
 
 def head():
-    """띄울 머리. 못 찾으면 None."""
-    return common.npm_head(BIN_NAME, NPM_PACKAGE)
+    """띄울 머리. 못 찾으면 None. 검사가 가짜 CLI 로 바꿔 끼우는 자리다."""
+    return common.claude_head()
 
 
 def tool_args(write, review=False):
@@ -236,7 +225,7 @@ def judge(events, rc, err_text, review=False):
     reason = ''
     if rc != 0 or not result or result.get('is_error') or result.get('subtype') != 'success':
         reason = answer or result.get('subtype') or '결과 이벤트가 없다'
-        quota = result.get('api_error_status') in QUOTA_STATUS or QUOTA_RE.search(f'{reason}\n{err_text}')
+        quota = common.claude_quota(result.get('api_error_status'), f'{reason}\n{err_text}')
         status = 'quota' if quota else 'failed'
     elif denials and not review:
         status = 'denied'
@@ -255,7 +244,7 @@ def judge(events, rc, err_text, review=False):
 def child_env(env):
     """받는 Claude 에 줄 환경 — 부른 쪽 세션의 표지를 걷고, 요청이 루프백 프록시를 지나면 러너의 표 머리를 싣는다(`RUNNER_HEADER`).
     프록시가 없는 자리(사외 · 게이트웨이 직결)는 머리를 안 싣는다 — 그 자리의 요청은 지금과 같다."""
-    out = {k: v for k, v in env.items() if k not in DROP_ENV}
+    out = {k: v for k, v in env.items() if k not in CLAUDE_DROP_ENV}
     if common.loopback_proxy(out):
         lines = [line for line in (out.get(CUSTOM_HEADERS_ENV) or '').splitlines()
                  if line.strip() and line.split(':', 1)[0].strip().lower() != RUNNER_HEADER]
@@ -365,7 +354,7 @@ def run(a):
     if not os.path.isdir(a.cwd):
         write(a.out, f'{FOOTER} usage · --cwd 가 폴더가 아니다 — {a.cwd}\n')
         return EXIT['usage']
-    if a.model and not MODEL_NAME_RE.fullmatch(a.model):
+    if a.model and not CLAUDE_MODEL_RE.fullmatch(a.model):
         write(a.out, f'{FOOTER} usage · --model 에 따옴표 · 공백이 든다 — {a.model!r}\n')
         return EXIT['usage']
     bad = review_problem(a)

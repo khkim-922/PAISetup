@@ -8,6 +8,7 @@ CDP 웹소켓 하나(`Cdp`)로 열린 보고 창(file: 탭 — `page` · `brief_
 from __future__ import annotations
 
 import base64
+import contextlib
 import datetime as dt
 import hashlib
 import http.client
@@ -21,9 +22,9 @@ import sys
 import time
 import urllib.parse
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 brief_const.py · brief_text.py — `-I` 로 돌아도 싣는다
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 brief_const.py · brief_files.py — `-I` 로 돌아도 싣는다
 import brief_const as C  # noqa: E402
-import brief_text as B  # noqa: E402
+from brief_files import is_window  # noqa: E402
 
 TIMEOUT_S = 5
 EDGE_TIMEOUT_S = 2                               # 새 탭을 청하는 한 번의 시한 — 못 받으면 기본 브라우저로 간다
@@ -56,8 +57,12 @@ class EdgeGone(Exception):
     """로그인 Edge 에 못 닿았거나 그 답이 꼴이 아니다 — 표시는 그 Edge 에 남는다."""
 
 
+class NoEdge(EdgeGone):
+    """처음부터 로그인 Edge 에 못 닿았다(주고받다 멈춘 것과 다른 끝) — 표시는 그 Edge 에 남는다."""
+
+
 class NoWindow(Exception):
-    """열린 보고 창(file: 탭)이 없다 — 새로 열지 않는 부름(`--times`)이 받는다."""
+    """열린 보고 창(file: 탭)이 없다 — 새로 열지 않는 부름(창의 문 `window_door` 의 고름 읽기 · 돌려 적기)이 받는다."""
 
 
 # ── 디버깅 포트 — 브라우저 자리의 CDP 웹소켓 하나 ─────────────────────────────
@@ -99,12 +104,14 @@ class Cdp:
             raise EdgeGone(f"웹소켓 손잡기를 안 받았다({lines[0][:60]})")
 
     def _fill(self) -> None:
+        """웹소켓에서 받은 바이트를 남은 몫에 덧붙인다 — 끊겼으면 EdgeGone."""
         chunk = self.sock.recv(65536)
         if not chunk:
             raise EdgeGone("웹소켓이 끊겼다")
         self.rest += chunk
 
     def _take(self, n: int) -> bytes:
+        """받은 바이트의 앞 `n` 바이트를 떼어 낸다 — 모자라면 더 받는다."""
         while len(self.rest) < n:
             self._fill()
         out, self.rest = self.rest[:n], self.rest[n:]
@@ -123,6 +130,7 @@ class Cdp:
         self.sock.sendall(bytes([0x80 | opcode]) + size + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
 
     def _message(self) -> str:
+        """웹소켓 글 하나를 받는다 — 조각을 잇고, 핑에는 퐁으로 답하고, 닫힘이면 EdgeGone."""
         parts: list[bytes] = []
         while True:
             b0, b1 = self._take(2)
@@ -164,12 +172,14 @@ class Cdp:
         return got.get("result") or {}
 
     def evaluate(self, session: str, expr: str):
+        """탭(`session`)에서 식 하나를 돌려 그 값을 낸다 — 식이 넘어지면 EdgeGone."""
         res = self.call("Runtime.evaluate", {"expression": expr, "returnByValue": True}, session)
         if "exceptionDetails" in res:
             raise EdgeGone("창에서 식이 넘어졌다")
         return (res.get("result") or {}).get("value")
 
     def close(self) -> None:
+        """닫힘 틀을 보내고 소켓을 닫는다 — 이미 끊겼으면 그대로 둔다."""
         try:
             self._send(0x8, b"")
             self.sock.close()
@@ -214,10 +224,15 @@ class Tab:
             return False
 
     def read(self, prefixes: list[str] = HAND_KEYS) -> list:
-        """저장소의 (열쇠, 값) 가운데 열쇠가 `prefixes` 의 하나로 시작하는 것."""
-        return json.loads(self.cdp.evaluate(self.session, read_expr(prefixes)) or "[]")
+        """저장소의 (열쇠, 값) 가운데 열쇠가 `prefixes` 의 하나로 시작하는 것. 답이 JSON 글이 아니면 EdgeGone."""
+        got = self.cdp.evaluate(self.session, read_expr(prefixes)) or "[]"
+        try:
+            return json.loads(got)
+        except (TypeError, ValueError) as exc:
+            raise EdgeGone(f"창의 저장소를 읽은 답이 꼴이 아니다({type(exc).__name__})") from exc
 
     def write(self, rows: list[list[str]], quiet: bool = False) -> None:
+        """칸들(열쇠, 값)을 창의 저장소에 적는다 — `quiet` 면 창이 다시 그리게 하는 저장소 사건을 안 일으킨다."""
         self.cdp.evaluate(self.session, (QUIET_WRITE if quiet else WRITE_EXPR) % json.dumps(rows, ensure_ascii=False))
 
     def swap(self, key: str, old: str, new: str) -> bool:
@@ -225,6 +240,7 @@ class Tab:
         return self.cdp.evaluate(self.session, SWAP_WRITE % tuple(json.dumps(x, ensure_ascii=False) for x in (key, old, new))) is True
 
     def close(self) -> None:
+        """이 손이 뒤 탭으로 연 탭이면 그 탭을 닫는다 — 사람이 연 창은 두고, 못 닫아도 그대로 둔다."""
         if self.made:
             try:
                 self.cdp.call("Target.closeTarget", {"targetId": self.made})
@@ -270,32 +286,45 @@ def brief_tabs(cdp: Cdp) -> list[tuple[str, str]]:
         if t.get("type") != "page" or not url.startswith("file:"):
             continue
         name = urllib.parse.unquote(urllib.parse.urlsplit(url).path).rsplit("/", 1)[-1]
-        if name.endswith(".html") and B.made_of(name):
+        if is_window(name):
             out.append((t["targetId"], name))
     return out
+
+
+@contextlib.contextmanager
+def connected():
+    """로그인 Edge 의 디버깅 포트에 붙은 동안 — 그 이음(`Cdp`)을 낸다. 못 닿으면 `NoEdge`. 나가는 길마다 이음을 닫는다."""
+    try:
+        cdp = Cdp(port())
+    except EdgeGone as exc:
+        raise NoEdge(str(exc)) from exc
+    try:
+        yield cdp
+    finally:
+        cdp.close()
+
+
+@contextlib.contextmanager
+def window(fallback: pathlib.Path | None):
+    """열린 보고 창 하나에 붙은 동안 — 그 탭(`page` — 열린 것이 없으면 `fallback` 을 뒤 탭으로 연다)을 낸다. 못 닿으면 `NoEdge`, 창이 없고
+    `fallback` 도 없으면 `NoWindow`, 주고받다 멈추면 `EdgeGone`. 나가는 길마다 이 판이 연 탭과 이음을 닫는다."""
+    with connected() as cdp:
+        tab = page(cdp, fallback)
+        try:
+            yield tab
+        finally:
+            tab.close()
 
 
 def tell_open(rows) -> bool:
     """열린 보고 창에 칸들(`rows()` 의 답)을 적는다 — 창이 없거나 Edge 에 못 닿으면 아무것도 안 한다(탭을 안 연다 · `rows` 도 안 부른다).
     적었나."""
     try:
-        cdp = Cdp(port())
-    except EdgeGone:
+        with window(None) as tab:
+            tab.write(rows())
+            return True
+    except (EdgeGone, NoWindow):
         return False
-    tab = None
-    try:
-        try:
-            tab = page(cdp, None)
-        except NoWindow:
-            return False
-        tab.write(rows())
-        return True
-    except EdgeGone:
-        return False
-    finally:
-        if tab is not None:
-            tab.close()
-        cdp.close()
 
 
 # ── 저장소의 칸 — 창이 남긴 값 ─────────────────────────────────────────────────

@@ -83,7 +83,7 @@
   「지침」 을 전사공통으로 좁히니 113 건, 「pdf」 를 첨부 이름으로 찾으니 111 건 · 2 초 남짓
 - 사람 창 — `/cmmn/ajax/getEmpInfo.do`(empcd)의 `empInfo`(hname · deptcdDisp · jikwicdDisp · jikckcdDisp · responsibility · officePhone ·
   handpon · email). 퇴사자 · 없는 사번은 `empInfo` 가 빈다. 담당 · 검토 · 승인의 사번은 `selectProcessInfo` 의 empcd · reviewerCd · approvalCd
-  다. 회사 메일의 `who` 는 이름 · 부서 · 직급 · 직책 · 근무지 · 담당 업무 · 주소를 내고 전화는 안 낸다 — 그래서 사규의 사람 창을 따로 낸다
+  다. 회사 주소록의 `find` 는 이름 · 부서 · 직급 · 직책 · 근무지 · 담당 업무 · 주소를 내고 전화는 안 낸다 — 그래서 사규의 사람 창을 따로 낸다
 - 쓰는 사람의 사번 — 내 목록 화면(`/myProcessList/oftenUseProcess.do`)이 `empcd : "…"` 로 박아 둔다(한 값 두 번)
 - 최근 사용 표준 — `/myProcessList/searchOftenUseProcessList.do`(fromDate · toDate · empcd)의 `OftenUseProcessList[]`(processIdx · processName ·
   menuName1..3 · reDeptnm · hname · reRegDate · txtIdx). 30 일에 21 건 · 이틀에 0 건. 줄의 reRegDate 는 연 날이 아니라 그 문서의 시행일과

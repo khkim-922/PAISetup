@@ -60,6 +60,8 @@ const BODY_SECONDS = 10;           // 편집기가 넣은 글을 그리기를 �
 const LOOKUP_MS = 20000;           // 주소록 한 번의 시한 — 답이 없어도 이 손이 제 창을 닫고 끝나게
 // 주소록에 묻는 식 하나의 답을 기다리는 시한 — 화면의 주소록 시한(LOOKUP_MS)보다 길어야 「주소록이 답하지 않았다」가 제 까닭으로 온다
 const LOOKUP_SECONDS = LOOKUP_MS / 1000 + 10;
+// ⚠ 값이나 뜻을 바꾸면 mail.py 의 HAND_EXITS(이 명령의 종료 값으로 옮기기)와 HAND_UNPRESSED([보내기]를 누르기 전에만 내는 값 —
+// 그 밖의 값으로 멈춘 send 는 나갔을 수 있다고 본다)도 함께 고친다
 const EXIT = {OK: 0, FAIL: 1, MISSING: 2, NO_EDGE: 3, STALE: 4, ASKED: 5};
 
 const fail = (code, message, extra = {}) => { const e = new Error(message); e.code = code; e.extra = extra; return e; };
@@ -241,40 +243,56 @@ const innerBody = h => {
 //   있어(이 손으로 보낸 메일에 웹메일에서 직접 쓴 답장) 앞에 글이 있는 표지를 고르면 인용을 갈아 끼운다
 function rebody(html, spec) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  // 맨 앞 서식 되살리기 — body 태그 없는 조각이면 파서가 head 로 옮긴 <style> 을 새 판 앞에 되돌려 싣는다
   const hoisted = /<body[\s>]/i.test(html) ? '' : Array.from(doc.head.querySelectorAll('style'), s => s.outerHTML).join('');
+  // 보이는 글자 마디들 — style · script · title 안은 본문 글자가 아니다
   const shown = () => {
     const out = [], walk = doc.createTreeWalker(doc.body, 4 /* NodeFilter.SHOW_TEXT */);
     for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!/^(STYLE|SCRIPT|TITLE)$/.test(n.parentNode.nodeName)) out.push(n);
     return out;
   };
-  for (const [from, to] of spec.swaps || []) {
+  // 조각 하나를 바꾼다 — 못 바꾸면 그 까닭, 바꿨으면 null
+  const swap = (from, to) => {
     const words = String(from).trim().split(/\s+/).filter(Boolean);
-    if (!words.length) return {why: '바꿀 조각이 비었다'};
+    if (!words.length) return '바꿀 조각이 비었다';
     const pattern = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
     const nodes = shown();
     const hits = (nodes.map(n => n.data).join('').match(new RegExp(pattern, 'g')) || []).length;
-    if (!hits) return {why: `「${from}」 이 본문 글자에 없다 — 화면에 보이는 글자 그대로, 한 문단 안의 조각을 준다`};
-    if (hits > 1) return {why: `「${from}」 이 본문 글자에 ${hits} 번 나온다 — 앞뒤 글을 더 붙여 한 번만 나오는 조각을 준다`};
+    if (!hits) return `「${from}」 이 본문 글자에 없다 — 화면에 보이는 글자 그대로, 한 문단 안의 조각을 준다`;
+    if (hits > 1) return `「${from}」 이 본문 글자에 ${hits} 번 나온다 — 앞뒤 글을 더 붙여 한 번만 나오는 조각을 준다`;
     const one = new RegExp(pattern);
     const node = nodes.find(n => one.test(n.data));
-    if (!node) return {why: `「${from}」 이 서식 경계(굵게 · 색 · 링크)를 걸쳐 있다 — 경계 안의 더 짧은 조각을 준다`};
+    if (!node) return `「${from}」 이 서식 경계(굵게 · 색 · 링크)를 걸쳐 있다 — 경계 안의 더 짧은 조각을 준다`;
     const m = node.data.match(one);
     node.data = node.data.slice(0, m.index) + String(to) + node.data.slice(m.index + m[0].length);
-  }
-  if (spec.piece != null && spec.place === 'top') {
-    const box = doc.createElement('div');
-    box.id = spec.mark;
-    box.innerHTML = spec.piece;
-    doc.body.insertBefore(box, doc.body.firstChild);
-  } else if (spec.piece != null) {
+    return null;
+  };
+  // 넣을 글을 세운다 — top 은 표지 div 로 감싸 본문 맨 앞에, mark 는 앞에 다른 글이 없는 첫 표지 자리에. 못 세우면 그 까닭, 세웠으면 null
+  const put = () => {
+    if (spec.place === 'top') {
+      const box = doc.createElement('div');
+      box.id = spec.mark;
+      box.innerHTML = spec.piece;
+      doc.body.insertBefore(box, doc.body.firstChild);
+      return null;
+    }
     const el = doc.querySelector(`[id^="${spec.prefix}"]`);
     const before = doc.createRange();
     if (el) { before.setStart(doc.body, 0); before.setEndBefore(el); }
-    if (!el || before.toString().trim()) return {why: '본문 맨 앞에 넣은 글의 표지가 없다 — 글을 통째로 못 간다(통째로 갈면 서명 · 인용이 날아간다). 바꿀 데만 조각으로 준다'};
+    if (!el || before.toString().trim()) return '본문 맨 앞에 넣은 글의 표지가 없다 — 글을 통째로 못 간다(통째로 갈면 서명 · 인용이 날아간다). 바꿀 데만 조각으로 준다';
     el.id = spec.mark;
     el.innerHTML = spec.piece;
+    return null;
+  };
+  // 글자 뽑기 — 보이는 글자를 빈칸 하나로 펴서
+  const text = () => shown().map(n => n.data).join('').replace(/[\s​﻿]+/g, ' ').trim();
+  for (const [from, to] of spec.swaps || []) {
+    const why = swap(from, to);
+    if (why) return {why};
   }
-  return {html: hoisted + doc.body.innerHTML, text: shown().map(n => n.data).join('').replace(/[\s​﻿]+/g, ' ').trim()};
+  const why = spec.piece != null ? put() : null;
+  if (why) return {why};
+  return {html: hoisted + doc.body.innerHTML, text: text()};
 }
 const BODY_NOW = "(_PWEC.getHTML() || '')";
 

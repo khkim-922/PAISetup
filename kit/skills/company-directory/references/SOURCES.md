@@ -25,9 +25,9 @@
 - 배포그룹은 `ag_org_search_json` 의 `type=group` · `group_type`(직책 · 직급 · 지역)이 목록(`group[]` · `key` 는
   `[02:직책]리더(02)` 꼴)을, `/common/lib_f.nsf/agGetDistribute?openagent&groupname=<key>` 가 구성원(`memberlist[]` —
   이름 · 직급 · 부서 · 메일)을 준다. 개인 주소록은 `type=private` 이다(잰 메일함은 비었다)
-- 조직도의 부서 주소는 `dept_<회사>_<부서 코드>@` 꼴이다(`directory.DEPT_MAIL`)
-- 회사 값의 기본은 `poscochem(02)` 이다(`directory.DEFAULT_COMPANY`)
-- 메일함 파일 번호는 그 메일함을 쓰는 사람의 사번이다(`…/<사번>.nsf` — `directory.MAILFILE_NUMBER`) — 「나」 는 그 사번으로 주소록에 묻는다
+- 조직도의 부서 주소는 `dept_<회사>_<부서 코드>@` 꼴이다(형제 스킬 company-mail 의 `mail.py` `DEPT_MAIL`)
+- 회사 값의 기본은 `poscochem(02)` 이다(형제 스킬 company-mail 의 `mail_kept.DEFAULT_COMPANY`)
+- 메일함 파일 번호는 그 메일함을 쓰는 사람의 사번이다(`…/<사번>.nsf` — 형제 스킬 company-mail 의 `mail_open.MAILFILE_NUMBER`) — 「나」 는 그 사번으로 주소록에 묻는다
 
 ### 직급 등급
 
@@ -40,8 +40,8 @@
 
 ### 걸리는 시간
 
-- 조직도 전사를 받는 데 십수 초(15 초쯤)가 든다 — `ORG_CACHE_DAYS` 동안 받아 둔 판을 쓰고, 메일의 임시메일 받는 사람 잇기
-  (`kept_book`)는 받아 둔 판이 없으면 새로 받지 않는 까닭이다
+- 조직도 전사를 받는 데 십수 초(15 초쯤)가 든다 — 형제 스킬 company-mail 의 `mail_kept.ORG_CACHE_DAYS` 동안 받아 둔 판을 쓰고, 메일의 임시메일 받는 사람 잇기
+  (`mail_people.kept_book`)는 받아 둔 판이 없으면 새로 받지 않는 까닭이다
 
 ### 전화 — 사규 앱의 사람 창
 

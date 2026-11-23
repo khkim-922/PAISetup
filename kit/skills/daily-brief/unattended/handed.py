@@ -1,15 +1,16 @@
 """맡긴 일 — 보고 창에서 사람이 골라 맡긴 일들을 작업 폴더에서 claude 한 번으로 차례로 하게 뒤에 띄우고, 도는 동안 일마다의 끝을
-프로그램이 읽는 기록으로 낸다. `scan.py handed …` 가 이 파일의 `main` 을 부른다.
+프로그램이 읽는 기록으로 낸다. 사람 없는 실행의 입구 하나다 — 어느 모듈도 이 파일을 싣지 않는다.
 
-    python -X utf8 -I scan.py handed start --tasks <맡긴 일 JSON> [--work <작업 폴더>] [--claude <claude>] [--hand <mail.py>]
-    python -X utf8 -I scan.py handed show --id <맡긴 판>
-    python -X utf8 -I scan.py handed list
-    python -X utf8 -I scan.py handed watch --id <맡긴 판>          지킴이 — start 가 떼어 띄운다
+    python -X utf8 -I handed.py start --tasks <맡긴 일 JSON> [--work <작업 폴더>] [--claude <claude>] [--hand <mail.py>] [--dir <사용자 폴더>]
+    python -X utf8 -I handed.py show --id <맡긴 판> [--dir <사용자 폴더>]
+    python -X utf8 -I handed.py list [--dir <사용자 폴더>]
+    python -X utf8 -I handed.py watch --id <맡긴 판> [--dir <사용자 폴더>]          지킴이 — start 가 떼어 띄운다
 
 start — 맡긴 일을 받아 기록을 곧 쓰고 지킴이를 떼어 띄운 뒤 기다리지 않고 기록 하나(JSON)를 낸다. 지킴이가 사내 세션을 한 번 보고(없으면
     claude 를 안 띄우고 로그인으로 맺는다), claude 를 작업 폴더에서 세션을 남긴 채 띄워 그 출력을 때와 함께 받아 적고, 끝나면 까닭을 적는다.
     실행이 결과 글만 쓰고 맺어 손대지 않은 일이 남으면 같은 세션을 한 번 이어 남은 일을 하게 한다(`untouched` · `RESUME_MOST`).
-show — 그 판의 지금 기록(JSON 하나). list — 아직 도는 판의 기록(줄마다 JSON 하나).
+show — 그 판의 지금 기록(JSON 하나). list — 아직 도는 판의 기록(줄마다 JSON 하나). 판의 폴더는 사용자 폴더의 `daily-brief-handed/` 에
+    서고, 옛 자리 `mailbox-scan/handed/` 의 판도 읽는다. `--dir` 이 없으면 사용자 폴더를 곁의 스캔(`scan.py status --json`)에 묻는다.
 
 이 손은 일의 글을 읽어 무엇을 가르지 않는다 — 받은 것을 그대로 넘기고, 돌아온 것을 그대로 적는다. 일마다의 끝은 claude 가 결과 글의 첫 줄에
 다는 표지(`MARK`)에서 읽는다 — 흐름에는 일을 가르는 다른 표가 없다. 입력 · 기록의 칸과 상태 낱말은 `references/DESIGN.md` 「맡긴 일」 표가
@@ -33,23 +34,25 @@ import threading
 from datetime import datetime, timedelta
 from typing import Any
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 모듈 — `-I` 로 돌아도 싣는다
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path[:0] = [str(HERE.parent / "scripts"), str(HERE)]   # 같은 스킬의 바탕(scripts/)을 먼저 · 곁의 모듈 — `-I` 로 돌아도 싣는다
 import brief_schedule as S  # noqa: E402
-import claude_launch as L  # noqa: E402
-import scan_const as C  # noqa: E402
-import scan_hand as H  # noqa: E402
-import scan_store as st  # noqa: E402
+import clock as tm  # noqa: E402
+import launch_base as LB  # noqa: E402
+import proc_base as P  # noqa: E402
+import scan_door as D  # noqa: E402
 import session_login as SL  # noqa: E402
+import unattended_const as C  # noqa: E402
+import unattended_store as st  # noqa: E402
 
 # ── 이름 붙은 값 ─────────────────────────────────────────────────────────────────
 FORMAT = 1                                   # 기록의 꼴 번호 — 칸의 뜻을 바꾸면 올린다(읽는 창이 모르는 판을 안 그린다)
-HANDED_DIR = "handed"                        # 사용자 폴더의 스캔 자리 안 — 판마다 폴더 하나(기록 · 맡긴 일 · 부탁 글 · 흐름)
 FILES_DIR = "handed"                         # 작업 폴더 안 — 판마다 그 실행이 쓰는 파일(메일 본문 따위)의 자리
 RUN_FILE, TASKS_FILE, PROMPT_FILE, RESUME_FILE = "run.json", "tasks.json", "prompt.txt", "prompt-resume.txt"
 RESUME_MOST = 1                              # 표지만 쓰고 차례를 마쳐 끝난 실행을 같은 세션으로 잇는 수 — 이어도 또 멈추면 남은 일은 못 함으로 맺는다
 STREAM_FILE = "stream.jsonl"                 # claude 의 출력 한 줄마다 {t: 받은 때, line: 그 줄} — 지킴이가 받는 대로 덧붙인다
 ERR_FILE, WATCH_LOG = "claude-stderr.log", "watch.log"
-PROMPT_TEXT = pathlib.Path(__file__).resolve().parents[1] / "handed-run.md"   # 실행이 받는 글의 틀 — 사람이 읽고 고치는 자리
+PROMPT_TEXT = HERE / "handed-run.md"         # 실행이 받는 글의 틀 — 사람이 읽고 고치는 자리
 CEILING_S = 30 * 60                          # 한 판의 claude 가 이보다 오래 돌면 멈춘 것으로 보고 끊는다 — 일 하나가 몇십 초라 여러 건도 몇 분이고,
                                              # 그보다 열 배 길면 기다리는 것이 사람에게 더 나쁘다
 STALE_S = CEILING_S + 3 * C.HAND_TIMEOUT_S + 120   # 끝이 안 적힌 판이 이보다 오래됐으면 지킴이 번호를 남이 받았어도 죽은 것으로 본다 —
@@ -68,7 +71,7 @@ CARRIED_MARKS = ("CLAUDECODE", "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_ENTRYPO
 # 것(`sdk-cli`)으로 적고, VS Code 확장은 그런 세션(`sdk-*`)을 창의 세션 목록에서 빼 `session=` 주소가 그 대화를 못 찾고 새 대화를 연다.
 # `sdk-*` 가 아닌 값이면 목록에 든다 — 띄운 이를 그대로 댄다. 우회다: 이 환경값은 Claude Code 문서에 없고 CLI · 확장 2.1.330 에서 잰 꼴이다.
 # 확장이 `-p` 세션을 목록에 넣거나 문서가 사람이 이을 세션을 적는 길을 내면 걷는다
-ENTRYPOINT_ENV, ENTRYPOINT = "CLAUDE_CODE_ENTRYPOINT", "mailbox-scan-handed"
+ENTRYPOINT_ENV, ENTRYPOINT = "CLAUDE_CODE_ENTRYPOINT", "daily-brief-handed"
 # 띄우는 꼴 — 권한 깃발 · 도구 · 모델을 안 준다: 사람의 설정이 그대로 실려 대화에서 시킨 것과 같은 판이 된다. 세션은 남긴다(이어 갈 대화)
 CLAUDE_ARGS = ("-p", "--output-format", "stream-json", "--verbose")
 
@@ -125,6 +128,7 @@ class Job:
             self.handle, self.armed = handle, True
 
     def _limit(self, handle: Any, flags: int) -> bool:
+        """묶음의 한도 깃발을 `flags` 로 바꿔 건다 — 걸었으면 True."""
         ct = self._ct
 
         class Basic(ct.Structure):
@@ -140,6 +144,7 @@ class Job:
         return bool(self._k.SetInformationJobObject(handle, JOB_EXTENDED_LIMIT, ct.byref(info), ct.sizeof(info)))
 
     def disarm(self) -> None:
+        """「마지막 손잡이가 닫히면 묶음 안을 끝낸다」 깃발을 걷는다 — 걷었으면 `armed` 가 거짓이 된다."""
         if self.armed:
             self.armed = not self._limit(self.handle, 0)
 
@@ -147,6 +152,7 @@ class Job:
 # ── 맡긴 일 — 받는 꼴 ─────────────────────────────────────────────────────────────
 
 def text_of(value: Any) -> str | None:
+    """빈칸만이 아닌 글이면 그 글, 아니면 None."""
     return value if isinstance(value, str) and value.strip() else None
 
 
@@ -207,20 +213,23 @@ def user_env(name: str) -> str:
 
 # ── 기록 — 판마다 폴더 하나 ─────────────────────────────────────────────────────────
 
-def runs_dir() -> pathlib.Path:
-    return st.scan_dir() / HANDED_DIR
+def run_roots(home: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    """판 폴더가 서는 자리 둘 — (새 판이 서는 자리, 옛 자리). 도는 판의 폴더는 지킴이가 흐름 파일을 쥐어 못 옮겨, 옛 자리의 판도 읽는다."""
+    return home / C.HANDED_DIR, home / pathlib.Path(*C.LEGACY_HANDED)
 
 
-def run_dir(run_id: str) -> pathlib.Path:
-    return runs_dir() / run_id
+def run_dir(home: pathlib.Path, run_id: str) -> pathlib.Path:
+    """그 판의 폴더 — 새 자리에 없고 옛 자리에 있으면 옛 자리, 아니면 새 자리."""
+    new, old = run_roots(home)
+    return old / run_id if not (new / run_id).is_dir() and (old / run_id).is_dir() else new / run_id
 
 
-def read_run(run_id: str) -> dict[str, Any] | None:
+def read_run(home: pathlib.Path, run_id: str) -> dict[str, Any] | None:
     """그 판의 기록 — 없거나 글이 깨졌거나 꼴이 아니면 None(기다려도 안 바뀐다 — 걷기는 폴더의 때로 잰다), 있는데 못 읽으면 `st.Unreadable`."""
     if not RUN_ID.match(run_id or ""):
         return None
     try:
-        data = st.read_json(run_dir(run_id) / RUN_FILE)
+        data = st.read_json(run_dir(home, run_id) / RUN_FILE)
     except st.Unreadable as exc:
         if not exc.broken:
             raise
@@ -233,40 +242,40 @@ def read_tasks_of(here: pathlib.Path) -> dict[str, Any]:
     return st.read_json(here / TASKS_FILE) or {"tasks": []}
 
 
-def update_run(run_id: str, change: dict[str, Any]) -> dict[str, Any]:
+def update_run(home: pathlib.Path, run_id: str, change: dict[str, Any]) -> dict[str, Any]:
     """기록을 다시 읽고 `change` 를 얹어 새 파일로 바꿔 끼운다 — 쓰는 것은 start 와 그 판의 지킴이뿐이라(읽는 쪽은 안 쓴다) 잠금이 없다.
     기록이 없으면 OSError, 못 읽으면 `st.Unreadable` — 빈 것에 얹어 쓰면 칸이 다 빠진 기록이 서서 그 판이 「없는 판」이 된다."""
-    data = read_run(run_id)
+    data = read_run(home, run_id)
     if data is None:
         raise OSError(f"맡긴 판의 기록이 없다: {run_id}")
     data.update(change)
-    st.write_json(run_dir(run_id) / RUN_FILE, data)
+    st.write_json(run_dir(home, run_id) / RUN_FILE, data)
     return data
 
 
 def new_id() -> str:
-    return f"{st.seoul(st.now(), '%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
+    """새 판의 번호 — 서울 시각(초까지)과 무작위 16 진 여섯 글자."""
+    return f"{tm.seoul(tm.utc_now(), '%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
 
 
 def stamp() -> str:
     """기록의 때 — UTC ISO 8601 을 천분의 일 초까지. 한 판의 때는 다 이 꼴이라 글자끼리 견줘도 시간순이다(일의 끝과 다음 부름은 1 초 안에
     붙기도 한다)."""
-    return st.now().isoformat(timespec="milliseconds")
+    return tm.utc_now().isoformat(timespec="milliseconds")
 
 
-def prune() -> None:
+def prune(home: pathlib.Path) -> None:
     """끝난 지 `KEEP_DAYS` 가 지난 판을 걷는다 — 기록 폴더와 그 판이 작업 폴더에 쓴 파일 자리. 도는 판은 안 건드린다."""
-    edge = st.now() - timedelta(days=KEEP_DAYS)
-    root = runs_dir()
-    for d in (x for x in root.iterdir() if x.is_dir() and RUN_ID.match(x.name)) if root.is_dir() else ():
+    edge = tm.utc_now() - timedelta(days=KEEP_DAYS)
+    for d in (x for root in run_roots(home) if root.is_dir() for x in root.iterdir() if x.is_dir() and RUN_ID.match(x.name)):
         try:
-            rec = record(d.name)
+            rec = record(home, d.name)
         except st.Unreadable:
             continue                                # 있는데 못 읽는 판 — 끝났는지 모르니 안 걷는다
         if rec is None:                             # 못 읽는 판 — 막 짓는 중일 수 있어 폴더의 때로만 잰다
-            last = datetime.fromtimestamp(d.stat().st_mtime, st.now().tzinfo)
+            last = datetime.fromtimestamp(d.stat().st_mtime, tm.utc_now().tzinfo)
         else:
-            last = st.parse(str(rec.get("ended") or rec.get("started") or ""))
+            last = tm.parse(str(rec.get("ended") or rec.get("started") or ""))
         if (rec is not None and rec["alive"]) or last is None or last > edge:
             continue
         files = pathlib.Path(str((rec or {}).get("files") or ""))
@@ -277,28 +286,26 @@ def prune() -> None:
 
 # ── start — 맡기고 곧 돌아온다 ───────────────────────────────────────────────────────
 
-def start(tasks_path: str, work: str | None, claude: str | None, hand: str | None) -> dict[str, Any]:
+def start(home: pathlib.Path, tasks_path: str, work: str | None, claude: str | None, hand: str | None) -> dict[str, Any]:
     """맡긴 일 하나를 받는다 — 기록을 쓰고 지킴이를 떼어 띄운 뒤 지금 기록을 낸다. 못 맡기면 `Refused`(기록을 안 쓴다)."""
     handed = read_tasks(pathlib.Path(tasks_path))
     place = work_folder(work)
-    saved = str((S.load(st.scan_dir())[0] or {}).get("claude") or "")
-    program = (L.find_claude(claude) if claude else
-               (L.find_claude(saved) if saved and pathlib.Path(saved).is_file() else None) or L.find_claude(None))
+    saved = str((S.load(home)[0] or {}).get("claude") or "")
+    program = LB.pick_claude(claude, saved)
     if program is None:
         raise Refused(EXIT_CANNOT, {"cannot": "noclaude", "message": "Claude Code 명령줄(claude)을 못 찾았습니다 — --claude 로 그 자리를 줍니다"})
-    try:
-        mail = H.find_hand(hand)
-    except H.HandMissing as exc:
-        raise Refused(EXIT_CANNOT, {"cannot": "nohand", "message": str(exc)}) from None
-    prune()
+    mail, missing = D.mail_hand(hand)
+    if mail is None:
+        raise Refused(EXIT_CANNOT, {"cannot": "nohand", "message": missing})
+    prune(home)
     run_id = new_id()
-    here = run_dir(run_id)
+    here = run_dir(home, run_id)
     here.mkdir(parents=True)
     st.write_json(here / TASKS_FILE, handed)
     st.write_json(here / RUN_FILE, {"format": FORMAT, "id": run_id, "brief": handed["brief"], "started": stamp(), "work": str(place),
                                     "files": str(place / FILES_DIR / run_id), "claude": str(program), "hand": str(mail), "pid": None,
                                     "claude_pid": None, "job": None, "end": None, "ended": None, "said": "", "exit": None})
-    cmd = [sys.executable, "-X", "utf8", "-I", str(pathlib.Path(__file__).resolve().parent / "scan.py"), "handed", "watch", "--id", run_id]
+    cmd = P.python_argv(HERE / C.HANDED_ENTRY, "watch", "--id", run_id, "--dir", str(home))
     failed: OSError | None = None
     for kw in detached():
         try:
@@ -309,13 +316,13 @@ def start(tasks_path: str, work: str | None, claude: str | None, hand: str | Non
         except OSError as exc:
             failed = exc
     if failed is not None:
-        update_run(run_id, {"end": DIED, "ended": stamp(), "said": f"지킴이를 못 띄웠다 — {type(failed).__name__}: {failed}"})
-    return record(run_id) or {}
+        update_run(home, run_id, {"end": DIED, "ended": stamp(), "said": f"지킴이를 못 띄웠다 — {type(failed).__name__}: {failed}"})
+    return record(home, run_id) or {}
 
 
 def detached() -> list[dict[str, Any]]:
     """떼어 띄우는 꼴 — 부른 손이 끝나도, 그 손이 든 작업 묶음이 닫혀도 지킴이가 산다. 묶음이 안 놓아 주면 묶음 안에서라도 띄운다."""
-    base = L.detached()
+    base = LB.detached()
     if sys.platform != "win32":
         return [base]
     return [{"creationflags": base["creationflags"] | subprocess.CREATE_BREAKAWAY_FROM_JOB}, base]
@@ -339,7 +346,7 @@ def prompt_of(handed: dict[str, Any], files: pathlib.Path) -> str:
                        for n, t in enumerate(handed["tasks"], 1))
     text = PROMPT_TEXT.read_text(encoding="utf-8")
     for key, value in (("{count}", str(len(handed["tasks"]))), ("{files}", files.as_posix()),
-                       ("{now}", st.seoul(st.now(), "%Y-%m-%d %H:%M")), ("{tasks}", blocks)):
+                       ("{now}", tm.seoul(tm.utc_now(), "%Y-%m-%d %H:%M")), ("{tasks}", blocks)):
         text = text.replace(key, value)
     return text
 
@@ -357,9 +364,9 @@ def untouched(tasks: list[dict[str, Any]], seen: dict[str, Any]) -> list[int]:
 
 
 def child_env(env: dict[str, str]) -> dict[str, str]:
-    """띄울 claude 의 환경 — 보고의 실행과 같은 손질(`claude_launch.child_env`)에 물려받았을 표지(`CARRIED_MARKS`)를 더 걷고, 띄운 쪽의
+    """띄울 claude 의 환경 — 보고의 실행과 같은 손질(`launch_base.child_env`)에 물려받았을 표지(`CARRIED_MARKS`)를 더 걷고, 띄운 쪽의
     이름(`ENTRYPOINT`)을 준다 — 그래야 「대화로 이어 가기」 가 그 세션을 연다."""
-    return {**{k: v for k, v in L.child_env(env).items() if k.upper() not in CARRIED_MARKS}, ENTRYPOINT_ENV: ENTRYPOINT}
+    return {**{k: v for k, v in LB.child_env(env).items() if k.upper() not in CARRIED_MARKS}, ENTRYPOINT_ENV: ENTRYPOINT}
 
 
 # ── watch — 지킴이 ─────────────────────────────────────────────────────────────────
@@ -367,7 +374,7 @@ def child_env(env: dict[str, str]) -> dict[str, str]:
 def kill_tree(pid: int) -> None:
     """그 claude 와 그것이 띄운 셸 · 손을 함께 끝낸다 — 쥔 프로세스의 번호로만."""
     if sys.platform == "win32":
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, **H.quiet())
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, **P.quiet())
     else:
         try:
             os.kill(pid, 9)
@@ -375,21 +382,21 @@ def kill_tree(pid: int) -> None:
             pass
 
 
-def watch(run_id: str) -> int:
+def watch(home: pathlib.Path, run_id: str) -> int:
     """지킴이 한 판 — 작업 묶음에 저를 넣고, 사내 세션을 보고, claude 를 띄워 출력을 받아 적고, 끝의 까닭을 적는다. 어디서 지든 끝을 적고
     claude 를 거둔다."""
-    rec = read_run(run_id)
+    rec = read_run(home, run_id)
     if rec is None or rec.get("end"):
         return EXIT_ARGS
     job = Job()
-    rec = update_run(run_id, {"pid": os.getpid(), "job": job.armed})
+    rec = update_run(home, run_id, {"pid": os.getpid(), "job": job.armed})
     proc: subprocess.Popen | None = None
     try:
         hand = pathlib.Path(rec["hand"])
         if SL.look(hand) == SL.LOST:
-            update_run(run_id, {"end": LOGIN, "ended": stamp(), "said": "띄우기 전에 보니 사내 세션이 없어 claude 를 띄우지 않았다"})
+            update_run(home, run_id, {"end": LOGIN, "ended": stamp(), "said": "띄우기 전에 보니 사내 세션이 없어 claude 를 띄우지 않았다"})
             return EXIT_OK
-        here = run_dir(run_id)
+        here = run_dir(home, run_id)
         files = pathlib.Path(rec["files"])
         files.mkdir(parents=True, exist_ok=True)
         handed = read_tasks_of(here)
@@ -398,8 +405,8 @@ def watch(run_id: str) -> int:
         while True:
             with given_path.open("rb") as given, (here / ERR_FILE).open("ab") as err:
                 proc = subprocess.Popen([rec["claude"], *args], cwd=rec["work"], stdin=given, stdout=subprocess.PIPE, stderr=err,
-                                        env=child_env(dict(os.environ)), close_fds=True, **H.quiet())
-            update_run(run_id, {"claude_pid": proc.pid, "resumed": resumed})
+                                        env=child_env(dict(os.environ)), close_fds=True, **P.quiet())
+            update_run(home, run_id, {"claude_pid": proc.pid, "resumed": resumed})
             reader = threading.Thread(target=pump, args=(proc, here / STREAM_FILE), daemon=True)
             reader.start()
             try:
@@ -416,12 +423,12 @@ def watch(run_id: str) -> int:
             resumed += 1
             args, given_path = [*CLAUDE_ARGS, "--resume", session], here / RESUME_FILE
             given_path.write_text(RESUME_TEXT.format(left=" · ".join(f"일 {n}" for n in left)), encoding="utf-8")
-        update_run(run_id, settle(run_id, hand, code, end))
+        update_run(home, run_id, settle(home, run_id, hand, code, end))
         return EXIT_OK
     except BaseException as exc:   # noqa: BLE001 — 어디서 지든 claude 를 거두고 끝을 적는다
         if proc is not None and proc.poll() is None:
             kill_tree(proc.pid)
-        update_run(run_id, {"end": DIED, "ended": stamp(), "said": f"지킴이가 멈췄다 — {type(exc).__name__}: {exc}"[:TAIL_CHARS]})
+        update_run(home, run_id, {"end": DIED, "ended": stamp(), "said": f"지킴이가 멈췄다 — {type(exc).__name__}: {exc}"[:TAIL_CHARS]})
         return EXIT_OK
     finally:
         job.disarm()
@@ -435,10 +442,10 @@ def pump(proc: subprocess.Popen, path: pathlib.Path) -> None:
             out.flush()
 
 
-def settle(run_id: str, hand: pathlib.Path, code: int, end: str | None) -> dict[str, Any]:
+def settle(home: pathlib.Path, run_id: str, hand: pathlib.Path, code: int, end: str | None) -> dict[str, Any]:
     """끝난 claude → 기록에 얹을 끝. 맺음 사건이 성공이고 종료 0 이면 다 했다, 아니면 죽었다(끊었으면 끊겼다). 못 끝낸 일이 있으면 사내 세션을
     한 번 보고, 없으면 로그인이 끊긴 끝이다 — 손이 종료 3 을 낸 뒤의 일들은 그래서 못 했다."""
-    here = run_dir(run_id)
+    here = run_dir(home, run_id)
     handed = read_tasks_of(here)
     seen = parse_stream(here / STREAM_FILE, len(handed["tasks"]))
     result = seen["result"] or {}
@@ -582,21 +589,21 @@ def task_states(tasks: list[dict[str, Any]], seen: dict[str, Any], ended: bool, 
 def watcher_alive(rec: dict[str, Any]) -> bool:
     """지킴이가 아직 도나 — 번호를 적기 전이면 맡긴 지 `START_GRACE_S` 안일 때만, 적었으면 그 프로세스가 살았나로. 맡긴 지 `STALE_S` 가
     지났으면 번호를 남이 받았어도 죽은 것이다."""
-    started = st.parse(str(rec.get("started") or ""))
-    age = (st.now() - started).total_seconds() if started else STALE_S
+    started = tm.parse(str(rec.get("started") or ""))
+    age = (tm.utc_now() - started).total_seconds() if started else STALE_S
     if age >= STALE_S:
         return False
     if not isinstance(rec.get("pid"), int):
         return age < START_GRACE_S
-    return S.process_alive(rec["pid"]) is not False
+    return LB.process_alive(rec["pid"]) is not False
 
 
-def record(run_id: str) -> dict[str, Any] | None:
+def record(home: pathlib.Path, run_id: str) -> dict[str, Any] | None:
     """그 판의 지금 기록 — 아무것도 안 쓴다. 끝이 안 적혔는데 지킴이가 없으면 죽은 판으로 낸다(작업 묶음이 claude 도 함께 끝냈다)."""
-    rec = read_run(run_id)
+    rec = read_run(home, run_id)
     if rec is None:
         return None
-    here = run_dir(run_id)
+    here = run_dir(home, run_id)
     try:
         handed = read_tasks_of(here)
     except st.Unreadable as exc:
@@ -605,7 +612,7 @@ def record(run_id: str) -> dict[str, Any] | None:
         handed = {"tasks": []}                     # 글이 깨진 맡긴 일 — 보이기만 하는 자리라 일 없이 낸다(판을 걷는 잣대는 기록이다)
     seen = parse_stream(here / STREAM_FILE, len(handed["tasks"]))
     if rec.get("end") is None and not watcher_alive(rec):
-        rec = read_run(run_id) or rec              # 지킴이가 끝을 적고 막 나갔을 수 있다 — 다시 읽는다
+        rec = read_run(home, run_id) or rec              # 지킴이가 끝을 적고 막 나갔을 수 있다 — 다시 읽는다
         if rec.get("end") is None:
             left = tail(here)
             rec = {**rec, "end": DIED, "ended": seen["last"] or rec.get("started"),
@@ -620,13 +627,14 @@ def record(run_id: str) -> dict[str, Any] | None:
             "tasks": task_states(handed["tasks"], seen, ended, rec.get("ended"))}
 
 
-def alive_runs() -> list[dict[str, Any]]:
-    root = runs_dir()
-    names = sorted((d.name for d in root.iterdir() if d.is_dir() and RUN_ID.match(d.name)), reverse=True) if root.is_dir() else []
+def alive_runs(home: pathlib.Path) -> list[dict[str, Any]]:
+    """사용자 폴더의 판 가운데 아직 도는 것의 기록 — 새 판부터, 그 순간 못 읽은 판은 뺀다."""
+    names = sorted({d.name for root in run_roots(home) if root.is_dir() for d in root.iterdir() if d.is_dir() and RUN_ID.match(d.name)},
+                   reverse=True)
     out = []
     for n in names:
         try:
-            r = record(n)
+            r = record(home, n)
         except st.Unreadable:
             continue                                # 그 순간 못 읽은 판은 이번 목록에서만 빠진다 — 다음에 물으면 읽는다
         if r and r["alive"]:
@@ -637,41 +645,57 @@ def alive_runs() -> list[dict[str, Any]]:
 # ── 명령줄 ──────────────────────────────────────────────────────────────────────
 
 def parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="scan.py handed", description=__doc__.split("\n\n")[0])
+    """명령줄의 꼴 — 하위 명령(start · show · watch · list) · 인자 · 도움말."""
+    ap = argparse.ArgumentParser(prog=C.HANDED_ENTRY, description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="action", required=True)
     s = sub.add_parser("start", help="맡긴 일을 받아 뒤에서 띄우고 곧 돌아온다")
     s.add_argument("--tasks", required=True, help="맡긴 일 JSON 파일(꼴은 references/DESIGN.md 「맡긴 일」)")
     s.add_argument("--work", help=f"작업 폴더 — 없으면 {WORK_ENV}")
     s.add_argument("--claude", help="띄울 claude — 없으면 보고가 건 것, 그것도 없으면 PATH")
-    s.add_argument("--hand", help="회사 메일 손 mail.py — 없으면 스캔과 같은 차례로 찾는다")
+    s.add_argument("--hand", help="회사 메일 손 mail.py — 없으면 형제 스킬 company-mail 의 것")
+    s.add_argument("--dir", help=D.DIR_HELP)
     for name, words in (("show", "그 판의 지금 기록"), ("watch", "지킴이 — start 가 띄운다")):
-        sub.add_parser(name, help=words).add_argument("--id", required=True)
-    sub.add_parser("list", help="아직 도는 판의 기록 — 줄마다 하나")
+        one = sub.add_parser(name, help=words)
+        one.add_argument("--id", required=True)
+        one.add_argument("--dir", help=D.DIR_HELP)
+    sub.add_parser("list", help="아직 도는 판의 기록 — 줄마다 하나").add_argument("--dir", help=D.DIR_HELP)
     return ap
 
 
 def emit(obj: Any) -> None:
+    """JSON 한 줄을 표준 출력에 낸다."""
     sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None) -> int:
+    """명령 입구 — 사용자 폴더를 정하고(`--dir` · 없으면 스캔에 묻는다) 받은 명령을 그 손에 나눈다."""
+    if hasattr(sys.stdout, "reconfigure") and sys.stdout is not None:
+        sys.stdout.reconfigure(encoding="utf-8")
     a = parser().parse_args(argv)
+    home = D.home_of(a.dir)
+    if home is None:
+        emit({"cannot": "nohome", "message": D.NO_HOME})
+        return EXIT_CANNOT
     if a.action == "watch":
-        return watch(a.id)
+        return watch(home, a.id)
     if a.action == "list":
-        for r in alive_runs():
+        for r in alive_runs(home):
             emit(r)
         return EXIT_OK
     if a.action == "show":
         try:
-            got, why = record(a.id), f"그런 판이 없다: {a.id}"
+            got, why = record(home, a.id), f"그런 판이 없다: {a.id}"
         except st.Unreadable as exc:
             got, why = None, f"그 판의 기록을 그 순간 못 읽었다({exc}) — 다시 물으면 읽는다: {a.id}"
         emit(got if got else {"error": "args", "message": why})
         return EXIT_OK if got else EXIT_ARGS
     try:
-        emit(start(a.tasks, a.work, a.claude, a.hand))
+        emit(start(home, a.tasks, a.work, a.claude, a.hand))
         return EXIT_OK
     except Refused as exc:
         emit(exc.body)
         return exc.code
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -18,7 +18,13 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 손가락들 — `-I` 로 돌아도 싣는다
-import brief_text as B  # noqa: E402
+from brief_cards import FACT  # noqa: E402
+from brief_files import kept_briefs  # noqa: E402
+from brief_inline import first_unid, plain  # noqa: E402
+from brief_put import KEY_MARK, PUT_KEY, PUT_SPLIT, Put  # noqa: E402
+from brief_sections import DONE_SECTION, NONE_ROW, REOPEN_SECTION, fold, section_rows, section_span  # noqa: E402
+from brief_tasks import put_in  # noqa: E402
+from brief_text import SUB  # noqa: E402
 import prefs_file as P  # noqa: E402
 import presses  # noqa: E402
 import store as S  # noqa: E402
@@ -63,26 +69,31 @@ def carry(text: str, folder: pathlib.Path) -> tuple[str, list[str]]:
     """지난 보고 글의 기록 절 둘을 새 글에 잇는다 — 새 글에 이미 든 줄(같은 첫 메일 번호 · 번호가 없으면 같은 글)은 다시 안 넣는다. 두 절은 일마다
     사용자의 마지막 말씀이라(같은 메일 번호는 한쪽에만 선다 — 거두는 손 · 대화가 맞은편 줄을 걷는다) 날마다 그대로 잇는다. 「끝났다고 하신 것」은
     줄이 없어도 「없음」으로 세운다 — 다음 보고 · 업무 파악 · 거두는 손이 그 절을 찾는다. 지난 글을 못 읽으면 `Unread`."""
-    briefs = B.kept_briefs(folder) if folder.is_dir() else []
+    briefs = kept_briefs(folder) if folder.is_dir() else []
     prev = ""
     if briefs:
         try:
             prev = (S.read_bytes(briefs[-1]) or b"").decode("utf-8", errors="replace")
         except S.Unreadable as exc:
             raise Unread(f"{briefs[-1].name}: {exc}") from exc
-    for name in (B.DONE_SECTION, B.REOPEN_SECTION):
-        keys = {B.first_unid(r) or r.strip() for r in B.section_rows(text, name)}
-        text, _ = B.fold(text, name, [r for r in B.section_rows(prev, name) if (B.first_unid(r) or r.strip()) not in keys])
-    if B.section_span(text.split("\n"), B.DONE_SECTION)[0] is None:
-        text = text.rstrip("\n") + f"\n\n## {B.DONE_SECTION}\n{B.NONE_ROW}\n"
+    for name in (DONE_SECTION, REOPEN_SECTION):
+        keys = {first_unid(r) or r.strip() for r in section_rows(text, name)}
+        text = fold(text, name, [r for r in section_rows(prev, name) if (first_unid(r) or r.strip()) not in keys])
+    if section_span(text.split("\n"), DONE_SECTION)[0] is None:
+        text = fold(text, DONE_SECTION, [NONE_ROW])   # 절이 없으면 끝에 세우는 꼴은 `fold` 한 자리가 든다
     return text, []
 
 
 # ── 「일정 넣기」의 열쇠 ─────────────────────────────────────────────────────
 
+UNSEEN_WARN = ("경고: 「{field}」 「{title}」의 일정을 미리 보지 못해 넣기 단추를 안 달았다(일정 손 종료 {code}) — 대화에서 넣을 수 있다고 "
+               "카드에 적었다")
+READY, ALREADY, UNSEEN = "ready", "already", "unseen"   # 미리 보기 한 번의 끝 — 열쇠를 받았다 · 같은 일정이 이미 있다 · 못 받았다
+
+
 def stamp_puts(text: str, preview) -> tuple[str, list[str]]:
-    """열쇠 없는 「일정 넣기」 줄마다 미리 보기를 불러 열쇠를 달고 그 시각의 지금을 카드의 점으로 넣는다. 열쇠가 이미 있는 줄(모델이 옮긴 옛
-    꼴)은 그대로 둔다."""
+    """열쇠 없는 「일정 넣기」 줄마다 미리 보기를 한 번 불러 열쇠를 달고 그 시각의 지금을 카드의 점으로 넣는다. 열쇠가 이미 있는 줄(모델이 옮긴
+    옛 꼴)은 그대로 둔다. 줄마다 미리 보기 → 그 줄 고치기 → 앞 판의 점 걷기 → 새 점 넣기의 차례다."""
     rows, warns = text.split("\n"), []
     i = 0
     while i < len(rows):
@@ -91,22 +102,40 @@ def stamp_puts(text: str, preview) -> tuple[str, list[str]]:
             i += 1
             continue
         code, answer = preview(put, True)
-        key = str(answer.get("key") or "") if code == 0 else ""
-        if key and answer.get("state") == "ready" and B.PUT_KEY.match(key):
-            row = rows[i].rstrip()
-            tick = "`" if row.endswith("`") and row.count("`") >= 2 else ""      # 값을 「`…`」로 싸 쓴 줄 — 열쇠도 그 안에
-            rows[i] = row[:len(row) - len(tick)] + f"{B.PUT_SPLIT}{B.KEY_MARK}{key}" + tick
-            point = now_words(answer)
-        elif code == 0 and answer.get("state") == "already":
-            point = NOW_ALREADY
-        else:
-            point = NOW_UNSEEN
-            warns.append(f"경고: 「{field}」 「{put.title}」의 일정을 미리 보지 못해 넣기 단추를 안 달았다(일정 손 종료 {code}) — 대화에서 넣을 수 있다고 "
-                         "카드에 적었다")
+        state, key = preview_end(code, answer)
+        rows[i] = keyed_row(rows[i], key) if state == READY else rows[i]
+        warns += [UNSEEN_WARN.format(field=field, title=put.title, code=code)] if state == UNSEEN else []
         i -= drop_points(rows, i)                  # 앞서 마무리한 글을 다시 받았으면 그때 넣은 점을 걷는다 — 지금 판의 점 하나만 선다
-        rows.insert(point_at(rows, i), rows[i][:len(rows[i]) - len(rows[i].lstrip())] + "- " + point)
+        rows.insert(point_at(rows, i), sub_row(rows[i], point_words(state, answer)))
         i += 2
     return "\n".join(rows), warns
+
+
+def preview_end(code: int | None, answer: dict) -> tuple[str, str]:
+    """미리 보기 한 번의 끝 — (READY · ALREADY · UNSEEN, 받은 열쇠). 꼴에 맞는 열쇠를 「ready」로 받은 것만 READY 다."""
+    key = str(answer.get("key") or "") if code == 0 else ""
+    if key and answer.get("state") == "ready" and PUT_KEY.match(key):
+        return READY, key
+    if code == 0 and answer.get("state") == "already":
+        return ALREADY, ""
+    return UNSEEN, ""
+
+
+def keyed_row(row: str, key: str) -> str:
+    """「일정 넣기」 줄 끝에 열쇠를 단다 — 값을 「`…`」로 싸 쓴 줄은 열쇠도 그 안에."""
+    row = row.rstrip()
+    tick = "`" if row.endswith("`") and row.count("`") >= 2 else ""
+    return row[:len(row) - len(tick)] + f"{PUT_SPLIT}{KEY_MARK}{key}" + tick
+
+
+def point_words(state: str, answer: dict) -> str:
+    """카드에 넣을 그 시각의 점 — 받은 판의 지금 · 이미 있음 · 못 봄."""
+    return now_words(answer) if state == READY else NOW_ALREADY if state == ALREADY else NOW_UNSEEN
+
+
+def sub_row(row: str, words: str) -> str:
+    """그 줄과 같은 들여쓰기의 낱낱 한 줄."""
+    return row[:len(row) - len(row.lstrip())] + "- " + words
 
 
 NOW_HEADS = (NOW_FREE, NOW_CLASH.split("{", 1)[0], NOW_ALREADY, NOW_UNSEEN)
@@ -115,38 +144,34 @@ NOW_HEADS = (NOW_FREE, NOW_CLASH.split("{", 1)[0], NOW_ALREADY, NOW_UNSEEN)
 def drop_points(rows: list[str], i: int) -> int:
     """「일정 넣기」 줄 `i` 의 카드에서 마무리가 넣은 그 시각의 점을 걷는다 — 걷은 줄 수(그 줄 앞에 있던 것)."""
     start = i
-    while start > 0 and B.SUB.match(rows[start - 1]):
+    while start > 0 and SUB.match(rows[start - 1]):
         start -= 1
-    gone = [j for j in range(start, i) if (m := B.SUB.match(rows[j])) and m.group(1).strip().startswith(NOW_HEADS)]
+    gone = [j for j in range(start, i) if (m := SUB.match(rows[j])) and m.group(1).strip().startswith(NOW_HEADS)]
     for j in reversed(gone):
         del rows[j]
     return len(gone)
 
 
-def put_row(row: str) -> tuple[B.Put | None, str]:
+def put_row(row: str) -> tuple[Put | None, str]:
     """카드의 낱낱 한 줄이 「일정 넣기」 칸이면 (그 값, 칸 이름) — 아니면 (None, "")."""
-    sub = B.SUB.match(row)
-    m = B.FACT.match(sub.group(1).strip()) if sub else None
+    sub = SUB.match(row)
+    m = FACT.match(sub.group(1).strip()) if sub else None
     if not m:
         return None, ""
-    label, value = m.group("label").strip(), m.group("value")
-    if label == B.PUT_FIELD:
-        return B.put_of(value), label
-    if label == B.DO_FIELD:
-        kind, _, rest = value.strip().strip("`").partition(B.PUT_SPLIT)
-        return (B.put_of(rest), label) if kind.strip() == B.KIND_CAL else (None, "")
-    return None, ""
+    label = m.group("label").strip()
+    put = put_in(label, m.group("value"))
+    return (put, label) if put else (None, "")
 
 
 def point_at(rows: list[str], i: int) -> int:
     """「일정 넣기」 줄 `i` 의 카드에서 점을 넣을 자리 — 그 카드의 낱낱 가운데 처음 선 칸(「이름: 값」) 앞. 카드의 점이 칸보다 앞에 서야 창이
     끝의 칸을 칸으로 읽는다."""
     start = i
-    while start > 0 and B.SUB.match(rows[start - 1]):
+    while start > 0 and SUB.match(rows[start - 1]):
         start -= 1
     for j in range(start, i + 1):
-        sub = B.SUB.match(rows[j])
-        if sub and B.FACT.match(sub.group(1).strip()):
+        sub = SUB.match(rows[j])
+        if sub and FACT.match(sub.group(1).strip()):
             return j
     return i
 
@@ -156,4 +181,4 @@ def now_words(answer: dict) -> str:
     clash = [c for c in answer.get("clash") or [] if isinstance(c, dict) and c.get("title")]
     if not clash:
         return NOW_FREE
-    return NOW_CLASH.format(clash=" · ".join(f"{c.get('when') or ''} {B.plain(str(c['title']))}".strip() for c in clash))
+    return NOW_CLASH.format(clash=" · ".join(f"{c.get('when') or ''} {plain(str(c['title']))}".strip() for c in clash))

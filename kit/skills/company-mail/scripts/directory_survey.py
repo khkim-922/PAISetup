@@ -45,6 +45,7 @@ TEXT_HEAD = 160            # JSON 이 아닌 답의 앞 글자
 
 
 def load_har(path: pathlib.Path) -> list[dict]:
+    """HAR 파일을 읽어 요청 · 응답 기록(``log.entries``)을 낸다 — 그 꼴이 아니면 ValueError."""
     data = json.loads(path.read_text(encoding="utf-8-sig"))
     entries = data.get("log", {}).get("entries")
     if not isinstance(entries, list):
@@ -53,6 +54,7 @@ def load_har(path: pathlib.Path) -> list[dict]:
 
 
 def body_text(entry: dict) -> str:
+    """HAR 기록 하나의 응답 본문 글 — base64 면 풀고, 못 풀면 빈 글."""
     content = entry.get("response", {}).get("content", {}) or {}
     text = content.get("text") or ""
     if content.get("encoding") == "base64":
@@ -106,11 +108,13 @@ def shape(value, depth: int = 0, codes: dict | None = None, at: str = "") -> str
 
 
 def clip(text: str) -> str:
+    """보기 값 하나를 공백을 한 칸으로 접고 SAMPLE_CHARS 글자에서 자른다."""
     text = " ".join(str(text).split())
     return text if len(text) <= SAMPLE_CHARS else text[:SAMPLE_CHARS] + "…"
 
 
 def survey(entries: list[dict], *, patterns=(), everything: bool = False) -> list[str]:
+    """HAR 기록을 (방법, 호스트, 주소)로 묶어 질의 칸 · 답의 꼴 · 읽기 길이 묻나를 사람이 읽는 글줄로 낸다 — 스크립트에만 보인 주소도 끝에 붙인다."""
     groups: dict[tuple[str, str, str], dict] = {}
     scripts: set[str] = set()
     for e in entries:
@@ -175,6 +179,7 @@ def survey(entries: list[dict], *, patterns=(), everything: bool = False) -> lis
 
 
 def main(argv=None) -> int:
+    """명령 줄을 받아 HAR 를 읽고 메일함 경로로 읽기 길 목록을 지어 조사 글줄을 찍는다 → 종료 값."""
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")

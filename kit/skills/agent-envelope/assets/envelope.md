@@ -11,14 +11,16 @@ review feature on the same tree, never one packet folder for every carrier.)
 
 ## Task
 - Source: <issue URL or path — the lane opens it itself; never paste its body here. Parent: open every path and
-  coordinate this envelope names before sending — the source may be stale — and tell the lane to check them too>
+  coordinate this envelope names before sending — the source may be stale — and tell the lane to check them too. Every fact you
+  hand the lane as a rule to keep (a constraint, a contract, "X never does Y") carries the file, line or check that shows it,
+  or is marked "parent's belief — verify first": a lane builds on a stated rule without doubting it>
 - Finished form: <one or two lines — what the person sees and does when the whole work is done, at the level people
   customarily expect of a finished one. Not a list of parts: the parts are the lane's to recall and propose. When the source
   issue opens with its top section (「완성형」 or 「다 됐을 때」 — skill issue-write §2), take it from there. Copy this line
   verbatim into every lane of the same work>
 - This lane delivers: <the piece of the finished form this lane builds or measures>
 - Ours: <the one or two things that make it ours, if the owner named any — else "find one and propose it in the report">
-- Done is judged by: <acceptance lane — whenever anything a person sees or does changes | checks only — nothing a person sees or does changes | the owner's eye on drafts — then drafts come before the engine>
+- Done is judged by: <acceptance lane — whenever anything a person sees or does changes | structure reader — whenever code is restructured: a reader who did not build it holds each piece against the target tree (one job each · a hand only composes · calls go one way down); green checks are the floor, not the end | checks only — nothing a person sees or does changes and no code structure changes | the owner's eye on drafts — then drafts come before the engine>
 - Weight: <deep | errand>
 - Review: <triage — when the change is done, ask the three questions of rule [Review Triage] in order and stop at the first
   that decides: (1) would a failure here spread silently and widely — every session, several machines, data — with nobody

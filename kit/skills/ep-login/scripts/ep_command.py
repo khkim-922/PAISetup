@@ -76,11 +76,12 @@ DAY_SECONDS = 86400
 
 
 class Stop(Exception):
-    """명령을 멈춘다 — ``code`` 가 종료 값, ``kind`` 가 JSON 의 error 값, 메시지가 사람에게 낼 까닭이다."""
+    """명령을 멈춘다 — ``code`` 가 종료 값, ``kind`` 가 JSON 의 error 값, 메시지가 사람에게 낼 까닭이다. ``stepped`` 는 그 글이 제 다음
+    걸음(「다음: …」)을 드나다 — 글을 지은 자리가 안다. 이 멈춤을 제 꼴로 다시 싣는 스킬이 글을 뒤지지 않고 이 표시로 걸음을 가린다."""
 
-    def __init__(self, code: int, kind: str, message: str):
+    def __init__(self, code: int, kind: str, message: str, *, stepped: bool = False):
         super().__init__(message)
-        self.code, self.kind = code, kind
+        self.code, self.kind, self.stepped = code, kind, stepped
 
 
 def load(name: str, where: pathlib.Path):
@@ -113,14 +114,15 @@ def exit_legend(codes, more: dict | None = None, said: str = SAID_JSON) -> str:
 # ── 명령의 끝 ────────────────────────────────────────────────────────────
 def no_session(got) -> Stop:
     """받는 손이 못 선 까닭(``ep_session.NoSession`` 의 ``got``)을 종료 값으로 옮긴다 — 남은 파일 없는 2 와 3 은 ep-login(종료 3),
-    1 과 경로 없는 0 은 도구 고장이다."""
+    1 과 경로 없는 0 은 도구 고장이다. 도구 고장의 말은 그렇다고 댄다 — 사람이 로그인을 다시 하러 가지 않게. 이 사실의 말은 이 한
+    자리이고, 이 멈춤을 제 꼴로 옮기는 손(회사 메일 · 주소록)도 이 말을 받는다."""
     if got.code in (ep_session.NO_EDGE, ep_session.NOT_LOGGED_IN):
         why = "Edge 에 붙지 못했고 앞서 받은 세션도 없다" if got.code == ep_session.NO_EDGE else "Edge 가 사내 로그인 전이다"
-        return Stop(EXIT_SESSION, "session", f"사내 세션이 없다 — {why}. {NEXT_EP_LOGIN}")
+        return Stop(EXIT_SESSION, "session", f"사내 세션이 없다 — {why}. {NEXT_EP_LOGIN}", stepped=True)
     if got.code == ep_session.OK:
-        return Stop(EXIT_TOOL, "tool", "세션 손이 0 으로 끝났는데 끝 줄에 세션 파일의 절대 경로가 없다")
+        return Stop(EXIT_TOOL, "tool", "세션 손이 0 으로 끝났는데 끝 줄에 세션 파일의 절대 경로가 없다(도구 고장)")
     tail = (got.said.splitlines() or [""])[-1]
-    return Stop(EXIT_TOOL, "tool", f"세션 손이 종료 {got.code} 로 졌다 — {tail}")
+    return Stop(EXIT_TOOL, "tool", f"세션 손이 종료 {got.code} 로 졌다(도구 고장) — {tail}")
 
 
 def _failed(app, exc: Exception, app_error: str, args_errors: tuple) -> tuple[dict, int]:
@@ -138,24 +140,38 @@ def _failed(app, exc: Exception, app_error: str, args_errors: tuple) -> tuple[di
     return {"error": "tool", "message": f"{type(exc).__name__}: {exc}"}, EXIT_TOOL
 
 
+def _worked(work, app):
+    """``work(앱 손)`` 을 돌려 그 답을 낸다 — 받는 손이 못 선 것(``NoSession``)은 ``no_session`` 의 ``Stop`` 으로 바꿔 올린다."""
+    try:
+        return work(app)
+    except ep_session.NoSession as exc:
+        raise no_session(exc.got) from exc
+
+
+def _stopped(exc: Stop) -> tuple[dict, int]:
+    """``Stop`` → (답, 종료 값) — 그 값과 갈래 그대로."""
+    return {"error": exc.kind, "message": str(exc)}, exc.code
+
+
+def _print(result: dict, indent: int | None) -> None:
+    """답을 표준 출력에 JSON 하나로 찍는다 — ``size`` 가 세는 꼴 그대로."""
+    print(json.dumps(result, ensure_ascii=False, indent=indent))
+
+
 def finish(work, hand: str, where: pathlib.Path, *, indent: int | None = None,
            app_error: str = "AppError", args_errors: tuple = ()) -> int:
-    """얇은 명령의 끝 — 앱 손(``where`` 폴더의 모듈 ``hand``)을 싣고 ``work(앱 손)`` 의 답을 표준 출력에 JSON 하나로 찍고 종료 값을
-    낸다(머리말 「내는 것」). ``work`` 가 세션을 쥐는 법(``ep_session.session_first`` · 파일부터인가 손부터인가 · 세션 없이 답하는
-    갈래)을 든다. 예외는 여기서 옮긴다 — ``Stop`` 은 그 값대로, 받는 손이 못 선 것(``NoSession``)은 ``no_session``, 앱 손의 예외는
-    이름으로: ``SessionExpired`` · ``SessionMissing`` → 3, ``args_errors`` 에 든 이름 → 2, ``app_error``(그 손의 뿌리 예외) → 1.
-    ``indent`` 는 JSON 을 찍는 꼴이다 — 그 명령의 답을 재는 ``size`` 에도 같은 값을 준다."""
+    """얇은 명령의 끝 — 앱 손(``where`` 폴더의 모듈 ``hand``)을 싣고(``load``) ``work(앱 손)`` 을 돌려(``_worked``) 예외를 답과 종료 값으로
+    옮기고(``_stopped`` · ``_failed``) 찍는다(``_print``)(머리말 「내는 것」). ``work`` 가 세션을 쥐는 법(``ep_session.session_first`` ·
+    파일부터인가 손부터인가 · 세션 없이 답하는 갈래)을 든다. 옮기는 자 — ``Stop`` 은 그 값대로, 받는 손이 못 선 것(``NoSession``)은
+    ``no_session``, 앱 손의 예외는 이름으로: ``SessionExpired`` · ``SessionMissing`` → 3, ``args_errors`` 에 든 이름 → 2, ``app_error``(그
+    손의 뿌리 예외) → 1. ``indent`` 는 JSON 을 찍는 꼴이다 — 그 명령의 답을 재는 ``size`` 에도 같은 값을 준다."""
     try:
-        app = load(hand, where)
-        try:
-            result, code = work(app), EXIT_OK
-        except ep_session.NoSession as exc:
-            raise no_session(exc.got) from exc
+        result, code = _worked(work, load(hand, where)), EXIT_OK
     except Stop as exc:
-        result, code = {"error": exc.kind, "message": str(exc)}, exc.code
+        result, code = _stopped(exc)
     except Exception as exc:  # noqa: BLE001 — 손의 예외를 종료 값으로 옮긴다
         result, code = _failed(sys.modules.get(hand), exc, app_error, args_errors)
-    print(json.dumps(result, ensure_ascii=False, indent=indent))
+    _print(result, indent)
     return code
 
 
@@ -238,7 +254,7 @@ def text_file(name: str, lead: str = "글 파일") -> str:
         return path.read_text(encoding="utf-8-sig").rstrip("\r\n")
     except UnicodeDecodeError as exc:
         raise Stop(EXIT_ARGS, "args", f"{lead}이 UTF-8 이 아니다: {path}. 다음: UTF-8 로 다시 쓴다(PowerShell 5.1 이면 Out-File · Set-Content 에 "
-                                      "-Encoding utf8)") from exc
+                                      "-Encoding utf8)", stepped=True) from exc
     except OSError as exc:
         raise Stop(EXIT_ARGS, "args", f"{lead}을 못 읽었다: {path} ({exc})") from exc
 
@@ -246,10 +262,12 @@ def text_file(name: str, lead: str = "글 파일") -> str:
 # ── 사람 파일 ─────────────────────────────────────────────────────────────
 # 한 손이 찾은 사람을 다음 손이 옮겨 적지 않고 받는 파일 — 주소록(스킬 company-directory)의 찾기가 --out 에 쓰는 people.json 이다.
 # 사람을 받는 손은 다 같은 이름의 인자(PEOPLE_FLAG)로 받고 이 한 벌이 읽는다. 손마다 사람을 아는 열쇠만 고른다 — 메일 · 회의실은
-# email, 문서함은 name + mail_id, 일정은 notes(그 사람의 공유 일정함)
+# email, 문서함은 name + mail_id, 일정은 notes(그 사람의 공유 일정함). 파일의 꼴(꼴 번호 · 칸과 그 차례)은 이 자리가 들고, 쓰는 주소록이
+# 여기서 받아 사람마다 PEOPLE_KEYS 의 차례로 쓴다 — 칸을 바꾸면 꼴 번호를 올리고, 읽는 쪽은 같은 번호만 읽는다
 PEOPLE_FLAG = "--people-file"
 PEOPLE_FORMAT = 1
-PEOPLE_TEXT = ("name", "email", "mail_id", "empno", "dept", "dept_code", "grade", "job_title", "notes", "field")
+PEOPLE_KEYS = ("name", "email", "mail_id", "empno", "dept", "dept_code", "grade", "job_title", "is_boss", "notes", "field")
+PEOPLE_TEXT = tuple(k for k in PEOPLE_KEYS if k != "is_boss")   # 글자인 칸 — is_boss 만 참 · 거짓이라 people_of 가 따로 읽는다
 PEOPLE_FIELDS = ("to", "cc", "bcc")
 PEOPLE_HELP = "사람 파일 — 주소록(스킬 company-directory)의 찾기가 --out 에 쓴 people.json 그대로(여러 번 준다)"
 PEOPLE_NEXT = "다음: 주소록(스킬 company-directory)으로 사람을 다시 찾아 --out 이 쓴 people.json 을 그대로 준다 — 손으로 고쳐 쓰지 않는다"
@@ -290,17 +308,17 @@ def people_of(paths) -> list[Person]:
     for name in paths or ():
         path = pathlib.Path(name).expanduser()
         if not path.is_file():
-            raise Stop(EXIT_ARGS, "args", f"사람 파일이 없다: {path}. {PEOPLE_NEXT}")
+            raise Stop(EXIT_ARGS, "args", f"사람 파일이 없다: {path}. {PEOPLE_NEXT}", stepped=True)
         try:
             raw = json.loads(path.read_text(encoding="utf-8-sig"))
         except UnicodeDecodeError as exc:
-            raise Stop(EXIT_ARGS, "args", f"사람 파일이 UTF-8 이 아니다: {path}. {PEOPLE_NEXT}") from exc
+            raise Stop(EXIT_ARGS, "args", f"사람 파일이 UTF-8 이 아니다: {path}. {PEOPLE_NEXT}", stepped=True) from exc
         except ValueError as exc:
-            raise Stop(EXIT_ARGS, "args", f"사람 파일이 JSON 이 아니다: {path} ({exc}). {PEOPLE_NEXT}") from exc
+            raise Stop(EXIT_ARGS, "args", f"사람 파일이 JSON 이 아니다: {path} ({exc}). {PEOPLE_NEXT}", stepped=True) from exc
         except OSError as exc:
             raise Stop(EXIT_ARGS, "args", f"사람 파일을 못 읽었다: {path} ({exc})") from exc
         if not isinstance(raw, dict) or raw.get("format") != PEOPLE_FORMAT or not isinstance(raw.get("people"), list):
-            raise Stop(EXIT_ARGS, "args", f"사람 파일의 꼴이 아니다(format {PEOPLE_FORMAT} 과 people 목록이 든다): {path}. {PEOPLE_NEXT}")
+            raise Stop(EXIT_ARGS, "args", f"사람 파일의 꼴이 아니다(format {PEOPLE_FORMAT} 과 people 목록이 든다): {path}. {PEOPLE_NEXT}", stepped=True)
         if not raw["people"]:
             raise Stop(EXIT_ARGS, "args", f"사람 파일에 사람이 하나도 없다: {path}")
         for i, row in enumerate(raw["people"], 1):
@@ -311,7 +329,7 @@ def people_of(paths) -> list[Person]:
                    or (f"칸 field 가 {' · '.join(PEOPLE_FIELDS)} 가운데 하나가 아니다" if row.get("field") not in PEOPLE_FIELDS else "")
                    or ("이름이 비었다" if not row["name"].strip() else ""))
             if bad:
-                raise Stop(EXIT_ARGS, "args", f"사람 파일의 {where} — {bad}. {PEOPLE_NEXT}")
+                raise Stop(EXIT_ARGS, "args", f"사람 파일의 {where} — {bad}. {PEOPLE_NEXT}", stepped=True)
             out.append(Person(**{k: row[k].strip() for k in PEOPLE_TEXT}, is_boss=row["is_boss"], where=where))
     return out
 
@@ -365,10 +383,10 @@ def day_of(text: str | None, today: _date) -> _date:
         return today + _timedelta(days=DAY_WORDS[word])
     if WEEKDAY_WORD.search(word):
         raise Stop(EXIT_ARGS, "args", f"요일로 말한 날은 손이 고르지 않는다: {text!r}. 다음: 말한 맥락으로 어느 날인지 정해 YYYY-MM-DD 로 준다 — "
-                                      f"{today_word()} · 날짜 표: {weeks_word(today)}")
+                                      f"{today_word()} · 날짜 표: {weeks_word(today)}", stepped=True)
     got = _real_date(word)
     if got is None:
-        raise Stop(EXIT_ARGS, "args", f"날은 {DAY_HELP} 가운데 하나로 준다: {text!r}. 다음: 그 꼴로 다시 준다({today_word()})")
+        raise Stop(EXIT_ARGS, "args", f"날은 {DAY_HELP} 가운데 하나로 준다: {text!r}. 다음: 그 꼴로 다시 준다({today_word()})", stepped=True)
     return got
 
 
@@ -402,7 +420,7 @@ def date_of(text: str | None, lead: str = "날은") -> _date:
     든다. 날 말(오늘 · 내일)까지 받는 자리는 ``day_of``."""
     got = _real_date((text or "").strip())
     if got is None:
-        raise Stop(EXIT_ARGS, "args", f"{lead} 있는 날의 YYYY-MM-DD 로 준다: {text!r}. 다음: {DAY_COUNT}({today_word()})")
+        raise Stop(EXIT_ARGS, "args", f"{lead} 있는 날의 YYYY-MM-DD 로 준다: {text!r}. 다음: {DAY_COUNT}({today_word()})", stepped=True)
     return got
 
 
@@ -427,7 +445,7 @@ def stamp_of(text: str | None) -> _datetime:
         tomorrow = _datetime.now(SEOUL).date() + _timedelta(days=1)
         raise Stop(EXIT_ARGS, "args", f"시각은 {STAMP_HELP} 나 「<날 말> HH:MM」(「내일 15:00」) 꼴로 준다: {text!r}. 다음: 「3시」 · 「오후 3시」 "
                                       f"같은 말은 안 받는다 — {today_word()}이니 24 시로 준다(내일 오후 3시면 「{tomorrow.isoformat()} 15:00」 · "
-                                      "「내일 15:00」)") from exc
+                                      "「내일 15:00」)", stepped=True) from exc
 
 
 def stamp(t: _datetime) -> str:
@@ -466,6 +484,7 @@ class Start:
 
     @property
     def dest(self) -> str:
+        """출발을 고르는 인자의 argparse 이름(``flag_dest``)."""
         return flag_dest(self.takes)
 
 
@@ -481,6 +500,7 @@ class Change:
 
     @property
     def name(self) -> str:
+        """바꿀 것의 이름 — 사람 말에서 「 — 」 앞."""
         return self.word.split(" — ")[0]
 
 
@@ -514,7 +534,7 @@ def refuse_not_yet(args, not_yet: dict, changes: dict) -> None:
     for n in not_yet.values():
         again = bool(n.again) and getattr(args, f"{flag_dest(changes[n.again].flags[0][0])}_again", False)
         if given(args, n) or again:
-            raise Stop(EXIT_ARGS, "args", f"「{n.word}」 손가락은 아직 없다. 다음: {n.where}")
+            raise Stop(EXIT_ARGS, "args", f"「{n.word}」 손가락은 아직 없다. 다음: {n.where}", stepped=True)
 
 
 def pick_start(args, starts: dict) -> str:
@@ -522,7 +542,7 @@ def pick_start(args, starts: dict) -> str:
     picked = [k for k, s in starts.items() if s.takes and getattr(args, s.dest, None) is not None]
     if len(picked) > 1:
         raise Stop(EXIT_ARGS, "args", f"출발은 하나다 — {' · '.join(starts[k].takes for k in picked)} 가운데 하나만 준다. 다음: 다룰 한 건의 "
-                                      "인자 하나로 다시 부른다")
+                                      "인자 하나로 다시 부른다", stepped=True)
     return picked[0] if picked else next(k for k, s in starts.items() if not s.takes)
 
 
@@ -530,14 +550,14 @@ def refuse_foreign(args, changes: dict, start: str, word: str) -> None:
     """그 출발이 안 받는 손가락을 받았으면 그 일을 어디서 하나를 대며 Stop(인자)."""
     for c in changes.values():
         if given(args, c) and start not in c.starts:
-            raise Stop(EXIT_ARGS, "args", f"「{word}」에는 「{c.name}」 손가락이 없다. 다음: {c.elsewhere}")
+            raise Stop(EXIT_ARGS, "args", f"「{word}」에는 「{c.name}」 손가락이 없다. 다음: {c.elsewhere}", stepped=True)
 
 
 def refuse_missing(args, changes: dict, start: str, word: str, have=lambda c: False) -> None:
     """그 출발이 꼭 드는 손가락이 빠졌으면 Stop(인자). ``have(줄)`` 이 참이면 다른 인자가 그 줄을 채운 것이다."""
     missing = [c.flags[0][0] for c in changes.values() if start in c.need and not given(args, c) and not have(c)]
     if missing:
-        raise Stop(EXIT_ARGS, "args", f"「{word}」에는 {' · '.join(missing)} 가 든다. 다음: 그 값을 더해 다시 부른다")
+        raise Stop(EXIT_ARGS, "args", f"「{word}」에는 {' · '.join(missing)} 가 든다. 다음: 그 값을 더해 다시 부른다", stepped=True)
 
 
 def change_lines(changes: dict, names: list, width: int, unmeasured_word: str = "") -> list[str]:

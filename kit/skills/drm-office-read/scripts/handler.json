@@ -1,0 +1,14 @@
+{
+  "handler": {
+    ".doc": "Word",
+    ".docx": "Word",
+    ".rtf": "Word",
+    ".pdf": "Word",
+    ".xls": "Excel",
+    ".xlsx": "Excel",
+    ".xlsm": "Excel",
+    ".csv": "Excel",
+    ".ppt": "PPT",
+    ".pptx": "PPT"
+  }
+}

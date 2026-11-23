@@ -48,9 +48,9 @@
 자리가 임시 폴더 밑(스크래치패드도 그 안이다)이라 임시 폴더를 비우는 손이 거둔다. 세션 칸을 두는 것은 스크래치패드가 없는
 표면(VS Code 앱)에서 두 세션이 같은 이름을 서로 덮지 않게 하려는 것이다.
 
-⚠ **다루는 확장자는 스킬의 표가 든다** — 읽는 부품 `office-read.ps1` 의 `$HANDLER`(확장자 → 앱)를 그 자리에서 읽는다. 여기 따로 적으면
-   스킬이 확장자를 늘린 날 길잡이만 낡는다. 껍데기의 글롭만은 파이썬을 띄우기 전이라 표를 못 읽어 한 벌을 든다 — 검사가
-   표의 확장자마다 껍데기를 지나 걸리나를 잰다.
+⚠ **다루는 확장자는 스킬이 내주는 표가 든다** — 스킬의 값 파일 `scripts/handler.json` 의 `handler`(확장자 → 앱, 읽는 부품도 같은
+   값을 싣는다)를 그 자리에서 읽는다. 여기 따로 적으면 스킬이 확장자를 늘린 날 길잡이만 낡는다. 껍데기의 글롭만은 파이썬을 띄우기
+   전이라 표를 못 읽어 한 벌을 든다 — 검사가 표의 확장자마다 껍데기를 지나 걸리나를 잰다.
 ⚠ **스킬을 못 찾으면 그 사실을 말한다** — 감긴 파일이 있는데 읽을 길이 이 PC 에 없다는 것도 모델이 알아야 할 사실이다.
    그때는 표가 없어 확장자로 거르지 않고(감긴 표지가 거른다), 읽을 손이 없으니 첨부도 안 떨군다.
 ⚠ **파일 내용은 안 싣는다** — 덧말에는 이름과 자리만 든다. 읽기는 스킬의 스크립트가 하고, 이 훅은 길을 가리킨다(#120).
@@ -82,7 +82,9 @@ import tempfile
 NAME = 'DRM 길잡이'
 SKILL = 'drm-office-read'
 READER = os.path.join('scripts', 'read-drm.ps1')     # 글자를 뽑는 손 — 길잡이가 대는 명령
-LIBRARY = os.path.join('scripts', 'office-read.ps1')  # 읽는 부품 — 확장자 표(`$HANDLER`)가 여기 산다
+LIBRARY = os.path.join('scripts', 'office-read.ps1')  # 읽는 부품 — 글자를 뽑는 손이 싣는다
+HANDLER_VALUE = os.path.join('scripts', 'handler.json')   # 스킬이 내주는 확장자 표 — 확장자 → 여는 앱(그 스킬의 `scripts/handout.py`)
+HANDLER_KEY = 'handler'
 FASOO_MARK = b'DRMONE'    # Fasoo 가 감싼 파일의 머리 표지
 HEAD_BYTES = 16           # 표지를 찾는 머리 길이 — 표본은 셋째 바이트에서 시작한다
 B64_HEAD = 24             # 머리 16 바이트를 푸는 데 드는 base64 글자 수 — 4 · ⌈16 / 3⌉
@@ -141,14 +143,15 @@ def skill_dir():
 
 
 def handled_exts(sdir):
-    """읽는 부품 `office-read.ps1` 의 `$HANDLER` 열쇠 — 소문자 확장자 집합. 못 읽으면 빈 집합."""
+    """스킬이 내준 확장자 표(`scripts/handler.json` 의 `handler`)의 열쇠 — 점 붙은 소문자 확장자 집합. 못 읽으면 빈 집합."""
     try:
-        with open(os.path.join(sdir, LIBRARY), encoding='utf-8-sig') as f:
-            src = f.read()
-    except OSError:
+        with open(os.path.join(sdir, HANDLER_VALUE), encoding='utf-8-sig') as f:
+            table = json.load(f).get(HANDLER_KEY)
+    except (OSError, ValueError, AttributeError):
         return set()
-    m = re.search(r'^\$HANDLER\s*=\s*@\{(.*?)^\}', src, re.M | re.S)
-    return {e.lower() for e in re.findall(r"'(\.\w+)'\s*=", m.group(1))} if m else set()
+    if not isinstance(table, dict):
+        return set()
+    return {e.lower() for e in table if isinstance(e, str) and e.startswith('.')}
 
 
 def ecm_root(sdir):

@@ -57,14 +57,17 @@ IMAGE_PATH = re.compile(r"/uploads/output/[^/?#]+/[^/?#]+/media/[^/?#]+")   # �
 
 
 class AppError(Exception):
+    """사규 앱의 손이 낸 실패 — 앱이 거절했거나 답이 꼴이 아니거나 앱에 못 닿았다."""
     pass
 
 
 class SessionMissing(AppError):
+    """세션 파일이 없거나 못 읽는다 — 받는 손(스킬 ep-login)을 부를 자리다."""
     pass
 
 
 class SessionExpired(AppError):
+    """사내 세션이 끊겼거나 앱이 안 들였다 — 받는 손을 다시 부를 자리다."""
     pass
 
 
@@ -73,6 +76,7 @@ class Refused(AppError):
 
 
 class App:
+    """사규 앱 한 판 — 사내 세션의 쿠키로 들어가 앱의 JSON 자리와 화면을 읽는다."""
     GRADES = GRADES                    # 부르는 쪽이 등급 이름을 코드로 바꿀 때 — 화면의 표 그대로
 
     def __init__(self, session_file: pathlib.Path | str, *, timeout: float = TIMEOUT):
@@ -83,6 +87,7 @@ class App:
         self._me: str | None = None        # 쓰는 사람의 사번 — ``me`` 가 한 번 받는다
 
     def _get(self, url: str, data: dict | None = None, timeout: float | None = None) -> str:
+        """주소 하나를 (``data`` 를 주면 폼 POST 로) 열어 받은 글자 — 넘김 · 거절 · 못 닿음은 그대로 올리고 손의 예외로 옮기는 것은 부르는 쪽이다."""
         body = None if data is None else urllib.parse.urlencode(data).encode()
         req = urllib.request.Request(url, data=body, headers={"User-Agent": UA})
         with self._open(req, timeout=timeout or self._timeout) as r:
@@ -90,6 +95,7 @@ class App:
 
     # ── 들어가기 ─────────────────────────────────────────────────────────
     def login(self) -> None:
+        """앱에 들어간다 — SSO 넘김 화면의 토큰을 앱 뿌리에 넘겨 EP 열쇠를 받고, 그 열쇠로 ``test_login.do`` 가 첫 화면(``LANDING``)으로 넘기면 들어간 것이다. 못 들어가면 SessionExpired, 못 닿으면 AppError."""
         try:
             page = self._get(SSO_PAGE)
         except ep_session.Redirected as exc:
@@ -136,6 +142,7 @@ class App:
             raise AppError(f"사규 앱에 못 닿았다: {exc}") from exc
 
     def call(self, path: str, data: dict | None = None, timeout: float | None = None):
+        """앱의 JSON 자리 하나를 폼 POST 로 부르고 답 JSON 을 낸다 — 답이 JSON 이 아니면 AppError."""
         raw = self.screen(path, data or {}, timeout)
         try:
             return json.loads(raw)

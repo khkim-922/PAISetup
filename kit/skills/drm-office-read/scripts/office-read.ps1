@@ -1,7 +1,8 @@
 ﻿<#
     drm-office-read 의 읽는 부품 — 오피스를 태워 문서에서 글자와 「글 밖」의 셈을 뽑는 함수만 든다. 본체(인자 · 화면 · 파일 쓰기 · 끝
-    정리)는 스킬의 `read-drm.ps1` 이 들고, 제 꼴로 내는 앱은 제 본체를 쓴다. 실어도 아무것도 돌지 않고 표준 출력에 아무것도 안 낸다 —
-    진단은 Write-Warning 이다(경고를 내는 함수는 고급 함수라 `-WarningVariable` · `-WarningAction` 이 선다).
+    정리)는 스킬의 `read-drm.ps1` 이 들고, 제 꼴로 내는 앱은 제 본체를 쓴다. 실으면 곁의 값 파일 `handler.json` 에서 확장자 표만 읽고
+    (못 읽으면 던진다) 그 밖에는 아무것도 돌지 않으며 표준 출력에 아무것도 안 낸다 — 진단은 Write-Warning 이다(경고를 내는 함수는 고급
+    함수라 `-WarningVariable` · `-WarningAction` 이 선다).
     점 소싱으로 싣는다 — 세션 규칙이 먼저다(Open-OwnedDocument · Assert-* 를 여기가 부른다):
         . (Join-Path $PSScriptRoot 'office-session.ps1')
         . (Join-Path $PSScriptRoot 'office-read.ps1')
@@ -28,7 +29,7 @@
       · 번호 고름 — ConvertTo-NumberList -Value -Name
       · 문서함 받은 파일 — Get-EcmDocsRoot(환경변수 → 곁의 places.json · 모르면 $null) · Test-EcmAgentFile -LiteralPath -Root · 멈춘 말 $ECM_REFUSAL. 본체가 앱을 띄우기
         전에 가린다 — 이 부품의 읽는 함수는 안 가린다(그 함수를 바로 싣는 쪽이 제 등급 문을 든다)
-      · 상수 — $HANDLER · $PROCESS_OF · $MSO_AUTOMATION_FORCE_DISABLE · $OFFICE_EXIT_WAIT_MS · $OFFICE_EXIT_POLL_MS · $SHRINK_ARGS_MAX_CHARS ·
+      · 상수 — $HANDLER(곁의 값 파일 $HANDLER_FILE 의 $HANDLER_KEY 에서 실은 해시 — 그 파일이 없으면 싣다 던진다) · $PROCESS_OF · $MSO_AUTOMATION_FORCE_DISABLE · $OFFICE_EXIT_WAIT_MS · $OFFICE_EXIT_POLL_MS · $SHRINK_ARGS_MAX_CHARS ·
         $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS · $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
       · 파워포인트 글은 머리 한 줄($PPT_SEAT_LEGEND) 뒤 장마다 도형을 위→아래 · 왼→오른으로 세워 줄마다 [위 · 왼] 꼬리표를 앞세운다.
         표의 합친 칸은 첫 칸에만 글을 두고 덮인 칸은 비운다
@@ -228,12 +229,18 @@ function Test-EcmAgentFile {
     return $full.StartsWith($base, [StringComparison]::OrdinalIgnoreCase)
 }
 
-# 어느 확장자를 어느 앱이 드나. PDF 는 워드가 든다 — Acrobat COM 은 Acrobat 이 깔린 PC 에만 있다
-$HANDLER = @{
-    '.doc'  = 'Word';  '.docx' = 'Word';  '.rtf'  = 'Word';  '.pdf' = 'Word'
-    '.xls'  = 'Excel'; '.xlsx' = 'Excel'; '.xlsm' = 'Excel'; '.csv' = 'Excel'
-    '.ppt'  = 'PPT';   '.pptx' = 'PPT'
+# 어느 확장자를 어느 앱이 드나 — 곁의 값 파일 handler.json 의 handler 가 든다. 다른 스킬과 DRM 길잡이 훅이 같은 값을 읽어 받는 꼴을
+# 가리므로 표는 그 파일 한 자리다(내주는 것은 scripts/handout.py). PDF 는 워드가 든다 — Acrobat COM 은 Acrobat 이 깔린 PC 에만 있다.
+# 값 파일을 못 읽거나 표가 비면 싣는 자리에서 던진다 — 표 없이는 어느 파일도 못 읽는다
+$HANDLER_FILE = Join-Path $PSScriptRoot 'handler.json'
+$HANDLER_KEY = 'handler'
+$HANDLER = @{}
+$handlerTable = (Get-Content -LiteralPath $HANDLER_FILE -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json).$HANDLER_KEY
+if ($handlerTable) {
+    foreach ($pair in $handlerTable.PSObject.Properties) { $HANDLER[$pair.Name] = [string]$pair.Value }
 }
+Remove-Variable handlerTable
+if ($HANDLER.Count -eq 0) { throw "확장자 표가 없다: $HANDLER_FILE 의 $HANDLER_KEY — 스킬 drm-office-read 를 다시 깐다" }
 $PROCESS_OF = @{ 'Word' = 'WINWORD'; 'Excel' = 'EXCEL'; 'PPT' = 'POWERPNT' }
 # 띄운 워드 · 엑셀에 거는 값 — msoAutomationSecurityForceDisable. 자동화로 띄운 앱은 매크로를 다 켜는 것이 기본이라, 안 걸면 여는
 # 순간 도는 매크로(AutoOpen · Workbook_Open)가 사람 확인 없이 돈다

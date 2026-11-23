@@ -15,6 +15,9 @@
   (`people_books`). 찾기는 기본 일정함과, 제목으로는 Teams 일정함(회의실 예약이 드는 곳)도 본다(`side_found`). `teams-meeting` 만은 세션도
   일정 앱도 안 쓰고 Teams 회의 예약 링크를 지어 사람의 화면에 연다(`../references/DESIGN.md` 「Teams 회의 예약 창」)
 
+일정 손은 모듈 넷으로 서고 `agenda.py` 가 그 이름을 다 다시 낸다(부르는 쪽은 `import agenda` 하나로 싣는다). 모듈마다 맡은 일 · 싣는
+차례 · 누가 무엇을 부르나는 `../references/DESIGN.md` 「조각의 지도」가 코드에서 뽑아 든다.
+
 로그인은 이 손이 하지 않는다. 사내 SSO 세션은 메일함과 한 벌이고, 그 세션을 쿠키 파일(Playwright 저장 상태 꼴)로 남기는 손은 스킬
 ep-login 이 든다. 부르는 꼴 · 내는 것 · 환경변수는 `agenda.py` 머리말이, 막는 까닭과 바꾸는 손의 경계는
 `../references/DESIGN.md` 가, 회사에서 잰 꼴과 그 출처는 `../references/SOURCES.md` 가 든다 — 여기 옮겨 적지 않는다.

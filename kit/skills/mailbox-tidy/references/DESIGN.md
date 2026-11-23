@@ -1,7 +1,275 @@
 # 정리 기록의 설계
 
-`scripts/journal.py` · 설정 저장소의 `_check/skills/mailbox-tidy/check_journal.py` 를 고치는 사람이 읽는다. 부르는 꼴 · 종료 값은 `journal.py` 머리말이, 정리의 걸음은
+`scripts/` 의 기록 손 · 설정 저장소의 `_check/skills/mailbox-tidy/check_journal.py` 를 고치는 사람이 읽는다. 부르는 꼴 · 종료 값은 `journal.py` 머리말이, 정리의 걸음은
 `lane.md`(안을 짓고 바꾸는 쪽) · `SKILL.md`(안을 보이고 여쭙고 되돌리는 쪽)가 든다 — 여기는 명령마다 무엇을 대고 왜 그런가와 깨지기 쉬운 자리다.
+
+## 조각의 지도
+
+부르는 길은 위에서 아래 하나다 — `journal.py` 가 아래 모듈을 싣고, 아래 모듈은 위를 안 싣는다. 모두 표준 라이브러리와 이 폴더의 것만 싣는다.
+
+아래는 코드에서 뽑은 지도다 — 줄의 문장은 그 조각 머리말의 첫 문장이라, 문장을 고치려면 머리말을 고치고 다시 짓는다.
+
+<!-- drawn:piece-map · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
+| 조각 | 맡은 일 | 싣는 곁 조각 | 다른 스킬에서 싣는 것 |
+|---|---|---|---|
+| `journal.py` · 입구 | 메일함에서 바꾼 것을 적어 두고, 되돌릴 차례를 낸다 — 회사 메일 스킬의 미리 보기와 실행이 낸 글을 받는다. | `hand_line` · `hand_text` · `journal_const` · `journal_io` · `journal_store` · `journal_view` · `journal_words` | — |
+| `journal_view.py` | 기록 손의 셈 — 읽어 온 기록 · 안 · 잡아 둔 바꿈에서 명령마다 가를 상태를 낸다. | `hand_line` · `journal_const` · `journal_words` | — |
+| `hand_line.py` | 다음 걸음의 명령 줄 — 회사 메일 손의 미리 보기 · 실행을 이 스킬의 `journal.py` 에 흘리는 줄을 미리 보기 · 기록이 이미 든 값으로 짓는다. | `journal_const` | — |
+| `hand_text.py` | 회사 메일 손의 글 꼴 — 그 손의 미리 보기와 실행이 찍는 줄을 잡아 둘 바꿈 · 맺을 결과로 읽는다. | `journal_const` | — |
+| `journal_store.py` | 사용자 폴더의 기록 파일 넷 — 바꾼 것의 기록 · 잡아 둔 바꿈 · 보여 드린 안 · 적어 둔 안들을 읽고 쓴다. | `journal_const` | — |
+| `journal_words.py` | 기록 손이 사람에게 하는 말 — 셈이 낸 상태 · 기록 한 줄을 받아 글로만 옮긴다. | `journal_const` | — |
+| `journal_const.py` | 기록 손의 이름 붙은 값 — 사용자 폴더 · 기록 파일 이름 · 종류 · 자리 · 결과 · 종료 값 · 셈과 말이 주고받는 상태의 이름 · 멈춘 까닭의 이름과 그것을 드는 예외 둘. 아무것도 안 싣는다. | — | — |
+| `journal_io.py` | 기록 손의 콘솔과 시계 — 받는 글(`--in` 의 파일이나 표준 입력)을 글로 풀고, 사람에게 할 줄을 표준 출력에 내고, 지금 때를 댄다. | — | — |
+
+**입구에서 내려가는 나무** — 줄마다 조각과 그 머리말 첫 문장. 한 조각은 처음 닿은 자리에서만 펴고 다시 닿으면 `↑` 로 가리킨다. 클래스는 메서드를 그 아래에 든다. `←` 뒤는 그 조각을 부르는 다른 스킬이다. 인스턴스를 거친 부름은 이어지지 않는다.
+
+- `main` — 명령 입구 — 사용자 폴더를 대고 하위 명령을 그 손에 넘긴다.
+  - `journal_io.utf8_out` — 표준 출력을 UTF-8 로 다시 잡는다 — 한글 Windows 의 cp949 콘솔이 리디렉션 · 파이프에서 한글을 깨지 않게.
+  - `parser` — 명령의 인자 꼴 — 하위 아홉과 그 인자.
+    - `piece_number` — `--piece` · `--shown` 의 값 — 1 부터의 정수가 아니면 argparse 가 2 로 나간다.
+      - `journal_words.piece_from` — 조각 번호가 첫 번호보다 작아 못 받는다는 말.
+  - `journal_store.home` — 사용자 폴더 — `MAIL_SECRETARY_HOME` 이 있으면 그 자리, 없으면 `%LOCALAPPDATA%\mail-secretary`.
+  - `cmd_show` — 안 적기 — 미리 보기를 지금 안의 조각 n 으로 안들 · 보인 안에 적고 보일 줄을 낸다.
+    - `journal_io.read_input` — `--in` 의 파일이나 표준 입력 — 바이트로 받아 `decode` 한다.
+      - `decode` — 받은 바이트 → 글. BOM 이 있으면 그 꼴(UTF-8 · UTF-16 — Windows PowerShell 의 `>` 가 쓰는 꼴), 없으면 UTF-8, 안 되면 cp949. 같은 몸이 스킬 mailbox-work 의 `work.py` · daily-brief 의 `window.py` 에 있다 — 고치면 셋을 함께 고친다(머리말의 받는 꼴이 같다).
+    - `journal_store.shown_plan` — 보여 드린 안 파일 — {"plan": 안 번호, "pieces": …}. 없거나 못 읽으면 빈 것.
+    - `journal_store.pieces_of` — 보여 드린 안의 조각 — 조각 번호(글자) → 조각. 없거나 꼴이 다르면 빈 것.
+    - `journal_view.is_first_piece` — 이 조각이 새 안을 여는 1번인가.
+    - `given` — `show` · `hold` 가 옛 꼴로 받은 인자 — (메일 번호, 받을 자리 — 받은편지함이면 "" · 안 줬으면 None). 번호의 꼴이 아니거나 메일을 안 건드리는 종류에 줬으면 `Refused`.
+      - `journal_const.Refused` — 미리 보기의 꼴이나 받은 인자가 이 손이 아는 꼴이 아니다 — 잡지도 적지도 않는다.
+    - `hand_text.read_shown` — `show` 가 받는 미리 보기 → (적을 조각, 보일 몸). 꼴이 다르면 `Refused`. 옮기기 조각은 휴지통 미리 보기도 받는다(받을 자리는 `to`).
+      - ↑ `journal_const.Refused`
+      - `read_preview` — 미리 보기 → 잡아 둘 바꿈 — 머리부터의 줄 · 확인 열쇠 · 종류마다의 칸(메일 · 폴더 경로 · 규칙의 판)을 그 손가락으로 읽어 엮는다.
+        - `from_head` — 미리 보기의 빈 줄 아닌 줄들을 그 종류의 머리 줄부터 — 머리 앞의 줄(표준 오류를 함께 흘린 경고)은 건너뛴다.
+          - ↑ `journal_const.Refused`
+        - `key_of` — 미리 보기의 확인 열쇠 — 그 줄이 없으면 `Refused`.
+          - ↑ `journal_const.Refused`
+        - `mail_fields` — 메일을 건드리는 미리 보기의 칸 — 옮기기면 받을 자리(`to`), 그리고 메일마다의 번호 · 자리(`mails`). 줄 수가 머리의 수와 다르면 `Refused`, 그 뒤 옛 꼴로 준 번호의 수 → 받을 자리 → 줄마다의 차례로 댄다.
+          - ↑ `journal_const.Refused`
+          - `check_given_count` — 준 메일 번호의 수가 미리 보기의 메일 줄 수와 같은가 — 다르면 `Refused`.
+            - ↑ `journal_const.Refused`
+          - `target_of` — 옮기기 머리의 받을 자리 → 적을 꼴(받은편지함은 빈 것). 옛 꼴로 준 받을 자리와 다르면 `Refused`.
+            - `check_given_target` — 준 받을 자리가 미리 보기 머리의 받을 자리와 같은가 — 다르면 `Refused`.
+              - ↑ `journal_const.Refused`
+          - `read_mails` — 미리 보기의 메일 줄들 → 잡아 둘 메일들. 줄마다 번호 읽기 → 옛 꼴로 준 번호에 대기 → 자리 읽기의 차례로 멈춘다 — 번호와 자리는 한 줄에서 읽는다.
+            - `tail_of` — n 번째 메일 줄 → (줄 끝의 메일 번호, 들여쓰기와 그 번호를 뗀 앞의 글). 끝에 번호가 없으면 `Refused`.
+              - ↑ `journal_const.Refused`
+            - `check_given_unid` — 준 n 번째 메일 번호가 n 번째 메일 줄 끝의 번호와 같은가 — 다르면 `Refused`.
+              - ↑ `journal_const.Refused`
+            - `origin_of` — n 번째 메일 줄이 말한 원래 자리 — {"place", "folder"}. 되살리기는 자리를 안 적어 빈 것. 줄의 꼴이 다르거나 자리를 못 읽으면 `Refused`.
+              - ↑ `journal_const.Refused`
+              - `place_of` — 메일 한 줄의 「읽음 · 」 뒤 → (자리, 폴더 경로). 끝의 메일 번호는 떼고 본다.
+        - `_items` — 머리 다음의 들여 쓴 줄들 — 메일 한 통에 한 줄.
+        - `rule_of` — 규칙 미리 보기의 판 — 고치기는 「지금」 · 「바꿀」 두 줄(못 읽으면 `Refused`), 넣기는 머리의 바뀔 판, 지우기는 머리의 지금 판.
+          - ↑ `journal_const.Refused`
+      - `preview_body` — 미리 보기에서 사람에게 보일 몸 — 머리 줄 다음부터 확인 열쇠 줄 앞까지. 꼴은 `read_preview` 가 먼저 댔다고 본다.
+        - ↑ `from_head`
+    - `journal_view.check_piece_order` — 1번(`first`)이 아닌 조각 번호는 지금 안의 다음 차례만 받는다 — 아니면 `Refused`. 다른 안의 옛 번호를 그대로 주면 지금 안에 섞이고 그 자리의 조각이 plans 에서 덮인다.
+      - `next_piece` — 지금 안의 다음 조각 번호 — 안이 없으면 1.
+        - `key_number` — 보인 안 파일의 조각 열쇠 → 번호. 숫자가 아닌 열쇠는 0.
+      - ↑ `journal_const.Refused`
+    - ↑ `journal_const.Refused`
+    - `journal_io.echo_input` — 받은 손의 글을 줄마다 그대로 다시 낸다 — 파이프가 받아 가 사람에게 보일 글이 이것뿐이다.
+      - `say` — 사람에게 할 줄들을 차례로 표준 출력에 낸다.
+    - ↑ `journal_io.say`
+    - `journal_words.not_shown` — 조각을 안 적은 까닭과 다음 걸음.
+      - `why_word` — 멈춘 까닭을 사람 말로 — 까닭의 이름으로 틀을 고르고 그 값(메일 번호가 아닌 것은 앞의 몇 개만 이어서)을 채운다.
+    - `journal_view.opens_plan` — 이 조각이 새 안을 여나 — 1번 조각이거나 지금 안이 없다.
+    - `journal_view.new_plan_number` — 새 안의 번호 — 적어 둔 안들의 가장 큰 번호 다음.
+    - `journal_store.plan_rows` — 적어 둔 안들의 조각 줄 전부(옛것부터) — 못 읽은 줄은 건너뛴다.
+      - `_lines` — 덧붙이기만 하는 파일의 줄 전부(옛것부터)와 못 읽은 줄의 번호 — `key` 칸이 정수인 줄만 읽은 것으로 센다.
+    - `journal_view.kept_pieces` — 이 조각을 적기 전에 남길 보인 조각과 걷은 수 — 1번 조각(`first`)이면 앞 안을 다 걷는다.
+    - `journal_io.now` — 지금 때 — 기록 · 안에 적는 꼴(초까지 · 시간대를 붙인 ISO).
+    - `journal_store.append_plan_row` — 적어 둔 안들에 조각 한 줄을 덧붙인다.
+      - `_append_line` — 한 줄을 덧붙인다 — 있는 줄은 고치지 않는다.
+    - `journal_view.plan_row` — 안들에 덧붙일 조각 한 줄 — 메일 줄(제목 · 보낸 분)은 안 싣는다.
+    - `journal_store.next_id` — 다음 기록 번호 — `append` 가 주는 번호와 같다.
+    - `journal_store.entries` — 기록 전부(옛것부터)와 못 읽은 줄의 번호.
+      - ↑ `_lines`
+      - `log_path` — 바꾼 것의 기록 파일의 자리.
+    - `journal_store.write_shown` — 보여 드린 안을 바꿔 끼운다.
+      - `_write_atomic` — 글을 임시 파일에 쓴 뒤 그 자리에 바꿔 끼운다 — 쓰다 끊겨도 앞 판이 남는다.
+    - `journal_view.with_piece` — 보인 안에 조각 n 을 몸(보일 메일 줄)과 적은 때째 더한 것.
+      - `piece_key` — 보인 안 파일에서 조각 번호의 열쇠 — 글자다(JSON 객체의 열쇠).
+    - `journal_words.shown_lines` — `show` 가 조각을 적은 뒤 보일 줄 — 조각의 머리 · 메일 줄 · 다음 걸음(앞 안을 걷었으면 그 수도).
+      - `dropped` — 잡아 둔 바꿈을 기록 없이 놓았다는 말.
+        - `describe` — 기록 한 줄이 한 일 — 메일 번호 없이. 메일 바꿈은 원래 자리마다의 수(`counts` — 셈이 낸다)를 옮긴다.
+          - `origin_word` — 원래 자리 열쇠를 사람 말로 — None 은 휴지통.
+            - `_place_word` — 자리를 사람 말로.
+          - `target_word` — 옮기기의 받을 자리를 사람 말로 — 빈 것은 받은편지함.
+            - ↑ `_place_word`
+      - ↑ `describe`
+    - `journal_view.counted` — 기록 하나가 원래 자리마다 건드린 메일 수 — (자리 열쇠, 수) 처음 본 차례.
+      - `origins` — 기록 하나가 건드린 메일을 원래 자리마다 — (자리 열쇠 · 되살리기는 휴지통이라 None, 그 자리의 메일들) 처음 본 차례. 메일 바꿈이 아니면 빈 목록.
+        - `place_key` — 메일 한 통의 원래 자리를 묶는 열쇠 — (자리, 폴더 경로). 폴더가 아닌 자리는 경로를 안 본다 — 사람 말이 같은 자리가 한 묶음이다.
+  - `cmd_shown` — 보인 안 — 적어 둔 안을 조각마다 그대로 다시 낸다.
+    - `journal_store.shown_pieces` — 보여 드린 안의 조각 — 조각 번호(글자) → 조각. 없거나 못 읽으면 빈 것.
+      - ↑ `pieces_of`
+      - ↑ `shown_plan`
+    - ↑ `journal_io.say`
+    - `journal_words.shown_list_lines` — `shown` 이 낼 줄 — 조각마다 머리와 보인 메일 줄(줄이 빠진 메일 조각은 그 말), 끝에 조각 수와 처음 · 마지막 적은 때(셈이 고른 것).
+      - ↑ `describe`
+      - `when_word` — 적은 때를 사람 말로 — 분까지 · 없으면 「때 모름」.
+    - `journal_view.shown_rows` — 보인 안을 조각 차례로 — (번호, 조각, 원래 자리마다의 수, 보인 메일 줄, 메일 줄이 빠진 메일 조각인가). 메일 줄이 원래 없는 조각(폴더 · 규칙)은 머리 줄이 전부다.
+      - ↑ `key_number`
+      - ↑ `counted`
+    - `journal_view.shown_span` — 보인 안의 조각을 처음과 마지막으로 적은 때.
+      - `at_span` — 적은 때들 가운데 처음과 마지막 — 사람에게 보일 때 낱말(`when_word` — 분까지, 없으면 「때 모름」)의 차례로 고른다.
+        - ↑ `journal_words.when_word`
+  - `cmd_plans` — 남은 안 — 안마다 아직 안 바꾼 조각과 그 미리 보기 명령을 낸다.
+    - ↑ `journal_store.entries`
+    - ↑ `journal_io.say`
+    - `journal_words.plans_lines` — `plans` 가 낼 줄 — 안마다 머리와 남은 조각(까닭 · 미리 보기 명령 · 그 뒤 뺀 메일), 끝에 다음 걸음. 남은 안이 없으면 그 말.
+      - ↑ `when_word`
+      - ↑ `describe`
+    - `journal_view.plans_left` — 안 바꾼 조각이 남은 안들(새것부터 · `most` 개까지 — 0 이면 다) — 안마다 {plan, first(처음 적은 때), total, pieces[(번호, 남은 조각, 뺀 통 수, 미리 보기 명령 · 규칙 조각은 None)]}. 뺀 통 수는 (그 뒤 바꾼 기록 번호 차례대로, 모두 몇 통). 남은 조각에는 원래 자리마다의 수도 붙는다.
+      - `latest_rows` — 적어 둔 안들의 줄 → 안마다 조각마다의 줄 — 같은 안의 같은 조각을 다시 적었으면 나중 줄이 선다.
+      - `left_of` — 적어 둔 조각에서 아직 안 바꾼 몫 → (남은 조각 · 다 바꿨으면 None, 그 뒤 메일을 바꾼 기록 번호 → 뺀 통 수). 조각을 보인 뒤(`log_from` 부터) 「됐다」로 맺은 기록만 바꾼 것으로 센다 — 결과 모름은 남긴다(다시 받는 미리 보기가 지금 자리를 보인다). 메일 바꿈은 어느 안 · 어느 조각에서 왔든 그 메일 번호를 바꾼 기록이면 뺀다 — 조각 밖에서 따로 잡은 바꿈도 메일함을 바꿨다.
+        - `ending` — 기록 한 줄이 맺은 꼴 — 잡아 둔 채 · 됐다 · 결과 모름(「됐다」가 아닌 결과는 다 결과 모름이다).
+      - `hand_line.held_args` — 잡아 둔 바꿈을 손에 줄 인자 — 미리 보기에서 읽은 받을 자리 · 메일 번호 · 폴더 경로. 규칙 지우기는 미리 보기에 열쇠가 없어 부르는 쪽이 기록에서 준다(`rule_unid`).
+        - `hand_args` — 그 바꿈을 회사 메일 스킬에 줄 인자 — 미리 보기와 실행이 같다(실행은 `--confirm` 을 더한다). 값을 다 모르면 None — 규칙 넣기 · 고치기의 칸은 기록에 사람 말(규칙 한 줄)로만 있다.
+      - ↑ `counted`
+      - `hand_line.preview_command` — 손의 미리 보기 명령 하나.
+        - `command` — Git Bash 에서 그대로 칠 명령 하나 — 낱말마다 셸 따옴표를 씌운다(폴더 경로의 빈칸 · 쉼표 · 역슬래시가 그대로 간다).
+      - ↑ `at_span`
+    - ↑ `journal_store.plan_rows`
+  - `cmd_hold` — 잡기 — 실행 직전 미리 보기를 (보인 조각에 대어) 잡아 두고 실행 줄을 낸다.
+    - ↑ `journal_io.read_input`
+    - ↑ `journal_io.echo_input`
+    - ↑ `given`
+    - ↑ `hand_text.read_preview`
+    - ↑ `journal_const.Refused`
+    - ↑ `journal_io.say`
+    - `journal_words.not_held` — 바꿈을 안 잡은 까닭과 다음 걸음.
+      - ↑ `why_word`
+    - `journal_view.shown_piece` — 보인 안에서 조각 n — 없으면 None.
+      - ↑ `piece_key`
+    - ↑ `journal_store.shown_pieces`
+    - `journal_words.shown_none` — 그 번호의 조각을 보인 기록이 없어 안 잡았다는 말.
+    - `journal_view.differences` — 보여 드린 조각과 다시 받은 미리 보기가 다른 점 — (다른 점의 이름, 보인 것, 지금). 손의 확인 열쇠가 대는 것만 견주고 읽음은 안 댄다.
+    - `journal_words.difference_lines` — 보인 조각과 다른 점의 줄 — (다른 점, 보인 것, 지금)마다 한 줄, 앞뒤로 멈춘 까닭과 다음 걸음.
+      - ↑ `target_word`
+      - ↑ `_place_word`
+      - `_rule_word` — 규칙의 판을 사람 말로 — 앞 판 → 바꿀 판(있는 것만).
+    - `journal_store.held` — 잡아 둔 바꿈 — 없거나 못 읽으면 None.
+    - `journal_view.prior_hold` — 잡아 둔 바꿈이 새 미리 보기 앞에 선 꼴 — 없다 · 실행 안 된 같은 미리 보기 · 실행했는지 모른다.
+    - `journal_store.release_held` — 잡아 둔 바꿈을 놓는다 — 없으면 그대로.
+    - `journal_words.superseded` — 앞의 잡아 둔 바꿈을 「결과 모름」 기록으로 옮겼다는 말.
+    - `journal_store.close_held` — 잡아 둔 바꿈을 기록 한 줄로 맺은 뒤 놓고 그 기록 번호를 낸다 — 기록을 먼저 덧붙여, 놓다 끊겨도 바꿈이 기록 밖으로 새지 않는다.
+      - `append` — 기록 한 줄을 다음 번호로 덧붙이고 그 번호를 낸다 — 있는 줄은 고치지 않는다.
+        - ↑ `entries`
+        - ↑ `next_id`
+        - ↑ `_append_line`
+        - ↑ `log_path`
+      - ↑ `release_held`
+    - `journal_view.closed_entry` — 잡아 둔 바꿈을 맺을 기록 한 줄 — 결과 · 때, 넣거나 고친 규칙의 열쇠, 받은편지함에 안 돌아온 수.
+    - ↑ `journal_io.now`
+    - `journal_view.stamped` — 잡아 둘 바꿈에 되돌리는 기록 번호와 잡은 때를 붙인 것.
+    - `journal_store.hold_change` — 바꿈 하나를 잡아 둔다 — 앞의 잡아 둔 바꿈 자리에 바꿔 끼운다.
+      - ↑ `_write_atomic`
+    - `hand_line.held_apply_line` — 잡아 둔 바꿈의 실행 줄 — 손에 줄 인자를 다 모르면(규칙의 칸) None.
+      - ↑ `held_args`
+      - `apply_line` — 잡아 둔 미리 보기의 실행을 `done` 에 흘리는 줄 — 미리 보기와 같은 인자에 그 열쇠.
+        - ↑ `command`
+    - `journal_view.undone_rule_unid` — 되돌리는 기록(`undone` — 없으면 빈 것)이 넣은 규칙이면 그 규칙 열쇠 — 규칙 지우기의 미리 보기에는 열쇠가 없어 기록에서 댄다.
+    - `journal_store.undone_entry` — 이 바꿈이 되돌리는 기록 — 되돌리는 번호를 안 줬으면 기록을 읽지 않고 빈 것, 그 번호의 기록이 없어도 빈 것.
+      - ↑ `entries`
+    - `journal_words.held_lines` — `hold` 가 잡은 뒤 보일 줄 — 잡았다는 말과 다음 걸음, 실행 줄을 지었으면 그 줄.
+    - `journal_view.mail_count` — 잡은 바꿈이 건드리는 메일 수 — 메일을 안 건드리는 바꿈이면 None.
+  - `cmd_done` — 맺기 — 실행의 글을 잡아 둔 바꿈에 대어 맞으면 기록 한 줄로 맺고 놓는다.
+    - ↑ `journal_store.held`
+    - ↑ `journal_io.read_input`
+    - ↑ `journal_io.echo_input`
+    - ↑ `journal_io.say`
+    - `hand_text.read_applied` — 실행의 글 → (결과 · 안 바뀌었으면 None, 더 적을 것). 「됐다」 줄이 잡아 둔 바꿈과 다르면 `Mismatch`.
+      - `check_applied` — 「됐다」 줄이 잡아 둔 바꿈의 실행인가 — 다르거나 못 읽으면 `Mismatch`. 줄 끝의 확인 열쇠가 있고 잡아 둔 미리 보기의 열쇠를 알면 그 둘로 댄다(열쇠는 미리 보기가 본 판 — 받을 자리와 메일마다의 번호 · 자리 · 폴더 경로 · 규칙의 판 — 의 지문이다). 열쇠가 없는 줄 (갱신 전의 손)이나 열쇠를 적기 전에 잡아 둔 바꿈은 메일 수 · 받을 자리 · 폴더 경로로 대고, 규칙은 대지 않는다.
+        - `journal_const.Mismatch` — 실행의 「됐다」 줄이 잡아 둔 바꿈과 다르다 — 적지 않고 잡아 둔 것을 그대로 둔다.
+    - ↑ `journal_const.Mismatch`
+    - `journal_words.mismatch` — 실행의 글이 잡아 둔 바꿈과 달라 안 적었다는 말과 다음 걸음.
+      - ↑ `why_word`
+    - ↑ `journal_store.release_held`
+    - ↑ `journal_view.closed_entry`
+    - ↑ `journal_io.now`
+    - ↑ `journal_store.close_held`
+    - `journal_words.wrote_line` — `done` 이 기록으로 맺은 뒤의 말 — 결과를 모르면 메일함에서 볼 걸음을 붙인다.
+      - ↑ `describe`
+    - ↑ `journal_view.counted`
+  - `cmd_drop` — 놓기 — 잡아 둔 바꿈을 기록 없이 놓는다.
+    - ↑ `journal_store.held`
+    - ↑ `journal_io.say`
+    - ↑ `journal_store.release_held`
+    - ↑ `journal_words.dropped`
+    - ↑ `journal_view.counted`
+  - `cmd_log` — 기록 — 바꾼 것의 기록을 새것부터(잡아 둔 채인 바꿈과 되돌림의 사슬도) 낸다.
+    - ↑ `journal_store.entries`
+    - `journal_store.with_held` — 기록에 잡아 둔 바꿈을 다음 번호의 「결과 모름」으로 덧붙인 것 — 보이기만 한다(맺을 때도 그 번호로 적힌다).
+      - ↑ `held`
+      - ↑ `next_id`
+    - ↑ `journal_io.say`
+    - `journal_words.bad_lines` — 기록 파일에서 못 읽어 건너뛴 줄마다 한 줄.
+    - `journal_words.none_logged` — 기록이 하나도 없다는 말 한 줄 — 기록이 있으면 빈 목록.
+    - `journal_words.row_line` — 기록 한 줄 — 번호 · 때 · 한 일 · 결과(맺은 꼴 `state` 가 잡아 둔 채면 그렇게) · 되돌림의 사슬.
+      - ↑ `when_word`
+      - ↑ `describe`
+      - `outcome_word` — 기록 한 줄의 결과를 사람 말로 — 잡아 둔 채면 그렇게, 모르는 결과 낱말은 적힌 그대로.
+    - ↑ `journal_view.ending`
+    - ↑ `journal_view.counted`
+    - `journal_words.chain_word` — 되돌림의 사슬 — 「5 → 8(되돌림) → 9(다시 함)」. 단마다 (기록 번호, 고리, 맺은 꼴). 사슬이 없으면 빈 글.
+    - `journal_view.chain_of` — 그 기록이 든 되돌림의 사슬 — (처음 바꿈, 단마다 [(기록 번호, 되돌림 · 다시 함, 맺은 꼴)]). 같은 단의 여럿은 한 단에 선다.
+      - ↑ `ending`
+    - `journal_view.log_slice` — 보일 기록 — 새것부터 `most` 개(0 이면 다).
+  - `cmd_mails` — 바꾼 메일 — 기록마다 메일 번호 · 원래 자리 → 간 자리를 낸다.
+    - ↑ `journal_store.entries`
+    - ↑ `journal_store.with_held`
+    - `journal_view.pick_entries` — 고른 기록 번호의 기록(옛것부터 · 겹친 번호는 한 번)과 없는 번호 — 고른 것이 없으면 다.
+    - `journal_words.mails_head` — 바꾼 메일 보기의 머리 — 기록 파일의 자리.
+    - ↑ `journal_store.log_path`
+    - ↑ `journal_words.bad_lines`
+    - ↑ `journal_words.none_logged`
+    - ↑ `journal_words.row_line`
+    - ↑ `journal_view.ending`
+    - ↑ `journal_view.counted`
+    - ↑ `journal_words.chain_word`
+    - ↑ `journal_view.chain_of`
+    - `journal_words.mail_lines` — 기록 하나가 바꾼 메일 줄 — 원래 자리 → 간 자리마다(자리 None 은 휴지통) · 실행 손이 안 돌아왔다고 댄 수 · 뒤의 기록이 다시 바꾼 메일. 바꾼 메일이 없으면(폴더 · 규칙) 빈 목록.
+      - ↑ `target_word`
+      - ↑ `_place_word`
+      - ↑ `outcome_word`
+    - `journal_view.mail_view` — 기록 하나가 바꾼 메일 — (원래 자리마다의 메일 번호 · 되살리기는 자리 None, 뒤의 기록마다 (그 기록, 다시 바꾼 메일 번호, 맺은 꼴)). 폴더 · 규칙 바꿈이나 메일이 없으면 둘 다 빈 목록.
+      - ↑ `origins`
+      - ↑ `ending`
+    - ↑ `journal_io.say`
+    - `journal_words.no_entry` — 그런 기록 번호가 없다는 말.
+  - `cmd_undo` — 되돌리는 차례 — 기록 하나의 되돌림 형편과 차례마다 칠 명령 줄을 낸다.
+    - ↑ `journal_store.entries`
+    - ↑ `journal_store.with_held`
+    - `journal_view.find_entry` — 그 번호의 기록 — 없으면 None.
+    - ↑ `journal_io.say`
+    - ↑ `journal_words.no_entry`
+    - ↑ `journal_words.row_line`
+    - ↑ `journal_view.ending`
+    - ↑ `journal_view.counted`
+    - `journal_words.undo_notes` — 되돌리기 전에 알릴 형편 — 이 바꿈이 잡아 둔 채인가(맺은 꼴 `state`) · 되돌린 · 결과를 모르는 · 잡아 둔 되돌림 기록.
+    - `journal_view.undo_tries` — 그 기록을 되돌리려 한 기록 번호 — (됐다고 맺은 것, 결과를 모르는 것, 잡아 둔 채인 것).
+      - `links` — 그 기록을 되돌리려 한 기록들 — 되돌림 하나가 바꿈 여럿일 수 있다.
+      - ↑ `ending`
+    - `journal_words.undo_step_line` — 되돌리는 차례의 한 걸음을 사람 말로 — 걸음의 이름으로 틀을 고르고 값(자리는 사람 말로 · 잡을 명령은 그 표지로)을 채운다.
+      - ↑ `_place_word`
+    - `journal_view.undo_plan` — 기록 하나를 되돌리는 차례 — 걸음마다 (걸음의 이름, 값). 값에 칠 명령 줄(손의 미리 보기 → `journal.py hold … --undoes`)을 든다.
+      - `hand_line.undo_line` — 기록 하나를 되돌리는 미리 보기를 `journal.py hold <종류> --undoes <기록 번호>` 에 흘리는 줄.
+        - `preview_line` — 손의 미리 보기를 `journal.py` 의 하위 명령(`then`)에 흘리는 줄.
+          - ↑ `preview_command`
+          - ↑ `command`
+      - ↑ `hand_line.hand_args`
+      - ↑ `place_key`
+
+**어디서도 안 닿는 조각** — 표 · 인스턴스를 거쳐 부르거나 아무도 안 부른다.
+
+- `journal_const.Why` — 까닭의 이름(`reason` — 위 WHY_IS_*)과 그 값(`values`)을 드는 멈춤 — 문장은 들지 않는다.
+<!-- /drawn:piece-map -->
+
+쓰기의 차례는 지킬 자리다 — 맺기와 「결과 모름」으로 옮기기는 한 조각(`close_held`)이 기록을 먼저 덧붙이고 잡아 둔 바꿈을 놓으며, `show` 는 안들에 덧붙인 뒤
+보인 안을 바꿔 끼운다. 기록을 못 쓰면 잡아 둔 바꿈이 그대로 남아 다음 판이 「결과 모름」으로 다시 옮길 수 있다.
 
 ## 명령마다 하는 일
 
@@ -26,7 +294,7 @@
 - **`hold`** — 미리 보기를 읽어 바꿈 하나를 잡아 둔다: 메일마다 그 줄 끝의 번호와 지금 선 자리(되돌릴 곳) · 옮기기의 받을 자리(머리) ·
   폴더의 경로 · 규칙의 지금과 바뀔 판 · 확인 열쇠. 값은 다 미리 보기에서 읽는다 — 손에 준 번호 · 받을 자리를 모델이 기록에 다시 치면 수백
   통에서 명령줄이 두 번 차고 옮기다 엇갈린다. 옛 꼴대로 번호 · `--to` · `--inbox` 를 주면 미리 보기와 같은 차례 · 같은 자리인지만 댄다.
-  미리 보기 글은 받은 그대로 다시 낸다 — 파이프가 받아 간 글이라 사람에게 보일 글이 이것이다. 꼴이 이 파일이 아는 꼴이 아니면(줄 수가
+  미리 보기 글은 받은 그대로 다시 낸다 — 파이프가 받아 간 글이라 사람에게 보일 글이 이것이다. 꼴이 `hand_text.py` 가 아는 꼴이 아니면(줄 수가
   머리의 수와 다르다 · 줄 끝에 번호가 없다 · 자리를 못 읽었다 · 열쇠 줄이 없다) 잡지 않고 1 로 멈춘다. 머리 앞의 줄(표준 오류를 함께 흘린
   경고)은 건너뛴다. 잡아 둔 것이 이미 있으면 그것을 「결과 모름」 기록으로 옮긴 뒤 잡는다 — 실행했는지 모르는 바꿈을 버리지 않는다. 다만 같은 종류 · 같은
   확인 열쇠면 기록 없이 새것으로 바꾼다 — 열쇠는 미리 보기가 본 자리의 지문이라 실행됐으면 열쇠가 달라지거나 미리 보기가 안 선다(규칙
@@ -49,7 +317,7 @@
   지우고 지운 폴더는 다시 만들고, 넣은 규칙은 지우고 고치거나 지운 규칙은 앞 판으로. 차례마다 칠 명령 줄 하나 — 손의 미리 보기(받을 자리 ·
   메일 번호 · 폴더 경로 · 규칙 열쇠를 기록에서 채운다) → `hold <종류> --undoes <기록 번호>` — 를 댄다. 기록이 다 아는 값을 모델이 사람 말과
   번호 목록에서 다시 짓지 않게 하려는 것이다. 규칙을 앞 판으로 고치거나 다시 넣는 차례는 칸이 기록에 사람 말로만 있어 할 일과 잡을 명령만
-  댄다. 명령 줄은 손과 이 파일의 자리를 이 파일의 자리에서 내고(스킬은 한 부모 폴더에 나란히 깔린다) 낱말마다 셸 따옴표를 씌운다 — Git
+  댄다. 명령 줄은 회사 메일 손과 `journal.py` 의 자리를 `hand_line.py` 의 자리에서 내고(스킬은 한 부모 폴더에 나란히 깔린다) 낱말마다 셸 따옴표를 씌운다 — Git
   Bash 에서 그대로 친다. 지금 자리는 되돌리는 미리 보기가 보인다. 되돌림은 됐다고 맺은 뒤에만 「되돌렸다」로
   센다 — 결과를 모르는 되돌림은 그렇게 따로 말한다
 
@@ -59,7 +327,7 @@
   자리가 엇갈려 적힌다
 - **열쇠로 가르는 것은 메일을 건드리는 셋뿐이다** — 폴더의 「됐다」 줄에는 열쇠가 없어 같은 폴더를 바꾼 다른 실행은 가르지 못한다. 규칙의
   실행은 그 판을 대어 보지 않는다(서버가 다시 읽은 규칙의 글이 미리 보기와 한 자씩 같은지 안 쟀다)
-- **명령 줄의 손 자리는 이 파일의 자리에서 센다** — 회사 메일 스킬이 곁에 안 깔린 자리에서는 자리 대신 `<회사 메일 스킬>` 표지를 낸다.
+- **명령 줄의 손 자리는 `hand_line.py` 의 자리에서 센다** — 회사 메일 스킬이 곁에 안 깔린 자리에서는 자리 대신 `<회사 메일 스킬>` 표지를 낸다.
   명령 이름과 인자는 그 손의 `parser` 를 옮겨 든 것이라, 거기서 바뀌면 손이 그 줄을 인자 오류로 막는다
 
 ## 검사가 남는 까닭 — 설정 저장소의 `_check/skills/mailbox-tidy/check_journal.py`

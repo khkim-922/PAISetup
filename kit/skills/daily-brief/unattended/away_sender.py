@@ -1,16 +1,16 @@
-"""자리 밖에서 보기의 보내는 손 — 스캔 판이 사람 없이 지은 보고 한 장을 메일 한 장으로 지어 표준 입력으로 주면, 사용자가 켤 때 적어 둔 본인
+"""자리 밖에서 보기의 보내는 손 — 시계 판이 사람 없이 띄운 보고가 지은 보고 한 장을 메일 한 장으로 지어 표준 입력으로 주면, 사용자가 켤 때 적어 둔 본인
 주소 하나를 받는 사람과 보내는 사람으로 삼아 회사 메일 손의 사내 중계(`mailer.py` 의 `send`)로 한 통 보낸다.
 
-    python -X utf8 -I scan_mail.py --dir <스캔 자리> --hand <회사 메일 손 mail.py>   < {"subject": …, "html": …, "text": …}
+    python -X utf8 -I away_sender.py --dir <사용자 폴더> --hand <회사 메일 손 mail.py>   < {"subject": …, "html": …, "text": …}
 
-받는 사람을 받는 칸이 없다 — 주소는 스캔 자리의 보고 시각표(`brief.json`)의 `away.address` 한 자리에서만 읽는다(사용자가 켤 때 판의 코드가
+받는 사람을 받는 칸이 없다 — 주소는 사용자 폴더의 보고 시각표(`daily-brief-schedule.json`)의 `away.address` 한 자리에서만 읽는다(사용자가 켤 때 판의 코드가
 주소록의 「나」에서 받아 적은 것).
 
 내는 것 — 끝 줄 한 줄(주소 · 제목 · 본문은 안 싣는다 — 중계의 거절 말은 주소를 들어 옮기지 않는다).
 종료 값 — 0 보냈다 · 4 중계에 넘기기 전에 졌다(연결 · 이름 찾기 · 거절 코드 · 설정 — 다시 보내도 두 통이 안 된다) · 5 넘기는 도중이나 뒤에
 졌다(중계가 받았는지 모른다 — 다시 보내면 두 통일 수 있어 다시 안 보낸다) · 2 인자가 틀렸다.
 
-이 손만 형제 스킬의 코드(`mailer.py`)를 싣는다 — 그 손은 명령이 없는 라이브러리라 싣는 것이 그 손을 부르는 길이다. 스캔 판은 이 손을 프로세스로
+이 손만 형제 스킬의 코드(`mailer.py`)를 싣는다 — 그 손은 명령이 없는 라이브러리라 싣는 것이 그 손을 부르는 길이다. 시계 판은 이 손을 프로세스로
 띄워, 그 손이 바뀌거나 없어도 판은 안 깨지고 「못 보냈다」만 적는다.
 """
 
@@ -23,9 +23,11 @@ import smtplib
 import socket
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 모듈 — `-I` 로 돌아도 싣는다
-import scan_const as C  # noqa: E402
-import scan_store as st  # noqa: E402
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path[:0] = [str(HERE.parent / "scripts"), str(HERE)]   # 같은 스킬의 바탕(scripts/)을 먼저 · 곁의 모듈 — `-I` 로 돌아도 싣는다
+import unattended_const as C  # noqa: E402
+import unattended_store as st  # noqa: E402
+from brief_schedule import away_of, read_brief  # noqa: E402
 
 
 def handed(exc: BaseException, mailer) -> bool:
@@ -63,18 +65,18 @@ def why(exc: BaseException, mailer) -> str:
 
 def address_of(folder: pathlib.Path) -> str:
     """켜 둔 자리 밖에서 보기의 본인 주소 — 꺼졌거나 없으면 "". 시각표를 못 읽으면 `st.Unreadable`(안 보낸다)."""
-    data = st.read_json(folder / C.BRIEF_FILE) or {}
-    away = data.get("away")
-    if not isinstance(away, dict) or away.get("on") is not True or not isinstance(away.get("address"), str):
+    away = away_of(read_brief(folder))
+    if away.get("on") is not True or not isinstance(away.get("address"), str):
         return ""
     return away["address"].strip()
 
 
 def main(argv: list[str] | None = None) -> int:
+    """보내는 손의 입구 — 표준 입력의 메일 한 장을 본인 주소로 한 통 보낸다. 종료 값은 머리말이 든다."""
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="자리 밖에서 보기 — 표준 입력의 메일 한 장을 켤 때 적어 둔 본인 주소로 한 통 보낸다")
-    ap.add_argument("--dir", required=True, help="스캔 자리(보고 시각표 brief.json 이 있는 곳)")
+    ap.add_argument("--dir", required=True, help="사용자 폴더(보고 시각표 daily-brief-schedule.json 이 있는 곳)")
     ap.add_argument("--hand", required=True, help="회사 메일 손 mail.py — 곁의 mailer.py 로 보낸다")
     args = ap.parse_args(argv)
     try:

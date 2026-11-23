@@ -16,11 +16,12 @@ from datetime import datetime
 from typing import Any
 
 import scan_store as st
+import scan_time as tm
 from scan_const import TIDY_HELD_FILE, TIDY_LOG_FILE
 
 USER, SECRETARY, UNKNOWN = "user", "secretary", "unknown"
 INBOX, SENT, FOLDER = "inbox", "sent", "folder"
-# 정리 스킬 기록의 종류 · 결과(그 스킬 journal.py 의 KINDS · DONE · UNKNOWN)
+# 정리 스킬 기록의 종류 · 결과(그 스킬 journal_const.py 의 KINDS · DONE · UNKNOWN)
 MOVE, TRASH, RESTORE = "move", "trash", "restore"
 FOLDER_CREATE, FOLDER_DELETE = "folder-create", "folder-delete"
 RULE_ADD, RULE_EDIT, RULE_DELETE = "rule-add", "rule-edit", "rule-delete"
@@ -33,10 +34,12 @@ RULE_ADDED, RULE_REMOVED, RULE_CHANGED = "rule-added", "rule-removed", "rule-cha
 
 
 def box_key(box: str, folder: str = "") -> str:
+    """상자의 열쇠 — 폴더면 「folder:<경로>」, 아니면 상자 이름."""
     return f"{FOLDER}:{folder}" if box == FOLDER else box
 
 
 def place(mail: dict[str, Any]) -> tuple[str, str]:
+    """메일 한 통의 자리 — (상자, 폴더 경로)."""
     return mail.get("box") or INBOX, mail.get("folder") or ""
 
 
@@ -70,7 +73,7 @@ class Journal:
 
     def _within(self, since: datetime | None) -> list[dict[str, Any]]:
         """`since` 뒤의 기록 — 때를 못 읽은 기록은 남긴다(사람 탓으로 안 돌린다). `since` 가 없으면 다."""
-        return [r for r in self.rows if since is None or (st.parse(r.get("at")) or since) >= since]
+        return [r for r in self.rows if since is None or (tm.parse(r.get("at")) or since) >= since]
 
     @staticmethod
     def _target(entry: dict[str, Any]) -> tuple[str, str] | None:
@@ -81,6 +84,7 @@ class Journal:
         return None
 
     def _touches(self, entry: dict[str, Any], unid: str) -> bool:
+        """정리 기록 한 줄이 그 메일에 닿았나."""
         return any((m or {}).get("unid", "").upper() == unid for m in entry.get("mails") or ())
 
     def mail_by(self, unid: str, kind: str, to: tuple[str, str] | None, since: datetime | None) -> str:
@@ -99,6 +103,7 @@ class Journal:
         return USER
 
     def folder_by(self, path: str, added: bool, since: datetime | None) -> str:
+        """폴더 하나의 생김 · 없어짐을 누가 했나."""
         kind = FOLDER_CREATE if added else FOLDER_DELETE
         for entry in [*([self.held] if self.held else []), *reversed(self._within(since))]:
             if entry.get("kind") == kind and entry.get("path") == path:
@@ -106,6 +111,7 @@ class Journal:
         return USER
 
     def rule_by(self, unid: str, before: str, after: str, since: datetime | None) -> str:
+        """규칙 하나의 생김 · 바뀜 · 없어짐을 누가 했나."""
         for entry in [*([self.held] if self.held else []), *reversed(self._within(since))]:
             rule = entry.get("rule") or {}
             k = entry.get("kind")
@@ -122,7 +128,7 @@ def opened_before_seen(mail: dict[str, Any], last_look: datetime | None) -> bool
     """처음 보는 받은 메일이 이미 읽음이고, 지난번 본 때 뒤에 온 메일인가 — 사람이 스캔보다 먼저 연 것이다."""
     if mail.get("box") == SENT or mail.get("unread") is not False or last_look is None:
         return False
-    when = st.mail_time(mail.get("date"))
+    when = tm.mail_time(mail.get("date"))
     return when is not None and when >= last_look
 
 
@@ -134,7 +140,7 @@ def new_mail(mail: dict[str, Any], at: str, last_look: datetime | None, gone: di
     if unid in gone:
         was = gone.pop(unid)
         entry["first_seen"] = (was.get("mail") or {}).get("first_seen")
-        by = journal.mail_by(unid, BACK, place(mail), st.parse(was.get("at"))) if journal else USER
+        by = journal.mail_by(unid, BACK, place(mail), tm.parse(was.get("at"))) if journal else USER
         return entry, [{"at": at, "kind": BACK, "unid": unid, "to": list(place(mail)), "by": by, "mail": head(mail)}]
     events = [{"at": at, "kind": NEW, "unid": unid, "mail": head(mail)}]
     if opened_before_seen(mail, last_look):
@@ -156,7 +162,7 @@ def compare(prev: dict[str, dict[str, Any]], prev_started: str, seen: dict[str, 
             out[unid], made = new_mail(mail, at, last_look, gone, journal)
             events += made
             continue
-        since = st.parse(old.get("seen_until") or prev_started)
+        since = tm.parse(old.get("seen_until") or prev_started)
         out[unid] = {**mail, "first_seen": old.get("first_seen")}
         if place(old) != place(mail):
             events.append({"at": at, "kind": MOVED, "unid": unid, "from": list(place(old)), "to": list(place(mail)),
@@ -172,7 +178,7 @@ def compare(prev: dict[str, dict[str, Any]], prev_started: str, seen: dict[str, 
         if not settled:
             out[unid] = {**old, "missing_since": at, "seen_until": prev_started}
             continue
-        since = st.parse(old.get("seen_until") or prev_started)
+        since = tm.parse(old.get("seen_until") or prev_started)
         last = {k: v for k, v in old.items() if k not in ("missing_since", "seen_until")}
         events.append({"at": at, "kind": GONE, "unid": unid, "from": list(place(old)), "by": journal.mail_by(unid, GONE, None, since),
                        "mail": head(last)})
@@ -181,6 +187,7 @@ def compare(prev: dict[str, dict[str, Any]], prev_started: str, seen: dict[str, 
 
 
 def compare_folders(prev: list[str], now: list[str], at: str, journal: Journal, since: datetime | None) -> list[dict[str, Any]]:
+    """폴더 목록의 바뀜(생김 · 없어짐)과 바꾼 이를 낸다."""
     events = [{"at": at, "kind": FOLDER_ADDED, "path": p, "by": journal.folder_by(p, True, since)} for p in now if p not in prev]
     events += [{"at": at, "kind": FOLDER_REMOVED, "path": p, "by": journal.folder_by(p, False, since)} for p in prev if p not in now]
     return events
@@ -188,6 +195,7 @@ def compare_folders(prev: list[str], now: list[str], at: str, journal: Journal, 
 
 def compare_rules(prev: list[dict[str, str]], now: list[dict[str, str]], at: str, journal: Journal,
                   since: datetime | None) -> list[dict[str, Any]]:
+    """메일 규칙의 바뀜(생김 · 바뀜 · 없어짐)과 바꾼 이를 낸다."""
     before = {r["unid"]: r["text"] for r in prev}
     after = {r["unid"]: r["text"] for r in now}
     events = []

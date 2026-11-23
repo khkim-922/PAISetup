@@ -141,8 +141,8 @@ GH_LOGIN_DEAD_SAY = ('Copilot 이 쓰는 gh 로그인이 무효가 됐다(대개
 GH_LOGIN_ENV_SAY = '(환경변수 토큰 {names} 이 선 셸에서는 gh 가 로그인을 안 받는다 — 그 변수를 비운 셸에서 친다)'
 
 
-# 러너 셋이 함께 쓰는 손은 곁에 깔린 스킬 agent-envelope 의 `runner_common.py` 가 든다. 러너는 창 없이 돌아 말할 곳이 답 파일
-# 뿐이라, 그 부품을 못 실으면 여기서 답 파일에 끝 줄을 남기고 끝낸다.
+# 러너 셋이 함께 쓰는 손은 곁에 깔린 스킬 agent-envelope 의 `runner_common.py` 가 들고, 싣는 이름은 그 스킬의 `handout.py` 에
+# 적힌 것뿐이다. 러너는 창 없이 돌아 말할 곳이 답 파일뿐이라, 그 부품을 못 실으면 여기서 답 파일에 끝 줄을 남기고 끝낸다.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'agent-envelope' / 'scripts'))
 try:
     import runner_common as common

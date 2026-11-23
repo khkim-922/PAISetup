@@ -465,11 +465,11 @@
     <article class="tile">
       <div class="top"><span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h11M11 3l4 4-4 4M20 17H9M13 13l-4 4 4 4"/></svg></span><h4>다른 AI 에게 일 맡기기</h4></div>
       <p class="desc">긴 조사 · 큰 코드 읽기 · 리뷰 · 다른 모델의 의견을 다른 도구에게 뒤에서 맡기고, 하던 대화를 잇습니다.
-         끝나면 결과를 확인해 거둡니다. 도구를 둘 이상 고르면 섭니다.</p>
-      <div class="say"><span>이렇게 말해 보세요</span><q>이 조사 Codex 한테 맡겨 줘</q><q>제미나이 의견도 들어 보자</q></div>
+         끝나면 결과를 확인해 거둡니다. 도구를 둘 이상 고르면 섭니다. 검사를 돌리고 커밋까지 하는 일을 따로 띄운 Claude 에게 맡기는 길은 Claude 만 골라도 섭니다.</p>
+      <div class="say"><span>이렇게 말해 보세요</span><q>이 조사 Codex 한테 맡겨 줘</q><q>제미나이 의견도 들어 보자</q><q>이 고침은 API 크레딧으로 레인 띄워서 맡겨 줘</q></div>
       <div class="parts">
         <div><b>맡기는 법</b><span class="tag"><code class="nm">agent-envelope</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></div>
-        <div class="more">받는 쪽을 띄우는 스킬 셋은 <a href="#delegate">맡기기 — 누가 누구에게</a></div>
+        <div class="more">받는 쪽을 띄우는 스킬 넷은 <a href="#delegate">맡기기 — 누가 누구에게</a></div>
       </div>
     </article>
     <article class="tile" id="seed">
@@ -488,7 +488,7 @@
       <div class="apps">
         <div class="app">
           <h5>메일</h5>
-          <p>낱말 · 보낸 분 · 날짜를 한 번에 걸어 찾아 읽고 답장 · 전달하고, 새 메일을 씁니다(첨부 · 꾸민 HTML 본문). 쓴 메일은 임시보관함에 저장되고 그 메일 창이 바로 떠서, 거기서 확인하고 [보내기]를 누르면 됩니다. 더 고쳐 달라고 하거나 보내 달라고 해도 같은 창에서 합니다 — 저장한 메일을 고쳐도 꾸민 서식이 남고, 첨부를 붙이고 뺄 수도 있습니다. 보낸 메일을 본떠 새 메일을 쓰고, 배포그룹을 그룹째 받는 사람에 넣고, 긴급 · 예약발송 같은 메일 속성도 켜고 끕니다. 메일을 폴더로 옮겨 정리하고, 앞으로 올 메일을 나눌 분류 규칙을 둡니다. 주소록 · 조직도 · 지난 메일의 받는 사람에서 사람과 부서를 찾아 받는 사람 명단을 지어 줍니다.</p>
+          <p>낱말 · 보낸 분 · 날짜로 찾아 읽고, 답장 · 전달 · 새 메일(첨부 · 꾸민 본문)을 씁니다. 쓴 메일은 임시보관함에 저장되고 그 메일 창이 떠서, 확인하고 [보내기]만 누르면 됩니다 — 이미 나갔을 수 있는 메일은 다시 보내지 않습니다. 폴더 정리와 분류 규칙, 배포그룹 · 긴급 · 예약발송도 다루고, 받는 사람은 주소록 · 지난 메일에서 찾아 줍니다.</p>
           <div class="say"><span>이렇게 말해 보세요</span><q>안 읽은 메일 뭐 있어</q><q>앞으로 이 사람 메일은 그 폴더로 가게 해 줘</q><q>이 메일 ○○ 님께 전달해 줘</q></div>
           <span class="tag"><code class="nm">company-mail</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         </div>
@@ -530,7 +530,8 @@
         </div>
       </div>
       <div class="parts">
-        <div class="more">보내기 · 옮기기 · 규칙 · 일정 넣고 지우기 · 올리기 · 권한 · 회의실 예약처럼 바꾸는 일은 먼저 다 보여 주고 확인을 받은 뒤에 합니다. 로그인은 평소 쓰는 Edge 에 EP 가 이미 열려 있으면 그 Edge 를 그대로 두고, 없을 때만 거기에 EP 탭을 하나 연 뒤 따로 띄운 Edge 창에서 세웁니다 — 끊기면 그 창에서 다시 로그인하도록 이끕니다. 새 대화에서 「아침 보고에 있던 그 건」 · 「그 일 지금 누구 차례야」처럼 오늘 보고나 굴러가는 일에 기대어 말하면, 사내 세션 · 오늘 보고 · 업무 파일을 한 번에 받아 다시 찾지 않고 이어 갑니다.</div>
+        <div class="more">보내기 · 옮기기 · 규칙 · 일정 넣고 지우기 · 올리기 · 권한 · 회의실 예약처럼 바꾸는 일은 먼저 다 보여 주고 확인을 받은 뒤에 합니다. 회사 일을 시키면 먼저 그 일의 목적과 가장 나은 길 — 어느 스킬을 어떤 차례로 쓰고 무엇을 하위 에이전트에 맡길지 — 부터 세우고 시작합니다.
+             사내 세션이 살아 있으면 메일 · 일정 일은 창 없이 끝납니다. 로그인이 필요하면 평소 쓰는 Edge 에 EP 가 없을 때만 탭을 하나 연 뒤 따로 띄운 Edge 창에서 세웁니다 — 끊기면 그 창에서 다시 로그인하도록 이끕니다. 그 로그인 때문에 평소 Edge 에 떠 있던 사내 메일 · 일정 창은 닫히고, 거기 EP 포털에서는 ERP · MES 같은 앱을 새로 띄울 수 없게 됩니다. 이미 띄운 앱 창은 그대로 쓰고, 새로 띄우려면 평소 Edge 에서 EP 를 로그아웃했다가 다시 로그인하거나 「EP 돌려줘」라고 하면 됩니다. 새 대화에서 「아침 보고에 있던 그 건」 · 「그 일 지금 누구 차례야」처럼 오늘 보고나 굴러가는 일에 기대어 말하면, 사내 세션 · 오늘 보고 · 업무 파일을 한 번에 받아 다시 찾지 않고 이어 갑니다.</div>
         <div><b>사내 세션 세우기</b><span class="tag"><code class="nm">ep-login</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></div>
         <div><b>지금 선 자리 받기</b><span class="tag"><code class="nm">company-work</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span></div>
       </div>
@@ -557,7 +558,7 @@
           <p>지난 보고 뒤의 메일과 오늘 · 내일 일정에서 지금 보셔야 할 것을 까닭과 함께 날마다 같은 꼴의 보고 창으로 띄웁니다. 줄을 누르면 그 메일이 웹메일에서 바로 열립니다. 메일 속 약속 가운데 내 일정에 없는 것은 「일정에 없는 약속」 카드로 서고, 누가 여는 약속인가에 따라 회의실 잡기 · Teams 회의 띄우기 · 일정 넣기 가운데 하나가 붙습니다. 오늘 · 내일 회의는 관련 메일 · 회의실 · 참석 · 아직 답 안 한 요청이 한 장에 서고, 끝난 회의는 뒤따를 것이 다음 보고에 섭니다. 요약 아래에는 「나를 기다리는 분 · 내가 기다리는 분」이 사람별로 한 번 더 섭니다.</p>
           <p><b>보고 창에서 비서에게 일을 맡깁니다.</b> 카드마다 그 건에서 바로 맡길 일(찾아 정리 · 답장이나 새 메일 써 두기 · 회의실 잡기 · Teams 회의 띄우기 · 일정 넣기)과 같이 의논할 일이 적혀 있고, 바로 맡길 일은 창 머리 아래 「바로 맡길 일」 막대에 모입니다. 뺄 것만 표시를 풀고 한 번 누르면 위에서부터 차례로 하고, 하나 끝날 때마다 그 카드에 결과가 섭니다 — 누른 것이 승인이라 다시 묻지 않습니다. 보내는 것만은 직접 누르십니다 — 메일은 써서 임시보관함에 두고 그 메일 창을 띄우는 데까지, Teams 회의는 제목 · 시각 · 참석자를 채운 예약 창을 띄우는 데까지 하니 그 창에서 [보내기]를 누르시면 됩니다. 일정 넣기는 누르면 곧 들고, 그 사이 그 시각의 일정이 바뀌었으면 넣지 않고 까닭을 카드에 적습니다. 창을 닫아도 뒤에서 계속하고 다시 열면 결과가 그대로 서 있습니다.
              같이 의논할 일은 「대화로 열기」를, 보다가 떠오른 일은 창 머리의 「비서에게 부탁하기」 칸에 쳐서 누르면 VS Code 의 작업 폴더 창에 그 말(카드에서 열면 그 카드의 근거까지)이 채워진 Claude Code 대화가 열리고, 엔터를 누르셔야 시작합니다. 비서가 오늘 같이 의논하자고 고른 일 하나는 그 칸에 흐린 글로 미리 서 있어 그대로 눌러도 됩니다. 여쭐 것이 있어 멈춘 일은 「대화로 이어 가기」를 누르면 그 일을 하던 대화가 VS Code 에서 이어집니다. 보고는 사람을 이름과 주소로, 회의실을 방 이름과 그 방의 열쇠로 들고 있어 맡은 쪽이 사람과 방을 다시 찾지 않습니다. 맡기기와 부탁은 Claude Code(VS Code 확장과 CLI)가 깔린 PC 에서 섭니다 — 없으면 창이 그 자리에 까닭을 적습니다.</p>
-          <p>줄마다 「끝났음」 · 「내일 다시」 · 「안 올려도 됨」을 눌러 두면 다음 보고가 그대로 따릅니다 — 끝난 일은 안 올리고, 미룬 일은 다음 날 첫 보고에 돌아오며, 안 올려도 된다고 하신 종류는 배워서 빼고 창 아래에 적어 두어 언제든 되돌립니다. 보고는 하루에 여러 번, 원하는 시각에 걸 수 있고(대화로도, 보고 창 아래 「보고 맞추기」에서도) 시각마다 사내 로그인이 서는 첫 때에 스스로 한 번 띄우며, 메일함 정리가 필요해 보이는 날엔 까닭과 함께 권합니다. 자리를 비우는 날에는 「보고 맞추기」의 「자리 밖에서 보기」를 켜 두면 사람 없이 지은 보고가 본인 메일로도 한 통씩 와 휴대폰으로 볼 수 있습니다 — 받는 분은 본인뿐이고, 맡길 일 · 끝났음은 PC 의 보고 창에서 누릅니다.</p>
+          <p>줄마다 「끝났음」 · 「내일 다시」 · 「안 올려도 됨」을 눌러 두면 다음 보고가 그대로 따릅니다 — 끝난 일은 안 올리고, 미룬 일은 다음 날 첫 보고에 돌아오며, 안 올려도 된다고 하신 종류는 배워서 빼고 창 아래에 적어 두어 언제든 되돌립니다. 보고는 하루에 여러 번, 원하는 시각에 걸 수 있고(대화로도, 보고 창 아래 「보고 맞추기」에서도) 그 시각이 되면 사람 없이 지어 창으로 띄워 둡니다. 그날 첫 보고 앞에는 비서가 사내 로그인을 한 번 하고, 뒤 시각에는 로그인이 끊겨 있을 때만 다시 해서 낮에 로그인이 끊긴 날에도 보고가 빠지지 않습니다 — 그때 평소 Edge 에서 닫힌 창과 하실 일은 그 보고의 창 머리에 한 줄로 섭니다. 비서의 로그인이 싫으면 시각을 걸지 말고 대화에서 「보고해 줘」로 청하면 됩니다. VDI 처럼 로그인을 사람이 쳐야 하는 PC 에서는 그 시각에 로그인이 없으면 그 보고를 건너뜁니다. 보고 시각은 업데이트해도 그대로 남고, 「아침 보고 내려 줘」로 내리며 스캔을 꺼도 보고 시각은 남습니다. 메일함 정리가 필요해 보이는 날엔 까닭과 함께 권합니다. 자리를 비우는 날에는 「보고 맞추기」의 「자리 밖에서 보기」를 켜 두면 사람 없이 지은 보고가 본인 메일로도 한 통씩 와 휴대폰으로 볼 수 있습니다 — 받는 분은 본인뿐이고, 맡길 일 · 끝났음은 PC 의 보고 창에서 누릅니다.</p>
           <div class="say"><span>이렇게 말해 보세요</span><q>보고해 줘</q><q>뭐부터 봐야 해</q><q>오후 1시에도 보고해 줘</q></div>
           <span class="tag"><code class="nm">daily-brief</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
         </div>
@@ -733,11 +734,14 @@
 
   <section id="upkeep">
     <h3 class="sec"><span class="ico"><svg class="i" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg></span>날마다 저절로 최신으로</h3>
-    <p class="h3-sub">깔린 것을 새 판으로 올리고 환경을 다시 맞추는 일은 설치가 돌 때마다 되풀이됩니다. 그때마다 위 설정도 다시 맞춥니다.</p>
+    <p class="h3-sub">깔린 것을 새 판으로 올리고 환경을 다시 맞추는 일은 설치가 돌 때마다 되풀이됩니다. 그때마다 위 설정도 다시 맞춥니다. 설치 창에서 값 하나만 바꾸거나 통째로 걷을 수도 있습니다.</p>
     <div class="rows">
       <div class="row"><b>로그온할 때 · 새벽마다<span class="tag"><code class="nm">PAISetup-AutoRun</code><span class="k task">Task</span><span class="src pai">PAI</span></span></b>
         <div><span class="why">없으면 한 번 깔고 몇 달 쓰는 PC 가 아무도 모르게 옛 판에 머뭅니다.</span> 자동 실행은 처음엔 켜져 있습니다. 하루 한 번 깔린 것을 최신으로 올리고 환경을 다시 맞추며, 설치본도 새 판이 나오면 그 판으로 올라갑니다.
           로그온 때 실제로 설치하면 화면 오른쪽 아래에 작은 진행 창이 뜹니다. 끄면 설치를 직접 누를 때만 돕니다.</div></div>
+      <div class="row"><b>바꾸기 · 걷어내기<span class="tag"><span class="k inst">Installer</span><span class="src pai">PAI</span></span></b>
+        <div><span class="why">없으면 키 하나 · 설정 저장소 주소 하나를 바꾸려고 설치 전체를 다시 돌리고, 그만 쓸 때는 안내 글을 따라 손으로 걷어야 합니다.</span> 설치 창의 키 칸 · 설정 저장소 칸 곁 [바꾸기]는 그 값이 닿는 걸음만 다시 돕니다 — 지난 설치 기록이 있을 때 켜지고, 키는 사내에서만 바꿉니다.
+          창 왼쪽 아래 「걷어내기」는 항상 지우는 것 · 골라서 지우는 것 · 남기는 것을 먼저 보여 주고, 누르면 이 설치가 놓은 것을 차례대로 걷습니다. 파이썬 · Git · Node 는 남기고, 그 밖의 프로그램은 체크한 것만 지웁니다(처음에는 다 꺼져 있습니다).</div></div>
     </div>
   </section>
 </section>
@@ -879,7 +883,8 @@
       <span><b>맡기기 — 누가 누구에게</b><small>받는 쪽 셋 · 쓰는 범위 · 사내와 사외의 차이</small></span></summary>
     <div class="det">
       <p>맡기는 법(<code>agent-envelope</code>)은 고른 도구마다 깔리고, Claude 안의 서브에이전트에게 맡길 때도 같은 절차를 씁니다.
-         받는 쪽을 띄우는 스킬은 맡기는 도구에만 깔려, 받은 도구가 다시 되맡기는 일은 없습니다 — 아래 도구 칩이 그 스킬을 받는 쪽, 곧 맡기는 쪽입니다.</p>
+         받는 쪽을 띄우는 스킬은 맡기는 도구에만 깔려, 받은 도구가 다시 되맡기는 일은 없습니다 — 아래 도구 칩이 그 스킬을 받는 쪽, 곧 맡기는 쪽입니다.
+         Claude 셸 레인만 Claude 에도 깔립니다 — 서브에이전트와 달리 따로 띄운 프로그램이라, 하던 대화의 한도를 비워 두거나 API 크레딧으로 돌릴 수 있어서입니다.</p>
       <div class="chips-grid">
         <div class="mini"><b>agy 에게</b><span class="tag"><code class="nm">agy-background</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="src pai">PAI</span></span>
           <span>큰 파일 읽기 · 여러 파일 훑기 · 긴 조사를 넘깁니다. 한도에 걸리거나 서버가 몰려 답을 못 내면 다음 모델로 다시 띄웁니다.</span></div>
@@ -887,11 +892,14 @@
           <span>긴 조사 · 큰 코드 읽기 · 분석 · 리뷰 · 웹 조사를 넘깁니다.</span></div>
         <div class="mini"><b>Claude 에게</b><span class="tag"><code class="nm">claude-background</code><span class="k skill">Skill</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
           <span>리뷰 · 조사 · 다른 모델의 의견을 넘깁니다.</span></div>
+        <div class="mini"><b>Claude 셸 레인</b><span class="tag"><code class="nm">claude-lane</code><span class="k skill">Skill</span><span class="t claude">Claude</span><span class="t codex">Codex</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
+          <span>검사를 돌리고 커밋까지 해야 하는 일을 따로 띄운 Claude 에게 넘깁니다. 레인은 제 작업 폴더(격리 워크트리)에서 돌고 push 는 막혀 있어, 맡긴 쪽이 결과를 확인하고 거둡니다. 결제는 평소 Claude Code 가 붙는 길(사외는 로그인 · 사내는 회사 게이트웨이)이 기본이고, Anthropic Console 에서 받은 API 키를 넣어 둔 환경변수 이름과 지출 상한을 주면 그 레인만 API 크레딧으로 돕니다. Claude Code 를 고른 PC 에서 섭니다.</span></div>
         <div class="mini"><b>agy 의 제 고침 리뷰</b><span class="tag"><code class="nm">change-review</code><span class="k agent">Agent</span><span class="t agy">agy</span><span class="src pai">PAI</span></span>
           <span>agy 에게 고치는 일을 맡기면 agy 가 끝내기 전에 이 리뷰 에이전트를 불러 제 고침을 리뷰받습니다. 읽기만 하고, 그 고침이 만든 결함만 내놓습니다 — OpenAI Codex 와 Anthropic 공개 플러그인의 리뷰 기준을 그대로 실었습니다(Apache 2.0). 안티그래비티를 고르면 섭니다.</span></div>
       </div>
       <h5>쓰는 범위</h5>
-      <p class="flush">맡기는 일에 맞춰 권한을 줍니다 — 읽기만 할 일은 읽기만, 고치거나 적어 봐야 할 일은 맡기는 쪽이 따로 세운 작업 폴더 안에서만 씁니다.</p>
+      <p class="flush">맡기는 일에 맞춰 권한을 줍니다 — 읽기만 할 일은 읽기만, 고치거나 적어 봐야 할 일은 맡기는 쪽이 따로 세운 작업 폴더 안에서만 씁니다.
+         Claude 셸 레인은 제 작업 폴더에서 셸을 열고 커밋까지 하되, 위험해 보이는 동작은 자동 모드의 분류기가 가르고 push 는 못 합니다. 그 폴더 밖 쓰기를 막는 울타리는 따로 없어, 맡길 범위는 지시서에 적습니다.</p>
       <h5>사내와 사외</h5>
       <div class="rows site">
         <div class="row"><b><span class="s out">사외</span></b>
@@ -899,7 +907,7 @@
             <a href="https://aistudio.google.com/apikey">구글 무료 API 키</a>를 <code>setx GOOGLE_API_KEY &lt;키&gt;</code> 로 넣으면 제미나이를 더 씁니다 —
             무료 키는 보낸 내용이 구글 제품 개선에 쓰일 수 있고, 이 키가 있으면 사내에서도 회사 키보다 먼저 쓰입니다.</div></div>
         <div class="row"><b><span class="s in">사내</span></b>
-          <div>Codex 는 회사 게이트웨이로 가고, Copilot 으로는 넘기지 않습니다. agy 는 회사 키가 받는 모델을 일의 무게로 골라 씁니다. 로그인은 없습니다.</div></div>
+          <div>Codex 는 회사 게이트웨이로 가고, Copilot 으로는 넘기지 않습니다. agy 는 회사 키가 받는 모델을 일의 무게로 골라 씁니다. Claude 셸 레인도 따로 고를 것 없이 회사 게이트웨이로 돕니다. 로그인은 없습니다.</div></div>
       </div>
     </div>
   </details>

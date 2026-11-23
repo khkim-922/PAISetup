@@ -1,6 +1,6 @@
 # 메일함 스캔의 설계
 
-메일함 스캔 스킬의 코드를 고치는 사람이 읽는다. 무엇이 어떻게 도는지 — 조각의 지도, 판 하나와 정한 시각의 보고가 흐르는 길, 다른 스킬이
+메일함 스캔 스킬의 코드를 고치는 사람이 읽는다. 무엇이 어떻게 도는지 — 조각의 지도, 판 하나가 흐르는 길, 프로그램과 다른 스킬이
 기대는 약속, 하지 않는 것 — 을 이 글 하나에서 읽게 한다. 쓰는 법은 `SKILL.md` 가, 명령마다 부르는 꼴 · 내는 것 · 종료 값은 그 스크립트의
 머리말이 든다.
 
@@ -9,73 +9,459 @@
 작업 스케줄러가 몇 분마다 사람 없이 스캔 한 판을 띄운다. 판은 회사 메일 손의 읽는 명령으로 메일함의 메일 머리를 받아 사용자 폴더
 `mailbox-scan/` 에 쌓고, 지난 모습과 견줘 새 메일과 사람이 한 일(연 · 옮긴 · 지운 메일)을 적는다. 메일함 · 본문 · 모델에는 안 닿는다.
 
-사용자가 보고 시각을 걸어 두셨으면 판의 끝이 정한 시각의 보고까지 맡는다 — 시각마다 사내 세션이 살아 있는 첫 판에 일일 보고를 짓는
-claude 를 사람 없이 띄우고, 보고 창에서 고르신 시각 · 「자리 밖에서 보기」를 받아 걸고, 켜 두셨으면 그 보고를 본인 메일로도 보낸다.
+스캔은 이 일 하나만 한다 — 모델도 보고도 창도 모르고, 다른 프로그램이 청할 때 한 판을 돌려 주고 지금 모습을 읽게 내줄 뿐이다(아래 「약속」의
+두 문). 정한 시각에 보고를 띄우는 쪽이 메일함을 새로 읽어야 하면 그 두 문으로 한 판을 청해 읽는다.
 
-사람이 보는 것은 셋이다.
+사람이 보는 것은 둘이다.
 
-- **보고** — 정한 시각에 일일 보고의 창이 로그인 Edge 에 떠 있다(그 창은 스킬 daily-brief 가 짓는다). 「자리 밖에서 보기」를 켜셨으면 같은
-  보고가 휴대폰 너비의 메일 한 통으로도 온다
-- **status** — 대화에서 「스캔 어때」 하시면 `scan.py status` 가 작업이 걸렸나 · 마지막 판 · 시각마다 살펴본 때와 다음 걸음 · 건너뛴 보고와
-  그 까닭을 말한다
+- **status** — 대화에서 「스캔 어때」 하시면 `scan.py status` 가 작업이 걸렸나 · 마지막 판 · 멈췄으면 까닭과 다음 걸음을 말한다
 - **읽기** — 일일 보고 · 메일함 정리 · 대화가 쌓인 것을 `reader.py` 로 잘라 읽는다(지난번 뒤 온 메일 · 그 사이 사람이 한 일)
-
-보고 창에서 맡기신 일(회의실 잡기 · 답장 써 두기 따위)을 뒤에서 claude 한 번으로 하는 실행(`scan.py handed`)도 이 스킬에 산다 — 일일
-보고가 이 스킬의 코드를 싣지 않고 명령으로 부르게.
 
 ## 조각의 지도
 
-싣는 방향은 한쪽이다 — 조각끼리 고리도, 함수 안에서 늦게 싣는 조각도 없다(함수 안에서 싣는 것은 표준 라이브러리 · 윈도 전용 모듈과, 보내는
-손이 회사 메일 손의 `mailer` 를 싣는 한 자리뿐이다). `handed_run` 도 밑줄 붙은 남의 속 함수를 부르지 않는다.
+손은 손가락을 차례로 엮기만 하고 손가락은 일 하나를 한다. 싣는 방향은 위에서 아래 한쪽이다 — 조각끼리 고리도, 함수 안에서 늦게 싣는
+조각도 없다(함수 안에서 싣는 것은 표준 라이브러리 · 윈도 전용 모듈뿐이다). 이 스킬의 코드는 표준 라이브러리와 제 폴더 밖을 싣지 않는다 —
+회사 메일 손은 명령으로 부르고, 다른 스킬의 파일은 사내 세션 파일 하나만 읽는다. 여러 손이 옆으로 함께 쓰는 것은 어느 손의 밑에도 안 두고
+바탕에 둔다. 말을 짓는 조각(`scan_words`)은 파일 · 프로세스를 읽는 조각을 싣지 않고, 셈한 것을 받아 말만 짓는다.
 
-```
-입구(명령)          scan.py(run · register · status · unregister · brief · handed) · reader.py(읽는 명령)
-판 끝의 손          scan_brief.py — 아래 조각을 차례로 엮는다          맡긴 일   handed_run.py
-조각               brief_schedule.py · session_login.py · claude_launch.py · away_mail.py · window_link.py · scan_diff.py · scan_task.py
-바탕               scan_hand.py(회사 메일 손 부르기) · scan_store.py(자리 · 쓰기 · 잠금) · scan_const.py(값)
-따로 띄우는 손       scan_mail.py — 판이 프로세스로 띄운다(형제 스킬의 코드를 싣는 유일한 자리)
-```
+아래는 코드에서 뽑은 지도다 — 모듈 표와 입구에서 내려가는 나무. 줄의 문장은 그 조각 머리말의 첫 문장이라, 문장을 고치려면 머리말을 고치고
+다시 짓는다. 판이 어떤 차례로 엮이나(잠금 → 판 준비 → 판 하기 → 판 맺기)는 나무의 `scan_round.cmd_run` 아래가 든다.
 
-| 조각 | 맡은 일 | 받는 것 → 내는 것 |
-|---|---|---|
-| `scan.py` | 스캔 한 판과 걸기 · 보기 · 끄기 · 보고 시각의 명령 | 명령 → 판 기록 · 지금 모습 · 작업 스케줄러 · 시각표 파일 |
-| `reader.py` | 쌓인 것을 잘라 읽는 명령 | 스캔 파일 → 지난번 뒤 · 그 사이 바뀜 · 정리 신호 |
-| `scan_brief.py` | 판 끝의 손 — 정한 시각의 보고를 엮는다 | 판의 지금 모습 · 세션의 답 → 메일 · 창의 고름 · 띄우기 · 누름 거두기 차례 |
-| `brief_schedule.py` | 보고 시각표와 그날의 칸 | 시각표 파일 · 그날의 장부 → 칸 · 띄울 때인가 · 건너뛴 시각 · status 의 줄 |
-| `session_login.py` | 사내 세션 살피기 · 스스로 로그인 | 손의 `session` · ep-login 입구 → 살았다 · 없다 · 손 오류 |
-| `claude_launch.py` | 사람 없는 claude 띄우기 | 시각표 · 손의 자리 → 명령 · 열린 명령(권한) · 부탁 글 → 떼어 띄운 프로세스 |
-| `away_mail.py` | 자리 밖에서 보기 | 켜고 끄기 · 칸마다 끝난 보고 → 메일 한 통(보내는 손) · 칸의 기록 |
-| `window_link.py` | 보고 창 이음 — 일일 보고의 창 손을 부르는 유일한 자리 | 명령 줄 → 창 손의 답 · 그 줄의 꼴 읽기 |
-| `handed_run.py` | 맡긴 일 — 뒤에서 claude 한 번으로 하고 기록한다 | 맡긴 일 파일 → 기록 · 흐름 파일 |
-| `scan_diff.py` | 두 모습을 견주고 누가 했나를 가른다 | 앞 · 지금 모습 · 정리 기록 → 바뀜 |
-| `scan_task.py` | 작업 스케줄러에 걸고 · 보고 · 끈다 | 주기 · 손 → 작업 정의(XML) |
-| `scan_hand.py` | 회사 메일 손을 부르고 그 글을 메일 머리로 푼다 | 손의 명령 → 메일 머리 · 폴더 · 세션 없음 |
-| `scan_store.py` | 스캔 파일의 자리와 쓰는 법 | 파일 → 없다 · 읽었다 · 못 읽었다 · 바꿔 끼우는 쓰기 · 덧붙이는 기록 · 잠금 |
-| `scan_const.py` | 이름 붙은 값 | 자리 · 파일 이름 · 상한 · 주기 · 열린 명령 · 막은 명령 |
-| `scan_mail.py` | 자리 밖에서 보기의 보내는 손 | 메일 한 장(JSON) → 사내 중계로 한 통 |
+<!-- drawn:piece-map · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
+| 조각 | 맡은 일 | 싣는 곁 조각 | 다른 스킬에서 싣는 것 |
+|---|---|---|---|
+| `scan.py` · 입구 | 메일함 스캔 — 회사 메일 손을 명령으로 불러 메일함의 지금을 사용자 폴더에 쌓고, 그 스캔을 작업 스케줄러에 걸고 · 보고 · 끈다. | `scan_const` · `scan_round` · `scan_setup` | — |
+| `reader.py` · 입구 | 메일함 스캔이 쌓은 것을 잘라 읽는 명령 — 일일 보고 · 메일함 정리 · 대화가 스캔 파일을 직접 열지 않고 이것만 쓴다. | `hand_lines` · `scan_const` · `scan_diff` · `scan_store` · `scan_time` | — |
+| `scan_round.py` | 스캔 한 판 — 잠금 쥐기 → 판 준비 → (세션을 기다리는 주기면 판 맺기로) 판 하기 → 판 맺기. | `hand_lines` · `scan_const` · `scan_diff` · `scan_hand` · `scan_store` · `scan_time` · `scan_words` · `session_login` | — |
+| `scan_diff.py` | 두 지금 모습을 견주어 바뀜을 짓고, 그 바뀜을 누가 했나(사람 · 비서 · 모름)를 정리 스킬의 기록에 대어 가른다. | `scan_const` · `scan_store` · `scan_time` | — |
+| `scan_setup.py` | 걸기 · 보기 · 끄기 — `scan.py register · status · unregister` 의 손. 작업 스케줄러의 작업 하나(`scan_task`)를 걸고 · 보이고 · 지운다. | `scan_const` · `scan_hand` · `scan_store` · `scan_task` · `scan_time` · `scan_words` · `task_base` | — |
+| `scan_hand.py` | 회사 메일 손 이음 — 손(스킬 company-mail 의 `scripts/mail.py`)을 찾고 명령으로 부른다. | `hand_lines` · `proc_base` · `scan_const` | — |
+| `scan_store.py` | 스캔 파일의 자리와 쓰는 법 — 사용자 폴더 · 시각 · 한 번에 바꾸는 쓰기 · 덧붙이는 기록 · 한 판만 도는 잠금. | `scan_const` · `scan_time` | — |
+| `scan_words.py` | 스캔 한 판의 말 — 판 끝 한 줄 · 판의 갈래와 끝 낱말 · 세션을 기다리는 주기의 말. 바깥에 안 닿고 셈은 안 한다. | `scan_const` · `scan_time` | — |
+| `hand_lines.py` | 회사 메일 손의 글 풀기 — 손(스킬 company-mail 의 `scripts/mail.py`)이 찍은 사람용 글을 메일 머리 · 폴더 · 규칙으로 푼다. | `scan_const` | — |
+| `scan_task.py` | 작업 스케줄러 손 — 작업 하나(`TASK_NAME`)가 몇 분마다 `scan.py run` 을 창 없이(pythonw) 부르게 정의를 짓고, 걸린 정의의 인자 · 간격을 거는 꼴로 되읽는다. | `scan_const` · `task_base` | — |
+| `scan_time.py` | 스캔의 시각 — 저장은 UTC ISO 8601(사전순이 시간순이다), 보이기는 서울(+09:00 고정 — `zoneinfo` 는 윈도에서 `tzdata` 가 따로 들어 안 쓴다). 파일 · 프로세스에 안 닿는다. | `scan_const` | — |
+| `session_login.py` | 사내 세션 파일의 자리 — 회사 메일 손이 쓰는 세션 파일이 어디 있나를 댄다. | `scan_const` | — |
+| `scan_const.py` | 메일함 스캔의 이름 붙은 값 — 자리 · 파일 이름 · 상한 · 주기. 스캔 스크립트가 다 여기서 읽는다. | `hand_facts` | — |
+| `hand_facts.py` | 메일함 스캔이 기대는 형제 스킬의 사실 — 회사 메일 손의 자리 · 종료 값 · 시한, 로그인이 사는 스킬, 사내 세션의 답 낱말, 세션이 끊겼을 때 사람에게 이를 다음 걸음. | — | — |
+| `proc_base.py` | 프로세스 바탕 — 곁의 파이썬 손(회사 메일 손 · 형제 스킬의 입구)을 창 없이 · UTF-8 로 띄우는 한 자리. | — | — |
+| `task_base.py` | 작업 스케줄러 바탕 — 비서의 작업 하나를 schtasks · PowerShell 로 걸고 · 묻고 · 지우고 · 정의를 받나 묻고, 그 답을 푼다. | — | — |
 
-파일마다 한 문장의 원본은 그 파일 머리말의 첫 줄이다.
+**입구에서 내려가는 나무** — 줄마다 조각과 그 머리말 첫 문장. 한 조각은 처음 닿은 자리에서만 펴고 다시 닿으면 `↑` 로 가리킨다. 클래스는 메서드를 그 아래에 든다. `←` 뒤는 그 조각을 부르는 다른 스킬이다. 인스턴스를 거친 부름은 이어지지 않는다.
+
+- `main` — 읽는 명령의 입구 — 스캔을 열어 하위 명령에 나눈다.
+  - `parser` — 명령줄의 꼴 — 하위 명령 · 인자 · 도움말.
+    - `span_word` — 몇 시간 전의 한 구절 — 하루 단위면 「N일쯤 전」.
+  - `moment` — 「YYYY-MM-DD HH:MM」 · 「YYYY-MM-DD」(서울) → 시각. 없으면 `default`. 꼴이 틀리면 argparse 의 오류로 나간다.
+  - `scan_time.now` — 지금(UTC).
+  - `open_scan` — 읽는 명령 한 번이 쥘 스캔 — 스캔 파일이 없거나 못 읽으면 그렇다고 찍고 종료 값 3.
+    - `scan_store.load_state` — 지금 모습 한 장 — (판, 깨진 까닭). 파일이 없으면 (None, ""), 글이 깨졌거나 꼴 번호가 다르면 (None, 까닭) — 메일함에서 다시 지어도 되는 판. 있는데 못 읽었으면(다른 손이 쥐었다) `Unreadable` 이 그대로 나간다 — 그 판을 깨진 것으로 읽어 다시 지으면 그날 띄운 보고 · 보낸 메일의 기록이 사라져 두 번 띄우고 두 번 보낸다.
+      - `read_json` — 스캔 자리의 JSON 파일 한 장 — 답은 셋이다: 없으면 None · 읽었으면 그 dict · 있는데 못 읽었으면 `Unreadable`. 꼴 번호는 부르는 쪽이 본다.
+        - `_read_bytes` — 파일 그대로 — 없으면 FileNotFoundError, 있는데 못 읽으면 `Unreadable`. ⚠ 윈도에서는 다른 프로세스가 그 파일을 새 판으로 바꿔 끼우는 그 순간 읽기가 PermissionError 로 진다 — 쓰는 쪽(`_swap`)이 기다리는 것과 같은 수만큼 기다려 다시 읽는다.
+          - `Unreadable` — 파일은 있는데 못 읽었다 — 「없다」가 아니다.
+        - ↑ `Unreadable`
+      - ↑ `Unreadable`
+    - `scan_store.scan_dir` — 사용자 폴더 안의 스캔 자리 — `make` 면 없을 때 만든다.
+      - `home` — 사용자 폴더 — `MAIL_SECRETARY_HOME` 이 있으면 그 자리, 없으면 `%LOCALAPPDATA%\mail-secretary`(이름의 원본과 사본은 scan_const 「자리」).
+    - ↑ `scan_store.Unreadable`
+    - `Scan` — 읽는 명령 한 번이 쥐는 것 — 지금 모습 · 지금.
+    - ↑ `scan_time.now`
+  - `cmd_status` — status — 최근 하루의 판 수 · 건너뛴 주기 · 마지막 판 다섯의 값을 보인다.
+    - `scan_store.read_jsonl` — 덧붙인 기록 전부(옛것부터)와 못 읽은 줄의 수 — 반쯤 써진 끝 줄 · 깨진 줄은 건너뛴다.
+      - ↑ `_read_bytes`
+    - ↑ `scan_store.scan_dir`
+    - `scan_time.stamp` — 저장할 글자 — UTC ISO 8601. 사전순이 시간순이다.
+    - `scan_time.seoul` — 시각을 서울 글자로 — 없으면 빈 글.
+    - `scan_time.parse` — 저장된 글자 · 시간대가 붙은 ISO 글자(정리 스킬의 기록)를 시각으로. 못 읽거나 시간대가 없으면 None.
+    - `framed` — 머리 · 스캔의 때와 상태 · 자료 구역 안의 몸 · 꼬리를 찍는다 — 메일함의 글은 자료 구역 안에만 선다.
+      - `state_lines` — 스캔의 때와 지금 상태 — 읽는 쪽이 낡음을 가르고, 멈췄으면 그 까닭과 때를 사용자께 말씀드린다.
+        - `ago` — 때와 지금으로부터 얼마 전인가의 한 구절 — 없으면 「없다」.
+          - ↑ `scan_time.seoul`
+        - ↑ `scan_time.parse`
+        - ↑ `scan_time.seoul`
+        - `place_name` — 자리를 손의 말로 — 받은편지함 · 보낸편지함 · 「폴더 <경로>」.
+  - `cmd_new` — new — 그 시각 뒤 새 메일(때나 스캔이 처음 본 때가 그 뒤)을 지금 자리 · 읽음과 함께 새것부터 보인다.
+    - ↑ `moment`
+    - ↑ `scan_store.read_jsonl`
+    - ↑ `scan_store.scan_dir`
+    - `scan_time.mail_time` — 메일의 때(서울 글자) → 시각. 그 꼴이 아니면 None — 때를 모르는 메일이다.
+    - ↑ `scan_time.parse`
+    - `newest_first` — 메일을 새것부터(때 · 번호 차례) 늘어놓는다.
+    - `mail_line` — 메일 한 줄 — 손의 목록 줄과 같은 꼴. `extra` 는 메일 번호 앞에 붙이는 이 스킬의 말이다.
+      - ↑ `place_name`
+      - `person_of` — 메일 한 통의 사람 칸 — 받은 메일은 보낸 분(「이름 <주소>」 · 주소 · 이름), 보낸 메일은 받는 분.
+    - ↑ `scan_time.seoul`
+    - `count_word` — 메일 묶음의 수 한 구절 — 받은 메일이 들면 안 읽음 수도.
+    - ↑ `framed`
+    - `paged` — 한 쪽 — `skip` 뒤 `most` 줄과, 잘렸으면 이어 받을 `--skip` 값을 대는 끝 줄.
+  - `cmd_now` — 지금 모습 — 상자마다 · 보낸 분마다 · 제목 말머리마다 · 규칙의 보기를 차례로 엮는다.
+    - ↑ `scan_time.seoul`
+    - ↑ `scan_time.parse`
+    - `box_lines` — 상자마다 수 · 안 읽음 — 받은편지함 · 폴더 목록 차례 · 보낸편지함 · 새 메일로 처음 선 폴더, 그리고 휴지통 · 못 채운 보낸 분.
+      - ↑ `place_name`
+      - ↑ `count_word`
+    - `by_place` — 메일을 자리(상자 · 폴더)마다 묶는다.
+      - `scan_diff.place` — 메일 한 통의 자리 — (상자, 폴더 경로).
+    - `sender_lines` — 보낸 분마다(받은 메일) 셈 — 많은 차례로 `top` 곳, 나머지는 한 줄.
+      - ↑ `person_of`
+      - ↑ `newest_first`
+      - ↑ `count_word`
+      - `when_word` — 메일의 때 글자를 분까지 — 없으면 「때 모름」.
+    - `head_lines` — 제목 말머리마다(`HEAD_MIN` 통 이상) 셈 — 많은 차례로 `top` 개.
+      - ↑ `count_word`
+    - `rule_lines` — 메일 규칙 — 마지막 판에서 못 읽었으면 그 앞 판의 것이라고 댄다.
+    - ↑ `framed`
+  - `cmd_changes` — changes — 그 시각 뒤 바뀜을 바꾼 이와 함께 새것부터 보인다.
+    - ↑ `moment`
+    - ↑ `scan_store.read_jsonl`
+    - ↑ `scan_store.scan_dir`
+    - ↑ `scan_time.parse`
+    - `event_line` — 바뀜 한 줄 — 때 · 무엇 · 바꾼 이, 메일의 바뀜이면 그 메일 줄.
+      - ↑ `scan_time.seoul`
+      - ↑ `scan_time.parse`
+      - ↑ `place_name`
+      - ↑ `mail_line`
+    - ↑ `scan_time.seoul`
+    - ↑ `framed`
+    - ↑ `paged`
+  - `cmd_mails` — mails — 고르기(자리 · 보낸 분 · 제목 · 안 읽음 · 때 범위)에 다 맞는 메일을 새것부터 보인다.
+    - ↑ `person_of`
+    - ↑ `moment`
+    - ↑ `scan_time.mail_time`
+    - ↑ `newest_first`
+    - ↑ `count_word`
+    - ↑ `framed`
+    - ↑ `paged`
+    - ↑ `mail_line`
+  - `cmd_signals` — 정리 신호의 재료 — 받은편지함 지금 · 흐름 · 규칙이 채우는 폴더 · 폴더마다 가장 새 때의 보기를 차례로 엮는다(수와 때만).
+    - ↑ `scan_store.read_jsonl`
+    - ↑ `scan_store.scan_dir`
+    - ↑ `by_place`
+    - ↑ `ago`
+    - ↑ `scan_time.parse`
+    - ↑ `count_word`
+    - `flow_lines` — 받은편지함 흐름 — 메일함 전체를 다 본 판마다 센 수에서 가장 늦은 판 · 하루쯤 전 · 이레쯤 전 · 기록이 닿는 데.
+      - ↑ `ago`
+      - ↑ `span_word`
+      - ↑ `scan_time.seoul`
+    - `full_counts` — 판 기록에서 메일함 전체를 다 본 판마다 센 받은편지함 \[통 수, 안 읽음\](옛것부터) — 스캔(`scan_round.inbox_count`)이 그 판에 실은 셈이다.
+      - ↑ `scan_time.parse`
+    - `rule_target_lines` — 규칙이 채우는 폴더 — 폴더로 옮기는 규칙의 폴더마다 수 · 지금 폴더 목록에 있나 · 규칙 수.
+      - `hand_lines.rule_folder` — 규칙 글(`parse_rules` 의 text) → 그 규칙이 메일을 옮기는 폴더의 경로. 폴더로 옮기지 않는 규칙이면 None. 동작 칸은 조건 뒤에 서므로 마지막 표지에서 자른다 — 조건 값에 그 낱말이 들어도 안 헷갈린다.
+      - ↑ `place_name`
+      - ↑ `count_word`
+    - `folder_age_lines` — 폴더마다 가장 새 메일의 때 — 옛것부터, 메일 없는 폴더가 맨 앞.
+      - ↑ `scan_time.mail_time`
+      - ↑ `scan_time.seoul`
+      - ↑ `place_name`
+      - ↑ `count_word`
+    - ↑ `framed`
+- `main` — 명령 입구 — 받은 하위 명령을 그 손에 나눈다.
+  - `parser` — 명령줄의 꼴 — 하위 명령 · 인자 · 도움말.
+  - `scan_round.cmd_run` — 한 판(`scan.py run`) — 판 하나의 잠금을 쥐고(`--wait` 면 그 초 안에서 앞 판을 기다려) 판을 맡긴다(`play`). 못 쥐면 「건너뛰었다」를 판 기록에 적고, 판이 기대는 파일을 못 읽으면 판 기록에만 적고 멈춘다(`unread`). 종료 값 — 0 됐다(앞 판이 돌아 건너뛴 것도) · 1 멈췄다.
+    - ↑ `scan_store.scan_dir`
+    - `scan_store.Lock` — 도는 판 하나의 잠금(O_EXCL) — `LOCK_STALE_S` 보다 오래된 잠금은 푼다.
+      - `Lock.take` — 쥔다 — (잠금, 풀어 준 옛 잠금). 도는 판이 있으면 (None, 그 판의 잠금).
+        - `held_since` — 잠금 파일 하나(`{started, …}`) — 없으면 None. 있는데 못 읽으면 `{"started": 그 파일의 고친 때}` 로 낸다(그 때로 낡음을 잰다). 고친 때도 못 보면 지금으로 낸다 — 그 잠금을 도는 판의 것으로 둔다.
+          - ↑ `read_json`
+          - ↑ `Unreadable`
+          - ↑ `scan_time.now`
+          - ↑ `scan_time.stamp`
+        - ↑ `scan_time.parse`
+        - ↑ `scan_time.stamp`
+      - `Lock.wait` — 도는 판이 있으면 `seconds` 초 안에서 그 잠금이 풀리기를 기다렸다 쥔다 — 사이(`LOCK_WAIT_POLL_S`)마다 잠들었다 `take` 로 다시 쥐어 본다.
+        - ↑ `scan_time.now`
+        - ↑ `Lock.take`
+      - `Lock.owns` — 이 판이 아직 잠금을 쥐었나 — 잠금 파일의 열쇠가 제 열쇠인가.
+        - ↑ `held_since`
+      - `Lock.release` — 제 잠금이면 푼다.
+        - ↑ `Lock.owns`
+    - `scan_store.append` — 줄을 덧붙인다 — 있는 줄은 안 고친다.
+    - `busy_record` — 앞 판이 돌아 건너뛴 주기의 기록 한 줄 — 앞 판의 시작 때를 함께 적고, 기다렸으면(`--wait`) 기다린 초를 메모로 단다.
+      - ↑ `scan_time.stamp`
+      - `scan_words.waited_note` — 판 기록의 메모 — 앞 판의 잠금이 풀리기를 기다린 초(`run --wait`).
+    - ↑ `scan_time.parse`
+    - `scan_words.gave_up_words` — 앞 판을 준 시한만큼 기다렸는데 안 끝나 이번 판을 그만둔 한 줄(`run --wait`) — 앞 판의 시작 때 · 기다린 초와 함께.
+      - ↑ `scan_time.seoul`
+    - `scan_words.busy_words` — 앞 판이 돌아 이번 주기를 건너뛴 한 줄 — 앞 판의 시작 때와 함께.
+      - ↑ `scan_time.seoul`
+    - `play` — 판 하나를 엮는다 — 지금 모습 · 손 · 손의 능력을 갖추고, 세션을 기다리는 주기면 판 없이 맺고, 아니면 판을 하고 맺는다.
+      - `ready_state` — 판이 고칠 지금 모습 — 글이 깨진 판은 `.broken` 으로 옮겨 두고 새로 시작한다.
+        - ↑ `scan_store.load_state`
+        - ↑ `scan_words.waited_note`
+        - ↑ `scan_time.seoul`
+        - ↑ `scan_time.parse`
+        - `fresh_state` — 지금 모습이 없을 때의 빈 판.
+      - `note_full_every` — 준 전체 주기(`--full-every`)를 지금 모습에 적는다 — 걸린 작업의 판은 늘 그 값을 주므로, 주기를 안 준 판(정한 시각의 시계가 청한 판 · 대화의 판)이 그 PC 가 건 주기를 읽는다(`full_every_of`). 안 줬으면 아무것도 안 한다.
+      - `scan_hand.find_hand` — 손 `mail.py` 의 자리 — `--hand` → `MAILBOX_SCAN_HAND` → 스킬 뿌리들 차례. 어디에도 없으면 `HandMissing`.
+        - `HandMissing` — 회사 메일 손을 못 찾았다 — 글자가 어디를 봤는지 말한다.
+        - `skill_roots` — 볼 스킬 뿌리 — `SECRETARY_SKILLS` 가 있으면 그것 하나, 없으면 도구 홈 셋.
+      - ↑ `scan_hand.HandMissing`
+      - `finish` — 판을 맺는다 — 판 기록을 짓고, 잠금을 잃었으면(풀린 판이 깨어났다) 아무것도 안 쓰고, 아니면 바뀜 · 지금 모습 · 판 기록을 쓰고 판 끝 한 줄을 낸다.
+        - `round_record` — 판 기록 한 줄 — 때 · 갈래 · 끝 · 손 부르기 · 줄 · 초 · 새 메일과 바뀜의 수 · 판 값 · 메모, 메일함 전체를 다 본 판은 받은편지함 셈.
+          - ↑ `scan_time.stamp`
+          - ↑ `scan_time.now`
+          - `inbox_count` — 받은편지함의 [통 수, 안 읽음] — 자리를 확인 중인 메일은 뺀다.
+        - `save_round` — 판을 쓴다 — 바뀜마다 판의 때를 달고, 지금 모습에 마지막 판을 적고, 바뀜 → 접기 → 지금 모습 → 판 기록 차례로 쓴다.
+          - ↑ `scan_store.append`
+          - `compact` — 오래된 새 메일 · 바뀜 · 판 기록을 접고 사라진 메일의 기억을 덜어 낸다 — 하루에 한 번. 지금 모습은 늘 한 장이다.
+            - ↑ `scan_time.parse`
+            - ↑ `scan_time.stamp`
+            - ↑ `scan_store.read_jsonl`
+            - ↑ `scan_store.Unreadable`
+            - `scan_store.rewrite_jsonl` — 기록을 새로 쓴다(오래된 줄을 접을 때) — 새 파일에 다 쓴 뒤 바꿔 끼운다.
+              - `_temp_of` — 쓰는 쪽마다 따로인 새 파일 — 두 프로세스가 같은 파일을 함께 쓰면(스캔 판과 창 곁의 손) 한 이름의 새 파일을 서로 비우고 옮겨, 반쯤 써진 판이 제자리에 서거나 한쪽이 FileNotFoundError 로 진다.
+              - `_swap` — 다 쓴 새 파일을 제자리에 바꿔 끼운다.
+                - `SwapFailed` — 새 판을 다 썼는데 바꿔 끼우지 못했다 — 읽는 쪽이 오래 쥐고 있다.
+          - `scan_store.write_json` — 새 파일에 다 쓰고 디스크에 내린 뒤 한 번에 바꿔 끼운다(`_swap`) — 반쯤 써진 판은 어디에도 안 선다.
+            - ↑ `_temp_of`
+            - ↑ `_swap`
+          - ↑ `scan_store.SwapFailed`
+        - `scan_words.summary` — 판 끝의 한 줄 — 수와 때만(메일의 글은 안 싣는다).
+      - `Ended` — 한 판의 끝 — 판의 갈래 · 끝 낱말 · 바뀜 · 판 값(판 기록에 싣는다).
+      - `session_back` — 세션이 끊긴 뒤 이번 주기에 두드려도 되나 — (돈다, 끊긴 때, 다음 두드림). 세션 파일이 끊긴 뒤 새로 쓰였거나 다음 두드림 때가 왔거나 `--now` 면 돈다.
+        - ↑ `scan_time.parse`
+        - `session_login.session_file` — 손이 쓰는 세션 파일의 자리 — `MAILBOX_COOKIES`, 없으면 형제 스킬 ep-login 의 받는 손 곁 `places.json` 의 기본 자리. 모르면 None.
+      - `scan_words.waiting_words` — 세션이 끊겨 이번 주기를 안 도는 까닭과 다음 걸음.
+        - ↑ `scan_time.seoul`
+      - `read` — 판 하기 한 번 — 손의 능력을 보고, 「list --since」 없는 옛 손이면 판을 안 하고, 아니면 판을 한다(`sweep`). `since` 는 시간의 상한을 잴 시작이다(`Run`). 내는 것 — (판의 끝, 그 셈).
+        - `hand_probe` — 손이 받는 명령(`list --since` · `serve`) — 손 파일이 바뀌었을 때만 손에 묻고 지금 모습에 적는다.
+          - `scan_hand.has_since` — 「list --since」를 받는 판인가 — 손의 `list --help` 에 그 깃발이 서나로 묻는다(그 깃발이 없는 옛 판의 손이 깔린 PC 도 있다).
+            - `call` — 손 한 번 — 종료 값 · 표준 출력의 줄 · 0 이 아닐 때의 까닭. 표준 오류(손의 경고)는 안 읽는다.
+              - `proc_base.run_python` — 곁의 파이썬 스크립트 한 번 — 창 없이 · UTF-8 로 띄워 출력을 받는다.
+                - `python_argv` — 곁의 파이썬 스크립트를 지금 파이썬으로 부르는 명령줄 — `-X utf8 -I`(UTF-8 · 사용자 자리의 모듈을 안 싣는다).
+                - `utf8_env` — 띄운 파이썬이 출력을 UTF-8 로 내게 하는 환경 — 지금 환경에 `PYTHONIOENCODING` 만 얹는다.
+                - `quiet` — 창 없는 실행(작업 스케줄러의 pythonw)에서 띄운 손 · 손이 띄우는 node 가 콘솔 창을 안 띄우게 하는 `subprocess` 인자 — 창 없는 콘솔을 준다.
+              - `_timed_out` — 시한을 넘긴 손의 답 — 손의 종료 1 과 같게, 까닭은 시한이다.
+                - `Called` — 손 한 번의 답 — 종료 값 · 표준 출력의 줄 · 0 이 아닐 때의 까닭 · 물은 명령.
+              - `_called` — 손의 종료 값 · 표준 출력 → `Called`. 출력을 UTF-8 로 못 풀면 `ShapeError`.
+                - `hand_lines.ShapeError` — 손의 글이 이 파일이 아는 꼴이 아니다 — 메일의 글은 싣지 않고 어느 명령의 몇째 줄인지만 댄다.
+                - ↑ `Called`
+          - `scan_hand.has_serve` — 명령 여럿을 한 프로세스로 받는 판인가(`serve`) — 없는 옛 판의 손이면 명령마다 `call` 로 부른다.
+            - ↑ `call`
+        - `Run` — 한 판의 셈 — 손 부르기 · 받은 줄 · 시간의 상한. 손이 `serve` 를 받으면 판 내내 손 하나에 잇달아 묻고(`H.Served`), 옛 판의 손이면 명령마다 띄운다(`H.call`) — 어느 쪽이든 메일함에 가는 요청과 그 차례는 같다.
+          - `scan_hand.Served` — 손 하나(`mail.py serve`)를 판 내내 띄워 두고 명령을 하나씩 묻는다 — 명령마다 파이썬을 새로 안 띄운다.
+            - `Served._start` — 손 하나를 `serve` 로 띄우고 그 답을 큐로 받는 일꾼을 세운다.
+              - ↑ `proc_base.python_argv`
+              - ↑ `proc_base.utf8_env`
+              - ↑ `proc_base.quiet`
+              - `_read_answers` — 손의 답을 하나씩 큐에 넣는다 — (머리, 몸) · 답 머리가 아닌 줄이 오면 그 줄부터 끝까지의 바이트 · 끝(답이 다 오기 전의 끝 포함)이면 None.
+            - `Served._drop` — 손을 거둔다 — 그 손의 종료 값(거둬서 끝났으면 그 값).
+            - `Served.ask` — 띄워 둔 손에 명령 하나를 묻는다 — 답의 꼴과 뜻은 `call` 과 같다.
+              - ↑ `Served._drop`
+              - ↑ `Served._start`
+              - ↑ `Called`
+              - ↑ `_timed_out`
+              - ↑ `_called`
+              - ↑ `hand_lines.ShapeError`
+            - `Served.close` — 표준 입력을 닫아 손이 스스로 끝나게 한다 — 안 끝나면 거둔다.
+          - ↑ `scan_time.now`
+          - `Run.over_budget` — 한 판의 시간 상한(`RUN_BUDGET_S`)을 넘었나.
+          - `Run.hand` — 손에 명령 하나를 묻고 셈한다 — 세션 없음(종료 3)이면 `SessionLost`.
+            - ↑ `scan_hand.call`
+            - `SessionLost` — 손이 종료 3 을 냈다 — 사내 세션이 없다 · 끊겼다.
+          - `Run.close` — 띄워 둔 손을 거둔다.
+          - `Run.seconds` — 이 셈을 세운 뒤 지난 초 — 판 하기(손 부르기 · 풀기 · 견주기)가 다 든다.
+        - ↑ `Ended`
+        - `sweep` — 판을 골라(전체 · 새 메일) 돌리고 손을 거둔 뒤, 손이 멈춘 까닭을 끝 낱말로 바꾼다.
+          - `wants_full` — 이 판이 메일함 전체를 봐야 하나 — `--full` · 지금 모습이 없다 · 전체 판을 해 본 적이 없다 · 전체 주기(`full_every_of`)가 지났다(`--new` 가 아니면).
+            - ↑ `scan_time.parse`
+            - `full_every_of` — 이 판의 전체 주기(분) — 준 것(`--full-every`), 없으면 걸린 작업의 판이 마지막으로 준 것(`note_full_every`), 그것도 없으면 기본.
+          - `run_full` — 메일함 전체 판 — 폴더 · 규칙을 받고, 이어 볼 상자를 잇고, 상자를 돌고, 덜 봤으면 다 본 상자를 남기고(그 새 메일은 적는다), 다 봤으면 한 모습으로 합쳐 지난 모습과 견주고 새 지금 모습을 짓는다.
+            - `mailbox_frame` — 폴더 목록과 규칙을 손에서 받는다 — 규칙을 못 받으면 지난 모습의 규칙을 그대로 쓴다.
+              - `HandFailed` — 손이 0 · 3 밖의 종료 값을 냈다 — `said` 가 손의 말이다.
+              - `hand_lines.parse_folders` — 폴더 목록(`folders`) → 폴더 경로들 — 끝 줄이 댄 수와 줄 수를 견준다.
+                - `_bad` — 손의 글이 꼴이 아닌 자리 — 어느 명령의 몇째 줄인지와 까닭만 실은 `ShapeError`.
+                  - ↑ `ShapeError`
+              - `hand_lines.parse_rules` — 메일 규칙 목록(`rules`) → [{unid, text}] — 끝 줄이 댄 수와 줄 수를 견준다.
+                - ↑ `_bad`
+              - `Frame` — 전체 판의 틀 — 폴더 목록 · 규칙 · 규칙을 이번에 읽었나 · 볼 상자들.
+            - `resume` — 이어 볼 상자들 — 다 못 본 판이 남긴 다 본 상자. 폴더 목록이 그 사이 바뀌었으면 버리고 처음부터 본다.
+              - `load_pending` — 다 못 본 판의 다 본 상자들 — 없거나 못 읽으면 None(메일함에서 다시 읽으면 되는 이음 자료라 처음부터 본다). 기한(`PENDING_MAX_MIN`)을 넘은 상자 그림은 버린다.
+                - ↑ `scan_store.read_json`
+                - ↑ `scan_store.Unreadable`
+                - ↑ `scan_time.parse`
+            - `walk_boxes` — 다 본 상자(`done`)를 건너 상자마다 끝까지 읽어 `done` 에 더한다 — 판의 시간 상한을 넘으면 남은 상자는 덜 본 자리다.
+              - `scan_diff.box_key` — 상자의 열쇠 — 폴더면 「folder:<경로>」, 아니면 상자 이름.
+              - `sweep_box` — 상자 하나를 끝까지 읽는다 — 끝을 가르는 법은 `references/DESIGN.md` 「상자 하나를 끝까지」. 내는 것 — {mails, complete, why, said, unfilled, read_at, paged — 한 번에 다 못 받은 상자인가(쪽이 찼거나 둘째 쪽에 줄이 왔다)}.
+                - ↑ `scan_time.stamp`
+                - ↑ `scan_time.now`
+                - `hand_lines.parse_list` — 상자 하나의 한 쪽(`list` · `list --folder` · `list --sent` 에 --count · --start) → 메일 머리와 수.
+                  - ↑ `_bad`
+                  - `Listed` — 한 상자의 한 쪽 — 메일 머리 · 끝 줄이 댄 수 · 보낸 분을 못 채운 폴더 메일 수.
+                  - `_sent` — 보낸편지함 줄 → 메일 머리. 받는 분은 손의 목록이 준 첫 사람(들)이다.
+                    - `_date` — 손이 찍은 때 → 쌓는 꼴(초까지). 분까지인 꼴(폴더 줄)은 「:00」 을 붙여 맞춘다.
+                  - `_received` — 받은편지함 · 폴더 줄(`entry_line`) → 메일 머리. 꼴이 아니면 None.
+                    - `_split_place` — 「자리 · 나머지」 → (상자, 폴더 경로, 나머지). 폴더 경로는 아는 폴더 가운데 가장 긴 것부터 맞추고, 없으면 첫 가름에서 끊는다.
+                    - ↑ `_date`
+                    - `_sender` — 손의 보낸 분 칸(`who_sent`) → 이름 · 주소 · 못 채움.
+            - ↑ `SessionLost`
+            - ↑ `scan_time.stamp`
+            - `save_pending` — 다 본 상자들을 이어 볼 파일에 남긴다 — 다음 판이 잇는다.
+              - ↑ `scan_store.write_json`
+            - `scan_diff.Journal` — 정리 스킬의 기록(`rows` · 옛것부터)과 잡아 둔 채인 바꿈(`held`). 묻는 쪽이 그 바뀜이 일어났을 수 있는 때의 처음(`since`)을 준다 — 그 뒤의 기록만 댄다.
+              - `Journal.load` — 정리 스킬의 기록을 읽는다 — 있는데 못 읽으면 `st.Unreadable` 이 그대로 나간다(판이 멈춘다): 잡아 둔 바꿈을 빈 것으로 읽으면 비서가 하는 중인 옮김을 사람이 한 일로 바뀜 기록에 굳힌다.
+                - ↑ `scan_store.read_jsonl`
+                - ↑ `scan_store.read_json`
+                - ↑ `scan_store.Unreadable`
+              - `Journal._within` — `since` 뒤의 기록 — 때를 못 읽은 기록은 남긴다(사람 탓으로 안 돌린다). `since` 가 없으면 다.
+                - ↑ `scan_time.parse`
+              - `Journal._target` — 그 바꿈이 메일을 보낸 자리 — 옮기기는 받은편지함이나 그 폴더, 휴지통으로는 None(목록에서 사라진다).
+              - `Journal._touches` — 정리 기록 한 줄이 그 메일에 닿았나.
+              - `Journal.mail_by` — 메일 한 통의 바뀜(옮겨짐 `to` · 사라짐 `to=None` · 다시 나타남)을 누가 했나.
+                - ↑ `Journal._touches`
+                - ↑ `Journal._within`
+                - ↑ `Journal._target`
+              - `Journal.folder_by` — 폴더 하나의 생김 · 없어짐을 누가 했나.
+                - ↑ `Journal._within`
+              - `Journal.rule_by` — 규칙 하나의 생김 · 바뀜 · 없어짐을 누가 했나.
+                - ↑ `Journal._within`
+            - ↑ `scan_store.home`
+            - `add_new` — 처음 보는 메일을 지금 모습에 더하고 그 바뀜을 낸다 — 아는 메일은 안 건드린다(바뀜은 전체 판의 견주기가 낸다).
+              - ↑ `scan_time.stamp`
+              - ↑ `scan_time.parse`
+              - `scan_diff.new_mail` — 처음 보는 메일 하나 → (지금 모습에 넣을 줄, 바뀜). 사라졌다고 적은 메일이면 「다시 나타남」이다.
+                - ↑ `place`
+                - ↑ `scan_time.parse`
+                - `head` — 바뀜에 실어 두는 메일 머리 — 사라진 뒤에도 읽는 명령이 그 메일을 말할 수 있게.
+                - `opened_before_seen` — 처음 보는 받은 메일이 이미 읽음이고, 지난번 본 때 뒤에 온 메일인가 — 사람이 스캔보다 먼저 연 것이다.
+                  - ↑ `scan_time.mail_time`
+            - `one_picture` — 다 본 상자들을 메일함 한 모습으로 합친다 — 두 상자에 선 메일은 나중에 읽은 상자가 지금 자리다(읽는 사이 옮겨졌다). 내는 것 — (상자마다 읽은 때, 메일 번호마다 메일).
+              - ↑ `scan_diff.box_key`
+            - `compare_picture` — 다 본 메일함을 지난 모습과 견줘 메일 · 폴더 · 규칙의 바뀜을 내고 지금 모습의 메일을 고친다 — 지난 모습이 없으면 바닥만 적는다(첫 판). 내는 것 — (끝 낱말, 바뀜).
+              - ↑ `scan_time.stamp`
+              - ↑ `scan_time.parse`
+              - `scan_diff.compare_folders` — 폴더 목록의 바뀜(생김 · 없어짐)과 바꾼 이를 낸다.
+              - `scan_diff.compare_rules` — 메일 규칙의 바뀜(생김 · 바뀜 · 없어짐)과 바꾼 이를 낸다.
+              - `scan_diff.compare` — 앞 모습(`prev` · 그 판을 보기 시작한 때 `prev_started`)과 이번에 다 본 상자들(`seen` — 메일 번호 → 머리 · `read_at[상자 열쇠]`)을 견준다.
+                - ↑ `new_mail`
+                - ↑ `scan_time.parse`
+                - ↑ `place`
+                - ↑ `head`
+                - ↑ `box_key`
+            - `new_picture` — 다 본 판의 새 지금 모습 — 메일함의 그림(때 · 폴더 · 규칙 · 상자마다 읽은 때) · 이음점 · 다 본 때를 적는다.
+              - ↑ `scan_time.stamp`
+              - ↑ `scan_time.now`
+              - `latest_cursor` — 다 본 메일함에서 다시 잡은 이음점 — 자리를 확인 중이 아닌 메일 가운데 가장 늦은 때(지금보다 뒤면 지금). 때 있는 메일이 없으면 None.
+                - `not_ahead` — 메일의 때 글자를 지금보다 뒤가 아니게 — 앞날의 때를 단 메일 하나가 이음점을 앞질러 보내 그 사이 메일을 놓치지 않게.
+                  - ↑ `scan_time.seoul`
+            - `drop_pending` — 다 본 판이 이어 볼 파일을 걷는다.
+          - `run_new` — 새 메일 판 — 「이 시각 뒤」 쪽을 다 받고, 다 봤나를 가르고, 처음 보는 메일을 더하고, 다 봤으면 이음점을 옮긴다.
+            - `cursor_date` — 「이 시각 뒤」의 시각 — 이음점(가장 늦은 메일의 때)이고, 지금보다 뒤면 지금이다(앞날의 때를 단 메일 하나가 이음점을 앞질러 보내지 않게).
+              - ↑ `scan_time.seoul`
+              - ↑ `scan_time.parse`
+              - ↑ `not_ahead`
+            - `since_pages` — 「이 시각 뒤」 목록을 끝까지(--start 로 이어) 받는다 — 쪽 수의 안전 상한에 닿으면 다 못 본 것이다.
+              - `SincePages` — 「이 시각 뒤」 목록을 끝까지 이어 받은 것 — 메일(번호마다 처음 것) · 쪽마다 댄 총수 · 다 봤나 · 못 내려간 자리 · 가장 늦은 메일.
+              - ↑ `HandFailed`
+              - `hand_lines.parse_since` — 「이 시각 뒤」 목록(`list --since … --start N`) 한 쪽 → 메일 머리 · 끝 줄들이 댄 것. 메일 줄 수를 끝 줄의 차례와 견준다.
+                - `Since` — 「이 시각 뒤」 목록 한 쪽.
+                - ↑ `_bad`
+                - ↑ `_sent`
+                - ↑ `_received`
+            - `saw_all` — 「이 시각 뒤」 목록을 다 봤나 — 손이 다 봤다고 했고, 못 내려간 자리가 없고, 쪽마다 댄 총수가 하나다(받는 사이 목록이 안 바뀌었다).
+            - ↑ `add_new`
+            - ↑ `scan_diff.Journal`
+            - ↑ `scan_store.home`
+            - ↑ `scan_time.mail_time`
+            - ↑ `not_ahead`
+            - ↑ `scan_time.stamp`
+            - `since_short` — 새 메일 판이 덜 본 자리 — 손이 훑는 상한에 닿은 상자마다, 그런 상자 없이 덜 봤으면 받은편지함 하나(목록이 바뀌었나 · 안전 상한).
+              - ↑ `scan_diff.box_key`
+          - ↑ `SessionLost`
+          - `mark_session_lost` — 끊긴 세션을 적는다 — 다음 두드림 때를 두 배씩(상한까지) 늘린다.
+            - ↑ `scan_time.stamp`
+          - ↑ `Ended`
+          - ↑ `HandFailed`
+          - ↑ `hand_lines.ShapeError`
+          - `settle` — 손이 답한 판의 지금 모습 — 세션 기다림을 걷고, 다 본 판이면 본 때를 적는다.
+            - ↑ `scan_time.stamp`
+    - ↑ `scan_store.Unreadable`
+    - `unread` — 판이 기대는 파일을 못 읽어 멈춘다 — 지금 모습 · 바뀜 · 보고는 안 건드리고(빈 것으로 읽어 덮으면 그 기록이 사라진다) 판 기록에만 적는다.
+      - `unread_record` — 못 읽어 멈춘 판의 기록 한 줄 — 손을 안 불렀고 아무것도 안 바꿨다.
+        - ↑ `scan_time.stamp`
+        - ↑ `scan_time.now`
+      - ↑ `scan_store.append`
+      - ↑ `scan_words.summary`
+  - `scan_setup.cmd_register` — 스캔을 작업 스케줄러에 건다 — 손을 확인하고, 작업 정의를 지어(보이기만 · 받나만 묻기도) 건다.
+    - `usable_hand` — 작업에 굳힐 회사 메일 손 — 찾고, 「list --since」 가 있는 판인가를 묻는다.
+      - ↑ `scan_hand.find_hand`
+      - ↑ `scan_hand.HandMissing`
+      - ↑ `scan_hand.has_since`
+    - `scan_task.task_xml` — 등록할 작업 정의(XML) — 주기 · 손 · 입구를 채운다.
+      - `task_base.user_id` — 작업을 돌릴 사용자 — 「도메인\이름」(도메인이 없으면 이름).
+      - `task_base.windowless_python` — 창 없는 파이썬(pythonw.exe) — 지금 도는 파이썬 곁. 없으면 지금 파이썬(창이 뜬다 — 부르는 쪽이 알린다).
+      - `run_arguments` — 작업이 부르는 명령의 인자 — 틀(`RUN_ARGUMENTS`)에 입구 · 손 · 전체 주기를 채운다.
+    - ↑ `scan_store.scan_dir`
+    - ↑ `task_base.windowless_python`
+    - `show_register_plan` — 걸지 않고 보이기(`--dry-run`) — 걸면 무엇을 얼마마다 읽나 · 작업 스케줄러에 거는 명령 · 작업 정의.
+      - `task_base.shown` — 사람에게 보일 명령줄 — 빈칸이 든 인자는 따옴표에 싼다.
+      - `task_base.register_command` — 정의 파일로 작업을 거는 schtasks 명령줄.
+    - `task_base.write_xml` — schtasks /XML 이 받는 꼴로 쓴다 — UTF-16(BOM).
+    - `validate_task` — 작업 스케줄러가 지은 정의를 받나만 묻는다(등록 안 함) — 받으면 0, 거절하면 그 말과 1.
+      - `task_base.ask` — 작업 스케줄러(schtasks) · PowerShell 을 한 번 띄워 답을 받는다 — 출력은 물을 때 `decode` 로 푼다.
+        - `Answer` — 작업 스케줄러 · PowerShell 한 번의 답 — 종료 값과 받은 그대로의 표준 출력 · 표준 오류. 글자(`out` · `err`)는 읽는 쪽이 물을 때만 푼다 — 종료 값만 보는 쪽이 못 푸는 출력에 넘어지지 않게.
+          - `Answer.out` — 표준 출력을 푼 글자.
+            - `decode` — 작업 스케줄러 · PowerShell 의 출력 — UTF-16(BOM · 0 바이트)이나 UTF-8, 아니면 콘솔의 OEM 코드 페이지(한글 윈도는 949)다.
+          - `Answer.err` — 표준 오류를 푼 글자.
+            - ↑ `decode`
+      - `task_base.validate_command` — 작업 스케줄러가 정의를 받나만 묻는 PowerShell 명령줄(등록 안 함) — 정의 파일의 자리는 환경변수 `env` 로 받는다.
+      - `task_base.validate_env` — 정의를 받나 묻는 PowerShell 의 환경 — 지금 환경에 정의 파일의 자리를 `env` 라는 이름으로 얹는다.
+      - `task_base.accepted` — 정의를 받나 물은 답(`validate_command`)이 「받는다」인가 — 종료 0 이고 끝 글이 `VALIDATE_OK` 다.
+    - ↑ `task_base.ask`
+    - ↑ `task_base.register_command`
+  - `scan_setup.cmd_status` — 걸린 작업 · 마지막 판을 보인다 — 작업 스케줄러에 묻고(`--dry-run` 이면 안 묻는다) 지금 모습을 읽은 뒤 그 줄들을 찍는다.
+    - `status_json` — 걸린 작업 · 마지막 판을 프로그램이 읽는 JSON 한 줄로 낸다(`status --json`) — 작업 스케줄러에 묻고(`--dry-run` 이면 안 묻는다) 지금 모습을 읽어 칸을 짓는다.
+      - `asked_task` — 작업 스케줄러에 걸린 작업을 묻는다 — (답 · 안 물었으면 None, 걸렸나 · 안 물었으면 None, 걸렸으면 그 정의). 사람의 줄과 JSON 이 이 한 자리로 가른다.
+        - ↑ `task_base.ask`
+        - `task_base.query_command` — 걸린 작업의 정의를 묻는 schtasks 명령줄.
+        - `task_base.read_definition` — 작업 스케줄러가 돌려준 정의(XML)에서 사람에게 말할 것 — 간격 · 켜짐 · 한 번에 하나 · 부르는 인자.
+      - `read_state` — 지금 모습 — (읽은 것 · 없으면 None, 못 읽었으면 그 말).
+        - ↑ `scan_store.load_state`
+        - ↑ `scan_store.scan_dir`
+        - ↑ `scan_store.Unreadable`
+      - `status_record` — `status --json` 의 한 장 — 꼴 번호 · 사용자 폴더 · 스캔 자리 · 걸린 작업 · 마지막 판.
+        - ↑ `scan_store.home`
+        - ↑ `scan_store.scan_dir`
+        - `task_record` — 걸린 작업의 칸 — 걸렸나(안 물었으면 null) · 걸렸으면 주기(분) · 손 · 부르는 프로그램과 인자 그대로 · 이 스캔의 입구를 부르나. 인자가 거는 꼴이 아니면(손으로 고쳤다) 거기서 읽는 칸은 null 이다.
+          - `scan_task.arguments_parts` — 걸린 작업의 인자를 틀의 칸(입구 `scan_py` · 손 `hand` · 전체 주기 `full_every`)으로 되읽는다 — 그 틀로 지은 글이 아니면 None.
+            - `template_pattern` — `str.format` 틀을 그 틀로 지은 글을 되읽는 정규식으로 — 글자는 그대로, 칸마다 `forms` 의 꼴을 이름 붙은 묶음으로 잡는다.
+          - `scan_task.interval_minutes` — 작업 정의의 간격(ISO 8601 기간)을 분으로 — 기간의 꼴이 아니거나 분으로 안 떨어지면 None.
+          - `same_path` — 두 경로가 같은 자리인가 — 윈도의 대소문자 · 사이 글자(`/` · `\`) · `..` 를 고른 뒤 견준다.
+        - `last_run_record` — 마지막 판의 칸 — 시작 · 끝(UTC ISO 8601) · 끝 낱말 · 그 판의 사내 세션 답(`RUN_SESSION_ANSWER` — 판 맺기와 같은 표). 판이 없거나 지금 모습을 못 읽었으면 None.
+    - ↑ `asked_task`
+    - `task_lines` — 걸린 작업의 줄 — 안 물었으면(`done` 이 None) 물을 명령, 없거나 못 읽었으면 그 답, 걸렸으면 정의(`d`)의 간격 · 켜짐 · 부르는 것.
+      - ↑ `task_base.shown`
+      - ↑ `task_base.query_command`
+    - ↑ `read_state`
+    - `last_run_lines` — 마지막 판의 줄 — 판의 때 · 갈래 · 끝, 판이 없으면 못 읽은 말이나 「스캔한 적이 없다」.
+      - ↑ `scan_time.seoul`
+      - ↑ `scan_time.parse`
+  - `scan_setup.cmd_unregister` — 작업을 지운다 — 쌓인 스캔 파일은 그대로다.
+    - ↑ `task_base.shown`
+    - `task_base.delete_command` — 작업을 지우는 schtasks 명령줄.
+    - ↑ `task_base.ask`
+<!-- /drawn:piece-map -->
 
 ## 흐름
 
-### 스캔 한 판 — `scan.py run`
+### 스캔 한 판 — `scan.py run` → `scan_round`
 
 ```
-작업 스케줄러 ─▶ scan.py run ─▶ 잠금(scan_store.Lock) ─▶ 새 메일 판 | 메일함 전체 판(scan_hand 로 상자마다 끝까지) ─▶ scan_diff
-   ─▶ 판 끝: scan_brief.after_run(정한 시각의 보고 — 아래) ─▶ events.jsonl · state.json · runs.jsonl
+작업 스케줄러 ─▶ scan.py run ─▶ scan_round: 잠금(scan_store.Lock) ─▶ 새 메일 판 | 메일함 전체 판(scan_hand 로 상자마다 끝까지 ·
+   hand_lines 로 풀기) ─▶ scan_diff ─▶ 판 맺기 ─▶ events.jsonl · state.json · runs.jsonl
 ```
 
-판 끝의 손이 고친 그날의 칸은 지금 모습과 함께 한 번에 남는다. 잠금을 잃은 판은 판 끝의 손을 부르지 않는다.
-
-- **한 번에 하나** — 잠금을 못 쥐면 그 주기를 건너뛰고 판 기록에 적는다. 잠 · 꺼짐이 남긴 잠금은 그 판의 시각으로 푼다(아래 「잠금」)
+- **한 번에 하나** — 잠금을 못 쥐면 그 주기를 건너뛰고 판 기록에 적는다. 잠 · 꺼짐이 남긴 잠금은 그 판의 시각으로 푼다(아래 「잠금」).
+  다른 프로그램이 청한 판(`run --wait`)은 건너뛰지 않고 앞 판이 끝나기를 그 시한 안에서 기다렸다 돈다(아래 「잠금」)
 - **덜 본 판은 견주지 않는다** — 세션이 끊기거나 시간 상한 · 손 오류로 상자를 다 못 본 판은 바뀜을 안 낸다. 다 본 상자는 `pending.json`
   에 남겨 다음 판이 잇는다. 시간 상한 · 상자 하나의 손 오류로 덜 본 판은 다 본 상자에 처음 보는 메일을 새 메일로 적고(첫 판이
   아니면), 세션이 끊긴 판은 새 메일도 안 적는다. 폴더 목록이 바뀐 판은 이어 볼 상자를 버리고 처음부터 본다. 닿지 못한 상자가 있으면 이음점을 안 옮긴다.
   잇는 기한(`PENDING_MAX_MIN`)을 넘은 상자 그림은 버린다 — 그래서 메일함 전체 주기는 그 기한보다 짧아야 걸린다. 같거나 길면 큰 메일함은
   덜 본 상자가 늘 버려져 끝내 다 못 본다
 - **세션이 끊기면 멈춘다** — 그 때를 적고, 그 뒤로는 간격을 두 배씩 늘려(상한 `BACKOFF_MAX_MIN`) 두드린다. 세션 파일이 끊긴 뒤 새로
-  쓰였으면(대화에서 EP 로그인을 했다) 다음 주기에 바로 돈다. 스캔 판은 EP 로그인을 하지 않는다 — 사용자가 켠 PC 의 그날 첫 보고 시각만
-  한 번 한다(아래 「정한 시각의 보고」)
+  쓰였으면(대화에서 EP 로그인을 했다) 다음 주기에 바로 돈다. 스캔 판은 EP 로그인을 하지 않는다 — 그 로그인은 사람이
+  대화에서 하거나, 정한 시각의 보고가 제 앞에서 한다
 - **손이 없거나 「list --since」 없는 옛 판이면** 그렇다고 적고 멈춘다. 손의 글 꼴이 바뀌었으면 시끄럽게 멈추고, 메일의 글은 안 적는다
 - **새 메일 판은 아는 메일을 안 건드린다** — 「이 시각 뒤」 목록을 `--start` 로 끝까지 이어 받아 처음 보는 메일만 더한다. 읽음 · 자리의
   바뀜은 메일함 전체를 본 판만 낸다. 그래서 판 기록의 받은편지함 셈(`inbox_count`)도 전체를 다 본 판에만 싣는다
@@ -88,17 +474,12 @@ claude 를 사람 없이 띄우고, 보고 창에서 고르신 시각 · 「자�
   넘기면 그 손을 거두고 그 상자만 덜 본 것으로 적으며, 뒤 상자는 새 손이 읽는다. `serve` 없는 옛 판의 손이면 명령마다 띄운다
 - **상자 하나를 끝까지** — 빈 쪽이 와야 끝이다. 덜 찬 쪽을 끝으로 읽지 않는다. 새 줄 없이 이미 받은 줄만 온 쪽은, 마지막에 받은 그 한
   줄뿐이면 끝이고(그 사이 새 메일이 와 한 칸 밀렸다) 그 밖이면 서버가 자리를 안 따른 답이라 끝으로 읽지 않는다(`repeated`)
-- **세션을 기다리는 주기에도** 판 끝의 손은 돈다 — 자리 밖에서 보기 · 창의 고름 · 누름 거두기와, 보고 때면 사내 세션 한 번
-  살펴보기(마감까지). 잠금을 쥔 판만 한다 — 잠금을 잃은 판이 띄우면
-  그날 칸을 못 적어 다시 띄운다
 - **남기는 것** — 지금 모습 `state.json` 은 새 파일에 다 쓴 뒤 바꿔 끼운다. 메일 머리(번호 · 때 · 자리 · 보낸 분 · 받는 분 · 제목 · 안
   읽음 · 첨부 수)만 들고 본문은 안 든다. 오래된 새 메일 · 바뀜 · 판 기록은 하루에 한 번 접는다
 - **「없다」와 「못 읽었다」는 다른 답이다** — 스캔 자리의 파일은 한 자리(`scan_store.read_json`)로 읽고, 답은 셋이다: 없다 · 읽었다 · 있는데
-  못 읽었다. 같은 파일을 여러 프로세스가 쓴다(스캔 판 · 창 곁의 손이 부르는 `scan.py brief` · 대화) — 윈도에서는 남이 바꿔 끼우는 그 순간의
-  읽기가 지므로, 쓰는 쪽이 기다리는 만큼 기다려 다시 읽는다. 그래도 못 읽은 파일은 빈 것으로 읽어 그 위에 쓰지 않는다 — 한 칸만 바꿔 쓰는
-  쪽(보고 시각표의 `away`, 시각표를 거는 `save`)은 쓰지 않고 그렇다고 말하고(글이 깨진 시각표는 `save` 가 새로 쓴다 · 창의 고름을 받았다는
-  `picked` 표지는 못 읽으면 안 적고 지나간다), 판은 지금 모습 · 정리 스킬의 잡아 둔 바꿈을 못 읽으면
-  아무것도 안 쓰고 판 기록에만 적는다(`unreadable`). 글이 깨진 지금 모습만 `.broken` 으로 옮겨 두고 메일함에서 다시 짓는다. 새 파일의 이름은 쓰는 쪽마다 따로다 —
+  못 읽었다. 같은 파일을 여러 프로세스가 쓴다(스캔 판 · 대화) — 윈도에서는 남이 바꿔 끼우는 그 순간의
+  읽기가 지므로, 쓰는 쪽이 기다리는 만큼 기다려 다시 읽는다. 그래도 못 읽은 파일은 빈 것으로 읽어 그 위에 쓰지 않는다 — 판은 지금 모습 ·
+  정리 스킬의 잡아 둔 바꿈을 못 읽으면 아무것도 안 쓰고 판 기록에만 적는다(`unreadable`). 글이 깨진 지금 모습만 `.broken` 으로 옮겨 두고 메일함에서 다시 짓는다. 새 파일의 이름은 쓰는 쪽마다 따로다 —
   한 이름이면 두 프로세스가 서로의 새 파일을 비우고 옮긴다
 
 #### 바뀜을 견주는 법 — `scan_diff.py`
@@ -118,241 +499,6 @@ claude 를 사람 없이 띄우고, 보고 창에서 고르신 시각 · 「자�
   수 있다 — 그 상자가 이번 판에서 가장 먼저 읽은 상자가 아니면 사라짐을 다음 판으로 미뤄 가른다(「자리를 확인 중」). 가장 먼저 읽은
   상자라도 한 번에 다 못 받았으면(쪽이 찼거나 둘째 쪽에 줄이 왔다) 미룬다 — 쪽을 받는 사이 앞쪽 메일이 빠지면 뒤 쪽의 첫 줄이 한 칸 당겨져 안 보인다
 
-### 정한 시각의 보고
-
-판 끝의 손 `scan_brief.after_run` 이 이 차례로 엮는다 — 자리 밖에서 보기의 메일을 먼저 보내 그 끝이 이 판에 띄우는 보고의 부탁 글에 실리게
-하고, 창에서 고르신 것을 받고, 띄울 때면 띄우고, 「일정에 넣기」 누름은 몇 분이 들 수 있어 맨 뒤에 거둔다.
-
-```
-after_run ─▶ away_mail.mail_step ─▶ brief_step: window_choices(보고 창 이음) → brief_schedule(칸 · 띄울 때인가) → session_login.look · sign_in
-   → claude_launch.launch ─▶ window_link.window_presses
-```
-
-#### 시각표와 칸 · 언제 띄우나
-
-**시각표와 칸** — 사용자가 정한 보고 시각(하나 이상 · `brief.json` 의 `times`)마다 그 시각부터 끝까지가 그 시각의 칸이다. 끝은 다음 시각 ·
-그 시각에서 `BRIEF_WAIT_MIN` 분 뒤 · 그날 자정 가운데 이른 것이다 — 사용자에게 시각마다 마감을 따로 묻지 않고 시각표에서 끌어낸다. 상한을
-두는 까닭은 아침 보고가 오후에 서지 않고 사내 인증을 하루 내내 두드리지 않게다. 칸의 길이가 `BRIEF_ROOM_MIN` 분이 안 되는
-시각이 있으면 거는 명령이 거절한다 — 그 칸에는 스캔 판이 안 돌아 날마다 조용히 안 뜬다. 시각 하나를 쓰던 옛 설정(꼴 1 · `at`)과 옛 그날
-칸(`tries` · `launched`)은 다시 안 걸어도 첫 시각의 것으로 읽는다.
-
-**언제 띄우나** — 판이 끝날 때 다 서면 한 번 살펴본다: 보고를 걸었다 · 서울 시각이 어느 칸 안이다 · 그 칸의 보고 글이 아직 없다(덮는
-첫때 — 앞 칸의 끝, 첫 칸은 0시 — 부터 그 칸의 끝 전에 이름의 때가 든 `BRIEF_MADE` · 대화에서 지었어도 있다. 칸이 띄운 보고가 남긴 글은 그
-칸의 것이다 — 칸 끝 무렵 띄운 보고는 글을 칸이 끝난 뒤에 써, 그 글로 다음 칸이 안 띄우면 안 된다) · 그 칸에서 아직 안 띄웠다 ·
-스캔이 띄운 보고가 도는 중이 아니다(`BRIEF_LOCK_FILE` — 띄운 때로 푼다). 살펴보기는 사내 세션이 살아 있나다 — 살아 있으면 띄우고 그 칸은
-끝이고, 없으면 그 때를 적고 다음 판에 다시 본다. 수로 끊지 않고 칸의 끝으로 끊는다 — 사람은 어느 때에든 로그인하고, 그 뒤 첫 판이 띄워야
-그 보고가 선다. 칸이 끝나면 그 시각은 그날 건너뛰고 status 가 시각마다 살펴본 때와 다음 걸음을 말한다. 그날 칸의 기록은 시각마다 따로
-선다 — 시각표를 그날 바꿔도 띄운 시각은 또 안 뜬다. 그날은 서울 날짜로 새로 보고, 지난날 보고 없이 지나간 시각은 새 날의 `before` 에
-한 줄씩 남아 status 와 그날 첫 보고의 부탁 글이 말한다. 띄운 보고의 부탁 글은 그날 마지막으로 보고 글을 남긴 칸 뒤에 건너뛴 시각을 싣는다(지난날의 줄은 그날 아직 보고가 없을 때만). 띄웠는데 글 없이 끝난
-칸(아래 「끝났나」로 끝났는데 그 칸에 보고 글이 하나도 없다 — 자리 밖에서 보기가 보낼 글을 고르는 셈과 같다)과 못 띄운 칸도 보고 없이 지나간 시각이다 — 그렇다는 줄로 같은
-자리에 선다. 그 칸을 다시 띄우지는 않는다(그날 그 시각은 한 번 띄운다).
-
-- **걸기 전에 이미 지난 칸은 건너뛴 것이 아니다** — 시각표를 건 때(`set`)보다 앞에 끝난 칸은 그날 「이미 지난 시각이라 내일부터 뜬다」로 말하고,
-  건너뛴 보고의 줄(status · 다음 보고의 부탁 글)에 안 넣는다
-- **status 는 약속하지 않는 것을 약속하지 않는다** — 스캔 작업이 작업 스케줄러에 없으면 맨 위에 그렇다고 대고, 오지 않을 시각마다 「안 뜬다」로
-  말한다. 앞 칸의 끝 뒤 · 이 칸의 시작 전에 대화에서 지은 보고 글이 이 칸을 대신하면 「○○:○○에 지은 보고 글이 이 시각의 보고를 대신한다 — 이
-  시각에는 안 띄운다」로 말한다(방금 청하신 보고를 거듭 짓지 않는다)
-
-#### 사내 세션과 스스로 로그인
-
-- **스스로 로그인은 사용자가 켠 PC 의 그날 첫 시각에서만, 하루 한 번 한다** — 켜지 않은 PC 는 세션이 설 때까지 기다리기만 한다. 켠 PC 는
-  첫 시각의 칸에서 띄우기 앞의 첫 판이 형제 스킬 ep-login 의 입구를 사람 없는 꼴(`LOGIN_ARGS`)로 한 번 부르고, 서면 그 판에 띄운다. 뒤
-  시각의 칸은 세션이 없어도 입구를 안 부르고 창도 안 연다 — 낮의 사람 없는 로그인은 사람이 일하던 EP 세션을 끊는다. 첫 칸이 보고 없이
-  지나간 날도 같다. 세션이 살았어도 부른다 — 포트 창
-  세션은 PC 를 새로 켠 뒤에도 살아 있을 수 있고, 평소 Edge 로그인(로그온마다 한 번 · DRM 문서가 기대는 것)은 입구가 든다. 입력 없이 넘는
-  통합 인증으로만 선다 — 아이디 · 비밀번호를 어디에도 두지 않고, 사람이 쳐야 하는 자리(VDI · 통합 인증이 안 선 화면)에서는 입구가 창을
-  띄우거나 기다리지 않고 끝난다. 하루 한 번인 까닭 — 사내 SSO 는 한 사람의 메일 세션을 하나만 살려 둬, 판마다 되풀이하면 다른 자리에서
-  연 사람의 메일을 판마다 끊는다. 못 세운 날은 다시 안 부르고 기다린다. 손이 세션을 못 살펴본 판(손 오류)은 입구를 안 부르고 그날의 한 번도 안 쓴다. 띄운 ep-login 창은 그대로 둔다 — 보고 창이 그 Edge 의 새 탭으로
-  뜨고, 사람이 그 창에서 메일을 이어 쓰면 두 세션이 서로를 끊지 않는다. 켜는 것이 선택인 까닭 — 그 창은 디버깅 포트를 연 Edge 라 그 PC 의
-  다른 앱과 부딪힐 수 있고, 로그인하는 순간 다른 자리에서 열어 둔 메일이 끊긴다
-- **살펴보기는 로그인하지 않는다** — 살펴보기는 그 판이 손에서 이미 받은 답을 쓴다(메일함까지 닿았다 → 살아 있다 · 손이 세션 없음(종료 3)을
-  냈다 → 없다). 답이 없는 판(세션이 끊겨 기다리는 주기 · 손 오류 · 손의 글 꼴)만 손의 `session` 한 번을 부른다 — 그 명령은 있는 세션
-  파일로 묻고, 서버가 거절하면 사람의 Edge 에 이미 선 세션을 받아 올 뿐 로그인 화면 · 창 · 탭을 열지 않는다(손 `mail.py` 머리말 「세션」 ·
-  스킬 ep-login 의 `edge_session.js` 머리말). 그 부름은 그 칸의 마지막 살펴보기에서 `BRIEF_TRY_GAP_MIN` 분이 지난 판만 한다 — 작업이 더 자주
-  깨워도 SSO 를 촘촘히 안 두드리고, 칸 밖에서는 안 부른다. 판이 손에서 받은 답은 틈과 상관없이 쓴다 — 세션 파일이 끊긴 뒤 새로 쓰여(대화의
-  EP 로그인 · 다른 사내 앱 스킬이 새로 받음) 스캔이 바로 돈 판이 살아 있음을 보면 그 판에 띄운다
-
-#### 띄운 claude
-
-- **띄운 claude 는 읽는 명령과 업무 파일의 쓰는 손만 연다** — 권한 방식 dontAsk(허용 목록 밖은 묻지 않고 막는다) · 기본 도구는
-  `CLAUDE_TOOLS` 뿐(파일을 쓰는 도구가 없다) · MCP 없음. 열린 명령은 손의 읽는 명령(`MAIL_READS` · `CALENDAR_READS` · `MEETING_READS`) · 스캔의 읽는 명령 ·
-  보고 창(사용자 폴더에 짓고 띄워 둔다) · 창의 표시를 거두는 손(뒤 인자 없이) · 업무 파악 스킬(`WORK_SKILL`)의 쓰는 손(`WORK_WRITER` — 업무 파일 하나만 쓰고 앞 판의 절이 빠진
-  글은 안 쓴다)이고, 그 밖의 명령 · EP 로그인 · 문서함 스킬은 열지 않는다. 부탁 글은 창의 표시를 먼저 거두고, 업무 파악을 한 뒤, 보고를 지으라고 한다. 사용자 설정의 allow 가
-  함께 실려도 바꾸는 · 내보내는 명령은 `BRIEF_DENY` 가 막는다. 일정 손의 미리 보기(`preview`)는 일정을 안 바꾸는 읽기라 연다 — 보고가 「일정에
-  없는 약속」 카드에 그 판의 값과 열쇠를 싣는다. 넣기(`add`) · 고치기 · 지우기와 회의실 손의 넣기 · 고치기 · 취소 · 설정은 막힌 채다 — 일정에
-  넣는 것은 사람이 카드를 누른 뒤 코드가 그 열쇠로만 한다(아래 「보고 창의 일정에 넣기」)
-- **열린 명령의 인자 칸(끝의 「 *」)에 무엇이 와도 경계가 선다** — 보고 창 손은 `--dir` 를 두 번 안 받고(사용자 폴더 밖에 못 쓴다), 손의
-  읽는 명령이 파일을 쓰는 깃발은 `BRIEF_DENY` 가 막는다. 경로는 Git Bash 와 파이썬이 함께 읽는 「C:/…」 꼴로 따옴표에 싼다
-- **막힘 하나가 판 전체를 멈추지 않게 부탁 글이 두 가지를 댄다** — Claude Code 는 한 부름의 명령을 `;` · `&&` · `|` 로 갈라 하나하나를 규칙에
-  대고, 어느 규칙에도 안 맞고 읽기 전용으로도 안 읽히는 조각이 하나라도 있으면 그 부름을 통째로 막는다. `echo "EXIT=$?"` 처럼 변수를 펴는
-  조각은 읽기 전용으로 안 읽힌다. 막힘의 답은 「Permission to use Bash has been denied …」라 모델이 Bash 가 꺼졌다고 읽고 거기서 그칠 수
-  있다 — 첫 Bash 부름이 그렇게 막히면 보고 없이 끝난다. 그래서 부탁 글이 열린 꼴 곁에 둘을 적는다: 종료 값은 도구의 결과가 대니 덧붙이지
-  않는다 · 그 답은 그 명령 글 하나가 꼴과 달랐다는 뜻이니 덧붙인 것을 걷고 다시 부른다. 열린 꼴을 늘려 덧붙임을 받지 않는다 — 열린 명령은
-  하는 일로 정하고, 같은 일을 다르게 쓴 글을 따라 늘리지 않는다
-- **띄우고 기다리지 않는다** — 창 없는 콘솔 · 새 프로세스 무리로 띄우고 판은 바로 끝난다. 작업 스케줄러의 실행은 job 안이라 그 job 을
-  벗어나는 띄우기는 거절된다 — 그대로 띄워도 작업의 판이 끝난 뒤 살고, 작업은 그 판이 끝나면 「준비」로 돌아가 다음 주기를 막지 않는다.
-  출력은 사용자 폴더에만 남는다
-- **띄우는 꼴** — `--settings`(권한 파일 `BRIEF_SETTINGS_FILE`) · `--permission-mode dontAsk` · `--tools` · `--strict-mcp-config` ·
-  `--no-session-persistence` · 스킬 폴더마다 `--add-dir`. 작업 자리는 사용자 폴더이고, 부탁 글은 `BRIEF_PROMPT_FILE` 을 표준 입력으로 준다.
-  환경은 겹친 세션의 표지(`NESTED_ENV`)를 걷고, 루프백 프록시를 지나면 보고의 표 머리를 싣는다(`child_env`)
-- **끝났나** — 다음 칸이 다시 띄웠거나(출력 파일 `BRIEF_LOG_FILE` 은 띄울 때마다 새로 쓴다) · 띄운 프로세스가 없거나 · 띄운 때에서
-  `BRIEF_LOCK_STALE_S` 가 지났으면 그 보고는 끝났다(`run_over`). 프로세스 번호가 없는 옛 기록만 출력 파일에 글이 섰나로 본다 — `claude -p` 는
-  다 끝난 뒤에 답을 낸다
-
-### 보고 창 이음
-
-보고 창은 스킬 daily-brief 의 것이고, 시각표와 「자리 밖에서 보기」의 주인은 이 스킬이다. 창 곁의 손과 판, 두 길이 같은
-자(`take_window_times` · `apply_away`)를 부른다. 이 스킬에서 일일 보고의 창 손을 부르는 자리는 `window_link.py` 하나다.
-
-- **보고 창에서 고르신 시각은 창 곁의 손이 바로 걸고, 판이 뒷받침한다** — 일일 보고 창의 「보고 맞추기」가 고른 시각은 그 창(`file://` 페이지)의
-  localStorage 에만 남는다. 창 곁의 손이 살아 있으면 그 손이 고름을 거둬 `scan.py brief --window-times … --window-base … --chosen-at` 으로 곧
-  건다 — 판이 창에서 받을 때와 같은 한 자리(`take_window_times`)다. 판도 판마다 받는다 — 손이 살았나는 안 본다(받은 고름은 시각표 파일의 `picked` 로 한 번만 건다): 보고가
-  걸려 있고 로그인 Edge 의 디버깅 포트가 받으면(안 받으면 손을 안 띄운다) 판마다 일일 보고의 거두는 손을 `ticks.py --times` 로 불러 이 PC 의 디버깅 포트로 열린 보고 창에서 읽고(열린 창이 없으면 탭을
-  안 연다), 거는 명령과 같은 자(`times_given` · 틈의 셈)로 재 시각표에 건 뒤 받았나 · 까닭을 `--times-done` 으로 그 창에 돌려 적는다. 받는
-  것은 시각과 「자리 밖에서 보기」뿐이다 — 보고를 걸고 내리기 · 스스로 로그인 · 띄울 claude 는 대화에서만 바뀐다. **나중의 말씀이 이긴다** — 창에서 고른 때가
-  시각표를 건 때(`brief.json` 의 `set`)보다 앞서거나 같으면(그 사이 대화에서 바꾸셨다 · 고른 때를 못 읽은 것도) 안 걸고 그렇다고 적는다. 판마다 지금 걸린 시각표와 건 때 · 본 때를
-  그 창에 적는다(일일 보고의 `state.state_of` · 손이 파일에서 끌어낸다). 창의 고름은 보던 시각에서 더하고 빼신 것으로 지금 걸린 시각표 위에
-  얹는다(`apply_window`) — 창이 보여 드리지 않은 시각은 안 뺀다. 틈을 모자라게 하는 더하신 시각은 하나씩(붙은 둘이 다 새것이면 늦은 쪽) 빼고
-  나머지를 걸며(모자란 틈이 더하신 시각 탓이 아니면 빼신 것까지 아무것도 안 건다), 걸지 않은 시각을 다 까닭과 함께 · 건 것을 사실대로 · 지금 걸린 시각을 댄다(거는 명령의 거절도 지금 걸린 것을 댄다). 시각표를
-  걸 때 규칙의 수(`room_min` · `wait_min`)를 그 파일에 함께 적어, 창이 더하실 시각을 같은 수로 바로 잰다
-- **보고 창의 「자리 밖에서 보기」도 같은 물음으로 받는다** — 판이 시각을 묻는 그 손의 한 번(`ticks.py --times`)이 고르신 켬 · 끔과 고른 때도
-  내고, 판은 대화의 명령과 같은 한 자리(`apply_away`)로 건 뒤 `--away-done` 으로 그 창에 돌려 적는다(`window_away`). 창 곁의 손이 살아 있으면
-  그 손이 같은 일을 `scan.py brief --away … --chosen-at` 으로 바로 하고, 판도 판마다 받는다 — 같은 고름을 둘이 함께 봐도 고른 때가
-  같으면 이미 받은 것으로 지나간다. 나중의 말씀이 이긴다 — 고른 때가 걸어 둔 고른 때(`away.chosen`)보다 앞이면 안 건다
-- **보고 창의 「일정에 넣기」는 판이 뒷받침한다** — 누름은 창 곁의 손(일일 보고가 창을 열 때 띄운다)이 바로 거둔다. 그 손이 없는 날(PC 를
-  다시 켰다 · 손이 죽었다)에도 누름이 버려지지 않게 판마다 — 보고를 걸었든 안 걸었든 — 일일 보고의 넣는 손을 `ticks.py --presses` 로 불러
-  열린 보고 창의 누름을 같은 코드로 맺고 끝을 그 창에 적는다(`window_presses`). 판단이 없는 일이라 모델을 띄우지 않는다. 한 누름은 한 번만 —
-  창 곁의 손이 먼저 넣은 누름은 그 손의 기록으로 지나간다(일일 보고의 설계 「일정에 넣기」). 사내 로그인이 끊겨 남은 누름은 판마다 다시 해
-  본다 — 창 곁의 손의 다시 해 보는 사이를 안 기다려, 세션이 살아난 뒤의 첫 판이 넣는다. 그 손에 주는 시간은 `BRIEF_PRESSES_WITHIN_S` 이고
-  그 안에 못 끝낼 넣기는 다음 판에 둔다 — 넣기 도중에 끊으면 들었는지 모르는 끝이 남는다. 손을 띄울 창(일일 보고의 `hand_wanted`)이 열려 있는데 창 곁의 손이 없으면 그
-  넣는 손이 다시 띄운다
-- **대화에서 바꾸면 열린 창에 바로 알린다** — `brief --at` · `brief --off` · `register --brief-at` · `register --brief-off` · 대화의 `brief --away`(고른 때 없이)가 끝나면 디버깅 포트가 받을 때 일일 보고의
-  손(`ticks.py --sync`)으로 열린 보고 창에 지금 모습을 적는다(`tell_window`) — 창은 다음 스캔을 기다리지 않는다. 걸 때 작업 스케줄러에 스캔이
-  없으면 끝 줄이 그렇다고 대고 거는 길을 댄다. 다음 보고를 기다리지 않는 까닭 — 아침에
-  더하신 13:00 은 13:00 전에 보고가 없어 그날 안 선다
-
-### 자리 밖에서 보기
-
-켜 둔 PC 에서 사람 없이 띄운 보고가 남긴 보고 글을 칸마다 한 통 본인 메일로 보낸다(`away_mail.py`). 메일 한 장은 일일 보고의 창 손이
-짓고(`window.py --sheet`), 보내는 것은 보내는 손 `scan_mail.py` 다.
-
-- **자리 밖에서 보기 — 켜기는 본인 주소를 받는 것까지다** — 켤 때 형제 스킬 company-directory 의 「나」(`DIRECTORY_ME`)를 한 번 불러 그
-  사람 파일의 주소 하나를 시각표 파일의 `away.address` 에 적는다. 보낼 때 그 주소를 받는 사람과 보내는 사람 둘 다로 쓴다 — 창 · 보고 글 ·
-  모델이 주소를 줄 칸이 아예 없다(보내는 손 `scan_mail.py` 는 받는 사람 인자가 없고 그 파일에서만 읽는다). 주소를 못 받으면(사내 로그인이
-  끊겼다 · 주소록이 한 사람을 안 냈다) 켜지 않고 까닭을 그 자리에 돌려 적는다. 고른 것이 곧 동의라 따로 묻지 않는다. 보고가 안 걸렸으면 켜지 않는다. 시각표를 다시 걸어도
-  `away` 는 그대로 실린다(`save`) — 보고를 내리면 함께 내린다
-- **자리 밖에서 보기 — 칸마다 한 통, 두 번은 안 보낸다** — 판 끝의 맨 앞(`mail_step` — 그 끝이 그 판에 띄우는 보고의 부탁 글에 실리게)에서,
-  켠 PC 에서만, 켠 뒤에 띄운 칸마다 그 보고가 끝나(위 「끝났나」) 남긴 보고 글 한 장 —
-  띄운 때부터 그 보고가 끝난 때까지 이름의 때가 든 글 가운데 마지막 — 을 보고 창 손(`window.py --sheet`)으로 메일 한 장으로 지어 보내는 손으로
-  보낸다. 대화에서 지은 보고는 띄운 칸이 없어 안 보낸다. 열쇠는 칸의 시각이다(판의 차례 번호로 짓지 않는다 — 죽었다 살아난 판이 같은 칸을 다시
-  돌면 번호가 새로 선다). 중계를 부르기 전에 「보내는 중」 표지(`AWAY_SENDING_FILE` — 그날 · 칸의 시각)를 굳히고(못 굳히면 그 판에는 안
-  보낸다), 끝을 받으면 칸의 기록(`slots.<시각>.mail`)에 그 끝을 적는다 — 표지를 지금 모습과 따로 두는 까닭은 판 도중에 지금 모습을 쓰면 그
-  판이 찾은 메일함의 바뀜이 바뀜 기록보다 앞서 굳어, 판이 죽으면 바뀜이 영영 안 적히기 때문이다. 끝은: 보냈다 · 넘기기 전에 졌다(연결 · 이름 찾기 · 거절 코드 · 설정 · 메일 한 장을 못 지었다 · 손이나 보내는 손을 못 띄웠다 — 그 칸이 끝날 때까지 판마다 다시 보내고,
-  칸이 끝난 뒤 처음 보내 본 것은 한 번) · 넘기는 도중이나 뒤에 졌다(중계가 받았는지 모른다 — 다시 안 보낸다). 다음 판은 표지를 걷되 그 칸의 기록에 표지보다 늦은 끝이
-  없으면 앞 판이 보내다 죽은 것이라 「보냈는지 모른다」로 맺고 다시 안 보낸다 — 두 통을 보내기보다 못 보낸 채 알린다. 넘겼나는 보내는 손이 가른다:
-  중계가 거절 코드로 답했거나 글(DATA)을 보내기 전에 진 것만 안 간 것이다. 보내는 손의 시한(`AWAY_SEND_TIMEOUT_S`)을 넘기면 모른다로 맺는다.
-  `status` 의 그 칸 줄과 다음 보고의 부탁 글(「건너뛴 보고 · 못 간 메일」)이 까닭을 한 줄로 댄다 — 부탁 글은 그 끝을 적은 뒤 띄운 보고가 아직 없는 것만
-  싣는다. 한 판에 한 통까지이고, 판이 시작한 뒤 `AWAY_LATEST_S` 를 넘겼으면(주소록 한 번도) 새로 시작하지 않고 다음 판에 둔다 — 시작한 일과
-  뒤의 누름 거두기가 판의 잠금 · 작업의 시한 안에 끝나야 한다. 날이 바뀐 첫 판은 지난날의 칸부터 맺고 새 날로 넘어가, 자정 무렵 띄운 보고도
-  간다. 시각표에서 빠진 칸도 띄운 기록이 있으면 끝난 칸으로 맺는다
-- **보내는 손만 형제 스킬의 코드를 싣는다** — 사내 중계로 보내는 것은 회사 메일 손 곁의 `mailer.py`(명령이 없는 라이브러리)다. 판은 그것을
-  싣지 않고 보내는 손 `scan_mail.py` 를 프로세스로 띄워, 그 라이브러리가 바뀌거나 없어도 판은 안 깨지고 「못 보냈다」만 적는다. 판의 모델은
-  이 길에 없다 — 띄운 claude 에는 보내는 명령이 하나도 없다(`BRIEF_DENY`)
-
-### 맡긴 일 — `handed_run.py`
-
-보고 창에서 사람이 골라 맡긴 일들(회의실 잡기 · 답장 써 두기 · Teams 회의 띄우기 · 찾아 정리 따위)을 작업 폴더에서 claude 한 번으로 차례로 하게
-뒤에 띄우고, 도는 동안 일마다의 끝을 프로그램(창 곁의 손)이 읽는 기록으로 낸다. 부르는 쪽은 일일 보고의 창 곁의 손이다 — 그 손이 이 스킬의
-코드를 싣지 않고 명령으로 부르게 이 스킬에 산다(스킬은 서로의 코드를 안 싣는다).
-
-**맡기는 것은 대화에서 시키는 것과 같다** — 실행에는 무엇을 할지(일의 종류 · 사람이 누른 줄 · 그 카드의 근거)만 주고, 회사 스킬의 손과 손가락은
-실행이 엮는다. 그래서 띄우는 꼴에 권한 깃발 · 도구 · 모델 · 허락 목록이 없다 — 사람의 설정이 그대로 실린다. 누름이 곧 끝까지 하라는 승인이라
-실행은 그 줄을 다시 묻지 않고, 메일은 임시보관함에 두고 그 화면을, Teams 회의는 채운 예약 창을 띄우는 데까지 간다(보내기는 사람 몫). 줄대로
-못 끝낼 일은 바꾸지 않고 그 일만 멈춰 여쭐 말을 남기고 다음 일로 간다. 실행이 받는 글은 `handed-run.md` 틀에 일들을 채운 것이다. 이 손은 일의
-글을 읽어 무엇을 가르지 않는다 — 받은 것을 그대로 넘기고 돌아온 것을 그대로 적는다.
-
-**일마다의 끝은 표지에서 읽는다** — claude 의 출력 흐름(`stream-json`)에는 일을 가르는 표가 없다. 그래서 글이 실행에게 하나만 청한다: 한 일을
-마치면 다음 일을 시작하기 전에 그 결과 글의 첫 줄을 「[일 N · 됨 | 여쭐 것 | 못 함 | 확인 안 됨]」 으로 연다(`MARK`). 표지 뒤로 다음 부름 전까지
-온 글이 그 일의 결과 글이다. 다 마친 뒤 여러 일을 묶는 글은 「[맺음]」 으로 열게 한다 — 실행은 끝에 묶는 요약을 곧잘 쓰고, 머리가 없으면 그
-요약이 마지막 일의 카드에 붙는다. 다음 일로 넘어간다는 말도 「[넘어감]」 으로 여는 줄에 쓰게 한다(`NEXT_WORD`) — 실행은 결과 글 끝에 그 말을
-곧잘 덧붙이고, 자리가 없으면 그 말이 카드에 선다. 두 머리 뒤의 글은 어느 카드에도 안 붙는다. 손은 결과 글의 문장을 걷지 않는다.
-
-**결과는 구조로 받는다** — 결과에 든 값(방 · 때 · 참석 · 받는 분 · 메일)은 사람이 카드에서 이름표와 함께 읽는다. 그래서 글이 실행에게 표지 아래를
-JSON 객체 하나(`said` 머리 아래 한 문장 · `facts` [이름표, 값] 짝 · `items` 메일 한 통에 하나 · `more` 짧은 덧말)로 쓰게 하고, 이름표는 부르는
-쪽이 일마다 준다(`tasks[].labels`). 글은 누가 읽는지도 댄다 — 창 앞의 그분께 높임말로, 그분의 말로, 프로그램 안의 번호 · 도구 이름 · 꾸밈 없이.
-꼴(`handed_run.result_of`)을 지키면 기록이 그 칸을 `tasks[].result` 로 내고, 못 지키면 null 이다 — 그때 결과는 온 글(`text`) 그대로 선다. 글을
-고쳐 꼴을 맞추지 않는다 — 고친 값은 사람이 못 본 값이다. 표지가 없는 일은 기록이 이렇게 가른다 — 도는 중이면 첫째가 하는 중 · 나머지는 기다림. 끝났으면 첫째는 마지막 표지
-뒤에 부름이 있었을 때 「확인 안 됨」(하다 멈췄다 — 바꾸는 부름이었는지 모른다), 없었으면 「못 함」이고 나머지는 「못 함」(차례대로 하니 시작
-안 했다)이다. 표지를 하나도 안 단 판이 무엇이라도 불렀으면 다 「확인 안 됨」이다. 들었을 수 있는 일을 「못 함」으로 말하면 사람이 다시 맡겨
-두 번 든다 — 모를 때는 「확인 안 됨」으로 기운다.
-
-**지킴이** — `start` 는 기록을 곧 쓰고 지킴이(`handed watch`)를 떼어 띄운 뒤 기다리지 않는다(부르는 손은 막히면 안 된다). 지킴이는 제 몸을 윈도의
-작업 묶음에 넣고(마지막 손잡이가 닫히면 묶음 안을 다 끝낸다), 사내 세션을 손의 `session` 으로 한 번 본 뒤(없으면 claude 를 안 띄우고 로그인으로
-맺는다), claude 를 작업 폴더에서 세션을 남긴 채 띄워 출력을 줄마다 받은 때와 함께 흐름 파일에 덧붙인다. 지킴이가 어떻게든 죽으면 OS 가 claude
-와 그 아래를 함께 끝낸다 — 기록이 「멈췄다」를 말하는데 뒤에서 일이 이어지는 판이 없다. 다 끝나 맺을 때는 그 깃발을 걷고 나간다 — 일이 처음
-띄운 브라우저 창(Teams 예약 창 따위)이 지킴이와 함께 닫히지 않게. 실행이 결과 글만 쓰고 차례를 마치면 `claude -p` 는 거기서 끝나 남은 일을
-못 한다 — 글이 그러지 말라고 해도 실행은 그렇게 맺을 수 있다. 그래서 claude 가 종료 0 으로 끝났는데 표지가 없는 일이 남았고 마지막 표지 뒤로 부름이
-하나도 없으면(하다 만 일이 없다 — 이어도 두 번 들지 않는다) 사내 세션이 끊겼다고 나오지 않으면 같은 세션을 `--resume` 으로 이어 남은 일을 하게 한다
-(`RESUME_MOST` 번까지 · 이은 실행의 출력도 같은 흐름 파일에 덧붙는다). 하다 만 일이 있으면 잇지 않고 그 일은 「확인 안 됨」으로 맺는다.
-`CEILING_S`(이은 실행까지 합친 시간)를 넘기면 claude 와 그 아래를 끊고 「끊김」으로 맺는다. 표지 없이
-남은 일이 있는 판은 맺기 전에 사내 세션을 한 번 더 본다 — 없으면 「로그인 끊김」이다(손이 종료 3 을 낸 뒤의 일들은 그래서 못 했다). 실행이 제
-까닭으로 「못 함」을 단 일은 안 센다 — 그 판을 로그인 탓으로 말하지 않게.
-
-**읽기는 쓰지 않는다** — `show` · `list` 는 기록 파일 · 맡긴 일 · 흐름 파일에서 지금 기록을 그때마다 짓는다. 끝이 안 적혔는데 지킴이가 없으면
-(번호를 적었는데 그 프로세스가 없다 · 적기 전인데 `START_GRACE_S` 가 지났다 · 맡긴 지 `STALE_S` 가 지났다) 다시 읽어 그래도 없을 때 「죽음」으로
-낸다 — 끝을 적고 막 나간 지킴이를 죽음으로 읽지 않는다. 기록을 쓰는 것은 `start` 와 그 판의 지킴이뿐이라 잠금이 없다.
-
-**파일의 자리** — 기록은 사용자 폴더의 `mailbox-scan/handed/<판>/` 에(기록 `run.json` · 맡긴 일 `tasks.json` · 실행이 받은 글 `prompt.txt` · 흐름
-`stream.jsonl` · claude 의 오류 출력), 실행이 쓰는 파일(메일 본문 따위)은 작업 폴더의 `handed/<판>/` 에 둔다 — 글이 그 자리를 실행에게
-댄다. 회사 스킬의 글은 본문 파일을 「임시 폴더」에 두라고만 해, 자리를 안 대면 실행이 작업 폴더 곁에 폴더를 지어 쓴다. 세션은 Claude Code 가 작업
-폴더의 프로젝트 자리에 남기고, 기록의 `session` 으로 VS Code 의 작업 폴더 창에서 그 대화를 잇는다. 끝난 지 `KEEP_DAYS` 가 지난 판은 다음 `start`
-가 두 자리 다 걷는다(Claude Code 가 세션을 두는 기본과 같은 날 — 넘으면 이을 대화가 없다).
-
-#### 부르는 꼴 — 창 곁의 손이 기대는 표(원본)
-
-| 명령 | 내는 것 | 종료 값 |
-|---|---|---|
-| `scan.py handed start --tasks <파일> [--work <폴더>] [--claude <claude>] [--hand <mail.py>]` | 곧 돌아온다 — 아래 기록 하나(JSON 한 줄 — 지킴이를 띄웠으면 `alive` 참, 못 띄웠으면 `end` 가 died). 못 맡기면 `{"cannot": "nowork" \| "noclaude" \| "nohand", "message": 사람에게 할 말}` · 꼴이 틀리면 `{"error": "args", "message"}` — 둘 다 기록을 안 쓴다 | 0 맡았다 · 2 꼴 · 5 못 맡긴다 |
-| `scan.py handed show --id <판>` | 그 판의 지금 기록(JSON 한 줄) · 없으면 `{"error": "args", …}` | 0 · 2 |
-| `scan.py handed list` | 아직 도는 판의 기록 — 줄마다 하나(새것부터) | 0 |
-
-작업 폴더는 `--work`, 없으면 사용자 환경값 `PAISETUP_WORK`(레지스트리를 먼저, 그다음 프로세스 환경 — 보고 창 머리의 여는 손과 같은 차례)다.
-claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손은 스캔과 같은 차례로 찾는다.
-
-**맡긴 일 파일**(UTF-8 JSON) — 값은 손대지 않고 실행에 그대로 싣는다. 적힌 차례가 하는 차례다.
-
-| 칸 | 꼴 | 뜻 |
-|---|---|---|
-| `brief` | 글(빈 글 됨) | 부르는 쪽의 열쇠 — 기록에 옮길 뿐이다. 일일 보고의 손은 누름의 열쇠를 실어, 답을 못 받은 판을 `handed list` 에서 찾는다 |
-| `tasks[]` | 하나 이상 | 맡긴 일 |
-| `tasks[].id` | 빈 글 아님 · 겹치지 않음 | 부르는 쪽의 열쇠 — 이 손에게는 뜻 없는 글이다. 기록이 그대로 돌려준다 |
-| `tasks[].kind` | 빈 글 아님 | 일의 종류 낱말(보고 글의 「바로 할 일」 첫 칸) — 실행에 그대로 준다 |
-| `tasks[].line` | 빈 글 아님 | 사람이 누른 줄의 값 그대로 |
-| `tasks[].card.title` · `.lines[]` | 글 · 글 목록 | 카드의 머리와 딸린 줄 — 보고 글에 적힌 그대로(`(mail:번호)` 가 든다) |
-| `tasks[].labels` | 빈 글 아닌 글 목록(없으면 빈 목록) | 결과의 `facts` 에 쓸 이름표 — 그 차례로 실행에 준다 |
-
-**기록**(`show` · `list` · `start` 가 내는 JSON)
-
-| 칸 | 꼴 | 뜻 |
-|---|---|---|
-| `format` | 1 | 꼴 번호 — 칸의 뜻을 바꾸면 오른다 |
-| `id` · `brief` | 글 | 판의 열쇠 · 맡긴 일 파일의 `brief` |
-| `started` · `ended` | UTC ISO 8601(천분의 일 초) · 도는 중이면 null | 맡긴 때 · 맺은 때 |
-| `alive` | 참 · 거짓 | 아직 도나(`end` 가 null 이다) |
-| `end` | null · `finished` · `login` · `died` · `cut` | 다 했다 · 로그인 끊김(띄우기 전이나 도중) · 죽었다(claude 가 오류로 끝났다 · 지킴이가 없다 · 띄우지 못했다) · `CEILING_S` 를 넘겨 끊었다 |
-| `said` | 글 | 다 하지 않은 끝의 까닭 — claude 의 오류 출력의 끝 따위. 다 했으면 빈 글 |
-| `session` | 글 · null | claude 의 세션 번호 — VS Code 의 작업 폴더 창에서 그 대화를 잇는다. 띄우고 첫 줄이 오면 선다. 실행은 띄운 쪽의 이름(`ENTRYPOINT` — 환경값 `CLAUDE_CODE_ENTRYPOINT`)을 사람이 이어 갈 대화의 것으로 세션에 적는다 — `claude -p` 가 스스로 적는 `sdk-*` 이면 VS Code 확장이 그 세션을 목록에서 빼 `session=` 이 새 대화를 연다(문서에 없는 값에 기댄 우회 — 확장이 `-p` 세션을 목록에 넣으면 걷는다) |
-| `model` · `cost` · `turns` | 글 · 수 · 수 | 돈 모델(첫 줄이 오면 선다) · 값(USD) · 턴 수(둘은 맺기 전 null) — 이은 실행까지 더한 것 |
-| `resumed` | 수 | 같은 세션을 이어 남은 일을 하게 한 수(0 · 1) |
-| `end_text` | 글 | 실행의 끝말 그대로(맺음 사건의 글) — 표지 없이 끝난 판에서 사람에게 보일 거리 |
-| `work` · `files` | 경로 | 작업 폴더 · 이 판이 쓴 파일의 자리 |
-| `tasks[]` | 맡긴 차례 그대로 | 일마다 하나 |
-| `tasks[].id` · `.kind` | 맡긴 그대로 | |
-| `tasks[].state` | `waiting` · `doing` · `done` · `asked` · `failed` · `unknown` | 기다림 · 하는 중 · 됨 · 여쭐 것(그 일만 멈췄다 — 대화로 이어 간다) · 못 함 · 확인 안 됨(들었는지 모른다) |
-| `tasks[].at` | UTC ISO 8601 · null | 그 상태가 된 때 — 됨 · 여쭐 것 · 못 함 · 확인 안 됨은 표지가 온 때(표지 없이 맺은 판은 맺은 때), 하는 중은 앞 일의 끝 |
-| `tasks[].text` | 글 | 결과 글 — 실행이 표지 뒤에 쓴 그대로(표지만 뺀다 — 표지 줄의 남은 글은 든다) |
-| `tasks[].result` | 객체 · null | 결과 글이 꼴(JSON 객체 하나 — 코드 블록 하나로 감싸도 된다)이면 그 칸 — `said` 글 · `facts` [[이름표, 값]] · `items` [{`label`, `unid`, `note`}] · `more` 글(빈 칸은 뺀다 · `said` · `facts` · `items` 가운데 하나는 있다). 꼴이 아니거나 표지 없이 맺은 일이면 null |
-
 ## 바탕
 
 ### 작업 스케줄러의 작업 — `scan_task.py`
@@ -360,15 +506,28 @@ claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손�
 작업 하나가 정해진 간격으로 되풀이되고, 로그온한 그 사람의 세션에서만(InteractiveToken · 최소 권한) 창 없이(pythonw) 돈다. 앞 판이 도는
 동안 온 주기는 새로 안 띄운다(`IgnoreNew`) — 「한 번에 하나」의 첫 겹이고 스캔의 잠금이 둘째 겹이다. 배터리에서도 돌고, 놓친 주기는 깨어난
 뒤 한 번 돌며, 한 판에 시한이 있다. 로그온 뒤 잠시 있다 한 번 돌고, 걸고 나서 잠시 있다 첫 판이 돈다. 손의 자리는 명령줄에 굳힌다 — 작업은 대화의 환경변수를 안 물려받는다. 정의는 UTF-16(BOM)으로 쓴다 —
-`schtasks /XML` 이 그 꼴을 받는다. `validate` 는 작업 스케줄러 COM 에 정의를 넣어 보기만 하고 등록하지 않는다. `unregister` 는 보고 시각표도 함께 내린다 — 스캔이 없으면
-보고도 안 뜬다.
+`schtasks /XML` 이 그 꼴을 받는다. 작업이 부르는 인자는 틀 하나(`RUN_ARGUMENTS`)에서 짓고, `status --json` 은 걸린 작업의 인자를 같은
+틀로 되읽어 손 · 입구를 낸다 — 틀 밖의 글(손으로 고친 작업)이면 그 칸은 모른다(null). `validate` 는 작업 스케줄러 COM 에 정의를 넣어 보기만 하고 등록하지 않는다. `unregister` 는 이 작업만 내린다 — 쌓인 파일은 그대로 둔다.
+
+schtasks · PowerShell 을 띄우고 그 출력을 푸는 몸과 스캔 작업의 로그온 뒤 첫 판(`SCAN_LOGON_DELAY_MIN`)은 곁의 `task_base.py` 가, 곁의 파이썬 손을
+창 없이 · UTF-8 로 띄우는 몸은 `proc_base.py` 가, 회사 메일 손의 자리 · 종료 값 · 시한 · 로그인이 사는 스킬 · 사내 세션의 답 낱말(`status --json` 이
+낸다) · 세션이 끊겼을 때의 다음 걸음은 `hand_facts.py` 가 든다. 셋은 이 스킬에 원본이 서고, 같은 몸이 필요한 위 스킬은 바이트째 베껴 든다 —
+스킬끼리 코드를 싣지 않고, 이 스킬은 누가 베끼는지 모른다. 원본만 고치고 베낀다.
 
 ### 잠금 — `scan_store.Lock`
 
 잠금 파일을 새로 만들 수 있는 판(O_EXCL)이 도는 판 하나다. 파일에는 그 판의 열쇠와 시작 시각을 적는다. 잠 · 꺼짐 · 멈춘 판이 남긴 잠금은
 그 시각으로 푼다(`LOCK_STALE_S`) — 한 판은 제 상한(`RUN_BUDGET_S`)과 손 한 번의 시한 안에 끝나므로 그보다 오래된 잠금은 도는 판의 것이
 아니다. 풀린 판이 나중에 깨어나도 쓰기 전에 `owns` 로 제 열쇠를 다시 보고 물러난다. 못 읽은 잠금(막 지은 판이 아직 안 적었다 · 꺼짐이
-빈 잠금을 남겼다)은 그 파일의 고친 때로 낡음을 잰다 — 못 읽었다고 낡은 것으로 풀면 도는 판 둘이 겹친다. 스캔이 띄운 보고의 잠금도 같다.
+빈 잠금을 남겼다)은 그 파일의 고친 때로 낡음을 잰다 — 못 읽었다고 낡은 것으로 풀면 도는 판 둘이 겹친다.
+
+**기다리는 판** — 작업 스케줄러의 판은 앞 판이 돌면 그 주기를 건너뛴다(다음 주기가 곧 온다). 다른 프로그램이 지금 한 판을 청할 때(정한
+시각에 보고를 띄우는 쪽이 메일함을 새로 읽으려 할 때)는 건너뛰면 그 청이 헛것이 된다 — 잠든 PC 가 깨면 놓친 주기들이 한 순간에 서서, 시작 때를
+어긋나게 걸어 둔 두 작업도 겹친다. 그래서 `run --wait 초` 는 잠금을 못 쥐면 `LOCK_WAIT_POLL_S` 마다 잠들었다 다시 쥐어 보고(`Lock.wait`), 앞 판이
+끝나 풀린 첫 사이에 쥐어 돈다. 쥐어 볼 때마다 그 때로 쥐어 잠금의 시작 때는 기다린 뒤의 때다 — 낡음의 셈 · 판의 시간 상한이 기다림만큼
+줄지 않는다. 낡은 잠금은 기다림 없이 그 자리에서 푼다(`take` 그대로). 시한이 지나도 못 쥐면 건너뛴 주기로 적고(메모가 기다린 초를 든다)
+종료 0 으로 끝난다 — 청한 쪽은 `status --json` 의 마지막 판이 청한 뒤에 시작했나로 돌았나를 가른다. 기다리다 돈 판은 판 기록의 메모가 기다린
+초를 든다.
 
 시각은 UTC ISO 8601 로 저장하고(사전순이 시간순이다) 서울(+09:00 고정)로 보인다. `zoneinfo` 는 윈도에서 표준 라이브러리 밖 `tzdata` 가
 들어 안 쓴다. 메일함의 때(`xdate`)는 서울 시각 글자다.
@@ -380,34 +539,54 @@ claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손�
 
 | 무엇 | 원본 | 기대는 쪽 |
 |---|---|---|
-| 스캔 파일의 자리 · 이름 · 꼴 | `scan_const.py` · `scan_store.py` — 읽는 길은 `reader.py` | 일일 보고 · 메일함 정리 · 대화(파일을 직접 열지 않는다). 일일 보고의 창은 시각표 파일 · 지금 모습의 마지막 판 때만 읽는다 |
-| 보고 시각표 · 규칙의 수(`room_min` · `wait_min`) · 「자리 밖에서 보기」 | `brief_schedule.py`(시각표 파일 `brief.json` 에 함께 적는다) | 일일 보고의 창 |
-| 사람 없는 보고에 열린 명령과 막은 명령 · 띄울 때의 부탁 글 | `claude_launch.commands` · `claude_launch.PROMPT` · `scan_const.BRIEF_DENY` | 띄운 claude · 일일 보고의 `lane.md` 「사람 없는 예약 실행」(가리키기만 한다) |
-| 맡긴 일의 명령 · 입력 · 기록 | 위 「맡긴 일」의 표 | 일일 보고의 `runs.py` |
-| 일일 보고의 창 손이 내는 줄의 꼴 · 보고 글의 파일 이름 | 스킬 daily-brief(`ticks.py` 머리말 · 그 스킬의 설계 「약속」) | `window_link.py` · `brief_schedule.py` |
+| 스캔 파일의 자리 · 이름 · 꼴 | `scan_const.py` · `scan_store.py` — 읽는 길은 `reader.py` | 일일 보고 · 메일함 정리 · 대화(파일을 직접 열지 않는다) |
+| 프로그램이 읽는 스캔의 지금(`scan.py status --json`) · 앞 판을 기다렸다 도는 한 판(`scan.py run --wait`) | 아래 「status --json · run --wait」 | 정한 시각에 보고를 띄우는 프로그램 |
 | 쌓인 메일의 글을 내는 꼴 — 메일함의 글은 표지(`DATA_OPEN` · `DATA_CLOSE`) 사이에, 따를 지시가 아니라는 머리와 함께 | `reader.py` | 읽는 모델 모두 |
-| 창 곁의 손이 부르는 `scan.py brief --away` · `--window-times` 의 `--chosen-at` 꼴 — 끝 줄 하나가 그 창에 적을 말, 종료 값이 따랐나 | `scan.py` 머리말 | 일일 보고의 `presses.py` |
-| 회사 메일 손의 명령 · 글 꼴 | 스킬 company-mail 의 `mail.py` 머리말 | `scan_hand.py` |
-| 사내 중계로 한 통 보내기 | 회사 메일 손 곁의 `mailer.py` | `scan_mail.py` 하나(라이브러리라 싣는다) |
+| 회사 메일 손의 명령 · 글 꼴 | 스킬 company-mail 의 `mail.py` 머리말 | `scan_hand.py`(명령 · `serve` 답) · `hand_lines.py`(글 꼴) |
 | 정리 스킬의 기록(`TIDY_LOG_FILE` · `TIDY_HELD_FILE`) | 스킬 mailbox-tidy | `scan_diff.py`(읽기만 — 누가를 가른다) |
-| 사람 없는 꼴의 로그인 입구(`LOGIN_ARGS`) · 주소록의 「나」(`DIRECTORY_ME`) | 스킬 ep-login · company-directory | `session_login.py` · `away_mail.py` |
+| 사내 세션 파일의 자리 | 스킬 ep-login(`places.json`) | `session_login.py`(읽기만) |
+
+### status --json · run --wait — 프로그램이 기대는 꼴(원본)
+
+정한 시각에 보고를 띄우는 프로그램은 스캔의 코드를 싣지 않고 이 두 명령으로 스캔에 한 판을 청하고 그 판을 읽는다. 칸의 이름과 뜻을 바꾸면
+`STATUS_FORMAT` 을 올린다.
+
+| 명령 | 내는 것 | 종료 값 |
+|---|---|---|
+| `scan.py run --wait <초> [run 의 다른 인자]` | 판 끝 한 줄(사람의 말) — 앞 판의 잠금이 그 초 안에 풀리면 그 뒤 돈 판의 줄, 끝내 안 풀리면 건너뛴 줄. 낡은 잠금은 기다리지 않고 풀고 돈다. `--full-every` 를 안 주면 걸린 작업의 판이 마지막으로 준 전체 주기를 따른다(`full_every_of` — 그것도 없으면 기본) | `run` 그대로 — 0 됐다 · 건너뛰었다 · 1 멈췄다 · 2 인자(초가 1 보다 작다) |
+| `scan.py status --json [--dry-run]` | 아래 한 장(JSON 한 줄). `--dry-run` 이면 작업 스케줄러에 안 묻는다 — 걸렸나는 null | 0 |
+
+| 칸 | 꼴 | 뜻 |
+|---|---|---|
+| `format` | 1 | 꼴 번호(`STATUS_FORMAT`) |
+| `home` | 경로 | 사용자 폴더 — 메일 비서 스킬이 함께 쓰는 자리 |
+| `folder` | 경로 | 그 안의 스캔 자리(`mailbox-scan`) |
+| `task.registered` | 참 · 거짓 · null | 작업 스케줄러에 스캔 작업(`scan_task.TASK_NAME`)이 걸렸나 — 안 물었으면 null |
+| `task.every_min` | 수 · null | 걸린 작업의 주기(분) — 안 걸렸거나 간격이 분으로 안 읽히면 null |
+| `task.hand` | 경로 · null | 걸린 작업이 명령줄에 굳힌 회사 메일 손 |
+| `task.command` · `task.arguments` | 글 · null | 걸린 작업이 부르는 프로그램과 인자 그대로 |
+| `task.calls_this_scan` | 참 · 거짓 · null | 걸린 작업이 이 `scan.py`(답하는 그 스캔)를 부르나 — 도구 홈이 여럿이면 그 작업을 건 홈의 스캔만 참이다. 인자가 거는 꼴이 아니면 null |
+| `last_run` | 객체 · null | 지금 모습에 적힌 마지막 판 — 판을 한 적이 없거나 지금 모습을 못 읽었으면 null. 건너뛴 주기 · 못 읽어 멈춘 판 · 세션을 기다리는 주기는 지금 모습에 안 적혀 여기 안 선다 |
+| `last_run.started` · `.ended` | UTC ISO 8601 | 그 판의 시작(잠금을 쥔 때) · 끝 |
+| `last_run.outcome` | 끝 낱말 | `done` · `first` · `partial` · `session` · `hand-missing` · `hand-old` · `hand-error` · `shape`(`scan_const` 의 `RUN_*`) |
+| `last_run.session` | `live` · `lost` · null | 그 판이 손에서 받은 사내 세션의 답 — 손이 답한 판은 살았다, 세션 없음으로 멈춘 판은 없다, 그 밖은 null. 판 맺기가 `evidence_of` 가 판의 끝 낱말과 손의 답에서 셈한다 |
 
 ## 하지 않는 것
 
 - **메일함을 바꾸지 않는다** — 판은 손의 목록 명령만 부른다. 본문을 받지 않고, 열거나 옮기지 않는다
-- **판은 로그인하지 않는다** — 스스로 로그인을 켠 PC 의 그날 첫 시각에 한 번만 입구를 부르고, 살펴보기는 로그인 화면 · 창 · 탭을 안 연다
-- **띄운 claude 는 바꾸거나 내보내지 않는다** — 읽는 명령 · 보고 창 · 업무 파일의 쓰는 손만 연다. 메일을 보내는 것은 판의 코드(자리 밖에서
-  보기)뿐이고 받는 사람은 켤 때 적어 둔 본인 주소 하나다
-- **창에서 받는 것은 시각과 「자리 밖에서 보기」뿐이다** — 보고를 걸고 내리기 · 스스로 로그인 · 띄울 claude 는 대화에서만 바뀐다
-- **판단을 하지 않는다** — 맡긴 일의 글을 읽어 가르지 않고, 결과 글을 고쳐 꼴을 맞추지 않는다. 판단은 띄운 claude 의 몫이다
-
+- **로그인하지 않는다** — 판과 살펴보기는 로그인 화면 · 창 · 탭을 안 연다. 세션이 끊기면 멈추고, 사람이 대화에서 EP 로그인을 하면 다음
+  주기에 바로 돈다
+- **모델을 부르지 않고 메일을 보내지 않는다** — 판은 손의 읽는 명령과 제 파일만 쓴다
+- **판단을 하지 않는다** — 청함인가 · 기한 · 누구 차례 · 무엇이 중요한가는 읽는 쪽(모델)의 몫이다. 「지울 만하다 · 죽은 폴더」 같은 딱지도 안
+  붙인다 — 셈은 색인이다. 휴지통의 수는 손에 목록 명령이 없어 모른다
+- **보고 · 보고 창 · 맡긴 일을 모른다** — 스캔의 코드는 그것들의 이름을 싣지 않는다. 정한 시각의 보고와 맡긴 일의 실행은 다른 스킬이 들고, 이 스킬은
+  그쪽이 청할 때 한 판을 돌려 주고 지금 모습을 읽게 내줄 뿐이다
 
 ## 검사가 남는 까닭 — 설정 저장소의 `_check/skills/mailbox-scan/check_scan.py`
 
 곁의 회사 메일 손을 가짜 메일함(설정 저장소 `_check/skills/company-mail/check_inbox.py` 의 `FakeDomino` — 회사 메일함 꼴의 흉내는 거기 한 벌이다)에
 대어 진짜로 부르고, 비서의 바꿈은 메일함 정리 스킬의 기록(`mailbox-tidy/scripts/journal.py`)을 손의 미리 보기 · 실행 글로 진짜로 맺는다.
-여기는 그 가짜 위에 한 판 안의 옮김 · 폴더 줄의 때 꼴만 얹는다. 보고 창은 형제 검사(`_check/skills/daily-brief/check_window.py`)의
-가짜 로그인 Edge 한 벌을 빌려 쓴다. 기대값은 스킬 글과 이 문서의 문장, 판마다 심은 메일에서 낸다.
+여기는 그 가짜 위에 한 판 안의 옮김 · 폴더 줄의 때 꼴만 얹는다. 기대값은 스킬 글과 이 문서의 문장, 판마다 심은 메일에서 낸다.
 
 판정마다 check-design 1 절의 넷(길 · 조용하다 · 다친다 · 다른 무엇도 안 잰다):
 
@@ -419,23 +598,16 @@ claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손�
 | 비서가 한 일 · 모름 | 정리 스킬의 기록 꼴이 바뀌거나 견주기를 고칠 때 | 비서가 옮긴 것을 사람이 한 일로 센다 |
 | 덜 본 판 · 한 판 안의 옮김 | 세션이 끊기거나 보기 하나가 지는 판은 회사에서 늘 난다 | 거짓 「사라짐」이 보고와 정리에 선다 |
 | 세션이 끊기면 멈추고 안 두드린다 | 밤마다 세션이 끊길 수 있다 | 사람 없는 밤에 사내 인증을 몇 분마다 두드린다 |
-| 겹쳐 안 돈다 · 남은 잠금이 풀린다 | 보고와 스캔이 같은 때에 돌고, 잠 · 꺼짐이 잠금을 남긴다 | 겹치면 기록이 엇갈리고, 남은 잠금은 스캔을 영영 멈춘다 |
+| 겹쳐 안 돈다 · 남은 잠금이 풀린다 | 작업 둘이 같은 때에 돌 수 있고, 잠 · 꺼짐이 잠금을 남긴다 | 겹치면 기록이 엇갈리고, 남은 잠금은 스캔을 영영 멈춘다 |
+| 기다리는 판 — 앞 판이 끝나면 돌고, 시한이 지나면 건너뛴 주기로 적고 그만둔다 | 잠든 PC 가 깨면 놓친 스캔 주기와 정한 시각의 청함이 한 순간에 선다 · 판을 쥐는 자리(`cmd_run`)는 판 맺기를 고칠 때 함께 고쳐진다 | 청한 판이 건너뛰어 그날 첫 보고가 메일함을 새로 안 읽은 채 늦거나 빠지고, 시한을 안 지키면 청한 프로그램이 멈춘다 |
+| status --json — 칸 이름 · 마지막 판 · 세션 답 | 정한 시각의 보고를 띄우는 프로그램이 다른 스킬에 살아 이 칸 이름에 기댄다 · 걸기 · 보기 손을 고칠 때 함께 고쳐진다 | 칸 하나가 바뀌면 그 프로그램은 오류 없이 「세션 모름」으로 읽어 보고가 날마다 말없이 안 뜬다 |
 | 손 하나에 잇달아 묻는다 · 한 상자에서 손이 지면 그 상자만 · 옛 손은 명령마다 | 손이 시한을 넘기거나 지는 판 · `serve` 없는 옛 손이 깔린 PC · 묻는 길을 고칠 때마다 | 손 하나의 고장이 뒤 상자를 다 못 읽게 해 메일함 전체 판이 영영 안 맺고, 옛 손의 PC 는 스캔이 날마다 멈추며, 요청의 꼴이 집에서 못 잰 꼴로 바뀐다 |
 | 손의 글 꼴이 바뀌면 멈춘다 | 손의 끝 줄 꼴은 손을 고칠 때마다 바뀔 수 있다 | 잘못 푼 줄이 그럴듯하게 쌓여 보고와 정리에 선다 |
 | 읽는 명령이 잘라 낸다 | 읽는 명령을 고칠 때마다 | 보고가 지난 보고 앞의 메일을 다시 새 메일로 말한다 |
 | 예약 — 한 번에 하나 · 주기 · 손 | 작업 정의를 고칠 때 | 겹쳐 돌거나 손을 못 찾아 아무것도 안 쌓는다 |
 | 예약 — 기본 주기 · 전체 주기의 상한 | 기본값을 고칠 때마다(사용자가 정한 값이다) | 촘촘하면 메일 서버를 하루 내내 두드리고, 전체 주기가 잇는 기한을 넘으면 큰 메일함은 끝내 다 못 본다 |
-| 홀로 선다(예외는 보내는 손이 싣는 mailer 하나) | 스킬에 코드를 더할 때마다 — 손 · 다른 스킬의 코드를 싣는 것이 가장 가까운 길이다 | 손이 바뀔 때마다 스킬이 깨진다 |
-| 아침 보고 — 칸의 끝까지 기다림 · 끝 뒤 그만둠 · 한 번 · 틈 · 날마다 새로 | 살펴보기 · 띄우기의 갈래를 고칠 때마다(칸과 틈은 사용자가 정한 것이다) | 늦게 로그인한 아침에 보고가 안 뜨거나, 하루 내내 SSO 를 두드리거나, 보고를 여러 번 띄워 모델 값이 새고, 나쁜 하루 뒤로 보고가 영영 안 뜬다 |
-| 보고 시각표 — 시각마다 한 번 · 옛 설정을 읽는다 · 창에서 고르신 시각 | 칸 · 그날 칸의 기록 · 설정의 꼴 · 창을 묻는 길을 고칠 때마다, 이미 건 동료 PC 는 옛 꼴을 든다 | 정한 시각에 보고가 안 서거나 두 번 서고, 판을 올린 동료 PC 의 보고가 조용히 멈추고, 창에서 고르신 시각이 영영 안 걸린다 |
-| 보고 시각표 — 못 읽는 동안 한 칸만 바꿔 쓰는 명령은 안 쓴다 | 스캔 판 · 창 곁의 손 · 대화가 같은 파일을 함께 쓰고, 윈도에서는 남이 바꿔 끼우는 순간의 읽기가 진다 | 시각표 · 스스로 로그인 · 자리 밖에서 보기가 빈 것으로 읽혀 덮이고, 사람 없는 PC 의 보고와 메일이 아무도 모르게 멈춘다 |
-| 아침 보고 — 띄우지 않을 때 | 대화에서 이미 보고를 지은 날 · 지금 모습이 깨져 다시 지은 날은 늘 난다 | 같은 날 보고가 둘 서고 모델 값이 두 번 든다 |
-| 아침 보고 — 읽는 명령만 연다 | 열린 명령 · 막은 명령 · 띄우는 인자를 고칠 때마다, 그리고 사용자 설정의 allow 가 함께 실린다 | 되돌릴 수 없다 — 사람 없는 실행이 메일을 보내거나 메일함 · 일정을 바꾸거나 로그인 · 문서함에 닿는다 |
-| 아침 보고 — claude 없이 안 건다 | VS Code 확장만 깐 PC 는 PATH 에 claude 가 없다 | 걸린 줄 아는 보고가 날마다 안 뜨는데 아무도 모른다 |
-| 아침 보고 — 업무 파일은 쓰는 손으로만 · 업무 파악부터 | 권한 · 부탁 글 · 도구를 고칠 때마다 | 되돌릴 수 없다 — 쓰는 손이 안 열리면 업무 파일이 날마다 안 고쳐지고, 파일 도구가 열리면 확인받은 절이 사람 없이 사라진다 |
-| 스스로 로그인 — 안 켠 PC 는 안 부른다 · 켠 PC 는 첫 시각에만 하루 한 번 사람 없는 꼴로(세션이 살아도 띄우기 앞에) · 서면 띄운다 · 뒤 시각은 안 부른다 | 세션이 없는 판은 아침마다 나고, 그 갈래를 고칠 때마다 | 사람이 고르지 않은 로그인이 다른 자리에서 연 메일을 아침마다 끊거나, 판마다 되풀이해 하루 내내 끊는다. 사람 있는 꼴로 부르면 로그인 화면이 사람을 기다리며 판을 막는다 |
+| 홀로 선다(표준 라이브러리와 제 폴더뿐 — 예외 없음) | 스킬에 코드를 더할 때마다 — 손 · 다른 스킬의 코드를 싣는 것이 가장 가까운 길이다 | 손이 바뀔 때마다 스킬이 깨진다 |
 | 폴더 메일의 때 꼴 — 분까지여도 풀리고, 꼴이 둘 밖이면 멈춘다 | 손의 폴더 줄은 받은편지함과 때 꼴이 다르고, 손을 고칠 때마다 바뀔 수 있다 | 폴더에 바로 든 새 메일이 보고에서 빠지거나, 잘못 푼 때가 그럴듯하게 쌓인다 |
-| 보고 창의 「일정에 넣기」 — 판마다 거둔다 | 창 곁의 손이 없는 날(PC 를 다시 켰다 · 손이 죽었다)은 늘 난다 · 판 끝의 차례를 고칠 때마다 | 사람이 누른 약속이 들지 않고 창은 「다음 스캔에」를 말한 채 남는다 |
 | 정리 신호의 재료 | 읽는 명령 · 판 기록을 고칠 때마다 | 정리 권유가 설 날에 안 서거나 안 설 날에 서서 헛 권유를 날마다 받는다 |
 
 모두 사람 없이 돌거나 틀린 셈도 그럴듯하게 서서 조용하고, 다른 무엇도 안 잰다.
@@ -446,9 +618,8 @@ claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손�
 거기서 초록이 아닌 판정의 물림은 못 쟀다로 둔다 — 늘 지는 판정 앞에서는 끈 사본도 「잡혔다」로 센다. 사본을 못 심으면(스크립트의 그
 줄이 바뀌었다) 그 물림이 빨갛다 — 물림을 다시 지을 일이다.
 
-**여기서 못 재는 것** — 회사 메일함의 한 판 값(요청 수 · 초)과 기본 주기가 회사 서버에 맞나 · 밤을 넘긴 세션 · 작업 스케줄러가 실제로
-띄운 판(`--dry-run` 의 정의만 잰다 — 회사 PC 의 작업 스케줄러에서 띄운 claude 가 작업 묶음을 벗어나 사나도) · 화면이 잠긴 채 · 작업 스케줄러가 띄운 자리에서 통합 인증이 넘나 · 스스로 로그인이 진짜 입구 · 진짜 통합 인증으로 서나(입구는 대역이다 — 입구의 사람 없는 꼴은 스킬
-ep-login 의 검사가 가짜 SSO 로 잰다) · 진짜 claude 가 그 권한으로 보고를 짓나(대역이 받은 명령줄 · 권한 · 부탁 글까지만 잰다 — 권한 규칙이
-claude 안에서 어떻게 맞나, 업무 파악의 쓰는 손을 heredoc 째 부르는 꼴이 열리나는 진짜 claude 에 띄워 확인할 몫이고, 막은 목록은 여기서 그
-꼴의 글자 맞추기로 견준다) · 맡긴 일(`handed_run.py` — 영구 판정이 없다. 일일 보고의 검사는 `scan.py handed` 를 대역으로 받는다) · 손의 칸이 늘거나 자리가 바뀐 꼴(끝 줄이 같고 칸만 밀리면 사람용 글로는 못 가른다 — 손의 JSON 꼴이 걷는다) ·
-손이 「상한에 막혔다」를 내는 판(아주 큰 상자) · 자리 밖에서 보기의 보내기(켠 PC 의 칸마다 한 통 · 넘기기 전 거절은 다음 판에 · 도중 끊김과 남은 「보내는 중」은 다시 안 보냄 · 안 켠 PC 와 대화의 보고는 안 보냄 — 가짜 중계에 대고 한 번 쟀고 판정으로 두지 않는다) · 진짜 사내 중계가 본인 사본을 받은편지함에 세우나 · 휴대폰 메일에서 그 꼴로 서나(회사 판).
+**여기서 못 재는 것** — `status --json` 의 걸린 작업 칸(주기 · 손 · 이 스캔을 부르나 — 작업 스케줄러에 물어야 서서 이 PC 의 작업에 따라
+답이 달라진다. 견줌 도구 `same-bytes` 의 `wait_lock` 이 흉내 낸 작업 스케줄러로 잰다) · 작업 스케줄러가 돌려주는 간격의 꼴(거는 꼴 `PT{분}M` 을
+그대로 돌려주나) · 회사 메일함의 한 판 값(요청 수 · 초)과 기본 주기가 회사 서버에 맞나 · 밤을 넘긴 세션 · 작업 스케줄러가 실제로
+띄운 판(`--dry-run` 의 정의만 잰다) · 화면이 잠긴 채 · 손의 칸이 늘거나 자리가 바뀐 꼴(끝 줄이 같고 칸만 밀리면 사람용 글로는 못 가른다 —
+손의 JSON 꼴이 걷는다) · 손이 「상한에 막혔다」를 내는 판(아주 큰 상자).

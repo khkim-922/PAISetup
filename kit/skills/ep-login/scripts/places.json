@@ -2,5 +2,7 @@
   "session_file": "~/.mailbox-session.json",
   "domino_server": "http://pcfma0b.posco.net",
   "ecm": "http://swpecm.posco.net:7091/ECM",
-  "ecm_main_page": "/jsp/main/ecmMain.jsp"
+  "ecm_main_page": "/jsp/main/ecmMain.jsp",
+  "eye_start_s": 90,
+  "eye_look_s": 15
 }

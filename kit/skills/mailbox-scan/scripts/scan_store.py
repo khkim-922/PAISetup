@@ -9,8 +9,9 @@
     st.append(folder / "events.jsonl", rows)  # 덧붙이기만 — 끝 줄이 반쯤 써졌어도 읽는 쪽(read_jsonl)이 견딘다
     rows, bad = st.read_jsonl(path)           # 못 읽은 줄은 건너뛰고 그 수를 낸다
     lock = st.Lock.take(folder, now)          # 도는 판이 있으면 None — 오래된 잠금은 풀고 쥔다
+    lock, held, at, waited = st.Lock.wait(folder, seconds)   # 도는 판이 있으면 그 잠금이 풀리기를 seconds 초 안에서 기다렸다 쥔다
 
-시각 — 저장은 UTC ISO 8601, 보이기는 서울(+09:00 고정 — `zoneinfo` 는 윈도에서 `tzdata` 가 따로 들어 안 쓴다).
+시각은 `scan_time` 이 든다.
 """
 
 from __future__ import annotations
@@ -21,54 +22,12 @@ import pathlib
 import secrets
 import time
 from collections.abc import Iterable
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
 
-from scan_const import (FORMAT, HOME_ENV, HOME_NAME, LOCK_FILE, LOCK_STALE_S, MAIL_DATE, MAIL_DATE_MINUTE, REPLACE_TRIES, REPLACE_WAIT_S, SCAN_DIR,
-                        SEOUL_OFFSET_H, STATE_FILE)
-
-KST = timezone(timedelta(hours=SEOUL_OFFSET_H), "KST")
-
-
-# ── 시각 ─────────────────────────────────────────────────────────────────────
-
-def now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def stamp(t: datetime) -> str:
-    """저장할 글자 — UTC ISO 8601. 사전순이 시간순이다."""
-    if t.tzinfo is None:
-        raise ValueError("시간대 없는 시각은 받지 않는다")
-    return t.astimezone(timezone.utc).isoformat(timespec="seconds")
-
-
-def parse(text: str | None) -> datetime | None:
-    """저장된 글자 · 시간대가 붙은 ISO 글자(정리 스킬의 기록)를 시각으로. 못 읽거나 시간대가 없으면 None."""
-    if not text:
-        return None
-    try:
-        t = datetime.fromisoformat(str(text))
-    except ValueError:
-        return None
-    return t if t.tzinfo is not None else None
-
-
-def mail_time(date: str | None) -> datetime | None:
-    """메일의 때(서울 글자) → 시각. 그 꼴이 아니면 None — 때를 모르는 메일이다."""
-    if not date:
-        return None
-    for form in (MAIL_DATE, MAIL_DATE_MINUTE):   # 옛 state.json 에 든 분까지인 글자도 푼다
-        try:
-            return datetime.strptime(date, form).replace(tzinfo=KST)
-        except ValueError:
-            continue
-    return None
-
-
-def seoul(t: datetime | None, form: str = "%Y-%m-%d %H:%M") -> str:
-    return t.astimezone(KST).strftime(form) if t else ""
-
+from scan_const import (FORMAT, HOME_ENV, HOME_NAME, LOCK_FILE, LOCK_STALE_S, LOCK_WAIT_POLL_S, REPLACE_TRIES, REPLACE_WAIT_S, SCAN_DIR,
+                        STATE_FILE)
+from scan_time import now, parse, stamp
 
 # ── 자리 ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +41,7 @@ def home() -> pathlib.Path:
 
 
 def scan_dir(make: bool = False) -> pathlib.Path:
+    """사용자 폴더 안의 스캔 자리 — `make` 면 없을 때 만든다."""
     folder = home() / SCAN_DIR
     if make:
         folder.mkdir(parents=True, exist_ok=True)
@@ -256,12 +216,6 @@ class Lock:
         self.path, self.token, self.started = path, token, started
 
     @classmethod
-    def holder(cls, folder: pathlib.Path) -> dict[str, Any] | None:
-        """도는 판의 잠금 — 없으면 None. 있는데 못 읽으면(막 지은 판이 아직 안 적었다 · 다른 손이 쥐었다) 시작 시각을 그 파일의 고친 때로 댄다 —
-        못 읽은 잠금을 낡은 것으로 읽어 풀면 도는 판 둘이 겹친다."""
-        return held_since(folder / LOCK_FILE)
-
-    @classmethod
     def take(cls, folder: pathlib.Path, at: datetime) -> tuple[Lock | None, dict[str, Any] | None]:
         """쥔다 — (잠금, 풀어 준 옛 잠금). 도는 판이 있으면 (None, 그 판의 잠금)."""
         folder.mkdir(parents=True, exist_ok=True)
@@ -272,7 +226,7 @@ class Lock:
             try:
                 fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             except FileExistsError:
-                held = cls.holder(folder)
+                held = held_since(folder / LOCK_FILE)
                 since = parse((held or {}).get("started"))
                 if since is not None and (at - since).total_seconds() < LOCK_STALE_S:
                     return None, held
@@ -287,13 +241,29 @@ class Lock:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump({"token": token, "started": stamp(at), "pid": os.getpid()}, f)
             return cls(path, token, at), cleared
-        return None, cls.holder(folder)
+        return None, held_since(folder / LOCK_FILE)
+
+    @classmethod
+    def wait(cls, folder: pathlib.Path, seconds: float) -> tuple[Lock | None, dict[str, Any] | None, datetime, float]:
+        """도는 판이 있으면 `seconds` 초 안에서 그 잠금이 풀리기를 기다렸다 쥔다 — 사이(`LOCK_WAIT_POLL_S`)마다 잠들었다 `take` 로 다시 쥐어
+        본다. 쥐어 볼 때마다 그 때로 쥐어(잠금의 시작 때가 기다린 뒤의 때다) 낡음의 규칙이 `take` 그대로다. 0 초면 한 번만 쥐어 본다.
+        내는 것 — (잠금 · 못 쥐었으면 None, `take` 의 둘째 값, 마지막으로 쥐어 본 때, 기다린 초)."""
+        began = time.monotonic()
+        while True:
+            at = now()
+            lock, held = cls.take(folder, at)
+            left = seconds - (time.monotonic() - began)
+            if lock is not None or left <= 0:
+                return lock, held, at, time.monotonic() - began
+            time.sleep(min(LOCK_WAIT_POLL_S, left))
 
     def owns(self) -> bool:
-        held = self.holder(self.path.parent)
+        """이 판이 아직 잠금을 쥐었나 — 잠금 파일의 열쇠가 제 열쇠인가."""
+        held = held_since(self.path)
         return bool(held) and held.get("token") == self.token
 
     def release(self) -> None:
+        """제 잠금이면 푼다."""
         if self.owns():
             try:
                 self.path.unlink()

@@ -1,7 +1,7 @@
 // 보고 창에서 누르신 것 — 줄의 「끝났음 · 내일 다시 · 안 올려도 됨」은 메일 번호마다, 「보고 맞추기」의 보고 시각 · 자리 밖에서 보기와 「다시 올리기」는 제
-// 열쇠로 이 창(file://)의 localStorage 에 남긴다. 일일 보고의 ticks.py 가 로그인 Edge 에서 거두고(시각은 스캔 판이 그 손으로 받는다), 거둔
+// 열쇠로 이 창(file://)의 localStorage 에 남긴다. 일일 보고의 ticks.py 가 로그인 Edge 에서 거두고(시각은 시계 판이 그 손으로 받는다), 거둔
 // 때와 결과를 같은 저장소에 돌려 적는다. 창이 보이는 지금 모습(시각표 · 규칙의 수 · 올리지 않을 것 · 내일 다시 볼 것)은 지을 때의 것
-// (`data-state`)과, 그것을 바꾸는 명령 · 스캔 · 거두기가 열린 창에 바로 적는 것(STATE) 가운데 늦은 것이다 — 창은 제가 못 읽는 파일을
+// (`data-state`)과, 그것을 바꾸는 명령 · 시계 판 · 거두기가 열린 창에 바로 적는 것(STATE) 가운데 늦은 것이다 — 창은 제가 못 읽는 파일을
 // 그 길로만 안다. 메일에서 온 글로 글을 짓지 않는다 — 바꾸는 것은 단추의 눌림 · 숨김, 줄의 class, 이 파일이 든 말, 「HH:MM」 꼴로 거른
 // 시각, 받은 글을 글자(textContent)로 옮긴 것, 32자리 메일 번호로만 지은 링크뿐이다. 페이지의 CSP 가 이 글 그대로의 해시만 연다.
 // 기능(줄의 단추 · 보고 시각 · 두 목록 · 일정 넣기 · 자리 밖에서 보기 · 부탁 · 맡길 일)마다 제 함수 범위에 살고, 바탕(열쇠 · 저장소 · 때의 꼴 ·
@@ -11,8 +11,8 @@
   // ── 바탕 — 열쇠 · 저장소 · 때의 꼴 · 지금 모습. 기능마다의 범위가 함께 쓴다 ──
   var PREFIX = "$done_prefix", STATE = "$state_key", HAND = "$hand_key", HAND_STALE_MS = $hand_stale_ms;
   var CLOCK = /^([01]\d|2[0-3]):[0-5]\d$$/;          // 끝의 겹친 표지는 window.py 가 채울 때 하나가 된다(string.Template)
-  var UNID = /^[0-9A-Fa-f]{32}$$/;
-  var FRESH_SCAN_MS = 40 * 60 * 1000;                // 스캔이 이만큼 안에 돌았으면 「다음 스캔에 받는다」고 말한다(기본 15분마다)
+  var UNID = /^$unid_hex$$/;
+  var FRESH_CHECK_MS = 40 * 60 * 1000;               // 비서의 확인(시계 판)이 이만큼 안에 돌았으면 「다음 확인에 받는다」고 말한다(기본 15분마다)
   var prefsBox = document.getElementById("prefs");
   var store = null;
   try {
@@ -66,7 +66,7 @@
     return (d.getMonth() + 1) + "/" + d.getDate() + " " + two(d.getHours()) + ":" + two(d.getMinutes());
   }
 
-  // ── 지금 모습 ── { times, set, login, room, wait, seen, quiet: [{key, unid, words}], later: [{key, unid, words, due}], at }
+  // ── 지금 모습 ── { times, set, room, wait, seen, quiet: [{key, unid, words}], later: [{key, unid, words, due}], at }
   function built() {
     try {
       var s = JSON.parse(prefsBox.getAttribute("data-state") || "null");
@@ -100,7 +100,7 @@
   }
 
   function startOf(el) {
-    return time((el.getAttribute("data-start") || "").replace(" ", "T") + ":00+09:00");   // 카드의 시각은 서울 벽시계다
+    return time((el.getAttribute("data-start") || "").replace(" ", "T") + ":00$seoul_offset");   // 카드의 시각은 서울 벽시계다
   }
 
   function handAlive() {
@@ -222,7 +222,7 @@
   var Times = (function () {
     var TIMES = "$times_key";
     var timesBox = document.getElementById("times");
-    // 고르신 시각 — { base(그때 보던 시각), times, at, done(스캔이 받은 때), said, refused }. 스캔은 보던 시각에서 더하고 빼신 것만 지금 걸린
+    // 고르신 시각 — { base(그때 보던 시각), times, at, done(받은 때), said, refused }. 시계는 보던 시각에서 더하고 빼신 것만 지금 걸린
     // 시각표 위에 건다. 걸린 때보다 앞서 고른 것은 낡았다 — 나중의 말씀(대화)이 이긴다
     var picked = [];
     var dirty = false;
@@ -239,7 +239,7 @@
       return parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3), 10);
     }
 
-    // 더하실 시각을 바로 잰다 — 스캔이 거는 자(형제 스킬 mailbox-scan 의 `brief_schedule.no_room`)와 같은 셈을 시각표에 함께 적힌 수(room · wait)로 한다. 수를 못 받은
+    // 더하실 시각을 바로 잰다 — 시계가 거는 자(`unattended/brief_slots.first_tight`)와 같은 셈을 시각표에 함께 적힌 수(room · wait)로 한다. 수를 못 받은
     // 창은 재지 않고 비서가 받을 때 잰다고 말한다
     function crowded(times, t, s) {
       if (!s.room || !s.wait) return "";
@@ -249,7 +249,7 @@
         var next = i + 1 < list.length ? minutes(list[i + 1]) : null;
         var end = Math.min(next === null ? 1440 : next, start + s.wait, 1440);
         if (end - start >= s.room) continue;
-        if (list[i] !== t && list[i + 1] !== t) continue;      // 더하시는 시각이 붙은 자리만 — 다른 자리는 스캔이 든다
+        if (list[i] !== t && list[i + 1] !== t) continue;      // 더하시는 시각이 붙은 자리만 — 다른 자리는 시계가 든다
         var latest = two(Math.floor((1440 - s.room) / 60)) + ":" + two((1440 - s.room) % 60);
         if (next !== null && end === next) {
           return t + " 보고는 " + (list[i] === t ? list[i + 1] : list[i]) + " 보고와 " + (end - start) + "분밖에 안 떨어져 있습니다 — 보고 시각끼리는 " +
@@ -302,7 +302,7 @@
       if (!dirty) {
         var base = c && !c.stale && !c.done && c.base ? c.base : null;
         picked = s.times.slice();
-        if (base) {                                    // 고르신 것을 지금 걸린 것 위에 그대로 다시 얹어 보인다(스캔이 하는 셈과 같다)
+        if (base) {                                    // 고르신 것을 지금 걸린 것 위에 그대로 다시 얹어 보인다(시계가 하는 셈과 같다)
           c.times.forEach(function (t) { if (CLOCK.test(t) && picked.indexOf(t) < 0 && base.indexOf(t) < 0) picked.push(t); });
           picked = picked.filter(function (t) { return !(base.indexOf(t) >= 0 && c.times.indexOf(t) < 0); }).sort();
         }
@@ -316,14 +316,14 @@
         return;
       }
       var now = "지금 걸린 시각은 " + s.times.join(" · ") + " 입니다";
-      var alive = Date.now() - time(s.seen) < FRESH_SCAN_MS;
+      var alive = Date.now() - time(s.seen) < FRESH_CHECK_MS;
       if (dirty) say("「이대로 바꾸기」를 누르시면 " + (diffWords(s.times, picked) || "그대로") + " 비서가 받아 겁니다. " + now);
       else if (c && c.stale) say("창에서 고르신 뒤에 대화에서 시각을 바꾸셨습니다 — 창에서 고르신 것은 안 걸립니다. " + now);
       else if (c && c.done) say((c.said || "") + " · " + stamp(c.done));
       else if (c && handAlive()) say("고르신 대로 " + (diffWords(c.base || s.times, c.times) || "그대로") + " 곧 겁니다");
-      else if (c && alive) say("고르신 대로 " + (diffWords(c.base || s.times, c.times) || "그대로") + " 비서가 다음 스캔(15분 안팎)에 받아 겁니다. " +
+      else if (c && alive) say("고르신 대로 " + (diffWords(c.base || s.times, c.times) || "그대로") + " 비서가 다음 확인(15분 안팎)에 받아 겁니다. " +
                                "그때까지는 " + s.times.join(" · ") + " 이 걸려 있습니다");
-      else if (c) say("고르신 것은 메일함 스캔이 한동안 돌지 않아 아직 안 걸렸습니다 — 스캔이 다시 돌 때까지 안 걸리니 대화에서 「스캔 걸려 있어?」 " +
+      else if (c) say("고르신 것은 비서의 확인이 한동안 돌지 않아 아직 안 걸렸습니다 — 확인이 다시 돌 때까지 안 걸리니 대화에서 「보고 예약 걸려 있어?」 " +
                       "하고 물어 주세요. " + now);
       else say("");
     }
@@ -493,9 +493,8 @@
     var CANCEL = " · 다시 누르시면 취소";
     var SAID = {
       soon: "곧 넣습니다",
-      noHand: "바로 넣는 손이 이 창 곁에 없어 다음 메일함 스캔(15분 안팎)에 넣습니다 — 그 사이 일정이 바뀌면 넣지 않습니다",
-      nobody: "바로 넣는 손도 메일함 스캔도 돌지 않아 아직 못 넣었습니다 — 대화에서 「그 약속 넣어 줘」 하시면 넣습니다",
-      past: "지난 약속이라 넣지 않았습니다"
+      noHand: "바로 넣는 손이 이 창 곁에 없어 비서의 다음 확인(15분 안팎)에 넣습니다 — 그 사이 일정이 바뀌면 넣지 않습니다",
+      nobody: "바로 넣는 손도 비서의 확인도 돌지 않아 아직 못 넣었습니다 — 대화에서 「그 약속 넣어 줘」 하시면 넣습니다"
     };
 
     // 이 창을 짓기 전에 맺은 누름은 이 창의 카드가 아니다 — 같은 판을 다음 보고가 다시 세운 카드(지운 일정)는 처음부터 누를 수 있어야 한다
@@ -518,19 +517,20 @@
       if (v && !v.done) store.removeItem(CAL + b.getAttribute("data-key"));
     }
 
-    // 「일정 넣기」 줄의 지금 — { st, note, cls, at, cancel }. st: idle · late · wait · done · failed(다시 누른다) · stopped(그 사이 바뀜 — 잠김) · unsure
-    function calState(b) {
+    // 「일정 넣기」 줄의 지금 — { st, note, cls, at, cancel }. st: idle · late · wait · done · failed(다시 누른다) · stopped(그 사이 바뀜 — 잠김) · unsure.
+    // late 는 그 줄의 「지난 약속」 말(`data-late` — 종류 표가 들고, 넣는 손이 지난 약속을 맺을 때도 같은 말을 적는다)
+    function calState(b, late) {
       var v = putRecord(b);
-      if ((!v || (v.done && !LOCKED[v.state])) && startOf(b) <= Date.now()) return { st: "late", note: SAID.past, cls: "" };
+      if ((!v || (v.done && !LOCKED[v.state])) && startOf(b) <= Date.now()) return { st: "late", note: late, cls: "" };
       if (v && v.done) {
         if (v.state === "added" || v.state === "already") return { st: "done", note: v.said || "", cls: v.state === "added" ? "ok" : "", at: v.done };
-        if (v.state === "past") return { st: "late", note: v.said || SAID.past, cls: "" };
+        if (v.state === "past") return { st: "late", note: v.said || late, cls: "" };
         return { st: v.state === "unsure" ? "unsure" : LOCKED[v.state] ? "stopped" : "failed", note: v.said || "", cls: "no" };
       }
       if (v) {
         var note = SAID.soon, cancel = true;
         if (v.state === "session") note = v.said || "";
-        else if (!handAlive() && Date.now() - time(v.at) >= HAND_STALE_MS) note = Date.now() - time(live().seen) < FRESH_SCAN_MS ? SAID.noHand : SAID.nobody;
+        else if (!handAlive() && Date.now() - time(v.at) >= HAND_STALE_MS) note = Date.now() - time(live().seen) < FRESH_CHECK_MS ? SAID.noHand : SAID.nobody;
         else cancel = false;                           // 손이 살아 있으면 누름은 1초 안에 들어 취소할 틈이 없다
         return { st: "wait", note: note + (cancel ? CANCEL : ""), cls: "", cancel: cancel };
       }
@@ -544,7 +544,7 @@
   var Away = (function () {
     var AWAY = "$away_key";
     var awayBtn = document.getElementById("away-switch");
-    // 고름 — { on, at, done(받은 때), said, refused } · 창 곁의 손이 바로(없으면 스캔 판이) 받아 건다. 걸어 둔 고른 때(지금 모습의 away.chosen)보다
+    // 고름 — { on, at, done(받은 때), said, refused } · 창 곁의 손이 바로(없으면 시계 판이) 받아 건다. 걸어 둔 고른 때(지금 모습의 away.chosen)보다
     // 앞서 고른 것은 낡았다 — 나중의 말씀(대화)이 이긴다. 이 창을 짓기 전에 받은 고름의 말은 이 창에서 안 쓴다. 받는 분 주소는 지금 모습에서만 온다
     function awayChosen(s) {
       var c = parse(AWAY);
@@ -571,8 +571,8 @@
       var said = "", word = on ? "켭니다" : "끕니다";
       if (!s.times.length) said = "지금은 사람 없는 보고가 걸려 있지 않습니다 — 대화에서 「보고 시각 걸어 줘」 하시면 겁니다";
       else if (pending && handAlive()) said = "곧 " + word;
-      else if (pending && Date.now() - time(s.seen) < FRESH_SCAN_MS) said = "다음 메일함 스캔(15분 안팎)에 " + word + " · 다시 누르시면 취소";
-      else if (pending) said = "메일함 스캔이 한동안 돌지 않아 아직 안 바뀌었습니다 — 대화에서 「보고 메일로도 보내 줘 · 그만 보내」 하시면 바로 바뀝니다";
+      else if (pending && Date.now() - time(s.seen) < FRESH_CHECK_MS) said = "비서의 다음 확인(15분 안팎)에 " + word + " · 다시 누르시면 취소";
+      else if (pending) said = "비서의 확인이 한동안 돌지 않아 아직 안 바뀌었습니다 — 대화에서 「보고 메일로도 보내 줘 · 그만 보내」 하시면 바로 바뀝니다";
       else if (c && c.stale) said = "창에서 고르신 뒤에 대화에서 바꾸셨습니다 — 창에서 고르신 것은 안 따릅니다";
       else if (c && c.done) said = (c.said || "") + " · " + stamp(c.done);
       var note = document.getElementById("away-said");
@@ -605,7 +605,7 @@
   // ── 비서에게 부탁하기 ──
   var Ask = (function () {
     // 부탁 — { words, at, brief(누른 창의 파일 이름), task?(카드의 일 번호), session?(이어 갈 세션) } · 창 곁의 손만 거둔다: 맡으면 taken 을, 다
-    // 하면 { state, said, done } 을 적는다. 손이 없으면 남기지 않고 그 자리에서 못 열었다고 말한다 — 스캔 판은 부탁을 안 거둔다(자리를 뜬 뒤에
+    // 하면 { state, said, done } 을 적는다. 손이 없으면 남기지 않고 그 자리에서 못 열었다고 말한다 — 시계 판은 부탁을 안 거둔다(자리를 뜬 뒤에
     // VS Code 가 뜨면 놀란다). 누른 지 ASK_TAKE_MS 안에 손이 안 맡으면 못 열었다고 맺어 둔다 — 손도 그보다 늦은 부탁은 안 연다. 맡은 뒤
     // ASK_OPEN_MS 안에 안 끝나면 손이 멈춘 것이다. 칸에 치신 말은 그 말 그대로, 추천 · 카드의 「대화로 열기」 · 「대화로 이어 가기」는 창을
     // 지을 때 그 카드의 근거까지 지어 둔 말(data-*)로 남긴다 — 한 번에 하나다
@@ -852,7 +852,7 @@
     function rowState(row, runs) {
       var b = row.querySelector("button.put[data-key]");
       if (b) {
-        var c = Cal.state(b);
+        var c = Cal.state(b, row.getAttribute("data-late") || "");
         c.cal = true;
         return c;
       }

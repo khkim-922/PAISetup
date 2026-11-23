@@ -21,7 +21,7 @@
 // 필요한 것: Node 22 이상(내장 WebSocket · fetch). npm 꾸러미는 안 든다.
 'use strict';
 
-const PORT = require('./edge_session.js').settings().port;   // 기본 포트와 EDGE_DEBUG_PORT 읽기는 받는 손 한 자리다
+const PORT = require('./ep_places.js').settings().port;   // 기본 포트와 EDGE_DEBUG_PORT 읽기는 회사 자리 값 한 자리다
 const POLL_MS = 250;               // 화면 · 답을 기다리며 다시 보는 눈금
 const REPLY_SECONDS = 15;          // Edge 의 답 하나를 기다리는 시한 — 붙기 · 식 하나는 곧 답해 넉넉한 값이다
 

@@ -12,9 +12,11 @@ import re
 import sys
 from dataclasses import dataclass, field
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 store.py · brief_text.py — `-I` 로 돌아도 싣는다
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 store.py · brief_sections.py — `-I` 로 돌아도 싣는다
 import store  # noqa: E402
-from brief_text import END_SECTIONS, NONE_ROW, kept_briefs  # noqa: E402
+from brief_inline import UNID_HEX  # noqa: E402
+from brief_sections import NONE_ROW  # noqa: E402
+from old_forms import declined_old  # noqa: E402
 
 FILE_NAME = "daily-brief-prefs.md"
 TITLE = "# 일일 보고 — 사용자께 맞춘 것"
@@ -24,24 +26,24 @@ LATER = "내일 다시 볼 것"          # 「내일 다시」 하신 일 — �
 BACK = "다시 올린 것"              # 돌아오는 날이 와 보고에 다시 댄 일 — 그 뒤에 보고 글이 지어지면 걷는다(그 전에는 다시 거둬도 또 댄다)
 DECLINED = "걸지 않기로 하신 것"   # 처음 보고 때 여쭌 메일함 스캔 · 아침 보고를 마다하신 것 — 있으면 다시 여쭙지 않는다
 EMPTY = NONE_ROW
-UNID = re.compile(r"\(mail:([0-9A-Fa-f]{32})\)")
+MAIL_LINK = re.compile(rf"\(mail:({UNID_HEX})\)")   # 줄에 단 메일 링크 — 그 번호가 줄의 열쇠다(`key` · `unid_of`)
 DUE = re.compile(r"`(\d{4}-\d{2}-\d{2})`")
 BACK_MARK = " · `{at}` 보고에 다시 올렸습니다"
 BACK_AT = re.compile(r" · `(\d{4}-\d{2}-\d{2} \d{2}:\d{2})` 보고에 다시 올렸습니다$")
 STAMP = "%Y-%m-%d %H:%M"           # 다시 올린 때 — 이 PC 의 시각(보고 글의 이름과 같은 바탕이라 둘을 견준다)
 TITLE_MAX = 80
-NUMBERISH = re.compile(r"\(?mail:[^\s)]*\)?|\b[0-9A-Fa-f]{32}\b")   # 이름 속 메일 번호 꼴 — 다음 보고가 그 번호를 이 일의 메일로 읽는다
+NUMBERISH = re.compile(rf"\(?mail:[^\s)]*\)?|\b{UNID_HEX}\b")   # 이름 속 메일 번호 꼴 — 다음 보고가 그 번호를 이 일의 메일로 읽는다
 
 QUIET_FROM_WINDOW = "- 「{title}」 같은 일 — {when} 보고 창에서 「이런 건 안 올려도 됨」 하셨습니다 [보기 메일](mail:{unid})"
 QUIET_FROM_TALK = "- {words} — {when} 대화에서 말씀하셨습니다"
 LATER_LINE = "- {title} — `{due}` 첫 보고에 다시 올립니다 · {when} {where} 「내일 다시」 하셨습니다 [근거 메일](mail:{unid})"
 DECLINED_LINE = "- 메일함 스캔 · 아침 보고 — `{day}` {where} 걸지 않기로 하셨습니다"
-# 처음 보고의 여쭘을 맞춤 파일에 적기 전의 보고 글이 그 말씀을 「이 보고가 본 데」의 한 줄로 들던 꼴 — 맞춤 파일에 그 절이 없을 때만 읽어 들인다
-DECLINED_OLD = re.compile(r"걸지\s*않기로\s*하셨")
+LEGACY_WHERE = "지난 보고 글에 남은 말씀대로"   # 옛 꼴의 말씀(`old_forms.declined_old`)을 읽어 들인 줄이 대는 자리
 
 
 @dataclass
 class Prefs:
+    """보고 맞춤 파일 한 장 — 올리지 않을 것 · 내일 다시 볼 것 · 다시 올린 것 · 걸지 않기로 하신 것과 읽은 꼴."""
     quiet: list[str] = field(default_factory=list)
     later: list[str] = field(default_factory=list)
     back: list[str] = field(default_factory=list)       # 다시 올린 줄 — 「내일 다시」 줄 끝에 다시 올린 때(`BACK_MARK`)가 붙는다
@@ -51,6 +53,7 @@ class Prefs:
 
 
 def path_of(folder: pathlib.Path) -> pathlib.Path:
+    """사용자 폴더의 보고 맞춤 파일 자리."""
     return folder / FILE_NAME
 
 
@@ -71,17 +74,32 @@ Unreadable = store.Unreadable                  # 맞춤 파일이 있는데 못 
 
 def read(folder: pathlib.Path, strict: bool = False) -> Prefs:
     """맞춤 파일 — 없으면 빈 것. 있는데 못 읽으면 `strict`(읽은 뒤 쓰는 자리)는 `Unreadable`, 보이기만 하는 자리는 빈 것에 못 읽었다는 표
-    (`unread`)를 단다 — 보이는 쪽이 「없습니다」 대신 못 읽었다고 말한다. 사람이 손으로 고친 파일도 「- 」 줄만 읽는다."""
+    (`unread`)를 단다 — 보이는 쪽이 「없습니다」 대신 못 읽었다고 말한다. 그 절이 없는 옛 파일이면 옛 꼴의 말씀을 읽어 들인다(`with_legacy`)."""
+    text = file_text(folder, strict)
+    return Prefs(unread=True) if text is None else with_legacy(prefs_of(text), text, folder)
+
+
+def file_text(folder: pathlib.Path, strict: bool) -> str | None:
+    """맞춤 파일의 글 — 없으면 빈 글. 있는데 못 읽으면 `strict` 는 `Unreadable`, 아니면 None."""
     try:
         raw = store.read_bytes(path_of(folder))
     except Unreadable:
         if strict:
             raise
-        return Prefs(unread=True)
-    text = raw.decode("utf-8-sig", errors="replace") if raw is not None else ""
-    prefs = Prefs(lines_of(text, QUIET), lines_of(text, LATER), lines_of(text, BACK), lines_of(text, DECLINED))
-    if f"## {DECLINED}" not in text and declined_old(folder):   # 그 절을 쓰기 전의 파일 — 지난 보고 글의 옛 꼴 한 줄을 읽어 들인다
-        prefs.declined, prefs.legacy = [DECLINED_LINE.format(day=dt.date.today().isoformat(), where="지난 보고 글에 남은 말씀대로")], True
+        return None
+    return raw.decode("utf-8-sig", errors="replace") if raw is not None else ""
+
+
+def prefs_of(text: str) -> Prefs:
+    """맞춤 파일의 글 → 네 절의 줄. 사람이 손으로 고친 파일도 「- 」 줄만 읽는다."""
+    return Prefs(lines_of(text, QUIET), lines_of(text, LATER), lines_of(text, BACK), lines_of(text, DECLINED))
+
+
+def with_legacy(prefs: Prefs, text: str, folder: pathlib.Path) -> Prefs:
+    """그 절(「걸지 않기로 하신 것」)을 쓰기 전의 파일이고 가장 늦은 보고 글이 옛 꼴로 그 말씀을 들었으면 한 줄로 읽어 들이고 아직 안 적혔다는
+    표(`legacy`)를 단다 — 창을 짓는 손의 마무리가 맞춤 파일에 옮긴다."""
+    if f"## {DECLINED}" not in text and declined_old(folder):
+        prefs.declined, prefs.legacy = [DECLINED_LINE.format(day=dt.date.today().isoformat(), where=LEGACY_WHERE)], True
     return prefs
 
 
@@ -95,13 +113,13 @@ def write(folder: pathlib.Path, prefs: Prefs) -> None:
 
 
 def key(line: str) -> str:
-    """줄의 열쇠 — 메일 번호가 있으면 그 번호(대문자), 없으면 글에서 낸 짧은 지문(「w」 + 10자리). 보고 창의 「다시 올리기」가 이 열쇠로 그 줄을 짚는다."""
-    m = UNID.search(line)
-    return m.group(1).upper() if m else "w" + hashlib.sha1(line.encode("utf-8")).hexdigest()[:10]
+    """줄의 열쇠 — 메일 번호(`unid_of`)가 있으면 그 번호, 없으면 글에서 낸 짧은 지문(「w」 + 10자리). 보고 창의 「다시 올리기」가 이 열쇠로 그 줄을 짚는다."""
+    return unid_of(line) or "w" + hashlib.sha1(line.encode("utf-8")).hexdigest()[:10]
 
 
 def unid_of(line: str) -> str | None:
-    m = UNID.search(line)
+    """줄에 단 첫 메일 링크(`MAIL_LINK`)의 번호(대문자) — 없으면 None."""
+    m = MAIL_LINK.search(line)
     return m.group(1).upper() if m else None
 
 
@@ -119,10 +137,6 @@ def clean(words: str) -> str:
     words = " ".join(str(words or "").split())
     words = re.sub(r"[\[\]{}`*#<>]", "", NUMBERISH.sub("", words)).strip(" -—")
     return (words[:TITLE_MAX - 1].rstrip() + "…") if len(words) > TITLE_MAX else words
-
-
-def when_words(at: dt.datetime) -> str:
-    return f"{at.month}/{at.day}"
 
 
 def put_quiet(prefs: Prefs, line: str) -> None:
@@ -185,20 +199,3 @@ def take_due(prefs: Prefs, now: dt.datetime, made: list[dt.datetime]) -> tuple[l
             wait.append(line)
     prefs.back, prefs.later = kept, wait
     return [BACK_AT.sub("", x) for x in kept], wait
-
-
-def declined_old(folder: pathlib.Path) -> bool:
-    """가장 늦은 보고 글이 걸지 않기로 하신 말씀을 「이 보고가 본 데」의 줄로 들었나 — 맞춤 파일에 그 절을 두기 전의 꼴. 못 읽으면 False."""
-    briefs = kept_briefs(folder) if folder.is_dir() else []
-    try:
-        raw = store.read_bytes(briefs[-1]) if briefs else None
-    except store.Unreadable:
-        return False
-    rows, inside = [], False
-    for row in (raw or b"").decode("utf-8", errors="replace").splitlines():
-        if row.startswith("#"):
-            inside = row.lstrip("#").strip().startswith(END_SECTIONS[0])
-            continue
-        if inside:
-            rows.append(row)
-    return bool(DECLINED_OLD.search("\n".join(rows)))

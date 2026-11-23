@@ -24,12 +24,12 @@
 ## 짓기 — 출발 × 바꿀 것 × 끝
 
 `save` 한 부름은 게시판 화면 하나를 지나는 한 판이다 — 출발 화면을 열고(`--start`), 준 바꿀 것을 아무 조합으로 넣고, [임시저장] 하나로
-끝낸다. 사람이 웹에서 [글쓰기] · 임시글 열기 → 칸 고치기 → [임시저장] 하는 단위와 같다. 손가락은 표다 — 명령 쪽(`board.py` 의
-`WRITE_STARTS` · `WRITE_CHANGES`)이 인자 · 거르기 · `save --help` 의 지도를, 짓는 손 쪽(`draft_board.js` 의 `STARTS` · `CHANGES`)이 화면을 여는
-법 · 넣는 차례 · 저장을 가리는 법을 든다. 손가락 하나를 더하는 일은 두 표의 줄과 그 일을 하는 손 하나다. 두 표는 한 벌로 합치지 않는다 —
-짓는 손의 표는 화면을 다루는 함수를 들어 언어를 못 건너고, 겹치는 것은 이름 × 출발(받는 것 · 꼭 받는 것)과 바꿀 것의 사람 말뿐이라 그
-몫은 검사(판정 7)가 명령의 표를 원본으로 맞춰 본다. 회사에서 안 잰 채 지은 출발은 표의 `unmeasured` 칸이 들고 `save --help` 가
-「회사에서 안 쟀다」로 낸다.
+끝낸다. 사람이 웹에서 [글쓰기] · 임시글 열기 → 칸 고치기 → [임시저장] 하는 단위와 같다. 손가락은 표다 — 두 쪽이 함께 읽는 표 파일
+(`scripts/write_fingers.json`)이 출발마다 꼭 받는 바꿀 것과 바꿀 것마다의 사람 말 이름 · 받는 출발을 한 벌로 들고, 그 위에 명령 쪽(`board.py`
+의 `WRITE_STARTS` · `WRITE_CHANGES`)이 인자 · 거르기 · `save --help` 의 지도 · 출발의 자리를, 짓는 손 쪽(`draft_board.js` 의 `STARTS` ·
+`CHANGES`)이 화면을 여는 법 · 넣는 차례 · 저장을 가리는 법을 붙인다. 화면을 다루는 함수는 언어를 못 건너 저마다의 표에 남고, 두 언어가 함께
+알아야 하는 사실만 표 파일에 산다(쓰기 창의 칸 `write_params.json` 과 같은 길). 손가락 하나를 더하는 일은 표 파일의 한 줄 · 두 표의 줄 ·
+그 일을 하는 손 하나다. 회사에서 안 잰 채 지은 출발은 표의 `unmeasured` 칸이 들고 `save --help` 가 「회사에서 안 쟀다」로 낸다.
 
 한 부름을 칸 하나로 쪼개지 않는다 — 창을 열고 편집기 · 첨부 틀이 서기를 기다리는 것이 한 판의 거의 다라, 칸마다 부르면 그만큼 창을
 다시 열고 저장 물음을 다시 넘긴다. 열린 창의 상태를 모델이 들고 다니게 되면 「반쯤 고친 창」을 남기지 않는 가드도 모델 손으로 샌다.
@@ -84,6 +84,222 @@
 - 그 밖(아무것도 안 바뀜 · 모습을 못 읽음 · 앞 목록에 그 글이 없었음 · 바뀌었는데 요청한 것이 안 보임)은 `unproven` — 종료 1 로 「다시 부르지
   않는다」를 대고(안 보인 것을 함께 댄다) 편집 창을 띄워 둔다. 다시 부르면 첨부가 겹으로 붙는다
 
+## 조각의 지도
+
+게시판 손은 얇은 명령(`board.py`)과 게시판 앱의 손(`xclick.py`) 둘이다 — 명령은 인자를 가리고 손을 엮기만 하고, 망에 닿는 것은 손이다. 글을
+임시저장하는 브라우저 안의 손(`draft_board.js`)은 이 지도에 안 선다 — 이 손은 파이썬만 읽는다.
+
+아래는 코드에서 뽑은 지도다 — 줄의 문장은 그 조각 머리말의 첫 문장이라, 문장을 고치려면 머리말을 고치고 다시 짓는다.
+
+<!-- drawn:piece-map · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
+| 조각 | 맡은 일 | 싣는 곁 조각 | 다른 스킬에서 싣는 것 |
+|---|---|---|---|
+| `board.py` · 입구 | 게시판 스킬의 얇은 명령 — 곁의 손(``xclick.py`` 읽기 · ``draft_board.js`` 짓기)으로 사내 게시판을 찾고 읽고, 글을 임시저장한다. | `xclick` | ep-login 의 `ep_command` · `ep_session` |
+| `xclick.py` | 사내 게시판(Posco Family Groupware · XClick U14)의 손 — EP 세션으로 게시판에 들어가, 게시판 나무 · 글 목록 · 찾기 · 글 한 건 · 첨부 목록 · 첨부 받기 · 임시보관함 목록 · 글의 의견 · 열람내역 · 게시판 옵션 · 쓰기 창의 폼(임시글 · 재활용)을 읽는다. | — | ep-login 의 `ep_session` |
+
+**입구에서 내려가는 나무** — 줄마다 조각과 그 머리말 첫 문장. 한 조각은 처음 닿은 자리에서만 펴고 다시 닿으면 `↑` 로 가리킨다. 클래스는 메서드를 그 아래에 든다. `←` 뒤는 그 조각을 부르는 다른 스킬이다. 인스턴스를 거친 부름은 이어지지 않는다.
+
+- `main` — 명령 하나 — 인자를 풀고, 앱 손을 실은 뒤(``ep_command.finish``) 세션 전 가림 → 세션 바퀴(``ep_session.session_first``) 안의 몸.
+  - `parser` — board.py 의 인자 해석기 — 명령마다 하위 해석기와 인자를 달고, 맨 위 지도와 글 짓기 지도를 --help 에 붙인다.
+    - `top_map` — 맨 위 --help 의 지도 — READS · 글 짓기의 두 표 · NOT_HERE · EXITS 에서 짓는다.
+      - `Start` — 글 짓기의 출발 하나 — 게시판의 화면 하나다.
+      - `copy_place` — 재활용 출발의 자리 — 원글의 게시판을 고르고, 화면을 열기 전에 재활용 창이 그 글로 서나를 GET 으로 본다(아무것도 안 생긴다). 제목을 안 줬으면 원글의 제목이다.
+        - `pick_board` — (나무, 고른 게시판, 나무가 받아 둔 것인가) — 받아 둔 나무로 먼저 가리고, 거기 없는 게시판이면 새로 받아 한 번 더 가린다.
+          - `kept_tree` — TREE_DAYS 안에 받은 같은 꼴의 나무 — 없거나 낡았거나 깨졌으면 None.
+            - `tree_path` — 받아 둔 게시판 나무 파일의 자리 — 홈 아래 ``TREE_DIR`` 의 ``TREE_FILE``.
+          - `fresh_tree` — 읽을 수 있는 게시판 나무를 게시판에서 받아 홈에 남기고 낸다 — 못 남겨도 받은 것은 낸다(다음 판이 다시 받을 뿐이다).
+            - ↑ `tree_path`
+          - `resolve` — 게시판 id 나 이름의 일부 → 나무의 한 줄. 「>」 로 가르면 칸마다 그 깊이의 이름 일부다.
+            - `NoSuchBoard` — 그 id · 이름의 게시판이 나무에 없다 — 받아 둔 나무였으면 새로 받아 한 번 더 가릴 까닭이다(여럿에 걸린 것과 가른다).
+          - ↑ `NoSuchBoard`
+        - `Place` — 글 짓기 출발이 정한 자리 — 짓는 손에 줄 출발 인자 · 그 글의 게시판 id · 게시판 이름 · 손에 넘길 제목 · 답에 붙일 출발의 말.
+      - `draft_place` — 임시글 출발의 자리 — 임시보관함 첫 쪽에서 그 글의 게시판을 찾는다(없으면 Stop(인자)). 이름은 받아 둔 나무로 댄다 — 없으면 id 다.
+        - ↑ `Place`
+        - `board_names` — 게시판 id → 「 > 」 로 이은 경로 이름의 표.
+        - ↑ `kept_tree`
+      - `needs_of` — 표 파일에서 그 출발이 꼭 받는 바꿀 것의 이름.
+      - `new_place` — 새 글 출발의 자리 — 쓸 수 있는 게시판 나무에서 묶음이 아닌 게시판 하나를 고른다.
+        - ↑ `resolve`
+        - ↑ `Place`
+      - `Flag` — 바꿀 것 하나가 받는 인자 하나.
+        - `Flag.dest` — argparse 가 값을 싣는 이름 — 인자에서 앞의 「-」 를 떼고 「-」 를 「_」 로 바꾼 것.
+      - `finger` — (이름, 바꿀 것) — 표 파일의 바꿀 것 한 줄(사람 말 이름 · 받는 출발)에 이 명령의 인자와 말을 붙인다.
+        - `Change` — 글 짓기의 바꿀 것 하나 — 손가락 하나다.
+          - `Change.word` — --help 의 지도에 서는 그 손가락의 말 — 이름과 이 명령의 말.
+    - `board_word` — 게시판 인자의 말 — list · search · save 가 함께 쓴다.
+    - `filter_option` — 화면 필터 낱말의 인자 — no_pinned 는 --no-pinned.
+    - `write_map` — save --help 의 지도 — 두 표에서 짓는다.
+      - ↑ `Start`
+      - ↑ `copy_place`
+      - ↑ `draft_place`
+      - ↑ `needs_of`
+      - ↑ `new_place`
+      - ↑ `Flag`
+      - ↑ `finger`
+    - ↑ `Start`
+    - ↑ `copy_place`
+    - ↑ `draft_place`
+    - ↑ `needs_of`
+    - ↑ `new_place`
+    - ↑ `Flag`
+    - ↑ `finger`
+  - `Command` — 명령 하나 — 몸((앱 손, 인자[, 가린 값]) → 답) · 세션 전 가림(인자 → 몸에 넘길 값 — 틀렸으면 Stop) · 앱 손이 드나.
+  - `cmd_attachment` — 첨부 손 — 목록 묻기 → (목록만이면 그 답) 고르기 → 받을 폴더 → 저장 이름 → 한 건씩 받기.
+    - `file_notes` — 첨부마다 문서함(ECM) 쪽지인가 — read 와 attachment 가 한 번씩 센다.
+      - `ecm_note` — 문서함(ECM) 쪽지의 이름 꼴인가 — 꼴은 형제 스킬 company-mail 의 ``inbox`` 가 든다(메일 첨부와 한 가름).
+    - `attachment_list` — 첨부 목록 답 — 줄마다 no · name · bytes, 문서함 쪽지면 ecm. 첨부가 있으면 받는 길을 든다.
+      - `listed_file` — 첨부 목록의 한 줄 — no · name, 그 답이 더하는 칸(``more``), 문서함 쪽지면 ecm.
+    - `picked` — --save 의 값 → 받을 첨부의 자리(0 부터) — 번호 하나나 all. 아니면 Stop(인자).
+    - `save_dir` — 첨부를 받을 폴더 — --out, 안 주면 그 글의 받는 자리(``article_dir``).
+      - `article_dir` — 그 글의 것(본문 글자 · 본문 그림 · 첨부)을 받는 기본 자리 — 임시 폴더 아래 SAVE_ROOT/<글 id>.
+    - `save_names` — 번호 → 저장 이름(형제 company-mail 의 ``attachments.file_names``) — 이 글에서 파일로 남길 첨부 전부를 두고 가른다: 같은 이름 · 이 자리에 이 스킬이 따로 쓰는 이름(``OWN_NAMES``)과 안 겹친다.
+    - `fetch_one` — 첨부 한 건 손 — 받아서 쪽지면 문서 열쇠 줄, 아니면 파일로 남긴 줄.
+      - `note_row` — 문서함 쪽지 한 건의 줄 — 화면이 여는 링크 쪽 문서 열쇠(형제 company-mail 의 ``inbox.ecm_note_key`` · 메일과 한 가름). 열쇠가 없으면 Stop(도구).
+      - `file_row` — 첨부 한 건을 파일로 남긴 줄(형제 company-mail 의 ``attachments.keep``) — path · bytes, DRM 이면 note 가 다음 손을 말한다.
+  - `cmd_boards` — 게시판 나무 손 — 읽을 수 있는 게시판(받아 홈에 남긴다)이나 ``--write`` 면 쓸 수 있는 게시판의 id · 경로 · 묶음 표시.
+    - ↑ `fresh_tree`
+  - `cmd_comments` — 글의 의견 — 글 화면(viewArticle · 조회수를 안 올린다)에 함께 오는 칸을 푼다.
+  - `cmd_form` — 쓰기 창이 열 칸 손 — 임시글(draft) · 재활용(copy)의 폼을 GET 으로 묻기 → 본문 풀기 → HTML 파일 남기기 → 게시판 옵션 → 맞추기. 창을 안 띄우고 아무것도 안 바꾼다.
+    - `body_of` — 본문 HTML → 보이는 글자와 그림 주소(형제 스킬 company-mail 의 ``visible.body``) — 글자의 [그림 N] 이 주소들의 N 번째다.
+    - `keep_file` — 그 글의 받는 자리(``own_path``)에 글 파일 하나를 남기고 그 경로를 낸다.
+      - `own_path` — 그 글의 받는 자리에서 이 스킬이 쓰는 이름(``OWN_NAMES``)의 경로 — 거기 없는 이름이면 ValueError(첨부의 저장 이름과 겹칠 수 있다).
+        - ↑ `article_dir`
+    - `end_editable` — 그 게시판이 게시기한(게시종료일)을 바꾸게 하나 — 화면은 옵션 ``termModifyYn`` 이 Y 일 때만 날짜 칸을 켠다(N 이면 기본 기간 고정).
+  - `cmd_list` — 목록 · 찾기 손 — 게시판 고르기 → 앱 묻기 → 이름 댈 나무 → 고정 공지 가르기 → 머리 → 쪽.
+    - ↑ `pick_board`
+    - `list_ask` — 앱 손 ``articles`` 에 줄 인자 — 게시판 · 기간을 안 주면 앱 손의 기본(나무의 뿌리 · 처음부터)이다.
+    - `naming_tree` — 목록 줄의 게시판마다 이름을 댈 나무 — 받아 둔 나무에 없는 게시판의 글이 왔으면 새로 받는다(``fresh_tree``).
+      - ↑ `board_names`
+      - ↑ `fresh_tree`
+    - `split_pinned` — (찾은 줄, 머리에 따로 실을 고정 공지) — 고정 공지는 쪽마다 맨 위에 서고 낱말과 상관없이 오며 total 에도 안 든다.
+    - `page_rows` — 목록 · 찾기 답의 한 쪽 — 머리에 줄을 싣고, 답 한도(``OUT_BYTES``)를 넘으면 뒤 줄부터 덜고 more 를, 다음 쪽이 있으면 next 를 단다.
+      - `row_out` — 목록 한 줄 — 게시판 칸은 머리의 board_id(``shared``)와 다를 때만, ROW_FLAGS 는 참일 때만 싣는다.
+      - `next_page` — 다음 쪽 번호 — 이 쪽 뒤에 줄이 남았을 때만. 쪽 번호가 0 이면 없다(쪽은 1 부터다).
+    - `list_head` — 목록 답의 머리 — 본 게시판 · 센 수 · 쪽, 게시판 하나만 본 답이면 board_id(줄마다 되풀이하지 않는다), 찾은 말 · 칸 · 제외할 말 · 필터 · 따로 실은 고정 공지.
+    - ↑ `board_names`
+    - ↑ `next_page`
+  - `cmd_read` — 글 한 건 손 — 글 묻기 → 본문 풀기 → 첨부 목록 → 글 파일 남기기 → 머리 → 의견 · 그림 칸 → 답 한도에 본문 맞추기.
+    - ↑ `body_of`
+    - ↑ `keep_file`
+    - `read_head` — read 답의 머리 — 글의 칸 · 글자 수 · 남긴 글 파일 · 첨부 목록(``notes`` 가 선 첨부면 ecm) · 걷은 덩이 수(있을 때만).
+      - ↑ `listed_file`
+    - ↑ `file_notes`
+    - `read_tail` — 본문 뒤에 실을 칸 손 — 의견이 있으면 읽는 길, 그림이 있으면 받은 그림(``--images``)이나 그 수를 알리는 말.
+      - `save_images` — 본문 그림을 형제 스킬 company-mail 의 ``body_images`` 로 받는다 — 묻는 것은 앱 손(``xclick.App.image``)이 가린다.
+        - `xclick.SessionExpired` — 사내 세션이 끊겼거나 게시판이 안 들였다 — 받는 손을 다시 부를 자리다.
+        - `xclick.SessionMissing` — 세션 파일이 없거나 비었다 — 받는 손(스킬 ep-login)을 부를 자리다.
+        - `xclick.AppError` — 게시판 손이 낸 실패 — 게시판이 거절했거나 답이 잰 꼴이 아니거나 게시판에 못 닿았다.
+        - ↑ `own_path`
+  - `cmd_readers` — 글의 열람내역(화면의 조회수 링크) — 읽은 시각 · 이름 · 부서 · 직함. 사번은 안 싣는다.
+  - `cmd_save` — 글 짓기 손 — 출발의 자리 → 게시기한 잠금 → 손 인자 · 본문 파일 → 짓는 손 → 답의 말. 가린 판(``plan``)은 명령 표의 세션 전 가림 (``write_plan``)이 낸다.
+    - ↑ `Start`
+    - ↑ `copy_place`
+    - ↑ `draft_place`
+    - ↑ `needs_of`
+    - ↑ `new_place`
+    - `refuse_locked_end` — 그 게시판이 게시기한을 못 바꾸게 하면 Stop(인자) — 게시판 옵션을 묻는다(화면은 그때 게시종료일 칸을 잠근다).
+      - ↑ `end_editable`
+    - `handed_files` — 본문 · 글 일부를 임시 파일로 남겨 짓는 손의 인자(--body-file · --swap-file)로 내고, 그 블록이 끝나면 걷는다.
+    - `hand` — 짓는 손(``draft_board.js``)을 부른다 — 쓰는 사람의 Edge 에서 게시판 화면을 다룬다.
+    - `hand_args` — 짓는 손 save 의 인자 — 출발 · 자리 · 게시기한 · 뺄 첨부 · 제목 · 더할 첨부(본문 · 글 일부의 파일은 ``handed_files`` 가 붙인다).
+    - `save_words` — 짓는 손의 답에 사람에게 갈 말을 붙인다 — 게시판 이름 · 저장했다 · 다음 길, 그리고 출발의 말과 임시글이 갈라졌을 때의 말.
+  - ↑ `hand`
+  - `list_scope` — list · search 의 물음을 가린 값 — 기간 · 제외할 말이 틀렸거나 함께 못 서면 Stop(인자). 세션 없이 가린다(명령 표의 가림 칸).
+    - ↑ `filter_option`
+    - `ListScope` — list · search 의 물음을 세션 전에 가린 값 — 게시판 말 · 찾을 말 · 찾는 칸 · 기간(YYYY-MM-DD · 빈 글자는 앱 손의 기본) · 화면의 필터 칸 · 제외할 말(걷은 글자). list 는 찾을 말이 빈 글자다.
+  - `write_plan` — save 의 인자를 다 가린 판 손 — 손가락 거르기 → 제목 · 첨부 경로 → 칸 꼴 → 본문 · 글 일부. 하나라도 걸리면 Stop(인자). 세션도 게시판도 안 부른다.
+    - `write_fingers` — 이 부름이 받은 바꿀 것의 이름 — 출발이 안 받는 것 · 꼭 받을 것이 빠진 것 · --id 의 있고 없음이 출발과 안 맞는 것은 게시판도 화면도 부르기 전에 Stop(인자).
+      - ↑ `Start`
+      - ↑ `copy_place`
+      - ↑ `draft_place`
+      - ↑ `needs_of`
+      - ↑ `new_place`
+      - ↑ `Flag`
+      - ↑ `finger`
+    - `title_of` — --title 의 앞뒤 빈칸을 걷은 글자 — 안 줬으면 None. 게시판이 걷어 저장하니 같은 글자로 넘긴다.
+    - `attached` — --file 마다의 절대 경로.
+    - `refuse_fields` — save 의 칸 꼴이 틀렸으면 Stop(인자) — 빈 제목 · 글 통째와 일부를 함께 · 없는 날의 게시기한 · 빈 빼기 · 같은 이름을 빼고 더하기 · 없는 첨부를 이 차례로 보고 첫 하나를 댄다.
+    - `WritePlan` — 세션 · 게시판 · 화면을 부르기 전에 가린 글 짓기 — 받은 바꿀 것 · 걷은 제목 · 첨부의 절대 경로 · 지은 본문(없으면 None) · 글 일부 · 게시종료일(YYYY-MM-DD · 안 줬으면 None).
+    - `compose` — save 의 본문 — HTML 파일은 그대로, 평문은 줄바꿈을 살려 싸고, 그림은 끝에 data URI 로 붙인다.
+    - `swaps_of` — --swap · --swap-file 의 [옛 조각, 새 조각] — 파일 쌍은 UTF-8 글 둘(조각이 길거나 따옴표가 들 때 · BOM 과 앞뒤 줄바꿈은 걷는다).
+    - `end_of` — --end 의 날 — 앞뒤 빈칸을 걷은 YYYY-MM-DD(``ep_command.date_of``). 안 줬으면 None. 칸 꼴 가림(``refuse_fields``)이 먼저 있는 날인가를 본다.
+  - `xclick.App` — 게시판 한 판 — 사내 세션의 쿠키로 들어가 게시판 화면을 읽고 푼다.
+    - ↑ `SessionMissing`
+    - `App._raw` — 주소 하나를 (``data`` 를 주면 폼 POST 로) 열어 받은 바이트 — 넘김은 SessionExpired, 그 밖의 거절 · 닿지 못함은 AppError.
+      - ↑ `SessionExpired`
+      - ↑ `AppError`
+    - `App._ask` — 게시판에 묻는 바이트 — 아직 안 들어갔으면 먼저 들어간다(``login``). 들어가기 밖의 모든 물음이 이 한 자리를 지난다.
+      - `App.login` — 게시판에 들어간다 — SSO 넘김 화면의 토큰을 게시판에 넘기고, 받은 사용자 ID 를 뒤섞어(``scramble``) 내어 게시판 세션을 연다.
+        - ↑ `App._raw`
+        - ↑ `SessionExpired`
+        - `scramble` — 화면의 jQuery.encrypt 와 같은 글자 — UTF-8 바이트를 4 바이트 작은끝 수로 묶어 XXTEA 꼴로 세 번 섞고 base64 의 「=」 을 「!」 로.
+      - ↑ `App._raw`
+    - `App._get` — 게시판 화면 한 장의 글 — 로그인 창이 왔으면 ``SessionExpired``.
+      - ↑ `App._ask`
+      - ↑ `SessionExpired`
+    - ↑ `App.login`
+    - `App.call` — 게시판 컨트롤러(``CONTROLLER``)에 폼 하나를 내고 받은 화면의 글.
+      - ↑ `App._get`
+    - `App.tree` — 게시판 나무 전체 — [{id, name, path, folder}]. ``write`` 면 쓸 수 있는 게시판만(화면의 글쓰기 고름 상자와 같다).
+      - `parse_tree` — 게시판 나무 한 층 → [(bbs_id, tree_id, 이름, 묶음인가)].
+      - ↑ `App._get`
+    - `App.articles` — 게시판 하나(묶음이면 그 아래 다)의 글 — 낱말을 주면 ``fields`` 칸에서 찾는다.
+      - `App.detail_search` — 화면 상세검색(listSearchArticle) — ``srchTargetCurMap=N`` 이 「하위포함」이다(화면이 뜻을 거꾸로 쓴다). 고정 공지를 따로 안 세우고 낱말이 든 고정 공지도 찾은 줄로 낸다.
+        - `parse_rows` — 글 목록 화면 → {total, rows}. 줄마다 board(게시판 id) · id · title · board_name · writer · date · views · notice · files.
+          - `row_key` — 목록 줄 고름 칸의 JSON — 상세검색 꼴은 제목의 큰따옴표를 안 감싸 JSON 이 깨진다.
+          - `row_title` — 목록 줄의 제목 — 고름 칸의 JSON 에 있으면 그것, 깨진 꼴(``row_key`` 가 id 만 집은 것)이면 줄의 링크 글자(의견 수는 걷는다).
+            - `text_of` — HTML 조각 → 한 줄 글자(태그 · 주석을 걷고 겹친 빈칸을 하나로).
+          - ↑ `text_of`
+        - ↑ `App.call`
+      - ↑ `parse_rows`
+      - ↑ `App.call`
+    - ↑ `App.detail_search`
+    - `App.readers` — 글 하나의 열람내역(화면의 조회수 링크) — 읽기만 한다.
+      - `parse_readers` — 열람내역 창 → {total, rows}. 줄마다 at · name · dept · title(직함). 사번 칸은 싣지 않는다.
+        - ↑ `text_of`
+      - ↑ `App.call`
+    - `App.options` — 게시판 하나의 옵션(쓰기 창이 칸을 켜고 끄는 값 — ``termModifyYn`` 게시기한을 바꾸게 하나 · ``dispPeriod`` 기본 게시 기간 …).
+      - ↑ `App._get`
+      - ↑ `AppError`
+    - `App.article` — 글 한 건 — 조회수를 안 올리고(``transaction_yn=N``) 글 화면을 풀어 바로가기(link)를 붙인다.
+      - ↑ `App.call`
+      - `parse_article` — 글 화면 → {title, writer, posted, period, html}. 본문이 없으면(게시판 id 가 틀렸다 · 글이 없다) AppError.
+        - `NotFound` — 받은 id 로 글이 안 열렸다 — 게시판 id 와 글 id 가 안 맞는다.
+        - ↑ `text_of`
+        - `unwrap` — 본문 칸 → 글의 HTML. 칸 전체가 한 행 한 칸의 감싸개 표면 그 칸 안만 낸다(``WRAPPER``) — 한 겹만 벗긴다.
+        - `parse_comments` — 글 화면의 의견 칸 → {total, rows}. 줄마다 who(이름과 직함 · 부서 — 화면 글자 그대로) · at · text · kind(기타 · 질문 …) · reply(남의 의견에 단 답글). 화면이 한 번에 다 싣는다 — 쪽이 없다.
+          - ↑ `text_of`
+      - `article_link` — 글 화면 「URL복사」 와 같은 바로가기 — ssoURL + encodeURIComponent(articleURL + menu · bbsid · articleid).
+    - `App.files` — 글 하나의 첨부 목록 — [{id, name, size}].
+      - `parse_files` — 첨부 목록 화면 → [{id, name, size}].
+      - ↑ `App._get`
+    - `App.image` — 본문 ``<img src>`` 하나의 바이트 — 상대 주소는 글 화면(CONTROLLER)에 대어 풀고, 게시판 호스트 · 포트의 잰 꼴(IMAGE_PATH 에 fileId 하나)만 묻는다 — 그 밖이면 ``Refused``(게시판 호스트의 다른 길은 사내 세션을 싣고 무엇을 할지 모른다). 게시판이 대는 Content-Type 은 그림 꼴을 안 말해, 꼴은 부르는 쪽이 바이트 머리로 가린다.
+      - `Refused` — 묻지 않은 주소 — 게시판 밖의 그림.
+      - ↑ `App._ask`
+      - ↑ `SessionExpired`
+    - `App.download` — 첨부 하나의 바이트.
+      - ↑ `App._ask`
+    - `App.draft_form` — 임시글 편집 창의 폼(writeArticle EDIT · TEMP)을 GET 으로 — 창을 안 띄운다.
+      - ↑ `App.call`
+      - `write_params` — writeArticle 의 칸(곁의 write_params.json — 짓는 손이 창을 열 때와 같은 한 벌).
+      - `parse_write_form` — 쓰기 · 편집 창 폼 → {article_id, org_id, copy, title, html(숨은 content 칸의 저장된 본문 전문), end_date, notify_date, status, board}.
+        - `form_value` — 쓰기 창 폼의 ``<input id=name …>`` 값 — 칸의 속성 차례는 칸마다 다르다(제목 칸은 value 앞에 objtitle 이 선다).
+      - ↑ `NotFound`
+    - `App.copy_form` — 화면 리본 「재활용」 이 여는 창(writeArticle EDIT · articleCopyYn=Y)의 폼을 GET 으로 — 원글은 안 건드리고 아무것도 안 생긴다.
+      - ↑ `App.call`
+      - ↑ `write_params`
+      - ↑ `parse_write_form`
+      - ↑ `NotFound`
+    - `App.drafts` — 임시 · 예약보관함 — 줄마다 board · id · title · date · state.
+      - `parse_drafts` — 임시 · 예약보관함 화면 → {rows}. 줄마다 board · id · title · date · state(임시저장 · 예약저장 · 예약).
+        - ↑ `row_key`
+        - ↑ `text_of`
+        - ↑ `row_title`
+      - ↑ `App.call`
+  - ↑ `xclick.SessionExpired`
+  - ↑ `xclick.SessionMissing`
+<!-- /drawn:piece-map -->
+
 ## 검사 — 설정 저장소의 `_check/skills/company-board/check_board.py` 의 판정마다 걸린 넷(check-design §1)
 
 1. 뒤섞기 — 길이 분명하다(JS 의 수 셈 · 없는 열쇠 칸을 파이썬으로 옮긴 자리라 한 곳이 틀리면 글자가 다 바뀐다) · 깨지면 조용하다
@@ -102,14 +318,15 @@
    글 화면 꼴(본문 칸 안의 한 행 한 칸 감싸개 표 · 그 안의 글)을 본뜬 가짜다
 5. 임시글 출발의 게시판 바꾸기 — 길이 분명하다(「임시글 게시판 바꿔 줘」가 오면 표의 한 줄 · 손의 한 칸만 풀면 선다) · 깨지면 조용하다
    (저장은 서고 답은 「됐다」다) · 크게 다친다(본문 틀이 저장된 본문을 덮은 채 임시저장이 그 판을 남겨 사람의 임시글 본문이 사라진다 —
-   되돌릴 판이 없다) · 다른 무엇도 안 잡는다(실물 게시판은 회사 PC 에서만 닿는다). 명령과 손을 둘 다 잰다 — 한쪽만 풀린 사본도 빨개진다
+   되돌릴 판이 없다) · 다른 무엇도 안 잡는다(실물 게시판은 회사 PC 에서만 닿는다). 명령과 손을 둘 다 잰다 — 표 파일이 풀린 사본도, 한쪽의
+   거르기만 풀린 사본도 빨개진다
 6. 임시글 저장을 가리는 판 — 실제로 났다(줄 날짜만 보던 판이 섰는데 「못 가렸다」를 냈다 · 회사 PC 2026-11-18) · 깨지면 조용하다(안 선 저장을
    「섰다」로 알린다) · 크게 다친다(사람이 고친 줄 알고 옛 글을 [등록]해 전사에 나간다) · 다른 무엇도 안 잡는다. 기대값은 위 「임시글 저장을
    가리는 법」의 계약이다
-7. 손가락 표 두 벌 — 길이 분명하다(회사에서 잰 손가락은 표의 한 줄로 들어오고, 두 언어의 표를 손으로 맞춘다) · 깨지면 조용하다(나머지
-   판정은 다 초록이고 회사에서 그 부름이 처음 떨어진다 — 명령이 받은 손가락을 짓는 손이 거절하거나, 꼭 받는 것이 달라 한쪽만 멈춘다) ·
-   크게 다친다(새 손가락을 재 온 회사의 한 판이 헛돈다 · 사람의 시간을 다시 쓴다) · 다른 무엇도 안 잡는다(판정 5 는 임시글의 게시판 한
-   칸만 본다)
-8. 찾은 수 — 실제로 났다(찾은 글이 없을 때 「총」 줄이 안 서 고정 공지 셋을 찾은 수로 냈다 · 상세검색 줄의 큰따옴표 제목에서 명령이 멈췄다 ·
+7. 찾은 수 — 실제로 났다(찾은 글이 없을 때 「총」 줄이 안 서 고정 공지 셋을 찾은 수로 냈다 · 상세검색 줄의 큰따옴표 제목에서 명령이 멈췄다 ·
    회사 PC 2026-11-19) · 깨지면 조용하다(답은 그럴듯한 「3 건」이다) · 크게 다친다(없는 공지를 있다고 답하거나 「그런 글 없다」 대신 엉뚱한 고정
    공지를 댄다) · 다른 무엇도 안 잡는다(실물 목록은 회사 PC 에서만 닿는다). 표본은 회사 화면 꼴을 본뜬 가짜다
+8. 손가락 이름 세 벌 — 길이 분명하다(손가락을 더하는 일이 표 파일 · 명령의 표 · 짓는 손의 표 세 줄이고, 이름마다 저마다의 인자 · 화면 함수가
+   붙어 이름은 세 자리가 든다) · 깨지면 조용하다(나머지 판정은 다 초록이고 회사에서 그 부름이 처음 떨어진다 — 표 파일을 읽다 멈추거나, 한쪽만
+   아는 손가락이 넣히지 않은 채 「섰다」가 된다) · 크게 다친다(새 손가락을 재 온 회사의 한 판이 헛돌고 사람의 시간을 다시 쓴다) · 다른 무엇도
+   안 잡는다(판정 5 는 임시글의 게시판 한 칸만 본다)

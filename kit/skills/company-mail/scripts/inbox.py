@@ -236,10 +236,15 @@ SEND_AT_STEP_IN_PAGE = re.compile(r'var\s+Reservation_Interval\s*=\s*"(\d+)"')  
 # 서명 — 쓰기 화면의 설정 JSON 칸(fmmail_new.js getSignature)
 SIGNATURE_ON = re.compile(r'"signatueYN"\s*:\s*"(\w*)"')              # 서명 쓰기 — 칸 이름 철자는 웹메일 그대로
 SIGNATURE_ADD_LINE = re.compile(r'"signatue_add1line"\s*:\s*"(\w*)"')  # 서명 앞 빈 줄
-SIGNATURE_UNID = re.compile(r'"signatureUnid"\s*:\s*"([0-9A-Fa-f]{32})"')
+_HEX32 = r"[0-9A-Fa-f]{32}"   # 메일 · 폴더 · 규칙 · 서명 문서의 열쇠(unid) 꼴 — 이 한 자리에서 짓는다
+SIGNATURE_UNID = re.compile(rf'"signatureUnid"\s*:\s*"({_HEX32})"')
 BLANK_LINE = "<p>&nbsp;</p>"                                          # 웹메일 편집기의 빈 줄
-_UNID = re.compile(r"^[0-9A-Fa-f]{32}$")
-_HEX32 = r"[0-9A-Fa-f]{32}"
+_UNID = re.compile(_HEX32)
+SAVED_UNID = re.compile(rf'"unid"\s*:\s*"({_HEX32})"')   # 저장 폼 · 저장 답 JSON 의 문서 열쇠 칸
+LOGIN_INSTEAD = "{what} 대신 로그인 페이지가 왔다 — 다시 로그인한다"   # 읽는 손이 받은 글이 끊긴 세션의 로그인 화면이다
+LOGIN_ON_CHANGE = "{what}에 로그인 페이지가 왔다 — {undone}"           # 바꾸는 손의 답이 로그인 화면이다 — 바뀌지 않은 것을 댄다
+REDIRECTED = "세션이 끊겼다(→ {location}) — 다시 로그인한다"           # 세션 손이 로그인 주소로 넘겨진 판
+CHANGE_UNDONE = "반영되지 않았다"                                       # 메일함 · 규칙을 바꾸는 요청이 로그인 화면을 받은 판
 
 log = logging.getLogger(__name__)
 
@@ -440,6 +445,54 @@ class DraftOptions:
         return out
 
 
+NO_ATTACH_FORM = {"NoAttach": "T", "am_attachment": "", "$attachpath": "", "$attachkey": ""}   # 첨부 없는 임시저장 폼의 첨부 칸
+
+
+def refuse_draft(to: list, files: list) -> None:
+    """임시저장 앞의 거름 — 받는 사람이 없거나 첨부가 웹메일이 드는 수를 넘거나 대용량이면 ``MailboxConfigError``(아무것도 안 물었다)."""
+    if not to:
+        raise MailboxConfigError("받는 사람이 없다")
+    if len(files) > DRAFT_ATTACH_MOST:
+        raise MailboxConfigError(f"첨부가 {len(files)} 개다 — 웹메일은 {DRAFT_ATTACH_MOST} 개까지 든다")
+    big = [f.name for f in files if len(f.data) > DRAFT_ATTACH_BIG]
+    if big:
+        raise MailboxConfigError(f"대용량 첨부는 임시저장이 안 든다(웹메일이 지운다): {', '.join(big)} — 웹메일에서 붙인다")
+
+
+def refuse_off_step(page: str, send_at: str) -> None:
+    """예약발송 시각의 분이 쓰기 화면(``page``)의 분 눈금에 맞나 — 예약이 없으면 안 본다. 화면에 눈금이 없으면 ``MailboxError``,
+    눈금 밖이면 ``MailboxConfigError``."""
+    if not send_at:
+        return
+    step = SEND_AT_STEP_IN_PAGE.search(page)
+    if not step:
+        raise MailboxError("쓰기 화면에 예약발송 분 눈금(Reservation_Interval)이 없다 — 웹메일 화면이 바뀌었다. 예약 없이 저장하거나 화면에서 넣는다")
+    if int(send_at[-2:]) % int(step.group(1)):
+        raise MailboxConfigError(f"예약발송의 분은 {step.group(1)} 분 눈금이다(웹메일 화면의 고름 상자) — {send_at} 를 눈금에 맞춰 다시 준다")
+
+
+def draft_form(subject: str, html_body: str, files: list, options) -> dict:
+    """임시저장 폼의 글 · 저장 칸 — 제목 · 본문(MIME) · 메일속성 · 첨부 이름과 크기. 저장 칸 SaveAgent 는 늘 ``SAVE_AGENT_DRAFT`` 다."""
+    return {"__Click": "0", "%%PostCharset": "UTF-8", "SAResponse": "json", "SaveAgent": SAVE_AGENT_DRAFT,
+            "SendOptions": "2", "docMode": "", "nh_Type": "", "ECMCheck": "", **options.form(),
+            "Subject": subject, "Body": "", "MIMEBody": _mime_html(html_body),
+            "TransBigFile": "0", "BigFileOnlyECM": "0", "FileKey": "", "BigFileNameList": "",
+            "AllAttachFileNameList": "\n".join(f.name for f in files),
+            "AllAttachFileSize": ",".join(str(len(f.data)) for f in files)}
+
+
+def people_form(to: list, cc: list, bcc: list) -> dict:
+    """임시저장 폼의 받는 사람 칸 — 칸마다 Notes 이름 · 인터넷 주소 꼴, 그리고 받는 사람 칸 글(``people_info``) 두 칸."""
+    form = {}
+    for field, inet, people in (("SendTo", "InetSendTo", to), ("CopyTo", "InetCopyTo", cc),
+                                ("BlindCopyTo", "InetBlindCopyTo", bcc)):
+        form[field] = "; ".join(p.notes for p in people)
+        form[inet] = "; ".join(p.name if p.group else f'"{p.name}" <{p.email}>' if p.name else p.email for p in people)
+    form[SENT_PEOPLE_FIELDS[0]] = people_info({"to": to, "cc": cc})
+    form[SENT_PEOPLE_FIELDS[1]] = people_info({"bcc": bcc})
+    return form
+
+
 def people_info(fields: dict) -> str:
     """받는 사람 칸(``SENT_PEOPLE_FIELDS``) 하나의 글 — ``fields`` 는 칸(to · cc · bcc) → 받는 사람들. 배포그룹만 싣는다. 사람 · 조직은
     화면이 Notes 이름 · 부서 코드로 다시 세우지만, 배포그룹은 이 글이 없으면 열쇠만 남은 「기타」로 선다. 웹메일 화면이 짓는 꼴(열쇠
@@ -524,7 +577,7 @@ def discover_mailbox(server: str, cookies_file, *, timeout: float = DEFAULT_TIME
         with opener.open(root + "/", timeout=timeout) as response:
             text = response.read().decode(_charset(response.headers.get("Content-Type", "")), errors="replace")
     except ep_session.Redirected as exc:
-        raise SessionExpired(f"세션이 끊겼다(→ {exc.location}) — 다시 로그인한다") from exc
+        raise SessionExpired(REDIRECTED.format(location=exc.location)) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise MailboxError(f"메일 서버에 못 닿았다: {exc}") from exc
     found = MAILFILE_IN_ROOT.search(text)
@@ -583,6 +636,10 @@ class Mailbox:
         return self._fetch_read_only(path)
 
     def _fetch_read_only(self, path: str) -> tuple[bytes, str]:
+        """서버 뿌리 아래 ``path`` 를 읽기 전용으로 잰 꼴일 때만 묻는다 — 읽음 · 메일함을 바꾸는 주소이거나 잰 꼴 밖이면 묻지 않고 ``ChangeRefused``.
+
+        내는 것 — (본문, content-type).
+        """
         url = self.server + path
         if MARKS_AS_READ.search(path):
             raise ChangeRefused(f"읽음 표시를 바꾸는 주소라 묻지 않는다: {url}")
@@ -593,12 +650,13 @@ class Mailbox:
         return self._open(url)
 
     def _open(self, url: str | urllib.request.Request) -> tuple[bytes, str]:
+        """세션 쿠키로 주소 · 요청 하나를 열어 (본문, content-type) 을 낸다 — 넘김 · 401 · 403 은 ``SessionExpired``, 404 는 ``_Missing``, 501 은 ``_NotServed``, 그 밖은 ``MailboxError``."""
         request, url = url, url.full_url if isinstance(url, urllib.request.Request) else url
         try:
             with self._opener.open(request, timeout=self.timeout) as response:
                 return response.read(), response.headers.get("Content-Type", "")
         except ep_session.Redirected as exc:
-            raise SessionExpired(f"세션이 끊겼다(→ {exc.location}) — 다시 로그인한다") from exc
+            raise SessionExpired(REDIRECTED.format(location=exc.location)) from exc
         except urllib.error.HTTPError as exc:
             if exc.code in (401, 403):
                 raise SessionExpired(f"메일 서버가 거절했다(HTTP {exc.code}) — 다시 로그인한다") from exc
@@ -611,6 +669,7 @@ class Mailbox:
             raise MailboxError(f"메일 서버에 못 닿았다: {exc}") from exc
 
     def _view(self, name_or_unid: str, count: int, start: int, *, descending: bool = False) -> ET.Element:
+        """보기 · 폴더 하나의 목록을 ``start`` 자리부터 ``count`` 줄 받아 XML 로 푼다 — XML 이 아니면 끊긴 세션이라 ``SessionExpired``."""
         query = f"?ReadViewEntries&count={int(count)}&start={int(start)}" + ("&ResortDescending=1" if descending else "")
         body, kind = self._get(f"/{urllib.parse.quote(name_or_unid)}{query}")
         if "xml" not in kind.lower():
@@ -652,8 +711,7 @@ class Mailbox:
                     raise MailboxError(f"그 메일에 받는 사람 칸({name})이 없다 — 웹메일 편집 화면으로 쓴 메일이 아니다: {unid}") from exc
                 continue
             text = body.decode(_charset(kind), errors="replace")
-            if _looks_like_login(text):
-                raise SessionExpired("받는 사람 칸 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+            refuse_login(text, LOGIN_INSTEAD.format(what="받는 사람 칸"))
             out += parse_sent_people(text, default_field="bcc" if name == SENT_PEOPLE_FIELDS[1] else "")
         log.info("보낸 메일의 받는 사람: %d", len(out))
         return tuple(out)
@@ -663,12 +721,7 @@ class Mailbox:
         if self._collections is None:
             body, kind = self._get("/api/data/collections")
             text = body.decode(_charset(kind), errors="replace")
-            try:
-                views = json.loads(text)
-            except json.JSONDecodeError as exc:
-                if _looks_like_login(text):
-                    raise SessionExpired("보기 목록 대신 로그인 페이지가 왔다 — 다시 로그인한다") from exc
-                raise MailboxError(f"보기 목록 JSON 을 못 읽었다: {exc}") from exc
+            views = json_answer(text, "보기 목록", "보기 목록 JSON 을 못 읽었다")
             if not isinstance(views, list):
                 raise MailboxError("보기 목록이 배열이 아니다")
             self._collections = [v for v in views if isinstance(v, dict)]
@@ -681,14 +734,14 @@ class Mailbox:
         """
         unid = next((str(v.get("@unid") or "") for v in self._view_list()
                      if v.get("@title", "") == title and not _is_folder(v)), "")
-        return unid if _UNID.match(unid) else None
+        return unid if is_unid(unid) else None
 
     def folders(self) -> list[Folder]:
         """쓰는 사람이 지은 폴더 — 보기 목록의 폴더 가운데 시스템 폴더(제목이 ``(`` 로 시작)를 뺀 것, 경로 차례로."""
         found: dict[str, Folder] = {}
         for v in self._view_list():
             title, unid = str(v.get("@title") or ""), str(v.get("@unid") or "")
-            if _is_folder(v) and title.strip() and not title.startswith(SYSTEM_FOLDER_MARK) and _UNID.match(unid):
+            if _is_folder(v) and title.strip() and not title.startswith(SYSTEM_FOLDER_MARK) and is_unid(unid):
                 found.setdefault(unid, Folder(unid=unid, path=title))
         folders = sorted(found.values(), key=lambda f: folder_order(f.path))
         log.info("폴더: %d개", len(folders))
@@ -697,7 +750,7 @@ class Mailbox:
     def list_folder(self, folder: Folder, count: int = 30, start: int = 1) -> list[Entry]:
         """그 폴더를 새것부터 ``count`` 통 — 줄마다 ``folder`` 에 그 폴더의 경로를 싣는다. 받는 꼴 · 중요도 · 보낸 분 주소 · 회신함 ·
         전달함 표시는 빈다(``list_all``) · 안 읽음은 읽음 열의 class 로 선다."""
-        if not _UNID.match(folder.unid or ""):
+        if not is_unid(folder.unid or ""):
             raise MailboxConfigError("폴더 보기는 unid 로만 연다 — 제목으로 열면 0줄이 온다")
         root = self._view(folder.unid, count, start)
         entries = [_entry(e, folder=folder.path) for e in root.iter("viewentry")]
@@ -752,16 +805,11 @@ class Mailbox:
         text = body.decode(_charset(kind) if "charset" in kind.lower() else "utf-8", errors="replace")
         if not text.strip():
             return 0, []    # 검색 손은 받은 칸이 없거나 맞는 꼴이 아니면 빈 답을 준다
-        try:
-            answer = json.loads(text)
-        except json.JSONDecodeError as exc:
-            if _looks_like_login(text):
-                raise SessionExpired("검색 대신 로그인 페이지가 왔다 — 다시 로그인한다") from exc
-            raise MailboxError(f"검색 답 JSON 을 못 읽었다: {exc}") from exc
+        answer = json_answer(text, "검색", "검색 답 JSON 을 못 읽었다")
         rows = answer.get("data") if isinstance(answer, dict) else None
         if not isinstance(rows, list):
             raise MailboxError("검색 답에 목록이 없다")
-        found = [_found(r) for r in rows if isinstance(r, dict) and _UNID.match(str(r.get("unid") or ""))]
+        found = [_found(r) for r in rows if isinstance(r, dict) and is_unid(str(r.get("unid") or ""))]
         total = int(answer.get("total") or 0) if str(answer.get("total") or "0").isdigit() else len(found)
         log.info("검색: 범위 %s · 모두 %d건 · 이 쪽 %d줄", scope, total, len(found))
         return total, found
@@ -813,8 +861,7 @@ class Mailbox:
             log.warning("본문 주소에 서버가 501 을 냈다 — 그 메일은 본문 없이 둔다")
             return None
         text = data.decode(_charset(content_type), errors="replace")
-        if _looks_like_login(text):
-            raise SessionExpired("본문 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+        refuse_login(text, LOGIN_INSTEAD.format(what="본문"))
         if kind == "text" and "text/plain" not in content_type.lower():
             return None   # 평문 조각 자리에 다른 꼴이 왔다 — multipart/related 처럼 평문 조각이 없는 메일
         return text
@@ -829,8 +876,8 @@ class Mailbox:
         if ECM_ATTACHMENT.match(listed):
             raise MailboxConfigError("ECM 첨부는 문서함을 가리키는 쪽지다 — ecm_key 로 문서 열쇠를 꺼내 문서함에서 연다")
         data, content_type = self._get(f"/0/{_unid(mail)}/$FILE/{urllib.parse.quote(listed)}")
-        if "text/html" in content_type.lower() and _looks_like_login(data.decode("utf-8", "replace")):
-            raise SessionExpired("첨부 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+        if "text/html" in content_type.lower():
+            refuse_login(data.decode("utf-8", "replace"), LOGIN_INSTEAD.format(what="첨부"))
         log.info("첨부: %d bytes", len(data))
         return data
 
@@ -845,8 +892,8 @@ class Mailbox:
             # 잰 꼴의 머리만 맞추고 「..」 로 다른 문서 · 다른 DB 로 올라가는 주소 — 서버가 풀면 울타리 밖을 묻게 된다
             raise ChangeRefused("경로에 「..」 이 든 그림 주소라 묻지 않는다")
         data, content_type = self._fetch_read_only(parts.path + (f"?{parts.query}" if parts.query else ""))
-        if "text/html" in content_type.lower() and _looks_like_login(data.decode("utf-8", "replace")):
-            raise SessionExpired("그림 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+        if "text/html" in content_type.lower():
+            refuse_login(data.decode("utf-8", "replace"), LOGIN_INSTEAD.format(what="그림"))
         return data
 
     def ecm_key(self, mail: Entry | str, name: AttachmentName | str) -> str:
@@ -861,8 +908,7 @@ class Mailbox:
         text = data.decode("utf-8", "replace")
         key = ecm_note_key(text)
         if not key:
-            if _looks_like_login(text):
-                raise SessionExpired("ECM 첨부 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+            refuse_login(text, LOGIN_INSTEAD.format(what="ECM 첨부"))
             raise MailboxError("ECM 첨부의 머리에 문서 열쇠(objectId)가 없다 — 쪽지 꼴이 잰 것과 다르다")
         log.info("ECM 첨부: 열쇠를 꺼냈다")
         return key
@@ -895,12 +941,7 @@ class Mailbox:
             "search_key": search_key, "date": str(int(time.time() * 1000))}, safe="()")
         data, kind = self._get_server(f"{DIRECTORY_PATH}&{query}")
         text = data.decode(_charset(kind), errors="replace")
-        try:
-            answer = json.loads(text)
-        except json.JSONDecodeError as exc:
-            if _looks_like_login(text):
-                raise SessionExpired("주소록 대신 로그인 페이지가 왔다 — 다시 로그인한다") from exc
-            raise MailboxError(f"주소록 JSON 을 못 읽었다: {exc}") from exc
+        answer = json_answer(text, "주소록", "주소록 JSON 을 못 읽었다")
         if not isinstance(answer, dict):
             raise MailboxError(f"주소록 답이 {{dept, user, total}} 꼴이 아니다: {type(answer).__name__}")
         return answer
@@ -931,12 +972,7 @@ class Mailbox:
         query["date"] = str(int(time.time() * 1000))
         data, kind = self._get_server(f"{path}&{urllib.parse.urlencode(query, safe='()')}")
         text = data.decode(_charset(kind), errors="replace")
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as exc:
-            if _looks_like_login(text):
-                raise SessionExpired("조직도 대신 로그인 페이지가 왔다 — 다시 로그인한다") from exc
-            raise MailboxError(f"조직도 JSON 을 못 읽었다({path}): {exc}") from exc
+        return json_answer(text, "조직도", f"조직도 JSON 을 못 읽었다({path})")
 
     def org_children(self, dept: str, company: str) -> list[Dept]:
         """그 부서 바로 아래 부서들 — ``dept`` 에 회사 값을 주면 맨 위 부서들이다. 답의 꼴이 다르면 ``MailboxError``."""
@@ -1012,8 +1048,8 @@ class Mailbox:
                 or re.fullmatch(rf"{db}/ag_read_cancel\?OpenAgent&docid={_HEX32}&imapuser=0", path)):
             raise ChangeRefused(f"메일함을 바꾸는 손 둘의 꼴이 아니다: {path}")
         data, kind = self._open(self.server + path)
-        if _looks_like_login(data.decode(_charset(kind), errors="replace")):
-            raise SessionExpired("메일함을 바꾸는 요청에 로그인 페이지가 왔다 — 반영되지 않았다")
+        refuse_login(data.decode(_charset(kind), errors="replace"),
+                     LOGIN_ON_CHANGE.format(what="메일함을 바꾸는 요청", undone=CHANGE_UNDONE))
         log.info("메일함을 바꿨다: %s", "읽음으로" if path.endswith("?OpenDocument") else "안 읽음으로")
 
     # ── 폴더 — 나무 읽기는 읽기 길, 만들기 · 옮기기 · 지우기는 바꾸는 손이다 ──────────────
@@ -1025,12 +1061,7 @@ class Mailbox:
         """
         body, kind = self._get(f"/{FOLDER_TREE_VIEW}?ReadViewEntries&outputformat=json&count=-1")
         text = body.decode(_charset(kind), errors="replace")
-        try:
-            answer = json.loads(text)
-        except json.JSONDecodeError as exc:
-            if _looks_like_login(text):
-                raise SessionExpired("폴더 나무 대신 로그인 페이지가 왔다 — 다시 로그인한다") from exc
-            raise MailboxError(f"폴더 나무 JSON 을 못 읽었다: {exc}") from exc
+        answer = json_answer(text, "폴더 나무", "폴더 나무 JSON 을 못 읽었다")
         nodes = []
         for row in (answer.get("viewentry") or []) if isinstance(answer, dict) else []:
             cols = {c.get("@name"): _json_cell(c) for c in row.get("entrydata") or [] if isinstance(c, dict)}
@@ -1105,7 +1136,14 @@ class Mailbox:
 
     def delete_folder(self, path: str) -> None:
         """⚠ 메일함을 바꾼다 — 빈 폴더 하나를 지운다. 메일이나 하위 폴더가 든 폴더는 지우지 않는다(``MailboxConfigError``) —
-        메일이 든 채 지우면 그 메일이 휴지통으로 간다. 이전메일함 쪽 짝까지 두 번 보내 나무에서도 지운다."""
+        메일이 든 채 지우면 그 메일이 휴지통으로 간다. 지워도 되나를 먼저 보고(``_deletable``) 이전메일함 쪽 짝까지 두 번 보내
+        (``_send_delete``) 나무에서도 지운 뒤 다시 본다(``_refuse_left``)."""
+        node = self._deletable(path)
+        self._send_delete(node)
+        self._refuse_left(path)
+
+    def _deletable(self, path: str) -> FolderNode:
+        """지울 폴더의 나무 마디 — 없거나 하위 폴더 · 메일이 들었거나 규칙이 그 폴더로 옮기면 ``MailboxConfigError``(아무것도 안 보냈다)."""
         node = self.folder_node(path)
         if node is None:
             raise MailboxConfigError(f"그런 폴더가 없다: {path!r}")
@@ -1119,10 +1157,17 @@ class Mailbox:
         if pointing:
             raise MailboxConfigError(f"규칙 {len(pointing)}개가 이 폴더로 메일을 옮긴다 — 그 규칙을 먼저 고치거나 지운다"
                                      f"(없는 폴더를 가리킨 규칙이 새 메일을 어떻게 하나는 안 쟀다): {path!r}")
+        return node
+
+    def _send_delete(self, node: FolderNode) -> None:
+        """⚠ 메일함을 바꾼다 — 폴더 지우기를 메일함 쪽 · 이전메일함 쪽 짝에 차례로 보낸다(웹메일 화면의 [삭제]와 같은 두 요청)."""
         for side, both in (("mail", ""), ("archive", "Y")):
             query = urllib.parse.urlencode({"ulan": "kor", "act": "delete_action", "nodeid": node.node, "imapuser": "",
                                             "power": "", "afdelete": both, "nodefrom": side})
             self._send_folder(f"{self.db_path}/{FOLDER_SAVE_AGENT}?OpenAgent&{query}", "폴더를 지웠다")
+
+    def _refuse_left(self, path: str) -> None:
+        """지운 폴더가 새로 받은 목록에 아직 있으면 ``MailboxError`` — 서버의 OK 만으로는 지웠다고 안 한다."""
         if any(f.path == path for f in self._fresh_folders()):
             raise MailboxError(f"폴더 지우기 요청은 OK 였는데 다시 보니 남았다: {path!r}")
 
@@ -1143,14 +1188,12 @@ class Mailbox:
             raise MailboxError(f"휴지통으로 보내는 요청은 받았는데 {len(missing)}/{len(ids)} 통이 휴지통에 없다")
 
     def _in_trash(self, ids: list[str]) -> set[str]:
-        """휴지통 보기에 든 ``ids`` — 다 찾거나 보기가 끝날 때까지 ``VIEW_PAGE_MOST`` 줄씩(``_landed`` 와 같은 꼴)."""
-        want, found, start, first = {u.upper() for u in ids}, set(), 1, None
-        while want - found:
-            rows = [e.get("unid", "").upper() for e in self._view(TRASH_VIEW, VIEW_PAGE_MOST, start).iter("viewentry")]
-            if not rows or rows[0] == first:
-                break
-            found |= want & set(rows)
-            first, start = rows[0], start + len(rows)
+        """휴지통 보기에 든 ``ids`` — 다 찾거나 보기가 끝날 때까지 ``VIEW_PAGE_MOST`` 줄씩(``Pages``)."""
+        want, found = {u.upper() for u in ids}, set()
+        def unids(count: int, start: int) -> list[str]:
+            return [e.get("unid", "").upper() for e in self._view(TRASH_VIEW, count, start).iter("viewentry")]
+        for rows in Pages(unids, 1, lambda seen: VIEW_PAGE_MOST if want - found else 0, first=lambda unid: unid):
+            found.update(want & set(rows))
         return found
 
     def restore_from_trash(self, mail: Entry | Found | str) -> None:
@@ -1270,8 +1313,7 @@ class Mailbox:
         request.add_header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
         data, kind = self._open(request)
         text = data.decode(_charset(kind), errors="replace")
-        if _looks_like_login(text):
-            raise SessionExpired("규칙을 바꾸는 요청에 로그인 페이지가 왔다 — 반영되지 않았다")
+        refuse_login(text, LOGIN_ON_CHANGE.format(what="규칙을 바꾸는 요청", undone=CHANGE_UNDONE))
         try:
             answer = json.loads(text)
         except json.JSONDecodeError as exc:
@@ -1282,15 +1324,15 @@ class Mailbox:
         return answer
 
     def _rule_unids(self) -> list[str]:
+        """메일 규칙 보기에서 규칙 문서의 unid 를 대문자로 모은다."""
         root = self._view(RULE_VIEW, VIEW_PAGE_MOST, 1)
-        return [e.get("unid", "").upper() for e in root.iter("viewentry") if _UNID.match(e.get("unid", ""))]
+        return [e.get("unid", "").upper() for e in root.iter("viewentry") if is_unid(e.get("unid", ""))]
 
     def _rule_by_unid(self, unid: str) -> Rule:
         """규칙 문서의 편집 화면을 받아 푼다 — ``EditDocument`` 는 읽기 길 목록 밖이라, 규칙 목록이 낸 unid 로 이 자리에서만 연다."""
         data, kind = self._open(f"{self.server}{self.db_path}/0/{_unid(unid).lower()}?EditDocument")
         page = data.decode(_charset(kind), errors="replace")
-        if _looks_like_login(page):
-            raise SessionExpired("규칙 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+        refuse_login(page, LOGIN_INSTEAD.format(what="규칙"))
         return parse_rule_page(unid, page)
 
     # ── 임시저장 — 웹메일 쓰기 화면의 [임시저장] 단추와 같은 요청 ────────────────────
@@ -1304,52 +1346,30 @@ class Mailbox:
         ``options`` 는 메일속성(긴급 · 전달불가 · 한명씩 · 예약)이다 — 예약해도 저장만 한다(나가는 것은 [보내기] 뒤 그 시각이다).
         저장 칸 SaveAgent 는 늘 ``wSave`` 다 — 다른 값이면 서버가 그 자리에서 발송한다. 저장 뒤 임시보관함 보기에 그 unid 가 서야 낸다.
         """
-        if not to:
-            raise MailboxConfigError("받는 사람이 없다")
-        if len(files) > DRAFT_ATTACH_MOST:
-            raise MailboxConfigError(f"첨부가 {len(files)} 개다 — 웹메일은 {DRAFT_ATTACH_MOST} 개까지 든다")
-        big = [f.name for f in files if len(f.data) > DRAFT_ATTACH_BIG]
-        if big:
-            raise MailboxConfigError(f"대용량 첨부는 임시저장이 안 든다(웹메일이 지운다): {', '.join(big)} — 웹메일에서 붙인다")
+        refuse_draft(to, files)
         form, action, unid, page = self._blank_memo()
-        if options.send_at:
-            step = SEND_AT_STEP_IN_PAGE.search(page)
-            if not step:
-                raise MailboxError("쓰기 화면에 예약발송 분 눈금(Reservation_Interval)이 없다 — 웹메일 화면이 바뀌었다. 예약 없이 저장하거나 화면에서 넣는다")
-            if int(options.send_at[-2:]) % int(step.group(1)):
-                raise MailboxConfigError(f"예약발송의 분은 {step.group(1)} 분 눈금이다(웹메일 화면의 고름 상자) — {options.send_at} 를 눈금에 맞춰 다시 준다")
+        refuse_off_step(page, options.send_at)
         html_body = with_signature(html_body, self._signature(page))
-        if files:
-            form |= self._upload_draft_files(unid, empno, files)
-        else:
-            form |= {"NoAttach": "T", "am_attachment": "", "$attachpath": "", "$attachkey": ""}
-        form |= {"__Click": "0", "%%PostCharset": "UTF-8", "SAResponse": "json", "SaveAgent": SAVE_AGENT_DRAFT,
-                 "SendOptions": "2", "docMode": "", "nh_Type": "", "ECMCheck": "", **options.form(),
-                 "Subject": subject, "Body": "", "MIMEBody": _mime_html(html_body),
-                 "TransBigFile": "0", "BigFileOnlyECM": "0", "FileKey": "", "BigFileNameList": "",
-                 "AllAttachFileNameList": "\n".join(f.name for f in files),
-                 "AllAttachFileSize": ",".join(str(len(f.data)) for f in files)}
-        for field, inet, people in (("SendTo", "InetSendTo", to), ("CopyTo", "InetCopyTo", cc),
-                                    ("BlindCopyTo", "InetBlindCopyTo", bcc)):
-            form[field] = "; ".join(p.notes for p in people)
-            form[inet] = "; ".join(p.name if p.group else f'"{p.name}" <{p.email}>' if p.name else p.email for p in people)
-        form[SENT_PEOPLE_FIELDS[0]] = people_info({"to": to, "cc": cc})
-        form[SENT_PEOPLE_FIELDS[1]] = people_info({"bcc": bcc})
-        answer = self._post_memo(action, form)
+        form |= self._upload_draft_files(unid, empno, files) if files else NO_ATTACH_FORM
+        form |= draft_form(subject, html_body, files, options) | people_form(to, cc, bcc)
+        return self._landed_draft(self._post_memo(action, form), len(to) + len(cc) + len(bcc), len(files))
+
+    def _landed_draft(self, answer: dict, people: int, files: int) -> str:
+        """저장 답의 unid(대문자) — 답에 unid 가 없거나 임시보관함 보기에 그 메일이 안 섰으면 ``MailboxError``. 저장 답이 참이어도
+        보기에 서야 저장한 것이다."""
         saved = str(answer.get("unid") or "").upper()
-        if not _UNID.match(saved):
+        if not is_unid(saved):
             raise MailboxError(f"임시저장 답에 unid 가 없다: {answer!r:.80}")
         if saved not in {e.unid.upper() for e in (self.list_drafts(count=50) or [])}:
             raise MailboxError("임시저장 답은 참이었는데 임시보관함에 그 메일이 없다")
-        log.info("메일함을 바꿨다: 임시메일을 저장했다 · 받는 사람 %d · 첨부 %d", len(to) + len(cc) + len(bcc), len(files))
+        log.info("메일함을 바꿨다: 임시메일을 저장했다 · 받는 사람 %d · 첨부 %d", people, files)
         return saved
 
     def _blank_memo(self) -> tuple[dict, str, str, str]:
         """빈 쓰기 화면을 받아 (폼 칸, 저장 주소, 이 쓰기의 unid, 화면 HTML) — 화면이 숨은 칸에 든 기본값을 그대로 물려받는다."""
         data, kind = self._open(f"{self.base}/{MEMO_FORM}?openform&opentype=popup")
         page = data.decode(_charset(kind), errors="replace")
-        if _looks_like_login(page):
-            raise SessionExpired("쓰기 화면 대신 로그인 페이지가 왔다 — 다시 로그인한다")
+        refuse_login(page, LOGIN_INSTEAD.format(what="쓰기 화면"))
         return (*parse_memo_form(page, self.db_path), page)
 
     def _signature(self, page: str) -> Signature | None:
@@ -1385,8 +1405,7 @@ class Mailbox:
             request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
             data, kind = self._open_long(request)
             text = data.decode(_charset(kind), errors="replace")
-            if _looks_like_login(text):
-                raise SessionExpired("첨부 업로드에 로그인 페이지가 왔다 — 저장하지 않았다")
+            refuse_login(text, LOGIN_ON_CHANGE.format(what="첨부 업로드", undone="저장하지 않았다"))
             try:
                 got = [g.get("name") for g in json.loads(text).get("files", [])]
             except (json.JSONDecodeError, AttributeError) as exc:
@@ -1413,8 +1432,7 @@ class Mailbox:
         request.add_header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
         data, kind = self._open_long(request)
         text = data.decode(_charset(kind), errors="replace")
-        if _looks_like_login(text):
-            raise SessionExpired("임시저장 요청에 로그인 페이지가 왔다 — 저장되지 않았다")
+        refuse_login(text, LOGIN_ON_CHANGE.format(what="임시저장 요청", undone="저장되지 않았다"))
         return parse_save_answer(text)
 
     def _fresh_folders(self) -> list[Folder]:
@@ -1428,14 +1446,11 @@ class Mailbox:
         folder = next((f for f in self._fresh_folders() if f.path == to), None) if to else None
         if to and folder is None:
             return set()
-        want, found, start, first = {u.upper() for u in ids}, set(), 1, None
-        while want - found:
-            rows = (self.list(count=VIEW_PAGE_MOST, start=start) if not to
-                    else self.list_folder(folder, count=VIEW_PAGE_MOST, start=start))
-            if not rows or rows[0].unid == first:
-                break
-            found |= want & {e.unid.upper() for e in rows}
-            first, start = rows[0].unid, start + len(rows)
+        want, found = {u.upper() for u in ids}, set()
+        def fetch(count: int, start: int) -> list:
+            return self.list(count=count, start=start) if not to else self.list_folder(folder, count=count, start=start)
+        for rows in Pages(fetch, 1, lambda seen: VIEW_PAGE_MOST if want - found else 0):
+            found.update(want & {e.unid.upper() for e in rows})
         return found
 
     def _send_folder(self, path: str, done: str, *, form: dict | None = None, ok: str | None = "ok") -> str:
@@ -1453,12 +1468,46 @@ class Mailbox:
             request.add_header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
         data, kind = self._open(request)
         text = data.decode(_charset(kind), errors="replace")
-        if _looks_like_login(text):
-            raise SessionExpired("메일함을 바꾸는 요청에 로그인 페이지가 왔다 — 반영되지 않았다")
+        refuse_login(text, LOGIN_ON_CHANGE.format(what="메일함을 바꾸는 요청", undone=CHANGE_UNDONE))
         if ok is not None and text.strip().lower() != ok:
             raise MailboxError(f"메일함이 바꾸기를 안 받았다: {text.strip()[:80]!r}")
         log.info("메일함을 바꿨다: %s", done)
         return text.strip()
+
+
+# ── 쪽 넘기기 ─────────────────────────────────────────────────────────────
+
+class Pages:
+    """보기 하나를 쪽마다 받는 고리 — ``for rows in Pages(fetch, start, size)``. ``fetch(count, start)`` 가 한 쪽의 줄들을, ``size(seen)``
+    이 이번 쪽에 받을 줄 수를(받은 줄 수 ``seen`` 을 보고 — 0 이하면 상한) 낸다. 빈 쪽이 오면 보기 끝이고(``EMPTY``), 쪽의 첫 줄이 앞 쪽과
+    같으면 서버가 start 를 안 따르는 것이라 거기서 멈춘다(``REPEAT`` — 안 그러면 같은 쪽을 끝없이 받는다). 상한이면 ``CAP`` 이다.
+
+    ⚠ 덜 찬 쪽은 끝이 아니다 — 서버가 한 번에 주는 줄을 잘랐을 수 있어 빈 쪽이 와야 끝이다. 고리를 다 돈 뒤 ``end`` 가 멈춘 까닭,
+    ``seen`` 이 받은 줄 수다(부르는 쪽이 중간에 빠져나오면 ``end`` 는 None). ``first(row)`` 는 줄의 열쇠다(기본 ``row.unid``)."""
+
+    EMPTY, REPEAT, CAP = "empty", "repeat", "cap"
+
+    def __init__(self, fetch, start: int = 1, size=lambda seen: VIEW_PAGE_MOST, *, first=lambda row: row.unid):
+        self.fetch, self.start, self.size, self.first = fetch, start, size, first
+        self.seen, self.end = 0, None
+
+    def __iter__(self):
+        last = None
+        while True:
+            count = self.size(self.seen)
+            if count <= 0:
+                self.end = self.CAP
+                return
+            rows = self.fetch(count, self.start + self.seen)
+            if not rows:
+                self.end = self.EMPTY
+                return
+            if self.first(rows[0]) == last:
+                self.end = self.REPEAT
+                return
+            last = self.first(rows[0])
+            self.seen += len(rows)
+            yield rows
 
 
 # ── 풀기 ─────────────────────────────────────────────────────────────────
@@ -1537,6 +1586,7 @@ class OrgChart:
         return out
 
     def dept_name(self, code: str) -> str:
+        """부서 코드의 이름 — 모르는 코드면 코드 그대로."""
         d = self.depts.get(code)
         return d.name if d else code
 
@@ -1547,6 +1597,7 @@ squash = ep_session.squash    # 견주기 꼴 — 빈칸 · 가운뎃점 · 괄�
 # ── 주소록의 한 사람 ─────────────────────────────────────────────────────
 
 def _person(u: dict) -> DirectoryPerson:
+    """주소록 답의 한 사람(JSON) → ``DirectoryPerson``."""
     return DirectoryPerson(
         email=u.get("email") or "", name=u.get("user_name") or "", name_eng=u.get("user_name_eng") or "",
         notes=u.get("key") or "", user_id=u.get("user_id") or "", empno=str(u.get("empno") or ""),
@@ -1563,6 +1614,7 @@ def notes_key(text: str) -> str:
 
 
 def is_notes_name(text: str) -> bool:
+    """Notes 이름의 꼴인가 — ``CN=`` 으로 시작하거나 「@」 없이 「/」 가 든다."""
     t = text.strip()
     return t.upper().startswith(NOTES_MARK) or ("/" in t and "@" not in t)
 
@@ -1592,6 +1644,7 @@ def directory_query(handle: str):
 
 
 def _column(entry: ET.Element, name: str) -> str:
+    """목록 한 줄에서 이름이 ``name`` 인 열의 글을 한 줄로 — 없으면 빈 글."""
     for data in entry.iter("entrydata"):
         if data.get("name") == name:
             return one_line(" ".join(t.strip() for t in data.itertext() if t.strip()))
@@ -1672,6 +1725,7 @@ def _check_folder_name(name: str) -> None:
 
 
 def _is_folder(view: dict) -> bool:
+    """보기 목록의 한 줄이 보기가 아니라 폴더인가."""
     return str(view.get("@folder")).casefold() == "true"
 
 
@@ -1716,6 +1770,7 @@ def _found(row: dict) -> Found:
 
 
 def _entry(entry: ET.Element, *, folder: str = "") -> Entry:
+    """받은편지함 · 폴더 목록의 한 줄(XML) → ``Entry`` — 폴더 보기면 읽음 열의 HTML 조각에서 class 로 안 읽음을 가른다."""
     mark = _column(entry, COLUMN_READ)
     unread = UNREAD_MARK in mark
     found = FOLDER_READ_CLASS.search(mark) if folder else None
@@ -1757,6 +1812,7 @@ def parse_sender(raw: str) -> Sender:
 
 
 def _spl_part(part: str) -> tuple[str, str]:
+    """사내 보낸 사람 열의 한쪽(한글 · 영문) → (이름, 주소) — 이름은 ``-=spl=-`` 앞이나 꺾쇠 앞, 주소는 꺾쇠 안이고 없으면 빈 글."""
     display, _, rest = part.partition(SPLIT_MARK)
     found = _ANGLE.search(rest or display)
     name = display.strip() if rest else (display[:found.start()] if found else display).strip()
@@ -1850,7 +1906,7 @@ def parse_memo_form(page: str, db_path: str) -> tuple[dict, str, str]:
     """쓰기 화면(``Memo?openform``) → (숨은 칸의 기본값, 저장 주소, 이 쓰기의 unid). 폼 ``_Memo`` 가 없으면 ``MailboxError``."""
     form = re.search(r'<form\b[^>]*name="_Memo"[^>]*>(.*?)</form>', page, re.IGNORECASE | re.DOTALL)
     action = re.search(r'<form\b[^>]*action="([^"]*)"[^>]*name="_Memo"', page, re.IGNORECASE)
-    unid = re.search(r'"unid"\s*:\s*"([0-9A-Fa-f]{32})"', page)
+    unid = SAVED_UNID.search(page)
     if not (form and action and unid):
         raise MailboxError("쓰기 화면에 폼 _Memo · 저장 주소 · unid 가 없다 — 웹메일 화면이 바뀌었다")
     fields: dict = {}
@@ -1918,7 +1974,7 @@ def parse_save_answer(text: str) -> dict:
     if result.group(1) != "true":
         message = re.search(r'"message"\s*:\s*"([^"]*)"', text)
         raise MailboxError("메일함이 임시저장을 안 받았다" + (f": {message.group(1)}" if message else ""))
-    unid = re.search(r'"unid"\s*:\s*"([0-9A-Fa-f]{32})"', text)
+    unid = SAVED_UNID.search(text)
     return {"result": True, "unid": unid.group(1) if unid else ""}
 
 
@@ -1939,16 +1995,39 @@ def _multipart(fields: dict, file_field: str, f: DraftFile) -> tuple[bytes, str]
     return b"".join(parts), boundary
 
 
+def is_unid(text: str) -> bool:
+    """메일 · 폴더 · 규칙의 열쇠(unid — 16진 32자리, 대소문자는 안 가린다)의 꼴인가 — 메일 번호의 꼴은 이 한 자리가 든다."""
+    return bool(_UNID.fullmatch(text or ""))
+
+
 def _unid(mail: Entry | str) -> str:
+    """메일 · 글자에서 unid 를 꺼낸다 — 그 꼴이 아니면 ``MailboxConfigError``."""
     unid = mail.unid if isinstance(mail, Entry) else mail
-    if not _UNID.match(unid or ""):
+    if not is_unid(unid or ""):
         raise MailboxConfigError(f"메일 열쇠(unid)가 아니다: {unid!r}")
     return unid
 
 
 def _charset(content_type: str) -> str:
+    """content-type 의 charset — 없으면 utf-8."""
     match = re.search(r"charset=([\w-]+)", content_type, re.IGNORECASE)
     return match.group(1) if match else "utf-8"
+
+
+def refuse_login(text: str, said: str) -> None:
+    """받은 글이 끊긴 세션의 로그인 화면이면(``_looks_like_login``) ``SessionExpired(said)`` — 메일함 손의 묻기가 이 한 자리로 가른다."""
+    if _looks_like_login(text):
+        raise SessionExpired(said)
+
+
+def json_answer(text: str, what: str, unread: str):
+    """JSON 답 하나를 푼다 — 못 풀면 로그인 화면이면 ``SessionExpired``(``LOGIN_INSTEAD`` 의 ``what``), 아니면 ``MailboxError``
+    (``unread`` 와 까닭)."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        refuse_login(text, LOGIN_INSTEAD.format(what=what))
+        raise MailboxError(f"{unread}: {exc}") from exc
 
 
 def _looks_like_login(text: str) -> bool:

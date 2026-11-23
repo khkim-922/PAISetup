@@ -5,6 +5,10 @@ description: "사내 회의실 예약 앱(MRS)에서 비는 회의실 · 예약 
 
 # 회의실은 회의실 손으로 잡는다
 
+<!-- drawn:head · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
+> 회사 일 — 이 일의 목적과 가장 나은 길(어떤 스킬을 어떤 차례로 · 무엇을 하위 에이전트에 맡길지)부터 세우고 간다
+<!-- /drawn:head -->
+
 회의실 예약은 남이 보는 공유 시스템이고, 넣는 순간 참석자에게 회사 메일로 회의 안내(M365 일정 · 회의실 정책이 켠 Teams 링크)가 간다
 — 고치면 바뀐 안내가, 취소하면 취소 안내가 간다. 그래서 **넣기 · 고치기 · 취소는 그 한 건을 사람에게 보이고 「네」를 받은 뒤에만
 부르고, 한 건에 바꿀 것은 한 번에 모아 부른다** — 나눠 부르면 부를 때마다 안내가 간다. 사람이 그 한 건(날 · 시각 · 회의실 · 참석자)을 이미 보고 맡겼으면 — 보고 창에 선 그 줄을 눌러 시키신 것처럼 — 그것이 「네」다: 다시 묻지 않고 넣은 뒤 결과를 보인다. 예약이 내는 안내와 사용자가 시킨
@@ -13,16 +17,22 @@ description: "사내 회의실 예약 앱(MRS)에서 비는 회의실 · 예약 
 
 자주 쓰는 길은 그대로 친다 — 첫 부름이 일하는 부름이 되게. 날은 「오늘 · 내일 · 모레」나 날짜로 준다. 요일로 말한 날(「금요일」 · 「다음 주 화요일」)이 어느 날인지는 말한 맥락으로 정해 날짜로 준다 — 손은 고르지 않는다. 세기가 헷갈리면 요일 말을 그대로 넘겨 본다: 손이 오늘과 앞으로 세 주의 날짜 · 요일 표를 돌려주니 거기서 고른다.
 
+<!-- drawn:meeting-path-block · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
 ```bash
-M="<이 스킬>/scripts/meeting_room.py"
-C="<이 스킬>/../company-calendar/scripts/company_calendar.py"   # 일정 손 — 사람들이 비는 때(스킬 company-calendar)
-D="<이 스킬>/../company-directory/scripts/directory.py"         # 주소록 — 참석자의 사람 파일(스킬 company-directory)
-python -X utf8 -I "$D" find --name "<이름>" --name "<이름>" --out <폴더>   # 참석자 → <폴더>/people.json
+# 회의 하나 — 참석자 → 다 비는 때 → 빈 방 → 미리 보기. 어느 방 · 어느 때는 모델이 고르고, 넣기(book)는 사람의 「네」 뒤에만
+D="<이 스킬>/../company-directory/scripts/directory.py"
+C="<이 스킬>/../company-calendar/scripts/company_calendar.py"
+M="<이 스킬>/../company-meeting-room/scripts/meeting_room.py"
+python -X utf8 -I "$D" find --name "<이름>" --name "<이름>" --out <폴더>                             # 참석자 → <폴더>/people.json
 python -X utf8 -I "$C" show <날> --people-file <폴더>/people.json --free 60 --hours 13:00-18:00   # 나와 참석자가 다 비는 때
-python -X utf8 -I "$M" free --start "<날> 15:00" --end "<날> 16:00" --people 6   # 비는 회의실 — 「늘 쓰던 곳」 이면 --favorites(없으면 전부에서)
+python -X utf8 -I "$M" free --start "<날> 15:00" --end "<날> 16:00" --people 6                   # 그때 빈 회의실 — 「늘 쓰던 곳」 이면 --favorites(없으면 전부에서)
+python -X utf8 -I "$M" preview --room <free 의 id> --title "<제목>" --start "<날> 15:00" --end "<날> 16:00" --people-file <폴더>/people.json
+                                                                                               # 「네」 뒤 book …같은 값… --confirm <key>
+```
+<!-- /drawn:meeting-path-block -->
+
+```bash
 python -X utf8 -I "$M" free --start "<날> 13:00" --end "<날> 18:00" --minutes 60 --people 3   # 때가 뭉뚱그려졌으면 — 그 구간 안에서 60 분 넘게 비는 방과 비는 때
-python -X utf8 -I "$M" preview --room <free 의 id> --title "<제목>" --start "<날> 15:00" --end "<날> 16:00" --people-file <people.json>
-                                                                                       # 「네」 뒤 book …같은 값… --confirm <key>
 python -X utf8 -I "$M" preview --id <mine 의 id> --start "내일 10:00"                 # 옮기기 — 「네」 뒤 change …같은 값… --confirm <key>
 python -X utf8 -I "$M" --help                                                          # 그 밖의 지도 — 출발 × 바꿀 것 × 끝 · 읽기와 인자 · 오늘 날짜
 ```
@@ -63,9 +73,9 @@ python -X utf8 -I "$M" --help                                                   
 
 - 이름으로 들은 사람 — `find --name` 으로 찾고, 동명이인으로 따로 서면 부서 · 직책을 보이며 고르게 한다. 그때 찾기는 파일을 안 쓰고 2 로
   멈춘다 — 고른 뒤 다시 찾은 파일로 일정을 보고 예약한다. 사람 파일에 든 분만 일정 손의 답(본 분 · 못 본 분)에 선다
-- 「이 메일 받은 사람들」 — 지난 메일의 받는 사람은 스킬 company-mail 의 `who --last <그 메일의 unid> --out <폴더>` 로 명단을 보이고, 그 끝 줄이 대는 주소 파일을 다 `--to-file`
+- 「이 메일 받은 사람들」 — 지난 메일의 받는 사람은 `find --last <그 메일의 unid> --out <폴더>` 로 명단을 보이고, 그 끝 줄이 대는 주소 파일을 다 `--to-file`
   로 그대로 준다. 받은 메일이면 그 명단에 나와 보낸 분이 안 든다 — 회의라면 보낸 분이 가장 부를 만한 분이니 함께 부를지 묻고, 부르면
-  같은 `who` 부름에 `--name <보낸 분>` 을 더한다
+  같은 `find` 부름에 `--name <보낸 분>` 을 더한다
 - 「○○ 부서 사람들 · 리더들」 — `find --dept … --out <폴더>` 로 명단을 보이고, 그 끝 줄이 대는 사람 파일을 `--people-file` 로 그대로 준다.
   부서 주소 하나로는 못 잡는다 — preview 가 막고 다음 걸음을 댄다
 - 잡아 둔 회의에 더하고 빼기는 그 사람만 준다(`--add-to` · `--drop-to`) — 있던 참석자는 그대로다. 뺄 주소는 `mine` 의 `attendees` 에

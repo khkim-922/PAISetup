@@ -4,8 +4,9 @@
 
     python -X utf8 <이 스킬>/scripts/company_ecm.py <명령> [인자…]   # 명령 · 인자는 곁의 ecm.py 의 것 그대로(--help)
 
-인자는 세션보다 먼저 ``ecm.py`` 의 명령줄(``ecm.parser``)과 값 가리기(``ecm.precheck`` — 열쇠의 꼴 · 파일 · 짝처럼 서버 없이 가릴
-수 있는 값)로 가린다 — ``--help`` · 틀린 인자 · 틀린 값은 세션 없이 그 자리에서 끝난다(종료 값은 ``ecm.report``).
+인자는 세션보다 먼저 ``ecm.py`` 의 명령줄과 값 가리기(``ecm.checked_args`` — 열쇠의 꼴 · 파일 · 짝처럼 서버 없이 가릴 수 있는
+값)로 한 번만 가린다 — ``--help`` · 틀린 인자 · 틀린 값은 세션 없이 그 자리에서 끝난다(종료 값은 ``ecm.report``). 가린 인자는
+``ecm.run`` 이 받는다.
 세션이 드는 명령 가운데 읽는 것은 세션 파일이 이미 있으면 그것으로 먼저 돌고 ECM 이 끊겼다고 할 때만, 잠그거나 올리거나 권한을
 바꾸는 것은 늘, 형제 스킬 ep-login 의 받는 손을 ``ecm`` 으로 말없이 돌린다(까닭과 바퀴는 그 폴더 ``ep_session.session_first`` 의
 머리말). 어느 명령이 세션이 들고 바꾸는가는 ``ecm.py`` 의 손가락 표(``FINGERS`` 의 ``session`` · ``mutating``)가 든다. 쓰는 사람의
@@ -30,6 +31,7 @@ Edge 가 디버깅 포트로 떠 있고 로그인돼 있으면 그 손이 ECM �
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import importlib
 import io
@@ -48,6 +50,11 @@ NO_EDGE_WORD = "쓰는 사람의 Edge 에 못 붙었다(디버깅 포트로 떠 
 NOT_LOGGED_IN_WORD = "Edge 는 떠 있는데 EP 로그인이 안 됐거나 끊겼다"
 ECM_HANDOFF_WORD = "EP 로그인은 섰는데 받는 손이 ECM 넘김을 화면 없이 못 따라갔다 — 다시 로그인할 일은 아니다"
 EP_LOGIN = "스킬 ep-login 으로 사내 세션을 받은 뒤 같은 명령을 다시 돌린다"
+NO_EP_LOGIN_WORD = f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다"
+SESSION_REFUSED_WORD = f"ECM 이 세션을 안 받았다 — {EP_LOGIN}"
+NO_ORDINARY_WORD = ("이 로그온에 평소 Edge 의 EP 로그인이 없다 — 이 PC 의 문서함 에이전트는 그 로그인이 있어야 문서를 연다. 다음: 스킬 ep-login 의 "
+                    "입구를 ecm 으로 부른 뒤(login.sh ecm — 사용자의 평소 Edge 에서 EP 로그인이 선다) 같은 명령을 다시 돌린다")
+ORDINARY_UNSURE_WORD = "이 로그온의 평소 EP 로그인이 섰는지는 모른다 — 문서가 안 열리면 사용자가 평소 Edge 에서 EP 에 로그인한 뒤 같은 명령을 다시 돌린다"
 EP_LOGIN_ECM_ONLY = "다시 로그인할 일은 아니다 — 스킬 ep-login 으로 ECM 세션을 받은 뒤(탭 하나가 잠깐 열린다) 같은 명령을 다시 돌린다"
 
 
@@ -62,20 +69,23 @@ def load_ep_session():
 
 
 def main(argv: list[str]) -> int:
+    """명령 한 판 — 인자를 한 번 가리고, 세션이 드는 줄이면 받는 손의 바퀴(``session_first``)로 세션을 맞춰 ``ecm.run`` 을 돈다."""
     if str(HERE) not in sys.path:
         sys.path.insert(0, str(HERE))   # -I 로 돌면 이 폴더가 sys.path 에 없다
     ecm = importlib.import_module("ecm")
-    args = ecm.parser().parse_args(argv)   # --help · 틀린 인자는 여기서 끝난다(SystemExit) — 세션을 안 부른다
     try:
-        ecm.precheck(args)                 # 서버 없이 가릴 수 있는 값(열쇠의 꼴 · 파일 · 짝)도 세션보다 먼저 — 틀린 값에 로그인을 청하지 않는다
+        args = ecm.checked_args(argv)      # --help · 틀린 인자 · 서버 없이 가릴 수 있는 틀린 값은 세션 없이 여기서 끝난다
     except ecm.REPORTED as exc:
         return ecm.report(exc)
     finger = ecm.FINGERS[args.command]
     if finger.session:
         ep = load_ep_session()
         if ep is None:
-            print(f"스킬 ep-login 이 이 스킬 곁에 없다: {EP_LOGIN_SCRIPTS} — 설치를 다시 돌린다", file=sys.stderr)
+            print(NO_EP_LOGIN_WORD, file=sys.stderr)
             return ecm.EXIT_FAIL
+        if ecm.uses_agent(finger, args) and not ordinary_ready(ep):
+            print(NO_ORDINARY_WORD, file=sys.stderr)
+            return ecm.EXIT_SESSION
 
         def use(file):
             # ecm.py 는 까닭을 표준 오류에 낸다 — session_first 는 표준 출력만 담으므로 여기서 담는다. 안 담으면 낡은 세션 파일로 돈 첫 판의
@@ -83,7 +93,7 @@ def main(argv: list[str]) -> int:
             said = io.StringIO()
             try:
                 with contextlib.redirect_stderr(said):
-                    result = ecm.main(["--session", str(file), *argv])
+                    result = ecm.run(argparse.Namespace(**{**vars(args), "session": args.session or str(file)}))   # 준 --session 이 이긴다
             except BaseException:
                 sys.stderr.write(said.getvalue())
                 raise
@@ -95,22 +105,39 @@ def main(argv: list[str]) -> int:
         try:
             return ep.session_first(use, ("ecm",), expired=(SessionGone,), file_first=not finger.mutating)
         except ep.NoSession as exc:
-            got = exc.got
-            if got.code == ep.ECM_HANDOFF:
-                print(f"{ECM_HANDOFF_WORD} — {EP_LOGIN_ECM_ONLY}", file=sys.stderr)
-                return ecm.EXIT_SESSION
-            if got.code in (ep.NOT_LOGGED_IN, ep.NO_EDGE):
-                print(f"{NOT_LOGGED_IN_WORD if got.code == ep.NOT_LOGGED_IN else NO_EDGE_WORD} — {EP_LOGIN}", file=sys.stderr)
-                return ecm.EXIT_SESSION
-            why = f"받는 손이 실패했다(종료 {got.code})" if got.code != ep.OK else "받는 손이 세션 파일 경로를 끝 줄에 안 냈다"
-            print(f"{why}: {got.said or '말 없음'}", file=sys.stderr)
-            return ecm.EXIT_FAIL
+            return tell_no_session(ep, ecm, exc.got)
         except SessionGone as exc:
             if str(exc):
                 print(exc, file=sys.stderr)
-            print(f"ECM 이 세션을 안 받았다 — {EP_LOGIN}", file=sys.stderr)
+            print(SESSION_REFUSED_WORD, file=sys.stderr)
             return ecm.EXIT_SESSION
-    return ecm.main(argv)
+    return ecm.run(args)
+
+
+def ordinary_ready(ep) -> bool:
+    """이 로그온에 평소 EP 로그인이 있다고 볼 수 있나 — 형제 스킬 ep-login 의 읽기만 하는 답(``ep_session.ordinary_login``)을 받는다.
+    섰다 → 참. 없다 → 거짓(문서함 에이전트를 부르기 전에 멈춘다). 해 봤다 · 가릴 수 없다(못 읽고 로그온 열쇠도 없다) · 못 가렸다 → 참이되 사람이 할 일을 한 줄 말한다 — 끝없이
+    「입구부터」를 안 내게. 이 명령은 입구를 대신 부르지 않는다(하위 에이전트 안에서도 창을 안 띄운다)."""
+    state = ep.ordinary_login()
+    if state == ep.ORDINARY_MISSING:
+        return False
+    if state != ep.ORDINARY_STOOD:
+        print(ORDINARY_UNSURE_WORD, file=sys.stderr)
+    return True
+
+
+def tell_no_session(ep, ecm, got) -> int:
+    """받는 손이 세션을 못 세운 갈래(``got.code``)를 사람에게 할 말과 종료 값으로 옮긴다 — 로그인 끊김 · Edge 없음 · ECM 넘김은
+    ``EXIT_SESSION``, 받는 손의 고장은 ``EXIT_FAIL``."""
+    if got.code == ep.ECM_HANDOFF:
+        print(f"{ECM_HANDOFF_WORD} — {EP_LOGIN_ECM_ONLY}", file=sys.stderr)
+        return ecm.EXIT_SESSION
+    if got.code in (ep.NOT_LOGGED_IN, ep.NO_EDGE):
+        print(f"{NOT_LOGGED_IN_WORD if got.code == ep.NOT_LOGGED_IN else NO_EDGE_WORD} — {EP_LOGIN}", file=sys.stderr)
+        return ecm.EXIT_SESSION
+    why = f"받는 손이 실패했다(종료 {got.code})" if got.code != ep.OK else "받는 손이 세션 파일 경로를 끝 줄에 안 냈다"
+    print(f"{why}: {got.said or '말 없음'}", file=sys.stderr)
+    return ecm.EXIT_FAIL
 
 
 if __name__ == "__main__":

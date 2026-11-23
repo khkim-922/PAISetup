@@ -312,7 +312,7 @@
 
 ## 회사에서 잴 것 — 아직 없는 손가락을 세우려면
 
-잰 판이 서면 `scripts/mail.py` 의 표에 한 줄과 그 일을 하는 손 하나로 더한다(`DESIGN.md` 「mail.py · 받는 사람 찾기」).
+잰 판이 서면 `scripts/mail.py` 의 표에 한 줄과 그 일을 하는 손 하나로 더한다(`DESIGN.md` 「mail.py · 임시메일 짓기 — 손가락과 세분의 선」).
 
 - 배포그룹 하나로 보낸 메일이 받는 쪽에서 구성원 낱낱에게 가나 — 저장 꼴은 쟀다(「inbox.py · 임시저장 · 서명」), 보낸 판은 안 쟀다
 - 팀즈문서 링크 공유 — 고름 창(`frmTeamsAttachFileManager`)이 무엇을 골라 본문 · 첨부 칸에 넣나(`insertTeamsAttachFileTable`)

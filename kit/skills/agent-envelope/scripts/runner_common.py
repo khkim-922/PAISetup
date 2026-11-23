@@ -1,6 +1,7 @@
-"""맡기기 러너 셋(agy-background · codex-copilot-background · claude-background)이 함께 쓰는 손 — 인자 가르기(같이 받는 인자
+"""맡기기 러너 넷(agy-background · codex-copilot-background · claude-background · claude-lane)이 함께 쓰는 손 — 인자 가르기(같이 받는 인자
 넷) · 프롬프트 파일 읽기 · 띄울 머리 찾기(npm 셔틀) · 띄워 지켜보기 · 답 파일 쓰기 · 끝 줄 · 도움말 · 프로세스 끊기. 띄우는
-명령 · 갈래 판정 · 끝 줄의 칸 · 종료 코드 표처럼 러너마다 갈리는 것은 러너가 든다.
+명령 · 갈래 판정 · 끝 줄의 칸 · 종료 코드 표처럼 러너마다 갈리는 것은 러너가 든다. 러너가 여기서 싣는 이름은 곁의
+``handout.py`` 한 자리에 적힌 것뿐이다.
 
 부르는 꼴 — 러너는 스킬 홈에 이 스킬과 나란히 깔린다::
 
@@ -34,6 +35,15 @@ POLL_SEC = 2                    # 받는 쪽이 끝났나 보는 간격
 STDERR_TAIL_CHARS = 2000        # 실패 때 답 파일에 옮기는 stderr 꼬리
 SHIM_EXT = ('.cmd', '.bat')     # npm 이 윈도에 까는 실행 껍데기 — 그것이 부르는 것을 바로 띄운다(`npm_head`)
 JS_EXT = ('.js', '.mjs', '.cjs')
+# ── Claude CLI ── 받는 쪽이 Claude CLI 인 러너(claude-background · claude-lane)가 같이 쓰는 그 CLI 의 사실
+CLAUDE_BIN = 'claude'
+CLAUDE_NPM_PACKAGE = ('@anthropic-ai', 'claude-code')   # 셔틀(`.cmd`)이 부르는 꾸러미 — 띄울 것은 그 `package.json` 의 `bin`(`npm_head`)
+# 부른 쪽 Claude 세션의 표지 — 남으면 받는 쪽이 그 대화 id 를 이어 쓴다(리모트 세션은 `CLAUDE_CODE_REMOTE_SESSION_ID` 까지 걷어야 새 id 가 선다)
+CLAUDE_DROP_ENV = ('CLAUDECODE', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_REMOTE_SESSION_ID')
+# 한도 · 과부하의 꼴 — 결과의 `api_error_status`(429 · 529)나 문구. 다른 실패와 갈라야 「잠시 뒤 다시」와 「고칠 것」이 갈린다
+CLAUDE_QUOTA_STATUS = (429, 529)
+CLAUDE_QUOTA_RE = re.compile(r'usage limit|rate[_ ]limit|overloaded|\b429\b|\b529\b', re.I)
+CLAUDE_MODEL_RE = re.compile(r'[A-Za-z0-9._:/\[\]-]+')   # `--model` 값의 꼴 — 따옴표 · 공백을 막는다
 # 프롬프트 파일이 받는 인코딩 — `decode_prompt` 가 받는 것과 같은 말이고 거절 사유 · `--help` 가 이 글을 읽는다
 PROMPT_ENCODINGS = 'UTF-8(BOM 은 있어도 없어도) · UTF-16 LE/BE(BOM 이 있어야)'
 # 답 파일의 인코딩 — 윈도는 BOM 을 단다(PowerShell 5.1 `Get-Content` 는 BOM 없는 파일을 ANSI 로 읽어 한글 · `·` 를 깨뜨린다).
@@ -118,7 +128,7 @@ def read_prompt(path):
 
 
 def base_parser(description, cwd_help):
-    """러너 셋이 같이 받는 인자 넷(`-h` · `--prompt-file` · `--out` · `--cwd`)을 단 인자 가르개 — 나머지 인자는 러너가 제
+    """러너 넷이 같이 받는 인자 넷(`-h` · `--prompt-file` · `--out` · `--cwd`)을 단 인자 가르개 — 나머지 인자는 러너가 제
     차례로 잇는다(`--timeout` 도 러너마다 뜻 · 자리가 달라 러너가 단다)."""
     ap = Parser(add_help=False, formatter_class=HelpFormat, description=description)
     ap.add_argument('-h', '--help', action='store_true', help='이 도움말을 표준 출력에 찍고 끝낸다(파일은 안 쓴다)')
@@ -152,6 +162,17 @@ def npm_head(name, package):
         return [target]
     node = shutil.which('node')
     return [node, target] if node else None
+
+
+def claude_head():
+    """Claude CLI 를 띄울 머리 — `npm_head` 로 찾는다. 못 찾으면 None."""
+    return npm_head(CLAUDE_BIN, CLAUDE_NPM_PACKAGE)
+
+
+def claude_quota(api_error_status, text):
+    """Claude CLI 의 실패가 한도 · 과부하인가 — 결과의 `api_error_status` 가 `CLAUDE_QUOTA_STATUS` 에 들거나 글(까닭 · stderr)에
+    `CLAUDE_QUOTA_RE` 가 걸리면 참."""
+    return api_error_status in CLAUDE_QUOTA_STATUS or bool(CLAUDE_QUOTA_RE.search(text))
 
 
 def watch(cmd, cwd, env, stdin, raw_path, err_path, timeout):

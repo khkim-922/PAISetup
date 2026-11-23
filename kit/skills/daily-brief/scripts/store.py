@@ -20,15 +20,20 @@ import secrets
 import sys
 import time
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 brief_text.py — `-I` 로 돌아도 싣는다
-from brief_text import made_of  # noqa: E402
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 brief_files.py — `-I` 로 돌아도 싣는다
+from brief_files import TEXT_SUFFIX, is_window  # noqa: E402
 
 REPLACE_TRIES = 5                  # 바꿔 끼우는 순간의 PermissionError 를 다시 해 보는 수
 REPLACE_WAIT_S = 0.05              # 그 사이 — 바꿔 끼우기는 몇 밀리초라 넉넉하다
 
 
 class Unreadable(Exception):
-    """파일이 있는데 못 읽었다 — 다시 해 봐도 진 OSError · 글이 꼴이 아니다."""
+    """파일이 있는데 못 읽었다 — 다시 해 봐도 진 OSError · 글이 꼴이 아니다. `why` 는 짧은 까닭(그 예외의 이름 · 꼴의 말), `broken` 이 참이면 글이
+    꼴이 아니다(기다려도 안 바뀐다) — 거짓이면 다른 손이 쥐었거나 막혀 다시 읽으면 될 수 있다."""
+
+    def __init__(self, said: str, why: str = "", broken: bool = False):
+        super().__init__(said)
+        self.why, self.broken = why or said, broken
 
 
 def read_bytes(path: pathlib.Path) -> bytes | None:
@@ -40,10 +45,10 @@ def read_bytes(path: pathlib.Path) -> bytes | None:
             return None
         except PermissionError as exc:
             if attempt == REPLACE_TRIES - 1:
-                raise Unreadable(f"{type(exc).__name__}: {exc}") from exc
+                raise Unreadable(f"{type(exc).__name__}: {exc}", type(exc).__name__) from exc
             time.sleep(REPLACE_WAIT_S)
         except OSError as exc:
-            raise Unreadable(f"{type(exc).__name__}: {exc}") from exc
+            raise Unreadable(f"{type(exc).__name__}: {exc}", type(exc).__name__) from exc
     return None
 
 
@@ -55,19 +60,19 @@ def read_json(path: pathlib.Path) -> dict | None:
     try:
         data = json.loads(raw.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError) as exc:
-        raise Unreadable(type(exc).__name__) from exc
+        raise Unreadable(type(exc).__name__, broken=True) from exc
     if not isinstance(data, dict):
-        raise Unreadable("JSON 사전이 아니다")
+        raise Unreadable("JSON 사전이 아니다", broken=True)
     return data
 
 
 def page_brief(folder: pathlib.Path, page: str) -> tuple[pathlib.Path, str] | None:
     """누른 창(`page` — 그 창의 파일 이름)의 보고 글 — (같은 이름의 .md 의 자리, 글). 창을 지은 글이다 — 카드 · 맡길 일은 창이 선 뒤 안
-    바뀌고, 끝의 기록 절만 거두는 손(곁의 `ticks.py`)이 고친다. 이름이 보고 창의 꼴(`brief_text.made_of`)이 아니거나 글이 없거나 못 읽으면
+    바뀌고, 끝의 기록 절만 거두는 손(곁의 `ticks.py`)이 고친다. 이름이 보고 창의 꼴(`brief_files.is_window`)이 아니거나 글이 없거나 못 읽으면
     None. 거두는 손이 그 글을 바꿔 끼우는 순간에 읽어도 지지 않는다(`read_bytes` 가 다시 해 본다)."""
-    if not page.endswith(".html") or made_of(page) is None:
+    if not is_window(page):
         return None
-    md = (folder / page).with_suffix(".md")
+    md = (folder / page).with_suffix(TEXT_SUFFIX)
     try:
         raw = read_bytes(md)
         return (md, raw.decode("utf-8")) if raw is not None else None

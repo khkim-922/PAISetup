@@ -22,9 +22,10 @@ import sys
 import time
 import urllib.parse
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 brief_const.py · brief_text.py · store.py — `-I` 로 돌아도 싣는다
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 brief_const.py · 보고 글 읽기 · store.py — `-I` 로 돌아도 싣는다
 import brief_const as C  # noqa: E402
-import brief_text as B  # noqa: E402
+from brief_inline import plain  # noqa: E402
+from brief_text import parse  # noqa: E402
 import store as S  # noqa: E402
 
 LINK_HEAD = "vscode://anthropic.claude-code/open?"   # 여는 주소는 이 처리기 하나다 — Claude Code 확장의 주소 처리기(채우기만 하고 안 보낸다)
@@ -80,6 +81,7 @@ def extension_dir() -> pathlib.Path:
 
 
 def has_extension() -> bool:
+    """VS Code 확장 폴더에 Claude Code 확장(`EXTENSION_ID`)이 깔렸나."""
     return any((p / "package.json").is_file() for p in extension_dir().glob(EXTENSION_ID + "-*"))
 
 
@@ -131,6 +133,7 @@ def link(text: str, session: str = "") -> str:
 # ── VS Code 창 — 표준 라이브러리(ctypes)의 Win32 만. 프로세스 목록 · 명령 줄은 안 읽는다 ─────────────
 
 def _user32():
+    """창을 묻고 앞으로 올리는 user32 의 Win32 함수를 인자 · 반환 꼴을 매겨 싣는다."""
     import ctypes
     import ctypes.wintypes as wt
     u = ctypes.WinDLL("user32", use_last_error=True)
@@ -146,6 +149,7 @@ def _user32():
 
 
 def _image(pid: int) -> str:
+    """프로세스 번호 `pid` 의 실행 파일 경로 — 못 물으면 빈 글."""
     import ctypes
     import ctypes.wintypes as wt
     k = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -254,7 +258,7 @@ def brief_of(folder: pathlib.Path, page: str) -> tuple[str, pathlib.Path | None]
     if got is None:
         return "", None
     md, text = got
-    return B.plain(B.parse(text).title or "").strip(), md.resolve()
+    return plain(parse(text).title or "").strip(), md.resolve()
 
 
 def take(folder: pathlib.Path, words: str, page: str, when: str, tick=lambda: None, session: str = "") -> tuple[str, str]:

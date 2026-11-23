@@ -99,6 +99,7 @@ class MailRefused(MailError):
 
 @dataclass(frozen=True)
 class Settings:
+    """발송 설정 한 벌 — 중계 호스트 · 포트 · TLS 정책 · 시한 · 기본 발신자."""
     host: str
     port: int
     tls: str            # "try" · "require" · "off"
@@ -171,6 +172,7 @@ def _address_list(value, where: str) -> list[str]:
 
 
 def _resolve_sender(sender: str | None, config: Settings, where: str) -> str:
+    """발신자를 정한다 — 안 주면 설정의 기본 발신자, 둘 다 없거나 주소가 아니면 MailConfigError."""
     sender = sender or config.default_sender
     if not sender:
         raise MailConfigError(f"{where}에 from 이 없다")
@@ -208,6 +210,7 @@ def load_recipients(path) -> dict:
 # ── 발송 ──────────────────────────────────────────────────────────────────
 
 def _connect(config: Settings) -> smtplib.SMTP:
+    """설정의 중계에 평문으로 이어 EHLO 까지 한 연결을 낸다."""
     server = smtplib.SMTP(config.host, config.port, timeout=config.timeout,
                           local_hostname=_ehlo_name())
     server.ehlo()
@@ -230,6 +233,7 @@ def _ehlo_name() -> str:
 
 
 def _close(server: smtplib.SMTP) -> None:
+    """연결을 QUIT 으로 닫고, 그게 안 되면 그냥 끊는다."""
     try:
         server.quit()
     except Exception:
@@ -263,6 +267,7 @@ def _secure(server: smtplib.SMTP, config: Settings) -> smtplib.SMTP:
 
 def _deliver(message: EmailMessage, sender: str, envelope: list[str],
              config: Settings) -> None:
+    """중계에 이어 정책대로 STARTTLS 를 세우고 봉투의 수신자에게 한 통을 넘긴다 — 한 사람이라도 거절되면 MailRefused."""
     server = _connect(config)
     try:
         if config.tls != "off":
@@ -322,6 +327,7 @@ def send(subject: str, *, to, cc=None, bcc=None, sender: str | None = None,
 
 
 def _domain(address: str) -> str | None:
+    """주소의 도메인 — 없으면 None."""
     return parseaddr(address)[1].rpartition("@")[2] or None
 
 

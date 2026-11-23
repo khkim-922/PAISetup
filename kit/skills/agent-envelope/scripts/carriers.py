@@ -23,8 +23,11 @@ WEIGHTS = ('deep', 'errand', 'fallback')
 NONE = '-'
 # 도구마다 그 도구에게 맡기는 러너 스킬 — Claude 는 같은 앱 안에서는 서브에이전트(Agent 도구)라 러너가 없다
 RUNNER = {'claude': 'claude-background', 'agy': 'agy-background', 'codex': 'codex-copilot-background'}
+# 셸 · 제 격리 워크트리가 드는 레인을 `claude -p` 로 띄우는 러너 — 어느 도구가 맡기든 받는 쪽은 Claude 다
+CLAUDE_LANE = 'claude-lane'
 # 고르기에 드는 차이 둘 — 셸(제 주장을 재 볼 손)과 울타리(상태 변화를 막는 것). 띄우는 법 · 플래그 · 한도는 러너 스킬이 든다
-FENCE = {'claude': '같은 앱의 서브에이전트: 셸 ○ · 격리 워크트리. 러너(claude-background): 셸 × · 허락 + 작업 자리',
+FENCE = {'claude': '같은 앱의 서브에이전트: 셸 ○ · 격리 워크트리 · 세션의 한도를 같이 쓴다. 러너(claude-background): 셸 × · 허락 + 작업 자리. '
+                   f'-p 레인({CLAUDE_LANE}): 셸 ○ · 제 격리 워크트리 · 자동 모드 · push 막음 · 결제는 구독이나 API 키',
          'agy': '셸 ○ · 묻지 않고 작업 자리 밖에도 쓴다 — 막는 울타리가 없다(작업 자리는 출발점)',
          'codex': '셸 ○ · OS 샌드박스(읽기 레인은 읽기 전용 · 고치기 레인은 작업 자리만 쓰기). Copilot 이 받으면 셸 ×'}
 # 리뷰 — 도구마다 제 리뷰 기능을 부르는 법. 리뷰는 봉투가 아니라 이것으로 맡긴다. 띄우는 깃발 · 대상의 꼴은 러너 스킬이 든다
@@ -84,9 +87,8 @@ def read_table(path):
     return cell
 
 
-def runner_homes(tool, here):
-    """러너 스킬 폴더가 보이는 자리 이름들 — 없으면 빈 목록."""
-    name = RUNNER[tool]
+def runner_homes(name, here):
+    """러너 스킬 `name` 의 폴더가 보이는 자리 이름들 — 없으면 빈 목록."""
     found = []
     if (here.parent / name / 'SKILL.md').is_file():
         found.append('이 스킬 곁')
@@ -146,9 +148,11 @@ def main():
     print(f'{"도구":<8}{"deep":<34}{"errand":<34}러너')
     for tool in TOOLS:
         deep, errand = shown(model(tool, 'deep')), shown(model(tool, 'errand'))
-        homes = runner_homes(tool, here)
+        homes = runner_homes(RUNNER[tool], here)
         if tool == 'claude':
-            runner = '같은 앱이면 서브에이전트(Agent) · 밖에서는 ' + RUNNER[tool] + (f'({" · ".join(homes)})' if homes else '(없음)')
+            lane = runner_homes(CLAUDE_LANE, here)
+            runner = ('같은 앱이면 서브에이전트(Agent) · 밖에서는 ' + RUNNER[tool] + (f'({" · ".join(homes)})' if homes else '(없음)')
+                      + f' · 셸 레인 {CLAUDE_LANE}' + (f'({" · ".join(lane)})' if lane else '(없음)'))
         else:
             runner = RUNNER[tool] + (f'({" · ".join(homes)})' if homes else '(없음 — 이 자리에서 못 띄운다)')
         print(f'{tool:<8}{deep:<34}{errand:<34}{runner}')

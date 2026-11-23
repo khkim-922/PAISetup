@@ -11,11 +11,13 @@ company-board 가 함께 부른다. 서버에 묻지 않는다 — 바이트는 
 겹치거나(윈도처럼 대소문자 · 끝의 점과 빈칸을 안 가린다) ``reserved`` 와 겹치면 모든 첨부에 「<번호>-」 를 붙이고, 아니면 ``safe_name`` 그대로다.
 
 ``note`` 는 빈 글자(머리로 못 가르는 꼴) · 평문이다 · DRM 에 감겼다(읽는 손이 받는다 · 감긴 한글 · 읽는 손이 안 받는 꼴 · 읽는 손이 곁에 없다)
-가운데 하나다. 읽는 손이 받는 꼴은 형제 스킬 drm-office-read 의 ``$HANDLER`` 표를 그 자리에서 읽는다 — 여기 따로 적으면 그 표와 어긋난다.
+가운데 하나다. 읽는 손이 받는 꼴은 형제 스킬 drm-office-read 가 내주는 값(``scripts/handler.json`` 의 ``handler``)을 그 자리에서 읽는다 —
+여기 따로 적으면 그 표와 어긋난다.
 """
 
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import sys
@@ -34,9 +36,8 @@ HWP_EXTS = frozenset({"hwp", "hwpx"})
 UNSAFE_NAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]')   # 윈도 파일 이름에 못 쓰는 글자
 NO_NAME = "attachment"                               # 다듬고 나니 남은 글자가 없는 이름 대신 쓴다
 READER_SKILL = "drm-office-read"
-READER_TABLE = HERE.parents[1] / READER_SKILL / "scripts" / "office-read.ps1"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
-HANDLER_BLOCK = re.compile(r"^\$HANDLER\s*=\s*@\{(.*?)^\}", re.M | re.S)       # 읽는 손의 확장자 표 한 덩이
-HANDLER_KEY = re.compile(r"'\.(\w+)'\s*=")                                      # 그 안의 열쇠 — 점 뒤의 확장자
+READER_TABLE = HERE.parents[1] / READER_SKILL / "scripts" / "handler.json"     # 형제 스킬이 내주는 값 — 스킬 홈에 나란히 깔린다
+READER_TABLE_KEY = "handler"                                                     # 그 값 파일의 열쇠 — 점 붙은 확장자 → 여는 앱
 PLAIN = "평문이다 — 보통 파서로 읽는다"
 WRAPPED = "DRM 에 감겼다"
 
@@ -75,14 +76,14 @@ def wrapped(name: str, data: bytes) -> bool | None:
 
 
 def reader_exts() -> frozenset[str] | None:
-    """감긴 문서를 읽는 손이 받는 확장자(소문자, 점 없이). 그 손의 표를 못 읽거나 비었으면 None — 받는 꼴을 모른다."""
+    """감긴 문서를 읽는 손이 받는 확장자(소문자, 점 없이). 그 손이 내준 표를 못 읽거나 비었으면 None — 받는 꼴을 모른다."""
     try:
-        source = READER_TABLE.read_text(encoding="utf-8-sig")
-    except (OSError, UnicodeDecodeError):
+        table = json.loads(READER_TABLE.read_text(encoding="utf-8-sig")).get(READER_TABLE_KEY)
+    except (OSError, ValueError, AttributeError):
         return None
-    block = HANDLER_BLOCK.search(source)
-    exts = frozenset(ext.lower() for ext in HANDLER_KEY.findall(block.group(1))) if block else frozenset()
-    return exts or None
+    if not isinstance(table, dict):
+        return None
+    return frozenset(ext[1:].lower() for ext in table if isinstance(ext, str) and ext.startswith(".")) or None
 
 
 def note(name: str, data: bytes) -> str:
