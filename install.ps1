@@ -48,6 +48,9 @@
 #     안 건다(「자동 실행을 켜나」 칸). 설치본도 `#update-repo` 의 최신 릴리스로 간다(「마무리」의 「설치본 자신을 새 릴리스로 간다」 칸).
 #   `-GhLoginOnly <결과 파일>` — 사람이 주는 칸이 아니다. 「프로그램」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
 #     (`Start-GhLoginChild`). 자식은 라이브러리만 읽고 빗장 앞에서 GitHub 로그인 창 하나를 띄운 뒤 결과를 그 파일에 적고 나간다.
+#   `-Only key|repo` — 「바꾸기」. 설치 창의 키 칸 · 설정 저장소 칸 곁 단추가 준다. 그 값이 닿는 걸음 묶음(`$OnlyBundles`)만 돌고, 끝
+#     검증도 그 묶음의 줄만 잰다. 고른 것은 지난번 기록이 채우고(`-Pick` · `-ChoicesFull` 을 안 받는다) 기록이 없으면 안 돈다 — 한 번은 설치
+#     전체가 서야 묶음이 기댈 바탕(프로그램 · 홈 씨앗 · 기록)이 있다. 넘겨받은 값 파일이 그 칸의 값(키 · 주소 · `#config-repo`)을 든다.
 #   `-RowOnly <요청 파일>` — 사람이 주는 칸이 아니다. 「데스크탑 앱」 · 「CLI」 걸음이 이 몸통을 숨은 자식으로 다시 띄울 때 넘긴다
 #     (`Start-RowChild`). 자식은 라이브러리만 읽고 빗장 앞에서 그 파일이 고른 표의 한 행을 깐 뒤 결과를 파일에 적고 나간다.
 # ⚠ **`install.cmd` 에 한글을 넣지 않는다.** cmd.exe 는 배치 파일을 콘솔 OEM 코드페이지(한국은 cp949)로 읽어, UTF-8 한글이
@@ -55,7 +58,7 @@
 param([switch]$Yes, [switch]$NoDevTools, [switch]$WithPersonalConfig, [string]$PersonalFor, [switch]$NoUpgrade,
       [switch]$NoLaunch, [string]$EnvFile, [switch]$Describe,
       [string]$Pick, [switch]$NoVsCode, [switch]$AutoRun, [switch]$NoAutoRun, [string]$GhLoginOnly,
-      [switch]$ChoicesFull, [switch]$DevTools, [string]$RowOnly)
+      [switch]$ChoicesFull, [switch]$DevTools, [string]$RowOnly, [string]$Only)
 
 $ErrorActionPreference = 'Stop'
 
@@ -593,6 +596,34 @@ $Steps = @(
   @{ Key = 'register';   Title = 'Claude 플러그인' }
 )
 
+# ── 「바꾸기」 묶음 — 사람이 바꾼 값 하나가 닿는 걸음만 다시 돈다(`-Only`) ─────────────────────────────
+# 사람이 고르는 것은 값(키 · 저장소)이고, 어느 걸음이 도는지는 이 표가 든다 — 걸음 이름을 사람에게 고르게 하면 걸음을 가를 때마다 문이 는다.
+#   `Steps` — 도는 걸음. 걸음 차례는 `$Steps` 의 차례다. 묶음의 걸음이 기대는 앞 걸음은 묶음 안에 둔다 — 빠지면 `Assert-StepsDone` 이
+#     그 걸음을 멈춘다(빈 값으로 걷거나 심지 않는다).
+#   `Launch` — 끝에 앱을 다시 여나. 환경을 바꾼 묶음만 연다 — 이미 뜬 창은 새 환경을 안 문다.
+# 키 묶음에 「사내 연결」이 드는 것은 실제 키로 게이트웨이에 묻는 끝 검증이 그 걸음이 세운 프록시를 지나고 주소가 바뀌면 프록시 포트도
+#   바뀌어서다. 「Claude 홈 설정」은 사외 판에서 홈 settings.json 의 env 로 미는 주소 · 모델과 옛 키 사본을 맞춘다.
+$OnlyBundles = [ordered]@{
+  key  = @{ Steps = @('keys', 'site', 'home'); Launch = $true }
+  repo = @{ Steps = @('repo');                 Launch = $false }
+}
+# 이번 실행이 도는 걸음 — 묶음을 안 골랐으면 전부다. 머리줄의 번호 · 분모(`Get-StepTitle`)와 걸음의 문(`Test-StepOn`)이 이것을 읽는다.
+$StepsOn = @($Steps | ForEach-Object { $_.Key })
+if ($Only) {
+  if (-not $OnlyBundles.Contains($Only)) {
+    Write-Host "! -Only 는 $(@($OnlyBundles.get_Keys()) -join ' · ') 가운데 하나입니다 — 받은 값: $Only" -ForegroundColor Red
+    exit 2
+  }
+  # 고른 것을 바꾸는 깃발은 같이 못 준다 — 묶음 밖 걸음이 안 도는데 기록만 새 선택으로 바뀌면, 깔지 않은 것이 깔린 것으로 남는다.
+  $choiceFlags = @('Pick', 'ChoicesFull', 'PersonalFor', 'WithPersonalConfig', 'NoVsCode', 'NoDevTools', 'DevTools', 'AutoRun', 'NoAutoRun', 'NoUpgrade')
+  $clash = @($choiceFlags | Where-Object { $PSBoundParameters.ContainsKey($_) })
+  if ($clash.Count) {
+    Write-Host "! -Only 는 고른 것을 바꾸는 깃발과 함께 줄 수 없습니다 — $(@($clash | ForEach-Object { "-$_" }) -join ' · ') (설치 전체로 실행하세요)" -ForegroundColor Red
+    exit 2
+  }
+  $StepsOn = @($Steps | ForEach-Object { $_.Key } | Where-Object { $OnlyBundles[$Only].Steps -contains $_ })
+}
+
 # 「도는 중」 한 줄(`Say-Busy`)이 고르는 동작 낱말 표 — 줄의 꼴 `  <대상> — <동작>중 … (<수단> · <덧말>)` 은 그 함수 하나가 든다.
 # 설치 창은 몸통이 찍은 마지막 한 줄을 「지금 하는 일」로 띄운다(`install.ui.ps1` 의 `Step-Line`) — 안 찍는 자리는 직전 결과
 #   줄이 걸린 채 오래 돌아 멎은 것과 구분이 안 된다. 그래서 시간이 드는 걸음은 들어가기 전에 `Say-Busy` 를 부르고, 동작 낱말은
@@ -731,16 +762,33 @@ function Say-Get([string]$What, $Asset) {
 }
 
 # ── 걸음의 머리줄과 마침 줄 — 위 `$Steps` 표에서 짓는다 ─────────────────────────────────
-# `Get-StepTitle` 은 열쇠를 받아 `[번호/분모] 이름` 을 내고, 표에 없는 열쇠는 던진다. `Enter-Step` 은 빈 줄 하나 뒤에 그 줄을
-#   찍고, `Exit-Step` 은 같은 글자로 걸린 초 한 줄을 찍는다(`Write-Elapsed`).
+# `Get-StepTitle` 은 열쇠를 받아 `[번호/분모] 이름` 을 내고, 표에 없는 열쇠는 던진다. 번호와 분모는 이번 실행이 도는 걸음(`$StepsOn`)
+#   안에서 센다 — 「바꾸기」 묶음은 [1/3] 부터 [3/3] 까지 막대를 채운다. 안 도는 걸음은 이름만 낸다(머리줄 꼴에 안 걸린다).
+#   `Enter-Step` 은 빈 줄 하나 뒤에 그 줄을 찍고, `Exit-Step` 은 같은 글자로 걸린 초 한 줄을 찍는다(`Write-Elapsed`).
 # ⚠ **머리줄의 꼴을 바꾸지 않는다** — 화면 껍데기가 그 줄을 `^\[(\d+)/(\d+)\]\s*(.*)$` 로 읽어 막대를 밀고 셋째 묶음을
 #   걸음 이름으로 쓴다. 꼴이 어긋나면 설치는 멀쩡히 돌고 막대만 멈춘다. 로그온 자동 실행의 진행 창(`$AutoRunProgress`)도 이
 #   줄과 마침 줄(`Write-Elapsed`) · 멎음 줄(`Write-StepFault`)을 기록에서 같은 꼴로 읽는다.
 function Get-StepTitle([string]$Key) {
-  for ($i = 0; $i -lt $Steps.Count; $i++) {
-    if ($Steps[$i].Key -ceq $Key) { return ('[{0}/{1}] {2}' -f ($i + 1), $Steps.Count, $Steps[$i].Title) }
-  }
-  throw "걸음 표에 없는 열쇠 — $Key"
+  $row = @($Steps | Where-Object { $_.Key -ceq $Key })
+  if (-not $row.Count) { throw "걸음 표에 없는 열쇠 — $Key" }
+  $on = @(Get-StepsOn)
+  $at = [array]::IndexOf([string[]]$on, $Key)
+  if ($at -lt 0) { return $row[0].Title }
+  return ('[{0}/{1}] {2}' -f ($at + 1), $on.Count, $row[0].Title)
+}
+
+# 이번 실행이 도는 걸음 열쇠들 — `$StepsOn` 이고, 그것이 없는 자리(이 파일의 함수만 떼어 싣는 자리)는 표의 걸음 전부다.
+function Get-StepsOn {
+  if ($script:StepsOn) { return $script:StepsOn }
+  return @($Steps | ForEach-Object { $_.Key })
+}
+
+# 이 실행이 그 걸음을 도나 — 받는 것: 걸음 열쇠들. 다 돌 때만 참이다. 흐름의 걸음 문과 끝 검증의 칸 문이 묻는다 — 칸이 읽는 값을 지은
+#   걸음이 안 돌았으면 그 칸은 빈 값을 재 거짓 [X] 를 내거나 조용히 빠진다.
+function Test-StepOn([string[]]$Keys) {
+  $on = @(Get-StepsOn)
+  foreach ($k in $Keys) { if ($on -notcontains $k) { return $false } }
+  return $true
 }
 
 function Enter-Step([string]$Key) {
@@ -784,8 +832,12 @@ function Write-StepFault($Err, [string]$Key = $script:StepNow) {
 
 # 앞 걸음이 끝났나 — 받는 것: 걸음 열쇠들. 그 가운데 도중에 멎은 것이 있으면 던져, 부른 걸음의 경계가 그 걸음을 빨간 줄 · `$Fails` 로
 #   끝내게 한다(아무것도 안 하고). 부르는 자리는 앞 걸음이 지은 값(자리 · 심은 값 · 안 밀 이름 목록)으로 걷거나 심는 걸음의 첫 문장이다.
+#   이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)도 던진다 — 그 걸음이 지을 값은 빈 채라 멎은 것과 같다. 묶음 표가 기대는 걸음을 빠뜨린 것이다.
 function Assert-StepsDone([string[]]$Keys) {
   foreach ($k in $Keys) {
+    if ($script:StepsOn -and $script:StepsOn -notcontains $k) {
+      throw "앞 단계 「$((Get-StepTitle $k))」이 이번 실행에 들지 않아 이 단계를 건너뜀 — 그 단계가 만드는 값 없이 설정하거나 제거하지 않음 (설치 전체를 다시 실행하세요)"
+    }
     if ($script:StepFaults -and $script:StepFaults.Contains($k)) {
       $t = $k
       try { $t = Get-StepTitle $k } catch { }
@@ -1840,6 +1892,23 @@ function Get-SeedSwitches($Seed) {
 #   칸이 그 저장소가 홈으로 미는 자리를 찾는 자리다 — 자리를 짓는 자를 한 벌로 둔다(「준비」의 「설정 저장소의 주소와 자리」).
 function Get-ConfigRepoDir([string]$Url) {
   return (Join-Path $configRepoRoot ([IO.Path]::GetFileNameWithoutExtension($Url)))
+}
+
+# 두 git 주소가 같은 저장소를 가리키나 — 받을 자리는 주소 끝 이름으로만 서서(`Get-ConfigRepoDir`), 주인만 다른 주소(포크)도 같은 폴더로
+#   간다. 그 폴더의 origin 이 칸의 주소와 다른지를 이것으로 가른다.
+# 받는 것 — 주소 둘. 내는 것 — 같으면 참. 꼴만 다른 같은 주소는 같다고 본다: 자격 부분 · 끝의 `/` · `.git` · 대소문자 ·
+#   `git@호스트:경로` 와 `https://호스트/경로`.
+# ⚠ **대소문자를 안 가린다** — GitHub 는 경로의 대소문자를 안 가려, 가리면 대소문자만 다르게 친 주소 하나에 사람의 폴더가 옆으로
+#   옮겨진다. 대소문자만 다른 두 저장소를 같다고 보는 쪽은 옛 판처럼 당기기만 해 아무것도 안 잃는다.
+function Test-SameRepoUrl([string]$A, [string]$B) {
+  $key = {
+    param([string]$u)
+    $u = ($u.Trim() -replace $UrlCredential, '').Replace('\', '/')   # 이 PC 의 bare 폴더는 `\` 로도 온다
+    if ($u -match '^[^/:@\s]+@([^:/\s]+):(.+)$') { $u = "$($Matches[1])/$($Matches[2])" }   # git@호스트:경로
+    elseif ($u -match '^[a-z][a-z0-9+.-]*://([^/]+)/(.+)$') { $u = "$($Matches[1])/$($Matches[2])" }
+    return ($u.TrimEnd('/') -replace '\.git$', '').TrimEnd('/')
+  }
+  return ((& $key $A) -eq (& $key $B))
 }
 
 # 받아 둔 저장소의 당김이 졌을 때, 빨리감기를 막는 파일이 다 DRM 이 감싼 사본이면 백업하고 커밋본으로 되돌린다 — 회사 PC 의 DRM 은
@@ -8032,6 +8101,12 @@ try {
 # 기록은 다 넘긴 판에서도 읽어 둔다 — 「회차를 넘기는 기록」 칸이 이번 회차가 못 정한 제품(오타뿐인 `-Pick`)을 그 값으로 잇는다.
 $ChoicesGiven = [bool]$ChoicesFull
 $Recorded     = Read-ChoiceRecord $ChoiceRecord $LegacyChoiceArgs $LegacyChoiceEnv
+# 「바꾸기」는 지난번 기록 위에서만 돈다 — 기록이 없는 PC 는 설치 전체가 선 적이 없어, 묶음이 기댈 프로그램 · 홈 씨앗이 없고 고른
+#   것도 기본값으로 서서 사람의 선택과 어긋난다.
+if ($Only -and -not $Recorded.Count) {
+  Write-Host '! 이 PC 에 지난 설치 기록이 없어 바꾸기를 하지 않음 — 설치 전체를 먼저 한 번 실행하세요' -ForegroundColor Red
+  exit 2
+}
 $PickSet      = $PSBoundParameters.ContainsKey('Pick')
 if (-not $ChoicesGiven) {
   if (-not $PickSet -and $Recorded['pick']) { $Pick = $Recorded['pick']; $PickSet = $true }
@@ -8695,6 +8770,7 @@ function Get-AppSkip($App) {
   if ($NoDevTools -and $App.Need -eq 'dev' -and -not ($needPython -and $App.Cmd -eq 'python')) { return '-NoDevTools' }
   return ''
 }
+if (Test-StepOn 'programs') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'programs'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 foreach ($app in $Apps) {
@@ -8830,6 +8906,7 @@ if ($pipPkgs) {
 
 } catch { Write-StepFault $_ }
 Exit-Step 'programs'
+}  # 걸음 문 「programs」
 
 # ══ 걸음 「VS Code 확장」 ═══════════════════════════════════════════════════════════════════════
 #   층 — 기계
@@ -8845,6 +8922,7 @@ Exit-Step 'programs'
 #   VDI 에서 수 분이 들어(PAISetup #69) 뒤 걸음과 겹쳐 돌린다.
 # `--update-extensions` 는 깔린 확장 전부를 올린다 — 우리 것만 고르는 스위치가 없다. VS Code 가 스스로 하는 자동 갱신과 같은 일이다.
 
+if (Test-StepOn 'extensions') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'extensions'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 확장 갱신 한 호출에 두르는 울타리 — 초. **갱신은 곁일이라 포기할 수 있다**(까닭은 아래 호출 자리).
@@ -8915,6 +8993,7 @@ if ($uriConsentIds.Count -and -not $NoVsCode -and $extCodeRuns -ne 'no') {
 
 } catch { Write-StepFault $_ }
 Exit-Step 'extensions'
+}  # 걸음 문 「extensions」
 
 # ══ 걸음 「데스크탑 앱」 ════════════════════════════════════════════════════════════════════════
 #   층 — 기계
@@ -8940,6 +9019,7 @@ Exit-Step 'extensions'
 # GUI 앱이라 PATH 로 못 잰다 — `--version` 을 부를 이름이 안 생긴다. winget 갈래는 winget 의 목록에, 제 설치본 갈래는 시작 메뉴에
 #   묻는다. 짝으로 딸린 런타임은 그 둘로도 못 재 레지스트리가 든다(`Test-WebView2`).
 
+if (Test-StepOn 'desktop') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'desktop'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 짐의 `#desktop-app` 을 읽는다(`Read-DesktopAppSwitch` — `-Describe` 의 `app|` 줄도 같은 손을 지난다). `:` 뒤 목록은 위 머리말대로
@@ -9092,6 +9172,7 @@ if ($appWhen -eq 'yes' -or $appWhen -eq 'offsite') {
 
 } catch { Write-StepFault $_ }
 Exit-Step 'desktop'
+}  # 걸음 문 「desktop」
 
 # ══ 걸음 「CLI」 ═══════════════════════════════════════════════════════════════════════════════
 #   층 — 기계
@@ -9101,6 +9182,7 @@ Exit-Step 'desktop'
 #   안 하는 것 — 사용자 환경변수. 맡기기 값은 「키와 값」이 심는다. 자리를 안 가리고 깔며, 회사 키로 물리나는 「회사 키의 다른
 #     이름 둘」 · 「Codex · 안티그래비티 설정」 칸이 가른다
 
+if (Test-StepOn 'cli') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'cli'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 if (-not $CliPicks) { Write-Host '  선택한 제품이 없어 CLI 를 설치하지 않음' }
@@ -9140,6 +9222,7 @@ if (-not $inside) {
 
 } catch { Write-StepFault $_ }
 Exit-Step 'cli'
+}  # 걸음 문 「cli」
 
 # ══ 걸음 「키와 값」 ═══════════════════════════════════════════════════════════════════════════
 #   층 — 환경
@@ -9152,6 +9235,7 @@ Exit-Step 'cli'
 #   안 하는 것 — 도구 홈 파일 쓰기 · 사용자 PATH(마무리의 「사용자 범위 명령 자리」가 든다 — 뒤 걸음들이 그 폴더를 채운 뒤라야 한다)
 #   ⚠ 「Claude 홈 설정」이 홈 settings.json 의 env 로 미는 것은 그 걸음 앞에서 심은 값(`$Planted`)에서 키와 맡기기 러너 값을 뺀
 #     것뿐이다 — 심는 자리를 그 걸음 뒤로 옮기면 settings.json 이 바뀐다
+if (Test-StepOn 'keys') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'keys'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 맡기기 모델 — agy · Codex 러너가 고를 모델을 맡기기 모델 표(짐의 스킬 `agent-envelope` 폴더의 `models.conf`)에서 옮겨
@@ -9346,6 +9430,34 @@ foreach ($v in $Vars) {
   }
 
   Plant-Var $v.Name $val
+}
+
+# ── 짐의 키 줄을 이번에 심은 키로 맞춘다 — 자동 실행이 옛 키를 되살리지 않게 ─────────────────────────────
+# 자동 실행은 키를 넘기지 않아 키를 짐의 값 파일 → 사용자 환경 차례로 읽는다(`Read-RunValues` · 위 고리). 짐에 키를 적어 둔 PC 에서 창에
+#   새 키를 넣으면 이번 판은 새 키를 심지만, 다음 로그온 · 밤 회차는 짐의 옛 키를 다시 심는다. 그래서 넘겨받은 키가 짐의 키와 다르면 짐의
+#   그 줄을 새 키로 고친다 — 다음 회차가 읽는 원본이 사람이 마지막으로 넣은 키 하나가 된다.
+# 짐이 키를 안 들면(배포본의 기본 — 키 줄이 비었다) 안 건드린다 — 그 PC 는 사용자 환경이 원본이다. 짐이 따로 없는 판(넘겨받은 파일이 곧
+#   짐)도 안 건드린다. 그 줄 말고는 바이트 그대로 둔다.
+$distKey = [string](Read-EnvFile $DistEnvFile)['ANTHROPIC_AUTH_TOKEN']
+$plantedKey = [string]$Planted['ANTHROPIC_AUTH_TOKEN']
+if ($useGateway -and $DistEnvFile -ne $EnvFile -and $distKey -and $plantedKey -and $distKey -cne $plantedKey) {
+  try {
+    $distOld = [IO.File]::ReadAllBytes($DistEnvFile)
+    $hasBom = $distOld.Length -ge 3 -and $distOld[0] -eq 0xEF -and $distOld[1] -eq 0xBB -and $distOld[2] -eq 0xBF
+    $distText = (New-Object Text.UTF8Encoding($false)).GetString($distOld, $(if ($hasBom) { 3 } else { 0 }), $distOld.Length - $(if ($hasBom) { 3 } else { 0 }))
+    $distNew = [regex]::Replace($distText, '(?m)^(\s*ANTHROPIC_AUTH_TOKEN\s*=)[^\r\n]*', { param($m) $m.Groups[1].Value + $plantedKey })
+    $distBytes = [byte[]](@($(if ($hasBom) { (New-Object Text.UTF8Encoding($true)).GetPreamble() })) + @((New-Object Text.UTF8Encoding($false)).GetBytes($distNew)))
+    $distWrote = Write-FileSafely $DistEnvFile $distBytes $distOld
+    if ($distWrote.Did -ceq 'written') {
+      Write-Host '  ANTHROPIC_AUTH_TOKEN — 설치 폴더의 install.env 키도 새 키로 바꿈 (자동 실행이 이전 키를 다시 설정하지 않게)' -ForegroundColor Cyan
+    } elseif ($distWrote.Did -cne 'same') {
+      throw $distWrote.Why
+    }
+  } catch {
+    Write-Host "  ! 설치 폴더의 install.env 키를 새 키로 바꾸지 못함 — $(Say-Why $_)" -ForegroundColor Red
+    Write-Host "      그대로 두면 다음 자동 실행이 이전 키를 다시 설정합니다 — 그 파일의 ANTHROPIC_AUTH_TOKEN 줄을 직접 고치세요: $DistEnvFile"
+    $Fails.Add('설치 폴더의 install.env 키 (새 키로 바꾸지 못함)')
+  }
 }
 
 # ── 값 파일이 든 나머지 이름 — **몸통이 모르는 것도 심는다** ────────────────
@@ -9611,6 +9723,7 @@ if ($offsite) {
 
 } catch { Write-StepFault $_ }
 Exit-Step 'keys'
+}  # 걸음 문 「keys」
 
 # ══ 걸음 「사내 연결」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 환경
@@ -9619,6 +9732,7 @@ Exit-Step 'keys'
 #   앞에서 받는 것 — 「키와 값」이 심은 주소 · 키(`$Planted`) · 게이트웨이를 쓰나(`$useGateway`) · 회사 설정 자리와 그 자
 #     (`$CodexCfg` · `$AgyCfg` · `$CodexCfgMerge` · `$AgyProvider`)
 #   안 하는 것 — Claude 홈 · 스킬
+if (Test-StepOn 'site') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'site'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 Assert-StepsDone 'keys'   # 자리(`$useGateway`)와 심은 주소 · 키(`$Planted`)로 회사 설정을 심고 걷는다
@@ -9972,6 +10086,7 @@ if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하�
 
 } catch { Write-StepFault $_ }
 Exit-Step 'site'
+}  # 걸음 문 「site」
 
 # ══ 걸음 「Claude 홈 설정」 ═════════════════════════════════════════════════════════════════════
 #   층 — 홈
@@ -9997,6 +10112,7 @@ Exit-Step 'site'
 # 맡기기 러너 값(두 자리 표 `$AgyModelVarsBySite` · `$CcBgVarsBySite` 의 이름)도 안 민다 — 러너는 사용자 환경변수를 읽어 여기 둘
 #   까닭이 없고, 여기 든 값은 CLI · VS Code 세션에서 물려받은 값을 이겨 그 세션이 띄운 러너가 이 사본으로 나간다. 장부가 서기 전 판이
 #   민 사본은 장부 밖이라, 아래 「러너 값 사본」 칸이 오늘 표의 값으로 가른다(PAISetup #41).
+if (Test-StepOn 'home') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'home'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 Assert-StepsDone 'keys'   # 자리 · 심은 값 · 안 밀 이름 목록(키 · 러너 값 · 사람이 친 값)으로 settings.json 에 밀고 걷는다
@@ -10374,6 +10490,7 @@ if ($cfg) {
 
 } catch { Write-StepFault $_ }
 Exit-Step 'home'
+}  # 걸음 문 「home」
 
 # ══ 걸음 「공용 자산」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 홈
@@ -10385,6 +10502,7 @@ Exit-Step 'home'
 # 홈에 깐다 — zip 이 풀린 자리는 바탕화면 폴더를 지우면 사라지고, 스킬과 형제 저장소 문서가 가리키는 `claude-config/posco/` 는
 #   저장소가 없는 기계에 없다. 규범 · 룰 · 스킬과 같은 꼴이다 — 진본은 저장소, 로드 자리는 홈. 저장소를 든 사람은 `deploy.ps1` 이
 #   이 자리를 갱신하고 `check-global-copies.sh` 가 바이트로 잰다 — 재는 자가 붙은 사본이라 조용히 안 낡는다.
+if (Test-StepOn 'assets') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'assets'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # ⚠ **씨앗은 거울로 깐다 — 덮어쓰기가 아니다.** `Copy-Item -Recurse -Force` 는 원본에 없는 파일을 안 지운다. 진본에서 부품
@@ -10563,6 +10681,7 @@ if ($deskBack.Count) {
 }
 }
 Exit-Step 'assets'
+}  # 걸음 문 「assets」
 
 # ══ 걸음 「도구별 홈」 ═════════════════════════════════════════════════════════════════════════
 #   층 — 홈
@@ -10578,6 +10697,7 @@ Exit-Step 'assets'
 # 제작자 세트(개인 규범 · 룰 · 에이전트 · 스킬)는 기본으로 안 깐다 — 한 사람의 사유 방식이라 제작자 칸에서 그 도구를 켤 때만
 #   선다. 손이 칸을 읽어 도구마다 놓는다.
 
+if (Test-StepOn 'tools') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'tools'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 고른 도구와 고른 제품 — 손(`tool-homes.py`) · 설정 저장소의 배포(`deploy.ps1`) · 세션 훅이 같은 값을 읽는다. 제작자 칸은 어느
@@ -11088,6 +11208,7 @@ $null = Save-PlantLedger $Ledger
 
 } catch { Write-StepFault $_ }
 Exit-Step 'tools'
+}  # 걸음 문 「tools」
 
 # ══ 걸음 「설정 저장소」 ═══════════════════════════════════════════════════════════════════════
 #   층 — 저장소
@@ -11108,6 +11229,7 @@ Exit-Step 'tools'
 #   그 파일 이름을 받는 사람에게 알리는 것은 `INSTALLED.md` 「내 저장소 받기를 채우면」이 든다.
 # 넘긴 뒤 저쪽이 드는 것은 사람에게 딸린 것뿐이다 — git 신원 · 형제 저장소 · 개인 키 · 규범·룰·메모리 배포. 회사 키·주소·프록시·
 #   Codex/안티그래비티 설정·확장·CLI 는 앞 걸음들이 이미 세웠고, 무엇을 깔지는 이 파일 하나가 든다(런타임을 두 번 깔지 않는다).
+if (Test-StepOn 'repo') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'repo'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 # 옛 판 훅을 든 받은 저장소 — 아래 넘길 자리를 고르는 줄이 채우고, 끝의 요약이 그 가운데 세션마다 도는 것을 알린다. 받은 저장소(`$got`)는
@@ -11254,6 +11376,27 @@ if (-not $repoUrl) {
     $log = [IO.Path]::GetTempFileName()
     # 저장소마다 가른다 — 받는 양이 저장소마다 크게 달라, 합만 보면 어느 것이 먹는지 안 보인다.
     $tRepo = Get-Took
+    # 받아 둔 폴더가 다른 주소에서 온 것이면(끝 이름이 같은 다른 저장소 · 포크) 옆으로 옮겨 두고 칸의 주소에서 새로 받는다 — 그대로 당기면
+    #   칸의 주소는 조용히 무시되고 옛 저장소가 그 자리에 남는다. 옮기기만 하고 지우지 않는다 — 그 폴더에는 사람의 작업이 있을 수 있다.
+    #   origin 을 못 읽으면(origin 이 없다 · git 이 답을 못 낸다) 옮기지 않는다 — 다른 저장소인지 모른 채 사람의 폴더를 치우지 않는다.
+    #   못 옮기면(쓰는 중인 파일) 그 저장소는 이번에 안 받고 빨갛게 말한다 — 기록은 새 주소라 다음 회차가 다시 옮긴다.
+    if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
+      $origin = @(Get-Quiet 'git' @('-C', $dest, 'remote', 'get-url', 'origin'))
+      if ($LASTEXITCODE -eq 0 -and $origin.Count -and "$($origin[0])".Trim() -and -not (Test-SameRepoUrl "$($origin[0])" $u)) {
+        $aside = '{0}.before-{1}' -f $dest, (Get-Date -Format 'yyyyMMdd-HHmmss')
+        try {
+          Move-Item -LiteralPath $dest -Destination $aside -ErrorAction Stop
+          Write-Host "  ↺ $(Split-Path $dest -Leaf) — 받아 둔 폴더가 다른 주소($("$($origin[0])".Trim() -replace $UrlCredential, '***@'))에서 온 것이라 옆으로 옮기고 새 주소에서 받음" -ForegroundColor Yellow
+          Write-Host "      옮긴 자리: $aside (지우지 않음 — 필요 없으면 직접 지우세요)"
+        } catch {
+          Write-Host "  ! $(Split-Path $dest -Leaf) — 받아 둔 폴더가 다른 주소에서 온 것인데 옆으로 옮기지 못해 새 주소에서 받지 않음: $(Say-Why $_)" -ForegroundColor Red
+          Write-Host "      그 폴더를 연 프로그램(VS Code · 터미널)을 닫고 다시 실행하세요 — $dest"
+          $Fails.Add("개인 값 저장소 (주소가 바뀐 옛 폴더를 옮기지 못함: $dest)")
+          Remove-Item $log -ErrorAction SilentlyContinue
+          continue
+        }
+      }
+    }
     if (Test-Path -LiteralPath (Join-Path $dest '.git')) {
       Say-Busy (Split-Path $dest -Leaf) 'upgrade' @('git pull', $dest)
       $rc = Invoke-Logged 'git' @('-C', $dest, 'pull', '--ff-only') $log
@@ -11410,6 +11553,7 @@ if ($script:GhLoginChild) {
 }
 }
 Exit-Step 'repo'
+}  # 걸음 문 「repo」
 
 # ══ 걸음 「Claude 플러그인」 ═══════════════════════════════════════════════════════════════════
 #   층 — 등록
@@ -11417,6 +11561,7 @@ Exit-Step 'repo'
 #     가운데 폴더를 심을 행 거두기(경계의 `finally`)
 #   앞에서 받는 것 — 「CLI」의 Claude CLI
 #   안 하는 것 — 꺼진 플러그인 켜기(사람 몫)
+if (Test-StepOn 'register') {  # 걸음 문 — 이번 실행에 안 드는 걸음(「바꾸기」 묶음 밖)은 통째로 건너뛴다
 Enter-Step 'register'
 try {  # 걸음 경계 — 아래 catch 까지가 이 걸음이다(`Write-StepFault`)
 
@@ -11570,6 +11715,7 @@ if ($cliBackPath.Count) {
 }
 }
 Exit-Step 'register'
+}  # 걸음 문 「register」
 
 # ══ 마무리 ═════════════════════════════════════════════════════════════════════════════════════
 #   층 — 없음(걸음 뒤)
@@ -11630,6 +11776,10 @@ try {
 } catch {
   Write-Host "  ! 선택 내용을 다음 실행용으로 저장하지 못함 — $(Say-Why $_) (다음 실행은 이전 기록을 사용)" -ForegroundColor Yellow
 }
+
+# ── 「바꾸기」 문 — 사용자 PATH · 실행 정책 · 아이콘 · 자동 실행은 설치 전체에서만 맞춘다 ─────────────────────────────
+# 묶음(`-Only`)은 그 자리를 채우는 걸음(「CLI」 · 「공용 자산」)도, 자동 실행의 선택도 안 바꾼다 — 지난 설치가 맞춰 둔 그대로 둔다.
+if (-not $Only) {
 
 # ── 사용자 범위 명령 자리 — **사용자 PATH 에 심어야 설치가 끝난 뒤에도 선다** (claude-config 결정 0143 · PAISetup #30 ②) ─────────────
 # 이 설치와 넘긴 훅이 사용자 범위에 깐 명령은 두 폴더에 선다 — npm 전역 자리(`$NpmGlobalDir` · 고른 CLI 와 훅의 npm 전역 도구)와 pip 의
@@ -12911,6 +13061,8 @@ exit 0
   Write-Host '  부팅 시 자동 실행 — 이 PC 에서 꺼 둠 (설치 창에서 이 항목을 켜고 설치하면 다시 등록)'
 }
 
+
+}  # 「바꾸기」 문 — 사용자 PATH · 실행 정책 · 아이콘 · 자동 실행
 # ── Claude 구독 로그인 결과 — 「키와 값」 걸음이 연 로그인을 여기서 한 번 잰다 ─────────────────────────────────
 # 「키와 값」 걸음은 브라우저만 열고 설치를 잇는다(`$script:ClaudeLogin`). 그 사이 뒤 걸음들이 돌아, 사람이 로그인을 마칠 시간이
 #   거기서 난다. 여기는 검증 앞의 정한 자리라 한 번만 잰다 — 연 판에만 줄이 선다.
@@ -12971,6 +13123,7 @@ $codeRuns = Measure-Runs 'code' '--version'
 $hasCode = ($codeRuns -eq 'yes')
 # 명령 칸은 이 창에서 서나에 더해 새 터미널에서 서나를 잰다(`Measure-NewShellCommand` · PAISetup #56) — 그 판정이 읽는 실행 정책을 한 번 읽는다.
 $psNow = Get-ShellScriptPolicy
+if (Test-StepOn 'programs', 'extensions', 'cli') {  # 칸 문 「프로그램 · 확장 · CLI」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 $extList = @()
 # 깔린 확장 목록도 울타리 안에서 묻는다(`$ExtListCap`) — 못 읽었으면(넘김 · 0 아닌 값) 고른 확장 칸이 다 그 물음 하나에 걸린 「못 쟀다」다
 #   (못 읽은 목록은 빈 목록이 아니다 — 결정 0145).
@@ -13050,6 +13203,8 @@ foreach ($app in @($Apps | Where-Object { $_.Need -ne 'vscode' })) {
 #   늘 서는 판이라 `npm` 자신의 껍데기가 늘 있어 늘 잰다.
 if ($psNow.State -ne 'yes') { Add-Check @{ Name = 'PowerShell 스크립트 실행 (새 터미널)'; State = 'unmeasured'; Probe = $psNow.Probe; Why = $psNow.Why } }
 else { Add-Check @{ Name = "PowerShell 스크립트 실행 (새 터미널 — $($psNow.Value) · $($psNow.Scope))"; Ok = (-not $psNow.Blocks); Advice = [bool]$psNow.Blocks } }
+}  # 칸 문 「프로그램 · 확장 · CLI」
+if (Test-StepOn 'assets') {  # 칸 문 「공용 자산」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # 나르는 자리 — 「공용 자산」 걸음의 자산. 재는 자는 위 `New-CountCheck` 하나다. 규범 · 룰 · 에이전트 · 스킬은 손의 `check` 가, 칸 없이
 #   까는 스킬은 아래에서 이름마다 잰다.
 # 임자는 지금 다시 묻는다(`Get-OwnedHome`) — 「공용 자산」 걸음의 답은 그때의 것이다. 맨바닥 판은 그때 저장소가 없어 동봉본을 깔았고,
@@ -13104,6 +13259,8 @@ foreach ($a in $envAssets) {
   }
   Add-Check (New-CountCheck $a.Name $a.From $a.To)
 }
+}  # 칸 문 「공용 자산」
+if (Test-StepOn 'tools') {  # 칸 문 「Claude 훅」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # ── Claude 훅 — **놓았다는 초록과 섰다는 것은 다른 명제다** ──────────────────────────
 # 되읽어서 잰다 — 등록은 손이 놓고 「도구별 홈」 걸음이 그 줄을 찍었지만, 파일에 실제로 그 항목이 서 있나는 다른 물음이다.
 #   설정 저장소의 훅(「설정 저장소」 걸음)이 개인 층에서 등록을 다시 놓았으면 그것까지 여기서 본다.
@@ -13156,9 +13313,13 @@ if ($hostClaude) {
                   Ok = ($bad.Count -eq 0) }
   }
 }
+}  # 칸 문 「Claude 훅」
+if (Test-StepOn 'keys') {  # 칸 문 「워드의 PDF 안내」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # 워드의 PDF 변환 안내 — 「키와 값」 걸음이 읽은 판 목록 그대로 되읽는다. 워드가 없으면 줄이 없다.
 $wordCheck = Get-WordPdfQuietCheck $WordVersions
 if ($wordCheck) { Add-Check $wordCheck }
+}  # 칸 문 「워드의 PDF 안내」
+if (Test-StepOn 'home') {  # 칸 문 「Claude 홈 설정」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # WebFetch 검증 건너뛰기 — 사내에서만 잰다. 위 심는 칸의 「켰다」는 메모리의 객체를 고쳤다는 말이라 되읽는다.
 if ($inside) {
   $skipSet = $false
@@ -13187,11 +13348,15 @@ foreach ($p in @($ClaudeHomePlants | Where-Object { $_.Want })) {
     Add-Check @{ Name = "$($p.Label) (홈 settings.json 의 $slot = $pvShow)"; Ok = ($null -ne $pv) }
   }
 }
+}  # 칸 문 「Claude 홈 설정」
+if (Test-StepOn 'tools') {  # 칸 문 「묻지 않고 돌기」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # 묻지 않고 돌기 — 「도구별 홈」의 표(`$ToolAutoRun`)에서 이번에 심을 것을 파일에서 되읽는다.
 foreach ($r in @($ToolAutoRun | Where-Object { $_.Want })) { Add-Check (Get-ToolAutoRunCheck $r) }
+}  # 칸 문 「묻지 않고 돌기」
 # 장부와 실물 — 장부에 든 우리 값이 자리마다 그대로 섰나를 디스크에서 다시 읽어 잰다(PAISetup #44 가-1 · `Get-PlantLedgerChecks`). 어긋나면
 #   쓰기가 안 닿았거나 다른 손이 고친 것이다 — 그 칸은 자리와 이름만 대고 값(비밀일 수 있다)은 안 찍는다.
 Add-Check @(Get-PlantLedgerChecks (Read-PlantLedger $ClaudePlantLedger) $userEnv $homeCfg)
+if (Test-StepOn 'keys') {  # 칸 문 「맡기기 값」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # agy 묶음 — 맡기기(모델 값). 심는 조건 그대로 잰다(위 `$wantAgyDelegate` 곁말). agy 설정 둘은 손의 `check` 가 잰다.
 # ⚠ 맡기기 모델 표를 못 읽은 판은 [X] 다 — 견줄 값이 비어 그대로 재면 빈 목록이 [O] 로 찍힌다.
 if ($wantAgyDelegate) {
@@ -13204,6 +13369,8 @@ if ($wantCcBg) {
   Add-Check @{ Name = "Codex · Copilot 위임 값 ($($CcBgVars.Keys -join ' · '))"
                 Ok = (@($CcBgVars.Keys | Where-Object { $userEnv[$_] -ne $CcBgVars[$_] }).Count -eq 0) }
 }
+}  # 칸 문 「맡기기 값」
+if (Test-StepOn 'tools') {  # 칸 문 「도구 훅 · 고른 도구 값」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # Codex 훅 — 부품(설정 저장소 씨앗) · config.toml 배선 · Codex 가 읽은 신뢰. Codex 를 골랐을 때만 잰다.
 if ($PickKeys -contains 'codex') {
   $codexHookText = ''
@@ -13363,6 +13530,8 @@ Add-Check @{ Name = "선택한 제품 값 (PAISETUP_PICK = $PickValue)"
 # 자리 값 — 맡기는 세션이 맡기기 모델 표의 자리 줄을 고른다(결정 0123)
 Add-Check @{ Name = "네트워크 환경 값 (PAISETUP_SITE = $ModelSite)"
               Ok = ([Environment]::GetEnvironmentVariable('PAISETUP_SITE', 'User') -eq $ModelSite) }
+}  # 칸 문 「도구 훅 · 고른 도구 값」
+if (Test-StepOn 'repo') {  # 칸 문 「작업 폴더 값」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # 작업 폴더 값 — 보고 창의 여는 손 · 맡긴 일을 띄우는 손이 작업 폴더를 이 값으로 안다. 바라는 값은 「설정 저장소」 걸음이 정한 작업 폴더다
 #   (`Set-WorkDirVar`) — 그 걸음이 작업 폴더를 정하기 전에 멎었으면(`$script:WorkDir` 가 없다) 무엇이어야 하는지 몰라 진 칸이다.
 $workNow = [Environment]::GetEnvironmentVariable($WorkDirVar, 'User')
@@ -13376,6 +13545,8 @@ if ($null -eq $script:WorkDir) {
 } else {
   Add-Check @{ Name = "작업 폴더 값 ($WorkDirVar — 작업 폴더를 만들지 않아 $(if ($workNow) { "설치기가 넣지 않은 값을 그대로 둠: $workNow" } else { '비워 둠' }))"; Ok = $true }
 }
+}  # 칸 문 「작업 폴더 값」
+if (Test-StepOn 'tools') {  # 칸 문 「규범 · 브라우저 MCP」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # 규범 · 룰 · 에이전트 · 스킬 — 손의 `check` 한 번(claude-config 결정 0112). 「설정 저장소」 걸음의 배포가 개인 층을 채웠으면 그 층의
 #   손이 잰다. 부르는 조건은 「도구별 홈」의 부름과 같다(`$toolHomesOn`).
 if ($toolHomesOn) { Add-Check (Get-ToolHomesCheck $toolHomesHand) }
@@ -13387,10 +13558,12 @@ if ($browserMcpOn.Count -and $browserMcpPython -eq 'yes' -and -not $browserMcpSk
 } elseif ($browserMcpOn.Count -and $browserMcpPython -eq 'unmeasured') {
   Add-Check @{ Name = '브라우저 MCP'; State = 'unmeasured'; Probe = 'python --version' }
 }
+}  # 칸 문 「규범 · 브라우저 MCP」
 # 게이트웨이 값은 쓰기로 한 자리에서만 「있나」를 잰다 — 안 쓰기로 한 것을 [X] 로 찍으면 멀쩡한 사외 PC 가 매번 빨갛게
 #   보고되고, 빨강이 흔해지면 진짜 빨강이 안 보인다.
 # ⚠ **키는 `#config-repo` 가 있어도 여기서 잰다** — 심는 자가 이 파일 하나라 재는 자도 하나다. 저쪽에 맡기면 저장소에 설치
 #   몸통이 없을 때 키가 안 심긴 채 초록으로 끝난다.
+if (Test-StepOn 'keys', 'site') {  # 칸 문 「게이트웨이 값 · 회사 연결」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 if ($useGateway) {
   foreach ($v in $Vars) {
     if (-not $v.Gateway) { continue }
@@ -13497,11 +13670,13 @@ if ($useGateway) {
     Add-Check @{ Name = "$k — 프록시 주소 없음 (사외)"; Ok = (-not (Test-ProxyValue $userEnv[$k])) }
   }
 }
+}  # 칸 문 「게이트웨이 값 · 회사 연결」
 # Codex · 안티그래비티 — 이 판이 회사 키로 안 세우는 도구에 사내에서 심은 회사 연결이 걷혔나(「사내 연결」의 「안 세우는 도구」 칸 —
 #   사외 · 사내에서 끈 도구가 다 여기다). 걷는 자와 같은 문(`$wantNeed`)과 같은 자(병합기의 걷기 판 · `Test-AgyCompanyLink`)로 「걷을
 #   것이 남았나」를 묻는다 — 틀과 다른 제공자 표는 맨 위 고르기가 걷혀 남아도 [O] 다(그 표를 고르는 프로필은 사람 몫이다) · 사람의
 #   API 키 갈래로 둔 `modelProvider` 도 [O] 다. 파일이 없으면 칸을 안 세운다. python 을 못 쟀으면 [?], 병합기나 python 이 안 서면 [X]
 #   다(사내 칸과 같은 자).
+if (Test-StepOn 'site') {  # 칸 문 「안 세우는 회사 연결」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하나라도 회사 키로 안 세운다
   if ((-not $wantNeed['codex']) -and $codexTpl -and (Test-Path -LiteralPath $CodexCfg -PathType Leaf)) {
     $ocPython = if (Test-Path -LiteralPath $CodexCfgMerge) { Measure-Runs 'python' '--version' } else { '' }
@@ -13535,6 +13710,8 @@ if (-not ($wantNeed['codex'] -and $wantNeed['gemini'])) {   # 둘 가운데 하�
     Add-Check @{ Name = "안티그래비티 settings.json ($OffLinkWhy — $oaWhy)"; Ok = $oaOk }
   }
 }
+}  # 칸 문 「안 세우는 회사 연결」
+if (-not $Only) {  # 칸 문 「새 터미널의 PATH」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # npm 전역 자리 — 새 터미널이 볼 PATH(기계 · 사용자)에 섰나(claude-config 결정 0143 · PAISetup #56). 이 창의 PATH 는 배선이 태워 늘
 #   서 있으므로 검증 칸 머리대로 레지스트리를 읽는다. 자리는 npm 에 물은 값이고, 못 물었으면 물러선 값을 재지 않고 「못 쟀다」다.
 #   npm 으로 까는 CLI 를 골랐을 때만 잰다.
@@ -13555,6 +13732,8 @@ if ($PipUser.Dir -and (Test-Path -LiteralPath $PipUser.Dir)) {
 foreach ($pd in @($CliPicks | Where-Object { $_.PathDir -and (Test-Path -LiteralPath $_.PathDir) })) {
   Add-Check @{ Name = "$($pd.Label) 폴더 — 새 터미널의 PATH ($($pd.PathDir))"; Ok = (Test-NewShellPathHas $pd.PathDir) }
 }
+}  # 칸 문 「새 터미널의 PATH」
+if (Test-StepOn 'programs') {  # 칸 문 「VC++ 런타임」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 # VC++ 런타임 — 「프로그램」 걸음과 같은 문 · 같은 자(파일의 판)로 문턱 위인가를 잰다(결정 0146).
 if ($wantVcRuntime) {
   $vcNow = Measure-VcRuntime
@@ -13566,11 +13745,15 @@ if ($wantVcRuntime) {
                   Ok = [bool]($vcNow.State -eq 'yes' -and [version]$vcNow.Ver -ge $VcRuntimeMin) }
   }
 }
+}  # 칸 문 「VC++ 런타임」
+if (-not $Only) {  # 칸 문 「자동 실행」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 if ($wantAutoRun -eq $true) {
   # 두 작업이 다 서야 선 것이다 — 로그온 작업만 서면 안 끄는 PC 는 여전히 날마다 안 돈다.
   Add-Check @{ Name = "부팅 시 자동 실행 ($AutoRunTaskName · $AutoRunNightTaskName)"
                 Ok   = ((Test-AutoRunTask $AutoRunTaskName) -and (Test-AutoRunTask $AutoRunNightTaskName)) }
 }
+}  # 칸 문 「자동 실행」
+if (Test-StepOn 'tools', 'repo') {  # 칸 문 「규범 · 룰 · 스킬의 출처」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다 · 「도구별 홈」이 안 돈 판은 묶음의 세트를 안 놓았다
 # 규범 · 룰 · 스킬이 어디서 와 어느 홈에 갔나 — 제작자 칸은 저장소 칸 하나로 뜻이 바뀌어(비면 설치 묶음의 제작자 세트, 차면 그
 #   저장소의 배포 · 결정 0107) 창의 출처 줄이 그것을 말하고(PAISetup #53), 끝에서도 같은 말을 한 줄로 한다. 판정은 위 칸들
 #   (`PAISETUP_PERSONAL` · 손의 check)이 든다 — 이 줄은 무엇이 돌았나만 말하고 세지 않는다.
@@ -13584,6 +13767,7 @@ $persSaid = if (-not $persLabels.Count) { '받을 도구를 선택하지 않아 
             elseif ($configRepoUrls.Count) { "내 저장소를 받았지만 실행할 훅이 없어 $($persHomes)에 설치 패키지의 제작자 세트를 설치함" }
             else { "설치 패키지의 제작자 세트를 $($persHomes)에 설치함" }
 Write-Host "  · 규범 · 룰 · 스킬 — $persSaid"
+}  # 칸 문 「규범 · 룰 · 스킬의 출처」
 # 안 한 걸음 —못 재서 하지도 건너뛰지도 않은 걸음(`Add-UnmeasuredStep`). 끝 검증에 짝 칸이 없어 여기서 따로 찍는다. 까닭은 걸음이
 #   든 것(`Why` — 넘김 · 종료 값 · 던진 오류)을 그대로 찍는다.
 foreach ($s in $script:UnmeasuredSteps) {
@@ -13606,12 +13790,14 @@ if ($script:ProbeTimedOut.Count) {
 #   Copilot CLI · claude-config 결정 0137). 사내에서 안 내놓는 Copilot 은 `$PickKeys` 에서 이미 빠졌다(제품 표의 `When`).
 # `$checks` 에 안 넣는다 — 무효 · 없음은 노란 줄이다. 다른 기기의 gh 로그인에 밀려 죽은 토큰은 이 설치가 못 세운 것이
 #   아니고 되살리는 것은 사람의 명령 한 번이라, 빨강으로 세면 멀쩡히 깔린 PC 가 실패로 끝난다.
+if (Test-StepOn 'repo') {  # 칸 문 「gh 로그인」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 if ($repoUrl -or ($PickKeys -contains 'copilot')) {
   $ghTokVars = @($GhEnvTokens | Where-Object {
     [Environment]::GetEnvironmentVariable($_, 'User') -or [Environment]::GetEnvironmentVariable($_, 'Machine') })
   $ghKr = Get-GhKeyringLines (Get-GhKeyringState) $ghTokVars
   foreach ($l in $ghKr.Lines) { Write-Host $l -ForegroundColor $(if ($ghKr.Ok) { 'Green' } else { 'Yellow' }) }
 }
+}  # 칸 문 「gh 로그인」
 } catch { Write-StepFault $_ '검증' }
 # 판정 목록은 둘이다 — `$Fails` 는 「하는 걸음이 졌다」, `$checks` 는 「끝에 다시 재 봤다」. 종료코드는 둘 다 본다(맨 끝).
 # ⚠ **`$checks` 의 빨강을 종료코드에서 빼지 않는다** — `$Fails` 로 안 새는 자리가 있다: 자산 나르기(「공용 자산」 걸음)는 `$Fails` 에
@@ -13664,10 +13850,12 @@ if ($sessionOld.Count) {
   }
   Write-Host ''
 }
+if (-not $Only) {  # 칸 문 「제작자 칸 안내」 — 그 값을 지은 걸음이 이번 실행에 들 때만 잰다
 if (-not $personalAny -and -not $personalByRepo) {
   Write-Host '  제작자의 규범·룰·스킬도 쓰려면:  설치 창의 제작자 칸에서 도구를 선택하세요 (.\install.ps1 -PersonalFor claude,codex,agy,copilot)'
   Write-Host ''
 }
+}  # 칸 문 「제작자 칸 안내」
 
 # ── 연다 — **깐 것을, 이 창의 자식으로** ───────────────────────────────────────
 # 안내로 끝내지 않고 여기서 띄운다 — 창은 뜰 때 PATH 와 환경변수를 한 번 복사하고 그 뒤에 바뀐 것은 안 따라온다. 이 창은 심은
@@ -13682,7 +13870,9 @@ if (-not $personalAny -and -not $personalByRepo) {
 
 # ⚠ **화면 껍데기의 완료 문구는 마지막 `=== 끝 ===` 줄에서 난다** — 저쪽에 같은 문장을 또 적으면 갈래가 늘 때마다 한쪽만 낡는다.
 # 이 줄만 사람에게 건네는 말이라 「…하세요」로 적는다 — 위는 다 기록이다.
-$tail = if ($offsite) {
+$tail = if ($Only -and -not $OnlyBundles[$Only].Launch) {
+  '설정 저장소 바꾸기를 마쳤습니다 — 받은 결과는 위 줄에 있습니다'
+} elseif ($offsite) {
   '구독 계정 로그인으로 사용합니다 — Claude 데스크탑이나 VS Code 를 새로 여세요'
 } else {
   '열려 있는 VS Code 를 모두 닫고 새로 여세요 — 이미 열린 창에는 방금 설정한 키가 적용되지 않습니다'
@@ -13715,6 +13905,8 @@ try {
 
 if ($NoLaunch) {
   Write-Host '  프로그램을 실행하지 않음 (-NoLaunch)'
+} elseif ($Only -and -not $OnlyBundles[$Only].Launch) {
+  Write-Host '  프로그램을 실행하지 않음 — 이 바꾸기는 환경을 바꾸지 않음'
 } else {
   # ⚠ **띄우기 직전에 새 창이 볼 자리(사용자 환경)를 이 창으로 당긴다** — 저장소의 훅으로 넘긴 판에서는 훅이 개인 키를 심었고
   #   그 값은 레지스트리에만 있어, 그대로 자식을 내면 낡은 환경을 물려준다. 검증 칸이 훅이 끝난 뒤에 읽어 둔 값(`$userEnv`)이다.
@@ -13937,7 +14129,7 @@ if ($NoLaunch) {
 $noticeShown = $false
 # 밤 자동 실행은 창을 안 띄운다. 그 회차가 기록을 새 꼴로 쓰면 이 알림은 안 뜬다 — 밤 작업이 선 PC 는 그 작업을 건 판(v2.2.0 뒤의
 #   로그온 회차나 설치 창)이 이미 옛 칸을 이어받았다(이어받기는 v2.0.0 부터다 · PAISetup #45 ⑧).
-if ($PersonalUpgrade -and -not $NightRun) {
+if ($PersonalUpgrade -and -not $NightRun -and -not $Only) {
   $uiScript = Join-Path $Here 'install.ui.ps1'
   if (Test-Path -LiteralPath $uiScript) {
     try {
@@ -13958,7 +14150,7 @@ if ($PersonalUpgrade -and -not $NightRun) {
 # 밤 자동 실행은 열지도 적지도 않는다 — 적으면 그 판을 본 것으로 남아 다음 로그온 · 설치 창이 안 연다.
 if ($NightRun) {
   Write-Host '  제공기능 — 야간 자동 실행이라 열지 않음 (이 PC 에서 아직 열지 않았다면 다음 로그온이나 설치 창에서 엽니다)'
-} else {
+} elseif (-not $Only) {   # 바꾸기는 지난 설치 기록이 선 PC 에서만 돈다 — 첫 설치가 아니다
   try {
     $featHow = Open-FeaturesOnce $DistVersion $noticeShown `
                                  (Join-Path (Join-Path $env:LOCALAPPDATA 'Claude Code Setup') 'features.major') (Join-Path $Here 'features.html')

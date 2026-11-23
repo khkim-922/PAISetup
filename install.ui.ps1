@@ -420,6 +420,7 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Background" Value="#F5F5F5"/></Trigger>
             <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="B" Property="BorderBrush" Value="#1B1B1B"/></Trigger>
+            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Background" Value="#F0F0F0"/><Setter TargetName="B" Property="Opacity" Value="0.55"/></Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value></Setter>
@@ -493,12 +494,13 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
           <StackPanel>
             <TextBlock Text="연결" Style="{StaticResource CardTitle}" Margin="0,0,0,8"/>
             <Grid x:Name="KeyGrid">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="86"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
               <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
               <TextBlock x:Name="GwLabel" Text="주소" Style="{StaticResource Note}" FontSize="13" VerticalAlignment="Center" Margin="0,0,0,8" Visibility="Collapsed"/>
               <TextBox x:Name="GwBox" Grid.Column="1" Margin="0,0,0,8" Visibility="Collapsed"/>
               <TextBlock Grid.Row="1" Text="API 키" Style="{StaticResource Note}" FontSize="13" VerticalAlignment="Center"/>
               <PasswordBox x:Name="KeyBox" Grid.Row="1" Grid.Column="1"/>
+              <Button x:Name="BKeySwap" Grid.Row="1" Grid.Column="2" Style="{StaticResource Secondary}" Content="바꾸기" Margin="8,0,0,0" ToolTipService.ShowOnDisabled="True"/>
               <TextBlock x:Name="KeyHint" Grid.Row="2" Grid.Column="1" Style="{StaticResource Note}" Margin="0,6,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
             </Grid>
             <DockPanel Margin="0,14,0,4">
@@ -506,7 +508,10 @@ if ($Recorded['gateway-url'] -and $Recorded['gateway-url'] -ne 'none') { $Saved.
               <TextBlock x:Name="RepoWhat" Style="{StaticResource Note}" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                          Text="입력한 저장소를 다운로드합니다 — 내 설정은 설정 저장소에서 가져옵니다"/>
             </DockPanel>
-            <TextBox x:Name="RepoBox"/>
+            <DockPanel>
+              <Button x:Name="BRepoSwap" DockPanel.Dock="Right" Style="{StaticResource Secondary}" Content="바꾸기" Margin="8,0,0,0" ToolTipService.ShowOnDisabled="True"/>
+              <TextBox x:Name="RepoBox"/>
+            </DockPanel>
             <DockPanel Margin="0,4,0,0">
               <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
                 <Button x:Name="LnkRepo" Style="{StaticResource Link}" Content="저장소 폴더" FontSize="12"/>
@@ -1051,6 +1056,7 @@ $script:proc = $null; $script:tmpEnv = $null
 $script:sw = $null; $script:last = ''   # 흐른 시간과 마지막 줄 — 창이 살아 있음을 보인다
 $script:topic = ''                      # 상태 글의 주제 — 마지막 머리 · 항목 줄. 흐름 줄은 이것을 안 갈고 뒤에 붙는다
 $script:done = ''                       # 몸통이 낸 마무리 문장 — 끝났을 때 이것을 띄운다
+$script:runNoun = '설치'                # 이번 실행의 이름 — 설치 전체는 「설치」, 칸 곁 단추는 「바꾸기」. 「…하는 중 · … 완료」 글이 쓴다
 $script:outFile = $null; $script:errFile = $null
 $script:rdOut = $null;  $script:rdErr = $null
 
@@ -1060,24 +1066,36 @@ function Add-Log([string]$line) {
   $log.ScrollToEnd()
 }
 
-$bGo.Add_Click({
+# `Start-Run [묶음]` — 몸통을 띄운다. 묶음을 안 주면 설치 전체([설치 시작])이고, `key` · `repo` 는 그 칸 곁 [바꾸기]다(몸통의 `-Only` ·
+#   어느 걸음이 도는지는 몸통의 `$OnlyBundles` 가 든다). 내는 것 없음 — 막으면 상자를 띄우고 안 띄운다.
+# 바꾸기는 그 칸의 값과 자리만 넘긴다 — 제품 · 제작자 칸 · 자동 실행 같은 고른 것은 몸통이 지난번 기록으로 채운다. 넘기면 묶음 밖 걸음이
+#   안 도는데 기록만 새 선택으로 바뀌어, 깔지 않은 것이 깔린 것으로 남는다. 키 바꾸기는 저장소 줄을, 저장소 바꾸기는 키 줄을 안 넘긴다 —
+#   안 넘긴 저장소는 기록이 채우고, 키는 그 묶음이 안 읽는다.
+function Start-Run([string]$Only) {
   # 자리를 못 정한 판은 안 받는다 — 단추는 이미 잠겼고(위 「자리를 못 정한 판」), 여기는 그 잠금이 풀린 자리의 마지막 울타리다.
   if (-not $Site) { return }
   # ⚠ **비어 있는 것은 안 막는다** — 사외는 둘 다 비우는 것이 맞는 답이다. 막는 것은
   #   **반만 넣은 것** 하나다: 한쪽만 있으면 게이트웨이가 안 서는데 화면은 멀쩡해 보인다.
   #   주소만 있고 키 칸이 빈 것은 이 PC 에 맡겨 둔 회사 키(`$KeySaved`)가 있으면 반이 아니다 — 몸통이 그 키를 풀어 심는다.
+  # 키 바꾸기는 바꿀 키가 있어야 한다 — 빈 칸으로 누르면 몸통이 사용자 환경의 키를 그대로 다시 심어 아무것도 안 바뀐다.
   $url = if ($noAsk) { '' } elseif ($tUrl) { $tUrl.Text.Trim() } else { $urlPreset }
   $key = if ($tKey) { $tKey.Text.Trim() } else { '' }
-  if (-not $noAsk -and (($url -and -not $key -and -not $KeySaved) -or ($key -and -not $url))) {
-    [void][Windows.MessageBox]::Show($F,
-      $(if ($urlPreset) { 'API 키를 입력하세요 — 키가 없으면 연결할 수 없습니다.' } else { '주소와 API 키는 둘 다 입력하거나 둘 다 비워 두세요.' }),
-      $AppName, 'OK', 'Warning')
+  $repo = $tRepo.Text.Trim()
+  $stop = ''
+  if ($Only -eq 'key' -and -not $key) { $stop = '바꿀 API 키를 입력하세요.' }
+  elseif ($Only -eq 'repo' -and -not $repo) { $stop = '받을 저장소 주소를 입력하세요.' }
+  elseif ($Only -ne 'repo' -and -not $noAsk -and (($url -and -not $key -and -not $KeySaved) -or ($key -and -not $url))) {
+    $stop = if ($urlPreset) { 'API 키를 입력하세요 — 키가 없으면 연결할 수 없습니다.' } else { '주소와 API 키는 둘 다 입력하거나 둘 다 비워 두세요.' }
+  }
+  if ($stop) {
+    [void][Windows.MessageBox]::Show($F, $stop, $AppName, 'OK', 'Warning')
     return
   }
   # 도는 동안 고르는 칸들은 접고 「설치하는 중」 칸이 앞에 선다 — 접힌 칸은 못 만지므로 따로 잠그지 않는다.
+  $script:runNoun = if ($Only) { '바꾸기' } else { '설치' }
   $bGo.Enabled = $false
   Show-Form $false
-  $runCard.Visibility = 'Visible'; $runTitle.Text = '설치하는 중'
+  $runCard.Visibility = 'Visible'; $runTitle.Text = $(if ($Only) { '바꾸는 중' } else { '설치하는 중' })
   $log.Clear(); $bar.Value = 0; Set-State '시작합니다…'
   # 준비 구간(0–8)을 미리 연다 — 첫 `[n/N]` 이 나오기 전에도 할 일이 있다(winget 이 없으면 되살리느라 수십 MB 를 받는다).
   #   그동안 구간이 0/0 이면 심장박동이 못 뛰어 막대가 0 에 박히고, 사람은 아무것도 안 하는 줄 안다.
@@ -1097,10 +1115,11 @@ $bGo.Add_Click({
   #   선다(파일 머리 「여기에는 설치 로직이 없다」 · 몸통 머리 「짐의 사실을 읽는 값 파일」).
   # 사외에도 칸 값을 그대로 넘긴다 — 무엇을 버릴지는 몸통이 가른다(몸통의 `$Vars` 표 `Gateway=$true` · `$InsideOnly` 목록).
   # 빈 값은 안 적는다 — 줄이 없는 것이 「안 넣었다」다. 저장소 칸을 비운 것은 몸통이 「저장소 없음」으로 기록한다(`-Pick` 을 준 판).
-  if ($url) { $lines.Add("ANTHROPIC_BASE_URL=$url") }
-  if ($key) { $lines.Add("ANTHROPIC_AUTH_TOKEN=$key") }
-  $repo = $tRepo.Text.Trim()
-  if ($repo) { $lines.Add("#config-repo = $repo") }
+  if ($Only -ne 'repo') {
+    if ($url) { $lines.Add("ANTHROPIC_BASE_URL=$url") }
+    if ($key) { $lines.Add("ANTHROPIC_AUTH_TOKEN=$key") }
+  }
+  if ($repo -and $Only -ne 'key') { $lines.Add("#config-repo = $repo") }
   # ⚠ **이 창이 칸을 지은 자리를 몸통에 넘긴다(`#site`).** 몸통은 다시 재고, 이 값과 다르면 아무것도 안 심고 「창을 연 뒤 자리가
   #   바뀌었다」로 멈춘다 — 창을 연 뒤 망이 바뀌면(무선 전환 · 회사망 재인증) 여기서 받은 키를 몸통이 버리거나 사외 칸이 안 받은
   #   주소 없이 게이트웨이를 써, **둘 다 초록으로 끝나기 때문이다.**
@@ -1109,6 +1128,9 @@ $bGo.Add_Click({
 
   $argv = @('-NoProfile','-ExecutionPolicy','Bypass','-File', $Engine, '-Yes',
             '-EnvFile', $script:tmpEnv)
+  if ($Only) {
+    $argv += @('-Only', $Only)
+  } else {
   # `-NoDevTools` 는 화면에 칸이 없다 — Claude Code 를 깔러 온 사람에게 git · python · gh 는 옵션이 아니다. 이 껍데기를
   #   `-NoDevTools` 로 부른 사람의 뜻과, 지난번 기록의 끔(`$Saved.NoDevTools`)을 그대로 넘긴다 — 안 넘기면 바탕화면 아이콘처럼
   #   깃발 없이 띄운 창이 git · gh 를 깔고 그 기록을 지운다. 되돌리는 길은 이 껍데기를 `-DevTools` 로 부르는 것이다(`Setup.exe -DevTools`)
@@ -1132,6 +1154,7 @@ $bGo.Add_Click({
   }
   # VS Code — 잠근 칸(사내 필수)은 사람의 값이 아니라 지난번에 고른 것을 넘긴다. 몸통은 사내면 칸과 상관없이 깔고 넘긴 값을 기록에 둔다.
   if ($cVsc -and $(if ($VsRequired) { [bool]$Saved.NoVsCode } else { -not $cVsc.Checked })) { $argv += '-NoVsCode' }
+  }
 
   # 싸는 규칙은 위 `Quote-Argv` 하나다 — 되띄우기 자리와 같은 자를 쓴다.
   $argLine = Quote-Argv $argv
@@ -1178,7 +1201,30 @@ $bGo.Add_Click({
   # 기록은 이 창의 「설치하는 중」 칸이 든다 — 몸통은 콘솔 없이 돌고(`CreateNoWindow`), 같은 캡처를 따로 흘리는 창을 더 띄우지
   #   않는다. 끝난 뒤의 기록은 「설치기록」이 집어 준다(결정 0167).
   $timer.Start()
-})
+}
+
+$bGo.Add_Click({ Start-Run '' })
+
+# ── [바꾸기] — 키 칸 · 저장소 칸 곁 ───────────────────────────────────────────────
+# 지난 설치 기록이 있을 때만 켠다 — 몸통의 바꾸기는 그 기록 위에서만 돌고(없으면 멈춘다), 기록이 없는 PC 는 설치 전체가 선 적이 없다.
+# 키 단추는 키 칸과 같이 사외에서 꺼진다. 저장소 단추는 칸이 비면 꺼진다 — 빈 주소로 받을 저장소가 없다(저장소를 빼는 것은 설치 전체의 몫).
+# 바꾸기는 그 칸의 값만 쓴다 — 다른 칸에서 바꾼 것은 [설치 시작]이 든다. 툴팁이 그 말을 한다.
+$bKeySwap = Get-El 'BKeySwap'; Add-FormFace $bKeySwap
+$bRepoSwap = Get-El 'BRepoSwap'; Add-FormFace $bRepoSwap
+$swapReady = [bool]($Site -and $Recorded.Count)
+$swapNoRecord = '설치를 한 번 마친 뒤에 쓸 수 있습니다'
+$bKeySwap.Enabled = $swapReady -and -not $noAsk
+$bKeySwap.ToolTip = if ($noAsk) { '사외에서는 키를 쓰지 않습니다' } elseif (-not $swapReady) { $swapNoRecord } else {
+  '이 키만 다시 넣습니다 — 키와 값 · 사내 연결 · Claude 홈 설정 단계만 실행합니다 (다른 칸의 변경은 [설치 시작]으로)' }
+function Update-RepoSwap {
+  $bRepoSwap.Enabled = $swapReady -and [bool]$tRepo.Text.Trim()
+  $bRepoSwap.ToolTip = if (-not $swapReady) { $swapNoRecord } elseif (-not $tRepo.Text.Trim()) { '저장소 주소를 입력하면 쓸 수 있습니다' } else {
+    '이 주소에서만 다시 받습니다 — 설정 저장소 단계만 실행합니다 (주소가 바뀌었으면 옛 폴더는 옆으로 옮겨 둡니다)' }
+}
+Update-RepoSwap
+$tRepo.Add_TextChanged({ Update-RepoSwap })
+$bKeySwap.Add_Click({ Start-Run 'key' })
+$bRepoSwap.Add_Click({ Start-Run 'repo' })
 
 # ── 한 줄을 화면에 반영하는 자 ─────────────────────────────────────────────────
 # `Step-Line <줄>` — 몸통이 찍은 한 줄을 기록 칸에 옮기고 막대 · 상태 글을 민다. 내는 것 없음. 줄 꼴은 몸통이 사람에게 찍는
@@ -1355,13 +1401,13 @@ $timer.Add_Tick({
       Set-State '끝났지만 종료 코드를 읽지 못했습니다 — 기록의 마지막 줄을 확인하세요.' 'Warn'
     } elseif ($rc -eq 0) {
       $bar.Value = 100
-      $runTitle.Text = '설치 완료'
+      $runTitle.Text = "$script:runNoun 완료"
       # 마무리 문장을 못 받았으면(몸통이 `=== 끝 ===` 줄 전에 끊긴 판) 지어 내지 않고 기록을 보라고 한다 — 안 한 일을 했다고
       #   말하지 않게.
       Set-State $(if ($script:done) { $script:done } else { '완료되었습니다 — 기록의 마지막 줄을 확인하세요.' }) 'Ok'
     } else {
-      $runTitle.Text = '설치를 완료하지 못했습니다'
-      Set-State "설치를 완료하지 못했습니다 (종료 코드 $rc) — 기록을 펼쳐 ! 줄을 확인하세요." 'Bad'
+      $runTitle.Text = "$($script:runNoun)를 완료하지 못했습니다"
+      Set-State "$($script:runNoun)를 완료하지 못했습니다 (종료 코드 $rc) — 기록을 펼쳐 ! 줄을 확인하세요." 'Bad'
     }
     $bGo.Text = '다시 설치'; $bGo.Enabled = $true
     Show-Form $true
