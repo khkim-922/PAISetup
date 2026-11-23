@@ -651,16 +651,16 @@ $UninstallAsk = @(
   @{ Key = 'vscode'; Label = 'VS Code'; Why = '다른 작업에도 쓰는 편집기입니다'; Winget = @($Apps | Where-Object { $_.Need -eq 'vscode' } | ForEach-Object { @{ Label = $_.Name; Id = $_.Id } }) }
   @{ Key = 'gh'; Label = 'GitHub CLI'; Why = '다른 작업에도 쓸 수 있습니다'; Winget = @($Apps | Where-Object { $_.Cmd -eq 'gh' } | ForEach-Object { @{ Label = $_.Name; Id = $_.Id } }) }
   # 아래 셋의 자리는 스킬 · 훅이 쓰는 자리다(설치기가 심지 않는다) — 걷어내기가 찾아 걷을 수 있게 여기 둔다.
-  @{ Key = 'mail'; Label = '메일 비서의 예약 작업과 기록'; Why = '내 자료입니다 — PC 를 넘길 때는 지우세요'
+  @{ Key = 'mail'; Label = '메일 비서의 예약 작업과 기록'; Why = 'PC 를 넘길 때는 지우세요'
      Tasks = @(@{ Path = '\mail-secretary\'; Name = 'mailbox-scan' }); Dirs = @((Join-Path $env:LOCALAPPDATA 'mail-secretary')) }
-  @{ Key = 'texts'; Label = '문서에서 뽑아 둔 글과 이미지 문의 기록'; Why = '회사 문서 내용이 들어 있습니다 — PC 를 넘길 때는 지우세요'
+  @{ Key = 'texts'; Label = '문서에서 뽑은 글과 이미지 문의 기록'; Why = 'PC 를 넘길 때는 지우세요'
      Dirs = @((Join-Path $env:USERPROFILE '.drm-read-text'), (Join-Path $env:USERPROFILE '.company-ecm-text'), (Join-Path $env:USERPROFILE '.image-gate')) }
-  @{ Key = 'key-blob'; Label = '암호화해 둔 회사 API 키'; Why = '남겨 두면 다시 설치할 때 키를 새로 넣지 않아도 됩니다'; Files = @($CompanyKeyBlob) }
+  @{ Key = 'key-blob'; Label = '암호화해 둔 회사 API 키'; Why = 'PC 를 넘길 때는 지우세요'; Files = @($CompanyKeyBlob) }
 )
 $UninstallKeep = @(
   @{ Label = 'Python · Git · Node.js'; Why = '다른 작업에도 쓰는 기본 도구입니다' }
   @{ Label = 'VC++ 런타임'; Why = '다른 프로그램도 사용합니다' }
-  @{ Label = 'PATH 의 npm · pip 폴더, PowerShell 실행 정책, winget 설정'; Why = '다른 프로그램이 넣었을 수도 있어 그대로 둡니다 — 되돌리려면 UNINSTALL.md 를 보세요' }
+  @{ Label = 'PATH · PowerShell · winget 설정'; Why = 'PATH 의 npm · pip 폴더, PowerShell 실행 정책, winget 설정은 다른 프로그램이 넣었을 수도 있어 그대로 둡니다 — 되돌리려면 UNINSTALL.md 를 보세요' }
   @{ Label = 'Word 의 PDF 변환 설정'; Why = '설치가 바꿨는지 알 수 없어 그대로 둡니다 — 되돌리려면 UNINSTALL.md 를 보세요' }
   @{ Label = '~/repos 의 저장소와 폴더 신뢰 설정'; Why = '내 작업물입니다' }
 )

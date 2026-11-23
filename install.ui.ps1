@@ -1323,7 +1323,7 @@ function Show-UninstallConfirm {
         <Border Style="{DynamicResource Card}">
           <StackPanel>
             <TextBlock Text="골라서 지우는 것" Style="{DynamicResource CardTitle}"/>
-            <TextBlock Style="{DynamicResource Note}" Margin="0,2,0,8" Text="설치 전부터 쓰던 프로그램이나 내 자료일 수 있어 처음에는 선택하지 않았습니다. 체크한 것만 지웁니다."/>
+            <TextBlock Style="{DynamicResource Note}" Margin="0,2,0,8" Text="체크한 것만 지웁니다. 처음에는 모두 꺼 두었습니다."/>
             <StackPanel x:Name="AskRows"/>
           </StackPanel>
         </Border>
