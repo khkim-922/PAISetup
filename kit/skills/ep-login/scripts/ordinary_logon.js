@@ -1,9 +1,10 @@
-// 평소 Edge 의 로그인을 읽는 바탕 — 이 윈도 로그온의 열쇠와 두 기록(평소 걸음을 해 봤다 · 평소 로그인이 섰다), 평소 Edge 를 보는 눈과 그 가름,
+// 평소 Edge 의 로그인을 읽는 바탕 — 이 윈도 로그온의 열쇠와 세 기록(평소 걸음을 해 봤다 · 평소 로그인이 섰다 · SSO 가 안 선다), 평소 Edge 를 보는 눈과 그 가름,
 // 그리고 그것들로 「이 로그온에 평소 EP 로그인이 한 번 섰나」를 아무것도 안 열고 가리는 답(ordinaryLogin). 입구(ep_login.js)와 그 답을 빌려
 // 주는 문(ordinary_status.js)이 싣는다.
 //
 // 내는 것
-//   logonKey() · readMark() · writeMark(key) · readStood() · writeStood(key) — 로그온 열쇠와 두 기록(SAVED.* 로 끝을 낸다)
+//   logonKey() · readMark() · writeMark(key) · readStood() · writeStood(key) · readNoSso() · writeNoSso(key) — 로그온 열쇠와 세 기록(평소 걸음을
+//     해 봤다 · 평소 로그인이 섰다 · 이 로그온에는 SSO 가 안 선다 — SAVED.* 로 끝을 낸다)
 //   edgeEye(select) · eyeSelect() · lookOnce(eye) · lookForPortal(eye) · tabsState(tabs) · committedState(tabs) — 눈과 그 가름(LOOK.*)
 //   ordinaryLogin() — ORDINARY.STOOD(섰다) · TRIED(해 봤는데 섰는지 모른다) · MISSING(없다) — 기록을 먼저 읽고, 기록이 없을 때만 눈으로 본다
 //   readTitles() · TITLES · ordinaryProfile() · hostOf(url) · EYE · EYE_GAP_MS · STEADY · SAVED
@@ -16,7 +17,7 @@ const { PLACES, env, settings } = require('./ep_places.js');
 const cfg = settings();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// 이 윈도 로그온에 평소 Edge 의 걸음을 했다는 표 — 로그온 열쇠(logonKey) 한 줄. 비영속 VDI 는 로그오프 때 함께 사라진다
+// 이 윈도 로그온에 평소 Edge 의 걸음을 했다는 표 — 로그온 열쇠(logonKey) 한 줄. 기록은 다 LOCALAPPDATA 아래라 비영속 VDI 는 로그오프 때 함께 사라진다
 const ORDINARY_MARK = path.join(process.env.LOCALAPPDATA || '', 'ep-login', 'ordinary-logon');
 
 const EYE = path.join(__dirname, 'ordinary_edge.ps1');   // 평소 Edge 를 보는 눈 — 포트가 없어 윈도 UI 자동화로 본다
@@ -159,7 +160,7 @@ function eyeSelect() {
 const NO_KEY = '-';                   // EP_LOGON_KEY 에 이 값을 주면 열쇠가 없는 PC 를 흉내 낸다
 
 // 이 윈도 로그온의 열쇠 — 이 세션의 탐색기(explorer)가 뜬 때. 로그온마다 새로 뜨고, 빠른 시작으로 끈 PC 도 켜서 로그온하면 바뀐다(부팅
-// 시각은 빠른 시작이 안 바꾼다). 못 읽으면 "" — 그때는 표를 안 읽고 안 남긴다(묻기 · 걸음이 부를 때마다 다시 선다), VDI 의 정한 틈 걸음은 건너뛴다
+// 시각은 빠른 시작이 안 바꾼다). 못 읽으면 "" — 그때는 표를 안 읽고 안 남긴다(묻기 · 걸음 · SSO 재기가 부를 때마다 다시 선다)
 function logonKey() {
   const given = env('EP_LOGON_KEY', '');
   if (given === NO_KEY) return '';                  // 검사의 흉내 — 로그온을 못 가리는 PC(PowerShell 이 막힌 자리)
@@ -173,28 +174,30 @@ function logonKey() {
   } catch { return ''; }
 }
 
-// 이 로그온의 표를 읽는다 — 없으면 ""
-const readMark = () => { try { return fs.readFileSync(ORDINARY_MARK, 'utf8').trim(); } catch { return ''; } };
-
-// 이 로그온의 표를 남긴다 — 내는 것: { state: SAVED.WRITTEN } · 못 남겼으면 { state: SAVED.FAILED, why }
-function writeMark(key) {
-  try { fs.mkdirSync(path.dirname(ORDINARY_MARK), { recursive: true }); fs.writeFileSync(ORDINARY_MARK, `${key}\n`); return { state: SAVED.WRITTEN }; }
-  catch (e) { return { state: SAVED.FAILED, why: e.code || e.message }; }
+// 로그온 열쇠 한 줄을 든 기록 하나 — 읽기(없으면 "")와 남기기(SAVED.WRITTEN · 못 남겼으면 SAVED.FAILED 와 까닭)
+function logonRecord(file) {
+  return {
+    read: () => { try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; } },
+    write: key => {
+      try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, `${key}\n`); return { state: SAVED.WRITTEN }; }
+      catch (e) { return { state: SAVED.FAILED, why: e.code || e.message }; }
+    },
+  };
 }
 
+// 이 로그온의 표 — 평소 Edge 의 걸음을 했다
+const { read: readMark, write: writeMark } = logonRecord(ORDINARY_MARK);
 
 // 이 윈도 로그온에 평소 EP 로그인이 섰다는 기록 — 로그온 열쇠 한 줄. 입구가 선 것을 본 때(포털 탭이 이미 있다 · 연 탭이 포털로 넘어갔다 ·
 // 사용자가 「했다」고 답했다)에만 남긴다. 「해 봤다」(ORDINARY_MARK)와 다른 사실이다 — 해 본 걸음이 안 섰을 수 있다
 const ORDINARY_STOOD = path.join(process.env.LOCALAPPDATA || '', 'ep-login', 'ordinary-stood');
+const { read: readStood, write: writeStood } = logonRecord(ORDINARY_STOOD);
 
-// 「섰다」 기록을 읽는다 — 없으면 ""
-const readStood = () => { try { return fs.readFileSync(ORDINARY_STOOD, 'utf8').trim(); } catch { return ''; } };
-
-// 「섰다」 기록을 남긴다 — 내는 것: { state: SAVED.WRITTEN } · 못 남겼으면 { state: SAVED.FAILED, why }
-function writeStood(key) {
-  try { fs.mkdirSync(path.dirname(ORDINARY_STOOD), { recursive: true }); fs.writeFileSync(ORDINARY_STOOD, `${key}\n`); return { state: SAVED.WRITTEN }; }
-  catch (e) { return { state: SAVED.FAILED, why: e.code || e.message }; }
-}
+// 이 윈도 로그온에는 SSO(통합 인증)가 안 선다는 기록 — 로그온 열쇠 한 줄. 입구의 로그인 탭이나 평소 Edge 의 걸음이 회사 SSO 주소에서 넘지
+// 못한 것을 본 때 남긴다(DESIGN 「SSO 가 서나」). 이 기록이 있는 로그온은 처음부터 사람이 치는 화면(EP 포털 · 평소 EP 로그인)을 열고, 사람
+// 없는 부름은 창을 안 띄운다. 「선다」는 남기지 않는다 — 기록이 없으면 회사 SSO 주소로 잰다
+const NO_SSO = path.join(process.env.LOCALAPPDATA || '', 'ep-login', 'no-sso');
+const { read: readNoSso, write: writeNoSso } = logonRecord(NO_SSO);
 
 // 이 로그온의 평소 EP 로그인 — 닫힌 셋
 const ORDINARY = {
@@ -222,6 +225,6 @@ async function ordinaryLogin() {
 
 module.exports = {
   ORDINARY, SAVED, LOOK, EYE, EYE_GAP_MS, STEADY, TITLES,
-  logonKey, readMark, writeMark, readStood, writeStood, readTitles, ordinaryProfile, hostOf,
+  logonKey, readMark, writeMark, readStood, writeStood, readNoSso, writeNoSso, readTitles, ordinaryProfile, hostOf,
   edgeEye, eyeSelect, lookOnce, lookForPortal, tabsState, committedState, ordinaryLogin,
 };

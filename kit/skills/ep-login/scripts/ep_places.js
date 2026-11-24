@@ -15,11 +15,12 @@
 
 const PLACES = require('./places.json');
 const SSO_REDIRECT = 'http://swpsso.posco.net/idms/U61/jsp/redirect.jsp';          // SSO 넘김 주소 — redir_url 이 가리키는 앱으로 세션을 넘긴다
-// 사내 SSO 의 회사 로그인 — ADFS 로 넘어가 데스크톱은 통합 인증으로 입력 없이 서지만, VDI 에서는 처음 보는 ADFS 창이 전체 메일 주소를 받는다
+// 사내 SSO 의 회사 로그인 — ADFS 로 넘어가 SSO(통합 인증)가 서는 PC 는 입력 없이 서지만, 안 서는 PC(VDI 따위)에서는 처음 보는 ADFS 화면이나
+// 자격 증명 창이 선다 — 입구는 그것으로 SSO 가 안 서는 것을 잰다
 const COMPANY_LOGIN = 'http://swpsso.posco.net/idms/U61/jsp/login/saml_login.jsp?companyCode=shared';
 // EP 포털 — 사람이 평소 Edge 에서 여는 주소. 로그인 전이면 아래 평소 EP 로그인 화면으로 보내고, 로그인하면 포털로 돌아온다
 const EP_PORTAL = 'http://swp.posco.net/';
-// 평소 EP 로그인 — EP 포털(swp.posco.net)이 보내는 화면(VDI 꼴의 아이디 · 비밀번호 칸). 통합 인증이 안 서는 자리에서 사람이 여기서 친다
+// 평소 EP 로그인 — EP 포털(swp.posco.net)이 보내는 화면(아이디 · 비밀번호 칸). 통합 인증이 안 서는 자리에서 사람이 여기서 친다
 const EP_LOGIN = 'http://swpsso.posco.net/idms/U61/jsp/login/login.jsp';
 const DEFAULT_PORT = '9222';         // 입구(ep_login.js)가 여는 포트 — 받는 손도 이 포트를 먼저 본다
 // 로그인 화면 — 로그인 화면 호스트 위의 이 경로(SSO 의 …/jsp/login/… · ADFS 의 /adfs/…). 같은 호스트의 넘김(redirect.jsp)은 아니다
@@ -45,9 +46,9 @@ function settings() {
     domino: env('DOMINO_URL', PLACES.domino_server).replace(/\/+$/, ''),
     ecm: env('ECM_URL', PLACES.ecm).replace(/\/+$/, '') + PLACES.ecm_main_page,   // ECM_URL 은 맥락까지(…/ECM) — 스킬 company-ecm 과 같은 뜻
     sso: env('SSO_REDIRECT_URL', SSO_REDIRECT),
-    companyLogin: env('COMPANY_LOGIN_URL', COMPANY_LOGIN),   // 입구의 로그인 탭이 데스크톱에서 여는 주소
-    epLogin: env('EP_LOGIN_URL', EP_LOGIN),                  // 입구의 로그인 탭이 VDI 에서 여는 주소 · 데스크톱에서 넘기는 주소
-    portal: env('EP_PORTAL_URL', EP_PORTAL),                 // 입구가 평소 Edge 에 여는 EP 포털 — 데스크톱과 VDI 가 같은 주소를 연다
+    companyLogin: env('COMPANY_LOGIN_URL', COMPANY_LOGIN),   // 입구가 SSO 를 재며 여는 주소 — 로그인 탭과, SSO 가 서는지 모르는 평소 걸음
+    epLogin: env('EP_LOGIN_URL', EP_LOGIN),                  // SSO 가 안 서는 로그온의 로그인 탭이 여는 주소 · SSO 가 안 설 때 넘기는 주소
+    portal: env('EP_PORTAL_URL', EP_PORTAL),                 // SSO 가 안 서는 로그온의 평소 걸음이 여는 EP 포털 — 사람이 거기서 친다
     domain: env('SESSION_DOMAIN', 'posco.net').toLowerCase().replace(/^\./, ''),
     loginHosts: env('SESSION_LOGIN_HOSTS', 'swpsso.posco.net,adfs.m365.posco.net').toLowerCase().split(',').map(s => s.trim()).filter(Boolean),
     requestMs: seconds('SESSION_REQUEST_SECONDS', 5) * 1000,
@@ -55,6 +56,7 @@ function settings() {
     loginMs: seconds('SESSION_LOGIN_WAIT_SECONDS', 300) * 1000,
     fallbackMs: seconds('SESSION_FALLBACK_SECONDS', 8) * 1000,    // 입구가 입력 칸 있는 로그인 화면에 이만큼 머물면 통합 인증이 안 선 것으로 본다
     ordinaryMs: seconds('SESSION_ORDINARY_SECONDS', 30) * 1000,   // 입구가 평소 Edge 에 EP 포털을 열고 확인 창을 기다리는 틈 — 통합 인증의 넘김과 넘어간 화면이 설 틈
+    ssoMs: seconds('SESSION_SSO_SECONDS', 30) * 1000,             // 로그인 탭이 회사 SSO 주소에서 이만큼 못 넘으면(입력 칸이 안 보여도) SSO 가 안 선 것으로 본다
   };
 }
 

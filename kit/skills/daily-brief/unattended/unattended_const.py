@@ -71,7 +71,7 @@ BRIEF_TRY_GAP_MIN = 5                    # 판이 답을 안 준 주기에 손�
 LOGIN_ENTRANCE = ("scripts", "ep_login.js")   # 그 스킬의 입구 — 받아 보고, 안 서면 평소 Edge 에서 먼저 · 이어 제 창을 띄워 통합 인증으로
                                               # 세운다(명령으로만 부른다)
 LOGIN_ENTRANCE_ENV = "EP_LOGIN_ENTRANCE"  # 검사가 입구를 대역으로 바꿀 때만 준다
-LOGIN_ARGS = ("domino", "--unattended")   # 메일 · 일정의 세션만 · 사람이 쳐야 하는 자리(VDI · 통합 인증이 안 선 화면)에서는 입구가 기다리지 않고 4 다
+LOGIN_ARGS = ("domino", "--unattended")   # 메일 · 일정의 세션만 · 사람이 쳐야 하는 자리(SSO 가 안 서는 로그온 · 통합 인증이 안 선 화면)에서는 입구가 기다리지 않고 4 다
 LOGIN_NODE = "node"                       # 입구를 돌릴 node — PATH 에서 찾는다(회사 메일 손이 세션 손을 돌리는 것과 같은 node)
 LOGIN_TIMEOUT_S = 240                     # 입구 한 번의 시한 — 입구가 사람 없는 부름의 두 걸음(평소 Edge · ep-login 창)에 저마다 쓰는 시한(1분씩)과
                                           # 창 · 포트가 서는 틈보다 넉넉히. 넘기면 입구가 끝말 없이 끊겨 status 가 까닭을 못 댄다

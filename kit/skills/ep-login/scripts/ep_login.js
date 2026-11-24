@@ -24,7 +24,7 @@
 // 프로그램이 부르는 문 — 대화의 모델은 안 부른다:
 //     node ep_login.js domino --unattended
 //   --unattended — 사람이 없는 부름(예약 실행 — 다른 스킬이 프로세스로 부른다). 입력 없이 넘는 통합 인증으로만 세운다 — 사람이 쳐야
-//     하는 자리(VDI · 통합 인증이 안 선 로그인 화면)에서는 띄우거나 기다리지 않고 4 로 끝난다. 띄운 창은 그대로 둔다(사람이 와서 쓴다).
+//     하는 자리(SSO 가 안 서는 로그온 · 통합 인증이 안 선 로그인 화면)에서는 띄우거나 기다리지 않고 4 로 끝난다. 띄운 창은 그대로 둔다(사람이 와서 쓴다).
 //     부르는 쪽은 종료 값(0 · 4 · 1)과 종료 0 의 표준 출력 한 줄(세션 파일 경로)을 읽는다.
 //
 // 차례:
@@ -34,16 +34,18 @@
 //     로그인이 앞서 섰으면(「섰다」 기록) 다시 보지도 열지도 않는다 — 한 번 선 평소 로그인은 그 뒤로 듣는다(사용자가 겪어 알린 것).
 //   평소 Edge — 사용자의 평소 Edge(포트 없음)에 EP 포털 탭이 있나를 윈도 UI 자동화(ordinary_edge.ps1)로 본다 — 창마다 앞 탭의 주소(EP_PORTAL 의
 //     호스트인가 · 로그인 화면 호스트인가)와, 이 PC 에서 배운 포털의 탭 제목(TITLES)을 든 뒤쪽 탭. 평소 EP 로그인만 이 PC 의 프로그램(파수 · ECM
-//     에이전트) 로그인까지 하고, 그 로그인이 서면 그 탭은 포털에 선다. 사람 없는 부름은 VDI 에서 보지도 열지도 않는다.
+//     에이전트) 로그인까지 하고, 그 로그인이 서면 그 탭은 포털에 선다. 사람 없는 부름은 SSO 가 안 서는 로그온에서 보지도 열지도 않는다.
 //     있다(STEADY 번 잇달아) → 평소 Edge 는 안 건드리고 「섰다」 기록을 남긴다.
-//     없다(평소 Edge 가 안 떠 있거나, 읽혔는데 포털 탭이 없다) → 데스크톱은 로그인 탭이 데스크톱에서 여는 주소(회사 SSO — 통합 인증에 맡긴다)를,
-//       VDI 는 EP 포털을 포트 없이 사람처럼 열고 그 탭이 EP 포털로 넘어가기를 본 뒤 잇는다(넘어가면 「섰다」 기록 · 막 연 탭은 주소창이 처음부터
-//       포털이라 그 탭에 화면이 섰다는 증거까지 본다 — committedState) —
-//       데스크톱은 그동안 「EP 접속 정보」 창을 누르며 SESSION_ORDINARY_SECONDS 까지(지나도 알리고 잇는다), VDI 는 사용자가 거기서 치는 동안
-//       SESSION_LOGIN_WAIT_SECONDS 까지(지나면 4 로 사용자에게 묻게 한다). 사람이 로그인해 두고 탭만 닫았으면 포털이 곧 서 곧 잇는다.
+//     없다(평소 Edge 가 안 떠 있거나, 읽혔는데 포털 탭이 없다) → 회사 SSO 주소(통합 인증에 맡긴다)를 포트 없이 사람처럼 열고, 「EP 접속 정보」
+//       창을 누르며 그 탭이 EP 포털로 넘어가기를 SESSION_ORDINARY_SECONDS 까지 본다(지나도 알리고 잇는다). 지나도 그 탭이 로그인 화면 호스트에
+//       머물면 SSO 가 안 서는 로그온이다(기록) — 사람 있는 부름은 EP 포털을 열어 사용자가 거기서 치는 동안 SESSION_LOGIN_WAIT_SECONDS 까지 본다
+//       (지나면 4 로 사용자에게 묻게 한다). SSO 가 안 선다는 기록이 이미 있는 로그온은 처음부터 EP 포털을 연다. EP 포털을 연 탭은 주소창이
+//       처음부터 포털이라 그 탭에 화면이 섰다는 증거까지 본다(committedState). 넘어가면 「섰다」 기록. 사람이 로그인해 두고 탭만 닫았으면 포털이
+//       곧 서 곧 잇는다.
 //     못 읽었다(탭 줄 · 주소창이 안 보인다 · 눈이 안 선다) → 표가 있으면 안 연다. 없으면 사람 있는 부름은 아무것도 안 열고 4 로 사용자에게
-//       묻게 하고(답은 --ordinary-done · --ordinary-not-yet), 「아직」 이거나 사람 없는 부름이면 정한 틈의 걸음을 한다 — 데스크톱은
-//       SESSION_ORDINARY_SECONDS 동안 확인 창을 누르고 잇고, VDI 는 포털만 열고 4 로 끝내 사용자가 로그인한 뒤 다시 부르게 한다.
+//       묻게 하고(답은 --ordinary-done · --ordinary-not-yet), 「아직」 이거나 사람 없는 부름이면 정한 틈의 걸음을 한다 — 회사 SSO 주소를 열어
+//       SESSION_ORDINARY_SECONDS 동안 확인 창을 누르고 잇는다. SSO 가 안 서는 로그온이면 EP 포털만 열고 4 로 끝내 사용자가 로그인한 뒤 다시
+//       부르게 한다.
 //     어느 갈래든 평소 Edge 에는 포트를 열지 않고, 끝내지도 쿠키를 읽지도 않는다. 사람의 다른 탭의 주소 · 제목은 눈 밖으로 안 나온다.
 //   포털 · 로그인 화면의 탭 제목은 포트 창에서 배운다 — 로그인 탭이 지나는 로그인 화면(입력 칸이 선 화면)의 제목과, 포트 창의 포털 주소 탭의
 //   제목(같은 화면이라 같은 제목이다).
@@ -63,7 +65,7 @@
 // 표준 오류의 끝은 종료 4 · 1 이면 그 까닭이다:
 //   0 세션이 섰다
 //   4 로그인 시한 안에 세션이 안 섰다 · ECM 을 탭으로도 못 받았다 · 사람 없는 부름이 사람이 쳐야 하는 자리에 닿았다 · 평소 로그인을
-//     사용자에게 물어야 한다(VDI 의 평소 Edge 를 열어 둔 뒤도) — 「다음」 대로 간다
+//     사용자에게 물어야 한다(SSO 가 안 서는 로그온의 평소 Edge 를 열어 둔 뒤도) — 「다음」 대로 간다
 //   1 그 밖 — Edge 를 못 찾음 · 인자 · 띄웠는데 포트가 안 열림 · 받는 손의 1
 //
 // ⚠ 포트는 이 PC 의 다른 프로그램도 쓸 수 있어 그 Edge 의 세션을 다 다룬다 — 127.0.0.1 에만 연다.
@@ -75,8 +77,6 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-// VMware Horizon VDI 인가 — 에이전트가 세션에 심는 브로커 값 · VDI 도메인
-const onVdi = () => Boolean((process.env.ViewClient_Broker_DNS_Name || '').trim()) || /\.VDI$/i.test(process.env.USERDNSDOMAIN || '');
 // 띄우는 창의 프로필 — 사람의 평소 Edge 와 따로 산다. 로그인 쿠키가 여기 남아, 창을 닫았다 다시 띄워도 세션이 살아 있으면 로그인 없이 받는다
 const PROFILE_DIR = path.join(process.env.LOCALAPPDATA || '', 'ep-login', 'edge-profile');
 const PORT_MS = 15000;                // 띄운 뒤 포트가 열리기를 기다리는 시한
@@ -102,11 +102,30 @@ const { env, settings, onLoginScreen, epConfirm } = require('./ep_places.js');
 const { VERSION_MS, findEdge, version, openPort, tabList, newTab, closeTarget } = require('./edge_process.js');
 const { Exit, EXIT: RECEIVED, needNode } = require('./ep_exit.js');
 // 평소 Edge 의 로그인을 읽는 바탕 — 로그온 열쇠 · 두 기록 · 눈과 그 가름. 문서함 손이 빌리는 답(ordinary_status.js)도 같은 바탕을 쓴다
-const { SAVED, LOOK, EYE, EYE_GAP_MS, STEADY, TITLES, logonKey, readMark, writeMark, readStood, writeStood, readTitles, ordinaryProfile, hostOf,
-  edgeEye, eyeSelect, lookOnce, lookForPortal, committedState } = require('./ordinary_logon.js');
+const { SAVED, LOOK, EYE, EYE_GAP_MS, STEADY, TITLES, logonKey, readMark, writeMark, readStood, writeStood, readNoSso, writeNoSso, readTitles,
+  ordinaryProfile, hostOf, edgeEye, eyeSelect, lookOnce, lookForPortal, committedState } = require('./ordinary_logon.js');
 const cfg = settings();
 const say = line => console.error(line);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ── SSO 가 서나 ───────────────────────────────────────────────────────────
+// 입구가 가르는 것은 자리(VDI · 데스크톱)가 아니라 이 로그온에 SSO(통합 인증)가 서나다 — 미리 어림하지 않고 회사 SSO 주소를 연 탭에서 잰다
+// (로그인 탭의 watchLogin · 평소 걸음의 untilPortal). 안 선 것을 보면 이 로그온의 기록(NO_SSO)으로 남기고, 그 뒤로는 처음부터 사람이 치는
+// 화면을 연다. 이 부름이 방금 본 것은 열쇠가 없어 기록을 못 남겨도 이 부름 안에서는 듣는다. 로그온 열쇠는 한 번만 읽는다(PowerShell 한 번)
+const sso = { key: undefined, down: false };
+const theKey = () => sso.key === undefined ? (sso.key = logonKey()) : sso.key;
+const ssoDown = () => sso.down || Boolean(theKey() && readNoSso() === theKey());
+
+// SSO 가 안 선 것을 본 때 — 알리고, 이 부름에 두고, 이 로그온의 기록으로 남긴다(열쇠가 없으면 이 부름에만)
+function markNoSso(why) {
+  if (sso.down) return;
+  sso.down = true;
+  say(`SSO(통합 인증)가 안 선다 — ${why}. 이 로그온에는 처음부터 사람이 치는 EP 로그인 화면을 연다`);
+  const key = theKey();
+  if (!key) return;
+  const saved = writeNoSso(key);
+  if (saved.state === SAVED.FAILED) say(`SSO 가 안 선다는 기록을 못 남겼다(${saved.why}) — 다음 부름이 회사 SSO 주소로 한 번 더 잰다`);
+}
 
 // ── 받기 ─────────────────────────────────────────────────────────────────
 
@@ -296,15 +315,39 @@ function acceptConfirms(page, seen) {
   });
 }
 
+// 자격 증명 창 귀 — 로그인 화면 호스트의 요청이 아이디 · 비밀번호를 물으면(통합 인증이 못 답한 401) Edge 가 띄울 자격 증명 창을 안 띄우고
+// 거절하고 seen.authAsked 를 센다 — SSO 가 안 선다는 증거다. 그 호스트의 요청은 멈춰 세워지므로 그대로 잇게 한다
+function refuseAuth(page, seen) {
+  page.on(m => {
+    if (m.method === 'Fetch.requestPaused') page.call('Fetch.continueRequest', { requestId: m.params.requestId });
+    if (m.method === 'Fetch.authRequired') {
+      seen.authAsked++;
+      page.call('Fetch.continueWithAuth', { requestId: m.params.requestId, authChallengeResponse: { response: 'CancelAuth' } });
+    }
+  });
+}
+
+// 자격 증명 창을 볼 요청의 자 — 로그인 화면 호스트(포트는 안 가린다)
+const authPatterns = () => cfg.loginHosts.map(host => ({ urlPattern: `*://${host}*` }));
+
+// 회사 SSO 주소에서 SSO 가 안 섰다고 볼 까닭 — 없으면 ''. 자격 증명을 물었다 · 입력 칸 화면에 머문다 · 시한 안에 못 넘었다
+function ssoStuck(typing, seen, since) {
+  if (seen.authAsked) return 'Edge 가 로그인 화면에서 아이디 · 비밀번호를 물었다(자격 증명 창 — 띄우지 않고 거절했다)';
+  if (typing) return `로그인 화면에 입력 칸이 선 채 ${cfg.fallbackMs / 1000}초 넘게 머문다`;
+  if (Date.now() - since > cfg.ssoMs) return `${cfg.ssoMs / 1000}초 안에 로그인 화면을 못 넘었다`;
+  return '';
+}
+
 // 로그인 탭이 넘어갔다고 알린다 — 확인 창을 받았으면 그 값(다른 자리에서 연 메일의 세션이 끊긴다)도
 const sayPassed = (host, confirmed) =>
   say(`로그인 탭이 넘어갔다 — ${host}${confirmed === CONFIRM.ACCEPTED ? ' · 「EP 접속 정보」 창을 「확인」으로 받았다(다른 자리에서 연 메일의 세션이 끊긴다)' : ''}`);
 const SAID_NO_TAB = '로그인 탭에 못 붙었다 — 주소만 열고 받기를 되풀이한다. 「EP 접속 정보」 창이 뜨면 사람이 「확인」을 누른다';
-const SAID_STALL_ALONE = '통합 인증이 안 섰다 — 사람이 없어 로그인 화면에서 기다리지 않는다';
-const SAID_FALL_BACK = '통합 인증이 안 섰다 — 같은 탭을 평소 EP 로그인 화면으로 넘긴다. 사람이 그 창에서 평소 아이디로 로그인한다';
+const SAID_STALL_ALONE = '사람이 없어 로그인 화면에서 기다리지 않는다';
+const SAID_FALL_BACK = '같은 탭을 평소 EP 로그인 화면으로 넘긴다. 사람이 그 창에서 평소 아이디로 로그인한다';
 
-// 로그인 탭을 지켜본다 — 빈 탭에 붙어 창 알림을 켠 뒤 로그인 주소로 넘기고, 탭의 상태를 시한까지 본다. 넘어가면 끝, 통합 인증이 안 서면
-// 평소 EP 로그인 화면으로 한 번 넘기고(사람 없는 부름은 넘기지 않고 떨어진다 — 칠 사람이 없다), 시한이 지나면 떨어진다.
+// 로그인 탭을 지켜본다 — 빈 탭에 붙어 창 알림 · 자격 증명 창 귀를 켠 뒤 로그인 주소로 넘기고, 탭의 상태를 시한까지 본다. 넘어가면 끝,
+// 회사 SSO 주소에서 SSO 가 안 서면(ssoStuck) 그것을 이 로그온에 남기고 평소 EP 로그인 화면으로 한 번 넘기고(사람 없는 부름은 넘기지 않고
+// 떨어진다 — 칠 사람이 없다), 시한이 지나면 떨어진다. fallback 이 없으면(처음부터 사람이 치는 화면) 재지 않고 기다린다.
 // 지켜보는 동안 입력 칸이 선 로그인 화면의 제목을 그 자리에서 배운다(learnSeenTitle). 내는 것: { passed: 넘어갔나 }
 async function watchLogin(port, tab, start, deadline, fallback, unattended, trace) {
   const page = await attachPage(tab.webSocketDebuggerUrl);
@@ -315,13 +358,16 @@ async function watchLogin(port, tab, start, deadline, fallback, unattended, trac
   }
   const tracing = trace ? tracer(page) : null;
   try {
-    const seen = { url: start, accepted: 0 };
+    const seen = { url: start, accepted: 0, authAsked: 0 };
     followUrl(page, seen);
     acceptConfirms(page, seen);
+    refuseAuth(page, seen);
     await page.call('Page.enable');
+    await page.call('Fetch.enable', { handleAuthRequests: true, patterns: authPatterns() });
     if (tracing) await tracing.start();
     await page.call('Page.navigate', { url: start });
     const stalled = stallClock();
+    const since = Date.now();
     let fellBack = !fallback;
     while (Date.now() < deadline) {
       const now = await readTab(page, seen);
@@ -332,7 +378,9 @@ async function watchLogin(port, tab, start, deadline, fallback, unattended, trac
         if (tracing) await tracing.after();
         return { passed: true };
       }
-      const step = stallStep(stalled(state), unattended, fellBack);
+      const why = fellBack ? '' : ssoStuck(stalled(state), seen, since);
+      const step = stallStep(Boolean(why), unattended, fellBack);
+      if (why) markNoSso(why);
       if (step === STALL.LEAVE) {
         say(SAID_STALL_ALONE);
         return { passed: false };
@@ -373,18 +421,22 @@ function sayPress(outcome) {
   else say(`평소 Edge 의 「EP 접속 정보」 창을 못 눌렀다 — ${outcome.why}. 다음 보기에서 다시 누른다`);
 }
 
-// 눈이 한 번 본 물음 창 가운데 받을 창(epConfirm)만 누른다 — 다른 물음은 사람의 것이라 둔다. 내는 것: 누른 수 · 눈이 죽었으면 -1
+// 눈이 한 번 본 물음 창 가운데 받을 창(epConfirm)만 누른다 — 다른 물음은 사람의 것이라 둔다. 내는 것: { pressed: 누른 수, others: 화면이 띄운
+// 다른 물음의 수(제목에 띄운 화면의 호스트가 든 창 — 그 탭은 사람의 물음에 막혀 있다) } · 눈이 죽었으면 null
 async function pressConfirms(eye, now) {
-  let pressed = 0;
+  let pressed = 0, others = 0;
   for (const d of many(now.dialogs)) {
-    if (!epConfirm(dialogType(d), d.message, dialogUrl(d.title), cfg)) continue;
+    if (!epConfirm(dialogType(d), d.message, dialogUrl(d.title), cfg)) {
+      if (dialogUrl(d.title)) others++;
+      continue;
+    }
     const got = await eye.press(d.i);
-    if (!got) return -1;
+    if (!got) return null;
     const outcome = pressOutcome(d, got);
     if (outcome.state === PRESS.PRESSED) pressed++;
     sayPress(outcome);
   }
-  return pressed;
+  return { pressed, others };
 }
 
 // 평소 Edge 에 로그인 주소를 연다 — 사람이 주소를 넘긴 것과 같다. 떠 있으면 그 Edge 의 새 탭, 없으면 평소 프로필로 뜬다. 포트는 안 연다.
@@ -438,27 +490,31 @@ async function learnPortalTitle(port) {
 // 창(epConfirm)만 누르거나(plan.press — 다른 물음은 사람의 것) 앞 탭이 EP 포털로 STEADY 번 잇달아 서는 것을 보고 곧 끝낸다(plan.watch).
 // plan.committed 면 포털 주소만으로는 안 서고 그 탭에 화면이 섰다는 증거까지 든다(committedState).
 // 눈이 안 서도(회사 정책이 스크립트를 막는 따위) 포털은 열고 기다림은 그대로 둔다 — 확인 창만 못 누른다. 로그인을 접지는 않는다.
-// 내는 것: { confirmed: 포털이 섰나, eye: 눈이 한 일(stepEye), pressed: 누른 수, why: 눈이 안 섰으면 그 말 }
+// 내는 것: { confirmed: 포털이 섰나, eye: 눈이 한 일(stepEye), pressed: 누른 수, why: 눈이 안 섰으면 그 말, stuck: 틈이 지났는데 마지막 읽기의
+// 앞 탭이 로그인 화면 호스트였고 걸음 동안 사람의 물음 창을 한 번도 안 봤나 — SSO 가 안 선다는 증거 }
 async function ordinaryStep(eye, exe, plan) {
   let seeing = Boolean(await eye.look());
   openOrdinary(exe, ordinaryProfile(), plan.url);
   const until = Date.now() + plan.ms;                // 틈은 포털을 연 때부터다 — 눈이 뜨는 틈이 그 틈을 먹으면 확인 창을 누를 틈이 없다
-  let pressed = 0, steady = 0;
+  let pressed = 0, steady = 0, last = null, asked = false;
   while (Date.now() < until) {
     await sleep(EYE_GAP_MS);
     if (!seeing) continue;
     if (plan.press) {
       const got = await pressRound(eye);
-      if (got < 0) { seeing = false; continue; }
-      pressed += got;
+      if (!got) { seeing = false; continue; }
+      pressed += got.pressed;
+      asked = asked || got.others > 0;               // 한 번이라도 본 사람의 물음은 남긴다 — 바쁜 PC 의 눈은 떠 있는 창을 한 읽기에서 놓친다
     }
     if (plan.watch) {
       const seen = await lookOnce(eye);
+      if (seen.tabs) last = seen.tabs;
       steady = (plan.committed ? committedState(seen.tabs) : seen.state) === LOOK.PORTAL ? steady + 1 : 0;
-      if (steady >= STEADY) return { confirmed: true, eye: stepEye(true, pressed), pressed, why: '' };
+      if (steady >= STEADY) return { confirmed: true, eye: stepEye(true, pressed), pressed, why: '', stuck: false };
     }
   }
-  return { confirmed: false, eye: stepEye(seeing, pressed), pressed, why: seeing ? '' : eye.why() };
+  const stuck = Boolean(seeing && last && last.login > 0 && !last.portal && !asked);
+  return { confirmed: false, eye: stepEye(seeing, pressed), pressed, why: seeing ? '' : eye.why(), stuck };
 }
 
 // 걸음 한 판에 눈이 한 일 — 닫힌 셋
@@ -467,10 +523,10 @@ const STEP_EYE = { BLIND: 'blind', PRESSED: 'pressed', UNSEEN: 'unseen' };
 // 걸음 한 판에 눈이 한 일을 가른다 — 눈이 안 섰다 · 확인 창을 눌렀다 · 못 봤다
 const stepEye = (seeing, pressed) => !seeing ? STEP_EYE.BLIND : pressed ? STEP_EYE.PRESSED : STEP_EYE.UNSEEN;
 
-// 확인 창 한 번 — 눈이 지금 본 물음 창 가운데 받을 창만 누른다. 내는 것: 누른 수 · 눈이 죽었으면 -1
+// 확인 창 한 번 — 눈이 지금 본 물음 창 가운데 받을 창만 누른다. 내는 것: pressConfirms 의 답 · 눈이 죽었으면 null
 async function pressRound(eye) {
   const now = await eye.look();
-  return now ? pressConfirms(eye, now) : -1;
+  return now ? pressConfirms(eye, now) : null;
 }
 
 const SAID_UNNEEDED = '포트 창의 메일 · 일정 세션이 살아 있고 문서함(ecm)은 안 받는 부름이다 — 평소 Edge 는 보지도 열지도 않는다';
@@ -486,36 +542,36 @@ function sayMark(saved) {
   if (saved.state === SAVED.FAILED) say(`평소 Edge 로그인의 표를 못 남겼다(${saved.why}) — 다음 부름이 평소 Edge 의 걸음을 한 번 더 한다`);
 }
 
-// 평소 로그인의 상태 — 닫힌 열둘. 눈으로 보기 전(seen 없음)에는 앞의 다섯 가운데 하나를, 본 뒤에는 뒤의 일곱 가운데 하나를 낸다
+// 평소 로그인의 상태 — 닫힌 열하나. 눈으로 보기 전(seen 없음)에는 앞의 다섯 가운데 하나를, 본 뒤에는 뒤의 여섯 가운데 하나를 낸다
 const ORD = {
-  SKIP: 'skip',            // 사람 없는 VDI — 칠 사람이 없어 보지도 열지도 않는다
+  SKIP: 'skip',            // 사람 없는 부름 · SSO 가 안 서는 로그온 — 칠 사람이 없어 보지도 열지도 않는다
   UNNEEDED: 'unneeded',    // 사람 있는 부름이 ecm 을 안 받고 포트 창의 세션이 산다 — 메일 · 일정 일이라 보지도 열지도 않는다(문서함 손이 그때 묻는다)
-  ANSWERED: 'answered',    // 사용자가 오늘 평소 Edge 에서 이미 로그인했다고 답했다 — 사용자의 말이 눈 위에 선다(VDI 의 기다림이 지난 뒤의 답도)
+  ANSWERED: 'answered',    // 사용자가 오늘 평소 Edge 에서 이미 로그인했다고 답했다 — 사용자의 말이 눈 위에 선다(사람이 치기를 기다린 시한이 지난 뒤의 답도)
   STOOD_BEFORE: 'stood-before',   // 이 로그온에 평소 로그인이 앞서 섰다(「섰다」 기록) — 탭이나 Edge 를 닫았어도 다시 보지도 열지도 않는다
   LOOK: 'look',            // 눈으로 봐야 가른다
   PORTAL: 'portal',        // 평소 Edge 에 EP 포털 탭이 있다 — 평소 로그인이 섰다
   ABSENT: 'absent',        // 평소 Edge 에 EP 포털 탭이 없다 — 포털을 열고 그 탭이 포털로 넘어가기를 본다
   DECIDED: 'decided',      // 못 읽었는데 이 로그온의 평소 로그인은 앞서 정해졌다(표)
   ASK: 'ask',              // 못 읽었고 정해지지 않았다 — 사람 있는 부름은 사용자에게 묻는다
-  UNKEYED: 'unkeyed',      // 못 읽었고 로그온을 못 가린 VDI — 정한 틈 걸음을 건너뛴다(표 없이 4 로 끝내면 부를 때마다 같은 자리로 돌아온다)
   FIXED: 'fixed',          // 못 읽었고 사용자가 「아직」 이라 답했다 — 정한 틈의 걸음을 한다
   ALONE: 'alone',          // 못 읽었고 사람 없는 부름이라 물을 사람이 없다 — 정한 틈의 걸음을 한다
 };
 
-// 사람 없는 VDI 부름인가 — 칠 사람이 없어 평소 Edge 도 로그인 창도 안 연다
-const aloneOnVdi = (vdi, opts) => Boolean(vdi && opts.unattended);
+// 사람 없는 부름이 SSO 가 안 서는 로그온에 닿았나 — 칠 사람이 없어 평소 Edge 도 로그인 창도 안 연다
+const aloneTyped = (typed, opts) => Boolean(typed && opts.unattended);
 
 // 메일 · 일정만 쓰는 사람 있는 부름이 산 세션 위에 섰나 — 그 일에는 평소 로그인을 안 쓴다. 사람 없는 아침 부름(인자는 domino 다)은 빼고,
 // 세션이 죽은 부름은 지금 차례(평소 Edge → 포트 창)대로 간다
 const unneeded = (opts, got) => !opts.unattended && got.code === RECEIVED.OK && !opts.pass.includes('ecm');
 
-// 평소 로그인의 상태를 받은 증거로 한 번 셈한다 — vdi 자리 · opts 부름의 선택 · got 첫 받기 · key 로그온 열쇠 · stood 「섰다」 기록 · seen 눈이 본
-// 것(lookForPortal) · mark 「해 봤다」 표. 증거는 차례로 모인다 — key 가 없으면(undefined) 열쇠 없이 가를 수 있는 데까지만 가른다
-function ordinaryState({ vdi, opts, got, key, stood, seen, mark }) {
-  if (aloneOnVdi(vdi, opts)) return ORD.SKIP;
+// 평소 로그인의 상태를 받은 증거로 한 번 셈한다 — opts 부름의 선택 · got 첫 받기 · key 로그온 열쇠 · typed SSO 가 안 서는 로그온인가 · stood
+// 「섰다」 기록 · seen 눈이 본 것(lookForPortal) · mark 「해 봤다」 표. 증거는 차례로 모인다 — key 가 없으면(undefined) 열쇠 없이 가를 수 있는
+// 데까지만 가른다
+function ordinaryState({ opts, got, key, typed, stood, seen, mark }) {
   if (opts.ordinary === ORDINARY_DONE) return ORD.ANSWERED;   // 사용자의 답은 기록으로 남긴다 — 메일 부름에 실려 와도
   if (unneeded(opts, got)) return ORD.UNNEEDED;
   if (key === undefined) return ORD.LOOK;
+  if (aloneTyped(typed, opts)) return ORD.SKIP;
   if (key && stood === key) return ORD.STOOD_BEFORE;
   if (!seen) return ORD.LOOK;
   if (seen.state === LOOK.PORTAL) return ORD.PORTAL;
@@ -523,58 +579,62 @@ function ordinaryState({ vdi, opts, got, key, stood, seen, mark }) {
   if (key && mark === key) return ORD.DECIDED;
   if (!opts.ordinary && !opts.unattended) return ORD.ASK;
   if (opts.unattended) return ORD.ALONE;
-  return vdi && !key ? ORD.UNKEYED : ORD.FIXED;
+  return ORD.FIXED;
 }
 
 // 포털을 여는 판의 갈래 — 닫힌 넷
 const PLAN = {
-  WATCH_VDI: 'watch-vdi',  // 없다 · VDI — 사용자가 치는 동안 포털이 서기를 본다
-  WATCH: 'watch',          // 없다 · 데스크톱 — 확인 창을 누르며 포털이 서기를 본다
-  PRESS: 'press',          // 못 읽는 자리의 데스크톱 — 정한 틈 동안 확인 창을 누른다
-  OPEN_VDI: 'open-vdi',    // 못 읽는 자리의 VDI — 포털만 연다
+  WATCH_TYPED: 'watch-typed',  // 없다 · SSO 가 안 서는 로그온 — EP 포털을 열고 사용자가 치는 동안 포털이 서기를 본다
+  WATCH: 'watch',              // 없다 · SSO 를 잰다 — 회사 SSO 주소를 열고 확인 창을 누르며 포털이 서기를 본다
+  PRESS: 'press',              // 못 읽는 자리 · SSO 가 안 섰다는 기록이 없다 — 회사 SSO 주소를 열고 정한 틈 동안 확인 창을 누른다
+  OPEN_TYPED: 'open-typed',    // 못 읽는 자리 · SSO 가 안 서는 로그온 — EP 포털만 연다
 };
 
-// 포털을 열고 기다리는 판의 꼴 — 평소 로그인의 상태와 자리(VDI)로 정한다. kind 판의 갈래 · ms 기다릴 틈 · press 확인 창을 누르나 · watch 포털이
-// 서기를 보나 · step 눈과 함께 걷나(아니면 포털만 연다) · committed 포털 주소에 더해 그 탭에 화면이 섰다는 증거를 드나. 데스크톱은 확인 창을
-// 누르며 ordinaryMs 까지 — 붙은 창 로그인으로 메일 · 일정은 서야 한다. VDI 는 사람이 자판 앞에서 제 물음 창까지 누르니 누르지 않는다 — 없으면
-// 사용자가 치는 동안 loginMs 까지 보고, 못 읽는 자리면 포털만 연다. VDI 만 증거를 드는 까닭 — VDI 는 포털 주소를 열어 막 연 탭도 주소창이
-// 포털이고, 데스크톱은 로그인 화면 호스트를 열어 막 연 탭이 포털로 안 읽힌다
-function portalPlan(state, vdi) {
+// 포털을 열고 기다리는 판의 꼴 — 평소 로그인의 상태와 이 로그온의 SSO(typed — 안 선다는 기록 · 이 부름이 본 것)로 정한다. kind 판의 갈래 · ms
+// 기다릴 틈 · press 확인 창을 누르나 · watch 포털이 서기를 보나 · step 눈과 함께 걷나(아니면 포털만 연다) · committed 포털 주소에 더해 그 탭에
+// 화면이 섰다는 증거를 드나. SSO 를 재는 판은 회사 SSO 주소를 열어 확인 창을 누르며 ordinaryMs 까지 — 붙은 창 로그인으로 메일 · 일정은 서야
+// 한다. SSO 가 안 서는 로그온은 사람이 자판 앞에서 제 물음 창까지 누르니 누르지 않는다 — 없으면 사용자가 치는 동안 loginMs 까지 보고, 못
+// 읽는 자리면 포털만 연다. 그쪽만 증거를 드는 까닭 — EP 포털 주소를 열어 막 연 탭도 주소창이 포털이고, 회사 SSO 주소는 로그인 화면 호스트라
+// 막 연 탭이 포털로 안 읽힌다
+function portalPlan(state, typed) {
   if (![ORD.ABSENT, ORD.FIXED, ORD.ALONE].includes(state)) return null;   // 여는 상태가 아니다 — 평소 Edge 는 안 연다
-  const url = ordinaryUrl(vdi);
-  if (state === ORD.ABSENT) return vdi ? { kind: PLAN.WATCH_VDI, url, ms: cfg.loginMs, press: false, watch: true, step: true, committed: true }
+  const url = ordinaryUrl(typed);
+  if (state === ORD.ABSENT) return typed ? { kind: PLAN.WATCH_TYPED, url, ms: cfg.loginMs, press: false, watch: true, step: true, committed: true }
     : { kind: PLAN.WATCH, url, ms: cfg.ordinaryMs, press: true, watch: true, step: true };
-  return vdi ? { kind: PLAN.OPEN_VDI, url, ms: 0, press: false, watch: false, step: false }
+  return typed ? { kind: PLAN.OPEN_TYPED, url, ms: 0, press: false, watch: false, step: false }
     : { kind: PLAN.PRESS, url, ms: cfg.ordinaryMs, press: true, watch: false, step: true };
 }
 
-// 평소 Edge 에 여는 주소 — 데스크톱은 로그인 탭이 데스크톱에서 여는 주소(회사 SSO — 통합 인증에 맡긴다)와 한 자리(loginUrls)에서, VDI 는
-// EP 포털(사람이 거기서 친다). 평소 Edge 에는 포트가 없어 연 탭을 다른 주소로 넘기지 못한다 — 통합 인증이 안 서면 시한 뒤 알리고 잇는다
-const ordinaryUrl = vdi => vdi ? cfg.portal : loginUrls(false).start;
+// 평소 Edge 에 여는 주소 — SSO 를 재는 판은 로그인 탭이 여는 주소(회사 SSO — 통합 인증에 맡긴다)와 한 자리(loginUrls)에서, SSO 가 안 서는
+// 로그온은 EP 포털(사람이 거기서 친다). 평소 Edge 에는 포트가 없어 연 탭을 다른 주소로 넘기지 못한다 — SSO 가 안 서면 새 탭에 EP 포털을 연다
+const ordinaryUrl = typed => typed ? cfg.portal : loginUrls(false).start;
 
-// 포털을 열고 기다린 판의 끝 — 닫힌 다섯
+// 포털을 열고 기다린 판의 끝 — 닫힌 여섯
 const PORTAL_END = {
   STOOD: 'stood',              // 그 탭이 EP 포털로 넘어갔다 — 평소 로그인이 섰다
-  LATE: 'late',                // 데스크톱 · 틈 안에 안 넘어갔다 — 알리고 포트 창으로 잇는다
-  VDI_LATE: 'vdi-late',        // VDI · 사용자가 치는 동안 안 넘어갔다 — 4 로 사용자에게 묻는다. 표는 안 남긴다(사용자의 답이 다음 부름을 정한다)
-  OPENED: 'opened',            // 못 읽는 자리의 데스크톱 · 정한 틈을 다 뒀다 — 넘었나는 못 본다
-  VDI_OPENED: 'vdi-opened',    // 못 읽는 자리의 VDI · 포털만 열었다 — 4 로 사용자가 로그인한 뒤 다시 부르게 한다
+  LATE: 'late',                // SSO 를 잰 판 · 틈 안에 안 넘어갔다 — 알리고 포트 창으로 잇는다
+  NO_SSO: 'no-sso',            // SSO 를 잰 판 · 틈이 지나도 그 탭이 로그인 화면에 머문다 — SSO 가 안 선다(기록)
+  TYPED_LATE: 'typed-late',    // SSO 가 안 서는 로그온 · 사용자가 치는 동안 안 넘어갔다 — 4 로 사용자에게 묻는다. 표는 안 남긴다(사용자의 답이 다음 부름을 정한다)
+  OPENED: 'opened',            // 못 읽는 자리 · 정한 틈을 다 뒀다 — 넘었나는 못 본다
+  TYPED_OPENED: 'typed-opened',  // 못 읽는 자리 · SSO 가 안 서는 로그온 · 포털만 열었다 — 4 로 사용자가 로그인한 뒤 다시 부르게 한다
 };
 
-// 그 끝이 이 로그온의 표를 남기나 — VDI 에서 사람의 로그인을 못 기다린 판만 안 남긴다(사용자의 답이 다음 부름을 정한다)
-const endMarks = end => end !== PORTAL_END.VDI_LATE;
+// 그 끝이 이 로그온의 표를 남기나 — 사람의 로그인을 못 기다린 판만 안 남긴다(사용자의 답이 다음 부름을 정한다)
+const endMarks = end => end !== PORTAL_END.TYPED_LATE;
 
 // 포털을 열고 기다린 판의 끝을 셈한다
 function portalEnd(plan, step) {
-  if (plan.kind === PLAN.OPEN_VDI) return PORTAL_END.VDI_OPENED;
+  if (plan.kind === PLAN.OPEN_TYPED) return PORTAL_END.TYPED_OPENED;
   if (plan.kind === PLAN.PRESS) return PORTAL_END.OPENED;
   if (step.confirmed) return PORTAL_END.STOOD;
-  return plan.kind === PLAN.WATCH_VDI ? PORTAL_END.VDI_LATE : PORTAL_END.LATE;
+  if (plan.kind === PLAN.WATCH_TYPED) return PORTAL_END.TYPED_LATE;
+  return step.stuck ? PORTAL_END.NO_SSO : PORTAL_END.LATE;
 }
 
-// 평소 Edge 에 포털을 열고 기다린다 — 걸음(또는 포털만 열기) · 그 끝을 알리고 표를 남긴 뒤, VDI 의 끝이면 4 로 멈춘다. 내는 것: true(열었다 —
-// 부른 쪽이 세션을 다시 받는다)
-async function untilPortal(eye, plan, key) {
+// 평소 Edge 에 포털을 열고 기다린다 — 걸음(또는 포털만 열기) · 그 끝을 알리고 표를 남긴 뒤, 사람이 칠 판의 끝이면 4 로 멈춘다. SSO 를 잰 판이
+// SSO 가 안 서는 것을 보면 그것을 남기고, 사람 있는 부름은 같은 평소 Edge 에 EP 포털을 열어 사람이 치는 판으로 잇는다(로그인 화면에 머문 앞
+// 탭은 사람의 것이라 둔다). 내는 것: true(열었다 — 부른 쪽이 세션을 다시 받는다)
+async function untilPortal(eye, plan, key, opts) {
   const exe = findEdge();
   if (!exe) throw new Exit(1, NO_EDGE);
   sayPortalOpen(plan);
@@ -584,44 +644,50 @@ async function untilPortal(eye, plan, key) {
   if (plan.press) sayStep(step);
   const end = portalEnd(plan, step);
   sayPortalEnd(end, plan);
+  if (end === PORTAL_END.NO_SSO) {
+    markNoSso(`평소 Edge 에 연 회사 SSO 주소가 ${plan.ms / 1000}초 지나도 로그인 화면에 머문다`);
+    if (!opts.unattended) return untilPortal(eye, portalPlan(ORD.ABSENT, true), key, opts);
+  }
   if (endMarks(end) && key) sayMark(writeMark(key));
   if (end === PORTAL_END.STOOD && key) sayStood(writeStood(key));
-  if (end === PORTAL_END.VDI_LATE) throw new Exit(4, VDI_NOT_YET(plan.ms));
-  if (end === PORTAL_END.VDI_OPENED) throw new Exit(4, VDI_ORDINARY);
+  if (end === PORTAL_END.TYPED_LATE) throw new Exit(4, TYPED_NOT_YET(plan.ms));
+  if (end === PORTAL_END.TYPED_OPENED) throw new Exit(4, TYPED_ORDINARY);
   return true;
 }
 
 // 평소 Edge 의 걸음 — 사용자의 평소 Edge 를 보고 고른다(머리말 「차례」). 이 로그온의 표(ORDINARY_MARK)는 평소 Edge 를 못 읽는 자리에서 이 로그온의
 // 평소 로그인이 정해졌다는 기록이다 — 정한 틈의 걸음을 했거나 사용자가 답했다. 내는 것: 평소 Edge 를 열었나(열었으면 부른 쪽이 세션을 다시
-// 받는다 — 평소 로그인이 포트 창의 메일을 끊는다). 사람에게 물어야 하거나 VDI 에서 사람의 로그인을 못 기다렸으면 Exit(4)
-async function ordinaryFirst(vdi, opts, got) {
-  const before = ordinaryState({ vdi, opts, got });
-  if (before === ORD.SKIP || before === ORD.UNNEEDED) {
+// 받는다 — 평소 로그인이 포트 창의 메일을 끊는다). 사람에게 물어야 하거나 사람이 칠 판에서 사람의 로그인을 못 기다렸으면 Exit(4)
+async function ordinaryFirst(opts, got) {
+  const before = ordinaryState({ opts, got });
+  if (before === ORD.UNNEEDED) {
     sayOrdinary(before);
     return false;
   }
-  const key = logonKey();
+  const key = theKey();
   if (before === ORD.ANSWERED) {
     sayOrdinary(before);
     if (key) sayMark(writeMark(key));
     if (key) sayStood(writeStood(key));
     return false;
   }
+  const typed = ssoDown();
   const stood = readStood();
-  if (ordinaryState({ vdi, opts, got, key, stood }) === ORD.STOOD_BEFORE) {
-    sayOrdinary(ORD.STOOD_BEFORE);
+  const known = ordinaryState({ opts, got, key, typed, stood });
+  if (known === ORD.SKIP || known === ORD.STOOD_BEFORE) {
+    sayOrdinary(known);
     return false;
   }
   const eye = edgeEye(eyeSelect());
   try {
     const seen = await lookForPortal(eye);
-    const state = ordinaryState({ vdi, opts, got, key, stood, seen, mark: key ? readMark() : '' });
+    const state = ordinaryState({ opts, got, key, typed, stood, seen, mark: key ? readMark() : '' });
     sayOrdinary(state, seen);
     if (state === ORD.PORTAL && key) sayStood(writeStood(key));
     if (state === ORD.ASK) throw new Exit(4, ASK_PERSON);
-    const plan = portalPlan(state, vdi);
+    const plan = portalPlan(state, typed);
     if (!plan) return false;
-    return await untilPortal(eye, plan, key);                         // await — 안 기다리면 finally 가 눈을 먼저 닫는다
+    return await untilPortal(eye, plan, key, opts);                   // await — 안 기다리면 finally 가 눈을 먼저 닫는다
   } finally {
     eye.close();
   }
@@ -629,17 +695,17 @@ async function ordinaryFirst(vdi, opts, got) {
 
 // ── 평소 Edge 의 말 ───────────────────────────────────────────────────────
 
-// VDI 의 정한 틈 걸음이 끝내는 말 — 평소 Edge 를 못 읽는 자리에서 사용자가 「아직」 이라 했다. 사용자가 평소 Edge 에서 로그인한 뒤에 같은
-// 명령을 다시 불러야 ep-login 창이 그 뒤에 로그인한다
-const VDI_ORDINARY = 'VDI — 사용자의 평소 Edge 에 EP 포털을 열었다(포트 없이 — 사람이 연 것과 같다). 문서함의 DRM 문서는 평소 Edge 의 로그인이 ' +
+// SSO 가 안 서는 로그온의 정한 틈 걸음이 끝내는 말 — 평소 Edge 를 못 읽는 자리에서 사용자가 「아직」 이라 했다. 사용자가 평소 Edge 에서
+// 로그인한 뒤에 같은 명령을 다시 불러야 ep-login 창이 그 뒤에 로그인한다
+const TYPED_ORDINARY = 'SSO 가 안 서는 로그온이다 — 사용자의 평소 Edge 에 EP 포털을 열었다(포트 없이 — 사람이 연 것과 같다). 문서함의 DRM 문서는 평소 Edge 의 로그인이 ' +
   '먼저 있어야 열린다. 다음: 사용자에게 방금 열린 평소 Edge 의 EP 탭에서 평소 아이디로 로그인해 달라고 하고(「다른 PC에서 EP 접속 정보」 창이 뜨면 ' +
   '「확인」), 됐다고 하면 같은 명령을 다시 부른다 — 그때 세션이 안 서 있으면 EP 로그인용 Edge 창이 떠 거기서 한 번 더 로그인한다';
 // 평소 Edge 를 못 읽었을 때 사람 있는 부름이 끝내는 말 — 사용자만 아는 것을 한 번 묻는다
 const ASK_PERSON = '사용자의 평소 Edge 를 읽지 못해 평소 EP 로그인이 있는지 모르고, 아무것도 안 열었다(까닭은 위 줄). 다음: 사용자에게 한 번 묻는다 — ' +
   `「오늘 평소 쓰시는 Edge 에서 EP 에 이미 로그인하셨나요?」. 했다면 같은 명령에 ${ORDINARY_DONE} 를, 아직이면 ${ORDINARY_NOT_YET} 를 붙여 다시 부른다 ` +
   '(답은 이 윈도 로그온 동안 남아 다시 안 묻는다)';
-// VDI 에서 평소 Edge 를 열고 기다린 시한이 지났을 때 끝내는 말
-const VDI_NOT_YET = ms => `VDI — 사용자의 평소 Edge 에 EP 포털을 열고 ${Math.round(ms / 1000)}초 기다렸는데 그 탭이 EP 포털로 넘어가지 않았다. ` +
+// SSO 가 안 서는 로그온에서 평소 Edge 를 열고 기다린 시한이 지났을 때 끝내는 말
+const TYPED_NOT_YET = ms => `SSO 가 안 서는 로그온이다 — 사용자의 평소 Edge 에 EP 포털을 열고 ${Math.round(ms / 1000)}초 기다렸는데 그 탭이 EP 포털로 넘어가지 않았다. ` +
   `다음: 사용자에게 그 EP 탭에서 평소 아이디로 로그인을 마쳤는지 묻는다 — 마쳤다면 같은 명령에 ${ORDINARY_DONE} 를 붙여 다시 부르고, 아직이면 ` +
   '로그인한 뒤 그대로 다시 부른다';
 
@@ -652,7 +718,7 @@ const unreadWhy = seen => seen.state === LOOK.EYE_DOWN ? eyeDown(seen.eyeWhy)
 
 // 평소 로그인의 상태를 경과 줄로 알린다 — 그 상태에 이른 까닭부터
 function sayOrdinary(state, seen) {
-  if (state === ORD.SKIP) return;                    // 사람 없는 VDI — 알릴 사람이 없다
+  if (state === ORD.SKIP) return;                    // 사람 없는 부름 · SSO 가 안 서는 로그온 — 끝의 4 가 든다
   if (state === ORD.UNNEEDED) return say(SAID_UNNEEDED);
   if (state === ORD.STOOD_BEFORE) return say(SAID_STOOD_BEFORE);
   if (state === ORD.ANSWERED) return say('사용자가 오늘 평소 Edge 에서 EP 에 이미 로그인했다고 답했다 — 평소 Edge 는 안 연다');
@@ -661,20 +727,17 @@ function sayOrdinary(state, seen) {
   say(`사용자의 평소 Edge 를 읽지 못했다 — ${unreadWhy(seen)}`);
   if (state === ORD.DECIDED) say('이 로그온의 평소 로그인은 앞서 정해졌다(평소 Edge 걸음을 했거나 사용자가 답했다) — 평소 Edge 는 안 연다');
   if (state === ORD.ALONE) say('사람 없는 부름이라 물을 사람이 없다 — 정한 틈의 평소 Edge 걸음을 한다');
-  if (state === ORD.UNKEYED || state === ORD.FIXED) say('사용자가 아직이라고 답했다 — 평소 Edge 걸음부터 한다');
-  if (state === ORD.UNKEYED) {
-    say('이 윈도 로그온을 못 가려 평소 Edge 를 먼저 여는 걸음을 건너뛴다 — DRM 문서가 안 열리면 사용자가 평소 Edge 에서 EP 에 로그인한 뒤 이 명령을 다시 부른다');
-  }
+  if (state === ORD.FIXED) say('사용자가 아직이라고 답했다 — 평소 Edge 걸음부터 한다');
 }
 
-// 포털을 여는 판의 첫 줄 — 못 읽는 자리의 VDI 는 말 없이 연다(끝의 4 가 다음을 든다)
+// 포털을 여는 판의 첫 줄 — 못 읽는 자리의 SSO 가 안 서는 로그온은 말 없이 연다(끝의 4 가 다음을 든다)
 function sayPortalOpen(plan) {
-  if (plan.kind === PLAN.WATCH_VDI) {
-    say(`VDI — 사용자의 평소 Edge 에 EP 포털을 연다(포트 없이). 사용자가 거기서 평소 아이디로 로그인하면 이어 간다 — 그 탭이 EP 포털로 넘어가기를 최대 ${Math.round(plan.ms / 1000)}초 본다`);
+  if (plan.kind === PLAN.WATCH_TYPED) {
+    say(`SSO 가 안 서는 로그온이다 — 사용자의 평소 Edge 에 EP 포털을 연다(포트 없이). 사용자가 거기서 평소 아이디로 로그인하면 이어 간다 — 그 탭이 EP 포털로 넘어가기를 최대 ${Math.round(plan.ms / 1000)}초 본다`);
   } else if (plan.kind === PLAN.WATCH) {
-    say(`사용자의 평소 Edge 에 EP 포털을 연다(포트 없이 — 사람이 연 것과 같다) — 「EP 접속 정보」 창이 뜨면 누르며, 그 탭이 EP 포털로 넘어가기를 최대 ${plan.ms / 1000}초 본다`);
+    say(`사용자의 평소 Edge 에 EP 로그인(회사 SSO)을 연다(포트 없이 — 사람이 연 것과 같다) — 「EP 접속 정보」 창이 뜨면 누르며, 그 탭이 EP 포털로 넘어가기를 최대 ${plan.ms / 1000}초 본다`);
   } else if (plan.kind === PLAN.PRESS) {
-    say(`사용자의 평소 Edge 에 EP 포털을 연다(포트 없이 — 사람이 연 것과 같다) — ${plan.ms / 1000}초 동안 「EP 접속 정보」 창이 뜨면 누른다`);
+    say(`사용자의 평소 Edge 에 EP 로그인(회사 SSO)을 연다(포트 없이 — 사람이 연 것과 같다) — ${plan.ms / 1000}초 동안 「EP 접속 정보」 창이 뜨면 누른다`);
   }
 }
 
@@ -820,16 +883,16 @@ const TAB_WHY = { LOST: 'lost', TRACE: 'trace' };
 
 // 사람의 로그인을 돌려준다(--give-back) — 평소 걸음 하나만 하고 끝낸다. 포털 탭이 있든 「섰다」 기록이 있든 평소 Edge 에 로그인을 열고, 포트
 // 창은 안 건드리고 다시 받지도 않는다(그 로그인이 포트 창의 메일 · 일정 세션을 끊는다 — 사람이 쓰려는 것이다). 포털이 섰나는 보지 않는다 —
-// 사람이 쓰던 죽은 포털 탭도 포털로 읽혀 새 로그인을 못 가린다. 데스크톱은 정한 틈 동안 확인 창을 누르고(PRESS), VDI 는 열고 끝낸다(사람이
-// 거기서 친다). 사람 없는 부름은 거절한다. 내는 것: 0
-async function giveBack(vdi, opts) {
+// 사람이 쓰던 죽은 포털 탭도 포털로 읽혀 새 로그인을 못 가린다. 회사 SSO 주소를 열어 정한 틈 동안 확인 창을 누르고(PRESS), SSO 가 안 서는
+// 로그온은 EP 포털을 열고 끝낸다(사람이 거기서 친다). 사람 없는 부름은 거절한다. 내는 것: 0
+async function giveBack(opts) {
   if (opts.unattended) throw new Exit(1, GIVE_BACK_ALONE);
-  const plan = portalPlan(ORD.FIXED, vdi);
-  if (vdi) return openOnly(plan);
-  const key = logonKey();
+  const typed = ssoDown();
+  const plan = portalPlan(ORD.FIXED, typed);
+  if (typed) return openOnly(plan);
   const eye = edgeEye(eyeSelect());
   try {
-    await untilPortal(eye, plan, key);
+    await untilPortal(eye, plan, theKey(), opts);
   } finally {
     eye.close();
   }
@@ -837,7 +900,7 @@ async function giveBack(vdi, opts) {
   return 0;
 }
 
-// VDI 에서 돌려주는 걸음 — 평소 Edge 에 EP 포털만 연다(사람이 거기서 친다). 내는 것: 0
+// SSO 가 안 서는 로그온에서 돌려주는 걸음 — 평소 Edge 에 EP 포털만 연다(사람이 거기서 친다). 내는 것: 0
 function openOnly(plan) {
   const exe = findEdge();
   if (!exe) throw new Exit(1, NO_EDGE);
@@ -868,7 +931,7 @@ async function loginPlace(got, opts) {
 
 const NO_EDGE = 'Edge 를 못 찾았다';
 const NO_OPEN_PORT = '받는 손은 붙었다는데 포트를 연 Edge 를 못 찾았다';
-const SAID_WATCH_VDI = '그 창에서 사람이 평소 아이디로 로그인한다 — 이쪽은 로그인이 끝나기를 기다린다';
+const SAID_WATCH_TYPED = 'SSO 가 안 서는 로그온이다 — 그 창의 EP 로그인 화면에서 사람이 평소 아이디로 로그인한다. 이쪽은 로그인이 끝나기를 기다린다';
 const SAID_WATCH = '로그인 탭을 지켜본다 — 통합 인증이면 입력 없이 넘는다';
 const SAID_NO_LOGIN_TAB = '로그인 탭을 못 열었다 — 받기만 되풀이한다';
 
@@ -878,19 +941,21 @@ const sayLoginTab = (port, why) => say(`Edge(127.0.0.1:${port})에 ${why === TAB
 // 로그인 시한 — 사람 없는 부름은 통합 인증이 설 만큼만 기다린다
 const loginDeadline = opts => Date.now() + (opts.unattended ? Math.min(cfg.loginMs, UNATTENDED_MS) : cfg.loginMs);
 
-// 고른 자리의 로그인 탭을 지켜본다 — VDI 는 사람이 치는 것을, 데스크톱은 통합 인증이 넘는 것을. 내는 것: watchLogin 의 답
-async function watchPlace(place, vdi, deadline, opts) {
-  say(vdi ? SAID_WATCH_VDI : SAID_WATCH);
+// 고른 자리의 로그인 탭을 지켜본다 — SSO 가 안 서는 로그온은 사람이 치는 것을, 아니면 통합 인증이 넘는 것을(넘지 못하면 SSO 가 안 선다고
+// 남기고 사람이 치는 화면으로 넘긴다). 내는 것: watchLogin 의 답
+async function watchPlace(place, deadline, opts) {
+  const typed = ssoDown();
+  say(typed ? SAID_WATCH_TYPED : SAID_WATCH);
   if (!place.tab) {
     say(SAID_NO_LOGIN_TAB);
     return { passed: false };
   }
-  const urls = loginUrls(vdi);
+  const urls = loginUrls(typed);
   return watchLogin(place.port, place.tab, urls.start, deadline, urls.fallback, opts.unattended, opts.trace);
 }
 
-// 로그인 탭이 여는 주소와 통합 인증이 안 설 때 넘길 주소 — VDI 는 처음부터 평소 EP 로그인 화면이라 넘길 곳이 없다
-const loginUrls = vdi => vdi ? { start: cfg.epLogin, fallback: '' } : { start: cfg.companyLogin, fallback: cfg.epLogin };
+// 로그인 탭이 여는 주소와 SSO 가 안 설 때 넘길 주소 — SSO 가 안 서는 로그온은 처음부터 평소 EP 로그인 화면이라 넘길 곳이 없다
+const loginUrls = typed => typed ? { start: cfg.epLogin, fallback: '' } : { start: cfg.companyLogin, fallback: cfg.epLogin };
 
 // 로그인 뒤 다시 받기의 시한 — 사람 없는 부름은 안 넘어간 로그인을 시한까지 기다리지 않는다(한 번 받아 보고 끝낸다)
 const receiveDeadline = (opts, watched, deadline) => opts.unattended && !watched.passed ? Date.now() : deadline;
@@ -924,17 +989,16 @@ function parseArgs(argv) {
 async function main(argv) {
   needNode();
   const opts = parseArgs(argv);
-  const vdi = onVdi();
-  if (opts.giveBack) return giveBack(vdi, opts);
+  if (opts.giveBack) return giveBack(opts);
   let got = await receiveAll(opts.pass);
   // 평소 Edge 의 로그인이 먼저다 — 포트 창의 세션이 살았든 아니든 평소 Edge 를 보고 고른다(그 로그인만 이 PC 의 프로그램 로그인까지 한다).
   // 받는 손이 스스로 멈춘 부름(인자 따위)은 열 일이 아니다. 걸음 뒤에는 다시 받는다 — 평소 로그인이 포트 창의 메일을 끊는다
-  if (!handStopped(got) && await ordinaryFirst(vdi, opts, got)) got = await receiveAll(opts.pass);
+  if (!handStopped(got) && await ordinaryFirst(opts, got)) got = await receiveAll(opts.pass);
   if (settled(got, opts)) return finish(got, opts);
-  if (aloneOnVdi(vdi, opts)) throw new Exit(4, UNATTENDED_VDI);
+  if (aloneTyped(ssoDown(), opts)) throw new Exit(4, UNATTENDED_TYPED);
   const deadline = loginDeadline(opts);
   const place = await loginPlace(got, opts);
-  const watched = await watchPlace(place, vdi, deadline, opts);
+  const watched = await watchPlace(place, deadline, opts);
   got = await receiveUntil(opts.pass, receiveDeadline(opts, watched, deadline));
   await tidyUp(place);
   return finish(got, opts);
@@ -949,7 +1013,7 @@ const settled = (got, opts) => (got.code === RECEIVED.OK || handStopped(got) || 
 // 받는 손이 스스로 멈췄나(인자 · 설정 · 도구) — 열 일이 아니다
 const handStopped = got => got.code === RECEIVED.TOOL;
 
-const UNATTENDED_VDI = 'VDI 는 사람이 아이디를 쳐야 한다 — 사람 없는 부름은 로그인 창을 띄우지 않는다. 다음: 사람이 대화에서 EP 로그인을 한다';
+const UNATTENDED_TYPED = '이 로그온은 SSO 가 안 서 사람이 아이디를 쳐야 한다 — 사람 없는 부름은 로그인 창을 띄우지 않는다. 다음: 사람이 대화에서 EP 로그인을 한다';
 const UNATTENDED_NOT_STOOD = '통합 인증으로 세션이 안 섰다 — 사람이 없어 더 기다리지 않았다. 다음: 사람이 그 Edge 창이나 대화에서 EP 로그인을 한다';
 const NOT_STOOD = got => `로그인 시한(${Math.round(cfg.loginMs / 1000)}초) 안에 세션이 안 섰다${got.said ? ` — ${got.said}` : ''}. ` +
   '다음: 사람에게 그 Edge 창에서 EP 로그인을 마쳐 달라고 하고, 됐다고 하면 같은 명령을 다시 부른다(이번엔 받기만 하고 끝난다)';

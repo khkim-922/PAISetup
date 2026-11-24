@@ -15,7 +15,8 @@
 //   SESSION_DOMAIN 회사 도메인 · SESSION_LOGIN_HOSTS 로그인 화면 호스트(쉼표) · SESSION_REQUEST_SECONDS 묻기 하나의 시한 ·
 //   SESSION_PASS_SECONDS --ecm-tab 의 시한 · SESSION_LOGIN_WAIT_SECONDS 입구가 로그인 탭을 지켜보는 시한 ·
 //   SESSION_ORDINARY_SECONDS 입구가 평소 Edge 에 EP 포털을 열어 두는 틈 · SESSION_FALLBACK_SECONDS 입구가 입력 칸 있는 로그인 화면에
-//   머물러 통합 인증이 안 선 것으로 보기까지. 기본값은 places.json 과
+//   머물러 통합 인증이 안 선 것으로 보기까지 · SESSION_SSO_SECONDS 입구가 회사 SSO 주소에서 못 넘는 로그인 탭을 SSO 가 안 선 것으로 보기까지.
+//   기본값은 places.json 과
 //   ep_places.js 의 settings() 가 든다. 서버 · 도메인 · 호스트의 바꿈은 가짜 서버로 재는 검사(설정 저장소 _check/skills/ep-login/check_session.js)를 위해 있다.
 //
 // 내는 것 — 세션 파일(Playwright 저장 상태 꼴 {"cookies": [...], "origins": []} · 회사 도메인의 쿠키만). 종료 0 이면 표준 출력의
