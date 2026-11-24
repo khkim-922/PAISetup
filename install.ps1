@@ -6443,73 +6443,81 @@ function Install-FreeSkills([string]$Tool) {
 
 #endregion 칸 없이 까는 스킬
 
-#region 일일 보고 시계 옮겨 받기 — 메일함 스캔이 보고를 들던 PC 의 보고를 업데이트 뒤에도 같은 시각에 뜨게 한다
+#region 메일 비서 작업 다시 겨누기 — 걸린 메일함 스캔 · 일일 보고 작업이 업데이트 뒤에도 지금 판 스킬을 부르게 한다
 
-# 메일함 스캔이 보고를 함께 들던 PC 는 업데이트하면 보고를 다시 걸 자가 없다 — 그 순간 그 PC 에서 도는 것은 설치뿐이다. 그래서
-#   설치가 홈마다 깔린 스킬 daily-brief 의 `unattended/clock.py adopt` 를 한 번씩 부른다. 옮겨 받을지 · 무엇을 걸지(스캔 작업이
-#   걸렸나 · 그 작업이 이 홈의 스캔을 부르나 · 시계가 이미 있나 · 시각은 옛 시각표에서)는 `adopt` 혼자 정한다 — 이 설치기는
-#   부르고 끝 줄을 옮길 뿐이다. `adopt` 는 여러 번 불러도 같고, 건너뛴 갈래는 다 0 이다. 계약(인자 · 끝 줄 · 종료 값)은 그
-#   스킬의 `references/DESIGN.md` 「사람 없는 실행의 문」이 든다.
-# ⚠ **홈에 깔린 사본을 부른다 — 짐의 사본이 아니다.** `adopt` 는 걸린 스캔 작업이 제 곁의 `scan.py` 를 부르나로 그 홈의 것인지 가린다 —
-#   짐의 사본을 부르면 곁이 짐 자리라 늘 「이 홈의 스캔이 건 작업이 아니다」로 건너뛴다.
+# 메일 비서의 작업 둘(`\mail-secretary\mailbox-scan` · `\mail-secretary\daily-brief`)은 걸 때 한 홈의 입구와 회사 메일 손의 절대 경로를
+#   명령줄에 굳힌다. 그 홈이 이번 판을 못 받았거나 걷혔으면 작업은 옛 코드를 부르거나 아무것도 못 부른 채 조용히 돈다 — 업데이트 순간
+#   그 PC 에서 도는 것은 설치뿐이라 설치가 다시 겨눈다. 이번 판이 깐 홈 하나를 골라 그 홈에서만 스킬 mailbox-scan 의 `scan.py adopt` 를,
+#   그 뒤 daily-brief 의 `unattended/clock.py adopt` 를 부른다. 무엇을 다시 걸지(걸렸나 · 이 홈을 부르나 · 주기 · 시각 · 켜고 끈 상태)는 두
+#   `adopt` 가 혼자 정한다 — 이 설치기는 부르고 끝 줄을 옮길 뿐이다. 두 `adopt` 는 여러 번 불러도 같고 건너뛴 갈래는 다 0 이다. 계약(인자 ·
+#   끝 줄 · 종료 값)은 두 스킬의 `references/DESIGN.md`(스캔 「다시 겨누기 — adopt」 · 일일 보고 「사람 없는 실행의 문」)가 든다.
+# ⚠ **한 홈에서만 부른다** — 홈마다 부르면 홈끼리 서로 제 쪽으로 다시 겨눈다.
+# ⚠ **스캔이 먼저다** — 시계의 `adopt` 는 걸린 스캔 작업이 제 홈의 스캔을 부를 때만 건다. 스캔이 먼저 이 홈으로 옮겨 앉아야 시계가 선다.
+# ⚠ **홈에 깔린 사본을 부른다 — 짐의 사본이 아니다.** `adopt` 는 제 곁의 입구 · 손을 「이 홈」으로 본다 — 짐의 사본을 부르면 작업을 짐
+#   자리로 겨눈다.
 
-# 홈마다 깔린 시계 입구 — 내는 것은 입구 자리 → 그 홈의 화면 이름들(같은 자리를 쓰는 홈은 한 번만 부르게 묶는다). 깔린 데가 없으면 빈 표다.
-function Get-BriefClocks {
-  $entry  = 'daily-brief\unattended\clock.py'
-  $clocks = [ordered]@{}
+# 다시 겨눌 홈 하나 — 홈 표(`$FreeSkillHomes`)의 차례에서 이번 판이 건드린(`Hold` 아님) 홈 가운데 시계 입구가 깔린 첫째. 내는 것은
+#   `Skills`(그 홈의 스킬 자리) · `Who`(그 자리를 쓰는 홈들의 화면 이름) — 깔린 데가 없으면 $null.
+function Get-SecretaryHome {
+  $entry = 'daily-brief\unattended\clock.py'
+  $pick  = $null
   foreach ($t in $FreeSkillHomes.Keys) {
-    $p = $FreeSkillHomes[$t].Place
-    if (-not $p) { continue }
-    $c = Join-Path $p.Skills $entry
-    if (-not (Test-Path -LiteralPath $c -PathType Leaf)) { continue }
-    if (-not $clocks.Contains($c)) { $clocks[$c] = @() }
-    $clocks[$c] += $FreeSkillHomes[$t].Label
+    $h = $FreeSkillHomes[$t]
+    if ($h.Hold -or -not $h.Place) { continue }
+    $skills = $h.Place.Skills
+    if (-not $pick) {
+      if (-not (Test-Path -LiteralPath (Join-Path $skills $entry) -PathType Leaf)) { continue }
+      $pick = @{ Skills = $skills; Who = @() }
+    }
+    if ($skills -eq $pick.Skills) { $pick.Who += $h.Label }
   }
-  return $clocks
+  return $pick
 }
 
-# 깔린 시계마다 `adopt` 를 부르고 끝 줄을 설치 줄로 옮긴다 — 같은 끝 줄은 홈 이름을 모아 한 줄로 낸다. 0 아닌 종료 값(작업 스케줄러가
-#   거절했다 · 회사 메일 손이 없다 · 사용자 폴더를 못 정했다)은 빨간 줄 · 마지막 출력 · `$Fails` 다. 깔린 시계가 없으면 아무것도 안
-#   한다(python 도 안 잰다). python 을 못 쟀으면 부르지도 건너뛰지도 않고 「안 한 걸음」으로 남긴다.
-# 짝 — 설정 저장소의 스킬 daily-brief `unattended/clock.py` 의 `adopt`.
-function Invoke-BriefAdopt {
-  $clocks = Get-BriefClocks
-  if (-not $clocks.Count) { return }
+# 문 하나(`<입구> adopt`)를 부르고 끝 줄을 설치 줄로 옮긴다 — 끝 줄의 머리 `[<머리> — …]` 는 줄의 이름(`$Name`)이 대신 든다. 0 아닌 종료
+#   값(작업 스케줄러가 거절했다 · 이 홈의 회사 메일 손이 없다 · 사용자 폴더를 못 정했다)은 빨간 줄 · 마지막 출력 · `$Fails` 다. 입구가 그
+#   홈에 없으면 안 부른다.
+function Invoke-SecretaryDoor([string]$Name, [string]$Entry, [string]$Head, [string]$Who) {
+  if (-not (Test-Path -LiteralPath $Entry -PathType Leaf)) { return }
+  $log = [IO.Path]::GetTempFileName()
+  try {
+    $rc = Invoke-Logged 'python' @('-X', 'utf8', '-I', $Entry, 'adopt') $log
+    if ($rc -ne 0) {
+      Write-Host "  ! $Name ($Who) — 이번 판 스킬로 다시 겨누지 못함 (종료 코드 $rc). 마지막 출력:" -ForegroundColor Red
+      Show-Log $log
+      $Fails.Add("$Name $Who (다시 겨누기 실패)")
+      return
+    }
+    $last = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) |
+            Select-Object -Last 1
+    $line = if ("$last" -match ('^\[' + [regex]::Escape($Head) + ' — (.+)\]$')) { $Matches[1] } else { "$last" }
+    Write-Host "  $Name ($Who) — $line"
+  }
+  finally { Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue }
+}
+
+# 고른 홈에서 스캔의 문 → 시계의 문 차례로 부른다. 깔린 시계가 없으면 아무것도 안 한다(python 도 안 잰다). python 을 못 쟀으면 부르지도
+#   건너뛰지도 않고 「안 한 걸음」으로 남긴다.
+# 짝 — 설정 저장소의 스킬 mailbox-scan `scripts/scan.py` 와 daily-brief `unattended/clock.py` 의 `adopt`.
+function Invoke-SecretaryAdopt {
+  $home_ = Get-SecretaryHome
+  if (-not $home_) { return }
   $py = Measure-Runs 'python' '--version'
   if ($py -eq 'unmeasured') {
-    Add-UnmeasuredStep '일일 보고 시계' 'python --version' '옛 보고 예약을 옮겨 받지도 건너뛰지도 않음'
+    Add-UnmeasuredStep '메일 비서 작업' 'python --version' '걸린 메일함 스캔 · 일일 보고 작업을 이번 판으로 다시 겨누지도 건너뛰지도 않음'
     return
   }
   if ($py -ne 'yes') {
-    Write-Host '  ! 일일 보고 시계 — python 이 실행되지 않아 옛 보고 예약을 옮겨 받는지 확인하지 못함' -ForegroundColor Red
-    $Fails.Add('일일 보고 시계 (python 없음)')
+    Write-Host '  ! 메일 비서 작업 — python 이 실행되지 않아 걸린 작업을 이번 판으로 다시 겨누는지 확인하지 못함' -ForegroundColor Red
+    $Fails.Add('메일 비서 작업 (python 없음)')
     return
   }
-  $said = [ordered]@{}
-  foreach ($c in $clocks.Keys) {
-    $who = $clocks[$c] -join ' · '
-    $log = [IO.Path]::GetTempFileName()
-    try {
-      $rc = Invoke-Logged 'python' @('-X', 'utf8', '-I', $c, 'adopt') $log
-      if ($rc -ne 0) {
-        Write-Host "  ! 일일 보고 시계 ($who) — 옛 보고 예약을 옮겨 받지 못함 (종료 코드 $rc). 마지막 출력:" -ForegroundColor Red
-        Show-Log $log
-        $Fails.Add("일일 보고 시계 $who (옮겨 받기 실패)")
-        continue
-      }
-      $last = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) |
-              Select-Object -Last 1
-      # 끝 줄의 머리 `[시계 — …]` 는 이 줄의 이름(「일일 보고 시계」)이 대신 든다
-      $line = if ("$last" -match '^\[시계 — (.+)\]$') { $Matches[1] } else { "$last" }
-      if (-not $said.Contains($line)) { $said[$line] = @() }
-      $said[$line] += $who
-    }
-    finally { Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue }
-  }
-  foreach ($line in $said.Keys) { Write-Host "  일일 보고 시계 ($($said[$line] -join ' · ')) — $line" }
+  $who = $home_.Who -join ' · '
+  Invoke-SecretaryDoor '메일함 스캔 예약' (Join-Path $home_.Skills 'mailbox-scan\scripts\scan.py') '예약' $who
+  Invoke-SecretaryDoor '일일 보고 시계' (Join-Path $home_.Skills 'daily-brief\unattended\clock.py') '시계' $who
 }
 
-#endregion 일일 보고 시계 옮겨 받기
+#endregion 메일 비서 작업 다시 겨누기
 
 #region 도구 홈의 규범 · 룰 · 스킬 — 손(`tool-homes.py`)을 부르고, 뱉은 줄을 화면과 끝 검증의 꼴로 옮긴다
 
@@ -11257,9 +11265,9 @@ if (-not $toolHomesOn -and $toolHomesProbe -ne 'unmeasured') {
 #   칸 없이 까는 것을 깔고, 켠 홈은 손이 이 걸음의 사본을 처음 만남으로 받아 그 기록을 옮긴다.
 foreach ($t in $FreeSkillHomes.Keys) { Install-FreeSkills $t }
 
-# ── 일일 보고 시계 옮겨 받기 — 메일함 스캔이 보고를 들던 PC 의 옛 보고 시각을 시계로 다시 건다(`Invoke-BriefAdopt`) ──────────
-# ⚠ **스킬이 다 놓인 뒤에 돈다** — 위 손과 칸 없이 까는 걸음이 홈에 놓은 daily-brief 사본을 부른다.
-Invoke-BriefAdopt
+# ── 메일 비서 작업 다시 겨누기 — 걸린 메일함 스캔 · 일일 보고 작업을 이번 판이 깐 한 홈으로 다시 겨눈다(`Invoke-SecretaryAdopt`) ──────────
+# ⚠ **스킬이 다 놓인 뒤에 돈다** — 위 손과 칸 없이 까는 걸음이 홈에 놓은 mailbox-scan · daily-brief 사본을 부른다.
+Invoke-SecretaryAdopt
 
 # ── 걷힌 회사 기준 룰을 홈에서 걷는다 ─────────────────────────────────────────
 # 회사 코딩 기준에서 구운 룰 `futurem-*.md`(1.30.0 이 영역 룰로 깐 것)는 스킬 `inhouse-app` 으로 바뀌었다(claude-config 결정 0075).
