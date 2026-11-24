@@ -6454,7 +6454,7 @@ function Install-FreeSkills([string]$Tool) {
 # ⚠ **한 홈에서만 부른다** — 홈마다 부르면 홈끼리 서로 제 쪽으로 다시 겨눈다.
 # ⚠ **스캔이 먼저다** — 시계의 `adopt` 는 걸린 스캔 작업이 제 홈의 스캔을 부를 때만 건다. 스캔이 먼저 이 홈으로 옮겨 앉아야 시계가 선다.
 # ⚠ **홈에 깔린 사본을 부른다 — 짐의 사본이 아니다.** `adopt` 는 제 곁의 입구 · 손을 「이 홈」으로 본다 — 짐의 사본을 부르면 작업을 짐
-#   자리로 겨눈다.
+#   자리로 겨눈다. 부르는 자리는 「설정 저장소」 걸음 끝이다 — 개인 층이 홈에 마지막으로 놓은 뒤라야 이번 판의 사본이다.
 
 # 다시 겨눌 홈 하나 — 홈 표(`$FreeSkillHomes`)의 차례에서 이번 판이 건드린(`Hold` 아님) 홈 가운데 시계 입구가 깔린 첫째. 내는 것은
 #   `Skills`(그 홈의 스킬 자리) · `Who`(그 자리를 쓰는 홈들의 화면 이름) — 깔린 데가 없으면 $null.
@@ -11265,10 +11265,6 @@ if (-not $toolHomesOn -and $toolHomesProbe -ne 'unmeasured') {
 #   칸 없이 까는 것을 깔고, 켠 홈은 손이 이 걸음의 사본을 처음 만남으로 받아 그 기록을 옮긴다.
 foreach ($t in $FreeSkillHomes.Keys) { Install-FreeSkills $t }
 
-# ── 메일 비서 작업 다시 겨누기 — 걸린 메일함 스캔 · 일일 보고 작업을 이번 판이 깐 한 홈으로 다시 겨눈다(`Invoke-SecretaryAdopt`) ──────────
-# ⚠ **스킬이 다 놓인 뒤에 돈다** — 위 손과 칸 없이 까는 걸음이 홈에 놓은 mailbox-scan · daily-brief 사본을 부른다.
-Invoke-SecretaryAdopt
-
 # ── 걷힌 회사 기준 룰을 홈에서 걷는다 ─────────────────────────────────────────
 # 회사 코딩 기준에서 구운 룰 `futurem-*.md`(1.30.0 이 영역 룰로 깐 것)는 스킬 `inhouse-app` 으로 바뀌었다(claude-config 결정 0075).
 #   룰을 놓는 손(`tool-homes.py`)은 제 기록(`placed.tsv`)에 든 파일만 걷어, 기록이 서기 전에 깐 그 룰은 홈에 남아 사내 앱의 폴더를
@@ -12047,6 +12043,11 @@ Set-WorkDirVar $script:WorkDir
 $plant = Invoke-Plant $bash $configRepoRoot
 if (-not $plant.Ran) { Write-Host "  ! 설정 적용 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 설정하지 못함" -ForegroundColor Yellow }
 elseif (-not $plant.Ok) { $Fails.Add("설정 적용 --plant ($($plant.Why))") }
+# ── 메일 비서 작업 다시 겨누기 — 걸린 메일함 스캔 · 일일 보고 작업을 이번 판이 깐 한 홈으로 다시 겨눈다(`Invoke-SecretaryAdopt`) ──────────
+# ⚠ **스킬이 마지막으로 놓인 뒤에 돈다** — 설정 저장소가 있는 PC 는 위 `--install` 의 배포가 개인 층을 이번 판으로 채우고 홈에 다시
+#   놓는다. 「도구별 홈」 걸음 안에서 부르면 아직 지난 판인 개인 층 사본을 불러, 그 판에 없는 문은 실패하고 있는 문은 옛 코드로 돈다.
+#   「도구별 홈」이 이번 실행에 안 들면(바꾸기 묶음) 홈에 놓인 것이 없어 안 부른다.
+if (Test-StepOn 'tools') { Invoke-SecretaryAdopt }
 } catch { Write-StepFault $_ } finally {
 # ── 앞당겨 띄운 로그인 창을 거둔다 — 로그인 칸에 안 닿은 판(그 사이 git 이 안 닿았다 · 이 걸음이 도중에 멎었다)의 자리 ──────────────────
 # 로그인 칸이 답을 받았으면 비어 있어 아무것도 안 한다. 남았으면 저장소를 받을 길이 이미 끊긴 판이라 기다리지 않고 거두고 곁 파일을 지운다.
