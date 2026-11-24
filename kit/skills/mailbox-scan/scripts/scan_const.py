@@ -46,6 +46,8 @@ SKILL_HOMES = ((".claude", "skills"), (".agents", "skills"), (".gemini", "config
 # (원본)가 든다
 from hand_facts import (HAND_EXIT_CONFIG, HAND_EXIT_FAIL, HAND_EXIT_OK, HAND_EXIT_SESSION, HAND_SCRIPT, HAND_SKILL,  # noqa: E402,F401
                         HAND_TIMEOUT_S, NEXT_LOGIN, SESSION_LIVE, SESSION_LOST, SESSION_SKILL)
+THIS_HOME_HAND = SCRIPT_DIR.parents[1] / HAND_SKILL / pathlib.Path(*HAND_SCRIPT)   # 이 스캔과 같은 스킬 뿌리(도구 홈)의 회사 메일 손 — 다시
+                                                                                  # 겨누기(`adopt`)가 작업에 굳히는 자리
 HAND_ENV = "MAILBOX_SCAN_HAND"           # 손의 자리를 굳히는 환경변수 — 예약 실행은 명령줄의 --hand 로 준다
 # 세션 파일의 자리 — 받는 손과 같은 차례(`MAILBOX_COOKIES` → 형제 스킬 ep-login 의 받는 손 곁 `places.json` 의 기본 자리). 그 파일이
 # 끊긴 뒤 새로 쓰였나로 「대화에서 EP 로그인을 했다」를 안다. 남의 코드를 안 싣고 그 데이터 파일만 읽는다

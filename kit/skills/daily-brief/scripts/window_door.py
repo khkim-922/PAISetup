@@ -1,6 +1,5 @@
 """시계 판이 쓰는 창의 문 — 열린 보고 창에서 고르신 보고 시각 · 「자리 밖에서 보기」를 읽어 시계 판에 값으로 내고(`read_choices` — 같은 스킬의
-`unattended/` 가 함수로 부른다), 시계가 받았나를 그 창의 그 칸에 돌려 적는다(거두는 손 `ticks.py` 의 `--times-done` · `--away-done`) · 지금 모습만
-알린다(`--sync`). 창 곁의 손과 같은 누름 종류 표의 줄(`press_kinds.TIMES` · `press_kinds.AWAY`)로 재고 적는다. 어느 길이든 그 창에 지금 모습을
+`unattended/` 가 함수로 부른다), 시계가 받았나를 그 창의 그 칸에 돌려 적는다(거두는 손 `ticks.py` 의 `--times-done` · `--away-done`). 창 곁의 손과 같은 누름 종류 표의 줄(`press_kinds.TIMES` · `press_kinds.AWAY`)로 재고 적는다. 어느 길이든 그 창에 지금 모습을
 함께 적는다. 열린 보고 창이 없으면 아무것도 안 연다.
 """
 
@@ -24,7 +23,6 @@ EDGE_LOST = "보고 창의 시각을 못 읽었다 — 로그인 Edge 와 주고
 NO_WINDOW = "고르신 보고 시각 없음 — 열린 보고 창이 없다"
 NOT_WRITTEN = "안 적었다 — 그 뒤에 새로 고르셨거나 고르신 것이 없다"
 WRITTEN = "적었다 — 보고 창에 받았나를 돌려 적었다"
-SYNCED_NOT = "알리지 않았다 — 열린 보고 창이 없거나 로그인 Edge 에 못 닿았다"
 
 
 class Choices(NamedTuple):
@@ -79,8 +77,3 @@ def choices_of(rows: list) -> Choices:
     같은 자로, 시계 판의 때(늘 거둔다)로 잰다. 거둘 고름이 없는 쪽은 None."""
     return Choices(M.TIMES.due(dict(E.stored(rows, M.TIMES.key)).get(""), True), M.AWAY.due(dict(E.stored(rows, M.AWAY.key)).get(""), True))
 
-
-def sync_door(folder: pathlib.Path) -> int:
-    """`--sync` — 열린 보고 창에 지금 모습을 알린다(`state.sync`). 못 알려도 종료 0."""
-    cli.say([V.sync(folder) or SYNCED_NOT])
-    return EXIT_OK

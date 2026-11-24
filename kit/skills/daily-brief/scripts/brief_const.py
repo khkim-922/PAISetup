@@ -50,3 +50,5 @@ EXIT_OK, EXIT_FAIL, EXIT_NO_EDGE = 0, 1, 3
 AT = re.compile(r"^\S{1,40}$")
 HHMM = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 SAID_MAX = 240
+# 넣는 손(`ticks.py --presses`)이 거둔 수를 댄 끝 줄의 머리 — 시계 판(`unattended/window_link.py`)이 이 머리로 그 줄을 골라 판 끝에 싣는다
+ROUND_HEAD = "보고 창의 「일정에 넣기」 — "

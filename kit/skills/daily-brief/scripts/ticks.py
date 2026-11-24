@@ -5,11 +5,10 @@
     python -X utf8 -I ticks.py --dir <사용자 폴더>
     python -X utf8 -I ticks.py --dir <사용자 폴더> --times-done <고르신 때> --said <말> [--refused]   시각을 받았나를 그 창에 돌려 적는다
     python -X utf8 -I ticks.py --dir <사용자 폴더> --away-done <고르신 때> --said <말> [--refused]    자리 밖에서 보기를 받았나를 돌려 적는다
-    python -X utf8 -I ticks.py --dir <사용자 폴더> --sync                                   열린 보고 창에 지금 모습만 알린다
     python -X utf8 -I ticks.py --dir <사용자 폴더> --presses [--within 초]                  「일정에 넣기」 누름을 거둬 넣는다(시계 판)
     python -X utf8 -I ticks.py --dir <사용자 폴더> --watch                                  창 곁에 남아 그 누름을 바로 거둔다(창을 여는 손이 띄운다)
     (셋 다 · 그리고 거둔 뒤에도 열린 창에 지금 모습(`state.state_of` — 시각표 · 규칙의 수 · 맞춤 파일의 두 절)을 적는다 — 창은 그보다 앞서
-    고른 것을 낡았다고 알고, 대화에서 바꾸신 것을 다음 시계 판을 기다리지 않고 보인다. `--sync` 는 그것을 바꾸는 대화의 명령이 부른다)
+    고른 것을 낡았다고 알고, 대화에서 바꾸신 것을 다음 시계 판을 기다리지 않고 보인다. 대화의 명령은 같은 알림을 함수로 부른다 — `state.sync`)
 
     --dir — 보고 글(brief-….md)이 사는 사용자 폴더. 한 번만 받는다 · 그 안의 이름이 가장 늦은 보고 글 하나만 고친다
     --times-done · --away-done — 같은 스킬의 시계 판(`unattended/clock.py tick`)이 부른다. 열린 file: 탭이 없으면 아무것도 안
@@ -312,7 +311,6 @@ def parser() -> argparse.ArgumentParser:
     way.add_argument("--away-done", metavar="고르신_때", help="고르신 자리 밖에서 보기를 받았나를 그 창에 돌려 적는다(시계 판이 부른다)")
     doors.add_argument("--said", default="", help="--times-done · --away-done 과 함께 — 그 창에 보일 한 줄")
     doors.add_argument("--refused", action="store_true", help="--times-done · --away-done 과 함께 — 안 받았다")
-    way.add_argument("--sync", action="store_true", help="열린 보고 창에 지금 모습만 알린다(그것을 바꾸는 대화의 명령이 부른다)")
     way.add_argument("--presses", action="store_true", help="열린 보고 창의 「일정에 넣기」 누름을 거둬 넣는다(시계 판이 부른다)")
     way.add_argument("--watch", action="store_true", help="보고 창 곁에 남아 누름을 바로 거둔다(창을 여는 손이 띄운다)")
     doors.add_argument("--within", type=int, default=0, metavar="초", help="--presses 와 함께 — 이 안에 끝낼 수 있는 넣기만 시작한다")
@@ -320,7 +318,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """명령 입구 — 받은 문(누름 넣기 · 창 곁 · 돌려 적기 · 알리기)을 그 손에 나누고, 문이 없으면 거둔다(`gather`)."""
+    """명령 입구 — 받은 문(누름 넣기 · 창 곁 · 돌려 적기)을 그 손에 나누고, 문이 없으면 거둔다(`gather`)."""
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     args = parser().parse_args(argv)
@@ -331,8 +329,6 @@ def main(argv: list[str] | None = None) -> int:
         return D.door(folder, args.times_done, args.said, args.refused)
     if args.away_done is not None:
         return D.door(folder, args.away_done, args.said, args.refused, M.AWAY)
-    if args.sync:
-        return D.sync_door(folder)
     return gather(folder)
 
 

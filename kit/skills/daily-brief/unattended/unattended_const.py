@@ -17,7 +17,7 @@ from brief_const import CLOCK_AT, CLOCK_ENTRY, DAY_FILE, HANDED_ENTRY, SCHEDULE_
 # ── 사용자 폴더 — 이 스킬의 파일은 사용자 폴더 바로 밑에 `daily-brief-` 머리로 선다(꼴의 원본은 references/DESIGN.md 「새 파일 이름」) ──
 # SCHEDULE_FILE — 보고 시각표 · 띄울 claude · 자리 밖에서 보기 · 고른 것 · 스스로 로그인한 범위 / DAY_FILE — 그날 장부 + 시계의 마지막 판 때
 # (`CLOCK_AT` — 시계가 판마다 잠금을 쥔 뒤 적고 창의 `seen` 이 읽는다). 시계가 OS 잠금 아래 혼자 쓴다
-LAUNCH_FILE = "daily-brief-launch.json"       # 띄운 보고 하나 — 띄운 때 · 프로세스 번호(끝났나는 `brief_reports.run_end` 가 가른다)
+LAUNCH_FILE = "daily-brief-launch.json"       # 띄운 보고 하나 — 띄운 때 · 프로세스 번호 · 그 프로세스가 뜬 때(끝났나는 `brief_reports.run_end` 가 가른다)
 LAUNCH_SETTINGS_FILE = "daily-brief-launch-settings.json"   # 띄울 때마다 짓는 claude 의 권한(열린 · 막은 명령) — `claude --settings` 로 준다
 LAUNCH_PROMPT_FILE = "daily-brief-launch-prompt.txt"        # 띄울 때마다 짓는 부탁 글 — 표준 입력으로 준다(명령줄에 한글 · 따옴표를 안 싣는다)
 LAUNCH_LOG_FILE = "daily-brief-launch.log"                  # 마지막으로 띄운 보고의 출력 — 띄울 때마다 새로 쓴다

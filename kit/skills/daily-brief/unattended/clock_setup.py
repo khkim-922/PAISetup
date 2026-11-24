@@ -42,8 +42,11 @@ CLOCK_MISSING = "  ⚠ 시계가 안 걸려 있어 이 보고는 안 뜬다. 다
 LEGACY_HINT = "[시계 — 걸려 있지 않다 · 옛 보고 시각표가 있다 — 다음: clock.py adopt]"
 ADOPT_SKIPPED = {"unregistered": "[시계 — 걸 것이 없다: 메일함 스캔이 안 걸려 있다]",
                  "elsewhere": "[시계 — 건드리지 않았다: 이 홈의 스캔이 건 작업이 아니다]",
-                 "present": "[시계 — 이미 걸려 있다]"}
+                 "present": "[시계 — 이미 걸려 있다]",
+                 "foreign": "[시계 — 건드리지 않았다: 걸린 시계의 명령줄이 거는 꼴이 아니다(손으로 고친 작업이다)]"}
 ADOPTED, ADOPTED_FRESH = "[시계 — 걸었다 · 옛 보고 시각표를 옮겨 받았다]", "[시계 — 걸었다]"
+REAIMED = "[시계 — 이 홈으로 다시 걸었다{off}]"     # 다른 홈의 입구 · 손을 부르던 시계 — 보고 시각표는 사용자 폴더에 그대로다
+REAIMED_OFF = " · 꺼 둔 채로"                       # 사람이 작업 스케줄러에서 꺼 둔 시계 — 다시 걸어도 끈 채다
 
 
 # ── 보고 시각표 ──────────────────────────────────────────────────────────────────
@@ -282,28 +285,59 @@ def cmd_unregister(args, home: pathlib.Path) -> int:
 
 
 def cmd_adopt(args, home: pathlib.Path) -> int:
-    """이미 스캔을 건 PC 를 옮겨 받는다 — 곁의 스캔이 건 작업이 이 홈의 스캔을 부를 때만, 옛 파일을 옮겨 받고(`take_over`) 시계가 없을 때만
-    건다(손 · 주기는 스캔의 답에서, 시각 · claude 는 옮겨 받은 시각표에서). 여러 번 불러도 같다. 끝 줄 하나. 종료 값 — 0(건너뛴 갈래 전부) ·
-    1 작업 스케줄러가 거절했다."""
+    """이미 스캔을 건 PC 를 옮겨 받는다 — 곁의 스캔이 건 작업이 이 홈의 스캔을 부를 때만, 옛 파일을 옮겨 받고(`take_over`) 시계를 이 홈의 입구 ·
+    회사 메일 손으로 건다: 없으면 새로, 다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 다시. 손은 이 홈의 형제 스킬 것, 주기는 스캔의 답,
+    시각 · claude 는 사용자 폴더의 시각표(다시 걸어도 그대로다). 이미 이 홈을 부르거나 손으로 고친 시계는 안 건드린다. 여러 번 불러도 같다.
+    끝 줄 하나. 종료 값 — 0(건너뛴 갈래 전부 · 걸었다) · 1 손이 없다 · 작업 스케줄러가 거절했다."""
     task = scan_task()
     skipped = adopt_skip(task)
     if skipped:
         print(ADOPT_SKIPPED[skipped])
         return EXIT_OK
     moved = TO.take_over(home)
-    if TB.ask(TB.query_command(T.TASK_NAME)).code == 0:
-        print(ADOPT_SKIPPED["present"])
+    held = held_clock()
+    kept = clock_skip(held)
+    if kept:
+        print(ADOPT_SKIPPED[kept])
         return EXIT_OK
-    hand, missing = D.mail_hand(task.get("hand"))
+    hand, missing = D.mail_hand(None)
     if hand is None:
         print(f"[시계 — 못 걸었다: {missing}]")
         return EXIT_STOPPED
     path = home / C.CLOCK_XML_FILE
-    TB.write_xml(path, T.task_xml(every=task.get("every_min") or EVERY_FALLBACK_MIN, home=home, hand=hand))
+    enabled = held is None or held["enabled"]
+    TB.write_xml(path, T.task_xml(every=task.get("every_min") or EVERY_FALLBACK_MIN, home=home, hand=hand, enabled=enabled))
     if not put_task(path):
         return EXIT_STOPPED
-    print(ADOPTED if C.SCHEDULE_FILE in moved or (home / C.SCHEDULE_FILE).exists() else ADOPTED_FRESH)
+    print(adopted_line(held, enabled, moved, home))
     return EXIT_OK
+
+
+def held_clock() -> dict[str, Any] | None:
+    """걸린 시계 — 안 걸렸으면 None, 걸렸으면 켜짐과 인자를 거는 꼴의 칸(`parts` — 손으로 고친 꼴이면 None)으로."""
+    done = TB.ask(TB.query_command(T.TASK_NAME))
+    if done.code != 0:
+        return None
+    d = TB.read_definition(done.out.strip())
+    return {"enabled": TB.is_enabled(d), "parts": T.arguments_parts(d["arguments"])}
+
+
+def clock_skip(held: dict[str, Any] | None) -> str:
+    """걸린 시계를 건드리지 않을 까닭 — "foreign" 손으로 고친 꼴이다 · "present" 이미 이 홈의 입구와 손을 부른다 · "" 건다(없거나 다른 홈이다)."""
+    if held is None:
+        return ""
+    parts = held["parts"]
+    if parts is None:
+        return "foreign"
+    here = TB.same_path(parts["clock_py"], C.HERE / C.CLOCK_ENTRY) and TB.same_path(parts["hand"], D.HAND.resolve())
+    return "present" if here else ""
+
+
+def adopted_line(held: dict[str, Any] | None, enabled: bool, moved: list[str], home: pathlib.Path) -> str:
+    """건 뒤의 끝 줄 — 다른 홈의 시계를 다시 걸었으면 그 말(끈 채면 그것도), 새로 걸었으면 옛 시각표를 옮겨 받았나."""
+    if held is not None:
+        return REAIMED.format(off="" if enabled else REAIMED_OFF)
+    return ADOPTED if C.SCHEDULE_FILE in moved or (home / C.SCHEDULE_FILE).exists() else ADOPTED_FRESH
 
 
 def adopt_skip(task: dict[str, Any]) -> str:

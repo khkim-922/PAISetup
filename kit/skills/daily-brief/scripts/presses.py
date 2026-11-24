@@ -44,12 +44,14 @@ import brief_const as C  # noqa: E402
 import cli  # noqa: E402
 import edge as E  # noqa: E402
 import press_kinds as M  # noqa: E402
+import proc_base as P  # noqa: E402
 import runs as R  # noqa: E402
 import state as V  # noqa: E402
 import clock as T  # noqa: E402
 import unattended_link as L  # noqa: E402
 import store as S  # noqa: E402
 from oslock import OsLock  # noqa: E402
+from detach import detached_tries  # noqa: E402
 from records import (ADDED, ALREADY, ENTERING, FAILED, LEDGER_LOCK, MOVED, PAST, SESSION, UNSURE, read_ledger,  # noqa: E402
                      write_ledger)
 from hand_wanted import hand_wanted  # noqa: E402
@@ -94,14 +96,12 @@ def run_calendar(put: Put, preview: bool = False) -> tuple[int | None, dict]:
     값으로 같은 판을 다시 지어 열쇠를 견준다). (종료 값 · 답) — 손을 못 띄웠으면 (None, {}), 시한을 넘겼으면 (-1, {})."""
     if not CALENDAR.is_file():
         return None, {"message": "일정 스킬이 곁에 없습니다"}
-    cmd = [sys.executable, "-X", "utf8", "-I", str(CALENDAR), "preview" if preview else "add", "--title", put.title, "--start", put.start,
-           "--end", put.end]
+    cmd = P.python_argv(CALENDAR, "preview" if preview else "add", "--title", put.title, "--start", put.start, "--end", put.end)
     cmd += ["--place", put.place] if put.place else []
     cmd += ["--private"] if put.private else []
     cmd += [] if preview else ["--confirm", put.key]
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
-                                env={**os.environ, "PYTHONIOENCODING": "utf-8"}, **quiet())
+        proc = subprocess.Popen(cmd, **piped())
     except OSError as exc:
         return None, {"message": f"일정 손을 못 띄웠습니다({type(exc).__name__})"}
     got = wait_out(proc, PREVIEW_TIMEOUT_S if preview else CALENDAR_TIMEOUT_S)
@@ -315,14 +315,18 @@ def run_unattended(folder: pathlib.Path, args: list[str], timeout: float) -> tup
     entry = UNATTENDED / args[0]
     if not entry.is_file():
         return None, ""
-    cmd = [sys.executable, "-X", "utf8", "-I", str(entry), *args[1:], "--dir", str(folder)]
+    cmd = P.python_argv(entry, *args[1:], "--dir", str(folder))
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
-                                env={**os.environ, "PYTHONIOENCODING": "utf-8"}, **quiet())
+        proc = subprocess.Popen(cmd, **piped())
     except OSError:
         return None, ""
     got = wait_out(proc, timeout)
     return (L.TIMED_OUT, "") if got is None else (proc.returncode, got.decode("utf-8", "replace"))
+
+
+def piped() -> dict[str, Any]:
+    """곁의 파이썬 손 한 번을 기다려 출력을 받는 `Popen` 인자 — 창 없이 · UTF-8 로(`proc_base`), 표준 입력은 닫고 출력 · 오류는 받는다."""
+    return {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "stdin": subprocess.DEVNULL, "env": P.utf8_env(), **P.quiet()}
 
 
 def wait_out(proc, timeout: float) -> bytes | None:
@@ -453,7 +457,6 @@ ROUND_NO_EDGE = "거둘 누름을 못 봤다 — 로그인 Edge 에 못 닿았�
 ROUND_EDGE_LOST = "거둘 누름을 다 못 봤다 — 로그인 Edge 와 주고받다 멈췄다({exc})"
 ROUND_NO_WINDOW = "거둘 누름 없음 — 열린 보고 창이 없다"
 ROUND_NOT_FILED = "거둘 누름 없음 — 보고 창이 아직 다 안 섰다"
-ROUND_HEAD = "보고 창의 「일정에 넣기」 — "     # 시계 판이 이 머리로 읽는다(사람 없는 실행 `window_link.py` 의 window_presses) — 글자를 바꾸면 그쪽도 바꾼다
 ROUND_NONE = "거둘 누름 없음"
 ROUND_REHANDED = " · 창 곁의 손을 다시 띄웠다"
 
@@ -503,7 +506,7 @@ def rehand(folder: pathlib.Path, tabs: list[tuple[str, str]]) -> bool | None:
 def round_words(counts: dict[str, int], started: bool | None) -> str:
     """시계 판의 끝 줄 — 「일정에 넣기」의 끝마다의 수(없으면 「거둘 누름 없음」), 창 곁의 손을 다시 띄웠으면 그 말."""
     said = count_said(counts)
-    return (ROUND_HEAD + said if said else ROUND_NONE) + (ROUND_REHANDED if started else "")
+    return (C.ROUND_HEAD + said if said else ROUND_NONE) + (ROUND_REHANDED if started else "")
 
 
 def count_said(counts: dict[str, int]) -> str:
@@ -513,22 +516,15 @@ def count_said(counts: dict[str, int]) -> str:
 
 # ── 창 곁의 손 ──────────────────────────────────────────────────────────────
 
-def quiet() -> dict:
-    """창 없이 띄운다 — 윈도에서 콘솔 창이 안 뜨게."""
-    return {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
-
-
 def start_hand(folder: pathlib.Path) -> bool | None:
     """창 곁의 손을 띄운다 — True 띄웠다 · False 이미 돈다(그 손이 잠금을 쥐고 있다) · None 못 띄웠다. 기다리지 않는다."""
     probe = OsLock(folder / HAND_LOCK)
     if not probe.take():
         return False
     probe.release()
-    cmd = [sys.executable, "-X", "utf8", "-I", str(TICKS), "--dir", str(folder), "--watch"]
-    flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if sys.platform == "win32" else 0
-    for extra in ((subprocess.CREATE_BREAKAWAY_FROM_JOB if sys.platform == "win32" else 0), 0):
-        try:                                       # 띄운 쪽이 작업 묶음(job) 안이면 그 묶음이 끝날 때 함께 끊기지 않게 — 묶음이 안 놓아 주면 그대로
-            kw = {"creationflags": flags | extra} if sys.platform == "win32" else {"start_new_session": True}
+    cmd = P.python_argv(TICKS, "--dir", str(folder), "--watch")
+    for kw in detached_tries():                    # 띄운 쪽이 작업 묶음(job) 안이면 그 묶음이 끝날 때 함께 끊기지 않게 — 묶음이 안 놓아 주면 그대로
+        try:
             subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True,
                              cwd=str(folder), **kw)
             return True

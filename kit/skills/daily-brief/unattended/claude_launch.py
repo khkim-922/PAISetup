@@ -2,7 +2,7 @@
 claude 찾기 · 환경 손질 · 떼어 띄우는 인자는 claude 띄우기 바탕(`launch_base`)이 든다.
 
     cmd, settings, prompt = plan(setting, hand, folder)      # 띄울 명령 · 권한 · 부탁 글(띄우기와 `--dry-run` 이 같은 것을 쓴다)
-    launched = launch(setting, hand, folder, at, slot, skipped)   # {at, pid, log} 이나 {at, error}
+    launched = launch(setting, hand, folder, at, slot, skipped)   # {at, pid, born, log} 이나 {at, error}
 
 띄운 claude 에 무엇을 여나는 `references/DESIGN.md` 「정한 시각의 보고」가 든다.
 """
@@ -18,7 +18,8 @@ from typing import Any
 import unattended_const as C
 import unattended_store as st
 import clock as tm
-from launch_base import child_env, detached
+from detach import detached
+from launch_base import child_env, process_born
 
 
 def places(hand: pathlib.Path | None, folder: pathlib.Path) -> dict[str, pathlib.Path]:
@@ -96,7 +97,7 @@ def plan(setting: dict[str, Any], hand: pathlib.Path | None, folder: pathlib.Pat
 
 def launch(setting: dict[str, Any], hand: pathlib.Path | None, folder: pathlib.Path, at: datetime, slot: str | None = None,
            skipped: list[str] | None = None) -> dict[str, Any]:
-    """권한 · 부탁 글을 사용자 폴더에 지어 claude 를 띄우고 기다리지 않는다(출력은 `LAUNCH_LOG_FILE`). 내는 것 — {at, pid, log} 이나 {at, error}."""
+    """권한 · 부탁 글을 사용자 폴더에 지어 claude 를 띄우고 기다리지 않는다(출력은 `LAUNCH_LOG_FILE`). 내는 것 — {at, pid, born(뜬 때 · 못 물었으면 None), log} 이나 {at, error}."""
     cmd, settings, prompt = plan(setting, hand, folder, slot, skipped)
     st.write_json(folder / C.LAUNCH_SETTINGS_FILE, settings)
     (folder / C.LAUNCH_PROMPT_FILE).write_text(prompt, encoding="utf-8")
@@ -108,5 +109,6 @@ def launch(setting: dict[str, Any], hand: pathlib.Path | None, folder: pathlib.P
                                     **detached())
     except OSError as exc:
         return {"at": tm.utc_stamp(at), "error": f"{type(exc).__name__}: {exc}"}
-    st.write_json(folder / C.LAUNCH_FILE, {"started": tm.utc_stamp(at), "pid": proc.pid})
-    return {"at": tm.utc_stamp(at), "pid": proc.pid, "log": str(log)}
+    born = process_born(proc.pid)
+    st.write_json(folder / C.LAUNCH_FILE, {"started": tm.utc_stamp(at), "pid": proc.pid, "born": born})
+    return {"at": tm.utc_stamp(at), "pid": proc.pid, "born": born, "log": str(log)}

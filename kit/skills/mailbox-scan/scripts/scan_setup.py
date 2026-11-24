@@ -1,15 +1,15 @@
-"""걸기 · 보기 · 끄기 — `scan.py register · status · unregister` 의 손. 작업 스케줄러의 작업 하나(`scan_task`)를 걸고 · 보이고 · 지운다.
-판의 코드는 안 부른다.
+"""걸기 · 보기 · 끄기 · 다시 겨누기 — `scan.py register · status · unregister · adopt` 의 손. 작업 스케줄러의 작업 하나(`scan_task`)를 걸고 ·
+보이고 · 지우고 · 이 홈으로 다시 건다. 판의 코드는 안 부른다.
 
-    cmd_register(args) · cmd_status(args) · cmd_unregister(args)   # 종료 값 — 0 됐다 · 1 멈췄다(끝 줄이 다음 걸음을 말한다)
+    cmd_register(args) · cmd_status(args) · cmd_unregister(args) · cmd_adopt(args)   # 종료 값 — 0 됐다 · 1 멈췄다(끝 줄이 다음 걸음을 말한다)
 
 `status --json` 의 JSON 한 줄은 다른 프로그램이 읽는다 — 칸의 이름과 뜻은 `references/DESIGN.md` 「status --json · run --wait」 표가 든다.
+`adopt` 의 끝 줄 하나와 종료 값은 설치가 읽는다 — 원본은 같은 문서 「다시 겨누기 — adopt」 표다.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 
 import scan_const as C
@@ -22,6 +22,11 @@ import task_base as TB
 from task_base import shown
 
 EXIT_OK, EXIT_STOPPED = 0, 1
+ADOPT_SKIPPED = {"unregistered": "[예약 — 다시 겨눌 것이 없다: 메일함 스캔이 안 걸려 있다]",
+                 "foreign": "[예약 — 건드리지 않았다: 걸린 작업의 명령줄 · 간격이 거는 꼴이 아니다(손으로 고친 작업이다)]",
+                 "here": "[예약 — 이미 이 홈의 스캔과 회사 메일 손을 부른다]"}
+ADOPTED = "[예약 — 이 홈으로 다시 걸었다: {every}분마다 · 메일함 전체는 {full_every}분마다{off}]"
+ADOPTED_OFF = " · 꺼 둔 채로"   # 사람이 작업 스케줄러에서 꺼 둔 작업 — 다시 걸어도 끈 채다
 
 
 # ── 걸기 ────────────────────────────────────────────────────────────────────────
@@ -127,13 +132,8 @@ def task_record(task: bool | None, d: dict[str, str] | None) -> dict[str, object
     parts = T.arguments_parts(d["arguments"])
     record.update(every_min=T.interval_minutes(d["interval"]), command=d["command"], arguments=d["arguments"])
     if parts is not None:
-        record.update(hand=parts["hand"], calls_this_scan=same_path(parts["scan_py"], C.SCAN_PY))
+        record.update(hand=parts["hand"], calls_this_scan=TB.same_path(parts["scan_py"], C.SCAN_PY))
     return record
-
-
-def same_path(a: str | pathlib.Path, b: str | pathlib.Path) -> bool:
-    """두 경로가 같은 자리인가 — 윈도의 대소문자 · 사이 글자(`/` · `\\`) · `..` 를 고른 뒤 견준다."""
-    return os.path.normcase(os.path.normpath(str(a))) == os.path.normcase(os.path.normpath(str(b)))
 
 
 def last_run_record(state: dict[str, object] | None) -> dict[str, object] | None:
@@ -184,4 +184,55 @@ def cmd_unregister(args) -> int:
         print(f"[예약 — 못 껐다(걸린 작업이 없을 수 있다): {(done.out + done.err).strip()[-300:]}]")
         return EXIT_STOPPED
     print(f"[예약 — {T.TASK_NAME} 을 껐다. 쌓인 스캔 파일은 그대로다]")
+    return EXIT_OK
+
+
+# ── 다시 겨누기 ────────────────────────────────────────────────────────────────────
+
+def cmd_adopt(args) -> int:
+    """걸린 스캔 작업을 이 홈으로 다시 겨눈다(`adopt` — 설치가 업데이트 때 한 홈에서 부른다) — 걸린 작업이 이 홈의 입구와 이 홈의 회사 메일 손을
+    안 부르면 그 작업의 주기 · 전체 주기 · 켜짐을 지켜 이 홈의 것으로 다시 건다. 안 걸렸거나 · 손으로 고친 꼴이거나 · 이미 이 홈을 부르면
+    안 건드린다. 끝 줄 하나. 종료 값 — 0(건너뛴 갈래 전부 · 다시 걸었다) · 1 이 홈의 손을 못 쓴다 · 작업 스케줄러가 거절했다."""
+    _, _, d = asked_task(dry_run=False)
+    held = held_task(d)
+    skipped = adopt_skip(d, held)
+    if skipped:
+        print(ADOPT_SKIPPED[skipped])
+        return EXIT_OK
+    hand, refused = usable_hand(str(C.THIS_HOME_HAND))
+    if refused:
+        print(f"[예약 — 다시 겨누지 않았다: {refused}]")
+        return EXIT_STOPPED
+    return reregister(held, hand)
+
+
+def held_task(d: dict[str, str] | None) -> dict[str, object] | None:
+    """걸린 정의에서 사람이 고른 것을 거는 꼴로 되읽는다 — 입구 · 손 · 주기 · 전체 주기 · 켜짐. 안 걸렸거나 인자 · 간격이 거는 꼴이 아니면 None."""
+    parts = T.arguments_parts(d["arguments"]) if d else None
+    every = T.interval_minutes(d["interval"]) if d else None
+    if parts is None or every is None:
+        return None
+    return {"scan_py": parts["scan_py"], "hand": parts["hand"], "every": every, "full_every": int(parts["full_every"]), "enabled": TB.is_enabled(d)}
+
+
+def adopt_skip(d: dict[str, str] | None, held: dict[str, object] | None) -> str:
+    """다시 겨누기를 건너뛸 까닭 — "unregistered" 안 걸렸다 · "foreign" 손으로 고친 꼴이다 · "here" 이미 이 홈의 입구와 손을 부른다 · "" 다시 건다."""
+    if d is None:
+        return "unregistered"
+    if held is None:
+        return "foreign"
+    here = TB.same_path(held["scan_py"], C.SCAN_PY) and TB.same_path(held["hand"], C.THIS_HOME_HAND.resolve())
+    return "here" if here else ""
+
+
+def reregister(held: dict[str, object], hand: pathlib.Path) -> int:
+    """지킨 설정으로 이 홈의 입구 · 손을 부르는 작업을 다시 건다 — 정의를 쓰고 작업 스케줄러에 건 뒤 그 줄을 낸다. 거절하면 그 말과 1."""
+    xml = T.task_xml(every=held["every"], full_every=held["full_every"], hand=hand, scan_py=C.SCAN_PY, enabled=held["enabled"])
+    path = st.scan_dir() / C.TASK_XML_FILE
+    TB.write_xml(path, xml)
+    done = TB.ask(TB.register_command(T.TASK_NAME, path))
+    if done.code != 0:
+        print(f"[예약 — 작업 스케줄러가 거절했다: {(done.out + done.err).strip()[-400:]}]")
+        return EXIT_STOPPED
+    print(ADOPTED.format(every=held["every"], full_every=held["full_every"], off="" if held["enabled"] else ADOPTED_OFF))
     return EXIT_OK

@@ -19,7 +19,8 @@ at · off — 보고 시각표(시각 하나 이상 · 서울)와 띄울 claude 
     로그인이다(그날 첫 시각에 한 번 · 뒤 시각은 세션이 끊겨 있을 때 · 시각 사이에는 안 한다).
 away — 자리 밖에서 보기 — 켠 PC 에서만 시계 판의 코드가 사람 없이 띄운 보고를 칸마다 한 통 본인 주소로 보낸다.
 window-times — 보고 창에서 고르신 시각(창 곁의 손이 준다) — 시계 판이 창에서 받을 때와 같은 자로 재고 건다.
-adopt — 메일함 스캔이 보고를 들던 PC 를 옮겨 받는다 — 옛 파일을 새 이름으로 옮기고 시계가 없으면 건다. 여러 번 불러도 같다.
+adopt — 메일함 스캔이 보고를 들던 PC 를 옮겨 받는다 — 옛 파일을 새 이름으로 옮기고, 시계가 없거나 다른 홈의 입구 · 손을 부르면 이 홈의 입구 ·
+    회사 메일 손으로 건다(설치는 스캔의 `scan.py adopt` 뒤에 한 홈에서 부른다). 여러 번 불러도 같다.
 
 `--dir` 이 없으면 사용자 폴더를 곁의 스캔(`scan.py status --json`)에 묻는다(`tick` 은 늘 받는다). 명령마다 내는 글 · 종료 값의 원본은
 `references/DESIGN.md` 「사람 없는 실행의 문」 표다. 종료 값 — 0 됐다 · 1 멈췄다(끝 줄이 다음 걸음을 말한다) · 2 인자가 틀렸다.
@@ -80,7 +81,7 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--dry-run", action="store_true", help="작업 스케줄러에 묻지 않는다(사용자 폴더의 것만 보인다)")
     u = sub.add_parser("unregister", help="시계 작업을 지우고 보고 예약을 내린다(스캔 작업 · 쌓인 파일은 그대로)")
     u.add_argument("--dry-run", action="store_true")
-    sub.add_parser("adopt", help="메일함 스캔이 보고를 들던 PC 를 옮겨 받는다 — 설치 · 대화가 부른다")
+    sub.add_parser("adopt", help="메일함 스캔이 보고를 들던 PC 를 옮겨 받고 시계를 이 홈으로 건다(없거나 다른 홈을 부르면) — 설치 · 대화가 부른다")
     for one in (g, a, o, w, x, s, u, sub.choices["adopt"]):
         one.add_argument("--dir", help=D.DIR_HELP)
     return ap

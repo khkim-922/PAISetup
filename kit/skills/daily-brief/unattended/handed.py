@@ -39,6 +39,7 @@ sys.path[:0] = [str(HERE.parent / "scripts"), str(HERE)]   # 같은 스킬의 �
 import brief_schedule as S  # noqa: E402
 import clock as tm  # noqa: E402
 import launch_base as LB  # noqa: E402
+from detach import detached_tries  # noqa: E402
 import proc_base as P  # noqa: E402
 import scan_door as D  # noqa: E402
 import session_login as SL  # noqa: E402
@@ -307,7 +308,7 @@ def start(home: pathlib.Path, tasks_path: str, work: str | None, claude: str | N
                                     "claude_pid": None, "job": None, "end": None, "ended": None, "said": "", "exit": None})
     cmd = P.python_argv(HERE / C.HANDED_ENTRY, "watch", "--id", run_id, "--dir", str(home))
     failed: OSError | None = None
-    for kw in detached():
+    for kw in detached_tries():
         try:
             with (here / WATCH_LOG).open("wb") as log:
                 subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, close_fds=True, cwd=str(here), **kw)
@@ -318,14 +319,6 @@ def start(home: pathlib.Path, tasks_path: str, work: str | None, claude: str | N
     if failed is not None:
         update_run(home, run_id, {"end": DIED, "ended": stamp(), "said": f"지킴이를 못 띄웠다 — {type(failed).__name__}: {failed}"})
     return record(home, run_id) or {}
-
-
-def detached() -> list[dict[str, Any]]:
-    """떼어 띄우는 꼴 — 부른 손이 끝나도, 그 손이 든 작업 묶음이 닫혀도 지킴이가 산다. 묶음이 안 놓아 주면 묶음 안에서라도 띄운다."""
-    base = LB.detached()
-    if sys.platform != "win32":
-        return [base]
-    return [{"creationflags": base["creationflags"] | subprocess.CREATE_BREAKAWAY_FROM_JOB}, base]
 
 
 # ── 실행이 받는 글 ──────────────────────────────────────────────────────────────────

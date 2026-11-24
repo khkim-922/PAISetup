@@ -67,7 +67,7 @@ def lock_held(folder: pathlib.Path, at: datetime) -> dict[str, Any] | None:
     since = tm.parse(held.get("started")) if held else None
     if since is None:
         return None
-    return held if run_end(since, held.get("pid"), folder / C.LAUNCH_LOG_FILE, at, None) is None else None
+    return held if run_end(since, held.get("pid"), held.get("born"), folder / C.LAUNCH_LOG_FILE, at, None) is None else None
 
 
 def last_line(log: pathlib.Path) -> str:
@@ -80,15 +80,15 @@ def last_line(log: pathlib.Path) -> str:
     return lines[-1][:LOG_TAIL_CHARS] if lines else ""
 
 
-def run_end(started: datetime, pid: Any, log: pathlib.Path, now: datetime, later: datetime | None) -> datetime | None:
+def run_end(started: datetime, pid: Any, born: Any, log: pathlib.Path, now: datetime, later: datetime | None) -> datetime | None:
     """스캔이 띄운 보고 한 판이 끝난 때 — 도는 중이면 None. 뒤 칸이 다시 띄웠으면(`later`) 이 보고는 그 앞에 끝났다(출력 파일은 이제 뒤 보고의
-    것이다). 아니면 띄운 프로세스(`pid`)가 끝났나로 가르고, 끝났으면 출력 파일을 마지막으로 쓴 때가 끝이다(`claude -p` 는 다 끝난 뒤에 답을
+    것이다). 아니면 띄운 프로세스(`pid` · 뜬 때 `born` — 번호를 남이 받았으면 끝났다)가 끝났나로 가르고, 끝났으면 출력 파일을 마지막으로 쓴 때가 끝이다(`claude -p` 는 다 끝난 뒤에 답을
     낸다) — 출력 없이 죽은 보고는 띄운 때가 끝이다. 프로세스 번호가 없으면(옛 기록 · 못 읽은 잠금) 출력 파일에 글이 섰나로 가른다. 어느 쪽이든
     띄운 때에서 `BRIEF_LOCK_STALE_S` 를 넘지 않는다 — 그 뒤로는 끝난 것이다."""
     cap = started + timedelta(seconds=C.BRIEF_LOCK_STALE_S)
     if later is not None:
         return min(cap, later)
-    alive = process_alive(pid)
+    alive = process_alive(pid, born)
     if now < cap and (alive or (alive is None and not last_line(log))):
         return None
     try:
@@ -105,7 +105,7 @@ def launched_end(day: dict[str, Any], t: str, now: datetime) -> datetime | None:
     launched = day["slots"][t]["launched"]
     since = tm.parse(launched.get("at"))
     later = next((at for at, _ in launches(day) if at > since), None)
-    return run_end(since, launched.get("pid"), pathlib.Path(launched.get("log") or ""), now, later)
+    return run_end(since, launched.get("pid"), launched.get("born"), pathlib.Path(launched.get("log") or ""), now, later)
 
 
 def unattended_brief(folder: pathlib.Path, launched: dict[str, Any], ended: datetime) -> pathlib.Path | None:

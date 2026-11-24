@@ -4,6 +4,7 @@
     python -X utf8 -I scan.py register [--every 분] [--full-every 분] [--hand <mail.py>] [--dry-run | --validate]
     python -X utf8 -I scan.py status [--dry-run] [--json]
     python -X utf8 -I scan.py unregister [--dry-run]
+    python -X utf8 -I scan.py adopt
 
 run — 한 판. 지금 모습이 없거나 `--full-every` 분이 지났으면 메일함 전체(상자마다 메일 머리 · 폴더 목록 · 규칙)를 다시 보고 지난 모습과
     견준 바뀜을 적고, 그 사이에는 「이 시각 뒤」 새 메일만 더한다. 손의 읽는 명령만 부른다 — 메일함 · 본문 · 모델에 안 닿는다.
@@ -11,6 +12,8 @@ run — 한 판. 지금 모습이 없거나 `--full-every` 분이 지났으면 �
 register · status · unregister — 작업 스케줄러의 작업 하나(`scan_task.TASK_NAME`)를 걸고 · 보이고 · 지운다. `--dry-run` 은 보이기만,
     `--validate` 는 작업 스케줄러가 정의를 받나만 묻는다. `status --json` 은 사람의 줄 대신 프로그램이 읽는 JSON 한 줄(스캔 자리 · 걸린
     작업 · 마지막 판)이다 — 칸은 `references/DESIGN.md` 「status --json · run --wait」
+adopt — 걸린 작업이 이 홈의 입구 · 회사 메일 손을 안 부르면 주기 · 전체 주기 · 켜짐을 지켜 이 홈의 것으로 다시 건다. 안 걸린 작업은 안 건다.
+    설치가 업데이트 때 한 홈에서만 부른다 — 끝 줄 · 종료 값은 `references/DESIGN.md` 「다시 겨누기 — adopt」
 
 남기는 것 — 사용자 폴더 `mailbox-scan/` 의 `state.json`(지금 모습) · `events.jsonl`(새 메일과 바뀜) · `runs.jsonl`(판마다의 값) ·
 `pending.json`(이어 볼 상자). 왜 이 꼴인가는 `references/DESIGN.md` 가 든다.
@@ -36,6 +39,7 @@ RUN_FULL_EVERY_HELP = (f"메일함 전체를 다시 보는 주기(분 · 없으�
                        f"기한 {C.PENDING_MAX_MIN}분보다 짧게)")
 PROGRAM_DOORS = "프로그램이 부르는 문"   # 사람 · 모델이 아니라 다른 프로그램(정한 시각에 보고를 띄우는 시계)이 부르는 인자의 절
 CLOCK_DOOR = "정한 시각에 보고를 띄우는 프로그램이 스캔에 한 판을 청하고 그 판을 읽을 때 쓴다 — 칸과 뜻은 references/DESIGN.md"
+ADOPT_HELP = "걸린 작업을 이 홈의 입구 · 회사 메일 손으로 다시 건다(주기 · 전체 주기 · 켜짐은 그대로 · 안 걸렸으면 안 건다) — 설치가 부른다"
 
 
 def parser() -> argparse.ArgumentParser:
@@ -64,6 +68,7 @@ def parser() -> argparse.ArgumentParser:
         "--json", action="store_true", help="사람의 줄 대신 JSON 한 줄 — 스캔 자리 · 걸린 작업 · 마지막 판 — 일일 보고의 시계가 부른다")
     u = sub.add_parser("unregister", help="작업을 지운다(쌓인 스캔 파일은 그대로)")
     u.add_argument("--dry-run", action="store_true")
+    sub.add_parser("adopt", help=ADOPT_HELP)
     return ap
 
 
@@ -80,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     if (getattr(args, "full_every", None) or 0) >= C.PENDING_MAX_MIN:
         parser().error(f"--full-every 는 {C.PENDING_MAX_MIN}분보다 짧아야 한다 — 다 못 본 판을 잇는 기한이라, 같거나 길면 큰 메일함은 "
                        "덜 본 상자가 늘 버려져 끝내 다 못 본다")
-    return {"run": R.cmd_run, "register": U.cmd_register, "status": U.cmd_status, "unregister": U.cmd_unregister}[args.command](args)
+    return {"run": R.cmd_run, "register": U.cmd_register, "status": U.cmd_status, "unregister": U.cmd_unregister,
+            "adopt": U.cmd_adopt}[args.command](args)
 
 
 if __name__ == "__main__":

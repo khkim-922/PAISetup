@@ -20,7 +20,7 @@ import edge as E
 import proc_base as P
 import state as V
 import unattended_const as C
-from brief_const import EDGE_HOST
+from brief_const import EDGE_HOST, ROUND_HEAD
 
 
 SAID_CHARS = 240                                     # 보고 창에 돌려 적는 말의 글자 수
@@ -57,7 +57,7 @@ def window_presses(folder: pathlib.Path) -> str:
         return ""
     lines = ask_window(folder, C.TICKS_SCRIPT, ["--presses", "--within", str(C.BRIEF_PRESSES_WITHIN_S)], C.BRIEF_PRESSES_TIMEOUT_S).strip().splitlines()
     said = lines[-1].strip() if lines else ""
-    return f"[보고 창 — {said}]" if said.startswith("보고 창의") else ""
+    return f"[보고 창 — {said}]" if said.startswith(ROUND_HEAD) else ""       # 거둔 수가 있는 끝 줄만
 
 
 def tell_window(folder: pathlib.Path) -> str:
