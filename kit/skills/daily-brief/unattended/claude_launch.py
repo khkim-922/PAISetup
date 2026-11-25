@@ -23,8 +23,8 @@ from launch_base import child_env, process_born
 
 
 def places(hand: pathlib.Path | None, folder: pathlib.Path) -> dict[str, pathlib.Path]:
-    """띄운 보고가 쓰는 자리 — 손 · 주소록 손 · 일정 손 · 회의실 손 · 형제 스킬 mailbox-scan 의 읽는 명령 · 보고 창 · 업무 파일의 쓰는 손 ·
-    스킬 폴더 · 사용자 폴더(`folder`). 없는 주소록 · 일정 · 회의실 손은 뺀다."""
+    """띄운 보고가 쓰는 자리 — 손 · 주소록 손(신원 손도) · 일정 손 · 회의실 손 · 결재 손 · 형제 스킬 mailbox-scan 의 읽는 명령 · 보고 창 · 업무 파일의 쓰는 손 ·
+    스킬 폴더 · 사용자 폴더(`folder`). 없는 주소록 · 일정 · 회의실 · 결재 손은 뺀다."""
     scan_skill = C.SKILLS_ROOT / C.SCAN_SKILL
     got = {"home": folder, "reader": scan_skill / pathlib.Path(*C.SCAN_READER), "scan_skill": scan_skill,
            "brief_skill": C.SKILL_DIR, "work_skill": C.SKILLS_ROOT / C.WORK_SKILL,
@@ -38,6 +38,12 @@ def places(hand: pathlib.Path | None, folder: pathlib.Path) -> dict[str, pathlib
         calendar = hand.parents[2] / C.CALENDAR_SKILL / pathlib.Path(*C.CALENDAR_SCRIPT)
         if calendar.is_file():
             got["calendar"], got["calendar_skill"] = calendar, calendar.parents[1]
+        identity = hand.parents[2] / C.DIRECTORY_SKILL / pathlib.Path(*C.IDENTITY_SCRIPT)
+        if identity.is_file():
+            got["identity"] = identity
+        approval = hand.parents[2] / C.APPROVAL_SKILL / pathlib.Path(*C.APPROVAL_SCRIPT)
+        if approval.is_file():
+            got["approval"], got["approval_skill"] = approval, approval.parents[1]
         meeting = hand.parents[2] / C.MEETING_SKILL / pathlib.Path(*C.MEETING_SCRIPT)
         if meeting.is_file():
             got["meeting"], got["meeting_skill"] = meeting, meeting.parents[1]
@@ -53,6 +59,8 @@ def commands(p: dict[str, pathlib.Path]) -> list[str]:
     got += [f"{run(p['directory'])} {r}" for r in C.DIRECTORY_READS] if "directory" in p else []
     got += [f"{run(p['calendar'])} {r}" for r in C.CALENDAR_READS] if "calendar" in p else []
     got += [f"{run(p['meeting'])} {r}" for r in C.MEETING_READS] if "meeting" in p else []
+    got += [f"{run(p['identity'])} {r}" for r in C.IDENTITY_READS] if "identity" in p else []
+    got += [f"{run(p['approval'])} {r}" for r in C.APPROVAL_READS] if "approval" in p else []
     got += [f"{run(p['reader'])} *", f'{run(p["window"])} --dir "{p["home"].as_posix()}" *', f"{run(p['work_writer'])} *",
             f'{run(p["ticks"])} --dir "{p["home"].as_posix()}"']
     return got
@@ -63,7 +71,7 @@ PROMPT = """사람 없는 예약 실행이다 — 일일 보고의 시계가 보
 0. 맨 먼저 열린 명령의 ticks.py 로 보고 창에서 누르신 것을 거둔다 — 업무 파악이 그 절을 읽고, 끝 줄들이 올리지 않을 것과 미룬 것을 댄다. 로그인 Edge 에 못 닿아 Exit code 3 으로 끝나도 그대로 넘어간다.
 1. 그 뒤 스킬 mailbox-work 의 글 {work_lane} 를 읽고 「두 길」대로 업무 파악을 한다 — {writer} where 가 업무 파일이 있다고 하면 「이어 파악」, 없으면 처음 파악(그 스킬 폴더의 first-understanding.md)이고, 「사람이 없을 때」 절이 이 실행의 경계다. 업무 파일은 {writer} write 로만 쓴다 — 이 실행에는 파일을 쓰는 도구가 없다.
 2. 그 뒤 스킬 daily-brief 의 글 {brief_lane} 를 읽고 그 글대로 짓는다 — 「사람 없는 예약 실행」 절이 이 실행의 경계다.
-3. 회사 메일 · 주소록 · 일정 · 회의실 손을 부르는 꼴은 그 스킬의 글({skills})이, 메일함 스캔이 쌓은 것을 읽는 꼴은 {scan_skill}/SKILL.md 가 든다.
+3. 회사 메일 · 주소록 · 일정 · 회의실 · 결재 손을 부르는 꼴은 그 스킬의 글({skills})이, 메일함 스캔이 쌓은 것을 읽는 꼴은 {scan_skill}/SKILL.md 가 든다.
 4. 이 실행에서 열린 명령은 아래 꼴뿐이다 — 경로와 따옴표까지 그대로 쓰고, 「…」 자리에 인자를 둔다. 「…」 앞은 한 글자도 바꾸지 않는다 — 보고 창의 --mailbox 같은 인자와 heredoc 은 「…」 자리, 곧 그 뒤에 둔다. 그 밖의 명령은 막혀 있다.
 {commands}
    종료 값은 Bash 의 결과가 댄다(0 이 아니면 결과 머리에 「Exit code N」) — 명령 뒤에 `; echo $?` 같은 것을 덧붙이지 않는다. 한 부름에 이은 명령 가운데 하나라도 위 꼴이 아니면 그 부름 전체가 막힌다.
@@ -80,12 +88,13 @@ def plan(setting: dict[str, Any], hand: pathlib.Path | None, folder: pathlib.Pat
     p = places(hand, folder)
     opened = commands(p)
     settings = {"permissions": {"allow": [f"Bash({c})" for c in opened], "deny": list(C.BRIEF_DENY)}}
-    dirs = [p[k] for k in ("brief_skill", "work_skill", "scan_skill", "mail_skill", "directory_skill", "calendar_skill", "meeting_skill")
-            if k in p and p[k].is_dir()]
+    dirs = [p[k] for k in ("brief_skill", "work_skill", "scan_skill", "mail_skill", "directory_skill", "calendar_skill", "meeting_skill",
+                                  "approval_skill") if k in p and p[k].is_dir()]
     cmd = [str(setting["claude"]), "-p", "--settings", str(folder / C.LAUNCH_SETTINGS_FILE), "--permission-mode", "dontAsk",
            "--tools", C.CLAUDE_TOOLS, "--strict-mcp-config", "--no-session-persistence",
            *[a for d in dirs for a in ("--add-dir", str(d))]]
-    skills = " · ".join(f"{p[k].as_posix()}/SKILL.md" for k in ("mail_skill", "directory_skill", "calendar_skill", "meeting_skill") if k in p)
+    skills = " · ".join(f"{p[k].as_posix()}/SKILL.md" for k in ("mail_skill", "directory_skill", "calendar_skill", "meeting_skill", "approval_skill")
+                        if k in p)
     prompt = PROMPT.format(at=at or setting["times"][0], brief_lane=(p["brief_skill"] / C.LANE_FILE).as_posix(),
                            skills=skills or "회사 메일 스킬 company-mail", work_lane=(p["work_skill"] / C.LANE_FILE).as_posix(),
                            writer=pathlib.Path(*C.WORK_WRITER).name, work_name=C.WORK_FILE,

@@ -236,22 +236,22 @@ company-regulation 의 `references/SOURCES.md` 「대화 도구에서 잰 것」
 <!-- drawn:piece-map · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
 | 조각 | 맡은 일 | 싣는 곁 조각 | 다른 스킬에서 싣는 것 |
 |---|---|---|---|
-| `ep_command.py` | 사내 앱 스킬의 얇은 명령이 함께 쓰는 뼈대 — 명령을 멈추는 꼴 · 종료 값 · 답을 JSON 하나로 내는 끝 · 답 크기에 본문 맞추기 · 받아 둔 파일 · 날 말(오늘 · 내일 · 모레) · 요일 말에 돌려주는 날짜 표 · 서울 시각과 날짜의 꼴(「<날 말> HH:MM」 도) · 모델이 쓴 글 파일 · 사람 파일(한 손이 찾은 사람을 다음 손이 받는 people.json) · 종료 값의 뜻 · 빈 틈 셈(바쁜 구간 사이의 비는 때) · 손가락의 표(한 건을 다루는 손 — 일정 · 회의실 — 의 출발 · 바꿀 것 · 아직 없는 손가락 칸과 그 거름 · 지도 줄 · 확인 열쇠). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · company-ecm(종료 값 · 글 파일 · 범례 · 사람 파일) · 종료 값 · 받아 둔 파일 · 본문 맞추기는 company-mail 도)이 이 폴더를 ``sys.path`` 에 넣고 싣는다. | `ep_session` | — |
+| `ep_command.py` | 사내 앱 스킬의 얇은 명령이 함께 쓰는 뼈대 — 명령을 멈추는 꼴 · 종료 값 · 답을 JSON 하나로 내는 끝 · 답 크기에 본문 맞추기 · 받아 둔 파일 · 날 말(오늘 · 내일 · 모레) · 요일 말에 돌려주는 날짜 표 · 서울 시각과 날짜의 꼴(「<날 말> HH:MM」 도) · 모델이 쓴 글 파일 · 사람 파일(한 손이 찾은 사람을 다음 손이 받는 people.json) · 종료 값의 뜻 · 빈 틈 셈(바쁜 구간 사이의 비는 때) · 손가락의 표(한 건을 다루는 손 — 일정 · 회의실 — 의 출발 · 바꿀 것 · 아직 없는 손가락 칸과 그 거름 · 지도 줄 · 확인 열쇠). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · company-ecm(종료 값 · 글 파일 · 범례 · 사람 파일) · company-approval · 종료 값 · 받아 둔 파일 · 본문 맞추기는 company-mail 도)이 이 폴더를 ``sys.path`` 에 넣고 싣는다. | `ep_session` | — |
 | `ep_session.py` | 받는 손(``edge_session.js``)을 파이썬에서 부르고 그 손이 남긴 세션 파일을 읽는 한 자리 — 사내 앱 스킬의 얇은 명령과 앱 손이 이 폴더를 ``sys.path`` 에 넣고 싣는다. | — | — |
 | `handout.py` | 로그인 스킬이 다른 스킬에 내주는 이름의 한 자리 — 이 폴더의 파일 → 다른 스킬이 그 파일에서 실어 쓰거나 읽는 이름. | — | — |
 
 **다른 스킬이 부르는 조각** — 입구에서 안 닿는 것.
 
-- `ep_command.Stop` ← company-board · company-calendar · company-directory · company-ecm · company-mail · company-meeting-room · company-regulation — 명령을 멈춘다 — ``code`` 가 종료 값, ``kind`` 가 JSON 의 error 값, 메시지가 사람에게 낼 까닭이다.
-- `ep_command.load` ← company-board · company-calendar · company-directory · company-meeting-room · company-regulation — ``where`` 폴더의 모듈을 싣는다 — ``-I`` 로 돌면 그 폴더가 ``sys.path`` 에 없어 넣고 싣는다.
+- `ep_command.Stop` ← company-approval · company-board · company-calendar · company-directory · company-ecm · company-mail · company-meeting-room · company-regulation — 명령을 멈춘다 — ``code`` 가 종료 값, ``kind`` 가 JSON 의 error 값, 메시지가 사람에게 낼 까닭이다.
+- `ep_command.load` ← company-approval · company-board · company-calendar · company-directory · company-meeting-room · company-regulation — ``where`` 폴더의 모듈을 싣는다 — ``-I`` 로 돌면 그 폴더가 ``sys.path`` 에 없어 넣고 싣는다.
   - ↑ `Stop`
-- `ep_command.size` ← company-board · company-calendar · company-meeting-room · company-regulation — 답이 표준 출력에서 차지할 바이트 수 — ``finish`` 가 찍는 꼴(``indent``) 그대로 센다.
-- `ep_command.exit_legend` ← company-board · company-calendar · company-directory · company-ecm · company-mail · company-meeting-room · company-regulation — 맨 위 --help 의 종료 값 범례 — 그 손이 내는 값(``codes``)마다 ``EXIT_MEANINGS`` 의 뜻을 한 줄씩, 손이 덧붙일 것(``more`` — 값 → 말)은 그 아래 줄에 단다.
+- `ep_command.size` ← company-approval · company-board · company-calendar · company-meeting-room · company-regulation — 답이 표준 출력에서 차지할 바이트 수 — ``finish`` 가 찍는 꼴(``indent``) 그대로 센다.
+- `ep_command.exit_legend` ← company-approval · company-board · company-calendar · company-directory · company-ecm · company-mail · company-meeting-room · company-regulation — 맨 위 --help 의 종료 값 범례 — 그 손이 내는 값(``codes``)마다 ``EXIT_MEANINGS`` 의 뜻을 한 줄씩, 손이 덧붙일 것(``more`` — 값 → 말)은 그 아래 줄에 단다.
 - `ep_command.no_session` ← company-mail — 받는 손이 못 선 까닭(``ep_session.NoSession`` 의 ``got``)을 종료 값으로 옮긴다 — 남은 파일 없는 2 와 3 은 ep-login(종료 3), 1 과 경로 없는 0 은 도구 고장이다.
   - ↑ `Stop`
-- `ep_command.finish` ← company-board · company-calendar · company-meeting-room · company-regulation — 얇은 명령의 끝 — 앱 손(``where`` 폴더의 모듈 ``hand``)을 싣고(``load``) ``work(앱 손)`` 을 돌려(``_worked``) 예외를 답과 종료 값으로 옮기고(``_stopped`` · ``_failed``) 찍는다(``_print``)(머리말 「내는 것」). ``work`` 가 세션을 쥐는 법(``ep_session.session_first`` · 파일부터인가 손부터인가 · 세션 없이 답하는 갈래)을 든다.
+- `ep_command.finish` ← company-approval · company-board · company-calendar · company-meeting-room · company-regulation — 얇은 명령의 끝 — 앱 손(``where`` 폴더의 모듈 ``hand``)을 싣고(``load``) ``work(앱 손)`` 을 돌려(``_worked``) 예외를 답과 종료 값으로 옮기고(``_stopped`` · ``_failed``) 찍는다(``_print``)(머리말 「내는 것」). ``work`` 가 세션을 쥐는 법(``ep_session.session_first`` · 파일부터인가 손부터인가 · 세션 없이 답하는 갈래)을 든다.
   - `_worked` — ``work(앱 손)`` 을 돌려 그 답을 낸다 — 받는 손이 못 선 것(``NoSession``)은 ``no_session`` 의 ``Stop`` 으로 바꿔 올린다.
-    - `ep_session.NoSession` ← company-mail — 손을 띄웠는데 못 섰다 — ``got`` 이 손의 종료 값 · 말을 든다.
+    - `ep_session.NoSession` ← company-directory · company-mail — 손을 띄웠는데 못 섰다 — ``got`` 이 손의 종료 값 · 말을 든다.
     - ↑ `no_session`
   - ↑ `load`
   - ↑ `Stop`
@@ -259,20 +259,20 @@ company-regulation 의 `references/SOURCES.md` 「대화 도구에서 잰 것」
   - `_failed` — 앱 손의 예외 → (답, 종료 값). 끊긴 · 없는 세션은 3, ``args_errors`` 는 2, 앱 손의 나머지 예외는 1, 모르는 예외는 꼴 이름과 함께 1.
   - `_print` — 답을 표준 출력에 JSON 하나로 찍는다 — ``size`` 가 세는 꼴 그대로.
 - `ep_command.fit_end` ← company-mail — 본문을 start 째 글자부터 most 자까지 싣되 한도를 안 넘는 끝 자리. ``over(끝)`` 은 그 끝까지 실었을 때 한도를 넘친 바이트 수다(안 넘으면 0 이하) — 한글은 한 자가 3 바이트라 글자 수로는 못 맞춰, 넘친 만큼 글자를 덜고 다시 잰다.
-- `ep_command.fit_text` ← company-board · company-regulation — 답 ``out`` 의 ``key`` 칸에 본문을 start 부터 most 자까지 싣되 답 전체가 ``limit`` 바이트를 안 넘게 끝을 당긴다(``fit_end``). 남은 글이 있으면 ``out["more"]`` 에 ``more(다음 자리)`` 를 싣는다 — 그 말은 명령마다 제 것이다.
+- `ep_command.fit_text` ← company-approval · company-board · company-regulation — 답 ``out`` 의 ``key`` 칸에 본문을 start 부터 most 자까지 싣되 답 전체가 ``limit`` 바이트를 안 넘게 끝을 당긴다(``fit_end``). 남은 글이 있으면 ``out["more"]`` 에 ``more(다음 자리)`` 를 싣는다 — 그 말은 명령마다 제 것이다.
   - ↑ `size`
   - ↑ `fit_end`
-- `ep_command.kept` ← company-board · company-mail · company-regulation — 받아 둔 JSON 파일 — 꼴 번호(``format`` 칸)가 ``form`` 이고 받은 지 ``days`` 날이 안 된 것만 (내용, 받은 시각)으로 낸다.
+- `ep_command.kept` ← company-board · company-directory · company-mail · company-regulation — 받아 둔 JSON 파일 — 꼴 번호(``format`` 칸)가 ``form`` 이고 받은 지 ``days`` 날이 안 된 것만 (내용, 받은 시각)으로 낸다.
   - `stamp` ← company-calendar · company-mail · company-meeting-room — 시각 → 서울 벽시계 ``YYYY-MM-DD HH:MM`` — ``stamp_of`` 가 받는 꼴 그대로라 답의 시각을 다음 명령(일정 · 회의실)에 그대로 준다.
-- `ep_command.keep` ← company-board · company-mail · company-regulation — ``data`` 를 JSON 으로 ``path`` 에 남긴다 — 곁의 임시 파일에 다 쓴 뒤 바꿔 끼워, 도중에 죽어도 반쯤 쓴 파일이 안 남는다.
-- `ep_command.text_file` ← company-board · company-directory · company-ecm · company-mail — 모델이 쓴 글 파일 하나(바꿀 조각 · 글) — UTF-8 로 읽어 앞의 BOM 과 끝 줄바꿈을 걷는다.
+- `ep_command.keep` ← company-board · company-directory · company-mail · company-regulation — ``data`` 를 JSON 으로 ``path`` 에 남긴다 — 곁의 임시 파일에 다 쓴 뒤 바꿔 끼워, 도중에 죽어도 반쯤 쓴 파일이 안 남는다.
+- `ep_command.text_file` ← company-approval · company-board · company-directory · company-ecm · company-mail — 모델이 쓴 글 파일 하나(바꿀 조각 · 글) — UTF-8 로 읽어 앞의 BOM 과 끝 줄바꿈을 걷는다.
   - ↑ `Stop`
 - `ep_command.add_people_file` ← company-calendar · company-meeting-room — 사람 파일 인자 하나를 단다 — 이름 · 꼴(여러 번 · 안 주면 None) · 도움말이 손마다 같게.
-- `ep_command.people_of` ← company-calendar · company-ecm · company-meeting-room — 사람 파일들 → 사람들(준 차례 · 파일 안 차례 그대로). 꼴이 아니면 Stop(인자) — 없거나 UTF-8 이 아닌 파일 · JSON 이 아닌 글 · 꼴 번호가 다른 파일 · 칸이 빠졌거나 값의 꼴이 틀린 사람 · 사람이 하나도 없는 파일. 같은 사람이 두 번 들어도(받는 칸이 달라) 그대로 낸다 — 한 번씩만 쓸 손은 ``distinct`` 를 거친다.
+- `ep_command.people_of` ← company-approval · company-calendar · company-ecm · company-meeting-room — 사람 파일들 → 사람들(준 차례 · 파일 안 차례 그대로). 꼴이 아니면 Stop(인자) — 없거나 UTF-8 이 아닌 파일 · JSON 이 아닌 글 · 꼴 번호가 다른 파일 · 칸이 빠졌거나 값의 꼴이 틀린 사람 · 사람이 하나도 없는 파일. 같은 사람이 두 번 들어도(받는 칸이 달라) 그대로 낸다 — 한 번씩만 쓸 손은 ``distinct`` 를 거친다.
   - `Person` — 사람 파일의 한 사람 — 칸은 파일의 칸 그대로이고, ``where`` 는 그 사람이 든 자리(「파일:몇째」)다.
     - `Person.label` — 사람에게 보일 한 줄 — 동명이인이 부서 · 직급으로 갈리게.
   - ↑ `Stop`
-- `ep_command.distinct` ← company-calendar · company-ecm · company-meeting-room — 한 사람은 한 번 — 사번 · 메일 주소 · Notes 이름 · (이름, 메일 ID) 가운데 먼저 찬 것으로 같은 사람을 가린다(이름만으로는 안 가린다 — 동명이인이 하나로 접힌다). 먼저 든 줄이 남는다.
+- `ep_command.distinct` ← company-approval · company-calendar · company-ecm · company-meeting-room — 한 사람은 한 번 — 사번 · 메일 주소 · Notes 이름 · (이름, 메일 ID) 가운데 먼저 찬 것으로 같은 사람을 가린다(이름만으로는 안 가린다 — 동명이인이 하나로 접힌다). 먼저 든 줄이 남는다.
   - `notes_key` ← company-calendar — Notes 이름을 견줄 꼴 — 「CN=홍길동/OU=…/O=…」 와 줄인 꼴 「홍길동/…/…」 을 같게(마디마다 「이름=」 을 떼고 대소문자를 안 가린다).
 - `ep_command.weeks_word` ← company-calendar · company-meeting-room — 이번 주부터 ``WEEKS_SHOWN`` 주의 날짜 · 요일 표 한 줄 — 요일로 말한 날을 모델이 세지 않고 고르게.
 - `ep_command.day_of` ← company-calendar · company-meeting-room — 사람이 준 날 — 날 말(``DAY_WORDS`` · 대소문자 무시)이나 ``YYYY-MM-DD``. 비면 오늘이다.
@@ -280,7 +280,7 @@ company-regulation 의 `references/SOURCES.md` 「대화 도구에서 잰 것」
   - `today_word` ← company-calendar · company-mail · company-meeting-room — 멈추는 말에 싣는 오늘 — 모델이 「내일」 · 「다음 주 금요일」 을 제 셈으로 날짜로 바꿀 때 기댈 자리.
   - ↑ `weeks_word`
   - `_real_date` — ``YYYY-MM-DD`` 꼴의 있는 날 — 꼴이 아니거나 없는 날(2026-13-45 · 2026-02-30)이면 None.
-- `ep_command.date_of` ← company-board · company-mail — 사람이 준 날짜 — 있는 날의 ``YYYY-MM-DD`` 만. 아니면 Stop(인자) — 말은 ``lead``(「--since 는」 처럼 무엇이 틀렸나) · 받는 꼴 · 오늘을 든다.
+- `ep_command.date_of` ← company-approval · company-board · company-mail — 사람이 준 날짜 — 있는 날의 ``YYYY-MM-DD`` 만. 아니면 Stop(인자) — 말은 ``lead``(「--since 는」 처럼 무엇이 틀렸나) · 받는 꼴 · 오늘을 든다.
   - ↑ `_real_date`
   - ↑ `Stop`
   - ↑ `today_word`
@@ -289,44 +289,45 @@ company-regulation 의 `references/SOURCES.md` 「대화 도구에서 잰 것」
   - ↑ `Stop`
   - ↑ `today_word`
 - `ep_command.gaps_of` ← company-calendar · company-meeting-room — ``lo`` ~ ``hi`` 안에서 ``need`` 이상 비는 때를 (시작, 끝) 차례로 낸다.
-- `ep_command.Start` ← company-calendar · company-meeting-room — 출발 하나 — 앱의 화면 · 창 하나.
+- `ep_command.Start` ← company-approval · company-calendar · company-meeting-room — 출발 하나 — 앱의 화면 · 창 하나.
   - `Start.dest` — 출발을 고르는 인자의 argparse 이름(``flag_dest``).
     - `flag_dest` — 인자의 argparse 이름 — ``--add-to`` → ``add_to``.
-- `ep_command.Change` ← company-calendar · company-meeting-room — 바꿀 것 하나 — 손가락 하나.
+- `ep_command.Change` ← company-approval · company-calendar · company-meeting-room — 바꿀 것 하나 — 손가락 하나.
   - `Change.name` — 바꿀 것의 이름 — 사람 말에서 「 — 」 앞.
-- `ep_command.NotYet` ← company-calendar · company-meeting-room — 아직 없는 손가락 하나 — 회사에서 안 잰 화면 동작이라 짓지 않았다.
-- `ep_command.given` ← company-calendar · company-meeting-room — 표의 줄(``Change`` · ``NotYet``)의 인자 가운데 하나라도 받았나.
+- `ep_command.NotYet` ← company-approval · company-calendar · company-meeting-room — 아직 없는 손가락 하나 — 회사에서 안 잰 화면 동작이라 짓지 않았다.
+- `ep_command.given` ← company-approval · company-calendar · company-meeting-room — 표의 줄(``Change`` · ``NotYet``)의 인자 가운데 하나라도 받았나.
   - ↑ `flag_dest`
-- `ep_command.fingerprint` ← company-calendar · company-meeting-room — 보인 판의 열쇠 — 판 전체(JSON 으로 옮길 것)의 해시. 같은 판이면 늘 같은 글자이고, 무엇이든 달라지면 달라진다.
-- `ep_command.refuse_not_yet` ← company-calendar · company-meeting-room — 아직 없는 손가락을 받았으면 사람이 어디서 하나를 대며 Stop(인자) — 거듭 준 칸(``NotYet.again``)도 그 손가락을 바란 것이다.
+- `ep_command.fingerprint` ← company-approval · company-calendar · company-meeting-room — 보인 판의 열쇠 — 판 전체(JSON 으로 옮길 것)의 해시. 같은 판이면 늘 같은 글자이고, 무엇이든 달라지면 달라진다.
+- `ep_command.refuse_not_yet` ← company-approval · company-calendar · company-meeting-room — 아직 없는 손가락을 받았으면 사람이 어디서 하나를 대며 Stop(인자) — 거듭 준 칸(``NotYet.again``)도 그 손가락을 바란 것이다.
   - ↑ `flag_dest`
   - ↑ `given`
   - ↑ `Stop`
-- `ep_command.pick_start` ← company-calendar · company-meeting-room — 부른 명령의 출발 — 출발을 고르는 인자 가운데 받은 것, 없으면 인자 없는 출발. 둘 이상 받았으면 Stop(인자).
+- `ep_command.pick_start` ← company-approval · company-calendar · company-meeting-room — 부른 명령의 출발 — 출발을 고르는 인자 가운데 받은 것, 없으면 인자 없는 출발. 둘 이상 받았으면 Stop(인자).
   - ↑ `Stop`
-- `ep_command.refuse_foreign` ← company-calendar · company-meeting-room — 그 출발이 안 받는 손가락을 받았으면 그 일을 어디서 하나를 대며 Stop(인자).
+- `ep_command.refuse_foreign` ← company-approval · company-calendar · company-meeting-room — 그 출발이 안 받는 손가락을 받았으면 그 일을 어디서 하나를 대며 Stop(인자).
   - ↑ `given`
   - ↑ `Stop`
-- `ep_command.refuse_missing` ← company-calendar · company-meeting-room — 그 출발이 꼭 드는 손가락이 빠졌으면 Stop(인자). ``have(줄)`` 이 참이면 다른 인자가 그 줄을 채운 것이다.
+- `ep_command.refuse_missing` ← company-approval · company-calendar · company-meeting-room — 그 출발이 꼭 드는 손가락이 빠졌으면 Stop(인자). ``have(줄)`` 이 참이면 다른 인자가 그 줄을 채운 것이다.
   - ↑ `given`
   - ↑ `Stop`
-- `ep_command.change_lines` ← company-calendar · company-meeting-room — --help 지도의 「바꿀 것」 줄 — 손가락마다 출발별 표시(● 꼭 든다 · △ 받되 안 쟀다 · ○ 받는다 · — 없다)와 사람 말, 그 아래 — 의 자리 · △ 의 자리.
-- `ep_command.not_yet_lines` ← company-calendar · company-meeting-room — --help 지도의 「아직 없는 손가락」 줄 — 부르는 인자(거듭이면 「인자 거듭」)와 무엇을 · 어디서.
+- `ep_command.change_lines` ← company-approval · company-calendar · company-meeting-room — --help 지도의 「바꿀 것」 줄 — 손가락마다 출발별 표시(● 꼭 든다 · △ 받되 안 쟀다 · ○ 받는다 · — 없다)와 사람 말, 그 아래 — 의 자리 · △ 의 자리.
+- `ep_command.not_yet_lines` ← company-approval · company-calendar · company-meeting-room — --help 지도의 「아직 없는 손가락」 줄 — 부르는 인자(거듭이면 「인자 거듭」)와 무엇을 · 어디서.
   - ↑ `NotYet`
+- `ep_session.known_file` ← company-directory — 받는 손을 안 띄우고 세션 파일을 낸다 — ``session_path`` 의 자리에 파일이 있을 때만, 없으면 None.
+  - `session_path` — 받는 손이 쓰는 세션 파일의 자리 — 손과 같은 차례(``MAILBOX_COOKIES`` → 손 곁 ``places.json`` 의 기본 자리). 파일이 있는지는 안 본다.
+    - `hand_path` — 받는 손(``edge_session.js``)의 자리 — ``EP_SESSION_HAND`` 이 있으면 그 값, 없으면 이 파일 곁.
 - `ep_session.SessionFileError` ← company-mail — 세션 파일이 없거나 · 못 읽거나 · 쿠키가 없다 — ``load_jar`` 가 ``missing`` 을 안 받았을 때 낸다.
-- `ep_session.load_jar` ← company-board · company-ecm · company-mail · company-meeting-room · company-regulation — 세션 파일(``{"cookies": [...]}``)을 쿠키 통으로 낸다.
+- `ep_session.load_jar` ← company-approval · company-board · company-directory · company-ecm · company-mail · company-meeting-room · company-regulation — 세션 파일(``{"cookies": [...]}``)을 쿠키 통으로 낸다.
   - `_lasting_until` — 만료 칸을 시각으로 — 수가 아니거나(``None`` · 글자 · 참거짓) 음수면 None(세션 쿠키), 그 밖은 그 시각.
-- `ep_session.Redirected` ← company-board · company-ecm · company-mail · company-regulation — ``opener`` 가 리다이렉트를 따라가지 않고 멈췄다 — ``location`` 은 넘기려던 주소.
-- `ep_session.opener` ← company-board · company-ecm · company-mail · company-regulation — ``jar`` 를 싣고(주면) 프록시 없이 묻고 리다이렉트는 안 따라가는 opener — 3xx 를 만나면 ``Redirected``. 3xx 의 ``Location`` 을 성공 신호로 읽는 앱은 이 opener 대신 제 처리기를 둔다.
+- `ep_session.Redirected` ← company-approval · company-board · company-directory · company-ecm · company-mail · company-regulation — ``opener`` 가 리다이렉트를 따라가지 않고 멈췄다 — ``location`` 은 넘기려던 주소.
+- `ep_session.opener` ← company-approval · company-board · company-directory · company-ecm · company-mail · company-regulation — ``jar`` 를 싣고(주면) 프록시 없이 묻고 리다이렉트는 안 따라가는 opener — 3xx 를 만나면 ``Redirected``. 3xx 의 ``Location`` 을 성공 신호로 읽는 앱은 이 opener 대신 제 처리기를 둔다.
   - `NoRedirect` — 리다이렉트를 따라가지 않고 ``Redirected`` 를 낸다 — 따라가면 세션 쿠키가 SSO 에 실린다.
     - `NoRedirect.redirect_request` — 넘김을 따라가지 않는다 — 넘기려던 주소를 들고 ``Redirected`` 를 낸다.
       - ↑ `Redirected`
-- `ep_session.sso_form` ← company-board · company-meeting-room · company-regulation — SSO 넘김 화면의 ``<input>`` 칸 → ``{name: value}`` — name · value 의 차례와 따옴표 꼴(겹 · 홑)을 안 가리고, 값의 HTML 엔티티는 푼다(브라우저가 폼을 낼 때와 같은 글자). value 없는 칸은 빈 글자, name 없는 칸은 버린다.
+- `ep_session.sso_form` ← company-approval · company-board · company-directory · company-meeting-room · company-regulation — SSO 넘김 화면의 ``<input>`` 칸 → ``{name: value}`` — name · value 의 차례와 따옴표 꼴(겹 · 홑)을 안 가리고, 값의 HTML 엔티티는 푼다(브라우저가 폼을 낼 때와 같은 글자). value 없는 칸은 빈 글자, name 없는 칸은 버린다.
 - `ep_session.squash` ← company-board · company-mail · company-regulation — 견주기 꼴 — 빈칸 · 가운뎃점 · 괄호를 빼고 대소문자를 접는다(「안전 · 환경」 = 「안전환경」 · 「(포항)화성」 = 「포항화성」 · 「[공지] 식단」 = 「공지식단」). None 은 빈 글자다.
-- `ep_session.session_first` ← company-board · company-calendar · company-directory · company-mail · company-meeting-room · company-regulation — 흔한 길에서 손을 안 띄운다 — 있는 세션 파일로 ``use(file)`` 을 먼저 돌리고, 그것이 ``expired`` 를 내거나 파일이 없을 때만 손을 띄워 새 파일로 한 번 더 돈다(``file_first=False`` 면 늘 손부터 받아 한 번만). 손이 못 서면 ``NoSession``. 손이 같은 낡은 파일만 가리키면(Edge 에 못 붙어 안 고쳤다) 둘째 판 없이 첫 판의 ``expired`` 를 올린다.
-  - `known_file` — 받는 손을 안 띄우고 세션 파일을 낸다 — ``session_path`` 의 자리에 파일이 있을 때만, 없으면 None.
-    - `session_path` — 받는 손이 쓰는 세션 파일의 자리 — 손과 같은 차례(``MAILBOX_COOKIES`` → 손 곁 ``places.json`` 의 기본 자리). 파일이 있는지는 안 본다.
-      - `hand_path` — 받는 손(``edge_session.js``)의 자리 — ``EP_SESSION_HAND`` 이 있으면 그 값, 없으면 이 파일 곁.
+- `ep_session.session_first` ← company-approval · company-board · company-calendar · company-directory · company-mail · company-meeting-room · company-regulation — 흔한 길에서 손을 안 띄운다 — 있는 세션 파일로 ``use(file)`` 을 먼저 돌리고, 그것이 ``expired`` 를 내거나 파일이 없을 때만 손을 띄워 새 파일로 한 번 더 돈다(``file_first=False`` 면 늘 손부터 받아 한 번만). 손이 못 서면 ``NoSession``. 손이 같은 낡은 파일만 가리키면(Edge 에 못 붙어 안 고쳤다) 둘째 판 없이 첫 판의 ``expired`` 를 올린다.
+  - ↑ `known_file`
   - `_held` — ``use(file)`` 을 돌리되 표준 출력을 담는다 — 선 뒤에 내보내고, ``expired`` 면 버리고(둘째 판이 다시 찍는다), 그 밖의 예외로 멈추면 멈춘 자리까지의 글을 먼저 내보내고 올린다.
   - `attach` — 받는 손을 말없이 돌린다 — ``apps`` 는 꼭 서야 하는 앱(``"ecm"``), 안 주면 손의 기본(domino)이다.
     - ↑ `hand_path`
@@ -341,6 +342,12 @@ company-regulation 의 `references/SOURCES.md` 「대화 도구에서 잰 것」
 - `ep_session.run_hand` ← company-board · company-mail — 화면을 다루는 node 손(임시저장 · 보내기 · 창 띄우기) 한 판 — 손은 표준 출력의 끝 줄(빈 줄 아닌)에 답을 JSON 객체 하나로 낸다.
   - ↑ `_node`
   - `Ran` — node 손 한 판의 끝 — ``code`` 손의 종료 값 · ``answer`` 끝 줄의 답 · ``said`` 손이 댄 까닭(없으면 빈 글자).
+- `ep_session.NotOpened` ← company-approval — 평소 Edge 에 주소를 못 열었다 — 메시지가 까닭이다(node 가 없다 · Edge 가 없다 · 띄우기가 졌다).
+- `ep_session.open_ordinary` ← company-approval — 사람의 평소 Edge 에 주소 하나를 연다 — 입구가 EP 포털을 여는 길(``ordinary_logon.js`` 의 ``openOrdinary``) 그대로: 떠 있으면 새 탭, 없으면 평소 프로필로 뜬다.
+  - ↑ `_node`
+  - ↑ `NoNode`
+  - ↑ `NotOpened`
+  - ↑ `TimedOut`
 
 **어디서도 안 닿는 조각** — 표 · 인스턴스를 거쳐 부르거나 아무도 안 부른다.
 

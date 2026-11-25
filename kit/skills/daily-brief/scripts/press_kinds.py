@@ -80,6 +80,20 @@ def ask_due(row: dict | None, eager: bool = False) -> tuple[str, str, str] | Non
     return words.strip(), str(row.get("brief") or ""), str(row.get("session") or "")
 
 
+def appr_due(press: dict, eager: bool = False) -> dict | None:
+    """「결재 창 열기」 누름 하나가 거둘 때인가 — 그 누름 · 아니면 None. 안 맺은 누름이 누른 지 `brief_const.ASK_TAKE_S` 안일 때만(부탁과 같은
+    까닭 — 늦게 뜬 창은 자리를 뜬 사람을 놀라게 한다). 시계 판은 안 거둔다 — `eager` 를 안 본다."""
+    at = E.pressed_at(press) if isinstance(press, dict) else None
+    if not isinstance(press, dict) or press.get("done") or at is None or (T.seoul_now() - at).total_seconds() >= C.ASK_TAKE_S:
+        return None
+    return press
+
+
+def appr_back(press: dict, state: str, said: str) -> dict:
+    """그 창에 돌려 적을 「결재 창 열기」 칸 — 맺은 때 · 끝(opened · failed · session) · 말."""
+    return {**press, "done": T.stamp(T.seoul_now()), "state": state, "said": " ".join(said.split())[:C.SAID_MAX]}
+
+
 def ask_back(taken: dict, state: str, said: str) -> dict:
     """그 창에 돌려 적을 부탁의 칸 — 맡은 칸에 맺은 때 · 끝 · 말."""
     return {**taken, "done": T.stamp(T.seoul_now()), "state": state, "said": said}
@@ -99,3 +113,4 @@ ASK = Measure("부탁", C.ASK_KEY, ask_due, ask_back)
 PUT = Measure("일정에 넣기", C.CAL_PREFIX, put_due, put_back)
 AWAY = Measure("자리 밖에서 보기", C.AWAY_KEY, away_due, said_back)
 TIMES = Measure("보고 시각", C.TIMES_KEY, times_due, said_back)
+APPR = Measure("결재 창 열기", C.APPR_PREFIX, appr_due, appr_back)

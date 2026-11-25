@@ -103,7 +103,7 @@ const { VERSION_MS, findEdge, version, openPort, tabList, newTab, closeTarget } 
 const { Exit, EXIT: RECEIVED, needNode } = require('./ep_exit.js');
 // 평소 Edge 의 로그인을 읽는 바탕 — 로그온 열쇠 · 두 기록 · 눈과 그 가름. 문서함 손이 빌리는 답(ordinary_status.js)도 같은 바탕을 쓴다
 const { SAVED, LOOK, EYE, EYE_GAP_MS, STEADY, TITLES, logonKey, readMark, writeMark, readStood, writeStood, readNoSso, writeNoSso, readTitles,
-  ordinaryProfile, hostOf, edgeEye, eyeSelect, lookOnce, lookForPortal, committedState } = require('./ordinary_logon.js');
+  ordinaryProfile, openOrdinary, hostOf, edgeEye, eyeSelect, lookOnce, lookForPortal, committedState } = require('./ordinary_logon.js');
 const cfg = settings();
 const say = line => console.error(line);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -437,13 +437,6 @@ async function pressConfirms(eye, now) {
     sayPress(outcome);
   }
   return { pressed, others };
-}
-
-// 평소 Edge 에 로그인 주소를 연다 — 사람이 주소를 넘긴 것과 같다. 떠 있으면 그 Edge 의 새 탭, 없으면 평소 프로필로 뜬다. 포트는 안 연다.
-// 늘 떼어 띄운다 — 떼지 않은 Edge 는 부른 쪽이 끝나면 함께 끝날 수 있다(SOURCES 「잰 것」)
-function openOrdinary(exe, profile, url) {
-  const args = profile ? [`--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', url] : [url];
-  spawn(exe, args, { detached: true, stdio: 'ignore' }).unref();
 }
 
 // 배우는 제목의 자리 — 제목 파일의 칸 이름이다

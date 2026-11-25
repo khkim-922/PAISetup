@@ -148,7 +148,7 @@
 ## 들어가는 길 — `scripts/cbsop.py` 가 기댄다
 
 1. 사내 세션 쿠키(.posco.net)를 싣고 SSO 넘김 화면(SSO_PAGE)을 GET — 200 에 숨은 칸 폼(ssoToken · …)이 온다.
-   세션이 끊겼으면 그 칸이 없다
+   세션이 끊겨도 토큰 칸이 올 수 있다 — 섰는지는 끝 걸음(`main.do` 로 넘기나)으로 가린다
 2. 그 칸을 앱 뿌리(APP_ROOT)에 POST — 앱이 `var epId = encodeURIComponent('…')` 로 열쇠를 든 화면을 낸다
 3. `/test/test_login.do?aes=<열쇠>` 를 GET — 302 → `/main/main.do` 면 선 것. 앱은 그때 제 세션(JSESSIONID)을 심는다
 4. 그 뒤 `/main/ajax/…` 를 폼 꼴 POST 로 부른다. 끊긴 앱 세션은 302 → `/test/closePage.do` 다

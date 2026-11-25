@@ -106,6 +106,9 @@ AWAY_SENT, AWAY_RETRY, AWAY_UNSURE = "sent", "retry", "unsure"   # 칸의 메일
 SEND_EXIT_SENT, SEND_EXIT_BEFORE, SEND_EXIT_UNSURE = 0, 4, 5   # 보내는 손의 종료 값 — 보냈다 · 넘기기 전에 졌다 · 넘기는 도중이나 뒤에 졌다
 CALENDAR_SKILL = "company-calendar"      # 회사 메일 손과 같은 스킬 뿌리에 나란히 선다
 CALENDAR_SCRIPT = ("scripts", "company_calendar.py")
+IDENTITY_SCRIPT = ("scripts", "identity.py")   # 주소록 손의 보낸 분 신원 — 스캔이 못 본 메일의 보낸 분만 묻는다(lookup 은 로그인 손을 안 띄운다)
+APPROVAL_SKILL = "company-approval"      # 전자결재 손 — 같은 스킬 뿌리에 선다. 보고가 결재하실 것 · 올리신 결재를 읽는다
+APPROVAL_SCRIPT = ("scripts", "approval.py")
 MEETING_SKILL = "company-meeting-room"   # 회의실 예약 손 — 같은 스킬 뿌리에 선다. 보고의 회의 한 장이 내 예약을 읽는다
 MEETING_SCRIPT = ("scripts", "meeting_room.py")
 CLAUDE_NAMES = ("claude.exe", "claude")  # PATH 에서 찾는 차례 — 네이티브 판이 먼저, 없으면 npm 판의 claude.cmd(PATHEXT 가 붙인다)
@@ -134,6 +137,12 @@ MAIL_READS = ("session *", "folders *", "rules *", "list *", "read *", "read-man
 DIRECTORY_READS = ("find *",)
 # 주소록 손(DIRECTORY_SKILL)의 찾기 — 업무 파악이 사용자 · 윗분을 짐작하는 주소록 · 조직도를 받는다(업무 파악 스킬의 「읽는 법」 ·
 # first-understanding.md). `--out` 은 아래에서 막는다 — 준 자리에 아무 파일이나 쓴다
+IDENTITY_READS = ("lookup *",)
+# 보낸 분 신원(주소록 손 identity.py)의 lookup — 표준 입력의 주소(heredoc)마다 신원 JSON 을 낸다. 세션 파일을 있는 그대로만 써 로그인 손을 안
+# 띄우고 아무것도 안 바꾼다(그 손 머리말). show · pull 은 대화의 문이라 안 연다
+APPROVAL_READS = ("box *", "read *")
+# 전자결재 손의 읽기 — 결재하실 것(box todo) · 올리신 결재(box sent · sent-stopped)와 결재선(read). 결재 앱에 아무것도 안 남긴다(그 손 SKILL.md
+# 「읽는다」). 창을 띄우는 open 과 쓰기는 아래에서 막는다
 CALENDAR_READS = ("show *", "calendars *", "event *", "preview *")
 # event 는 회의 한 장의 참석자 · 곳 · Teams 를, preview 는 「일정에 없는 약속」 카드의 값과 열쇠를 받는다(일정을 안 바꾼다 — 넣기는 사람이 카드를
 # 누른 뒤 일일 보고의 넣는 손이 그 열쇠로 한다)
@@ -152,6 +161,8 @@ BRIEF_DENY = ("Bash(*mail.py* draft *)", "Bash(*mail.py*send-draft*)", "Bash(*ma
               *(f"Bash(*company_calendar.py{q} {c}*)" for c in ("add", "delete", "edit", "remember", "teams-meeting") for q in ('"', "")),
               "Bash(*meeting_room.py*book*)", "Bash(*meeting_room.py*change*)", "Bash(*meeting_room.py*cancel*)",
               "Bash(*meeting_room.py*preview*)", "Bash(*meeting_room.py*pref*)",
+              *(f"Bash(*approval.py{q} {c}*)" for c in ("open", "save", "discard", "preview", "form", "forms") for q in ('"', "")),
+              *(f"Bash(*identity.py{q} {c}*)" for c in ("show", "pull") for q in ('"', "")),
               "Bash(*ep-login/scripts*)", "Bash(*edge_session.js*)", "Bash(*ep_login.js*)", "Bash(*company-ecm/scripts*)",
               "Bash(gh *)", "Bash(git *)", "Bash(curl *)", "Bash(wget *)", "Bash(node *)", "Bash(npx *)", "Bash(powershell*)",
               "Bash(pwsh*)", "Bash(cmd*)", "Bash(claude*)", "Bash(schtasks*)", "mcp__*")

@@ -56,12 +56,14 @@ from records import (ADDED, ALREADY, ENTERING, FAILED, LEDGER_LOCK, MOVED, PAST,
                      write_ledger)
 from hand_wanted import hand_wanted  # noqa: E402
 from brief_put import PUT_KEY, Put, put_moment  # noqa: E402
+from brief_inline import APPROVAL as APPROVAL_ID, approvals_in  # noqa: E402
 from brief_tasks import cards_of  # noqa: E402
 from task_kinds import CAL, Cells  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 TICKS = HERE / "ticks.py"
 CALENDAR = HERE.parents[1] / "company-calendar" / "scripts" / "company_calendar.py"   # 형제 스킬 — 스킬 홈에 나란히 깔린다
+APPROVAL = HERE.parents[1] / "company-approval" / "scripts" / "approval.py"          # 형제 스킬 — 결재 문서의 창을 띄우는 손(open)
 UNATTENDED = HERE.parent / C.UNATTENDED_DIR   # 같은 스킬의 사람 없는 실행 — 보고 시각 · 「자리 밖에서 보기」 · 맡긴 일의 명령(clock.py · handed.py)의 자리
 WAIT_STEP_S = 0.5                              # 다른 프로그램의 끝을 기다리는 동안 숨 표 · 맡긴 일을 돌보는 사이
 HAND_LOCK = "daily-brief-hand.lock"            # 창 곁의 손 하나 — 쥔 동안 산다. 둘째 손은 못 쥐고 바로 끝난다
@@ -420,6 +422,80 @@ def collect_ask(kind: "Kind", tab: E.Tab, folder: pathlib.Path, hand: "Hand") ->
     return f"{kind.name} — {state}"
 
 
+# ── 결재 창 열기 ────────────────────────────────────────────────────────────
+APPR_OPENED, APPR_FAILED, APPR_SESSION = "opened", "failed", "session"
+APPR_WORDS = {
+    APPR_OPENED: "평소 Edge 에 결재 창을 띄웠습니다 — 결재 · 반려는 그 창에서 누르시면 됩니다",
+    APPR_SESSION: "사내 로그인이 끊겨 결재 창을 못 띄웠습니다 — 대화에서 「EP 로그인 해 줘」 하신 뒤 다시 누르시면 됩니다",
+    APPR_FAILED: "결재 창을 못 띄웠습니다 — {why}. 대화에서 「그 결재 창 띄워 줘」 하시면 띄웁니다",
+}
+
+
+def start_approval(doc: str):
+    """결재 손 open 한 번을 띄우고 기다리지 않는다 — 그 프로세스 · 못 띄웠으면 (None, 까닭). 창 곁의 손은 걸음마다 끝났나만 본다
+    (`approval_done`) — 열기를 기다리는 동안에도 다른 누름(부탁 · 다른 결재)을 제때 맡는다."""
+    if not APPROVAL.is_file():
+        return None, "결재 스킬이 곁에 없습니다"
+    try:
+        return subprocess.Popen(P.python_argv(APPROVAL, "open", doc), **piped()), ""
+    except OSError as exc:
+        return None, f"결재 손을 못 띄웠습니다({type(exc).__name__})"
+
+
+def approval_done(proc, started: float) -> tuple[str, str] | None:
+    """띄운 open 이 끝났으면 (끝, 말), 아직이면 None. `C.APPR_OPEN_S` 를 넘기면 끊고 못 띄움으로 맺는다."""
+    if proc.poll() is None:
+        if time.monotonic() - started < C.APPR_OPEN_S:
+            return None
+        proc.kill()
+        proc.communicate()
+        return APPR_FAILED, APPR_WORDS[APPR_FAILED].format(why="시한 안에 끝나지 않았습니다")
+    try:
+        answer = json.loads(proc.communicate()[0].decode("utf-8", "replace"))
+    except ValueError:
+        answer = {}
+    answer = answer if isinstance(answer, dict) else {}
+    if proc.returncode == 0 and answer.get("state") == "opened":
+        return APPR_OPENED, APPR_WORDS[APPR_OPENED]
+    if answer.get("error") == "session":           # 결재 손의 답이 대는 갈래(ep_command 의 멈춤 답) — 종료 값을 옮겨 적지 않는다
+        return APPR_SESSION, APPR_WORDS[APPR_SESSION]
+    why = str(answer.get("message") or "결재 손이 답하지 않았습니다").split(". 다음:")[0]
+    return APPR_FAILED, APPR_WORDS[APPR_FAILED].format(why=why)
+
+
+def open_approval(folder: pathlib.Path, doc: str, press: dict):
+    """누른 결재 문서 하나의 창을 띄우기 시작한다 — 그 프로세스, 또는 바로 맺을 (끝, 말). 누른 창의 보고 글에 링크로 선 문서만 연다 —
+    창의 저장소는 file: 창끼리 하나라 거기 적힌 id 를 믿지 않는다."""
+    got = S.page_brief(folder, str(press.get("brief") or ""))
+    if not APPROVAL_ID.match(doc) or got is None or doc not in approvals_in(got[1]):
+        return APPR_FAILED, APPR_WORDS[APPR_FAILED].format(why="누르신 결재를 그 보고 글에서 찾지 못했습니다")
+    proc, why = start_approval(doc)
+    return (APPR_FAILED, APPR_WORDS[APPR_FAILED].format(why=why)) if proc is None else proc
+
+
+def collect_approvals(kind: "Kind", tab: E.Tab, folder: pathlib.Path, hand: "Hand") -> str:
+    """「결재 창 열기」 누름을 거둔다 — 거둘 때인 누름마다 맡고(창의 값이 그대로일 때만 — 한 누름은 한 번 띄운다) 결재 손을 띄워 두고,
+    띄워 둔 것 가운데 끝난 것의 끝을 그 창에 적는다. 끝은 그 칸이 아직 맡은 값 그대로일 때만 적는다 — 그 사이 다시 누르신 새 누름을 덮지
+    않는다. 못 적으면 띄워 둔 기록을 남겨 다음 걸음에 다시 적는다. 내는 것 — 기록에 남길 한 구절(거둔 것이 없으면 "")."""
+    said = []
+    for doc, (raw, press) in E.cells(tab.read(), kind.key).items():
+        if kind.due(press) is None or press.get("taken") or doc in hand.opening:
+            continue
+        taken = json.dumps({**press, "taken": T.stamp(T.seoul_now())}, ensure_ascii=False)
+        if not tab.swap(kind.key + doc, raw, taken):
+            continue
+        got = kind.job(folder, doc, press)
+        hand.opening[doc] = (taken, got if isinstance(got, tuple) else None, got if not isinstance(got, tuple) else None, time.monotonic())
+    for doc, (taken, end, proc, started) in list(hand.opening.items()):
+        end = end or approval_done(proc, started)
+        if end is None:
+            continue
+        tab.swap(kind.key + doc, taken, json.dumps(kind.back(json.loads(taken), *end), ensure_ascii=False))
+        del hand.opening[doc]
+        said.append(end[0])
+    return f"{kind.name} — {' · '.join(said)}" if said else ""
+
+
 # ── 누름 종류 표 ────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -440,10 +516,11 @@ ASK = Kind(M.ASK.name, M.ASK.key, M.ASK.due, open_ask, M.ASK.back, collect_ask)
 PUT = Kind(M.PUT.name, M.PUT.key, M.PUT.due, settle, M.PUT.back, collect_puts)
 AWAY = Kind(M.AWAY.name, M.AWAY.key, M.AWAY.due, run_away, M.AWAY.back, collect_said)
 TIMES = Kind(M.TIMES.name, M.TIMES.key, M.TIMES.due, run_times, M.TIMES.back, collect_said)
-# 창 곁의 손이 걸음마다 거두는 차례 — 부탁이 맨 앞이다(사람이 VS Code 를 기다리고 있다). 맡길 일의 누름(`brief_const.RUN_PREFIX`)은 이 표에
+APPR = Kind(M.APPR.name, M.APPR.key, M.APPR.due, open_approval, M.APPR.back, collect_approvals)
+# 창 곁의 손이 걸음마다 거두는 차례 — 부탁이 맨 앞이다(사람이 VS Code 를 기다리고 있다). 결재 창 열기가 그다음이다(사람이 창을 기다린다). 맡길 일의 누름(`brief_const.RUN_PREFIX`)은 이 표에
 # 없다 — 누른 지 `brief_const.RUN_TAKE_S` 안에 맡아야 해서, 표의 줄이 오래 걸리는 동안(일정 손 · 시계의 명령 · VS Code 기다리기)에도
 # `Hand.tend` 가 맡는다(곁의 `runs.py`). 표의 줄은 한 걸음에 한 번 돈다
-KINDS = (ASK, PUT, AWAY, TIMES)
+KINDS = (ASK, APPR, PUT, AWAY, TIMES)
 
 
 # ── 시계 판의 뒷받침 ────────────────────────────────────────────────────────
@@ -554,6 +631,7 @@ class Hand:
 
     def __init__(self, folder: pathlib.Path):
         self.folder, self.tab, self.beat, self.inside, self.stepped = folder, None, 0.0, False, 0.0
+        self.opening: dict = {}                     # 띄워 둔 결재 창 열기 — 문서 id → (맡은 값, 끝 · 없으면 None, 프로세스, 띄운 때)
         self.runs = R.Runs(folder, functools.partial(run_unattended, folder))
 
     def tend(self) -> None:

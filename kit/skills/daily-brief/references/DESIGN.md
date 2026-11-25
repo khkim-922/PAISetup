@@ -79,12 +79,12 @@
 | `render.py` | 보고 창을 그린다 — 읽은 보고 글(`brief_text.Report`)과 창이 보이는 지금 모습을 보고 창의 HTML(`build` · 틀 `assets/report.html` · 스크립트 `assets/report.js`)로. 같은 글의 메일 한 장은 곁의 `render_mail.py` 가, 둘이 함께 쓰는 줄 안의 한 걸음(`inline_walk`)은 `render_base.py` 가 든다 — 이 파일은 창의 겉(`WindowSkin`)만 끼운다. | `brief_cards` · `brief_const` · `brief_inline` · `brief_people` · `brief_sections` · `brief_tasks` · `brief_text` · `clock` · `prefs` · `prefs_file` · `render_base` · `task_kinds` | — |
 | `report_reads.py` | 보고를 짓는 쪽이 거두는 손(`ticks.py`)의 끝 줄 앞에서 읽을 무리 — 맞춤(올리지 않을 것 · 돌아온 것 · 미룬 것), 그리고 가장 늦은 보고 글 뒤에 창에서 누르신 「일정에 넣기」의 끝과 맡기신 일의 끝. 「지난 보고 뒤」는 가장 늦은 보고 글의 이름에서 한 번 읽고, 두 기록은 저마다 제 시계의 꼴로 견준다. | `brief_const` · `brief_files` · `clock` · `presses` · `records` | — |
 | `unattended/brief_told.py` | 그날 장부와 아직 말하지 않은 칸 — 그날 장부를 열 때 지난날 건너뛴 칸의 줄을 남기고, 띄우는 보고의 부탁 글에 실을 줄을 엮는 손. | `unattended/brief_day` · `unattended/brief_slots` · `unattended/brief_state` · `unattended/brief_words` | — |
-| `presses.py` | 보고 창에서 누르신 것을 누름 종류 표(`KINDS` — 열쇠 · 거둘 때인가 · 할 일 · 돌려 적을 칸)대로 거둬 그 할 일을 부르고 끝을 그 창에 돌려 적는다 — 일일 보고 스킬의 창 곁의 손. 「일정에 넣기」는 사람이 누른 카드의 값과 열쇠로만 일정 손(형제 스킬 company-calendar 의 `add`)을 부른다. | `asks` · `brief_const` · `brief_put` · `brief_tasks` · `cli` · `clock` · `detach` · `edge` · `hand_wanted` · `oslock` · `press_kinds` · `proc_base` · `records` · `runs` · `state` · `store` · `task_kinds` · `unattended_link` | — |
+| `presses.py` | 보고 창에서 누르신 것을 누름 종류 표(`KINDS` — 열쇠 · 거둘 때인가 · 할 일 · 돌려 적을 칸)대로 거둬 그 할 일을 부르고 끝을 그 창에 돌려 적는다 — 일일 보고 스킬의 창 곁의 손. 「일정에 넣기」는 사람이 누른 카드의 값과 열쇠로만 일정 손(형제 스킬 company-calendar 의 `add`)을 부른다. | `asks` · `brief_const` · `brief_inline` · `brief_put` · `brief_tasks` · `cli` · `clock` · `detach` · `edge` · `hand_wanted` · `oslock` · `press_kinds` · `proc_base` · `records` · `runs` · `state` · `store` · `task_kinds` · `unattended_link` | — |
 | `unattended/brief_day.py` | 그날 칸 장부 — 지금 모습(`state["brief"]`) 안의 그날 칸을 열고 고른다. | `state` · `unattended/brief_kinds` · `unattended/brief_slots` · `unattended/brief_state` | — |
 | `unattended/window_link.py` | 보고 창 이음 — 같은 스킬의 보고 창 손(`window.py --sheet` · `ticks.py --times-done` · `--away-done` · `--presses`)을 사람 없는 실행에서 프로세스로 부르고, 대화에서 시각표를 바꾼 뒤 열린 창에 알리는(`state.sync`) 유일한 자리. 고르신 것을 읽는 쪽은 창의 문이 함수로 낸다 (`window_door.read_choices`). | `brief_const` · `edge` · `proc_base` · `state` · `unattended/unattended_const` | — |
 | `window_door.py` | 시계 판이 쓰는 창의 문 — 열린 보고 창에서 고르신 보고 시각 · 「자리 밖에서 보기」를 읽어 시계 판에 값으로 내고(`read_choices` — 같은 스킬의 `unattended/` 가 함수로 부른다), 시계가 받았나를 그 창의 그 칸에 돌려 적는다(거두는 손 `ticks.py` 의 `--times-done` · `--away-done`). 창 곁의 손과 같은 누름 종류 표의 줄(`press_kinds.TIMES` · `press_kinds.AWAY`)로 재고 적는다. | `brief_const` · `cli` · `edge` · `press_kinds` · `state` | — |
 | `state.py` | 창이 보이는 지금 모습 — 사용자 폴더의 보고 시각표 · 그날 장부(사람 없는 실행 `unattended/` 의 파일)와 보고 맞춤 파일에서 짓고(`state_of`), 열린 보고 창에 적는다(`sync` — 저장 열쇠 `brief_const.STATE_KEY`). 사용자 폴더의 파일은 읽기만 한다. | `brief_const` · `brief_inline` · `clock` · `edge` · `prefs` · `prefs_file` · `store` | — |
-| `hand_wanted.py` | 창 곁의 거두는 손을 띄울 창인가를 가르는 한 자리 — 창을 여는 손(`window.py`)과 시계 판의 뒷받침(`presses.round_once`)이 같은 자로 잰다. | `brief_tasks` · `task_kinds` | — |
+| `hand_wanted.py` | 창 곁의 거두는 손을 띄울 창인가를 가르는 한 자리 — 창을 여는 손(`window.py`)과 시계 판의 뒷받침(`presses.round_once`)이 같은 자로 잰다. | `brief_inline` · `brief_tasks` · `task_kinds` | — |
 | `prefs_file.py` | 보고 맞춤 파일 — 사용자가 보고 창이나 대화에서 「이런 건 안 올려도 됨」 · 「내일 다시」 하신 것을 사람이 읽는 글로 든다. | `brief_inline` · `brief_sections` · `old_forms` · `prefs` · `store` | — |
 | `render_mail.py` | 같은 보고 글에서 휴대폰 너비의 메일 한 장을 짓는다(`mail_sheet`) — 자리 밖에서 보기. 창과 같은 꼴 읽기(`brief_text` · 곁의 `brief_*`)와 같은 줄 안의 걸음 (`render_base.inline_walk`)을 메일의 겉으로 쓴다. | `brief_cards` · `brief_const` · `brief_inline` · `brief_sections` · `brief_tasks` · `brief_text` · `render_base` · `task_kinds` | — |
 | `runs.py` | 보고 창의 맡길 일 — 창에서 누른 일들을 뒤의 실행(같은 스킬 `unattended/handed.py`)에 넘기고, 그 실행의 기록을 따라 일마다의 끝을 창에 돌려 적는다. | `brief_const` · `brief_files` · `brief_tasks` · `clock` · `edge` · `presses` · `records` · `store` · `task_kinds` · `unattended_link` | — |
@@ -123,7 +123,7 @@
 | `unattended/unattended_const.py` | 일일 보고의 사람 없는 실행(정한 시각의 시계 · 맡긴 일)이 쓰는 이름 붙은 값 — 사용자 폴더의 파일 이름 · 시한 · 형제 스킬의 자리 · 띄운 claude 의 울타리. `unattended/` 의 손이 다 여기서 읽는다. | `brief_const` · `unattended/hand_facts` | — |
 | `unattended_link.py` | 사람 없는 실행 이음 — 같은 스킬의 `unattended/` 입구 명령(`handed.py start · show · list` · `clock.py away · window-times … --chosen-at`)의 인자를 짓고 그 끝 줄 · JSON 을 읽는 창 곁의 유일한 자리. 프로그램은 띄우지 않는다 — 부르는 쪽이 준 `run`(`presses.run_unattended` — `run(인자, 시한) -> (종료 값, 표준 출력)` · 인자의 첫 칸이 입구의 이름) 하나로 부른다. | `brief_const` | — |
 | `brief_const.py` | 일일 보고의 창 · 창 곁의 손 · 형제 스킬과의 이음이 함께 쓰는 이름 붙은 값 — 저장 열쇠 · 시한 · 파일 이름 꼴 · Edge 이름. | — | — |
-| `brief_inline.py` | 보고 글 한 줄 안의 꼴을 읽는다 — 고정 글자 · 메일 · 사람 · 방 · 절 링크 · 표지 · 굵게(`INLINE`). 맨글자(`plain`) · 첫 메일 번호(`first_unid`) · 번호를 남긴 맨글자(`with_numbers`) · 글자로 쓴 주소의 수(`url_count`). 파일 · 망에 닿지 않는다. | — | — |
+| `brief_inline.py` | 보고 글 한 줄 안의 꼴을 읽는다 — 고정 글자 · 메일 · 사람 · 방 · 결재 문서 · 절 링크 · 표지 · 굵게(`INLINE`). 맨글자(`plain`) · 첫 메일 번호(`first_unid`) · 번호를 남긴 맨글자(`with_numbers`) · 글자로 쓴 주소의 수(`url_count`). 파일 · 망에 닿지 않는다. | — | — |
 | `cli.py` | 보고 창 손의 입구 명령(`window.py` · `ticks.py` · `prefs.py`)이 함께 쓰는 바탕 — 인자 규칙(사람 없는 실행이 연 명령의 꼴 `--dir "<사용자 폴더>"`을 지킨다) · `--help` 의 「프로그램이 부르는 문」 절 · 멈춘 까닭 · 사람에게 할 말 내기. | — | — |
 | `oslock.py` | OS 잠금 한 자리 — 파일 하나의 첫 바이트를 잠근다. | — | — |
 | `proc_base.py` | 프로세스 바탕 — 곁의 파이썬 손(회사 메일 손 · 형제 스킬의 입구)을 창 없이 · UTF-8 로 띄우는 한 자리. | — | — |
@@ -538,8 +538,9 @@
         - `vscode_exe` — 등록된 `vscode:` 처리기의 실행 파일(`"…\Code.exe" --open-url -- "%1"` 의 첫 칸) — 없거나 그 파일이 없으면 None.
         - `has_extension` — VS Code 확장 폴더에 Claude Code 확장(`EXTENSION_ID`)이 깔렸나.
           - `extension_dir` — VS Code 가 확장을 찾는 자리 — VS Code 가 고르는 차례 그대로: `VSCODE_EXTENSIONS` · 홈의 `.vscode/extensions`. 설치판(사용자 · 모든 사용자 설치 — 등록된 `vscode:` 처리기가 서는 판)은 휴대 판의 값(VSCODE_PORTABLE)을 안 읽는다.
-      - `hand_wanted.hand_wanted` — 창 곁의 거두는 손을 띄울 창인가 — 「일정 넣기」 카드가 있거나, 맡길 일이 있거나, 보고가 걸려(`scheduled`) 「보고 맞추기」에 「자리 밖에서 보기」 단추가 서거나, 창 머리에 「비서에게 부탁하기」 칸이 서는(`ask_ready`) 창.
+      - `hand_wanted.hand_wanted` — 창 곁의 거두는 손을 띄울 창인가 — 「일정 넣기」 카드가 있거나, 맡길 일이 있거나, 보고가 걸려(`scheduled`) 「보고 맞추기」에 「자리 밖에서 보기」 단추가 서거나, 창 머리에 「비서에게 부탁하기」 칸이 서거나(`ask_ready`), 「결재 창 열기」 단추가 서는(결재 문서 링크) 창.
         - ↑ `brief_tasks.cards_of`
+        - `brief_inline.approvals_in` — 글에 링크로 선 결재 문서 id 들(쓴 차례 · 겹침 없이) — `\[글\](approval:<id>)` 가운데 id 의 꼴인 것만(굵게 · 절 표지의 이름 속도 — 창이 거기서도 단추를 짓는다). 창 곁의 손은 이 목록에 든 문서의 창만 띄운다.
         - ↑ `brief_tasks.tasks_of`
       - ↑ `store.page_brief`
       - `start_hand` — 창 곁의 손을 띄운다 — True 띄웠다 · False 이미 돈다(그 손이 잠금을 쥐고 있다) · None 못 띄웠다.
@@ -678,7 +679,7 @@
       - `mail_plain` — 평문 짝의 한 줄 — 꼴 표시를 걷은 맨글자(메일 링크는 그 글만).
         - ↑ `brief_inline.plain`
       - `mail_inline` — 줄 안 — 메일의 겉(`MailSkin`)으로. 창과 같은 걸음(`inline_walk`)이 같은 꼴을 읽는다.
-        - `render_base.inline_walk` — 줄 안의 꼴을 왼쪽부터 읽어 겉(`skin` — 창 · 메일)으로 짓는다: 고정 글자 · 메일 링크 · 사람 · 회의실 · 표지 · 굵게. 꼴 밖의 글과 꼴이 아닌 표시(번호가 아닌 mail: · 빈 표지)는 이스케이프해 쓴 그대로 둔다.
+        - `render_base.inline_walk` — 줄 안의 꼴을 왼쪽부터 읽어 겉(`skin` — 창 · 메일)으로 짓는다: 고정 글자 · 메일 링크 · 사람 · 회의실 · 결재 문서 · 표지 · 굵게. 꼴 밖의 글과 꼴이 아닌 표시(번호가 아닌 mail: · 빈 표지)는 이스케이프해 쓴 그대로 둔다.
         - `MailSkin` — 메일의 겉 — 메일 프로그램은 <style> 을 거르므로 꾸밈은 줄마다의 style 속성에 든다.
           - `MailSkin.inside` — 링크 글 속에 쓸 겉 — 메일의 겉은 링크가 없어 그대로다.
           - `MailSkin.code` — 고정 글자 — 글만.
@@ -686,6 +687,8 @@
           - `MailSkin.mail` — 메일 표시 — 링크 없이 그 글만.
           - `MailSkin.person` — 사람 — 이름만.
           - `MailSkin.room` — 회의실 — 방 이름만.
+          - `MailSkin.bad_approval` — 꼴이 틀린 결재 문서 표시를 안 센다 — 메일 한 장은 그 수를 안 댄다.
+          - `MailSkin.approval` — 결재 문서 — 이름만(창을 띄우는 단추는 PC 의 보고 창에만 선다).
           - `MailSkin.pill` — 표지 — 줄마다의 style 속성으로 지은 둥근 표(`over` 면 넘친 표).
           - `MailSkin.bold` — 굵게 — <b> 로.
       - `mail_blocks` — 덩이를 차례대로 — 문단 · 줄 · 작은 절 · 주의 상자 · 시간줄.
@@ -752,6 +755,8 @@
           - `WindowSkin.mail` — 메일 표시 — 링크를 짓는 판이면 웹메일 링크(`Ink.mail`), 아니면 글만.
           - `WindowSkin.person` — 사람 — 이름에 주소를 올리면 보이는 표로, 링크 없는 판이면 이름만.
           - `WindowSkin.room` — 회의실 — 이름에 id 를 올리면 보이는 표로, 링크 없는 판이면 이름만.
+          - `WindowSkin.bad_approval` — 꼴이 틀린 결재 문서 표시 하나를 센다 — 링크를 짓는 판에서만.
+          - `WindowSkin.approval` — 결재 문서 — 이름 곁에 숨은 「결재 창 열기」 단추(창의 스크립트가 누름을 남길 수 있는 창에서만 꺼낸다)와 그 끝의 말 자리. 누르시면 창 곁의 손이 그 문서의 창을 평소 Edge 에 띄운다 — 결재 · 반려 · 상신은 사람이 그 창에서 누른다.
           - `WindowSkin.pill` — 표지 — 둥근 표로(`over` 면 넘친 표).
           - `WindowSkin.bold` — 굵게 — <strong> 으로.
     - `mailbox_of` — 꼴에 맞는 메일함 주소(끝의 / 를 뗀 것) — 없거나 꼴이 아니면 None.
@@ -770,9 +775,10 @@
           - `render_list` — 잇단 줄 — 같은 무리(카드 · 줄)와 같은 표(번호 · 「-」)끼리 한 목록으로 묶는다.
             - `render_item` — 줄 하나 — (무리, HTML). 무리는 card(점이 딸린 줄 · 맡길 일이 든 줄) · row. `tick` 이 있으면 메일 번호가 든 줄에 「끝났음」 상자를 단다.
               - ↑ `brief_tasks.take_card`
-              - `tick_box` — 누름 단추 무리 — 줄의 일 열쇠(`item_key` — 「일:」 칸의 메일, 없으면 첫 메일 번호)가 열쇠다(업무 파일은 일을 그 일을 연 메일로 잇는다). 메일 번호가 없으면 빈 글. 할 일의 줄에는 「끝났음 · 내일 다시 · 안 올려도 됨」 셋이 서고, `tick` 이 `TICK_DONE` 이면 「끝났다고 하신 것」의 줄이라 「끝났음」 하나가 눌린 채 선다(`data-done`) — 풀면 끝나지 않았다고 되돌리신 것이다.
+              - `tick_box` — 누름 단추 무리 — 줄의 일 열쇠(`item_key` — 「일:」 칸의 메일, 없으면 첫 메일 번호)가 열쇠다(업무 파일은 일을 그 일을 연 메일로 잇는다). 메일 번호가 없거나 결재 문서 링크가 든 줄이면 빈 글. 할 일의 줄에는 「끝났음 · 내일 다시 · 안 올려도 됨」 셋이 서고, `tick` 이 `TICK_DONE` 이면 「끝났다고 하신 것」의 줄이라 「끝났음」 하나가 눌린 채 선다(`data-done`) — 풀면 끝나지 않았다고 되돌리신 것이다.
                 - `brief_cards.item_key` — 줄 · 카드가 어느 일인가 — 누름 단추의 열쇠 메일 번호(대문자). 낱낱에 「일: <메일 링크>」 칸이 있으면 그 메일, 없으면 줄의 첫 메일 링크(머리부터 낱낱 차례로). 메일 번호가 없으면 None.
                   - ↑ `brief_inline.first_unid`
+                - ↑ `brief_inline.approvals_in`
                 - `brief_cards.item_title` — 줄의 일 이름 — 카드면 굵은 머리, 줄이면 맨글자의 줄표(「 — 」) 앞. 줄표 뒤는 형편 · 때 · 근거라 일 이름이 아니다.
                   - ↑ `card_name`
               - `note_waits` — 사람을 댄 칸이 있으면 그 줄의 닻 이름을 주고 사람별 무리에 넣는다 — (닻 · 없으면 빈 글, 꼴이 틀린 칸의 자리). 꼴이 틀린 칸은 사람별에 안 들고 끝 줄 앞에서 경고한다(`Ink.bad_people`).
@@ -1115,7 +1121,7 @@
           - ↑ `clock.parse`
         - `unattended/claude_launch.launch` — 권한 · 부탁 글을 사용자 폴더에 지어 claude 를 띄우고 기다리지 않는다(출력은 `LAUNCH_LOG_FILE`). 내는 것 — {at, pid, born(뜬 때 · 못 물었으면 None), log} 이나 {at, error}.
           - `plan` — (띄울 명령, `--settings` 로 줄 권한, 표준 입력으로 줄 부탁 글). `at` 은 띄우는 칸의 시각(없으면 첫 시각), `skipped` 는 그 앞에 건너뛴 시각.
-            - `places` — 띄운 보고가 쓰는 자리 — 손 · 주소록 손 · 일정 손 · 회의실 손 · 형제 스킬 mailbox-scan 의 읽는 명령 · 보고 창 · 업무 파일의 쓰는 손 · 스킬 폴더 · 사용자 폴더(`folder`). 없는 주소록 · 일정 · 회의실 손은 뺀다.
+            - `places` — 띄운 보고가 쓰는 자리 — 손 · 주소록 손(신원 손도) · 일정 손 · 회의실 손 · 결재 손 · 형제 스킬 mailbox-scan 의 읽는 명령 · 보고 창 · 업무 파일의 쓰는 손 · 스킬 폴더 · 사용자 폴더(`folder`). 없는 주소록 · 일정 · 회의실 · 결재 손은 뺀다.
             - `commands` — 열린 명령 — 권한 규칙의 꼴(끝의 「 *」는 뒤에 인자가 온다). 경로는 「C:/…」 꼴로 따옴표에 싼다 — Git Bash 와 파이썬이 함께 읽는다.
           - ↑ `unattended/unattended_store.write_json`
           - `unattended/launch_base.child_env` — 띄울 claude 의 환경 — 겹친 세션의 표지를 걷고, 루프백 프록시를 지나면 보고의 표 머리를 싣는다(`C.RUNNER_HEADER`). 이미 든 다른 머리 줄은 그대로 둔다.
@@ -1431,6 +1437,12 @@
 - `press_kinds.ask_due` — 창 머리의 부탁이 거둘 때인가 — (친 말, 누른 창의 이름, 들고 온 세션) · 아니면 None. 안 맡은 부탁이 누른 지 `brief_const.ASK_TAKE_S` 안일 때만 — 그보다 늦은 부탁은 안 연다: 창이 이미 「못 열었다」로 맺었거나 맺는다.
   - ↑ `edge.pressed_at`
   - ↑ `clock.seoul_now`
+- `press_kinds.appr_due` — 「결재 창 열기」 누름 하나가 거둘 때인가 — 그 누름 · 아니면 None. 안 맺은 누름이 누른 지 `brief_const.ASK_TAKE_S` 안일 때만(부탁과 같은 까닭 — 늦게 뜬 창은 자리를 뜬 사람을 놀라게 한다). 시계 판은 안 거둔다 — `eager` 를 안 본다.
+  - ↑ `edge.pressed_at`
+  - ↑ `clock.seoul_now`
+- `press_kinds.appr_back` — 그 창에 돌려 적을 「결재 창 열기」 칸 — 맺은 때 · 끝(opened · failed · session) · 말.
+  - ↑ `clock.stamp`
+  - ↑ `clock.seoul_now`
 - `press_kinds.ask_back` — 그 창에 돌려 적을 부탁의 칸 — 맡은 칸에 맺은 때 · 끝 · 말.
   - ↑ `clock.stamp`
   - ↑ `clock.seoul_now`
@@ -1459,6 +1471,19 @@
   - ↑ `clock.seoul_now`
   - ↑ `beat_row`
   - ↑ `edge.EdgeGone`
+- `presses.start_approval` — 결재 손 open 한 번을 띄우고 기다리지 않는다 — 그 프로세스 · 못 띄웠으면 (None, 까닭). 창 곁의 손은 걸음마다 끝났나만 본다 (`approval_done`) — 열기를 기다리는 동안에도 다른 누름(부탁 · 다른 결재)을 제때 맡는다.
+  - ↑ `proc_base.python_argv`
+  - ↑ `piped`
+- `presses.approval_done` — 띄운 open 이 끝났으면 (끝, 말), 아직이면 None. `C.APPR_OPEN_S` 를 넘기면 끊고 못 띄움으로 맺는다.
+- `presses.open_approval` — 누른 결재 문서 하나의 창을 띄우기 시작한다 — 그 프로세스, 또는 바로 맺을 (끝, 말). 누른 창의 보고 글에 링크로 선 문서만 연다 — 창의 저장소는 file: 창끼리 하나라 거기 적힌 id 를 믿지 않는다.
+  - ↑ `store.page_brief`
+  - ↑ `brief_inline.approvals_in`
+  - ↑ `start_approval`
+- `presses.collect_approvals` — 「결재 창 열기」 누름을 거둔다 — 거둘 때인 누름마다 맡고(창의 값이 그대로일 때만 — 한 누름은 한 번 띄운다) 결재 손을 띄워 두고, 띄워 둔 것 가운데 끝난 것의 끝을 그 창에 적는다.
+  - ↑ `edge.cells`
+  - ↑ `clock.stamp`
+  - ↑ `clock.seoul_now`
+  - ↑ `approval_done`
 - `task_kinds.count_words` — 사람 수의 말 — 「한」 · 「두」 … 「열」, 열을 넘으면 숫자.
 - `task_kinds.ro` — 조사 「(으)로」 — 끝 글자에 받침이 있으면(ㄹ 받침은 빼고) 「으로」. 한글이 아니면 「(으)로」.
 - `task_kinds.span_fits` — 두 시각이 일정 손의 꼴(`PUT_STAMP`)이고 시작이 끝보다 앞인가.
@@ -1813,6 +1838,30 @@ report.js ─▶ brief-ask ─▶ presses: collect_ask(창의 값이 그대로�
   적힌 그대로 뒤의 실행에 넘겨 실행이 방과 사람을 다시 찾지 않는다
 - **사람 링크 전의 꼴로 지은 보고 글** — 다시 짓는 손은 없다. 창 곁의 손이 그 글에서 맡길 일을 찾으면 참석자 칸이 꼴이 틀린 줄로 읽혀 그 일은
   맡지 않고 그 카드에 까닭을 적는다. 메일 한 장은 사람을 이름 글로만 세워 그대로 선다
+
+### 결재 창 열기
+
+보고 글의 결재 문서 링크 `[보일 글](approval:<문서 id>)` 곁에 창이 「결재 창 열기」를 단다. 값(결재하실 것 · 올리신 결재 · 결재선)의 주인은 형제
+스킬 company-approval 이고 보고는 읽기만 한다 — 그 스킬은 이 스킬을 싣지 않는다. 누르면 창 곁의 손이 그 스킬의 `approval.py open <id>` 로 문서
+창을 사람의 평소 Edge 에 띄우고, 결재 · 반려 · 상신은 사람이 그 창에서 한다.
+
+```
+report.js ─▶ brief-appr:<문서 id> {at, brief} ─▶ presses.collect_approvals(창의 값이 그대로일 때만 맡는다 — Tab.swap) ─▶ open_approval
+   ─▶ 누른 창의 보고 글에 그 링크가 있나 ─▶ approval.py open <id> 를 띄워 두고(Hand.opening) 걸음마다 끝났나 본다
+   ─▶ 그 칸이 맡은 값 그대로면 {state, said, done} 을 그 칸에(Tab.swap)
+```
+
+- **기다리지 않는다** — open 은 세션 받기 · 결재함 훑기로 길게 걸린다(`APPR_OPEN_S`). 손이 그동안 멈추면 부탁 · 다른 결재 누름이 맡는 틈
+  (`ASK_TAKE_S`)을 넘겨 「답하지 않았다」로 맺힌다. 그래서 띄워 두고 걸음마다 끝만 본다. 창은 `APPR_OPEN_S` 에 맡는 틈을 더한 때까지 기다린 뒤에야
+  「확인하지 못했다」고 말한다
+- **끝은 새 누름을 덮지 않는다** — 그 사이 다시 누르신 누름이 그 칸에 서 있으면 끝을 안 적는다
+
+- **부탁과 같은 울타리** — 창 곁의 손만 거두고 시계 판은 안 거둔다(자리를 뜬 뒤에 창이 뜨면 놀란다). 손의 숨 표가 끊겼으면 창은 남기지 않고 대화로
+  가시라고 말하고, 누른 지 `ASK_TAKE_S` 안의 누름만 맡는다
+- **연 문서는 보고 글이 정한다** — 창의 저장소는 file: 창끼리 하나라, 손은 누른 창의 보고 글에 링크로 선 id(`brief_inline.approvals_in`)만 연다
+- **결재 줄에는 누름 단추가 없다** — 결재하시면 결재함에서 저절로 빠지고, 다음 보고는 결재함을 다시 읽는다
+- **id 의 꼴은 손사본이다** — `brief_inline.APPROVAL_ID` 는 결재 스킬 `iams.KEY` 와 같은 꼴이다(창의 손은 홀로 서야 해 못 싣는다). 꼴이 아닌 id 는 쓴
+  그대로 글자로 서고 끝 줄 앞에서 경고한다
 
 ### 메일 한 장 — 자리 밖에서 보기
 

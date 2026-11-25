@@ -183,7 +183,11 @@ DIRECTORY_PATH = "/common/profile.nsf/ag_org_search_json?OpenAgent"
 ORG_DEPT_PATH = "/common/profile.nsf/ag_tree_dept_json?OpenAgent"
 ORG_USER_PATH = "/common/profile.nsf/ag_tree_user_json?OpenAgent"
 DISTRIBUTE_PATH = "/common/lib_f.nsf/agGetDistribute?openagent"
-ORG_TREE_TYPE = "org"            # 고름 창의 「내 조직」 — 패밀리사 · 파트너사는 안 든다
+ORG_TREE_TYPE = "org"            # 고름 창의 「나의 회사」 — 조직도 · 주소록 손의 type 기본값. 다른 고름(그룹사 · 협력사 · 기타공급사)은 부르는 쪽이 준다
+# 조직도 구성원 답의 사람 줄 type — 나의 회사 · 그룹사는 사람(user), 협력사 · 기타공급사는 주소(email) 줄로 온다(칸은 같고 name 이 하나 더)
+ORG_PERSON_ROWS = (PERSON_TYPE, EMAIL_TYPE)
+# 주소록 찾기 답에서 사람이 드는 칸 — 나의 회사 · 그룹사는 user, 협력사 · 기타공급사는 addr(열 칸 — 직급 · 직책이 없다)
+DIRECTORY_PEOPLE_SLOTS = ("user", "addr")
 ORG_EMPTY = "nothing"            # 구성원이 없는 부서의 답은 이 type 한 줄이다
 GROUP_KINDS = ("jobtitle", "grade", "location")   # 배포그룹 탭의 고름 상자 값 — 직책 · 직급 · 지역(이 회사 코드의 꼴)
 ORG_WORKERS = 8                  # 나무 · 구성원 · 보기를 함께 묻는 수 — 하나씩 물으면 전사 조직도가 부서 수만큼 기다린다
@@ -514,7 +518,8 @@ class DraftFile:
 class DirectoryPerson:
     """사내 주소록의 한 사람. ``notes`` 는 Notes 이름(``key``) — 받는 사람 목록에서 그 사람을 알아보는 열쇠다.
 
-    ``dept_code`` · ``grade_code`` · ``job_title_code`` 는 주소록이 준 글자 그대로, ``is_boss`` 는 주소록의 장 여부다.
+    ``dept_code`` · ``grade_code`` · ``job_title_code`` · ``company_code`` 는 주소록이 준 글자 그대로, ``is_boss`` 는 주소록의 장 여부다.
+    주소록 찾기 답의 ``dept_code`` 는 괄호 없는 꼴이고 조직도 나무의 부서 코드는 ``<dept_code>(<company_code>)`` 꼴이다.
     ``grade`` 는 직급(차장 · 상무보 …), ``job_title`` 은 직책(일반 · 리더 · 그룹장 …)이다.
     """
     email: str
@@ -534,6 +539,7 @@ class DirectoryPerson:
     job_title_code: str = ""
     location: str = ""
     duty: str = ""
+    company_code: str = ""
 
     @property
     def level(self) -> str:
@@ -928,16 +934,17 @@ class Mailbox:
             return False
         return isinstance(answer, dict) and answer.get("status") == "login"
 
-    def directory_answer(self, search_key: str, company: str, *, category: str = "") -> dict:
+    def directory_answer(self, search_key: str, company: str, *, category: str = "", tree: str = ORG_TREE_TYPE) -> dict:
         """사내 주소록의 답을 그대로 낸다(``{dept, user, total}``) — 주소록에 묻는 한 길이고, 안 잰 꼴을 회사에서 재는 자리다.
 
         ``company`` 는 조직도 고름 상자의 값(``<회사>(<코드>)``)이고 메일함마다 다르다 — 부르는 쪽이 설정에서 넘긴다. ``category`` 는
-        웹메일이 빈 값으로 보내는 칸이다. 답이 dict 가 아니면 ``MailboxError``.
+        웹메일이 빈 값으로 보내는 칸이다. ``tree`` 는 고름 상자의 type(``org`` · ``org_family`` · ``partner`` · ``etc``) — 그 사람의 갈래로
+        물어야 걸린다. 답이 dict 가 아니면 ``MailboxError``.
         """
         if not search_key.strip() or not company.strip():
             raise MailboxConfigError("주소록 찾기에는 찾을 말과 회사 값이 다 있어야 한다")
         query = urllib.parse.urlencode({
-            "type": "org", "dbpath": self.db_path.lstrip("/"), "company": company, "category": category,
+            "type": tree, "dbpath": self.db_path.lstrip("/"), "company": company, "category": category,
             "search_key": search_key, "date": str(int(time.time() * 1000))}, safe="()")
         data, kind = self._get_server(f"{DIRECTORY_PATH}&{query}")
         text = data.decode(_charset(kind), errors="replace")
@@ -946,10 +953,11 @@ class Mailbox:
             raise MailboxError(f"주소록 답이 {{dept, user, total}} 꼴이 아니다: {type(answer).__name__}")
         return answer
 
-    def find_people(self, search_key: str, company: str, *, category: str = "") -> list[DirectoryPerson]:
-        """사내 주소록에서 이름 · 메일 · 사번으로 찾는다. 밖의 주소는 빈 목록이다 — 「사내 사람인가」로도 쓴다."""
-        users = self.directory_answer(search_key, company, category=category).get("user") or []
-        return [_person(u) for u in users if isinstance(u, dict)]
+    def find_people(self, search_key: str, company: str, *, category: str = "", tree: str = ORG_TREE_TYPE) -> list[DirectoryPerson]:
+        """사내 주소록에서 이름 · 메일 · 사번으로 찾는다. 밖의 주소는 빈 목록이다 — 「사내 사람인가」로도 쓴다. 답의 사람 칸
+        (``DIRECTORY_PEOPLE_SLOTS``)을 다 읽는다 — 협력사 · 기타공급사의 답은 ``addr`` 에 온다."""
+        answer = self.directory_answer(search_key, company, category=category, tree=tree)
+        return [_person(u) for slot in DIRECTORY_PEOPLE_SLOTS for u in answer.get(slot) or [] if isinstance(u, dict)]
 
     def find_exact(self, handle: str, company: str) -> list[DirectoryPerson]:
         """받는 사람 목록 · 보낸 사람의 한 꼴로 그 사람만 찾는다 — 주소면 메일이, Notes 이름이면 ``key`` 의 견줄 꼴이, ID
@@ -974,40 +982,42 @@ class Mailbox:
         text = data.decode(_charset(kind), errors="replace")
         return json_answer(text, "조직도", f"조직도 JSON 을 못 읽었다({path})")
 
-    def org_children(self, dept: str, company: str) -> list[Dept]:
-        """그 부서 바로 아래 부서들 — ``dept`` 에 회사 값을 주면 맨 위 부서들이다. 답의 꼴이 다르면 ``MailboxError``."""
-        answer = self._org_json(ORG_DEPT_PATH, company=company, root=company, dept=dept, type=ORG_TREE_TYPE)
+    def org_children(self, dept: str, company: str, tree: str = ORG_TREE_TYPE) -> list[Dept]:
+        """그 부서 바로 아래 부서들 — ``dept`` 에 회사 값을 주면 맨 위 부서들이다. 부서의 코드는 아래를 여는 열쇠(``dept_code``)다 —
+        그룹사 · 협력사 · 기타공급사 나무의 ``key`` 는 이름 꼴이라 그것으로 열면 0 개다. 답의 꼴이 다르면 ``MailboxError``."""
+        answer = self._org_json(ORG_DEPT_PATH, company=company, root=company, dept=dept, type=tree)
         rows = answer.get("result") if isinstance(answer, dict) else None
         if not isinstance(rows, list):
             raise MailboxError(f"조직도 나무 답이 {{result: [...]}} 꼴이 아니다: {str(answer)[:200]}")
-        return [Dept(code=r.get("key") or "", name=r.get("dept_name") or "", depth=int(r.get("depth") or 0),
+        return [Dept(code=r.get("dept_code") or r.get("key") or "", name=r.get("dept_name") or "", depth=int(r.get("depth") or 0),
                      parent=dept, has_child=str(r.get("has_child") or "").upper() in DIRECTORY_YES,
                      email=r.get("email") or "")
                 for r in rows if isinstance(r, dict) and r.get("type") == "dept"]
 
-    def org_members(self, dept: str) -> list[DirectoryPerson]:
+    def org_members(self, dept: str, tree: str = ORG_TREE_TYPE) -> list[DirectoryPerson]:
         """그 부서에 바로 든 사람(하위 부서 사람은 안 든다) — 조직도에서 부서를 누를 때의 명단이다. 사람의 ``dept_code`` 는
         이 부서 코드다. 구성원이 없는 부서는 빈 목록이다(답은 ``type`` 이 ``ORG_EMPTY`` 인 한 줄)."""
-        answer = self._org_json(ORG_USER_PATH, dept=dept, type=ORG_TREE_TYPE)
+        answer = self._org_json(ORG_USER_PATH, dept=dept, type=tree)
         rows = answer.get("result") if isinstance(answer, dict) else None
         if not isinstance(rows, list):
             raise MailboxError(f"조직도 구성원 답이 {{result: [...]}} 꼴이 아니다: {str(answer)[:200]}")
-        return [_person({**r, "dept_code": dept}) for r in rows if isinstance(r, dict) and r.get("type") == "user"]
+        return [_person({**r, "dept_code": dept}) for r in rows if isinstance(r, dict) and r.get("type") in ORG_PERSON_ROWS]
 
-    def org_snapshot(self, company: str) -> OrgChart:
-        """회사 조직 전체 — 나무를 층마다 펼치고 부서마다 구성원을 받는다(``ORG_WORKERS`` 만큼 함께). 부서가 하나도 안 오면
-        ``DirectoryGap`` — 회사 값이 틀린 쪽이다."""
+    def org_snapshot(self, company: str, tree: str = ORG_TREE_TYPE, *, people: bool = True) -> OrgChart:
+        """회사 조직 전체 — 나무를 층마다 펼치고 부서마다 구성원을 받는다(``ORG_WORKERS`` 만큼 함께). ``tree`` 는 고름 상자의 type,
+        ``company`` 는 그 나무의 회사 값(그룹사면 맨 위 부서의 코드 — ``poscoinc(77)`` 꼴)이다. ``people`` 이 거짓이면 부서 나무만 받는다
+        (구성원은 빈 판). 부서가 하나도 안 오면 ``DirectoryGap`` — 회사 값이 틀린 쪽이다."""
         depts: dict[str, Dept] = {}
         frontier = [company]
         with ThreadPoolExecutor(ORG_WORKERS) as pool:
             while frontier:
-                found = [d for kids in pool.map(lambda c: self.org_children(c, company), frontier) for d in kids
+                found = [d for kids in pool.map(lambda c: self.org_children(c, company, tree), frontier) for d in kids
                          if d.code and d.code not in depts]
                 depts.update((d.code, d) for d in found)
                 frontier = [d.code for d in found if d.has_child]
             if not depts:
                 raise DirectoryGap(f"조직도가 회사 「{company}」 의 부서를 하나도 안 줬다 — 회사 값을 확인한다")
-            members = dict(zip(depts, pool.map(self.org_members, depts)))
+            members = dict(zip(depts, pool.map(lambda c: self.org_members(c, tree), depts))) if people else {}
         return OrgChart(company=company, depts=depts, members=members)
 
     def org_groups(self, company: str, kind: str) -> list[tuple[str, str]]:
@@ -1605,7 +1615,8 @@ def _person(u: dict) -> DirectoryPerson:
         company=u.get("company_name") or "", retired=str(u.get("is_retire") or "").upper() in DIRECTORY_YES,
         dept_code=u.get("dept_code") or "", grade_code=u.get("grade_code") or "",
         is_boss=str(u.get("is_boss") or "").upper() in DIRECTORY_YES, job_title_code=u.get("job_title_code") or "",
-        location=u.get("location") or "", duty=(u.get("job_name") or "").split(DUTY_SEPARATOR, 1)[0].strip())
+        location=u.get("location") or "", duty=(u.get("job_name") or "").split(DUTY_SEPARATOR, 1)[0].strip(),
+        company_code=str(u.get("company_code") or ""))
 
 
 def notes_key(text: str) -> str:

@@ -42,7 +42,7 @@ def edge_words(hand: bool | None, wanted: bool) -> str:
 
 # ── 경고 · 끝 줄 ─────────────────────────────────────────────────────────
 def warn_lines(finished: list[str], extra_titles: int, sections: int, bad_refs: int, urls: int, ends: list[str], bad_puts: int,
-               bad_tasks: list[str], tops: int, bad_people: list[str]) -> list[str]:
+               bad_tasks: list[str], tops: int, bad_people: list[str], bad_approvals: int = 0) -> list[str]:
     """끝 줄 앞에 설 경고 · 알림 — 마무리가 낸 경고, 그리고 그린 글의 수마다 한 줄(0 이면 안 선다)."""
     out = list(finished)
     if extra_titles:
@@ -51,6 +51,8 @@ def warn_lines(finished: list[str], extra_titles: int, sections: int, bad_refs: 
         out.append("경고: 절(## …)이 하나도 없다 — 왼쪽 절 목록이 빈다")
     if bad_refs:
         out.append(f"경고: 메일 번호(32자리)가 아닌 mail: 링크 {bad_refs}개는 쓴 그대로 글자로 두었다")
+    if bad_approvals:
+        out.append(f"경고: 결재 문서 id(「문서id.1.1.1」 꼴)가 아닌 approval: 링크 {bad_approvals}개는 쓴 그대로 글자로 두었다 — 결재 스킬 box · read 의 id 를 그대로 옮긴다")
     if urls:
         out.append(f"알림: 글에 쓴 주소 {urls}개는 링크로 짓지 않고 글자로 두었다 — 링크는 메일 번호에서만 선다")
     out += [f"경고: 끝에 「{end}」 절이 없다 — 다음 보고는 남은 이 글만 읽고 잇는다" for end in ends]

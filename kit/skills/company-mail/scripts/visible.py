@@ -1,5 +1,5 @@
 """보이는 글 — 사내 앱의 본문 HTML(메일 · 게시글 · 사규)에서 사람 눈에 안 보이는 것을 걷고 읽을 글자로 푼다. 모델에게 글을 내기 전에
-지나는 자리라, 숨긴 지시가 대화로 넘어가지 않는다. 이 스킬의 명령 · 형제 스킬 company-board · company-regulation · 이 손을 싣는 앱이
+지나는 자리라, 숨긴 지시가 대화로 넘어가지 않는다. 이 스킬의 명령 · 형제 스킬 company-board · company-regulation · company-approval · 이 손을 싣는 앱이
 함께 쓰는 한 벌이다.
 
 부르는 꼴::

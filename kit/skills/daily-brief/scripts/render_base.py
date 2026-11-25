@@ -9,14 +9,14 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 brief_inline.py — `-I` 로 돌아도 싣는다
-from brief_inline import INLINE, UNID  # noqa: E402
+from brief_inline import APPROVAL, INLINE, UNID  # noqa: E402
 
 DATELINE = "{:%Y-%m-%d}({}) {:%H:%M} 지음"
 NO_TIME_SAID = "메일에 시각이 없어 넣지 못합니다 — 시각을 정해 대화에서 「그 약속 ○시로 넣어 줘」 하시면 넣습니다."
 
 
 def inline_walk(text: str, skin) -> str:
-    """줄 안의 꼴을 왼쪽부터 읽어 겉(`skin` — 창 · 메일)으로 짓는다: 고정 글자 · 메일 링크 · 사람 · 회의실 · 표지 · 굵게. 꼴 밖의 글과 꼴이
+    """줄 안의 꼴을 왼쪽부터 읽어 겉(`skin` — 창 · 메일)으로 짓는다: 고정 글자 · 메일 링크 · 사람 · 회의실 · 결재 문서 · 표지 · 굵게. 꼴 밖의 글과 꼴이
     아닌 표시(번호가 아닌 mail: · 빈 표지)는 이스케이프해 쓴 그대로 둔다. 링크 글 속은 겉의 `inside()` 로 한 번 더 읽는다."""
     out, at = [], 0
     for m in INLINE.finditer(text):
@@ -36,6 +36,12 @@ def inline_walk(text: str, skin) -> str:
             out.append(skin.person(inline_walk(m.group("plabel"), skin.inside()), m.group("pref").strip()))
         elif m.group("rref") is not None:
             out.append(skin.room(inline_walk(m.group("rlabel"), skin.inside()), m.group("rref")))
+        elif m.group("aref") is not None:              # 결재 문서 — id 의 꼴이 아니면 쓴 그대로 글자로 두고 센다
+            if not APPROVAL.match(m.group("aref")):
+                skin.bad_approval()
+                out.append(html.escape(m.group(0), quote=True))
+                continue
+            out.append(skin.approval(inline_walk(m.group("alabel"), skin.inside()), m.group("aref")))
         elif m.group("sref") is not None:              # 절의 종류 표지 — 사람에게는 이름만 선다
             out.append(inline_walk(m.group("slabel"), skin))
         elif m.group("pill") is not None:

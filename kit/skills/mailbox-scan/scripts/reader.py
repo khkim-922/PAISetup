@@ -151,16 +151,39 @@ def place_name(box: str | None, folder: str) -> str:
     return f"폴더 {folder}" if box == D.FOLDER else "받은편지함"
 
 
-def mail_line(mail: dict[str, Any], extra: str = "") -> str:
-    """메일 한 줄 — 손의 목록 줄과 같은 꼴. `extra` 는 메일 번호 앞에 붙이는 이 스킬의 말이다."""
+def mail_line(mail: dict[str, Any], extra: str = "", senders: dict[str, Any] | None = None) -> str:
+    """메일 한 줄 — 손의 목록 줄과 같은 꼴. `extra` 는 메일 번호 앞에 붙이는 이 스킬의 말이다. 받은 메일은 보낸 분 뒤에 그 신원
+    (`identity_words` — `senders` 는 지금 모습의 주소 → 신원)을 「[…]」 로 붙인다."""
     files = f"{SEP}첨부 {mail['files']}" if mail.get("files") else ""
     when = mail.get("date") or "때 모름"
     if mail.get("box") == D.SENT:
         head = f"[보냄] {when}{SEP}{place_name(D.SENT, '')}{SEP}받는 분 {person_of(mail)}"
     else:
         mark = "안읽음" if mail.get("unread") else "읽음"
-        head = f"[{mark}] {when}{SEP}{place_name(mail.get('box'), mail.get('folder') or '')}{SEP}{person_of(mail) or '(보낸 분 없음)'}"
+        who = identity_words((senders or {}).get((mail.get("addr") or "").strip().casefold()), bool(mail.get("addr")))
+        head = (f"[{mark}] {when}{SEP}{place_name(mail.get('box'), mail.get('folder') or '')}{SEP}{person_of(mail) or '(보낸 분 없음)'}"
+                + (f" [{who}]" if who else ""))
     return f"{head}{SEP}{mail.get('subject') or ''}{files}{extra}{SEP}{mail.get('unid') or ''}"
+
+
+def identity_words(who: dict[str, Any] | None, has_addr: bool) -> str:
+    """보낸 분 신원의 한 구절 — 회사 › 부서 경로 · 직급(등급) · 직책 · 장 · 퇴직 · 근무지 · 담당업무(출처) · 고름. 여럿이면 후보 수, 고름 넷
+    어디에도 없으면 「주소록에 없음」, 아직 모르면 「신원 모름」. 주소가 없는 메일은 빈 글자다. 담당업무는 사람이 적은 글이라 낡았을 수 있다."""
+    if not has_addr:
+        return ""
+    state = (who or {}).get("state")
+    if state == "섰다":
+        grade = f"{who['grade']}({who['level']})" if who.get("level") else who.get("grade") or ""
+        duty = f"담당 {who['duty']}({who.get('duty_from') or '?'} — 사람이 적은 글)" if who.get("duty") else ""
+        marks = [m for m, on in (("장", who.get("is_boss")), ("퇴직", who.get("retired"))) if on]
+        parts = (who.get("path") or who.get("company") or "", grade if grade != "-" else "", who.get("job_title") or "", *marks,
+                 who.get("location") or "", duty, who.get("branch") or "")
+        return SEP.join(x for x in parts if x)
+    if state == "여럿":
+        return f"한 주소에 {who.get('candidates')}명 — {who.get('company') or who.get('branch') or ''} · 고르지 않았다"
+    if state == "없음":
+        return "주소록에 없음"
+    return "신원 모름"
 
 
 def newest_first(mails: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -221,7 +244,8 @@ def cmd_new(s: Scan, args) -> int:
         when, seen = tm.mail_time(m.get("date")), tm.parse(m.get("first_seen"))
         return (when is not None and when >= since) or (seen is not None and seen >= since)
     picked = newest_first([m for m in s.mails.values() if fresh(m)])
-    rows = [mail_line(m, " · 처음 볼 때 이미 읽음" if m["unid"] in opened else "") for m in picked]
+    senders = s.state.get("senders") or {}
+    rows = [mail_line(m, " · 처음 볼 때 이미 읽음" if m["unid"] in opened else "", senders) for m in picked]
     places = {"받은편지함": sum(m.get("box") == D.INBOX for m in picked), "폴더": sum(m.get("box") == D.FOLDER for m in picked),
               "보낸편지함": sum(m.get("box") == D.SENT for m in picked)}
     head = (f"{tm.seoul(since)} 뒤 새 메일 {count_word(picked)} — " + " · ".join(f"{k} {v}" for k, v in places.items())
@@ -253,8 +277,8 @@ def box_lines(pic: dict[str, Any], placed: dict[tuple[str, str], list[dict[str, 
     return body
 
 
-def sender_lines(mails: list[dict[str, Any]], top: int) -> list[str]:
-    """보낸 분마다(받은 메일) 셈 — 많은 차례로 `top` 곳, 나머지는 한 줄."""
+def sender_lines(mails: list[dict[str, Any]], top: int, senders: dict[str, Any] | None = None) -> list[str]:
+    """보낸 분마다(받은 메일) 셈 — 많은 차례로 `top` 곳(그 신원과 함께), 나머지는 한 줄."""
     groups: dict[str, list[dict[str, Any]]] = {}
     for m in mails:
         if m.get("box") != D.SENT:
@@ -264,7 +288,9 @@ def sender_lines(mails: list[dict[str, Any]], top: int) -> list[str]:
     body = [f"보낸 분마다(받은 메일) — {len(ordered)}곳:"]
     for g in ordered[:top]:
         first = newest_first(g)[0]
-        body.append(f"- {person_of(first) or '(보낸 분 없음)'} · {count_word(g)} · 가장 새것 {when_word(first.get('date'))[:10]}")
+        who = identity_words((senders or {}).get((first.get("addr") or "").strip().casefold()), bool(first.get("addr")))
+        body.append(f"- {person_of(first) or '(보낸 분 없음)'}{f' [{who}]' if who else ''} · {count_word(g)} · 가장 새것 "
+                    f"{when_word(first.get('date'))[:10]}")
     if len(ordered) > top:
         rest = ordered[top:]
         body.append(f"- 그 밖 {len(rest)}곳 {sum(len(g) for g in rest)}통(--top 으로 늘린다)")
@@ -295,7 +321,7 @@ def cmd_now(s: Scan, args) -> int:
     mails = list(s.mails.values())
     body = [f"지금 모습 — 메일함 전체를 본 판({tm.seoul(tm.parse(pic.get('started')))}) 위에 그 뒤 새 메일을 더한 것"]
     body += box_lines(pic, by_place(mails))
-    body += sender_lines(mails, args.top)
+    body += sender_lines(mails, args.top, s.state.get("senders") or {})
     body += head_lines(mails, args.top)
     body += rule_lines(pic)
     framed(s, body, [])
@@ -360,7 +386,8 @@ def cmd_mails(s: Scan, args) -> int:
         tests.append(lambda m: (tm.mail_time(m.get("date")) or hi) < hi)
     shown = newest_first([m for m in s.mails.values() if all(t(m) for t in tests)])
     head = f"고른 메일 {count_word(shown)}(새것부터)"
-    framed(s, [head, *(paged([mail_line(m) for m in shown], args.most, args.skip) or ["(맞는 메일이 없다)"])], [])
+    senders = s.state.get("senders") or {}
+    framed(s, [head, *(paged([mail_line(m, "", senders) for m in shown], args.most, args.skip) or ["(맞는 메일이 없다)"])], [])
     return EXIT_OK
 
 

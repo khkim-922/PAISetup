@@ -420,6 +420,16 @@
   }
   .pill.over { background: var(--error); color: var(--bg); }
 
+  /* 결재 문서 — 이름 곁의 「결재 창 열기」(누름을 남길 수 있는 창에서만 선다)와 그 끝의 말 */
+  .appr { font-weight: 600; }
+  .appr-go { margin-left: 8px; padding: 1px 10px; border: 1px solid var(--primary); border-radius: 9999px; background: var(--bg);
+             color: var(--primary); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; vertical-align: 0.1em; }
+  .appr-go:hover { background: var(--primary); color: var(--bg); }
+  .appr-go:disabled { opacity: 0.5; cursor: default; }
+  .appr-said { font-size: 12px; font-weight: 400; color: var(--text-2); }
+  .appr-said.ok { color: var(--text-2); }
+  .appr-said.no { color: var(--error); }
+
   /* 메일 번호 — 메일함 주소가 없어 링크를 못 지은 자리 */
   .unid { font-family: var(--mono); font-size: 12px; color: var(--neutral); word-break: break-all; }
 

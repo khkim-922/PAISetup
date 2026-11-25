@@ -23,6 +23,7 @@ import hand_lines as HL
 import scan_const as C
 import scan_diff as D
 import scan_hand as H
+import scan_identity as SI
 import scan_store as st
 import scan_time as tm
 import scan_words as SW
@@ -250,7 +251,14 @@ def sweep(run: Run, state: dict[str, Any], folder: pathlib.Path, at: datetime, a
     except HL.ShapeError as exc:
         return Ended(mode, SHAPE, info={"note": str(exc)})
     settle(state, outcome, at)
-    return Ended(mode, outcome, events, info)
+    return Ended(mode, outcome, events, {**info, **identity_info(state, run.hand_path, at, mode == FULL)})
+
+
+def identity_info(state: dict[str, Any], hand: pathlib.Path, at: datetime, full: bool) -> dict[str, Any]:
+    """손이 답한 판의 끝에 보낸 분 신원을 붙인다(`scan_identity.attach`) — 판 값의 이름을 판 기록의 칸으로 옮긴다. 신원이 못 서도 판은 그대로다."""
+    got = SI.attach(state, hand, at, full)
+    return {"senders_asked": got.get("asked", 0), "senders_filled": got.get("filled", 0),
+            **({"identity_note": got["note"]} if got.get("note") else {})}
 
 
 def settle(state: dict[str, Any], outcome: str, at: datetime) -> None:

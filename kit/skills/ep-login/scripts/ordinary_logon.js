@@ -1,13 +1,13 @@
 // 평소 Edge 의 로그인을 읽는 바탕 — 이 윈도 로그온의 열쇠와 세 기록(평소 걸음을 해 봤다 · 평소 로그인이 섰다 · SSO 가 안 선다), 평소 Edge 를 보는 눈과 그 가름,
-// 그리고 그것들로 「이 로그온에 평소 EP 로그인이 한 번 섰나」를 아무것도 안 열고 가리는 답(ordinaryLogin). 입구(ep_login.js)와 그 답을 빌려
-// 주는 문(ordinary_status.js)이 싣는다.
+// 그리고 그것들로 「이 로그온에 평소 EP 로그인이 한 번 섰나」를 아무것도 안 열고 가리는 답(ordinaryLogin), 평소 Edge 에 주소 하나를 여는 손(openOrdinary).
+// 입구(ep_login.js)와 그 답을 빌려 주는 문(ordinary_status.js) · 주소를 여는 문(ordinary_open.js)이 싣는다.
 //
 // 내는 것
 //   logonKey() · readMark() · writeMark(key) · readStood() · writeStood(key) · readNoSso() · writeNoSso(key) — 로그온 열쇠와 세 기록(평소 걸음을
 //     해 봤다 · 평소 로그인이 섰다 · 이 로그온에는 SSO 가 안 선다 — SAVED.* 로 끝을 낸다)
 //   edgeEye(select) · eyeSelect() · lookOnce(eye) · lookForPortal(eye) · tabsState(tabs) · committedState(tabs) — 눈과 그 가름(LOOK.*)
 //   ordinaryLogin() — ORDINARY.STOOD(섰다) · TRIED(해 봤는데 섰는지 모른다) · MISSING(없다) — 기록을 먼저 읽고, 기록이 없을 때만 눈으로 본다
-//   readTitles() · TITLES · ordinaryProfile() · hostOf(url) · EYE · EYE_GAP_MS · STEADY · SAVED
+//   readTitles() · TITLES · ordinaryProfile() · openOrdinary(exe, profile, url) · hostOf(url) · EYE · EYE_GAP_MS · STEADY · SAVED
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -89,6 +89,16 @@ function edgeEye(select) {
 
 // 볼 평소 Edge 의 프로필 — "" 이면 사람의 평소 Edge 다(검사만 버리는 프로필을 준다)
 const ordinaryProfile = () => env('EP_ORDINARY_PROFILE', '') && path.resolve(env('EP_ORDINARY_PROFILE', ''));
+
+// 평소 Edge 에 주소 하나를 연다 — 사람이 주소를 넘긴 것과 같다. 떠 있으면 그 Edge 의 새 탭, 없으면 평소 프로필로 뜬다. 포트는 안 연다.
+// 늘 떼어 띄운다 — 떼지 않은 Edge 는 부른 쪽이 끝나면 함께 끝날 수 있다(SOURCES 「잰 것」). 띄운 자식을 낸다 — 띄우기가 졌는지는 그 자식의
+// 'error' 사건이 뒤에 알린다(spawn 은 던지지 않는다). 기다릴 부른 쪽만 듣는다
+function openOrdinary(exe, profile, url) {
+  const args = profile ? [`--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', url] : [url];
+  const child = spawn(exe, args, { detached: true, stdio: 'ignore' });
+  child.unref();
+  return child;
+}
 
 // 주소의 호스트 이름(소문자 · 포트 없이) — 못 읽으면 ""
 const hostOf = url => { try { return new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, ''); } catch { return ''; } };
@@ -225,6 +235,6 @@ async function ordinaryLogin() {
 
 module.exports = {
   ORDINARY, SAVED, LOOK, EYE, EYE_GAP_MS, STEADY, TITLES,
-  logonKey, readMark, writeMark, readStood, writeStood, readNoSso, writeNoSso, readTitles, ordinaryProfile, hostOf,
+  logonKey, readMark, writeMark, readStood, writeStood, readNoSso, writeNoSso, readTitles, ordinaryProfile, openOrdinary, hostOf,
   edgeEye, eyeSelect, lookOnce, lookForPortal, tabsState, committedState, ordinaryLogin,
 };

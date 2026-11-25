@@ -20,11 +20,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 손�
 import clock as T  # noqa: E402
 import prefs_file as P  # noqa: E402
 from render_base import DATELINE, NO_TIME_SAID, inline_walk  # noqa: E402
-from brief_const import (ASK_KEY, ASK_NO_VSCODE, ASK_OPEN_CEILING_S, ASK_TAKE_S, AWAY_KEY, CAL_PREFIX, DONE_PREFIX, HAND_BEAT_S,  # noqa: E402
+from brief_const import (APPR_OPEN_S, APPR_PREFIX, ASK_KEY, ASK_NO_VSCODE, ASK_OPEN_CEILING_S, ASK_TAKE_S, AWAY_KEY, CAL_PREFIX, DONE_PREFIX, HAND_BEAT_S,  # noqa: E402
                          HAND_KEY, RUN_PREFIX, RUN_REFUSED, RUN_TAKE_S, SEOUL_OFFSET, STATE_KEY, TASK_BAD,
                          TASK_PREFIX, TIMES_KEY, UNQUIET_PREFIX, VIA_EDGE, WEEKDAYS)
 from brief_cards import WAIT_ME, WAIT_THEM, card_head, item_key, item_title  # noqa: E402
-from brief_inline import OVER, UNID_HEX, plain  # noqa: E402
+from brief_inline import OVER, UNID_HEX, approvals_in, plain  # noqa: E402
 from brief_people import people_in  # noqa: E402
 from brief_sections import DONE_SECTION, RECORD_SECTIONS, is_empty_done, is_meetings, names_section, report_items  # noqa: E402
 from brief_tasks import (ROW_BAD, ROW_BAD_PUT, ROW_PUT, ROW_RUN, ROW_TALK, ROW_TALK_TOP, ROW_UNKEYED, TOP_MARK, Task,  # noqa: E402
@@ -43,6 +43,7 @@ PUT_BAD = "넣을 값의 꼴이 틀려 이 창에서는 넣을 수 없습니다 
 PUT_NOKEY = "이 창에서는 넣지 않습니다 — 까닭은 위 카드에 적었습니다"
 
 TOP_TAG = "· 창 맨 위에 추천으로 올린 일"
+APPR_GO = "결재 창 열기"                       # 결재 문서 곁의 단추 — 창 곁의 손이 형제 스킬 company-approval 의 open 으로 그 창을 띄운다
 TASK_GO, TALK_GO = "이것만 맡기기", "대화로 열기"
 TICK_LABEL = "바로 맡길 일에 넣기"
 BOARD_TITLE = "바로 맡길 일"
@@ -81,6 +82,7 @@ class Ink:
     links: int = 0
     unlinked: int = 0
     bad_refs: int = 0
+    bad_approvals: int = 0          # 결재 문서 id 의 꼴이 아닌 approval: 표시
     boxes: int = 0
     bad_puts: int = 0               # 「넣을 일정」 칸의 꼴이 틀려 단추를 못 단 카드
     bad_tasks: list = field(default_factory=list)   # 꼴이 틀린 맡길 일의 칸 — 그 글 그대로(끝 줄 앞에서 경고한다)
@@ -138,6 +140,19 @@ class WindowSkin:
     def room(self, inner: str, rid: str) -> str:
         """회의실 — 이름에 id 를 올리면 보이는 표로, 링크 없는 판이면 이름만."""
         return f'<span class="room" title="{html.escape(rid, quote=True)}">{inner}</span>' if self.links else inner
+
+    def bad_approval(self) -> None:
+        """꼴이 틀린 결재 문서 표시 하나를 센다 — 링크를 짓는 판에서만."""
+        self.ink.bad_approvals += self.links
+
+    def approval(self, inner: str, doc: str) -> str:
+        """결재 문서 — 이름 곁에 숨은 「결재 창 열기」 단추(창의 스크립트가 누름을 남길 수 있는 창에서만 꺼낸다)와 그 끝의 말 자리. 누르시면 창 곁의
+        손이 그 문서의 창을 평소 Edge 에 띄운다 — 결재 · 반려 · 상신은 사람이 그 창에서 누른다. 링크 없는 판이면 이름만."""
+        if not self.links:
+            return inner
+        d = html.escape(doc, quote=True)
+        return (f'<span class="appr" title="{d}">{inner}<button type="button" class="appr-go" data-appr="{d}" hidden>{APPR_GO}</button>'
+                f'<span class="appr-said" data-appr="{d}" aria-live="polite"></span></span>')
 
     def pill(self, words: str, over: bool) -> str:
         """표지 — 둥근 표로(`over` 면 넘친 표)."""
@@ -224,13 +239,13 @@ ROW_WORDS = {ROW_BAD_PUT: bad_row, ROW_BAD: bad_row, ROW_TALK: talk_row, ROW_TAL
 
 def tick_box(it: Item, ink: Ink, tick: str) -> str:
     """누름 단추 무리 — 줄의 일 열쇠(`item_key` — 「일:」 칸의 메일, 없으면 첫 메일 번호)가 열쇠다(업무 파일은 일을 그 일을 연 메일로 잇는다).
-    메일 번호가 없으면 빈 글.
+    메일 번호가 없거나 결재 문서 링크가 든 줄이면 빈 글.
     할 일의 줄에는 「끝났음 · 내일 다시 · 안 올려도 됨」 셋이 서고, `tick` 이 `TICK_DONE` 이면 「끝났다고 하신 것」의 줄이라 「끝났음」 하나가
     눌린 채 선다(`data-done`) — 풀면 끝나지 않았다고 되돌리신 것이다. 처음엔 숨어 있다 — 창의 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다.
     스크립트가 막혀도 누를 수 없는 단추는 안 선다."""
     unid = item_key(it)
-    if unid is None:
-        return ""
+    if unid is None or approvals_in(" ".join([it.text, *it.subs])):
+        return ""                                   # 결재 줄에는 안 단다 — 결재하시면 결재함에서 저절로 빠진다
     ink.boxes += 1
     title = item_title(it)
     base = ' data-done="1"' if tick == TICK_DONE else ""
@@ -433,8 +448,9 @@ def page_script() -> tuple[str, str]:
                                                                           cal_prefix=CAL_PREFIX, hand_key=HAND_KEY, away_key=AWAY_KEY,
                                                                           hand_stale_ms=str(3 * HAND_BEAT_S * 1000), ask_key=ASK_KEY,
                                                                           ask_take_ms=str(ASK_TAKE_S * 1000), run_prefix=RUN_PREFIX,
-                                                                          task_prefix=TASK_PREFIX, run_take_ms=str(RUN_TAKE_S * 1000), run_refused=RUN_REFUSED, kind_teams=TEAMS.name, unread_tail=UNREAD_TAIL,
-                                                                          ask_open_ms=str((ASK_OPEN_CEILING_S + ASK_TAKE_S) * 1000))
+                                                                          task_prefix=TASK_PREFIX, appr_prefix=APPR_PREFIX, run_take_ms=str(RUN_TAKE_S * 1000), run_refused=RUN_REFUSED, kind_teams=TEAMS.name, unread_tail=UNREAD_TAIL,
+                                                                          ask_open_ms=str((ASK_OPEN_CEILING_S + ASK_TAKE_S) * 1000),
+                                                                          appr_open_ms=str((APPR_OPEN_S + ASK_TAKE_S) * 1000))
     digest = base64.b64encode(hashlib.sha256(code.encode("utf-8")).digest()).decode("ascii")
     return code, f"'sha256-{digest}'"
 

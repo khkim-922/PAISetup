@@ -49,6 +49,17 @@ from hand_facts import (HAND_EXIT_CONFIG, HAND_EXIT_FAIL, HAND_EXIT_OK, HAND_EXI
 THIS_HOME_HAND = SCRIPT_DIR.parents[1] / HAND_SKILL / pathlib.Path(*HAND_SCRIPT)   # 이 스캔과 같은 스킬 뿌리(도구 홈)의 회사 메일 손 — 다시
                                                                                   # 겨누기(`adopt`)가 작업에 굳히는 자리
 HAND_ENV = "MAILBOX_SCAN_HAND"           # 손의 자리를 굳히는 환경변수 — 예약 실행은 명령줄의 --hand 로 준다
+# 보낸 분의 신원 — 주소록 스킬(company-directory)의 신원 명령을 명령으로 부른다(그 코드를 싣지 않는다). 찾는 차례는 `IDENTITY_ENV` → 회사 메일
+# 손과 같은 스킬 뿌리. 다시 묻는 날 · 한 부름이 서버에 묻는 주소의 위는 그 명령이 든다 — 스캔은 판마다 주소를 다 주고 그 답을 받아 적는다
+IDENTITY_SKILL = "company-directory"
+IDENTITY_SCRIPT = ("scripts", "identity.py")
+IDENTITY_ENV = "MAILBOX_SCAN_IDENTITY"
+IDENTITY_FORMAT = 1      # 신원 명령 답의 꼴 번호 — 그 명령의 `IDENTITY_FORMAT` 과 같아야 읽는다(다르면 신원을 안 붙이고 판 기록에 적는다). 답의
+                         # 상태 낱말(섰다 · 여럿 · 없음 · 모름)은 그 꼴의 일부다 — 원본은 그 스킬 references/DESIGN.md 「신원 한 줄의 꼴」
+IDENTITY_TIMEOUT_S = 120 # 신원 명령 한 번의 시한 — 넘으면 이번 판은 신원을 안 고치고 판은 그대로 맺는다
+IDENTITY_PULL_TIMEOUT_S = 150   # 미리 받기(`pull --unattended` — 한 번에 한 회사, 가장 큰 회사가 1 분 안쪽)의 시한 — 메일함 전체 판에서만 부른다
+UNKNOWN_IDENTITY = "모름"   # 신원 명령이 아직 못 지은 신원의 상태 — 다음 판이 다시 묻는다
+
 # 세션 파일의 자리 — 받는 손과 같은 차례(`MAILBOX_COOKIES` → 형제 스킬 ep-login 의 받는 손 곁 `places.json` 의 기본 자리). 그 파일이
 # 끊긴 뒤 새로 쓰였나로 「대화에서 EP 로그인을 했다」를 안다. 남의 코드를 안 싣고 그 데이터 파일만 읽는다
 SESSION_FILE_ENV = "MAILBOX_COOKIES"
@@ -70,10 +81,11 @@ EVERY_MIN = 15           # 예약의 기본 주기(분) — 사용자가 바꾼�
 FULL_EVERY_MIN = 120     # 메일함 전체를 다시 보는 주기(분) — 상자마다 손을 두 번 넘게 불러 무겁다. 아래 PENDING_MAX_MIN 보다 짧아야 다 못 본 판을
                          # 다음 전체 판이 잇는다(회사에서 한 판의 값을 재기 전의 기본값)
 RUN_BUDGET_S = 15 * 60   # 한 판이 손을 부르는 시간의 상한 — 넘으면 다 본 상자까지 적고 다음 판이 잇는다
-LOCK_STALE_S = RUN_BUDGET_S + HAND_TIMEOUT_S + 60   # 이보다 오래된 잠금은 잠 · 꺼짐 · 멈춘 판이 남긴 것이다 — 풀고 돈다
+LOCK_STALE_S = RUN_BUDGET_S + HAND_TIMEOUT_S + IDENTITY_TIMEOUT_S + IDENTITY_PULL_TIMEOUT_S + 60   # 이보다 오래된 잠금은 잠 · 꺼짐 · 멈춘 판이
+                         # 남긴 것이다 — 풀고 돈다. 판은 손의 상한 뒤에 신원 명령 둘을 잠금을 쥔 채 부른다
 LOCK_WAIT_POLL_S = 2     # `run --wait` 가 도는 판의 잠금을 다시 쥐어 보는 사이(초) — 판은 몇 분이 들어 이 사이는 조금 늦음으로만 보인다. 사이마다
                          # 잠들어 기다려 CPU 를 안 쓴다
-TASK_TIME_LIMIT_MIN = 25 # 작업 스케줄러가 한 판을 끊는 시한 — 위 셋보다 길어야 스캔이 제 상한으로 먼저 멈춘다
+TASK_TIME_LIMIT_MIN = 25 # 작업 스케줄러가 한 판을 끊는 시한 — 위 셋보다 길어야 스캔이 제 상한으로 먼저 멈춘다(잠금의 낡음 `LOCK_STALE_S` 보다도)
 PENDING_MAX_MIN = 180    # 다 못 본 지금 모습 판을 잇는 기한 — 넘은 상자 그림은 너무 낡아 버리고 처음부터 본다. 전체 주기(`--full-every`)는
                          # 이보다 짧아야 한다 — 같거나 길면 덜 본 판의 상자가 늘 버려져 큰 메일함은 끝내 다 못 본다(scan.py 가 거절한다)
 BACKOFF_FIRST_MIN = 15   # 세션이 끊긴 뒤 첫 다시 두드림까지 — 그 뒤로 두 배씩

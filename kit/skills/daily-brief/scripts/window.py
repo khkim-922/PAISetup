@@ -218,7 +218,7 @@ def build_main(args: argparse.Namespace) -> int:
         return EXIT_FAIL
     ends = missing_ends(rep)
     cli.say(W.warn_lines(warned, rep.extra_titles, sections, ink.bad_refs, url_count(text), ends, ink.bad_puts, ink.bad_tasks, ink.tops,
-                         ink.bad_people))
+                         ink.bad_people, ink.bad_approvals))
     shown = shown_where(args.no_open, out, folder, hand_wanted(text, bool(state["times"]), ready))
     cli.say(W.end_lines(out, kept, sections, lines, ink.links, len(ink.tasks), shown, ends, ink.unlinked, bool(args.mailbox.strip())))
     return EXIT_OK

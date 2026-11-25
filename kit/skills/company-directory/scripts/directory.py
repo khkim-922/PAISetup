@@ -37,6 +37,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import functools
 import json
@@ -52,7 +53,7 @@ SKILLS = HERE.parents[1]                              # 형제 스킬은 스킬 
 EP_LOGIN_SCRIPTS = SKILLS / "ep-login" / "scripts"
 MAIL_SCRIPTS = SKILLS / "company-mail" / "scripts"
 REGULATION_SCRIPTS = SKILLS / "company-regulation" / "scripts"
-for _where in (EP_LOGIN_SCRIPTS, MAIL_SCRIPTS):
+for _where in (EP_LOGIN_SCRIPTS, MAIL_SCRIPTS, HERE):
     if str(_where) not in sys.path:
         sys.path.insert(0, str(_where))               # ``-I`` 로 돌면 어느 폴더도 ``sys.path`` 에 없다
 try:
@@ -66,8 +67,9 @@ try:
                              group_lists, one_group, person_line, split_kind)
     from mail_recipients import BCC_UNKNOWN, field_of, person_word, received_together, together_why
     from mail_stop import Stop, from_ep
+    import findpeople
 except ImportError as _missing:                       # 형제 스킬이 곁에 없다 — 주소록을 물을 손이 없어 어느 명령도 못 돈다
-    print(f"형제 스킬(ep-login · company-mail)이 이 스킬 곁에 없다({_missing}) — 설치를 다시 돌린다")
+    print(f"형제 스킬(ep-login · company-mail)이나 이 스킬의 사람찾기 손이 곁에 없다({_missing}) — 설치를 다시 돌린다")
     sys.exit(1)
 
 EXIT_OK, EXIT_TOOL, EXIT_ARGS, EXIT_SESSION = ep_command.EXIT_OK, ep_command.EXIT_TOOL, ep_command.EXIT_ARGS, ep_command.EXIT_SESSION
@@ -80,6 +82,16 @@ WHO_FILE = "{field}.txt"      # --out 폴더 안의 칸마다 주소 파일 — 
 PEOPLE_FILE = "people.txt"
 PEOPLE_JSON = "people.json"   # 같은 폴더의 기계가 읽는 사람 파일 — 사람을 받는 손이 --people-file 로 받는다. 꼴은 읽는 자리(ep_command)가 든다
 PHONE_MOST = 10               # --phone 이 사람 창을 묻는 사람 수의 위 — 사람마다 사규 앱에 한 번씩 묻는다
+DETAIL_MOST = 10              # --detail 이 사람찾기 상세를 묻는 사람 수의 위 — 사람마다 한 번(0.3 초)씩 묻는다
+# --detail 이 줄에 다는 상세의 칸 — 주소록 · 목록에 없는 것만. 칸 차림이 회사마다 달라 없는 칸은 건너뛴다(references/SOURCES.md)
+DETAIL_FIELDS = ("직무", "근무형태", "근무현황", "원소속", "팩스", "휴대전화")
+# 사람찾기 출처의 회사 말 → 회사 값 — 앱의 회사 고름 상자 이름 · 값 말고 사람이 흔히 하는 말. 「내 회사」 는 앱이 댄 쓰는 사람의 회사다
+SCOPE_WORDS = {"홀딩스": "poscoinc", "지주사": "poscoinc", "그룹사": findpeople.GROUP, "국내그룹사": findpeople.GROUP}
+OWN_WORDS = ("내회사", "우리회사", "회사")
+DEFAULT_SCOPES = ("own", "poscoinc", findpeople.GROUP)   # 회사를 안 대면 — 내 회사 → 홀딩스 → 국내그룹사 묶음(내 회사 · 홀딩스는 묶음에 안 든다)
+SEEN_NOTE = ("다른 회사 사람 {n} — 찾기만 했다. 사람 파일 · 주소 파일에 안 든다(메일 · 회의 · 결재선에 넘기지 않는다 — 사용자가 정했다)")
+CUT_NOTE = ("{scope} 「{word}」 — 앱이 {total} 건이라 했는데 답이 커서 앞 {rows} 줄만 읽었다(사람찾기는 쪽을 안 나눈다). 다음: 회사를 "
+            "좁히거나(--in) 말을 늘리거나 갈래를 준다(담당업무:… · 이름:…)")
 # --out 의 찾기에서 이름으로 댄 것이 안 섰을 때의 끝 말(종료 2) — 그때 쓴 파일은 사람이 말한 명단의 일부다. 받는 손(임시저장 · 일정 ·
 # 회의실 · 문서함)은 파일에 없는 사람을 몰라 답에도 안 세우니, 파일을 안 써야 이은 걸음도 따로 부른 걸음도 그 일부로 말없이 돌지 않는다.
 # 이름 하나하나는 고르거나 빼서 다시 줄 수 있어 안 써도 막히는 길이 없다. 고르는 것은 사람이다
@@ -238,11 +250,14 @@ class Ask(str):
 @dataclasses.dataclass
 class Haul:
     """출처 값 하나가 데려온 것 — ``said`` 는 출처 줄의 사람 말, ``held`` 는 파일에 안 넣고 사람에게 물을 줄이다. ``branch`` 는 부서별
-    수를 그 조직 바로 아래로 셀 때의 뿌리((부서 코드,) · 회사 전체면 (None,))다."""
+    수를 그 조직 바로 아래로 셀 때의 뿌리((부서 코드,) · 회사 전체면 (None,))다. ``seen`` 은 찾기만 하고 안 넘기는 다른 회사 사람
+    (``findpeople.Row``), ``cut`` 은 사람찾기 답이 커서 앞만 읽었다는 말(안 잘렸으면 빈 글자)이다."""
     said: str
     picks: list
     held: list
     branch: tuple = ()
+    seen: list = dataclasses.field(default_factory=list)
+    cut: str = ""
 
 
 class Run:
@@ -256,6 +271,14 @@ class Run:
         self._opened = self._chart = None
         self._book_when = ""        # 주소로 사람을 이을 때 쓴 받아 둔 조직도의 날짜 — 이 판에 조직도를 안 받았을 때
         self._me = self._recent = False
+        self._finder = None
+
+    @property
+    def finder(self):
+        """이 판의 사람찾기 앱 손 — 처음 부를 때 세션 파일로 세운다(들어가기는 첫 찾기가 한다)."""
+        if self._finder is None:
+            self._finder = findpeople.App(self.session_file)
+        return self._finder
 
     @property
     def box(self):
@@ -1041,6 +1064,137 @@ def show_group_lists(kinds: tuple, lists: dict) -> None:
     print("— 구성원은 --group <이름>(갈래가 겹치면 「직책:<이름>」)")
 
 
+# ── 사람찾기 — 그룹사 사람 · 담당업무 ─────────────────────────────────────────
+
+def from_finder(run, values) -> list:
+    """사람찾기 앱에서 — 말마다(``finder_ask``) 고른 회사마다(``finder_scopes``) 찾아(``findpeople.App.search``) 출처 한 줄로 낸다
+    (``finder_haul``). 내 회사 사람은 주소록의 한 사람에 이어 넘기고, 다른 회사 사람은 찾기만 한다."""
+    scopes = finder_scopes(run.finder, run.args.scope or ())
+    hauls = []
+    for value in values:
+        field, kind, word = finder_ask(value)
+        for company in scopes:
+            hauls.append(finder_haul(run, field, kind, word, company, run.finder.search(findpeople.KINDS[kind], word, company)))
+    return hauls
+
+
+def finder_ask(value: str) -> tuple[str, str, str]:
+    """``--finder`` 값 하나 → (칸, 갈래, 말) — 칸 머리(``cc:``)를 떼고, 앞에 갈래 머리(``담당업무:`` · ``이름:`` …)가 있으면 그 갈래, 없으면
+    「전체」(이름 · 담당업무 글을 함께 본다)."""
+    field, rest = split_field(value)
+    head, sep, tail = rest.partition(":")
+    return (field, head.strip(), tail.strip()) if sep and head.strip() in findpeople.KINDS else (field, "전체", rest.strip())
+
+
+def finder_given(value: str) -> None:
+    """``--finder`` 값 하나 — 갈래 머리를 뗀 말을 사람찾기 화면이 안 받으면 Stop(세션 앞에서)."""
+    why = findpeople.word_problem(finder_ask(value)[2])
+    if why:
+        raise Stop(EXIT_ARGS, f"--finder 「{value}」 — {why}")
+
+
+def finder_scopes(app, words) -> list[str]:
+    """찾을 회사 값들 — 말을 안 주면 내 회사 · 홀딩스 · 국내그룹사 묶음(``DEFAULT_SCOPES``), 주면 말마다 회사 하나(``scope_of``)."""
+    if not words:
+        return list(dict.fromkeys(app_own(app) if w == "own" else w for w in DEFAULT_SCOPES))   # 홀딩스 사람이면 내 회사가 홀딩스다
+    return list(dict.fromkeys(scope_of(app, w) for chunk in words for w in NAME_SPLIT.split(chunk) if w.strip()))
+
+
+def app_own(app) -> str:
+    """쓰는 사람의 회사 값 — 앱이 들일 때 댄 값. 들어가기 전이면 들어간다."""
+    if not app.own:
+        app.login()
+    return app.own
+
+
+def scope_of(app, word: str) -> str:
+    """회사 말 하나 → 회사 값 — 「내 회사」 · 흔한 말(``SCOPE_WORDS``) · 앱의 회사 이름 · 회사 값. 안 서면 앱이 아는 회사를 대고 Stop."""
+    key = inbox.squash(word)
+    if key in OWN_WORDS:
+        return app_own(app)
+    if key in SCOPE_WORDS:
+        return SCOPE_WORDS[key]
+    app_own(app)   # 회사 이름표는 들어가야 선다
+    hits = [v for v, n in app.names.items() if key in (inbox.squash(n), v.casefold())]
+    if len(hits) == 1:
+        return hits[0]
+    raise Stop(EXIT_ARGS, f"--in 「{word}」 — 사람찾기가 아는 회사가 아니다. 다음: 이 가운데 하나(이름이나 값)로 준다 — 홀딩스 · 그룹사 · "
+                          + " · ".join(f"{n}({v})" for v, n in app.names.items()))
+
+
+def scope_word(app, company: str) -> str:
+    """회사 값 → 사람 말 — 묶음은 「국내그룹사」, 그 밖은 앱의 회사 이름."""
+    return "국내그룹사" if company == findpeople.GROUP else app.names.get(company, company)
+
+
+def finder_haul(run, field: str, kind: str, word: str, company: str, found) -> Haul:
+    """찾기 한 판의 답 → 출처 한 줄 — 내 회사 사람은 주소로 주소록의 한 사람에 잇고(``own_picks``), 다른 회사 사람은 ``seen`` 에 둔다. 답이
+    잘렸으면 그 말을 ``cut`` 에 든다. 주소록에서 안 선 내 회사 사람은 따로 둔다(보통 글자 — 다시 불러도 안 갈린다)."""
+    said = f"사람찾기 {scope_word(run.finder, company)} {kind} 「{word}」 {found.total} 건"
+    own = run.finder.own
+    picks, lost = own_picks(run, field, [r for r in found.rows if r.company == own])
+    cut = CUT_NOTE.format(scope=scope_word(run.finder, company), word=word, total=found.total, rows=len(found.rows)) if found.cut else ""
+    held = []
+    if lost:
+        held.append(f"{said} 가운데 주소록에서 한 사람으로 안 선 내 회사 사람 {len(lost)} — 찾기만 했다:" + bullets([seen_line(r) for r in lost]))
+    return Haul(said, picks, held, seen=[r for r in found.rows if r.company != own], cut=cut)
+
+
+def own_picks(run, field: str, rows) -> tuple[list, list]:
+    """내 회사 사람의 줄 → (주소록의 한 사람으로 선 Pick 들, 안 선 줄들) — 메일 주소로 잇는다(받아 둔 조직도 · 주소록, ``people_of``)."""
+    mails = [r.email for r in rows if r.email]
+    people = run.people_of(mails) if mails else {}
+    picks, lost = [], []
+    for r in rows:
+        person = people.get(r.email)
+        if person is None:
+            lost.append(r)
+        else:
+            picks.append(Pick(field, person))
+    return picks, lost
+
+
+def seen_line(r) -> str:
+    """찾기만 한 사람 한 줄 — 이름 · 회사 · 소속 · 직급 · 직책 · 회사 전화 · 담당업무 · 주소."""
+    return " · ".join(x for x in (r.name, r.company_name, r.dept, r.grade, r.job_title, r.office, r.duty, r.email) if x)
+
+
+def merge_seen(hauls) -> list:
+    """출처마다 찾기만 한 사람을 한 명단으로 — 한 사람은 (회사, 직번) 쌍이라 그 쌍으로 한 번이다(직번은 회사마다 따로 매긴다)."""
+    return list({(r.company, r.empno): r for h in hauls for r in h.seen}.values())
+
+
+def detail_book(run, picks: list, seen: list) -> dict:
+    """사람마다 사람찾기 상세 — {(회사, 직번): 상세의 칸}. 명단이 ``DETAIL_MOST`` 를 넘으면 아무에게도 안 묻고 {None: 까닭}을 낸다. 주소록의
+    사람은 내 회사의 같은 직번으로 묻는다(직번 셋이 같은 값이다 — ``references/SOURCES.md``). 앱이 한 번 멈추면 뒤에는 안 묻고 {None: 까닭}을
+    더한다."""
+    keys = [(None, p.empno.strip()) for p in people_in(picks) if p.empno.strip()] + [(r.company, r.empno) for r in seen]
+    if len(keys) > DETAIL_MOST:
+        return {None: f"상세는 {DETAIL_MOST} 명까지만 묻는다 — 명단이 {len(keys)} 명이다. 좁혀 다시 --detail"}
+    out = {}
+    try:
+        own = app_own(run.finder)
+        for company, empno in keys:
+            out[(company or own, empno)] = run.finder.detail(company or own, empno)
+    except findpeople.SessionExpired:
+        raise                          # 끊긴 세션은 세션 손이 한 번 다시 받는다 — 상세만 못 물은 것으로 덮지 않는다
+    except findpeople.AppError as exc:
+        out[None] = f"상세를 다 못 물었다(사람찾기 — {exc}) — 명단은 그대로다"
+    return out
+
+
+def detail_said(book: dict) -> dict:
+    """상세를 물은 판 → {(회사, 직번): 줄에 달 말} — 까닭 줄(``None``)은 그대로 든다."""
+    return {k: v if k is None else detail_words(v) for k, v in book.items()}
+
+
+def detail_words(fields: dict) -> str:
+    """상세의 칸 → 줄에 달 말 — ``DETAIL_FIELDS`` 가운데 그 회사 상세에 있고 빈 것이 아닌 칸만(직무는 「직책/직무」 의 뒤)."""
+    duty = fields.get("직책/직무", "").partition("/")[2].strip()
+    got = {**fields, "직무": duty}
+    return " · ".join(f"{k} {got[k]}" for k in DETAIL_FIELDS if got.get(k, "").strip() and got[k].strip() != "/")
+
+
 # ── 표 ───────────────────────────────────────────────────────────────────
 
 @dataclasses.dataclass(frozen=True)
@@ -1112,6 +1266,10 @@ SOURCES = {
     "last": Source("many", "UNID", "지난 메일의 받는 사람 — 보낸 메일은 받는 사람 · 참조 · 숨은참조를 칸 그대로, 조직은 조직 하나로(「지난번과 "
                    "같이」). 받은 메일은 받는 사람 · 참조를 합친 명단(메일 read 의 「함께 받은 사람」)을 받는 사람 칸으로 — 쓰는 사람 자신과 "
                    "보낸 분은 안 든다", True, from_last, check=unid_given),
+    "finder": Source("many", "[갈래:]말", "그룹사 사람찾기 앱에서 — 담당업무 · 이름 · 조직 · 직번 · 전화 · 메일(갈래 머리 " + " · ".join(
+                     f"{k}:" for k in findpeople.KINDS if k != "전체") + ", 없으면 전체). 회사는 --in(없으면 내 회사 · 홀딩스 · 국내그룹사). "
+                     "내 회사 사람은 주소록의 사람으로 넘기고, 다른 회사 사람은 찾기만 한다(파일에 안 든다)", True, from_finder,
+                     check=finder_given),
 }
 SIEVES = {
     "grade": Sieve("many", "직급", "이 직급만(여러 번) — 과장 · 차장 같은 직급 이름", lambda p, v: p.grade.strip() in {x.strip() for x in v},
@@ -1148,9 +1306,9 @@ def view_of(args) -> list[str]:
 
 
 def asks_box(args) -> bool:
-    """이 판이 메일함(세션)에 묻나 — 준 출처 · 보기 가운데 하나라도 메일함에 묻거나, 조직도를 새로 받거나, 전화를 물을 때. 거짓이면
+    """이 판이 메일함(세션)에 묻나 — 준 출처 · 보기 가운데 하나라도 메일함에 묻거나, 조직도를 새로 받거나, 전화 · 상세를 물을 때. 거짓이면
     받아 둔 조직도로 선다."""
-    return bool(getattr(args, "fresh", False) or getattr(args, "phone", False)
+    return bool(getattr(args, "fresh", False) or getattr(args, "phone", False) or getattr(args, "detail", False)
                 or any(SOURCES[k].box for k in given_of(args, SOURCES))
                 or any(VIEWS[k].box for k in view_of(args)))
 
@@ -1159,7 +1317,7 @@ def check_args(args) -> None:
     """출처 · 거르기 · 보기가 표에 맞나 — 세션 · 메일함 · 조직도에 닿기 전에 가린다."""
     given, views = given_of(args, SOURCES), view_of(args)
     narrowing = (given_of(args, SIEVES) + (["except"] if args.without else []) + (["out"] if args.out else [])
-                 + (["phone"] if args.phone else []))
+                 + (["phone"] if args.phone else []) + (["detail"] if args.detail else []))
     if len(views) > 1:
         raise Stop(EXIT_ARGS, "보기(--tree · --groups)는 한 번에 하나다")
     if views and (given or narrowing):
@@ -1171,6 +1329,8 @@ def check_args(args) -> None:
         takers = [k for k, s in SOURCES.items() if s.switch == switch]
         if getattr(args, switch[0], False) and not set(takers) & set(given):
             raise Stop(EXIT_ARGS, f"{flag_of(switch[0])} 는 {' · '.join(flag_of(k) for k in takers)} 에 붙는다 — {switch[1]}")
+    if args.scope and "finder" not in given:
+        raise Stop(EXIT_ARGS, "--in 은 --finder 에 붙는다 — 사람찾기에서 찾을 회사(홀딩스 · 그룹사 · 회사 이름)")
     for k in given:
         for v in getattr(args, k) if SOURCES[k].check else ():
             SOURCES[k].check(v)
@@ -1202,7 +1362,9 @@ def find_map() -> str:
               "  이름 없이) 다시 부르면 다 든 파일이 선다. 무리의 구성원(배포그룹 · 지난 메일 · 파일)이 안 선 줄은 알리기만 하고 0 이다.",
               f"  같은 폴더에 사람 파일 둘 — {PEOPLE_JSON}(일정 · 회의실 · 문서함이 --people-file 로 받는다 — 문서함 권한은 --people-as 와 함께)과 {PEOPLE_FILE}(한 줄에 "
               "「이름/메일ID」 — 문서함 권한). 조직 · 사외 주소는 안 든다.",
-              f"  --phone 이면 명단의 사람({PHONE_MOST} 명까지)마다 사규 앱의 사람 창에 사번으로 물어 회사 전화 · 휴대 전화를 줄에 단다(세션)"]
+              f"  --phone 이면 명단의 사람({PHONE_MOST} 명까지)마다 사규 앱의 사람 창에 사번으로 물어 회사 전화 · 휴대 전화를 줄에 단다(세션).",
+              "  --finder 가 찾은 다른 회사 사람은 「찾기만 한 사람」 으로 따로 보이고(거르기는 걸린다) 어느 파일에도 안 든다.",
+              f"  --detail 이면 명단의 사람({DETAIL_MOST} 명까지)마다 사람찾기 상세의 칸(직무 · 근무형태 · 근무현황 …)을 줄에 단다(세션)"]
     return "\n".join(lines)
 
 
@@ -1235,6 +1397,12 @@ def add_find_args(q: argparse.ArgumentParser) -> None:
     q.add_argument("--fresh", action="store_true", help="받아 둔 조직도를 버리고 새로 받는다")
     q.add_argument("--phone", action="store_true",
                    help=f"명단의 사람({PHONE_MOST} 명까지)마다 회사 전화 · 휴대 전화 — 사규 앱의 사람 창에 사번으로 묻는다")
+    q.add_argument("--in", dest="scope", action="append", metavar="회사",
+                   help="--finder 에 붙어 찾을 회사(여러 번 · 쉼표로) — 홀딩스 · 그룹사(국내그룹사 묶음) · 내 회사 · 사람찾기의 회사 이름 · "
+                        "값. 없으면 내 회사 → 홀딩스 → 국내그룹사")
+    q.add_argument("--detail", action="store_true",
+                   help=f"명단의 사람({DETAIL_MOST} 명까지 · 찾기만 한 사람도)마다 사람찾기 상세 — 직무 · 근무형태 · 근무현황 · 원소속 · 팩스 · "
+                        "휴대 전화(칸은 회사마다 다르다)")
     q.add_argument("--company", default="", help=f"회사 값 — 없으면 MAIL_COMPANY, 그것도 없으면 {DEFAULT_COMPANY}")
 
 
@@ -1421,13 +1589,58 @@ def find(args, session_file) -> None:
         return
     hauls = gather(run)
     picks, bare = merge_picks(hauls)
+    seen = merge_seen(hauls)
     picks, gone = without_picks(picks, args.without)
     picks, dropped, sieved, unjudged = sieve_picks(args, picks)
+    seen, seen_dropped = sieve_seen(args, seen)
     held = held_lines(hauls, bare, unjudged)
     phones, phone_note = phone_words(phone_book(run, people_in(picks))) if args.phone else ({}, "")
-    shown = shown_of(run, hauls, picks, phones)
-    show_found(run.when, hauls, gone, dropped, sieved, held, shown, phone_note, args.start)
-    hand_on(run, hauls, picks, sieved, held, shown.outside)
+    details = detail_said(detail_book(run, picks, seen)) if args.detail else {}
+    shown = shown_of(run, hauls, picks, with_details(phones, details, picks, run))
+    show_found(run.when, hauls, gone, dropped + seen_dropped, sieved, held, shown, phone_note, args.start)
+    show_seen([h.cut for h in hauls if h.cut], seen, details)
+    hand_on(run, hauls, picks, sieved, held, shown.outside, seen)
+
+
+def sieve_seen(args, seen: list) -> tuple[list, int]:
+    """준 거르기를 찾기만 한 사람에게도 건다 — (남은 줄, 걸러 나간 수). 줄의 칸 이름이 주소록의 사람과 같아 같은 거르기가 선다(등급 ·
+    장 여부는 이 앱에 없어 ``--at-least`` · ``--boss`` 는 다 걸러 낸다)."""
+    given = [(SIEVES[k], getattr(args, k)) for k in given_of(args, SIEVES)]
+    kept = [r for r in seen if all(s.keep(r, v) for s, v in given)]
+    return kept, len(seen) - len(kept)
+
+
+def with_details(phones: dict, details: dict, picks: list, run) -> dict:
+    """줄에 달 말(주소 → 말) — 전화 말 뒤에 그 사람의 사람찾기 상세 말을 잇는다. 상세를 안 물었으면 전화 말 그대로다."""
+    if not details:
+        return phones
+    own = run.finder.own
+    out = dict(phones)
+    for p in people_in(picks):
+        said = details.get((own, p.empno.strip()), "")
+        if said:
+            key = p.email.casefold()
+            out[key] = " · ".join(x for x in (out.get(key, ""), said) if x)
+    return out
+
+
+def show_seen(cuts: list, seen: list, details: dict) -> None:
+    """찾기만 한 다른 회사 사람을 보인다 — 잘린 답의 말 · 상세를 못 물은 말, 회사별 수와 줄(``SHOWN`` 줄까지 — 넘으면 수만). 파일에 안
+    든다고 댄다."""
+    for line in cuts:
+        print(f"⚠ {line}")
+    if None in details:
+        print(f"⚠ {details[None]}")
+    if not seen:
+        return
+    print(SEEN_NOTE.format(n=len(seen)))
+    print("회사별: " + ranked_words(ranked(counts_by(seen, "company_name")), TALLY_TOP))
+    if len(seen) > SHOWN:
+        print(f"찾기만 한 사람은 {len(seen)} 줄이라 안 실었다 — 회사(--in) · 거르기(--match · --grade · --title)로 좁힌다")
+        return
+    for r in seen:
+        said = details.get((r.company, r.empno), "")
+        print(f"  - {seen_line(r)}" + (f" · {said}" if said else ""))
 
 
 def gather(run) -> list:
@@ -1510,12 +1723,13 @@ def show_found(when: str, hauls, gone, dropped: int, sieved: list, held: list, s
             print(f"  - {line}")
 
 
-def hand_on(run, hauls, picks: list, sieved: list, held: list, outside: int) -> None:
+def hand_on(run, hauls, picks: list, sieved: list, held: list, outside: int, seen: list) -> None:
     """찾은 명단을 다음 손에 넘긴다 — ``--out`` 을 안 줬으면 그 길을 대고, 이름으로 댄 것이 안 섰으면 파일을 안 쓰고 멈추고(``HELD_STOP``
     — 앞 판이 쓴 파일도 그대로다), 아니면 파일 셋을 쓰고(``write_files``) 다음 손에 줄 인자를 댄다(``show_hand_on``)."""
     state, asks = file_state(run.args.out, held)
     if state == NO_OUT:
-        show_no_out()
+        if picks or not seen:   # 찾기만 한 사람뿐이면 넘길 사람이 없다 — 파일 길을 대지 않는다
+            show_no_out()
         return
     if state == HELD:
         raise Stop(EXIT_ARGS, HELD_STOP.format(n=asks), stepped=True)
@@ -1619,11 +1833,22 @@ def main(argv=None) -> int:
     args = parser().parse_args(argv)
     try:
         check_args(args)
-        with stops_from_mail(inbox, failed=BOOK_FAILED):
+        with stops_from_mail(inbox, failed=BOOK_FAILED), stops_from_finder():
             choose_session(args)
     except Stop as stop:
         return stopped(stop)
     return EXIT_OK
+
+
+@contextlib.contextmanager
+def stops_from_finder():
+    """그 안에서 난 사람찾기 손의 예외를 멈춤으로 옮긴다 — 세션이 끊겼거나 세션 파일이 없으면 3, 앱이 거절했거나 꼴이 아니면 1."""
+    try:
+        yield
+    except (findpeople.SessionExpired, findpeople.SessionMissing) as exc:
+        raise Stop(EXIT_SESSION, f"사람찾기 앱에 못 들어갔다 — {exc}") from exc
+    except findpeople.AppError as exc:
+        raise Stop(EXIT_TOOL, f"사람찾기 앱에서 못 받았다 — {exc}") from exc
 
 
 def set_up_output() -> None:
@@ -1640,7 +1865,8 @@ def choose_session(args) -> None:
     if stands_on_kept(args):
         find(args, None)
     else:
-        ep_session.session_first(functools.partial(find, args), expired=(inbox.SessionExpired,), env=session_env(args))
+        ep_session.session_first(functools.partial(find, args), expired=(inbox.SessionExpired, findpeople.SessionExpired),
+                                 env=session_env(args))
 
 
 def stands_on_kept(args) -> bool:

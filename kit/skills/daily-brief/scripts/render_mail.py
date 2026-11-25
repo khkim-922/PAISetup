@@ -68,7 +68,7 @@ MS = {
 
 class MailSkin:
     """메일의 겉 — 메일 프로그램은 <style> 을 거르므로 꾸밈은 줄마다의 style 속성에 든다. 고정 글자는 글만, 메일 링크는 그 글만(링크 없이 —
-    글 없는 링크는 창처럼 메일 번호로 선다), 사람은 이름만(주소는 메일 한 장에 안 싣는다), 회의실도 방 이름만, 굵게는 <b>."""
+    글 없는 링크는 창처럼 메일 번호로 선다), 사람은 이름만(주소는 메일 한 장에 안 싣는다), 회의실도 방 이름만, 결재 문서도 그 글만, 굵게는 <b>."""
 
     def inside(self) -> MailSkin:
         """링크 글 속에 쓸 겉 — 메일의 겉은 링크가 없어 그대로다."""
@@ -92,6 +92,14 @@ class MailSkin:
 
     def room(self, inner: str, rid: str) -> str:
         """회의실 — 방 이름만."""
+        return inner
+
+    def bad_approval(self) -> None:
+        """꼴이 틀린 결재 문서 표시를 안 센다 — 메일 한 장은 그 수를 안 댄다."""
+        pass
+
+    def approval(self, inner: str, doc: str) -> str:
+        """결재 문서 — 이름만(창을 띄우는 단추는 PC 의 보고 창에만 선다)."""
         return inner
 
     def pill(self, words: str, over: bool) -> str:

@@ -30,6 +30,11 @@ HAND_BEAT_S = 5                                # 그 손이 숨 표를 적는 �
 ASK_KEY = "brief-ask"
 ASK_TAKE_S = 3 * HAND_BEAT_S                   # 누른 뒤 이 안에 손이 안 거두면 창이 「못 열었다」로 맺고, 손도 그보다 늦은 부탁은 안 연다
 RUN_TAKE_S = ASK_TAKE_S                        # 맡길 일의 누름도 같다 — 이 안에 손이 안 맡으면 창이 「못 맡김」으로 맺고, 손도 그보다 늦은 누름은 안 맡는다
+# 결재 문서 곁의 「결재 창 열기」 — 창은 문서 id 마다 누름을 남기고 창 곁의 손만 거둬 형제 스킬 company-approval 의 open 으로 그 창을 사람의
+# 평소 Edge 에 띄운다. 부탁처럼 누른 지 ASK_TAKE_S 안의 누름만 — 자리를 뜬 뒤에 창이 뜨면 놀란다
+APPR_PREFIX = "brief-appr:"
+APPR_OPEN_S = 120                              # 결재 손 open 한 번의 시한 — 세션을 받고 결재함 둘을 훑은 뒤 Edge 에 탭을 연다. 창은 맡은 누름을 이만큼에
+                                               # ASK_TAKE_S 를 더한 때까지 기다린 뒤에야 「확인하지 못했다」고 말한다
 ASK_OPEN_CEILING_S = 30                        # 손이 작업 폴더 창이 서기를 기다리는 천장 — 정한 시간으로 기다리지 않고 그 상태를 본다
 ASK_NO_VSCODE = "이 PC 에는 VS Code 의 Claude Code 가 없어 여기서는 부탁하실 수 없습니다 — 쓰시는 대화 창에서 말씀해 주세요."
 TASK_BAD = "적힌 꼴이 틀려 이 창에서는 맡기실 수 없습니다 — 대화에서 말씀해 주세요"

@@ -32,7 +32,8 @@
 |---|---|---|---|
 | `scan.py` · 입구 | 메일함 스캔 — 회사 메일 손을 명령으로 불러 메일함의 지금을 사용자 폴더에 쌓고, 그 스캔을 작업 스케줄러에 걸고 · 보고 · 끈다. | `scan_const` · `scan_round` · `scan_setup` | — |
 | `reader.py` · 입구 | 메일함 스캔이 쌓은 것을 잘라 읽는 명령 — 일일 보고 · 메일함 정리 · 대화가 스캔 파일을 직접 열지 않고 이것만 쓴다. | `hand_lines` · `scan_const` · `scan_diff` · `scan_store` · `scan_time` | — |
-| `scan_round.py` | 스캔 한 판 — 잠금 쥐기 → 판 준비 → (세션을 기다리는 주기면 판 맺기로) 판 하기 → 판 맺기. | `hand_lines` · `scan_const` · `scan_diff` · `scan_hand` · `scan_store` · `scan_time` · `scan_words` · `session_login` | — |
+| `scan_round.py` | 스캔 한 판 — 잠금 쥐기 → 판 준비 → (세션을 기다리는 주기면 판 맺기로) 판 하기 → 판 맺기. | `hand_lines` · `scan_const` · `scan_diff` · `scan_hand` · `scan_identity` · `scan_store` · `scan_time` · `scan_words` · `session_login` | — |
+| `scan_identity.py` | 보낸 분에 신원 붙이기 — 스캔이 쌓은 받은 메일의 보낸 분 주소마다 주소록 스킬의 신원 명령이 지은 신원을 지금 모습에 적는다. | `proc_base` · `scan_const` · `scan_diff` · `scan_time` | — |
 | `scan_diff.py` | 두 지금 모습을 견주어 바뀜을 짓고, 그 바뀜을 누가 했나(사람 · 비서 · 모름)를 정리 스킬의 기록에 대어 가른다. | `scan_const` · `scan_store` · `scan_time` | — |
 | `scan_setup.py` | 걸기 · 보기 · 끄기 · 다시 겨누기 — `scan.py register · status · unregister · adopt` 의 손. 작업 스케줄러의 작업 하나(`scan_task`)를 걸고 · 보이고 · 지우고 · 이 홈으로 다시 건다. | `scan_const` · `scan_hand` · `scan_store` · `scan_task` · `scan_time` · `scan_words` · `task_base` | — |
 | `scan_hand.py` | 회사 메일 손 이음 — 손(스킬 company-mail 의 `scripts/mail.py`)을 찾고 명령으로 부른다. | `hand_lines` · `proc_base` · `scan_const` | — |
@@ -90,6 +91,7 @@
     - `mail_line` — 메일 한 줄 — 손의 목록 줄과 같은 꼴. `extra` 는 메일 번호 앞에 붙이는 이 스킬의 말이다.
       - ↑ `place_name`
       - `person_of` — 메일 한 통의 사람 칸 — 받은 메일은 보낸 분(「이름 <주소>」 · 주소 · 이름), 보낸 메일은 받는 분.
+      - `identity_words` — 보낸 분 신원의 한 구절 — 회사 › 부서 경로 · 직급(등급) · 직책 · 장 · 퇴직 · 근무지 · 담당업무(출처) · 고름. 여럿이면 후보 수, 고름 넷 어디에도 없으면 「주소록에 없음」, 아직 모르면 「신원 모름」. 주소가 없는 메일은 빈 글자다.
     - ↑ `scan_time.seoul`
     - `count_word` — 메일 묶음의 수 한 구절 — 받은 메일이 들면 안 읽음 수도.
     - ↑ `framed`
@@ -102,9 +104,10 @@
       - ↑ `count_word`
     - `by_place` — 메일을 자리(상자 · 폴더)마다 묶는다.
       - `scan_diff.place` — 메일 한 통의 자리 — (상자, 폴더 경로).
-    - `sender_lines` — 보낸 분마다(받은 메일) 셈 — 많은 차례로 `top` 곳, 나머지는 한 줄.
+    - `sender_lines` — 보낸 분마다(받은 메일) 셈 — 많은 차례로 `top` 곳(그 신원과 함께), 나머지는 한 줄.
       - ↑ `person_of`
       - ↑ `newest_first`
+      - ↑ `identity_words`
       - ↑ `count_word`
       - `when_word` — 메일의 때 글자를 분까지 — 없으면 「때 모름」.
     - `head_lines` — 제목 말머리마다(`HEAD_MIN` 통 이상) 셈 — 많은 차례로 `top` 개.
@@ -376,6 +379,13 @@
           - ↑ `hand_lines.ShapeError`
           - `settle` — 손이 답한 판의 지금 모습 — 세션 기다림을 걷고, 다 본 판이면 본 때를 적는다.
             - ↑ `scan_time.stamp`
+          - `identity_info` — 손이 답한 판의 끝에 보낸 분 신원을 붙인다(`scan_identity.attach`) — 판 값의 이름을 판 기록의 칸으로 옮긴다.
+            - `scan_identity.attach` — 물을 주소(`wanted`)의 신원을 신원 명령으로 받아 지금 모습의 `senders` 에 적는다 — 「모름」 은 안 적는다.
+              - `wanted` — 신원을 물을 주소 — 받은 메일(보낸편지함 밖)의 보낸 분 모두, 새 메일의 보낸 분이 먼저다.
+              - `find_identity` — 신원 명령의 자리 — `MAILBOX_SCAN_IDENTITY` → 회사 메일 손과 같은 스킬 뿌리. 없으면 None.
+              - `call` — 신원 명령 한 번 — (답, 못 받은 까닭). 답이 꼴이 아니면 (None, 까닭).
+                - ↑ `proc_base.run_python`
+              - ↑ `scan_time.stamp`
     - ↑ `scan_store.Unreadable`
     - `unread` — 판이 기대는 파일을 못 읽어 멈춘다 — 지금 모습 · 바뀜 · 보고는 안 건드리고(빈 것으로 읽어 덮으면 그 기록이 사라진다) 판 기록에만 적는다.
       - `unread_record` — 못 읽어 멈춘 판의 기록 한 줄 — 손을 안 불렀고 아무것도 안 바꿨다.
@@ -565,6 +575,7 @@
 | 회사 메일 손의 명령 · 글 꼴 | 스킬 company-mail 의 `mail.py` 머리말 | `scan_hand.py`(명령 · `serve` 답) · `hand_lines.py`(글 꼴) |
 | 정리 스킬의 기록(`TIDY_LOG_FILE` · `TIDY_HELD_FILE`) | 스킬 mailbox-tidy | `scan_diff.py`(읽기만 — 누가를 가른다) |
 | 사내 세션 파일의 자리 | 스킬 ep-login(`places.json`) | `session_login.py`(읽기만) |
+| 보낸 분 신원(주소 → 회사 · 부서 경로 · 직급 · 직책 · 담당업무)의 꼴과 짓는 법 | 스킬 company-directory 의 `scripts/identity.py`(명령 `lookup` · `pull --unattended`) · 그 스킬 `references/DESIGN.md` 「신원 한 줄의 꼴」 | `scan_identity.py`(명령으로 부른다 · 상태와 지은 때만 본다) · `reader.py`(메일 줄에 붙인다) |
 
 ### status --json · run --wait — 프로그램이 기대는 꼴(원본)
 
@@ -622,6 +633,11 @@
 - **로그인하지 않는다** — 판과 살펴보기는 로그인 화면 · 창 · 탭을 안 연다. 세션이 끊기면 멈추고, 사람이 대화에서 EP 로그인을 하면 다음
   주기에 바로 돈다
 - **모델을 부르지 않고 메일을 보내지 않는다** — 판은 손의 읽는 명령과 제 파일만 쓴다
+- **신원을 짓지 않는다** — 보낸 분 신원은 주소록 스킬의 신원 명령이 짓고, 스캔은 손이 답한 판의 끝에 그 명령을 불러 주소마다 지금 모습의
+  `senders` 에 적을 뿐이다(메일마다 베끼지 않는다). 그 명령이 없거나 · 지거나 · 시한(`IDENTITY_TIMEOUT_S`)을 넘기면 신원만 안 고치고 판 기록의
+  `identity_note` 에 적는다 — 판은 그대로 맺는다. 「모름」 은 안 적어 다음 판이 다시 묻는다. 판은 받은 메일의 보낸 분을 다 주고, 다시 짓는 날 ·
+  한 부름이 서버에 묻는 몫은 신원 명령이 제 표로 가른다(표로 선 주소는 서버에 안 닿는다). 잠금의 낡음(`LOCK_STALE_S`)은 두 명령의 시한을 든다.
+  메일함 전체 판은 미리 받는 조직도 가운데 낡은 것 하나를 받게 한다
 - **판단을 하지 않는다** — 청함인가 · 기한 · 누구 차례 · 무엇이 중요한가는 읽는 쪽(모델)의 몫이다. 「지울 만하다 · 죽은 폴더」 같은 딱지도 안
   붙인다 — 셈은 색인이다. 휴지통의 수는 손에 목록 명령이 없어 모른다
 - **보고 · 보고 창 · 맡긴 일을 모른다** — 스캔의 코드는 그것들의 이름을 싣지 않는다. 정한 시각의 보고와 맡긴 일의 실행은 다른 스킬이 들고, 이 스킬은
@@ -655,6 +671,7 @@
 | 홀로 선다(표준 라이브러리와 제 폴더뿐 — 예외 없음) | 스킬에 코드를 더할 때마다 — 손 · 다른 스킬의 코드를 싣는 것이 가장 가까운 길이다 | 손이 바뀔 때마다 스킬이 깨진다 |
 | 폴더 메일의 때 꼴 — 분까지여도 풀리고, 꼴이 둘 밖이면 멈춘다 | 손의 폴더 줄은 받은편지함과 때 꼴이 다르고, 손을 고칠 때마다 바뀔 수 있다 | 폴더에 바로 든 새 메일이 보고에서 빠지거나, 잘못 푼 때가 그럴듯하게 쌓인다 |
 | 정리 신호의 재료 | 읽는 명령 · 판 기록을 고칠 때마다 | 정리 권유가 설 날에 안 서거나 안 설 날에 서서 헛 권유를 날마다 받는다 |
+| 보낸 분 신원 — 지은 신원은 주소마다 적혀 메일 줄에 붙고 「모름」 은 안 적힌다 · 신원 명령이 지거나 없어도 판은 됐다로 맺는다(신원 명령은 대역) | 신원 명령은 사내 주소록 · 사람찾기에 닿아 세션 · 앱이 지는 판이 회사에서 난다 · 판 맺기를 고칠 때마다 | 신원 명령 하나가 지면 스캔이 멈춰 새 메일이 안 쌓이고, 「모름」 을 적으면 그 보낸 분은 한 주 동안 신원 없이 보고에 선다 |
 
 모두 사람 없이 돌거나 틀린 셈도 그럴듯하게 서서 조용하고, 다른 무엇도 안 잰다.
 

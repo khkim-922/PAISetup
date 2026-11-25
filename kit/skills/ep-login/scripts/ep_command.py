@@ -1,6 +1,6 @@
 """사내 앱 스킬의 얇은 명령이 함께 쓰는 뼈대 — 명령을 멈추는 꼴 · 종료 값 · 답을 JSON 하나로 내는 끝 · 답 크기에 본문 맞추기 ·
 받아 둔 파일 · 날 말(오늘 · 내일 · 모레) · 요일 말에 돌려주는 날짜 표 · 서울 시각과 날짜의 꼴(「<날 말> HH:MM」 도) · 모델이 쓴 글 파일 · 사람 파일(한 손이 찾은 사람을 다음 손이 받는 people.json) ·
-종료 값의 뜻 · 빈 틈 셈(바쁜 구간 사이의 비는 때) · 손가락의 표(한 건을 다루는 손 — 일정 · 회의실 — 의 출발 · 바꿀 것 · 아직 없는 손가락 칸과 그 거름 · 지도 줄 · 확인 열쇠). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · company-ecm(종료 값 · 글 파일 · 범례 · 사람 파일) · 종료 값 · 받아 둔 파일 · 본문 맞추기는 company-mail 도)이
+종료 값의 뜻 · 빈 틈 셈(바쁜 구간 사이의 비는 때) · 손가락의 표(한 건을 다루는 손 — 일정 · 회의실 — 의 출발 · 바꿀 것 · 아직 없는 손가락 칸과 그 거름 · 지도 줄 · 확인 열쇠). 얇은 명령(company-board · company-regulation · company-meeting-room · company-calendar · company-ecm(종료 값 · 글 파일 · 범례 · 사람 파일) · company-approval · 종료 값 · 받아 둔 파일 · 본문 맞추기는 company-mail 도)이
 이 폴더를 ``sys.path`` 에 넣고 싣는다. 앱 손(서버를 묻는 쪽)이 쓰는 것 — 세션 파일 · opener · SSO 넘김 칸 · 이름 누르기 · node 손
 돌리기 — 은 곁의 ``ep_session.py`` 가 든다. 새 사내 앱 스킬은 제 서버를 묻는 앱 손과 제 명령만 짓고 나머지는 여기서 부른다.
 

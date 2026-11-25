@@ -1,7 +1,7 @@
 """받는 손(``edge_session.js``)을 파이썬에서 부르고 그 손이 남긴 세션 파일을 읽는 한 자리 — 사내 앱 스킬의 얇은 명령과 앱
 손이 이 폴더를 ``sys.path`` 에 넣고 싣는다. 손 돌리기(``attach`` · ``session_first``) · 세션 파일 → 쿠키 통(``load_jar``) · 프록시
 없이 리다이렉트를 안 따르는 ``opener`` · SSO 넘김 화면의 숨은 칸(``sso_form``) · 이름 견주기 꼴(``squash``) · node 손 돌리기
-(``run_hand``) · 이 로그온에 평소 EP 로그인이 섰나(``ordinary_login`` — 아무것도 안 연다) · 회사 자리 값(``places.json`` → ``DEFAULT_FILE`` · ``DOMINO_SERVER`` · ``ECM_URL`` · ``ECM_MAIN_PAGE``) · 대화에 내는
+(``run_hand``) · 이 로그온에 평소 EP 로그인이 섰나(``ordinary_login`` — 아무것도 안 연다) · 사람의 평소 Edge 에 주소 하나 열기(``open_ordinary`` — 입구가 포털을 여는 길 그대로) · 회사 자리 값(``places.json`` → ``DEFAULT_FILE`` · ``DOMINO_SERVER`` · ``ECM_URL`` · ``ECM_MAIN_PAGE``) · 대화에 내는
 답 하나의 크기(``OUT_BYTES``)를 든다. 얇은 명령의 뼈대는 곁의 ``ep_command.py`` 가 든다. 파일부터 도는 바퀴 · 리다이렉트를 안
 따르는 까닭 · 쿠키 통이 무엇을 싣나는 ``references/DESIGN.md`` 가 든다.
 
@@ -185,8 +185,8 @@ def opener(jar: http.cookiejar.CookieJar | None = None) -> urllib.request.Opener
 
 def sso_form(page: str) -> dict:
     """SSO 넘김 화면의 ``<input>`` 칸 → ``{name: value}`` — name · value 의 차례와 따옴표 꼴(겹 · 홑)을 안 가리고, 값의 HTML
-    엔티티는 푼다(브라우저가 폼을 낼 때와 같은 글자). value 없는 칸은 빈 글자, name 없는 칸은 버린다. 세션이 끊긴 화면은 토큰
-    칸(``ssoToken``)이 없거나 비었다 — 그 판정은 부르는 앱 손이 한다."""
+    엔티티는 푼다(브라우저가 폼을 낼 때와 같은 글자). value 없는 칸은 빈 글자, name 없는 칸은 버린다. 세션이 끊겨도 토큰
+    칸이 올 수 있다 — 섰는지는 부르는 앱 손이 앱이 받나로 가린다(토큰이 없으면 끊긴 것이지만, 있다고 산 것은 아니다)."""
     out = {}
     for tag in INPUT_TAG.findall(page):
         name, value = INPUT_NAME.search(tag), INPUT_VALUE.search(tag)
@@ -322,6 +322,30 @@ EYE_START_S, EYE_LOOK_S = PLACES["eye_start_s"], PLACES["eye_look_s"]   # 평소
 # 그 문의 시한 — 뜨기 셋(node · 로그온 열쇠를 묻는 PowerShell · 눈)을 다 덮어 느리게 뜬 멀쩡한 눈을 먼저 끊지 않고, 뜬 뒤의 물음들(열쇠의
 # 물음 하나 · 한 번 읽기의 보기 몇 번)에는 보기 시한 다섯 몫을 준다. 뜬 뒤가 그보다 길면 눈이 보다 멈춘 것이라 「못 가렸다」가 맞다
 STATUS_TIMEOUT_SECONDS = 3 * EYE_START_S + 5 * EYE_LOOK_S
+
+
+# ── 평소 Edge 에 주소 하나 열기 — 빌려 주는 손 ────────────────────────────────────
+OPENER = pathlib.Path(__file__).resolve().with_name("ordinary_open.js")
+OPEN_TIMEOUT_SECONDS = 20                          # node 가 Edge 를 찾아 떼어 띄우는 한 판 — 띄운 뒤는 기다리지 않는다
+
+
+class NotOpened(Exception):
+    """평소 Edge 에 주소를 못 열었다 — 메시지가 까닭이다(node 가 없다 · Edge 가 없다 · 띄우기가 졌다)."""
+
+
+def open_ordinary(url: str, *, env: dict | None = None, timeout: float = OPEN_TIMEOUT_SECONDS) -> None:
+    """사람의 평소 Edge 에 주소 하나를 연다 — 입구가 EP 포털을 여는 길(``ordinary_logon.js`` 의 ``openOrdinary``) 그대로: 떠 있으면 새 탭, 없으면
+    평소 프로필로 뜬다. 아무것도 누르지 않는다. 못 열면 ``NotOpened``(까닭). 문서 창을 사람에게 띄우는 손(결재)이 부른다."""
+    try:
+        done = _node(OPENER, (url,), env, timeout)
+    except NoNode as exc:
+        raise NotOpened("node 가 PATH 에 없다 — 설치를 다시 돌린다") from exc
+    except TimedOut as exc:
+        raise NotOpened(f"Edge 를 띄우는 손이 {timeout:.0f} 초 안에 안 끝났다") from exc
+    except OSError as exc:
+        raise NotOpened(f"Edge 를 띄우는 손을 못 돌렸다: {exc}") from exc
+    if done.returncode != 0 or (done.stdout or "").strip().splitlines()[-1:] != ["opened"]:
+        raise NotOpened((done.stderr or "").strip()[-SAID_TAIL:] or f"Edge 를 띄우는 손이 종료 {done.returncode} 로 졌다")
 
 
 def ordinary_login(*, env: dict | None = None, timeout: float = STATUS_TIMEOUT_SECONDS) -> str:

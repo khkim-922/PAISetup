@@ -77,7 +77,7 @@
 ## 들어가는 길 — `scripts/mrs.py` 가 기댄다
 
 1. 사내 세션 쿠키를 싣고 SSO 넘김 화면(SSO_PAGE)을 GET — 200 에 숨은 칸 폼(ssoToken · domainName · …)이 온다.
-   세션이 끊겼으면 그 칸이 없다
+   세션이 끊겨도 토큰 칸이 올 수 있다 — 섰는지는 다음 걸음에서 앱이 받나로 가린다
 2. 그 칸을 폼 꼴(form-urlencoded)로 `api/auth/sso/posco` 에 POST — 302 의 Location 이
    `/auth/sso-callback?accessToken=…&refreshToken=…` 이면 선 것, `/auth/sso-error?code=SSO_VALIDATION_FAILED` 면 진 것.
    JSON 으로 보내면 빈 답이 온다. 같은 세션으로 진 뒤 곧 다시 받으면 서는 일이 있어 한 번 더 받아 본다

@@ -32,7 +32,7 @@ LOAD_WAIT_S = 3                                  # 뒤 탭으로 연 보고 창�
 LOAD_STEP_S = 0.1
 
 # 창의 localStorage 를 읽고 쓰는 식 — 창에서 받은 글로 식을 짓지 않는다. 쓰는 식은 이 손이 지은 JSON 한 덩이만 인자로 받는다
-HAND_KEYS = [C.DONE_PREFIX, C.UNQUIET_PREFIX, C.TIMES_KEY, C.CAL_PREFIX, C.AWAY_KEY, C.ASK_KEY]   # 거두는 손 · 넣는 손이 읽는 칸
+HAND_KEYS = [C.DONE_PREFIX, C.UNQUIET_PREFIX, C.TIMES_KEY, C.CAL_PREFIX, C.AWAY_KEY, C.ASK_KEY, C.APPR_PREFIX]   # 거두는 손 · 넣는 손이 읽는 칸
 
 
 def read_expr(prefixes: list[str]) -> str:

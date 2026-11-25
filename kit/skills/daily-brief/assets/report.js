@@ -4,7 +4,7 @@
 // (`data-state`)과, 그것을 바꾸는 명령 · 시계 판 · 거두기가 열린 창에 바로 적는 것(STATE) 가운데 늦은 것이다 — 창은 제가 못 읽는 파일을
 // 그 길로만 안다. 메일에서 온 글로 글을 짓지 않는다 — 바꾸는 것은 단추의 눌림 · 숨김, 줄의 class, 이 파일이 든 말, 「HH:MM」 꼴로 거른
 // 시각, 받은 글을 글자(textContent)로 옮긴 것, 32자리 메일 번호로만 지은 링크뿐이다. 페이지의 CSP 가 이 글 그대로의 해시만 연다.
-// 기능(줄의 단추 · 보고 시각 · 두 목록 · 일정 넣기 · 자리 밖에서 보기 · 부탁 · 맡길 일)마다 제 함수 범위에 살고, 바탕(열쇠 · 저장소 · 때의 꼴 ·
+// 기능(줄의 단추 · 보고 시각 · 두 목록 · 일정 넣기 · 자리 밖에서 보기 · 부탁 · 결재 창 열기 · 맡길 일)마다 제 함수 범위에 살고, 바탕(열쇠 · 저장소 · 때의 꼴 ·
 // 지금 모습)만 함께 쓴다 — 한 기능의 이름이 다른 기능의 이름을 덮지 못한다. 남의 기능은 그 기능이 내놓은 문(Marks · Cal · Ask)으로만 부른다.
 (function () {
   "use strict";
@@ -751,6 +751,67 @@
              pending: function () { var v = askBox ? askRecord() : null; return !!(v && !v.done); } };
   })();
 
+  // ── 결재 창 열기 ──
+  var Appr = (function () {
+    // 누름 — APPR<문서 id> 에 { at, brief(누른 창의 파일 이름) }. 창 곁의 손만 거둔다: 맡으면 taken 을, 다 하면 { state(opened · failed · session),
+    // said, done } 을 적는다. 손이 없으면 남기지 않고 그 자리에서 대화로 가시라고 말한다 — 시계 판은 안 거둔다(자리를 뜬 뒤에 창이 뜨면 놀란다).
+    // 누른 지 ASK_TAKE_MS 안에 손이 안 맡으면 못 띄웠다고 맺는다 — 손도 그보다 늦은 누름은 안 맡는다. 띄운 뒤에도 다시 누르실 수 있다(창을 닫으셨을 때)
+    var APPR = "$appr_prefix", TAKE_MS = $ask_take_ms, OPEN_MS = $appr_open_ms;   // 손이 결재 손을 기다리는 시한 + 맡는 틈
+    var SAID = {
+      opening: "결재 창을 띄우는 중입니다…",
+      noHand: "결재 창을 띄우는 비서 프로그램이 이 창 곁에 없습니다 — 대화에서 「그 결재 창 띄워 줘」 하시면 띄웁니다",
+      noAnswer: "결재 창을 띄우는 비서 프로그램이 답하지 않았습니다 — 다시 눌러 주시고, 그래도 안 되면 대화에서 말씀해 주세요",
+      unknown: "결재 창이 떴는지 확인하지 못했습니다 — 평소 Edge 를 보시고 없으면 다시 눌러 주세요",
+      unsaved: "누름을 못 남겼습니다 — 대화에서 「그 결재 창 띄워 줘」 하시면 띄웁니다"
+    };
+    var buttons = Array.prototype.slice.call(document.querySelectorAll("button.appr-go[data-appr]"));
+    var here = {};                                     // 이 창에서 남기지 못한 누름의 말 — 문서 id 마다
+
+    function record(doc) {
+      var v = parse(APPR + doc);
+      if (!v || v.brief !== pageName()) return null;
+      if (v.done && !isNaN(made) && time(v.done) < made) return null;
+      return v;
+    }
+
+    function late(v) {
+      return v.taken ? Date.now() - time(v.taken) >= OPEN_MS : !(Date.now() - time(v.at) < TAKE_MS);
+    }
+
+    function paintOne(b) {
+      var doc = b.getAttribute("data-appr"), v = record(doc);
+      var said = b.parentNode.querySelector(".appr-said");
+      var waiting = !!v && !v.done && !late(v);
+      b.hidden = false;
+      b.disabled = waiting;
+      var text = "", cls = "";
+      if (here[doc]) { text = here[doc]; cls = "no"; }
+      else if (waiting) text = SAID.opening;
+      else if (v && v.done) { text = v.said || ""; cls = v.state === "opened" ? "ok" : "no"; }
+      else if (v) { text = v.taken ? SAID.unknown : SAID.noAnswer; cls = "no"; }
+      said.textContent = text ? " " + text : "";
+      said.className = "appr-said" + (cls ? " " + cls : "");
+    }
+
+    function press(b) {
+      var doc = b.getAttribute("data-appr"), v = record(doc);
+      if (v && !v.done && !late(v)) return;
+      delete here[doc];
+      if (!handAlive()) here[doc] = SAID.noHand;
+      else {
+        try { store.setItem(APPR + doc, JSON.stringify({ at: new Date().toISOString(), brief: pageName() })); }
+        catch (e) { here[doc] = SAID.unsaved; }
+      }
+      paintAll();
+    }
+
+    buttons.forEach(function (b) { b.addEventListener("click", function () { press(b); }); });
+
+    return { on: buttons.length > 0,
+             paint: function () { buttons.forEach(paintOne); },
+             pending: function () { return buttons.some(function (b) { var v = record(b.getAttribute("data-appr")); return !!(v && !v.done); }); } };
+  })();
+
   // ── 맡길 일 ──
   var Tasks = (function () {
     // 누름 — RUN<창 이름>~<누른 때(ms)> 에 { at, brief, ids(그 차례대로 할 일의 번호), cal(같이 누른 「일정 넣기」 줄의 번호 — 창의 그림만 쓴다),
@@ -1294,15 +1355,17 @@
     Tasks.paint();
     Away.paint();
     Ask.paint();
+    Appr.paint();
   }
 
   window.addEventListener("storage", paintAll);
   window.addEventListener("focus", paintAll);
-  if (Tasks.on || Away.on || Times.on || Ask.on) {   // 걸린 누름 · 고름 · 부탁의 말이 손의 숨 표 · 흐른 때로 바뀐다 — 걸린 것이 없으면 안 그린다
+  if (Tasks.on || Away.on || Times.on || Ask.on || Appr.on) {   // 걸린 누름 · 고름 · 부탁의 말이 손의 숨 표 · 흐른 때로 바뀐다 — 걸린 것이 없으면 안 그린다
     window.setInterval(function () {
       Tasks.tick();
       Away.tick();
       Times.tick();
+      if (Appr.pending()) Appr.paint();
       if (Ask.pending()) {
         Ask.paint();
         Tasks.talks();

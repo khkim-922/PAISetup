@@ -300,7 +300,7 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
               - `session_mark` — 그 세션이 그 메일 서버에 싣는 쿠키의 지문 — 받아 둔 메일함 주소를 로그인 한 판에 묶는다.
                 - `mail_token.token` — 부분들의 지문 — 부분이 같으면 같은 ``TOKEN_LENGTH`` 자, 하나라도 다르면 다른 글자다.
               - `kept_mailbox` — 그 지문으로 받아 둔 메일함 주소 — 없거나 지문이 다르거나 파일이 깨졌으면 빈 글자다.
-                - `mail_kept.cache_dir` — 받아 둔 것(조직도 · 메일함 주소)의 자리 — ``MAIL_ORG_CACHE_DIR`` 이 있으면 그 폴더, 없으면 홈 아래 ``ORG_CACHE_DIR``.
+                - `mail_kept.cache_dir` ← company-directory — 받아 둔 것(조직도 · 메일함 주소)의 자리 — ``MAIL_ORG_CACHE_DIR`` 이 있으면 그 폴더, 없으면 홈 아래 ``ORG_CACHE_DIR``.
               - `inbox.discover_mailbox` — 그 세션에 로그인한 사람의 메일함 주소(``<서버>/<경로>.nsf``)를 메일 서버 첫 화면에서 받는다 — 사람에게 묻지 않는다.
                 - ↑ `MailboxConfigError`
                 - ↑ `SessionMissing`
@@ -492,7 +492,7 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
                 - ↑ `Mailbox._org_json`
                 - ↑ `MailboxError`
                 - ↑ `_person`
-              - `Mailbox.org_snapshot` — 회사 조직 전체 — 나무를 층마다 펼치고 부서마다 구성원을 받는다(``ORG_WORKERS`` 만큼 함께). 부서가 하나도 안 오면 ``DirectoryGap`` — 회사 값이 틀린 쪽이다.
+              - `Mailbox.org_snapshot` — 회사 조직 전체 — 나무를 층마다 펼치고 부서마다 구성원을 받는다(``ORG_WORKERS`` 만큼 함께). ``tree`` 는 고름 상자의 type, ``company`` 는 그 나무의 회사 값(그룹사면 맨 위 부서의 코드 — ``poscoinc(77)`` 꼴)이다.
                 - ↑ `Dept`
                 - ↑ `Mailbox.org_children`
                 - `DirectoryGap` — 조직도가 물은 것을 못 줬다 — 회사 값으로 부서가 하나도 안 왔다.
@@ -1083,9 +1083,10 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
           - `book_people` — 칸(``to`` · ``cc`` · ``bcc``)마다의 주소를 웹메일 받는 사람으로 잇는다 — (칸 → 사람들, 받아 둔 조직도 판의 날짜). 주소는 사람 찾기와 한 자(``draft_people`` — 받아 둔 조직도부터)로 잇고, 사람으로 안 선 주소 가운데 부서 주소 꼴(``DEPT_MAIL``)은 조직도의 부서로 잇는다(``dept_people`` — 조직도는 처음 걸린 칸에서 한 번 받는다). 칸 안의 차례는 준 주소의 차례다(``in_given_order``). 그래도 안 선 주소가 있으면 멈춘다(``refuse_unbooked`` — ``outside`` 는 사외 주소를 어떻게 하나의 말이다).
             - ↑ `company_of`
             - `mail_people.kept_book` — 받아 둔 조직도의 주소 → 사람들(``chart_book``)과 그 판의 날짜. 받아 둔 판이 없으면 빈 표 · 빈 날짜다 — 전사를 받는 데 오래 걸려 새로 받지 않는다.
-              - `mail_kept.cached_org` ← company-directory — 받아 둔 조직도 — ``ORG_CACHE_DAYS`` 안에 받은 판이 있으면 (OrgChart, 받은 시각 글자), 없거나 낡았거나 깨졌으면 None. 서버에 묻지 않는다.
-                - `org_cache_path` — 회사 값 하나의 받아 둔 조직도 파일 — 이름에 못 쓰는 글자는 첨부 가름 손(``attachments``)의 자로 바꾼다.
+              - `mail_kept.cached_org` ← company-directory — 받아 둔 조직도 — ``days`` 안에 받은 판이 있으면 (OrgChart, 받은 시각 글자), 없거나 낡았거나 깨졌으면 None. ``people`` 이면 사람까지 받은 판만, 아니면 사람까지 받은 판과 부서 나무만 받은 판 가운데 나중에 받은 것을 본다 — 나무만 받은 판을 사람이 없는 회사로 읽지 않고, 나무가 낡아 새로 받은 나무를 옛 사람의 판이 가리지 않게. 서버에 묻지 않는다.
+                - `org_cache_path` — 고름 · 회사 값 하나의 받아 둔 조직도 파일 — 나의 회사 고름은 ``org-<회사>.json``, 다른 고름은 ``org-<고름>-<회사>.json``, 부서 나무만 받은 판은 그 곁의 ``….tree.json``. 이름에 못 쓰는 글자는 첨부 가름 손(``attachments``)의 자로 바꾼다.
                   - ↑ `cache_dir`
+                - `written_at` — 파일을 쓴 시각 — 없으면 0.
                 - `_read_org` — 받아 둔 파일 하나를 조직도로 되살린다 — (OrgChart, 받은 시각 글자). 없거나 낡았거나 칸이 안 맞으면 None.
                   - ↑ `inbox.OrgChart`
                   - ↑ `inbox.Dept`
@@ -1099,7 +1100,7 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
               - `mail_kept.load_org` ← company-directory — 회사 조직 한 판 — 받아 둔 판(``cached_org``)이 있으면 그것을, 없거나 ``fresh`` 면 조직도에서 새로 받아 남긴다(``fetch_org``). 내는 것 (OrgChart, 받은 시각 글자). ``open_box()`` 가 세션으로 연 메일함이고, 받아 둔 판으로 서면 부르지 않는다.
                 - ↑ `cached_org`
                 - `fetch_org` — 조직도에서 회사 조직 한 판을 새로 받아 남긴다 — (OrgChart, ``FRESH_WORD``). 못 남겨도 받은 것으로 답한다(``keep_org``).
-                  - `keep_org` — 조직도 한 판을 그 회사 값의 파일에 남긴다 — 못 남기면 경고 한 줄을 내고 그대로 간다(다음 판이 새로 받는다).
+                  - `keep_org` — 조직도 한 판을 그 고름 · 회사 값의 파일에 남긴다 — 못 남기면 경고 한 줄을 내고 그대로 간다(다음 판이 새로 받는다).
                     - ↑ `org_cache_path`
                     - `org_record` — 조직도 한 판의 받아 두는 꼴 — 꼴 번호 · 회사 · 부서 · 사람(``ORG_CACHE_BLANK`` 칸은 비운다).
             - `dept_people` — 사람으로 안 선 주소(``gone``) 가운데 조직도의 부서 주소(``depts`` — ``dept_book``)를 조직 하나의 받는 사람으로 — (그 받는 사람들, 그래도 안 선 주소들). 부서원을 풀지 않는다 — 보내는 순간의 구성원에게 간다.
@@ -1344,6 +1345,9 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
 
 - `inbox.level_at_least` ← company-directory — ``level`` 이 ``floor`` 와 같은 갈래(P · E)이고 그 이상인가. 등급이 없으면 거짓이다.
   - ↑ `MailboxConfigError`
+- `mail_kept.tree_newer` ← company-directory — 부서 나무만 받은 판이 사람까지 받은 판보다 나중인가 — 사람까지의 판이 그 사이 낡았다(찾은 사람의 부서가 그 나무에 없어 나무를 새로 받았다). 사람까지 다시 받을 때다.
+  - ↑ `written_at`
+  - ↑ `org_cache_path`
 - `mailer.MailError` ← daily-brief — 메일을 못 보냈다.
 - `mailer.MailConfigError` ← daily-brief — 설정이 틀렸다 — 환경변수나 수신자 파일. 보내기 전에 잡힌다.
 - `mailer.MailRefused` ← daily-brief — 중계가 수신자를 거절했다.
