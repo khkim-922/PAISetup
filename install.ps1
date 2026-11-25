@@ -9071,7 +9071,7 @@ $FreeSkills = [ordered]@{
   'drm-office-read'          = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 사내 앱 · 게이트웨이 · 회사 코딩 기준(씨앗 vibecoding)
   'inhouse-app'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
-  # 사내 앱(메일 · 주소록 · 일정 · 문서함 · 회의실 · 사규 · 게시판)을 대화로 다룬다 — 이들이 형제 폴더 ep-login 의 세션 손을 불러 쓰고 메일 손은 주소록 손을 불러 쓰므로 다 한
+  # 사내 앱(메일 · 주소록 · 일정 · 문서함 · 회의실 · 사규 · 게시판 · 전자결재)을 대화로 다룬다 — 이들이 형제 폴더 ep-login 의 세션 손을 불러 쓰고 메일 손은 주소록 손을 불러 쓰므로 다 한
   #   묶음으로 같은 홈에 선다. 사내(게이트웨이에 닿는 자리 `$inside`)에서만 깐다 — 사외에서는 사내 앱 화면이 안 열려 쓸 데가 없고,
   #   사외로 돈 회차는 기록에 든 이 묶음을 백업 자리로 걷는다. 그 이름은 짐의 갈 곳 표 `inside` 줄이 들고 `Get-FreeSkillNames` 가 뺀다 —
   #   여기 칸에 자리를 다시 적지 않는다. Copilot 은 그 제품을 사내에서 안 내놓는 동안(`$PickHeld`) 홈을 안 건드린다(`Hold`)
@@ -9083,6 +9083,7 @@ $FreeSkills = [ordered]@{
   'company-meeting-room'     = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   'company-regulation'       = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   'company-board'            = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
+  'company-approval'         = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   # 메일 비서(일일 보고 · 업무 파악 · 메일함 스캔 · 메일함 정리) — 위 사내 앱 손을 불러 쓰므로 같은 묶음 · 같은 조건으로 선다
   'daily-brief'              = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
   'mailbox-work'             = @{ Claude = $hostClaude; Codex = $hostCodex; Agy = $hostAgy; Copilot = $hostCopilot }
