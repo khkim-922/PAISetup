@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 33
+VERSION_OURS = 34
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -1265,11 +1265,88 @@ def cache_warm_body(body: bytes) -> bytes | None:
     return _json_bytes(payload)
 
 
+if os.name == "nt":
+    import ctypes
+    import ctypes.wintypes as _wt
+
+    class _TcpRowOwnerPid(ctypes.Structure):
+        _fields_ = [("state", _wt.DWORD), ("local_addr", _wt.DWORD), ("local_port", _wt.DWORD),
+                    ("remote_addr", _wt.DWORD), ("remote_port", _wt.DWORD), ("pid", _wt.DWORD)]
+
+    _AF_INET = 2
+    _TCP_TABLE_OWNER_PID_ALL = 5
+    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    _SYNCHRONIZE = 0x00100000
+    _WAIT_OBJECT_0 = 0
+    _MIB_TCP_STATE_ESTAB = 5
+    _ERROR_INSUFFICIENT_BUFFER = 122  # 표를 잰 뒤 읽기 전에 접속이 늘었다 — 알려 준 크기로 다시 읽는다
+    _ERROR_INVALID_PARAMETER = 87     # OpenProcess 가 없는 PID 에 내는 값
+    _TCP_TABLE_READS = 4
+    _IPHLPAPI = ctypes.WinDLL("iphlpapi")
+    _IPHLPAPI.GetExtendedTcpTable.argtypes = [ctypes.c_void_p, ctypes.POINTER(_wt.DWORD), _wt.BOOL, _wt.ULONG,
+                                              ctypes.c_int, _wt.ULONG]
+    _IPHLPAPI.GetExtendedTcpTable.restype = _wt.DWORD
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    # 핸들은 64비트다 — 형을 안 주면 ctypes 가 int 로 잘라 넘긴다
+    _KERNEL32.OpenProcess.argtypes = [_wt.DWORD, _wt.BOOL, _wt.DWORD]
+    _KERNEL32.OpenProcess.restype = _wt.HANDLE
+    _KERNEL32.WaitForSingleObject.argtypes = [_wt.HANDLE, _wt.DWORD]
+    _KERNEL32.WaitForSingleObject.restype = _wt.DWORD
+    _KERNEL32.CloseHandle.argtypes = [_wt.HANDLE]
+    _KERNEL32.CloseHandle.restype = _wt.BOOL
+
+
+def client_pid(server_port: int, peer_port: int) -> int:
+    """loopback 접속의 상대 포트로 그 접속을 쥔 클라이언트 프로세스를 찾는다 — 찾으면 PID, 못 찾거나 Windows 가 아니면 0."""
+    if os.name != "nt":
+        return 0
+    try:
+        size = _wt.DWORD(0)
+        buffer = None
+        for _ in range(_TCP_TABLE_READS):
+            buffer = ctypes.create_string_buffer(max(size.value, ctypes.sizeof(_wt.DWORD)))
+            status = _IPHLPAPI.GetExtendedTcpTable(buffer, ctypes.byref(size), False, _AF_INET,
+                                                   _TCP_TABLE_OWNER_PID_ALL, 0)
+            if status != _ERROR_INSUFFICIENT_BUFFER:
+                break
+        if status:
+            return 0
+        count = _wt.DWORD.from_buffer(buffer).value
+        rows = (_TcpRowOwnerPid * count).from_buffer(buffer, ctypes.sizeof(_wt.DWORD))
+        for row in rows:
+            # 클라이언트 끝은 제 자리가 상대 포트, 맞은편이 서버 포트다 — 포트 칸은 망 차례 16비트다. 같은 포트의
+            # 닫히는 줄(TIME_WAIT · PID 0)이 앞에 설 수 있어 맺힌 줄만 본다
+            if (row.state == _MIB_TCP_STATE_ESTAB and row.pid
+                    and socket.ntohs(row.local_port & 0xFFFF) == peer_port
+                    and socket.ntohs(row.remote_port & 0xFFFF) == server_port):
+                return int(row.pid)
+    except (OSError, ValueError, ctypes.ArgumentError):
+        pass
+    return 0
+
+
+def process_gone(pid: int) -> bool:
+    """그 프로세스가 끝났다고 확실히 아나 — 모르는 PID(0) · 열 권한이 없는 것 · Windows 가 아닌 곳은 거짓(끝났다고 안 본다)."""
+    if not pid or os.name != "nt":
+        return False
+    try:
+        handle = _KERNEL32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION | _SYNCHRONIZE, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == _ERROR_INVALID_PARAMETER
+        try:
+            # 기다림이 진 것(WAIT_FAILED)은 끝났다는 뜻이 아니다 — 신호가 선 것만 끝났다고 본다
+            return _KERNEL32.WaitForSingleObject(handle, 0) == _WAIT_OBJECT_0
+        finally:
+            _KERNEL32.CloseHandle(handle)
+    except (OSError, ctypes.ArgumentError):
+        return False   # 데우는 고리가 이 판정에 죽지 않게 — 모르면 끝났다고 안 본다
+
+
 class _WarmEntry:
     """데울 대화 하나 — 끝까지 받은 마지막 실제 요청(상류로 나간 길 · 머리 · 몸)과 그 시각들."""
 
     __slots__ = ("key", "label", "session", "lane", "message_id", "path", "headers", "body", "started", "last_touch",
-                 "pings", "busy")
+                 "pings", "busy", "pid")
 
     def __init__(self, key: str, label: str, path: str, headers: dict, body: bytes, last_touch: float,
                  message_id: str = "", session: str = "", lane: str = "") -> None:
@@ -1285,6 +1362,7 @@ class _WarmEntry:
         self.last_touch = last_touch  # 캐시가 마지막으로 읽힌 때(실제 요청은 시작한 때) — 간격을 여기서 잰다
         self.pings = 0                # 마지막 실제 요청 뒤에 캐시를 읽힌 데우기 수
         self.busy = False             # 데우기 요청이 나가 있다
+        self.pid = 0                  # 그 요청을 보낸 클라이언트 프로세스 — 0 이면 모른다
 
 
 class CacheWarmer:
@@ -1349,15 +1427,16 @@ class CacheWarmer:
                     entry.last_touch = now
 
     def remember(self, key: str, session_id: str, path: str, headers: dict, body: bytes, started: float,
-                 message_id: str = "", hold: bool = True, lane_id: str = "") -> None:
+                 message_id: str = "", hold: bool = True, lane_id: str = "", pid: int = 0) -> None:
         """끝까지 받은 실제 요청을 담는다 — 같은 대화면 바꿔 끼워 횟수를 처음부터 센다. ``started`` 는 그 요청이 시작한 때고,
         ``message_id`` 는 그 요청이 받은 응답의 id 다(``alive`` 에 ``started`` 부터의 수명으로 든다). 자리가 넘치면 몸이 가장
         작은 대화가 빠진다 — 새로 온 것일 수도 있다. 크기가 같으면 최근에 담긴 것이 남는다.
 
         ``hold`` 가 거짓이면 데울 목록에 안 담고 그 대화의 옛 몸도 걷는다(멈춘 레인). 확보한 수명은 똑같이 든다 — 방금 읽힌
-        캐시라, 그 끝 안에 누가 이어 물으면 캐시로 읽힌다."""
+        캐시라, 그 끝 안에 누가 이어 물으면 캐시로 읽힌다. ``pid`` 는 그 요청을 보낸 클라이언트 프로세스다(``due`` 가 본다)."""
         entry = _WarmEntry(key, warm_label(session_id, key), path, headers, body, started, message_id,
                            session_id, lane_id)
+        entry.pid = pid
         with self._lock:
             if not hold:
                 self._entries = [old for old in self._entries if old.key != key]
@@ -1395,14 +1474,21 @@ class CacheWarmer:
                     self._alive.pop(entry.message_id, None)
             self._entries = [entry for entry in self._entries if entry.key != key]
 
-    def due(self, now: float) -> list[_WarmEntry]:
-        """지금 데울 대화들 — 고른 것은 ``finish`` 가 풀 때까지 다시 안 고른다."""
+    def due(self, now: float, gone: Callable[[int], bool] = process_gone) -> list[_WarmEntry]:
+        """지금 데울 대화들 — 고른 것은 ``finish`` 가 풀 때까지 다시 안 고른다. 차례가 된 대화의 클라이언트 프로세스가
+        끝났으면(``gone``) 데우지 않고 버린다 — 창을 닫은 대화는 돌아올 길이 없다. 확보한 수명은 그 끝까지 둔다."""
         with self._lock:
-            picked = [entry for entry in self._entries
-                      if not entry.busy and now - entry.last_touch >= self.interval_sec]
+            ready = [entry for entry in self._entries
+                     if not entry.busy and now - entry.last_touch >= self.interval_sec]
+            closed = [entry for entry in ready if gone(entry.pid)]
+            if closed:
+                self._entries = [entry for entry in self._entries if entry not in closed]
+            picked = [entry for entry in ready if entry not in closed]
             for entry in picked:
                 entry.busy = True
-            return picked
+        for entry in closed:
+            log(f"cache warm drop session={entry.label} client ended pid={entry.pid}")
+        return picked
 
     def finish(self, entry: _WarmEntry, kept: bool, touched: float) -> None:
         """데우기 요청이 끝났다 — 캐시를 읽혔고 횟수가 남았으면 다음 간격을 ``touched`` 부터 재고, 아니면 그 대화를 버린다.
@@ -2830,6 +2916,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         model_name = ""
         warm_key = ""
         lane_id = ""
+        warm_pid = 0
         warm_candidate = False
         claude_unstream = False
         upstream_stream = False
@@ -2917,6 +3004,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         if CACHE_WARM_CYCLES > 0 and self._session_id:
                             lane_id = (self.headers.get(LANE_ID_HEADER) or "").strip()
                             warm_key = cache_warm_key(self._session_id, payload_obj, lane_id)
+                            # 접속이 확실히 맺혀 있는 지금 찾는다 — 응답을 다 보낸 뒤면 클라이언트가 이미 닫았을 수 있다
+                            warm_pid = client_pid(self.server.server_port, self.client_address[1])
                             if lane_id:
                                 _WARMER.lane_active(self._session_id, (self.headers.get(LANE_PARENT_HEADER) or "").strip())
                             # 스트림으로 가는 턴만 담는다 — 비스트리밍 곁 호출(자동 모드 분류기)과 압축은 이어질 대화가 아니다
@@ -3174,7 +3263,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     runner = bool((self.headers.get(RUNNER_HEADER) or "").strip())
                     hold = cache_warm_holds(lane_id, self._stop_reason, self._tool_names, runner)
                     _WARMER.remember(warm_key, self._session_id, upstream_path, headers, body, started,
-                                     self._message_id, hold, lane_id)
+                                     self._message_id, hold, lane_id, warm_pid)
                     if not hold:
                         log(f"cache warm skip session={warm_label(self._session_id, warm_key)} "
                             f"{'lane' if lane_id else 'runner'} stopped "

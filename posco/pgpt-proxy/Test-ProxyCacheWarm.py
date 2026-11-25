@@ -11,6 +11,9 @@ from __future__ import annotations
 import http.client
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -216,6 +219,27 @@ class PickTests(unittest.TestCase):
         self.assertEqual(warmer.alive(700.0), {"msg_a": 480.0 + ttl})   # 마지막 데우기가 확보한 수명은 남는다
         self.assertEqual(warmer.alive(480.0 + ttl), {})                 # 그 끝이 지나면 걷힌다
 
+    def test_a_conversation_whose_client_process_ended_is_dropped_not_warmed(self):
+        # 기대값 — 창을 닫은 대화는 돌아올 길이 없다. 프로세스를 모르는 대화(0)는 지금처럼 정해진 횟수까지 데운다
+        warmer = proxy.CacheWarmer(3, 240.0, 300.0)
+        warmer.remember("closed", SESSION, "/p", {}, b"{}", started=0.0, message_id="msg_c", pid=111)
+        warmer.remember("open", SESSION, "/p", {}, b"{}", started=0.0, pid=222)
+        warmer.remember("unknown", SESSION, "/p", {}, b"{}", started=0.0)
+        gone = lambda pid: pid == 111
+        self.assertEqual(warmer.due(100.0, gone), [])                  # 차례 전에는 안 본다
+        self.assertEqual({entry.key for entry in warmer.due(240.0, gone)}, {"open", "unknown"})
+        self.assertEqual(warmer.sessions(), 2)
+        self.assertEqual(warmer.alive(250.0), {"msg_c": 300.0})        # 확보한 수명은 그 끝까지 둔다
+
+    def test_process_gone_tells_a_running_process_from_an_ended_one(self):
+        if os.name != "nt":
+            self.skipTest("Windows 에서만 프로세스를 본다")
+        self.assertFalse(proxy.process_gone(os.getpid()))
+        self.assertFalse(proxy.process_gone(0))
+        child = subprocess.Popen([sys.executable, "-I", "-c", "pass"])
+        child.wait()
+        self.assertTrue(proxy.process_gone(child.pid))
+
     def test_alive_drops_what_is_not_known_to_be_alive(self):
         warmer = proxy.CacheWarmer(3, 240.0, 300.0)
         warmer.remember("k", SESSION, "/p", {}, b"{}", started=0.0, message_id="msg_a")
@@ -401,6 +425,13 @@ class HandlerTests(unittest.TestCase):
         self.assertEqual(proxy.stats()["cache_warm_sent"], before + 1)
         self.assertRegex(proxy.LOG_PATH.read_text(encoding="utf-8"),
                          r"cache warm session=aaaaaaaa conv=[0-9a-f]{8} HTTP 200 cache_read=5000")
+
+    def test_the_stored_turn_knows_the_client_process_that_sent_it(self):
+        if os.name != "nt":
+            self.skipTest("Windows 에서만 접속의 프로세스를 찾는다")
+        self.assertEqual(self.send(turn()), 200)
+        [entry] = proxy._WARMER._entries
+        self.assertEqual(entry.pid, os.getpid())
 
     def test_health_names_the_response_whose_cache_is_kept_alive(self):
         # 이어 묻기 값 훅이 읽는 칸 — 응답 id 는 대화 기록의 마지막 assistant 줄이 드는 그 id(스트림 message_start 의 message.id)다
