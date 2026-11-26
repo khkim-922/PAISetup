@@ -2,7 +2,7 @@
 
 목록이 이름을 정하는 요청만 목록을 읽는다(키별 캐시). 둘이다 — 대체 대상(하이쿠 · claude-sonnet-5*)은 목록에 있으면
 그대로, 없으면 같은 계열의 가장 높은 판(하이쿠는 소네트까지)으로 보낸다. 판 없는 claude-sonnet-5(자동 모드 분류기)만은
-claude-sonnet-4.6 이 목록에 있으면 그리로 간다(#230). 대시 이름(claude-opus-5-5)은 목록에 선
+claude-sonnet-5.5 가 목록에 있으면 그리로 간다(결정 0290). 대시 이름(claude-opus-5-5)은 목록에 선
 철자를 따른다 — 게이트웨이 철자는 모델마다 달라 대개 점 표기(claude-opus-5.5)고 페이블은 대시 그대로(claude-fable-5-1)다.
 대상이 아닌 이름은 목록에 없어도 갈아 보내지 않고 게이트웨이의 400 이 클라이언트에 보인다(결정 0164). 가짜 게이트웨이와
 프록시를 이 프로세스 안에 띄워 잰다. 망도 회사 키도 안 쓴다.
@@ -152,29 +152,36 @@ def main() -> int:
                                      ("claude-haiku-5-5", "claude-haiku-5.5", False),
                                      ("claude-fable-5-1", "claude-fable-5-1", False),
                                      ("claude-haiku-4-5-20251001", "claude-haiku-5.5", True),
-                                     ("claude-sonnet-5", "claude-sonnet-4.6", True)):
+                                     ("claude-sonnet-5", "claude-sonnet-5.5", True)):
         status, sent, header = post(port, model, key="other-key-0123456789")
         check(f"실측 목록: {model} → {want}", (status, sent) == (200, want) and bool(header) == substituted,
               (status, sent, header))
     check("새 키는 목록을 다시 읽는다", STATE["list_calls"] == 2, STATE["list_calls"])
     # 응답 이름은 답한 모델의 하이픈 꼴이다(#230) — 확장이 점 철자를 못 읽어 「The previous model」로 띄운다
-    for model, want in (("claude-opus-5-5", "claude-opus-5-5"), ("claude-sonnet-5", "claude-sonnet-4-6"),
+    for model, want in (("claude-opus-5-5", "claude-opus-5-5"), ("claude-sonnet-5", "claude-sonnet-5-5"),
                         ("claude-fable-5-1", "claude-fable-5-1"), ("claude-opus-5", "claude-opus-5")):
         served = response_model(port, model, key="other-key-0123456789")
         check(f"응답 이름: {model} → {want}", served == want, served)
+
+    # 분류기 1단계(판 없는 소네트 5 · 작은 비스트리밍 상한)만 바닥까지 올린다 — 다른 모델 · 2단계는 그대로
+    for model, sent_max, want in (("claude-sonnet-5", 64, proxy.CLASSIFIER_S1_MIN_TOKENS), ("claude-sonnet-5", 8192, 8192),
+                                  ("claude-sonnet-5-5", 64, 64)):
+        post(port, model, key="other-key-0123456789", max_tokens=sent_max)
+        got = STATE["seen"][-1].get("max_tokens")  # type: ignore[index]
+        check(f"분류기 1단계 바닥: {model} {sent_max} → {want}", got == want, got)
 
     # 4. 출력 상한은 대체된 모델에도 걸린다(비스트림 18000)
     post(port, "claude-haiku-4-5", key="other-key-0123456789", max_tokens=64000)
     capped = STATE["seen"][-1].get("max_tokens")  # type: ignore[index]
     check("대체된 모델에도 출력 상한", capped == proxy.output_cap(unstream=True), capped)
 
-    # 5. 목록을 못 읽으면 고정 규칙(하이쿠 → 하이쿠 5.5 · 판 없는 소네트 5 → 소네트 4.6 · 판 박힌 소네트 5 → 소네트 5.5 ·
+    # 5. 목록을 못 읽으면 고정 규칙(하이쿠 → 하이쿠 5.5 · 판 없는 소네트 5 → 소네트 5.5 · 판 박힌 소네트 5 → 소네트 5.5 ·
     #    대시 → 점) — 요청은 막지 않는다
     STATE["list_status"] = 503
     status, sent, header = post(port, "claude-haiku-4-5", key="third-key-0123456789")
     check("목록 실패 → 기본 규칙", (status, sent) == (200, proxy.CLAUDE_HAIKU_SUBSTITUTE), (status, sent))
     status, sent, _ = post(port, "claude-sonnet-5", key="third-key-0123456789")
-    check("목록 실패 → 분류기 이름은 소네트 4.6", (status, sent) == (200, proxy.CLAUDE_SONNET5_SUBSTITUTE), (status, sent))
+    check("목록 실패 → 분류기 이름은 소네트 5.5", (status, sent) == (200, proxy.CLAUDE_SONNET5_SUBSTITUTE), (status, sent))
     status, sent, _ = post(port, "claude-sonnet-5-5", key="third-key-0123456789")
     check("목록 실패 → 판 박힌 소네트 5 는 소네트 5.5", (status, sent) == (200, proxy.CLAUDE_SONNET_SUBSTITUTE), (status, sent))
     status, sent, _ = post(port, "claude-fable-5-1", key="third-key-0123456789")

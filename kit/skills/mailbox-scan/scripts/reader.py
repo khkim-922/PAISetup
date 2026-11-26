@@ -52,7 +52,7 @@ NO_SCAN = ("[스캔 — {what}. 다음: 회사 메일 스킬(company-mail)로 �
 SEP = " · "
 BY_WORDS = {D.USER: "사람", D.SECRETARY: "비서", D.UNKNOWN: "모름(정리의 바꿈이 도중이거나 결과를 모른 채 맺혔다)"}
 KIND_WORDS = {D.READ: "읽음이 됨", D.UNREAD: "안 읽음으로 되돌림", D.OPENED: "처음 볼 때 이미 읽음", D.MOVED: "옮겨짐",
-              D.GONE: "사라짐", D.BACK: "다시 나타남", D.FOLDER_ADDED: "폴더 생김", D.FOLDER_REMOVED: "폴더 없어짐",
+              D.GONE: "사라짐", D.RECALLED: "회수함", D.BACK: "다시 나타남", D.FOLDER_ADDED: "폴더 생김", D.FOLDER_REMOVED: "폴더 없어짐",
               D.RULE_ADDED: "규칙 생김", D.RULE_CHANGED: "규칙 바뀜", D.RULE_REMOVED: "규칙 없어짐"}
 WHY_SHORT = {"budget": "한 판의 시간 상한", "folder-gone": "그 폴더가 도중에 없어졌다(이름이 바뀌었거나 지워졌다)",
              "repeated": "메일함이 이미 준 줄을 다시 줬다", "guard": "쪽 수의 안전 상한",
@@ -163,7 +163,8 @@ def mail_line(mail: dict[str, Any], extra: str = "", senders: dict[str, Any] | N
         who = identity_words((senders or {}).get((mail.get("addr") or "").strip().casefold()), bool(mail.get("addr")))
         head = (f"[{mark}] {when}{SEP}{place_name(mail.get('box'), mail.get('folder') or '')}{SEP}{person_of(mail) or '(보낸 분 없음)'}"
                 + (f" [{who}]" if who else ""))
-    return f"{head}{SEP}{mail.get('subject') or ''}{files}{extra}{SEP}{mail.get('unid') or ''}"
+    status = f"{SEP}수신상태 {mail['status']}" if mail.get("box") == D.SENT and mail.get("status") else ""
+    return f"{head}{SEP}{mail.get('subject') or ''}{files}{status}{extra}{SEP}{mail.get('unid') or ''}"
 
 
 def identity_words(who: dict[str, Any] | None, has_addr: bool) -> str:

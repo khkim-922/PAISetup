@@ -341,6 +341,7 @@
                 - ↑ `scan_time.parse`
                 - ↑ `place`
                 - ↑ `head`
+                - `recalled` — 보낸 메일을 회수했나 — 수신상태 낱말에 「회수」가 든다.
                 - ↑ `box_key`
             - `new_picture` — 다 본 판의 새 지금 모습 — 메일함의 그림(때 · 폴더 · 규칙 · 상자마다 읽은 때) · 이음점 · 다 본 때를 적는다.
               - ↑ `scan_time.stamp`

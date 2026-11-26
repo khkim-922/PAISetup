@@ -7,7 +7,7 @@
     rule_folder(rule["text"])                # 그 규칙이 메일을 옮기는 폴더 — 폴더로 옮기지 않는 규칙이면 None
 
 꼴의 원본 — 손 `mail.py` 의 `cmd_folders` · `cmd_rules` · `rule_line` · `cmd_list` · `entry_line` · `who_sent` · `since_line` ·
-`list_since` 가 찍는 줄(6d3d1add 판). 손이 기계가 읽는 꼴(JSON)을 내면 이 파일이 걷힌다.
+`list_since` · `status_tail` 이 찍는 줄. 손이 기계가 읽는 꼴(JSON)을 내면 이 파일이 걷힌다.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ UNID_TAIL = re.compile(r" · ([0-9A-Fa-f]{32})$")
 MARKED = re.compile(r"^\[(읽음|안읽음)\] ")
 SENT_MARK = "[보냄] "
 SENT_WORD = "받는 분 "
+STATUS_TAIL = re.compile(r" · 수신상태 (\S+)$")   # 보낸편지함 줄의 메일 번호 앞 — 손의 `status_tail`(열이 비면 안 붙는다)
 INBOX_WORD, SENT_BOX_WORD, FOLDER_WORD = "받은편지함", "보낸편지함", "폴더 "
 FILES_TAIL = re.compile(r" · 첨부 (\d+)$")
 WHO_BOTH = re.compile(r"^(.*) <([^<>]*)>$")
@@ -152,6 +153,9 @@ def _sent(line: str, with_place: bool) -> dict[str, Any] | None:
     if not tail:
         return None
     middle = line[:tail.start()]
+    status = STATUS_TAIL.search(middle)
+    if status:
+        middle = middle[:status.start()]
     if with_place:
         if not middle.startswith(SENT_MARK):
             return None
@@ -172,7 +176,7 @@ def _sent(line: str, with_place: bool) -> dict[str, Any] | None:
     if date is None and date_text:
         return None
     return {"unid": tail.group(1).upper(), "box": "sent", "folder": "", "date": date, "subject": subject,
-            "unread": None, "files": 0, "name": "", "addr": "", "to": to}
+            "unread": None, "files": 0, "name": "", "addr": "", "to": to, "status": status.group(1) if status else ""}
 
 
 def _bad(command: str, n: int, why: str) -> ShapeError:

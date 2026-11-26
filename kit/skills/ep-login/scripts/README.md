@@ -18,8 +18,9 @@
   - `ep_exit.js` — 받는 손의 닫힌 종료 값 다섯(`EXIT`)과 멈춤 꼴(`Exit`)
   - `ordinary_logon.js` — 평소 Edge 의 로그인을 읽는 바탕: 이 윈도 로그온의 열쇠와 두 기록(「해 봤다」 `ordinary-logon` · 「섰다」 `ordinary-stood`),
     평소 Edge 를 보는 눈과 그 가름, 그것들로 「이 로그온에 평소 EP 로그인이 섰나」를 아무것도 안 열고 가리는 답(`ordinaryLogin`), 평소 Edge 에 주소 하나를 여는 손(`openOrdinary` — 입구가 EP 포털을 여는 그 손)
-- **평소 Edge 에 주소를 여는 문** `ordinary_open.js` — 바탕의 `openOrdinary` 로 주소 하나를 사람의 평소 Edge 에 연다.
-  다른 스킬의 손(결재 문서 창)이 `ep_session.open_ordinary` 를 거쳐 부른다 — 아무것도 안 누른다
+- **사람에게 주소를 띄우는 문** `person_open.js` — 사내 세션이 사는 포트 Edge 가 떠 있으면 그 Edge 의 새 창에, 없으면 바탕의 `openOrdinary` 로
+  평소 Edge 에 연다(회사 SSO 는 로그인 하나만 살려, 세션 파일로 도는 손의 SSO 넘김 주소는 평소 Edge 에서 로그인 화면에 떨어진다).
+  다른 스킬의 손(결재 문서 창)이 `ep_session.open_for_person` 을 거쳐 부른다 — 아무것도 안 누른다
 - **빌려 주는 답** `ordinary_status.js` — 그 답을 한 낱말(`stood` · `tried` · `missing`)로 내는 문. 문서함 손이 PC 의 문서함 에이전트를 부르기 전에
   `ep_session.ordinary_login` 을 거쳐 묻는다 — 입구를 대신 부르지 않는다
   - 받는 손이 내놓는 이름 가운데 `settings` · `onLoginScreen` · `epConfirm` · `debugPorts` · `Exit` · `EXIT` · `VERSION_MS` 는 바탕의 것을 다시 낸다

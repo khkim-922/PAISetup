@@ -504,8 +504,10 @@ async function editDraft(cdp, unid, rest) {
     const files = JSON.parse(await ev(FILES_NOW));
     const gone = detach.filter(n => files.filter(f => f.name === n && f.status === 'complete').length !== 1);
     if (gone.length) throw fail(EXIT.MISSING, `첨부 칸에 그 이름의 저장된 파일이 꼭 하나가 아니다: ${gone.join(', ')}. 저장하지 않았다`);
-    // 첨부 칸은 뺄 것으로 고른 파일과도 같은 이름을 안 받는다 — 같은 이름으로 갈려면 빼서 저장한 뒤 다시 부른다
-    const clash = attach.map(p => require('path').basename(p)).filter(n => files.some(f => f.name === n));
+    // 저장된 · 올릴 첨부와 같은 이름은 칸이 안 받고, 이 부름에서 뺄 첨부와 같은 이름도 안 받는다. 답장 · 전달 화면이 원래 메일의
+    // 첨부를 remove(안 싣는다)로 들고 연 것은 같은 이름을 받으니 세지 않는다
+    const clash = attach.map(p => require('path').basename(p))
+      .filter(n => detach.includes(n) || files.some(f => f.name === n && f.status !== 'remove'));
     if (clash.length) throw fail(EXIT.MISSING, `첨부 칸에 같은 이름의 파일이 이미 있다: ${clash.join(', ')}. 저장하지 않았다 — 같은 이름으로 갈려면 detach 로 빼서 저장한 뒤 다시 붙인다`);
     const css = [...(start.styles ? await ev(STORED_STYLES(unid), READY_SECONDS) : []), ...(piece !== null ? stylesOf(piece) : [])];
     const blocked = Object.keys(options).length ? await ev(CHECK_OPTIONS(options)) : '';

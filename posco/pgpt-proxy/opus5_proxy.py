@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 34
+VERSION_OURS = 37
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -62,6 +62,8 @@ SLOW_REQUEST_SEC = 30.0
 # Codex 는 HTTP 500 의 본문을 버리고 고정 문구(「high demand」)만 보여, 어느 층이 졌나는 이 기록에만 남는다.
 ERROR_BODY_LOG_BYTES = 8192
 ERROR_FIELD_LOG_CHARS = 200
+# 자동 모드 분류기(판 없는 claude-sonnet-5) 답의 글을 끝에서 이만큼 `classifier answer` 줄에 남긴다 — 판정 꼴은 글 끝에 선다
+CLASSIFIER_TAIL_CHARS = 300
 
 
 def _env_float(name: str, default: float) -> float:
@@ -171,8 +173,18 @@ _SESSION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 CLAUDE_HAIKU_SUBSTITUTE = "claude-haiku-5.5"
 CLAUDE_SONNET_SUBSTITUTE = "claude-sonnet-5.5"
 # 판 없는 claude-sonnet-5(자동 모드 분류기가 보내는 이름)가 갈 자리 — 목록에 있으면 목록보다 앞서고, 없으면 가장 새 소넷이다.
-#   게이트웨이의 5.x 판은 분류기 2단계의 「<thinking> 안에서 먼저 생각하라」 지시에 빈 답을 내 판정이 안 선다(#230).
-CLAUDE_SONNET5_SUBSTITUTE = "claude-sonnet-4.6"
+#   4.6 은 2단계에서 생각을 </thinking> 밖으로 늘어놓아 Claude Code 가 판정으로 안 친다 — 5.5 는 꼴을 지킨다.
+CLAUDE_SONNET5_SUBSTITUTE = "claude-sonnet-5.5"
+# 분류기 1단계(그 이름 · 비스트리밍 · 상한이 이보다 작은 요청)의 max_tokens 를 이만큼으로 올린다. 게이트웨이의 5.5 는 답 앞에 안
+#   보이는 몫을 써서 64 · 256 안에서는 글이 안 나와 잘리고(판정 없음 → 모든 명령이 2단계로 간다), 이 상한이면 판정 한 줄로 끝난다.
+#   올리기만 한다 — 2단계(8192)는 그대로다. 0 이면 끈다
+CLASSIFIER_S1_MIN_TOKENS = int(_env_float("PGPT_PROXY_CLASSIFIER_MIN_TOKENS", 1024))
+# 분류기 요청(판 없는 claude-sonnet-5) 하나가 응답 머리를 기다리는 한도와, 그 안에 머리가 안 오면 다시 보내는 횟수. 분류기 판정은 늘
+#   2 ~ 5 초에 머리가 오는데, 게이트웨이가 가끔 요청 하나에 머리를 안 낸 채 서고 Claude Code 는 제 시한(70 ~ 120 초)까지 기다렸다가
+#   「판정 못 함」으로 거절한다. 분류기는 명령을 판정만 하는 글이라 두 번 가도 무엇도 바뀌지 않는다 — 생성 턴을 다시 보내지 않는 원칙(0202)
+#   의 밖이다. 한도 0 이면 끈다
+CLASSIFIER_HEAD_WAIT_SEC = _env_float("PGPT_PROXY_CLASSIFIER_HEAD_WAIT_SEC", 20.0)
+CLASSIFIER_HEAD_RETRIES = int(_env_float("PGPT_PROXY_CLASSIFIER_HEAD_RETRIES", 1))
 CLIENT_POLL_SEC = 0.25
 HOP_BY_HOP = {
     "connection",
@@ -257,6 +269,7 @@ _COMPACT_MAX_TOKENS_HIT_TOTAL = 0
 _MAX_TOKENS_HIT_TOTAL = 0
 _EXECUTION_CUT_TOTAL = 0
 _EXECUTION_CUT_300_TOTAL = 0
+_CLASSIFIER_HEAD_RETRY_TOTAL = 0
 _MAX_REQUEST_BYTES = 0
 _MODEL_SUBSTITUTION_TOTAL = 0
 _CLIENT_CANCELLED_TOTAL = 0
@@ -368,6 +381,16 @@ def _is_compact_text(text: object) -> bool:
     if not isinstance(text, str) or not text.startswith(_COMPACT_PREAMBLE_HEAD):
         return False
     return _COMPACT_TASK_HEAD in text[:_COMPACT_TASK_WINDOW]
+
+
+def raise_classifier_floor(payload: dict) -> str:
+    """분류기 1단계 요청의 max_tokens 를 ``CLASSIFIER_S1_MIN_TOKENS`` 로 올린다 — 비스트리밍이고 그보다 작을 때만. 바꿨으면 로그 칸."""
+    current = payload.get("max_tokens")
+    if (CLASSIFIER_S1_MIN_TOKENS <= 0 or payload.get("stream") is True
+            or type(current) is not int or current >= CLASSIFIER_S1_MIN_TOKENS):
+        return ""
+    payload["max_tokens"] = CLASSIFIER_S1_MIN_TOKENS
+    return f"max_tokens_floor={CLASSIFIER_S1_MIN_TOKENS}"
 
 
 def cap_claude_output(payload: dict, *, unstream: bool, body_bytes: int = 0) -> str:
@@ -625,6 +648,26 @@ def _count_cache_ttl_filled() -> None:
         _CACHE_TTL_FILLED += 1
 
 
+def classifier_answer_tail(body: bytes | bytearray | None) -> str:
+    """분류기 답의 판정 꼴 수와 글 끝 ``CLASSIFIER_TAIL_CHARS`` 자 — 판정 꼴(``<severity>``)이 서 있나를 기록에서 가른다.
+
+    Claude Code 는 답에서 그 꼴을 꼭 하나로 못 읽으면 「could not evaluate」로 거절하고 답 글은 어디에도 안 남긴다 — 그래서
+    ``severity_tags=N`` 을 글 앞에 싣는다. 글 블록이 없으면 ``content`` 의 블록 꼴을 낸다(빈 답이면 ``[]``). JSON 이 아니면 빈 글자다.
+    """
+    try:
+        message = json.loads(body) if body else None
+    except (ValueError, UnicodeDecodeError):
+        return ""
+    if not isinstance(message, dict):
+        return ""
+    blocks = message.get("content") or []
+    text = "".join(b.get("text") or "" for b in blocks if isinstance(b, dict) and b.get("type") == "text")
+    if not text:
+        return "tail=" + json.dumps([b.get("type") for b in blocks if isinstance(b, dict)])
+    return (f"severity_tags={len(re.findall(r'<severity>', text))} chars={len(text)} "
+            f"tail={json.dumps(' '.join(text.split())[-CLASSIFIER_TAIL_CHARS:], ensure_ascii=False)}")
+
+
 def _json_stop_reason(body: bytes | bytearray | None) -> str:
     try:
         message = json.loads(body) if body else None
@@ -651,6 +694,12 @@ def _count_stream_unverified() -> None:
     global _STREAM_UNVERIFIED_TOTAL
     with _STATS_LOCK:
         _STREAM_UNVERIFIED_TOTAL += 1
+
+
+def _count_classifier_head_retry() -> None:
+    global _CLASSIFIER_HEAD_RETRY_TOTAL
+    with _STATS_LOCK:
+        _CLASSIFIER_HEAD_RETRY_TOTAL += 1
 
 
 def _count_execution_cut(nonstream: bool = False) -> None:
@@ -714,6 +763,9 @@ def stats() -> dict[str, object]:
             "execution_cuts": _EXECUTION_CUT_TOTAL,
             # 그중 300초 근방(앞단 504) — 180초 판과 따로 세야 압축 경로의 절단 빈도가 보인다
             "execution_cuts_300": _EXECUTION_CUT_300_TOTAL,
+            # 분류기 요청이 머리 한도 안에 머리를 못 받아 다시 보낸 횟수 — 다시 보낸 판도 머리가 없으면 execution_cuts 에 든다
+            "classifier_head_retries": _CLASSIFIER_HEAD_RETRY_TOTAL,
+            "classifier_head_wait_sec": CLASSIFIER_HEAD_WAIT_SEC,
             "max_request_bytes": _MAX_REQUEST_BYTES,
             "model_substitutions": _MODEL_SUBSTITUTION_TOTAL,
         }
@@ -2655,6 +2707,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
             _UPSTREAM.close(conn)
             raise
 
+    def _write_classifier_upstream(self, path: str, body: bytes | None,
+                                   headers: dict[str, str]) -> tuple[http.client.HTTPResponse, http.client.HTTPConnection]:
+        """분류기 요청을 ``CLASSIFIER_HEAD_WAIT_SEC`` 의 머리 한도로 보내고, 머리가 안 오면 ``CLASSIFIER_HEAD_RETRIES`` 번까지 새 연결로
+        다시 보낸다. 다 머리 없이 끝나면 ``_HeadTimeout`` — 부르는 쪽이 머리 절단의 500 으로 답한다. 그 밖의 실패는 그대로 올린다."""
+        for attempt in range(CLASSIFIER_HEAD_RETRIES + 1):
+            try:
+                return self._write_upstream(self.command, path, body, headers, head_wait=CLASSIFIER_HEAD_WAIT_SEC)
+            except _HeadTimeout:
+                waited = time.monotonic() - self._upstream_started
+                log(f"classifier head wait {self.command} {path} attempt={attempt + 1}/{CLASSIFIER_HEAD_RETRIES + 1} "
+                    f"no response header in {CLASSIFIER_HEAD_WAIT_SEC:g}s (since start {waited:.1f}s) {self._request_context}")
+                if attempt == CLASSIFIER_HEAD_RETRIES:
+                    raise
+                _count_classifier_head_retry()
+        raise _HeadTimeout()  # 닿지 않는다 — 횟수가 음수일 때만
+
     def _emit(self, data: bytes) -> None:
         if not data:
             return
@@ -2814,6 +2882,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 if observer is None:
                     # 그대로 중계한 비스트리밍 응답(자동 모드 분류기 등)은 stream 줄이 없다 — 사용량은 그 요청의 complete 줄에 실린다
                     self._request_context += f" stop_reason={stop_reason or 'unknown'} {usage_text(_json_usage(compact_copy))}"
+                    if getattr(self, "_classifier", False):
+                        log(f"classifier answer {self._request_context} {classifier_answer_tail(compact_copy)}{self._gw()}")
             sent = self._keepalives_sent - keepalives_before
             if sent:
                 log(f"keepalive x{sent} (upstream silent > {keepalive_interval:g}s){self._gw()}")
@@ -2857,6 +2927,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._model_echo = None
         self._compact_request = False
         self._claude_messages = False
+        self._classifier = False
         self._session_id = ""
         self._message_id = ""
         self._stop_reason = ""
@@ -2983,6 +3054,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             self._request_context += " kind=compact"
                         self._compact_request = compact_request
                         self._claude_messages = True
+                        self._classifier = is_bare_sonnet5(model_name)
+                        if self._classifier:
+                            raised = raise_classifier_floor(payload_obj)
+                            if raised:
+                                self._request_context += " " + raised
                         self._session_id = request_session_id(payload_obj)
                         changed = True
                         if COMPACT_UNSTREAM and compact_request and payload_obj.get("stream") is True:
@@ -3062,7 +3138,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         try:
             self._upstream_started = time.monotonic()
             try:
-                response, conn = self._write_upstream(
+                response, conn = self._write_classifier_upstream(upstream_path, body, headers) if (
+                    self._classifier and not upstream_stream and CLASSIFIER_HEAD_WAIT_SEC > 0) else self._write_upstream(
                     self.command, upstream_path, body, headers,
                     timeout=WEB_SEARCH_TIMEOUT if web_search else None,
                     # 게이트웨이의 실행 시한은 스트림 경로에만 문다 — 압축의 비스트리밍 길(300초까지)은 머리를 그대로 기다린다
@@ -3076,12 +3153,18 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 outcome = "head_cut"
                 client_status = 500
                 _count_execution_cut()
-                log(f"execution cut {self.command} {parsed.path} upstream={time.monotonic() - self._upstream_started:.1f}s "
-                    f"no response header (gateway limit ~{EXECUTION_LIMIT_SEC:g}s · proxy answered 500) {self._request_context}")
-                self._send_json(500, {"type": "error", "error": {"type": "api_error", "message": (
-                    f"Proxy: the gateway sent no response header within {HEAD_WAIT_LIMIT_SEC:g}s "
-                    f"(its stream execution limit is {EXECUTION_LIMIT_SEC:g}s); the request was abandoned.")}},
-                    keep_alive=False)
+                waited = time.monotonic() - self._upstream_started
+                if self._classifier and not upstream_stream:
+                    limit = (f"classifier head limit {CLASSIFIER_HEAD_WAIT_SEC:g}s x {CLASSIFIER_HEAD_RETRIES + 1} tries")
+                    said = (f"Proxy: the gateway sent no response header to the auto mode classifier within "
+                            f"{CLASSIFIER_HEAD_WAIT_SEC:g}s on {CLASSIFIER_HEAD_RETRIES + 1} tries; the request was abandoned.")
+                else:
+                    limit = f"gateway limit ~{EXECUTION_LIMIT_SEC:g}s"
+                    said = (f"Proxy: the gateway sent no response header within {HEAD_WAIT_LIMIT_SEC:g}s "
+                            f"(its stream execution limit is {EXECUTION_LIMIT_SEC:g}s); the request was abandoned.")
+                log(f"execution cut {self.command} {parsed.path} upstream={waited:.1f}s "
+                    f"no response header ({limit} · proxy answered 500) {self._request_context}")
+                self._send_json(500, {"type": "error", "error": {"type": "api_error", "message": said}}, keep_alive=False)
                 return
             except Exception as error:
                 outcome = "upstream_error"
@@ -3355,6 +3438,21 @@ class ProxyServer(ThreadingHTTPServer):
 
 
 def self_test() -> None:
+    # 분류기 1단계 바닥: 작은 비스트리밍 상한만 올리고, 2단계 · 스트림 · 이미 큰 값은 그대로
+    s1 = {"max_tokens": 64}
+    assert raise_classifier_floor(s1) == f"max_tokens_floor={CLASSIFIER_S1_MIN_TOKENS}" and s1["max_tokens"] == CLASSIFIER_S1_MIN_TOKENS
+    for untouched in ({"max_tokens": 8192}, {"max_tokens": 64, "stream": True}, {}):
+        before = dict(untouched)
+        assert raise_classifier_floor(untouched) == "" and untouched == before
+    # 분류기 답의 끝: 글은 끝에서 자르고, 빈 답은 블록 꼴로, JSON 이 아니면 빈 글자로
+    long_answer = json.dumps({"content": [{"type": "text", "text": "x" * 500 + "<severity>2</severity>"}]}).encode()
+    got = classifier_answer_tail(long_answer)
+    assert got.startswith("severity_tags=1 chars=522 tail=")
+    assert json.loads(got.split("tail=", 1)[1]).endswith("<severity>2</severity>")
+    assert len(json.loads(got.split("tail=", 1)[1])) == CLASSIFIER_TAIL_CHARS
+    assert classifier_answer_tail(b'{"content": []}') == "tail=[]"
+    assert classifier_answer_tail(b'{"content": [{"type": "thinking", "thinking": "..."}]}') == 'tail=["thinking"]'
+    assert classifier_answer_tail(b"not json") == ""
     # sanitize: 파라미터 제거·병합·prefill 제거. 도구 description 은 건드리지 않는다.
     payload = {
         "temperature": 0.2,
@@ -3653,10 +3751,10 @@ def self_test() -> None:
     assert normalize_pgpt_claude_model("claude-opus-5-5", measured) == "claude-opus-5.5"
     assert normalize_pgpt_claude_model("claude-haiku-5-5", measured) == "claude-haiku-5.5"
     assert normalize_pgpt_claude_model("claude-haiku-4-5-20251001", measured) == "claude-haiku-5.5"
-    assert normalize_pgpt_claude_model("claude-sonnet-5", measured) == "claude-sonnet-4.6"  # 분류기 이름은 4.6 으로(#230)
-    assert normalize_pgpt_claude_model("claude-sonnet-5-20260219", measured) == "claude-sonnet-4.6"
+    assert normalize_pgpt_claude_model("claude-sonnet-5", measured) == "claude-sonnet-5.5"  # 분류기 이름은 5.5 로
+    assert normalize_pgpt_claude_model("claude-sonnet-5-20260219", measured) == "claude-sonnet-5.5"
     assert normalize_pgpt_claude_model("claude-sonnet-5-5", measured) == "claude-sonnet-5.5"
-    assert normalize_pgpt_claude_model("claude-sonnet-5", measured - {"claude-sonnet-4.6"}) == "claude-sonnet-5.5"  # 4.6 이 빠지면 가장 새 소넷
+    assert normalize_pgpt_claude_model("claude-sonnet-5", measured - {"claude-sonnet-5.5"}) == "claude-sonnet-4.6"  # 5.5 가 빠지면 가장 새 소넷
     assert normalize_pgpt_claude_model("claude-opus-9-9", measured) == "claude-opus-9.9"
     assert not is_model_substitution("claude-fable-5-1", "claude-fable-5-1")
     # 응답 이름은 답한 모델의 하이픈 꼴로 돌려준다(#230) — 스트림 첫 이벤트 · 비스트리밍 본문 · 다른 이름이면 손 안 댐

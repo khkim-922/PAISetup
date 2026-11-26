@@ -20,8 +20,8 @@ HANDED_OUT = {
                       "refuse_not_yet", "size", "stamp", "stamp_of", "text_file", "today_word", "weeks_word",
                       "Person.label"),
     "ep_session.py": ("DEFAULT_FILE", "DOMINO_SERVER", "ECM_HANDOFF", "ECM_MAIN_PAGE", "ECM_URL", "NOT_LOGGED_IN", "NO_EDGE", "NoNode",
-                      "NoSession", "NotOpened", "OK", "ORDINARY_MISSING", "ORDINARY_STOOD", "OUT_BYTES", "Redirected", "SessionFileError", "TimedOut",
-                      "load_jar", "open_ordinary", "opener", "ordinary_login", "run_hand", "session_first", "squash", "sso_form"),
+                      "NoSession", "NotOpened", "OK", "OPENED_IN_ORDINARY", "OPENED_IN_SESSION", "ORDINARY_MISSING", "ORDINARY_STOOD", "OUT_BYTES", "Redirected", "SessionFileError", "TimedOut",
+                      "load_jar", "open_for_person", "opener", "ordinary_login", "run_hand", "session_first", "squash", "sso_form"),
     "edge_cdp.js": ("edgeLine", "framesOf", "sleep", "waitFor"),
     "places.json": ("session_file",),
 }

@@ -29,6 +29,8 @@ DONE = "done"
 
 # 바뀜의 종류 — 읽는 명령이 사람 말로 옮긴다
 NEW, OPENED, READ, UNREAD, MOVED, GONE, BACK = "new", "opened", "read", "unread", "moved", "gone", "back"
+RECALLED = "recalled"                    # 보낸 메일의 수신상태가 회수로 바뀌었다 — 받는 분께 안 간 메일이다
+RECALL_WORD = "회수"                     # 수신상태 낱말에 이것이 들면 회수한 메일이다(전체회수완료 · 그룹회수완료 따위 — 손의 `SentEntry.status`)
 FOLDER_ADDED, FOLDER_REMOVED = "folder-added", "folder-removed"
 RULE_ADDED, RULE_REMOVED, RULE_CHANGED = "rule-added", "rule-removed", "rule-changed"
 
@@ -43,9 +45,14 @@ def place(mail: dict[str, Any]) -> tuple[str, str]:
     return mail.get("box") or INBOX, mail.get("folder") or ""
 
 
+def recalled(mail: dict[str, Any]) -> bool:
+    """보낸 메일을 회수했나 — 수신상태 낱말에 「회수」가 든다."""
+    return RECALL_WORD in (mail.get("status") or "")
+
+
 def head(mail: dict[str, Any]) -> dict[str, Any]:
     """바뀜에 실어 두는 메일 머리 — 사라진 뒤에도 읽는 명령이 그 메일을 말할 수 있게."""
-    keep = ("unid", "box", "folder", "date", "name", "addr", "to", "subject", "unread", "files")
+    keep = ("unid", "box", "folder", "date", "name", "addr", "to", "subject", "unread", "files", "status")
     return {k: mail[k] for k in keep if k in mail}
 
 
@@ -170,6 +177,9 @@ def compare(prev: dict[str, dict[str, Any]], prev_started: str, seen: dict[str, 
         if mail.get("box") != SENT and old.get("box") != SENT and old.get("unread") is not None \
                 and mail.get("unread") is not None and old["unread"] != mail["unread"]:
             events.append({"at": at, "kind": UNREAD if mail["unread"] else READ, "unid": unid, "by": USER, "mail": head(mail)})
+        # 수신상태를 쌓기 전의 모습(칸이 없다)과는 안 견준다 — 견주면 지난날 회수한 메일이 모두 새 회수로 선다
+        if "status" in old and recalled(mail) and not recalled(old):
+            events.append({"at": at, "kind": RECALLED, "unid": unid, "by": USER, "mail": head(mail)})
     for unid, old in prev.items():
         if unid in seen:
             continue

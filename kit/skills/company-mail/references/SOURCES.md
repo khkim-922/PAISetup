@@ -66,6 +66,22 @@
 - 받는 꼴 열 ``xrtype`` — ``T`` 받는사람 · ``C`` 참조 · ``G`` 받는 사람 목록 밖의 그룹 · 배포 목록
 - 받은편지함 보기(``XML_Inbox``)는 받은편지함만 든다 — 쓰는 사람의 규칙이 하위 폴더로 옮긴 메일은 그 폴더의 보기에만 있다
 - 보낸편지함 보기 ``XML_Sent`` 는 받은편지함과 같은 ``?ReadViewEntries`` 이고, 그 보기의 ``xname`` 열이 수신인이다
+- 그 보기의 ``xstatus`` 열이 화면의 「수신상태」다 — ``<한국어>-ENG-<영어>`` 꼴로, 본 값은 ``읽음-ENG-Read`` · ``일부안읽음-ENG-Some unread``
+  · ``읽지않음-ENG-Unread`` · ``확인불가-ENG-Unconfirmed`` · ``전체회수완료-ENG-All recall`` · ``그룹회수완료-ENG-GroupRecall`` 이다(보낸편지함
+  180 통). 회수한 메일도 보낸편지함에 그대로 남고 이 열만 바뀐다. 같은 줄에 ``xsendstatus`` · ``xunopenedopt`` · ``xremindopt`` 열도 오는데 뜻은
+  안 쟀다
+- 「수신상태」 창은 화면 스크립트 ``fmmail_new.js``(``doc_showsusin`` · ``doc_sushin_mailReturn`` · ``doc_resendForm``)가 그린다.
+  받는 분마다의 줄은 보기 ``ReturnCheck_DocID_SC?ReadViewEntries&RestrictToCategory=<보낸 메일 unid>`` 다 — 열은 ``RECEIVE``(이름) ·
+  ``ReceiveDepartment`` · ``$91``(읽은 때 ``YYYY-MM-DD HH:MM``, 안 읽었으면 상태 낱말) · ``ReceiveStatus`` · ``docid``(받는 쪽 메일 열쇠) ·
+  ``$96``(``unread`` · ``read`` · ``exmail`` · ``return``) · ``TRECEIVER``(Notes 이름 · 사외 분은 주소). 사내 분 70 명 · 사외 1 명 · 전체 회수한
+  64 명 메일로 쟀다. 회수한 줄은 ``메일회수-ENG-Recall`` · ``return`` 이다
+- 전체 회수는 **GET** ``mailreturn?openagent&type=all&ReturnOpt=<Y|N>&imapuser=&owner=&docid=<unid>`` 이다. ``ReturnOpt`` 는 읽은 메일도
+  거두나로, 화면은 ``/common/lib_f.nsf/agGetAddCode_readreturn?OpenAgent&addCode=<회사 코드>`` 의 답(이 회사 ``N``)을 싣는다. 사용자
+  자신에게 보낸 메일 한 통을 안 읽은 채 거둬 받은편지함에서 사라지고 그 줄이 ``메일회수`` · 보낸편지함 줄이 ``회수완료`` 가 됐다.
+  수신상태는 몇 초 늦게 바뀐다 — 손은 고른 분이 다 바뀔 때까지 다시 본다
+- 선택 회수는 **POST** ``fmListAction?Openform`` · ``Action=mailreturn`` · ``UNIDs=<받는 분 줄 docid;…>`` · ``ReturnOpt`` 이고, 재발송은
+  **POST** ``resendForm?openform`` · ``action=all|select`` · ``docid`` · ``sendtolist=<Notes 이름;…>`` · ``importance`` · ``nsubject`` 이다 —
+  화면 스크립트의 꼴 그대로 지었고 회사에서 보낸 판은 안 쟀다(재발송은 남에게 메일이 나간다)
 - 임시보관함은 보기 ``XML임시편지함`` 이다(``?ReadViewEntries`` · 열은 받은편지함과 같은 꼴 · 보낸 사람 열이 쓰는 사람 자신)
 - 보기 한 번(``?ReadViewEntries``)의 ``count`` 는 서버가 1000 에서 자른다(``VIEW_PAGE_MOST``)
 
@@ -268,6 +284,8 @@
   붙어 status 가 `remove` 가 되고, [임시저장]하면 그 첨부가 빠진다. 다시 누르면 「삭제 취소」다
 - 첨부 칸은 칸에 이미 있는 이름의 파일을 안 받는다 — `remove` 로 고른 파일과 같은 이름이어도 「이미 첨부된 파일이 존재합니다. 중복된 파일 :
   <이름>」 을 띄운다. 같은 이름으로 갈려면 빼서 저장한 뒤 다시 붙인다
+- [답장] 화면은 원래 메일의 첨부를 첨부 칸에 `remove` 로 들고 연다(줄에 `remove` 가 달려 있고 [임시저장]에 안 실린다). 그 이름과 같은 파일을
+  주면 물음 없이 `ready` 로 서고, [임시저장]하면 그 파일이 붙는다. 그 줄에 [삭제/취소]를 누르면 `complete` 로 돌아온다
 - 저장한 본문 HTML(`Body?OpenField`)에는 첨부마다 서버가 지은 표(`/icons/medoc.gif` · Type · Name)가 끝에 붙는다 — 편집기 판(`getHTML`)에는
   안 든다
 - 편집 화면은 열려 있는 동안 웹메일이 1 분쯤마다 저절로 저장한다(`_autoSaveRequest` — `_form.isAutosaveCancel` 이 `'Y'` 면 멈춘다).
@@ -315,9 +333,11 @@
 잰 판이 서면 `scripts/mail.py` 의 표에 한 줄과 그 일을 하는 손 하나로 더한다(`DESIGN.md` 「mail.py · 임시메일 짓기 — 손가락과 세분의 선」).
 
 - 배포그룹 하나로 보낸 메일이 받는 쪽에서 구성원 낱낱에게 가나 — 저장 꼴은 쟀다(「inbox.py · 임시저장 · 서명」), 보낸 판은 안 쟀다
+- 선택 회수(``fmListAction`` · ``Action=mailreturn``)와 재발송(``resendForm``) — 사용자 자신에게 보낸 메일로 한 번씩 돌려 수신상태 ·
+  보낸편지함이 바라는 꼴로 서나 본다. 전체 회수의 답 낱말(``ExMail`` · ``ExMail-2`` · ``noReturn``)이 사외 분이 든 메일에서 오나
 - 팀즈문서 링크 공유 — 고름 창(`frmTeamsAttachFileManager`)이 무엇을 골라 본문 · 첨부 칸에 넣나(`insertTeamsAttachFileTable`)
 - 표에 「회사에서 안 쟀다」 로 선 손가락(`mail.py` 의 `DRAFT_STARTS` · `DRAFT_CHANGES` 의 `unmeasured`) — [재사용] 화면에서 원래 보낸 메일의
-  저장된 본문 `<style>` 을 받아(`STORED_STYLES`) 편집기 head 에 되달아 저장하면 서식이 남나 · [답장] · [전체답장] · [전달] · [재사용] 화면의
+  저장된 본문 `<style>` 을 받아(`STORED_STYLES`) 편집기 head 에 되달아 저장하면 서식이 남나 · [전체답장] · [전달] · [재사용] 화면의
   첨부 칸에 파일을 줘 [임시저장]하면 붙나 · 편집 화면에서 저장된 첨부를 이름으로 골라 빼면(`DETACH`) [임시저장]에 빠지나. 한 번씩 돌려
   저장한 판이 바란 대로면 그 `unmeasured` 칸에서 뺀다
 - 새 메일(`draft new`)을 저장한 뒤 손이 그 임시메일을 편집 화면으로 다시 연다(`show_on_screen`). 편집기는 열 때 메일의 `<style>` 을 버리고

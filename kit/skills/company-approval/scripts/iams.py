@@ -176,7 +176,7 @@ def box_query(box: dict, span, words: str | None) -> dict:
     return query
 
 
-# ── 사람의 Edge 에 창 띄우기 — 창 손이 열고, 쓰기 손이 저장한 뒤 연다. 여는 손은 ep-login 의 것(``ep_session.open_ordinary``)이다 ──────────
+# ── 사람의 Edge 에 창 띄우기 — 창 손이 열고, 쓰기 손이 저장한 뒤 연다. 여는 손은 ep-login 의 것(``ep_session.open_for_person``)이다 ──────────
 OPEN_SINK_ENV = "APPROVAL_OPEN_SINK"     # 시험장이 채운다 — 차면 창을 안 열고 그 파일에 연 주소를 한 줄 적는다
 
 
@@ -186,20 +186,24 @@ def sunk(url: str, sink: str) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps({"at": datetime.now(ep_command.SEOUL).isoformat(timespec="seconds"), "url": url}, ensure_ascii=False) + "\n")
-    return "사람의 평소 Edge 에 새 탭으로 열었다(가짜 회사 — 창 없음)"
+    return "사내 세션이 사는 Edge 에 새 창으로 열었다(가짜 회사 — 창 없음)"
+
+
+OPENED_WORDS = {"session": "사내 세션이 사는 Edge(EP 로그인용 창)에 새 창으로 열었다 — 로그인 없이 뜬다",
+                "ordinary": "사람의 평소 Edge 에 새 탭으로 열었다 — 세션이 사는 Edge 가 없어서다. 로그인 화면이 뜨면 거기서 로그인한다"}
 
 
 def launch(url: str) -> str:
-    """주소를 사람의 평소 Edge 에 새 탭으로 연다 — ep-login 이 EP 포털을 여는 그 손(``ep_session.open_ordinary``)으로. 어디에 열었나의 말을
-    낸다. 못 열면 Stop(도구) — 주소를 말에 싣는다."""
+    """주소를 사람에게 띄운다 — ep-login 의 손(``ep_session.open_for_person``)이 세션이 사는 Edge 를 먼저, 없으면 평소 Edge 를 고른다.
+    어디에 열었나의 말을 낸다. 못 열면 Stop(도구) — 주소를 말에 싣는다."""
     sink = os.environ.get(OPEN_SINK_ENV, "").strip()
     if sink:
         return sunk(url, sink)
     try:
-        ep_session.open_ordinary(url)
+        where = ep_session.open_for_person(url)
     except ep_session.NotOpened as exc:
         raise Stop(EXIT_TOOL, "tool", f"{exc}. 다음: 사람에게 이 주소를 Edge 주소창에 붙여 여시라고 전한다 — {url}", stepped=True) from exc
-    return "사람의 평소 Edge 에 새 탭으로 열었다"
+    return OPENED_WORDS[where]
 
 
 class AppError(Exception):

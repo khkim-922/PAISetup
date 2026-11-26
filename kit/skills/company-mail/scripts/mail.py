@@ -78,6 +78,7 @@ import pathlib
 import re
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
@@ -168,7 +169,7 @@ DRAFT_CHANGES = {
     "replace": Change(("replace",), ON_SCREEN, "칸 갈기 — 그 칸을 먼저 비우고 준 사람들로. 사람을 안 주면 비우기만 한다",
                       "새 메일의 칸은 처음부터 비어 있다 — 사람만 준다"),
     "attach": Change(("attach",), tuple(DRAFT_STARTS), "첨부 — 파일을 붙인다. 대용량(20MB 넘음)은 웹메일 임시저장이 안 든다",
-                     unmeasured=("reply", "all", "forward", "reuse")),
+                     unmeasured=("all", "forward", "reuse")),
     "detach": Change(("detach",), ON_SCREEN, "첨부 빼기 — 저장된 첨부를 이름으로 뺀다(그 이름이 꼭 하나일 때만)",
                      "새 메일에는 뺄 첨부가 없다 — 붙일 것만 --attach 로 준다", unmeasured=("reply", "all", "forward", "reuse")),
     "group": Change(("to_group", "cc_group", "bcc_group"), tuple(DRAFT_STARTS),
@@ -396,6 +397,11 @@ def sieve(args, said: str):
     return keep
 
 
+def status_tail(s) -> str:
+    """보낸편지함 줄 끝(메일 번호 앞)에 붙는 수신상태 — 「 · 수신상태 <낱말>」, 열이 비면 빈 글자. 회수한 메일은 「…회수완료」다."""
+    return f" · 수신상태 {s.status}" if s.status else ""
+
+
 def sent_to(s) -> str:
     """보낸편지함 줄의 받는 분 — 그 보기의 수신인 열은 첫 사람만 든다(모두는 ``read`` · 주소록의 ``find --last``)."""
     return ", ".join(r.addr or r.name or r.notes for r in s.recipients)
@@ -447,7 +453,7 @@ def drafts_box(box, count: int, start: int) -> list:
 def word_sent_box(rows) -> None:
     """보낸편지함 목록을 말한다 — 줄마다 때 · 받는 분(그 보기의 수신인 열 — 첫 사람만) · 제목 · 번호, 끝 줄에 받는 사람 모두를 보는 길."""
     for s in rows:
-        print(f"{s.date} · 받는 분 {sent_to(s)} · {s.subject} · {s.unid}")
+        print(f"{s.date} · 받는 분 {sent_to(s)} · {s.subject}{status_tail(s)} · {s.unid}")
     print(f"— 보낸편지함 {len(rows)}통 · 받는 분 칸은 첫 사람만이다 — 받는 사람 · 참조 · 숨은참조 모두(조직은 조직으로)는 "
           "read <unid>, 그 명단으로 다시 보내려면 " + LAST_FIND.format(unid="<unid>"))
 
@@ -514,7 +520,7 @@ def list_sent_to(args, box, inbox, word: str, since: str | None = None) -> None:
     picked = [(s, hits) for s, (hits, _) in zip(rows, judged) if hits]
     unread_fields = sum(not whole for _, whole in judged)
     for s, hits in picked[:args.count]:
-        print(f"{s.date} · 받는 분 {', '.join(person_word(r) for r in hits)} · {s.subject} · {s.unid}")
+        print(f"{s.date} · 받는 분 {', '.join(person_word(r) for r in hits)} · {s.subject}{status_tail(s)} · {s.unid}")
     whole = reached or len(fetched) < SENT_TO_SCAN
     more = f" · 그 가운데 새것 {args.count}통만 보였다(--count 로 늘린다)" if len(picked) > args.count else ""
     reach = (f"{since} 부터 {'그 시각까지 다 본' if whole else '새것'} {len(rows)}통" if since is not None
@@ -556,7 +562,7 @@ def since_boxes(args, box) -> list[tuple[str, object, str]]:
 def since_line(e, inbox) -> str:
     """--since 목록의 한 줄 — 받은 메일은 ``entry_line`` 에 든 자리를, 보낸 메일은 「[보냄]」 · 보낸편지함 · 받는 분을 단다."""
     if isinstance(e, inbox.SentEntry):
-        return f"[보냄] {e.date} · 보낸편지함 · 받는 분 {sent_to(e)} · {e.subject} · {e.unid}"
+        return f"[보냄] {e.date} · 보낸편지함 · 받는 분 {sent_to(e)} · {e.subject}{status_tail(e)} · {e.unid}"
     return entry_line(e, where=True)
 
 
@@ -2874,7 +2880,180 @@ def rule_done(plan: RulePlan, saved, key: str) -> list[str]:
     return [f"규칙을 {'고쳤다' if plan.new.unid else '넣었다'}: {rule_line(rule)} · {unid} · 열쇠 {key}"]
 
 
-# 짝 여섯 — 짝마다 한 줄(``Pair``). 미리 보기 · 실행 명령(preview-<짝> · apply-<짝>)이 이 표로 선다
+# 보낸 메일의 회수 · 재발송 — 받는 분께 닿는다. 화면의 「수신상태」 창이 하는 일과 같다
+
+RECEIPT_GONE = "회수"     # 수신상태 낱말에 이것이 들면 이미 회수됐다
+RECALL_SETTLE_SECONDS, RECALL_POLL_SECONDS = 30, 2   # 회수 뒤 수신상태가 바뀌기를 기다리는 시한 · 다시 보는 눈금
+# 회수 손의 거절 낱말 → 사람 말(웹메일 화면의 alert_mail_return_not · _2 · _3)
+RECALL_REFUSED = {"ExMail": "사외 분께 간 메일이라 회수가 안 된다", "ExMail-2": "회수가 안 되는 받는 분이 들었다",
+                  "noReturn": "회수할 분이 없다"}
+
+
+class ReceiptPlan(NamedTuple):
+    """회수 · 재발송의 계획 — 보낸 메일 한 줄 · 고른 줄(이번에 닿을 분) · 못 닿는 줄과 그 까닭 · 회사가 읽은 메일도 회수하나."""
+    sent: object
+    picked: tuple
+    skipped: tuple
+    read_too: bool
+
+
+def find_sent(box, unid: str):
+    """보낸편지함에서 그 메일 한 줄 — 보기를 끝까지 훑는다. 없으면 Stop(2 · 보낸 메일이 아니면 회수 · 재발송이 없다)."""
+    unid_shape(unid)
+    want, start = unid.strip().upper(), 1
+    while True:
+        rows = box.list_sent(count=INBOX.VIEW_PAGE_MOST, start=start)
+        hit = next((s for s in rows if s.unid.upper() == want), None)
+        if hit is not None:
+            return hit
+        if len(rows) < INBOX.VIEW_PAGE_MOST:
+            raise Stop(EXIT_CONFIG, f"보낸편지함에 그 메일이 없다: {want} — 회수 · 재발송은 보낸 메일에만 있다(list --sent 로 번호를 본다)")
+        start += len(rows)
+
+
+def pick_receipts(rows, names, why) -> tuple[tuple, tuple]:
+    """받는 사람 줄을 고른다 — ``names`` 가 비면 다, 아니면 이름 · 부서 · Notes 이름에 그 말이 든 줄. 그 가운데 ``why(줄)`` 이
+    빈 글자면 닿을 줄, 까닭이면 (줄, 까닭)으로 못 닿는 줄이다. 준 말에 걸린 줄이 없으면 Stop(2)."""
+    words = [w.strip().lower() for w in names or [] if w.strip()]
+    chosen = [r for r in rows if not words or any(w in f"{r.name}\n{r.dept}\n{r.notes}".lower() for w in words)]
+    if words and not chosen:
+        raise Stop(EXIT_CONFIG, f"받는 사람 가운데 {', '.join(words)} 에 걸린 분이 없다 — receipts <unid> 로 명단을 본다")
+    judged = [(r, why(r)) for r in chosen]
+    return tuple(r for r, w in judged if not w), tuple((r, w) for r, w in judged if w)
+
+
+def recall_why_not(read_too: bool):
+    """회수 못 할 까닭을 내는 자 — 이미 회수 · 회수가 안 되는 분(상태가 unread · read 밖) · 이미 읽음(회사가 읽은 메일 회수를 안 켰으면)."""
+    def why(r) -> str:
+        if RECEIPT_GONE in r.status:
+            return "이미 회수했다"
+        if r.state not in (INBOX.RECEIPT_UNREAD, INBOX.RECEIPT_READ):
+            return f"회수가 안 되는 분이다({r.status or r.state or '상태 없음'} — 사외 · 그룹사 밖 · EXO 메일)"
+        if r.state == INBOX.RECEIPT_READ and not read_too:
+            return "이미 읽으셨다 — 읽은 메일은 회수가 안 된다"
+        return ""
+    return why
+
+
+def resend_why_not(_read_too: bool):
+    """재발송 못 할 까닭을 내는 자 — 안 읽은 사내 분(Notes 이름이 있다)께만 간다."""
+    def why(r) -> str:
+        if r.state != INBOX.RECEIPT_UNREAD:
+            return f"안 읽은 분이 아니다({r.status or r.state or '상태 없음'})"
+        if not INBOX.is_notes_name(r.notes):
+            return "사내 분이 아니다 — 재발송은 사내 분께만 간다"
+        return ""
+    return why
+
+
+def receipt_plan(args, box, why_of) -> ReceiptPlan:
+    """회수 · 재발송 공통 계획 — 보낸 메일과 받는 사람마다 상태를 받고 ``--who`` 로 골라 ``why_of(읽은 메일 회수)`` 로 가른다."""
+    sent = find_sent(box, args.unid)
+    read_too = box.reads_recallable()
+    picked, skipped = pick_receipts(box.receipts(sent.unid), args.who, why_of(read_too))
+    return ReceiptPlan(sent, picked, skipped, read_too)
+
+
+def receipt_row(r) -> str:
+    """받는 사람 한 줄 — 이름 · 부서 · 수신상태 · 읽은 때."""
+    when = f" · {r.read_at} 읽음" if r.read_at else ""
+    return f"  {r.name} · {r.dept} · {r.status}{when}"
+
+
+def receipt_settled(plan: ReceiptPlan) -> bool:
+    """닿을 분이 없나 — 고른 분이 다 못 닿는 분이면 할 것이 없다."""
+    return not plan.picked
+
+
+def receipt_state(plan: ReceiptPlan) -> str:
+    """할 것이 없는 판의 말 — 못 닿는 까닭을 분마다(앞 열 분)."""
+    why = "; ".join(f"{r.name} — {w}" for r, w in plan.skipped[:10]) or "받는 분이 없다"
+    return f"닿을 분이 없다({why})"
+
+
+def receipt_parts(verb: str, plan: ReceiptPlan) -> tuple:
+    """확인 열쇠 재료 — 메일 번호 · 고른 분마다 (열쇠, 상태). 그 사이 누가 읽으면 열쇠가 바뀐다."""
+    return (verb, plan.sent.unid.upper(), [(r.key, r.state) for r in plan.picked])
+
+
+def receipt_shown(word: str, plan: ReceiptPlan, settled: bool) -> list[str]:
+    """미리 보기 줄 — 메일 머리 · 닿을 분 · 못 닿는 분과 까닭."""
+    s = plan.sent
+    out = [f"{word}할 메일 · {s.date} · {s.subject} · {s.unid} — 아직 안 했다"]
+    if plan.picked:
+        out += [f"{word}할 분 {len(plan.picked)}명:", *(receipt_row(r) for r in plan.picked)]
+    if plan.skipped:
+        out += [f"{word} 안 되는 분 {len(plan.skipped)}명:", *(f"{receipt_row(r)} — {w}" for r, w in plan.skipped)]
+    return out
+
+
+def recall_plan(args, box, inbox) -> ReceiptPlan:
+    """회수의 계획 — 회수 안 되는 분(이미 회수 · 사외 · 이미 읽음)을 가른다."""
+    return receipt_plan(args, box, recall_why_not)
+
+
+def recall_change(box, inbox, args, plan: ReceiptPlan):
+    """회수한다 — 받는 분을 안 고르면 전체 회수 · 고르면 그 분들만. 서버는 수신상태를 몇 초 늦게 바꾸므로 고른 분이 다 회수로 설 때까지
+    (``RECALL_SETTLE_SECONDS`` 까지) 다시 받는다."""
+    said = box.recall(plan.sent.unid, [r.key for r in plan.picked] if args.who else None, plan.read_too)
+    keys = {r.key for r in plan.picked}
+    until = time.monotonic() + RECALL_SETTLE_SECONDS
+    while True:
+        rows = box.receipts(plan.sent.unid)
+        if all(RECEIPT_GONE in r.status for r in rows if r.key in keys) or said in RECALL_REFUSED or time.monotonic() >= until:
+            return said, rows
+        time.sleep(RECALL_POLL_SECONDS)
+
+
+def recall_done(plan: ReceiptPlan, got, key: str) -> list[str]:
+    """회수한 뒤 — 고른 분마다 다시 본 수신상태. 회수로 안 바뀐 분이 있으면 그렇다고 이른다."""
+    said, rows = got
+    now = {r.key: r for r in rows}
+    seen = [now.get(r.key) or r for r in plan.picked]
+    left = [r for r in seen if RECEIPT_GONE not in r.status]
+    out = [f"회수를 보냈다: {len(plan.picked)}명 · 열쇠 {key}"]
+    if said in RECALL_REFUSED:
+        out.append(f"! 웹메일이 거절했다 — {RECALL_REFUSED[said]}")
+    out += [receipt_row(r) for r in seen]
+    if left:
+        out.append(f"! {len(left)}명은 다시 봐도 회수로 안 바뀌었다 — 그 사이 읽으셨거나 서버가 늦게 바꾼다. 조금 뒤 receipts {plan.sent.unid} 로 본다")
+    return out
+
+
+def resend_plan(args, box, inbox) -> ReceiptPlan:
+    """재발송의 계획 — 안 읽은 사내 분만 닿는다."""
+    return receipt_plan(args, box, resend_why_not)
+
+
+def resend_change(box, inbox, args, plan: ReceiptPlan) -> str:
+    """재발송한다 — 고른 안 읽은 사내 분께 같은 메일을(말머리 · 긴급을 붙여) 다시 보낸다."""
+    return box.resend(plan.sent.unid, [r.notes for r in plan.picked], every=not args.who,
+                      prefix=(args.prefix or "").strip(), urgent=bool(args.urgent))
+
+
+def resend_done(plan: ReceiptPlan, said, key: str) -> list[str]:
+    """재발송한 뒤 — 웹메일의 답 낱말과 보낸편지함에서 보는 길."""
+    note = f" — 웹메일 답: {said}" if said else ""
+    return [f"재발송을 보냈다: {len(plan.picked)}명{note} · 열쇠 {key}", *(receipt_row(r) for r in plan.picked),
+            "— 다시 보낸 메일은 보낸편지함에 새 줄로 선다(list --sent)"]
+
+
+def cmd_receipts(args, inbox) -> None:
+    """receipts — 보낸 메일 한 통의 받는 사람마다 수신상태 · 읽은 때. 읽기만 한다."""
+    box = open_mailbox(args, inbox)
+    sent = find_sent(box, args.unid)
+    rows = box.receipts(sent.unid)
+    print(f"{sent.date} · {sent.subject} · 수신상태 {sent.status or '모름'} · {sent.unid}")
+    for r in rows:
+        print(receipt_row(r))
+    counts: dict[str, int] = {}
+    for r in rows:
+        counts[r.status] = counts.get(r.status, 0) + 1
+    print(f"— 받는 분 {len(rows)}명 · " + " · ".join(f"{k} {v}" for k, v in counts.items())
+          + " — 회수는 preview-recall, 안 읽은 사내 분께 다시 보내기는 preview-resend")
+
+
+# 짝 여덟 — 짝마다 한 줄(``Pair``). 미리 보기 · 실행 명령(preview-<짝> · apply-<짝>)이 이 표로 선다
 PAIRS = {
     "mark": Pair(mark_plan, mark_parts, mark_shown, mark_change, mark_done, "이 한 통을 바꾸자고 하면", "바꾼다",
                  "메일 상태와 다르다 — 바꾸지 않았다", settled=mark_settled, state=mark_state),
@@ -2888,6 +3067,12 @@ PAIRS = {
                     "고른 메일과 다르다 — 되살리지 않았다"),
     "rule": Pair(rule_plan, rule_parts, rule_shown, rule_change, rule_done, "이대로 하자고 하면", "바꾼다",
                  "규칙과 다르다 — 바꾸지 않았다"),
+    "recall": Pair(recall_plan, functools.partial(receipt_parts, "recall"), functools.partial(receipt_shown, "회수"), recall_change,
+                   recall_done, "이 분들께 간 메일을 거두자고 하면", "회수한다",
+                   "수신상태와 다르다(그 사이 읽으셨거나 회수됐다) — 회수하지 않았다", settled=receipt_settled, state=receipt_state),
+    "resend": Pair(resend_plan, functools.partial(receipt_parts, "resend"), functools.partial(receipt_shown, "재발송"), resend_change,
+                   resend_done, "이 분들께 다시 보내자고 하면", "다시 보낸다",
+                   "수신상태와 다르다(그 사이 읽으셨다) — 다시 보내지 않았다", settled=receipt_settled, state=receipt_state),
 }
 
 
@@ -2902,6 +3087,8 @@ PAIRED_HELP = {
     "trash": "메일을 휴지통으로(영구삭제는 없다)",
     "restore": "휴지통의 메일 되살리기(unid 는 search <낱말> --in trash 가 낸다)",
     "rule": "메일 분류 규칙 넣기 · 고치기 · 지우기(자동전달 칸은 늘 빈다)",
+    "recall": "보낸 메일 회수 — 받는 분 모두 · --who 로 고른 분(안 읽은 사내 분만 된다)",
+    "resend": "보낸 메일을 안 읽은 사내 분께 다시 보내기 — 모두 · --who 로 고른 분(말머리 · 긴급)",
 }
 # 명령마다 한 줄 — 맨 위 --help 의 지도이자 <명령> --help 의 머리다
 COMMAND_HELP = {
@@ -2915,6 +3102,7 @@ COMMAND_HELP = {
     "attachment": "첨부 목록 · 받기 — DRM 문서와 문서함 첨부는 읽을 손을 댄다",
     "draft": "임시메일 짓기 — 출발 하나 × 바꿀 것 아무 조합 → 임시저장(안 나간다)",
     "rules": "메일 분류 규칙 — 줄 끝의 unid 로 고치고 지운다",
+    "receipts": "보낸 메일 한 통의 받는 분마다 수신상태 · 읽은 때(웹메일의 「수신상태」 창)",
     **{f"preview-{k}": f"{w} · 미리 보기 — 바뀔 판과 확인 열쇠를 낸다(안 바꾼다)" for k, w in PAIRED_HELP.items()},
     **{("send-draft" if k == "send" else f"apply-{k}"): f"{w} · 실행 — 미리 보기의 확인 열쇠(--confirm)가 지금 판과 맞을 때만"
        for k, w in PAIRED_HELP.items()},
@@ -2922,11 +3110,13 @@ COMMAND_HELP = {
 # 맨 위 --help 의 지도 — (묶음 머리, 지키는 선, 줄들). 줄은 명령 이름이거나 짝(PAIRED_HELP 의 열쇠)이고, 한 줄의 말은 COMMAND_HELP ·
 # PAIRED_HELP 에서 온다. 명령을 더하면 그 표 한 줄과 여기 한 자리다
 COMMAND_MAP = (
-    ("찾기 · 읽기 — 끝: 읽기만", "읽음 표시도 그대로다", ("search", "list", "summary", "read", "read-many", "attachment", "folders", "rules", "session")),
+    ("찾기 · 읽기 — 끝: 읽기만", "읽음 표시도 그대로다", ("search", "list", "summary", "read", "read-many", "attachment", "folders", "rules", "receipts", "session")),
     ("짓기 → 보내기 — 끝: 임시저장, 그 뒤 따로 [보내기]", "저장은 안 나간다 · 보내기는 미리 본 판의 열쇠로만(편집 화면에서 지은 것은 "
      "draft 가 열쇠를 낸다)", ("draft", "send")),
     ("바꾸기 — 미리 보기 → 확인 열쇠 → 실행", "사람이 미리 보기를 보고 「이대로」 한 뒤에만 실행한다 · 실행은 같은 인자에 --confirm <열쇠>",
      ("mark", "folder", "move", "trash", "restore", "rule")),
+    ("받는 분께 닿는 것 — 미리 보기 → 확인 열쇠 → 실행", "회수 · 재발송은 받는 분의 메일함에 닿고 되돌릴 수 없다 — 사람이 미리 보기의 "
+     "분 명단을 보고 「이대로」 한 뒤에만 실행한다", ("recall", "resend")),
 )
 # 이 명령이 내는 종료 값과, 그 뜻(사내 앱 명령의 한 표 ep_command.EXIT_MEANINGS)에 메일 손이 덧붙이는 말 — 맨 위 --help 의 범례
 EXIT_CODES = (EXIT_OK, EXIT_FAIL, EXIT_CONFIG, EXIT_SESSION, EXIT_STALE)
@@ -3155,6 +3345,18 @@ def parser() -> argparse.ArgumentParser:
                                help=f"{word}이 「포함」(고치기에서 「일치」를 되돌린다)")
         if name == "apply-rule":
             q.add_argument("--confirm", required=True, help="preview-rule 가 낸 확인 열쇠")
+    q = one("receipts", cmd_receipts, mail=False)
+    q.add_argument("unid", help="보낸 메일의 unid(list --sent)")
+    for verb in ("recall", "resend"):
+        for name, fn in ((f"preview-{verb}", functools.partial(preview_pair, verb)), (f"apply-{verb}", functools.partial(apply_pair, verb))):
+            q = one(name, fn, mail=False)
+            q.add_argument("unid", help="보낸 메일의 unid(list --sent)")
+            q.add_argument("--who", nargs="+", default=None, help="받는 분 이름 · 부서 · Notes 이름의 일부 — 없으면 받는 분 모두")
+            if verb == "resend":
+                q.add_argument("--prefix", default="", help="다시 보내는 메일의 제목 앞 말머리")
+                q.add_argument("--urgent", action="store_true", help="긴급메일로")
+            if name.startswith("apply-"):
+                q.add_argument("--confirm", required=True, help=f"preview-{verb} 가 낸 확인 열쇠")
     return p
 
 

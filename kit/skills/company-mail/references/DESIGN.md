@@ -362,6 +362,7 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
                 - ↑ `_column`
                 - `parse_people` — 받는 사람 글줄(쉼표로 이은 사람들)을 푼다.
                   - ↑ `parse_person`
+                - `sent_status` — 수신상태 열의 글 → 화면의 한국어 낱말(「-ENG-」 앞).
               - `Mailbox.sent_people` — 보낸 메일 한 통의 받는 사람 · 참조 · 숨은참조 모두 — 웹메일이 넣은 차례대로, 조직은 조직 하나로(``kind`` 가 ``dept``).
                 - ↑ `Recipient`
                 - ↑ `Mailbox._get`
@@ -378,6 +379,27 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
                   - ↑ `SessionExpired`
                 - `parse_sent_people` — 보낸 메일의 받는 사람 칸 글(``<열쇠>-=-ITEM-=-<JSON>`` 을 ``-=-SEP-=-`` 로 이은 것 · HTML 이스케이프)을 푼다.
                   - ↑ `Recipient`
+              - `Mailbox.receipts` — 보낸 메일 한 통의 받는 사람마다 수신상태 — 웹메일 「수신상태」 창의 목록(``RECEIPT_VIEW`` 를 그 메일로 거른 보기)이다.
+                - ↑ `_unid`
+                - `Receipt` — 보낸 메일 한 통의 받는 사람 한 줄(수신상태 창). ``key`` 는 받는 쪽 메일의 열쇠(선택 회수가 쓴다), ``notes`` 는 받는 분의 Notes 이름(선택 재발송이 쓴다 · 사외 분은 빈다), ``state`` 는 기계가 읽는 상태(``unread`` · ``read`` · ``return`` · 빈 글자 따위), ``status`` 는 화면의 한국어 낱말, ``read_at`` 은 읽은 때(안 읽었으면 빈다)다.
+                - ↑ `Mailbox._get`
+                - ↑ `SessionExpired`
+                - ↑ `_column`
+                - ↑ `sent_status`
+              - `Mailbox.reads_recallable` — 이 회사 설정이 읽은 메일도 회수하나 — 화면이 회수 칸을 켜는 자(``READ_RECALL_AGENT``)다.
+                - ↑ `Mailbox._get_server`
+                - ↑ `_charset`
+              - `Mailbox.recall` — ⚠ 받는 분의 메일함에 닿는다 — 보낸 메일을 회수한다.
+                - ↑ `_unid`
+                - `Mailbox._send_receipt` — 회수 · 재발송 주소를 부른다 — 위 세 손의 꼴만 받는다.
+                  - ↑ `ChangeRefused`
+                  - ↑ `Mailbox._open`
+                  - ↑ `_charset`
+                  - ↑ `refuse_login`
+              - `Mailbox.resend` — ⚠ 받는 분께 메일이 나간다 — 보낸 메일을 안 읽은 사내 받는 분(``notes`` · Notes 이름)께 다시 보낸다.
+                - ↑ `_unid`
+                - ↑ `Mailbox._send_receipt`
+              - ↑ `Mailbox._send_receipt`
               - `Mailbox._view_list` — 보기 목록(``/api/data/collections``) — 이 메일함 손이 사는 동안 한 번만 받는다.
                 - ↑ `Mailbox._get`
                 - ↑ `_charset`
@@ -727,6 +749,7 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
         - `since_line` — --since 목록의 한 줄 — 받은 메일은 ``entry_line`` 에 든 자리를, 보낸 메일은 「[보냄]」 · 보낸편지함 · 받는 분을 단다.
           - ↑ `inbox.SentEntry`
           - `sent_to` — 보낸편지함 줄의 받는 분 — 그 보기의 수신인 열은 첫 사람만 든다(모두는 ``read`` · 주소록의 ``find --last``).
+          - `status_tail` — 보낸편지함 줄 끝(메일 번호 앞)에 붙는 수신상태 — 「 · 수신상태 <낱말>」, 열이 비면 빈 글자. 회수한 메일은 「…회수완료」다.
           - `entry_line` — 받은편지함 · 폴더 목록의 한 줄 — ``where`` 면 날짜 뒤에 든 자리(받은편지함 · 「폴더 <경로>」)를 단다.
             - `where_word` — 메일이 든 자리를 사람 말로 — 받은편지함 · 보낸편지함 · 임시보관함 · 「폴더 <경로>」.
             - `mark_word` — 메일 한 통의 읽음 칸 — 목록 · 찾기 · 미리 보기 줄이 함께 쓴다.
@@ -751,9 +774,11 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
         - ↑ `inbox.SessionExpired`
         - ↑ `inbox.MailboxError`
         - `mail_recipients.person_word` ← company-directory — 받는 사람 줄 하나를 한 줄로 — 조직은 이름 뒤에 표지를, 주소가 없으면 열쇠 그대로.
+        - ↑ `status_tail`
         - `reach_word` — 훑은 범위를 사람 말로 — 끝까지 못 봤으면 그렇게 말한다.
       - `word_sent_box` — 보낸편지함 목록을 말한다 — 줄마다 때 · 받는 분(그 보기의 수신인 열 — 첫 사람만) · 제목 · 번호, 끝 줄에 받는 사람 모두를 보는 길.
         - ↑ `sent_to`
+        - ↑ `status_tail`
       - `word_drafts_box` — 임시보관함 목록을 말한다 — 줄마다 때 · 제목 · 번호, 끝 줄에 읽는 길.
       - `drafts_box` — 임시보관함 목록 — 이 메일함에 그 보기가 없으면 Stop(1).
         - ↑ `mail_stop.Stop`
@@ -1255,6 +1280,30 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
           - ↑ `where_word`
           - ↑ `mark_word`
           - ↑ `who_sent`
+      - `recall_change` — 회수한다 — 받는 분을 안 고르면 전체 회수 · 고르면 그 분들만. 서버는 수신상태를 몇 초 늦게 바꾸므로 고른 분이 다 회수로 설 때까지 (``RECALL_SETTLE_SECONDS`` 까지) 다시 받는다.
+      - `recall_done` — 회수한 뒤 — 고른 분마다 다시 본 수신상태. 회수로 안 바뀐 분이 있으면 그렇다고 이른다.
+        - `receipt_row` — 받는 사람 한 줄 — 이름 · 부서 · 수신상태 · 읽은 때.
+      - `recall_plan` — 회수의 계획 — 회수 안 되는 분(이미 회수 · 사외 · 이미 읽음)을 가른다.
+        - `receipt_plan` — 회수 · 재발송 공통 계획 — 보낸 메일과 받는 사람마다 상태를 받고 ``--who`` 로 골라 ``why_of(읽은 메일 회수)`` 로 가른다.
+          - `find_sent` — 보낸편지함에서 그 메일 한 줄 — 보기를 끝까지 훑는다.
+            - ↑ `mail_find.unid_shape`
+            - ↑ `mail_stop.Stop`
+          - `pick_receipts` — 받는 사람 줄을 고른다 — ``names`` 가 비면 다, 아니면 이름 · 부서 · Notes 이름에 그 말이 든 줄. 그 가운데 ``why(줄)`` 이 빈 글자면 닿을 줄, 까닭이면 (줄, 까닭)으로 못 닿는 줄이다.
+            - ↑ `mail_stop.Stop`
+          - `ReceiptPlan` — 회수 · 재발송의 계획 — 보낸 메일 한 줄 · 고른 줄(이번에 닿을 분) · 못 닿는 줄과 그 까닭 · 회사가 읽은 메일도 회수하나.
+        - `recall_why_not` — 회수 못 할 까닭을 내는 자 — 이미 회수 · 회수가 안 되는 분(상태가 unread · read 밖) · 이미 읽음(회사가 읽은 메일 회수를 안 켰으면).
+      - `receipt_parts` — 확인 열쇠 재료 — 메일 번호 · 고른 분마다 (열쇠, 상태). 그 사이 누가 읽으면 열쇠가 바뀐다.
+      - `receipt_settled` — 닿을 분이 없나 — 고른 분이 다 못 닿는 분이면 할 것이 없다.
+      - `receipt_shown` — 미리 보기 줄 — 메일 머리 · 닿을 분 · 못 닿는 분과 까닭.
+        - ↑ `receipt_row`
+      - `receipt_state` — 할 것이 없는 판의 말 — 못 닿는 까닭을 분마다(앞 열 분).
+      - `resend_change` — 재발송한다 — 고른 안 읽은 사내 분께 같은 메일을(말머리 · 긴급을 붙여) 다시 보낸다.
+      - `resend_done` — 재발송한 뒤 — 웹메일의 답 낱말과 보낸편지함에서 보는 길.
+        - ↑ `receipt_row`
+      - `resend_plan` — 재발송의 계획 — 안 읽은 사내 분만 닿는다.
+        - ↑ `receipt_plan`
+        - `resend_why_not` — 재발송 못 할 까닭을 내는 자 — 안 읽은 사내 분(Notes 이름이 있다)께만 간다.
+          - ↑ `inbox.is_notes_name`
       - `restore_change` — 메일들을 되살린다 — 받은편지함이 아닌 자리로 돌아온 메일의 unid(대문자)들. 휴지통에서 다 빠졌나는 메일함 손이 다시 본다.
       - `restore_done` — 되살린 「됐다」 줄 — 받은편지함에 든 수, 다른 자리로 돌아온 메일이 있으면 그 알림과 메일마다 한 줄.
         - ↑ `who_sent`
@@ -1315,6 +1364,16 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
       - ↑ `move_parts`
       - ↑ `move_plan`
       - ↑ `move_shown`
+      - ↑ `recall_change`
+      - ↑ `recall_done`
+      - ↑ `recall_plan`
+      - ↑ `receipt_parts`
+      - ↑ `receipt_settled`
+      - ↑ `receipt_shown`
+      - ↑ `receipt_state`
+      - ↑ `resend_change`
+      - ↑ `resend_done`
+      - ↑ `resend_plan`
       - ↑ `restore_change`
       - ↑ `restore_done`
       - ↑ `restore_parts`
@@ -1340,6 +1399,10 @@ HAR 받는 법 — 회사 PC 에서 사람이 웹메일 「새 메일」의 받�
       - ↑ `rule_line`
     - `check_rule_args` — 규칙 명령의 인자 — 고칠 · 지울 규칙의 열쇠 꼴을 세션 앞에서 본다.
       - ↑ `mail_find.unid_shape`
+    - `cmd_receipts` — receipts — 보낸 메일 한 통의 받는 사람마다 수신상태 · 읽은 때. 읽기만 한다.
+      - ↑ `open_mailbox`
+      - ↑ `find_sent`
+      - ↑ `receipt_row`
 
 **다른 스킬이 부르는 조각** — 입구에서 안 닿는 것.
 

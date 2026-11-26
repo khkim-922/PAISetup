@@ -1,7 +1,7 @@
 """받는 손(``edge_session.js``)을 파이썬에서 부르고 그 손이 남긴 세션 파일을 읽는 한 자리 — 사내 앱 스킬의 얇은 명령과 앱
 손이 이 폴더를 ``sys.path`` 에 넣고 싣는다. 손 돌리기(``attach`` · ``session_first``) · 세션 파일 → 쿠키 통(``load_jar``) · 프록시
 없이 리다이렉트를 안 따르는 ``opener`` · SSO 넘김 화면의 숨은 칸(``sso_form``) · 이름 견주기 꼴(``squash``) · node 손 돌리기
-(``run_hand``) · 이 로그온에 평소 EP 로그인이 섰나(``ordinary_login`` — 아무것도 안 연다) · 사람의 평소 Edge 에 주소 하나 열기(``open_ordinary`` — 입구가 포털을 여는 길 그대로) · 회사 자리 값(``places.json`` → ``DEFAULT_FILE`` · ``DOMINO_SERVER`` · ``ECM_URL`` · ``ECM_MAIN_PAGE``) · 대화에 내는
+(``run_hand``) · 이 로그온에 평소 EP 로그인이 섰나(``ordinary_login`` — 아무것도 안 연다) · 사람에게 주소 하나 띄우기(``open_for_person`` — 세션이 사는 포트 Edge, 없으면 평소 Edge) · 회사 자리 값(``places.json`` → ``DEFAULT_FILE`` · ``DOMINO_SERVER`` · ``ECM_URL`` · ``ECM_MAIN_PAGE``) · 대화에 내는
 답 하나의 크기(``OUT_BYTES``)를 든다. 얇은 명령의 뼈대는 곁의 ``ep_command.py`` 가 든다. 파일부터 도는 바퀴 · 리다이렉트를 안
 따르는 까닭 · 쿠키 통이 무엇을 싣나는 ``references/DESIGN.md`` 가 든다.
 
@@ -324,18 +324,21 @@ EYE_START_S, EYE_LOOK_S = PLACES["eye_start_s"], PLACES["eye_look_s"]   # 평소
 STATUS_TIMEOUT_SECONDS = 3 * EYE_START_S + 5 * EYE_LOOK_S
 
 
-# ── 평소 Edge 에 주소 하나 열기 — 빌려 주는 손 ────────────────────────────────────
-OPENER = pathlib.Path(__file__).resolve().with_name("ordinary_open.js")
-OPEN_TIMEOUT_SECONDS = 20                          # node 가 Edge 를 찾아 떼어 띄우는 한 판 — 띄운 뒤는 기다리지 않는다
+# ── 사람에게 주소 하나 띄우기 — 빌려 주는 손 ────────────────────────────────────
+OPENER = pathlib.Path(__file__).resolve().with_name("person_open.js")
+OPEN_TIMEOUT_SECONDS = 20                          # node 가 Edge 에 붙거나 떼어 띄우는 한 판 — 띄운 뒤는 기다리지 않는다
+OPENED_IN_SESSION, OPENED_IN_ORDINARY = "session", "ordinary"   # 어디에 열었나 — person_open.js 의 「opened …」 끝 낱말. 닫힌 둘
 
 
 class NotOpened(Exception):
-    """평소 Edge 에 주소를 못 열었다 — 메시지가 까닭이다(node 가 없다 · Edge 가 없다 · 띄우기가 졌다)."""
+    """주소를 못 띄웠다 — 메시지가 까닭이다(node 가 없다 · Edge 가 없다 · 포트 Edge 가 창을 거절했다 · 띄우기가 졌다)."""
 
 
-def open_ordinary(url: str, *, env: dict | None = None, timeout: float = OPEN_TIMEOUT_SECONDS) -> None:
-    """사람의 평소 Edge 에 주소 하나를 연다 — 입구가 EP 포털을 여는 길(``ordinary_logon.js`` 의 ``openOrdinary``) 그대로: 떠 있으면 새 탭, 없으면
-    평소 프로필로 뜬다. 아무것도 누르지 않는다. 못 열면 ``NotOpened``(까닭). 문서 창을 사람에게 띄우는 손(결재)이 부른다."""
+def open_for_person(url: str, *, env: dict | None = None, timeout: float = OPEN_TIMEOUT_SECONDS) -> str:
+    """사람에게 주소 하나를 띄우고 어디에 열었나(``OPENED_IN_SESSION`` · ``OPENED_IN_ORDINARY``)를 낸다 — 사내 세션이 사는 포트 Edge 가 떠
+    있으면 그 Edge 의 새 창, 없으면 평소 Edge(입구가 EP 포털을 여는 길 그대로). 회사 SSO 는 로그인 하나만 살려, 세션 파일로 도는 손의
+    SSO 넘김 주소는 평소 Edge 에서 로그인 화면에 떨어진다. 아무것도 누르지 않는다. 못 열면 ``NotOpened``(까닭). 문서 창을 사람에게
+    띄우는 손(결재)이 부른다."""
     try:
         done = _node(OPENER, (url,), env, timeout)
     except NoNode as exc:
@@ -344,8 +347,11 @@ def open_ordinary(url: str, *, env: dict | None = None, timeout: float = OPEN_TI
         raise NotOpened(f"Edge 를 띄우는 손이 {timeout:.0f} 초 안에 안 끝났다") from exc
     except OSError as exc:
         raise NotOpened(f"Edge 를 띄우는 손을 못 돌렸다: {exc}") from exc
-    if done.returncode != 0 or (done.stdout or "").strip().splitlines()[-1:] != ["opened"]:
+    last = (done.stdout or "").strip().splitlines()[-1:]
+    where = last[0].split()[-1] if last and last[0].startswith("opened ") else ""
+    if done.returncode != 0 or where not in (OPENED_IN_SESSION, OPENED_IN_ORDINARY):
         raise NotOpened((done.stderr or "").strip()[-SAID_TAIL:] or f"Edge 를 띄우는 손이 종료 {done.returncode} 로 졌다")
+    return where
 
 
 def ordinary_login(*, env: dict | None = None, timeout: float = STATUS_TIMEOUT_SECONDS) -> str:

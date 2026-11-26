@@ -1,6 +1,6 @@
 // 평소 Edge 의 로그인을 읽는 바탕 — 이 윈도 로그온의 열쇠와 세 기록(평소 걸음을 해 봤다 · 평소 로그인이 섰다 · SSO 가 안 선다), 평소 Edge 를 보는 눈과 그 가름,
 // 그리고 그것들로 「이 로그온에 평소 EP 로그인이 한 번 섰나」를 아무것도 안 열고 가리는 답(ordinaryLogin), 평소 Edge 에 주소 하나를 여는 손(openOrdinary).
-// 입구(ep_login.js)와 그 답을 빌려 주는 문(ordinary_status.js) · 주소를 여는 문(ordinary_open.js)이 싣는다.
+// 입구(ep_login.js)와 그 답을 빌려 주는 문(ordinary_status.js) · 사람에게 주소를 띄우는 문(person_open.js)이 싣는다.
 //
 // 내는 것
 //   logonKey() · readMark() · writeMark(key) · readStood() · writeStood(key) · readNoSso() · writeNoSso(key) — 로그온 열쇠와 세 기록(평소 걸음을

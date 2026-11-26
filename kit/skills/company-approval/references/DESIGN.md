@@ -11,7 +11,7 @@
 
 - `approval_table.py` — 출발 · 바꿀 것 · 끝 · 읽기 명령 · 결재함 · 보안 · 보존 표. 입구의 도움말과 손이 같은 표를 읽는다
 - `iams.py` — 결재 앱에 닿는 바탕. 거래 · 화면 · 저장 짐 보내기, 문서 열쇠의 꼴 하나(`key_of` · `doc_of`), 앱 안 주소, 결재함의 기간과
-  조회 칸, 부서 나무, 사람의 Edge 에 창을 띄우는 길(`browser` · `launch` — 띄우기는 형제 스킬 ep-login 의 `open_ordinary` 가 한다)
+  조회 칸, 부서 나무, 사람의 Edge 에 창을 띄우는 길(`browser` · `launch` — 띄우기는 형제 스킬 ep-login 의 `open_for_person` 이 한다 · 세션이 사는 포트 Edge 가 먼저다)
 
 ## 지키는 것
 
@@ -28,7 +28,7 @@
 | 조각 | 맡은 일 | 싣는 곁 조각 | 다른 스킬에서 싣는 것 |
 |---|---|---|---|
 | `approval.py` · 입구 | 전자결재 스킬의 얇은 명령 — 곁의 손으로 결재함을 읽고, 결재 문서를 임시저장까지 짓고, 그 문서 창을 사람의 Edge 에 띄운다. | `approval_table` · `iams` | ep-login 의 `ep_command` · `ep_session` |
-| `approval_open.py` | 전자결재 스킬의 창 띄우기 손 — open. 문서 하나의 창 주소를 짓고 사람의 평소 Edge 에 새 탭으로 연다. | `approval_table` · `iams` | ep-login 의 `ep_command` |
+| `approval_open.py` | 전자결재 스킬의 창 띄우기 손 — open. 문서 하나의 창 주소를 짓고 사내 세션이 사는 Edge 에 새 창으로 연다(없으면 평소 Edge). 누르지 않는다 — 결재 · 반려 · 상신 · 접수는 사람이 그 창에서 한다. | `approval_table` · `iams` | ep-login 의 `ep_command` |
 | `approval_read.py` | 전자결재 스킬의 읽기 손 — forms · form · box · read. 결재 앱에 묻기만 하고 아무것도 바꾸지 않는다. | `approval_table` · `iams` | ep-login 의 `ep_command` |
 | `approval_write.py` | 전자결재 스킬의 쓰기 손 — preview · save · discard. 출발 하나(새 문서 · 지난 문서 다시 쓰기 · 임시저장)의 화면 씨앗을 읽고, 바꿀 것을 넣은 판을 지어 보이고(열쇠), 보인 판 그대로일 때만 임시저장한 뒤 임시저장 목록에서 다시 읽어 맺는다. | `approval_table` · `iams` | ep-login 의 `ep_command` |
 | `approval_table.py` | 전자결재 스킬의 표 — 출발 × 바꿀 것 × 끝(``STARTS`` · ``CHANGES`` · ``NOT_YET`` · ``ENDS``) · 읽기(``READS``) · 결재함(``BOXES``) · 화면의 코드 값(``GRADES`` · ``KEEPS``). 입구(approval.py)와 손 셋이 함께 읽는 한 자리라 입구 밑 · 손 밑에 산다 — 아무 손도 입구를 싣지 않는다. | — | ep-login 의 `ep_command` |
@@ -63,7 +63,7 @@
   - ↑ `box_for`
   - ↑ `window`
   - `iams.browser` — 앱 안 경로 → 사람의 브라우저가 여는 주소 — SSO 넘김 화면의 ``redir_url`` 로 싼 앱의 온 주소(이 손이 토큰을 받는 길과 같다).
-  - `iams.launch` — 주소를 사람의 평소 Edge 에 새 탭으로 연다 — ep-login 이 EP 포털을 여는 그 손(``ep_session.open_ordinary``)으로. 어디에 열었나의 말을 낸다.
+  - `iams.launch` — 주소를 사람에게 띄운다 — ep-login 의 손(``ep_session.open_for_person``)이 세션이 사는 Edge 를 먼저, 없으면 평소 Edge 를 고른다.
     - `sunk` — 시험장의 대역 — 띄우지 않고 ``sink`` 파일에 연 주소를 한 줄 적는다.
   - ↑ `iams.key_of`
 - `approval_open.run` — 명령 하나 — open 의 손.

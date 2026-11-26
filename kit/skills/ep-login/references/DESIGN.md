@@ -342,8 +342,8 @@ company-regulation 의 `references/SOURCES.md` 「대화 도구에서 잰 것」
 - `ep_session.run_hand` ← company-board · company-mail — 화면을 다루는 node 손(임시저장 · 보내기 · 창 띄우기) 한 판 — 손은 표준 출력의 끝 줄(빈 줄 아닌)에 답을 JSON 객체 하나로 낸다.
   - ↑ `_node`
   - `Ran` — node 손 한 판의 끝 — ``code`` 손의 종료 값 · ``answer`` 끝 줄의 답 · ``said`` 손이 댄 까닭(없으면 빈 글자).
-- `ep_session.NotOpened` ← company-approval — 평소 Edge 에 주소를 못 열었다 — 메시지가 까닭이다(node 가 없다 · Edge 가 없다 · 띄우기가 졌다).
-- `ep_session.open_ordinary` ← company-approval — 사람의 평소 Edge 에 주소 하나를 연다 — 입구가 EP 포털을 여는 길(``ordinary_logon.js`` 의 ``openOrdinary``) 그대로: 떠 있으면 새 탭, 없으면 평소 프로필로 뜬다.
+- `ep_session.NotOpened` ← company-approval — 주소를 못 띄웠다 — 메시지가 까닭이다(node 가 없다 · Edge 가 없다 · 포트 Edge 가 창을 거절했다 · 띄우기가 졌다).
+- `ep_session.open_for_person` ← company-approval — 사람에게 주소 하나를 띄우고 어디에 열었나(``OPENED_IN_SESSION`` · ``OPENED_IN_ORDINARY``)를 낸다 — 사내 세션이 사는 포트 Edge 가 떠 있으면 그 Edge 의 새 창, 없으면 평소 Edge(입구가 EP 포털을 여는 길 그대로). 회사 SSO 는 로그인 하나만 살려, 세션 파일로 도는 손의 SSO 넘김 주소는 평소 Edge 에서 로그인 화면에 떨어진다.
   - ↑ `_node`
   - ↑ `NoNode`
   - ↑ `NotOpened`

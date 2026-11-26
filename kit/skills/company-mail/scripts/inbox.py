@@ -134,8 +134,9 @@ FOLDER_SEPARATOR = "\\"           # 폴더 제목의 부모 · 자식 가름
 COLUMN_SUBJECT, COLUMN_FROM, COLUMN_DATE, COLUMN_DATE_SORT = "xsubject", "xname", "xdate", "$91"
 COLUMN_SIZE, COLUMN_IMPORTANCE, COLUMN_ROLE = "xsize", "xImportance", "xrtype"
 COLUMN_ATTACHMENTS, COLUMN_READ, COLUMN_RELATED = "attachment", "read", "xrelatedid"
-# 보낸편지함 목록 열 — 이 보기의 xname 은 수신인이다
-SENT_COLUMN_TO = "xname"
+# 보낸편지함 목록 열 — 이 보기의 xname 은 수신인이다. xstatus 는 화면의 「수신상태」 열(「<한국어>-ENG-<영어>」 — 읽음 · 일부안읽음 ·
+# 읽지않음 · 확인불가 · 전체회수완료 · 그룹회수완료 따위)이다
+SENT_COLUMN_TO, SENT_COLUMN_STATUS = "xname", "xstatus"
 # 보낸 메일 한 통의 받는 사람 칸 — 웹메일 편집 화면이 저장할 때 받는 사람 · 참조(한 칸)와 숨은참조를 「열쇠 ITEM JSON」 을 SEP 로 이어 쓴다
 SENT_PEOPLE_FIELDS = ("ToCcUserInfoJson", "BccUserInfoJson")
 PEOPLE_ITEM, PEOPLE_SEP = "-=-ITEM-=-", "-=-SEP-=-"
@@ -200,7 +201,8 @@ ID_FORM = re.compile(r"^\s*([^\s()/@]+)\s*\(([^()]+)\)\s*$")
 MARKS_AS_READ = re.compile(r"[?&](opendocument|editdocument)\b", re.IGNORECASE)
 # 메일함을 바꾸는 주소 전부 — 읽음으로 · 안 읽음으로(되돌리기) · 폴더 만들기 · 지우기 · 메일 옮기기 · 휴지통으로 · 되살리기 · 규칙
 CHANGES_MAILBOX = re.compile(r"[?&](opendocument|editdocument)\b|/ag_read_cancel\b|/agt_mail_folder_save\b|/folder2\b"
-                             r"|/trashdoc\b|/delete_view\b|/mailrule\b|/memo\b|/xam_upload\b", re.IGNORECASE)
+                             r"|/trashdoc\b|/delete_view\b|/mailrule\b|/memo\b|/xam_upload\b"
+                             r"|/mailreturn\b|/fmlistaction\b|/resendform\b", re.IGNORECASE)
 
 # 폴더 나무 — 웹메일 화면이 폴더 고름 상자를 채우는 보기(JSON). 열은 경로 · 폴더 열쇠 · 부모 열쇠
 FOLDER_TREE_VIEW = "fdd_folder_fullpath"
@@ -215,6 +217,17 @@ MOVE_FORM = "folder2"
 TRASH_AGENT = "TrashDoc"
 TRASH_SEND_AGENT = "delete_view"                 # 웹메일 목록의 [삭제] — type 을 비우면 휴지통으로(type=remove 는 영구삭제라 안 짓는다)
 TRASH_VIEW = "XML_Trash"                         # 휴지통 보기 — 보내기 뒤 다시 보는 자리
+
+# 보낸 메일의 수신상태 창 — 받는 사람마다의 줄은 보기(RestrictToCategory=<보낸 메일 unid>)다. 회수 · 재발송은 받는 쪽 메일함에 닿는다 —
+# 웹메일 화면 스크립트 fmmail_new.js 의 doc_sushin_mailReturn · doc_resendForm 과 같은 꼴만 보낸다
+RECEIPT_VIEW = "ReturnCheck_DocID_SC"
+RECEIPT_COLUMNS = ("RECEIVE", "ReceiveDepartment", "$91", "ReceiveStatus", "docid", "$96", "TRECEIVER")
+RECEIPT_UNREAD, RECEIPT_READ = "unread", "read"   # $96 — 기계가 읽는 상태(그 밖에 return · 빈 글자 따위)
+RECEIPT_PAGE = 1000
+RECALL_AGENT = "mailreturn"        # 전체 회수 — GET ?openagent&type=all
+LIST_ACTION_FORM = "fmListAction"  # 선택 회수 — POST Action=mailreturn · UNIDs=<받는 사람 줄 docid;…>
+RESEND_FORM = "resendForm"         # 재발송 — POST action=all|select · sendtolist=<Notes 이름;…>
+READ_RECALL_AGENT = "agGetAddCode_readreturn"   # 읽은 메일도 회수하나(회사 설정 Y · N) — 화면이 회수 칸을 켜는 자
 
 # 메일 규칙(받은 · 보낸 메일을 서버가 스스로 옮기는 기준) — 목록 보기 · 규칙 문서 · 저장 폼(fmmailrule.js)
 RULE_VIEW = "XML_Rule"
@@ -309,6 +322,20 @@ class Recipient:
 
 
 @dataclass(frozen=True)
+class Receipt:
+    """보낸 메일 한 통의 받는 사람 한 줄(수신상태 창). ``key`` 는 받는 쪽 메일의 열쇠(선택 회수가 쓴다), ``notes`` 는 받는 분의 Notes
+    이름(선택 재발송이 쓴다 · 사외 분은 빈다), ``state`` 는 기계가 읽는 상태(``unread`` · ``read`` · ``return`` · 빈 글자 따위), ``status`` 는
+    화면의 한국어 낱말, ``read_at`` 은 읽은 때(안 읽었으면 빈다)다."""
+    key: str
+    name: str
+    dept: str
+    status: str
+    state: str
+    read_at: str
+    notes: str
+
+
+@dataclass(frozen=True)
 class AttachmentName:
     """목록의 첨부 이름 하나. ECM 첨부면 ``ecm`` 이 참이고 원래 이름 · 확장자 · 크기를 이름에서 뽑는다 — 문서는 문서함에 있고
     ``Mailbox.ecm_key`` 가 그 열쇠를 꺼낸다.
@@ -391,11 +418,13 @@ class Marks:
 
 @dataclass(frozen=True)
 class SentEntry:
-    """보낸편지함 목록의 한 줄. 받는 사람은 그 목록의 수신인 열을 푼 것이다."""
+    """보낸편지함 목록의 한 줄. 받는 사람은 그 목록의 수신인 열을 푼 것이다. ``status`` 는 수신상태 열의 한국어 낱말(화면 그대로 ·
+    회수한 메일은 「…회수완료」) — 열이 비면 빈 글자다."""
     unid: str
     subject: str
     recipients: tuple[Recipient, ...]
     date: str
+    status: str = ""
 
 
 @dataclass(frozen=True)
@@ -696,7 +725,8 @@ class Mailbox:
         """보낸편지함을 ``count`` 통. 받는 사람은 그 목록의 수신인 열을 푼다."""
         root = self._view(SENT_VIEW, count, start)
         entries = [SentEntry(unid=e.get("unid", ""), subject=_column(e, COLUMN_SUBJECT),
-                             recipients=parse_people(_column(e, SENT_COLUMN_TO)), date=_column(e, COLUMN_DATE))
+                             recipients=parse_people(_column(e, SENT_COLUMN_TO)), date=_column(e, COLUMN_DATE),
+                             status=sent_status(_column(e, SENT_COLUMN_STATUS)))
                    for e in root.iter("viewentry")]
         log.info("보낸편지함 목록: %d통", len(entries))
         return entries
@@ -721,6 +751,77 @@ class Mailbox:
             out += parse_sent_people(text, default_field="bcc" if name == SENT_PEOPLE_FIELDS[1] else "")
         log.info("보낸 메일의 받는 사람: %d", len(out))
         return tuple(out)
+
+    def receipts(self, unid: str) -> list[Receipt]:
+        """보낸 메일 한 통의 받는 사람마다 수신상태 — 웹메일 「수신상태」 창의 목록(``RECEIPT_VIEW`` 를 그 메일로 거른 보기)이다.
+        읽음 표시 · 메일함을 안 바꾼다. 받는 사람이 ``RECEIPT_PAGE`` 를 넘으면 그만큼씩 이어 받는다."""
+        key = urllib.parse.quote(_unid(unid))
+        out: list[Receipt] = []
+        start = 1
+        while True:
+            body, kind = self._get(f"/{RECEIPT_VIEW}?ReadViewEntries&RestrictToCategory={key}&start={start}&count={RECEIPT_PAGE}")
+            if "xml" not in kind.lower():
+                raise SessionExpired(f"수신상태 목록 대신 {kind or '알 수 없는 꼴'} 가 왔다 — 세션이 끊긴 것이다")
+            rows = list(ET.fromstring(body).iter("viewentry"))
+            for e in rows:
+                when = _column(e, "$91")
+                out.append(Receipt(key=_column(e, "docid").upper(), name=_column(e, "RECEIVE").partition(ENG_MARK)[0].strip(),
+                                   dept=_column(e, "ReceiveDepartment").partition(ENG_MARK)[0].strip(),
+                                   status=sent_status(_column(e, "ReceiveStatus")), state=_column(e, "$96"),
+                                   read_at=when if re.match(r"^\d{4}-\d\d-\d\d", when) else "", notes=_column(e, "TRECEIVER")))
+            if len(rows) < RECEIPT_PAGE:
+                return out
+            start += len(rows)
+
+    def reads_recallable(self) -> bool:
+        """이 회사 설정이 읽은 메일도 회수하나 — 화면이 회수 칸을 켜는 자(``READ_RECALL_AGENT``)다. 읽기만 한다."""
+        code = self.db_path.strip("/").split("/")[0]
+        body, kind = self._get_server(f"/common/lib_f.nsf/{READ_RECALL_AGENT}?OpenAgent&addCode={urllib.parse.quote(code)}")
+        return body.decode(_charset(kind), errors="replace").strip().upper() == "Y"
+
+    def recall(self, unid: str, keys: list[str] | None, read_too: bool) -> str:
+        """⚠ 받는 분의 메일함에 닿는다 — 보낸 메일을 회수한다. ``keys`` 가 None 이면 전체 회수(그 메일의 받는 분 모두), 아니면 그
+        받는 사람 줄(``Receipt.key``)만이다. ``read_too`` 는 회사 설정(``reads_recallable``)이다. 답의 낱말(전체 회수만 · 빈 글자는 됐다
+        · ``ExMail`` · ``ExMail-2`` · ``noReturn`` 은 못 했다)을 낸다 — 됐나는 부르는 쪽이 수신상태로 다시 본다."""
+        opt = "Y" if read_too else "N"
+        if keys is None:
+            path = (f"{self.db_path}/{RECALL_AGENT}?openagent&type=all&ReturnOpt={opt}&imapuser=&owner=&docid={_unid(unid)}")
+            text = self._send_receipt(path, None)
+            try:
+                return str((json.loads(text) or {}).get("result") or "")
+            except (ValueError, AttributeError):
+                return ""
+        form = {"__Click": "0", "%%PostCharset": "UTF-8", "Action": "mailreturn", "UNIDs": ";".join(_unid(k) for k in keys),
+                "Options": "", "imapuser": "", "owner": "", "ReturnOpt": opt, "UseLang": "kor"}
+        self._send_receipt(f"{self.db_path}/{LIST_ACTION_FORM}?Openform", form)
+        return ""
+
+    def resend(self, unid: str, notes: list[str], *, every: bool, prefix: str = "", urgent: bool = False) -> str:
+        """⚠ 받는 분께 메일이 나간다 — 보낸 메일을 안 읽은 사내 받는 분(``notes`` · Notes 이름)께 다시 보낸다. ``every`` 는 화면의 [전체
+        재발송](안 읽은 분 모두) · 아니면 [선택 재발송]이다. ``prefix`` 는 제목 앞 말머리, ``urgent`` 는 긴급메일이다. 답의 낱말을 낸다."""
+        form = {"__Click": "0", "%%PostCharset": "UTF-8", "action": "all" if every else "select", "docid": _unid(unid),
+                "imapuser": "", "sendtolist": ";".join(notes), "importance": "1" if urgent else "2", "nsubject": prefix, "owner": ""}
+        text = self._send_receipt(f"{self.db_path}/{RESEND_FORM}?openform", form)
+        try:
+            return str((json.loads(text) or {}).get("responseString") or "")
+        except (ValueError, AttributeError):
+            return ""
+
+    def _send_receipt(self, path: str, form: dict | None) -> str:
+        """회수 · 재발송 주소를 부른다 — 위 세 손의 꼴만 받는다. 답 글자를 낸다. 끊긴 세션의 로그인 페이지는 ``SessionExpired``."""
+        db = re.escape(self.db_path)
+        if not ((form is None and re.fullmatch(rf"{db}/{RECALL_AGENT}\?openagent&type=all&ReturnOpt=[YN]&imapuser=&owner=&docid={_HEX32}", path))
+                or (form is not None and path in (f"{self.db_path}/{LIST_ACTION_FORM}?Openform", f"{self.db_path}/{RESEND_FORM}?openform"))):
+            raise ChangeRefused(f"회수 · 재발송 손의 꼴이 아니다: {path}")
+        body = urllib.parse.urlencode(form).encode() if form is not None else None
+        request = urllib.request.Request(self.server + path, data=body, method="POST" if form is not None else "GET")
+        if body is not None:
+            request.add_header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+        data, kind = self._open(request)
+        text = data.decode(_charset(kind), errors="replace")
+        refuse_login(text, LOGIN_ON_CHANGE.format(what="회수 · 재발송 요청", undone=CHANGE_UNDONE))
+        log.info("회수 · 재발송을 보냈다: %s", path.rsplit("/", 1)[-1].split("?")[0])
+        return text.strip()
 
     def _view_list(self) -> list[dict]:
         """보기 목록(``/api/data/collections``) — 이 메일함 손이 사는 동안 한 번만 받는다."""
@@ -1538,6 +1639,7 @@ def read_only_patterns(db_path: str) -> tuple[re.Pattern, ...]:
         r"^/common/profile\.nsf/ag_org_search_json\?OpenAgent(&[\w$%.()+=-]*)*$",
         r"^/common/profile\.nsf/ag_tree_(dept|user)_json\?OpenAgent(&[\w$%.()+=-]*)*$",
         r"^/common/lib_f\.nsf/agGetDistribute\?openagent(&[\w$%.()+=-]*)*$",
+        rf"^/common/lib_f\.nsf/{READ_RECALL_AGENT}\?OpenAgent&addCode=[\w%-]+$",
     ))
 
 
@@ -1828,6 +1930,11 @@ def _spl_part(part: str) -> tuple[str, str]:
     found = _ANGLE.search(rest or display)
     name = display.strip() if rest else (display[:found.start()] if found else display).strip()
     return name.strip('"').strip(), found.group(1) if found else ""
+
+
+def sent_status(raw: str) -> str:
+    """수신상태 열의 글 → 화면의 한국어 낱말(「-ENG-」 앞)."""
+    return raw.partition(ENG_MARK)[0].strip()
 
 
 def parse_people(raw: str) -> tuple[Recipient, ...]:

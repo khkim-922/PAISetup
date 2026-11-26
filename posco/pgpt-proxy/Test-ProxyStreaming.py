@@ -44,9 +44,11 @@ class Gateway(BaseHTTPRequestHandler):
         request_body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         case = CASES[urlsplit(self.path).query]
         case["received"] = json.loads(request_body)
+        case["calls"] = case.get("calls", 0) + 1
         body = b"".join(case["chunks"])
         try:
-            time.sleep(case.get("header_delay", 0))
+            delays = case.get("header_delays")
+            time.sleep(delays[min(case["calls"], len(delays)) - 1] if delays else case.get("header_delay", 0))
             self.send_response(case.get("status", 200))
             self.send_header("Content-Type", case.get("content_type", "text/event-stream"))
             if case.get("fixed"):
@@ -325,6 +327,49 @@ class StreamingTests(unittest.TestCase):
         self.assertEqual(headers["Content-Length"], str(len(body)))
         self.assertEqual(data, body)
         self.assertIsNone(error)
+
+    def test_classifier_without_header_is_sent_again_once_and_others_are_not(self):
+        """층: 쓰는 사람의 계약 — 회사 자동 모드에서 게이트웨이가 분류기 요청 하나에 머리를 안 내면 Claude Code 가 70 ~ 120 초 뒤 명령을
+        거절했다(2026-11-26 · 오늘 셋). 걷는 조건: 게이트웨이가 머리 없이 서는 일이 사라지거나, 분류기가 판 없는 claude-sonnet-5 로 안 부를 때."""
+        answer = json.dumps({"type": "message", "role": "assistant", "stop_reason": "end_turn",
+                             "content": [{"type": "text", "text": "<severity>3</severity>"}],
+                             "usage": {"input_tokens": 3, "output_tokens": 5}}).encode()
+        old = proxy.CLASSIFIER_HEAD_WAIT_SEC
+        proxy.CLASSIFIER_HEAD_WAIT_SEC = 0.3
+        try:
+            payload = {"model": "claude-sonnet-5", "max_tokens": 64, "stream": False, "messages": [{"role": "user", "content": "판정"}]}
+            status, _, data, _ = self.run_case("cls-retry", [answer], fixed=True, content_type="application/json",
+                                               header_delays=[1.0, 0.0], payload=payload)
+            self.assertEqual((status, CASES["cls-retry"]["calls"]), (200, 2))
+            self.assertEqual(json.loads(data)["content"][0]["text"], "<severity>3</severity>")
+            status, _, data, _ = self.run_case("cls-dead", [answer], fixed=True, content_type="application/json",
+                                               header_delays=[1.0, 1.0, 1.0], payload=payload)
+            self.assertEqual((status, CASES["cls-dead"]["calls"]), (500, 2))
+            self.assertIn("auto mode classifier", json.loads(data)["error"]["message"])
+            other = {**payload, "model": "claude-sonnet-5-5"}
+            status, _, _, _ = self.run_case("main-slow", [answer], fixed=True, content_type="application/json",
+                                            header_delays=[1.0], payload=other)
+            self.assertEqual((status, CASES["main-slow"]["calls"]), (200, 1))
+        finally:
+            proxy.CLASSIFIER_HEAD_WAIT_SEC = old
+
+    def test_classifier_answer_tail_is_logged_only_for_the_classifier(self):
+        """층: 회사 자동 모드의 「could not evaluate」 원인을 가르는 기록 — Claude Code 는 분류기 답 글을 어디에도 안 남긴다.
+        걷는 조건: Claude Code 가 판정 꼴을 못 읽은 답을 제 기록에 남기게 되거나, 분류기가 판 없는 claude-sonnet-5 로 안 부를 때."""
+        answer = {"type": "message", "role": "assistant", "model": "claude-sonnet-4.6", "stop_reason": "end_turn",
+                  "content": [{"type": "text", "text": "<thinking>살핀다</thinking> <severity>2</severity>"}],
+                  "usage": {"input_tokens": 3, "output_tokens": 9}}
+        for name, model in (("cls", "claude-sonnet-5"), ("main", "claude-sonnet-4.6")):
+            status, _, data, _ = self.run_case(name, [json.dumps(answer, ensure_ascii=False).encode()], fixed=True,
+                                               content_type="application/json",
+                                               payload={"model": model, "max_tokens": 64, "stream": False,
+                                                        "messages": [{"role": "user", "content": "판정"}]})
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(data)["content"], answer["content"])
+        lines = [line for line in proxy.LOG_PATH.read_text(encoding="utf-8").splitlines() if "classifier answer" in line]
+        self.assertEqual([("gw=test-cls" in line) for line in lines], [True], lines)
+        self.assertIn('severity_tags=1 ', lines[0])
+        self.assertIn('tail="<thinking>살핀다</thinking> <severity>2</severity>"', lines[0])
 
     def test_upstream_5xx_is_logged_as_failure_with_gateway_code(self):
         """층: 쓰는 사람의 계약 — 회사에서 모델 요청이 진 층을 가르는 기록. 걷는 조건: Codex 가 500 본문을 사용자에게 보이게 되거나
