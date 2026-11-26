@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 37
+VERSION_OURS = 39
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -185,6 +185,11 @@ CLASSIFIER_S1_MIN_TOKENS = int(_env_float("PGPT_PROXY_CLASSIFIER_MIN_TOKENS", 10
 #   의 밖이다. 한도 0 이면 끈다
 CLASSIFIER_HEAD_WAIT_SEC = _env_float("PGPT_PROXY_CLASSIFIER_HEAD_WAIT_SEC", 20.0)
 CLASSIFIER_HEAD_RETRIES = int(_env_float("PGPT_PROXY_CLASSIFIER_HEAD_RETRIES", 1))
+# 분류기 답이 200 인데 판정 꼴(<severity>)이 하나도 없이 end_turn 으로 끝나면(빈 답 · 열다 만 태그) Claude Code 는 어차피 「판정 못 함」으로
+#   거절한다. 같은 요청을 이 횟수까지 다시 보낸다 — 판정만 하는 글이라 두 번 가도 바뀌는 것이 없다. 0 이면 끈다
+CLASSIFIER_EMPTY_RETRIES = int(_env_float("PGPT_PROXY_CLASSIFIER_EMPTY_RETRIES", 1))
+# 판정 꼴 없이 끝난 분류기 답의 요청 · 답 본문을 보관하는 건수(``classifier-miss/``). 0 이면 안 남긴다
+CLASSIFIER_MISS_KEEP = int(_env_float("PGPT_PROXY_CLASSIFIER_MISS_KEEP", 5))
 CLIENT_POLL_SEC = 0.25
 HOP_BY_HOP = {
     "connection",
@@ -270,6 +275,7 @@ _MAX_TOKENS_HIT_TOTAL = 0
 _EXECUTION_CUT_TOTAL = 0
 _EXECUTION_CUT_300_TOTAL = 0
 _CLASSIFIER_HEAD_RETRY_TOTAL = 0
+_CLASSIFIER_EMPTY_RETRY_TOTAL = 0
 _MAX_REQUEST_BYTES = 0
 _MODEL_SUBSTITUTION_TOTAL = 0
 _CLIENT_CANCELLED_TOTAL = 0
@@ -668,6 +674,76 @@ def classifier_answer_tail(body: bytes | bytearray | None) -> str:
             f"tail={json.dumps(' '.join(text.split())[-CLASSIFIER_TAIL_CHARS:], ensure_ascii=False)}")
 
 
+def classifier_verdictless(body: bytes | bytearray | None) -> bool:
+    """분류기 답이 판정 꼴 없이 정상 종료했나 — 글에 ``<severity>`` 가 없고 ``stop_reason`` 이 ``end_turn`` 이다.
+
+    잘림(``max_tokens``) · 오류 본문 · JSON 이 아닌 답은 아니다 — 그것들은 다시 보내도 같은 까닭이라 부르는 쪽이 그대로 중계한다.
+    """
+    try:
+        message = json.loads(body) if body else None
+    except (ValueError, UnicodeDecodeError):
+        return False
+    if not isinstance(message, dict) or message.get("type") == "error" or message.get("stop_reason") != "end_turn":
+        return False
+    text = "".join(b.get("text") or "" for b in message.get("content") or []
+                   if isinstance(b, dict) and b.get("type") == "text")
+    return "<severity>" not in text
+
+
+def _json_output_tokens(body: bytes | bytearray | None) -> object:
+    """답 본문의 ``usage.output_tokens`` — 못 읽으면 ``unknown``. 짧은 답이 모델이 거기서 끝낸 것인지 중간에 잘린 것인지를 가른다."""
+    try:
+        message = json.loads(body) if body else None
+    except (ValueError, UnicodeDecodeError):
+        return "unknown"
+    usage = message.get("usage") if isinstance(message, dict) else None
+    value = usage.get("output_tokens") if isinstance(usage, dict) else None
+    return value if type(value) is int else "unknown"
+
+
+def keep_classifier_miss(request_body: bytes | None, answer: bytes, label: str) -> str:
+    """판정 꼴 없이 끝난 분류기 답의 요청 · 답 본문을 ``classifier-miss/`` 에 남기고 파일 이름을 낸다 — 최근 ``CLASSIFIER_MISS_KEEP`` 건만.
+
+    요청 본문에는 대화가 들어 있다 — 이 PC 의 실행 폴더 밖으로 나가지 않고, 오래된 것부터 지운다. 쓰기가 실패해도 중계는 막지 않는다.
+    """
+    try:
+        folder = LOG_PATH.with_name("classifier-miss")
+        folder.mkdir(exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        name = f"{stamp}-{re.sub(r'[^0-9A-Za-z]', '', label)[:12]}.json"
+        def parsed(raw: bytes | None) -> object:
+            try:
+                return json.loads(raw) if raw else None
+            except (ValueError, UnicodeDecodeError):
+                return (raw or b"").decode("utf-8", "replace")
+        (folder / name).write_text(json.dumps({"request": parsed(request_body), "answer": parsed(answer)},
+                                              ensure_ascii=False), encoding="utf-8")
+        for old in sorted(folder.glob("*.json"))[:-CLASSIFIER_MISS_KEEP]:
+            old.unlink()
+        return name
+    except OSError:
+        return "unsaved"
+
+
+class _BufferedResponse:
+    """끝까지 읽어 둔 상류 응답에 본문을 되돌려 준다 — 상태 · 머리는 원래 응답의 것이고, 본문은 한 번에 내놓는다."""
+
+    def __init__(self, response: http.client.HTTPResponse, raw: bytes) -> None:
+        self._response = response
+        self._raw = raw
+        self.length = 0
+
+    def __getattr__(self, name: str):
+        return getattr(self._response, name)
+
+    def read1(self, size: int = -1) -> bytes:
+        raw, self._raw = self._raw, b""
+        return raw
+
+    def read(self, size: int = -1) -> bytes:
+        return self.read1(size)
+
+
 def _json_stop_reason(body: bytes | bytearray | None) -> str:
     try:
         message = json.loads(body) if body else None
@@ -694,6 +770,12 @@ def _count_stream_unverified() -> None:
     global _STREAM_UNVERIFIED_TOTAL
     with _STATS_LOCK:
         _STREAM_UNVERIFIED_TOTAL += 1
+
+
+def _count_classifier_empty_retry() -> None:
+    global _CLASSIFIER_EMPTY_RETRY_TOTAL
+    with _STATS_LOCK:
+        _CLASSIFIER_EMPTY_RETRY_TOTAL += 1
 
 
 def _count_classifier_head_retry() -> None:
@@ -766,6 +848,8 @@ def stats() -> dict[str, object]:
             # 분류기 요청이 머리 한도 안에 머리를 못 받아 다시 보낸 횟수 — 다시 보낸 판도 머리가 없으면 execution_cuts 에 든다
             "classifier_head_retries": _CLASSIFIER_HEAD_RETRY_TOTAL,
             "classifier_head_wait_sec": CLASSIFIER_HEAD_WAIT_SEC,
+            # 분류기가 200 으로 판정 꼴 없이 끝나 다시 보낸 횟수 — 다시 보낸 판도 비면 그 답이 그대로 클라이언트에 간다
+            "classifier_empty_retries": _CLASSIFIER_EMPTY_RETRY_TOTAL,
             "max_request_bytes": _MAX_REQUEST_BYTES,
             "model_substitutions": _MODEL_SUBSTITUTION_TOTAL,
         }
@@ -2723,6 +2807,35 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 _count_classifier_head_retry()
         raise _HeadTimeout()  # 닿지 않는다 — 횟수가 음수일 때만
 
+    def _write_classifier_checked(self, path: str, body: bytes | None,
+                                  headers: dict[str, str]) -> tuple[http.client.HTTPResponse | _BufferedResponse, http.client.HTTPConnection]:
+        """분류기 요청을 보내고, 200 답에 판정 꼴이 없으면 ``CLASSIFIER_EMPTY_RETRIES`` 번까지 새 연결로 다시 보낸다.
+
+        200 이 아니거나 판정 꼴이 있거나 다시 보낼 몫이 없으면 읽어 둔 본문을 그대로 돌려 준다 — 판정 못 한 답도 고쳐 쓰지 않는다.
+        머리 무응답은 ``_write_classifier_upstream`` 이 맡고 이 걸음은 그 위에서 돈다.
+        """
+        for attempt in range(CLASSIFIER_EMPTY_RETRIES + 1):
+            response, conn = self._write_classifier_upstream(path, body, headers)
+            if response.status != 200 or CLASSIFIER_EMPTY_RETRIES <= 0:
+                return response, conn
+            try:
+                raw = response.read(MAX_UNSTREAM_BYTES + 1)
+            except (OSError, http.client.HTTPException):
+                _UPSTREAM.close(conn)
+                if attempt == CLASSIFIER_EMPTY_RETRIES:
+                    raise
+                continue
+            if len(raw) > MAX_UNSTREAM_BYTES or not classifier_verdictless(raw) or attempt == CLASSIFIER_EMPTY_RETRIES:
+                return _BufferedResponse(response, raw), conn
+            kept = (keep_classifier_miss(body, raw, response.getheader(GATEWAY_REQUEST_ID_HEADER) or "x")
+                    if CLASSIFIER_MISS_KEEP > 0 else "off")
+            log(f"classifier answer without verdict {self._request_context} {classifier_answer_tail(raw)} "
+                f"output_tokens={_json_output_tokens(raw)} kept={kept} "
+                f"attempt={attempt + 1}/{CLASSIFIER_EMPTY_RETRIES + 1} gw={response.getheader(GATEWAY_REQUEST_ID_HEADER) or '-'}")
+            _count_classifier_empty_retry()
+            _UPSTREAM.close(conn)
+        raise _HeadTimeout()  # 닿지 않는다 — 횟수가 음수일 때만
+
     def _emit(self, data: bytes) -> None:
         if not data:
             return
@@ -2883,7 +2996,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     # 그대로 중계한 비스트리밍 응답(자동 모드 분류기 등)은 stream 줄이 없다 — 사용량은 그 요청의 complete 줄에 실린다
                     self._request_context += f" stop_reason={stop_reason or 'unknown'} {usage_text(_json_usage(compact_copy))}"
                     if getattr(self, "_classifier", False):
-                        log(f"classifier answer {self._request_context} {classifier_answer_tail(compact_copy)}{self._gw()}")
+                        log(f"classifier answer {self._request_context} {classifier_answer_tail(compact_copy)} "
+                            f"output_tokens={_json_output_tokens(compact_copy)}{self._gw()}")
             sent = self._keepalives_sent - keepalives_before
             if sent:
                 log(f"keepalive x{sent} (upstream silent > {keepalive_interval:g}s){self._gw()}")
@@ -3138,7 +3252,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         try:
             self._upstream_started = time.monotonic()
             try:
-                response, conn = self._write_classifier_upstream(upstream_path, body, headers) if (
+                response, conn = self._write_classifier_checked(upstream_path, body, headers) if (
                     self._classifier and not upstream_stream and CLASSIFIER_HEAD_WAIT_SEC > 0) else self._write_upstream(
                     self.command, upstream_path, body, headers,
                     timeout=WEB_SEARCH_TIMEOUT if web_search else None,

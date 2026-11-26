@@ -6443,16 +6443,16 @@ function Install-FreeSkills([string]$Tool) {
 
 #endregion 칸 없이 까는 스킬
 
-#region 메일 비서 작업 다시 겨누기 — 걸린 메일함 스캔 · 일일 보고 작업이 업데이트 뒤에도 지금 판 스킬을 부르게 한다
+#region 메일 비서 작업 다시 겨누기 — 옛 메일함 스캔 예약을 거두고, 걸린 일일 보고 시계가 업데이트 뒤에도 지금 판 스킬을 부르게 한다
 
-# 메일 비서의 작업 둘(`\mail-secretary\mailbox-scan` · `\mail-secretary\daily-brief`)은 걸 때 한 홈의 입구와 회사 메일 손의 절대 경로를
-#   명령줄에 굳힌다. 그 홈이 이번 판을 못 받았거나 걷혔으면 작업은 옛 코드를 부르거나 아무것도 못 부른 채 조용히 돈다 — 업데이트 순간
-#   그 PC 에서 도는 것은 설치뿐이라 설치가 다시 겨눈다. 이번 판이 깐 홈 하나를 골라 그 홈에서만 스킬 mailbox-scan 의 `scan.py adopt` 를,
-#   그 뒤 daily-brief 의 `unattended/clock.py adopt` 를 부른다. 무엇을 다시 걸지(걸렸나 · 이 홈을 부르나 · 주기 · 시각 · 켜고 끈 상태)는 두
-#   `adopt` 가 혼자 정한다 — 이 설치기는 부르고 끝 줄을 옮길 뿐이다. 두 `adopt` 는 여러 번 불러도 같고 건너뛴 갈래는 다 0 이다. 계약(인자 ·
-#   끝 줄 · 종료 값)은 두 스킬의 `references/DESIGN.md`(스캔 「다시 겨누기 — adopt」 · 일일 보고 「사람 없는 실행의 문」)가 든다.
-# ⚠ **한 홈에서만 부른다** — 홈마다 부르면 홈끼리 서로 제 쪽으로 다시 겨눈다.
-# ⚠ **스캔이 먼저다** — 시계의 `adopt` 는 걸린 스캔 작업이 제 홈의 스캔을 부를 때만 건다. 스캔이 먼저 이 홈으로 옮겨 앉아야 시계가 선다.
+# 메일 비서는 몇 분마다 메일함을 읽는 예약을 걸지 않는다 — 메일함은 보고 시각과 대화에서만 읽는다. 옛 판이 건 스캔 예약
+#   (`\mail-secretary\mailbox-scan`)은 업데이트 순간 그 PC 에서 도는 것이 설치뿐이라 설치가 거둔다. 일일 보고 시계(`\mail-secretary\daily-brief`)는
+#   걸 때 한 홈의 입구와 회사 메일 손의 절대 경로를 명령줄에 굳혀, 그 홈이 이번 판을 못 받았거나 걷혔으면 옛 코드를 부르거나 아무것도 못 부른
+#   채 조용히 돈다 — 그래서 설치가 다시 겨눈다. 이번 판이 깐 홈 하나를 골라 그 홈에서만 스킬 mailbox-scan 의 `scan.py adopt`(옛 예약 거두기)를,
+#   그 뒤 daily-brief 의 `unattended/clock.py adopt`(시계 다시 겨누기)를 부른다. 무엇을 거두고 다시 걸지는 두 `adopt` 가 혼자 정한다 — 이
+#   설치기는 부르고 끝 줄을 옮길 뿐이다. 두 `adopt` 는 여러 번 불러도 같고 건너뛴 갈래는 다 0 이며 서로의 차례에 안 기댄다. 계약(인자 · 끝 줄 ·
+#   종료 값)은 두 스킬의 `references/DESIGN.md`(스캔 「옛 예약 거두기 — adopt」 · 일일 보고 「사람 없는 실행의 문」)가 든다.
+# ⚠ **한 홈에서만 부른다** — 홈마다 부르면 홈끼리 서로 제 쪽으로 시계를 다시 겨눈다.
 # ⚠ **홈에 깔린 사본을 부른다 — 짐의 사본이 아니다.** `adopt` 는 제 곁의 입구 · 손을 「이 홈」으로 본다 — 짐의 사본을 부르면 작업을 짐
 #   자리로 겨눈다. 부르는 자리는 「설정 저장소」 걸음 끝이다 — 개인 층이 홈에 마지막으로 놓은 뒤라야 이번 판의 사본이다.
 
@@ -6477,15 +6477,15 @@ function Get-SecretaryHome {
 # 문 하나(`<입구> adopt`)를 부르고 끝 줄을 설치 줄로 옮긴다 — 끝 줄의 머리 `[<머리> — …]` 는 줄의 이름(`$Name`)이 대신 든다. 0 아닌 종료
 #   값(작업 스케줄러가 거절했다 · 이 홈의 회사 메일 손이 없다 · 사용자 폴더를 못 정했다)은 빨간 줄 · 마지막 출력 · `$Fails` 다. 입구가 그
 #   홈에 없으면 안 부른다.
-function Invoke-SecretaryDoor([string]$Name, [string]$Entry, [string]$Head, [string]$Who) {
+function Invoke-SecretaryDoor([string]$Name, [string]$Entry, [string]$Head, [string]$Who, [string]$Failed) {
   if (-not (Test-Path -LiteralPath $Entry -PathType Leaf)) { return }
   $log = [IO.Path]::GetTempFileName()
   try {
     $rc = Invoke-Logged 'python' @('-X', 'utf8', '-I', $Entry, 'adopt') $log
     if ($rc -ne 0) {
-      Write-Host "  ! $Name ($Who) — 이번 판 스킬로 다시 겨누지 못함 (종료 코드 $rc). 마지막 출력:" -ForegroundColor Red
+      Write-Host "  ! $Name ($Who) — $Failed (종료 코드 $rc). 마지막 출력:" -ForegroundColor Red
       Show-Log $log
-      $Fails.Add("$Name $Who (다시 겨누기 실패)")
+      $Fails.Add("$Name $Who ($Failed)")
       return
     }
     $last = @(Get-Content -LiteralPath $log -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object { "$_".Trim() } | Where-Object { $_ }) |
@@ -6504,17 +6504,17 @@ function Invoke-SecretaryAdopt {
   if (-not $home_) { return }
   $py = Measure-Runs 'python' '--version'
   if ($py -eq 'unmeasured') {
-    Add-UnmeasuredStep '메일 비서 작업' 'python --version' '걸린 메일함 스캔 · 일일 보고 작업을 이번 판으로 다시 겨누지도 건너뛰지도 않음'
+    Add-UnmeasuredStep '메일 비서 작업' 'python --version' '옛 메일함 스캔 예약을 거두지도, 걸린 일일 보고 시계를 이번 판으로 다시 겨누지도 않음'
     return
   }
   if ($py -ne 'yes') {
-    Write-Host '  ! 메일 비서 작업 — python 이 실행되지 않아 걸린 작업을 이번 판으로 다시 겨누는지 확인하지 못함' -ForegroundColor Red
+    Write-Host '  ! 메일 비서 작업 — python 이 실행되지 않아 옛 스캔 예약을 거두고 시계를 이번 판으로 다시 겨누는지 확인하지 못함' -ForegroundColor Red
     $Fails.Add('메일 비서 작업 (python 없음)')
     return
   }
   $who = $home_.Who -join ' · '
-  Invoke-SecretaryDoor '메일함 스캔 예약' (Join-Path $home_.Skills 'mailbox-scan\scripts\scan.py') '예약' $who
-  Invoke-SecretaryDoor '일일 보고 시계' (Join-Path $home_.Skills 'daily-brief\unattended\clock.py') '시계' $who
+  Invoke-SecretaryDoor '옛 메일함 스캔 예약' (Join-Path $home_.Skills 'mailbox-scan\scripts\scan.py') '예약' $who '옛 예약을 거두지 못함'
+  Invoke-SecretaryDoor '일일 보고 시계' (Join-Path $home_.Skills 'daily-brief\unattended\clock.py') '시계' $who '이번 판 스킬로 다시 겨누지 못함'
 }
 
 #endregion 메일 비서 작업 다시 겨누기
@@ -12044,7 +12044,7 @@ Set-WorkDirVar $script:WorkDir
 $plant = Invoke-Plant $bash $configRepoRoot
 if (-not $plant.Ran) { Write-Host "  ! 설정 적용 — $($plant.Why) · 홈 훅 · 신뢰 · 데스크탑 상태를 설정하지 못함" -ForegroundColor Yellow }
 elseif (-not $plant.Ok) { $Fails.Add("설정 적용 --plant ($($plant.Why))") }
-# ── 메일 비서 작업 다시 겨누기 — 걸린 메일함 스캔 · 일일 보고 작업을 이번 판이 깐 한 홈으로 다시 겨눈다(`Invoke-SecretaryAdopt`) ──────────
+# ── 메일 비서 작업 다시 겨누기 — 옛 메일함 스캔 예약을 거두고 걸린 일일 보고 시계를 이번 판이 깐 한 홈으로 다시 겨눈다(`Invoke-SecretaryAdopt`) ──────────
 # ⚠ **스킬이 마지막으로 놓인 뒤에 돈다** — 설정 저장소가 있는 PC 는 위 `--install` 의 배포가 개인 층을 이번 판으로 채우고 홈에 다시
 #   놓는다. 「도구별 홈」 걸음 안에서 부르면 아직 지난 판인 개인 층 사본을 불러, 그 판에 없는 문은 실패하고 있는 문은 옛 코드로 돈다.
 #   「도구별 홈」이 이번 실행에 안 들면(바꾸기 묶음) 홈에 놓인 것이 없어 안 부른다.

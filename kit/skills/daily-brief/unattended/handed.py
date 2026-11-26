@@ -6,8 +6,9 @@
     python -X utf8 -I handed.py list [--dir <사용자 폴더>]
     python -X utf8 -I handed.py watch --id <맡긴 판> [--dir <사용자 폴더>]          지킴이 — start 가 떼어 띄운다
 
-start — 맡긴 일을 받아 기록을 곧 쓰고 지킴이를 떼어 띄운 뒤 기다리지 않고 기록 하나(JSON)를 낸다. 지킴이가 사내 세션을 한 번 보고(없으면
-    claude 를 안 띄우고 로그인으로 맺는다), claude 를 작업 폴더에서 세션을 남긴 채 띄워 그 출력을 때와 함께 받아 적고, 끝나면 까닭을 적는다.
+start — 맡긴 일을 받아 기록을 곧 쓰고 지킴이를 떼어 띄운 뒤 기다리지 않고 기록 하나(JSON)를 낸다. 지킴이가 사내 세션을 한 번 보고(없으면 — 오늘
+    이 PC 가 로그인을 돌려준 뒤면 잠깐 다시 로그인하고(`loan.lend`), 아니면 claude 를 안 띄우고 로그인으로 맺는다), claude 를 작업 폴더에서 세션을 남긴 채 띄워 그 출력을 때와 함께 받아 적고, 끝나면 까닭을 적고 세션을 놓는다(`loan.release` —
+    빌린 로그인은 쓰는 일이 더 없으면 곧 돌려준다).
     실행이 결과 글만 쓰고 맺어 손대지 않은 일이 남으면 같은 세션을 한 번 이어 남은 일을 하게 한다(`untouched` · `RESUME_MOST`).
 show — 그 판의 지금 기록(JSON 하나). list — 아직 도는 판의 기록(줄마다 JSON 하나). 판의 폴더는 사용자 폴더의 `daily-brief-handed/` 에
     서고, 옛 자리 `mailbox-scan/handed/` 의 판도 읽는다. `--dir` 이 없으면 사용자 폴더를 곁의 스캔(`scan.py status --json`)에 묻는다.
@@ -39,6 +40,7 @@ sys.path[:0] = [str(HERE.parent / "scripts"), str(HERE)]   # 같은 스킬의 �
 import brief_schedule as S  # noqa: E402
 import clock as tm  # noqa: E402
 import launch_base as LB  # noqa: E402
+import loan as LN  # noqa: E402
 from detach import detached_tries  # noqa: E402
 import proc_base as P  # noqa: E402
 import scan_door as D  # noqa: E402
@@ -384,11 +386,14 @@ def watch(home: pathlib.Path, run_id: str) -> int:
     job = Job()
     rec = update_run(home, run_id, {"pid": os.getpid(), "job": job.armed})
     proc: subprocess.Popen | None = None
+    borrowed = False
     try:
         hand = pathlib.Path(rec["hand"])
-        if SL.look(hand) == SL.LOST:
+        lost = SL.look(hand) == SL.LOST
+        if not LN.lend(home, hand, tm.utc_now(), LN.RUN, CEILING_S + C.LEND_TIMEOUT_S, lost) and lost:   # 오늘 돌려준 로그인이면 잠깐 빌린다
             update_run(home, run_id, {"end": LOGIN, "ended": stamp(), "said": "띄우기 전에 보니 사내 세션이 없어 claude 를 띄우지 않았다"})
             return EXIT_OK
+        borrowed = True
         here = run_dir(home, run_id)
         files = pathlib.Path(rec["files"])
         files.mkdir(parents=True, exist_ok=True)
@@ -424,6 +429,8 @@ def watch(home: pathlib.Path, run_id: str) -> int:
         update_run(home, run_id, {"end": DIED, "ended": stamp(), "said": f"지킴이가 멈췄다 — {type(exc).__name__}: {exc}"[:TAIL_CHARS]})
         return EXIT_OK
     finally:
+        if borrowed:
+            LN.release(home, pathlib.Path(rec["hand"]), tm.utc_now(), LN.RUN)   # 세션을 놓는다 — 빌린 로그인을 쓰는 일이 더 없으면 곧 돌려준다
         job.disarm()
 
 

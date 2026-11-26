@@ -123,11 +123,11 @@ Unregister-ScheduledTask -TaskName PAISetup-AutoRun,PAISetup-AutoRun-Night,PAISe
 
 ### 메일 비서가 건 작업과 그 기록
 
-회사 PC 에서 메일 비서에게 메일함 스캔이나 아침 보고를 걸게 했으면 작업 스케줄러의 mail-secretary 폴더에 작업이 둘 서서 몇 분마다
-돈다 — 메일함을 읽는 mailbox-scan 과, 정한 시각에 보고를 띄우는 daily-brief(일일 보고의 시계)다. 둘 다 처음에는 비서가 대화에서 건
-것이고, 설치는 메일함 스캔이 걸린 PC 를 업데이트할 때 daily-brief 를 다시 건다. 그래서 설치를 다시 눌러도 안 걷힌다 — 스킬을 지우기 전에
-AI 에게 「아침 보고 내리고 시계도 꺼 줘」 · 「메일함 스캔 꺼 줘」라고 하거나 아래 명령으로 지운다(「아침 보고 내려 줘」만으로는
-보고 시각만 내리고 시계 작업은 남는다).
+회사 PC 에서 메일 비서에게 아침 보고를 걸게 했으면 작업 스케줄러의 mail-secretary 폴더에 daily-brief(일일 보고의 시계)가 서서
+15분마다 돈다. 처음에는 비서가 대화에서 건 것이고, 설치는 보고 시각을 걸어 둔 PC 를 업데이트할 때 다시 건다. 그래서 설치를 다시 눌러도
+안 걷힌다 — 스킬을 지우기 전에 AI 에게 「아침 보고 내리고 시계도 꺼 줘」라고 하거나 아래 명령으로 지운다(「아침 보고 내려 줘」만으로는
+보고 시각만 내리고 시계 작업은 남는다). 옛 판이 건 mailbox-scan(몇 분마다 메일함을 읽던 예약)은 업데이트가 거두지만, 업데이트를 안 한
+PC 에는 남아 있을 수 있어 첫 줄이 함께 지운다.
 
 ```powershell
 Unregister-ScheduledTask -TaskPath '\mail-secretary\' -TaskName mailbox-scan -Confirm:$false -ErrorAction SilentlyContinue

@@ -64,23 +64,24 @@
 <!-- drawn:piece-map · 손으로 고치지 않는다 — scripts/skill-map.py 가 짓는다 -->
 | 조각 | 맡은 일 | 싣는 곁 조각 | 다른 스킬에서 싣는 것 |
 |---|---|---|---|
-| `unattended/clock.py` · 입구 | 정한 시각의 시계 — 일일 보고를 정한 시각마다 사람 없이 띄우고, 보고 창에서 고르신 것 · 누르신 「일정에 넣기」를 받는 작업과 그 시각표를 걸고 · 보이고 · 내린다. | `cli` · `unattended/clock_setup` · `unattended/clock_tick` · `unattended/scan_door` · `unattended/unattended_const` | — |
+| `unattended/clock.py` · 입구 | 정한 시각의 시계 — 일일 보고를 정한 시각마다 사람 없이 띄우고, 보고 창에서 고르신 것 · 누르신 「일정에 넣기」를 받는 작업과 그 시각표를 걸고 · 보이고 · 내린다. | `cli` · `unattended/clock_setup` · `unattended/clock_tick` · `unattended/loan` · `unattended/scan_door` · `unattended/unattended_const` | — |
 | `ticks.py` · 입구 | 보고 창에서 누르신 것을 로그인 Edge 에서 거둔다 — 일일 보고 스킬의 거두는 손. 「끝났음」 · 푸신 「끝났음」은 가장 늦은 보고 글의 「끝났다고 하신 것」 · 「안 끝났다고 하신 것」에, 「내일 다시」 · 「안 올려도 됨」 · 「다시 올리기」는 보고 맞춤 파일(곁의 `prefs.py`)에 옮기고, 끝에 이 보고가 올리지 않을 것 · 오늘 돌아온 것 · 아직 미룬 것을 댄다. | `brief_const` · `brief_files` · `brief_inline` · `brief_sections` · `cli` · `clock` · `edge` · `prefs` · `prefs_file` · `press_kinds` · `presses` · `report_reads` · `state` · `store` · `window_door` | — |
 | `window.py` · 입구 | 보고 글(md)을 보고 창의 틀에 채워 그날의 HTML 로 남기고, 그 글을 곁에 남기고, 브라우저로 띄운다 — 일일 보고 스킬의 내는 손. | `asks` · `brief_const` · `brief_files` · `brief_inline` · `brief_sections` · `brief_text` · `cli` · `clock` · `edge` · `finish` · `hand_wanted` · `prefs_file` · `presses` · `render` · `render_mail` · `state` · `store` · `window_words` | — |
+| `unattended/handed.py` · 입구 | 맡긴 일 — 보고 창에서 사람이 골라 맡긴 일들을 작업 폴더에서 claude 한 번으로 차례로 하게 뒤에 띄우고, 도는 동안 일마다의 끝을 프로그램이 읽는 기록으로 낸다. | `clock` · `detach` · `proc_base` · `unattended/brief_schedule` · `unattended/launch_base` · `unattended/loan` · `unattended/scan_door` · `unattended/session_login` · `unattended/unattended_const` · `unattended/unattended_store` | — |
 | `prefs.py` · 입구 | 보고 맞춤의 대화 명령 — 사용자가 대화에서 「이런 건 안 올려도 됨」 · 「내일 다시」 하신 것을 보고 맞춤 파일에 보이고 더하고 걷고, 열린 보고 창에 바로 알린다. | `brief_const` · `brief_inline` · `cli` · `clock` · `prefs_file` · `state` | — |
 | `unattended/away_sender.py` · 입구 | 자리 밖에서 보기의 보내는 손 — 시계 판이 사람 없이 띄운 보고가 지은 보고 한 장을 메일 한 장으로 지어 표준 입력으로 주면, 사용자가 켤 때 적어 둔 본인 주소 하나를 받는 사람과 보내는 사람으로 삼아 회사 메일 손의 사내 중계(`mailer.py` 의 `send`)로 한 통 보낸다. | `unattended/brief_schedule` · `unattended/unattended_const` · `unattended/unattended_store` | company-mail 의 `mailer` |
-| `unattended/handed.py` · 입구 | 맡긴 일 — 보고 창에서 사람이 골라 맡긴 일들을 작업 폴더에서 claude 한 번으로 차례로 하게 뒤에 띄우고, 도는 동안 일마다의 끝을 프로그램이 읽는 기록으로 낸다. | `clock` · `detach` · `proc_base` · `unattended/brief_schedule` · `unattended/launch_base` · `unattended/scan_door` · `unattended/session_login` · `unattended/unattended_const` · `unattended/unattended_store` | — |
 | `unattended/clock_tick.py` | 시계 한 판의 겉 — 작업 스케줄러가 주기마다 부르는 `clock.py tick` 의 손. OS 잠금을 쥐고, 옛 파일을 옮겨 받고, 그날 장부를 읽어 이 판의 때를 먼저 적은 뒤 판 한 번(`clock_round.round_lines`)을 하고 장부를 다시 쓴다. | `clock` · `oslock` · `unattended/clock_book` · `unattended/clock_round` · `unattended/scan_door` · `unattended/take_over` · `unattended/unattended_const` · `unattended/unattended_store` | — |
-| `unattended/clock_round.py` | 정한 시각의 시계 한 판 — 자리 밖에서 보기의 메일 → 보고 창에서 고르신 것 → 지금 칸의 띄우기 → 「일정에 넣기」 누름 거두기를 이 차례로 엮는다. | `clock` · `ticks` · `unattended/away_mail` · `unattended/brief_day` · `unattended/brief_kinds` · `unattended/brief_schedule` · `unattended/brief_slots` · `unattended/brief_state` · `unattended/brief_told` · `unattended/brief_window` · `unattended/brief_words` · `unattended/claude_launch` · `unattended/scan_door` · `unattended/session_login` · `unattended/unattended_const` · `unattended/window_link` · `window_door` | — |
+| `unattended/clock_round.py` | 정한 시각의 시계 한 판 — 자리 밖에서 보기의 메일 → 보고 창에서 고르신 것 → 지금 칸의 띄우기 → 「일정에 넣기」 누름 거두기를 이 차례로 엮고 맨 끝에 사람의 로그인을 돌려준다. | `clock` · `ticks` · `unattended/away_mail` · `unattended/brief_day` · `unattended/brief_kinds` · `unattended/brief_schedule` · `unattended/brief_slots` · `unattended/brief_state` · `unattended/brief_told` · `unattended/brief_window` · `unattended/brief_words` · `unattended/claude_launch` · `unattended/loan` · `unattended/scan_door` · `unattended/session_login` · `unattended/unattended_const` · `unattended/window_link` · `window_door` | — |
 | `unattended/clock_setup.py` | 시계 걸기 · 보고 시각표 · 보기 · 끄기 · 옮겨 받기 — `clock.py register · at · off · away · window-times · status · unregister · adopt` 의 손. 작업 스케줄러의 시계 작업 하나(`clock_task`)와 보고 시각표(`brief_schedule`)를 걸고 · 보이고 · 내린다. | `clock` · `unattended/away_mail` · `unattended/brief_schedule` · `unattended/brief_slots` · `unattended/brief_status` · `unattended/brief_window` · `unattended/brief_words` · `unattended/claude_launch` · `unattended/clock_book` · `unattended/clock_task` · `unattended/launch_base` · `unattended/scan_door` · `unattended/session_login` · `unattended/take_over` · `unattended/task_base` · `unattended/unattended_const` · `unattended/unattended_store` · `unattended/window_link` | — |
 | `unattended/away_mail.py` | 자리 밖에서 보기 — 켠 PC 에서 사람 없이 띄운 보고가 남긴 보고 글 한 장을 칸마다 한 통 본인 메일로 보내고, 켜고 끄기를 건다. | `clock` · `proc_base` · `state` · `unattended/brief_day` · `unattended/brief_kinds` · `unattended/brief_reports` · `unattended/brief_schedule` · `unattended/brief_slots` · `unattended/brief_state` · `unattended/brief_told` · `unattended/brief_words` · `unattended/clock_book` · `unattended/unattended_const` · `unattended/unattended_store` · `unattended/window_link` | — |
-| `unattended/brief_status.py` | status 의 보고 예약 줄 — 걸었나 · 자리 밖에서 보기 · 경고 · 지난날 · 오늘 로그인 · 시각마다 오늘 어떻게 됐나를 차례로 엮는다. | `clock` · `unattended/brief_schedule` · `unattended/brief_slots` · `unattended/brief_state` · `unattended/brief_told` · `unattended/brief_words` | — |
+| `unattended/brief_status.py` | status 의 보고 예약 줄 — 걸었나 · 자리 밖에서 보기 · 경고 · 지난날 · 오늘 로그인 · 오늘 돌려준 로그인 · 시각마다 오늘 어떻게 됐나를 차례로 엮는다. | `clock` · `unattended/brief_schedule` · `unattended/brief_slots` · `unattended/brief_state` · `unattended/brief_told` · `unattended/brief_words` · `unattended/loan` | — |
 | `finish.py` | 보고 글을 남기기 전에 코드가 든 값으로 마무리한다 — 창을 여는 손(`window.py`)이 모델이 쓴 글을 받아 창을 짓기 전에 부른다. | `brief_cards` · `brief_files` · `brief_inline` · `brief_put` · `brief_sections` · `brief_tasks` · `brief_text` · `prefs` · `prefs_file` · `presses` · `store` | — |
 | `render.py` | 보고 창을 그린다 — 읽은 보고 글(`brief_text.Report`)과 창이 보이는 지금 모습을 보고 창의 HTML(`build` · 틀 `assets/report.html` · 스크립트 `assets/report.js`)로. 같은 글의 메일 한 장은 곁의 `render_mail.py` 가, 둘이 함께 쓰는 줄 안의 한 걸음(`inline_walk`)은 `render_base.py` 가 든다 — 이 파일은 창의 겉(`WindowSkin`)만 끼운다. | `brief_cards` · `brief_const` · `brief_inline` · `brief_people` · `brief_sections` · `brief_tasks` · `brief_text` · `clock` · `prefs` · `prefs_file` · `render_base` · `task_kinds` | — |
 | `report_reads.py` | 보고를 짓는 쪽이 거두는 손(`ticks.py`)의 끝 줄 앞에서 읽을 무리 — 맞춤(올리지 않을 것 · 돌아온 것 · 미룬 것), 그리고 가장 늦은 보고 글 뒤에 창에서 누르신 「일정에 넣기」의 끝과 맡기신 일의 끝. 「지난 보고 뒤」는 가장 늦은 보고 글의 이름에서 한 번 읽고, 두 기록은 저마다 제 시계의 꼴로 견준다. | `brief_const` · `brief_files` · `clock` · `presses` · `records` | — |
 | `unattended/brief_told.py` | 그날 장부와 아직 말하지 않은 칸 — 그날 장부를 열 때 지난날 건너뛴 칸의 줄을 남기고, 띄우는 보고의 부탁 글에 실을 줄을 엮는 손. | `unattended/brief_day` · `unattended/brief_slots` · `unattended/brief_state` · `unattended/brief_words` | — |
 | `presses.py` | 보고 창에서 누르신 것을 누름 종류 표(`KINDS` — 열쇠 · 거둘 때인가 · 할 일 · 돌려 적을 칸)대로 거둬 그 할 일을 부르고 끝을 그 창에 돌려 적는다 — 일일 보고 스킬의 창 곁의 손. 「일정에 넣기」는 사람이 누른 카드의 값과 열쇠로만 일정 손(형제 스킬 company-calendar 의 `add`)을 부른다. | `asks` · `brief_const` · `brief_inline` · `brief_put` · `brief_tasks` · `cli` · `clock` · `detach` · `edge` · `hand_wanted` · `oslock` · `press_kinds` · `proc_base` · `records` · `runs` · `state` · `store` · `task_kinds` · `unattended_link` | — |
 | `unattended/brief_day.py` | 그날 칸 장부 — 지금 모습(`state["brief"]`) 안의 그날 칸을 열고 고른다. | `state` · `unattended/brief_kinds` · `unattended/brief_slots` · `unattended/brief_state` | — |
+| `unattended/loan.py` | 사람의 로그인을 돌려준다 — 이 PC 의 프로그램이 사람 없이 세운 사내 로그인(그 로그인이 사람의 평소 Edge 의 EP 포털을 죽였다)을 다 쓰면 형제 스킬 ep-login 입구의 돌려주는 문을 사람 없는 꼴로 한 번 부른다(`session_login.give_back` — 평소 Edge 에 로그인을 다시 열고 쓸모가 끝난 EP 탭을 닫는다). 빌린 로그인은 둘이다 — 시계가 보고 시각에 끊긴 세션 위에서 세운 것(그날 장부의 로그인 기록)과, 돌려준 날 보고 창의 단추(「일정에 넣기」 · 「결재 창 열기」 · 「맡기기」)가 세션을 쓰려다 끊겨 있어 잠깐 다시 세운 것(빌림 파일 `LOAN_FILE`). 둘 다 이 조각 하나가 OS 잠금(`LOAN_LOCK_FILE`) 아래에서 빌리고 돌려준다 — 시계 판 · 창 곁의 손 · 맡긴 일의 지킴이가 함께 불러도 한 번이다. | `clock` · `oslock` · `state` · `unattended/brief_reports` · `unattended/brief_schedule` · `unattended/brief_slots` · `unattended/brief_state` · `unattended/scan_door` · `unattended/session_login` · `unattended/unattended_const` · `unattended/unattended_store` | — |
 | `unattended/window_link.py` | 보고 창 이음 — 같은 스킬의 보고 창 손(`window.py --sheet` · `ticks.py --times-done` · `--away-done` · `--presses`)을 사람 없는 실행에서 프로세스로 부르고, 대화에서 시각표를 바꾼 뒤 열린 창에 알리는(`state.sync`) 유일한 자리. 고르신 것을 읽는 쪽은 창의 문이 함수로 낸다 (`window_door.read_choices`). | `brief_const` · `edge` · `proc_base` · `state` · `unattended/unattended_const` | — |
 | `window_door.py` | 시계 판이 쓰는 창의 문 — 열린 보고 창에서 고르신 보고 시각 · 「자리 밖에서 보기」를 읽어 시계 판에 값으로 내고(`read_choices` — 같은 스킬의 `unattended/` 가 함수로 부른다), 시계가 받았나를 그 창의 그 칸에 돌려 적는다(거두는 손 `ticks.py` 의 `--times-done` · `--away-done`). 창 곁의 손과 같은 누름 종류 표의 줄(`press_kinds.TIMES` · `press_kinds.AWAY`)로 재고 적는다. | `brief_const` · `cli` · `edge` · `press_kinds` · `state` | — |
 | `state.py` | 창이 보이는 지금 모습 — 사용자 폴더의 보고 시각표 · 그날 장부(사람 없는 실행 `unattended/` 의 파일)와 보고 맞춤 파일에서 짓고(`state_of`), 열린 보고 창에 적는다(`sync` — 저장 열쇠 `brief_const.STATE_KEY`). 사용자 폴더의 파일은 읽기만 한다. | `brief_const` · `brief_inline` · `clock` · `edge` · `prefs` · `prefs_file` · `store` | — |
@@ -113,7 +114,7 @@
 | `unattended/clock_task.py` | 시계의 작업 스케줄러 손 — 작업 하나(`TASK_NAME`)가 몇 분마다 `clock.py tick` 을 창 없이(pythonw) 부르게 정의를 짓는다. | `unattended/task_base` · `unattended/unattended_const` | — |
 | `unattended/launch_base.py` | 뒤에 사는 claude 를 띄우는 바탕 — 띄울 claude 를 찾고 · 그 환경을 손질하고 · 그 프로세스가 아직 도나 본다. | `unattended/unattended_const` | — |
 | `unattended/scan_door.py` | 스캔 이음 — 형제 스킬 mailbox-scan 의 두 문(`scan.py status --json` · `scan.py run --now --wait`)을 부르고 그 답을 읽는 이 폴더의 유일한 자리. 사용자 폴더와 회사 메일 손의 자리도 여기서 정한다 — 사용자 폴더는 스캔이 내준 답에서, 손은 형제 폴더에서. 스캔의 코드는 싣지 않는다(명령으로만 부른다). 문의 칸과 뜻은 그 스킬의 설계 「status --json · run --wait」이 든다. | `clock` · `proc_base` · `unattended/brief_kinds` · `unattended/unattended_const` | — |
-| `unattended/session_login.py` | 사내 세션 — 회사 메일 손의 `session` 한 번으로 사내 세션이 살았나를 보고, 보고 시각을 건 PC 에서는 그 시각에 형제 스킬 ep-login 의 입구를 사람 없는 꼴로 부른다. | `clock` · `proc_base` · `unattended/unattended_const` | — |
+| `unattended/session_login.py` | 사내 세션 — 회사 메일 손의 `session` 한 번으로 사내 세션이 살았나를 보고, 보고 시각을 건 PC 에서는 그 시각에 형제 스킬 ep-login 의 입구를 사람 없는 꼴로 부르고, 그 로그인을 다 쓰면 같은 입구의 돌려주는 문으로 사람에게 돌려준다. | `clock` · `proc_base` · `unattended/unattended_const` | — |
 | `brief_files.py` | 보고 창(.html) · 보고 글(.md)의 이름을 읽는다 — 지은 때(`made_of`) · 보고 창의 이름인가(`is_window`) · 폴더에 남은 보고 글을 그 차례로(`kept_briefs`). 보고 창 · 글 이름의 꼴을 아는 자리는 이 파일이다 — 이름의 원본은 `brief_const.FILE_NAME` 이다. | `brief_const` | — |
 | `brief_people.py` | 사람을 대는 칸의 값을 사람들로 읽는다(`people_in` → `Person`). 파일 · 망에 닿지 않는다. | `brief_inline` | — |
 | `brief_put.py` | 일정에 넣을 값 한 칸을 읽는다 — 칸의 값 → `Put`(`put_of`) · 두 시각을 사람이 읽는 때로(`span_words`) · 「시각: 메일에 없음」 칸 떼기(`no_time_of`). 파일 · 망에 닿지 않는다. | `brief_const` · `brief_inline` | — |
@@ -477,6 +478,13 @@
       - `edge.stored` — `cells` 를 (열쇠의 나머지, 값)으로 — 남긴 때 차례.
         - ↑ `cells`
       - ↑ `oslock.OsLock`
+      - `Borrow` — 단추의 일 하나가 돌려준 사내 로그인을 잠깐 빌리는 판 — 같은 스킬 시계의 명령(`clock.py lend · release` — `unattended/loan.py`)으로 묻는다.
+        - `Borrow.hold_on` — 그 일이 산 세션을 쓰기 시작한다 — 시계에 쓰는 일로 적어(빌리지 않는다) 그 도중에 시계 판이 돌려주지 않게. 이 판에서 한 번만.
+          - ↑ `run_unattended`
+        - `Borrow.take` — 세션이 없다는 끝을 받았다 — 이 판에서 처음이면 시계에 빌리기를 청한다.
+          - ↑ `run_unattended`
+        - `Borrow.give` — 쓴다고 적었으면(`hold` 면 안 적었어도 — 결재 창은 사람이 그 세션의 창에서 누른다) 시계에 놓는다고 알린다 — 쓰는 일이 더 없으면 시계가 곧 돌려준다.
+          - ↑ `run_unattended`
       - `records.read_ledger` — 넣은 누름의 기록 — 없으면 빈 기록, 있는데 못 읽거나 꼴이 아니면 `Unreadable`. 빈 것으로 읽고 그 위에 쓰면 「넣는 중」 · 「넣음」을 잃어 같은 일정을 또 넣는다.
         - ↑ `store.read_json`
       - ↑ `store.Unreadable`
@@ -1094,12 +1102,13 @@
             - ↑ `unattended/brief_slots.minute`
         - `self_login` — 보고 시각을 건 PC 의 띄우기 앞 — 부를 판이면(`login_due` — 그날 첫 시각의 한 번 · 뒤 시각의 칸에서 세션이 없을 때 한 번) 입구를 사람 없는 꼴로 한 번 부르고 그 끝을 적는다(끊긴 세션 앞의 부름이면 `lost` — 그 로그인으로 띄운 보고의 창이 그것을 말한다). 내는 것 — (그 뒤의 세션 답, 부르기 전의 답, 입구의 끝 — 안 불렀으면 None).
           - `unattended/brief_state.login_due` — 이 판이 스스로 로그인의 입구를 부를 판인가 — LOGIN_DAILY 그날 첫 시각의 한 번(세션이 살았어도 — 입구가 그 윈도 로그온의 평소 Edge 로그인을 먼저 한다) · LOGIN_SLOT 뒤 시각의 칸에서 세션이 없을 때 한 번 · "" 안 부른다.
-          - `unattended/session_login.sign_in` — 스스로 로그인 한 번 — 입구를 사람 없는 꼴로 부른다(사람이 쳐야 하는 자리에서는 입구가 기다리지 않고 끝난다). 내는 것 — {at, ok: True} 나 {at, ok: False, said}.
-            - ↑ `clock.utc_stamp`
-            - `login_parts` — 스스로 로그인이 부를 것 — (입구 · 없으면 None, node · 없으면 None).
-              - `entrance` — 형제 스킬 ep-login 의 입구 — `LOGIN_ENTRANCE_ENV`, 없으면 손과 같은 스킬 뿌리의 그 스킬. 없으면 None.
-            - `command_of` — 입구 · node 로 스스로 로그인의 명령줄 — 하나라도 없으면 None.
-            - ↑ `proc_base.quiet`
+          - `unattended/session_login.sign_in` — 스스로 로그인 한 번 — 내는 것 — {at, ok: True} 나 {at, ok: False, said}.
+            - `call` — 입구 한 번을 사람 없는 꼴로 부른다(사람이 쳐야 하는 자리에서는 입구가 기다리지 않고 끝난다). 내는 것 — ({at, ok, said?}, 종료 값 · 못 불렀으면 None, 표준 출력의 끝 줄). 못 섰으면 `said` 에 입구의 끝말(표준 오류의 끝 줄)이나 까닭을 줄여 싣는다.
+              - ↑ `clock.utc_stamp`
+              - `login_parts` — 스스로 로그인이 부를 것 — (입구 · 없으면 None, node · 없으면 None).
+                - `entrance` — 형제 스킬 ep-login 의 입구 — `LOGIN_ENTRANCE_ENV`, 없으면 손과 같은 스킬 뿌리의 그 스킬. 없으면 None.
+              - `command_of` — 입구 · node 로 입구의 명령줄(`args` — 스스로 로그인 · 돌려주기) — 하나라도 없으면 None.
+              - ↑ `proc_base.quiet`
           - `session_after` — 입구를 부른 뒤의 세션 답 — 섰으면 살았다.
             - ↑ `unattended/session_login.look`
         - `unattended/scan_door.ask_round` — 스캔에 「지금 한 판」을 청하고(`run_now`) 그 판의 세션 답을 읽는다 — (세션 답 · 판이 돌았는데 답이 없으면 None, "") 이나 판이 안 돌았으면 (None, 까닭 — SCAN_UNREACHED 못 불렀다 · SCAN_LATE 앞 판이 시한 안에 안 끝나 건너뛰었다 · SCAN_STOPPED 판을 못 하고 멈췄다).
@@ -1137,11 +1146,43 @@
       - `unattended/window_link.window_presses` — 보고 창에서 누르신 「일정에 넣기」를 거둔다 — 창 곁의 손이 없을 때의 뒷받침이다.
         - ↑ `edge_listening`
         - ↑ `ask_window`
+      - `unattended/loan.give_back_step` — 시계 판 끝의 돌려주기 — 돌려줄 로그인(그날 장부의 보고 앞 로그인 가운데 그 보고가 끝나고 `GIVE_BACK_AFTER_MIN` 분이 지난 것 · 단추가 빌렸는데 쓰는 일이 더 없는 것)이 있고, 그 세션을 지금 쓰는 일이 없으면(`in_use`) 돌려주는 문을 한 번 부르고 그 끝을 빌림 파일과 그날 장부의 그 로그인 기록(`GIVEN`)에 적는다 — 적힌 로그인은 다시 안 돌려준다(SSO 가 안 서는 로그온의 4 도 그 끝으로 적혀 그날 다시 안 부른다). 잠금을 다른 손이 쥐었거나 빌림 파일을 그 순간 못 읽으면 다음 판에 다시 본다.
+        - ↑ `unattended/brief_schedule.load`
+        - `locked` — 빌리고 돌려주는 잠금 — `wait_s` 안에 쥐면 그 잠금, 못 쥐면 None(다른 손이 입구를 부르는 중이다).
+          - ↑ `oslock.OsLock`
+        - `loan_of` — 오늘(서울)의 빌림 파일 {date, given: [돌려준 끝 {at, ok, of, line | said, typed?}], lent: 빌린 로그인 {at, ok, said?} | None, users: [그 세션을 쓰는 일 {why, until}]} — 없거나 날이 지났거나 글이 깨졌으면 빈 오늘의 것. 그 순간 못 읽으면 `st.Unreadable`(빈 것으로 읽어 쓰면 오늘 돌려준 것을 잊고 또 돌려준다).
+          - ↑ `unattended/unattended_store.read_json`
+          - ↑ `unattended/unattended_store.Unreadable`
+          - ↑ `unattended/brief_slots.seoul_date`
+        - ↑ `unattended/unattended_store.Unreadable`
+        - `loans_of` — 그날 돌려줄 로그인 — 시계가 끊긴 세션 위에서 세운 보고 앞 로그인(첫 시각은 `lost` 인 그날의 한 번 · 뒤 시각은 칸의 한 번 — 뒤 시각은 끊긴 세션에서만 부른다) 가운데 섰고 아직 돌려준 끝이 없는 것. 그 칸이 띄웠든 못 띄웠든 든다 — 로그인은 이미 평소 Edge 의 포털을 죽였다.
+          - ↑ `unattended/brief_slots.windows`
+          - ↑ `unattended/brief_state.slot_login`
+        - ↑ `unattended/brief_slots.seoul_date`
+        - `due_at` — 그 로그인을 돌려줄 때 — 그 로그인 뒤에 띄운 보고가 다 끝난 때(`launched_end` — 도는 동안은 기다리고, 띄운 때에서 `BRIEF_LOCK_STALE_S` 를 넘지 않는다 · 못 띄운 것은 띄우려던 때)와 로그인한 때 가운데 늦은 것에서 `GIVE_BACK_AFTER_MIN` 분 뒤. 그 칸이 아직 안 띄웠고 칸이 안 끝났으면 None (그 칸이 곧 그 세션으로 띄운다) · 보고가 아직 돌면 None. 뒤 칸이 같은 세션으로 띄운 보고도 그 로그인의 것으로 센다.
+          - ↑ `clock.parse`
+          - ↑ `unattended/brief_reports.launched_end`
+        - `in_use` — 그 세션을 지금 쓰는 프로그램이 있나 — 시계가 띄운 보고가 돈다 · 보고 창의 단추가 맡긴 일이 그 세션을 쓴다(`users_of`).
+          - ↑ `unattended/brief_reports.lock_held`
+          - `users_of` — 그 세션을 지금 쓰는 일들 {why, until} — 쓸 끝(`until`)이 안 지난 것만. 끝은 쓰겠다고 할 때 그 일의 천장 뒤로 두고(놓는다고 하기 전에 죽은 손이 영영 붙들지 않게), 결재 창처럼 사람이 그 세션에서 누를 일은 놓을 때 `GIVE_BACK_AFTER_MIN` 분 뒤로 고친다.
+            - ↑ `clock.parse`
+        - `retry_wait` — 앞 판에 진 돌려주기 뒤 `BRIEF_TRY_GAP_MIN` 분이 안 지났나.
+          - ↑ `clock.parse`
+          - `failures` — 오늘 돌려주는 문이 맺지 못하고 진 끝들 — 섰다 · SSO 가 안 선다가 아닌 것(시한 · Edge 를 못 찾음 따위).
+        - `hand_back` — 돌려주는 문을 한 번 부르고 그 끝을 빌림 파일에 적는다.
+          - `unattended/session_login.give_back` — 사람의 로그인을 돌려준다 — 같은 입구의 돌려주는 문(`GIVE_BACK_ARGS`) 한 번: 평소 Edge 에 로그인을 다시 열고 쓸모가 끝난 EP 탭을 닫는다.
+            - ↑ `call`
+          - `settled` — 그 끝으로 그 로그인을 맺나 — 섰다 · SSO 가 안 선다(그날 다시 안 부른다) · 진 것이 오늘 `GIVE_BACK_TRIES` 번에 닿았다(판마다 평소 Edge 에 로그인을 거듭 열지 않는다). 그 밖에 진 것은 맺지 않고 `BRIEF_TRY_GAP_MIN` 분 뒤 판에 다시 부른다.
+            - ↑ `failures`
+          - `save` — 빌림 파일을 바꿔 끼워 쓴다 — 못 쓰면 OSError.
+            - ↑ `unattended/unattended_store.write_json`
+        - ↑ `settled`
+        - `given_words` — 돌려준 끝 한 구절 — 판 끝의 줄과 status 가 쓴다.
+          - ↑ `clock.seoul`
+          - ↑ `clock.parse`
   - `unattended/scan_door.home_of` — 사용자 폴더 — 준 것(`--dir`)이 있으면 그것, 없으면 스캔이 대는 자리(사본을 안 든다). 못 정하면 None.
     - ↑ `status`
-  - `unattended/clock_setup.cmd_register` — 시계를 작업 스케줄러에 건다 — 스캔이 걸렸나 보고, 손을 정하고, 보고 시각표 요청을 재고, 정의를 지어(보이기만 · 받나만 묻기도) 건 뒤 `--at` 이 있으면 시각표를 건다.
-    - `scan_task` — 곁의 스캔이 건 작업의 칸(`status --json` 의 `task`) — 못 물었으면 빈 것.
-      - ↑ `unattended/scan_door.status`
+  - `unattended/clock_setup.cmd_register` — 시계를 작업 스케줄러에 건다 — 손을 정하고, 보고 시각표 요청을 재고, 정의를 지어(보이기만 · 받나만 묻기도) 건 뒤 `--at` 이 있으면 시각표를 건다.
     - ↑ `unattended/scan_door.mail_hand`
     - `brief_wanted` — `--at` · `--claude` 를 재어 (보고 시각표, claude, 거절의 말). 보고를 안 청했으면 (None, None, ""). 시각을 안 주면 기본 시각 하나다.
       - ↑ `unattended/brief_slots.times_given`
@@ -1250,6 +1291,15 @@
       - `unattended/brief_words.day_lines` — status 의 그날 장부 줄 — 지난날 건너뛴 칸의 줄(`before`) · 오늘 스스로 로그인의 입구를 부른 끝마다 한 줄(`logins` — `brief_state.day_logins` · 뒤 시각의 칸에서 부른 것은 그 시각을 단다).
         - ↑ `hhmm`
       - `unattended/brief_state.day_logins` — 그날 스스로 로그인의 입구를 부른 끝들 — (칸의 시각 · 그날 첫 시각의 한 번이면 "", 끝 {at, ok, said})을 부른 차례로.
+      - `unattended/loan.status_lines` — status 가 말할 오늘의 돌려주기 — 돌려준 끝마다 한 줄 · 아직 안 돌려준 보고 앞 로그인(언제 돌려주나) · 보고 창의 단추가 빌려 쓰는 중인 로그인. 보이기만 한다 — 그날 장부 · 빌림 파일을 안 고친다.
+        - ↑ `loan_of`
+        - ↑ `unattended/unattended_store.Unreadable`
+        - ↑ `given_words`
+        - ↑ `unattended/brief_slots.seoul_date`
+        - ↑ `loans_of`
+        - ↑ `due_at`
+        - ↑ `clock.seoul`
+        - ↑ `clock.parse`
       - ↑ `unattended/brief_state.slot_state`
       - `unattended/brief_words.slot_line` — status 의 한 시각 — 칸의 상태(`state` — `brief_state.status_state`) · 건너뛴 까닭(`cause`) · 그 칸의 띄우기 앞에 부른 입구의 끝(`login` — `brief_state.slot_login`)을 말로: 섰다 · 띄웠다 · 짓는 중 · 아직 · 기다린다 · 건너뛰었다와 다음 걸음. 셈은 안 한다.
         - ↑ `end_words`
@@ -1265,20 +1315,19 @@
         - ↑ `mail_status`
     - ↑ `unattended/clock_book.load_or_none`
     - ↑ `clock.utc_now`
-  - `unattended/clock_setup.cmd_unregister` — 시계 작업을 지우고 보고 예약을 내린다 — 스캔 작업 · 쌓인 파일은 안 건드린다.
+  - `unattended/clock_setup.cmd_unregister` — 시계 작업을 지우고 보고 예약을 내린다 — 쌓인 파일은 안 건드린다.
     - ↑ `unattended/task_base.shown`
     - `unattended/task_base.delete_command` — 작업을 지우는 schtasks 명령줄.
     - ↑ `unattended/brief_schedule.clear`
     - ↑ `unattended/task_base.ask`
-  - `unattended/clock_setup.cmd_adopt` — 이미 스캔을 건 PC 를 옮겨 받는다 — 곁의 스캔이 건 작업이 이 홈의 스캔을 부를 때만, 옛 파일을 옮겨 받고(`take_over`) 시계를 이 홈의 입구 · 회사 메일 손으로 건다: 없으면 새로, 다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 다시. 손은 이 홈의 형제 스킬 것, 주기는 스캔의 답, 시각 · claude 는 사용자 폴더의 시각표(다시 걸어도 그대로다). 이미 이 홈을 부르거나 손으로 고친 시계는 안 건드린다.
-    - ↑ `scan_task`
-    - `adopt_skip` — 옮겨 받기를 건너뛸 까닭 — "unregistered" 스캔이 안 걸렸다 · "elsewhere" 걸린 작업이 이 홈의 스캔을 안 부른다 · "" 옮겨 받는다.
+  - `unattended/clock_setup.cmd_adopt` — 시계를 이 홈으로 옮겨 받는다(설치가 업데이트 때 한 홈에서 · 대화가 부른다) — 옛 파일을 옮겨 받고(`take_over`) 걸린 시계만 본다: 이 홈의 입구 · 회사 메일 손을 부르면 그대로, 손으로 고친 꼴이면 안 건드리고, 다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 시계의 주기(`CLOCK_EVERY_MIN`)로 다시 건다 — 걸린 주기는 옛 스캔의 `--every` 를 베낀 값일 수 있고, 보고 뒤의 돌려주기 · 칸의 틈 규칙이 시계의 주기에 기댄다.
     - ↑ `unattended/take_over.take_over`
-    - `held_clock` — 걸린 시계 — 안 걸렸으면 None, 걸렸으면 켜짐과 인자를 거는 꼴의 칸(`parts` — 손으로 고친 꼴이면 None)으로.
+    - `held_clock` — 걸린 시계 — 안 걸렸으면 None, 걸렸으면 켜짐 · 주기(분 · 못 읽으면 None)와 인자를 거는 꼴의 칸(`parts` — 손으로 고친 꼴이면 None)으로.
       - ↑ `unattended/task_base.ask`
       - ↑ `unattended/task_base.query_command`
       - ↑ `unattended/task_base.read_definition`
       - `unattended/task_base.is_enabled` — 걸린 정의(`read_definition`)가 켜진 작업인가 — 작업 스케줄러가 「꺼짐」으로 적은 것만 거짓(칸이 없으면 켜짐이 기본이다).
+      - `unattended/task_base.interval_minutes` — 작업 정의의 간격(ISO 8601 기간)을 분으로 — 기간의 꼴이 아니거나 분으로 안 떨어지면 None.
       - `unattended/clock_task.arguments_parts` — 걸린 시계의 인자를 틀의 칸(입구 `clock_py` · 사용자 폴더 `home` · 손 `hand`)으로 되읽는다 — 그 틀로 지은 글이 아니면 None.
     - `clock_skip` — 걸린 시계를 건드리지 않을 까닭 — "foreign" 손으로 고친 꼴이다 · "present" 이미 이 홈의 입구와 손을 부른다 · "" 건다(없거나 다른 홈이다).
       - `unattended/task_base.same_path` — 두 경로가 같은 자리인가 — 윈도의 대소문자 · 사이 글자(`/` · `\`) · `..` 를 고른 뒤 견준다.
@@ -1286,7 +1335,33 @@
     - ↑ `unattended/task_base.write_xml`
     - ↑ `unattended/clock_task.task_xml`
     - ↑ `put_task`
-    - `adopted_line` — 건 뒤의 끝 줄 — 다른 홈의 시계를 다시 걸었으면 그 말(끈 채면 그것도), 새로 걸었으면 옛 시각표를 옮겨 받았나.
+    - `adopted_line` — 건 뒤의 끝 줄 — 다른 홈의 시계를 다시 걸었으면 그 말(끈 채면 그것도), 새로 걸었으면 옛 시각표를 이번에 옮겨 받았나.
+  - `unattended/loan.cmd_lend` — `clock.py lend --why W --ceiling S [--lost]` — 보고 창 곁의 손이 단추의 일을 하기 전(산 세션으로 보고 — 손에 안 묻는다)과 그 일이 세션 없음을 낸 뒤(`--lost`) 부른다.
+    - ↑ `unattended/scan_door.mail_hand`
+    - `lend` — 보고 창의 단추가 맡긴 일(`why` — put · appr · run)이 사내 세션을 쓴다고 적는다 — 쓰는 동안 시계 판이 돌려주지 않게(쓸 끝은 `ceiling_s` 뒤 — 놓는다고 하기 전에 죽은 손이 영영 붙들지 않게 · `owner` 는 놓을 때 제 것을 찾는 프로세스 번호 — 없으면 이 프로세스). 세션이 끊겨 있으면(`lost` — 모르면 손에 한 번 묻는다) 오늘 이 PC 가 로그인을 돌려준 뒤일 때만 잠깐 다시 로그인한다(빌린 로그인 `lent`). 안 빌리는 때 — 오늘 돌려준 적이 없다(사람이 다른 자리에서 로그인해 끊겼다 · 대화가 세운 세션이 끊겼다 — 전처럼 대화의 EP 로그인을 청한다) · SSO 가 안 서는 로그온 · 그 일이 오늘 빌린 로그인 위에서도 세션 없음을 냈다(`futile` — 판마다 로그인하고 돌려주기를 되풀이하지 않는다) · 빌린 로그인이 섰는데 또 끊겼다(사람이 다른 자리에서 로그인했다 — 판마다 그 창을 다시 닫지 않는다) · 앞 빌림의 로그인이 `BRIEF_TRY_GAP_MIN` 분 안에 못 섰다.
+      - ↑ `locked`
+      - ↑ `loan_of`
+      - ↑ `unattended/session_login.look`
+      - ↑ `clock.parse`
+      - `given_ok` — 오늘 돌려주는 문이 한 번이라도 섰나 — 그 뒤에 끊긴 세션은 우리가 돌려줘서 끊긴 것이다.
+      - `typed_today` — 오늘 돌려주는 문이 SSO 가 안 서는 로그온이라고 했나 — 그러면 그날은 다시 안 부른다(칠 사람이 없고, 아무것도 안 열었다).
+      - ↑ `unattended/session_login.sign_in`
+      - ↑ `save`
+      - ↑ `users_of`
+      - ↑ `clock.utc_stamp`
+    - ↑ `clock.utc_now`
+  - `unattended/loan.cmd_release` — `clock.py release --why W [--hold] [--futile]` — 단추의 일이 끝난 뒤 부른다.
+    - ↑ `unattended/scan_door.mail_hand`
+    - `release` — 그 세션을 쓴 일 하나(`why` 의 첫 것)가 세션을 놓는다 — 걷고, `hold` 면(결재 창 — 사람이 그 세션이 사는 창에서 누른다) 그 뒤 `GIVE_BACK_AFTER_MIN` 분 더 쓰는 것으로 적는다(빌리지 않은 일도). `futile` 이면(빌린 로그인 위에서도 세션 없음이었다) 그 일에는 오늘 다시 안 빌려 준다.
+      - ↑ `locked`
+      - ↑ `loan_of`
+      - ↑ `users_of`
+      - ↑ `clock.utc_stamp`
+      - ↑ `save`
+      - ↑ `in_use`
+      - ↑ `given_words`
+      - ↑ `hand_back`
+    - ↑ `clock.utc_now`
 - `main` — 명령 입구 — 사용자 폴더를 정하고(`--dir` · 없으면 스캔에 묻는다) 받은 명령을 그 손에 나눈다.
   - `parser` — 명령줄의 꼴 — 하위 명령(start · show · watch · list) · 인자 · 도움말.
   - ↑ `unattended/scan_door.home_of`
@@ -1306,6 +1381,8 @@
       - ↑ `unattended/unattended_store.write_json`
       - ↑ `run_dir`
     - ↑ `unattended/session_login.look`
+    - ↑ `unattended/loan.lend`
+    - ↑ `clock.utc_now`
     - `stamp` — 기록의 때 — UTC ISO 8601 을 천분의 일 초까지. 한 판의 때는 다 이 꼴이라 글자끼리 견줘도 시간순이다(일의 끝과 다음 부름은 1 초 안에 붙기도 한다).
       - ↑ `clock.utc_now`
     - ↑ `run_dir`
@@ -1336,6 +1413,7 @@
       - `tail` — 죽은 판이 남긴 말 — claude 의 오류 출력, 없으면 맺음 글의 끝.
         - ↑ `parse_stream`
       - ↑ `stamp`
+    - ↑ `unattended/loan.release`
   - `alive_runs` — 사용자 폴더의 판 가운데 아직 도는 것의 기록 — 새 판부터, 그 순간 못 읽은 판은 뺀다.
     - ↑ `run_roots`
     - `record` — 그 판의 지금 기록 — 아무것도 안 쓴다.
@@ -1483,7 +1561,9 @@
   - ↑ `edge.cells`
   - ↑ `clock.stamp`
   - ↑ `clock.seoul_now`
+  - ↑ `Borrow`
   - ↑ `approval_done`
+  - ↑ `start_approval`
 - `task_kinds.count_words` — 사람 수의 말 — 「한」 · 「두」 … 「열」, 열을 넘으면 숫자.
 - `task_kinds.ro` — 조사 「(으)로」 — 끝 글자에 받침이 있으면(ㄹ 받침은 빼고) 「으로」. 한글이 아니면 「(으)로」.
 - `task_kinds.span_fits` — 두 시각이 일정 손의 꼴(`PUT_STAMP`)이고 시작이 끝보다 앞인가.
@@ -1584,7 +1664,7 @@ window.py ─ decode ─▶ finish.finish ─▶ brief_text.parse ─▶ render.
 #### 스스로 로그인해 지은 보고의 한 줄
 
 시계가 세션 없이 스스로 로그인해 띄운 보고의 창은 머리(지은 때 아래)에 한 줄을 든다 — 몇 시에 비서가 사내 로그인을 새로 했고, 그래서
-평소 Edge 의 메일 · 일정 창이 닫히고 EP 포털에서 앱을 새로 못 띄우며, 띄우려면 평소 Edge 에서 EP 를 로그아웃한 뒤 다시 로그인하면 된다(`render.SIGNED_NOTE` · 이미 띄운 앱 창은 그대로 된다).
+평소 Edge 의 메일 · 일정 창이 닫히고 EP 포털에서 앱을 새로 못 띄우며, 이 보고가 끝나고 `GIVE_BACK_AFTER_MIN` 분 뒤 비서가 로그인을 평소 Edge 로 돌려주고 쓰지 않는 EP 탭을 닫는다 — 그 전에 띄워야 하면 대화의 「EP 돌려줘」다(`render.SIGNED_NOTE` · 이미 띄운 앱 창은 그대로 된다 · 아래 「사람의 로그인을 돌려준다」).
 
 - **값은 시계가 적은 것이고 판정은 지은 때다** — 시계는 그 로그인이 선 판에서 시각표 파일의 `signed` 칸에 로그인한 때(`at`)와 그 로그인으로
   띄운 보고가 글을 남길 수 있는 끝(`until` — 띄운 때에서 잰다)을 띄우기 전에 적는다. 지을 때 `state.state_of` 가 그 칸을 읽고(`signed_from` — 시간대를 단 ISO 꼴 둘일 때만),
@@ -1647,8 +1727,8 @@ report.js(줄의 단추) ─▶ 창의 저장소 brief-done:<메일 번호> ─�
 - **「다시 올린 것」** — 돌아와 보고에 댄 줄과 그 때. 그 때나 그 뒤에 지은 보고 글이 있으면 다음 거둠이 걷고, 없으면 거둘 때마다 또
   「돌아온 것」으로 낸다 — 거두기만 하고 보고가 안 지어진 판(세션이 끊겼다 · 맡긴 쪽이 멈췄다)에도 그 일이 사라지지 않는다. 창의 「내일 다시 볼
   것」 목록에는 안 선다
-- **「걸지 않기로 하신 것」** — 처음 보고 때 여쭌 메일함 스캔 · 아침 보고를 마다하신 말씀(`prefs.py decline`). 스캔이 안 걸렸으면 대화가 이
-  줄을 보고 다시 여쭙지 않는다. 그 줄을 지우시면 다음 보고 때 다시 여쭙는다
+- **「걸지 않기로 하신 것」** — 처음 보고 때 여쭌 아침 보고를 마다하신 말씀(`prefs.py decline` — 옛 판에서는 메일함 스캔도 함께 여쭈었다).
+  시계나 보고 예약이 없으면 대화가 이 줄을 보고 다시 여쭙지 않는다. 그 줄을 지우시면 다음 보고 때 다시 여쭙는다
 - **보고가 받는 길** — `ticks.py` 가 끝 줄 앞에 「올리지 않을 것 · 돌아온 것 · 미룬 것」 무리와 지난 보고 뒤의 「일정에 넣기」 · 맡기신 일의
   끝을 낸다(Edge 에 못 닿아도). 보고를 짓는 쪽은 이 출력을 읽는다 — 파일을 따로 열거나 봉투에 옮겨 적을 일이 없다
 
@@ -1892,14 +1972,15 @@ mailbox-scan 의 판이다.
 
 ### 정한 시각의 보고 — 시계 한 판
 
-정한 시각에 사람 없이 보고를 띄우는 일은 `unattended/` 의 시계가 든다. 작업 스케줄러가 메일함 스캔이 걸린 주기마다 시계 작업(`\mail-secretary\daily-brief`)을
-부르고, 작업이 `clock.py tick` 한 판을 돈다. 시계는 스캔과 별개의 작업이다 — 스캔은 메일함만 읽고 정한 시각을 모르며, 시계가 보고 시각에 스캔에
-한 판을 청한다. 판은 앞 판이 도는 동안 온 주기를 건너뛰고(`IgnoreNew`) 판 안에서 OS 잠금(`oslock.py`)을 한 번 더 쥔다. 시작 때는 스캔 작업보다
-주기의 절반 뒤로, 로그온 뒤 첫 판은 스캔보다 늦게 건다 — 두 작업이 같은 분에 깨면 시계가 청한 판이 「앞 판이 돈다」로 건너뛰어서다. 그래도 겹치는
-날(잠든 PC 가 깨면 놓친 두 주기가 한 순간에 선다)은 청하는 쪽이 늘 `--wait` 를 주어 앞 판이 끝나기를 시한 안에서 기다린 뒤 돌게 한다.
+정한 시각에 사람 없이 보고를 띄우는 일은 `unattended/` 의 시계가 든다. 작업 스케줄러가 시계의 주기(`CLOCK_EVERY_MIN`)마다 시계 작업(`\mail-secretary\daily-brief`)을
+부르고, 작업이 `clock.py tick` 한 판을 돈다. 메일함 스캔은 작업 스케줄러에 걸지 않는다 — 스캔은 메일함만 읽고 정한 시각을 모르며, 시계가 보고
+시각에 스캔에 한 판을 청한다. 시계 판은 보고 시각의 칸 밖에서는 메일함에 안 닿아, 주기는 메일 서버의 부담이 아니라 보고가 얼마나 늦게 서나 ·
+보고 창의 누름을 얼마나 늦게 거두나다. 판은 앞 판이 도는 동안 온 주기를 건너뛰고(`IgnoreNew`) 판 안에서 OS 잠금(`oslock.py`)을 한 번 더 쥔다.
+시작 때는 주기의 절반 뒤로, 로그온 뒤 첫 판은 바탕(`SCAN_LOGON_DELAY_MIN`)에 주기의 절반을 더해 건다 — 옛 판이 건 스캔 작업이 아직 안 거둬진 PC 에서
+두 작업이 같은 분에 깨지 않게다. 청한 판이 대화의 판과 겹치는 날은 청하는 쪽이 늘 `--wait` 를 주어 앞 판이 끝나기를 시한 안에서 기다린 뒤 돌게 한다.
 
-스캔 작업이 걸렸는데 보고 시각이 없는 PC 에도 시계를 건다 — 창에서 누른 「일정에 넣기」를 창 곁의 손이 못 받았을 때 거두는 뒷받침이 보고 시각과
-상관없이 판마다 돌기 때문이다. 보고 시각이 없는 판은 창의 고름 · 누름만 보고 끝난다 — Edge 의 포트가 안 받으면 프로세스 하나 띄우고 바로 끝난다.
+보고 시각이 없어도 대화에서 건 시계(`clock.py register`)는 판마다 돈다 — 창에서 누른 「일정에 넣기」를 창 곁의 손이 못 받았을 때 거두는 뒷받침이 보고
+시각과 상관없이 판마다 돌기 때문이다. 보고 시각이 없는 판은 창의 고름 · 누름만 보고 끝난다 — Edge 의 포트가 안 받으면 프로세스 하나 띄우고 바로 끝난다.
 
 한 판은 이 차례로 엮는다 — 자리 밖에서 보기의 메일을 먼저 보내 그 끝이 이 판에 띄우는 보고의 부탁 글에 실리게 하고, 창에서 고르신 것을 받고,
 띄울 때면 띄우고, 「일정에 넣기」 누름은 몇 분이 들 수 있어 맨 뒤에 거둔다.
@@ -1919,7 +2000,7 @@ tick ─▶ OS 잠금 ─▶ away_mail.mail_step ─▶ window_choices(창 이�
 **시각표와 칸** — 사용자가 정한 보고 시각(하나 이상 · `daily-brief-schedule.json` 의 `times`)마다 그 시각부터 끝까지가 그 시각의 칸이다. 끝은 다음
 시각 · 그 시각에서 기다림의 상한(`BRIEF_WAIT_MIN`) 분 뒤 · 그날 자정 가운데 이른 것이다 — 사용자에게 시각마다 마감을 따로 묻지 않고 시각표에서
 끌어낸다. 상한을 두는 까닭은 아침 보고가 오후에 서지 않고 사내 인증을 하루 내내 두드리지 않게다. 칸의 길이가 `BRIEF_ROOM_MIN` 분이 안 되는
-시각이 있으면 거는 명령이 거절한다 — 시계는 스캔의 주기(`status --json` 의 `task.every_min`)마다 깨는데 그 틈이 모자란 칸에는 판이 안 돌아 날마다
+시각이 있으면 거는 명령이 거절한다 — 시계는 제 주기(`CLOCK_EVERY_MIN`)마다 깨는데 그 틈이 모자란 칸에는 판이 안 돌아 날마다
 조용히 안 뜬다. 시각 하나를 쓰던 옛 설정(꼴 1 · `at`)과 옛 그날 칸(`tries` · `launched`)은 다시 안 걸어도 첫 시각의 것으로 읽는다.
 
 **언제 띄우나** — 판 안에서 다 서면 한 번 살펴본다: 보고를 걸었다 · 서울 시각이 어느 칸 안이다 · 그 칸의 보고 글이 아직 없다(덮는 첫때 — 앞 칸의
@@ -1967,13 +2048,49 @@ tick ─▶ OS 잠금 ─▶ away_mail.mail_step ─▶ window_choices(창 이�
 - **세션 없이 스스로 로그인한 때는 보고 창이 읽는 자리에 남긴다** — 그 로그인이 선 판이 시각표 파일의 `signed` 칸에 로그인한 때(`at`)와 그
   로그인으로 띄운 보고가 글을 남길 수 있는 끝(`until` — 띄운 때에서 `BRIEF_LOCK_STALE_S`)을 띄우기 전에 적는다(`brief_schedule.note_signed`). 적는
   자리는 띄우는 판 하나다(`clock_round.note_launch` — 그 칸의 로그인을 `brief_state.slot_login` 이 고르고, 첫 시각은 끊긴 세션 앞의 부름(`lost`)일
-  때만 적는다). 이 스킬의 창이 그 사이에 지은 보고의 머리에 「사내 로그인을 새로 했다 · 다시 로그인」 한 줄을 세운다(위 「스스로 로그인해 지은 보고의
+  때만 적는다). 이 스킬의 창이 그 사이에 지은 보고의 머리에 「사내 로그인을 새로 했다 · 이 보고가 끝나고 돌려준다」 한 줄을 세운다(위 「스스로 로그인해 지은 보고의
   한 줄」) — 모델이 옮겨 적지 않는다. 살아 있던 세션 앞의 부름(그날 첫 시각)은 로그인을 새로 했는지 몰라 안 적는다. 못 적으면 그 줄만 안 선다
 - **세션 보기는 로그인하지 않는다** — 칸 안에서 세션을 보는 것은 메일 손의 `session` 한 번이다. 그 명령은 있는 세션 파일로 묻고, 서버가 거절하면
   사람의 Edge 에 이미 선 세션을 받아 올 뿐 로그인 화면 · 창 · 탭을 열지 않는다(손 `mail.py` 머리말 「세션」 · 스킬 ep-login 의 `edge_session.js`
   머리말). 그 부름은 그 칸의 마지막 살펴보기에서 `BRIEF_TRY_GAP_MIN` 분이 지난 판만 한다 — 작업이 더 자주 깨워도 SSO 를 촘촘히 안 두드리고, 칸
   밖에서는 안 부른다. 청한 판이 손에서 받은 답(`status --json` 의 `last_run.session`)은 틈과 상관없이 쓴다 — 세션 파일이 끊긴 뒤 새로 쓰여(대화의
   EP 로그인 · 다른 사내 앱 스킬이 새로 받음) 스캔이 바로 돈 판이 살아 있음을 보면 그 판에 띄운다
+
+#### 사람의 로그인을 돌려준다
+
+시계가 끊긴 세션 위에서 스스로 로그인하면 사람의 평소 Edge 의 EP 포털이 죽어 ERP · MES 를 새로 못 띄운다. 그 로그인은 보고 하나를 짓고 보고
+창의 단추가 몇 번 쓰려고 빌린 것이라, 다 쓰면 형제 스킬 ep-login 입구의 돌려주는 문(`--give-back --unattended`)으로 사람에게 돌려준다 — 평소 Edge 에
+로그인을 다시 열고 포트 창의 EP 포털 · 로그인 화면 · 메일 목록 탭과 평소 Edge 에서 입구가 앞서 연 EP 탭을 닫는다(끝 줄 · 종료 값은 그 입구의
+머리말 「프로그램이 부르는 문」). 빌리고 돌려주는 자리는 `loan.py` 하나이고 OS 잠금(`LOAN_LOCK_FILE`) 아래에서 한다 — 시계 판 · 창 곁의 손 ·
+맡긴 일의 지킴이가 함께 불러도 입구는 한 번이다.
+
+- **보고가 끝나고 `GIVE_BACK_AFTER_MIN` 분 뒤 처음 도는 판에 한 번** — 돌려줄 로그인은 그날 장부의 보고 앞 로그인 가운데 시계가 끊긴 세션 위에서
+  세운 것이다(첫 시각은 `lost` 인 그날의 한 번 · 뒤 시각은 칸의 한 번 — `loan.loans_of`). 때는 그 칸이 띄운 보고가 끝난 때(`brief_reports.launched_end`
+  — 프로세스가 사는 동안은 기다리고, 띄운 때에서 `BRIEF_LOCK_STALE_S` 를 넘지 않는다)에서 잰다 — 보고가 아직 돌면 정한 시간이 아니라 그 끝을 기다린다.
+  그 15분은 사용자가 정한 틈이고 보고 창의 「일정에 넣기」 · 「결재 창 열기」 · 「맡기기」가 그 로그인을 쓰는 동안이다. 시계는 15분마다 깨어
+  (`CLOCK_EVERY_MIN` — 옮겨 받기도 이 주기로 다시 건다) 끝난 뒤 15 ~ 30분 사이에 돌려준다. 판의 맨 끝(누름 거두기 뒤)에서 한다 — 남은 누름이 그
+  세션에서 먼저 든다
+- **한 번 돌려준 로그인은 다시 안 돌려준다** — 돌려준 끝을 빌림 파일(`LOAN_FILE` 의 `given`)과 그 로그인 기록(`given`)에 함께 적는다. 돌려주면 이
+  세션이 끊겨 뒤 시각은 끊긴 세션에서 다시 로그인하고(`login_due` 그대로), 그 로그인도 그 보고 뒤 15분에 돌려준다. 한 로그인이라도 아직 그 틈
+  안이거나 그 세션을 쓰는 일(시계가 띄운 보고 · 빌린 일)이 있으면 기다린다 — 한 번 돌려주면 그 세션을 다 끊는다
+- **살아 있던 세션 앞의 부름은 안 돌려준다** — 첫 시각은 세션이 살아도 입구를 부르지만, 그 세션은 사람이 대화에서 세운 것일 수 있다(시계가 로그인을
+  새로 했는지 모른다 — `note_launch` 가 보고 창의 한 줄을 안 세우는 것과 같은 자). 대화에서 세운 로그인은 대화가 일을 마친 뒤 사람에게 묻고 돌려준다
+  (회사 스킬 머리 줄 · 스킬 ep-login 「사람의 로그인을 돌려준다」)
+- **SSO 가 안 서는 로그온은 그날 다시 안 부른다** — 그 문의 4 는 아무것도 안 열고 안 닫았다는 뜻이다(칠 사람이 없다). 끝을 적고 그날의 나머지
+  로그인에도 같은 끝을 달며, `status` 가 그렇다는 것과 대화의 「EP 돌려줘」를 댄다
+- **돌려준 뒤 누른 단추는 잠깐 빌린다** — 「일정에 넣기」가 세션 없음(`records.SESSION`)을, 결재 창 열기가 세션 없음(`APPR_SESSION`)을 내면 창 곁의
+  손(`presses.Borrow`)이 시계의 `clock.py lend` 로 한 번 빌리고 그 일을 다시 한 뒤 `release` 로 놓는다. 맡긴 일은 지킴이(`handed.watch`)가 claude 를
+  띄우기 전에 `loan.lend` 로 세션을 쓴다고 적고(끊겼으면 빌리고) 끝나면 놓는다 — 산 세션에서 맡긴 판도 적어, 시계가 그 판 도중에 돌려주지 않는다.
+  빌리는 것은 오늘 이 PC 가 돌려준 뒤일 때뿐이다 — 돌려준 적이 없는데 끊겼으면 사람이 다른 자리에서 로그인했거나 대화의 세션이 끊긴 것이라 전처럼
+  대화의 로그인을 청한다. 빌린 로그인이 섰는데 또 끊기면 다시 안 빌리고(사람이 다른 자리에서 로그인했다), 빌린 로그인 위에서도 세션 없음이면 그 일에는
+  그날 다시 안 빌린다(`futile` — 판마다 로그인과 돌려주기를 되풀이하지 않는다)
+- **한 걸음에 로그인 하나 · 끝나면 곧 돌려준다** — 한 걸음의 「일정에 넣기」 누름 여럿은 로그인 하나를 함께 쓰고 그 걸음 끝에 놓는다. 쓰는 일이 더
+  없으면 놓는 손이 그 자리에서 돌려준다(못 하면 다음 시계 판). 일마다 쓸 끝(`until` — 그 일의 천장)을 적어, 놓는다고 하기 전에 죽은 손이 영영
+  붙들지 않는다
+- **결재 창은 15분 더 둔다** — 결재 창은 그 세션이 사는 Edge 에 떠 사람이 그 창에서 결재한다. 띄운 직후에 돌려주면 그 창이 죽는다. 그래서 띄운
+  결재 창은(빌렸든 산 세션이든) 놓을 때 `GIVE_BACK_AFTER_MIN` 분 더 쓰는 것으로 적고, 그 뒤 시계 판이 돌려준다
+- **`status` 가 말한다** — 돌려준 끝마다 한 줄(때 · 닫은 EP 탭의 수 · 어느 로그인), 아직 안 돌려준 보고 앞 로그인은 언제 돌려주나, 단추가 빌려 쓰는 중인
+  로그인(`loan.status_lines`)
 
 #### 띄운 claude
 
@@ -2072,14 +2189,13 @@ tick ─▶ OS 잠금 ─▶ away_mail.mail_step ─▶ window_choices(창 이�
 - **누가 · 언제** — `clock.py adopt`(설치 · 대화가 부른다)와 시계의 첫 판이 같은 함수 하나를 부른다. 새 파일이 없고 옛 파일이 있을 때만 옛 것을 읽어 새
   이름으로 바꿔 끼워 쓴다. 옛 파일은 지우지 않는다 — 옮겨 받는 손이 도중에 죽어도 다음 판이 다시 읽는다. 새 파일이 있으면 옛 것은 다시 안 본다 — 옮긴
   뒤 바꾼 시각을 옛 것이 덮지 않게. 스캔은 옛 칸을 다시 안 쓰고 안 지운다
-- **`adopt` 는 곁의 스캔이 건 작업만 받고 시계를 이 홈으로 겨눈다** — 스캔에 `status --json` 을 물어 걸린 작업의 명령줄이 곁의 `scan.py` 를 부를
-  때만 옮겨 받고, 시계를 이 홈의 입구 · 회사 메일 손으로 건다 — 없으면 새로, 다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 다시. 걸린 시계의 인자는
-  거는 틀(`TICK_ARGUMENTS`)로 되읽어 견주고, 그 꼴이 아니면(손으로 고쳤다) 안 건드린다. 손은 이 홈의 형제 스킬 company-mail 것이다 — 스캔 작업이
-  굳힌 손은 다른 홈 것일 수 있어 물려받지 않는다. 주기 · 사용자 폴더는 스캔의 답에서, 시각 · claude 는 사용자 폴더의 시각표에서(다시 걸어도
-  그대로다) 받는다. 여러 번 불러도 같다
-- **설치는 한 홈에서 스캔 다음에 부른다** — 업데이트 때 깐 홈 가운데 정해진 차례의 첫째 한 홈에서만, 스킬 mailbox-scan 의 `scan.py adopt` 뒤에
-  부른다. 스캔이 먼저 이 홈으로 옮겨 앉아야 「이 홈의 스캔이 건 작업인가」가 서고, 홈마다 부르면 홈끼리 서로 다시 겨눈다 — 옛 설치가 홈마다
-  불러도 스캔이 다른 홈을 부르는 홈은 건너뛰어 서로 겨누지 않는다
+- **`adopt` 는 시계만 보고 이 홈으로 겨눈다** — 메일함 스캔의 작업에는 기대지 않는다(스캔은 작업을 걸지 않고, 설치가 옛 판의 스캔 작업을
+  거둔다). 옛 파일을 옮겨 받은 뒤 걸린 시계의 인자를 거는 틀(`TICK_ARGUMENTS`)로 되읽어 견준다 — 이 홈의 입구 · 손을 부르면 그대로, 그 꼴이 아니면(손으로
+  고쳤다) 안 건드리고, 다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 시계의 주기(`CLOCK_EVERY_MIN`)로 이 홈의 입구 · 회사 메일 손으로 다시 건다 — 걸린 주기는 옛 스캔의 `--every` 를 베낀 값일 수 있고, 보고 뒤의 돌려주기가 그 주기에 기댄다. 시계가 없으면 보고
+  시각표(방금 옮겨 받은 것도)가 있을 때만 시계의 주기로 새로 건다 — 사람이 보고를 고른 PC 다. 손은 이 홈의 형제 스킬 company-mail 것, 사용자 폴더는
+  스캔의 `status --json --dry-run` 의 `home`, 시각 · claude 는 사용자 폴더의 시각표에서(다시 걸어도 그대로다) 받는다. 여러 번 불러도 같다
+- **설치는 한 홈에서 부른다** — 업데이트 때 깐 홈 가운데 정해진 차례의 첫째 한 홈에서만 부른다. 홈마다 부르면 홈끼리 서로 다시 겨눈다. 스킬
+  mailbox-scan 의 `scan.py adopt`(옛 스캔 작업 거두기)와 차례에 안 기댄다
 - **그날 장부** — 옛 `state.json` 의 `brief` 칸을 읽기만 한다. 날이 바뀐 장부여도 그대로 옮긴다 — 지난날 건너뛴 시각의 한 줄은 새 장부를 열 때 선다
   (`brief_day.roll_day`). 그날 이미 띄운 칸은 다시 안 띄우고, 띄운 claude 가 아직 돌면 옛 잠금(`brief.lock` 의 프로세스 번호)을 옮겨 받아 「짓는 중」으로
   본다
@@ -2188,7 +2304,7 @@ JSON 객체 하나(`said` 머리 아래 한 문장 · `facts` [이름표, 값] �
 부르는 것이다(어느 모듈도 입구를 싣지 않는다). `scripts/clock.py`(때 짓기)와 이름이 같다 — 입구는 늘 `__main__` 이고, 안의 모듈이 싣는 `clock` 은 `scripts/` 의
 것이라 입구가 `sys.path` 에 `scripts/` 를 `unattended/` 보다 **앞에** 둔다. 스캔의 두 문과 아래 파일 이름도 이 표가 원본이다.
 
-`unattended/task_base.py`(작업 스케줄러를 부르는 몸 · 작업 정의의 틀 · 스캔 작업의 로그온 뒤 첫 판) · `scripts/proc_base.py`(곁의 파이썬 손을 창 없이 · UTF-8 로
+`unattended/task_base.py`(작업 스케줄러를 부르는 몸 · 작업 정의의 틀 · 간격 읽기 · 로그온 뒤 첫 판의 바탕) · `scripts/proc_base.py`(곁의 파이썬 손을 창 없이 · UTF-8 로
 띄우는 몸 — 창의 손도 쓰므로 `scripts/` 에 서고 `unattended/` 는 그것을 싣는다) · `unattended/hand_facts.py`(회사 메일 손의 자리 · 종료 값 · 시한 · 사내 세션의 답 낱말 · 다음 걸음)는 스킬 mailbox-scan 의 `scripts/` 에 선 같은 이름의 파일을 바이트째 베낀 것이다 — 두 스킬은 서로의 코드를 싣지 않고, 같은 사실은 아래
 스킬인 스캔에 원본을 둔다. 고칠 때는 원본을 고치고 베낀다. claude 를 찾고 · 살폈나 보는 몸은 이 스킬만의 것이라 `unattended/launch_base.py` 가, 떼어 띄우는 인자는 창 곁의 손을 띄우는 넣는 손도 쓰므로
 `scripts/detach.py` 가 든다(창 없는 몫은 `proc_base.quiet` 에서 얹는다).
@@ -2203,14 +2319,16 @@ JSON 객체 하나(`said` 머리 아래 한 문장 · `facts` [이름표, 값] �
 | 명령 · 인자 | 내는 것 | 종료 값 |
 |---|---|---|
 | `tick --dir D --hand H` | 작업 스케줄러가 주기마다 부르는 한 판(작업의 명령줄이 이 두 인자를 굳힌다 — 밖에서 기대는 꼴이라 안 바꾼다). OS 잠금(`daily-brief-clock.lock`)을 못 쥐면 아무것도 안 내고 0. 판 끝에 줄을 차례로 낸다 — 자리 밖 메일 · 창의 고름 · 띄움 또는 기다림 · 누름 거둠(할 말이 없는 줄은 뺀다). 청한 판이 못 돌았으면 `[보고 예약 — {t} 보고: 메일함 스캔 한 판을 못 받아 못 띄웠다({앞 판이 시한 안에 안 끝났다 \| 스캔이 멈췄다 \| 스캔을 못 불렀다}) · {끝} 까지 다음 확인에 다시 청한다]`. 그날 장부를 그 순간 못 읽으면 판을 쉬고 `[보고 예약 — 그날 장부를 그 순간 못 읽었다({까닭}) — 이 판은 쉬고 다음 확인에 다시 본다]` | 0 · 1 시계가 스캔 · 손을 못 찾았다(`[시계 — …]`) · 그날 장부를 못 읽었다 · 2 |
-| `register [--at [HH:MM …]] [--hand H] [--claude C] [--dry-run \| --validate]` | 작업 `\mail-secretary\daily-brief` 를 건다 — 주기는 스캔의 걸린 주기(`status --json` 의 `task.every_min`)를 따르고 손은 `--hand` · 없으면 스캔 작업의 `task.hand` · 없으면 형제 스킬 company-mail 의 `mail.py`. 건 줄 `[예약 — daily-brief 시계를 걸었다: {n}분마다 · 앞 판이 돌면 그 주기는 건너뛴다]`. `--at` 이 있으면 이어서 `at` 과 같은 줄. `--dry-run` 이면 `[예약 — 걸지 않고 보이기만 한다. 걸면 시계 판이 {n}분마다 돈다(앞 판이 돌면 그 주기는 건너뛴다): {명령}]` 다음에 정의 틀. 스캔이 안 걸렸으면 `--dry-run` 이어도 `[예약 — 걸지 않았다: 메일함 스캔이 안 걸려 있다. 다음: scan.py register]` 로 멈춘다(주기를 스캔에서 받는다 — 걸기 전 미리 보기는 `at --dry-run`) | 0 · 1 · 2 |
+| `register [--at [HH:MM …]] [--hand H] [--claude C] [--dry-run \| --validate]` | 작업 `\mail-secretary\daily-brief` 를 건다 — 주기는 시계의 것(`CLOCK_EVERY_MIN`)이고 손은 `--hand` · 없으면 형제 스킬 company-mail 의 `mail.py`. 메일함 스캔의 작업에 안 기댄다. 건 줄 `[예약 — daily-brief 시계를 걸었다: {n}분마다 · 앞 판이 돌면 그 주기는 건너뛴다]`. `--at` 이 있으면 이어서 `at` 과 같은 줄. `--dry-run` 이면 `[예약 — 걸지 않고 보이기만 한다. 걸면 시계 판이 {n}분마다 돈다(앞 판이 돌면 그 주기는 건너뛴다): {명령}]` 다음에 정의 틀. 손이 없으면 `[예약 — 걸지 않았다: …]` 로 멈춘다 | 0 · 1 · 2 |
 | `at [HH:MM …] [--claude C] [--dry-run]` | 보고 시각표를 걸고 바꾼다(시각은 전부 준다 · 안 주면 기본 시각 하나). `[보고 예약 — …]` 건 줄 · 거절 줄, `--dry-run` 이면 띄울 명령 · 로그인 · 열린 · 막은 명령 줄. 시계가 안 걸려 있으면 끝에 `  ⚠ 시계가 안 걸려 있어 이 보고는 안 뜬다. 다음: clock.py register` | 0 · 1 |
 | `off [--dry-run]` | 보고 예약을 내린다 — `[보고 예약 — 내렸다]` + 열린 창에 알린 구절 · `[보고 예약 — 걸려 있지 않았다]` · `--dry-run` 이면 내리지 않고 보이는 줄 | 0 |
 | `away on\|off [--chosen-at 때] [--dry-run]` | 자리 밖에서 보기를 켜고 끈다. `--chosen-at` 없이는 `[자리 밖에서 보기 — {말}]`(켤 때 `· 받는 분 · 보내는 분 본인({주소})`)+ 창 알림 구절, 있으면 창에 적을 말 한 줄만(창 곁의 손이 부른다) | 0 따랐다 · 1 안 따랐다 |
 | `window-times HH:MM [HH:MM …] [--window-base [HH:MM …]] --chosen-at 때` | 보고 창에서 고르신 시각을 건다(창 곁의 손이 부른다) — 그 창에 적을 말 한 줄(`--chosen-at` 이 없으면 `고르신 때가 없어 걸지 않았습니다 — 대화에서 말씀해 주세요`) | 0 따랐다 · 1 안 따랐다 |
 | `status [--dry-run]` | 시계 작업 줄(`[예약 — daily-brief · 간격 … · 켜짐 … · 한 번에 하나 …]` + `  부르는 것: …` · `--dry-run` 이면 묻지 않는 줄)과 그 뒤 보고 예약 줄 전부(`brief_status.describe` — 시각마다 오늘 어떻게 됐나). 보고 예약 줄의 「작업이 안 걸렸다」는 시계 작업을 말한다. 시계가 없고 옛 보고 시각표만 있으면 `[시계 — 걸려 있지 않다 · 옛 보고 시각표가 있다 — 다음: clock.py adopt]`(모델이 이 줄로 `adopt` 를 부른다) | 0 |
-| `unregister [--dry-run]` | 시계 작업을 지우고 보고 예약을 내린다 — 스캔 작업 · 쌓인 파일은 안 건드린다. `[예약 — daily-brief 시계를 껐다{ · 보고 예약도 내렸다}. 스캔 작업은 그대로다]` · 못 껐으면 `[예약 — 못 껐다(걸린 작업이 없을 수 있다){ · 보고 예약도 내렸다}: {끝 300자}]` | 0 · 1 |
-| `adopt [--dir D]` | 설치 · 대화가 부른다(설치는 업데이트 때 한 홈에서만, 스캔의 `scan.py adopt` 뒤에). 스캔에 `status --json` 을 물어 `task.calls_this_scan` 이 참일 때만 — 옛 파일을 옮겨 받고(아래 파일 표) 시계를 이 홈의 입구 · 이 홈의 회사 메일 손으로 건다: **없으면 새로, 다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 다시**(손은 형제 스킬 company-mail 의 `mail.py` — 스캔 작업의 손을 물려받지 않는다 · 주기 · 사용자 폴더는 스캔의 답에서 · 시각 · claude 는 사용자 폴더의 시각표 그대로). 여러 번 불러도 같다. 끝 줄 하나 — `[시계 — 걸었다 · 옛 보고 시각표를 옮겨 받았다]`(옮겨 받을 시각표가 없었으면 `[시계 — 걸었다]`) · `[시계 — 이 홈으로 다시 걸었다{ · 꺼 둔 채로}]` · `[시계 — 이미 걸려 있다]`(이미 이 홈의 입구와 손을 부른다) · `[시계 — 건드리지 않았다: 걸린 시계의 명령줄이 거는 꼴이 아니다(손으로 고친 작업이다)]` · `[시계 — 건드리지 않았다: 이 홈의 스캔이 건 작업이 아니다]` · `[시계 — 걸 것이 없다: 메일함 스캔이 안 걸려 있다]` · 걸어야 하는데 못 걸었으면 `[예약 — 작업 스케줄러가 거절했다: …]` · `[시계 — 못 걸었다: …]`(이 홈의 회사 메일 손이 없다) · `[시계 — 사용자 폴더를 못 정했다 — …]` | 0(건너뛴 갈래 전부 · 걸었다) · 1 걸어야 하는데 못 걸었다(작업 스케줄러가 거절 · 메일 손이 없다 · 사용자 폴더를 못 정했다) · 2 |
+| `unregister [--dry-run]` | 시계 작업을 지우고 보고 예약을 내린다 — 쌓인 파일은 안 건드린다. `[예약 — daily-brief 시계를 껐다{ · 보고 예약도 내렸다}]` · 못 껐으면 `[예약 — 못 껐다(걸린 작업이 없을 수 있다){ · 보고 예약도 내렸다}: {끝 300자}]` | 0 · 1 |
+| `adopt [--dir D]` | 설치 · 대화가 부른다(설치는 업데이트 때 한 홈에서만 — 스캔의 `scan.py adopt` 와 차례에 안 기댄다). 메일함 스캔의 작업은 안 본다 — 옛 파일을 옮겨 받고(아래 파일 표) 걸린 시계만 본다: **다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 시계의 주기로 이 홈의 입구 · 이 홈의 회사 메일 손으로 다시, 없으면 보고 시각표가 있을 때만 시계의 주기로 새로**(손은 형제 스킬 company-mail 의 `mail.py` · 시각 · claude 는 사용자 폴더의 시각표 그대로). 여러 번 불러도 같다. 끝 줄 하나 — `[시계 — 걸었다 · 옛 보고 시각표를 옮겨 받았다]`(이번에 옛 시각표를 옮겨 받아 새로 걸었다) · `[시계 — 걸었다]`(있던 시각표로 새로 걸었다) · `[시계 — 이 홈으로 다시 걸었다{ · 꺼 둔 채로}]` · `[시계 — 이미 걸려 있다]`(이미 이 홈의 입구와 손을 부른다) · `[시계 — 건드리지 않았다: 걸린 시계의 명령줄이 거는 꼴이 아니다(손으로 고친 작업이다)]` · `[시계 — 걸 것이 없다: 시계가 안 걸려 있고 보고 시각표도 없다]` · 걸어야 하는데 못 걸었으면 `[예약 — 작업 스케줄러가 거절했다: …]` · `[시계 — 못 걸었다: …]`(이 홈의 회사 메일 손이 없다) · `[시계 — 사용자 폴더를 못 정했다 — …]` | 0(건너뛴 갈래 전부 · 걸었다) · 1 걸어야 하는데 못 걸었다(작업 스케줄러가 거절 · 메일 손이 없다 · 사용자 폴더를 못 정했다) · 2 |
+| `lend --why put\|appr\|run --ceiling S [--lost] [--dir D]` | 보고 창 곁의 손(`presses.Borrow`)이 단추의 일이 세션 없음을 낸 뒤 부른다. 그 일이 사내 세션을 쓴다고 적고(쓸 끝은 `S` 초 뒤), 끊겼으면 오늘 이 PC 가 로그인을 돌려준 뒤일 때만 입구를 사람 없는 꼴로 한 번 부른다(위 「사람의 로그인을 돌려준다」). 끝 줄 하나 — `[보고 창 — 산 세션에서 한다]` · `[보고 창 — 사내 세션이 없어 빌리지 않았다]` | 0 산 세션에서 하면 된다 · 1 안 빌렸다 · 2 |
+| `release --why put\|appr\|run [--hold] [--futile] [--dir D]` | 그 일이 끝난 뒤 부른다. 쓰는 일을 걷고(`--hold` — 띄운 결재 창이면 `GIVE_BACK_AFTER_MIN` 분 더 쓴다 · `--futile` — 빌린 로그인 위에서도 세션 없음이었다: 그 일에는 오늘 다시 안 빌린다), 빌린 로그인을 쓰는 일이 더 없고 시계가 띄운 보고도 안 돌면 곧 돌려준다. 끝 줄 하나 — `[보고 창 — {돌려준 끝}]` · `[보고 창 — 놓았다]` | 0 · 2 |
 
 `at` · `off` · `away` · `window-times` 의 열린 창 알림 구절(`tell_window`)은 창의 알림(`state.sync`)을 스킬 안 함수로 부른 글이고, 안 열렸으면 빈 글이다.
 
@@ -2230,8 +2348,8 @@ JSON 객체 하나(`said` 머리 아래 한 문장 · `facts` [이름표, 값] �
 
 | 문 | 시계가 쓰는 것 | 꼴의 원본 |
 |---|---|---|
-| `scan.py run --now --wait <초> --hand H` | 보고 시각의 칸에서만, 그 칸에 한 번 청한다. 판의 갈래(`--full` · `--new`)와 `--full-every` 는 주지 않는다 — 스캔이 제 기본 전체 주기로 갈래를 고르게 해, 메일함 전체를 볼 때가 찬 보고 시각에 청한 판이 그것을 다음 정한 판으로 미루지 않는다(미루면 띄운 보고가 낡은 「메일함 전체를 마지막으로 다 본 때」를 읽는다). 전체 주기는 스캔이 걸린 작업의 판이 준 값을 따른다(작업을 기본과 다른 `--full-every` 로 걸었으면 그 값 — 스캔 설계 「status --json · run --wait」). `--wait` 는 늘 준다 — 값 `SCAN_WAIT_S = 900`(스캔의 한 판이 손을 부르는 시간의 한계 안), 부름의 시한은 `SCAN_CALL_TIMEOUT_S = 2400`(기다림 + 가장 긴 한 판). 낸 글은 안 읽는다 — 돈 판은 아래 `status --json` 으로 읽는다 | 스킬 mailbox-scan 설계 「status --json · run --wait — 프로그램이 기대는 꼴(원본)」 |
-| `scan.py status --json [--dry-run]` | `home` · `task.registered` · `task.every_min` · `task.hand` · `task.calls_this_scan` · `last_run.started` · `last_run.session` — 청한 뒤 시작한 판이고 세션 답이 `live` 일 때만 띄운다 | 같은 곳(칸은 거기서 읽는다 · 여기 옮기지 않는다) |
+| `scan.py run --now --wait <초> --hand H` | 보고 시각의 칸에서만, 그 칸에 한 번 청한다. 판의 갈래(`--full` · `--new`)와 `--full-every` 는 주지 않는다 — 스캔이 제 기본 전체 주기로 갈래를 고르게 해, 메일함 전체를 볼 때가 찬 보고 시각에 청한 판이 그것을 다음 정한 판으로 미루지 않는다(미루면 띄운 보고가 낡은 「메일함 전체를 마지막으로 다 본 때」를 읽는다). 전체 주기는 앞 판이 받아 적은 값이나 스캔의 기본을 따른다(스캔 설계 「status --json · run --wait」). `--wait` 는 늘 준다 — 값 `SCAN_WAIT_S = 900`(스캔의 한 판이 손을 부르는 시간의 한계 안), 부름의 시한은 `SCAN_CALL_TIMEOUT_S = 2400`(기다림 + 가장 긴 한 판). 낸 글은 안 읽는다 — 돈 판은 아래 `status --json` 으로 읽는다 | 스킬 mailbox-scan 설계 「status --json · run --wait — 프로그램이 기대는 꼴(원본)」 |
+| `scan.py status --json [--dry-run]` | `home` · `last_run.started` · `last_run.session` 만 읽는다(`task` 칸은 안 읽는다 — 시계는 스캔 작업에 안 기댄다) — 청한 뒤 시작한 판이고 세션 답이 `live` 일 때만 띄운다 | 같은 곳(칸은 거기서 읽는다 · 여기 옮기지 않는다) |
 
 #### 새 파일 이름 — 사용자 폴더 바로 밑, `daily-brief-` 머리
 
@@ -2245,6 +2363,7 @@ JSON 객체 하나(`said` 머리 아래 한 문장 · `facts` [이름표, 값] �
 | `daily-brief-away-me-*` | 주소록 「나」의 임시 폴더(옮겨 받을 것 없다) | `mailbox-scan/away-me-*` |
 | `daily-brief-handed/<판>/` | 맡긴 판의 기록 · 맡긴 일 · 부탁 글 · 흐름(도는 판은 옛 자리에 둔 채 읽는다) | `mailbox-scan/handed/<판>/` |
 | `daily-brief-clock.xml` · `daily-brief-clock.lock` | 시계 작업 정의의 사본 · 시계의 OS 잠금(`oslock.py`) | — |
+| `daily-brief-loan.json` · `daily-brief-loan.lock` | 오늘의 돌려준 끝들 · 단추가 빌린 로그인 · 그 세션을 쓰는 일들(`loan.py` 하나가 쓴다) · 빌리고 돌려주는 OS 잠금 | — |
 
 옮겨 받기는 `adopt` 와 시계의 첫 `tick` 이 같은 함수 하나로 한다 — 새 파일이 없고 옛 파일이 있을 때만 읽어 새 이름으로 바꿔 끼워 쓰고, 새 파일이 있으면 옛 것을 다시
 안 본다. 작업 폴더의 `handed/<판>/`(맡긴 실행이 쓴 파일) · `daily-brief-prefs.md` · `daily-brief-entries.json` · `daily-brief-runs.json` · `brief-*.html` · `brief-*.md` 는 그대로다.
@@ -2300,8 +2419,9 @@ claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손�
   보관까지(뒤의 실행 — 「맡긴 일의 실행」)다
 - **모델의 판단을 다시 하지 않는다** — 맡길 일의 종류를 짐작하거나 줄을 고치지 않고, 「올리지 않을 것」의 갈래를 가르지 않고, 친 말 · 결과
   글을 읽어 무엇을 가르지 않는다. 꼴이 틀린 줄은 글로 세우고 그렇다고 말한다
-- **창과 창 곁의 손은 로그인하지 않는다** — 사내 로그인이 끊긴 누름은 남겨 두고 살아난 세션에서만 다시 해 본다. 사람 없이 로그인하는 것은 보고 시각을
-  건 PC 의 시계뿐이고, 그것도 보고 시각의 칸 안에서만이다(위 「사내 세션과 스스로 로그인」)
+- **창과 창 곁의 손은 스스로 로그인하지 않는다** — 사내 로그인이 끊긴 누름은 남겨 두고 살아난 세션에서만 다시 해 본다. 사람 없이 로그인하는 것은
+  보고 시각을 건 PC 의 시계뿐이다 — 보고 시각의 칸 안에서와(위 「사내 세션과 스스로 로그인」), 그날 그 로그인을 돌려준 뒤 누른 단추를 할 때
+  시계의 `lend` 로 잠깐 빌리는 것뿐이다(위 「사람의 로그인을 돌려준다」)
 - **사람의 Edge 에 탭을 함부로 열지 않는다** — 창 이음 명령 · 알림은 열린 보고 창에만 적는다. 탭을 여는 것은 창을 띄울 때와, 열린 file: 탭이
   없을 때 거두는 손이 뒤 탭을 잠깐 열고 닫을 때뿐이다
 
@@ -2327,7 +2447,7 @@ claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손�
 | 안 올려도 됨 | 맞춤 파일의 꼴 · 되돌리는 열쇠를 고칠 때마다 | 감춘 줄이 안 보이거나 되돌림이 안 먹어도 아무 말이 없다 | 사람이 무엇을 감췄나 못 읽고 못 되돌려, 보셔야 할 일이 보고에서 영영 빠진다 |
 | 사람별 | 칸을 읽는 손을 고칠 때마다 — 덧말 속 「 · 」를 사람의 가름으로 읽으면 없는 사람이 선다 | 사람이 빠지거나 없는 사람 · 끝난 일의 사람이 서도 창은 멀쩡하다 | 기다리시는 분을 못 보고 답이 늦는다 |
 | 보고 맞추기 | 시각표 · 맞춤 파일을 읽는 손을 고칠 때마다 — 이미 건 PC 는 옛 꼴을 든다 | 칸이 비거나 고르는 칸이 숨지 않아도 창은 멀쩡하다 | 걸린 시각과 감춘 것을 못 보거나, 거둬지지 않는 창에서 고르신 것이 사라진다 |
-| 스스로 로그인해 지은 보고의 한 줄 | 시계가 적은 범위를 읽는 손 · 범위를 재는 손을 고칠 때마다 — 그 범위는 로그인할 때마다 새로 적히고 지난 범위가 파일에 남는다 | 줄이 안 서도 · 지난 범위에 서도 창은 멀쩡하다 | 사람이 포털에서 앱이 왜 안 뜨는지 모르거나, 로그인 없이 지은 보고마다 다시 로그인하라는 줄이 서 사람이 까닭 없이 다시 로그인하고 그 로그인이 비서 쪽 세션을 끊는다 |
+| 스스로 로그인해 지은 보고의 한 줄 | 시계가 적은 범위를 읽는 손 · 범위를 재는 손을 고칠 때마다 — 그 범위는 로그인할 때마다 새로 적히고 지난 범위가 파일에 남는다 | 줄이 안 서도 · 지난 범위에 서도 창은 멀쩡하다 | 사람이 포털에서 앱이 왜 안 뜨는지 모르거나, 로그인 없이 지은 보고마다 로그인을 새로 했다는 줄이 서 사람이 까닭 없이 「EP 돌려줘」를 청하고 그 돌려주기가 비서 쪽 세션을 끊는다 |
 | 일정에 넣기 카드 | 칸을 읽는 손 · 「무엇을 넣나」의 말을 고칠 때마다 — 창과 넣는 손이 같은 칸을 읽는다 · 열쇠는 열여섯 글자의 해시라 옮겨 적는 손이 끼면 한 글자씩 틀린다 · 모델은 회의 절 이름을 그날에 맞게 바꿔 쓴다 | 공개 범위 · 날을 잘못 적어도 단추는 똑같이 눌린다. 열쇠가 틀리면 누른 뒤에야 「그 사이 바뀌어」라는 거짓 말이 선다 | 사람이 「공개 · 목요일」을 보고 눌렀는데 다른 꼴로 남이 보는 회사 일정에 든다 · 약속이 안 들고 일어나지 않은 바뀜을 믿는다 · 회의를 누르면 요청 메일의 일이 닫힌다 |
 | 맡길 일 | 줄을 읽는 손 · 미리 가르는 손 · 창 곁의 손이 따로 고쳐진다 — 사람이 누르는 것은 번호이고 손은 그 번호로 글의 줄을 찾는다 | 번호가 갈려도, 틀린 줄에 단추가 서도 창은 멀쩡히 눌린다 | 사람이 본 줄과 다른 일이 되거나(참석자 없는 회의실 · 다른 카드의 일), 안내 메일이 사람이 고르지 않은 분께 간다 |
 | 맡긴 일은 한 번 | 창 곁의 손 · 창 · 뒤의 실행이 따로 돈다 · 손이 죽었다 다시 뜨거나 창이 손을 잃어 맺은 누름이 실제로 생긴다 · 같은 일을 「다시 맡기기」 · 「이것만 맡기기」로 또 누를 수 있다 | 다시 넘긴 일도, 덮인 기록도 창에는 멀쩡히 선다 | 같은 회의실이 두 번 잡히고 다른 분들께 안내 메일이 두 번 가거나, 된 일이 「못 함」으로 서서 또 맡기게 된다 |
@@ -2394,12 +2514,13 @@ claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손�
 | 스스로 로그인 — 보고 시각 사이의 판(칸 밖 · 이미 띄운 칸)은 세션이 끊겨 있어도 안 부른다 | 보고를 띄운 뒤 사람이 평소 Edge 에서 다시 로그인하는 낮은 늘 난다 · 띄우기 앞의 갈래를 고칠 때마다 | 사람이 다시 로그인할 때마다 다음 판이 그 로그인을 도로 끊어, 몇 분마다 창이 꺼졌다 켜졌다 한다 |
 | 스스로 로그인 — 세션 없이 스스로 로그인해 띄운 보고의 창에만 그 한 줄이 선다 | 시계가 남기는 칸(`unattended/`)과 창이 읽는 칸(`scripts/`)이 폴더를 달리해 따로 산다 — 한쪽의 이름 · 꼴을 고칠 때마다 | 창은 멀쩡히 뜨고 그 줄만 안 서 사람이 포털에서 앱이 왜 안 뜨는지 모르거나, 로그인 없이 지은 보고가 다시 로그인하라고 해 사람이 까닭 없이 비서 쪽 세션을 끊는다 |
 | 보고 창의 「일정에 넣기」 — 판마다 거둔다 | 창 곁의 손이 없는 날(PC 를 다시 켰다 · 손이 죽었다)은 늘 난다 · 시계 판의 차례를 고칠 때마다 | 사람이 누른 약속이 들지 않고 창은 「다음 확인에」를 말한 채 남는다 |
-| 시계 작업 — 한 번에 하나 · 스캔의 주기 · 사용자 폴더와 손을 명령줄에 · 시작 때와 로그온 뒤 첫 판을 스캔보다 늦게 | 시계 작업의 정의를 짓는 손(`clock_task.py`)이나 스캔의 주기 · 시작 때를 고칠 때마다 | 두 작업이 같은 분에 깨면 청한 판이 늘 「앞 판이 돈다」로 건너뛰어 보고가 한 주기씩 늦고, 사람 PC 에 건 정의는 다시 걸기 전까지 그대로다 |
+| 시계 작업 — 한 번에 하나 · 준 주기 · 사용자 폴더와 손을 명령줄에 · 시작 때와 로그온 뒤 첫 판을 주기의 절반 늦게 | 시계 작업의 정의를 짓는 손(`clock_task.py`)이나 정의의 틀을 고칠 때마다 | 겹쳐 돌면 그날 장부가 엇갈리고, 옛 스캔 작업이 남은 PC 에서 같은 분에 깨면 청한 판이 「앞 판이 돈다」로 늦으며, 사람 PC 에 건 정의는 다시 걸기 전까지 그대로다 |
 | 보고 시각표 — 기본은 07:30 하나로 12:00 까지 · 틈이 30분 안 되는 시각은 안 건다 · 12:00 뒤 시각도 걸린다 | 이름 붙은 값(`unattended_const.py`)을 고칠 때마다 | 걸린 줄 아는 시각이 날마다 조용히 안 뜨거나 아침 보고가 오후에 선다 |
-| 다시 겨누기 — 다른 홈의 입구 · 손을 부르는 시계를 스캔의 주기로 이 홈의 입구 · 손으로 다시 걸고(시각표는 그대로) · 새로 걸 때도 손은 이 홈의 것 · 스캔이 안 걸린 PC 와 이미 이 홈을 부르는 시계는 안 건드린다(가짜 작업 스케줄러 위에서) | 도구 홈이 여럿 깔린 PC 의 업데이트마다 · 시계를 건 홈이 걷힌 PC · 스캔 작업이 다른 홈의 손을 굳힌 PC | 시계가 옛 홈의 코드나 손을 불러 정한 시각의 보고가 옛 판으로 돌거나 아무 말 없이 안 뜨고, 스캔이 안 걸린 PC 에 걸면 사람이 고르지 않은 시계가 돈다 |
+| 옮겨 받기 — 메일함 스캔의 작업 없이 시계만 보고, 다른 홈을 부르는 시계는 켜짐을 지켜 시계의 주기로 이 홈의 입구 · 손으로 다시(시각표는 그대로) · 시계가 없으면 시각표가 있는 PC 에만 새로 · 이미 이 홈을 부르는 시계 · 손으로 고친 시계는 안 건드린다(가짜 작업 스케줄러 위에서) | 도구 홈이 여럿 깔린 PC 의 업데이트마다 · 시계를 건 홈이 걷힌 PC · 설치가 옛 스캔 작업을 먼저 거둔 PC | 시계가 옛 홈의 코드나 손을 불러 정한 시각의 보고가 옛 판으로 돌거나, 스캔 작업을 거둔 뒤 시계가 「걸 것이 없다」로 서지 않아 보고가 아무 말 없이 안 뜨고, 고르지 않은 PC 에 걸면 사람이 고르지 않은 시계가 돈다 |
 | 옮겨 받기 — 옛 파일을 새 이름으로 · 옛 것은 그대로 · 그날 띄운 칸을 다시 안 띄운다 · 두 번 돌아도 같다 | 스캔이 보고를 들던 PC 마다 업데이트에서 한 번 난다(설치의 `adopt` · 시계의 첫 판) | 옛 시각표를 잃으면 보고가 조용히 끊기고, 그날 띄운 칸을 또 띄우면 같은 보고가 둘 서고 모델 값이 두 번 든다 |
 | 홀로 선다 — `unattended/` 는 표준 라이브러리 · 제 폴더 · 같은 스킬의 `scripts/` 만 싣는다(예외는 보내는 손의 `mailer` 하나) | 형제 스킬의 코드를 싣는 것이 가장 가까운 길이라 코드를 더할 때마다 | 형제 스킬이 바뀌면 사람 없이 도는 시계가 아무도 모르게 죽는다 |
 | 자리 밖에서 보기 — 켠 뒤 띄운 보고가 글을 남기고 끝난 칸을 보낼 칸으로 집고 끝을 적는다 · 메일 한 장을 못 지으면 「보내는 중」 표지 없이 다시 보낼 끝으로 남긴다 | 보낼 칸을 고르는 셈 · 표지의 차례를 고칠 때마다 | 보낸 메일은 되돌릴 수 없다 — 두 번 가거나, 안 간 채 간 줄 안다 |
+| 돌려주기 — 스스로 로그인한 보고가 끝나고 15분 뒤 한 번 · 보고가 도는 동안 · 그 틈 안은 안 · 다시 안 · 살아 있던 세션 앞의 부름은 안 · SSO 가 안 서는 날은 한 번만 · status 가 댄다 | 세션이 끊긴 아침마다 동료 PC 의 시계가 사람 없이 돈다 | 안 돌려주면 평소 Edge 의 EP 포털이 하루 내내 죽어 ERP · MES 를 못 띄우고(보고는 서 조용하다), 일찍 돌려주면 보고 창의 단추가 세션을 잃고, 거듭 부르면 사람이 다시 한 로그인을 판마다 끊는다 |
 
 모두 사람 없이 돌거나 틀린 셈도 그럴듯하게 서서 조용하고, 다른 무엇도 안 잰다.
 
@@ -2407,7 +2528,7 @@ claude 는 `--claude` · 보고 예약에 건 claude · PATH 차례, 메일 손�
 다시 거는 갈래는 한 번 확인했다) · 두 작업이 어긋난 시작 때로 실제로 엇갈리나 · 작업 스케줄러가
 띄운 claude 가 작업 묶음을 벗어나 사나 · 작업 스케줄러가 띄운 자리에서 통합 인증이 넘나 · 사람이 평소 Edge 에서 일하는 낮의 뒤 시각에 다시 로그인이 서고
 그 보고가 끝까지 지어지나(사람이 곧 다시 로그인하면 이쪽 세션이 도중에 끊긴다) · 스스로 로그인이 진짜 입구 · 진짜 통합 인증으로 서나(입구는
-대역이다 — 입구의 사람 없는 꼴은 스킬 ep-login 의 검사가 가짜 SSO 로 잰다) · 진짜 claude 가 그 권한으로 보고를 짓나(대역이 받은 명령줄 · 권한 · 부탁
+대역이다 — 입구의 사람 없는 꼴은 스킬 ep-login 의 검사가 가짜 SSO 로 잰다) · 진짜 돌려주는 문이 평소 Edge 의 포털을 살리고 쓰지 않는 EP 탭만 닫나(대역이다 — 그 문은 스킬 ep-login 의 검사가 잰다) · 보고 창의 단추가 돌려준 뒤 빌려 넣고 곧 돌려주는 길(`presses.Borrow` → `clock.py lend · release`)은 판으로 안 재고 `loan` 을 함수로 한 번 확인했다 · 진짜 claude 가 그 권한으로 보고를 짓나(대역이 받은 명령줄 · 권한 · 부탁
 글까지만 잰다 — 권한 규칙이 claude 안에서 어떻게 맞나, 업무 파악의 쓰는 손을 heredoc 째 부르는 꼴이 열리나는 진짜 claude 에 띄워 확인할 몫이고, 막은
 목록은 여기서 그 꼴의 글자 맞추기로 견준다) · 맡긴 일(`handed.py` — 영구 판정이 없다. 창의 검사는 `handed.py` 입구를 대역으로 받는다) · 자리 밖에서 보기의
 보내기 가운데 위 판정 밖의 갈래(넘기기 전 거절은 다음 판에 · 도중 끊김과 남은 「보내는 중」은 다시 안 보냄 · 안 켠 PC 와 대화의 보고는 안 보냄 — 가짜

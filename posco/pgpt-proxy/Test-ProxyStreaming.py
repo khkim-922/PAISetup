@@ -45,6 +45,9 @@ class Gateway(BaseHTTPRequestHandler):
         case = CASES[urlsplit(self.path).query]
         case["received"] = json.loads(request_body)
         case["calls"] = case.get("calls", 0) + 1
+        # per_call — 호출마다 다른 본문(앞 호출이 빈 답이고 뒤 호출이 판정인 분류기 따위). 호출 수가 넘으면 마지막 본문을 되풀이한다
+        if case.get("per_call"):
+            case["chunks"] = [case["per_call"][min(case["calls"], len(case["per_call"])) - 1]]
         body = b"".join(case["chunks"])
         try:
             delays = case.get("header_delays")
@@ -352,6 +355,79 @@ class StreamingTests(unittest.TestCase):
             self.assertEqual((status, CASES["main-slow"]["calls"]), (200, 1))
         finally:
             proxy.CLASSIFIER_HEAD_WAIT_SEC = old
+
+    def test_classifier_answer_without_verdict_is_sent_again_once_and_others_are_not(self):
+        """층: 쓰는 사람의 계약 — 회사 자동 모드에서 게이트웨이가 분류기 요청에 200 으로 빈 답 · 열다 만 태그를 내면 Claude Code 가
+        「판정 못 함」으로 명령을 거절한다(같은 요청을 Claude Code 가 다시 보내도 또 비었다). 걷는 조건: 게이트웨이가 판정 꼴 없는 200 을
+        내지 않게 되거나, 분류기가 판 없는 claude-sonnet-5 로 안 부를 때."""
+        def message(content, stop="end_turn"):
+            return json.dumps({"type": "message", "role": "assistant", "stop_reason": stop, "content": content,
+                               "usage": {"input_tokens": 3, "output_tokens": 5}}).encode()
+        empty = message([])
+        cut = message([{"type": "text", "text": "<th"}])
+        verdict = message([{"type": "text", "text": "<thinking>살핀다</thinking><severity>3</severity>"}])
+        truncated = message([{"type": "text", "text": "Looking at the action"}], stop="max_tokens")
+        payload = {"model": "claude-sonnet-5", "max_tokens": 8192, "stream": False, "messages": [{"role": "user", "content": "판정"}]}
+        json_case = dict(fixed=True, content_type="application/json", payload=payload)
+
+        def calls(name, bodies):
+            status, _, data, _ = self.run_case(name, [], per_call=bodies, **json_case)
+            return status, data, CASES[name]["calls"]
+
+        before = proxy.stats()["classifier_empty_retries"]
+        status, data, count = calls("cls-empty-then-verdict", [empty, verdict])
+        self.assertEqual((status, count), (200, 2))
+        self.assertIn("<severity>3</severity>", json.loads(data)["content"][0]["text"])
+        status, data, count = calls("cls-cut-then-verdict", [cut, verdict])
+        self.assertEqual((status, count), (200, 2))
+        status, data, count = calls("cls-empty-twice", [empty, cut, verdict])
+        self.assertEqual((status, count), (200, 2))
+        self.assertEqual(json.loads(data)["content"][0]["text"], "<th")
+        status, data, count = calls("cls-truncated", [truncated, verdict])
+        self.assertEqual((status, count), (200, 1))
+        status, data, count = calls("cls-verdict-first", [verdict, empty])
+        self.assertEqual((status, count), (200, 1))
+        self.assertEqual(proxy.stats()["classifier_empty_retries"], before + 3)
+        main = {**payload, "model": "claude-sonnet-5-5"}
+        status, _, data, _ = self.run_case("main-empty", [], per_call=[empty, verdict], payload=main,
+                                           fixed=True, content_type="application/json")
+        self.assertEqual((status, CASES["main-empty"]["calls"], json.loads(data)["content"]), (200, 1, []))
+
+    def test_classifier_miss_keeps_request_and_answer_and_only_the_newest(self):
+        """층: 코드 규칙 — 판정 꼴 없이 끝난 분류기 답은 요청 본문과 함께 남아 원인을 요청 쪽에서 가를 수 있고, 건수 한도가 지켜진다.
+        걷는 조건: 빈 답의 원인이 가려져 보관 장치를 걷을 때."""
+        old = proxy.CLASSIFIER_MISS_KEEP
+        proxy.CLASSIFIER_MISS_KEEP = 2
+        folder = proxy.LOG_PATH.with_name("classifier-miss")
+        try:
+            for stamp in (1, 2, 3):
+                time.sleep(1.05)
+                name = proxy.keep_classifier_miss(json.dumps({"messages": [f"요청{stamp}"]}).encode(), b'{"content": []}', f"gw-{stamp}")
+                self.assertTrue(name.endswith(f"gw{stamp}.json"), name)
+            kept = sorted(path.name for path in folder.glob("*.json"))
+            self.assertEqual(len(kept), 2)
+            body = json.loads((folder / kept[-1]).read_text(encoding="utf-8"))
+            self.assertEqual((body["request"]["messages"], body["answer"]), (["요청3"], {"content": []}))
+            self.assertEqual(proxy._json_output_tokens(b'{"usage": {"output_tokens": 7}}'), 7)
+            self.assertEqual(proxy._json_output_tokens(b"not json"), "unknown")
+        finally:
+            proxy.CLASSIFIER_MISS_KEEP = old
+            for path in folder.glob("*.json"):
+                path.unlink()
+
+    def test_classifier_verdictless_names_only_a_normal_answer_with_no_verdict_tag(self):
+        """층: 코드 규칙 — 다시 보낼 답과 그대로 중계할 답을 가른다. 걷는 조건: 분류기 판정 꼴이 `<severity>` 가 아니게 될 때."""
+        def message(content, stop="end_turn", kind="message"):
+            return json.dumps({"type": kind, "stop_reason": stop, "content": content}).encode()
+        text = lambda t: [{"type": "text", "text": t}]
+        self.assertTrue(proxy.classifier_verdictless(message([])))
+        self.assertTrue(proxy.classifier_verdictless(message(text("<th"))))
+        self.assertTrue(proxy.classifier_verdictless(message([{"type": "thinking", "thinking": "..."}])))
+        self.assertFalse(proxy.classifier_verdictless(message(text("<severity>4</severity>"))))
+        self.assertFalse(proxy.classifier_verdictless(message(text("살핀다"), stop="max_tokens")))
+        self.assertFalse(proxy.classifier_verdictless(message([], kind="error")))
+        self.assertFalse(proxy.classifier_verdictless(b"not json"))
+        self.assertFalse(proxy.classifier_verdictless(None))
 
     def test_classifier_answer_tail_is_logged_only_for_the_classifier(self):
         """층: 회사 자동 모드의 「could not evaluate」 원인을 가르는 기록 — Claude Code 는 분류기 답 글을 어디에도 안 남긴다.

@@ -55,7 +55,9 @@ def window_presses(folder: pathlib.Path) -> str:
     내는 것 — 판 끝에 찍을 한 줄(할 말이 없으면 "")."""
     if not C.TICKS_SCRIPT.is_file() or not edge_listening():
         return ""
-    lines = ask_window(folder, C.TICKS_SCRIPT, ["--presses", "--within", str(C.BRIEF_PRESSES_WITHIN_S)], C.BRIEF_PRESSES_TIMEOUT_S).strip().splitlines()
+    # 넣는 손은 끝 안에서 빌려 다시 넣기까지만 시작한다 — 끝을 넘을 수 있는 것은 쓴다고 적기가 잠금을 기다림(돌려주는 문 한 번)과 끝 뒤의 놓기 한 번이다
+    lines = ask_window(folder, C.TICKS_SCRIPT, ["--presses", "--within", str(C.BRIEF_PRESSES_WITHIN_S)],
+                       C.BRIEF_PRESSES_TIMEOUT_S + C.LEND_TIMEOUT_S + C.GIVE_BACK_TIMEOUT_S).strip().splitlines()
     said = lines[-1].strip() if lines else ""
     return f"[보고 창 — {said}]" if said.startswith(ROUND_HEAD) else ""       # 거둔 수가 있는 끝 줄만
 

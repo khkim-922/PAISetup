@@ -49,6 +49,6 @@ def waited_note(waited_s: int) -> str:
 
 
 def waiting_words(lost_at: datetime | None, next_try: datetime | None) -> str:
-    """세션이 끊겨 이번 주기를 안 도는 까닭과 다음 걸음."""
-    return (f"사내 세션이 끊겨 {tm.seoul(lost_at)}부터 멈춰 있다 — 다음 두드림은 {tm.seoul(next_try)}. 다음: {C.NEXT_LOGIN} "
-            "하면 다음 주기에 바로 다시 돈다(지금 돌리려면 run --now)")
+    """세션이 끊겨 이번 판을 안 도는 까닭과 다음 걸음."""
+    return (f"사내 세션이 끊겨 {tm.seoul(lost_at)}부터 멈춰 있다 — 다음 두드림은 {tm.seoul(next_try)}(다음: {C.NEXT_LOGIN} "
+            "한 뒤 run --now 로 지금 돌린다)")

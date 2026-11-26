@@ -46,6 +46,14 @@ VIA_EDGE = "via=edge"                          # 로그인 Edge 로 연 창의 �
 # 사람 없는 실행 — 같은 스킬의 `unattended/` 폴더와 그 입구 둘(시계 · 맡긴 일). 창 곁의 손은 이 이름으로 부르고(`unattended_link`), 그 폴더는 이
 # 이름을 여기서 싣는다(`unattended_const`) — 입구의 이름은 작업 스케줄러의 작업 · 설치가 기대는 약속이다
 UNATTENDED_DIR, CLOCK_ENTRY, HANDED_ENTRY = "unattended", "clock.py", "handed.py"
+# 사람의 로그인 돌려주기 — 보고 창의 말 · 창 곁의 손 · 시계의 셈이 함께 읽는 값의 자리(뜻 · 언제 부르나는 `unattended_const` 의 돌려주기 묶음 ·
+# `references/DESIGN.md` 「사람의 로그인을 돌려준다」)
+GIVE_BACK_AFTER_MIN = 15   # 시계가 스스로 로그인해 띄운 보고가 끝나고 사람의 로그인을 돌려주기까지(분)
+LOGIN_TIMEOUT_S = 240      # 로그인 입구 한 번의 시한 — 입구가 사람 없는 부름의 두 걸음(평소 Edge · ep-login 창)에 저마다 쓰는 시한(1분씩)과
+                           # 창 · 포트가 서는 틈보다 넉넉히. 넘기면 입구가 끝말 없이 끊겨 status 가 까닭을 못 댄다
+GIVE_BACK_TIMEOUT_S = 180  # 돌려주는 문 한 번의 시한 — 평소 Edge 에 로그인을 열고 확인 창을 누르는 틈(그 스킬의 `SESSION_ORDINARY_SECONDS` 30초)과 탭을 닫는 틈보다 넉넉히
+LEND_CALL_S = GIVE_BACK_TIMEOUT_S + LOGIN_TIMEOUT_S + 60   # 빌리기 · 놓기(`clock.py lend · release`) 한 번의 시한 — 잠금을 기다림(돌려주는 문 한 번) ·
+                                                           # 입구 한 번(놓기는 돌려주는 문 한 번) · 프로세스가 뜨고 기록을 쓰는 틈
 # 사용자 폴더에서 창이 읽기만 하는 사람 없는 실행의 파일 — 보고 시각표와 그날 장부(그 안의 `clock_at` 이 시계의 마지막 판 때). 원본 이름은
 # `unattended_const` 의 SCHEDULE_FILE · DAY_FILE · CLOCK_AT 이고 그쪽이 이 값을 싣는다
 SCHEDULE_FILE, DAY_FILE, CLOCK_AT = "daily-brief-schedule.json", "daily-brief-day.json", "clock_at"

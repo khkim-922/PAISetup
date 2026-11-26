@@ -20,7 +20,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 손�
 import clock as T  # noqa: E402
 import prefs_file as P  # noqa: E402
 from render_base import DATELINE, NO_TIME_SAID, inline_walk  # noqa: E402
-from brief_const import (APPR_OPEN_S, APPR_PREFIX, ASK_KEY, ASK_NO_VSCODE, ASK_OPEN_CEILING_S, ASK_TAKE_S, AWAY_KEY, CAL_PREFIX, DONE_PREFIX, HAND_BEAT_S,  # noqa: E402
+from brief_const import (APPR_OPEN_S, GIVE_BACK_AFTER_MIN, APPR_PREFIX, ASK_KEY, ASK_NO_VSCODE, ASK_OPEN_CEILING_S, ASK_TAKE_S, AWAY_KEY, CAL_PREFIX, DONE_PREFIX, HAND_BEAT_S,  # noqa: E402
                          HAND_KEY, RUN_PREFIX, RUN_REFUSED, RUN_TAKE_S, SEOUL_OFFSET, STATE_KEY, TASK_BAD,
                          TASK_PREFIX, TIMES_KEY, UNQUIET_PREFIX, VIA_EDGE, WEEKDAYS)
 from brief_cards import WAIT_ME, WAIT_THEM, card_head, item_key, item_title  # noqa: E402
@@ -63,11 +63,12 @@ TICK_ASK_OFF = "이 창은 메일 비서의 Edge 밖에서 열려 누르신 것�
 PEOPLE_BAD = "적힌 꼴이 틀려 사람별에 세우지 않았습니다"
 # 보고 맞추기의 시각 곁 한 줄 — 보고 시각을 건 것이 곧 그 시각의 스스로 로그인이라 고를 거리가 아니라 사실과 그 값으로 말한다
 TIMES_LOGIN = (" 첫 시각은 그 보고 앞에 한 번, 뒤 시각은 사내 로그인이 끊겨 있을 때만 비서가 스스로 로그인합니다 — 그러면 평소 쓰시는 Edge 의 "
-               "사내 메일 · 일정 창이 닫히고 그 EP 포털 탭에서는 앱을 새로 못 띄웁니다(로그아웃하고 로그인하시면 됩니다).")
+               f"사내 메일 · 일정 창이 닫히고 그 EP 포털 탭에서는 앱을 새로 못 띄웁니다 — 그 보고가 끝나고 {GIVE_BACK_AFTER_MIN}분 뒤 비서가 로그인을 평소 Edge 로 "
+               "돌려드리고 쓰지 않는 EP 탭을 닫습니다.")
 # 비서가 사람 없이 로그인해 지은 보고의 머리에 서는 한 줄 — 그 로그인이 사람 쪽에서 무엇을 닫았고 무엇을 다시 해야 하나
 SIGNED_NOTE = ("{at}에 비서가 사내 로그인을 새로 했습니다 — 평소 쓰시는 Edge 에 떠 있던 사내 메일 · 일정 창은 닫혔고, 거기 EP 포털에서는 앱(ERP · MES "
-               "따위)이 새로 안 뜹니다(이미 띄워 두신 앱 창은 그대로 됩니다). 앱을 새로 띄우시려면 평소 Edge 에서 EP 를 로그아웃한 뒤 다시 로그인해 "
-               "주세요(대화에서 「EP 돌려줘」 하시면 평소 Edge 에 로그인을 열어 드립니다).")
+               f"따위)이 새로 안 뜹니다(이미 띄워 두신 앱 창은 그대로 됩니다). 이 보고가 끝나고 {GIVE_BACK_AFTER_MIN}분 뒤 비서가 로그인을 평소 Edge 로 돌려드리고 "
+               "쓰지 않는 EP 탭을 닫습니다 — 그 전에 앱을 띄우셔야 하면 대화에서 「EP 돌려줘」 하시면 됩니다.")
 
 MAIL_URL = "{mailbox}/XML_Inbox/{unid}?OpenDocument"   # 웹메일에서 그 메일을 여는 주소 — 폴더에만 든 메일에도 먹는다
 

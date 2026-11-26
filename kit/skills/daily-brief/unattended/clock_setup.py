@@ -34,14 +34,11 @@ import unattended_store as st
 import window_link as W
 
 EXIT_OK, EXIT_STOPPED, EXIT_ARGS = 0, 1, 2
-EVERY_FALLBACK_MIN = 15          # 스캔 작업의 주기를 못 읽었을 때 시계가 쓰는 주기 — 스캔의 기본 주기(그 스킬 `scan_const.EVERY_MIN`)
 NO_CLAUDE = ("Claude Code 명령줄(claude)을 못 찾았다{where}. 정한 시각의 보고는 claude -p 로 띄운다 — VS Code 확장만 깐 PC 면 확장 폴더의 "
              "resources/native-binary/claude.exe 를 --claude 로 준다")
-NO_SCAN_TASK = "메일함 스캔이 안 걸려 있다. 다음: scan.py register"
 CLOCK_MISSING = "  ⚠ 시계가 안 걸려 있어 이 보고는 안 뜬다. 다음: clock.py register"
 LEGACY_HINT = "[시계 — 걸려 있지 않다 · 옛 보고 시각표가 있다 — 다음: clock.py adopt]"
-ADOPT_SKIPPED = {"unregistered": "[시계 — 걸 것이 없다: 메일함 스캔이 안 걸려 있다]",
-                 "elsewhere": "[시계 — 건드리지 않았다: 이 홈의 스캔이 건 작업이 아니다]",
+ADOPT_SKIPPED = {"unchosen": "[시계 — 걸 것이 없다: 시계가 안 걸려 있고 보고 시각표도 없다]",
                  "present": "[시계 — 이미 걸려 있다]",
                  "foreign": "[시계 — 건드리지 않았다: 걸린 시계의 명령줄이 거는 꼴이 아니다(손으로 고친 작업이다)]"}
 ADOPTED, ADOPTED_FRESH = "[시계 — 걸었다 · 옛 보고 시각표를 옮겨 받았다]", "[시계 — 걸었다]"
@@ -180,19 +177,10 @@ def cmd_window_times(args, home: pathlib.Path) -> int:
 
 # ── 시계 작업 ────────────────────────────────────────────────────────────────────
 
-def scan_task() -> dict[str, Any]:
-    """곁의 스캔이 건 작업의 칸(`status --json` 의 `task`) — 못 물었으면 빈 것."""
-    return (D.status(dry_run=False) or {}).get("task") or {}
-
-
 def cmd_register(args, home: pathlib.Path) -> int:
-    """시계를 작업 스케줄러에 건다 — 스캔이 걸렸나 보고, 손을 정하고, 보고 시각표 요청을 재고, 정의를 지어(보이기만 · 받나만 묻기도) 건 뒤
-    `--at` 이 있으면 시각표를 건다. 주기는 스캔의 걸린 주기를 따른다 — 보고 시각의 틈 규칙이 그 주기에 기댄다."""
-    task = scan_task()
-    if task.get("registered") is not True:
-        print(f"[예약 — 걸지 않았다: {NO_SCAN_TASK}]")
-        return EXIT_STOPPED
-    hand, missing = D.mail_hand(args.hand or task.get("hand"))
+    """시계를 작업 스케줄러에 건다 — 손을 정하고, 보고 시각표 요청을 재고, 정의를 지어(보이기만 · 받나만 묻기도) 건 뒤 `--at` 이 있으면 시각표를
+    건다. 주기는 시계의 주기(`CLOCK_EVERY_MIN`)다 — 보고 시각의 틈 규칙이 그 주기에 기댄다."""
+    hand, missing = D.mail_hand(args.hand)
     if hand is None:
         print(f"[예약 — 걸지 않았다: {missing}]")
         return EXIT_STOPPED
@@ -200,7 +188,7 @@ def cmd_register(args, home: pathlib.Path) -> int:
     if refused:
         print(f"[예약 — 걸지 않았다: {refused}]")
         return EXIT_STOPPED
-    every = task.get("every_min") or EVERY_FALLBACK_MIN
+    every = C.CLOCK_EVERY_MIN
     xml = T.task_xml(every=every, home=home, hand=hand)
     path = home / C.CLOCK_XML_FILE
     if TB.windowless_python().name.lower() != "pythonw.exe":
@@ -271,7 +259,7 @@ def task_lines(done: TB.Answer | None, d: dict[str, str] | None) -> list[str]:
 
 
 def cmd_unregister(args, home: pathlib.Path) -> int:
-    """시계 작업을 지우고 보고 예약을 내린다 — 스캔 작업 · 쌓인 파일은 안 건드린다. 끄기를 청하셨으니 작업이 없어도 보고는 내린다."""
+    """시계 작업을 지우고 보고 예약을 내린다 — 쌓인 파일은 안 건드린다. 끄기를 청하셨으니 작업이 없어도 보고는 내린다."""
     if args.dry_run:
         print(f"[예약 — 끄지 않고 보이기만 한다. 끄면: {shown(TB.delete_command(T.TASK_NAME))} · 보고 예약도 내린다]")
         return EXIT_OK
@@ -280,23 +268,20 @@ def cmd_unregister(args, home: pathlib.Path) -> int:
     if done.code != 0:
         print(f"[예약 — 못 껐다(걸린 작업이 없을 수 있다){brief}: {(done.out + done.err).strip()[-300:]}]")
         return EXIT_STOPPED
-    print(f"[예약 — {T.TASK_LEAF} 시계를 껐다{brief}. 스캔 작업은 그대로다]")
+    print(f"[예약 — {T.TASK_LEAF} 시계를 껐다{brief}]")
     return EXIT_OK
 
 
 def cmd_adopt(args, home: pathlib.Path) -> int:
-    """이미 스캔을 건 PC 를 옮겨 받는다 — 곁의 스캔이 건 작업이 이 홈의 스캔을 부를 때만, 옛 파일을 옮겨 받고(`take_over`) 시계를 이 홈의 입구 ·
-    회사 메일 손으로 건다: 없으면 새로, 다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 다시. 손은 이 홈의 형제 스킬 것, 주기는 스캔의 답,
-    시각 · claude 는 사용자 폴더의 시각표(다시 걸어도 그대로다). 이미 이 홈을 부르거나 손으로 고친 시계는 안 건드린다. 여러 번 불러도 같다.
-    끝 줄 하나. 종료 값 — 0(건너뛴 갈래 전부 · 걸었다) · 1 손이 없다 · 작업 스케줄러가 거절했다."""
-    task = scan_task()
-    skipped = adopt_skip(task)
-    if skipped:
-        print(ADOPT_SKIPPED[skipped])
-        return EXIT_OK
+    """시계를 이 홈으로 옮겨 받는다(설치가 업데이트 때 한 홈에서 · 대화가 부른다) — 옛 파일을 옮겨 받고(`take_over`) 걸린 시계만 본다: 이 홈의
+    입구 · 회사 메일 손을 부르면 그대로, 손으로 고친 꼴이면 안 건드리고, 다른 홈의 입구나 다른 손을 부르면 켜짐을 지켜 시계의 주기(`CLOCK_EVERY_MIN`)로
+    다시 건다 — 걸린 주기는 옛 스캔의 `--every` 를 베낀 값일 수 있고, 보고 뒤의 돌려주기 · 칸의 틈 규칙이 시계의 주기에 기댄다. 시계가
+    없으면 보고 시각표(옮겨 받은 것도)가 있을 때만 새로 건다 — 사람이 보고를 고른 PC 다. 손은 이 홈의 형제 스킬 것, 시각 · claude 는 사용자
+    폴더의 시각표(다시 걸어도 그대로다). 메일함 스캔의 작업에는 기대지 않는다. 여러 번 불러도 같다. 끝 줄 하나. 종료 값 — 0(건너뛴 갈래 전부 ·
+    걸었다) · 1 손이 없다 · 작업 스케줄러가 거절했다."""
     moved = TO.take_over(home)
     held = held_clock()
-    kept = clock_skip(held)
+    kept = clock_skip(held) or ("unchosen" if held is None and not (home / C.SCHEDULE_FILE).exists() else "")
     if kept:
         print(ADOPT_SKIPPED[kept])
         return EXIT_OK
@@ -306,20 +291,20 @@ def cmd_adopt(args, home: pathlib.Path) -> int:
         return EXIT_STOPPED
     path = home / C.CLOCK_XML_FILE
     enabled = held is None or held["enabled"]
-    TB.write_xml(path, T.task_xml(every=task.get("every_min") or EVERY_FALLBACK_MIN, home=home, hand=hand, enabled=enabled))
+    TB.write_xml(path, T.task_xml(every=C.CLOCK_EVERY_MIN, home=home, hand=hand, enabled=enabled))
     if not put_task(path):
         return EXIT_STOPPED
-    print(adopted_line(held, enabled, moved, home))
+    print(adopted_line(held, enabled, moved))
     return EXIT_OK
 
 
 def held_clock() -> dict[str, Any] | None:
-    """걸린 시계 — 안 걸렸으면 None, 걸렸으면 켜짐과 인자를 거는 꼴의 칸(`parts` — 손으로 고친 꼴이면 None)으로."""
+    """걸린 시계 — 안 걸렸으면 None, 걸렸으면 켜짐 · 주기(분 · 못 읽으면 None)와 인자를 거는 꼴의 칸(`parts` — 손으로 고친 꼴이면 None)으로."""
     done = TB.ask(TB.query_command(T.TASK_NAME))
     if done.code != 0:
         return None
     d = TB.read_definition(done.out.strip())
-    return {"enabled": TB.is_enabled(d), "parts": T.arguments_parts(d["arguments"])}
+    return {"enabled": TB.is_enabled(d), "every": TB.interval_minutes(d["interval"]), "parts": T.arguments_parts(d["arguments"])}
 
 
 def clock_skip(held: dict[str, Any] | None) -> str:
@@ -333,15 +318,9 @@ def clock_skip(held: dict[str, Any] | None) -> str:
     return "present" if here else ""
 
 
-def adopted_line(held: dict[str, Any] | None, enabled: bool, moved: list[str], home: pathlib.Path) -> str:
-    """건 뒤의 끝 줄 — 다른 홈의 시계를 다시 걸었으면 그 말(끈 채면 그것도), 새로 걸었으면 옛 시각표를 옮겨 받았나."""
+def adopted_line(held: dict[str, Any] | None, enabled: bool, moved: list[str]) -> str:
+    """건 뒤의 끝 줄 — 다른 홈의 시계를 다시 걸었으면 그 말(끈 채면 그것도), 새로 걸었으면 옛 시각표를 이번에 옮겨 받았나."""
     if held is not None:
         return REAIMED.format(off="" if enabled else REAIMED_OFF)
-    return ADOPTED if C.SCHEDULE_FILE in moved or (home / C.SCHEDULE_FILE).exists() else ADOPTED_FRESH
+    return ADOPTED if C.SCHEDULE_FILE in moved else ADOPTED_FRESH
 
-
-def adopt_skip(task: dict[str, Any]) -> str:
-    """옮겨 받기를 건너뛸 까닭 — "unregistered" 스캔이 안 걸렸다 · "elsewhere" 걸린 작업이 이 홈의 스캔을 안 부른다 · "" 옮겨 받는다."""
-    if task.get("registered") is not True:
-        return "unregistered"
-    return "" if task.get("calls_this_scan") is True else "elsewhere"

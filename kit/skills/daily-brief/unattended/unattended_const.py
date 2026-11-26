@@ -44,7 +44,7 @@ SCAN_SCRIPT = ("scripts", "scan.py")          # 스캔의 입구 — `run --now 
 SCAN_READER = ("scripts", "reader.py")        # 쌓인 것을 읽는 명령 — 띄운 claude 에 연다
 SCAN_STATUS_FORMATS = (1,)                    # 읽을 줄 아는 `status --json` 의 꼴 번호(원본은 그 스킬 `scan_const.STATUS_FORMAT`)
 SCAN_WAIT_S = 900                             # 청한 판이 앞 판의 잠금을 기다리는 시한 — 스캔의 한 판이 손을 부르는 시간의 한계(그 스킬의 RUN_BUDGET_S) 안
-SCAN_CALL_TIMEOUT_S = 2400                    # 청한 부름의 시한 — 기다림 + 가장 긴 한 판(그 스킬 작업의 시한 25분)보다 길게
+SCAN_CALL_TIMEOUT_S = 2400                    # 청한 부름의 시한 — 기다림 + 가장 긴 한 판(그 스킬의 잠금이 낡는 때 `LOCK_STALE_S` — 판의 상한 · 손 · 신원 명령의 시한을 든다)보다 길게
 SCAN_STATUS_TIMEOUT_S = 60                    # `status --json` 한 번의 시한 — 파일 하나를 읽는다(`--dry-run` 이면 작업 스케줄러에 안 묻는다)
 # 회사 메일 손의 자리 · 종료 값 · 시한 · 로그인이 사는 스킬 · 세션 답 낱말 · 다음 걸음 — 스캔과 같은 사실이라 곁의 `hand_facts` 사본이 든다.
 # 걸 때 `--hand` 를 안 주면 형제 폴더의 회사 메일 손을 쓴다
@@ -58,8 +58,11 @@ BRIEF_AT_DEFAULT = "07:30"               # 보고 시각표의 기본(서울) �
 BRIEF_WAIT_MIN = 270                     # 시각 하나가 사내 세션을 기다리는 가장 긴 틈(분) — 그 시각부터 다음 시각까지, 다음 시각이 더 멀면 이만큼까지
                                          # 띄우고 그 뒤 그 시각은 건너뛴다. 기본 07:30 이 12:00 까지 기다리던 것과 같은 값이다 — 아침 보고가 오후에
                                          # 서지 않고, 사내 인증을 하루 내내 두드리지 않는다. 어느 시각도 그날(서울 자정)을 넘겨 기다리지 않는다
-BRIEF_ROOM_MIN = 30                      # 시각마다 있어야 할 가장 짧은 틈(분) — 이보다 짧으면 거는 명령이 거절한다. 스캔은 기본 15분마다 깨어, 틈이
-                                         # 이보다 짧으면 그 시각에 판이 하나도 안 돌아 날마다 조용히 안 뜬다
+CLOCK_EVERY_MIN = 15                     # 시계 작업이 깨는 주기(분) — 거는 명령과 옮겨 받기가 늘 이 값으로 건다(옛 스캔의 주기를 베낀 시계도 이 값으로 다시 선다). 판은 보고 시각의 칸
+                                         # 안에서만 메일함을 읽어(스캔에 한 판을 청한다) 주기는 메일 서버의 부담이 아니라 보고가 얼마나 늦게 서나 ·
+                                         # 보고 창의 누름을 얼마나 늦게 거두나다
+BRIEF_ROOM_MIN = 30                      # 시각마다 있어야 할 가장 짧은 틈(분) — 이보다 짧으면 거는 명령이 거절한다. 시계는 `CLOCK_EVERY_MIN` 분마다 깨어,
+                                         # 틈이 이보다 짧으면 그 시각에 판이 하나도 안 돌아 날마다 조용히 안 뜬다
 BRIEF_UNTIL_ENV = "MAILBOX_SCAN_BRIEF_UNTIL"   # 검사가 기다림의 끝을 서울 시각 하나로 바꿀 때만 준다(`BRIEF_WAIT_MIN` 대신) — 하루 어느 때에 돌아도
                                                # 같은 판을 재게
 BRIEF_TRY_GAP_MIN = 5                    # 판이 답을 안 준 주기에 손의 session 으로 살펴보는 사이의 가장 짧은 틈(분) — 작업이 더 자주 깨워도 이보다
@@ -73,9 +76,18 @@ LOGIN_ENTRANCE = ("scripts", "ep_login.js")   # 그 스킬의 입구 — 받아 
 LOGIN_ENTRANCE_ENV = "EP_LOGIN_ENTRANCE"  # 검사가 입구를 대역으로 바꿀 때만 준다
 LOGIN_ARGS = ("domino", "--unattended")   # 메일 · 일정의 세션만 · 사람이 쳐야 하는 자리(SSO 가 안 서는 로그온 · 통합 인증이 안 선 화면)에서는 입구가 기다리지 않고 4 다
 LOGIN_NODE = "node"                       # 입구를 돌릴 node — PATH 에서 찾는다(회사 메일 손이 세션 손을 돌리는 것과 같은 node)
-LOGIN_TIMEOUT_S = 240                     # 입구 한 번의 시한 — 입구가 사람 없는 부름의 두 걸음(평소 Edge · ep-login 창)에 저마다 쓰는 시한(1분씩)과
-                                          # 창 · 포트가 서는 틈보다 넉넉히. 넘기면 입구가 끝말 없이 끊겨 status 가 까닭을 못 댄다
+from brief_const import LOGIN_TIMEOUT_S  # noqa: E402,F401 — 입구 한 번의 시한(값의 자리는 바탕 — 빌리기의 시한이 그 위에서 셈한다)
 LOGIN_SAID_CHARS = 200                    # status 가 옮겨 보이는 입구의 끝말 글자 수
+# 돌려주기 — 시계가 끊긴 세션 위에서 스스로 로그인한 판(그 로그인이 사람의 평소 Edge 의 EP 포털을 죽였다)은 그 보고가 끝나고 그 뒤 이만큼 지나
+# 처음 도는 판에 같은 입구의 돌려주는 문을 사람 없는 꼴로 한 번 부른다 — 평소 Edge 에 로그인을 다시 열고 쓸모가 끝난 EP 탭을 닫는다. 보고 창의
+# 「일정에 넣기」가 그 사이 그 세션에서 넣을 틈이다. 언제 부르고 언제 안 부르나는 `references/DESIGN.md` 「사람의 로그인을 돌려준다」가 든다
+from brief_const import GIVE_BACK_AFTER_MIN  # noqa: E402,F401 — 값의 자리는 바탕(보고 창의 말도 같은 값을 읽는다)
+GIVE_BACK_ARGS = ("--give-back", "--unattended")   # 그 문의 끝 줄(종료 0) — `given-back port-closed=N port-left=N ordinary-closed=N ordinary-kept=N`
+GIVE_BACK_TYPED = 4                       # 그 문의 4 — SSO 가 안 서는 로그온이라 아무것도 안 열고 안 닫았다(칠 사람이 없다) · 그날은 다시 안 부른다
+from brief_const import GIVE_BACK_TIMEOUT_S  # noqa: E402,F401 — 돌려주는 문 한 번의 시한(값의 자리는 바탕)
+LOAN_FILE = "daily-brief-loan.json"       # 보고 창의 단추가 돌려준 뒤 잠깐 다시 세운 로그인 한 장(그날 · 빌린 때 · 쓰는 일들 · 돌려준 끝) — 쓰는 것은 `loan.py` 하나다
+LOAN_LOCK_FILE = "daily-brief-loan.lock"  # 빌리고 돌려주는 손 하나 — 시계 판 · 창 곁의 손 · 맡긴 일의 지킴이가 함께 불러도 입구를 한 번 부른다
+from brief_const import LEND_CALL_S as LEND_TIMEOUT_S  # noqa: E402 — 빌리기 · 놓기 한 번의 시한(원본은 바탕 — 창 곁의 손도 같은 값으로 부른다)
 BRIEF_LOCK_STALE_S = 60 * 60             # 띄운 보고가 이보다 오래 안 끝났으면 멈춘 것으로 본다(회사에서 한 판의 값을 재기 전의 기본값). 스스로 로그인한
                                          # 때부터 이만큼이 그 보고가 창을 지을 수 있는 범위다(시각표 파일의 `signed` — `brief_schedule.note_signed`)
 WINDOW_SCRIPT = SKILL_DIR / "scripts" / "window.py"   # 보고 창 손 — 메일 한 장(--sheet) · 띄운 보고가 창을 띄운다
@@ -83,7 +95,7 @@ TICKS_SCRIPT = SKILL_DIR / "scripts" / "ticks.py"     # 거두는 손 — 띄운
                                                       # 묻는다(열린 창이 없으면 아무것도 안 연다)
 BRIEF_TIMES_TIMEOUT_S = 20               # 판이 보고 창의 시각을 묻는 손 한 번의 시한 — 그 손은 이 PC 의 디버깅 포트만 짧게 부른다
 BRIEF_PRESSES_WITHIN_S = 360             # 판이 보고 창의 「일정에 넣기」 누름을 거두는 데 쓰는 시간 — 그 손은 이 안에 일정 손의 시한이 다 드는 넣기만
-                                         # 시작하고 남은 누름은 다음 판에 둔다. 판 전체의 시한(TASK_TIME_LIMIT_MIN)을 넘기지 않게 짧게 둔다
+                                         # 시작하고 남은 누름은 다음 판에 둔다. 판 전체의 시한(`CLOCK_TIME_LIMIT_MIN`)을 넘기지 않게 짧게 둔다
 BRIEF_PRESSES_TIMEOUT_S = BRIEF_PRESSES_WITHIN_S + 60   # 그 손 한 번의 시한 — 넣기 도중에 끊으면 들었는지 모르는 끝이 남아 넉넉히 둔다
 # 그 손을 띄우기 전에 로그인 Edge 의 디버깅 포트가 받나만 본다 — 자리 · 포트는 이 스킬 바탕(`brief_const.EDGE_HOST` · `edge.port`)이 든다
 EDGE_PROBE_S = 0.5
@@ -99,7 +111,7 @@ AWAY_SHEET_TIMEOUT_S = 60                # 보고 창 손이 보고 글 한 장�
 AWAY_SEND_TIMEOUT_S = 300                # 보내는 손 한 번의 시한 — 중계는 걸음(연결 · 인사 · STARTTLS 뒤 다시 연결 · 넘기기)마다 메일 손의 응답
                                          # 시한(mailer.py 기본 60초)을 쓴다. 넘겨 끊으면 중계가 받았는지 모르는 끝으로 적고 다시 안 보낸다
 AWAY_LATEST_S = 7 * 60
-# ↑ 시계 판이 시작한 뒤 메일 한 통 · 주소록 한 번을 새로 시작해도 되는 끝(초). 넘긴 판은 안 보내고 다음 판(기본 15분 뒤)에 둔다. 그 뒤의
+# ↑ 시계 판이 시작한 뒤 메일 한 통 · 주소록 한 번을 새로 시작해도 되는 끝(초). 넘긴 판은 안 보내고 다음 판(`CLOCK_EVERY_MIN` 분 뒤)에 둔다. 그 뒤의
 #   일(창의 고름 · 로그인 · 청한 스캔 · 누름 거두기)까지 다 든 판의 끝이 시계 작업의 시한(`CLOCK_TIME_LIMIT_MIN`)이다
 
 AWAY_SENT, AWAY_RETRY, AWAY_UNSURE = "sent", "retry", "unsure"   # 칸의 메일 기록(`slots.<시각>.mail.state`)
@@ -168,6 +180,7 @@ BRIEF_DENY = ("Bash(*mail.py* draft *)", "Bash(*mail.py*send-draft*)", "Bash(*ma
               "Bash(pwsh*)", "Bash(cmd*)", "Bash(claude*)", "Bash(schtasks*)", "mcp__*")
 
 # 작업 스케줄러가 시계 판 하나를 끊는 시한(분) — 판이 그 안에서 제 일을 다 맺게 판의 가장 긴 길(자리 밖 메일을 시작해도 되는 끝 · 메일 한 장 ·
-# 보내기 · 로그인 · 창의 고름 · 청한 스캔 · 누름 거두기)에 5분을 더한다
+# 보내기 · 로그인 · 창의 고름 · 청한 스캔 · 누름 거두기와 그 안의 쓴다고 적기 · 끝 뒤의 놓기 · 판 끝의 돌려주기)에 5분을 더한다
 CLOCK_TIME_LIMIT_MIN = -(-(AWAY_LATEST_S + AWAY_SHEET_TIMEOUT_S + AWAY_SEND_TIMEOUT_S + LOGIN_TIMEOUT_S + BRIEF_TIMES_TIMEOUT_S
-                           + SCAN_STATUS_TIMEOUT_S * 2 + SCAN_CALL_TIMEOUT_S + BRIEF_PRESSES_TIMEOUT_S) // 60) + 5
+                           + SCAN_STATUS_TIMEOUT_S * 2 + SCAN_CALL_TIMEOUT_S + BRIEF_PRESSES_TIMEOUT_S
+                           + LEND_TIMEOUT_S + GIVE_BACK_TIMEOUT_S * 2) // 60) + 5

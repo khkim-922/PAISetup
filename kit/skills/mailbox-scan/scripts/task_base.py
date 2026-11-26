@@ -10,6 +10,7 @@
     ok = accepted(ask(validate_command(env), env=validate_env(env, xml_path)))   # 작업 스케줄러가 정의를 받나(등록 안 함)
     d = read_definition(done.out)                               # 걸린 정의의 간격 · 켜짐 · 한 번에 하나 · 부르는 것
     on = is_enabled(d)                                          # 걸린 작업이 켜져 있나 — 사람이 작업 스케줄러에서 끈 작업은 거짓
+    every = interval_minutes(d["interval"])                     # 걸린 정의의 간격을 분으로 — 기간의 꼴이 아니거나 분으로 안 떨어지면 None
     parts = template_pattern(틀, 칸마다의_꼴).fullmatch(인자)   # 틀로 지은 인자를 칸으로 되읽는다
     same_path(a, b)                                             # 두 경로가 같은 자리인가(윈도의 대소문자 · 사이 글자)
     shown(register_command(task_name, xml_path))                # 사람에게 보일 명령줄
@@ -31,8 +32,7 @@ from datetime import datetime
 from xml.sax.saxutils import escape
 
 SCHTASKS = "schtasks.exe"
-# 메일함 스캔 작업이 로그온한 뒤 첫 판까지(분) — 로그온 직후 세션 손이 서기를 조금 기다린다. 일일 보고의 시계 작업은 이보다 늦게 깬다
-# (둘이 같은 분에 깨면 시계가 청한 판이 앞 판을 기다리게 된다)
+# 로그온한 뒤 첫 판까지(분)의 바탕 — 로그온 직후 세션 손이 서기를 조금 기다린다. 일일 보고의 시계 작업은 여기에 주기의 절반을 더해 깬다
 SCAN_LOGON_DELAY_MIN = 2
 # 작업 스케줄러가 정의를 받나만 묻는 PowerShell — 정의 파일의 자리를 환경변수(`{env}`)로 받아 XML 을 넣어 볼 뿐 등록하지 않는다. 받으면 `VALIDATE_OK` 를 낸다
 VALIDATE_OK = "ok"
@@ -229,6 +229,19 @@ def read_definition(xml: str) -> dict[str, str]:
     return {"interval": text(".//t:TimeTrigger/t:Repetition/t:Interval"), "enabled": text("./t:Settings/t:Enabled"),
             "instances": text("./t:Settings/t:MultipleInstancesPolicy"), "command": text(".//t:Exec/t:Command"),
             "arguments": text(".//t:Exec/t:Arguments")}
+
+
+INTERVAL_FORM = re.compile(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?")   # 작업 정의의 간격(ISO 8601 기간 — 거는 꼴은 PT{분}M)
+
+
+def interval_minutes(interval: str) -> int | None:
+    """작업 정의의 간격(ISO 8601 기간)을 분으로 — 기간의 꼴이 아니거나 분으로 안 떨어지면 None."""
+    got = INTERVAL_FORM.fullmatch(interval.strip())
+    if not got or not any(got.groups()):
+        return None
+    days, hours, minutes, seconds = (int(x or 0) for x in got.groups())
+    total_s = ((days * 24 + hours) * 60 + minutes) * 60 + seconds
+    return total_s // 60 if total_s % 60 == 0 else None
 
 
 def is_enabled(d: dict[str, str]) -> bool:

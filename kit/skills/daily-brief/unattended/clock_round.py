@@ -1,8 +1,8 @@
 """정한 시각의 시계 한 판 — 자리 밖에서 보기의 메일 → 보고 창에서 고르신 것 → 지금 칸의 띄우기 → 「일정에 넣기」 누름 거두기를 이 차례로
-엮는다. 셈 · 살피기 · 띄우기 · 보내기 · 창 부르기 · 스캔 부르기는 저마다의 조각이 든다 — 시각표 파일(`brief_schedule`) · 그날 장부
+엮고 맨 끝에 사람의 로그인을 돌려준다. 셈 · 살피기 · 띄우기 · 보내기 · 창 부르기 · 스캔 부르기는 저마다의 조각이 든다 — 시각표 파일(`brief_schedule`) · 그날 장부
 (`brief_day`) · 칸의 상태(`brief_state`) · 말(`brief_words`) · 사내 세션과 스스로 로그인(`session_login`) · 보고 띄우기(`claude_launch`) ·
 자리 밖에서 보기(`away_mail`) · 보고 창 이음(`window_link`) · 보고 창에서 고르신 것(같은 스킬 `scripts/` 의
-`window_door`) · 스캔 이음(`scan_door`).
+`window_door`) · 스캔 이음(`scan_door`) · 사람의 로그인 돌려주기(`loan`).
 
     line = round_lines(state, folder, hand, at, since)   # 판 끝의 줄 — 할 말이 없으면 "". `state` 는 판의 상태 `{"brief": 그날 장부}`
                                                           # (`clock_book`), `since` 는 시계의 앞 판 때(없으면 None)
@@ -33,6 +33,7 @@ from brief_window import take_window_times
 from brief_told import today, told_lines
 from brief_words import CHOSEN_UNREAD, SCAN_MISSED_WORDS, end_words
 from claude_launch import launch
+from loan import give_back_step
 from session_login import ERROR, LIVE, look, LOST, sign_in
 from window_door import Choices, read_choices
 from window_link import ask_window, edge_listening, SAID_CHARS, window_presses
@@ -43,12 +44,14 @@ MISS_WORDS = {LOST: "사내 세션이 없어", ERROR: "손이 사내 세션을 �
 def round_lines(state: dict[str, Any], folder: pathlib.Path, hand: pathlib.Path, at: datetime, since: datetime | None) -> str:
     """판 한 번 — 자리 밖에서 보기의 메일(`mail_step`)을 먼저 보내 그 끝이 이 판에 띄우는 보고의 부탁 글에 실리게 하고, 보고 창에서 고르신
     것(`window_choices`)을 받아 걸린 시각표에 얹은 뒤 띄우기(`brief_step`)를 하고, 보고 창의 「일정에 넣기」 누름을 그 뒤에 거둔다(보고를
-    안 걸었어도). 누름을 거두는 데 몇 분이 들 수 있어 띄우기가 그것을 기다리지 않게 뒤에 둔다. 내는 것 — 판 끝에 찍을 줄(할 말이 없으면 "")."""
+    안 걸었어도). 누름을 거두는 데 몇 분이 들 수 있어 띄우기가 그것을 기다리지 않게 뒤에 둔다. 맨 끝이 사람의 로그인 돌려주기다
+    (`loan.give_back_step`) — 남은 누름이 그 세션에서 먼저 들게. 내는 것 — 판 끝에 찍을 줄(할 말이 없으면 "")."""
     mailed = mail_step(state, folder, hand, at)
     chosen = window_choices(folder, hand, at)
     said = brief_step(state, folder, hand, at, since)
     pressed = window_presses(folder)
-    return "\n".join(x for x in (mailed, chosen, said, pressed) if x)
+    given = give_back_step(state, folder, hand, at)
+    return "\n".join(x for x in (mailed, chosen, said, pressed, given) if x)
 
 
 # ── 보고 창의 고름 ────────────────────────────────────────────────────────────────

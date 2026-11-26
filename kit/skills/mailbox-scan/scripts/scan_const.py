@@ -8,8 +8,8 @@ from __future__ import annotations
 import pathlib
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent   # 이 스킬의 스크립트 자리
-SCAN_ENTRY = "scan.py"                                  # 명령 입구 — 작업 스케줄러의 작업이 이 파일을 부른다(사용자 PC 의 작업 정의에 굳는다)
-SCAN_PY = SCRIPT_DIR / SCAN_ENTRY                       # 이 스캔의 입구 — 거는 작업이 부르는 자리이자, 걸린 작업이 이 스캔을 부르나를 대는 자리
+SCAN_ENTRY = "scan.py"                                  # 명령 입구 — 일일 보고의 시계 · 대화가 이 파일을 부른다
+SCAN_PY = SCRIPT_DIR / SCAN_ENTRY                       # 이 스캔의 입구 — 옛 판이 건 작업이 이 스캔을 부르나를 대는 자리
 
 # ── 자리 — 사용자 폴더. 메일 비서 스킬(스캔 · 정리 · 업무 파악 · 일일 보고)이 함께 쓰는 자리이고 원본은 여기다 ──────────
 # 바꾸면 사본 둘(mailbox-tidy `scripts/journal_const.py` · mailbox-work `scripts/work.py` 의 같은 이름)을 함께 바꾼다 — 서로의 코드를 안 싣는다
@@ -21,7 +21,7 @@ EVENTS_FILE = "events.jsonl"             # 새 메일 · 바뀜 — 덧붙이기
 RUNS_FILE = "runs.jsonl"                 # 판마다의 값(때 · 손 부르기 · 줄 · 초 · 끝 · 전체를 다 본 판의 받은편지함 셈) — 덧붙이기만
 PENDING_FILE = "pending.json"            # 다 못 본 지금 모습 판의 다 본 상자들 — 다음 판이 잇는다
 LOCK_FILE = "scan.lock"                  # 도는 판 하나 — 그 판의 열쇠와 시작 시각
-TASK_XML_FILE = "mailbox-scan-task.xml"  # 작업 스케줄러에 건 정의의 사본 — 등록할 때 쓴다
+TASK_XML_FILE = "mailbox-scan-task.xml"  # 옛 판이 작업 스케줄러에 건 정의의 사본 — 거둘 때 함께 걷는다
 FORMAT = 1                               # 스캔 파일의 꼴 번호 — 칸을 바꾸면 올린다(읽는 쪽이 모르는 판을 안 읽는다)
 STATUS_FORMAT = 1                        # `status --json` 의 꼴 번호 — 칸의 이름이나 뜻을 바꾸면 올린다(읽는 프로그램이 모르는 꼴을 안 믿게)
 
@@ -46,8 +46,6 @@ SKILL_HOMES = ((".claude", "skills"), (".agents", "skills"), (".gemini", "config
 # (원본)가 든다
 from hand_facts import (HAND_EXIT_CONFIG, HAND_EXIT_FAIL, HAND_EXIT_OK, HAND_EXIT_SESSION, HAND_SCRIPT, HAND_SKILL,  # noqa: E402,F401
                         HAND_TIMEOUT_S, NEXT_LOGIN, SESSION_LIVE, SESSION_LOST, SESSION_SKILL)
-THIS_HOME_HAND = SCRIPT_DIR.parents[1] / HAND_SKILL / pathlib.Path(*HAND_SCRIPT)   # 이 스캔과 같은 스킬 뿌리(도구 홈)의 회사 메일 손 — 다시
-                                                                                  # 겨누기(`adopt`)가 작업에 굳히는 자리
 HAND_ENV = "MAILBOX_SCAN_HAND"           # 손의 자리를 굳히는 환경변수 — 예약 실행은 명령줄의 --hand 로 준다
 # 보낸 분의 신원 — 주소록 스킬(company-directory)의 신원 명령을 명령으로 부른다(그 코드를 싣지 않는다). 찾는 차례는 `IDENTITY_ENV` → 회사 메일
 # 손과 같은 스킬 뿌리. 다시 묻는 날 · 한 부름이 서버에 묻는 주소의 위는 그 명령이 든다 — 스캔은 판마다 주소를 다 주고 그 답을 받아 적는다
@@ -76,8 +74,6 @@ PAGES_MOST = 200         # 상자 하나에서 청하는 쪽의 안전 상한 �
 SINCE_PAGES_MOST = 60    # 「이 시각 뒤」 목록을 --start 로 잇는 쪽의 안전 상한 — 같은 고장에서 멈춘다(한 쪽이 답의 크기만큼 담아 쪽 수가 적다)
 
 # ── 주기 · 상한 — 회사에서 한 판의 값을 재면 고친다 ───────────────────────────────────────────
-EVERY_MIN = 15           # 예약의 기본 주기(분) — 사용자가 바꾼다. 새 메일만 보는 판은 손 부르기 한두 번이다. 하루 보고와 대화가 스캔 뒤 틈을
-                         # 손으로 한 번 더 읽으니 촘촘함이 보고를 낫게 하지 않는다(회사에서 한 판의 값을 재기 전의 기본값)
 FULL_EVERY_MIN = 120     # 메일함 전체를 다시 보는 주기(분) — 상자마다 손을 두 번 넘게 불러 무겁다. 아래 PENDING_MAX_MIN 보다 짧아야 다 못 본 판을
                          # 다음 전체 판이 잇는다(회사에서 한 판의 값을 재기 전의 기본값)
 RUN_BUDGET_S = 15 * 60   # 한 판이 손을 부르는 시간의 상한 — 넘으면 다 본 상자까지 적고 다음 판이 잇는다
@@ -85,7 +81,6 @@ LOCK_STALE_S = RUN_BUDGET_S + HAND_TIMEOUT_S + IDENTITY_TIMEOUT_S + IDENTITY_PUL
                          # 남긴 것이다 — 풀고 돈다. 판은 손의 상한 뒤에 신원 명령 둘을 잠금을 쥔 채 부른다
 LOCK_WAIT_POLL_S = 2     # `run --wait` 가 도는 판의 잠금을 다시 쥐어 보는 사이(초) — 판은 몇 분이 들어 이 사이는 조금 늦음으로만 보인다. 사이마다
                          # 잠들어 기다려 CPU 를 안 쓴다
-TASK_TIME_LIMIT_MIN = 25 # 작업 스케줄러가 한 판을 끊는 시한 — 위 셋보다 길어야 스캔이 제 상한으로 먼저 멈춘다(잠금의 낡음 `LOCK_STALE_S` 보다도)
 PENDING_MAX_MIN = 180    # 다 못 본 지금 모습 판을 잇는 기한 — 넘은 상자 그림은 너무 낡아 버리고 처음부터 본다. 전체 주기(`--full-every`)는
                          # 이보다 짧아야 한다 — 같거나 길면 덜 본 판의 상자가 늘 버려져 큰 메일함은 끝내 다 못 본다(scan.py 가 거절한다)
 BACKOFF_FIRST_MIN = 15   # 세션이 끊긴 뒤 첫 다시 두드림까지 — 그 뒤로 두 배씩

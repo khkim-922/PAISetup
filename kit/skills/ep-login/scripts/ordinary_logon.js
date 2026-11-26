@@ -5,6 +5,7 @@
 // 내는 것
 //   logonKey() · readMark() · writeMark(key) · readStood() · writeStood(key) · readNoSso() · writeNoSso(key) — 로그온 열쇠와 세 기록(평소 걸음을
 //     해 봤다 · 평소 로그인이 섰다 · 이 로그온에는 SSO 가 안 선다 — SAVED.* 로 끝을 낸다)
+//   readOpened(key, pids) · writeOpened(key, tabs, pids) — 입구가 이 로그온에 평소 Edge 에 연 EP 탭의 열쇠와 그 Edge 의 브라우저 프로세스(돌려주는 문이 닫는다)
 //   edgeEye(select) · eyeSelect() · lookOnce(eye) · lookForPortal(eye) · tabsState(tabs) · committedState(tabs) — 눈과 그 가름(LOOK.*)
 //   ordinaryLogin() — ORDINARY.STOOD(섰다) · TRIED(해 봤는데 섰는지 모른다) · MISSING(없다) — 기록을 먼저 읽고, 기록이 없을 때만 눈으로 본다
 //   readTitles() · TITLES · ordinaryProfile() · openOrdinary(exe, profile, url) · hostOf(url) · EYE · EYE_GAP_MS · STEADY · SAVED
@@ -81,6 +82,9 @@ function edgeEye(select) {
     look: () => ask('look'),
     press: i => ask(`press ${i}`),
     tabs: () => ask('tabs'),
+    ids: () => ask('ids'),
+    peek: key => ask(`peek ${key}`),
+    shut: key => ask(`close ${key}`),
     why: () => dead || '답이 없다',
     dead: () => Boolean(dead),
     close: () => { clearTimeout(starting); try { child.stdin.end(); } catch {} setTimeout(() => { try { child.kill(); } catch {} }, 2000).unref(); },
@@ -164,7 +168,8 @@ async function lookForPortal(eye) {
 function eyeSelect() {
   const titles = readTitles();
   const title = titles.portal && titles.portal !== titles.login ? titles.portal : '';
-  return { EP_ORDINARY_PROFILE: ordinaryProfile(), EP_TAB_PORTAL: hostOf(cfg.portal), EP_TAB_LOGIN: cfg.loginHosts.join(','), EP_TAB_TITLE: title };
+  return { EP_ORDINARY_PROFILE: ordinaryProfile(), EP_TAB_PORTAL: hostOf(cfg.portal), EP_TAB_LOGIN: cfg.loginHosts.join(','), EP_TAB_TITLE: title,
+    EP_TAB_LOGIN_TITLE: titles.login && titles.login !== titles.portal ? titles.login : '' };
 }
 
 const NO_KEY = '-';                   // EP_LOGON_KEY 에 이 값을 주면 열쇠가 없는 PC 를 흉내 낸다
@@ -209,6 +214,35 @@ const { read: readStood, write: writeStood } = logonRecord(ORDINARY_STOOD);
 const NO_SSO = path.join(process.env.LOCALAPPDATA || '', 'ep-login', 'no-sso');
 const { read: readNoSso, write: writeNoSso } = logonRecord(NO_SSO);
 
+// 입구가 평소 Edge 에 연 EP 탭 — { key: 로그온 열쇠, tabs: [탭의 열쇠(눈의 RuntimeId)] }. 입구가 주소를 연 앞뒤의 탭 열쇠를 견줘 새로 선 EP 탭만
+// 남긴다 — 사람이 연 탭은 그 앞에 이미 있어 안 든다. 돌려주는 문이 이 탭들을 닫는다(돌려주며 새로 연 탭은 남긴다). 열쇠는 숫자뿐이라 주소 · 제목이 안 든다.
+// 다른 로그온의 기록 · 기록한 브라우저 프로세스(pids — 눈의 ids 답)가 다 진 기록은 안 읽는다 — Edge 가 다시 뜨면 열쇠가 남의 탭에 다시 붙을 수 있다(닫기 전에
+// 눈이 그 탭이 EP 탭인가도 다시 본다). pids 를 안 주면 프로세스는 안 본다
+const OPENED_TABS = path.join(process.env.LOCALAPPDATA || '', 'ep-login', 'opened-tabs.json');
+// 기록한 브라우저 프로세스 가운데 하나라도 아직 사나 — 같은 프로필의 프로세스가 더 뜨거나 지는 것은 같은 Edge 다. 기록한 것이 다 졌으면 Edge 가 다시 뜬 것이다
+const samePids = (was, now) => Array.isArray(was) && Array.isArray(now) && was.map(String).some(pid => now.map(String).includes(pid));
+function readOpened(key, pids) {
+  if (!key) return [];
+  try {
+    const got = JSON.parse(fs.readFileSync(OPENED_TABS, 'utf8'));
+    if (got.key !== key || !Array.isArray(got.tabs) || (pids && !samePids(got.pids, pids))) return [];
+    return got.tabs.map(String);
+  } catch { return []; }
+}
+let lastPids = null;                  // 이 부름이 마지막으로 남긴 프로세스 — 지우며 고쳐 쓸 때(pids 없이) 그대로 둔다
+function writeOpened(key, tabs, pids) {
+  if (!key) return { state: SAVED.FAILED, why: '로그온 열쇠가 없다' };
+  try {
+    if (pids) lastPids = pids;
+    else { try { lastPids = JSON.parse(fs.readFileSync(OPENED_TABS, 'utf8')).pids || null; } catch { lastPids = null; } }
+    fs.mkdirSync(path.dirname(OPENED_TABS), { recursive: true });
+    const temp = `${OPENED_TABS}.${process.pid}.tmp`;   // 다 쓴 뒤 바꿔 끼운다 — 도중에 죽어도 반쯤 쓴 기록이 안 남는다
+    fs.writeFileSync(temp, JSON.stringify({ key, pids: lastPids, tabs: [...new Set(tabs.map(String))] }));
+    fs.renameSync(temp, OPENED_TABS);
+    return { state: SAVED.WRITTEN };
+  } catch (e) { return { state: SAVED.FAILED, why: e.code || e.message }; }
+}
+
 // 이 로그온의 평소 EP 로그인 — 닫힌 셋
 const ORDINARY = {
   STOOD: 'stood',          // 섰다 — 기록이 있거나, 기록이 없는데 평소 Edge 에 EP 포털 탭이 선 것을 지금 봤다
@@ -235,6 +269,6 @@ async function ordinaryLogin() {
 
 module.exports = {
   ORDINARY, SAVED, LOOK, EYE, EYE_GAP_MS, STEADY, TITLES,
-  logonKey, readMark, writeMark, readStood, writeStood, readNoSso, writeNoSso, readTitles, ordinaryProfile, openOrdinary, hostOf,
+  logonKey, readMark, writeMark, readStood, writeStood, readNoSso, writeNoSso, readOpened, writeOpened, readTitles, ordinaryProfile, openOrdinary, hostOf,
   edgeEye, eyeSelect, lookOnce, lookForPortal, tabsState, committedState, ordinaryLogin,
 };

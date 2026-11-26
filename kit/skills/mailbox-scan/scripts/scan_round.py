@@ -4,7 +4,7 @@
 
 판 하나만 돈다 — 잠금을 못 쥐면 그 판은 건너뛴다. `--wait 초` 를 주면 앞 판의 잠금이 풀리기를 그 초 안에서 기다렸다 돌고, 시한이 지나면 건너뛴다.
 
-판 하기는 지금 모습이 없거나 전체 주기(`--full-every` · 없으면 걸린 작업의 판이 준 것)가 지났으면 메일함 전체(상자마다 메일 머리 · 폴더 목록 · 규칙)를 다시 보고 지난 모습과 견주고,
+판 하기는 지금 모습이 없거나 전체 주기(`--full-every` · 없으면 앞 판이 받아 적어 둔 것)가 지났으면 메일함 전체(상자마다 메일 머리 · 폴더 목록 · 규칙)를 다시 보고 지난 모습과 견주고,
 그 사이에는 「이 시각 뒤」 새 메일만 더한다. 손의 읽는 명령만 부른다 — 메일함 · 본문 · 모델에 안 닿는다. 왜 이 꼴인가는
 `references/DESIGN.md` 가 든다.
 """
@@ -215,14 +215,14 @@ def hand_probe(state: dict[str, Any], hand: pathlib.Path) -> dict[str, Any]:
 # ── 판 하기 ─────────────────────────────────────────────────────────────────────
 
 def note_full_every(state: dict[str, Any], args) -> None:
-    """준 전체 주기(`--full-every`)를 지금 모습에 적는다 — 걸린 작업의 판은 늘 그 값을 주므로, 주기를 안 준 판(정한 시각의 시계가 청한 판 ·
-    대화의 판)이 그 PC 가 건 주기를 읽는다(`full_every_of`). 안 줬으면 아무것도 안 한다."""
+    """준 전체 주기(`--full-every`)를 지금 모습에 적는다 — 주기를 안 준 판(정한 시각의 시계가 청한 판 · 대화의 판)이 사람이 한 번 준 주기를
+    읽는다(`full_every_of`). 안 줬으면 아무것도 안 한다."""
     if args.full_every is not None:
         state["full_every"] = args.full_every
 
 
 def full_every_of(state: dict[str, Any], args) -> int:
-    """이 판의 전체 주기(분) — 준 것(`--full-every`), 없으면 걸린 작업의 판이 마지막으로 준 것(`note_full_every`), 그것도 없으면 기본."""
+    """이 판의 전체 주기(분) — 준 것(`--full-every`), 없으면 앞 판이 마지막으로 받아 적은 것(`note_full_every`), 그것도 없으면 기본."""
     noted = state.get("full_every")
     return args.full_every or (noted if isinstance(noted, int) and 0 < noted < C.PENDING_MAX_MIN else C.FULL_EVERY_MIN)
 

@@ -152,6 +152,44 @@ def outcome(code: int | None, answer: dict, card_text: str, ledger: dict) -> tup
     return UNSURE, WORDS[UNSURE]
 
 
+# ── 돌려준 로그인을 잠깐 빌린다 ───────────────────────────────────────────────────
+
+class Borrow:
+    """단추의 일 하나가 돌려준 사내 로그인을 잠깐 빌리는 판 — 같은 스킬 시계의 명령(`clock.py lend · release` — `unattended/loan.py`)으로 묻는다.
+    일을 하기 전에 그 세션을 쓴다고 적고(`hold_on` — 시계 판이
+    도중에 돌려주지 않게), 세션이 없다는 끝(`SESSION`)을 처음 받으면 한 번만 빌리고(`take`), 그 걸음의 일을 다 하면 놓는다(`give`) — 한 걸음의 누름 여럿이 로그인
+    하나를 함께 쓰고 그 걸음 끝에 한 번 돌려준다. 오늘 이 PC 가 로그인을 돌려준 적이 없으면 시계가 안 빌려 준다 — 전처럼 대화의 로그인을 청한다."""
+
+    def __init__(self, folder: pathlib.Path, why: str, ceiling_s: int):
+        self.folder, self.why, self.ceiling, self.tried, self.held, self.lent, self.futile = folder, why, ceiling_s, False, False, False, False
+
+    def hold_on(self) -> None:
+        """그 일이 산 세션을 쓰기 시작한다 — 시계에 쓰는 일로 적어(빌리지 않는다) 그 도중에 시계 판이 돌려주지 않게. 이 판에서 한 번만."""
+        if self.held:
+            return
+        self.held = True
+        code, _ = run_unattended(self.folder, [C.CLOCK_ENTRY, "lend", "--why", self.why, "--ceiling", str(self.ceiling)], C.LEND_CALL_S)
+        self.lent = code == 0
+
+    def take(self) -> bool:
+        """세션이 없다는 끝을 받았다 — 이 판에서 처음이면 시계에 빌리기를 청한다. 내는 것 — 빌렸나(다시 해 볼까)."""
+        if self.tried:
+            return False
+        self.tried = self.held = True
+        code, _ = run_unattended(self.folder, [C.CLOCK_ENTRY, "lend", "--why", self.why, "--ceiling", str(self.ceiling), "--lost"],
+                                 C.LEND_CALL_S)
+        self.lent = code == 0
+        return self.lent
+
+    def give(self, hold: bool = False, futile: bool = False) -> None:
+        """쓴다고 적었으면(`hold` 면 안 적었어도 — 결재 창은 사람이 그 세션의 창에서 누른다) 시계에 놓는다고 알린다 — 쓰는 일이 더 없으면 시계가 곧
+        돌려준다. `futile` — 빌린 로그인 위에서도 세션 없음이었다(그 일에는 오늘 다시 안 빌린다). 못 알려도 빌림의 쓸 끝이 지나면 시계 판이 돌려준다."""
+        if self.lent or hold:
+            run_unattended(self.folder, [C.CLOCK_ENTRY, "release", "--why", self.why, *(["--hold"] if hold else []),
+                                         *(["--futile"] if futile and self.lent else [])], C.LEND_CALL_S)
+        self.lent = False
+
+
 # ── 누름 하나 ───────────────────────────────────────────────────────────────
 
 def card_for(folder: pathlib.Path, press: dict, key: str) -> tuple[Put, str] | None:
@@ -278,6 +316,7 @@ def put_presses(kind: "Kind", tab: E.Tab, folder: pathlib.Path, until: float | N
     if not lock.take():
         return {"busy": 1}
     counts: dict[str, int] = {}
+    borrow = Borrow(folder, "put", CALENDAR_TIMEOUT_S * len(pending) + C.LEND_CALL_S)
     try:
         try:
             ledger = read_ledger(folder)
@@ -288,7 +327,13 @@ def put_presses(kind: "Kind", tab: E.Tab, folder: pathlib.Path, until: float | N
                 counts["later"] = counts.get("later", 0) + 1
                 continue
             try:
-                got = kind.job(folder, ledger, key, press, lambda k=key, v=press: press_row(tab, kind.key, k) == v)
+                still = lambda k=key, v=press: press_row(tab, kind.key, k) == v   # noqa: E731
+                borrow.hold_on()
+                got = kind.job(folder, ledger, key, press, still)
+                if got is not None and got[0] == SESSION and (until is None or time.monotonic() + C.LEND_CALL_S + CALENDAR_TIMEOUT_S <= until) \
+                        and borrow.take():                # 돌려준 로그인을 잠깐 빌려 그 누름을 다시 넣는다 — 세션 없음은 아무것도 안 바꿨다
+                    got = kind.job(folder, ledger, key, press, still)
+                    borrow.futile = borrow.futile or (got is not None and got[0] == SESSION)
             except OSError:                       # 기록을 못 썼다 — 일정 손을 안 불렀거나 끝을 못 남겼다. 누름은 그대로 두고 다음에
                 counts["unwritten"] = counts.get("unwritten", 0) + 1
                 continue
@@ -300,6 +345,7 @@ def put_presses(kind: "Kind", tab: E.Tab, folder: pathlib.Path, until: float | N
             tab.write([[kind.key + key, json.dumps(kind.back(press, state, said), ensure_ascii=False)]])
     finally:
         lock.release()
+        borrow.give(futile=borrow.futile)         # 이 걸음의 누름을 다 넣었다 — 빌렸으면 곧 돌려준다
     return counts
 
 
@@ -485,11 +531,21 @@ def collect_approvals(kind: "Kind", tab: E.Tab, folder: pathlib.Path, hand: "Han
         if not tab.swap(kind.key + doc, raw, taken):
             continue
         got = kind.job(folder, doc, press)
-        hand.opening[doc] = (taken, got if isinstance(got, tuple) else None, got if not isinstance(got, tuple) else None, time.monotonic())
-    for doc, (taken, end, proc, started) in list(hand.opening.items()):
+        borrow = Borrow(folder, "appr", C.APPR_OPEN_S + C.LEND_CALL_S)
+        if not isinstance(got, tuple):
+            borrow.hold_on()                       # 띄우는 동안 시계 판이 그 세션을 돌려주지 않게
+        hand.opening[doc] = (taken, got if isinstance(got, tuple) else None, got if not isinstance(got, tuple) else None, time.monotonic(), borrow)
+    for doc, (taken, end, proc, started, borrow) in list(hand.opening.items()):
         end = end or approval_done(proc, started)
         if end is None:
             continue
+        if end[0] == APPR_SESSION and borrow.lent:
+            borrow.futile = True
+        if end[0] == APPR_SESSION and borrow.take():   # 돌려준 로그인을 잠깐 빌려 다시 띄운다 — 세션 없음은 창을 안 띄웠다
+            again, why = start_approval(doc)
+            hand.opening[doc] = (taken, None if again else (APPR_FAILED, APPR_WORDS[APPR_FAILED].format(why=why)), again, time.monotonic(), borrow)
+            continue
+        borrow.give(hold=end[0] == APPR_OPENED, futile=borrow.futile)         # 띄운 결재 창은 사람이 그 세션에서 누른다 — 돌려주기를 그만큼 미룬다
         tab.swap(kind.key + doc, taken, json.dumps(kind.back(json.loads(taken), *end), ensure_ascii=False))
         del hand.opening[doc]
         said.append(end[0])
@@ -631,7 +687,7 @@ class Hand:
 
     def __init__(self, folder: pathlib.Path):
         self.folder, self.tab, self.beat, self.inside, self.stepped = folder, None, 0.0, False, 0.0
-        self.opening: dict = {}                     # 띄워 둔 결재 창 열기 — 문서 id → (맡은 값, 끝 · 없으면 None, 프로세스, 띄운 때)
+        self.opening: dict = {}                     # 띄워 둔 결재 창 열기 — 문서 id → (맡은 값, 끝 · 없으면 None, 프로세스, 띄운 때, 빌림)
         self.runs = R.Runs(folder, functools.partial(run_unattended, folder))
 
     def tend(self) -> None:
