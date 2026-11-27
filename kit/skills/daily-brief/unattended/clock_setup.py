@@ -264,6 +264,7 @@ def cmd_unregister(args, home: pathlib.Path) -> int:
         print(f"[예약 — 끄지 않고 보이기만 한다. 끄면: {shown(TB.delete_command(T.TASK_NAME))} · 보고 예약도 내린다]")
         return EXIT_OK
     brief = " · 보고 예약도 내렸다" if S.clear(home) else ""
+    TB.ask(TB.delete_command(T.GIVE_BACK_TASK_NAME))   # 돌려줄 때에 깨는 한 번만의 작업 — 없으면 그뿐이다(돌고 나면 저절로 지워진다)
     done = TB.ask(TB.delete_command(T.TASK_NAME))
     if done.code != 0:
         print(f"[예약 — 못 껐다(걸린 작업이 없을 수 있다){brief}: {(done.out + done.err).strip()[-300:]}]")

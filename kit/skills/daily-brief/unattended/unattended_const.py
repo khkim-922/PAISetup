@@ -85,6 +85,9 @@ from brief_const import GIVE_BACK_AFTER_MIN  # noqa: E402,F401 — 값의 자리
 GIVE_BACK_ARGS = ("--give-back", "--unattended")   # 그 문의 끝 줄(종료 0) — `given-back port-closed=N port-left=N ordinary-closed=N ordinary-kept=N`
 GIVE_BACK_TYPED = 4                       # 그 문의 4 — SSO 가 안 서는 로그온이라 아무것도 안 열고 안 닫았다(칠 사람이 없다) · 그날은 다시 안 부른다
 from brief_const import GIVE_BACK_TIMEOUT_S  # noqa: E402,F401 — 돌려주는 문 한 번의 시한(값의 자리는 바탕)
+GIVE_BACK_TASK_XML = "daily-brief-give-back.xml"   # 돌려줄 때에 한 번 깨는 작업의 정의 파일(작업 스케줄러에 건네고 남는다 — 다음에 덮어쓴다)
+WAKE_SLACK_S = 30                         # 그 작업이 깨는 때 — 돌려줄 때 뒤 이만큼(작업 스케줄러가 몇 초 일찍 깨도 그 판이 아직 이르다고 넘기지 않게)
+WAKE_OFF_ENV = "DAILY_BRIEF_NO_WAKE"      # 검사가 이 PC 의 작업 스케줄러에 안 닿게 할 때만 준다(정의 파일은 쓰고 걸지만 않는다)
 LOAN_FILE = "daily-brief-loan.json"       # 보고 창의 단추가 돌려준 뒤 잠깐 다시 세운 로그인 한 장(그날 · 빌린 때 · 쓰는 일들 · 돌려준 끝) — 쓰는 것은 `loan.py` 하나다
 LOAN_LOCK_FILE = "daily-brief-loan.lock"  # 빌리고 돌려주는 손 하나 — 시계 판 · 창 곁의 손 · 맡긴 일의 지킴이가 함께 불러도 입구를 한 번 부른다
 from brief_const import LEND_CALL_S as LEND_TIMEOUT_S  # noqa: E402 — 빌리기 · 놓기 한 번의 시한(원본은 바탕 — 창 곁의 손도 같은 값으로 부른다)
@@ -128,7 +131,7 @@ CLAUDE_TOOLS = "Bash,Read,Glob,Grep"     # 사람 없는 실행에 남기는 기
                                          # 업무 파일은 아래 쓰는 손(열린 명령)으로만 쓴다 — 파일 도구를 주면 그 손의 절 지킴을 건너뛴다
 WORK_SKILL = "mailbox-work"              # 업무 파악 스킬 — 이 스킬과 같은 스킬 뿌리에 나란히 선다. 사람 없는 보고가 짓기 전에 그 업무 파악을 한다
 WORK_WRITER = ("scripts", "work.py")     # 그 스킬의 쓰는 손 — 업무 파일 하나만 바꿔 쓰고 앞 판의 절이 빠진 글 · 빈 글은 안 쓴다(사람 없는 실행에 연다)
-WORK_FILE = "work.md"                    # 업무 파일 — 사용자 폴더에 산다(주인은 스킬 mailbox-work · 원본 이름은 그 쓰는 손의 WORK_FILE)
+from brief_const import WORK_FILE  # noqa: E402,F401 — 업무 파일 — 사용자 폴더에 산다(값의 자리는 바탕)
 LANE_FILE = "lane.md"                    # 업무 파악 · 일일 보고 스킬의 걸음을 든 글 — 사람 없는 보고는 맡길 곳이 없어 그 글대로 한다(SKILL.md 는
                                          # 맡기는 쪽의 글이다)
 NESTED_ENV = ("CLAUDECODE",)             # 대화 안에서 부른 판(run --now)이 띄울 때 걷는 변수 — 있으면 claude 가 겹친 세션이라며 안 뜬다

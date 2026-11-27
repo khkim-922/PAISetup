@@ -23,6 +23,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import clock as tm
+import clock_task as CT
+import task_base as TB
 import unattended_const as C
 import unattended_store as st
 from brief_reports import launched_end, lock_held
@@ -200,6 +202,9 @@ def give_back_step(state: dict[str, Any], folder: pathlib.Path, hand: pathlib.Pa
         loans = loans_of(day, setting["times"], at) if setting is not None and day.get("date") == seoul_date(at) else []
         whens = [due_at(day, t, login, end, at) for t, login, end in loans]
         if any(w is None or w > at for w in whens) or in_use(folder, rec, at):
+            later = [w for w in whens if w is not None and w > at] + [tm.parse(u.get("until")) for u in users_of(rec, at)]
+            if loans and all(w is not None for w in whens) and later and not lock_held(folder, at):
+                wake(folder, hand, max(later))     # 다 언제 돌려줄지 섰다(틈 · 쓰는 일의 끝) — 그 때에 판 한 번을 걸어 시계의 주기를 안 기다린다
             return ""                              # 한 로그인이라도 아직 그 틈 안이면 기다린다 — 한 번 돌려주면 그 세션을 다 끊는다
         due = [(t, login) for t, login, _ in loans]
         if not (due or (rec["lent"] or {}).get("ok")) or retry_wait(rec, at):
@@ -214,6 +219,20 @@ def give_back_step(state: dict[str, Any], folder: pathlib.Path, hand: pathlib.Pa
     finally:
         lock.release()
 
+
+
+def wake(folder: pathlib.Path, hand: pathlib.Path | None, due: datetime) -> None:
+    """돌려줄 때(`due`)에 시계 판 한 번을 부르는 한 번만의 작업을 걸거나 그 때로 고친다(`clock_task.GIVE_BACK_TASK_NAME` — 돌고 나면 작업 스케줄러가
+    지운다). 그 판이 돌려주기를 한다 — 놓쳐도 시계의 다음 판이 한다. 손이 없거나 · 작업 스케줄러가 거절하면 아무 말 없이 넘긴다(다음 판이 다시 건다)."""
+    if hand is None:
+        return
+    path = folder / C.GIVE_BACK_TASK_XML
+    try:
+        TB.write_xml(path, CT.give_back_xml(at=due.astimezone().replace(tzinfo=None) + timedelta(seconds=C.WAKE_SLACK_S), home=folder, hand=hand))
+    except OSError:
+        return
+    if C.WAKE_OFF_ENV not in os.environ:
+        TB.ask(TB.register_command(CT.GIVE_BACK_TASK_NAME, path))
 
 
 # ── 보고 창의 단추가 빌린다 ────────────────────────────────────────────────────────
@@ -270,7 +289,7 @@ def release(folder: pathlib.Path, hand: pathlib.Path | None, at: datetime, why: 
             next((u for u in users if u.get("why") == why and "hold" not in u), None)   # 그 손이 적은 것 — 없으면 같은 일의 붙들지 않은 것
         if mine is not None:
             users.remove(mine)
-        if hold:                                   # 빌리지 않고 산 세션에서 띄운 결재 창도 — 시계 판이 그 세션을 15분 안에 돌려주지 않게
+        if hold:                                   # 빌리지 않고 산 세션에서 띄운 결재 창도 — 시계 판이 그 세션을 그 틈 안에 돌려주지 않게
             users.append({"why": why, "until": tm.utc_stamp(at + timedelta(minutes=C.GIVE_BACK_AFTER_MIN)), "hold": True})
         rec["users"] = users
         if futile and why not in rec["futile"]:

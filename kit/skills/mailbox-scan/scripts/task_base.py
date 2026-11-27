@@ -15,6 +15,7 @@
     same_path(a, b)                                             # 두 경로가 같은 자리인가(윈도의 대소문자 · 사이 글자)
     shown(register_command(task_name, xml_path))                # 사람에게 보일 명령줄
     xml = definition(description=설명, every=분, start=때, logon_delay=분, limit=분, arguments=인자, workdir=경로, enabled=참)   # 등록할 정의
+    xml = once_definition(description=설명, at=때, limit=분, arguments=인자, workdir=경로)   # 그 때 한 번만 돌고 저절로 지워지는 작업의 정의
 """
 
 from __future__ import annotations
@@ -28,12 +29,14 @@ import string
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
 
 SCHTASKS = "schtasks.exe"
 # 로그온한 뒤 첫 판까지(분)의 바탕 — 로그온 직후 세션 손이 서기를 조금 기다린다. 일일 보고의 시계 작업은 여기에 주기의 절반을 더해 깬다
 SCAN_LOGON_DELAY_MIN = 2
+ASK_TIMEOUT_S = 60     # 작업 스케줄러 · PowerShell 한 번의 끝 — 멈춘 schtasks 가 부른 쪽(잠금을 쥔 시계 판)을 영영 붙들지 않게
+ONCE_EXPIRE_MIN = 60   # 한 번만 도는 작업의 끝 경계 — 깰 때 뒤 이만큼. 그 뒤 작업 스케줄러가 작업을 지운다(놓친 때를 이 안에 곧 돈다)
 # 작업 스케줄러가 정의를 받나만 묻는 PowerShell — 정의 파일의 자리를 환경변수(`{env}`)로 받아 XML 을 넣어 볼 뿐 등록하지 않는다. 받으면 `VALIDATE_OK` 를 낸다
 VALIDATE_OK = "ok"
 VALIDATE_PS = ("$x = [IO.File]::ReadAllText($env:{env}); $s = New-Object -ComObject Schedule.Service; $s.Connect(); "
@@ -98,6 +101,56 @@ DEFINITION = """<?xml version="1.0" encoding="UTF-16"?>
 """
 
 
+ONCE_DEFINITION = """<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>{description}</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <TimeTrigger>
+      <StartBoundary>{start}</StartBoundary>
+      <EndBoundary>{end}</EndBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{user}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <DeleteExpiredTaskAfter>PT0S</DeleteExpiredTaskAfter>
+    <ExecutionTimeLimit>PT{limit}M</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{pythonw}</Command>
+      <Arguments>{arguments}</Arguments>
+      <WorkingDirectory>{workdir}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"""
+
+
 def windowless_python() -> pathlib.Path:
     """창 없는 파이썬(pythonw.exe) — 지금 도는 파이썬 곁. 없으면 지금 파이썬(창이 뜬다 — 부르는 쪽이 알린다)."""
     here = pathlib.Path(sys.executable)
@@ -118,6 +171,15 @@ def definition(*, description: str, every: int, start: datetime, logon_delay: in
     return DEFINITION.format(description=escape(description), every=every, start=start.strftime("%Y-%m-%dT%H:%M:%S"), user=escape(user_id()),
                              logon_delay=logon_delay, limit=limit, pythonw=escape(str(windowless_python())), arguments=escape(arguments),
                              workdir=escape(str(workdir)), enabled="true" if enabled else "false")
+
+
+def once_definition(*, description: str, at: datetime, limit: int, arguments: str, workdir: pathlib.Path) -> str:
+    """한 번만 도는 작업의 정의(XML) — 그 때(`at` · 이 PC 의 시각)에 한 번 깨고, 그 때를 놓쳤으면 깰 수 있을 때 곧 돈다. 돌고 나면 작업 스케줄러가
+    지운다(`DeleteExpiredTaskAfter` — 끝 경계가 지난 뒤). 돌릴 사람 · 파이썬 · 한 번에 하나는 되풀이 작업의 틀과 같다."""
+    ends = at + timedelta(minutes=ONCE_EXPIRE_MIN)
+    return ONCE_DEFINITION.format(description=escape(description), start=at.strftime("%Y-%m-%dT%H:%M:%S"), end=ends.strftime("%Y-%m-%dT%H:%M:%S"),
+                                  user=escape(user_id()), limit=limit, pythonw=escape(str(windowless_python())), arguments=escape(arguments),
+                                  workdir=escape(str(workdir)))
 
 
 def template_pattern(template: str, forms: dict[str, str]) -> re.Pattern[str]:
@@ -191,8 +253,13 @@ class Answer:
 
 
 def ask(command: list[str], env: dict[str, str] | None = None) -> Answer:
-    """작업 스케줄러(schtasks) · PowerShell 을 한 번 띄워 답을 받는다 — 출력은 물을 때 `decode` 로 푼다."""
-    done = subprocess.run(command, capture_output=True, env=env)
+    """작업 스케줄러(schtasks) · PowerShell 을 한 번 띄워 답을 받는다 — 출력은 물을 때 `decode` 로 푼다. 창 없이 띄운다 — 창 없는 파이썬(작업
+    스케줄러의 판)에서 부르면 콘솔 아이가 사람 앞에 창을 띄운다. `ASK_TIMEOUT_S` 를 넘기거나 못 띄우면 종료 값 -1 과 그 까닭."""
+    try:
+        done = subprocess.run(command, capture_output=True, env=env, timeout=ASK_TIMEOUT_S,
+                              creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return Answer(-1, b"", f"{type(exc).__name__}: {exc}".encode("utf-8"))
     return Answer(done.returncode, done.stdout, done.stderr)
 
 

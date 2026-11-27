@@ -5,6 +5,7 @@ schtasks · PowerShell 을 띄우고 그 출력을 푸는 몸은 곁의 `task_ba
 
     xml = task_xml(every=분, home=경로, hand=경로, enabled=참)   # 등록할 정의(UTF-16 으로 쓴다 — schtasks /XML 이 그 꼴을 받는다)
     arguments_parts(d["arguments"])                     # 걸린 정의의 인자를 거는 꼴의 칸(입구 · 사용자 폴더 · 손)으로 — 그 꼴이 아니면 None
+    xml = give_back_xml(at=때, home=경로, hand=경로)    # 돌려줄 때에 시계 판 한 번을 부르는 한 번만의 작업(GIVE_BACK_TASK_NAME)
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from __future__ import annotations
 import pathlib
 from datetime import datetime, timedelta
 
-from task_base import SCAN_LOGON_DELAY_MIN, definition, template_pattern
+from task_base import SCAN_LOGON_DELAY_MIN, definition, once_definition, template_pattern
 from unattended_const import CLOCK_ENTRY, CLOCK_TIME_LIMIT_MIN, HERE
 
 TASK_LEAF = "daily-brief"                       # 작업의 이름 — 사람이 읽는 줄이 이 이름으로 댄다
@@ -20,6 +21,9 @@ TASK_NAME = r"\mail-secretary" + "\\" + TASK_LEAF   # 사용자 폴더와 같은
 FIRST_DELAY_MIN = 1                             # 등록한 뒤 첫 판까지(여기에 주기의 절반을 더한다)
 DESCRIPTION = ("일일 보고의 시계 — {every}분마다 정한 시각의 보고와 보고 창의 누름을 살핀다(보고 시각에 메일함 스캔에 한 판을 청해 "
                "보고를 띄운다)")   # 작업 스케줄러 화면에 보이는 설명
+
+GIVE_BACK_TASK_NAME = TASK_NAME + "-give-back"   # 돌려줄 때에 한 번만 깨는 작업 — 시계의 주기를 기다리지 않고 그 때 시계 판 한 번을 부른다
+GIVE_BACK_DESCRIPTION = "일일 보고의 시계 — 보고 앞에 스스로 한 사내 로그인을 돌려줄 때에 시계 판을 한 번 부른다(돌고 나면 지워진다)"
 
 VALIDATE_ENV = "DAILY_BRIEF_TASK_XML"           # 정의를 받나 물을 때 정의 파일의 자리를 PowerShell 에 건네는 환경변수
 
@@ -47,3 +51,8 @@ def task_xml(*, every: int, home: pathlib.Path, hand: pathlib.Path, start: datet
     return definition(description=DESCRIPTION.format(every=every), every=every,
                       start=start or datetime.now() + timedelta(minutes=FIRST_DELAY_MIN + half), logon_delay=SCAN_LOGON_DELAY_MIN + half,
                       limit=CLOCK_TIME_LIMIT_MIN, arguments=tick_arguments(home, hand), workdir=HERE, enabled=enabled)
+
+
+def give_back_xml(*, at: datetime, home: pathlib.Path, hand: pathlib.Path) -> str:
+    """돌려줄 때(`at` · 이 PC 의 시각)에 시계 판 한 번을 부르는 한 번만의 작업 정의 — 부르는 명령은 시계 작업과 같다(`tick_arguments`)."""
+    return once_definition(description=GIVE_BACK_DESCRIPTION, at=at, limit=CLOCK_TIME_LIMIT_MIN, arguments=tick_arguments(home, hand), workdir=HERE)

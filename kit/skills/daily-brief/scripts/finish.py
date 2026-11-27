@@ -15,12 +15,14 @@
 from __future__ import annotations
 
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # 곁의 손가락들 — `-I` 로 돌아도 싣는다
 from brief_cards import FACT  # noqa: E402
+from brief_const import WORK_DONE, WORK_FILE  # noqa: E402
 from brief_files import kept_briefs  # noqa: E402
-from brief_inline import first_unid, plain  # noqa: E402
+from brief_inline import UNID_HEX, first_unid, plain  # noqa: E402
 from brief_put import KEY_MARK, PUT_KEY, PUT_SPLIT, Put  # noqa: E402
 from brief_sections import DONE_SECTION, NONE_ROW, REOPEN_SECTION, fold, section_rows, section_span  # noqa: E402
 from brief_tasks import put_in  # noqa: E402
@@ -67,8 +69,10 @@ class Unread(Exception):
 
 def carry(text: str, folder: pathlib.Path) -> tuple[str, list[str]]:
     """지난 보고 글의 기록 절 둘을 새 글에 잇는다 — 새 글에 이미 든 줄(같은 첫 메일 번호 · 번호가 없으면 같은 글)은 다시 안 넣는다. 두 절은 일마다
-    사용자의 마지막 말씀이라(같은 메일 번호는 한쪽에만 선다 — 거두는 손 · 대화가 맞은편 줄을 걷는다) 날마다 그대로 잇는다. 「끝났다고 하신 것」은
-    줄이 없어도 「없음」으로 세운다 — 다음 보고 · 업무 파악 · 거두는 손이 그 절을 찾는다. 지난 글을 못 읽으면 `Unread`."""
+    사용자의 마지막 말씀이라(같은 메일 번호는 한쪽에만 선다 — 거두는 손 · 대화가 맞은편 줄을 걷는다) 보고마다 잇되, 「끝났다고 하신 것」의 줄은
+    그 메일 번호가 업무 파일의 「끝난 일」에 이미 든 줄이면 잇지 않는다(`closed`) — 업무 파악이 옮긴 뒤에는 창만 길게 하고, 못 옮긴 줄은 며칠이
+    지나도 남아 다음 업무 파악이 닫는다. 「끝났다고 하신 것」은 줄이 없어도 「없음」으로 세운다 — 다음 보고 · 업무 파악 · 거두는 손이 그 절을
+    찾는다. 지난 글을 못 읽으면 `Unread`."""
     briefs = kept_briefs(folder) if folder.is_dir() else []
     prev = ""
     if briefs:
@@ -76,12 +80,25 @@ def carry(text: str, folder: pathlib.Path) -> tuple[str, list[str]]:
             prev = (S.read_bytes(briefs[-1]) or b"").decode("utf-8", errors="replace")
         except S.Unreadable as exc:
             raise Unread(f"{briefs[-1].name}: {exc}") from exc
+    shut = closed(folder)
     for name in (DONE_SECTION, REOPEN_SECTION):
         keys = {first_unid(r) or r.strip() for r in section_rows(text, name)}
-        text = fold(text, name, [r for r in section_rows(prev, name) if (first_unid(r) or r.strip()) not in keys])
+        rows = [r for r in section_rows(prev, name) if (first_unid(r) or r.strip()) not in keys]
+        text = fold(text, name, [r for r in rows if (first_unid(r) or "").upper() not in shut] if name == DONE_SECTION else rows)
     if section_span(text.split("\n"), DONE_SECTION)[0] is None:
         text = fold(text, DONE_SECTION, [NONE_ROW])   # 절이 없으면 끝에 세우는 꼴은 `fold` 한 자리가 든다
     return text, []
+
+
+def closed(folder: pathlib.Path) -> set[str]:
+    """업무 파일 「끝난 일」 절에 든 메일 번호(큰 글자) — 줄에 번호가 여럿이면 다 든다. 파일이 없거나 못 읽으면 빈 것(그러면 다 잇는다 — 못 읽었다고
+    사용자의 말씀을 버리지 않는다)."""
+    try:
+        raw = S.read_bytes(folder / WORK_FILE)
+    except S.Unreadable:
+        return set()
+    rows = section_rows((raw or b"").decode("utf-8-sig", errors="replace"), WORK_DONE)
+    return {u.upper() for r in rows for u in re.findall(UNID_HEX, r)}
 
 
 # ── 「일정 넣기」의 열쇠 ─────────────────────────────────────────────────────

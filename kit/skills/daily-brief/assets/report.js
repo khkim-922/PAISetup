@@ -1,6 +1,6 @@
-// 보고 창에서 누르신 것 — 줄의 「끝났음 · 내일 다시 · 안 올려도 됨」은 메일 번호마다, 「보고 맞추기」의 보고 시각 · 자리 밖에서 보기와 「다시 올리기」는 제
+// 보고 창에서 누르신 것 — 줄의 「끝났음 · 내일 다시 · 이런 건 빼기」은 메일 번호마다, 「보고 맞추기」의 보고 시각 · 자리 밖에서 보기와 「다시 넣기」는 제
 // 열쇠로 이 창(file://)의 localStorage 에 남긴다. 일일 보고의 ticks.py 가 로그인 Edge 에서 거두고(시각은 시계 판이 그 손으로 받는다), 거둔
-// 때와 결과를 같은 저장소에 돌려 적는다. 창이 보이는 지금 모습(시각표 · 규칙의 수 · 올리지 않을 것 · 내일 다시 볼 것)은 지을 때의 것
+// 때와 결과를 같은 저장소에 돌려 적는다. 창이 보이는 지금 모습(시각표 · 규칙의 수 · 보고에서 빼는 것 · 내일 다시 볼 것)은 지을 때의 것
 // (`data-state`)과, 그것을 바꾸는 명령 · 시계 판 · 거두기가 열린 창에 바로 적는 것(STATE) 가운데 늦은 것이다 — 창은 제가 못 읽는 파일을
 // 그 길로만 안다. 메일에서 온 글로 글을 짓지 않는다 — 바꾸는 것은 단추의 눌림 · 숨김, 줄의 class, 이 파일이 든 말, 「HH:MM」 꼴로 거른
 // 시각, 받은 글을 글자(textContent)로 옮긴 것, 32자리 메일 번호로만 지은 링크뿐이다. 페이지의 CSP 가 이 글 그대로의 해시만 연다.
@@ -115,7 +115,7 @@
     var groups = Array.prototype.slice.call(document.querySelectorAll(".marks[data-unid]"));
     // 표시 — { title, at, mark(done · later · quiet · open · clear), folded(거둔 때) }. 옛 표시는 done(참 · 거짓)만 든다. 이 창을 짓기 전에
     // 거둔 표시는 이 창의 글에 이미 들었다 — 다시 열린 일이 이 창에 할 일로 섰으면 그 일은 지금 열려 있으니, 옛 표시로 단추를 누르지 않는다.
-    // 거둔 「내일 다시」 · 「안 올려도 됨」이 그 뒤의 지금 모습에 없으면 대화에서 걷으신 것이다 — 그 표시도 안 쓴다
+    // 거둔 「내일 다시」 · 「이런 건 빼기」이 그 뒤의 지금 모습에 없으면 대화에서 걷으신 것이다 — 그 표시도 안 쓴다
     function read(unid) {
       var v = parse(PREFIX + unid);
       if (v && v.folded && !isNaN(made) && time(v.folded) < made) return null;
@@ -149,11 +149,11 @@
 
     function fresh(m, g) {
       return { done: "다음 보고부터 올리지 않습니다", later: "내일 첫 보고에 다시 올립니다",
-               quiet: named(g) + " 같은 일은 다음 보고부터 올리지 않습니다 — 아래 「올리지 않기로 한 것」에서 되돌립니다",
+               quiet: named(g) + " 같은 메일은 다음 보고부터 뺍니다 — 아래 「보고에서 빼는 것」에서 되돌립니다",
                open: "다음 보고 때 다시 엽니다", clear: "되돌렸습니다 — 다음 보고부터 다시 올립니다" }[m] || "";
     }
 
-    var FOLDED = { done: "업무 기록에 남았습니다", later: "내일 첫 보고로 미뤘습니다", quiet: "올리지 않기로 배웠습니다", open: "다시 열었습니다",
+    var FOLDED = { done: "업무 기록에 남았습니다", later: "내일 첫 보고로 미뤘습니다", quiet: "보고에서 빼기로 했습니다", open: "다시 열었습니다",
                    clear: "되돌렸습니다" };
 
     function paintGroup(g) {
@@ -379,12 +379,12 @@
              tick: function () { if (timesBox && !dirty && (function (c) { return c && !c.stale && !c.done; })(chosen(live()))) paintTimes(); } };
   })();
 
-  // ── 올리지 않기로 한 것 · 내일 다시 볼 것 — 지금 모습에서 세운다 ──
+  // ── 보고에서 빼는 것 · 내일 다시 볼 것 — 지금 모습에서 세운다 ──
   var Lists = (function () {
     var UNQUIET = "$unquiet_prefix";
     var quietList = document.getElementById("quiet-list");
     var laterList = document.getElementById("later-list");
-    // 이 창에서 방금 「안 올려도 됨」을 누르신 일은 다음 창을 기다리지 않고 바로 서고, 그 줄의 「다시 올리기」는 줄의 단추를 푸는 것과 같다
+    // 이 창에서 방금 「이런 건 빼기」을 누르신 일은 다음 창을 기다리지 않고 바로 서고, 그 줄의 「다시 넣기」는 줄의 단추를 푸는 것과 같다
 
     function linked(span, unid, label) {
       if (!mailHref || !UNID.test(unid || "")) return;
@@ -399,7 +399,7 @@
 
     function undoNote(li, v) {
       li.classList.toggle("is-undone", !!v);
-      li.querySelector(".undo-note").textContent = !v ? "" : v.folded ? "다시 올리기로 했습니다 · " + stamp(v.folded) : "다음 보고부터 이런 일도 다시 올립니다";
+      li.querySelector(".undo-note").textContent = !v ? "" : v.folded ? "다시 넣기로 했습니다 · " + stamp(v.folded) : "다음 보고부터 이런 메일도 다시 넣습니다";
     }
 
     function rowOf(item, isFresh, g) {
@@ -418,13 +418,13 @@
       li.appendChild(b);
       li.appendChild(note);
       if (g) {
-        b.textContent = "다시 올리기";
+        b.textContent = "다시 넣기";
         b.addEventListener("click", function () { Marks.press(g, "quiet"); paintAll(); });
       } else {
         var key = UNQUIET + item.key;
         var v = parse(key);
         if (v && v.folded && !isNaN(made) && time(v.folded) < made) v = null;
-        b.textContent = v && !v.folded ? "되돌리기 취소" : "다시 올리기";
+        b.textContent = v && !v.folded ? "되돌리기 취소" : "다시 넣기";
         b.hidden = !!(v && v.folded);
         undoNote(li, v);
         b.addEventListener("click", function () {
@@ -455,7 +455,7 @@
         Marks.groups.forEach(function (g) {
           var unid = g.getAttribute("data-unid");
           if (Marks.state(g, Marks.read(unid)) !== "quiet" || listed(s.quiet, unid)) return;
-          quietList.appendChild(rowOf({ key: unid, unid: unid, words: Marks.named(g) + " 같은 일 — 이 창에서 방금 「이런 건 안 올려도 됨」 하셨습니다" }, true, g));
+          quietList.appendChild(rowOf({ key: unid, unid: unid, words: Marks.named(g) + " 같은 메일 — 이 창에서 방금 빼셨습니다" }, true, g));
         });
         var none = document.getElementById("quiet-none");
         if (none) none.hidden = quietList.children.length > 0;

@@ -1,6 +1,6 @@
 """보고 창에서 누르신 것을 로그인 Edge 에서 거둔다 — 일일 보고 스킬의 거두는 손. 「끝났음」 · 푸신 「끝났음」은 가장 늦은 보고 글의
-「끝났다고 하신 것」 · 「안 끝났다고 하신 것」에, 「내일 다시」 · 「안 올려도 됨」 · 「다시 올리기」는 보고 맞춤 파일(곁의 `prefs.py`)에
-옮기고, 끝에 이 보고가 올리지 않을 것 · 오늘 돌아온 것 · 아직 미룬 것을 댄다.
+「끝났다고 하신 것」 · 「안 끝났다고 하신 것」에, 「내일 다시」 · 「이런 건 빼기」 · 「다시 넣기」는 보고 맞춤 파일(곁의 `prefs.py`)에
+옮기고, 끝에 이 보고가 보고에서 빼는 것 · 오늘 돌아온 것 · 아직 미룬 것을 댄다.
 
     python -X utf8 -I ticks.py --dir <사용자 폴더>
     python -X utf8 -I ticks.py --dir <사용자 폴더> --times-done <고르신 때> --said <말> [--refused]   시각을 받았나를 그 창에 돌려 적는다
@@ -20,7 +20,7 @@
 적어 두어 다시 옮기지 않고, 그 절에 이미 든 메일 번호도 더하지 않는다. 부르는 곳은 이 PC 의 디버깅 포트뿐이다 — 메일함에 닿지 않는다.
 
 내는 것 — 표준 출력의 끝 줄이 더한 수 · 이미 든 수 · 고친 보고 글을 말하고, 거둘 수 없었으면 「다음: …」이 뒤에 선다. 그 앞 줄들이
-맞춤 파일의 올리지 않을 것 · 돌아온 것 · 미룬 것과 지난 보고 뒤 창에서 누르신 「일정에 넣기」 · 맡기신 일의 끝이다(Edge 에 못 닿아도 댄다).
+맞춤 파일의 보고에서 빼는 것 · 돌아온 것 · 미룬 것과 지난 보고 뒤 창에서 누르신 「일정에 넣기」 · 맡기신 일의 끝이다(Edge 에 못 닿아도 댄다).
 종료 값 — 0 거뒀다(거둘 표시가 없었던 것도) · 1 보고 글이나 맞춤 파일을 못 고쳤다 · 2 인자가 틀렸다 · 3 로그인 Edge 에 못 닿았다(표시는 그
 Edge 에 남는다). 무엇을 지키고 왜 그런가는 `references/DESIGN.md` 「누르신 표시」 · 「보고 맞춤」이 든다.
 """
@@ -109,7 +109,7 @@ class Sorted:
 
 def sort_marks(text: str, waiting: list[tuple[str, dict]], undo: list[tuple[str, dict]], prefs: P.Prefs) -> Sorted:
     """표시를 나눠 보고 글의 두 절을 고친 글과 맞춤의 바뀜을 짓는다(`prefs` 를 고친다) — 두 절에 이미 든 번호 읽기 → 표시마다 한 갈래
-    (`take_mark`) → 「다시 올리기」 → 두 절 고치기(`folded`). 표시는 메일 번호마다 하나다(창의 저장소 열쇠)."""
+    (`take_mark`) → 「다시 넣기」 → 두 절 고치기(`folded`). 표시는 메일 번호마다 하나다(창의 저장소 열쇠)."""
     have, back = record_keys(text)
     done = Sorted()
     for unid, value in waiting:
@@ -168,7 +168,7 @@ def folded(text: str, done: Sorted) -> str:
 def collected_words(latest: pathlib.Path, done: Sorted, prefs_path: pathlib.Path) -> str:
     """거둔 끝 줄 — 더한 수 · 이미 든 수 · 옮긴 푼 표시 · 맞춤 파일로 옮긴 갈래마다의 수."""
     n, open_ids, add, dup = done.n, done.open_ids, done.add, done.dup
-    moved = [f"「내일 다시」 {n['later']}건", f"「안 올려도 됨」 {n['quiet']}건", f"되돌리신 {n['clear']}건", f"「다시 올리기」 {n['unquiet']}건"]
+    moved = [f"「내일 다시」 {n['later']}건", f"「이런 건 빼기」 {n['quiet']}건", f"되돌리신 {n['clear']}건", f"「다시 넣기」 {n['unquiet']}건"]
     moved = [m for m, k in zip(moved, n) if n[k]]
     return ("거뒀다: " + (f"「끝났음」 표시 {len(add)}건을 {latest} 의 「{DONE_SECTION}」에 더했다" if add or dup or not (open_ids or sum(n.values()))
                         else f"보고 글 {latest}")
@@ -201,7 +201,7 @@ def window_of(latest: pathlib.Path) -> pathlib.Path:
 
 
 def waiting_marks(rows: list) -> tuple[list, list, list]:
-    """창의 칸 → (꼴에 맞는 표시, 아직 안 거둔 표시, 아직 안 거둔 「다시 올리기」)."""
+    """창의 칸 → (꼴에 맞는 표시, 아직 안 거둔 표시, 아직 안 거둔 「다시 넣기」)."""
     ticks = ticks_of(rows)
     waiting = [(u, v) for u, v in ticks if not v.get("folded")]
     undo = [(k, v) for k, v in E.stored(rows, C.UNQUIET_PREFIX) if not v.get("folded") and k]

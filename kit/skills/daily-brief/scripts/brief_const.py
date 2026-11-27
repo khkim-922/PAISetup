@@ -17,10 +17,13 @@ EDGE_HOST = "127.0.0.1"                        # 사용자의 로그인 Edge 는
 EDGE_PORT_DEFAULT = "9222"                     # 스킬 ep-login 이 여는 포트(환경변수 EDGE_DEBUG_PORT 로 바뀐다 · 쉼표로 여럿이면 첫 것)
 # 누르신 표시 — 창은 메일 번호마다 localStorage 의 이 열쇠에 남기고(값의 `mark` 가 무엇을 누르셨나다), 곁의 ticks.py 가 같은 이름으로 거둔다
 DONE_PREFIX = "brief-done:"
+# 업무 파일과 그 「끝난 일」 절 — 「끝났다고 하신 것」의 줄은 그 일이 이 절로 옮겨졌으면 다음 보고 글에 잇지 않는다(주인은 스킬 mailbox-work ·
+# 원본 이름은 그 쓰는 손의 WORK_FILE · 그 스킬 lane.md 「업무 파일의 꼴」)
+WORK_FILE, WORK_DONE = "work.md", "끝난 일"
 TIMES_KEY = "brief-times"                      # 「보고 맞추기」에서 고르신 보고 시각 — 창 곁의 손이(없으면 시계 판이 창의 문 window_door 로) 받아 건다
-STATE_KEY = "brief-state"                      # 창이 보이는 지금 모습(`state_of` — 시각표 · 규칙의 수 · 올리지 않을 것 · 내일 다시 볼 것) — 그것을 바꾸는
+STATE_KEY = "brief-state"                      # 창이 보이는 지금 모습(`state_of` — 시각표 · 규칙의 수 · 보고에서 빼는 것 · 내일 다시 볼 것) — 그것을 바꾸는
                                                # 명령(대화의 clock.py · prefs.py)과 시계 판 · 거두는 손이 열린 창에 바로 적는다
-UNQUIET_PREFIX = "brief-unquiet:"              # 「올리지 않기로 한 것」의 「다시 올리기」 — 맞춤 파일 줄의 열쇠(`prefs_file.key`)마다
+UNQUIET_PREFIX = "brief-unquiet:"              # 「보고에서 빼는 것」의 「다시 넣기」 — 맞춤 파일 줄의 열쇠(`prefs_file.key`)마다
 CAL_PREFIX = "brief-cal:"                      # 「일정에 넣기」의 누름 — 카드의 열쇠(일정 손 preview 의 key)마다. 곁의 presses.py 가 거둬 넣고 끝을 돌려 적는다
 HAND_KEY = "brief-hand"                        # 창 곁의 거두는 손이 살아 있다는 숨 표 — 창이 누름 직후의 말을 고르는 데 쓴다
 AWAY_KEY = "brief-away"                        # 「보고 맞추기」의 「자리 밖에서 보기」 켜고 끄기 — 창 곁의 손이(없으면 시계 판이) 받아 건다
@@ -48,7 +51,7 @@ VIA_EDGE = "via=edge"                          # 로그인 Edge 로 연 창의 �
 UNATTENDED_DIR, CLOCK_ENTRY, HANDED_ENTRY = "unattended", "clock.py", "handed.py"
 # 사람의 로그인 돌려주기 — 보고 창의 말 · 창 곁의 손 · 시계의 셈이 함께 읽는 값의 자리(뜻 · 언제 부르나는 `unattended_const` 의 돌려주기 묶음 ·
 # `references/DESIGN.md` 「사람의 로그인을 돌려준다」)
-GIVE_BACK_AFTER_MIN = 15   # 시계가 스스로 로그인해 띄운 보고가 끝나고 사람의 로그인을 돌려주기까지(분)
+GIVE_BACK_AFTER_MIN = 10   # 시계가 스스로 로그인해 띄운 보고가 끝나고 사람의 로그인을 돌려주기까지(분)
 LOGIN_TIMEOUT_S = 240      # 로그인 입구 한 번의 시한 — 입구가 사람 없는 부름의 두 걸음(평소 Edge · ep-login 창)에 저마다 쓰는 시한(1분씩)과
                            # 창 · 포트가 서는 틈보다 넉넉히. 넘기면 입구가 끝말 없이 끊겨 status 가 까닭을 못 댄다
 GIVE_BACK_TIMEOUT_S = 180  # 돌려주는 문 한 번의 시한 — 평소 Edge 에 로그인을 열고 확인 창을 누르는 틈(그 스킬의 `SESSION_ORDINARY_SECONDS` 30초)과 탭을 닫는 틈보다 넉넉히

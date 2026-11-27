@@ -56,7 +56,7 @@ TICK_NONE, TICK_TODO, TICK_DONE = "", "todo", "done"   # 줄의 단추 — 없�
 # 할 일의 줄에 서는 단추 — (표시의 값, 단추 글, 단추에 올리면 보이는 말). 「끝났다고 하신 것」의 줄에는 첫 것만 선다
 MARKS = (("done", "끝났음", "끝난 일 — 다음 보고부터 올리지 않습니다"),
          ("later", "내일 다시", "오늘은 넘기고 내일 첫 보고에 다시 올립니다"),
-         ("quiet", "안 올려도 됨", "이런 건 안 올려도 됨 — 이런 일은 보고에 올리지 않습니다(아래 「보고 맞추기」에서 되돌립니다)"))
+         ("quiet", "이런 건 빼기", "이 메일과 같은 곳 · 같은 꼴의 메일은 다음 보고부터 빼고 「이 보고가 본 데」에 수만 적습니다(아래 「보고 맞추기」에서 되돌립니다)"))
 TICK_OFF = "이 창은 메일 비서의 Edge 밖에서 열려 누르신 것을 받지 않습니다 — 끝난 일 · 미룰 일은 대화에서 말씀해 주세요."
 # 부탁 칸도 서는 창의 같은 줄 — 부탁 칸의 줄(ASK_OFF)과 거의 같은 말이라 창의 스크립트가 이 한 줄만 세운다
 TICK_ASK_OFF = "이 창은 메일 비서의 Edge 밖에서 열려 누르신 것을 받지 않고, 여기서 부탁하실 수도 없습니다 — 끝난 일 · 미룰 일 · 부탁은 대화에서 말씀해 주세요."
@@ -68,7 +68,7 @@ TIMES_LOGIN = (" 첫 시각은 그 보고 앞에 한 번, 뒤 시각은 사내 �
 # 비서가 사람 없이 로그인해 지은 보고의 머리에 서는 한 줄 — 그 로그인이 사람 쪽에서 무엇을 닫았고 무엇을 다시 해야 하나
 SIGNED_NOTE = ("{at}에 비서가 사내 로그인을 새로 했습니다 — 평소 쓰시는 Edge 에 떠 있던 사내 메일 · 일정 창은 닫혔고, 거기 EP 포털에서는 앱(ERP · MES "
                f"따위)이 새로 안 뜹니다(이미 띄워 두신 앱 창은 그대로 됩니다). 이 보고가 끝나고 {GIVE_BACK_AFTER_MIN}분 뒤 비서가 로그인을 평소 Edge 로 돌려드리고 "
-               "쓰지 않는 EP 탭을 닫습니다 — 그 전에 앱을 띄우셔야 하면 대화에서 「EP 돌려줘」 하시면 됩니다.")
+               "쓰지 않는 EP 탭을 닫습니다 — 그 전에 앱을 띄우셔야 하면 평소 Edge 에서 EP 에 다시 로그인하시면 됩니다.")
 
 MAIL_URL = "{mailbox}/XML_Inbox/{unid}?OpenDocument"   # 웹메일에서 그 메일을 여는 주소 — 폴더에만 든 메일에도 먹는다
 
@@ -241,7 +241,7 @@ ROW_WORDS = {ROW_BAD_PUT: bad_row, ROW_BAD: bad_row, ROW_TALK: talk_row, ROW_TAL
 def tick_box(it: Item, ink: Ink, tick: str) -> str:
     """누름 단추 무리 — 줄의 일 열쇠(`item_key` — 「일:」 칸의 메일, 없으면 첫 메일 번호)가 열쇠다(업무 파일은 일을 그 일을 연 메일로 잇는다).
     메일 번호가 없거나 결재 문서 링크가 든 줄이면 빈 글.
-    할 일의 줄에는 「끝났음 · 내일 다시 · 안 올려도 됨」 셋이 서고, `tick` 이 `TICK_DONE` 이면 「끝났다고 하신 것」의 줄이라 「끝났음」 하나가
+    할 일의 줄에는 「끝났음 · 내일 다시 · 이런 건 빼기」 셋이 서고, `tick` 이 `TICK_DONE` 이면 「끝났다고 하신 것」의 줄이라 「끝났음」 하나가
     눌린 채 선다(`data-done`) — 풀면 끝나지 않았다고 되돌리신 것이다. 처음엔 숨어 있다 — 창의 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다.
     스크립트가 막혀도 누를 수 없는 단추는 안 선다."""
     unid = item_key(it)
@@ -591,7 +591,7 @@ def board_end(ink: Ink) -> str:
 
 
 def prefs_panel(state: dict, prefs: P.Prefs, ink: Ink) -> str:
-    """보고 맞추기 — 보고 시각(고르시면 스캔이 받아 건다) · 올리지 않기로 한 것(「다시 올리기」) · 내일 다시 볼 것. 고르는 칸은 처음엔 숨고
+    """보고 맞추기 — 보고 시각(고르시면 스캔이 받아 건다) · 보고에서 빼는 것(「다시 넣기」) · 내일 다시 볼 것. 고르는 칸은 처음엔 숨고
     창의 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다 — 아닌 창은 지금 값만 보인다."""
     times = state["times"] or None
     if times is None:
@@ -605,7 +605,7 @@ def prefs_panel(state: dict, prefs: P.Prefs, ink: Ink) -> str:
                 f'<p class="note">시각마다 다음 시각까지 사내 로그인을 기다려 한 번 띄웁니다.{TIMES_LOGIN}</p>'
                 '<p class="note times-said" id="times-said" aria-live="polite"></p>' + away_part(state["away"]))
     quiet = "".join(f'<li data-key="{P.key(line)}"><span>{ink.inline(line[2:])}</span><button type="button" class="undo" '
-                    f'data-key="{P.key(line)}" hidden>다시 올리기</button><span class="undo-note" aria-live="polite"></span></li>'
+                    f'data-key="{P.key(line)}" hidden>다시 넣기</button><span class="undo-note" aria-live="polite"></span></li>'
                     for line in prefs.quiet)
     later = "".join(f'<li data-key="{P.key(line)}"><span>{ink.inline(line[2:])}</span></li>' for line in prefs.later)
     href = html.escape(MAIL_URL.format(mailbox=ink.mailbox, unid="UNID"), quote=True) if ink.mailbox else ""
@@ -616,8 +616,8 @@ def prefs_panel(state: dict, prefs: P.Prefs, ink: Ink) -> str:
             f'<p class="note" id="prefs-asof">{html.escape(asof)}</p>'
             + f'<p class="note no" id="prefs-unread"{"" if state["unread"] else " hidden"}>{html.escape(unread_note(state["unread"]))}</p>'
             + f'<h3>보고 시각</h3>{when}'
-            f'<h3>올리지 않기로 한 것</h3><ul class="pref-list" id="quiet-list">{quiet}</ul>'
-            + f'<p class="pref-none" id="quiet-none"{" hidden" if quiet else ""}>없습니다</p>'
+            f'<details class="fold"><summary><h3>보고에서 빼는 것</h3></summary><ul class="pref-list" id="quiet-list">{quiet}</ul>'
+            + f'<p class="pref-none" id="quiet-none"{" hidden" if quiet else ""}>없습니다</p></details>'
             + f'<h3 id="later-head"{"" if later else " hidden"}>내일 다시 볼 것</h3><ul class="pref-list" id="later-list">{later}</ul>'
             + '<p class="tick-off" id="prefs-off">이 창에서는 고르실 수 없습니다 — 대화에서 말씀해 주세요.</p></aside>')
 
@@ -681,8 +681,10 @@ def section_parts(rep: Report, ink: Ink, toc: list[str]) -> tuple[list[str], int
         body = render_blocks(sec.blocks, ink, sid, sub_toc, head=False, tick=section_tick(sec.title))
         toc += sub_toc
         lines += sum(len(b.lines) for b in sec.blocks if b.kind == "list")
-        sections.append(f'<section id="{sid}" aria-labelledby="h-{sid}"><h2 id="h-{sid}">{ink.inline(sec.title or "")}</h2>'
-                        f"{body}</section>")
+        head = f'<h2 id="h-{sid}">{ink.inline(sec.title or "")}</h2>'
+        if names_section(sec.title, DONE_SECTION):   # 보고마다 이어 붙어 쌓이는 기록이라 접어 둔다 — 펴면 줄과 단추가 그대로 선다
+            head, body = f'<details class="fold"><summary>{head}</summary>', f"{body}</details>"
+        sections.append(f'<section id="{sid}" aria-labelledby="h-{sid}">{head}{body}</section>')
     return sections, records_at, lines
 
 

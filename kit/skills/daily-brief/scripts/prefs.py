@@ -1,10 +1,10 @@
-"""보고 맞춤의 대화 명령 — 사용자가 대화에서 「이런 건 안 올려도 됨」 · 「내일 다시」 하신 것을 보고 맞춤 파일에 보이고 더하고 걷고, 열린 보고
+"""보고 맞춤의 대화 명령 — 사용자가 대화에서 「이런 건 빼기」 · 「내일 다시」 하신 것을 보고 맞춤 파일에 보이고 더하고 걷고, 열린 보고
 창에 바로 알린다. 일일 보고 스킬의 맞춤 손 — 파일의 꼴 · 읽기 · 쓰기는 곁의 `prefs_file.py` 가 든다.
 
     python -X utf8 -I prefs.py --dir <사용자 폴더> show                       맞춤 파일의 두 절을 번호와 함께 보인다
-    python -X utf8 -I prefs.py --dir <사용자 폴더> quiet "<사용자의 말>"      「올리지 않을 것」에 그 말을 더한다
+    python -X utf8 -I prefs.py --dir <사용자 폴더> quiet "<사용자의 말>"      「보고에서 빼는 것」에 그 말을 더한다
     python -X utf8 -I prefs.py --dir <사용자 폴더> later "<일 이름>" --mail <메일 번호>   「내일 다시 볼 것」에 더한다(돌아오는 날은 내일)
-    python -X utf8 -I prefs.py --dir <사용자 폴더> forget <번호> [--later]    「올리지 않을 것」(--later 면 「내일 다시 볼 것」)의 그 번호 줄을
+    python -X utf8 -I prefs.py --dir <사용자 폴더> forget <번호> [--later]    「보고에서 빼는 것」(--later 면 「내일 다시 볼 것」)의 그 번호 줄을
                                                                              걷는다(show 의 번호) — 미룬 일을 걷으면 다음 보고부터 다시 선다
     python -X utf8 -I prefs.py --dir <사용자 폴더> decline                    처음 보고 때 여쭌 메일함 스캔 · 아침 보고를 마다하신 것을 적는다 —
                                                                              show 가 「걸지 않기로 하신 것」으로 대면 다시 여쭙지 않는다
@@ -57,13 +57,13 @@ def show_lines(prefs: Prefs, path: pathlib.Path) -> list[str]:
     declined = [x[2:] for x in prefs.declined]
     if declined:
         out += [f"## {DECLINED}", "\n".join(f"- {x}" for x in declined)]
-    out.append(f"맞춤 파일: {path} — 올리지 않을 것 {len(prefs.quiet)}줄 · 내일 다시 볼 것 {len(prefs.later)}줄"
+    out.append(f"맞춤 파일: {path} — 보고에서 빼는 것 {len(prefs.quiet)}줄 · 내일 다시 볼 것 {len(prefs.later)}줄"
                + (f" · 다시 올린 것 {len(prefs.back)}줄" if prefs.back else "") + (" · 걸지 않기로 하신 것 있음" if declined else ""))
     return out
 
 
 def add_quiet(prefs: Prefs, raw: str, now: dt.datetime) -> str:
-    """`quiet` — 사용자의 말을 「올리지 않을 것」에 더한다. 말이 비면 `cli.Stop`."""
+    """`quiet` — 사용자의 말을 「보고에서 빼는 것」에 더한다. 말이 비면 `cli.Stop`."""
     words = clean(raw)
     if not words:
         raise cli.Stop(EMPTY_WORDS)
@@ -87,7 +87,7 @@ def note_declined(prefs: Prefs, now: dt.datetime) -> str:
 
 
 def forget_row(prefs: Prefs, number: int, later: bool) -> str:
-    """`forget` — 「올리지 않을 것」(`later` 면 「내일 다시 볼 것」)의 그 번호 줄을 걷는다. 그 번호가 없으면 `cli.Stop`."""
+    """`forget` — 「보고에서 빼는 것」(`later` 면 「내일 다시 볼 것」)의 그 번호 줄을 걷는다. 그 번호가 없으면 `cli.Stop`."""
     rows, name = (prefs.later, LATER) if later else (prefs.quiet, QUIET)
     if not 1 <= number <= len(rows):
         raise cli.Stop(NO_ROW.format(name=name, number=number, rows=len(rows)))
@@ -128,16 +128,16 @@ def saved(folder: pathlib.Path, prefs: Prefs) -> None:
 
 def parser() -> argparse.ArgumentParser:
     """인자 — 동사 다섯."""
-    ap = argparse.ArgumentParser(description="보고 맞춤 파일 — 올리지 않을 것 · 내일 다시 볼 것을 보이고 더하고 걷는다.")
+    ap = argparse.ArgumentParser(description="보고 맞춤 파일 — 보고에서 빼는 것 · 내일 다시 볼 것을 보이고 더하고 걷는다.")
     ap.add_argument("--dir", required=True, help="업무 파일(work.md)과 보고 글이 사는 사용자 폴더")
     sub = ap.add_subparsers(dest="verb", required=True)
     sub.add_parser("show", help="두 절을 번호와 함께 보인다")
-    q = sub.add_parser("quiet", help="「올리지 않을 것」에 사용자의 말을 더한다")
+    q = sub.add_parser("quiet", help="「보고에서 빼는 것」에 사용자의 말을 더한다")
     q.add_argument("words")
     later = sub.add_parser("later", help="「내일 다시 볼 것」에 더한다(돌아오는 날은 내일)")
     later.add_argument("title")
     later.add_argument("--mail", required=True, help="그 일의 메일 번호(32자리) — 보고 줄의 「일:」 칸, 없으면 그 줄의 첫 메일 링크")
-    f = sub.add_parser("forget", help="「올리지 않을 것」(--later 면 「내일 다시 볼 것」)의 그 번호 줄을 걷는다")
+    f = sub.add_parser("forget", help="「보고에서 빼는 것」(--later 면 「내일 다시 볼 것」)의 그 번호 줄을 걷는다")
     f.add_argument("number", type=int)
     f.add_argument("--later", action="store_true", help="「내일 다시 볼 것」의 번호다 — 미룬 일을 걷어 다음 보고부터 다시 올린다")
     sub.add_parser("decline", help="처음 보고 때 여쭌 메일함 스캔 · 아침 보고를 마다하신 것을 적는다 — 다시 여쭙지 않는다")

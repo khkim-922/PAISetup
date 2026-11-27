@@ -444,6 +444,9 @@
 - `task_base.definition` — 등록할 작업 정의(XML) — 틀(`DEFINITION`)에 설명 · 주기(분) · 첫 판의 때 · 로그온 뒤 첫 판(분) · 한 판의 시한(분) · 창 없는 파이썬이 받을 인자 · 작업 폴더 · 켜짐을 채운다.
   - ↑ `user_id`
   - ↑ `windowless_python`
+- `task_base.once_definition` — 한 번만 도는 작업의 정의(XML) — 그 때(`at` · 이 PC 의 시각)에 한 번 깨고, 그 때를 놓쳤으면 깰 수 있을 때 곧 돈다.
+  - ↑ `user_id`
+  - ↑ `windowless_python`
 - `task_base.template_pattern` — `str.format` 틀을 그 틀로 지은 글을 되읽는 정규식으로 — 글자는 그대로, 칸마다 `forms` 의 꼴을 이름 붙은 묶음으로 잡는다.
 - `task_base.write_xml` — schtasks /XML 이 받는 꼴로 쓴다 — UTF-16(BOM).
 - `task_base.register_command` — 정의 파일로 작업을 거는 schtasks 명령줄.

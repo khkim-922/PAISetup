@@ -181,6 +181,13 @@
     border-bottom: 1px solid var(--border);
   }
   .intro { margin: -8px 0 16px; color: var(--text-2); }
+  .fold > summary { cursor: pointer; list-style: none; }
+  .fold > summary::-webkit-details-marker { display: none; }
+  .fold > summary > h2, .fold > summary > h3 { display: flex; align-items: baseline; gap: 10px; }
+  .fold > summary > :is(h2, h3)::after { content: "펴기 ▾"; margin-left: auto; font-family: var(--sans); font-size: 13px; font-weight: 400;
+                                         letter-spacing: 0; color: var(--neutral); }
+  .fold[open] > summary > :is(h2, h3)::after { content: "접기 ▴"; }
+  .fold > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
   .para { margin: 16px 0 0; max-width: 68ch; }
 
   /* 카드 — 낱낱이 딸린 줄 */
@@ -213,7 +220,7 @@
   .facts dt { font-weight: 600; color: var(--text-2); }
   .facts dd { margin: 0; }
 
-  /* 누름 단추 — 끝났음 · 내일 다시 · 안 올려도 됨. 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다 */
+  /* 누름 단추 — 끝났음 · 내일 다시 · 이런 건 빼기. 스크립트가 표시를 거둘 수 있는 창에서만 꺼낸다 */
   .task-top, .row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
   .task-top h3 { min-width: 0; }
   .row-top > div { min-width: 0; }
@@ -257,7 +264,7 @@
   .pcol .cnt { color: var(--primary); font-weight: 600; }
   .pcol .none { margin: 0; font-size: 14px; color: var(--neutral); }
 
-  /* 보고 맞추기 — 보고 시각 · 올리지 않기로 한 것 */
+  /* 보고 맞추기 — 보고 시각 · 보고에서 빼는 것 */
   .prefs { margin-top: var(--section-gap); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
   .prefs h2 { font-size: 22px; border: 0; padding: 0; margin: 0 0 4px; }
   .prefs .hint { margin: 0 0 8px; font-size: 14px; color: var(--text-2); }
