@@ -2919,12 +2919,41 @@ npm_ci_unlock() { [ -z "$NPM_CI_LOCKED" ] || rm -f "$NPM_CI_LOCK"; NPM_CI_LOCKED
 # ── 형제 저장소 하나를 받는다 — 머리줄 · clone · 걸린 초 · 실패 줄을 낸다. 늘 0 ──
 #    저장소마다 초를 붙인다 — 받는 양이 저장소마다 자리 수가 다르고, 합만 보면 그 차가 망 탓인지 파일 수 탓인지 안 갈린다.
 #    진 판도 찍는다(진 데 든 시간도 시간이다). 당김 문에 세우는 일(`gate_fresh_clone`)은 부르는 쪽이 받은 뒤에 한다.
+#    받을 자리에 `.git` 없는 폴더가 이미 파일을 들고 있으면 clone 은 「이미 있다」로 진다 — 그 자리에서 저장소로 세운다
+#    (`adopt_sibling`). 사람이 먼저 만들어 파일을 둔 폴더라 치우지 않는다.
 clone_sibling() {  # clone_sibling <이름> <뿌리> <주소 틀 — `<이름>` 자리에 이름이 선다>
   _cst0=$SECONDS
-  echo "$PROJECT_NAME: $1 — clone ($2)"
-  git clone "$(printf '%s' "$3" | sed "s|<이름>|$1|g")" "$2/$1" ||
-    echo "$PROJECT_NAME: ⚠ $1 clone 실패 — 주소 · 계정 · 망을 본다"
+  _csu="$(printf '%s' "$3" | sed "s|<이름>|$1|g")"
+  if [ -d "$2/$1" ] && [ -n "$(ls -A "$2/$1" 2>/dev/null)" ]; then
+    echo "$PROJECT_NAME: $1 — 파일이 든 폴더라 그 자리에서 저장소로 세운다 ($2)"
+    adopt_sibling "$2/$1" "$_csu"
+  else
+    echo "$PROJECT_NAME: $1 — clone ($2)"
+    git clone "$_csu" "$2/$1" ||
+      echo "$PROJECT_NAME: ⚠ $1 clone 실패 — 주소 · 계정 · 망을 본다"
+  fi
   printf '  · %s clone — %s초\n' "$1" "$((SECONDS - _cst0))"
+  return 0
+}
+
+# ── `.git` 없는 폴더를 그 자리에서 원격의 저장소로 세운다. 늘 0 ──
+#    init → origin 을 걸고 받기 → 원격 기본 갈래를 따라 꺼낸다. 폴더의 파일은 그대로 두고, 원격이 든 경로만 채운다 —
+#    원격이 같은 경로를 든 파일이 있으면 git 이 꺼내기를 멈추고, 그때는 세운 `.git` 을 걷어 폴더를 처음 꼴로 돌려 둔다
+#    (반쯤 선 저장소를 남기면 다음 회차가 `.git` 을 보고 건너뛰어 영영 안 받는다). 겹친 경로는 git 의 줄이 말한다.
+adopt_sibling() {  # adopt_sibling <자리> <주소>
+  if git -C "$1" init -q &&
+     git -C "$1" remote add origin "$2" &&
+     git -C "$1" fetch -q origin &&
+     git -C "$1" remote set-head origin -a >/dev/null; then
+    _asb="$(git -C "$1" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)"; _asb="${_asb#origin/}"
+    if [ -n "$_asb" ] && git -C "$1" checkout -q -b "$_asb" --track "origin/$_asb"; then
+      return 0
+    fi
+    echo "$PROJECT_NAME: ⚠ $(basename "$1") — 원격과 같은 경로의 파일이 폴더에 있어 못 꺼냈다. 그 파일을 옮기고 설치를 다시 돌린다"
+  else
+    echo "$PROJECT_NAME: ⚠ $(basename "$1") 받기 실패 — 주소 · 계정 · 망을 본다"
+  fi
+  rm -rf "$1/.git"
   return 0
 }
 

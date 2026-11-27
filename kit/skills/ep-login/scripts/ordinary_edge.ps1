@@ -1,6 +1,6 @@
 ﻿# 사람의 평소 Edge(디버깅 포트 없음)를 윈도 UI 자동화로 보는 눈과 누르는 손 — 입구(ep_login.js)만 부른다. 무엇을 누를지는 입구가 가린다
 # (회사 자리 값 ep_places.js 의 epConfirm). 여기는 본 것을 알리고 시킨 단추 하나를 누르는 일, 그리고 입구가 열쇠로 짚은 EP 탭 하나를 닫는 일만 든다 —
-# 쿠키에는 손대지 않고, 창은 닫지 않는다(창의 마지막 탭은 안 닫는다).
+# 쿠키에는 손대지 않는다. EP 탭이 창의 마지막 탭이면 그 창도 함께 닫힌다 — 죽은 EP 탭 하나만 든 창은 쓸모가 없다.
 #
 # 부르는 꼴:
 #     powershell -NoProfile -ExecutionPolicy Bypass -File ordinary_edge.ps1
@@ -26,9 +26,9 @@
 #               {"tabs":[모든 탭의 열쇠],"pids":[볼 Edge 의 브라우저 프로세스 번호]} — 프로세스는 이 물음마다 다시 묻는다(Edge 가 다시 떴나를 가른다)
 #               입구가 주소를 연 앞뒤의 열쇠를 견주고 새 열쇠를 peek 으로 가려 「입구가 연 EP 탭」을 안다(사람이 연 탭은 그 앞에 이미 있었다)
 #   peek <열쇠> · close <열쇠> → 그 탭이 지금도 EP 탭인가를 보고, close 는 그 탭의 「탭 닫기」 단추를 누르고 탭 줄에서 사라지기를 본다. 답 한 줄:
-#               {"key":열쇠,"state":"closable"|"closed"|"gone"|"not-ep"|"last"|"failed","why":…}
+#               {"key":열쇠,"state":"closable"|"closed"|"gone"|"not-ep"|"failed","why":…}
 #               EP 탭 — 이름(메모리 꼬리를 뗀)이 EP_TAB_TITLE · EP_TAB_LOGIN_TITLE 과 통째로 같거나, 창의 앞 탭이고 주소창이 포털 · 로그인 화면
-#               호스트다. 사람이 그 탭을 다른 화면으로 옮겼으면 EP 탭이 아니라 안 닫는다(not-ep). 창의 마지막 탭은 안 닫는다(last) — 닫으면 창이 사라진다
+#               호스트다. 사람이 그 탭을 다른 화면으로 옮겼으면 EP 탭이 아니라 안 닫는다(not-ep). 창의 마지막 탭이면 창째 닫힌다
 #   빈 줄 · 끝 → 끝낸다(입구가 죽어 표준 입력이 닫혀도 여기서 끝난다 — 남지 않는다)
 # 첫 단추가 「확인」인 까닭 — 윈도의 Chromium 물음 창은 「확인」을 앞에 둔다(views 의 PlatformStyle::kIsOkButtonLeading). 물음 창의 꼴
 # (JavaScriptTabModalDialogViewViews · 제목 「<호스트>의 메시지」)은 references/SOURCES.md 「잰 것」이 든다.
@@ -213,7 +213,6 @@ function Shut([string]$key, [bool]$press) {
             $named = ($PortalTitle -and $name -ceq $PortalTitle) -or ($LoginTitle -and $name -ceq $LoginTitle)
             $shown = $strip.host -and $front -and $front.id -eq $key
             if (-not ($named -or $shown)) { return @{ key = $key; state = 'not-ep' } }
-            if (@($strip.tabs).Count -le 1) { return @{ key = $key; state = 'last' } }
             if (-not $press) { return @{ key = $key; state = 'closable' } }
             # 닫기 단추는 그 꼴(EdgeTabCloseButton)로 찾는다 — 소리가 나는 탭은 음소거 단추가 앞에 설 수 있다. 탭이 많아 좁아진 창은 뒤쪽 탭의 닫기
             # 단추를 안 그린다(references/SOURCES.md 「잰 것」) — 그때만 그 탭을 잠깐 앞에 세워 단추를 그리게 하고, 닫은 뒤 사람의 앞 탭을 도로 세운다
@@ -234,11 +233,14 @@ function Shut([string]$key, [bool]$press) {
                 # 사람의 앞 탭은 무엇으로 끝나든 도로 세운다
                 if ($restore) { Start-Sleep -Milliseconds 200; try { $restore.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() } catch { } }
             }
-            # 닫혔나를 본다 — 그 열쇠가 탭 줄에서 사라져야 닫은 것이다(남았으면 다른 단추를 누른 것이다)
+            # 닫혔나를 본다 — 그 열쇠가 탭 줄에서 사라져야 닫은 것이다(남았으면 다른 단추를 누른 것이다). 창의 하나뿐인 탭이었으면 창째 사라져
+            # 탭 줄을 못 읽는다 — 그것도 닫은 것이다(숨은 탭이 있는 창은 단추가 그 탭만 닫아 창이 남는다)
             for ($n = 0; $n -lt 10; $n++) {
                 Start-Sleep -Milliseconds 200
                 $still = $false
-                foreach ($t in (Strip $top).tabs) { if (($t.GetRuntimeId() -join '.') -eq $key) { $still = $true; break } }
+                $left = $null
+                try { $left = (Strip $top).tabs } catch { return @{ key = $key; state = 'closed' } }
+                foreach ($t in $left) { if (($t.GetRuntimeId() -join '.') -eq $key) { $still = $true; break } }
                 if (-not $still) { return @{ key = $key; state = 'closed' } }
             }
             return @{ key = $key; state = 'failed'; why = '단추를 눌렀는데 탭이 남았다' }

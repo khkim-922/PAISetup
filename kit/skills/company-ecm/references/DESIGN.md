@@ -450,39 +450,56 @@
                       - `file_digest` — 올릴 파일 바이트의 지문 — 미리 본 뒤 파일이 바뀌면 확인 열쇠가 달라진다.
                     - `_register_args` — 명령줄 → 등록 손의 칸 — 문서함 이름 · 열쇠는 여기서 한 번 열쇠로 푼다(``Ecm.cabinet_of``). 등록 손은 열쇠만 받는다.
                   - `cmd_read` — 문서의 글자를 말한다 — ``--fresh`` 가 아니고 남긴 글자가 있으면 그것을, 아니면 새로 받아 뽑은 것을 내고, 준 열쇠가 지난 판이면 그렇다고 이른다.
-                    - `read_kept` — 남겨 둔 글자가 있으면 등급 문(``check_readable``)을 지난 뒤 그 파일을 낸다 — 없으면 None. 문서는 받지 않는다.
-                      - `kept_text` — 그 문서 열쇠로 남겨 둔 글자 파일 — 없으면 None. 판이 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다.
-                        - `text_dir` — read 가 뽑은 글자를 남기는 자리 — 환경변수 ``ECM_TEXT_DIR``, 비었으면 ``TEXT_DIR``.
+                    - `picks_of` — read 명령의 인자에서 고름 — ``pick_args`` 의 한 자리.
+                      - `pick_args` — read 의 고름(``--sheets`` · ``--slides`` · ``--pages`` · ``--max-cells``)을 읽는 손의 인자로 — 엑셀 시트는 이름을 / 로 잇고(시트 이름에 못 드는 글자다 · 이름은 앞뒤 빈칸까지 그대로 넘긴다), 파워포인트 장 · 워드 쪽은 번호를 쉼표로 잇는다.
+                    - `read_picked` — 고른 시트 · 장만 읽어 말한다.
                       - ↑ `check_readable`
-                    - `tell_superseded` — 읽기의 머리 한 줄 — 준 열쇠가 지난 판이면 그렇다고 지금 판의 열쇠와 함께 말한다(읽기는 준 열쇠의 판 그대로다). 지금 판이면 말이 없다.
-                    - `superseded_version` — 준 열쇠가 지난 판이면 (지금 판의 열쇠, 그 판 · 못 읽으면 ?, 빈 글자), 못 가렸으면 (빈 글자, 빈 글자, 까닭), 지금 판이면 빈 글자 셋.
-                      - ↑ `superseded`
-                    - `tell_kept` — 남겨 둔 글자로 답한다 — 남긴 파일을 풀고(``read_kept_file``) 받은 파일이 아직 있나 본 뒤(``still_received``) 말한다(``kept_words``).
-                      - `read_kept_file` — 남긴 글자 파일을 (머리, 글자, 받은 파일의 자리 · 머리에 없으면 None)으로 푼다 — 쓰는 쪽(``keep_text``)과 같은 낱말 (``TEXT_SPLIT`` · ``KEPT_SOURCE_WORD`` · ``KEPT_WHEN_WORD``)로 읽는다.
-                      - `kept_words` — 남긴 글자로 한 답의 말 — 문서를 받지 않았다는 것과 다시 받아야 하는 자리. ``received`` 는 아직 있는 받은 파일이다.
-                        - `_tell_text` — 머리와 글자를 낸다 — 한 답(``ep_session.OUT_BYTES``)에 드는 글자는 화면에, 안 드는 글자는(``as_file`` 이면 짧아도) 남긴 파일의 경로만. 화면에 찍으면 통째로 실리거나 잘리고, 파일이면 모델이 나눠 읽고 찾는다.
-                      - `still_received` — 남긴 글자가 가리키는 받은 파일이 아직 디스크에 있으면 그 자리 — 에이전트가 비웠으면 None.
-                    - `read_document` — 보안등급을 보고(``check_readable``) → 열고 → 에이전트가 띄운 창을 닫고 → 받은 파일에서 글자를 뽑아 ``ReadResult`` 를 낸다.
-                      - ↑ `check_readable`
-                      - ↑ `open_document`
-                      - `close_window` — 에이전트가 띄운 그 문서만 닫는다 — 그 앱에 남은 문서가 없을 때만 앱을 끈다.
-                        - ↑ `_close`
-                      - `viewer_of` — ProgId → 보기 창을 닫는 손이 붙을 앱 이름 — 오피스 셋에 Acrobat(Reader 포함)을 더한다.
-                        - `office_of` — ProgId → 닫는 손이 붙을 오피스 앱 이름(Word · Excel · PPT). 오피스가 아니면 빈 글자.
                       - `extract_text` — 받은 파일을 drm-office-read 의 읽는 손에 넘겨 (글자, 그 손의 한 줄)을 낸다.
                         - `reader_path` — 글자를 뽑는 손(read-drm.ps1)의 자리 — 환경변수 ``ECM_DRM_READER``, 비었으면 ``DEFAULT_READER``.
                         - `ecm_base.ReadError` — 받은 파일에서 글자를 못 뽑았다.
                         - ↑ `_powershell`
-                      - ↑ `ecm_base.ReadError`
-                      - `ecm_base.ReadResult` — 읽기 한 판의 결과 — 뽑은 글자 · 읽는 손의 한 줄 · 연 결과 · 그 창을 닫은 형편.
-                        - ↑ `Opened`
+                      - `read_document` — 보안등급을 보고(``check_readable``) → 열고 → 에이전트가 띄운 창을 닫고 → 받은 파일에서 글자를 뽑아 ``ReadResult`` 를 낸다.
+                        - ↑ `check_readable`
+                        - ↑ `open_document`
+                        - `close_window` — 에이전트가 띄운 그 문서만 닫는다 — 그 앱에 남은 문서가 없을 때만 앱을 끈다.
+                          - ↑ `_close`
+                        - `viewer_of` — ProgId → 보기 창을 닫는 손이 붙을 앱 이름 — 오피스 셋에 Acrobat(Reader 포함)을 더한다.
+                          - `office_of` — ProgId → 닫는 손이 붙을 오피스 앱 이름(Word · Excel · PPT). 오피스가 아니면 빈 글자.
+                        - ↑ `extract_text`
+                        - ↑ `ecm_base.ReadError`
+                        - `ecm_base.ReadResult` — 읽기 한 판의 결과 — 뽑은 글자 · 읽는 손의 한 줄 · 연 결과 · 그 창을 닫은 형편.
+                          - ↑ `Opened`
+                      - ↑ `ecm_agent.Agent`
+                      - ↑ `_describe_open`
+                      - `tell_superseded` — 읽기의 머리 한 줄 — 준 열쇠가 지난 판이면 그렇다고 지금 판의 열쇠와 함께 말한다(읽기는 준 열쇠의 판 그대로다). 지금 판이면 말이 없다.
+                      - `superseded_version` — 준 열쇠가 지난 판이면 (지금 판의 열쇠, 그 판 · 못 읽으면 ?, 빈 글자), 못 가렸으면 (빈 글자, 빈 글자, 까닭), 지금 판이면 빈 글자 셋.
+                        - ↑ `superseded`
+                      - `keep_text` — 뽑은 글자를 ``text_dir()`` 에 남기고 그 경로를 낸다 — 이름은 받은 파일의 이름과 문서 열쇠, 머리는 읽는 손의 한 줄과 열쇠 · 받은 파일의 자리 · 뽑은 때다.
+                        - `text_dir` — read 가 뽑은 글자를 남기는 자리 — 환경변수 ``ECM_TEXT_DIR``, 비었으면 ``TEXT_DIR``.
+                      - `_tell_text` — 머리와 글자를 낸다 — 한 답(``ep_session.OUT_BYTES``)에 드는 글자는 화면에, 안 드는 글자는(``as_file`` 이면 짧아도) 남긴 파일의 경로만. 화면에 찍으면 통째로 실리거나 잘리고, 파일이면 모델이 나눠 읽고 찾는다.
+                    - `picked_source` — 고른 읽기가 다시 받지 않고 읽을 받은 파일 — 남긴 글자가 가리키는 받은 파일이 아직 있으면 그 자리, ``--fresh`` 이거나 없으면 None. 에이전트가 드나(``read_needs_agent``)와 어디서 읽나(``read_picked``)가 이 한 판정을 함께 쓴다.
+                      - `kept_text` — 그 문서 열쇠로 남겨 둔 글자 파일 — 없으면 None. 판이 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다.
+                        - ↑ `text_dir`
+                        - `read_kept_file` — 남긴 글자 파일을 (머리, 글자, 받은 파일의 자리 · 머리에 없으면 None)으로 푼다 — 쓰는 쪽(``keep_text``)과 같은 낱말 (``TEXT_SPLIT`` · ``KEPT_SOURCE_WORD`` · ``KEPT_WHEN_WORD``)로 읽는다.
+                      - `still_received` — 남긴 글자가 가리키는 받은 파일이 아직 디스크에 있으면 그 자리 — 에이전트가 비웠으면 None.
+                      - ↑ `read_kept_file`
+                    - `read_kept` — 남겨 둔 글자가 있으면 등급 문(``check_readable``)을 지난 뒤 그 파일을 낸다 — 없으면 None. 문서는 받지 않는다.
+                      - ↑ `kept_text`
+                      - ↑ `check_readable`
+                    - ↑ `tell_superseded`
+                    - ↑ `superseded_version`
+                    - `tell_kept` — 남겨 둔 글자로 답한다 — 남긴 파일을 풀고(``read_kept_file``) 받은 파일이 아직 있나 본 뒤(``still_received``) 말한다(``kept_words``).
+                      - ↑ `read_kept_file`
+                      - `kept_words` — 남긴 글자로 한 답의 말 — 문서를 받지 않았다는 것과 다시 받아야 하는 자리. ``received`` 는 아직 있는 받은 파일이다.
+                        - ↑ `_tell_text`
+                      - ↑ `still_received`
+                    - ↑ `read_document`
                     - ↑ `ecm_agent.Agent`
                     - `tell_read` — 읽은 결과로 답한다 — 글자를 늘 파일로 남기고(``keep_text``) 그 파일과 함께 말한다(``read_words``).
                       - `read_words` — 읽은 결과의 말 — 머리(읽는 손의 한 줄 · 받은 파일 · 창)와 글자를 ``_tell_text`` 의 갈래로 낸다.
                         - ↑ `_describe_open`
                         - ↑ `_tell_text`
-                      - `keep_text` — 뽑은 글자를 ``text_dir()`` 에 남기고 그 경로를 낸다 — 이름은 받은 파일의 이름과 문서 열쇠, 머리는 읽는 손의 한 줄과 열쇠 · 받은 파일의 자리 · 뽑은 때다.
-                        - ↑ `text_dir`
+                      - ↑ `keep_text`
                   - `cmd_register` — 미리 본 그대로 새 문서로 올리고 새 문서의 열쇠 · 링크를 말한다.
                     - `register_document` — 미리 본 그대로 새 문서로 올리고 ``Registered`` 를 낸다 — 화면의 「컨텐츠 등록」과 같은 차례다.
                       - ↑ `plan_register`
@@ -513,7 +530,10 @@
                     - `member_words` — 부서에 바로 든 사람마다 한 줄.
                     - `organ_words` — 이름으로 찾은 부서마다 한 줄 — 위 부서 > 이름 · 사람 수 · 아래 부서 수 · 코드.
                     - `people_words` — 이름으로 찾은 사람마다 한 줄 — 이름/메일 · 부서 · 사번.
-                  - ↑ `kept_text`
+                  - `read_needs_agent` — read 가 문서를 새로 받나 — 받으면 문서함 에이전트가 든다.
+                    - ↑ `picks_of`
+                    - ↑ `kept_text`
+                    - ↑ `picked_source`
                   - `ecm_server.Ecm` — ECM 서버 하나. 모든 요청을 서버에 닿기 전에 잰 꼴에 댄다 — 읽기는 ``guard``(닫힌 목록), 편집 열기 · 편집취소는 ``_guard_edit``, 잰 POST 여섯(``POST_SHAPES``)은 ``_post`` 가 든다.
                     - ↑ `ecm_base.ArgsError`
                     - `ecm_base.session_path` — 환경변수 ``MAILBOX_COOKIES`` 의 세션 파일 자리. 비었으면 ``SessionMissing`` — 자리는 스킬 ep-login 의 받는 손이 정한다.
@@ -851,7 +871,7 @@
         - ↑ `cmd_session`
         - ↑ `cmd_versions`
         - ↑ `cmd_who`
-        - ↑ `kept_text`
+        - ↑ `read_needs_agent`
         - ↑ `Change`
         - `unmeasured_word` — 안 잰 앱의 바꿀 것을 한 줄로 — 표의 unmeasured 칸에서 짓는다.
           - ↑ `Change`
@@ -895,7 +915,7 @@
       - ↑ `cmd_session`
       - ↑ `cmd_versions`
       - ↑ `cmd_who`
-      - ↑ `kept_text`
+      - ↑ `read_needs_agent`
       - ↑ `unmeasured_word`
     - `precheck` — 서버 없이 가릴 수 있는 값을 세션보다 먼저 가린다 — 칸 하나는 ``ARG_CHECKS``, 칸 여럿은 그 손가락의 ``check``. 못 쓸 값이면 ``ArgsError``(조각 파일이 없거나 UTF-8 이 아닐 때도 · 받은 파일이 오피스 꼴이 아니면 ``EcmError``). 아무것도 안 건드린다.
       - ↑ `Finger`
@@ -938,7 +958,7 @@
       - ↑ `cmd_session`
       - ↑ `cmd_versions`
       - ↑ `cmd_who`
-      - ↑ `kept_text`
+      - ↑ `read_needs_agent`
       - `_dest` — ARGS 의 열쇠 → argparse 가 그 값을 두는 이름 — ``dest`` 를 안 줬으면 첫 깃발에서 짓는다.
       - `_check_query` — who 의 찾는 말 — 이름(일부)은 두 글자부터, org: 뒤는 부서 코드이거나 두 글자부터.
         - ↑ `ecm_base.spec_kind`

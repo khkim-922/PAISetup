@@ -897,8 +897,7 @@ const TAB_WHY = { LOST: 'lost', TRACE: 'trace' };
 // 로그인을 연다 — 사람이 쓰던 죽은 포털 탭도 포털로 읽혀 새 로그인을 못 가린다. 포트 창은 다시 받지 않는다(다시 받으면 포트 창이 다시 로그인해
 // 사람의 로그인을 곧장 도로 가져간다). 회사 SSO 주소를 열어 정한 틈 동안 확인 창을 누르고(PRESS), SSO 가 안 서는 로그온은 EP 포털을 열고
 // 끝낸다(사람이 거기서 친다). 사람 없는 부름(--unattended)은 SSO 가 안 서는 로그온이면 아무것도 안 열고 4 로 끝난다 — 칠 사람이 없다.
-// 연 곧 뒤 — 확인 창을 누르는 틈 앞에 — 닫는다(shutOld · portEpTabs): 닫을 탭은 연 순간 이미 죽었고, 새 탭이 같은 창에 선 뒤라 옛 탭이 창의 마지막 탭이
-// 아니다. 포트 창의 EP 포털 · 로그인 화면 · 메일 목록 탭(그 로그인이 포트 창의 세션을 끊어 다 죽었다 · 보던 한 통과 쓰는 화면은 남긴다)과, 평소 Edge 에서 입구가 앞서
+// 연 곧 뒤 — 확인 창을 누르는 틈 앞에 — 닫는다(shutOld · portEpTabs): 닫을 탭은 연 순간 이미 죽었고, 옛 탭만 든 창은 창째 닫힌다. 포트 창의 EP 포털 · 로그인 화면 · 메일 목록 탭(그 로그인이 포트 창의 세션을 끊어 다 죽었다 · 보던 한 통과 쓰는 화면은 남긴다)과, 평소 Edge 에서 입구가 앞서
 // 연 EP 탭(이번에 연 탭은 남긴다). --dry-run 은 아무것도 안 열고 안 닫고 닫을 수만 낸다. 내는 것: 0
 async function giveBack(opts) {
   const typed = ssoDown();
@@ -951,7 +950,7 @@ async function noteOpened(eye, before, key) {
     const fresh = [];
     for (const id of now.tabs.map(String).filter(id => !had.has(id))) {
       const got = await eye.peek(id);
-      if (got && (got.state === 'closable' || got.state === 'last')) { fresh.push(id); break; }
+      if (got && (got.state === 'closable')) { fresh.push(id); break; }
     }
     if (fresh.length) {
       const saved = writeOpened(key, [...readOpened(key, now.pids), ...fresh], now.pids);   // 앞 기록이 다른 Edge 의 것이면 버리고 새로 쓴다
@@ -963,13 +962,13 @@ async function noteOpened(eye, before, key) {
   }
 }
 
-// 탭 하나를 닫은 끝 — 눈의 답(state)을 셋으로 접는다: 닫았다 · 이제 없다(사람이 닫았다 — 기록에서 뺀다) · 남겼다(EP 화면으로 안 보인다 · 창의 마지막
-// 탭 · 눈이 못 닫았다 — 기록에 두고 다음에 다시 본다. 뒤쪽 탭은 배운 제목으로만 EP 로 알아보니, 제목을 못 배운 화면은 앞에 설 때 닫힌다)
+// 탭 하나를 닫은 끝 — 눈의 답(state)을 셋으로 접는다: 닫았다 · 이제 없다(사람이 닫았다 — 기록에서 뺀다) · 남겼다(EP 화면으로 안 보인다 · 눈이 못
+// 닫았다 — 기록에 두고 다음에 다시 본다. 뒤쪽 탭은 배운 제목으로만 EP 로 알아보니, 제목을 못 배운 화면은 앞에 설 때 닫힌다)
 const SHUT = { CLOSED: 'closed', DROPPED: 'dropped', KEPT: 'kept' };
 const shutOutcome = got => !got ? SHUT.KEPT : got.state === 'closed' ? SHUT.CLOSED : got.state === 'gone' ? SHUT.DROPPED : SHUT.KEPT;
 
 // 평소 Edge 의 EP 탭(ids — 입구가 연 기록의 열쇠와 눈이 지금 EP 로 본 탭)을 닫는다. 눈이 닫기 직전에 그 탭이 지금도 EP 탭인가를 다시 본다(사람이 그 탭을 다른 화면으로
-// 옮겼으면 안 닫는다) · 창의 마지막 탭은 안 닫는다. 기록은 남은 것으로 고쳐 쓴다. 알리는 말은 부르는 쪽이 낸다. 내는 것: { closed, kept }
+// 옮겼으면 안 닫는다) · 창의 마지막 탭이면 창째 닫힌다. 기록은 남은 것으로 고쳐 쓴다. 알리는 말은 부르는 쪽이 낸다. 내는 것: { closed, kept }
 async function shutOld(eye, ids, key) {
   const gone = new Set();
   let closed = 0, kept = 0;
@@ -988,11 +987,11 @@ async function shutOld(eye, ids, key) {
 // 평소 Edge 에서 닫은 탭을 알린다 — what 은 닫은 탭이 무엇이었나. 닫을 것이 없었으면 말이 없다
 function sayShut({ closed, kept }, what) {
   if (closed) say(`평소 Edge 에서 ${what} ${closed} 개를 닫았다`);
-  if (kept) say(`평소 Edge 에서 EP 탭 ${kept} 개는 남겼다(지금 EP 화면으로 안 보이거나 · 창의 마지막 탭이거나 · 눈이 못 닫았다 — 돌려줄 때 다시 본다)`);
+  if (kept) say(`평소 Edge 에서 EP 탭 ${kept} 개는 남겼다(지금 EP 화면으로 안 보이거나 · 눈이 못 닫았다 — 돌려줄 때 다시 본다)`);
 }
 
 // 포트 창의 로그인이 선 곧 뒤 — 그 로그인이 평소 Edge 의 EP 세션을 끊어, 평소 Edge 의 EP 탭은 입구가 열었든 사람이 열었든 다 죽었다. 그 탭들을
-// 닫는다(EP 화면으로 안 보이는 탭 · 창의 마지막 탭은 남는다 — 남은 기록의 탭은 돌려줄 때 다시 본다)
+// 닫는다(EP 화면으로 안 보이는 탭은 남고, EP 탭만 든 창은 창째 닫힌다 — 남은 기록의 탭은 돌려줄 때 다시 본다)
 async function shutDeadOrdinary() {
   const key = theKey();
   const eye = edgeEye(eyeSelect());
@@ -1007,7 +1006,7 @@ async function shutDeadOrdinary() {
   }
 }
 
-// 지금 평소 Edge 에서 닫을 수 있는 EP 탭(눈의 peek 이 closable — EP 화면이고 창의 마지막 탭이 아니다)의 열쇠 — except 의 탭은 뺀다. 눈이 못 보면 []
+// 지금 평소 Edge 에서 닫을 수 있는 EP 탭(눈의 peek 이 closable — 지금 EP 화면이다)의 열쇠 — except 의 탭은 뺀다. 눈이 못 보면 []
 async function epTabsNow(eye, except) {
   const now = await eye.ids();
   const got = [];

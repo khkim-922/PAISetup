@@ -1,6 +1,7 @@
 ﻿# DRM 감긴 문서에서 글자를 뽑는다 — Fasoo 에이전트가 도는 PC 의 오피스를 태워서.
 #
 #     powershell -NoProfile -ExecutionPolicy Bypass -File read-drm.ps1 -Path <파일 · 폴더>… [-OutDir <폴더>] [-Preview N] [-NoKeep] [-EcmGated]
+#         [-Sheets "<시트>/<시트>"] [-Slides "<장>,<장>"] [-Pages "<쪽>,<쪽>"] [-MaxCells N]
 #
 # 본체다 — 인자 · 대상 모으기 · 남긴 글자 · 화면 · `-OutDir` 출력 · 끝 정리. 읽는 함수는 `office-read.ps1` 이 든다.
 # 내는 것 — 파일마다 「[딱지] 이름 …」 한 줄과 앞부분 글자(또는 `-OutDir` 의 `.md`), 끝에 셈 한 줄. 같은 바이트의 파일은 앱을 안 띄우고
@@ -25,7 +26,20 @@ param(
     [switch]$NoKeep,
 
     # 문서함(ECM) 에이전트가 받은 파일도 연다 — 스킬 company-ecm 의 손이 등급 문을 지난 답에서 이를 때만 준다(office-read.ps1 「문서함」).
-    [switch]$EcmGated
+    [switch]$EcmGated,
+
+    # 엑셀에서 읽을 시트 — 이름을 / 로 잇는다(엑셀 시트 이름에 못 드는 글자다 · 쉼표 · | 는 든다). 비면 전부. 글 맨 위 「목차」 표의 이름
+    # 그대로 준다 — 앞뒤 빈칸까지 같아야 한다(목차는 이름 안의 | 를 \| 로 적는다)
+    [string]$Sheets = '',
+
+    # 파워포인트에서 읽을 장 번호 — 쉼표 · 공백으로 나눈다. 비면 전부
+    [string]$Slides = '',
+
+    # 워드 · PDF 에서 읽을 쪽 번호 — 쉼표 · 공백으로 나눈다. 비면 전부
+    [string]$Pages = '',
+
+    # 엑셀 한 부름에 값을 받는 칸 수의 한도 — 0 이면 한도 없음. 안 주면 읽는 부품의 기본값($XL_READ_CELLS_MAX)
+    [int]$MaxCells = -1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,6 +48,13 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'office-read.ps1')
 # 파워포인트는 하나만 뜬다 — 띄우기 전에 사람이 쓰고 있었는지 New-OfficeApp 이 여기 적어, 끝에서 그 앱을 안 끈다
 $PptWasRunning = $false
+# 고름(시트 · 장 · 한도)을 준 부름은 남긴 글자를 쓰지도 남기지도 않는다 — 남긴 글자는 파일의 지문 하나로 찾아, 고른 일부를 남기면 다음의
+# 온 판 부름이 그 일부를 받는다
+$SheetList = @($Sheets -split '/' | Where-Object { $_ })
+$SlideList = @(ConvertTo-NumberList -Value $Slides -Name 'Slides')
+$PageList = @(ConvertTo-NumberList -Value $Pages -Name 'Pages')
+$Picked = $SheetList.Count -gt 0 -or $SlideList.Count -gt 0 -or $PageList.Count -gt 0 -or $MaxCells -ge 0
+if ($MaxCells -lt 0) { $MaxCells = $XL_READ_CELLS_MAX }
 
 # 부품이 센 「글 밖」의 영어 열쇠 → 화면의 한국어. 파워포인트는 그림과 도형을 안 갈라 하나로 센다
 $VISUAL_WORD = @{ tables = '표'; images = '그림'; shapes = '도형'; formulas = '수식'; charts = '차트'; fields = '필드' }
@@ -51,6 +72,23 @@ function Format-Visual {
     }
     return ' · 글 밖 ' + (($words.Keys | Sort-Object | ForEach-Object { "$_ $($words[$_])" }) -join ' · ')
 }
+
+# 목차를 한 줄로 — 엑셀 · 파워포인트만 낸다. 다 못 읽은 시트가 있으면 그 수를 함께 대어, 부르는 쪽이 이 줄만 보고도 고를 일이 있음을 안다
+function Format-Outline($Read) {
+    if ($Read.ContainsKey('Sheets')) {
+        $cut = if ($Read.Partial) { " · 다 못 읽은 시트 $($Read.Partial) — 글 맨 위 목차를 보고 -Sheets 로 고른다" } else { '' }
+        return " · 목차 시트 $($Read.Sheets)$cut"
+    }
+    if ($Read.ContainsKey('Slides')) { return " · 목차 장 $($Read.Slides)" }
+    if ($Read.ContainsKey('Pages')) {
+        if ($Read.Empty) { return " · 목차 쪽 $($Read.Pages) · $EMPTY_WORD" }
+        return " · 목차 쪽 $($Read.Pages)"
+    }
+    return ''
+}
+
+# 바이트는 있는데 글이 빈 문서에 붙이는 말 — 스캔본인지는 쪽마다 떠야 알 수 있어 다 뜨지 않고 사람에게 묻는다
+$EMPTY_WORD = '글이 비었다 — 스캔본이냐고 사람에게 묻고, 그렇다면 볼 쪽을 받아 그 쪽만 capture_pages.ps1 -Pages 로 뜬다'
 
 # 끝 셈을 낸다 — 읽음 · 남긴 글자 · 실패 · 전체 한 줄과 글자가 놓인 자리. $KeptHint 는 남긴 자리 줄의 꼬리말이고, 비면 그 줄을 안 낸다
 function Write-Tally([string]$KeptHint) {
@@ -127,6 +165,7 @@ $KeepDir = Get-KeptTextDir
 $TEXT_EXT = $KEPT_TEXT_EXT             # -OutDir 의 글자 파일도 남긴 것과 같은 꼴 — Fasoo 가 감싸지 않는 꼴이어야 한다
 $keptPrint = @{}                       # 읽을 파일 → 지문. 지문을 못 낸 파일(다른 프로세스가 쥔 파일)은 안 들고, 읽기만 한다
 $keptCount = 0
+if ($Picked) { $NoKeep = $true }
 if (-not $NoKeep) {
     # 남길 자리를 못 지으면 남기지 않고 읽기만 한다 — 이 스크립트는 Stop 으로 돌아, 여기서 지면 읽기까지 죽는다
     try {
@@ -146,7 +185,7 @@ if (-not $NoKeep) {
             $toRead.Add($file)
             continue
         }
-        $kept = Find-KeptText -Print $keptPrint[$file]
+        $kept = Find-KeptText -Print $keptPrint[$file] -Name $file
         if (-not $kept) { $toRead.Add($file); continue }      # 없거나 · 못 읽거나 · 머리가 없으면(이 손이 남긴 것이 아니다) 새로 읽어 남긴다
         $text = $kept.Text
         Write-Output "[남긴 글자] $name — 같은 파일을 앞서 읽어 앱을 안 띄웠다 · $($kept.Path)"
@@ -196,14 +235,19 @@ try {
             $mark = if ($wrapped) { 'DRM' } else { '평문' }
 
             try {
+                if ($SheetList.Count -and $appName -ne 'Excel') { throw "-Sheets 는 엑셀만 받는다 — 이 파일은 $appName 다" }
+                if ($SlideList.Count -and $appName -ne 'PPT') { throw "-Slides 는 파워포인트만 받는다 — 이 파일은 $appName 다" }
+                if ($PageList.Count -and $appName -ne 'Word') { throw "-Pages 는 워드 · PDF 만 받는다 — 이 파일은 $appName 다" }
                 $read = switch ($appName) {
-                    'Word'  { Read-WithWord  -App $app -LiteralPath $file }
-                    'Excel' { Read-WithExcel -App $app -LiteralPath $file }
-                    'PPT'   { Read-WithPPT   -App $app -LiteralPath $file }
+                    'Word'  { Read-WithWord  -App $app -LiteralPath $file -Pages $PageList }
+                    'Excel' { Read-WithExcel -App $app -LiteralPath $file -Sheets $SheetList -MaxCells $MaxCells }
+                    'PPT'   { Read-WithPPT   -App $app -LiteralPath $file -Slides $SlideList }
                 }
                 $text = [string]$read.Text
                 $len = $text.Length
-                $line = "[$mark] $name — $appName · 글자 $len$(Format-Visual -Counts $read.Visual -AppName $appName) · 머리 [$head]"
+                $bytes = (Get-Item -LiteralPath $file).Length
+                $kb = if ($bytes -lt 1KB) { '<1' } else { [Math]::Round($bytes / 1KB) }
+                $line = "[$mark] $name — $appName · $kb KB · 글자 $len$(Format-Visual -Counts $read.Visual -AppName $appName)$(Format-Outline $read) · 머리 [$head]"
                 Write-Output $line
 
                 if ($keptPrint.ContainsKey($file)) {

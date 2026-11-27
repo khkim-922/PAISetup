@@ -103,7 +103,7 @@ from ecm_base import (ACCESS_OF_WORD, ACCESS_ROLES, ACROBAT, ACROBAT_CLOSE_SCRIP
     CHECKOUT_FOLDER, CLOSE_EXIT, CLOSE_SCRIPT, Cabinet, Classified, DATE_TEXT, DEFAULT_PERIOD, DEFAULT_PER_PAGE, DEFAULT_READER, Doc, EXITS, EXIT_ARGS, EXIT_CLASSIFIED, EXIT_DEFAULT_APP, EXIT_FAIL, EXIT_OK, EXIT_SESSION, EXIT_STALE, EcmError, FILE_TYPES,
     FIND_ONLY_DESC, FOLDER_SEP, GATE_EDIT, GATE_RECEIVE, Grant, HISTORY_PER_PAGE, INSERT_FAMILY, KEPT_SOURCE_WORD, KEPT_WHEN_WORD,
     LINE_BREAK, NOT_HERE, OBJECT_ID, OFFICE_BY_EXT, OFFICE_OF_PROGID, Opened, Organ, PERIODS, POLL, Person,
-    PropChange, PropertyPage, READER_GATE_FLAG, READ_TIMEOUT, ReadError, ReadResult, Registered, SCREEN_NO_DUE, SEARCH_COMPANY,
+    PropChange, PropertyPage, READER_GATE_FLAG, READER_SUFFIXES, READ_TIMEOUT, ReadError, ReadResult, Registered, SCREEN_NO_DUE, SEARCH_COMPANY,
     SEARCH_DATE_FIELDS, SEARCH_MINE, SECURITY_PAIRS, SORTS, SearchQuery, Security, SecurityUnread, SessionExpired, SessionMissing, Stale,
     TAG_MAX, TAG_WORD, TEXT_DIR, TEXT_DIR_ENV, TEXT_EXT, TEXT_SPLIT, UNCHANGED_WAIT, VERSION_POLL, VERSION_WAIT, WINDOW_WAIT,
     WORD_FIND_MAX, _object_id, agent_docs_root, cabinet_key, check_person_spec, check_search, check_search_page, check_title, folder_key,
@@ -1229,16 +1229,17 @@ def reader_path() -> pathlib.Path:
 READER_UNREADABLE = "[못 읽는 꼴]"   # 읽는 손(read-drm.ps1)이 받는 확장자가 아닌 파일에 다는 줄 머리 — 그 꼴은 화면(open)으로 넘긴다
 
 
-def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> tuple[str, str]:
+def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None, picks: tuple[str, ...] = ()) -> tuple[str, str]:
     """받은 파일을 drm-office-read 의 읽는 손에 넘겨 (글자, 그 손의 한 줄)을 낸다. 평문은 임시 폴더째 바로 지운다.
 
-    ``-NoKeep`` 을 준다 — 읽는 손이 제 자리에 한 벌 더 남기면 등급 문을 안 지나는 사본이 생긴다."""
+    ``-NoKeep`` 을 준다 — 읽는 손이 제 자리에 한 벌 더 남기면 등급 문을 안 지나는 사본이 생긴다. ``picks`` 는 읽는 손의 고름 인자
+    (``pick_args`` 가 짓는다) 그대로다."""
     reader = reader or reader_path()
     if not reader.exists():
         raise ReadError(f"글자를 뽑는 손이 없다: {reader} — 스킬 drm-office-read 가 깔렸는지 본다")
     out_dir = pathlib.Path(tempfile.mkdtemp(prefix="ecm-read-"))
     try:
-        proc = _powershell(reader, str(path), "-OutDir", str(out_dir), "-NoKeep", READER_GATE_FLAG, timeout=READ_TIMEOUT)
+        proc = _powershell(reader, str(path), "-OutDir", str(out_dir), "-NoKeep", READER_GATE_FLAG, *picks, timeout=READ_TIMEOUT)
         lines = [l for l in proc.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
         summary = next((l for l in lines if l.startswith("[")), "")
         texts = sorted(out_dir.glob(f"*{TEXT_EXT}"))
@@ -1252,27 +1253,61 @@ def extract_text(path: pathlib.Path, *, reader: pathlib.Path | None = None) -> t
         shutil.rmtree(out_dir, ignore_errors=True)
 
 
+def pick_args(sheets: str = "", slides: str = "", max_cells: int | None = None, pages: str = "") -> tuple[str, ...]:
+    """read 의 고름(``--sheets`` · ``--slides`` · ``--pages`` · ``--max-cells``)을 읽는 손의 인자로 — 엑셀 시트는 이름을 / 로 잇고(시트
+    이름에 못 드는 글자다 · 이름은 앞뒤 빈칸까지 그대로 넘긴다), 파워포인트 장 · 워드 쪽은 번호를 쉼표로 잇는다."""
+    out: tuple[str, ...] = ()
+    if sheets:
+        out += ("-Sheets", sheets)
+    if slides.strip():
+        out += ("-Slides", slides.strip())
+    if pages.strip():
+        out += ("-Pages", pages.strip())
+    if max_cells is not None:
+        out += ("-MaxCells", str(max_cells))
+    return out
+
+
+def picks_of(args) -> tuple[str, ...]:
+    """read 명령의 인자에서 고름 — ``pick_args`` 의 한 자리."""
+    return pick_args(args.sheets, args.slides, args.max_cells, args.pages)
+
+
 def text_dir() -> pathlib.Path:
     """read 가 뽑은 글자를 남기는 자리 — 환경변수 ``ECM_TEXT_DIR``, 비었으면 ``TEXT_DIR``."""
     return pathlib.Path(os.environ.get(TEXT_DIR_ENV, "").strip() or TEXT_DIR).expanduser()
 
 
+PICKED_WORD = ".picked"   # 고른 읽기(--sheets · --slides)가 남기는 장의 꼬리 — 문서마다 한 장을 덮어쓴다
+
+
+OUTLINE_HEAD = "## 목차"   # 읽는 손이 글 맨 위에 두는 목차의 머리 — drm-office-read 의 $OUTLINE_HEAD 와 같은 글
+
+
 def kept_text(object_id: str) -> pathlib.Path | None:
-    """그 문서 열쇠로 남겨 둔 글자 파일 — 없으면 None. 판이 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다."""
+    """그 문서 열쇠로 남겨 둔 글자 파일 — 없으면 None. 판이 오르면 열쇠가 바뀌므로 열쇠가 같으면 같은 판의 글자다. 읽는 손이
+    받는 꼴(``READER_SUFFIXES``)의 글인데 목차(``OUTLINE_HEAD``)가 없으면 목차 앞의 손이 남긴 것이라 없는 셈이다 — 다시 받아 새 판으로
+    덮는다."""
     if not OBJECT_ID.match(object_id):
         return None
     found = sorted(text_dir().glob(f"*-{object_id.lower()}{TEXT_EXT}"))
-    return found[0] if found else None
+    if not found:
+        return None
+    _, text, received = read_kept_file(found[0])
+    if received is not None and received.suffix.lower() in READER_SUFFIXES and not text.lstrip("\ufeff").startswith(OUTLINE_HEAD):
+        return None
+    return found[0]
 
 
-def keep_text(text: str, summary: str, source: pathlib.Path, object_id: str) -> pathlib.Path:
+def keep_text(text: str, summary: str, source: pathlib.Path, object_id: str, *, suffix: str = "") -> pathlib.Path:
     """뽑은 글자를 ``text_dir()`` 에 남기고 그 경로를 낸다 — 이름은 받은 파일의 이름과 문서 열쇠, 머리는 읽는 손의 한 줄과
-    열쇠 · 받은 파일의 자리 · 뽑은 때다. 같은 열쇠를 다시 받으면(``--fresh``) 같은 이름이라 그 장을 덮어쓴다."""
+    열쇠 · 받은 파일의 자리 · 뽑은 때다. 같은 열쇠를 다시 받으면(``--fresh``) 같은 이름이라 그 장을 덮어쓴다. ``suffix`` 는 열쇠 뒤
+    꼬리(고른 읽기의 ``PICKED_WORD``) — 꼬리가 붙은 장은 ``kept_text`` 가 안 찾아 온 판의 남긴 글자와 안 섞인다."""
     folder = text_dir()
     folder.mkdir(parents=True, exist_ok=True)
     key = object_id.lower()
     name = re.sub(r"[^\w.\-]+", "_", source.stem)[:80].strip("_") or "document"
-    path = folder / f"{name}-{key}{TEXT_EXT}"
+    path = folder / f"{name}-{key}{suffix}{TEXT_EXT}"
     head = f"{summary}\n문서 열쇠 {key}{KEPT_SOURCE_WORD}{source}{KEPT_WHEN_WORD}{time.strftime('%Y-%m-%d %H:%M')}"
     path.write_text(head + TEXT_SPLIT + text, encoding="utf-8")
     return path
@@ -1373,7 +1408,7 @@ def check_readable(ecm: Ecm, object_id: str, *, ai_ok: bool = False, stopped: st
 
 
 def read_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool = False,
-                  reader: pathlib.Path | None = None, ai_ok: bool = False) -> ReadResult:
+                  reader: pathlib.Path | None = None, ai_ok: bool = False, picks: tuple[str, ...] = ()) -> ReadResult:
     """보안등급을 보고(``check_readable``) → 열고 → 에이전트가 띄운 창을 닫고 → 받은 파일에서 글자를 뽑아 ``ReadResult`` 를 낸다.
 
     닫는 것이 먼저다 — 오피스가 그 파일을 쥐고 있으면 읽는 손이 파일 머리를 못 읽는다. 받은 파일은 그 자리에 남는다.
@@ -1382,7 +1417,7 @@ def read_document(ecm: Ecm, agent: Agent, object_id: str, *, allow_picker: bool 
     opened = open_document(ecm, agent, object_id, allow_picker=allow_picker)
     window = close_window(opened.path, viewer_of(opened.progid))
     try:
-        text, summary = extract_text(opened.path, reader=reader)
+        text, summary = extract_text(opened.path, reader=reader, picks=picks)
     except ReadError as exc:
         raise ReadError(f"{exc} — 받은 파일: {opened.path}") from exc
     return ReadResult(text, summary, opened, window)
@@ -2026,7 +2061,12 @@ def opened_words(opened: Opened, object_id: str) -> None:
 
 
 def cmd_read(args, ecm: Ecm) -> int:
-    """문서의 글자를 말한다 — ``--fresh`` 가 아니고 남긴 글자가 있으면 그것을, 아니면 새로 받아 뽑은 것을 내고, 준 열쇠가 지난 판이면 그렇다고 이른다."""
+    """문서의 글자를 말한다 — ``--fresh`` 가 아니고 남긴 글자가 있으면 그것을, 아니면 새로 받아 뽑은 것을 내고, 준 열쇠가 지난 판이면 그렇다고 이른다.
+    고름(``--sheets`` · ``--slides`` · ``--pages``)을 주면 ``read_picked`` 로 간다."""
+    picks = picks_of(args)
+    if picks:
+        # 명령 틀이 먼저 read_needs_agent 를 불러 받은 파일을 정해 두었다 — 그 판정 하나로 읽는다(안 불린 자리에서는 여기서 정한다)
+        return read_picked(ecm, args, picks, args.picked_source if hasattr(args, "picked_source") else picked_source(args))
     if not args.fresh:
         kept = read_kept(ecm, args.object_id, ai_ok=args.ai_ok)
         if kept is not None:
@@ -2036,6 +2076,41 @@ def cmd_read(args, ecm: Ecm) -> int:
     got = read_document(ecm, Agent.from_env(), args.object_id, allow_picker=args.allow_picker, ai_ok=args.ai_ok)
     tell_superseded(args.object_id, *superseded_version(ecm, args.object_id))
     tell_read(got, args.object_id, as_file=args.as_file)
+    return EXIT_OK
+
+
+def picked_source(args) -> pathlib.Path | None:
+    """고른 읽기가 다시 받지 않고 읽을 받은 파일 — 남긴 글자가 가리키는 받은 파일이 아직 있으면 그 자리, ``--fresh`` 이거나 없으면 None.
+    에이전트가 드나(``read_needs_agent``)와 어디서 읽나(``read_picked``)가 이 한 판정을 함께 쓴다."""
+    if args.fresh or (kept := kept_text(args.object_id)) is None:
+        return None
+    return still_received(read_kept_file(kept)[2])
+
+
+def read_needs_agent(args) -> bool:
+    """read 가 문서를 새로 받나 — 받으면 문서함 에이전트가 든다. 남긴 글자로 답하거나(고름 없음) 남은 받은 파일에서 고른 것만 읽으면 안 든다.
+    고른 읽기는 이 판정의 받은 파일을 ``args.picked_source`` 에 두어 ``cmd_read`` 가 같은 파일을 읽는다(그 사이 에이전트가 비우면 읽는 손이
+    파일이 없다고 진다 — 다시 받는 길로 몰래 넘어가지 않는다)."""
+    if not picks_of(args):
+        return args.fresh or kept_text(args.object_id) is None
+    args.picked_source = picked_source(args)
+    return args.picked_source is None
+
+
+def read_picked(ecm: Ecm, args, picks: tuple[str, ...], received: pathlib.Path | None) -> int:
+    """고른 시트 · 장만 읽어 말한다. ``received`` (``picked_source``)가 있으면 등급 문을 지난 뒤 그 파일에서 읽고(다시 받지 않는다 · 창이 안
+    뜬다), 없으면 새로 받아 읽는다. 고른 글자는 온 판의 남긴 글자를 덮지 않고 곁의 한 장(``PICKED_WORD``)에 덮어 남긴다."""
+    if received is not None:
+        check_readable(ecm, args.object_id, ai_ok=args.ai_ok)
+        text, summary = extract_text(received, picks=picks)
+        head = "\n".join([summary or "[읽음]", f"받은 파일에서 다시 읽었다(문서를 다시 받지 않았다 · 창도 안 떴다): {received}"])
+    else:
+        got = read_document(ecm, Agent.from_env(), args.object_id, allow_picker=args.allow_picker, ai_ok=args.ai_ok, picks=picks)
+        text, summary, received = got.text, got.summary or "[읽음]", pathlib.Path(got.opened.path)
+        head = "\n".join([summary, *_describe_open(got.opened, gated=True), f"창: {WINDOW_WORD[got.window]}"])
+    tell_superseded(args.object_id, *superseded_version(ecm, args.object_id))
+    path = keep_text(text, summary, received, args.object_id, suffix=PICKED_WORD)
+    _tell_text(f"{head}\n고른 것만 읽었다({' '.join(picks)}) — 온 판의 남긴 글자는 그대로다", text, path, as_file=args.as_file)
     return EXIT_OK
 
 
@@ -2476,6 +2551,11 @@ ARGS = {
     "ai_ok": ((AI_OK_FLAG,), dict(action="store_true", help=AI_OK_HELP)),
     "as_file": (("--as-file",), dict(action="store_true",
                                      help="짧은 문서도 글자를 대화에 싣지 않고 남긴 파일의 경로만 낸다 — 긴 문서는 이 깃발 없이도 그렇게 된다")),
+    "sheets": (("--sheets",), dict(default="", help="엑셀에서 읽을 시트 — 이름을 / 로 잇는다(목차의 이름 그대로). 먼저 read 로 글 맨 위 「목차」를 보고 고른다")),
+    "pages": (("--pages",), dict(default="", help="워드 · PDF 에서 읽을 쪽 번호 — 쉼표로 잇는다. 먼저 read 로 「목차」(쪽 · 머리말)를 보고 고른다")),
+    "max_cells": (("--max-cells",), dict(type=int, default=None, help="엑셀 한 부름이 값을 받는 칸 수의 한도 — 다 못 읽은 시트를 --sheets 로 골라 "
+                                                                       "올린다(0 은 한도 없음 · 오래 걸린다)")),
+    "slides": (("--slides",), dict(default="", help="파워포인트에서 읽을 장 번호 — 쉼표로 잇는다. 먼저 read 로 「목차」를 보고 고른다")),
     "fresh": (("--fresh",), dict(action="store_true",
                                  help="남겨 둔 글자가 있어도 문서를 다시 받는다 — 표 · 그림을 뜨려고 받은 파일이 있어야 하거나 남긴 글자가 이상할 때")),
     "path": (("path",), dict(help="edit 가 낸 받은 파일")),
@@ -2575,7 +2655,7 @@ FINGERS = {
     "open": Finger("보기", "문서를 받아 화면에 띄운다(창이 남는다 · 사람이 보는 창이라 등급 문을 안 지난다 — 글자 · 그림은 read 로)",
                    ("object_id", "allow_picker"), cmd_open, agent=True),
     "read": Finger("보기", "문서를 받아 글자를 뽑고 창을 닫는다 — 글자는 문서 열쇠로 남고, 같은 열쇠는 남긴 글자로 답한다",
-                   ("object_id", "allow_picker", "ai_ok", "as_file", "fresh"), cmd_read, agent=lambda a: a.fresh or kept_text(a.object_id) is None),
+                   ("object_id", "allow_picker", "ai_ok", "as_file", "fresh", "sheets", "slides", "pages", "max_cells"), cmd_read, agent=read_needs_agent),
     "edit": Finger("편집", "잠그고 읽기 쓰기로 연다 — 바꿀 것을 주면 열린 창에서 고쳐 저장하고, --desc 면 올리기 미리 보기까지",
                    ("object_id", "ai_ok", *EDIT_CHANGE_ARGS, "desc_opt"), cmd_edit, mutating=True, check=_pre_edit, agent=True),
     "change": Finger("편집", "편집으로 열린 그 문서를 창 안에서 고쳐 저장한다(창은 남긴다) — --desc 면 올리기 미리 보기까지",

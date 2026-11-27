@@ -39,6 +39,12 @@ except (OSError, ValueError, KeyError) as _exc:
                       "깔렸는지 본다(설치를 다시 돌린다)") from _exc
 DOCS_ROOT_ENV = "ECM_DOCS_ROOT"
 DEFAULT_READER = DRM_READ_SCRIPTS / "read-drm.ps1"
+# 읽는 손이 받는 확장자 — 그 손의 값 파일(handler.json)이 원본이다. 읽는 손은 받는 꼴마다 글 맨 위에 목차를 둔다
+try:
+    READER_SUFFIXES = frozenset(json.loads((DRM_READ_SCRIPTS / "handler.json").read_text(encoding="utf-8"))["handler"])
+except (OSError, ValueError, KeyError) as _exc:
+    raise ImportError(f"읽는 손의 확장자 표를 못 읽었다: {DRM_READ_SCRIPTS / 'handler.json'} ({_exc}) — 스킬 drm-office-read 가 이 스킬 곁에 "
+                      "깔렸는지 본다") from _exc
 # 읽는 손 · 뜨는 손이 받는 자리 밑의 파일을 여는 깃발 — 그 손은 이 깃발 없이는 문서함 받은 파일을 안 연다. 이 손은 등급 문을 지난 뒤에만 준다
 READER_GATE_FLAG = "-EcmGated"
 CLOSE_SCRIPT = pathlib.Path(__file__).resolve().parent / "close_view.ps1"

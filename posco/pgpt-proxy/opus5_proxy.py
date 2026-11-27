@@ -49,7 +49,7 @@ ALLOWED_PREFIX = "/gpgpta01-gpt/"
 # 앞 칸은 마지막으로 받은 상류 판(결정 0163 — 33 에 선다), 뒤 칸은 그 위에 우리가 얹은 덩어리 수다.
 # ⚠ 설치기는 두 이름을 각각 정수로 읽어 견준다 — 점 찍힌 `VERSION` 을 문자열로 견주면 `"9" > "10"` 이 된다.
 VERSION_UPSTREAM = 33
-VERSION_OURS = 39
+VERSION_OURS = 40
 VERSION = f"{VERSION_UPSTREAM}.{VERSION_OURS}"
 PID_PATH = Path(__file__).with_name("opus5_proxy.pid")
 LOG_PATH = Path(__file__).with_name("proxy.log")
@@ -190,6 +190,11 @@ CLASSIFIER_HEAD_RETRIES = int(_env_float("PGPT_PROXY_CLASSIFIER_HEAD_RETRIES", 1
 CLASSIFIER_EMPTY_RETRIES = int(_env_float("PGPT_PROXY_CLASSIFIER_EMPTY_RETRIES", 1))
 # 판정 꼴 없이 끝난 분류기 답의 요청 · 답 본문을 보관하는 건수(``classifier-miss/``). 0 이면 안 남긴다
 CLASSIFIER_MISS_KEEP = int(_env_float("PGPT_PROXY_CLASSIFIER_MISS_KEEP", 5))
+# 분류기 지시의 생각 태그를 게이트웨이에 다른 이름으로 보내고 답에서 되돌린다. 게이트웨이는 답 글에 ``<thinking>`` 이 서면 그 자리부터
+#   뒤를 걷어(판정 ``<severity>`` 까지) 빈 답을 내고, 같은 지시를 다른 태그 이름으로 보내면 판정이 선다. Claude Code 는 답이 ``<thinking>``
+#   으로 열려야 판정으로 읽으므로 답에서 원래 이름으로 되돌린다. 빈 값이면 끈다 — 게이트웨이가 ``<thinking>`` 을 안 걷게 되면 걷는다
+CLASSIFIER_THINK_TAG = "thinking"
+CLASSIFIER_THINK_ALIAS = os.environ.get("PGPT_PROXY_CLASSIFIER_THINK_ALIAS", "reason").strip()
 CLIENT_POLL_SEC = 0.25
 HOP_BY_HOP = {
     "connection",
@@ -397,6 +402,69 @@ def raise_classifier_floor(payload: dict) -> str:
         return ""
     payload["max_tokens"] = CLASSIFIER_S1_MIN_TOKENS
     return f"max_tokens_floor={CLASSIFIER_S1_MIN_TOKENS}"
+
+
+def _swap_tag(text: str, old: str, new: str) -> str:
+    return text.replace(f"<{old}>", f"<{new}>").replace(f"</{old}>", f"</{new}>")
+
+
+def alias_classifier_think_tag(payload: dict) -> str:
+    """분류기 지시(마지막 메시지의 마지막 글 블록)의 생각 태그를 ``CLASSIFIER_THINK_ALIAS`` 로 바꾼다. 바꿨으면 로그 칸.
+
+    앞 블록(판정 받는 대화 기록)은 안 건드린다 — 거기 든 태그 글자는 판정 거리라 그대로 가야 한다.
+    """
+    messages = payload.get("messages")
+    if not CLASSIFIER_THINK_ALIAS or not isinstance(messages, list) or not messages or not isinstance(messages[-1], dict):
+        return ""
+    last = messages[-1]
+    content = last.get("content")
+    opener = f"<{CLASSIFIER_THINK_TAG}>"
+    if isinstance(content, str):
+        if opener not in content:
+            return ""
+        last["content"] = _swap_tag(content, CLASSIFIER_THINK_TAG, CLASSIFIER_THINK_ALIAS)
+    elif isinstance(content, list):
+        texts = [b for b in content if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)]
+        if not texts or opener not in texts[-1]["text"]:
+            return ""
+        texts[-1]["text"] = _swap_tag(texts[-1]["text"], CLASSIFIER_THINK_TAG, CLASSIFIER_THINK_ALIAS)
+    else:
+        return ""
+    return f"think_tag={CLASSIFIER_THINK_ALIAS}"
+
+
+def _restore_think_text(text: str) -> str:
+    """답 글을 여는 별칭 태그 하나와 마지막 닫는 별칭 태그 하나만 원래 이름으로 — 생각 안에 옮겨 적힌 같은 글자는 그대로 둔다."""
+    opener, closer = f"<{CLASSIFIER_THINK_ALIAS}>", f"</{CLASSIFIER_THINK_ALIAS}>"
+    head = len(text) - len(text.lstrip())
+    if not text.startswith(opener, head):
+        return text
+    text = f"{text[:head]}<{CLASSIFIER_THINK_TAG}>{text[head + len(opener):]}"
+    end = text.rfind(closer)
+    return text if end < 0 else f"{text[:end]}</{CLASSIFIER_THINK_TAG}>{text[end + len(closer):]}"
+
+
+def restore_classifier_think_tag(body: bytes) -> bytes:
+    """분류기 답 글의 별칭 생각 태그를 원래 이름으로 되돌린다 — JSON 이 아니거나 바꿀 것이 없거나 다시 쓰지 못하면 그대로."""
+    try:
+        message = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return body
+    if not isinstance(message, dict) or not isinstance(message.get("content"), list):
+        return body
+    changed = False
+    for block in message["content"]:
+        if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str):
+            swapped = _restore_think_text(block["text"])
+            changed |= swapped != block["text"]
+            block["text"] = swapped
+            break   # 판정 꼴은 첫 글 블록이 연다
+    if not changed:
+        return body
+    try:
+        return json.dumps(message, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:   # 짝 없는 surrogate 가 든 글 — 되돌리지 못한 답은 받은 그대로 낸다
+        return body
 
 
 def cap_claude_output(payload: dict, *, unstream: bool, body_bytes: int = 0) -> str:
@@ -2814,18 +2882,21 @@ class ProxyHandler(BaseHTTPRequestHandler):
         200 이 아니거나 판정 꼴이 있거나 다시 보낼 몫이 없으면 읽어 둔 본문을 그대로 돌려 준다 — 판정 못 한 답도 고쳐 쓰지 않는다.
         머리 무응답은 ``_write_classifier_upstream`` 이 맡고 이 걸음은 그 위에서 돈다.
         """
-        for attempt in range(CLASSIFIER_EMPTY_RETRIES + 1):
+        retries = max(CLASSIFIER_EMPTY_RETRIES, 0)
+        for attempt in range(retries + 1):
             response, conn = self._write_classifier_upstream(path, body, headers)
-            if response.status != 200 or CLASSIFIER_EMPTY_RETRIES <= 0:
+            if response.status != 200 or (retries == 0 and not self._think_aliased):
                 return response, conn
             try:
                 raw = response.read(MAX_UNSTREAM_BYTES + 1)
             except (OSError, http.client.HTTPException):
                 _UPSTREAM.close(conn)
-                if attempt == CLASSIFIER_EMPTY_RETRIES:
+                if attempt == retries:
                     raise
                 continue
-            if len(raw) > MAX_UNSTREAM_BYTES or not classifier_verdictless(raw) or attempt == CLASSIFIER_EMPTY_RETRIES:
+            if self._think_aliased and len(raw) <= MAX_UNSTREAM_BYTES:
+                raw = restore_classifier_think_tag(raw)
+            if len(raw) > MAX_UNSTREAM_BYTES or not classifier_verdictless(raw) or attempt == retries:
                 return _BufferedResponse(response, raw), conn
             kept = (keep_classifier_miss(body, raw, response.getheader(GATEWAY_REQUEST_ID_HEADER) or "x")
                     if CLASSIFIER_MISS_KEEP > 0 else "off")
@@ -3042,6 +3113,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self._compact_request = False
         self._claude_messages = False
         self._classifier = False
+        self._think_aliased = False
         self._session_id = ""
         self._message_id = ""
         self._stop_reason = ""
@@ -3173,6 +3245,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             raised = raise_classifier_floor(payload_obj)
                             if raised:
                                 self._request_context += " " + raised
+                            # 답을 되돌리는 자리가 끝까지 읽어 두는 길(``_write_classifier_checked``)뿐이라 그 길을 탈 요청만 바꾼다
+                            if payload_obj.get("stream") is not True and CLASSIFIER_HEAD_WAIT_SEC > 0:
+                                aliased = alias_classifier_think_tag(payload_obj)
+                                self._think_aliased = bool(aliased)
+                                if aliased:
+                                    self._request_context += " " + aliased
                         self._session_id = request_session_id(payload_obj)
                         changed = True
                         if COMPACT_UNSTREAM and compact_request and payload_obj.get("stream") is True:
@@ -3416,7 +3494,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if no_body:
                 pass
             elif (upstream_length is not None and not is_sse and not getattr(response, "chunked", False)
-                  and self._model_echo is None):
+                  and self._model_echo is None and not isinstance(response, _BufferedResponse)):
+                # 읽어 둔 본문은 되돌린 태그로 길이가 바뀌었을 수 있다 — 그 판은 아래 chunked 로 싼다
                 # 응답 이름을 되돌리면 길이가 바뀔 수 있다(날짜 꼬리를 뗀 이름) — 그 판은 아래 chunked 로 싼다
                 # chunked 와 Content-Length 를 함께 보낸 업스트림은 http.client 가 chunked 로 읽는다 — 그 길이는 틀린 값이다
                 self.send_header("Content-Length", upstream_length)
@@ -3552,6 +3631,26 @@ class ProxyServer(ThreadingHTTPServer):
 
 
 def self_test() -> None:
+    # 분류기 생각 태그: 지시 블록만 바꾸고 대화 기록 블록은 그대로, 답은 원래 이름으로 되돌린다
+    order = "Use <thinking> first, then respond with <severity>N</severity>."
+    talk = "user said <thinking>x</thinking>"
+    asked = {"messages": [{"role": "user", "content": [{"type": "text", "text": talk}, {"type": "text", "text": order}]}]}
+    assert alias_classifier_think_tag(asked) == f"think_tag={CLASSIFIER_THINK_ALIAS}"
+    assert asked["messages"][0]["content"][0]["text"] == talk
+    assert asked["messages"][0]["content"][1]["text"] == order.replace("thinking", CLASSIFIER_THINK_ALIAS)
+    plain = {"messages": [{"role": "user", "content": "hello"}]}
+    assert alias_classifier_think_tag(plain) == "" and plain["messages"][0]["content"] == "hello"
+    answer = json.dumps({"content": [{"type": "text", "text": f"<{CLASSIFIER_THINK_ALIAS}>ok</{CLASSIFIER_THINK_ALIAS}>\n"
+                                                              "<severity>8</severity>"}], "stop_reason": "end_turn"}).encode()
+    restored = json.loads(restore_classifier_think_tag(answer))["content"][0]["text"]
+    assert restored == "<thinking>ok</thinking>\n<severity>8</severity>"
+    assert restore_classifier_think_tag(b"not json") == b"not json"
+    a, c = f"<{CLASSIFIER_THINK_ALIAS}>", f"</{CLASSIFIER_THINK_ALIAS}>"
+    quoted = json.dumps({"content": [{"type": "text", "text": f"{a}saw {a}x{c} in log{c}<severity>3</severity>"}]}).encode()
+    assert json.loads(restore_classifier_think_tag(quoted))["content"][0]["text"] == \
+        f"<thinking>saw {a}x{c} in log</thinking><severity>3</severity>"
+    broken = ('{"content":[{"type":"text","text":"' + a + '\\ud83d' + c + '<severity>1</severity>"}]}').encode()
+    assert restore_classifier_think_tag(broken) == broken
     # 분류기 1단계 바닥: 작은 비스트리밍 상한만 올리고, 2단계 · 스트림 · 이미 큰 값은 그대로
     s1 = {"max_tokens": 64}
     assert raise_classifier_floor(s1) == f"max_tokens_floor={CLASSIFIER_S1_MIN_TOKENS}" and s1["max_tokens"] == CLASSIFIER_S1_MIN_TOKENS

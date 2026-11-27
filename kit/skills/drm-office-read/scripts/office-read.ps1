@@ -17,11 +17,14 @@
       · Close-OfficeApps -AppByName (앱 이름 → 앱 개체) -SpawnedPids 해시 -Job -PptWasRunning — 판이 쓴 앱을 끝내는 한 자리다. 내는 것은
         없다. 부르기 전에 이 판이 연 문서를 닫는다(Close-OwnedDocument) — 남은 문서가 곧 판정이다
       · Get-OfficeAppPid -App -AppName — 앱 개체 뒤의 프로세스 PID. 못 물으면 0
-      · Read-WithWord · Read-WithExcel · Read-WithPPT -App -LiteralPath → @{ Text = [string]; Visual = [hashtable] }
+      · Read-WithWord · Read-WithExcel · Read-WithPPT -App -LiteralPath → @{ Text = [string]; Visual = [hashtable] }. 엑셀은 [-Sheets 이름들]
+        [-MaxCells 칸 수]를 더 받아 Partial(다 못 읽은 시트 수) · Sheets(시트 수)를, 파워포인트는 [-Slides 장 번호들]을 더 받아 Slides(장 수)를,
+        워드(PDF 포함)는 [-Pages 쪽 번호들]을 더 받아 Pages(쪽 수)를 더 낸다. 셋 다 글 맨 위에 「## 목차」 표를 둔다 — 엑셀은 시트마다 실제 자료 범위(Get-ExcelSheetExtent)와 읽은 것, 파워포인트는 장 제목,
+        워드는 머리말과 그 쪽(Get-WordOutline)
         Visual 의 열쇠는 영어다 — tables · images · shapes · formulas · charts · fields. 0 인 열쇠는 없다. 파워포인트는 글 없는
         낱 도형을 images 에 센다. 사람 말로 옮기는 것은 부르는 쪽 몫이다(read-drm.ps1 의 Format-Visual)
       · Format-Cell · Get-PptLeafShapes · Measure-*Visual · Add-Count — 위 셋이 쓰는 부품. 따로 불러도 된다
-      · 남긴 글자 — Get-KeptTextDir · Get-KeptPrint -LiteralPath · Find-KeptText -Print · Save-KeptText -Name -Print -Line -Source -Text.
+      · 남긴 글자 — Get-KeptTextDir · Get-KeptPrint -LiteralPath · Find-KeptText -Print [-Name 원본 경로 — 목차($OUTLINE_HEAD)가 없는 옛 글을 안 쓴다] · Save-KeptText -Name -Print -Line -Source -Text.
         자리는 $KEPT_TEXT_DIR_ENV(없으면 ~/.drm-read-text), 이름은 「파일 이름.지문.md」, 머리 두 줄 뒤 $KEPT_SPLIT 아래가 글자다.
         남긴 것을 지우지 않는다
       · 남긴 그림 — Get-KeptShotDir -Name -Print. 같은 자리 아래 폴더 「파일 이름.지문」의 경로를 낸다(짓지 않는다)
@@ -30,7 +33,7 @@
       · 문서함 받은 파일 — Get-EcmDocsRoot(환경변수 → 곁의 places.json · 모르면 $null) · Test-EcmAgentFile -LiteralPath -Root · 멈춘 말 $ECM_REFUSAL. 본체가 앱을 띄우기
         전에 가린다 — 이 부품의 읽는 함수는 안 가린다(그 함수를 바로 싣는 쪽이 제 등급 문을 든다)
       · 상수 — $HANDLER(곁의 값 파일 $HANDLER_FILE 의 $HANDLER_KEY 에서 실은 해시 — 그 파일이 없으면 싣다 던진다) · $PROCESS_OF · $MSO_AUTOMATION_FORCE_DISABLE · $OFFICE_EXIT_WAIT_MS · $OFFICE_EXIT_POLL_MS · $SHRINK_ARGS_MAX_CHARS ·
-        $INV · $XL_ERROR_TEXT · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS · $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
+        $INV · $XL_ERROR_TEXT · $XL_READ_CELLS_MAX · $XL_PEEK_ROWS · $PPT_GROUP_DEPTH_MAX · $PPT_SEAT_LEGEND · $PPT_SEAT_TAG · $PPT_BREAKS · $PPT_CELL_BREAK · $PPT_CELL_SAME_PT
       · 파워포인트 글은 머리 한 줄($PPT_SEAT_LEGEND) 뒤 장마다 도형을 위→아래 · 왼→오른으로 세워 줄마다 [위 · 왼] 꼬리표를 앞세운다.
         표의 합친 칸은 첫 칸에만 글을 두고 덮인 칸은 비운다
 
@@ -62,7 +65,7 @@ function Get-KeptPrint {
 function Find-KeptText {
     # 그 지문으로 남긴 글자 → @{ Path; Line(읽을 때의 한 줄); Text } — 없거나 · 못 읽거나 · 머리가 없거나 · 글자가 비었으면 $null.
     # 던지지 않는다 — 부르는 쪽은 앱으로 읽으면 된다. 빈 글자를 남긴 것으로 치면 그 문서는 다시는 앱으로 안 읽힌다
-    param([Parameter(Mandatory = $true)][string]$Print)
+    param([Parameter(Mandatory = $true)][string]$Print, [string]$Name = '')
     try {
         $dir = Get-KeptTextDir
         if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return $null }
@@ -73,6 +76,8 @@ function Find-KeptText {
         if ($at -lt 0) { return $null }
         $text = $raw.Substring($at + $KEPT_SPLIT.Length)
         if (-not $text.Trim()) { return $null }
+        # 읽는 꼴($HANDLER)의 글은 다 목차로 시작한다 — 목차가 없으면 목차 앞의 판이 남긴 것이라 앱으로 다시 읽어 새 판으로 덮는다
+        if ($Name -and $HANDLER.ContainsKey([System.IO.Path]::GetExtension($Name).ToLower()) -and -not $text.TrimStart([char]0xFEFF).StartsWith($OUTLINE_HEAD)) { return $null }
         return @{ Path = $hit.FullName; Line = ($raw.Substring(0, $at) -split "`n")[0].Trim(); Text = $text }
     } catch { return $null }
 }
@@ -251,6 +256,33 @@ $XL_ERROR_TEXT = @{ -2146826288 = '#NULL!'; -2146826281 = '#DIV/0!'; -2146826273
                     -2146826259 = '#NAME?'; -2146826252 = '#NUM!'; -2146826246 = '#N/A' }
 # 묶음 안 묶음을 어디까지 펴나 — 그 아래는 도형 하나로 센다
 $PPT_GROUP_DEPTH_MAX = 20
+# 엑셀 — 한 부름에 값을 받는 칸 수의 기본 한도. 값 받기는 한 번이지만 칸을 글로 바꾸는 고리는 칸마다 돌아, 이 수가 한 부름의 길이를
+# 정한다(부르는 손의 시한 안에 끝나는 크기). 넘친 시트는 앞 행만 읽고 목차가 그렇다고 이른다
+$XL_READ_CELLS_MAX = 200000
+# 넘친 시트도 적어도 이만큼의 앞 행은 읽는다 — 머리 줄과 자료의 꼴을 보고 무엇을 고를지 정하게
+$XL_PEEK_ROWS = 20
+# 목차 표의 머리 — 엑셀 · 파워포인트 글의 맨 위에 선다. 남긴 글자에 이 머리가 없으면 목차 앞의 판이 남긴 것이라 쓰지 않는다
+$OUTLINE_HEAD = '## 목차'
+# 워드 — 목차에 드는 머리말의 깊이(개요 수준 1 ~ 이 값). 그보다 깊은 머리말은 본문으로 읽힌다
+$WORD_HEAD_DEPTH = 3
+# 목차 한 줄에 싣는 머리말의 글자 수
+$WORD_HEAD_CHARS = 60
+# Range.Information · GoTo 의 인자 — 그 자리의 쪽 번호(wdActiveEndPageNumber) · 쪽으로 가기(wdGoToPage · wdGoToAbsolute) · 쪽 수(wdStatisticPages)
+$WD_PAGE_OF = 3
+$WD_GOTO_PAGE = 1
+$WD_GOTO_ABSOLUTE = 1
+$WD_STAT_PAGES = 2
+# 목차 · 표의 칸에 든 | 는 칸을 가르지 않게 \| 로 적는다
+function Format-OutlineCell([string]$Value) { $Value.Replace('|', '\|') }
+# 바로 위와 같은 줄이 잇따른 수를 적는 줄 — 표 밖의 글이라 표 줄로 안 읽힌다
+$XL_REPEAT_NOTE = '(위 줄과 같은 줄이 {0} 줄 더 있다)'
+# Range.Find 의 인자 — 값 · 수식이 든 칸을(xlFormulas · xlPart) 뒤에서부터(xlPrevious) 행 · 열 차례로(xlByRows · xlByColumns)
+$XL_LOOK_IN_FORMULAS = -4123
+$XL_LOOK_AT_PART = 2
+$XL_BY_ROWS = 1
+$XL_BY_COLUMNS = 2
+$XL_PREVIOUS = 2
+$XL_SHEET_VISIBLE = -1
 # 파워포인트 글의 도형 꼬리표 — 읽는 모델이 나란한 칸의 머리말과 값을 같은 「왼」끼리 짝짓는 근거다.
 # 만든 차례(z)대로 내면 머리말 바로 뒤에 다른 칸의 값이 서고 모델은 그것을 그 머리말의 값으로 읽는다
 $PPT_SEAT_LEGEND = '(도형 앞 [위 · 왼] 은 그 도형이 장 안에 놓인 자리다 — 포인트, 왼쪽 위가 0)'
@@ -260,6 +292,12 @@ $PPT_BREAKS = @([string][char]13, [string][char]11)
 $PPT_CELL_BREAK = '<br>'
 # 표 칸 두 개가 같은 합친 칸인지 가르는 자리 상자의 허용 차(pt) — 다른 칸은 칸 크기만큼 어긋난다
 $PPT_CELL_SAME_PT = 0.5
+# 노트 쪽 본문 자리의 꼴(ppPlaceholderBody) · 노트 줄의 머리
+$PPT_NOTES_BODY = 2
+# 대체 제목에서 뺄 자리표시자(ppPlaceholderSlideNumber · Footer · Date)와 자리표시자 도형의 꼴(msoPlaceholder)
+$PPT_NOT_TITLE = @(13, 15, 16)
+$PPT_SHAPE_PLACEHOLDER = 14
+$PPT_NOTES_TAG = '[노트]'
 
 # ── 띄운 앱은 이 프로세스에 묶는다 ───────────────────────────────────────
 # 오피스는 COM 서버라 이 프로세스의 자식이 아니다 — 끊긴 판에도 숨은 앱이 안 남게 띄운 PID 를 Job(KILL_ON_JOB_CLOSE)에 넣는다.
@@ -486,6 +524,24 @@ function Measure-WordVisual {
     return $c
 }
 
+function Get-ExcelSheetExtent {
+    <# 시트의 실제 자료 범위 — 값 · 수식이 든 마지막 행 · 열을 엑셀의 찾기(뒤에서 · 값으로)로 묻는다. 사용 영역(UsedRange)을 안 쓰는 까닭 —
+       서식 · 지운 칸이 시트 끝까지 끌려 있으면 사용 영역이 자료의 수천 배가 되어, 그 값을 받고 칸마다 도는 데 몇 분이 든다.
+       내는 것: @{ Rows; Cols; Address } — 빈 시트는 Rows · Cols 가 0. 범위는 A1 에서 마지막 행 · 열까지다(앞쪽 빈 줄도 든다) #>
+    param($Sheet)
+    $lastRow = 0; $lastCol = 0
+    try {
+        $after = $Sheet.Cells.Item(1, 1)
+        $r = $Sheet.Cells.Find('*', $after, $XL_LOOK_IN_FORMULAS, $XL_LOOK_AT_PART, $XL_BY_ROWS, $XL_PREVIOUS)
+        $c = $Sheet.Cells.Find('*', $after, $XL_LOOK_IN_FORMULAS, $XL_LOOK_AT_PART, $XL_BY_COLUMNS, $XL_PREVIOUS)
+        if ($r) { $lastRow = [int]$r.Row }
+        if ($c) { $lastCol = [int]$c.Column }
+    } catch { }
+    $address = ''
+    if ($lastRow -gt 0 -and $lastCol -gt 0) { $address = $Sheet.Range($Sheet.Cells.Item(1, 1), $Sheet.Cells.Item($lastRow, $lastCol)).Address($false, $false) }
+    return @{ Rows = $lastRow; Cols = $lastCol; Address = $address }
+}
+
 function Measure-ExcelVisual {
     param($Book)
     $c = @{}
@@ -524,14 +580,17 @@ function Get-PptLeafShapes {
 }
 
 function Measure-PptVisual {
-    param($Pres)
-    # 장마다 글 없는 낱 도형을 센다 — 글이 든 도형과 표는 글자 추출이 이미 담았다. 그림과 도형을 안 가르고 images 하나에 센다
+    <# 장마다 글 없는 낱 도형을 센다 — 글이 든 도형과 표는 글자 추출이 이미 담았다. 그림과 도형을 안 가르고 images 하나에 센다.
+       $ChartsLeft 는 읽은 장에서 값을 못 꺼낸 차트 수다 — 차트는 읽으며 값을 꺼냈으니(Read-WithPPT) 여기서 다시 묻지 않는다 #>
+    param($Pres, [int]$ChartsLeft = 0)
     $c = @{}
+    if ($ChartsLeft) { $c['charts'] = $ChartsLeft }
     foreach ($slide in $Pres.Slides) {
         foreach ($shape in (Get-PptLeafShapes -Shapes $slide.Shapes)) {
             try {
                 if ($shape.HasTable -ne 0) { continue }
                 if ($shape.HasTextFrame -and $shape.TextFrame.HasText) { continue }
+                if ($shape.HasChart -ne 0) { continue }   # 차트의 셈은 $ChartsLeft 가 든다
             } catch { }
             $c['images'] = [int]$c['images'] + 1
         }
@@ -539,8 +598,49 @@ function Measure-PptVisual {
     return $c
 }
 
+function Get-WordOutline {
+    <# 머리말 목록 — @(@{ Level; Text; Page }). 문단마다 묻지 않고 개요 수준이 선 문단만 찾기(Find · 서식의 개요 수준)로 건너뛴다 — 문단
+       고리는 문단 수만큼 COM 을 넘어 큰 문서에서 몇 분이다. 머리말 스타일이 아니라 개요 수준으로 찾아, 사용자 스타일로 지은 머리말도 든다 #>
+    param($Doc)
+    $heads = @()
+    for ($lvl = 1; $lvl -le $WORD_HEAD_DEPTH; $lvl++) {
+        $r = $Doc.Content
+        $f = $r.Find
+        try {
+            $f.ClearFormatting(); $f.Text = ''; $f.Format = $true; $f.Forward = $true; $f.Wrap = 0
+            $f.ParagraphFormat.OutlineLevel = $lvl
+            while ($f.Execute()) {
+                # 서식만으로 찾으면 같은 수준이 잇단 문단들이 한 범위로 온다 — 문단마다 가른다(그 범위 안만 돈다)
+                foreach ($para in $r.Paragraphs) {
+                    $text = ([string]$para.Range.Text) -replace '[\r\n\v\a\f]', ' '
+                    $text = $text.Trim()
+                    # 개요 수준이 선 긴 본문 문단(번호 매긴 문단 따위)도 걸린다 — 목차에는 앞머리만 싣는다
+                    if ($text.Length -gt $WORD_HEAD_CHARS) { $text = $text.Substring(0, $WORD_HEAD_CHARS) + '…' }
+                    if ($text) { $heads += [pscustomobject]@{ Level = $lvl; Text = $text; Page = [int]$para.Range.Information($WD_PAGE_OF); Start = [int]$para.Range.Start } }
+                }
+                $r.Collapse(0)
+                if ($r.Start -ge $Doc.Content.End - 1) { break }
+            }
+        } finally {
+            # 찾기 설정은 워드가 문서를 넘어 기억한다 — 사람이 열어 둔 문서를 빌렸으면 그 사람의 찾기에 남지 않게 되돌린다
+            try { $f.ClearFormatting(); $f.Format = $false } catch { }
+        }
+    }
+    return @($heads | Sort-Object Start)
+}
+
+function Get-WordPageRange {
+    <# 쪽 $Page 의 범위 — 그 쪽 첫 자리에서 다음 쪽 첫 자리 앞까지(끝 쪽은 문서 끝까지) #>
+    param($Doc, [int]$Page, [int]$Pages)
+    $from = $Doc.GoTo($WD_GOTO_PAGE, $WD_GOTO_ABSOLUTE, $Page).Start
+    $to = if ($Page -lt $Pages) { $Doc.GoTo($WD_GOTO_PAGE, $WD_GOTO_ABSOLUTE, $Page + 1).Start } else { $Doc.Content.End }
+    return $Doc.Range($from, $to)
+}
+
 function Read-WithWord {
-    param($App, [string]$LiteralPath)
+    <# 목차(쪽 수 · 머리말과 그 쪽)를 먼저 세우고 고른 쪽만 읽는다. $Pages 는 읽을 쪽 번호(비면 전부 — 범위 밖이면 쪽 수를 대며 던진다).
+       내는 것: @{ Text; Visual; Pages = 쪽 수 } #>
+    param($App, [string]$LiteralPath, [int[]]$Pages = @())
     # 인자 셋 — 경로 · ConfirmConversions=$false · ReadOnly=$true.
     # ReadOnly 를 켜야 원본에 쓰기 잠금이 안 걸리고 DRM 이 수정으로 보지 않는다.
     # 사람이 같은 파일을 열어 두었으면 그 문서를 돌려받는다 — 읽기만 하고 닫지 않는다(office-session.ps1)
@@ -549,9 +649,39 @@ function Read-WithWord {
     $session = Open-OwnedDocument -Kind 'Word' -Collection $App.Documents -Open { $App.Documents.Open($LiteralPath, $false, $true) }
     $doc = $session.Document
     try {
-        $text = [string]$doc.Content.Text
-        if ($isPdf) { Assert-PdfConverted $text }
-        return @{ Text = $text; Visual = (Measure-WordVisual $doc) }
+        $count = [int]$doc.ComputeStatistics($WD_STAT_PAGES)
+        $outside = @($Pages | Where-Object { $_ -lt 1 -or $_ -gt $count })
+        if ($outside.Count) { throw "그런 쪽이 없다: $($outside -join ', ') — 쪽은 1 ~ $count" }
+        $out = [System.Text.StringBuilder]::new()
+        $heads = Get-WordOutline $doc
+        $picked = if ($Pages.Count) { " · 고른 쪽 $($Pages -join ', ')" } else { '' }
+        [void]$out.AppendLine("$OUTLINE_HEAD — 쪽 $count 쪽 · 머리말 $($heads.Count)$picked")
+        if ($heads.Count) {
+            [void]$out.AppendLine('| 쪽 | 머리말 |')
+            [void]$out.AppendLine('|---|---|')
+            foreach ($h in $heads) { [void]$out.AppendLine("| $($h.Page) | $('　' * ($h.Level - 1))$(Format-OutlineCell $h.Text) |") }
+        } else {
+            [void]$out.AppendLine("(머리말이 없다 — 개요 수준이 선 문단이 없는 문서다. 쪽으로 고른다)")
+        }
+        [void]$out.AppendLine('')
+        if ($Pages.Count) {
+            $body = ''
+            foreach ($p in $Pages) {
+                $part = [string](Get-WordPageRange $doc $p $count).Text
+                [void]$out.AppendLine("### 쪽 $p")
+                [void]$out.AppendLine($part)
+                $body += $part
+            }
+            $head = [string]$doc.Range(0, [Math]::Min(64, $doc.Content.End)).Text
+        } else {
+            $body = [string]$doc.Content.Text
+            $head = $body
+            [void]$out.Append($body)
+        }
+        if ($isPdf) { Assert-PdfConverted $head }
+        # 글이 비었다 — 읽은 글(고른 쪽이면 그 쪽들)에 글자 · 숫자가 하나도 없으면(쪽 나눔 · 문단 끝만) 스캔본일 수 있다. 가르는 일은
+        # 사람에게 묻는다(부르는 쪽이 Empty 로 알린다)
+        return @{ Text = $out.ToString(); Visual = (Measure-WordVisual $doc); Pages = $count; Empty = $body -notmatch '[\p{L}\p{N}]' }
     } finally {
         Close-OwnedDocument $session    # SaveChanges=$false — 원본을 절대 안 고친다
     }
@@ -586,36 +716,92 @@ function Format-Cell {
 }
 
 function Read-WithExcel {
-    param($App, [string]$LiteralPath)
+    <# 목차를 먼저 세우고 칸 한도 안에서 값을 읽는다. $Sheets 는 읽을 시트 이름(비면 전부 — 없는 이름이면 있는 이름을 대며 던진다),
+       $MaxCells 는 한 부름에 값을 받는 칸 수의 한도(0 이면 한도 없음). 한도는 작은 시트부터 나눠 주어, 다 든 시트는 다 읽고 넘친 시트는
+       든 만큼의 앞 행만 읽는다(적어도 $XL_PEEK_ROWS 행). 내는 것: @{ Text; Visual; Partial = 다 못 읽은 시트 수; Sheets = 시트 수 } #>
+    param($App, [string]$LiteralPath, [string[]]$Sheets = @(), [int]$MaxCells = $XL_READ_CELLS_MAX)
     # UpdateLinks=0 · ReadOnly=$true
     $session = Open-OwnedDocument -Kind 'Excel' -Collection $App.Workbooks -Open { $App.Workbooks.Open($LiteralPath, 0, $true) }
     $book = $session.Document
     try {
+        # 목차 — 값을 받기 전에 시트마다 실제 자료 범위를 묻는다(시트 수만큼의 짧은 물음이다)
+        $plan = @(foreach ($sheet in $book.Sheets) {
+            $grid = $true
+            try { [void]$sheet.Cells.Count } catch { $grid = $false }      # 차트 시트는 칸이 없다
+            $ext = if ($grid) { Get-ExcelSheetExtent $sheet } else { @{ Rows = 0; Cols = 0; Address = '' } }
+            $hidden = $false
+            try { $hidden = [int]$sheet.Visible -ne $XL_SHEET_VISIBLE } catch { }
+            [pscustomobject]@{ Sheet = $sheet; Name = [string]$sheet.Name; Grid = $grid; Rows = $ext.Rows; Cols = $ext.Cols
+                               Address = $ext.Address; Hidden = $hidden; Take = 0 }
+        })
+        if ($Sheets.Count) {
+            $names = @($plan | ForEach-Object { $_.Name })
+            $missing = @($Sheets | Where-Object { $names -notcontains $_ })
+            if ($missing.Count) { throw "그런 시트가 없다: $($missing -join ', ') — 있는 시트: $($names -join ', ')" }
+        }
+        # 한도는 작은 시트부터 — 큰 시트 하나가 앞에 섰다고 뒤의 작은 시트들이 못 읽히지 않게
+        $left = if ($MaxCells -gt 0) { [long]$MaxCells } else { [long]::MaxValue }
+        foreach ($p in @($plan | Where-Object { $_.Grid -and $_.Rows -gt 0 -and (-not $Sheets.Count -or $Sheets -contains $_.Name) } |
+                         Sort-Object { [long]$_.Rows * $_.Cols })) {
+            $fit = [long][Math]::Floor($left / $p.Cols)
+            $p.Take = [int][Math]::Min([long]$p.Rows, [Math]::Max([long]$XL_PEEK_ROWS, $fit))
+            $left = [Math]::Max(0, $left - [long]$p.Take * $p.Cols)
+        }
+        $partial = @($plan | Where-Object { $_.Take -gt 0 -and $_.Take -lt $_.Rows }).Count
+
         $out = [System.Text.StringBuilder]::new()
-        foreach ($sheet in $book.Sheets) {
-            [void]$out.AppendLine("### 시트: $($sheet.Name)")
-            $used = $sheet.UsedRange
-            $rows = [int]$used.Rows.Count; $cols = [int]$used.Columns.Count
-            # 시트의 값을 한 번에 받는다 — 칸마다 COM 을 넘으면 칸 수만큼 프로세스를 오가 큰 시트 한 장이 몇 분이다
-            $vals = $used.Value2
+        [void]$out.AppendLine("$OUTLINE_HEAD — 시트 $($plan.Count) 장 (범위는 값 · 수식이 든 칸까지다 — 서식만 든 빈 칸은 안 센다)")
+        [void]$out.AppendLine('| # | 시트 | 범위 | 행 × 열 | 읽은 것 |')
+        [void]$out.AppendLine('|---|---|---|---|---|')
+        $i = 0
+        foreach ($p in $plan) {
+            $i++
+            $label = (Format-OutlineCell $p.Name) + $(if ($p.Hidden) { ' (숨김)' } else { '' })
+            $state = if (-not $p.Grid) { '차트 시트' } elseif ($p.Rows -eq 0) { '비었다' } elseif ($p.Take -eq 0) { '안 고름' }
+                     elseif ($p.Take -lt $p.Rows) { "앞 $($p.Take) 행만" } else { '다 읽음' }
+            [void]$out.AppendLine("| $i | $label | $($p.Address) | $($p.Rows) × $($p.Cols) | $state |")
+        }
+        if ($partial) {
+            [void]$out.AppendLine('')
+            [void]$out.AppendLine("다 못 읽은 시트가 $partial 장이다 — 한 부름의 칸 한도($MaxCells)를 넘었다. 그 시트의 뒤가 필요하면 시트를 " +
+                                  "고르고 한도를 올려 다시 부른다(오래 걸린다). 고르기 전에 이 목차와 앞 행으로 무엇이 필요한가부터 정한다")
+        }
+        foreach ($p in $plan) {
+            if ($p.Take -le 0) { continue }
+            $note = if ($p.Take -lt $p.Rows) { " (앞 $($p.Take) 행 · 전체 $($p.Rows) 행)" } else { '' }
+            [void]$out.AppendLine('')
+            [void]$out.AppendLine("### 시트: $($p.Name)$note")
+            $sheet = $p.Sheet
+            $range = $sheet.Range($sheet.Cells.Item(1, 1), $sheet.Cells.Item($p.Take, $p.Cols))
+            $rows = $p.Take; $cols = $p.Cols
+            # 범위의 값을 한 번에 받는다 — 칸마다 COM 을 넘으면 칸 수만큼 프로세스를 오간다
+            $vals = $range.Value2
             if ($null -eq $vals) { continue }
-            if ($vals -isnot [Array]) { $one = New-Object 'object[,]' 1, 1; $one[0, 0] = $vals; $vals = $one; $rows = 1; $cols = 1 }
+            if ($vals -isnot [Array]) { $one = New-Object 'object[,]' 1, 1; $one[0, 0] = $vals; $vals = $one }
             $lo1 = $vals.GetLowerBound(0); $lo2 = $vals.GetLowerBound(1)
             $sample = [Math]::Min(2, $rows)          # 첫 자료 줄의 서식 — 머리 줄은 대개 글이라 서식이 「일반」이다
             $fmts = @()
             for ($k = 1; $k -le $cols; $k++) {
                 $f = ''
-                try { $f = [string]$used.Cells.Item($sample, $k).NumberFormat } catch { }
+                try { $f = [string]$range.Cells.Item($sample, $k).NumberFormat } catch { }
                 $fmts += $f
             }
+            # 같은 줄이 잇따르면 한 줄과 그 수로 접는다 — 수식을 시트 끝까지 끌어 둔 열은 빈 자료 줄마다 같은 값(0 따위)을 내, 접지 않으면 그
+            # 꼬리가 글의 대부분이 된다
+            $prev = $null; $repeat = 0
             for ($r = 0; $r -lt $rows; $r++) {
                 $cells = New-Object string[] $cols
                 for ($k = 0; $k -lt $cols; $k++) { $cells[$k] = Format-Cell -Value $vals[($r + $lo1), ($k + $lo2)] -Fmt $fmts[$k] }
                 # 행으로 묶는다 — 셀마다 줄을 끊으면 표라는 것이 사라져 모델이 못 알아본다.
-                [void]$out.AppendLine('| ' + ($cells -join ' | ') + ' |')
+                $row = '| ' + ($cells -join ' | ') + ' |'
+                if ($row -ceq $prev) { $repeat++; continue }
+                if ($repeat) { [void]$out.AppendLine(($XL_REPEAT_NOTE -f $repeat)); $repeat = 0 }
+                [void]$out.AppendLine($row)
+                $prev = $row
             }
+            if ($repeat) { [void]$out.AppendLine(($XL_REPEAT_NOTE -f $repeat)) }
         }
-        return @{ Text = $out.ToString(); Visual = (Measure-ExcelVisual $book) }
+        return @{ Text = $out.ToString(); Visual = (Measure-ExcelVisual $book); Partial = $partial; Sheets = $plan.Count }
     } finally {
         Close-OwnedDocument $session
     }
@@ -636,16 +822,97 @@ function Test-PptSameBox {
     return $true
 }
 
+function Get-PptSlideTitle($Slide) {
+    <# 장 제목 — 제목 자리표시자의 글, 없으면(빈 레이아웃에 글상자로 제목을 지은 덱) 장에서 가장 위에 놓인 글 든 도형의 첫 줄. 위가 같으면
+       왼쪽 것 #>
+    try { if ($Slide.Shapes.HasTitle) { $t = ([string]$Slide.Shapes.Title.TextFrame.TextRange.Text).Trim(); if ($t) { return $t } } } catch { }
+    $best = $null
+    foreach ($s in $Slide.Shapes) {
+        try {
+            if (-not ($s.HasTextFrame -and $s.TextFrame.HasText)) { continue }
+            $ph = 0; try { if ($s.Type -eq $PPT_SHAPE_PLACEHOLDER) { $ph = [int]$s.PlaceholderFormat.Type } } catch { }
+            if ($PPT_NOT_TITLE -contains $ph) { continue }   # 날짜 · 바닥글 · 장 번호는 장마다 같아 제목이 못 된다
+            if ($null -eq $best -or $s.Top -lt $best.Top - $PPT_CELL_SAME_PT -or ([Math]::Abs($s.Top - $best.Top) -le $PPT_CELL_SAME_PT -and $s.Left -lt $best.Left)) { $best = $s }
+        } catch { }
+    }
+    if ($null -eq $best) { return '' }
+    $first = (([string]$best.TextFrame.TextRange.Text) -split "[`r`n$([char]11)]" | Where-Object { $_.Trim() } | Select-Object -First 1)
+    return $(if ($first) { $first.Trim() } else { '' })
+}
+
+function Get-PptChartTitle($Chart) {
+    # 차트 제목 — 「 · 제목」 꼴, 없으면 빈 글
+    try { if ($Chart.HasTitle) { $t = ([string]$Chart.ChartTitle.Text).Trim(); if ($t) { return " · $(Format-OutlineCell $t)" } } } catch { }
+    return ''
+}
+
+function Get-PptChartRows {
+    <# 차트의 값을 마크다운 표 줄로 — 머리 줄은 항목(가로축), 줄마다 계열 이름과 값. 값은 계열마다 배열로 한 번에 받는다(XValues · Values).
+       차트 데이터 통합문서(ChartData.Activate)는 엑셀을 띄우므로 안 쓴다. 못 읽으면 빈 열 #>
+    param($Chart)
+    $rows = @()
+    try {
+        # 계열은 번호로 받는다 — SeriesCollection() 을 foreach 로 돌면 PowerShell 이 빈 열로 받는다
+        $series = @(); $n = [int]$Chart.SeriesCollection().Count; for ($i = 1; $i -le $n; $i++) { $series += $Chart.SeriesCollection($i) }
+        if (-not $series.Count) { return @() }
+        $cats = @(); try { $cats = @($series[0].XValues) } catch { }
+        $rows += '| 계열 | ' + (($cats | ForEach-Object { Format-OutlineCell ([string]$_) }) -join ' | ') + ' |'
+        $rows += '|---|' + ('---|' * [Math]::Max(1, $cats.Count))
+        $got = 0
+        foreach ($s in $series) {
+            $vals = @(); try { $vals = @($s.Values) } catch { }
+            if ($vals.Count) { $got++ }
+            $cells = $vals | ForEach-Object { if ($_ -is [double]) { $_.ToString('R', $INV) } else { [string]$_ } }
+            $rows += "| $(Format-OutlineCell ([string]$s.Name)) | " + ($cells -join ' | ') + ' |'
+        }
+        # 값을 한 계열도 못 받았으면(깨진 외부 연결 · 값을 안 주는 차트) 빈 표를 세우지 않는다 — 그 차트는 글 밖에 세여 그림으로 뜬다
+        if (-not $got) { return @() }
+    } catch { return @() }
+    return $rows
+}
+
+function Get-PptNotes($Slide) {
+    # 발표자 노트의 글 — 노트 쪽의 본문 자리(placeholder 2)를 한 번 묻는다. 없으면 빈 글
+    try {
+        if (-not $Slide.HasNotesPage) { return '' }
+        foreach ($ph in $Slide.NotesPage.Shapes.Placeholders) {
+            if ([int]$ph.PlaceholderFormat.Type -eq $PPT_NOTES_BODY -and $ph.HasTextFrame -and $ph.TextFrame.HasText) {
+                $text = ([string]$ph.TextFrame.TextRange.Text).Trim()
+                foreach ($b in $PPT_BREAKS) { $text = $text.Replace($b, ' / ') }
+                return $text
+            }
+        }
+    } catch { }
+    return ''
+}
+
 function Read-WithPPT {
-    param($App, [string]$LiteralPath)
+    <# 장 목차(번호 · 제목)를 먼저 세우고 고른 장만 읽는다. $Slides 는 읽을 장 번호(비면 전부 — 범위 밖이면 장 수를 대며 던진다).
+       내는 것: @{ Text; Visual; Slides = 장 수 } #>
+    param($App, [string]$LiteralPath, [int[]]$Slides = @())
     # 사람이 같은 파일을 열어 두었으면 그 발표를 돌려받는다 — 읽기만 하고 닫지 않는다(office-session.ps1)
     # 경로 · ReadOnly=$true · Untitled=$false · WithWindow=$false
     $session = Open-OwnedDocument -Kind 'PPT' -Collection $App.Presentations -Open { $App.Presentations.Open($LiteralPath, $true, $false, $false) }
     $pres = $session.Document
     try {
+        $count = [int]$pres.Slides.Count
+        $outside = @($Slides | Where-Object { $_ -lt 1 -or $_ -gt $count })
+        if ($outside.Count) { throw "그런 장이 없다: $($outside -join ', ') — 장은 1 ~ $count" }
         $out = [System.Text.StringBuilder]::new()
-        [void]$out.AppendLine($PPT_SEAT_LEGEND)
+        [void]$out.AppendLine("$OUTLINE_HEAD — 장 $count 장")
+        [void]$out.AppendLine('| 장 | 제목 | 읽은 것 |')
+        [void]$out.AppendLine('|---|---|---|')
         foreach ($slide in $pres.Slides) {
+            $title = Get-PptSlideTitle $slide
+            foreach ($b in $PPT_BREAKS) { $title = $title.Replace($b, ' ') }
+            $state = if (-not $Slides.Count -or $Slides -contains $slide.SlideIndex) { '읽음' } else { '안 고름' }
+            [void]$out.AppendLine("| $($slide.SlideIndex) | $(Format-OutlineCell $title.Trim()) | $state |")
+        }
+        [void]$out.AppendLine('')
+        [void]$out.AppendLine($PPT_SEAT_LEGEND)
+        $chartsLeft = 0
+        foreach ($slide in $pres.Slides) {
+            if ($Slides.Count -and $Slides -notcontains $slide.SlideIndex) { continue }
             [void]$out.AppendLine("### 장 $($slide.SlideIndex)")
             # 묶음 안 도형도 슬라이드 자리를 주므로 편 뒤 한 번에 세운다 — 위→아래 · 왼→오른, 같은 자리면 만든 차례
             $z = 0
@@ -687,9 +954,18 @@ function Read-WithPPT {
                         }
                     } catch { }
                 }
+                if ($shape.HasChart -ne 0) {
+                    $rows = Get-PptChartRows $shape.Chart
+                    if ($rows.Count) {
+                        [void]$out.AppendLine("$tag 차트$(Get-PptChartTitle $shape.Chart)")
+                        foreach ($row in $rows) { [void]$out.AppendLine($row) }
+                    } else { $chartsLeft++ }
+                }
             }
+            $notes = Get-PptNotes $slide
+            if ($notes) { [void]$out.AppendLine("$PPT_NOTES_TAG $notes") }
         }
-        return @{ Text = $out.ToString(); Visual = (Measure-PptVisual $pres) }
+        return @{ Text = $out.ToString(); Visual = (Measure-PptVisual $pres -ChartsLeft $chartsLeft); Slides = $count }
     } finally {
         Close-OwnedDocument $session
     }
